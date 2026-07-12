@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, within, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
 /**
  * CAPACITY-BASECARDS-REALDATA 前端牙齿（P1 回归·前端逐值对照后端真值·jsdom renderApp+MSW）：
- *  - 每基地一 LIVE 真值卡：前端"实测当前 N" + 峰值逐值 === 后端 currentTightness.value / peak（真值搬运·非前端写死）。
+ *  - 每基地一 LIVE 真值卡：卡头 T+越线日（risk-peak）=== 后端 crossDay（真值搬运·非前端写死）；
+ *    点开卡 → 详情态逐因素时间轴（risk-frow-<factor>）显真 currentTightness.value → peak 逐值对照
+ *   （WO-CAPSIM-REPLICA-V2·1:1 复刻参照 HTML：卡头「实测当前 N」行已删——参照卡头无此行，真值搬到详情态，非丢覆盖）。
  *  - 无真源基地：诚实空态卡渲染 noDataReason + actionable 深链 CTA（href=/admin/connections），**非静默跳过·非假红**。
  *
  * 固定值取自真起 datacore（SEED_DEMO·seed 42）risk_timeline 真实响应：常州 cur92/peak98·武汉 cur92/peak96·江门 cur91/peak91
@@ -69,17 +71,29 @@ function overrideRiskTimeline() {
 }
 
 describe("CAPACITY-BASECARDS-REALDATA · 每基地一卡前端逐值对照后端", () => {
-  it("每基地 LIVE 卡：前端『实测当前 N』+ 峰值逐值 === 后端真值（真值搬运·非前端写死）", async () => {
+  it("每基地 LIVE 卡：卡头 T+越线日（risk-peak）=== 后端 crossDay（真值搬运·非前端写死）", async () => {
     overrideRiskTimeline();
     loginAs("planner");
     renderApp("/v/risk");
 
     for (const c of REAL_CARDS) {
       const card = await screen.findByTestId(`risk-card-${c.base}`);
-      // 逐值对照：实测当前 === 后端 currentTightness.value（真值搬运·非写死）
-      expect(within(card).getByTestId(`risk-datamode-${c.base}`)).toHaveTextContent(`实测当前 ${c.cur}`);
       // 1:1 复刻黑曜石卡头：显 T+越线日（rk-peak·非峰值数）=== 后端 crossDay（真值搬运；峰值逐值移入详情时间轴）
       expect(within(card).getByTestId(`risk-peak-${c.base}`)).toHaveTextContent("T+1");
+    }
+  });
+
+  it("点开卡 → 详情态逐因素时间轴显真 currentTightness.value→peak（逐值对照·卡头行已删非覆盖丢失）", async () => {
+    overrideRiskTimeline();
+    loginAs("planner");
+    renderApp("/v/risk");
+
+    for (const c of REAL_CARDS) {
+      fireEvent.click(await screen.findByTestId(`risk-card-${c.base}`));
+      const detail = await screen.findByTestId(`risk-detail-${c.base}`);
+      const frow = within(detail).getByTestId(`risk-frow-${c.factor}`);
+      // 逐值对照：详情态"当前→峰值" === 后端 currentTightness.value → peak（真值搬运·非前端写死）
+      expect(frow).toHaveTextContent(`${c.cur}→${c.peak}`);
     }
   });
 

@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // 型号可产基地网络（PRODUCIBLE_AT）夹具：4680-NCM（真跑 oracle）与 4680-LFP（证型号维度切换真变）。
 const OUT_NCM = {
   p50: 5.1836, p90: 4.8667, healthFactor: 0.93, gap: 35.1333, ok: false, mainBn: "设备OEE",
-  dataMode: "LIVE" as const, pendingCertList: [],
+  dataMode: "LIVE" as "LIVE" | "SYNTHETIC" | "MOCK" | "STALE" | "PARTIAL", pendingCertList: [],
   perBaseRows: [
     { base: "常州", weeklyCap: 0.42, certFactor: 1, maintWeek: null, bottleneck: "瓶颈工序", tightness: 65, live: true, cumTotal: 2.5 },
     { base: "成都", weeklyCap: 0.44, certFactor: 1, maintWeek: null, bottleneck: "设备OEE", tightness: 85, live: true, cumTotal: 2.6 },
@@ -30,7 +30,7 @@ const OUT_NCM = {
 };
 const OUT_LFP = {
   p50: 3.6, p90: 3.3, healthFactor: 0.93, gap: 36.7, ok: false, mainBn: "瓶颈工序",
-  dataMode: "LIVE" as const, pendingCertList: [],
+  dataMode: "LIVE" as "LIVE" | "SYNTHETIC" | "MOCK" | "STALE" | "PARTIAL", pendingCertList: [],
   perBaseRows: [
     { base: "溧阳", weeklyCap: 0.5, certFactor: 1, maintWeek: null, bottleneck: "瓶颈工序", tightness: 70, live: true, cumTotal: 3.0 },
   ],

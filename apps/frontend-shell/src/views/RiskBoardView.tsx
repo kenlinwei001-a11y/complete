@@ -15,7 +15,6 @@ import { useOpenWhatIf, resolveBaseId } from "./sim/whatif";
 import { useFeature } from "@/workspace/featureGate";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
-import { DataModeBadge } from "@/components/DataModeBadge";
 import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
@@ -153,7 +152,6 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   // 交互态（HTML §12）：H=推演窗口 30/60/90 天；openBase=内联展开的基地（非 modal·§3 openRiskCard）。
   const [horizon, setHorizon] = useState(30);
   const [riskTab, setRiskTab] = useState<"risk" | "order">("risk"); // HTML §12#2：瓶颈视角 / 订单聚合 两态互斥。
-  const [trustOpen, setTrustOpen] = useState(false); // WO-SANDBOX-READINESS-UX（CAPSIM §5）：[查看完整体检] 抽屉。
   const [openBase, setOpenBase] = useState<string | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
 
@@ -212,6 +210,16 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
       .filter((x) => x.value != null && x.value >= data.threshold - bandWidth)
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   };
+  // 卡面因素 chip：取该基地张力最高的前 N 个真因素（1:1 复刻 A 的每卡 2 chip·真值·非硬编）。
+  const topFactors = (base: string, n: number): { factor: string; value: number | null }[] => {
+    const row = bnRow(base);
+    if (!row) return [];
+    return (bn?.factors ?? [])
+      .map((f) => ({ factor: f, value: row.tightness[f] ?? null }))
+      .filter((x) => x.value != null)
+      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+      .slice(0, n);
+  };
   const riskFactorPoints = liveCards.reduce((s, c) => s + Math.max(1, factorsOver(c.base).length), 0);
   const { totalCusts } = aggregateThreat(liveCards);
   const allOrderCount = new Set(liveCards.flatMap((c) => orderRows(c).map((o) => String(o.so ?? "")).filter((x) => x !== ""))).size;
@@ -236,17 +244,12 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         </div>
       )}
 
-      {/* WO-SANDBOX-READINESS-UX（CAPSIM §5·看板顶一行信任条 + [查看完整体检] 抽屉）：
-          就绪结论派生自本推演真置信度（confidence 三维 + 无源缺件数）·非独立沙盘页·守 RC-UX-DOOR-TEXT
-          「未校准≠不可用·可试跑·结论仅供参考」诚实文案。 */}
-      <ReadinessTrustBar confidence={data.confidence} dataMode={data.dataMode} noSourceCount={data.cards.filter((c) => c.hasData === false).length} onOpen={() => setTrustOpen(true)} />
-
       {/* rk-top：标题 + 视角/窗口 chip（HTML §2）。瓶颈视角为主态；30/60/90 天切窗口重算 risk_timeline。 */}
       <div className={styles.rkTop}>
         <div>
           <h3>产能推演</h3>
           <div className={styles.rkSub}>
-            监测执行偏离月度计划的风险 · 未来 {horizon} 天预测越线（阈值 {data.threshold}）
+            计划-执行之桥：监测执行偏离月度计划的风险 · 未来 {horizon} 天内预测越线（紧张度 ≥ {data.threshold}）· 偏离 → 处置 Action 或反提月度差异（C21）
             {scopedToBase && <> · 聚焦 <b className="mono">{focusId}</b></>}
           </div>
         </div>
@@ -282,26 +285,11 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         {healthNote && <div className={styles.rkHealth} data-testid="risk-kpi-health">{healthNote}</div>}
       </div>
 
-      {/* 本推演置信度（WO-FRESHNESS·决策级诚实标）：真实↔合成 × 新鲜↔陈旧 × 实测↔估算。 */}
-      {data.dataMode && (
-        <div data-testid="risk-confidence-banner" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>本推演置信度</span>
-          <DataModeBadge mode={data.dataMode} confidence={data.confidence} testId="risk-confidence-datamode" />
-        </div>
-      )}
-
       {/* HTML §12#2：订单聚合 tab → 经营聚合表 + 订单明细（真 affected_orders·无源列诚实空态）。 */}
       {riskTab === "order" && <OrderAggView horizon={horizon} unit={unit} />}
 
       {riskTab === "risk" && (
       <>
-      {/* 三档图例（平台决策速查·§2.2-a·与 heat 同阈值口径）+ 首要风险（peak 最高）卡标注。 */}
-      <div data-testid="risk-legend" className={styles.rkLeg} style={{ margin: "0 0 10px" }}>
-        <span><i style={{ background: "#E0626C" }} />{zh.risk.legendHigh}</span>
-        <span><i style={{ background: "#E8B54A" }} />{zh.risk.legendMid}</span>
-        <span><i style={{ background: "#43B7D7" }} />{zh.risk.legendLow}</span>
-      </div>
-
       {/* rk-grid：每基地一卡（HTML §3·整卡点击展开·无独立 CTA 按钮）。因素 chip 来自 bottleneck 真值。 */}
       <div className={styles.rkGrid}>
         {orderedCards.map((card) => {
@@ -310,10 +298,9 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
           const noData = card.hasData === false;
           const peakColor = decisionColor(card.peak, data.threshold, live ? "LIVE" : "MOCK");
-          const chips = factorsOver(card.base);
+          const chips = topFactors(card.base, 2);
           const exposure = cardExposureWan(card);
           const custs = cardThreatenedCusts(card);
-          const currentVal = card.currentTightness?.value;
           const isPrimary = live && maxPeak > 0 && card.peak === maxPeak;
           return (
             <div
@@ -362,10 +349,6 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
                     <span className={styles.rkUnit}>
                       {live && card.crossDay != null ? "最早越线" : live ? "峰值张力" : "估算·无实测"}
                     </span>
-                  </div>
-                  {/* KILL-MOCK-RED 诚实标（G-DM-1·平台honesty层叠于1:1）：LIVE 标真实测当前值·非 LIVE 标估算无实测。 */}
-                  <div className={styles.rkOwn} data-testid={`risk-datamode-${card.base}`} style={{ marginBottom: 4, color: live ? "var(--muted)" : "var(--warn)" }}>
-                    {live ? `实测当前 ${currentVal != null ? Math.round(currentVal) : "—"}` : `估算·无实测${currentVal != null ? `（基线 ${Math.round(currentVal)}）` : ""}`}
                   </div>
                   {chips.length > 0 && (
                     <div className={styles.rkChips} data-testid={`risk-chips-${card.base}`}>
@@ -468,10 +451,6 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
 
-      {/* WO-SANDBOX-READINESS-UX：[查看完整体检] 抽屉（三维置信度 + 缺件清单 §4② + 进沙盘看完整 L0-L4 认证）。 */}
-      {trustOpen && (
-        <ReadinessDrawer confidence={data.confidence} dataMode={data.dataMode} noSourceCards={data.cards.filter((c) => c.hasData === false)} canWhatIf={canWhatIf} onClose={() => setTrustOpen(false)} />
-      )}
     </div>
   );
 }
@@ -644,103 +623,6 @@ function RkK({ testId, value, label, color }: { testId: string; value: string; l
   );
 }
 
-type Conf = RiskTimelineOutput["confidence"];
-
-/**
- * 就绪信号（WO-SANDBOX-READINESS-UX·派生自本推演真置信度·零写死）：**信任条与抽屉唯一同源**
- * ——三维(synthetic/stale/measurement)与结论(verdict)由同一函数产出，杜绝顶栏与抽屉自相矛盾（真浏览器逐值查出的回归）。
- * measurement 无标注时统一保守兜底 MOCK（无置信度信号≠冒充实测·G-DM-1）；两处都读此值故必一致。
- * RC-UX-DOOR-TEXT 诚实文案——「未校准 ≠ 不可用」，合成世界也可试跑，结论仅供参考。
- */
-function readinessSignal(confidence: Conf, dataMode?: string | null): {
-  synthetic: boolean; stale: boolean; measurement: "LIVE" | "MOCK" | "PARTIAL";
-  verdict: { tone: "ok" | "warn"; label: string; sub: string };
-} {
-  const synthetic = confidence?.synthetic === true || dataMode === "SYNTHETIC";
-  const stale = confidence?.stale === true;
-  const measurement: "LIVE" | "MOCK" | "PARTIAL" = confidence?.measurement ?? (dataMode === "LIVE" ? "LIVE" : "MOCK");
-  let verdict: { tone: "ok" | "warn"; label: string; sub: string };
-  if (synthetic) verdict = { tone: "warn", label: "未校准 · 可试跑", sub: "合成决策世界（未接真实数据）——推演可跑，结论仅供参考；接真数据后转为可决策。" };
-  else if (measurement === "MOCK" || measurement === "PARTIAL") verdict = { tone: "warn", label: "部分实测 · 谨慎决策", sub: "真实接入，但部分因素为估算/无置信度信号——决策前留意估算项。" };
-  else if (stale) verdict = { tone: "warn", label: "鲜度告警 · 可决策", sub: `真实实测，但关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}——留意时效。` };
-  else verdict = { tone: "ok", label: "就绪 · 可决策", sub: "真实接入 · 实测活体 · 新鲜——本推演结论可直接进决策。" };
-  return { synthetic, stale, measurement, verdict };
-}
-
-/** 看板顶一行信任条（HTML §5·CAPSIM 唯一 surface 顶）：就绪结论 + 缺源徽标 + [查看完整体检]。 */
-function ReadinessTrustBar({ confidence, dataMode, noSourceCount, onOpen }: { confidence: Conf; dataMode?: string | null; noSourceCount: number; onOpen: () => void }) {
-  const v = readinessSignal(confidence, dataMode).verdict;
-  const color = v.tone === "ok" ? "var(--ok)" : "var(--warn)";
-  return (
-    <div className={styles.trustBar} data-testid="risk-trust-bar" data-tone={v.tone}>
-      <span className={styles.trustDot} style={{ background: color }} />
-      <b data-testid="risk-trust-verdict" style={{ color, fontSize: 12.5, whiteSpace: "nowrap" }}>{v.label}</b>
-      <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{v.sub}</span>
-      {noSourceCount > 0 && (
-        <span className="badge" data-testid="risk-trust-gaps" style={{ background: "rgba(232,181,74,.14)", color: "var(--warn)", fontSize: 10, whiteSpace: "nowrap" }}>缺 {noSourceCount} 源</span>
-      )}
-      <button className={styles.tierChip} data-testid="risk-trust-open" style={{ marginLeft: "auto", whiteSpace: "nowrap" }} onClick={onOpen}>查看完整体检 →</button>
-    </div>
-  );
-}
-
-/** [查看完整体检] 抽屉：三维置信度 + 缺件清单（§4②）+ 进沙盘看完整 L0-L4 就绪认证（session 级 cert 的真归属地）。 */
-function ReadinessDrawer({ confidence, dataMode, noSourceCards, canWhatIf, onClose }: { confidence: Conf; dataMode?: string | null; noSourceCards: RiskCard[]; canWhatIf: boolean; onClose: () => void }) {
-  // 与信任条唯一同源（readinessSignal）——三维与结论必一致，杜绝顶栏"实测活体"却抽屉"无实测"的自相矛盾。
-  const sig = readinessSignal(confidence, dataMode);
-  const v = sig.verdict;
-  const { synthetic, stale, measurement: meas } = sig;
-  const dims: { label: string; good: boolean; text: string }[] = [
-    { label: "真实 ↔ 合成", good: !synthetic, text: synthetic ? "合成数据（非真实接入）" : "真实接入" },
-    { label: "新鲜 ↔ 陈旧", good: !stale, text: stale ? `关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}${(confidence?.staleSources ?? []).length ? `（${(confidence!.staleSources ?? []).join("、")}）` : ""}` : "关键源新鲜" },
-    { label: "实测 ↔ 估算", good: meas === "LIVE", text: meas === "LIVE" ? "实测活体" : meas === "PARTIAL" ? "部分实测·部分估算" : "启发估算（无实测）" },
-  ];
-  return (
-    <div className={styles.drawerScrim} data-testid="risk-trust-drawer" role="dialog" aria-label="完整体检" onClick={onClose}>
-      <div className={styles.drawer} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.drawerHead}>
-          <b style={{ fontSize: 14 }}>完整体检 · 就绪认证</b>
-          <button className={styles.tierChip} data-testid="risk-trust-close" onClick={onClose}>✕ 关闭</button>
-        </div>
-        {/* 就绪结论 */}
-        <div style={{ padding: "8px 10px", borderRadius: 8, marginBottom: 12, background: "rgba(226,235,245,.04)", borderLeft: `3px solid ${v.tone === "ok" ? "var(--ok)" : "var(--warn)"}` }}>
-          <b data-testid="drawer-verdict" style={{ color: v.tone === "ok" ? "var(--ok)" : "var(--warn)", fontSize: 13 }}>{v.label}</b>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>{v.sub}</div>
-        </div>
-        {/* 三维置信度（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）·派生自 risk_timeline confidence 真值。 */}
-        <div className="section-title" style={{ fontSize: 12 }}>置信度三维（本推演真值）</div>
-        <div data-testid="drawer-confidence" style={{ display: "grid", gap: 6, margin: "6px 0 14px" }}>
-          {dims.map((d) => (
-            <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.good ? "var(--ok)" : "var(--warn)", flex: "none" }} />
-              <b style={{ width: 88, flex: "none", color: "var(--muted)" }}>{d.label}</b>
-              <span style={{ color: d.good ? "var(--txt)" : "var(--warn)" }}>{d.text}</span>
-            </div>
-          ))}
-        </div>
-        {/* 缺件清单（WO §4②·诚实不静默）：本推演无真实数据源的基地×因素。 */}
-        <div className="section-title" style={{ fontSize: 12 }}>缺件清单（无真实数据源·{noSourceCards.length}）</div>
-        {noSourceCards.length > 0 ? (
-          <ul data-testid="drawer-gaps" style={{ margin: "6px 0 14px", paddingLeft: 18 }}>
-            {noSourceCards.map((c) => (
-              <li key={c.base} data-testid={`drawer-gap-${c.base}`} style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>
-                <b className="mono" style={{ color: "var(--txt)" }}>{c.base} · {c.factor}</b> — {c.noDataReason ?? "无真实测量数据源"}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div data-testid="drawer-gaps-empty" style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 14px" }}>✓ 无缺件——所有在场基地×因素均有真实数据源。</div>
-        )}
-        {/* 完整 L0-L4 会话级就绪认证的真归属地 = 推演沙盘（cert 为 session-bound·此处不伪造 session）。 */}
-        <div style={{ fontSize: 11.5, color: "var(--muted2)", lineHeight: 1.6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-          完整 L0–L4 认证台阶 / 三雷达（结构·知识·行为）/ Trial Tick 为**会话级**指标——就此风险
-          {canWhatIf ? "「开推演对策」进沙盘下钻态即见该会话完整就绪认证。" : "开通推演沙盘（sim.sandbox）后进下钻态即见完整会话就绪认证。"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /**
  * 内联详情面板（HTML §3-§5 openRiskCard #rkDetail）：
  *  逐因素时间轴（.rk-tl·主因素真逐日 series·其余因素当前值·无逐日源诚实灰）→ 图例 → 两栏（对症方案 rk-sol + 对话态 QA）。
@@ -811,7 +693,7 @@ function RiskDetailPanel({
         </div>
       )}
 
-      <div className={styles.rkLeg}>
+      <div className={styles.rkLeg} data-testid="risk-legend">
         <span><i style={{ background: "#43B7D7" }} />&lt;{threshold - bandWidth} 正常</span>
         <span><i style={{ background: "#E8B54A" }} />{threshold - bandWidth}-{threshold - 1} 关注</span>
         <span><i style={{ background: "#E0626C" }} />≥{threshold} 瓶颈</span>

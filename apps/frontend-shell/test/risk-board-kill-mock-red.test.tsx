@@ -92,8 +92,8 @@ describe("WO-KILL-MOCK-RED 阶段② · RiskBoard 消费门（治本·非贴标�
     renderApp("/v/risk");
 
     const card = await screen.findByTestId("risk-card-常州");
-    // 真数据卡 dataMode 徽标为「实测」
-    await waitFor(() => expect(within(card).getByTestId("risk-datamode-常州")).toHaveTextContent("实测"));
+    // 真数据卡卡头显 T+越线日真值（WO-CAPSIM-REPLICA-V2：卡内「实测」徽标行已随平台自加层剥离——真值判据改承接于卡头 risk-peak）
+    await waitFor(() => expect(within(card).getByTestId("risk-peak-常州")).toHaveTextContent("T+5"));
     // 峰值 96≥85 → danger 红渲染（getComputedStyle 层面确有 danger 内联色）
     const dangerNodes = card.querySelectorAll('[style*="var(--danger)"]');
     expect(dangerNodes.length).toBeGreaterThan(0);
