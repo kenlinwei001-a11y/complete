@@ -73,6 +73,7 @@ export class AuditSinkService {
       status: input.status ?? existing?.status ?? "ACTIVE",
       ...(credentialRef !== undefined ? { credentialRef } : {}),
       sinceAt: existing?.sinceAt ?? this.clock().toISOString(),
+      ...(existing?.sinceId !== undefined ? { sinceId: existing.sinceId } : {}),
       ...(existing?.lastFlushAt !== undefined ? { lastFlushAt: existing.lastFlushAt } : {}),
       updatedAt: this.clock().toISOString(),
       updatedBy: ctx.userId,
@@ -90,11 +91,14 @@ export class AuditSinkService {
     const sink = await this.getSink(tenantId);
     if (!sink || sink.status !== "ACTIVE") return { delivered: 0, ok: true };
 
-    // R2：仅本租户 audit_log；增量 = at > sinceAt（游标独占下界·可重复不丢）。
-    const cursor = sink.sinceAt ?? "";
+    // R2：仅本租户 audit_log；增量 = 复合游标 (at,id) 之后（WO-AUDIT-CURSOR-TIEBREAK·修同毫秒边界丢条目）。
+    // 旧 `at > sinceAt` 会漏掉与游标同 `at` 的条目（高写入率下同毫秒常见 → SIEM 静默丢审计·违 append-only 承诺）。
+    // 改：at > sinceAt，或同 at 且 id > sinceId（缺省 sinceId="" → 同 at 全投一次·不丢）。稳定序 (at,id)。
+    const cursorAt = sink.sinceAt ?? "";
+    const cursorId = sink.sinceId ?? "";
     const rows = (await this.repos.auditLog.list(
       tenantId,
-      (e: AuditLogRecord) => !cursor || e.at > cursor,
+      (e: AuditLogRecord) => !cursorAt || e.at > cursorAt || (e.at === cursorAt && e.id > cursorId),
     )).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
 
     if (rows.length === 0) {
@@ -121,13 +125,13 @@ export class AuditSinkService {
     try {
       const res = await this.fetchImpl(sink.endpoint, { method: "POST", headers, body: ndjson });
       if (!res.ok) throw new Error(`sink responded ${res.status}`);
-      // 成功 → 前推游标（单调）+ 记 lastFlushAt，清 lastError。
-      const maxAt = rows[rows.length - 1]!.at;
-      const updated: AuditSink = { ...sink, sinceAt: maxAt, lastFlushAt: nowIso };
+      // 成功 → 前推复合游标 (at,id)（单调·rows 已按 (at,id) 升序·取末条）+ 记 lastFlushAt，清 lastError。
+      const last = rows[rows.length - 1]!;
+      const updated: AuditSink = { ...sink, sinceAt: last.at, sinceId: last.id, lastFlushAt: nowIso };
       delete (updated as { lastError?: string }).lastError;
       await this.repos.auditSinks.put(updated);
       this.metrics?.inc("dc_audit_sink_delivered_total", {}, rows.length);
-      this.log.info({ tenantId, delivered: rows.length, sinceAt: maxAt }, "audit sink flushed");
+      this.log.info({ tenantId, delivered: rows.length, sinceAt: last.at, sinceId: last.id }, "audit sink flushed");
       return { delivered: rows.length, ok: true };
     } catch (err) {
       // 旁路吞：不阻断主写/主 sweep·游标不推进（下次续投）·**不抛**。

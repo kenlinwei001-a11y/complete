@@ -100,6 +100,9 @@ export const AuditSinkSchema = z.object({
   credentialRef: z.string().optional(),
   /** 增量游标：已成功外送到此 `at` 之前（含）的审计条目；下次从此之后续投。 */
   sinceAt: z.string().optional(),
+  /** 增量游标同 `at` 内的 id 平级下界（WO-AUDIT-CURSOR-TIEBREAK）：修 `at > sinceAt` 丢同毫秒边界条目——
+   *  游标改为复合 (at,id)；`sinceId` = 已投递的同 `at` 最大 id。缺省（旧 sink）= "" → 同 at 全投一次不丢。 */
+  sinceId: z.string().optional(),
   /** 最近一次投递结果（可观测·不含 secret）。 */
   lastFlushAt: z.string().optional(),
   lastError: z.string().optional(),
