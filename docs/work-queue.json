@@ -8034,12 +8034,14 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "B栈按故事真派生(洞B):workflow多步/条件·agent prompt含故事上下文·skill真资源(非模板fan-out)·可能扩LlmComprehendSchema采编排提示(additive)",
       "note": "[LaneB·datacore·DISPATCH] ⚠沙盘划界:绝不派生propagation_rule/state_var(S0§3.4归RG/S1·防双写contracts/databuilder.ts:437)。green→red:两复杂度悬殊故事→workflow.steps/agent.prompt字节相同→红。",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
-        "wip": "2026-07-12T02:40:20.778Z"
-      }
+        "wip": "2026-07-12T02:40:20.778Z",
+        "built": "2026-07-12T02:57:40.098Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-DB-MODELING-WIRE",
@@ -8726,10 +8728,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "clobber恢复2:dev2旧基线删6 CAPSIM WO+revert verdict·rank-max合并10145401∪当前(留dev2 databuilder进度)",
-      "id": "0单",
-      "at": "2026-07-12T02:46:44.403Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-DB-BSTACK-DERIVE",
+      "at": "2026-07-12T02:57:40.098Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
