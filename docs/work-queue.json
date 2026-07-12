@@ -7341,13 +7341,15 @@
       "reviewNote": "PASS 独立对抗真跑(agent a7d85f004·33工具):C1 id-豁免收紧真生效。①净树EXIT0·10条SMELL逐条无新增误报(6注释COMMENT_RE先于LEGIT+4经createHash/version/bucket/toString36他规则豁免)。②注入hash(baseId)作实参标live→逮RED EXIT1(SUSPECT hash裸冒充)·旧宽豁免会放行=洞已堵。③注入const nodeId=hash(x)赋值目标→保持EXIT0不误伤。④自证块mustCatch(hashString(baseId))/mustPass(const nodeId=hashString)·revert旧regex自红EXIT2有牙·入gates链CI。⑤还原git status干净HEAD da9e915。非阻断FYI:`\\w*[Ii]d\\s*[=:]`仍豁免名字以id结尾的赋值目标(avoid/paid/grid+hash)·比旧窄·出C1范围·C2行为断言兜底·可选未来加固。"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-12T12:22:42.638Z"
+      },
       "id": "WO-SWEEP-01-SCENE-SEED",
       "title": "种子完整性:6场景(S05/S12/S13/S14/S17/S19)缺defaultAgent→断链不可启动",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "[改派Dev-2·Lane B卡L1A-3期间的不阻塞填充·场景种子seed·backend·与spine/sandbox文件不撞] 复验agent a3251764真跑:42 PUBLISHED场景中6个AGENT_FIRST缺defaultAgent→启动器断链、启动按钮已诚实禁用(非死链非假值)。demo这6卡不可用。",
       "acceptance": {
@@ -7398,13 +7400,15 @@
       }
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-12T12:22:42.759Z"
+      },
       "id": "WO-SWEEP-03-NAV-GROUP",
       "title": "IA:6 admin页落兜底'其它'导航组(ShellLayout.NAV_GROUPS vs adminRegistry漂移)",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "复验agent a0989369真跑:knowledge/schema-reconcile/decisions/audit-log/boundary/prototype-intake落兜底'其它'组(ShellLayout.NAV_GROUPS未列·adminRegistry.ADMIN_NAV_GROUPS已列·两处漂移)。页正常渲染·仅归组。",
       "acceptance": {
@@ -8767,9 +8771,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SA-3",
-      "at": "2026-07-12T12:03:58.923Z"
+      "cmd": "WIP",
+      "id": "WO-SWEEP-03-NAV-GROUP",
+      "at": "2026-07-12T12:22:42.759Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
