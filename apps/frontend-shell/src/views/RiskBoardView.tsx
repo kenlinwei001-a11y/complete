@@ -31,14 +31,59 @@ type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
 function orderRows(card: RiskCard): Record<string, unknown>[] {
   return (card.affectedOrders ?? []) as Record<string, unknown>[];
 }
+const numOf = (v: unknown): number => {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+/** 万套 → 套（1 万套 = 10000 套）·真实量纲定义（非后端 lot→cell 内部种子系数）。 */
+const UNITS_PER_WAN = 10000;
+
+/**
+ * C1（越线0/crossDay=null 不挂整单营收·敞口按真缺口比例折算）：受影响敞口占已受影响订单营收的比例。
+ * - **已越线**（crossDay!=null·瓶颈真被击穿）：受影响订单确将延误 → 全单在险，比例 = 1（口径不变·守既有测试）。
+ * - **未越线**（crossDay==null·产能尚未击穿）：仅存结构性缺口 demandGap.gapWan（万套）→ 敞口按缺口体量占
+ *   已受影响订单量的比例折算：frac = clamp(gapWan×10000 / Σqty, 0, 1)。等价于「缺口(套) × 每套真营收」，
+ *   即缺口体量的真实营收价值（近零缺口 → 近零敞口·而非整单）。
+ * - 未越线且无 demandGap（非需求驱动因子）→ 缺口未量化 → 比例 0（诚实·不伪造整单在险·KILL-MOCK-RED）。
+ */
+export function exposureFraction(card: RiskCard): number {
+  if (card.crossDay != null) return 1;
+  const gapWan = typeof card.demandGap?.gapWan === "number" ? card.demandGap.gapWan : 0;
+  const totalQty = orderRows(card).reduce((s, o) => s + numOf(o.qty), 0);
+  if (totalQty <= 0 || gapWan <= 0) return 0;
+  return Math.min(1, Math.max(0, (gapWan * UNITS_PER_WAN) / totalQty));
+}
 export function cardExposureWan(card: RiskCard): number {
-  return orderRows(card).reduce((s, o) => {
-    const v = typeof o.revenueWan === "number" ? o.revenueWan : Number(o.revenueWan);
-    return s + (Number.isFinite(v) ? v : 0);
-  }, 0);
+  const totalRev = orderRows(card).reduce((s, o) => s + numOf(o.revenueWan), 0);
+  return totalRev * exposureFraction(card);
+}
+/** C3（决策者可读）：营收敞口金额（万）→ ≥1亿 显「X.X亿」，否则「N 万」（避免裸「4320000万」不可读）。 */
+export function fmtExposureWan(wan: number): string {
+  if (wan >= 10000) return `${(wan / 10000).toFixed(1)}亿`;
+  return `${Math.round(wan)} 万`;
 }
 export function cardThreatenedCusts(card: RiskCard): number {
   return new Set(orderRows(card).map((o) => String(o.cust ?? "")).filter((x) => x !== "")).size;
+}
+
+export type DecisionMode = "LIVE" | "MUTED";
+/**
+ * C2（同源风险诚实标一致·单一判据）：卡级 dataMode 判据**唯一函数**——RiskBoardView 卡与沙盘 RiskTop3 共用，
+ * 杜绝同一常州风险一处「实测」一处「估算·无实测」。规则（KILL-MOCK-RED）：
+ *   无真源(hasData=false) / 合成决策世界(confidence.synthetic) / 显式非 LIVE ⇒ MUTED；
+ *   自报 LIVE ⇒ LIVE；未标 dataMode ⇒ 随顶层（旧 fixture 向后兼容）。
+ */
+export function cardDecisionMode(
+  card: { dataMode?: string | null; hasData?: boolean },
+  topDataMode?: string | null,
+  confidence?: { synthetic?: boolean } | null,
+): DecisionMode {
+  const topLive = !(topDataMode != null && topDataMode !== "LIVE");
+  if (card.hasData === false) return "MUTED";
+  if (confidence?.synthetic === true) return "MUTED";
+  if (card.dataMode === "LIVE") return "LIVE";
+  if (card.dataMode == null) return topLive ? "LIVE" : "MUTED";
+  return "MUTED";
 }
 /**
  * C4：卡按**业务影响**排序（真数据驱动·非 peak）。排序键 = 营收敞口（万）·次序客户数、基地名定序（确定性）。
@@ -65,12 +110,13 @@ export function aggregateThreat(cards: RiskCard[]): { totalExposure: number; tot
   const custSet = new Set<string>();
   let anonSo = 0;
   for (const c of cards) {
+    // C1：每卡按其真缺口比例折算（未越线卡缺口近零→敞口近零），同订单跨基地取最大在险防双记。
+    const frac = exposureFraction(c);
     for (const o of orderRows(c)) {
-      const rev = typeof o.revenueWan === "number" ? o.revenueWan : Number(o.revenueWan);
-      if (Number.isFinite(rev)) {
-        const key = o.so != null && String(o.so) !== "" ? `so:${o.so}` : `anon:${anonSo++}`;
-        exposureBySo.set(key, rev);
-      }
+      const rev = numOf(o.revenueWan) * frac;
+      const key = o.so != null && String(o.so) !== "" ? `so:${o.so}` : `anon:${anonSo++}`;
+      const prev = exposureBySo.get(key) ?? 0;
+      if (rev > prev) exposureBySo.set(key, rev);
       const cust = String(o.cust ?? "");
       if (cust !== "") custSet.add(cust);
     }
@@ -139,14 +185,8 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   //   顶层/卡 dataMode 显式非 LIVE，或决策世界全合成（confidence.synthetic）⇒ MUTED（灰·不出红）。
   const notLive = (dm?: string | null): boolean => dm != null && dm !== "LIVE";
   const topLive = !notLive(data.dataMode);
-  const decisionSynthetic = data.confidence?.synthetic === true;
-  const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" => {
-    if (c.hasData === false) return "MUTED";
-    if (decisionSynthetic) return "MUTED"; // 合成 provenance 决策世界 → 不决策级染红（KILL-MOCK-RED）
-    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 + 真 provenance → 出红（真 OEE / 真供需派生）
-    if (c.dataMode == null) return topLive ? "LIVE" : "MUTED"; // 未标 → 随顶层（兼容旧 fixture）
-    return "MUTED"; // 显式 MOCK/SYNTHETIC / 其它非 LIVE → 中性
-  };
+  // C2：卡级 dataMode 判据走**共享** cardDecisionMode（与沙盘 RiskTop3 同源·同一常州风险标注一致）。
+  const cardMode = (c: RiskCard): DecisionMode => cardDecisionMode(c, data.dataMode, data.confidence);
 
   // WO-CAPSIM-IA-UNIFY（M2·③看板 scope=该基地）：`?focus=<baseId|名>` 下钻 → 裁剪到该基地。
   const focusId = resolveBaseId(searchParams.get("focus") ?? undefined);
@@ -154,7 +194,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   const scopedCards = focusId && baseScoped.length > 0 ? baseScoped : data.cards;
   const scopedToBase = focusId != null && baseScoped.length > 0;
 
-  const liveCards = scopedCards.filter((c) => cardDecisionMode(c) === "LIVE");
+  const liveCards = scopedCards.filter((c) => cardMode(c) === "LIVE");
   const livePeaks = liveCards.map((c) => c.peak ?? 0);
   const maxPeak = livePeaks.length ? Math.max(0, ...livePeaks) : 0;
   const orderedCards = sortCardsByImpact(scopedCards);
@@ -265,7 +305,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
       {/* rk-grid：每基地一卡（HTML §3·整卡点击展开·无独立 CTA 按钮）。因素 chip 来自 bottleneck 真值。 */}
       <div className={styles.rkGrid}>
         {orderedCards.map((card) => {
-          const mode = cardDecisionMode(card);
+          const mode = cardMode(card);
           const live = mode === "LIVE";
           const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
           const noData = card.hasData === false;
@@ -344,7 +384,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
                     <span data-testid={`risk-affected-${card.base}`}>
                       受威胁客户 <b data-testid={`risk-custs-${card.base}`} style={{ color: live ? "var(--danger)" : "var(--muted)" }}>{custs}</b>
                       {" · 敞口 "}
-                      <b className="mono" data-testid={`risk-exposure-${card.base}`} style={{ color: live ? "var(--danger)" : "var(--muted)" }}>{exposure > 0 ? `${Math.round(exposure)} 万` : "—"}</b>
+                      <b className="mono" data-testid={`risk-exposure-${card.base}`} style={{ color: live ? "var(--danger)" : "var(--muted)" }}>{exposure > 0 ? fmtExposureWan(exposure) : "—"}</b>
                     </span>
                     <span>{orderRows(card).length} 批订单</span>
                   </div>
@@ -365,8 +405,8 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           threshold={data.threshold}
           bandWidth={bandWidth}
           horizon={horizon}
-          live={cardDecisionMode(openCard) === "LIVE"}
-          isPrimary={cardDecisionMode(openCard) === "LIVE" && maxPeak > 0 && openCard.peak === maxPeak}
+          live={cardMode(openCard) === "LIVE"}
+          isPrimary={cardMode(openCard) === "LIVE" && maxPeak > 0 && openCard.peak === maxPeak}
           canWhatIf={canWhatIf}
           openWhatIf={openWhatIf}
           onDay={(day) => setOrdersDay({ card: openCard, day })}
@@ -887,10 +927,10 @@ function QaPanel({ card, unit, threshold }: { card: RiskCard; unit: string; thre
 
   const answer = (q: string): string => {
     if (/客户|谁/.test(q)) return custs.length ? `受威胁客户 ${custs.length} 家：${custs.join("、")}（源：受影响订单去重）。` : "该基地当前无关联受影响客户（受影响订单为空）。";
-    if (/订单|批/.test(q)) return sos.length ? `受影响订单 ${sos.length} 批：${sos.slice(0, 8).join("、")}${sos.length > 8 ? " 等" : ""}（营收敞口 ≈ ${Math.round(exposure)} 万）。` : "该基地当前无在产订单落入越线传导窗口。";
+    if (/订单|批/.test(q)) return sos.length ? `受影响订单 ${sos.length} 批：${sos.slice(0, 8).join("、")}${sos.length > 8 ? " 等" : ""}（营收敞口 ≈ ${fmtExposureWan(exposure)}）。` : "该基地当前无在产订单落入越线传导窗口。";
     if (/为什么|原因|越线/.test(q)) return gap ? `${card.factor} 紧张度由真需求-产能缺口派生：缺口 ≈ ${gap.gapWan} ${unit}（来源 ${gap.source}），${card.crossDay != null ? `预计 T+${card.crossDay} 越线阈值 ${threshold}` : "窗口内暂不越线"}。` : `${card.factor} ${card.crossDay != null ? `预计 T+${card.crossDay} 越线（阈值 ${threshold}）` : "窗口内暂不越线"}；峰值张力 ${card.peak != null ? Math.round(card.peak) : "—"}。`;
-    if (/最坏|后果|影响/.test(q)) return `最坏后果：${custs.length} 家客户 / ${sos.length} 批订单受影响，营收敞口 ≈ ${Math.round(exposure)} 万${card.crossDay != null ? `，最早 T+${card.crossDay} 越线` : ""}。`;
-    return `已知本卡真值：峰值 ${card.peak != null ? Math.round(card.peak) : "—"} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "不越线"} · 受威胁客户 ${custs.length} · 敞口 ${Math.round(exposure)} 万。可问：影响哪些客户 / 哪些订单 / 为什么越线 / 最坏后果。`;
+    if (/最坏|后果|影响/.test(q)) return `最坏后果：${custs.length} 家客户 / ${sos.length} 批订单受影响，营收敞口 ≈ ${fmtExposureWan(exposure)}${card.crossDay != null ? `，最早 T+${card.crossDay} 越线` : ""}。`;
+    return `已知本卡真值：峰值 ${card.peak != null ? Math.round(card.peak) : "—"} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "不越线"} · 受威胁客户 ${custs.length} · 敞口 ${fmtExposureWan(exposure)}。可问：影响哪些客户 / 哪些订单 / 为什么越线 / 最坏后果。`;
   };
   const presets = ["影响哪些客户？", "哪些订单受影响？", "为什么会越线？", "最坏后果是什么？"];
 

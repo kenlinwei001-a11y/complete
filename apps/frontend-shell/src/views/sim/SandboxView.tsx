@@ -34,6 +34,7 @@ import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC, simRadarHumanLabel, simTickTimeLabel } from "@/locales/zh";
 import { useFeature } from "@/workspace/featureGate";
 import { SimDataModeBadge, overallDataMode, stateVarDataMode, objectDataMode, trustSummaryText } from "./SimDataModeBadge";
+import { cardDecisionMode } from "../RiskBoardView";
 import styles from "./SimViews.module.css";
 
 /**
@@ -523,13 +524,10 @@ interface RiskCard { base: string; factor: string; dataMode?: string; hasData?: 
 function RiskTop3({ enabled }: { enabled: boolean }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["a", "risk_timeline", "sandbox-top3"],
-    queryFn: async () => (await invokeSolver("risk_timeline", {})).data as { dataMode?: string; cards?: RiskCard[] },
+    queryFn: async () => (await invokeSolver("risk_timeline", {})).data as { dataMode?: string; confidence?: { synthetic?: boolean }; cards?: RiskCard[] },
     retry: false, enabled,
   });
   if (isError) return null;
-  // 向后兼容：仅显式非 LIVE 才抑制（未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）。
-  const notLive = (dm?: string | null) => dm != null && dm !== "LIVE";
-  const topLive = !notLive(data?.dataMode);
   const cards = [...(data?.cards ?? [])].sort((a, b) => (b.peak ?? 0) - (a.peak ?? 0)).slice(0, 3);
   return (
     <div className="panel" data-testid="sandbox-risk-top3" style={{ padding: 12, marginTop: 12 }}>
@@ -541,8 +539,9 @@ function RiskTop3({ enabled }: { enabled: boolean }) {
       ) : (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {cards.map((c, i) => {
-            // WO-KILL-MOCK-RED 治本：仅顶层+该卡 LIVE 且 hasData 才出决策红；否则中性灰（不把哈希/合成峰值染红）。
-            const cLive = topLive && !notLive(c.dataMode) && c.hasData !== false;
+            // C2（同源诚实标一致）：走**共享** cardDecisionMode（与 RiskBoardView 卡同判据·含 confidence.synthetic 门），
+            // 杜绝同一常州风险此处「实测」而看板「估算·无实测」。仅 LIVE（真源+非合成世界）出决策红。
+            const cLive = cardDecisionMode(c, data?.dataMode, data?.confidence) === "LIVE";
             const col = cLive && c.peak != null ? (c.peak >= 80 ? "#E0626C" : c.peak >= 50 ? "#E8B54A" : "#62BE77") : "var(--muted)";
             const baseline = c.currentTightness?.value;
             return (
