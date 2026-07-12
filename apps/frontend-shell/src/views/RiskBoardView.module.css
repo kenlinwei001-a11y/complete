@@ -6,6 +6,12 @@
 .riskwrap {
   padding: 22px 26px;
   background: radial-gradient(1200px 700px at 70% -10%, rgba(221, 126, 158, 0.06), transparent 60%);
+  /* Gap#5 张力三档配色（**模块作用域**·1:1 复刻黑曜石 riskColor）——正常绿 / 关注金 / 瓶颈玫红。
+     不改全局 tokens.css。JS 侧 riskTierColor 用同值 hex（值驱动 + `${col}55/66` 透明度拼接需要）；
+     此处 CSS 变量为单一真相锚点，供纯 CSS 消费并与 JS 常量对齐。 */
+  --rk-normal: #62be77;
+  --rk-watch: #d2b04c;
+  --rk-jam: #dd7e9e;
 }
 
 /* rk-top（HTML :148-149）：标题 + 视角/窗口 chip 开关。 */
@@ -367,6 +373,35 @@
   color: #fff;
   font-size: 11.5px;
   cursor: pointer;
+}
+.rkAsk button:disabled,
+.qaChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Gap#2 富逐日 tip · Gap#4c 溯源浮层（portal · fixed · pointer-events:none 非交互）：
+   日期 + T+d + 当日紧张度 + 事件脉冲 + 受影响订单小表 / 溯源口径。 */
+.rkTip {
+  position: fixed;
+  z-index: 300;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  pointer-events: none;
+}
+.rkTipH {
+  font-size: 11.5px;
+  margin-bottom: 5px;
+}
+.rkTipEv {
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 4px;
 }
 
 /* WO-SANDBOX-READINESS-UX：看板顶信任条（一行·就绪结论）。 */
