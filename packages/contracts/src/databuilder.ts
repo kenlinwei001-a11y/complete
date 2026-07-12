@@ -349,6 +349,12 @@ export const BuildRunBodySchema = z.object({
   dryRun: z.boolean().optional(),
   /** A18：构建模式（默认 STRICT 写真值；PROVISIONAL=未审核预览，闭包降 ADVISORY 不阻断、不写真值）。 */
   buildMode: BuildModeSchema.optional(),
+  /**
+   * WO-DB-MODELING-WIRE：数据先行——给已上传 rawDataset id 时，objectTypes/链路从**真实列/FK**经
+   * `deriveModelingSuggestion`（确定性·无 LLM·R6）派生（取代 LLM 凭空造类型）；comprehend 仍供 solverNeeds/规则语义层。
+   * 缺省=故事先行（旧行为·LLM 从脚本倒推 objectTypes）。
+   */
+  fromDatasetIds: z.array(z.string()).optional(),
 });
 export type BuildRunBody = z.infer<typeof BuildRunBodySchema>;
 
