@@ -8757,11 +8757,12 @@
         "WO-CAPSIM-IA-UNIFY"
       ],
       "doc": "docs/WO-SANDBOX-READINESS-UX.md",
-      "status": "TODO",
-      "owner": "reviewer-exec",
+      "status": "WIP",
+      "owner": "dev",
       "revertNote": "[审核方2026-07-12·commit d7287dff] BUILT→TODO：CAPSIM-REPLICA-V2 纯HTML复刻返工剥离了信任条/[查看完整体检]抽屉(平台自加·参照黑曜石HTML无此层·致1:1观感偏离)。就绪认证须以不扰乱1:1看板的方式后续重做(非看板顶通栏信任条)→退回TODO待重设计。",
       "at": {
-        "created": "2026-07-11T19:55:51.326Z"
+        "created": "2026-07-11T19:55:51.326Z",
+        "wip": "2026-07-12T15:10:46.635Z"
       },
       "title": "就绪认证进看板信任条+抽屉(并入CAPSIM§5·非独立页):看板顶一行信任条+[查看完整体检]抽屉(L0-L4/三雷达进抽屉·守RL3不动投影)",
       "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】",
@@ -8808,9 +8809,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-RC1-CLOSURE-SCOPE",
-      "at": "2026-07-12T15:07:56.636Z"
+      "cmd": "WIP",
+      "id": "WO-SANDBOX-READINESS-UX",
+      "at": "2026-07-12T15:10:46.635Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
