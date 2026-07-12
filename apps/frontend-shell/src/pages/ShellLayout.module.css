@@ -11,8 +11,8 @@
   align-items: center;
   gap: 18px;
   padding: 0 20px;
-  border-bottom: 1px solid rgba(226, 235, 245, 0.09);
-  background: linear-gradient(180deg, rgba(24, 31, 40, 0.82), rgba(14, 18, 24, 0.66));
+  border-bottom: 1px solid var(--topbar-border);
+  background: var(--topbar-grad);
   backdrop-filter: blur(18px) saturate(150%);
   z-index: 20;
 }
@@ -137,7 +137,7 @@
 .navItem.active {
   background: linear-gradient(90deg, rgba(76, 144, 240, 0.16), rgba(76, 144, 240, 0.03));
   border-color: rgba(76, 144, 240, 0.3);
-  color: #fff;
+  color: var(--nav-active-fg);
 }
 
 .dot {

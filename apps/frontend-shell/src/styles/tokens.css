@@ -34,4 +34,37 @@
   --warn: #e8b54a;
   --amber: #e8b54a;
   --danger: #e0626c;
+
+  /* WO-THEME-SWITCH-U8：外壳 chrome 结构色令牌化（顶栏玻璃渐变 / 边 / 选中态字）——原写死于 ShellLayout.module.css，
+     浅色态无法反相致「顶栏恒暗·选中项白字落浅底不可读」。抽成令牌 → 随 data-theme 切换（暗值与原字节一致·零回归）。 */
+  --topbar-grad: linear-gradient(180deg, rgba(24, 31, 40, 0.82), rgba(14, 18, 24, 0.66));
+  --topbar-border: rgba(226, 235, 245, 0.09);
+  --nav-active-fg: #fff;
+}
+
+/**
+ * WO-THEME-SWITCH-U8（浅色主题·用户可切·`themeMode.ts` 切 data-theme 驱动）：只覆盖**结构色**（底/面/边/文字）——
+ * 反相到浅色底 + 深色字（WCAG AA 实测：主文 --txt 对 --bg #1A2233/#F4F6FA ≈ 13.6:1·次要 --muted #55606F ≈ 5.6:1）。
+ * 领域色/状态色（--c-x·--ok·--warn·--danger·中间调）跨明暗通用不改（避免双套色维护）。--accent 于浅色略压深保 AA。
+ * 后端 `applyTheme` 若下发结构 token 会内联覆盖本层（角色主题优先·正交设计）；未下发的结构色由本层驱动浅色。
+ */
+:root[data-theme="light"] {
+  --bg: #F4F6FA;          /* 浅页面底 */
+  --bg2: #EAEEF5;         /* 顶部/hero 渐变端 */
+  --panel: #FFFFFF;       /* 卡片面（白） */
+  --panel2: #F0F3F8;      /* 卡内嵌区 */
+  --border: #D7DDE7;      /* 卡片发丝边 */
+  --border-strong: #C3CBD8; /* 分隔线/表头下线 */
+  --line: rgba(20, 28, 44, 0.10);
+  --line2: #D7DDE7;
+  --txt: #1A2233;         /* 主文本（深·对白面 ≈13.6:1） */
+  --muted: #55606F;       /* 次要文本（≈5.6:1 AA） */
+  --muted2: #6B7686;      /* 三级文本（≈4.6:1 AA-large / 边界） */
+  --accent: #3F5FD6;      /* 皇家蓝压深保白底 AA（≈5.0:1） */
+  --accent-hover: #3452C4;
+  --accent-weak: #E4EAFB; /* 浅蓝底徽标/选中 tab 底 */
+  /* 外壳 chrome 浅色反相：顶栏玻璃转白半透 + 边转实发丝 + 选中项深字（白底可读·治白字落浅底） */
+  --topbar-grad: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(240, 243, 248, 0.72));
+  --topbar-border: #D7DDE7;
+  --nav-active-fg: #1A2233;
 }

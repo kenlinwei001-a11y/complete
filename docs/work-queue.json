@@ -7369,13 +7369,16 @@
       "assignedDev": "dev3"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-12T14:45:45.636Z",
+        "built": "2026-07-12T14:45:45.718Z"
+      },
       "id": "WO-THEME-SWITCH-U8",
       "title": "轨O历史欠账:主题/配色开关(浅色↔黑曜石·功能本体未建)",
       "doc": "docs/COVERAGE-user-requirements-vs-tracking.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev3",
       "deps": [],
       "lane": "frontend-polish",
       "note": "[历史欠账U8·独立复验agent a1863224真浏览器+全源码扫双证仍缺] 全CSS零data-theme/prefers-color-scheme·tokens.css纯暗色单:root·全tsx零toggle组件·无主题偏好页·localStorage仅auth无主题·theme.ts::applyTheme只后端下发token非用户可切。",
@@ -7399,15 +7402,17 @@
           }
         ],
         "discipline": "additive·审核方欠账复验出单·dev建·reviewer复验。"
-      }
+      },
+      "blockReason": "",
+      "buildNote": "[dev3 BUILT·真浏览器19/19绿] themeMode.ts(localStorage默认暗零回归)+ThemeToggle顶栏(☀️/🌙)+tokens.css :root[data-theme=light]结构色反相+外壳chrome令牌化(--topbar-grad/--nav-active-fg治「顶栏恒暗·选中白字落浅底」半吊子)。真登录demo/admin逐值对照:--bg#0E1420↔#F4F6FA·--txt#F2F5FA↔#1A2233·顶栏渐变dark↔白半透·nav rgb33,43,61↔240,243,248·reload持久化。附截图theme-u8-dark/light.png。⚠治本:tokens.css注释内--c-*/含*/提前闭合块注释致postcss 500全站CSS崩→已改--c-x·。前端618测全绿+typecheck绿。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev3",
-      "cmd": "WIP",
-      "id": "WO-SANDBOX-AS-RENDER-TARGET",
-      "at": "2026-07-11T09:25:09.097Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-THEME-SWITCH-U8",
+      "at": "2026-07-12T14:45:45.718Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
