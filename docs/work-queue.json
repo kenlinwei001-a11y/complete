@@ -5808,8 +5808,8 @@
       "title": "运营负责人一条龙(瓶颈→推演→方案对比→采纳·治设计不清晰)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [
         "WO-CAP-05-BRANCH-VISIBLE",
         "WO-CAP-06-WHATIF-SCOPE",
@@ -5836,7 +5836,10 @@
         ],
         "discipline": "additive·依赖05/06/07落地"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-12T13:06:57.267Z"
+      }
     },
     {
       "id": "WO-MERGE-01",
@@ -8453,10 +8456,11 @@
       "doc": "docs/REVIEW-field-schema-user-vs-platform.md",
       "title": "派生引擎:导入记录字段→决策字段(REVIEW§4映射·util/oeeIndex←production_line.oee聚合·demandDelta←total_quantity vs forecast·costBreakdown←bom×material_cost·allocatedLineIds←production_order.line_id)·从真记录算非hash·治假值源头(G4核心)",
       "note": "[LaneB·datacore·通用性] ⚠通用非电池专属:派生引擎按导入本体的字段映射算决策量·映射表可配置(不内联电池常数·守R14 debattery:check)·电池只是示例。REVIEW§4提供派生逻辑。green→red:导入真记录→决策字段应从真值算(非hash);植入hash值→门红。配WO-IMPORT-REPLACE-SYNTHETIC(G4·world_source=imported让求解器读派生真值)。",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "created": "2026-07-11T17:49:23.475Z"
+        "created": "2026-07-11T17:49:23.475Z",
+        "wip": "2026-07-12T13:06:57.127Z"
       }
     },
     {
@@ -8782,9 +8786,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
-      "at": "2026-07-12T13:06:09.288Z"
+      "cmd": "WIP",
+      "id": "WO-CAP-08-OPS-FLOW",
+      "at": "2026-07-12T13:06:57.268Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
