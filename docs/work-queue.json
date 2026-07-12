@@ -8522,12 +8522,12 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:06.874Z",
-        "built": "2026-07-12T14:02:38.281Z"
+        "built": "2026-07-12T14:23:06.252Z"
       },
       "id": "WO-SA-4",
       "title": "Base补6个factory台账字段(factory_code/province/city/factory_type/status/start_date·对齐docx factory.csv)",
@@ -8542,12 +8542,12 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:06.975Z",
-        "built": "2026-07-12T14:02:38.347Z"
+        "built": "2026-07-12T14:23:06.313Z"
       },
       "id": "WO-SA-5",
       "title": "Line补4个产线台账字段(line_code/max_capacity_day/target_yield/status·对齐production_line.csv)",
@@ -8562,12 +8562,12 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:07.090Z",
-        "built": "2026-07-12T14:02:38.413Z"
+        "built": "2026-07-12T14:23:06.372Z"
       },
       "id": "WO-SA-6",
       "title": "Equipment补5个设备台账字段(equipment_code/equipment_type/manufacturer/install_date/status·对齐equipment.csv)",
@@ -8796,10 +8796,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
+      "role": "dev",
+      "cmd": "BUILT",
       "id": "WO-SA-6",
-      "at": "2026-07-12T14:20:07.090Z"
+      "at": "2026-07-12T14:23:06.372Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
