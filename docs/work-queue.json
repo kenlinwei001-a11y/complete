@@ -7563,64 +7563,82 @@
     {
       "at": {
         "wip": "2026-07-11T17:31:01.547Z",
-        "built": "2026-07-11T18:01:06.127Z"
+        "built": "2026-07-11T18:01:06.127Z",
+        "done": "2026-07-12T02:35:44.337Z"
       },
       "id": "WO-SANDBOX-RADAR-COLLAPSE",
       "title": "S4·三雷达合一(维度换人话)+L0-L4折一句人话(砍竞品形式膨胀)",
       "doc": "docs/WO-SANDBOX-RADAR-COLLAPSE.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev3",
       "deps": [],
       "note": "[沙盘重建·S4·可∥S1·纯前端·dev3] REVIEW拒绝copy竞品形式的标志一刀。回退:纯视觉可回退。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3-前端",
       "acceptance": {
-        "goal": "三雷达合一(主雷达维度换人话)+L0-L4 黑话台阶折成一句人话结论(能不能拿来决策)——执行 REVIEW『拒绝照搬竞品形式』一刀。纯前端·零后端 cert 计算改·零新色·值全 DERIVE 自 cert(R13 只重组不改数)。feature sim.radar_collapse 暗发·关=原样(旧 DOM 未删)。",
+        "goal": "S4三雷达合一+L0-L4折一句人话+sandbox-p0就绪面板回归修复",
+        "verifiedBy": "独立真浏览器复验a727102d·commit 567cc5f5·2026-07-12",
         "criteria": [
           {
-            "id": "C1",
-            "type": "run",
-            "assert": "真起双服务+真 chromium+真 vite+真 admin 登录→/v/sim-sandbox：一句人话结论 sim-cert-verdict 真渲染·DOM 结论级别逐值==后端 GET .../certification cert.level(实测 L1_CONFIGURED)。证 scripts/e2e-sandbox-radar-collapse.mjs 9/9 全绿 + docs/evidence/S4-SANDBOX-RADAR-COLLAPSE-realbrowser.md"
+            "id": "regression-fixed",
+            "assert": "sandbox-p0.test 5/5绿(sim-cert-target回归真修·humanize分支加回该testid·非空壳·修前必红实证)"
           },
           {
-            "id": "C2",
-            "type": "run",
-            "assert": "L0-L4 台阶黑话收「查看认证详情」CollapsibleCard 折叠(data-open=0 默认折叠)·sim-cert-level stepper 仍在 DOM(hidden 保留·功能不删 RL9)。真浏览器实证。"
+            "id": "trust-bar-ux",
+            "assert": "真浏览器:信任条L1已配置+一句人话结论+三雷达合一(人话轴·无structure/knowledge/behavior黑话裸键)+综合52+L0-L4可折叠"
           },
           {
-            "id": "C3",
-            "type": "run",
-            "assert": "主雷达三维换人话名(数据/结构齐备·规则/知识覆盖·行为已验证)·真浏览器轴标无 structure/knowledge/behavior 黑话裸键(R14)。值 DERIVE 自 cert.dims 不改数(综合值==cert.dims.composite)。"
+            "id": "kill-mock-red",
+            "assert": "DOM L1_CONFIGURED==后端cert.level·综合52==cert.dims.composite真派生非写死"
           },
           {
-            "id": "C4",
-            "type": "gate",
-            "assert": "零新色：node scripts/check-css-vars.mjs 绿；结论色走既有语义 token(L2 --warn/L3 --ok/L0 --danger/L4 --accent)。"
-          },
-          {
-            "id": "C5",
-            "type": "test",
-            "assert": "回退演练(§5.5)：feature sim.radar_collapse 关→回 L0-L4 stepper 主视觉原样·无一句话结论·无折叠详情卡(旧 DOM 未删)。+ FDE 校正回归：worldCompleteness=100% 但有闭合缺件→结论指向真断点(前向闭合/图查询覆盖)·绝不臆断『世界未就绪』。apps/frontend-shell/test/sandbox-radar-collapse.test.tsx 8 测全绿。"
+            "id": "honest-conditional",
+            "assert": "sim-cert-target受cert.targetRef守卫·真demo targetRef=null则诚实不显(非失败)"
           }
         ]
       },
       "blockReason": ""
     },
     {
-      "at": {},
+      "at": {
+        "done": "2026-07-12T02:35:44.337Z"
+      },
       "id": "WO-SANDBOX-TICK-CALENDAR",
-      "title": "S5·tick↔业务时间(到第N周/里程碑)+时间轴事件标注+节点归因",
+      "title": "S5·tick↔业务日 + 节点归因(为什么变·真trace)",
       "doc": "docs/WO-SANDBOX-TICK-CALENDAR.md",
       "priority": "P2",
-      "status": "TODO",
+      "status": "DONE",
       "owner": "",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "note": "[沙盘重建·S5·依赖S1·dev3] 接CAP-04补差量。消费引擎PropagationTrace。回退:additive。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3-前端"
+      "assignedDev": "dev3-前端",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S5收窄真core:tick↔业务日+节点归因·据实收窄(周里程碑/时间轴事件标注defer CAPSIM)",
+        "verifiedBy": "独立真浏览器复验a727102d·commit 567cc5f5·2026-07-12",
+        "criteria": [
+          {
+            "id": "tests-green",
+            "assert": "sandbox-tick-calendar 4/4+tick-days 4/4绿(coef0.6/amount12.5来自trace·未知规则null·无trace空数组)"
+          },
+          {
+            "id": "tick-calendar-ux",
+            "assert": "真浏览器tick0第0天→推7天=tick7·第7天·第1周(周label真可达·tickUnit读session非硬编)"
+          },
+          {
+            "id": "attribution-real-trace",
+            "assert": "点Base节点→归因『为什么变』:拦7次真tick响应352条trace·demo_line_util_to_base_load系数0.5延迟1逐值对后端propRules一致·amount原值直渲·computeNodeAttribution纯映射未命中null"
+          },
+          {
+            "id": "narrowed-honestly",
+            "assert": "tickUnit硬编day/1改读session.tickUnit·tickEvents死码(写state从不渲染)已删·标题同步收窄"
+          }
+        ]
+      }
     },
     {
       "at": {
@@ -8315,10 +8333,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-DB-MODELING-WIRE",
-      "at": "2026-07-12T02:22:15.544Z"
+      "role": "review",
+      "cmd": "DONE(S4三雷达合一+S5tick日历归因·真浏览器复验PASS)",
+      "id": "2单",
+      "at": "2026-07-12T02:35:44.337Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
