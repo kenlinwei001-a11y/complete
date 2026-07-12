@@ -515,6 +515,18 @@ export async function seedDemoMultiSourceFusion(repos: Repos): Promise<void> {
   await repos.ontologyTypes.put(mkType("MesOrder", "订单·MES 源（制造执行）", true));
   await repos.ontologyTypes.put(mkType("SrmOrder", "订单·SRM 源（供方确认产能）", false));
 
+  // WO-RC1 可观测性修：为三个融合型补覆盖切片 root（直接 put 绕过了 batteryCoverageSlices 的自动生成），
+  // 使就绪认证 coveredTypes 40/43 → 43/43（observabilityMet=true）。切片非对象，零字节基线移动·固定 id 守 R6。
+  for (const tk of ["ErpOrder", "MesOrder", "SrmOrder"]) {
+    await repos.sliceSpecs.put({
+      id: `slice_coverage_${tk.toLowerCase()}`,
+      tenantId: DEMO_TENANT,
+      sliceKey: `coverage_${tk.toLowerCase()}`,
+      version: 1,
+      spec: { root: { typeKey: tk, selector: {} }, paths: [], maxNodes: 2000 },
+    });
+  }
+
   const origin = { type: "SYNTHETIC" as const, jobId: MSF_JOB_ID };
   for (const r of DEMO_MULTISRC_ORDERS) {
     await repos.objects.put({ id: `obj_${DEMO_TENANT}_erp_${r.so}`, tenantId: DEMO_TENANT, type: "ErpOrder", objectKey: r.so, props: { so: r.so, due: r.erp.due, cap: r.erp.cap, asOf: r.erp.asOf }, origin });

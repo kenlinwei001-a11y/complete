@@ -1593,7 +1593,7 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C16: ["MaterialBalance"],
   C21: ["SopVersionRow"],
   C22: ["Order"],
-  C24: ["Quote", "DemandSegment"],
+  C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order(marginPct/floorPct 与 Quote 命名空间同值·镜像 C15)·Quote 仅 eval 期注入命名空间非本体对象类型
   C25: ["ExternalSignal"],
   // QUERY30 缺口② C34–C50 作用域（与 expression measured 命名空间一致；含 QUERY30-ONTOLOGY-EXT 新类型 Supplier）。
   C34: ["Order", "Line"],
@@ -1607,12 +1607,12 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C42: ["Customer"],
   C43: ["Certification"],
   C44: ["EnergyMeter", "Order"],
-  C45: ["ScenarioTrigger", "Action"],
+  C45: ["ScenarioTrigger"], // WO-RC1: 前向闭合修——去 eval-only 命名空间 Action(query30-rules.test:147 亦以此为准);AutoAction 仍由 evaluate 期注入
   C46: ["SopVersionRow"],
   C47: ["PlanTarget", "AnnualScenario"],
   C48: ["Process", "Metric"],
   C49: ["Shipment", "Order"],
-  C50: ["DataSourceHealth", "Action"],
+  C50: ["DataSourceHealth"], // WO-RC1: 前向闭合修——去 eval-only 命名空间 Action(query30-rules.test:194 亦以此为准);Degrade 仍由 evaluate 期注入
 };
 
 /**
