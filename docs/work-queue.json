@@ -8049,12 +8049,14 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "故事发动机接A3 deriveModelingSuggestion:上传数据即从列/FK真派生类型/链路(现只/admin/modeling独立用·故事路零引用)",
       "note": "[LaneB·datacore·DISPATCH·最干净·可并行候选] 纯复用modeling.ts:89·与MERGE数据先行对齐(须协同MERGE-03)。green→red:上传数据→应从列/FK派生类型;现不派生→红。",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
-        "wip": "2026-07-12T02:22:15.531Z"
-      }
+        "wip": "2026-07-12T02:22:15.531Z",
+        "built": "2026-07-12T02:39:57.410Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-DB-FIVE-ACT-UX",
@@ -8580,10 +8582,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "clobber恢复:dev3 IA-UNIFY推带旧基线覆盖8单·从07ae6e14恢复正确verdict(status+acceptance)",
-      "id": "8单",
-      "at": "2026-07-12T02:38:01.916Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-DB-MODELING-WIRE",
+      "at": "2026-07-12T02:39:57.411Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
