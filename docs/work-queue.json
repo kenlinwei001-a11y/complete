@@ -8948,9 +8948,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-READINESS-UX",
-      "at": "2026-07-12T15:39:22.433Z"
+      "cmd": "REVIEW_NUDGE",
+      "id": "27BUILT/15aged",
+      "at": "2026-07-12T15:43:57.838Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
@@ -9041,6 +9041,28 @@
       "at": "2026-07-10",
       "trunk": "claude/vigilant-knuth-b1nmxn",
       "note": "合并OntoFlow进主线:主干=主线(超集+治理)·移植pipeline功能+4fix·OntoFlow分支退役·统一一dev一queue"
+    },
+    "reviewNudge": {
+      "by": "dev",
+      "at": "2026-07-12T15:43:57.837Z",
+      "msg": "催复验:BUILT 积压 27 项(其中 15 项 ≥3h 未裁决)·请审核方 next-review 逐单 done/block。dev 侧已交付本轮全部清晰工单(含 RC1/READINESS-UX/DERIVE/CAP-08/SWEEP-02/THEME 复原+新交付)·四包全绿已推。dev 无更多清晰可启动单,余为大型 EPIC 待定优先级。",
+      "agedTop": [
+        "P3 WO-IMPORT-REPLACE-SYNTHETIC (24h·dev4-import)",
+        "P2 WO-SANDBOX-TRUST-BADGE (23h·dev3)",
+        "P2 WO-DB-LINK-STABILIZE (21h·dev2)",
+        "P0 WO-CAPSIM-REPLICA (16h·reviewer-exec)",
+        "P2 WO-DB-MODELING-WIRE (13h·dev2)",
+        "P2 WO-DB-BSTACK-DERIVE (13h·dev2)",
+        "P1 WO-CAPFORECAST-DATAMODE-HONEST (13h·dev3)",
+        "P2 WO-DATAMODE-UNIFY-PROVENANCE (13h·?)",
+        "P1 WO-RC-UX-KPI-CARRIER (12h·dev3)",
+        "P2 WO-SA-1 (12h·dev2)",
+        "P2 WO-SA-2 (12h·dev2)",
+        "P2 WO-RC-UX-DOOR-TEXT (4h·dev3)",
+        "P2 WO-SA-3 (4h·dev2)",
+        "P2 WO-SWEEP-01-SCENE-SEED (3h·dev)",
+        "P3 WO-SWEEP-03-NAV-GROUP (3h·dev)"
+      ]
     }
   }
 }
