@@ -8683,7 +8683,8 @@
         "created": "2026-07-11T19:55:51.326Z"
       },
       "title": "产能推演统一为平台唯一推演surface(§5):删左导航沙盘项+SandboxView独立路由退役(/sandbox 302重定向)+基地卡片『开推演决策』下钻看板(scope该基地)+就绪认证→信任条+抽屉+对话态提问框(两态同求解器同源R6)",
-      "note": "[前端+少量后端·可立即建·§5全文已在repo doc·活力全开首选·结构性收敛最高战略值] S1-S6机制成看板引擎不废(§8)。母体§2.I回写沙盘=下钻态非独立路由+导航IA删沙盘项。⛔G-DM-1禁mock造红。green→red:左导航应无沙盘·/sandbox 302·基地卡开推演决策进看板scope=该基地·对话/嵌入两态同源R6·就绪认证=信任条+抽屉非独立页。 【CAPSIM统一·2026-07-12用户确认排序】排序第二·结构性收敛可与DATAMODE-UNIFY并行开建(纯IA不依赖dataMode)。"
+      "note": "[前端+少量后端·可立即建·§5全文已在repo doc·活力全开首选·结构性收敛最高战略值] S1-S6机制成看板引擎不废(§8)。母体§2.I回写沙盘=下钻态非独立路由+导航IA删沙盘项。⛔G-DM-1禁mock造红。green→red:左导航应无沙盘·/sandbox 302·基地卡开推演决策进看板scope=该基地·对话/嵌入两态同源R6·就绪认证=信任条+抽屉非独立页。 【CAPSIM统一·2026-07-12用户确认排序】排序第二·结构性收敛可与DATAMODE-UNIFY并行开建(纯IA不依赖dataMode)。",
+      "assignedDev": "dev3-frontend"
     },
     {
       "id": "WO-CAPSIM-REPLICA",
@@ -8698,7 +8699,7 @@
         "created": "2026-07-11T19:55:51.326Z"
       },
       "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
-      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。"
+      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。"
     },
     {
       "id": "WO-SANDBOX-READINESS-UX",
@@ -8748,9 +8749,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "用户确认排序·压优先级(DATAMODE-UNIFY P0·6单supersededByCAPSIM)",
-      "id": "sequencing",
-      "at": "2026-07-12T01:58:37.061Z"
+      "cmd": "派dev3→CAPSIM-IA-UNIFY(空闲·frontend·可并行不依赖DATAMODE-UNIFY)",
+      "id": "WO-CAPSIM-IA-UNIFY",
+      "at": "2026-07-12T02:00:02.742Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
