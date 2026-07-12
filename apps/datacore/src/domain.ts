@@ -324,7 +324,7 @@ export interface LinkTypeDef {
   key: string;
   fromTypeKey: string;
   toTypeKey: string;
-  cardinality: "1:1" | "1:N" | "N:N";
+  cardinality: "1:1" | "1:N" | "N:1" | "N:N";
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;

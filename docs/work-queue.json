@@ -8449,10 +8449,11 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev2",
       "at": {
-        "created": "2026-07-11T18:02:46.993Z"
+        "created": "2026-07-11T18:02:46.993Z",
+        "wip": "2026-07-12T03:02:02.816Z"
       },
       "id": "WO-SA-1",
       "title": "line_belongs_to_base 基数 N:N→N:1(声明订正·battery.ts:770·一线归一基地)",
@@ -8462,10 +8463,11 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev2",
       "at": {
-        "created": "2026-07-11T18:02:46.993Z"
+        "created": "2026-07-11T18:02:46.993Z",
+        "wip": "2026-07-12T03:02:02.894Z"
       },
       "id": "WO-SA-2",
       "title": "Equipment 补 mtbf/mttr/health_score(设备故障推演真信号·现只OEE三分解)",

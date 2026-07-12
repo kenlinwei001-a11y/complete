@@ -2590,7 +2590,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         key: z.string().min(1),
         fromTypeKey: z.string(),
         toTypeKey: z.string(),
-        cardinality: z.enum(["1:1", "1:N", "N:N"]),
+        cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
       }),
       req.body,
     );

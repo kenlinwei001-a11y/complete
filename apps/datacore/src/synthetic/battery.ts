@@ -536,6 +536,10 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
   { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（时序 7d 加权物化，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
+  // WO-SA-2 可靠性工程（设备故障推演真信号·对齐用户 equipment.mtbf/mttr/health_score）——全建模 R12
+  { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均无故障时间（小时）" },
+  { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均修复时间（小时）" },
+  { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", description: "设备健康度（0-100·越高越健康）" },
 ];
 
 const maintPlanProps: PropertyDef[] = [
@@ -789,7 +793,7 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // §S1.2: certification state lives on the model↔line edge (props.status 量产 | 认证中).
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
     // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
-    { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:N" }, // factory（多线归一基地）
+    { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:1" }, // 一线归一基地（WO-SA-1 订正：原 N:N 与语义/实例不符）
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
@@ -1792,6 +1796,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           oeeA: round(0.9 + rngTopo() * 0.06, 3),
           oeeP: round(0.88 + rngTopo() * 0.08, 3),
           oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+          // WO-SA-2 追加（必须在既有 draw 之后·守 R6 确定性）
+          mtbf: round(300 + rngTopo() * 500, 0), // 300-800h
+          mttr: round(2 + rngTopo() * 6, 1), // 2-8h
+          health_score: round(78 + rngTopo() * 20, 0), // 78-98
         });
       }
     }

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `22ab249e415e16c3`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `77f4c356e1b78a2c`。
 
 ---
 
@@ -328,5 +328,10 @@ MaterialBatch --batch_reserved_for(N:N)--> Order   （呆滞批次↔订单绑�
 Model --model_bom_line(1:N)--> BomLine --bomline_material(N:N)--> Material  （BOM 两跳传导桥·Q11/Q28）
 DataSourceHealth --datasource_feeds_type(N:N)--> ObjectType  （源→类型血缘·降级下游定位·Q30 · 实例边 toId=该源所喂类型代表对象·真跳；schema 级 n-ObjectType 元节点见 /a/v1/ontology/graph）
 ```
+
+**平台 schema 对齐（WO-SA·平台自有电池模型向用户设计订正·2026-07-12·`REVIEW-field-schema-user-vs-platform.md §5-3`）**
+- **基数原语补 `N:1`（链路语义完整性）**：`LinkTypeDef.cardinality` 词表原缺 `N:1`（仅 `1:1/1:N/N:N`），对"多归一"的 from→to 链路只能误标 `N:N`——契约 `datacore.ts/import.ts/pipeline.ts` 三处 `z.enum` + `domain.ts LinkTypeDef` + `modeling.ts` 两处内联类型 + `app.ts` link-create 端点统一补 `N:1`（additive·无 value-switch 消费者·纯拓宽）。**WO-SA-1**：`line_belongs_to_base` 基数 `N:N→N:1`（一线归一基地·注释自述"多线归一基地"与声明矛盾的订正·实例由 `Line.baseId` 每线恰一 → 零合成改动·`synthetic/battery.ts`）。
+- **WO-SA-2 Equipment 补可靠性真信号**：`equipmentProps` 增 `mtbf`(h)/`mttr`(h)/`health_score`(%) 三非派生字段（设备故障推演真驱动·此前只有 OEE 三分解），合成 `equipment.push` 同步 `rngTopo()` 追加填（守 R6 末位追加不位移既有字节）。门 `synthetic-field-alignment`（判据②非派生全填·revert 合成→`Equipment.mtbf/mttr/health_score` missing 红·亲验）。
+- 待做（同施工单）：**WO-SA-3** 新增 `Workshop` 车间层（Factory→Workshop→Line）+ `workshop_belongs_to_base`/`line_belongs_to_workshop` 两链路。三改全落 battery 合成包（R14 平台零业务常数·`debattery:check` 绿）。
 
 ---

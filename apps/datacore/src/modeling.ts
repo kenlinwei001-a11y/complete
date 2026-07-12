@@ -184,7 +184,7 @@ export interface DeriveBatchResult {
 /** WO-IMPORT-ONTOLOGY (G2) · 客户本体直导入参（= Stage 3.15 objects.json/relations.json 形态）。 */
 export interface OntologyImportBundleInput {
   objects: { name: string; displayName?: string; domain?: string; properties?: { name: string; dataType?: "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json"; isPrimaryKey?: boolean; refTo?: string }[] }[];
-  relations: { name: string; from: string; to: string; cardinality?: "1:1" | "1:N" | "N:N" }[];
+  relations: { name: string; from: string; to: string; cardinality?: "1:1" | "1:N" | "N:1" | "N:N" }[];
   bindDatasets?: boolean;
   strict?: boolean;
   publish?: boolean;
@@ -395,7 +395,7 @@ export class ModelingService {
     });
 
     // 关系：端点解析不到 → DANGLING（不建断链）。link key = `${rel}_${from}_${to}`（同名关系多端点不冲突）。
-    const linkInputs: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: "1:1" | "1:N" | "N:N" }[] = [];
+    const linkInputs: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: "1:1" | "1:N" | "N:1" | "N:N" }[] = [];
     for (const r of bundle.relations) {
       const fromKey = resolveKey(r.from);
       const toKey = resolveKey(r.to);

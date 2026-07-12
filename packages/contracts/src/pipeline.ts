@@ -114,7 +114,7 @@ export const LinkNodeSchema = z.object({
     linkKey: z.string().min(1),
     fromTypeKey: z.string().min(1),
     toTypeKey: z.string().min(1),
-    cardinality: z.enum(["1:1", "1:N", "N:N"]).default("N:N"),
+    cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]).default("N:N"),
     fk: z.string().optional(),
   }),
 });

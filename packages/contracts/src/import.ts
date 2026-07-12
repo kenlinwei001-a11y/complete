@@ -130,7 +130,7 @@ export const OntologyImportRelationSchema = z.object({
   /** 源/目标对象名（须解析到 bundle 对象或已发布类型·否则报 DANGLING_RELATION 不静默建断链）。 */
   from: z.string().min(1),
   to: z.string().min(1),
-  cardinality: z.enum(["1:1", "1:N", "N:N"]).optional(),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]).optional(),
 });
 
 export const OntologyImportBundleSchema = z.object({
