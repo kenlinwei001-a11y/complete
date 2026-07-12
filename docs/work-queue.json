@@ -8519,15 +8519,17 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
-        "wip": "2026-07-12T13:17:02.263Z"
+        "wip": "2026-07-12T13:17:02.263Z",
+        "built": "2026-07-12T14:02:38.281Z"
       },
       "id": "WO-SA-4",
       "title": "Base补6个factory台账字段(factory_code/province/city/factory_type/status/start_date·对齐docx factory.csv)",
-      "note": "[默认可缓做·记录型非决策·datacore·通用] per-base真事实用常量映射非rng(常州→江苏/常州/CELL);路线①BASE_REGISTRY(contracts既有归属·守R14)或②battery.ts常量表。声明baseProps:411+合成BASES:23。双向对齐门+R6。green→red:只声明不合成→判据②Base.province红。母体§2回写。"
+      "note": "[默认可缓做·记录型非决策·datacore·通用] per-base真事实用常量映射非rng(常州→江苏/常州/CELL);路线①BASE_REGISTRY(contracts既有归属·守R14)或②battery.ts常量表。声明baseProps:411+合成BASES:23。双向对齐门+R6。green→red:只声明不合成→判据②Base.province红。母体§2回写。",
+      "blockReason": ""
     },
     {
       "priority": "P3",
@@ -8537,15 +8539,17 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
-        "wip": "2026-07-12T13:17:02.348Z"
+        "wip": "2026-07-12T13:17:02.348Z",
+        "built": "2026-07-12T14:02:38.347Z"
       },
       "id": "WO-SA-5",
       "title": "Line补4个产线台账字段(line_code/max_capacity_day/target_yield/status·对齐production_line.csv)",
-      "note": "[默认可缓做·datacore·通用] 声明lineProps:474+合成lines.push:1654(枚举取enumValues内·数值rngTopo追加末尾R6)。oee不补(已有oeeIndex+三分解)。green→red:跳合成→红。"
+      "note": "[默认可缓做·datacore·通用] 声明lineProps:474+合成lines.push:1654(枚举取enumValues内·数值rngTopo追加末尾R6)。oee不补(已有oeeIndex+三分解)。green→red:跳合成→红。",
+      "blockReason": ""
     },
     {
       "priority": "P3",
@@ -8555,15 +8559,17 @@
         "WO-SA-3"
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
-        "wip": "2026-07-12T13:17:02.429Z"
+        "wip": "2026-07-12T13:17:02.429Z",
+        "built": "2026-07-12T14:02:38.413Z"
       },
       "id": "WO-SA-6",
       "title": "Equipment补5个设备台账字段(equipment_code/equipment_type/manufacturer/install_date/status·对齐equipment.csv)",
-      "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。"
+      "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。",
+      "blockReason": ""
     },
     {
       "id": "WO-IMPORT-SCENARIO-LAUNCHER-WIRE",
@@ -8787,10 +8793,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev1",
-      "cmd": "WIP",
+      "role": "dev",
+      "cmd": "BUILT",
       "id": "WO-SA-6",
-      "at": "2026-07-12T13:17:02.429Z"
+      "at": "2026-07-12T14:02:38.413Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
