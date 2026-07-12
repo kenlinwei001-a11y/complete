@@ -8605,13 +8605,15 @@
       "priority": "P1",
       "deps": [],
       "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev3",
       "title": "RC沙盘KPI磁贴反映传导目标post-tick态(现carrierMean只认原始快照载体→loadIndex/demandLoad恒0=「死的」错觉根源·主视觉DAG真变磁贴不动)",
       "note": "[前端(+可能后端carrierMean)·感知层最高价值·一手证据VERIFIED§1③§3] 实测:tick后Base DAG Σ0→Σ358620变红·但KPI磁贴「负载指数0.0」→「0.0」不变。根因:carrierMean只认原始快照有载体的变量·传导目标(Base.loadIndex/Model.demandLoad)无原始载体→磁贴恒0。这是用户判「推了没反应·死的」的直接来源(比RC-1更贴体感)。green→red:tick后磁贴数字应随DAG真变(现恒0)。KILL-MOCK-RED:磁贴取真post-tick态非补0。",
       "at": {
-        "wip": "2026-07-12T03:12:13.472Z"
-      }
+        "wip": "2026-07-12T03:12:13.472Z",
+        "built": "2026-07-12T03:20:33.345Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-RC-UX-DOOR-TEXT",
@@ -8740,8 +8742,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-DATAMODE-UNIFY-PROVENANCE",
-      "at": "2026-07-12T03:13:00.432Z"
+      "id": "WO-RC-UX-KPI-CARRIER",
+      "at": "2026-07-12T03:20:33.345Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
