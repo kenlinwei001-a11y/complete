@@ -8842,7 +8842,8 @@
       },
       "id": "WO-QOS-CLASSIFY-REBALANCE",
       "title": "QOS分类器示例再平衡:signal_propagation_q/shared_bottleneck_q 补足示例·解'未来30天瓶颈影响交付'误路由→'缺乏方案比对'",
-      "note": "[审核方派dev4·2026-07-12·用户精确根因·修正早前LLM凭据粗诊断] 原始bug问句'未来30天每个瓶颈会影响订单的交付?'误路由。根因=what_if_displacement_q 有3示例·signal_propagation_q/shared_bottleneck_q 各仅1→语义重叠→误路由 plan_what_if_displacement_q_v1→multi_plan_compare报'缺乏方案比对'。修:给 signal_propagation_q/shared_bottleneck_q 补≥3区分性示例或加消歧规则。真跑复现该问句→应路由 signal_propagation 非 displacement。 [用户根因补全2026-07-12·两条修复点] ①计划容错:multi_plan_compare 在 args.schemes 缺失时降级为单方案推演·不抛「缺乏方案比对」(物化层没提供 schemes→现报错=硬失败·应优雅降级)。②信号传播意图:确认 S30 场景卡 presetContext 已预填 {rootType,rootId,layers}(seed.ts 已做)→走场景触发不缺参(直接 invoke_solver 不带三参才是合理 400)。故本单=分类器补示例(≥各3或加关键词围栏) + multi_plan_compare 降级 + S30 presetContext 核实·三管齐下。"
+      "note": "[审核方派dev4·2026-07-12·用户精确根因·修正早前LLM凭据粗诊断] 原始bug问句'未来30天每个瓶颈会影响订单的交付?'误路由。根因=what_if_displacement_q 有3示例·signal_propagation_q/shared_bottleneck_q 各仅1→语义重叠→误路由 plan_what_if_displacement_q_v1→multi_plan_compare报'缺乏方案比对'。修:给 signal_propagation_q/shared_bottleneck_q 补≥3区分性示例或加消歧规则。真跑复现该问句→应路由 signal_propagation 非 displacement。 [用户根因补全2026-07-12·两条修复点] ①计划容错:multi_plan_compare 在 args.schemes 缺失时降级为单方案推演·不抛「缺乏方案比对」(物化层没提供 schemes→现报错=硬失败·应优雅降级)。②信号传播意图:确认 S30 场景卡 presetContext 已预填 {rootType,rootId,layers}(seed.ts 已做)→走场景触发不缺参(直接 invoke_solver 不带三参才是合理 400)。故本单=分类器补示例(≥各3或加关键词围栏) + multi_plan_compare 降级 + S30 presetContext 核实·三管齐下。 [用户亲定turnkey实现spec已落 docs/WO-QOS-CLASSIFY-REBALANCE.md:EXAMPLES_OVERRIDE代码+行号+验收curl·dev4直接照建]",
+      "doc": "docs/WO-QOS-CLASSIFY-REBALANCE.md"
     },
     {
       "priority": "P0",
