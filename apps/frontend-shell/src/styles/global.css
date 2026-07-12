@@ -67,7 +67,7 @@ a {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(226, 235, 245, 0.12);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {
@@ -98,7 +98,7 @@ a {
   background: var(--accent);
   border: 0;
   border-radius: 10px;
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 .btn.primary:hover {
@@ -193,7 +193,7 @@ table.cmp td.zh {
   font-family: var(--font-sans);
 }
 table.cmp tr:hover td {
-  background: rgba(226, 235, 245, 0.025);
+  background: var(--hover-tint);
 }
 
 .empty-state {

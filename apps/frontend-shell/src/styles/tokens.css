@@ -34,4 +34,48 @@
   --warn: #e8b54a;
   --amber: #e8b54a;
   --danger: #e0626c;
+
+  /* WO-THEME-SWITCH-U8：chrome 表面交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
+     暗色值 == 收口前渲染值（逐值等价·保证 dark 视觉不变·C3 additive）。 */
+  --topbar-bg: linear-gradient(180deg, rgba(24, 31, 40, 0.82), rgba(14, 18, 24, 0.66));
+  --topbar-border: rgba(226, 235, 245, 0.09);
+  --hover-tint: rgba(226, 235, 245, 0.04);        /* nav/菜单/表行 hover 底 */
+  --hover-tint-strong: rgba(226, 235, 245, 0.06);
+  --scrollbar-thumb: rgba(226, 235, 245, 0.12);
+  --nav-active-bg: linear-gradient(90deg, rgba(76, 144, 240, 0.16), rgba(76, 144, 240, 0.03));
+  --nav-active-border: rgba(76, 144, 240, 0.3);
+  --nav-active-txt: #fff;
+  --on-accent: #fff;                              /* accent 底上的文字（主题不变·蓝底恒配白字） */
+}
+
+/* WO-THEME-SWITCH-U8 · 浅色主题（[data-theme=light]）——加性覆盖：暗色为默认（无 data-theme 即现有黑曜石外观不变）。
+   仅翻转「表面/结构/文本」token；语义域色（--c-*、--ok/--warn/--amber/--danger）刻意不在此覆盖 →
+   两主题逐值一致（风险红在浅色下仍读作风险红、正向绿仍读作正向）。C2 theme-invariant 铁则。
+   浅色对比经 WCAG AA 校核：--txt #14203A 对 #FFFFFF ≈ 15.3:1；--muted #475069 ≈ 8.0:1；--muted2 #5B6577 ≈ 5.6:1。 */
+:root[data-theme="light"] {
+  --bg: #F5F7FB;          /* 浅灰蓝页面底 */
+  --bg2: #FFFFFF;         /* 顶部/hero 渐变亮端 */
+  --panel: #FFFFFF;       /* 卡片面 */
+  --panel2: #EDF1F7;      /* 卡内嵌区（滑块槽/chip 底） */
+  --border: #D3DAE6;      /* 卡片发丝边 */
+  --border-strong: #B7C1D1;
+  --line: rgba(20, 28, 44, 0.10);
+  --line2: #D3DAE6;
+  --txt: #14203A;         /* 主文本（深）对白面 ≈ 15.3:1 */
+  --muted: #475069;       /* 次要文本 ≈ 8.0:1 */
+  --muted2: #5B6577;      /* 三级文本 ≈ 5.6:1 */
+  --accent: #3B5BDB;      /* 皇家蓝（下调以对白面达 AA·5.3:1） */
+  --accent-hover: #2F49BE;
+  --accent-weak: #E4EAFF; /* 蓝底徽标/选中 tab 底（浅） */
+
+  /* chrome 表面交互（浅色变体） */
+  --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 247, 251, 0.72));
+  --topbar-border: rgba(20, 28, 44, 0.10);
+  --hover-tint: rgba(20, 28, 44, 0.05);
+  --hover-tint-strong: rgba(20, 28, 44, 0.07);
+  --scrollbar-thumb: rgba(20, 28, 44, 0.18);
+  --nav-active-bg: linear-gradient(90deg, rgba(59, 91, 219, 0.13), rgba(59, 91, 219, 0.03));
+  --nav-active-border: rgba(59, 91, 219, 0.35);
+  --nav-active-txt: var(--accent);
+  /* --on-accent 保持 #fff（accent 蓝底恒配白字·主题不变） */
 }
