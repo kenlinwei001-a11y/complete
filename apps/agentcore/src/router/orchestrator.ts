@@ -73,6 +73,27 @@ function scalarizeSlotValue(v: unknown): unknown {
   return v;
 }
 
+/**
+ * 无 LLM 语义分类的合成 `classification.model` 标记前缀（审计诚实位）。所有**不经真 LLM**产出的分类
+ * 一律以此类 `<kind>:` 前缀打标：
+ *  - `deterministic:*`（example 匹配 / scenario-bind 兜底·关键词级 bigram·无 LLM 语义）
+ *  - `short-circuit:*`（单候选短路等·跳过 LLM classify）
+ * 真 LLM 分类的 model 是 provider 型号 id（如 `claude-haiku-4-5`·裸标识符·无此类前缀）。
+ * 新增任何"无 LLM 起分类"的路径都必须沿用此约定打前缀，否则会被下方 default-deny 守卫误判为真 LLM。
+ */
+const NON_LLM_CLASSIFICATION_PREFIXES = ["deterministic:", "short-circuit:"] as const;
+
+/**
+ * 该分类是否由**真 LLM 语义**产出（G-SANDBOX-DET-SHOCK 判据「非真 LLM 即短路」的正向谓词）。
+ * default-deny：model 缺失/空 → 判否（不能证明是真 LLM 就当非真 LLM）；带任一合成标记前缀 → 判否；
+ * 仅裸 provider 型号 id（无合成前缀·非空）→ 判真。守卫据此对 shock 推演「非真 LLM 即短路」。
+ */
+function classifiedByRealLlm(model: string | undefined): boolean {
+  const m = (model ?? "").trim();
+  if (m === "") return false;
+  return !NON_LLM_CLASSIFICATION_PREFIXES.some((p) => m.startsWith(p));
+}
+
 /** 面向用户的槽位中文标签（回显/横幅用）。未知键回落 description 首句或键名本身。 */
 function slotLabel(slot: SlotDef | undefined, name: string): string {
   const KEY_LABEL: Record<string, string> = {
@@ -1921,8 +1942,8 @@ export class Orchestrator {
    * WO-SANDBOX-AS-RENDER-TARGET（S1）· 时序推演意图 → 渲染进沙盘（五触发归一·对话侧）。返回 true=已终态处理（短路）。
    *  - 非时序意图 / feature `sim.sandbox_render` 关 → false（回落既有 Path A·零回归·旧路径未删 RL9）。
    *  - DEFERRED（hold/trend/policy 待 S6·或 scope 缺）→ 诚实文本答案 + COMPLETED（KILL-MOCK-RED 不假跑）。
-   *  - deterministic 分类的 shock（classification.model 以 `deterministic:` 开头·关键词级无 LLM 语义）→ DEFERRED
-   *    诚实缩范围·不起推演（G-SANDBOX-DET-SHOCK·绝不无 LLM 起推演）。
+   *  - 非真 LLM 分类的 shock（classifiedByRealLlm 否·model 缺失/空 或带合成前缀 `deterministic:`/`short-circuit:`·
+   *    关键词级无 LLM 语义）→ DEFERRED 诚实缩范围·不起推演（G-SANDBOX-DET-SHOCK·「非真 LLM 即短路」·绝不无 LLM 起推演）。
    *  - READY（真 LLM 分类的 shock）→ S0 配套预检：意图声明的传导规则/状态变量缺 → gap 文本（不渲染静止沙盘·§5.2 诚实）；齐 → sandbox_render 答案先行块。
    */
   private async maybeRenderSandbox(
@@ -1945,13 +1966,15 @@ export class Orchestrator {
     const assembled = assembleSimulationRequest(intent.key, simSlots, selectedObjects);
     if (assembled.status === "NOT_SIM") return false;
 
-    // WO-SANDBOX-SHOCK-NO-FLOOR（用户 2026-07-11 亲定扩红线：绝不无 LLM 起推演）· G-SANDBOX-DET-SHOCK。
-    // 只有真 LLM 语义分类的 shock 才起推演。classification.model 以 `deterministic:` 开头（关键词级
-    // bigram 匹配·无 LLM 语义）时，assembleSimulationRequest 的对象/stateVar 选取是纯关键词级推演——
-    // 诚实缩范围：走 DEFERRED、不装配 shock 沙盘推演（KILL-MOCK-RED·不假跑）。真 LLM 分类（model 非
-    // deterministic:*·如 claude-*/provider spec）才继续 READY 装配。hold/trend/policy 已由装配器 DEFERRED，
-    // 此处只收紧 shock 的 deterministic 分支。诚实收紧·直接生效（无 defaultOff 闸：红线不容默认关）。
-    if (assembled.status === "READY" && (task.classification?.model ?? "").startsWith("deterministic:")) {
+    // WO-SANDBOX-SHOCK-NO-FLOOR / WO-SHOCK-GUARD-HARDEN（用户 2026-07-11 亲定扩红线：绝不无 LLM 起推演）·
+    // G-SANDBOX-DET-SHOCK。判据「非真 LLM 即短路」（default-deny·classifiedByRealLlm）：只有真 LLM 语义分类
+    // 的 shock 才起推演。凡 classification.model 非真 LLM（缺失/空·或带合成标记前缀 `deterministic:` 关键词级
+    // bigram 兜底 / `short-circuit:` 单候选短路——均无 LLM 语义）时，assembleSimulationRequest 的对象/stateVar
+    // 选取是纯关键词级推演 → 诚实缩范围：走 DEFERRED、不装配 shock 沙盘推演（KILL-MOCK-RED·不假跑）。
+    // 硬化前旧判据仅认 `deterministic:` 前缀，漏掉 `short-circuit:single-candidate`（某视图唯一候选恰为 shock
+    // 时会无 LLM 起推演·现 4 时序意图同挂候选恒≥4 故不可达但脆）——改为「非真 LLM 即短路」贴绝对语义、堵此缝。
+    // hold/trend/policy 已由装配器 DEFERRED，此处只收紧 shock。诚实收紧·直接生效（无 defaultOff 闸：红线不容默认关）。
+    if (assembled.status === "READY" && !classifiedByRealLlm(task.classification?.model)) {
       await this.completeSandboxAnswer(task, [
         {
           type: "text",

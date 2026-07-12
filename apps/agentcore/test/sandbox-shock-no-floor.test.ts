@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AnswerBlock } from "@platform/contracts";
-import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import { createTestApp, PLANNER, TENANT, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 
 /**
  * WO-SANDBOX-SHOCK-NO-FLOOR（用户 2026-07-11 亲定扩红线：绝不无 LLM 起推演）· G-SANDBOX-DET-SHOCK。
@@ -72,5 +72,42 @@ describe("沙盘 shock 无 LLM 不起推演（G-SANDBOX-DET-SHOCK·绝不无 LLM
       expect(act.delta).toBe(20);
       expect(act.target.stateVar).toBe("load");
     }
+  });
+
+  // 齿③（WO-SHOCK-GUARD-HARDEN·green→red 自证）：单候选短路的 shock（model="short-circuit:single-candidate"·
+  // 同样无 LLM 语义）此前被旧判据（仅认 `deterministic:` 前缀）漏过 → 会无 LLM 起推演装配 sandbox_render。
+  // 硬化判据「非真 LLM 即短路」后应短路为 DEFERRED 诚实文本。构造法：场景入口 intentCatalogFilter 收窄到唯一
+  // shock 候选（正序可达·不改 seed）→ 触发 #5 单候选短路（跳过 LLM classify）→ maybeRenderSandbox。
+  // 硬化前此齿红（会出 sandbox_render）；硬化后绿（短路·无 sandbox_render）。
+  it("齿③：单候选短路的 shock（short-circuit:single-candidate·无 LLM）→ 也短路 DEFERRED·绝不装配 sandbox_render", async () => {
+    const SOLO_VIEW = "solo_shock_nofloor";
+    await t.repos.sceneEntries.upsert({
+      id: "scn_solo_shock_nofloor",
+      tenantId: TENANT,
+      viewKey: SOLO_VIEW,
+      mode: "WORKFLOW_FIRST",
+      // 收窄候选目录到唯一 shock 意图 → candidates.length===1 → #5 单候选短路（否则 4 时序意图恒≥4·永不触发）。
+      intentCatalogFilter: ["sim.shock_whatif"],
+      uiHints: { placeholder: "冲击推演", suggestedQuestions: [] },
+    });
+
+    // 不 queueClassification：单候选短路在 LLM classify 之前发生（零分类调用·model=short-circuit:single-candidate）。
+    const before = t.llm.classifyRequests.length;
+    const { taskId } = await submitQuery(t, PLANNER, SHOCK_EXAMPLE, {
+      view: SOLO_VIEW,
+      selectedObjects: [{ objectType: "Base", objectId: "常州二线" }], // → assembleSimulationRequest scope 齐 → shock READY
+    });
+    const task = await waitForTask(t, taskId);
+    expect(task.status).toBe("COMPLETED");
+    // 前置条件：确实走了单候选短路（无 LLM）——否则本齿失去意义。
+    expect(t.llm.classifyRequests.length).toBe(before); // 零 LLM 分类调用
+    expect(task.classification?.model).toBe("short-circuit:single-candidate");
+
+    const blocks = blocksOf(task);
+    // 命门（硬化前红）：单候选短路的 shock 绝不装配 sandbox_render（关键词/短路级选取对象 = 无 LLM 起推演 → 禁止）。
+    expect(blocks.some((b) => b.type === "sandbox_render")).toBe(false);
+    // 诚实 DEFERRED 文本（同 G-SANDBOX-DET-SHOCK 文案·非真 LLM 即短路）。
+    const txt = blocks.find((b) => b.type === "text");
+    expect(txt?.type === "text" && /无 LLM|关键词级|诚实缩范围|推演对象/.test(txt.markdown)).toBe(true);
   });
 });
