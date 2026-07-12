@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput, ViewColumnDef } from "@platform/contracts";
-import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
+import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
 import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -465,13 +465,19 @@ function OrderAggView({ horizon, unit }: { horizon: number; unit: string }) {
   const rows = data?.rows ?? [];
   const bySeg = data?.marginLedger?.bySegment ?? [];
   const bases = [...new Set(rows.flatMap((r) => (r.risks ?? []).map((k) => String(k.base ?? "")).filter(Boolean)))];
-  // 经营聚合行：app→marginLedger.bySegment（真营收/毛利）；base→按 risks.base 聚 revenue（真值·库存列诚实无源）。
+  // 单价/毛利率单一真相源 = SEG_REGISTRY（按细分名或 key 均可查·R6 字节复现）。
+  const segPrice: Record<string, number> = Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.priceWan], [s.key, s.priceWan]]));
+  const segMargin: Record<string, number> = Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.marginPct], [s.key, s.marginPct]]));
+  // 经营聚合行：app→marginLedger.bySegment（真营收/毛利）；base→按 risks.base 聚该基地订单营收=Σ qty×细分单价、
+  // 毛利率=营收加权（真值·非写死 0；SEG_REGISTRY 勾稽）。库存/产能列平台无该维度真源→诚实"—"。
   const econRows: { name: string; revenue: number; marginPct: number | null; orderCount: number }[] =
     seg === "app"
       ? bySeg.map((s) => ({ name: s.seg, revenue: s.revenue, marginPct: s.marginPct, orderCount: s.orderCount }))
       : bases.map((b) => {
           const rs = rows.filter((r) => (r.risks ?? []).some((k) => String(k.base ?? "") === b));
-          return { name: b, revenue: 0, marginPct: null, orderCount: rs.length };
+          const revenue = rs.reduce((s, r) => s + r.qty * (segPrice[r.seg] ?? 0), 0);
+          const gp = rs.reduce((s, r) => s + r.qty * (segPrice[r.seg] ?? 0) * ((segMargin[r.seg] ?? 0) / 100), 0);
+          return { name: b, revenue, marginPct: revenue > 0 ? (gp / revenue) * 100 : null, orderCount: rs.length };
         });
   const totalRev = econRows.reduce((s, r) => s + r.revenue, 0);
 

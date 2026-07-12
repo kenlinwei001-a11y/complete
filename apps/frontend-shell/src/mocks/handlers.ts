@@ -1345,8 +1345,11 @@ export const handlers = [
       ],
     }),
   ),
-  http.post("*/a/v1/solvers/:key/invoke", ({ params }) => {
+  http.post("*/a/v1/solvers/:key/invoke", async ({ params, request }) => {
     const key = String(params.key);
+    // WO-CAPSIM-REPLICA：读请求体 args（此前只解构 params→订单聚合基地筛选 base 参恒被忽略·筛选不生效）。
+    const invBody = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
+    const invArgs = invBody.args ?? {};
     if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
     // WO-CAPSIM-REPLICA：产能推演看板卡面因素 chip + 详情逐因素行走 bottleneck_matrix（此前 /a/v1 invoke 漏接→404·chip 缺失）。
     if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix({}), snapshotVersion: "ov-12" });
@@ -1354,7 +1357,8 @@ export const handlers = [
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 89.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
-    if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(), snapshotVersion: "ov-12" });
+    // 订单聚合基地筛选：真读 args.base → affectedOrdersOutput 按基地裁剪（与真后端 affectedOrdersAggregate 同口径）。
+    if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(typeof invArgs.base === "string" && invArgs.base ? invArgs.base : undefined), snapshotVersion: "ov-12" });
     if (key === "counterfactual_timeline") {
       const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
       const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
