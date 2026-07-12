@@ -7369,13 +7369,15 @@
       "assignedDev": "dev2"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-12T11:35:18.839Z"
+      },
       "id": "WO-SWEEP-02-STUDIO-STATE",
       "title": "UX:DataBuilder本体建模工作流studio刷新丢失所选工作流(auto-select workflows[0])",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "复验agent a0989369真跑:编辑'本体工作流2'后刷新落到'1'(后端已落库6节点·非数据丢失·仅UI选中态丢)。易误以为编辑丢失。",
       "acceptance": {
@@ -7578,9 +7580,9 @@
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
-      "status": "BLOCKED",
+      "status": "WIP",
       "priority": "P2",
-      "owner": "dev1",
+      "owner": "dev",
       "assignedDev": "dev1-后端",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
@@ -7589,7 +7591,7 @@
       "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
       "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。 【审核方·S2 co-verify要求】BE半填dataMode/nodeObjectMode时是G4谎言的真正防线:合成materialized值不得标LIVE(须按provenance——真导入rawDataset才LIVE·合成→SYNTHETIC)。与WO-IMPORT-REPLACE-SYNTHETIC(G4 BLOCK)同源返工。S2前端只透传照信·防线在此。co-verify:BE完成后与S2 WO-SANDBOX-TRUST-BADGE一起真浏览器验合成不冒充LIVE。",
       "at": {
-        "wip": "2026-07-11T18:27:37.158Z",
+        "wip": "2026-07-12T11:34:53.551Z",
         "built": "2026-07-11T19:22:04.603Z",
         "blocked": "2026-07-11T20:15:35.072Z"
       },
@@ -8749,9 +8751,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SA-2",
-      "at": "2026-07-12T03:31:08.702Z"
+      "cmd": "WIP",
+      "id": "WO-SWEEP-02-STUDIO-STATE",
+      "at": "2026-07-12T11:35:18.839Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
