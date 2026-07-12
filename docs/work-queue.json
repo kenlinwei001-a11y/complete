@@ -7403,13 +7403,14 @@
     },
     {
       "at": {
-        "wip": "2026-07-12T12:22:42.759Z"
+        "wip": "2026-07-12T12:22:42.759Z",
+        "built": "2026-07-12T12:35:32.084Z"
       },
       "id": "WO-SWEEP-03-NAV-GROUP",
       "title": "IA:6 admin页落兜底'其它'导航组(ShellLayout.NAV_GROUPS vs adminRegistry漂移)",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "复验agent a0989369真跑:knowledge/schema-reconcile/decisions/audit-log/boundary/prototype-intake落兜底'其它'组(ShellLayout.NAV_GROUPS未列·adminRegistry.ADMIN_NAV_GROUPS已列·两处漂移)。页正常渲染·仅归组。",
@@ -7428,7 +7429,8 @@
           }
         ],
         "discipline": "additive·审核方扫描出单·dev建·reviewer复验。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "at": {
@@ -8774,8 +8776,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-SWEEP-01-SCENE-SEED",
-      "at": "2026-07-12T12:31:25.363Z"
+      "id": "WO-SWEEP-03-NAV-GROUP",
+      "at": "2026-07-12T12:35:32.084Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
