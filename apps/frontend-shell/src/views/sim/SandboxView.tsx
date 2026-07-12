@@ -110,14 +110,23 @@ function aggregate(row: Record<string, number> | undefined): number {
  * 避免 0.95 与 92 直接混算。仅当携带者同时含 >1 与 ≤1 两类才归一（纯分数比率变量如 demandDelta 不被改动）。
  *
  * 无 `nodeObjectState`（老配置/测试桩）→ 退回「全 world 对象均值」兜底（无真携带信息时不臆断，向后兼容）。
+ *
+ * WO-RC-UX-KPI-CARRIER（感知层命门·治「推了没反应·死的」错觉·一手证据 VERIFIED§1③）：携带者集**并入 tick 后
+ * 传导目标对象**——`Base.loadIndex`/`Model.demandLoad` 等传导 target 在初始快照**无载体**（nodeObjectState 缺），
+ * 但 tick 后 `world[oid][v]` 真被传导写入非零值（DAG Σ0→Σ358620 真变）。原实现只认初始载体 → 磁贴恒 0（主视觉真变、
+ * 磁贴不动 = 死的错觉）。修：携带者 = 初始快照载体 ∪ **tick 后 world 有非零真值的对象**（KILL-MOCK-RED：取真 post-tick
+ * 态·非补 0；排除 world 里恒 0 的未触及对象 → 不复稀释 WO-CAP-03）。tick 后磁贴随 DAG 真动。
  */
-function carrierMean(cfg: SandboxViewConfig, world: TickState, v: string): { value: number; carriers: number } {
+export function carrierMean(cfg: SandboxViewConfig, world: TickState, v: string): { value: number; carriers: number } {
   const nos = cfg.nodeObjectState;
   const objs = Object.keys(world);
   const ids = nos
     ? objs.filter((o) => {
         const r = nos[o]?.[v];
-        return typeof r === "number" && Number.isFinite(r);
+        if (typeof r === "number" && Number.isFinite(r)) return true; // 初始快照载体
+        // WO-RC-UX-KPI-CARRIER：tick 后传导目标获真非零态 → 纳入（未触及对象 world 恒 0/缺 → 排除·不稀释）。
+        const cur = world[o]?.[v];
+        return typeof cur === "number" && Number.isFinite(cur) && cur !== 0;
       })
     : objs;
   if (ids.length === 0) return { value: 0, carriers: 0 };
