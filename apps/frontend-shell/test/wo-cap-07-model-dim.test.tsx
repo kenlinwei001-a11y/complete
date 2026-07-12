@@ -46,11 +46,12 @@ const searchObjectsSpy = vi.fn(async (_type: string, _q?: string) => ({
     { id: "obj_model_方形-NCM", type: "Model", props: { modelId: "方形-NCM" } },
   ],
 }));
-const runSolverSpy = vi.fn(async (key: string, args: Record<string, unknown>) => {
+const defaultRunSolver = async (key: string, args: Record<string, unknown>) => {
   expect(key).toBe("capacity_forecast");
   const out = args.modelId === "4680-LFP" ? OUT_LFP : OUT_NCM;
   return { data: out, snapshotVersion: "v1" };
-});
+};
+const runSolverSpy = vi.fn(defaultRunSolver);
 
 vi.mock("@/api/endpoints", () => ({
   searchObjects: (type: string, q: string) => searchObjectsSpy(type, q),
@@ -68,7 +69,7 @@ function renderSlice(props: React.ComponentProps<typeof ModelCapacitySlice> = {}
 }
 
 describe("WO-CAP-07 型号维度切片（本体链路⑤前端 surface）", () => {
-  afterEach(() => { cleanup(); searchObjectsSpy.mockClear(); runSolverSpy.mockClear(); });
+  afterEach(() => { cleanup(); searchObjectsSpy.mockClear(); runSolverSpy.mockClear(); runSolverSpy.mockImplementation(defaultRunSolver); });
 
   it("C2：型号下拉来自本体 Model 对象（searchObjects 真查·非写死列表）", async () => {
     renderSlice();
@@ -103,6 +104,21 @@ describe("WO-CAP-07 型号维度切片（本体链路⑤前端 surface）", () =
     expect(screen.getByTestId("sandbox-model-base-成都")).toHaveTextContent("设备OEE");
     expect(screen.getByTestId("sandbox-model-nonprod-信阳")).toBeInTheDocument();
     expect(screen.getByTestId("sandbox-model-converge")).toHaveTextContent("3/12");
+  });
+
+  it("WO-CAPFORECAST-DATAMODE-HONEST（KILL-MOCK-RED 命门·green→red 锁）：顶层 dataMode=SYNTHETIC 但行 live=true → 行标「合成」非「实测」（合成物化绝不冒充实测·与 S2 徽标口径统一）", async () => {
+    // 命门复现：capacity_forecast 顶层 dataMode=SYNTHETIC（合成 provenance 决策世界）但每行 live=true（measurement 维真算）。
+    // 修前 ModelCapacitySlice 据行 live 标「实测」= 合成冒充实测（违铁律 0.4）。修后 rowDecisionLive=live && !decisionSynthetic → 标「合成」。
+    runSolverSpy.mockImplementation(async (key: string) => {
+      expect(key).toBe("capacity_forecast");
+      return { data: { ...OUT_NCM, dataMode: "SYNTHETIC" as const }, snapshotVersion: "v1" };
+    });
+    renderSlice({ initialModel: "4680-NCM", demand: 40, weeks: 6 });
+    const cz = await screen.findByTestId("sandbox-model-base-常州");
+    await waitFor(() => expect(cz).toHaveTextContent("合成"));
+    // green→red：合成决策世界的行绝不标「实测」（移除 rowDecisionLive 的 !decisionSynthetic 门 → 此断言红）。
+    expect(cz).not.toHaveTextContent("实测");
+    expect(screen.getByTestId("sandbox-model-base-成都")).not.toHaveTextContent("实测");
   });
 
   it("型号维度真生效：切到 4680-LFP → 重调 capacity_forecast、P50/主瓶颈随型号变", async () => {
