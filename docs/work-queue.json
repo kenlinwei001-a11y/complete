@@ -8449,29 +8449,33 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:02:46.993Z",
-        "wip": "2026-07-12T03:02:02.816Z"
+        "wip": "2026-07-12T03:02:02.816Z",
+        "built": "2026-07-12T03:31:08.612Z"
       },
       "id": "WO-SA-1",
       "title": "line_belongs_to_base 基数 N:N→N:1(声明订正·battery.ts:770·一线归一基地)",
-      "note": "[合一期·与SA-2同派·datacore·通用] 声明订正:注释自写“多线归一基地”却声明N:N。零合成改动(边由Line.baseId派生·每线恰一baseId)。范围红线:仅battery.ts。回写母体§3(link基数)+ontology:slices。green→red:改前N:N·基数门可逮应为N:1。施工单§2。"
+      "note": "[合一期·与SA-2同派·datacore·通用] 声明订正:注释自写“多线归一基地”却声明N:N。零合成改动(边由Line.baseId派生·每线恰一baseId)。范围红线:仅battery.ts。回写母体§3(link基数)+ontology:slices。green→red:改前N:N·基数门可逮应为N:1。施工单§2。",
+      "blockReason": ""
     },
     {
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:02:46.993Z",
-        "wip": "2026-07-12T03:02:02.894Z"
+        "wip": "2026-07-12T03:02:02.894Z",
+        "built": "2026-07-12T03:31:08.701Z"
       },
       "id": "WO-SA-2",
       "title": "Equipment 补 mtbf/mttr/health_score(设备故障推演真信号·现只OEE三分解)",
-      "note": "[合一期·与SA-1同派·datacore·通用能力·battery pack作示例填值] 声明落battery.ts:506·合成落:1675。守双向对齐门(声明非派生字段必须合成填)+R6(新draw追加rngTopo末尾·不插中间否则位移后续字节)。范围红线:仅battery.ts。回写母体§2(Equipment字段增量)。施工单§3。"
+      "note": "[合一期·与SA-1同派·datacore·通用能力·battery pack作示例填值] 声明落battery.ts:506·合成落:1675。守双向对齐门(声明非派生字段必须合成填)+R6(新draw追加rngTopo末尾·不插中间否则位移后续字节)。范围红线:仅battery.ts。回写母体§2(Equipment字段增量)。施工单§3。",
+      "blockReason": ""
     },
     {
       "priority": "P2",
@@ -8744,8 +8748,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-RC-UX-KPI-CARRIER",
-      "at": "2026-07-12T03:20:33.345Z"
+      "id": "WO-SA-2",
+      "at": "2026-07-12T03:31:08.702Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
