@@ -37,7 +37,8 @@ type NavItemRef = { kind: "view" | "admin"; key: string };
 const RETIRED_VIEW_KEYS = new Set<string>(["geo-map"]);
 // WO-CAPSIM-IA-UNIFY（M1·唯一推演 surface 收敛）：删「推演沙盘/推演初始化向导」游离 nav 项——沙盘退役为
 // 「产能推演看板下钻态」（§5·非独立导航/路由）。原 extra:"sim-sandbox" 渲染槽 + simSandboxLinks 一并移除（无死码）。
-const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
+// WO-SWEEP-03-NAV-GROUP：export 供测试做结构守卫（NAV_GROUPS admin 键须覆盖 ADMIN_PAGES，防再漂到「其它」）。
+export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
@@ -46,6 +47,8 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   { title: "数据", items: [
     { kind: "admin" as const, key: "connections" },
     { kind: "admin" as const, key: "rule-docs" },
+    // WO-SWEEP-03-NAV-GROUP：knowledge（知识库）归「数据」组，对齐 adminRegistry data 组（此前缺登记→落「其它」）。
+    { kind: "admin" as const, key: "knowledge" },
     { kind: "admin" as const, key: "synthetic" },
     { kind: "admin" as const, key: "external-signals" },
     { kind: "admin" as const, key: "data-builder" },
@@ -59,7 +62,9 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     title: "建模与图谱",
     items: [
       { kind: "view", key: "graph" },
-      ...["modeling", "object-types", "source-overview", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
+      // WO-SWEEP-03-NAV-GROUP：schema-reconcile / boundary / prototype-intake 归「建模与图谱」组，
+      // 对齐 adminRegistry modeling 组（此前缺登记→落「其它」；meta 仍归「平台与系统」不动）。
+      ...["modeling", "schema-reconcile", "object-types", "source-overview", "domains", "slices", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
@@ -69,8 +74,10 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   { title: "构建与成长", items: ["tickets", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   // G-VIS-1 · query-history 归入「编排与场景」组（此前缺登记→落「其它」组，与 adminRegistry 的 orchestration 归属一致）。
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-SWEEP-03-NAV-GROUP：decisions（决策记录）归「运营与审批」组，对齐 adminRegistry ops 组（此前缺登记→落「其它」）。
+  { title: "运营与审批", items: ["actions", "decisions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-SWEEP-03-NAV-GROUP：audit-log（审计日志）归「平台与系统」组，对齐 adminRegistry governance 组（此前缺登记→落「其它」）。
+  { title: "平台与系统", items: ["tenants", "users", "permissions", "audit-log", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
 
 type NavItemVM = { key: string; label: string; viewKey?: string; group?: string };
