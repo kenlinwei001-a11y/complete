@@ -505,6 +505,28 @@ const lineProps: PropertyDef[] = [
   { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false }, // 线级日产能（Q01/Q03）
   { propKey: "certifiedModels", dataType: "json", isPrimaryKey: false }, // 线级可产型号（Q01/Q15·认证线约束）
   { propKey: "changeoverGroup", dataType: "string", isPrimaryKey: false }, // 换型组（Q08 换型序列约束）
+  { propKey: "workshopId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Workshop" }, // WO-SA-3 Line 归属车间（Factory→Workshop→Line）
+];
+
+// WO-SA-3 车间层（Factory→Workshop→Line）——工艺码表（英文工艺码 ↔ 中文车间名·docx workshop.csv 对齐·Line.process 同码域）
+const WORKSHOP_TYPES: { code: string; name: string }[] = [
+  { code: "SLURRY", name: "制浆车间" },
+  { code: "COATING", name: "涂布车间" },
+  { code: "CALENDER", name: "辊压车间" },
+  { code: "SLITTING", name: "分切车间" },
+  { code: "WINDING", name: "卷绕车间" },
+  { code: "ASSEMBLY", name: "装配车间" },
+  { code: "ELECTROLYTE", name: "注液车间" },
+  { code: "FORMATION", name: "化成车间" },
+  { code: "AGING", name: "分容车间" },
+  { code: "PACK", name: "PACK车间" },
+];
+
+const workshopProps: PropertyDef[] = [
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true }, // 对齐 workshop.workshop_id
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" }, // 对齐 workshop.factory_id
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true }, // 中文车间名（制浆车间/…/PACK车间）
+  { propKey: "process_type", dataType: "enum", isPrimaryKey: false, enumValues: WORKSHOP_TYPES.map((w) => w.code) }, // 英文工艺码（非中文名·一一对应不混填）
 ];
 
 const processProps: PropertyDef[] = [
@@ -719,7 +741,7 @@ const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings:
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
-  Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   // cockpit P1 绿地
@@ -762,6 +784,7 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
     { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    plain("Workshop", "车间", workshopProps),
     plain("Line", "产线", lineProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
@@ -794,6 +817,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
     // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
     { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:1" }, // 一线归一基地（WO-SA-1 订正：原 N:N 与语义/实例不符）
+    { key: "workshop_belongs_to_base", fromTypeKey: "Workshop", toTypeKey: "Base", cardinality: "N:1" }, // WO-SA-3 车间归一基地
+    { key: "line_belongs_to_workshop", fromTypeKey: "Line", toTypeKey: "Workshop", cardinality: "N:1" }, // WO-SA-3 产线归一车间
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
@@ -1571,6 +1596,7 @@ export interface GeneratedBattery {
   bases: Record<string, unknown>[];
   models: Record<string, unknown>[];
   orders: Record<string, unknown>[];
+  workshops: Record<string, unknown>[];
   lines: Record<string, unknown>[];
   processes: Record<string, unknown>[];
   equipment: Record<string, unknown>[];
@@ -1761,12 +1787,19 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
+  const workshops: Record<string, unknown>[] = [];
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];
   const equipment: Record<string, unknown>[] = [];
+  let wsIdx = 0;
   for (const b of bases) {
+    // WO-SA-3 路线①：每基地一代表车间（确定性按基地序取工艺码·零 rng·不位移既有 R6 字节流），Line 回填 workshopId
+    const wt = WORKSHOP_TYPES[wsIdx % WORKSHOP_TYPES.length]!;
+    wsIdx++;
+    const workshopId = `WS-${b.baseId}`;
+    workshops.push({ workshopId, baseId: b.baseId, name: `${b.name}${wt.name}`, process_type: wt.code });
     const lineId = `LINE-${b.baseId}`;
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线` });
+    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线`, workshopId });
     for (const step of SERIAL_STEPS) {
       const processId = `${lineId}-${step.suffix}`;
       processes.push({
@@ -2010,7 +2043,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { chainId: "rc-material-safety", kpiCategory: "material", factor: "安全库存不足", driverType: "MaterialBalance", evidenceField: "safetyStockGapTon", selectField: "material", baseWeight: 1 },
   ];
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
+  return { bases, models, orders, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
 }
 
 // ---------------------------------------------------------------------------

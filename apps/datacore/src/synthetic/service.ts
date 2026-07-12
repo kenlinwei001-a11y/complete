@@ -674,6 +674,7 @@ export class SyntheticService {
     await putAll("Base", g.bases, "baseId");
     await putAll("Model", g.models, "modelId");
     await putAll("Order", g.orders, "so");
+    await putAll("Workshop", g.workshops, "workshopId");
     await putAll("Line", g.lines, "lineId");
     await putAll("Process", g.processes, "processId");
     await putAll("Equipment", g.equipment, "equipId");

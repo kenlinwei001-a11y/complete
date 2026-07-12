@@ -30,7 +30,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线、产能投资项目与产线班组（人力）。",
-      typeKeys: ["Base", "Line", "CapexProject", "LaborShift"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      typeKeys: ["Base", "Workshop", "Line", "CapexProject", "LaborShift"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "process_routing", displayName: "工艺工序", description: "工序良率/节拍与换型矩阵（瓶颈/换型排序推演）。",

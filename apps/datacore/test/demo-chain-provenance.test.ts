@@ -29,7 +29,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
       derivedProperties: Array<{ propKey: string }>;
     }>;
     // 40 类全由链产（WO-7 LabTest·QUERY30-ONTOLOGY-EXT +5：Supplier/BomLine/LtaContract/LaborShift/CarbonPassport）。
-    expect(types.length).toBe(40);
+    expect(types.length).toBe(41);
     // R13 provenance 因果真实：每类型 sourceBindings 非空且指向同名真 rawDataset（非硬编码模板/非空）。
     for (const ty of types) {
       expect(ty.sourceBindings.length).toBeGreaterThan(0);
@@ -67,9 +67,9 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(40);
-    // 加性冻结超集：467 → 469（+2 RootCauseChain）→ 493（WO-7 +24 LabTest）→ QUERY30-ONTOLOGY-EXT +5 类型实例。
-    // 旧对象逐字节不变、一个不少（新类型生成置于 rng 末尾·R6 不移位）；此处只更新计数上界。
-    expect(a.objs.length).toBe(560);
+    expect(a.types.length).toBe(41);
+    // 加性冻结超集：467 → 469（+2 RootCauseChain）→ 493（WO-7 +24 LabTest）→ QUERY30-ONTOLOGY-EXT +5 → 560 →（WO-SA-3 +12 Workshop·每基地一代表车间·零 rng 不移位既有字节）572。
+    // 旧对象逐字节不变、一个不少（新类型生成不走 rng·R6 不移位）；此处只更新计数上界。
+    expect(a.objs.length).toBe(572);
   });
 });
