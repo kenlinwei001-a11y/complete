@@ -106,6 +106,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
 
   // 交互态（HTML §12）：H=推演窗口 30/60/90 天；openBase=内联展开的基地（非 modal·§3 openRiskCard）。
   const [horizon, setHorizon] = useState(30);
+  const [riskTab, setRiskTab] = useState<"risk" | "order">("risk"); // HTML §12#2：瓶颈视角 / 订单聚合 两态互斥。
   const [openBase, setOpenBase] = useState<string | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
 
@@ -204,7 +205,10 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           </div>
         </div>
         <div className={styles.rkHsel}>
-          <span className={`${styles.tierChip} ${styles.tierChipOn}`} data-testid="risk-tab-risk">瓶颈视角</span>
+          <span className={`${styles.tierChip} ${riskTab === "risk" ? styles.tierChipOn : ""}`} data-testid="risk-tab-risk" role="button" tabIndex={0}
+            onClick={() => setRiskTab("risk")} onKeyDown={(e) => e.key === "Enter" && setRiskTab("risk")}>瓶颈视角</span>
+          <span className={`${styles.tierChip} ${riskTab === "order" ? styles.tierChipOn : ""}`} data-testid="risk-tab-order" role="button" tabIndex={0}
+            onClick={() => setRiskTab("order")} onKeyDown={(e) => e.key === "Enter" && setRiskTab("order")}>订单聚合</span>
           <span style={{ width: 10 }} />
           {[30, 60, 90].map((h) => (
             <span
@@ -240,6 +244,11 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         </div>
       )}
 
+      {/* HTML §12#2：订单聚合 tab → 经营聚合表 + 订单明细（真 affected_orders·无源列诚实空态）。 */}
+      {riskTab === "order" && <OrderAggView horizon={horizon} unit={unit} />}
+
+      {riskTab === "risk" && (
+      <>
       {/* 三档图例（平台决策速查·§2.2-a·与 heat 同阈值口径）+ 首要风险（peak 最高）卡标注。 */}
       <div data-testid="risk-legend" className={styles.rkLeg} style={{ margin: "0 0 10px" }}>
         <span><i style={{ background: "#E0626C" }} />{zh.risk.legendHigh}</span>
@@ -366,7 +375,17 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         <div className={styles.rkDet} style={{ marginTop: 14 }} data-testid="risk-plan-panel">
           <div className={styles.rkDetH}>
             <b>📋 {zh.risk.planTitle}</b>
-            <span>{zh.risk.planSub(data.planRows!.length)}</span>
+            <span>
+              {zh.risk.planSub(data.planRows!.length)}
+              {"　"}
+              {/* HTML §8：导出最终规划——前端生成独立浅色系静态 HTML 文档下载（非截图·字段同表·去交互态）。 */}
+              <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
+                style={{ display: "inline-block" }}
+                onClick={() => exportPlanRows(data.planRows!, zh.risk.planTitle)}
+                onKeyDown={(e) => e.key === "Enter" && exportPlanRows(data.planRows!, zh.risk.planTitle)}>
+                ⬇ 导出最终规划
+              </span>
+            </span>
           </div>
           <table className="cmp" data-testid="risk-plan-table">
             <thead>
@@ -396,10 +415,164 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           </table>
         </div>
       )}
+      </>
+      )}
 
-      {/* 历史处置案例 + 风险推演编排过程 DAG（保留·看板下半区）。 */}
+      {/* 历史处置案例 + 风险推演编排过程 DAG（保留·看板下半区·两态共享）。 */}
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
+    </div>
+  );
+}
+
+/** HTML §8 导出最终规划：前端生成独立浅色系静态 HTML 表格文档并触发下载（非截图·去交互态·字段同页表·可进 S&OP 附件）。 */
+function exportPlanRows(rows: { act: string; det?: string; owner: string; start: string; done: string; eff: string; rule: string }[], title: string) {
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m] ?? m));
+  const trs = rows.map((r, i) => `<tr><td>${i + 1}</td><td><b>${esc(r.act)}</b>${r.det ? `<br><small>${esc(r.det)}</small>` : ""}</td><td>${esc(r.owner)}</td><td>${esc(r.start)}</td><td>${esc(r.done)}</td><td>${esc(r.eff)}</td><td>${esc(r.rule)}</td></tr>`).join("");
+  const html = `<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;max-width:1050px;margin:24px auto;color:#1b2733}h2{font-size:18px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #dde3ea;padding:7px 9px;text-align:left}th{background:#f3f6f9}small{color:#6a7787}</style><h2>${esc(title)}</h2><table><thead><tr><th>#</th><th>行动项</th><th>负责人</th><th>启动</th><th>完成</th><th>预期效果</th><th>依据/规则</th></tr></thead><tbody>${trs}</tbody></table><p style="font-size:11px;color:#8a98a8">导出含口径，可直接进入 S&amp;OP 决议附件。</p>`;
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[\s·]/g, "")}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+type OrderAgg = {
+  summary?: { orderCount: number; totalQty: number; custCount: number; revenue: number };
+  rows?: { so: string; cust: string; seg: string; model: string; qty: number; due: string; delay: number; risks?: { base?: string; factor?: string; cross?: number | string }[] }[];
+  marginLedger?: { bySegment?: { seg: string; revenue: number; marginPct: number; orderCount: number }[] };
+};
+
+/**
+ * 订单聚合视图（HTML §6·riskTab==='order'）：受影响订单经营聚合表 + 订单明细。
+ * 接真 affected_orders 求解器（summary/rows/marginLedger.bySegment 真价利·SEG_REGISTRY 勾稽）。
+ * 经营表库存/产能列平台暂无真源 → 诚实"—"（G-DM-1·不伪造），未结订单金额/毛利额/毛利率走真 marginLedger。
+ */
+function OrderAggView({ horizon, unit }: { horizon: number; unit: string }) {
+  const [seg, setSeg] = useState<"app" | "base">("app");
+  const [baseFilter, setBaseFilter] = useState<string>("__all__");
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "affected_orders", "agg", horizon, baseFilter],
+    queryFn: async () => {
+      const res = await invokeSolver("affected_orders", { horizon, ...(baseFilter !== "__all__" ? { base: baseFilter } : {}) });
+      return res.data as OrderAgg;
+    },
+  });
+  if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
+  const rows = data?.rows ?? [];
+  const bySeg = data?.marginLedger?.bySegment ?? [];
+  const bases = [...new Set(rows.flatMap((r) => (r.risks ?? []).map((k) => String(k.base ?? "")).filter(Boolean)))];
+  // 经营聚合行：app→marginLedger.bySegment（真营收/毛利）；base→按 risks.base 聚 revenue（真值·库存列诚实无源）。
+  const econRows: { name: string; revenue: number; marginPct: number | null; orderCount: number }[] =
+    seg === "app"
+      ? bySeg.map((s) => ({ name: s.seg, revenue: s.revenue, marginPct: s.marginPct, orderCount: s.orderCount }))
+      : bases.map((b) => {
+          const rs = rows.filter((r) => (r.risks ?? []).some((k) => String(k.base ?? "") === b));
+          return { name: b, revenue: 0, marginPct: null, orderCount: rs.length };
+        });
+  const totalRev = econRows.reduce((s, r) => s + r.revenue, 0);
+
+  return (
+    <div data-testid="risk-order-agg">
+      {/* §6a 经营数据聚合表 + 分类维度切换。 */}
+      <div className={styles.rkDet} style={{ marginTop: 4 }}>
+        <div className={styles.rkDetH}>
+          <b>受影响订单 · 经营数据看板</b>
+          <span>这些订单牵动的产能与财务（{seg === "app" ? "按应用细分" : "按基地"}）· 金额单位 万元</span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)", margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
+          分类维度：
+          <span className={`${styles.tierChip} ${seg === "app" ? styles.tierChipOn : ""}`} data-testid="risk-seg-app" role="button" tabIndex={0} onClick={() => setSeg("app")} onKeyDown={(e) => e.key === "Enter" && setSeg("app")}>应用细分</span>
+          <span className={`${styles.tierChip} ${seg === "base" ? styles.tierChipOn : ""}`} data-testid="risk-seg-base" role="button" tabIndex={0} onClick={() => setSeg("base")} onKeyDown={(e) => e.key === "Enter" && setSeg("base")}>按基地</span>
+        </div>
+        {econRows.length === 0 ? (
+          <div className="empty-state" style={{ fontSize: 12 }}>{zh.common.none}</div>
+        ) : (
+          <table className="cmp" data-testid="risk-econ-table">
+            <thead>
+              <tr>
+                <th>{seg === "app" ? "应用分类" : "基地"}</th><th>受影响产能({unit})</th><th>成品库存</th><th>半成品库存</th><th>原材料库存</th>
+                <th>未结订单金额</th><th>毛利额</th><th>毛利率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {econRows.map((r) => (
+                <tr key={r.name} data-testid={`risk-econ-row-${r.name}`}>
+                  <td className="zh"><b>{r.name}</b> <span style={{ color: "var(--muted2)", fontSize: 10 }}>({r.orderCount})</span></td>
+                  <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无该维度受影响产能真源">—</td>
+                  <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无成品库存真源">—</td>
+                  <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
+                  <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
+                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>{r.revenue > 0 ? `${Math.round(r.revenue)} 万` : "—"}</td>
+                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{r.marginPct != null && r.revenue > 0 ? `${Math.round((r.revenue * r.marginPct) / 100)} 万` : "—"}</td>
+                  <td className="mono">{r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "—"}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: "1px solid var(--border-strong)" }}>
+                <td className="zh"><b>合计</b></td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td>
+                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>{totalRev > 0 ? `${Math.round(totalRev)} 万` : "—"}</td><td className="mono">—</td><td className="mono">—</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
+          未结订单金额/毛利额/毛利率来自 affected_orders 真 marginLedger（SEG_REGISTRY 单价勾稽·R13 可溯）；产能/库存列平台暂无该维度真数据源 → 诚实"—"（不伪造·G-DM-1）。
+        </div>
+      </div>
+
+      {/* §6b 基地筛选 + 订单明细表。 */}
+      <div style={{ fontSize: 12, color: "var(--muted)", margin: "12px 0 14px", display: "flex", alignItems: "center", gap: 9 }}>
+        基地筛选：
+        <select data-testid="risk-order-basesel" value={baseFilter} onChange={(e) => setBaseFilter(e.target.value)}
+          style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--txt)", padding: "6px 12px", fontSize: 12, cursor: "pointer", minWidth: 170 }}>
+          <option value="__all__">全部风险基地（{bases.length}）</option>
+          {bases.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+        {baseFilter !== "__all__" && (
+          <span className={styles.rkFchip} data-testid="risk-order-clearbase" role="button" tabIndex={0}
+            style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity)", cursor: "pointer" }}
+            onClick={() => setBaseFilter("__all__")} onKeyDown={(e) => e.key === "Enter" && setBaseFilter("__all__")}>✕ 清除（当前：{baseFilter}）</span>
+        )}
+      </div>
+      <div className={styles.rkDet} style={{ marginTop: 0 }}>
+        <div className={styles.rkDetH}>
+          <b>受影响订单 · 明细（{baseFilter === "__all__" ? "全部" : baseFilter}）</b>
+          <span>{data?.summary?.orderCount ?? rows.length} 批 · {data?.summary?.custCount ?? 0} 家客户 · 按交期排序</span>
+        </div>
+        {rows.length === 0 ? (
+          <div className="empty-state" data-testid="risk-order-empty" style={{ fontSize: 12 }}>当前范围无受影响订单（无在产订单落入越线传导窗口）。</div>
+        ) : (
+          <table className="cmp" data-testid="risk-order-detail-table">
+            <thead>
+              <tr><th>订单</th><th>客户</th><th>应用</th><th>型号</th><th>数量</th><th>交期</th><th>关联风险点</th><th>延误</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={String(r.so ?? i)} data-testid={`risk-order-row-${r.so ?? i}`}>
+                  <td className="mono"><b>{r.so}</b></td>
+                  <td className="zh">{r.cust}</td>
+                  <td><span className={styles.rkFchip} style={{ borderColor: "var(--c-capacity)66", color: "var(--c-capacity)" }}>{r.seg}</span></td>
+                  <td className="zh">{r.model}</td>
+                  <td className="mono">{r.qty} {unit}</td>
+                  <td className="mono"><b>{r.due}</b></td>
+                  <td>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, maxWidth: 420 }}>
+                      {(r.risks ?? []).slice(0, 4).map((k, j) => (
+                        <span key={j} className={styles.rkFchip} style={{ borderColor: "var(--danger)66", color: "var(--danger)" }}>{k.base}·{k.factor}{k.cross != null ? ` T+${k.cross}` : ""}</span>
+                      ))}
+                      {(r.risks ?? []).length > 4 && <span className={styles.rkFchip} style={{ borderColor: "var(--border)", color: "var(--muted2)" }}>+{(r.risks ?? []).length - 4}</span>}
+                    </div>
+                  </td>
+                  <td className="mono" style={{ color: "var(--danger)", fontWeight: 700 }}>{r.delay != null ? `${r.delay} 天` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
