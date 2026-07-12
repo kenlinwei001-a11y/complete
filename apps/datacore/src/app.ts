@@ -54,6 +54,8 @@ import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonic
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
 import { DeriveBatchRequestSchema, OntologyImportBundleSchema, ScenarioImportRequestSchema, WorldSourceSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2) / WO-IMPORT-SCENARIO (G3) / WO-IMPORT-REPLACE-SYNTHETIC (G4)
+import { DeriveDecisionFieldsRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生
+import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
@@ -4162,6 +4164,88 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await features.putTenantConfig(c, c.tenantId, merged);
     solvers.invalidateFeatureCache(c.tenantId); // 暗发开关翻转即时生效于求解器（回退演练）。
     return worldSourceStatus(c);
+  });
+
+  // ---- WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段 → 决策字段 派生引擎（可配置 mapping·R14·R6·R13）----
+  // 记录型导入数据（factory/production_line/equipment…）落库后没有求解器读的决策字段（Base.util/oeeIndex）——
+  // 本端点按 body 给的**可配置 mapping**（导入方提供·零平台业务常数）把真源记录聚合成决策字段，写回目标对象
+  // → 配 world_source=imported，求解器读的是真派生值（非 hash·KILL-MOCK-RED）。⛔ 平台不内联任何电池映射。
+  app.post("/a/v1/derive/decision-fields", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.world-source"))) throw featureNotFound();
+    requireAdmin(c);
+    const body = parseBody(DeriveDecisionFieldsRequestSchema, req.body);
+    const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    const worldSource = (tenant?.worldSource as "synthetic" | "imported") ?? "synthetic";
+
+    // 真导入 provenance 判定（复用 world-source 命门·合成物化不算真源）。
+    const realDatasetIds = new Set<string>();
+    for (const ds of await repos.rawDatasets.list(c.tenantId)) {
+      const conn = ds.sourceConnId ? await repos.connections.get(c.tenantId, ds.sourceConnId) : undefined;
+      if (classifySourceOrigin(conn?.connectorTypeKey, conn?.config) === "real-sourced") realDatasetIds.add(ds.id);
+    }
+    const isReal = (o: ObjectInstance) => o.origin?.type === "MATERIALIZED" && realDatasetIds.has(o.origin.datasetId);
+
+    // 只取 mapping 触及的类型（目标+源）·按 tenantId 隔离（R2）。
+    const types = new Set<string>();
+    for (const r of body.mapping.rules) {
+      types.add(r.target.objectType);
+      types.add(r.source.objectType);
+    }
+    const byType = new Map<string, DeriveSourceObject[]>();
+    const objIndex = new Map<string, ObjectInstance>();
+    for (const tk of types) {
+      const objs = await repos.objects.listByType(c.tenantId, tk);
+      byType.set(
+        tk,
+        objs.map((o) => {
+          objIndex.set(o.id, o);
+          return { id: o.id, props: o.props, real: isReal(o) };
+        }),
+      );
+    }
+
+    const results = deriveDecisionFields(body.mapping, byType);
+    // 门牙自证（R6·R13·KILL-MOCK）：写回前逐值重算比对·发现伪造即拒（不静默落假值）。
+    const violations = validateDerivedFields(body.mapping, byType, results);
+    if (violations.length > 0) throw validationError(`派生结果自校验失败（KILL-MOCK-RED）：${violations.slice(0, 3).join("；")}`);
+
+    const warnings: string[] = [];
+    if (worldSource !== "imported") {
+      warnings.push("world_source≠imported：已算出真派生值但**不建议**上决策——PUT /a/v1/world-source {imported} 后求解器才读真派生值（标签=行为）。");
+    }
+    if (results.every((r) => r.value === null)) {
+      warnings.push("无真数值源贡献（0 有效派生）→ 诚实空态：先经 uploads/batch + derive-batch 导入真记录，或核对 mapping 的 source/groupByField 是否对上真字段名。");
+    }
+
+    let written = 0;
+    if (!body.dryRun) {
+      // 只写有真值的结果·保留 origin·记 R13 派生溯源（__deriveProvenance 旁挂·不污染业务字段读路径）。
+      const epoch = await repos.epochs.next(c.tenantId);
+      const dirty = new Map<string, ObjectInstance>();
+      for (const r of results) {
+        if (r.value === null) continue;
+        const cur = dirty.get(r.targetId) ?? objIndex.get(r.targetId);
+        if (!cur) continue;
+        const prov = (cur.props.__deriveProvenance && typeof cur.props.__deriveProvenance === "object"
+          ? { ...(cur.props.__deriveProvenance as Record<string, unknown>) }
+          : {}) as Record<string, unknown>;
+        prov[r.field] = { op: r.op, sourceType: r.sourceType, sourceField: r.sourceField, sourceObjectIds: r.sourceObjectIds, dataMode: r.dataMode };
+        dirty.set(r.targetId, { ...cur, props: { ...cur.props, [r.field]: r.value, __deriveProvenance: prov }, epoch });
+      }
+      for (const obj of dirty.values()) {
+        await repos.objects.put(obj);
+        written++;
+      }
+    }
+
+    return {
+      worldSource,
+      results,
+      written,
+      dataMode: weakestDerivedDataMode(results),
+      warnings,
+    };
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------

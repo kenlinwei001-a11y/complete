@@ -57,3 +57,4 @@ export * from "./sandbox-config-derive.js"; // WO-SANDBOX-CONFIG-DERIVE · 传�
 export * from "./execution-graph.js"; // L1-B WO-L1B-1 · ExecutionGraph 契约 + 线性 lift
 export * from "./saga.js"; // L1-B WO-L1B-SAGA · 跨系统 Saga 一致性（外部幂等键 + 对账补偿 + 部分失败重放）
 export * from "./import.js"; // WO-IMPORT-MULTITABLE (G1) · 企业级多表批量导入契约（导入侧·行业无关 R14）
+export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）
