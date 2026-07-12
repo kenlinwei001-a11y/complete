@@ -259,17 +259,30 @@ function ClosureVizView({ closure }: { closure: ClosureReport }) {
  * 区6③ 故事覆盖度（PRD §3 区6）：故事逐句 ↔ 制品对账。未映射的句子高亮"未理解/未建模"
  * = "没遗漏"的直接证据，也喂区7 下一步与建模待办。数据源 StoryBuildRun.storyCoverage（后端确定性派生）。
  */
-function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) {
+export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) {
   if (!coverage || coverage.length === 0) return null;
+  const total = coverage.length;
   const unmapped = coverage.filter((c) => !c.mapped).length;
+  // WO-DB-FIVE-ACT-UX（§3 理解确认门·暴露洞给人）：覆盖度**百分比**（不只计数）——让人一眼看到"读懂了几成"·
+  // 未映射句红高亮可拒（不建议在未理解上建域·守 KILL-MOCK-RED「空壳冒充真派生」的用户侧闸）。
+  const pct = Math.round(((total - unmapped) / total) * 100);
+  const pctColor = pct === 100 ? "var(--c-capacity,#36BFA5)" : pct >= 60 ? "var(--amber,#DD9551)" : "var(--danger,#E5484D)";
   return (
     <div data-testid="sbr-coverage">
-      <div style={{ marginBottom: 2 }}>
-        故事覆盖度：
+      <div style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span>故事覆盖度：</span>
+        <b data-testid="sbr-coverage-pct" style={{ color: pctColor }}>{pct}%</b>
+        <span style={{ color: "var(--muted)", fontSize: 11.5 }}>（{total - unmapped}/{total} 句已建模）</span>
         {unmapped === 0
           ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>逐句已建模 ✓（没遗漏）</span>
           : <span style={{ color: "var(--amber,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
       </div>
+      {/* 理解确认门：有读不懂句 → 诚实劝阻在未理解上建域（可拒·补充故事后重建）·不假装"全懂了"。 */}
+      {unmapped > 0 && (
+        <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", marginBottom: 4 }}>
+          ⚠ 有 {unmapped} 句系统读不懂（下方红标）——建议**拒绝**建域、补充/改写故事后重建，勿在未理解之上建域（空壳冒充真派生）。
+        </div>
+      )}
       {coverage.map((c, i) => (
         <div key={i} data-testid={`coverage-${c.mapped ? "mapped" : "unmapped"}`}
           style={{ fontSize: 11, padding: "2px 6px", marginBottom: 2, borderLeft: `3px solid ${c.mapped ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)"}`, background: c.mapped ? "transparent" : "var(--danger,#E5484D)14" }}>

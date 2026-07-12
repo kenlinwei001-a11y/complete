@@ -8088,10 +8088,11 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "五幕向导(§3):理解确认门(覆盖度%+读不懂原句红高亮可拒)+真绿才绿(BUILD_STATIC显灰未验证)·暴露洞C/D假绿给人",
       "note": "[Lane frontend·DISPATCH] 须①③后端已落(要有诚实ValidationTrace/comprehendedBy可显)·⚠撞MERGE前端(DataBuilderPage.tsx)须协同·垫后。UX不替代真派生(只暴露塌方)。真浏览器验收(铁律0.4)。",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev3",
       "at": {
-        "created": "2026-07-11T14:28:38.850Z"
+        "created": "2026-07-11T14:28:38.850Z",
+        "wip": "2026-07-12T14:04:14.396Z"
       }
     },
     {
@@ -8793,10 +8794,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SA-6",
-      "at": "2026-07-12T14:02:38.413Z"
+      "role": "dev3",
+      "cmd": "WIP",
+      "id": "WO-DB-FIVE-ACT-UX",
+      "at": "2026-07-12T14:04:14.396Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
