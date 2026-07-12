@@ -335,6 +335,25 @@ export function deriveSliceHops(objectTypes: PlanObjectType[], opts: { fkFallbac
   return hopsByRoot;
 }
 
+/**
+ * WO-DB-BSTACK-DERIVE（洞B·B 栈按故事真派生·非模板 fan-out·确定性 R6）：
+ * 工作流步骤/agent prompt/skill 资源随**故事复杂度**真变（两复杂度悬殊故事→字节不同·非恒 ["invoke_solver","render"]）。
+ */
+function deriveWorkflowSteps(s: PlanSolverNeed): string[] {
+  const scope = new Set(s.inputFields.map((f) => f.typeKey));
+  return [
+    ...(scope.size > 1 ? ["resolve_slice"] : []), // 多类型作用域 → 先解析切片
+    ...(Object.keys(s.args ?? {}).length > 0 ? ["bind_args"] : []), // 有入参 → 绑上下文
+    "invoke_solver",
+    "render",
+  ];
+}
+function deriveAgentPrompt(s: PlanSolverNeed, script: string): string {
+  const scope = [...new Set(s.inputFields.map((f) => f.typeKey))].sort();
+  return `针对故事「${script.trim().slice(0, 120)}」倒推的 ${s.solverKey} 推演分析 agent（作用域对象：${scope.join("、") || "全域"}）`;
+}
+const deriveSkillResources = (s: PlanSolverNeed): string[] => [...new Set(s.inputFields.map((f) => f.typeKey))].sort().map((t) => `slice_${t.toLowerCase()}`);
+
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
 function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed[], script: string) {
   const hopsByRoot = deriveSliceHops(objectTypes); // WO-DB-LINK-STABILIZE：真 BFS 多跳 hops（取代恒 []）。
@@ -342,9 +361,9 @@ function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed
   const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: defaultRenderBindings(s.solverKey) }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
   const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {}, triggerQuestion: script.trim().slice(0, 500) }));
-  const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: ["invoke_solver", "render"] }));
-  const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({ skillKey: `skl_${s.solverKey}`, capability: s.solverKey, resources: [] }));
-  const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({ agentKey: `agt_${s.solverKey}`, systemPrompt: `针对 ${s.solverKey} 的推演分析 agent`, tools: [s.solverKey], skills: [`skl_${s.solverKey}`], ruleBindings: [], scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))] }));
+  const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: deriveWorkflowSteps(s) }));
+  const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({ skillKey: `skl_${s.solverKey}`, capability: s.solverKey, resources: deriveSkillResources(s) }));
+  const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({ agentKey: `agt_${s.solverKey}`, systemPrompt: deriveAgentPrompt(s, script), tools: [s.solverKey], skills: [`skl_${s.solverKey}`], ruleBindings: [], scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))] }));
   const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
   // S0 诚实边界（WO-SANDBOX-CONFIG-COVERAGE §3.4）：倒推暂不产沙盘配套需求（"某问题到底需要哪些
   // 传导规则/状态变量"的智能推导属 S1/RequirementGraph）——先打通"声明了就能 diff 出缺哪些"的通道。
@@ -733,20 +752,20 @@ export function comprehendScript(
     presetContext: {},
     triggerQuestion: script.trim().slice(0, 500), // E15：DRAFT 场景带触发问句（故事即问句）→ 可 grow/verify
   }));
-  // 债2：倒推扩到 workflow/skill/agent（每个求解器 → 工作流+技能+Agent），让 B 栈配置全可见。
+  // 债2 + WO-DB-BSTACK-DERIVE（洞B）：倒推扩到 workflow/skill/agent·**按故事真派生**（复杂度敏感·非模板 fan-out·与 LLM 路 R6 一致）。
   const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({
     workflowKey: `wf_${s.solverKey}`,
     kind: "workflow",
-    steps: ["invoke_solver", "render"],
+    steps: deriveWorkflowSteps(s),
   }));
   const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({
     skillKey: `skl_${s.solverKey}`,
     capability: s.solverKey,
-    resources: [],
+    resources: deriveSkillResources(s),
   }));
   const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({
     agentKey: `agt_${s.solverKey}`,
-    systemPrompt: `针对 ${s.solverKey} 的推演分析 agent（g8 故事倒推 scaffold）`,
+    systemPrompt: deriveAgentPrompt(s, script),
     tools: [s.solverKey],
     skills: [`skl_${s.solverKey}`],
     ruleBindings: [],
