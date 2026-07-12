@@ -11,7 +11,7 @@ import { EChart } from "@/components/ui/EChart";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { decisionColor, decisionHeat, NO_DATA_HINT } from "@/components/DecisionValue";
 import { useActionDraft } from "./sim/shared";
-import { useOpenWhatIf } from "./sim/whatif";
+import { useOpenWhatIf, resolveBaseId } from "./sim/whatif";
 import { useFeature } from "@/workspace/featureGate";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -146,12 +146,19 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
     if (c.dataMode == null) return topLive ? "LIVE" : "MUTED"; // 未标 → 随顶层（兼容旧 fixture/真 LIVE 顶层）
     return "MUTED"; // 显式 MOCK/SYNTHETIC（含 WO-CAP-01 合成源卡）/其它非 LIVE → 中性
   };
+  // WO-CAPSIM-IA-UNIFY（M2·③看板 scope=该基地）：`?focus=<baseId|名>` 下钻 → **把看板卡真裁剪到该基地**
+  // （原 focus 仅驱动 DrillBack 面包屑·不裁剪）。resolveBaseId 归一名↔id（BASE_REGISTRY 单一来源·R6·无网络）。
+  // 无匹配 → 退全量（graceful·不空板）；裁剪后红/黄/敞口/排序全随之聚焦该基地（同一真 risk_timeline·非造）。
+  const focusId = resolveBaseId(searchParams.get("focus") ?? undefined);
+  const baseScoped = focusId ? data.cards.filter((c) => resolveBaseId(c.base) === focusId) : data.cards;
+  const scopedCards = focusId && baseScoped.length > 0 ? baseScoped : data.cards;
+  const scopedToBase = focusId != null && baseScoped.length > 0;
   // 首要风险仅在真数据卡间取（避免合成/mock 峰值抢「首要」红标）。
-  const liveCards = data.cards.filter((c) => cardDecisionMode(c) === "LIVE");
+  const liveCards = scopedCards.filter((c) => cardDecisionMode(c) === "LIVE");
   const livePeaks = liveCards.map((c) => c.peak ?? 0);
   const maxPeak = livePeaks.length ? Math.max(0, ...livePeaks) : 0;
   // C4：卡按业务影响（营收敞口）排序——真数据驱动·非 peak（改后端 affectedOrders 真源→次序随之变）。
-  const orderedCards = sortCardsByImpact(data.cards);
+  const orderedCards = sortCardsByImpact(scopedCards);
   // C3 决策摘要头（高管决策漏斗）：全部聚合自真 risk_timeline（非硬编）。
   //   红/黄基地数 = LIVE 卡按峰值越阈值/临近分档；最早越线日 = LIVE 卡 crossDay 最小；
   //   危及客户数/总敞口 = Σ 各卡 affectedOrders 去重客户/revenueWan（真值）；对策数 = planRows 行数。
@@ -166,6 +173,14 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   return (
     <div>
       {drilledIn && <DrillBack testId="risk-back" trail={[{ label: "风险看板" }]} />}
+      {/* WO-CAPSIM-IA-UNIFY（M2·③）：聚焦某基地下钻态提示——看板已裁剪到该基地（scope=该基地·唯一 surface 下钻）。 */}
+      {scopedToBase && (
+        <div data-testid="risk-scope-focus" data-focus-base={focusId} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12.5 }}>
+          <span className="badge" style={{ background: "var(--accent, #5B7CFA)", color: "#fff" }}>聚焦基地</span>
+          <b className="mono">{focusId}</b>
+          <span style={{ color: "var(--muted2)" }}>· 看板已裁剪到该基地推演（{scopedCards.length} 张卡）</span>
+        </div>
+      )}
       {/* C3 决策摘要头（诊断台→高管决策漏斗）：一屏聚合当前推演的决策级真值——红/黄基地、最早越线、危及客户、总敞口、对策数。
           值源自真 risk_timeline（LIVE 卡 + affectedOrders 真算），非硬编；无真数据自然归零（诚实）。 */}
       <div className={styles.summary} data-testid="risk-decision-summary">

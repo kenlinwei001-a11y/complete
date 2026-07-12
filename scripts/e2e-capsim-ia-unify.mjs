@@ -31,6 +31,16 @@ try {
     : bad(`裸访问未重定向：${landed}`);
   await page.screenshot({ path: "docs/evidence/CAPSIM-IA-UNIFY-M1-redirect.png", fullPage: false });
   ok("截图重定向落地 docs/evidence/CAPSIM-IA-UNIFY-M1-redirect.png");
+  // ③ /v/risk?focus=changzhou → 看板真裁剪到该基地（scope=该基地）
+  await page.goto(`${FRONT}/v/risk?focus=changzhou`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2000);
+  const focusBar = await page.locator("[data-testid=risk-scope-focus]").count();
+  const focusBase = focusBar ? await page.locator("[data-testid=risk-scope-focus]").getAttribute("data-focus-base") : null;
+  (focusBar > 0 && focusBase === "changzhou")
+    ? ok(`/v/risk?focus=changzhou → 看板真裁剪到常州（聚焦提示 data-focus-base=changzhou·验收③ scope=该基地）`)
+    : bad(`focus scope 未生效：bar=${focusBar} base=${focusBase}`);
+  await page.screenshot({ path: "docs/evidence/CAPSIM-IA-UNIFY-M2-focus-scope.png", fullPage: false });
+  ok("截图 focus scope docs/evidence/CAPSIM-IA-UNIFY-M2-focus-scope.png");
 } catch (e) { bad("异常：" + (e?.message ?? e)); } finally { await browser.close(); }
 const pass = results.filter(Boolean).length;
 console.log(`\n${pass === results.length ? "✅ 全绿" : "❌ 有红"}：${pass}/${results.length}`);

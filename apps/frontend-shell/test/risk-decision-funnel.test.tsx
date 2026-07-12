@@ -131,6 +131,23 @@ describe("RISKBOARD-LAYOUT-REWORK · 决策漏斗 UI（逐值对照后端真值�
     }
   });
 
+  it("WO-CAPSIM-IA-UNIFY（③看板 scope=该基地）：/v/risk?focus=changzhou → 看板真裁剪到常州（仅常州卡·聚焦提示·摘要随之聚焦）", async () => {
+    overrideRiskTimeline();
+    loginAs("planner");
+    renderApp("/v/risk?focus=changzhou"); // BASE_REGISTRY: 常州↔changzhou
+
+    // 聚焦提示条 + 仅常州卡在场；江门/武汉卡被裁剪掉（scope=该基地·唯一 surface 下钻）
+    const focusBar = await screen.findByTestId("risk-scope-focus");
+    expect(focusBar).toHaveAttribute("data-focus-base", "changzhou");
+    expect(await screen.findByTestId("risk-card-常州")).toBeInTheDocument();
+    expect(screen.queryByTestId("risk-card-江门")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("risk-card-武汉")).not.toBeInTheDocument();
+    // 摘要随之聚焦常州（仅 1 卡越线 peak 98·敞口 100）
+    const summary = screen.getByTestId("risk-decision-summary");
+    expect(within(summary).getByTestId("risk-summary-red-value")).toHaveTextContent("1");
+    expect(within(summary).getByTestId("risk-summary-exposure-value")).toHaveTextContent("100");
+  });
+
   it("C3 决策摘要头真聚合（越线/临近/最早越线/危及客户/总敞口/对策数·源自真 risk_timeline）", async () => {
     overrideRiskTimeline();
     loginAs("planner");
