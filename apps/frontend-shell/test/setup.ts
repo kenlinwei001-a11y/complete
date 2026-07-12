@@ -99,6 +99,11 @@ afterEach(() => {
   queryClient.clear();
   tokenStore.clear();
   useSessionStore.getState().reset();
+  try {
+    localStorage.clear();
+  } catch {
+    /* jsdom 无 localStorage 时忽略 */
+  }
 });
 
 afterAll(() => server.close());

@@ -26,6 +26,23 @@ import { toast, toastError } from "@/store/toastStore";
 
 const LIST_KEY = ["a", "ontology-workflows", {}];
 
+// WO-SWEEP-02：所选工作流跨刷新/离开再回持久化（后端已落库，仅前端选择态需记忆）。
+const SELECTED_WF_KEY = "ontoflow.selectedWorkflow";
+const readSelectedWfId = (): string | null => {
+  try {
+    return typeof localStorage !== "undefined" ? localStorage.getItem(SELECTED_WF_KEY) : null;
+  } catch {
+    return null;
+  }
+};
+const writeSelectedWfId = (id: string) => {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(SELECTED_WF_KEY, id);
+  } catch {
+    /* ignore（无痛降级：持久化失败不影响会话内选择） */
+  }
+};
+
 const toUpsert = (wf: OntologyWorkflow): OntologyWorkflowUpsert => ({
   name: wf.name,
   entryMode: wf.entryMode,
@@ -115,11 +132,15 @@ export function OntologyWorkflowStudio() {
     setDraft(structuredClone(wf));
     setSelectedNodeId(wf.nodes.find((n) => n.kind === "SUBGRAPH_ENTITY")?.id ?? wf.nodes[0]?.id ?? null);
     setResults({});
+    writeSelectedWfId(wf.id);
   };
 
-  // 初次加载选中首个工作流
+  // 初次加载：优先恢复上次所选工作流（跨刷新/离开再回，WO-SWEEP-02），否则退回首个
   useEffect(() => {
-    if (!draft && workflows.length) selectWorkflow(workflows[0]!);
+    if (draft || !workflows.length) return;
+    const savedId = readSelectedWfId();
+    const restored = savedId ? workflows.find((w) => w.id === savedId) : undefined;
+    selectWorkflow(restored ?? workflows[0]!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflows]);
 

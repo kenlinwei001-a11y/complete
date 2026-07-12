@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
@@ -133,6 +133,34 @@ describe("F41 · OntoFlow 本体建模工作流", () => {
     const row1 = within(panel).getByTestId("inference-row-1");
     expect(within(row1).getByTestId("inference-via-1")).toHaveTextContent("derived:total");
     expect(within(row1).getByTestId("inference-after-1")).toHaveTextContent("220");
+  });
+
+  it("WO-SWEEP-02 所选工作流跨刷新/离开再回持久化：选第 2 条 → 重挂载 → 仍第 2 条", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    await openStudio(user);
+
+    // 造出第 2 条工作流（种子 owf-seed + 新建图谱先行），使下拉有 ≥2 项
+    await user.click(screen.getByTestId("wf-new-graph"));
+    await waitFor(() => expect(screen.getByTestId<HTMLSelectElement>("wf-select").options.length).toBe(2));
+
+    // 显式选中下拉「第 2 项」（非默认 auto-select 的首项）
+    const select = screen.getByTestId<HTMLSelectElement>("wf-select");
+    const secondId = select.options[1]!.value;
+    await user.selectOptions(select, secondId);
+    await waitFor(() => expect(screen.getByTestId<HTMLSelectElement>("wf-select").value).toBe(secondId));
+
+    // 持久化机制：localStorage 记住所选 id
+    expect(localStorage.getItem("ontoflow.selectedWorkflow")).toBe(secondId);
+
+    // 模拟「刷新 / 离开再回」——卸载后重新挂载整个应用
+    cleanup();
+    renderApp("/admin/data-builder");
+    await user.click(await screen.findByTestId("db-tab-studio"));
+    await screen.findByTestId("wf-canvas");
+
+    // 恢复态：仍是第 2 条（若无持久化则会退回 auto-select 首项 → 不等于 secondId）
+    await waitFor(() => expect(screen.getByTestId<HTMLSelectElement>("wf-select").value).toBe(secondId));
   });
 
   it("WO-MERGE-02 B1 feature data-builder 关闭 → 导航入口消失 + 页面诚实 404", async () => {
