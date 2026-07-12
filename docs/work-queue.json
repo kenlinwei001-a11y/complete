@@ -8483,10 +8483,11 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev2",
       "at": {
-        "created": "2026-07-11T18:02:46.993Z"
+        "created": "2026-07-11T18:02:46.993Z",
+        "wip": "2026-07-12T11:32:06.035Z"
       },
       "id": "WO-SA-3",
       "title": "新增 Workshop 车间层对象类型(Factory→Workshop→Line·工艺粒度)",
