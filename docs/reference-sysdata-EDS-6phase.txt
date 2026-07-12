@@ -1,0 +1,2483 @@
+_
+Phase1 Enterprise Master Data
+企业世界模型
+（有什么）
+        ↓
+Phase2 Product Engineering
+产品制造知识
+（怎么制造）
+        ↓
+Phase3 Manufacturing Execution
+制造运行事实
+（正在发生什么）
+        ↓
+Phase4 Decision Optimization
+预测、优化、模拟
+（应该怎么做）
+        ↓
+Phase5 Decision Runtime
+理解、推理、行动
+（自动做决策）
+Phase1_Industrial.xlsx
+├── 00_数据标准说明
+├── 00_外键关系总表
+│
+├── 01_基地
+├── 02_车间
+├── 03_产线
+├── 04_工作中心
+├── 05_设备
+├── 06_产品族
+├── 07_产品
+├── 08_产品版本
+├── 09_物料
+├── 10_BOM
+├── 11_工艺路线
+├── 12_客户
+├── 13_客户地点
+├── 14_供应商
+├── 15_仓库
+├── 16_日历
+├── 17_班次
+├── 18_单位字典
+└
+Phase 1 提示词：
+你是一名世界级工业数字孪生数据架构专家，
+同时具备：
+1. 离散制造企业数据架构经验
+2. 锂电制造集团业务专家能力
+3. ERP/MES/WMS/PLM系统架构能力
+4. Palantir Ontology建模经验
+5. 企业主数据管理（MDM）经验
+6. 工业数据治理经验
+你的任务是生成：
+Decision_OS_EDS_Phase1_Industrial
+企业基础主数据。
+目标：
+构建一个真实的大型锂电制造集团数字世界模型。
+该模型必须支持：
+- 多基地管理
+- 多城市制造网络
+- 多车间
+- 多生产线
+- 多设备
+- 多产品
+- 多物料
+- 多客户
+- 多供应商
+- 多仓库
+并支持后续：
+- 产能预测
+- APS排产
+- 供应链推演
+- 库存优化
+- 订单承诺
+- 数字孪生
+- Ontology Graph
+- Agent Reasoning
+Phase2_Product_Engineering
+├── 01_产品平台
+├── 02_产品系列
+├── 03_产品主数据
+├── 04_产品版本
+│
+├── 05_BOM主表
+├── 06_BOM明细
+├── 07_物料替代关系
+│
+├── 08_工艺路线
+├── 09_工序定义
+├── 10_工艺参数窗口
+│
+├── 11_质量标准
+├── 12_检验特性
+│
+├── 13_产品-产线制造能力
+├── 14_产品-设备能力
+│
+├── 15_工程变更历史
+│
+└─
+Phase2每张表定位
+01 产品平台
+目的：
+定义技术平台。
+例如：
+平台
+LFP平台
+三元平台
+固态电池平台
+支撑：
+产品迁移分析。
+02 产品系列
+例如：
+系列
+280Ah储能
+314Ah储能
+4680动力
+关系：
+																	平台
+																	 ↓
+																	系列
+																	 ↓
+																	产品
+03 产品主数据（核心）
+替代原：
+产品工程属性 
+产品基础信息 
+字段：
+字段
+产品编号
+产品名称
+化学体系
+容量
+电压
+能量
+尺寸
+重量
+应用领域
+这是后续 Solver 核心输入。
+04 产品版本
+必须保留。
+因为：
+同一个型号：
+																	P001
+																	V1
+																	V2
+																	V3
+工艺可能不同。
+BOM域
+05 BOM主表
+定义：
+																	一个产品版本
+																	对应一个BOM
+06 BOM明细
+核心。
+例如：
+P001：
+																	正极材料 1.05kg
+																	负极材料 0.45kg
+																	隔膜 12㎡
+																	电解液 0.3kg
+用于：
+原料需求预测 
+成本计算 
+供应风险 
+07 物料替代关系
+非常重要。
+例如：
+																	A供应商材料
+																	        |
+																	        ↓
+																	替代材料B
+用于：
+供应链推演。
+工艺域
+08 工艺路线
+例如：
+																	混料
+																	 ↓
+																	涂布
+																	 ↓
+																	辊压
+																	 ↓
+																	分切
+																	 ↓
+																	装配
+																	 ↓
+																	化成
+09 工序定义
+定义：
+每个工序是什么。
+10 工艺参数窗口
+保留。
+不要叫参数。
+应该叫：
+工艺能力边界
+例如：
+参数
+范围
+温度
+75-85℃
+压力
+100-120N
+速度
+10-15m/min
+因为 Solver 需要。
+质量域
+11 质量标准
+例如：
+容量：
+																	280Ah ±2%
+12 检验特性
+例如：
+																	容量检测
+																	内阻检测
+																	外观检测
+制造能力域（非常关键）
+13 产品-产线制造能力
+这是 Decision OS 核心表。
+例如：
+产品
+产线
+能力
+P001
+L001
+可生产
+P002
+L001
+不可生产
+用于：
+产能分配。
+14 产品-设备能力
+例如：
+某设备支持：
+																	280Ah
+																	314Ah
+不支持：
+																	4680
+用于：
+设备瓶颈分析。
+生命周期
+15 工程变更历史
+保留。
+用于：
+追溯：
+																	为什么2026年产能下降？
+																	因为产品V2切换。
+保持与 Phase1 的关系：
+产品
+ ├── 产品版本
+ ├── BOM
+ │     └── 物料
+ │          └── 替代物料
+ │
+ ├── 工艺路线
+ │     └── 工序
+ │            └── 工艺参数
+ │
+ ├── 质量标准
+ │     └── 检验项目
+ │
+ └── 产品制造能力
+       ├── 产线能力
+       └── 设备能力
+Phase 2 提示词：
+你是一名世界级锂电制造产品工程数据架构专家，
+同时具备以下能力：
+1. 锂电池研发与制造工艺专家
+2. PLM系统架构专家
+3. MES工艺建模专家
+4. APS制造约束建模专家
+5. Palantir Ontology业务对象建模专家
+6. 工业数字孪生数据工程专家
+你的任务是生成 Decision_OS_EDS_Phase2_Product_Engineering 数据。
+目标：
+构建一个支持企业级 Decision OS 的产品工程知识模型。
+该模型必须支持：
+- 多产品型号
+- 多产品版本
+- 多基地制造
+- 多产线生产
+- 多工艺路线
+- 多材料体系
+- 多供应商替代
+- 多制造约束
+并支持：
+- APS排产
+- 产能分析
+- 产品切换模拟
+- 新产品导入分析
+- BOM成本分析
+- 工艺能力分析
+- 制造可行性分析
+- What-if Simulation
+Phase 3：Manufacturing Execution Industrial（制造执行域）
+建议包含 24 张核心 Sheet + 1 张 LLM Prompt。
+																	Decision_OS_EDS_Phase3_Manufacturing_Execution
+																	├── 00_关系说明
+																	│
+																	├── 01_销售订单
+																	├── 02_订单行
+																	├── 03_需求预测
+																	├── 04_订单承诺（ATP）
+																	│
+																	├── 05_主生产计划（MPS）
+																	├── 06_生产工单
+																	├── 07_工单工序
+																	├── 08_工单派工
+																	│
+																	├── 09_生产报工
+																	├── 10_工序在制品（WIP）
+																	├── 11_完工入库
+																	│
+																	├── 12_原材料库存
+																	├── 13_半成品库存
+																	├── 14_成品库存
+																	├── 15_库存交易流水
+																	│
+																	├── 16_设备状态
+																	├── 17_设备停机
+																	├── 18_设备保养计划
+																	│
+																	├── 19_人员班次
+																	├── 20_人员技能矩阵
+																	│
+																	├── 21_物流运输
+																	├── 22_跨基地调拨
+																	│
+																	├── 23_异常事件
+																	├── 24_KPI快照
+																	│
+																	└── 25_LLM扩写提示词
+一、需求域（Demand）
+这是推演起点。
+01_销售订单
+一张订单头。
+例如：
+|订单号|客户|交期|状态|
+02_订单行
+因为：
+一个订单：
+																	SO001
+																	↓
+																	280Ah
+																	↓
+																	314Ah
+																	↓
+																	Pack
+必须拆开。
+03_需求预测
+例如：
+未来：
+																	36个月
+																	每天
+																	每产品
+																	每客户
+全部预测。
+04 ATP
+Decision OS 必须有。
+回答：
+																	能不能接？
+																	什么时候交？
+二、计划域
+05 MPS
+这是 Solver 输出。
+例如：
+																	7月：
+																	P001
+																	50000PCS
+06 生产工单
+例如：
+																	WO001
+07 工单工序
+例如：
+																	WO001
+																	↓
+																	混料
+																	↓
+																	涂布
+																	↓
+																	化成
+08 工单派工
+例如：
+																	WO001
+																	↓
+																	Line03
+																	↓
+																	班组A
+三、执行域
+09 生产报工
+MES 最大的数据来源。
+例如：
+																	开始
+																	结束
+																	产量
+																	良率
+10 WIP
+这是 Decision OS 最重要的数据。
+因为：
+库存：
+不是：
+只有 Finished。
+还有：
+																	混料完成
+																	↓
+																	涂布完成
+																	↓
+																	装配完成
+																	↓
+																	化成完成
+这些全部要追踪。
+11 完工入库
+进入：
+FG。
+四、库存域
+库存一定不能只有一张。
+必须拆：
+12 RAW
+原料。
+13 WIP
+半成品。
+14 FG
+成品。
+15 库存流水
+否则：
+无法推演。
+五、设备域
+不是设备主数据。
+而是：
+运行状态。
+16 设备状态
+例如：
+																	运行
+																	空闲
+																	维修
+																	待料
+17 停机记录
+未来：
+Event。
+18 保养计划
+Solver：
+会用。
+六、人
+19 班组
+例如：
+A班。
+20 技能矩阵
+例如：
+张三：
+可以：
+																	涂布
+																	装配
+不能：
+																	化成
+排班 Solver：
+必须。
+七、物流
+跨基地。
+21 物流
+例如：
+																	武汉
+																	↓
+																	常州
+																	2天
+22 调拨
+例如：
+																	Pack基地
+																	↓
+																	Cell基地
+八、异常
+23 异常事件
+例如：
+缺料。
+设备。
+质量。
+客户。
+全部统一。
+Agent：
+全部监听。
+九、KPI
+24 KPI Snapshot
+每天：
+自动生成。
+例如：
+																	OEE
+																	达交率
+																	库存
+																	产能利用率
+																	OTIF
+Phase 3提示词
+你是一名世界级工业数字孪生数据架构专家，同时具备以下能力：
+1. 锂电池制造企业业务专家
+2. MES/APS/S&amp;OP系统架构专家
+3. Palantir Foundry Ontology建模专家
+4. 制造业Solver数据建模专家
+5. 工业时序数据生成专家
+你的任务是基于 Decision_OS_EDS_Phase3_Manufacturing_Execution 数据标准，
+生成真实、完整、可关联、可推演的制造执行域数据。
+目标：
+构建一个支持：
+- 多基地
+- 多车间
+- 多产线
+- 多产品型号
+- 多客户
+- 多订单
+- 多生产计划
+- 多库存状态
+- 多设备状态
+- 多人员技能
+- 多物流路径
+的锂电制造企业数字孪生数据集。
+生成的数据必须能够直接支持：
+- APS排产
+- 产销匹配
+- 产能预测
+- 库存优化
+- 订单承诺ATP/CTP
+- 生产异常分析
+- 跨基地调度
+- 供应链推演
+- What-if Simulation
+- Decision Agent分析
+Phase 3 与前两阶段关系
+																	Phase1
+																	(企业主数据)
+																	        ↓
+																	Phase2
+																	(产品工程)
+																	        ↓
+																	Phase3
+																	(订单、计划、生产、库存、物流)
+																	        ↓
+																	Phase4
+																	(Solver / APS / Simulation)
+																	        ↓
+																	Phase5
+																	(Decision OS Agent + Ontology + Knowledge Graph)
+Phase4 数据结构设计
+建议：
+26张Sheet + 1 Prompt
+																	Decision_OS_EDS_Phase4_Decision_Optimization
+																	├── 00_关系说明
+																	│
+																	├── Demand Planning
+																	│
+																	├── 01_需求预测
+																	├── 02_市场预测版本
+																	├── 03_客户需求计划
+																	│
+																	├── S&amp;OP
+																	│
+																	├── 04_SOP计划
+																	├── 05_供需平衡
+																	│
+																	├── Capacity Planning
+																	│
+																	├── 06_产能模型
+																	├── 07_产能日历
+																	├── 08_产能约束
+																	│
+																	├── APS Planning
+																	│
+																	├── 09_MPS主生产计划
+																	├── 10_MRP物料需求计划
+																	├── 11_生产排程计划
+																	├── 12_工序排程
+																	│
+																	├── Solver
+																	│
+																	├── 13_Solver输入参数
+																	├── 14_优化目标
+																	├── 15_约束规则
+																	├── 16_决策变量
+																	├── 17_Solver结果
+																	│
+																	├── Simulation
+																	│
+																	├── 18_模拟场景
+																	├── 19_情景参数
+																	├── 20_模拟结果
+																	│
+																	├── Decision Intelligence
+																	│
+																	├── 21_决策事件
+																	├── 22_决策建议
+																	├── 23_影响分析
+																	│
+																	├── KPI
+																	│
+																	├── 24_经营指标
+																	├── 25_指标趋势
+																	│
+																	└── 26_LLM扩写提示词
+一、Demand Planning 域
+01_需求预测
+核心对象：
+Forecast。
+字段：
+																	预测编号
+																	客户
+																	产品
+																	预测月份
+																	预测数量
+																	预测版本
+																	置信度
+例如：
+																	客户：
+																	某汽车OEM
+																	产品：
+																	314Ah
+																	2026-03
+																	需求：
+																	50000 PCS
+02_市场预测版本
+支持：
+多个预测版本：
+																	Baseline
+																	Optimistic
+																	Conservative
+用于：
+Scenario Simulation。
+03_客户需求计划
+连接：
+客户 → 产品 → 时间。
+用于：
+产销匹配。
+二、S&amp;OP域
+04_SOP计划
+月度决策。
+对象：
+																	需求
+																	供应
+																	库存
+																	缺口
+05_供需平衡
+核心：
+Demand-Supply Balance。
+计算：
+																	需求
+																	-
+																	产能
+																	-
+																	库存
+																	=
+																	缺口
+三、Capacity Planning
+06_产能模型
+这是 Phase4 核心。
+字段：
+																	产线
+																	产品
+																	理论产能
+																	有效产能
+																	良率
+																	换型损失
+07_产能日历
+描述：
+什么时候可生产。
+例如：
+																	Line001
+																	2026-01-01
+																	Available
+08_产能约束
+例如：
+																	Line001
+																	只能生产：
+																	280Ah
+																	314Ah
+四、APS Planning
+09_MPS主生产计划
+输出：
+																	月份
+																	产品
+																	产量
+																	基地
+																	产线
+10_MRP物料需求计划
+根据：
+BOM展开。
+例如：
+生产：
+100000 PCS
+需要：
+正极材料：
+105吨
+11_生产排程计划
+日级。
+字段：
+																	订单
+																	工单
+																	产线
+																	开始时间
+																	结束时间
+12_工序排程
+小时级：
+																	涂布
+																	卷绕
+																	化成
+五、Solver域（核心）
+13_Solver输入参数
+统一入口。
+包括：
+																	需求
+																	库存
+																	产能
+																	成本
+																	交付要求
+14_优化目标
+例如：
+目标函数：
+																	最小延期
+																	+
+																	最小库存
+																	+
+																	最大产能利用率
+																	+
+																	最低成本
+15_约束规则
+例如：
+																	constraint:
+																	 产品必须匹配产线
+																	constraint:
+																	 设备必须支持工艺
+																	constraint:
+																	 库存不能小于0
+																	constraint:
+																	 订单必须满足交期
+16_决策变量
+例如：
+Solver变量：
+																	X(product,line,time)
+代表：
+某产品某时间安排到某产线。
+17_Solver结果
+保存：
+优化结果。
+例如：
+																	产品A
+																	Line03
+																	2026-03-01
+																	10000PCS
+六、Simulation域
+18_模拟场景
+例如：
+																	新增客户订单20%
+																	某基地停产
+																	新增产线
+																	供应商中断
+19_情景参数
+例如：
+																	需求增加:
+																	20%
+																	设备停机:
+																	72小时
+20_模拟结果
+输出：
+影响：
+																	交付延期
+																	成本变化
+																	产能缺口
+七、Decision Intelligence
+21_决策事件
+记录：
+系统发现的问题。
+例如：
+																	订单无法满足
+22_决策建议
+Agent输出：
+例如：
+																	建议：
+																	将武汉基地订单转移至常州
+23_影响分析
+回答：
+如果执行：
+影响什么？
+八、KPI域
+24_经营指标
+例如：
+																	OTD
+																	OEE
+																	库存周转
+																	产能利用率
+25_指标趋势
+时间序列。
+Phase4 Ontology关系
+最终形成：
+																	Demand
+																	 ↓
+																	Order
+																	 ↓
+																	Plan
+																	 ↓
+																	Production Schedule
+																	 ↓
+																	Capacity
+																	 ↓
+																	Resource
+																	Scenario
+																	 ↓
+																	Simulation
+																	 ↓
+																	Decision
+																	 ↓
+																	Action
+Phase 4提示词：
+你是一名世界级制造业Decision OS架构专家，
+同时具备以下专业能力：
+1. 锂电制造集团供应链专家
+2. S&amp;OP / APS高级计划系统专家
+3. 运筹优化（Operations Research）专家
+4. Gurobi / OR-Tools Solver建模专家
+5. 数字孪生系统架构专家
+6. Palantir Ontology + Decision Intelligence专家
+7. 工业AI Agent设计专家
+你的任务：
+生成 Decision_OS_EDS_Phase4_Decision_Optimization 数据。
+目标：
+构建一个支持大型锂电制造企业：
+- 需求预测
+- 产销匹配
+- 供需平衡
+- 产能分析
+- APS排产
+- 库存优化
+- Solver求解
+- What-if Simulation
+- 自动决策建议
+的数据模型。
+生成的数据必须可以直接用于：
+1. APS系统测试
+2. 生产计划优化
+3. 订单承诺分析
+4. 产能扩张模拟
+5. 供应风险分析
+6. Decision Agent推理
+一、总体数据生成原则
+必须满足：
+																	需求
+																	↓
+																	订单
+																	↓
+																	产品
+																	↓
+																	BOM
+																	↓
+																	物料
+																	↓
+																	库存
+																	↓
+																	产能
+																	↓
+																	生产计划
+																	↓
+																	排程
+																	↓
+																	执行结果
+																	↓
+																	决策反馈
+形成完整闭环。
+禁止：
+孤立预测 
+孤立计划 
+孤立Solver参数 
+无约束排产 
+不符合制造逻辑的数据 
+二、企业规模假设
+生成数据基于：
+大型锂电集团：
+																	基地：
+																	12个
+																	车间：
+																	80个
+																	生产线：
+																	100条
+																	产品：
+																	500个
+																	客户：
+																	200个
+																	订单：
+																	100万级
+																	时间范围：
+																	历史24个月
+																	未来36个月
+三、时间模型要求
+所有Planning数据必须包含时间。
+时间粒度：
+对象
+粒度
+需求预测
+月/周
+S&amp;OP
+月
+MPS
+周/月
+MRP
+日
+APS排程
+小时
+设备约束
+小时
+KPI
+日
+时间必须连续。
+禁止：
+																	2026-01
+																	2026-03
+																	2026-06
+必须：
+																	2026-01
+																	2026-02
+																	2026-03
+																	...
+四、需求预测数据生成规则
+目标：
+生成未来市场需求。
+必须包含：
+																	预测编号
+																	客户
+																	产品
+																	区域
+																	预测周期
+																	预测数量
+																	预测版本
+																	预测准确率
+																	置信度
+预测版本：
+必须支持：
+																	Baseline
+																	Optimistic
+																	Conservative
+例如：
+																	客户：
+																	某汽车OEM
+																	产品：
+																	314Ah
+																	月份：
+																	2026-03
+																	预测：
+																	80000PCS
+																	置信度：
+																	85%
+五、客户需求计划规则
+生成：
+客户真实需求。
+必须关联：
+																	Customer
+																	↓
+																	Product
+																	↓
+																	Time
+																	↓
+																	Demand
+字段：
+																	客户编号
+																	产品编号
+																	需求日期
+																	需求数量
+																	交付要求
+																	优先级
+六、S&amp;OP规则
+S&amp;OP必须体现：
+供需平衡。
+计算逻辑：
+																	Supply
+																	=
+																	生产能力
+																	+
+																	库存
+																	+
+																	采购
+																	Demand
+																	=
+																	客户需求
+																	Gap
+																	=
+																	Supply-Demand
+必须生成：
+																	需求
+																	供应
+																	缺口
+																	调整建议
+七、产能模型生成规则（核心）
+产能不是简单数字。
+必须考虑：
+																	设计产能
+																	↓
+																	实际产能
+																	↓
+																	有效产能
+																	↓
+																	可用产能
+计算：
+																	有效产能=
+																	理论产能
+																	×
+																	设备利用率
+																	×
+																	良率
+																	×
+																	时间有效率
+字段：
+																	产线
+																	产品
+																	日产能
+																	月产能
+																	良率
+																	OEE
+																	换型时间
+八、产能约束规则
+必须生成：
+制造约束。
+包括：
+产品约束
+例如：
+																	Line001
+																	只能生产：
+																	280Ah
+																	314Ah
+工艺约束
+例如：
+																	某产品
+																	必须经过：
+																	高速化成设备
+时间约束
+例如：
+																	设备维护：
+																	2026-03-10
+																	不可生产
+九、MPS生成规则
+MPS必须满足：
+																	需求 &lt;= 产能 + 库存
+生成：
+																	计划编号
+																	产品
+																	基地
+																	产线
+																	月份
+																	计划数量
+禁止：
+超过产能。
+十、MRP规则
+必须根据：
+Phase2 BOM。
+展开：
+																	生产计划
+																	↓
+																	BOM
+																	↓
+																	物料需求
+例如：
+生产：
+100000电芯
+需要：
+正极：
+105吨
+负极：
+50吨
+																	字段：
+物料
+需求量
+库存
+缺口
+采购建议
+																	---
+																	# 十一、APS排程规则
+																	生成：
+																	小时级排程。
+																	必须包含：
+工单
+产品
+产线
+设备
+开始时间
+结束时间
+数量
+																	必须考虑：
+换型时间
+工艺顺序
+设备能力
+人员能力
+																	---
+																	# 十二、Solver数据生成规则
+																	## 13_Solver输入参数
+																	必须包含：
+Demand
+Capacity
+Inventory
+Cost
+Constraint
+																	---
+																	# 十三、优化目标生成
+																	支持多目标优化。
+																	目标：
+																	## 交付最大化
+Max Delivery Rate
+																	## 成本最低
+Min Cost
+																	## 库存最低
+Min Inventory
+																	## 设备利用率最高
+Max Utilization
+																	---
+																	# 十四、决策变量生成规则
+																	生成Solver变量。
+																	例如：
+																	生产分配：
+X(product,line,time)
+																	库存：
+Inventory(product,time)
+																	运输：
+Transfer(factory1,factory2)
+																	---
+																	# 十五、约束规则 YAML生成
+																	必须输出：
+																	constraints.yaml
+																	格式：
+																	```yaml
+																	constraints:
+																	- name: product_line_match
+																	  description: 产品必须匹配产线能力
+																	- name: capacity_limit
+																	  description: 不允许超过产能
+																	- name: inventory_non_negative
+																	  description: 库存不能小于0
+																	- name: delivery_constraint
+																	  description: 必须满足客户交期
+十六、Simulation场景生成规则
+必须生成：
+What-if Scenario。
+场景类型：
+需求变化
+																	客户需求增加20%
+设备故障
+																	产线停机72小时
+供应风险
+																	关键材料减少50%
+产能扩建
+																	新增产线
+十七、Simulation结果规则
+每个Scenario必须输出：
+影响：
+																	订单影响
+																	产能影响
+																	成本影响
+																	库存影响
+																	交付影响
+十八、Decision Agent数据生成规则
+生成：
+系统发现的问题。
+例如：
+																	事件：
+																	客户订单无法满足
+																	原因：
+																	产能不足
+																	影响：
+																	延期15天
+																	建议：
+																	转移至基地B
+十九、Ontology关系要求
+最终形成：
+																	Demand
+																	 ↓
+																	Planning
+																	 ↓
+																	Production Schedule
+																	 ↓
+																	Capacity Resource
+																	Scenario
+																	 ↓
+																	Simulation
+																	 ↓
+																	Decision
+																	 ↓
+																	Action
+二十、数据质量验证规则
+生成后必须自动检查：
+主键检查
+																	所有ID唯一
+外键检查
+																	订单必须存在客户
+																	计划必须存在产品
+																	排程必须存在产线
+业务检查
+																	计划数量 &lt;= 产能
+																	库存 &gt;=0
+																	交期合理
+Solver检查
+必须验证：
+																	变量完整
+																	约束完整
+																	目标函数可计算
+二十一、输出格式
+生成：
+																	Decision_OS_EDS_Phase4_Decision_Optimization.xlsx
+要求：
+每个Sheet：
+字段完整 
+至少100条真实Sample 
+中文业务名称 
+时间连续 
+主外键完整 
+同时生成：
+																	validation_report.md
+																	solver_validation.md
+																	ontology_check.md
+二十二、数据扩写任务模板
+用于二次扩展：
+																	基于已有：
+																	Decision_OS_EDS_Phase4_Decision_Optimization.xlsx
+																	扩展100倍数据。
+																	要求：
+																	1. 保持所有主键唯一。
+																	2. 保持跨Phase1/2/3关系。
+																	3. 保持时间连续。
+																	4. 保持制造约束。
+																	5. 保证Solver可运行。
+																	6. 自动生成验证报告。
+																	输出：
+																	Excel + CSV + YAML + Validation Report
+Phase5 数据结构设计
+建议：
+30张Sheet + 1 Prompt
+																	Decision_OS_EDS_Phase5_Decision_Runtime
+																	├── 00_关系说明
+																	│
+																	├── Ontology Layer
+																	│
+																	├── 01_业务对象定义
+																	├── 02_对象属性定义
+																	├── 03_对象关系定义
+																	├── 04_对象生命周期
+																	├── 05_Ontology版本
+																	│
+																	├── Knowledge Graph Layer
+																	│
+																	├── 06_实体节点
+																	├── 07_实体关系边
+																	├── 08_知识事件
+																	├── 09_知识标签
+																	│
+																	├── Agent Layer
+																	│
+																	├── 10_Agent定义
+																	├── 11_Agent能力
+																	├── 12_Agent Prompt模板
+																	├── 13_Agent工具绑定
+																	├── 14_Agent执行记录
+																	│
+																	├── MCP Layer
+																	│
+																	├── 15_MCP服务注册
+																	├── 16_MCP工具定义
+																	├── 17_MCP输入Schema
+																	├── 18_MCP输出Schema
+																	│
+																	├── Skill Layer
+																	│
+																	├── 19_Skill定义
+																	├── 20_Skill流程
+																	├── 21_Skill参数
+																	│
+																	├── Workflow Layer
+																	│
+																	├── 22_业务流程
+																	├── 23_流程节点
+																	├── 24_流程事件
+																	│
+																	├── Decision Layer
+																	│
+																	├── 25_决策问题
+																	├── 26_决策方案
+																	├── 27_方案比较
+																	├── 28_执行动作
+																	│
+																	├── Learning Layer
+																	│
+																	├── 29_反馈结果
+																	├── 30_模型学习记录
+																	│
+																	└── 31_LLM扩写提示词
+Phase5提示词：
+你是一名世界级 Enterprise Decision OS 架构专家。
+你同时具备以下专业能力：
+1. Palantir Ontology 建模专家
+2. 企业知识图谱架构专家
+3. Multi-Agent系统架构专家
+4. MCP Tool Runtime设计专家
+5. 工业制造AI Agent专家
+6. Workflow Engine架构专家
+7. Decision Intelligence专家
+8. 制造业数字孪生专家
+你的任务：
+生成：
+Decision_OS_EDS_Phase5_Decision_Runtime
+企业智能决策运行时数据。
+目标：
+构建一个支持大型锂电制造企业的：
+Ontology
++
+Knowledge Graph
++
+Agent Runtime
++
+MCP Tool System
++
+Skill Framework
++
+Workflow Engine
++
+Decision Management
++
+Learning Loop
+的完整数据模型。
+该系统必须支持：
+- AI理解企业业务对象
+- AI查询企业状态
+- AI调用业务能力
+- AI执行模拟
+- AI调用Solver
+- AI生成决策方案
+- AI推动业务执行
+- AI根据反馈持续学习
+一、总体架构原则
+必须形成：
+																	Business Reality
+																	        ↓
+																	Ontology Model
+																	        ↓
+																	Knowledge Graph
+																	        ↓
+																	Agent Reasoning
+																	        ↓
+																	MCP Tool Calling
+																	        ↓
+																	Skill Execution
+																	        ↓
+																	Workflow Orchestration
+																	        ↓
+																	Decision Action
+																	        ↓
+																	Feedback Learning
+禁止生成：
+单纯Prompt集合 
+普通知识库 
+FAQ机器人 
+无业务对象关系Agent 
+二、Ontology生成规则（核心）
+Ontology必须描述企业真实世界。
+不是数据库表映射。
+必须生成：
+Object
+Property
+Relation
+Event
+Action
+Decision
+三、业务对象Object规则
+生成对象：
+至少包括：
+																	Enterprise
+																	Factory
+																	Workshop
+																	ProductionLine
+																	Equipment
+																	Product
+																	ProductVersion
+																	Material
+																	Supplier
+																	Customer
+																	Order
+																	ProductionOrder
+																	Inventory
+																	Capacity
+																	Demand
+																	Scenario
+																	Simulation
+																	Decision
+																	Action
+																	Agent
+每个Object必须包含：
+																	对象编号
+																	对象名称
+																	中文名称
+																	对象类型
+																	业务领域
+																	描述
+																	生命周期
+																	所属系统
+																	是否核心对象
+例如：
+Object:
+																	ProductionLine
+属性：
+																	line_id
+																	capacity
+																	status
+																	location
+																	product_capability
+四、Ontology Relation规则
+关系必须体现业务语义。
+禁止：
+																	table_a
+																	join
+																	table_b
+必须：
+																	Factory
+																	HAS
+																	ProductionLine
+必须生成：
+关系名称：
+例如：
+																	Factory
+																	|
+																	HAS_LINE
+																	|
+																	ProductionLine
+关系类型：
+																	belongs_to
+																	contains
+																	produces
+																	requires
+																	depends_on
+																	impacts
+																	optimizes
+																	controls
+五、Ontology闭环要求
+必须形成：
+制造链
+																	Factory
+																	↓
+																	ProductionLine
+																	↓
+																	Equipment
+																	↓
+																	Process
+																	↓
+																	Product
+产品链
+																	Product
+																	↓
+																	Version
+																	↓
+																	BOM
+																	↓
+																	Material
+																	↓
+																	Supplier
+决策链
+																	Problem
+																	↓
+																	Analysis
+																	↓
+																	Scenario
+																	↓
+																	Simulation
+																	↓
+																	Decision
+																	↓
+																	Action
+																	↓
+																	Result
+六、Knowledge Graph生成规则
+生成：
+Node节点
+必须包含：
+																	node_id
+																	node_type
+																	name
+																	properties
+																	source_system
+																	timestamp
+例如：
+																	{
+																	"id":"LINE001",
+																	"type":"ProductionLine",
+																	"name":"常州一号电芯线"
+																	}
+Edge关系
+必须包含：
+																	source
+																	relation
+																	target
+																	confidence
+																	valid_time
+例如：
+																	LINE001
+																	PRODUCES
+																	314Ah
+七、Agent生成规则
+Agent不是角色名称。
+Agent必须拥有：
+																	Goal
+																	Capability
+																	Tool
+																	Input
+																	Output
+																	Memory
+																	Workflow
+八、Agent类型要求
+至少生成：
+1. 产能分析Agent
+目标：
+分析：
+																	未来产能风险
+能力：
+																	Capacity Query
+																	Simulation
+																	Report
+2. APS排产Agent
+目标：
+																	生成优化排程
+工具：
+																	APS Solver MCP
+3. 供应风险Agent
+分析：
+																	材料供应
+																	库存风险
+																	交付风险
+4. CEO Decision Agent
+输入：
+																	经营问题
+输出：
+																	战略建议
+Agent Prompt模板规则
+每个Agent必须生成：
+																	System Prompt
+																	User Prompt
+																	Reasoning Rules
+																	Output Schema
+例如：
+																	System:
+																	你是锂电制造产能分析专家。
+																	任务：
+																	分析未来90天订单是否超过产能。
+																	输入：
+																	Factory
+																	Product
+																	Capacity
+																	输出：
+																	Risk
+																	Cause
+																	Recommendation
+十、MCP Tool规则
+MCP代表：
+Model Context Protocol。
+每个Tool必须定义：
+																	Tool Name
+																	Description
+																	Input Schema
+																	Output Schema
+																	Permission
+																	Related Skill
+至少生成：
+Capacity Query Tool
+功能：
+查询产能。
+Inventory Query Tool
+功能：
+查询库存。
+Solver Execute Tool
+功能：
+调用优化模型。
+Simulation Run Tool
+功能：
+执行What-if。
+Report Generator Tool
+功能：
+生成分析报告。
+十一、Skill规则
+Skill定义业务能力。
+不是代码。
+格式：
+																	Skill Name
+																	Purpose
+																	Input
+																	Process
+																	Tools
+																	Output
+至少：
+																	订单承诺分析Skill
+																	产能预测Skill
+																	库存优化Skill
+																	供应风险分析Skill
+																	生产调度优化Skill
+																	新产线投资模拟Skill
+十二、Workflow规则
+Workflow必须描述：
+业务闭环。
+例如：
+订单延期处理
+																	Trigger:
+																	订单无法满足
+																	Step1:
+																	查询订单
+																	Step2:
+																	分析库存
+																	Step3:
+																	调用Solver
+																	Step4:
+																	生成方案
+																	Step5:
+																	人工确认
+																	Step6:
+																	执行
+每个Workflow：
+必须包含：
+																	Workflow ID
+																	Trigger
+																	Input
+																	Steps
+																	Decision Point
+																	Action
+																	Output
+十三、Decision Object规则
+Decision是核心对象。
+必须定义：
+																	Decision ID
+																	Problem
+																	Context
+																	Impact
+																	Options
+																	Recommendation
+																	Confidence
+																	Execution Status
+例如：
+																	问题：
+																	客户订单延期
+																	原因：
+																	产能不足
+																	方案：
+																	跨基地调拨
+																	影响：
+																	成本增加5%
+十四、Simulation规则
+Scenario必须支持：
+需求变化
+																	订单增加30%
+设备故障
+																	产线停机72小时
+供应中断
+																	关键材料减少50%
+新建产线
+																	增加20GWh产能
+每个Simulation必须输出：
+																	Before
+																	After
+																	Impact
+																	Recommendation
+十五、Memory学习规则
+Agent必须支持：
+																	Experience Memory
+																	Decision History
+																	Feedback
+																	Outcome
+例如：
+历史决策：
+																	增加夜班
+																	结果：
+																	交付提升12%
+																	成本增加3%
+系统学习：
+																	类似情况优先推荐
+十六、数据验证规则
+生成完成必须检查：
+Ontology检查
+																	Object是否孤立
+																	Relation是否闭环
+																	核心对象是否可追踪
+Agent检查
+																	Agent是否有Tool
+																	Tool是否有Schema
+																	Skill是否可调用
+MCP检查
+																	Input合法
+																	Output明确
+																	权限定义完整
+Workflow检查
+																	Trigger存在
+																	Step完整
+																	Action明确
+十七、输出格式
+生成：
+																	Decision_OS_EDS_Phase5_Decision_Runtime.xlsx
+同时生成：
+																	ontology/
+																	objects.json
+																	relations.json
+																	neo4j/
+																	nodes.csv
+																	edges.csv
+																	agent/
+																	agents.yaml
+																	prompts/
+																	mcp/
+																	tools.yaml
+																	skills/
+																	skill_registry.yaml
+																	workflow/
+																	workflows.yaml
+																	validation/
+																	ontology_check.md
+																	agent_check.md
+																	runtime_check.md
+Phase 5数据扩写任务提示词
+用于扩大规模：
+																	基于已有：
+																	Decision_OS_EDS_Phase5_Decision_Runtime
+																	扩展100倍。
+																	要求：
+																	1. 增加Ontology对象数量。
+																	2. 增加Agent能力。
+																	3. 增加MCP工具。
+																	4. 增加Skill。
+																	5. 增加Workflow。
+																	6. 保持Ontology闭环。
+																	7. 保持Agent可执行。
+																	输出：
+																	Excel
+																	JSON
+																	YAML
+																	Graph数据
+																	Validation Report
+Phase5最终产物
+生成：
+																	Decision_OS_EDS_Phase5_Decision_Runtime.xlsx
+以及：
+																	ontology/
+																	 ├── objects.json
+																	 ├── relations.json
+																	neo4j/
+																	 ├── nodes.csv
+																	 ├── edges.csv
+																	agent/
+																	 ├── agents.yaml
+																	 ├── prompts/
+																	mcp/
+																	 ├── tools.yaml
+																	skills/
+																	 ├── skill_registry.yaml
+																	workflow/
+																	 ├── workflows.yaml
+Phase6：Decision OS Runtime Infrastructure Industrial
+定位
+建立：
+企业级 AI Decision Operating System 的 Runtime 基础设施数据模型。
+类似：
+Palantir AIP Runtime 
+Kubernetes Runtime 
+Agent Operating System 
+Enterprise AI Platform Layer 
+Phase6 数据结构设计
+建议：
+28张Sheet + 1 Prompt
+Decision_OS_EDS_Phase6_Runtime_Infrastructure
+├── 00_关系说明
+│
+├── Data Runtime Layer
+│
+├── 01_数据源注册
+├── 02_数据连接配置
+├── 03_数据同步任务
+├── 04_数据质量规则
+├── 05_数据血缘关系
+│
+├── Ontology Runtime Layer
+│
+├── 06_Ontology实例
+├── 07_Object Runtime状态
+├── 08_Property Runtime状态
+├── 09_Relation Runtime状态
+│
+├── Agent Runtime Layer
+│
+├── 10_Agent实例
+├── 11_Agent运行任务
+├── 12_Agent状态
+├── 13_Agent Memory
+├── 14_Agent Trace
+│
+├── MCP Runtime Layer
+│
+├── 15_MCP服务实例
+├── 16_MCP调用日志
+├── 17_MCP权限
+│
+├── Skill Runtime Layer
+│
+├── 18_Skill注册
+├── 19_Skill版本
+├── 20_Skill执行记录
+│
+├── Workflow Runtime Layer
+│
+├── 21_Workflow实例
+├── 22_Workflow执行日志
+├── 23_任务队列
+│
+├── Security Layer
+│
+├── 24_用户
+├── 25_角色权限
+├── 26_数据访问策略
+│
+├── Governance Layer
+│
+├── 27_审计日志
+├── 28_模型反馈
+│
+└── 29_LLM扩写提示词
+一、Data Runtime Layer
+01_数据源注册
+描述：
+企业数据从哪里来。
+数据源：
+ERP
+MES
+WMS
+PLM
+CRM
+IoT
+Excel
+API
+字段：
+数据源ID
+系统名称
+系统类型
+负责人
+状态
+更新时间
+02_数据连接配置
+例如：
+MES数据库
+PostgreSQL
+API Endpoint
+Kafka Topic
+字段：
+连接ID
+数据源
+协议
+认证方式
+状态
+03_数据同步任务
+定义：
+数据进入 Decision OS。
+例如：
+MES生产数据
+每5分钟同步
+字段：
+任务ID
+数据源
+目标对象
+同步频率
+状态
+二、Ontology Runtime Layer
+Phase5 定义 Ontology。
+Phase6 让 Ontology 运行。
+06_Ontology实例
+例如：
+对象：
+ProductionLine
+实例：
+LINE001
+LINE002
+字段：
+实例ID
+对象类型
+状态
+更新时间
+07_Object Runtime状态
+例如：
+产线：
+运行中
+停机
+维护
+08_Property Runtime状态
+动态属性：
+例如：
+ProductionLine:
+实时OEE
+当前订单
+当前负载
+09_Relation Runtime状态
+例如：
+实时：
+订单
+ASSIGNED_TO
+产线
+三、Agent Runtime Layer
+10_Agent实例
+定义运行中的Agent。
+例如：
+Capacity Agent-001
+字段：
+Agent ID
+Agent类型
+版本
+状态
+部署位置
+11_Agent运行任务
+例如：
+每天：
+08:00
+执行产能预测。
+字段：
+Task ID
+Agent
+触发时间
+输入
+输出
+12_Agent状态
+状态：
+Idle
+Running
+Waiting
+Failed
+13_Agent Memory
+记录：
+Agent经验。
+例如：
+历史订单延期案例
+14_Agent Trace
+非常关键。
+记录：
+Agent思考链路。
+例如：
+收到订单异常
+↓
+查询库存
+↓
+调用Solver
+↓
+生成方案
+四、MCP Runtime Layer
+15_MCP服务实例
+例如：
+APS Solver MCP
+Inventory MCP
+Simulation MCP
+16_MCP调用日志
+记录：
+每次调用。
+字段：
+调用ID
+工具
+输入
+输出
+耗时
+状态
+17_MCP权限
+控制：
+谁可以调用什么。
+五、Skill Runtime Layer
+18_Skill注册
+例如：
+订单承诺Skill
+产能预测Skill
+19_Skill版本
+支持：
+持续进化。
+例如：
+Capacity Skill V1
+Capacity Skill V2
+20_Skill执行记录
+记录：
+运行效果。
+六、Workflow Runtime Layer
+21_Workflow实例
+例如：
+订单延期处理流程。
+22_Workflow执行日志
+记录：
+每一步。
+23_任务队列
+Agent任务调度。
+七、安全治理层
+24_用户
+企业角色。
+例如：
+CEO
+计划经理
+生产经理
+供应链经理
+25_角色权限
+RBAC。
+26_数据访问策略
+例如：
+某基地经理：
+只能看自己基地。
+八、Governance Layer
+27_审计日志
+企业必须有。
+记录：
+谁
+什么时候
+调用什么
+修改什么
+28_模型反馈
+形成：
+AI Learning Loop。
+例如：
+Agent建议：
+增加产线。
+实际：
+效果提升8%。
+Phase6 Ontology关系
+最终：
+Data Source
+↓
+Data Pipeline
+↓
+Ontology Object
+↓
+Agent Runtime
+↓
+MCP Tool
+↓
+Skill
+↓
+Workflow
+↓
+Decision
+↓
+Action
+↓
+Feedback
+↓
+Learning
+Phase 6 System Prompt系统提示词
+你是一名世界级 Enterprise AI Operating System 架构专家。
+你同时具备：
+1. Palantir Foundry/AIP Runtime架构经验
+2. Kubernetes云原生平台架构经验
+3. Agent Runtime设计经验
+4. MCP Runtime设计经验
+5. 企业数据治理专家能力
+6. 工业数字孪生平台架构能力
+7. AI安全与权限治理经验
+8. 大规模制造系统架构经验
+你的任务：
+生成：
+Decision_OS_EDS_Phase6_Runtime_Infrastructure
+企业AI决策操作系统运行基础设施数据。
+目标：
+构建一个支持大型锂电制造企业的：
+Data Runtime
+Ontology Runtime
+Agent Runtime
+MCP Runtime
+Skill Runtime
+Workflow Runtime
+Security Governance
+Audit System
+Learning Loop
+的完整运行模型。
+该模型必须支持：
+- 实时数据接入
+- 对象状态更新
+- Agent自动执行
+- Tool调用
+- Workflow编排
+- 权限控制
+- 决策审计
+- AI持续优化
+一、总体架构要求
+必须形成完整Runtime闭环：
+Enterprise Data
+↓
+Data Pipeline
+↓
+Ontology Runtime
+↓
+Object State
+↓
+Agent Runtime
+↓
+MCP Tool Call
+↓
+Skill Execution
+↓
+Workflow
+↓
+Decision Action
+↓
+Audit
+↓
+Feedback Learning
+禁止生成：
+静态配置文件 
+单纯Agent列表 
+无运行状态模型 
+无调用链模型 
+二、数据规模要求
+模拟大型制造集团：
+企业:
+1
+基地:
+12
+系统:
+ERP/MES/WMS/PLM/CRM/IoT
+数据对象:
+1000+
+Ontology实例:
+100万+
+Agent:
+50-200
+Skill:
+200+
+MCP Tool:
+500+
+Workflow:
+1000+
+三、Data Runtime生成规则
+01_数据源注册
+必须覆盖：
+ERP
+MES
+WMS
+PLM
+CRM
+SCADA
+IoT
+APS
+SRM
+Excel
+API
+字段：
+数据源ID
+系统名称
+系统类型
+业务域
+数据负责人
+数据等级
+状态
+更新时间
+四、数据连接规则
+02_数据连接配置
+必须支持：
+Database
+API
+Kafka
+MQ
+File
+Streaming
+字段：
+连接ID
+数据源
+协议
+认证方式
+地址
+状态
+健康检查时间
+五、数据同步任务规则
+03_数据同步任务
+必须生成：
+实时 + 批处理。
+例如：
+MES：
+每5分钟
+ERP：
+每日凌晨
+字段：
+任务ID
+源对象
+目标Ontology对象
+同步频率
+执行状态
+失败次数
+六、数据质量规则
+04_数据质量规则
+必须包含：
+完整性
+唯一性
+准确性
+及时性
+一致性
+例如：
+rule:
+object:
+ProductionOrder
+check:
+order_id_not_null
+severity:
+HIGH
+七、数据血缘规则
+05_数据血缘关系
+必须描述：
+数据来源。
+例如：
+MES.production_order
+↓
+ProductionOrder Ontology
+↓
+APS Agent
+↓
+Decision Report
+字段：
+来源对象
+目标对象
+转换规则
+更新时间
+八、Ontology Runtime规则
+06_Ontology实例
+必须生成真实实例。
+例如：
+Object:
+ProductionLine
+实例：
+LINE001
+LINE002
+字段：
+实例ID
+对象类型
+当前状态
+所属领域
+创建时间
+更新时间
+九、Object Runtime状态
+每个对象必须支持动态状态。
+例如：
+ProductionLine:
+RUNNING
+STOPPED
+MAINTENANCE
+WARNING
+字段：
+对象ID
+状态
+状态时间
+来源
+置信度
+十、Property Runtime规则
+动态属性：
+例如：
+设备：
+temperature
+oee
+energy_consumption
+产线：
+current_load
+queue_length
+capacity_usage
+字段：
+对象
+属性
+值
+单位
+时间戳
+十一、Relation Runtime规则
+关系也可以动态变化。
+例如：
+订单分配：
+Order001
+ASSIGNED_TO
+Line003
+字段：
+源对象
+关系
+目标对象
+有效时间
+状态
+十二、Agent Runtime规则
+Agent实例
+必须包含：
+Agent ID
+Agent名称
+Agent类型
+版本
+状态
+部署环境
+负责人
+十三、Agent任务规则
+生成：
+Agent执行任务。
+例如：
+每天8点：
+Capacity Agent
+执行未来90天产能预测
+字段：
+任务ID
+Agent
+触发方式
+开始时间
+结束时间
+结果
+十四、Agent Memory规则
+必须支持：
+长期学习。
+Memory类型：
+Knowledge Memory
+企业知识。
+Experience Memory
+历史决策。
+Feedback Memory
+结果反馈。
+字段：
+Memory ID
+类型
+内容
+来源
+时间
+权重
+十五、Agent Trace规则（重点）
+必须记录完整执行路径。
+例如：
+用户:
+分析订单延期
+Agent:
+查询订单
+↓
+调用库存MCP
+↓
+调用产能MCP
+↓
+调用Solver
+↓
+生成方案
+字段：
+Trace ID
+Agent
+步骤编号
+Action
+Tool
+Input
+Output
+耗时
+十六、MCP Runtime规则
+MCP服务注册
+至少：
+Inventory MCP
+Capacity MCP
+APS Solver MCP
+Simulation MCP
+Report MCP
+Knowledge MCP
+字段：
+MCP ID
+服务名称
+版本
+地址
+状态
+权限
+十七、MCP调用日志
+每次调用必须记录：
+字段：
+调用ID
+调用Agent
+Tool名称
+输入参数
+输出结果
+耗时
+状态
+十八、Skill Runtime规则
+Skill必须：
+可注册、可执行、可版本管理。
+字段：
+Skill ID
+名称
+版本
+输入
+输出
+依赖Tool
+状态
+十九、Workflow Runtime规则
+Workflow必须支持：
+事件驱动。
+例如：
+订单异常：
+Trigger:
+Order Delay
+Step1:
+分析原因
+Step2:
+模拟方案
+Step3:
+生成建议
+Step4:
+人工审批
+Step5:
+执行
+字段：
+Workflow ID
+实例ID
+状态
+当前节点
+执行时间
+二十、安全治理规则
+用户
+角色：
+CEO
+供应链总监
+生产经理
+计划员
+工程师
+权限模型
+支持：
+RBAC + Object Level Security。
+例如：
+基地经理：
+只能访问：
+Factory_A
+二十一、审计规则
+所有：
+Agent
+MCP
+Workflow
+Decision
+Action
+必须可审计。
+字段：
+用户
+时间
+操作
+对象
+结果
+二十二、Learning Loop规则
+生成：
+AI反馈闭环。
+例如：
+Agent建议：
+调整生产计划
+执行结果：
+交付提升8%
+学习：
+未来类似问题提高推荐权重
+二十三、Runtime验证规则
+生成后自动检查：
+数据Runtime
+检查：
+数据源是否有效
+同步任务是否完整
+Agent Runtime
+检查：
+Agent是否有Memory
+Agent是否有Tool
+Agent是否有Trace
+MCP Runtime
+检查：
+Tool Schema完整
+输入输出匹配
+权限存在
+Workflow Runtime
+检查：
+Trigger存在
+节点完整
+Action存在
+二十四、输出格式
+生成：
+Decision_OS_EDS_Phase6_Runtime_Infrastructure.xlsx
+同时生成：
+runtime/
+agents_runtime.json
+mcp_runtime.yaml
+workflow_runtime.yaml
+ontology_runtime/
+objects_instance.csv
+relations_instance.csv
+governance/
+permission.csv
+audit_log.csv
+validation/
+runtime_check.md
+security_check.md
+agent_trace_check.md
+二十五、数据扩写Prompt
+用于扩大数据：
+基于：
+Decision_OS_EDS_Phase6_Runtime_Infrastructure
+扩展100倍。
+要求：
+1. 增加Ontology实例。
+2. 增加Agent运行任务。
+3. 增加MCP调用记录。
+4. 增加Workflow执行历史。
+5. 增加Audit数据。
+6. 保持所有Runtime状态一致。
+7. 保持跨Phase1-5关联。
+输出：
+Excel
+JSON
+YAML
+CSV
+Validation Report
