@@ -8483,15 +8483,17 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T18:02:46.993Z",
-        "wip": "2026-07-12T11:32:06.035Z"
+        "wip": "2026-07-12T11:32:06.035Z",
+        "built": "2026-07-12T12:03:58.923Z"
       },
       "id": "WO-SA-3",
       "title": "新增 Workshop 车间层对象类型(Factory→Workshop→Line·工艺粒度)",
-      "note": "[独立一期·三者最重·动合成主循环·datacore·通用非电池专属] 新workshopProps+plain(“Workshop”)@:739 + workshop_belongs_to_base/line_belongs_to_workshop两链路 + :1654合成。撞双向对齐门最硬(唯一新增可实例化类型)。守R6+R2租户隔离+R13溯源。范围红线:仅battery.ts。回写母体§2(新类型)+§3(两链路)+ontology:slices。施工单§4。"
+      "note": "[独立一期·三者最重·动合成主循环·datacore·通用非电池专属] 新workshopProps+plain(“Workshop”)@:739 + workshop_belongs_to_base/line_belongs_to_workshop两链路 + :1654合成。撞双向对齐门最硬(唯一新增可实例化类型)。守R6+R2租户隔离+R13溯源。范围红线:仅battery.ts。回写母体§2(新类型)+§3(两链路)+ontology:slices。施工单§4。",
+      "blockReason": ""
     },
     {
       "priority": "P3",
@@ -8764,10 +8766,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
-      "id": "WO-RC1-CLOSURE-SCOPE",
-      "at": "2026-07-12T11:44:15.014Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SA-3",
+      "at": "2026-07-12T12:03:58.923Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
