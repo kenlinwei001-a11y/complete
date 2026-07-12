@@ -7342,13 +7342,14 @@
     },
     {
       "at": {
-        "wip": "2026-07-12T12:22:42.638Z"
+        "wip": "2026-07-12T12:22:42.638Z",
+        "built": "2026-07-12T12:31:25.363Z"
       },
       "id": "WO-SWEEP-01-SCENE-SEED",
       "title": "种子完整性:6场景(S05/S12/S13/S14/S17/S19)缺defaultAgent→断链不可启动",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "[改派Dev-2·Lane B卡L1A-3期间的不阻塞填充·场景种子seed·backend·与spine/sandbox文件不撞] 复验agent a3251764真跑:42 PUBLISHED场景中6个AGENT_FIRST缺defaultAgent→启动器断链、启动按钮已诚实禁用(非死链非假值)。demo这6卡不可用。",
@@ -7368,7 +7369,8 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方扫描出单·dev建·reviewer复验。"
       },
-      "assignedDev": "dev2"
+      "assignedDev": "dev2",
+      "blockReason": ""
     },
     {
       "at": {
@@ -8771,9 +8773,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "WO-SWEEP-03-NAV-GROUP",
-      "at": "2026-07-12T12:22:42.759Z"
+      "cmd": "BUILT",
+      "id": "WO-SWEEP-01-SCENE-SEED",
+      "at": "2026-07-12T12:31:25.363Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
