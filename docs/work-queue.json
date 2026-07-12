@@ -8710,13 +8710,16 @@
         "WO-CAPSIM-IA-UNIFY"
       ],
       "doc": "docs/WO-SANDBOX-READINESS-UX.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "reviewer-exec",
       "at": {
-        "created": "2026-07-11T19:55:51.326Z"
+        "created": "2026-07-11T19:55:51.326Z",
+        "wip": "2026-07-12",
+        "built": "2026-07-12"
       },
       "title": "就绪认证进看板信任条+抽屉(并入CAPSIM§5·非独立页):看板顶一行信任条+[查看完整体检]抽屉(L0-L4/三雷达进抽屉·守RL3不动投影)",
-      "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】"
+      "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】",
+      "acceptance": "审核方亲建(执行者·CAPSIM§5)：看板顶一行信任条(就绪结论派生自本推演真confidence三维+无源缺件数·非写死)+[查看完整体检]抽屉(三维置信度真实↔合成/新鲜↔陈旧/实测↔估算逐维+缺件清单§4②诚实列无源基地×因素+进沙盘看完整L0-L4会话级cert说明)。守RC-UX-DOOR-TEXT:合成世界=「未校准·可试跑·结论仅供参考」不劝退。cert会话级(session-bound)不在board伪造session·归沙盘下钻。全前端597/597绿·typecheck/lint净·真浏览器复验(截图)。"
     },
     {
       "id": "WO-DATAMODE-UNIFY-PROVENANCE",

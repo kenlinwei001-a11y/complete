@@ -107,6 +107,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   // 交互态（HTML §12）：H=推演窗口 30/60/90 天；openBase=内联展开的基地（非 modal·§3 openRiskCard）。
   const [horizon, setHorizon] = useState(30);
   const [riskTab, setRiskTab] = useState<"risk" | "order">("risk"); // HTML §12#2：瓶颈视角 / 订单聚合 两态互斥。
+  const [trustOpen, setTrustOpen] = useState(false); // WO-SANDBOX-READINESS-UX（CAPSIM §5）：[查看完整体检] 抽屉。
   const [openBase, setOpenBase] = useState<string | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
 
@@ -194,6 +195,11 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           <span style={{ color: "var(--muted2)" }}>· 看板已裁剪到该基地推演（{scopedCards.length} 张卡）</span>
         </div>
       )}
+
+      {/* WO-SANDBOX-READINESS-UX（CAPSIM §5·看板顶一行信任条 + [查看完整体检] 抽屉）：
+          就绪结论派生自本推演真置信度（confidence 三维 + 无源缺件数）·非独立沙盘页·守 RC-UX-DOOR-TEXT
+          「未校准≠不可用·可试跑·结论仅供参考」诚实文案。 */}
+      <ReadinessTrustBar confidence={data.confidence} dataMode={data.dataMode} noSourceCount={data.cards.filter((c) => c.hasData === false).length} onOpen={() => setTrustOpen(true)} />
 
       {/* rk-top：标题 + 视角/窗口 chip（HTML §2）。瓶颈视角为主态；30/60/90 天切窗口重算 risk_timeline。 */}
       <div className={styles.rkTop}>
@@ -421,6 +427,11 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
       {/* 历史处置案例 + 风险推演编排过程 DAG（保留·看板下半区·两态共享）。 */}
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
+
+      {/* WO-SANDBOX-READINESS-UX：[查看完整体检] 抽屉（三维置信度 + 缺件清单 §4② + 进沙盘看完整 L0-L4 认证）。 */}
+      {trustOpen && (
+        <ReadinessDrawer confidence={data.confidence} dataMode={data.dataMode} noSourceCards={data.cards.filter((c) => c.hasData === false)} canWhatIf={canWhatIf} onClose={() => setTrustOpen(false)} />
+      )}
     </div>
   );
 }
@@ -589,6 +600,96 @@ function RkK({ testId, value, label, color }: { testId: string; value: string; l
     <div className={styles.rkK} data-testid={testId}>
       <b style={{ color }} data-testid={`${testId}-value`}>{value}</b>
       <span>{label}</span>
+    </div>
+  );
+}
+
+type Conf = RiskTimelineOutput["confidence"];
+
+/**
+ * 就绪结论（WO-SANDBOX-READINESS-UX·派生自本推演真置信度·零写死）：
+ * RC-UX-DOOR-TEXT 诚实文案——「未校准 ≠ 不可用」，合成世界也可试跑，结论仅供参考。
+ */
+function readinessVerdict(confidence: Conf, dataMode?: string | null): { tone: "ok" | "warn"; label: string; sub: string } {
+  const synthetic = confidence?.synthetic === true || dataMode === "SYNTHETIC";
+  const meas = confidence?.measurement;
+  const stale = confidence?.stale === true;
+  if (synthetic) return { tone: "warn", label: "未校准 · 可试跑", sub: "合成决策世界（未接真实数据）——推演可跑，结论仅供参考；接真数据后转为可决策。" };
+  if (meas === "MOCK" || meas === "PARTIAL") return { tone: "warn", label: "部分实测 · 谨慎决策", sub: "真实接入，但部分因素为估算（非全实测）——决策前留意估算项。" };
+  if (stale) return { tone: "warn", label: "鲜度告警 · 可决策", sub: `真实实测，但关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}——留意时效。` };
+  return { tone: "ok", label: "就绪 · 可决策", sub: "真实接入 · 实测活体 · 新鲜——本推演结论可直接进决策。" };
+}
+
+/** 看板顶一行信任条（HTML §5·CAPSIM 唯一 surface 顶）：就绪结论 + 缺源徽标 + [查看完整体检]。 */
+function ReadinessTrustBar({ confidence, dataMode, noSourceCount, onOpen }: { confidence: Conf; dataMode?: string | null; noSourceCount: number; onOpen: () => void }) {
+  const v = readinessVerdict(confidence, dataMode);
+  const color = v.tone === "ok" ? "var(--ok)" : "var(--warn)";
+  return (
+    <div className={styles.trustBar} data-testid="risk-trust-bar" data-tone={v.tone}>
+      <span className={styles.trustDot} style={{ background: color }} />
+      <b data-testid="risk-trust-verdict" style={{ color, fontSize: 12.5, whiteSpace: "nowrap" }}>{v.label}</b>
+      <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{v.sub}</span>
+      {noSourceCount > 0 && (
+        <span className="badge" data-testid="risk-trust-gaps" style={{ background: "rgba(232,181,74,.14)", color: "var(--warn)", fontSize: 10, whiteSpace: "nowrap" }}>缺 {noSourceCount} 源</span>
+      )}
+      <button className={styles.tierChip} data-testid="risk-trust-open" style={{ marginLeft: "auto", whiteSpace: "nowrap" }} onClick={onOpen}>查看完整体检 →</button>
+    </div>
+  );
+}
+
+/** [查看完整体检] 抽屉：三维置信度 + 缺件清单（§4②）+ 进沙盘看完整 L0-L4 就绪认证（session 级 cert 的真归属地）。 */
+function ReadinessDrawer({ confidence, dataMode, noSourceCards, canWhatIf, onClose }: { confidence: Conf; dataMode?: string | null; noSourceCards: RiskCard[]; canWhatIf: boolean; onClose: () => void }) {
+  const v = readinessVerdict(confidence, dataMode);
+  const synthetic = confidence?.synthetic === true || dataMode === "SYNTHETIC";
+  const stale = confidence?.stale === true;
+  const meas = confidence?.measurement ?? (dataMode === "LIVE" ? "LIVE" : "MOCK");
+  const dims: { label: string; good: boolean; text: string }[] = [
+    { label: "真实 ↔ 合成", good: !synthetic, text: synthetic ? "合成数据（非真实接入）" : "真实接入" },
+    { label: "新鲜 ↔ 陈旧", good: !stale, text: stale ? `关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}${(confidence?.staleSources ?? []).length ? `（${(confidence!.staleSources ?? []).join("、")}）` : ""}` : "关键源新鲜" },
+    { label: "实测 ↔ 估算", good: meas === "LIVE", text: meas === "LIVE" ? "实测活体" : meas === "PARTIAL" ? "部分实测·部分估算" : "启发估算（无实测）" },
+  ];
+  return (
+    <div className={styles.drawerScrim} data-testid="risk-trust-drawer" role="dialog" aria-label="完整体检" onClick={onClose}>
+      <div className={styles.drawer} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.drawerHead}>
+          <b style={{ fontSize: 14 }}>完整体检 · 就绪认证</b>
+          <button className={styles.tierChip} data-testid="risk-trust-close" onClick={onClose}>✕ 关闭</button>
+        </div>
+        {/* 就绪结论 */}
+        <div style={{ padding: "8px 10px", borderRadius: 8, marginBottom: 12, background: "rgba(226,235,245,.04)", borderLeft: `3px solid ${v.tone === "ok" ? "var(--ok)" : "var(--warn)"}` }}>
+          <b data-testid="drawer-verdict" style={{ color: v.tone === "ok" ? "var(--ok)" : "var(--warn)", fontSize: 13 }}>{v.label}</b>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>{v.sub}</div>
+        </div>
+        {/* 三维置信度（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）·派生自 risk_timeline confidence 真值。 */}
+        <div className="section-title" style={{ fontSize: 12 }}>置信度三维（本推演真值）</div>
+        <div data-testid="drawer-confidence" style={{ display: "grid", gap: 6, margin: "6px 0 14px" }}>
+          {dims.map((d) => (
+            <div key={d.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: d.good ? "var(--ok)" : "var(--warn)", flex: "none" }} />
+              <b style={{ width: 88, flex: "none", color: "var(--muted)" }}>{d.label}</b>
+              <span style={{ color: d.good ? "var(--txt)" : "var(--warn)" }}>{d.text}</span>
+            </div>
+          ))}
+        </div>
+        {/* 缺件清单（WO §4②·诚实不静默）：本推演无真实数据源的基地×因素。 */}
+        <div className="section-title" style={{ fontSize: 12 }}>缺件清单（无真实数据源·{noSourceCards.length}）</div>
+        {noSourceCards.length > 0 ? (
+          <ul data-testid="drawer-gaps" style={{ margin: "6px 0 14px", paddingLeft: 18 }}>
+            {noSourceCards.map((c) => (
+              <li key={c.base} data-testid={`drawer-gap-${c.base}`} style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>
+                <b className="mono" style={{ color: "var(--txt)" }}>{c.base} · {c.factor}</b> — {c.noDataReason ?? "无真实测量数据源"}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div data-testid="drawer-gaps-empty" style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0 14px" }}>✓ 无缺件——所有在场基地×因素均有真实数据源。</div>
+        )}
+        {/* 完整 L0-L4 会话级就绪认证的真归属地 = 推演沙盘（cert 为 session-bound·此处不伪造 session）。 */}
+        <div style={{ fontSize: 11.5, color: "var(--muted2)", lineHeight: 1.6, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+          完整 L0–L4 认证台阶 / 三雷达（结构·知识·行为）/ Trial Tick 为**会话级**指标——就此风险
+          {canWhatIf ? "「开推演对策」进沙盘下钻态即见该会话完整就绪认证。" : "开通推演沙盘（sim.sandbox）后进下钻态即见完整会话就绪认证。"}
+        </div>
+      </div>
     </div>
   );
 }
