@@ -35,12 +35,12 @@ type NavItemRef = { kind: "view" | "admin"; key: string };
 // 故前端过滤退役键防其漏入「其它」兜底组；旧深链 /v/geo-map 由 App.tsx tombstone 302→/v/risk
 // （产能推演·承接 GeoMap 原「查看风险」CTA），非白屏死链。
 const RETIRED_VIEW_KEYS = new Set<string>(["geo-map"]);
-// WO-NAV-SANDBOX：游离的 sim-sandbox/sim-init 特殊 nav 项并入「推演」组（不再单列于 nav 末尾）；
-// 仍受 sim.sandbox entitlement 门控显隐（R3 不破，SimSandboxGuard 路由守卫不动）。extra 渲染槽承载它们。
-const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[]; extra?: "sim-sandbox" }[] = [
+// WO-CAPSIM-IA-UNIFY（M1·唯一推演 surface 收敛）：删「推演沙盘/推演初始化向导」游离 nav 项——沙盘退役为
+// 「产能推演看板下钻态」（§5·非独立导航/路由）。原 extra:"sim-sandbox" 渲染槽 + simSandboxLinks 一并移除（无死码）。
+const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })), extra: "sim-sandbox" },
+  { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
   // NAV-DROP-LEDGER-MAP：「台账与地图」组（仅基地地理视图 geo-map）已退役删除（订单台账早移入「数据」组）。geo-map 见 RETIRED_VIEW_KEYS 过滤 + App.tsx tombstone。
   // WO-NAV-DATA：「数据接入」→「数据」；移入 order（订单台账，从台账与地图）+ data-builder（数据构建发动机，从构建与成长）。
   { title: "数据", items: [
@@ -80,7 +80,7 @@ type AdminPage = { path: string; label: string };
  * 统一域分组导航（N1）：视图项 + 管理页合一套域分组渲染。view 项查 workspace.navigation（命中且可见）、
  * admin 项查 visibleAdminPages（角色命中）；空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
  */
-function UnifiedNav({ views, adminPages, simSandboxOn }: { views: NavItemVM[]; adminPages: AdminPage[]; simSandboxOn: boolean }) {
+function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: AdminPage[] }) {
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
@@ -101,11 +101,6 @@ function UnifiedNav({ views, adminPages, simSandboxOn }: { views: NavItemVM[]; a
         return <AdminItemLink key={`a:${ref.key}`} page={p} />;
       })
       .filter((x): x is JSX.Element => !!x);
-    // WO-NAV-SANDBOX：推演组的 extra 渲染槽——sim.sandbox entitlement 开通时把沙盘/初始化项并入本组。
-    // 关 entitlement → 不渲染（R3 不破，与原游离项同门控）。
-    if (g.extra === "sim-sandbox" && simSandboxOn) {
-      links.push(...simSandboxLinks());
-    }
     return { title: g.title, collapsed: g.collapsed, links };
   }).filter((g) => g.links.length > 0);
 
@@ -131,33 +126,6 @@ function UnifiedNav({ views, adminPages, simSandboxOn }: { views: NavItemVM[]; a
   );
 }
 
-/**
- * WO-NAV-SANDBOX：推演沙盘 / 推演初始化向导特殊项（暗发）。原为 nav 末尾游离项，现并入「推演」组。
- * 仅 sim.sandbox entitlement 开通时由 UnifiedNav 渲染；关 entitlement → 不出现（R3，瞬时回退）。
- * 路由仍由 SimSandboxGuard/SimInitGuard 守卫（App.tsx），本处仅入口归位。
- */
-function simSandboxLinks(): JSX.Element[] {
-  return [
-    <NavLink
-      key="sim-sandbox"
-      to="/v/sim-sandbox"
-      data-testid="nav-sim-sandbox"
-      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-    >
-      <span className={styles.dot} />
-      推演沙盘
-    </NavLink>,
-    <NavLink
-      key="sim-init"
-      to="/v/sim-init"
-      data-testid="nav-sim-init"
-      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-    >
-      <span className={styles.dot} />
-      推演初始化向导
-    </NavLink>,
-  ];
-}
 
 function NavItemLink({ item }: { item: NavItemVM }) {
   return (
@@ -300,11 +268,10 @@ export default function ShellLayout() {
         </NavLink>
         {/* N1 统一域分组：视图 + 管理页合一套域分组（配置驱动 R14）；逐项按角色/entitlement 过滤；空组隐藏；折叠记忆。 */}
         <nav className={styles.group} data-testid="nav-business">
-          {/* WO-NAV-SANDBOX：sim-sandbox/sim-init 不再游离于此——经 simSandboxOn 并入「推演」组（仍 sim.sandbox 门控）。 */}
+          {/* WO-CAPSIM-IA-UNIFY（M1）：推演沙盘/初始化向导已退役出左导航（沙盘=产能推演看板下钻态·非独立导航）。 */}
           <UnifiedNav
             views={workspace.navigation.filter((item) => item.group !== "admin" && !RETIRED_VIEW_KEYS.has(item.viewKey ?? item.key))}
             adminPages={adminPages}
-            simSandboxOn={featureOn(workspace, "sim.sandbox")}
           />
         </nav>
       </aside>

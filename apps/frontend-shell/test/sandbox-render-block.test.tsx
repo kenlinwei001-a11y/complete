@@ -71,7 +71,7 @@ describe("sandbox_render 答案块 · 答案先行 + 打开沙盘（scenarioPres
     expect(preset!.slotPresets.delta).toBe(20);
     // simRequest 全量随行（下游按需消费）
     expect((preset!.slotPresets.simRequest as SimulationRequest).horizonTicks).toBe(21);
-    expect(navigateMock).toHaveBeenCalledWith("/v/sim-sandbox");
+    expect(navigateMock).toHaveBeenCalledWith("/v/sim-sandbox?from=dialogue"); // WO-CAPSIM-IA-UNIFY：对话下钻携参→渲染沙盘下钻态（裸访问才 302 产能推演）
   });
 
   it("§5.3 followUp 追问块 → 按钮变「分支对比推演」+ preset 携 followUp（沙盘据此 auto-分支）", async () => {

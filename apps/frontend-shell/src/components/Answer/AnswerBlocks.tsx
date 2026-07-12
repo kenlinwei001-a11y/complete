@@ -214,7 +214,7 @@ export function SandboxRenderBlock({ request, headline, followUp }: { request: S
       label: headline,
       nonce: crypto.randomUUID(),
     });
-    navigate("/v/sim-sandbox");
+    navigate("/v/sim-sandbox?from=dialogue"); // WO-CAPSIM-IA-UNIFY：携 drill 参→渲染沙盘下钻态（裸访问才 302 收敛产能推演）
   };
   return (
     <div className={styles.draft} data-testid="sandbox-render">

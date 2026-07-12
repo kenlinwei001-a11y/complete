@@ -160,7 +160,7 @@ export default function SimInitWizard({ injectedConfig }: SimInitWizardProps = {
   // 完成 → 跳沙盘主屏（SPA 内导航，保内存态 JWT）。
   const onEnter = useCallback(() => {
     setEntering(true);
-    navigate("/v/sim-sandbox");
+    navigate("/v/sim-sandbox?from=init"); // WO-CAPSIM-IA-UNIFY：携 drill 参→渲染沙盘下钻态（裸访问才 302 收敛产能推演）
   }, [navigate]);
 
   const enteringList = precheck?.worldCompleteness.entering ?? [];

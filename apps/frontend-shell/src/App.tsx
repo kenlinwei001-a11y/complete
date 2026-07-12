@@ -4,6 +4,7 @@ import {
   createMemoryRouter,
   Navigate,
   RouterProvider,
+  useSearchParams,
   type RouteObject,
 } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -115,7 +116,12 @@ export const RETIRED_GRAPH_VIEW_KEYS: readonly string[] = [
  */
 function SimSandboxGuard() {
   const { data: workspace } = useWorkspace();
+  const [searchParams] = useSearchParams();
   if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
+  // WO-CAPSIM-IA-UNIFY（M1）：沙盘退役为「产能推演看板下钻态」（§5·非独立导航/路由）。
+  // **裸访问**（无任何 scope/drill 参数）→ 302 收敛到唯一 surface = 产能推演（/v/risk·先于 entitlement·无独立沙盘页）；
+  // **下钻访问**（openWhatIf ?whatif=·对话 ?from=dialogue·向导 ?from=init 等携参）→ 经 entitlement 门后渲染沙盘（下钻态·推演能力不丢）。
+  if ([...searchParams.keys()].length === 0) return <Navigate to="/v/risk" replace />;
   const features = workspace.features;
   if (features && !features.includes("sim.sandbox")) return <NotFoundPage />;
   return lazyWrap(<SandboxView />);

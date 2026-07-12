@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { screen, within, waitFor } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
@@ -37,8 +37,8 @@ describe("WO-NAV-DATA / WO-NAV-SANDBOX · 导航 IA 重组", () => {
     expect(within(nav).queryByTestId("nav-sim-init")).not.toBeInTheDocument();
   });
 
-  it("WO-NAV-SANDBOX：sim.sandbox 开 → 沙盘/初始化项出现在「推演」组内（并入·非游离）", async () => {
-    // 经 server.use 给 workspace.features 注入 sim.sandbox（entitlement 开通）
+  it("WO-CAPSIM-IA-UNIFY（M1）：sim.sandbox **开** 也不再有「推演沙盘/初始化」左导航项——沙盘退役为产能推演看板下钻态（§5·唯一 surface·非独立导航）", async () => {
+    // 经 server.use 给 workspace.features 注入 sim.sandbox（entitlement 开通）——证退役与 entitlement 无关（IA 收敛）。
     server.use(
       http.get("*/a/v1/me/workspace", ({ request }) => {
         const account = accountFromAuth(request.headers.get("authorization")) ?? ACCOUNTS[0]!;
@@ -50,10 +50,12 @@ describe("WO-NAV-DATA / WO-NAV-SANDBOX · 导航 IA 重组", () => {
     renderApp("/v/dash");
     const nav = await screen.findByTestId("nav-business");
     const tuiyan = await within(nav).findByTestId("nav-group-推演");
-    // 沙盘项并入「推演」组内（非游离于 nav 末尾）
-    await waitFor(() => expect(within(tuiyan).getByTestId("nav-sim-sandbox")).toBeInTheDocument());
-    expect(within(tuiyan).getByTestId("nav-sim-init")).toBeInTheDocument();
-    expect(within(tuiyan).getByText("推演沙盘")).toBeInTheDocument();
-    expect(within(tuiyan).getByText("推演初始化向导")).toBeInTheDocument();
+    // 推演组仍在（project-sim/risk/order-chain）但**无沙盘/初始化叶项**（left-nav 无「推演沙盘」·green→red 验收①）。
+    expect(within(nav).queryByTestId("nav-sim-sandbox")).not.toBeInTheDocument();
+    expect(within(nav).queryByTestId("nav-sim-init")).not.toBeInTheDocument();
+    expect(within(tuiyan).queryByText("推演沙盘")).not.toBeInTheDocument();
+    expect(within(tuiyan).queryByText("推演初始化向导")).not.toBeInTheDocument();
+    // 唯一 surface = 产能推演（risk）仍在推演组内
+    expect(within(tuiyan).getByText("产能推演")).toBeInTheDocument();
   });
 });
