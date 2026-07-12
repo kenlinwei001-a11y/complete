@@ -8725,12 +8725,15 @@
       "owner": "",
       "at": {
         "created": "2026-07-11T20:15:35.072Z",
-        "ruled": "2026-07-12T01:12:53.361Z"
+        "ruled": "2026-07-12T01:12:53.361Z",
+        "assigned": "2026-07-12T02:01:26.334Z"
       },
       "title": "统一dataMode真值判据为isSyntheticDecision语义(治合成materialized冒充LIVE根·G4/S2-BE/CAPFORECAST三BLOCK同源)",
       "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。 【G4重验一手·精确修点】根=demandCapacityTightness(risk.ts:210-212)对任何DemandSegment返live:true/source:LIVE从不看provenance;连带cardDataMode(risk.ts:522)·capacity.ts:258行级live·RiskBoardView.tsx:138 cardDecisionMode(if dataMode==LIVE→LIVE·UI把合成卡当决策LIVE染红)。修=把isSyntheticDecision语义(origin SYNTHETIC||MATERIALIZED&&synthDatasetIds)下沉到卡/行级:底层DemandSegment/对象为合成物化(非真导入)时须source=SYNTHETIC+currentTightness.live=false。⚠CAPSIM前置:CAPSIM施工单§2假设risk.ts demandCapacityTightness『已真·治G-DM-1』实则卡级dataMode不honor合成物化→CAPSIM-REPLICA接risk_timeline会继承此BUG·本单须先于CAPSIM像素复刻的KILL-MOCK-RED验收(否则复刻页demo仍出合成假LIVE红·§7绿→red门反被违)。补运行期真HTTP provenance测试(现全绿门是静态扫描·漏运行期卡dataMode真BUG)。 【CAPSIM统一·2026-07-12用户确认排序】用户确认排序:本单=第一优先(DATAMODE-UNIFY→CAPSIM→退役SandboxView)。CAPSIM-REPLICA的§7 KILL-MOCK-RED验收硬前置。",
       "dev4Diagnostic": "[dev4-import 探路诊断·2026-07-12·未认领(超出import lane文件域·跨WO语义决策)] 尝试 tenant级 isSyntheticDecision→SolverContext.syntheticDecision→gate liveTightness source(212/229)+currentTightness.live 后:破6测(solvers.test V5/V5b/V5d + wo-cap-01 C1 + WO-FRESHNESS①/①b)。关键发现:系统已把 dataMode 拆成**两正交维**——①provenance(confidence.synthetic·isSyntheticDecision·demo已SYNTHETIC)②measurement-liveness(risk卡source LIVE/SYNTHETIC·读真OEE/util实测即LIVE即便合成种子)。WO-FRESHNESS① line565 断言 confidence.measurement===LIVE(合成种子但读实测→measurement维仍LIVE)·dataMode(头条)===SYNTHETIC(取最审慎)已成立。**naive 翻 lt.source 会污染 measurement 维**(破①b真实翻转+CAP-01 C1)·是错层。正解方向(未实现):卡级/前端 cardDecisionMode(RiskBoardView:138)决策红应 gate 在 provenance(confidence.synthetic)AND measurement(dataMode==LIVE)双维·而非只看 card.dataMode或只翻 source——即『决策级染红=真provenance且真实测』·不动 measurement 维语义。且与 WO-CAP-01『DemandSegment=真供需LIVE』设计直接冲突(C1断言LIVE)·需与CAP-01 owner协调裁决『合成种子DemandSegment算LIVE还是SYNTHETIC』。属后端/求解器lane系统性WO·非import lane。",
-      "reviewerRuling": "[审核方裁决·采纳dev4双维诊断·2026-07-12] dev4探路证明「下沉isSyntheticDecision到lt.source」是错层(污染measurement维·破CAP-01 C1+FRESHNESS①b共6测)。系统dataMode实为两正交维:①provenance(confidence.synthetic·合成种子)②measurement-liveness(读真OEE/util实测即LIVE即便合成种子)。头条dataMode取最审慎已=SYNTHETIC(正确)。真BUG只在决策级染红gate:cardDecisionMode(RiskBoardView:138)+nodeObjectMode(deriveCellMode app.ts)+capacity.ts行级 只看card.dataMode==LIVE。【正解(采纳dev4方向)】决策级染红gate在 provenance(confidence.synthetic=false·真非合成) AND measurement(dataMode==LIVE·真实测) 双维——『决策红=真provenance且真实测』·不动measurement维语义(lt.source/liveTightness保持读真OEE即LIVE)。【CAP-01冲突→dissolved】CAP-01 C1『DemandSegment=LIVE』是measurement维·保留;provenance维合成种子=SYNTHETIC;二者正交·决策红双维gate→demo合成世界不出决策红(诚实标合成·不冒充)·CAP-01 C1不破。【lane】后端/求解器lane(非import·dev4正确判出)·待该lane dev认领。【green→red精修】demo合成世界:决策级染红应消失/改标合成(现102/102 LIVE决策红);同时OEE/util measurement维仍可LIVE(CAP-01 C1+FRESHNESS①b不破)。补运行期真HTTP provenance测试守此双维。"
+      "reviewerRuling": "[审核方裁决·采纳dev4双维诊断·2026-07-12] dev4探路证明「下沉isSyntheticDecision到lt.source」是错层(污染measurement维·破CAP-01 C1+FRESHNESS①b共6测)。系统dataMode实为两正交维:①provenance(confidence.synthetic·合成种子)②measurement-liveness(读真OEE/util实测即LIVE即便合成种子)。头条dataMode取最审慎已=SYNTHETIC(正确)。真BUG只在决策级染红gate:cardDecisionMode(RiskBoardView:138)+nodeObjectMode(deriveCellMode app.ts)+capacity.ts行级 只看card.dataMode==LIVE。【正解(采纳dev4方向)】决策级染红gate在 provenance(confidence.synthetic=false·真非合成) AND measurement(dataMode==LIVE·真实测) 双维——『决策红=真provenance且真实测』·不动measurement维语义(lt.source/liveTightness保持读真OEE即LIVE)。【CAP-01冲突→dissolved】CAP-01 C1『DemandSegment=LIVE』是measurement维·保留;provenance维合成种子=SYNTHETIC;二者正交·决策红双维gate→demo合成世界不出决策红(诚实标合成·不冒充)·CAP-01 C1不破。【lane】后端/求解器lane(非import·dev4正确判出)·待该lane dev认领。【green→red精修】demo合成世界:决策级染红应消失/改标合成(现102/102 LIVE决策红);同时OEE/util measurement维仍可LIVE(CAP-01 C1+FRESHNESS①b不破)。补运行期真HTTP provenance测试守此双维。",
+      "assignedDev": "dev4",
+      "authorization": "[审核方指派+授权·2026-07-12] 认可dev4接本单(你有最深context+探路诊断)。授权跨lane改:risk.ts/service.ts(后端求解器)+RiskBoardView.tsx(前端cardDecisionMode:138)+nodeObjectMode(app.ts)+capacity.ts——system-wide语义修·sanctioned·非越界。照裁决层:决策红双维gate(gate在 provenance(confidence.synthetic=false) AND measurement(dataMode==LIVE))·【不动measurement维】(lt.source/liveTightness保持读真OEE即LIVE·这是dev4探路证明的错层·别再翻)。⚠CAP-01测试guardrail(守不作假·关键):measurement维assertion(DemandSegment读真OEE/util=LIVE)必须保持green不改;只有『把decision-red-on-synthetic固化为期望』的assertion才据实改成expect合成/no决策红·且每处改在commit注明理由(measurement保留 vs decision-red据实改)。绝不为过测而翻assertion。若发现必须改measurement维assertion=信号又走错层·停下重协调。补运行期真HTTP provenance测试(现全绿门静态扫描漏运行期真BUG)。收编G4(dep本单)+S2-BE+CAPFORECAST三症。审核方独立复验:真HTTP demo合成→决策红消失/标合成·但OEE measurement维仍LIVE·CAP-01 measurement assertions green·FRESHNESS①b不破。【文件域协调】RiskBoardView:138(cardDecisionMode)本单占·dev3 CAPSIM-REPLICA §6升级RiskBoardView卡网格须rebase本单gate之上(先本单后§6)。"
     },
     {
       "id": "WO-SHOCK-GUARD-HARDEN",
@@ -8749,9 +8752,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "派dev3→CAPSIM-IA-UNIFY(空闲·frontend·可并行不依赖DATAMODE-UNIFY)",
-      "id": "WO-CAPSIM-IA-UNIFY",
-      "at": "2026-07-12T02:00:02.742Z"
+      "cmd": "指派dev4→DATAMODE-UNIFY(授权跨lane+CAP-01 guardrail)",
+      "id": "WO-DATAMODE-UNIFY-PROVENANCE",
+      "at": "2026-07-12T02:01:26.334Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
