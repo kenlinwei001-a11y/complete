@@ -2,6 +2,7 @@ import { round } from "../prng.js";
 import { SEG_REGISTRY, classifySegment } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import type { ObjectInstance } from "../domain.js";
 import { computeRollup } from "./capacity.js";
 
 // ---------------------------------------------------------------------------
@@ -174,6 +175,28 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
  * live===false 时 source 无意义（占位 LIVE）。
  */
 export type TightnessSource = "LIVE" | "SYNTHETIC";
+
+/**
+ * WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·裁决 ad60266 采纳的两正交维模型）：卡所依**任一底层对象**是否合成
+ * provenance（MATERIALIZED-from-synthetic 或 SYNTHETIC 直注·唯一真相谓词 c.isSynthProvenance）。
+ *
+ * ⚠ 这是 **provenance 维**（合成种子），与 **measurement 维**（liveTightness.source/live·读真 OEE/util 即 LIVE 即便合成种子）
+ * 正交。裁决（work-queue reviewerRuling·用户钉死）：**不动 measurement 维**（不翻 lt.source·CAP-01 C1『DemandSegment=LIVE』
+ * 保留）；决策级染红 = provenance(非合成) AND measurement(真实测) 双维——该 gate 由前端 cardDecisionMode（Dev-3）落。
+ * 本谓词只对外**加性透出 provenanceSynthetic 位**（不改 dataMode/source/live），供前端双维 gate 消费。
+ * 谓词缺省（测试直构 ctx / 无合成源）→ false → 现行行为不变（向后兼容 R6）。
+ */
+function anySynthProvenance(c: SolverContext, objs: ObjectInstance[]): boolean {
+  const p = c.isSynthProvenance;
+  return p ? objs.some((o) => p(o)) : false;
+}
+
+/** 卡/基地级 provenance 位：本基地 Base + 需求侧 DemandSegment/SopVersion 任一合成物化 → true（决策底料非真导入）。 */
+function baseProvenanceSynthetic(c: SolverContext, baseId: string): boolean {
+  const base = c.bases.find((b) => b.props.baseId === baseId);
+  const objs: ObjectInstance[] = [...(base ? [base] : []), ...(c.demandSegments ?? []), ...(c.sopVersions ?? [])];
+  return anySynthProvenance(c, objs);
+}
 
 export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean; source?: TightnessSource } {
   const lp = c.params.bottleneck.live;
@@ -520,11 +543,17 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // source=SYNTHETIC）时 dataMode **继承 SYNTHETIC** 而非自报 LIVE——前端 RiskBoardView.cardDecisionMode
     // 据此不把合成数据当决策级 LIVE 染红（改走灰"估算·无实测"）。真源（LIVE）卡如常自报 LIVE 出真张力/越线。
     const cardDataMode: "LIVE" | "SYNTHETIC" = lt.source === "SYNTHETIC" ? "SYNTHETIC" : "LIVE";
+    // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·裁决两正交维）：卡底层对象（Base + 需求源）是否合成物化。
+    // 与 measurement 维（dataMode/currentTightness.live·读真值即 LIVE）正交——**不改** dataMode/live 语义
+    // （保 CAP-01 C1 + solvers V5/V5d：DemandSegment 读真供需仍 measurement=LIVE）。前端 cardDecisionMode（Dev-3）
+    // 据此把决策级染红收窄为 provenance(!provenanceSynthetic) AND measurement(dataMode==LIVE)——demo 合成世界不冒充决策红。
+    const provenanceSynthetic = baseProvenanceSynthetic(c, pair.baseId);
     const card: Record<string, unknown> = {
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
       dataMode: cardDataMode,
+      provenanceSynthetic,
       hasData: true,
       currentTightness: { value: lt.value, live: true },
       ...(dc && dc.live ? { demandGap: { gapWan: dc.gap, source: "DemandSegment(p50/p90)+SopVersionRow.demand−产能" } } : {}),

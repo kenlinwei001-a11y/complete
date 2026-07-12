@@ -243,6 +243,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     // WO-KILL-MOCK-RED：无真源 → tight=null（不伪造）；仅真值参与全局 mainBn/mainTightness（不被假红拉高）。
     const tight = lt.value;
     anyLive = anyLive || lt.live;
+    // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·裁决两正交维·不动 measurement）：本基地对象是否合成物化。
+    // `live` 保持 measurement 语义（读真值即 LIVE），**另加** provenanceSynthetic 位——前端逐行决策红 gate
+    // 收窄为 provenance(!provenanceSynthetic) AND measurement(live) 双维（demo 合成基地不冒充实测决策红·Dev-3 落）。
+    const baseObj = c.bases.find((b) => str(b.props.baseId) === baseId);
+    const rowProvenanceSynthetic = baseObj && c.isSynthProvenance ? c.isSynthProvenance(baseObj) : false;
     if (tight !== null && tight > mainTightness) {
       mainTightness = tight;
       mainBn = bn;
@@ -255,7 +260,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       maintWeek: mw,
       bottleneck: bn,
       tightness: tight,
-      live: lt.live, // 该基地主瓶颈紧张度是否来自真数据（前端红/橙据此显"实测/估算"）
+      live: lt.live, // measurement 维：该基地主瓶颈紧张度是否来自真数据（读真值即 LIVE·CAP-01/measurement 不动）
+      provenanceSynthetic: rowProvenanceSynthetic, // provenance 维（加性）：底层基地对象合成物化 → true（前端双维 gate 消费）
       cumTotal: round(cumTotal, 4),
     });
   }

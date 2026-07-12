@@ -2217,11 +2217,15 @@ export class SolverService {
     // 内部计算无 ctx 亦按 tenantId 稳定解析（R6 确定性·无时钟/随机）。additive：不读该键的求解器零影响。
     // per-tenant 缓存（resolveTenantFeatures）避免 hot-path 重解析·功能写路径 invalidateFeatureCache 清。
     const features = await this.resolveTenantFeatures(tenantId);
+    // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实标
+    // dataMode——MATERIALIZED-from-synthetic 对象不再被误报 LIVE/实测。缓存后 O(1)·R6 确定性。
+    const isSynthProvenance = await this.buildSynthProvenancePredicate(tenantId);
     // #4 性能：扩展数据（E6b 10 类·extended 角色）仅 13 新求解器需要 —— contextRolesToLoad 已按
     // withExtended 门控（默认不加载·省全表扫描），未加载的角色在下方 `loaded.field ?? empty` 归空。
     return {
       tenantId,
       params,
+      isSynthProvenance,
       bases: sortById(loaded.bases ?? empty),
       lines: sortById(loaded.lines ?? empty),
       processes: sortById(loaded.processes ?? empty),
@@ -2511,23 +2515,48 @@ export class SolverService {
    * 失效由合成/物化写路径经 invalidateConfidenceCache 清，跨调用稳定。
    */
   private syntheticByTenant = new Map<string, boolean>();
+  /** WO-DATAMODE-UNIFY-PROVENANCE：合成源物化数据集集缓存（tenant→synthDatasetIds），与 syntheticByTenant
+   *  同由 invalidateConfidenceCache 清（合成/物化写路径变更后失效）。避免逐 loadContext/cell/row/card 重扫连接器+数据集。 */
+  private synthDatasetIdsByTenant = new Map<string, Set<string>>();
+
+  /**
+   * WO-DATAMODE-UNIFY-PROVENANCE（治本·三症同根·闭 G-DATAMODE-PROVENANCE-LEAK）：把 isSyntheticDecision 内联的
+   * **逐对象合成 provenance 判据**抽为**唯一真相谓词**，供三处 dataMode 泄漏点（app.ts deriveCellMode 逐格 /
+   * risk.ts 卡·紧张度 / capacity.ts 逐行）与 isSyntheticDecision 本身共用同一判合成口径——彻底消除
+   * "MATERIALIZED-from-synthetic 被误标 LIVE/实测"（合成冒充 LIVE·违铁律 0.4）。
+   *
+   * 判据：合成源连接（config.synthetic===true）→ 其物化数据集集 synthDatasetIds；对象合成 ⇔
+   * origin.type===SYNTHETIC（A 路直注）**或** origin.type===MATERIALIZED 且 origin.datasetId ∈ synthDatasetIds
+   * （B 路建模链·demo viaModelingChain 现状）。缺省 origin → false（不冒充合成）。synthDatasetIds 一次算出并
+   * 缓存（synthDatasetIdsByTenant·invalidateConfidenceCache 清）·R6 确定性·用通用 config.synthetic 标识（非连接名 R14）。
+   */
+  async buildSynthProvenancePredicate(tenantId: string): Promise<(o: ObjectInstance) => boolean> {
+    let synthDatasetIds = this.synthDatasetIdsByTenant.get(tenantId);
+    if (synthDatasetIds === undefined) {
+      // 合成源连接集（config.synthetic===true）→ 其物化数据集集（MATERIALIZED.datasetId ∈ 此集 = 合成 provenance）。
+      const synthConnIds = new Set(
+        (await this.repos.connections.list(tenantId, (c) => (c.config as Record<string, unknown> | undefined)?.synthetic === true)).map((c) => c.id),
+      );
+      synthDatasetIds = new Set(
+        synthConnIds.size > 0
+          ? (await this.repos.rawDatasets.list(tenantId, (d) => synthConnIds.has(d.sourceConnId))).map((d) => d.id)
+          : [],
+      );
+      this.synthDatasetIdsByTenant.set(tenantId, synthDatasetIds);
+    }
+    const ids = synthDatasetIds;
+    return (o: ObjectInstance): boolean => {
+      const og = o.origin; // 防御：部分测试/历史对象 origin 缺省 → 视为非合成（不冒充合成）。
+      if (!og || typeof og !== "object") return false;
+      return og.type === "SYNTHETIC" || (og.type === "MATERIALIZED" && ids.has(og.datasetId));
+    };
+  }
+
   private async isSyntheticDecision(tenantId: string): Promise<boolean> {
     const cached = this.syntheticByTenant.get(tenantId);
     if (cached !== undefined) return cached;
-    // 合成源连接集（config.synthetic===true）→ 其物化数据集集（MATERIALIZED.datasetId ∈ 此集 = 合成 provenance）。
-    const synthConnIds = new Set(
-      (await this.repos.connections.list(tenantId, (c) => (c.config as Record<string, unknown> | undefined)?.synthetic === true)).map((c) => c.id),
-    );
-    const synthDatasetIds = new Set(
-      synthConnIds.size > 0
-        ? (await this.repos.rawDatasets.list(tenantId, (d) => synthConnIds.has(d.sourceConnId))).map((d) => d.id)
-        : [],
-    );
-    const isSynthProvenance = (o: ObjectInstance): boolean => {
-      const og = o.origin; // 防御：部分测试/历史对象 origin 缺省 → 视为非合成（不冒充全合成）。
-      if (!og || typeof og !== "object") return false;
-      return og.type === "SYNTHETIC" || (og.type === "MATERIALIZED" && synthDatasetIds.has(og.datasetId));
-    };
+    // WO-DATAMODE-UNIFY-PROVENANCE：复用唯一真相谓词（此处行为字节不变——同 origin SYNTHETIC ∪ 合成物化判据）。
+    const isSynthProvenance = await this.buildSynthProvenancePredicate(tenantId);
     // 决策核心对象类型（capacity/risk/cockpit 等决策读出的主体）。B3·G-17：经 SolverBinding 解析
     // 到租户真实类型（无绑定回退 canonical 默认），使 realco 上传类型也被 provenance 探测覆盖。
     const idx = await this.bindingIndex(tenantId);
@@ -2551,10 +2580,16 @@ export class SolverService {
     return synthetic;
   }
 
-  /** WO-FRESHNESS：合成/物化写路径变更后清除合成判定缓存（保证标注随真实接入对象到位而翻转）。 */
+  /** WO-FRESHNESS：合成/物化写路径变更后清除合成判定缓存（保证标注随真实接入对象到位而翻转）。
+   *  WO-DATAMODE-UNIFY-PROVENANCE：同步清 synthDatasetIdsByTenant（新接入/物化改变合成数据集集 → 谓词须随之翻转）。 */
   invalidateConfidenceCache(tenantId?: string): void {
-    if (tenantId) this.syntheticByTenant.delete(tenantId);
-    else this.syntheticByTenant.clear();
+    if (tenantId) {
+      this.syntheticByTenant.delete(tenantId);
+      this.synthDatasetIdsByTenant.delete(tenantId);
+    } else {
+      this.syntheticByTenant.clear();
+      this.synthDatasetIdsByTenant.clear();
+    }
   }
 
   // ===== WO-EXPERIMENT（④·决策 A/B·冠军-挑战者）=====================================

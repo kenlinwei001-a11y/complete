@@ -385,6 +385,10 @@ export interface SolverContext {
   // 求解器据此做行为暗发——当前：`qos.risk_realdemand` 令风险张力需求驱动因素绑真供需 demandCapacityTightness。
   // optional：缺省（测试直构 ctx / 内部计算）视为空集 → 走关闸旧路径（向后兼容 R6·回退演练即此路径）。
   features?: Set<string>;
+  // WO-DATAMODE-UNIFY-PROVENANCE：逐对象合成 provenance 谓词（唯一真相·SolverService.buildSynthProvenancePredicate）。
+  // 求解器据此把**合成物化对象**派生的紧张度/卡/行诚实标 SYNTHETIC（不冒充 LIVE/实测·闭 G-DATAMODE-PROVENANCE-LEAK）。
+  // optional：缺省（测试直构 ctx / 无合成源）视为"全非合成"→ 现行行为不变（向后兼容 R6）。
+  isSynthProvenance?: (o: ObjectInstance) => boolean;
 }
 
 export function num(v: unknown, fallback = 0): number {
