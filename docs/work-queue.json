@@ -7986,13 +7986,14 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "链路派生稳定(洞E):LLM链路输出+确定性FK兜底补链(复用modeling detectFkCandidates uniqueRate≥0.95)+覆盖度门+接现成slice-planner planSlice真BFS多跳·治多跳偶发断链",
-      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】 [审核方复验2026-07-12·真跑] deriveSliceHops+FK名兜底(comprehend.ts:290)·planSlice真BFS maxHops6复用非重写。link-stabilize.test.ts①ref→真hops②LLM丢链→FK兜底非空③兜底OFF+丢链→hops[](红·真牙齿)④R6多跳。真跑Factory root→[ProductionLine_factory_id_ref,Equipment_line_id_ref]非空多跳·恒空切片已治。→建议DONE·待授权flip。",
-      "status": "BUILT",
+      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】 [审核方复验2026-07-12·真跑] deriveSliceHops+FK名兜底(comprehend.ts:290)·planSlice真BFS maxHops6复用非重写。link-stabilize.test.ts①ref→真hops②LLM丢链→FK兜底非空③兜底OFF+丢链→hops[](红·真牙齿)④R6多跳。真跑Factory root→[ProductionLine_factory_id_ref,Equipment_line_id_ref]非空多跳·恒空切片已治。→建议DONE·待授权flip。 [审核方核发DONE 2026-07-12·真跑复验通过:worktree真起datacore·1278绿·真上传CALB CSV派生FK链·DERIVE道B确认]",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-11T18:26:15.304Z",
-        "built": "2026-07-11T18:44:14.635Z"
+        "built": "2026-07-11T18:44:14.635Z",
+        "done": "2026-07-12T15:55:00.000Z"
       },
       "blockReason": ""
     },
@@ -8058,13 +8059,14 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "B栈按故事真派生(洞B):workflow多步/条件·agent prompt含故事上下文·skill真资源(非模板fan-out)·可能扩LlmComprehendSchema采编排提示(additive)",
-      "note": "[LaneB·datacore·DISPATCH] ⚠沙盘划界:绝不派生propagation_rule/state_var(S0§3.4归RG/S1·防双写contracts/databuilder.ts:437)。green→red:两复杂度悬殊故事→workflow.steps/agent.prompt字节相同→红。 [审核方复验2026-07-12·真跑] deriveBStack(comprehend.ts:342)·步骤随scope/args变·沙盘边界守(propagationRuleNeeds/stateVarNeeds恒[]·不双写S1/RG)。bstack-derive.test.ts①异复杂度→字节不同workflow②多scope→resolve_slice③prompt含story marker④propagation恒空⑤R6。真跑prompt含「锂电基地产线设备产能健康推演」。→建议DONE·待授权flip。",
-      "status": "BUILT",
+      "note": "[LaneB·datacore·DISPATCH] ⚠沙盘划界:绝不派生propagation_rule/state_var(S0§3.4归RG/S1·防双写contracts/databuilder.ts:437)。green→red:两复杂度悬殊故事→workflow.steps/agent.prompt字节相同→红。 [审核方复验2026-07-12·真跑] deriveBStack(comprehend.ts:342)·步骤随scope/args变·沙盘边界守(propagationRuleNeeds/stateVarNeeds恒[]·不双写S1/RG)。bstack-derive.test.ts①异复杂度→字节不同workflow②多scope→resolve_slice③prompt含story marker④propagation恒空⑤R6。真跑prompt含「锂电基地产线设备产能健康推演」。→建议DONE·待授权flip。 [审核方核发DONE 2026-07-12·真跑复验通过:worktree真起datacore·1278绿·真上传CALB CSV派生FK链·DERIVE道B确认]",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-12T02:40:20.778Z",
-        "built": "2026-07-12T02:57:40.098Z"
+        "built": "2026-07-12T02:57:40.098Z",
+        "done": "2026-07-12T15:55:00.000Z"
       },
       "blockReason": ""
     },
@@ -8076,13 +8078,14 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "故事发动机接A3 deriveModelingSuggestion:上传数据即从列/FK真派生类型/链路(现只/admin/modeling独立用·故事路零引用)",
-      "note": "[LaneB·datacore·DISPATCH·最干净·可并行候选] 纯复用modeling.ts:89·与MERGE数据先行对齐(须协同MERGE-03)。green→red:上传数据→应从列/FK派生类型;现不派生→红。 [审核方复验2026-07-12·真跑] worktree真起datacore memory·pnpm test 1278绿·真上传CALB factory/production_line/equipment.csv→派生Factory/ProductionLine(factory_id FK)/Equipment(line_id FK)链100%来自上传列名·对齐CALB doc§3.3/§3.5·非硬编码。判定=DERIVE(道B✓)·非G2直导(objects.json importer是独立feature-gated admin端点·未接story引擎)。green→red(modeling-wire.test.ts③)真。CONCERN(轻·非derive缺陷):派生类型domain=unassigned→STRICT停诚实NO_SLICE(PROVISIONAL达SUCCEEDED)·归属属MERGE-03。→建议DONE·待审核方授权flip。",
-      "status": "BUILT",
+      "note": "[LaneB·datacore·DISPATCH·最干净·可并行候选] 纯复用modeling.ts:89·与MERGE数据先行对齐(须协同MERGE-03)。green→red:上传数据→应从列/FK派生类型;现不派生→红。 [审核方复验2026-07-12·真跑] worktree真起datacore memory·pnpm test 1278绿·真上传CALB factory/production_line/equipment.csv→派生Factory/ProductionLine(factory_id FK)/Equipment(line_id FK)链100%来自上传列名·对齐CALB doc§3.3/§3.5·非硬编码。判定=DERIVE(道B✓)·非G2直导(objects.json importer是独立feature-gated admin端点·未接story引擎)。green→red(modeling-wire.test.ts③)真。CONCERN(轻·非derive缺陷):派生类型domain=unassigned→STRICT停诚实NO_SLICE(PROVISIONAL达SUCCEEDED)·归属属MERGE-03。→建议DONE·待审核方授权flip。 [审核方核发DONE 2026-07-12·真跑复验通过:worktree真起datacore·1278绿·真上传CALB CSV派生FK链·DERIVE道B确认]",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-12T02:22:15.531Z",
-        "built": "2026-07-12T02:39:57.410Z"
+        "built": "2026-07-12T02:39:57.410Z",
+        "done": "2026-07-12T15:55:00.000Z"
       },
       "blockReason": ""
     },
