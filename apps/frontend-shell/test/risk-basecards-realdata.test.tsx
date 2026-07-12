@@ -76,12 +76,10 @@ describe("CAPACITY-BASECARDS-REALDATA · 每基地一卡前端逐值对照后端
 
     for (const c of REAL_CARDS) {
       const card = await screen.findByTestId(`risk-card-${c.base}`);
-      // 逐值对照：实测当前 === 后端 currentTightness.value
+      // 逐值对照：实测当前 === 后端 currentTightness.value（真值搬运·非写死）
       expect(within(card).getByTestId(`risk-datamode-${c.base}`)).toHaveTextContent(`实测当前 ${c.cur}`);
-      // 峰值逐值 === 后端 peak
-      expect(within(card).getByText(String(c.peak))).toBeTruthy();
-      // 越线日 D+1
-      expect(within(card).getByText("D+1")).toBeTruthy();
+      // 1:1 复刻黑曜石卡头：显 T+越线日（rk-peak·非峰值数）=== 后端 crossDay（真值搬运；峰值逐值移入详情时间轴）
+      expect(within(card).getByTestId(`risk-peak-${c.base}`)).toHaveTextContent("T+1");
     }
   });
 

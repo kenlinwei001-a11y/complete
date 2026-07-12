@@ -1348,6 +1348,8 @@ export const handlers = [
   http.post("*/a/v1/solvers/:key/invoke", ({ params }) => {
     const key = String(params.key);
     if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    // WO-CAPSIM-REPLICA：产能推演看板卡面因素 chip + 详情逐因素行走 bottleneck_matrix（此前 /a/v1 invoke 漏接→404·chip 缺失）。
+    if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix({}), snapshotVersion: "ov-12" });
     // 真派生口径（达成率 = 设备效率达成 × 良率达成 × 排程事件损）下 demo 月达成率 ≈ 89.4%（见后端 attainment:line）。
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 89.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")

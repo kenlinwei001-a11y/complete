@@ -127,9 +127,9 @@ describe("HARDCODE-VIEW-LAYOUT · 视图结构 config 驱动（Hβ 8a）", () =>
     loginAs("planner");
     const user = userEvent.setup();
     renderApp("/v/risk");
-    // 打开某基地风险卡详情 → 点某越线日 → 受影响订单弹窗
+    // 打开某基地风险卡详情（1:1 内联展开）→ 点时间轴某越线日圆点 → 受影响订单弹窗
     await user.click(await screen.findByTestId("risk-card-常州", {}, { timeout: 15000 }));
-    await user.click(await screen.findByTestId("risk-day-0"));
+    await user.click(await screen.findByTestId("risk-dot-0"));
     const table = await screen.findByTestId("affected-orders-table");
     // 列头由 config 迭代（注入"配置区域列X"渲染出来），且旧写死"型号/营收敞口"不再出现
     expect(within(table).getByText("配置区域列X")).toBeInTheDocument();

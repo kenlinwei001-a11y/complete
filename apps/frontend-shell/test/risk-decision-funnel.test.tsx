@@ -142,29 +142,28 @@ describe("RISKBOARD-LAYOUT-REWORK · 决策漏斗 UI（逐值对照后端真值�
     expect(await screen.findByTestId("risk-card-常州")).toBeInTheDocument();
     expect(screen.queryByTestId("risk-card-江门")).not.toBeInTheDocument();
     expect(screen.queryByTestId("risk-card-武汉")).not.toBeInTheDocument();
-    // 摘要随之聚焦常州（仅 1 卡越线 peak 98·敞口 100）
-    const summary = screen.getByTestId("risk-decision-summary");
-    expect(within(summary).getByTestId("risk-summary-red-value")).toHaveTextContent("1");
-    expect(within(summary).getByTestId("risk-summary-exposure-value")).toHaveTextContent("100");
+    // KPI 随聚焦重算：风险基地 1（仅常州 peak98≥85）；敞口在卡面（常州 100 万）。
+    const kpi = screen.getByTestId("risk-kpi");
+    expect(within(kpi).getByTestId("risk-kpi-bases-value")).toHaveTextContent("1");
+    const cz = screen.getByTestId("risk-card-常州");
+    expect(within(cz).getByTestId("risk-exposure-常州")).toHaveTextContent("100 万");
   });
 
-  it("C3 决策摘要头真聚合（越线/临近/最早越线/危及客户/总敞口/对策数·源自真 risk_timeline）", async () => {
+  it("C3 KPI 指标条真聚合（风险基地/受影响订单/涉及客户/最早越线·源自真 risk_timeline·1:1 复刻 rk-kpi）", async () => {
     overrideRiskTimeline();
     loginAs("planner");
     renderApp("/v/risk");
 
-    const summary = await screen.findByTestId("risk-decision-summary");
-    // 三卡 peak 91/96/98 全 ≥85 → 越线 3、临近 0。
-    expect(within(summary).getByTestId("risk-summary-red-value")).toHaveTextContent("3");
-    expect(within(summary).getByTestId("risk-summary-yellow-value")).toHaveTextContent("0");
-    // 最早越线 = min crossDay = D+1。
-    expect(within(summary).getByTestId("risk-summary-earliest-value")).toHaveTextContent("D+1");
-    // 危及客户去重 {A,B,C} = 3。
-    expect(within(summary).getByTestId("risk-summary-custs-value")).toHaveTextContent("3");
-    // 总敞口 500+300+100 = 900。
-    expect(within(summary).getByTestId("risk-summary-exposure-value")).toHaveTextContent("900");
-    // 对策数 = planRows 行数 = 2。
-    expect(within(summary).getByTestId("risk-summary-mitigations-value")).toHaveTextContent("2");
+    const kpi = await screen.findByTestId("risk-kpi");
+    // 三卡 peak 91/96/98 全 ≥85 → 风险基地 3。
+    expect(within(kpi).getByTestId("risk-kpi-bases-value")).toHaveTextContent("3");
+    // 受影响订单去重 {SO-J1,SO-J2,SO-W1,SO-C1} = 4。
+    expect(within(kpi).getByTestId("risk-kpi-orders-value")).toHaveTextContent("4");
+    // 涉及客户去重 {A,B,C} = 3。
+    expect(within(kpi).getByTestId("risk-kpi-custs-value")).toHaveTextContent("3");
+    // 最早越线 = min crossDay = T+1（HTML 用 T+ 记法）。
+    expect(within(kpi).getByTestId("risk-kpi-earliest-value")).toHaveTextContent("T+1");
+    // 总敞口/对策数 分别在卡面（C2）与处置计划表（risk-plan.test）——1:1 rk-kpi 不含这两项。
   });
 
   it("C4 卡按业务影响（敞口）排序·非 peak：DOM 次序 = 江门 → 武汉 → 常州（与 peak 降序相反）", async () => {
@@ -181,26 +180,27 @@ describe("RISKBOARD-LAYOUT-REWORK · 决策漏斗 UI（逐值对照后端真值�
     expect(order).toEqual(["江门", "武汉", "常州"]);
   });
 
-  it("C1 sim.sandbox 关：卡面「开推演对策」诚实禁用（不落死链·不 navigate）", async () => {
+  it("C1 sim.sandbox 关：点开卡→内联详情内「开 what-if」不出现（诚实降级·不落死链）", async () => {
     overrideRiskTimeline();
     loginAs("planner"); // sim.sandbox defaultOn:false → 关
     renderApp("/v/risk");
 
     const card = await screen.findByTestId("risk-card-江门");
-    const btn = within(card).getByTestId("risk-card-whatif-江门");
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute("data-disabled-reason", "sim.sandbox");
+    fireEvent.click(card); // 1:1 复刻：整卡点击 → 内联展开详情（非独立 CTA 按钮）
+    await screen.findByTestId("risk-detail-江门");
+    expect(screen.queryByTestId("risk-open-whatif")).toBeNull(); // 关→详情内不现 what-if 入口
   });
 
-  it("C1 sim.sandbox 开：卡面「开推演对策」可点 → navigate 带 {base,factor} 进 /v/sim-sandbox", async () => {
+  it("C1 sim.sandbox 开：点开卡→详情内「开 what-if」可点 → navigate 带 {base,factor} 进 /v/sim-sandbox", async () => {
     overrideRiskTimeline();
     db.tenantOverrides["sim.sandbox"] = true; // 租户 override 开通（正门·与真后端同路径）
     loginAs("planner");
     const { router } = renderApp("/v/risk");
 
     const card = await screen.findByTestId("risk-card-江门");
-    const btn = within(card).getByTestId("risk-card-whatif-江门");
-    expect(btn).not.toBeDisabled();
+    fireEvent.click(card);
+    await screen.findByTestId("risk-detail-江门");
+    const btn = await screen.findByTestId("risk-open-whatif");
     fireEvent.click(btn);
     await waitFor(() => expect(router.state.location.pathname).toBe("/v/sim-sandbox"));
     const q = new URLSearchParams(router.state.location.search);

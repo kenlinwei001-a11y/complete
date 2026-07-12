@@ -34,7 +34,7 @@ describe("WO-RISK-FIX bug① · 顶层 SYNTHETIC 下 LIVE 卡照常出真 crossD
     renderApp("/v/risk");
     const wuhan = await screen.findByTestId("risk-card-武汉");
     // 越线日 D+4（非"未越线"）
-    expect(wuhan).toHaveTextContent("D+4");
+    expect(wuhan).toHaveTextContent("T+4");
     expect(wuhan).not.toHaveTextContent("估算·无实测");
     // 真数据卡出 danger 红（getComputedStyle 层面有 danger 内联色）
     expect(wuhan.querySelectorAll('[style*="var(--danger)"]').length).toBeGreaterThan(0);

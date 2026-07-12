@@ -44,7 +44,7 @@ describe("WO-DATAMODE-UNIFY-PROVENANCE · RiskBoard 决策红 gate 在 provenanc
   it("green 对照：confidence.synthetic=false（真接入/真导入世界）→ 同样自报 LIVE 卡照常出决策红（真张力/越线）", async () => {
     mount({ synthetic: false, stale: false, measurement: "LIVE" });
     const wuhan = await screen.findByTestId("risk-card-武汉");
-    expect(wuhan).toHaveTextContent("D+4");
+    expect(wuhan).toHaveTextContent("T+4");
     expect(wuhan.querySelectorAll('[style*="var(--danger)"]').length).toBeGreaterThan(0);
   });
 });
