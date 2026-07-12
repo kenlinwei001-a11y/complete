@@ -8628,10 +8628,13 @@
       "priority": "P2",
       "deps": [],
       "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev3",
       "title": "RC沙盘门文案「暂不可进入推演」→「未校准·可试跑·结论仅供参考」(标准页本就可推tick·劝退文案误导为不可用)",
-      "note": "[前端·感知层·一手证据VERIFIED§4] DOM实测「✗暂不可进入推演」劝退·但标准页推进按钮未门控canEnter(disabled只认!sessionId||ticking)·能推能变。真硬挡的「进入推演」按钮在SimInitWizard另一入口。改文案让用户知道标准页可试跑(与S2诚信位协同:试跑结论打UNCALIBRATED/仅供参考)。green→red:未认证态应显「可试跑」非「不可进入」。"
+      "note": "[前端·感知层·一手证据VERIFIED§4] DOM实测「✗暂不可进入推演」劝退·但标准页推进按钮未门控canEnter(disabled只认!sessionId||ticking)·能推能变。真硬挡的「进入推演」按钮在SimInitWizard另一入口。改文案让用户知道标准页可试跑(与S2诚信位协同:试跑结论打UNCALIBRATED/仅供参考)。green→red:未认证态应显「可试跑」非「不可进入」。",
+      "at": {
+        "wip": "2026-07-12T11:33:08.639Z"
+      }
     },
     {
       "id": "WO-RC2-DEFAULT-FEED",

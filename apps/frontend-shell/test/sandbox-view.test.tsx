@@ -115,7 +115,8 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     for (const v of CONFIG_A.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
     // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）。
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
-    expect(screen.getByTestId("sim-cert-canenter").textContent).toContain("✗");
+    // WO-RC-UX-DOOR-TEXT：未认证态显「可试跑（未认证·结论仅供参考）」——标准页 tick 未被挡·不劝退（审核 §4）。
+    expect(screen.getByTestId("sim-cert-canenter").textContent).toContain("可试跑");
     expect(screen.getByTestId("sim-cert-gap-0")).toBeTruthy();
     for (const d of CONFIG_A.radarDims) expect(screen.getByTestId(`sandbox-radar-axis-${d.key}`)).toBeTruthy();
   });

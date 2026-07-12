@@ -191,9 +191,9 @@ export function SimReadinessPanel({
         <div>
           <div
             data-testid="sim-cert-canenter"
-            style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700 }}
+            style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--warn, #e8b54a)", fontWeight: 700 }}
           >
-            {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
+            {cert.canEnterSimulation ? "✓ 可进入推演（已认证）" : "◐ 可试跑（未认证·结论仅供参考）"}
           </div>
           {cert.targetRef && (
             <div className={styles.sub} data-testid="sim-cert-target" style={{ marginTop: 2 }}>
@@ -310,8 +310,8 @@ export function SimReadinessPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {radar}
         <div>
-          <div data-testid="sim-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700 }}>
-            {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
+          <div data-testid="sim-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--warn, #e8b54a)", fontWeight: 700 }}>
+            {cert.canEnterSimulation ? "✓ 可进入推演（已认证）" : "◐ 可试跑（未认证·结论仅供参考）"}
           </div>
           {/* S4 reconcile：humanize 分支同样透 targetRef（LOCAL scope 对象·补 sandbox-p0 折叠改造致的条件隐藏回归）。 */}
           {cert.targetRef && (
