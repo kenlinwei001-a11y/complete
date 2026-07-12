@@ -99,8 +99,10 @@ export function cardDecisionMode(
 ): DecisionMode {
   const topLive = !(topDataMode != null && topDataMode !== "LIVE");
   if (card.hasData === false) return "MUTED";
-  if (confidence?.synthetic === true) return "MUTED";
+  // 测量维(measurement)优先：卡自报 LIVE（真读 OEE/良率/利用率时序）即 LIVE——即便决策世界合成(confidence.synthetic)，
+  // 合成血缘经金色横幅 + decisionRed 门披露·不因合成遮蔽真实测量紧张度(对齐 datamode-unify §16-19·真读真值=measurement LIVE)。
   if (card.dataMode === "LIVE") return "LIVE";
+  if (confidence?.synthetic === true) return "MUTED";
   if (card.dataMode == null) return topLive ? "LIVE" : "MUTED";
   return "MUTED";
 }
@@ -330,6 +332,8 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         {orderedCards.map((card) => {
           const mode = cardMode(card);
           const live = mode === "LIVE";
+          // 决策红(danger·"立即处置")门：测量-LIVE 且**非合成决策世界**才染决策红——合成 demo 世界只显测量层 tier 色 + 金横幅披露·不冒充 LIVE 决策红(KILL-MOCK-RED)。
+          const decisionRed = live && data.confidence?.synthetic !== true;
           const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
           const noData = card.hasData === false;
           const peakColor = riskTierColor(card.peak, data.threshold, live, bandWidth);
@@ -355,7 +359,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
               <div className={styles.rkCH}>
                 <b>
                   {card.base}
-                  {isPrimary && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ marginLeft: 6, background: "var(--danger)", color: "#fff", fontSize: 9 }}>{zh.risk.primaryTag}</span>}
+                  {isPrimary && decisionRed && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ marginLeft: 6, background: "var(--danger)", color: "#fff", fontSize: 9 }}>{zh.risk.primaryTag}</span>}
                 </b>
                 <RiskHoverTrigger
                   data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold: data.threshold, dataMode: live ? "LIVE" : (card.dataMode ?? "MOCK") }}
@@ -403,12 +407,12 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
                       受威胁客户{" "}
                       <ProvenanceHover title="受威胁客户" testId={`risk-custs-prov-${card.base}`}
                         rows={[["口径", "本卡 affectedOrders 去重客户数"], ["真源", "affected_orders（产能传导引擎按越线日真算·非哈希）"]]}>
-                        <b data-testid={`risk-custs-${card.base}`} style={{ color: live ? "var(--danger)" : "var(--muted)" }}>{custs}</b>
+                        <b data-testid={`risk-custs-${card.base}`} style={{ color: decisionRed ? "var(--danger)" : "var(--muted)" }}>{custs}</b>
                       </ProvenanceHover>
                       {" · 敞口 "}
                       <ProvenanceHover title="营收敞口" testId={`risk-exposure-prov-${card.base}`}
                         rows={[["口径", "Σ affectedOrders.revenueWan × 在险比例"], ["在险比例", card.crossDay != null ? "已越线 → 1（全单在险）" : "未越线 → 按缺口体量占比折算"], ["真源", "affected_orders · demandGap"]]}>
-                        <b className="mono" data-testid={`risk-exposure-${card.base}`} style={{ color: live ? "var(--danger)" : "var(--muted)" }}>{exposure > 0 ? fmtExposureWan(exposure) : "—"}</b>
+                        <b className="mono" data-testid={`risk-exposure-${card.base}`} style={{ color: decisionRed ? "var(--danger)" : "var(--muted)" }}>{exposure > 0 ? fmtExposureWan(exposure) : "—"}</b>
                       </ProvenanceHover>
                     </span>
                     <span>{orderRows(card).length} 批订单</span>
