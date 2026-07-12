@@ -8084,12 +8084,50 @@
       "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
       "title": "沙盘shock无LLM不起推演(扩红线):maybeRenderSandbox对classification.model===deterministic:*的shock也走DEFERRED·无LLM时不做关键词级对象/stateVar选取推演·只真LLM语义分类的shock才起",
       "note": "[Lane沙盘·dev3·用户2026-07-11扩红线绝不无LLM起推演] 摸底发现:deterministicClassify按关键词匹sim.shock_whatif时对象/stateVar选取是关键词级无LLM语义(现被DEFERRED/0/no-impact三重边界兜住不产幅度垃圾·但用户要绝不无LLM起推演)。触点orchestrator.ts:1926-1963 maybeRenderSandbox+sim-request.ts:94-153。代价:无LLM时shock推演也不跑(功能缩减更诚实)。回写§8拟登G-SANDBOX-DET-SHOCK。green→red:无LLM提交shock故事→应DEFERRED不做关键词级推演·现装配了→红。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
-      "status": "TODO",
+      "status": "DONE",
       "owner": "",
       "at": {
-        "created": "2026-07-11T14:34:50.465Z"
+        "created": "2026-07-11T14:34:50.465Z",
+        "built": "2026-07-11T19:48:40.197Z",
+        "done": "2026-07-11T20:24:35.936Z"
       },
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "确定性分类的shock不起沙盘推演(扩红线·绝不无LLM起推演·G-SANDBOX-DET-SHOCK)",
+        "verifiedBy": "独立真起DC+AC真登录demo/admin真发问句·commit 2527c14e=tip(含0d54933b)·自避778cc589坑·运行态dist含红线文案证被验代码·a4838bd0·2026-07-11",
+        "criteria": [
+          {
+            "id": "det-shock-no-render",
+            "assert": "无LLM shock问句(常州二线停3周·selectedObjects常州二线)→COMPLETED·model=deterministic:example-match·blocks=[text]·hasSandbox=false·诚实文本(无LLM语义不起推演·KILL-MOCK-RED)·clean实例复现"
+          },
+          {
+            "id": "with-llm-renders",
+            "assert": "真注册Moonshot/Kimi(key真连/test ok)绑classifier→同问句model=dcp:...moonshot-v1-32k·blocks=[text,sandbox_render]·真LLM抽槽target常州二线/backlog/21ticks"
+          },
+          {
+            "id": "redline-gate-green-to-red",
+            "assert": "sandbox-shock-no-floor.test green2/2·破坏守卫(deterministic:→__REDLINE_BREAK__)→齿①expect(sandbox_render).toBe(false)转红(deterministic shock真起了推演)·还原复位orchestrator.ts:1954·门承重"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "deterministic路真短路(单一诚实text·零sandbox_render/零合成sim/零兜底KPI)非假推演"
+          },
+          {
+            "id": "hidden-revert",
+            "assert": "本WO无独立闸(orchestrator:1954无条件·回退=git revert本体§8载);既有sim.sandbox_render关闸真跑:PUT关+新AC→matched=(none)blocks=[gap]沙盘钩子不触达·开闸红线生效"
+          },
+          {
+            "id": "gates-regression",
+            "assert": "agentcore744绿(4skip)EXIT0·genuine-sim/ontology-slices EXIT0无漂移·build EXIT0"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "dev测试真断言(齿①sandbox_render不在+诚实文本正则+model须/^deterministic:/·齿②在且槽值对)green→red非空壳·本体§8 G-SANDBOX-DET-SHOCK✅已闭"
+          }
+        ],
+        "note": "次要非阻塞→WO-SHOCK-GUARD-HARDEN:守卫仅认classification.model前缀deterministic:·单候选短路(orchestrator:645 model=short-circuit:single-candidate)不被覆盖·理论旁路但产品不可达(4时序意图同挂sim.sandbox_render bindings候选恒≥4)。"
+      }
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE",
@@ -8579,14 +8617,119 @@
       "owner": "",
       "title": "RC沙盘门文案「暂不可进入推演」→「未校准·可试跑·结论仅供参考」(标准页本就可推tick·劝退文案误导为不可用)",
       "note": "[前端·感知层·一手证据VERIFIED§4] DOM实测「✗暂不可进入推演」劝退·但标准页推进按钮未门控canEnter(disabled只认!sessionId||ticking)·能推能变。真硬挡的「进入推演」按钮在SimInitWizard另一入口。改文案让用户知道标准页可试跑(与S2诚信位协同:试跑结论打UNCALIBRATED/仅供参考)。green→red:未认证态应显「可试跑」非「不可进入」。"
+    },
+    {
+      "id": "WO-RC2-DEFAULT-FEED",
+      "priority": "P3",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "BLOCKED",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:20:17.402Z",
+        "built": "2026-07-11T20:34:02.446Z",
+        "blocked": "2026-07-11T21:21:00.541Z"
+      },
+      "title": "RC-2沙盘开箱默认真feed源(S6提供能力但demo四源全EMPTY_DATA字段不匹配resolver→静止)·播dailyP50+coverageDays的DemandSegment/变tick A8序列/forecast覆盖·让demo开箱推tick世界真动",
+      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:看板solver-driven开箱即有真数据(顶部capacity_forecast缺口33万套)结构化解开箱死·无需sandbox feed。勿补退役页·随CAPSIM落地。",
+      "blockReason": "[审核方复验·BLOCK·偷换判据+反假绿] 开箱不配置=死基线原样·RC-2未闭合。真前端开箱流createSimSession({baseSnapshot,scope}不传grounding/feedSpecs·SandboxView:999+SimInitWizard:142唯二调用)推15tick:feeds=[]·demandLoad机械等差+1.592·utilization 16tick全93.0886 distinct=1完全静止=与被治病症逐字一致。dev声称流(显式grounding:true+手写feedSpecs)确实真动(inv1.level真变·引擎真通)但任何用户不可达。根:dev把feed藏在按会话显式opt-in+手写feedSpecs后·前端createSimSession只收{baseSnapshot,scope}都不传·后端无默认feedSpecs注入·默认真feed源根本不存在·把开箱不配置偷换成显式接地会话。WO点名播的四源(dailyP50+coverageDays DemandSegment/变tick A8/forecast)一个没播(DemandSegment诚实EMPTY_DATA)。反假绿:dev 4牙全绿断错对象·①②③用grounding:true证能力非证开箱·齿④直接断关闸→feeds=[]/level恒0把开箱静止固化为期望·无一牙断WO判据开箱不配置随tick真变。需补:默认feed源接线(前端createSimSession透传grounding+feedSpecs或后端为demo grounded会话默认注入真PO feedSpec)+按DATAMODE-UNIFY让合成动值诚实标SYNTHETIC(现demo nodeObjectMode 102/102全LIVE)。given CAPSIM统一·默认场景/feed在CAPSIM看板落地更合适。复验commit a14d03d6(=cc053750)。",
+      "supersededByCAPSIM": true
+    },
+    {
+      "id": "WO-CAPFORECAST-DATAMODE-HONEST",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:46:42.988Z"
+      },
+      "title": "沙盘capacity_forecast合成冒充实测(KILL-MOCK-RED):ModelCapacitySlice.tsx:155活服务顶层dataMode=SYNTHETIC却每行live=true→前端把武汉/厦门/自贡紧张度标「实测」(就在S2「系数未校准」正上方矛盾)·修行级dataMode诚实或不标实测",
+      "note": "[前端+后端·KILL-MOCK-RED命门·S2复验一手发现] 独立真起活服务实测:capacity_forecast返回顶层dataMode=SYNTHETIC但每行live=true·ModelCapacitySlice据行live标「实测」=合成冒充实测(违铁律0.4·用户最恨)。与S2徽标同页矛盾(一个标未校准一个标实测)。修:行级dataMode按真provenance派生·合成行不得标实测·与S2/TRUST-BADGE-BE dataMode口径统一(这正是CAP-10收编该做的「统一」)。green→red:合成capacity_forecast行现标实测·修后应标合成/估算。 【CAPSIM统一·2026-07-12用户确认排序】收编入WO-DATAMODE-UNIFY-PROVENANCE(同根·合成materialized标LIVE·决策红双维gate一并治)。"
+    },
+    {
+      "id": "WO-CAPSIM-IA-UNIFY",
+      "priority": "P0",
+      "deps": [],
+      "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
+      "status": "BUILT",
+      "owner": "dev3",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z",
+        "wip": "2026-07-12T02:10:03.029Z"
+      },
+      "title": "产能推演统一为平台唯一推演surface(§5):删左导航沙盘项+SandboxView独立路由退役(/sandbox 302重定向)+基地卡片『开推演决策』下钻看板(scope该基地)+就绪认证→信任条+抽屉+对话态提问框(两态同求解器同源R6)",
+      "note": "[前端+少量后端·可立即建·§5全文已在repo doc·活力全开首选·结构性收敛最高战略值] S1-S6机制成看板引擎不废(§8)。母体§2.I回写沙盘=下钻态非独立路由+导航IA删沙盘项。⛔G-DM-1禁mock造红。green→red:左导航应无沙盘·/sandbox 302·基地卡开推演决策进看板scope=该基地·对话/嵌入两态同源R6·就绪认证=信任条+抽屉非独立页。 【CAPSIM统一·2026-07-12用户确认排序】排序第二·结构性收敛可与DATAMODE-UNIFY并行开建(纯IA不依赖dataMode)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】",
+      "assignedDev": "dev3-frontend"
+    },
+    {
+      "id": "WO-CAPSIM-REPLICA",
+      "priority": "P0",
+      "deps": [],
+      "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z"
+      },
+      "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
+      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】 ⚠依赖解耦:看板先建先接真solver·§7 KILL-MOCK-RED(禁mockTightness)今天就绿(平台已删);但demo合成materialized值会暂标LIVE决策红(既有行为·非本单造)→DATAMODE-UNIFY(后端·押后)据实修成SYNTHETIC。REPLICA可DONE于§1-6+§7-mockTightness·合成诚实标caveat明记待DATAMODE-UNIFY·不得在REPLICA acceptance冒充合成诚实已达。"
+    },
+    {
+      "id": "WO-SANDBOX-READINESS-UX",
+      "priority": "P0",
+      "deps": [
+        "WO-CAPSIM-IA-UNIFY"
+      ],
+      "doc": "docs/WO-SANDBOX-READINESS-UX.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z"
+      },
+      "title": "就绪认证进看板信任条+抽屉(并入CAPSIM§5·非独立页):看板顶一行信任条+[查看完整体检]抽屉(L0-L4/三雷达进抽屉·守RL3不动投影)",
+      "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】"
+    },
+    {
+      "id": "WO-DATAMODE-UNIFY-PROVENANCE",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T20:15:35.072Z",
+        "ruled": "2026-07-12T01:12:53.361Z",
+        "assigned": "2026-07-12T02:01:26.334Z"
+      },
+      "title": "统一dataMode真值判据为isSyntheticDecision语义(治合成materialized冒充LIVE根·G4/S2-BE/CAPFORECAST三BLOCK同源)",
+      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。 【G4重验一手·精确修点】根=demandCapacityTightness(risk.ts:210-212)对任何DemandSegment返live:true/source:LIVE从不看provenance;连带cardDataMode(risk.ts:522)·capacity.ts:258行级live·RiskBoardView.tsx:138 cardDecisionMode(if dataMode==LIVE→LIVE·UI把合成卡当决策LIVE染红)。修=把isSyntheticDecision语义(origin SYNTHETIC||MATERIALIZED&&synthDatasetIds)下沉到卡/行级:底层DemandSegment/对象为合成物化(非真导入)时须source=SYNTHETIC+currentTightness.live=false。⚠CAPSIM前置:CAPSIM施工单§2假设risk.ts demandCapacityTightness『已真·治G-DM-1』实则卡级dataMode不honor合成物化→CAPSIM-REPLICA接risk_timeline会继承此BUG·本单须先于CAPSIM像素复刻的KILL-MOCK-RED验收(否则复刻页demo仍出合成假LIVE红·§7绿→red门反被违)。补运行期真HTTP provenance测试(现全绿门是静态扫描·漏运行期卡dataMode真BUG)。 【CAPSIM统一·2026-07-12用户确认排序】用户确认排序:本单=第一优先(DATAMODE-UNIFY→CAPSIM→退役SandboxView)。CAPSIM-REPLICA的§7 KILL-MOCK-RED验收硬前置。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】后端改造押后(dev4可在dev3建CAPSIM时并行做·不competing·closes G4);canEnter门/合成诚实非看板主体先跑的硬阻。",
+      "dev4Diagnostic": "[dev4-import 探路诊断·2026-07-12·未认领(超出import lane文件域·跨WO语义决策)] 尝试 tenant级 isSyntheticDecision→SolverContext.syntheticDecision→gate liveTightness source(212/229)+currentTightness.live 后:破6测(solvers.test V5/V5b/V5d + wo-cap-01 C1 + WO-FRESHNESS①/①b)。关键发现:系统已把 dataMode 拆成**两正交维**——①provenance(confidence.synthetic·isSyntheticDecision·demo已SYNTHETIC)②measurement-liveness(risk卡source LIVE/SYNTHETIC·读真OEE/util实测即LIVE即便合成种子)。WO-FRESHNESS① line565 断言 confidence.measurement===LIVE(合成种子但读实测→measurement维仍LIVE)·dataMode(头条)===SYNTHETIC(取最审慎)已成立。**naive 翻 lt.source 会污染 measurement 维**(破①b真实翻转+CAP-01 C1)·是错层。正解方向(未实现):卡级/前端 cardDecisionMode(RiskBoardView:138)决策红应 gate 在 provenance(confidence.synthetic)AND measurement(dataMode==LIVE)双维·而非只看 card.dataMode或只翻 source——即『决策级染红=真provenance且真实测』·不动 measurement 维语义。且与 WO-CAP-01『DemandSegment=真供需LIVE』设计直接冲突(C1断言LIVE)·需与CAP-01 owner协调裁决『合成种子DemandSegment算LIVE还是SYNTHETIC』。属后端/求解器lane系统性WO·非import lane。",
+      "reviewerRuling": "[审核方裁决·采纳dev4双维诊断·2026-07-12] dev4探路证明「下沉isSyntheticDecision到lt.source」是错层(污染measurement维·破CAP-01 C1+FRESHNESS①b共6测)。系统dataMode实为两正交维:①provenance(confidence.synthetic·合成种子)②measurement-liveness(读真OEE/util实测即LIVE即便合成种子)。头条dataMode取最审慎已=SYNTHETIC(正确)。真BUG只在决策级染红gate:cardDecisionMode(RiskBoardView:138)+nodeObjectMode(deriveCellMode app.ts)+capacity.ts行级 只看card.dataMode==LIVE。【正解(采纳dev4方向)】决策级染红gate在 provenance(confidence.synthetic=false·真非合成) AND measurement(dataMode==LIVE·真实测) 双维——『决策红=真provenance且真实测』·不动measurement维语义(lt.source/liveTightness保持读真OEE即LIVE)。【CAP-01冲突→dissolved】CAP-01 C1『DemandSegment=LIVE』是measurement维·保留;provenance维合成种子=SYNTHETIC;二者正交·决策红双维gate→demo合成世界不出决策红(诚实标合成·不冒充)·CAP-01 C1不破。【lane】后端/求解器lane(非import·dev4正确判出)·待该lane dev认领。【green→red精修】demo合成世界:决策级染红应消失/改标合成(现102/102 LIVE决策红);同时OEE/util measurement维仍可LIVE(CAP-01 C1+FRESHNESS①b不破)。补运行期真HTTP provenance测试守此双维。",
+      "assignedDev": "dev4",
+      "authorization": "[审核方指派+授权·2026-07-12] 认可dev4接本单(你有最深context+探路诊断)。授权跨lane改:risk.ts/service.ts(后端求解器)+RiskBoardView.tsx(前端cardDecisionMode:138)+nodeObjectMode(app.ts)+capacity.ts——system-wide语义修·sanctioned·非越界。照裁决层:决策红双维gate(gate在 provenance(confidence.synthetic=false) AND measurement(dataMode==LIVE))·【不动measurement维】(lt.source/liveTightness保持读真OEE即LIVE·这是dev4探路证明的错层·别再翻)。⚠CAP-01测试guardrail(守不作假·关键):measurement维assertion(DemandSegment读真OEE/util=LIVE)必须保持green不改;只有『把decision-red-on-synthetic固化为期望』的assertion才据实改成expect合成/no决策红·且每处改在commit注明理由(measurement保留 vs decision-red据实改)。绝不为过测而翻assertion。若发现必须改measurement维assertion=信号又走错层·停下重协调。补运行期真HTTP provenance测试(现全绿门静态扫描漏运行期真BUG)。收编G4(dep本单)+S2-BE+CAPFORECAST三症。审核方独立复验:真HTTP demo合成→决策红消失/标合成·但OEE measurement维仍LIVE·CAP-01 measurement assertions green·FRESHNESS①b不破。【文件域协调】RiskBoardView:138(cardDecisionMode)本单占·dev3 CAPSIM-REPLICA §6升级RiskBoardView卡网格须rebase本单gate之上(先本单后§6)。"
+    },
+    {
+      "id": "WO-SHOCK-GUARD-HARDEN",
+      "priority": "P3",
+      "deps": [],
+      "doc": "docs/SYSTEM-ONTOLOGY.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T20:24:35.936Z"
+      },
+      "title": "加固无LLM起推演守卫:改「非真LLM模型即短路」(排除deterministic:*/short-circuit:*/none一切无LLM哨兵)·堵单候选短路理论旁路",
+      "note": "[agentcore·P3加固·SHOCK-NO-FLOOR复验次要发现·不可达但脆] 现守卫(orchestrator:1954)仅认classification.model前缀deterministic:·另一无LLM路单候选短路(orchestrator:645 model=short-circuit:single-candidate)不被覆盖·理论上某视图唯一候选恰为shock意图会无LLM起推演。现不可达(4时序意图shock/hold/trend/policy同挂sim.sandbox_render bindings.intents·开闸候选恒≥4·单候选对sim永不触发)。改判据为「非真LLM即短路」更贴「绝不无LLM起推演」绝对语义。green→red:造单候选shock场景现绕过·改后应短路。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-DB-BSTACK-DERIVE",
-      "at": "2026-07-12T02:40:20.778Z"
+      "role": "review",
+      "cmd": "clobber恢复2:dev2旧基线删6 CAPSIM WO+revert verdict·rank-max合并10145401∪当前(留dev2 databuilder进度)",
+      "id": "0单",
+      "at": "2026-07-12T02:46:44.403Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
