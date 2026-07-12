@@ -16,6 +16,7 @@ import { useFeature } from "@/workspace/featureGate";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { DrillBack } from "@/components/DrillBack";
+import { BoardReadinessTrustBar } from "./sim/BoardReadinessTrustBar";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -243,6 +244,10 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           <span style={{ color: "var(--muted2)" }}>· 看板已裁剪到该基地推演（{scopedCards.length} 张卡）</span>
         </div>
       )}
+
+      {/* WO-SANDBOX-READINESS-UX：紧凑单行就绪信任条（嵌 header 区·非通栏·rk-grid 主体不动）。
+          消费既有 GLOBAL SimCertification（守 RL3 只渲染）；entitlement 关/无 token → 组件自返回 null 诚实不渲染。 */}
+      <BoardReadinessTrustBar />
 
       {/* rk-top：标题 + 视角/窗口 chip（HTML §2）。瓶颈视角为主态；30/60/90 天切窗口重算 risk_timeline。 */}
       <div className={styles.rkTop}>

@@ -3470,23 +3470,49 @@ export const handlers = [
   http.get("*/a/v1/sim/sessions/:id/certification", ({ request }) => {
     const url = new URL(request.url);
     const scope = url.searchParams.get("scope") === "LOCAL" ? "LOCAL" : "GLOBAL";
+    const entering = [
+      { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
+      { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
+    ];
+    // GLOBAL 范围忠实镜像真 datacore（RC-1 前向闭合硬前置落地·commit 1cfe22b8）：
+    // 全局本体已认证 L4 → canEnter=true / l4 三元组全真 / gaps 空 / worldCompleteness 100%
+    // （curl 实测响应形态：level L4_CERTIFIED · canEnterSimulation true · l4 all true · gaps []）。
+    if (scope === "GLOBAL") {
+      return HttpResponse.json({
+        scope,
+        targetRef: null,
+        level: "L4_CERTIFIED",
+        dims: { structure: 92, knowledge: 88, behavior: 90, composite: 90 },
+        l4Checks: { fanoutSafe: true, writebackComplete: true, observabilityMet: true },
+        trialTick: { passed: true, rulesFired: 3, at: new Date().toISOString(), error: null },
+        worldCompleteness: {
+          pct: 100,
+          stateVars: { present: 3, needed: 3 },
+          derivationRules: { present: 2, needed: 2 },
+          actions: { present: 1, needed: 1 },
+          propagationRules: { present: 1, needed: 1 },
+          entering,
+        },
+        canEnterSimulation: true,
+        gaps: [],
+        computedAt: new Date().toISOString(),
+      });
+    }
+    // LOCAL 范围（逐对象就绪）：保持既有 L2 未认证桩（对象尚缺写回行动·不动·守既有 LOCAL 断言）。
     return HttpResponse.json({
       scope,
-      targetRef: scope === "LOCAL" ? url.searchParams.get("target") : null,
+      targetRef: url.searchParams.get("target"),
       level: "L2_RUNNABLE",
       dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
       l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
       trialTick: { passed: false, rulesFired: 1, at: null, error: null },
       worldCompleteness: {
-        pct: scope === "LOCAL" ? 48 : 60,
+        pct: 48,
         stateVars: { present: 2, needed: 3 },
         derivationRules: { present: 1, needed: 2 },
         actions: { present: 0, needed: 1 },
         propagationRules: { present: 1, needed: 1 },
-        entering: [
-          { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
-          { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
-        ],
+        entering,
       },
       canEnterSimulation: false,
       gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
