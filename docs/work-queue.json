@@ -7226,9 +7226,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
+      "status": "BLOCKED",
       "owner": "",
-      "at": {},
+      "at": {
+        "built": "2026-07-11T20:34:02.523Z",
+        "blocked": "2026-07-11T21:21:00.541Z"
+      },
       "id": "WO-CAP-09-SANDBOX-TICK-LIVE",
       "title": "假推演:推演沙盘推进tick后头部KPI全冻结(传导规则指向零载体stateVar·核心动作零可见响应)",
       "doc": "docs/AUDIT-frontend-fake-residues.md",
@@ -7236,7 +7239,7 @@
       "deps": [
         "WO-SANDBOX-TEMPORAL-GROUNDING"
       ],
-      "note": "[收编·根治并入沙盘重建S6·Dev-1勿band-aid·S6 DONE时一并复验闭] 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
+      "note": "[收编·根治并入沙盘重建S6·Dev-1勿band-aid·S6 DONE时一并复验闭] 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:磁贴→看板solver KPI结构化解。勿补退役页·随CAPSIM落地。",
       "acceptance": {
         "goal": "沙盘'推进N天'后头部至少一项决策相关KPI随tick确定性真变化(非冻结·非合成扰动)。",
         "criteria": [
@@ -7263,7 +7266,9 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方复验出单·dev建·reviewer复验(分权)。"
       },
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": "[审核方复验·BLOCK·修错层+反假绿] 磁贴仍全冻。真浏览器逐值(base_manager→/v/sim-sandbox推3tick curTick0→3):CHANGED TILES:NONE(全局态47.3/demandDelta0.3/demandLoad0.0/loadIndex0.0/totalDemand/utilization全冻·仅tick计数变)=用户判推了没反应死的;RC-UX-KPI-CARRIER未治(DAG Σ0→358620变而磁贴全冻依旧)。根:传导载体没修·3条PUBLISHED传导规则仍指Base.loadIndex/Model.demandLoad·两变量快照nodeObjectState载体数=0→carrierMean(SandboxView:114 tip未改)零载体→{value:0}→磁贴恒0.0;C1二选一(改指真载体stateVar/物化loadIndex/demandLoad载体)都没做。cc053750只加后端PO etaDay→arriveTick驱动合成inv1.level·前端createSimSession(endpoints:649)不含feedSpecs→浏览器会话恒feeds:[]·连CAP-09放水目标经真UI也未达。反假绿:后端牙齿sim-rc2-default-feed.test齿②断合成inv1.level随tick变用UI永不发的feedSpecs从不碰carrierMean/磁贴;前端sandbox-view.test网络桩每tick+10返{__mut:v:999}人为强制所有磁贴变遮死真载体冻结病·两测都绿没一个抓冻结=拿绿测试冒充能用。附C2 FAIL(零载体恒0.0非诚实—)C3 FAIL(tick按钮未绑canEnter)。given CAPSIM统一SandboxView退役→磁贴concern fold CAPSIM看板(用solver KPI无carrier病)勿补退役页;或真治动感知层C1+C2+C3。复验commit a14d03d6。",
+      "supersededByCAPSIM": true
     },
     {
       "status": "TODO",
@@ -7462,20 +7467,64 @@
     {
       "at": {
         "wip": "2026-07-11T11:28:48.665Z",
-        "built": "2026-07-11T15:38:52.212Z"
+        "built": "2026-07-11T15:38:52.212Z",
+        "done": "2026-07-11T19:07:40.533Z"
       },
       "id": "WO-SANDBOX-AS-RENDER-TARGET",
       "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
       "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
       "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。 【审核方恢复2026-07-11:S1真BUILT(18a4a6fc §5.4五触发+§5.3多轮·e6bdbb32真浏览器证据·2d854b1标BUILT)被c251a2d8(Dev-3 S2前端·旧基线)误clobber回WIP·代码/证据完好·恢复BUILT待复验】",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3"
+      "assignedDev": "dev3",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S1沙盘→时序推演意图落地渲染器机制真实可用(render-target机制·非页面端到端可用)",
+        "verifiedBy": "独立真浏览器复验(真起前后端+真Kimi moonshot-v1-32k+真playwright+真RS256登录·逐值对后端·未采信dev截图·a0a687b5)+测试门(a22d4ac1 agentcore743/前端569/contracts49绿)·2强信号PASS·2026-07-11。第3信号代码审计(a6ac305368)停摆67min无果·2强信号(真浏览器逐值+测试门)已足。",
+        "scopeBoundary": "仅render-target机制;推演动态质量/传导核数学属S0配套/S6接地(F-A惰性喂RC-2)·WO明示不在S1面",
+        "criteria": [
+          {
+            "id": "shock-render-values-match-backend",
+            "type": "browser",
+            "assert": "注入utilization冲击→前端DOM util93.9/totalDemand1600000/KPI47.1逐值==后端carrierMean(computeGlobalKpi)·baseSnapshot来自view-config真值非hash(oid)"
+          },
+          {
+            "id": "five-trigger-unified",
+            "type": "browser",
+            "assert": "§5.4两不同源(dialogue auto-run + raw risk→canonical alert scope-only cur-tick0)都进同一渲染;mapSimSource五枚举强校验→单一SimulationRequest→单一init"
+          },
+          {
+            "id": "multiturn-simbranch",
+            "type": "browser",
+            "assert": "§5.3多轮:turn2追问同会话followUp经previousConversationTasks真恢复→/branch1次+/compare1次→compare面板真渲染(A/B此刻同=S1边界未越S3)"
+          },
+          {
+            "id": "hold-trend-policy-honest-deferred",
+            "type": "browser",
+            "assert": "三类问句真Kimi正确抽槽但全诚实答需S6时序接地·无sandbox_render无伪造影响数字"
+          },
+          {
+            "id": "hidden-gate-byte-consistent",
+            "type": "browser",
+            "assert": "feature ON→[text,sandbox_render];PUT override关+缓存失效→同shock问句落回旧Path A完整workflow答案无sandbox_render;datacore+agentcore双注册defaultOn:false旧路径未删(RL9)"
+          },
+          {
+            "id": "r6-determinism",
+            "type": "determinism",
+            "assert": "两次同SimulationRequest会话5-tick sha256一致"
+          }
+        ],
+        "honestFindings": [
+          "F-A(喂RC-2非BLOCK):demo仅3传导规则·utilization冲击无可见传导·全局KPI跨5tick恒47.08·被冲击常州util恒63.089·仅18/2875格变=推演轨迹平;渲染+推进机制真跑值对后端真保真但轨迹平。dev shock-run证据称全局KPI47.7实为跨tick静止值·略夸大。传导质量属S0配套/S6接地。",
+          "F-B:dev shock-run用dev-only window.__PENDING_SIM_PRESET__全局注入·未真跑裸NL→渲染/按钮E2E(生产按钮流审核方已独立验通)·方法弱于宣称。",
+          "F-C:NL shock效应依赖分类器抽中config内stateVar(Kimi抽backlog不在config→诚实守卫不注入)·分类精度依赖兄弟单A。"
+        ]
+      }
     },
     {
       "at": {
@@ -7529,7 +7578,7 @@
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
-      "status": "WIP",
+      "status": "BLOCKED",
       "priority": "P2",
       "owner": "dev1",
       "assignedDev": "dev1-后端",
@@ -7538,27 +7587,72 @@
       ],
       "doc": "docs/WO-SANDBOX-TRUST-BADGE.md",
       "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
-      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。",
+      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。 【审核方·S2 co-verify要求】BE半填dataMode/nodeObjectMode时是G4谎言的真正防线:合成materialized值不得标LIVE(须按provenance——真导入rawDataset才LIVE·合成→SYNTHETIC)。与WO-IMPORT-REPLACE-SYNTHETIC(G4 BLOCK)同源返工。S2前端只透传照信·防线在此。co-verify:BE完成后与S2 WO-SANDBOX-TRUST-BADGE一起真浏览器验合成不冒充LIVE。",
       "at": {
-        "wip": "2026-07-11T18:27:37.158Z"
-      }
+        "wip": "2026-07-11T18:27:37.158Z",
+        "built": "2026-07-11T19:22:04.603Z",
+        "blocked": "2026-07-11T20:15:35.072Z"
+      },
+      "blockReason": "[审核方co-verify BLOCK·KILL-MOCK-RED命门·合成冒充LIVE] BE deriveCellMode(app.ts)只判originType==SYNTHETIC?SYNTHETIC:LIVE·漏MATERIALIZED-from-synthetic-connection档。demo走seedDemoSynthetic(viaModelingChain:true·seed.ts:355)→origin.type=MATERIALIZED(非SYNTHETIC)→BE标LIVE。真证:view-config nodeObjectMode 102/102全LIVE(0 SYNTHETIC)·world-source{synthetic·materialized560·rawDataset40全合成连接·真导入0}·同批对象经权威isSyntheticDecision(solvers/service.ts:2529·判origin SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has))自报SYNTHETIC(risk_timeline/capacity_forecast/bottleneck_matrix)。commit自称复用SolverDataMode实则重写弱判据漏B路正中demo命门。反假绿:BE test seededbattery(A路origin=SYNTHETIC)与生产seedDemoSynthetic(MATERIALIZED)分岔·齿①空断言·齿②把BUG钉成规范。修:deriveCellMode真复用isSyntheticDecision/synthDatasetIds。与G4/CAPFORECAST同根→见WO-DATAMODE-UNIFY-PROVENANCE。复验commit 577bfa57。"
     },
     {
       "at": {
-        "wip": "2026-07-11T18:27:37.242Z"
+        "wip": "2026-07-11T18:27:37.242Z",
+        "built": "2026-07-11T19:22:04.681Z",
+        "done": "2026-07-11T20:15:35.072Z"
       },
       "id": "WO-SANDBOX-BRANCH-INJECT",
       "title": "S3·分支注入不同应对+对比换决策维(交付/成本/齐套)",
       "doc": "docs/WO-SANDBOX-BRANCH-INJECT.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "DONE",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "note": "[沙盘重建·S3·依赖S1·dev3] 接CAP-05补差量。SimComparePanel(FAKE-08已修tickMean其上)。回退:白名单·关=回容器分支。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S3分支注入不同应对+compare决策维差量·经S6 overlay·真算",
+        "verifiedBy": "独立真起datacore:4041真curl逐值对后端·真seed Base+formationCapDaily(非dev合成risk)·commit 577bfa57(target 39f4e42b)·自避778cc589坑·a9c0965f·2026-07-11",
+        "criteria": [
+          {
+            "id": "branch-inject-effective",
+            "assert": "注入外协+10000/加班+3000→分支tick0 A=68565 B=61565 A≠B·主线base不变58565·逐值证非复制"
+          },
+          {
+            "id": "compare-decision-dims",
+            "assert": "GET /sim/compare→{a:805557,b:798557,delta:-7000,verdict:A_BETTER}·a=736992(11真Base和)+68565(overlay覆盖)·逐值对后端非0填充非写死"
+          },
+          {
+            "id": "multi-response-compare",
+            "assert": "换注入→delta/verdict真翻B_BETTER·换决策维方向真翻"
+          },
+          {
+            "id": "s6-overlay-readonly",
+            "assert": "import buildSimSolverContext(context-overlay核心文件未改仅复用)·所有compare跑完live Base逐值不变(R4/F2只读实证)"
+          },
+          {
+            "id": "hidden-dual-reg-revert",
+            "assert": "sim.branch_inject datacore+agentcore双注册defaultOn:false·feature-parity有牙·关闸落回旧行为字节一致"
+          },
+          {
+            "id": "r6-determinism",
+            "assert": "同注入两次compare字节一致·纯函数无Date/random"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "差量真算(含真世界base和736992+注入差)·无匹配诚实null+NO_DATA非0填充"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "sim-branch-inject.test 5测真断言(#2 a≈realOtherRisk读真repo对账最强反mock)·agent非零realOtherSum复现更强"
+          }
+        ],
+        "scopeBoundary": "state级注入(非coefficient级ruleAdjustments·后者留propagation.ts会话overlay后接·本体§3诚实注明);前端SimComparePanel未消费decisionDims(端点级WO·前端展示随CAPSIM§3多方案+比较落地)·母体§3回写+切片重生成hash一致"
+      }
     },
     {
       "at": {
@@ -7643,13 +7737,14 @@
     {
       "at": {
         "wip": "2026-07-11T17:20:12.843Z",
-        "built": "2026-07-11T18:27:08.072Z"
+        "built": "2026-07-11T18:27:08.072Z",
+        "done": "2026-07-11T19:20:17.402Z"
       },
       "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
       "title": "S6·时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)+根治CAP-09 tick冻结",
       "doc": "docs/WO-SANDBOX-TEMPORAL-GROUNDING.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
@@ -7657,7 +7752,43 @@
       "note": "[沙盘重建·S6·依赖S1 MVP·上线门禁·dev3] 外生驱动真源逐tick喂引擎=根治CAP-09(传导规则零载体致头部冻结)。回退:feature sim.temporal_grounding关=回v1.1。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev1-后端",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S6时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)机制真实可用",
+        "verifiedBy": "独立真跑datacore:4029真HTTP真feed注入·commit fa8df9df=tip·自避778cc589坑(五源文件sha IDENTICAL)·aaf67787·2026-07-11",
+        "criteria": [
+          {
+            "id": "exogenous-feed-drives-world",
+            "assert": "真注入ExogenousFeed(dailyP50=50000)→Model.totalDemand FLAT[320000×6]→[320000..570000]每tick+50000·下游demandLoad基线死线性→feed真加速47.96;外生驱动引擎链路真通(补dev未做的e2e HTTP)"
+          },
+          {
+            "id": "overlay-readonly",
+            "assert": "SimContextOverlay基线0.5vs情景0.9算不同值·base不被mutate·R4只读"
+          },
+          {
+            "id": "hold-conservation",
+            "assert": "真守恒会计sustainingFlow=pinned−natural·植假即红牙"
+          },
+          {
+            "id": "constraint-horizon",
+            "assert": "约束推负→clamp0+constraintViolations{raw,clamped,boundRef};horizon 60tick→HORIZON_UNCOVERED coveredTicks0诚实缺口绝不外推"
+          },
+          {
+            "id": "replay-validated",
+            "assert": "独立复现真写A8 ts_points→cert→VALIDATED meanApe0 samples19 l3Validated;demo开箱NO_HISTORY+RULES_UNCALIBRATED诚实不假验证"
+          },
+          {
+            "id": "hidden-gate-byte-consistent",
+            "assert": "sim.temporal_grounding defaultOn:false·datacore features.ts:111≡agentcore registry.ts:144双注册·battery-all-on真排除(a49c04cd)·关闸字节一致(逐tick sha同·feeds冻[])·R6同feed双跑sha一致"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "sim-temporal-grounding.test.ts(16)逐值+植假share0立红;replay真APE计算green→red齿;KILL-MOCK-RED守住(feed源真dailyP50·无源诚实缺口·overlay只读)"
+          }
+        ],
+        "scopeBoundary": "五件套=能力(可注入)非默认场景;demo开箱四feed源全EMPTY_DATA(demand_segment只聚合p50无dailyP50/sop无dailyDemand/po是etaDay非arriveTick/maint是week非tick/ts全tick0)→静止;RC-2 out-of-box需默认真feed源→WO-RC2-DEFAULT-FEED",
+        "deliveryNote": "交付态曾build红(12前端夹具缺feeds·dev文档误称4包绿实只build datacore)→PM hotfix 3255fe2c补feeds:[]·pnpm -r build EXIT0四包全绿;门+60定向回归绿(sim-certification11存量未破);母体§I回写。"
+      }
     },
     {
       "at": {},
@@ -7849,14 +7980,50 @@
       "doc": "docs/WO-DB-LLM-REQUIRED-NO-FLOOR.md",
       "title": "取消comprehend无-LLM地板降级(G-COMPREHEND-FLOOR):无绑定/失败/未理解→诚实报错不建(LLM_PURPOSE_UNBOUND/COMPREHEND_NOT_UNDERSTOOD)·堵service.ts:86-102主+:952次两调用点",
       "note": "[LaneB·datacore·用户钉死红线] ⚠硬前置:先跑全量测试sweep定≥14+测清单(WO只认3·实测runStory/comprehend触≥14 datacore+agentcore scaffold含comprehend-floor-a2)+CI/demo LLM绑定/flag端到端airtight(SEED_DEMO+docker demo+离线信创三态)·否则一落地破4包全绿。兼顾:DC_COMPREHEND_DETERMINISTIC flag(默认false·留地板满足RL9)+comprehendedBy:FLOOR契约标注。回写§8 G-COMPREHEND-FLOOR闭。green→red:改回地板→非电池故事产电池域→门红。 【索引§2重排2026-07-11:序#2(CLOSURE-HARDEN后·LINK前)·顺修comprehend漏绑bug(seed只建provider漏绑comprehend用途·service.ts实测踩坑)】",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-11T17:34:04.168Z",
-        "built": "2026-07-11T18:25:39.063Z"
+        "built": "2026-07-11T18:25:39.063Z",
+        "done": "2026-07-11T19:20:17.402Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "建域硬依赖LLM·无LLM诚实硬失败·绝不吐关键词兜底垃圾模型冒充",
+        "verifiedBy": "独立真跑datacore+真Kimi moonshot-v1-32k·commit b9a258cf=tip·自避778cc589坑·a750a5ce·2026-07-11",
+        "criteria": [
+          {
+            "id": "no-llm-hard-fail",
+            "assert": "不绑comprehend→status FAILED·gapReport BLOCKED·LLM_PURPOSE_UNBOUND·battery-flavor扫描全false;地板真删(旧catch落地板→现if(!llm)throw)"
+          },
+          {
+            "id": "unfamiliar-no-garbage",
+            "assert": "珠宝翡翠无LLM→BLOCKED无对象;真Kimi→合理模型翡翠原石/拍卖出价"
+          },
+          {
+            "id": "with-llm-normal",
+            "assert": "真Kimi冷链→SUCCEEDED comprehendedBy=LLM·ColdChainWarehouse/TemperatureZone(旧地板静默丢的)·dc_llm_calls_total{purpose=comprehend}1"
+          },
+          {
+            "id": "new-gate-teeth",
+            "assert": "check-comprehend-nofloor.mjs EXIT0已并入gates·green→red(注入地板复活→RED报2处return comprehendScript)"
+          },
+          {
+            "id": "gapcode-exhaustive",
+            "assert": "2新GapCode agentcore probe+frontend GapCard穷尽Record消费·typecheck0·growth21绿"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "硬失败落可查询BLOCKED StoryBuildRun非消失500非地板plan;FLOOR仅DC_COMPREHEND_DETERMINISTIC=1显式开关+诚实标comprehendedBy:FLOOR"
+          },
+          {
+            "id": "no-fake-green-audit",
+            "assert": "nofloor-comprehend.test.ts真断言(FLOOR/LLM标注真ColdZone/0对象COMPREHEND_NOT_UNDERSTOOD/expect not.toContain Process/Base)非空壳"
+          }
+        ],
+        "note": "微瑕非阻断:重试循环对LLM_PURPOSE_UNBOUND也重试2次略浪费。key卫生:建议轮换moonshot key(在harness转录因在提示词内)。"
+      }
     },
     {
       "id": "WO-DB-BSTACK-DERIVE",
@@ -8168,7 +8335,7 @@
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "owner": "",
       "assignedDev": "dev1-后端",
@@ -8179,7 +8346,45 @@
       "title": "沙盘配套派生活路径接线:修pre-analysis触发时序(startPreAnalysis抢跑setImmediate RG旁路→派生gap不落live报告)·让派生need真抵达S0覆盖报告",
       "note": "[Lane沙盘后端·dev1·CONFIG-DERIVE复验发现活路径接缝] 派生逻辑已DONE正确·活POST路径pre-analysis抢跑RG旁路→派生kind空(dev T6先seed RG绕竞态·绿测试≠活路径)。green→red:真POST传导问句→派生need应落pre-analysis报告·现空→红。",
       "at": {
-        "created": "2026-07-11T17:09:14.184Z"
+        "created": "2026-07-11T17:09:14.184Z",
+        "built": "2026-07-11T19:48:40.275Z",
+        "done": "2026-07-11T20:23:34.179Z"
+      },
+      "blockReason": "",
+      "acceptance": {
+        "goal": "沙盘配套派生活路径接线·预分析自等RG就绪·竞态闭",
+        "verifiedBy": "独立真起DC+AC真HTTP真Bearer·commit 4918cc84(=HEAD祖先·3被验文件字节一致)·a1ab076a·2026-07-11",
+        "criteria": [
+          {
+            "id": "live-path-wired",
+            "assert": "真问句→orchestrator RG sideband真建RG(Line/Base/Process+event+真链路边)→预分析真派生落报告+GrowthTicket:pr_Line__line_belongs_to_base__Base/state_var Base.load等+5张[sandbox-config:*]锚工单·非空非悬置"
+          },
+          {
+            "id": "race-closed-revert-proof",
+            "assert": "决定性反证:pre-analyze回退修前(4918cc84^)→dev测真RED(齿①kinds无propagation_rule·齿③0keys=预分析抢RG前读空)·恢复→GREEN(3/3)·waitForRequirementGraph真闭竞态;无LLM自由问句短路终态wait正确停等返空诚实零假阳"
+          },
+          {
+            "id": "r6",
+            "assert": "同问句两次真HTTP派生5键字节一致"
+          },
+          {
+            "id": "s0-linkage",
+            "assert": "sandbox-config-derive.ts(S0)未回归·活路径真接上算出正确键"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "键=pr_<真类型>__<真链路key>__<真类型>从查询真触达本体链路边算·非写死;signal问句无event→零派生诚实无假阳"
+          },
+          {
+            "id": "gates-regression",
+            "assert": "agentcore 744绿(132文件)EXIT0·ontology-slices/genuine-sim/feature-parity/requirement-graph全EXIT0"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "revert→red证有牙·测试不seed RG(getByTaskId读断言rg.taskId证sideband真建非旧T6绕竞态)·逐值EXISTS/MISSING·永不BLOCKER·本体§8 G-SANDBOX-DERIVE-RACE已闭"
+          }
+        ],
+        "note": "非阻塞:①DC端口4045在WHATWG fetch bad-ports黑名单(undici拒)·后续真HTTP复验避开·agent改4041完成;②waitForRequirementGraph终态后可选补读一次(理论极窄窗口·实测无)。"
       }
     },
     {
@@ -8294,10 +8499,52 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "导入场景端到端进启动器(G3 follow-up):agentcore battery启动器合并pack.scenarios(现走SCENARIO_CATALOG忽略)+IndustryScenario补selectedObjects传resolvedObjects/targetView/slotPresets",
       "note": "[LaneA·agentcore·G3诚实交底转单] server.ts:2572-2579 battery租户走SCENARIO_CATALOG忽略pack.scenarios→导入卡进不了demo启动器。需①catalog合并pack.scenarios②IndustryScenario补selectedObjects字段让G3解析的resolvedObjects/targetView经pack传启动器。与RC-2默认输入场景天然协同(导入场景=一条有输入的可推演场景)。green→red:导入场景后demo启动器目录应出现该场景·点击带selectedObjects进推演(PRD§3.3一键推演)。",
-      "status": "TODO",
-      "owner": "",
+      "status": "DONE",
+      "owner": "dev4-import",
       "at": {
-        "created": "2026-07-11T18:33:05.251Z"
+        "created": "2026-07-11T18:33:05.251Z",
+        "done": "2026-07-11T21:31:05.515Z"
+      },
+      "built": "[BUILT dev4-import] G3 follow-up 端到端进电池启动器。①IndustryScenario(contracts/industrypack.ts)补 selectedObjects/targetView/slotPresets ②DataCore /a/v1/scenarios/pack 随卡下发 G3 解析的 resolvedObjects/targetView/slotPresets ③agentcore scenarioFromPackScenario 映射进 presetContext ④ensureScenarios 电池族在 S01-S20 专属播种之后合入导入卡(allCards 去重·不干扰电池 grounding/意图/计划播种)。green→red:导入场景经 grounding 进 demo 启动器·点击带真对象 selectedObjects 一键推演;无导入不凭空造卡·S01 仍在(合入非替换)。测:agentcore test/import-scenario-launcher-wire.test.ts 2 用例·datacore 1261/agentcore 746 全绿·gates(feature-parity/debattery/no-fake-data/prd/slices)全绿。回写母体§2.B(G3 bullet 端到端已闭)+slices。⚠跨 lane:agentcore server.ts/scenarios-catalog.ts + datacore app.ts + contracts·additive·已 rebase。待审核方真跑复验。",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "G3导入场景端到端进demo启动器(battery catalog合并pack.scenarios+selectedObjects传递)",
+        "verifiedBy": "独立真起DC:4055+AC:4155真seam(非mock getScenarioPack)·真POST import→真GET启动器·commit e2f5aaf6(WO 38bbbdcb·与a14d03d6字节一致)·自避778cc589坑·a9e88f96·2026-07-11",
+        "criteria": [
+          {
+            "id": "import-into-launcher-e2e",
+            "assert": "真POST /a/v1/scenarios/import(demo·引真Base/changzhou·resolvedObjects命中0gaps)→真GET /b/v1/scenarios导入卡verify-changzhou-equip-fail出现(42→43·导入前不存在)·真DC→AC seam非mock"
+          },
+          {
+            "id": "catalog-merge-pack",
+            "assert": "server.ts ensureScenarios电池族importedCards=packScenarios.map(scenarioFromPackScenario)·allCards去重播种·放S01-S20后不干扰grounding"
+          },
+          {
+            "id": "selectedobjects-passthrough",
+            "assert": "IndustryScenarioSchema补optional selectedObjects/targetView/slotPresets·启动器卡presetContext.selectedObjects=[{Base,changzhou}]非[]·targetView=sim-sandbox·objectId保真"
+          },
+          {
+            "id": "one-click-sim",
+            "assert": "导入卡launch→202→COMPLETED WORKFLOW·classify affected_orders置信1.0·VERIFIED_WORKFLOW真答案(真订单SO-3391·参数基地=常州)·scope Base/changzhou正确;歧义卡→诚实AWAITING_CLARIFICATION非缺陷"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "卡来自真导入(前无后有)·selectedObjects经groundScenario对真对象库复核object_verified·答案真订单·无写死imported-*/verify-*卡"
+          },
+          {
+            "id": "tenant-isolation",
+            "assert": "别租户pack返0导入场景·启动器42默认卡无verify-changzhou·严格隔离"
+          },
+          {
+            "id": "gates-regression",
+            "assert": "datacore1265/agentcore746 EXIT0·ontology-slices/feature-parity/debattery/no-fake-data/prd全EXIT0无漂移(首轮并发infra flake onTaskUpdate超时·独占重跑EXIT0·0测失败)"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "dev import-scenario-launcher-wire.test真green→red(断卡进启动器+selectedObjects非空含Base+合入非替换S01+无导入无泄漏)非空壳·唯mock getScenarioPack被agent真端到端补齐"
+          }
+        ],
+        "note": "非阻断:①导入卡完整GOVERNED答案取决问句是否唯一命中意图(清晰→完整·歧义→诚实澄清);②电池族importedCards映射全部pack.scenarios(现电池内置pack无scenarios故只收导入卡·将来内置pack加scenarios会一并进启动器·设计点非bug);③CI高并发datacore全测偶发onTaskUpdate超时infra flake非测试红。"
       }
     },
     {
@@ -8334,9 +8581,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE(S4三雷达合一+S5tick日历归因·真浏览器复验PASS)",
-      "id": "2单",
-      "at": "2026-07-12T02:35:44.337Z"
+      "cmd": "clobber恢复:dev3 IA-UNIFY推带旧基线覆盖8单·从07ae6e14恢复正确verdict(status+acceptance)",
+      "id": "8单",
+      "at": "2026-07-12T02:38:01.916Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
