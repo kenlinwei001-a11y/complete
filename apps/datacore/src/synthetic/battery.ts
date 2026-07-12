@@ -23,6 +23,32 @@ function uniformDomain(rng: () => number, lo: number, range: number, precision: 
 export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | "动力+储能"; lon: number; lat: number }[] =
   BASE_REGISTRY.map((b) => ({ baseId: b.baseId, name: b.name, kind: b.kind, lon: b.lon, lat: b.lat }));
 
+/**
+ * WO-SA-4 基地工厂台账（对齐 docx factory.csv 记录型字段）——**真事实用常量映射·非 rng**（守 R6：同基地恒定，
+ * byte-identical 重放）。这些是 battery-template 的记录事实（省市/工厂码/建厂日），落在 battery.ts 合成包内，
+ * 不外泄平台层业务常数（守 R14·debattery:check 绿）。`start_date` 年份对齐 BASE_REGISTRY.prodYear（同一真相）。
+ * 诚实标注：12 座基地皆为运营中电芯厂，故 `factory_type` 一律 `CELL`、`status` 一律 `ACTIVE`；enum 值域声明
+ * `PACK/MATERIAL`、`CONSTRUCTION/PLANNED/SUSPENDED` 仅作前向可扩展域（未在本模板中被合成使用·合法子集内）。
+ */
+const BASE_LEDGER: Record<string, { factory_code: string; province: string; city: string; factory_type: string; status: string; start_date: string }> = {
+  changzhou: { factory_code: "FAC-CZ01", province: "江苏省", city: "常州市", factory_type: "CELL", status: "ACTIVE", start_date: "2015-01-01" },
+  xiamen: { factory_code: "FAC-XM01", province: "福建省", city: "厦门市", factory_type: "CELL", status: "ACTIVE", start_date: "2019-01-01" },
+  chengdu: { factory_code: "FAC-CD01", province: "四川省", city: "成都市", factory_type: "CELL", status: "ACTIVE", start_date: "2018-01-01" },
+  meishan: { factory_code: "FAC-MS01", province: "四川省", city: "眉山市", factory_type: "CELL", status: "ACTIVE", start_date: "2021-01-01" },
+  wuhan: { factory_code: "FAC-WH01", province: "湖北省", city: "武汉市", factory_type: "CELL", status: "ACTIVE", start_date: "2022-01-01" },
+  jiangmen: { factory_code: "FAC-JM01", province: "广东省", city: "江门市", factory_type: "CELL", status: "ACTIVE", start_date: "2021-01-01" },
+  hefei: { factory_code: "FAC-HF01", province: "安徽省", city: "合肥市", factory_type: "CELL", status: "ACTIVE", start_date: "2022-01-01" },
+  xinyang: { factory_code: "FAC-XY01", province: "河南省", city: "信阳市", factory_type: "CELL", status: "ACTIVE", start_date: "2023-01-01" },
+  zaozhuang: { factory_code: "FAC-ZZ01", province: "山东省", city: "枣庄市", factory_type: "CELL", status: "ACTIVE", start_date: "2023-01-01" },
+  handan: { factory_code: "FAC-HD01", province: "河北省", city: "邯郸市", factory_type: "CELL", status: "ACTIVE", start_date: "2023-01-01" },
+  zigong: { factory_code: "FAC-ZG01", province: "四川省", city: "自贡市", factory_type: "CELL", status: "ACTIVE", start_date: "2022-01-01" },
+  luoyang: { factory_code: "FAC-LY01", province: "河南省", city: "洛阳市", factory_type: "CELL", status: "ACTIVE", start_date: "2024-01-01" },
+};
+// 兜底（新增基地未登记台账时的确定性回填·守双向对齐门"非派生全填"不因缺登记而漏）。
+function baseLedgerOf(baseId: string) {
+  return BASE_LEDGER[baseId] ?? { factory_code: `FAC-${baseId.slice(0, 2).toUpperCase()}01`, province: "未登记", city: "未登记", factory_type: "CELL", status: "ACTIVE", start_date: "2020-01-01" };
+}
+
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
 // PRD-IND-order-aggregate：HTML 6 型号（MODEL_DEF L1542），命名以原型为单一真相源。
 export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
@@ -443,6 +469,13 @@ const baseProps: PropertyDef[] = [
   { propKey: "lon", dataType: "number", isPrimaryKey: false },
   { propKey: "lat", dataType: "number", isPrimaryKey: false },
   { propKey: "position", dataType: "enum", isPrimaryKey: false },
+  // WO-SA-4 工厂台账（对齐 docx factory.csv·记录型真事实·常量映射非 rng·同基地恒定 R6）。
+  { propKey: "factory_code", dataType: "string", isPrimaryKey: false },
+  { propKey: "province", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "city", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false, enumValues: ["CELL", "PACK", "MATERIAL"] },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, enumValues: ["ACTIVE", "CONSTRUCTION", "PLANNED", "SUSPENDED"] },
+  { propKey: "start_date", dataType: "date", isPrimaryKey: false },
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
@@ -506,6 +539,11 @@ const lineProps: PropertyDef[] = [
   { propKey: "certifiedModels", dataType: "json", isPrimaryKey: false }, // 线级可产型号（Q01/Q15·认证线约束）
   { propKey: "changeoverGroup", dataType: "string", isPrimaryKey: false }, // 换型组（Q08 换型序列约束）
   { propKey: "workshopId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Workshop" }, // WO-SA-3 Line 归属车间（Factory→Workshop→Line）
+  // WO-SA-5 产线台账（对齐 docx production_line.csv·线级记录型字段·不重复 oee/OEE 三分解）。
+  { propKey: "line_code", dataType: "string", isPrimaryKey: false }, // 线体编码（确定性·非 rng）
+  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false, unit: "cell/日" }, // 设计铭牌日产能（rngTopo 末位追加）
+  { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // 线级目标良率（rngTopo 末位追加）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, enumValues: ["RUNNING", "IDLE", "MAINTENANCE"] }, // 产线状态（确定性 hash·非 rng）
 ];
 
 // WO-SA-3 车间层（Factory→Workshop→Line）——工艺码表（英文工艺码 ↔ 中文车间名·docx workshop.csv 对齐·Line.process 同码域）
@@ -562,6 +600,12 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均无故障时间（小时）" },
   { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均修复时间（小时）" },
   { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", description: "设备健康度（0-100·越高越健康）" },
+  // WO-SA-6 设备台账（对齐 docx equipment.csv·设备主数据记录型字段·确定性派生·零 rng·不位移既有 R6 字节）。
+  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false }, // 设备编码（确定性 hash·6 位数字）
+  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false, enumValues: WORKSHOP_TYPES.map((w) => w.code), description: "工序设备类型（由 processId 工序确定性派生·同 Line.process/Workshop 码域）" },
+  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false }, // 设备厂商（确定性 hash 取小池）
+  { propKey: "install_date", dataType: "date", isPrimaryKey: false }, // 安装日期（确定性·建厂日后 0-2 年内）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, enumValues: ["RUNNING", "IDLE", "MAINTENANCE"] }, // 设备状态（确定性 hash·非 rng）
 ];
 
 const maintPlanProps: PropertyDef[] = [
@@ -1625,6 +1669,25 @@ const SERIAL_STEPS = [
   { suffix: "assembly", name: "装配" },
 ];
 
+// WO-SA-5/SA-6 台账值域（记录型·确定性映射·守 R6·battery-template 事实不外泄平台常量 R14）。
+const RUN_STATUS_DOMAIN = ["RUNNING", "IDLE", "MAINTENANCE"] as const; // 产线/设备状态共用域（各自 enumValues 独立声明）
+// 工序→设备类型（equipment_type 由 processId 所属工序 step 确定性派生·码域 ⊆ WORKSHOP_TYPES.code）。
+const EQUIP_TYPE_BY_STEP: Record<string, string> = { coating: "COATING", winding: "WINDING", assembly: "ASSEMBLY" };
+// 设备厂商小池（锂电产线主流设备商·确定性 hash 取模选取·非 rng）。
+const EQUIP_MAKERS = ["先导智能", "赢合科技", "利元亨", "杭可科技", "联赢激光"] as const;
+// 状态确定性派生（hash%6：0→MAINTENANCE,1→IDLE,其余→RUNNING·偏向运行·零 rng·同 id 恒定 R6）。
+function runStatusOf(key: string): string {
+  const h = hashString(`${key}#st`) % 6;
+  return h === 0 ? "MAINTENANCE" : h === 1 ? "IDLE" : "RUNNING";
+}
+// 设备安装日期（确定性·建厂日 start_date 之后 0-2 年内·耦合 SA-4 台账·同 id 恒定 R6）。
+function equipInstallDate(baseId: string, equipId: string): string {
+  const startYear = Number(baseLedgerOf(baseId).start_date.slice(0, 4));
+  const yr = startYear + (hashString(`${equipId}#y`) % 3);
+  const mo = 1 + (hashString(`${equipId}#mo`) % 12);
+  return `${yr}-${String(mo).padStart(2, "0")}-01`;
+}
+
 function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
@@ -1691,6 +1754,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     gwh: uniformDomain(rng, 6, 36, 1, "gwh"), // A6.3 收编：原 round(6+rng()*36,1)，字节一致
     formationCapDaily: 0, // filled after process generation (shared-resource cap)
     agingCapDaily: 0,
+    ...baseLedgerOf(b.baseId), // WO-SA-4 工厂台账 6 字段（常量映射·零 rng·不消费 rng 序列·R6）
   }));
 
   const models = MODELS.map((m) => {
@@ -1799,7 +1863,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const workshopId = `WS-${b.baseId}`;
     workshops.push({ workshopId, baseId: b.baseId, name: `${b.name}${wt.name}`, process_type: wt.code });
     const lineId = `LINE-${b.baseId}`;
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线`, workshopId });
+    // WO-SA-5 台账：line_code/status 确定性（零 rng·不位移既有 rngTopo 序列）；max_capacity_day/target_yield
+    // 走 rngTopo 但**在第二遍 line 富化（拓扑抽样序列之后）末位追加**，避免在此处插值位移后续设备/工序字节（R6）。
+    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线`, workshopId, line_code: `LN-${b.baseId}-01`, status: runStatusOf(lineId) });
     for (const step of SERIAL_STEPS) {
       const processId = `${lineId}-${step.suffix}`;
       processes.push({
@@ -1819,8 +1885,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         agingDays: 0,
       });
       for (let e = 1; e <= 2; e++) {
+        const equipId = `${processId}-E${e}`; // 纯字符串·不消费 rng·SA-6 台账派生锚
         equipment.push({
-          equipId: `${processId}-E${e}`,
+          equipId,
           processId,
           lineId,
           baseId: b.baseId,
@@ -1833,6 +1900,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           mtbf: round(300 + rngTopo() * 500, 0), // 300-800h
           mttr: round(2 + rngTopo() * 6, 1), // 2-8h
           health_score: round(78 + rngTopo() * 20, 0), // 78-98
+          // WO-SA-6 设备台账 5 字段（全确定性派生·零 rng·不位移既有 R6 字节流）。
+          equipment_code: `EQP-${(hashString(`${equipId}#c`) % 900000) + 100000}`, // 6 位数字设备编码
+          equipment_type: EQUIP_TYPE_BY_STEP[step.suffix] ?? "ASSEMBLY", // 由工序 step 确定性派生（码域 ⊆ WORKSHOP_TYPES）
+          manufacturer: EQUIP_MAKERS[hashString(`${equipId}#m`) % EQUIP_MAKERS.length]!, // 厂商小池确定性取模
+          install_date: equipInstallDate(b.baseId, equipId), // 建厂日后 0-2 年内确定性
+          status: runStatusOf(equipId), // RUNNING/IDLE/MAINTENANCE 确定性 hash
         });
       }
     }
@@ -1915,6 +1988,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     l.capacityDaily = cap;
     l.certifiedModels = certed;
     l.changeoverGroup = certed.length === 0 ? "未定" : lfp * 2 >= certed.length ? "LFP系" : "NCM系";
+    // WO-SA-5 数值台账·rngTopo **末位追加**（此第二遍 line 富化在既有全部拓扑 rngTopo 抽样之后·且无下游 rngTopo 消费者
+    // → 追加两次抽样不位移任何既有字节·R6 双跑一致）。max_capacity_day=设计铭牌日产能（运营上限 cap 上浮 5–20%·铭牌≥运营）。
+    l.max_capacity_day = round(cap * (1.05 + rngTopo() * 0.15), 0);
+    l.target_yield = round(0.95 + rngTopo() * 0.04, 3); // 线级目标良率 0.95–0.99
   }
 
   const segments = [
