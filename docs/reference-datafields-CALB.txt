@@ -1,0 +1,2441 @@
+Part 1 —— Decision OS CALB Data Factory 基础数据层（Master Data）
+建议目录：
+																	Decision_OS_CALB_DATASET/
+																	├── master/
+																	│   ├── factory.csv
+																	│   ├── workshop.csv
+																	│   ├── production_line.csv
+																	│   ├── equipment.csv
+																	│   ├── product.csv
+																	│   ├── process.csv
+																	│   ├── routing.csv
+																	│   ├── material.csv
+																	│   ├── bom.csv
+																	│   ├── supplier.csv
+																	│   ├── warehouse.csv
+																	│   ├── inventory_location.csv
+																	│   └── customer.csv
+1 Factory（12个基地）
+factory.csv
+																	factory_id,factory_code,factory_name,province,city,factory_type,capacity_gwh,status,start_date
+																	F001,CZ,常州基地,江苏,常州,CELL,60,ACTIVE,2020-03-01
+																	F002,XM,厦门基地,福建,厦门,CELL,45,ACTIVE,2021-01-01
+																	F003,CD,成都基地,四川,成都,CELL,55,ACTIVE,2021-08-01
+																	F004,HF,合肥基地,安徽,合肥,CELL,50,ACTIVE,2022-02-01
+																	F005,WJ,武汉基地,湖北,武汉,CELL,60,ACTIVE,2022-09-01
+																	F006,GZ,广州基地,广东,广州,PACK,30,ACTIVE,2023-01-01
+																	F007,SZ,苏州基地,江苏,苏州,PACK,25,ACTIVE,2023-05-01
+																	F008,CS,长沙基地,湖南,长沙,CELL,40,ACTIVE,2024-01-01
+																	F009,NN,南宁基地,广西,南宁,CELL,35,ACTIVE,2024-03-01
+																	F010,QD,青岛基地,山东,青岛,PACK,20,ACTIVE,2024-06-01
+																	F011,SY,沈阳基地,辽宁,沈阳,CELL,30,ACTIVE,2025-01-01
+																	F012,KM,昆明基地,云南,昆明,PACK,18,ACTIVE,2025-03-01
+2 Workshop
+每个基地配置多个车间。
+workshop.csv
+																	workshop_id,factory_id,workshop_name,process_type
+																	WS0001,F001,制浆车间,SLURRY
+																	WS0002,F001,涂布车间,COATING
+																	WS0003,F001,辊压车间,CALENDER
+																	WS0004,F001,分切车间,SLITTING
+																	WS0005,F001,卷绕车间,WINDING
+																	WS0006,F001,装配车间,ASSEMBLY
+																	WS0007,F001,注液车间,ELECTROLYTE
+																	WS0008,F001,化成车间,FORMATION
+																	WS0009,F001,分容车间,AGING
+																	WS0010,F001,PACK车间,PACK
+其它基地按相同结构生成。
+3 Production Line
+production_line.csv
+																	line_id,workshop_id,line_code,process,max_capacity_day,oee,target_yield,status
+																	L00001,WS0002,COAT01,COATING,60000,0.91,0.985,RUNNING
+																	L00002,WS0002,COAT02,COATING,60000,0.90,0.985,RUNNING
+																	L00003,WS0003,CAL01,CALENDER,58000,0.93,0.989,RUNNING
+																	L00004,WS0004,SLIT01,SLITTING,57000,0.94,0.990,RUNNING
+																	L00005,WS0005,WIND01,WINDING,55000,0.89,0.982,RUNNING
+																	L00006,WS0006,ASSY01,ASSEMBLY,52000,0.91,0.986,RUNNING
+																	L00007,WS0007,FILL01,ELECTROLYTE,50000,0.90,0.988,RUNNING
+																	L00008,WS0008,FORM01,FORMATION,48000,0.92,0.992,RUNNING
+																	L00009,WS0009,AGE01,AGING,47000,0.94,0.995,RUNNING
+																	L00010,WS0010,PACK01,PACK,30000,0.95,0.998,RUNNING
+整个数据集扩展至 500 条产线。
+4 Equipment
+建议字段：
+																	equipment_id
+																	line_id
+																	equipment_code
+																	equipment_type
+																	manufacturer
+																	install_date
+																	mtbf
+																	mttr
+																	health_score
+																	status
+例如：
+																	equipment_id,line_id,equipment_code,equipment_type,manufacturer,install_date,mtbf,mttr,health_score,status
+																	EQ000001,L00001,COAT_HEAD_01,Coater,ManufacturerA,2023-01-01,12000,6,96,RUNNING
+																	EQ000002,L00001,OVEN_01,Dryer,ManufacturerB,2023-01-01,15000,4,94,RUNNING
+																	EQ000003,L00001,CAMERA_01,Vision,ManufacturerC,2023-01-01,18000,2,98,RUNNING
+扩展至 10,000 台设备。
+5 Product
+product.csv
+																	product_id,product_code,product_name,chemistry,capacity_ah,voltage,application
+																	P0001,LFP314,LFP 314Ah,LFP,314,3.2,储能
+																	P0002,LFP280,LFP 280Ah,LFP,280,3.2,储能
+																	P0003,NCM100,NCM 100Ah,NCM,100,3.7,乘用车
+																	P0004,NCM150,NCM 150Ah,NCM,150,3.7,商用车
+规划扩展到 300 个 SKU。
+6 Material
+字段：
+																	material_id
+																	material_code
+																	material_name
+																	category
+																	unit
+																	supplier_id
+																	lead_time_day
+示例：
+																	material_id,material_code,material_name,category,unit,supplier_id,lead_time_day
+																	M00001,CATHODE001,磷酸铁锂正极,正极材料,kg,S0001,15
+																	M00002,ANODE001,石墨负极,负极材料,kg,S0002,12
+																	M00003,SEP001,隔膜A,隔膜,m²,S0003,20
+																	M00004,ELE001,电解液A,电解液,L,S0004,18
+规划扩展到 2,000 种物料。
+7 BOM
+字段：
+																	product_id
+																	material_id
+																	qty_per_unit
+																	scrap_rate
+示例：
+																	product_id,material_id,qty_per_unit,scrap_rate
+																	P0001,M00001,1.25,0.015
+																	P0001,M00002,0.98,0.012
+																	P0001,M00003,2.10,0.008
+																	P0001,M00004,0.65,0.010
+规划扩展到 20,000 条 BOM 关系。
+8 Routing
+字段：
+																	product_id
+																	step_no
+																	process
+																	line_type
+																	standard_cycle_time_sec
+示例：
+																	product_id,step_no,process,line_type,standard_cycle_time_sec
+																	P0001,10,SLURRY,SLURRY,180
+																	P0001,20,COATING,COATING,240
+																	P0001,30,CALENDER,CALENDER,90
+																	P0001,40,SLITTING,SLITTING,60
+																	P0001,50,WINDING,WINDING,120
+																	P0001,60,ASSEMBLY,ASSEMBLY,180
+																	P0001,70,ELECTROLYTE,ELECTROLYTE,90
+																	P0001,80,FORMATION,FORMATION,14400
+																	P0001,90,AGING,AGING,86400
+																	P0001,100,PACK,PACK,300
+Part 2 Transaction Dataset
+																	transaction/
+																	├── sales_order.csv
+																	├── sales_order_item.csv
+																	├── forecast.csv
+																	├── customer_delivery_plan.csv
+																	│
+																	├── production_order.csv
+																	├── production_operation.csv
+																	├── production_report.csv
+																	│
+																	├── inventory.csv
+																	├── inventory_transaction.csv
+																	│
+																	├── purchase_order.csv
+																	├── supplier_delivery.csv
+																	│
+																	├── logistics_order.csv
+																	├── transfer_order.csv
+																	│
+																	├── quality_record.csv
+																	├── equipment_event.csv
+																	├── equipment_maintenance.csv
+																	│
+																	├── energy_consumption.csv
+																	├── carbon_emission.csv
+																	│
+																	└── labor_shift.csv
+1 Sales Order（销售订单）
+																	order_id,customer_id,order_type,priority,order_date,delivery_date,status,total_quantity,total_amount
+																	SO2026000001,C0001,Normal,A,2026-01-03,2026-03-15,CONFIRMED,500000,38000000
+																	SO2026000002,C0005,Normal,B,2026-01-05,2026-04-01,CONFIRMED,300000,22800000
+																	SO2026000003,C0010,Urgent,S,2026-01-08,2026-02-28,PLANNING,800000,60800000
+规划规模：
+																	100000 Orders
+2 Sales Order Item
+一个订单可以对应多个SKU。
+																	order_item_id,order_id,product_id,quantity,unit_price
+																	SOI0000001,SO2026000001,P0001,200000,76
+																	SOI0000002,SO2026000001,P0002,300000,76
+规模：
+																	400000 rows
+3 Forecast（需求预测）
+																	forecast_month,customer_id,product_id,demand,confidence
+																	2026-01,C0001,P0001,520000,0.92
+																	2026-02,C0001,P0001,540000,0.91
+																	2026-03,C0001,P0001,580000,0.89
+未来：
+																	24 Months
+4 Customer Delivery Plan
+																	delivery_plan_id,order_id,factory_id,planned_delivery_date,planned_quantity
+																	DP00001,SO2026000001,F001,2026-03-01,150000
+																	DP00002,SO2026000001,F003,2026-03-08,150000
+																	DP00003,SO2026000001,F006,2026-03-15,200000
+Agent可以直接用于交付推演。
+5 Production Order
+																	production_order_id
+																	factory_id
+																	line_id
+																	product_id
+																	sales_order_id
+																	planned_quantity
+																	planned_start
+																	planned_finish
+																	status
+例如：
+																	PO0000001,F001,L00008,P0001,SO2026000001,150000,2026-01-15,2026-02-20,RUNNING
+规模：
+																	200000 rows
+6 Production Operation
+对应MES。
+																	operation_id
+																	production_order_id
+																	step_no
+																	equipment_id
+																	planned_start
+																	actual_start
+																	planned_finish
+																	actual_finish
+																	status
+例如：
+																	OP000001,PO0000001,20,EQ000213,2026-01-16 08:00,2026-01-16 08:02,2026-01-16 12:00,2026-01-16 12:10,FINISHED
+规模：
+																	2000000 Operations
+7 Production Report
+日报。
+																	report_date
+																	line_id
+																	product_id
+																	good_qty
+																	scrap_qty
+																	yield
+																	oee
+例如：
+																	2026-01-16,L00008,P0001,47880,620,0.9872,0.913
+每天：
+																	500 Lines
+一年：
+																	182500 records
+8 Inventory
+库存。
+																	warehouse_id
+																	material_id
+																	batch_no
+																	quantity
+																	available_qty
+																	locked_qty
+例如：
+																	WH001,M00023,B20260101001,52000,50000,2000
+规模：
+																	50000 Inventory Records
+9 Inventory Transaction
+流水。
+																	transaction_id
+																	warehouse_id
+																	material_id
+																	transaction_type
+																	quantity
+																	time
+例如：
+																	IT00000001,WH001,M00023,OUTBOUND,1200,2026-01-15 10:32
+一年：
+																	1000000 Transactions
+10 Purchase Order
+采购订单。
+																	purchase_order_id
+																	supplier_id
+																	material_id
+																	quantity
+																	delivery_date
+																	status
+例如：
+																	PUR000001,S0003,M00023,30000,2026-01-25,DELIVERING
+11 Supplier Delivery
+																	delivery_id
+																	purchase_order_id
+																	supplier_id
+																	actual_delivery_date
+																	received_quantity
+																	quality_result
+12 Logistics Order
+工厂之间运输。
+																	logistics_order_id
+																	from_factory
+																	to_factory
+																	material_id
+																	quantity
+																	transport_time_hour
+																	status
+例如：
+																	LG000001,F001,F006,M00045,12000,28,ON_THE_WAY
+这是多基地协同推演的重要输入。
+13 Transfer Order
+半成品转运。
+																	transfer_order_id
+																	from_factory
+																	to_factory
+																	product_id
+																	quantity
+例如：
+																	TR000001,F003,F010,P0001,200000
+14 Quality Record
+质量。
+																	quality_record_id
+																	production_order_id
+																	inspection_item
+																	result
+																	defect_rate
+例如：
+																	QR000001,PO0000001,Capacity,PASS,0.004
+规模：
+																	1000000 Quality Records
+15 Equipment Event
+设备事件。
+																	event_id
+																	equipment_id
+																	event_type
+																	start_time
+																	end_time
+																	impact
+例如：
+																	EV000001,EQ000345,FAILURE,2026-01-20 09:12,2026-01-20 12:20,HIGH
+规模：
+																	100000 Events
+16 Equipment Maintenance
+保养。
+																	maintenance_id
+																	equipment_id
+																	maintenance_type
+																	planned_date
+																	completed_date
+																	cost
+例如：
+																	MA000001,EQ000345,PM,2026-02-01,2026-02-01,2800
+17 Energy Consumption
+能源。
+																	date
+																	factory_id
+																	line_id
+																	electricity_kwh
+																	gas
+																	water
+例如：
+																	2026-01-15,F001,L00008,23500,1800,92
+18 Carbon Emission
+碳排。
+																	date
+																	factory_id
+																	line_id
+																	co2_ton
+例如：
+																	2026-01-15,F001,L00008,18.4
+19 Labor Shift
+人员。
+																	shift_id
+																	line_id
+																	employee_count
+																	shift
+																	overtime_hour
+例如：
+																	SHIFT00001,L00008,32,DAY,1.5
+Part 2 数据规模汇总
+数据集
+建议规模
+Sales Order
+100,000
+Sales Order Item
+400,000
+Forecast
+1,440,000（24个月 × 客户 × SKU，可按需要裁剪）
+Customer Delivery Plan
+300,000
+Production Order
+200,000
+Production Operation
+2,000,000
+Production Report
+182,500/年
+Inventory
+50,000
+Inventory Transaction
+1,000,000/年
+Purchase Order
+200,000
+Supplier Delivery
+200,000
+Logistics Order
+100,000
+Transfer Order
+50,000
+Quality Record
+1,000,000
+Equipment Event
+100,000
+Equipment Maintenance
+50,000
+Energy Consumption
+182,500/年
+Carbon Emission
+182,500/年
+Labor Shift
+547,500/
+Part 3 —— Decision OS CALB Ontology + Graph Model + PostgreSQL Schema
+Part 3 是整个 Decision OS 的核心。
+前面：
+Part 1：定义了企业世界中的对象（Object） 
+Part 2：定义了企业运行中的事件（Event） 
+Part 3 把这些数据变成：
+一个可被 Agent 理解、推理、模拟、优化的企业数字世界。
+对应 Palantir Foundry/AIP 中的 Ontology Layer。
+3.1 Ontology 总体模型
+Decision OS Ontology：
+																	                         Decision
+																	                            |
+																	                            |
+																	                       Scenario
+																	                            |
+																	              +-------------+-------------+
+																	              |                           |
+																	          Business                    Physical
+																	              |                           |
+																	        +-----+------+             +------+------+
+																	        |            |             |             |
+																	     Customer      Order       Factory       Equipment
+																	        |            |             |             |
+																	        |        Production       Line       Maintenance
+																	        |            |             |
+																	        +------ Product ----------+
+																	                    |
+																	                  BOM
+																	                    |
+																	                Material
+																	                    |
+																	                Supplier
+3.2 Ontology Objects
+文件：
+																	ontology/
+																	 ├── objects.json
+																	 ├── relations.json
+																	 ├── actions.json
+																	 └── metrics.json
+objects.json
+Factory Object
+																	{
+																	"name":"Factory",
+																	"key":"factory_id",
+																	"description":
+																	"制造基地",
+																	"properties":{
+																	"factory_id":{
+																	"type":"string"
+																	},
+																	"name":{
+																	"type":"string"
+																	},
+																	"capacity_gwh":{
+																	"type":"float"
+																	},
+																	"location":{
+																	"type":"geo"
+																	},
+																	"carbon_target":{
+																	"type":"float"
+																	}
+																	},
+																	"source":
+																	"factory.csv"
+																	}
+ProductionLine Object
+																	{
+																	"name":"ProductionLine",
+																	"key":"line_id",
+																	"properties":{
+																	"capacity_day":
+																	"float",
+																	"yield_rate":
+																	"float",
+																	"oee":
+																	"float",
+																	"process_type":
+																	"enum"
+																	},
+																	"source":
+																	"production_line.csv"
+																	}
+Equipment Object
+																	{
+																	"name":"Equipment",
+																	"key":"equipment_id",
+																	"properties":{
+																	"type":
+																	"string",
+																	"health_score":
+																	"float",
+																	"mtbf":
+																	"float",
+																	"mttr":
+																	"float",
+																	"status":
+																	"enum"
+																	},
+																	"source":
+																	"equipment.csv"
+																	}
+Product Object
+																	{
+																	"name":"Product",
+																	"key":"product_id",
+																	"properties":{
+																	"chemistry":
+																	"enum",
+																	"capacity_ah":
+																	"float",
+																	"application":
+																	"enum"
+																	},
+																	"source":
+																	"product.csv"
+																	}
+Material Object
+																	{
+																	"name":"Material",
+																	"key":"material_id",
+																	"properties":{
+																	"category":
+																	"enum",
+																	"lead_time":
+																	"int",
+																	"safety_stock":
+																	"float"
+																	},
+																	"source":
+																	"material.csv"
+																	}
+Order Object
+																	{
+																	"name":"SalesOrder",
+																	"key":"order_id",
+																	"properties":{
+																	"quantity":
+																	"float",
+																	"priority":
+																	"enum",
+																	"delivery_date":
+																	"date",
+																	"status":
+																	"enum"
+																	},
+																	"source":
+																	"order.csv"
+																	}
+ProductionOrder Object
+																	{
+																	"name":"ProductionOrder",
+																	"key":"production_order_id",
+																	"properties":{
+																	"quantity":
+																	"float",
+																	"status":
+																	"enum",
+																	"start_time":
+																	"datetime",
+																	"finish_time":
+																	"datetime"
+																	},
+																	"source":
+																	"production_order.csv"
+																	}
+3.3 Ontology Relations
+文件：
+																	relations.json
+Factory HAS ProductionLine
+																	{
+																	"from":
+																	"Factory",
+																	"relation":
+																	"HAS",
+																	"to":
+																	"ProductionLine",
+																	"cardinality":
+																	"1:N",
+																	"meaning":
+																	"基地拥有产线"
+																	}
+Line USES Equipment
+																	{
+																	"from":
+																	"ProductionLine",
+																	"relation":
+																	"USES",
+																	"to":
+																	"Equipment",
+																	"cardinality":
+																	"1:N"
+																	}
+Product CONSUMES Material
+																	{
+																	"from":
+																	"Product",
+																	"relation":
+																	"CONSUMES",
+																	"to":
+																	"Material",
+																	"cardinality":
+																	"N:M"
+																	}
+Customer CREATES Order
+																	{
+																	"from":
+																	"Customer",
+																	"relation":
+																	"CREATES",
+																	"to":
+																	"SalesOrder",
+																	"cardinality":
+																	"1:N"
+																	}
+Order GENERATES ProductionOrder
+																	{
+																	"from":
+																	"SalesOrder",
+																	"relation":
+																	"GENERATES",
+																	"to":
+																	"ProductionOrder"
+																	}
+ProductionOrder RUNS_ON Line
+																	{
+																	"from":
+																	"ProductionOrder",
+																	"relation":
+																	"RUNS_ON",
+																	"to":
+																	"ProductionLine"
+																	}
+Equipment HAS_EVENT
+																	{
+																	"from":
+																	"Equipment",
+																	"relation":
+																	"HAS_EVENT",
+																	"to":
+																	"EquipmentEvent"
+																	}
+3.4 Neo4j Graph Design
+目录：
+																	neo4j/
+																	├── nodes.csv
+																	├── edges.csv
+																	└── import.cypher
+Node Schema
+nodes.csv
+字段：
+																	node_id
+																	node_type
+																	name
+																	properties
+示例：
+																	node_id,node_type,name,properties
+																	F001,Factory,常州基地,
+																	{
+																	capacity:60,
+																	province:"江苏"
+																	}
+																	L00001,ProductionLine,涂布线01,
+																	{
+																	capacity:60000,
+																	oee:0.91
+																	}
+																	EQ00001,Equipment,涂布机01,
+																	{
+																	health:96
+																	}
+																	P0001,Product,LFP314,
+																	{
+																	capacity:314
+																	}
+Edge Schema
+edges.csv
+																	source,relation,target
+例如：
+																	F001,HAS,L00001
+																	L00001,USES,EQ00001
+																	P0001,CONSUMES,M00001
+																	C0001,CREATES,O000001
+																	O000001,GENERATES,PO000001
+																	PO000001,RUNS_ON,L00001
+3.5 PostgreSQL 数据库设计
+目录：
+																	postgres/
+																	init.sql
+																	tables/
+																	views/
+																	indexes/
+核心表关系
+																	factory
+																	 ↓
+																	production_line
+																	 ↓
+																	equipment
+																	product
+																	 ↓
+																	bom
+																	 ↓
+																	material
+																	customer
+																	 ↓
+																	order
+																	 ↓
+																	production_order
+factory table
+																	CREATE TABLE factory
+																	(
+																	factory_id VARCHAR(20)
+																	PRIMARY KEY,
+																	name VARCHAR(100),
+																	province VARCHAR(50),
+																	capacity_gwh NUMERIC,
+																	status VARCHAR(20)
+																	);
+production_line
+																	CREATE TABLE production_line
+																	(
+																	line_id VARCHAR(20)
+																	PRIMARY KEY,
+																	factory_id VARCHAR(20),
+																	process_type VARCHAR(50),
+																	capacity_day NUMERIC,
+																	oee NUMERIC,
+																	yield_rate NUMERIC,
+																	FOREIGN KEY(factory_id)
+																	REFERENCES factory(factory_id)
+																	);
+equipment
+																	CREATE TABLE equipment
+																	(
+																	equipment_id VARCHAR(30)
+																	PRIMARY KEY,
+																	line_id VARCHAR(20),
+																	equipment_type VARCHAR(50),
+																	health_score NUMERIC,
+																	mtbf NUMERIC,
+																	mttr NUMERIC
+																	);
+product
+																	CREATE TABLE product
+																	(
+																	product_id VARCHAR(20)
+																	PRIMARY KEY,
+																	product_name VARCHAR(100),
+																	chemistry VARCHAR(20),
+																	capacity_ah NUMERIC
+																	);
+BOM
+																	CREATE TABLE bom
+																	(
+																	product_id VARCHAR(20),
+																	material_id VARCHAR(20),
+																	qty NUMERIC,
+																	PRIMARY KEY
+																	(
+																	product_id,
+																	material_id
+																	)
+																	);
+Order
+																	CREATE TABLE sales_order
+																	(
+																	order_id VARCHAR(30)
+																	PRIMARY KEY,
+																	customer_id VARCHAR(20),
+																	product_id VARCHAR(20),
+																	quantity NUMERIC,
+																	delivery_date DATE,
+																	priority VARCHAR(10)
+																	);
+Production Order
+																	CREATE TABLE production_order
+																	(
+																	production_order_id VARCHAR(30)
+																	PRIMARY KEY,
+																	order_id VARCHAR(30),
+																	line_id VARCHAR(20),
+																	product_id VARCHAR(20),
+																	quantity NUMERIC,
+																	status VARCHAR(20)
+																	);
+3.6 Decision OS Metrics
+文件：
+																	metrics.json
+Capacity Utilization
+																	{
+																	"name":
+																	"CapacityUtilization",
+																	"formula":
+																	"actual_capacity / available_capacity",
+																	"entity":
+																	"Factory"
+																	}
+Delivery Risk
+																	{
+																	"name":
+																	"DeliveryRisk",
+																	"inputs":
+																	[
+																	"inventory",
+																	"capacity",
+																	"material",
+																	"logistics"
+																	],
+																	"output":
+																	"risk_score"
+																	}
+Production Cost
+																	{
+																	"name":
+																	"ProductionCost",
+																	"formula":
+																	"material + labor + energy + depreciation"
+																	}
+3.7 Decision Actions
+Agent可执行动作：
+																	actions.json
+Accept Order
+																	{
+																	"name":
+																	"AcceptOrder",
+																	"inputs":
+																	[
+																	"order",
+																	"capacity",
+																	"inventory"
+																	],
+																	"solver":
+																	"APS"
+																	}
+Reallocate Production
+																	{
+																	"name":
+																	"ReallocateProduction",
+																	"inputs":
+																	[
+																	"factory",
+																	"line",
+																	"order"
+																	],
+																	"solver":
+																	"Optimization"
+																	}
+Maintenance Scheduling
+																	{
+																	"name":
+																	"ScheduleMaintenance",
+																	"inputs":
+																	[
+																	"equipment_health"
+																	],
+																	"solver":
+																	"PredictiveMaintenance"
+																	}
+Part 3 完成后的能力
+完成 Part 1 + Part 2 + Part 3 后：
+Decision OS 已具备：
+能力
+支持
+企业对象理解
+✅
+知识图谱
+✅
+数据库运行
+✅
+订单推演
+✅
+产能优化
+✅
+设备分析
+✅
+供应链分析
+✅
+Agent调用
+✅
+Part 4 —— Decision OS CALB Solver Engine + Constraint Model + Optimization Dataset
+Part 4 是 Decision OS 从“数字化模型”进入“智能决策”的关键。
+前三部分：
+Part 1：Master Data（企业静态世界） 
+Part 2：Transaction Data（企业动态运行） 
+Part 3：Ontology（企业认知模型） 
+现在进入：
+Solver Layer：把业务问题转化为数学优化问题，由 OR-Tools / Gurobi / CPLEX 等求解器产生决策方案。
+4.1 Solver Layer 总体架构
+目录：
+																	solver/
+																	├── model/
+																	│   ├── capacity_model.py
+																	│   ├── production_plan_model.py
+																	│   ├── order_acceptance_model.py
+																	│   ├── inventory_model.py
+																	│   └── logistics_model.py
+																	│
+																	├── input/
+																	│   ├── demand.csv
+																	│   ├── capacity.csv
+																	│   ├── material_supply.csv
+																	│   ├── inventory.csv
+																	│   ├── cost.csv
+																	│   └── carbon.csv
+																	│
+																	├── constraint/
+																	│   ├── capacity.yaml
+																	│   ├── material.yaml
+																	│   ├── delivery.yaml
+																	│   ├── inventory.yaml
+																	│   └── carbon.yaml
+																	│
+																	├── output/
+																	│   ├── production_plan.csv
+																	│   ├── allocation_result.csv
+																	│   ├── risk_report.json
+																	│   └── decision_report.json
+																	│
+																	└── solver_config.yaml
+4.2 Decision OS Solver 类型
+针对锂电制造：
+Solver
+解决问题
+Capacity Solver
+产能评估
+APS Solver
+生产排程
+Order Acceptance Solver
+订单接收
+Material Solver
+物料保障
+Inventory Solver
+库存优化
+Logistics Solver
+跨基地调拨
+Carbon Solver
+减污降碳
+Investment Solver
+扩产规划
+4.3 Solver Input Dataset
+4.3.1 Demand
+客户需求。
+文件：
+																	demand.csv
+结构：
+																	month,customer_id,product_id,demand_qty,priority
+																	2026-01,C0001,P0001,500000,A
+																	2026-01,C0002,P0003,300000,B
+																	2026-02,C0001,P0001,600000,A
+规模：
+																	24个月
+																	×
+																	200客户
+																	×
+																	300产品
+																	≈1,440,000 rows
+4.3.2 Capacity Matrix
+工厂-产线-产品能力。
+文件：
+																	capacity.csv
+结构：
+																	factory_id,line_id,product_id,max_capacity,available_hours
+																	F001,L00001,P0001,600000,720
+																	F001,L00002,P0001,580000,720
+																	F002,L00101,P0001,450000,720
+4.3.3 Cost Matrix
+制造成本。
+文件：
+																	cost.csv
+结构：
+																	factory_id,product_id,material_cost,labor_cost,energy_cost,total_cost
+																	F001,P0001,35,5,2,42
+																	F002,P0001,36,6,3,45
+4.3.4 Material Supply
+物料供应。
+文件：
+																	material_supply.csv
+结构：
+																	material_id,supplier_id,month,supply_qty,lead_time
+																	M00001,S0001,2026-01,500000,15
+4.3.5 Inventory
+库存状态。
+																	warehouse_id,material_id,available_qty,safety_stock
+																	WH001,M00001,500000,100000
+4.3.6 Carbon Dataset
+减污降碳约束。
+																	factory_id,product_id,carbon_per_unit,carbon_limit
+																	F001,P0001,0.002,100000
+4.4 核心优化模型
+4.4.1 产销匹配模型
+决策变量
+定义：
+Xf,p,c,tX_{f,p,c,t}Xf,p,c,t​ 
+含义：
+时间 t，工厂 f 为客户 c 生产产品 p 的数量。
+目标函数
+最大化：
+Profit=Revenue−Cost−PenaltyProfit = Revenue-Cost-PenaltyProfit=Revenue−Cost−Penalty 
+展开：
+max∑Xf,p,c,t(price−cost)−RiskPenaltymax \sum X_{f,p,c,t} (price-cost) - RiskPenaltymax∑Xf,p,c,t​(price−cost)−RiskPenalty 
+约束1：产能约束
+∑Xf,p,c,t≤Capacityf,p,t\sum X_{f,p,c,t} \le Capacity_{f,p,t}∑Xf,p,c,t​≤Capacityf,p,t​ 
+含义：
+工厂生产不能超过产能。
+约束2：订单满足
+∑Xf,p,c,t≥Demandc,p,t\sum X_{f,p,c,t} \ge Demand_{c,p,t}∑Xf,p,c,t​≥Demandc,p,t​ 
+约束3：物料约束
+BOM：
+Materialneed=X×BOMMaterial_{need} = X \times BOMMaterialneed​=X×BOM 
+必须：
+Materialneed≤Supply+InventoryMaterial_{need} \le Supply+InventoryMaterialneed​≤Supply+Inventory 
+约束4：交付时间
+如果：
+																	delivery_date &lt; production_finish
+产生Penalty。
+4.5 APS排程模型
+输入
+																	Production Order
+																	+
+																	Routing
+																	+
+																	Machine
+																	+
+																	Calendar
+决策变量
+开始时间：
+SiS_iSi​ 
+设备：
+MiM_iMi​ 
+目标
+最小化：
+Makespan+LatePenalty+ChangeoverCostMakespan + LatePenalty + ChangeoverCostMakespan+LatePenalty+ChangeoverCost 
+4.6 多基地生产分配模型
+场景：
+订单：
+																	客户:
+																	欧洲OEM
+																	需求:
+																	5GWh
+																	交付:
+																	2026 Q3
+系统计算：
+候选：
+基地
+产能
+距离
+成本
+F001
+60GWh
+高
+低
+F003
+55GWh
+中
+中
+F006
+30GWh
+低
+高
+输出：
+																	{
+																	"allocation":[
+																	{
+																	"factory":"F001",
+																	"qty":2000000
+																	},
+																	{
+																	"factory":"F003",
+																	"qty":2000000
+																	},
+																	{
+																	"factory":"F006",
+																	"qty":1000000
+																	}
+																	],
+																	"profit":
+																	128000000,
+																	"risk":
+																	"LOW"
+																	}
+4.7 Constraint YAML设计
+目录：
+																	constraint/
+capacity.yaml
+																	name: capacity_constraint
+																	type: hard
+																	rule:
+																	production_quantity &lt;= available_capacity
+																	severity:
+																	critical
+material.yaml
+																	name: material_constraint
+																	type: hard
+																	rule:
+																	required_material &lt;= available_material
+																	fallback:
+																	alternative_supplier
+delivery.yaml
+																	name: delivery_constraint
+																	type:
+																	soft
+																	penalty:
+																	1000
+carbon.yaml
+																	name:
+																	carbon_constraint
+																	type:
+																	soft
+																	target:
+																	reduce_20_percent
+																	penalty:
+																	0.2
+4.8 Solver Output
+Solver产生：
+																	output/
+																	├── production_plan.csv
+																	├── factory_allocation.csv
+																	├── material_requirement.csv
+																	├── risk_report.json
+																	└── decision_report.json
+production_plan.csv
+																	date,factory,line,product,quantity
+																	2026-01-01,F001,L00001,P0001,50000
+																	2026-01-02,F001,L00002,P0001,50000
+risk_report.json
+																	{
+																	"delivery_risk":0.12,
+																	"material_risk":0.25,
+																	"capacity_risk":0.08,
+																	"overall":
+																	"LOW"
+																	}
+decision_report.json
+																	{
+																	"decision":
+																	"ACCEPT_ORDER",
+																	"expected_profit":
+																	128000000,
+																	"recommended_action":
+																	[
+																	"Increase F003 allocation",
+																	"Reserve cathode material M0001"
+																	]
+																	}
+4.9 Solver Agent接口
+Agent不是直接调用数据库。
+通过：
+																	Agent
+																	↓
+																	Skill
+																	↓
+																	Solver API
+																	↓
+																	Optimization Engine
+API:
+Capacity Simulation
+																	POST
+																	/api/v1/solver/capacity/simulation
+输入：
+																	{
+																	"product":"P0001",
+																	"demand":
+																	5000000
+																	}
+输出：
+																	{
+																	"available_capacity":
+																	6200000,
+																	"risk":
+																	"LOW"
+																	}
+Order Acceptance
+																	POST
+																	/api/v1/solver/order/accept
+输入：
+																	{
+																	"order_id":
+																	"SO20260001"
+																	}
+输出：
+																	{
+																	"accept":
+																	true,
+																	"factory_plan":
+																	[]
+																	}
+4.10 Part 4 完成后系统能力
+完成：
+Part1+Part2+Part3+Part4
+Decision OS 已具备：
+能力
+状态
+理解企业对象
+✅
+理解业务关系
+✅
+读取实时状态
+✅
+计算产能
+✅
+订单推演
+✅
+生产优化
+✅
+供应链约束
+✅
+碳约束
+✅
+生成决策方案
+✅
+Part 5 —— Agent Runtime + Skill System + MCP Architecture
+5.1 总体架构
+Decision OS Agent Architecture：
+																	                         User
+																	                          |
+																	                          |
+																	                  Decision Copilot
+																	                          |
+																	                    Agent Router
+																	                          |
+																	        +-----------------+----------------+
+																	        |                 |                |
+																	     CEO Agent        COO Agent       Planner Agent
+																	        |                 |                |
+																	        +-----------------+----------------+
+																	                          |
+																	                    Agent Runtime
+																	                          |
+																	        +-----------------+----------------+
+																	        |                 |                |
+																	     Skill Engine     MCP Gateway     Memory System
+																	        |                 |                |
+																	        |                 |                |
+																	 Ontology Runtime    Tool Registry     Case Memory
+																	        |
+																	 Solver Engine
+																	        |
+																	 Enterprise Data
+5.2 Agent体系设计
+Agent分类
+Agent
+职责
+用户
+CEO Agent
+战略决策
+董事长/CEO
+COO Agent
+运营优化
+运营负责人
+APS Agent
+排产优化
+计划经理
+Supply Chain Agent
+供应链
+供应链负责人
+Equipment Agent
+设备健康
+设备经理
+Finance Agent
+经营分析
+CFO
+5.3 CEO Agent
+Role
+																	agent:
+																	name: CEO_Agent
+																	role:
+																	企业战略决策助手
+																	objective:
+																	maximize enterprise value
+																	knowledge:
+																	- financial
+																	- capacity
+																	- customer
+																	- market
+																	- risk
+																	tools:
+																	- scenario_simulator
+																	- capacity_solver
+																	- profit_calculator
+CEO Agent Prompt
+																	你是制造企业CEO智能助手。
+																	你的任务：
+																	1.理解企业经营状态
+																	2.分析战略风险
+																	3.模拟不同决策结果
+																	4.输出管理层决策建议
+																	禁止：
+																	直接执行生产操作。
+																	必须：
+																	引用数据来源。
+5.4 COO Agent
+负责：
+产能 
+交付 
+资源 
+异常 
+能力：
+																	订单来了：
+																	问题：
+																	能不能接？
+																	在哪里生产？
+																	利润多少？
+																	风险在哪里？
+调用：
+																	Ontology
+																	↓
+																	Solver
+																	↓
+																	Decision Report
+5.5 Skill System
+Skill目录
+																	skills/
+																	├── capacity_analysis/
+																	│    └── skill.yaml
+																	├── order_acceptance/
+																	│    └── skill.yaml
+																	├── production_reschedule/
+																	│    └── skill.yaml
+																	├── material_risk/
+																	│    └── skill.yaml
+																	├── equipment_failure/
+																	│    └── skill.yaml
+																	└── expansion_analysis/
+																	     └── skill.yaml
+Skill定义
+例如：
+order_acceptance.skill
+																	name:
+																	order_acceptance
+																	description:
+																	判断新增订单是否接受
+																	input:
+																	- customer_order
+																	- capacity
+																	- inventory
+																	- material
+																	process:
+																	1.load ontology
+																	2.calculate capacity
+																	3.run solver
+																	4.generate decision
+																	output:
+																	- accept/reject
+																	- factory_plan
+																	- risk
+																	- profit
+5.6 MCP Architecture
+MCP Gateway
+作用：
+Agent访问企业能力。
+结构：
+																	Agent
+																	 |
+																	MCP Client
+																	 |
+																	MCP Server
+																	 |
+																	+----------------+
+																	Ontology Tool
+																	Solver Tool
+																	Database Tool
+																	Scenario Tool
+																	Report Tool
+																	+----------------+
+MCP Tools设计
+Ontology MCP
+查询企业知识。
+Example:
+																	{
+																	tool:
+																	"query_factory_capacity"
+																	input:
+																	{
+																	factory:"F001",
+																	product:"P0001"
+																	}
+																	}
+返回：
+																	{
+																	capacity:
+																	600000,
+																	available:
+																	450000
+																	}
+Solver MCP
+调用优化。
+																	{
+																	tool:
+																	"run_capacity_solver",
+																	input:
+																	{
+																	demand:5000000
+																	}
+																	}
+Scenario MCP
+运行推演。
+																	{
+																	tool:
+																	"simulate_order_change",
+																	input:
+																	{
+																	order:"SO001"
+																	}
+																	}
+5.7 Agent Memory
+三类：
+Enterprise Memory
+企业知识：
+																	过去5年生产经验
+Case Memory
+案例：
+																	类似订单如何处理
+Decision Memory
+决策历史：
+																	为什么当时这么决定
+																	结果如何
+Part 6 —— Decision Workflow + Scenario Engine
+6.1 Scenario Engine定位
+传统系统：
+																	数据
+																	 ↓
+																	报表
+																	 ↓
+																	人工判断
+Decision OS：
+																	问题
+																	↓
+																	Scenario
+																	↓
+																	Simulation
+																	↓
+																	Solver
+																	↓
+																	Decision
+6.2 Scenario模型
+目录：
+																	scenario/
+																	├── definition
+																	├── input_state
+																	├── simulation
+																	├── solver
+																	├── output
+																	└── evaluation
+Scenario Object
+																	{
+																	scenario_id:
+																	"SC001",
+																	type:
+																	"ORDER_ACCEPTANCE",
+																	trigger:
+																	"new_order",
+																	input:
+																	[
+																	"customer",
+																	"product",
+																	"quantity"
+																	],
+																	solver:
+																	"APS"
+																	}
+6.3 核心Scenario库
+Scenario 1
+新增订单
+输入：
+																	客户:
+																	BYD
+																	产品:
+																	LFP314
+																	数量:
+																	5GWh
+推演：
+																	产能
+																	物料
+																	设备
+																	利润
+																	交付
+输出：
+																	接受
+																	生产基地:
+																	F001 40%
+																	F003 40%
+																	F006 20%
+																	利润:
+																	2.8亿
+																	风险:
+																	LOW
+Scenario 2
+设备故障
+输入：
+																	EQ001
+																	停机48小时
+Simulation：
+																	影响哪些订单？
+																	延期多少？
+																	替代产线？
+输出：
+																	调整:
+																	L001 → L015
+																	延期:
+																	0天
+																	成本增加:
+																	120万
+Scenario 3
+扩产投资
+输入：
+																	新增10GWh产能
+模拟：
+																	投资
+																	土地
+																	设备
+																	人员
+																	订单
+																	利润
+输出：
+																	ROI:
+																	23%
+																	Payback:
+																	3.8年
+6.4 Workflow Engine
+采用：
+状态机 + Agent + Solver
+例如：
+订单审批：
+																	START
+																	 |
+																	Receive Order
+																	 |
+																	CEO Agent Review
+																	 |
+																	COO Agent Simulation
+																	 |
+																	Capacity Solver
+																	 |
+																	Material Solver
+																	 |
+																	Risk Evaluation
+																	 |
+																	Approve?
+																	 |
+																	END
+Part 7 —— Manufacturing Digital Twin
+7.1 Digital Twin目标
+不是3D模型。
+Decision OS Digital Twin：
+企业运行状态的实时计算模型。
+7.2 Twin Architecture
+																	Real Factory
+																	 |
+																	IoT/MES/ERP
+																	 |
+																	Data Pipeline
+																	 |
+																	Ontology Runtime
+																	 |
+																	Digital Twin State
+																	 |
+																	Simulation Engine
+																	 |
+																	Decision Agent
+7.3 Twin对象
+Factory Twin
+状态：
+																	{
+																	factory:
+																	F001,
+																	capacity:
+																	60000000,
+																	utilization:
+																	0.82,
+																	risk:
+																	LOW
+																	}
+Line Twin
+实时：
+																	{
+																	line:
+																	L001,
+																	status:
+																	RUNNING,
+																	OEE:
+																	0.91,
+																	current_product:
+																	P001
+																	}
+Equipment Twin
+状态：
+																	{
+																	equipment:
+																	EQ001,
+																	health:
+																	92,
+																	failure_probability:
+																	0.03,
+																	next_maintenance:
+																	"2026-03-01"
+																	}
+7.4 Twin State Model
+三层状态：
+Current State
+当前：
+																	现在发生什么
+Historical State
+历史：
+																	过去如何变化
+Simulation State
+未来：
+																	如果这样做会怎样
+7.5 Simulation Engine
+输入：
+																	Current Digital Twin
+																	+
+																	Decision
+例如：
+当前：
+																	F001
+																	产能80%
+																	订单增加20%
+模拟：
+																	增加订单
+																	↓
+																	产能不足
+																	↓
+																	转移F003
+																	↓
+																	利润变化
+7.6 Digital Twin APIs
+Query State
+																	GET
+																	/api/twin/factory/F001
+返回：
+																	{
+																	capacity:60000000,
+																	utilization:0.82,
+																	risk:"LOW"
+																	}
+Simulate
+																	POST
+																	/api/twin/simulation
+输入：
+																	{
+																	action:
+																	"add_order",
+																	quantity:
+																	5000000
+																	}
+返回：
+																	{
+																	impact:
+																	{
+																	profit:+280000000,
+																	delivery:"OK"
+																	}
+																	}
+Part 5-7完成后的Decision OS能力
+能力
+状态
+LLM理解企业
+✅
+Agent协作
+✅
+Skill调用
+✅
+MCP工具调用
+✅
+订单推演
+✅
+产能模拟
+✅
+设备预测
+✅
+扩产分析
+✅
+数字孪生
+✅
+Part 8 —— Decision OS Application Layer（产品应用层）
+Part 8 是 Decision OS 从“技术架构”进入“可交付产品”的部分。
+前面：
+Part 1：企业数据 
+Part 2：业务事件 
+Part 3：Ontology 
+Part 4：Solver 
+Part 5：Agent + MCP 
+Part 6：Scenario Engine 
+Part 7：Digital Twin 
+现在构建：
+企业管理者每天使用的 AI 决策操作系统。
+8.1 Application Layer 总体架构
+																	                         User
+																	                           |
+																	                  Decision Workspace
+																	                           |
+																	        +------------------+------------------+
+																	        |                  |                  |
+																	   CEO Cockpit       COO Command       Planner Workspace
+																	        |                  |                  |
+																	        +------------------+------------------+
+																	                           |
+																	                  Decision OS UI Engine
+																	                           |
+																	        +------------------------------------+
+																	        |                                    |
+																	   Agent Interaction                 Visualization
+																	        |                                    |
+																	   Agent Runtime                  Twin Visualization
+																	                           |
+																	                  Ontology Runtime
+																	                           |
+																	        Data + Solver + Simulation
+8.2 产品模块地图
+																	Decision OS
+																	├── Executive Intelligence
+																	│
+																	├── Operations Command Center
+																	│
+																	├── Production Planning
+																	│
+																	├── Supply Chain Control Tower
+																	│
+																	├── Factory Digital Twin
+																	│
+																	├── Scenario Studio
+																	│
+																	├── AI Agent Workspace
+																	│
+																	├── Knowledge Center
+																	│
+																	└── Administration
+8.3 CEO Cockpit（企业经营驾驶舱）
+目标用户：
+董事长 
+CEO 
+总经理 
+核心问题：
+企业未来三个月、半年、一年的经营结果如何？
+页面结构
+																	------------------------------------------------
+																	Decision OS CEO Cockpit
+																	------------------------------------------------
+																	Enterprise Health Score
+																	92 / 100
+																	Revenue Forecast
+																	¥128.5B
+																	Profit Forecast
+																	¥18.6B
+																	Capacity Utilization
+																	82%
+																	Risk Alert
+																	3 High Risk
+																	------------------------------------------------
+																	Strategic Simulation
+																	[ 新增客户订单 ]
+																	[ 扩建10GWh产能 ]
+																	[ 降低20%成本 ]
+																	------------------------------------------------
+8.4 CEO核心指标
+Enterprise Health Score
+计算：
+																	Health Score
+																	=
+																	Profit Score
+																	+
+																	Delivery Score
+																	+
+																	Capacity Score
+																	+
+																	Risk Score
+																	+
+																	Carbon Score
+Capacity Overview
+展示：
+																	全国12基地
+																	|
+																	60条核心产线
+																	|
+																	500条生产线
+																	当前：
+																	82%
+																	未来Q3:
+																	95%
+																	(风险)
+Risk Radar
+五维：
+																	供应风险
+																	生产风险
+																	交付风险
+																	设备风险
+																	财务风险
+8.5 COO Command Center
+目标：
+运营总负责人。
+核心：
+今天生产是否正常？未来交付是否有风险？
+页面：
+																	------------------------------------------------
+																	COO Operation Center
+																	Today Status
+																	Production
+																	92%
+																	Delivery
+																	98%
+																	Equipment
+																	96%
+																	Material
+																	94%
+																	------------------------------------------------
+																	Exception Queue
+																	⚠ F001 Formation Line Failure
+																	⚠ Material shortage M00023
+																	⚠ Customer delivery risk
+																	------------------------------------------------
+8.6 Exception Management
+异常不是报警。
+而是：
+																	发现问题
+																	↓
+																	分析影响
+																	↓
+																	生成方案
+																	↓
+																	执行决策
+例：
+设备故障：
+输入：
+																	EQ000345
+																	停机48小时
+Agent分析：
+影响：
+																	订单：
+																	SO20260123
+																	延期：
+																	7天
+																	影响金额：
+																	5000万
+推荐：
+																	方案A:
+																	维修设备
+																	成本:
+																	120万
+																	方案B:
+																	转移L003
+																	成本:
+																	80万
+																	推荐:
+																	方案B
+8.7 Planner Workspace（智能计划员工作台）
+替代传统APS界面。
+传统APS：
+																	订单
+																	↓
+																	人工排产
+																	↓
+																	调整Excel
+Decision OS：
+																	自然语言
+																	↓
+																	Agent
+																	↓
+																	Solver
+																	↓
+																	计划
+界面：
+																	------------------------------------------------
+																	AI Planner
+																	用户:
+																	下周增加10万件P001订单
+																	AI:
+																	分析中...
+																	Capacity:
+																	不足5%
+																	建议:
+																	F003增加产量
+																	F001减少P002
+																	预计:
+																	交付达成98%
+																	------------------------------------------------
+8.8 Supply Chain Control Tower
+管理：
+供应商 
+原材料 
+库存 
+物流 
+页面：
+																	Material Risk Map
+																	Cathode Material
+																	M00001
+																	库存:
+																	15天
+																	供应:
+																	20天
+																	风险:
+																	HIGH
+																	推荐:
+																	增加供应商S003
+8.9 Scenario Studio（推演工作室）
+这是 Decision OS 的核心差异。
+用户：
+直接创建假设。
+界面：
+																	Scenario Studio
+																	What if:
+																	新增订单:
+																	+5GWh
+																	选择:
+																	客户:
+																	BMW
+																	产品:
+																	LFP314
+																	时间:
+																	2027 Q1
+																	[Run Simulation]
+后台：
+																	Scenario Engine
+																	+
+																	Digital Twin
+																	+
+																	Solver
+																	+
+																	Agent
+输出：
+																	Simulation Result
+																	Revenue:
+																	+8.6B
+																	Profit:
+																	+1.2B
+																	Capacity:
+																	95%
+																	Risk:
+																	Medium
+																	Recommended:
+																	Accept
+8.10 AI Agent Workspace
+类似：
+ChatGPT + 企业系统。
+界面：
+																	------------------------------------------------
+																	Decision Assistant
+																	User:
+																	为什么本月利润下降？
+																	AI:
+																	主要原因：
+																	1.
+																	能源成本上涨12%
+																	影响:
+																	3200万
+																	2.
+																	良率下降0.8%
+																	影响:
+																	5100万
+																	建议:
+																	调整F003工艺参数
+																	------------------------------------------------
+8.11 Agent交互模式
+支持：
+Query
+查询：
+																	告诉我F001产能
+Analysis
+分析：
+																	为什么延期？
+Simulation
+模拟：
+																	如果增加订单？
+Action
+执行：
+																	生成调整方案
+8.12 UI组件体系
+组件：
+																	Decision OS Design System
+																	├── KPI Card
+																	├── Risk Card
+																	├── Ontology Graph
+																	├── Timeline
+																	├── Scenario Panel
+																	├── Solver Result Table
+																	├── Agent Chat
+																	├── Recommendation Card
+																	├── Simulation Compare
+																	└── Decision Approval
+8.13 API设计
+Dashboard API
+																	GET
+																	/api/dashboard/company-health
+返回：
+																	{
+																	health_score:92,
+																	capacity:0.82,
+																	risk:
+																	[
+																	"material",
+																	"equipment"
+																	]
+																	}
+Scenario API
+																	POST
+																	/api/scenario/run
+输入：
+																	{
+																	scenario:
+																	"new_order",
+																	quantity:
+																	5000000
+																	}
+输出：
+																	{
+																	profit:
+																	120000000,
+																	risk:
+																	"MEDIUM",
+																	recommendation:
+																	"ACCEPT"
+																	}
+8.14 权限体系
+角色：
+角色
+权限
+CEO
+全局决策
+COO
+生产运营
+计划经理
+排产
+供应链经理
+物料
+设备经理
+设备
+财务
+经营
+RBAC:
+																	User
+																	↓
+																	Role
+																	↓
+																	Permission
+																	↓
+																	Ontology Object
+8.15 Part 8 完成后产品形态
+Decision OS 已从：
+																	数据平台
+																	+
+																	算法平台
+升级为：
+																	AI原生企业操作系统
+具备：
+能力
+状态
+CEO驾驶舱
+✅
+COO运营中心
+✅
+智能APS
+✅
+供应链控制塔
+✅
+Scenario Studio
+✅
+AI Agent助手
+✅
+数字孪生可视化
+✅
+Part 8 —— Decision OS Application Layer（产品应用层）
+Part 8 是 Decision OS 从“技术架构”进入“可交付产品”的部分。
+前面：
+Part 1：企业数据 
+Part 2：业务事件 
+Part 3：Ontology 
+Part 4：Solver 
+Part 5：Agent + MCP 
+Part 6：Scenario Engine 
+Part 7：Digital Twin 
+现在构建：
+企业管理者每天使用的 AI 决策操作系统。
+8.1 Application Layer 总体架构
+																	                         User
+																	                           |
+																	                  Decision Workspace
+																	                           |
+																	        +------------------+------------------+
+																	        |                  |                  |
+																	   CEO Cockpit       COO Command       Planner Workspace
+																	        |                  |                  |
+																	        +------------------+------------------+
+																	                           |
+																	                  Decision OS UI Engine
+																	                           |
+																	        +------------------------------------+
+																	        |                                    |
+																	   Agent Interaction                 Visualization
+																	        |                                    |
+																	   Agent Runtime                  Twin Visualization
+																	                           |
+																	                  Ontology Runtime
+																	                           |
+																	        Data + Solver + Simulation
+8.2 产品模块地图
+																	Decision OS
+																	├── Executive Intelligence
+																	│
+																	├── Operations Command Center
+																	│
+																	├── Production Planning
+																	│
+																	├── Supply Chain Control Tower
+																	│
+																	├── Factory Digital Twin
+																	│
+																	├── Scenario Studio
+																	│
+																	├── AI Agent Workspace
+																	│
+																	├── Knowledge Center
+																	│
+																	└── Administration
+8.3 CEO Cockpit（企业经营驾驶舱）
+目标用户：
+董事长 
+CEO 
+总经理 
+核心问题：
+企业未来三个月、半年、一年的经营结果如何？
+页面结构
+																	------------------------------------------------
+																	Decision OS CEO Cockpit
+																	------------------------------------------------
+																	Enterprise Health Score
+																	92 / 100
+																	Revenue Forecast
+																	¥128.5B
+																	Profit Forecast
+																	¥18.6B
+																	Capacity Utilization
+																	82%
+																	Risk Alert
+																	3 High Risk
+																	------------------------------------------------
+																	Strategic Simulation
+																	[ 新增客户订单 ]
+																	[ 扩建10GWh产能 ]
+																	[ 降低20%成本 ]
+																	------------------------------------------------
+8.4 CEO核心指标
+Enterprise Health Score
+计算：
+																	Health Score
+																	=
+																	Profit Score
+																	+
+																	Delivery Score
+																	+
+																	Capacity Score
+																	+
+																	Risk Score
+																	+
+																	Carbon Score
+Capacity Overview
+展示：
+																	全国12基地
+																	|
+																	60条核心产线
+																	|
+																	500条生产线
+																	当前：
+																	82%
+																	未来Q3:
+																	95%
+																	(风险)
+Risk Radar
+五维：
+																	供应风险
+																	生产风险
+																	交付风险
+																	设备风险
+																	财务风险
+8.5 COO Command Center
+目标：
+运营总负责人。
+核心：
+今天生产是否正常？未来交付是否有风险？
+页面：
+																	------------------------------------------------
+																	COO Operation Center
+																	Today Status
+																	Production
+																	92%
+																	Delivery
+																	98%
+																	Equipment
+																	96%
+																	Material
+																	94%
+																	------------------------------------------------
+																	Exception Queue
+																	⚠ F001 Formation Line Failure
+																	⚠ Material shortage M00023
+																	⚠ Customer delivery risk
+																	------------------------------------------------
+8.6 Exception Management
+异常不是报警。
+而是：
+																	发现问题
+																	↓
+																	分析影响
+																	↓
+																	生成方案
+																	↓
+																	执行决策
+例：
+设备故障：
+输入：
+																	EQ000345
+																	停机48小时
+Agent分析：
+影响：
+																	订单：
+																	SO20260123
+																	延期：
+																	7天
+																	影响金额：
+																	5000万
+推荐：
+																	方案A:
+																	维修设备
+																	成本:
+																	120万
+																	方案B:
+																	转移L003
+																	成本:
+																	80万
+																	推荐:
+																	方案B
+8.7 Planner Workspace（智能计划员工作台）
+替代传统APS界面。
+传统APS：
+																	订单
+																	↓
+																	人工排产
+																	↓
+																	调整Excel
+Decision OS：
+																	自然语言
+																	↓
+																	Agent
+																	↓
+																	Solver
+																	↓
+																	计划
+界面：
+																	------------------------------------------------
+																	AI Planner
+																	用户:
+																	下周增加10万件P001订单
+																	AI:
+																	分析中...
+																	Capacity:
+																	不足5%
+																	建议:
+																	F003增加产量
+																	F001减少P002
+																	预计:
+																	交付达成98%
+																	------------------------------------------------
+8.8 Supply Chain Control Tower
+管理：
+供应商 
+原材料 
+库存 
+物流 
+页面：
+																	Material Risk Map
+																	Cathode Material
+																	M00001
+																	库存:
+																	15天
+																	供应:
+																	20天
+																	风险:
+																	HIGH
+																	推荐:
+																	增加供应商S003
+8.9 Scenario Studio（推演工作室）
+这是 Decision OS 的核心差异。
+用户：
+直接创建假设。
+界面：
+																	Scenario Studio
+																	What if:
+																	新增订单:
+																	+5GWh
+																	选择:
+																	客户:
+																	BMW
+																	产品:
+																	LFP314
+																	时间:
+																	2027 Q1
+																	[Run Simulation]
+后台：
+																	Scenario Engine
+																	+
+																	Digital Twin
+																	+
+																	Solver
+																	+
+																	Agent
+输出：
+																	Simulation Result
+																	Revenue:
+																	+8.6B
+																	Profit:
+																	+1.2B
+																	Capacity:
+																	95%
+																	Risk:
+																	Medium
+																	Recommended:
+																	Accept
+8.10 AI Agent Workspace
+类似：
+ChatGPT + 企业系统。
+界面：
+																	------------------------------------------------
+																	Decision Assistant
+																	User:
+																	为什么本月利润下降？
+																	AI:
+																	主要原因：
+																	1.
+																	能源成本上涨12%
+																	影响:
+																	3200万
+																	2.
+																	良率下降0.8%
+																	影响:
+																	5100万
+																	建议:
+																	调整F003工艺参数
+																	------------------------------------------------
+8.11 Agent交互模式
+支持：
+Query
+查询：
+																	告诉我F001产能
+Analysis
+分析：
+																	为什么延期？
+Simulation
+模拟：
+																	如果增加订单？
+Action
+执行：
+																	生成调整方案
+8.12 UI组件体系
+组件：
+																	Decision OS Design System
+																	├── KPI Card
+																	├── Risk Card
+																	├── Ontology Graph
+																	├── Timeline
+																	├── Scenario Panel
+																	├── Solver Result Table
+																	├── Agent Chat
+																	├── Recommendation Card
+																	├── Simulation Compare
+																	└── Decision Approval
+8.13 API设计
+Dashboard API
+																	GET
+																	/api/dashboard/company-health
+返回：
+																	{
+																	health_score:92,
+																	capacity:0.82,
+																	risk:
+																	[
+																	"material",
+																	"equipment"
+																	]
+																	}
+Scenario API
+																	POST
+																	/api/scenario/run
+输入：
+																	{
+																	scenario:
+																	"new_order",
+																	quantity:
+																	5000000
+																	}
+输出：
+																	{
+																	profit:
+																	120000000,
+																	risk:
+																	"MEDIUM",
+																	recommendation:
+																	"ACCEPT"
+																	}
+8.14 权限体系
+角色：
+角色
+权限
+CEO
+全局决策
+COO
+生产运营
+计划经理
+排产
+供应链经理
+物料
+设备经理
+设备
+财务
+经营
+RBAC:
+																	User
+																	↓
+																	Role
+																	↓
+																	Permission
+																	↓
+																	Ontology Object
+8.15 Part 8 完成后产品形态
+Decision OS 已从：
+																	数据平台
+																	+
+																	算法平台
+升级为：
+																	AI原生企业操作系统
+具备：
+能力
+状态
+CEO驾驶舱
+✅
+COO运营中心
+✅
+智能APS
+✅
+供应链控制塔
+✅
+Scenario Studio
+✅
+AI Agent助手
+✅
+数字孪生可视化
+✅
