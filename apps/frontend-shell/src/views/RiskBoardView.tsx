@@ -607,22 +607,29 @@ function RkK({ testId, value, label, color }: { testId: string; value: string; l
 type Conf = RiskTimelineOutput["confidence"];
 
 /**
- * 就绪结论（WO-SANDBOX-READINESS-UX·派生自本推演真置信度·零写死）：
+ * 就绪信号（WO-SANDBOX-READINESS-UX·派生自本推演真置信度·零写死）：**信任条与抽屉唯一同源**
+ * ——三维(synthetic/stale/measurement)与结论(verdict)由同一函数产出，杜绝顶栏与抽屉自相矛盾（真浏览器逐值查出的回归）。
+ * measurement 无标注时统一保守兜底 MOCK（无置信度信号≠冒充实测·G-DM-1）；两处都读此值故必一致。
  * RC-UX-DOOR-TEXT 诚实文案——「未校准 ≠ 不可用」，合成世界也可试跑，结论仅供参考。
  */
-function readinessVerdict(confidence: Conf, dataMode?: string | null): { tone: "ok" | "warn"; label: string; sub: string } {
+function readinessSignal(confidence: Conf, dataMode?: string | null): {
+  synthetic: boolean; stale: boolean; measurement: "LIVE" | "MOCK" | "PARTIAL";
+  verdict: { tone: "ok" | "warn"; label: string; sub: string };
+} {
   const synthetic = confidence?.synthetic === true || dataMode === "SYNTHETIC";
-  const meas = confidence?.measurement;
   const stale = confidence?.stale === true;
-  if (synthetic) return { tone: "warn", label: "未校准 · 可试跑", sub: "合成决策世界（未接真实数据）——推演可跑，结论仅供参考；接真数据后转为可决策。" };
-  if (meas === "MOCK" || meas === "PARTIAL") return { tone: "warn", label: "部分实测 · 谨慎决策", sub: "真实接入，但部分因素为估算（非全实测）——决策前留意估算项。" };
-  if (stale) return { tone: "warn", label: "鲜度告警 · 可决策", sub: `真实实测，但关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}——留意时效。` };
-  return { tone: "ok", label: "就绪 · 可决策", sub: "真实接入 · 实测活体 · 新鲜——本推演结论可直接进决策。" };
+  const measurement: "LIVE" | "MOCK" | "PARTIAL" = confidence?.measurement ?? (dataMode === "LIVE" ? "LIVE" : "MOCK");
+  let verdict: { tone: "ok" | "warn"; label: string; sub: string };
+  if (synthetic) verdict = { tone: "warn", label: "未校准 · 可试跑", sub: "合成决策世界（未接真实数据）——推演可跑，结论仅供参考；接真数据后转为可决策。" };
+  else if (measurement === "MOCK" || measurement === "PARTIAL") verdict = { tone: "warn", label: "部分实测 · 谨慎决策", sub: "真实接入，但部分因素为估算/无置信度信号——决策前留意估算项。" };
+  else if (stale) verdict = { tone: "warn", label: "鲜度告警 · 可决策", sub: `真实实测，但关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}——留意时效。` };
+  else verdict = { tone: "ok", label: "就绪 · 可决策", sub: "真实接入 · 实测活体 · 新鲜——本推演结论可直接进决策。" };
+  return { synthetic, stale, measurement, verdict };
 }
 
 /** 看板顶一行信任条（HTML §5·CAPSIM 唯一 surface 顶）：就绪结论 + 缺源徽标 + [查看完整体检]。 */
 function ReadinessTrustBar({ confidence, dataMode, noSourceCount, onOpen }: { confidence: Conf; dataMode?: string | null; noSourceCount: number; onOpen: () => void }) {
-  const v = readinessVerdict(confidence, dataMode);
+  const v = readinessSignal(confidence, dataMode).verdict;
   const color = v.tone === "ok" ? "var(--ok)" : "var(--warn)";
   return (
     <div className={styles.trustBar} data-testid="risk-trust-bar" data-tone={v.tone}>
@@ -639,10 +646,10 @@ function ReadinessTrustBar({ confidence, dataMode, noSourceCount, onOpen }: { co
 
 /** [查看完整体检] 抽屉：三维置信度 + 缺件清单（§4②）+ 进沙盘看完整 L0-L4 就绪认证（session 级 cert 的真归属地）。 */
 function ReadinessDrawer({ confidence, dataMode, noSourceCards, canWhatIf, onClose }: { confidence: Conf; dataMode?: string | null; noSourceCards: RiskCard[]; canWhatIf: boolean; onClose: () => void }) {
-  const v = readinessVerdict(confidence, dataMode);
-  const synthetic = confidence?.synthetic === true || dataMode === "SYNTHETIC";
-  const stale = confidence?.stale === true;
-  const meas = confidence?.measurement ?? (dataMode === "LIVE" ? "LIVE" : "MOCK");
+  // 与信任条唯一同源（readinessSignal）——三维与结论必一致，杜绝顶栏"实测活体"却抽屉"无实测"的自相矛盾。
+  const sig = readinessSignal(confidence, dataMode);
+  const v = sig.verdict;
+  const { synthetic, stale, measurement: meas } = sig;
   const dims: { label: string; good: boolean; text: string }[] = [
     { label: "真实 ↔ 合成", good: !synthetic, text: synthetic ? "合成数据（非真实接入）" : "真实接入" },
     { label: "新鲜 ↔ 陈旧", good: !stale, text: stale ? `关键源滞后${confidence?.lagHours != null ? ` ≈${confidence.lagHours}h` : ""}${(confidence?.staleSources ?? []).length ? `（${(confidence!.staleSources ?? []).join("、")}）` : ""}` : "关键源新鲜" },

@@ -32,4 +32,16 @@ describe("WO-SANDBOX-READINESS-UX · 看板信任条 + 完整体检抽屉", () =
     fireEvent.click(within(drawer).getByTestId("risk-trust-close"));
     await waitFor(() => expect(screen.queryByTestId("risk-trust-drawer")).toBeNull());
   });
+
+  it("信任条结论与抽屉三维同源·不自相矛盾（回归·真浏览器逐值查出：顶栏'实测活体'却抽屉'无实测'）", async () => {
+    loginAs("planner");
+    renderApp("/v/risk");
+    const barVerdict = (await screen.findByTestId("risk-trust-verdict")).textContent ?? "";
+    fireEvent.click(screen.getByTestId("risk-trust-open"));
+    const conf = (await screen.findByTestId("drawer-confidence")).textContent ?? "";
+    // 矛盾判据①：抽屉「实测↔估算」说无实测/估算 → 信任条绝不能宣称"就绪 · 可决策"。
+    if (/无实测|估算/.test(conf)) expect(barVerdict).not.toContain("就绪 · 可决策");
+    // 矛盾判据②：信任条说"就绪 · 可决策" → 抽屉实测行须是"实测活体"。
+    if (barVerdict.includes("就绪 · 可决策")) expect(conf).toContain("实测活体");
+  });
 });
