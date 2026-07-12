@@ -8,7 +8,7 @@
  */
 import type { MaterializedIntent, IntentSliceSpec, SlotDef } from "@platform/contracts";
 import { SCENARIO_CATALOG, scenarioByIntent } from "../scenarios-catalog.js";
-import { INTENT_MODE } from "./intent-mode.js";
+import { INTENT_MODE, intentAgentFor } from "./intent-mode.js";
 
 export const SEED_TENANT = "demo";
 
@@ -102,16 +102,10 @@ export function unmappedCatalogIntentKeys(): string[] {
   return SCENARIO_CATALOG.filter((c) => !INTENT_SKILL[c.intentKey]).map((c) => c.intentKey);
 }
 
-/** agent-first 意图绑定的场景 agent（scene-entry defaultAgent 派生·均 PUBLISHED）。 */
-const INTENT_AGENT: Record<string, string> = {
-  risk_root_cause: "agt_risk",
-  plan_recommend: "agt_plan_generate",
-  yield_diag: "agt_risk",
-  maint_stagger: "agt_risk",
-  outsourcing_q: "agt_plan_generate",
-  capex_review: "agt_plan_generate",
-  quarterly_gap_q: "agt_quarterly",
-};
+// agent-first 意图绑定的场景 agent（scene-entry defaultAgent 派生·均 PUBLISHED）。
+// WO-SWEEP-01-SCENE-SEED：映射表（INTENT_AGENT）提到 `./intent-mode.ts` 作单一来源，
+// scenarios-catalog.ts 亦读同表设一等 Scenario.defaultAgentId（避免 6 张 AGENT_FIRST 卡断链）。
+export { INTENT_AGENT } from "./intent-mode.js";
 
 /** 本体切片 rootType（由 solver 读的主对象类型派生·本体对象类型 key·industry-agnostic）。 */
 const INTENT_SLICE_ROOT: Record<string, string> = {
@@ -237,7 +231,7 @@ export function materializeIntents(tenantId = SEED_TENANT, now = new Date().toIS
 
       ontologySliceKey: sliceKeyForIntent(key),
       ...(mode === "AGENT_FIRST"
-        ? { agentId: INTENT_AGENT[key] ?? "agt_seed_analyst" }
+        ? { agentId: intentAgentFor(key) }
         : { workflowId: planIdForIntent(key, tenantId) }),
     };
     return {

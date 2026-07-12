@@ -5,7 +5,7 @@
  * 经 GET /b/v1/scenarios 下发本表（非前端硬编码）；每卡带 presetContext 保证"一键可推演"。
  */
 
-import { intentModeFor } from "./intents/intent-mode.js";
+import { intentModeFor, intentAgentFor } from "./intents/intent-mode.js";
 
 export type RiskLevel = "COMPUTE" | "ACTION_DRAFT";
 
@@ -175,6 +175,7 @@ const VIEW_DOMAIN: Record<string, string> = {
  * 使一等 Scenario 投影不再对 13/7 分派撒谎（yield_diag 等 7 个 agent-first 卡如实标 AGENT_FIRST）。
  */
 export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): import("@platform/contracts").Scenario {
+  const mode = intentModeFor(card.intentKey);
   return {
     id: `scn_${tenantId}_${card.sNo}`,
     tenantId,
@@ -188,7 +189,11 @@ export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): im
     rules: card.rules,
     riskLevel: card.riskLevel,
     summary: card.summary,
-    mode: intentModeFor(card.intentKey),
+    mode,
+    // WO-SWEEP-01-SCENE-SEED：AGENT_FIRST 场景卡（S05/S12/S13/S14/S17/S19）必须带已发布 defaultAgentId，
+    // 否则启动器渲染断链（AGENT_FIRST 无 agent 不可启动）。映射源 = intent-mode.ts INTENT_AGENT 单一来源
+    // （与 materialize.ts 物化 Intent.bindings.agentId 同表·均 PUBLISHED sceneAgent）。WORKFLOW_FIRST 卡不设（走计划）。
+    ...(mode === "AGENT_FIRST" ? { defaultAgentId: intentAgentFor(card.intentKey) } : {}),
     presetContext: {
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,

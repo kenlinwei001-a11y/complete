@@ -71,3 +71,30 @@ export const INTENT_MODE: Record<string, IntentMode> = {
 export function intentModeFor(intentKey: string): IntentMode {
   return INTENT_MODE[intentKey] ?? "WORKFLOW_FIRST";
 }
+
+/**
+ * agent-first 意图 → 绑定的出厂场景 agent id（均 PUBLISHED sceneAgent）。**单一来源**（勿两处各写一套）：
+ * materialize.ts（物化一等 Intent.bindings.agentId）与 scenarios-catalog.ts（一等 Scenario.defaultAgentId 投影）
+ * 都从本表派生——同 INTENT_MODE 的动机，放零依赖模块避 materialize↔scenarios-catalog 成环。
+ *
+ * WO-SWEEP-01-SCENE-SEED：此前该表只在 materialize.ts 里，scenarioFromCard 无从取用 → 6 张 AGENT_FIRST 场景卡
+ * （S05/S12/S13/S14/S17/S19）的一等 Scenario.defaultAgentId 恒空 → 启动器渲染断链（AGENT_FIRST 无 agent 不可启动）。
+ * 提到此处后两侧共用同一映射，出厂 Scenario 投影即带真实 PUBLISHED defaultAgentId。
+ */
+export const INTENT_AGENT: Record<string, string> = {
+  risk_root_cause: "agt_risk",
+  plan_recommend: "agt_plan_generate",
+  yield_diag: "agt_risk",
+  maint_stagger: "agt_risk",
+  outsourcing_q: "agt_plan_generate",
+  capex_review: "agt_plan_generate",
+  quarterly_gap_q: "agt_quarterly",
+};
+
+/** agent-first 兜底终点：未显式映射的 agent-first 意图回落一等全域探索智能体（agt_universal 亦 PUBLISHED）。 */
+export const FALLBACK_AGENT_ID = "agt_seed_analyst";
+
+/** 按意图键取绑定场景 agent id（agent-first 专用；未映射回落兜底 agent·与既有 materialize 语义一致）。 */
+export function intentAgentFor(intentKey: string): string {
+  return INTENT_AGENT[intentKey] ?? FALLBACK_AGENT_ID;
+}
