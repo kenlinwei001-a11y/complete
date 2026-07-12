@@ -8145,7 +8145,8 @@
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
       },
-      "assignedDev": "dev4-import"
+      "assignedDev": "dev4-import",
+      "dataModeProvenanceFix": "[dev4·2026-07-12] 决策级 dataMode 冒充 LIVE 命门(审核方重验点)已在代码修:①app.ts deriveCellMode 按真 provenance(SYNTHETIC 或 MATERIALIZED-from-synthetic-connection·同 isSyntheticDecision)→ nodeObjectMode 合成物化标 SYNTHETIC(治 demo 102/102) ②RiskBoardView cardDecisionMode gate 在 confidence.synthetic ③ModelCapacitySlice 行实测标 gate 在 provenance。与 measurement 维正交(不动 lt.source·CAP-01/WO-FRESHNESS 不破)。green→red:sim-trust-badge 齿④ + risk-decision-provenance。四包 datacore 全绿+gates 绿·frontend 除 1 pre-existing sandbox-p0(非本改)外全绿。"
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",

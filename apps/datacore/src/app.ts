@@ -1484,20 +1484,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   //  · 关键源新鲜度 = C09 同判据（solvers/service.ts:2472 一字不差）：任一 DataSourceHealth.critical 源
   //    lagHours>staleHours → 真对象值降 STALE。
   //  · origin 血缘 = obj.origin.type（SYNTHETIC/MATERIALIZED/MANUAL…），与 SolverDataMode/isSyntheticDecision 同源。
-  const loadTrustContext = async (c: AuthCtx): Promise<{ criticalStale: boolean; originById: Map<string, string> }> => {
+  const loadTrustContext = async (c: AuthCtx): Promise<{ criticalStale: boolean; syntheticById: Map<string, boolean> }> => {
     const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     const params = await solvers.getParams(c.tenantId);
     const staleHours = params.health?.staleHours ?? 2;
     const health = await repos.objects.listByType(c.tenantId, "DataSourceHealth");
     const criticalStale = health.some((h) => h.props.critical === true && n(h.props.lagHours) > staleHours);
-    const originById = new Map<string, string>();
+    // WO-DATAMODE-UNIFY-PROVENANCE（KILL-MOCK-RED 命门）：合成 provenance 判据与 solvers/service.ts isSyntheticDecision
+    // **一字不差同源**——origin=SYNTHETIC，**或** MATERIALIZED 且其 rawDataset 源连接为合成源（config.synthetic===true）。
+    // 此前 deriveCellMode 仅看 origin===SYNTHETIC，漏 MATERIALIZED-from-synthetic-connection（SEED_DEMO viaModelingChain
+    // 全 MATERIALIZED·datasetId→mock_erp 合成源）→ 逐格误标 LIVE（demo 102/102 LIVE 冒充实测·违 KILL-MOCK-RED）。
+    const synthConnIds = new Set(
+      (await repos.connections.list(c.tenantId, (cn) => (cn.config as Record<string, unknown> | undefined)?.synthetic === true)).map((cn) => cn.id),
+    );
+    const synthDatasetIds = new Set(
+      synthConnIds.size > 0 ? (await repos.rawDatasets.list(c.tenantId, (d) => synthConnIds.has(d.sourceConnId))).map((d) => d.id) : [],
+    );
+    const syntheticById = new Map<string, boolean>();
     for (const t of await repos.ontologyTypes.list(c.tenantId)) {
       for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
         if (o.mergedInto) continue;
-        originById.set(o.id, String((o.origin as { type?: string } | undefined)?.type ?? ""));
+        const og = o.origin as { type?: string; datasetId?: string } | undefined;
+        const isSynth = og?.type === "SYNTHETIC" || (og?.type === "MATERIALIZED" && !!og.datasetId && synthDatasetIds.has(og.datasetId));
+        syntheticById.set(o.id, isSynth);
       }
     }
-    return { criticalStale, originById };
+    return { criticalStale, syntheticById };
   };
 
   // 逐 (对象,状态变量) 诚信位（复用 SolverDataMode 语义·LIVE=由真对象数据派生）：
@@ -1507,13 +1519,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 仅对 state 中**已有真数值**的格发位；无真值不发 → 前端诚实"来源待披露"（绝不假标 LIVE·KILL-MOCK-RED）。
   // UNCALIBRATED 由前端从 propRule.coefficientRef 空自派生（契约注 sim.ts nodeObjectMode·非本端职责）。稳定序 R6。
   const deriveCellMode = (
-    trust: { criticalStale: boolean; originById: Map<string, string> },
+    trust: { criticalStale: boolean; syntheticById: Map<string, boolean> },
     state: TickState,
   ): Record<string, Record<string, SimDataMode>> => {
     const mode: Record<string, Record<string, SimDataMode>> = {};
     for (const objId of Object.keys(state).sort()) {
-      const originType = trust.originById.get(objId);
-      const m: SimDataMode = originType === "SYNTHETIC" ? "SYNTHETIC" : trust.criticalStale ? "STALE" : "LIVE";
+      // WO-DATAMODE-UNIFY-PROVENANCE：合成 provenance（SYNTHETIC 或 MATERIALIZED-from-synthetic-connection）→ SYNTHETIC；
+      // 真接入/真导入对象 + 源新鲜 → LIVE；叠关键源滞后 → STALE（C09）。不冒充 LIVE（KILL-MOCK-RED）。
+      const m: SimDataMode = trust.syntheticById.get(objId) === true ? "SYNTHETIC" : trust.criticalStale ? "STALE" : "LIVE";
       const vars = state[objId] ?? {};
       const row: Record<string, SimDataMode> = {};
       for (const v of Object.keys(vars).sort()) row[v] = m;

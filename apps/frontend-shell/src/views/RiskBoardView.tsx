@@ -133,9 +133,16 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·诚实位）：合成源卡（后端 risk.ts 令 source=SYNTHETIC 的合成扁平产线
   //   利用率兜底卡）dataMode 继承 "SYNTHETIC" 而非自报 LIVE → 命中下方 `return "MUTED"`，**不决策级染红**（走灰
   //   估算·无实测）；真供需/真实测卡（dataMode="LIVE"）仍如常出真张力/越线红。前端无需改判据——后端诚实位下沉即生效。
+  // WO-DATAMODE-UNIFY-PROVENANCE（KILL-MOCK-RED 命门）：决策级染红须**真 provenance**——决策世界全合成
+  //   （confidence.synthetic·= 后端 isSyntheticDecision·如 demo 合成物化 DemandSegment）时，卡即便自报实测
+  //   dataMode=LIVE（measurement 维真读 OEE/真供需）也**不决策级染红**（合成物化不得冒充 LIVE 决策红）。
+  //   与 measurement 维正交：confidence.measurement 仍 LIVE（真读实测）·顶层 badge 已显 SYNTHETIC——此处只治「决策红」。
+  //   真接入/真导入世界（confidence.synthetic 非真）的实测卡才如常出真张力/越线红。
+  const decisionSynthetic = data.confidence?.synthetic === true;
   const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" => {
     if (c.hasData === false) return "MUTED";
-    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 → 出红（不被顶层合成过度抑制·非伪造：真 OEE / 真供需派生）
+    if (decisionSynthetic) return "MUTED"; // 合成 provenance 决策世界 → 一律不决策级染红（KILL-MOCK-RED）
+    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 + 真 provenance → 出红（非伪造：真 OEE / 真供需派生）
     if (c.dataMode == null) return topLive ? "LIVE" : "MUTED"; // 未标 → 随顶层（兼容旧 fixture/真 LIVE 顶层）
     return "MUTED"; // 显式 MOCK/SYNTHETIC（含 WO-CAP-01 合成源卡）/其它非 LIVE → 中性
   };

@@ -86,6 +86,38 @@ describe("WO-SANDBOX-TRUST-BADGE · 沙盘 dataMode 后端透传（teeth）", ()
     expect(others.every((m) => m === "SYNTHETIC")).toBe(true);
   });
 
+  it("齿④（WO-DATAMODE-UNIFY-PROVENANCE 命门·green→red）：MATERIALIZED-from-synthetic-connection → SYNTHETIC（治 demo viaModelingChain 102/102 冒充 LIVE）", async () => {
+    const t = await seeded();
+    await enableSim(t);
+    // 合成源连接（seedBattery 的 mock_erp+config.synthetic=true）及其 rawDataset —— demo viaModelingChain 物化态血缘。
+    const synthConns = await t.repos.connections.list("demo", (c) => (c.config as Record<string, unknown> | undefined)?.synthetic === true);
+    expect(synthConns.length).toBeGreaterThan(0);
+    const synthDs = (await t.repos.rawDatasets.list("demo", (d) => d.sourceConnId === synthConns[0]!.id))[0];
+    expect(synthDs).toBeDefined();
+    // 找一个携 totalDemand 的对象，翻成 MATERIALIZED 且 datasetId→合成源（= demo 真实物化态：MATERIALIZED 但源是合成）。
+    let objId = "";
+    outer: for (const ty of await t.repos.ontologyTypes.list("demo")) {
+      for (const o of await t.repos.objects.listByType("demo", ty.key)) {
+        if (o.mergedInto) continue;
+        if (typeof (o.props as Record<string, unknown>).totalDemand === "number") {
+          await t.repos.objects.put({ ...o, origin: { type: "MATERIALIZED", datasetId: synthDs!.id, jobId: "j" } });
+          objId = o.id;
+          break outer;
+        }
+      }
+    }
+    expect(objId).not.toBe("");
+    const synthMat = await getCfg(t);
+    // 命门：origin=MATERIALIZED 但源连接合成 → SYNTHETIC（不因 MATERIALIZED 就冒充 LIVE 实测·KILL-MOCK-RED）。
+    expect(synthMat.nodeObjectMode![objId]?.totalDemand).toBe("SYNTHETIC");
+
+    // green→red 对照：同对象翻成 MATERIALIZED 但 datasetId→**非合成源**（真导入）→ LIVE（真接入物化才实测）。
+    const real = await t.repos.objects.get("demo", objId);
+    await t.repos.objects.put({ ...real!, origin: { type: "MATERIALIZED", datasetId: "rds_real_import_not_synth", jobId: "j" } });
+    const realMat = await getCfg(t);
+    expect(realMat.nodeObjectMode![objId]?.totalDemand).toBe("LIVE");
+  });
+
   it("齿③：真对象 + 关键源 dataHealth.critical 滞后(C09) → 其格转 STALE", async () => {
     const t = await seeded();
     await enableSim(t);

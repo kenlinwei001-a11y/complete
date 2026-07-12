@@ -71,6 +71,11 @@ export default function ModelCapacitySlice({ initialModel, demand, weeks, inject
   const out = forecast.data;
 
   const okColor = out ? (out.ok ? "var(--ok)" : decisionVerdictColor("var(--danger)", out.dataMode)) : "var(--muted)";
+  // WO-DATAMODE-UNIFY-PROVENANCE（命门·KILL-MOCK-RED）：合成 provenance 决策世界（顶层 dataMode=SYNTHETIC·
+  // 后端 isSyntheticDecision·或 confidence.synthetic）→ 行不得标「实测」/不决策级染红（合成物化冒充实测）。
+  // 与 measurement 维正交：measurement 真算的行值照常展示，仅「实测」标签/染红 gate 在 provenance。
+  const decisionSynthetic = out?.dataMode === "SYNTHETIC" || (out as { confidence?: { synthetic?: boolean } } | undefined)?.confidence?.synthetic === true;
+  const rowDecisionLive = (rowLive: boolean | undefined): boolean => rowLive === true && !decisionSynthetic;
 
   return (
     <div className="panel" data-testid="sandbox-model-slice" style={{ padding: "10px 14px", marginTop: 8, borderLeft: "3px solid #7C9AF5" }}>
@@ -145,14 +150,17 @@ export default function ModelCapacitySlice({ initialModel, demand, weeks, inject
                   <td className="zh"><b>{r.base}</b></td>
                   <td className="zh">{r.bottleneck}</td>
                   <td>
-                    {/* KILL-MOCK-RED：无真源紧张度 → 灰「估算」不染决策红；仅 live 真数据才染红。 */}
+                    {/* KILL-MOCK-RED：无真源紧张度 → 灰「估算」不染决策红；仅 live 真数据才染红。
+                        WO-DATAMODE-UNIFY-PROVENANCE（命门）：合成 provenance 决策世界（顶层 dataMode=SYNTHETIC·
+                        = isSyntheticDecision）行即便 live=true（measurement 维真算）也**不标实测/不决策级染红**
+                        （合成物化不得冒充实测·与 S2 徽标/nodeObjectMode/RiskBoard 口径统一）——标「合成」灰显。 */}
                     <span className={styles.tightBar}>
-                      <i style={{ width: `${Math.min(100, r.tightness ?? 0)}%`, background: decisionHeat(r.tightness, 85, r.live ? "LIVE" : "MOCK") }} />
+                      <i style={{ width: `${Math.min(100, r.tightness ?? 0)}%`, background: decisionHeat(r.tightness, 85, rowDecisionLive(r.live) ? "LIVE" : "MOCK") }} />
                     </span>
-                    <span className="mono" style={{ color: decisionColor(r.tightness, 85, r.live ? "LIVE" : "MOCK") }}>
+                    <span className="mono" style={{ color: decisionColor(r.tightness, 85, rowDecisionLive(r.live) ? "LIVE" : "MOCK") }}>
                       {r.tightness != null ? r.tightness : "—"}
                     </span>
-                    <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>{r.live ? "实测" : "估算"}</span>
+                    <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>{rowDecisionLive(r.live) ? "实测" : decisionSynthetic ? "合成" : "估算"}</span>
                   </td>
                   <td className="mono">{fmt(r.weeklyCap, 2)}</td>
                 </tr>
