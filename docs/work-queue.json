@@ -7242,7 +7242,7 @@
       "deps": [
         "WO-SANDBOX-TEMPORAL-GROUNDING"
       ],
-      "note": "[收编·根治并入沙盘重建S6·Dev-1勿band-aid·S6 DONE时一并复验闭] 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:磁贴→看板solver KPI结构化解。勿补退役页·随CAPSIM落地。",
+      "note": "[收编·根治并入沙盘重建S6·Dev-1勿band-aid·S6 DONE时一并复验闭] 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:磁贴→看板solver KPI结构化解。勿补退役页·随CAPSIM落地。 [PM跟进2026-07-12] 解阻塞裁决:dep(TEMPORAL-GROUNDING)已DONE·非依赖阻塞·系审核方逐值BLOCK(磁贴全冻)。scope:本单修SandboxView(/v/sim-sandbox)tick-live——IF SandboxView随CAPSIM统一surface退役→应fold(勿修将死视图·close或re-scope到统一surface);IF保留→需真修冻结根因。前置=先确认SandboxView存废。@审核方 定scope后再动。",
       "acceptance": {
         "goal": "沙盘'推进N天'后头部至少一项决策相关KPI随tick确定性真变化(非冻结·非合成扰动)。",
         "criteria": [
@@ -7978,7 +7978,7 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "链路派生稳定(洞E):LLM链路输出+确定性FK兜底补链(复用modeling detectFkCandidates uniqueRate≥0.95)+覆盖度门+接现成slice-planner planSlice真BFS多跳·治多跳偶发断链",
-      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】",
+      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】 [审核方复验2026-07-12·真跑] deriveSliceHops+FK名兜底(comprehend.ts:290)·planSlice真BFS maxHops6复用非重写。link-stabilize.test.ts①ref→真hops②LLM丢链→FK兜底非空③兜底OFF+丢链→hops[](红·真牙齿)④R6多跳。真跑Factory root→[ProductionLine_factory_id_ref,Equipment_line_id_ref]非空多跳·恒空切片已治。→建议DONE·待授权flip。",
       "status": "BUILT",
       "owner": "dev2",
       "at": {
@@ -8050,7 +8050,7 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "B栈按故事真派生(洞B):workflow多步/条件·agent prompt含故事上下文·skill真资源(非模板fan-out)·可能扩LlmComprehendSchema采编排提示(additive)",
-      "note": "[LaneB·datacore·DISPATCH] ⚠沙盘划界:绝不派生propagation_rule/state_var(S0§3.4归RG/S1·防双写contracts/databuilder.ts:437)。green→red:两复杂度悬殊故事→workflow.steps/agent.prompt字节相同→红。",
+      "note": "[LaneB·datacore·DISPATCH] ⚠沙盘划界:绝不派生propagation_rule/state_var(S0§3.4归RG/S1·防双写contracts/databuilder.ts:437)。green→red:两复杂度悬殊故事→workflow.steps/agent.prompt字节相同→红。 [审核方复验2026-07-12·真跑] deriveBStack(comprehend.ts:342)·步骤随scope/args变·沙盘边界守(propagationRuleNeeds/stateVarNeeds恒[]·不双写S1/RG)。bstack-derive.test.ts①异复杂度→字节不同workflow②多scope→resolve_slice③prompt含story marker④propagation恒空⑤R6。真跑prompt含「锂电基地产线设备产能健康推演」。→建议DONE·待授权flip。",
       "status": "BUILT",
       "owner": "dev2",
       "at": {
@@ -8068,7 +8068,7 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "故事发动机接A3 deriveModelingSuggestion:上传数据即从列/FK真派生类型/链路(现只/admin/modeling独立用·故事路零引用)",
-      "note": "[LaneB·datacore·DISPATCH·最干净·可并行候选] 纯复用modeling.ts:89·与MERGE数据先行对齐(须协同MERGE-03)。green→red:上传数据→应从列/FK派生类型;现不派生→红。",
+      "note": "[LaneB·datacore·DISPATCH·最干净·可并行候选] 纯复用modeling.ts:89·与MERGE数据先行对齐(须协同MERGE-03)。green→red:上传数据→应从列/FK派生类型;现不派生→红。 [审核方复验2026-07-12·真跑] worktree真起datacore memory·pnpm test 1278绿·真上传CALB factory/production_line/equipment.csv→派生Factory/ProductionLine(factory_id FK)/Equipment(line_id FK)链100%来自上传列名·对齐CALB doc§3.3/§3.5·非硬编码。判定=DERIVE(道B✓)·非G2直导(objects.json importer是独立feature-gated admin端点·未接story引擎)。green→red(modeling-wire.test.ts③)真。CONCERN(轻·非derive缺陷):派生类型domain=unassigned→STRICT停诚实NO_SLICE(PROVISIONAL达SUCCEEDED)·归属属MERGE-03。→建议DONE·待审核方授权flip。",
       "status": "BUILT",
       "owner": "dev2",
       "at": {
@@ -8528,7 +8528,7 @@
       },
       "id": "WO-SA-4",
       "title": "Base补6个factory台账字段(factory_code/province/city/factory_type/status/start_date·对齐docx factory.csv)",
-      "note": "[默认可缓做·记录型非决策·datacore·通用] per-base真事实用常量映射非rng(常州→江苏/常州/CELL);路线①BASE_REGISTRY(contracts既有归属·守R14)或②battery.ts常量表。声明baseProps:411+合成BASES:23。双向对齐门+R6。green→red:只声明不合成→判据②Base.province红。母体§2回写。",
+      "note": "[默认可缓做·记录型非决策·datacore·通用] per-base真事实用常量映射非rng(常州→江苏/常州/CELL);路线①BASE_REGISTRY(contracts既有归属·守R14)或②battery.ts常量表。声明baseProps:411+合成BASES:23。双向对齐门+R6。green→red:只声明不合成→判据②Base.province红。母体§2回写。 [PM跟进2026-07-12] dev1已BUILT(台账字段Base/Line/Equipment·datacore 1282绿·双向对齐门绿)。dep=WO-SA-3亦BUILT未DONE→建议按dep链先复验SA-3再SA-4/5/6·整批待审核方真复验(字段对齐docx Part1台账·逐值对照)→DONE或BLOCK。",
       "blockReason": ""
     },
     {
@@ -8548,7 +8548,7 @@
       },
       "id": "WO-SA-5",
       "title": "Line补4个产线台账字段(line_code/max_capacity_day/target_yield/status·对齐production_line.csv)",
-      "note": "[默认可缓做·datacore·通用] 声明lineProps:474+合成lines.push:1654(枚举取enumValues内·数值rngTopo追加末尾R6)。oee不补(已有oeeIndex+三分解)。green→red:跳合成→红。",
+      "note": "[默认可缓做·datacore·通用] 声明lineProps:474+合成lines.push:1654(枚举取enumValues内·数值rngTopo追加末尾R6)。oee不补(已有oeeIndex+三分解)。green→red:跳合成→红。 [PM跟进2026-07-12] dev1已BUILT(台账字段Base/Line/Equipment·datacore 1282绿·双向对齐门绿)。dep=WO-SA-3亦BUILT未DONE→建议按dep链先复验SA-3再SA-4/5/6·整批待审核方真复验(字段对齐docx Part1台账·逐值对照)→DONE或BLOCK。",
       "blockReason": ""
     },
     {
@@ -8568,7 +8568,7 @@
       },
       "id": "WO-SA-6",
       "title": "Equipment补5个设备台账字段(equipment_code/equipment_type/manufacturer/install_date/status·对齐equipment.csv)",
-      "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。",
+      "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。 [PM跟进2026-07-12] dev1已BUILT(台账字段Base/Line/Equipment·datacore 1282绿·双向对齐门绿)。dep=WO-SA-3亦BUILT未DONE→建议按dep链先复验SA-3再SA-4/5/6·整批待审核方真复验(字段对齐docx Part1台账·逐值对照)→DONE或BLOCK。",
       "blockReason": ""
     },
     {
@@ -8634,7 +8634,7 @@
       "status": "BLOCKED",
       "owner": "dev3",
       "title": "RC-1沙盘前向闭合硬前置:补Quote/Action对象类型(或重归C24/C45/C50 scope)+给ErpOrder/MesOrder/SrmOrder建切片→closure.gatePassed+observabilityMet=true→认证亮「✓可进入推演」",
-      "note": "[数据/本体域·Dev-1·沙盘可用硬前置·一手证据cert JSON见VERIFIED§2] gaps恰4条:C24→Quote/C45→Action/C50→Action 三条FORWARD HARD(scope类型缺·核过43类本体未定义Quote/Action)+图查询覆盖40/43(ErpOrder/MesOrder/SrmOrder无切片root)。两件都修才能canEnter=L4∧trial∧gate=true。守R14(改battery本体/规则scope·非平台常数)+母体§3回写。green→red:cert canEnterSimulation现false·补齐后应true且顶部「✓可进入推演」。",
+      "note": "[数据/本体域·Dev-1·沙盘可用硬前置·一手证据cert JSON见VERIFIED§2] gaps恰4条:C24→Quote/C45→Action/C50→Action 三条FORWARD HARD(scope类型缺·核过43类本体未定义Quote/Action)+图查询覆盖40/43(ErpOrder/MesOrder/SrmOrder无切片root)。两件都修才能canEnter=L4∧trial∧gate=true。守R14(改battery本体/规则scope·非平台常数)+母体§3回写。green→red:cert canEnterSimulation现false·补齐后应true且顶部「✓可进入推演」。 [PM跟进2026-07-12] dev3已精确定位并正确让给Dev-1(byte-baseline红线·commit 2af56f4)→@Dev-1认领:FORWARD修battery.ts:1527/1541/1546补Quote/Action类型(移demo-provenance字节基线+observability分母43→45需同补切片·高风险)或observability修(ErpOrder/MesOrder/SrmOrder建切片root)。审核方不硬扛字节风险(非其域)。",
       "at": {
         "wip": "2026-07-12T11:42:10.067Z",
         "blocked": "2026-07-12T11:44:15.014Z"
@@ -8684,7 +8684,7 @@
         "blocked": "2026-07-11T21:21:00.541Z"
       },
       "title": "RC-2沙盘开箱默认真feed源(S6提供能力但demo四源全EMPTY_DATA字段不匹配resolver→静止)·播dailyP50+coverageDays的DemandSegment/变tick A8序列/forecast覆盖·让demo开箱推tick世界真动",
-      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:看板solver-driven开箱即有真数据(顶部capacity_forecast缺口33万套)结构化解开箱死·无需sandbox feed。勿补退役页·随CAPSIM落地。",
+      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:看板solver-driven开箱即有真数据(顶部capacity_forecast缺口33万套)结构化解开箱死·无需sandbox feed。勿补退役页·随CAPSIM落地。 [PM跟进2026-07-12] 解阻塞裁决:无依赖阻塞·系审核方逐值BLOCK(开箱不配置=死基线·feeds=[]·utilization 16tick全93.0886冻)。谁动:根因在前端2调用点(SandboxView:999+SimInitWizard:142)createSimSession未传grounding/feedSpecs。铁律裁:开箱无真feed→诚实静止+引导配置(勿后端注入合成feed冒充活体·违G-DM-1);真fix=前端从真源传feedSpecs+无源诚实空态。@前端owner(现空·待认领)。属沙盘端到端可用性根因(与RC1同族)。",
       "blockReason": "[审核方复验·BLOCK·偷换判据+反假绿] 开箱不配置=死基线原样·RC-2未闭合。真前端开箱流createSimSession({baseSnapshot,scope}不传grounding/feedSpecs·SandboxView:999+SimInitWizard:142唯二调用)推15tick:feeds=[]·demandLoad机械等差+1.592·utilization 16tick全93.0886 distinct=1完全静止=与被治病症逐字一致。dev声称流(显式grounding:true+手写feedSpecs)确实真动(inv1.level真变·引擎真通)但任何用户不可达。根:dev把feed藏在按会话显式opt-in+手写feedSpecs后·前端createSimSession只收{baseSnapshot,scope}都不传·后端无默认feedSpecs注入·默认真feed源根本不存在·把开箱不配置偷换成显式接地会话。WO点名播的四源(dailyP50+coverageDays DemandSegment/变tick A8/forecast)一个没播(DemandSegment诚实EMPTY_DATA)。反假绿:dev 4牙全绿断错对象·①②③用grounding:true证能力非证开箱·齿④直接断关闸→feeds=[]/level恒0把开箱静止固化为期望·无一牙断WO判据开箱不配置随tick真变。需补:默认feed源接线(前端createSimSession透传grounding+feedSpecs或后端为demo grounded会话默认注入真PO feedSpec)+按DATAMODE-UNIFY让合成动值诚实标SYNTHETIC(现demo nodeObjectMode 102/102全LIVE)。given CAPSIM统一·默认场景/feed在CAPSIM看板落地更合适。复验commit a14d03d6(=cc053750)。",
       "supersededByCAPSIM": true
     },
@@ -8733,7 +8733,7 @@
         "built": "2026-07-12"
       },
       "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
-      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】 ⚠依赖解耦:看板先建先接真solver·§7 KILL-MOCK-RED(禁mockTightness)今天就绿(平台已删);但demo合成materialized值会暂标LIVE决策红(既有行为·非本单造)→DATAMODE-UNIFY(后端·押后)据实修成SYNTHETIC。REPLICA可DONE于§1-6+§7-mockTightness·合成诚实标caveat明记待DATAMODE-UNIFY·不得在REPLICA acceptance冒充合成诚实已达。 [2026-07-12 用户亲令:审核方切执行者亲建·最高优先级·先让用户看到页面·越过\"审核方不建\"约束(用户明授)。基线=IA-UNIFY DONE收敛surface。]",
+      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】 ⚠依赖解耦:看板先建先接真solver·§7 KILL-MOCK-RED(禁mockTightness)今天就绿(平台已删);但demo合成materialized值会暂标LIVE决策红(既有行为·非本单造)→DATAMODE-UNIFY(后端·押后)据实修成SYNTHETIC。REPLICA可DONE于§1-6+§7-mockTightness·合成诚实标caveat明记待DATAMODE-UNIFY·不得在REPLICA acceptance冒充合成诚实已达。 [2026-07-12 用户亲令:审核方切执行者亲建·最高优先级·先让用户看到页面·越过\"审核方不建\"约束(用户明授)。基线=IA-UNIFY DONE收敛surface。] [PM跟进2026-07-12] P0·BUILT(今日V2返工)·已真浏览器复验(真Chromium/真登录planner/14项DOM断言+A/B截图对照·剥离4层平台自加层达结构对齐)→待用户1:1视觉签收决定DONE或继续优化(验证已由执行者完成)。",
       "acceptance": "审核方亲建+真浏览器渲染PASS(截图发用户·6图):1:1复刻黑曜石产能推演看板核心页——rk-top(标题+30/60/90天窗口chip)+rk-kpi条(5指标:风险基地/因素点/订单/客户/最早越线·真聚合)+三档图例+rk-grid每基地卡(整卡点击·首要风险章·洛阳MUTED诚实空态不染红)+点开内联rk-det(非弹窗:逐因素时间轴真series圆点+对症方案3卡mitigation_select采纳→工单+对话态QA同源真订单蔚途/极光)+受影响订单弹窗+处置计划表。接真solver(risk_timeline/bottleneck_matrix/mitigation_select/affected_orders)·tokens换肤·KILL-MOCK-RED守住(合成/无源不决策红·provenance门)。全前端587/587绿·typecheck/lint净。修bottleneck_matrix mock /a/v1漏接。deferred后续:§3方案数选择器·§4全元素hover溯源+缺件面板·§5信任条抽屉·真后端horizon已支持(mock静态)。"
     },
     {
@@ -8767,7 +8767,7 @@
         "built": "2026-07-12T03:13:00.431Z"
       },
       "title": "统一dataMode真值判据为isSyntheticDecision语义(治合成materialized冒充LIVE根·G4/S2-BE/CAPFORECAST三BLOCK同源)",
-      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。 【G4重验一手·精确修点】根=demandCapacityTightness(risk.ts:210-212)对任何DemandSegment返live:true/source:LIVE从不看provenance;连带cardDataMode(risk.ts:522)·capacity.ts:258行级live·RiskBoardView.tsx:138 cardDecisionMode(if dataMode==LIVE→LIVE·UI把合成卡当决策LIVE染红)。修=把isSyntheticDecision语义(origin SYNTHETIC||MATERIALIZED&&synthDatasetIds)下沉到卡/行级:底层DemandSegment/对象为合成物化(非真导入)时须source=SYNTHETIC+currentTightness.live=false。⚠CAPSIM前置:CAPSIM施工单§2假设risk.ts demandCapacityTightness『已真·治G-DM-1』实则卡级dataMode不honor合成物化→CAPSIM-REPLICA接risk_timeline会继承此BUG·本单须先于CAPSIM像素复刻的KILL-MOCK-RED验收(否则复刻页demo仍出合成假LIVE红·§7绿→red门反被违)。补运行期真HTTP provenance测试(现全绿门是静态扫描·漏运行期卡dataMode真BUG)。 【CAPSIM统一·2026-07-12用户确认排序】用户确认排序:本单=第一优先(DATAMODE-UNIFY→CAPSIM→退役SandboxView)。CAPSIM-REPLICA的§7 KILL-MOCK-RED验收硬前置。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】后端改造押后(dev4可在dev3建CAPSIM时并行做·不competing·closes G4);canEnter门/合成诚实非看板主体先跑的硬阻。",
+      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。 【G4重验一手·精确修点】根=demandCapacityTightness(risk.ts:210-212)对任何DemandSegment返live:true/source:LIVE从不看provenance;连带cardDataMode(risk.ts:522)·capacity.ts:258行级live·RiskBoardView.tsx:138 cardDecisionMode(if dataMode==LIVE→LIVE·UI把合成卡当决策LIVE染红)。修=把isSyntheticDecision语义(origin SYNTHETIC||MATERIALIZED&&synthDatasetIds)下沉到卡/行级:底层DemandSegment/对象为合成物化(非真导入)时须source=SYNTHETIC+currentTightness.live=false。⚠CAPSIM前置:CAPSIM施工单§2假设risk.ts demandCapacityTightness『已真·治G-DM-1』实则卡级dataMode不honor合成物化→CAPSIM-REPLICA接risk_timeline会继承此BUG·本单须先于CAPSIM像素复刻的KILL-MOCK-RED验收(否则复刻页demo仍出合成假LIVE红·§7绿→red门反被违)。补运行期真HTTP provenance测试(现全绿门是静态扫描·漏运行期卡dataMode真BUG)。 【CAPSIM统一·2026-07-12用户确认排序】用户确认排序:本单=第一优先(DATAMODE-UNIFY→CAPSIM→退役SandboxView)。CAPSIM-REPLICA的§7 KILL-MOCK-RED验收硬前置。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】后端改造押后(dev4可在dev3建CAPSIM时并行做·不competing·closes G4);canEnter门/合成诚实非看板主体先跑的硬阻。 [PM跟进2026-07-12] P2·BUILT(今日)·owner空·无人认领复验→请审核方安排真浏览器复验(铁律0.4逐值对照后端provenance)→DONE或BLOCK。⚠CAPSIM§7 KILL-MOCK-RED验收前置(修合成materialized值冒充LIVE决策红)·优先级高。",
       "dev4Diagnostic": "[dev4-import 探路诊断·2026-07-12·未认领(超出import lane文件域·跨WO语义决策)] 尝试 tenant级 isSyntheticDecision→SolverContext.syntheticDecision→gate liveTightness source(212/229)+currentTightness.live 后:破6测(solvers.test V5/V5b/V5d + wo-cap-01 C1 + WO-FRESHNESS①/①b)。关键发现:系统已把 dataMode 拆成**两正交维**——①provenance(confidence.synthetic·isSyntheticDecision·demo已SYNTHETIC)②measurement-liveness(risk卡source LIVE/SYNTHETIC·读真OEE/util实测即LIVE即便合成种子)。WO-FRESHNESS① line565 断言 confidence.measurement===LIVE(合成种子但读实测→measurement维仍LIVE)·dataMode(头条)===SYNTHETIC(取最审慎)已成立。**naive 翻 lt.source 会污染 measurement 维**(破①b真实翻转+CAP-01 C1)·是错层。正解方向(未实现):卡级/前端 cardDecisionMode(RiskBoardView:138)决策红应 gate 在 provenance(confidence.synthetic)AND measurement(dataMode==LIVE)双维·而非只看 card.dataMode或只翻 source——即『决策级染红=真provenance且真实测』·不动 measurement 维语义。且与 WO-CAP-01『DemandSegment=真供需LIVE』设计直接冲突(C1断言LIVE)·需与CAP-01 owner协调裁决『合成种子DemandSegment算LIVE还是SYNTHETIC』。属后端/求解器lane系统性WO·非import lane。",
       "reviewerRuling": "[审核方裁决·采纳dev4双维诊断·2026-07-12] dev4探路证明「下沉isSyntheticDecision到lt.source」是错层(污染measurement维·破CAP-01 C1+FRESHNESS①b共6测)。系统dataMode实为两正交维:①provenance(confidence.synthetic·合成种子)②measurement-liveness(读真OEE/util实测即LIVE即便合成种子)。头条dataMode取最审慎已=SYNTHETIC(正确)。真BUG只在决策级染红gate:cardDecisionMode(RiskBoardView:138)+nodeObjectMode(deriveCellMode app.ts)+capacity.ts行级 只看card.dataMode==LIVE。【正解(采纳dev4方向)】决策级染红gate在 provenance(confidence.synthetic=false·真非合成) AND measurement(dataMode==LIVE·真实测) 双维——『决策红=真provenance且真实测』·不动measurement维语义(lt.source/liveTightness保持读真OEE即LIVE)。【CAP-01冲突→dissolved】CAP-01 C1『DemandSegment=LIVE』是measurement维·保留;provenance维合成种子=SYNTHETIC;二者正交·决策红双维gate→demo合成世界不出决策红(诚实标合成·不冒充)·CAP-01 C1不破。【lane】后端/求解器lane(非import·dev4正确判出)·待该lane dev认领。【green→red精修】demo合成世界:决策级染红应消失/改标合成(现102/102 LIVE决策红);同时OEE/util measurement维仍可LIVE(CAP-01 C1+FRESHNESS①b不破)。补运行期真HTTP provenance测试守此双维。",
       "assignedDev": "dev4",
