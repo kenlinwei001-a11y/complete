@@ -158,6 +158,12 @@ export const RiskCardSchema = z.object({
   deeplink: z.object({ to: z.string(), label: z.string() }).optional(),
   // 实测当前张力（liveTightness）：value=当前值(无真源=null)，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值。
   currentTightness: z.object({ value: z.number().nullable(), live: z.boolean() }).optional(),
+  // WO-CAPSIM-BACKEND-DENSITY（P1-3·逐卡多因素·治本）：本卡**所有真源(LIVE)越线因子**（设备OEE/良率波动/瓶颈工序/
+  // 人力工时/物料齐套 任一 peak≥阈值者）——各带真张力(tightness)/峰值(peak)/越线日(crossDay)·R6 可溯。前端逐卡渲染
+  // 多因素 chip（密度由真 OEE/良率/需求-产能自然涌现·非单一代表·合成源不入）。缺省=[]（无越线因子·诚实）。
+  factors: z
+    .array(z.object({ factor: z.string(), tightness: z.number(), peak: z.number(), crossDay: z.number().int() }))
+    .optional(),
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源——gapWan=预测需求−产能（万套·基地分摊），source 标真源口径（R13 可溯）。
   demandGap: z.object({ gapWan: z.number(), source: z.string() }).optional(),
   // WO-KILL-MOCK-RED：无真源诚实空态卡 peak=null（不伪造峰值）；有真数据才为真峰值。

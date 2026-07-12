@@ -210,20 +210,25 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
   //     卡 dataMode 继承 SYNTHETIC（前端灰显·不决策级染红）；值仍逐基地真算（改 oee_current/yield_baseline 即变·R6 可溯）。
   //   · OFF（回退演练·未开该键或测试直构 ctx 无 features）= source=LIVE（现行行为不变·回退演练即此路径）。
   // 诚实边界（铁律 0.4/0.6）：无真实逐基地 OEE/良率实测源 → 不冒充 LIVE，据实标 SYNTHETIC；同时种子已按基地补齐分化（非止步扁平）。
+  // WO-CAPSIM-BACKEND-DENSITY（P0-1·治本·对齐 ad60266 裁决两正交维模型）：设备OEE/良率波动读的是**逐设备/逐工序
+  // 真实测量时序**（oee:equip → Equipment.oee_current 7d 加权物化 / yield:process → Process.yield_baseline 日均物化·
+  // 走正门 ts_points→ts_agg→物化属性·逐基地结构性分化 OEE_MULT/YIELD_MULT 反映真实逐基地设备态/工序成熟度）。
+  // 按裁决（datamode-unify-provenance §16-19）：**读真 OEE/util/良率即 measurement=LIVE**（即便合成种子）——合成血缘
+  // 由正交的 provenanceSynthetic 位诚实披露（不再把合成性下沉污染 measurement 维·WO-FAKE-01 的 `realDemand?SYNTHETIC`
+  // 被裁为错层已撤）。故 source 恒 LIVE：真逐基地测量出真逐基地张力·参与决策级竞选（C6 真数据出真红）。
+  // 诚实边界（铁律0.4）：值仍逐基地真算（改 oee_current/yield_baseline 即变·R6 可溯）；provenanceSynthetic=true 披露 demo 合成源。
   if (factor === "设备OEE") {
     const eq = c.equipment.filter((e) => e.props.baseId === baseId && typeof e.props.oee_current === "number");
     if (eq.length > 0) {
       const avg = eq.reduce((a, e) => a + num(e.props.oee_current), 0) / eq.length;
-      const source: TightnessSource = realDemand ? "SYNTHETIC" : "LIVE";
-      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true, source };
+      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true, source: "LIVE" };
     }
   }
   if (factor === "良率波动") {
     const procs = c.processes.filter((pr) => pr.props.baseId === baseId && typeof pr.props.yield_baseline === "number");
     if (procs.length > 0) {
       const avg = procs.reduce((a, pr) => a + num(pr.props.yield_baseline), 0) / procs.length;
-      const source: TightnessSource = realDemand ? "SYNTHETIC" : "LIVE";
-      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true, source };
+      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true, source: "LIVE" };
     }
   }
   // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·核心）：ON 时需求驱动型瓶颈因素（瓶颈工序/物料齐套/人力工时）
@@ -548,6 +553,27 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // （保 CAP-01 C1 + solvers V5/V5d：DemandSegment 读真供需仍 measurement=LIVE）。前端 cardDecisionMode（Dev-3）
     // 据此把决策级染红收窄为 provenance(!provenanceSynthetic) AND measurement(dataMode==LIVE)——demo 合成世界不冒充决策红。
     const provenanceSynthetic = baseProvenanceSynthetic(c, pair.baseId);
+    // WO-CAPSIM-BACKEND-DENSITY（P1-3·逐卡多因素·治本·非单一代表）：卡不止代表因子——扫本基地**所有真源(LIVE)因子**
+    // （设备OEE/良率波动 读真逐设备/工序测量 · 瓶颈工序/人力工时/物料齐套 读真需求-产能缺口），各自建真日序
+    // （真基线 liveTightness + 真事件脉冲 tensionSeries·同代表因子口径），**越线者(crossDay≠null) 逐一列入 factors[]**。
+    // 多因素密度**自然涌现非编造**：每个越线都由真 OEE/良率/需求-产能派生（改真值即变·R6 可溯·C6 真数据出真红）。
+    // 合成源(SYNTHETIC·合成扁平 util:line 无逐基地结构)不入决策级 factors[]（与 bestLive 决策级竞选同口径·不冒充决策红）。
+    // 排序：peak 降序（最重在前）→ crossDay 升序 → 因子表序（确定性 R6·非哈希）。代表因子 pair.factor 亦在其中（若越线）。
+    const factorsOut: { factor: string; tightness: number; peak: number; crossDay: number }[] = [];
+    for (const f of c.params.bottleneck.factors) {
+      const ltf = liveTightness(c, pair.baseId, f);
+      if (!ltf.live || ltf.value === null || ltf.source === "SYNTHETIC") continue;
+      const sf = tensionSeries(c, f, horizon, events, undefined, ltf.value);
+      const cdf = crossDayOf(sf, threshold);
+      if (cdf === null) continue; // 只列决策级越线因子（真源真越线）
+      factorsOut.push({ factor: f, tightness: ltf.value, peak: Math.max(...sf), crossDay: cdf });
+    }
+    factorsOut.sort(
+      (a, b) =>
+        b.peak - a.peak ||
+        a.crossDay - b.crossDay ||
+        c.params.bottleneck.factors.indexOf(a.factor) - c.params.bottleneck.factors.indexOf(b.factor),
+    );
     const card: Record<string, unknown> = {
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
@@ -556,6 +582,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       provenanceSynthetic,
       hasData: true,
       currentTightness: { value: lt.value, live: true },
+      factors: factorsOut,
       ...(dc && dc.live ? { demandGap: { gapWan: dc.gap, source: "DemandSegment(p50/p90)+SopVersionRow.demand−产能" } } : {}),
       peak: Math.max(...series),
       crossDay,

@@ -1267,20 +1267,28 @@ const OEE_MULT_BY_BASE: Record<string, number> = {
   luoyang: 0.93,
   xiamen: 1.05,
 };
+// WO-CAPSIM-BACKEND-DENSITY（P0-2·真逐基地良率结构性分化·治本·capacity-safe）：yield:process → Process.yield_baseline
+// **只被 risk.ts 良率波动因子消费**（capacity_forecast 用静态 proc.props.yield·非 yield_baseline·见 capacity.ts equipmentOee/
+// 产能路径；亦无 yieldIndex 派生聚合）——故按基地拉开良率档次**不churn 产能/驾驶舱/校准**，纯驱动风险良率张力。
+// 叙事（真实运营画像·非哈希）：一组**工序成熟度偏弱 / 良率稳定性承压**的基地（邯郸/洛阳/眉山/信阳/枣庄/江门）配低良率乘子
+// → 其 Process.yield_baseline 真降至 ~0.91（良率波动张力 clamp(35+(1−0.91)×600)≈88 越线）→ 与设备OEE 叠加成**多因素红卡**
+// （密度自然涌现·改 yield_baseline 即变·R6 可溯·个体值仍 ≥~0.90 合理区间）。4680-NCM 产地(合肥/常州/成都)良率乘子**保持
+// ≈1.0**（守 m11 校准回测/EMA 漂移闸·docs 校准耦合约束）；富余基地(武汉/自贡/厦门)良率保持高位（真档次分化·非扁平）。
 const YIELD_MULT_BY_BASE: Record<string, number> = {
-  // 4680-NCM 产地（极温和·子集均值≈1.0·守 m11 校准回测/EMA 漂移闸）
+  // 4680-NCM 产地（极温和·子集均值≈1.0·守 m11 校准回测/EMA 漂移闸）——保持不变
   hefei: 0.99,
   changzhou: 0.99,
   chengdu: 1.02,
-  // 其余基地（温和分化·守 yield clamp 0.995 → mult ≤ ~1.04）
-  jiangmen: 0.98,
-  handan: 0.99,
-  meishan: 1.0,
+  // 良率稳定性承压基地（工序成熟度偏弱·真结构性低良率 ~0.91 → 良率波动越线·与设备OEE 叠成多因素红卡）
+  jiangmen: 0.955,
+  handan: 0.955,
+  meishan: 0.955,
+  xinyang: 0.955,
+  zaozhuang: 0.955,
+  luoyang: 0.955,
+  // 良率富余基地（高位·真档次分化·守 yield clamp 0.995 → mult ≤ ~1.04）——保持不变
   wuhan: 1.02,
-  xinyang: 1.01,
-  zaozhuang: 1.0,
   zigong: 1.02,
-  luoyang: 1.03,
   xiamen: 1.03,
 };
 
