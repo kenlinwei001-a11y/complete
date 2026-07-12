@@ -5808,7 +5808,7 @@
       "title": "运营负责人一条龙(瓶颈→推演→方案对比→采纳·治设计不清晰)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "WO-CAP-05-BRANCH-VISIBLE",
@@ -5838,8 +5838,10 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-12T13:06:57.267Z"
-      }
+        "wip": "2026-07-12T13:06:57.267Z",
+        "built": "2026-07-12T14:40:43.772Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-MERGE-01",
@@ -7381,13 +7383,14 @@
     },
     {
       "at": {
-        "wip": "2026-07-12T11:35:18.839Z"
+        "wip": "2026-07-12T11:35:18.839Z",
+        "built": "2026-07-12T14:40:43.850Z"
       },
       "id": "WO-SWEEP-02-STUDIO-STATE",
       "title": "UX:DataBuilder本体建模工作流studio刷新丢失所选工作流(auto-select workflows[0])",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "复验agent a0989369真跑:编辑'本体工作流2'后刷新落到'1'(后端已落库6节点·非数据丢失·仅UI选中态丢)。易误以为编辑丢失。",
@@ -7406,7 +7409,8 @@
           }
         ],
         "discipline": "additive·审核方扫描出单·dev建·reviewer复验。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "at": {
@@ -7808,13 +7812,16 @@
       }
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-12T14:40:43.539Z",
+        "built": "2026-07-12T14:40:43.618Z"
+      },
       "id": "WO-THEME-SWITCH-U8",
       "title": "轨O历史欠账:主题/配色开关(浅色↔黑曜石·功能本体未建)",
       "doc": "docs/COVERAGE-user-requirements-vs-tracking.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "lane": "frontend-polish",
       "note": "[历史欠账U8·独立复验agent a1863224真浏览器+全源码扫双证仍缺] 全CSS零data-theme/prefers-color-scheme·tokens.css纯暗色单:root·全tsx零toggle组件·无主题偏好页·localStorage仅auth无主题·theme.ts::applyTheme只后端下发token非用户可切。",
@@ -7838,7 +7845,8 @@
           }
         ],
         "discipline": "additive·审核方欠账复验出单·dev建·reviewer复验。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "at": {
@@ -8459,12 +8467,14 @@
       "doc": "docs/REVIEW-field-schema-user-vs-platform.md",
       "title": "派生引擎:导入记录字段→决策字段(REVIEW§4映射·util/oeeIndex←production_line.oee聚合·demandDelta←total_quantity vs forecast·costBreakdown←bom×material_cost·allocatedLineIds←production_order.line_id)·从真记录算非hash·治假值源头(G4核心)",
       "note": "[LaneB·datacore·通用性] ⚠通用非电池专属:派生引擎按导入本体的字段映射算决策量·映射表可配置(不内联电池常数·守R14 debattery:check)·电池只是示例。REVIEW§4提供派生逻辑。green→red:导入真记录→决策字段应从真值算(非hash);植入hash值→门红。配WO-IMPORT-REPLACE-SYNTHETIC(G4·world_source=imported让求解器读派生真值)。",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "created": "2026-07-11T17:49:23.475Z",
-        "wip": "2026-07-12T13:06:57.127Z"
-      }
+        "wip": "2026-07-12T13:06:57.127Z",
+        "built": "2026-07-12T14:40:43.693Z"
+      },
+      "blockReason": ""
     },
     {
       "priority": "P2",
@@ -8798,8 +8808,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-SA-6",
-      "at": "2026-07-12T14:23:06.372Z"
+      "id": "WO-SWEEP-02-STUDIO-STATE",
+      "at": "2026-07-12T14:40:43.851Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
