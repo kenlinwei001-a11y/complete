@@ -961,12 +961,12 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   // 关=原样（旧 DOM 未删·回退演练 §5.5）。值全 DERIVE 自 cert（R13·只换 label/重组不改数）。
   const radarCollapseOn = useFeature("sim.radar_collapse");
 
-  // WO-SANDBOX-TICK-CALENDAR（S5·前端·暗发）：tick↔业务时间 + 节点归因（消费引擎已产 PropagationTrace + propRules join·非造）。
-  // 关=回抽象 tick + 节点纯血缘（旧行为·回退演练）。lastTrace=末次 tick 传导轨迹（节点归因源）；tickEvents=逐 tick 触发数（时间轴标注）。
+  // WO-SANDBOX-TICK-CALENDAR（S5·前端·暗发·复验收窄）：真 core = tick↔业务日 + 节点归因（消费引擎已产 PropagationTrace + propRules join·非造）。
+  // 关=回抽象 tick + 节点纯血缘（旧行为·回退演练）。lastTrace=末次 tick 传导轨迹（节点归因源）。
+  // tickUnit 读**会话真值** session.tickUnit（后端/CAPSIM 下发时生效·未下发退默认 day/1·graceful·非硬编码；周/里程碑逐因素时间轴 fold CAPSIM§1·勿补齐退役页）。
   const tickCalendarOn = useFeature("sim.tick_calendar");
   const [lastTrace, setLastTrace] = useState<PropagationTrace[]>([]);
-  const [tickEvents, setTickEvents] = useState<{ tick: number; fired: number }[]>([]);
-  const tickUnit: SimTickUnit = { unit: "day", perTick: 1 }; // simclock tick=1 模拟日（后端 Dev-1 补下发 session.tickUnit 后可替）
+  const [tickUnit, setTickUnit] = useState<SimTickUnit>({ unit: "day", perTick: 1 });
 
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
@@ -1005,10 +1005,10 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         pendingAutoRunRef.current = { n: simRequest.horizonTicks, nonce: simPreset.nonce };
       }
       setSessionId(s.id);
+      setTickUnit(s.tickUnit ?? { unit: "day", perTick: 1 }); // S5：读会话真值（后端下发时生效·未下发退默认 day/1·非硬编码）
       setWorld(base);
       setCurTick(0);
       setLastTrace([]); // S5：新会话清归因 trace（避免上会话残留·诚实）
-      setTickEvents([]);
       const g0 = computeGlobalKpi(c, base); // WO-CAP-03：时间轴与全局态同口径（归一后聚合，非原始混算）
       setHistory([g0]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
@@ -1124,10 +1124,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           const res = await simTick(sessionId, 1);
           last = res.state;
           lastTick = res.curTick;
-          // S5：逐 tick 传导轨迹（引擎已产·非造）——末次留作节点归因源，逐 tick 触发数入时间轴标注。
-          const tr = (res.trace as PropagationTrace[] | undefined) ?? [];
-          lastTr = tr;
-          setTickEvents((e) => [...e, { tick: res.curTick, fired: tr.length }]);
+          // S5：末次 tick 传导轨迹（引擎已产·非造）留作节点归因源。
+          lastTr = (res.trace as PropagationTrace[] | undefined) ?? [];
           const g = computeGlobalKpi(cfg!, res.state); // WO-CAP-03：逐 tick 时间轴同全局态口径（归一后聚合）
           setHistory((h) => [...h, g]);
         }

@@ -313,6 +313,12 @@ export function SimReadinessPanel({
           <div data-testid="sim-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700 }}>
             {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
           </div>
+          {/* S4 reconcile：humanize 分支同样透 targetRef（LOCAL scope 对象·补 sandbox-p0 折叠改造致的条件隐藏回归）。 */}
+          {cert.targetRef && (
+            <div className={styles.sub} data-testid="sim-cert-target" style={{ marginTop: 2 }}>
+              对象：<span className="mono">{cert.targetRef}</span>
+            </div>
+          )}
           <div className={styles.sub} style={{ marginTop: 2 }} data-testid="sim-cert-composite">综合 {cert.dims.composite.toFixed(0)}</div>
         </div>
       </div>

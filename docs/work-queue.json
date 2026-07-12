@@ -7659,14 +7659,14 @@
     {
       "at": {
         "wip": "2026-07-11T17:31:01.547Z",
-        "built": "2026-07-11T18:01:06.127Z",
+        "built": "2026-07-12T02:06:33.615Z",
         "blocked": "2026-07-11T19:20:17.402Z"
       },
       "id": "WO-SANDBOX-RADAR-COLLAPSE",
       "title": "S4·三雷达合一(维度换人话)+L0-L4折一句人话(砍竞品形式膨胀)",
       "doc": "docs/WO-SANDBOX-RADAR-COLLAPSE.md",
       "priority": "P3",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev3",
       "deps": [],
       "note": "[沙盘重建·S4·可∥S1·纯前端·dev3] REVIEW拒绝copy竞品形式的标志一刀。回退:纯视觉可回退。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。 【CAPSIM统一·2026-07-12用户确认排序】目标在退役SandboxView·CONCERN移入CAPSIM看板:就绪面板→看板信任条+抽屉(§5/READINESS-UX)。勿补退役页·随CAPSIM落地。",
@@ -7702,20 +7702,20 @@
           }
         ]
       },
-      "blockReason": "[审核方复验BLOCK] S4折叠改造SimReadinessPanel(三雷达合一·L0-L4折一句人话·stepperAndRadar block)后 sandbox-p0.test.tsx「就绪面板6项」red:getByTestId sim-cert-target找不到(SimReadinessPanel.tsx:198 cert.targetRef守卫·折叠改造后该block非默认展示·pre-S4测试222975fa未同步)。此红曾被S6 build红(feeds)遮蔽·审核方hotfix 3255fe2c补feeds后暴露·非hotfix致。修法:dev3据S4折叠意图reconcile——或恢复sim-cert-target默认可见·或更新sandbox-p0测试匹配折叠默认态(展开后断言)。注:pnpm -r build已绿·仅此1test红。S4真浏览器证据(e6bdbb/png)本身在·仅测试夹具未同步。",
+      "blockReason": "",
       "supersededByCAPSIM": true
     },
     {
       "at": {
         "wip": "2026-07-11T19:51:17.936Z",
-        "built": "2026-07-11T20:05:15.374Z",
+        "built": "2026-07-12T02:06:33.675Z",
         "blocked": "2026-07-11T20:42:37.902Z"
       },
       "id": "WO-SANDBOX-TICK-CALENDAR",
       "title": "S5·tick↔业务时间(到第N周/里程碑)+时间轴事件标注+节点归因",
       "doc": "docs/WO-SANDBOX-TICK-CALENDAR.md",
       "priority": "P3",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
@@ -7753,7 +7753,7 @@
           }
         ]
       },
-      "blockReason": "[审核方复验·完成度BLOCK·非造假(dev没伪造值·缺口是没接上/没渲染)] 核心节点归因(为什么变)✅真来自引擎trace非编造:computeNodeAttribution纯映射trace.amount+真propRules·16条Base归因coefficientMismatches=[]·延迟line规则tick2系数0.5/延迟1/传入41.88987·真浏览器同值41.89引真trace规则键·loadIndex 0→2000000真传导可溯propagateTick·R6字节一致·KILL-MOCK-RED守。但标题三子功能2项未端到端接通:①tick↔业务时间只『第N天』真(真sim-clock curTick×perTick·R6无写死)·『第N周/里程碑』产品不可达(前端硬编码tickUnit=day/1·SandboxView:969·后端从不下发session.tickUnit·week/milestone仅单测合成参数);②时间轴事件标注未交付(tickEvents真源逐tick tr.length写state:1011/1130但从不渲染·HeatStrip:1354签名{series,threshold}无events入参=死态)。门全绿(FE沙盘48/DC sim75·无S1/S6回归)因缺口是没渲染非造假·静态门抓不到。修:(a)补齐tickEvents接时间轴渲染+后端下发session.tickUnit使周/里程碑可达;或(b)据实收窄标题为『tick↔业务日+节点归因』(真core可DONE)·周里程碑+事件标注降后续单。【PM建议】given CAPSIM统一surface:S5的history HeatStrip+逐节点归因结构迁为CAPSIM§1逐因素时间轴/§4④过程图·②①缺口在CAPSIM-REPLICA建(时间轴本就重建·勿补齐退役SandboxView)→收窄S5到真core·缺口fold CAPSIM。复验commit 2aa5edf6(=tip字节一致)。",
+      "blockReason": "",
       "supersededByCAPSIM": true
     },
     {
@@ -8751,10 +8751,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "指派dev4→DATAMODE-UNIFY(授权跨lane+CAP-01 guardrail)",
-      "id": "WO-DATAMODE-UNIFY-PROVENANCE",
-      "at": "2026-07-12T02:01:26.334Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SANDBOX-TICK-CALENDAR",
+      "at": "2026-07-12T02:06:33.675Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

@@ -51,3 +51,9 @@ S2 诚信位徽标（系数未校准/来源待披露）同屏共存——两 fea
 本单验证时发现**共享支 datacore 启动即崩**——`app.js` 静态 import `DeriveBatchRequestSchema`（Dev-4 WO-IMPORT-MULTITABLE）。
 根因：`packages/contracts/src/import.ts` 已写该 schema 且 barrel `index.ts` 已 `export * from "./import.js"`，但 **contracts dist 未随之重建**（陈旧 dist 缺该导出）→ ESM 载入 SyntaxError。**重建 contracts dist 即解**（本单已重建·datacore 恢复启动）。
 **残留（Dev-4 待补·非本单·非本人域）**：datacore `tsc` 仍红两处——`jszip` devDep 未加（`app.ts:3747` 懒 import·仅 zip 上传路径触发·非致命）+ `entry` unknown 类型标注（`app.ts:3750-3757`）。datacore dist 经 tsc 仍 emit 可运行（`noEmitOnError` 未设），但 `pnpm -r build` 交付底线仍因此红——需 Dev-4 收尾。
+
+## 复验 BLOCK 修复（2026-07-12·dev3 reconcile）
+审核复验 → BLOCK：折叠改造 SimReadinessPanel 后 humanize 分支**漏渲 `sim-cert-target`**（原 `!humanize` 分支有·humanize 分支未同步）
+→ `sandbox-p0` 就绪面板测试红（LOCAL scope 断言 `sim-cert-target` 含 "Factory#0"）。**修**：humanize 分支补回
+`{cert.targetRef && <div data-testid="sim-cert-target">对象：…</div>}`（两分支 targetRef 渲染对齐）。非 KILL-MOCK-RED（无伪造·是重构漏渲）。
+`sandbox-p0`(5) + `sandbox-radar-collapse`(8) + `sandbox-view`(16) 全绿。

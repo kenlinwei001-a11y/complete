@@ -35,3 +35,10 @@ S5 真起服务实测发现：**推 1 tick 后端返 52 条非零传导贡献**�
 - 沙盘测组 50 测零回归（sandbox-view/shock-run/render-block/tick-days/radar-collapse/trust-badge/tick-calendar/basecards）。
 - 门 css-vars（零新色）/sim/genuine-sim/feature-parity/no-fake-data + ontology-slices 全绿。
 - 母体 §2.I 回写（tick↔业务时间 + 节点归因 + trace 前端消费链路补登）+ 切片重生成。
+
+## 复验 BLOCK 修复·收窄真 core（2026-07-12·dev3 reconcile）
+审核复验 → BLOCK（**完成度·非 KILL-MOCK-RED**：节点归因✅真来自引擎 trace 非编造·逐值可溯；但标题 2 子功能半接通）。按审核 PM 建议**收窄 S5 到真 core（tick↔业务日 + 节点归因）·②①缺口 fold CAPSIM§1 逐因素时间轴·勿补齐退役 SandboxView**：
+- **①「周/里程碑不可达·tickUnit 硬编码 day/1」→ 修**：`tickUnit` 从硬编码 const 改**读会话真值 `session.tickUnit`**（后端/CAPSIM 下发时生效·未下发退默认 day/1·graceful 非硬编码·同 S2 nodeObjectMode 加发模式）。真 core「第 N 天」（≥7 天派生「第 W 周」）day 驱动**真可达**；周/里程碑 unit 待 CAPSIM 下发 tickUnit 激活（不在退役页补 UI）。
+- **②「时间轴事件标注死态·tickEvents 写 state 从不渲染」→ 修**：**删除 tickEvents 死代码**（state + 逐 tick setter·从未渲染）——逐因素时间轴 fold CAPSIM（勿补齐退役页）。
+- 保留真 core：tick↔业务日 label + 节点归因（消费引擎 trace + propRules join 真系数·R13·逐值可溯 41.89 引真 trace 规则键）。
+- 沙盘测组 53 测全绿（p0/radar/tick-calendar/view/shock-run/trust-badge/tick-days/render-block）。运行行为对 day 与前证一致（tickUnit 未下发→默认 day·label 输出不变·归因不变）。
