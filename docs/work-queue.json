@@ -7271,10 +7271,11 @@
       "supersededByCAPSIM": true
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-12T12:36:18.402Z"
+        "wip": "2026-07-12T12:36:18.402Z",
+        "built": "2026-07-12T13:06:09.287Z"
       },
       "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
       "title": "风险看板敞口误导:越线0却挂整单敞口+敞口按缺口折算+格式转亿(sandbox标注部分已折入S2)",
@@ -7307,7 +7308,8 @@
           }
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方复验出单·dev建·reviewer复验(分权)。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "at": {
@@ -8781,8 +8783,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-SHOCK-GUARD-HARDEN",
-      "at": "2026-07-12T12:48:06.188Z"
+      "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
+      "at": "2026-07-12T13:06:09.288Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
