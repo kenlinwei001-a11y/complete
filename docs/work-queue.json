@@ -8642,14 +8642,16 @@
       "priority": "P1",
       "deps": [],
       "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev3",
       "at": {
         "created": "2026-07-11T19:46:42.988Z",
-        "wip": "2026-07-12T02:54:53.069Z"
+        "wip": "2026-07-12T02:54:53.069Z",
+        "built": "2026-07-12T02:58:42.473Z"
       },
       "title": "沙盘capacity_forecast合成冒充实测(KILL-MOCK-RED):ModelCapacitySlice.tsx:155活服务顶层dataMode=SYNTHETIC却每行live=true→前端把武汉/厦门/自贡紧张度标「实测」(就在S2「系数未校准」正上方矛盾)·修行级dataMode诚实或不标实测",
-      "note": "[前端+后端·KILL-MOCK-RED命门·S2复验一手发现] 独立真起活服务实测:capacity_forecast返回顶层dataMode=SYNTHETIC但每行live=true·ModelCapacitySlice据行live标「实测」=合成冒充实测(违铁律0.4·用户最恨)。与S2徽标同页矛盾(一个标未校准一个标实测)。修:行级dataMode按真provenance派生·合成行不得标实测·与S2/TRUST-BADGE-BE dataMode口径统一(这正是CAP-10收编该做的「统一」)。green→red:合成capacity_forecast行现标实测·修后应标合成/估算。 【CAPSIM统一·2026-07-12用户确认排序】收编入WO-DATAMODE-UNIFY-PROVENANCE(同根·合成materialized标LIVE·决策红双维gate一并治)。"
+      "note": "[前端+后端·KILL-MOCK-RED命门·S2复验一手发现] 独立真起活服务实测:capacity_forecast返回顶层dataMode=SYNTHETIC但每行live=true·ModelCapacitySlice据行live标「实测」=合成冒充实测(违铁律0.4·用户最恨)。与S2徽标同页矛盾(一个标未校准一个标实测)。修:行级dataMode按真provenance派生·合成行不得标实测·与S2/TRUST-BADGE-BE dataMode口径统一(这正是CAP-10收编该做的「统一」)。green→red:合成capacity_forecast行现标实测·修后应标合成/估算。 【CAPSIM统一·2026-07-12用户确认排序】收编入WO-DATAMODE-UNIFY-PROVENANCE(同根·合成materialized标LIVE·决策红双维gate一并治)。",
+      "blockReason": ""
     },
     {
       "id": "WO-CAPSIM-IA-UNIFY",
@@ -8731,8 +8733,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-DB-BSTACK-DERIVE",
-      "at": "2026-07-12T02:57:40.098Z"
+      "id": "WO-CAPFORECAST-DATAMODE-HONEST",
+      "at": "2026-07-12T02:58:42.474Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
