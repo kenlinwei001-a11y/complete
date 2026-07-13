@@ -133,6 +133,10 @@ export function deriveSlotsFromCard(card: ScenarioCard): SlotDef[] {
   const presets = card.presetContext.slotPresets ?? {};
   const slots: SlotDef[] = [];
   for (const [key, value] of Object.entries(presets)) {
+    // 跳过复杂结构（数组/对象）：它们直接烘焙进计划 args，不走槽位抽取/验证链。
+    // 若声明为 string 槽，fillSlots 的 validateSlotValue 会把数组 stringify 成垃圾值
+    // （如 "[object Object]"），导致下游模板解析或 args 覆盖时 layers 等字段失效。
+    if (value !== null && typeof value === "object") continue;
     const meta = SLOT_KEY_META[key];
     const type: SlotDef["type"] = typeof value === "number" ? "number" : "string";
     const desc = meta?.desc ?? key;
