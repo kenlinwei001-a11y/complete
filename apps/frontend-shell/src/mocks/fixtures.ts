@@ -56,7 +56,7 @@ export const ACCOUNTS: MockAccount[] = [
 // ---------------------------------------------------------------------------
 
 // DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（与 datacore 同源，灭漂移 G-5/R14）。
-// 前端表示 = {id=base-${name}, name, util, bottleneck, gwh, position, lines, prodYear, mainProduct, lon, lat}（值字节复现，R6）。
+// 前端表示 = {id=base-${name}, name, util, bottleneck, gwh, position, lines, prodYear, mainProduct, lon, lat, workshops}（值字节复现，R6）。
 export const BASES = BASE_REGISTRY.map((b) => ({
   id: `base-${b.name}`,
   name: b.name,
@@ -69,6 +69,7 @@ export const BASES = BASE_REGISTRY.map((b) => ({
   mainProduct: b.mainProduct,
   lon: b.lon,
   lat: b.lat,
+  workshops: b.workshops,
 }));
 
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
@@ -460,7 +461,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
 
 export const GRAPH: OntologyGraphVM = {
   nodes: [
-    { id: "n-Base", key: "Base", label: "基地", kind: "object", domain: "factory", tier: 1, sourceSystem: "ERP", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants", fieldMappings: { name: "plant_name", util: "utilization", gwh: "capacity_gwh" } }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
+    { id: "n-Base", key: "Base", label: "基地", kind: "object", domain: "factory", tier: 1, sourceSystem: "ERP", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }, { propKey: "workshops", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants", fieldMappings: { name: "plant_name", util: "utilization", gwh: "capacity_gwh", workshops: "workshop_count" } }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
+    { id: "n-workshop", key: "Workshop", label: "车间", kind: "object", domain: "factory", tier: 1, sourceSystem: "MES", properties: [{ propKey: "workshopKey", dataType: "string", isPrimaryKey: true }, { propKey: "workshopType", dataType: "string" }], sourceBindings: [{ connId: "conn-mes", dataset: "workshops" }], rules: [], derivations: [] },
     { id: "n-line", key: "Line", label: "产线", kind: "object", domain: "factory", tier: 1, sourceSystem: "MES", properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "actual_output_daily", dataType: "number" }, { propKey: "schedule_attainment", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "lines" }], rules: [], derivations: [{ propKey: "schedule_attainment", formula: "rollup(week, 排产 vs 实绩)" }] },
     { id: "n-model", key: "Model", label: "型号", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "modelNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-erp", dataset: "models" }], rules: [], derivations: [] },
     { id: "n-order", key: "Order", label: "订单", kind: "object", domain: "product", tier: 2, sourceSystem: "CRM", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }], sourceBindings: [{ connId: "conn-crm", dataset: "orders", fieldMappings: { so: "so", qty: "qty", due: "delivery_date" } }], rules: [{ key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit" }], derivations: [] },
@@ -487,7 +489,8 @@ export const GRAPH: OntologyGraphVM = {
     { id: "经验记忆库", key: "ExperienceMemory", label: "经验记忆库", kind: "object", domain: "agent", tier: 3, sourceSystem: "智能体", properties: [{ propKey: "entryId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
   ],
   edges: [
-    { id: "e1", from: "n-base", to: "n-line", label: "拥有", kind: "rel" },
+    { id: "e1", from: "n-base", to: "n-workshop", label: "拥有", kind: "rel" },
+    { id: "e1b", from: "n-workshop", to: "n-line", label: "拥有", kind: "rel" },
     { id: "e2", from: "n-line", to: "n-equip", label: "部署", kind: "rel" },
     { id: "e3", from: "n-line", to: "n-proc", label: "执行", kind: "rel" },
     { id: "e4", from: "n-order", to: "n-model", label: "订购", kind: "rel" },
@@ -968,7 +971,7 @@ export const WRITEBACK_ECHOES = [
 export const SYNTHETIC_PHASES = ["行业模板", "本体实例化", "源对象生成", "历史时序生成（90 天）", "派生计算", "配套生成与校验"];
 
 export const SYNTHETIC_REPORT = {
-  rowCounts: { Base: 12, Model: 6, Order: 20, Line: 36, Equipment: 144 },
+  rowCounts: { Base: 12, Workshop: 87, Model: 6, Order: 20, Line: 36, Equipment: 144 },
   ruleScan: [
     { ruleKey: "C03", evaluated: 20, violations: 1 },
     { ruleKey: "C08", evaluated: 36, violations: 0 },
@@ -1314,6 +1317,8 @@ export const SIM_PROPAGATION_RULES: import("@platform/contracts").PropagationRul
   simPropRule("order_demand", "Order", "order_for_model", "Model", 0.8, 0),
   simPropRule("demand_model", "Demand", "demand_of_model", "Model", 0.7, 0),
   simPropRule("model_to_base", "Model", "model_producible_at", "Base", 0.6, 0),
+  simPropRule("workshop_to_base", "Workshop", "workshop_belongs_to_base", "Base", 0.55, 0),
+  simPropRule("line_to_workshop", "Line", "line_belongs_to_workshop", "Workshop", 0.5, 1),
   simPropRule("line_to_base", "Line", "line_belongs_to_base", "Base", 0.5, 1),
   simPropRule("workforce_base", "Workforce", "workforce_at_base", "Base", 0.3, 0),
   simPropRule("maint_line", "Maintenance", "maintenance_on_line", "Line", 0.4, 1),

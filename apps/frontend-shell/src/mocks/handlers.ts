@@ -1068,9 +1068,9 @@ export const handlers = [
 
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json([
-      { sliceKey: "panorama.backbone", version: 1, rootType: "Order", hops: 5, linkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material"], maxNodes: 400, fixtures: 1 },
+      { sliceKey: "panorama.backbone", version: 1, rootType: "Order", hops: 5, linkKeys: ["order_for_model", "model_producible_at", "workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in", "model_uses_material"], maxNodes: 400, fixtures: 1 },
       { sliceKey: "panorama.dataflow", version: 1, rootType: "Order", hops: 4, linkKeys: ["order_for_model", "model_uses_material", "material_has_batch", "batch_lab_test"], maxNodes: 500, fixtures: 1 },
-      { sliceKey: "panorama.solver_binding", version: 1, rootType: "Base", hops: 3, linkKeys: ["line_belongs_to_base", "line_has_process", "equip_used_in"], maxNodes: 400, fixtures: 1 },
+      { sliceKey: "panorama.solver_binding", version: 1, rootType: "Base", hops: 3, linkKeys: ["workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in"], maxNodes: 400, fixtures: 1 },
       { sliceKey: "panorama.orchestration", version: 1, rootType: "AnnualScenario", hops: 2, linkKeys: ["scenario_to_target", "plantarget_ownedby"], maxNodes: 300, fixtures: 1 },
       { sliceKey: "enterprise_360", version: 1, rootType: "Order", hops: 5, linkKeys: ["order_for_model", "model_producible_at"], maxNodes: 1000, fixtures: 1 },
       { sliceKey: "model_capacity_network", version: 1, rootType: "Model", hops: 2, linkKeys: ["PRODUCIBLE_AT"], maxNodes: 100, fixtures: 1 },
@@ -1231,6 +1231,8 @@ export const handlers = [
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
+        { key: "workshop_belongs_to_base", fromType: "Workshop", toType: "Base", cardinality: "1:N" },
+        { key: "line_belongs_to_workshop", fromType: "Line", toType: "Workshop", cardinality: "1:N" },
         { key: "line_belongs_to_base", fromType: "Line", toType: "Base", cardinality: "1:N" },
       ],
       rules: [

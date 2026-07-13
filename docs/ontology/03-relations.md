@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `6b05865611761e52`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `9a072bd659a3facc`。
 
 ---
 
@@ -332,6 +332,6 @@ DataSourceHealth --datasource_feeds_type(N:N)--> ObjectType  （源→类型血�
 **平台 schema 对齐（WO-SA·平台自有电池模型向用户设计订正·2026-07-12·`REVIEW-field-schema-user-vs-platform.md §5-3`）**
 - **基数原语补 `N:1`（链路语义完整性）**：`LinkTypeDef.cardinality` 词表原缺 `N:1`（仅 `1:1/1:N/N:N`），对"多归一"的 from→to 链路只能误标 `N:N`——契约 `datacore.ts/import.ts/pipeline.ts` 三处 `z.enum` + `domain.ts LinkTypeDef` + `modeling.ts` 两处内联类型 + `app.ts` link-create 端点统一补 `N:1`（additive·无 value-switch 消费者·纯拓宽）。**WO-SA-1**：`line_belongs_to_base` 基数 `N:N→N:1`（一线归一基地·注释自述"多线归一基地"与声明矛盾的订正·实例由 `Line.baseId` 每线恰一 → 零合成改动·`synthetic/battery.ts`）。
 - **WO-SA-2 Equipment 补可靠性真信号**：`equipmentProps` 增 `mtbf`(h)/`mttr`(h)/`health_score`(%) 三非派生字段（设备故障推演真驱动·此前只有 OEE 三分解），合成 `equipment.push` 同步 `rngTopo()` 追加填（守 R6 末位追加不位移既有字节）。门 `synthetic-field-alignment`（判据②非派生全填·revert 合成→`Equipment.mtbf/mttr/health_score` missing 红·亲验）。
-- 待做（同施工单）：**WO-SA-3** 新增 `Workshop` 车间层（Factory→Workshop→Line）+ `workshop_belongs_to_base`/`line_belongs_to_workshop` 两链路。三改全落 battery 合成包（R14 平台零业务常数·`debattery:check` 绿）。
+- **WO-SA-3 Workshop 车间层（Factory→Workshop→Line）**：新增 `Workshop` 对象类型（`workshopKey(pk)/workshopType`·`TYPE_SOURCE_SYSTEM=mes`·domain=`factory`·tier=1）+ `workshop_belongs_to_base`（Workshop→Base·1:N）/`line_belongs_to_workshop`（Line→Workshop·1:N）两链路。拓扑从 `Base→Line→Process→Equipment` 扩展为 `Base→Workshop→Line→Process→Equipment`。`BASE_REGISTRY` 增 `workshops` 字段（各基地车间数：常州10/厦门8/成都10/眉山7/武汉7/江门8/合肥7/信阳6/枣庄6/邯郸5/自贡6/洛阳5），前端 fixtures/simSolvers 从册派生（boundary-singlesource 门守）。GRAPH.nodes 补 `Workshop` 节点（properties 含 workshopKey/workshopType）+ edges 补 `Base→Workshop`/`Workshop→Line` 两条拥有边；SYNTHETIC_REPORT.rowCounts 补 `Workshop:87`（12 基地×均值≈7.25 取整）。SIM_PROPAGATION_RULES 补 `workshop_to_base`/`line_to_workshop` 传导规则（系数 0.55/0.5·延迟 0/1）。三改全落 battery 合成包（R14 平台零业务常数·`debattery:check` 绿）。
 
 ---
