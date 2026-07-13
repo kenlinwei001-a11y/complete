@@ -443,6 +443,13 @@ const baseProps: PropertyDef[] = [
   { propKey: "lon", dataType: "number", isPrimaryKey: false },
   { propKey: "lat", dataType: "number", isPrimaryKey: false },
   { propKey: "position", dataType: "enum", isPrimaryKey: false },
+  // WO-SA-4 基地台账字段（对齐用户 factory.csv·全建模 R12）
+  { propKey: "factory_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "province", dataType: "string", isPrimaryKey: false },
+  { propKey: "city", dataType: "string", isPrimaryKey: false },
+  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false }, // CELL | PACK | CELL+PACK
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运营中 | 在建 | 停产
+  { propKey: "start_date", dataType: "date", isPrimaryKey: false },
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
@@ -505,6 +512,11 @@ const lineProps: PropertyDef[] = [
   { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false }, // 线级日产能（Q01/Q03）
   { propKey: "certifiedModels", dataType: "json", isPrimaryKey: false }, // 线级可产型号（Q01/Q15·认证线约束）
   { propKey: "changeoverGroup", dataType: "string", isPrimaryKey: false }, // 换型组（Q08 换型序列约束）
+  // WO-SA-5 产线台账字段（对齐用户 line.csv·全建模 R12）
+  { propKey: "line_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false }, // 件/日
+  { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // %
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运行中 | 停机 | 调试
 ];
 
 const processProps: PropertyDef[] = [
@@ -540,6 +552,12 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均无故障时间（小时）" },
   { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均修复时间（小时）" },
   { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", description: "设备健康度（0-100·越高越健康）" },
+  // WO-SA-6 设备台账字段（对齐用户 equipment.csv·全建模 R12）
+  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线
+  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false },
+  { propKey: "install_date", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 维修中 | 待报废
 ];
 
 const maintPlanProps: PropertyDef[] = [
@@ -705,12 +723,12 @@ const planTargetProps: PropertyDef[] = [
 
 /** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
 const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
-  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION" } }],
+  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION", factory_code: "FACTORY_CODE", province: "PROVINCE", city: "CITY", factory_type: "FACTORY_TYPE", status: "STATUS", start_date: "START_DATE" } }],
   Model: [{ connId: "conn-plm", dataset: "plm_models", fieldMappings: { modelId: "MODEL_ID", name: "MODEL_NAME", unitPrice: "UNIT_PRICE" } }],
   Order: [{ connId: "conn-erp", dataset: "erp_sales_orders", fieldMappings: { so: "SO_NO", cust: "CUSTOMER", model: "MODEL_ID", qty: "QTY", due: "DUE_DATE", status: "STATUS" } }],
-  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME" } }],
+  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME", line_code: "LINE_CODE", max_capacity_day: "MAX_CAP_DAY", target_yield: "TARGET_YIELD", status: "STATUS" } }],
   Process: [{ connId: "conn-mes", dataset: "mes_processes", fieldMappings: { processId: "PROC_ID", lineId: "LINE_ID", name: "PROC_NAME", kind: "PROC_KIND", yield: "YIELD" } }],
-  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q" } }],
+  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q", mtbf: "MTBF", mttr: "MTTR", health_score: "HEALTH_SCORE", equipment_code: "EQUIP_CODE", equipment_type: "EQUIP_TYPE", manufacturer: "MANUFACTURER", install_date: "INSTALL_DATE", status: "STATUS" } }],
   MaintPlan: [{ connId: "conn-mes", dataset: "mes_maint_plans", fieldMappings: { planId: "PLAN_ID", baseId: "BASE_ID", week: "PLAN_WEEK" } }],
   Segment: [{ connId: "conn-erp", dataset: "erp_segments", fieldMappings: { segKey: "SEG_KEY", name: "SEG_NAME", gmRate: "GM_RATE" } }],
   Shipment: [{ connId: "conn-srm", dataset: "srm_shipments", fieldMappings: { shipId: "SHIP_ID", baseId: "BASE_ID", etaDay: "ETA_DAY", qtyTons: "QTY_TONS" } }],
@@ -1642,6 +1660,22 @@ function capacityMultOf(baseId: string): number {
   return CAPACITY_MULT_BY_BASE[baseId] ?? 1;
 }
 
+// WO-SA-4 基地台账字段确定性映射（守 R6·非 rng）
+const BASE_FACTORY_META: Record<string, { factory_code: string; province: string; city: string; factory_type: string; status: string; start_date: string }> = {
+  changzhou: { factory_code: "CZ01", province: "江苏", city: "常州", factory_type: "CELL+PACK", status: "运营中", start_date: "2015-06-01" },
+  xiamen:    { factory_code: "XM01", province: "福建", city: "厦门", factory_type: "CELL", status: "运营中", start_date: "2019-03-01" },
+  chengdu:   { factory_code: "CD01", province: "四川", city: "成都", factory_type: "CELL+PACK", status: "运营中", start_date: "2018-05-01" },
+  meishan:   { factory_code: "MS01", province: "四川", city: "眉山", factory_type: "PACK", status: "运营中", start_date: "2021-08-01" },
+  wuhan:     { factory_code: "WH01", province: "湖北", city: "武汉", factory_type: "CELL", status: "运营中", start_date: "2022-04-01" },
+  jiangmen:  { factory_code: "JM01", province: "广东", city: "江门", factory_type: "PACK", status: "运营中", start_date: "2021-09-01" },
+  hefei:     { factory_code: "HF01", province: "安徽", city: "合肥", factory_type: "CELL", status: "运营中", start_date: "2022-06-01" },
+  xinyang:   { factory_code: "XY01", province: "河南", city: "信阳", factory_type: "PACK", status: "运营中", start_date: "2023-02-01" },
+  zaozhuang: { factory_code: "ZZ01", province: "山东", city: "枣庄", factory_type: "CELL+PACK", status: "运营中", start_date: "2023-07-01" },
+  handan:    { factory_code: "HD01", province: "河北", city: "邯郸", factory_type: "PACK", status: "运营中", start_date: "2023-10-01" },
+  zigong:    { factory_code: "ZG01", province: "四川", city: "自贡", factory_type: "CELL", status: "运营中", start_date: "2022-08-01" },
+  luoyang:   { factory_code: "LY01", province: "河南", city: "洛阳", factory_type: "PACK", status: "运营中", start_date: "2024-03-01" },
+};
+
 /**
  * Deterministic generation: master data (Base) → Model → Order → production
  * topology (Line/Process/Equipment) → calendars (MaintPlan/Shipment) → misc.
@@ -1653,19 +1687,29 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
-  const bases = BASES.map((b) => ({
-    baseId: b.baseId,
-    name: b.name,
-    kind: b.kind,
-    position: b.kind, // GeoMap 按 position 着色（动力/储能）
-    lon: b.lon,
-    lat: b.lat,
-    util: uniformDomain(rng, 0.62, 0.35, 2, "util"), // A6.3 收编：原 round(0.62+rng()*0.35,2)，字节一致
-    bottleneck: pick(rng, BOTTLENECKS),
-    gwh: uniformDomain(rng, 6, 36, 1, "gwh"), // A6.3 收编：原 round(6+rng()*36,1)，字节一致
-    formationCapDaily: 0, // filled after process generation (shared-resource cap)
-    agingCapDaily: 0,
-  }));
+  const bases = BASES.map((b) => {
+    const meta = BASE_FACTORY_META[b.baseId];
+    return {
+      baseId: b.baseId,
+      name: b.name,
+      kind: b.kind,
+      position: b.kind, // GeoMap 按 position 着色（动力/储能）
+      lon: b.lon,
+      lat: b.lat,
+      util: uniformDomain(rng, 0.62, 0.35, 2, "util"), // A6.3 收编：原 round(0.62+rng()*0.35,2)，字节一致
+      bottleneck: pick(rng, BOTTLENECKS),
+      gwh: uniformDomain(rng, 6, 36, 1, "gwh"), // A6.3 收编：原 round(6+rng()*36,1)，字节一致
+      formationCapDaily: 0, // filled after process generation (shared-resource cap)
+      agingCapDaily: 0,
+      // WO-SA-4 基地台账字段（确定性映射·守 R6）
+      factory_code: meta?.factory_code ?? b.baseId.toUpperCase(),
+      province: meta?.province ?? "",
+      city: meta?.city ?? b.name,
+      factory_type: meta?.factory_type ?? (b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK"),
+      status: meta?.status ?? "运营中",
+      start_date: meta?.start_date ?? `${b.baseId.length + 2000}-01-01`,
+    };
+  });
 
   const models = MODELS.map((m) => {
     // rng 仍按原步长消耗（n + 洗牌），保持下游订单/拓扑字节流稳定；可产基地改取确定性 MODEL_BASE_MAP。
@@ -1766,7 +1810,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const equipment: Record<string, unknown>[] = [];
   for (const b of bases) {
     const lineId = `LINE-${b.baseId}`;
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线` });
+    const lineStatus = (hashString(`${lineId}_st`) % 100) < 90 ? "运行中" : "调试";
+    const targetYield = round(0.95 + (hashString(`${lineId}_ty`) % 100) / 100 * 0.04, 3);
+    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线`, line_code: lineId.replace("LINE-", "L-"), target_yield: targetYield, status: lineStatus });
     for (const step of SERIAL_STEPS) {
       const processId = `${lineId}-${step.suffix}`;
       processes.push({
@@ -1786,8 +1832,21 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         agingDays: 0,
       });
       for (let e = 1; e <= 2; e++) {
+        const equipId = `${processId}-E${e}`;
+        // WO-SA-6 设备台账字段（确定性映射·守 R6）
+        const EQUIP_TYPE_MAP: Record<string, string> = {
+          coating: "涂布机", calendering: "辊压机", slitting: "分切机",
+          winding: "卷绕机", assembly: "装配线", electrolyte: "注液机",
+          formation: "化成柜", aging: "老化库", pack: "PACK线",
+        };
+        const MANUFACTURERS = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
+        const equipType = EQUIP_TYPE_MAP[step.suffix] ?? "未知设备";
+        const manufacturer = MANUFACTURERS[hashString(`${equipId}_mfg`) % MANUFACTURERS.length];
+        const startDateMs = b.start_date ? Date.parse(`${String(b.start_date)}T00:00:00Z`) : t0ms;
+        const installDate = isoDate(startDateMs + 90 * 86400000); // 基于基地投产日+90天（确定性·R6）
+        const equipStatus = (hashString(`${equipId}_st`) % 100) < 95 ? "正常" : "维修中"; // 95% 正常
         equipment.push({
-          equipId: `${processId}-E${e}`,
+          equipId,
           processId,
           lineId,
           baseId: b.baseId,
@@ -1800,6 +1859,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           mtbf: round(300 + rngTopo() * 500, 0), // 300-800h
           mttr: round(2 + rngTopo() * 6, 1), // 2-8h
           health_score: round(78 + rngTopo() * 20, 0), // 78-98
+          // WO-SA-6 设备台账字段
+          equipment_code: equipId,
+          equipment_type: equipType,
+          manufacturer,
+          install_date: installDate,
+          status: equipStatus,
         });
       }
     }
@@ -1880,6 +1945,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const certed = certLinks.filter((cl) => cl.lineId === l.lineId).map((cl) => cl.modelId);
     const lfp = certed.filter((mid) => mid.includes("LFP")).length;
     l.capacityDaily = cap;
+    l.max_capacity_day = cap; // WO-SA-5 产线台账字段（与 capacityDaily 同口径·件/日）
     l.certifiedModels = certed;
     l.changeoverGroup = certed.length === 0 ? "未定" : lfp * 2 >= certed.length ? "LFP系" : "NCM系";
   }
