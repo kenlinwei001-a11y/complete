@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { ClassifierParseError } from "./anthropic.js";
 import type {
   CompletionReq,
@@ -123,6 +124,12 @@ export class OpenAiLlmClient implements FullLlmClient {
   constructor(opts: OpenAiLlmClientOptions = {}) {
     this.metrics = opts.metrics;
     this.providerLabel = opts.providerLabel;
+
+    // 配置代理
+    const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY ||
+                     process.env.http_proxy || process.env.HTTP_PROXY;
+    const httpAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+
     this.client =
       opts.client ??
       (new OpenAI({
@@ -131,6 +138,7 @@ export class OpenAiLlmClient implements FullLlmClient {
         apiKey: opts.apiKey ?? process.env.OPENAI_API_KEY ?? (opts.baseUrl ? "anonymous" : ""),
         ...(opts.baseUrl ? { baseURL: opts.baseUrl } : {}),
         ...(opts.defaultHeaders ? { defaultHeaders: opts.defaultHeaders } : {}),
+        ...(httpAgent ? { httpAgent } : {}),
       }) as unknown as OpenAiChatPort);
   }
 

@@ -145,7 +145,10 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     key: "moonshot", displayName: "Moonshot（月之暗面 Kimi）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.moonshot.cn/v1", docUrl: "https://platform.moonshot.cn",
     models: [
-      m("kimi-k2-0905-preview", "Kimi K2", cap(true, true, 256000)),
+      m("kimi-k2-5", "Kimi 2.5", cap(true, true, 256000)),
+      m("kimi-k2-5-long-context", "Kimi 2.5 Long Context", cap(true, true, 2000000)),
+      m("kimi-k2", "Kimi K2", cap(true, true, 256000)),
+      m("kimi-k1-5", "Kimi K1.5", cap(true, true, 256000)),
       m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 128000)),
       m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32000)),
       m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8000)),
@@ -155,6 +158,8 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     key: "zhipu", displayName: "智谱 GLM（Zhipu）", kind: "openai_compatible",
     defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4", docUrl: "https://open.bigmodel.cn/dev/api",
     models: [
+      m("glm-5-5", "GLM-5.5", cap(true, true, 256000)),
+      m("glm-5-2", "GLM-5.2", cap(true, true, 200000)),
       m("glm-4.6", "GLM-4.6", cap(true, true, 200000)),
       m("glm-4.5", "GLM-4.5", cap(true, true, 128000)),
       m("glm-4-plus", "GLM-4-Plus", cap(true, true, 128000)),
@@ -183,6 +188,8 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     key: "deepseek", displayName: "DeepSeek（深度求索）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.deepseek.com/v1", docUrl: "https://api-docs.deepseek.com",
     models: [
+      m("deepseek-v4", "DeepSeek-V4", cap(true, true, 128000)),
+      m("deepseek-v4-pro", "DeepSeek-V4 Pro", cap(true, true, 128000)),
       m("deepseek-chat", "DeepSeek-V3 Chat", cap(true, true, 64000)),
       m("deepseek-reasoner", "DeepSeek-R1 Reasoner", cap(true, false, 64000)),
     ],
