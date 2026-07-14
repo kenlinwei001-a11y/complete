@@ -72,7 +72,7 @@ const CASE_SPECS: CaseSpec[] = [
   { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-10-28", crisis: true },
   { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20" },
   { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10" },
-  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21" },
+  { n: 10, baseId: "yangzhou", factor: "物流时长", crossed: "2026-04-21" },
 ];
 
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */

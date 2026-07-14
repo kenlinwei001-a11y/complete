@@ -59,7 +59,8 @@ export const BASE_REGISTRY: CanonicalBase[] = [
   { baseId: "zaozhuang", name: "枣庄", kind: "动力+储能", position: "混合", lon: 117.32, lat: 34.81, util: 73, gwh: 15, bottleneck: "化成柜", lines: 4, prodYear: 2023, mainProduct: "4680-LFP" },
   { baseId: "handan", name: "邯郸", kind: "储能", position: "储能", lon: 114.49, lat: 36.61, util: 70, gwh: 12, bottleneck: "老化库", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah" },
   { baseId: "zigong", name: "自贡", kind: "动力", position: "动力", lon: 104.78, lat: 29.34, util: 77, gwh: 16, bottleneck: "化成柜", lines: 4, prodYear: 2022, mainProduct: "刀片-LFP" },
-  { baseId: "luoyang", name: "洛阳", kind: "储能", position: "储能", lon: 112.45, lat: 34.62, util: 68, gwh: 12, bottleneck: "涂布机", lines: 3, prodYear: 2024, mainProduct: "储能-314Ah" },
+  { baseId: "jinhua", name: "金华", kind: "动力", position: "动力", lon: 119.65, lat: 29.08, util: 76, gwh: 14, bottleneck: "化成柜", lines: 4, prodYear: 2023, mainProduct: "刀片-LFP" },
+  { baseId: "yangzhou", name: "扬州", kind: "储能", position: "储能", lon: 119.42, lat: 32.40, util: 72, gwh: 13, bottleneck: "涂布机", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah" },
 ];
 
 /**

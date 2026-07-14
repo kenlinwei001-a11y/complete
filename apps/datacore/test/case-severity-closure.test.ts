@@ -27,7 +27,7 @@ describe("cockpit P4 · 历史案例 severity 真闭环（caseSeverityFromData�
 
   it("低利用率非主瓶颈 → LOW（暴露原写死值与数据不符，如枣庄 73 非主瓶颈）", () => {
     expect(caseSeverityFromData(73, false, false)).toBe("LOW"); // 73 < 78
-    expect(caseSeverityFromData(68, false, false)).toBe("LOW"); // 洛阳 68
+    expect(caseSeverityFromData(68, false, false)).toBe("LOW"); // 扬州 68
   });
 
   it("确定性（R6）：同输入恒同输出", () => {

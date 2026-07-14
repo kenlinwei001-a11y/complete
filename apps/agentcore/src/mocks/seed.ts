@@ -580,6 +580,72 @@ export function seedRegistry(now = new Date().toISOString()): {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: "wf_seed_order_track", tenantId: SEED_TENANT, key: "order_tracking", version: 1,
+      name: "订单追踪流程", description: "按客户或型号追踪订单交付状态（query → aggregate → render）",
+      inputs: { type: "object", properties: { custName: { type: "string" }, modelName: { type: "string" } } },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Order", filter: { custName: "{{slots.custName}}", modelName: "{{slots.modelName}}" } } },
+        { id: "s2", type: "aggregate_objects", params: { objectType: "Order", agg: "count", groupBy: "status" } },
+        { id: "s3", type: "render_answer", params: { blocks: [
+          { type: "text", markdown: "订单追踪结果：共 {{steps.s2.output.total}} 张订单，按状态分布如下。" },
+          { type: "table", columns: ["状态", "数量"], rows: "{{steps.s2.output.groups}}", fromStep: "s2" },
+        ] } },
+      ] as WorkflowDefinition["steps"],
+      status: "PUBLISHED",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "wf_seed_sop_balance", tenantId: SEED_TENANT, key: "sop_balance_wf", version: 1,
+      name: "S&OP 月度平衡流程", description: "产销平衡检查（resolve slice → invoke solver → evaluate rules → render）",
+      inputs: { type: "object", properties: { month: { type: "string" }, segment: { type: "string" } } },
+      steps: [
+        { id: "s1", type: "resolve_slice", params: { sliceKey: "monthly_balance", args: { month: "{{slots.month}}", segment: "{{slots.segment}}" } } },
+        { id: "s2", type: "invoke_solver", params: { solverKey: "sop_balance", args: { month: "{{slots.month}}", segment: "{{slots.segment}}" } } },
+        { id: "s3", type: "evaluate_rules", params: { ruleIds: ["C18", "C21"], payload: { month: "{{slots.month}}" } } },
+        { id: "s4", type: "render_answer", params: { blocks: [
+          { type: "text", markdown: "S&OP 月度平衡结论（求解器 {{steps.s2.output.summary}}）" },
+          { type: "solver_summary", output: "{{steps.s2.output}}", fromStep: "s2" },
+        ] } },
+      ] as WorkflowDefinition["steps"],
+      status: "PUBLISHED",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "wf_seed_quality_diag", tenantId: SEED_TENANT, key: "quality_diagnosis", version: 1,
+      name: "质量诊断流程", description: "工序良率波动根因诊断（query → timeseries → solver → render）",
+      inputs: { type: "object", properties: { processKey: { type: "string" }, baseId: { type: "string" }, days: { type: "number" } } },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Process", filter: { processKey: "{{slots.processKey}}", baseId: "{{slots.baseId}}" } } },
+        { id: "s2", type: "query_timeseries_agg", params: { metric: "yield:process", grain: "day", agg: "avg", filter: { processKey: "{{slots.processKey}}", baseId: "{{slots.baseId}}" } } },
+        { id: "s3", type: "invoke_solver", params: { solverKey: "yield_diagnosis", args: { processKey: "{{slots.processKey}}", baseId: "{{slots.baseId}}", days: "{{slots.days}}" } } },
+        { id: "s4", type: "render_answer", params: { blocks: [
+          { type: "text", markdown: "质量诊断结论：{{steps.s3.output.conclusion}}" },
+          { type: "solver_summary", output: "{{steps.s3.output}}", fromStep: "s3" },
+        ] } },
+      ] as WorkflowDefinition["steps"],
+      status: "DRAFT",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "wf_seed_supply_kit", tenantId: SEED_TENANT, key: "supply_kit_analysis", version: 1,
+      name: "物料齐套分析流程", description: "物料齐套状态扫描与缺料预警（query → solver → render）",
+      inputs: { type: "object", properties: { baseId: { type: "string" }, fromDay: { type: "number" }, toDay: { type: "number" } } },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Material", filter: { baseId: "{{slots.baseId}}" } } },
+        { id: "s2", type: "invoke_solver", params: { solverKey: "kit_readiness", args: { baseId: "{{slots.baseId}}", fromDay: "{{slots.fromDay}}", toDay: "{{slots.toDay}}" } } },
+        { id: "s3", type: "render_answer", params: { blocks: [
+          { type: "text", markdown: "物料齐套分析结果：" },
+          { type: "solver_summary", output: "{{steps.s2.output}}", fromStep: "s2" },
+        ] } },
+      ] as WorkflowDefinition["steps"],
+      status: "PUBLISHED",
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
   const skills: SkillDefinition[] = [
     {
@@ -593,6 +659,30 @@ export function seedRegistry(now = new Date().toISOString()): {
       name: "S&OP 会议纪要技能", summary: "S&OP 会议纪要结构化要点。",
       body: "# S&OP 会议纪要\n\n1. 需求侧：月度需求总量、分 segment 需求。\n2. 供给侧：可供给量、长协覆盖率、物料缺口。\n3. 财务侧：毛利率目标、现金安全垫、CAPEX。\n4. 行动项：责任人、完成时间、风险标记。",
       resources: [], status: "DRAFT",
+    },
+    {
+      id: "skl_seed_risk_analysis", tenantId: SEED_TENANT, key: "risk_analysis", version: 1,
+      name: "风险分析方法论", summary: "基地风险画像解读与越线根因归因要点。",
+      body: "# 风险分析\n\n1. 风险画像三维度：产能利用率、物料齐套、交期达成。\n2. 越线根因优先看瓶颈工序（化成/卷绕/涂布/装配/注液）。\n3. 处置方案候选：三班制、外协、调拨、检修错峰。",
+      resources: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_seed_supply_chain", tenantId: SEED_TENANT, key: "supply_chain_mgmt", version: 1,
+      name: "供应链管理技能", summary: "物料齐套、库存优化与采购策略分析框架。",
+      body: "# 供应链管理\n\n1. 齐套检查：BOM 展开 → 库存扣减 → 在途确认 → 缺口计算。\n2. 库存优化：安全库存 = MAX(需求波动× lead time, 最小订货量)。\n3. 采购策略：长协保底 + 现货补缺 + 外协弹性。",
+      resources: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_seed_quality_control", tenantId: SEED_TENANT, key: "quality_control", version: 1,
+      name: "质量控制技能", summary: "良率波动诊断与质量改进 PDCA 框架。",
+      body: "# 质量控制\n\n1. 良率监控：SPC 控制图（X-bar / R / p-chart）。\n2. 波动归因：人、机、料、法、环五维度鱼骨图。\n3. 改进闭环：Plan（根因）→ Do（试点）→ Check（验证）→ Act（推广）。",
+      resources: [], status: "DRAFT",
+    },
+    {
+      id: "skl_seed_mcp_guide", tenantId: SEED_TENANT, key: "mcp_integration", version: 1,
+      name: "MCP 集成指南", summary: "MCP 服务器接入与工具调用规范。",
+      body: "# MCP 集成指南\n\n1. 传输协议：streamable_http（推荐）或 stdio（本地子进程）。\n2. 命名空间：serverName 由展示名推导，限小写字母/数字/下划线，2–24 字符。\n3. 工具全名：mcp__{serverName}__{toolName}，scopeDeclaration 与审计均用全名。\n4. 故障恢复：连续 5 次调用失败 → ERROR，自动探测恢复 → ACTIVE。",
+      resources: [], status: "PUBLISHED",
     },
   ];
   const agents: AgentDefinition[] = [
@@ -728,17 +818,61 @@ export function seedRegistry(now = new Date().toISOString()): {
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
+    {
+      id: "agt_external_market", tenantId: SEED_TENANT, key: "external_market", version: 1,
+      name: "外部市场 Agent", description: "通过 MCP 接入外部市场行情与竞品情报分析",
+      model: "claude-opus-4-8", systemPrompt: "你是市场情报分析专家。通过 MCP 工具接入外部数据源，获取原材料价格、竞品动态、政策变化，并结合内部数据给出经营建议。所有数字必须标注来源。",
+      tools: [
+        { kind: "BUILTIN", name: "query_objects" },
+        { kind: "BUILTIN", name: "invoke_solver" },
+        { kind: "MCP", mcpConfigId: "mcp_market_data", toolFilter: ["get_commodity_price", "get_policy_update"] },
+        { kind: "WORKFLOW", workflowId: "wf_seed_order_track", version: "latest" },
+      ] as AgentDefinition["tools"],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [{ skillId: "skl_seed_supply_chain", version: "latest" }],
+      mcpServers: [{ mcpConfigId: "mcp_market_data" }],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "Order", "Model"], toolNames: ["query_objects", "invoke_solver", "mcp__market_data__get_commodity_price", "mcp__market_data__get_policy_update"] },
+      budget: { maxIterations: 8, maxToolCalls: 12 },
+      status: "PUBLISHED",
+    },
+    {
+      id: "agt_code_assistant", tenantId: SEED_TENANT, key: "code_assistant", version: 1,
+      name: "代码助手 Agent", description: "通过 MCP 接入代码分析工具，辅助数据工程与规则脚本审查",
+      model: "claude-opus-4-8", systemPrompt: "你是数据工程助手。通过 MCP 工具接入代码仓库与文档系统，辅助完成 SQL 审查、规则脚本验证、数据管道诊断。禁止执行任何写操作。",
+      tools: [
+        { kind: "BUILTIN", name: "query_objects" },
+        { kind: "MCP", mcpConfigId: "mcp_code_tools", toolFilter: ["lint_sql", "review_script"] },
+      ] as AgentDefinition["tools"],
+      ruleBindings: { ruleKeys: [], mode: "POST_CHECK" },
+      skills: [{ skillId: "skl_seed_mcp_guide", version: "latest" }],
+      mcpServers: [{ mcpConfigId: "mcp_code_tools" }],
+      scopeDeclaration: { objectTypes: [], toolNames: ["query_objects", "mcp__code_tools__lint_sql", "mcp__code_tools__review_script"] },
+      budget: { maxIterations: 6, maxToolCalls: 8 },
+      status: "DRAFT",
+    },
   ];
   return { agents, workflows, skills };
 }
 
-/** MCP 服务器出厂种子（1 条演示配置，使 MCP 库页不为空）。 */
+/** MCP 服务器出厂种子（3 条演示配置，覆盖 streamable_http / stdio 两种传输，使 MCP 库页不为空）。 */
 export function seedMcpConfigs(): McpServerConfig[] {
   return [
     {
       id: "mcp_seed_demo", tenantId: SEED_TENANT, name: "示例 MCP 服务器", serverName: "demo_server",
       transport: { type: "streamable_http", url: "https://mcp.example.com" },
       credentialRef: "cred-1", status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      id: "mcp_market_data", tenantId: SEED_TENANT, name: "市场行情 MCP", serverName: "market_data",
+      transport: { type: "streamable_http", url: "https://market-mcp.example.com/v1" },
+      credentialRef: "cred-market", credentialKind: "static_bearer", toolTimeoutMs: 30_000,
+      status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+    {
+      id: "mcp_code_tools", tenantId: SEED_TENANT, name: "代码工具 MCP", serverName: "code_tools",
+      transport: { type: "stdio", command: "node", args: ["/opt/mcp/code-tools/dist/server.js"] },
+      credentialRef: "cred-code", credentialKind: "static_bearer", toolTimeoutMs: 45_000,
+      status: "DISABLED", lifecycle: "DRAFT", version: 1,
     },
   ];
 }

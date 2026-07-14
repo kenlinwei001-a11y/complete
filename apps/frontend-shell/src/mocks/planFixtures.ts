@@ -33,7 +33,7 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       year: 2027,
       demand: 1420,
       note: "乘用车放缓、储能温和；不赌新增产能，守现金",
-      capacityDecision: "现有 12 基地 + 爬坡即可，不新增产线；利用率 81%",
+      capacityDecision: "现有 13 基地 + 爬坡即可，不新增产线；利用率 81%",
       ltaLock: "正极锁 70%（8.8 万吨）",
       finance: { revenue: 3050, capex: 0, irr: 0 },
       ruleChecks: [

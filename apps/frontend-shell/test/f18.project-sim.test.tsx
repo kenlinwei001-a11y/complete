@@ -115,10 +115,10 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     await user.click(screen.getByTestId("pm-step-chip-2"));
     await screen.findByTestId("pm-step2");
 
-    // 收敛注解：仅在 3/12 个基地可产（producibleCount/totalBases，前端零写死）
+    // 收敛注解：仅在 3/13 个基地可产（producibleCount/totalBases，前端零写死）
     const conv = screen.getByTestId("pm-step2-converge");
     expect(conv).toHaveTextContent("3");
-    expect(conv).toHaveTextContent("12");
+    expect(conv).toHaveTextContent("13");
 
     // 不可产基地：储能基地业态不匹配（江门·储能 vs 动力型号）
     expect(screen.getByTestId("nonproducible-江门")).toHaveTextContent("不匹配");

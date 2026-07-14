@@ -315,7 +315,7 @@ const MOCK_SOLVER_ARTIFACTS: {
 
 // V11 · VLE 段级红绿矩阵 mock 断言集（七段抽样 + ⑤参照双算 + 一条失败 diff 供下钻）。
 const VLE_MOCK_ASSERTIONS = [
-  { segment: "①接入", point: "接入产出核心类型行数 == GenSpec", oracle: "constructed", pass: true, expected: { Base: 12, Model: 6, Order: 24 }, actual: { Base: 12, Model: 6, Order: 24 } },
+  { segment: "①接入", point: "接入产出核心类型行数 == GenSpec", oracle: "constructed", pass: true, expected: { Base: 13, Model: 6, Order: 24 }, actual: { Base: 13, Model: 6, Order: 24 } },
   { segment: "②建模与对象化", point: "链接引用完整性（悬挂引用=0）", oracle: "invariant", pass: true, expected: 0, actual: 0 },
   { segment: "③聚合与派生", point: "聚合下推 == 明细求和（守恒律）", oracle: "invariant", pass: true, expected: 4680, actual: 4680 },
   { segment: "④规则查全查准", point: "植入越线行被独立谓词捕获（C03）", oracle: "constructed", pass: true, expected: ">0", actual: 3 },

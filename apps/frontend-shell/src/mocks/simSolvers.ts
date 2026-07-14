@@ -403,7 +403,7 @@ const MODEL_CAP_NET: Record<string, CapBaseDef[]> = {
   ],
   "储能-314Ah": [
     { base: "信阳", baseId: "信阳", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "涂布机", tightness: 85 },
-    { base: "洛阳", baseId: "洛阳", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 70 },
+    { base: "扬州", baseId: "扬州", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 70 },
   ],
 };
 
@@ -629,7 +629,8 @@ const BN_PRIMARY: Record<string, string> = {
   枣庄: "换型损失",
   邯郸: "物料齐套",
   自贡: "人力工时",
-  洛阳: "良率波动",
+  金华: "设备OEE",
+  扬州: "良率波动",
 };
 
 const BN_MOCK = { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilLowAdd: 2 };
@@ -678,7 +679,7 @@ const SOP_PER_BASE = [
   { baseId: "成都", monthly: 18.4, certFactor: 1 },
   { baseId: "合肥", monthly: 16.2, certFactor: 0.6 },
   { baseId: "江门", monthly: 13.5, certFactor: 1 },
-  { baseId: "其余8基地", monthly: 50.4, certFactor: 1 },
+  { baseId: "其余9基地", monthly: 50.4, certFactor: 1 },
 ];
 
 const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);

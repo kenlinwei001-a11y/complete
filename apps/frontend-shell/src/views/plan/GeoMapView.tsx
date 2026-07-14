@@ -30,7 +30,8 @@ const BASE_COORDS: Record<string, [number, number]> = {
   枣庄: [117.32, 34.81], // debattery-allow
   邯郸: [114.49, 36.61], // debattery-allow
   自贡: [104.78, 29.34], // debattery-allow
-  洛阳: [112.45, 34.62], // debattery-allow
+  金华: [119.65, 29.08], // debattery-allow
+  扬州: [119.42, 32.40], // debattery-allow
 };
 
 /** 利用率色档（阈值可由 ViewConfig.layout.utilThresholds 配置；去电池锁死 8a / R14） */

@@ -19,7 +19,7 @@ describe("A7 synthetic data", () => {
     const job1 = await runJob(t);
     expect(job1.status).toBe("SUCCEEDED");
     const report = job1.report!;
-    expect(report.rowCounts).toMatchObject({ Base: 12, Model: 6, Order: 24 });
+    expect(report.rowCounts).toMatchObject({ Base: 13, Model: 6, Order: 24 });
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
     expect(report.views).toEqual([

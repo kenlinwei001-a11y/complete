@@ -30,7 +30,7 @@ const MODEL_BASE_MAP: Record<string, string[]> = {
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
   "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
   "方形-NCM": ["changzhou", "chengdu"], // HTML 方形-NCM → 常州/成都
-  "圆柱-LFP": ["xinyang", "luoyang"], // HTML 圆柱-LFP → 信阳/洛阳
+  "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
 };
 
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
@@ -103,7 +103,8 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       枣庄: "换型损失",
       邯郸: "物料齐套",
       自贡: "人力工时",
-      洛阳: "良率波动",
+      金华: "设备OEE",
+      扬州: "良率波动",
     },
     defaultPrimary: "瓶颈工序",
     mock: { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilHigh: 0.82, utilHighAdd: 6, utilLowAdd: 2 },
@@ -804,6 +805,203 @@ const dataHealthProps: PropertyDef[] = [
   { propKey: "lagHours", dataType: "number", isPrimaryKey: false },
 ];
 
+// Phase 3 MES Domain: Production Planning
+const workOrderProps: PropertyDef[] = [
+  { propKey: "woId", dataType: "string", isPrimaryKey: true },
+  { propKey: "moNo", dataType: "string", isPrimaryKey: false },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "qtyPlanned", dataType: "number", isPrimaryKey: false },
+  { propKey: "qtyActual", dataType: "number", isPrimaryKey: false },
+  { propKey: "startDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "endDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 已排产 | 生产中 | 已完成 | 已关闭
+];
+
+const productionScheduleProps: PropertyDef[] = [
+  { propKey: "schedId", dataType: "string", isPrimaryKey: true },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false }, // 白班 | 夜班
+  { propKey: "scheduledDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 已确认 | 已执行 | 已取消
+];
+
+const shiftPlanProps: PropertyDef[] = [
+  { propKey: "shiftId", dataType: "string", isPrimaryKey: true },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "shiftName", dataType: "string", isPrimaryKey: false },
+  { propKey: "plannedHeadcount", dataType: "number", isPrimaryKey: false },
+  { propKey: "actualHeadcount", dataType: "number", isPrimaryKey: false },
+  { propKey: "date", dataType: "date", isPrimaryKey: false },
+  { propKey: "hours", dataType: "number", isPrimaryKey: false },
+];
+
+// Phase 3 MES Domain: WIP Tracking
+const wipLotProps: PropertyDef[] = [
+  { propKey: "lotId", dataType: "string", isPrimaryKey: true },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "currentProcess", dataType: "string", isPrimaryKey: false },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 在制 | 待检 | 合格 | 报废
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "lastMoveTime", dataType: "date", isPrimaryKey: false },
+];
+
+const wipMoveProps: PropertyDef[] = [
+  { propKey: "moveId", dataType: "string", isPrimaryKey: true },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
+  { propKey: "fromProcess", dataType: "string", isPrimaryKey: false },
+  { propKey: "toProcess", dataType: "string", isPrimaryKey: false },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false },
+  { propKey: "moveTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
+];
+
+const wipQualityCheckpointProps: PropertyDef[] = [
+  { propKey: "checkpointId", dataType: "string", isPrimaryKey: true },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false },
+  { propKey: "checkType", dataType: "enum", isPrimaryKey: false }, // 首检 | 巡检 | 末检
+  { propKey: "result", dataType: "enum", isPrimaryKey: false }, // 通过 | 不通过 | 待定
+  { propKey: "checkTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "inspectorId", dataType: "string", isPrimaryKey: false },
+];
+
+// Phase 3 MES Domain: Quality Execution
+const qualityLotProps: PropertyDef[] = [
+  { propKey: "qlotId", dataType: "string", isPrimaryKey: true },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "batchSize", dataType: "number", isPrimaryKey: false },
+  { propKey: "sampleSize", dataType: "number", isPrimaryKey: false },
+  { propKey: "passQty", dataType: "number", isPrimaryKey: false },
+  { propKey: "failQty", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 待检 | 合格 | 不合格 | 特采
+  { propKey: "inspectDate", dataType: "date", isPrimaryKey: false },
+];
+
+const inspectionResultProps: PropertyDef[] = [
+  { propKey: "resultId", dataType: "string", isPrimaryKey: true },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityLot" },
+  { propKey: "charId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "InspectionCharacteristic" },
+  { propKey: "measuredValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "upperLimit", dataType: "number", isPrimaryKey: false },
+  { propKey: "lowerLimit", dataType: "number", isPrimaryKey: false },
+  { propKey: "result", dataType: "enum", isPrimaryKey: false }, // 合格 | 不合格
+  { propKey: "inspectTime", dataType: "date", isPrimaryKey: false },
+];
+
+const defectRecordProps: PropertyDef[] = [
+  { propKey: "defectId", dataType: "string", isPrimaryKey: true },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityLot" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
+  { propKey: "defectType", dataType: "enum", isPrimaryKey: false }, // 外观 | 尺寸 | 性能 | 安全
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false }, // 轻微 | 一般 | 严重
+  { propKey: "qty", dataType: "number", isPrimaryKey: false },
+  { propKey: "description", dataType: "string", isPrimaryKey: false },
+  { propKey: "foundAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false },
+];
+
+// Phase 3 MES Domain: Equipment Execution
+const equipmentOEEProps: PropertyDef[] = [
+  { propKey: "oeeId", dataType: "string", isPrimaryKey: true },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false },
+  { propKey: "availability", dataType: "number", isPrimaryKey: false },
+  { propKey: "performance", dataType: "number", isPrimaryKey: false },
+  { propKey: "quality", dataType: "number", isPrimaryKey: false },
+  { propKey: "oee", dataType: "number", isPrimaryKey: false },
+  { propKey: "plannedProductionTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "actualProductionTime", dataType: "number", isPrimaryKey: false },
+];
+
+const equipmentDowntimeProps: PropertyDef[] = [
+  { propKey: "dtId", dataType: "string", isPrimaryKey: true },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "endTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "durationMin", dataType: "number", isPrimaryKey: false },
+  { propKey: "reason", dataType: "enum", isPrimaryKey: false }, // 故障 | 换型 | 待料 | 计划停机 | 其他
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 进行中 | 已恢复
+];
+
+const equipmentAlarmProps: PropertyDef[] = [
+  { propKey: "alarmId", dataType: "string", isPrimaryKey: true },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "alarmCode", dataType: "string", isPrimaryKey: false },
+  { propKey: "alarmLevel", dataType: "enum", isPrimaryKey: false }, // 提示 | 警告 | 紧急
+  { propKey: "message", dataType: "string", isPrimaryKey: false },
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "clearedAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 已确认 | 已清除
+];
+
+// Phase 3 MES Domain: Maintenance Execution
+const maintenanceOrderProps: PropertyDef[] = [
+  { propKey: "moId", dataType: "string", isPrimaryKey: true },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "maintType", dataType: "enum", isPrimaryKey: false }, // 预防性 | 预测性 |  corrective
+  { propKey: "priority", dataType: "enum", isPrimaryKey: false }, // 低 | 中 | 高 | 紧急
+  { propKey: "plannedStart", dataType: "date", isPrimaryKey: false },
+  { propKey: "plannedEnd", dataType: "date", isPrimaryKey: false },
+  { propKey: "actualStart", dataType: "date", isPrimaryKey: false },
+  { propKey: "actualEnd", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 待执行 | 执行中 | 已完成 | 已取消
+];
+
+const sparePartConsumptionProps: PropertyDef[] = [
+  { propKey: "consumptionId", dataType: "string", isPrimaryKey: true },
+  { propKey: "moId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "MaintenanceOrder" },
+  { propKey: "partCode", dataType: "string", isPrimaryKey: false },
+  { propKey: "partName", dataType: "string", isPrimaryKey: false },
+  { propKey: "qtyUsed", dataType: "number", isPrimaryKey: false },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false },
+  { propKey: "consumedAt", dataType: "date", isPrimaryKey: false },
+];
+
+// Phase 3 MES Domain: Labor Tracking
+const operatorAttendanceProps: PropertyDef[] = [
+  { propKey: "attId", dataType: "string", isPrimaryKey: true },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
+  { propKey: "operatorName", dataType: "string", isPrimaryKey: false },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false }, // 白班 | 夜班
+  { propKey: "checkIn", dataType: "date", isPrimaryKey: false },
+  { propKey: "checkOut", dataType: "date", isPrimaryKey: false },
+  { propKey: "hoursWorked", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 迟到 | 早退 | 缺勤
+];
+
+const operatorSkillCertProps: PropertyDef[] = [
+  { propKey: "certId", dataType: "string", isPrimaryKey: true },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
+  { propKey: "skillName", dataType: "string", isPrimaryKey: false },
+  { propKey: "skillLevel", dataType: "enum", isPrimaryKey: false }, // 初级 | 中级 | 高级 | 技师
+  { propKey: "certifiedBy", dataType: "string", isPrimaryKey: false },
+  { propKey: "certifiedDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 有效 | 过期 | 吊销
+];
+
 // §7.14 计划域对象（年度情景 / 触发条件 / 目标分解 —— S&OP 目标线同源对象）
 const annualScenarioProps: PropertyDef[] = [
   { propKey: "scnId", dataType: "string", isPrimaryKey: true },
@@ -859,6 +1057,23 @@ export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMa
   ProductSeries: [{ connId: "conn-plm", dataset: "plm_series", fieldMappings: { seriesId: "SERIES_ID", seriesCode: "SERIES_CODE", platformId: "PLATFORM_ID", name: "SERIES_NAME", category: "CATEGORY", voltageRange: "VOLTAGE_RANGE", capacityRange: "CAP_RANGE", targetMarket: "TARGET_MARKET", status: "STATUS" } }],
   ProductVersion: [{ connId: "conn-plm", dataset: "plm_versions", fieldMappings: { versionId: "VERSION_ID", modelId: "MODEL_ID", versionCode: "VERSION_CODE", versionName: "VERSION_NAME", ecnNumber: "ECN_NO", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", status: "STATUS", changeReason: "CHANGE_REASON" } }],
   MaterialAlternative: [{ connId: "conn-plm", dataset: "plm_material_alts", fieldMappings: { altId: "ALT_ID", primaryMaterialId: "PRIMARY_MAT_ID", alternativeMaterialId: "ALT_MAT_ID", priority: "PRIORITY", approvalStatus: "APPROVAL_STATUS", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", changeReason: "CHANGE_REASON", verifiedBy: "VERIFIED_BY", verifiedDate: "VERIFIED_DATE" } }],
+  // Phase 3 MES Domain bindings
+  WorkOrder: [{ connId: "conn-mes", dataset: "mes_work_orders", fieldMappings: { woId: "WO_ID", moNo: "MO_NO", modelId: "MODEL_ID", lineId: "LINE_ID", baseId: "BASE_ID", qtyPlanned: "QTY_PLANNED", qtyActual: "QTY_ACTUAL", startDate: "START_DATE", endDate: "END_DATE", status: "STATUS" } }],
+  ProductionSchedule: [{ connId: "conn-mes", dataset: "mes_schedules", fieldMappings: { schedId: "SCHED_ID", woId: "WO_ID", lineId: "LINE_ID", shift: "SHIFT", scheduledDate: "SCHED_DATE", qty: "QTY", priority: "PRIORITY", status: "STATUS" } }],
+  ShiftPlan: [{ connId: "conn-mes", dataset: "mes_shift_plans", fieldMappings: { shiftId: "SHIFT_ID", lineId: "LINE_ID", baseId: "BASE_ID", shiftName: "SHIFT_NAME", plannedHeadcount: "PLAN_HC", actualHeadcount: "ACT_HC", date: "SHIFT_DATE", hours: "HOURS" } }],
+  WIPLot: [{ connId: "conn-mes", dataset: "mes_wip_lots", fieldMappings: { lotId: "LOT_ID", woId: "WO_ID", modelId: "MODEL_ID", lineId: "LINE_ID", currentProcess: "CUR_PROC", qty: "QTY", status: "STATUS", startTime: "START_TIME", lastMoveTime: "LAST_MOVE" } }],
+  WIPMove: [{ connId: "conn-mes", dataset: "mes_wip_moves", fieldMappings: { moveId: "MOVE_ID", lotId: "LOT_ID", fromProcess: "FROM_PROC", toProcess: "TO_PROC", qty: "QTY", moveTime: "MOVE_TIME", operatorId: "OP_ID" } }],
+  WIPQualityCheckpoint: [{ connId: "conn-qms", dataset: "qms_wip_checkpoints", fieldMappings: { checkpointId: "CHK_ID", lotId: "LOT_ID", processName: "PROC_NAME", checkType: "CHK_TYPE", result: "RESULT", checkTime: "CHK_TIME", inspectorId: "INSP_ID" } }],
+  QualityLot: [{ connId: "conn-qms", dataset: "qms_quality_lots", fieldMappings: { qlotId: "QLOT_ID", woId: "WO_ID", modelId: "MODEL_ID", lineId: "LINE_ID", batchSize: "BATCH_SIZE", sampleSize: "SAMPLE_SIZE", passQty: "PASS_QTY", failQty: "FAIL_QTY", status: "STATUS", inspectDate: "INSP_DATE" } }],
+  InspectionResult: [{ connId: "conn-qms", dataset: "qms_inspection_results", fieldMappings: { resultId: "RES_ID", qlotId: "QLOT_ID", charId: "CHAR_ID", measuredValue: "MEAS_VAL", targetValue: "TGT_VAL", upperLimit: "UCL", lowerLimit: "LCL", result: "RESULT", inspectTime: "INSP_TIME" } }],
+  DefectRecord: [{ connId: "conn-qms", dataset: "qms_defects", fieldMappings: { defectId: "DEF_ID", qlotId: "QLOT_ID", lotId: "LOT_ID", defectType: "DEF_TYPE", severity: "SEVERITY", qty: "QTY", description: "DESC", foundAt: "FOUND_AT", processName: "PROC_NAME" } }],
+  EquipmentOEE: [{ connId: "conn-iot", dataset: "iot_oee_daily", fieldMappings: { oeeId: "OEE_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", date: "OEE_DATE", availability: "AVAIL", performance: "PERF", quality: "QUAL", oee: "OEE", plannedProductionTime: "PLAN_TIME", actualProductionTime: "ACT_TIME" } }],
+  EquipmentDowntime: [{ connId: "conn-iot", dataset: "iot_downtime", fieldMappings: { dtId: "DT_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", startTime: "START_TIME", endTime: "END_TIME", durationMin: "DUR_MIN", reason: "REASON", status: "STATUS" } }],
+  EquipmentAlarm: [{ connId: "conn-iot", dataset: "iot_alarms", fieldMappings: { alarmId: "ALARM_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", alarmCode: "ALARM_CODE", alarmLevel: "ALARM_LEVEL", message: "MSG", triggeredAt: "TRIG_TIME", clearedAt: "CLR_TIME", status: "STATUS" } }],
+  MaintenanceOrder: [{ connId: "conn-eam", dataset: "eam_maint_orders", fieldMappings: { moId: "MO_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", maintType: "MAINT_TYPE", priority: "PRIORITY", plannedStart: "PLAN_START", plannedEnd: "PLAN_END", actualStart: "ACT_START", actualEnd: "ACT_END", status: "STATUS" } }],
+  SparePartConsumption: [{ connId: "conn-eam", dataset: "eam_spare_parts", fieldMappings: { consumptionId: "CONS_ID", moId: "MO_ID", partCode: "PART_CODE", partName: "PART_NAME", qtyUsed: "QTY_USED", unit: "UNIT", consumedAt: "CONS_AT" } }],
+  OperatorAttendance: [{ connId: "conn-hr", dataset: "hr_attendance", fieldMappings: { attId: "ATT_ID", operatorId: "OP_ID", operatorName: "OP_NAME", lineId: "LINE_ID", baseId: "BASE_ID", date: "ATT_DATE", shift: "SHIFT", checkIn: "CHECK_IN", checkOut: "CHECK_OUT", hoursWorked: "HOURS", status: "STATUS" } }],
+  OperatorSkillCert: [{ connId: "conn-hr", dataset: "hr_skill_certs", fieldMappings: { certId: "CERT_ID", operatorId: "OP_ID", skillName: "SKILL", skillLevel: "LEVEL", certifiedBy: "CERT_BY", certifiedDate: "CERT_DATE", expireDate: "EXP_DATE", status: "STATUS" } }],
 };
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
@@ -878,6 +1093,13 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Metric: "decision", RootCauseChain: "decision", KSF: "decision", Principal: "people",
   // cockpit P5 / sop 绿地（S&OP 版本演进）
   SopVersionRow: "plan",
+  // Phase 3 MES Domain
+  WorkOrder: "process", ProductionSchedule: "process", ShiftPlan: "people",
+  WIPLot: "process", WIPMove: "process", WIPQualityCheckpoint: "quality",
+  QualityLot: "quality", InspectionResult: "quality", DefectRecord: "quality",
+  EquipmentOEE: "equip", EquipmentDowntime: "equip", EquipmentAlarm: "equip",
+  MaintenanceOrder: "equip", SparePartConsumption: "equip",
+  OperatorAttendance: "people", OperatorSkillCert: "people",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -948,6 +1170,28 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("RootCauseChain", "根因归因链", rootCauseChainProps),
     // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
     { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
+    // Phase 3 MES Domain: Production Planning
+    plain("WorkOrder", "生产工单", workOrderProps),
+    plain("ProductionSchedule", "生产排程", productionScheduleProps),
+    plain("ShiftPlan", "班次计划", shiftPlanProps),
+    // Phase 3 MES Domain: WIP Tracking
+    plain("WIPLot", "在制批次", wipLotProps),
+    plain("WIPMove", "在制移动", wipMoveProps),
+    plain("WIPQualityCheckpoint", "在制质检点", wipQualityCheckpointProps),
+    // Phase 3 MES Domain: Quality Execution
+    plain("QualityLot", "质检批次", qualityLotProps),
+    plain("InspectionResult", "检验结果", inspectionResultProps),
+    plain("DefectRecord", "缺陷记录", defectRecordProps),
+    // Phase 3 MES Domain: Equipment Execution
+    plain("EquipmentOEE", "设备OEE", equipmentOEEProps),
+    plain("EquipmentDowntime", "设备停机", equipmentDowntimeProps),
+    plain("EquipmentAlarm", "设备告警", equipmentAlarmProps),
+    // Phase 3 MES Domain: Maintenance Execution
+    plain("MaintenanceOrder", "维修工单", maintenanceOrderProps),
+    plain("SparePartConsumption", "备件消耗", sparePartConsumptionProps),
+    // Phase 3 MES Domain: Labor Tracking
+    plain("OperatorAttendance", "操作工考勤", operatorAttendanceProps),
+    plain("OperatorSkillCert", "操作工技能认证", operatorSkillCertProps),
   ];
 }
 
@@ -1011,6 +1255,27 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "metric_affects_ksf", fromTypeKey: "Metric", toTypeKey: "KSF", cardinality: "N:N" }, // decision
     { key: "metric_ownedby", fromTypeKey: "Metric", toTypeKey: "Principal", cardinality: "N:N" }, // decision→people
     { key: "plantarget_ownedby", fromTypeKey: "PlanTarget", toTypeKey: "Principal", cardinality: "N:N" }, // plan→people（责任闭环）
+    // Phase 3 MES Domain links
+    { key: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model", cardinality: "N:1" }, // process
+    { key: "wo_on_line", fromTypeKey: "WorkOrder", toTypeKey: "Line", cardinality: "N:1" }, // process
+    { key: "sched_for_wo", fromTypeKey: "ProductionSchedule", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
+    { key: "shift_for_line", fromTypeKey: "ShiftPlan", toTypeKey: "Line", cardinality: "N:1" }, // people
+    { key: "wip_for_wo", fromTypeKey: "WIPLot", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
+    { key: "wip_on_line", fromTypeKey: "WIPLot", toTypeKey: "Line", cardinality: "N:1" }, // process
+    { key: "move_for_lot", fromTypeKey: "WIPMove", toTypeKey: "WIPLot", cardinality: "N:1" }, // process
+    { key: "checkpoint_for_lot", fromTypeKey: "WIPQualityCheckpoint", toTypeKey: "WIPLot", cardinality: "N:1" }, // quality
+    { key: "qlot_for_wo", fromTypeKey: "QualityLot", toTypeKey: "WorkOrder", cardinality: "N:1" }, // quality
+    { key: "result_for_qlot", fromTypeKey: "InspectionResult", toTypeKey: "QualityLot", cardinality: "N:1" }, // quality
+    { key: "result_for_char", fromTypeKey: "InspectionResult", toTypeKey: "InspectionCharacteristic", cardinality: "N:1" }, // quality
+    { key: "defect_for_qlot", fromTypeKey: "DefectRecord", toTypeKey: "QualityLot", cardinality: "N:1" }, // quality
+    { key: "defect_for_wiplot", fromTypeKey: "DefectRecord", toTypeKey: "WIPLot", cardinality: "N:1" }, // quality
+    { key: "oee_for_equip", fromTypeKey: "EquipmentOEE", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "dt_for_equip", fromTypeKey: "EquipmentDowntime", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "alarm_for_equip", fromTypeKey: "EquipmentAlarm", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "maint_for_equip", fromTypeKey: "MaintenanceOrder", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder", cardinality: "N:1" }, // equip
+    { key: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line", cardinality: "N:1" }, // people
+    { key: "cert_for_operator", fromTypeKey: "OperatorSkillCert", toTypeKey: "OperatorAttendance", cardinality: "N:1" }, // people
   ];
 }
 
@@ -1478,6 +1743,23 @@ export interface GeneratedBattery {
   sopVersionRows: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
+  // Phase 3 MES Domain
+  workOrders: Record<string, unknown>[];
+  productionSchedules: Record<string, unknown>[];
+  shiftPlans: Record<string, unknown>[];
+  wipLots: Record<string, unknown>[];
+  wipMoves: Record<string, unknown>[];
+  wipQualityCheckpoints: Record<string, unknown>[];
+  qualityLots: Record<string, unknown>[];
+  inspectionResults: Record<string, unknown>[];
+  defectRecords: Record<string, unknown>[];
+  equipmentOEEs: Record<string, unknown>[];
+  equipmentDowntimes: Record<string, unknown>[];
+  equipmentAlarms: Record<string, unknown>[];
+  maintenanceOrders: Record<string, unknown>[];
+  sparePartConsumptions: Record<string, unknown>[];
+  operatorAttendances: Record<string, unknown>[];
+  operatorSkillCerts: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -1529,11 +1811,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     agingCapDaily: 0,
     // SA-4：factory 台账字段（R12 全建模对齐，确定性映射守 R6）
     factory_code: `${b.baseId.slice(0, 2).toUpperCase()}01`,
-    province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", luoyang: "河南" } as Record<string, string>)[b.baseId] ?? b.baseId,
+    province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", jinhua: "浙江", yangzhou: "江苏" } as Record<string, string>)[b.baseId] ?? b.baseId,
     city: b.name,
     factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
     status: "运营中",
-    start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", luoyang: "2020-08-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
+    start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
   }));
 
   // Phase 2 Wave 1：产品域基础（ProductPlatform / ProductSeries / ProductVersion）
@@ -2227,7 +2509,340 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { altId: "ALT-005", primaryMaterialId: "cu_foil", alternativeMaterialId: "al_foil", priority: 2, approvalStatus: "待审批", effectiveDate: undefined, expireDate: undefined, changeReason: "成本优化评估", verifiedBy: undefined, verifiedDate: undefined },
   ];
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
+  // Phase 3 MES Domain: Production Planning
+  const rngMES = mulberry32(seed ^ hashString("mes"));
+  const workOrders: Record<string, unknown>[] = [];
+  const productionSchedules: Record<string, unknown>[] = [];
+  const shiftPlans: Record<string, unknown>[] = [];
+  const wipLots: Record<string, unknown>[] = [];
+  const wipMoves: Record<string, unknown>[] = [];
+  const wipQualityCheckpoints: Record<string, unknown>[] = [];
+  const qualityLots: Record<string, unknown>[] = [];
+  const inspectionResults: Record<string, unknown>[] = [];
+  const defectRecords: Record<string, unknown>[] = [];
+  const equipmentOEEs: Record<string, unknown>[] = [];
+  const equipmentDowntimes: Record<string, unknown>[] = [];
+  const equipmentAlarms: Record<string, unknown>[] = [];
+  const maintenanceOrders: Record<string, unknown>[] = [];
+  const sparePartConsumptions: Record<string, unknown>[] = [];
+  const operatorAttendances: Record<string, unknown>[] = [];
+  const operatorSkillCerts: Record<string, unknown>[] = [];
+
+  // MES generation helpers
+  const MES_STATUSES = {
+    wo: ["已排产", "生产中", "已完成", "已关闭"],
+    sched: ["已确认", "已执行", "已取消"],
+    wip: ["在制", "待检", "合格", "报废"],
+    qlot: ["待检", "合格", "不合格", "特采"],
+    insp: ["合格", "不合格"],
+    defect: ["外观", "尺寸", "性能", "安全"],
+    severity: ["轻微", "一般", "严重"],
+    dtReason: ["故障", "换型", "待料", "计划停机", "其他"],
+    alarmLevel: ["提示", "警告", "紧急"],
+    alarmStatus: ["活跃", "已确认", "已清除"],
+    maintType: ["预防性", "预测性", " corrective"],
+    maintPriority: ["低", "中", "高", "紧急"],
+    maintStatus: ["待执行", "执行中", "已完成", "已取消"],
+    attStatus: ["正常", "迟到", "早退", "缺勤"],
+    skillLevel: ["初级", "中级", "高级", "技师"],
+    certStatus: ["有效", "过期", "吊销"],
+  };
+
+  const WO_MODELS = ["4680-NCM", "4680-LFP", "方形-LFP", "储能-280Ah", "储能-314Ah"];
+
+  // WorkOrders: 2 per line (deterministic, using rngMES)
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    for (let w = 0; w < 2; w++) {
+      const modelId = WO_MODELS[hashString(`${lineId}_wo${w}`) % WO_MODELS.length]!;
+      const qtyPlanned = 500 + (hashString(`${lineId}_wo${w}q`) % 1500);
+      const qtyActual = Math.floor(qtyPlanned * (0.85 + (hashString(`${lineId}_wo${w}a`) % 15) / 100));
+      const startOffset = hashString(`${lineId}_wo${w}s`) % 14;
+      const startDate = isoDate(t0 + startOffset * 86400000);
+      const endDate = isoDate(t0 + (startOffset + 7 + (hashString(`${lineId}_wo${w}e`) % 7)) * 86400000);
+      const woId = `WO-${lineId}-${w}`;
+      workOrders.push({
+        woId,
+        moNo: `MO-${woId}`,
+        modelId,
+        lineId,
+        baseId,
+        qtyPlanned,
+        qtyActual,
+        startDate,
+        endDate,
+        status: MES_STATUSES.wo[w % MES_STATUSES.wo.length],
+      });
+
+      // ProductionSchedule per WorkOrder: 2-3 schedules
+      const nSched = 2 + (hashString(woId) % 2);
+      for (let s = 0; s < nSched; s++) {
+        productionSchedules.push({
+          schedId: `SCH-${woId}-${s}`,
+          woId,
+          lineId,
+          shift: s % 2 === 0 ? "白班" : "夜班",
+          scheduledDate: isoDate(t0 + (startOffset + s) * 86400000),
+          qty: Math.floor(qtyPlanned / nSched),
+          priority: 1 + (hashString(`${woId}_sch${s}`) % 5),
+          status: MES_STATUSES.sched[s % MES_STATUSES.sched.length],
+        });
+      }
+
+      // WIPLot per WorkOrder
+      const wipQty = Math.floor(qtyPlanned * 0.9);
+      const wipStatus = MES_STATUSES.wip[hashString(`${woId}_wip`) % MES_STATUSES.wip.length];
+      wipLots.push({
+        lotId: `LOT-${woId}`,
+        woId,
+        modelId,
+        lineId,
+        currentProcess: "涂布",
+        qty: wipQty,
+        status: wipStatus,
+        startTime: startDate,
+        lastMoveTime: isoDate(t0 + (startOffset + 2) * 86400000),
+      });
+
+      // WIPMove per WIPLot: 2-4 moves
+      const processesMES = ["涂布", "辊压", "分切", "卷绕", "装配", "注液", "化成", "分容"];
+      const nMoves = 2 + (hashString(`${woId}_move`) % 3);
+      for (let m = 0; m < nMoves; m++) {
+        wipMoves.push({
+          moveId: `MV-${woId}-${m}`,
+          lotId: `LOT-${woId}`,
+          fromProcess: processesMES[m],
+          toProcess: processesMES[m + 1] ?? "PACK",
+          qty: Math.floor(wipQty * (0.9 + (hashString(`${woId}_mv${m}`) % 10) / 100)),
+          moveTime: isoDate(t0 + (startOffset + m) * 86400000),
+          operatorId: `OP-${hashString(`${woId}_op${m}`) % 100}`,
+        });
+      }
+
+      // WIPQualityCheckpoint per WIPLot: 1-2 checkpoints
+      const nChk = 1 + (hashString(`${woId}_chk`) % 2);
+      for (let c = 0; c < nChk; c++) {
+        wipQualityCheckpoints.push({
+          checkpointId: `CHK-${woId}-${c}`,
+          lotId: `LOT-${woId}`,
+          processName: processesMES[c + 2] ?? "化成",
+          checkType: ["首检", "巡检", "末检"][hashString(`${woId}_ct${c}`) % 3],
+          result: hashString(`${woId}_cr${c}`) % 10 < 9 ? "通过" : "不通过",
+          checkTime: isoDate(t0 + (startOffset + c + 1) * 86400000),
+          inspectorId: `INSP-${hashString(`${woId}_insp${c}`) % 20}`,
+        });
+      }
+
+      // QualityLot per WorkOrder
+      const batchSize = qtyPlanned;
+      const sampleSize = Math.max(5, Math.floor(batchSize * 0.02));
+      const passQty = Math.floor(sampleSize * (0.92 + (hashString(`${woId}_qp`) % 8) / 100));
+      const failQty = sampleSize - passQty;
+      qualityLots.push({
+        qlotId: `QLOT-${woId}`,
+        woId,
+        modelId,
+        lineId,
+        batchSize,
+        sampleSize,
+        passQty,
+        failQty,
+        status: failQty === 0 ? "合格" : failQty < 3 ? "特采" : "不合格",
+        inspectDate: endDate,
+      });
+
+      // InspectionResult per QualityLot (simplified: 2 results)
+      for (let r = 0; r < 2; r++) {
+        const measured = 0.95 + (hashString(`${woId}_ir${r}`) % 10) / 100;
+        inspectionResults.push({
+          resultId: `IR-${woId}-${r}`,
+          qlotId: `QLOT-${woId}`,
+          charId: `CHAR-QS-${modelId}-CAP-${r}`,
+          measuredValue: round(measured, 3),
+          targetValue: 0.98,
+          upperLimit: 1.0,
+          lowerLimit: 0.95,
+          result: measured >= 0.95 ? "合格" : "不合格",
+          inspectTime: endDate,
+        });
+      }
+
+      // DefectRecord (sparse: ~30% of WOs)
+      if (hashString(`${woId}_def`) % 3 === 0) {
+        defectRecords.push({
+          defectId: `DEF-${woId}`,
+          qlotId: `QLOT-${woId}`,
+          lotId: `LOT-${woId}`,
+          defectType: MES_STATUSES.defect[hashString(`${woId}_dt`) % MES_STATUSES.defect.length],
+          severity: MES_STATUSES.severity[hashString(`${woId}_sev`) % MES_STATUSES.severity.length],
+          qty: 1 + (hashString(`${woId}_dq`) % 5),
+          description: "过程异常",
+          foundAt: isoDate(t0 + (startOffset + 3) * 86400000),
+          processName: "涂布",
+        });
+      }
+    }
+  }
+
+  // EquipmentOEE / Downtime / Alarm per equipment (daily snapshot for past 7 days)
+  const today = t0;
+  for (const eq of equipment) {
+    const equipId = eq.equipId as string;
+    const lineId = eq.lineId as string;
+    const baseId = eq.baseId as string;
+    // OEE snapshot for past 7 days
+    for (let d = 0; d < 7; d++) {
+      const avail = round(0.85 + (hashString(`${equipId}_oee${d}`) % 15) / 100, 3);
+      const perf = round(0.88 + (hashString(`${equipId}_perf${d}`) % 10) / 100, 3);
+      const qual = round(0.95 + (hashString(`${equipId}_qual${d}`) % 5) / 100, 3);
+      equipmentOEEs.push({
+        oeeId: `OEE-${equipId}-${d}`,
+        equipId,
+        lineId,
+        baseId,
+        date: isoDate(today - d * 86400000),
+        availability: avail,
+        performance: perf,
+        quality: qual,
+        oee: round(avail * perf * qual, 3),
+        plannedProductionTime: 480,
+        actualProductionTime: round(480 * avail, 0),
+      });
+    }
+    // Downtime (sparse: ~20% of equipment)
+    if (hashString(`${equipId}_dt`) % 5 === 0) {
+      const dur = 15 + (hashString(`${equipId}_dur`) % 120);
+      equipmentDowntimes.push({
+        dtId: `DT-${equipId}`,
+        equipId,
+        lineId,
+        baseId,
+        startTime: isoDate(today - (hashString(`${equipId}_dts`) % 3) * 86400000) + "T08:00:00Z",
+        endTime: isoDate(today - (hashString(`${equipId}_dts`) % 3) * 86400000) + `T${String(8 + Math.floor(dur / 60)).padStart(2, "0")}:${String(dur % 60).padStart(2, "0")}:00Z`,
+        durationMin: dur,
+        reason: MES_STATUSES.dtReason[hashString(`${equipId}_dtr`) % MES_STATUSES.dtReason.length],
+        status: "已恢复",
+      });
+    }
+    // Alarm (sparse: ~15% of equipment)
+    if (hashString(`${equipId}_al`) % 7 === 0) {
+      equipmentAlarms.push({
+        alarmId: `ALM-${equipId}`,
+        equipId,
+        lineId,
+        alarmCode: `ALM-${hashString(`${equipId}_ac`) % 100}`,
+        alarmLevel: MES_STATUSES.alarmLevel[hashString(`${equipId}_alv`) % MES_STATUSES.alarmLevel.length],
+        message: "设备异常告警",
+        triggeredAt: isoDate(today - (hashString(`${equipId}_at`) % 2) * 86400000) + "T10:00:00Z",
+        clearedAt: isoDate(today - (hashString(`${equipId}_at`) % 2) * 86400000) + "T12:00:00Z",
+        status: "已清除",
+      });
+    }
+  }
+
+  // MaintenanceOrder per equipment (sparse: ~25%)
+  for (const eq of equipment) {
+    const equipId = eq.equipId as string;
+    if (hashString(`${equipId}_mo`) % 4 !== 0) continue;
+    const lineId = eq.lineId as string;
+    const baseId = eq.baseId as string;
+    const moId = `MO-${equipId}`;
+    const plannedStartOffset = hashString(`${equipId}_ps`) % 14;
+    const plannedEndOffset = plannedStartOffset + 1 + (hashString(`${equipId}_pe`) % 3);
+    maintenanceOrders.push({
+      moId,
+      equipId,
+      lineId,
+      baseId,
+      maintType: MES_STATUSES.maintType[hashString(`${equipId}_mt`) % MES_STATUSES.maintType.length],
+      priority: MES_STATUSES.maintPriority[hashString(`${equipId}_mp`) % MES_STATUSES.maintPriority.length],
+      plannedStart: isoDate(t0 + plannedStartOffset * 86400000),
+      plannedEnd: isoDate(t0 + plannedEndOffset * 86400000),
+      actualStart: isoDate(t0 + plannedStartOffset * 86400000),
+      actualEnd: isoDate(t0 + (plannedEndOffset - 1) * 86400000),
+      status: "已完成",
+    });
+    // SparePartConsumption per MaintenanceOrder
+    sparePartConsumptions.push({
+      consumptionId: `SPC-${moId}`,
+      moId,
+      partCode: `PART-${hashString(`${equipId}_part`) % 100}`,
+      partName: "备件",
+      qtyUsed: 1 + (hashString(`${equipId}_pq`) % 5),
+      unit: "个",
+      consumedAt: isoDate(t0 + plannedStartOffset * 86400000),
+    });
+  }
+
+  // ShiftPlan per line (2 shifts per day for 7 days)
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    for (let d = 0; d < 7; d++) {
+      for (const shiftName of ["白班", "夜班"]) {
+        const plannedHC = 8 + (hashString(`${lineId}_sh${d}_${shiftName}`) % 8);
+        const actualHC = Math.max(0, plannedHC - (hashString(`${lineId}_ah${d}_${shiftName}`) % 3));
+        shiftPlans.push({
+          shiftId: `SHIFT-${lineId}-${d}-${shiftName}`,
+          lineId,
+          baseId,
+          shiftName: `${l.name}${shiftName}`,
+          plannedHeadcount: plannedHC,
+          actualHeadcount: actualHC,
+          date: isoDate(t0 + d * 86400000),
+          hours: shiftName === "白班" ? 11 : 11,
+        });
+      }
+    }
+  }
+
+  // OperatorAttendance per line (2 operators per shift, 7 days)
+  const operatorPool = Array.from({ length: 50 }, (_, i) => ({ id: `OP-${String(i + 1).padStart(3, "0")}`, name: `操作工${i + 1}` }));
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    for (let d = 0; d < 7; d++) {
+      for (const shiftName of ["白班", "夜班"]) {
+        const op = operatorPool[hashString(`${lineId}_att${d}_${shiftName}`) % operatorPool.length]!;
+        const hours = 10 + (hashString(`${lineId}_hrs${d}_${shiftName}`) % 2);
+        operatorAttendances.push({
+          attId: `ATT-${lineId}-${d}-${shiftName}`,
+          operatorId: op.id,
+          operatorName: op.name,
+          lineId,
+          baseId,
+          date: isoDate(t0 + d * 86400000),
+          shift: shiftName,
+          checkIn: isoDate(t0 + d * 86400000) + "T08:00:00Z",
+          checkOut: isoDate(t0 + d * 86400000) + `T${String(8 + hours).padStart(2, "0")}:00:00Z`,
+          hoursWorked: hours,
+          status: MES_STATUSES.attStatus[hashString(`${lineId}_as${d}_${shiftName}`) % MES_STATUSES.attStatus.length],
+        });
+      }
+    }
+  }
+
+  // OperatorSkillCert (deterministic per operator)
+  const skillPool = ["涂布操作", "卷绕操作", "化成操作", "PACK操作", "质检操作"];
+  for (const op of operatorPool) {
+    const nSkills = 1 + (hashString(op.id) % 3);
+    for (let s = 0; s < nSkills; s++) {
+      const skill = skillPool[hashString(`${op.id}_sk${s}`) % skillPool.length]!;
+      operatorSkillCerts.push({
+        certId: `CERT-${op.id}-${s}`,
+        operatorId: op.id,
+        skillName: skill,
+        skillLevel: MES_STATUSES.skillLevel[hashString(`${op.id}_sl${s}`) % MES_STATUSES.skillLevel.length],
+        certifiedBy: "培训部",
+        certifiedDate: "2024-01-15",
+        expireDate: "2026-01-15",
+        status: MES_STATUSES.certStatus[hashString(`${op.id}_cs${s}`) % MES_STATUSES.certStatus.length],
+      });
+    }
+  }
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
 }
 
 // ---------------------------------------------------------------------------
