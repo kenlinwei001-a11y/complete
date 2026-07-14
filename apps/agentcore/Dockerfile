@@ -4,11 +4,13 @@ RUN corepack enable
 WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/llm-adapters/package.json packages/llm-adapters/
 COPY apps/agentcore/package.json apps/agentcore/
-RUN pnpm install --frozen-lockfile --filter agentcore... --filter @platform/contracts...
+RUN pnpm install --frozen-lockfile --filter agentcore... --filter @platform/contracts... --filter @platform/llm-adapters...
 COPY packages/contracts packages/contracts
+COPY packages/llm-adapters packages/llm-adapters
 COPY apps/agentcore apps/agentcore
-RUN pnpm --filter @platform/contracts build && pnpm --filter agentcore build
+RUN pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build && pnpm --filter agentcore build
 RUN pnpm --filter agentcore --prod deploy /out
 
 FROM node:20-alpine
