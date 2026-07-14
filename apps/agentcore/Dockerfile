@@ -6,7 +6,8 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/llm-adapters/package.json packages/llm-adapters/
 COPY apps/agentcore/package.json apps/agentcore/
-RUN pnpm install --frozen-lockfile --filter agentcore... --filter @platform/contracts... --filter @platform/llm-adapters...
+# 不锁 lockfile：workspace 包在 monorepo 中可能未完整锁定，先确保全部安装
+RUN pnpm install
 COPY packages/contracts packages/contracts
 COPY packages/llm-adapters packages/llm-adapters
 COPY apps/agentcore apps/agentcore
