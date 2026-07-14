@@ -5,11 +5,13 @@ RUN corepack enable
 WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/llm-adapters/package.json packages/llm-adapters/package.json
 COPY apps/datacore/package.json apps/datacore/package.json
-RUN pnpm install --frozen-lockfile --filter datacore... --filter @platform/contracts...
+RUN pnpm install --frozen-lockfile --filter datacore... --filter @platform/contracts... --filter @platform/llm-adapters...
 COPY packages/contracts packages/contracts
+COPY packages/llm-adapters packages/llm-adapters
 COPY apps/datacore apps/datacore
-RUN pnpm --filter @platform/contracts build && pnpm --filter datacore build
+RUN pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build && pnpm --filter datacore build
 # Strip dev dependencies for the runtime image.
 RUN pnpm prune --prod
 
