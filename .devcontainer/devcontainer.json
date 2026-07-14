@@ -14,7 +14,6 @@
     "5432": { "label": "PostgreSQL" }
   },
   "postCreateCommand": "pnpm install",
-  "postStartCommand": "nohup bash -c 'for i in {1..10}; do docker compose up -d \u0026\u0026 break; sleep 15; done' \u003e /tmp/docker-compose.log 2\u003e\u00261 \u0026",
   "customizations": {
     "vscode": {
       "extensions": [
