@@ -164,7 +164,7 @@ export function foldOldestFrame(messages: LlmAgentMessage[], frames: IterationFr
   const msg = messages[frame.toolResultMsgIndex];
   if (msg && Array.isArray(msg.content)) {
     let ti = 0;
-    msg.content = msg.content.map((b: LlmContentBlock) => {
+    msg.content = msg.content.map((b) => {
       if (b.type !== "tool_result") return b;
       const meta = frame.tools[ti++] ?? { name: "tool", firstLine: "" };
       return {
