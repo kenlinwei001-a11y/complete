@@ -1,6 +1,6 @@
 {
   "name": "Decision OS Dev",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20-bookworm",
   "forwardPorts": [5173, 4001, 4002],
   "postCreateCommand": "pnpm install"
 }
