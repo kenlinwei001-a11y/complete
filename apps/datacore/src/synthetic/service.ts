@@ -30,6 +30,7 @@ import {
   batteryObjectTypes,
   generateBattery,
   generatePlanDomain,
+  BINDINGS,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
@@ -504,6 +505,39 @@ export class SyntheticService {
     return conn.id;
   }
 
+  /**
+   * SEED_DEMO 多源系统连接：补齐 mock 中 8 个 connections（ERP/CRM/IoT/PLM/MES/QMS/SRM），
+   * 使数据接入控制台按源系统分组展示，RawDataset 的 dataset 名与 BINDINGS 一致（plm_platforms 等）。
+   */
+  private async ensureSourceConnections(ctx: AuthCtx): Promise<Map<string, string>> {
+    const defs = [
+      { id: "conn-erp", connectorTypeKey: "mock_erp", name: "ERP 主数据" },
+      { id: "conn-crm", connectorTypeKey: "rest_api", name: "CRM 订单" },
+      { id: "conn-iot", connectorTypeKey: "rest_api", name: "IoT 时序通道" },
+      { id: "conn-plm", connectorTypeKey: "rest_api", name: "PLM 产品生命周期管理" },
+      { id: "conn-mes", connectorTypeKey: "rest_api", name: "MES 制造执行系统" },
+      { id: "conn-qms", connectorTypeKey: "rest_api", name: "QMS 质量管理系统" },
+      { id: "conn-srm", connectorTypeKey: "rest_api", name: "SRM 供应商关系管理" },
+    ];
+    const map = new Map<string, string>();
+    for (const d of defs) {
+      const existing = await this.repos.connections.get(ctx.tenantId, d.id);
+      if (existing) { map.set(d.id, existing.id); continue; }
+      const conn: Connection = {
+        id: d.id,
+        tenantId: ctx.tenantId,
+        connectorTypeKey: d.connectorTypeKey,
+        name: d.name,
+        config: {},
+        status: "ACTIVE",
+        lastSyncAt: new Date().toISOString(),
+      };
+      await this.repos.connections.put(conn);
+      map.set(d.id, conn.id);
+    }
+    return map;
+  }
+
   private async instantiateBattery(
     ctx: AuthCtx,
     seed: number,
@@ -535,14 +569,19 @@ export class SyntheticService {
     // RawDataset(原始行)→物化为对象"的真链路；每对象 origin 记 rawDatasetId/rawRowIdx，使数据源页
     // 可见原始数据、推演结果可溯回源头。确定性：连接/原始表/对象/backref 均由 (industry,scale,seed) 决定。
     const synthConnId = await this.ensureSyntheticConnection(ctx);
+    const sourceConnMap = await this.ensureSourceConnections(ctx);
     const putAll = async (type: string, rows: Record<string, unknown>[], pk: string) => {
-      // ① 原始表：一对象类型一张 RawDataset（按 连接+名 幂等复用 id），原始行可经 /a/v1/raw-datasets 查看
-      const existingDs = (await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.sourceConnId === synthConnId && d.name === type))[0];
+      // 按 BINDINGS 取源系统连接与数据集名（使数据接入控制台按 ERP/PLM/MES/QMS/SRM/IoT 分组展示）
+      const binding = BINDINGS[type]?.[0];
+      const sourceConnId = binding ? (sourceConnMap.get(binding.connId) ?? synthConnId) : synthConnId;
+      const dsName = binding ? binding.dataset : type;
+      // ① 原始表：按 连接+数据集名 幂等复用 id，原始行可经 /a/v1/raw-datasets 查看
+      const existingDs = (await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.sourceConnId === sourceConnId && d.name === dsName))[0];
       const ds: RawDataset = {
         id: existingDs?.id ?? newId("rds"),
         tenantId: ctx.tenantId,
-        sourceConnId: synthConnId,
-        name: type,
+        sourceConnId,
+        name: dsName,
         fields: profileRows(rows),
         rowCount: rows.length,
         syncedAt: new Date().toISOString(),
@@ -562,14 +601,29 @@ export class SyntheticService {
           tenantId: ctx.tenantId,
           type,
           props: row,
-          origin: { ...origin, sourceConnId: synthConnId, rawDatasetId: ds.id, rawRowIdx: idx },
+          origin: { ...origin, sourceConnId, rawDatasetId: ds.id, rawRowIdx: idx },
         });
         idx++;
         n++;
       }
     };
     await putAll("Base", g.bases, "baseId");
+    await putAll("ProductPlatform", g.productPlatforms, "platformId");
+    await putAll("ProductSeries", g.productSeries, "seriesId");
     await putAll("Model", g.models, "modelId");
+    await putAll("ProductVersion", g.productVersions, "versionId");
+    await putAll("BOMHeader", g.bomHeaders, "bomId");
+    await putAll("BOMDetail", g.bomDetails, "bomDetailId");
+    await putAll("Routing", g.routings, "routingId");
+    await putAll("Operation", g.operations, "operationId");
+    await putAll("ProcessCapabilityWindow", g.processCapabilities, "capabilityId");
+    await putAll("QualityStandard", g.qualityStandards, "standardId");
+    await putAll("InspectionCharacteristic", g.inspectionCharacteristics, "charId");
+    await putAll("ProductLineCapability", g.productLineCapabilities, "capId");
+    await putAll("ProductEquipmentCapability", g.productEquipmentCapabilities, "equipCapId");
+    await putAll("EngineeringChange", g.engineeringChanges, "changeId");
+    await putAll("MaterialAlternative", g.materialAlternatives, "altId");
+    await putAll("Workshop", g.workshops, "workshopId");
     await putAll("Order", g.orders, "so");
     await putAll("Line", g.lines, "lineId");
     await putAll("Process", g.processes, "processId");
@@ -597,6 +651,7 @@ export class SyntheticService {
     }
     const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
     await putAll("Material", ext.materials, "matId");
+    await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
@@ -659,9 +714,57 @@ export class SyntheticService {
         origin,
       });
     };
-    // factory: Line → Base（Line.baseId）
+    // product: Series → Platform（series.platformId）
+    for (const s of g.productSeries) await putLink(`lnk_sbp_${s.seriesId}`, "series_belongs_to_platform", oid("ProductSeries", s.seriesId), oid("ProductPlatform", s.platformId));
+    // product: Model → Series（model.seriesId）
+    for (const m of g.models) {
+      const seriesId = m.seriesId as string | undefined;
+      if (seriesId) await putLink(`lnk_mbs_${m.modelId}`, "model_belongs_to_series", oid("Model", m.modelId), oid("ProductSeries", seriesId));
+    }
+    // product: Version → Model（version.modelId）
+    for (const v of g.productVersions) await putLink(`lnk_vbm_${v.versionId}`, "version_belongs_to_model", oid("ProductVersion", v.versionId), oid("Model", v.modelId));
+    // product: BOMHeader → ProductVersion（bom.versionId）
+    for (const bh of g.bomHeaders) await putLink(`lnk_bbv_${bh.bomId}`, "bom_belongs_to_version", oid("BOMHeader", bh.bomId), oid("ProductVersion", bh.versionId));
+    // product: BOMDetail → BOMHeader（detail.bomId）
+    for (const bd of g.bomDetails) await putLink(`lnk_dbb_${bd.bomDetailId}`, "detail_belongs_to_bom", oid("BOMDetail", bd.bomDetailId), oid("BOMHeader", bd.bomId));
+    // product: BOMDetail → Material（detail.materialId）
+    for (const bd of g.bomDetails) await putLink(`lnk_dum_${bd.bomDetailId}`, "detail_uses_material", oid("BOMDetail", bd.bomDetailId), oid("Material", bd.materialId));
+    // process: Routing → Model（routing.modelId）
+    for (const r of g.routings) await putLink(`lnk_rbm_${r.routingId}`, "routing_belongs_to_model", oid("Routing", r.routingId), oid("Model", r.modelId));
+    // process: Operation → Routing（operation.routingId）
+    for (const o of g.operations) await putLink(`lnk_obr_${o.operationId}`, "operation_belongs_to_routing", oid("Operation", o.operationId), oid("Routing", o.routingId));
+    // process: ProcessCapabilityWindow → Operation（capability.operationId）
+    for (const c of g.processCapabilities) await putLink(`lnk_cbo_${c.capabilityId}`, "capability_belongs_to_operation", oid("ProcessCapabilityWindow", c.capabilityId), oid("Operation", c.operationId));
+    // quality: QualityStandard → Model（standard.modelId）
+    for (const qs of g.qualityStandards) await putLink(`lnk_qsm_${qs.standardId}`, "standard_belongs_to_model", oid("QualityStandard", qs.standardId), oid("Model", qs.modelId));
+    // quality: InspectionCharacteristic → QualityStandard（char.standardId）
+    for (const ic of g.inspectionCharacteristics) await putLink(`lnk_cbs_${ic.charId}`, "char_belongs_to_standard", oid("InspectionCharacteristic", ic.charId), oid("QualityStandard", ic.standardId));
+    // factory: ProductLineCapability → Line（cap.lineId）
+    for (const plc of g.productLineCapabilities) await putLink(`lnk_plc_${plc.capId}`, "product_line_capability", oid("ProductLineCapability", plc.capId), oid("Line", plc.lineId));
+    // equip: ProductEquipmentCapability → Equipment（pec.equipmentId）
+    for (const pec of g.productEquipmentCapabilities) await putLink(`lnk_pec_${pec.equipCapId}`, "product_equip_capability", oid("ProductEquipmentCapability", pec.equipCapId), oid("Equipment", pec.equipmentId));
+    // lifecycle: EngineeringChange → Model（change.modelId）
+    for (const ec of g.engineeringChanges) await putLink(`lnk_cam_${ec.changeId}`, "change_affects_model", oid("EngineeringChange", ec.changeId), oid("Model", ec.modelId));
+    // supply: MaterialAlternative → Material（alt.primaryMaterialId）
+    for (const ma of g.materialAlternatives) await putLink(`lnk_afm_${ma.altId}`, "alt_for_material", oid("MaterialAlternative", ma.altId), oid("Material", ma.primaryMaterialId));
+    // supply: Material → Supplier（material.supplierId）
+    for (const m of ext.materials) {
+      const supplierId = (m as { supplierId?: string }).supplierId;
+      if (supplierId) await putLink(`lnk_msb_${(m as { matId: string }).matId}`, "material_supplied_by", oid("Material", (m as { matId: string }).matId), oid("Supplier", supplierId));
+    }
+
+    // factory: Base → Workshop（Workshop.baseId；方向翻转：Base 1:N Workshop）
+    for (const w of g.workshops) {
+      await putLink(`lnk_wbb_${w.workshopId}`, "workshop_belongs_to_base", oid("Base", w.baseId), oid("Workshop", w.workshopId));
+    }
+    // factory: Workshop → Line（Line 的 workshopId 从 lineId 派生：LINE-WS-{baseId}-{suffix}；方向翻转：Workshop 1:N Line）
     for (const l of g.lines) {
-      await putLink(`lnk_lbb_${l.lineId}`, "line_belongs_to_base", oid("Line", l.lineId), oid("Base", l.baseId));
+      const workshopId = (l.lineId as string).replace("LINE-", "");
+      await putLink(`lnk_lbw_${l.lineId}`, "line_belongs_to_workshop", oid("Workshop", workshopId), oid("Line", l.lineId));
+    }
+    // factory: Base → Line（Line.baseId，保留向后兼容；方向翻转：Base 1:N Line）
+    for (const l of g.lines) {
+      await putLink(`lnk_lbb_${l.lineId}`, "line_belongs_to_base", oid("Base", l.baseId), oid("Line", l.lineId));
     }
     // process: Line → Process（Process.lineId）
     for (const pr of g.processes) {

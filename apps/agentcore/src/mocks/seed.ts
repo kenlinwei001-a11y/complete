@@ -3,6 +3,7 @@ import {
   type AgentDefinition,
   type ExecutionPlan,
   type IntentDefinition,
+  type McpServerConfig,
   type ScenarioPackage,
   type SceneEntryConfig,
   type SkillDefinition,
@@ -565,6 +566,20 @@ export function seedRegistry(now = new Date().toISOString()): {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: "wf_seed_risk_digest", tenantId: SEED_TENANT, key: "risk_digest", version: 1,
+      name: "风险日报", description: "基地风险日报生成（query → solve → agent 总结 → render）",
+      inputs: { type: "object", properties: { base: { type: "string" }, horizon: { type: "number" } } },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Base", filter: { name: "{{slots.base}}" } } },
+        { id: "s2", type: "invoke_solver", params: { solverKey: "risk_timeline", args: { base: "{{steps.s1.output}}" } } },
+        { id: "s3", type: "invoke_agent", params: { agentId: "agt_seed_explore", version: "latest", prompt: "总结 {{steps.s2.output}}" } },
+        { id: "s4", type: "render_answer", params: { blocks: [] } },
+      ] as WorkflowDefinition["steps"],
+      status: "DRAFT",
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
   const skills: SkillDefinition[] = [
     {
@@ -572,6 +587,12 @@ export function seedRegistry(now = new Date().toISOString()): {
       name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
       body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
       resources: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_seed_sop_meeting", tenantId: SEED_TENANT, key: "sop_meeting", version: 1,
+      name: "S&OP 会议纪要技能", summary: "S&OP 会议纪要结构化要点。",
+      body: "# S&OP 会议纪要\n\n1. 需求侧：月度需求总量、分 segment 需求。\n2. 供给侧：可供给量、长协覆盖率、物料缺口。\n3. 财务侧：毛利率目标、现金安全垫、CAPEX。\n4. 行动项：责任人、完成时间、风险标记。",
+      resources: [], status: "DRAFT",
     },
   ];
   const agents: AgentDefinition[] = [
@@ -639,10 +660,88 @@ export function seedRegistry(now = new Date().toISOString()): {
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "PUBLISHED",
     },
+    {
+      id: "agt_risk_advisor", tenantId: SEED_TENANT, key: "risk_advisor", version: 1,
+      name: "风险顾问 Agent", description: "基地风险画像与越线根因分析（路径 A→B 混合）",
+      model: "claude-opus-4-8", systemPrompt: "你是电池制造场景的风险分析专家。专注于产能风险、物料齐套、交期风险的识别与根因归因。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "WORKFLOW", workflowId: "wf_seed_risk_digest", version: "latest" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process"], toolNames: ["query_objects", "invoke_solver", "evaluate_rules"] },
+      budget: { maxIterations: 8, maxToolCalls: 10 },
+      status: "DRAFT",
+    },
+    {
+      id: "agt_capacity_planner", tenantId: SEED_TENANT, key: "capacity_planner", version: 1,
+      name: "产能规划 Agent", description: "型号需求增量可行性评估与产能排程建议",
+      model: "claude-opus-4-8", systemPrompt: "你是产能规划专家，服务电池制造场景。评估需求增量可行性，识别瓶颈，给出排程与外协建议。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 8, maxToolCalls: 10 },
+      status: "DRAFT",
+    },
+    {
+      id: "agt_quality_inspector", tenantId: SEED_TENANT, key: "quality_inspector", version: 1,
+      name: "质量检验 Agent", description: "良率波动诊断与质量合规审查",
+      model: "claude-opus-4-8", systemPrompt: "你是质量分析专家。诊断良率波动根因，审查质量合规状态，输出改进建议。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Process", "Equipment", "QualityStandard"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6, maxToolCalls: 8 },
+      status: "DRAFT",
+    },
+    {
+      id: "agt_supply_chain", tenantId: SEED_TENANT, key: "supply_chain", version: 1,
+      name: "供应链 Agent", description: "物料齐套、库存优化与采购策略分析",
+      model: "claude-opus-4-8", systemPrompt: "你是供应链分析专家。分析物料齐套状态、库存水位、采购策略，识别断供风险。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6, maxToolCalls: 8 },
+      status: "DRAFT",
+    },
+    {
+      id: "agt_finance_analyst", tenantId: SEED_TENANT, key: "finance_analyst", version: 1,
+      name: "财务分析 Agent", description: "毛利评审、现金流与投资回报率分析",
+      model: "claude-opus-4-8", systemPrompt: "你是财务分析专家。评审接单毛利、分析现金流安全垫、评估 CAPEX 投资回报率。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["FinanceAccount", "FinanceMetric", "FinancePlan"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6, maxToolCalls: 8 },
+      status: "DRAFT",
+    },
+    {
+      id: "agt_carbon_auditor", tenantId: SEED_TENANT, key: "carbon_auditor", version: 1,
+      name: "碳审计 Agent", description: "产品碳足迹核算与欧盟碳护照合规审查",
+      model: "claude-opus-4-8", systemPrompt: "你是碳审计专家。核算电池产品碳足迹，审查欧盟碳护照合规性，输出减排建议。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Model", "Material", "CarbonFactor"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6, maxToolCalls: 8 },
+      status: "DRAFT",
+    },
   ];
   return { agents, workflows, skills };
 }
 
+/** MCP 服务器出厂种子（1 条演示配置，使 MCP 库页不为空）。 */
+export function seedMcpConfigs(): McpServerConfig[] {
+  return [
+    {
+      id: "mcp_seed_demo", tenantId: SEED_TENANT, name: "示例 MCP 服务器", serverName: "demo_server",
+      transport: { type: "streamable_http", url: "https://mcp.example.com" },
+      credentialRef: "cred-1", status: "ACTIVE", lifecycle: "PUBLISHED", version: 1,
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // 运营态出厂配置增量 §3：经验记忆库种子 50 案例。

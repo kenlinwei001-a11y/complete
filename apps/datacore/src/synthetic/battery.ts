@@ -370,6 +370,13 @@ const baseProps: PropertyDef[] = [
   { propKey: "lon", dataType: "number", isPrimaryKey: false },
   { propKey: "lat", dataType: "number", isPrimaryKey: false },
   { propKey: "position", dataType: "enum", isPrimaryKey: false },
+  // SA-4：factory 台账字段（R12 全建模对齐）
+  { propKey: "factory_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "province", dataType: "string", isPrimaryKey: false },
+  { propKey: "city", dataType: "string", isPrimaryKey: false },
+  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false }, // CELL | PACK | CELL+PACK
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运营中 | 在建 | 停产
+  { propKey: "start_date", dataType: "date", isPrimaryKey: false },
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
@@ -388,10 +395,215 @@ const modelProps: PropertyDef[] = [
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
   { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false },
+  // Phase 2：产品工程域扩展属性（R12 全建模对齐）
+  { propKey: "seriesId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductSeries" },
+  { propKey: "productCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "capacity", dataType: "number", isPrimaryKey: false }, // Ah
+  { propKey: "voltage", dataType: "number", isPrimaryKey: false }, // V
+  { propKey: "energy", dataType: "number", isPrimaryKey: false }, // Wh
+  { propKey: "dimension", dataType: "string", isPrimaryKey: false }, // 长×宽×高 mm
+  { propKey: "weight", dataType: "number", isPrimaryKey: false }, // g
+  { propKey: "applicationDomain", dataType: "enum", isPrimaryKey: false }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 量产 | 试产 | 研发中 | 退役
 ];
 const modelDerived: DerivedPropertyDef[] = [
   { propKey: "totalDemand", formula: "SUM(Order.qty BY model)" },
   { propKey: "orderCount", formula: "COUNT(Order.so BY model)" },
+];
+
+// Phase 2 Wave 1：产品域基础对象（ProductPlatform / ProductSeries / ProductVersion）
+const productPlatformProps: PropertyDef[] = [
+  { propKey: "platformId", dataType: "string", isPrimaryKey: true },
+  { propKey: "platformCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // LFP | 三元 | 固态
+  { propKey: "description", dataType: "string", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 退役 | 规划中
+];
+
+const productSeriesProps: PropertyDef[] = [
+  { propKey: "seriesId", dataType: "string", isPrimaryKey: true },
+  { propKey: "seriesCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "platformId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductPlatform" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // 280Ah储能 | 314Ah储能 | 4680动力 | 2170动力 | 刀片动力
+  { propKey: "voltageRange", dataType: "string", isPrimaryKey: false },
+  { propKey: "capacityRange", dataType: "string", isPrimaryKey: false },
+  { propKey: "targetMarket", dataType: "enum", isPrimaryKey: false }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 退役 | 开发中
+];
+
+const productVersionProps: PropertyDef[] = [
+  { propKey: "versionId", dataType: "string", isPrimaryKey: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "versionName", dataType: "string", isPrimaryKey: false },
+  { propKey: "ecnNumber", dataType: "string", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 量产 | 试产 | 研发中 | 退役
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
+];
+
+// Phase 2 Wave 3：BOM + 工艺路线 + 工序 + 工艺能力边界
+const bomHeaderProps: PropertyDef[] = [
+  { propKey: "bomId", dataType: "string", isPrimaryKey: true },
+  { propKey: "bomCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "bomName", dataType: "string", isPrimaryKey: false },
+  { propKey: "bomLevel", dataType: "number", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+const bomDetailProps: PropertyDef[] = [
+  { propKey: "bomDetailId", dataType: "string", isPrimaryKey: true },
+  { propKey: "bomId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "BOMHeader" },
+  { propKey: "materialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
+  { propKey: "sequence", dataType: "number", isPrimaryKey: false },
+  { propKey: "quantity", dataType: "number", isPrimaryKey: false },
+  { propKey: "lossRate", dataType: "number", isPrimaryKey: false },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false },
+  { propKey: "level", dataType: "number", isPrimaryKey: false },
+  { propKey: "parentItemId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
+  { propKey: "isKeyComponent", dataType: "boolean", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+];
+
+const routingProps: PropertyDef[] = [
+  { propKey: "routingId", dataType: "string", isPrimaryKey: true },
+  { propKey: "routingCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "routingName", dataType: "string", isPrimaryKey: false },
+  { propKey: "operationCount", dataType: "number", isPrimaryKey: false },
+  { propKey: "totalStandardTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "totalYield", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+];
+
+const operationProps: PropertyDef[] = [
+  { propKey: "operationId", dataType: "string", isPrimaryKey: true },
+  { propKey: "operationCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "routingId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Routing" },
+  { propKey: "operationSeq", dataType: "number", isPrimaryKey: false },
+  { propKey: "operationName", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "description", dataType: "string", isPrimaryKey: false },
+  { propKey: "operationType", dataType: "enum", isPrimaryKey: false },
+  { propKey: "standardTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false },
+  { propKey: "isCritical", dataType: "boolean", isPrimaryKey: false },
+  { propKey: "workCenterType", dataType: "enum", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+const processCapabilityProps: PropertyDef[] = [
+  { propKey: "capabilityId", dataType: "string", isPrimaryKey: true },
+  { propKey: "operationId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Operation" },
+  { propKey: "parameterName", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "paramCode", dataType: "string", isPrimaryKey: false },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false },
+  { propKey: "minValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "maxValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "tolerance", dataType: "number", isPrimaryKey: false },
+  { propKey: "ucl", dataType: "number", isPrimaryKey: false },
+  { propKey: "lcl", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+// Phase 2 Wave 4：质量标准 + 检验特性 + 制造能力
+const qualityStandardProps: PropertyDef[] = [
+  { propKey: "standardId", dataType: "string", isPrimaryKey: true },
+  { propKey: "standardCode", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "itemName", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "itemCode", dataType: "string", isPrimaryKey: false },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
+  { propKey: "toleranceUpper", dataType: "number", isPrimaryKey: false },
+  { propKey: "toleranceLower", dataType: "number", isPrimaryKey: false },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false },
+  { propKey: "testMethod", dataType: "string", isPrimaryKey: false },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+const inspectionCharacteristicProps: PropertyDef[] = [
+  { propKey: "charId", dataType: "string", isPrimaryKey: true },
+  { propKey: "standardId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityStandard" },
+  { propKey: "charName", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "charCode", dataType: "string", isPrimaryKey: false },
+  { propKey: "inspectionType", dataType: "enum", isPrimaryKey: false },
+  { propKey: "inspectionMethod", dataType: "string", isPrimaryKey: false },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false },
+  { propKey: "frequency", dataType: "string", isPrimaryKey: false },
+  { propKey: "controlMethod", dataType: "enum", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+const productLineCapabilityProps: PropertyDef[] = [
+  { propKey: "capId", dataType: "string", isPrimaryKey: true },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false },
+  { propKey: "maxCapacity", dataType: "number", isPrimaryKey: false },
+  { propKey: "cycleTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false },
+  { propKey: "changeoverTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "constraints", dataType: "string", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+const productEquipmentCapabilityProps: PropertyDef[] = [
+  { propKey: "equipCapId", dataType: "string", isPrimaryKey: true },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "equipmentId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false },
+  { propKey: "maxSpeed", dataType: "number", isPrimaryKey: false },
+  { propKey: "minSpeed", dataType: "number", isPrimaryKey: false },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "qualifiedOperators", dataType: "number", isPrimaryKey: false },
+  { propKey: "certificationRequired", dataType: "boolean", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+// Phase 2 Wave 5：工程变更历史
+const engineeringChangeProps: PropertyDef[] = [
+  { propKey: "changeId", dataType: "string", isPrimaryKey: true },
+  { propKey: "changeNumber", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "changeType", dataType: "enum", isPrimaryKey: false },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
+  { propKey: "description", dataType: "string", isPrimaryKey: false },
+  { propKey: "affectedObjects", dataType: "json", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "approvedBy", dataType: "string", isPrimaryKey: false },
+  { propKey: "approvedDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+];
+
+// Phase 2 Wave 2：物料替代关系
+const materialAlternativeProps: PropertyDef[] = [
+  { propKey: "altId", dataType: "string", isPrimaryKey: true },
+  { propKey: "primaryMaterialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
+  { propKey: "alternativeMaterialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false },
+  { propKey: "approvalStatus", dataType: "enum", isPrimaryKey: false },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
+  { propKey: "verifiedBy", dataType: "string", isPrimaryKey: false },
+  { propKey: "verifiedDate", dataType: "date", isPrimaryKey: false },
 ];
 
 const orderProps: PropertyDef[] = [
@@ -420,6 +632,11 @@ const lineProps: PropertyDef[] = [
   { propKey: "utilization", dataType: "number", isPrimaryKey: false },
   { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false },
   { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false },
+  // SA-5：产线台账字段（R12 全建模对齐）
+  { propKey: "line_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false }, // 件/日
+  { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // %
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运行中 | 停机 | 调试
 ];
 
 const processProps: PropertyDef[] = [
@@ -451,6 +668,20 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
   { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（时序 7d 加权物化，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
+  // SA-6：设备台账字段（R12 全建模对齐）
+  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线
+  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false },
+  { propKey: "install_date", dataType: "date", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 维修中 | 待报废
+];
+
+// SA-3：车间对象属性（Base↔Workshop↔Line 四层结构）
+const workshopProps: PropertyDef[] = [
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "processType", dataType: "enum", isPrimaryKey: false }, // 制浆 | 涂布 | 辊压 | 分切 | 卷绕 | 装配 | 注液 | 化成 | 分容 | PACK
 ];
 
 const maintPlanProps: PropertyDef[] = [
@@ -611,23 +842,35 @@ const planTargetProps: PropertyDef[] = [
 ];
 
 /** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
-const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
-  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION" } }],
+export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
+  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION", factory_code: "FACTORY_CODE", province: "PROVINCE", city: "CITY", factory_type: "FACTORY_TYPE", status: "STATUS", start_date: "START_DATE" } }],
   Model: [{ connId: "conn-plm", dataset: "plm_models", fieldMappings: { modelId: "MODEL_ID", name: "MODEL_NAME", unitPrice: "UNIT_PRICE" } }],
   Order: [{ connId: "conn-erp", dataset: "erp_sales_orders", fieldMappings: { so: "SO_NO", cust: "CUSTOMER", model: "MODEL_ID", qty: "QTY", due: "DUE_DATE", status: "STATUS" } }],
-  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME" } }],
+  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME", line_code: "LINE_CODE", max_capacity_day: "MAX_CAP_DAY", target_yield: "TARGET_YIELD", status: "STATUS" } }],
+  Workshop: [{ connId: "conn-mes", dataset: "mes_workshops", fieldMappings: { workshopId: "WS_ID", baseId: "BASE_ID", name: "WS_NAME", processType: "PROC_TYPE" } }],
   Process: [{ connId: "conn-mes", dataset: "mes_processes", fieldMappings: { processId: "PROC_ID", lineId: "LINE_ID", name: "PROC_NAME", kind: "PROC_KIND", yield: "YIELD" } }],
-  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q" } }],
+  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q", equipment_code: "EQUIP_CODE", equipment_type: "EQUIP_TYPE", manufacturer: "MANUFACTURER", install_date: "INSTALL_DATE", status: "STATUS" } }],
   MaintPlan: [{ connId: "conn-mes", dataset: "mes_maint_plans", fieldMappings: { planId: "PLAN_ID", baseId: "BASE_ID", week: "PLAN_WEEK" } }],
   Segment: [{ connId: "conn-erp", dataset: "erp_segments", fieldMappings: { segKey: "SEG_KEY", name: "SEG_NAME", gmRate: "GM_RATE" } }],
   Shipment: [{ connId: "conn-srm", dataset: "srm_shipments", fieldMappings: { shipId: "SHIP_ID", baseId: "BASE_ID", etaDay: "ETA_DAY", qtyTons: "QTY_TONS" } }],
   DataSourceHealth: [{ connId: "conn-iot", dataset: "iot_source_health", fieldMappings: { sourceId: "SOURCE_ID", lagHours: "LAG_HOURS" } }],
+  // Phase 2：产品工程域源系统绑定
+  ProductPlatform: [{ connId: "conn-plm", dataset: "plm_platforms", fieldMappings: { platformId: "PLATFORM_ID", platformCode: "PLATFORM_CODE", name: "PLATFORM_NAME", category: "CATEGORY", status: "STATUS" } }],
+  ProductSeries: [{ connId: "conn-plm", dataset: "plm_series", fieldMappings: { seriesId: "SERIES_ID", seriesCode: "SERIES_CODE", platformId: "PLATFORM_ID", name: "SERIES_NAME", category: "CATEGORY", voltageRange: "VOLTAGE_RANGE", capacityRange: "CAP_RANGE", targetMarket: "TARGET_MARKET", status: "STATUS" } }],
+  ProductVersion: [{ connId: "conn-plm", dataset: "plm_versions", fieldMappings: { versionId: "VERSION_ID", modelId: "MODEL_ID", versionCode: "VERSION_CODE", versionName: "VERSION_NAME", ecnNumber: "ECN_NO", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", status: "STATUS", changeReason: "CHANGE_REASON" } }],
+  MaterialAlternative: [{ connId: "conn-plm", dataset: "plm_material_alts", fieldMappings: { altId: "ALT_ID", primaryMaterialId: "PRIMARY_MAT_ID", alternativeMaterialId: "ALT_MAT_ID", priority: "PRIORITY", approvalStatus: "APPROVAL_STATUS", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", changeReason: "CHANGE_REASON", verifiedBy: "VERIFIED_BY", verifiedDate: "VERIFIED_DATE" } }],
 };
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
-  Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+  ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
+  BOMHeader: "product", BOMDetail: "product", Routing: "process", Operation: "process", ProcessCapabilityWindow: "process",
+  QualityStandard: "quality", InspectionCharacteristic: "quality",
+  ProductLineCapability: "factory", ProductEquipmentCapability: "equip",
+  EngineeringChange: "product", MaterialAlternative: "supply",
+  Supplier: "supply",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   // cockpit P1 绿地
   DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
@@ -668,8 +911,23 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
   return [
     { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
     { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
+    plain("ProductPlatform", "产品平台", productPlatformProps),
+    plain("ProductSeries", "产品系列", productSeriesProps),
+    plain("ProductVersion", "产品版本", productVersionProps),
+    plain("BOMHeader", "BOM主表", bomHeaderProps),
+    plain("BOMDetail", "BOM明细", bomDetailProps),
+    plain("Routing", "工艺路线", routingProps),
+    plain("Operation", "工序定义", operationProps),
+    plain("ProcessCapabilityWindow", "工艺能力边界", processCapabilityProps),
+    plain("QualityStandard", "质量标准", qualityStandardProps),
+    plain("InspectionCharacteristic", "检验特性", inspectionCharacteristicProps),
+    plain("ProductLineCapability", "产品产线能力", productLineCapabilityProps),
+    plain("ProductEquipmentCapability", "产品设备能力", productEquipmentCapabilityProps),
+    plain("EngineeringChange", "工程变更", engineeringChangeProps),
+    plain("MaterialAlternative", "物料替代关系", materialAlternativeProps),
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
     plain("Line", "产线", lineProps),
+    plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
     plain("MaintPlan", "检修计划", maintPlanProps),
@@ -699,8 +957,33 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "order_for_model", fromTypeKey: "Order", toTypeKey: "Model", cardinality: "1:N" },
     // §S1.2: certification state lives on the model↔line edge (props.status 量产 | 认证中).
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
-    // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
-    { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:N" }, // factory（多线归一基地）
+    // SA-3：Workshop 车间层链路（Base→Workshop→Line 四层结构）
+    // 契约 cardinality 只允许 1:1/1:N/N:N；N:1 语义通过翻转方向表达为 1:N。
+    { key: "workshop_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Workshop", cardinality: "1:N" },
+    { key: "line_belongs_to_workshop", fromTypeKey: "Workshop", toTypeKey: "Line", cardinality: "1:N" },
+    // line_belongs_to_base 保留向后兼容（Workshop 层不删旧链路）
+    { key: "line_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Line", cardinality: "1:N" },
+    // Phase 2：产品域层级链路（ProductPlatform → ProductSeries → Model → ProductVersion → BOM → Routing）
+    { key: "series_belongs_to_platform", fromTypeKey: "ProductSeries", toTypeKey: "ProductPlatform", cardinality: "N:1" },
+    { key: "model_belongs_to_series", fromTypeKey: "Model", toTypeKey: "ProductSeries", cardinality: "N:1" },
+    { key: "version_belongs_to_model", fromTypeKey: "ProductVersion", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "bom_belongs_to_version", fromTypeKey: "BOMHeader", toTypeKey: "ProductVersion", cardinality: "N:1" },
+    { key: "detail_belongs_to_bom", fromTypeKey: "BOMDetail", toTypeKey: "BOMHeader", cardinality: "N:1" },
+    { key: "detail_uses_material", fromTypeKey: "BOMDetail", toTypeKey: "Material", cardinality: "N:1" },
+    { key: "routing_belongs_to_model", fromTypeKey: "Routing", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "operation_belongs_to_routing", fromTypeKey: "Operation", toTypeKey: "Routing", cardinality: "N:1" },
+    { key: "capability_belongs_to_operation", fromTypeKey: "ProcessCapabilityWindow", toTypeKey: "Operation", cardinality: "N:1" },
+    // quality
+    { key: "standard_belongs_to_model", fromTypeKey: "QualityStandard", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "char_belongs_to_standard", fromTypeKey: "InspectionCharacteristic", toTypeKey: "QualityStandard", cardinality: "N:1" },
+    // factory/equip
+    { key: "product_line_capability", fromTypeKey: "ProductLineCapability", toTypeKey: "Line", cardinality: "N:N" },
+    { key: "product_equip_capability", fromTypeKey: "ProductEquipmentCapability", toTypeKey: "Equipment", cardinality: "N:N" },
+    // lifecycle
+    { key: "change_affects_model", fromTypeKey: "EngineeringChange", toTypeKey: "Model", cardinality: "N:1" },
+    // supply（Wave 2：物料替代 + 供应商）
+    { key: "alt_for_material", fromTypeKey: "MaterialAlternative", toTypeKey: "Material", cardinality: "N:N" },
+    { key: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier", cardinality: "N:1" },
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
@@ -750,7 +1033,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "baseId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "baseId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield", "utilization"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "processId", "ctSeconds", "availFactor", "oeeA", "oeeP", "oeeQ"] },
           ],
@@ -770,8 +1053,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Order",
               minNodes: 10,
-              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "Customer"],
-              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
+              mustIncludeTypes: ["Order", "Model", "Base", "Workshop", "Line", "Process", "Equipment", "Material", "Customer"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
             },
           },
         ],
@@ -1160,6 +1443,21 @@ export interface GeneratedBattery {
   bases: Record<string, unknown>[];
   models: Record<string, unknown>[];
   orders: Record<string, unknown>[];
+  productPlatforms: Record<string, unknown>[];
+  productSeries: Record<string, unknown>[];
+  productVersions: Record<string, unknown>[];
+  bomHeaders: Record<string, unknown>[];
+  bomDetails: Record<string, unknown>[];
+  routings: Record<string, unknown>[];
+  operations: Record<string, unknown>[];
+  processCapabilities: Record<string, unknown>[];
+  qualityStandards: Record<string, unknown>[];
+  inspectionCharacteristics: Record<string, unknown>[];
+  productLineCapabilities: Record<string, unknown>[];
+  productEquipmentCapabilities: Record<string, unknown>[];
+  engineeringChanges: Record<string, unknown>[];
+  materialAlternatives: Record<string, unknown>[];
+  workshops: Record<string, unknown>[];
   lines: Record<string, unknown>[];
   processes: Record<string, unknown>[];
   equipment: Record<string, unknown>[];
@@ -1186,6 +1484,20 @@ const SERIAL_STEPS = [
   { suffix: "coating", name: "涂布" },
   { suffix: "winding", name: "卷绕" },
   { suffix: "assembly", name: "装配" },
+];
+
+// SA-3：10 车间定义（制浆→PACK），Workshop 为 Base 与 Line 之间新增层
+const WORKSHOP_DEFS = [
+  { type: "制浆", suffix: "slurry" },
+  { type: "涂布", suffix: "coating" },
+  { type: "辊压", suffix: "calendering" },
+  { type: "分切", suffix: "slitting" },
+  { type: "卷绕", suffix: "winding" },
+  { type: "装配", suffix: "assembly" },
+  { type: "注液", suffix: "filling" },
+  { type: "化成", suffix: "formation" },
+  { type: "分容", suffix: "grading" },
+  { type: "PACK", suffix: "pack" },
 ];
 
 function isoDate(ms: number): string {
@@ -1215,7 +1527,45 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     gwh: round(6 + rng() * 36, 1),
     formationCapDaily: 0, // filled after process generation (shared-resource cap)
     agingCapDaily: 0,
+    // SA-4：factory 台账字段（R12 全建模对齐，确定性映射守 R6）
+    factory_code: `${b.baseId.slice(0, 2).toUpperCase()}01`,
+    province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", luoyang: "河南" } as Record<string, string>)[b.baseId] ?? b.baseId,
+    city: b.name,
+    factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
+    status: "运营中",
+    start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", luoyang: "2020-08-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
   }));
+
+  // Phase 2 Wave 1：产品域基础（ProductPlatform / ProductSeries / ProductVersion）
+  const productPlatforms = [
+    { platformId: "PLAT-001", platformCode: "LFP-Platform", name: "LFP 平台", category: "LFP", description: "磷酸铁锂产品平台", status: "活跃" },
+    { platformId: "PLAT-002", platformCode: "NCM-Platform", name: "三元平台", category: "三元", description: "三元锂产品平台", status: "活跃" },
+    { platformId: "PLAT-003", platformCode: "Solid-State-Platform", name: "固态电池平台", category: "固态", description: "固态电池产品平台", status: "规划中" },
+  ];
+  const productSeries = [
+    { seriesId: "FAM-001", seriesCode: "280Ah-ESS", platformId: "PLAT-001", name: "280Ah 储能系列", category: "280Ah储能", voltageRange: "3.0-3.6V", capacityRange: "200-320Ah", targetMarket: "储能", status: "活跃" },
+    { seriesId: "FAM-002", seriesCode: "314Ah-ESS", platformId: "PLAT-001", name: "314Ah 储能系列", category: "314Ah储能", voltageRange: "3.0-3.6V", capacityRange: "300-350Ah", targetMarket: "储能", status: "活跃" },
+    { seriesId: "FAM-003", seriesCode: "4680-PAS", platformId: "PLAT-002", name: "4680 动力系列", category: "4680动力", voltageRange: "3.6-4.2V", capacityRange: "250-350Ah", targetMarket: "乘用车", status: "活跃" },
+    { seriesId: "FAM-004", seriesCode: "2170-PAS", platformId: "PLAT-002", name: "2170 动力系列", category: "2170动力", voltageRange: "3.6-4.2V", capacityRange: "40-60Ah", targetMarket: "乘用车", status: "活跃" },
+    { seriesId: "FAM-005", seriesCode: "Solid-ESS", platformId: "PLAT-003", name: "固态储能系列", category: "固态储能", voltageRange: "3.5-4.0V", capacityRange: "400-500Ah", targetMarket: "储能", status: "开发中" },
+    { seriesId: "FAM-006", seriesCode: "Solid-PAS", platformId: "PLAT-003", name: "固态动力系列", category: "固态动力", voltageRange: "3.5-4.0V", capacityRange: "400-500Ah", targetMarket: "乘用车", status: "开发中" },
+  ];
+  const MODEL_SERIES_MAP: Record<string, string> = {
+    "4680-NCM": "FAM-003",
+    "4680-LFP": "FAM-001",
+    "2170-NCM": "FAM-004",
+    "方形-LFP": "FAM-002",
+    "方形-NCM": "FAM-003",
+    "圆柱-LFP": "FAM-001",
+  };
+  const MODEL_SPEC_MAP: Record<string, Record<string, unknown>> = {
+    "4680-NCM": { productCode: "P-4680-NCM-300", capacity: 300, voltage: 3.7, energy: 1110, dimension: "80×80×120", weight: 350, applicationDomain: "乘用车", status: "量产" },
+    "4680-LFP": { productCode: "P-4680-LFP-250", capacity: 250, voltage: 3.2, energy: 800, dimension: "80×80×120", weight: 380, applicationDomain: "储能", status: "量产" },
+    "2170-NCM": { productCode: "P-2170-NCM-050", capacity: 50, voltage: 3.6, energy: 180, dimension: "21×70", weight: 70, applicationDomain: "乘用车", status: "量产" },
+    "方形-LFP": { productCode: "P-SQ-LFP-314", capacity: 314, voltage: 3.2, energy: 1005, dimension: "174×72×205", weight: 5200, applicationDomain: "储能", status: "量产" },
+    "方形-NCM": { productCode: "P-SQ-NCM-150", capacity: 150, voltage: 3.7, energy: 555, dimension: "148×26×91", weight: 2200, applicationDomain: "乘用车", status: "量产" },
+    "圆柱-LFP": { productCode: "P-CYL-LFP-100", capacity: 100, voltage: 3.2, energy: 320, dimension: "46×80", weight: 1800, applicationDomain: "储能", status: "量产" },
+  };
 
   const models = MODELS.map((m) => {
     // rng 仍按原步长消耗（n + 洗牌），保持下游订单/拓扑字节流稳定；可产基地改取确定性 MODEL_BASE_MAP。
@@ -1228,6 +1578,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       shuffled[j] = tmp;
     }
     const mappedBases = MODEL_BASE_MAP[m.modelId] ?? shuffled.slice(0, n);
+    const spec = MODEL_SPEC_MAP[m.modelId];
     return {
       modelId: m.modelId,
       name: m.name,
@@ -1237,8 +1588,201 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       unitPrice: randInt(rng, 380, 980),
       // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
       carbonFootprint: m.modelId.includes("NCM") ? 76 : 58,
+      seriesId: MODEL_SERIES_MAP[m.modelId],
+      ...spec,
     };
   });
+
+  // ProductVersion：每 Model 2-3 个版本（确定性，不消耗 rng）
+  const productVersions: Record<string, unknown>[] = [];
+  const VERSION_DEFS = [
+    { versionCode: "V1.0", versionName: "初始量产版", ecnNumber: "ECN-2024-001", effectiveDate: "2024-01-01", expireDate: "2024-12-31", status: "量产", changeReason: "首批量产导入" },
+    { versionCode: "V1.1", versionName: "工艺优化版", ecnNumber: "ECN-2024-006", effectiveDate: "2024-06-01", expireDate: "2025-06-30", status: "量产", changeReason: "涂布速度优化+良率提升" },
+    { versionCode: "V2.0", versionName: "下一代试产版", ecnNumber: "ECN-2025-001", effectiveDate: "2025-01-01", expireDate: "", status: "试产", changeReason: "材料体系升级" },
+  ];
+  for (const m of models) {
+    const nVersions = 2 + (hashString(m.modelId as string) % 2);
+    for (let vi = 0; vi < nVersions; vi++) {
+      const vd = VERSION_DEFS[vi]!;
+      productVersions.push({
+        versionId: `VER-${m.modelId}-${vd.versionCode}`,
+        modelId: m.modelId,
+        ...vd,
+      });
+    }
+  }
+
+  // Phase 2 Wave 3：BOM + Routing + Operation + ProcessCapabilityWindow（确定性，不消耗 rng）
+  const bomHeaders: Record<string, unknown>[] = [];
+  const bomDetails: Record<string, unknown>[] = [];
+  const routings: Record<string, unknown>[] = [];
+  const operations: Record<string, unknown>[] = [];
+  const processCapabilities: Record<string, unknown>[] = [];
+
+  // 标准工序库（10 工序）
+  const STD_OPERATIONS = [
+    { operationCode: "OP-001", operationName: "混料", operationType: "制造", standardTime: 30, setupTime: 5, yield: 0.998, isCritical: true, workCenterType: "制浆线" },
+    { operationCode: "OP-002", operationName: "涂布", operationType: "制造", standardTime: 120, setupTime: 30, yield: 0.985, isCritical: true, workCenterType: "涂布线" },
+    { operationCode: "OP-003", operationName: "辊压", operationType: "制造", standardTime: 60, setupTime: 20, yield: 0.992, isCritical: true, workCenterType: "辊压机" },
+    { operationCode: "OP-004", operationName: "分切", operationType: "制造", standardTime: 45, setupTime: 15, yield: 0.995, isCritical: false, workCenterType: "分切机" },
+    { operationCode: "OP-005", operationName: "卷绕", operationType: "制造", standardTime: 90, setupTime: 25, yield: 0.990, isCritical: true, workCenterType: "卷绕机" },
+    { operationCode: "OP-006", operationName: "装配", operationType: "制造", standardTime: 75, setupTime: 20, yield: 0.993, isCritical: true, workCenterType: "装配线" },
+    { operationCode: "OP-007", operationName: "注液", operationType: "制造", standardTime: 40, setupTime: 30, yield: 0.995, isCritical: true, workCenterType: "注液机" },
+    { operationCode: "OP-008", operationName: "化成", operationType: "制造", standardTime: 720, setupTime: 60, yield: 0.997, isCritical: true, workCenterType: "化成柜" },
+    { operationCode: "OP-009", operationName: "分容", operationType: "制造", standardTime: 360, setupTime: 30, yield: 0.996, isCritical: false, workCenterType: "分容柜" },
+    { operationCode: "OP-010", operationName: "PACK", operationType: "制造", standardTime: 180, setupTime: 45, yield: 0.994, isCritical: true, workCenterType: "PACK线" },
+  ];
+
+  // 工艺参数模板（每工序 3-5 个参数）
+  const CAPABILITY_TEMPLATES: Record<string, Array<{ parameterName: string; paramCode: string; unit: string; minValue: number; maxValue: number; targetValue: number; tolerance: number; ucl: number; lcl: number }>> = {
+    "混料": [
+      { parameterName: "搅拌速度", paramCode: "SPEED", unit: "rpm", minValue: 800, maxValue: 1200, targetValue: 1000, tolerance: 100, ucl: 1300, lcl: 700 },
+      { parameterName: "浆料粘度", paramCode: "VISC", unit: "mPa·s", minValue: 3000, maxValue: 6000, targetValue: 4500, tolerance: 500, ucl: 6500, lcl: 2500 },
+    ],
+    "涂布": [
+      { parameterName: "温度", paramCode: "TEMP", unit: "℃", minValue: 75, maxValue: 85, targetValue: 80, tolerance: 5, ucl: 87, lcl: 73 },
+      { parameterName: "压力", paramCode: "PRESS", unit: "N", minValue: 100, maxValue: 120, targetValue: 110, tolerance: 10, ucl: 125, lcl: 95 },
+      { parameterName: "速度", paramCode: "SPEED", unit: "m/min", minValue: 10, maxValue: 15, targetValue: 12, tolerance: 2, ucl: 16, lcl: 9 },
+    ],
+    "辊压": [
+      { parameterName: "辊压压力", paramCode: "ROLL_PRESS", unit: "MPa", minValue: 15, maxValue: 25, targetValue: 20, tolerance: 3, ucl: 28, lcl: 12 },
+      { parameterName: "辊缝间隙", paramCode: "GAP", unit: "μm", minValue: 80, maxValue: 120, targetValue: 100, tolerance: 10, ucl: 130, lcl: 70 },
+    ],
+    "分切": [
+      { parameterName: "张力", paramCode: "TENSION", unit: "N", minValue: 50, maxValue: 80, targetValue: 65, tolerance: 10, ucl: 90, lcl: 40 },
+      { parameterName: "毛刺", paramCode: "BURR", unit: "μm", minValue: 0, maxValue: 7, targetValue: 3, tolerance: 2, ucl: 8, lcl: 0 },
+    ],
+    "卷绕": [
+      { parameterName: "卷绕张力", paramCode: "WIND_TENSION", unit: "N", minValue: 20, maxValue: 40, targetValue: 30, tolerance: 5, ucl: 45, lcl: 15 },
+      { parameterName: "对齐度", paramCode: "ALIGN", unit: "mm", minValue: 0, maxValue: 0.5, targetValue: 0.2, tolerance: 0.1, ucl: 0.6, lcl: 0 },
+      { parameterName: "速度", paramCode: "SPEED", unit: "m/s", minValue: 0.8, maxValue: 1.5, targetValue: 1.1, tolerance: 0.2, ucl: 1.7, lcl: 0.6 },
+    ],
+    "装配": [
+      { parameterName: "焊接电流", paramCode: "WELD_CURR", unit: "A", minValue: 800, maxValue: 1200, targetValue: 1000, tolerance: 100, ucl: 1300, lcl: 700 },
+      { parameterName: "焊接时间", paramCode: "WELD_TIME", unit: "ms", minValue: 2, maxValue: 5, targetValue: 3, tolerance: 0.5, ucl: 5.5, lcl: 1.5 },
+    ],
+    "注液": [
+      { parameterName: "注液量", paramCode: "FILL_VOL", unit: "mL", minValue: 4.5, maxValue: 5.5, targetValue: 5, tolerance: 0.3, ucl: 5.8, lcl: 4.2 },
+      { parameterName: "真空度", paramCode: "VACUUM", unit: "kPa", minValue: -98, maxValue: -85, targetValue: -92, tolerance: 5, ucl: -80, lcl: -100 },
+      { parameterName: "环境温度", paramCode: "ENV_TEMP", unit: "℃", minValue: 20, maxValue: 25, targetValue: 23, tolerance: 2, ucl: 27, lcl: 18 },
+    ],
+    "化成": [
+      { parameterName: "充电电流", paramCode: "CHG_CURR", unit: "A", minValue: 0.1, maxValue: 0.3, targetValue: 0.2, tolerance: 0.05, ucl: 0.35, lcl: 0.08 },
+      { parameterName: "化成温度", paramCode: "FORM_TEMP", unit: "℃", minValue: 40, maxValue: 50, targetValue: 45, tolerance: 3, ucl: 53, lcl: 37 },
+    ],
+    "分容": [
+      { parameterName: "放电倍率", paramCode: "DISCHG_RATE", unit: "C", minValue: 0.2, maxValue: 0.5, targetValue: 0.33, tolerance: 0.1, ucl: 0.6, lcl: 0.15 },
+      { parameterName: "容量偏差", paramCode: "CAP_DEV", unit: "%", minValue: 0, maxValue: 3, targetValue: 1, tolerance: 1, ucl: 4, lcl: 0 },
+    ],
+    "PACK": [
+      { parameterName: "焊接温度", paramCode: "PACK_WELD_TEMP", unit: "℃", minValue: 200, maxValue: 300, targetValue: 250, tolerance: 30, ucl: 330, lcl: 170 },
+      { parameterName: "绝缘阻抗", paramCode: "INSULATION", unit: "MΩ", minValue: 100, maxValue: 500, targetValue: 300, tolerance: 50, ucl: 550, lcl: 80 },
+    ],
+  };
+
+  // BOM 物料模板（简化版，引用 battery-extended.ts 中已有的物料 ID）
+  const BOM_ITEM_TEMPLATES: Array<{ materialId: string; quantity: number; unit: string; level: number; isKeyComponent: boolean }> = [
+    { materialId: "pos_ncm", quantity: 1.05, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "pos_lfp", quantity: 1.0, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "neg_graphite", quantity: 0.45, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "sep_film", quantity: 12, unit: "㎡", level: 1, isKeyComponent: true },
+    { materialId: "elyte", quantity: 0.3, unit: "L", level: 1, isKeyComponent: true },
+    { materialId: "cu_foil", quantity: 0.2, unit: "kg", level: 1, isKeyComponent: false },
+    { materialId: "al_foil", quantity: 0.15, unit: "kg", level: 1, isKeyComponent: false },
+    { materialId: "cell_case", quantity: 1, unit: "个", level: 1, isKeyComponent: true },
+  ];
+
+  let bomSeq = 0;
+  let opSeq = 0;
+  let capSeq = 0;
+  for (const v of productVersions) {
+    const modelId = v.modelId as string;
+    const versionId = v.versionId as string;
+    const versionCode = (v.versionCode as string) ?? "V1.0";
+
+    // BOMHeader
+    const bomId = `BOM-${modelId}-${versionCode}`;
+    bomHeaders.push({
+      bomId,
+      bomCode: `BOM-${modelId}-${versionCode}`,
+      versionId,
+      modelId,
+      bomName: `${modelId} ${versionCode} BOM`,
+      bomLevel: 3,
+      effectiveDate: v.effectiveDate,
+      expireDate: v.expireDate,
+      status: v.status,
+    });
+
+    // BOMDetail：每 BOM 8 行（与现有物料对齐）
+    for (const [bi, item] of BOM_ITEM_TEMPLATES.entries()) {
+      // LFP 型号跳过 NCM 正极，NCM 型号跳过 LFP 正极
+      if (modelId.includes("LFP") && item.materialId === "pos_ncm") continue;
+      if (modelId.includes("NCM") && item.materialId === "pos_lfp") continue;
+      bomDetails.push({
+        bomDetailId: `BDTL-${bomId}-${bi}`,
+        bomId,
+        materialId: item.materialId,
+        sequence: bi + 1,
+        quantity: item.quantity,
+        lossRate: 0.02,
+        unit: item.unit,
+        level: item.level,
+        parentItemId: null,
+        isKeyComponent: item.isKeyComponent,
+        effectiveDate: v.effectiveDate,
+        expireDate: v.expireDate,
+      });
+    }
+
+    // Routing
+    const routingId = `RT-${modelId}-${versionCode}`;
+    const totalStdTime = STD_OPERATIONS.reduce((s, o) => s + o.standardTime, 0);
+    const totalYield = STD_OPERATIONS.reduce((p, o) => p * o.yield, 1);
+    routings.push({
+      routingId,
+      routingCode: `RT-${modelId}-${versionCode}`,
+      modelId,
+      versionId,
+      routingName: `${modelId} ${versionCode} 工艺路线`,
+      operationCount: STD_OPERATIONS.length,
+      totalStandardTime: totalStdTime,
+      totalYield: round(totalYield, 6),
+      status: v.status,
+      effectiveDate: v.effectiveDate,
+    });
+
+    // Operation（每 Routing 10 工序）
+    for (const [oi, sop] of STD_OPERATIONS.entries()) {
+      const operationId = `${routingId}-${sop.operationCode}`;
+      operations.push({
+        operationId,
+        operationCode: sop.operationCode,
+        routingId,
+        operationSeq: oi + 1,
+        operationName: sop.operationName,
+        description: `${sop.operationName}工序`,
+        operationType: sop.operationType,
+        standardTime: sop.standardTime,
+        setupTime: sop.setupTime,
+        yield: sop.yield,
+        isCritical: sop.isCritical,
+        workCenterType: sop.workCenterType,
+        status: "生效",
+      });
+
+      // ProcessCapabilityWindow（每工序 2-3 参数）
+      const caps = CAPABILITY_TEMPLATES[sop.operationName] ?? [];
+      for (const [ci, cap] of caps.entries()) {
+        processCapabilities.push({
+          capabilityId: `CAP-${operationId}-${ci}`,
+          operationId,
+          ...cap,
+          status: "生效",
+        });
+      }
+    }
+  }
 
   // PRD-IND-order-aggregate：HTML 24 单逐字录入（so/cust/model/qty/due/pri，SO-3391…SO-3540），
   // 替代随机生成 → 订单全链/台账/根因 1:1。可产基地取该 model 的 MODEL_BASE_MAP（确定性）。
@@ -1295,83 +1839,241 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
+  const workshops: Record<string, unknown>[] = [];
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];
   const equipment: Record<string, unknown>[] = [];
   for (const b of bases) {
-    const lineId = `LINE-${b.baseId}`;
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线` });
-    for (const step of SERIAL_STEPS) {
-      const processId = `${lineId}-${step.suffix}`;
-      processes.push({
-        processId,
+    for (const wsDef of WORKSHOP_DEFS) {
+      const workshopId = `WS-${b.baseId}-${wsDef.suffix}`;
+      workshops.push({
+        workshopId,
+        baseId: b.baseId,
+        name: `${b.name}${wsDef.type}车间`,
+        processType: wsDef.type,
+      });
+      const lineId = `LINE-${workshopId}`;
+      const lineHash = hashString(lineId);
+      lines.push({
         lineId,
         baseId: b.baseId,
-        name: step.name,
-        kind: "serial",
-        yield: round(0.95 + rngTopo() * 0.04, 3),
-        shiftHours: 11,
-        shifts: 2,
-        attendance: round(0.92 + rngTopo() * 0.06, 3),
-        utilization: round(0.88 + rngTopo() * 0.08, 3),
-        channels: 0,
-        channelOutputDaily: 0,
-        agingSlots: 0,
-        agingDays: 0,
+        name: `${b.name}${wsDef.type}线`,
+        // SA-5：产线台账字段（R12 全建模对齐）
+        line_code: lineId.replace("LINE-", "L-"),
+        max_capacity_day: 2000 + (lineHash % 6001), // 件/日，确定性
+        target_yield: round(0.95 + (lineHash % 100) / 100 * 0.04, 3),
+        status: lineHash % 10 < 9 ? "运行中" : "调试",
       });
-      for (let e = 1; e <= 2; e++) {
-        equipment.push({
-          equipId: `${processId}-E${e}`,
+      for (const step of SERIAL_STEPS) {
+        const processId = `${lineId}-${step.suffix}`;
+        processes.push({
           processId,
           lineId,
           baseId: b.baseId,
-          ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
-          availFactor: round(0.86 + rngTopo() * 0.08, 3),
-          oeeA: round(0.9 + rngTopo() * 0.06, 3),
-          oeeP: round(0.88 + rngTopo() * 0.08, 3),
-          oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+          name: step.name,
+          kind: "serial",
+          yield: round(0.95 + rngTopo() * 0.04, 3),
+          shiftHours: 11,
+          shifts: 2,
+          attendance: round(0.92 + rngTopo() * 0.06, 3),
+          utilization: round(0.88 + rngTopo() * 0.08, 3),
+          channels: 0,
+          channelOutputDaily: 0,
+          agingSlots: 0,
+          agingDays: 0,
+        });
+        for (let e = 1; e <= 2; e++) {
+          const equipId = `${processId}-E${e}`;
+          const equipHash = hashString(equipId);
+          const typeMap: Record<string, string> = { coating: "涂布机", calendering: "辊压机", slitting: "分切机", winding: "卷绕机", assembly: "装配线", filling: "注液机", formation: "化成柜", aging: "老化库", pack: "PACK线" };
+          const processSuffix = processId.split("-").pop() ?? "";
+          const manufacturerPool = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
+          equipment.push({
+            equipId,
+            processId,
+            lineId,
+            baseId: b.baseId,
+            ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
+            availFactor: round(0.86 + rngTopo() * 0.08, 3),
+            oeeA: round(0.9 + rngTopo() * 0.06, 3),
+            oeeP: round(0.88 + rngTopo() * 0.08, 3),
+            oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+            // SA-6：设备台账字段（R12 全建模对齐）
+            equipment_code: equipId,
+            equipment_type: typeMap[processSuffix] ?? processSuffix,
+            manufacturer: manufacturerPool[hashString(b.baseId) % manufacturerPool.length]!,
+            install_date: isoDate(Date.parse(`${b.start_date}T00:00:00Z`) + 90 * 86400000),
+            status: equipHash % 20 < 19 ? "正常" : "维修中",
+          });
+        }
+      }
+      const channels = randInt(rngTopo, 600, 780);
+      const channelOutputDaily = randInt(rngTopo, 80, 95);
+      processes.push({
+        processId: `${lineId}-formation`,
+        lineId,
+        baseId: b.baseId,
+        name: "化成",
+        kind: "formation",
+        yield: round(0.97 + rngTopo() * 0.02, 3),
+        shiftHours: 24,
+        shifts: 1,
+        attendance: 1,
+        utilization: 1,
+        channels,
+        channelOutputDaily,
+        agingSlots: 0,
+        agingDays: 0,
+      });
+      const agingSlots = randInt(rngTopo, 260000, 340000);
+      const agingDays = 5;
+      processes.push({
+        processId: `${lineId}-aging`,
+        lineId,
+        baseId: b.baseId,
+        name: "老化",
+        kind: "aging",
+        yield: 1,
+        shiftHours: 24,
+        shifts: 1,
+        attendance: 1,
+        utilization: 1,
+        channels: 0,
+        channelOutputDaily: 0,
+        agingSlots,
+        agingDays,
+      });
+      // Shared-resource caps：仅第一个 workshop 更新基地级共享容量（避免重复覆盖）
+      if (wsDef.suffix === WORKSHOP_DEFS[0]!.suffix) {
+        b.formationCapDaily = channels * channelOutputDaily + randInt(rngTopo, 2000, 6000);
+        b.agingCapDaily = Math.floor(agingSlots / agingDays) + randInt(rngTopo, 2000, 6000);
+      }
+    }
+  }
+
+  // Phase 2 Wave 4：质量标准 + 检验特性 + 制造能力（确定性，不消耗 rng）
+  const qualityStandards: Record<string, unknown>[] = [];
+  const inspectionCharacteristics: Record<string, unknown>[] = [];
+  const productLineCapabilities: Record<string, unknown>[] = [];
+  const productEquipmentCapabilities: Record<string, unknown>[] = [];
+
+  // 质量项模板
+  const QUALITY_ITEMS = [
+    { itemName: "容量", itemCode: "CAP", targetValue: 300, toleranceUpper: 0.02, toleranceLower: -0.02, unit: "Ah", testMethod: "充放电测试", samplingRate: 100 },
+    { itemName: "内阻", itemCode: "IR", targetValue: 0.8, toleranceUpper: 0, toleranceLower: -0.8, unit: "mΩ", testMethod: "交流内阻测试", samplingRate: 100 },
+    { itemName: "外观", itemCode: "APP", targetValue: 0, toleranceUpper: 0, toleranceLower: 0, unit: "级", testMethod: "目视检测", samplingRate: 100 },
+    { itemName: "尺寸", itemCode: "DIM", targetValue: 80, toleranceUpper: 0.5, toleranceLower: -0.5, unit: "mm", testMethod: "卡尺测量", samplingRate: 50 },
+    { itemName: "循环寿命", itemCode: "CYC", targetValue: 3000, toleranceUpper: 0, toleranceLower: -500, unit: "次", testMethod: "循环测试", samplingRate: 5 },
+    { itemName: "安全", itemCode: "SAF", targetValue: 0, toleranceUpper: 0, toleranceLower: 0, unit: "级", testMethod: "针刺/过充", samplingRate: 10 },
+  ];
+
+  // 检验特性模板
+  const INSPECTION_TEMPLATES = [
+    { charName: "全检", charCode: "FI", inspectionType: "全检", inspectionMethod: "设备检测", samplingRate: 100, frequency: "每班", controlMethod: "SPC" },
+    { charName: "抽检", charCode: "SI", inspectionType: "抽检", inspectionMethod: "设备检测", samplingRate: 5, frequency: "每批次", controlMethod: "直方图" },
+  ];
+
+  for (const m of models) {
+    const modelId = m.modelId as string;
+    // QualityStandard：每 Model 6 项
+    for (const [qi, qItem] of QUALITY_ITEMS.entries()) {
+      const standardId = `QS-${modelId}-${qItem.itemCode}`;
+      qualityStandards.push({
+        standardId,
+        standardCode: `QS-${modelId}-${qItem.itemCode}`,
+        modelId,
+        versionId: null,
+        ...qItem,
+        status: "生效",
+      });
+      // InspectionCharacteristic：每标准 2 项
+      for (const [ci, insp] of INSPECTION_TEMPLATES.entries()) {
+        inspectionCharacteristics.push({
+          charId: `CHAR-${standardId}-${ci}`,
+          standardId,
+          ...insp,
+          status: "生效",
         });
       }
     }
-    const channels = randInt(rngTopo, 600, 780);
-    const channelOutputDaily = randInt(rngTopo, 80, 95);
-    processes.push({
-      processId: `${lineId}-formation`,
-      lineId,
-      baseId: b.baseId,
-      name: "化成",
-      kind: "formation",
-      yield: round(0.97 + rngTopo() * 0.02, 3),
-      shiftHours: 24,
-      shifts: 1,
-      attendance: 1,
-      utilization: 1,
-      channels,
-      channelOutputDaily,
-      agingSlots: 0,
-      agingDays: 0,
-    });
-    const agingSlots = randInt(rngTopo, 260000, 340000);
-    const agingDays = 5;
-    processes.push({
-      processId: `${lineId}-aging`,
-      lineId,
-      baseId: b.baseId,
-      name: "老化",
-      kind: "aging",
-      yield: 1,
-      shiftHours: 24,
-      shifts: 1,
-      attendance: 1,
-      utilization: 1,
-      channels: 0,
-      channelOutputDaily: 0,
-      agingSlots,
-      agingDays,
-    });
-    // Shared-resource caps slightly above single-line capability (C01 design ceiling).
-    b.formationCapDaily = channels * channelOutputDaily + randInt(rngTopo, 2000, 6000);
-    b.agingCapDaily = Math.floor(agingSlots / agingDays) + randInt(rngTopo, 2000, 6000);
+
+    // ProductLineCapability：该 model 可产基地中的 line（稀疏，仅可生产的）
+    const producibleBases = new Set(m.bases as string[]);
+    for (const l of lines) {
+      const lineBaseId = l.baseId as string;
+      if (!producibleBases.has(lineBaseId)) continue;
+      // 只取制浆车间线（每个可产基地 1 条）作为代表，避免数据爆炸
+      if (!(l.lineId as string).endsWith("-slurry")) continue;
+      const lineHash = hashString(`${modelId}_${l.lineId}`);
+      productLineCapabilities.push({
+        capId: `PLC-${modelId}-${l.lineId}`,
+        productId: modelId,
+        versionId: null,
+        lineId: l.lineId,
+        capability: "可生产",
+        maxCapacity: 1500 + (lineHash % 3000),
+        cycleTime: round(1.5 + (lineHash % 100) / 100, 2),
+        yield: round(0.94 + (lineHash % 50) / 1000, 3),
+        priority: 1 + (lineHash % 5),
+        changeoverTime: 30 + (lineHash % 120),
+        constraints: "",
+        status: "生效",
+      });
+    }
+
+    // ProductEquipmentCapability：该 model 可产基地中的 equipment（稀疏）
+    for (const eq of equipment) {
+      const eqBaseId = eq.baseId as string;
+      if (!producibleBases.has(eqBaseId)) continue;
+      // 只取部分设备（每基地前 4 台）
+      const equipHash = hashString(`${modelId}_${eq.equipId}`);
+      if (equipHash % 3 !== 0) continue; // 稀疏化：只取 1/3
+      productEquipmentCapabilities.push({
+        equipCapId: `PEC-${modelId}-${eq.equipId}`,
+        productId: modelId,
+        versionId: null,
+        equipmentId: eq.equipId,
+        capability: "支持",
+        maxSpeed: round(80 + (equipHash % 120), 1),
+        minSpeed: round(10 + (equipHash % 30), 1),
+        setupTime: 15 + (equipHash % 45),
+        qualifiedOperators: 2 + (equipHash % 8),
+        certificationRequired: equipHash % 5 === 0,
+        status: "生效",
+      });
+    }
+  }
+
+  // Phase 2 Wave 5：工程变更历史（确定性，不消耗 rng）
+  const engineeringChanges: Record<string, unknown>[] = [];
+  const CHANGE_TEMPLATES = [
+    { changeType: "材料变更", description: "正极材料供应商切换", status: "已实施", effectiveDate: "2025-03-15", approvedBy: "张三", approvedDate: "2025-03-01" },
+    { changeType: "工艺变更", description: "涂布速度优化提升", status: "已批准", effectiveDate: "2025-06-01", approvedBy: "李四", approvedDate: "2025-05-20" },
+    { changeType: "设计变更", description: "电芯结构优化", status: "已实施", effectiveDate: "2024-09-10", approvedBy: "王五", approvedDate: "2024-08-25" },
+    { changeType: "质量改进", description: "化成工序温控精度提升", status: "审批中", effectiveDate: "", approvedBy: "", approvedDate: "" },
+  ];
+  let changeSeq = 0;
+  for (const m of models) {
+    const modelId = m.modelId as string;
+    const nChanges = 1 + (hashString(modelId) % 2);
+    for (let ci = 0; ci < nChanges; ci++) {
+      const tpl = CHANGE_TEMPLATES[changeSeq % CHANGE_TEMPLATES.length]!;
+      changeSeq++;
+      engineeringChanges.push({
+        changeId: `ECN-${modelId}-${ci + 1}`,
+        changeNumber: `ECN-2025-${String(changeSeq).padStart(3, "0")}`,
+        changeType: tpl.changeType,
+        modelId,
+        versionId: null,
+        changeReason: tpl.description,
+        description: tpl.description,
+        affectedObjects: JSON.stringify([{ type: "BOM", id: `BOM-${modelId}-V1.0` }]),
+        effectiveDate: tpl.effectiveDate,
+        approvedBy: tpl.approvedBy,
+        approvedDate: tpl.approvedDate,
+        status: tpl.status,
+      });
+    }
   }
 
   // ---- maintenance plans: forecast week 3..10 + the aligned historic occurrence --
@@ -1393,7 +2095,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     mb.forEach((baseId, idx) => {
       const status: "量产" | "认证中" =
         idx === 0 ? "量产" : idx === mb.length - 1 ? "认证中" : rngCert() < 0.7 ? "量产" : "认证中";
-      certLinks.push({ modelId: m.modelId, lineId: `LINE-${baseId}`, baseId, status });
+      certLinks.push({ modelId: m.modelId, lineId: `LINE-WS-${baseId}-${WORKSHOP_DEFS[0]!.suffix}`, baseId, status });
     });
   }
 
@@ -1516,7 +2218,16 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { chainId: "rc-material-gap", kpiCategory: "material", factor: "现货缺口扩大", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 1 },
   ];
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
+  // Phase 2 Wave 2：物料替代关系（基于现有 8 种物料的简化替代矩阵，固定值不消耗 rng）。
+  const materialAlternatives = [
+    { altId: "ALT-001", primaryMaterialId: "pos_ncm", alternativeMaterialId: "pos_lfp", priority: 3, approvalStatus: "限条件", effectiveDate: "2025-01-01", expireDate: undefined, changeReason: "跨化学体系应急替代", verifiedBy: "张三", verifiedDate: "2025-02-15" },
+    { altId: "ALT-002", primaryMaterialId: "pos_lfp", alternativeMaterialId: "pos_ncm", priority: 3, approvalStatus: "限条件", effectiveDate: "2025-01-01", expireDate: undefined, changeReason: "跨化学体系应急替代", verifiedBy: "张三", verifiedDate: "2025-02-15" },
+    { altId: "ALT-003", primaryMaterialId: "sep_film", alternativeMaterialId: "elyte", priority: 2, approvalStatus: "待审批", effectiveDate: undefined, expireDate: undefined, changeReason: "工艺验证中", verifiedBy: undefined, verifiedDate: undefined },
+    { altId: "ALT-004", primaryMaterialId: "cell_case", alternativeMaterialId: "al_foil", priority: 1, approvalStatus: "已批准", effectiveDate: "2024-06-01", expireDate: "2026-06-01", changeReason: "包材替代验证通过", verifiedBy: "李四", verifiedDate: "2024-05-20" },
+    { altId: "ALT-005", primaryMaterialId: "cu_foil", alternativeMaterialId: "al_foil", priority: 2, approvalStatus: "待审批", effectiveDate: undefined, expireDate: undefined, changeReason: "成本优化评估", verifiedBy: undefined, verifiedDate: undefined },
+  ];
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
 }
 
 // ---------------------------------------------------------------------------

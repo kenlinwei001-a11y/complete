@@ -25,32 +25,32 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Customer", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
     },
     {
-      key: "product_master", displayName: "产品型号", description: "电池型号与应用细分（毛利率口径）。",
-      typeKeys: ["Model", "Segment"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "sap_erp"],
+      key: "product_master", displayName: "产品主数据", description: "产品平台、系列、型号、版本与应用细分（毛利率口径）及工程变更。",
+      typeKeys: ["ProductPlatform", "ProductSeries", "Model", "Segment", "ProductVersion", "EngineeringChange"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "sap_erp", "rest_api"],
     },
     {
-      key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线与产能投资项目。",
-      typeKeys: ["Base", "Line", "CapexProject"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线、产能投资项目及产品-产线/设备制造能力。",
+      typeKeys: ["Base", "Line", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "process_routing", displayName: "工艺工序", description: "工序良率/节拍与换型矩阵（瓶颈/换型排序推演）。",
-      typeKeys: ["Process", "ChangeoverMatrix"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "generic_jdbc"],
+      key: "process_routing", displayName: "工艺路线与工序", description: "工艺路线、工序定义、工艺能力边界及换型矩阵（瓶颈/换型排序推演）。",
+      typeKeys: ["Process", "ChangeoverMatrix", "Routing", "Operation", "ProcessCapabilityWindow"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "generic_jdbc", "rest_api"],
     },
     {
       key: "equipment_ledger", displayName: "设备与能耗", description: "设备台账 OEE、检修计划与能耗计量（MES/IoT）。",
       typeKeys: ["Equipment", "MaintPlan", "EnergyMeter"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
     {
-      key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与物料批次库存（断供/集中度推演）。",
-      typeKeys: ["Material", "MaterialBatch", "MaterialBalance"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "material_inventory", displayName: "物料与库存", description: "物料主数据、BOM、物料替代关系、批次库存及物料平衡（断供/集中度推演）。",
+      typeKeys: ["Material", "MaterialBatch", "MaterialBalance", "BOMHeader", "BOMDetail", "MaterialAlternative"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "procurement", displayName: "采购与在途", description: "采购订单与在途批次（到货延误/缺料推演）。",
-      typeKeys: ["PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
+      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单与在途批次（到货延误/缺料推演）。",
+      typeKeys: ["Supplier", "PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
-      key: "quality_compliance", displayName: "质量与认证", description: "数据源健康度与产品认证（合规/碳护照前置）。",
-      typeKeys: ["DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、数据源健康度与产品认证（合规/碳护照前置）。",
+      typeKeys: ["QualityStandard", "InspectionCharacteristic", "DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",

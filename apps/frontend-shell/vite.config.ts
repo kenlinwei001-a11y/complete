@@ -14,6 +14,11 @@ export default defineConfig({
   server: {
     port: 5173,
     fs: { allow: [searchForWorkspaceRoot(process.cwd())] },
+    proxy: {
+      "/a/v1": { target: "http://127.0.0.1:4001", changeOrigin: true },
+      "/b/v1": { target: "http://127.0.0.1:4002", changeOrigin: true },
+      "/api/v1": { target: "http://127.0.0.1:4002", changeOrigin: true },
+    },
   },
   // @platform/contracts 是工作区 TS 源包，排除预打包 —— 从根上消除 .vite 缓存里
   // 存绝对路径、目录复制/迁移后陈旧导致加载失败的整类故障。

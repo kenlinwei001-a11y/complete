@@ -93,6 +93,11 @@ function freshDb(): MockDb {
       { id: "conn-erp", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "ERP 主数据", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T22:00:00Z" },
       { id: "conn-crm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "CRM 订单", config: {}, status: "ERROR", lastSyncAt: "2026-06-10T22:00:00Z", lastError: "401 unauthorized" },
       { id: "conn-iot", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "IoT 时序通道", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:00:00Z" },
+      // Phase 2 产品工程主数据：PLM / MES / QMS / SRM 连接器（与 backend BINDINGS 对齐）
+      { id: "conn-plm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "PLM 产品生命周期管理", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T03:00:00Z" },
+      { id: "conn-mes", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "MES 制造执行系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:30:00Z" },
+      { id: "conn-qms", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "QMS 质量管理系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:30:00Z" },
+      { id: "conn-srm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "SRM 供应商关系管理", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T23:00:00Z" },
     ],
     ruleDocs: [structuredClone(RULE_DOC)],
     candidates: structuredClone(RULE_CANDIDATES),

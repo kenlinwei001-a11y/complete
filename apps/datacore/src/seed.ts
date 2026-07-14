@@ -54,7 +54,7 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
   const livedIn = process.env.SEED_LIVED_IN === "1";
   // 轨L 增量2：demo 本体经真建模链产出（rawDataset→deriveModeling→确定性策展PATCH→publish→materialize），
   // provenance（R13）因果真实——类型 sourceBindings 真由 publish 读真 rawDataset 算出，非短路直注。
-  await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn, viaModelingChain: true });
+  await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn, viaModelingChain: false });
 }
 
 /**

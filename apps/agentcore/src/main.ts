@@ -6,7 +6,7 @@ import { sdkMcpConnectorFactory } from "./mcp/client.js";
 import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
-import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
+import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedMcpConfigs, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
@@ -28,6 +28,10 @@ async function main(): Promise<void> {
   for (const wf of workflows) if (!(await repos.workflows.get(wf.id))) await repos.workflows.insert(wf);
   for (const sk of skills) if (!(await repos.skills.get(sk.id))) await repos.skills.insert(sk);
   for (const ag of agents) if (!(await repos.agents.get(ag.id))) await repos.agents.insert(ag);
+  // MCP 服务器演示配置（使 MCP 库页不为空）
+  for (const mcp of seedMcpConfigs()) {
+    if (!(await repos.mcpConfigs.get(mcp.id))) await repos.mcpConfigs.insert(mcp);
+  }
   for (const scn of seedSceneEntries()) {
     if (!(await repos.sceneEntries.byView(scn.tenantId, scn.viewKey))) await repos.sceneEntries.upsert(scn);
   }

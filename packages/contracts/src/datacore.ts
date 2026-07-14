@@ -193,7 +193,7 @@ export const ModelingSuggestionSchema = z.object({
       fromTypeKey: z.string(),
       toTypeKey: z.string(),
       viaFields: z.object({ fromField: z.string(), toField: z.string() }),
-      cardinality: z.enum(["1:1", "1:N", "N:N"]),
+      cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
       nameSuggestion: z.string(),
       confidence: z.number(),
     }),

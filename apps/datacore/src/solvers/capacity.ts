@@ -224,7 +224,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   let anyLive = false;
   for (const [baseId, status] of [...cert.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     const certFactor = p.certFactors[status] ?? 1;
-    if (status === "认证中") pendingCertList.push(`${baseName(c, baseId)}·LINE-${baseId}`);
+    if (status === "认证中") pendingCertList.push(`${baseName(c, baseId)}·LINE-WS-${baseId}-slurry`);
     const weekly = weeklyByBase.get(baseId) ?? 0;
     const mw = maintWeekOf(c, baseId);
     let cumTotal = 0;

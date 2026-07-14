@@ -309,7 +309,7 @@ export class LivedInEngine {
         tags,
         curve: {
           seriesKey: "output:line",
-          entityId: `LINE-${s.baseId}`,
+          entityId: `LINE-WS-${s.baseId}-slurry`,
           from: addDays(s.crossed, -10),
           to: addDays(resolved, 7),
         },

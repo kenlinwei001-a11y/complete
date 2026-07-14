@@ -69,7 +69,7 @@ export class HistoryService {
     const points = await this.outputPoints(tid);
     const baseMonthCells = new Map<string, number>();
     for (const p of points) {
-      const baseId = p.entityId.replace(/^LINE-/, "");
+      const baseId = p.entityId.replace(/^LINE-WS-/, "").replace(/-\w+$/, "");
       if (!visible.has(baseId)) continue;
       const month = p.ts.slice(0, 7);
       const key = `${baseId}|${month}`;

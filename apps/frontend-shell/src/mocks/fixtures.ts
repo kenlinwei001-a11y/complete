@@ -43,10 +43,10 @@ export interface MockAccount {
 
 export const ACCOUNTS: MockAccount[] = [
   // 管理平台增量 §2：planner 演示账号兼具 tenant_admin（用户管理入口）
-  { username: "planner", password: "demo", roles: ["planner", "admin", "catalog_admin", "tenant_admin"], baseScope: null },
-  { username: "base_manager", password: "demo", roles: ["base_manager:常州"], baseScope: ["常州"] },
+  { username: "planner", password: "demo1234", roles: ["planner", "admin", "catalog_admin", "tenant_admin"], baseScope: null },
+  { username: "base_manager", password: "demo1234", roles: ["base_manager:常州"], baseScope: ["常州"] },
   // 管理平台增量 §1/§2：平台超管（仅 /admin/tenants；不读业务数据）
-  { username: "padmin", password: "demo", roles: ["platform_admin"], baseScope: null },
+  { username: "padmin", password: "demo1234", roles: ["platform_admin"], baseScope: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -504,6 +504,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
 export const GRAPH: OntologyGraphVM = {
   nodes: [
     { id: "n-base", key: "Base", label: "基地", kind: "object", domain: "factory", tier: 1, sourceSystem: "ERP", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants", fieldMappings: { name: "plant_name", util: "utilization", gwh: "capacity_gwh" } }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
+    { id: "n-workshop", key: "Workshop", label: "车间", kind: "object", domain: "factory", tier: 1, sourceSystem: "MES", properties: [{ propKey: "workshopId", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref" }, { propKey: "name", dataType: "string" }, { propKey: "processType", dataType: "enum" }], sourceBindings: [{ connId: "conn-mes", dataset: "workshops" }], rules: [], derivations: [] },
     { id: "n-line", key: "Line", label: "产线", kind: "object", domain: "factory", tier: 1, sourceSystem: "MES", properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "actual_output_daily", dataType: "number" }, { propKey: "schedule_attainment", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "lines" }], rules: [], derivations: [{ propKey: "schedule_attainment", formula: "rollup(week, 排产 vs 实绩)" }] },
     { id: "n-model", key: "Model", label: "型号", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "modelNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-erp", dataset: "models" }], rules: [], derivations: [] },
     { id: "n-order", key: "Order", label: "订单", kind: "object", domain: "product", tier: 2, sourceSystem: "CRM", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }], sourceBindings: [{ connId: "conn-crm", dataset: "orders", fieldMappings: { so: "so", qty: "qty", due: "delivery_date" } }], rules: [{ key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit" }], derivations: [] },
@@ -528,9 +529,29 @@ export const GRAPH: OntologyGraphVM = {
     { id: "精度校准器", key: "calibrator", label: "精度校准器", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
     { id: "学习Agent", key: "learning_agent", label: "学习Agent", kind: "agent", domain: "agent", sourceSystem: "智能体", properties: [], sourceBindings: [], rules: [], derivations: [] },
     { id: "经验记忆库", key: "ExperienceMemory", label: "经验记忆库", kind: "object", domain: "agent", tier: 3, sourceSystem: "智能体", properties: [{ propKey: "entryId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
+    // —— Phase 2 产品工程主数据域 ——
+    { id: "n-platform", key: "ProductPlatform", label: "产品平台", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "platformId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_platforms" }], rules: [], derivations: [] },
+    { id: "n-series", key: "ProductSeries", label: "产品系列", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "seriesId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_series" }], rules: [], derivations: [] },
+    { id: "n-version", key: "ProductVersion", label: "产品版本", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "versionId", dataType: "string", isPrimaryKey: true }, { propKey: "versionCode", dataType: "string" }, { propKey: "status", dataType: "enum" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_versions" }], rules: [], derivations: [] },
+    { id: "n-bom", key: "BOMHeader", label: "BOM", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "bomId", dataType: "string", isPrimaryKey: true }, { propKey: "bomCode", dataType: "string" }, { propKey: "bomLevel", dataType: "number" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_headers" }], rules: [], derivations: [] },
+    { id: "n-bomd", key: "BOMDetail", label: "BOM明细", kind: "object", domain: "product", tier: 3, sourceSystem: "PLM", properties: [{ propKey: "bomDetailId", dataType: "string", isPrimaryKey: true }, { propKey: "sequence", dataType: "number" }, { propKey: "quantity", dataType: "number" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_details" }], rules: [], derivations: [] },
+    { id: "n-material", key: "Material", label: "物料", kind: "object", domain: "supply", tier: 2, sourceSystem: "ERP", properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "unitPrice", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "erp_materials" }], rules: [], derivations: [] },
+    { id: "n-supplier", key: "Supplier", label: "供应商", kind: "object", domain: "supply", tier: 2, sourceSystem: "SRM", properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "rating", dataType: "enum" }], sourceBindings: [{ connId: "conn-srm", dataset: "srm_suppliers" }], rules: [], derivations: [] },
+    { id: "n-matalt", key: "MaterialAlternative", label: "物料替代", kind: "object", domain: "supply", tier: 3, sourceSystem: "PLM", properties: [{ propKey: "altId", dataType: "string", isPrimaryKey: true }, { propKey: "priority", dataType: "number" }, { propKey: "approvalStatus", dataType: "enum" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_material_alts" }], rules: [], derivations: [] },
+    { id: "n-routing", key: "Routing", label: "工艺路线", kind: "object", domain: "process", tier: 2, sourceSystem: "MES", properties: [{ propKey: "routingId", dataType: "string", isPrimaryKey: true }, { propKey: "routingCode", dataType: "string" }, { propKey: "operationCount", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "mes_routings" }], rules: [], derivations: [] },
+    { id: "n-op", key: "Operation", label: "工序", kind: "object", domain: "process", tier: 3, sourceSystem: "MES", properties: [{ propKey: "operationId", dataType: "string", isPrimaryKey: true }, { propKey: "operationName", dataType: "string" }, { propKey: "standardTime", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "mes_operations" }], rules: [], derivations: [] },
+    { id: "n-pcw", key: "ProcessCapabilityWindow", label: "工艺能力边界", kind: "object", domain: "process", tier: 3, sourceSystem: "MES", properties: [{ propKey: "capabilityId", dataType: "string", isPrimaryKey: true }, { propKey: "parameterName", dataType: "string" }, { propKey: "minValue", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "mes_process_capabilities" }], rules: [], derivations: [] },
+    { id: "n-qs", key: "QualityStandard", label: "质量标准", kind: "object", domain: "quality", tier: 2, sourceSystem: "QMS", properties: [{ propKey: "standardId", dataType: "string", isPrimaryKey: true }, { propKey: "itemName", dataType: "string" }, { propKey: "targetValue", dataType: "number" }], sourceBindings: [{ connId: "conn-qms", dataset: "qms_standards" }], rules: [], derivations: [] },
+    { id: "n-ic", key: "InspectionCharacteristic", label: "检验特性", kind: "object", domain: "quality", tier: 3, sourceSystem: "QMS", properties: [{ propKey: "charId", dataType: "string", isPrimaryKey: true }, { propKey: "charName", dataType: "string" }, { propKey: "inspectionType", dataType: "enum" }], sourceBindings: [{ connId: "conn-qms", dataset: "qms_inspection_chars" }], rules: [], derivations: [] },
+    { id: "n-plc", key: "ProductLineCapability", label: "产品产线能力", kind: "object", domain: "factory", tier: 2, sourceSystem: "MES", properties: [{ propKey: "capId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxCapacity", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_line_cap" }], rules: [], derivations: [] },
+    { id: "n-pec", key: "ProductEquipmentCapability", label: "产品设备能力", kind: "object", domain: "equip", tier: 3, sourceSystem: "MES", properties: [{ propKey: "equipCapId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxSpeed", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_equip_cap" }], rules: [], derivations: [] },
+    { id: "n-ec", key: "EngineeringChange", label: "工程变更", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "changeId", dataType: "string", isPrimaryKey: true }, { propKey: "changeNumber", dataType: "string" }, { propKey: "changeType", dataType: "enum" }], sourceBindings: [{ connId: "conn-plm", dataset: "plm_ecn" }], rules: [], derivations: [] },
   ],
   edges: [
-    { id: "e1", from: "n-base", to: "n-line", label: "拥有", kind: "rel" },
+    // SA-3：Base→Workshop→Line 四层结构
+    { id: "e1a", from: "n-base", to: "n-workshop", label: "拥有", kind: "rel" },
+    { id: "e1b", from: "n-workshop", to: "n-line", label: "拥有", kind: "rel" },
+    { id: "e1c", from: "n-base", to: "n-line", label: "拥有(直联)", kind: "rel" },
     { id: "e2", from: "n-line", to: "n-equip", label: "部署", kind: "rel" },
     { id: "e3", from: "n-line", to: "n-proc", label: "执行", kind: "rel" },
     { id: "e4", from: "n-order", to: "n-model", label: "订购", kind: "rel" },
@@ -564,6 +585,25 @@ export const GRAPH: OntologyGraphVM = {
     { id: "e29", from: "学习Agent", to: "经验记忆库", label: "沉淀", kind: "orch" },
     { id: "e30", from: "学习Agent", to: "聚合求解器", label: "触发重算", kind: "orch" },
     { id: "e31", from: "经验记忆库", to: "OEE指标", label: "经验引用", kind: "orch" },
+    // —— Phase 2 产品工程链路 ——
+    { id: "e32", from: "n-platform", to: "n-series", label: "拥有", kind: "rel" },
+    { id: "e33", from: "n-series", to: "n-model", label: "拥有", kind: "rel" },
+    { id: "e34", from: "n-model", to: "n-version", label: "拥有", kind: "rel" },
+    { id: "e35", from: "n-version", to: "n-bom", label: "BOM", kind: "rel" },
+    { id: "e36", from: "n-bom", to: "n-bomd", label: "明细", kind: "rel" },
+    { id: "e37", from: "n-bomd", to: "n-material", label: "使用物料", kind: "rel" },
+    { id: "e38", from: "n-matalt", to: "n-material", label: "替代", kind: "rel" },
+    { id: "e39", from: "n-version", to: "n-routing", label: "工艺路线", kind: "rel" },
+    { id: "e40", from: "n-routing", to: "n-op", label: "工序", kind: "rel" },
+    { id: "e41", from: "n-op", to: "n-pcw", label: "能力边界", kind: "rel" },
+    { id: "e42", from: "n-model", to: "n-qs", label: "质量标准", kind: "rel" },
+    { id: "e43", from: "n-qs", to: "n-ic", label: "检验特性", kind: "rel" },
+    { id: "e44", from: "n-model", to: "n-plc", label: "产线能力", kind: "rel" },
+    { id: "e45", from: "n-plc", to: "n-line", label: "涉及产线", kind: "rel" },
+    { id: "e46", from: "n-model", to: "n-pec", label: "设备能力", kind: "rel" },
+    { id: "e47", from: "n-pec", to: "n-equip", label: "涉及设备", kind: "rel" },
+    { id: "e48", from: "n-ec", to: "n-model", label: "影响", kind: "rel" },
+    { id: "e49", from: "n-material", to: "n-supplier", label: "供应", kind: "rel" },
   ],
 };
 
@@ -948,7 +988,7 @@ export const ACTION_DRAFTS: ActionDraft[] = [
 export const SYNTHETIC_PHASES = ["行业模板", "本体实例化", "源对象生成", "历史时序生成（90 天）", "派生计算", "配套生成与校验"];
 
 export const SYNTHETIC_REPORT = {
-  rowCounts: { Base: 12, Model: 6, Order: 20, Line: 36, Equipment: 144 },
+  rowCounts: { Base: 12, Model: 6, Order: 24, Workshop: 120, Line: 120, Process: 600, Equipment: 720, ProductPlatform: 3, ProductSeries: 6, ProductVersion: 18, BOMHeader: 18, BOMDetail: 250, Material: 8, Supplier: 14, MaterialAlternative: 5, Routing: 18, Operation: 180, ProcessCapabilityWindow: 50, QualityStandard: 40, InspectionCharacteristic: 100, ProductLineCapability: 40, ProductEquipmentCapability: 250, EngineeringChange: 12, MaintPlan: 36, Segment: 6, Shipment: 24, DataSourceHealth: 12, DemandSegment: 6, FinancePlan: 12, MaterialBalance: 8, Metric: 12, KSF: 8, Principal: 10, RootCauseChain: 6, SopVersionRow: 5, Customer: 8, ARInvoice: 16, MaterialBatch: 24, PurchaseOrder: 12, CarbonFactor: 6, EnergyMeter: 24, ChangeoverMatrix: 6, CapexProject: 4, FinanceAccount: 12, FinanceMetric: 3, ExternalSignal: 5 },
   ruleScan: [
     { ruleKey: "C03", evaluated: 20, violations: 1 },
     { ruleKey: "C08", evaluated: 36, violations: 0 },
