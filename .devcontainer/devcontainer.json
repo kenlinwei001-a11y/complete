@@ -1,26 +1,6 @@
 {
   "name": "Decision OS Dev",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
-  },
-  "forwardPorts": [80, 5173, 4001, 4002, 5432],
-  "portsAttributes": {
-    "80": { "label": "Gateway (nginx)" },
-    "5173": { "label": "Frontend dev" },
-    "4001": { "label": "DataCore" },
-    "4002": { "label": "AgentCore" },
-    "5432": { "label": "PostgreSQL" }
-  },
-  "postCreateCommand": "pnpm install",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "bradlc.vscode-tailwindcss"
-      ]
-    }
-  }
+  "forwardPorts": [5173, 4001, 4002],
+  "postCreateCommand": "pnpm install"
 }
