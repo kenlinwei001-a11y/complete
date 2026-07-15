@@ -713,7 +713,7 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
   threshold: 85,
   cards: [
     {
-      base: "常州", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
+      base: "常州", baseId: "changzhou", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
       events: [
         { type: "maint_window", day: 4, amp: 18, factors: ["化成柜"], tag: "检修窗", obj: "常州", desc: "年度检修（第1周）：计划停机 5 天，设备OEE 由基线下调 6 个百分点", src: "EAM/CMMS 检修计划" },
         { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"], tag: "交付高峰", obj: "SO-10001", desc: "SO-10001·蔚途汽车 交付 1500 万套到期：当周产线排产负载 +9 个百分点", src: "S&OP/ERP 订单交期" },
@@ -725,14 +725,14 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
       ],
     },
     {
-      base: "江门", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
+      base: "江门", baseId: "jiangmen", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
       events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }],
       affectedOrders: [{ so: "SO-10002", cust: "星河储能", model: "储能-314Ah", qty: 820, due: "2026-06-25", dueDay: 13, delay: 2, impact: 0.4 }],
     },
-    { base: "合肥", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
-    { base: "眉山", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
-    { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
-    { base: "武汉", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
+    { base: "合肥", baseId: "hefei", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
+    { base: "眉山", baseId: "meishan", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
+    { base: "成都", baseId: "chengdu", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
+    { base: "武汉", baseId: "wuhan", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
   // PRD-IND-risk §2.4：处置行动计划表（主因素首选 + 峰值≥90 备份 + 14 天内反提 S&OP，按启动排序）
   planRows: [
