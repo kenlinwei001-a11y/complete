@@ -13,7 +13,7 @@ COPY packages/llm-adapters packages/llm-adapters
 COPY apps/datacore apps/datacore
 RUN pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build && pnpm --filter datacore build
 # Strip dev dependencies for the runtime image.
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
