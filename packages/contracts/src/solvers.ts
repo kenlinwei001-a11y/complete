@@ -84,8 +84,21 @@ export const RiskEventSchema = z.object({
   desc: z.string().optional(),
   src: z.string().optional(),
 });
+export const AffectedOrderSchema = z.object({
+  so: z.string(),
+  cust: z.string(),
+  model: z.string(),
+  qty: z.number(),
+  due: z.string(),
+  dueDay: z.number().int(),
+  delay: z.number().int(),
+  impact: z.number(),
+});
+export type AffectedOrder = z.infer<typeof AffectedOrderSchema>;
+
 export const RiskCardSchema = z.object({
   base: z.string(),
+  baseId: z.string(),
   factor: z.string(),
   // 轨M 增量1（真推演红线）：LIVE=该因素有实测当前张力（真 OEE/利用率/良率）；MOCK=无真数据源 → 前端必显"估算"。
   dataMode: z.enum(["LIVE", "MOCK"]).optional(),
@@ -95,7 +108,7 @@ export const RiskCardSchema = z.object({
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
   series: z.array(z.number()), // 逐日 tension
   events: z.array(RiskEventSchema),
-  affectedOrders: z.array(z.record(z.string(), z.unknown())).optional(),
+  affectedOrders: z.array(AffectedOrderSchema).optional(),
   mitigated: z
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),

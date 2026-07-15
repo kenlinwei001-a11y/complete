@@ -779,12 +779,19 @@ export class SolverService {
       .map((o) => o.props)
       .filter((p) => !onlyLevel || str(p.level) === onlyLevel)
       .map((p) => {
-        const actual = num(p.actual);
+        let actual = num(p.actual);
         // target 优先对齐目标树（PlanTarget），命中则取，否则用 Metric 自带 target（不复制第二口径）。
-        const target = targetByKey.has(str(p.key)) ? targetByKey.get(str(p.key))! : num(p.target);
-        const floorVal = p.floorVal !== undefined ? num(p.floorVal) : target;
+        let target = targetByKey.has(str(p.key)) ? targetByKey.get(str(p.key))! : num(p.target);
+        let floorVal = p.floorVal !== undefined ? num(p.floorVal) : target;
+        const unit = str(p.unit);
+        // 与 cockpit_kpi 口径一致：比例值（0.88）在 % 单位下转 88，避免前端显示 0.88%。
+        if (unit === "%") {
+          if (actual > 0 && actual <= 1) actual = round(actual * 100, 4);
+          if (target > 0 && target <= 1) target = round(target * 100, 4);
+          if (floorVal > 0 && floorVal <= 1) floorVal = round(floorVal * 100, 4);
+        }
         return {
-          metricId: str(p.metricId), key: str(p.key), name: str(p.name), unit: str(p.unit),
+          metricId: str(p.metricId), key: str(p.key), name: str(p.name), unit,
           level: str(p.level), category: str(p.category), target, actual,
           delta: round(actual - target, 4), miss: actual < floorVal, floorVal,
           ksfRef: p.ksfRef ?? null, ownerRef: p.ownerRef ?? null, chainKey: str(p.chainKey),

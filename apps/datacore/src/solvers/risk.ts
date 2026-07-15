@@ -656,11 +656,13 @@ const PROBLEM_TITLES: Record<string, string> = {
   CREDIT: "信用额度超限订单",
 };
 
-// PRD-IND-order-aggregate §4.5-B：应用细分**按客户名**判定（原型口径，单一真相源）——
-// 含「商用车」→商用车(com) · 含「储能」或「电网」→储能(ess) · 否则乘用车(pas)。
+// PRD-IND-order-aggregate §4.5-B：应用细分按客户名判定（客户名单与合成数据 CUSTOMERS 保持一致）。
+const PAS_CUSTOMERS = new Set(["广汽集团", "长安汽车", "吉利汽车", "东风汽车", "小鹏汽车"]);
+const COM_CUSTOMERS = new Set(["宇通客车", "金龙客车", "奇瑞", "瑞驰新能源", "Ashok Leyland"]);
+const ESS_CUSTOMERS = new Set(["国家电网", "国家电投", "南方电网", "龙源电力"]);
 export function segOfCust(cust: string): "pas" | "ess" | "com" {
-  if (/商用车/.test(cust)) return "com";
-  if (/储能|电网/.test(cust)) return "ess";
+  if (COM_CUSTOMERS.has(cust)) return "com";
+  if (ESS_CUSTOMERS.has(cust)) return "ess";
   return "pas";
 }
 function segmentOf(c: SolverContext, cust: string): { key: string; name: string; gm: number } {

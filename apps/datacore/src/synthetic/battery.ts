@@ -34,35 +34,45 @@ const MODEL_BASE_MAP: Record<string, string[]> = {
 };
 
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
-const CUSTOMERS = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
+const CUSTOMERS = [
+  // 乘用车
+  "广汽集团", "长安汽车", "吉利汽车", "东风汽车", "小鹏汽车",
+  // 商用车
+  "宇通客车", "金龙客车", "奇瑞", "瑞驰新能源", "Ashok Leyland",
+  // 储能
+  "国家电网", "国家电投", "南方电网", "龙源电力",
+];
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 
-// PRD-IND-order-aggregate §4：HTML 24 单逐字（so/cust/model/qty[万套]/due/pri）。单一真相源=原型。
+// PRD-IND-order-aggregate §4：HTML 24 单语义基底（so/cust/model/qty/due/pri）。
+// 按年营收 700 亿元企业规模校准：qty 单位=套，均价≈1.8 万元/套，月营收≈58 亿元 →
+// 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
+// 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
 const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
-  { so: "SO-3391", cust: "整车厂A", model: "4680-NCM", qty: 8, due: "2026-06-24", pri: "高" },
-  { so: "SO-3402", cust: "整车厂B", model: "4680-NCM", qty: 12, due: "2026-07-02", pri: "高" },
-  { so: "SO-3415", cust: "整车厂C", model: "4680-NCM", qty: 6, due: "2026-07-18", pri: "中" },
-  { so: "SO-3420", cust: "海外车企E", model: "4680-NCM", qty: 10, due: "2026-07-09", pri: "高" },
-  { so: "SO-3431", cust: "整车厂A", model: "2170-NCM", qty: 9, due: "2026-06-28", pri: "中" },
-  { so: "SO-3437", cust: "商用车集团G", model: "2170-NCM", qty: 7, due: "2026-07-14", pri: "中" },
-  { so: "SO-3445", cust: "整车厂B", model: "方形-NCM", qty: 11, due: "2026-07-05", pri: "高" },
-  { so: "SO-3452", cust: "储能集成商D", model: "方形-LFP", qty: 14, due: "2026-06-30", pri: "高" },
-  { so: "SO-3458", cust: "电网公司F", model: "方形-LFP", qty: 18, due: "2026-07-12", pri: "高" },
-  { so: "SO-3464", cust: "储能集成商H", model: "方形-LFP", qty: 9, due: "2026-07-25", pri: "中" },
-  { so: "SO-3470", cust: "电网公司F", model: "圆柱-LFP", qty: 6, due: "2026-07-08", pri: "中" },
-  { so: "SO-3476", cust: "储能集成商D", model: "4680-LFP", qty: 8, due: "2026-07-20", pri: "中" },
-  { so: "SO-3481", cust: "整车厂A", model: "4680-NCM", qty: 10, due: "2026-07-11", pri: "高" },
-  { so: "SO-3486", cust: "整车厂C", model: "方形-NCM", qty: 7, due: "2026-07-22", pri: "中" },
-  { so: "SO-3490", cust: "海外车企E", model: "4680-NCM", qty: 13, due: "2026-07-06", pri: "高" },
-  { so: "SO-3495", cust: "电网公司F", model: "方形-LFP", qty: 15, due: "2026-07-16", pri: "高" },
-  { so: "SO-3501", cust: "储能集成商H", model: "方形-LFP", qty: 11, due: "2026-07-28", pri: "中" },
-  { so: "SO-3506", cust: "商用车集团G", model: "2170-NCM", qty: 8, due: "2026-07-19", pri: "中" },
-  { so: "SO-3512", cust: "整车厂B", model: "方形-NCM", qty: 9, due: "2026-07-03", pri: "高" },
-  { so: "SO-3518", cust: "储能集成商D", model: "方形-LFP", qty: 13, due: "2026-07-24", pri: "中" },
-  { so: "SO-3523", cust: "整车厂A", model: "4680-NCM", qty: 11, due: "2026-07-13", pri: "高" },
-  { so: "SO-3529", cust: "电网公司F", model: "圆柱-LFP", qty: 7, due: "2026-07-10", pri: "中" },
-  { so: "SO-3534", cust: "海外车企E", model: "4680-NCM", qty: 12, due: "2026-07-27", pri: "高" },
-  { so: "SO-3540", cust: "商用车集团G", model: "2170-NCM", qty: 6, due: "2026-07-17", pri: "低" },
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 900, due: "2026-06-24", pri: "高" },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 1800, due: "2026-07-02", pri: "高" },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 500, due: "2026-07-18", pri: "中" },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 1300, due: "2026-07-09", pri: "高" },
+  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 1100, due: "2026-06-28", pri: "中" },
+  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 700, due: "2026-07-14", pri: "中" },
+  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 1500, due: "2026-07-05", pri: "高" },
+  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 2200, due: "2026-06-30", pri: "高" },
+  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 2700, due: "2026-07-12", pri: "高" },
+  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 1100, due: "2026-07-25", pri: "中" },
+  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 500, due: "2026-07-08", pri: "中" },
+  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 900, due: "2026-07-20", pri: "中" },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 1300, due: "2026-07-11", pri: "高" },
+  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 700, due: "2026-07-22", pri: "中" },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 2000, due: "2026-07-06", pri: "高" },
+  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 2400, due: "2026-07-16", pri: "高" },
+  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 1500, due: "2026-07-28", pri: "中" },
+  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 900, due: "2026-07-19", pri: "中" },
+  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 1100, due: "2026-07-03", pri: "高" },
+  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 2000, due: "2026-07-24", pri: "中" },
+  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 1500, due: "2026-07-13", pri: "高" },
+  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 700, due: "2026-07-10", pri: "中" },
+  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 1800, due: "2026-07-27", pri: "高" },
+  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 500, due: "2026-07-17", pri: "低" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -178,12 +188,12 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       // PRD-IND-dash ORDER_OVR（L3222-3229）：6 单 override 逐字种子。按 so 命中即覆盖信用/毛利 + why。
       // 命中 HTML 24 单（SO-3470/3458/3518 压价 mAdj · SO-3437/3506/3540 信用 credit）→ 台账出现"未接/提价接"。
       overrides: {
-        "SO-3470": { mAdj: -3.2, why: "电网公司F 框架价压价" },
-        "SO-3437": { credit: true, why: "商用车集团G 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
-        "SO-3506": { credit: true, why: "商用车集团G 二次追单，信用敞口进一步放大" },
-        "SO-3458": { mAdj: -3.0, why: "电网公司F 框架协议低价条款执行" },
-        "SO-3518": { mAdj: -2.6, why: "储能集成商D 价格战跟价" },
-        "SO-3540": { credit: true, why: "商用车集团G 低优先级单，信用额度已被占满" },
+        "SO-3470": { mAdj: -3.2, why: "南方电网 框架价压价" },
+        "SO-3437": { credit: true, why: "宇通客车 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
+        "SO-3506": { credit: true, why: "宇通客车 二次追单，信用敞口进一步放大" },
+        "SO-3458": { mAdj: -3.0, why: "南方电网 框架协议低价条款执行" },
+        "SO-3518": { mAdj: -2.6, why: "国家电网 价格战跟价" },
+        "SO-3540": { credit: true, why: "宇通客车 低优先级单，信用额度已被占满" },
       },
     },
   },
@@ -2111,7 +2121,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
     const so = `SO-9${String(i).padStart(5, "0")}`;
     orders.push({
-      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 100, 2500), due,
+      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 500, 2700), due,
       pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),

@@ -385,10 +385,10 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
         <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
           <div style={{ fontSize: 18, fontWeight: 600 }}>
-            {m.actual}<small style={{ fontSize: 11 }}>{m.unit}</small>
+            {formatKpiValue(m.actual, m.unit)}<small style={{ fontSize: 11 }}>{m.unit}</small>
           </div>
           <div style={{ fontSize: 10.5, color: m.miss ? "#DD7E9E" : "var(--muted2)" }}>
-            目标 {m.target}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{m.delta}{m.miss ? " · 越线" : ""}
+            目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.miss ? " · 越线" : ""}
           </div>
         </div>
       ))}
@@ -452,9 +452,17 @@ function VersionToggleWidget({ data }: { data: { items?: { props: Record<string,
   );
 }
 
+function formatKpiValue(value: unknown, unit?: string): string {
+  if (typeof value !== "number") return String(value ?? "—");
+  if (unit === "%" && value > 0 && value <= 1) {
+    const scaled = value * 100;
+    return Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1);
+  }
+  return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+}
+
 function KpiWidget({ value, unit }: { value: unknown; unit?: string }) {
-  const display =
-    typeof value === "number" ? (Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2)) : String(value ?? "—");
+  const display = formatKpiValue(value, unit);
   return (
     <div className={styles.kpiValue}>
       {display}

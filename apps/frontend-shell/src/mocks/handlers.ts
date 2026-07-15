@@ -1988,7 +1988,7 @@ export const handlers = [
           kind: String(args.kind ?? "毛利"), series,
           stages: [{ label: "事件窗" }, { label: "约束越线" }, { label: "波及订单" }, { label: "财务击穿" }],
           peak: 100, crossDay: 64, threshold: 85,
-          events: [{ type: "delivery_peak", day: 22, amp: 6, factors: ["交付高峰"], tag: "交付高峰", obj: "SO-9001", desc: "SO-9001·整车厂A 交付 12 万套到期：当周产线排产负载 +8 个百分点", src: "S&OP/ERP 订单交期" }],
+          events: [{ type: "delivery_peak", day: 22, amp: 6, factors: ["交付高峰"], tag: "交付高峰", obj: "SO-9001", desc: "SO-9001·广汽集团 交付 1,800 套到期：当周产线排产负载 +8 个百分点", src: "S&OP/ERP 订单交期" }],
           affectedOrders: [],
         },
         snapshotVersion: "ov-12",
