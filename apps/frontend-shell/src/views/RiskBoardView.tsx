@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
-import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg, searchObjects } from "@/api/endpoints";
+import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
@@ -27,7 +27,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   });
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
   const [detail, setDetail] = useState<RiskCard | null>(null);
-  const [ordersDay, setOrdersDay] = useState<{ base: string; day: number } | null>(null);
+  const [ordersDay, setOrdersDay] = useState<{ base: string; day: number; orders: RiskCard["affectedOrders"] } | null>(null);
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -136,7 +136,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 title={`D+${day} · ${v.toFixed(0)}`}
                 data-testid={`risk-day-${day}`}
                 style={{ background: heatColor(v, data.threshold) }}
-                onClick={() => setOrdersDay({ base: detail.base, day })}
+                onClick={() => setOrdersDay({ base: detail.base, day, orders: detail.affectedOrders })}
               />
             ))}
           </div>
@@ -157,7 +157,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
         </Modal>
       )}
 
-      {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
+      {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} orders={ordersDay.orders} onClose={() => setOrdersDay(null)} />}
 
       {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP） */}
       {(data.planRows?.length ?? 0) > 0 && (
@@ -391,12 +391,19 @@ function MiniStrip({ series, threshold }: { series: number[]; threshold: number 
   );
 }
 
-/** 时点点击 → 受影响订单弹窗（GET {A} 对象查询） */
-function AffectedOrdersModal({ base, day, onClose }: { base: string; day: number; onClose: () => void }) {
-  const { data } = useQuery({
-    queryKey: ["a", "objects", { type: "Order", base, day }],
-    queryFn: () => searchObjects("Order", "", { base, day: String(day) }),
-  });
+/** 时点点击 → 受影响订单弹窗（直接使用 risk_timeline 卡片已计算的 affectedOrders，零额外请求） */
+function AffectedOrdersModal({
+  base,
+  day,
+  orders,
+  onClose,
+}: {
+  base: string;
+  day: number;
+  orders: RiskCard["affectedOrders"];
+  onClose: () => void;
+}) {
+  const list = orders ?? [];
   return (
     <Modal title={`${zh.risk.affectedOrders} · ${base} · D+${day}`} onClose={onClose} width={640}>
       <table className="cmp" data-testid="affected-orders-table">
@@ -410,18 +417,18 @@ function AffectedOrdersModal({ base, day, onClose }: { base: string; day: number
           </tr>
         </thead>
         <tbody>
-          {(data?.items ?? []).map((o) => (
-            <tr key={o.id}>
-              <td>{String(o.props.so ?? o.id)}</td>
-              <td className="zh">{String(o.props.cust ?? "—")}</td>
-              <td>{String(o.props.model ?? "—")}</td>
-              <td>{String(o.props.qty ?? "—")}</td>
-              <td>{String(o.props.due ?? "—")}</td>
+          {list.map((o, i) => (
+            <tr key={i}>
+              <td>{String(o.so ?? "—")}</td>
+              <td className="zh">{String(o.cust ?? "—")}</td>
+              <td>{String(o.model ?? "—")}</td>
+              <td>{String(o.qty ?? "—")}</td>
+              <td>{String(o.due ?? "—")}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {data && data.items.length === 0 && <div className="empty-state">{zh.common.none}</div>}
+      {list.length === 0 && <div className="empty-state">{zh.common.none}</div>}
     </Modal>
   );
 }
