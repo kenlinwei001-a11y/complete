@@ -35,3 +35,4 @@ export * from "./bootstrap.js";
 export * from "./base-registry.js";
 export * from "./sim.js";
 export * from "./opt-template.js";
+export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）
