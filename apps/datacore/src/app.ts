@@ -52,6 +52,8 @@ import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
+import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
+import { buildBatteryDomainCoverage } from "./ontology/refbase-coverage.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
@@ -1448,6 +1450,27 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const byKind: Record<string, number> = {};
     for (const o of objs) byKind[o.type] = (byKind[o.type] ?? 0) + 1;
     return { total: objs.length, byKind };
+  });
+  // A3.1 · 14 域参考本体基线（元租户 95 节点；R2 隔离 / R6 确定性）。
+  app.get("/a/v1/meta/refbase", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    const ref = generateRefbaseOntology();
+    const count = refbaseNodeCount(ref);
+    const coverage = buildBatteryDomainCoverage();
+    return {
+      tenantId: ref.tenantId,
+      seed: ref.seed,
+      digest: refbaseDigest(ref),
+      ...count,
+      domains: BUSINESS_DOMAINS.map((d) => d.key),
+      batteryCoverage: {
+        totalTypes: coverage.totalTypes,
+        fullyCovered: coverage.fullyCovered,
+        unassigned: coverage.unassigned,
+        byDomain: coverage.coverage,
+      },
+    };
   });
   app.get("/a/v1/meta/breakpoints/:id", async (req) => {
     const c = ctx(req);
