@@ -41,6 +41,35 @@ describe("A15 · classifyOperation 确定性分类（L0）", () => {
   });
 });
 
+describe("A15 · QOS classifier misrouting regression（PRD-CLI §A3b 10/10）", () => {
+  it("缺区操作不再落 QUERY / 错模块", () => {
+    const cases: { input: string; op: string; endpoint: string }[] = [
+      { input: "配置 LLM 供应商", op: "llm", endpoint: "/a/v1/llm-providers" },
+      { input: "配 MCP 工具服务", op: "mcp", endpoint: "/b/v1/mcp-configs" },
+      { input: "跑评测套件", op: "eval", endpoint: "/b/v1/evals" },
+      { input: "看通知中心", op: "notify", endpoint: "/a/v1/notifications" },
+      { input: "配工厂日历", op: "platform-config", endpoint: "/a/v1/prompt-templates" },
+      { input: "管理租户用户角色", op: "tenant", endpoint: "/a/v1/tenants" },
+      { input: "S&OP 月度平衡版本", op: "sop", endpoint: "/a/v1/sop/versions" },
+      { input: "看系统本体影响分析", op: "meta", endpoint: "/a/v1/meta/sync" },
+      { input: "跑 VLE 校验", op: "validate", endpoint: "/a/v1/validation/runs" },
+      { input: "本体切片规划", op: "slice", endpoint: "/a/v1/slices" },
+      { input: "新建一个工作流编排", op: "workflow", endpoint: "/b/v1/workflows" },
+    ];
+    for (const c of cases) {
+      const r = classifyOperation(c.input);
+      expect(r.kind).toBe("OPERATION");
+      expect(r.op).toBe(c.op);
+      expect(r.endpoint).toBe(c.endpoint);
+    }
+  });
+
+  it("场景 vs 场景配置 不互相挤占", () => {
+    expect(classifyOperation("看有哪些场景").op).toBe("scenario");
+    expect(classifyOperation("场景配置").op).toBe("scene-config");
+  });
+});
+
 describe("A15 · POST /b/v1/operations/classify（真端点，OBO）", () => {
   it("操作型 NL → OPERATION 路由（合成数据）", async () => {
     const t = await createTestApp();
