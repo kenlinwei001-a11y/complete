@@ -916,7 +916,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     requireRole(a, "catalog_admin");
     const { packageId } = req.params as { packageId: string };
     const body = CreateIntentBodySchema.parse(req.body);
-    return reply.status(201).send(await deps.catalog.createIntent(packageId, body));
+    return reply.status(201).send(await deps.catalog.createIntent(packageId, body, a.userId));
   });
 
   app.put("/api/v1/catalog/intents/:intentId", async (req) => {
@@ -1019,12 +1019,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     requireCatalogAdmin(a);
     const body = CreateAgentBody.parse(req.body);
     const existing = await deps.repos.agents.latestByKey(a.tenantId, body.key);
+    const now = new Date().toISOString();
     const agent: AgentDefinition = {
       ...body,
       id: newId("agt"),
       tenantId: a.tenantId,
       version: (existing?.version ?? 0) + 1,
       status: "DRAFT",
+      createdAt: now,
+      createdBy: a.userId,
     };
     await deps.repos.agents.insert(agent);
     return reply.status(201).send(agent);
@@ -1269,6 +1272,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       status: "DRAFT",
       createdAt: now,
       updatedAt: now,
+      createdBy: a.userId,
     };
     await deps.repos.workflows.insert(wf);
     return reply.status(201).send(wf);
@@ -1396,6 +1400,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       status: "DRAFT",
       createdAt: now,
       updatedAt: now,
+      createdBy: a.userId,
     };
     await deps.repos.workflows.insert(copy);
     return reply.status(201).send(copy);
@@ -1521,6 +1526,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       tenantId: a.tenantId,
       version: Math.max(0, ...existing.map((s) => s.version)) + 1,
       status: "DRAFT",
+      createdAt: new Date().toISOString(),
+      createdBy: a.userId,
     };
     await deps.repos.skills.insert(skill);
     return reply.status(201).send(skill);
@@ -1746,6 +1753,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       // 管理平台增量 §4：统一资源模式 —— 创建即 DRAFT v1（旧记录 lifecycle 缺省 = 可变，向后兼容）
       version: body.version ?? 1,
       lifecycle: body.lifecycle ?? "DRAFT",
+      createdAt: new Date().toISOString(),
+      createdBy: a.userId,
     };
     await deps.repos.mcpConfigs.insert(config);
     return reply.status(201).send(config);
@@ -2462,7 +2471,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         planRef: { planKey: inb.planRef ?? inb.intentKey.replace(/^intent_/, "plan_"), version: "latest" },
         riskLevel: "COMPUTE",
         owner: "g8-scaffold",
-      });
+      }, "system");
       items.push({ kind: "intent", key: inb.intentKey, status: "SCAFFOLDED" });
     }
 

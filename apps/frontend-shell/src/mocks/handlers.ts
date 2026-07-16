@@ -1581,7 +1581,8 @@ export const handlers = [
     const body = (await request.json()) as { connectorTypeKey: string; name: string; config: Record<string, unknown>; category?: string };
     // A11：缺省取连接器类型 category（mock 默认 ERP），显式传则覆盖、可自定义。
     const typeCat: Record<string, string> = { mock_erp: "ERP", mock_crm: "CRM", file_upload: "FILE", rest_api: "EXTERNAL", knowledge_base: "KB" };
-    const conn = { id: newId("conn"), tenantId: TENANT_ID, connectorTypeKey: body.connectorTypeKey, name: body.name, config: {}, status: "ACTIVE" as const, category: body.category?.trim() || typeCat[body.connectorTypeKey] || "EXTERNAL" };
+    const now = new Date().toISOString();
+    const conn = { id: newId("conn"), tenantId: TENANT_ID, connectorTypeKey: body.connectorTypeKey, name: body.name, config: {}, status: "ACTIVE" as const, category: body.category?.trim() || typeCat[body.connectorTypeKey] || "EXTERNAL", createdAt: now, createdBy: "admin" };
     db.connections.push(conn);
     return HttpResponse.json(conn, { status: 201 });
   }),
@@ -2832,7 +2833,8 @@ export const handlers = [
   http.post("*/b/v1/workflows", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const base = structuredClone(db.workflows[0] ?? {}) as Record<string, unknown>;
-    const wf = { ...base, ...body, id: `wf_${Date.now()}`, tenantId: "demo", version: 1, status: "DRAFT" } as unknown as (typeof db.workflows)[number];
+    const now = new Date().toISOString();
+    const wf = { ...base, ...body, id: `wf_${Date.now()}`, tenantId: "demo", version: 1, status: "DRAFT", createdAt: now, createdBy: "admin" } as unknown as (typeof db.workflows)[number];
     db.workflows.push(wf);
     return HttpResponse.json(wf, { status: 201 });
   }),
@@ -2881,7 +2883,8 @@ export const handlers = [
   http.post("*/b/v1/skills", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const base = structuredClone(db.skills[0] ?? {}) as Record<string, unknown>;
-    const sk = { ...base, ...body, id: `skl_${Date.now()}`, version: 1, status: "DRAFT", resources: [] } as unknown as (typeof db.skills)[number];
+    const now = new Date().toISOString();
+    const sk = { ...base, ...body, id: `skl_${Date.now()}`, version: 1, status: "DRAFT", resources: [], createdAt: now, createdBy: "admin" } as unknown as (typeof db.skills)[number];
     db.skills.push(sk);
     return HttpResponse.json(sk, { status: 201 });
   }),
@@ -2923,7 +2926,8 @@ export const handlers = [
   ),
   http.post("*/b/v1/mcp-configs", async ({ request }) => {
     const body = (await request.json()) as Record<string, DefaultBodyType>;
-    const cfg = { id: newId("mcp"), tenantId: TENANT_ID, name: String(body.name), transport: body.transport, credentialRef: body.credential ? "cred-new" : undefined, status: "ACTIVE" } as never;
+    const now = new Date().toISOString();
+    const cfg = { id: newId("mcp"), tenantId: TENANT_ID, name: String(body.name), transport: body.transport, credentialRef: body.credential ? "cred-new" : undefined, status: "ACTIVE", createdAt: now, createdBy: "admin" } as never;
     db.mcpConfigs.push(cfg);
     return HttpResponse.json(cfg, { status: 201 });
   }),

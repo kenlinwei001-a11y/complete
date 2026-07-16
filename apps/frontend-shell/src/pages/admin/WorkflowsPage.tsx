@@ -17,6 +17,7 @@ import {
 } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
 import { ReferencesPanel } from "@/components/ReferencesPanel";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { filterSuggestions, templateSuggestions } from "./templateSuggest";
@@ -88,24 +89,123 @@ export default function WorkflowsPage() {
     onError: toastError,
   });
 
+  // 筛选 + 排序
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "name" | "status">("createdAt");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const filteredWorkflows = (workflows ?? [])
+    .filter((w) => {
+      if (searchText && !w.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (statusFilter && w.status !== statusFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "createdAt") cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      else if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortBy === "status") cmp = a.status.localeCompare(b.status);
+      return sortDesc ? -cmp : cmp;
+    });
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
-        <select value={selected?.id ?? ""} aria-label="选择 workflow" onChange={(e) => setSelectedId(e.target.value)}>
-          {(workflows ?? []).map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name} v{w.version} · {w.status}
-            </option>
-          ))}
-        </select>
         <button className="btn primary sm" style={{ marginLeft: "auto" }} disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="workflow-create">
           ＋新建工作流
         </button>
       </div>
-      {selected && (
-        <WorkflowEditor key={selected.id} workflow={selected} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "workflows"] })} />
-      )}
+
+      {/* 筛选 + 排序工具栏 */}
+      <div className="panel" style={{ marginBottom: 14, padding: "10px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 12px", alignItems: "center" }}>
+          <span className="section-title" style={{ margin: 0, fontSize: 12 }}>筛选</span>
+          <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">名称</span>
+            <input
+              data-testid="workflow-filter-name"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索名称"
+              style={{ width: 120, fontSize: 12 }}
+            />
+          </div>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">状态</span>
+            <select data-testid="workflow-filter-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">全部</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="PUBLISHED">PUBLISHED</option>
+              <option value="RETIRED">RETIRED</option>
+            </select>
+          </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="muted" style={{ fontSize: 12 }}>排序</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ fontSize: 12 }}>
+              <option value="createdAt">创建时间</option>
+              <option value="name">名称</option>
+              <option value="status">状态</option>
+            </select>
+            <button className="btn sm" onClick={() => setSortDesc((v) => !v)} title={sortDesc ? "降序" : "升序"}>
+              {sortDesc ? "↓" : "↑"}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+          共 {(workflows ?? []).length} 个工作流 · 命中 {filteredWorkflows.length} 个
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
+        <div className="panel">
+          {(workflows ?? []).length === 0 && (
+            <EmptyState message="暂无工作流">
+              <button className="btn primary sm" disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="cta-workflow">
+                ＋新建工作流
+              </button>
+            </EmptyState>
+          )}
+          {filteredWorkflows.map((w) => (
+            <div
+              key={w.id}
+              onClick={() => setSelectedId(w.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderBottom: "1px solid var(--line, #333)",
+                cursor: "pointer",
+                flexWrap: "wrap",
+                background: selectedId === w.id ? "var(--panel2, #1a1a2e)" : undefined,
+              }}
+            >
+              <span className="zh" style={{ fontWeight: 500, minWidth: 100, flex: 1 }}>{w.name}</span>
+              <span className={`badge ${w.status === "PUBLISHED" ? "green" : w.status === "RETIRED" ? "" : "amber"}`}>{w.status}</span>
+              <span className={`badge ${w.createdBy === "system" ? "" : "blue"}`}>{w.createdBy === "system" ? "模拟" : "实际"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{w.createdAt?.slice(0, 10) ?? "-"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted2)" }}>{w.createdBy ?? "-"}</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--muted2)" }}>v{w.version}</span>
+            </div>
+          ))}
+          {filteredWorkflows.length === 0 && (workflows ?? []).length > 0 && (
+            <div className="empty-state" style={{ padding: "24px 12px" }}>
+              无匹配工作流——请调整筛选条件
+            </div>
+          )}
+        </div>
+        {selected && (
+          <WorkflowEditor
+            key={selected.id}
+            workflow={selected}
+            workflows={workflows ?? []}
+            onSelectWorkflow={(id) => setSelectedId(id)}
+            onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "workflows"] })}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -118,7 +218,17 @@ export interface StepRefData {
   mcpConfigs: { value: string; label: string }[];
 }
 
-function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition; onChanged: () => void }) {
+function WorkflowEditor({
+  workflow,
+  workflows,
+  onSelectWorkflow,
+  onChanged,
+}: {
+  workflow: WorkflowDefinition;
+  workflows: WorkflowDefinition[];
+  onSelectWorkflow?: (id: string) => void;
+  onChanged: () => void;
+}) {
   const [steps, setSteps] = useState<PlanStep[]>(workflow.steps);
   // SKILL-LIBRARY-EVERYWHERE §3：工作流「组装口方法论绑定」（确定性消费于结论叙事·非 LLM 注入）。
   const [skillRefs, setSkillRefs] = useState<{ skillId: string; version: number | "latest" }[]>(workflow.skillRefs ?? []);
@@ -212,6 +322,25 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
 
   return (
     <div className="panel" data-testid="workflow-editor">
+      {workflows.length > 0 && onSelectWorkflow && (
+        <div style={{ marginBottom: 10 }}>
+          <label>
+            选择 workflow
+            <select
+              aria-label="选择 workflow"
+              value={workflow.id}
+              onChange={(e) => onSelectWorkflow(e.target.value)}
+              style={{ marginLeft: 8, fontSize: 13 }}
+            >
+              {workflows.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} ({w.status})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <strong>{workflow.name}</strong>
         <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>

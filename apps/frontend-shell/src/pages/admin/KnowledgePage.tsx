@@ -14,12 +14,74 @@ export default function KnowledgePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const activeConnId = selected ?? kbConns[0]?.id ?? null;
 
+  // 筛选 + 排序
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "name" | "status">("createdAt");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const filteredConns = kbConns
+    .filter((c) => {
+      if (searchText && !c.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (statusFilter && c.status !== statusFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "createdAt") cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      else if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortBy === "status") cmp = a.status.localeCompare(b.status);
+      return sortDesc ? -cmp : cmp;
+    });
+
   return (
     <div data-testid="knowledge-page">
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>知识库（S4）</h2>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>建 knowledge_base 连接 + 灌文档 → 此处看文档并语义搜索（前端所见=后端真值）</span>
       </div>
+
+      {/* 筛选 + 排序工具栏 */}
+      {kbConns.length > 0 && (
+        <div className="panel" style={{ marginBottom: 14, padding: "10px 12px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 12px", alignItems: "center" }}>
+            <span className="section-title" style={{ margin: 0, fontSize: 12 }}>筛选</span>
+            <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+              <span className="muted">名称</span>
+              <input
+                data-testid="kb-filter-name"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="搜索名称"
+                style={{ width: 120, fontSize: 12 }}
+              />
+            </div>
+            <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+              <span className="muted">状态</span>
+              <select data-testid="kb-filter-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: 12 }}>
+                <option value="">全部</option>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="DISABLED">DISABLED</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </label>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="muted" style={{ fontSize: 12 }}>排序</span>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ fontSize: 12 }}>
+                <option value="createdAt">创建时间</option>
+                <option value="name">名称</option>
+                <option value="status">状态</option>
+              </select>
+              <button className="btn sm" onClick={() => setSortDesc((v) => !v)} title={sortDesc ? "降序" : "升序"}>
+                {sortDesc ? "↓" : "↑"}
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+            共 {kbConns.length} 个知识库连接 · 命中 {filteredConns.length} 个
+          </div>
+        </div>
+      )}
 
       {connLoading && <div style={{ color: "var(--muted2)" }}>加载中…</div>}
       {!connLoading && kbConns.length === 0 && (
@@ -32,17 +94,35 @@ export default function KnowledgePage() {
         <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 14 }}>
           <div className="panel" data-testid="kb-conn-list">
             <div className="section-title">知识库</div>
-            {kbConns.map((c) => (
-              <button
+            {filteredConns.map((c) => (
+              <div
                 key={c.id}
                 data-testid={`kb-conn-${c.id}`}
                 onClick={() => setSelected(c.id)}
-                className="btn sm"
-                style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 4, ...(c.id === activeConnId ? { borderLeft: "3px solid var(--accent)", fontWeight: 600 } : {}) }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  borderBottom: "1px solid var(--line, #333)",
+                  cursor: "pointer",
+                  flexWrap: "wrap",
+                  borderLeft: c.id === activeConnId ? "3px solid var(--accent)" : undefined,
+                  fontWeight: c.id === activeConnId ? 600 : undefined,
+                }}
               >
-                {c.name}
-              </button>
+                <span className="zh" style={{ fontWeight: 500, minWidth: 100, flex: 1 }}>{c.name}</span>
+                <span className={`badge ${c.status === "ACTIVE" ? "green" : c.status === "ERROR" ? "red" : ""}`}>{c.status}</span>
+                <span className={`badge ${c.createdBy === "system" ? "" : "blue"}`}>{c.createdBy === "system" ? "模拟" : "实际"}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{c.createdAt?.slice(0, 10) ?? "-"}</span>
+                <span style={{ fontSize: 11, color: "var(--muted2)" }}>{c.createdBy ?? "-"}</span>
+              </div>
             ))}
+            {filteredConns.length === 0 && kbConns.length > 0 && (
+              <div className="empty-state" style={{ padding: "24px 12px" }}>
+                无匹配知识库连接——请调整筛选条件
+              </div>
+            )}
           </div>
           {activeConnId && <KbDetail connId={activeConnId} key={activeConnId} />}
         </div>

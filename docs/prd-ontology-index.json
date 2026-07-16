@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05",
+  "generatedAt": "2026-07-07",
   "ontology": {
     "invariants": [
       "R1",
@@ -28,6 +28,7 @@
       "G-13",
       "G-14",
       "G-15",
+      "G-16",
       "G-2",
       "G-3",
       "G-4",
@@ -590,6 +591,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-connections-row-mode.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/mocks/db.ts",
+        "apps/frontend-shell/src/mocks/handlers.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/datacore.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-data-closure-spec.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -832,6 +850,15 @@
         "G-8"
       ],
       "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-frontend-changelog.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx"
+      ],
       "brokenArtifacts": []
     },
     "PRD-frontend-visual-redesign.md": {
@@ -1447,6 +1474,29 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-trustworthy-self-accounting.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R16",
+        "R17",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-15",
+        "G-16",
+        "G-9"
+      ],
+      "artifacts": [
+        "scripts/collab-queue.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-unified-build-engine.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1571,6 +1621,7 @@
       "PRD-scenario-ontogenesis.md",
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
+      "PRD-trustworthy-self-accounting.md",
       "PRD-unified-build-engine.md"
     ],
     "G-4": [
@@ -1629,7 +1680,8 @@
       "PRD-decision-support-maturity.md",
       "PRD-growth-worklist-human-fill.md",
       "PRD-scenario-ontogenesis.md",
-      "PRD-simulation-sandbox.md"
+      "PRD-simulation-sandbox.md",
+      "PRD-trustworthy-self-accounting.md"
     ],
     "G-10": [
       "PRD-decision-support-maturity.md",
@@ -1644,11 +1696,16 @@
     "G-12": [
       "PRD-method-library-stochastic-mc.md",
       "PRD-opensource-fusion-lastmile.md"
+    ],
+    "G-15": [
+      "PRD-trustworthy-self-accounting.md"
+    ],
+    "G-16": [
+      "PRD-trustworthy-self-accounting.md"
     ]
   },
   "orphanBreakpoints": [
-    "G-13",
-    "G-15"
+    "G-13"
   ],
   "byArtifact": {
     "apps/agentcore/src/router/orchestrator.ts": [
@@ -1785,6 +1842,19 @@
       "PRD-plan-audit-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
+    "apps/frontend-shell/src/mocks/db.ts": [
+      "PRD-connections-row-mode.md"
+    ],
+    "apps/frontend-shell/src/mocks/handlers.ts": [
+      "PRD-connections-row-mode.md"
+    ],
+    "packages/contracts/src/agentcore.ts": [
+      "PRD-connections-row-mode.md",
+      "PRD-scenario-launcher.md"
+    ],
+    "packages/contracts/src/datacore.ts": [
+      "PRD-connections-row-mode.md"
+    ],
     "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": [
       "PRD-databuilder-page-unified-spec.md"
     ],
@@ -1811,6 +1881,9 @@
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx": [
+      "PRD-frontend-changelog.md"
     ],
     "apps/frontend-shell/src/styles/tokens.css": [
       "PRD-frontend-visual-redesign.md"
@@ -1890,9 +1963,6 @@
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
     ],
-    "packages/contracts/src/agentcore.ts": [
-      "PRD-scenario-launcher.md"
-    ],
     "packages/contracts/src/qos.ts": [
       "PRD-scenario-launcher.md"
     ],
@@ -1904,6 +1974,9 @@
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
+    ],
+    "scripts/collab-queue.mjs": [
+      "PRD-trustworthy-self-accounting.md"
     ]
   }
 }

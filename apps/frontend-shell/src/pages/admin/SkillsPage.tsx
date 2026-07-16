@@ -5,6 +5,7 @@ import type { RuleBindings, SkillDefinition } from "@platform/contracts";
 import { fetchSkillReferences, fetchSkills, publishSkill, saveSkill } from "@/api/endpoints";
 import { McpRefSelect, RuleRefSelect } from "@/components/resource-refs/ResourceRefSelect";
 import { ReferencesPanel } from "@/components/ReferencesPanel";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -25,6 +26,26 @@ export default function SkillsPage() {
     onError: toastError,
   });
 
+  // 筛选 + 排序
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "name" | "status">("createdAt");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const filteredSkills = (skills ?? [])
+    .filter((s) => {
+      if (searchText && !s.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (statusFilter && s.status !== statusFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "createdAt") cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      else if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortBy === "status") cmp = a.status.localeCompare(b.status);
+      return sortDesc ? -cmp : cmp;
+    });
+
   return (
     <div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
@@ -33,15 +54,84 @@ export default function SkillsPage() {
           ＋新建技能
         </button>
       </div>
+
+      {/* 筛选 + 排序工具栏 */}
+      <div className="panel" style={{ marginBottom: 14, padding: "10px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 12px", alignItems: "center" }}>
+          <span className="section-title" style={{ margin: 0, fontSize: 12 }}>筛选</span>
+          <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">名称</span>
+            <input
+              data-testid="skill-filter-name"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索名称"
+              style={{ width: 120, fontSize: 12 }}
+            />
+          </div>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">状态</span>
+            <select data-testid="skill-filter-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">全部</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="PUBLISHED">PUBLISHED</option>
+              <option value="RETIRED">RETIRED</option>
+            </select>
+          </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="muted" style={{ fontSize: 12 }}>排序</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ fontSize: 12 }}>
+              <option value="createdAt">创建时间</option>
+              <option value="name">名称</option>
+              <option value="status">状态</option>
+            </select>
+            <button className="btn sm" onClick={() => setSortDesc((v) => !v)} title={sortDesc ? "降序" : "升序"}>
+              {sortDesc ? "↓" : "↑"}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+          共 {(skills ?? []).length} 个技能 · 命中 {filteredSkills.length} 个
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
-          {(skills ?? []).map((s) => (
-            <button key={s.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === s.id ? "var(--accent)" : undefined }} onClick={() => setSelectedId(s.id)}>
-              <span className={`badge ${s.status === "PUBLISHED" ? "green" : "amber"}`}>{s.status}</span>
-              <span className="zh">{s.name}</span>
-              <span className="mono" style={{ marginLeft: "auto", fontSize: 10 }}>v{s.version}</span>
-            </button>
+          {(skills ?? []).length === 0 && (
+            <EmptyState message="暂无技能">
+              <button className="btn primary sm" disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="cta-skill">
+                ＋新建技能
+              </button>
+            </EmptyState>
+          )}
+          {filteredSkills.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => setSelectedId(s.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderBottom: "1px solid var(--line, #333)",
+                cursor: "pointer",
+                flexWrap: "wrap",
+                background: selectedId === s.id ? "var(--panel2, #1a1a2e)" : undefined,
+              }}
+            >
+              <span className="zh" style={{ fontWeight: 500, minWidth: 100, flex: 1 }}>{s.name}</span>
+              <span className={`badge ${s.status === "PUBLISHED" ? "green" : s.status === "RETIRED" ? "" : "amber"}`}>{s.status}</span>
+              <span className={`badge ${s.createdBy === "system" ? "" : "blue"}`}>{s.createdBy === "system" ? "模拟" : "实际"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{s.createdAt?.slice(0, 10) ?? "-"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted2)" }}>{s.createdBy ?? "-"}</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--muted2)" }}>v{s.version}</span>
+            </div>
           ))}
+          {filteredSkills.length === 0 && (skills ?? []).length > 0 && (
+            <div className="empty-state" style={{ padding: "24px 12px" }}>
+              无匹配技能——请调整筛选条件
+            </div>
+          )}
         </div>
         {selected && <SkillEditor key={selected.id} skill={selected} onChanged={invalidate} />}
       </div>

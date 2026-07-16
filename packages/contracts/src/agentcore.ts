@@ -57,6 +57,8 @@ export const AgentDefinitionSchema = z.object({
     toolNames: z.array(z.string()),
   }),
   budget: AgentBudgetSchema.partial().optional(),
+  createdAt: z.string().optional(),
+  createdBy: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
@@ -81,6 +83,7 @@ export const WorkflowDefinitionSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  createdBy: z.string().optional(),
 });
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
@@ -140,6 +143,8 @@ export const McpServerConfigSchema = z.object({
   version: z.number().int().optional(),
   /** 管理平台增量 §4（additive）：DRAFT 可改 / PUBLISHED 不可变（409 IMMUTABLE_VERSION）/ RETIRED */
   lifecycle: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
+  createdAt: z.string().optional(),
+  createdBy: z.string().optional(),
 });
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
@@ -183,6 +188,8 @@ export const SkillDefinitionSchema = z.object({
     .optional(),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  createdAt: z.string().optional(),
+  createdBy: z.string().optional(),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 

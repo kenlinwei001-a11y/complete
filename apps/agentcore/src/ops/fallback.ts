@@ -147,6 +147,7 @@ export async function promoteFallbackTrace(
     owner: "ops-promote",
     createdAt: now,
     updatedAt: now,
+    createdBy: "system",
   };
   await repos.intents.insert(intent);
   return { intentId: intent.id, planId: plan.id };

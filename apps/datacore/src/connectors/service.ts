@@ -102,6 +102,8 @@ export class ConnectorService {
       status: "ACTIVE",
       // A11：实例 category 默认取连接器类型 registry category，显式传则覆盖（可自定义值 R14）。
       category: input.category?.trim() || type.category,
+      createdAt: new Date().toISOString(),
+      createdBy: ctx.userId,
     };
     await this.repos.connections.put(conn);
     // S3: connections with schedule.cron auto-register a CONNECTOR_SYNC job.

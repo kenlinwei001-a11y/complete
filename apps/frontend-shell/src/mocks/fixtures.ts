@@ -585,7 +585,7 @@ export const INTENTS: IntentDefinition[] = [
       { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请选择基地", description: "目标基地" },
       { name: "timeWindow", type: "timeWindow", required: false, description: "时间窗" },
     ],
-    planId: "plan-affected", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now,
+    planId: "plan-affected", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now, createdBy: "admin",
   },
   {
     id: "int-cap", packageId: PACKAGE_ID, key: "capacity_feasibility", version: 2, status: "PUBLISHED",
@@ -595,7 +595,7 @@ export const INTENTS: IntentDefinition[] = [
       { name: "demandDelta", type: "number", required: true, description: "需求增量比例" },
       { name: "weeks", type: "number", required: false, description: "周数" },
     ],
-    planId: "plan-cap", riskLevel: "COMPUTE", owner: "ops", createdAt: now, updatedAt: now,
+    planId: "plan-cap", riskLevel: "COMPUTE", owner: "ops", createdAt: now, updatedAt: now, createdBy: "admin",
   },
   {
     id: "int-root", packageId: PACKAGE_ID, key: "risk_root_cause", version: 1, status: "PUBLISHED",
@@ -604,7 +604,7 @@ export const INTENTS: IntentDefinition[] = [
       { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "基地" },
       { name: "day", type: "date", required: true, clarifyPrompt: "请提供日期", description: "日期" },
     ],
-    planId: "plan-root", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now,
+    planId: "plan-root", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now, createdBy: "admin",
   },
   {
     id: "int-adopt", packageId: PACKAGE_ID, key: "adopt_mitigation", version: 1, status: "PUBLISHED",
@@ -613,7 +613,7 @@ export const INTENTS: IntentDefinition[] = [
       { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "基地" },
       { name: "solutionName", type: "enum", required: true, enumValues: ["三班制", "外协转移", "提前备料"], description: "方案" },
     ],
-    planId: "plan-adopt", riskLevel: "ACTION_DRAFT", owner: "ops", createdAt: now, updatedAt: now,
+    planId: "plan-adopt", riskLevel: "ACTION_DRAFT", owner: "ops", createdAt: now, updatedAt: now, createdBy: "admin",
   },
 ];
 
@@ -795,6 +795,8 @@ export const AGENTS: AgentDefinition[] = [
     scopeDeclaration: { objectTypes: ["Base", "Order", "Model"], toolNames: ["query_objects", "invoke_solver"] },
     budget: { maxIterations: 8, maxToolCalls: 10 },
     status: "PUBLISHED",
+    createdAt: "2026-07-07T00:00:00Z",
+    createdBy: "admin",
   },
   {
     id: "agt-draft", tenantId: TENANT_ID, key: "report_agent", version: 1, name: "周报生成 Agent（草稿）", description: "",
@@ -804,6 +806,8 @@ export const AGENTS: AgentDefinition[] = [
     skills: [], mcpServers: [],
     scopeDeclaration: { objectTypes: [], toolNames: [] },
     status: "DRAFT",
+    createdAt: "2026-07-07T00:00:00Z",
+    createdBy: "admin",
   },
 ];
 
@@ -818,6 +822,8 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       { id: "s4", type: "render_answer", params: { blocks: [] } },
     ],
     status: "PUBLISHED",
+    createdAt: "2026-07-07T00:00:00Z",
+    createdBy: "admin",
   },
   {
     id: "wf-draft", tenantId: TENANT_ID, key: "risk_digest", version: 1, name: "风险日报（草稿）", description: "",
@@ -829,18 +835,20 @@ export const WORKFLOWS: WorkflowDefinition[] = [
       { id: "s4", type: "render_answer", params: { blocks: [] } },
     ],
     status: "DRAFT",
+    createdAt: "2026-07-07T00:00:00Z",
+    createdBy: "admin",
   },
 ];
 
 export const SKILLS: SkillDefinition[] = [
-  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], mcpServers: [], status: "PUBLISHED" },
-  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], mcpServers: [], status: "DRAFT" },
+  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], mcpServers: [], status: "PUBLISHED", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
+  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], mcpServers: [], status: "DRAFT", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
 ];
 
 export const MCP_CONFIGS: McpServerConfig[] = [
-  { id: "mcp-demo", tenantId: TENANT_ID, name: "示例 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.example.com" }, credentialRef: "cred-1", status: "ACTIVE" },
+  { id: "mcp-demo", tenantId: TENANT_ID, name: "示例 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.example.com" }, credentialRef: "cred-1", status: "ACTIVE", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
   // RESOURCE-REF-NAV item⑤：ERROR 态样本（连续失败 5 次未恢复；无 credentialRef → 未配凭据徽章不出现）
-  { id: "mcp-broken", tenantId: TENANT_ID, name: "失联 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.broken.example.com" }, status: "ERROR" },
+  { id: "mcp-broken", tenantId: TENANT_ID, name: "失联 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.broken.example.com" }, status: "ERROR", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
 ];
 
 /** 运营态出厂配置增量 §2/§4.4：每场景预载历史问答（事实源 = contracts LIVED_IN_SCENE_HISTORY，与 A 侧 taskHistory 同一常量） */

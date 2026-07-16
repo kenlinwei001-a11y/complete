@@ -54,6 +54,8 @@ export const ConnectionInstanceSchema = z.object({
   category: z.string().optional(),
   /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射。 */
   validationPolicy: ValidationPolicySchema.optional(),
+  createdAt: IsoTime.optional(),
+  createdBy: z.string().optional(),
 });
 export type ConnectionInstance = z.infer<typeof ConnectionInstanceSchema>;
 
@@ -468,6 +470,7 @@ export const KbDocVMSchema = z.object({
   filename: z.string(),
   chunkCount: z.number().int(),
   createdAt: IsoTime,
+  createdBy: z.string().optional(),
 });
 export type KbDocVM = z.infer<typeof KbDocVMSchema>;
 

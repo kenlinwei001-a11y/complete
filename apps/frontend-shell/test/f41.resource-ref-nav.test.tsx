@@ -36,8 +36,8 @@ describe("F41 · RESOURCE-REF-NAV 资源反向引用图 + 导航透出", () => {
 
     await user.click(within(panel).getByTestId("agent-references-link-1"));
     // 点跳落地 WorkflowsPage 且自动选中 wf-draft
-    await screen.findByTestId("workflow-editor");
-    expect(screen.getByText("风险日报（草稿）")).toBeInTheDocument();
+    const editor = await screen.findByTestId("workflow-editor");
+    expect(within(editor).getByText("风险日报（草稿）")).toBeInTheDocument();
   });
 
   it("Skill 编辑器：被 agent 引用的技能列出引用方；未被引用的技能诚实显示「未被引用」", async () => {

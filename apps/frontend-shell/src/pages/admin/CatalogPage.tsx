@@ -26,6 +26,11 @@ export default function CatalogPage() {
   const queryClient = useQueryClient();
   const { data: plans } = useQuery({ queryKey: ["b", "plans", { packageId }], queryFn: () => fetchPlans(packageId), enabled: packageId !== "" });
 
+  // 前端搜索 + 排序
+  const [searchText, setSearchText] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "name" | "status">("createdAt");
+  const [sortDesc, setSortDesc] = useState(true);
+
   // 管理平台增量 §6：无意图 → 「创建意图」骨架（DRAFT，发布前需补全 slots/examples）
   const createMut = useMutation({
     mutationFn: () =>
@@ -52,13 +57,57 @@ export default function CatalogPage() {
     <div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
-        <select value={status} aria-label="status 筛选" onChange={(e) => setStatus(e.target.value)}>
-          <option value="">全部状态</option>
-          {["DRAFT", "PUBLISHED", "RETIRED"].map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
+        <button
+          className="btn primary sm"
+          style={{ marginLeft: "auto" }}
+          disabled={createMut.isPending || (plans ?? []).length === 0 || !packageId}
+          onClick={() => createMut.mutate()}
+          data-testid="intent-create"
+        >
+          ＋新建执行计划
+        </button>
       </div>
+
+      {/* 筛选 + 排序工具栏 */}
+      <div className="panel" style={{ marginBottom: 14, padding: "10px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 12px", alignItems: "center" }}>
+          <span className="section-title" style={{ margin: 0, fontSize: 12 }}>筛选</span>
+          <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">名称</span>
+            <input
+              data-testid="intent-filter-name"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索名称"
+              style={{ width: 120, fontSize: 12 }}
+            />
+          </div>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">状态</span>
+            <select data-testid="intent-filter-status" value={status} onChange={(e) => setStatus(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">全部</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="PUBLISHED">PUBLISHED</option>
+              <option value="RETIRED">RETIRED</option>
+            </select>
+          </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="muted" style={{ fontSize: 12 }}>排序</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ fontSize: 12 }}>
+              <option value="createdAt">创建时间</option>
+              <option value="name">名称</option>
+              <option value="status">状态</option>
+            </select>
+            <button className="btn sm" onClick={() => setSortDesc((v) => !v)} title={sortDesc ? "降序" : "升序"}>
+              {sortDesc ? "↓" : "↑"}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+          共 {(intents ?? []).length} 个意图
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(intents ?? []).length === 0 && (
@@ -71,21 +120,47 @@ export default function CatalogPage() {
               </Link>
             </EmptyState>
           )}
-          {(intents ?? []).map((i) => (
-            <button
-              key={i.id}
-              className="btn"
-              style={{ width: "100%", justifyContent: "flex-start", marginBottom: 6, borderColor: selectedId === i.id ? "var(--accent)" : undefined }}
-              onClick={() => setSelectedId(i.id)}
-              data-testid={`intent-${i.key}`}
-            >
-              <span className={`badge ${i.status === "PUBLISHED" ? "green" : i.status === "DRAFT" ? "amber" : ""}`}>{i.status}</span>
-              <span className="zh">{i.name}</span>
-              <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>
-                {i.key} v{i.version}
-              </span>
-            </button>
-          ))}
+          {(intents ?? [])
+            .filter((i) => !searchText || i.name.toLowerCase().includes(searchText.toLowerCase()))
+            .sort((a, b) => {
+              let cmp = 0;
+              if (sortBy === "createdAt") cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+              else if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+              else if (sortBy === "status") cmp = a.status.localeCompare(b.status);
+              return sortDesc ? -cmp : cmp;
+            })
+            .map((i) => (
+              <div
+                key={i.id}
+                onClick={() => setSelectedId(i.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  borderBottom: "1px solid var(--line, #333)",
+                  cursor: "pointer",
+                  flexWrap: "wrap",
+                  background: selectedId === i.id ? "var(--panel2, #1a1a2e)" : undefined,
+                }}
+                data-testid={`intent-${i.key}`}
+              >
+                <span className="zh" style={{ fontWeight: 500, minWidth: 100, flex: 1 }}>{i.name}</span>
+                <span className={`badge ${i.status === "PUBLISHED" ? "green" : i.status === "DRAFT" ? "amber" : ""}`}>{i.status}</span>
+                <span className={`badge ${i.createdBy === "system" ? "" : "blue"}`}>{i.createdBy === "system" ? "模拟" : "实际"}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{i.createdAt?.slice(0, 10) ?? "-"}</span>
+                <span style={{ fontSize: 11, color: "var(--muted2)" }}>{i.createdBy ?? "-"}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted2)" }}>
+                  {i.key} v{i.version}
+                </span>
+              </div>
+            ))}
+          {(intents ?? []).length > 0 &&
+            !(intents ?? []).some((i) => !searchText || i.name.toLowerCase().includes(searchText.toLowerCase())) && (
+            <div className="empty-state" style={{ padding: "24px 12px" }}>
+              无匹配意图——请调整筛选条件
+            </div>
+          )}
         </div>
         {selected && <IntentEditor key={selected.id} intent={selected} packageId={packageId} />}
       </div>

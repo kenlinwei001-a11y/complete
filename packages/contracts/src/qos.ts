@@ -56,6 +56,7 @@ export const IntentDefinitionSchema = z.object({
   owner: z.string(),
   createdAt: IsoTime,
   updatedAt: IsoTime,
+  createdBy: z.string().optional(),
 });
 export type IntentDefinition = z.infer<typeof IntentDefinitionSchema>;
 

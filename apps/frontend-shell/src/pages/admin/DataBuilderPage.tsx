@@ -121,15 +121,23 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
   ];
   const shown = groups.filter((g) => g.items.length > 0);
   return (
-    <div data-testid="sbr-comprehension" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+    <div data-testid="sbr-comprehension" style={{ display: "flex", flexDirection: "column", gap: 0, marginTop: 4 }}>
       {shown.map((g) => (
-        <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px" }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>
-            {g.label} <span className="badge">{g.items.length}</span>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div
+          key={g.key}
+          data-testid={`comprehend-${g.key}`}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderBottom: "1px solid var(--line, #333)", flexWrap: "wrap" }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 11.5, minWidth: 70 }}>{g.label}</span>
+          <span className="badge">{g.items.length}</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: 1 }}>
             {g.items.map((it, i) => (
-              <span key={`${it.k}-${i}`} className="badge" title={it.hint || it.k} style={{ fontSize: 10.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span
+                key={`${it.k}-${i}`}
+                className="badge"
+                title={it.hint || it.k}
+                style={{ fontSize: 10.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
                 {it.k || "—"}
               </span>
             ))}
@@ -525,6 +533,11 @@ interface PipelineSourceRow {
   rowCount: number;
   incrementalCount: number; // 带 watermark 的数据集数（走真增量 CDC）
   quarantineCount: number;
+  // g8：每个连接器关联的 StoryBuildRun 摊平字段
+  storyRunCount: number;
+  lastStoryRunAt?: string;
+  lastStoryRunStatus?: string;
+  lastStoryScript?: string;
 }
 
 const ORIGIN_META: Record<SourceOrigin, { label: string; color: string; title: string }> = {
@@ -537,6 +550,7 @@ function OperationalPipelineBoard() {
   const connsQ = useQuery<ConnectionInstance[]>({ queryKey: ["a", "connections"], queryFn: fetchConnections });
   const dsQ = useQuery<RawDatasetVM[]>({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const qQ = useQuery<QuarantineRowView[]>({ queryKey: ["a", "quarantine"], queryFn: fetchQuarantine });
+  const storyQ = useQuery<StoryBuildRun[]>({ queryKey: ["a", "story-runs"], queryFn: fetchStoryRuns });
 
   const syncM = useMutation({
     mutationFn: (connId: string) => triggerSync(connId),
@@ -551,10 +565,14 @@ function OperationalPipelineBoard() {
   const conns = connsQ.data ?? [];
   const datasets = dsQ.data ?? [];
   const quarantine = qQ.data ?? [];
+  const storyRuns = storyQ.data ?? [];
 
   const rows: PipelineSourceRow[] = conns.map((c) => {
     const ds = datasets.filter((d) => d.sourceConnId === c.id);
     const qrows = quarantine.filter((q) => q.connId === c.id);
+    const runs = storyRuns.filter((r) => r.producedConnections.includes(c.id));
+    const sortedRuns = runs.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+    const lastRun = sortedRuns[0];
     return {
       connId: c.id,
       name: c.name,
@@ -568,6 +586,10 @@ function OperationalPipelineBoard() {
       rowCount: ds.reduce((a, d) => a + (d.rowCount ?? 0), 0),
       incrementalCount: ds.filter((d) => !!d.watermark).length,
       quarantineCount: qrows.length,
+      storyRunCount: runs.length,
+      lastStoryRunAt: lastRun?.createdAt,
+      lastStoryRunStatus: lastRun?.status,
+      lastStoryScript: lastRun?.script?.slice(0, 60),
     };
   });
   const syntheticN = rows.filter((r) => r.origin === "synthetic").length;
@@ -588,7 +610,7 @@ function OperationalPipelineBoard() {
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">
           数据源管线（{rows.length} 源 · {datasets.length} 数据集）{" "}
-          {(connsQ.isLoading || dsQ.isLoading) && <span className="muted" style={{ fontSize: 11 }}>加载中…</span>}
+          {(connsQ.isLoading || dsQ.isLoading || storyQ.isLoading) && <span className="muted" style={{ fontSize: 11 }}>加载中…</span>}
         </div>
         {rows.length === 0 ? (
           <div className="empty-state" style={{ fontSize: 12 }} data-testid="db-operational-empty">
@@ -598,7 +620,7 @@ function OperationalPipelineBoard() {
           <table className="cmp" data-testid="db-pipeline-table" style={{ fontSize: 11.5 }}>
             <thead>
               <tr>
-                <th>数据源</th><th>来源</th><th>状态</th><th>last sync</th><th>新鲜度</th><th>数据集</th><th>行数</th><th>增量(CDC)</th><th>隔离</th><th></th>
+                <th>数据源</th><th>来源</th><th>状态</th><th>last sync</th><th>新鲜度</th><th>数据集</th><th>行数</th><th>增量(CDC)</th><th>隔离</th><th>建域次数</th><th>最近建域</th><th>建域状态</th><th>最近脚本</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -626,6 +648,18 @@ function OperationalPipelineBoard() {
                     </td>
                     <td data-testid={`db-quarantine-${r.connId}`} style={{ color: r.quarantineCount > 0 ? "var(--danger,#E5484D)" : "var(--muted)" }}>
                       {r.quarantineCount > 0 ? `${r.quarantineCount} 行` : "0"}
+                    </td>
+                    <td data-testid={`db-story-count-${r.connId}`}>{r.storyRunCount}</td>
+                    <td className="mono" style={{ fontSize: 10.5 }}>{r.lastStoryRunAt ? r.lastStoryRunAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                    <td data-testid={`db-story-status-${r.connId}`}>
+                      {r.lastStoryRunStatus ? (
+                        <span style={{
+                          color: r.lastStoryRunStatus === "SUCCEEDED" ? "var(--c-capacity,#36BFA5)" : r.lastStoryRunStatus === "FAILED" ? "var(--danger,#E5484D)" : "var(--amber,#DD9551)",
+                        }}>{r.lastStoryRunStatus}</span>
+                      ) : "—"}
+                    </td>
+                    <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10.5, color: "var(--muted)" }} title={r.lastStoryScript ?? undefined}>
+                      {r.lastStoryScript ?? "—"}
                     </td>
                     <td>
                       <button className="btn sm" data-testid={`db-sync-${r.connId}`} disabled={syncM.isPending} onClick={() => syncM.mutate(r.connId)} title="手动触发增量同步（运营态常态由调度自动跑·WO-PIPE-INCR）">

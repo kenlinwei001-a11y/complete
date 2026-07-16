@@ -88,6 +88,30 @@ export default function AgentsPage() {
     onError: toastError,
   });
 
+  // 筛选 + 排序
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "name" | "status">("createdAt");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const filteredKeys = keys
+    .map((k) => {
+      const latest = (agents ?? []).filter((a) => a.key === k).sort((a, b) => b.version - a.version)[0]!;
+      return latest;
+    })
+    .filter((a) => {
+      if (searchText && !a.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (statusFilter && a.status !== statusFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "createdAt") cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      else if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortBy === "status") cmp = a.status.localeCompare(b.status);
+      return sortDesc ? -cmp : cmp;
+    });
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
@@ -96,7 +120,48 @@ export default function AgentsPage() {
           {zh.admin.empty.agentsCta}
         </button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" }}>
+
+      {/* 筛选 + 排序工具栏 */}
+      <div className="panel" style={{ marginBottom: 14, padding: "10px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 12px", alignItems: "center" }}>
+          <span className="section-title" style={{ margin: 0, fontSize: 12 }}>筛选</span>
+          <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">名称</span>
+            <input
+              data-testid="agent-filter-name"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="搜索名称"
+              style={{ width: 120, fontSize: 12 }}
+            />
+          </div>
+          <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="muted">状态</span>
+            <select data-testid="agent-filter-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">全部</option>
+              <option value="DRAFT">DRAFT</option>
+              <option value="PUBLISHED">PUBLISHED</option>
+              <option value="RETIRED">RETIRED</option>
+            </select>
+          </label>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="muted" style={{ fontSize: 12 }}>排序</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ fontSize: 12 }}>
+              <option value="createdAt">创建时间</option>
+              <option value="name">名称</option>
+              <option value="status">状态</option>
+            </select>
+            <button className="btn sm" onClick={() => setSortDesc((v) => !v)} title={sortDesc ? "降序" : "升序"}>
+              {sortDesc ? "↓" : "↑"}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+          共 {keys.length} 个 Agent · 命中 {filteredKeys.length} 个
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {keys.length === 0 && (
             // 管理平台增量 §6：无 agent → 「创建 Agent」+ 模板预填
@@ -106,15 +171,33 @@ export default function AgentsPage() {
               </button>
             </EmptyState>
           )}
-          {keys.map((k) => {
-            const latest = (agents ?? []).filter((a) => a.key === k).sort((a, b) => b.version - a.version)[0]!;
-            return (
-              <button key={k} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedKey === k ? "var(--accent)" : undefined }} onClick={() => { setSelectedKey(k); setVersion(null); }}>
-                <span className={`badge ${latest.status === "PUBLISHED" ? "green" : "amber"}`}>{latest.status}</span>
-                <span className="zh">{latest.name}</span>
-              </button>
-            );
-          })}
+          {filteredKeys.map((latest) => (
+            <div
+              key={latest.key}
+              onClick={() => { setSelectedKey(latest.key); setVersion(null); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 10px",
+                borderBottom: "1px solid var(--line, #333)",
+                cursor: "pointer",
+                flexWrap: "wrap",
+                background: selectedKey === latest.key ? "var(--panel2, #1a1a2e)" : undefined,
+              }}
+            >
+              <span className="zh" style={{ fontWeight: 500, minWidth: 100, flex: 1 }}>{latest.name}</span>
+              <span className={`badge ${latest.status === "PUBLISHED" ? "green" : latest.status === "RETIRED" ? "" : "amber"}`}>{latest.status}</span>
+              <span className={`badge ${latest.createdBy === "system" ? "" : "blue"}`}>{latest.createdBy === "system" ? "模拟" : "实际"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{latest.createdAt?.slice(0, 10) ?? "-"}</span>
+              <span style={{ fontSize: 11, color: "var(--muted2)" }}>{latest.createdBy ?? "-"}</span>
+            </div>
+          ))}
+          {filteredKeys.length === 0 && keys.length > 0 && (
+            <div className="empty-state" style={{ padding: "24px 12px" }}>
+              无匹配 Agent——请调整筛选条件
+            </div>
+          )}
         </div>
         {selected && (
           <div>

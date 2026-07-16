@@ -903,6 +903,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["型号认证状态（量产/认证中）", "P50 均衡口径可承接性", "P90 保守口径缺口", "外协/排程平移杠杆"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     // WO-SCENE-D §2.3：补齐 skill 资产广度（1→5），各场景 agent 挂对口方法论 skill（不再全指产能分析）。
     {
@@ -914,6 +916,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["越线峰值时点", "根因分层（齐套/良率/检修）", "受影响订单归因分类", "营收/毛利敞口量化"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_sop_balance", tenantId: SEED_TENANT, key: "sop_balance", version: 1,
@@ -924,6 +928,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["MRP 净需求口径", "需求/供给/缺口逐步核对", "平衡杠杆（外协/平移/换型）", "版本演进与量价本利复核"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_order_margin", tenantId: SEED_TENANT, key: "order_margin", version: 1,
@@ -934,6 +940,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["应用细分毛利下限红线", "细分综合毛利结构", "客户信用敞口", "挂牌/信控前置触发"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_plan_scheme", tenantId: SEED_TENANT, key: "plan_scheme", version: 1,
@@ -944,6 +952,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["CAPEX 硬约束", "现金垫承受", "毛利底线", "保毛利 vs 保规模取舍点"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     // SKILL-LIBRARY-EVERYWHERE §4：补种缺失方法论 skill（齐套/碳合规/认证排期/库存/信用/换型），使 20 卡逐一挂对口方法论·库存量 5→11。
     {
@@ -955,6 +965,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["BOM 净需求覆盖", "最早齐套日", "长协覆盖优先", "现货兜底与缺口挂牌"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_carbon_compliance", tenantId: SEED_TENANT, key: "carbon_compliance", version: 1,
@@ -965,6 +977,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["全生命周期分项核算", "出口目的地碳阈值", "达标/超标判定", "减碳杠杆（绿电/能效/产地）"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_cert_schedule", tenantId: SEED_TENANT, key: "cert_schedule", version: 1,
@@ -975,6 +989,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["交付紧迫度", "型号战略权重", "认证产线占用错峰", "认证完成 vs 首单交期"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_inventory_opt", tenantId: SEED_TENANT, key: "inventory_opt", version: 1,
@@ -985,6 +1001,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["安全库存上下限", "超储/欠储识别", "可释放资金测算", "欠储补货建议"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_credit_risk", tenantId: SEED_TENANT, key: "credit_risk", version: 1,
@@ -995,6 +1013,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["信用敞口（应收+在途）", "授信额度余额", "预警/冻结阈值", "预付/担保/账期前置"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "skl_changeover", tenantId: SEED_TENANT, key: "changeover_seq", version: 1,
@@ -1005,6 +1025,8 @@ export function seedRegistry(now = new Date().toISOString()): {
         criteria: ["换型清线/调机损失", "同族工艺聚批", "紧急单交期约束", "损失最小化排序"],
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
   ];
   const agents: AgentDefinition[] = [
@@ -1056,6 +1078,8 @@ export function seedRegistry(now = new Date().toISOString()): {
       },
       budget: { maxIterations: 8, maxToolCalls: 12 },
       status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
     {
       id: "agt_seed_explore", tenantId: SEED_TENANT, key: "explore_agent", version: 1,
@@ -1073,6 +1097,8 @@ export function seedRegistry(now = new Date().toISOString()): {
       scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", "invoke_solver"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "PUBLISHED",
+      createdAt: now,
+      createdBy: "system",
     },
   ];
   // WO-SCENE-B（规划体检完整场景 agent·试点模板）：scn_plan_audit 的 defaultAgentId。
@@ -1115,6 +1141,8 @@ export function seedRegistry(now = new Date().toISOString()): {
     },
     budget: { maxIterations: 8, maxToolCalls: 12 },
     status: "PUBLISHED",
+    createdAt: now,
+    createdBy: "system",
   });
 
   // WO-SCENE-C（以 agt_plan_audit 为模板·铺到更多入口）：dash/risk/order/sop-balance 各配完整场景 agent
@@ -1171,6 +1199,8 @@ export function seedRegistry(now = new Date().toISOString()): {
     },
     budget: { maxIterations: 8, maxToolCalls: 12 },
     status: "PUBLISHED",
+    createdAt: now,
+    createdBy: "system",
   });
 
   // dash · 经营驾驶舱（KPI 达成率/财务三线/接单毛利/客户信用/长协覆盖）

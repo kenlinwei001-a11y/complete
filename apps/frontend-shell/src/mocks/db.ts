@@ -102,12 +102,12 @@ function freshDb(): MockDb {
     syncJobPolls: new Map(),
     connections: [
       // 推演数据的真实来源（与真后端 SEED_DEMO 一致）：合成数据源 → RawDataset → 图谱 → 对象 → 求解器
-      { id: "conn-synth", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "合成数据源（确定性生成）", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:00:00Z" },
-      { id: "conn-erp", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "ERP 主数据", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T22:00:00Z" },
-      { id: "conn-crm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "CRM 订单", config: {}, status: "ERROR", lastSyncAt: "2026-06-10T22:00:00Z", lastError: "401 unauthorized" },
-      { id: "conn-iot", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "IoT 时序通道", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:00:00Z" },
+      { id: "conn-synth", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "合成数据源（确定性生成）", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:00:00Z", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
+      { id: "conn-erp", tenantId: TENANT_ID, connectorTypeKey: "mock_erp", name: "ERP 主数据", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T22:00:00Z", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
+      { id: "conn-crm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "CRM 订单", config: {}, status: "ERROR", lastSyncAt: "2026-06-10T22:00:00Z", lastError: "401 unauthorized", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
+      { id: "conn-iot", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "IoT 时序通道", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:00:00Z", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
       // WO-KB-UI（G-VIS-1·S4）：知识库连接（灌了 2 篇工艺文档·前端知识库页消费）。
-      { id: "conn-kb", tenantId: TENANT_ID, connectorTypeKey: "knowledge_base", name: "电池工艺知识库", config: { endpoint: "local://kb" }, status: "ACTIVE", lastSyncAt: "2026-06-12T03:00:00Z" },
+      { id: "conn-kb", tenantId: TENANT_ID, connectorTypeKey: "knowledge_base", name: "电池工艺知识库", config: { endpoint: "local://kb" }, status: "ACTIVE", lastSyncAt: "2026-06-12T03:00:00Z", createdAt: "2026-07-07T00:00:00Z", createdBy: "admin" },
     ],
     ruleDocs: [structuredClone(RULE_DOC), structuredClone(RULE_DOC_EXTRACTING)],
     candidates: structuredClone(RULE_CANDIDATES),

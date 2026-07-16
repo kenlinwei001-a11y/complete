@@ -136,7 +136,7 @@ export class CatalogService {
     return list;
   }
 
-  async createIntent(packageId: string, body: z.infer<typeof CreateIntentBodySchema>): Promise<IntentDefinition> {
+  async createIntent(packageId: string, body: z.infer<typeof CreateIntentBodySchema>, createdBy?: string): Promise<IntentDefinition> {
     const pkg = await this.repos.packages.get(packageId);
     if (!pkg) throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${packageId}`);
     const existing = await this.repos.intents.listByPackage(packageId);
@@ -155,6 +155,7 @@ export class CatalogService {
       status: "DRAFT",
       createdAt: now,
       updatedAt: now,
+      createdBy,
     };
     await this.repos.intents.insert(intent);
     return intent;

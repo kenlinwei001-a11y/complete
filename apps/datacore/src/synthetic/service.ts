@@ -602,6 +602,8 @@ export class SyntheticService {
       config: { synthetic: true },
       status: "ACTIVE",
       lastSyncAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      createdBy: "system",
     };
     await this.repos.connections.put(conn);
     return conn.id;
