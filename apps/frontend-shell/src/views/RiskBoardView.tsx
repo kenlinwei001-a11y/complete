@@ -79,20 +79,26 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   </span>
                 )}
               </div>
-              {/* 轨M 增量1（真推演红线）：红/黄峰值不再裸渲染当真值——诚实标 dataMode：
-                  MOCK→"估算（实测当前 N）"，LIVE→"实测当前 N"（推演峰值锚定真测量值，R13 可溯）。 */}
-              {card.dataMode === "MOCK" && (
+              {/* WO-DATAMODE-UNIFY-PROVENANCE（两正交维·诚实灰）：合成种子物化底料（provenanceSynthetic·provenance 维）
+                  → 灰标"合成·未接实测"，绝不显"实测当前 N"（合成不冒充实测·KILL-MOCK-RED·铁律 0.4·用户裁定选项c=
+                  接受诚实的灰）。非合成时保留 measurement 维语义（轨M 增量1）：MOCK→"估算（实测当前 N）"，
+                  LIVE→"实测当前 N"（推演峰值锚定真测量值，R13 可溯）。 */}
+              {card.provenanceSynthetic ? (
+                <div className="badge" data-testid={`risk-datamode-${card.base}`}
+                  style={{ background: "var(--panel-2, #232a33)", color: "var(--muted, #8a94a6)", fontSize: 10, alignSelf: "flex-start" }}>
+                  合成·未接实测{card.currentTightness ? `（合成当前 ${Math.round(card.currentTightness.value)}）` : ""}
+                </div>
+              ) : card.dataMode === "MOCK" ? (
                 <div className="badge" data-testid={`risk-datamode-${card.base}`}
                   style={{ background: "var(--warn, #caa23a)", color: "#1a1400", fontSize: 10, alignSelf: "flex-start" }}>
                   估算{card.currentTightness ? `（实测当前 ${Math.round(card.currentTightness.value)}）` : "（无实测）"}
                 </div>
-              )}
-              {card.dataMode === "LIVE" && card.currentTightness && (
+              ) : card.dataMode === "LIVE" && card.currentTightness ? (
                 <div className="badge" data-testid={`risk-datamode-${card.base}`}
                   style={{ fontSize: 10, alignSelf: "flex-start", opacity: 0.8 }}>
                   实测当前 {Math.round(card.currentTightness.value)}
                 </div>
-              )}
+              ) : null}
               <div className={styles.metrics}>
                 <span>
                   {zh.risk.peak}

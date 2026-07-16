@@ -1,7 +1,7 @@
 import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { validationError } from "../errors.js";
-import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -256,8 +256,12 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
+      // measurement 维（读到真 OEE/util/良率即 LIVE·不动）——保 currentTightness.live 语义与轨M 增量1。
       dataMode: lt.live ? "LIVE" : "MOCK",
       currentTightness: { value: lt.value, live: lt.live },
+      // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·两正交维·不改 dataMode/live）：本卡底层对象是否合成物化。
+      // demo 合成世界（Base/设备/产线/工序全 MATERIALIZED-from-synthetic）→ true → 前端诚实灰、不显"实测当前 N"。
+      provenanceSynthetic: baseProvenanceSynthetic(c, pair.baseId),
       peak: Math.max(...series),
       crossDay,
       series,

@@ -238,6 +238,12 @@ export interface SolverContext {
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
   rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number> }>;
   ruleSetVersion?: string;
+  // WO-DATAMODE-UNIFY-PROVENANCE（唯一真相合成 provenance 谓词·SolverService.buildSynthProvenancePredicate 注入）：
+  // 逐对象判"是否合成种子物化"——origin SYNTHETIC ∪（MATERIALIZED 且 datasetId ∈ 合成源连接的物化数据集集）。
+  // 求解器据此把**合成对象**派生的紧张度/卡/行加性标 provenanceSynthetic（measurement 维 live/dataMode 不动，两维正交），
+  // 使合成数据绝不冒充 LIVE/实测（闭 G-DATAMODE-PROVENANCE-LEAK）。optional：缺省（测试直构 ctx / 无合成源）
+  // 视为"全非合成"→ 现行行为不变（向后兼容 R6）。
+  isSynthProvenance?: (o: ObjectInstance) => boolean;
 }
 
 export function num(v: unknown, fallback = 0): number {
@@ -265,4 +271,25 @@ export function baseName(c: SolverContext, baseId: string): string {
 export function maintWeekOf(c: SolverContext, baseId: string): number | null {
   const mp = c.maintPlans.find((m) => m.props.baseId === baseId);
   return mp ? num(mp.props.week) : null;
+}
+
+/**
+ * WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·两正交维模型）：某基地一张卡/一行的**底层决策对象**是否合成种子物化。
+ * 底料 = 该 Base 对象本身 + 喂 liveTightness measurement 的设备/产线/工序（OEE/利用率/良率来源）。
+ * 任一合成物化 → true。谓词缺省（无合成源 / 测试直构 ctx）→ false，现行行为不变（向后兼容 R6·确定性无随机/时钟）。
+ *
+ * ⚠ 这是 **provenance 维**（合成种子），与 **measurement 维**（liveTightness.live·读到真 OEE/util/良率即 LIVE）正交：
+ * 本函数**不改** live/dataMode，只加性透出"底料是否合成"，供前端把合成数据走诚实灰、绝不冒充实测（铁律 0.4）。
+ */
+export function baseProvenanceSynthetic(c: SolverContext, baseId: string): boolean {
+  const p = c.isSynthProvenance;
+  if (!p) return false;
+  const base = c.bases.find((b) => str(b.props.baseId) === baseId);
+  const objs: ObjectInstance[] = [
+    ...(base ? [base] : []),
+    ...c.equipment.filter((e) => str(e.props.baseId) === baseId),
+    ...c.lines.filter((l) => str(l.props.baseId) === baseId),
+    ...c.processes.filter((pr) => str(pr.props.baseId) === baseId),
+  ];
+  return objs.some((o) => p(o));
 }

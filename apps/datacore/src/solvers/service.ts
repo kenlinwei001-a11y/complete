@@ -1405,9 +1405,14 @@ export class SolverService {
             this.repos.objects.listByType(tenantId, "CarbonFactor"),
           ])
         : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
+    // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实
+    // 加性标 provenanceSynthetic——合成种子物化对象（demo viaModelingChain 全 MATERIALIZED-from-synthetic）
+    // 不再被误报 LIVE/实测。谓词内部对连接/数据集集单遍解析（R6 确定性·无时钟/随机）。
+    const isSynthProvenance = await this.buildSynthProvenancePredicate(tenantId);
     return {
       tenantId,
       params,
+      isSynthProvenance,
       bases: sortById(bases),
       lines: sortById(lines),
       processes: sortById(processes),
@@ -1431,6 +1436,34 @@ export class SolverService {
       carbonFactors: sortById(carbonFactors),
       rules,
       ruleSetVersion,
+    };
+  }
+
+  /**
+   * WO-DATAMODE-UNIFY-PROVENANCE（治本·三症同根·闭 G-DATAMODE-PROVENANCE-LEAK）：**唯一真相合成 provenance 谓词**。
+   * 供三处 dataMode 泄漏点（app.ts derive/decision-fields 真源判定 · risk.ts 卡 · capacity.ts 逐行）共用同一
+   * 判合成口径——彻底消除"合成种子物化对象被误标 LIVE/实测"（合成冒充 LIVE·违铁律 0.4·KILL-MOCK-RED）。
+   *
+   * 判据（两正交维之 provenance 维·非 measurement 维）：合成源连接（config.synthetic===true·通用标识非连接名 R14）
+   * → 其物化数据集集 synthDatasetIds；对象合成 ⇔ origin.type===SYNTHETIC（A 路直注）**或** origin.type===MATERIALIZED
+   * 且 origin.datasetId ∈ synthDatasetIds（B 路建模链·demo viaModelingChain 现状）。缺省 origin → false（不冒充合成）。
+   *
+   * 每次 loadContext 单遍解析（R6 确定性·无缓存以随合成/真导入写路径即时翻转·无时钟/随机）。tenant 隔离（R2）。
+   */
+  async buildSynthProvenancePredicate(tenantId: string): Promise<(o: ObjectInstance) => boolean> {
+    // 合成源连接集（config.synthetic===true）→ 其物化数据集集（MATERIALIZED.datasetId ∈ 此集 = 合成 provenance）。
+    const synthConnIds = new Set(
+      (await this.repos.connections.list(tenantId, (c) => (c.config as Record<string, unknown> | undefined)?.synthetic === true)).map((c) => c.id),
+    );
+    const synthDatasetIds = new Set(
+      synthConnIds.size > 0
+        ? (await this.repos.rawDatasets.list(tenantId, (d) => synthConnIds.has(d.sourceConnId))).map((d) => d.id)
+        : [],
+    );
+    return (o: ObjectInstance): boolean => {
+      const og = o.origin as { type?: string; datasetId?: string } | undefined; // 防御：origin 缺省 → 视为非合成（不冒充合成）。
+      if (!og || typeof og !== "object") return false;
+      return og.type === "SYNTHETIC" || (og.type === "MATERIALIZED" && !!og.datasetId && synthDatasetIds.has(og.datasetId));
     };
   }
 

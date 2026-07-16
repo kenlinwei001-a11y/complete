@@ -508,6 +508,12 @@ export class SyntheticService {
   /**
    * SEED_DEMO 多源系统连接：补齐 mock 中 8 个 connections（ERP/CRM/IoT/PLM/MES/QMS/SRM），
    * 使数据接入控制台按源系统分组展示，RawDataset 的 dataset 名与 BINDINGS 一致（plm_platforms 等）。
+   *
+   * WO-DATAMODE-UNIFY-PROVENANCE（KILL-MOCK-RED·诚实标注）：这些"源系统"连接是**合成 demo 夹具**——其数据全由
+   * generateBattery 确定性合成（无真 ERP/MES/IoT 后端），故 config.synthetic===true 诚实声明其合成 provenance
+   * （与"合成数据源（确定性生成）"连接同标识）。使 buildSynthProvenancePredicate 能把经 BINDINGS 落到这些连接的
+   * demo 物化对象（Base→conn-mes / Equipment→conn-iot / Order→conn-erp …）正确判为合成，不冒充 LIVE/实测。
+   * 真接入（真 ERP 上传/连接）走独立连接·无此标识 → measurement=LIVE 且 provenance 非合成 = 真实测（R14 通用标识非连接名）。
    */
   private async ensureSourceConnections(ctx: AuthCtx): Promise<Map<string, string>> {
     const defs = [
@@ -528,7 +534,7 @@ export class SyntheticService {
         tenantId: ctx.tenantId,
         connectorTypeKey: d.connectorTypeKey,
         name: d.name,
-        config: {},
+        config: { synthetic: true },
         status: "ACTIVE",
         lastSyncAt: new Date().toISOString(),
       };

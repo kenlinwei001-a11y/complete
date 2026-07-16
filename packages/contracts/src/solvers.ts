@@ -15,6 +15,11 @@ export const PerBaseRowSchema = z.object({
   tightness: z.number(),
   // 轨M 增量1（假2）：该基地主瓶颈紧张度是否来自真数据（liveTightness）→ 前端红/橙显"实测/估算"。
   live: z.boolean().optional(),
+  // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·与 measurement 维 live 正交）：本行底层基地对象（含其
+  // 设备/产线/工序）是否为**合成种子物化**（origin SYNTHETIC ∪ MATERIALIZED-from-synthetic）。measurement 维
+  // （live=读到真字段值即 true）不变；provenance 维额外披露"底料是否合成"→ 前端对合成行走诚实灰、绝不冒充
+  // "实测"（KILL-MOCK-RED·铁律 0.4）。缺省（无合成源/测试直构 ctx）视为 false（向后兼容 R6）。
+  provenanceSynthetic: z.boolean().optional(),
   cumTotal: z.number(),
 });
 export type PerBaseRow = z.infer<typeof PerBaseRowSchema>;
@@ -104,6 +109,11 @@ export const RiskCardSchema = z.object({
   dataMode: z.enum(["LIVE", "MOCK"]).optional(),
   // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
   currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
+  // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·与 measurement 维 dataMode/live 正交）：本卡底层对象
+  // （Base + 该基地设备/产线/工序 + 需求细分）是否合成种子物化。measurement 维不变（保 dataMode/currentTightness.live
+  // 语义）；provenance 维额外披露"底料是否合成"→ 前端把合成卡走诚实灰、不显"实测当前 N"（KILL-MOCK-RED·铁律 0.4）。
+  // 缺省（无合成源/测试直构 ctx）视为 false（向后兼容 R6）。
+  provenanceSynthetic: z.boolean().optional(),
   peak: z.number(),
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
   series: z.array(z.number()), // 逐日 tension

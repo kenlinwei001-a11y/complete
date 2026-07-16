@@ -763,9 +763,12 @@ function StepBody({
                   <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger)" : undefined }}>
                     {r.tightness}
                   </span>
-                  {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。 */}
-                  <span data-testid={`pm-tight-mode-${r.base}`} style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>
-                    {r.live ? "实测" : "估算"}
+                  {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。
+                      WO-DATAMODE-UNIFY-PROVENANCE（两正交维·诚实灰）：合成种子物化底料（provenanceSynthetic·provenance 维）
+                      优先标"合成"（灰），绝不冒充"实测"（KILL-MOCK-RED·铁律 0.4）；非合成保留 measurement 维实测/估算。 */}
+                  <span data-testid={`pm-tight-mode-${r.base}`}
+                    style={{ marginLeft: 6, fontSize: 10, opacity: 0.75, color: r.provenanceSynthetic ? "var(--muted, #8a94a6)" : undefined }}>
+                    {r.provenanceSynthetic ? "合成" : r.live ? "实测" : "估算"}
                   </span>
                 </td>
               </tr>

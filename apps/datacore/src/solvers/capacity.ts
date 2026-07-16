@@ -1,6 +1,6 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
-import { baseName, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { liveTightness, primaryFactor } from "./risk.js";
 
 /** Build a lookup map from a key extractor; used to avoid O(n³) nested filters in computeRollup. */
@@ -269,7 +269,10 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       maintWeek: mw,
       bottleneck: bn,
       tightness: tight,
-      live: lt.live, // 该基地主瓶颈紧张度是否来自真数据（前端红/橙据此显"实测/估算"）
+      live: lt.live, // measurement 维：该基地主瓶颈紧张度是否来自真数据（读到真值即 LIVE·不动）
+      // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·两正交维·不改 live）：底层基地对象是否合成物化。
+      // demo 合成世界 → true → 前端诚实标"合成"而非"实测"（KILL-MOCK-RED·铁律 0.4）。
+      provenanceSynthetic: baseProvenanceSynthetic(c, baseId),
       cumTotal: round(cumTotal, 4),
     });
   }

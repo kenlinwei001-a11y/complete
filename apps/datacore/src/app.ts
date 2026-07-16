@@ -2964,12 +2964,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     const body = parseBody(DeriveDecisionFieldsRequestSchema, req.body);
 
-    // 只取 mapping 触及的类型（目标+源）·按 tenantId 隔离（R2）·真源 provenance=MATERIALIZED·跳过已并入对象（OC1）。
+    // 只取 mapping 触及的类型（目标+源）·按 tenantId 隔离（R2）·跳过已并入对象（OC1）。
     const types = new Set<string>();
     for (const r of body.mapping.rules) {
       types.add(r.target.objectType);
       types.add(r.source.objectType);
     }
+    // WO-DATAMODE-UNIFY-PROVENANCE：真源判定不再只看 origin.type==="MATERIALIZED"——demo viaModelingChain 的对象
+    // 全是 MATERIALIZED-from-synthetic（合成种子经建模链物化），只看 type 会把合成误判为真导入 → worldSource=imported
+    // → 漏掉"不冒充 LIVE"告警（合成冒充实测·违铁律 0.4）。改用唯一真相谓词：真源 = MATERIALIZED 且**非**合成 provenance。
+    const isSynthProvenance = await solvers.buildSynthProvenancePredicate(c.tenantId);
     const byType = new Map<string, DeriveSourceObject[]>();
     const objIndex = new Map<string, ObjectInstance>();
     for (const tk of types) {
@@ -2980,7 +2984,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           .filter((o) => !o.mergedInto)
           .map((o) => {
             objIndex.set(o.id, o);
-            return { id: o.id, props: o.props, real: o.origin?.type === "MATERIALIZED" };
+            return { id: o.id, props: o.props, real: o.origin?.type === "MATERIALIZED" && !isSynthProvenance(o) };
           }),
       );
     }
