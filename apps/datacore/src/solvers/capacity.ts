@@ -3,6 +3,16 @@ import { validationError } from "../errors.js";
 import { baseName, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { liveTightness, primaryFactor } from "./risk.js";
 
+/** Build a lookup map from a key extractor; used to avoid O(n³) nested filters in computeRollup. */
+function groupBy<K extends string | number, T>(items: T[], keyFn: (x: T) => K): Record<string, T[]> {
+  const out: Record<string, T[]> = {};
+  for (const item of items) {
+    const k = String(keyFn(item));
+    (out[k] ??= []).push(item);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // S1.1 capacity_rollup — equipment → process → line → base, with per-level
 // {formula, inputs[]} intermediates (rules C01/C02 referenced).
@@ -36,16 +46,19 @@ export function equipmentOee(props: Record<string, unknown>): number {
 
 export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs: string[] } {
   const p = c.params;
+  const linesByBase = groupBy(c.lines, (l) => str(l.props.baseId));
+  const processesByLine = groupBy(c.processes, (pr) => str(pr.props.lineId));
+  const equipmentByProcess = groupBy(c.equipment, (e) => str(e.props.processId));
   const out: BaseRollup[] = [];
   for (const b of c.bases) {
     const baseId = str(b.props.baseId);
-    const lines = c.lines.filter((l) => l.props.baseId === baseId);
+    const lines = linesByBase[baseId] ?? [];
     const lineNodes: RollupNode[] = [];
     const processNodes: RollupNode[] = [];
     const equipNodes: RollupNode[] = [];
     for (const line of lines) {
       const lineId = str(line.props.lineId);
-      const procs = c.processes.filter((pr) => pr.props.lineId === lineId);
+      const procs = processesByLine[lineId] ?? [];
       const serialCaps: number[] = [];
       let formationCap = Infinity;
       let agingCap = Infinity;
@@ -72,7 +85,7 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
           );
           agingCap = Math.min(agingCap, daily);
         } else {
-          const equips = c.equipment.filter((e) => e.props.processId === proc.props.processId);
+          const equips = equipmentByProcess[str(proc.props.processId)] ?? [];
           let hourlySum = 0;
           for (const e of equips) {
             const oee = equipmentOee(e.props);

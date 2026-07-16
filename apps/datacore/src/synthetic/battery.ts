@@ -49,7 +49,7 @@ const MODEL_BASE_MAP: Record<string, string[]> = {
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
   "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
   "方形-NCM": ["changzhou", "chengdu", "jinhua"], // HTML 方形-NCM → 常州/成都/金华
-  "圆柱-LFP": ["xinyang", "luoyang"], // HTML 圆柱-LFP → 信阳/洛阳
+  "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
 };
 
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。

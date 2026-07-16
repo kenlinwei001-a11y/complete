@@ -44,6 +44,16 @@ const s = (v: unknown, d = ""): string => (typeof v === "string" ? v : v == null
 const r4 = (x: number): number => Math.round(x * 1e4) / 1e4;
 const r2 = (x: number): number => Math.round(x * 1e2) / 1e2;
 
+/** Build a deterministic lookup map to avoid O(n³) nested filters. */
+function groupBy<K extends string | number, T>(items: T[], keyFn: (x: T) => K): Record<string, T[]> {
+  const out: Record<string, T[]> = {};
+  for (const item of items) {
+    const k = String(keyFn(item));
+    (out[k] ??= []).push(item);
+  }
+  return out;
+}
+
 /** 独立读取本租户求解参数：repo 覆盖 ⊕ GenSpec 默认（与系统 getParams 同口径，但不经被测服务）。 */
 async function loadParams(repos: Repos, tenantId: string): Promise<Record<string, unknown>> {
   const rec = await repos.solverParams.get(tenantId, `spar_${tenantId}`);
@@ -62,14 +72,17 @@ function weeklyWanByBase(
   equipment: Obj[],
   packCellCount: number,
 ): Map<string, number> {
+  const linesByBase = groupBy(lines, (l) => s(l.props.baseId));
+  const processesByLine = groupBy(processes, (p) => s(p.props.lineId));
+  const equipmentByProcess = groupBy(equipment, (e) => s(e.props.processId));
   const out = new Map<string, number>();
   for (const base of bases) {
     const baseId = s(base.props.baseId);
-    const baseLines = lines.filter((l) => s(l.props.baseId) === baseId);
+    const baseLines = linesByBase[baseId] ?? [];
     let lineSum = 0;
     for (const line of baseLines) {
       const lineId = s(line.props.lineId);
-      const procs = processes.filter((p) => s(p.props.lineId) === lineId);
+      const procs = processesByLine[lineId] ?? [];
       const serialCaps: number[] = [];
       let formationCap = Number.POSITIVE_INFINITY;
       let agingCap = Number.POSITIVE_INFINITY;
@@ -83,7 +96,7 @@ function weeklyWanByBase(
           agingCap = Math.min(agingCap, cap);
         } else {
           // 通用工序：Σ设备产能/h × 工时 × 良率 × 出勤 × 利用率。
-          const equips = equipment.filter((e) => s(e.props.processId) === s(proc.props.processId));
+          const equips = equipmentByProcess[s(proc.props.processId)] ?? [];
           let hourly = 0;
           for (const e of equips) {
             const oeeSnap = e.props.oee_current;
