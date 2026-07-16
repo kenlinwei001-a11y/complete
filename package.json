@@ -15,6 +15,7 @@
     "meta:sync": "node scripts/check-meta-sync.mjs",
     "bstack-derive:check": "node scripts/check-bstack-derive.mjs",
     "modeling-wire:check": "node scripts/check-modeling-wire.mjs",
+    "link-stabilize:check": "node scripts/check-link-stabilize.mjs",
     "gates": "node scripts/check-system-ontology.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs",

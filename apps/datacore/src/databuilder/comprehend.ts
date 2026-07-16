@@ -6,6 +6,7 @@ import type {
 } from "@platform/contracts";
 import { deriveSolverArgs } from "./solver-args.js";
 import { DOMAIN_ROOT_REQUIREMENTS } from "./domain-invariants.js";
+import { planSlice, type PlannerType, type PlannerLink } from "../ontology/slice-planner.js";
 
 /**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
@@ -241,9 +242,66 @@ function deriveAgentPrompt(s: PlanSolverNeed, script: string): string {
 }
 const deriveSkillResources = (s: PlanSolverNeed): string[] => [...new Set(s.inputFields.map((f) => f.typeKey))].sort().map((t) => `slice_${t.toLowerCase()}`);
 
+/**
+ * WO-DB-LINK-STABILIZE（链路派生稳定）：从对象类型 `refToTypeKey`（+ **FK 名启发兜底**补 LLM 偶发丢的链）
+ * 建链图 → 经现成 `slice-planner.planSlice`（真 BFS 多跳·确定性 R6·复用非重写）派生每 rootType 切片的**真实
+ * hops**（取代旧恒 `[]` 单根空切片）。rows-free（结构 refToTypeKey + 命名启发·非值域 FK——comprehend 期 rows 尚未生成）。
+ * fkFallback 缺省开；关（`opts.fkFallback=false`）→ 丢链不补 → hops 空（green→red 有牙·证兜底真生效非死板）。
+ * 无链可派生（无 ref/无 FK 名）时诚实留空——空 hops = 该 root 无出边、非缺陷。
+ */
+export function deriveSliceHops(objectTypes: PlanObjectType[], opts: { fkFallback?: boolean } = {}): Map<string, string[]> {
+  const fkFallback = opts.fkFallback !== false;
+  const typeKeys = objectTypes.map((t) => t.typeKey);
+  const typeKeySet = new Set(typeKeys);
+  const links: PlannerLink[] = [];
+  const seenLink = new Set<string>();
+  const addLink = (from: string, propKey: string, to: string) => {
+    const linkKey = `${from}_${propKey}_ref`;
+    if (from === to || !typeKeySet.has(to) || seenLink.has(linkKey)) return;
+    seenLink.add(linkKey);
+    links.push({ linkKey, fromTypeKey: from, toTypeKey: to });
+  };
+  for (const t of objectTypes) {
+    for (const p of t.properties) {
+      if (p.refToTypeKey) { addLink(t.typeKey, p.propKey, p.refToTypeKey); continue; }
+      // FK 名启发兜底（补 LLM 丢的 refToTypeKey·确定性·无 rows）：属性名 <Type>ref/<Type>id/<Type>key → 链到该类型。
+      if (fkFallback) {
+        const name = (p.sourceField ?? p.propKey).toLowerCase().replace(/[_\s]/g, "");
+        for (const other of typeKeys) {
+          if (other === t.typeKey) continue;
+          const o = other.toLowerCase();
+          if (name === `${o}ref` || name === `${o}id` || name === `${o}key`) { addLink(t.typeKey, p.propKey, other); break; }
+        }
+      }
+    }
+  }
+  const types: PlannerType[] = objectTypes.map((t) => ({ key: t.typeKey, domain: t.domain }));
+  const dedupeHops = (paths: { hops: { linkKey: string }[] }[]): string[] => {
+    const seen = new Set<string>(); const out: string[] = [];
+    for (const p of paths) for (const h of p.hops) if (!seen.has(h.linkKey)) { seen.add(h.linkKey); out.push(h.linkKey); }
+    return out;
+  };
+  const hopsByRoot = new Map<string, string[]>();
+  for (const t of objectTypes) {
+    const allTargets = typeKeys.filter((k) => k !== t.typeKey);
+    if (allTargets.length === 0) { hopsByRoot.set(t.typeKey, []); continue; }
+    const first = planSlice(types, links, { rootType: t.typeKey, targets: allTargets, maxHops: 6 });
+    let res = first;
+    // 部分不可达 → 只对可达目标重规划（保住已连通的多跳链·非因一枝不可达而整体退化为空）。
+    if (!first.ok) {
+      const unreachable = first.reason.unreachable;
+      const reachable = allTargets.filter((k) => !unreachable.includes(k));
+      if (reachable.length > 0) res = planSlice(types, links, { rootType: t.typeKey, targets: reachable, maxHops: 6 });
+    }
+    hopsByRoot.set(t.typeKey, res.ok ? dedupeHops(res.plan.paths) : []);
+  }
+  return hopsByRoot;
+}
+
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
 function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed[], script: string) {
-  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
+  const hopsByRoot = deriveSliceHops(objectTypes); // WO-DB-LINK-STABILIZE：真 BFS 多跳 hops（取代恒 []）。
+  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: hopsByRoot.get(t.typeKey) ?? [] }));
   const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: [] }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
   const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {}, triggerQuestion: script.trim().slice(0, 500) }));
@@ -609,7 +667,8 @@ export function comprehendScript(
 
   // ---- B 栈倒推（g8-P3 故事→全栈）：每个求解器 → 计划+意图+场景；每个对象类型 → 切片。----
   // 构成可运行编排链 场景→意图→计划→求解器→渲染（scenarioClosure 校验的脊柱）。
-  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
+  const hopsByRoot = deriveSliceHops(objectTypes); // WO-DB-LINK-STABILIZE：地板路同享真 BFS 多跳 hops（R6 与 LLM 路一致）。
+  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: hopsByRoot.get(t.typeKey) ?? [] }));
   const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({
     planKey: `plan_${s.solverKey}`,
     steps: ["invoke_solver", "render"],

@@ -30,7 +30,7 @@ import type { SolverService } from "../solvers/service.js";
 import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, deriveSliceHops, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
 import { detectFkCandidates, deriveModelingSuggestion } from "../modeling.js"; // WO-DB-MODELING-WIRE：数据先行 A3 复用
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
@@ -1066,12 +1066,14 @@ export class DataBuilderService {
         const body0 = await this.comprehendPlanBody(ctx, script, seed);
         plan = { id: planId, tenantId: ctx.tenantId, builderKey: builder.key, scriptHash, seed, script, createdAt: nowIso(), ...body0 };
         // WO-DB-MODELING-WIRE（数据先行）：给 fromDatasetIds → objectTypes/切片从真实列/FK 派生（A3 deriveModelingSuggestion·
-        // 取代 LLM 凭空造类型）；sliceNeeds 随真 objectTypes 重派（hops 与 comprehend 地板同口径=[]）。缺省=故事先行（旧行为不变）。
+        // 取代 LLM 凭空造类型）；sliceNeeds 随真 objectTypes 重派（hops 与 comprehend 地板同口径：经 deriveSliceHops
+        // 真 BFS 多跳派生·WO-DB-LINK-STABILIZE——数据先行路的 refToTypeKey 来自真实值域 FK 检测，是最强多跳来源）。缺省=故事先行（旧行为不变）。
         if (body.fromDatasetIds && body.fromDatasetIds.length > 0) {
           const dataTypes = await this.deriveObjectTypesFromDatasets(ctx, body.fromDatasetIds);
           if (dataTypes.length > 0) {
+            const dataHops = deriveSliceHops(dataTypes); // 真实列/FK → 真多跳 hops（取代恒 []）。
             plan = { ...plan, objectTypes: dataTypes,
-              sliceNeeds: dataTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] })) };
+              sliceNeeds: dataTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: dataHops.get(t.typeKey) ?? [] })) };
           }
         }
         if (cfg.determinism.freezePlan) await this.repos.buildPlans.put(plan);
