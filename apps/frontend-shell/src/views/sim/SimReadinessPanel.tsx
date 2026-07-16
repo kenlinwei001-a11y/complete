@@ -168,11 +168,15 @@ export function SimReadinessPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
         {radar}
         <div>
+          {/* 诚实门（WO-RC-UX-DOOR-TEXT）：未认证 ≠ 硬挡。标准沙盘页 tick 未门控 canEnter
+              （推进按钮只认 !sessionId||ticking），本就可试跑 → 显「可试跑」提醒黄（复用 --warn，零新色），
+              而非「暂不可进入」错误红劝退（真硬挡在 SimInitWizard「进入推演」另一入口，那里按钮才 disabled）。
+              试跑结论与 S2 诚信位协同标 UNCALIBRATED/仅供参考。 */}
           <div
             data-testid="sim-cert-canenter"
-            style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700 }}
+            style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--warn)", fontWeight: 700 }}
           >
-            {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
+            {cert.canEnterSimulation ? "✓ 可进入推演（已认证）" : "◐ 可试跑（未认证·结论仅供参考）"}
           </div>
           {cert.targetRef && (
             <div className={styles.sub} data-testid="sim-cert-target" style={{ marginTop: 2 }}>
