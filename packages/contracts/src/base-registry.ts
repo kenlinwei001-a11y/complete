@@ -51,7 +51,7 @@ export const SEG_REGISTRY: CanonicalSeg[] = [
 // 缩放系数 SCALE = 375万套 / 132万套 ≈ 2.84（由 SEG_DEMAND 总需求推导，不硬编码在消费端）。
 // gwh/lines 为产能指标随需求同比放大；util 为利用率百分比保持原设计区间；
 // 所有消费端从 BASE_REGISTRY 派生，改一处全局同步（DF.1/G-5/R14）。
-const SCALE = 2.84;
+export const WAVE1_SCALE_FACTOR = 2.84;
 
 export const BASE_REGISTRY: CanonicalBase[] = [
   { baseId: "changzhou", name: "常州", kind: "动力+储能", position: "混合", lon: 119.95, lat: 31.78, util: 88, gwh: 99.4, bottleneck: "化成柜", lines: 23, prodYear: 2015, mainProduct: "4680-NCM" },

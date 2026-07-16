@@ -1,4 +1,5 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
+import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round } from "../prng.js";
 
 /**
@@ -121,9 +122,9 @@ export function generateExtended(
     leadTime: 7 + Math.floor(rng() * 21),
     carbonFactor: round(8 + rng() * 40, 2),
     bomUnit: round(0.5 + rng() * 2, 3),
-    dailyUse: round(50 + rng() * 200, 1),
-    onHand: round(500 + rng() * 4000, 0),
-    inTransit: round(rng() * 1500, 0),
+    dailyUse: round((50 + rng() * 200) * WAVE1_SCALE_FACTOR, 1),
+    onHand: round((500 + rng() * 4000) * WAVE1_SCALE_FACTOR, 0),
+    inTransit: round(rng() * 1500 * WAVE1_SCALE_FACTOR, 0),
     // C27 长协执行偏差 / C31 外协质量门：从 matId 确定性派生，各植入一处越线。
     devPct: m.matId === "pos_ncm" ? 0.08 : 0.02,
     outsourceYield: m.matId === "sep_film" ? 0.91 : 0.95,
@@ -148,7 +149,7 @@ export function generateExtended(
       materialBatches.push({
         batchId: `${m.matId}_b${i}`,
         matId: m.matId,
-        qty: round(200 + rng() * 800, 0),
+        qty: round((200 + rng() * 800) * WAVE1_SCALE_FACTOR, 0),
         ageDays: makeDormant ? 95 + Math.floor(rng() * 60) : Math.floor(rng() * 80),
         idleDays: makeDormant ? 95 + Math.floor(rng() * 30) : Math.floor(rng() * 60),
       });
@@ -161,19 +162,19 @@ export function generateExtended(
     ...custNames.map((name, ci) => ({
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）
       custName: name,
-      creditLimit: round(2000 + rng() * 8000, 0),
+      creditLimit: round((2000 + rng() * 8000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
-      receivables: round(rng() * 3000, 0),
-      wipUnbilled: round(rng() * 2000, 0),
+      receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
+      wipUnbilled: round(rng() * 2000 * WAVE1_SCALE_FACTOR, 0),
       maxOverdueDays: name === "商用车集团G" ? 38 : Math.floor(rng() * 25),
     })),
     ...Array.from({ length: extraCustomers }, (_, k) => ({
       custId: `cust_x${k}`,
       custName: `客户${String(k + 1).padStart(3, "0")}`,
-      creditLimit: round(1000 + rng() * 9000, 0),
+      creditLimit: round((1000 + rng() * 9000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
-      receivables: round(rng() * 3000, 0),
-      wipUnbilled: round(rng() * 2000, 0),
+      receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
+      wipUnbilled: round(rng() * 2000 * WAVE1_SCALE_FACTOR, 0),
       maxOverdueDays: Math.floor(rng() * 25),
     })),
   ];
@@ -185,7 +186,7 @@ export function generateExtended(
       arInvoices.push({
         invoiceId: `arinvoice_${ci}_${i}`, // ascii pk（避免与搜索 token 碰撞）
         custName: c.custName,
-        amount: round(200 + rng() * 1500, 0),
+        amount: round((200 + rng() * 1500) * WAVE1_SCALE_FACTOR, 0),
         overdueDays: c.custName === "商用车集团G" && i === 0 ? 38 : Math.floor(rng() * 20),
       });
     }
@@ -248,7 +249,7 @@ export function generateExtended(
     purchaseOrders.push({
       poId: `po_${i}`,
       matId: m.matId,
-      qty: round(300 + rng() * 1200, 0),
+      qty: round((300 + rng() * 1200) * WAVE1_SCALE_FACTOR, 0),
       etaDay: 1 + Math.floor(rng() * 20),
       delayed: i === 5 || i === 17, // 植入 2 单延迟
     });

@@ -813,11 +813,11 @@ export function seedSopVersions(): SopVersionVM[] {
         s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 5.1 }], boundaryDeltaWanPerMonth: 5.1 },
         s2: {
           rows: [
-            { key: "pas", name: "乘用车", target: 196.0, rolling: 201.7, lastActual: 189.8, dv: 0.029, flagged: false },
-            { key: "ess", name: "储能", target: 127.8, rolling: 139.2, lastActual: 119.0, dv: 0.089, flagged: false },
-            { key: "com", name: "商用车", target: 38.6, rolling: 34.1, lastActual: 36.6, dv: -0.117, flagged: true },
+            { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, lastActual: 200.6, dv: 0, flagged: false },
+            { key: "ess", name: "储能", target: 139.2, rolling: 139.2, lastActual: 100.5, dv: 0, flagged: false },
+            { key: "com", name: "商用车", target: 34.1, rolling: 34.1, lastActual: 39.5, dv: 0, flagged: false },
           ],
-          total: { target: 362.4, rolling: 375.0, dv: 0.035 },
+          total: { target: 375.0, rolling: 375.0, dv: 0 },
         },
         s3: { perBase: SOP_PER_BASE, increments: [], sup: 367.9, dem: 375.0, gap: 7.1, flagged: true },
         s4: { revSum: 700.0, gmSum: 118.9, gmBudget: 17.0, cashCushion: 58, gmRoll: 17.0, gmOk: true, cashOk: true, pass: true, violations: [] },
@@ -831,7 +831,6 @@ export function seedSopVersions(): SopVersionVM[] {
         },
       },
       agenda: [
-        { source: "C21", title: "商用车 滚动预测偏差 -11.8%（>±10%），自动提报高管决策会", detail: { segment: "com", dv: -0.117 } },
         { source: "GAP", title: "产销缺口 7.1 万套（>2），需供给对策", detail: { gap: 7.1 } },
       ],
       resolutions: [

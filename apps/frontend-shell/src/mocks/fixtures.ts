@@ -479,11 +479,11 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     sopConfig: {
       gapRed: 2,
       cashFloor: 50,
-      revBudget: 700.0, // 需求结构 58/32/10 → 滚动确认收入 700亿
+      revBudget: 700.0, // 需求结构 53.8/37.1/9.1 → 滚动确认收入 700亿
       segments: [
-        { key: "pas", name: "乘用车", target: 207.2, rolling: 213.2, p90: 199.6, lastActual: 200.6 },
-        { key: "ess", name: "储能", target: 108.0, rolling: 117.6, p90: 108.4, lastActual: 100.5 },
-        { key: "com", name: "商用车", target: 41.7, rolling: 36.8, p90: 34.0, lastActual: 39.5 },
+        { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, p90: 199.6, lastActual: 200.6 },
+        { key: "ess", name: "储能", target: 139.2, rolling: 139.2, p90: 108.4, lastActual: 100.5 },
+        { key: "com", name: "商用车", target: 34.1, rolling: 34.1, p90: 34.0, lastActual: 39.5 },
       ],
       defaultResolutions: [
         { name: "常州化成夜班×1", delta: 3.4 },

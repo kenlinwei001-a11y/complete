@@ -1,5 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -68,30 +68,30 @@ const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 // 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
 // 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
 const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
-  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 2556, due: "2026-06-24", pri: "高" },
-  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 5112, due: "2026-07-02", pri: "高" },
-  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 1420, due: "2026-07-18", pri: "中" },
-  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 3692, due: "2026-07-09", pri: "高" },
-  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 3124, due: "2026-06-28", pri: "中" },
-  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 1988, due: "2026-07-14", pri: "中" },
-  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 4260, due: "2026-07-05", pri: "高" },
-  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 6248, due: "2026-06-30", pri: "高" },
-  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 7668, due: "2026-07-12", pri: "高" },
-  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 3124, due: "2026-07-25", pri: "中" },
-  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 1420, due: "2026-07-08", pri: "中" },
-  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 2556, due: "2026-07-20", pri: "中" },
-  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 3692, due: "2026-07-11", pri: "高" },
-  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 1988, due: "2026-07-22", pri: "中" },
-  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 5680, due: "2026-07-06", pri: "高" },
-  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 6816, due: "2026-07-16", pri: "高" },
-  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 4260, due: "2026-07-28", pri: "中" },
-  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 2556, due: "2026-07-19", pri: "中" },
-  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 3124, due: "2026-07-03", pri: "高" },
-  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 5680, due: "2026-07-24", pri: "中" },
-  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 4260, due: "2026-07-13", pri: "高" },
-  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 1988, due: "2026-07-10", pri: "中" },
-  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 5112, due: "2026-07-27", pri: "高" },
-  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 1420, due: "2026-07-17", pri: "低" },
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高" },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高" },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中" },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 10485, due: "2026-07-09", pri: "高" },
+  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 8872, due: "2026-06-28", pri: "中" },
+  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 5646, due: "2026-07-14", pri: "中" },
+  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 12098, due: "2026-07-05", pri: "高" },
+  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 17744, due: "2026-06-30", pri: "高" },
+  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 21777, due: "2026-07-12", pri: "高" },
+  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 8872, due: "2026-07-25", pri: "中" },
+  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 4033, due: "2026-07-08", pri: "中" },
+  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 7259, due: "2026-07-20", pri: "中" },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 10485, due: "2026-07-11", pri: "高" },
+  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 5646, due: "2026-07-22", pri: "中" },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 16131, due: "2026-07-06", pri: "高" },
+  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 19357, due: "2026-07-16", pri: "高" },
+  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 12098, due: "2026-07-28", pri: "中" },
+  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 7259, due: "2026-07-19", pri: "中" },
+  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 8872, due: "2026-07-03", pri: "高" },
+  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 16131, due: "2026-07-24", pri: "中" },
+  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 12098, due: "2026-07-13", pri: "高" },
+  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 5646, due: "2026-07-10", pri: "中" },
+  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 14518, due: "2026-07-27", pri: "高" },
+  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 4033, due: "2026-07-17", pri: "低" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1823,7 +1823,7 @@ function isoDate(ms: number): string {
 export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
   // HTML 24 单为语义基底 → 订单数下限 24（小规模即 24 单；M/L/XL 用 rng 补足到目标）。
-  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 1000);
+  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 825);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
   const bases = BASES.map((b) => {
@@ -2147,7 +2147,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
     const so = `SO-9${String(i).padStart(5, "0")}`;
     orders.push({
-      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 500, 2700), due,
+      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 1420, 7668), due,
       pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
@@ -2429,7 +2429,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     baseId: b.baseId,
     etaDay: randInt(rngShip, 2, 16),
     status: "IN_TRANSIT",
-    qtyTons: randInt(rngShip, 60, 240),
+    qtyTons: randInt(rngShip, 170, 682),
     coverageDays: b.baseId === "changzhou" ? 2 : 5, // C16：常州在途覆盖 <3 天（越线戏剧点）
   }));
 
@@ -2472,12 +2472,18 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt, p50: s.p50, p90: s.p90, act: s.act,
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
   }));
-  // PRD-IND-sop §4.4 SOP_MAT：MRP 净需求精确种子（缺口 = net×(1−lta/100)，C06 齐套口径）。
-  // Wave 1 (#59)：物料净需求按 375万套 / 132万套 ≈ 2.84 放大，与需求规模对齐。
+  // Wave 1 (#59)：物料净需求按 375万套 / 132万套 ≈ 2.84 放大，与需求规模对齐；
+  // MAT 扩至 9 项关键物料，覆盖正极/负极/隔膜/电解液/铜铝箔/结构件/包材。
   const MAT = [
     { material: "三元正极", unit: "吨", net: 23231, lta: 92, eta: "2026-06-28" },
+    { material: "磷酸铁锂正极", unit: "吨", net: 8208, lta: 94, eta: "2026-06-27" },
+    { material: "石墨负极", unit: "吨", net: 9975, lta: 93, eta: "2026-06-29" },
     { material: "隔膜", unit: "万㎡", net: 6748, lta: 100, eta: "" },
     { material: "电解液", unit: "吨", net: 15745, lta: 96, eta: "2026-06-25" },
+    { material: "铜箔", unit: "吨", net: 4425, lta: 91, eta: "2026-06-30" },
+    { material: "铝箔", unit: "吨", net: 3323, lta: 95, eta: "2026-06-26" },
+    { material: "电芯壳体", unit: "万个", net: 36000, lta: 99, eta: "2026-06-24" },
+    { material: "包材", unit: "万套", net: 750, lta: 100, eta: "" },
   ];
   const materialBalances = MAT.map((m, i) => ({
     matBalId: `mbal-${i + 1}`, material: m.material, unit: m.unit, netDemandTon: m.net, ltaPct: m.lta,
@@ -2595,7 +2601,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const baseId = l.baseId as string;
     for (let w = 0; w < 2; w++) {
       const modelId = WO_MODELS[hashString(`${lineId}_wo${w}`) % WO_MODELS.length]!;
-      const qtyPlanned = 500 + (hashString(`${lineId}_wo${w}q`) % 1500);
+      const qtyPlanned = round((500 + (hashString(`${lineId}_wo${w}q`) % 1500)) * WAVE1_SCALE_FACTOR, 0);
       const qtyActual = Math.floor(qtyPlanned * (0.85 + (hashString(`${lineId}_wo${w}a`) % 15) / 100));
       const startOffset = hashString(`${lineId}_wo${w}s`) % 14;
       const startDate = isoDate(t0 + startOffset * 86400000);
