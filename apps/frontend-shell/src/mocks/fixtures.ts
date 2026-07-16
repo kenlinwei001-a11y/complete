@@ -80,7 +80,7 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
     so: `SO-${String(10001 + i)}`,
     cust: CUSTS[i % CUSTS.length]!,
     model: MODELS[i % MODELS.length]!,
-    qty: 500 + i * 137,
+    qty: Math.round((500 + i * 137) * 2.84),
     due: `2026-0${(i % 6) + 4}-${String((i % 27) + 1).padStart(2, "0")}`,
     bases: base.name,
     status: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",

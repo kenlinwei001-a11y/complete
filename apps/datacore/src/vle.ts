@@ -1,3 +1,4 @@
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { AuthCtx, ValidationRunRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { SyntheticService } from "./synthetic/service.js";
@@ -57,8 +58,10 @@ export class VleService {
   /** ⑤ 双算容差：P50/P90 为 4 位定点累加 → 期望逐位一致；留 1e-6 吸收浮点累加序差异（R6 确定性）。 */
   private static readonly REF_TOLERANCE = 1e-6;
 
-  /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。 */
-  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: 12, Model: 6, Order: 24 };
+  /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。
+   * Base 数量从 DF.1 单一来源 BASE_REGISTRY 派生，避免基地册扩缩后 VLE 真值漂移（G-5/R14）。
+   */
+  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: BASE_REGISTRY.length, Model: 6, Order: 24 };
 
   async run(
     callerCtx: AuthCtx,
