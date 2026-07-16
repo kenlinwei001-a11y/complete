@@ -283,12 +283,29 @@ export class SimClockService {
       to: new Date(Date.parse(`${dateIso}T00:00:00Z`) + DAY_MS).toISOString(),
     });
     const c = await this.solvers.loadContext(ctx.tenantId);
+    // SA-3 Workshop 层：一个基地的 10 条"产线"实为 10 道串行工序车间（制浆→…→PACK），
+    // 基地当日成品产出 = 单道代表工序吞吐（各车间当日产出的均值），而非求和（会把同一批
+    // 在制品按车间数重复计入）。此口径与预测（受共享瓶颈约束）同尺度、与 Workshop 前单产线一致。
+    const allLines = await this.repos.objects.listByType(ctx.tenantId, "Line");
+    const linesByBase = new Map<string, string[]>();
+    for (const l of allLines) {
+      const b = String(l.props.baseId ?? "");
+      const arr = linesByBase.get(b) ?? [];
+      arr.push(String(l.props.lineId ?? l.id));
+      linesByBase.set(b, arr);
+    }
     let written = 0;
     for (const snap of snapshots) {
       const cert = c.certByModel.get(snap.modelId);
       if (!cert) continue;
-      const lineIds = new Set([...cert.keys()].map((baseId) => `LINE-${baseId}`));
-      const actualCells = points.filter((p) => lineIds.has(p.entityId)).reduce((a, p) => a + (p.values.output ?? 0), 0);
+      let actualCells = 0;
+      for (const baseId of cert.keys()) {
+        const baseLineIds = new Set(linesByBase.get(String(baseId)) ?? []);
+        if (baseLineIds.size === 0) continue;
+        const basePts = points.filter((p) => baseLineIds.has(p.entityId));
+        if (basePts.length === 0) continue;
+        actualCells += basePts.reduce((a, p) => a + (p.values.output ?? 0), 0) / basePts.length;
+      }
       const actualDaily = round(actualCells / packCellCount / 10000, 6);
       if (actualDaily <= 0) continue;
       const deviation = round(Math.abs(snap.predictedDaily - actualDaily) / actualDaily, 6);

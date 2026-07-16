@@ -961,7 +961,10 @@ export class SyntheticService {
         typeKey: def.key,
         displayName: def.displayName,
         domain: def.domain ?? "unassigned",
-        sourceDataset: def.key,
+        // 源系统路由（mock→real）后 RawDataset 名 = BINDINGS 源系统表名（mes_base_master/erp_sales_orders…），
+        // 非类型键；materialize 与 publishDraft 均按 rawDataset.name 匹配 sourceDataset，故取真实表名，
+        // 否则有 BINDINGS 的类型（Base/Order/Workshop/Line/Process/Equipment/Model…）在链路下匹配不到源表 → 零物化。
+        sourceDataset: BINDINGS[def.key]?.[0]?.dataset ?? def.key,
         properties: def.properties.map((p) => ({
           propKey: p.propKey,
           sourceField: p.propKey,

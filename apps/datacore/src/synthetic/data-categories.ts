@@ -29,16 +29,20 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["ProductPlatform", "ProductSeries", "Model", "Segment", "ProductVersion", "EngineeringChange"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "sap_erp", "rest_api"],
     },
     {
-      key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线、产能投资项目及产品-产线/设备制造能力。",
-      typeKeys: ["Base", "Line", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "capacity_base", displayName: "产能与基地", description: "生产基地、车间、产线、产能投资项目及产品-产线/设备制造能力。",
+      typeKeys: ["Base", "Workshop", "Line", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+    },
+    {
+      key: "production_execution", displayName: "生产执行", description: "生产工单、排程、班次计划与在制（WIP）批次/移动/质检点（MES 生产执行域）。",
+      typeKeys: ["WorkOrder", "ProductionSchedule", "ShiftPlan", "WIPLot", "WIPMove", "WIPQualityCheckpoint"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
     {
       key: "process_routing", displayName: "工艺路线与工序", description: "工艺路线、工序定义、工艺能力边界及换型矩阵（瓶颈/换型排序推演）。",
       typeKeys: ["Process", "ChangeoverMatrix", "Routing", "Operation", "ProcessCapabilityWindow"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "generic_jdbc", "rest_api"],
     },
     {
-      key: "equipment_ledger", displayName: "设备与能耗", description: "设备台账 OEE、检修计划与能耗计量（MES/IoT）。",
-      typeKeys: ["Equipment", "MaintPlan", "EnergyMeter"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
+      key: "equipment_ledger", displayName: "设备与能耗", description: "设备台账 OEE、停机/告警、检修计划、维修工单、备件消耗与能耗计量（MES/IoT）。",
+      typeKeys: ["Equipment", "MaintPlan", "EnergyMeter", "EquipmentOEE", "EquipmentDowntime", "EquipmentAlarm", "MaintenanceOrder", "SparePartConsumption"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
     {
       key: "material_inventory", displayName: "物料与库存", description: "物料主数据、BOM、物料替代关系、批次库存及物料平衡（断供/集中度推演）。",
@@ -49,8 +53,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Supplier", "PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
-      key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、数据源健康度与产品认证（合规/碳护照前置）。",
-      typeKeys: ["QualityStandard", "InspectionCharacteristic", "DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、质检批次/检验结果/缺陷记录、数据源健康度与产品认证（合规/碳护照前置）。",
+      typeKeys: ["QualityStandard", "InspectionCharacteristic", "QualityLot", "InspectionResult", "DefectRecord", "DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",
@@ -63,6 +67,10 @@ export function batteryDataCategories(): DataCategory[] {
     {
       key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营指标库/KSF/责任主体与根因归因模板（目标-指标-责任骨架，驱动各视图 KPI · 根因 DAG）。",
       typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+    },
+    {
+      key: "workforce", displayName: "人力与班组", description: "操作工考勤与技能认证（MES 人力执行域，班组排产/技能匹配前置）。",
+      typeKeys: ["OperatorAttendance", "OperatorSkillCert"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
   ];
 }

@@ -1331,6 +1331,13 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield", "utilization"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "processId", "ctSeconds", "availFactor", "oeeA", "oeeP", "oeeQ"] },
           ],
+          // product → factory（经 Workshop 层）→ Line：SA-3 Base→Workshop→Line 四层可达
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_producible_at", direction: "out" },
+            { linkKey: "workshop_belongs_to_base", direction: "out", project: ["workshopId", "baseId", "name", "processType"] },
+            { linkKey: "line_belongs_to_workshop", direction: "out", project: ["lineId", "baseId", "name"] },
+          ],
           // product → supply（型号 BOM 物料）
           [
             { linkKey: "order_for_model", direction: "out" },
@@ -1339,7 +1346,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           // commercial（下单客户信用画像）
           [{ linkKey: "order_of_customer", direction: "out", project: ["custId", "custName", "creditLimit", "termDays", "receivables", "maxOverdueDays"] }],
         ],
-        maxNodes: 500,
+        maxNodes: 600,
         contractFixtures: [
           {
             name: "首单全链可达 6 域",
@@ -1365,7 +1372,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA", "oeeP", "oeeQ"] },
           ],
@@ -1432,7 +1439,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "yield"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA"] },
           ],
