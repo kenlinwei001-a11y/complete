@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
@@ -257,17 +257,30 @@ function ClosureVizView({ closure }: { closure: ClosureReport }) {
  * 区6③ 故事覆盖度（PRD §3 区6）：故事逐句 ↔ 制品对账。未映射的句子高亮"未理解/未建模"
  * = "没遗漏"的直接证据，也喂区7 下一步与建模待办。数据源 StoryBuildRun.storyCoverage（后端确定性派生）。
  */
-function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) {
+export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) {
   if (!coverage || coverage.length === 0) return null;
+  const total = coverage.length;
   const unmapped = coverage.filter((c) => !c.mapped).length;
+  // WO-DB-FIVE-ACT-UX（§3 理解确认门·暴露洞给人）：覆盖度显**百分比**（不只计数）——一眼看到"读懂了几成"·色分档。
+  // pct = 已映射句 ÷ 总句数（真派生：mapped 由后端 deriveStoryCoverage 逐句对账 plan 真实产物得出，非写死）。
+  const pct = Math.round(((total - unmapped) / total) * 100);
+  const pctColor = pct === 100 ? "var(--c-capacity,#36BFA5)" : pct >= 60 ? "var(--amber,#DD9551)" : "var(--danger,#E5484D)";
   return (
     <div data-testid="sbr-coverage">
-      <div style={{ marginBottom: 2 }}>
-        故事覆盖度：
+      <div style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span>故事覆盖度：</span>
+        <b data-testid="sbr-coverage-pct" style={{ color: pctColor }}>{pct}%</b>
+        <span style={{ color: "var(--muted)", fontSize: 11.5 }}>（{total - unmapped}/{total} 句已建模）</span>
         {unmapped === 0
           ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>逐句已建模 ✓（没遗漏）</span>
           : <span style={{ color: "var(--amber,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
       </div>
+      {/* 理解确认门·横幅：有读不懂句 → 诚实劝阻在未理解上建域（可拒·补充故事后重建）；下方「理解确认门」把推演/晋升真锁住（守 KILL-MOCK-RED「空壳冒充真派生」用户侧闸）。 */}
+      {unmapped > 0 && (
+        <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", marginBottom: 4 }}>
+          ⚠ 有 {unmapped} 句系统读不懂（下方红标）——建议**拒绝**建域、补充/改写故事后重建，勿在未理解之上建域（空壳冒充真派生）；下方「理解确认门」已锁定推演/验证/晋升。
+        </div>
+      )}
       {coverage.map((c, i) => (
         <div key={i} data-testid={`coverage-${c.mapped ? "mapped" : "unmapped"}`}
           style={{ fontSize: 11, padding: "2px 6px", marginBottom: 2, borderLeft: `3px solid ${c.mapped ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)"}`, background: c.mapped ? "transparent" : "var(--danger,#E5484D)14" }}>
@@ -275,6 +288,56 @@ function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) 
           {c.refs.length > 0 && <span style={{ color: "var(--muted)" }}> → {c.refs.join(", ")}</span>}
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * WO-DB-FIVE-ACT-UX（§3 理解确认门·可拒·真闸非装饰·KILL-MOCK-RED 用户侧闸）：
+ * 当故事覆盖度 < 100%（有句系统读不懂）时，把区7「一键推演 / 验证 / 整域晋升」（= 把该域当可信真值用的动作）
+ * 真正**锁住**——人必须显式在 [拒绝建域·补充故事后重建] 与 [确认已理解未覆盖项风险·仍继续] 之间抉择：
+ * 拒绝 = 分支回改故事（动作保持锁定，绝不在未理解之上把空壳当真派生用）；确认 = 留痕解锁。
+ * 覆盖度 100%（无未理解句）→ 门透明，直接渲染动作、零打扰。与 StoryCoverageView 诚实横幅互补：横幅告知"读懂几成"，本门强制"不许糊弄"。
+ * 阻断判据来自真派生 run.storyCoverage（后端逐句对账 plan 真实产物，非写死），非 cosmetic。
+ */
+export function ComprehensionGate({ run, children }: { run: StoryBuildRun; children: ReactNode }) {
+  const coverage = run.storyCoverage ?? [];
+  const unmapped = coverage.filter((c) => !c.mapped).length;
+  const [ack, setAck] = useState<"pending" | "confirmed" | "rejected">("pending");
+  // 覆盖度 100%（无未理解句）→ 门透明；否则未显式确认理解 → 锁住下游动作（真阻断，非装饰）。
+  const blocked = unmapped > 0 && ack !== "confirmed";
+  if (unmapped === 0) return <>{children}</>;
+  if (!blocked) {
+    return (
+      <div data-testid={`sbr-comprehension-gate-${run.id}`}>
+        <div data-testid={`sbr-gate-confirmed-${run.id}`} style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+          ✓ 已确认理解 {unmapped} 句未覆盖项的风险（留痕）——以下动作已解锁。
+        </div>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div data-testid={`sbr-comprehension-gate-${run.id}`}>
+      <div data-testid={`sbr-act5-locked-${run.id}`} style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", border: "1px solid var(--danger,#E5484D)", borderRadius: 4, padding: "6px 8px" }}>
+        <div style={{ marginBottom: 4 }}>
+          🔒 理解确认门：故事有 <b>{unmapped}</b> 句系统未理解（覆盖度未达 100%）——「一键推演 / 验证 / 整域晋升」已锁定，
+          不在未理解之上把域当可信真值用（守 KILL-MOCK-RED 用户侧闸·绿测试≠能用）。
+        </div>
+        {ack === "rejected" && (
+          <div data-testid={`sbr-gate-rejected-${run.id}`} style={{ color: "var(--amber,#DD9551)", marginBottom: 4 }}>
+            已拒绝建域：请在上方场景脚本补充/改写未理解的句子后重建（动作保持锁定）。
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn sm" data-testid={`sbr-gate-reject-${run.id}`} onClick={() => setAck("rejected")}>
+            拒绝建域（补充故事后重建）
+          </button>
+          <button className="btn sm" data-testid={`sbr-gate-confirm-${run.id}`} onClick={() => setAck("confirmed")}>
+            我已理解未覆盖项风险，仍继续
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1090,11 +1153,14 @@ export default function DataBuilderPage() {
                           : `${r.gapReport.findings.length} 项缺口 · ${[...new Set(r.gapReport.findings.map((f) => f.gapCode))].join(", ")}`}
                       </div>
                     )}
-                    {/* 区7 一键推演（P3.5）：落到该故事最可能被触发的真实业务页，亲手验证"真能用" */}
+                    {/* 区7 一键推演（P3.5）：落到该故事最可能被触发的真实业务页，亲手验证"真能用"。
+                        WO-DB-FIVE-ACT-UX：外套「理解确认门」——覆盖度<100% 时真锁住这三个"把域当可信真值用"的动作，人须显式确认/拒绝。 */}
                     <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
-                      <InferenceButton run={r} />
-                      <VerificationPanel run={r} />
-                      <DomainPromotePanel run={r} />
+                      <ComprehensionGate run={r}>
+                        <InferenceButton run={r} />
+                        <VerificationPanel run={r} />
+                        <DomainPromotePanel run={r} />
+                      </ComprehensionGate>
                     </div>
                   </div>
                 )}
