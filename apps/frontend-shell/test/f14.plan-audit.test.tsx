@@ -16,8 +16,8 @@ describe("F14 · 规划体检（plan-audit）改参即重算", () => {
     renderApp("/v/plan-audit");
 
     // 基线预填（GET /a/v1/plan-versions/current → 2026-06 V1）+ 头部「基线：{版本号}·改任意字段即时体检」
-    expect(await screen.findByTestId("audit-input-dem")).toHaveValue(132);
-    expect(screen.getByTestId("audit-input-sup")).toHaveValue(131.2);
+    expect(await screen.findByTestId("audit-input-dem")).toHaveValue(375);
+    expect(screen.getByTestId("audit-input-sup")).toHaveValue(374.2);
     expect(screen.getByTestId("audit-input-kitGap")).toHaveValue(654);
     expect(screen.getByTestId("audit-input-cashCushion")).toHaveValue(58);
     expect(screen.getByTestId("audit-baseline")).toHaveTextContent(zh.sim.audit.baseline("2026-06 V1"));

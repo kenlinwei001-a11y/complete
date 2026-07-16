@@ -11,7 +11,7 @@ describe("F1 · workspace 驱动的多账号前端", () => {
 
     // 登录 planner（登录页为懒加载路由）
     await user.type(await screen.findByLabelText("用户名"), "planner");
-    await user.type(screen.getByLabelText("密码"), "demo");
+    await user.type(screen.getByLabelText("密码"), "demo1234");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => expect(screen.getByTestId("left-nav")).toBeInTheDocument());
@@ -32,7 +32,7 @@ describe("F1 · workspace 驱动的多账号前端", () => {
     expect(clearSpy).toHaveBeenCalled();
 
     await user.type(await screen.findByLabelText("用户名"), "base_manager");
-    await user.type(screen.getByLabelText("密码"), "demo");
+    await user.type(screen.getByLabelText("密码"), "demo1234");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => expect(screen.getByTestId("left-nav")).toBeInTheDocument());

@@ -34,11 +34,11 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     await screen.findByTestId("sop-s1-table");
     await waitFor(() => expect(screen.getByTestId("sop-detail-status")).toHaveTextContent("IN_REVIEW"));
 
-    // ② 需求评审：商用车 −11.8%（>±10%）→ 行尾 C21 chip
+    // ② 需求评审：商用车 +15.8%（滚动 39.5 vs 目标 34.1，实绩偏强上修 >±10%）→ 行尾 C21 chip
     await user.click(screen.getByTestId("sop-step-chip-2"));
     await user.click(await screen.findByTestId("sop-run-2"));
     const dvCom = await screen.findByTestId("sop-dv-com");
-    expect(dvCom).toHaveTextContent("-11.8%");
+    expect(dvCom).toHaveTextContent("15.8%");
     const c21 = screen.getByTestId("sop-c21-chip-com");
     expect(c21).toHaveTextContent("C21 差异提报");
 
@@ -49,10 +49,10 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     expect(agenda0).toHaveAttribute("data-highlight", "1");
     expect(agenda0).toHaveTextContent("商用车");
 
-    // ③ 供应评审：缺口 2.5 > 2 红标
+    // ③ 供应评审：需求 375.0 − 供给 367.9 = 缺口 7.1 > 2 红标
     await user.click(screen.getByTestId("sop-step-chip-3"));
     await user.click(await screen.findByTestId("sop-run-3"));
-    expect(await screen.findByTestId("sop-gap")).toHaveTextContent("2.5");
+    expect(await screen.findByTestId("sop-gap")).toHaveTextContent("7.1");
 
     // ④ 现金垫 40 < 50 → 不通过 → ⑤入口 chip 禁用 + 原因 tooltip
     await user.click(screen.getByTestId("sop-step-chip-4"));

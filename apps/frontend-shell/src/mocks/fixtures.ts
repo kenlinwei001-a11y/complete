@@ -480,10 +480,13 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       gapRed: 2,
       cashFloor: 50,
       revBudget: 700.0, // 需求结构 53.8/37.1/9.1 → 滚动确认收入 700亿
+      // 滚动预测按 lastActual 趋势修正：乘用车贴目标；储能实绩偏弱下修；商用车实绩偏强上修（>±10% → C21）。
+      // 三段 rolling 合计对齐 seed/audit 需求 375（= 乘用车 201.7 + 储能 133.8 + 商用车 39.5），
+      // 与③供给基线 367.9 得产销缺口 ≈7.1 万套（>gapRed 2 → 红标）。
       segments: [
         { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, p90: 199.6, lastActual: 200.6 },
-        { key: "ess", name: "储能", target: 139.2, rolling: 139.2, p90: 108.4, lastActual: 100.5 },
-        { key: "com", name: "商用车", target: 34.1, rolling: 34.1, p90: 34.0, lastActual: 39.5 },
+        { key: "ess", name: "储能", target: 139.2, rolling: 133.8, p90: 108.4, lastActual: 100.5 },
+        { key: "com", name: "商用车", target: 34.1, rolling: 39.5, p90: 34.0, lastActual: 39.5 },
       ],
       defaultResolutions: [
         { name: "常州化成夜班×1", delta: 3.4 },

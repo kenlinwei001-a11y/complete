@@ -13,7 +13,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * + 序号守卫）；同一 debounce 窗口内的连续变更只发一次请求。
  */
 describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", () => {
-  it("慢请求（dem=999 哨兵延迟 400ms）被后发请求取代：仅 dem=140 的结果上屏", async () => {
+  it("慢请求（dem=999 哨兵延迟 400ms）被后发请求取代：仅 dem=383 的结果上屏", async () => {
     loginAs("planner");
     renderApp("/v/plan-audit");
 
@@ -25,17 +25,17 @@ describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", (
     fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "999" } });
     await sleep(330); // 越过 debounce → 慢请求已在途
 
-    // 第二次改参：dem=140（快请求）→ 取消前序在途请求
-    fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "140" } });
+    // 第二次改参：dem=383（快请求，> 供给 374.2 → 硬缺口）→ 取消前序在途请求
+    fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "383" } });
 
-    // 最后一次结果上屏：dem=140 → 缺口 8.8 硬卡（X02）+ 细分不自洽（X01）
+    // 最后一次结果上屏：dem=383 → 缺口 8.8（383 − 供给 374.2）硬卡（X02）+ 细分不自洽（X01）
     const x02 = await screen.findByTestId("audit-item-hard-X02");
     expect(x02).toHaveTextContent("缺口 8.8 万套");
     expect(screen.getByTestId("audit-item-hard-X01")).toHaveTextContent("细分自洽");
 
-    // 慢请求（dem=999 → 缺口 867.8）即使返回也不得上屏（AbortController + 序号守卫）
+    // 慢请求（dem=999 → 缺口 624.8 = 999 − 供给 374.2）即使返回也不得上屏（AbortController + 序号守卫）
     await sleep(600);
-    expect(screen.queryByText(/867\.8/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/624\.8/)).not.toBeInTheDocument();
     expect(screen.getByTestId("audit-item-hard-X02")).toHaveTextContent("缺口 8.8 万套");
   });
 
@@ -55,15 +55,15 @@ describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", (
     await screen.findByTestId("audit-verdict");
     expect(calls).toBe(1);
 
-    // 300ms 窗口内连改三次（133 → 134 → 135）→ 仅合并为 1 次请求
+    // 300ms 窗口内连改三次（376 → 377 → 378）→ 仅合并为 1 次请求
     const dem = screen.getByTestId("audit-input-dem");
-    fireEvent.change(dem, { target: { value: "133" } });
+    fireEvent.change(dem, { target: { value: "376" } });
     await sleep(50);
-    fireEvent.change(dem, { target: { value: "134" } });
+    fireEvent.change(dem, { target: { value: "377" } });
     await sleep(50);
-    fireEvent.change(dem, { target: { value: "135" } });
+    fireEvent.change(dem, { target: { value: "378" } });
 
-    // dem=135：缺口 3.8 > 2 → X02 硬卡
+    // dem=378：缺口 3.8（378 − 供给 374.2）> 2 → X02 硬卡
     const x02 = await screen.findByTestId("audit-item-hard-X02");
     expect(x02).toHaveTextContent("缺口 3.8 万套");
     expect(calls).toBe(2);
