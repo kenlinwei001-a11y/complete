@@ -95,8 +95,10 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
-import type { AuthCtx } from "./domain.js";
+import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
+import { DeriveDecisionFieldsRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生
+import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -2949,6 +2951,85 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       throw forbidden("admin / catalog_admin only");
     }
   };
+
+  // ---- WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段 → 决策字段 派生引擎（可配置 mapping·R14·R6·R13）----
+  // 记录型导入数据（factory/production_line/equipment…）物化后没有求解器读的决策字段（Base.util/oeeIndex）——
+  // 本端点按 body 给的**可配置 mapping**（导入方提供·零平台业务常数）把真源记录聚合成决策字段，写回目标对象
+  // → 求解器读的是真派生值（非 hash·KILL-MOCK-RED）。⛔ 平台不内联任何行业/电池映射。
+  // canonical 适配（July 线的 world-source/classifySourceOrigin/tenant.worldSource 命门本线不存在）：真源判定 =
+  // origin.type==="MATERIALIZED"（真 RawDataset 物化 vs SYNTHETIC 合成生成）；worldSource 由本次派生输入是否含
+  // 真源对象推导（imported/synthetic），非 tenant 级标签。
+  app.post("/a/v1/derive/decision-fields", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(DeriveDecisionFieldsRequestSchema, req.body);
+
+    // 只取 mapping 触及的类型（目标+源）·按 tenantId 隔离（R2）·真源 provenance=MATERIALIZED·跳过已并入对象（OC1）。
+    const types = new Set<string>();
+    for (const r of body.mapping.rules) {
+      types.add(r.target.objectType);
+      types.add(r.source.objectType);
+    }
+    const byType = new Map<string, DeriveSourceObject[]>();
+    const objIndex = new Map<string, ObjectInstance>();
+    for (const tk of types) {
+      const objs = await repos.objects.listByType(c.tenantId, tk);
+      byType.set(
+        tk,
+        objs
+          .filter((o) => !o.mergedInto)
+          .map((o) => {
+            objIndex.set(o.id, o);
+            return { id: o.id, props: o.props, real: o.origin?.type === "MATERIALIZED" };
+          }),
+      );
+    }
+
+    const results = deriveDecisionFields(body.mapping, byType);
+    // 门牙自证（R6·R13·KILL-MOCK）：写回前逐值重算比对·发现伪造即拒（不静默落假值）。
+    const violations = validateDerivedFields(body.mapping, byType, results);
+    if (violations.length > 0) throw validationError(`派生结果自校验失败（KILL-MOCK-RED）：${violations.slice(0, 3).join("；")}`);
+
+    const anyReal = [...byType.values()].some((objs) => objs.some((o) => o.real));
+    const worldSource: "synthetic" | "imported" = anyReal ? "imported" : "synthetic";
+    const warnings: string[] = [];
+    if (worldSource !== "imported") {
+      warnings.push("无真导入(MATERIALIZED)源对象：已算出派生值但源为合成物化 → 不冒充 LIVE，先经 uploads/materialize 导入真记录再派生上决策。");
+    }
+    if (results.every((r) => r.value === null)) {
+      warnings.push("无真数值源贡献（0 有效派生）→ 诚实空态：核对 mapping 的 source/groupByField 是否对上真字段名，或先导入真记录。");
+    }
+
+    let written = 0;
+    if (!body.dryRun) {
+      // 只写有真值的结果·保留 origin·记 R13 派生溯源（__deriveProvenance 旁挂·不污染业务字段读路径）。
+      const epoch = await repos.epochs.next(c.tenantId);
+      const dirty = new Map<string, ObjectInstance>();
+      for (const r of results) {
+        if (r.value === null) continue;
+        const cur = dirty.get(r.targetId) ?? objIndex.get(r.targetId);
+        if (!cur) continue;
+        const prov = (cur.props.__deriveProvenance && typeof cur.props.__deriveProvenance === "object"
+          ? { ...(cur.props.__deriveProvenance as Record<string, unknown>) }
+          : {}) as Record<string, unknown>;
+        prov[r.field] = { op: r.op, sourceType: r.sourceType, sourceField: r.sourceField, sourceObjectIds: r.sourceObjectIds, dataMode: r.dataMode };
+        dirty.set(r.targetId, { ...cur, props: { ...cur.props, [r.field]: r.value, __deriveProvenance: prov }, epoch });
+      }
+      for (const obj of dirty.values()) {
+        await repos.objects.put(obj);
+        written++;
+      }
+    }
+
+    return {
+      worldSource,
+      results,
+      written,
+      dataMode: weakestDerivedDataMode(results),
+      warnings,
+    };
+  });
+
   // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
   app.get("/a/v1/data-builders", async (req) => {
     const c = ctx(req);
