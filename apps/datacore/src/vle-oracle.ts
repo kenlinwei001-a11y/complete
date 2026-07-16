@@ -79,7 +79,8 @@ function weeklyWanByBase(
   for (const base of bases) {
     const baseId = s(base.props.baseId);
     const baseLines = linesByBase[baseId] ?? [];
-    let lineSum = 0;
+    // SA-3 Workshop 层：基地日产能 = 各串行工序车间产能均值（代表工序吞吐），非求和（详见 computeRollup 注释）。
+    const lineCaps: number[] = [];
     for (const line of baseLines) {
       const lineId = s(line.props.lineId);
       const procs = processesByLine[lineId] ?? [];
@@ -114,11 +115,12 @@ function weeklyWanByBase(
       }
       const serialMin = serialCaps.length > 0 ? Math.min(...serialCaps) : 0;
       const lineDaily = Math.min(serialMin, formationCap, agingCap);
-      lineSum += r2(lineDaily);
+      lineCaps.push(r2(lineDaily));
     }
+    const lineMean = lineCaps.length > 0 ? lineCaps.reduce((a, v) => a + v, 0) / lineCaps.length : 0;
     const sharedFormation = n(base.props.formationCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY;
     const sharedAging = n(base.props.agingCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY;
-    const dailyCells = r2(Math.min(lineSum, sharedFormation, sharedAging));
+    const dailyCells = r2(Math.min(lineMean, sharedFormation, sharedAging));
     const weeklyWan = r4((dailyCells * 7) / Math.max(1, packCellCount) / 10000);
     out.set(baseId, weeklyWan);
   }

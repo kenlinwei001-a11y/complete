@@ -138,10 +138,15 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
         ],
       });
     }
-    const lineSum = lineNodes.reduce((a, l) => a + l.capacityPerDay, 0);
+    // SA-3 Workshop 层：一个基地的多条"产线"实为 N 道串行工序车间（制浆→…→PACK），物料顺次流经，
+    // 基地日成品产出 = 单道代表工序吞吐（各车间产能均值），而非求和（求和会把同一批在制品按车间数
+    // 重复计入 → 远超共享化成/老化封顶 → 预测退化为与 Process.yield 无关的静态封顶）。此均值口径与
+    // 实际值聚合（pairing/simclock 按基地取各车间均值）同尺度，且保留化成/串行工序的良率敏感度（校准可观测）。
+    const lineMean =
+      lineNodes.length > 0 ? lineNodes.reduce((a, l) => a + l.capacityPerDay, 0) / lineNodes.length : 0;
     const sharedFormation = num(b.props.formationCapDaily, Infinity) || Infinity;
     const sharedAging = num(b.props.agingCapDaily, Infinity) || Infinity;
-    const dailyCells = round(Math.min(lineSum, sharedFormation, sharedAging), 2);
+    const dailyCells = round(Math.min(lineMean, sharedFormation, sharedAging), 2);
     const weeklyWan = round((dailyCells * 7) / Math.max(1, c.params.packCellCount) / 10000, 4);
     out.push({
       baseId,
@@ -152,9 +157,9 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
       processes: processNodes,
       equipment: equipNodes,
       formula:
-        "基地产能 = Σ产线（受共享资源封顶：化成柜/老化库总量，C01 ≤ 设计上限）；周产能(万套) = 基地日产能(电芯) × 7 ÷ 单PACK电芯数 ÷ 10000",
+        "基地产能 = 代表产线产能（各串行工序车间均值，受共享资源封顶：化成柜/老化库，C01 ≤ 设计上限）；周产能(万套) = 基地日产能(电芯) × 7 ÷ 单PACK电芯数 ÷ 10000",
       inputs: [
-        { name: "lineSum", value: round(lineSum, 2) },
+        { name: "lineMean", value: round(lineMean, 2) },
         { name: "sharedFormationCap", value: Number.isFinite(sharedFormation) ? sharedFormation : 0 },
         { name: "sharedAgingCap", value: Number.isFinite(sharedAging) ? sharedAging : 0 },
         { name: "packCellCount", value: p.packCellCount },
