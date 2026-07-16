@@ -416,7 +416,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
   const allViews = [
     { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
     { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
-    { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
+    { key: "risk", title: "产能推演", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
@@ -479,15 +479,15 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     sopConfig: {
       gapRed: 2,
       cashFloor: 50,
-      revBudget: 240, // PRD-IND-sop §4.5-5：真预算 240（滚动确认收入 248 → 达成率 103%）
+      revBudget: 700.0, // 需求结构 58/32/10 → 滚动确认收入 700亿
       segments: [
-        { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, p90: 66.5, lastActual: 66.8 },
-        { key: "ess", name: "储能", target: 45.0, rolling: 49.0, p90: 45.2, lastActual: 41.9 },
-        { key: "com", name: "商用车", target: 13.6, rolling: 12.0, p90: 11.1, lastActual: 12.9 },
+        { key: "pas", name: "乘用车", target: 207.2, rolling: 213.2, p90: 199.6, lastActual: 200.6 },
+        { key: "ess", name: "储能", target: 108.0, rolling: 117.6, p90: 108.4, lastActual: 100.5 },
+        { key: "com", name: "商用车", target: 41.7, rolling: 36.8, p90: 34.0, lastActual: 39.5 },
       ],
       defaultResolutions: [
-        { name: "常州化成夜班×1", delta: 1.2 },
-        { name: "江门正极加急 200 吨", delta: 0.5 },
+        { name: "常州化成夜班×1", delta: 3.4 },
+        { name: "江门正极加急 200 吨", delta: 1.4 },
       ],
     },
     // DF.4 单一来源：planGoals 从 PLAN_GOAL_TARGETS 派生（与后端 targets 同源，灭三处漂移 R14/R6）。

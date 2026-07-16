@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTask } from "@/api/endpoints";
 import { useTaskStream } from "@/sse/useTaskStream";
@@ -13,6 +13,7 @@ import zh from "@/locales/zh";
 /** 查询任务详情页（PRD §6.6 + §7.19 编排 DAG）：分类 → DAG → 步骤 → 回答 → 事件回放 */
 export default function TaskDetailPage() {
   const { taskId = "" } = useParams();
+  const navigate = useNavigate();
   const { data: task } = useQuery({
     queryKey: ["b", "task", taskId],
     queryFn: () => fetchTask(taskId),
@@ -37,7 +38,10 @@ export default function TaskDetailPage() {
 
   return (
     <div style={{ maxWidth: 920 }}>
-      <h2 style={{ fontSize: 16, marginBottom: 4 }}>{zh.task.title}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <button className="btn sm" onClick={() => navigate(-1)} aria-label="回退">← 回退</button>
+        <h2 style={{ fontSize: 16, margin: 0 }}>{zh.task.title}</h2>
+      </div>
       <div className="mono" style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 14 }}>
         {taskId}
       </div>

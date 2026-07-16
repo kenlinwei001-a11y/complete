@@ -112,6 +112,8 @@ export const RiskCardSchema = z.object({
   mitigated: z
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),
+  // 以基地为主体时，汇总该基地所有越线 factor 的简要信息（产能推演每基地一张卡片）
+  allFactors: z.array(z.object({ factor: z.string(), peak: z.number(), crossDay: z.number().int().nullable() })).optional(),
 });
 /** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
 export const RiskPlanRowSchema = z.object({

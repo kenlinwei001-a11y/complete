@@ -42,7 +42,7 @@ export interface CanonicalSeg {
 }
 
 export const SEG_REGISTRY: CanonicalSeg[] = [
-  { seg: "乘用车", key: "pas", priceWan: 2.2, marginPct: 18, floorPct: 12, color: "#5E8FE8" },
+  { seg: "乘用车", key: "pas", priceWan: 2.2, marginPct: 19, floorPct: 12, color: "#5E8FE8" },
   { seg: "储能", key: "ess", priceWan: 1.4, marginPct: 13, floorPct: 11, color: "#36BFA5" },
   { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551" },
 ];

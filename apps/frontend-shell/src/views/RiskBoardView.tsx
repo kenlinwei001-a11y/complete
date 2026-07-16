@@ -58,6 +58,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   objectId: `base-${card.base}`,
                   label: card.base,
                 });
+                useSessionStore.getState().setDockExpanded(true);
                 setDetail(card);
               }}
               onKeyDown={(e) => e.key === "Enter" && setDetail(card)}
@@ -72,6 +73,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 >
                   <span className="badge">{card.factor}</span>
                 </RiskHoverTrigger>
+                {card.allFactors && card.allFactors.length > 0 && (
+                  <span className="badge" style={{ fontSize: 10, opacity: 0.75 }}>
+                    等{card.allFactors.length}项
+                  </span>
+                )}
               </div>
               {/* 轨M 增量1（真推演红线）：红/黄峰值不再裸渲染当真值——诚实标 dataMode：
                   MOCK→"估算（实测当前 N）"，LIVE→"实测当前 N"（推演峰值锚定真测量值，R13 可溯）。 */}
@@ -129,16 +135,32 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           />
           {/* 时点点击（图表 + 可键盘到达的日条） */}
           <div className={styles.dayRow}>
-            {detail.series.map((v, day) => (
-              <button
-                key={day}
-                className={styles.dayCell}
-                title={`D+${day} · ${v.toFixed(0)}`}
-                data-testid={`risk-day-${day}`}
-                style={{ background: heatColor(v, data.threshold) }}
-                onClick={() => setOrdersDay({ base: detail.base, day, orders: detail.affectedOrders })}
-              />
-            ))}
+            {(() => {
+              const orderDaySet = new Set(
+                (detail.affectedOrders ?? [])
+                  .map((o) => o.dueDay)
+                  .filter((d) => d >= 0 && d < detail.series.length)
+              );
+              return detail.series.map((v, day) => {
+                const hasOrders = orderDaySet.has(day);
+                return (
+                  <button
+                    key={day}
+                    className={styles.dayCell}
+                    title={`D+${day} · ${v.toFixed(0)}${hasOrders ? " · 有受影响订单" : ""}`}
+                    data-testid={`risk-day-${day}`}
+                    style={{ background: heatColor(v, data.threshold) }}
+                    onClick={() => {
+                      if (v >= data.threshold - 15) {
+                        setOrdersDay({ base: detail.base, day, orders: detail.affectedOrders });
+                      }
+                    }}
+                  >
+                    {hasOrders && <span className={styles.orderDot} />}
+                  </button>
+                );
+              });
+            })()}
           </div>
           {/* PRD-IND-risk §4.6 逐日事件可解释：标签 + 量化文案 + 来源系统（替代裸 type·amp） */}
           <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted)" }} data-testid="risk-events">
@@ -403,7 +425,7 @@ function AffectedOrdersModal({
   orders: RiskCard["affectedOrders"];
   onClose: () => void;
 }) {
-  const list = orders ?? [];
+  const list = (orders ?? []).filter((o) => (o as { dueDay?: number }).dueDay === day);
   return (
     <Modal title={`${zh.risk.affectedOrders} · ${base} · D+${day}`} onClose={onClose} width={640}>
       <table className="cmp" data-testid="affected-orders-table">

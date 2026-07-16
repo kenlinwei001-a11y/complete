@@ -249,7 +249,7 @@ function PlanDrillWidget() {
               onClick={() => setOpenKpi(openKpi === k.kpiId ? null : k.kpiId)}
             >
               <div style={{ fontSize: 11, color: "var(--muted)" }}>{k.name}</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{k.actual}<small style={{ fontSize: 10 }}>{k.unit}</small></div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--txt)" }}>{k.actual}<small style={{ fontSize: 10 }}>{k.unit}</small></div>
               <div style={{ fontSize: 10, color: k.offTarget ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? " · 未达成" : ""}</div>
             </button>
           ))}
@@ -384,7 +384,7 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
       {rows.map((m) => (
         <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: "var(--txt)" }}>
             {formatKpiValue(m.actual, m.unit)}<small style={{ fontSize: 11 }}>{m.unit}</small>
           </div>
           <div style={{ fontSize: 10.5, color: m.miss ? "#DD7E9E" : "var(--muted2)" }}>

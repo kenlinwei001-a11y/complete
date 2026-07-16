@@ -285,6 +285,28 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     }
     cards.push(card);
   }
+  // 去重：每个基地只保留 peak 最高的一张卡片，同时汇总该基地所有越线 factor（产能推演每基地一张）
+  const bestByBase = new Map<string, Record<string, unknown>>();
+  const allByBase = new Map<string, Record<string, unknown>[]>();
+  for (const card of cards) {
+    const b = str(card.base);
+    const list = allByBase.get(b) ?? [];
+    list.push(card);
+    allByBase.set(b, list);
+    const existing = bestByBase.get(b);
+    if (!existing || num(card.peak) > num(existing.peak)) {
+      bestByBase.set(b, card);
+    }
+  }
+  cards.splice(0, cards.length);
+  for (const b of bestByBase.keys()) {
+    const best = bestByBase.get(b)!;
+    const all = allByBase.get(b) ?? [];
+    best.allFactors = all
+      .filter((c) => c !== best)
+      .map((c) => ({ factor: str(c.factor), peak: num(c.peak), crossDay: (c.crossDay as number | null) ?? null }));
+    cards.push(best);
+  }
   cards.sort((a, b) => {
     const ca = (a.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
     const cb = (b.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;

@@ -28,7 +28,7 @@ const AUDIT_T = {
   kitFixTons: 200,
   cashHard: 50,
   cashSoft: 55,
-  essShareBaseline: 49 / 132, // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712）
+  essShareBaseline: 139.2 / 375.0, // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712，随 demand segment 缩放同步更新）
   essShareTol: 0.05,
   capexSoft: 10,
   segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
@@ -664,7 +664,7 @@ export const PLAN_VERSION_CURRENT = {
   versionLabel: "2026-06 V1",
   month: "2026-06",
   status: "FINAL",
-  input: { dem: 132, seg_pas: 71, seg_ess: 49, seg_com: 12, sup: 131.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
+  input: { dem: 375.0, seg_pas: 201.7, seg_ess: 139.2, seg_com: 34.1, sup: 374.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
 };
 
 // ---------------------------------------------------------------------------
@@ -673,13 +673,13 @@ export const PLAN_VERSION_CURRENT = {
 
 const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
 
-/** ③ 供应评审产能线（决议前基线 129.5 万套，对齐原型 V5） */
+/** ③ 供应评审产能线（决议前基线 367.9 万套，对齐 700 亿规模需求） */
 const SOP_PER_BASE = [
-  { baseId: "常州", monthly: 31.0, certFactor: 1 },
-  { baseId: "成都", monthly: 18.4, certFactor: 1 },
-  { baseId: "合肥", monthly: 16.2, certFactor: 0.6 },
-  { baseId: "江门", monthly: 13.5, certFactor: 1 },
-  { baseId: "其余9基地", monthly: 50.4, certFactor: 1 },
+  { baseId: "常州", monthly: 88.0, certFactor: 1 },
+  { baseId: "成都", monthly: 52.3, certFactor: 1 },
+  { baseId: "合肥", monthly: 46.0, certFactor: 0.6 },
+  { baseId: "江门", monthly: 38.3, certFactor: 1 },
+  { baseId: "其余9基地", monthly: 143.3, certFactor: 1 },
 ];
 
 const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
@@ -808,37 +808,37 @@ export function seedSopVersions(): SopVersionVM[] {
       id: "sop-202606-final",
       month: "2026-06",
       status: "FINAL",
-      inputs: { demTotal: 132 },
+      inputs: { demTotal: 375.0 },
       steps: {
-        s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 1.8 }], boundaryDeltaWanPerMonth: 1.8 },
+        s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 5.1 }], boundaryDeltaWanPerMonth: 5.1 },
         s2: {
           rows: [
-            { key: "pas", name: "乘用车", target: 69, rolling: 71, lastActual: 66.8, dv: 0.029, flagged: false },
-            { key: "ess", name: "储能", target: 45, rolling: 49, lastActual: 41.9, dv: 0.0889, flagged: false },
-            { key: "com", name: "商用车", target: 13.6, rolling: 12, lastActual: 12.9, dv: -0.1176, flagged: true },
+            { key: "pas", name: "乘用车", target: 196.0, rolling: 201.7, lastActual: 189.8, dv: 0.029, flagged: false },
+            { key: "ess", name: "储能", target: 127.8, rolling: 139.2, lastActual: 119.0, dv: 0.089, flagged: false },
+            { key: "com", name: "商用车", target: 38.6, rolling: 34.1, lastActual: 36.6, dv: -0.117, flagged: true },
           ],
-          total: { target: 127.6, rolling: 132, dv: 0.0345 },
+          total: { target: 362.4, rolling: 375.0, dv: 0.035 },
         },
-        s3: { perBase: SOP_PER_BASE, increments: [], sup: 129.5, dem: 132, gap: 2.5, flagged: true },
-        s4: { revSum: 248, gmSum: 39.7, gmBudget: 16.4, cashCushion: 58, gmRoll: 16.0081, gmOk: true, cashOk: true, pass: true, violations: [] },
+        s3: { perBase: SOP_PER_BASE, increments: [], sup: 367.9, dem: 375.0, gap: 7.1, flagged: true },
+        s4: { revSum: 700.0, gmSum: 118.9, gmBudget: 17.0, cashCushion: 58, gmRoll: 17.0, gmOk: true, cashOk: true, pass: true, violations: [] },
         s5: {
           resolutions: [
-            { name: "常州化成夜班×1", delta: 1.2 },
-            { name: "江门正极加急 200 吨", delta: 0.5 },
+            { name: "常州化成夜班×1", delta: 3.4 },
+            { name: "江门正极加急 200 吨", delta: 1.4 },
           ],
-          supFinal: 131.2,
-          gapFinal: 0.8,
+          supFinal: 372.7,
+          gapFinal: 2.3,
         },
       },
       agenda: [
-        { source: "C21", title: "商用车 滚动预测偏差 -11.8%（>±10%），自动提报高管决策会", detail: { segment: "com", dv: -0.1176 } },
-        { source: "GAP", title: "产销缺口 2.5 万套（>2），需供给对策", detail: { gap: 2.5 } },
+        { source: "C21", title: "商用车 滚动预测偏差 -11.8%（>±10%），自动提报高管决策会", detail: { segment: "com", dv: -0.117 } },
+        { source: "GAP", title: "产销缺口 7.1 万套（>2），需供给对策", detail: { gap: 7.1 } },
       ],
       resolutions: [
-        { name: "常州化成夜班×1", delta: 1.2 },
-        { name: "江门正极加急 200 吨", delta: 0.5 },
+        { name: "常州化成夜班×1", delta: 3.4 },
+        { name: "江门正极加急 200 吨", delta: 1.4 },
       ],
-      supFinal: 131.2,
+      supFinal: 372.7,
       createdAt: t,
       updatedAt: t,
     },

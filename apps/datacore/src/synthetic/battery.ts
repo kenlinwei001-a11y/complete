@@ -25,12 +25,12 @@ export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: 
 
 // PRD-IND-model / PRD-IND-risk §4.6：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）。
 const MODEL_BASE_MAP: Record<string, string[]> = {
-  "4680-NCM": ["changzhou", "chengdu", "hefei"], // HTML 4680-NCM → 常州/成都/合肥
+  "4680-NCM": ["changzhou", "chengdu", "hefei", "jinhua"], // HTML 4680-NCM → 常州/成都/合肥/金华
   "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
   "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
-  "方形-NCM": ["changzhou", "chengdu"], // HTML 方形-NCM → 常州/成都
-  "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
+  "方形-NCM": ["changzhou", "chengdu", "jinhua"], // HTML 方形-NCM → 常州/成都/金华
+  "圆柱-LFP": ["xinyang", "luoyang"], // HTML 圆柱-LFP → 信阳/洛阳
 };
 
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
@@ -1804,7 +1804,7 @@ function isoDate(ms: number): string {
 export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
   // HTML 24 单为语义基底 → 订单数下限 24（小规模即 24 单；M/L/XL 用 rng 补足到目标）。
-  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200);
+  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 1000);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
   const bases = BASES.map((b) => ({
@@ -2431,10 +2431,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
   // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
   // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
+  // 需求结构：乘用车58% / 储能32% / 商用车10%，支撑700亿收入/17%毛利率目标
   const SEG_DEMAND = [
-    { segment: "乘用车", tgt: 69.0, p50: 71.0, p90: 66.5, act: 66.8 },
-    { segment: "储能", tgt: 45.0, p50: 49.0, p90: 45.2, act: 41.9 },
-    { segment: "商用车", tgt: 13.6, p50: 12.0, p90: 11.1, act: 12.9 },
+    { segment: "乘用车", tgt: 207.2, p50: 213.2, p90: 199.6, act: 200.6 },
+    { segment: "储能", tgt: 108.0, p50: 117.6, p90: 108.4, act: 100.5 },
+    { segment: "商用车", tgt: 41.7, p50: 36.8, p90: 34.0, act: 39.5 },
   ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;

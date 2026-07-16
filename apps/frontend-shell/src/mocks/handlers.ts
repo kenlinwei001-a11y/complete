@@ -515,9 +515,9 @@ export const handlers = [
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
     } else if (type === "DemandSegment") {
       rows = [
-        { segId: "dseg-1", segment: "乘用车", tgt: 69, p50: 71, p90: 66.5, act: 66.8 },
-        { segId: "dseg-2", segment: "储能", tgt: 45, p50: 49, p90: 45.2, act: 41.9 },
-        { segId: "dseg-3", segment: "商用车", tgt: 13.6, p50: 12, p90: 11.1, act: 12.9 },
+        { segId: "dseg-1", segment: "乘用车", tgt: 196, p50: 201.7, p90: 188.9, act: 189.8 },
+        { segId: "dseg-2", segment: "储能", tgt: 127.8, p50: 139.2, p90: 128.4, act: 119.0 },
+        { segId: "dseg-3", segment: "商用车", tgt: 38.6, p50: 34.1, p90: 31.5, act: 36.6 },
       ].map((r) => ({ id: r.segId, props: r }));
     } else if (type === "Workshop") {
       const workshops = filterByScope(BASES, account).flatMap((b) =>
