@@ -87,12 +87,13 @@ export interface AdminNavGroup {
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
-  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
+  // WO-SWEEP-03-NAV-GROUP：meta（系统自我）改归 governance（见下）与 ShellLayout.NAV_GROUPS 对齐——防两处分组源漂移。
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
-  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration"] },
+  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },
 ];
 
 /** 把（已按角色过滤的）管理页归入分组；空组剔除；未配置页落「其它」组（不丢）。确定性顺序。 */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
 import { ADMIN_PAGES, groupAdminPages, ADMIN_NAV_GROUPS } from "@/pages/adminRegistry";
+import { NAV_GROUPS } from "@/pages/ShellLayout";
 
 /**
  * nav-reorg · 管理区导航按业务域分组（配置驱动 R14，父级字号≥子级）。
@@ -37,5 +38,43 @@ describe("nav-reorg · 管理区分组（groupAdminPages + 渲染）", () => {
     expect(within(nav).getByTestId("nav-group-建模与图谱")).toBeInTheDocument();
     // 叶项在组内
     expect(within(nav).getByText("连接器与上传")).toBeInTheDocument();
+  });
+
+  // WO-SWEEP-03-NAV-GROUP：ShellLayout 的 NAV_GROUPS 是左导航真实渲染用的分组源（≠ adminRegistry.groupAdminPages，
+  // 后者仅本测试引用）。此前二者漂移——boundary/prototype-intake 未登记进 NAV_GROUPS → 真实导航里落「其它」兜底组。
+  // 以下结构守卫 + 真实渲染断言防复发。
+  it("结构守卫：NAV_GROUPS 的 admin 键覆盖全部 ADMIN_PAGES（无管理页漏配 → 不落「其它」）", () => {
+    const navAdminKeys = new Set(
+      NAV_GROUPS.flatMap((g) => g.items.filter((it) => it.kind === "admin").map((it) => it.key)),
+    );
+    const missing = ADMIN_PAGES.map((p) => p.path).filter((path) => !navAdminKeys.has(path));
+    expect(missing).toEqual([]);
+  });
+
+  it("boundary / prototype-intake 归「建模与图谱」组（对齐 adminRegistry modeling 组）", () => {
+    const modeling = NAV_GROUPS.find((g) => g.title === "建模与图谱")!;
+    const keys = modeling.items.filter((it) => it.kind === "admin").map((it) => it.key);
+    expect(keys).toContain("boundary");
+    expect(keys).toContain("prototype-intake");
+  });
+
+  it("真实渲染：admin 登录 → boundary/prototype-intake 出现在「建模与图谱」组、且不落「其它」兜底组", async () => {
+    loginAs("planner"); // 含 admin 角色 → 见全部管理页
+    renderApp("/admin/connections");
+    const nav = await screen.findByTestId("nav-business");
+    // canonical 页标签：boundary → 边界册治理、prototype-intake → 原型 intake（见 adminRegistry.ADMIN_PAGES）。
+    const cases: [string, string][] = [
+      ["边界册治理", "nav-group-建模与图谱"],
+      ["原型 intake", "nav-group-建模与图谱"],
+    ];
+    for (const [label, groupTestId] of cases) {
+      const group = within(nav).getByTestId(groupTestId);
+      expect(within(group).getByText(label)).toBeInTheDocument();
+    }
+    // 不再有「其它」兜底组包含这两页（若组存在也不得含它们）。
+    const other = within(nav).queryByTestId("nav-group-其它");
+    if (other) {
+      for (const [label] of cases) expect(within(other).queryByText(label)).toBeNull();
+    }
   });
 });
