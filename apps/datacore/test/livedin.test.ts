@@ -99,7 +99,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     for (const row of bundle.trend) {
       // 层 1↔2：月度总产出 = Σ 基地月度明细（同月）
       const monthRows = bundle.monthly.filter((m) => m.month === row.month);
-      expect(monthRows).toHaveLength(12);
+      expect(monthRows).toHaveLength(13); // 13 生产基地（yangzhou 回退，luoyang 移除）
       const sum = monthRows.reduce((a, m) => a + m.output, 0);
       expect(Math.abs(sum - row.output)).toBeLessThan(0.05);
     }
@@ -123,7 +123,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
       headers: ADMIN,
       payload: {
         seriesKey: "output:line",
-        entityIds: [`LINE-${baseId}`],
+        entityIds: [`LINE-WS-${baseId}-slurry`],
         window: { from: `${month}-01`, to: new Date(Date.parse(`${month}-28T00:00:00Z`) + 5 * 86400000).toISOString().slice(0, 8) + "01", grain: "week" },
         agg: "sum",
       },
@@ -158,13 +158,13 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(w21.mape).toBeGreaterThan(w20.mape + 1.2);
     expect(w21.event).toContain("到货危机");
     // 曲线消解可回放：案例 curve 指向危机窗口的真实时序
-    expect(crisis.curve.entityId).toBe("LINE-changzhou");
+    expect(crisis.curve.entityId).toBe("LINE-WS-changzhou-slurry");
     expect(crisis.curve.from < win.from && crisis.curve.to > win.to).toBe(true);
   });
 
   it("Y4b: 危机窗口产出真实下凹后消解（曲线由回放生成，不是画出来的）", async () => {
     const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === "output:line"))[0]!;
-    const points = await t.repos.tsPoints.list("demo", series.id, { entityIds: ["LINE-changzhou"] });
+    const points = await t.repos.tsPoints.list("demo", series.id, { entityIds: ["LINE-WS-changzhou-slurry"] });
     const avg = (from: string, to: string) => {
       const vals = points.filter((p) => p.ts >= `${from}T00:00:00.000Z` && p.ts < `${to}T00:00:00.000Z`).map((p) => p.values.output ?? 0);
       return vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);

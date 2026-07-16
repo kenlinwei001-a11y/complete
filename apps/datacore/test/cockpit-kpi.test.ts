@@ -12,7 +12,7 @@ describe("cockpit P1 · 富 KPI 数据闭环（L1 + L6）", () => {
     const b = generateBattery(42, "S");
     expect(JSON.stringify(a.demandSegments)).toBe(JSON.stringify(b.demandSegments));
     expect(a.demandSegments.length).toBe(3);
-    expect(a.materialBalances.length).toBe(3);
+    expect(a.materialBalances.length).toBe(9); // MAT 扩至 9 项关键物料
     expect(a.financePlans.length).toBe(3);
     // 财务"毛利"线 rolling = Σ(需求×单价×毛利率)（交叉一致，非写死）
     const gm = a.financePlans.find((f) => f.line === "毛利")!;

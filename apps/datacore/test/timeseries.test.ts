@@ -135,24 +135,24 @@ describe("A8 timeseries layer", () => {
   it("T4: SUSTAIN — 3 consecutive days > 95 triggers C05; a 1-day break does not", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // overwrite the latest 3 daily util buckets for LINE-changzhou with >95 values
+    // overwrite the latest 3 daily util buckets for LINE-WS-changzhou-slurry with >95 values
     const days = [1, 2, 3].map((d) => new Date(T0 - d * DAY_MS).toISOString().slice(0, 10));
     for (const day of days) {
-      const id = `tsrun_line_util_daily_LINE-changzhou_${day}`.replace(/[^\w-]/g, "_");
+      const id = `tsrun_line_util_daily_LINE-WS-changzhou-slurry_${day}`.replace(/[^\w-]/g, "_");
       const run = (await t.repos.tsAggRuns.get("demo", id))!;
       expect(run).toBeDefined();
       await t.repos.tsAggRuns.put({ ...run, value: 96.5 });
     }
     const alerts = await t.services.ruleScan.scan("demo");
-    expect(alerts.some((a) => a.ruleKey === "C05" && a.entityId === "LINE-changzhou")).toBe(true);
+    expect(alerts.some((a) => a.ruleKey === "C05" && a.entityId === "LINE-WS-changzhou-slurry")).toBe(true);
     expect((await t.repos.outboxEvents.list("demo")).some((e) => e.event === "rule.alert" && e.payload.ruleKey === "C05")).toBe(true);
 
     // break the middle day → SUSTAIN(…, 3) no longer holds
-    const midId = `tsrun_line_util_daily_LINE-changzhou_${days[1]}`.replace(/[^\w-]/g, "_");
+    const midId = `tsrun_line_util_daily_LINE-WS-changzhou-slurry_${days[1]}`.replace(/[^\w-]/g, "_");
     const mid = (await t.repos.tsAggRuns.get("demo", midId))!;
     await t.repos.tsAggRuns.put({ ...mid, value: 94 });
     const alerts2 = await t.services.ruleScan.scan("demo");
-    expect(alerts2.some((a) => a.ruleKey === "C05" && a.entityId === "LINE-changzhou")).toBe(false);
+    expect(alerts2.some((a) => a.ruleKey === "C05" && a.entityId === "LINE-WS-changzhou-slurry")).toBe(false);
   });
 
   it("T5: agg-query — ≤120 buckets enforced, entity row policy inherited, no parameter returns raw rows", async () => {
@@ -164,7 +164,7 @@ describe("A8 timeseries layer", () => {
       method: "POST",
       url: "/a/v1/timeseries/agg-query",
       headers: ADMIN,
-      payload: { seriesKey: "util:line", entityIds: ["LINE-changzhou", "LINE-hefei"], window: { from, to, grain: "day" }, agg: "avg" },
+      payload: { seriesKey: "util:line", entityIds: ["LINE-WS-changzhou-slurry", "LINE-WS-hefei-slurry"], window: { from, to, grain: "day" }, agg: "avg" },
     });
     expect(ok.statusCode).toBe(200);
     const body = ok.json() as { points: { entityId: string; bucket: string; value: number }[] };
@@ -178,7 +178,7 @@ describe("A8 timeseries layer", () => {
       method: "POST",
       url: "/a/v1/timeseries/agg-query",
       headers: ADMIN,
-      payload: { seriesKey: "util:line", entityIds: ["LINE-changzhou"], window: { from: "2026-01-01", to: "2026-07-01", grain: "day" }, agg: "avg" },
+      payload: { seriesKey: "util:line", entityIds: ["LINE-WS-changzhou-slurry"], window: { from: "2026-01-01", to: "2026-07-01", grain: "day" }, agg: "avg" },
     });
     expect(tooFine.statusCode).toBe(400);
     // same window at week grain is fine (~26 buckets)
@@ -186,7 +186,7 @@ describe("A8 timeseries layer", () => {
       method: "POST",
       url: "/a/v1/timeseries/agg-query",
       headers: ADMIN,
-      payload: { seriesKey: "util:line", entityIds: ["LINE-changzhou"], window: { from: "2026-01-01", to: "2026-07-01", grain: "week" }, agg: "avg" },
+      payload: { seriesKey: "util:line", entityIds: ["LINE-WS-changzhou-slurry"], window: { from: "2026-01-01", to: "2026-07-01", grain: "week" }, agg: "avg" },
     });
     expect(weekly.statusCode).toBe(200);
 
@@ -195,18 +195,18 @@ describe("A8 timeseries layer", () => {
       method: "POST",
       url: "/a/v1/timeseries/agg-query",
       headers: BASE_MANAGER,
-      payload: { seriesKey: "util:line", entityIds: ["LINE-changzhou", "LINE-hefei"], window: { from, to, grain: "day" }, agg: "avg" },
+      payload: { seriesKey: "util:line", entityIds: ["LINE-WS-changzhou-slurry", "LINE-WS-hefei-slurry"], window: { from, to, grain: "day" }, agg: "avg" },
     });
     expect(scoped.statusCode).toBe(200);
     const scopedBody = scoped.json() as { points: { entityId: string }[] };
     expect(scopedBody.points.length).toBeGreaterThan(0);
-    expect(scopedBody.points.every((p) => p.entityId === "LINE-changzhou")).toBe(true);
+    expect(scopedBody.points.every((p) => p.entityId === "LINE-WS-changzhou-slurry")).toBe(true);
     // injection-style entityIds cannot bypass the policy either
     const inj = await t.app.inject({
       method: "POST",
       url: "/a/v1/timeseries/agg-query",
       headers: BASE_MANAGER,
-      payload: { seriesKey: "util:line", entityIds: ["LINE-hefei' OR 1=1 --", "LINE-hefei"], window: { from, to, grain: "day" }, agg: "avg" },
+      payload: { seriesKey: "util:line", entityIds: ["LINE-hefei' OR 1=1 --", "LINE-WS-hefei-slurry"], window: { from, to, grain: "day" }, agg: "avg" },
     });
     expect((inj.json() as { points: unknown[] }).points).toHaveLength(0);
   });

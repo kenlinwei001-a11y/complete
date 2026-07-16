@@ -187,23 +187,26 @@ describe("A7 synthetic data", () => {
     const t = await makeApp();
     await runJob(t);
 
-    // ① 数据源页可见：存在"合成数据源"连接
+    // ① 数据源页可见：存在"合成数据源"连接 + 源系统连接（mock→real：按 ERP/PLM/MES 分组展示）
     const conns = (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json() as { id: string; name: string }[];
     const synth = conns.find((c) => c.name.includes("合成数据源"));
     expect(synth, "存在合成数据源连接（不再凭空对象）").toBeTruthy();
+    // 订单经 BINDINGS 归入 ERP 源系统连接（数据接入控制台按源系统分组，mock→real）。
+    const erp = conns.find((c) => c.name.includes("ERP 主数据"));
+    expect(erp, "存在 ERP 源系统连接").toBeTruthy();
 
-    // ② 每核心对象类型一张 RawDataset，可见原始行
+    // ② 每核心对象类型一张 RawDataset（dataset 名 = BINDINGS 源系统表名），可见原始行
     const datasets = (await t.app.inject({ method: "GET", url: "/a/v1/raw-datasets", headers: ADMIN })).json() as { id: string; name: string; sourceConnId: string; rowCount: number }[];
     const byName = new Map(datasets.map((d) => [d.name, d]));
-    for (const type of ["Base", "Model", "Order"]) expect(byName.get(type), `RawDataset ${type} 存在`).toBeTruthy();
-    const orderDs = byName.get("Order")!;
+    for (const ds of ["mes_base_master", "plm_models", "erp_sales_orders"]) expect(byName.get(ds), `RawDataset ${ds} 存在`).toBeTruthy();
+    const orderDs = byName.get("erp_sales_orders")!;
     expect(orderDs.rowCount).toBe(24);
-    expect(orderDs.sourceConnId).toBe(synth!.id);
+    expect(orderDs.sourceConnId).toBe(erp!.id); // 订单原始表归 ERP 源系统连接（mock→real）
 
     const rowsRes = (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orderDs.id}/rows`, headers: ADMIN })).json() as { rows: Record<string, unknown>[] };
     expect(rowsRes.rows.length).toBe(24); // 原始行可在数据源页查看
 
-    // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 合成连接
+    // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 源系统连接（origin.type 仍为 SYNTHETIC，透明可溯）
     const orders = await t.repos.objects.listByType("demo", "Order");
     const dsIds = new Set(datasets.map((d) => d.id));
     for (const o of orders) {
@@ -212,7 +215,7 @@ describe("A7 synthetic data", () => {
       expect(org.rawDatasetId && dsIds.has(org.rawDatasetId), `Order ${o.id} origin 溯回真实 RawDataset`).toBe(true);
       expect(org.rawDatasetId).toBe(orderDs.id);
       expect(typeof org.rawRowIdx).toBe("number");
-      expect(org.sourceConnId).toBe(synth!.id);
+      expect(org.sourceConnId).toBe(erp!.id);
     }
   });
 
@@ -230,8 +233,8 @@ describe("A7 synthetic data", () => {
       derivations: { prop: string; formula: string }[];
     };
     expect(lin.object.type).toBe("Order");
-    expect(lin.source.connection!.name).toContain("合成数据源"); // 溯到合成连接器
-    expect(lin.source.rawDataset!.name).toBe("Order"); // 溯到 Order 原始表
+    expect(lin.source.connection!.name).toContain("ERP 主数据"); // 订单溯到 ERP 源系统连接器（mock→real）
+    expect(lin.source.rawDataset!.name).toBe("erp_sales_orders"); // 溯到 ERP 销售订单原始表
     expect(typeof lin.source.rawRowIdx).toBe("number");
     expect(lin.source.rawRow!.so).toBe(so); // 溯回的原始行正是这条订单（不再"无源头"）
     expect(Array.isArray(lin.derivations)).toBe(true); // 计算口径（派生属性）一并给出

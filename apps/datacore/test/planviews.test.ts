@@ -200,13 +200,13 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
       }
     }
     // PRD-IND-order-aggregate HTML 24 单：常州（动力/乘用车）出 DELIVERY/CREDIT；
-    // MARGIN 在储能基地（眉山，客户名含「储能/电网」→ess 细分毛利 13%<13.5% 底线）。
+    // MARGIN 在储能基地（邯郸，客户名含「储能/电网」→ess 细分毛利 13%<13.5% 底线）。
     // 注：KIT（到货晚于交期）在 HTML 静态需求集无齐套危机时不触发；其逻辑由 simclock shipment_delay 场景覆盖。
     expect(problems.some((p) => p.category === "DELIVERY")).toBe(true);
-    const meishan = (await invokeSolver(t, "affected_orders", { baseId: "meishan", fromDay: 0, toDay: 180 })).json() as {
+    const handan = (await invokeSolver(t, "affected_orders", { baseId: "handan", fromDay: 0, toDay: 180 })).json() as {
       data: { problems: { category: string }[] };
     };
-    expect(meishan.data.problems.some((p) => p.category === "MARGIN")).toBe(true);
+    expect(handan.data.problems.some((p) => p.category === "MARGIN")).toBe(true);
   });
 
   it("F27/§7.20: mapping 行按数据域分组排序、血缘 fieldCount 正确、含求解器/Agent 行", async () => {

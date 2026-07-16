@@ -17,7 +17,7 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
     const t = await makeApp();
     await seedBattery(t);
     const first = (await pointsOf(t, "yield:process")).map((p) => `${p.entityId}|${p.ts}|${p.values.yield}`);
-    expect(first.length).toBe(60 * 90); // 60 processes × 90 days
+    expect(first.length).toBe(650 * 90); // 650 processes (13基地×10车间×5工序) × 90 days
     // rerun with the same seed → byte-identical values
     await seedBattery(t);
     const second = (await pointsOf(t, "yield:process")).map((p) => `${p.entityId}|${p.ts}|${p.values.yield}`);
@@ -32,16 +32,16 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
     const mp = (await t.repos.objects.listByType("demo", "MaintPlan")).find((m) => m.props.baseId === "changzhou")!;
     const start = `${mp.props.lastMaintStart}`;
     const end = new Date(Date.parse(`${start}T00:00:00Z`) + 7 * DAY_MS).toISOString().slice(0, 10);
-    const points = (await pointsOf(t, "yield:process")).filter((p) => p.entityId.startsWith("LINE-changzhou"));
+    const points = (await pointsOf(t, "yield:process")).filter((p) => p.entityId.startsWith("LINE-WS-changzhou"));
     const inWin = points.filter((p) => p.ts.slice(0, 10) >= start && p.ts.slice(0, 10) < end);
     const outWin = points.filter((p) => p.ts.slice(0, 10) < start || p.ts.slice(0, 10) >= end);
-    expect(inWin.length).toBe(60 * 7 / 60 * 5); // 5 processes × 7 days
+    expect(inWin.length).toBe(50 * 7); // 50 processes (常州 10 车间 × 5 工序) × 7 days
     const avg = (arr: typeof points) => arr.reduce((a, p) => a + p.values.yield!, 0) / arr.length;
     expect(avg(inWin) / avg(outWin)).toBeLessThan(0.8); // ×0.72 dip
     // validation report carries the timeseries section
     const job = (await t.repos.syntheticJobs.list("demo")).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]!;
     expect(job.report!.timeseries).toBeDefined();
-    expect(job.report!.timeseries!.pointCounts["yield:process"]).toBe(5400);
+    expect(job.report!.timeseries!.pointCounts["yield:process"]).toBe(58500);
     expect(job.report!.timeseries!.aggSpotChecks.every((c) => c.ok)).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
     expect(Array.isArray(body1.report.alertsRaised)).toBe(true);
     // points for the simulated day exist; snapshots refreshed through agg → derivation
     const dayPoints = await pointsOf(t, "util:line", { from: "2026-06-10T00:00:00.000Z", to: new Date(T0 + DAY_MS).toISOString() });
-    expect(dayPoints.length).toBe(12);
+    expect(dayPoints.length).toBe(130); // 13 基地 × 10 车间 × 1 产线
     const clock1 = (await t.app.inject({ method: "GET", url: "/a/v1/synthetic/clock", headers: ADMIN })).json() as {
       currentTick: number;
       simulatedDate: string;

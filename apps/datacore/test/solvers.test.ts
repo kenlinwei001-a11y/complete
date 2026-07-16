@@ -463,7 +463,7 @@ describe("S1 solvers", () => {
     const res = await invokeSolver(t, "capacity_rollup", {});
     const data = (res.json() as { data: { bases: Record<string, unknown>[]; ruleRefs: string[] } }).data;
     expect(data.ruleRefs).toEqual(["C01", "C02"]);
-    expect(data.bases).toHaveLength(12);
+    expect(data.bases).toHaveLength(13);
     const b = data.bases[0]! as { weeklyWan: number; formula: string; inputs: unknown[]; lines: { formula: string }[]; processes: unknown[]; equipment: { formula: string; inputs: unknown[] }[] };
     expect(b.weeklyWan).toBeGreaterThan(0);
     expect(b.formula).toContain("周产能");

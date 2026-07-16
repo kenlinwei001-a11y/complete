@@ -138,13 +138,29 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     // error/ape 手算一致（实际值 = A8 ts_agg_runs 同窗口 line_output_daily）
     const pair = (await t.repos.calibrationPairs.list("demo", (p) => !p.baseId && p.windowTo === T0))[0]!;
     const c = await t.services.solvers.loadContext("demo");
-    const baseIds = [...c.certByModel.get(MODEL)!.keys()];
+    // SA-3 Workshop 层：一个认证基地的 10 条"产线"实为 10 道串行工序车间；实际值 = Σ认证基地
+    // （当日各车间产出的均值 = 该基地代表工序吞吐），与 pairing 按基地取均值口径一致（不重复计入在制品）。
+    const certBases = [...c.certByModel.get(MODEL)!.keys()];
+    const linesByBase = new Map<string, Set<string>>();
+    for (const l of c.lines) {
+      const b = String(l.props.baseId);
+      const set = linesByBase.get(b) ?? new Set<string>();
+      set.add(String(l.props.lineId));
+      linesByBase.set(b, set);
+    }
+    const certLineIds = new Set(c.lines.filter((l) => certBases.includes(String(l.props.baseId))).map((l) => String(l.props.lineId)));
     const runs = await t.repos.tsAggRuns.list(
       "demo",
-      (x) => x.specKey === "line_output_daily" && x.windowEnd === T0 && baseIds.some((b) => x.entityId === `LINE-${b}`),
+      (x) => x.specKey === "line_output_daily" && x.windowEnd === T0 && certLineIds.has(String(x.entityId)),
     );
-    expect(runs).toHaveLength(baseIds.length);
-    const actual = round(runs.reduce((a, x) => a + x.value, 0) / c.params.packCellCount / 10000, 6);
+    expect(runs).toHaveLength(certLineIds.size);
+    let cells = 0;
+    for (const b of certBases) {
+      const baseLineIds = linesByBase.get(String(b))!;
+      const baseRuns = runs.filter((x) => baseLineIds.has(String(x.entityId)));
+      cells += baseRuns.reduce((a, x) => a + x.value, 0) / baseRuns.length; // 各车间产出均值 = 代表工序吞吐
+    }
+    const actual = round(cells / c.params.packCellCount / 10000, 6);
     expect(pair.actual).toBe(actual);
     expect(pair.error).toBe(round(pair.predicted - actual, 6));
     expect(pair.ape).toBe(round(Math.abs(pair.error) / Math.max(actual, 1e-6), 6));

@@ -77,12 +77,14 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     expect(res.statusCode).toBe(200);
     const out = res.json() as { recorded: number; breached: number };
     expect(out.recorded).toBe(3);
-    expect(out.breached).toBeGreaterThanOrEqual(1); // 物料保障率越线
+    expect(out.breached).toBeGreaterThanOrEqual(1); // 需求达成率越线（储能细分达成缺口 → 90.8% < 95 底线）
     const snap = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.snapshot_recorded");
     expect(snap.length).toBe(3);
     const breach = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.breached");
     expect(breach.length).toBeGreaterThanOrEqual(1);
-    expect(breach.some((e) => (e.payload as { key?: string }).key === "material_cov")).toBe(true);
+    // demand 规模锁定(375万套/700亿)后：物料保障率 95.8% 高于 95 底线（个体物料缺口经 C06/C16 覆盖），
+    // 当前越线指标为需求达成率（demand_attain）。
+    expect(breach.some((e) => (e.payload as { key?: string }).key === "demand_attain")).toBe(true);
   });
 
   it("R2：另一租户无 Metric/KSF/Principal（隔离）", async () => {

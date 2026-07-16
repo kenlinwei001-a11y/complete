@@ -19,7 +19,7 @@ describe("sop 后端求解器 + 版本演进（L1 + L6）", () => {
     const t: TestApp = await makeApp();
     await seedBattery(t);
     const out = (await (await invokeSolver(t, "mrp_netting", {})).json() as { data: { materials: { material: string; netDemand: number; ltaCoverPct: number; gap: number }[]; shortageCount: number } }).data;
-    expect(out.materials.length).toBe(3);
+    expect(out.materials.length).toBe(9); // MAT 扩至 9 项关键物料
     expect(out.materials[0]!.netDemand).toBeGreaterThan(0);
     // 缺口降序
     for (let i = 1; i < out.materials.length; i++) expect(out.materials[i - 1]!.gap).toBeGreaterThanOrEqual(out.materials[i]!.gap);

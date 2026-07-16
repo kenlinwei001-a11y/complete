@@ -28,12 +28,19 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
       sourceBindings: Array<{ dataset: string; connId: string }>;
       derivedProperties: Array<{ propKey: string }>;
     }>;
-    // 34 类全由链产。
-    expect(types.length).toBe(34);
-    // R13 provenance 因果真实：每类型 sourceBindings 非空且指向同名真 rawDataset（非硬编码模板/非空）。
-    for (const ty of types) {
+    // 66 类型全由链 CREATE（含 SA-3 Workshop 层 + Phase3 MES 域类型定义）。
+    expect(types.length).toBe(66);
+    // R13 provenance 因果真实：凡在 demo 中物化了实例的类型，其 sourceBindings 非空且指向同名真 rawDataset
+    //（非硬编码模板）。Phase3 MES 类型（WorkOrder/WIP*/Equipment*E/Operator* 等）为轻量 demo 的
+    // 本体模型定义、不落 demo 实例（否则单次 seed 逾万对象拖垮用例），无实例 provenance，故按物化类型校验。
+    const materializedTypes = new Set((await t.repos.objects.list("demo")).map((o) => o.type));
+    const provenanced = types.filter((ty) => materializedTypes.has(ty.key));
+    expect(provenanced.length).toBeGreaterThanOrEqual(34); // 至少覆盖原 34 核心类型
+    for (const ty of provenanced) {
       expect(ty.sourceBindings.length).toBeGreaterThan(0);
-      expect(ty.sourceBindings.some((b) => b.dataset === ty.key && !!b.connId)).toBe(true);
+      // 源系统路由（mock→real）后 sourceBinding.dataset = 源系统表名（mes_base_master/erp_sales_orders 等），
+      // 非类型键；校验其指向真 rawDataset（有源表名 + 连接器，provenance 因果真实、非硬编码模板）。
+      expect(ty.sourceBindings.some((b) => !!b.dataset && !!b.connId)).toBe(true);
     }
     // 零回归：策展元数据（中文名 / 归域 / R14 派生属性叶子）保留。
     const base = types.find((x) => x.key === "Base")!;
@@ -67,7 +74,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(34);
-    expect(a.objs.length).toBe(467);
+    expect(a.types.length).toBe(66);
+    expect(a.objs.length).toBe(3208);
   });
 });
