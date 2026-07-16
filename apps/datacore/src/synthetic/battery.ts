@@ -2457,11 +2457,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
   // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
   // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
-  // 需求结构：乘用车58% / 储能32% / 商用车10%，支撑700亿收入/17%毛利率目标
+  // 需求结构：乘用车201.7 / 储能139.2 / 商用车34.1（合计375万套/年），
+  // 经 SEG_REGISTRY 单价推导 totalRev=700.0亿、gmRate≈17.0%（R14 从边界册派生）。
   const SEG_DEMAND = [
-    { segment: "乘用车", tgt: 207.2, p50: 213.2, p90: 199.6, act: 200.6 },
-    { segment: "储能", tgt: 108.0, p50: 117.6, p90: 108.4, act: 100.5 },
-    { segment: "商用车", tgt: 41.7, p50: 36.8, p90: 34.0, act: 39.5 },
+    { segment: "乘用车", tgt: 201.7, p50: 201.7, p90: 199.6, act: 200.6 },
+    { segment: "储能", tgt: 139.2, p50: 139.2, p90: 108.4, act: 100.5 },
+    { segment: "商用车", tgt: 34.1, p50: 34.1, p90: 34.0, act: 39.5 },
   ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
