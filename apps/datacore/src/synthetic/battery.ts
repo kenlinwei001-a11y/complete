@@ -704,6 +704,10 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "manufacturer", dataType: "string", isPrimaryKey: false },
   { propKey: "install_date", dataType: "date", isPrimaryKey: false },
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 维修中 | 待报废
+  // WO-SA-2：设备可靠性工程字段（故障推演真信号·诚实合成非实测·R12 全建模对齐）
+  { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均无故障时间（小时·越高越可靠）" },
+  { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均修复时间（小时·越低越好）" },
+  { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", description: "设备健康度（0-100·越高越健康）" },
 ];
 
 // SA-3：车间对象属性（Base↔Workshop↔Line 四层结构）
@@ -2229,6 +2233,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
             manufacturer: manufacturerPool[hashString(b.baseId) % manufacturerPool.length]!,
             install_date: isoDate(Date.parse(`${b.start_date}T00:00:00Z`) + 90 * 86400000),
             status: equipHash % 20 < 19 ? "正常" : "维修中",
+            // WO-SA-2 可靠性字段：由 equipId 加盐哈希确定性派生（不占 rngTopo 流·避免下游合成值位移·R6 字节一致），
+            // 诚实合成非实测——对象 origin=SYNTHETIC，前端经 provenanceSynthetic 走诚实灰不冒充 LIVE（KILL-MOCK-RED）。
+            mtbf: 300 + (hashString(`${equipId}:mtbf`) % 501), // 平均无故障时间 300-800h
+            mttr: round(2 + (hashString(`${equipId}:mttr`) % 61) / 10, 1), // 平均修复时间 2.0-8.0h
+            health_score: 78 + (hashString(`${equipId}:health`) % 21), // 设备健康度 78-98
           });
         }
       }

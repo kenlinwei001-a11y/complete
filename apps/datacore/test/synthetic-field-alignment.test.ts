@@ -41,4 +41,33 @@ describe("合成数据 ↔ 本体字段对齐", () => {
     }
     expect(missing).toEqual([]);
   });
+
+  // WO-SA-2：设备可靠性工程字段（mtbf/mttr/health_score）——存在·区间合理（诚实合成非实测）·R6 确定性。
+  it("WO-SA-2: Equipment 补 mtbf/mttr/health_score，每台皆填、区间合理、同 seed 重跑字节一致", async () => {
+    const t1 = await makeApp();
+    await seedBattery(t1);
+    const eq1 = (await t1.repos.objects.listByType("demo", "Equipment")).sort((a, b) => (a.id < b.id ? -1 : 1));
+    expect(eq1.length).toBeGreaterThan(0);
+    for (const e of eq1) {
+      const mtbf = e.props.mtbf;
+      const mttr = e.props.mttr;
+      const hs = e.props.health_score;
+      expect(typeof mtbf, `${e.id}.mtbf`).toBe("number");
+      expect(typeof mttr, `${e.id}.mttr`).toBe("number");
+      expect(typeof hs, `${e.id}.health_score`).toBe("number");
+      // 诚实合成区间（可靠性工程真信号，非实测）：mtbf 300-800h · mttr 2-8h · health_score 78-98
+      expect(mtbf as number).toBeGreaterThanOrEqual(300);
+      expect(mtbf as number).toBeLessThanOrEqual(800);
+      expect(mttr as number).toBeGreaterThanOrEqual(2);
+      expect(mttr as number).toBeLessThanOrEqual(8);
+      expect(hs as number).toBeGreaterThanOrEqual(78);
+      expect(hs as number).toBeLessThanOrEqual(98);
+    }
+    // R6：同 seed 重跑逐设备三字段字节一致（确定性，非网络/时钟/随机）。
+    const t2 = await makeApp();
+    await seedBattery(t2);
+    const eq2 = (await t2.repos.objects.listByType("demo", "Equipment")).sort((a, b) => (a.id < b.id ? -1 : 1));
+    const pick = (arr: typeof eq1) => arr.map((e) => ({ id: e.id, mtbf: e.props.mtbf, mttr: e.props.mttr, health_score: e.props.health_score }));
+    expect(pick(eq2)).toEqual(pick(eq1));
+  });
 });
