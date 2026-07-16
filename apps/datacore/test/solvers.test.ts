@@ -94,7 +94,8 @@ describe("S1 solvers", () => {
     const equips = await t.repos.objects.listByType("demo", "Equipment");
     const base = (await t.repos.objects.listByType("demo", "Base")).find((b) => b.props.baseId === r0.baseId)!;
     const lineIds = lines.filter((l) => l.props.baseId === r0.baseId).map((l) => l.props.lineId);
-    let lineSum = 0;
+    // SA-3 Workshop 层：基地日产能 = 各串行工序车间产能均值（代表工序吞吐），非求和（详见 computeRollup 注释）。
+    const lineCaps: number[] = [];
     for (const lineId of lineIds) {
       const serial: number[] = [];
       let formation = Infinity;
@@ -122,9 +123,10 @@ describe("S1 solvers", () => {
           );
         }
       }
-      lineSum += round(Math.min(Math.min(...serial), formation, aging), 2);
+      lineCaps.push(round(Math.min(Math.min(...serial), formation, aging), 2));
     }
-    const daily = round(Math.min(lineSum, base.props.formationCapDaily as number, base.props.agingCapDaily as number), 2);
+    const lineMean = lineCaps.length > 0 ? lineCaps.reduce((a, v) => a + v, 0) / lineCaps.length : 0;
+    const daily = round(Math.min(lineMean, base.props.formationCapDaily as number, base.props.agingCapDaily as number), 2);
     expect(r0.weeklyCap).toBe(round((daily * 7) / P.packCellCount / 10000, 4));
   });
 
