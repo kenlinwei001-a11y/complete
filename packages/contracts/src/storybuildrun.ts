@@ -348,6 +348,8 @@ export const StoryRunRequestSchema = z.object({
   inference: z.boolean().optional(),
   /** A18：构建模式（默认 STRICT；PROVISIONAL=未审核预览，闭包降 ADVISORY 不阻断、不写真值）。 */
   buildMode: BuildModeSchema.optional(),
+  /** WO-DB-MODELING-WIRE：数据先行——给已上传 rawDataset id 时 objectTypes/链路从真实列/FK 派生（A3·无 LLM·R6）。 */
+  fromDatasetIds: z.array(z.string()).optional(),
 });
 export type StoryRunRequest = z.infer<typeof StoryRunRequestSchema>;
 

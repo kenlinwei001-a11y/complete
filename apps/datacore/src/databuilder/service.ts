@@ -18,7 +18,8 @@ import type {
 } from "@platform/contracts";
 import type { ConsistencyCheck } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance } from "../domain.js";
+import type { AuthCtx, ObjectInstance, RawDataset } from "../domain.js";
+import type { PlanObjectType } from "@platform/contracts";
 import type { Repos } from "../repo/repo.js";
 import type { OutboxService } from "../outbox.js";
 import type { OntologyService } from "../ontology.js";
@@ -30,6 +31,7 @@ import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { detectFkCandidates, deriveModelingSuggestion } from "../modeling.js"; // WO-DB-MODELING-WIRE：数据先行 A3 复用
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
@@ -95,6 +97,29 @@ export class DataBuilderService {
       }
     }
     return comprehendScript(script, seed);
+  }
+
+  /**
+   * WO-DB-MODELING-WIRE（数据先行·故事路接 A3）：从已上传 rawDataset 的**真实列/FK** 经确定性
+   * `detectFkCandidates`(uniqueRate≥0.95/containment≥0.9) + `deriveModelingSuggestion`（无 LLM·R6）派生
+   * `PlanObjectType[]`（typeKey/主键/属性/refToTypeKey 链全来自真实数据·非 LLM 凭空造）。空/缺 → []。
+   */
+  private async deriveObjectTypesFromDatasets(ctx: AuthCtx, datasetIds: string[]): Promise<PlanObjectType[]> {
+    const withRows: { dataset: RawDataset; rows: Record<string, unknown>[] }[] = [];
+    for (const id of datasetIds) {
+      const ds = await this.repos.rawDatasets.get(ctx.tenantId, id);
+      if (ds) withRows.push({ dataset: ds, rows: await this.repos.rawRows.list(ctx.tenantId, id) });
+    }
+    if (withRows.length === 0) return [];
+    const fks = detectFkCandidates(withRows);
+    const suggestion = deriveModelingSuggestion(withRows.map((d) => ({ dataset: d.dataset })), fks);
+    return suggestion.objectTypes.map((t) => ({
+      typeKey: t.typeKey,
+      displayName: t.displayName,
+      domain: t.domain,
+      ...(t.sourceDataset ? { sourceDataset: t.sourceDataset } : {}),
+      properties: t.properties.map((p) => ({ propKey: p.propKey, sourceField: p.sourceField ?? p.propKey, dataType: (p.dataType === "json" ? "string" : p.dataType) as PlanObjectType["properties"][number]["dataType"], isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
+    }));
   }
 
   // ---- builder-agent 资源（统一资源模式 DRAFT/PUBLISHED/RETIRED）-----------
@@ -1040,6 +1065,15 @@ export class DataBuilderService {
       } else {
         const body0 = await this.comprehendPlanBody(ctx, script, seed);
         plan = { id: planId, tenantId: ctx.tenantId, builderKey: builder.key, scriptHash, seed, script, createdAt: nowIso(), ...body0 };
+        // WO-DB-MODELING-WIRE（数据先行）：给 fromDatasetIds → objectTypes/切片从真实列/FK 派生（A3 deriveModelingSuggestion·
+        // 取代 LLM 凭空造类型）；sliceNeeds 随真 objectTypes 重派（hops 与 comprehend 地板同口径=[]）。缺省=故事先行（旧行为不变）。
+        if (body.fromDatasetIds && body.fromDatasetIds.length > 0) {
+          const dataTypes = await this.deriveObjectTypesFromDatasets(ctx, body.fromDatasetIds);
+          if (dataTypes.length > 0) {
+            plan = { ...plan, objectTypes: dataTypes,
+              sliceNeeds: dataTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] })) };
+          }
+        }
         if (cfg.determinism.freezePlan) await this.repos.buildPlans.put(plan);
         setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器`);
       }
