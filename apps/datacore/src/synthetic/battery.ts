@@ -48,6 +48,9 @@ const MODEL_BASE_MAP: Record<string, string[]> = {
 const CUSTOMERS = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 
+// WO-SA-3：车间定义（10 大工序制程）
+const WORKSHOP_DEFS = ["制浆", "涂布", "辊压", "分切", "卷绕", "装配", "注液", "化成", "分容", "PACK"];
+
 // PRD-IND-order-aggregate §4：HTML 24 单逐字（so/cust/model/qty[万套]/due/pri）。单一真相源=原型。
 const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
   { so: "SO-3391", cust: "整车厂A", model: "4680-NCM", qty: 8, due: "2026-06-24", pri: "高" },
@@ -502,6 +505,7 @@ const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * 
 
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true },
+  { propKey: "workshopId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Workshop" },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
   // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
@@ -517,6 +521,14 @@ const lineProps: PropertyDef[] = [
   { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false }, // 件/日
   { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // %
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运行中 | 停机 | 调试
+];
+
+// WO-SA-3：车间属性定义
+const workshopProps: PropertyDef[] = [
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "processType", dataType: "enum", isPrimaryKey: false },
 ];
 
 const processProps: PropertyDef[] = [
@@ -724,6 +736,7 @@ const planTargetProps: PropertyDef[] = [
 /** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
 const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
   Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION", factory_code: "FACTORY_CODE", province: "PROVINCE", city: "CITY", factory_type: "FACTORY_TYPE", status: "STATUS", start_date: "START_DATE" } }],
+  Workshop: [{ connId: "conn-mes", dataset: "mes_workshops", fieldMappings: { workshopId: "WORKSHOP_ID", baseId: "BASE_ID", name: "WORKSHOP_NAME", processType: "PROCESS_TYPE" } }],
   Model: [{ connId: "conn-plm", dataset: "plm_models", fieldMappings: { modelId: "MODEL_ID", name: "MODEL_NAME", unitPrice: "UNIT_PRICE" } }],
   Order: [{ connId: "conn-erp", dataset: "erp_sales_orders", fieldMappings: { so: "SO_NO", cust: "CUSTOMER", model: "MODEL_ID", qty: "QTY", due: "DUE_DATE", status: "STATUS" } }],
   Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME", line_code: "LINE_CODE", max_capacity_day: "MAX_CAP_DAY", target_yield: "TARGET_YIELD", status: "STATUS" } }],
@@ -737,7 +750,7 @@ const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings:
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
-  Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   // cockpit P1 绿地
@@ -780,6 +793,7 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
     { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    plain("Workshop", "车间", workshopProps),
     plain("Line", "产线", lineProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
@@ -812,6 +826,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
     // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
     { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:1" }, // 一线归一基地（WO-SA-1 订正：原 N:N 与语义/实例不符）
+    { key: "workshop_belongs_to_base", fromTypeKey: "Workshop", toTypeKey: "Base", cardinality: "N:1" }, // WO-SA-3：车间归一基地
+    { key: "line_belongs_to_workshop", fromTypeKey: "Line", toTypeKey: "Workshop", cardinality: "N:1" }, // WO-SA-3：产线归一车间
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
@@ -1609,6 +1625,7 @@ export interface GeneratedBattery {
   sopVersionRows: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
+  workshops: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -1805,98 +1822,117 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
+  const workshops: Record<string, unknown>[] = [];
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];
   const equipment: Record<string, unknown>[] = [];
   for (const b of bases) {
-    const lineId = `LINE-${b.baseId}`;
-    const lineStatus = (hashString(`${lineId}_st`) % 100) < 90 ? "运行中" : "调试";
-    const targetYield = round(0.95 + (hashString(`${lineId}_ty`) % 100) / 100 * 0.04, 3);
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线`, line_code: lineId.replace("LINE-", "L-"), target_yield: targetYield, status: lineStatus });
-    for (const step of SERIAL_STEPS) {
-      const processId = `${lineId}-${step.suffix}`;
-      processes.push({
-        processId,
-        lineId,
+    // WO-SA-3：每个基地生成 10 个车间（制浆/涂布/辊压/分切/卷绕/装配/注液/化成/分容/PACK）
+    for (const wsName of WORKSHOP_DEFS) {
+      const workshopId = `WS-${b.baseId}-${wsName}`;
+      workshops.push({
+        workshopId,
         baseId: b.baseId,
-        name: step.name,
-        kind: "serial",
-        yield: round(0.95 + rngTopo() * 0.04, 3),
-        shiftHours: 11,
-        shifts: 2,
-        attendance: round(0.92 + rngTopo() * 0.06, 3),
-        utilization: round(0.88 + rngTopo() * 0.08, 3),
-        channels: 0,
-        channelOutputDaily: 0,
-        agingSlots: 0,
-        agingDays: 0,
+        name: `${b.name}${wsName}车间`,
+        processType: wsName,
       });
-      for (let e = 1; e <= 2; e++) {
-        const equipId = `${processId}-E${e}`;
-        // WO-SA-6 设备台账字段（确定性映射·守 R6）
-        const EQUIP_TYPE_MAP: Record<string, string> = {
-          coating: "涂布机", calendering: "辊压机", slitting: "分切机",
-          winding: "卷绕机", assembly: "装配线", electrolyte: "注液机",
-          formation: "化成柜", aging: "老化库", pack: "PACK线",
-        };
-        const MANUFACTURERS = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
-        const equipType = EQUIP_TYPE_MAP[step.suffix] ?? "未知设备";
-        const manufacturer = MANUFACTURERS[hashString(`${equipId}_mfg`) % MANUFACTURERS.length];
-        const startDateMs = b.start_date ? Date.parse(`${String(b.start_date)}T00:00:00Z`) : t0ms;
-        const installDate = isoDate(startDateMs + 90 * 86400000); // 基于基地投产日+90天（确定性·R6）
-        const equipStatus = (hashString(`${equipId}_st`) % 100) < 95 ? "正常" : "维修中"; // 95% 正常
-        equipment.push({
-          equipId,
+      // 每个车间生成 1 条产线
+      const lineId = `LINE-${workshopId}`;
+      const lineStatus = (hashString(`${lineId}_st`) % 100) < 90 ? "运行中" : "调试";
+      const targetYield = round(0.95 + (hashString(`${lineId}_ty`) % 100) / 100 * 0.04, 3);
+      lines.push({
+        lineId,
+        workshopId,
+        baseId: b.baseId,
+        name: `${b.name}${wsName}一号线`,
+        line_code: lineId.replace("LINE-", "L-"),
+        target_yield: targetYield,
+        status: lineStatus,
+      });
+      for (const step of SERIAL_STEPS) {
+        const processId = `${lineId}-${step.suffix}`;
+        processes.push({
           processId,
           lineId,
           baseId: b.baseId,
-          ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
-          availFactor: round(0.86 + rngTopo() * 0.08, 3),
-          oeeA: round(0.9 + rngTopo() * 0.06, 3),
-          oeeP: round(0.88 + rngTopo() * 0.08, 3),
-          oeeQ: round(0.96 + rngTopo() * 0.03, 3),
-          // WO-SA-2 追加（必须在既有 draw 之后·守 R6 确定性）
-          mtbf: round(300 + rngTopo() * 500, 0), // 300-800h
-          mttr: round(2 + rngTopo() * 6, 1), // 2-8h
-          health_score: round(78 + rngTopo() * 20, 0), // 78-98
-          // WO-SA-6 设备台账字段
-          equipment_code: equipId,
-          equipment_type: equipType,
-          manufacturer,
-          install_date: installDate,
-          status: equipStatus,
+          name: step.name,
+          kind: "serial",
+          yield: round(0.95 + rngTopo() * 0.04, 3),
+          shiftHours: 11,
+          shifts: 2,
+          attendance: round(0.92 + rngTopo() * 0.06, 3),
+          utilization: round(0.88 + rngTopo() * 0.08, 3),
+          channels: 0,
+          channelOutputDaily: 0,
+          agingSlots: 0,
+          agingDays: 0,
         });
+        for (let e = 1; e <= 2; e++) {
+          const equipId = `${processId}-E${e}`;
+          // WO-SA-6 设备台账字段（确定性映射·守 R6）
+          const EQUIP_TYPE_MAP: Record<string, string> = {
+            coating: "涂布机", calendering: "辊压机", slitting: "分切机",
+            winding: "卷绕机", assembly: "装配线", electrolyte: "注液机",
+            formation: "化成柜", aging: "老化库", pack: "PACK线",
+          };
+          const MANUFACTURERS = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
+          const equipType = EQUIP_TYPE_MAP[step.suffix] ?? "未知设备";
+          const manufacturer = MANUFACTURERS[hashString(`${equipId}_mfg`) % MANUFACTURERS.length];
+          const startDateMs = b.start_date ? Date.parse(`${String(b.start_date)}T00:00:00Z`) : t0ms;
+          const installDate = isoDate(startDateMs + 90 * 86400000); // 基于基地投产日+90天（确定性·R6）
+          const equipStatus = (hashString(`${equipId}_st`) % 100) < 95 ? "正常" : "维修中"; // 95% 正常
+          equipment.push({
+            equipId,
+            processId,
+            lineId,
+            baseId: b.baseId,
+            ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
+            availFactor: round(0.86 + rngTopo() * 0.08, 3),
+            oeeA: round(0.9 + rngTopo() * 0.06, 3),
+            oeeP: round(0.88 + rngTopo() * 0.08, 3),
+            oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+            // WO-SA-2 追加（必须在既有 draw 之后·守 R6 确定性）
+            mtbf: round(300 + rngTopo() * 500, 0), // 300-800h
+            mttr: round(2 + rngTopo() * 6, 1), // 2-8h
+            health_score: round(78 + rngTopo() * 20, 0), // 78-98
+            // WO-SA-6 设备台账字段
+            equipment_code: equipId,
+            equipment_type: equipType,
+            manufacturer,
+            install_date: installDate,
+            status: equipStatus,
+          });
+        }
       }
-    }
-    // WO-CAP-02：确定性每基地产能乘子（乘化成通道数·非 rng·R6）。rng 抽样步长不变（仅事后乘固定映射）。
-    const capMult = capacityMultOf(b.baseId);
-    const channels = Math.round(randInt(rngTopo, 600, 780) * capMult);
-    const channelOutputDaily = randInt(rngTopo, 80, 95);
-    processes.push({
-      processId: `${lineId}-formation`,
-      lineId,
-      baseId: b.baseId,
-      name: "化成",
-      kind: "formation",
-      yield: round(0.97 + rngTopo() * 0.02, 3),
-      shiftHours: 24,
-      shifts: 1,
-      attendance: 1,
-      utilization: 1,
-      channels,
-      channelOutputDaily,
-      agingSlots: 0,
-      agingDays: 0,
-    });
-    // WO-CAP-02：老化库位同乘确定性基地产能乘子（与化成同向·非 rng·R6）。
-    const agingSlots = Math.round(randInt(rngTopo, 260000, 340000) * capMult);
-    const agingDays = 5;
-    processes.push({
-      processId: `${lineId}-aging`,
-      lineId,
-      baseId: b.baseId,
-      name: "老化",
-      kind: "aging",
+      // WO-CAP-02：确定性每基地产能乘子（乘化成通道数·非 rng·R6）。rng 抽样步长不变（仅事后乘固定映射）。
+      const capMult = capacityMultOf(b.baseId);
+      const channels = Math.round(randInt(rngTopo, 600, 780) * capMult);
+      const channelOutputDaily = randInt(rngTopo, 80, 95);
+      processes.push({
+        processId: `${lineId}-formation`,
+        lineId,
+        baseId: b.baseId,
+        name: "化成",
+        kind: "formation",
+        yield: round(0.97 + rngTopo() * 0.02, 3),
+        shiftHours: 24,
+        shifts: 1,
+        attendance: 1,
+        utilization: 1,
+        channels,
+        channelOutputDaily,
+        agingSlots: 0,
+        agingDays: 0,
+      });
+      // WO-CAP-02：老化库位同乘确定性基地产能乘子（与化成同向·非 rng·R6）。
+      const agingSlots = Math.round(randInt(rngTopo, 260000, 340000) * capMult);
+      const agingDays = 5;
+      processes.push({
+        processId: `${lineId}-aging`,
+        lineId,
+        baseId: b.baseId,
+        name: "老化",
+        kind: "aging",
       yield: 1,
       shiftHours: 24,
       shifts: 1,
@@ -1931,7 +1967,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     mb.forEach((baseId, idx) => {
       const status: "量产" | "认证中" =
         idx === 0 ? "量产" : idx === mb.length - 1 ? "认证中" : rngCert() < 0.7 ? "量产" : "认证中";
-      certLinks.push({ modelId: m.modelId, lineId: `LINE-${baseId}`, baseId, status });
+      // WO-SA-3：认证边挂在 workshop 级别 line 上（取该基地第一个车间的产线）
+      const workshopId = `WS-${baseId}-制浆`;
+      certLinks.push({ modelId: m.modelId, lineId: `LINE-${workshopId}`, baseId, status });
     });
   }
 
@@ -2076,7 +2114,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { chainId: "rc-material-safety", kpiCategory: "material", factor: "安全库存不足", driverType: "MaterialBalance", evidenceField: "safetyStockGapTon", selectField: "material", baseWeight: 1 },
   ];
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
+  return { bases, models, orders, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
 }
 
 // ---------------------------------------------------------------------------
