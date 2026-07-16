@@ -3102,7 +3102,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const run = await databuilder.previewStory(c, { script: body.script, seed: body.seed });
       return reply.status(201).send(run);
     }
-    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode }, body.inference ?? false);
+    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode, fromDatasetIds: body.fromDatasetIds }, body.inference ?? false);
     return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
   });
   app.patch("/a/v1/databuilder/runs/:id/inputs", async (req, reply) => {
