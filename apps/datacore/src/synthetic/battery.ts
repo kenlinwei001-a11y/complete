@@ -9,8 +9,27 @@ import { ALL_FEATURE_KEYS } from "../features.js";
 // 去电池锁死（R14）：基地经纬度作为对象数据随合成下发（前端 GeoMap 读 Base.props.lon/lat，不再写死）。
 // DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（跨包唯一真相源，灭漂移 G-5/R14）。
 // 命名以 HTML BASE_DATA 为准；datacore 用 {baseId,name,kind,lon,lat} 子集（值字节复现，R6）。
-export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | "动力+储能"; lon: number; lat: number }[] =
-  BASE_REGISTRY.map((b) => ({ baseId: b.baseId, name: b.name, kind: b.kind, lon: b.lon, lat: b.lat }));
+export const BASES: {
+  baseId: string;
+  name: string;
+  kind: "动力" | "储能" | "动力+储能";
+  lon: number;
+  lat: number;
+  util: number;
+  gwh: number;
+  bottleneck: string;
+  lines: number;
+}[] = BASE_REGISTRY.map((b) => ({
+  baseId: b.baseId,
+  name: b.name,
+  kind: b.kind,
+  lon: b.lon,
+  lat: b.lat,
+  util: b.util,
+  gwh: b.gwh,
+  bottleneck: b.bottleneck,
+  lines: b.lines,
+}));
 
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
 // PRD-IND-order-aggregate：HTML 6 型号（MODEL_DEF L1542），命名以原型为单一真相源。
@@ -30,7 +49,7 @@ const MODEL_BASE_MAP: Record<string, string[]> = {
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
   "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
   "方形-NCM": ["changzhou", "chengdu", "jinhua"], // HTML 方形-NCM → 常州/成都/金华
-  "圆柱-LFP": ["xinyang", "luoyang"], // HTML 圆柱-LFP → 信阳/洛阳
+  "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
 };
 
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
@@ -49,30 +68,30 @@ const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 // 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
 // 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
 const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
-  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 900, due: "2026-06-24", pri: "高" },
-  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 1800, due: "2026-07-02", pri: "高" },
-  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 500, due: "2026-07-18", pri: "中" },
-  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 1300, due: "2026-07-09", pri: "高" },
-  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 1100, due: "2026-06-28", pri: "中" },
-  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 700, due: "2026-07-14", pri: "中" },
-  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 1500, due: "2026-07-05", pri: "高" },
-  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 2200, due: "2026-06-30", pri: "高" },
-  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 2700, due: "2026-07-12", pri: "高" },
-  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 1100, due: "2026-07-25", pri: "中" },
-  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 500, due: "2026-07-08", pri: "中" },
-  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 900, due: "2026-07-20", pri: "中" },
-  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 1300, due: "2026-07-11", pri: "高" },
-  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 700, due: "2026-07-22", pri: "中" },
-  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 2000, due: "2026-07-06", pri: "高" },
-  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 2400, due: "2026-07-16", pri: "高" },
-  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 1500, due: "2026-07-28", pri: "中" },
-  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 900, due: "2026-07-19", pri: "中" },
-  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 1100, due: "2026-07-03", pri: "高" },
-  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 2000, due: "2026-07-24", pri: "中" },
-  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 1500, due: "2026-07-13", pri: "高" },
-  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 700, due: "2026-07-10", pri: "中" },
-  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 1800, due: "2026-07-27", pri: "高" },
-  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 500, due: "2026-07-17", pri: "低" },
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 2556, due: "2026-06-24", pri: "高" },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 5112, due: "2026-07-02", pri: "高" },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 1420, due: "2026-07-18", pri: "中" },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 3692, due: "2026-07-09", pri: "高" },
+  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 3124, due: "2026-06-28", pri: "中" },
+  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 1988, due: "2026-07-14", pri: "中" },
+  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 4260, due: "2026-07-05", pri: "高" },
+  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 6248, due: "2026-06-30", pri: "高" },
+  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 7668, due: "2026-07-12", pri: "高" },
+  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 3124, due: "2026-07-25", pri: "中" },
+  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 1420, due: "2026-07-08", pri: "中" },
+  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 2556, due: "2026-07-20", pri: "中" },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 3692, due: "2026-07-11", pri: "高" },
+  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 1988, due: "2026-07-22", pri: "中" },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 5680, due: "2026-07-06", pri: "高" },
+  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 6816, due: "2026-07-16", pri: "高" },
+  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 4260, due: "2026-07-28", pri: "中" },
+  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 2556, due: "2026-07-19", pri: "中" },
+  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 3124, due: "2026-07-03", pri: "高" },
+  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 5680, due: "2026-07-24", pri: "中" },
+  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 4260, due: "2026-07-13", pri: "高" },
+  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 1988, due: "2026-07-10", pri: "中" },
+  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 5112, due: "2026-07-27", pri: "高" },
+  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 1420, due: "2026-07-17", pri: "低" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1807,26 +1826,33 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 1000);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
-  const bases = BASES.map((b) => ({
-    baseId: b.baseId,
-    name: b.name,
-    kind: b.kind,
-    position: b.kind, // GeoMap 按 position 着色（动力/储能）
-    lon: b.lon,
-    lat: b.lat,
-    util: round(0.62 + rng() * 0.35, 2),
-    bottleneck: pick(rng, BOTTLENECKS),
-    gwh: round(6 + rng() * 36, 1),
-    formationCapDaily: 0, // filled after process generation (shared-resource cap)
-    agingCapDaily: 0,
-    // SA-4：factory 台账字段（R12 全建模对齐，确定性映射守 R6）
-    factory_code: `${b.baseId.slice(0, 2).toUpperCase()}01`,
-    province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", jinhua: "浙江", yangzhou: "江苏" } as Record<string, string>)[b.baseId] ?? b.baseId,
-    city: b.name,
-    factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
-    status: "运营中",
-    start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
-  }));
+  const bases = BASES.map((b) => {
+    // Wave 1 (#59)：产能指标从 BASE_REGISTRY 单一来源派生，消灭随机值与边界册漂移（G-5/R14）。
+    // 保留原 rng() 调用以维持下游订单/拓扑字节流不变（R6）。
+    void rng();
+    void rng();
+    void rng();
+    return {
+      baseId: b.baseId,
+      name: b.name,
+      kind: b.kind,
+      position: b.kind, // GeoMap 按 position 着色（动力/储能）
+      lon: b.lon,
+      lat: b.lat,
+      util: b.util,
+      bottleneck: b.bottleneck,
+      gwh: b.gwh,
+      formationCapDaily: 0, // filled after process generation (shared-resource cap)
+      agingCapDaily: 0,
+      // SA-4：factory 台账字段（R12 全建模对齐，确定性映射守 R6）
+      factory_code: `${b.baseId.slice(0, 2).toUpperCase()}01`,
+      province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", jinhua: "浙江", yangzhou: "江苏" } as Record<string, string>)[b.baseId] ?? b.baseId,
+      city: b.name,
+      factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
+      status: "运营中",
+      start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
+    };
+  });
 
   // Phase 2 Wave 1：产品域基础（ProductPlatform / ProductSeries / ProductVersion）
   const productPlatforms = [
@@ -2431,11 +2457,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
   // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
   // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
-  // 需求结构：乘用车58% / 储能32% / 商用车10%，支撑700亿收入/17%毛利率目标
+  // 需求结构：乘用车201.7 / 储能139.2 / 商用车34.1（合计375万套/年），
+  // 经 SEG_REGISTRY 单价推导 totalRev=700.0亿、gmRate≈17.0%（R14 从边界册派生）。
   const SEG_DEMAND = [
-    { segment: "乘用车", tgt: 207.2, p50: 213.2, p90: 199.6, act: 200.6 },
-    { segment: "储能", tgt: 108.0, p50: 117.6, p90: 108.4, act: 100.5 },
-    { segment: "商用车", tgt: 41.7, p50: 36.8, p90: 34.0, act: 39.5 },
+    { segment: "乘用车", tgt: 201.7, p50: 201.7, p90: 199.6, act: 200.6 },
+    { segment: "储能", tgt: 139.2, p50: 139.2, p90: 108.4, act: 100.5 },
+    { segment: "商用车", tgt: 34.1, p50: 34.1, p90: 34.0, act: 39.5 },
   ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
@@ -2446,10 +2473,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
   }));
   // PRD-IND-sop §4.4 SOP_MAT：MRP 净需求精确种子（缺口 = net×(1−lta/100)，C06 齐套口径）。
+  // Wave 1 (#59)：物料净需求按 375万套 / 132万套 ≈ 2.84 放大，与需求规模对齐。
   const MAT = [
-    { material: "三元正极", unit: "吨", net: 8180, lta: 92, eta: "2026-06-28" },
-    { material: "隔膜", unit: "万㎡", net: 2376, lta: 100, eta: "" },
-    { material: "电解液", unit: "吨", net: 5544, lta: 96, eta: "2026-06-25" },
+    { material: "三元正极", unit: "吨", net: 23231, lta: 92, eta: "2026-06-28" },
+    { material: "隔膜", unit: "万㎡", net: 6748, lta: 100, eta: "" },
+    { material: "电解液", unit: "吨", net: 15745, lta: 96, eta: "2026-06-25" },
   ];
   const materialBalances = MAT.map((m, i) => ({
     matBalId: `mbal-${i + 1}`, material: m.material, unit: m.unit, netDemandTon: m.net, ltaPct: m.lta,

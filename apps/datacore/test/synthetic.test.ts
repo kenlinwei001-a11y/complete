@@ -1,3 +1,4 @@
+import { BASE_REGISTRY } from "@platform/contracts";
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
 import type { SyntheticJob } from "../src/domain.js";

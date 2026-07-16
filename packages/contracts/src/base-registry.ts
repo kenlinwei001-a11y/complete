@@ -47,20 +47,26 @@ export const SEG_REGISTRY: CanonicalSeg[] = [
   { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551" },
 ];
 
+// Wave 1 (#59)：基地产能同步放大到 700 亿收入 / 375 万套年需求规模。
+// 缩放系数 SCALE = 375万套 / 132万套 ≈ 2.84（由 SEG_DEMAND 总需求推导，不硬编码在消费端）。
+// gwh/lines 为产能指标随需求同比放大；util 为利用率百分比保持原设计区间；
+// 所有消费端从 BASE_REGISTRY 派生，改一处全局同步（DF.1/G-5/R14）。
+const SCALE = 2.84;
+
 export const BASE_REGISTRY: CanonicalBase[] = [
-  { baseId: "changzhou", name: "常州", kind: "动力+储能", position: "混合", lon: 119.95, lat: 31.78, util: 88, gwh: 35, bottleneck: "化成柜", lines: 8, prodYear: 2015, mainProduct: "4680-NCM" },
-  { baseId: "xiamen", name: "厦门", kind: "动力", position: "动力", lon: 118.1, lat: 24.46, util: 85, gwh: 28, bottleneck: "化成柜", lines: 6, prodYear: 2019, mainProduct: "VDA-NCM" },
-  { baseId: "chengdu", name: "成都", kind: "动力+储能", position: "混合", lon: 104.07, lat: 30.67, util: 82, gwh: 30, bottleneck: "老化库", lines: 7, prodYear: 2018, mainProduct: "4680-LFP" },
-  { baseId: "meishan", name: "眉山", kind: "储能", position: "储能", lon: 103.83, lat: 30.05, util: 79, gwh: 22, bottleneck: "化成柜", lines: 5, prodYear: 2021, mainProduct: "储能-280Ah" },
-  { baseId: "wuhan", name: "武汉", kind: "动力", position: "动力", lon: 114.3, lat: 30.59, util: 80, gwh: 20, bottleneck: "涂布机", lines: 5, prodYear: 2022, mainProduct: "VDA-NCM" },
-  { baseId: "jiangmen", name: "江门", kind: "储能", position: "储能", lon: 113.08, lat: 22.58, util: 83, gwh: 26, bottleneck: "老化库", lines: 6, prodYear: 2021, mainProduct: "储能-280Ah" },
-  { baseId: "hefei", name: "合肥", kind: "动力", position: "动力", lon: 117.28, lat: 31.86, util: 78, gwh: 20, bottleneck: "化成柜", lines: 5, prodYear: 2022, mainProduct: "4680-NCM" },
-  { baseId: "xinyang", name: "信阳", kind: "储能", position: "储能", lon: 114.09, lat: 32.13, util: 75, gwh: 16, bottleneck: "涂布机", lines: 4, prodYear: 2023, mainProduct: "储能-314Ah" },
-  { baseId: "zaozhuang", name: "枣庄", kind: "动力+储能", position: "混合", lon: 117.32, lat: 34.81, util: 73, gwh: 15, bottleneck: "化成柜", lines: 4, prodYear: 2023, mainProduct: "4680-LFP" },
-  { baseId: "handan", name: "邯郸", kind: "储能", position: "储能", lon: 114.49, lat: 36.61, util: 70, gwh: 12, bottleneck: "老化库", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah" },
-  { baseId: "zigong", name: "自贡", kind: "动力", position: "动力", lon: 104.78, lat: 29.34, util: 77, gwh: 16, bottleneck: "化成柜", lines: 4, prodYear: 2022, mainProduct: "刀片-LFP" },
-  { baseId: "jinhua", name: "金华", kind: "动力", position: "动力", lon: 119.65, lat: 29.08, util: 76, gwh: 14, bottleneck: "化成柜", lines: 4, prodYear: 2023, mainProduct: "刀片-LFP" },
-  { baseId: "yangzhou", name: "扬州", kind: "储能", position: "储能", lon: 119.42, lat: 32.40, util: 72, gwh: 13, bottleneck: "涂布机", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah" },
+  { baseId: "changzhou", name: "常州", kind: "动力+储能", position: "混合", lon: 119.95, lat: 31.78, util: 88, gwh: 99.4, bottleneck: "化成柜", lines: 23, prodYear: 2015, mainProduct: "4680-NCM" },
+  { baseId: "xiamen", name: "厦门", kind: "动力", position: "动力", lon: 118.1, lat: 24.46, util: 85, gwh: 79.5, bottleneck: "化成柜", lines: 17, prodYear: 2019, mainProduct: "VDA-NCM" },
+  { baseId: "chengdu", name: "成都", kind: "动力+储能", position: "混合", lon: 104.07, lat: 30.67, util: 82, gwh: 85.2, bottleneck: "老化库", lines: 20, prodYear: 2018, mainProduct: "4680-LFP" },
+  { baseId: "meishan", name: "眉山", kind: "储能", position: "储能", lon: 103.83, lat: 30.05, util: 79, gwh: 62.5, bottleneck: "化成柜", lines: 15, prodYear: 2021, mainProduct: "储能-280Ah" },
+  { baseId: "wuhan", name: "武汉", kind: "动力", position: "动力", lon: 114.3, lat: 30.59, util: 80, gwh: 56.8, bottleneck: "涂布机", lines: 15, prodYear: 2022, mainProduct: "VDA-NCM" },
+  { baseId: "jiangmen", name: "江门", kind: "储能", position: "储能", lon: 113.08, lat: 22.58, util: 83, gwh: 73.8, bottleneck: "老化库", lines: 17, prodYear: 2021, mainProduct: "储能-280Ah" },
+  { baseId: "hefei", name: "合肥", kind: "动力", position: "动力", lon: 117.28, lat: 31.86, util: 78, gwh: 56.8, bottleneck: "化成柜", lines: 15, prodYear: 2022, mainProduct: "4680-NCM" },
+  { baseId: "xinyang", name: "信阳", kind: "储能", position: "储能", lon: 114.09, lat: 32.13, util: 75, gwh: 45.4, bottleneck: "涂布机", lines: 12, prodYear: 2023, mainProduct: "储能-314Ah" },
+  { baseId: "zaozhuang", name: "枣庄", kind: "动力+储能", position: "混合", lon: 117.32, lat: 34.81, util: 73, gwh: 42.6, bottleneck: "化成柜", lines: 12, prodYear: 2023, mainProduct: "4680-LFP" },
+  { baseId: "handan", name: "邯郸", kind: "储能", position: "储能", lon: 114.49, lat: 36.61, util: 70, gwh: 34.1, bottleneck: "老化库", lines: 9, prodYear: 2023, mainProduct: "储能-314Ah" },
+  { baseId: "zigong", name: "自贡", kind: "动力", position: "动力", lon: 104.78, lat: 29.34, util: 77, gwh: 45.4, bottleneck: "化成柜", lines: 12, prodYear: 2022, mainProduct: "刀片-LFP" },
+  { baseId: "jinhua", name: "金华", kind: "动力", position: "动力", lon: 119.65, lat: 29.08, util: 76, gwh: 39.8, bottleneck: "化成柜", lines: 12, prodYear: 2023, mainProduct: "刀片-LFP" },
+  { baseId: "yangzhou", name: "扬州", kind: "储能", position: "储能", lon: 119.42, lat: 32.40, util: 72, gwh: 36.9, bottleneck: "涂布机", lines: 9, prodYear: 2023, mainProduct: "储能-314Ah" },
 ];
 
 /**
