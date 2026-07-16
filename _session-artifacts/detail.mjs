@@ -1,0 +1,18 @@
+import { chromium } from 'playwright-core';
+const OUT='/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad/capsim-integ-shots';
+const b=await chromium.launch({headless:true});
+const p=await (await b.newContext({viewport:{width:1440,height:1700},deviceScaleFactor:2})).newPage();
+await p.goto('http://localhost:5173/',{waitUntil:'networkidle'});
+await p.fill('#login-tenant','demo');await p.fill('#login-username','planner');await p.fill('#login-password','demo1234');
+await p.click('button[type=submit]');await p.waitForTimeout(2500);
+await p.getByText('推演',{exact:true}).first().hover().catch(()=>{});await p.waitForTimeout(400);
+const l=p.getByRole('link',{name:'产能推演'}).first();
+if(await l.count())await l.click({force:true}).catch(()=>{});
+await p.waitForSelector('[data-testid^="risk-card-"]',{timeout:20000}).catch(()=>{});
+await p.waitForTimeout(2000);
+await p.click('[data-testid="risk-card-洛阳"]').catch(()=>{});
+await p.waitForTimeout(1800);
+await p.locator('[data-testid="risk-card-洛阳"]').scrollIntoViewIfNeeded().catch(()=>{});
+await p.screenshot({path:`${OUT}/after-03-card-detail-洛阳.png`,fullPage:true});
+console.log('captured 洛阳 detail');
+await b.close();

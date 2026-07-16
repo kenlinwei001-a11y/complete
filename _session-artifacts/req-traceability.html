@@ -1,0 +1,207 @@
+<style>
+  :root{
+    --paper:#f7f8fa; --panel:#ffffff; --ink:#1a1f2b; --ink2:#4a5568; --muted:#6b7688;
+    --line:#e3e7ee; --line2:#d3d9e3; --accent:#4f56d6; --accent-soft:#eef0fd;
+    --ok:#0f8a5f; --ok-bg:#e6f5ee; --warn:#a9720d; --warn-bg:#fbf1dd;
+    --bad:#c0344a; --bad-bg:#fbe7ea; --info:#1f6fb2; --info-bg:#e4f0f9; --slate:#5a6474; --slate-bg:#eceef2;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#0e1118; --panel:#161b24; --ink:#e7ecf3; --ink2:#b3bccb; --muted:#8592a4;
+      --line:#242c39; --line2:#323c4d; --accent:#8b90f0; --accent-soft:#1c2033;
+      --ok:#4ecf98; --ok-bg:#123026; --warn:#e0b25a; --warn-bg:#302713; --bad:#f0899b; --bad-bg:#331a20;
+      --info:#68b6e8; --info-bg:#12283a; --slate:#9aa5b6; --slate-bg:#1e242f;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0e1118; --panel:#161b24; --ink:#e7ecf3; --ink2:#b3bccb; --muted:#8592a4;
+    --line:#242c39; --line2:#323c4d; --accent:#8b90f0; --accent-soft:#1c2033;
+    --ok:#4ecf98; --ok-bg:#123026; --warn:#e0b25a; --warn-bg:#302713; --bad:#f0899b; --bad-bg:#331a20;
+    --info:#68b6e8; --info-bg:#12283a; --slate:#9aa5b6; --slate-bg:#1e242f;
+  }
+  :root[data-theme="light"]{
+    --paper:#f7f8fa; --panel:#ffffff; --ink:#1a1f2b; --ink2:#4a5568; --muted:#6b7688;
+    --line:#e3e7ee; --line2:#d3d9e3; --accent:#4f56d6; --accent-soft:#eef0fd;
+    --ok:#0f8a5f; --ok-bg:#e6f5ee; --warn:#a9720d; --warn-bg:#fbf1dd;
+    --bad:#c0344a; --bad-bg:#fbe7ea; --info:#1f6fb2; --info-bg:#e4f0f9; --slate:#5a6474; --slate-bg:#eceef2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+    font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+  header.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--paper) 88%,transparent);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:16px 0 13px;margin-bottom:26px}
+  header.top .wrap{padding-top:0;padding-bottom:0}
+  h1{font-size:23px;margin:0 0 3px;letter-spacing:-.01em;font-weight:700}
+  .sub{color:var(--muted);font-size:12.5px;font-family:var(--mono)}
+  .verdict{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));
+    border-left:3px solid var(--accent);border-radius:9px;padding:13px 16px;margin:22px 0;font-size:14px;color:var(--ink2)}
+  .verdict b{color:var(--ink)}
+  h2{font-size:16.5px;margin:34px 0 6px;padding-top:14px;border-top:1px solid var(--line);letter-spacing:-.01em}
+  h2 .tag{font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+  .lede{color:var(--ink2);font-size:13.5px;margin:0 0 14px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:6px 0 8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+  .stat b{font-size:22px;font-family:var(--mono);font-variant-numeric:tabular-nums;display:block;letter-spacing:-.02em}
+  .stat span{font-size:11px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0 6px}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:color-mix(in srgb,var(--panel) 60%,var(--paper));font-size:11px;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--muted);font-weight:600;position:sticky;top:0}
+  tr:last-child td{border-bottom:none}
+  td.id{font-family:var(--mono);font-size:11.5px;color:var(--ink2);white-space:nowrap}
+  code{font-family:var(--mono);font-size:11.5px;background:var(--slate-bg);padding:1px 5px;border-radius:4px;color:var(--ink2)}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;padding:2px 7px;
+    border-radius:5px;white-space:nowrap;letter-spacing:.02em}
+  .p-ok{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--warn-bg);color:var(--warn)}
+  .p-bad{background:var(--bad-bg);color:var(--bad)} .p-info{background:var(--info-bg);color:var(--info)}
+  .p-slate{background:var(--slate-bg);color:var(--slate)}
+  .bar{display:flex;height:11px;border-radius:6px;overflow:hidden;margin:10px 0 4px;border:1px solid var(--line)}
+  .bar i{display:block} .legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .legend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:4px;vertical-align:0}
+  .callout{border-radius:9px;padding:12px 15px;margin:14px 0;font-size:13.5px;border:1px solid var(--line)}
+  .callout.win{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 30%,var(--line))}
+  .callout.risk{background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 30%,var(--line))}
+  .callout b{color:var(--ink)}
+  ul.tight{margin:6px 0 6px;padding-left:20px} ul.tight li{margin:3px 0;font-size:13.5px;color:var(--ink2)}
+  ul.tight li b{color:var(--ink)}
+  .foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+  em{color:var(--ink2);font-style:normal;font-weight:600}
+</style>
+
+<header class="top"><div class="wrap">
+  <h1>全域数字化智能决策支撑系统 · 需求追溯矩阵</h1>
+  <div class="sub">审核方综合核销 · 2026-07-12 · HEAD 059874f0 · 7 路真跑审计代理并行取证</div>
+</div></header>
+
+<div class="wrap">
+
+<div class="verdict">
+  <b>一句话结论：需求没丢，登记齐全（2228 原子需求 + 64 章 + 108 份 PRD + 14 项你亲点 + DEBT 欠条）。</b>
+  真正的问题不是"遗漏了追踪"，而是 <b>大量处于 PARTIAL / 建成但未开闸 / 已登记但无施工单</b> 三种半成品态，且追踪文档（07-09/07-11）已滞后于代码。本表按<b>今日代码 + 队列 + 真跑</b>刷新。关键澄清：你担心的 <b>"CEO agent"其实从来不是构建目标</b>（是设计人格=人类决策者），其真正的 agent 形态"Executive/Chief 角色"确实<b>未建</b>；"base planner"是登录角色。
+</div>
+
+<div class="stats">
+  <div class="stat"><b>2228</b><span>原子需求（LEDGER 逐句·~73% SYS-HAS）</span></div>
+  <div class="stat"><b>64</b><span>章（刷新后 PASS↑ · NOT-BUILT 4→~2）</span></div>
+  <div class="stat"><b>108</b><span>PRD（IMPL 30 / PART 58 / DESIGN 5）</span></div>
+  <div class="stat"><b>17</b><span>真实 agent 已上线（非角色团队）</span></div>
+  <div class="stat"><b>225</b><span>WO（195 DONE / 20 BUILT / 4 WIP / 3 BLOCK / 3 TODO）</span></div>
+</div>
+
+<h2>§A　你的具体疑问：CEO agent / base planner / 5 角色团队 <span class="tag">是否遗漏</span></h2>
+<p class="lede">结论：<em>没有整体遗漏 agent</em>（17 个真实 agent 已上线，超"单 agent"），但<em>规格要求的"角色化团队"几乎全部 MISSING/STUB</em>——这在规格自己的台账里就标着 OMISSION/NOT-BUILT。</p>
+<div class="scroll"><table>
+<tr><th>规格要求的 agent/角色</th><th>来源</th><th>状态</th><th>取证</th></tr>
+<tr><td>参照页"10 智能体"(Orchestrator+9 专家)</td><td class="id">reference topology</td><td><span class="pill p-bad">仅叙事</span></td><td>多数是单-agent 循环内的 tool/feature，非独立 agent</td></tr>
+<tr><td>岗位化 5-Agent(Planning/SupplyChain/Manufacturing/Finance/<b>Executive</b>)</td><td class="id">Ch51.6</td><td><span class="pill p-bad">MISSING</span></td><td>"现仅单 universal_explorer"</td></tr>
+<tr><td>5 typed Agents(Planning/DataAnalyst/Optimization/Simulation/Decision)</td><td class="id">V2-1-139</td><td><span class="pill p-bad">MISSING</span></td><td>规格明确角色化，现仅单 agent</td></tr>
+<tr><td><b>Chief / CEO 级 agent</b>(角色化 AI 员工)</td><td class="id">Ch63 / Ch34</td><td><span class="pill p-bad">NOT-BUILT</span></td><td>"CEO"=设计人格(人类问 10 问)，非构建目标；其 agent 形态未建</td></tr>
+<tr><td>Multi-Agent 编排 / Coordinator</td><td class="id">Ch51.19-21</td><td><span class="pill p-bad">MISSING</span></td><td>无 master→sub-agent 委派</td></tr>
+<tr><td>双向 A2A 协作协议</td><td class="id">V2-1-156</td><td><span class="pill p-warn">STUB</span></td><td>仅对外互操作壳；无内部团队；handoff=404 兜底</td></tr>
+<tr><td><code>invoke_agent</code> 工作流步(唯一委派路径)</td><td class="id">Platform §8.2</td><td><span class="pill p-warn">STUB</span></td><td><code>executor.ts:374</code> 返回 UNSUPPORTED_STEP</td></tr>
+<tr><td>Agent 三层记忆 / Learning agent</td><td class="id">Ch51.16-18</td><td><span class="pill p-warn">STUB</span></td><td>只读经验库·无跨会话记忆(母体 G-3b)</td></tr>
+<tr><td>Safety agent(AI 原生安全/agent 一等身份)</td><td class="id">Ch65</td><td><span class="pill p-bad">MISSING</span></td><td>传统安全强·AI 半壁全缺</td></tr>
+<tr><td>通用 B1 Agent 注册表(CRUD/发布/scope)</td><td class="id">Platform §8.1</td><td><span class="pill p-ok">真·已建</span></td><td><code>contracts/agentcore.ts:42</code>；但 schema 无 role/persona/coordinator 字段</td></tr>
+<tr><td><b>17 场景助理 agent</b>(每视图一个)</td><td class="id">WO-SCENE-*</td><td><span class="pill p-ok">真·已上线</span></td><td>agt_risk/agt_dash/agt_plan_generate/agt_sop_balance… 全 PUBLISHED live</td></tr>
+</table></div>
+<p class="lede" style="margin-top:10px">要让"10 智能体"变真：需 <b>master Orchestrator(计划→委派→汇总)</b> + 专家 sub-agent(Diagnostician/Learning/Action 作一等 agent) + 内部 A2A/handoff + Coordinator + 三层跨会话记忆 + 一等 Safety agent。今天全未接线。</p>
+
+<h2>§B　64 章现状 <span class="tag">刷新 · 07-11 矩阵已滞后</span></h2>
+<div class="callout win"><b>好消息（自 07-11 起的真实进展）：</b>矩阵当时的 4 个最差项——Workflow-DAG+Saga(Ch07/39)、RequirementGraph(Ch19)、CBR 决策记忆(Ch17)、L2 决策内核(Ch35/40)——已从 "暗发/NOT-BUILT" <b>提升为"建成但默认关闸"</b>（真call site 已确认，仅 feature flag defaultOn:false）。故矩阵 4 个 NOT-BUILT 今天实为 <b>~2</b>（Ch15 Skill Graph、Ch18 Learning Loop 仍真 0 代码）。</div>
+<div class="legend"><span><i style="background:var(--ok)"></i>PASS 真能用</span><span><i style="background:var(--warn)"></i>PARTIAL / 建成待开闸</span><span><i style="background:var(--bad)"></i>NOT-BUILT</span><span><i style="background:var(--slate)"></i>DEFER</span></div>
+<div class="bar">
+  <i style="background:var(--ok);width:52%"></i><i style="background:var(--warn);width:41%"></i><i style="background:var(--bad);width:3%"></i><i style="background:var(--slate);width:4%"></i>
+</div>
+<p class="lede">刷新后约 <em>PASS 33 · PARTIAL 26 · NOT-BUILT 2 · DEFER-cluster 3</em>（0 FAIL · 0 作假）。全部真跑逐值对上的脊柱：场景→分类→工作流→求解器→规则→答案→渲染端到端前后端一致。下表只列非-PASS 的关键章：</p>
+<div class="scroll"><table>
+<tr><th>章</th><th>状态</th><th>关键缺口 / 变化</th></tr>
+<tr><td class="id">Ch07 Workflow</td><td><span class="pill p-warn">建成·关闸</span></td><td>DAG 并行/条件网关/补偿/durable <b>已建</b> <code>dag-executor.ts</code>；串行 executor 仍是默认(gate <code>qos.workflow_dag</code> off)</td></tr>
+<tr><td class="id">Ch15 Skill Graph</td><td><span class="pill p-bad">NOT-BUILT</span></td><td>真 0 代码：无 skill_relation 模型 + composer</td></tr>
+<tr><td class="id">Ch17 决策记忆 CBR</td><td><span class="pill p-warn">建成·关闸</span></td><td>摄取→案例→复用回路<b>已建</b> <code>case-ingest.ts</code>+迁移038；gate <code>memory.cbr</code> off</td></tr>
+<tr><td class="id">Ch18 Learning Loop</td><td><span class="pill p-bad">NOT-BUILT</span></td><td>feedback→自动调参闭环 404；calibration 是参数底座非闭环</td></tr>
+<tr><td class="id">Ch19 需求图引擎</td><td><span class="pill p-warn">建成·关闸</span></td><td>buildRequirementGraph <b>已接</b> <code>orchestrator.ts:817</code>(观察态)；gate <code>growth.requirement_graph</code> off</td></tr>
+<tr><td class="id">Ch34/63 角色多-Agent</td><td><span class="pill p-bad">NOT-BUILT</span></td><td>单 universal·无 5 角色/Coordinator/双向 A2A(见 §A)</td></tr>
+<tr><td class="id">Ch35/40 L2 决策内核</td><td><span class="pill p-warn">建成·关闸</span></td><td>decision-package <b>已接</b> <code>app.ts:3538</code>·脑裂已解；gate <code>decision.kernel</code> off</td></tr>
+<tr><td class="id">Ch46 知识图谱</td><td><span class="pill p-warn">PARTIAL</span></td><td>Graph RAG / 实体链接 STILL-MISSING</td></tr>
+<tr><td class="id">Ch47/03/13 Data Fabric</td><td><span class="pill p-warn">PARTIAL</span></td><td>字段级 DQ 引擎 / Feature Store / Canonical 层 / 真流式 全缺</td></tr>
+<tr><td class="id">Ch65 安全架构</td><td><span class="pill p-warn">PARTIAL~48%</span></td><td>传统安全强(RS256/租户/AES-GCM)；<b>AI 原生安全(注入防御/输出安全/agent 身份)全缺</b>(矩阵曾高估)</td></tr>
+<tr><td class="id">Ch67/31-33 云原生</td><td><span class="pill p-warn">PARTIAL</span></td><td>K8s/helm/HPA / GPU 池 / 信创 / 边缘 全缺(docker-compose 是上限)</td></tr>
+<tr><td class="id">Ch69 锂电案例</td><td><span class="pill p-warn">PARTIAL</span></td><td>预测性维护 + 良率预测 ML STILL-MISSING(实为 12 基地/286.5GWh)</td></tr>
+</table></div>
+
+<h2>§C　PRD 全集 108 份 <span class="tag">纸面 status 皆滞后·台账为准</span></h2>
+<p class="lede">PRD front-matter status ~95% 仍写"待开发"是<em>虚标</em>（从不回写）；真相在 LEDGER + CHAPTER-TEST-MATRIX。PART 是主流现实。</p>
+<div class="stats">
+  <div class="stat"><b style="color:var(--ok)">≈30</b><span>IMPL 已建已接</span></div>
+  <div class="stat"><b style="color:var(--warn)">≈58</b><span>PART 核心在·有缺口</span></div>
+  <div class="stat"><b style="color:var(--bad)">≈5</b><span>DESIGN 有稿少码</span></div>
+  <div class="stat"><b style="color:var(--slate)">≈9</b><span>META 流程/路线图</span></div>
+  <div class="stat"><b style="color:var(--slate)">1</b><span>DEFER 明确延期</span></div>
+</div>
+<p class="lede">真正的 backlog（DESIGN-ONLY 或 PART-大缺口，~10）：</p>
+<div class="scroll"><table>
+<tr><th>PRD</th><th>状态</th><th>缺口</th></tr>
+<tr><td class="id">L1A-requirement-graph-engine</td><td><span class="pill p-warn">建成·关闸</span></td><td>已接 orchestrator·观察态·gate off(Ch19)</td></tr>
+<tr><td class="id">L2-decision-kernel</td><td><span class="pill p-warn">建成·关闸</span></td><td>已接·脑裂已解·gate off(Ch35/40)</td></tr>
+<tr><td class="id">L1.5-enterprise-memory-cbr</td><td><span class="pill p-warn">建成·关闸</span></td><td>摄取回路已建；Learning-loop 仍 404(Ch18)</td></tr>
+<tr><td class="id">addendum-validation-loop(VLE)</td><td><span class="pill p-warn">30-40%</span></td><td>七段框架在·❌判定已撤回·却是成熟度验收口径</td></tr>
+<tr><td class="id">addendum-dataflow-loop-closure</td><td><span class="pill p-warn">50%</span></td><td>事件未发射·TR1-8 未真通(R10 风险)</td></tr>
+<tr><td class="id">ontology-browser-field-coverage</td><td><span class="pill p-bad">DESIGN</span></td><td>无 admin 对象浏览页(DEBT A4·用户"找不到")</td></tr>
+<tr><td class="id">fde-fullstack-build-workflow</td><td><span class="pill p-warn">PART</span></td><td>无可观测 FDE 节点图(DEBT A5)</td></tr>
+<tr><td class="id">opensource-fusion-lastmile</td><td><span class="pill p-warn">PART</span></td><td>优化融合增量 8 轨大多 0 代码</td></tr>
+<tr><td class="id">IND-story</td><td><span class="pill p-bad">DESIGN</span></td><td>renderer 未注册·"原型视图无后端支持"(唯一真未建视图)</td></tr>
+<tr><td class="id">decision-support-maturity / maturity-master-plan</td><td><span class="pill p-slate">DESIGN 路线图</span></td><td>前瞻愿景·目标态未达</td></tr>
+</table></div>
+<p class="lede" style="margin-top:8px">1:1 参照视图族：11 个 renderer 全接真后端·5 个真跑 PASS(dash/risk/sop/plan-audit/plan-generate)；PART 的残差是<em>像素 1:1 parity</em>(增量跟踪·非缺功能)。</p>
+
+<h2>§D　真实缺口 · 三类 <span class="tag">这是"该做没做"的全景</span></h2>
+<ul class="tight">
+  <li><b>① 真·未建（需从零建）：</b>Skill Graph(Ch15) · Learning Loop 自动调参(Ch18) · 真流式接入 Kafka/MQ · 云原生 L3(K8s/信创/GPU/边缘) · <b>角色化多-Agent 团队</b>(5 角色+Coordinator+A2A) · <b>AI 原生安全</b>(注入防御/输出安全/agent 身份) · 预测 ML(预测维护/良率) · Safety agent · Graph RAG/实体链接 · 字段级 DQ/Feature-Store/Canonical · 异步求解 job。</li>
+  <li><b>② 建成但默认关闸（翻闸即可用·非新建）：</b>Workflow-DAG + Saga(<code>qos.workflow_dag/saga</code>) · RequirementGraph(<code>growth.requirement_graph</code>) · CBR 记忆(<code>memory.cbr</code>) · L2 决策内核(<code>decision.kernel</code>) · Exec-Planner(<code>qos.exec_planner</code>)。均已确认真 call site + 关闸时字节 parity。所需=STAGE 翻闸 + 真跑验证。</li>
+  <li><b>③ 你亲点·却无任何施工单（"记进 TODO ≠ 会被做"的遗忘风险）：</b>
+    <b>DEBT A3</b> 14 域参考本体+域内/跨域两库+<b>多跳切片规划器</b>(🔴FDE 核心"富多跳切片"的载体·最大单块) ·
+    <b>A4</b> 对象/类型浏览器页(你实测"找不到") ·
+    <b>A5</b> FDE 可观测节点图 ·
+    <b>A15</b> 工业级压测(规模/并发/负载全缺) ·
+    <b>A16</b> 真浏览器 E2E 进 CI(脚本已 9/9 过·卡待你拍板) ·
+    <b>U12</b> 图查询低代码/平台查询语言 ·
+    <b>6-phase EDS 三条道</b>(仅评审稿+源文件落档·无总 epic WO·部件散在 LaneB)。</li>
+</ul>
+
+<h2>§E　CAPSIM 产能推演 1:1 <span class="tag">你的 #1 优先级 · backend-real 建设计划</span></h2>
+<div class="callout"><b>真跑结论：链路几乎全真，差的不是管道是"真数据不够热"。</b>C05/C21/C09 规则、agt_risk/wf_seed_risk_scan/skl_risk_diagnosis、mitigation_select、12 基地/24 订单、8 卡网格、真 provenance 信号——<b>全部 EXISTS-REAL</b>。参照页的密度是<b>编的</b>(riskTarget=86+hash→全越线)，真后端<b>故意删了这个造假</b>(RISK-TRAJECTORY-DEFAKE)，读真张力(56-67)→8 卡只有 2 张诚实越线。</div>
+<div class="scroll"><table>
+<tr><th>#</th><th>建设项（全真后端·零前端造假）</th><th>层</th></tr>
+<tr><td class="id">P0-1</td><td>种真·逐基地 OEE/产线利用率/良率时序 → 设备OEE/良率波动 返回 source=LIVE → 解锁多因素卡</td><td>DataCore <code>seed.ts</code>/pack/tsgen</td></tr>
+<tr><td class="id">P0-2</td><td>抬真·≥8 base×factor 的真需求-产能缺口 → 真张力合法 ≥85 → 越线卡↑·因素点→~20·订单→~14·客户→~6·最早越线→~T+11</td><td>DataCore <code>seed.ts</code></td></tr>
+<tr><td class="id">P1-3</td><td>risk_timeline 输出逐卡 <code>factors[]</code>(全 live+越线因素·非单一代表) → 多 chip 卡</td><td>DataCore <code>risk.ts:478</code></td></tr>
+<tr><td class="id">P1-4</td><td>种真 MaintPlan.week + Shipment{DELAYED} 落窗 → 喂 17 行处置表(C05 主+备·≤14d→C21 反提行)</td><td>DataCore <code>seed.ts</code></td></tr>
+<tr><td class="id">P2-5</td><td>种真时延信号(staleHours&gt;2) → confidence.stale=true → C09 触发 → 数据健康度降级横幅从真数据出</td><td>DataCore seed</td></tr>
+<tr><td class="id">P2-6</td><td>本体图切片 65→~105 节点 / 66→~194 边(+~128 关系·agent 节点→智能体≈10)·母体回写</td><td>DataCore ontology + 母体</td></tr>
+<tr><td class="id">7-8</td><td>AgentCore 仅验绑定(全 EXISTS-REAL)；前端 RiskBoardView 只渲染真后端所出·零写死·诚实"暂稳"照渲</td><td>Agent/Frontend</td></tr>
+</table></div>
+<p class="lede" style="margin-top:8px"><b>load-bearing = P0-1 + P0-2</b>：真求解器一旦有够热的真数据，下游(20 因素点/14 订单/17 行/T+11/全红卡)自动落出——这正是你要的"后端真实存在·非前端写死"。</p>
+
+<h2>§F　你亲点 U1-U14 + 复验纪律 <span class="tag">14 项几近全闭</span></h2>
+<div class="scroll"><table>
+<tr><th>项</th><th>要求</th><th>状态</th></tr>
+<tr><td class="id">U1-U5</td><td>假推演诚实化 / 红色写死治本 / 下钻回退 / C02 溯源 / 可信溯源</td><td><span class="pill p-ok">DONE-verified</span></td></tr>
+<tr><td class="id">U6-U7</td><td>关联风险详情 / HTML 母版对齐(CAPSIM)</td><td><span class="pill p-warn">BUILT·待复验</span></td></tr>
+<tr><td class="id">U8</td><td>主题/配色开关(浅↔黑曜石)</td><td><span class="pill p-info">TODO 已入队</span></td></tr>
+<tr><td class="id">U9-U11</td><td>1:1 建模族 / 沙盘族 / 订单全链聚合</td><td><span class="pill p-ok">DONE-verified</span></td></tr>
+<tr><td class="id">U12</td><td>图查询低代码/平台查询语言</td><td><span class="pill p-bad">无 WO·诚实 RESERVED</span></td></tr>
+<tr><td class="id">U13-U14</td><td>订单三关联判 / 待解决 8 根源</td><td><span class="pill p-ok">DONE-verified</span></td></tr>
+</table></div>
+<div class="callout risk"><b>纪律缺口（假 DONE 风险面）：</b>当前 <b>20 个 BUILT 单</b>（含 P0 CAPSIM-REPLICA / CAP-10 / CAPFORECAST-HONEST / RC-UX 簇 / dev2 DB 批）dev 已交付但<b>待审核方真浏览器逐值复验</b>。dev2 DB 批(MODELING-WIRE 道B DERIVE / LINK-STABILIZE / BSTACK-DERIVE)我已真跑复验 DONE-ready(1278 绿)。铁律 0.4：不复验即"假 DONE"，须逐单真起真看再翻 DONE。</div>
+
+<div class="foot">
+  取证：7 路真跑审计代理并行(Ch01-40 · Ch39-70 · agents/multi-agent · dark-engines · 108-PRD · 用户点名 · CAPSIM backend-gap) · HEAD 059874f0 · 分支 claude/vigilant-knuth-b1nmxn。
+  数据源：docs/req-inventory/LEDGER-V2/V3/V4/SM(2228 条) · CHAPTER-TEST-MATRIX.md · COMPLETION-LEDGER.md · DEBT-ledger.md · COVERAGE-user-requirements · work-queue.json(225 单) · 真起 DataCore 4001/AgentCore 4002 逐端点核验。
+  判据：DONE-verified=审核核发 · BUILT=dev 交付待复验 · 建成·关闸=真 call site + feature flag off · NOT-BUILT=真 0 代码。0 作假 · 诚实标注。
+</div>
+
+</div>

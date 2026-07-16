@@ -1,0 +1,30 @@
+import pw from "/home/user/complete/node_modules/playwright-core/index.js";
+const { chromium } = pw;
+const OUT = "/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad";
+const EXE = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const APP = "http://127.0.0.1:5173";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const browser = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
+const page = await (await browser.newContext({ viewport: { width: 1500, height: 1050 } })).newPage();
+await page.goto(`${APP}/login`, { waitUntil: "networkidle" });
+await page.fill("#login-tenant","demo"); await page.fill("#login-username","admin"); await page.fill("#login-password","demo1234");
+await page.click('button[type="submit"]'); await page.waitForURL((u)=>!u.pathname.includes("/login"),{timeout:15000}).catch(()=>{}); await sleep(2000);
+await page.evaluate(()=>{window.history.pushState({},"","/v/risk");window.dispatchEvent(new PopStateEvent("popstate"));}); await sleep(3000);
+const b=await page.locator("body").innerText().catch(()=>"");
+const hasDatamode=/估算|非实测|mockTightness|启发|无真数据|MOCK|参考/.test(b);
+const luoyangCount=(b.match(/洛阳/g)||[]).length;
+console.log("risk 板渲染:", /峰值|越线|风险|D\+/.test(b)?"✓":"?", "| 洛阳出现次数:", luoyangCount, "| 有 dataMode 诚实标(估算/非实测):", hasDatamode?"✓":"✗");
+await page.screenshot({path:`${OUT}/risk-board.png`,fullPage:true});
+// 点洛阳卡片→看详情/受影响订单是否"暂无数据"
+const card=page.locator('[data-testid^="risk-card-洛阳"]').first();
+console.log("洛阳卡:", (await card.count().catch(()=>0))?"✓":"✗");
+await card.click().catch(()=>{}); await sleep(1500);
+// 尝试点开受影响订单/越线节点
+const dayNode=page.locator('[data-testid^="risk-day-"]').first();
+await dayNode.click().catch(()=>{}); await sleep(1500);
+const b2=await page.locator("body").innerText().catch(()=>"");
+const emptyData=/暂无数据|无数据|empty|no data|暂无/.test(b2);
+console.log("点节点后含「暂无数据」:", emptyData?"✓(确认用户报告·点红→空)":"(看截图)");
+await page.screenshot({path:`${OUT}/risk-click.png`,fullPage:true});
+await browser.close();
+console.log("截图: risk-board · risk-click");

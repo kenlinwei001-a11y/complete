@@ -1,0 +1,12 @@
+import fs from "fs";
+const p = "/home/user/complete/docs/work-queue.json";
+const q = JSON.parse(fs.readFileSync(p, "utf8"));
+const set = (id, n) => { const w = q.items.find(x => x.id === id); if (w) w.reviewNote = n; };
+set("WO-FAKE-02", "PASS 独立真跑逐值(agent a044dbed):plan_rootcause季/年去魔数。真curl季/年actual恒等op月值原值(需求达成率/毛利率/物料保障率 季比op=1.0·年比op=1.0·无×0.97/×1.04魔数);PERIODIC魔数+adj乘子已删;summary带投影披露(月值粒度投影非实测季/年未×粒度系数编造)·confidence.measurement=PARTIAL·kpiId加-quarter/-year。R6字节一致。三门RC0·靶向plan-drill-levels绿。");
+set("WO-FAKE-03", "PASS 独立真跑逐值(agent a044dbed):责任人去hash。注入horizon90得3条planRows·distinct owners=[基地负责人（未指派）]·hash姓氏经理0个;RISK_OWNER_NAMES/riskHashN死代码grep清零(非注释引用)。附证FAKE-01生效(OEE/良率卡SYNTHETIC被决策级planRows正确排除)。R6字节一致。靶向risk-trajectory-defake绿。");
+set("WO-FAKE-04", "PASS 独立真跑逐值(agent a044dbed):order_fullchain P90去固定haircut。真curl 24单铁验:同p50→不同p90(8单同p50=1.2572→8个不同p90 1.1229..1.1314·旧固定式应恒1.13148);p90/p50非恒0.9(24个不同比值0.8903-0.8999无一恰0.9)=mcP90Single种子化MC真分位。R6同so字节一致。靶向cockpit-order-fullchain绿·四包test全套RC0(datacore1128/agentcore653/frontend543)。");
+fs.writeFileSync(p, JSON.stringify(q, null, 2) + "\n");
+const c = {}; q.items.forEach(x => c[x.status] = (c[x.status] || 0) + 1);
+console.log("counts:", JSON.stringify(c));
+console.log("WIP:", q.items.filter(x => x.status === "WIP").map(x => x.id + "@" + (x.owner||"?")).join(", ") || "none");
+console.log("BUILT:", q.items.filter(x => x.status === "BUILT").map(x => x.id).join(", ") || "none");

@@ -1,0 +1,269 @@
+<style>
+  :root{
+    --bg:#DBDFE6; --bg2:#EAEDF1; --panel:#F3F5F8; --panel2:#E4E8EE; --line:#C2C9D5;
+    --ink:#1A2331; --ink-dim:#4F5B73; --ink-faint:#828DA2;
+    --accent:#4762E4; --accent-soft:#B7C3F1;
+    --live:#0C8C7E; --warn:#B9760C; --crit:#D63A3F;
+    --plate:0 1px 0 rgba(255,255,255,.85) inset,0 1px 2px rgba(26,35,49,.10),0 8px 24px rgba(26,35,49,.06);
+    --mono:"JetBrains Mono","SF Mono","Cascadia Code",ui-monospace,Consolas,Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
+    background:
+      linear-gradient(134deg,#E9ECF1 0%,#D6DBE3 34%,#E4E8EE 60%,#CFD5DF 100%) fixed;}
+  .deck{scroll-snap-type:y mandatory}
+  .slide{min-height:100vh;scroll-snap-align:start;display:flex;flex-direction:column;justify-content:center;
+    padding:clamp(26px,4.6vw,72px);position:relative;border-bottom:1px solid rgba(255,255,255,.5);overflow:hidden}
+  .slide::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+    background:linear-gradient(115deg,rgba(255,255,255,.55),transparent 42%),
+      radial-gradient(120% 80% at 90% -12%,rgba(71,98,228,.10),transparent 55%)}
+  .slide>*{position:relative;z-index:1}
+  .wrap{width:100%;max-width:1140px;margin:0 auto}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);
+    display:flex;align-items:center;gap:12px;font-weight:600}
+  .eyebrow::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--accent-soft),transparent)}
+  .idx{position:absolute;top:clamp(22px,3.6vw,50px);right:clamp(24px,4.6vw,72px);z-index:2;
+    font-family:var(--mono);font-size:12px;color:var(--ink-faint);letter-spacing:.14em}
+  h1{font-size:clamp(34px,6.2vw,72px);font-weight:800;line-height:1.02;letter-spacing:-.02em;text-wrap:balance;margin:20px 0 0}
+  h1 .g{background:linear-gradient(92deg,var(--accent),var(--live));-webkit-background-clip:text;background-clip:text;color:transparent}
+  h2{font-size:clamp(25px,3.5vw,39px);font-weight:750;letter-spacing:-.015em;text-wrap:balance;margin:16px 0 0}
+  .lede{font-size:clamp(15px,1.5vw,19px);color:var(--ink-dim);max-width:64ch;margin-top:18px;line-height:1.6}
+  .lede b{color:var(--ink);font-weight:650}.kchip{color:var(--live);font-weight:650}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:24px;font-family:var(--mono);font-size:12.5px}
+  .flow span{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 12px;color:var(--ink-dim);box-shadow:var(--plate)}
+  .flow span b{color:var(--ink);font-weight:600}.flow i{color:var(--accent);font-style:normal;font-weight:700}
+  .note{margin-top:20px;font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);border-left:2px solid var(--accent);
+    padding-left:12px;max-width:78ch;line-height:1.65}
+  .note b{color:var(--accent)}
+  .cmp{display:grid;grid-template-columns:172px 1fr 1fr;margin-top:26px;border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;font-size:14px;box-shadow:var(--plate);background:var(--panel)}
+  .cmp>div{padding:12px 15px;border-bottom:1px solid var(--line)}
+  .cmp .h{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;background:var(--panel2)}
+  .cmp .h.a,.cmp .h.b{color:var(--ink-faint)}.cmp .h.c{color:var(--accent)}
+  .cmp .rk{font-family:var(--mono);font-size:12px;color:var(--ink-faint);background:var(--bg2);letter-spacing:.02em}
+  .cmp .old{color:var(--ink-dim)}
+  .cmp .new{color:var(--ink);background:rgba(71,98,228,.055)}.cmp .new b{color:var(--live);font-weight:650}
+  .cmp>div:nth-last-child(-n+3){border-bottom:none}
+  .sys{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .sys span{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:6px 13px;color:var(--ink-dim);box-shadow:var(--plate)}
+  .sys span b{color:var(--accent);font-weight:700}
+  .qgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 26px;margin-top:24px}
+  .q{display:grid;grid-template-columns:26px 1fr;gap:12px;align-items:start}
+  .q .n{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700;padding-top:2px}
+  .q .b p{font-size:14px;color:var(--ink);line-height:1.42}
+  .q .b .s{font-family:var(--mono);font-size:10.5px;color:var(--live);margin-top:3px;letter-spacing:.01em}
+  /* UI showcase */
+  .ui3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:24px}
+  .uic{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--plate);display:flex;flex-direction:column}
+  .uih{font-size:14.5px;font-weight:700}
+  .uih span{display:block;font-family:var(--mono);font-size:10.5px;font-weight:400;color:var(--ink-faint);margin-top:3px;letter-spacing:.01em}
+  .uic svg{background:var(--bg2);border:1px solid var(--line);border-radius:8px;margin-top:10px;font-family:var(--mono)}
+  .mtab{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;font-family:var(--mono);font-size:11px;border:1px solid var(--line);
+    border-radius:8px;overflow:hidden;margin-top:10px}
+  .mtab>div{padding:6px 6px;border-bottom:1px solid var(--line);color:var(--ink-dim);text-align:center}
+  .mtab .ml{text-align:left;color:var(--ink-faint);background:var(--bg2)}
+  .mtab .mh{font-weight:700;color:var(--ink);background:var(--panel2);font-size:10px}
+  .mtab .mh.rec{color:var(--accent)}
+  .mtab .rec{background:rgba(71,98,228,.09);color:var(--ink);font-weight:600}
+  .mtab>div:nth-last-child(-n+4){border-bottom:none}
+  .stage{display:grid;grid-template-columns:repeat(5,1fr);margin-top:24px;border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;box-shadow:var(--plate)}
+  .st{padding:15px 14px;border-right:1px solid var(--line);background:var(--panel);position:relative}
+  .st:last-child{border-right:none;background:linear-gradient(180deg,rgba(71,98,228,.09),var(--panel))}
+  .st .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .st .n{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);position:absolute;top:13px;right:12px}
+  .st h4{font-size:14.5px;font-weight:700;margin:9px 0 8px;letter-spacing:-.01em}
+  .st li{font-family:var(--mono);font-size:11px;color:var(--ink-dim);line-height:1.8;list-style:none;padding-left:12px;position:relative}
+  .st li::before{content:"›";position:absolute;left:0;color:var(--accent)}
+  .st li b{color:var(--ink);font-weight:600}.st li .lv{color:var(--live);font-weight:600}
+  .st li .wn{color:var(--warn);font-weight:600}.st li .cr{color:var(--crit);font-weight:600}
+  .qhead{margin-top:22px;font-size:clamp(17px,2vw,22px);font-weight:700}
+  .qhead .ask{color:var(--accent);font-family:var(--mono);font-size:12px;display:block;letter-spacing:.16em;text-transform:uppercase;margin-bottom:7px;font-weight:600}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:15px;font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .fut{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:24px}
+  .fc{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 17px;display:grid;
+    grid-template-columns:34px 1fr;gap:13px;align-items:start;box-shadow:var(--plate)}
+  .fc .fi{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700;border:1px solid var(--accent-soft);
+    border-radius:7px;width:34px;height:34px;display:grid;place-items:center;background:rgba(71,98,228,.06)}
+  .fc h4{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .fc p{font-size:12.5px;color:var(--ink-dim);margin-top:4px;line-height:1.5}
+  .fc p em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--live)}
+  .fc.close{grid-template-columns:1fr;background:linear-gradient(150deg,rgba(71,98,228,.11),var(--panel));border-color:var(--accent-soft)}
+  .fc.close h4{font-size:18px}.fc.close p{font-size:13.5px;color:var(--ink)}
+  .foot{margin-top:20px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);line-height:1.6;max-width:88ch}
+  .brand{font-family:var(--mono);font-size:12px;color:var(--ink-faint);letter-spacing:.05em;margin-top:26px}
+  .brand b{color:var(--ink-dim)}
+  @media(max-width:860px){
+    .cmp{grid-template-columns:1fr}.cmp .rk{background:var(--panel2);color:var(--accent);border-top:1px solid var(--line)}
+    .qgrid,.fut,.ui3{grid-template-columns:1fr}.stage{grid-template-columns:1fr}
+    .st{border-right:none;border-bottom:1px solid var(--line)}.idx{display:none}
+  }
+  @media print{.slide{min-height:auto;height:auto;page-break-after:always;border:none;padding:32px 38px}
+    body{background:#EDEFF2}.slide::before{opacity:.5}}
+</style>
+
+<div class="deck">
+
+  <!-- 1 THESIS -->
+  <section class="slide"><span class="idx">01 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">全域数字化智能决策支撑平台 · 面向锂电智造</div>
+      <h1>从「排产计划」<br>到 <span class="g">决策推演</span></h1>
+      <p class="lede">这不是又一套 APS。这是一个<b>本体驱动的决策中台</b>——用自然语言问任何复杂产销问题，系统沿<b>真实数据 → 本体 → 规则 → 约束</b>推演出决策，<span class="kchip">每个数字都可追溯到 Postgres 真实行</span>。</p>
+      <div class="flow"><span>自然语言<b>问句</b></span><i>→</i><span>分类<b>归域</b></span><i>→</i><span>本体<b>切片</b>+规则+约束</span><i>→</i><span><b>求解器</b>+时序推演</span><i>→</i><span><b>决策</b>+全链溯源</span></div>
+      <p class="note">诚信红线 · <b>决策级红只来自真实(LIVE)数据</b>；合成 / 无源一律诚实标灰或列缺件——系统结构上禁止用假值造决策红。这是「能信」与「好看」的分水岭。</p>
+    </div>
+  </section>
+
+  <!-- 2 DIFFERENTIATION -->
+  <section class="slide"><span class="idx">02 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">差异化 · 相较传统 APS 的代际跃迁</div>
+      <h2>APS 求「一张最优排程」；本平台推「任意决策 + 为什么」。</h2>
+      <div class="cmp">
+        <div class="h rk">维度</div><div class="h a">传统 APS</div><div class="h c">本决策中台</div>
+        <div class="rk">核心目标</div><div class="old">给定模型，求一张静态最优排程</div><div class="new">任意复杂问题 → <b>推理出决策</b>（不止排产）</div>
+        <div class="rk">交互方式</div><div class="old">参数表单 · 跑批 · 等结果</div><div class="new">自然语言问句 · <b>秒级归域现推</b></div>
+        <div class="rk">数据</div><div class="old">系统孤岛 · 手工对齐</div><div class="new">多系统连接 · <b>统一本体 · 真行溯源</b></div>
+        <div class="rk">时间维</div><div class="old">单期快照</div><div class="new"><b>时序推演</b>：注入冲击 · 逐 tick 演化 · 分支对比</div>
+        <div class="rk">可信度</div><div class="old">黑盒结果，无从追问</div><div class="new">每数字→<b>数据源/规则/切片可溯</b> · dataMode 诚实标</div>
+        <div class="rk">覆盖范围</div><div class="old">排产一域</div><div class="new">产销全域 + <b>同引擎可扩展至非产销</b></div>
+      </div>
+      <div class="eyebrow" style="margin-top:26px">连接的企业系统 · 经连接器抽取 → 统一本体</div>
+      <div class="sys"><span><b>ERP</b> 订单/成本/BOM</span><span><b>MES</b> 报工/OEE/WIP</span><span><b>SRM</b> 供应商/采购/齐套</span><span><b>APS</b> 既有排程</span><span><b>PLM</b> 工艺路线/物料</span><span><b>WMS</b> 库存/物流</span><span><b>时序</b> 设备状态/停机</span></div>
+    </div>
+  </section>
+
+  <!-- 3 QUESTIONS -->
+  <section class="slide"><span class="idx">03 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">CEO / COO 关注的复杂推演 · 产销 + 时序 · 均为「现问现推」</div>
+      <h2>十个不是预置报表、而是当场推演出来的问题</h2>
+      <div class="qgrid">
+        <div class="q"><div class="n">01</div><div class="b"><p>未来 6 周常州基地会不会超载？哪条产线先爆、越线到第几天？</p><div class="s">risk_timeline · capacity_forecast · 瓶颈工序</div></div></div>
+        <div class="q"><div class="n">02</div><div class="b"><p>4680-NCM 需求突增 20%，现有+在建产能接不接得住？缺口多大、何时补齐？</p><div class="s">capex_scenario · quarterly_gap</div></div></div>
+        <div class="q"><div class="n">03</div><div class="b"><p>这张大客户加急单接了，会挤掉哪些在产订单、全盘毛利净变多少？</p><div class="s">affected_orders · quote_margin</div></div></div>
+        <div class="q"><div class="n">04</div><div class="b"><p>某产线 OEE 掉 5 个点，对未来 N 周交付缺口的连锁传导有多大？</p><div class="s">risk_timeline series · propagateTick</div></div></div>
+        <div class="q"><div class="n">05</div><div class="b"><p>外协 / 加班 / 改期三个应对，按交付·成本·齐套权衡，哪个最优？</p><div class="s">mitigation_select(topN) · 分支对比</div></div></div>
+        <div class="q"><div class="n">06</div><div class="b"><p>关键供应商延迟 2 周，哪些订单齐套断链、要不要提前锁料？</p><div class="s">kit_readiness · credit_exposure</div></div></div>
+        <div class="q"><div class="n">07</div><div class="b"><p>Q3 滚动，各基地×产品的产能缺口，资本开支该投哪个基地哪条线？</p><div class="s">quarterly_gap · capex_scenario</div></div></div>
+        <div class="q"><div class="n">08</div><div class="b"><p>某物料替代，对成本·良率·交付的全链影响到底是什么？</p><div class="s">BOM · 工艺路线 · affected_orders</div></div></div>
+        <div class="q"><div class="n">09</div><div class="b"><p>若注入「某基地停线 3 周」冲击，未来世界怎么演化、哪些 KPI 先崩、何时触底？</p><div class="s">时序推演 · ExogenousFeed · propagateTick</div></div></div>
+        <div class="q"><div class="n">10</div><div class="b"><p>这个决策的依据究竟是什么？能不能追到每一条真实数据和规则？</p><div class="s">全链溯源 · InferenceProcessDag · ruleRefs</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 UI POWER SHOWCASE -->
+  <section class="slide"><span class="idx">04 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">系统实景 · 三个信号级能力的真实 UI</div>
+      <h2>时序推演 · 多方案求解 · 本体图谱</h2>
+      <div class="ui3">
+        <div class="uic">
+          <div class="uih">时序推演<span>注入冲击 · 逐 tick 演化 · 分支对比</span></div>
+          <svg viewBox="0 0 300 158" width="100%" font-family="ui-monospace,monospace">
+            <rect x="0" y="10" width="300" height="22" fill="#D63A3F" opacity=".08"/>
+            <text x="294" y="23" text-anchor="end" font-size="9" fill="#D63A3F">越线阈值</text>
+            <line x1="8" y1="126" x2="294" y2="126" stroke="#C2C9D5" stroke-width="1"/>
+            <polyline points="8,114 80,112 150,110 220,109 292,108" fill="none" stroke="#828DA2" stroke-width="1.4" stroke-dasharray="3 3"/>
+            <path d="M8 114 106 106 162 80 220 48 280 26 280 126 8 126Z" fill="#4762E4" opacity=".13"/>
+            <polyline points="8,114 106,106 162,80 220,48 280,26" fill="none" stroke="#4762E4" stroke-width="2.4"/>
+            <polyline points="280,26 294,42" fill="none" stroke="#0C8C7E" stroke-width="2"/>
+            <polyline points="280,26 294,14" fill="none" stroke="#B9760C" stroke-width="2"/>
+            <circle cx="294" cy="42" r="2.6" fill="#0C8C7E"/><circle cx="294" cy="14" r="2.6" fill="#B9760C"/>
+            <text x="250" y="38" font-size="8.5" fill="#0C8C7E">A方案</text>
+            <line x1="106" y1="10" x2="106" y2="132" stroke="#4762E4" stroke-width="1" stroke-dasharray="2 3" opacity=".65"/>
+            <text x="109" y="146" font-size="8.5" fill="#4762E4">↑冲击注入</text>
+            <text x="8" y="146" font-size="8.5" fill="#828DA2">第0周</text>
+            <text x="145" y="146" font-size="8.5" fill="#828DA2">第3周</text>
+            <text x="292" y="156" text-anchor="end" font-size="8.5" fill="#828DA2">第6周</text>
+          </svg>
+        </div>
+        <div class="uic">
+          <div class="uih">多方案求解<span>mitigation_select topN · 并排比较</span></div>
+          <div class="mtab">
+            <div class="mh"></div><div class="mh rec">A 外协 ★</div><div class="mh">B 加班</div><div class="mh">C 改期</div>
+            <div class="ml">消解缺口</div><div class="rec">82%</div><div>67%</div><div>54%</div>
+            <div class="ml">起效</div><div class="rec">3 天</div><div>1 天</div><div>7 天</div>
+            <div class="ml">投入</div><div class="rec">中</div><div>高</div><div>低</div>
+            <div class="ml">齐套风险</div><div class="rec">低</div><div>低</div><div>中</div>
+            <div class="ml">残余缺口</div><div class="rec">1.2万</div><div>2.4万</div><div>3.1万</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:8px">每格可溯源 · 采纳 → 生成工单（待审批）</div>
+        </div>
+        <div class="uic">
+          <div class="uih">本体图谱<span>真数据派生 · 对象/关系/切片</span></div>
+          <svg viewBox="0 0 300 172" width="100%" font-family="ui-monospace,monospace">
+            <g stroke="#9AA4B8" stroke-width="1.3">
+              <line x1="150" y1="52" x2="150" y2="78"/><line x1="70" y1="140" x2="132" y2="100"/>
+              <line x1="44" y1="96" x2="66" y2="132"/><line x1="168" y1="88" x2="214" y2="62"/>
+              <line x1="222" y1="72" x2="222" y2="132"/><line x1="252" y1="118" x2="234" y2="70"/>
+            </g>
+            <g font-size="8" fill="#828DA2">
+              <text x="153" y="68">belongs</text><text x="92" y="118">belongs</text>
+              <text x="176" y="70">produces</text><text x="226" y="104">demands</text>
+            </g>
+            <g text-anchor="middle" font-size="9.5" font-weight="700">
+              <circle cx="150" cy="90" r="21" fill="#4762E4"/><text x="150" y="88" fill="#fff">Base</text><text x="150" y="98" fill="#fff" font-size="7.5">常州</text>
+              <circle cx="150" cy="38" r="15" fill="#EAEDF1" stroke="#4762E4"/><text x="150" y="41" fill="#1A2331" font-size="8">车间</text>
+              <circle cx="56" cy="146" r="15" fill="#EAEDF1" stroke="#4762E4"/><text x="56" y="149" fill="#1A2331" font-size="8">产线</text>
+              <circle cx="32" cy="86" r="14" fill="#EAEDF1" stroke="#0C8C7E"/><text x="32" y="89" fill="#1A2331" font-size="7.5">设备</text>
+              <circle cx="226" cy="52" r="17" fill="#EAEDF1" stroke="#4762E4"/><text x="226" y="50" fill="#1A2331" font-size="8">Model</text><text x="226" y="60" fill="#4F5B73" font-size="6.5">4680</text>
+              <circle cx="262" cy="130" r="15" fill="#EAEDF1" stroke="#B9760C"/><text x="262" y="133" fill="#1A2331" font-size="8">订单</text>
+              <circle cx="222" cy="146" r="16" fill="#EAEDF1" stroke="#0C8C7E"/><text x="222" y="144" fill="#1A2331" font-size="7">需求段</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <p class="note">这三块不是示意图——是平台真实渲染的能力：<b>时序推演</b>把冲击注入真实世界逐 tick 推演并分支对比；<b>多方案</b>由求解器现算、每格可溯源；<b>本体图谱</b>从企业真数据派生对象与关系，点任一节点即见来源与规则。</p>
+    </div>
+  </section>
+
+  <!-- 5 REASONING ANATOMY -->
+  <section class="slide"><span class="idx">05 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">推演过程图 · 一个问题如何被推理出来（可溯源全解剖）</div>
+      <div class="qhead"><span class="ask">Ask</span>「常州基地未来 6 周负荷会超载吗？怎么应对？」</div>
+      <div class="stage">
+        <div class="st"><span class="n">源</span><div class="k">数据源</div><h4>真实系统行</h4>
+          <li>MES <b>报工/OEE</b></li><li>ERP <b>订单/需求</b></li><li>SRM <b>齐套</b></li><li>时序 <b>设备状态</b></li><li><span class="lv">LIVE</span>/<span class="wn">合成</span> 诚实标</li></div>
+        <div class="st"><span class="n">域</span><div class="k">本体切片</div><h4>对象 + 关系</h4>
+          <li>对象 <b>Base·Line·Model</b></li><li>对象 <b>DemandSegment</b></li><li>关系 <b>line_belongs_to_base</b></li><li>关系 <b>equip_used_in</b></li><li>从真数据<b>派生</b>，非导入</li></div>
+        <div class="st"><span class="n">律</span><div class="k">规则 + 约束</div><h4>可编辑引用</h4>
+          <li>传导 <b>Line.util→Base.load</b></li><li>瓶颈规则 <b>C24</b></li><li>约束 <b>产能上限</b></li><li>守恒 <b>hold 不生灭</b></li></div>
+        <div class="st"><span class="n">算</span><div class="k">求解器 + 时序</div><h4>确定性推演</h4>
+          <li><b>risk_timeline</b> 逐日紧张</li><li><b>capacity_forecast</b> 缺口</li><li><b>propagateTick</b> 逐 tick</li><li><b>mitigation_select</b> topN</li></div>
+        <div class="st"><span class="n">果</span><div class="k">决策 + 溯源</div><h4>可追问的结论</h4>
+          <li>越线日 / 峰值 / <span class="cr">缺口</span></li><li>三应对 · 交付/成本/齐套</li><li>每数字→<b>SQL 真行</b></li><li>ruleRef · <b>dataMode</b></li></div>
+      </div>
+      <div class="legend"><span><i class="dot" style="background:#0C8C7E"></i> LIVE 真实数据</span><span><i class="dot" style="background:#B9760C"></i> 合成 / 未校准（诚实标注）</span><span><i class="dot" style="background:#D63A3F"></i> 决策级红（仅源自 LIVE）</span></div>
+      <p class="note">全程<b>无 mock 造红</b>——无真源即诚实标灰、列出「缺主数据 / 缺时序 / 缺规则 / 缺求解器绑定」，绝不用哈希或假值编出一个决策红。传统 BI 给你一个数字；本平台给你<b>这个数字凭什么</b>。</p>
+    </div>
+  </section>
+
+  <!-- 6 FUTURE + CLOSE -->
+  <section class="slide"><span class="idx">06 / 06</span>
+    <div class="wrap">
+      <div class="eyebrow">同一引擎 · 换域即换场景 · 五个非产销的重大延伸</div>
+      <h2>产销只是第一域。本体、求解器、时序内核，可迁移到更贵的决策。</h2>
+      <div class="fut">
+        <div class="fc"><div class="fi">A</div><div><h4>设备维修与影响评估</h4><p>预测性维修 + 维修窗口对产能·交付的连锁推演。<em>Equipment 本体已含 mtbf/mttr/health</em></p></div></div>
+        <div class="fc"><div class="fi">B</div><div><h4>新项目 / 基地选址</h4><p>需求分布 × 物流 × 产能 × 资本开支的多维选址推演。<em>capex_scenario 扩展</em></p></div></div>
+        <div class="fc"><div class="fi">C</div><div><h4>供应链中断 / 地缘风险</h4><p>某供应商或区域断供，全链齐套·成本·交付冲击推演。<em>kit_readiness + credit_exposure</em></p></div></div>
+        <div class="fc"><div class="fi">D</div><div><h4>能耗 · 碳排优化与合规</h4><p>产线能耗 × 排产 × 碳约束的联合推演，服务 ESG 合规。<em>约束层扩展</em></p></div></div>
+        <div class="fc"><div class="fi">E</div><div><h4>并购 / 产能整合决策</h4><p>整合两基地产能、订单重分配、协同效应推演。<em>capacity_rollup + affected_orders</em></p></div></div>
+        <div class="fc close"><h4>你问 · 系统推 · 可溯源 · 不造假</h4><p>同一个本体、同一批求解器、同一套时序推演内核——换域即换场景。这就是决策中台的复利。</p></div>
+      </div>
+      <p class="foot">说明 · 本简报所述产销推演内核（本体 / 求解器 / 时序推演 / 溯源 / 多系统连接）为平台已建能力，并以真实数据逐项复验；标注「扩展」的非产销场景为同一引擎的可延伸方向。数字与结论均由真实数据源经确定性求解器推演，非静态样例。</p>
+      <div class="brand"><b>全域数字化智能决策支撑平台</b> · 锂电智造 · 价值简报</div>
+    </div>
+  </section>
+
+</div>

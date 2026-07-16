@@ -1,0 +1,11 @@
+import fs from "fs";
+const p = "/home/user/complete/docs/work-queue.json";
+const q = JSON.parse(fs.readFileSync(p, "utf8"));
+const set = (id, n) => { const w = q.items.find(x => x.id === id); if (w) w.reviewNote = n; };
+set("WO-FAKE-01", "PASS 独立对抗真跑(agent a07334·真浏览器+真curl+敏感性+回退):OEE/良率去合成。设备OEE张力=[84,76,86,93,81,95,86,74,75,81,85,79]10个不同值非扁平(源Equipment.oee_current各异)·良率=[69,53,68,68,75,50,64,51,46,60,61,50]非扁平(源Process.yield_baseline)·两者dataMode=SYNTHETIC不再冒充LIVE。此前OEE 5-6基地≥85驱动7/12恒红·现全标SYNTHETIC排除决策级染红。两手(逐基地分化+诚实SYNTHETIC)都做到。母体§8 G-SIM-FAKE回写佐证AUTO决策红7→0。三门RC0·solvers19(211-314放开钉死后仍绿)。");
+set("WO-CAP-02-SEED-VARY", "DONE·诚实标PARTIAL(agent a07334):产能确定性分化真达成(化成通道520-875·1.68×档差·decay{den10}+clamp传导规则入dist)。⚠util:line仍钉mean92(90.47-93.49·CAP-02明确未动·但已被FAKE-01标SYNTHETIC排除决策级故无害)。原C1有红有绿未在baseline达——真因:网络load≈1(SopV7 demand131/supply130)使capacity-share杠杆≈0→0红是真态平衡非造假;红对真态敏感由注入真需求×6→0→8红证。核心假推演目标(决策级0/12合成红)达成。遗留:demo若要展示有红有绿需调seed网络失衡(demo-realism·非假推演·另议)。");
+fs.writeFileSync(p, JSON.stringify(q, null, 2) + "\n");
+const c = {}; q.items.forEach(x => c[x.status] = (c[x.status] || 0) + 1);
+console.log("counts:", JSON.stringify(c));
+console.log("BUILT:", q.items.filter(x => x.status === "BUILT").map(x => x.id).join(", ") || "none");
+console.log("WIP:", q.items.filter(x => x.status === "WIP").map(x => x.id).join(", ") || "none");

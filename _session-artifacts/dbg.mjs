@@ -1,0 +1,18 @@
+import { chromium } from 'playwright-core';
+const browser = await chromium.launch({ headless: true });
+const page = await (await browser.newContext({ viewport:{width:1440,height:1200} })).newPage();
+const reqs=[];
+page.on('response', r => { if (r.url().includes('/a/v1/') || r.url().includes('/api/')) reqs.push(`${r.status()} ${r.request().method()} ${r.url().replace('http://127.0.0.1:4001','').replace('http://127.0.0.1:4002','')}`); });
+page.on('console', m=>{ if(m.type()==='error') console.log('CONSOLE-ERR:', m.text()); });
+await page.goto('http://localhost:5173/', { waitUntil:'networkidle' });
+console.log('after initial load URL:', page.url());
+await page.fill('#login-tenant','demo');
+await page.fill('#login-username','planner');
+await page.fill('#login-password','demo1234');
+await page.click('button[type=submit]');
+await page.waitForTimeout(4000);
+console.log('after submit URL:', page.url());
+const errBadge = await page.$('.badge.red'); console.log('login error badge:', errBadge? (await errBadge.textContent()):'none');
+console.log('body text (first 300):', (await page.textContent('body')).replace(/\s+/g,' ').slice(0,300));
+console.log('--- network to backends ---'); console.log(reqs.join('\n'));
+await browser.close();

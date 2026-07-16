@@ -1,0 +1,93 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>逐实体建模 · 三件套</title>
+<style>
+:root{--bg:#0d1117;--bg2:#11161d;--panel:#161c24;--panel2:#10151c;--line:#222b36;--fg:#e6edf3;--muted:#9aa8b6;--muted2:#67737f;--accent:#4c90f0;--green:#36BFA5;--amber:#E8B54A;--red:#E05260;--purple:#9B7BE8;}
+*{box-sizing:border-box;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:13px;}
+.topbar{height:42px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:18px;}
+.logo{font-weight:700;color:var(--accent);font-size:15px;}.nav{display:flex;gap:16px;color:var(--muted);font-size:12px;}.nav .on{color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:11px;}
+.tabrow{height:32px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:10px;font-size:12px;color:var(--muted);}.tabrow .on{color:var(--fg);background:var(--panel);padding:3px 9px;border-radius:5px;}
+.wrap{display:grid;grid-template-columns:200px 1fr 300px;height:calc(100vh - 74px);}
+.col{overflow:auto;padding:12px;}
+.gcol{background:var(--panel2);border-right:1px solid var(--line);}
+.gnode{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 9px;margin:6px 0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+.gnode.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)44;}
+.gnode .n{font-weight:600;font-size:12px;}.gnode .c{font-size:10px;color:var(--muted2);}
+.mid{background:var(--bg);}
+.objhead{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:10px;}
+.objhead .lbl{font-size:10px;color:var(--muted2);}.objhead input{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;color:var(--fg);font-size:13px;margin-top:3px;}
+.row2{display:flex;gap:10px;margin-top:8px;}.row2>div{flex:1;}
+.tabs{display:flex;gap:4px;margin:10px 0;flex-wrap:wrap;}
+.tab{font-size:11px;padding:4px 11px;border-radius:6px;background:var(--panel);border:1px solid var(--line);color:var(--muted);cursor:pointer;}
+.tab.on{background:#4c90f022;border-color:var(--accent);color:var(--accent);font-weight:600;}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px;}
+.th{display:flex;justify-content:space-between;font-size:10px;color:var(--muted2);padding:4px 6px;border-bottom:1px solid var(--line);}
+.tr{display:grid;grid-template-columns:1.3fr 1.6fr .8fr .7fr .9fr;gap:6px;font-size:11px;padding:6px;border-bottom:1px solid var(--line);align-items:center;}
+.tr .nm{font-weight:600;}
+.chip{font-size:9px;padding:1px 6px;border-radius:7px;text-align:center;}
+.cOk{background:#36BFA51e;color:var(--green);border:1px solid #36BFA555;}
+.cWb{background:#9B7BE81e;color:var(--purple);border:1px solid #9B7BE855;}
+.cH{background:#E8B54A1e;color:var(--amber);border:1px solid #E8B54A55;}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;}.btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.aside{background:var(--panel2);border-left:1px solid var(--line);}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:10px;}
+.card h4{margin:0 0 8px;font-size:12px;}
+.ring{width:60px;height:60px;border-radius:50%;background:conic-gradient(var(--amber) 0 75%,var(--line) 75% 100%);display:flex;align-items:center;justify-content:center;margin:0 auto;}
+.ring .in{width:46px;height:46px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;}
+.gate{display:flex;gap:6px;margin-top:8px;}
+.gi{flex:1;text-align:center;font-size:10px;padding:7px 2px;border-radius:7px;border:1px solid var(--line);}
+.gi.ok{background:#36BFA518;border-color:#36BFA555;color:var(--green);}
+.gi.no{background:#E0526018;border-color:#E0526055;color:var(--red);}
+.gi b{display:block;font-size:15px;}
+.cfg{font-size:10px;color:var(--muted2);background:var(--panel)cc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-block;margin-bottom:8px;}
+</style></head><body>
+<div class="topbar"><div class="logo">◆ 决策平台</div><div class="nav"><span>探索</span><span class="on">本体建模</span><span>连接器与上传</span><span>推演沙盘</span><span>规则库</span><span>智能体</span><span>系统管理</span></div></div>
+<div class="tabrow"><span class="on">⬚ 供应链本体 · 草案v3</span><span>逐实体建模</span><span style="margin-left:auto" class="btn">查看 Schema</span><span class="btn p">保存</span></div>
+<div class="wrap">
+ <div class="col gcol">
+   <div style="font-size:10px;color:var(--muted2);margin-bottom:6px">本体对象（配置驱动·任意行业）</div>
+   <div class="gnode"><span class="n">Supplier</span><span class="c">12</span></div>
+   <div class="gnode on"><span class="n">Order ▸</span><span class="c">18</span></div>
+   <div class="gnode"><span class="n">Factory</span><span class="c">10</span></div>
+   <div class="gnode"><span class="n">Material</span><span class="c">34</span></div>
+   <div style="font-size:10px;color:var(--muted2);margin:10px 0 6px">链路 Link</div>
+   <div class="gnode"><span class="n">SUPPLIES</span><span class="c">→</span></div>
+   <div class="gnode"><span class="n">FULFILLS</span><span class="c">→</span></div>
+ </div>
+
+ <div class="col mid">
+   <div class="cfg">⚙ 实体定义·行动·派生·规则·查询 = 配置，与行业无关（此处锂电订单只是示例）</div>
+   <div class="objhead">
+     <div class="row2"><div><div class="lbl">对象标签</div><input value="Order 订单"></div><div><div class="lbl">对象类型</div><input value="Entity"></div></div>
+     <div class="row2"><div><div class="lbl">主键字段</div><input value="order_id"></div><div><div class="lbl">存储模式</div><input value="本体图谱"></div></div>
+     <div style="margin-top:8px"><div class="lbl">对象描述</div><input value="订单实体；行动 delayOrder 用于推演延误场景；状态变量 fulfill_risk 由派生规则维护"></div>
+   </div>
+   <div class="tabs"><span class="tab">属性</span><span class="tab on">⚡ 行动（动作接口）</span><span class="tab">派生/状态变量</span><span class="tab">🔗 规则（引用）</span><span class="tab">🔍 图谱查询</span><span class="tab">安全/权限</span></div>
+   <div class="tcard">
+     <div class="th"><span>行动名</span><span>入参 / 状态集</span><span>副作用</span><span>HITL</span><span>沙盘态</span></div>
+     <div class="tr"><span class="nm">delayOrder</span><span>status, fulfill_risk, days</span><span class="chip cWb">写本体</span><span class="chip cH">需审批</span><span class="chip cOk">可模拟</span></div>
+     <div class="tr"><span class="nm">prioritize</span><span>priority, status</span><span class="chip cWb">写本体</span><span class="chip cOk">否</span><span class="chip cOk">可模拟</span></div>
+     <div class="tr"><span class="nm">cancelOrder</span><span>status</span><span class="chip cWb">写本体</span><span class="chip cH">需审批</span><span class="chip cOk">可模拟</span></div>
+     <div style="margin-top:8px"><span class="btn">+ 创建行动</span> <span style="font-size:10px;color:var(--muted2)">沙盘态=可在推演里执行(不提交真值);写本体=采纳后走 R4 审批</span></div>
+   </div>
+ </div>
+
+ <div class="col aside">
+   <div class="card" style="text-align:center"><h4 style="text-align:left">局部仿真准备度 · Order</h4>
+     <div class="ring"><div class="in">75</div></div>
+     <div style="font-size:10px;color:var(--amber);margin-top:6px">待补全 · 子图缺口 1</div>
+     <div style="font-size:10px;color:var(--muted);margin-top:4px">字段10 · 状态变量4 · 行动3 · 查询2</div>
+   </div>
+   <div class="card"><h4>「可进入推演」三件套门</h4>
+     <div class="gate">
+       <div class="gi ok"><b>✓</b>衍生规则<br>4 条</div>
+       <div class="gi ok"><b>✓</b>业务动作<br>3 个</div>
+       <div class="gi no"><b>!</b>图谱查询<br>缺</div>
+     </div>
+     <div style="font-size:10px;color:var(--red);margin-top:8px">⚠ 三件套未齐：缺「图谱查询指令」→ 该实体暂不可进入推演。仅规则=能算不能模拟；仅动作=风险不传导。</div>
+     <div style="margin-top:8px"><span class="btn p" style="width:100%">AI 一键补查询 →</span></div>
+   </div>
+   <div class="card"><h4>知识利用率</h4>
+     <div style="font-size:11px;color:var(--muted)">状态变量 4 个 · 被行动/规则引用 4 个 · <b style="color:var(--green)">利用率 100%</b>（无悬空状态变量）</div>
+   </div>
+ </div>
+</div></body></html>

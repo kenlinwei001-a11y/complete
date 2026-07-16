@@ -1,0 +1,128 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>本体建模 · 数据源管道</title>
+<style>
+:root{--bg:#0d1117;--bg2:#11161d;--panel:#161c24;--panel2:#10151c;--line:#222b36;--fg:#e6edf3;--muted:#9aa8b6;--muted2:#67737f;--accent:#4c90f0;--green:#36BFA5;--amber:#E8B54A;--red:#E05260;--purple:#9B7BE8;}
+*{box-sizing:border-box;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:13px;}
+.topbar{height:42px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:18px;}
+.logo{font-weight:700;color:var(--accent);font-size:15px;}
+.nav{display:flex;gap:16px;color:var(--muted);font-size:12px;}
+.nav .on{color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:11px;}
+.tabrow{height:32px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:10px;font-size:12px;color:var(--muted);}
+.tabrow .on{color:var(--fg);background:var(--panel);padding:3px 9px;border-radius:5px;}
+.wrap{display:grid;grid-template-columns:248px 1fr 320px;height:calc(100vh - 74px);}
+.col{overflow:auto;}
+.srccol{background:var(--panel2);border-right:1px solid var(--line);padding:10px;}
+.sec{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin:10px 4px 6px;display:flex;justify-content:space-between;}
+.srcgrp{margin-bottom:10px;}
+.srchead{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 6px;}
+.pill{font-size:9px;padding:1px 6px;border-radius:8px;border:1px solid var(--line);}
+.pERP{background:#4c90f018;color:var(--accent);border-color:#4c90f044;}
+.pFILE{background:#9B7BE818;color:var(--purple);border-color:#9B7BE844;}
+.pWS{background:#36BFA518;color:var(--green);border-color:#36BFA544;}
+.ds{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;margin:4px 0;cursor:pointer;}
+.ds.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)44;}
+.ds .nm{font-weight:600;font-size:12px;}
+.ds .meta{font-size:10px;color:var(--muted2);margin-top:2px;display:flex;justify-content:space-between;}
+.cov{height:3px;background:var(--line);border-radius:2px;margin-top:4px;overflow:hidden;}
+.cov i{display:block;height:100%;background:var(--green);}
+.canvas{position:relative;background:radial-gradient(circle at 40% 20%,#121922,#0d1117);overflow:hidden;}
+.lane{position:absolute;top:8px;font-size:10px;color:var(--muted2);font-weight:600;}
+.pnode{position:absolute;border-radius:8px;padding:7px 9px;border:1px solid var(--line);background:var(--panel);box-shadow:0 2px 8px #0005;width:128px;}
+.pnode .pt{font-size:9px;color:var(--muted2);}
+.pnode .pn{font-weight:600;font-size:12px;margin-top:1px;}
+.pnode.src{border-left:3px solid var(--purple);}
+.pnode.proc{border-left:3px solid var(--amber);}
+.pnode.ent{border-left:3px solid var(--accent);}
+.pnode.link{border-left:3px solid var(--green);width:96px;}
+.tag{font-size:9px;padding:1px 5px;border-radius:6px;background:var(--bg2);color:var(--muted);margin-top:4px;display:inline-block;}
+.aside{background:var(--panel2);border-left:1px solid var(--line);padding:12px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:10px;}
+.card h4{margin:0 0 8px;font-size:12px;}
+.kv{font-size:11px;display:flex;justify-content:space-between;padding:3px 0;color:var(--muted);}
+.kv b{color:var(--fg);font-weight:600;}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;}
+.btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.ring{width:62px;height:62px;border-radius:50%;background:conic-gradient(var(--green) 0 89%,var(--line) 89% 100%);display:flex;align-items:center;justify-content:center;margin:0 auto;}
+.ring .in{width:48px;height:48px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;}
+.aimsg{font-size:11px;line-height:1.5;color:var(--muted);background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:8px;margin-top:6px;}
+svg .e{stroke:#384354;stroke-width:1.6;fill:none;marker-end:url(#ar);}
+.cfg{position:absolute;top:8px;right:12px;font-size:10px;color:var(--muted2);background:var(--panel)cc;border:1px solid var(--line);border-radius:6px;padding:3px 8px;}
+</style></head><body>
+<div class="topbar"><div class="logo">◆ 决策平台</div>
+<div class="nav"><span>探索</span><span class="on">本体建模</span><span>连接器与上传</span><span>推演沙盘</span><span>规则库</span><span>智能体</span><span>知识库</span><span>系统管理</span></div></div>
+<div class="tabrow"><span class="on">⬚ 供应链本体 · 草案v3</span><span>本体工作流程</span><span>架构本体设计</span><span style="margin-left:auto" class="btn">校验闭环</span><span class="btn p">发布本体</span></div>
+
+<div class="wrap">
+ <!-- 左：数据源（来自"连接器与上传"，按来源分组，前置 provenance） -->
+ <div class="col srccol">
+   <div class="sec"><span>数据源 · 来自「连接器与上传」</span><span class="btn" style="padding:1px 7px;font-size:10px">+ 去导入</span></div>
+
+   <div class="srcgrp">
+     <div class="srchead"><span class="pill pERP">ERP 连接器</span><span>conn-erp · 同步 5min前</span></div>
+     <div class="ds on"><div class="nm">supplier_master</div><div class="meta"><span>12 行 · 9 列</span><span style="color:var(--green)">已建模 Supplier</span></div><div class="cov"><i style="width:100%"></i></div></div>
+     <div class="ds"><div class="nm">factory_capacity</div><div class="meta"><span>10 行 · 11 列</span><span style="color:var(--green)">已建模 Factory</span></div><div class="cov"><i style="width:91%"></i></div></div>
+   </div>
+
+   <div class="srcgrp">
+     <div class="srchead"><span class="pill pFILE">文件上传</span><span>orders_2026Q2.xlsx</span></div>
+     <div class="ds"><div class="nm">order_book</div><div class="meta"><span>18 行 · 12 列</span><span style="color:var(--amber)">2 列未建模</span></div><div class="cov"><i style="width:83%;background:var(--amber)"></i></div></div>
+   </div>
+
+   <div class="srcgrp">
+     <div class="srchead"><span class="pill pWS">实时流 WebSocket</span><span>ws-iot · 实时</span></div>
+     <div class="ds"><div class="nm">source_health</div><div class="meta"><span>实时注入</span><span style="color:var(--muted2)">未建模</span></div><div class="cov"><i style="width:0%"></i></div></div>
+   </div>
+
+   <div class="sec">未建模数据源 · 待处理 1</div>
+   <div class="aimsg">⚠ <b style="color:var(--amber)">source_health</b>(WS 实时) 尚未建模 → AI 建议建为 <b>DataSourceHealth</b> 实体。<span style="color:var(--accent)">一键建模 →</span></div>
+ </div>
+
+ <!-- 中：建模画布 = 数据源→数据处理→实体/链路→本体库 管道 -->
+ <div class="col canvas">
+   <div class="cfg">画布 = 配置驱动（行业无关）：数据源类型/处理算子/映射 均可配</div>
+   <svg width="100%" height="100%" style="position:absolute;inset:0">
+     <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4c90f0"/></marker></defs>
+     <path class="e" d="M168,120 H236"/><path class="e" d="M168,210 H236"/><path class="e" d="M168,300 H236"/>
+     <path class="e" d="M372,120 H440"/><path class="e" d="M372,210 H440"/><path class="e" d="M372,300 H440"/>
+     <path class="e" d="M576,120 C620,120 620,250 636,250"/>
+     <path class="e" d="M576,210 H636"/>
+     <path class="e" d="M576,300 C620,300 620,260 636,256"/>
+   </svg>
+   <div class="lane" style="left:60px">① 数据源</div>
+   <div class="lane" style="left:264px">② 数据处理</div>
+   <div class="lane" style="left:468px">③ 实体 / 链路</div>
+   <div class="lane" style="left:660px">④ 本体库</div>
+
+   <div class="pnode src" style="left:40px;top:100px"><div class="pt">ERP · RawDataset</div><div class="pn">supplier_master</div><span class="tag">9 列</span></div>
+   <div class="pnode src" style="left:40px;top:190px"><div class="pt">ERP · RawDataset</div><div class="pn">factory_capacity</div><span class="tag">11 列</span></div>
+   <div class="pnode src" style="left:40px;top:280px"><div class="pt">文件 · RawDataset</div><div class="pn">order_book</div><span class="tag">12 列</span></div>
+
+   <div class="pnode proc" style="left:248px;top:100px"><div class="pt">清洗·映射</div><div class="pn">proc_supplier</div><span class="tag">col→属性</span></div>
+   <div class="pnode proc" style="left:248px;top:190px"><div class="pt">清洗·映射</div><div class="pn">proc_factory</div><span class="tag">FK→链接</span></div>
+   <div class="pnode proc" style="left:248px;top:280px"><div class="pt">清洗·映射</div><div class="pn">proc_order</div><span class="tag">派生</span></div>
+
+   <div class="pnode ent" style="left:452px;top:100px"><div class="pt">实体 Entity</div><div class="pn">Supplier</div><span class="tag">+ 行动/派生</span></div>
+   <div class="pnode ent" style="left:452px;top:190px"><div class="pt">实体 Entity</div><div class="pn">Factory</div><span class="tag">+ 行动/派生</span></div>
+   <div class="pnode ent" style="left:452px;top:280px"><div class="pt">实体 Entity</div><div class="pn">Order</div><span class="tag">+ 行动/派生</span></div>
+
+   <div class="pnode link" style="left:636px;top:230px"><div class="pt">本体库</div><div class="pn">供应链本体</div></div>
+ </div>
+
+ <!-- 右：AI 建模助手 + 准备度 -->
+ <div class="col aside">
+   <div class="card" style="text-align:center"><h4 style="text-align:left">建模准备度</h4>
+     <div class="ring"><div class="in">89</div></div>
+     <div style="font-size:10px;color:var(--muted);margin-top:6px">3 实体 · 2 链路 · 字段覆盖 91%</div>
+     <div style="font-size:10px;color:var(--amber);margin-top:4px">order_book 2 列未建模 · source_health 未建模</div>
+   </div>
+   <div class="card"><h4>数据→本体 映射（选中 supplier_master）</h4>
+     <div class="kv"><span>SUP_ID</span><b>→ Supplier.id (PK)</b></div>
+     <div class="kv"><span>DELAY_RISK</span><b>→ delay_risk (状态变量)</b></div>
+     <div class="kv"><span>FACTORY_REF</span><b style="color:var(--green)">→ SUPPLIES 链接→Factory</b></div>
+     <div class="kv"><span>REGION</span><b>→ region (属性)</b></div>
+   </div>
+   <div class="card"><h4>AI 建模助手</h4>
+     <div class="aimsg">已读 3 个数据源 → 自动映射 28/30 列、识别 2 条 FK 关系（SUPPLIES/FULFILLS）。<br>待办：① order_book 2 列(priority/eta) 未映射 ② source_health 建议建 DataSourceHealth 实体喂实时风险。<br><span style="color:var(--accent)">一键补全 →</span></div>
+   </div>
+ </div>
+</div></body></html>

@@ -1,0 +1,12 @@
+import fs from "fs";
+const p = "/home/user/complete/docs/work-queue.json";
+const q = JSON.parse(fs.readFileSync(p, "utf8"));
+const set = (id, n) => { const w = q.items.find(x => x.id === id); if (w) w.reviewNote = n; };
+set("WO-CAP-07-MODEL-DIM", "PASS 独立复验(agent a7007cfb·4子代理+真浏览器逐值对照live capacity_forecast):型号维度真生效非写死——4680-NCM P50 5.0/P90 4.7/缺口35.3/主瓶颈设备OEE逐值==端点;换型LFP出完全不同可产基地(洛阳/信阳 vs NCM常州/成都/合肥)证非写死;LFP信阳tightness=null→显—估算守KILL-MOCK-RED;下拉6真本体Model非兜底常量。C3 R6字节一致。⚠非阻断落点偏差(留用户裁决):ModelCapacitySlice挂SandboxView(/v/sim-sandbox推演沙盘)未挂/v/risk(产能推演风险看板)·PRD字面说产能推演页·功能全兑现可达但落点可议(要否并挂/v/risk)。");
+set("WO-MERGE-02", "PASS 独立复验(agent a7007cfb·B3/B4曾BLOCK真修好):①画布单一入口真编辑真落后端(PUT ontology-workflows·create-get-update往返+跨租户404)databuilder引擎共存;②B3推演前端真——推演入口→generic-inference→前后对比表·48行DOM全等端点(SO-3391 qty320000→321000 direct·value derived)确定性;③B4契约对齐真——发布面板类型:Supplier、Order·链路:SUPPLIES真类型名非空白·DOM==network·MSW同形string[]·f41断言具体值·scaffold真落库(viewConfig+ledger_Supplier/Order)。四包:contracts29/agentcore653/frontend543全绿·datacore RC1唯一源worker RPC超时(1128测0失败·同机竞争非代码)。⚠非阻断:画布是第2页签非默认主视图(PRD说画布为主·可议)。");
+fs.writeFileSync(p, JSON.stringify(q, null, 2) + "\n");
+const c = {}; q.items.forEach(x => c[x.status] = (c[x.status] || 0) + 1);
+const dd = (it) => (it.deps || []).every(d => { const t = q.items.find(x => x.id === d); return (t?.status ?? "DONE") === "DONE"; });
+console.log("counts:", JSON.stringify(c));
+console.log("BUILT:", q.items.filter(x => x.status === "BUILT").map(x => x.id).join(", ") || "none");
+console.log("新解锁可开工TODO:", q.items.filter(x => x.status === "TODO" && dd(x)).map(x => x.id + "(" + x.priority + ")").join(", ") || "none");

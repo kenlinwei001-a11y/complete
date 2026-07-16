@@ -1,0 +1,20 @@
+import { launch, login, BASE, snapLogs, clearLogs } from './driver.mjs';
+const { browser, page, logs } = await launch();
+await login(page, {username:'admin'});
+await page.goto(`${BASE}/scenarios`, { waitUntil:'domcontentloaded' });
+await page.waitForTimeout(2500);
+// find a specific developing button, get its sNo
+const devBtns = await page.$$('[data-testid^="launcher-developing-"]');
+console.log('developing buttons:', devBtns.length);
+const first = devBtns[0];
+const tid = await first.getAttribute('data-testid');
+console.log('clicking', tid, 'text=', (await first.innerText()).trim());
+clearLogs(logs);
+await first.scrollIntoViewIfNeeded();
+await first.click();
+await page.waitForTimeout(3000);
+console.log('url after click:', page.url().replace(BASE,''));
+console.log('http errs:', snapLogs(logs).net4xx5xx.filter(x=>!x.includes('history')).join(' ; ')||'none');
+const st = await page.evaluate(()=>document.body.innerText.replace(/\s+/g,' ').slice(0,200));
+console.log('body:', st);
+await browser.close();

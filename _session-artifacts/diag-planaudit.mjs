@@ -1,0 +1,26 @@
+import pw from "/home/user/complete/node_modules/playwright-core/index.js";
+const { chromium } = pw;
+const OUT = "/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad";
+const EXE = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const APP = "http://127.0.0.1:5173";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const browser = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
+const page = await (await browser.newContext({ viewport: { width: 1700, height: 1300 } })).newPage();
+const fails = [];
+page.on("response", (r) => { const s = r.status(); if (s >= 400) fails.push(`${s} ${r.request().method()} ${r.url().replace(APP, "").replace("http://127.0.0.1:4001", "DC").replace("http://127.0.0.1:4002", "AC")}`); });
+await page.goto(`${APP}/login`, { waitUntil: "networkidle" });
+await page.fill("#login-tenant", "demo"); await page.fill("#login-username", "admin"); await page.fill("#login-password", "demo1234");
+await page.click('button[type="submit"]');
+await page.waitForURL((u) => !u.pathname.includes("/login"), { timeout: 15000 }); await sleep(3000);
+// 直接 pushState 到 plan-audit + 等久点（10s）
+await page.evaluate(() => { window.history.pushState({}, "", "/v/plan-audit"); window.dispatchEvent(new PopStateEvent("popstate")); });
+await sleep(10000);
+const body = (await page.locator("body").textContent().catch(() => "")) || "";
+const loading = /加载中/.test(body);
+const hasResult = /硬矛盾|软风险|越线|缺口|站不住|站得住|修正规划|X0\d/.test(body) && !loading;
+console.log("=== plan-audit 诊断(等10s) ===");
+console.log("仍加载中:", loading, "| 出结果:", hasResult);
+console.log("4xx/5xx 失败请求:");
+[...new Set(fails)].forEach((f) => console.log("  " + f));
+await page.screenshot({ path: `${OUT}/diag-planaudit.png`, fullPage: true });
+await browser.close();

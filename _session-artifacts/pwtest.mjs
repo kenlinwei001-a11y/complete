@@ -1,0 +1,11 @@
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage();
+await page.goto('http://127.0.0.1:5282/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+await page.waitForTimeout(1500);
+console.log('TITLE:', await page.title());
+console.log('URL:', page.url());
+const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 300));
+console.log('BODY:', bodyText.replace(/\n+/g, ' | '));
+await browser.close();
+console.log('OK');

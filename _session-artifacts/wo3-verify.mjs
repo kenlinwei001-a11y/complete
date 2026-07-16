@@ -1,0 +1,32 @@
+import pw from "/home/user/complete/node_modules/playwright-core/index.js";
+const { chromium } = pw;
+const OUT = "/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad";
+const EXE = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const APP = "http://127.0.0.1:5173";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const browser = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
+const page = await (await browser.newContext({ viewport: { width: 1600, height: 1100 } })).newPage();
+const errs = [];
+page.on("pageerror", (e) => errs.push("PAGEERR: " + String(e).slice(0,140)));
+await page.goto(`${APP}/login`, { waitUntil: "networkidle" });
+await page.fill("#login-tenant","demo"); await page.fill("#login-username","admin"); await page.fill("#login-password","demo1234");
+await page.click('button[type="submit"]'); await page.waitForURL((u)=>!u.pathname.includes("/login"),{timeout:15000}).catch(()=>{}); await sleep(1800);
+const nav=async(p)=>{await page.evaluate((x)=>{window.history.pushState({},"",x);window.dispatchEvent(new PopStateEvent("popstate"));},p);await sleep(2600);};
+const check=async(path,label)=>{
+  errs.length=0;
+  await nav(path);
+  const b=await page.locator("body").innerText().catch(()=>"");
+  const crashed=/出错了|页面出错|Something went wrong|ErrorBoundary|is not a function|filter is not|map is not|Cannot read/i.test(b);
+  const emptyState=/为空|暂无|空|no data|empty/i.test(b);
+  console.log(`[${label}] ${path} → ${crashed?"❌仍崩 ErrorBoundary":"✓未崩"} | 空态:${emptyState?"✓":"-"} | pageerr:${errs.length} | 文本${b.replace(/\s+/g,"").length}字`);
+  if(crashed) console.log("   崩文:", b.split("\n").map(s=>s.trim()).filter(Boolean).slice(0,4).join(" / "));
+  await page.screenshot({ path: `${OUT}/wo3v-${label}.png`, fullPage: true });
+};
+console.log("=== WO-3 复验：两页真渲染不崩（我此前实测 live 崩）===");
+await check("/admin/quarantine","quarantine");
+await check("/admin/validation","validation");
+// WO-20 顺带：崩页修了，导航韧性是否也正常（回别页不卡）
+await nav("/admin/object-types"); const b=await page.locator("body").innerText().catch(()=>"");
+console.log("导航回对象浏览器正常:", /对象|类型|就绪/.test(b)&&!/出错|ErrorBoundary/.test(b)?"✓":"?");
+await browser.close();
+console.log("截图: wo3v-quarantine · wo3v-validation");

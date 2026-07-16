@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全域数字化智能决策支撑系统 · 审核与规划报告</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true, theme:'neutral', securityLevel:'loose'});</script>
+<style>
+  :root{--ink:#1d2330;--mut:#5a6678;--line:#e1e6ef;--bg:#fff;--soft:#f6f8fc;
+        --done:#1f8a4c;--doneBg:#e7f6ec;--plan:#a8791a;--planBg:#fbf3df;--base:#5a6678;--baseBg:#eef1f6;
+        --acc:#2f5bd0;--warnBg:#fdeeee;--warn:#b5402f;}
+  *{box-sizing:border-box}
+  body{font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC","PingFang SC",Roboto,sans-serif;
+       color:var(--ink);background:var(--bg);margin:0;padding:0}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 28px 80px}
+  header.top{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px;letter-spacing:.2px}
+  .sub{color:var(--mut);font-size:13.5px}
+  h2{font-size:19px;margin:38px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+  h3{font-size:15.5px;margin:22px 0 8px;color:var(--acc)}
+  p{margin:8px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--soft);font-weight:600}
+  tr:nth-child(even) td{background:#fafbfe}
+  .tag{display:inline-block;padding:1px 8px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap}
+  .t-done{color:var(--done);background:var(--doneBg)}
+  .t-plan{color:var(--plan);background:var(--planBg)}
+  .t-base{color:var(--base);background:var(--baseBg)}
+  .lede{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);
+        padding:14px 18px;border-radius:8px;margin:16px 0}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+  .kpi{flex:1;min-width:130px;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .kpi .n{font-size:24px;font-weight:700;color:var(--acc)}
+  .kpi .l{font-size:12.5px;color:var(--mut)}
+  .mermaid{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0;text-align:center;overflow-x:auto}
+  .note{font-size:13px;color:var(--mut);background:var(--soft);border:1px dashed var(--line);border-radius:8px;padding:10px 14px;margin:14px 0}
+  .warn{border-left:4px solid var(--warn);background:var(--warnBg)}
+  code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .small{font-size:12.5px;color:var(--mut)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+  @media print{.mermaid{break-inside:avoid}h2{break-after:avoid}}
+</style>
+</head>
+<body><div class="wrap">
+
+<header class="top">
+  <h1>全域数字化智能决策支撑系统 · 审核与规划报告</h1>
+  <div class="sub">审核方（独立 design + review）· 本会话真跑核发 + 设计待建综合 · 生成于 2026-06-30</div>
+</header>
+
+<div class="lede">
+  <b>一句话：</b>本会话以"蒙眼对抗式独立真跑"逐单复验开发交付——<b>真 PostgreSQL live-fire、真 Kimi 端到端、真服务对抗撤回</b>为据，共
+  <b>核发闭合 15 单</b>，并驱动 <b>5 项审核发现的修复闭环</b>；另产出运营/合规/商业化缺口扫描 + 价值依赖图谱 + ROI 派发规划。
+  原则贯穿"<b>绿测试 ≠ 能用</b>"——每条"能用"都附亲手真跑证据，每条缺口哪怕难看也列。
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">15</div><div class="l">单 ✅ 核发闭合</div></div>
+  <div class="kpi"><div class="n">5</div><div class="l">审核发现→修复闭环</div></div>
+  <div class="kpi"><div class="n">10</div><div class="l">单 📐 设计待建</div></div>
+  <div class="kpi"><div class="n">3</div><div class="l">证据级别(真PG/真Kimi/对抗)</div></div>
+</div>
+
+<h2>§1 已交付核发（✅ 真跑为据）</h2>
+<table>
+<thead><tr><th>WO</th><th>判决</th><th>证据强度</th></tr></thead>
+<tbody>
+<tr><td><b>WO-P0-LOCK</b> PG 执行锁写崩修 + 防复发门</td><td><span class="tag t-done">闭合</span></td><td>真 PG16 live-fire 红→绿 · 对抗撤回</td></tr>
+<tr><td><b>WO-T5-RESUME-LEASE</b> 重启续跑 steal 陈旧锁</td><td><span class="tag t-done">闭合</span></td><td>真 PG #8 · 对抗撤回 · ruledocs 端到端</td></tr>
+<tr><td><b>GATE-B</b> gates 全 4 包构建</td><td><span class="tag t-done">闭合</span></td><td>本会话亲历(抓出 tsc-red)</td></tr>
+<tr><td><b>WO-DM A0</b> dataMode 诚实位(audit+14 extended)</td><td><span class="tag t-done">闭合</span></td><td>真 invoke 15 路逐字吻合 · 门对抗咬</td></tr>
+<tr><td><b>WO-DM keystone</b> 全 46 求解器 + no-silent-mock 门</td><td><span class="tag t-done">闭合</span></td><td>真跑 + 对抗 + 发现 F-DM-KS-1</td></tr>
+<tr><td><b>F-DM-KS-1 修</b> default-LIVE→fail-safe + 白名单</td><td><span class="tag t-done">闭环</span></td><td>真跑 order_fullchain→PARTIAL</td></tr>
+<tr><td><b>WO-SCENE-A</b> 规划体检不拒答</td><td><span class="tag t-done">闭合</span></td><td>真跑不拒答</td></tr>
+<tr><td><b>WO-SCENE-B</b> 场景 agent + <b>真 Kimi 富答案</b></td><td><span class="tag t-done">闭合</span></td><td>真起双服务 · 真 Kimi 实拍 654吨/15.92%/65分</td></tr>
+<tr><td><b>WO-SCENE-D 门</b> scene-agent-config:check</td><td><span class="tag t-done">闭合</span></td><td>对抗注入 WORKFLOW_ONLY→红</td></tr>
+<tr><td><b>WO-SHARE17</b> shareDelta 同源去魔数</td><td><span class="tag t-done">闭合</span></td><td>真跑曲线吻合</td></tr>
+<tr><td><b>WO-AStar</b> 洛阳红接真受影响订单</td><td><span class="tag t-done">闭合</span></td><td>真跑 SO-3470</td></tr>
+<tr><td><b>WO-CSS</b> DAG 配色修 + css-vars 门</td><td><span class="tag t-done">闭合</span></td><td>对抗 var(--nope)→红</td></tr>
+<tr><td><b>SopBalance 兜底徽章</b> (B-MED)</td><td><span class="tag t-done">闭合</span></td><td>读源 · 条件化 PARTIAL</td></tr>
+<tr><td><b>WO-PIPE-INCR ①</b> 连接器 CDC delta-merge</td><td><span class="tag t-done">闭合</span></td><td>真路由 E2E 读回落库行 · 对抗撤回</td></tr>
+<tr><td><b>WO-PIPE-INCR ②</b> 调度自增量 + 闭 DL9 断链</td><td><span class="tag t-done">闭合</span></td><td>真起 datacore · outbox 0→1 真产出</td></tr>
+</tbody>
+</table>
+
+<h3>审核方发现 → 修复闭环（不止核发·还驱动修复）</h3>
+<table>
+<thead><tr><th>发现</th><th>谁提</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td><b>F-DM-KS-1</b>：keystone 默认 LIVE 过宣称(order_fullchain bases×700 魔数标 LIVE)</td><td>审核方</td><td><span class="tag t-done">已修·已复验</span></td></tr>
+<tr><td><b>T5-RESUME-LEASE</b>：P0-LOCK 修好后暴露·续跑被 60min 租约挡·fence 恒=1</td><td>审核方(真 PG 撞出)</td><td><span class="tag t-done">已修·已复验</span></td></tr>
+<tr><td><b>WO-T5 steal vs 多实例 mutex</b> 张力 → 根因解(短租约+心跳)</td><td>dev 求评审</td><td><span class="tag t-plan">设计已交·待建</span></td></tr>
+<tr><td><b>空洞数据冰山</b>(哈希/魔数静默冒充真算) → DM 全链收口</td><td>审核方(读源)</td><td><span class="tag t-done">诚实位地基完整</span></td></tr>
+<tr><td><b>数据管线全量重灌</b>(connectors 非 CDC) → PIPE-INCR ①②</td><td>审核方(D0 分析)</td><td><span class="tag t-done">已落·已复验</span></td></tr>
+</tbody>
+</table>
+
+<h2>§2 功能清单 + 价值（新增/加强 vs 基线）</h2>
+<table>
+<thead><tr><th>域</th><th>功能</th><th>状态</th><th>价值（解决什么）</th></tr></thead>
+<tbody>
+<tr><td rowspan="2"><b>A 信任/<br>诚实层</b></td><td>DM 全族 dataMode + no-silent-mock 门 + F-DM-KS-1</td><td><span class="tag t-done">✅</span></td><td>求解器输出不再哈希/魔数静默冒充真算；LIVE 名副其实</td></tr>
+<tr><td>SHARE17 同源去魔数 · AStar 接真订单 · SopBalance 徽章</td><td><span class="tag t-done">✅</span></td><td>份额/预警/兜底数据诚实标·禁裸"暂无数据"</td></tr>
+<tr><td rowspan="2"><b>B 生产<br>韧性</b></td><td>P0-LOCK PG 锁修 · T5-RESUME 续跑 · GATE-B 构建门</td><td><span class="tag t-done">✅</span></td><td>PG 锁不崩·重启不卡 60min·本地门复现 tsc-red</td></tr>
+<tr><td>T5-LEASE-HEARTBEAT 短租约+心跳(根因解)</td><td><span class="tag t-plan">📐</span></td><td>多实例正确·消解 steal-mutex 张力</td></tr>
+<tr><td rowspan="2"><b>C 决策<br>接地</b></td><td>SCENE-A 不拒答 · SCENE-B 场景 agent + 真 Kimi · D 门</td><td><span class="tag t-done">✅</span></td><td>开放问句得接地结构化答复(真调求解器+规则裁决+管理事项)</td></tr>
+<tr><td>SCENE-C 铺到 20+ 入口</td><td><span class="tag t-plan">📐</span></td><td>每决策入口都能就本页数据接地对话</td></tr>
+<tr><td rowspan="2"><b>D 数据<br>管线</b></td><td>PIPE-INCR ① CDC delta-merge · ② 自增量+DL9</td><td><span class="tag t-done">✅</span></td><td>增量非全量重灌·自动续传·同步数据自动流入派生(不再孤岛)</td></tr>
+<tr><td>FORECAST-SIM 推演接销售预测真源</td><td><span class="tag t-plan">📐</span></td><td>紧张度由真需求−产能派生(非哈希)·态势感知地基</td></tr>
+<tr><td><b>E 运营/合规/<br>商业化</b></td><td>EXPERIMENT 决策 A/B · RETENTION 留存 · AUDIT-OBS 审计+追踪</td><td><span class="tag t-plan">📐</span></td><td>决策自证·防爆库·合规 who-did-what + 排障</td></tr>
+<tr><td><b>F UI/IA</b></td><td>CSS 配色门(✅) · GRAPH-1/2 · NAV-* · QUARANTINE</td><td><span class="tag t-plan">📐</span></td><td>渲染一致·导航归一·诚实空态</td></tr>
+</tbody>
+</table>
+
+<h2>§3 功能依赖图谱</h2>
+<p class="small">绿=已交付核发(✅) · 黄=设计待建(📐) · 灰=基线已有原语 · 实线=强前置 · 虚线=松依赖/数据流</p>
+<div class="mermaid">
+graph TD
+  classDef done fill:#e7f6ec,stroke:#1f8a4c,color:#14502d;
+  classDef plan fill:#fbf3df,stroke:#a8791a,color:#5c430d;
+  classDef base fill:#eef1f6,stroke:#7a8290,color:#3a4150;
+  GATEB["GATE-B 全4包构建门 ✅"]:::done
+  subgraph A["A · 信任/诚实层"]
+    DMA0["DM A0 dataMode ✅"]:::done --> DMKS["DM keystone 全46+门 ✅"]:::done --> FDM["F-DM-KS-1 白名单 ✅"]:::done
+    DMKS --> SOPB["SopBalance 徽章 ✅"]:::done
+    ASTAR["AStar 接真订单 ✅"]:::done
+  end
+  subgraph B["B · 生产韧性"]
+    P0["P0-LOCK 锁修 ✅"]:::done --> T5["T5-RESUME steal ✅"]:::done --> T5HB["T5-HEARTBEAT 短租约 📐"]:::plan
+  end
+  subgraph C["C · 决策接地"]
+    SCA["SCENE-A 不拒答 ✅"]:::done --> SCB["SCENE-B 真Kimi ✅"]:::done --> SCC["SCENE-C 铺开 📐"]:::plan
+    SCD["SCENE-D 门 ✅"]:::done --> SCC
+  end
+  subgraph D["D · 数据管线"]
+    P1["PIPE① delta-merge ✅"]:::done --> P2["PIPE② 自增量+DL9 ✅"]:::done
+    FC["FORECAST-SIM 接真源 📐"]:::plan
+  end
+  subgraph E["E · 运营/合规/商业化"]
+    EXP["EXPERIMENT A/B 📐"]:::plan
+    RET["RETENTION 留存 📐"]:::plan
+    AUD["AUDIT-OBS 审计 📐"]:::plan
+  end
+  subgraph F["F · UI/IA"]
+    CSS["CSS 配色门 ✅"]:::done --> G1["GRAPH-1 共享组件 📐"]:::plan --> G2["GRAPH-2 图引擎 📐"]:::plan
+    NAV["NAV-* 导航 📐"]:::plan
+    QU["QUARANTINE 文案 📐"]:::plan
+  end
+  M11[("M11 参数版本 已有")]:::base
+  SCHED[("Scheduler 已有")]:::base
+  OBX[("Outbox 已有")]:::base
+  GATEB -.构建地板.-> DMKS
+  GATEB -.构建地板.-> P2
+  DMKS -.dataMode契约.-> FC
+  ASTAR --> FC
+  P2 -.数据新鲜.-> FC
+  M11 --> EXP
+  DMKS -.metric诚实.-> EXP
+  SCHED --> RET
+  OBX --> RET
+  OBX --> AUD
+  SCB -.真Kimi通道.-> SCC
+</div>
+
+<h2>§4 优先级 · 价值 × 成本四象限（待建 WO）</h2>
+<div class="mermaid">
+quadrantChart
+  title 待建 WO · 价值 × 成本（ROI）
+  x-axis 低成本 --> 高成本
+  y-axis 低价值 --> 高价值
+  quadrant-1 大注·规划投入
+  quadrant-2 先打·高ROI快胜
+  quadrant-3 填空·顺手做
+  quadrant-4 缓做·价值低成本高
+  T5-HEARTBEAT: [0.30, 0.82]
+  RETENTION: [0.36, 0.66]
+  FORECAST-SIM: [0.72, 0.96]
+  AUDIT-OBS: [0.62, 0.80]
+  EXPERIMENT: [0.70, 0.78]
+  SCENE-C: [0.55, 0.74]
+  GRAPH-1: [0.50, 0.46]
+  GRAPH-2: [0.76, 0.42]
+  NAV: [0.20, 0.36]
+  QUARANTINE: [0.24, 0.30]
+</div>
+
+<h3>推荐三波派发</h3>
+<table>
+<thead><tr><th>波</th><th>WO</th><th>为何</th></tr></thead>
+<tbody>
+<tr><td><b>① 高ROI快胜</b></td><td>T5-LEASE-HEARTBEAT · RETENTION</td><td>低成本撬高价值·改动小/复用既有原语·可并行</td></tr>
+<tr><td><b>② 大注</b></td><td>FORECAST-SIM · AUDIT-OBS · EXPERIMENT</td><td>价值最高(态势/合规/决策自证)·需专注+审核方真跑复验</td></tr>
+<tr><td><b>③ 铺开+填空</b></td><td>SCENE-C · NAV-* · QUARANTINE · GRAPH-1→2</td><td>模板/门已在·UI 速胜·图融合纯维护可缓</td></tr>
+</tbody>
+</table>
+<table>
+<thead><tr><th>你想先要</th><th>先派</th></tr></thead>
+<tbody>
+<tr><td>决策更成熟（算得准/自证）</td><td>FORECAST-SIM + EXPERIMENT</td></tr>
+<tr><td>卖得出/审得过（合规商业化）</td><td>AUDIT-OBS + RETENTION</td></tr>
+<tr><td>扛得住生产</td><td>T5-LEASE-HEARTBEAT 立即</td></tr>
+</tbody>
+</table>
+
+<h2>§5 运营 / 合规 / 商业化 缺口扫描（换视角）</h2>
+<p class="small">沿企业 SaaS"右半边"三镜头·真读源(✅见代码 / ◐有裂缝 / ❌无实装)。1/2/3 本轮按用户意见暂缓·4/5/6 已转施工单。</p>
+<table>
+<thead><tr><th>#</th><th>能力</th><th>状态</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>灾备/数据备份</td><td><span class="tag" style="color:#b5402f;background:#fdeeee">❌ 暂缓</span></td><td>无应用级 backup/restore/PITR(config-bundle 只迁配置非数据)</td></tr>
+<tr><td>2</td><td>数据主体权利(导出/被遗忘权)</td><td><span class="tag" style="color:#b5402f;background:#fdeeee">❌ 暂缓</span></td><td>remove 原语在·无级联 purge/export 编排(商业化硬门槛)</td></tr>
+<tr><td>3</td><td>LLM 预算硬阻断</td><td><span class="tag t-plan">◐ 暂缓</span></td><td>租户月度成本配额是计量+状态(advisory)·超额不拦</td></tr>
+<tr><td>4</td><td>决策 A/B 实验</td><td><span class="tag t-plan">📐 已转单</span></td><td>WO-EXPERIMENT·冠军-挑战者·决策自证</td></tr>
+<tr><td>5</td><td>数据留存/TTL</td><td><span class="tag t-plan">📐 已转单</span></td><td>WO-RETENTION·防 outbox/tasks/ts 无界增长</td></tr>
+<tr><td>6</td><td>统一审计 + 跨服务追踪</td><td><span class="tag t-plan">📐 已转单</span></td><td>WO-AUDIT-OBS·who-did-what + requestId 贯穿</td></tr>
+</tbody>
+</table>
+<p class="small"><b>强项(基线已强)</b>：entitlement 即定价层 · 租户隔离(R2) · 血缘审计(ValidationTrace/temporal/dataMode) · 逐任务预算 · RBAC+Action 审批 · /metrics Prometheus 端点。</p>
+
+<h2>§6 诚实边界</h2>
+<div class="note warn">
+<ul>
+<li><b>✅ 全是本会话真跑核发</b>（真 PG / 真 Kimi / 真服务 / 对抗撤回，逐单证据见仓库 <code>docs/REVIEW-*-closure.md</code>）；<b>📐 是设计待建</b>，列的是预期价值、未实装。</li>
+<li><b>缺口扫描是读源 gap-scan</b>（非逐项真起实拍——"缺失"无法真跑）；dev 若指某条已实装、给文件:行，审核方真起复验。</li>
+<li>价值/成本/ROI 是<b>审核方架构判断</b>（非工时实测）；与商业优先级若不同，<b>以你的为准</b>。</li>
+<li>本会话审核方<b>自纠 2 次</b>：陈旧 dist 假阴性(已识别纠正)、buggy pipe 假密钥告警(已澄清仓库零残留)——审核方也守"绿测试≠能用"。</li>
+</ul>
+</div>
+
+<h2>附录 · 仓库文档索引</h2>
+<p class="small">分支 <code>claude/vigilant-knuth-b1nmxn</code>。逐单核发证据与施工单：</p>
+<ul class="small">
+<li><b>核发证据</b>：<code>docs/REVIEW-WO-DM-*-closure.md</code> · <code>REVIEW-WO-T5-RESUME-LEASE-and-GATE-B-closure.md</code> · <code>REVIEW-WO-P0-LOCK-closure-and-resume-finding.md</code> · <code>REVIEW-WO-SCENE-B-closure.md</code> · <code>REVIEW-WO-SCENE-real-kimi-grounded-answer-closure.md</code> · <code>REVIEW-WO-PIPE-INCR-closure.md</code> · <code>REVIEW-WO-PIPE-INCR-2-closure.md</code> · <code>REVIEW-F-DM-KS-1-fix-verified.md</code></li>
+<li><b>总账/分析</b>：<code>REVIEW-SESSION-LEDGER-consolidated.md</code> · <code>ANALYSIS-ops-compliance-commercial-gap-scan.md</code> · <code>ANALYSIS-maven-capability-maturity-gap.md</code> · <code>FEATURE-CATALOG-and-dependency-graph.md</code> · <code>ANALYSIS-priority-value-effort-quadrant.md</code></li>
+<li><b>施工单</b>：<code>DISPATCH-remaining-fused-worklist.md</code>（含 4/5/6 + 待建全集 + 粘贴即用提示词） · <code>WO-design-landing-batch2.md</code> · <code>WO-T5-steal-proper-fix-and-batch-review.md</code></li>
+<li><b>系统本体</b>：<code>docs/SYSTEM-ONTOLOGY.md</code>（单一接线来源·所有改动回写）</li>
+</ul>
+
+<footer>
+审核方（独立 design + review，非 dev 实装）· 真跑为据 · 仅推 <code>claude/vigilant-knuth-b1nmxn</code> · 模型标识不入任何提交物。<br>
+本报告为会话成果综合·可下载/打印分享；图表由 Mermaid 内联渲染（需联网加载脚本）。
+</footer>
+
+</div></body></html>

@@ -1,0 +1,11 @@
+import { makeCtx, login, BASE } from './driver.mjs';
+const { b, ctx } = await makeCtx();
+const page = await ctx.newPage();
+const fails=[];
+page.on('response', r=>{ if(r.status()>=400) fails.push(`${r.status()} ${r.request().method()} ${r.url()}`); });
+page.on('requestfailed', r=> fails.push(`FAILED ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
+await login(page,'admin');
+await page.goto(BASE+'/admin/agents',{waitUntil:'networkidle',timeout:30000}).catch(()=>{});
+await page.waitForTimeout(2000);
+console.log('ALL failing requests:', JSON.stringify([...new Set(fails)],null,1));
+await b.close();

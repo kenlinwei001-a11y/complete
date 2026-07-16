@@ -1,0 +1,10 @@
+import fs from "fs";
+const p = "/home/user/complete/docs/work-queue.json";
+const q = JSON.parse(fs.readFileSync(p, "utf8"));
+const set = (id, n) => { const w = q.items.find(x => x.id === id); if (w) w.reviewNote = n; };
+set("WO-CAP-03-KPI-FIX", "PASS 独立真浏览器逐值对照后端(agent ad6c2b3c):利用率不再÷575稀释→真值94.3==后端94.31(分母=携带者102·Line百分/Process分数×100统一量纲);globalKpi不再3339.5→47.3有界0-100不恒红(totalDemand1.6M被value<=100过滤排除);cert.knowledge正名建模完整度(SIM_KNOWLEDGE_DIM_LABEL·SVG轴文本实证)。门ontology-writeback/slices EXIT0。诚实边界(非BLOCK):globalKpi把demandDelta(0-1)与utilization(0-100)原始平均=混标度但有界不冒称非÷575稀释。测试并发超时=资源饥饿(隔离重跑绿·两WO零触碰后端源)。");
+set("WO-CAP-06-WHATIF-SCOPE", "PASS 独立真浏览器(agent ad6c2b3c·闭G-3):世界真裁剪非摆设——拦截真POST/sim/sessions体+后端持久化双证。常州跳转baseSnapshot 22键(vs全量575)与独立objectBelongsToBase正则计算22完全一致;合肥21;R3隔离裁剪后全归属该基地leaked=0;GET/sim/sessions返5会话带scope.baseId snapshotKeys21/22服务端真存裁剪快照非仅客户端徽章。所有跳沙盘按钮走openWhatIf带subject(RiskBoardView/ProjectSimView zh.sim.run开始推演)。母体§8 G-3回写闭沙盘侧末环+证据文档·ontology-writeback/slices EXIT0。");
+fs.writeFileSync(p, JSON.stringify(q, null, 2) + "\n");
+const c = {}; q.items.forEach(x => c[x.status] = (c[x.status] || 0) + 1);
+console.log("counts:", JSON.stringify(c));
+console.log("BUILT:", q.items.filter(x => x.status === "BUILT").map(x => x.id).join(", ") || "none");

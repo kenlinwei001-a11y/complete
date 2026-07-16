@@ -1,0 +1,106 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>仿真就绪认证</title>
+<style>
+:root{--bg:#0d1117;--bg2:#11161d;--panel:#161c24;--panel2:#10151c;--line:#222b36;--fg:#e6edf3;--muted:#9aa8b6;--muted2:#67737f;--accent:#4c90f0;--green:#36BFA5;--amber:#E8B54A;--red:#E05260;--purple:#9B7BE8;}
+*{box-sizing:border-box;font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:13px;}
+.topbar{height:42px;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:18px;}
+.logo{font-weight:700;color:var(--accent);font-size:15px;}.nav{display:flex;gap:16px;color:var(--muted);font-size:12px;}.nav .on{color:var(--fg);border-bottom:2px solid var(--accent);padding-bottom:11px;}
+.tabrow{height:32px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:10px;font-size:12px;color:var(--muted);}.tabrow .on{color:var(--fg);background:var(--panel);padding:3px 9px;border-radius:5px;}
+.wrap{display:grid;grid-template-columns:1fr 340px;height:calc(100vh - 74px);}
+.main{overflow:auto;padding:16px;}
+.aside{background:var(--panel2);border-left:1px solid var(--line);overflow:auto;padding:12px;}
+.hero{display:flex;gap:16px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:16px;margin-bottom:14px;}
+.bigring{width:96px;height:96px;border-radius:50%;background:conic-gradient(var(--green) 0 96%,var(--line) 96% 100%);display:flex;align-items:center;justify-content:center;}
+.bigring .in{width:76px;height:76px;border-radius:50%;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.bigring .v{font-weight:800;font-size:26px;}.bigring .l{font-size:9px;color:var(--muted2);}
+.ladder{display:flex;gap:8px;flex:1;}
+.lv{flex:1;text-align:center;font-size:10px;padding:10px 4px;border-radius:8px;background:var(--bg2);border:1px solid var(--line);color:var(--muted2);}
+.lv b{display:block;font-size:13px;margin-bottom:3px;}
+.lv.ok{background:#36BFA516;border-color:#36BFA555;color:var(--green);}.lv.cur{background:#4c90f01e;border-color:var(--accent);color:var(--accent);}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;}
+.panel h3{margin:0 0 10px;font-size:13px;}
+.crit{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:7px 0;border-bottom:1px dashed var(--line);}
+.ok{color:var(--green);}.bad{color:var(--red);}
+.three{margin-top:6px;}
+.tb{margin:8px 0;}.tb .l{font-size:11px;display:flex;justify-content:space-between;color:var(--muted);}
+.bar{height:7px;background:var(--line);border-radius:4px;margin-top:3px;overflow:hidden;}.bar i{display:block;height:100%;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:10px;}
+.card h4{margin:0 0 8px;font-size:12px;}
+.gap{font-size:11px;padding:6px 8px;border-radius:7px;margin:5px 0;border:1px solid var(--line);}
+.gH{background:#E0526012;border-color:#E0526044;}.gM{background:#E8B54A12;border-color:#E8B54A44;}.gL{background:#37425012;}
+.btn{background:var(--accent);border:none;color:#fff;border-radius:7px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;width:100%;}
+.cfg{font-size:10px;color:var(--muted2);margin-bottom:10px;}
+svg text{fill:var(--muted2);font-size:9px;}
+</style></head><body>
+<div class="topbar"><div class="logo">◆ 决策平台</div><div class="nav"><span>探索</span><span class="on">本体建模</span><span>连接器与上传</span><span>推演沙盘</span><span>规则库</span><span>系统管理</span></div></div>
+<div class="tabrow"><span class="on">⬚ 供应链本体 · 仿真就绪认证</span><span style="margin-left:auto" class="cfg" style="color:var(--muted2)">从本体确定性算（行业无关）</span></div>
+<div class="wrap">
+ <div class="main">
+   <div class="cfg">⚙ 就绪认证 = 纯函数从「任意租户本体」算（规则覆盖/激活/Fanout/可观测…），不依赖行业</div>
+   <div class="hero">
+     <div class="bigring"><div class="in"><span class="v" style="color:var(--green)">96</span><span class="l">/100 可进入推演</span></div></div>
+     <div class="ladder">
+       <div class="lv ok"><b>L0</b>有效</div><div class="lv ok"><b>L1</b>已配置</div><div class="lv ok"><b>L2</b>可运行</div><div class="lv ok"><b>L3</b>已验证</div><div class="lv cur"><b>L4</b>已认证</div>
+     </div>
+   </div>
+
+   <div class="grid2">
+     <div class="panel"><h3>L4 认证三准则</h3>
+       <div class="crit"><span>✓ L3 已验证 · Trial Tick 通过</span><span class="ok">触发 4 规则</span></div>
+       <div class="crit"><span>✓ Fanout 安全</span><span class="ok">无高风险扇出</span></div>
+       <div class="crit"><span>✓ Writeback 完整</span><span class="ok">写回行动 7</span></div>
+       <div class="crit"><span>✓ Observability 达标</span><span class="ok">图查询 10</span></div>
+       <div style="margin-top:10px;font-size:10px;color:var(--muted2)">Trial Tick 历史：PASS 06-23 20:53 · PASS 06-23 19:33 · 展开已修复 5 条</div>
+     </div>
+     <div class="panel"><h3>三维准备度</h3>
+       <div class="three">
+         <div class="tb"><div class="l"><span>结构准备度（实体/链路/字段覆盖）</span><b>100</b></div><div class="bar"><i style="width:100%;background:var(--accent)"></i></div></div>
+         <div class="tb"><div class="l"><span>知识准备度（状态变量激活/规则覆盖）</span><b>98</b></div><div class="bar"><i style="width:98%;background:var(--green)"></i></div></div>
+         <div class="tb"><div class="l"><span>行为准备度（动作/写回/可观测）</span><b>90</b></div><div class="bar"><i style="width:90%;background:var(--amber)"></i></div></div>
+       </div>
+       <div style="font-size:10px;color:var(--muted);margin-top:8px">综合 96 · 缺口 high=0 / medium=1 / low=2</div>
+     </div>
+   </div>
+
+   <div class="grid2" style="margin-top:14px">
+     <div class="panel"><h3>运行健康雷达（Runtime Health）</h3>
+       <svg viewBox="0 0 220 180" width="100%" height="170">
+         <polygon points="110,20 188,65 158,155 62,155 32,65" fill="none" stroke="#2a3543"/>
+         <polygon points="110,55 152,80 140,130 80,130 62,82" fill="none" stroke="#2a3543"/>
+         <polygon points="110,24 184,67 150,150 70,148 38,67" fill="#4c90f033" stroke="var(--accent)" stroke-width="1.5"/>
+         <text x="100" y="14">规则覆盖</text><text x="190" y="64">利用率</text><text x="158" y="172">激活度</text><text x="20" y="172">可观测</text><text x="6" y="64">环安全</text>
+       </svg>
+       <div style="text-align:center;font-size:11px;color:var(--muted)">综合健康 <b style="color:var(--fg)">84</b></div>
+     </div>
+     <div class="panel"><h3>运行信任雷达（Runtime Trust）</h3>
+       <svg viewBox="0 0 220 180" width="100%" height="170">
+         <polygon points="110,20 190,90 110,160 30,90" fill="none" stroke="#2a3543"/>
+         <polygon points="110,60 150,90 110,120 70,90" fill="none" stroke="#2a3543"/>
+         <polygon points="110,40 178,90 110,150 64,90" fill="#36BFA533" stroke="var(--green)" stroke-width="1.5"/>
+         <text x="92" y="14">可解释</text><text x="194" y="92">数据信任</text><text x="86" y="174">时序信任</text><text x="4" y="92">运行信任</text>
+       </svg>
+       <div style="text-align:center;font-size:11px;color:var(--muted)">可计算信任度 <b style="color:var(--fg)">68</b> · 数据/时序已核</div>
+     </div>
+   </div>
+ </div>
+
+ <div class="aside">
+   <div class="card"><h4>AI 缺陷扫描 → 结构化报告</h4>
+     <div style="font-size:11px;color:var(--muted);margin-bottom:8px">已调用「扫描项目缺陷」工具，按 high/med/low 归类：</div>
+     <div class="gap gM"><b style="color:var(--amber)">MEDIUM</b> · order_book 2 列(priority/eta) 未建模 → 行为准备度 −10</div>
+     <div class="gap gL"><b style="color:var(--muted)">LOW</b> · DataSourceHealth 状态变量未被任何规则引用（悬空）</div>
+     <div class="gap gL"><b style="color:var(--muted)">LOW</b> · Material 实体无图谱查询 → 可观测 −2</div>
+   </div>
+   <div class="card"><h4>唯一待办动作（AI 引导）</h4>
+     <div style="font-size:11px;color:var(--muted);line-height:1.5">补 order 的 priority/eta 映射 → 行为准备度 90→100 → 综合 96→99。<br><span style="color:var(--accent)">深链：建模页·order_book →</span></div>
+     <button class="btn" style="margin-top:8px">AI 一键补全并重跑 Trial Tick</button>
+   </div>
+   <div class="card"><h4>闭环计数</h4>
+     <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between"><span>属性→状态变量</span><b style="color:var(--fg)">42</b></div>
+     <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between"><span>行动（写回）</span><b style="color:var(--fg)">7</b></div>
+     <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between"><span>派生/传导规则</span><b style="color:var(--fg)">4</b></div>
+     <div style="font-size:11px;color:var(--muted);display:flex;justify-content:space-between"><span>图谱查询</span><b style="color:var(--fg)">10</b></div>
+   </div>
+ </div>
+</div></body></html>
