@@ -1,77 +1,396 @@
-.grid {
+/* WO-CAPSIM-REPLICA · 1:1 复刻黑曜石「产能推演」看板几何（布局/间距/交互严格照抄参照 HTML
+   docs/reference-prototype-decision-platform.html §预判推演看板 .rk-* · 颜色走平台 tokens.css）。
+   数据全接真求解器（risk_timeline / bottleneck_matrix / mitigation_select / affected_orders）·禁 hashN/riskVal。 */
+
+/* 面板容器（参照 .riskwrap）：内边距 22×26 + 玫瑰调径向渐变叠加（色不随主题·仅叠加层）。 */
+.riskwrap {
+  padding: 22px 26px;
+  background: radial-gradient(1200px 700px at 70% -10%, rgba(221, 126, 158, 0.06), transparent 60%);
+}
+
+/* rk-top：标题 + 视角/窗口 chip 开关。 */
+.rkTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.rkTop h3 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+.rkSub {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 640px;
+  line-height: 1.55;
+}
+.rkHsel {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+/* tier-chip 药丸开关：等宽字体·选中态蓝底。 */
+.tierChip {
+  font-size: 11px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  cursor: pointer;
+  transition: 0.13s;
+  font-family: var(--font-mono);
+  background: transparent;
+}
+.tierChip:hover {
+  border-color: var(--c-capacity);
+}
+.tierChipOn {
+  background: rgba(91, 124, 250, 0.16);
+  border-color: var(--c-capacity);
+  color: var(--txt);
+}
+
+/* rk-kpi 条：flex 横排 5 卡 + 可选健康度横幅。 */
+.rkKpi {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 14px 0 16px;
+  flex-wrap: wrap;
+}
+.rkK {
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: rgba(226, 235, 245, 0.025);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rkK b {
+  font-size: 19px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.rkK span {
+  font-size: 9.5px;
+  color: var(--muted2);
+}
+.rkHealth {
+  font-size: 10.5px;
+  color: var(--warn);
+  border: 1px solid rgba(232, 181, 74, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(232, 181, 74, 0.08);
+  max-width: 330px;
+  line-height: 1.5;
+}
+
+/* rk-grid / rk-card：auto-fill minmax(228px)·卡 hover 上浮·整卡点击。 */
+.rkGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
   gap: 12px;
 }
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+.rkCard {
+  border: 1px solid var(--line2);
+  border-radius: 11px;
   padding: 12px 14px;
+  background: rgba(226, 235, 245, 0.03);
   cursor: pointer;
-  transition: 0.15s;
+  transition: transform 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
 }
-.card:hover {
-  border-color: var(--line2);
+.rkCard:hover {
+  transform: translateY(-2px);
+  background: rgba(226, 235, 245, 0.05);
 }
-.cardSelected {
-  border-color: rgba(76, 144, 240, 0.55);
-  box-shadow: 0 0 0 1px rgba(76, 144, 240, 0.3);
+.rkCardOpen {
+  outline: 2px solid rgba(221, 126, 158, 0.55);
 }
-
-.cardHead {
+.rkCH {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
-
-.metrics {
+.rkCH b {
+  font-size: 13px;
+}
+.rkOwn {
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: default;
+}
+/* provenance 诚实灰徽章（合成种子·未接实测）——绝不显"实测/LIVE"（KILL-MOCK-RED·铁律 0.4）。 */
+.rkSynth {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+.rkCM {
   display: flex;
-  gap: 18px;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.rkPeak {
+  font-size: 17px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rkUnit {
   font-size: 11px;
+  color: var(--muted2);
+}
+.rkChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+.rkFchip {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid;
+  background: rgba(226, 235, 245, 0.02);
+  white-space: nowrap;
+}
+.rkCF {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
   color: var(--muted);
-  margin-bottom: 8px;
-}
-.metrics b {
-  display: block;
-  font-size: 16px;
-  margin-top: 2px;
+  margin-top: 5px;
 }
 
-.miniStrip {
+/* rk-det 展开详情：内联在网格下方（非 modal）·时间轴 + 方案 + 对话两栏。 */
+.rkDet {
+  margin-top: 18px;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 15px 17px;
+  background: rgba(226, 235, 245, 0.025);
+}
+.rkDetH {
   display: flex;
-  gap: 2px;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rkDetH b {
+  font-size: 14.5px;
+}
+.rkDetH span {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.rkTl {
+  position: relative;
+  padding: 6px 0 2px;
+}
+/* 日期刻度行：margin-left 178 = rk-flab 168 + rk-frow gap 10（严格对齐圆点起列）。 */
+.rkTicks {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 4px 178px;
+}
+.rkTick {
+  flex: 1;
+  min-width: 8px;
+  max-width: 18px;
+  font-size: 8px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: visible;
+  transform: translateX(-2px);
+}
+/* 单因素行：168px 标签 + 逐日圆点条。 */
+.rkFrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.rkFlab {
+  width: 168px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rkFlab b {
+  font-size: 10.5px;
+}
+.rkFlab span {
+  font-size: 8.5px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+.rkDots {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex: 1;
+}
+.rkDot {
+  width: 14px;
   height: 14px;
-}
-.miniStrip span {
+  border-radius: 50%;
+  cursor: pointer;
   flex: 1;
-  border-radius: 2px;
-}
-
-.dayRow {
-  display: flex;
-  gap: 2px;
-  margin-top: 10px;
-}
-.dayCell {
-  flex: 1;
-  height: 18px;
+  min-width: 8px;
+  max-width: 18px;
+  transition: transform 0.1s;
   border: none;
-  border-radius: 3px;
   padding: 0;
 }
-.dayCell:hover {
-  outline: 1px solid #fff;
+.rkDot:hover {
+  transform: scale(1.45);
+}
+.rkLeg {
+  display: flex;
+  gap: 12px;
+  font-size: 9.5px;
+  color: var(--muted);
+  margin: 8px 0 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rkLeg i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+/* 两栏：左对症方案·右人机对话（.rk-two）。 */
+.rkTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.wfT {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+/* rk-sol 堆叠方案卡。 */
+.rkSol {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  background: rgba(98, 190, 119, 0.04);
+}
+.rkSolH {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.rkSolH b {
+  font-size: 11px;
+}
+.rkSolM {
+  font-size: 9.5px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+/* fc-go 采纳→工单。 */
+.fcGo {
+  padding: 3px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(196, 112, 184, 0.5);
+  background: rgba(196, 112, 184, 0.14);
+  color: var(--c-solver);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fcGo:hover {
+  background: rgba(196, 112, 184, 0.24);
+}
+.fcGo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 人机对话（对话态·同源求解器 R6）：qa-chips 预设问 + 答案区 + 追问框。 */
+.qaChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.qaChip {
+  font-size: 10.5px;
+  padding: 5px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  transition: 0.13s;
+}
+.qaChip:hover {
+  border-color: var(--c-capacity);
+  color: var(--txt);
+}
+.rkAns {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: rgba(226, 235, 245, 0.02);
+  min-height: 44px;
+}
+.rkAsk {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rkAsk input {
+  flex: 1;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 11.5px;
+  background: var(--panel2);
+  color: var(--txt);
+}
+.rkAsk button {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  cursor: pointer;
 }
 
-.orderDot {
-  display: block;
-  width: 4px;
-  height: 4px;
-  background: #fff;
-  border-radius: 50%;
-  margin: 0 auto;
-  box-shadow: 0 0 2px rgba(0,0,0,0.4);
+@media (max-width: 900px) {
+  .rkTwo {
+    grid-template-columns: 1fr;
+  }
 }

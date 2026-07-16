@@ -991,13 +991,21 @@ export const handlers = [
       ],
     }),
   ),
-  http.post("*/a/v1/solvers/:key/invoke", ({ params }) => {
+  http.post("*/a/v1/solvers/:key/invoke", async ({ params, request }) => {
     const key = String(params.key);
+    // WO-CAPSIM-REPLICA 缺口②修（355b8502 同口径）：此前只解构 params 不读 body → 订单聚合基地筛选 base 参恒被忽略、
+    // bottleneck_matrix 漏接（chip 空）。改读 body.args → base 真裁剪 + bottleneck 真出（与真后端 /a/v1 invoke 同口径）。
+    const invBody = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
+    const invArgs = invBody.args ?? {};
     if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix(invArgs as { baseIds?: string[] }), snapshotVersion: "ov-12" });
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 91.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
-    if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(), snapshotVersion: "ov-12" });
+    if (key === "affected_orders") {
+      const base = typeof invArgs.base === "string" && invArgs.base !== "" ? invArgs.base : undefined;
+      return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
+    }
     if (key === "counterfactual_timeline") {
       const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
       const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
