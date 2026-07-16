@@ -15,6 +15,7 @@ import { CommandPalette } from "@/components/ScenarioLauncher/CommandPalette";
 import { HistoryPanel } from "@/components/History/HistoryPanel";
 import { GlobalSearch } from "@/components/GlobalSearch/GlobalSearch";
 import { HealthBadge } from "@/components/Health/HealthBadge";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import zh from "@/locales/zh";
 import styles from "./ShellLayout.module.css";
@@ -222,6 +223,8 @@ export default function ShellLayout() {
         <SyntheticWatermark />
         {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}
         <HealthBadge />
+        {/* WO-THEME-SWITCH-U8：明暗主题开关（轨O）——暗色默认，切浅色落 localStorage */}
+        <ThemeToggle />
         <UserMenu username={workspace.user?.username ?? "—"} />
       </header>
 

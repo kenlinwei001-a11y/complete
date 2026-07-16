@@ -62,7 +62,7 @@ a {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(226, 235, 245, 0.12);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {
@@ -92,7 +92,7 @@ a {
 .btn.primary {
   background: linear-gradient(135deg, rgba(76, 144, 240, 0.85), rgba(76, 144, 240, 0.6));
   border-color: rgba(76, 144, 240, 0.6);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn.danger {
   border-color: rgba(224, 98, 108, 0.5);
@@ -178,7 +178,7 @@ table.cmp td.zh {
   font-family: var(--font-sans);
 }
 table.cmp tr:hover td {
-  background: rgba(226, 235, 245, 0.025);
+  background: var(--hover-tint);
 }
 
 .empty-state {

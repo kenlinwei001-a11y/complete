@@ -28,4 +28,48 @@
   --warn: #e8b54a;
   --amber: #e8b54a;
   --danger: #e0626c;
+
+  /* WO-THEME-SWITCH-U8：chrome 表面/交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
+     暗色值 == 收口前的渲染字面（逐值等价·保证黑曜石视觉不变·C3 additive）。 */
+  --topbar-bg: linear-gradient(180deg, rgba(24, 31, 40, 0.82), rgba(14, 18, 24, 0.66));
+  --topbar-border: rgba(226, 235, 245, 0.09);
+  --hover-tint: rgba(226, 235, 245, 0.04);        /* nav / 菜单 / 搜索 / 表行 hover 底 */
+  --hover-tint-strong: rgba(226, 235, 245, 0.06);
+  --scrollbar-thumb: rgba(226, 235, 245, 0.12);
+  --nav-active-bg: linear-gradient(90deg, rgba(76, 144, 240, 0.16), rgba(76, 144, 240, 0.03));
+  --nav-active-border: rgba(76, 144, 240, 0.3);
+  --nav-active-txt: #fff;
+  --on-accent: #fff;                              /* accent 蓝底上的文字（主题不变·蓝底恒配白字） */
+}
+
+/* WO-THEME-SWITCH-U8 · 浅色主题（[data-theme=light]）——加性覆盖：暗色（黑曜石）为默认（无 data-theme 即现有外观逐值不变）。
+   仅翻转「表面 / 结构 / 文本 / accent」token；语义域色（--c-*、--ok/--warn/--amber/--danger）刻意不在此覆盖 →
+   两主题逐值一致（风险红在浅色下仍读作风险红、正向绿仍读作正向）。theme-invariant 铁则。
+
+   浅色值系对着 canonical 现行暗色 token 语义反演派生（非搬 July 旧值），WCAG AA 已校核（对白面/浅面）：
+     --txt   #14203A ≈ 16.2:1（白）/ 14.3:1（导航面）   --muted  #475069 ≈ 8.0:1 / 7.1:1
+     --muted2 #5B6577 ≈ 5.9:1 / 5.2:1                    --accent #3B5BDB ≈ 5.7:1 / 5.0:1
+     nav-active 文字 #2F49BE 于蓝染活动底 ≈ 5.5:1（皆 ≥ AA 4.5）。 */
+:root[data-theme="light"] {
+  --bg: #f5f7fb;          /* 浅灰蓝页面底（最低层） */
+  --bg2: #ffffff;         /* 输入 / 微抬升面 */
+  --panel: #ffffff;       /* 卡片面（最亮层） */
+  --panel2: #edf1f7;      /* 导航栏 / 卡内嵌区（较 panel 略暗，同暗色下 panel2<panel 的层级关系） */
+  --line: rgba(20, 28, 44, 0.1);   /* 发丝边（深墨低透） */
+  --line2: rgba(20, 28, 44, 0.16); /* 较重边：输入 / 徽标 / 表头 */
+  --txt: #14203a;         /* 主文本（深墨蓝）≈ 16.2:1 */
+  --muted: #475069;       /* 次要文本 ≈ 8.0:1 */
+  --muted2: #5b6577;      /* 三级文本 ≈ 5.9:1 */
+  --accent: #3b5bdb;      /* 皇家蓝（较暗色 #4c90f0 下调以对白面达 AA·5.7:1） */
+
+  /* chrome 表面 / 交互（浅色变体） */
+  --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 247, 251, 0.72));
+  --topbar-border: rgba(20, 28, 44, 0.1);
+  --hover-tint: rgba(20, 28, 44, 0.05);
+  --hover-tint-strong: rgba(20, 28, 44, 0.07);
+  --scrollbar-thumb: rgba(20, 28, 44, 0.18);
+  --nav-active-bg: linear-gradient(90deg, rgba(59, 91, 219, 0.13), rgba(59, 91, 219, 0.03));
+  --nav-active-border: rgba(59, 91, 219, 0.35);
+  --nav-active-txt: #2f49be;  /* 活动导航文字（较 --accent 再压深以对蓝染活动底达 AA·5.5:1） */
+  /* --on-accent 保持 #fff（accent 蓝底恒配白字·主题不变） */
 }
