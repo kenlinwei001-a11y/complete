@@ -30,7 +30,9 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
 // 每项 kind=view（查 workspace.navigation，/v/:key）或 admin（查 visibleAdminPages，/admin/:path）；
 // 逐项可见性仍按角色 + entitlement 过滤；空组自动隐藏；折叠记忆复用 NavGroup。图谱(view)并入「建模与图谱」与本体/建模同组（闭"图谱与本体拆两区"）；meta 补回「平台与系统」。
 type NavItemRef = { kind: "view" | "admin"; key: string };
-const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
+// WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
+// 防管理页漏登记后再漂到「其它」兜底组（此前 boundary/prototype-intake 即因漏配落「其它」）。
+export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
@@ -40,7 +42,9 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     title: "建模与图谱",
     items: [
       { kind: "view", key: "graph" },
-      ...["modeling", "object-types", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
+      // WO-SWEEP-03-NAV-GROUP：boundary（边界册治理）/ prototype-intake（原型 intake）归「建模与图谱」组，
+      // 对齐 adminRegistry modeling 组（此前二者缺登记 → 真实导航里落「其它」兜底组）。
+      ...["modeling", "object-types", "domains", "slices", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。
@@ -53,6 +57,9 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   { title: "构建与成长", items: ["data-builder", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-SWEEP-03-NAV-GROUP · meta 归组定音：meta（系统自我 = 平台自我元模型 / dogfooding 本体查看器）是平台描述自身的
+  // 治理/系统级构件（非租户业务建模），故 adminRegistry(建模) 与 ShellLayout(平台与系统) 的分歧在此按「平台与系统」定案；
+  // 同步把 adminRegistry.ADMIN_NAV_GROUPS 的 meta 从 modeling 挪到 governance，两处分组源就此对齐、不再漂移。
   { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
 
