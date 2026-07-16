@@ -1740,7 +1740,7 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C16: ["MaterialBalance"],
   C21: ["SopVersionRow"],
   C22: ["Order"],
-  C24: ["Quote", "DemandSegment"],
+  C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order（marginPct/floorPct 与 Quote 命名空间同值·镜像 C15）·Quote 仅 eval 期注入命名空间非本体对象类型（沙盘 cert 前向闭合硬前置）
   C25: ["ExternalSignal"],
 };
 

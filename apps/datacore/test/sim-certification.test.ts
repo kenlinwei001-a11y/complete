@@ -180,4 +180,20 @@ describe("增量2 · 就绪认证端点（R3 暗发 · 复用既有 closure 取�
     expect(r.json().worldCompleteness).toHaveProperty("entering");
     expect(typeof r.json().canEnterSimulation).toBe("boolean");
   });
+
+  it("WO-RC1 前向闭合硬前置：C24 scope 归真实类型（Order·非 eval-only 命名空间 Quote）→ GLOBAL cert forwardMissing 消 → canEnterSimulation 翻真「✓可进入推演」", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    await seedBattery(t);
+    const init = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: {} } });
+    const sid = init.json().id as string;
+    const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/certification?scope=GLOBAL`, headers: ADMIN });
+    expect(r.statusCode).toBe(200);
+    const cert = r.json();
+    // 前向闭合缺口清零：不再有引用 eval-only 命名空间 Quote 的规则 scope FORWARD MISSING（此前 C24->Quote 卡在 L1）。
+    expect(cert.gaps.some((g: { detail?: string }) => (g.detail ?? "").includes("C24->Quote"))).toBe(false);
+    // 硬前置满足 → 满级认证 → 「✓可进入推演」亮。
+    expect(cert.level).toBe("L4_CERTIFIED");
+    expect(cert.canEnterSimulation).toBe(true);
+  });
 });
