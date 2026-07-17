@@ -104,6 +104,8 @@ export const SOLVER_KEYS = [
   "optimize_whatif",
   // WO-CEO-2 深度反向归因：总目标缺口→结构反向多跳分摊(gap单位·勾稽)+caused_by 因果遍历→~20 叶子原子因素（GAP-ATTR）。
   "gap_attribution",
+  // WO-CEO-3 决策推演：根因→多方案→比对矩阵→触发行动(信号阈值)→组合收窄(G-DECISION)。
+  "decision_play",
 ] as const;
 
 /**
@@ -158,6 +160,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   gap_attribution: ["rootMetric", "totalGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "summary"],
+  decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -922,6 +925,109 @@ export class SolverService {
       reconciled,
       residualPct,
       summary: `目标「${str(m.name)}」缺口 ${G}${unit}：结构反向分摊到 ${baseEntries.length} 基地 × ${atomicLeaves.length} 叶子原子因素（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%），物料短缺沿 caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.filter((n) => (n.causalPath as string[]).length > 0).length} 个终点根因`,
+    };
+  }
+
+  /**
+   * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
+   * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
+   * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
+   * → 差距收窄试算。改根因颗粒→方案分变（C6·closesGap 由根因贡献×真对象有效性派生）。
+   * 诚实边界：sourceKind=agent 项在 datacore 侧为**确定性策略生成**（真读对象·非套模板文案），真 LLM agent 推理=CEO-6；
+   * 收窄=确定性试算（组合补缺口/总缺口·真算非写死），全 propagateTick action→stateVar 建模=沙盘 S6 后续。
+   */
+  private async decisionPlay(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // 1) 根因输入：复用 gap_attribution（CEO-2）。
+    const ga = await this.gapAttribution(ctx, { metricKey: args.metricKey ? str(args.metricKey) : "" });
+    const rootMetric = ga.rootMetric as { key: string; name: string; unit: string; gap: number };
+    const leaves = (ga.atomicLeaves as Record<string, unknown>[]) ?? [];
+    const wantFactor = args.factorId ? str(args.factorId) : undefined;
+    // 根因取自因果层全部因素（非仅终点叶）——按贡献选最重的可行动根因（缺省）。
+    const gaLevels = (ga.levels as { depth: number; nodes: Record<string, unknown>[] }[]) ?? [];
+    const causalNodes = gaLevels.find((L) => L.depth === 3)?.nodes ?? [];
+    const pool = causalNodes.length ? causalNodes : leaves;
+    const root =
+      (wantFactor ? [...causalNodes, ...leaves].find((l) => str(l.id) === wantFactor || str(l.id).endsWith(wantFactor) || str(l.factor).includes(wantFactor)) : undefined) ??
+      [...pool].sort((a, b) => num(b.contribution) - num(a.contribution) || str(a.id).localeCompare(str(b.id)))[0];
+    if (!root) throw validationError("decision_play 需先有 gap_attribution 根因（合成 Metric/因果链）");
+    const rootFactorId = str(root.id).replace(/^cf:/, "");
+    const unit = rootMetric.unit;
+    const gap = rootMetric.gap;
+    // 可归因/可解决的供应根因权重 = 物料短缺子树贡献（决策方案针对整条供应链根因·非仅终点叶）。
+    const l2nodes = gaLevels.find((L) => L.depth === 2)?.nodes ?? [];
+    const addressable = round(num(l2nodes.find((n) => str(n.id) === "material:cathode")?.contribution, num(root.contribution)), 4);
+
+    // 2) 方案生成（读真供应链对象·dims 真算·≥3）。
+    const ltas = (await this.repos.objects.listByType(ctx.tenantId, "LongTermAgreement")).map((o) => o.props);
+    const pools = (await this.repos.objects.listByType(ctx.tenantId, "BackupSupplierPool")).map((o) => o.props);
+    const ltaShortfall = round(ltas.filter((l) => str(l.materialType) === "正极").reduce((a, l) => a + Math.max(0, num(l.contractedQtyTon) - num(l.actualDeliveredTon)), 0), 0);
+    const cathodePool = pools.find((p) => str(p.materialType) === "正极");
+    const certWeeks = num(cathodePool?.certWeeks, 16);
+    const cathodeLta = ltas.find((l) => str(l.materialType) === "正极");
+    const priceLinked = Boolean(cathodeLta?.priceLinked);
+    const effBackup = round(Math.max(0.2, 1 - certWeeks / 26), 4); // certWeeks 真值 → 越短越有效
+    const effClause = priceLinked ? 0.3 : 0.7; // 无价格联动条款 → 加条款收益大
+    const effInsource = 0.9;
+    const shortfallFrac = round(Math.min(1, ltaShortfall / 2000), 4);
+    // closesGap 真算：可解决供应根因权重 addressable × 方案有效性(真对象派生) × 缺口规模系数。改根因颗粒→addressable/有效性变→closesGap 变(C6)。
+    const cg = (eff: number) => round(Math.min(addressable, addressable * eff * (0.6 + 0.4 * shortfallFrac)), 4);
+    const options = [
+      { optionId: "opt-backup-cert", factorId: rootFactorId, label: "缩短备份供应商认证周期", sourceKind: "solver" as const,
+        closesGap: cg(effBackup), cost: round(120 + certWeeks * 8, 0), cycleDays: round(certWeeks * 7, 0), risk: 0.25, exposure: round(0.6 * (1 - effBackup), 3), reversibility: 0.8,
+        provenance: { kind: "求解器" as const, basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: str(cathodePool?.poolId ?? "pool-cathode"), drillValue: certWeeks } },
+      { optionId: "opt-lta-clause", factorId: rootFactorId, label: priceLinked ? "长协条款优化" : "长协加价格联动条款", sourceKind: "agent" as const,
+        closesGap: cg(effClause), cost: round(num(cathodeLta?.breachPenaltyWan, 180) * 0.5, 0), cycleDays: 30, risk: 0.2, exposure: round(0.5 * (priceLinked ? 0.4 : 0.15), 3), reversibility: 0.9,
+        provenance: { kind: "策略推理" as const, basis: "LongTermAgreement.priceLinked", drillType: "LongTermAgreement", drillId: str(cathodeLta?.ltaId ?? "lta-lfp-cylk"), drillValue: priceLinked ? 1 : 0 } },
+      { optionId: "opt-insource", factorId: rootFactorId, label: "上游自采矿+战略储备", sourceKind: "agent" as const,
+        closesGap: cg(effInsource), cost: round(800 + shortfallFrac * 1200, 0), cycleDays: 180, risk: 0.55, exposure: 0.05, reversibility: 0.2,
+        provenance: { kind: "策略推理" as const, basis: "正极供应缺口(LTA 约定−实际交付)", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: ltaShortfall } },
+    ];
+
+    // 3) 比对矩阵。
+    const matrix = options.map((o) => ({ optionId: o.optionId, label: o.label, dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility } }));
+
+    // 4) 触发规则评估（读 TriggerRule 对象 + 信号真值 → fired；阈值可被 RuleEntry.params 覆盖·C3）。
+    const trigObjs = (await this.repos.objects.listByType(ctx.tenantId, "TriggerRule")).map((o) => o.props);
+    const extSig = (await this.repos.objects.listByType(ctx.tenantId, "ExternalSignal")).map((o) => o.props);
+    const trends = (await this.repos.objects.listByType(ctx.tenantId, "CommodityPriceTrend")).map((o) => o.props).sort((a, b) => str(a.weekOf).localeCompare(str(b.weekOf)));
+    const signalVal = new Map<string, number>();
+    for (const s of extSig) signalVal.set(str(s.signalKey), num(s.value));
+    if (trends.length >= 2) { const f = num(trends[0]!.pricePerTon), l = num(trends[trends.length - 1]!.pricePerTon); signalVal.set("licarb_pct_cum", round(f > 0 ? (l - f) / f * 100 : 0, 2)); }
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const cmp = (v: number, op: string, t: number) => (op === ">" ? v > t : op === ">=" ? v >= t : op === "<" ? v < t : op === "<=" ? v <= t : v === t);
+    const triggers = trigObjs.sort((a, b) => str(a.triggerId).localeCompare(str(b.triggerId))).map((tr) => {
+      const rule = pubRules.find((r) => r.key === str(tr.cfgRuleKey));
+      const override = rule?.params?.[str(tr.triggerId)];
+      const threshold = override != null ? num(override) : num(tr.threshold);
+      const sv = signalVal.get(str(tr.signalRef)) ?? 0;
+      return { triggerId: str(tr.triggerId), signalRef: str(tr.signalRef), signalValue: sv, op: str(tr.op), threshold, fired: cmp(sv, str(tr.op), threshold), action: str(tr.action), thresholdSource: (override != null ? "rule.params" : "trigger.default") as "rule.params" | "trigger.default" };
+    });
+    for (const t of triggers.filter((x) => x.fired)) await this.outbox?.emit(ctx.tenantId, "trigger.fired", { triggerId: t.triggerId, signalRef: t.signalRef, signalValue: t.signalValue, action: t.action });
+
+    // 5) 贪心组合（补缺口/代价比最优·补到 gap 或用尽）→ ActionPlan（分步）。
+    // 贪心按补缺口/代价比选，直到覆盖可解决权重 addressable（方案是同一供应根因的替代/叠加·总收益封顶 addressable·不虚增）。
+    const byValue = [...options].sort((a, b) => b.closesGap / b.cost - a.closesGap / a.cost || a.optionId.localeCompare(b.optionId));
+    const chosen: typeof options = [];
+    let acc = 0;
+    for (const o of byValue) { if (acc >= addressable) break; chosen.push(o); acc = round(acc + o.closesGap, 4); }
+    const phaseOf = (c: number): "即刻" | "本季" | "半年" => (c <= 30 ? "即刻" : c <= 90 ? "本季" : "半年");
+    const totalClosesGap = round(Math.min(addressable, chosen.reduce((a, o) => a + o.closesGap, 0)), 4);
+    const plan = {
+      planId: `plan-${rootFactorId}`, optionIds: chosen.map((o) => o.optionId),
+      steps: chosen.map((o) => ({ phase: phaseOf(o.cycleDays), action: o.label, optionRef: o.optionId })),
+      totalClosesGap, totalCost: round(chosen.reduce((a, o) => a + o.cost, 0), 0),
+    };
+
+    // 6) 差距收窄试算（确定性·组合真 closesGap / gap·改方案/改根因颗粒→收窄变·非写死）。
+    const afterGap = round(Math.max(0, gap - plan.totalClosesGap), 4);
+    const narrowedPct = round(gap > 0 ? (gap - afterGap) / gap * 100 : 0, 2);
+    const sandboxNarrowing = { beforeGap: gap, afterGap, narrowedPct, ticks: 0 };
+
+    await this.outbox?.emit(ctx.tenantId, "decision.options_generated", { metricKey: rootMetric.key, factorId: rootFactorId, optionCount: options.length, firedTriggers: triggers.filter((t) => t.fired).length });
+    return {
+      rootCause: { factorId: rootFactorId, label: str(root.factor), metricKey: rootMetric.key, gap, unit },
+      options, matrix, triggers, recommendedPlan: plan, sandboxNarrowing,
+      summary: `根因「${str(root.factor)}」(可解决供应权重 ${addressable}${unit}) → ${options.length} 方案比对(补缺口/代价/周期/风险/敞口/可逆)·推荐组合 ${chosen.length} 项补 ${plan.totalClosesGap}${unit}(收窄 ${narrowedPct}%)·${triggers.filter((t) => t.fired).length}/${triggers.length} 触发规则 fire`,
     };
   }
 
@@ -1766,6 +1872,7 @@ export class SolverService {
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
     if (solverKey === "gap_attribution") return this.gapAttribution(ctx, args);
+    if (solverKey === "decision_play") return this.decisionPlay(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);

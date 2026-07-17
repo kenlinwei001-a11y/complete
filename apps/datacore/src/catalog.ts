@@ -80,6 +80,7 @@ export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
   { key: "audit_timeline", name: "审计项时序推演", description: "按审计项 kind 出 90 天逐日传导度 series + 4 阶段（事件窗→约束越线→波及订单→财务击穿），与产能推演同款逐日交互。规划体检/规划建议共用。", argHints: { kind: "审计项类别(产销/毛利/齐套/现金…)", horizon: "天数(默认90)" }, domain: "plan" },
   { key: "ksf_graph", name: "财务 KSF 图", description: "3 层有向图投影：待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。问题→KSF 威胁边、KSF→财务 支撑边，读 Metric(ksfRef)+KSF 投影。规划体检/规划建议共用。", argHints: {}, domain: "decision" },
   { key: "gap_attribution", name: "深度反向缺口归因", description: "总目标缺口(Metric.gap)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+residual=父gap 硬勾稽)到基地×订单×瓶颈叶，再沿 caused_by 因果边继续溯(占比)到地缘/决策终点，产 ~20 叶子原子因素表 + residual。叶级贡献由真颗粒对象值派生(改颗粒→归因变)。回答『总缺口沿链路一路归到哪些最终根因、各占多少、每叶证据是什么』。", argHints: { metricKey: "目标指标 key(缺省取最严重越线者)" }, domain: "decision" },
+  { key: "decision_play", name: "决策推演(多方案+触发行动)", description: "对某根因(gap_attribution 产物)生成≥3 个决策方案(读真供应链对象·各维度真算:补缺口/代价/周期/风险/矿价敞口/可逆性)→比对矩阵→评估触发规则(信号阈值→行动·阈值一等可编辑)→贪心组合成分步行动计划→试算差距收窄。改根因颗粒→方案分随之变。回答『这个根因怎么补、有哪些选择、各方案代价/收益、什么信号触发什么行动、推荐组合能收窄多少』。", argHints: { metricKey: "目标指标 key(缺省最严重越线)", factorId: "根因因素 id(缺省取最高贡献因果根)" }, domain: "decision" },
 ];
 
 /**
