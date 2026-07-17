@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, type TestApp } from "./helpers.js";
 import type { AuthCtx } from "../src/domain.js";
+import { CAUSAL_FACTORS } from "../src/synthetic/battery-extended.js";
 
 /**
  * WO-CEO-2 · gap_attribution 深度反向归因引擎（GAP-ATTR·挡假推演·绿测试≠能用）。
@@ -160,5 +161,121 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
     // residual 随系数变大（0.88→0.5 → 顶层 residual 从 12% 升到 50%）
     expect(after.residualPct).toBeGreaterThan(before.residualPct + 20);
     expect(after.reconciled).toBe(true); // 改系数后勾稽仍自洽
+  });
+});
+
+describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
+  async function load(t: TestApp) {
+    const cfRows = await t.repos.objects.listByType(ADMIN.tenantId, "CausalFactor");
+    const cfById = new Map(cfRows.map((o) => [String(o.props.factorId), o.props]));
+    const links = await t.repos.links.list(ADMIN.tenantId);
+    const causedBy = links
+      .filter((l) => l.type === "caused_by")
+      .map((l) => ({ from: l.fromId.replace(/^obj_causalfactor_/, ""), to: l.toId.replace(/^obj_causalfactor_/, "") }));
+    const objectsByType = async (type: string) => {
+      const objs = await t.repos.objects.listByType(ADMIN.tenantId, type);
+      return new Map(objs.map((o) => [String(Object.entries(o.props).find(([k]) => k.toLowerCase().includes("id"))?.[1] ?? o.id), o.props]));
+    };
+    return { cfById, causedBy, objectsByType };
+  }
+
+  it("D1 所有指标因果因素均物化为 CausalFactor 对象（factorId/drillType/drillId/drillField 齐全）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const { cfById } = await load(t);
+    const equipment = await t.repos.objects.listByType(ADMIN.tenantId, "Equipment");
+    const equipIds = new Set(equipment.map((o) => String(o.props.equipId)));
+    for (const expected of CAUSAL_FACTORS) {
+      const actual = cfById.get(expected.factorId);
+      expect(actual).toBeTruthy();
+      expect(String(actual!.drillType)).toBe(expected.drillType);
+      expect(String(actual!.drillField)).toBe(expected.drillField);
+      expect(Boolean(actual!.isRoot)).toBe(expected.isRoot);
+      // cf-capacity-short 在生成期绑定到真实 Equipment（动态 drillId），只验它是真实 equipId。
+      if (expected.factorId === "cf-capacity-short") {
+        expect(equipIds.has(String(actual!.drillId))).toBe(true);
+      } else {
+        expect(String(actual!.drillId)).toBe(expected.drillId);
+      }
+    }
+  });
+
+  it("D2 每个根因下钻到真实存在的对象与字段（R6·无悬空 drill）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const { cfById } = await load(t);
+    const pkByType: Record<string, string> = {
+      CompetitorPrice: "priceId", BidRecord: "bidId", PipelineOpportunity: "oppId", WinLossRecord: "oppId",
+      PriceRealization: "realizationId", ARAging: "agingId", DSO: "dsoId", OverdueRecord: "overdueId",
+      Equipment: "equipId", MaterialBalance: "matBalId",
+      Supplier: "supplierId", LongTermAgreement: "ltaId", CommodityPriceTrend: "trendId",
+      ExternalSignal: "signalKey", BackupSupplierPool: "poolId", DecisionGap: "gapId",
+    };
+    for (const cf of CAUSAL_FACTORS) {
+      // 生成期对 cf-capacity-short 做了动态 Equipment 绑定，用物化后的 drillId 校验。
+      const persisted = cfById.get(cf.factorId);
+      const drillId = cf.factorId === "cf-capacity-short" ? String(persisted!.drillId) : cf.drillId;
+      if (cf.drillType === "Metric") {
+        const metrics = await t.repos.objects.listByType(ADMIN.tenantId, "Metric");
+        expect(metrics.some((o) => String(o.props.key) === drillId || String(o.props.metricId) === drillId)).toBe(true);
+        continue;
+      }
+      const pk = pkByType[cf.drillType];
+      expect(pk).toBeTruthy();
+      const objs = await t.repos.objects.listByType(ADMIN.tenantId, cf.drillType);
+      const found = objs.find((o) => String(o.props[pk]) === drillId);
+      expect(found).toBeTruthy();
+      expect(found!.props).toHaveProperty(cf.drillField);
+    }
+  });
+
+  it("D3 cf-capacity-short 下钻到真实 Equipment（非回退常量，drillId 是真实 equipId）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const { cfById } = await load(t);
+    const cf = cfById.get("cf-capacity-short");
+    expect(cf).toBeTruthy();
+    expect(cf!.drillId).not.toBe("EQ-changzhou-001");
+    const equip = await t.repos.objects.listByType(ADMIN.tenantId, "Equipment");
+    const ids = new Set(equip.map((o) => String(o.props.equipId)));
+    expect(ids.has(String(cf!.drillId))).toBe(true);
+  });
+
+  it("D4 每指标 caused_by 边真实物化（market_share / revenue / cash / demand_attain / supply）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const { causedBy } = await load(t);
+    const expectedEdges = [
+      ["cf-share-gap", "cf-bid-loss"],
+      ["cf-bid-loss", "cf-competitor-price"],
+      ["cf-share-gap", "cf-delivery-reputation"],
+      ["cf-rev-gap", "cf-pipeline-shrink"],
+      ["cf-rev-gap", "cf-price-erosion"],
+      ["cf-rev-gap", "cf-churn"],
+      ["cf-cash-gap", "cf-ar-aging"],
+      ["cf-ar-aging", "cf-customer-concentration"],
+      ["cf-cash-gap", "cf-dso-stretch"],
+      ["cf-demand-gap", "cf-forecast-bias"],
+      ["cf-demand-gap", "cf-capacity-short"],
+      ["cf-demand-gap", "cf-material-short"],
+      ["cf-material-short", "cf-cathode-shortage"],
+      ["cf-cathode-shortage", "cf-upstream-cut"],
+    ];
+    for (const [from, to] of expectedEdges) {
+      expect(causedBy.some((e) => e.from === from && e.to === to)).toBe(true);
+    }
+  });
+
+  it("D5 R6 确定性：同 seed 两次 seedBattery 后因果对象与边数量一致", async () => {
+    const t1 = await makeApp();
+    await seedBattery(t1, 42);
+    const t2 = await makeApp();
+    await seedBattery(t2, 42);
+    const a1 = await load(t1);
+    const a2 = await load(t2);
+    expect(a1.cfById.size).toBe(a2.cfById.size);
+    expect(a1.causedBy.length).toBe(a2.causedBy.length);
+    expect(JSON.stringify(a1.causedBy.sort((x, y) => x.from.localeCompare(y.from) || x.to.localeCompare(y.to))))
+      .toBe(JSON.stringify(a2.causedBy.sort((x, y) => x.from.localeCompare(y.from) || x.to.localeCompare(y.to))));
   });
 });

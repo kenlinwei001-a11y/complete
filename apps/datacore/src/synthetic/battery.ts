@@ -2289,6 +2289,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           });
         }
       }
+      // SA-6 / WO-CEO-DATA-2：设备 OEE 快照由 A×P×Q 派生（不额外抽取 rngTopo·R6 字节一致）。
+      for (const eq of equipment) {
+        if (eq.oee_current === undefined) {
+          eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
+        }
+      }
       const channels = randInt(rngTopo, 600, 780);
       const channelOutputDaily = randInt(rngTopo, 80, 95);
       processes.push({

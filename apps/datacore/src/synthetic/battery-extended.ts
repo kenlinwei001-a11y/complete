@@ -217,7 +217,7 @@ const DEMAND_ATTAIN_CAUSAL_FACTORS = [
   { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false },
 ];
 
-const CAUSAL_FACTORS = [
+export const CAUSAL_FACTORS = [
   ...SUPPLY_CAUSAL_FACTORS,
   ...MARKET_SHARE_CAUSAL_FACTORS,
   ...REVENUE_CAUSAL_FACTORS,
@@ -318,7 +318,7 @@ export function generateExtended(
     bases: { baseId: string; name: string }[];
     lines: { lineId: string }[];
     /** WO-CEO-DATA-2：复用 Equipment/MaterialBalance 作 capacity-short / material-short 下钻真对象。 */
-    equipment?: { equipId: string; baseId?: string; oee_current?: number }[];
+    equipment?: { equipId: string; baseId?: string; oeeA?: number; oeeP?: number; oeeQ?: number }[];
     materialBalances?: { matBalId: string; gapTon?: number }[];
   },
   scale: "S" | "M" | "L" | "XL" = "L",
@@ -497,11 +497,70 @@ export function generateExtended(
     return { ...s, contractedSupplyTon: contracted, actualSupplyTon: Math.round(contracted * s.onTimeRate) };
   });
 
+  // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象（独立 rng2 流，不位移下游 rngTopo / 既有 extended 输出）。
+  const competitorShares = [
+    { shareId: "share-catl-passenger", competitor: "CATL", segment: "passenger", sharePct: round(28 + rng2() * 6, 1), period: "2026-Q2" },
+    { shareId: "share-catl-energy_storage", competitor: "CATL", segment: "energy_storage", sharePct: round(32 + rng2() * 6, 1), period: "2026-Q2" },
+    { shareId: "share-byd-passenger", competitor: "BYD", segment: "passenger", sharePct: round(18 + rng2() * 5, 1), period: "2026-Q2" },
+    { shareId: "share-lg-energy_storage", competitor: "LG Energy Solution", segment: "energy_storage", sharePct: round(12 + rng2() * 5, 1), period: "2026-Q2" },
+  ];
+  const bidRecords = [
+    { bidId: "bid-pass-001", segment: "passenger", win: false, lossReason: "price", amount: round(12000 + rng2() * 2000, 0), competitorRef: "CATL" },
+    { bidId: "bid-com-001", segment: "commercial", win: false, lossReason: "delivery", amount: round(8000 + rng2() * 1500, 0), competitorRef: "BYD" },
+    { bidId: "bid-ess-001", segment: "energy_storage", win: true, amount: round(15000 + rng2() * 3000, 0), competitorRef: "LG Energy Solution" },
+  ];
+  const competitorPrices = [
+    { priceId: "cp-catl-4680-NCM", competitor: "CATL", model: "4680-NCM", pricePerKwh: round(520 + rng2() * 40, 0), period: "2026-Q2" },
+    { priceId: "cp-byd-4680-LFP", competitor: "BYD", model: "4680-LFP", pricePerKwh: round(380 + rng2() * 30, 0), period: "2026-Q2" },
+    { priceId: "cp-lg-prismatic-lfp", competitor: "LG Energy Solution", model: "方形-LFP", pricePerKwh: round(410 + rng2() * 30, 0), period: "2026-Q2" },
+  ];
+  const pipelineOpportunities = [
+    { oppId: "opp-passenger-001", segment: "passenger", stage: "proposal", amount: round(9000 + rng2() * 2000, 0), winProb: round(0.45 + rng2() * 0.15, 2) },
+    { oppId: "opp-energy_storage-001", segment: "energy_storage", stage: "negotiation", amount: round(12000 + rng2() * 3000, 0), winProb: round(0.55 + rng2() * 0.15, 2) },
+    { oppId: "opp-commercial-001", segment: "commercial", stage: "lead", amount: round(5000 + rng2() * 1500, 0), winProb: round(0.35 + rng2() * 0.15, 2) },
+  ];
+  const winLossRecords = [
+    { oppId: "wl-opp-pass-001", result: "churn" as const, reason: "competitor price" },
+    { oppId: "wl-opp-ess-001", result: "win" as const, reason: "delivery advantage" },
+  ];
+  const priceRealizations = [
+    { realizationId: "pr-4680-NCM", model: "4680-NCM", listPrice: round(620 + rng2() * 20, 0), realizedPrice: round(540 + rng2() * 20, 0), period: "2026-Q2" },
+    { realizationId: "pr-4680-LFP", model: "4680-LFP", listPrice: round(460 + rng2() * 20, 0), realizedPrice: round(400 + rng2() * 20, 0), period: "2026-Q2" },
+  ];
+  const arAgings = [
+    { agingId: "ar-cust0-90p", customerRef: "cust_0", bucket: "90+", amount: round(2500 + rng2() * 1000, 0) },
+    { agingId: "ar-cust0-60", customerRef: "cust_0", bucket: "60-90", amount: round(1800 + rng2() * 800, 0) },
+    { agingId: "ar-cust1-30", customerRef: "cust_1", bucket: "0-30", amount: round(1200 + rng2() * 600, 0) },
+  ];
+  const dsoRecords = [
+    { dsoId: "dso-energy_storage", segment: "energy_storage", days: 92, period: "2026-Q2" },
+    { dsoId: "dso-passenger", segment: "passenger", days: 68, period: "2026-Q2" },
+  ];
+  const overdueRecords = [
+    { overdueId: "ovd-G-001", invoiceRef: "INV-G-001", overdueDays: 38, customerRef: "cust_6" },
+  ];
+
+  // capacity-short root 下钻到真实 Equipment（选 OEE 乘积最低者；无上下文时回退常量，保独立可测）。
+  const capacityEquip = ctx.equipment?.length
+    ? ctx.equipment.slice().sort((a, b) => {
+        const oeeA = (Number(a.oeeA) || 1) * (Number(a.oeeP) || 1) * (Number(a.oeeQ) || 1);
+        const oeeB = (Number(b.oeeA) || 1) * (Number(b.oeeP) || 1) * (Number(b.oeeQ) || 1);
+        return oeeA - oeeB;
+      })[0]
+    : undefined;
+  const capacityDrillId = capacityEquip?.equipId ?? "EQ-changzhou-001";
+  const causalFactors = CAUSAL_FACTORS.map((cf) =>
+    cf.factorId === "cf-capacity-short" ? { ...cf, drillId: capacityDrillId } : cf,
+  );
+
   return {
     materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
     capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
-    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors: CAUSAL_FACTORS,
+    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
     triggerRules: TRIGGER_RULES,
+    // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象
+    competitorShares, bidRecords, competitorPrices, pipelineOpportunities, winLossRecords,
+    priceRealizations, arAgings, dsoRecords, overdueRecords,
   };
 }
