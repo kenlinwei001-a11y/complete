@@ -28,8 +28,8 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
       sourceBindings: Array<{ dataset: string; connId: string }>;
       derivedProperties: Array<{ propKey: string }>;
     }>;
-    // 66 类型全由链 CREATE（含 SA-3 Workshop 层 + Phase3 MES 域类型定义）。
-    expect(types.length).toBe(66);
+    // 72 类型全由链 CREATE（66 基线 + WO-CEO-2 供应链/地缘/决策域 5 类 + WO-CEO-3 TriggerRule 1 类）。
+    expect(types.length).toBe(72);
     // R13 provenance 因果真实：凡在 demo 中物化了实例的类型，其 sourceBindings 非空且指向同名真 rawDataset
     //（非硬编码模板）。Phase3 MES 类型（WorkOrder/WIP*/Equipment*E/Operator* 等）为轻量 demo 的
     // 本体模型定义、不落 demo 实例（否则单次 seed 逾万对象拖垮用例），无实例 provenance，故按物化类型校验。
@@ -74,7 +74,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(66);
-    expect(a.objs.length).toBe(3218); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal；类型集不变 66）
+    expect(a.types.length).toBe(72);
+    expect(a.objs.length).toBe(3240); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）
   });
 });

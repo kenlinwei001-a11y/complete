@@ -49,8 +49,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Material", "MaterialBatch", "MaterialBalance", "BOMHeader", "BOMDetail", "MaterialAlternative"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单与在途批次（到货延误/缺料推演）。",
-      typeKeys: ["Supplier", "PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
+      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单、在途批次、长期协议与备份供应商池（到货延误/缺料/断供备份推演）。",
+      typeKeys: ["Supplier", "PurchaseOrder", "Shipment", "LongTermAgreement", "BackupSupplierPool"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
       key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、质检批次/检验结果/缺陷记录、数据源健康度与产品认证（合规/碳护照前置）。",
@@ -61,12 +61,12 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "external_signal", displayName: "外部信号", description: "锂价/镍价/汇率/需求指数/政策等市场与环境信号。",
-      typeKeys: ["ExternalSignal"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["external_feed", "mock_external", "rest_api"],
+      key: "external_signal", displayName: "外部信号", description: "锂价/镍价/汇率/需求指数/政策等市场与环境信号，及大宗商品价格趋势（矿价逐周涨幅）。",
+      typeKeys: ["ExternalSignal", "CommodityPriceTrend"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["external_feed", "mock_external", "rest_api"],
     },
     {
-      key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营指标库/KSF/责任主体与根因归因模板（目标-指标-责任骨架，驱动各视图 KPI · 根因 DAG）。",
-      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营指标库/KSF/责任主体、根因归因模板与深度归因因果域（决策缺陷/因果因素/触发规则；目标-指标-责任骨架，驱动各视图 KPI · 根因 DAG · 决策推演）。",
+      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "workforce", displayName: "人力与班组", description: "操作工考勤与技能认证（MES 人力执行域，班组排产/技能匹配前置）。",
