@@ -187,3 +187,76 @@ FIN-GM,毛利,10000,21000
     expect(forbidden.statusCode).toBe(403);
   });
 });
+
+describe("record-materialize · WO-CEO-DATA-2 内置模板（engine-read 类型）", () => {
+  async function uploadCsv(t: Awaited<ReturnType<typeof makeApp>>, filename: string, csv: string): Promise<string> {
+    const up = await t.app.inject({ method: "POST", url: "/a/v1/uploads", headers: ADMIN, payload: { filename, contentBase64: b64(csv) } });
+    expect(up.statusCode).toBe(201);
+    const connId = (up.json() as { connection: { id: string } }).connection.id;
+    const list = await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN });
+    return (list.json() as { id: string }[])[0]!.id;
+  }
+
+  it("CompetitorPrice 模板：仅传 templateKey 即可物化（列→属性按模板映射）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const csv = `priceId,competitor,model,pricePerKwh,period
+CP-TEST-CATL,CATL,4680-NCM,520,2026-Q2
+CP-TEST-BYD,BYD,方形-LFP,390,2026-Q2`;
+    const rdsId = await uploadCsv(t, "cp_test.csv", csv);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/records/materialize",
+      headers: ADMIN,
+      payload: { rawDatasetId: rdsId, targetType: "CompetitorPrice", templateKey: "CompetitorPrice", replaceExisting: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const out = RecordMaterializeResultSchema.parse(res.json());
+    expect(out.materializedCount).toBe(2);
+    expect(out.primaryKey).toBe("priceId");
+    const objs = await t.repos.objects.listByType("demo", "CompetitorPrice");
+    expect(objs).toHaveLength(2);
+    const catl = objs.find((o) => o.props.priceId === "CP-TEST-CATL")!;
+    expect(catl.props.competitor).toBe("CATL");
+    expect(catl.props.pricePerKwh).toBe(520);
+    expect(catl.origin).toMatchObject({ type: "MATERIALIZED", datasetId: rdsId });
+  });
+
+  it("PipelineOpportunity 模板：templateKey 与显式 columnMapping 叠加（显式优先）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const csv = `oppId,segment,stage,amount,winProb
+OPP-TEST-1,passenger,proposal,8000,0.42
+OPP-TEST-2,energy_storage,negotiation,11000,0.60`;
+    const rdsId = await uploadCsv(t, "pipeline_test.csv", csv);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/records/materialize",
+      headers: ADMIN,
+      payload: { rawDatasetId: rdsId, targetType: "PipelineOpportunity", templateKey: "PipelineOpportunity", replaceExisting: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const out = RecordMaterializeResultSchema.parse(res.json());
+    expect(out.materializedCount).toBe(2);
+    const objs = await t.repos.objects.listByType("demo", "PipelineOpportunity");
+    const o1 = objs.find((o) => o.props.oppId === "OPP-TEST-1")!;
+    expect(o1.props.amount).toBe(8000);
+    expect(o1.props.winProb).toBe(0.42);
+  });
+
+  it("模板请求必须至少提供 templateKey 或 columnMapping（全空 400）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const up = await t.app.inject({ method: "POST", url: "/a/v1/uploads", headers: ADMIN, payload: { filename: "empty.csv", contentBase64: b64("id\n1") } });
+    const connId = (up.json() as { connection: { id: string } }).connection.id;
+    const list = await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN });
+    const rdsId = (list.json() as { id: string }[])[0]!.id;
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/records/materialize",
+      headers: ADMIN,
+      payload: { rawDatasetId: rdsId, targetType: "CompetitorPrice" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

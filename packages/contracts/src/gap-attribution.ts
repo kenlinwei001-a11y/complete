@@ -24,29 +24,13 @@ export const GapProvenanceKindSchema = z.enum([
 ]);
 export type GapProvenanceKind = z.infer<typeof GapProvenanceKindSchema>;
 
-/** 严重度分级（v2·用于归因节点与结果顶层分级） */
-export const SeverityKindSchema = z.enum(["critical", "major", "minor", "info"]);
-export type SeverityKind = z.infer<typeof SeverityKindSchema>;
-
-/** MetricCausalBinding 配置：metricKey → 优先因果根假设 + 域权重（v2）。
- *  实际以 RuleEntry(params) 扁平键形式持久化（例：`seg_attain_ess:cf-decision-gap`=0.6、
- *  `seg_attain_ess:domain:decision`=0.7），本 schema 供运行时解析/校验。 */
-export const MetricCausalBindingSchema = z.object({
-  metricKey: z.string(),
-  roots: z.array(z.string()).default([]), // 优先因果根 factorId 列表
-  domainWeights: z.record(z.string(), z.number()).default({}), // 按域（decision/external/supply…）的权重
-  fallbackToSupplyChain: z.boolean().default(true), // 无绑定/无命中根时是否回落供应链根
-});
-export type MetricCausalBinding = z.infer<typeof MetricCausalBindingSchema>;
-
 export const GapProvenanceSchema = z.object({
   kind: GapProvenanceKindSchema,
   drillType: z.string().optional(), // 下钻源对象类型（Equipment/MaterialBalance/Supplier/CommodityPriceTrend/DecisionGap）
-  drillId: z.string().optional(), // 源对象 id（R13 可下钻）
+  drillId: z.string().optional(), // 源对象 id（R13 可下钻；"*" 表示按类型聚合）
   drillField: z.string().optional(), // 取值字段（oee_current/gapTon/actualSupplyTon/pctChange）
   drillValue: z.number().optional(), // 该字段真值（改它→归因变·C5 铁律）
   provenanceSynthetic: z.boolean().optional(), // 合成源诚实标灰（地缘/矿价无真源时·不冒充实测）
-  severityKind: SeverityKindSchema.optional(), // v2 严重度分级
 });
 export type GapProvenance = z.infer<typeof GapProvenanceSchema>;
 
@@ -83,18 +67,6 @@ export const GapReconCheckSchema = z.object({
 });
 export type GapReconCheck = z.infer<typeof GapReconCheckSchema>;
 
-// ── 多假设归因结果（v2·当 Metric 有多个根假设时，每条假设的分配） ─────────────
-export const MetricAttributionHypothesisSchema = z.object({
-  rootFactorId: z.string(),
-  rootFactorLabel: z.string(),
-  allocatedGap: z.number(), // 折算到目标 gap 量纲的分配值
-  share: z.number(), // 占因果层可解释量的比例
-  severityKind: SeverityKindSchema,
-  causalPath: z.array(z.string()).default([]), // 从结构叶到该根的路径
-  leafIds: z.array(z.string()).default([]), // 本假设覆盖的叶子 id 列表
-});
-export type MetricAttributionHypothesis = z.infer<typeof MetricAttributionHypothesisSchema>;
-
 // ── 引擎产物：瀑布 DAG + 叶子表 + residual ────────────────────────────────────
 export const GapAttributionOutputSchema = z.object({
   rootMetric: z.object({
@@ -106,7 +78,6 @@ export const GapAttributionOutputSchema = z.object({
     gap: z.number(), // target − actual（缺口·正=未达）
   }),
   totalGap: z.number(),
-  noGap: z.boolean().optional(), // v2·actual>=target/gap<=0 时短路边界
   levels: z.array(GapAttributionLevelSchema), // 结构反向分摊（gap 单位）
   atomicLeaves: z.array(GapAttributionNodeSchema), // ~20 叶子原子因素（结构叶 + 因果链终点）
   causalEdges: z.array(
@@ -115,8 +86,6 @@ export const GapAttributionOutputSchema = z.object({
   reconChecks: z.array(GapReconCheckSchema),
   reconciled: z.boolean(), // 全层勾稽通过
   residualPct: z.number(), // 顶层 residual 占 totalGap 比（C6·诚实<15%）
-  severityKind: SeverityKindSchema.optional(), // v2 结果顶层严重度
-  hypotheses: z.array(MetricAttributionHypothesisSchema).optional(), // v2 多假设分配
   summary: z.string(),
 });
 export type GapAttributionOutput = z.infer<typeof GapAttributionOutputSchema>;
@@ -132,6 +101,10 @@ export const LongTermAgreementSchema = z.object({
   actualDeliveredTon: z.number(), // 实际交付（< 约定 = 违约）
   priceLinked: z.boolean(), // 价格联动条款有无（无 → 矿价涨不传导保护 → 决策缺陷）
   breachPenaltyWan: z.number(), // 违约成本（万元）
+  // WO-CEO-DATA-2 §2b 真源字段：价格联动公式 + 生效/失效日期（接真 ERP/合同履约）。
+  priceFormula: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  expiryDate: z.string().optional(),
 });
 export type LongTermAgreement = z.infer<typeof LongTermAgreementSchema>;
 
@@ -152,6 +125,10 @@ export const CommodityPriceTrendSchema = z.object({
   weekOf: z.string(), // ISO 周锚（YYYY-MM-DD）
   pricePerTon: z.number(),
   pctChange: z.number(), // 环比涨幅（%·正=涨）
+  // WO-CEO-DATA-2 §2b 真源字段：数据来源 + 规格 + 币种（接真行情 SMM/Wind/百川）。
+  source: z.string().optional(),
+  spec: z.string().optional(),
+  currency: z.string().optional(),
 });
 export type CommodityPriceTrend = z.infer<typeof CommodityPriceTrendSchema>;
 
@@ -162,5 +139,115 @@ export const DecisionGapSchema = z.object({
   description: z.string(),
   severity: z.number(), // 0–1（严重度·改它→决策叶贡献变）
   ownerRef: z.string().optional(),
+  // WO-CEO-DATA-2 §2b 真源字段：评审日期 + 证据（非实测·评审录入·接真前标灰）。
+  reviewDate: z.string().optional(),
+  evidence: z.string().optional(),
 });
 export type DecisionGap = z.infer<typeof DecisionGapSchema>;
+
+/** 因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象）。 */
+export const CausalFactorSchema = z.object({
+  factorId: z.string(),
+  label: z.string(),
+  drillType: z.string(),
+  drillId: z.string(),
+  drillField: z.string(),
+  kind: z.enum(["实测", "派生", "外部信号", "决策"]),
+  isRoot: z.boolean(),
+  provenanceSynthetic: z.boolean(),
+  // WO-CEO-DATA-2：每个 CausalFactor 归属一个指标域，供引擎按指标选因果根。
+  metricKey: z.string().optional(),
+});
+export type CausalFactor = z.infer<typeof CausalFactorSchema>;
+
+// ── WO-CEO-DATA-2 每指标多假设因果域 drill 真对象 schema ────────────────────────
+
+/** 市场份额：竞品份额（按细分/周期）。 */
+export const CompetitorShareSchema = z.object({
+  shareId: z.string(),
+  competitor: z.string(),
+  segment: z.string(),
+  sharePct: z.number(),
+  period: z.string(),
+});
+export type CompetitorShare = z.infer<typeof CompetitorShareSchema>;
+
+/** 竞标记录：逐单 win/loss + 丢标原因 + 金额 + 竞品引用。 */
+export const BidRecordSchema = z.object({
+  bidId: z.string(),
+  segment: z.string(),
+  win: z.boolean(),
+  lossReason: z.string(),
+  amount: z.number(),
+  competitorRef: z.string(),
+});
+export type BidRecord = z.infer<typeof BidRecordSchema>;
+
+/** 竞品价格：竞品×型号×周期 价格（$/kWh）。 */
+export const CompetitorPriceSchema = z.object({
+  priceId: z.string(),
+  competitor: z.string(),
+  model: z.string(),
+  pricePerKwh: z.number(),
+  period: z.string(),
+});
+export type CompetitorPrice = z.infer<typeof CompetitorPriceSchema>;
+
+/** 营收漏斗：逐机会阶段/金额/赢率。 */
+export const PipelineOpportunitySchema = z.object({
+  oppId: z.string(),
+  segment: z.string(),
+  stage: z.string(),
+  amount: z.number(),
+  winProb: z.number(),
+});
+export type PipelineOpportunity = z.infer<typeof PipelineOpportunitySchema>;
+
+/** 赢单/丢单记录：逐单结果/原因/金额。 */
+export const WinLossRecordSchema = z.object({
+  recordId: z.string(),
+  oppId: z.string(),
+  result: z.enum(["WIN", "LOST"]),
+  reason: z.string(),
+  amount: z.number(),
+});
+export type WinLossRecord = z.infer<typeof WinLossRecordSchema>;
+
+/** 价格实现：型号×周期 列表价 vs 实际成交价。 */
+export const PriceRealizationSchema = z.object({
+  priceId: z.string(),
+  model: z.string(),
+  listPrice: z.number(),
+  realizedPrice: z.number(),
+  period: z.string(),
+});
+export type PriceRealization = z.infer<typeof PriceRealizationSchema>;
+
+/** 应收账款账龄：逐客户×账龄桶金额。 */
+export const ARAgingSchema = z.object({
+  agingId: z.string(),
+  customerRef: z.string(),
+  bucket: z.enum(["0-30", "30-60", "60-90", "90+"]),
+  amount: z.number(),
+  period: z.string(),
+});
+export type ARAging = z.infer<typeof ARAgingSchema>;
+
+/** DSO：逐细分×周期 天数。 */
+export const DSOSchema = z.object({
+  dsoId: z.string(),
+  segment: z.string(),
+  days: z.number(),
+  period: z.string(),
+});
+export type DSO = z.infer<typeof DSOSchema>;
+
+/** 逾期记录：逐发票逾期天数/金额。 */
+export const OverdueRecordSchema = z.object({
+  overdueId: z.string(),
+  invoiceRef: z.string(),
+  overdueDays: z.number(),
+  customerRef: z.string(),
+  amount: z.number(),
+});
+export type OverdueRecord = z.infer<typeof OverdueRecordSchema>;

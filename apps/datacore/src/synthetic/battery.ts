@@ -2243,6 +2243,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           });
         }
       }
+      // WO-CEO-DATA-2：Equipment.oee_current 由 A×P×Q 派生（不额外消耗 rngTopo·R6 字节一致）。
+      for (const eq of equipment) {
+        if (eq.oee_current === undefined) {
+          eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
+        }
+      }
       const channels = randInt(rngTopo, 600, 780);
       const channelOutputDaily = randInt(rngTopo, 80, 95);
       processes.push({

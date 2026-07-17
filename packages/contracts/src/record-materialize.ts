@@ -30,10 +30,12 @@ export const RecordMaterializeRequestSchema = z.object({
   rawDatasetId: z.string().min(1),
   /** 目标：物化进哪个**已发布**对象类型（求解器/驾驶舱读点·如 FinancePlan / MaterialBalance / DemandSegment）。 */
   targetType: z.string().min(1),
-  /** 列→属性映射（真源列 → 目标 propKey）。必须覆盖目标类型主键属性。 */
-  columnMapping: RecordColumnMappingSchema,
+  /** 列→属性映射（真源列 → 目标 propKey）。必须覆盖目标类型主键属性；可省略，用 `templateKey` 填充。 */
+  columnMapping: RecordColumnMappingSchema.optional(),
+  /** 内置物化模板键（覆盖 engine-read 类型常用列→属性映射；可与 columnMapping 叠加覆盖）。 */
+  templateKey: z.string().min(1).optional(),
   /**
-   * 真源里作主键的**列名**（其映射后的属性须是目标类型主键）。缺省时取"映射到主键属性的那一列"。
+   * 真源里作主键的**列名**（其映射后的属性须是目标类型主键）。缺省时取"映射到主键属性的那一列"或模板声明。
    * 对象 id = `obj_{targetType}_{该列值}`（sanitize·R6 稳定）。
    */
   primaryKeyColumn: z.string().min(1).optional(),
@@ -44,6 +46,9 @@ export const RecordMaterializeRequestSchema = z.object({
   replaceExisting: z.boolean().optional(),
   /** 只校验+试算不落库（返回将物化的条数/样例/告警·R6 与真跑一致）。 */
   dryRun: z.boolean().optional(),
+}).refine((d) => !!(d.columnMapping && Object.keys(d.columnMapping).length > 0) || !!d.templateKey, {
+  message: "必须提供 columnMapping 或 templateKey 之一",
+  path: ["columnMapping"],
 });
 export type RecordMaterializeRequest = z.infer<typeof RecordMaterializeRequestSchema>;
 
