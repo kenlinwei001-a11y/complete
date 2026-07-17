@@ -36,7 +36,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
-import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）
+import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -205,6 +205,13 @@ export class Orchestrator {
     if (scene?.intentCatalogFilter) {
       candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));
     }
+    // WO-CEO-6（闭 G-3·纯 additive 门控）：CEO 专属深问意图仅在注入了 PageContext 时进候选池。
+    // 无 PageContext = 普通问句 → 剔除 ceo_* 意图，平台分类与 CEO-6 前逐字节一致（不污染既有意图目录·不劫持·
+    // combined-gate 血泪：seed 的 enabledViews="*" 曾污染全视图候选池，误夺 risk_root_cause/adopt_mitigation 等）。
+    const hasPageContext = Boolean(task.context.pageContext);
+    if (!hasPageContext) {
+      candidates = candidates.filter((i) => !isCeoIntentKey(i.key));
+    }
 
     if (candidates.length === 0) {
       const classification: ClassificationResult = {
@@ -243,9 +250,10 @@ export class Orchestrator {
 
     // WO-CEO-6（闭 G-3 深问侧）：CEO 深问确定性路由——命中意图模式（为什么/怎么补/差多少/信号）+ PageContext →
     // resolveCeoRoute（args 从 PageContext.focus 派生）→ 绑定 CEO 意图 → path A 执行 invoke_solver(CEO 求解器) → 答案+溯源。
-    // 门控：仅 CEO 深问模式命中且目标意图在候选内才绑定（非 CEO 问句照常走下方 classifier·不劫持）。
+    // 门控：仅「注入了 PageContext + CEO 深问模式命中 + 目标意图在候选内」才绑定（无 PageContext 或非 CEO 问句照常走
+    // 下方 classifier·不劫持）。PageContext 是 CEO-6 语义前提：args 从 focus 派生·证同问句带/不带上下文答案不同（C2/C3）。
     // 行级 scope（A6）由 datacore OBO 依身份真过滤（CEO/admin 全域·base_manager:X 限 X），非本层强制。
-    if (isCeoQuestion(task.query)) {
+    if (hasPageContext && isCeoQuestion(task.query)) {
       const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
       const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
       if (ceoIntent) {

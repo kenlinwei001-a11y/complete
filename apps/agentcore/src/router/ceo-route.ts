@@ -19,6 +19,14 @@ export function isCeoQuestion(q: string): boolean {
   return [RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
+/** CEO 深问专属意图 key 集（种子于 mocks/seed.ts·单一真源）——仅 PageContext 注入时进候选池（否则平台行为与 CEO-6 前逐字节一致·纯 additive·不劫持既有意图）。 */
+export const CEO_INTENT_KEYS = new Set(["ceo_root_cause", "ceo_decision", "ceo_metric"]);
+
+/** 是否 CEO 专属意图（用于候选池 PageContext 门控过滤）。 */
+export function isCeoIntentKey(key: string): boolean {
+  return CEO_INTENT_KEYS.has(key);
+}
+
 /** 路由 → 落地 CEO 意图 key（种子 intent·path A 执行 invoke_solver→solver_summary）。 */
 export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
   if (route === "decision_play" || route === "signal") return "ceo_decision";
