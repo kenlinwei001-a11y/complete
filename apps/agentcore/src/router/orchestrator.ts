@@ -36,6 +36,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
+import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -237,6 +238,22 @@ export class Orchestrator {
           await this.proceedWithIntent(taskId, auth, forced, {});
           return;
         }
+      }
+    }
+
+    // WO-CEO-6（闭 G-3 深问侧）：CEO 深问确定性路由——命中意图模式（为什么/怎么补/差多少/信号）+ PageContext →
+    // resolveCeoRoute（args 从 PageContext.focus 派生）→ 绑定 CEO 意图 → path A 执行 invoke_solver(CEO 求解器) → 答案+溯源。
+    // 门控：仅 CEO 深问模式命中且目标意图在候选内才绑定（非 CEO 问句照常走下方 classifier·不劫持）。
+    // 行级 scope（A6）由 datacore OBO 依身份真过滤（CEO/admin 全域·base_manager:X 限 X），非本层强制。
+    if (isCeoQuestion(task.query)) {
+      const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
+      const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+      if (ceoIntent) {
+        await this.deps.repos.tasks.patch(taskId, {
+          classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:ceo-route" },
+        });
+        await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+        return;
       }
     }
 

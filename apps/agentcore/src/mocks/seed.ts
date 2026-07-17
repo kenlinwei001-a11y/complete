@@ -442,6 +442,34 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     });
   }
 
+  // WO-CEO-6：CEO 深问能力——3 意图+计划（invoke_solver CEO 求解器 → solver_summary 投影答案+溯源）。
+  // 由 orchestrator 确定性 CEO 路由（resolveCeoRoute·从 PageContext.focus 派生 args）绑定 → 真 NL 深问出答案（闭 G-3 深问侧）。
+  const ceoCaps: { key: string; name: string; solver: string; examples: string[]; slotNames: string[] }[] = [
+    { key: "ceo_root_cause", name: "CEO 根因深问", solver: "gap_attribution", examples: ["为什么没达标", "根因是什么", "缺口拆解到最终根因"], slotNames: ["metricKey"] },
+    { key: "ceo_decision", name: "CEO 决策推演", solver: "decision_play", examples: ["这个根因怎么补", "有哪些方案", "怎么应对"], slotNames: ["metricKey", "factorId"] },
+    { key: "ceo_metric", name: "CEO 达标查询", solver: "metric_rollup", examples: ["各指标差多少", "哪些指标越线", "达成情况"], slotNames: ["metricKey"] },
+  ];
+  for (const cap of ceoCaps) {
+    const planId = `plan_${cap.key}_v1${sfx}`;
+    plans.push({
+      id: planId, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
+      steps: [
+        { id: "s1", type: "invoke_solver", params: { solverKey: cap.solver, args: Object.fromEntries(cap.slotNames.map((n) => [n, `{{slots.${n}}}`])) } },
+        { id: "render", type: "render_answer", params: { blocks: [
+          { type: "text", markdown: `${cap.name}（求解器 ${cap.solver}·溯源见下 ⟦ref:0⟧）：` },
+          { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
+        ] } },
+      ],
+    });
+    intents.push({
+      id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
+      name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,
+      examples: cap.examples, enabledViews: "*",
+      slots: cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" })),
+      planId, riskLevel: "COMPUTE" as const, owner: "seed", createdAt: now, updatedAt: now,
+    });
+  }
+
   return { intents, plans };
 }
 

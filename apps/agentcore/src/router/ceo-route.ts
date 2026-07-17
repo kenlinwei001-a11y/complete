@@ -14,6 +14,18 @@ const RE_OPTION = /(怎么补|怎么办|方案|选择|应对|对策|怎么解决
 const RE_SIGNAL = /(信号|触发|预警|涨|外部|地缘|矿价)/;
 const RE_ATTAIN = /(差多少|达成|缺口多少|还差|完成率|达标)/;
 
+/** 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。 */
+export function isCeoQuestion(q: string): boolean {
+  return [RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+}
+
+/** 路由 → 落地 CEO 意图 key（种子 intent·path A 执行 invoke_solver→solver_summary）。 */
+export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
+  if (route === "decision_play" || route === "signal") return "ceo_decision";
+  if (route === "metric_rollup") return "ceo_metric";
+  return "ceo_root_cause";
+}
+
 /** 角色 scope → 可见基地（A6 行级由 datacore OBO 依身份真过滤；此处透出角色声明 scope 供路由/审计）。 */
 export function scopeBasesFor(role: CeoAgentRole, baseScope: string[]): { allBases: boolean; baseIds: string[] } {
   return role === "ceo" ? { allBases: true, baseIds: [] } : { allBases: false, baseIds: [...baseScope].sort() };
