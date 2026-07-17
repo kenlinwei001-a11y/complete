@@ -18,7 +18,7 @@ import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "..
  */
 export interface ExtraToolStep {
   id: string;
-  type: "query_timeseries_agg" | "search_knowledge";
+  type: "query_timeseries_agg" | "search_knowledge" | "plan_slice";
   params: Record<string, unknown>;
   onError?: OnError;
   timeoutMs?: number;
@@ -117,14 +117,15 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
       deps.emit("step.completed", { stepId: step.id, type: step.type, outcome, durationMs: Date.now() - started });
 
     switch (step.type) {
-      // generic tool dispatch — incl. additive A8.4/S4.1 steps (query_timeseries_agg / search_knowledge)
+      // generic tool dispatch — incl. additive A8.4/S4.1/A3.3 steps (query_timeseries_agg / search_knowledge / plan_slice)
       case "resolve_slice":
       case "query_objects":
       case "invoke_solver":
       case "evaluate_rules":
       case "create_action_draft":
       case "query_timeseries_agg":
-      case "search_knowledge": {
+      case "search_knowledge":
+      case "plan_slice": {
         const timeoutMs =
           step.type === "invoke_solver" ? ((step as { timeoutMs?: number }).timeoutMs ?? SOLVER_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
         const r = await deps.executor.run(step.type, resolvedParams, { timeoutMs });
@@ -162,6 +163,10 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
           const sliceKey = (resolvedParams.sliceKey as string | undefined) ?? "";
           if (sliceKey) slicesUsed.push(sliceKey);
           collectSliceObjects(r.payload, sliceObjects);
+        } else if (step.type === "plan_slice") {
+          const p = r.payload as { sliceKey?: string; plan?: { sliceKey?: string } } | undefined;
+          const sliceKey = p?.sliceKey ?? p?.plan?.sliceKey;
+          if (sliceKey) slicesUsed.push(sliceKey);
         }
         stepAudits[step.id] = {
           toolCallId: r.toolCallId,

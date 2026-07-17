@@ -12,6 +12,16 @@ export interface ToolAuthCtx extends AuthCtx {
 
 export interface OntologyClient {
   resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload>;
+  /** A3-SUITE-2：动态切片持久化。将规划器产出的 SlicePlan 登记为一等 SliceSpec，使后续 resolve_slice 可消费。 */
+  putSliceSpec(
+    ctx: ToolAuthCtx,
+    sliceKey: string,
+    spec: {
+      root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+      paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+      maxNodes?: number;
+    },
+  ): Promise<{ sliceKey: string; version: number }>;
   /** P3 O11：发育闭环自动规划切片（OBO → DataCore /a/v1/slices/plan，rootType+targets→SliceSpec，复用既有已发布切片）。 */
   planSlice(ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse>;
   queryObjects(

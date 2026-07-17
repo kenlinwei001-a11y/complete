@@ -44,7 +44,7 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       { kind: "view", key: "graph" },
       // WO-SWEEP-03-NAV-GROUP：boundary（边界册治理）/ prototype-intake（原型 intake）归「建模与图谱」组，
       // 对齐 adminRegistry modeling 组（此前二者缺登记 → 真实导航里落「其它」兜底组）。
-      ...["modeling", "object-types", "domains", "slices", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
+      ...["modeling", "object-types", "domains", "slices", "slice-library", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。

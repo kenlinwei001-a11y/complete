@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-26",
+  "generatedAt": "2026-07-17",
   "ontology": {
     "invariants": [
       "R1",
@@ -83,6 +83,25 @@
       ],
       "artifacts": [
         "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A3-multihop-slice-completion.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/ontology/slice-index.ts",
+        "apps/datacore/src/ontology/slice-library.ts",
+        "apps/datacore/src/ontology/slice-planner.ts"
       ],
       "brokenArtifacts": []
     },
@@ -198,6 +217,26 @@
       ],
       "artifacts": [],
       "brokenArtifacts": []
+    },
+    "PRD-addendum-excel-seed-700B-expansion.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/rules/constraints.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/seed.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/mocks/simSolvers.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx",
+        "packages/contracts/src/base-registry.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/rules/constraints.ts",
+        "apps/datacore/src/synthetic/seed.ts"
+      ]
     },
     "PRD-addendum-execution-semantics.md": {
       "hasOntologyRef": true,
@@ -1314,6 +1353,7 @@
     ],
     "G-8": [
       "PRD-A18-provisional-build-closure.md",
+      "PRD-A3-multihop-slice-completion.md",
       "PRD-addendum-a8-timeseries.md",
       "PRD-addendum-admin-console-closure.md",
       "PRD-addendum-admin-platform.md",
@@ -1355,6 +1395,11 @@
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
       "PRD-unified-build-engine.md"
+    ],
+    "G-10": [
+      "PRD-A3-multihop-slice-completion.md",
+      "PRD-rules-as-references.md",
+      "PRD-simulation-sandbox.md"
     ],
     "G-1": [
       "PRD-addendum-a8-timeseries.md",
@@ -1438,10 +1483,6 @@
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-10": [
-      "PRD-rules-as-references.md",
-      "PRD-simulation-sandbox.md"
-    ],
     "G-11": [
       "PRD-sandbox-ontogenesis-buildplan.md",
       "PRD-simulation-sandbox.md"
@@ -1488,11 +1529,49 @@
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md",
+      "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-cli-full-coverage.md"
+    ],
+    "apps/datacore/src/ontology/slice-index.ts": [
+      "PRD-A3-multihop-slice-completion.md"
+    ],
+    "apps/datacore/src/ontology/slice-library.ts": [
+      "PRD-A3-multihop-slice-completion.md"
+    ],
+    "apps/datacore/src/ontology/slice-planner.ts": [
+      "PRD-A3-multihop-slice-completion.md"
     ],
     "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
       "PRD-IND-plan-generate-1to1.md",
       "PRD-plan-generate-1to1.md"
+    ],
+    "apps/datacore/src/rules/constraints.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/datacore/src/synthetic/battery-extended.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/datacore/src/synthetic/battery.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/datacore/src/synthetic/seed.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/frontend-shell/src/mocks/fixtures.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/frontend-shell/src/mocks/simSolvers.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/frontend-shell/src/views/DashboardView.tsx": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "packages/contracts/src/base-registry.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
@@ -1505,12 +1584,6 @@
     ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",
-      "PRD-quarter-rolling-1to1.md"
-    ],
-    "apps/datacore/src/synthetic/battery.ts": [
-      "PRD-aop-annual-scenario-1to1.md",
-      "PRD-empty-tenant-bootstrap.md",
-      "PRD-goal-metric-owner-spine.md",
       "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [

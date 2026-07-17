@@ -229,6 +229,40 @@ export class GuardedToolExecutor {
           String(args.sliceKey),
           (args.args ?? {}) as Record<string, unknown>,
         );
+      case "plan_slice": {
+        const req: {
+          rootType: string;
+          targets: string[];
+          maxHops: number;
+          question?: string;
+        } = {
+          rootType: String(args.rootType),
+          targets: Array.isArray(args.targets) ? args.targets.map(String) : [],
+          maxHops: args.maxHops === undefined ? 6 : Number(args.maxHops),
+        };
+        if (args.question !== undefined) req.question = String(args.question);
+        const res = await this.deps.dataCore.ontology.planSlice(ctx, req);
+        if (!res.ok) return res;
+        // A3-SUITE-2：新规划的切片必须登记为一等 SliceSpec，后续 resolve_slice 才能消费。
+        if (!res.plan.reused) {
+          const spec = {
+            root: { typeKey: res.plan.rootType, selector: {} as Record<string, unknown> },
+            paths: res.plan.paths.map((p) =>
+              p.hops.map((h) => ({ linkKey: h.linkKey, direction: h.direction as "out" | "in" }))
+            ),
+          };
+          await this.deps.dataCore.ontology.putSliceSpec(ctx, res.plan.sliceKey, spec);
+        }
+        return {
+          planned: true,
+          reused: res.plan.reused,
+          sliceKey: res.plan.sliceKey,
+          rootType: res.plan.rootType,
+          spannedDomains: res.plan.spannedDomains,
+          pathCount: res.plan.paths.length,
+          plan: res.plan,
+        };
+      }
       case "query_objects": {
         // CL.3：未知 typeKey → 结构化 UNKNOWN_TYPE + did-you-mean（不静默返空，agent 据此改名重查）。
         const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
