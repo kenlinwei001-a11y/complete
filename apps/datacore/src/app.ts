@@ -332,7 +332,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   const sop = new SopService(repos, solvers, outbox);
-  const kb = new KbService(repos, authz, blob, embeddings);
+  const kb = new KbService(repos, authz, blob, embeddings, outbox);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
@@ -348,6 +348,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     features,
     actions,
     ts: timeseries,
+    outbox,
     // 轨L 增量2：注入建模链（modeling 在 synthetic 之前构造），供 demo 本体经真链产出。
     modeling,
     livedInRunner: async (c, input) => {
@@ -355,7 +356,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       return { replay: state.replay };
     },
   });
-  connectors.wire({ ts: timeseries, scheduler });
+  connectors.wire({ ts: timeseries, scheduler, outbox });
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
   // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
   ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
@@ -2320,7 +2321,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return ontology.invokeSolver(ctx(req), solverKey, args);
   });
   app.post("/a/v1/derivations/run", async (req, reply) => {
-    const run = await ontology.runDerivations(ctx(req));
+    const c = ctx(req);
+    const run = await ontology.runDerivations(c);
+    // DF-2：派生管线完成 → derivation.completed（失效 dashboard/risk/scenario-data/object-queries）。
+    // 语义锚点 = 派生真值重算（invalidates=驾驶舱数字），非建模草稿产出。
+    await outbox.emit(c.tenantId, "derivation.completed", { runId: run.id, updatedObjects: run.updatedObjects, count: run.updatedObjects, order: run.order });
     return reply.status(202).send(run);
   });
 
@@ -2890,8 +2895,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
   });
   app.post("/a/v1/modeling/drafts/:id/materialize", async (req, reply) => {
+    const c = ctx(req);
     const { id } = req.params as { id: string };
-    const result = await modeling.materialize(ctx(req), id);
+    const result = await modeling.materialize(c, id);
+    // DF-3：对象化/物化作业完成 → materialize.completed（失效 dashboard/object-queries/scenario-data）。
+    await outbox.emit(c.tenantId, "materialize.completed", { draftId: id, jobId: result.jobId, objectCount: result.created, quarantined: result.quarantined });
     return reply.status(202).send(result);
   });
 

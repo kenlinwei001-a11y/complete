@@ -5,6 +5,7 @@ import type { BlobStore } from "../blob.js";
 import type { Metrics } from "../metrics.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
+import type { OutboxService } from "../outbox.js";
 import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
@@ -25,6 +26,7 @@ interface DatasetConfig {
 export class ConnectorService {
   private ts: TimeseriesService | null = null;
   private scheduler: SchedulerService | null = null;
+  private outbox: OutboxService | null = null;
 
   constructor(
     private repos: Repos,
@@ -34,9 +36,10 @@ export class ConnectorService {
     private fetchImpl: typeof fetch = fetch,
   ) {}
 
-  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService }): void {
+  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService; outbox?: OutboxService }): void {
     this.ts = deps.ts ?? this.ts;
     this.scheduler = deps.scheduler ?? this.scheduler;
+    this.outbox = deps.outbox ?? this.outbox;
   }
 
   private datasetConfig(conn: Connection, dataset: string): DatasetConfig | undefined {
@@ -186,6 +189,8 @@ export class ConnectorService {
       rowCounts: {},
     };
     await this.repos.syncJobs.put(job);
+    // DF-1/DF-4：本次同步落库的结构化 RawDataset id（TIMESERIES 走 ts 写入不计入）。
+    const landedDatasetIds: string[] = [];
     try {
       const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
       const datasets = await adapter.listDatasets();
@@ -238,12 +243,30 @@ export class ConnectorService {
         await this.repos.rawDatasets.put(ds);
         await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
         job.rowCounts[name] = rows.length;
+        landedDatasetIds.push(ds.id);
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();
       await this.repos.syncJobs.put(job);
       await this.repos.connections.put({ ...conn, lastSyncAt: job.finishedAt, status: "ACTIVE" });
       this.metrics.inc("dc_connector_sync_total", { type: conn.connectorTypeKey, outcome: "success" });
+      // DF-1：结构化数据落地 → raw_dataset.uploaded（失效 raw-datasets / modeling.dataset-picker · DL1）。
+      // DF-4：同步完成 → connection.sync_completed（失效 dashboard / scenario-data / object-queries · DL9）。
+      // 聚合键取 connId，使同一连接的多次同步/失败事件按序投递。
+      if (landedDatasetIds.length > 0) {
+        await this.outbox?.emit(
+          ctx.tenantId,
+          "raw_dataset.uploaded",
+          { connId, datasetIds: landedDatasetIds, count: landedDatasetIds.length, jobId: job.id },
+          connId,
+        );
+      }
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "connection.sync_completed",
+        { connId, jobId: job.id, rowCounts: job.rowCounts },
+        connId,
+      );
       return job;
     } catch (err) {
       job.status = "FAILED";
@@ -252,6 +275,13 @@ export class ConnectorService {
       await this.repos.syncJobs.put(job);
       await this.repos.connections.put({ ...conn, status: "ERROR", lastError: job.error });
       this.metrics.inc("dc_connector_sync_total", { type: conn.connectorTypeKey, outcome: "failure" });
+      // DF-4：同步失败 → connector.sync_failed（失效 connectors / quarantine，通知运营）。
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "connector.sync_failed",
+        { connId, jobId: job.id, error: job.error },
+        connId,
+      );
       return job;
     }
   }

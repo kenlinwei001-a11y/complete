@@ -302,6 +302,8 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
 >
+> **Wave3 DF 生产者半环闭合（DF-1/2/3/4/6，2026 收口）**：此前订阅声明(99 条)+outbox+前端失效框架都在，但一串**产出事件从不 emit** → "产出了下游看不到/要重载才见"（TR1-TR8 生产者半未通）。已在生产者接缝补真发：`raw_dataset.uploaded`+`connection.sync_completed`（`connectors/service.ts sync()` 成功路径，含 scheduler 定时同步，聚合键 connId）· `connector.sync_failed`（sync() catch）· `dataset.regenerated`（`synthetic/service.ts runJob()` 成功尾）· `derivation.completed`（`POST /a/v1/derivations/run` 派生真值重算后，非建模草稿产出）· `materialize.completed`（`POST /a/v1/modeling/drafts/:id/materialize`）· `kb.indexed`（`kb.ts addDoc/sync`）。ConnectorService/SyntheticService 经 `wire({outbox})`、KbService 经构造注入 outbox；emit 为写库后的副作用（幂等/按聚合有序）。**仍开口 DF-5**：AgentCore→DataCore 跨栈 outbox 通道（workflow/agent/intent/scenario.published 信号回灌 A/前端），架构级独立处置，未纳本波。
+
 > **F1 全局领域事件交付通道（实时环地基，2026 收口）**：前端 `useDomainEventStream`（挂 `ShellLayout`，登录后常驻）按 `?since` 游标轮询 `GET /a/v1/outbox`（datacore 真实 outbox 馈源，租户隔离 R2），对**任何来源**的领域事件调 `invalidateForEvent`——补上此前"`invalidateForEvent` 仅由发起方自己 mutation 本地触发、跨用户/被动页不更新"的缺口（PROP-1 不重登反映）。`store/eventInvalidation.ts` 的 `EVENT_INVALIDATES` 扩入真实发出的 `synthetic.tick_completed/action.executed/calibration.proposed/calibration.rolled_back/objects.merged`。**E-c 双源（已落）**：AgentCore 新建 `domain_events` 持久化（migration008，R9 四处）+ 发布时 `emitDomainEvent`（intent/agent/workflow/scenario.published+retired）+ `GET /b/v1/outbox` 馈源；前端 `useDomainEventStream` 同时轮询 `/a` 与 `/b` 两源（独立游标、跨源 eventId 去重），B 侧管理配置变更从此也跨会话传播。**E-a（已落）**：`storybuild.run_recorded`。
 
 | 环 | 事件 | 生产者 | 层级 | 失效下游 | 断链审计 |
@@ -326,7 +328,8 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | L7 | `intent.promoted` | 兜底孵化 | IN_SESSION | intent-catalog, fallback-stats | DL6 |
 | L8 | `synthetic.tick_completed` | 模拟时钟 tick | IN_SESSION | dashboard, risk, scenario-data, calibration-report | DL7 |
 | L8 | `dataset.regenerated` | 合成生成 | IN_SESSION | dashboard, risk, scenario-data, ontology-graph, rule-library | — |
-| L8 | `connection.sync_completed` | 连接器同步 | IN_SESSION | dashboard, scenario-data, object-queries | DL9 |
+| L8 | `connection.sync_completed` | 连接器同步（成功）·`connectors/service.ts sync()` 成功路径真发（DF-4，含 scheduler 定时同步） | IN_SESSION | dashboard, scenario-data, object-queries | DL9 |
+| L8 | `connector.sync_failed` | 连接器同步失败·`connectors/service.ts sync()` catch 真发（DF-4；失败即通知运营/隔离区联动） | IN_SESSION | connectors, quarantine | DL9 |
 | L8 | `connection.created` | 连接器创建（A11 带 category） | IN_SESSION | connectors, data-categories | — |
 | L1 | `slice.planned` | 切片规划器（A3.4 规划/复用；E6 近似问句命中时 payload 附 `reuseMatch:QUESTION/score`） | IN_SESSION | slice-library, slice-index | — |
 | L9 | `kb.indexed` | 知识库索引 | IN_SESSION | kb-search, search-test | DL10 |
@@ -380,7 +383,7 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | R7 | **错误信封统一** `{error:{code,message,requestId}}` | 两系统 |
 | R8 | **认证**：生产 Bearer JWT（A 签发，B 经 JWKS 验签）；开发 `X-Debug-User`；服务间 `SERVICE_TOKEN` | `auth.ts` |
 | R9 | **仓储双实现**：memory(测试)+pg(DATABASE_URL)；新表四处同改(migrations+pg+memory+repo接口) | `repo/` |
-| R10 | **D-29 数据流闭环**：产出操作必发事件、下游必订阅（§4） | `event-subscriptions.ts` |
+| R10 | **D-29 数据流闭环**：产出操作必发事件、下游必订阅（§4）。**Wave3 生产者半环闭合**：DF-1/2/3/4/6 六事件已在生产者接缝真 emit（见 §4 note），TR1-TR8 生产者半通；**DF-5 跨栈通道仍开口**（AgentCore→DataCore，见 G-8） | `event-subscriptions.ts` · `connectors/service.ts` · `synthetic/service.ts` · `kb.ts` · `app.ts` |
 | **R11** | **全链闭包（审核新增，当前部分违反）**：每个 ScenarioCard 必须 Intent+Plan+Solver(输出形状匹配渲染模板)+render 全接通，否则不可上架 | ⚠ 16/20 违反；缺构建时门禁 |
 | R12 | **双向闭包（数据构建）**：对象必落切片(反向-对象 HARD)、字段必被消费(反向-data SOFT)、求解器入参必存在(正向 HARD) | `closure.ts` |
 | **R13** | **结论可溯源（信任 = 出处 + 推导可当场亮出）**：凡推演结论里的数字必为可溯源对象——悬浮即出 `{来源系统·新鲜度·推导公式·输入因子·关联规则·备注}`（参考 PRD §1.2/§4，与 R12 输入侧"字段全建模"对称的输出侧纪律）。源系统降级时，依赖它的派生数字自动标降级、置信度(P90)随之下调(C09)。覆盖优先级见 `docs/REFERENCE-HTML-INVENTORY.md` 信任章。**真推演 not 假推演（轨M 增量1·R13 延伸到推演红/黄状态）**：推演输出（红/黄/财务数字）**绝不裸渲染当真值**——`risk_timeline` 逐卡透 `dataMode(LIVE/MOCK)` + `currentTightness{value,live}`（`solvers/risk.ts riskTimeline`：LIVE=实测真 OEE/利用率/良率，MOCK=无真数据源），前端 `RiskBoardView` 逐卡显"估算（实测当前 N）"/"实测当前 N"（红被诚实标或锚定真测量值）。修法抄典范 `capex_scenario`（缺数抛错不造假）+ `LedgerView`（逐格 Provenance）。**门 `genuine-sim:check`（已落·入 pnpm gates，轨M 增量1c）**：`scripts/check-genuine-sim.mjs` 保守哨兵静态扫"推演 schema(risk_timeline/capacity_forecast/bottleneck_matrix)有 dataMode + 前端 RiskBoardView/ProjectSimView 消费 dataMode/live 显估算/实测 + bottleneck 前端传 LIVE"防回潮（假3/假4 修后扩入）。 | `<Provenance>` + lineage 端点；前端 `provenance.test`；`solvers.test` risk dataMode |

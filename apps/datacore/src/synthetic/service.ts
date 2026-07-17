@@ -11,6 +11,7 @@ import type { ModelingService } from "../modeling.js";
 import type { RulesService } from "../rules.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
+import type { OutboxService } from "../outbox.js";
 import type { FeatureService } from "../features.js";
 import type { ActionService } from "../actions.js";
 import { VIEW_FEATURE_MAP } from "../features.js";
@@ -92,6 +93,8 @@ export class SyntheticService {
   private modeling: ModelingService | null = null;
   /** 运营态出厂配置增量 §1：livedIn=true 时在标准合成后运行回放引擎（注入避免依赖环）。 */
   private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
+  /** DF-4：合成数据再生完成 → dataset.regenerated（失效驾驶舱/风险/场景数据/本体图/规则库）。 */
+  private outbox: OutboxService | null = null;
 
   constructor(
     private repos: Repos,
@@ -110,6 +113,7 @@ export class SyntheticService {
     ts?: TimeseriesService;
     livedInRunner?: SyntheticService["livedInRunner"];
     modeling?: ModelingService;
+    outbox?: OutboxService;
   }): void {
     this.scheduler = deps.scheduler ?? this.scheduler;
     this.features = deps.features ?? this.features;
@@ -117,6 +121,7 @@ export class SyntheticService {
     this.ts = deps.ts ?? this.ts;
     this.livedInRunner = deps.livedInRunner ?? this.livedInRunner;
     this.modeling = deps.modeling ?? this.modeling;
+    this.outbox = deps.outbox ?? this.outbox;
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
@@ -257,6 +262,13 @@ export class SyntheticService {
 
       await this.repos.syntheticJobs.put(job);
       this.metrics.set("dc_synthetic_job_duration_ms", { industry: input.industry }, Date.now() - t0);
+      // DF-4：合成/再生完成 → 下游消费页联动（驾驶舱/风险/场景数据/本体图/规则库失效）。
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "dataset.regenerated",
+        { jobId: job.id, industry: input.industry, scale: input.scale, seed },
+        `synthetic:${ctx.tenantId}`,
+      );
       return job;
     } catch (err) {
       job.status = "FAILED";

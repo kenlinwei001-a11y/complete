@@ -55,6 +55,7 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "synthetic.tick_completed", producer: "模拟时钟 tick", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "calibration-report"], dl: "DL7" },
   { event: "dataset.regenerated", producer: "合成数据生成", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "ontology-graph", "rule-library"] },
   { event: "connection.sync_completed", producer: "连接器同步", tier: "IN_SESSION", invalidates: ["dashboard", "scenario-data", "object-queries"], dl: "DL9" },
+  { event: "connector.sync_failed", producer: "连接器同步失败", tier: "IN_SESSION", invalidates: ["connectors", "quarantine"], dl: "DL9" },
   { event: "connection.created", producer: "连接器创建（A11 带 category）", tier: "IN_SESSION", invalidates: ["connectors", "data-categories"] },
   { event: "slice.planned", producer: "切片规划器（A3.4 规划/复用）", tier: "IN_SESSION", invalidates: ["slice-library", "slice-index"] },
   // L9 知识环 / DL10
