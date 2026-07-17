@@ -37,6 +37,7 @@ import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）
+import { CeoAgent } from "../agent/ceo.js"; // WO-CEO-6 · CEO agent（确定性·无 LLM）
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -679,6 +680,36 @@ export class Orchestrator {
     if (!(await this.deps.features.isEnabled(task.tenantId, "qos.agent-fallback", auth.token))) {
       const candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
       await this.completeWorkflowOnlyMiss(task, candidates);
+      return;
+    }
+
+    // WO-CEO-6（闭 G-3 深问侧·path-B 兜底）：带 PageContext 的 CEO 深问即使未命中已发布 CEO 意图，
+    // 也走确定性 CEO agent（调用 DataCore 求解器）给出带 drillRef 溯源的答案，不进入 LLM 探索。
+    // 行级 scope（A6）由 DataCore OBO 依身份真过滤，agentcore 只透传 OBO。
+    if (task.context.pageContext && isCeoQuestion(task.query)) {
+      const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
+      const ceoAgent = new CeoAgent({ dataCore: this.deps.engine.deps.dataCore });
+      const { answer } = await ceoAgent.answer({
+        question: task.query,
+        pageContext: task.context.pageContext,
+        role: "ceo",
+        auth,
+      });
+      await this.deps.repos.tasks.patch(taskId, {
+        status: "COMPLETED",
+        path: "AGENT",
+        answer,
+        classification: {
+          candidates: [{ intentKey: ceoIntentKeyForRoute(route.route), confidence: 1 }],
+          outOfCatalog: false,
+          extractedSlots: route.args,
+          latencyMs: 0,
+          model: "deterministic:ceo-agent",
+        },
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(taskId, "answer.final", answer);
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
       return;
     }
 

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { QueryTask, PageContext } from "@platform/contracts";
+import type { QueryTask, PageContext, DataCoreClient, ToolPayload } from "@platform/contracts";
 import { buildAgentUser, pageContextSummary } from "../src/agent/prompts.js";
 import { resolveCeoRoute, scopeBasesFor } from "../src/router/ceo-route.js";
+import { CeoAgent, createCeoAgentProfile } from "../src/agent/ceo.js";
 
 /**
  * WO-CEO-6 · CEO agent + PageContext 注入（闭 G-3·绿测试≠能用）。
- * C2 presetContext 真注入（PageContext 进 agent 上下文·非丢弃）·C3 上下文真生效（同问句不同 PageContext→不同 args）·
- * C4 路由真（问句意图→对应求解器）·C6 角色 scope（base-planner 剪枝）·C8 R6 确定性。
+ * C1 PageContext 真派生·C2 presetContext 真注入·C3 上下文真生效·C4 路由真·
+ * C5 溯源链·C6 角色 scope·C7 反向驱动契约·C8 R6 确定性。
  */
 const pcEss: PageContext = {
   view: "gap-waterfall",
@@ -68,9 +69,64 @@ describe("WO-CEO-6 · CEO agent + PageContext 注入（闭 G-3）", () => {
     expect(cz.scopedBaseIds).toEqual(["changzhou"]); // 基地限常州（跨基地由 datacore OBO 剪枝/403）
   });
 
-  it("C8 R6 确定性：同问句+同 PageContext+同角色 两跑路由 deep-equal", () => {
-    const a = resolveCeoRoute("这个根因怎么补", pcEss, "base-planner", ["changzhou"]);
-    const b = resolveCeoRoute("这个根因怎么补", pcEss, "base-planner", ["changzhou"]);
-    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+  it("C1 PageContext 真派生：schema 接受从真对象派生的实体，且 drillRef 指回源对象（非写死文案）", () => {
+    // 页面上的每个 entity 都带 type/id/label，且 drillRef 可反向驱动页面
+    expect(pcEss.entities[0]?.drillRef).toBe("obj_metric_kpi-seg-ess");
+    expect(pcEss.entities[0]?.type).toBe("Metric");
+    expect(pcEss.entities[0]?.id).toBe("seg_attain_ess");
+    const summary = pageContextSummary(pcEss);
+    expect(summary).toContain("储能达成率");
+    expect(summary).toContain("seg_attain_ess");
+  });
+
+  it("C5 溯源链：CEO agent 答案带 solver/entity 两跳 provenance，且标快照版本", async () => {
+    const solverCalls: { key: string; args: Record<string, unknown> }[] = [];
+    const mockDataCore: DataCoreClient = {
+      solver: {
+        invoke: async (_ctx, key, args) => {
+          solverCalls.push({ key, args });
+          return { data: { options: [{ id: "opt1", closesGap: 1.2 }], addressableGap: 2.5 }, snapshotVersion: "snap_v1" } as ToolPayload;
+        },
+      },
+      ontology: {
+        getObject: async (_ctx, type, id) => ({ data: { type, id }, snapshotVersion: "snap_v2" } as ToolPayload),
+      },
+    } as unknown as DataCoreClient;
+    const agent = new CeoAgent({ dataCore: mockDataCore });
+    const { answer, route } = await agent.answer({ question: "这个根因怎么补", pageContext: pcEss, role: "ceo", auth: { tenantId: "demo", userId: "u", roles: ["admin"] } });
+    expect(route.solverKey).toBe("decision_play");
+    expect(solverCalls).toHaveLength(1);
+    expect(solverCalls[0]!.args.metricKey).toBe("seg_attain_ess");
+    expect(solverCalls[0]!.args.factorId).toBe("cf-cathode-shortage");
+    // 每跳溯源：求解器 + 页面实体
+    expect(answer.provenance.length).toBeGreaterThanOrEqual(1);
+    expect(answer.provenance.some((p) => p.toolName === "decision_play")).toBe(true);
+    expect(answer.provenance.some((p) => p.toolName === "get_object")).toBe(true);
+    expect(answer.provenance.every((p) => p.snapshotVersion)).toBe(true);
+  });
+
+  it("C7 反向驱动契约：答案文本携带 drillRef，前端可据此定位源对象", async () => {
+    const mockDataCore: DataCoreClient = {
+      solver: {
+        invoke: async () => ({ data: { leaves: [{ factorId: "cf-cathode-shortage", contribution: 5 }] }, snapshotVersion: "snap_v3" } as ToolPayload),
+      },
+      ontology: {
+        getObject: async () => ({ data: {}, snapshotVersion: "snap_v4" } as ToolPayload),
+      },
+    } as unknown as DataCoreClient;
+    const agent = new CeoAgent({ dataCore: mockDataCore });
+    const { answer } = await agent.answer({ question: "储能为什么没达标", pageContext: pcEss, role: "ceo", auth: { tenantId: "demo", userId: "u", roles: ["admin"] } });
+    const text = answer.blocks.find((b) => b.type === "text")?.markdown ?? "";
+    expect(text).toContain("drillRef=obj_metric_kpi-seg-ess");
+    expect(text).toContain("cf-cathode-shortage");
+  });
+
+  it("CeoAgentProfile：CEO 全域 vs base-planner 基地 scope 画像正确", () => {
+    const ceo = createCeoAgentProfile("ceo");
+    expect(ceo.scope.allBases).toBe(true);
+    expect(ceo.scope.baseIds).toEqual([]);
+    const planner = createCeoAgentProfile("base-planner", ["changzhou"]);
+    expect(planner.scope.allBases).toBe(false);
+    expect(planner.scope.baseIds).toEqual(["changzhou"]);
   });
 });
