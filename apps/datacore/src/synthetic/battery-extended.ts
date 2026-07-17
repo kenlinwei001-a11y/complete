@@ -40,20 +40,56 @@ export function extendedObjectTypes(): TypeDef[] {
       p("materialType", "enum"), p("rating", "enum"), p("region", "string"), p("leadTime"), p("minOrderQty"), p("onTimeRate"), p("status", "enum"),
       // WO-CEO-2：供货量字段（actual<contracted = 上游减供·因果链一环·gap_attribution 叶级真值）
       p("contractedSupplyTon"), p("actualSupplyTon"),
+      // WO-CEO-DATA-2：真源供货履约字段（ERP/SRM 接入后 provenanceSynthetic 翻真）。
+      p("deliveryDate", "string"), p("poNumber", "string"),
     ]),
     // WO-CEO-2 供应链/地缘/决策域（gap_attribution 深度反向归因·因果链实体·§0 案例落成真对象）：
     def("LongTermAgreement", "长期协议", "supply", [
       p("ltaId", "string", true), p("supplierId", "string"), p("materialType", "enum"),
       p("contractedQtyTon"), p("actualDeliveredTon"), p("priceLinked", "boolean"), p("breachPenaltyWan"),
+      // WO-CEO-DATA-2：真合同字段（真源前标灰）。
+      p("priceFormula", "string"), p("effectiveDate", "string"), p("expiryDate", "string"), p("deliveryDate", "string"), p("poNumber", "string"),
     ]),
     def("BackupSupplierPool", "备份供应池", "supply", [
       p("poolId", "string", true), p("materialType", "enum"), p("memberCount"), p("certWeeks"), p("procureFreqPerYear"),
     ]),
     def("CommodityPriceTrend", "矿产价格趋势", "external", [
       p("trendId", "string", true), p("commodity", "string"), p("weekOf", "string"), p("pricePerTon"), p("pctChange"),
+      // WO-CEO-DATA-2：真行情溯源字段。
+      p("source", "string"), p("spec", "string"), p("currency", "string"),
     ]),
     def("DecisionGap", "决策缺陷", "decision", [
       p("gapId", "string", true), p("kind", "enum"), p("description", "string"), p("severity"), p("ownerRef", "string"),
+      // WO-CEO-DATA-2：评审录入溯源。
+      p("reviewDate", "string"), p("evidence", "string"),
+    ]),
+    // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象（市场份额 / 营收 / 现金 / 需求达成）。
+    def("CompetitorShare", "竞品份额", "commercial", [
+      p("shareId", "string", true), p("competitor", "string"), p("segment", "string"), p("sharePct"), p("period", "string"),
+    ]),
+    def("BidRecord", "投标记录", "commercial", [
+      p("bidId", "string", true), p("segment", "string"), p("win", "boolean"), p("lossReason", "string"), p("amount"), p("competitorRef", "string"),
+    ]),
+    def("CompetitorPrice", "竞品价格", "commercial", [
+      p("priceId", "string", true), p("competitor", "string"), p("model", "string"), p("pricePerKwh"), p("period", "string"),
+    ]),
+    def("PipelineOpportunity", "商机漏斗", "commercial", [
+      p("oppId", "string", true), p("segment", "string"), p("stage", "string"), p("amount"), p("winProb"),
+    ]),
+    def("WinLossRecord", "赢丢单记录", "commercial", [
+      p("oppId", "string", true), p("result", "enum"), p("reason", "string"),
+    ]),
+    def("PriceRealization", "价格实现", "commercial", [
+      p("realizationId", "string", true), p("model", "string"), p("listPrice"), p("realizedPrice"), p("period", "string"),
+    ]),
+    def("ARAging", "应收账龄", "finance", [
+      p("agingId", "string", true), p("customerRef", "string"), p("bucket", "string"), p("amount"),
+    ]),
+    def("DSO", "DSO", "finance", [
+      p("dsoId", "string", true), p("segment", "string"), p("days"), p("period", "string"),
+    ]),
+    def("OverdueRecord", "逾期记录", "finance", [
+      p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"),
     ]),
     // 因果因素节点（caused_by 遍历的一等节点·每个下钻到真证据对象·结构叶→地缘/决策终点）：
     def("CausalFactor", "因果因素", "decision", [
@@ -78,7 +114,7 @@ export function extendedObjectTypes(): TypeDef[] {
     def("FinanceAccount", "基地财务账户", "finance", [p("accId", "string", true), p("baseId", "string"), p("cashOnHand"), p("receivable"), p("payable"), p("workingCapital")]),
     def("FinanceMetric", "情景财务指标", "finance", [p("metricId", "string", true), p("scenarioKey", "string"), p("cashCushion"), p("irr"), p("capexSpent"), p("netMargin")]),
     // 外部域（EXT_SIG）：环境/市场信号一等对象（domain=external；规划敏感性输入 P2）。
-    def("ExternalSignal", "外部信号", "external", [p("signalKey", "string", true), p("name", "string"), p("category", "string"), p("value"), p("unit", "string"), p("asOf", "string"), p("source", "string"), p("trend", "string"), p("impact", "string"), p("elasticity")]),
+    def("ExternalSignal", "外部信号", "external", [p("signalKey", "string", true), p("name", "string"), p("category", "string"), p("value"), p("unit", "string"), p("asOf", "string"), p("source", "string"), p("trend", "string"), p("impact", "string"), p("elasticity"), p("eventRef", "string")]),
   ];
 }
 
@@ -136,13 +172,13 @@ const COMMODITY_PRICE_TRENDS = [
 
 // WO-CEO-2 决策缺陷：因果链终点（前瞻缺失/条款缺失·可归的最终根）。
 const DECISION_GAPS = [
-  { gapId: "dgap-forecast", kind: "前瞻缺失", description: "矿价前瞻缺失：未预判地缘冲突推升锂价，长协未设价格联动条款", severity: 0.8, ownerRef: "prin-procure" },
-  { gapId: "dgap-clause", kind: "条款缺失", description: "长协无违约追偿/替代激活条款，断供时无兜底", severity: 0.6, ownerRef: "prin-procure" },
+  { gapId: "dgap-forecast", kind: "前瞻缺失", description: "矿价前瞻缺失：未预判地缘冲突推升锂价，长协未设价格联动条款", severity: 0.8, ownerRef: "prin-procure", reviewDate: "2026-06-10", evidence: "长协无价格联动条款" },
+  { gapId: "dgap-clause", kind: "条款缺失", description: "长协无违约追偿/替代激活条款，断供时无兜底", severity: 0.6, ownerRef: "prin-procure", reviewDate: "2026-06-10", evidence: "备份池仅2家" },
 ];
 
-// WO-CEO-2 因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象·结构叶→地缘/决策终点）。
-// 因果方向：caused_by 从「果」指向「因」（物料短缺 --caused_by--> 上游减供 …）。
-const CAUSAL_FACTORS = [
+// WO-CEO-DATA-2 · 每指标多假设因果域（market_share / revenue / cash / demand_attain）。
+// 因果方向：caused_by 从「果」指向「因」（share_gap --caused_by--> bid_loss ...）。
+const SUPPLY_CAUSAL_FACTORS = [
   { factorId: "cf-cathode-shortage", label: "正极粉短缺", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: false, provenanceSynthetic: false },
   { factorId: "cf-upstream-cut", label: "上游减供", drillType: "Supplier", drillId: "SUP-003", drillField: "actualSupplyTon", kind: "实测", isRoot: false, provenanceSynthetic: false },
   { factorId: "cf-lta-breach", label: "长协违约", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillField: "actualDeliveredTon", kind: "派生", isRoot: false, provenanceSynthetic: false },
@@ -151,6 +187,42 @@ const CAUSAL_FACTORS = [
   { factorId: "cf-backup-thin", label: "备份池不足", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillField: "memberCount", kind: "派生", isRoot: false, provenanceSynthetic: false },
   { factorId: "cf-cert-cycle", label: "认证周期长(root)", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillField: "certWeeks", kind: "派生", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-decision-gap", label: "价格预判缺失(root)", drillType: "DecisionGap", drillId: "dgap-forecast", drillField: "severity", kind: "决策", isRoot: true, provenanceSynthetic: false },
+];
+
+const MARKET_SHARE_CAUSAL_FACTORS = [
+  { factorId: "cf-share-gap", label: "份额缺口", drillType: "Metric", drillId: "market_share", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-competitor-price", label: "竞品降价(root)", drillType: "CompetitorPrice", drillId: "cp-catl-4680-NCM", drillField: "pricePerKwh", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-bid-loss", label: "丢标率(root)", drillType: "BidRecord", drillId: "bid-pass-001", drillField: "win", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-delivery-reputation", label: "交付口碑(root)", drillType: "BidRecord", drillId: "bid-com-001", drillField: "lossReason", kind: "派生", isRoot: true, provenanceSynthetic: false },
+];
+
+const REVENUE_CAUSAL_FACTORS = [
+  { factorId: "cf-rev-gap", label: "营收缺口", drillType: "Metric", drillId: "revenue", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-pipeline-shrink", label: "漏斗萎缩(root)", drillType: "PipelineOpportunity", drillId: "opp-passenger-001", drillField: "amount", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-price-erosion", label: "价格实现率跌(root)", drillType: "PriceRealization", drillId: "pr-4680-NCM", drillField: "realizedPrice", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-churn", label: "大单流失(root)", drillType: "WinLossRecord", drillId: "wl-opp-pass-001", drillField: "reason", kind: "派生", isRoot: true, provenanceSynthetic: false },
+];
+
+const CASH_CAUSAL_FACTORS = [
+  { factorId: "cf-cash-gap", label: "现金缺口", drillType: "Metric", drillId: "cash", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-ar-aging", label: "账龄恶化(root)", drillType: "ARAging", drillId: "ar-cust0-90p", drillField: "bucket", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-dso-stretch", label: "DSO拉长(root)", drillType: "DSO", drillId: "dso-energy_storage", drillField: "days", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-customer-concentration", label: "大客户逾期集中(root)", drillType: "OverdueRecord", drillId: "ovd-G-001", drillField: "overdueDays", kind: "实测", isRoot: true, provenanceSynthetic: false },
+];
+
+const DEMAND_ATTAIN_CAUSAL_FACTORS = [
+  { factorId: "cf-demand-gap", label: "需求达成缺口", drillType: "Metric", drillId: "demand_attain", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-forecast-bias", label: "预测偏差(root)", drillType: "PipelineOpportunity", drillId: "opp-energy_storage-001", drillField: "winProb", kind: "派生", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-capacity-short", label: "产能缺口(root)", drillType: "Equipment", drillId: "EQ-changzhou-001", drillField: "oee_current", kind: "实测", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false },
+];
+
+const CAUSAL_FACTORS = [
+  ...SUPPLY_CAUSAL_FACTORS,
+  ...MARKET_SHARE_CAUSAL_FACTORS,
+  ...REVENUE_CAUSAL_FACTORS,
+  ...CASH_CAUSAL_FACTORS,
+  ...DEMAND_ATTAIN_CAUSAL_FACTORS,
 ];
 
 // WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry `trigger_thresholds`.params 覆盖·C3）。
@@ -162,7 +234,7 @@ const TRIGGER_RULES = [
 ];
 
 // WO-CEO-2 caused_by 因果边（果→因·真实物化·gap_attribution 引擎遍历输出边序列 C2）。
-export const CAUSAL_EDGES: { from: string; to: string }[] = [
+const SUPPLY_CAUSAL_EDGES = [
   { from: "cf-cathode-shortage", to: "cf-upstream-cut" },
   { from: "cf-upstream-cut", to: "cf-lta-breach" },
   { from: "cf-lta-breach", to: "cf-ore-price" },
@@ -170,6 +242,37 @@ export const CAUSAL_EDGES: { from: string; to: string }[] = [
   { from: "cf-geopolitical", to: "cf-decision-gap" },
   { from: "cf-upstream-cut", to: "cf-backup-thin" },
   { from: "cf-backup-thin", to: "cf-cert-cycle" },
+];
+
+// WO-CEO-DATA-2 · 每指标多假设 caused_by 边（果→因）。
+const MARKET_SHARE_CAUSAL_EDGES = [
+  { from: "cf-share-gap", to: "cf-bid-loss" },
+  { from: "cf-bid-loss", to: "cf-competitor-price" },
+  { from: "cf-share-gap", to: "cf-delivery-reputation" },
+];
+const REVENUE_CAUSAL_EDGES = [
+  { from: "cf-rev-gap", to: "cf-pipeline-shrink" },
+  { from: "cf-rev-gap", to: "cf-price-erosion" },
+  { from: "cf-rev-gap", to: "cf-churn" },
+];
+const CASH_CAUSAL_EDGES = [
+  { from: "cf-cash-gap", to: "cf-ar-aging" },
+  { from: "cf-ar-aging", to: "cf-customer-concentration" },
+  { from: "cf-cash-gap", to: "cf-dso-stretch" },
+];
+const DEMAND_ATTAIN_CAUSAL_EDGES = [
+  { from: "cf-demand-gap", to: "cf-forecast-bias" },
+  { from: "cf-demand-gap", to: "cf-capacity-short" },
+  { from: "cf-demand-gap", to: "cf-material-short" },
+  { from: "cf-material-short", to: "cf-cathode-shortage" }, // 复用供应链域
+];
+
+export const CAUSAL_EDGES: { from: string; to: string }[] = [
+  ...SUPPLY_CAUSAL_EDGES,
+  ...MARKET_SHARE_CAUSAL_EDGES,
+  ...REVENUE_CAUSAL_EDGES,
+  ...CASH_CAUSAL_EDGES,
+  ...DEMAND_ATTAIN_CAUSAL_EDGES,
 ];
 
 const PROVINCE_GRID: Record<string, number> = { changzhou: 0.55, hefei: 0.58, xian: 0.62, chengdu: 0.78, zaozhuang: 0.7, jiangmen: 0.5 };
@@ -195,15 +298,34 @@ export interface ExtendedData {
   decisionGaps: Record<string, unknown>[];
   causalFactors: Record<string, unknown>[];
   triggerRules: Record<string, unknown>[]; // WO-CEO-3 触发规则
+  // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象
+  competitorShares: Record<string, unknown>[];
+  bidRecords: Record<string, unknown>[];
+  competitorPrices: Record<string, unknown>[];
+  pipelineOpportunities: Record<string, unknown>[];
+  winLossRecords: Record<string, unknown>[];
+  priceRealizations: Record<string, unknown>[];
+  arAgings: Record<string, unknown>[];
+  dsoRecords: Record<string, unknown>[];
+  overdueRecords: Record<string, unknown>[];
 }
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
 export function generateExtended(
   seed: number,
-  ctx: { models: { modelId: string }[]; bases: { baseId: string; name: string }[]; lines: { lineId: string }[] },
+  ctx: {
+    models: { modelId: string }[];
+    bases: { baseId: string; name: string }[];
+    lines: { lineId: string }[];
+    /** WO-CEO-DATA-2：复用 Equipment/MaterialBalance 作 capacity-short / material-short 下钻真对象。 */
+    equipment?: { equipId: string; baseId?: string; oee_current?: number }[];
+    materialBalances?: { matBalId: string; gapTon?: number }[];
+  },
   scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
   const rng = mulberry32(seed + 7919); // 独立子流，与主生成不串扰
+  // WO-CEO-DATA-2：新域独立 rng，不位移下游 rngTopo / 既有 extended 输出。
+  const rng2 = mulberry32(seed + 37);
   // 工业级数据量：S/M/L 保持原 demo 量级（既有测试），XL 放大到产线真实量级。
   const batchesPerMat = scale === "XL" ? 250 : 3; // 8 料 × 250 = 2000 批
   const poCount = scale === "XL" ? 3000 : 30;
