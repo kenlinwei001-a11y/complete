@@ -106,6 +106,8 @@ export const SOLVER_KEYS = [
   "gap_attribution",
   // WO-CEO-3 决策推演：根因→多方案→比对矩阵→触发行动(信号阈值)→组合收窄(G-DECISION)。
   "decision_play",
+  // WO-CEO-Q7 供需失衡双向归因：产销缺口→需求端⊥供给端双向分摊(勾稽·真颗粒占比)→各端下钻叶。
+  "supply_demand_gap_attribution",
 ] as const;
 
 /**
@@ -161,6 +163,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   gap_attribution: ["rootMetric", "totalGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "summary"],
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
+  supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -925,6 +928,123 @@ export class SolverService {
       reconciled,
       residualPct,
       summary: `目标「${str(m.name)}」缺口 ${G}${unit}：结构反向分摊到 ${baseEntries.length} 基地 × ${atomicLeaves.length} 叶子原子因素（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%），物料短缺沿 caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.filter((n) => (n.causalPath as string[]).length > 0).length} 个终点根因`,
+    };
+  }
+
+  /**
+   * WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因（纯推演·真新·非 gap_attribution 单向结构分摊）。
+   * 总缺口 G = Σ_ver max(0, demand−supply)（SopVersionRow 产销缺口）→ **双向**分摊：
+   *   需求端(预测偏差 Σ|p50−act| / 在手订单 ΣOPEN.qty / 结构漂移 Σmax(0,p50−tgt)) ⊥
+   *   供给端(产能缺口 max(0,需求−Σ产能) / 物料缺口 ΣgapTon折算 / 设备OEE损失 Σ(1−oee)×产能 / 换型损失)。
+   * 两侧驱动值各 Σ（真颗粒·万套等效）→ 需求端贡献=G×explained×Σd/T · 供给端贡献=G×explained×Σs/T ·
+   * residual=G×(1−explained) → **需求端+供给端+residual=G（构造上硬勾稽·C2 浮点≤1e-4）**。
+   * 端内二级按叶驱动占比分摊，每叶 provenance 带 drillType/drillField/drillValue（C5）。
+   * 占比由真颗粒派生：改 DemandSegment.p50 → 需求端占比变（C3）；改 Equipment.oee_current / Line 产能 → 供给端变（C4）。
+   * KILL-MOCK-RED：无 S&OP 产销数据 → 诚实空（不编五五开·C6）。R6：排序稳定 + 无时钟/随机。
+   * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
+   */
+  private async supplyDemandGapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const sop = (await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow")).map((o) => o.props);
+    const segs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
+    const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
+    const equipment = (await this.repos.objects.listByType(ctx.tenantId, "Equipment")).map((o) => o.props);
+    const matBal = (await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance")).map((o) => o.props);
+    const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
+    const unit = "万套";
+
+    // 总缺口 G = Σ 产销正缺口（供不应求）；诚实空（KILL-MOCK-RED·不编五五开）。
+    const G = round(sop.reduce((a, r) => a + Math.max(0, num(r.demand) - num(r.supply)), 0), 4);
+    if (sop.length === 0 || G <= 0) {
+      return {
+        rootMetric: { key: "sop_demand_supply", name: "产销供需缺口", unit, gap: G },
+        totalGap: G, demandSide: null, supplySide: null, residual: G, reconChecks: [],
+        reconciled: true, residualPct: G > 0 ? 100 : 0,
+        summary: sop.length === 0 ? "无 S&OP 产销数据 → 供需缺口双向归因不可用（诚实空·未编五五开）" : "当前产销无正缺口（供≥需），无需归因",
+      };
+    }
+
+    // R14 归因系数（一等 RuleEntry.params·PUBLISHED·改系数即改归因）；缺省诚实兜底。
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const attrRule = pubRules.find((r) => r.key === "supply_demand_gap_coeffs");
+    const explained = Math.min(1, num(attrRule?.params?.explained ?? 0.85)); // 可解释比（余入 residual·诚实承未解释）
+    const matTonToWan = num(attrRule?.params?.matTonToWan ?? 0.01); // 物料缺吨→万套等效折算（R14 可校准）
+
+    type Drv = { id: string; factor: string; driver: number; prov: Record<string, unknown> };
+    // ── 需求端驱动（真颗粒·万套等效）──
+    const demandDrv: Drv[] = [];
+    for (const s of segs) {
+      const bias = round(Math.abs(num(s.p50) - num(s.act)), 4);
+      if (bias > 0) demandDrv.push({ id: `seg_bias:${str(s.segId)}`, factor: `${str(s.segment)} 预测偏差 |P50−实际|`, driver: bias,
+        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "p50", drillValue: num(s.p50) } });
+      const drift = round(Math.max(0, num(s.p50) - num(s.tgt)), 4);
+      if (drift > 0) demandDrv.push({ id: `seg_drift:${str(s.segId)}`, factor: `${str(s.segment)} 需求超目标漂移`, driver: drift,
+        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "tgt", drillValue: num(s.tgt) } });
+    }
+    const openQty = round(orders.filter((o) => str(o.status) === "OPEN").reduce((a, o) => a + num(o.qty) / 1e4, 0), 4);
+    if (openQty > 0) demandDrv.push({ id: "order_backlog", factor: "在手订单需求（OPEN 未交付）", driver: openQty,
+      prov: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "qty", drillValue: openQty } });
+
+    // ── 供给端驱动（真颗粒·万套等效）──
+    const supplyDrv: Drv[] = [];
+    const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
+    const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
+    // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
+    const capBase = totalCapWan > 0 ? totalCapWan : finalDemand;
+    const capGap = totalCapWan > 0 ? round(Math.max(0, finalDemand - totalCapWan), 4) : 0; // 无产能颗粒→不臆造产能缺口（诚实 0）
+    if (capGap > 0) supplyDrv.push({ id: "capacity_gap", factor: "产能缺口（需求−年化产能）", driver: capGap,
+      prov: { kind: "派生", drillType: "Line", drillId: "capacityDaily", drillField: "capacityDaily", drillValue: totalCapWan } });
+    const matGapWan = round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0) * matTonToWan, 4);
+    if (matGapWan > 0) supplyDrv.push({ id: "material_gap", factor: "物料缺口（ΣgapTon 折万套）", driver: matGapWan,
+      prov: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
+    // 设备 OEE 损失：Σ(1−oee_current) 均值 × 产能基准（越低 OEE → 供给损失越大·万套等效·随 oee_current 真变 C4）。
+    const oeeDeficit = equipment.length ? round(equipment.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / equipment.length, 4) : 0;
+    const oeeLossWan = round(oeeDeficit * capBase, 4);
+    if (oeeLossWan > 0) supplyDrv.push({ id: "oee_loss", factor: "设备 OEE 损失（1−OEE 均值×产能）", driver: oeeLossWan,
+      prov: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+
+    // ── 双向分摊（真占比·非五五开）──
+    const sumD = round(demandDrv.reduce((a, d) => a + d.driver, 0), 4);
+    const sumS = round(supplyDrv.reduce((a, d) => a + d.driver, 0), 4);
+    const T = round(sumD + sumS, 4) || 1;
+    const demandContribution = round(G * explained * (sumD / T), 4);
+    const supplyContribution = round(G * explained * (sumS / T), 4);
+    const residual = round(G - demandContribution - supplyContribution, 4); // = G×(1−explained)（构造上勾稽）
+
+    const splitSide = (drvs: Drv[], sideContribution: number, sideSum: number) =>
+      drvs
+        .sort((a, b) => b.driver - a.driver || a.id.localeCompare(b.id))
+        .map((d) => ({
+          id: d.id, factor: d.factor,
+          contribution: round(sideContribution * (d.driver / (sideSum || 1)), 4),
+          share: round(d.driver / (sideSum || 1), 4), unit,
+          driverValue: d.driver, provenance: d.prov,
+        }));
+    const demandLeaves = splitSide(demandDrv, demandContribution, sumD);
+    const supplyLeaves = splitSide(supplyDrv, supplyContribution, sumS);
+
+    // 勾稽（C2·硬校验）：端贡献 = Σ叶；总 = 需求端+供给端+residual。
+    const reconChecks = [
+      { label: "需求端内", parentGap: demandContribution, sumChildren: round(demandLeaves.reduce((a, n) => a + n.contribution, 0), 4),
+        residual: round(demandContribution - demandLeaves.reduce((a, n) => a + n.contribution, 0), 4),
+        ok: Math.abs(demandLeaves.reduce((a, n) => a + n.contribution, 0) - demandContribution) <= 1e-4 },
+      { label: "供给端内", parentGap: supplyContribution, sumChildren: round(supplyLeaves.reduce((a, n) => a + n.contribution, 0), 4),
+        residual: round(supplyContribution - supplyLeaves.reduce((a, n) => a + n.contribution, 0), 4),
+        ok: Math.abs(supplyLeaves.reduce((a, n) => a + n.contribution, 0) - supplyContribution) <= 1e-4 },
+      { label: "总（需求端+供给端+residual）", parentGap: G, sumChildren: round(demandContribution + supplyContribution, 4),
+        residual, ok: Math.abs(demandContribution + supplyContribution + residual - G) <= 1e-4 },
+    ];
+    const reconciled = reconChecks.every((r) => r.ok);
+    const residualPct = round(Math.abs(residual) / G * 100, 2);
+    const demandPct = round(demandContribution / G * 100, 1);
+    const supplyPct = round(supplyContribution / G * 100, 1);
+
+    return {
+      rootMetric: { key: "sop_demand_supply", name: "产销供需缺口", unit, gap: G },
+      totalGap: G, unit,
+      demandSide: { contribution: demandContribution, share: round((sumD / T), 4), pct: demandPct, drivers: demandLeaves },
+      supplySide: { contribution: supplyContribution, share: round((sumS / T), 4), pct: supplyPct, drivers: supplyLeaves },
+      residual, reconChecks, reconciled, residualPct,
+      summary: `产销缺口 ${G}${unit} 双向归因：需求端 ${demandPct}%（${demandLeaves.length} 叶·预测偏差/在手订单/结构漂移）⊥ 供给端 ${supplyPct}%（${supplyLeaves.length} 叶·产能/物料/设备OEE），residual ${residualPct}%（诚实未解释）·勾稽${reconciled ? "通过" : "未通过"}`,
     };
   }
 
@@ -1873,6 +1993,7 @@ export class SolverService {
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
     if (solverKey === "gap_attribution") return this.gapAttribution(ctx, args);
     if (solverKey === "decision_play") return this.decisionPlay(ctx, args);
+    if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
