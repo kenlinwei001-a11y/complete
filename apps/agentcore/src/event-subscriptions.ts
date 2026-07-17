@@ -48,6 +48,9 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "action.pending_approval", producer: "Action 草稿提交", tier: "NOTIFY", invalidates: ["notifications", "approval-inbox"] },
   { event: "action.executed", producer: "Action 写回执行", tier: "IN_SESSION", invalidates: ["dashboard", "object-queries"], dl: "DL4" },
   { event: "writeback.divergence", producer: "回声对账", tier: "NOTIFY", invalidates: ["notifications", "dashboard"], dl: "DL4" },
+  // WO-C1 · L2 决策内核（根因→方案→选定→落 Action 一条龙）
+  { event: "decision.created", producer: "WO-C1 决策内核·建 Decision(PROPOSED·bundling gap_attribution+decision_play)", tier: "IN_SESSION", invalidates: ["decisions", "decision-page"] },
+  { event: "decision.committed", producer: "WO-C1 决策内核·commit Decision(COMMITTED·派 ActionDraft 走 S2)", tier: "IN_SESSION", invalidates: ["decisions", "decision-page", "approval-inbox"] },
   // L6 学习环 / DL5
   { event: "calibration.applied", producer: "校准提案批准", tier: "IN_SESSION", invalidates: ["calibration-report", "solver-params"], dl: "DL5" },
   // L7 孵化环 / DL6
