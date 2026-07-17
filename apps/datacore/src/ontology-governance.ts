@@ -408,6 +408,16 @@ export class OntologyGovernanceService {
       const cur = latest.get(s.sliceKey);
       if (!cur || s.version > cur.version) latest.set(s.sliceKey, s);
     }
+    // A3-SUITE-1：约束优先从一等 RuleEntry.params 解析，fixture 内联数组作冷启动 fallback。
+    const rules = await this.repos.rules.list(tenantId);
+    const ruleByKey = new Map(rules.map((r) => [r.key, r]));
+    const resolveStringArray = (ref: { ruleKey: string; paramKey: string } | undefined, fallback: string[] | undefined): string[] => {
+      if (!ref) return fallback ?? [];
+      const rule = ruleByKey.get(ref.ruleKey);
+      const v = rule?.params?.[ref.paramKey];
+      if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v as string[];
+      return fallback ?? [];
+    };
     const results: { sliceKey: string; fixture: string; ok: boolean; diff?: string }[] = [];
     for (const spec of latest.values()) {
       const fixtures = spec.spec.contractFixtures ?? [];
@@ -416,11 +426,19 @@ export class OntologyGovernanceService {
           const out = await this.ontologyCore.executeSlice(sysCtx, spec.spec, fx.args);
           const types = new Set(out.nodes.map((n) => n.typeKey));
           const linkKeys = new Set(out.edges.map((e) => e.linkKey));
+          const mustIncludeTypes = resolveStringArray(
+            fx.expect.ruleRef ? { ruleKey: fx.expect.ruleRef.ruleKey, paramKey: fx.expect.ruleRef.typesParam } : undefined,
+            fx.expect.mustIncludeTypes,
+          );
+          const mustIncludeLinkKeys = resolveStringArray(
+            fx.expect.ruleRef ? { ruleKey: fx.expect.ruleRef.ruleKey, paramKey: fx.expect.ruleRef.linksParam } : undefined,
+            fx.expect.mustIncludeLinkKeys,
+          );
           const rootOk = out.nodes.some((n) => n.typeKey === fx.expect.rootType);
           const minOk = out.nodes.length >= fx.expect.minNodes;
           const maxOk = fx.expect.maxNodes === undefined || out.nodes.length <= fx.expect.maxNodes;
-          const typesOk = fx.expect.mustIncludeTypes.every((tk) => types.has(tk));
-          const linksOk = (fx.expect.mustIncludeLinkKeys ?? []).every((lk) => linkKeys.has(lk));
+          const typesOk = mustIncludeTypes.every((tk) => types.has(tk));
+          const linksOk = mustIncludeLinkKeys.every((lk) => linkKeys.has(lk));
           const ok = rootOk && minOk && maxOk && typesOk && linksOk;
           results.push(
             ok
@@ -429,7 +447,7 @@ export class OntologyGovernanceService {
                   sliceKey: spec.sliceKey,
                   fixture: fx.name,
                   ok: false,
-                  diff: `rootOk=${rootOk} minNodes=${out.nodes.length}>=${fx.expect.minNodes}?${minOk} maxOk=${maxOk} types=${[...types].join("/")} need=${fx.expect.mustIncludeTypes.join("/")} typesOk=${typesOk} linksOk=${linksOk}`,
+                  diff: `rootOk=${rootOk} minNodes=${out.nodes.length}>=${fx.expect.minNodes}?${minOk} maxOk=${maxOk} types=${[...types].join("/")} need=${mustIncludeTypes.join("/")} typesOk=${typesOk} linksOk=${linksOk}`,
                 },
           );
         } catch (err) {
