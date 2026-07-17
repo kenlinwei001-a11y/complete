@@ -107,7 +107,9 @@ export const RuleEntrySchema = z.object({
   severity: z.enum(["BLOCK", "WARN", "INFO"]),
   // 规则即引用（PRD-rules-as-references §2.2/§4）：命名阈值（求解器读 rule.params 而非硬编码）。
   // 改 param 即改推演（P2 求解器接入后，全 7 入口随之变）。可编辑、随规则版本（R6）。可选（旧规则无）。
-  params: z.record(z.string(), z.number()).optional(),
+  // A3-SUITE-1：params 同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys），
+  // 保持单一 RuleEntry 一等实体，不改 PropagationRule 的数值读取路径（冷启动 fallback）。
+  params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
   origin: RuleOriginSchema,
   version: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
@@ -313,12 +315,18 @@ export const IndustryTemplateSchema = z.object({
   ),
   rules: z.array(
     z.object({
+      id: z.string().optional(),
       key: z.string(),
       name: z.string(),
       expression: z.string(),
+      scopeObjectTypes: z.array(z.string()).optional(),
       severity: z.string(),
       // 规则即引用（PRD-rules-as-references）：命名阈值，供求解器读（P2）+ 规则编辑器改。
-      params: z.record(z.string(), z.number()).optional(),
+      // A3-SUITE-1：切片契约字符串数组也由此承载，使 RuleEntry 成为约束一等实体。
+      params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
+      origin: RuleOriginSchema.optional(),
+      version: z.number().int().optional(),
+      status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
     }),
   ),
   scenarioSeed: z.object({

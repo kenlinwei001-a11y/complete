@@ -236,7 +236,7 @@ export interface SolverContext {
   // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
   // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
-  rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number> }>;
+  rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number | string | string[]> }>;
   ruleSetVersion?: string;
   // WO-DATAMODE-UNIFY-PROVENANCE（唯一真相合成 provenance 谓词·SolverService.buildSynthProvenancePredicate 注入）：
   // 逐对象判"是否合成种子物化"——origin SYNTHETIC ∪（MATERIALIZED 且 datasetId ∈ 合成源连接的物化数据集集）。

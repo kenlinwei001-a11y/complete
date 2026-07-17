@@ -38,7 +38,7 @@ export class RulesService {
       expression: string;
       scopeObjectTypes: string[];
       severity: "BLOCK" | "WARN" | "INFO";
-      params?: Record<string, number>;
+      params?: Record<string, number | string | string[]>;
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
     },
