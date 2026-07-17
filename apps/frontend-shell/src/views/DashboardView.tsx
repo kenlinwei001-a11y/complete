@@ -7,7 +7,7 @@ import { SEG_REGISTRY } from "@platform/contracts";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { Provenance } from "@/components/Provenance";
-import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
+import { ProvenanceDag, gapAttributionToDag, type DagData, type GapAttrOutput } from "@/components/ProvenanceDag";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
@@ -221,6 +221,14 @@ function PlanDrillWidget() {
   });
   const kpis = data?.kpis ?? [];
   const [openKpi, setOpenKpi] = useState<string | null>(null);
+  // WO-COCKPIT-INFER：点未达成指标 → 换用 **gap_attribution**（CEO-2 深度反向归因·多跳 caused_by 因果树·引擎不改 §5）
+  // 取代 plan_rootcause 的 1 跳浅 DAG——一路溯到地缘/决策终点根因。前端 gapAttributionToDag 投影，非改引擎。
+  const { data: causalDag, isLoading: causalLoading } = useQuery({
+    queryKey: ["a", "gap-attribution-dag", openKpi],
+    queryFn: async () => gapAttributionToDag((await invokeSolver("gap_attribution", { metricKey: openKpi })).data as GapAttrOutput),
+    enabled: !!openKpi,
+    retry: false,
+  });
   return (
     <div data-testid="dash-plan-drill">
       <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
@@ -255,9 +263,13 @@ function PlanDrillWidget() {
           ))}
         </div>
       )}
-      {openKpi && data?.dag && (
+      {openKpi && (
         <div style={{ marginTop: 10 }} data-testid="drill-dag">
-          <ProvenanceDag data={data.dag} />
+          {causalLoading ? (
+            <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
+          ) : (
+            <ProvenanceDag data={causalDag} />
+          )}
         </div>
       )}
     </div>

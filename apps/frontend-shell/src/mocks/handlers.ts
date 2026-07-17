@@ -1065,6 +1065,46 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "gap_attribution")
+      // WO-COCKPIT-INFER gap_attribution（CEO-2 深度反向归因·多跳 caused_by 因果树·mock 同后端形状）：
+      // 储能达成率越线 → 结构分摊 + caused_by 逐跳（上游减供→长协违约→矿价→地缘→决策 / 备份薄→认证周期）→ 终点根因 + 下钻真值叶。
+      return HttpResponse.json({
+        data: {
+          rootMetric: { key: "seg_attain_ess", name: "储能达成率", unit: "%", target: 100, actual: 72.2, gap: 27.8 },
+          totalGap: 27.8,
+          levels: [
+            { depth: 1, label: "基地", nodes: [{ id: "base:changzhou", factor: "基地 常州", contribution: 9.2, unit: "%" }], residual: 2.1 },
+            { depth: 2, label: "订单/瓶颈", nodes: [{ id: "material:cathode", factor: "正极物料短缺", contribution: 6.1, unit: "%" }], residual: 1.0 },
+            {
+              depth: 3, label: "因果链（caused_by）", residual: 0.7,
+              nodes: [
+                { id: "cf:cf-upstream-cut", factor: "上游减供", contribution: 2.4, unit: "%", share: 0.44, provenance: { drillType: "Supplier", drillField: "actualSupplyTon", drillValue: 820 } },
+                { id: "cf:cf-lta-breach", factor: "长协违约", contribution: 1.2, unit: "%", share: 0.22, provenance: { drillType: "LongTermAgreement", drillField: "actualDeliveredTon", drillValue: 1500 } },
+                { id: "cf:cf-ore-price", factor: "锂价上涨", contribution: 0.6, unit: "%", share: 0.11, provenance: { drillType: "CommodityPriceTrend", drillField: "pctChange", drillValue: 14.29 } },
+                { id: "cf:cf-geopolitical", factor: "地缘冲突推升矿价", contribution: 0.4, unit: "%", share: 0.07, provenance: { drillType: "ExternalSignal", drillField: "value", drillValue: 96000 } },
+                { id: "cf:cf-decision-gap", factor: "价格预判缺失(root)", contribution: 0.3, unit: "%", share: 0.05, provenance: { drillType: "DecisionGap", drillField: "severity", drillValue: 0.8 } },
+                { id: "cf:cf-backup-thin", factor: "备份池不足", contribution: 0.5, unit: "%", share: 0.09, provenance: { drillType: "BackupSupplierPool", drillField: "memberCount", drillValue: 2 } },
+                { id: "cf:cf-cert-cycle", factor: "认证周期长(root)", contribution: 0.4, unit: "%", share: 0.07, provenance: { drillType: "BackupSupplierPool", drillField: "certWeeks", drillValue: 16 } },
+              ],
+            },
+          ],
+          causalEdges: [
+            { from: "cf-cathode-shortage", to: "cf-upstream-cut", viaLinkKey: "caused_by" },
+            { from: "cf-upstream-cut", to: "cf-lta-breach", viaLinkKey: "caused_by" },
+            { from: "cf-lta-breach", to: "cf-ore-price", viaLinkKey: "caused_by" },
+            { from: "cf-ore-price", to: "cf-geopolitical", viaLinkKey: "caused_by" },
+            { from: "cf-geopolitical", to: "cf-decision-gap", viaLinkKey: "caused_by" },
+            { from: "cf-upstream-cut", to: "cf-backup-thin", viaLinkKey: "caused_by" },
+            { from: "cf-backup-thin", to: "cf-cert-cycle", viaLinkKey: "caused_by" },
+          ],
+          atomicLeaves: [
+            { id: "cf:cf-decision-gap", factor: "价格预判缺失(root)", contribution: 0.3, unit: "%", share: 0.05 },
+            { id: "cf:cf-cert-cycle", factor: "认证周期长(root)", contribution: 0.4, unit: "%", share: 0.07 },
+          ],
+          reconChecks: [], reconciled: true, residualPct: 12, summary: "储能达成率缺口 27.8%：沿 caused_by 溯到决策/地缘终点根因",
+        },
+        snapshotVersion: "ov-12",
+      });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 
