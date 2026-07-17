@@ -2506,9 +2506,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
                 expect: z.object({
                   rootType: z.string(),
                   minNodes: z.number().int(),
-                  mustIncludeTypes: z.array(z.string()),
+                  mustIncludeTypes: z.array(z.string()).optional(),
                   mustIncludeLinkKeys: z.array(z.string()).optional(),
                   maxNodes: z.number().int().optional(),
+                  // A3-SUITE-1：约束可来自一等 RuleEntry.params。
+                  ruleRef: z
+                    .object({
+                      ruleKey: z.string(),
+                      typesParam: z.string(),
+                      linksParam: z.string(),
+                    })
+                    .optional(),
                 }),
               }),
             )

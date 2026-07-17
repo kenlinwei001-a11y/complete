@@ -196,8 +196,9 @@ export interface Rule {
   expression: string;
   scopeObjectTypes: string[];
   severity: "BLOCK" | "WARN" | "INFO";
-  /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。 */
-  params?: Record<string, number>;
+  /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。
+   * A3-SUITE-1：同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys）。 */
+  params?: Record<string, number | string | string[]>;
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
@@ -439,9 +440,16 @@ export interface SliceSpecRecord {
       expect: {
         rootType: string;
         minNodes: number;
-        mustIncludeTypes: string[];
+        mustIncludeTypes?: string[];
         mustIncludeLinkKeys?: string[];
         maxNodes?: number;
+        // A3-SUITE-1：约束可来自一等 RuleEntry.params（G-10 切片维）。
+        // 若提供 ruleRef，运行时从已发布规则读参数；否则退回到内联数组（冷启动 fallback）。
+        ruleRef?: {
+          ruleKey: string;
+          typesParam: string;
+          linksParam: string;
+        };
       };
     }[];
   };
