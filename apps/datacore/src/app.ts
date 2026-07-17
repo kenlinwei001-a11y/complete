@@ -97,8 +97,9 @@ import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
-import { DeriveDecisionFieldsRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生
+import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
+import { materializeRecords } from "./decision/record-materialize.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -3039,6 +3040,84 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       written,
       dataMode: weakestDerivedDataMode(results),
       warnings,
+    };
+  });
+
+  // ---- WO-CEO-DATA-supply · 真源记录**颗粒级**物化（灌真颗粒·走现有 RawDataset/连接器）------------------
+  // CEO 驾驶舱数字当前全来自合成种子（battery.ts generateBattery）。本端点把已入库的真 RawDataset（真连接器/
+  // 上传门产生的 财务/MES/矿价… 原始行）**逐行 1:1** 物化成一等真对象（origin=MATERIALIZED·非合成），求解器/
+  // 驾驶舱据此读**真值**。⛔ 颗粒不聚合：只落原始颗粒·聚合留给下游 derive/decision-fields/求解器（可逐值下钻·R13）。
+  // ⛔ R14：列→属性映射由导入方以数据提供·平台零业务常数。KILL-MOCK-RED：合成源（config.synthetic）硬拒·不冒充真值。
+  app.post("/a/v1/records/materialize", async (req) => {
+    const c = ctx(req);
+    // Entitlement 先于 authz（R3 暗发：关 = 404 FEATURE_NOT_FOUND）。
+    if (!(await features.enabled(c.tenantId, "data-import.record-materialize"))) throw featureNotFound();
+    requireAdmin(c);
+    const body = parseBody(RecordMaterializeRequestSchema, req.body);
+
+    // ① 真 RawDataset（租户隔离·R2）。
+    const ds = await repos.rawDatasets.get(c.tenantId, body.rawDatasetId);
+    if (!ds) throw notFound(`RawDataset ${body.rawDatasetId} 不存在`);
+
+    // ② 源 provenance 判定（KILL-MOCK-RED·两正交维之 provenance 维）：合成源（config.synthetic===true）硬拒——
+    //    合成种子不得经此路径冒充成真物化对象（否则驾驶舱把合成当真值·违铁律 0.4）。真源判定与
+    //    buildSynthProvenancePredicate 同源（MATERIALIZED 且 datasetId ∉ 合成源数据集集）。
+    const conn = await repos.connections.get(c.tenantId, ds.sourceConnId);
+    const sourceSynthetic = (conn?.config as Record<string, unknown> | undefined)?.synthetic === true;
+    if (sourceSynthetic) {
+      throw validationError(
+        `数据集 ${ds.id} 源连接为合成源（config.synthetic）→ 拒绝物化为真对象（KILL-MOCK-RED：合成不得冒充真值）。请经真连接器/上传门 POST /a/v1/uploads 导入真数据后再物化。`,
+      );
+    }
+
+    // ③ 目标类型须已发布 ACTIVE（真值物化进求解器/驾驶舱读的既有类型）。
+    const types = await ontology.listTypes(c);
+    const targetDef = types.find((t) => t.key === body.targetType && t.status === "ACTIVE");
+    if (!targetDef) throw validationError(`目标类型 ${body.targetType} 未发布或非 ACTIVE（先建模发布该类型再物化真记录）`);
+
+    // ④ 读真源原始行（rawRows·原始颗粒），⑤ 逐行 1:1 物化（纯函数·颗粒不聚合·R6）。
+    const rows = await repos.rawRows.list(c.tenantId, ds.id);
+    const { objects, warnings, primaryKey } = materializeRecords({
+      targetType: body.targetType,
+      props: targetDef.properties,
+      rows,
+      columnMapping: body.columnMapping,
+      primaryKeyColumn: body.primaryKeyColumn,
+      datasetId: ds.id,
+      sourceConnId: ds.sourceConnId,
+    });
+    if (rows.length === 0) warnings.push(`数据集 ${ds.id} 无原始行（rawRows 空）→ 0 物化·诚实空态（先经上传门灌真数据）`);
+
+    // ⑥ 落库（dryRun 只试算不写）。replaceExisting：先清本类型同租户既有对象（含合成种子）→ 真值换合成。
+    let replacedCount = 0;
+    let materializedCount = 0;
+    if (body.dryRun) {
+      materializedCount = objects.length; // 将物化条数（R6 与真跑一致）。
+    } else if (objects.length > 0) {
+      const epoch = await repos.epochs.next(c.tenantId);
+      if (body.replaceExisting) {
+        replacedCount = await repos.objects.removeWhere(c.tenantId, (o) => o.type === body.targetType);
+      }
+      for (const o of objects) {
+        await repos.objects.put({ id: o.id, tenantId: c.tenantId, type: o.type, props: o.props, origin: o.origin, epoch });
+        materializedCount++;
+      }
+    }
+
+    // provenance 维：真源（非合成）且有物化对象 → 世界态 imported·驾驶舱据此诚实标真、不冒充。
+    const provenanceReal = !sourceSynthetic && objects.length > 0;
+    return {
+      targetType: body.targetType,
+      rawDatasetId: ds.id,
+      sourceConnId: ds.sourceConnId,
+      materializedCount,
+      replacedCount,
+      worldSource: provenanceReal ? "imported" : "synthetic",
+      provenanceReal,
+      primaryKey,
+      warnings,
+      sampleObjectIds: objects.slice(0, 5).map((o) => o.id),
+      dryRun: body.dryRun === true,
     };
   });
 

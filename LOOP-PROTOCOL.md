@@ -1,8 +1,17 @@
-# LOOP-PROTOCOL.md — 自治交付回路协议（CEO 真数据 lane · Dev-4 handoff）
+# LOOP-PROTOCOL.md v2 — 自治交付回路协议（CEO 真数据 lane · Dev-4 handoff）
 
 > 目的：把「开发 → 真跑验收 → 同步 → 推送 → handoff → 复验」固化成可重复回路，
 > 让 Dev-4 在**无需逐步问询**下自治推进，同时保证每一轮交到复验方手上的都是
-> **真能用**（非绿测试冒充）、**可回滚**、**在 `claude/vigilant-knuth-b1nmxn` 上对齐**的增量。
+> **真能用**（非绿测试冒充）、**可回滚**、**基线对齐**的增量。
+>
+> **v2 变更（复验方 2026-07-17）**：
+> 1. **每 WO 独立 handoff 分支** `claude/handoff-<wo>`——不共用单一 handoff、不用指派分支、不开 PR。
+>    交付 = `git push origin HEAD:claude/handoff-<wo>`，复验方逐分支逐值复验。
+> 2. **颗粒铁律**（供给类 WO）：**只生成颗粒**；聚合值一律由**求解器 Σ/ratio 算出**；判据 = **改颗粒→聚合必变**
+>    （入库零预聚合·可逐值下钻）。
+> 3. **跟 dev2（本体扩展）对齐**：物化/派生只打**已发布 ACTIVE 类型**（通用·零硬编码类型名）→ dev2 新增类型自动支持，代码不动。
+> 4. **基线红诚实**：团队分支常带他人 WIP 的 pre-existing 红；开工先 `git stash` 跑基线定责，**自己 lane 绿即交**，
+>    不替他人 lane 修测试（尤其他人 file-domain），红情如实**交底**。
 
 ## 0 · 前置铁律（每轮开工前自检，违反即返工）
 
@@ -60,4 +69,4 @@
 - 本 lane WO 全 BUILT 且复验通过 → 回路收口，报告状态，不空转、不越界找活。
 
 ---
-_本协议服务于 `claude/vigilant-knuth-b1nmxn` 团队分支的 Dev-4 CEO 真数据 lane。改协议需复验方确认。_
+_本协议服务于 Dev-4 CEO 真数据 lane（每 WO → `claude/handoff-<wo>` 独立分支·复验方逐值复验）。改协议需复验方确认。_
