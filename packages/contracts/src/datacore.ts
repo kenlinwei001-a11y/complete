@@ -322,7 +322,7 @@ export const IndustryTemplateSchema = z.object({
       scopeObjectTypes: z.array(z.string()).optional(),
       severity: z.string(),
       // 规则即引用（PRD-rules-as-references）：命名阈值，供求解器读（P2）+ 规则编辑器改。
-      // A3-SUITE-1：切片契约字符串数组也由此承载，使 RuleEntry 成为约束一等实体。
+      // 注：切片契约元数据不进 rules（见 sliceContracts）——它非行为规则、无 DSL 表达式、不进 planviews 域映射。
       params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
       origin: RuleOriginSchema.optional(),
       version: z.number().int().optional(),
@@ -333,6 +333,22 @@ export const IndustryTemplateSchema = z.object({
     views: z.array(z.string()),
     intents: z.array(z.record(z.string(), z.unknown())),
   }),
+  /**
+   * A3-SUITE-1（refbase 修）：切片契约=元数据一等集合（非行为规则）。单一真源，供 slice fixtures 取
+   * mustIncludeTypes/mustIncludeLinkKeys 做全链可达校验。**刻意不进 `rules`**——切片契约无 DSL 表达式
+   * （曾用 expression:"FALSE" 塞进 rules → DSL 解析报错 + 泄漏进 planviews 域映射，本字段根治二者）。
+   */
+  sliceContracts: z
+    .array(
+      z.object({
+        key: z.string(),
+        name: z.string(),
+        scopeObjectTypes: z.array(z.string()),
+        mustIncludeTypes: z.array(z.string()),
+        mustIncludeLinkKeys: z.array(z.string()),
+      }),
+    )
+    .optional(),
   /** Entitlement 增量：行业模板默认功能集 */
   features: z.array(z.string()).optional(),
   /** A8.6 增量：时序生成规约与剧本（结构见 timeseries.ts） */
