@@ -24,6 +24,21 @@ export const GapProvenanceKindSchema = z.enum([
 ]);
 export type GapProvenanceKind = z.infer<typeof GapProvenanceKindSchema>;
 
+/** 严重度分级（v2·用于归因节点与结果顶层分级） */
+export const SeverityKindSchema = z.enum(["critical", "major", "minor", "info"]);
+export type SeverityKind = z.infer<typeof SeverityKindSchema>;
+
+/** MetricCausalBinding 配置：metricKey → 优先因果根假设 + 域权重（v2）。
+ *  实际以 RuleEntry(params) 扁平键形式持久化（例：`seg_attain_ess:cf-decision-gap`=0.6、
+ *  `seg_attain_ess:domain:decision`=0.7），本 schema 供运行时解析/校验。 */
+export const MetricCausalBindingSchema = z.object({
+  metricKey: z.string(),
+  roots: z.array(z.string()).default([]), // 优先因果根 factorId 列表
+  domainWeights: z.record(z.string(), z.number()).default({}), // 按域（decision/external/supply…）的权重
+  fallbackToSupplyChain: z.boolean().default(true), // 无绑定/无命中根时是否回落供应链根
+});
+export type MetricCausalBinding = z.infer<typeof MetricCausalBindingSchema>;
+
 export const GapProvenanceSchema = z.object({
   kind: GapProvenanceKindSchema,
   drillType: z.string().optional(), // 下钻源对象类型（Equipment/MaterialBalance/Supplier/CommodityPriceTrend/DecisionGap）
@@ -31,6 +46,7 @@ export const GapProvenanceSchema = z.object({
   drillField: z.string().optional(), // 取值字段（oee_current/gapTon/actualSupplyTon/pctChange）
   drillValue: z.number().optional(), // 该字段真值（改它→归因变·C5 铁律）
   provenanceSynthetic: z.boolean().optional(), // 合成源诚实标灰（地缘/矿价无真源时·不冒充实测）
+  severityKind: SeverityKindSchema.optional(), // v2 严重度分级
 });
 export type GapProvenance = z.infer<typeof GapProvenanceSchema>;
 
@@ -67,6 +83,18 @@ export const GapReconCheckSchema = z.object({
 });
 export type GapReconCheck = z.infer<typeof GapReconCheckSchema>;
 
+// ── 多假设归因结果（v2·当 Metric 有多个根假设时，每条假设的分配） ─────────────
+export const MetricAttributionHypothesisSchema = z.object({
+  rootFactorId: z.string(),
+  rootFactorLabel: z.string(),
+  allocatedGap: z.number(), // 折算到目标 gap 量纲的分配值
+  share: z.number(), // 占因果层可解释量的比例
+  severityKind: SeverityKindSchema,
+  causalPath: z.array(z.string()).default([]), // 从结构叶到该根的路径
+  leafIds: z.array(z.string()).default([]), // 本假设覆盖的叶子 id 列表
+});
+export type MetricAttributionHypothesis = z.infer<typeof MetricAttributionHypothesisSchema>;
+
 // ── 引擎产物：瀑布 DAG + 叶子表 + residual ────────────────────────────────────
 export const GapAttributionOutputSchema = z.object({
   rootMetric: z.object({
@@ -78,6 +106,7 @@ export const GapAttributionOutputSchema = z.object({
     gap: z.number(), // target − actual（缺口·正=未达）
   }),
   totalGap: z.number(),
+  noGap: z.boolean().optional(), // v2·actual>=target/gap<=0 时短路边界
   levels: z.array(GapAttributionLevelSchema), // 结构反向分摊（gap 单位）
   atomicLeaves: z.array(GapAttributionNodeSchema), // ~20 叶子原子因素（结构叶 + 因果链终点）
   causalEdges: z.array(
@@ -86,6 +115,8 @@ export const GapAttributionOutputSchema = z.object({
   reconChecks: z.array(GapReconCheckSchema),
   reconciled: z.boolean(), // 全层勾稽通过
   residualPct: z.number(), // 顶层 residual 占 totalGap 比（C6·诚实<15%）
+  severityKind: SeverityKindSchema.optional(), // v2 结果顶层严重度
+  hypotheses: z.array(MetricAttributionHypothesisSchema).optional(), // v2 多假设分配
   summary: z.string(),
 });
 export type GapAttributionOutput = z.infer<typeof GapAttributionOutputSchema>;

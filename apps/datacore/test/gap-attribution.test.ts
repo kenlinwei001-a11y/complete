@@ -9,14 +9,17 @@ import type { AuthCtx } from "../src/domain.js";
  */
 const ADMIN: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
 type GA = {
-  rootMetric: { key: string; name: string; gap: number; unit: string };
+  rootMetric: { key: string; name: string; gap: number; unit: string; target: number; actual: number };
   totalGap: number;
-  levels: { depth: number; label: string; nodes: { id: string; contribution: number }[]; residual: number }[];
-  atomicLeaves: { id: string; factor: string; contribution: number; causalPath: string[]; provenance: { kind: string; drillType?: string; drillId?: string; drillField?: string; drillValue?: number } }[];
+  noGap?: boolean;
+  levels: { depth: number; label: string; nodes: { id: string; contribution: number; provenance?: { severityKind?: string } }[]; residual: number }[];
+  atomicLeaves: { id: string; factor: string; contribution: number; causalPath: string[]; provenance: { kind: string; severityKind?: string; drillType?: string; drillId?: string; drillField?: string; drillValue?: number } }[];
   causalEdges: { from: string; to: string; viaLinkKey: string }[];
   reconChecks: { depth: number; label: string; parentGap: number; sumChildren: number; residual: number; ok: boolean }[];
   reconciled: boolean;
   residualPct: number;
+  severityKind?: string;
+  hypotheses?: { rootFactorId: string; rootFactorLabel: string; allocatedGap: number; share: number; severityKind: string; causalPath: string[]; leafIds: string[] }[];
 };
 
 async function run(t: TestApp, metricKey = "seg_attain_ess"): Promise<GA> {
@@ -160,5 +163,73 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
     // residual 随系数变大（0.88→0.5 → 顶层 residual 从 12% 升到 50%）
     expect(after.residualPct).toBeGreaterThan(before.residualPct + 20);
     expect(after.reconciled).toBe(true); // 改系数后勾稽仍自洽
+  });
+
+  // ── WO-CEO-2-v2 新增测试 ───────────────────────────────────────────────────
+  it("V1·零缺口短路边界：actual>=target 时返回 noGap=true 与空归因", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 合成任务异步物化 Metric，轮询到对象后再改写 actual（避免立即 list 为空）。
+    let m: { props: Record<string, unknown> } | undefined;
+    for (let i = 0; i < 50; i++) {
+      const metrics = await t.repos.objects.listByType(ADMIN.tenantId, "Metric");
+      m = metrics.find((o) => o.props.key === "demand_attain") as { props: Record<string, unknown> } | undefined;
+      if (m) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(m).toBeTruthy();
+    await t.repos.objects.put({ ...(m as any), props: { ...m!.props, actual: 999999 } });
+    const g = await run(t, "demand_attain");
+    expect(g.noGap).toBe(true);
+    expect(g.totalGap).toBeLessThanOrEqual(0);
+    expect(g.levels.length).toBe(0);
+    expect(g.atomicLeaves.length).toBe(0);
+    expect(g.reconciled).toBe(true);
+    expect(g.residualPct).toBe(0);
+  });
+
+  it("V2·MetricCausalBinding：按 metricKey 选择优先因果根并多假设分配", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 发布 MetricCausalBinding 配置规则：为 seg_attain_ess 指定两个优先根 + decision 域权重。
+    await t.repos.rules.put({
+      id: "rule_mcb", tenantId: ADMIN.tenantId, key: "metric_causal_binding", name: "指标因果绑定",
+      expression: "gap_attribution", scopeObjectTypes: ["Metric"], severity: "INFO",
+      params: {
+        "seg_attain_ess:cf-decision-gap": 0.6,
+        "seg_attain_ess:cf-cert-cycle": 0.4,
+        "seg_attain_ess:domain:decision": 0.5,
+      },
+      origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED",
+    } as never);
+    const g = await run(t, "seg_attain_ess");
+    expect(g.hypotheses).toBeTruthy();
+    expect(g.hypotheses!.length).toBeGreaterThanOrEqual(2);
+    const decision = g.hypotheses!.find((h) => h.rootFactorId === "cf-decision-gap");
+    const cert = g.hypotheses!.find((h) => h.rootFactorId === "cf-cert-cycle");
+    expect(decision).toBeTruthy();
+    expect(cert).toBeTruthy();
+    expect(decision!.allocatedGap).toBeGreaterThan(0);
+    expect(cert!.allocatedGap).toBeGreaterThan(0);
+    // 假设份额归一化
+    const totalShare = g.hypotheses!.reduce((a, h) => a + h.share, 0);
+    expect(Math.abs(totalShare - 1)).toBeLessThan(1e-4);
+    // 决策根权重 0.6 > 认证根 0.4，且 decision 域权重也命中，故决策根份额应 ≥ 认证根
+    expect(decision!.share).toBeGreaterThanOrEqual(cert!.share);
+    // caused_by 遍历仍然真走（存在从物料短缺出发的边，且决策根可达）
+    expect(g.causalEdges.some((e) => e.from === "cf-cathode-shortage")).toBe(true);
+    expect(g.causalEdges.some((e) => e.to === "cf-decision-gap")).toBe(true);
+    expect(g.reconciled).toBe(true);
+    expect(g.severityKind).toBeTruthy();
+  });
+
+  it("V2·严重度分级：归因节点与结果均带 severityKind", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const g = await run(t);
+    expect(g.severityKind).toBeTruthy();
+    expect(["critical", "major", "minor", "info"]).toContain(g.severityKind);
+    const leaf = g.atomicLeaves.find((l) => l.provenance.severityKind);
+    expect(leaf).toBeTruthy();
   });
 });
