@@ -359,9 +359,15 @@ export class Orchestrator {
       })
       .join("\n");
     const historySummary = await this.conversationSummary(task);
+    // WO-CEO-6（闭 G-3）：PageContext 注入分类器——focus/selection 进 contextSummary → 分类器据"用户聚焦的指标/根因/选中"
+    // scope 意图（对比不带则路由可不同）。此前分类器只见 view+selectedObjects（G-3 缺口）。
+    const pc = task.context.pageContext;
+    const pcScope = pc
+      ? [pc.focus?.metric ? `focus.metric=${pc.focus.metric}` : "", pc.focus?.factorId ? `focus.根因=${pc.focus.factorId}` : "", pc.selection.length ? `selection=${pc.selection.join("|")}` : ""].filter(Boolean).join("; ")
+      : "";
     const contextSummary = `view=${task.context.view}; selected=${task.context.selectedObjects
       .map((o) => `${o.objectType}:${o.label ?? o.objectId}`)
-      .join(",")}`;
+      .join(",")}${pcScope ? `; ${pcScope}` : ""}`;
 
     const system = buildClassifierSystem(catalog);
     const user = buildClassifierUser({ query: task.query, historySummary, contextSummary });

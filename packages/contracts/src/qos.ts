@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IsoTime } from "./common.js";
 import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
 import { GapReportSchema } from "./growth.js";
+import { PageContextSchema } from "./ceo-agent.js"; // WO-CEO-6 · PageContext 注入（闭 G-3）
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -213,6 +214,12 @@ export const SessionContextSchema = z.object({
    */
   scenarioIntentKey: z.string().optional(),
   scenarioKey: z.string().optional(),
+  /**
+   * WO-CEO-6（闭 G-3·additive）：页面上下文——从页面真对象派生的 PageContext（focus/entities/drillPath/selection）。
+   * 注入 QOS 分类器 contextSummary + path-B agent 上下文 → agent 全知「用户在哪页、看什么、选中谁」，
+   * 答案受它 scope/enrich（对比不带则不同）。schema 见 `ceo-agent.ts PageContextSchema`（前端每视图声明=CEO-6-FE 另单）。
+   */
+  pageContext: PageContextSchema.optional(),
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;
 

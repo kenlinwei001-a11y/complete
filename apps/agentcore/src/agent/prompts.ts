@@ -1,4 +1,4 @@
-import type { QueryTask, SkillDefinition } from "@platform/contracts";
+import type { QueryTask, SessionContext, SkillDefinition } from "@platform/contracts";
 import { selectSkills, type Embedder } from "./skill-router.js";
 
 /** Agent system prompt — the four red lines (QOS-PRD §5.4.3, semantics must not be weakened). */
@@ -81,10 +81,29 @@ export function agentPriorSummary(previousTasks: QueryTask[]): string {
   return lines.join("\n---\n");
 }
 
+/**
+ * WO-CEO-6（闭 G-3）：PageContext 人读摘要——把页面 focus/entities/selection/drillPath 派生成 agent/分类器
+ * 可用的上下文串。让 agent 全知「用户在哪页、聚焦什么指标/根因、选中谁、下钻到哪」。空则返空串（不注入噪声）。
+ */
+export function pageContextSummary(pc: SessionContext["pageContext"]): string {
+  if (!pc) return "";
+  const parts: string[] = [];
+  if (pc.focus) {
+    const f = pc.focus;
+    const fp = [f.metric ? `指标=${f.metric}` : "", f.gap != null ? `缺口=${f.gap}` : "", f.factorId ? `根因=${f.factorId}` : "", f.base ? `基地=${f.base}` : "", f.line ? `产线=${f.line}` : ""].filter(Boolean).join(" ");
+    if (fp) parts.push(`页面聚焦: ${fp}`);
+  }
+  if (pc.selection.length) parts.push(`当前选中: ${pc.selection.join(", ")}`);
+  if (pc.entities.length) parts.push(`页面实体: ${pc.entities.slice(0, 8).map((e) => `${e.type}:${e.label}${e.value != null ? `=${e.value}` : ""}`).join("; ")}`);
+  if (pc.drillPath.length) parts.push(`下钻路径: ${pc.drillPath.join(" → ")}`);
+  return parts.join("\n");
+}
+
 /** User content for the agent loop; user query wrapped per QOS-PRD §10.2. */
 export function buildAgentUser(task: QueryTask, priorSummary?: string): string {
   const ctx = task.context;
   const selected = ctx.selectedObjects.map((o) => `${o.objectType}:${o.label ?? o.objectId}`).join(", ");
+  const pageCtx = pageContextSummary(ctx.pageContext); // WO-CEO-6：注入页面上下文（闭 G-3·agent 知在哪页看什么）
   return [
     priorSummary ? `前情摘要（同会话最近已完成任务）：\n${priorSummary}` : "",
     `<user_query>${task.query}</user_query>`,
@@ -92,6 +111,7 @@ export function buildAgentUser(task: QueryTask, priorSummary?: string): string {
     selected ? `选中对象: ${selected}` : "",
     Object.keys(ctx.filters).length > 0 ? `筛选: ${JSON.stringify(ctx.filters)}` : "",
     ctx.timeWindow ? `时间窗: ${ctx.timeWindow.from} ~ ${ctx.timeWindow.to}` : "",
+    pageCtx,
   ]
     .filter(Boolean)
     .join("\n");
