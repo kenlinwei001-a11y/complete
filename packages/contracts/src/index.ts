@@ -37,3 +37,4 @@ export * from "./sim.js";
 export * from "./opt-template.js";
 export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）
 export * from "./gap-attribution.js"; // WO-CEO-2 · gap_attribution 深度反向归因引擎契约 + 供应链/地缘/决策域对象（GAP-ATTR）
+export * from "./decision-engine.js"; // WO-CEO-3 · 决策推演引擎契约（DecisionOption/TriggerRule/ActionPlan·G-DECISION）

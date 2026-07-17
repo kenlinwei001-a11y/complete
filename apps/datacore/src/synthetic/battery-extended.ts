@@ -60,6 +60,11 @@ export function extendedObjectTypes(): TypeDef[] {
       p("factorId", "string", true), p("label", "string"), p("drillType", "string"), p("drillId", "string"),
       p("drillField", "string"), p("kind", "enum"), p("isRoot", "boolean"), p("provenanceSynthetic", "boolean"),
     ]),
+    // WO-CEO-3 触发规则（信号阈值→行动·一等可编辑·阈值可被 RuleEntry.params 覆盖·decision_play 引擎评估）：
+    def("TriggerRule", "触发规则", "decision", [
+      p("triggerId", "string", true), p("signalRef", "string"), p("op", "enum"), p("threshold"),
+      p("action", "string"), p("actionDetail", "string"), p("cfgRuleKey", "string"),
+    ]),
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
     def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
     def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
@@ -148,6 +153,14 @@ const CAUSAL_FACTORS = [
   { factorId: "cf-decision-gap", label: "价格预判缺失(root)", drillType: "DecisionGap", drillId: "dgap-forecast", drillField: "severity", kind: "决策", isRoot: true, provenanceSynthetic: false },
 ];
 
+// WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry `trigger_thresholds`.params 覆盖·C3）。
+// 信号：li_carbonate_price=ExternalSignal.value；licarb_pct_cum=CommodityPriceTrend 累计涨幅(引擎派生)。
+const TRIGGER_RULES = [
+  { triggerId: "trig-backup-cert", signalRef: "licarb_pct_cum", op: ">", threshold: 12, action: "启动备份供应商认证", actionDetail: "锂价累计涨幅越阈 → 提前激活备份池认证，压缩认证周期", cfgRuleKey: "trigger_thresholds" },
+  { triggerId: "trig-lta-reprice", signalRef: "li_carbonate_price", op: ">", threshold: 90000, action: "长协重谈加价格联动条款", actionDetail: "碳酸锂现价越阈 → 触发长协价格联动条款重谈，止住违约敞口", cfgRuleKey: "trigger_thresholds" },
+  { triggerId: "trig-fx-hedge", signalRef: "usd_cny", op: ">", threshold: 8, action: "启动汇率对冲", actionDetail: "汇率越阈 → 对冲出口营收（当前未越·不 fire）", cfgRuleKey: "trigger_thresholds" },
+];
+
 // WO-CEO-2 caused_by 因果边（果→因·真实物化·gap_attribution 引擎遍历输出边序列 C2）。
 export const CAUSAL_EDGES: { from: string; to: string }[] = [
   { from: "cf-cathode-shortage", to: "cf-upstream-cut" },
@@ -181,6 +194,7 @@ export interface ExtendedData {
   commodityPriceTrends: Record<string, unknown>[];
   decisionGaps: Record<string, unknown>[];
   causalFactors: Record<string, unknown>[];
+  triggerRules: Record<string, unknown>[]; // WO-CEO-3 触发规则
 }
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
@@ -366,5 +380,6 @@ export function generateExtended(
     capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
     commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors: CAUSAL_FACTORS,
+    triggerRules: TRIGGER_RULES,
   };
 }

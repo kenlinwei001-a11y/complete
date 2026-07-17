@@ -675,6 +675,7 @@ export class SyntheticService {
     await putAll("CommodityPriceTrend", ext.commodityPriceTrends, "trendId");
     await putAll("DecisionGap", ext.decisionGaps, "gapId");
     await putAll("CausalFactor", ext.causalFactors, "factorId");
+    await putAll("TriggerRule", ext.triggerRules, "triggerId"); // WO-CEO-3 触发规则
     // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
     await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
