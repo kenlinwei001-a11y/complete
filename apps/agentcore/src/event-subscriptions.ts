@@ -38,6 +38,7 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // L4 配置发布环
   { event: "workflow.published", producer: "工作流发布", tier: "IN_SESSION", invalidates: ["intent-editor.workflow-bindings", "agent-editor.tool-bindings", "workflow-list"] },
   { event: "agent.published", producer: "Agent 发布", tier: "IN_SESSION", invalidates: ["agent-editor.tool-bindings"] },
+  { event: "skill.published", producer: "技能发布（DF-5·补 B 栈资源发布信号）", tier: "IN_SESSION", invalidates: ["agent-editor.skill-bindings", "agent-editor.tool-bindings", "skill-list"] },
   { event: "intent.published", producer: "意图发布", tier: "IN_SESSION", invalidates: ["scene-entry.intent-filter", "scenarios", "intent-catalog"] },
   { event: "scene_entry.updated", producer: "场景入口编辑", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries"] },
   { event: "scenario.published", producer: "场景发布（升一等对象）", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },

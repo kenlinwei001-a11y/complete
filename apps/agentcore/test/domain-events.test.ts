@@ -6,6 +6,25 @@ import { createTestApp, ADMIN, TENANT, debugHeaders } from "./helpers.js";
  * 跨会话传播。验证：append→列出、?since 游标过滤、R2 租户隔离。
  */
 describe("E-c · AgentCore 领域事件馈源 /b/v1/outbox", () => {
+  it("DF-5：真发布技能 → skill.published 落 /b/v1/outbox（补 B 栈资源发布信号·red-bite）", async () => {
+    const t = await createTestApp();
+    const H = debugHeaders(ADMIN);
+    const created = await t.app.inject({
+      method: "POST", url: "/b/v1/skills", headers: H,
+      payload: { key: "df5_probe", name: "DF5探针技能", summary: "占位", body: "占位正文", resources: [] },
+    });
+    const id = (created.json() as { id: string }).id;
+    const t0 = new Date(Date.now() - 1000).toISOString();
+    // force=true 走 lint/eval 审计豁免，聚焦发布 → 事件发射（DF-5 缺口）。
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H, payload: {} });
+    expect(pub.statusCode).toBe(200);
+    const feed = await t.app.inject({ method: "GET", url: `/b/v1/outbox?since=${encodeURIComponent(t0)}`, headers: H });
+    const rows = feed.json() as Array<{ event: string }>;
+    // /b/v1/outbox 是失效信号馈源（仅 eventId/event/createdAt·无 payload）；前端按 event 名失效绑定下拉。
+    expect(rows.map((r) => r.event)).toContain("skill.published"); // red-bite：未发射 emit 则此断言红
+  });
+
+
   it("append → /b/v1/outbox 列出（eventId/event/createdAt）+ ?since 游标过滤 + R2 隔离", async () => {
     const t = await createTestApp();
     const t0 = new Date(Date.now() - 1000).toISOString();

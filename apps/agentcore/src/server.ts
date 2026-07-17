@@ -1156,6 +1156,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
+    // DF-5（Wave3 数据流闭环）：B 栈技能发布 → B 侧 outbox 领域事件 → /b/v1/outbox → 前端 F1 轮询失效
+    // agent-editor 技能绑定下拉（同 workflow/agent/intent/scenario.published 一致模式·补 skill 缺口·TR2/3）。
+    await emitDomainEvent(a.tenantId, "skill.published", { id: published.id, key: published.key });
     // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）
     const siblingIds = new Set(
       (await deps.repos.skills.listByTenant(a.tenantId)).filter((x) => x.key === skill.key).map((x) => x.id),
