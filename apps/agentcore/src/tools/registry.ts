@@ -35,6 +35,25 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // A3.3 多跳切片规划器：意图需要跨域数据且预置切片不匹配时，先调本工具动态规划切片；
+    // 返回含 planned/reused/sliceKey 等显式 trace 标记，下游 resolve_slice / invoke_solver 可消费。
+    name: "plan_slice",
+    descriptionForLLM:
+      "动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用；返回的 sliceKey 可传给 resolve_slice 或作为 solver 上下文。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rootType: { type: "string", description: "根对象类型，如 Order" },
+        targets: { type: "array", items: { type: "string" }, description: "需覆盖的目标类型列表，如 [Base, Material, Customer]" },
+        maxHops: { type: "number", description: "最大跳数（可选，默认 6）" },
+        question: { type: "string", description: "原始问句（可选，用于切片复用索引匹配）" },
+      },
+      required: ["rootType", "targets"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
     name: "query_objects",
     descriptionForLLM:
       "按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。",

@@ -6,9 +6,9 @@ import {
   planSlice,
   resolveSlice,
   saveSlice,
-  type SlicePlanResult,
   type SliceResolveResult,
 } from "@/api/endpoints";
+import type { PlanSliceResponse } from "@platform/contracts";
 import { toast, toastError } from "@/store/toastStore";
 
 /**
@@ -80,7 +80,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
   const [rootType, setRootType] = useState("");
   const [targets, setTargets] = useState<string[]>([]);
   const [maxNodes, setMaxNodes] = useState(200);
-  const [plan, setPlan] = useState<SlicePlanResult | null>(null);
+  const [plan, setPlan] = useState<PlanSliceResponse | null>(null);
   const [preview, setPreview] = useState<SliceResolveResult | null>(null);
   const [previewArgs, setPreviewArgs] = useState("{}");
 

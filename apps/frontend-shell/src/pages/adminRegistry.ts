@@ -46,6 +46,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "domains", label: zh.nav.domains, roles: ["admin", "data_admin"] },
   { path: "evals", label: zh.nav.evals, roles: ["admin", "catalog_admin"] },
   { path: "slices", label: zh.nav.slices, roles: ["admin", "data_admin"] },
+  { path: "slice-library", label: zh.nav.sliceLibrary, roles: ["admin", "data_admin"] },
   { path: "merge", label: zh.nav.merge, roles: ["admin", "data_admin"] },
   { path: "growth", label: zh.nav.growth, roles: ["admin", "data_admin"] },
   // A18.4 求解器审核台：审 PROVISIONAL 临时求解器 → 晋升 GOVERNED（解锁写真值，R4）
@@ -88,7 +89,7 @@ export interface AdminNavGroup {
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
   // WO-SWEEP-03-NAV-GROUP：meta（系统自我）改归 governance（见下）与 ShellLayout.NAV_GROUPS 对齐——防两处分组源漂移。
-  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "boundary", "prototype-intake"] },
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "slice-library", "merge", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },

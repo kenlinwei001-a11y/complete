@@ -89,6 +89,21 @@ export class MockOntologyClient implements OntologyClient {
         snapshotVersion: SNAPSHOT,
       };
     }
+    if (sliceKey.startsWith("biz.")) {
+      // A3.3 动态切片 mock：plan_slice 产出的 biz.<root>.<targets> 切片，按 key 解析返回通用子图。
+      const parts = sliceKey.split(".");
+      const rootType = parts[1] ?? "Unknown";
+      const targets = parts.slice(2);
+      return {
+        data: {
+          rootType,
+          targets,
+          nodes: targets.map((t) => ({ type: t, id: `${rootType}_to_${t}` })),
+          edges: targets.map((t) => ({ from: rootType, to: t, kind: `${rootType}_to_${t}` })),
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
     throw new Error(`unknown slice: ${sliceKey}`);
   }
 
@@ -111,6 +126,19 @@ export class MockOntologyClient implements OntologyClient {
         reused: false,
       },
     };
+  }
+
+  /** A3-SUITE-2：动态切片持久化 mock——规划器产出即视为一等 SliceSpec，供后续 resolve_slice 消费。 */
+  async putSliceSpec(
+    _ctx: ToolAuthCtx,
+    sliceKey: string,
+    _spec: {
+      root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+      paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+      maxNodes?: number;
+    },
+  ): Promise<{ sliceKey: string; version: number }> {
+    return { sliceKey, version: 1 };
   }
 
   async queryObjects(
