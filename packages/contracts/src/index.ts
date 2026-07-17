@@ -36,3 +36,4 @@ export * from "./base-registry.js";
 export * from "./sim.js";
 export * from "./opt-template.js";
 export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）
+export * from "./record-materialize.js"; // WO-CEO-DATA-supply · 真源记录颗粒级物化（1 行→1 真对象·颗粒不聚合·R14·R6·R13·KILL-MOCK-RED）

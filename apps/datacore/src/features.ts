@@ -94,6 +94,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。
+  { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
