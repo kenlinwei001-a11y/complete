@@ -266,7 +266,7 @@ export interface AffectedOrderRowVM {
   cust: string;
   seg: string;
   model: string;
-  qty: number; // 万套
+  qty: number; // 套（WO-UNIT-NORMALIZE §3：Order.qty 单位规范=套）
   due: string;
   delay: number; // 天（取最大）
   risks: OrderRiskRefVM[];

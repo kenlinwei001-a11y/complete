@@ -15,6 +15,7 @@ import {
   type CalibrationHistoryEntry,
   type DataHealthResponse,
   type OrderProblemGroup,
+  SEG_REGISTRY,
 } from "@platform/contracts";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
 import { RISK_TIMELINE } from "./fixtures";
@@ -255,18 +256,28 @@ const riskRef = (base: string, factor?: string) => {
   return { base: card.base, factor: card.factor, crossDay: card.crossDay, peak: card.peak, series: card.series, threshold: RISK_TIMELINE.threshold };
 };
 
+// WO-UNIT-NORMALIZE §3-d：qty 单位=套（对齐真数据口径·消除 mock 掩盖真单位炸）。旧 mock 以 万套 记（1.5…）→ ×1e4 归一为套。
 export const AFFECTED_ROWS: AffectedOrderRowVM[] = [
-  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("江门")] },
-  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 1.82, due: "2026-06-24", delay: 4, risks: [riskRef("江门")] },
-  { so: "SO-10013", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-07-02", delay: 3, risks: [riskRef("常州")] },
-  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 1.1, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("江门"), riskRef("眉山"), riskRef("成都")] },
-  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 0.9, due: "2026-07-05", delay: 2, risks: [riskRef("眉山")] },
-  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 1.3, due: "2026-07-08", delay: 2, risks: [riskRef("江门")] },
-  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 0.8, due: "2026-07-12", delay: 1, risks: [riskRef("武汉")] },
-  { so: "SO-10019", cust: "蔚途汽车", seg: "乘用车", model: "4680-LFP", qty: 1.2, due: "2026-07-15", delay: 2, risks: [riskRef("成都")] },
+  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 15000, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("江门")] },
+  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 18200, due: "2026-06-24", delay: 4, risks: [riskRef("江门")] },
+  { so: "SO-10013", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 15000, due: "2026-07-02", delay: 3, risks: [riskRef("常州")] },
+  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 11000, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("江门"), riskRef("眉山"), riskRef("成都")] },
+  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 9000, due: "2026-07-05", delay: 2, risks: [riskRef("眉山")] },
+  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 13000, due: "2026-07-08", delay: 2, risks: [riskRef("江门")] },
+  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 8000, due: "2026-07-12", delay: 1, risks: [riskRef("武汉")] },
+  { so: "SO-10019", cust: "蔚途汽车", seg: "乘用车", model: "4680-LFP", qty: 12000, due: "2026-07-15", delay: 2, risks: [riskRef("成都")] },
 ];
 
-const SEG_PRICE: Record<string, number> = { 乘用车: 0.9, 商用车: 0.85, 储能: 0.45 };
+// WO-UNIT-NORMALIZE §3-d：价基统一到真口径 SEG_REGISTRY.priceWan（万元/套），取代旧写死 0.9/0.85/0.45（假口径掩盖真 bug）。
+const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.priceWan]));
+// WO-UNIT-NORMALIZE §3-d：金额(亿) = Σ qty(套)×priceWan(万元/套) / 1e4（真公式·非写死亿值 → 改 mock qty 则 financeImpact 随之变，KILL-MOCK-RED）。
+const financeYiOf = (orderIds: string[]): number => {
+  const sumWan = orderIds.reduce((s, so) => {
+    const row = AFFECTED_ROWS.find((r) => r.so === so);
+    return s + (row ? row.qty * (SEG_PRICE[row.seg] ?? 0.6) : 0);
+  }, 0);
+  return Math.round((sumWan / 1e4) * 1e4) / 1e4;
+};
 
 const chain = (orderId: string, judgement: string, rootCause: string, remedy: string) => ({
   orderId,
@@ -283,7 +294,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "DELIVERY",
     title: "交期风险",
     orderCount: 5,
-    financeImpact: 4.2,
+    financeImpact: financeYiOf(["SO-10001", "SO-10004"]),
     rootCauseSummary: "化成柜张力 D+5 越线 + 交付高峰叠加，P90 口径周供给不足",
     rootChains: [
       chain("SO-10001", "交期判：P90 周供给 < 周需求", "常州化成柜张力 D+5 越线", "化成夜班 + 预留 1 周缓冲"),
@@ -294,7 +305,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "MARGIN",
     title: "毛利不达线",
     orderCount: 2,
-    financeImpact: 1.6,
+    financeImpact: financeYiOf(["SO-10008"]),
     rootCauseSummary: "框架价压价至接单毛利线（C15）以下",
     rootChains: [chain("SO-10008", "毛利判：测算 9.8% < 商用车线 11%", "框架协议低价 + 议价偏移", "建议提价 2.2% 接单")],
   },
@@ -302,7 +313,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "KIT",
     title: "齐套缺口",
     orderCount: 2,
-    financeImpact: 1.1,
+    financeImpact: financeYiOf(["SO-10011"]),
     rootCauseSummary: "三元正极长协执行偏差 −8% → 库存+在途覆盖不足",
     rootChains: [chain("SO-10011", "齐套判：正极缺口 86 吨", "长协到货延迟（到货间隙事件）", "加急采购 · 最早齐套 06-29")],
   },
@@ -310,7 +321,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "CREDIT",
     title: "信用超限",
     orderCount: 1,
-    financeImpact: 1.3,
+    financeImpact: financeYiOf(["SO-10019"]),
     rootCauseSummary: "在手应收 + 新单金额 > 授信额度（C13）",
     rootChains: [chain("SO-10019", "信用判：超限 1.4 亿", "在手应收 9.8 亿叠加新单", "预付款 ≥40% 或追加担保")],
   },
@@ -325,13 +336,14 @@ export function affectedOrdersOutput(base?: string): AffectedOrdersOutputVM {
       .map((r) => ({ ...r, risks: r.risks.filter((k) => k.base === base) }));
   }
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
-  const revenue = rows.reduce((s, r) => s + r.qty * (SEG_PRICE[r.seg] ?? 0.6), 0);
+  // WO-UNIT-NORMALIZE §3-d：营收(亿) = Σ qty(套)×priceWan(万元/套) / 1e4（与后端 summary.revenue 同口径同价基）。
+  const revenueYi = rows.reduce((s, r) => s + r.qty * (SEG_PRICE[r.seg] ?? 0.6), 0) / 1e4;
   return {
     summary: {
       orderCount: rows.length,
       totalQty: Math.round(totalQty * 100) / 100,
       custCount: new Set(rows.map((r) => r.cust)).size,
-      revenue: Math.round(revenue * 100) / 100,
+      revenue: Math.round(revenueYi * 1e4) / 1e4,
     },
     rows,
     problems: ORDER_PROBLEMS,

@@ -19,8 +19,10 @@ type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
 
 /** 越线带宽（阈值下探关注区）：阈值−15 起为「关注」。参照 HTML 三档口径。 */
 const BAND = 15;
-/** 电池产量单位（换行业经 ViewConfig.layout.unit 下发·此处域内兜底）。 */
-const UNIT = "万套"; // debattery-allow
+/** 电池产量单位（换行业经 ViewConfig.layout.unit 下发·此处域内兜底）。WO-UNIT-NORMALIZE：Order.qty 单位=套。 */
+const UNIT = "套"; // debattery-allow
+/** WO-UNIT-NORMALIZE：万元→亿 单位换算（NOT 业务常数·R14）。营收=Σ qty(套)×priceWan(万元)→ /1e4 = 亿。 */
+const wanToYi = (v: number) => v / 1e4;
 
 /**
  * 三档色（与 heatColor 同阈值口径·用于文字/边框实色）：≥阈值 高危红 · [阈值−15,阈值) 关注黄 · <阈值−15 正常青。
@@ -379,15 +381,15 @@ function OrderAggView({ horizon }: { horizon: number }) {
                   <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无成品库存真源">—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>{r.revenue > 0 ? `${r.revenue.toFixed(1)} 亿` : "—"}</td>
-                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{r.gp > 0 ? `${r.gp.toFixed(1)} 亿` : "—"}</td>
+                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>{r.revenue > 0 ? `${wanToYi(r.revenue).toFixed(1)} 亿` : "—"}</td>
+                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{r.gp > 0 ? `${wanToYi(r.gp).toFixed(1)} 亿` : "—"}</td>
                   <td className="mono">{r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "—"}</td>
                 </tr>
               ))}
               <tr style={{ borderTop: "1px solid var(--line2)" }}>
                 <td className="zh"><b>合计</b></td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }} data-testid="risk-econ-total-rev">{totalRev > 0 ? `${totalRev.toFixed(1)} 亿` : "—"}</td>
-                <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{totalGp > 0 ? `${totalGp.toFixed(1)} 亿` : "—"}</td>
+                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }} data-testid="risk-econ-total-rev">{totalRev > 0 ? `${wanToYi(totalRev).toFixed(1)} 亿` : "—"}</td>
+                <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{totalGp > 0 ? `${wanToYi(totalGp).toFixed(1)} 亿` : "—"}</td>
                 <td className="mono">{totalRev > 0 ? `${((totalGp / totalRev) * 100).toFixed(1)}%` : "—"}</td>
               </tr>
             </tbody>

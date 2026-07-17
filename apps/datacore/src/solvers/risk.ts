@@ -613,6 +613,8 @@ interface AggRiskRef {
 }
 // DF.3b（PRD order §4.5-C）：营收口径统一到原型 SEG_REGISTRY 万元/套（2.2/1.4/1.8），
 // 取代旧 {0.6/0.55/0.5} 不一致口径 → affectedOrders summary.revenue 与 order econTable 同源一致。
+// WO-UNIT-NORMALIZE §3：Order.qty 单位=套 · 金额(亿)=Σ qty(套)×priceWan(万元/套)/1e4。
+// summary.revenue 与 problems[].financeImpact 同用 SEG_PRICE(=priceWan) 价基（消除旧 unitPrice 元 vs priceWan 万元 的 30x 劈裂）。
 const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
 
 export function affectedOrdersAggregate(
@@ -665,7 +667,8 @@ export function affectedOrdersAggregate(
   // PRD-IND-order-aggregate §4.5-D：明细按交期升序（最早到期最先看），交期相同按订单号。
   const rows = [...byOrder.values()].sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.so < b.so ? -1 : 1));
   const totalQty = round(rows.reduce((s, r) => s + r.qty, 0), 2);
-  const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0), 2);
+  // WO-UNIT-NORMALIZE §3：亿 = Σ qty(套)×priceWan(万元/套) / 1e4（与 financeImpact 同价基同公式）。
+  const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0) / 1e4, 4);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };
   return { summary, rows, problems: [...probByCat.values()] };
 }
@@ -800,7 +803,8 @@ function buildOrderProblems(
   for (const cat of ["DELIVERY", "MARGIN", "KIT", "CREDIT"] as const) {
     const b = buckets.get(cat);
     if (!b || b.rows.length === 0) continue;
-    const finance = round(b.rows.reduce((a, r) => a + num(r.qty) * 10000 * num(c.orders.find((o) => o.props.so === r.so)?.props.unitPrice, 600), 0) / 1e8, 4);
+    // WO-UNIT-NORMALIZE §3：金额(亿) = Σ qty(套)×priceWan(万元/套) / 1e4。价基 = SEG_PRICE(priceWan)，与 summary.revenue 一致（消除旧 unitPrice 元 × 10000 的 30x 劈裂/超估）。
+    const finance = round(b.rows.reduce((a, r) => a + num(r.qty) * (SEG_PRICE[segmentOf(c, str(r.cust)).key] ?? 0.6), 0) / 1e4, 4);
     out.push({
       category: cat,
       title: PROBLEM_TITLES[cat] as string,
