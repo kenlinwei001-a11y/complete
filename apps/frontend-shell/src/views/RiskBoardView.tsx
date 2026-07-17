@@ -486,6 +486,13 @@ function RiskDetailPanel({
     .filter((x) => x.value != null && x.value >= threshold - BAND)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const tickLabel = (d: number): string => (d === 1 || d % 5 === 0 || d === H ? `D+${d}` : "");
+  // CT-a（⑤ 订单交付 icon）：逐日受影响订单数（与 onDay/AffectedOrdersModal 同源·同 day 口径 dueDay===i·非写死）。
+  // 该日有受影响订单 → 主因素逐日点叠交付 icon，用户一眼看出哪天有订单交付受影响（尤其黄/红点）。
+  const affectedByDay: number[] = new Array(H).fill(0);
+  for (const o of (card.affectedOrders ?? []) as { dueDay?: number }[]) {
+    const dd = o.dueDay;
+    if (typeof dd === "number" && dd >= 0 && dd < H) affectedByDay[dd] = (affectedByDay[dd] ?? 0) + 1;
+  }
 
   return (
     <div className={styles.rkDet} data-testid={`risk-detail-${card.base}`}>
@@ -512,6 +519,7 @@ function RiskDetailPanel({
             color={tierColor(card.peak, threshold)}
             dots={card.series.map((v) => ({ color: heatColor(v, threshold), value: v }))}
             onDay={onDay}
+            affectedByDay={affectedByDay}
           />
           {/* 其余因素：仅当前值（无逐日源）→ 灰点 + 当前值标注（不伪造逐日·G-DM-1）。 */}
           {others.map((o) => (
@@ -549,8 +557,10 @@ function RiskDetailPanel({
 }
 
 /** 单因素时间轴行（.rk-frow）：168px 标签 + 逐日圆点。主因素点可点→受影响订单。 */
-function FactorRow({ label, sub, color, dots, onDay }: {
+function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
   label: string; sub: string; color: string; dots: { color: string; value: number | null }[]; onDay?: (day: number) => void;
+  /** CT-a（⑤）：逐日受影响订单数（index=day·与 onDay/AffectedOrdersModal 同源）。>0 的日叠交付 icon。 */
+  affectedByDay?: number[];
 }) {
   return (
     <div className={styles.rkFrow} data-testid={`risk-frow-${label}`}>
@@ -559,16 +569,34 @@ function FactorRow({ label, sub, color, dots, onDay }: {
         <span>{sub}</span>
       </div>
       <div className={styles.rkDots}>
-        {dots.map((d, i) => (
-          <button
-            key={i}
-            className={styles.rkDot}
-            style={{ background: d.color }}
-            title={d.value != null ? `D+${i + 1} · ${Math.round(d.value)}` : `D+${i + 1} · 无实测`}
-            data-testid={onDay ? `risk-dot-${i}` : undefined}
-            onClick={onDay ? () => onDay(i) : undefined}
-          />
-        ))}
+        {dots.map((d, i) => {
+          const nAff = affectedByDay?.[i] ?? 0; // CT-a：该日受影响订单数（同源真数据·非写死）
+          const dotTitle = d.value != null ? `D+${i + 1} · ${Math.round(d.value)}` : `D+${i + 1} · 无实测`;
+          const title = nAff > 0 ? `${dotTitle} · ${nAff} 单交付受影响` : dotTitle;
+          return (
+            <button
+              key={i}
+              className={styles.rkDot}
+              style={{ background: d.color, position: "relative", overflow: "visible" }}
+              title={title}
+              aria-label={title}
+              data-testid={onDay ? `risk-dot-${i}` : undefined}
+              data-affected={nAff > 0 ? nAff : undefined}
+              onClick={onDay ? () => onDay(i) : undefined}
+            >
+              {nAff > 0 && (
+                // ⑤ 订单交付受影响 icon（该日 affected_orders 非空·同源）——小三角挂在点上方，一眼可辨。
+                <span
+                  aria-hidden="true"
+                  data-testid={`risk-dot-order-${i}`}
+                  style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", fontSize: 8, lineHeight: 1, color: "var(--ink, #e8b54a)", pointerEvents: "none" }}
+                >
+                  ▾
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
