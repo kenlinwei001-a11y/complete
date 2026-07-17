@@ -32,7 +32,7 @@ import {
   generatePlanDomain,
   BINDINGS,
 } from "./battery.js";
-import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
+import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
@@ -669,6 +669,12 @@ export class SyntheticService {
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
+    // WO-CEO-2 供应链/地缘/决策域（gap_attribution 因果链实体·§0 案例落成真对象）
+    await putAll("LongTermAgreement", ext.longTermAgreements, "ltaId");
+    await putAll("BackupSupplierPool", ext.backupSupplierPools, "poolId");
+    await putAll("CommodityPriceTrend", ext.commodityPriceTrends, "trendId");
+    await putAll("DecisionGap", ext.decisionGaps, "gapId");
+    await putAll("CausalFactor", ext.causalFactors, "factorId");
     // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
     await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
@@ -909,6 +915,11 @@ export class SyntheticService {
     for (const t of pd.planTargets) {
       const owner = String(P(t).level) === "month" ? "prin-plan" : "prin-coo";
       await putLink(`lnk_pto_${P(t).tgtId}`, "plantarget_ownedby", oid("PlanTarget", P(t).tgtId), oid("Principal", owner));
+    }
+    // WO-CEO-2 gap_attribution：因果边 caused_by（果→因·CausalFactor 一等因果链·引擎遍历 C2/C9）。
+    // 常数边·零 rng·同 seed 字节一致；边 id 由 from/to 确定性派生。
+    for (const e of CAUSAL_EDGES) {
+      await putLink(`lnk_cby_${e.from}_${e.to}`, "caused_by", oid("CausalFactor", e.from), oid("CausalFactor", e.to));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
