@@ -1287,6 +1287,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // SPINE 骨架链：指标→KSF / 指标→责任人 / 目标→责任人（各视图 KPI 单一出处 + 责任闭环的本体连线）。
     { key: "metric_affects_ksf", fromTypeKey: "Metric", toTypeKey: "KSF", cardinality: "N:N" }, // decision
     { key: "metric_ownedby", fromTypeKey: "Metric", toTypeKey: "Principal", cardinality: "N:N" }, // decision→people
+    // WO-CEO-2 gap_attribution：因果边（果→因·CausalFactor 一等因果链·gap_attribution 引擎遍历·GAP-ATTR）。
+    { key: "caused_by", fromTypeKey: "CausalFactor", toTypeKey: "CausalFactor", cardinality: "N:N" }, // decision（因果链）
     { key: "plantarget_ownedby", fromTypeKey: "PlanTarget", toTypeKey: "Principal", cardinality: "N:N" }, // plan→people（责任闭环）
     // Phase 3 MES Domain links
     { key: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model", cardinality: "N:1" }, // process

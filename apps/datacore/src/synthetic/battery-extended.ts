@@ -38,6 +38,27 @@ export function extendedObjectTypes(): TypeDef[] {
     def("Supplier", "供应商", "supply", [
       p("supplierId", "string", true), p("supplierCode", "string"), p("name", "string"), p("category", "enum"),
       p("materialType", "enum"), p("rating", "enum"), p("region", "string"), p("leadTime"), p("minOrderQty"), p("onTimeRate"), p("status", "enum"),
+      // WO-CEO-2：供货量字段（actual<contracted = 上游减供·因果链一环·gap_attribution 叶级真值）
+      p("contractedSupplyTon"), p("actualSupplyTon"),
+    ]),
+    // WO-CEO-2 供应链/地缘/决策域（gap_attribution 深度反向归因·因果链实体·§0 案例落成真对象）：
+    def("LongTermAgreement", "长期协议", "supply", [
+      p("ltaId", "string", true), p("supplierId", "string"), p("materialType", "enum"),
+      p("contractedQtyTon"), p("actualDeliveredTon"), p("priceLinked", "boolean"), p("breachPenaltyWan"),
+    ]),
+    def("BackupSupplierPool", "备份供应池", "supply", [
+      p("poolId", "string", true), p("materialType", "enum"), p("memberCount"), p("certWeeks"), p("procureFreqPerYear"),
+    ]),
+    def("CommodityPriceTrend", "矿产价格趋势", "external", [
+      p("trendId", "string", true), p("commodity", "string"), p("weekOf", "string"), p("pricePerTon"), p("pctChange"),
+    ]),
+    def("DecisionGap", "决策缺陷", "decision", [
+      p("gapId", "string", true), p("kind", "enum"), p("description", "string"), p("severity"), p("ownerRef", "string"),
+    ]),
+    // 因果因素节点（caused_by 遍历的一等节点·每个下钻到真证据对象·结构叶→地缘/决策终点）：
+    def("CausalFactor", "因果因素", "decision", [
+      p("factorId", "string", true), p("label", "string"), p("drillType", "string"), p("drillId", "string"),
+      p("drillField", "string"), p("kind", "enum"), p("isRoot", "boolean"), p("provenanceSynthetic", "boolean"),
     ]),
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
     def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
@@ -84,6 +105,60 @@ const SUPPLIERS = [
   { supplierId: "SUP-014", supplierCode: "LYGF", name: "凌云股份", category: "原材料", materialType: "结构件", rating: "B", region: "华北", leadTime: 8, minOrderQty: 500, onTimeRate: 0.91, status: "观察" },
 ];
 
+// WO-CEO-2 供货量约定（正极 3 家植入减供：actual<contracted → 上游减供因果一环·常数不消耗 rng·R6）。
+const CATHODE_CONTRACT: Record<string, number> = { "SUP-001": 8000, "SUP-002": 6000, "SUP-003": 4000 };
+
+// WO-CEO-2 长协：正极供应商约定量/实际交付/价格联动条款/违约成本（actual<contracted=违约·因果链一环）。
+const LONG_TERM_AGREEMENTS = [
+  { ltaId: "lta-lfp-rbkj", supplierId: "SUP-001", materialType: "正极", contractedQtyTon: 8000, actualDeliveredTon: 7200, priceLinked: false, breachPenaltyWan: 320 },
+  { ltaId: "lta-lfp-cylk", supplierId: "SUP-003", materialType: "正极", contractedQtyTon: 4000, actualDeliveredTon: 3400, priceLinked: false, breachPenaltyWan: 180 },
+  { ltaId: "lta-ncm-dskj", supplierId: "SUP-002", materialType: "正极", contractedQtyTon: 6000, actualDeliveredTon: 5850, priceLinked: true, breachPenaltyWan: 60 },
+];
+
+// WO-CEO-2 备份供应池：正极池薄（成员少+认证周期长 → 断供无替代 → root=认证周期长）。
+const BACKUP_SUPPLIER_POOLS = [
+  { poolId: "pool-cathode", materialType: "正极", memberCount: 2, certWeeks: 16, procureFreqPerYear: 2 },
+  { poolId: "pool-anode", materialType: "负极", memberCount: 4, certWeeks: 8, procureFreqPerYear: 4 },
+];
+
+// WO-CEO-2 矿价趋势：碳酸锂逐周上涨（地缘冲突推升 → 上游成本 → 减供/违约）。R6：常数。
+const COMMODITY_PRICE_TRENDS = [
+  { trendId: "licarb-w1", commodity: "碳酸锂", weekOf: "2026-06-01", pricePerTon: 84000, pctChange: 3.2 },
+  { trendId: "licarb-w2", commodity: "碳酸锂", weekOf: "2026-06-08", pricePerTon: 88500, pctChange: 5.4 },
+  { trendId: "licarb-w3", commodity: "碳酸锂", weekOf: "2026-06-15", pricePerTon: 92800, pctChange: 4.9 },
+  { trendId: "licarb-w4", commodity: "碳酸锂", weekOf: "2026-06-22", pricePerTon: 96000, pctChange: 3.4 },
+];
+
+// WO-CEO-2 决策缺陷：因果链终点（前瞻缺失/条款缺失·可归的最终根）。
+const DECISION_GAPS = [
+  { gapId: "dgap-forecast", kind: "前瞻缺失", description: "矿价前瞻缺失：未预判地缘冲突推升锂价，长协未设价格联动条款", severity: 0.8, ownerRef: "prin-procure" },
+  { gapId: "dgap-clause", kind: "条款缺失", description: "长协无违约追偿/替代激活条款，断供时无兜底", severity: 0.6, ownerRef: "prin-procure" },
+];
+
+// WO-CEO-2 因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象·结构叶→地缘/决策终点）。
+// 因果方向：caused_by 从「果」指向「因」（物料短缺 --caused_by--> 上游减供 …）。
+const CAUSAL_FACTORS = [
+  { factorId: "cf-cathode-shortage", label: "正极粉短缺", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-upstream-cut", label: "上游减供", drillType: "Supplier", drillId: "SUP-003", drillField: "actualSupplyTon", kind: "实测", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-lta-breach", label: "长协违约", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillField: "actualDeliveredTon", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-ore-price", label: "锂价上涨", drillType: "CommodityPriceTrend", drillId: "licarb-w4", drillField: "pctChange", kind: "外部信号", isRoot: false, provenanceSynthetic: true },
+  { factorId: "cf-geopolitical", label: "地缘冲突推升矿价", drillType: "ExternalSignal", drillId: "li_carbonate_price", drillField: "value", kind: "外部信号", isRoot: false, provenanceSynthetic: true },
+  { factorId: "cf-backup-thin", label: "备份池不足", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillField: "memberCount", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-cert-cycle", label: "认证周期长(root)", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillField: "certWeeks", kind: "派生", isRoot: true, provenanceSynthetic: false },
+  { factorId: "cf-decision-gap", label: "价格预判缺失(root)", drillType: "DecisionGap", drillId: "dgap-forecast", drillField: "severity", kind: "决策", isRoot: true, provenanceSynthetic: false },
+];
+
+// WO-CEO-2 caused_by 因果边（果→因·真实物化·gap_attribution 引擎遍历输出边序列 C2）。
+export const CAUSAL_EDGES: { from: string; to: string }[] = [
+  { from: "cf-cathode-shortage", to: "cf-upstream-cut" },
+  { from: "cf-upstream-cut", to: "cf-lta-breach" },
+  { from: "cf-lta-breach", to: "cf-ore-price" },
+  { from: "cf-ore-price", to: "cf-geopolitical" },
+  { from: "cf-geopolitical", to: "cf-decision-gap" },
+  { from: "cf-upstream-cut", to: "cf-backup-thin" },
+  { from: "cf-backup-thin", to: "cf-cert-cycle" },
+];
+
 const PROVINCE_GRID: Record<string, number> = { changzhou: 0.55, hefei: 0.58, xian: 0.62, chengdu: 0.78, zaozhuang: 0.7, jiangmen: 0.5 };
 
 export interface ExtendedData {
@@ -100,6 +175,12 @@ export interface ExtendedData {
   financeAccounts: Record<string, unknown>[];
   financeMetrics: Record<string, unknown>[];
   suppliers: Record<string, unknown>[];
+  // WO-CEO-2 供应链/地缘/决策域（gap_attribution 因果链实体）
+  longTermAgreements: Record<string, unknown>[];
+  backupSupplierPools: Record<string, unknown>[];
+  commodityPriceTrends: Record<string, unknown>[];
+  decisionGaps: Record<string, unknown>[];
+  causalFactors: Record<string, unknown>[];
 }
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
@@ -273,5 +354,17 @@ export function generateExtended(
   const FIN = { conservative: { cashCushion: 72, capex: 3, irr: 9.5, netMargin: 12.5 }, baseline: { cashCushion: 58, capex: 8, irr: 14.2, netMargin: 14.0 }, aggressive: { cashCushion: 42, capex: 27, irr: 18.6, netMargin: 13.2 } };
   const financeMetrics = Object.entries(FIN).map(([k, v]) => ({ metricId: `fm_${k}`, scenarioKey: k, cashCushion: v.cashCushion, irr: v.irr, capexSpent: v.capex, netMargin: v.netMargin }));
 
-  return { materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers: SUPPLIERS };
+  // WO-CEO-2 供货量：正极 3 家植入减供（actual = contracted × onTimeRate → <contracted 减供）；
+  // 其余供应商按 minOrderQty×频次派生一个约定量。全常数/派生·不消耗 rng·R6 字节一致。
+  const suppliers = SUPPLIERS.map((s) => {
+    const contracted = CATHODE_CONTRACT[s.supplierId] ?? Math.round(s.minOrderQty * 4);
+    return { ...s, contractedSupplyTon: contracted, actualSupplyTon: Math.round(contracted * s.onTimeRate) };
+  });
+
+  return {
+    materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
+    capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
+    longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
+    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors: CAUSAL_FACTORS,
+  };
 }
