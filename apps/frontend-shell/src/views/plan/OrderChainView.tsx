@@ -109,7 +109,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   for (const r of out.rows) {
     const price = econCfg.segPrice[r.seg] ?? 0.6;
     const h = hashN(r.so, 10) / 10;
-    const sales = r.qty * price;
+    // WO-UNIT-NORMALIZE §3：sales(亿) = qty(套) × priceWan(万元/套) / 1e4（fg/wip/rm/gp/合计/summary 全部下游自动归一）。
+    const sales = (r.qty * price) / 1e4;
     const e: EconAgg = {
       cap: r.qty,
       sales,
@@ -323,7 +324,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                     </span>
                   </td>
                   <td>{r.model}</td>
-                  <td>{fmt(r.qty, 2)} 万套</td>
+                  <td>{fmt(r.qty, 0)} 套</td>
                   <td>
                     <b>{r.due.slice(5)}</b>
                   </td>
