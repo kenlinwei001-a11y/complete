@@ -65,6 +65,7 @@ VITE_MOCK=1 pnpm --filter frontend-shell dev
 - **服务间凭证**：env `SERVICE_TOKEN`（两服务同值）→ A 的服务间路由（/a/v1/llm-providers/{id}/credential、/a/v1/references/report、provider/binding 读取）；用户 JWT 一律 403。B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 POST /b/v1/internal/invalidate），传播 SLO ≤60s。
 - **演示账号**：tenant `demo`，admin（admin+planner+catalog_admin）/ planner / base_manager:常州，密码均 demo1234；workspace 按角色返回不同导航/视图/主题。
 - **仓储双实现**：memory（测试默认）与 pg（DATABASE_URL 触发，启动自动迁移）。新增表需同时改 migrations/*.sql + repo/pg.ts + repo/memory.ts + repo.ts 接口。
+- **接缝门 SEAM-GATE**：凡「数据+引擎两半」或「A+B 两系统」拆开做的特性，交付必须含一条**驱动接缝的组合测试**——在 merge/集成态断言端到端行为，而非只测各半 unit。例：metric-aware 须测 `gap_attribution(market_share)→cf-competitor-price`（数据种绑定 × 引擎路由，任一半漏即红）。**审核方复验头号判据 = 接缝驱动通，非各半绿**；「绿测试≠能用·断在接缝」的老坑靠此门堵死。
 
 ## 文档索引
 
