@@ -39,4 +39,5 @@ export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导�
 export * from "./record-materialize.js"; // WO-CEO-DATA-supply · 真源记录颗粒级物化（1 行→1 真对象·颗粒不聚合·R14·R6·R13·KILL-MOCK-RED）
 export * from "./gap-attribution.js"; // WO-CEO-2 · gap_attribution 深度反向归因引擎契约 + 供应链/地缘/决策域对象（GAP-ATTR）
 export * from "./decision-engine.js"; // WO-CEO-3 · 决策推演引擎契约（DecisionOption/TriggerRule/ActionPlan·G-DECISION）
+export * from "./decision-kernel.js"; // WO-C1 · L2 统一决策内核（一等 Decision·根因→方案→选定→落 Action·闭 C1）
 export * from "./ceo-agent.js"; // WO-CEO-6 · PageContext + CeoAgentProfile + 深问路由（闭 G-3）

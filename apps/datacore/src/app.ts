@@ -100,6 +100,8 @@ import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 import { materializeRecords } from "./decision/record-materialize.js";
+import { DecisionKernelService } from "./decision/kernel.js"; // WO-C1 · L2 统一决策内核
+import { CreateDecisionInputSchema } from "@platform/contracts"; // WO-C1
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -144,6 +146,7 @@ export interface BuiltApp {
     scheduler: SchedulerService;
     ruleScan: RuleScanService;
     actions: ActionService;
+    decisionKernel: DecisionKernelService; // WO-C1 · L2 决策内核
     databuilder: DataBuilderService;
     sop: SopService;
     kb: KbService;
@@ -330,6 +333,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // V5 双算注入：把被测 solvers.invoke 以回调注入 VLE（vle.ts 不 import solvers/service，V9 静态门守）。
   const vle = new VleService(repos, synthetic, ontology, (c, key, args) => solvers.invoke(c, key, args));
   const actions = new ActionService(repos, rules, outbox, notifications);
+  // WO-C1 · L2 决策内核：gap_attribution(根因)+decision_play(方案)→一等 Decision→commit 派 ActionDraft（走 S2）。
+  const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   const sop = new SopService(repos, solvers, outbox);
@@ -2560,6 +2565,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     return actions.submit(ctx(req), id);
   });
+
+  // ---- WO-C1 · L2 统一决策内核（Decision·根因→方案→选定→落 Action 一条龙·闭 C1 双闸）--------------
+  // 建（PROPOSED·选方案）：真推演 gap_attribution+decision_play → 校验选定 ⊆ 真方案 → 存 Decision。
+  app.post("/a/v1/decisions", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(CreateDecisionInputSchema, req.body);
+    const decision = await decisionKernel.create(c, body, new Date().toISOString());
+    return reply.status(201).send(decision);
+  });
+  // 一等可查（R2 跨租户 404）。
+  app.get("/a/v1/decisions/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    return decisionKernel.get(ctx(req), id);
+  });
+  // 定（COMMITTED·派 ActionDraft·走 S2 审批链·门不绕）。已 COMMITTED → 409。
+  app.post("/a/v1/decisions/:id/commit", async (req) => {
+    const { id } = req.params as { id: string };
+    return decisionKernel.commit(ctx(req), id, new Date().toISOString());
+  });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };
     return actions.list(ctx(req), { status, role });
@@ -3860,6 +3884,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scheduler,
       ruleScan,
       actions,
+      decisionKernel,
       databuilder,
       sop,
       kb,

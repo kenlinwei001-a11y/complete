@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -222,6 +222,8 @@ export interface Repos {
   publishRequests: Store<PublishRequestRecord>;
   actionDrafts: Store<ActionDraft>;
   actionTypes: Store<ActionTypeRecord>;
+  /** WO-C1 · L2 决策内核：一等 Decision 台账（bundling gap_attribution+decision_play·状态机·溯源）。 */
+  decisions: Store<Decision>;
   industryTemplates: Store<IndustryTemplateRecord>;
   syntheticJobs: Store<SyntheticJob>;
   outboxEvents: Store<OutboxEvent>;

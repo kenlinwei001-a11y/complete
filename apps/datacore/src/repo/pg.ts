@@ -628,6 +628,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     publishRequests: new PgStore(pool, "publish_requests"),
     actionDrafts: new PgStore(pool, "action_drafts"),
     actionTypes: new PgStore(pool, "action_types"),
+    decisions: new PgStore(pool, "decisions"), // WO-C1 · L2 决策内核台账
+
     industryTemplates: new PgStore(pool, "industry_templates"),
     syntheticJobs: new PgStore(pool, "synthetic_jobs"),
     outboxEvents: new PgStore(pool, "outbox_events"),
