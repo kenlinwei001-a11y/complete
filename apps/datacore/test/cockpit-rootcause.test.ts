@@ -13,7 +13,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     const b = generateBattery(42, "S");
     expect(JSON.stringify(a.metrics)).toBe(JSON.stringify(b.metrics));
     expect(JSON.stringify(a.rootCauseChains)).toBe(JSON.stringify(b.rootCauseChains));
-    expect(a.metrics.length).toBe(3);
+    expect(a.metrics.length).toBe(10); // WO-CEO-1a：3 运营 + 4 顶层目标 + 3 细分
     expect(a.rootCauseChains.length).toBe(4);
     // 毛利率 KPI 的 actual 与财务"毛利"线/收入交叉一致（非写死）：actual = 毛利/收入×100。
     const margin = a.metrics.find((k) => k.metricId === "kpi-margin")!;
@@ -29,7 +29,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     // 两绿地类型真物化
     const kpiRows = (await (await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: ADMIN, payload: { objectType: "Metric", filter: {}, limit: 10 } })).json()) as { rows?: { props: Record<string, unknown> }[]; data?: { props: Record<string, unknown> }[] };
     const kpis = (kpiRows.rows ?? kpiRows.data ?? []);
-    expect(kpis.length).toBe(3);
+    expect(kpis.length).toBe(10); // WO-CEO-1a：顶层目标升一等 Metric 后 10 个（含营收/毛利/份额/现金）
     // gapPct 派生回写（= (actual-target)/target*100）
     const k0 = kpis[0]!.props;
     expect(typeof k0.gapPct).toBe("number");

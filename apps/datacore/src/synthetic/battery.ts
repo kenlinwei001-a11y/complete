@@ -1,5 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, WAVE1_SCALE_FACTOR } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -2528,6 +2528,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { principalId: "prin-plan", name: "计划部", kind: "org", parentRef: "prin-coo" },
     { principalId: "prin-supply", name: "供应链部", kind: "org", parentRef: "prin-coo" },
     { principalId: "prin-fin", name: "财务部", kind: "org", parentRef: "prin-coo" },
+    // WO-CEO-1a item3：三应用细分业务线责任主体（细分 Metric 的 owner，责任闭环 owner/越线）。
+    { principalId: "prin-seg-pas", name: "乘用车业务线", kind: "org", parentRef: "prin-plan" },
+    { principalId: "prin-seg-ess", name: "储能业务线", kind: "org", parentRef: "prin-supply" },
+    { principalId: "prin-seg-com", name: "商用车业务线", kind: "org", parentRef: "prin-plan" },
   ];
   // SPINE：指标库 Metric（= cockpit PlanKpi 归一）。actual 全部经 P1 同源数据算出（与驾驶舱数字交叉一致，R14/R13/R-一致）；
   // 归挂 KSF + 责任人 + 越线根因 chainKey。metric_rollup 求解器据此对齐 target 算 delta/miss。
@@ -2535,11 +2539,37 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const totalAct = demandSegments.reduce((s, d) => s + (d.act as number), 0);
   const totalNet = materialBalances.reduce((s, m) => s + (m.netDemandTon as number), 0);
   const totalCovered = materialBalances.reduce((s, m) => s + (m.netDemandTon as number) * (m.ltaPct as number) / 100, 0);
+  // WO-CEO-1a：顶层目标升一等 Metric（营收/毛利/份额/现金）+ 运营指标 target/floorVal 收编 GOAL_REGISTRY（R-一致，杀 Gap④ 漂移）。
+  // `goalMetric`：target/floorVal/owner/ksf/name/unit/level/category 一律取自 GOAL_REGISTRY 单一来源；只 actual + 可选 chainKey 由本地传入。
+  // actual 诚实来源：营收=Σ需求×价（totalRev，真实聚合）· 毛利=Σ需求×价×毛利率（totalMargin）· 现金=baseline 情景现金垫（params 同源）·
+  //   份额=诚实合成种子（无外部市场规模真源 → provenanceSynthetic 轴标合成，绝不冒充实测 KILL-MOCK-RED）· 运营三指标沿用 P1 同源派生。
+  const goalMetric = (metricId: string, goalKey: string, actual: number, chainKey?: string) => {
+    const g = GOAL_REGISTRY[goalKey]!;
+    return { metricId, key: g.key, name: g.name, level: g.level, category: g.category, target: g.target, actual, floorVal: g.floorVal, unit: g.unit, weight: g.weight, ksfRef: g.ksfRef, ownerRef: g.ownerRef, ...(chainKey ? { chainKey } : {}) };
+  };
+  const cashActual = (BATTERY_SOLVER_PARAMS.planview as { scenarios: { finance: { baseline: { cashCushion: number } } } }).scenarios.finance.baseline.cashCushion;
+  const marketShareActual = 21.5; // 诚实合成：无市场规模真数据源，种子常数（synthetic 标灰，不冒充实测）
   const metrics = [
-    { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", level: "op", category: "profit", target: 16, actual: round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), floorVal: 13, unit: "%", weight: 0.4, ksfRef: "ksf-dem", ownerRef: "prin-fin", chainKey: "rc-profit-mix" },
-    { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", level: "op", category: "scale", target: 100, actual: round(totalAct / totalTgt * 100, 1), floorVal: 95, unit: "%", weight: 0.3, ksfRef: "ksf-bal", ownerRef: "prin-plan", chainKey: "rc-scale-demand" },
-    { metricId: "kpi-material", key: "material_cov", name: "物料保障率", level: "op", category: "material", target: 100, actual: round(totalCovered / totalNet * 100, 1), floorVal: 95, unit: "%", weight: 0.3, ksfRef: "ksf-kit", ownerRef: "prin-supply", chainKey: "rc-material-gap" },
+    // 运营指标（op）——metricId 保持既有 kpi-margin/attain/material 不变（R6 obj id 集稳定）；target/floorVal 现取自 GOAL_REGISTRY。
+    goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix"),
+    goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand"),
+    goalMetric("kpi-material", "material_cov", round(totalCovered / totalNet * 100, 1), "rc-material-gap"),
+    // 顶层企业目标（year · CEO 决策看板头条）——营收700亿此前仅 Σp50×price 局部变量，现升一等 Metric（有 target/floor/owner/越线）。
+    goalMetric("kpi-revenue", "revenue", round(totalRev, 1), "rc-scale-demand"),
+    goalMetric("kpi-gross-profit", "gross_profit", round(totalMargin, 1), "rc-profit-mix"),
+    goalMetric("kpi-share", "market_share", marketShareActual),
+    goalMetric("kpi-cash", "cash", cashActual),
   ];
+  // WO-CEO-1a item3：三应用细分升带责任 Metric（owner + 越线）。达成率=act/tgt×100，floor=95（储能 72.2%<95 → 越线，owner=储能业务线）。
+  const SEG_METRIC_KEY: Record<string, string> = { 乘用车: "pas", 储能: "ess", 商用车: "com" };
+  for (const d of demandSegments) {
+    const k = SEG_METRIC_KEY[d.segment as string]!;
+    metrics.push({
+      metricId: `kpi-seg-${k}`, key: `seg_attain_${k}`, name: `${d.segment}达成率`, level: "op", category: "segment",
+      target: 100, actual: round((d.act as number) / (d.tgt as number) * 100, 1), floorVal: 95, unit: "%", weight: 0.1,
+      ksfRef: "ksf-dem", ownerRef: `prin-seg-${k}`, chainKey: "rc-scale-demand",
+    });
+  }
   // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。
   const demBase = round(totalTgt, 0);
   const sopVersionRows = [1, 3, 5, 7].map((v, i) => {

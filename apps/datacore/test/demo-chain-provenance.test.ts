@@ -75,6 +75,6 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
     expect(a.types.length).toBe(66);
-    expect(a.objs.length).toBe(3208);
+    expect(a.objs.length).toBe(3218); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal；类型集不变 66）
   });
 });

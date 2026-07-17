@@ -615,26 +615,23 @@ export class SolverService {
     const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
     if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 Metric（经营指标）对象");
     const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
-    // 规划决策推演 plan-drill：按 level（月/季/年）下钻指标根因。月/季/年 = op 指标按时间粒度
-    // **确定性派生投影**（R13 溯源 op Metric + level 系数，不落 Metric 对象 → 不污染默认读全部/
-    // /metrics/snapshot/rootcause widget，零破坏 spine 骨架；PlanKpi 完整对象化待 spine 扩展，见 DS.1）。
-    const reqLevel = args.level ? str(args.level) : undefined;
-    const PERIODIC: Record<string, number> = { month: 1.0, quarter: 0.97, year: 1.04 };
-    const periodic = reqLevel !== undefined && PERIODIC[reqLevel] !== undefined;
-    const baseLevel = periodic ? "op" : reqLevel; // 月季年从 op 派生；其余按原 level（缺省读全部）
-    const adj = periodic ? PERIODIC[reqLevel as string]! : 1;
+    // WO-CEO-1a item4（KILL-MOCK-RED · 删假周期）：删除假周期系数（×0.97/×1.04 冒充月/季/年 = 假 Metric）。
+    // 规划决策推演 plan-drill 按 Metric **真实 level** 读对象——顶层目标已升 year 级一等 Metric（GOAL_REGISTRY 单一出处，
+    // 有 target/floor/越线），level=year 返回真年度目标；缺省=op（运营当前态，不混年度）；无对应 level 真对象
+    // （月/季 PlanKpi 完整对象化待后续）→ 诚实空，绝不用系数编造（DS.1 假下钻已闭，见本体 §8 fake-period ✅）。
+    const reqLevel = args.level ? str(args.level) : "op";
 
     // 1) 指标越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 metricId 排序）。
     const kpis = kpiObjs
       .map((o) => o.props)
-      .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && (!baseLevel || str(p.level) === baseLevel))
+      .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && str(p.level) === reqLevel)
       .map((p) => {
-        const actual = round(num(p.actual) * adj, 1); // 月季年按粒度系数派生，op 时 adj=1 原值
+        const actual = round(num(p.actual), 1); // 真实 actual（无系数，KILL-MOCK-RED）
         const target = num(p.target);
         const floorVal = num(p.floorVal);
         const offTarget = actual < floorVal;
         return {
-          kpiId: periodic ? `${str(p.metricId)}-${reqLevel}` : str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
+          kpiId: str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
           actual, target, floorVal, unit: str(p.unit),
           gap: round(target - actual, 4), offTarget,
           status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",

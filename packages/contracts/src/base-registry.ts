@@ -89,6 +89,42 @@ export const PLAN_GOAL_TARGETS = {
 } as const;
 
 /**
+ * WO-CEO-1a 统一目标登记册 GOAL_REGISTRY（企业顶层经营目标 = 一等 Metric 的 target/floor 单一来源 · R-一致）。
+ * CEO 决策看板地基：把顶层目标（营收/毛利/份额/现金）与运营指标（毛利率/达成率/保障率）的
+ * **目标值 target + 底线 floorVal + 责任人 ownerRef + 关键成功要素 ksfRef** 收敛为唯一出处，
+ * 杜绝 Gap④ 四处漂移（`Metric.target` 硬编码 · `FinancePlan.budget` · `DemandSegment.tgt` · `PLAN_GOAL_TARGETS` 各写一份）。
+ * 与 `PLAN_GOAL_TARGETS` 重叠的阈值（毛利率底线/现金底线）**直接引用 PLAN_GOAL_TARGETS**（不造第二口径 → 单一事实单一出处）。
+ * 消费端 `datacore/synthetic/battery.ts` metrics[] 经 `GOAL_REGISTRY[goalKey]` 派生 target/floorVal/owner/ksf（R6 字节一致）。
+ * 单位口径：营收/毛利/现金 = 亿；毛利率/份额/达成率/保障率 = %。direction=up（越大越好，`actual < floorVal` 即越线 → metric.breached）。
+ */
+export interface GoalTarget {
+  goalKey: string; // 登记册键（顶层目标标识）
+  key: string; // Metric.key（对齐视图 / PlanTarget）
+  name: string;
+  unit: string;
+  category: string; // scale / profit / share / cash / material（根因归因 kpiCategory 对齐）
+  level: "op" | "year"; // 顶层企业目标 = year（年度头条）；运营指标 = op（当前态）
+  direction: "up" | "down"; // up=越大越好（actual<floorVal 越线）
+  target: number;
+  floorVal: number;
+  weight: number;
+  ksfRef: string; // → KSF（关键成功要素）
+  ownerRef: string; // → Principal（责任主体）
+}
+
+export const GOAL_REGISTRY: Record<string, GoalTarget> = {
+  // —— 顶层企业目标（年度口径 · CEO 决策看板头条：营收/毛利/份额/现金）——
+  revenue: { goalKey: "revenue", key: "revenue", name: "营收", unit: "亿", category: "scale", level: "year", direction: "up", target: 700, floorVal: 686, weight: 0.35, ksfRef: "ksf-dem", ownerRef: "prin-fin" },
+  gross_profit: { goalKey: "gross_profit", key: "gross_profit", name: "毛利", unit: "亿", category: "profit", level: "year", direction: "up", target: 112, floorVal: 108.5, weight: 0.25, ksfRef: "ksf-cost", ownerRef: "prin-fin" }, // 112=营收700×毛利率16% · 108.5=700×底线15.5%
+  market_share: { goalKey: "market_share", key: "market_share", name: "市场份额", unit: "%", category: "share", level: "year", direction: "up", target: 23, floorVal: 20, weight: 0.2, ksfRef: "ksf-dem", ownerRef: "prin-plan" },
+  cash: { goalKey: "cash", key: "cash", name: "经营现金", unit: "亿", category: "cash", level: "year", direction: "up", target: 60, floorVal: PLAN_GOAL_TARGETS.cashFloor, weight: 0.2, ksfRef: "ksf-cash", ownerRef: "prin-fin" }, // floor 引用 PLAN_GOAL_TARGETS.cashFloor（单一来源）
+  // —— 运营指标（op 口径 · 收编现有 3 指标的 target/floor 到单一来源，杀 Metric.target 硬编码漂移）——
+  gm_rate: { goalKey: "gm_rate", key: "gm_rate", name: "毛利率", unit: "%", category: "profit", level: "op", direction: "up", target: 16, floorVal: PLAN_GOAL_TARGETS.gmFloorPct, weight: 0.4, ksfRef: "ksf-dem", ownerRef: "prin-fin" }, // floor 引用 PLAN_GOAL_TARGETS.gmFloorPct（此前 Metric 硬编码 13 → 漂移，现单一来源 15.5）
+  demand_attain: { goalKey: "demand_attain", key: "demand_attain", name: "需求达成率", unit: "%", category: "scale", level: "op", direction: "up", target: 100, floorVal: 95, weight: 0.3, ksfRef: "ksf-bal", ownerRef: "prin-plan" },
+  material_cov: { goalKey: "material_cov", key: "material_cov", name: "物料保障率", unit: "%", category: "material", level: "op", direction: "up", target: 100, floorVal: 95, weight: 0.3, ksfRef: "ksf-kit", ownerRef: "prin-supply" },
+};
+
+/**
  * DF.7 边界影响图（GenerationBoundary · 单一来源+影响图）：把"改某条边界册会波及谁"显式登记——
  * 回答铁律0 的"改 X 会影响什么"。`members` 派生自册长（非写死）；`consumers` 镜像
  * boundary-singlesource 门所强制校验的派生消费端（门保证其不漂、`boundary-impact.test` 复核每条确实派生）；
