@@ -268,6 +268,46 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
         },
       ],
     },
+    // A3.3 动态切片深接示例：先 plan_slice（Order→Base/Material/Customer），再 resolve_slice 消费，
+    // 最后求解器推演；trace 里可见 planned/reused/pathCount/spannedDomains 标记。
+    {
+      id: `plan_order_deep_360_v1${sfx}`,
+      packageId: pkgId,
+      key: "order_deep_360",
+      version: 1,
+      status: "PUBLISHED",
+      steps: [
+        {
+          id: "s1",
+          type: "plan_slice",
+          params: { rootType: "Order", targets: ["Base", "Material", "Customer"] },
+        },
+        {
+          id: "s2",
+          type: "resolve_slice",
+          params: { sliceKey: "{{steps.s1.output.sliceKey}}", args: {} },
+        },
+        {
+          id: "s3",
+          type: "invoke_solver",
+          params: { solverKey: "affected_orders", args: { baseId: "{{slots.base.objectId}}" } },
+        },
+        {
+          id: "render",
+          type: "render_answer",
+          params: {
+            blocks: [
+              {
+                type: "text",
+                markdown:
+                  "动态切片已规划：{{steps.s1.output.sliceKey}}（覆盖 {{steps.s1.output.pathCount}} 条路径，复用={{steps.s1.output.reused}}）。",
+              },
+              { type: "solver_summary", output: "{{steps.s3.output}}", fromStep: "s3" },
+            ],
+          },
+        },
+      ] as ExecutionPlan["steps"],
+    },
   ];
 
   const intents: IntentDefinition[] = [
@@ -387,6 +427,32 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
       ],
       planId: `plan_adopt_mitigation_v1${sfx}`,
       riskLevel: "ACTION_DRAFT",
+      owner: "seed",
+      createdAt: now,
+      updatedAt: now,
+    },
+    // A3.3 动态切片深接：跨域订单 360 视图（Order→Base/Material/Customer）
+    {
+      id: `int_order_deep_360_v1${sfx}`,
+      packageId: pkgId,
+      key: "order_deep_360",
+      version: 1,
+      status: "PUBLISHED",
+      name: "订单跨域 360 视图",
+      description: "为指定订单动态规划跨域切片（订单→基地→物料→客户）并展示受影响订单。",
+      examples: ["帮我看看这张订单的跨域影响", "订单 360 视图", "这个订单涉及哪些基地和物料"],
+      enabledViews: "*",
+      slots: [
+        {
+          name: "base",
+          type: "objectRef",
+          required: true,
+          defaultFrom: "$.selectedObjects[0]",
+          description: "基地对象引用（作为跨域切片根节点）",
+        },
+      ],
+      planId: `plan_order_deep_360_v1${sfx}`,
+      riskLevel: "COMPUTE",
       owner: "seed",
       createdAt: now,
       updatedAt: now,

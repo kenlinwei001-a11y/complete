@@ -66,3 +66,23 @@ export const PlanSliceResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(false), reason: NoPathReasonSchema }),
 ]);
 export type PlanSliceResponse = z.infer<typeof PlanSliceResponseSchema>;
+
+// A3.2 域内/跨域两库（派生投影 R13）：从已发布类型与链路确定性派生，供 admin「切片库」列表。
+
+/** 库条目：与 SliceSpec.spec.paths 兼容（逐跳 {linkKey,direction}）。 */
+export const SliceLibraryEntrySchema = z.object({
+  sliceKey: z.string(),
+  scope: z.enum(["intra", "cross"]),
+  rootType: z.string(),
+  domain: z.string(),
+  spannedTypes: z.array(z.string()),
+  spannedDomains: z.array(z.string()),
+  paths: z.array(z.array(z.object({ linkKey: z.string(), direction: z.enum(["out", "in"]) }))),
+});
+export type SliceLibraryEntry = z.infer<typeof SliceLibraryEntrySchema>;
+
+export const SliceLibraryResponseSchema = z.object({
+  intra: z.array(SliceLibraryEntrySchema),
+  cross: z.array(SliceLibraryEntrySchema),
+});
+export type SliceLibraryResponse = z.infer<typeof SliceLibraryResponseSchema>;

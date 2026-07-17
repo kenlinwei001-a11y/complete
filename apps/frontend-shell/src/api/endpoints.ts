@@ -11,6 +11,8 @@ import type {
   StoryBuildRun,
   FdeNode,
   BackfillReport,
+  PlanSliceResponse,
+  SliceLibraryResponse,
   DataBuilderAgent,
   ConnectionInstance,
   ValidationPolicy,
@@ -916,13 +918,11 @@ export interface SliceSummary { sliceKey: string; version: number; rootType: str
 export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");
 
 /** C7 切片编辑器：root+targets 经规划器自动求最短路径（root→hops），复用既有 planSlice（A3.3，确定性图算法）。 */
-export interface SlicePlanResult {
-  ok: boolean;
-  plan?: { sliceKey: string; rootType: string; paths: { target: string; hops: { linkKey: string; direction: "out" | "in"; toType: string }[] }[]; pathEvidence: string[]; spannedDomains: string[]; reused: boolean };
-  reason?: { code: string; rootType: string; unreachable: string[] };
-}
-export const planSlice = (rootType: string, targets: string[], maxHops?: number) =>
-  api.a<SlicePlanResult>("/a/v1/slices/plan", { body: { rootType, targets, ...(maxHops ? { maxHops } : {}) } });
+export const planSlice = (rootType: string, targets: string[], opts?: { maxHops?: number; question?: string }) =>
+  api.a<PlanSliceResponse>("/a/v1/slices/plan", { body: { rootType, targets, ...(opts?.maxHops ? { maxHops: opts.maxHops } : {}), ...(opts?.question ? { question: opts.question } : {}) } });
+
+/** G-VIS-1 admin「切片库」：域内/跨域两库列表（A3.2 派生投影）。 */
+export const fetchSliceLibrary = () => api.a<SliceLibraryResponse>("/a/v1/slices/library");
 
 /** C7：注册切片（PUT /a/v1/ontology/slices/:key），spec=root+paths(逐跳)+maxNodes+contractFixtures。 */
 export interface SliceSpecBody {

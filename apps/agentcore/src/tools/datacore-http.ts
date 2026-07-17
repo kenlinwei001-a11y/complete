@@ -67,6 +67,23 @@ class HttpOntologyClient implements OntologyClient {
   planSlice(ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse> {
     return call<PlanSliceResponse>(this.baseUrl, ctx, "POST", `/a/v1/slices/plan`, req);
   }
+  putSliceSpec(
+    ctx: ToolAuthCtx,
+    sliceKey: string,
+    spec: {
+      root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+      paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+      maxNodes?: number;
+    },
+  ): Promise<{ sliceKey: string; version: number }> {
+    return call<{ sliceKey: string; version: number }>(
+      this.baseUrl,
+      ctx,
+      "PUT",
+      `/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}`,
+      { version: 1, spec },
+    );
+  }
   queryObjects(
     ctx: ToolAuthCtx,
     objectType: string,

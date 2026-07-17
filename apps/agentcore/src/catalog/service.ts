@@ -27,7 +27,7 @@ import { validatePlanSteps } from "../workflow/validate.js";
  */
 const ExtraToolStepSchema = z.object({
   id: z.string(),
-  type: z.enum(["query_timeseries_agg", "search_knowledge"]),
+  type: z.enum(["query_timeseries_agg", "search_knowledge", "plan_slice"]),
   params: z.record(z.string(), TemplateValueSchema),
   onError: OnErrorSchema.optional(),
   timeoutMs: z.number().int().optional(),
