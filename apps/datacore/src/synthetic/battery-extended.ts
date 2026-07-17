@@ -59,6 +59,9 @@ export function extendedObjectTypes(): TypeDef[] {
     def("CausalFactor", "因果因素", "decision", [
       p("factorId", "string", true), p("label", "string"), p("drillType", "string"), p("drillId", "string"),
       p("drillField", "string"), p("kind", "enum"), p("isRoot", "boolean"), p("provenanceSynthetic", "boolean"),
+      // WO-metric-aware：该因果因素是哪些 Metric 的**绑定归因根/结构入口**（gap_attribution 按 metric.key 命中→
+      // 从此起 BFS 且此为终点·即便有出边）。空/缺 = 无绑定（引擎回落默认结构入口 cf-cathode-shortage）。种绑定=CEO-DATA-2。
+      p("boundMetricKeys", "json"),
     ]),
     // WO-CEO-3 触发规则（信号阈值→行动·一等可编辑·阈值可被 RuleEntry.params 覆盖·decision_play 引擎评估）：
     def("TriggerRule", "触发规则", "decision", [
@@ -379,7 +382,9 @@ export function generateExtended(
     materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
     capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
-    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors: CAUSAL_FACTORS,
+    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS,
+    // WO-metric-aware：默认 boundMetricKeys:[]（无绑定→引擎回落默认结构入口·字段对齐 present）。CEO-DATA-2 覆盖具体商业/财务根绑定。
+    causalFactors: CAUSAL_FACTORS.map((c) => ({ boundMetricKeys: [] as string[], ...c })),
     triggerRules: TRIGGER_RULES,
   };
 }

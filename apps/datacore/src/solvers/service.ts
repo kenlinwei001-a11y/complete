@@ -843,14 +843,25 @@ export class SolverService {
     // 物料短缺叶的 gap 单位贡献（因果层要解释的量）。
     const matNode = l2nodes.find((n) => (n.id as string) === "material:cathode");
     const matContribution = matNode ? num(matNode.contribution) : round(G * structuralExplained * 0.15, 4);
-    // BFS 从 cf-cathode-shortage 沿 caused_by，收集经过的边 + 到达的因果因素节点。
+    // C1（metric-aware·拆硬编码起点·命脉）：因果 BFS 起点 = 该 metric 的 **bound roots**——CausalFactor.boundMetricKeys
+    // 命中 m.key 者（种绑定=CEO-DATA-2）。无绑定 → 回落结构入口默认 `cf-cathode-shortage`（保 storage 达成率现行行为·向后兼容）。
+    // 恒从 cf-cathode-shortage 起即"假 metric-aware"（不同 metric 归到同一终点），本改让绑定真生效（改绑定→归因根变·D1）。
+    const boundRoots = cfObjs
+      .filter((cf) => Array.isArray(cf.boundMetricKeys) && (cf.boundMetricKeys as string[]).includes(str(m.key)))
+      .map((cf) => str(cf.factorId))
+      .sort();
+    const boundSet = new Set(boundRoots);
+    const startRoots = boundRoots.length ? boundRoots : ["cf-cathode-shortage"];
+    // BFS 从 startRoots 沿 caused_by，收集经过的边 + 到达的因果因素节点。
     const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
-    const visited = new Set<string>();
+    const visited = new Set<string>(startRoots);
     const reachedFactors: { id: string; pathIds: string[] }[] = [];
-    const queue: { id: string; path: string[] }[] = [{ id: "cf-cathode-shortage", path: ["cf-cathode-shortage"] }];
-    visited.add("cf-cathode-shortage");
+    // C2：bound root 即便有出边也是本 metric 的归因终点 → 纳入 reachedFactors（可选·可达）且不越过（不展开出边）。
+    for (const id of startRoots) if (boundSet.has(id)) reachedFactors.push({ id, pathIds: [id] });
+    const queue: { id: string; path: string[] }[] = startRoots.map((id) => ({ id, path: [id] }));
     while (queue.length) {
       const cur = queue.shift()!;
+      if (boundSet.has(cur.id)) continue; // C2：bound root = 终点·不越过（即便有出边）→ 归因根落在绑定根，不再一路走到默认两终点
       const nexts = adj.get(cur.id) ?? [];
       for (const nx of nexts) {
         causalEdges.push({ from: cur.id, to: nx, viaLinkKey: "caused_by" });
@@ -901,7 +912,7 @@ export class SolverService {
         },
       };
       causalNodes.push(node);
-      if (Boolean(s.cf.isRoot) || (adj.get(s.rf.id) ?? []).length === 0) atomicLeaves.push(node); // 因果终点=原子叶
+      if (Boolean(s.cf.isRoot) || (adj.get(s.rf.id) ?? []).length === 0 || boundSet.has(s.rf.id)) atomicLeaves.push(node); // 因果终点=原子叶（C2：bound root 即便有出边亦为终点·可选）
     }
     const causalSum = round(causalNodes.reduce((a, n) => a + num(n.contribution), 0), 4);
     const causalResidual = round(matContribution - causalSum, 4);
