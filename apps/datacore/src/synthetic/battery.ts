@@ -2578,6 +2578,36 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       ksfRef: "ksf-dem", ownerRef: `prin-seg-${k}`, chainKey: "rc-scale-demand",
     });
   }
+  // WO-PLANKPI-MONTH-QUARTER（闭 DS.1 假下钻残口·真对象化非摊派）：月/季**需求达成率** Metric 实例
+  // （%-口径·仿 seg_attain 既有范式·metric_rollup/plan_rootcause 按 level 读即出内容）。
+  // 分解口径：月目标量/达成量 = 年值 × 一等季节权重 pv.seasonal[m]/12（末月吸收舍入 → Σ月=Σ季=年·同源勾稽·
+  //   与 PlanTarget 月/季分解**同一权重**·§本文件 2994 决口径）；达成率 = 达成量/目标量×100（%-口径·与年 demand_attain 同）。
+  // ⛔ KILL-MOCK-RED：**绝不复活**被 WO-CEO-1a item4 删掉的假周期系数 {month:1.0,quarter:0.97,year:1.04}——权重来自
+  //   一等 `BATTERY_SOLVER_PARAMS.planview.seasonal`（可溯·非内联魔法），floor 取自 GOAL_REGISTRY 单一出处（95）。
+  //   改 demandSegment.act（真颗粒）→ totalAct → 各月/季达成量与达成率随之变（改颗粒→季值变·可溯）。
+  // 键 `demand_attain_{period}`（**不**碰 PlanTarget.period：PlanTarget 是**供给**口径 234.7·与需求目标 375 不同基，
+  //   强对齐会 floor>target 出乱；本指标是需求达成率·%-自洽·target=100·目标树对齐见 §诚实交底）。
+  const seasonal = (BATTERY_SOLVER_PARAMS.planview as { seasonal: number[] }).seasonal;
+  const demandFloorPct = GOAL_REGISTRY.demand_attain!.floorVal; // 95·单一出处（非内联）
+  const PKPI_YEAR = 2026;
+  const mTgt: number[] = []; const mAct: number[] = [];
+  let accT = 0; let accA = 0;
+  for (let m = 1; m <= 12; m++) {
+    const w = seasonal[m - 1]!;
+    const t = m === 12 ? round(totalTgt - accT, 2) : round((totalTgt * w) / 12, 2);
+    const a = m === 12 ? round(totalAct - accA, 2) : round((totalAct * w) / 12, 2);
+    accT = round(accT + t, 2); accA = round(accA + a, 2);
+    mTgt.push(t); mAct.push(a);
+  }
+  const pushPeriodMetric = (period: string, level: string, tgt: number, act: number) => metrics.push({
+    metricId: `kpi-demand-${period}`, key: `demand_attain_${period}`, name: `${period} 需求达成率`, level, category: "scale",
+    target: 100, actual: round((act / tgt) * 100, 1), floorVal: demandFloorPct,
+    unit: "%", weight: 0.1, ksfRef: "ksf-bal", ownerRef: "prin-plan", chainKey: "rc-scale-demand",
+  } as (typeof metrics)[number]);
+  for (let q = 0; q < 4; q++) {
+    pushPeriodMetric(`${PKPI_YEAR}-Q${q + 1}`, "quarter", mTgt[q * 3]! + mTgt[q * 3 + 1]! + mTgt[q * 3 + 2]!, mAct[q * 3]! + mAct[q * 3 + 1]! + mAct[q * 3 + 2]!);
+  }
+  for (let m = 1; m <= 12; m++) pushPeriodMetric(`${PKPI_YEAR}-${String(m).padStart(2, "0")}`, "month", mTgt[m - 1]!, mAct[m - 1]!);
   // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。
   const demBase = round(totalTgt, 0);
   const sopVersionRows = [1, 3, 5, 7].map((v, i) => {

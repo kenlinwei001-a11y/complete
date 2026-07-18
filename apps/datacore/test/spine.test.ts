@@ -27,13 +27,13 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     expect(prin.items.length).toBeGreaterThanOrEqual(7); // 4 部门 + 3 细分业务线（WO-CEO-1a item3）
     const metrics = (await (await t.app.inject({ method: "GET", url: "/a/v1/metrics", headers: ADMIN })).json()) as { items: { metricId: string; ksfRef: string }[] };
     // WO-CEO-1a：3 运营指标 + 4 顶层目标(营收/毛利/份额/现金) + 3 细分 = 10（顶层目标已升一等 Metric）
-    expect(metrics.items.length).toBe(10);
+    expect(metrics.items.length).toBe(26);
     expect(metrics.items.every((m) => m.ksfRef)).toBe(true);
-    // 骨架链路：每 metric 有一条 metric_affects_ksf + metric_ownedby 边（10 指标 → 10 边）
+    // 骨架链路：每 metric 有一条 metric_affects_ksf + metric_ownedby 边（26 指标[含月/季] → 26 边）
     const links = await t.repos.links.list("demo", (l) => l.type === "metric_affects_ksf");
-    expect(links.length).toBe(10);
+    expect(links.length).toBe(26);
     const ownLinks = await t.repos.links.list("demo", (l) => l.type === "metric_ownedby");
-    expect(ownLinks.length).toBe(10);
+    expect(ownLinks.length).toBe(26);
   });
 
   it("WO-CEO-1a：顶层目标(营收/毛利/份额/现金)已升一等 Metric（target/actual/floorVal/越线 齐备，year 级）", async () => {
@@ -82,7 +82,7 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     const res = await invokeSolver(t, "metric_rollup", {});
     expect(res.statusCode).toBe(200);
     const out = (res.json() as { data: { metrics: { metricId: string; target: number; actual: number; delta: number; miss: boolean }[]; missCount: number; byLevel: Record<string, number>; summary: string } }).data;
-    expect(out.metrics.length).toBe(10);
+    expect(out.metrics.length).toBe(26); // WO-PLANKPI: +16 月/季
     // delta = actual − target（派生一致）
     for (const m of out.metrics) expect(m.delta).toBeCloseTo(m.actual - m.target, 3);
     // 需求达成率(90.8<95) + 储能细分(72.2<95) 越线 → missCount ≥ 2
@@ -121,10 +121,10 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     const res = await t.app.inject({ method: "POST", url: "/a/v1/metrics/snapshot", headers: ADMIN });
     expect(res.statusCode).toBe(200);
     const out = res.json() as { recorded: number; breached: number };
-    expect(out.recorded).toBe(10); // 3 运营 + 4 顶层目标 + 3 细分（顶层目标已升一等 Metric，全入快照回采）
+    expect(out.recorded).toBe(26); // 3 运营 + 4 顶层目标 + 3 细分 + WO-PLANKPI 16 月/季（全入快照回采）
     expect(out.breached).toBeGreaterThanOrEqual(2); // 需求达成率(90.8<95) + 储能细分(72.2<95) 越线
     const snap = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.snapshot_recorded");
-    expect(snap.length).toBe(10);
+    expect(snap.length).toBe(26);
     const breach = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.breached");
     expect(breach.length).toBeGreaterThanOrEqual(2);
     // demand 规模锁定(375万套/700亿)后：物料保障率 95.8% 高于 95 底线（个体物料缺口经 C06/C16 覆盖），

@@ -77,6 +77,6 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
     expect(a.types.length).toBe(81);
-    expect(a.objs.length).toBe(3275); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）
+    expect(a.objs.length).toBe(3291); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-PLANKPI-MONTH-QUARTER：+16 Metric 实例（4 季 + 12 月需求达成率·类型仍 81·Metric 既有类型新实例）→ 3275→3291
   });
 });
