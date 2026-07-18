@@ -114,6 +114,19 @@ export default function DashboardView({ view }: ViewRendererProps) {
           ))}
         </div>
       </div>
+
+      {/* 💡 决策推演入口（decision_play 5 区决策页·CEO「每个行动点开看·为何做/何用/为何有用」）。 */}
+      <div className="panel" style={{ marginTop: 14, borderLeft: "3px solid var(--accent)" }} data-testid="dash-decision-entry">
+        <div className="section-title">💡 决策推演</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+            从越线根因一路到对症方案（各维真算 + provenance 下钻）、比对矩阵、触发规则、推荐组合与差距收窄试算——每个行动点开看为何做 / 何用 / 为何有用。
+          </div>
+          <button className="btn primary" data-testid="dash-decision-go" onClick={() => navigate("/v/decision-play")}>
+            进入决策推演 ›
+          </button>
+        </div>
+      </div>
     </>
   );
 }
