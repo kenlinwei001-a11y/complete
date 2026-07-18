@@ -101,6 +101,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·关=字节兼容不触发）：CEO/块级深问走 path-B 真 LLM 自由多跳推理
   // （确定性路由之外·PageContext/BlockContext 注入·失败落确定性兜底）。AgentCore registry 同键双注册（feature parity）。
   { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1（R3 暗发·defaultOn:false·关=字节兼容不触发）：跨域问题→Coordinator 多角色编排
+  //（拆子问→invoke_agent 扇出调各角色 agent→汇总·scope 真隔离越界拒）。AgentCore registry 同键双注册（feature parity）。
+  { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

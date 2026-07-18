@@ -1,7 +1,9 @@
 import type {
   Answer,
+  CeoAgentProfile,
   ClarificationReplyBody,
   ClassificationResult,
+  CoordinatorPlan,
   IntentDefinition,
   QueryTask,
   ResolvedRef,
@@ -38,6 +40,9 @@ import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
+import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
+import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
+import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -64,6 +69,16 @@ function simCommanderEnabled(set: FeatureSet): boolean {
 function freeLlmEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("ceo.free-llm") || (set.has("sim.commander") && set.has("sim.sandbox"));
+}
+
+/**
+ * WO-FIVE-ROLE-AI-EMPLOYEE P1 · feature 门：跨域问题是否召集 Coordinator 多角色编排。**暗发·默认关**。
+ * 与 freeLlmEnabled 同款字节兼容策略：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**（既有单 agent path-B
+ * 逐字节不变·C4 不劫持）；仅当**显式** Set 含 `agent.coordinator` 才启用。双注册（datacore features.ts + agentcore registry）。
+ */
+function coordinatorEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("agent.coordinator");
 }
 
 /**
@@ -286,8 +301,19 @@ export class Orchestrator {
     // 上下文丰富(③) → 走增强版 path-B（CEO 深问 system + PageContext/BlockContext 注入 → runAgentLoop 真 LLM 自由多跳：
     // 查对象→算求解器→再查→综合）。真 LLM 失败（无 provider/超预算/异常）→ 落确定性 resolveCeoRoute/resolveBlockRoute
     // 兜底·诚实标降级。**暗发默认关**（freeLlmEnabled("ALL")=false·既有 CEO/block 确定性路径 C6/C7 逐字节不变·不劫持）。
-    // ★ 五角色 Coordinator（WO-FIVE-ROLE 另单）分路预留：其确定性协调路由应加在**本分路之前**（更强的显式指派信号），
-    //   本真 LLM 自由分路是"未被显式指派时的开放式深问"缺省增强，二者互不劫持（Coordinator 命中即 return·不落此处）。
+    // ★ WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域 Coordinator 编排（加在真 LLM 自由分路**之前**——更强的显式指派信号：
+    //   命中"交付风险/多角色关键词共现"即确定性拆多角色子问，经 invoke_agent 真调对应角色 agent 扇出→汇总）。
+    //   命中即 return·不落下方真 LLM/确定性 CEO 路由（二者经暗发 feature 门 agent.coordinator·defaultOn:false 天然隔离·
+    //   coordinatorEnabled("ALL")=false → 既有单 agent path-B 逐字节不变·C4 不劫持）。planCoordination 单域返 undefined→照走。
+    if (coordinatorEnabled(enabledFeatures)) {
+      const plan = planCoordination(task.query, task.context.pageContext, []);
+      if (plan) {
+        await this.runCoordinator(taskId, auth, plan);
+        return;
+      }
+    }
+
+    // WO-REAL-LLM-FREE-QUERY（CEO/块级真 LLM 深问·确定性路由之外并列拦截·未被 Coordinator 显式指派时的开放式深问缺省增强）。
     if (freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
       await this.runCeoFreeLLM(taskId, auth, enabledFeatures);
       return;
@@ -755,6 +781,17 @@ export class Orchestrator {
       return;
     }
 
+    // WO-FIVE-ROLE-AI-EMPLOYEE P1 · C2：单域问题 → 按 role 选对应角色 agent（非永远 universal loop）。
+    // 暗发门（agent.coordinator·defaultOn:false）后：coordinatorEnabled("ALL")=false → 既有通用 path-B 逐字节不变（C4）。
+    if (coordinatorEnabled(enabledFeatures)) {
+      const role = detectSingleRole(task.query);
+      const prof = role ? roleProfile(role) : undefined;
+      if (prof?.agentId && (await this.deps.repos.agents.get(prof.agentId))) {
+        await this.runRolePathB(taskId, auth, task, prof, classification);
+        return;
+      }
+    }
+
     await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
@@ -953,6 +990,118 @@ export class Orchestrator {
     }
     // 无确定性落点（如纯沙盘 NL 深问但无 CEO 意图）→ 换个问法兜底（诚实·不编造）。
     await this.completeWorkflowOnlyMiss(task, candidates);
+  }
+
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · C2：单域 path-B → 选该域角色的注册 agent（非通用 loop）。
+   * 经 engine.runRegisteredAgent 真调角色 agent（其自身 systemPrompt + scopeDeclaration·enforceObjectScope 真隔离），
+   * 答案标 AGENT_EXPLORATORY·classification.model=`agent:role:<role>`（可区分·非"总走 universal"）。
+   */
+  private async runRolePathB(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    prof: CeoAgentProfile,
+    classification?: ClassificationResult,
+  ): Promise<void> {
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    this.deps.metrics.recordRouting(false);
+    await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: `角色 agent（${prof.role}）`, role: prof.role, agentId: prof.agentId });
+
+    const budget = new BudgetTracker();
+    const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
+    const prompt = [roleSystemFragment(prof.role), buildAgentUser(task, priorSummary || undefined)].filter(Boolean).join("\n");
+    try {
+      const resolvedRefs: ResolvedRef[] = [];
+      const result = await this.deps.engine.runRegisteredAgent({
+        taskId,
+        agentId: prof.agentId as string,
+        version: "latest",
+        prompt,
+        ctx: auth,
+        nesting: { callChain: [], budget },
+        emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+        isCancelled: () => this.cancelled.has(taskId),
+        onResolvedRef: (r) => resolvedRefs.push(r),
+        enforceObjectScope: true,
+      });
+      await this.deps.repos.agentRuns.insert(result.run);
+      await this.deps.repos.tasks.patch(taskId, {
+        status: "COMPLETED",
+        answer: result.answer,
+        classification: { ...(classification ?? { candidates: [], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "" }), model: `agent:role:${prof.role}` },
+        resolvedRefs: dedupeRefs(resolvedRefs),
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(taskId, "answer.final", result.answer);
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+      await this.recordExperience(taskId);
+    } catch (err) {
+      await this.failFromError(taskId, err, "AGENT_ERROR");
+    }
+  }
+
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域 Coordinator 编排执行：CoordinatorPlan → 每 dispatch 一个 invoke_agent 步扇出
+   *（复用 workflow invoke_agent·enforceAgentObjectScope 真隔离——各角色 agent 只能在自身 scopeDeclaration.objectTypes 内取证，
+   * 越界读对象被拒）→ 收各角色答 → synthesize 结构化汇总（谁答什么 + 一致/冲突 + 综合结论 + 每角色溯源）。
+   * 真跨 agent 调用（非单 agent 换 prompt 假装）：每步经 engine.runRegisteredAgent 真调对应 agentId。
+   */
+  private async runCoordinator(taskId: string, auth: RequestAuth, plan: CoordinatorPlan): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    this.deps.metrics.recordRouting(false);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "AGENT",
+      note: "跨域协调（Coordinator）",
+      trigger: plan.trigger,
+      roles: plan.dispatches.map((d) => d.role),
+    });
+    await this.deps.events.emit(taskId, "coordinator.planned", {
+      trigger: plan.trigger,
+      dispatches: plan.dispatches.map((d) => ({ role: d.role, agentId: d.agentId, subQuestion: d.subQuestion })),
+    });
+
+    const steps = buildDispatchSteps(plan, task.context.pageContext);
+    const budget = new BudgetTracker();
+    const invokedAgentKeys: string[] = [];
+    const result = await this.deps.engine.runWorkflowSteps({
+      taskId,
+      steps,
+      slots: {},
+      context: task.context,
+      ctx: auth,
+      nesting: { callChain: [], budget },
+      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+      trustLevel: "AGENT_EXPLORATORY",
+      enforceAgentObjectScope: true, // 角色 scope 真隔离（越界读对象拒）
+      onResolvedRef: (r) => {
+        if (r.kind === "agent") invokedAgentKeys.push(r.key);
+      },
+    });
+
+    // 收各角色答（invoke_agent 步 stepOutputs[dispatch_i].data.answer）→ synthesize。
+    const outputs = result.stepOutputs;
+    const roleAnswers: RoleAnswerInput[] = plan.dispatches.map((d, i) => {
+      const out = outputs[`dispatch_${i}`] as { data?: { answer?: Answer } } | null | undefined;
+      const ans = out?.data?.answer;
+      const firstText = ans?.blocks.find((b) => b.type === "text");
+      const answerText = firstText && firstText.type === "text" ? firstText.markdown : "";
+      return { role: d.role, agentId: d.agentId, subQuestion: d.subQuestion, answerText, scope: d.scope, objectTypes: d.objectTypes };
+    });
+
+    const answer = synthesize(plan, roleAnswers);
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      path: "AGENT",
+      answer,
+      classification: { candidates: [], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "coordinator" },
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
   }
 
   /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */

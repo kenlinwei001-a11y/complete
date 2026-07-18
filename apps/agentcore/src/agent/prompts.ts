@@ -30,6 +30,24 @@ export const CEO_DEEP_QUESTION_SYSTEM = `${AGENT_SYSTEM_CORE}
 你不是在填一张固定表格——上下文里的具体数（如某块 demandPct/某指标缺口）应驱动你查什么、算什么。`;
 
 /**
+ * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 各角色 system 片段（叠加在 agent 自身 systemPrompt + AGENT_SYSTEM_CORE 之上，
+ * Coordinator 扇出时经 subQuestion 的角色前缀注入）。片段只强化"你以什么角色视角回答、盯哪些对象域"——
+ * 真实取证约束仍由绑定 agent 的 scopeDeclaration（objectTypes/toolNames）在执行器强制（越界拒·非文案自律）。
+ */
+export const ROLE_SYSTEM_FRAGMENTS: Record<string, string> = {
+  ceo: "【CEO 角色】你以企业决策者的全域视角综合作答，关注营收/毛利/份额/现金等顶层目标的达成与传导。",
+  "supply-chain": "【供应链角色】你只从物料齐套/供应保障/采购与库存视角作答，取证限于 Material/Supplier/PurchaseOrder/Shipment 对象域（越界会被拒）。聚焦断供风险、齐套缺口、长协覆盖。",
+  production: "【生产角色】你只从产能/产线/工序瓶颈视角作答，取证限于 Base/Line/Process/Model 对象域（越界会被拒）。聚焦产能瓶颈、排产可行性、爬坡。",
+  quality: "【质量角色】你只从良率/检验/合规视角作答，取证限于 Process/Equipment/QualityStandard 对象域（越界会被拒）。聚焦良率波动根因、质量合规。",
+  "base-planner": "【基地规划角色】你只对授权基地范围作答（A6 行级过滤·跨基地会被剪枝/拒），聚焦本基地的产销平衡与交付。",
+};
+
+/** 取角色 system 片段（未登记角色 → 空串·退化为 agent 自身 prompt）。 */
+export function roleSystemFragment(role: string): string {
+  return ROLE_SYSTEM_FRAGMENTS[role] ?? "";
+}
+
+/**
  * 注入可用技能段。传入 query 时启用 skill 语义路由（Phase5C）：仅注入相关性 top-k 的全文
  * summary，其余降级为 id/名（仍可 load_skill 取全文）→ 收紧上下文预算、提升相关性。
  * 不传 query（或技能数 ≤ topK）时全量注入，与旧行为一致（向后兼容）。

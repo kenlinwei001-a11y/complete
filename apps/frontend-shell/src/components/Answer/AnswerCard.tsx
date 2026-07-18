@@ -6,6 +6,7 @@ import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { AnswerBlockView } from "./AnswerBlocks";
 import { ValidationTracePanel } from "./ValidationTracePanel";
+import { CoordinatorSummaryCard, isCoordinatorAnswer } from "./CoordinatorSummaryCard";
 import styles from "./AnswerCard.module.css";
 
 /**
@@ -35,6 +36,8 @@ export function AnswerCard({
     return i >= 0 ? i + 1 : 0;
   };
   const [voted, setVoted] = useState<"UP" | "DOWN" | null>(null);
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1 · C5：跨域协调答案 → 多角色协作汇总卡（每角色一栏 + scope 徽标 + 冲突高亮）。
+  const isCoordinator = useMemo(() => isCoordinatorAnswer(answer), [answer]);
 
   const vote = async (v: "UP" | "DOWN") => {
     try {
@@ -72,9 +75,13 @@ export function AnswerCard({
         )}
       </div>
       <div className={styles.blocks}>
-        {answer.blocks.map((b, i) => (
-          <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} onRetry={onRetry} />
-        ))}
+        {isCoordinator ? (
+          <CoordinatorSummaryCard answer={answer} />
+        ) : (
+          answer.blocks.map((b, i) => (
+            <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} onRetry={onRetry} />
+          ))
+        )}
       </div>
       {answer.validationTrace && <ValidationTracePanel trace={answer.validationTrace} />}
       {(showFeedback || showDetailLink) && (

@@ -93,6 +93,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·双注册 feature parity·权威集仍来自 DataCore）：
   // CEO/块级深问走 path-B 真 LLM 自由多跳（orchestrator freeLlmEnabled 用 enabledSet.has 直判，"ALL" 降级态不触发·字节兼容）。
   { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：
+  // 跨域问题→Coordinator 多角色编排（拆子问→invoke_agent 扇出调 CEO/供应链/生产/质量角色 agent→汇总）。
+  // orchestrator coordinatorEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·不劫持单 agent path-B）。
+  { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
