@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
@@ -83,6 +83,9 @@ export default function DashboardView({ view }: ViewRendererProps) {
       {/* 待解决的问题（自下而上：受影响订单逐单归因 → 问题清单） */}
       <ProblemPanel />
 
+      {/* WO-A 供需失衡双向归因（真调 supply_demand_gap_attribution·需求端 ⊥ 供给端 + residual·勾稽 Σ=G） */}
+      <SupplyDemandAttributionPanel />
+
       {/* 回采校准链（实际 → 月度 → 季度 → 年度 · C12 反向调参） */}
       <div className="panel" style={{ marginTop: 16 }} data-testid="dash-feedback-chain">
         <div className="section-title">{zh.dash.feedbackTitle}</div>
@@ -163,6 +166,193 @@ function ProblemPanel() {
             </div>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-A · 供需失衡双向归因（supply_demand_gap_attribution 求解器接线）
+// 病根：引擎 supply_demand_gap_attribution 已建（双向勾稽·9 测绿）但前端零调用——CEO 看不到
+// 「缺口是需求端(预测虚高)还是供给端(产能/物料/OEE)，各占多少」。此 Panel 真调求解器→渲双向分解。
+// KILL-MOCK：占比/贡献/provenance 全从真求解器输出派生，前端零写死；改后端颗粒→此处占比随变。
+// 诚实空：无 S&OP 产销正缺口 → 不编五五开；供给端产能叶缺（Line.capacityDaily 未落）→ 显「诚实空」。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 双向归因叶（真颗粒·万套等效·每叶带 provenance 下钻真对象 R13）。 */
+interface SdgDriver {
+  id: string;
+  factor: string;
+  contribution: number;
+  share: number;
+  unit?: string;
+  driverValue?: number;
+  provenance?: { kind?: string; drillType?: string; drillId?: string; drillField?: string; drillValue?: number };
+}
+interface SdgSide { contribution: number; share: number; pct: number; drivers: SdgDriver[] }
+/** supply_demand_gap_attribution 求解器输出契约（datacore service.ts:946-1058·前端只读渲染）。 */
+export interface SupplyDemandGapOutput {
+  rootMetric?: { key: string; name: string; unit: string; gap: number };
+  totalGap: number;
+  unit?: string;
+  demandSide: SdgSide | null;
+  supplySide: SdgSide | null;
+  residual: number;
+  reconChecks?: { label: string; parentGap: number; sumChildren: number; residual: number; ok: boolean }[];
+  reconciled?: boolean;
+  residualPct?: number;
+  summary?: string;
+}
+
+/** 供给端已知叶 id（引擎侧一等 key）——产能缺口叶。 */
+const SDG_CAPACITY_LEAF = "capacity_gap";
+/**
+ * 供给端产能数据是否已接：引擎读 Line.capacityDaily，demo 仅种 max_capacity_day → capacityDaily 缺
+ * → 引擎诚实不推产能缺口叶（capGap=0）。此判据用于前端**诚实渲染**（叶缺 → 显「产能数据未接·诚实空」，
+ * 绝不编造产能占比）。前端零写死：直接看真输出里有无 capacity_gap 叶。
+ */
+export function supplyCapacityConnected(out: SupplyDemandGapOutput | undefined): boolean {
+  return !!out?.supplySide?.drivers?.some((d) => d.id === SDG_CAPACITY_LEAF);
+}
+
+const sdgR1 = (x: number) => Math.round(x * 10) / 10;
+const sdgR4 = (x: number) => Math.round(x * 1e4) / 1e4;
+
+/** 前端归一化视图模型：占比由求解器真贡献派生（非信 pct 字段·非写死），勾稽 Σ=G 客户端亲验（非只信 reconciled 标志）。 */
+export interface SupplyDemandView {
+  available: boolean;
+  reason?: string;
+  totalGap: number;
+  unit: string;
+  demand: { pct: number; contribution: number; share: number; drivers: SdgDriver[] } | null;
+  supply: { pct: number; contribution: number; share: number; drivers: SdgDriver[] } | null;
+  residual: number;
+  residualPct: number;
+  capacityConnected: boolean;
+  reconSum: number;
+  reconciled: boolean;
+}
+export function supplyDemandView(out: SupplyDemandGapOutput | undefined): SupplyDemandView {
+  const unit = out?.unit ?? out?.rootMetric?.unit ?? "万套";
+  const G = sdgR4(out?.totalGap ?? 0);
+  const demand = out?.demandSide;
+  const supply = out?.supplySide;
+  // 诚实空：无求解器数据 / 无双向支 / 无正缺口 → 不编造（KILL-MOCK-RED）。
+  if (!out || !demand || !supply || !(G > 0)) {
+    return {
+      available: false,
+      reason: out?.summary ?? "无供需归因数据（诚实空·未编五五开）",
+      totalGap: G, unit, demand: null, supply: null,
+      residual: sdgR4(out?.residual ?? G), residualPct: G > 0 ? 100 : 0,
+      capacityConnected: false, reconSum: 0, reconciled: false,
+    };
+  }
+  const dc = sdgR4(demand.contribution);
+  const sc = sdgR4(supply.contribution);
+  const res = sdgR4(out.residual ?? 0);
+  const reconSum = sdgR4(dc + sc + res);
+  return {
+    available: true, totalGap: G, unit,
+    // 占比 = 真贡献 / 总缺口（活派生·改颗粒即变·C4）。
+    demand: { pct: sdgR1((dc / G) * 100), contribution: dc, share: sdgR4(demand.share ?? dc / G), drivers: demand.drivers ?? [] },
+    supply: { pct: sdgR1((sc / G) * 100), contribution: sc, share: sdgR4(supply.share ?? sc / G), drivers: supply.drivers ?? [] },
+    residual: res, residualPct: sdgR1((Math.abs(res) / G) * 100),
+    capacityConnected: supplyCapacityConnected(out),
+    // 勾稽亲验：需求端贡献 + 供给端贡献 + residual == 总缺口（浮点≤1e-4·不只信 reconciled 标志）。
+    reconSum, reconciled: Math.abs(reconSum - G) <= 1e-4,
+  };
+}
+
+/** 双向归因单侧叶表：每叶 贡献/占比 + provenance 下钻真对象（drillType.drillId.drillField=drillValue·R13）。 */
+function SdgSideBlock({ title, side, kind, unit, note }: { title: string; side: { pct: number; contribution: number; drivers: SdgDriver[] }; kind: "demand" | "supply"; unit: string; note?: ReactNode }) {
+  const color = kind === "demand" ? "#7E8BEE" : "#DD7E9E";
+  return (
+    <div data-testid={`sdg-side-${kind}`}>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+        <span style={{ color }}>{title}</span>
+        <span style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 400 }}> · 占缺口 <b className="mono" data-testid={`sdg-${kind}-pct`}>{side.pct}%</b> · 贡献 <b className="mono">{side.contribution}</b>{unit}</span>
+      </div>
+      {side.drivers.length === 0 ? (
+        <div className="badge" style={{ color: "var(--muted2)" }} data-testid={`sdg-${kind}-empty`}>该侧无驱动叶 · 诚实空（未编造）</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {side.drivers.map((d) => (
+            <div key={d.id} className="panel" data-testid={`sdg-leaf-${d.id}`} style={{ padding: 6, borderLeft: `2px solid ${color}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5 }}>
+                <span>{d.factor}</span>
+                <b className="mono" style={{ whiteSpace: "nowrap" }}>{d.contribution}{unit} · {Math.round((d.share ?? 0) * 100)}%</b>
+              </div>
+              {d.provenance?.drillType && (
+                // 下钻真对象（R13）：数据源 = drillType.drillId.drillField · 当前值 · 实测/派生标注。
+                <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 2 }} data-testid={`sdg-prov-${d.id}`}>
+                  下钻 {d.provenance.drillType}{d.provenance.drillId ? `.${d.provenance.drillId}` : ""}.{d.provenance.drillField} = <span className="mono">{d.provenance.drillValue}</span>
+                  {d.provenance.kind ? <span className="badge" style={{ marginLeft: 4, fontSize: 9.5 }}>{d.provenance.kind}</span> : null}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {note}
+    </div>
+  );
+}
+
+/**
+ * 驾驶舱「供需失衡双向归因」Panel（常驻·自取数·真调 supply_demand_gap_attribution）。
+ * 总缺口 G → 需求端(预测偏差/在手订单/结构漂移) ⊥ 供给端(产能/物料/OEE) + residual·勾稽可视 Σ=G。
+ * 无数据/求解器未接 → 静默不渲染（避免驾驶舱堆空块）；有数据但无正缺口 → 诚实空提示。
+ */
+function SupplyDemandAttributionPanel() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["a", "supply-demand-gap-attribution"],
+    queryFn: async () => (await invokeSolver("supply_demand_gap_attribution", {})).data as SupplyDemandGapOutput,
+    retry: false,
+  });
+  // 加载中 / 求解器不可用（如 mock 未接入 → 404）→ 静默不渲染（诚实：无真数据不占位不伪造）。
+  if (isLoading || isError || !data) return null;
+  const view = supplyDemandView(data);
+  if (!view.available) {
+    return (
+      <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
+        <div className="section-title">供需失衡双向归因</div>
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="sdg-honest-empty">{view.reason}</div>
+      </div>
+    );
+  }
+  const demand = view.demand!;
+  const supply = view.supply!;
+  return (
+    <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
+      <div className="section-title">供需失衡双向归因</div>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
+        产销总缺口 <b className="mono" data-testid="sdg-total">{view.totalGap}</b> {view.unit} · 反向双向分解：需求端 ⊥ 供给端 + residual（占比全由求解器真颗粒派生 · 前端零写死）
+      </div>
+      {/* 双向占比条（需求端 ⊥ 供给端 + residual = 100%·勾稽可视） */}
+      <div data-testid="sdg-split" style={{ display: "flex", height: 22, borderRadius: 4, overflow: "hidden", fontSize: 10, marginBottom: 12, background: "var(--panel2)" }}>
+        {demand.pct > 0 && <div style={{ width: `${demand.pct}%`, background: "#7E8BEE", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>需求端 {demand.pct}%</div>}
+        {supply.pct > 0 && <div style={{ width: `${supply.pct}%`, background: "#DD7E9E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>供给端 {supply.pct}%</div>}
+        {view.residualPct > 0 && <div style={{ width: `${view.residualPct}%`, background: "rgba(103,115,127,.5)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>residual {view.residualPct}%</div>}
+      </div>
+      {/* 两侧叶表（各归其侧·真值下钻） */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <SdgSideBlock title="需求端" kind="demand" side={demand} unit={view.unit} />
+        <SdgSideBlock
+          title="供给端" kind="supply" side={supply} unit={view.unit}
+          note={!view.capacityConnected ? (
+            // 诚实 GAP：Line.capacityDaily 未落（demo 仅种 max_capacity_day）→ 引擎不推产能缺口叶。
+            // 绝不编造产能占比——如实标灰，待数据接入。
+            <div data-testid="sdg-capacity-empty" className="badge" style={{ marginTop: 6, color: "var(--muted2)", whiteSpace: "normal", lineHeight: 1.4 }}>
+              ⚠ 供给端产能缺口叶未接：Line.capacityDaily 未落库（当前仅 max_capacity_day）· 诚实空（未编造产能占比）
+            </div>
+          ) : null}
+        />
+      </div>
+      {/* 勾稽可视：需求端贡献 + 供给端贡献 + residual = 总缺口（客户端亲验·非只信标志） */}
+      <div data-testid="sdg-recon" style={{ marginTop: 12, fontSize: 11.5, color: "var(--muted)" }}>
+        勾稽 需求端 <b className="mono">{demand.contribution}</b> + 供给端 <b className="mono">{supply.contribution}</b> + residual <b className="mono">{view.residual}</b> = <b className="mono" data-testid="sdg-recon-sum">{view.reconSum}</b> {view.unit}
+        <span style={{ margin: "0 6px" }}>vs 总缺口</span><b className="mono">{view.totalGap}</b> {view.unit}
+        <span className="badge" data-testid="sdg-reconciled" style={{ marginLeft: 8, color: view.reconciled ? "var(--ok)" : "var(--danger)" }}>{view.reconciled ? "勾稽通过 ✓" : "勾稽未通过"}</span>
       </div>
     </div>
   );
