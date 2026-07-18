@@ -34,9 +34,19 @@ export interface DagData {
  * 引擎不改（§5）——纯前端投影：越线 Metric 根 → 因果层（levels[depth=3] caused_by 链·逐跳）→ 每因素下钻真证据叶。
  * 比 plan_rootcause 的 1 跳 KPI→因子→取证深：一路溯到地缘/决策终点根因（`ProvenanceDag` 递归渲染多跳链）。
  */
+export interface GapAttrNode {
+  id: string;
+  factor: string;
+  contribution: number;
+  unit?: string;
+  share?: number;
+  /** 结构层节点的归属路径（`[metricId, base:<基地>, <叶id>]`）——用于把订单/瓶颈叶归到所属基地。 */
+  path?: string[];
+  provenance?: { drillType?: string; drillField?: string; drillValue?: number; drillId?: string };
+}
 export interface GapAttrOutput {
   rootMetric: { key: string; name: string; unit: string; target?: number; actual?: number; gap: number };
-  levels?: { depth: number; label: string; nodes: { id: string; factor: string; contribution: number; unit?: string; share?: number; provenance?: { drillType?: string; drillField?: string; drillValue?: number } }[] }[];
+  levels?: { depth: number; label: string; nodes: GapAttrNode[] }[];
   causalEdges?: { from: string; to: string; viaLinkKey?: string }[];
   atomicLeaves?: { id: string; factor: string; contribution: number; unit?: string; share?: number }[];
 }
@@ -72,6 +82,76 @@ export function gapAttributionToDag(ga: GapAttrOutput | undefined): DagData | un
     for (const lf of ga.atomicLeaves ?? []) {
       nodes.push({ id: lf.id, kind: "factor", label: lf.factor, value: lf.contribution, share: lf.share, unit: lf.unit });
       edges.push({ from: kpiId, to: lf.id, kind: "gap_leaf" });
+    }
+  }
+  return { nodes, edges };
+}
+
+/**
+ * WO-CAPACITY-INFER-PROCESS · CI-a 基地根因推演树：把 `gap_attribution`（全局 Metric 深度反向归因）产物
+ * **作用域到单一基地** → DagData（越线 Metric 根 → 该基地 KSF → 结构叶[设备OEE/物料gapTon/订单] + 下钻真证据
+ * → 物料短缺叶挂 caused_by 因果链溯终点根因）。结构与数字全部来自求解器（活数据算出·R13/R14），前端零写死。
+ *
+ * ⚠ 诚实边界（引擎侧真实限制·非本前端伪造）：
+ *  - `gap_attribution` **不接受 base×factor 作用域**（引擎按全局最严重 Metric 归因·基地是结构分摊的 L1 层）→
+ *    本函数在**客户端**按基地过滤 L1/L2 节点（L2 靠 `path[1]===base:<基地>`）。基地名须与引擎 `Order.bases[0]` 对齐，
+ *    对不上（该基地不在结构归因基地集内）→ 返回 undefined，调用方走**诚实灰**（列出后端缺口·绝不编造根因树）。
+ *  - 归因按**基地**聚合，**未按具体越线因子**（化成柜张力等 7 张力因子）细分——引擎无此维，调用方需据实标注。
+ */
+export function gapAttributionToBaseRootCause(ga: GapAttrOutput | undefined, baseName: string): DagData | undefined {
+  if (!ga?.rootMetric || !baseName) return undefined;
+  const levels = ga.levels ?? [];
+  const l1 = levels.find((L) => L.depth === 1)?.nodes ?? [];
+  const l2 = levels.find((L) => L.depth === 2)?.nodes ?? [];
+  const l3 = levels.find((L) => L.depth === 3)?.nodes ?? [];
+  // 匹配该基地的 L1 结构节点（id `base:<基地>` 或 factor `基地 <基地>` 或含基地名）——引擎/mock 命名容差。
+  const baseNode = l1.find((n) => n.id === `base:${baseName}` || n.factor === `基地 ${baseName}` || n.factor.includes(baseName));
+  if (!baseNode) return undefined; // 该基地不在结构归因内 → 诚实灰（调用方处理）
+  const baseId = baseNode.id;
+
+  const rm = ga.rootMetric;
+  const kpiId = `kpi:${rm.key}`;
+  const nodes: DagNode[] = [];
+  const edges: DagEdge[] = [];
+  const status = rm.actual != null && rm.target != null ? (rm.actual < rm.target ? "RED" : "GREEN") : "RED";
+  // 第一层：全局越线 Metric 根（该基地贡献所归属的经营目标·真 actual/target/gap）。
+  nodes.push({ id: kpiId, kind: "kpi", label: rm.name, status, value: rm.gap, unit: rm.unit, actual: rm.actual, target: rm.target });
+  // 第二层：基地作 KSF（占缺口 share + 贡献量·真值）。
+  nodes.push({ id: baseId, kind: "ksf", label: baseNode.factor, sub: `占缺口 ${fmtPct(baseNode.share)} · 贡献 ${baseNode.contribution}${baseNode.unit ?? rm.unit}` });
+  edges.push({ from: kpiId, to: baseId, weight: baseNode.share, kind: "kpi_ksf" });
+
+  // 第三层：该基地的结构叶（订单/设备OEE/物料短缺）——L2 按 path[1]===baseId 归属（无 path=退化，全挂）。
+  let materialId: string | undefined;
+  const kids = l2.filter((n) => (Array.isArray(n.path) ? n.path[1] === baseId : true));
+  for (const c of kids) {
+    nodes.push({ id: c.id, kind: "factor", label: c.factor, value: c.contribution, share: c.share, unit: c.unit });
+    edges.push({ from: baseId, to: c.id, weight: c.share, kind: "struct" });
+    const pv = c.provenance;
+    if (pv?.drillType) {
+      const ev = `${c.id}:ev`;
+      nodes.push({ id: ev, kind: "evidence", label: `${pv.drillType}.${pv.drillField ?? ""}`, value: pv.drillValue });
+      edges.push({ from: c.id, to: ev, weight: c.share, kind: "drill" });
+    }
+    if (c.id.startsWith("material:")) materialId = c.id;
+  }
+
+  // 第四层：物料短缺叶挂 caused_by 因果链（逐跳溯地缘/决策终点根因·复用 depth=3 因果层 + 下钻真值叶）。
+  if (materialId && l3.length > 0) {
+    const reached = new Set(l3.map((n) => n.id.replace(/^cf:/, "")));
+    for (const cn of l3) {
+      nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, share: cn.share, unit: cn.unit });
+      const pv = cn.provenance;
+      if (pv?.drillType) {
+        const ev = `${cn.id}:ev`;
+        nodes.push({ id: ev, kind: "evidence", label: `${pv.drillType}.${pv.drillField ?? ""}`, value: pv.drillValue });
+        edges.push({ from: cn.id, to: ev, weight: cn.share, kind: "drill" });
+      }
+    }
+    const seenEntry = new Set<string>();
+    for (const e of ga.causalEdges ?? []) {
+      if (!reached.has(e.to)) continue;
+      if (reached.has(e.from)) edges.push({ from: `cf:${e.from}`, to: `cf:${e.to}`, kind: "caused_by" });
+      else if (!seenEntry.has(e.to)) { seenEntry.add(e.to); edges.push({ from: materialId, to: `cf:${e.to}`, kind: "caused_by_entry" }); }
     }
   }
   return { nodes, edges };

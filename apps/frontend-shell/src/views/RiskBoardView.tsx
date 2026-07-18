@@ -11,6 +11,7 @@ import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -481,6 +482,19 @@ function RiskDetailPanel({
 }) {
   const H = card.series.length || horizon;
   const synth = card.provenanceSynthetic === true;
+  // CI-a 数据源：gap_attribution（全局 Metric 深度反向归因·真求解器）。引擎不接受 base×factor 作用域 →
+  // 全局取一次、客户端按基地投影（gapAttributionToBaseRootCause）。无源/基地对不上 → 诚实灰（不伪造根因树）。
+  const { data: ga, isLoading: gaLoading, isError: gaError } = useQuery({
+    queryKey: ["a", "gap_attribution", "risk-board"],
+    queryFn: async () => {
+      const res = await invokeSolver("gap_attribution", {});
+      return res.data as GapAttrOutput;
+    },
+    retry: false,
+  });
+  const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
+  // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
+  const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);
   // 其余越线/临近因素（当前值·无逐日 series 源→灰点·不伪造）。
   const others = (bnFactors ?? [])
     .filter((f) => f !== card.factor)
@@ -549,11 +563,54 @@ function RiskDetailPanel({
         </span>
       </div>
 
-      {/* 两栏（.rk-two）：左对症方案（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
+      {/* CI-a 基地根因推演树（可信=过程可见）：为什么这基地越线——结构反向归因（设备OEE/物料gapTon/订单）
+          → caused_by 溯终点根因，每节点下钻真对象字段（R13）。数据 = gap_attribution 真求解器投影到本基地。 */}
+      <RootCausePanel base={card.base} factor={card.factor} dag={baseDag} loading={gaLoading} error={gaError} hasGa={!!ga} />
+
+      {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
       <div className={styles.rkTwo}>
-        <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} />
+        <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} threshold={threshold} rootCauseFactors={rootCauseFactors} />
         <QaPanel card={card} threshold={threshold} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * CI-a 基地根因推演树面板。dag 存在 → 复用 <ProvenanceDag> 递归渲染结构+因果树（真求解器投影·R13/R14）；
+ * 缺源/基地对不上/加载/报错 → **诚实灰**列出后端缺口（绝不伪造根因树·KILL-MOCK·C6）。
+ */
+function RootCausePanel({ base, factor, dag, loading, error, hasGa }: {
+  base: string; factor: string; dag: DagData | undefined; loading: boolean; error: boolean; hasGa: boolean;
+}) {
+  const nodeCount = dag?.nodes.length ?? 0;
+  return (
+    <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`rootcause-panel-${base}`}>
+      <div className={styles.rkDetH}>
+        <b>🌳 {base} · 根因推演树</b>
+        <span>为什么越线：结构反向归因（设备/物料/订单）→ caused_by 溯终点根因 · 每节点下钻真对象（R13）</span>
+      </div>
+      {dag && nodeCount > 0 ? (
+        <>
+          <ProvenanceDag data={dag} />
+          {/* 诚实标注：gap_attribution 按基地聚合、未按具体越线因子细分（引擎无此维·据实披露）。 */}
+          <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+            结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
+            注：引擎按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分——因子×基地作用域为引擎侧后续（据实披露·不伪造）。
+          </div>
+        </>
+      ) : (
+        <div className="empty-state" data-testid={`rootcause-gap-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
+          <b style={{ color: "var(--muted2)" }}>根因推演树暂不可用（诚实灰·未伪造过程）</b>
+          <div style={{ marginTop: 6 }}>后端缺口：
+            {loading ? "gap_attribution 加载中…"
+              : error ? "gap_attribution 求解器不可用/未开通（无法取结构归因）"
+              : !hasGa ? "gap_attribution 无返回"
+              : `gap_attribution 全局归因中无「${base}」的结构节点——引擎按全局最严重 Metric 归因，且不接受 base×factor 作用域；该基地未落入结构分摊基地集（或基地名与 Order.bases 未对齐）`}
+          </div>
+          <div style={{ marginTop: 4, color: "var(--muted2)" }}>补齐路径：gap_attribution 支持 base×factor 入参作用域后本树即活（前端已就绪·仅缺引擎侧作用域）。</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -606,8 +663,34 @@ function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
 
 type MitPlan = { key: string; name: string; eff: number; tn: number; cost: string; risk?: string; score: number };
 
-/** 对症方案堆叠卡（.rk-sol）：mitigation_select 真求解器优选·采纳→工单审批（adopt_mitigation·R4）。 */
-function MitigationCards({ base, factor, tightness }: { base: string; factor: string; tightness: number }) {
+/** CI-b「对症根因」对齐：越线/方案因子 → 根因树结构节点关键词。命中即真链（同一 gap_attribution 投影出处）。 */
+function matchRootCause(factor: string, rootCauseFactors: string[]): string | null {
+  const groups: [RegExp, RegExp][] = [
+    [/物料|齐套|正极|电解液|隔膜/, /物料|正极|短缺|电解液|隔膜/],
+    [/设备|OEE|化成|柜/, /设备|OEE/],
+    [/瓶颈|工序|产能/, /瓶颈|工序|产能/],
+    [/换型|排产|冲突/, /换型|排产|冲突/],
+    [/人力|工时/, /人力|工时/],
+    [/物流|运输/, /物流|运输|订单/],
+  ];
+  for (const [fRe, rRe] of groups) {
+    if (fRe.test(factor)) {
+      const hit = rootCauseFactors.find((l) => rRe.test(l));
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * CI-b 对症方案 + 方案比对推演链（可信=过程可见）：mitigation_select 真求解器优选。
+ * ① 对症根因（对齐 CI-a 根因树结构节点）② score 拆解——**跨方案比对矩阵**（见效/周期/投入/风险/综合评分·真出处·
+ * 非单一数字）解释为何推荐者综合分最高 ③ 预期堵口（峰值张力 − 见效pp → 是否消解越线·源 mitigation_select.eff）。
+ * ④ 采纳仍走 adopt_mitigation → Action 草稿待审批（C5 门不绕·不直接执行）。全部数字来自求解器（KILL-MOCK·R13）。
+ */
+function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors }: {
+  base: string; factor: string; tightness: number; threshold: number; rootCauseFactors: string[];
+}) {
   const adopt = useActionDraft();
   const { data, isLoading } = useQuery({
     queryKey: ["a", "mitigation_select", base, factor, tightness],
@@ -617,33 +700,79 @@ function MitigationCards({ base, factor, tightness }: { base: string; factor: st
     },
   });
   const plans = data?.plans ?? [];
+  const recommended = data?.recommended;
+  // 综合评分降序 = 求解器优选序（真出处·排名供「为何推荐」）。
+  const ranked = [...plans].sort((a, b) => b.score - a.score);
+  const rankOf = (key: string) => ranked.findIndex((p) => p.key === key) + 1;
+  const matched = matchRootCause(factor, rootCauseFactors);
+
   return (
     <div>
-      <div className={styles.wfT} style={{ color: "var(--ok)" }}>💡 对症方案 · {factor}（{plans.length} 个）</div>
+      <div className={styles.wfT} style={{ color: "var(--ok)" }}>💡 对症方案 · 比对推演 · {factor}（{plans.length} 个）</div>
       {isLoading ? (
         <div style={{ color: "var(--muted2)", fontSize: 11 }}>{zh.common.loading}</div>
       ) : !plans.length ? (
-        <div className="empty-state" style={{ fontSize: 11 }}>{zh.common.none}</div>
+        <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-empty">{zh.common.none}</div>
       ) : (
-        plans.map((p, i) => (
-          <div key={p.key} className={styles.rkSol} data-testid={`mitigation-plan-${p.key}`}>
-            <div className={styles.rkSolH}>
-              <b>
-                {i + 1}. {p.name}
-                {p.key === data?.recommended && <span className="badge" style={{ marginLeft: 6, background: "var(--ok)", color: "#0a1f12", fontSize: 9 }}>推荐</span>}
-              </b>
-              <button
-                className={styles.fcGo}
-                data-testid={`mitigation-adopt-${p.key}`}
-                disabled={adopt.isPending}
-                onClick={() => adopt.mutate({ actionTypeKey: "adopt_mitigation", payload: { base, factor, planKey: p.key } })}
-              >
-                采纳→工单
-              </button>
-            </div>
-            <div className={styles.rkSolM}>见效 {p.eff}pp · 周期 {p.tn}周 · 投入:{p.cost} · 风险:{p.risk ?? "—"} · 评分 {p.score}</div>
+        <>
+          {/* ② score 拆解 = 跨方案比对矩阵（非单一数字·真出处 mitigation_select.plans[]）：一眼见谁综合分最高·为何。 */}
+          <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "2px 0 5px" }}>为什么推荐？综合评分 = 见效 × 紧迫度 ÷（投入档 × 周期）——比对如下（评分降序）：</div>
+          <table className="cmp" data-testid="mitigation-matrix" style={{ fontSize: 11, marginBottom: 10 }}>
+            <thead>
+              <tr><th>方案</th><th>见效(pp)</th><th>周期(周)</th><th>投入</th><th>风险</th><th>综合评分</th></tr>
+            </thead>
+            <tbody>
+              {ranked.map((p) => (
+                <tr key={p.key} data-testid={`mitigation-matrix-row-${p.key}`} style={p.key === recommended ? { background: "rgba(98,190,119,.12)" } : undefined}>
+                  <td className="zh"><b>{p.name}</b>{p.key === recommended && <span className="badge" style={{ marginLeft: 5, background: "var(--ok)", color: "#0a1f12", fontSize: 9 }}>推荐</span>}</td>
+                  <td className="mono" data-testid={`mitigation-eff-${p.key}`} style={{ color: "var(--ok)" }}>{p.eff}</td>
+                  <td className="mono">{p.tn}</td>
+                  <td className="zh">{p.cost}</td>
+                  <td className="zh">{p.risk ?? "—"}</td>
+                  <td className="mono" data-testid={`mitigation-score-${p.key}`}><b>{p.score}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* 逐方案推演链：① 对症根因 ② 评分排名 ③ 预期堵口 ④ 采纳→草稿（C5）。 */}
+          {ranked.map((p) => {
+            const after = Math.round((tightness - p.eff) * 10) / 10;
+            const clears = after < threshold;
+            return (
+              <div key={p.key} className={styles.rkSol} data-testid={`mitigation-plan-${p.key}`}>
+                <div className={styles.rkSolH}>
+                  <b>
+                    {rankOf(p.key)}. {p.name}
+                    {p.key === recommended && <span className="badge" style={{ marginLeft: 6, background: "var(--ok)", color: "#0a1f12", fontSize: 9 }}>推荐</span>}
+                  </b>
+                  <button
+                    className={styles.fcGo}
+                    data-testid={`mitigation-adopt-${p.key}`}
+                    disabled={adopt.isPending}
+                    onClick={() => adopt.mutate({ actionTypeKey: "adopt_mitigation", payload: { base, factor, planKey: p.key } })}
+                  >
+                    采纳→工单
+                  </button>
+                </div>
+                {/* 推演链（过程可见·非裸结论）。 */}
+                <div className={styles.rkSolM} data-testid={`mitigation-chain-${p.key}`} style={{ display: "grid", gap: 3 }}>
+                  <span data-testid={`mitigation-target-${p.key}`}>
+                    ① 对症根因：{matched ? <>直指根因树「<b style={{ color: "var(--c-solver)" }}>{matched}</b>」</> : <>针对越线因子「{factor}」<span style={{ color: "var(--muted2)" }}>（根因树未见对齐的结构节点·据实）</span></>}
+                  </span>
+                  <span>② 评分构成：见效 {p.eff}pp · 周期 {p.tn}周 · 投入 {p.cost} · 风险 {p.risk ?? "—"} → 综合 <b>{p.score}</b>（{p.key === recommended ? "全案最高·故推荐" : `第 ${rankOf(p.key)} 名`}）</span>
+                  <span data-testid={`mitigation-block-${p.key}`}>
+                    ③ 预期堵口：峰值张力 {Math.round(tightness)} − 见效 {p.eff}pp → <b style={{ color: clears ? "var(--ok)" : "var(--danger)" }}>{after}</b>
+                    {clears ? `（预计消解越线·<阈值 ${threshold}）` : `（仍越线·需叠加方案）`} <span style={{ color: "var(--muted2)" }}>· 源 mitigation_select.eff</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid="mitigation-gate-note">
+            ④ 采纳经 <b>adopt_mitigation</b> 生成 Action 草稿 → 审批后下发工单（C5 门不绕·前端不直改计划）。
           </div>
-        ))
+        </>
       )}
     </div>
   );
