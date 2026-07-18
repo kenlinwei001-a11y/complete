@@ -22,7 +22,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
-      typeKeys: ["Customer", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
+      typeKeys: ["Customer", "CustomerLocation", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
     },
     {
       key: "commercial_intelligence", displayName: "商务情报", description: "竞品份额/价格、投标记录、赢丢单与价格实现（市场份额与营收根因下钻真源）。",
@@ -34,7 +34,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "capacity_base", displayName: "产能与基地", description: "生产基地、车间、产线、产能投资项目及产品-产线/设备制造能力。",
-      typeKeys: ["Base", "Workshop", "Line", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      typeKeys: ["Base", "Workshop", "Line", "Warehouse", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "production_execution", displayName: "生产执行", description: "生产工单、排程、班次计划与在制（WIP）批次/移动/质检点（MES 生产执行域）。",
