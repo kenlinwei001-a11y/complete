@@ -30,6 +30,7 @@ body {
 
 button {
   font-family: inherit;
+  color: inherit; /* 继承容器文本色（--txt）——否则 <button> 用浏览器默认深色 → 卡片式按钮深字压深底（对比度 bug·系统性根治） */
   cursor: pointer;
 }
 
