@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { invokeSolver } from "@/api/endpoints";
+import { BlockConversable } from "@/components/BlockConversable";
 import { api } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
@@ -169,9 +170,35 @@ function DecisionPlay({ out, metricKey }: { out: DecisionPlayOutput; metricKey: 
     return m;
   }, [matrix]);
 
+  // WO-BLOCK-DIALOGUE：块级 getData 各返该块**真实渲染数据**（根因/方案/矩阵真值·非写死·改根因颗粒→随之变 C4）。
+  const rootBlockData = (): Record<string, unknown> => ({
+    metricKey: rc.metricKey,
+    factorId: rc.factorId,
+    label: rc.label,
+    gap: rc.gap,
+    unit: rc.unit,
+    summary,
+  });
+  const optionsBlockData = (): Record<string, unknown> => ({
+    metricKey: rc.metricKey,
+    factorId: rc.factorId,
+    count: options.length,
+    options: options.map((o) => ({ optionId: o.optionId, label: o.label, sourceKind: o.sourceKind, closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility })),
+    recommendedOptionIds: [...recSet],
+  });
+  const matrixBlockData = (): Record<string, unknown> => ({
+    metricKey: rc.metricKey,
+    factorId: rc.factorId,
+    dims: DIMS.map((d) => ({ key: d.key, label: d.label, better: d.better })),
+    rows: matrix.map((row) => ({ optionId: row.optionId, label: row.label, dims: row.dims })),
+    bestByDim,
+    recommendedOptionIds: [...recSet],
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="decision-play">
       {/* ── ① 根因区 ── */}
+      <BlockConversable blockId="dp-root-cause" blockType="decision-root-cause" blockTitle={`决策根因「${rc.label}」`} getData={rootBlockData} getSelection={() => [rc.factorId]} provenanceRef="gap_attribution">
       <div className="panel" data-testid="dp-root-cause" style={{ borderLeft: "3px solid var(--danger)" }}>
         <div className="section-title">① 根因</div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--txt)" }}>
@@ -181,8 +208,10 @@ function DecisionPlay({ out, metricKey }: { out: DecisionPlayOutput; metricKey: 
         </div>
         <div data-testid="dp-summary" style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}>{summary}</div>
       </div>
+      </BlockConversable>
 
       {/* ── ② 方案卡区（点开看六维 + provenance 下钻）── */}
+      <BlockConversable blockId="dp-options" blockType="decision-options" blockTitle="对症方案区" getData={optionsBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">
       <div className="panel" data-testid="dp-options">
         <div className="section-title">② 对症方案（{options.length}）· 点开看六维 + 为何做 / 何用 / 为何有用</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
@@ -191,8 +220,10 @@ function DecisionPlay({ out, metricKey }: { out: DecisionPlayOutput; metricKey: 
           ))}
         </div>
       </div>
+      </BlockConversable>
 
       {/* ── ③ 比对矩阵（行=方案·列=六维·最优列高亮）── */}
+      <BlockConversable blockId="dp-matrix" blockType="decision-matrix" blockTitle="方案比对矩阵" getData={matrixBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">
       <div className="panel" data-testid="dp-matrix">
         <div className="section-title">③ 比对矩阵 · 每列最优高亮</div>
         <div style={{ overflowX: "auto" }}>
@@ -231,6 +262,7 @@ function DecisionPlay({ out, metricKey }: { out: DecisionPlayOutput; metricKey: 
           </table>
         </div>
       </div>
+      </BlockConversable>
 
       {/* ── ④ 触发规则（信号真值 op 阈值 → fired?；thresholdSource 标注）── */}
       <div className="panel" data-testid="dp-triggers">

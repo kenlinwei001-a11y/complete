@@ -8,6 +8,9 @@ export interface ConversationEntry {
   submitError?: string;
 }
 
+/** WO-BLOCK-DIALOGUE：当前活跃块级对话锚（= PageContext.block 形状·点「深问此块」时捕获该块真实渲染数据快照）。 */
+export type ActiveBlock = NonNullable<PageContext["block"]>;
+
 interface SessionState {
   view: string;
   selectedObjects: ObjectRef[];
@@ -17,6 +20,8 @@ interface SessionState {
   // 查询 Dock UI 态
   dockExpanded: boolean;
   conversation: ConversationEntry[];
+  // WO-BLOCK-DIALOGUE：当前活跃块（点「深问此块」设·退化时 undefined = 页面级）。
+  activeBlock?: ActiveBlock;
 
   setView: (view: string) => void;
   setSelectedObjects: (objs: ObjectRef[]) => void;
@@ -25,6 +30,10 @@ interface SessionState {
   setTimeWindow: (tw?: { from: string; to: string }) => void;
   setConversationId: (id: string) => void;
   setDockExpanded: (v: boolean) => void;
+  /** WO-BLOCK-DIALOGUE：设当前活跃块（点「深问此块」·捕获该块真实数据快照 → buildContext 填 pageContext.block）。 */
+  setActiveBlock: (block: ActiveBlock) => void;
+  /** WO-BLOCK-DIALOGUE：清活跃块 → 退化为页面级 PageContext（不破 CEO-6-FE）。 */
+  clearActiveBlock: () => void;
   /** 开一段全新对话线程（场景卡启动用）：清空上一卡的对话 + 重置 conversationId，保证每张卡独立不混合。 */
   startConversation: (e: ConversationEntry) => void;
   appendConversation: (e: ConversationEntry) => void;
@@ -49,6 +58,7 @@ function derivePageContext(s: {
   view: string;
   selectedObjects: ObjectRef[];
   filters: Record<string, string | string[]>;
+  activeBlock?: ActiveBlock;
 }): PageContext {
   const entities: PageEntity[] = s.selectedObjects.map((o) => ({
     type: o.objectType,
@@ -73,6 +83,9 @@ function derivePageContext(s: {
 
   const pageContext: PageContext = { view: s.view, entities, selection, drillPath: [], actions: [] };
   if (Object.keys(focus).length > 0) pageContext.focus = focus;
+  // WO-BLOCK-DIALOGUE（闭 G-3 块级·加法）：有活跃块 → 填 pageContext.block（该块点击时捕获的真实数据快照）。
+  // 无活跃块 → 不填 block → 退化为页面级 PageContext（C5·不破 CEO-6-FE·诚实）。
+  if (s.activeBlock) pageContext.block = s.activeBlock;
   return pageContext;
 }
 
@@ -84,6 +97,7 @@ const initial = {
   conversationId: undefined as string | undefined,
   dockExpanded: false,
   conversation: [] as ConversationEntry[],
+  activeBlock: undefined as ActiveBlock | undefined,
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -105,6 +119,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setTimeWindow: (timeWindow) => set({ timeWindow }),
   setConversationId: (conversationId) => set({ conversationId }),
   setDockExpanded: (dockExpanded) => set({ dockExpanded }),
+  setActiveBlock: (activeBlock) => set({ activeBlock }),
+  clearActiveBlock: () => set({ activeBlock: undefined }),
   startConversation: (e) => set({ conversation: [e], conversationId: undefined }),
   appendConversation: (e) => set((s) => ({ conversation: [...s.conversation, e] })),
   updateConversation: (localId, patch) =>
@@ -121,6 +137,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       timeWindow: s.timeWindow,
       conversationId: s.conversationId,
       // WO-CEO-6-FE：随查询搭车注入 PageContext（闭 G-3）——orchestrator 据此开 hasPageContext 门。
+      // WO-BLOCK-DIALOGUE：有活跃块时 pageContext.block 一并搭车（闭 G-3 块级）。
       pageContext: derivePageContext(s),
     };
   },

@@ -36,6 +36,22 @@ export const PageContextSchema = z.object({
   selection: z.array(z.string()).default([]), // 当前选中实体 id（如选中"正极粉短缺"根因）
   drillPath: z.array(z.string()).default([]), // 下钻路径（面包屑·从总目标到当前聚焦）
   actions: z.array(z.string()).default([]), // 页面可用动作（供 agent 建议下一步）
+  /**
+   * WO-BLOCK-DIALOGUE（闭 G-3 块级·additive）：当前活跃的**块级对话锚**——用户点某个 block「深问此块」时，
+   * 把该块**真实渲染数据**的结构化快照（blockData）连同块身份（blockId/blockType/blockTitle）随查询搭车推给 agent。
+   * orchestrator 据 `hasBlockContext` 门 + blockType 定向路由到对应推演求解器/agent，blockData 作强上下文进 prompt/args，
+   * 答案针对性锚定「哪页·哪块·块里有哪些信息」。无活跃块则不填（退化为页面级 PageContext·不破 CEO-6-FE）。
+   */
+  block: z
+    .object({
+      blockId: z.string(), // 块唯一标识（= data-testid·如 dash-supply-demand）
+      blockType: z.string(), // 块语义类型（供 blockType 定向路由：supply-demand/counterfactual/metric-strip/root-cause-tree/decision-root-cause/decision-options/decision-matrix）
+      blockTitle: z.string(), // 块标题（人读·进 agent prompt 锚定）
+      blockData: z.record(z.string(), z.unknown()), // 该块真实渲染数据的结构化快照（点击时 getData() 捕获·非写死·改块数据即变 C4）
+      provenanceRef: z.string().optional(), // 溯源引用（块数据来源求解器/对象·可选）
+      selection: z.array(z.string()).default([]), // 块内选中项 id（如选中某根因叶/某方案·驱动 factorId）
+    })
+    .optional(),
 });
 export type PageContext = z.infer<typeof PageContextSchema>;
 

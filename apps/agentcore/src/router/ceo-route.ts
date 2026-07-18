@@ -40,6 +40,69 @@ export function scopeBasesFor(role: CeoAgentRole, baseScope: string[]): { allBas
 }
 
 /**
+ * WO-BLOCK-DIALOGUE（闭 G-3 块级）：块语义类型 → CEO 推演路由（确定性映射·R6）。
+ * 块本身即意图锚——用户点某块「深问此块」= 已表达"针对此块推演"，故 blockType 定向决定落哪个求解器，
+ * 不依赖问句关键词（比页面级 CEO 问句更强的上下文信号）。未登记类型 → undefined（退化走页面级/classifier·不劫持）。
+ */
+const BLOCK_TYPE_ROUTE: Record<string, CeoQueryRoute["route"]> = {
+  "supply-demand": "gap_attribution", // 供需双向归因 → 根因深问
+  "counterfactual": "decision_play", // 反事实双轨 → 决策/方案
+  "metric-strip": "metric_rollup", // KPI 指标条 → 达标查询
+  "root-cause-tree": "gap_attribution", // 根因树 DAG → 根因深问
+  "decision-root-cause": "gap_attribution", // 决策页根因区 → 根因深问
+  "decision-options": "decision_play", // 决策页方案区 → 决策/方案
+  "decision-matrix": "decision_play", // 决策页比对矩阵 → 决策/方案
+};
+
+/** blockType → 路由（未登记返 undefined）。 */
+export function blockTypeRoute(blockType: string): CeoQueryRoute["route"] | undefined {
+  return BLOCK_TYPE_ROUTE[blockType];
+}
+
+/** hasBlockContext 门：PageContext 是否携带活跃块（决定是否走块级定向路由）。 */
+export function hasBlockContext(pageContext: PageContext | undefined): boolean {
+  return Boolean(pageContext?.block);
+}
+
+/**
+ * 块级定向路由：PageContext.block（blockType + blockData + 块内 selection）→ CeoQueryRoute。
+ * 按 blockType 定向落求解器（非问句关键词）；args 从块派生——metricKey/factorId 优先取块内真实数据/选中，
+ * 其次退页面级 focus；blockData 整体随 args 留存（extractedSlots 审计 + pageContextSummary 进 agent prompt·强上下文）。
+ * 未登记 blockType → undefined（不绑定·退化）。
+ */
+export function resolveBlockRoute(
+  pageContext: PageContext | undefined,
+  role: CeoAgentRole,
+  baseScope: string[] = [],
+): CeoQueryRoute | undefined {
+  const block = pageContext?.block;
+  if (!block) return undefined;
+  const route = blockTypeRoute(block.blockType);
+  if (!route) return undefined;
+
+  const bd = block.blockData ?? {};
+  const asStr = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+  // 块内真实数据/选中优先，页面级 focus 兜底（改块数据/选中 → args 随之变·C4/SEAM 有牙）。
+  const metricKey = asStr(bd.metricKey) ?? pageContext?.focus?.metric;
+  const factorId = asStr(bd.factorId) ?? (block.selection.length ? block.selection[0] : undefined) ?? pageContext?.focus?.factorId;
+
+  const args: Record<string, unknown> = {};
+  if (metricKey) args.metricKey = metricKey;
+  if (factorId && (route === "decision_play" || route === "gap_attribution")) args.factorId = factorId;
+  // blockData 整体留存（强上下文·非求解器数学入参——fillSlots 只取声明槽位，此处供审计/prompt 锚定）。
+  args.blockId = block.blockId;
+  args.blockType = block.blockType;
+  args.blockTitle = block.blockTitle;
+  args.blockData = bd;
+
+  const solverKey = route === "signal" ? "decision_play" : route;
+  const scope = scopeBasesFor(role, baseScope);
+  const scopedBaseIds = scope.allBases ? [] : scope.baseIds;
+  const reason = `块级定向[${block.blockType}]→${route}${metricKey ? `·指标 ${metricKey}` : ""}${factorId ? `·根因 ${factorId}` : ""}（blockData 强上下文·锚定「${block.blockTitle}」）${scope.allBases ? "·全域" : `·限基地[${scopedBaseIds.join(",")}]`}`;
+  return { route, reason, usedPageContext: true, scopedBaseIds, solverKey, args };
+}
+
+/**
  * 确定性路由：问句 + PageContext + 角色 → CeoQueryRoute。
  * @param baseScope 运行者 OBO 身份的 baseScope 属性（base_manager:常州 → ["changzhou"]；CEO/admin → []）。
  */
