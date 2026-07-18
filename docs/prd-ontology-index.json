@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-17",
+  "generatedAt": "2026-07-18",
   "ontology": {
     "invariants": [
       "R1",
@@ -919,6 +919,48 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-inference-line.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/router/ceo-route.ts",
+        "apps/agentcore/test/ceo-agent-context.test.ts",
+        "apps/agentcore/test/ceo-agent-e2e.test.ts",
+        "apps/datacore/migrations/027_decisions.sql",
+        "apps/datacore/src/decision/kernel.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/ceo-data2-seam.test.ts",
+        "apps/datacore/test/decision-kernel-c1.test.ts",
+        "apps/datacore/test/decision-play.test.ts",
+        "apps/datacore/test/gap-attribution.test.ts",
+        "apps/datacore/test/supply-demand-gap-attribution.test.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/ceo-agent.ts",
+        "packages/contracts/src/decision-engine.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "packages/contracts/src/gap-attribution.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-inference-process-enhancement.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1344,6 +1386,7 @@
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-inference-line.md",
       "PRD-inference-process-enhancement.md",
       "PRD-llm-agent-empty-response-guard.md",
       "PRD-query-orchestration-service.md",
@@ -1530,7 +1573,8 @@
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md",
       "PRD-addendum-excel-seed-700B-expansion.md",
-      "PRD-cli-full-coverage.md"
+      "PRD-cli-full-coverage.md",
+      "PRD-inference-line.md"
     ],
     "apps/datacore/src/ontology/slice-index.ts": [
       "PRD-A3-multihop-slice-completion.md"
@@ -1549,13 +1593,15 @@
       "PRD-addendum-excel-seed-700B-expansion.md"
     ],
     "apps/datacore/src/synthetic/battery-extended.ts": [
-      "PRD-addendum-excel-seed-700B-expansion.md"
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-inference-line.md"
     ],
     "apps/datacore/src/synthetic/battery.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
+      "PRD-inference-line.md",
       "PRD-quarter-rolling-1to1.md"
     ],
     "apps/datacore/src/synthetic/seed.ts": [
@@ -1571,7 +1617,8 @@
       "PRD-addendum-excel-seed-700B-expansion.md"
     ],
     "packages/contracts/src/base-registry.ts": [
-      "PRD-addendum-excel-seed-700B-expansion.md"
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-inference-line.md"
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
@@ -1706,6 +1753,54 @@
     ],
     "apps/agentcore/src/growth/loop.ts": [
       "PRD-in-dialog-gap-fill-loop.md"
+    ],
+    "apps/agentcore/src/mocks/seed.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/agentcore/src/router/ceo-route.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/agentcore/test/ceo-agent-context.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/agentcore/test/ceo-agent-e2e.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/migrations/027_decisions.sql": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/src/decision/kernel.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/ceo-data2-seam.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/decision-kernel-c1.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/decision-play.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/gap-attribution.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/supply-demand-gap-attribution.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/ceo-agent.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/decision-engine.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/decision-kernel.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/gap-attribution.ts": [
+      "PRD-inference-line.md"
     ],
     "apps/frontend-shell/src/sse/useTaskStream.ts": [
       "PRD-inference-process-enhancement.md"
