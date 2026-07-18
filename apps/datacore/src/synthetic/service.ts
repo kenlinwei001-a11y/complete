@@ -649,6 +649,7 @@ export class SyntheticService {
     await putAll("MaintPlan", g.maintPlans, "planId");
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
+    await putAll("Warehouse", g.warehouses, "warehouseId"); // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
     // cockpit P1 绿地
     await putAll("DemandSegment", g.demandSegments, "segId");
@@ -672,6 +673,7 @@ export class SyntheticService {
     await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
+    await putAll("CustomerLocation", ext.customerLocations, "locId"); // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付地理落点）
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
     await putAll("Certification", ext.certifications, "certId");
     await putAll("EnergyMeter", ext.energyMeters, "meterId");
@@ -792,6 +794,10 @@ export class SyntheticService {
     for (const w of g.workshops) {
       await putLink(`lnk_wbb_${w.workshopId}`, "workshop_belongs_to_base", oid("Base", w.baseId), oid("Workshop", w.workshopId));
     }
+    // WO-WAREHOUSE-CUSTLOC · factory: Base → Warehouse（Warehouse.baseId；方向翻转：Base 1:N Warehouse）
+    for (const w of g.warehouses) {
+      await putLink(`lnk_wob_${w.warehouseId}`, "warehouse_of_base", oid("Base", w.baseId), oid("Warehouse", w.warehouseId));
+    }
     // factory: Workshop → Line（Line 的 workshopId 从 lineId 派生：LINE-WS-{baseId}-{suffix}；方向翻转：Workshop 1:N Line）
     for (const l of g.lines) {
       const workshopId = (l.lineId as string).replace("LINE-", "");
@@ -837,6 +843,10 @@ export class SyntheticService {
     for (const inv of ext.arInvoices) {
       const cid = custByName.get(String(P(inv).custName));
       if (cid) await putLink(`lnk_chi_${P(inv).invoiceId}`, "customer_has_invoice", oid("Customer", cid), oid("ARInvoice", P(inv).invoiceId));
+    }
+    // WO-WAREHOUSE-CUSTLOC · commercial: CustomerLocation → Customer（loc.customerRef；参照 order_of_customer 方向）
+    for (const loc of ext.customerLocations) {
+      await putLink(`lnk_cloc_${P(loc).locId}`, "custloc_of_customer", oid("CustomerLocation", P(loc).locId), oid("Customer", P(loc).customerRef));
     }
     // supply（批次）: Material → MaterialBatch（batch.matId）
     for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));

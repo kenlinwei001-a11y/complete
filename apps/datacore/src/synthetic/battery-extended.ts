@@ -1,6 +1,6 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
-import { mulberry32, round } from "../prng.js";
+import { mulberry32, round, hashString } from "../prng.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -105,6 +105,13 @@ export function extendedObjectTypes(): TypeDef[] {
     ]),
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
     def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
+    // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付/物流/在途/跨基地调拨的地理基础）。省市/经纬度 R14 确定性配置表派生。
+    def("CustomerLocation", "客户地点", "commercial", [
+      p("locId", "string", true),
+      { propKey: "customerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer" },
+      p("province", "string"), p("city", "string"), p("address", "string"),
+      p("isDeliveryDefault", "boolean"), p("lon"), p("lat"),
+    ]),
     def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
@@ -304,6 +311,8 @@ export interface ExtendedData {
   materials: Record<string, unknown>[];
   materialBatches: Record<string, unknown>[];
   customers: Record<string, unknown>[];
+  // WO-WAREHOUSE-CUSTLOC：客户交付地点（每客户 1-2 地点）
+  customerLocations: Record<string, unknown>[];
   arInvoices: Record<string, unknown>[];
   certifications: Record<string, unknown>[];
   energyMeters: Record<string, unknown>[];
@@ -332,6 +341,19 @@ export interface ExtendedData {
   dsos: Record<string, unknown>[];
   overdueRecords: Record<string, unknown>[];
 }
+
+// WO-WAREHOUSE-CUSTLOC：客户交付地确定性地理配置表（R14 非散落写死·同 seed 字节一致 R6）。
+// 8 家 HTML 客户按索引绑定真实城市省市/经纬度；工业级 extra 客户经 (ci+k) 索引落到同表（无散落写死）。
+const CUSTLOC_GEO: { province: string; city: string; lon: number; lat: number }[] = [
+  { province: "广东", city: "广州", lon: 113.26, lat: 23.13 },
+  { province: "重庆", city: "重庆", lon: 106.55, lat: 29.56 },
+  { province: "浙江", city: "杭州", lon: 120.15, lat: 30.28 },
+  { province: "上海", city: "上海", lon: 121.47, lat: 31.23 },
+  { province: "河南", city: "郑州", lon: 113.65, lat: 34.76 },
+  { province: "江苏", city: "南京", lon: 118.78, lat: 32.06 },
+  { province: "北京", city: "北京", lon: 116.4, lat: 39.9 },
+  { province: "山东", city: "济南", lon: 117.0, lat: 36.65 },
+];
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
 export function generateExtended(
@@ -415,6 +437,27 @@ export function generateExtended(
       maxOverdueDays: Math.floor(rng() * 25),
     })),
   ];
+
+  // WO-WAREHOUSE-CUSTLOC：每客户 1-2 交付地点（首个 isDeliveryDefault=true）。独立 hashString 子流·不消耗 rng
+  // （不插既有 rng 流中间→守 R6 字节基线·下游合成值零位移）。省市/经纬度取自 CUSTLOC_GEO 配置表（R14 非散落写死）。
+  const customerLocations: Record<string, unknown>[] = [];
+  for (const [ci, c] of customers.entries()) {
+    const custId = String(c.custId);
+    const nLoc = 1 + (hashString(`custloc_n_${custId}`) % 2); // 1 或 2 个交付地
+    for (let k = 0; k < nLoc; k++) {
+      const geo = CUSTLOC_GEO[(ci + k * 5) % CUSTLOC_GEO.length]!;
+      customerLocations.push({
+        locId: `LOC-${custId}-${k}`,
+        customerRef: custId,
+        province: geo.province,
+        city: geo.city,
+        address: `${geo.province}${geo.city}${c.custName}交付点${k + 1}`,
+        isDeliveryDefault: k === 0,
+        lon: geo.lon,
+        lat: geo.lat,
+      });
+    }
+  }
 
   // ARInvoice：每客户 invoicesPerCust 张（G 含逾期张）
   const arInvoices: Record<string, unknown>[] = [];
@@ -581,7 +624,7 @@ export function generateExtended(
   });
 
   return {
-    materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
+    materials, materialBatches, customers, customerLocations, arInvoices, certifications, energyMeters, changeoverMatrix,
     capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
     commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
