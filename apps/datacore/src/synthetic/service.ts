@@ -650,6 +650,11 @@ export class SyntheticService {
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
     await putAll("Warehouse", g.warehouses, "warehouseId"); // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
+    // WO-INVENTORY-3TIER 库存三层闭环：物化完工源 WorkOrder（此前 Phase3 MES 层从不落库·完工无对象承接）
+    // + 完工入库派生的成品库存 FinishedGoodsInventory + 库存流水 InventoryTxn（SEAM 端到端前提）。
+    await putAll("WorkOrder", g.workOrders, "woId");
+    await putAll("FinishedGoodsInventory", g.finishedGoodsInv, "fgId");
+    await putAll("InventoryTxn", g.inventoryTxns, "txnId");
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
     // cockpit P1 绿地
     await putAll("DemandSegment", g.demandSegments, "segId");
@@ -953,6 +958,19 @@ export class SyntheticService {
     // 常数边·零 rng·同 seed 字节一致；边 id 由 from/to 确定性派生。
     for (const e of CAUSAL_EDGES) {
       await putLink(`lnk_cby_${e.from}_${e.to}`, "caused_by", oid("CausalFactor", e.from), oid("CausalFactor", e.to));
+    }
+    // WO-INVENTORY-3TIER 库存三层闭环链路（FG→Model/Warehouse·Txn→FG/WorkOrder；完工入库溯源）。
+    const realModelIds = new Set(g.models.map((m) => String((m as { modelId: unknown }).modelId)));
+    for (const fg of g.finishedGoodsInv) {
+      const fgId = String(P(fg).fgId);
+      // fg_of_model 仅在型号是真 Model 时连（部分完工工单 modelId 为储能等目录外型号 → 诚实不连悬空边）。
+      if (realModelIds.has(String(P(fg).model))) await putLink(`lnk_fgm_${fgId}`, "fg_of_model", oid("FinishedGoodsInventory", fgId), oid("Model", P(fg).model));
+      await putLink(`lnk_fgw_${fgId}`, "fg_at_warehouse", oid("FinishedGoodsInventory", fgId), oid("Warehouse", P(fg).warehouseId));
+    }
+    for (const tx of g.inventoryTxns) {
+      const txnId = String(P(tx).txnId);
+      await putLink(`lnk_txf_${txnId}`, "txn_for_fg", oid("InventoryTxn", txnId), oid("FinishedGoodsInventory", P(tx).fgRef));
+      if (P(tx).woRef) await putLink(`lnk_txw_${txnId}`, "txn_from_wo", oid("InventoryTxn", txnId), oid("WorkOrder", P(tx).woRef));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
