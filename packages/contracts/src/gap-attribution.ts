@@ -27,7 +27,7 @@ export type GapProvenanceKind = z.infer<typeof GapProvenanceKindSchema>;
 export const GapProvenanceSchema = z.object({
   kind: GapProvenanceKindSchema,
   drillType: z.string().optional(), // 下钻源对象类型（Equipment/MaterialBalance/Supplier/CommodityPriceTrend/DecisionGap）
-  drillId: z.string().optional(), // 源对象 id（R13 可下钻）
+  drillId: z.string().optional(), // 源对象 id（R13 可下钻；"*" 表示按类型聚合）
   drillField: z.string().optional(), // 取值字段（oee_current/gapTon/actualSupplyTon/pctChange）
   drillValue: z.number().optional(), // 该字段真值（改它→归因变·C5 铁律）
   provenanceSynthetic: z.boolean().optional(), // 合成源诚实标灰（地缘/矿价无真源时·不冒充实测）
@@ -101,6 +101,10 @@ export const LongTermAgreementSchema = z.object({
   actualDeliveredTon: z.number(), // 实际交付（< 约定 = 违约）
   priceLinked: z.boolean(), // 价格联动条款有无（无 → 矿价涨不传导保护 → 决策缺陷）
   breachPenaltyWan: z.number(), // 违约成本（万元）
+  // WO-CEO-DATA-2 §2b 真源字段：价格联动公式 + 生效/失效日期（接真 ERP/合同履约）。
+  priceFormula: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  expiryDate: z.string().optional(),
 });
 export type LongTermAgreement = z.infer<typeof LongTermAgreementSchema>;
 
@@ -121,6 +125,10 @@ export const CommodityPriceTrendSchema = z.object({
   weekOf: z.string(), // ISO 周锚（YYYY-MM-DD）
   pricePerTon: z.number(),
   pctChange: z.number(), // 环比涨幅（%·正=涨）
+  // WO-CEO-DATA-2 §2b 真源字段：数据来源 + 规格 + 币种（接真行情 SMM/Wind/百川）。
+  source: z.string().optional(),
+  spec: z.string().optional(),
+  currency: z.string().optional(),
 });
 export type CommodityPriceTrend = z.infer<typeof CommodityPriceTrendSchema>;
 
@@ -131,5 +139,115 @@ export const DecisionGapSchema = z.object({
   description: z.string(),
   severity: z.number(), // 0–1（严重度·改它→决策叶贡献变）
   ownerRef: z.string().optional(),
+  // WO-CEO-DATA-2 §2b 真源字段：评审日期 + 证据（非实测·评审录入·接真前标灰）。
+  reviewDate: z.string().optional(),
+  evidence: z.string().optional(),
 });
 export type DecisionGap = z.infer<typeof DecisionGapSchema>;
+
+/** 因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象）。 */
+export const CausalFactorSchema = z.object({
+  factorId: z.string(),
+  label: z.string(),
+  drillType: z.string(),
+  drillId: z.string(),
+  drillField: z.string(),
+  kind: z.enum(["实测", "派生", "外部信号", "决策"]),
+  isRoot: z.boolean(),
+  provenanceSynthetic: z.boolean(),
+  // WO-CEO-DATA-2：每个 CausalFactor 归属一个指标域，供引擎按指标选因果根。
+  metricKey: z.string().optional(),
+});
+export type CausalFactor = z.infer<typeof CausalFactorSchema>;
+
+// ── WO-CEO-DATA-2 每指标多假设因果域 drill 真对象 schema ────────────────────────
+
+/** 市场份额：竞品份额（按细分/周期）。 */
+export const CompetitorShareSchema = z.object({
+  shareId: z.string(),
+  competitor: z.string(),
+  segment: z.string(),
+  sharePct: z.number(),
+  period: z.string(),
+});
+export type CompetitorShare = z.infer<typeof CompetitorShareSchema>;
+
+/** 竞标记录：逐单 win/loss + 丢标原因 + 金额 + 竞品引用。 */
+export const BidRecordSchema = z.object({
+  bidId: z.string(),
+  segment: z.string(),
+  win: z.boolean(),
+  lossReason: z.string(),
+  amount: z.number(),
+  competitorRef: z.string(),
+});
+export type BidRecord = z.infer<typeof BidRecordSchema>;
+
+/** 竞品价格：竞品×型号×周期 价格（$/kWh）。 */
+export const CompetitorPriceSchema = z.object({
+  priceId: z.string(),
+  competitor: z.string(),
+  model: z.string(),
+  pricePerKwh: z.number(),
+  period: z.string(),
+});
+export type CompetitorPrice = z.infer<typeof CompetitorPriceSchema>;
+
+/** 营收漏斗：逐机会阶段/金额/赢率。 */
+export const PipelineOpportunitySchema = z.object({
+  oppId: z.string(),
+  segment: z.string(),
+  stage: z.string(),
+  amount: z.number(),
+  winProb: z.number(),
+});
+export type PipelineOpportunity = z.infer<typeof PipelineOpportunitySchema>;
+
+/** 赢单/丢单记录：逐单结果/原因/金额。 */
+export const WinLossRecordSchema = z.object({
+  recordId: z.string(),
+  oppId: z.string(),
+  result: z.enum(["WIN", "LOST"]),
+  reason: z.string(),
+  amount: z.number(),
+});
+export type WinLossRecord = z.infer<typeof WinLossRecordSchema>;
+
+/** 价格实现：型号×周期 列表价 vs 实际成交价。 */
+export const PriceRealizationSchema = z.object({
+  priceId: z.string(),
+  model: z.string(),
+  listPrice: z.number(),
+  realizedPrice: z.number(),
+  period: z.string(),
+});
+export type PriceRealization = z.infer<typeof PriceRealizationSchema>;
+
+/** 应收账款账龄：逐客户×账龄桶金额。 */
+export const ARAgingSchema = z.object({
+  agingId: z.string(),
+  customerRef: z.string(),
+  bucket: z.enum(["0-30", "30-60", "60-90", "90+"]),
+  amount: z.number(),
+  period: z.string(),
+});
+export type ARAging = z.infer<typeof ARAgingSchema>;
+
+/** DSO：逐细分×周期 天数。 */
+export const DSOSchema = z.object({
+  dsoId: z.string(),
+  segment: z.string(),
+  days: z.number(),
+  period: z.string(),
+});
+export type DSO = z.infer<typeof DSOSchema>;
+
+/** 逾期记录：逐发票逾期天数/金额。 */
+export const OverdueRecordSchema = z.object({
+  overdueId: z.string(),
+  invoiceRef: z.string(),
+  overdueDays: z.number(),
+  customerRef: z.string(),
+  amount: z.number(),
+});
+export type OverdueRecord = z.infer<typeof OverdueRecordSchema>;

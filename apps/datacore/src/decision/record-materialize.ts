@@ -39,6 +39,132 @@ export interface MaterializeRecordsResult {
   primaryKey: string;
 }
 
+/**
+ * WO-CEO-DATA-2 · record-materialize 默认列映射模板。
+ * 真源上传时调用方可直接引用（或自定义覆盖），让 CSV/Excel 列名 1:1 流入对象属性。
+ * R14：这些是按对象类型 schema 派生的字段映射，非业务科目常数；换行业只需换类型/字段名。
+ */
+export const RECORD_MATERIALIZE_TEMPLATES: Record<
+  string,
+  { targetType: string; primaryKeyColumn: string; columnMapping: Record<string, string> }
+> = {
+  // 财务/需求/物料计划真源（WO-CEO-DATA-supply 基准模板）
+  FinancePlan: {
+    targetType: "FinancePlan",
+    primaryKeyColumn: "finId",
+    columnMapping: { finId: "finId", line: "line", budget: "budget", rolling: "rolling" },
+  },
+  DemandSegment: {
+    targetType: "DemandSegment",
+    primaryKeyColumn: "segId",
+    columnMapping: {
+      segId: "segId", segment: "segment", tgt: "tgt", p50: "p50", p90: "p90", act: "act",
+      priceWan: "priceWan", marginPct: "marginPct", floorPct: "floorPct",
+    },
+  },
+  MaterialBalance: {
+    targetType: "MaterialBalance",
+    primaryKeyColumn: "matBalId",
+    columnMapping: {
+      matBalId: "matBalId", material: "material", unit: "unit", netDemandTon: "netDemandTon",
+      ltaPct: "ltaPct", gapTon: "gapTon", etaDate: "etaDate",
+    },
+  },
+  // 供应链/地缘/决策真源（§2b 扩展字段）
+  Supplier: {
+    targetType: "Supplier",
+    primaryKeyColumn: "supplierId",
+    columnMapping: {
+      supplierId: "supplierId", supplierCode: "supplierCode", name: "name", category: "category",
+      materialType: "materialType", rating: "rating", region: "region", leadTime: "leadTime",
+      minOrderQty: "minOrderQty", onTimeRate: "onTimeRate", status: "status",
+      contractedSupplyTon: "contractedSupplyTon", actualSupplyTon: "actualSupplyTon",
+      deliveryDate: "deliveryDate", poNumber: "poNumber",
+    },
+  },
+  LongTermAgreement: {
+    targetType: "LongTermAgreement",
+    primaryKeyColumn: "ltaId",
+    columnMapping: {
+      ltaId: "ltaId", supplierId: "supplierId", materialType: "materialType",
+      contractedQtyTon: "contractedQtyTon", actualDeliveredTon: "actualDeliveredTon",
+      priceLinked: "priceLinked", breachPenaltyWan: "breachPenaltyWan",
+      priceFormula: "priceFormula", effectiveDate: "effectiveDate", expiryDate: "expiryDate",
+    },
+  },
+  CommodityPriceTrend: {
+    targetType: "CommodityPriceTrend",
+    primaryKeyColumn: "trendId",
+    columnMapping: {
+      trendId: "trendId", commodity: "commodity", weekOf: "weekOf", pricePerTon: "pricePerTon",
+      pctChange: "pctChange", source: "source", spec: "spec", currency: "currency",
+    },
+  },
+  ExternalSignal: {
+    targetType: "ExternalSignal",
+    primaryKeyColumn: "signalKey",
+    columnMapping: {
+      signalKey: "signalKey", name: "name", category: "category", value: "value", unit: "unit",
+      asOf: "asOf", source: "source", trend: "trend", impact: "impact", elasticity: "elasticity",
+      eventRef: "eventRef",
+    },
+  },
+  DecisionGap: {
+    targetType: "DecisionGap",
+    primaryKeyColumn: "gapId",
+    columnMapping: {
+      gapId: "gapId", kind: "kind", description: "description", severity: "severity",
+      ownerRef: "ownerRef", reviewDate: "reviewDate", evidence: "evidence",
+    },
+  },
+  // WO-CEO-DATA-2 每指标因果域 drill 真对象
+  CompetitorShare: {
+    targetType: "CompetitorShare",
+    primaryKeyColumn: "shareId",
+    columnMapping: { shareId: "shareId", competitor: "competitor", segment: "segment", sharePct: "sharePct", period: "period" },
+  },
+  BidRecord: {
+    targetType: "BidRecord",
+    primaryKeyColumn: "bidId",
+    columnMapping: { bidId: "bidId", segment: "segment", win: "win", lossReason: "lossReason", amount: "amount", competitorRef: "competitorRef" },
+  },
+  CompetitorPrice: {
+    targetType: "CompetitorPrice",
+    primaryKeyColumn: "priceId",
+    columnMapping: { priceId: "priceId", competitor: "competitor", model: "model", pricePerKwh: "pricePerKwh", period: "period" },
+  },
+  PipelineOpportunity: {
+    targetType: "PipelineOpportunity",
+    primaryKeyColumn: "oppId",
+    columnMapping: { oppId: "oppId", segment: "segment", stage: "stage", amount: "amount", winProb: "winProb" },
+  },
+  WinLossRecord: {
+    targetType: "WinLossRecord",
+    primaryKeyColumn: "recordId",
+    columnMapping: { recordId: "recordId", oppId: "oppId", result: "result", reason: "reason", amount: "amount" },
+  },
+  PriceRealization: {
+    targetType: "PriceRealization",
+    primaryKeyColumn: "priceId",
+    columnMapping: { priceId: "priceId", model: "model", listPrice: "listPrice", realizedPrice: "realizedPrice", period: "period" },
+  },
+  ARAging: {
+    targetType: "ARAging",
+    primaryKeyColumn: "agingId",
+    columnMapping: { agingId: "agingId", customerRef: "customerRef", bucket: "bucket", amount: "amount", period: "period" },
+  },
+  DSO: {
+    targetType: "DSO",
+    primaryKeyColumn: "dsoId",
+    columnMapping: { dsoId: "dsoId", segment: "segment", days: "days", period: "period" },
+  },
+  OverdueRecord: {
+    targetType: "OverdueRecord",
+    primaryKeyColumn: "overdueId",
+    columnMapping: { overdueId: "overdueId", invoiceRef: "invoiceRef", overdueDays: "overdueDays", customerRef: "customerRef", amount: "amount" },
+  },
+};
+
 /** 对象 id sanitize（与合成 putAll 同规则·R6 稳定·CJK 保留）。 */
 function sanitizeId(type: string, pk: string): string {
   return `obj_${type.toLowerCase()}_${pk}`.replace(/[^\p{L}\p{N}_-]/gu, "_");

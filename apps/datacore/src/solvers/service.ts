@@ -161,7 +161,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
-  gap_attribution: ["rootMetric", "totalGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "summary"],
+  gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary"],
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
@@ -720,12 +720,50 @@ export class SolverService {
   }
 
   /**
+   * WO-CEO-2-v2 · MetricCausalBinding 配置解析（扁平化 RuleEntry.params）。
+   * 键格式：`metricKey:factorId`=根权重 或 `metricKey:domain:xxx`=域权重。
+   */
+  private parseMetricCausalBindings(params?: Record<string, number>): Map<
+    string,
+    { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean }
+  > {
+    const map = new Map<
+      string,
+      { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean }
+    >();
+    if (!params) return map;
+    for (const [k, v] of Object.entries(params)) {
+      const parts = k.split(":");
+      if (parts.length < 2) continue;
+      const metricKey = parts[0]!;
+      if (!map.has(metricKey)) {
+        map.set(metricKey, { roots: [], weights: {}, domainWeights: {}, fallbackToSupplyChain: true });
+      }
+      const b = map.get(metricKey)!;
+      if (parts.length === 3 && parts[1] === "domain") {
+        b.domainWeights[parts[2]!] = v;
+      } else {
+        const factorId = parts.slice(1).join(":");
+        if (!b.roots.includes(factorId)) b.roots.push(factorId);
+        b.weights[factorId] = v;
+      }
+    }
+    return map;
+  }
+
+  /**
    * WO-CEO-2 · gap_attribution 深度反向归因引擎（GAP-ATTR）。
    * 总目标缺口 → ① 结构反向多跳分摊（gap 单位·每层 Σ子+residual=父gap 硬勾稽）到基地×订单×瓶颈叶
    * → ② 沿 caused_by 因果边继续溯（占比·非再切 gap）到地缘/决策终点。叶级贡献由**真颗粒对象值**派生
    * （Order.value/MaterialBalance.gapTon/Supplier.actualSupplyTon/CommodityPriceTrend.pctChange/DecisionGap.severity）
    * ——改一颗粒→归因跟着变（C5 铁律）。归因系数一等 RuleEntry.params（R14·改系数即改归因·≠正向 what-if）。
    * residual 诚实承未解释。R6 确定性（无时钟/随机·排序稳定）。
+   *
+   * v2 升级：
+   * - MetricCausalBinding 按 metricKey 选择优先因果根；无绑定回落供应链根（兼容 v1）。
+   * - 多根假设时按 severity/importance 权重分配 gap，返回 hypotheses 列表。
+   * - actual>=target/gap<=0 短路边界，返回 noGap=true。
+   * - 节点与结果增加 severityKind 分级。
    */
   private async gapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const metricObjs = (await this.repos.objects.listByType(ctx.tenantId, "Metric")).map((o) => o.props);
@@ -741,12 +779,54 @@ export class SolverService {
     const G = round(num(m.target) - num(m.actual), 4); // 缺口（正=未达）
     const unit = str(m.unit);
 
+    // v2·零缺口短路边界：actual>=target / gap<=0 时诚实返回空归因+noGap 标志（不硬造因果链）。
+    if (G <= 0) {
+      const out = {
+        rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+        totalGap: G,
+        noGap: true,
+        levels: [],
+        atomicLeaves: [],
+        causalEdges: [],
+        reconChecks: [],
+        reconciled: true,
+        residualPct: 0,
+        severityKind: "info" as const,
+        summary: `目标「${str(m.name)}」已达成（actual ${num(m.actual)} >= target ${num(m.target)}），无需归因。`,
+      };
+      await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), leafCount: 0, residualPct: 0, reconciled: true, noGap: true });
+      return out;
+    }
+
     // R14 归因系数（一等 RuleEntry.params·PUBLISHED·改系数即改归因·C10）；缺省内联诚实兜底。
     const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
     const attrRule = pubRules.find((r) => r.key === "gap_attribution_coeffs");
     const coeff = (k: string, dflt: number) => num(attrRule?.params?.[k] ?? dflt);
     const structuralExplained = Math.min(1, coeff("structuralExplained", 0.88)); // 结构层可解释比（余入 residual·顶层 <15% C6）
     const causalExplained = Math.min(1, coeff("causalExplained", 0.8)); // 因果层可解释比
+
+    // v2·MetricCausalBinding 配置规则：按 metricKey 选择优先因果根 + 域权重。
+    const bindingRule = pubRules.find((r) => r.key === "metric_causal_binding");
+    const bindingMap = this.parseMetricCausalBindings(bindingRule?.params as Record<string, number> | undefined);
+    const binding = bindingMap.get(str(m.key));
+
+    // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
+    if (str(m.key) === "market_share") {
+      return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding);
+    }
+
+    // ── 泛化 metric-aware 域路由（WO-metric-aware-integrated）：凡指标配了专属因果域
+    //    （存在 CausalFactor.metricKey===本指标 的非根「入口 gap 因子」cf-{metric}-gap），
+    //    即从该入口沿 caused_by 归到**本域根因**（cash→cf-ar-aging·revenue→cf-pipeline-shrink·
+    //    demand_attain→cf-forecast-bias），**绝不回落 cathode 供应链根**。无专属域的指标（gross_profit/
+    //    seg_attain/gm_rate…）才走下方通用供应链结构反向分摊（兼容 v1）。 ──
+    const cfForDomain = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
+    const domainEntry = cfForDomain
+      .filter((c) => str(c.metricKey) === str(m.key) && !Boolean(c.isRoot))
+      .sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)))[0];
+    if (domainEntry) {
+      return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, str(domainEntry.factorId));
+    }
 
     // ── 结构反向分摊：受影响订单（真 Order.value）→ 基地聚合 → 基地内瓶颈（设备 OEE / 物料 gapTon）──
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
@@ -846,7 +926,7 @@ export class SolverService {
     // 物料短缺叶的 gap 单位贡献（因果层要解释的量）。
     const matNode = l2nodes.find((n) => (n.id as string) === "material:cathode");
     const matContribution = matNode ? num(matNode.contribution) : round(G * structuralExplained * 0.15, 4);
-    // BFS 从 cf-cathode-shortage 沿 caused_by，收集经过的边 + 到达的因果因素节点。
+    // BFS 从 cf-cathode-shortage 沿 caused_by，收集经过的边 + 到达的因果因素节点（v1/v2 共用·保证遍历真走）。
     const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
     const visited = new Set<string>();
     const reachedFactors: { id: string; pathIds: string[] }[] = [];
@@ -889,22 +969,84 @@ export class SolverService {
       else sev = 0.5;
       return { sev: round(sev, 4), raw };
     };
-    const sevs = await Promise.all(reachedFactors.map(async (rf) => ({ rf, cf: cfById.get(rf.id)!, ...(await severityOf(cfById.get(rf.id)!)) })));
-    const totalSev = sevs.reduce((a, s) => a + s.sev, 0) || 1;
+    const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
+      if (sev >= 0.7) return "critical";
+      if (sev >= 0.4) return "major";
+      if (sev >= 0.2) return "minor";
+      return "info";
+    };
+    const kindDomain = (kind: string): string => {
+      if (kind === "决策") return "decision";
+      if (kind === "外部信号") return "external";
+      return "supply";
+    };
+    const sevMap = new Map<string, { sev: number; raw: number }>();
+    await Promise.all(
+      reachedFactors.map(async (rf) => {
+        const cf = cfById.get(rf.id)!;
+        const s = await severityOf(cf);
+        sevMap.set(rf.id, s);
+      }),
+    );
+
+    // v2·MetricCausalBinding 根选择：有绑定则只取指定因果根做假设；无绑定则保留 v1 所有因果节点。
+    const actualRootIds = new Set(
+      reachedFactors
+        .filter((r) => Boolean(cfById.get(r.id)?.isRoot) || (adj.get(r.id) ?? []).length === 0)
+        .map((r) => r.id),
+    );
+    const hasBinding = binding && binding.roots.length > 0;
+    let chosenRoots = hasBinding
+      ? reachedFactors.filter((r) => binding!.roots.includes(r.id) && actualRootIds.has(r.id))
+      : reachedFactors;
+    // 若绑定指定的根一个都没命中且允许回落，则回到所有真实根（兼容 v1 行为）。
+    if (hasBinding && chosenRoots.length === 0 && binding!.fallbackToSupplyChain !== false) {
+      chosenRoots = reachedFactors.filter((r) => actualRootIds.has(r.id));
+    }
+
+    // 多假设分配：无绑定时用 severity；有绑定时用 severity × 显式根权重 / 域权重。
+    const weighted = chosenRoots.map((r) => {
+      const cf = cfById.get(r.id)!;
+      const { sev, raw } = sevMap.get(r.id)!;
+      let weight: number | undefined;
+      if (binding?.weights[r.id] !== undefined) weight = binding.weights[r.id];
+      else if (binding?.domainWeights[kindDomain(str(cf.kind))] !== undefined) weight = binding.domainWeights[kindDomain(str(cf.kind))];
+      if (weight === undefined) weight = sev;
+      return { r, cf, sev, raw, weight };
+    });
+    const totalWeight = weighted.reduce((a, s) => a + s.weight, 0) || 1;
     const causalNodes: Record<string, unknown>[] = [];
-    for (const s of sevs.sort((a, b) => b.sev - a.sev || a.rf.id.localeCompare(b.rf.id))) {
-      const contribution = round(matContribution * causalExplained * (s.sev / totalSev), 4);
+    const hypotheses: Record<string, unknown>[] = [];
+    for (const s of weighted.sort((a, b) => b.weight - a.weight || a.r.id.localeCompare(b.r.id))) {
+      const share = s.weight / totalWeight;
+      const contribution = round(matContribution * causalExplained * share, 4);
+      const sk = severityKindOf(s.sev);
       const node = {
-        id: `cf:${s.rf.id}`, factor: str(s.cf.label), contribution, unit, share: round(s.sev / totalSev, 4),
-        path: ["material:cathode"], causalPath: s.rf.pathIds,
+        id: `cf:${s.r.id}`, factor: str(s.cf.label), contribution, unit, share: round(share, 4),
+        path: ["material:cathode"], causalPath: s.r.pathIds,
         provenance: {
           kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策",
           drillType: str(s.cf.drillType), drillId: str(s.cf.drillId), drillField: str(s.cf.drillField), drillValue: s.raw,
+          severityKind: sk,
           ...(s.cf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
         },
       };
       causalNodes.push(node);
-      if (Boolean(s.cf.isRoot) || (adj.get(s.rf.id) ?? []).length === 0) atomicLeaves.push(node); // 因果终点=原子叶
+      // v1 兼容：只有真实终点根进入 atomicLeaves；v2 绑定模式下所有选定根都是假设根。
+      if (!hasBinding ? Boolean(s.cf.isRoot) || (adj.get(s.r.id) ?? []).length === 0 : true) {
+        atomicLeaves.push(node);
+      }
+      if (hasBinding) {
+        hypotheses.push({
+          rootFactorId: s.r.id,
+          rootFactorLabel: str(s.cf.label),
+          allocatedGap: contribution,
+          share: round(share, 4),
+          severityKind: sk,
+          causalPath: s.r.pathIds,
+          leafIds: [s.r.id],
+        });
+      }
     }
     const causalSum = round(causalNodes.reduce((a, n) => a + num(n.contribution), 0), 4);
     const causalResidual = round(matContribution - causalSum, 4);
@@ -916,9 +1058,19 @@ export class SolverService {
     const reconciled = reconChecks.every((r) => r.ok);
     const topResidual = l1residual;
     const residualPct = round(G !== 0 ? Math.abs(topResidual) / Math.abs(G) * 100 : 0, 2);
+    // 结果顶层严重度取根假设最高级。
+    const severityOrder = ["critical", "major", "minor", "info"] as const;
+    const severityRank = (sk: string) => severityOrder.indexOf(sk as (typeof severityOrder)[number]);
+    const severityKind = (() => {
+      const ranks = hypotheses.length
+        ? hypotheses.map((h) => severityRank(str(h.severityKind)))
+        : causalNodes.map((n) => severityRank(str((n.provenance as { severityKind?: string }).severityKind)));
+      const best = ranks.length ? Math.min(...ranks) : severityOrder.length - 1;
+      return severityOrder[best] ?? "info";
+    })();
     // gap.attributed（归因完成·带 metricKey/叶子数/residual·L17）——只读求解器侧信事件，R6 返回值不含时戳（确定性不破）。
-    await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), leafCount: atomicLeaves.length, residualPct, reconciled });
-    return {
+    await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), leafCount: atomicLeaves.length, residualPct, reconciled, severityKind, hypothesisCount: hypotheses.length });
+    const out: Record<string, unknown> = {
       rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
       totalGap: G,
       levels,
@@ -927,8 +1079,535 @@ export class SolverService {
       reconChecks,
       reconciled,
       residualPct,
+      severityKind,
       summary: `目标「${str(m.name)}」缺口 ${G}${unit}：结构反向分摊到 ${baseEntries.length} 基地 × ${atomicLeaves.length} 叶子原子因素（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%），物料短缺沿 caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.filter((n) => (n.causalPath as string[]).length > 0).length} 个终点根因`,
     };
+    if (hypotheses.length) out.hypotheses = hypotheses;
+    return out;
+  }
+
+  /**
+   * WO-CEO-2-v2 · market_share 指标的结构+因果归因。
+   * 结构层：按 CompetitorShare 的 self segment 份额拆分缺口；
+   * 因果层：从 cf-share-gap 沿 caused_by 遍历到竞品价格/丢标/交付声誉根因。
+   */
+  private async gapAttributionMarketShare(
+    ctx: AuthCtx,
+    m: Record<string, unknown>,
+    G: number,
+    unit: string,
+    structuralExplained: number,
+    causalExplained: number,
+    binding?: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean },
+  ): Promise<Record<string, unknown>> {
+    const levels: Record<string, unknown>[] = [];
+    const reconChecks: Record<string, unknown>[] = [];
+    const atomicLeaves: Record<string, unknown>[] = [];
+
+    // 结构层：self 各 segment 的 sharePct 作为拆分驱动。
+    const competitorShares = (await this.repos.objects.listByType(ctx.tenantId, "CompetitorShare")).map((o) => o.props);
+    const selfShares = competitorShares
+      .filter((s) => str(s.competitor) === "self" && num(s.sharePct) > 0)
+      .sort((a, b) => num(b.sharePct) - num(a.sharePct) || str(a.shareId).localeCompare(str(b.shareId)));
+    const totalShareDriver = selfShares.reduce((a, s) => a + num(s.sharePct), 0) || 1;
+
+    const l1nodes = selfShares.map((s) => {
+      const contribution = round(G * structuralExplained * (num(s.sharePct) / totalShareDriver), 4);
+      return {
+        id: `share:${str(s.shareId)}`,
+        factor: `市场份额缺口 · ${str(s.segment)}`,
+        contribution,
+        unit,
+        share: round(num(s.sharePct) / totalShareDriver, 4),
+        path: [str(m.metricId), `share:${str(s.shareId)}`],
+        causalPath: [] as string[],
+        provenance: {
+          kind: "派生" as const,
+          drillType: "CompetitorShare",
+          drillId: str(s.shareId),
+          drillField: "sharePct",
+          drillValue: num(s.sharePct),
+        },
+      };
+    });
+    const l1sum = round(l1nodes.reduce((a, n) => a + n.contribution, 0), 4);
+    const l1residual = round(G - l1sum, 4);
+    levels.push({ depth: 1, label: "市场份额缺口（按 segment）", nodes: l1nodes, residual: l1residual });
+    reconChecks.push({
+      depth: 1,
+      label: "市场份额缺口",
+      parentGap: G,
+      sumChildren: l1sum,
+      residual: l1residual,
+      ok: Math.abs(l1sum + l1residual - G) <= 1e-4,
+    });
+
+    // 因果层：从 cf-share-gap 沿 caused_by 遍历。
+    const links = await this.repos.links.list(ctx.tenantId);
+    const causedBy = links.filter((l) => l.type === "caused_by");
+    const cfObjs = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
+    const cfById = new Map(cfObjs.map((c) => [str(c.factorId), c]));
+    const oidToPk = (id: string) => id.replace(/^obj_causalfactor_/, "");
+    const adj = new Map<string, string[]>();
+    for (const l of causedBy) {
+      const from = oidToPk(l.fromId);
+      const to = oidToPk(l.toId);
+      if (!adj.has(from)) adj.set(from, []);
+      adj.get(from)!.push(to);
+    }
+    for (const [, tos] of adj) tos.sort();
+
+    const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
+    const visited = new Set<string>();
+    const reachedFactors: { id: string; pathIds: string[] }[] = [];
+    const queue: { id: string; path: string[] }[] = [{ id: "cf-share-gap", path: ["cf-share-gap"] }];
+    visited.add("cf-share-gap");
+    while (queue.length) {
+      const cur = queue.shift()!;
+      const nexts = adj.get(cur.id) ?? [];
+      for (const nx of nexts) {
+        causalEdges.push({ from: cur.id, to: nx, viaLinkKey: "caused_by" });
+        if (!visited.has(nx)) {
+          visited.add(nx);
+          const np = [...cur.path, nx];
+          reachedFactors.push({ id: nx, pathIds: np });
+          queue.push({ id: nx, path: np });
+        }
+      }
+    }
+
+    // 叶级真值：market_share 域 severity。
+    const drillCache = new Map<string, Record<string, unknown>[]>();
+    const drillVal = async (type: string, id: string, field: string): Promise<number> => {
+      if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
+      const rows = drillCache.get(type)!;
+      const pkField = {
+        CompetitorShare: "shareId",
+        CompetitorPrice: "priceId",
+        BidRecord: "bidId",
+        OverdueRecord: "overdueId",
+        MaterialBalance: "matBalId",
+        Supplier: "supplierId",
+        LongTermAgreement: "ltaId",
+        CommodityPriceTrend: "trendId",
+        ExternalSignal: "signalKey",
+        BackupSupplierPool: "poolId",
+        DecisionGap: "gapId",
+      }[type] ?? "id";
+      const row = rows.find((r) => str(r[pkField]) === id);
+      return row ? num(row[field]) : 0;
+    };
+    const severityOf = async (cf: Record<string, unknown>): Promise<{ sev: number; raw: number }> => {
+      const type = str(cf.drillType);
+      const id = str(cf.drillId);
+      const field = str(cf.drillField);
+      const raw = await drillVal(type, id, field);
+      let sev = 0;
+      if (cf.factorId === "cf-competitor-price") {
+        const selfPrice = await drillVal("CompetitorPrice", "price-ess-self", "pricePerKwh");
+        sev = selfPrice > 0 ? Math.max(0, (selfPrice - raw) / selfPrice) : 0;
+      } else if (cf.factorId === "cf-bid-loss") {
+        sev = raw ? 0 : 1; // win=false → severe
+      } else if (cf.factorId === "cf-delivery-reputation") {
+        sev = Math.min(1, raw / 60);
+      } else {
+        sev = 0.5;
+      }
+      return { sev: round(sev, 4), raw };
+    };
+    const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
+      if (sev >= 0.7) return "critical";
+      if (sev >= 0.4) return "major";
+      if (sev >= 0.2) return "minor";
+      return "info";
+    };
+    const kindDomain = (kind: string): string => {
+      if (kind === "决策") return "decision";
+      if (kind === "外部信号") return "external";
+      return "supply";
+    };
+    const sevMap = new Map<string, { sev: number; raw: number }>();
+    await Promise.all(
+      reachedFactors.map(async (rf) => {
+        const cf = cfById.get(rf.id)!;
+        const s = await severityOf(cf);
+        sevMap.set(rf.id, s);
+      }),
+    );
+
+    const actualRootIds = new Set(
+      reachedFactors.filter((r) => Boolean(cfById.get(r.id)?.isRoot) || (adj.get(r.id) ?? []).length === 0).map((r) => r.id),
+    );
+    const hasBinding = binding && binding.roots.length > 0;
+    let chosenRoots = hasBinding
+      ? reachedFactors.filter((r) => binding!.roots.includes(r.id) && actualRootIds.has(r.id))
+      : reachedFactors;
+    if (hasBinding && chosenRoots.length === 0 && binding!.fallbackToSupplyChain !== false) {
+      chosenRoots = reachedFactors.filter((r) => actualRootIds.has(r.id));
+    }
+
+    const weighted = chosenRoots.map((r) => {
+      const cf = cfById.get(r.id)!;
+      const { sev, raw } = sevMap.get(r.id)!;
+      let weight: number | undefined;
+      if (binding?.weights[r.id] !== undefined) weight = binding.weights[r.id];
+      else if (binding?.domainWeights[kindDomain(str(cf.kind))] !== undefined) weight = binding.domainWeights[kindDomain(str(cf.kind))];
+      if (weight === undefined) weight = sev;
+      return { r, cf, sev, raw, weight };
+    });
+    const totalWeight = weighted.reduce((a, s) => a + s.weight, 0) || 1;
+
+    const causalNodes: Record<string, unknown>[] = [];
+    const hypotheses: Record<string, unknown>[] = [];
+    const baseContribution = l1sum;
+    for (const s of weighted.sort((a, b) => b.weight - a.weight || a.r.id.localeCompare(b.r.id))) {
+      const share = s.weight / totalWeight;
+      const contribution = round(baseContribution * causalExplained * share, 4);
+      const sk = severityKindOf(s.sev);
+      const node = {
+        id: `cf:${s.r.id}`,
+        factor: str(s.cf.label),
+        contribution,
+        unit,
+        share: round(share, 4),
+        path: l1nodes.map((n) => n.id),
+        causalPath: s.r.pathIds,
+        provenance: {
+          kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策",
+          drillType: str(s.cf.drillType),
+          drillId: str(s.cf.drillId),
+          drillField: str(s.cf.drillField),
+          drillValue: s.raw,
+          severityKind: sk,
+          ...(s.cf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
+        },
+      };
+      causalNodes.push(node);
+      if (!hasBinding ? Boolean(s.cf.isRoot) || (adj.get(s.r.id) ?? []).length === 0 : true) {
+        atomicLeaves.push(node);
+      }
+      if (hasBinding) {
+        hypotheses.push({
+          rootFactorId: s.r.id,
+          rootFactorLabel: str(s.cf.label),
+          allocatedGap: contribution,
+          share: round(share, 4),
+          severityKind: sk,
+          causalPath: s.r.pathIds,
+          leafIds: [s.r.id],
+        });
+      }
+    }
+    const causalSum = round(causalNodes.reduce((a, n) => a + num(n.contribution), 0), 4);
+    const causalResidual = round(baseContribution - causalSum, 4);
+    if (causalNodes.length) {
+      levels.push({ depth: 2, label: "市场份额因果根因", nodes: causalNodes, residual: causalResidual });
+      reconChecks.push({
+        depth: 2,
+        label: "市场份额因果根因",
+        parentGap: baseContribution,
+        sumChildren: causalSum,
+        residual: causalResidual,
+        ok: Math.abs(causalSum + causalResidual - baseContribution) <= 1e-4,
+      });
+    }
+
+    const reconciled = reconChecks.every((r) => r.ok);
+    const topResidual = l1residual;
+    const residualPct = round(G !== 0 ? Math.abs(topResidual) / Math.abs(G) * 100 : 0, 2);
+    const severityOrder = ["critical", "major", "minor", "info"] as const;
+    const severityRank = (sk: string) => severityOrder.indexOf(sk as (typeof severityOrder)[number]);
+    const severityKind = (() => {
+      const ranks = hypotheses.length
+        ? hypotheses.map((h) => severityRank(str(h.severityKind)))
+        : causalNodes.map((n) => severityRank(str((n.provenance as { severityKind?: string }).severityKind)));
+      const best = ranks.length ? Math.min(...ranks) : severityOrder.length - 1;
+      return severityOrder[best] ?? "info";
+    })();
+
+    await this.outbox?.emit(ctx.tenantId, "gap.attributed", {
+      metricKey: str(m.key),
+      leafCount: atomicLeaves.length,
+      residualPct,
+      reconciled,
+      severityKind,
+      hypothesisCount: hypotheses.length,
+    });
+
+    const out: Record<string, unknown> = {
+      rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+      totalGap: G,
+      levels,
+      atomicLeaves,
+      causalEdges,
+      reconChecks,
+      reconciled,
+      residualPct,
+      severityKind,
+      summary: `目标「${str(m.name)}」缺口 ${G}${unit}：市场份额按 segment 拆分到 ${l1nodes.length} 个份额缺口，沿 caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.length} 个根因（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%）`,
+    };
+    if (hypotheses.length) out.hypotheses = hypotheses;
+    return out;
+  }
+
+  /**
+   * WO-metric-aware-integrated（泛化）· 通用「指标专属因果域」结构 + 因果归因。
+   * 适用于任何配了独立因果域的指标（cash/revenue/demand_attain…；market_share 走专用法）。
+   * - 结构层（L1）：单节点承接 gap 的结构可解释部分，下钻本域入口 gap 因子（cf-{metric}-gap）的真证据对象。
+   * - 因果层（L2）：从入口 gap 因子沿 caused_by 遍历到**本域根因**，按 severity（或 MetricCausalBinding
+   *   显式根/域权重）多假设分配 → `atomicLeaves` 落在本域根（cash→cf-ar-aging·revenue→cf-pipeline-shrink·
+   *   demand_attain→cf-forecast-bias），**绝不回落 cathode 供应链根**。
+   * 通用 severity 由叶级真 drill 值幅度在到达集内归一（改颗粒→归因变·C5 铁律）。R6 确定性（排序稳定·无时钟随机）。
+   */
+  private async gapAttributionMetricDomain(
+    ctx: AuthCtx,
+    m: Record<string, unknown>,
+    G: number,
+    unit: string,
+    structuralExplained: number,
+    causalExplained: number,
+    binding: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean } | undefined,
+    entryFactorId: string,
+  ): Promise<Record<string, unknown>> {
+    const levels: Record<string, unknown>[] = [];
+    const reconChecks: Record<string, unknown>[] = [];
+    const atomicLeaves: Record<string, unknown>[] = [];
+
+    // 因果图（caused_by）+ 因子索引。
+    const links = await this.repos.links.list(ctx.tenantId);
+    const causedBy = links.filter((l) => l.type === "caused_by");
+    const cfObjs = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
+    const cfById = new Map(cfObjs.map((c) => [str(c.factorId), c]));
+    const oidToPk = (id: string) => id.replace(/^obj_causalfactor_/, "");
+    const adj = new Map<string, string[]>();
+    for (const l of causedBy) {
+      const from = oidToPk(l.fromId);
+      const to = oidToPk(l.toId);
+      if (!adj.has(from)) adj.set(from, []);
+      adj.get(from)!.push(to);
+    }
+    for (const [, tos] of adj) tos.sort();
+
+    // drill 真值读取（pkField 映射覆盖各指标域证据对象；与 market_share 同源、补商业/财务域类型）。
+    const drillCache = new Map<string, Record<string, unknown>[]>();
+    const drillVal = async (type: string, id: string, field: string): Promise<number> => {
+      if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
+      const rows = drillCache.get(type)!;
+      const pkField = {
+        CompetitorShare: "shareId",
+        CompetitorPrice: "priceId",
+        BidRecord: "bidId",
+        OverdueRecord: "overdueId",
+        MaterialBalance: "matBalId",
+        Supplier: "supplierId",
+        LongTermAgreement: "ltaId",
+        CommodityPriceTrend: "trendId",
+        ExternalSignal: "signalKey",
+        BackupSupplierPool: "poolId",
+        DecisionGap: "gapId",
+        PipelineOpportunity: "oppId",
+        PriceRealization: "priceId",
+        ARAging: "agingId",
+        DSO: "dsoId",
+        Customer: "custId",
+        Equipment: "equipId",
+      }[type] ?? "id";
+      const row = rows.find((r) => str(r[pkField]) === id);
+      return row ? num(row[field]) : 0;
+    };
+
+    // 结构层（L1）：单节点承接 gap 的结构可解释部分，下钻本域入口 gap 因子真证据（无入口证据则挂 Metric.actual）。
+    const entryCf = cfById.get(entryFactorId);
+    const entryRaw = entryCf ? await drillVal(str(entryCf.drillType), str(entryCf.drillId), str(entryCf.drillField)) : 0;
+    const l1Contribution = round(G * structuralExplained, 4);
+    const l1residual = round(G - l1Contribution, 4);
+    const l1Node = {
+      id: `metricgap:${str(m.key)}`,
+      factor: entryCf ? str(entryCf.label) : `${str(m.name)} 缺口`,
+      contribution: l1Contribution,
+      unit,
+      share: round(structuralExplained, 4),
+      path: [str(m.metricId ?? m.key), `metricgap:${str(m.key)}`],
+      causalPath: [] as string[],
+      provenance: entryCf
+        ? {
+            kind: str(entryCf.kind) as "实测" | "派生" | "外部信号" | "决策",
+            drillType: str(entryCf.drillType),
+            drillId: str(entryCf.drillId),
+            drillField: str(entryCf.drillField),
+            drillValue: entryRaw,
+            ...(entryCf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
+          }
+        : { kind: "派生" as const, drillType: "Metric", drillId: str(m.metricId ?? m.key), drillField: "actual", drillValue: num(m.actual) },
+    };
+    levels.push({ depth: 1, label: `${str(m.name)} 缺口`, nodes: [l1Node], residual: l1residual });
+    reconChecks.push({
+      depth: 1,
+      label: `${str(m.name)} 缺口`,
+      parentGap: G,
+      sumChildren: l1Contribution,
+      residual: l1residual,
+      ok: Math.abs(l1Contribution + l1residual - G) <= 1e-4,
+    });
+
+    // 因果层：从本域入口 gap 因子沿 caused_by 遍历（BFS·排序稳定）。
+    const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
+    const visited = new Set<string>([entryFactorId]);
+    const reachedFactors: { id: string; pathIds: string[] }[] = [];
+    const queue: { id: string; path: string[] }[] = [{ id: entryFactorId, path: [entryFactorId] }];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      const nexts = adj.get(cur.id) ?? [];
+      for (const nx of nexts) {
+        causalEdges.push({ from: cur.id, to: nx, viaLinkKey: "caused_by" });
+        if (!visited.has(nx)) {
+          visited.add(nx);
+          const np = [...cur.path, nx];
+          reachedFactors.push({ id: nx, pathIds: np });
+          queue.push({ id: nx, path: np });
+        }
+      }
+    }
+
+    // 通用 severity：叶级真 drill 值幅度在到达集内归一（改颗粒→归因变·C5）。绑定/域权重优先。
+    const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
+      if (sev >= 0.7) return "critical";
+      if (sev >= 0.4) return "major";
+      if (sev >= 0.2) return "minor";
+      return "info";
+    };
+    const kindDomain = (kind: string): string => {
+      if (kind === "决策") return "decision";
+      if (kind === "外部信号") return "external";
+      return "supply";
+    };
+    const rawMap = new Map<string, number>();
+    await Promise.all(
+      reachedFactors.map(async (rf) => {
+        const cf = cfById.get(rf.id)!;
+        rawMap.set(rf.id, await drillVal(str(cf.drillType), str(cf.drillId), str(cf.drillField)));
+      }),
+    );
+    const maxAbsRaw = Math.max(1, ...[...rawMap.values()].map((v) => Math.abs(v)));
+    const sevMap = new Map<string, { sev: number; raw: number }>();
+    for (const rf of reachedFactors) {
+      const raw = rawMap.get(rf.id) ?? 0;
+      sevMap.set(rf.id, { sev: round(Math.min(1, Math.abs(raw) / maxAbsRaw), 4), raw });
+    }
+
+    const actualRootIds = new Set(
+      reachedFactors.filter((r) => Boolean(cfById.get(r.id)?.isRoot) || (adj.get(r.id) ?? []).length === 0).map((r) => r.id),
+    );
+    const hasBinding = binding && binding.roots.length > 0;
+    let chosenRoots = hasBinding
+      ? reachedFactors.filter((r) => binding!.roots.includes(r.id) && actualRootIds.has(r.id))
+      : reachedFactors.filter((r) => actualRootIds.has(r.id));
+    // 绑定指定根一个都没命中且允许回落 → 回到本域所有真实根（仍是本域，不回落 cathode）。
+    if (hasBinding && chosenRoots.length === 0 && binding!.fallbackToSupplyChain !== false) {
+      chosenRoots = reachedFactors.filter((r) => actualRootIds.has(r.id));
+    }
+
+    const weighted = chosenRoots.map((r) => {
+      const cf = cfById.get(r.id)!;
+      const { sev, raw } = sevMap.get(r.id)!;
+      let weight: number | undefined;
+      if (binding?.weights[r.id] !== undefined) weight = binding.weights[r.id];
+      else if (binding?.domainWeights[kindDomain(str(cf.kind))] !== undefined) weight = binding.domainWeights[kindDomain(str(cf.kind))];
+      if (weight === undefined) weight = sev;
+      return { r, cf, sev, raw, weight };
+    });
+    const totalWeight = weighted.reduce((a, s) => a + s.weight, 0) || 1;
+
+    const causalNodes: Record<string, unknown>[] = [];
+    const hypotheses: Record<string, unknown>[] = [];
+    const baseContribution = l1Contribution;
+    for (const s of weighted.sort((a, b) => b.weight - a.weight || a.r.id.localeCompare(b.r.id))) {
+      const share = s.weight / totalWeight;
+      const contribution = round(baseContribution * causalExplained * share, 4);
+      const sk = severityKindOf(s.sev);
+      const node = {
+        id: `cf:${s.r.id}`,
+        factor: str(s.cf.label),
+        contribution,
+        unit,
+        share: round(share, 4),
+        path: [l1Node.id],
+        causalPath: s.r.pathIds,
+        provenance: {
+          kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策",
+          drillType: str(s.cf.drillType),
+          drillId: str(s.cf.drillId),
+          drillField: str(s.cf.drillField),
+          drillValue: s.raw,
+          severityKind: sk,
+          ...(s.cf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
+        },
+      };
+      causalNodes.push(node);
+      if (!hasBinding ? Boolean(s.cf.isRoot) || (adj.get(s.r.id) ?? []).length === 0 : true) {
+        atomicLeaves.push(node);
+      }
+      if (hasBinding) {
+        hypotheses.push({
+          rootFactorId: s.r.id,
+          rootFactorLabel: str(s.cf.label),
+          allocatedGap: contribution,
+          share: round(share, 4),
+          severityKind: sk,
+          causalPath: s.r.pathIds,
+          leafIds: [s.r.id],
+        });
+      }
+    }
+    const causalSum = round(causalNodes.reduce((a, n) => a + num(n.contribution), 0), 4);
+    const causalResidual = round(baseContribution - causalSum, 4);
+    if (causalNodes.length) {
+      levels.push({ depth: 2, label: `${str(m.name)} 因果根因`, nodes: causalNodes, residual: causalResidual });
+      reconChecks.push({
+        depth: 2,
+        label: `${str(m.name)} 因果根因`,
+        parentGap: baseContribution,
+        sumChildren: causalSum,
+        residual: causalResidual,
+        ok: Math.abs(causalSum + causalResidual - baseContribution) <= 1e-4,
+      });
+    }
+
+    const reconciled = reconChecks.every((r) => r.ok);
+    const residualPct = round(G !== 0 ? Math.abs(l1residual) / Math.abs(G) * 100 : 0, 2);
+    const severityOrder = ["critical", "major", "minor", "info"] as const;
+    const severityRank = (sk: string) => severityOrder.indexOf(sk as (typeof severityOrder)[number]);
+    const severityKind = (() => {
+      const ranks = hypotheses.length
+        ? hypotheses.map((h) => severityRank(str(h.severityKind)))
+        : causalNodes.map((n) => severityRank(str((n.provenance as { severityKind?: string }).severityKind)));
+      const best = ranks.length ? Math.min(...ranks) : severityOrder.length - 1;
+      return severityOrder[best] ?? "info";
+    })();
+
+    await this.outbox?.emit(ctx.tenantId, "gap.attributed", {
+      metricKey: str(m.key),
+      leafCount: atomicLeaves.length,
+      residualPct,
+      reconciled,
+      severityKind,
+      hypothesisCount: hypotheses.length,
+    });
+
+    const out: Record<string, unknown> = {
+      rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+      totalGap: G,
+      levels,
+      atomicLeaves,
+      causalEdges,
+      reconChecks,
+      reconciled,
+      residualPct,
+      severityKind,
+      summary: `目标「${str(m.name)}」缺口 ${G}${unit}：沿本域 ${entryFactorId} caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.length} 个专属根因（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%·不回落供应链）`,
+    };
+    if (hypotheses.length) out.hypotheses = hypotheses;
+    return out;
   }
 
   /**

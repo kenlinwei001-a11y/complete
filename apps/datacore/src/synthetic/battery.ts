@@ -43,7 +43,7 @@ export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: 
 ];
 
 // PRD-IND-model / PRD-IND-risk §4.6：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）。
-const MODEL_BASE_MAP: Record<string, string[]> = {
+export const MODEL_BASE_MAP: Record<string, string[]> = {
   "4680-NCM": ["changzhou", "chengdu", "hefei", "jinhua"], // HTML 4680-NCM → 常州/成都/合肥/金华
   "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
@@ -67,7 +67,7 @@ const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 // 按年营收 700 亿元企业规模校准：qty 单位=套，均价≈1.8 万元/套，月营收≈58 亿元 →
 // 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
 // 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
-const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
+export const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
   { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高" },
   { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高" },
   { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中" },
@@ -1321,43 +1321,6 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
  * 两个推演场景（affected_orders 推演 / plan_audit 体检）均先经此切片检索，再喂求解器。
  * root 按 args.so 选定单一订单 → 展开该订单的完整履约树（便于逐节点取证）。
  */
-/**
- * A3-SUITE-1（refbase 修）：切片契约=元数据一等集合（**非行为规则**·无 DSL 表达式·不参与求解器规则扫描）。
- * 单一真源：`batteryBuiltinSlices` 的 fixtures 与 `BATTERY_TEMPLATE.sliceContracts` 同源引用此常量，
- * 既 DRY 又根治「曾以 expression:"FALSE" 塞进 BATTERY_TEMPLATE.rules → ① DSL 解析报错(裸 FALSE 非法)
- * ② 泄漏进 planviews Order 域规则映射(金值污染)」二病。切片契约天然是"全链可达形状约束"，非布尔谓词规则。
- */
-const BATTERY_SLICE_CONTRACTS = {
-  SC_ORDER_FULFILLMENT_360: {
-    key: "SC_ORDER_FULFILLMENT_360",
-    name: "切片契约：order_fulfillment_360 首单全链 6 域",
-    scopeObjectTypes: ["Order"],
-    mustIncludeTypes: ["Order", "Model", "Base", "Workshop", "Line", "Process", "Equipment", "Material", "Customer"],
-    mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
-  },
-  SC_ORDER_TO_CASH_720: {
-    key: "SC_ORDER_TO_CASH_720",
-    name: "切片契约：order_to_cash_720 首单全链 10 域",
-    scopeObjectTypes: ["Order"],
-    mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount", "PlanTarget"],
-    mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health", "base_finance", "order_to_plantarget"],
-  },
-  SC_ENTERPRISE_360: {
-    key: "SC_ENTERPRISE_360",
-    name: "切片契约：enterprise_360 最大广度 8 域",
-    scopeObjectTypes: ["Order"],
-    mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "CarbonFactor", "Customer", "ARInvoice", "Certification", "ChangeoverMatrix", "Segment", "EnergyMeter", "Shipment", "MaintPlan", "DataSourceHealth"],
-    mustIncludeLinkKeys: ["model_has_cert", "material_carbon", "customer_has_invoice", "model_changeover", "model_in_segment", "base_energy_meter", "base_maint_plan", "base_data_health"],
-  },
-  SC_AOP_SCENARIO_CHAIN: {
-    key: "SC_AOP_SCENARIO_CHAIN",
-    name: "切片契约：aop_scenario_chain 情景根 plan+finance",
-    scopeObjectTypes: ["AnnualScenario"],
-    mustIncludeTypes: ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"],
-    mustIncludeLinkKeys: ["scenario_to_target", "scenario_to_capex", "scenario_to_finance"],
-  },
-} satisfies Record<string, { key: string; name: string; scopeObjectTypes: string[]; mustIncludeTypes: string[]; mustIncludeLinkKeys: string[] }>;
-
 export function batteryBuiltinSlices(): { sliceKey: string; version: number; spec: import("../domain.js").SliceSpecRecord["spec"] }[] {
   return [
     {
@@ -1397,8 +1360,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Order",
               minNodes: 10,
-              mustIncludeTypes: BATTERY_SLICE_CONTRACTS.SC_ORDER_FULFILLMENT_360.mustIncludeTypes,
-              mustIncludeLinkKeys: BATTERY_SLICE_CONTRACTS.SC_ORDER_FULFILLMENT_360.mustIncludeLinkKeys,
+              mustIncludeTypes: ["Order", "Model", "Base", "Workshop", "Line", "Process", "Equipment", "Material", "Customer"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
             },
           },
         ],
@@ -1465,8 +1428,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Order",
               minNodes: 15,
-              mustIncludeTypes: BATTERY_SLICE_CONTRACTS.SC_ORDER_TO_CASH_720.mustIncludeTypes,
-              mustIncludeLinkKeys: BATTERY_SLICE_CONTRACTS.SC_ORDER_TO_CASH_720.mustIncludeLinkKeys,
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount", "PlanTarget"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health", "base_finance", "order_to_plantarget"],
             },
           },
         ],
@@ -1505,8 +1468,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Order",
               minNodes: 20,
-              mustIncludeTypes: BATTERY_SLICE_CONTRACTS.SC_ENTERPRISE_360.mustIncludeTypes,
-              mustIncludeLinkKeys: BATTERY_SLICE_CONTRACTS.SC_ENTERPRISE_360.mustIncludeLinkKeys,
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "CarbonFactor", "Customer", "ARInvoice", "Certification", "ChangeoverMatrix", "Segment", "EnergyMeter", "Shipment", "MaintPlan", "DataSourceHealth"],
+              mustIncludeLinkKeys: ["model_has_cert", "material_carbon", "customer_has_invoice", "model_changeover", "model_in_segment", "base_energy_meter", "base_maint_plan", "base_data_health"],
             },
           },
         ],
@@ -1532,8 +1495,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "AnnualScenario",
               minNodes: 5,
-              mustIncludeTypes: BATTERY_SLICE_CONTRACTS.SC_AOP_SCENARIO_CHAIN.mustIncludeTypes,
-              mustIncludeLinkKeys: BATTERY_SLICE_CONTRACTS.SC_AOP_SCENARIO_CHAIN.mustIncludeLinkKeys,
+              mustIncludeTypes: ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"],
+              mustIncludeLinkKeys: ["scenario_to_target", "scenario_to_capex", "scenario_to_finance"],
             },
           },
         ],
@@ -1614,12 +1577,8 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: { maxChangeoverMin: 120 } },
     { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {} },
     { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: { assumeTolerancePct: 0.05 } },
-    // A3-SUITE-1（refbase 修）：切片契约元数据不再塞进 rules（曾以 expression:"FALSE" 污染 DSL 解析 + planviews
-    // 映射）。已迁至一等 `sliceContracts` 集合（见 BATTERY_SLICE_CONTRACTS / template.sliceContracts）。
   ],
   scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
-  // A3-SUITE-1（refbase 修）：切片契约一等集合（元数据·非行为规则）——slice fixtures 同源引用（BATTERY_SLICE_CONTRACTS）。
-  sliceContracts: Object.values(BATTERY_SLICE_CONTRACTS),
   features: [...ALL_FEATURE_KEYS],
   solverParams: BATTERY_SOLVER_PARAMS,
   // A8.6 §6.1 — measureField/weightField are battery-pack extensions consumed by the generator.
@@ -1785,11 +1744,6 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C22: ["Order"],
   C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order（marginPct/floorPct 与 Quote 命名空间同值·镜像 C15）·Quote 仅 eval 期注入命名空间非本体对象类型（沙盘 cert 前向闭合硬前置）
   C25: ["ExternalSignal"],
-  // A3-SUITE-1：切片契约规则作用域（仅 fixture 验证读取，不参与求解器扫描）。
-  SC_ORDER_FULFILLMENT_360: ["Order"],
-  SC_ORDER_TO_CASH_720: ["Order"],
-  SC_ENTERPRISE_360: ["Order"],
-  SC_AOP_SCENARIO_CHAIN: ["AnnualScenario"],
 };
 
 export interface GeneratedBattery {
@@ -2287,6 +2241,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
             mttr: round(2 + (hashString(`${equipId}:mttr`) % 61) / 10, 1), // 平均修复时间 2.0-8.0h
             health_score: 78 + (hashString(`${equipId}:health`) % 21), // 设备健康度 78-98
           });
+        }
+      }
+      // WO-CEO-DATA-2：Equipment.oee_current 由 A×P×Q 派生（不额外消耗 rngTopo·R6 字节一致）。
+      for (const eq of equipment) {
+        if (eq.oee_current === undefined) {
+          eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
         }
       }
       const channels = randInt(rngTopo, 600, 780);

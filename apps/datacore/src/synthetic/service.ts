@@ -667,7 +667,7 @@ export class SyntheticService {
         if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
       }
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
@@ -688,6 +688,16 @@ export class SyntheticService {
     await putAll("DecisionGap", ext.decisionGaps, "gapId");
     await putAll("CausalFactor", ext.causalFactors, "factorId");
     await putAll("TriggerRule", ext.triggerRules, "triggerId"); // WO-CEO-3 触发规则
+    // WO-CEO-DATA-2 每指标 drill 真对象（market_share / revenue / cash / demand_attain）。
+    await putAll("CompetitorShare", ext.competitorShares, "shareId");
+    await putAll("BidRecord", ext.bidRecords, "bidId");
+    await putAll("CompetitorPrice", ext.competitorPrices, "priceId");
+    await putAll("PipelineOpportunity", ext.pipelineOpportunities, "oppId");
+    await putAll("WinLossRecord", ext.winLossRecords, "recordId");
+    await putAll("PriceRealization", ext.priceRealizations, "priceId");
+    await putAll("ARAging", ext.arAgings, "agingId");
+    await putAll("DSO", ext.dsos, "dsoId");
+    await putAll("OverdueRecord", ext.overdueRecords, "overdueId");
     // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
     await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).

@@ -18,11 +18,15 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "demand_forecast", displayName: "销售预测与计划", description: "需求预测、年度情景与触发条件、计划目标（驱动产能/排产推演）。",
-      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment", "SopVersionRow"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment", "SopVersionRow", "PipelineOpportunity"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
       typeKeys: ["Customer", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
+    },
+    {
+      key: "commercial_intelligence", displayName: "商务情报", description: "竞品份额/价格、投标记录、赢丢单与价格实现（市场份额与营收根因下钻真源）。",
+      typeKeys: ["CompetitorShare", "CompetitorPrice", "BidRecord", "WinLossRecord", "PriceRealization"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "product_master", displayName: "产品主数据", description: "产品平台、系列、型号、版本与应用细分（毛利率口径）及工程变更。",
@@ -57,8 +61,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["QualityStandard", "InspectionCharacteristic", "QualityLot", "InspectionResult", "DefectRecord", "DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
-      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",
-      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）、应收账龄/DSO/逾期记录与碳因子。",
+      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan", "ARAging", "DSO", "OverdueRecord"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "external_signal", displayName: "外部信号", description: "锂价/镍价/汇率/需求指数/政策等市场与环境信号，及大宗商品价格趋势（矿价逐周涨幅）。",
@@ -66,6 +70,9 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营指标库/KSF/责任主体、根因归因模板与深度归因因果域（决策缺陷/因果因素/触发规则；目标-指标-责任骨架，驱动各视图 KPI · 根因 DAG · 决策推演）。",
+      // WO-CEO-DATA-2 每指标因果域 drill 真对象（CompetitorShare/…/OverdueRecord）**归其业务域类目**
+      // （commercial_intelligence / demand_forecast / finance_carbon），不再同时挂 decision_cockpit——
+      // 每对象类型恰归一类（无重复），守 computeCategoryCoverage 的 duplicateTypes==[] 不变量（SEAM-GATE 补漏）。
       typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
