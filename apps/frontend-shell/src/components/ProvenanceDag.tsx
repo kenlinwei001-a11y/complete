@@ -58,30 +58,53 @@ export function gapAttributionToDag(ga: GapAttrOutput | undefined): DagData | un
   const edges: DagEdge[] = [];
   const status = rm.actual != null && rm.target != null ? (rm.actual < rm.target ? "RED" : "GREEN") : "RED";
   nodes.push({ id: kpiId, kind: "kpi", label: rm.name, status, value: rm.gap, unit: rm.unit, actual: rm.actual, target: rm.target });
-  // 因果层（caused_by 多跳链）：逐因素 → factor 节点 + 下钻真证据叶。
-  const causal = ga.levels?.find((L) => L.depth === 3)?.nodes ?? [];
-  const reached = new Set(causal.map((n) => n.id.replace(/^cf:/, "")));
-  for (const cn of causal) {
-    nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, share: cn.share, unit: cn.unit });
+  // 每叶下钻真证据（provenance→evidence 节点·R13）。
+  const drillEvidence = (cn: GapAttrNode) => {
     const pv = cn.provenance;
     if (pv?.drillType) {
       const ev = `${cn.id}:ev`;
       nodes.push({ id: ev, kind: "evidence", label: `${pv.drillType}.${pv.drillField ?? ""}`, value: pv.drillValue });
       edges.push({ from: cn.id, to: ev, weight: cn.share, kind: "drill" });
     }
+  };
+  // P0-1 · 结构层（L1 基地 / L2 订单·设备OEE瓶颈·物料短缺叶）——引擎已算(depth 1/2)，前端渲染出来，
+  // 才看得见"卡在哪个瓶颈（利用率 vs 物料 vs 订单）"这一层；不再只跳到 depth-3 地缘链。零新数据·纯投影。
+  const l1 = ga.levels?.find((L) => L.depth === 1)?.nodes ?? [];
+  const l2 = ga.levels?.find((L) => L.depth === 2)?.nodes ?? [];
+  let causalParent = kpiId; // 因果链结构入口：有物料短缺叶则挂其下，否则挂 KPI 根（退化/无结构层·backward-compat）。
+  if (l1.length > 0) {
+    const l1ids = new Set(l1.map((n) => n.id));
+    for (const bn of l1) {
+      nodes.push({ id: bn.id, kind: "ksf", label: bn.factor, value: bn.contribution, share: bn.share, unit: bn.unit });
+      edges.push({ from: kpiId, to: bn.id, weight: bn.share, kind: "kpi_ksf" });
+    }
+    for (const cn of l2) {
+      const parent = Array.isArray(cn.path) && cn.path[1] && l1ids.has(cn.path[1]) ? cn.path[1] : (l1[0]?.id ?? kpiId);
+      nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, share: cn.share, unit: cn.unit });
+      edges.push({ from: parent, to: cn.id, weight: cn.share, kind: "ksf_factor" });
+      drillEvidence(cn);
+      if (cn.id.startsWith("material:")) causalParent = cn.id; // 物料短缺叶 = 因果链(caused_by)结构父
+    }
   }
-  // caused_by 树边：reached→reached 直连（逐跳因果链）；入口（from 未 reached=结构入口）→ 挂越线 Metric 根。
+  // 因果层（caused_by 多跳链）：逐因素 → factor 节点 + 下钻真证据叶。
+  const causal = ga.levels?.find((L) => L.depth === 3)?.nodes ?? [];
+  const reached = new Set(causal.map((n) => n.id.replace(/^cf:/, "")));
+  for (const cn of causal) {
+    nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, share: cn.share, unit: cn.unit });
+    drillEvidence(cn);
+  }
+  // caused_by 树边：reached→reached 直连（逐跳因果链）；入口（from 未 reached=结构入口）→ 挂因果结构父（物料叶/KPI 根）。
   const seenEntry = new Set<string>();
   for (const e of ga.causalEdges ?? []) {
     if (!reached.has(e.to)) continue;
     if (reached.has(e.from)) edges.push({ from: `cf:${e.from}`, to: `cf:${e.to}`, kind: "caused_by" });
-    else if (!seenEntry.has(e.to)) { seenEntry.add(e.to); edges.push({ from: kpiId, to: `cf:${e.to}`, kind: "gap_entry" }); }
+    else if (!seenEntry.has(e.to)) { seenEntry.add(e.to); edges.push({ from: causalParent, to: `cf:${e.to}`, kind: "gap_entry" }); }
   }
-  // 无因果链（退化·诚实）：越线 Metric 根直挂 atomicLeaves 作因素。
+  // 无因果链（退化·诚实）：结构父直挂 atomicLeaves 作因素。
   if (causal.length === 0) {
     for (const lf of ga.atomicLeaves ?? []) {
       nodes.push({ id: lf.id, kind: "factor", label: lf.factor, value: lf.contribution, share: lf.share, unit: lf.unit });
-      edges.push({ from: kpiId, to: lf.id, kind: "gap_leaf" });
+      edges.push({ from: causalParent, to: lf.id, kind: "gap_leaf" });
     }
   }
   return { nodes, edges };

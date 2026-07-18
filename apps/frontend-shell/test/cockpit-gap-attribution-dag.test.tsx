@@ -66,6 +66,34 @@ describe("WO-COCKPIT-INFER · gap_attribution 深度因果树（换 plan_rootcau
     expect(screen.getByText(/缺口 27.8/)).toBeTruthy();
   });
 
+  it("P0-1：结构层 L1/L2 渲染——利用率OEE瓶颈 + 物料短缺叶进树（引擎已算·不再被 depth===3 过滤丢弃）", () => {
+    const GA_STRUCT: GapAttrOutput = {
+      rootMetric: { key: "demand_attain", name: "需求达成率", unit: "%", target: 100, actual: 90.8, gap: 9.2 },
+      levels: [
+        { depth: 1, label: "基地", nodes: [{ id: "base:常州", factor: "基地 常州", contribution: 5.0, share: 0.54, unit: "%" }] },
+        { depth: 2, label: "订单/瓶颈", nodes: [
+          { id: "equip:常州", factor: "利用率瓶颈", contribution: 2.0, share: 0.4, unit: "%", path: ["demand_attain", "base:常州", "equip:常州"], provenance: { drillType: "Equipment", drillField: "oee_current", drillValue: 0.78 } },
+          { id: "material:cathode", factor: "物料短缺", contribution: 1.5, share: 0.3, unit: "%", path: ["demand_attain", "base:常州", "material:cathode"], provenance: { drillType: "MaterialBalance", drillField: "gapTon", drillValue: 120 } },
+        ] },
+        { depth: 3, label: "因果链", nodes: [{ id: "cf:cf-upstream-cut", factor: "上游减供", contribution: 0.8, share: 0.5, unit: "%", provenance: { drillType: "Supplier", drillField: "actualSupplyTon", drillValue: 3680 } }] },
+      ],
+      causalEdges: [{ from: "cf-cathode-shortage", to: "cf-upstream-cut" }],
+      atomicLeaves: [],
+    };
+    const dag = gapAttributionToDag(GA_STRUCT)!;
+    // L1 基地作 KSF：kpi → base
+    expect(dag.nodes.find((n) => n.id === "base:常州")?.kind).toBe("ksf");
+    expect(dag.edges).toContainEqual(expect.objectContaining({ from: "kpi:demand_attain", to: "base:常州", kind: "kpi_ksf" }));
+    // L2 利用率OEE瓶颈叶 + 物料短缺叶进树（用户点名"看不到"的两项）·挂本基地·下钻真对象
+    expect(dag.nodes.find((n) => n.id === "equip:常州")?.label).toBe("利用率瓶颈");
+    expect(dag.edges).toContainEqual(expect.objectContaining({ from: "base:常州", to: "equip:常州", kind: "ksf_factor" }));
+    expect(dag.nodes.find((n) => n.id === "equip:常州:ev")?.kind).toBe("evidence"); // Equipment.oee_current 下钻
+    expect(dag.nodes.find((n) => n.id === "material:cathode")?.label).toBe("物料短缺");
+    // 因果链(caused_by)挂在物料短缺叶下（结构父=material·非直接挂 kpi）
+    expect(dag.edges).toContainEqual(expect.objectContaining({ from: "material:cathode", to: "cf:cf-upstream-cut", kind: "gap_entry" }));
+    expect(dag.edges.some((e) => e.from === "kpi:demand_attain" && e.to === "cf:cf-upstream-cut")).toBe(false); // 不再直接跳过结构层
+  });
+
   it("空/无因果 → 不崩（诚实占位）", () => {
     expect(gapAttributionToDag(undefined)).toBeUndefined();
     // 无因果链 → 退化为 atomicLeaves 直挂根（诚实·不空树）
