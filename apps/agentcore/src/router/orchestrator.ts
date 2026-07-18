@@ -36,7 +36,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
-import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）
+import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -253,6 +253,24 @@ export class Orchestrator {
     // 门控：仅「注入了 PageContext + CEO 深问模式命中 + 目标意图在候选内」才绑定（无 PageContext 或非 CEO 问句照常走
     // 下方 classifier·不劫持）。PageContext 是 CEO-6 语义前提：args 从 focus 派生·证同问句带/不带上下文答案不同（C2/C3）。
     // 行级 scope（A6）由 datacore OBO 依身份真过滤（CEO/admin 全域·base_manager:X 限 X），非本层强制。
+    // WO-BLOCK-DIALOGUE（闭 G-3 块级）：块级定向路由——用户点某 block「深问此块」→ PageContext.block 携该块**真实数据**
+    // 快照（blockData）+ 块身份 → 按 blockType 定向落对应推演求解器（不依赖问句关键词·块本身即意图锚），blockData 作
+    // 强上下文（extractedSlots 留存 + pageContextSummary 进 agent prompt），答案针对性锚定该块。优先于页面级 CEO 问句路由
+    // （块是更强的上下文信号）。门控：`hasBlockContext` + blockType 已登记 + 目标 CEO 意图在候选内；否则退化走下方页面级/classifier。
+    if (hasBlockContext(task.context.pageContext)) {
+      const route = resolveBlockRoute(task.context.pageContext, "ceo");
+      if (route) {
+        const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+        if (ceoIntent) {
+          await this.deps.repos.tasks.patch(taskId, {
+            classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:block-route" },
+          });
+          await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+          return;
+        }
+      }
+    }
+
     if (hasPageContext && isCeoQuestion(task.query)) {
       const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
       const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
@@ -388,7 +406,9 @@ export class Orchestrator {
     // scope 意图（对比不带则路由可不同）。此前分类器只见 view+selectedObjects（G-3 缺口）。
     const pc = task.context.pageContext;
     const pcScope = pc
-      ? [pc.focus?.metric ? `focus.metric=${pc.focus.metric}` : "", pc.focus?.factorId ? `focus.根因=${pc.focus.factorId}` : "", pc.selection.length ? `selection=${pc.selection.join("|")}` : ""].filter(Boolean).join("; ")
+      ? [pc.focus?.metric ? `focus.metric=${pc.focus.metric}` : "", pc.focus?.factorId ? `focus.根因=${pc.focus.factorId}` : "", pc.selection.length ? `selection=${pc.selection.join("|")}` : "",
+         // WO-BLOCK-DIALOGUE：活跃块进分类器上下文（块级对话锚·分类器知"用户在深问哪块"）。
+         pc.block ? `block=${pc.block.blockType}:${pc.block.blockTitle}` : ""].filter(Boolean).join("; ")
       : "";
     const contextSummary = `view=${task.context.view}; selected=${task.context.selectedObjects
       .map((o) => `${o.objectType}:${o.label ?? o.objectId}`)

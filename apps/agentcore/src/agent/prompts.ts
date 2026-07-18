@@ -96,7 +96,36 @@ export function pageContextSummary(pc: SessionContext["pageContext"]): string {
   if (pc.selection.length) parts.push(`当前选中: ${pc.selection.join(", ")}`);
   if (pc.entities.length) parts.push(`页面实体: ${pc.entities.slice(0, 8).map((e) => `${e.type}:${e.label}${e.value != null ? `=${e.value}` : ""}`).join("; ")}`);
   if (pc.drillPath.length) parts.push(`下钻路径: ${pc.drillPath.join(" → ")}`);
+  // WO-BLOCK-DIALOGUE（闭 G-3 块级）：活跃块 = 强上下文——把该块真实渲染数据快照（blockData）逐字段展开进 prompt，
+  // agent 明确知道「哪块·块里有哪些真实信息（如需求端 28.5%）」→ 答案针对性锚定该块具体数（非泛泛）。
+  if (pc.block) {
+    const b = pc.block;
+    parts.push(`当前深问块: ${b.blockTitle}（类型 ${b.blockType}·id ${b.blockId}）`);
+    const dataLine = renderBlockData(b.blockData);
+    if (dataLine) parts.push(`该块真实数据: ${dataLine}`);
+    if (b.selection.length) parts.push(`块内选中: ${b.selection.join(", ")}`);
+  }
   return parts.join("\n");
+}
+
+/**
+ * WO-BLOCK-DIALOGUE：把块真实数据快照（blockData）确定性展开成人读串（进 agent prompt·答案锚定块内具体数）。
+ * 标量逐字段 `k=v`；数组/对象值 JSON 化（截断避免超长）；空对象返空串（不注入噪声）。
+ */
+function renderBlockData(blockData: Record<string, unknown>): string {
+  const entries = Object.entries(blockData ?? {});
+  if (entries.length === 0) return "";
+  return entries
+    .slice(0, 24)
+    .map(([k, v]) => {
+      if (v == null) return `${k}=—`;
+      if (typeof v === "object") {
+        const j = JSON.stringify(v);
+        return `${k}=${j.length > 160 ? `${j.slice(0, 160)}…` : j}`;
+      }
+      return `${k}=${String(v)}`;
+    })
+    .join("; ");
 }
 
 /** User content for the agent loop; user query wrapped per QOS-PRD §10.2. */

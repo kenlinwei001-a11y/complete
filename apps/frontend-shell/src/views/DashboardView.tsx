@@ -6,6 +6,7 @@ import type { DashboardWidgetDef, WidgetQueryDef, AffectedOrdersOutputVM } from 
 import { SEG_REGISTRY } from "@platform/contracts";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
+import { BlockConversable } from "@/components/BlockConversable";
 import { Provenance } from "@/components/Provenance";
 import { ProvenanceDag, gapAttributionToDag, type DagData, type GapAttrOutput } from "@/components/ProvenanceDag";
 import type { ViewRendererProps } from "./registry";
@@ -312,17 +313,40 @@ function SupplyDemandAttributionPanel() {
   // 加载中 / 求解器不可用（如 mock 未接入 → 404）→ 静默不渲染（诚实：无真数据不占位不伪造）。
   if (isLoading || isError || !data) return null;
   const view = supplyDemandView(data);
+  // WO-BLOCK-DIALOGUE：块级 getData 返该块**真实渲染数据**（供需双向的需求端/供给端占比·贡献·勾稽·metricKey 全真值·非写死）。
+  const blockData = (): Record<string, unknown> => ({
+    metricKey: data.rootMetric?.key,
+    available: view.available,
+    totalGap: view.totalGap,
+    unit: view.unit,
+    demandPct: view.demand?.pct ?? null,
+    demandContribution: view.demand?.contribution ?? null,
+    supplyPct: view.supply?.pct ?? null,
+    supplyContribution: view.supply?.contribution ?? null,
+    residual: view.residual,
+    residualPct: view.residualPct,
+    reconSum: view.reconSum,
+    reconciled: view.reconciled,
+    capacityConnected: view.capacityConnected,
+    demandDrivers: (view.demand?.drivers ?? []).map((d) => ({ factor: d.factor, contribution: d.contribution, share: d.share })),
+    supplyDrivers: (view.supply?.drivers ?? []).map((d) => ({ factor: d.factor, contribution: d.contribution, share: d.share })),
+  });
+  const wrap = (node: ReactNode) => (
+    <BlockConversable blockId="dash-supply-demand" blockType="supply-demand" blockTitle="供需失衡双向归因" getData={blockData} provenanceRef="supply_demand_gap_attribution">
+      {node}
+    </BlockConversable>
+  );
   if (!view.available) {
-    return (
+    return wrap(
       <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
         <div className="section-title">供需失衡双向归因</div>
         <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="sdg-honest-empty">{view.reason}</div>
-      </div>
+      </div>,
     );
   }
   const demand = view.demand!;
   const supply = view.supply!;
-  return (
+  return wrap(
     <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
       <div className="section-title">供需失衡双向归因</div>
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
@@ -432,7 +456,16 @@ function PlanDrillWidget() {
     enabled: !!openKpi,
     retry: false,
   });
+  // WO-BLOCK-DIALOGUE：块级 getData 返根因树该块真实数据（当前层级·各 KPI 目标/实际/是否越线·展开的根因指标 metricKey 锚定）。
+  const drillBlockData = (): Record<string, unknown> => ({
+    level,
+    metricKey: openKpi ?? kpis.find((k) => k.offTarget)?.kpiId,
+    openKpi,
+    kpis: kpis.map((k) => ({ kpiId: k.kpiId, name: k.name, category: k.category, actual: k.actual, target: k.target, unit: k.unit, offTarget: k.offTarget, status: k.status })),
+    offTargetCount: kpis.filter((k) => k.offTarget).length,
+  });
   return (
+    <BlockConversable blockId="dash-plan-drill" blockType="root-cause-tree" blockTitle="规划根因下钻（根因树 DAG）" getData={drillBlockData} provenanceRef="gap_attribution">
     <div data-testid="dash-plan-drill">
       <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
         {(["op", "month", "quarter", "year"] as const).map((lv) => (
@@ -476,6 +509,7 @@ function PlanDrillWidget() {
         </div>
       )}
     </div>
+    </BlockConversable>
   );
 }
 
@@ -594,7 +628,14 @@ type MetricRow = { metricId: string; name: string; unit?: string; target: number
 function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
   const rows = metrics ?? [];
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  // WO-BLOCK-DIALOGUE：块级 getData 返 KPI 指标条该块真实数据（每指标 目标/实际/差/是否越线·metricKey 锚定首个越线指标）。
+  const msBlockData = (): Record<string, unknown> => ({
+    metricKey: (rows.find((m) => m.miss) ?? rows[0])?.metricId,
+    metrics: rows.map((m) => ({ metricId: m.metricId, name: m.name, unit: m.unit, target: m.target, actual: m.actual, delta: m.delta, miss: m.miss })),
+    missCount: rows.filter((m) => m.miss).length,
+  });
   return (
+    <BlockConversable blockId="metric-strip" blockType="metric-strip" blockTitle="经营指标条（KPI 达标）" getData={msBlockData} provenanceRef="metric_rollup">
     <div data-testid="metric-strip" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
       {rows.map((m) => (
         <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
@@ -608,6 +649,7 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
         </div>
       ))}
     </div>
+    </BlockConversable>
   );
 }
 
@@ -642,7 +684,20 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
   const selected = base || data.base; // 默认反映后端所选最严重基地
   const options = (baseList ?? []).includes(selected) ? (baseList ?? []) : [selected, ...(baseList ?? [])];
   const days = data.baselineSeries.map((_, i) => `D+${i}`);
+  // WO-BLOCK-DIALOGUE：块级 getData 返反事实双轨该块真实数据（基地/因素/处置·峰值削减·越线推迟·少越线日·阈值·当前基地）。
+  const cfBlockData = (): Record<string, unknown> => ({
+    base: data.base,
+    selectedBase: selected,
+    factor: data.factor,
+    mitigation: data.mitigation,
+    peakCut: data.delta.peakCut,
+    crossDelayDays: data.delta.crossDelayDays,
+    ordersSaved: data.delta.ordersSaved,
+    threshold: data.threshold,
+    horizon,
+  });
   return (
+    <BlockConversable blockId="cf-widget" blockType="counterfactual" blockTitle={`反事实双轨推演（${data.base}·${data.factor}）`} getData={cfBlockData} provenanceRef="counterfactual_timeline">
     <div data-testid="cf-widget">
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12, color: "var(--muted)" }}>
         推演基地：
@@ -678,6 +733,7 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
         }}
       />
     </div>
+    </BlockConversable>
   );
 }
 
