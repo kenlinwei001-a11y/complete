@@ -131,4 +131,21 @@ export class DecisionKernelService {
     await this.outbox.emit(ctx.tenantId, "decision.committed", { decisionId: id, actionDraftIds, actionCount: actionDraftIds.length, status: "COMMITTED" }, id);
     return committed;
   }
+
+  /**
+   * WO-SANDBOX-ACTION-PROPAGATION · 决策→沙盘只读桥（read-only·不落真值·不建 Action）。
+   * 把一条决策的选定方案映射为沙盘可施加的 ActionTrigger 预览（"若采纳，在沙盘里会怎样"）：
+   *  - actionTypeKey = "adopt_mitigation"（与 commit 派的 ActionDraft 同类·平台术语·非业务常数）。
+   *  - payload 携真派生量：base/factor/planKey + closesGap（真"预计补缺口"·option 上已算·非写死幅度）。
+   * 是否真产生传导取决于租户已配的 ActionPropagationRule 是否命中（未命中/目标不在世界态 → 诚实空注入·DF.8）。
+   * 纯读：不改决策状态、不碰对象库/派生表；沙盘施加走 POST /sim/sessions/:id/apply-action（模拟态 R4）。
+   */
+  sandboxApplicable(d: Decision): { actionTypeKey: string; payload: Record<string, unknown> }[] {
+    const base = d.rootRef.topBase;
+    return d.chosenOptionIds.flatMap((optId) => {
+      const o = d.optionsRef.options.find((x) => x.optionId === optId);
+      if (!o) return [];
+      return [{ actionTypeKey: "adopt_mitigation", payload: { base, baseId: base, factor: o.factorId, planKey: o.optionId, closesGap: o.closesGap } }];
+    });
+  }
 }

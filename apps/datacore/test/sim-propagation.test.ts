@@ -45,7 +45,8 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     expect(next.b.risk).toBe(5);
     expect(next.a.risk).toBe(10);
     expect(trace).toEqual([
-      { ruleKey: "PR_FEEDS", fromObjectId: "a", toObjectId: "b", amount: 5, viaLinkKey: "FEEDS" },
+      // WO-SANDBOX-ACTION-PROPAGATION：trace 新增 sourceKind/actionKey（link 传导恒为 "link"/null）。
+      { ruleKey: "PR_FEEDS", fromObjectId: "a", toObjectId: "b", amount: 5, viaLinkKey: "FEEDS", sourceKind: "link", actionKey: null },
     ]);
   });
 

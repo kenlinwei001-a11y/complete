@@ -31,6 +31,9 @@ export const PropagationTraceSchema = z.object({
   toObjectId: z.string(),
   amount: z.number(),
   viaLinkKey: z.string(),
+  // WO-SANDBOX-ACTION-PROPAGATION：区分链路传导 vs 动作注入源（可视化 + 审计）。additive·缺省 link 向后兼容。
+  sourceKind: z.enum(["link", "action"]).default("link"),
+  actionKey: z.string().nullable().default(null), // sourceKind=action 时 = 命中的 ActionPropagationRule.key
 });
 export type PropagationTrace = z.infer<typeof PropagationTraceSchema>;
 
@@ -54,6 +57,35 @@ export const PropagationRuleSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).default("DRAFT"),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
+
+// ── ActionPropagationRule —— action→stateVar 传导规则（WO-SANDBOX-ACTION-PROPAGATION·§2.I 一等·additive） ──
+// 表达「某类 Action 提交 → 打进哪个对象的哪个 stateVar 初始扰动」；系数/延迟复用 PropagationRule 语义。
+// 零业务常数 R14：actionTypeKey / 字段路径靠配置进来，引擎只认结构；系数可引 rule.params（G-10「改规则即改推演」）。
+export const ActionPropagationRuleSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(), // R2
+  key: z.string(), // 稳定键·可审计引用
+  actionTypeKey: z.string(), // 触发源：哪类 Action（对齐 ActionType.key）
+  matchPredicate: z.object({ path: z.string(), equals: z.union([z.string(), z.number(), z.boolean()]) }).nullable().default(null), // 可选·payload 匹配（如 payload.kind=="capacity_add"）
+  targetTypeKey: z.string(), // 打进哪个对象类型
+  targetStateVar: z.string(), // 的哪个 stateVar
+  targetSelector: z.string(), // 从 action payload 取目标对象 id 的字段路径（如 "baseId" / "payload.baseId"）
+  magnitudeField: z.string(), // 从 payload 取扰动幅度的字段（如 "deltaGwh"）
+  coefficient: z.number(), // 幅度→stateVar 增量的系数（配置·可编辑）
+  coefficientRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().default(null), // 引 rule.params（G-10），空=用内联 coefficient
+  delayTicks: z.number().int().min(0), // 动作生效延迟（如产能扩建 2 tick 后生效）
+  combine: z.enum(["sum", "max"]).default("sum"),
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).default("DRAFT"),
+});
+export type ActionPropagationRule = z.infer<typeof ActionPropagationRuleSchema>;
+
+// ── ActionTrigger —— 一次 tick 携带的已提交动作扰动（apply-action / tick 端点入参）。 ──
+export const ActionTriggerSchema = z.object({
+  actionTypeKey: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  appliedAtTick: z.number().int(),
+});
+export type ActionTrigger = z.infer<typeof ActionTriggerSchema>;
 
 // ── SimSession 会话状态机（§2.1 sim_session 表） ──────────────────────────────
 export const SimSessionStatusSchema = z.enum(["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED"]);
