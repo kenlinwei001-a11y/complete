@@ -24,4 +24,23 @@ describe("cockpit P5 · 驾驶舱版本切换 + 反事实双线图", () => {
     await waitFor(() => expect(within(cf).getByTestId("cf-peakcut")).toBeInTheDocument());
     expect(within(cf).getByTestId("cf-chart")).toBeTruthy();
   });
+
+  it("反事实基地选择器：默认最严重基地 + 切基地→双轨真变（KILL-MOCK·C1/C2/C3）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/dash");
+
+    const cf = await screen.findByTestId("cf-widget");
+    // C1：基地选择器渲染，基地列表真取自 risk_timeline cards（>1 个基地·非写死）
+    const sel = (await within(cf).findByTestId("cf-basesel")) as HTMLSelectElement;
+    await waitFor(() => expect(sel.options.length).toBeGreaterThan(1));
+    // C3：默认仍最严重基地（常州·峰值最高·不破现状）
+    await waitFor(() => expect(within(cf).getByTestId("cf-base")).toHaveTextContent("常州"));
+    const peakCut0 = within(cf).getByTestId("cf-peakcut").textContent;
+
+    // C2：切到另一基地 → 以 { base } 真重调 solver → 双轨真变（base 标签 + 峰值削减值都随之变，非同一条曲线）
+    await user.selectOptions(sel, "江门");
+    await waitFor(() => expect(within(cf).getByTestId("cf-base")).toHaveTextContent("江门"));
+    await waitFor(() => expect(within(cf).getByTestId("cf-peakcut").textContent).not.toBe(peakCut0));
+  });
 });
