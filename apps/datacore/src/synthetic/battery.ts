@@ -665,6 +665,9 @@ const lineProps: PropertyDef[] = [
   // SA-5：产线台账字段（R12 全建模对齐）
   { propKey: "line_code", dataType: "string", isPrimaryKey: false, searchable: true },
   { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false }, // 件/日
+  // 线级运营日产能（**套/日**·与需求同口径；supply_demand_gap_attribution 读它 ×300/1e4→万套年化产能）。
+  // 单位口径钉死：demand/gap 皆万套(套=pack)，故此字段=套/日 而非 max_capacity_day 的件/日(cell)，避免单位炸。
+  { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false }, // 套/日
   { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // %
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运行中 | 停机 | 调试
 ];
@@ -2192,6 +2195,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         // SA-5：产线台账字段（R12 全建模对齐）
         line_code: lineId.replace("LINE-", "L-"),
         max_capacity_day: 2000 + (lineHash % 6001), // 件/日，确定性
+        // 套/日 运营日产能（确定性·lineHash）：按 demo 需求/产线数标定（≈需求×0.9·锂电产能紧俏略欠）
+        // → supply_demand 产能缺口叶出真数(非虚空)·单位=套/日 与需求(万套)同口径 ×300/1e4 年化。
+        capacityDaily: 72 + (lineHash % 29), // 套/日 · 72–100 · 确定性(R6·无 rng)
         target_yield: round(0.95 + (lineHash % 100) / 100 * 0.04, 3),
         status: lineHash % 10 < 9 ? "运行中" : "调试",
       });
