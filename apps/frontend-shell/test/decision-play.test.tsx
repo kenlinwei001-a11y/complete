@@ -134,11 +134,11 @@ describe("WO-D · 决策推演页 5 区", () => {
     expect(dd).toHaveTextContent("16");
   });
 
-  it("C3 · sourceKind 诚实：solver→确定性求解 / agent→策略推理·非真 LLM，全页无「数据库事实」", async () => {
+  it("C3 · sourceKind 诚实（三态之二）：solver→确定性求解 / agent→策略推理·确定性生成，全页无「数据库事实」", async () => {
     const { container } = renderDP(DP_A);
     expect(await screen.findByTestId("dp-src-opt-backup-cert")).toHaveTextContent("确定性求解");
-    expect(screen.getByTestId("dp-src-opt-lta-clause")).toHaveTextContent("策略推理·非真 LLM");
-    expect(screen.getByTestId("dp-src-opt-insource")).toHaveTextContent("策略推理·非真 LLM");
+    expect(screen.getByTestId("dp-src-opt-lta-clause")).toHaveTextContent("策略推理·确定性生成");
+    expect(screen.getByTestId("dp-src-opt-insource")).toHaveTextContent("策略推理·确定性生成");
     expect(container.textContent ?? "").not.toContain("数据库事实");
   });
 

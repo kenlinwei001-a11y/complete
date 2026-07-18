@@ -9,9 +9,13 @@ import {
   simBranch,
   simCheckpoint,
   simTick,
+  submitQuery,
   type SimCompareSeries,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { useFeature } from "@/workspace/featureGate";
+import { useWorkspace } from "@/workspace/useWorkspace";
+import { TaskRun } from "@/components/QueryDock/TaskRun";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
@@ -141,6 +145,68 @@ function ReadinessRadar({
 /** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
 export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
+}
+
+/**
+ * WO-REAL-LLM-FREE-QUERY · AI 指挥台 NL 入口（R17「…→AI」一格落地）：自然语言指挥沙盘
+ *（如「把常州产能推进两个 tick 看负载」）→ 带**本沙盘 sessionId** 提交 QOS → orchestrator 识别沙盘上下文
+ *（filters.simSessionId）+ sim.commander 开 → path-B → agent 调 sim_* 工具**真驱动本会话**（模拟态·不写真值 R4）。
+ * `sim.commander` 关 → 入口**不存在**（R3 暗发·useFeature 门）。答案经 TaskRun 流式渲染（诚实标真 LLM 推理）。
+ */
+function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; curTick: number }) {
+  const commanderOn = useFeature("sim.commander"); // R3：关→入口不存在
+  const { data: workspace } = useWorkspace();
+  const [input, setInput] = useState("");
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!commanderOn) return null;
+  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const submit = async () => {
+    const q = input.trim();
+    if (!q || !sessionId || !packageId || busy) return;
+    setBusy(true);
+    try {
+      // 带沙盘 sessionId 作上下文（filters.simSessionId）→ orchestrator 指挥台分路 → agent 用 sim_tick/sim_world 驱动本会话。
+      const res = await submitQuery(
+        { packageId, query: q, context: { view: "sim-sandbox", selectedObjects: [], filters: { simSessionId: sessionId, simCurTick: String(curTick) } } },
+        crypto.randomUUID(),
+      );
+      setTaskId(res.taskId);
+      setInput("");
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="panel" data-testid="sim-commander-dock" style={{ padding: 12, marginTop: 12 }}>
+      <div className={styles.secHead}>AI 指挥台 · 自然语言驱动推演</div>
+      <div className={styles.sub} style={{ marginBottom: 8 }}>
+        用自然语言指挥本沙盘会话（如「把常州产能推进两个 tick 看负载」）——AI 经 path-B 调 sim_* 工具真驱动（模拟态·不写真值 R4）。
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          data-testid="sim-commander-input"
+          value={input}
+          placeholder={sessionId ? "例：推进两个 tick 看哪些节点过载" : "沙盘会话未就绪…"}
+          disabled={!sessionId || busy}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
+          style={{ flex: 1 }}
+        />
+        <button className="btn primary" data-testid="sim-commander-submit" disabled={!sessionId || busy || !input.trim()} onClick={() => void submit()}>
+          {busy ? "指挥中…" : "指挥"}
+        </button>
+      </div>
+      {taskId && (
+        <div style={{ marginTop: 10 }} data-testid="sim-commander-answer">
+          <TaskRun taskId={taskId} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
@@ -385,6 +451,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           <SimComparePanel a={compare.a} b={compare.b} />
         </div>
       )}
+
+      {/* AI 指挥台 NL 入口（R17「…→AI」·WO-REAL-LLM-FREE-QUERY）：sim.commander 关则不存在（R3 暗发）。 */}
+      <SimCommanderDock sessionId={sessionId} curTick={curTick} />
     </div>
   );
 }

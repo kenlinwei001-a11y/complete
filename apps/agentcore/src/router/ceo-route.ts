@@ -19,6 +19,35 @@ export function isCeoQuestion(q: string): boolean {
   return [RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
+/**
+ * WO-REAL-LLM-FREE-QUERY：开放式/多跳深问信号——需要综合多块、连锁传导、假设推演、多方案权衡的问句，
+ * 确定性单跳求解器骨架答不全，宜走 path-B 真 LLM 自由多跳（查对象→算求解器→再查→综合）。
+ */
+const RE_FREE_LLM_SIGNAL =
+  /(综合|全面|整体|多个|多方面|之间|关联|相互|连锁|传导|波及|牵一发|如果|假设|情景|推演|沙盘|tick|权衡|取舍|系统性|深入分析|全链|端到端|逐层|层层|一步步|多角度|交叉|串起来|串联|前因后果|来龙去脉|会不会|怎么会)/i;
+
+/**
+ * WO-REAL-LLM-FREE-QUERY · 纯判定（R6 无 LLM/时钟/随机）：该 CEO/块级深问是否宜走 path-B 真 LLM 自由多跳推理。
+ *
+ * **默认关·字节兼容**——只判问句形态(②)与上下文丰富度(③)；feature 门(①：租户开 sim.commander 或 ceo.free-llm)
+ * 由 orchestrator 用 enabledSet 单独判定并与本函数 **AND** 组合（见 orchestrator freeLlmEnabled）。三者齐备才走真 LLM，
+ * 任一不满足 → 照走既有确定性路由/classifier（**绝不劫持确定性默认路径**）。
+ *
+ * ② 开放式/多跳信号：命中 RE_FREE_LLM_SIGNAL 关键词，或问句较长（≥24 字·定式确定性问句通常更短）。
+ * ③ 上下文足够丰富：PageContext 带 focus / block / 非空 entities / 非空 selection（够 agent 锚定多跳取证）。
+ */
+export function shouldUseFreeLLM(question: string, pageContext: PageContext | undefined): boolean {
+  const q = question ?? "";
+  // ③ 上下文丰富度门：无足够页/块上下文 → 不冒进真 LLM（退化确定性）。
+  const pc = pageContext;
+  const contextRich = Boolean(
+    pc && (pc.focus || pc.block || (pc.entities?.length ?? 0) > 0 || (pc.selection?.length ?? 0) > 0),
+  );
+  if (!contextRich) return false;
+  // ② 开放式/多跳信号（关键词 或 长问句）。
+  return RE_FREE_LLM_SIGNAL.test(q) || q.length >= 24;
+}
+
 /** CEO 深问专属意图 key 集（种子于 mocks/seed.ts·单一真源）——仅 PageContext 注入时进候选池（否则平台行为与 CEO-6 前逐字节一致·纯 additive·不劫持既有意图）。 */
 export const CEO_INTENT_KEYS = new Set(["ceo_root_cause", "ceo_decision", "ceo_metric"]);
 

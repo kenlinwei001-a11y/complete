@@ -110,6 +110,8 @@ export const zh = {
     exploreMode: "探索模式",
     verifiedBadge: "已验证 · 工作流",
     exploratoryBadge: "探索 · AI",
+    // WO-REAL-LLM-FREE-QUERY 诚实三态之三：path-B 真 LLM 深问（据页/块上下文·工具取证）——绝不标"数据库事实"。
+    llmReasoningBadge: "真 LLM 推理 · 据页/块上下文工具取证",
     unverifiedStrip: "部分数字未能溯源，仅供参考",
     clarifyNone: "都不是",
     clarifyRound: (n: number) => `第 ${n}/2 次确认`,
