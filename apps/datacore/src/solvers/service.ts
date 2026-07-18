@@ -1010,8 +1010,11 @@ export class SolverService {
     const supplyContribution = round(G * explained * (sumS / T), 4);
     const residual = round(G - demandContribution - supplyContribution, 4); // = G×(1−explained)（构造上勾稽）
 
-    const splitSide = (drvs: Drv[], sideContribution: number, sideSum: number) =>
-      drvs
+    // WO-Q7-RECONCILED-ROBUST：末叶取余额分摊（治逐叶 round(,4) 累积舍入伪影·合法数据误报 reconciled=false）。
+    // 其余叶正常 round；**排序后最后一片叶** contribution = round(sideContribution − Σ其余叶, 4) → 端内 Σ叶 恒 == sideContribution（浮点精确·ok 恒真）。
+    // 叶顺序已稳定排序（driver 降序·id 升序）→ 末叶确定 → 与 R6 相容。share/占比量级/方向不变（末叶只吸收 ≈舍入余额）。
+    const splitSide = (drvs: Drv[], sideContribution: number, sideSum: number) => {
+      const leaves = drvs
         .sort((a, b) => b.driver - a.driver || a.id.localeCompare(b.id))
         .map((d) => ({
           id: d.id, factor: d.factor,
@@ -1019,6 +1022,12 @@ export class SolverService {
           share: round(d.driver / (sideSum || 1), 4), unit,
           driverValue: d.driver, provenance: d.prov,
         }));
+      if (leaves.length > 0) {
+        const rest = round(leaves.slice(0, -1).reduce((a, n) => a + n.contribution, 0), 4);
+        leaves[leaves.length - 1]!.contribution = round(sideContribution - rest, 4);
+      }
+      return leaves;
+    };
     const demandLeaves = splitSide(demandDrv, demandContribution, sumD);
     const supplyLeaves = splitSide(supplyDrv, supplyContribution, sumS);
 
