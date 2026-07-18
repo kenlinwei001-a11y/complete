@@ -63,6 +63,27 @@ function coerce(value: unknown, dataType: PropertyDef["dataType"], warnings: str
   return typeof value === "string" ? value : String(value);
 }
 
+/** 内置物化模板：覆盖 engine-read 类型常用列→属性映射（R14：模板是配置数据，非业务常数；
+ * 调用方仍可完全以 columnMapping 覆盖）。 */
+export const RECORD_MATERIALIZE_TEMPLATES: Record<string, { columnMapping: Record<string, string>; primaryKeyColumn: string }> = {
+  FinancePlan: { columnMapping: { finId: "finId", line: "line", budget: "budget", rolling: "rolling" }, primaryKeyColumn: "finId" },
+  DemandSegment: { columnMapping: { segId: "segId", segment: "segment", tgt: "tgt", p50: "p50", p90: "p90", act: "act", priceWan: "priceWan", marginPct: "marginPct", floorPct: "floorPct" }, primaryKeyColumn: "segId" },
+  MaterialBalance: { columnMapping: { matBalId: "matBalId", material: "material", unit: "unit", netDemandTon: "netDemandTon", ltaPct: "ltaPct", gapTon: "gapTon", etaDate: "etaDate" }, primaryKeyColumn: "matBalId" },
+  LongTermAgreement: { columnMapping: { ltaId: "ltaId", supplierId: "supplierId", materialType: "materialType", contractedQtyTon: "contractedQtyTon", actualDeliveredTon: "actualDeliveredTon", priceLinked: "priceLinked", breachPenaltyWan: "breachPenaltyWan", priceFormula: "priceFormula", effectiveDate: "effectiveDate", expiryDate: "expiryDate", deliveryDate: "deliveryDate", poNumber: "poNumber" }, primaryKeyColumn: "ltaId" },
+  CommodityPriceTrend: { columnMapping: { trendId: "trendId", commodity: "commodity", weekOf: "weekOf", pricePerTon: "pricePerTon", pctChange: "pctChange", source: "source", spec: "spec", currency: "currency" }, primaryKeyColumn: "trendId" },
+  ExternalSignal: { columnMapping: { signalKey: "signalKey", name: "name", category: "category", value: "value", unit: "unit", asOf: "asOf", source: "source", trend: "trend", impact: "impact", elasticity: "elasticity", eventRef: "eventRef" }, primaryKeyColumn: "signalKey" },
+  Supplier: { columnMapping: { supplierId: "supplierId", supplierCode: "supplierCode", name: "name", category: "category", materialType: "materialType", rating: "rating", region: "region", leadTime: "leadTime", minOrderQty: "minOrderQty", onTimeRate: "onTimeRate", status: "status", contractedSupplyTon: "contractedSupplyTon", actualSupplyTon: "actualSupplyTon", deliveryDate: "deliveryDate", poNumber: "poNumber" }, primaryKeyColumn: "supplierId" },
+  CompetitorShare: { columnMapping: { shareId: "shareId", competitor: "competitor", segment: "segment", sharePct: "sharePct", period: "period" }, primaryKeyColumn: "shareId" },
+  BidRecord: { columnMapping: { bidId: "bidId", segment: "segment", win: "win", lossReason: "lossReason", amount: "amount", competitorRef: "competitorRef" }, primaryKeyColumn: "bidId" },
+  CompetitorPrice: { columnMapping: { priceId: "priceId", competitor: "competitor", model: "model", pricePerKwh: "pricePerKwh", period: "period" }, primaryKeyColumn: "priceId" },
+  PipelineOpportunity: { columnMapping: { oppId: "oppId", segment: "segment", stage: "stage", amount: "amount", winProb: "winProb" }, primaryKeyColumn: "oppId" },
+  WinLossRecord: { columnMapping: { oppId: "oppId", result: "result", reason: "reason" }, primaryKeyColumn: "oppId" },
+  PriceRealization: { columnMapping: { realizationId: "realizationId", model: "model", listPrice: "listPrice", realizedPrice: "realizedPrice", period: "period" }, primaryKeyColumn: "realizationId" },
+  ARAging: { columnMapping: { agingId: "agingId", customerRef: "customerRef", bucket: "bucket", amount: "amount" }, primaryKeyColumn: "agingId" },
+  DSO: { columnMapping: { dsoId: "dsoId", segment: "segment", days: "days", period: "period" }, primaryKeyColumn: "dsoId" },
+  OverdueRecord: { columnMapping: { overdueId: "overdueId", invoiceRef: "invoiceRef", overdueDays: "overdueDays", customerRef: "customerRef" }, primaryKeyColumn: "overdueId" },
+};
+
 export function materializeRecords(input: MaterializeRecordsInput): MaterializeRecordsResult {
   const warnings: string[] = [];
   const propByKey = new Map(input.props.map((p) => [p.propKey, p]));

@@ -96,6 +96,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。
   { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
+  // WO-CEO-DATA-2（R3 暗发·defaultOn:false）：CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·可 back-derivation）。
+  { key: "ceo.dataset.generate", name: "CEO 驾驶舱原子数据集生成", level: "VIEW", defaultOn: false, bindings: { apiTags: ["ceo-dataset"] } },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

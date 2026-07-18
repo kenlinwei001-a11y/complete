@@ -43,7 +43,7 @@ export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: 
 ];
 
 // PRD-IND-model / PRD-IND-risk §4.6：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）。
-const MODEL_BASE_MAP: Record<string, string[]> = {
+export const MODEL_BASE_MAP: Record<string, string[]> = {
   "4680-NCM": ["changzhou", "chengdu", "hefei", "jinhua"], // HTML 4680-NCM → 常州/成都/合肥/金华
   "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
   "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
@@ -67,7 +67,7 @@ const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 // 按年营收 700 亿元企业规模校准：qty 单位=套，均价≈1.8 万元/套，月营收≈58 亿元 →
 // 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
 // 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
-const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
+export const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
   { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高" },
   { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高" },
   { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中" },
@@ -2287,6 +2287,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
             mttr: round(2 + (hashString(`${equipId}:mttr`) % 61) / 10, 1), // 平均修复时间 2.0-8.0h
             health_score: 78 + (hashString(`${equipId}:health`) % 21), // 设备健康度 78-98
           });
+        }
+      }
+      // SA-6 / WO-CEO-DATA-2：设备 OEE 快照由 A×P×Q 派生（不额外抽取 rngTopo·R6 字节一致）。
+      for (const eq of equipment) {
+        if (eq.oee_current === undefined) {
+          eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
         }
       }
       const channels = randInt(rngTopo, 600, 780);

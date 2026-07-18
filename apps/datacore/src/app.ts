@@ -99,9 +99,10 @@ import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
-import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化
+import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
-import { materializeRecords } from "./decision/record-materialize.js";
+import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
+import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
 import { DecisionKernelService } from "./decision/kernel.js"; // WO-C1 · L2 统一决策内核
 import { CreateDecisionInputSchema } from "@platform/contracts"; // WO-C1
 
@@ -3131,13 +3132,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!targetDef) throw validationError(`目标类型 ${body.targetType} 未发布或非 ACTIVE（先建模发布该类型再物化真记录）`);
 
     // ④ 读真源原始行（rawRows·原始颗粒），⑤ 逐行 1:1 物化（纯函数·颗粒不聚合·R6）。
+    // WO-CEO-DATA-2：支持内置物化模板（templateKey），模板可与显式 columnMapping 叠加（显式优先）。
+    const template = body.templateKey ? RECORD_MATERIALIZE_TEMPLATES[body.templateKey] : undefined;
+    const columnMapping = { ...template?.columnMapping, ...body.columnMapping };
+    const primaryKeyColumn = body.primaryKeyColumn ?? template?.primaryKeyColumn;
     const rows = await repos.rawRows.list(c.tenantId, ds.id);
     const { objects, warnings, primaryKey } = materializeRecords({
       targetType: body.targetType,
       props: targetDef.properties,
       rows,
-      columnMapping: body.columnMapping,
-      primaryKeyColumn: body.primaryKeyColumn,
+      columnMapping,
+      primaryKeyColumn,
       datasetId: ds.id,
       sourceConnId: ds.sourceConnId,
     });
@@ -3174,6 +3179,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       sampleObjectIds: objects.slice(0, 5).map((o) => o.id),
       dryRun: body.dryRun === true,
     };
+  });
+
+  // ---- WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·back-derivation）----
+  app.post("/a/v1/ceo/dataset/generate", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(CeoDatasetGenerateRequestSchema, req.body);
+    // R2 隔离：请求体 tenantId 必须与当前用户租户一致（先验，防跨租户探测）。
+    if (body.tenantId !== c.tenantId) throw forbidden("tenant mismatch");
+    // R3 entitlement：未开通则 404 FEATURE_NOT_FOUND。
+    if (!(await features.enabled(c.tenantId, "ceo.dataset.generate"))) throw featureNotFound();
+    const dataset = generateCeoAtomicDataset({
+      tenantId: c.tenantId,
+      seed: body.seed,
+      scenario: body.scenario,
+      period: body.period,
+      scale: body.scale,
+    });
+    return dataset;
   });
 
   // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
