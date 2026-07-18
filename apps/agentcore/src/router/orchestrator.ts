@@ -2,6 +2,7 @@ import type {
   Answer,
   ClarificationReplyBody,
   ClassificationResult,
+  Decision,
   IntentDefinition,
   QueryTask,
   ResolvedRef,
@@ -36,7 +37,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
-import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）
+import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -50,6 +51,37 @@ const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 function simCommanderEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return true;
   return set.has("sim.commander") && set.has("sim.sandbox");
+}
+
+/**
+ * WO-DECISION-KERNEL-WIRE：从 workflow stepOutputs 定位真 decision_play 产物（invoke_solver 步存 ToolPayload {data,…}）。
+ * 扫描各步输出，取首个 `.data.recommendedPlan.optionIds` 非空者——解耦具体 step id（不写死 "s1"）。
+ */
+function findDecisionPlayOutput(stepOutputs: Record<string, unknown>): {
+  rootCause?: { metricKey?: string; factorId?: string };
+  recommendedPlan?: { optionIds?: string[] };
+} | undefined {
+  for (const v of Object.values(stepOutputs)) {
+    const data = (v as { data?: unknown } | null | undefined)?.data;
+    if (data && typeof data === "object") {
+      const rp = (data as { recommendedPlan?: { optionIds?: unknown } }).recommendedPlan;
+      if (rp && Array.isArray(rp.optionIds) && rp.optionIds.length > 0) {
+        return data as { rootCause?: { metricKey?: string; factorId?: string }; recommendedPlan?: { optionIds?: string[] } };
+      }
+    }
+  }
+  return undefined;
+}
+
+/** WO-DECISION-KERNEL-WIRE：把成决策结果追加为答案文本块（台账 id + 状态 + 选定方案 + ActionDraft·让"止步方案"的答案落地成决策）。 */
+function appendDecisionBlock(answer: Answer, decision: Decision): Answer {
+  const statusLabel =
+    decision.status === "COMMITTED"
+      ? "已定案（COMMITTED·已派发行动草案进 S2 审批）"
+      : "已成决策（PROPOSED·待定案）";
+  const draftNote = decision.actionDraftIds.length > 0 ? `·行动草案 ${decision.actionDraftIds.join("、")}` : "";
+  const md = `**决策台账 ${decision.id}** — ${statusLabel}（选定方案 ${decision.chosenOptionIds.join("、")}${draftNote}）`;
+  return { ...answer, blocks: [...answer.blocks, { type: "text", markdown: md }] };
 }
 
 export class HttpError extends Error {
@@ -674,14 +706,68 @@ export class Orchestrator {
       return;
     }
 
+    // WO-DECISION-KERNEL-WIRE（闭"CEO 深问止步方案·不成决策"脑裂·本体 §3 决策链）：
+    // CEO 决策类深问（intent=ceo_decision·由 decision_play/signal 路由映射）出**真方案**后，若问句表达采纳/落地意图
+    // → 经 L2 内核 OBO 落一等 Decision(PROPOSED·chosenOptionIds 默认取真推演 recommendedPlan.optionIds)；「立即落地」
+    // 意图再 commit → COMMITTED + 派 ActionDraft(S2 DRAFT·审批门不绕)。引擎不改（decision_play 已在上方 workflow 跑完·
+    // 此处只据真推演成决策）。透出 decisionId/status/actionDraftIds：SSE(decision.created/committed·已注册) + 答案块。
+    const answer = await this.maybeMakeDecision(taskId, auth, intent, slots, result.answer, result.stepOutputs);
+
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
-      answer: result.answer,
+      answer,
       resolvedRefs: dedupeRefs(resolvedRefs),
       completedAt: new Date().toISOString(),
     });
-    await this.deps.events.emit(taskId, "answer.final", result.answer);
+    await this.deps.events.emit(taskId, "answer.final", answer);
     this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  /**
+   * WO-DECISION-KERNEL-WIRE：路径 A 出方案后的「成决策」钩子（纯附加·非决策路由不触发）。
+   * 门控：intent=ceo_decision（decision_play/signal 路由）+ 问句命中采纳/落地意图（decisionCommitIntent≠none）+
+   * 真推演产出 recommendedPlan.optionIds。满足则 create Decision(PROPOSED)，「立即落地」再 commit(COMMITTED)。
+   * 成决策失败不塌方案答案（诚实降级：附提示块·不假装成决策）。返回（可能追加决策块的）答案。
+   */
+  private async maybeMakeDecision(
+    taskId: string,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    slots: Record<string, unknown>,
+    answer: Answer,
+    stepOutputs: Record<string, unknown>,
+  ): Promise<Answer> {
+    const commitIntent = decisionCommitIntent((await this.deps.repos.tasks.get(taskId))?.query ?? "");
+    // 仅决策类深问（ceo_decision）+ 明确采纳/落地意图才成决策（非劫持既有路径 A）。
+    if (commitIntent === "none" || intent.key !== ceoIntentKeyForRoute("decision_play")) return answer;
+
+    const play = findDecisionPlayOutput(stepOutputs);
+    const optionIds = play?.recommendedPlan?.optionIds ?? [];
+    const metricKey = play?.rootCause?.metricKey ?? (typeof slots.metricKey === "string" ? slots.metricKey : undefined);
+    if (!metricKey || optionIds.length === 0) return answer; // 无真推演推荐组合 → 不成决策（诚实·不写死）
+
+    const factorId = play?.rootCause?.factorId ?? (typeof slots.factorId === "string" ? slots.factorId : undefined);
+    try {
+      const decisionClient = this.deps.engine.deps.dataCore.decision;
+      let decision = await decisionClient.create(auth, { metricKey, ...(factorId ? { factorId } : {}), chosenOptionIds: optionIds });
+      await this.deps.events.emit(taskId, "decision.created", {
+        decisionId: decision.id,
+        status: decision.status,
+        chosenOptionIds: decision.chosenOptionIds,
+      });
+      if (commitIntent === "commit") {
+        decision = await decisionClient.commit(auth, decision.id);
+        await this.deps.events.emit(taskId, "decision.committed", {
+          decisionId: decision.id,
+          status: decision.status,
+          actionDraftIds: decision.actionDraftIds,
+        });
+      }
+      return appendDecisionBlock(answer, decision);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ...answer, blocks: [...answer.blocks, { type: "text", markdown: `_（方案已出，但决策落库未成：${message}）_` }] };
+    }
   }
 
   // -------------------------------------------------------------------------

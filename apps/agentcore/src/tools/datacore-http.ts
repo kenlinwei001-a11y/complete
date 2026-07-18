@@ -1,10 +1,11 @@
-import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
   type DataGenClient,
+  type DecisionClient,
   type EpochClient,
   type DataCoreClient,
   type IamClient,
@@ -164,6 +165,23 @@ class HttpActionClient implements ActionClient {
   }
 }
 
+/**
+ * WO-DECISION-KERNEL-WIRE：L2 决策内核 OBO 出口（真 HTTP·透传用户 JWT）。
+ * create → `POST /a/v1/decisions`（kernel 从真 gap_attribution+decision_play 派生·PROPOSED）；
+ * commit → `POST /a/v1/decisions/:id/commit`（COMMITTED + 派 ActionDraft·S2 DRAFT）。
+ */
+class HttpDecisionClient implements DecisionClient {
+  constructor(private readonly baseUrl: string) {}
+  create(ctx: ToolAuthCtx, input: CreateDecisionInput): Promise<Decision> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/decisions`, input);
+  }
+  commit(ctx: ToolAuthCtx, decisionId: string): Promise<Decision> {
+    // 空体 POST：commit 端点只读 :id 路径参，但 `call` 恒设 content-type: application/json ——
+    // Fastify 拒空体（FST_ERR_CTP_EMPTY_JSON_BODY·真 HTTP seam 咬出）→ 送 `{}` 占位（端点忽略之）。
+    return call(this.baseUrl, ctx, "POST", `/a/v1/decisions/${encodeURIComponent(decisionId)}/commit`, {});
+  }
+}
+
 /** S4.1 knowledge-base semantic search (OBO passthrough). */
 class HttpKbClient implements KbClient {
   constructor(private readonly baseUrl: string) {}
@@ -300,6 +318,7 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     solver: new HttpSolverClient(baseUrl),
     rules: new HttpRuleEngineClient(baseUrl),
     action: new HttpActionClient(baseUrl),
+    decision: new HttpDecisionClient(baseUrl),
     iam: new HttpIamClient(baseUrl),
     kb: new HttpKbClient(baseUrl),
     timeseries: new HttpTimeseriesClient(baseUrl),
