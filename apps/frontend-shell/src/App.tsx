@@ -71,6 +71,8 @@ const ViewsPage = lazy(() => import("@/pages/admin/ViewsPage"));
 const SandboxView = lazy(() => import("@/views/sim/SandboxView"));
 // 推演初始化向导（增量 4 渐进项 · 暗发）：沙盘主屏兄弟子屏，同 sim.sandbox 守门。
 const SimInitWizard = lazy(() => import("@/views/sim/SimInitWizard"));
+// 决策推演页（decision_play 求解器 5 区决策产物·CEO-3）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配）。
+const DecisionPlayView = lazy(() => import("@/views/DecisionPlayView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -122,6 +124,8 @@ export const routes: RouteObject[] = [
       { path: "v/sim-sandbox", element: <SimSandboxGuard /> },
       // 推演初始化向导专用 route（沙盘兄弟子屏，同 sim.sandbox 守门）。
       { path: "v/sim-init", element: <SimInitGuard /> },
+      // 决策推演页专用 route（decision_play 5 区决策产物·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      { path: "v/decision-play", element: lazyWrap(<DecisionPlayView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

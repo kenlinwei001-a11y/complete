@@ -30,6 +30,7 @@ const VIEW_ALIAS: Record<string, string> = {
   project: "project-sim",
   risk: "risk-board",
   dash: "dashboard",
+  decision: "decision-play",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
@@ -40,6 +41,8 @@ export function getRenderer(key: string | undefined): LazyExoticComponent<Compon
 registerRenderer("dashboard", () => import("./DashboardView"));
 registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));
+// 决策推演页（decision_play 求解器 5 区决策产物落地·CEO-3）：既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
+registerRenderer("decision-play", () => import("./DecisionPlayView"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
