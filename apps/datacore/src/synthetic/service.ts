@@ -655,6 +655,7 @@ export class SyntheticService {
     await putAll("WorkOrder", g.workOrders, "woId");
     await putAll("FinishedGoodsInventory", g.finishedGoodsInv, "fgId");
     await putAll("InventoryTxn", g.inventoryTxns, "txnId");
+    await putAll("OrderPromise", g.orderPromises, "promiseId"); // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单 ATP 基线）
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
     // cockpit P1 绿地
     await putAll("DemandSegment", g.demandSegments, "segId");
@@ -971,6 +972,11 @@ export class SyntheticService {
       const txnId = String(P(tx).txnId);
       await putLink(`lnk_txf_${txnId}`, "txn_for_fg", oid("InventoryTxn", txnId), oid("FinishedGoodsInventory", P(tx).fgRef));
       if (P(tx).woRef) await putLink(`lnk_txw_${txnId}`, "txn_from_wo", oid("InventoryTxn", txnId), oid("WorkOrder", P(tx).woRef));
+    }
+    // WO-ATP-PROMISE 订单承诺链路（承诺 → 订单·一订单一承诺 N:1；承诺溯源到销售订单）。
+    for (const p of g.orderPromises) {
+      const promiseId = String(P(p).promiseId);
+      await putLink(`lnk_pfo_${promiseId}`, "promise_for_order", oid("OrderPromise", promiseId), oid("Order", P(p).orderRef));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。

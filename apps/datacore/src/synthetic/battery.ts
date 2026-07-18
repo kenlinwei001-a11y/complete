@@ -862,6 +862,20 @@ const finishedGoodsInvProps: PropertyDef[] = [
 // 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
 const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved" }];
 
+// WO-ATP-PROMISE · 订单承诺台账（一订单一承诺行·ATP/CTP「能不能接、何时交」）。
+const orderPromiseProps: PropertyDef[] = [
+  { propKey: "promiseId", dataType: "string", isPrimaryKey: true },
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "requestedQty", dataType: "number", isPrimaryKey: false }, // 订单需求量
+  { propKey: "committableQty", dataType: "number", isPrimaryKey: false }, // 可承接量 = min(需求, 现货+在制未交+交期前可排产能)
+  { propKey: "promiseDate", dataType: "date", isPrimaryKey: false }, // 满足全量最早日
+  { propKey: "atpStatus", dataType: "enum", isPrimaryKey: false }, // CONFIRMED | PARTIAL | UNMET
+  { propKey: "shortfallQty", dataType: "number", isPrimaryKey: false }, // 缺口 = requestedQty − committableQty
+  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false }, // 产能 | 库存 | 物料 | 齐套（无缺口 → null）
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false }, // 承诺基准日（固定 T0·R6）
+];
+
 const inventoryTxnProps: PropertyDef[] = [
   { propKey: "txnId", dataType: "string", isPrimaryKey: true },
   { propKey: "txnType", dataType: "enum", isPrimaryKey: false }, // RECEIPT | ISSUE | TRANSFER | RETURN
@@ -1173,6 +1187,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   OperatorAttendance: "people", OperatorSkillCert: "people",
   // WO-INVENTORY-3TIER 库存三层闭环（成品库存 + 统一流水；归 supply 域·refbase 归一化 supply→material）
   FinishedGoodsInventory: "supply", InventoryTxn: "supply",
+  // WO-ATP-PROMISE 订单承诺台账（ATP/CTP·随订单归 commercial 域·refbase 14 域含 commercial）
+  OrderPromise: "commercial",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -1233,6 +1249,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
     { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
     plain("InventoryTxn", "库存流水", inventoryTxnProps),
+    // WO-ATP-PROMISE：订单承诺台账（ATP/CTP·净读三源算可承接量+承诺日+瓶颈）
+    plain("OrderPromise", "订单承诺", orderPromiseProps),
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
@@ -1365,6 +1383,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "fg_at_warehouse", fromTypeKey: "FinishedGoodsInventory", toTypeKey: "Warehouse", cardinality: "N:1" }, // supply→factory
     { key: "txn_for_fg", fromTypeKey: "InventoryTxn", toTypeKey: "FinishedGoodsInventory", cardinality: "N:1" }, // supply
     { key: "txn_from_wo", fromTypeKey: "InventoryTxn", toTypeKey: "WorkOrder", cardinality: "N:1" }, // supply→process（完工入库溯源）
+    // WO-ATP-PROMISE 订单承诺链路（承诺台账 → 订单·一订单一承诺 N:1）
+    { key: "promise_for_order", fromTypeKey: "OrderPromise", toTypeKey: "Order", cardinality: "N:1" }, // commercial（承诺溯源到订单）
   ];
 }
 
@@ -1861,6 +1881,8 @@ export interface GeneratedBattery {
   // WO-INVENTORY-3TIER：成品库存 + 库存流水（完工入库确定性派生）
   finishedGoodsInv: Record<string, unknown>[];
   inventoryTxns: Record<string, unknown>[];
+  // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单确定性算 ATP 基线）
+  orderPromises: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -1939,6 +1961,161 @@ export function deriveFinishedGoodsIntake(
     .sort((a, b) => (a.fgId < b.fgId ? -1 : a.fgId > b.fgId ? 1 : 0))
     .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, asOf: f.asOf }));
   return { finishedGoodsInv, inventoryTxns };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// WO-ATP-PROMISE · 订单承诺（ATP/CTP）净室核心算法（数据半 seed 与引擎半 atp_check 单一口径）。
+// ──────────────────────────────────────────────────────────────────────────
+
+/** 完工工单状态集合（完工单 qtyActual 已入库 FG，故在制未交源须排除完工单，避免双算）。 */
+const ATP_COMPLETED_WO_STATUSES = COMPLETED_WO_STATUSES;
+
+const DAY_MS_ATP = 86400000;
+const atpNum = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
+
+/** atp_check 三源供给输入（纯对象·仓储 props 与生成数组两侧同结构喂入·净读无副作用）。 */
+export interface AtpSupplyInputs {
+  finishedGoodsInv: Record<string, unknown>[]; // 读 model / qtyOnHand / qtyReserved
+  workOrders: Record<string, unknown>[]; // 读 modelId / qtyActual / status
+  lines: Record<string, unknown>[]; // 读 baseId / max_capacity_day
+}
+
+/** 单订单 ATP 计算结果（committableQty = Σbreakdown·shortfall = requested − committable·勾稽）。 */
+export interface OrderPromiseResult {
+  requestedQty: number;
+  committableQty: number;
+  promiseDate: string | null;
+  atpStatus: "CONFIRMED" | "PARTIAL" | "UNMET";
+  shortfallQty: number;
+  bottleneck: "产能" | "库存" | "物料" | "齐套" | null;
+  breakdown: { source: "现货" | "在制" | "排产"; qty: number }[];
+  // 诊断字段（承诺卡口透明化·供 solver summary 与测试断言）
+  onHand: number;
+  wip: number;
+  dailyCapacity: number;
+  dueDay: number;
+}
+
+/**
+ * 净室 ATP：对单订单读三源供给算「能不能接、何时交」（纯函数·无 random/时钟·R6）。
+ *  ① 现货 onHand   = Σ 可用成品库存（qtyOnHand − qtyReserved，≥0）·按 model 匹配
+ *  ② 在制 wip      = Σ 未完工工单 qtyActual（完工单已入 FG 故排除）·按 modelId 匹配
+ *  ③ 排产 capacity = Σ 可产产线 max_capacity_day × 交期前净生产窗口天（baseId ∈ 订单可产基地）
+ * committableQty = min(requestedQty, onHand + wip + 交期前可排产能)；
+ * promiseDate    = 满足全量最早日（现货即 asOf；需排产则按日产能累加到齐量日；不可产 → null）；
+ * atpStatus/bottleneck/shortfall 诚实透出卡在哪源。
+ * SEAM 铁律：改 Line.max_capacity_day（产能）或 FG.qtyOnHand（库存）→ committableQty/promiseDate 真变。
+ */
+export function computeOrderPromise(
+  order: { model: unknown; qty: unknown; due: unknown; bases: unknown },
+  supply: AtpSupplyInputs,
+  asOf: string,
+): OrderPromiseResult {
+  const model = String(order.model ?? "");
+  const requestedQty = Math.max(0, atpNum(order.qty));
+  const orderBases = Array.isArray(order.bases) ? (order.bases as unknown[]).map(String) : [];
+
+  // ① 现货（可用成品库存·按 model）
+  const onHand = supply.finishedGoodsInv
+    .filter((f) => String(f.model ?? "") === model)
+    .reduce((s, f) => s + Math.max(0, atpNum(f.qtyOnHand) - atpNum(f.qtyReserved)), 0);
+
+  // ② 在制未交（未完工工单 qtyActual·按 modelId·排除完工单避免双算）
+  const wip = supply.workOrders
+    .filter((w) => String(w.modelId ?? "") === model && !ATP_COMPLETED_WO_STATUSES.has(String(w.status ?? "")) && atpNum(w.qtyActual) > 0)
+    .reduce((s, w) => s + atpNum(w.qtyActual), 0);
+
+  // ③ 交期前可排产能（可产产线日产能 × 交期前净生产窗口天）
+  const dailyCapacity = supply.lines
+    .filter((l) => orderBases.length > 0 && orderBases.includes(String(l.baseId ?? "")))
+    .reduce((s, l) => s + Math.max(0, atpNum(l.max_capacity_day)), 0);
+  const asOfMs = Date.parse(`${asOf.slice(0, 10)}T00:00:00Z`);
+  const dueMs = Date.parse(`${String(order.due ?? "").slice(0, 10)}T00:00:00Z`);
+  const dueDay = Number.isFinite(dueMs) ? Math.max(0, Math.round((dueMs - asOfMs) / DAY_MS_ATP)) : 0;
+  const capBeforeDue = dailyCapacity * dueDay;
+
+  // 三源按 现货→在制→排产 顺序填满需求（committableQty = Σbreakdown·勾稽）
+  const onHandUsed = Math.min(onHand, requestedQty);
+  const wipUsed = Math.min(wip, Math.max(0, requestedQty - onHandUsed));
+  const capUsed = Math.min(capBeforeDue, Math.max(0, requestedQty - onHandUsed - wipUsed));
+  const committableQty = onHandUsed + wipUsed + capUsed;
+  const shortfallQty = Math.max(0, requestedQty - committableQty);
+
+  // 满足全量最早日：现货+在制够即 asOf；否则按日产能累加到齐量日（可超交期）；无可排产能 → null
+  const neededFromProduction = Math.max(0, requestedQty - onHand - wip);
+  let promiseDate: string | null;
+  if (neededFromProduction <= 0) {
+    promiseDate = asOf;
+  } else if (dailyCapacity > 0) {
+    const daysNeeded = Math.ceil(neededFromProduction / dailyCapacity);
+    promiseDate = isoDate(asOfMs + daysNeeded * DAY_MS_ATP);
+  } else {
+    promiseDate = null; // 无可产产线 → 全量承诺日不可期
+  }
+
+  // 状态：全量按期(CONFIRMED) / 部分(PARTIAL) / 交期前几无(UNMET)
+  const atpStatus: OrderPromiseResult["atpStatus"] =
+    shortfallQty <= 0 ? "CONFIRMED" : committableQty > 0 ? "PARTIAL" : "UNMET";
+  // 卡口：有缺口才透出——有可产产线→产能不足；无可产产线→无从排产（齐套/产线缺）
+  const bottleneck: OrderPromiseResult["bottleneck"] =
+    shortfallQty <= 0 ? null : dailyCapacity > 0 ? "产能" : "齐套";
+
+  const breakdown: OrderPromiseResult["breakdown"] = [
+    { source: "现货", qty: round(onHandUsed, 0) },
+    { source: "在制", qty: round(wipUsed, 0) },
+    { source: "排产", qty: round(capUsed, 0) },
+  ];
+
+  return {
+    requestedQty,
+    committableQty: round(committableQty, 0),
+    promiseDate,
+    atpStatus,
+    shortfallQty: round(shortfallQty, 0),
+    bottleneck,
+    breakdown,
+    onHand: round(onHand, 0),
+    wip: round(wip, 0),
+    dailyCapacity: round(dailyCapacity, 0),
+    dueDay,
+  };
+}
+
+/**
+ * WO-ATP-PROMISE · 订单承诺台账种子（对每张 OPEN 订单产一条基线 OrderPromise·与 atp_check 同口径）。
+ * 纯派生：无 rng（不插既有 rng 流中间→字节流不变 R6）、无时钟（asOf 取固定 T0）。
+ * promiseId 由订单号确定性派生（AP-<so>）。
+ */
+export function deriveOrderPromises(
+  orders: Record<string, unknown>[],
+  finishedGoodsInv: Record<string, unknown>[],
+  workOrders: Record<string, unknown>[],
+  lines: Record<string, unknown>[],
+  asOf: string,
+): Record<string, unknown>[] {
+  const supply: AtpSupplyInputs = {
+    finishedGoodsInv: finishedGoodsInv.map((f) => ({ model: f.model, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved })),
+    workOrders: workOrders.map((w) => ({ modelId: w.modelId, qtyActual: w.qtyActual, status: w.status })),
+    lines: lines.map((l) => ({ baseId: l.baseId, max_capacity_day: l.max_capacity_day })),
+  };
+  const out: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    if (String(o.status ?? "") !== "OPEN") continue; // 仅 OPEN 订单需承诺
+    const r = computeOrderPromise({ model: o.model, qty: o.qty, due: o.due, bases: o.bases }, supply, asOf);
+    out.push({
+      promiseId: `AP-${String(o.so)}`,
+      orderRef: String(o.so),
+      model: String(o.model ?? ""),
+      requestedQty: r.requestedQty,
+      committableQty: r.committableQty,
+      promiseDate: r.promiseDate,
+      atpStatus: r.atpStatus,
+      shortfallQty: r.shortfallQty,
+      bottleneck: r.bottleneck,
+      asOf,
+    });
+  }
+  return out;
 }
 
 /**
@@ -3083,7 +3260,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }
   const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0));
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns };
+  // WO-ATP-PROMISE · 订单承诺台账（对每 OPEN 订单净读三源算 ATP 基线·与 atp_check 同口径·无 rng/时钟·R6）。
+  // 放在 FG 派生后：需现货(FG)/在制(workOrders)/产能(lines) 三源已就绪；纯派生不消耗 rng（不插既有流中间）。
+  const orderPromises = deriveOrderPromises(orders, finishedGoodsInv, workOrders, lines, isoDate(t0));
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises };
 }
 
 // ---------------------------------------------------------------------------
