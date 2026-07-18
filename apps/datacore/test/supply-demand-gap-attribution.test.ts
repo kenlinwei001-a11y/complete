@@ -54,6 +54,26 @@ describe("WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因", 
     expect(g.reconciled).toBe(true);
   });
 
+  it("WO-Q7-RECONCILED-ROBUST C1：需求虚高 7 叶（p50×5+5000）→ reconciled=true·端内Σ叶==端贡献（治舍入伪影·red-bite）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // q7 dist 口径：所有 DemandSegment.p50 ×5 +5000 → 需求端 ~7 叶，逐叶 round(,4) 累积 >1e-4 会误报 reconciled=false。
+    const segs = await t.repos.objects.listByType(ADMIN.tenantId, "DemandSegment");
+    for (const seg of segs) {
+      await t.repos.objects.put({ ...seg, props: { ...seg.props, p50: Number(seg.props.p50) * 5 + 5000 } });
+    }
+    const g = await run(t);
+    // 末叶余额分摊 → 端内 Σ叶 == 端贡献（浮点精确·非 ≤1e-4 容差侥幸）。
+    for (const c of g.reconChecks) {
+      if (c.label.includes("端内")) expect(Math.abs(c.sumChildren - c.parentGap)).toBe(0);
+      expect(c.ok).toBe(true);
+    }
+    expect(g.reconciled).toBe(true); // red-bite：逐叶独立 round（无末叶分摊）→ 7 叶累积 >1e-4 → false
+    expect(g.summary).not.toContain("勾稽未通过");
+    // 顶层 C2 仍精确勾稽（构造 diff=0）。
+    expect(Math.abs(g.demandSide!.contribution + g.supplySide!.contribution + g.residual - g.totalGap)).toBeLessThanOrEqual(1e-4);
+  });
+
   it("C3 颗粒铁律①（需求）：改一个 DemandSegment.p50 → 需求端占比变（前后 diff）", async () => {
     const t = await makeApp();
     await seedBattery(t);
