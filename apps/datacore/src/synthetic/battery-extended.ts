@@ -95,6 +95,10 @@ export function extendedObjectTypes(): TypeDef[] {
     def("CausalFactor", "因果因素", "decision", [
       p("factorId", "string", true), p("label", "string"), p("drillType", "string"), p("drillId", "string"),
       p("drillField", "string"), p("kind", "enum"), p("isRoot", "boolean"), p("provenanceSynthetic", "boolean"),
+      // WO-METRIC-AWARE-SEAM：该因果因素是哪些 Metric 的**归因起点（结构入口/gap 节点）**——gap_attribution 按
+      // metric.key 命中 boundMetricKeys → 从此节点起 BFS 沿 caused_by 遍历到域根（isRoot 叶）。空/缺 = 无绑定
+      // （引擎回落默认结构入口 cf-cathode-shortage·供应类 metric 现行行为不破）。种绑定=本 WO（数据×引擎一套机制）。
+      p("boundMetricKeys", "json"),
     ]),
     // WO-CEO-3 触发规则（信号阈值→行动·一等可编辑·阈值可被 RuleEntry.params 覆盖·decision_play 引擎评估）：
     def("TriggerRule", "触发规则", "decision", [
@@ -190,28 +194,28 @@ const SUPPLY_CAUSAL_FACTORS = [
 ];
 
 const MARKET_SHARE_CAUSAL_FACTORS = [
-  { factorId: "cf-share-gap", label: "份额缺口", drillType: "Metric", drillId: "market_share", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-share-gap", label: "份额缺口", drillType: "Metric", drillId: "market_share", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false, boundMetricKeys: ["market_share"] },
   { factorId: "cf-competitor-price", label: "竞品降价(root)", drillType: "CompetitorPrice", drillId: "cp-catl-4680-NCM", drillField: "pricePerKwh", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-bid-loss", label: "丢标率(root)", drillType: "BidRecord", drillId: "bid-pass-001", drillField: "win", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-delivery-reputation", label: "交付口碑(root)", drillType: "BidRecord", drillId: "bid-com-001", drillField: "lossReason", kind: "派生", isRoot: true, provenanceSynthetic: false },
 ];
 
 const REVENUE_CAUSAL_FACTORS = [
-  { factorId: "cf-rev-gap", label: "营收缺口", drillType: "Metric", drillId: "revenue", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-rev-gap", label: "营收缺口", drillType: "Metric", drillId: "revenue", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false, boundMetricKeys: ["revenue"] },
   { factorId: "cf-pipeline-shrink", label: "漏斗萎缩(root)", drillType: "PipelineOpportunity", drillId: "opp-passenger-001", drillField: "amount", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-price-erosion", label: "价格实现率跌(root)", drillType: "PriceRealization", drillId: "pr-4680-NCM", drillField: "realizedPrice", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-churn", label: "大单流失(root)", drillType: "WinLossRecord", drillId: "wl-opp-pass-001", drillField: "reason", kind: "派生", isRoot: true, provenanceSynthetic: false },
 ];
 
 const CASH_CAUSAL_FACTORS = [
-  { factorId: "cf-cash-gap", label: "现金缺口", drillType: "Metric", drillId: "cash", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-cash-gap", label: "现金缺口", drillType: "Metric", drillId: "cash", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false, boundMetricKeys: ["cash"] },
   { factorId: "cf-ar-aging", label: "账龄恶化(root)", drillType: "ARAging", drillId: "ar-cust0-90p", drillField: "bucket", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-dso-stretch", label: "DSO拉长(root)", drillType: "DSO", drillId: "dso-energy_storage", drillField: "days", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-customer-concentration", label: "大客户逾期集中(root)", drillType: "OverdueRecord", drillId: "ovd-G-001", drillField: "overdueDays", kind: "实测", isRoot: true, provenanceSynthetic: false },
 ];
 
 const DEMAND_ATTAIN_CAUSAL_FACTORS = [
-  { factorId: "cf-demand-gap", label: "需求达成缺口", drillType: "Metric", drillId: "demand_attain", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false },
+  { factorId: "cf-demand-gap", label: "需求达成缺口", drillType: "Metric", drillId: "demand_attain", drillField: "actual", kind: "派生", isRoot: false, provenanceSynthetic: false, boundMetricKeys: ["demand_attain"] },
   { factorId: "cf-forecast-bias", label: "预测偏差(root)", drillType: "PipelineOpportunity", drillId: "opp-energy_storage-001", drillField: "winProb", kind: "派生", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-capacity-short", label: "产能缺口(root)", drillType: "Equipment", drillId: "EQ-changzhou-001", drillField: "oee_current", kind: "实测", isRoot: true, provenanceSynthetic: false },
   { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false },
@@ -264,7 +268,9 @@ const DEMAND_ATTAIN_CAUSAL_EDGES = [
   { from: "cf-demand-gap", to: "cf-forecast-bias" },
   { from: "cf-demand-gap", to: "cf-capacity-short" },
   { from: "cf-demand-gap", to: "cf-material-short" },
-  { from: "cf-material-short", to: "cf-cathode-shortage" }, // 复用供应链域
+  // WO-METRIC-AWARE-SEAM：删跨域桥边 cf-material-short→cf-cathode-shortage（原"复用供应链域"）——它让 demand 域
+  // BFS 泄漏进供应/cathode 链、归到 cf-decision-gap/cf-cert-cycle（违 metric-aware 域隔离·C5 咬）。cf-material-short
+  // 本身 isRoot=true 即 demand 域合法终点根，无需再桥到 cathode（供应类 metric 仍从 cf-cathode-shortage 起·不受影响）。
 ];
 
 export const CAUSAL_EDGES: { from: string; to: string }[] = [
@@ -494,7 +500,11 @@ export function generateExtended(
   // 其余供应商按 minOrderQty×频次派生一个约定量。全常数/派生·不消耗 rng·R6 字节一致。
   const suppliers = SUPPLIERS.map((s) => {
     const contracted = CATHODE_CONTRACT[s.supplierId] ?? Math.round(s.minOrderQty * 4);
-    return { ...s, contractedSupplyTon: contracted, actualSupplyTon: Math.round(contracted * s.onTimeRate) };
+    return {
+      ...s, contractedSupplyTon: contracted, actualSupplyTon: Math.round(contracted * s.onTimeRate),
+      // WO-METRIC-AWARE-SEAM：填 CEO-DATA-2 声明的真源履约字段（合成占位·确定性·真源 ERP/SRM 接入后覆盖）→ 字段对齐可上传。
+      deliveryDate: "2026-06-30", poNumber: `PO-${s.supplierId}`,
+    };
   });
 
   // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象（独立 rng2 流，不位移下游 rngTopo / 既有 extended 输出）。
@@ -549,15 +559,26 @@ export function generateExtended(
       })[0]
     : undefined;
   const capacityDrillId = capacityEquip?.equipId ?? "EQ-changzhou-001";
-  const causalFactors = CAUSAL_FACTORS.map((cf) =>
-    cf.factorId === "cf-capacity-short" ? { ...cf, drillId: capacityDrillId } : cf,
-  );
+  // WO-METRIC-AWARE-SEAM：默认 boundMetricKeys:[]（字段对齐 present·无绑定→引擎回落 cf-cathode-shortage）；
+  // 上面 gap 节点自带的 boundMetricKeys 经 ...cf 覆盖默认（域根绑定=数据×引擎一套机制·握手完成）。
+  const causalFactors = CAUSAL_FACTORS.map((cf) => ({
+    boundMetricKeys: [] as string[],
+    ...cf,
+    ...(cf.factorId === "cf-capacity-short" ? { drillId: capacityDrillId } : {}),
+  }));
 
   return {
     materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
     capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
-    longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
-    commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
+    // WO-METRIC-AWARE-SEAM：填 CEO-DATA-2 声明的真合同/行情字段（合成占位·确定性·真源接入后覆盖）→ 字段对齐可上传。
+    longTermAgreements: LONG_TERM_AGREEMENTS.map((l) => ({
+      ...l,
+      priceFormula: l.priceLinked ? "碳酸锂指数联动" : "固定价",
+      effectiveDate: "2026-01-01", expiryDate: "2026-12-31", deliveryDate: "2026-06-30", poNumber: `PO-${l.ltaId}`,
+    })),
+    backupSupplierPools: BACKUP_SUPPLIER_POOLS,
+    commodityPriceTrends: COMMODITY_PRICE_TRENDS.map((c) => ({ ...c, source: "上海有色网", spec: "电池级", currency: "CNY" })),
+    decisionGaps: DECISION_GAPS, causalFactors,
     triggerRules: TRIGGER_RULES,
     // WO-CEO-DATA-2 · 每指标多假设因果域 drill 真对象
     competitorShares, bidRecords, competitorPrices, pipelineOpportunities, winLossRecords,

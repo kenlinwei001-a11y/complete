@@ -258,12 +258,16 @@ describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
       ["cf-demand-gap", "cf-forecast-bias"],
       ["cf-demand-gap", "cf-capacity-short"],
       ["cf-demand-gap", "cf-material-short"],
-      ["cf-material-short", "cf-cathode-shortage"],
+      // WO-METRIC-AWARE-SEAM：跨域桥边 cf-material-short→cf-cathode-shortage **已删**（它让 demand 域归因泄漏进
+      // 供应/cathode 链·违 metric-aware 域隔离）；cf-material-short 本身 isRoot 即 demand 域合法终点。供应链内部
+      // 边（cf-cathode-shortage→cf-upstream-cut·供应类 metric 用）不受影响、保留。
       ["cf-cathode-shortage", "cf-upstream-cut"],
     ];
     for (const [from, to] of expectedEdges) {
       expect(causedBy.some((e) => e.from === from && e.to === to)).toBe(true);
     }
+    // 域隔离显式咬：demand 域根不再桥到 cathode（防回潮）。
+    expect(causedBy.some((e) => e.from === "cf-material-short" && e.to === "cf-cathode-shortage")).toBe(false);
   });
 
   it("D5 R6 确定性：同 seed 两次 seedBattery 后因果对象与边数量一致", async () => {

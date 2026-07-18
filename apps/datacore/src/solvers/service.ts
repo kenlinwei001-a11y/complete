@@ -846,12 +846,22 @@ export class SolverService {
     // 物料短缺叶的 gap 单位贡献（因果层要解释的量）。
     const matNode = l2nodes.find((n) => (n.id as string) === "material:cathode");
     const matContribution = matNode ? num(matNode.contribution) : round(G * structuralExplained * 0.15, 4);
-    // BFS 从 cf-cathode-shortage 沿 caused_by，收集经过的边 + 到达的因果因素节点。
+    // WO-METRIC-AWARE-SEAM（命脉·关掉数据×引擎接缝）：因果 BFS 起点 = 该 metric 的 **bound 起点节点**——
+    // CausalFactor.boundMetricKeys 命中 m.key 者（数据侧在 cf-{metric}-gap 结构入口节点种绑定）。命中则从该 gap 节点
+    // 起 BFS，**照常展开出边**沿 caused_by 遍历到该 metric 域的 isRoot 叶（cf-competitor-price/cf-ar-aging/…）；
+    // 无绑定（供应类 metric）→ 回落默认结构入口 cf-cathode-shortage（现行行为不破·向后兼容）。
+    // 关键：bound 起点节点**不是终点**（照常展开），终点仍是 isRoot||无出边（见下 atomicLeaves）——故不同 metric
+    // 归到不同域根、非全回落 cathode（改绑定/改边→归因根变·SEAM 组合测咬）。
+    const boundRoots = cfObjs
+      .filter((cf) => Array.isArray(cf.boundMetricKeys) && (cf.boundMetricKeys as string[]).includes(str(m.key)))
+      .map((cf) => str(cf.factorId))
+      .sort();
+    const startRoots = boundRoots.length ? boundRoots : ["cf-cathode-shortage"];
+    // BFS 从 startRoots 沿 caused_by，收集经过的边 + 到达的因果因素节点。
     const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
-    const visited = new Set<string>();
+    const visited = new Set<string>(startRoots);
     const reachedFactors: { id: string; pathIds: string[] }[] = [];
-    const queue: { id: string; path: string[] }[] = [{ id: "cf-cathode-shortage", path: ["cf-cathode-shortage"] }];
-    visited.add("cf-cathode-shortage");
+    const queue: { id: string; path: string[] }[] = startRoots.map((id) => ({ id, path: [id] }));
     while (queue.length) {
       const cur = queue.shift()!;
       const nexts = adj.get(cur.id) ?? [];
