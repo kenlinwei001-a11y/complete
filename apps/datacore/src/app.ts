@@ -2003,6 +2003,46 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     return { signalKey: key, unit: sig.unit ?? "", trend, points };
   });
+  // WO-EXT-SIGNAL-DETAIL CI-b（外部信号 → 溯源闭环·R13）：反查引用本信号的因果因子（CausalFactor.drillId==signalKey）
+  // + caused_by 因果链（信息全貌）+ 顶层 Metric 归因（boundMetricKeys 前向兼容·metric-aware-gap 未合前诚实 pending·不编）。纯只读·R6 确定性。
+  app.get("/a/v1/external-signals/:key/references", async (req) => {
+    const { key } = req.params as { key: string };
+    const c = ctx(req);
+    const sig = ((await ontology.queryObjects(c, "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[]).find((r) => String(r.props.signalKey) === key)?.props;
+    if (!sig) throw notFound(`external signal ${key}`);
+    const cfRows = ((await ontology.queryObjects(c, "CausalFactor", {}, 500)).data as { props: Record<string, unknown> }[]).map((r) => r.props);
+    // 反查：本信号被哪些因果因子引用为下钻源（drillId==signalKey）。R6 确定性排序。
+    const refFactors = cfRows.filter((p) => String(p.drillId) === key).sort((a, b) => String(a.factorId).localeCompare(String(b.factorId)));
+    const refIds = new Set(refFactors.map((p) => String(p.factorId)));
+    // caused_by 因果边（果→因）：与引用因子相接的边 = 本信号在因果链中的上下游全貌。
+    const causalEdges = (await repos.links.list(c.tenantId))
+      .filter((l) => l.type === "caused_by")
+      .map((l) => ({ from: String(l.fromId).replace(/^obj_causalfactor_/, ""), to: String(l.toId).replace(/^obj_causalfactor_/, "") }))
+      .filter((e) => refIds.has(e.from) || refIds.has(e.to))
+      .sort((a, b) => (a.from + "→" + a.to).localeCompare(b.from + "→" + b.to));
+    const factors = refFactors.map((p) => ({
+      factorId: String(p.factorId),
+      label: String(p.label),
+      drillField: String(p.drillField),
+      drillValue: Number(sig[String(p.drillField)] ?? 0), // 本信号在该因子下钻字段的当前真值（改信号值→此变·C2）
+      isRoot: Boolean(p.isRoot),
+      provenanceSynthetic: Boolean(p.provenanceSynthetic), // 无真外部源诚实标灰（G-DM-1）
+      boundMetricKeys: Array.isArray(p.boundMetricKeys) ? (p.boundMetricKeys as string[]) : [], // 前向兼容 metric-aware-gap·未种=空
+    }));
+    const metricsAffected = [...new Set(factors.flatMap((f) => f.boundMetricKeys))].sort();
+    return {
+      signalKey: key,
+      name: String(sig.name ?? key),
+      category: String(sig.category ?? ""),
+      factors,
+      causalEdges,
+      metricsAffected,
+      hasReferences: factors.length > 0,
+      // 诚实：Metric 归因需 CausalFactor.boundMetricKeys（metric-aware-gap 合 + data agent 种后填），未种则 pending 不编。
+      metricLinkage: metricsAffected.length > 0 ? "bound" : "pending",
+      ...(factors.length === 0 ? { note: "本信号暂无因果因子引用（未进任何根因树·诚实空）" } : {}),
+    };
+  });
   // 外部域（EXT_SIG P2）：信号冲击 → 规划指标敏感性（确定性弹性：Δ指标pp = Δ信号% × elasticity，按 impact 聚合）。
   // body: { shocks: [{ signalKey, deltaPct }] }。无副作用（纯计算）；R6 确定性。
   app.post("/a/v1/external-signals/sensitivity", async (req) => {
