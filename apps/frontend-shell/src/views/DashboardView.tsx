@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef, AffectedOrdersOutputVM } from "@/api/types";
 import { SEG_REGISTRY } from "@platform/contracts";
@@ -385,7 +385,7 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
       ) : def.type === "metric-strip" ? (
         <MetricStrip metrics={data as MetricRow[] | undefined} />
       ) : def.type === "counterfactual" ? (
-        <CounterfactualWidget data={data as CounterfactualData | undefined} />
+        <CounterfactualWidget def={def} />
       ) : def.type === "version-toggle" ? (
         <VersionToggleWidget data={data as { items?: { props: Record<string, unknown> }[] } | undefined} />
       ) : def.type === "order-ledger" ? (
@@ -421,15 +421,55 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
   );
 }
 
-/** cockpit P5 反事实双轨推演：counterfactual_timeline → do-nothing baseline ‖ 处置后 双曲线 + 差值（前端零写死）。 */
+/**
+ * cockpit P5 反事实双轨推演：counterfactual_timeline → do-nothing baseline ‖ 处置后 双曲线 + 差值（前端零写死）。
+ * WO-C 基地选择器：基地列表真取自 risk_timeline cards（与推演看板同源·非写死），选基地 → 以 { base } 重调
+ * counterfactual_timeline → 出该基地双轨（KILL-MOCK：双轨全从真 solver 渲，切基地则真变）。默认不传 base →
+ * 后端取峰值最严重基地（不破现状·C3）；selected 以返回的 data.base 反映之。
+ */
 type CounterfactualData = { baselineSeries: number[]; mitigatedSeries: number[]; threshold: number; base: string; factor: string; mitigation: string; delta: { peakCut: number; crossDelayDays: number; ordersSaved: number } };
-function CounterfactualWidget({ data }: { data: CounterfactualData | undefined }) {
+function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
+  const horizon = (def.query.kind === "solver" ? (def.query.args as { horizon?: number }).horizon : undefined) ?? 30;
+  // "" = 让后端取峰值最严重基地（默认态）；选定则传 base 覆盖。
+  const [base, setBase] = useState<string>("");
+  // 基地列表真取自 risk_timeline cards（与 RiskBoardView 同源·R14 零写死）。
+  const { data: baseList } = useQuery({
+    queryKey: ["a", "cf-baselist", horizon],
+    queryFn: async () => {
+      const res = await invokeSolver("risk_timeline", { horizon });
+      return [...new Set(((res.data as { cards?: { base: string }[] })?.cards ?? []).map((c) => c.base).filter(Boolean))];
+    },
+    retry: false,
+  });
+  // 双轨：base 传后端真求解（切基地 → queryKey 变 → 真重调 → 双轨真变）。keepPreviousData 使切换时选择器不闪。
+  const { data } = useQuery({
+    queryKey: ["a", "counterfactual", horizon, base],
+    queryFn: async () => (await invokeSolver("counterfactual_timeline", { horizon, ...(base ? { base } : {}) })).data as CounterfactualData,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
   if (!data) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
+  const selected = base || data.base; // 默认反映后端所选最严重基地
+  const options = (baseList ?? []).includes(selected) ? (baseList ?? []) : [selected, ...(baseList ?? [])];
   const days = data.baselineSeries.map((_, i) => `D+${i}`);
   return (
     <div data-testid="cf-widget">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12, color: "var(--muted)" }}>
+        推演基地：
+        <select
+          data-testid="cf-basesel"
+          value={selected}
+          onChange={(e) => setBase(e.target.value)}
+          style={{ background: "var(--panel)", border: "1px solid var(--line2)", borderRadius: 8, color: "var(--txt)", padding: "4px 10px", fontSize: 12, cursor: "pointer", minWidth: 120 }}
+        >
+          {options.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }}>切换基地看各自双轨</span>
+      </div>
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
-        {data.base}·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
+        <b data-testid="cf-base">{data.base}</b>·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
       </div>
       <EChart
         height={180}

@@ -68,6 +68,44 @@ import {
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
 
+/**
+ * 反事实双轨 mock（基地感知·KILL-MOCK）：从 RISK_TIMELINE 各基地的 peak/crossDay 派生 do-nothing baseline ‖
+ * 处置后 mitigated 双轨——每基地峰值不同 → 曲线/峰值削减不同，保证「切基地 → 双轨真变」（前端 WO-C C2）。
+ * base 缺省 → 取峰值最严重基地（worst-by-peak，与真后端 counterfactualTimeline 同口径 → 默认不破现状·C3）。
+ * 确定性（无随机·R6）：同 base 字节一致。
+ */
+function mockCounterfactual(reqBase?: string): Record<string, unknown> {
+  const H = 30;
+  const threshold = RISK_TIMELINE.threshold;
+  const worst = [...RISK_TIMELINE.cards].sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0]!;
+  const card = (reqBase ? RISK_TIMELINE.cards.find((c) => c.base === reqBase) : undefined) ?? worst;
+  const peak = card.peak;
+  const responseDay = card.crossDay ?? 20;
+  const reliefMax = Math.round(peak * 0.18);
+  // baseline：单调↑ 至该基地峰值；mitigated：自越线响应日起按 reliefMax 衰减（尾段趋稳）。
+  const baseline = Array.from({ length: H }, (_, d) => Math.round(45 + (peak - 45) * (d / (H - 1))));
+  const mitigated = baseline.map((v, d) => Math.max(35, Math.round(v - (d < responseDay ? 0 : reliefMax * Math.min(1, (d - responseDay) / 6)))));
+  const over = (s: number[]) => s.filter((v) => v >= threshold).length;
+  const bCross = baseline.findIndex((v) => v >= threshold);
+  const mCross = mitigated.findIndex((v) => v >= threshold);
+  const crossDelayDays = bCross < 0 ? 0 : mCross < 0 ? H - bCross : mCross - bCross;
+  return {
+    baselineSeries: baseline,
+    mitigatedSeries: mitigated,
+    threshold,
+    base: card.base,
+    factor: card.factor,
+    mitigation: `${card.factor}·处置`,
+    delta: {
+      peakCut: Math.max(...baseline) - Math.max(...mitigated),
+      crossDelayDays,
+      ordersSaved: Math.max(0, over(baseline) - over(mitigated)),
+    },
+    events: [],
+    summary: `如不解决「${card.base}·${card.factor}」：峰值削减 ${Math.max(...baseline) - Math.max(...mitigated)}`,
+  };
+}
+
 function auth(request: Request): MockAccount | null {
   return accountFromAuth(request.headers.get("Authorization"));
 }
@@ -1007,9 +1045,9 @@ export const handlers = [
       return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
     }
     if (key === "counterfactual_timeline") {
-      const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
-      const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
-      return HttpResponse.json({ data: { baselineSeries: baseline, mitigatedSeries: mitigated, threshold: 85, base: "常州", factor: "瓶颈工序", mitigation: "瓶颈工序扩容", delta: { peakCut: Math.max(...baseline) - Math.max(...mitigated), crossDelayDays: 3, ordersSaved: 4 }, events: [], summary: "反事实双轨" }, snapshotVersion: "ov-12" });
+      // base 参数真裁剪（与真后端 counterfactualTimeline 同口径）：缺省 → 峰值最严重基地；指定 → 该基地双轨。
+      const base = typeof invArgs.base === "string" && invArgs.base !== "" ? invArgs.base : undefined;
+      return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
     if (key === "mitigation_select")
       // cockpit P3 对症方案优选（与 params.risk.mitigations 同源形状）
@@ -1932,16 +1970,8 @@ export const handlers = [
       return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
     }
     if (key === "counterfactual_timeline") {
-      const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
-      const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
-      return HttpResponse.json({
-        data: {
-          baselineSeries: baseline, mitigatedSeries: mitigated, threshold: 85, base: "常州", factor: "瓶颈工序", mitigation: "瓶颈工序扩容",
-          delta: { peakCut: Math.max(...baseline) - Math.max(...mitigated), crossDelayDays: 3, ordersSaved: 4 },
-          events: [], summary: "如不解决「常州·瓶颈工序」：峰值削减、越线日推迟 3 天",
-        },
-        snapshotVersion: "ov-12",
-      });
+      const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
+      return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
     if (key === "mrp_netting")
       return HttpResponse.json({
