@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ObjectRef, SessionContext } from "@platform/contracts";
+import type { ObjectRef, SessionContext, PageContext, PageEntity } from "@platform/contracts";
 
 export interface ConversationEntry {
   localId: string;
@@ -31,6 +31,49 @@ interface SessionState {
   updateConversation: (localId: string, patch: Partial<ConversationEntry>) => void;
   buildContext: () => SessionContext;
   reset: () => void;
+}
+
+/** filters 里取字符串值（列筛选可能是 string 或 string[]，只有单值 string 才当聚焦标量用·诚实不猜多值）。 */
+function scalarFilter(filters: Record<string, string | string[]>, key: string): string | undefined {
+  const v = filters[key];
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+/**
+ * WO-CEO-6-FE（闭 G-3）：从**现有 SessionContext 状态**诚实派生 PageContext（合 `PageContextSchema`）。
+ * 不新建视图管道、不伪造：focus 只填能派生的（filters 单值 + 选中对象类型映射）；entities/selection 来自
+ * selectedObjects；drillPath 当前 store 无面包屑态 → 不产（绝不伪造·schema default []）。
+ * 注入后 orchestrator `hasPageContext` 门打开 → CEO 深问意图进候选并按 focus/selection 派生 args。
+ */
+function derivePageContext(s: {
+  view: string;
+  selectedObjects: ObjectRef[];
+  filters: Record<string, string | string[]>;
+}): PageContext {
+  const entities: PageEntity[] = s.selectedObjects.map((o) => ({
+    type: o.objectType,
+    id: o.objectId,
+    label: o.label ?? o.objectId,
+    drillRef: o.objectId, // 反向驱动引用 = 源对象 id（前端可定位·非写死）
+  }));
+  const selection = s.selectedObjects.map((o) => o.objectId);
+
+  // focus 诚实派生：优先 filters 单值，其次由选中对象类型映射（Base→base / Metric→metric / 根因类→factorId）。
+  const byType = (t: string) => s.selectedObjects.find((o) => o.objectType === t)?.objectId;
+  const focus: NonNullable<PageContext["focus"]> = {};
+  const metric = scalarFilter(s.filters, "metric") ?? byType("Metric");
+  const base = scalarFilter(s.filters, "base") ?? byType("Base");
+  const line = scalarFilter(s.filters, "line") ?? byType("Line");
+  const factorId =
+    scalarFilter(s.filters, "factorId") ?? byType("RootCause") ?? byType("GapAttribution") ?? byType("Factor");
+  if (metric) focus.metric = metric;
+  if (base) focus.base = base;
+  if (line) focus.line = line;
+  if (factorId) focus.factorId = factorId;
+
+  const pageContext: PageContext = { view: s.view, entities, selection, drillPath: [], actions: [] };
+  if (Object.keys(focus).length > 0) pageContext.focus = focus;
+  return pageContext;
 }
 
 const initial = {
@@ -77,6 +120,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       filters: s.filters,
       timeWindow: s.timeWindow,
       conversationId: s.conversationId,
+      // WO-CEO-6-FE：随查询搭车注入 PageContext（闭 G-3）——orchestrator 据此开 hasPageContext 门。
+      pageContext: derivePageContext(s),
     };
   },
   reset: () => set({ ...initial }),
