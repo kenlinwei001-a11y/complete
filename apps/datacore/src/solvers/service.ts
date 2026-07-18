@@ -1015,6 +1015,19 @@ export class SolverService {
       return { r, cf, sev, raw, weight };
     });
     const totalWeight = weighted.reduce((a, s) => a + s.weight, 0) || 1;
+    // WO-GEO-REAL-SIGNAL：外部信号域（cf-geopolitical/cf-ore-price·kind「外部信号」）的 provenanceSynthetic 由**下钻信号真源态**
+    // 派生（去硬编码：合成源[mock_external·SYNTHETIC]标灰 true；真源覆盖[external_feed/rest_api/record-materialize·真 datasetId]翻 false）。
+    // 判定复用 `buildSynthProvenancePredicate`（单一出处·避与 record-materialize 口径漂移·CLAUDE.md SEAM）。其余 kind 仍用静态字段。
+    const isSynthProv = await this.buildSynthProvenancePredicate(ctx.tenantId);
+    const effectiveSynth = async (cf: Record<string, unknown>): Promise<boolean> => {
+      if (str(cf.kind) !== "外部信号") return Boolean(cf.provenanceSynthetic);
+      const dt = str(cf.drillType);
+      const pk = ({ ExternalSignal: "signalKey", CommodityPriceTrend: "trendId" } as Record<string, string>)[dt] ?? "id";
+      const obj = (await this.repos.objects.listByType(ctx.tenantId, dt)).find((o) => str(o.props[pk]) === str(cf.drillId));
+      return obj ? isSynthProv(obj) : Boolean(cf.provenanceSynthetic); // 无对象 → 回退静态（诚实标灰·不冒充真）
+    };
+    const synthByRoot = new Map<string, boolean>();
+    for (const s of weighted) synthByRoot.set(str(s.r.id), await effectiveSynth(s.cf));
     const causalNodes: Record<string, unknown>[] = [];
     const hypotheses: Record<string, unknown>[] = [];
     for (const s of weighted.sort((a, b) => b.weight - a.weight || a.r.id.localeCompare(b.r.id))) {
@@ -1028,7 +1041,7 @@ export class SolverService {
           kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策",
           drillType: str(s.cf.drillType), drillId: str(s.cf.drillId), drillField: str(s.cf.drillField), drillValue: s.raw,
           severityKind: sk,
-          ...(s.cf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
+          ...(synthByRoot.get(str(s.r.id)) ? { provenanceSynthetic: true } : {}),
         },
       };
       causalNodes.push(node);
