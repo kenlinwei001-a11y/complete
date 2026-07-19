@@ -33,6 +33,7 @@ export * from "./spine.js";
 export * from "./bootstrap.js";
 
 export * from "./base-registry.js";
+export * from "./interbase-transfer.js"; // WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯数据·R13·R14·R6）
 export * from "./sim.js";
 export * from "./opt-template.js";
 export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）

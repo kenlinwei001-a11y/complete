@@ -652,12 +652,12 @@ export class SyntheticService {
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
     await putAll("Warehouse", g.warehouses, "warehouseId"); // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
-    // WO-INVENTORY-3TIER 库存三层闭环：物化完工源 WorkOrder（此前 Phase3 MES 层从不落库·完工无对象承接）
-    // + 完工入库派生的成品库存 FinishedGoodsInventory + 库存流水 InventoryTxn（SEAM 端到端前提）。
-    await putAll("WorkOrder", g.workOrders, "woId");
+    // WO-INVENTORY-3TIER 库存三层闭环：完工入库派生的成品库存 FinishedGoodsInventory + 库存流水 InventoryTxn
+    // （SEAM 端到端前提；派生源 WorkOrder 由下方 ①b 决策相关 MES 块统一物化，此处不再重复落库）。
     await putAll("FinishedGoodsInventory", g.finishedGoodsInv, "fgId");
     await putAll("InventoryTxn", g.inventoryTxns, "txnId");
     await putAll("OrderPromise", g.orderPromises, "promiseId"); // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单 ATP 基线）
+    await putAll("InterBaseTransfer", g.interBaseTransfers, "transferId"); // WO-INTERBASE-TRANSFER：跨基地调拨对象化（R13）
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
     // cockpit P1 绿地
     await putAll("DemandSegment", g.demandSegments, "segId");
@@ -816,6 +816,15 @@ export class SyntheticService {
     for (const m of ext.materials) {
       const supplierId = (m as { supplierId?: string }).supplierId;
       if (supplierId) await putLink(`lnk_msb_${(m as { matId: string }).matId}`, "material_supplied_by", oid("Material", (m as { matId: string }).matId), oid("Supplier", supplierId));
+    }
+
+    // WO-INTERBASE-TRANSFER：调拨三条链路（transfer_from_base/transfer_to_base→Base·transfer_of_model→Model·N:1）。
+    // fromId/toId 是 baseId（下钻 obj_base_<baseId> = BASE_REGISTRY 真基地），model 是 modelId（obj_model_<modelId>）。
+    for (const x of g.interBaseTransfers) {
+      const tid = x.transferId as string;
+      await putLink(`lnk_xff_${tid}`, "transfer_from_base", oid("InterBaseTransfer", tid), oid("Base", x.fromBase));
+      await putLink(`lnk_xft_${tid}`, "transfer_to_base", oid("InterBaseTransfer", tid), oid("Base", x.toBase));
+      await putLink(`lnk_xfm_${tid}`, "transfer_of_model", oid("InterBaseTransfer", tid), oid("Model", x.model));
     }
 
     // factory: Base → Workshop（Workshop.baseId；方向翻转：Base 1:N Workshop）
