@@ -1,4 +1,0 @@
-apps/datacore/test/demo-chain-provenance.test.ts merge=ours
-apps/datacore/test/ontology-core.test.ts merge=ours
-docs/SYSTEM-ONTOLOGY.md merge=union
-packages/contracts/src/index.ts merge=union
