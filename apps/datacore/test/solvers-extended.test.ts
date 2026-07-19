@@ -112,11 +112,12 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 22 求解器（8 复用 + 13 + 1 编排器）", async () => {
+  it("catalog discover 列出全部 36 求解器（业务 22 + 决策驾驶舱 B/C 14 · WO-TIER2 扩面）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(22);
+    expect(items.length).toBe(36); // WO-TIER2-SEMANTIC-DISCOVER：COCKPIT_SOLVER_CATALOG 并入 discover
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
+    expect(items.map((i) => i.key)).toContain("gap_attribution"); // B/C 决策域已进供给面
   });
 });

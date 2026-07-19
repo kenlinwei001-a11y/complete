@@ -13,10 +13,42 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(forecast).toBeDefined();
     expect(forecast!.description.length).toBeGreaterThan(0); // 「没有描述就不允许发布」纪律
     expect(Object.keys(forecast!.argHints).length).toBeGreaterThan(0);
-    expect(items.length).toBe(22); // 8 复用 + 13 新增 + 1 编排器（无关键词=全量列表）；WO-CEO-Q7 入 COCKPIT 目录(注册表 49)非 discover
-    // 带关键词时按上下文预算截断 ≤20
-    const q = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers&query=产能", headers: ADMIN })).json() as { items: unknown[] };
+    // WO-TIER2-SEMANTIC-DISCOVER：discover 供给侧扩面——业务场景目录(SOLVER_CATALOG 22) + 决策驾驶舱
+    // B/C 决策域目录(COCKPIT_SOLVER_CATALOG 14) = 36（无关键词=全量列表）。此前只露 22，B/C 决策域对
+    // agent path-B 语义发现全隐身（GENERIC 18 需 args 绑定另单·仍不进 discover，全集以 solverRegistry 为准）。
+    expect(items.length).toBe(36);
+    // B/C 决策域求解器已进 discover 供给面（此前隐身·根因闭合）
+    const keys = items.map((i) => i.key);
+    for (const bc of ["gap_attribution", "decision_play", "supply_demand_gap_attribution", "plan_rootcause", "metric_rollup", "atp_check", "order_fullchain", "credit_exposure"]) {
+      expect(keys).toContain(bc);
+    }
+    // GENERIC 优化模板仍不进 discover（需 args 绑定·另单）
+    expect(keys).not.toContain("assignment_optimize");
+    // 带关键词时按上下文预算截断 ≤20（R3 上下文预算）
+    const q = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers&query=产能", headers: ADMIN })).json() as { items: { key: string }[] };
     expect(q.items.length).toBeLessThanOrEqual(20);
+    // 基线不回归：短关键词「产能」仍召回产能推演（原 name/description 正向子串路径）
+    expect(q.items.map((i) => i.key)).toContain("capacity_forecast");
+  });
+
+  it("SEAM · 语义 discover 黄金问句集逐个召回对应 B/C 决策域求解器（数据种绑定×发现路由·任一半漏即红）", async () => {
+    const t = await makeApp();
+    // 活 seed 下逐个黄金问句 → discover(solvers, q) → 断言召回对应 B/C 求解器且带非空 description。
+    // 命门：中文长问句非任何字段子串，全串 includes 恒 miss——靠 answersQuestions/tags 语义面召回。
+    const golden: Array<[string, string]> = [
+      ["信用逾期客户", "credit_exposure"],
+      ["毛利为什么下滑", "gap_attribution"],
+      ["供需为什么对不上", "supply_demand_gap_attribution"],
+      ["这单能不能接", "atp_check"],
+    ];
+    for (const [question, expectedKey] of golden) {
+      const res = await t.app.inject({ method: "GET", url: `/a/v1/catalog?kind=solvers&query=${encodeURIComponent(question)}`, headers: ADMIN });
+      expect(res.statusCode).toBe(200);
+      const { items } = res.json() as { items: { key: string; description: string }[] };
+      const hit = items.find((i) => i.key === expectedKey);
+      expect(hit, `问句「${question}」应召回 ${expectedKey}（语义面失灵=B/C 对 agent 隐身）`).toBeDefined();
+      expect(hit!.description.trim().length, `${expectedKey} 必须带非空 description（无描述不允许发布）`).toBeGreaterThan(0);
+    }
   });
 
   it("kind=slices 返回内置切片目录；关键词过滤生效", async () => {

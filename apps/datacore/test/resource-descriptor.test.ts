@@ -43,9 +43,9 @@ describe("WO-RESOURCE-DESCRIPTOR · SEAM 发现门（discover 召回 × descript
     expect(findUndescribed(dirty)).toHaveLength(1);
   });
 
-  it("无关键词 discover 全量基线不回归（求解器 22 · 与 catalog.test 一致）", async () => {
+  it("无关键词 discover 全量基线（求解器 36=业务22+决策14 · WO-TIER2 扩面后与 catalog.test 一致）", async () => {
     const t = await makeApp();
     const all = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN })).json() as { items: unknown[] };
-    expect(all.items.length).toBe(22);
+    expect(all.items.length).toBe(36); // WO-TIER2-SEMANTIC-DISCOVER：22→36（COCKPIT_SOLVER_CATALOG B/C 决策域并入 discover 供给面）
   });
 });

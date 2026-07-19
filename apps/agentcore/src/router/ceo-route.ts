@@ -17,6 +17,29 @@ const RE_ATTAIN = /(差多少|达成|缺口多少|还差|完成率|达标)/;
 // 避免"提前/挤占/排产"被 RE_OPTION 劫持答非所问；命中即绑 sop_reschedule（args 从订单号/focus.order 派生）。
 const RE_SOP = /(提前.*交|能否提前|挤占|抢产|插单|重排|拆产|拆哪些基地|产销.{0,4}(重排|平衡|重排产|调))/;
 const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
+// WO-TIER2-B（跨 A/B「可发现性」特性·确定性意图面）：高频 B/C 决策域深问 → 直绑对应 datacore 求解器
+// （跳 LLM·path-A·R6）。优先级排 RE_SOP 后、RE_OPTION/RE_ROOTCAUSE 前——只加高置信高频意图，把最易
+// 被 gap_attribution 缺省吞的 B/C 深问兜住；其余长尾靠 WO-A 语义 discover（answersQuestions/tags）召回，
+// 不在此堆砌正则。⚠️ 撞车规避：不改 RE_ATTAIN/RE_ROOTCAUSE/RE_OPTION 现有词表与优先级（姊妹 WO 领地）。
+const RE_CREDIT = /(信用|逾期|敞口|应收|授信|欠款|坏账)/; // → credit_exposure（额度/逾期查询）
+const RE_SUPPLY_DEMAND = /(供需|产销)/; // → supply_demand_gap_attribution（供需/产销失衡双向归因）
+const RE_ATP = /(能不能接|能否接|接不接|这单能接|能否交付|交期能否|能接吗|可接吗|接单可行)/; // → atp_check（ATP/CTP 承诺·能不能接/交期·与 order_fullchain 三闸 verdict 区分）
+/** WO-TIER2-B：B/C 直绑求解器的 args 派生（问句/焦点·非写死·仿 sopArgsFrom）。 */
+function bcArgsFrom(q: string, solverKey: string, focus: PageContext["focus"], metricKey?: string, factorId?: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  if (solverKey === "atp_check") {
+    const m = q.match(RE_ORDER_ID);
+    const orderRef = (m ? m[0].toUpperCase().replace(/^SO(\d)/, "SO-$1") : undefined) ?? focus?.order;
+    if (orderRef) args.orderRef = orderRef;
+  } else if (solverKey === "credit_exposure") {
+    const cm = q.match(/([一-龥A-Za-z0-9]{2,8})(客户|公司|集团)/);
+    if (cm) args.custName = cm[2] === "客户" ? cm[1]! : `${cm[1]}${cm[2]}`;
+  } else if (solverKey === "supply_demand_gap_attribution") {
+    if (metricKey) args.metricKey = metricKey;
+  }
+  if (factorId && solverKey === "supply_demand_gap_attribution") args.factorId = factorId;
+  return args;
+}
 /** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
 function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
   const args: Record<string, unknown> = {};
@@ -34,7 +57,8 @@ function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unk
 
 /** 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。 */
 export function isCeoQuestion(q: string): boolean {
-  return [RE_SOP, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+  // WO-TIER2-B：B/C 决策域深问（信用/供需/能否接）也是 CEO 深问——纳入门控，使 hasPageContext 时走确定性路由（否则被当普通问句丢给 classifier）。
+  return [RE_SOP, RE_CREDIT, RE_SUPPLY_DEMAND, RE_ATP, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
 /** CEO 深问专属意图 key 集（种子于 mocks/seed.ts·单一真源）——仅 PageContext 注入时进候选池（否则平台行为与 CEO-6 前逐字节一致·纯 additive·不劫持既有意图）。 */
@@ -136,7 +160,12 @@ export function resolveCeoRoute(
   // 意图分类（确定性·关键词优先级：产销重排 > 方案 > 根因 > 信号 > 达标 > 缺省根因）。
   // RE_SOP 置顶：产销重排（提前/挤占/拆产）绝不被 decision_play 劫持（KILL-MOCK·答非所问的老坑）。
   let route: CeoQueryRoute["route"];
+  // WO-TIER2-B：B/C 决策域直绑 solverKey（route 取现有枚举语义近邻·solverKey 覆盖为具体 B/C 求解器）。
+  let bcSolver: string | undefined;
   if (RE_SOP.test(q)) route = "sop_reschedule";
+  else if (RE_CREDIT.test(q)) { route = "metric_rollup"; bcSolver = "credit_exposure"; } // WO-TIER2-B 信用/逾期/敞口（避 gap_attribution 缺省吞）
+  else if (RE_SUPPLY_DEMAND.test(q)) { route = "gap_attribution"; bcSolver = "supply_demand_gap_attribution"; } // WO-TIER2-B 供需/产销失衡
+  else if (RE_ATP.test(q)) { route = "decision_play"; bcSolver = "atp_check"; } // WO-TIER2-B 能不能接/交期（ATP/CTP 承诺·与 order_fullchain 三闸 verdict 区分）
   else if (RE_OPTION.test(q)) route = "decision_play";
   else if (RE_ROOTCAUSE.test(q)) route = "gap_attribution";
   else if (RE_SIGNAL.test(q)) route = "signal";
@@ -149,16 +178,19 @@ export function resolveCeoRoute(
   let args: Record<string, unknown> = {};
   if (route === "sop_reschedule") {
     args = sopArgsFrom(q, focus); // targetOrderId(问句 SO-号/focus.order) + newDueDate/advancePct
+  } else if (bcSolver) {
+    args = bcArgsFrom(q, bcSolver, focus, metricKey, factorId); // WO-TIER2-B：B/C args 派生（so/custName/metricKey）
   } else {
     if (metricKey) args.metricKey = metricKey;
     if (factorId && (route === "decision_play" || route === "gap_attribution")) args.factorId = factorId;
   }
 
-  const solverKey = route === "signal" ? "decision_play" : route; // signal 深问经 decision_play 触发规则回答；sop_reschedule 直绑同名 solver
+  // signal 深问经 decision_play 触发规则回答；sop_reschedule 直绑同名 solver；WO-TIER2-B B/C 直绑 bcSolver 覆盖。
+  const solverKey = bcSolver ?? (route === "signal" ? "decision_play" : route);
   const scope = scopeBasesFor(role, baseScope);
   const usedPageContext = Boolean(metricKey || factorId || (focus?.base) || (route === "sop_reschedule" && (focus?.order || args.targetOrderId)));
   const scopedBaseIds = scope.allBases ? [] : scope.baseIds;
 
-  const reason = `问句意图=${route}${metricKey ? `·聚焦指标 ${metricKey}` : ""}${factorId ? `·根因 ${factorId}` : ""}${usedPageContext ? "（用了 PageContext）" : "（无页面上下文·仅问句）"}${scope.allBases ? "·全域" : `·限基地[${scopedBaseIds.join(",")}]`}`;
+  const reason = `问句意图=${route}${bcSolver ? `·直绑 ${bcSolver}[WO-TIER2-B]` : ""}${metricKey ? `·聚焦指标 ${metricKey}` : ""}${factorId ? `·根因 ${factorId}` : ""}${usedPageContext ? "（用了 PageContext）" : "（无页面上下文·仅问句）"}${scope.allBases ? "·全域" : `·限基地[${scopedBaseIds.join(",")}]`}`;
   return { route, reason, usedPageContext, scopedBaseIds, solverKey, args };
 }
