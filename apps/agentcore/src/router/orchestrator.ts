@@ -751,6 +751,8 @@ export class Orchestrator {
       metrics: this.deps.metrics,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       isCancelled: () => this.cancelled.has(taskId),
+      // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
+      llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
     });
 
     await this.deps.repos.agentRuns.insert(result.run);
@@ -789,6 +791,16 @@ export class Orchestrator {
           actionType: block.actionType,
         });
       }
+    }
+    // G-9：有界终止降级 → 复用 step.completed 伪 step（不新增 PRD §8.2 事件名）区分"超时/预算降级"vs"正常探索"。
+    // 必早于 answer.final（前端 TaskDetailPage 已 filter step.completed，零改）。
+    if (result.degraded) {
+      await this.deps.events.emit(taskId, "step.completed", {
+        stepId: newId("degrade"),
+        type: "agent_degraded",
+        outcome: result.degraded.reason,
+        durationMs: budget.elapsedMs(),
+      });
     }
     await this.deps.events.emit(taskId, "answer.final", result.answer);
     this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
