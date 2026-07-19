@@ -115,9 +115,37 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，但查询对话的分类与探索回答、A2/A3 的 LLM 抽取会失败报错（界面有明确错误提示） |
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
+| `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**本地内存模式 dev 默认不设** → 5 个 CP-SAT 核心 + `optimize_whatif` 显式返「未接入最优化引擎」（诚实兜底·不静默）；本地要用见下方「§6.x 本地起 sidecar」 |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
+
+## 6.x 本地 dev 起最优化 sidecar（CP-SAT·可选）
+
+CLAUDE.md 的本地内存双服务命令**不含** `OPTIMIZER_BASE_URL` → `optimize_whatif`（优化推演页 `/v/optimize-whatif`）与 5 个
+CP-SAT 核心（facility_location / min_cost_flow / set_cover / independent_set / combinatorial_auction）会显式返
+「未接入最优化引擎」（诚实兜底·前端页显提示不假渲 Δ）。本地要真解，三行起 sidecar 再给 datacore 加一个 env：
+
+```bash
+# ① 起 CP-SAT sidecar（本地·services/optimizer·需 python3 + pip）
+cd services/optimizer && pip install -r requirements.txt && PORT=4003 python3 server.py &
+#   健康检查：curl http://127.0.0.1:4003/healthz  →  {"status":"ok","engine":"cp-sat"}
+
+# ② datacore 本地命令追加 OPTIMIZER_BASE_URL 即真接入（其余 env 见 CLAUDE.md 内存模式命令）
+OPTIMIZER_BASE_URL=http://127.0.0.1:4003 \
+  PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> \
+  node apps/datacore/dist/server.js
+
+# ③ 验证 Δ 真变（改约束→重解→Δ 变·CP-SAT 真解·非 mock）
+curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/optimize_whatif/invoke \
+  -H 'content-type: application/json' -H 'x-debug-user: demo:admin:admin' \
+  -d '{"args":{"family":"facility_location","args":{...},"perturbations":[{"kind":"cost","target":"f1","delta":50}],"seed":42}}'
+#   改 perturbations.delta（如 50→600）重跑 → deltaObjective / feasible / conflictConstraints 随之真变。
+```
+
+> compose 态（`docker compose up`）已自动接：`docker-compose.yml` 有 `optimizer` 服务（build `services/optimizer` ·
+> expose 4003 · healthcheck）+ `OPTIMIZER_BASE_URL` 默认值 + datacore `depends_on optimizer(service_healthy)`——
+> 整套里 5 CP-SAT 核心 + `optimize_whatif` 是真接入、真解的，无需手动起 sidecar。
 
 ## 7. 故障排查
 

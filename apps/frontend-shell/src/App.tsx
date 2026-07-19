@@ -79,6 +79,8 @@ const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
 const WhatIfView = lazy(() => import("@/views/WhatIfView"));
 // 净室归因投影页（shared_bottleneck/concentration_risk/margin_attribution 三通用求解器接地）：专用 route，直挂 renderer。
 const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
+// 优化 what-if 投影页（opt-template 系求解器·参数扰动看目标 Δ）：专用 route，直挂 renderer。
+const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -138,6 +140,8 @@ export const routes: RouteObject[] = [
       { path: "v/what-if", element: lazyWrap(<WhatIfView />) },
       // 净室归因投影页专用 route（三通用求解器·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/cleanroom-attr", element: lazyWrap(<CleanroomAttrView />) },
+      // 优化 what-if 投影页专用 route（opt-template 系·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      { path: "v/optimize-whatif", element: lazyWrap(<OptimizeWhatifView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

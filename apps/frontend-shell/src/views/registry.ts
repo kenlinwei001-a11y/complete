@@ -35,6 +35,7 @@ const VIEW_ALIAS: Record<string, string> = {
   whatif: "what-if",
   "generic-inference": "what-if",
   cleanroom: "cleanroom-attr",
+  optimize: "optimize-whatif",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
@@ -52,6 +53,8 @@ registerRenderer("disruption-radius", () => import("./DisruptionRadiusView"));
 // 通用假设推演页（generic_inference 求解器 · G-5 通用 what-if · CEO「把某属性改成 X，看下游怎样」）：
 // 既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
 registerRenderer("what-if", () => import("./WhatIfView"));
+// 优化推演页（optimize_whatif·轨B增量3·闭 G-12 前端半）：改目标/约束→真 CP-SAT 重解→Δ目标（专用 route 见 App.tsx）。
+registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
