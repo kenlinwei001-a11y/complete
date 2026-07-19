@@ -55,10 +55,19 @@ export const PageContextSchema = z.object({
 });
 export type PageContext = z.infer<typeof PageContextSchema>;
 
-/** CEO 角色 agent 画像：CEO 全域 / base-planner 基地 scope（A6 行级过滤·关注面预设）。 */
-export const CeoAgentRoleSchema = z.enum(["ceo", "base-planner"]);
+/**
+ * 五角色 AI 员工画像（WO-FIVE-ROLE-AI-EMPLOYEE P1）——CEO 全域 / 供应链 / 生产 / 质量 / base-planner 基地 scope。
+ * **向后兼容**：保留 ceo / base-planner（WO-CEO-6 两角色）；新增 supply-chain / production / quality。
+ * `resolveCeoRoute` 等既有签名不破（仍接受 CeoAgentRole 联合类型）。
+ */
+export const CeoAgentRoleSchema = z.enum(["ceo", "supply-chain", "production", "quality", "base-planner"]);
 export type CeoAgentRole = z.infer<typeof CeoAgentRoleSchema>;
 
+/**
+ * 激活的角色画像（此前 app 侧零消费的死契约·P1 落地）：每角色一 profile——
+ * role + scope{allBases,baseIds} + focusMetrics + **绑定 seed agentId** + **工具白名单** + **对象类型 scope** + **system 片段 key**。
+ * CEO=全域全工具·供应链=Material/Supplier/PO·生产=Line/Process/Model·质量=Process/Equipment/QualityStandard·base-planner=单基地。
+ */
 export const CeoAgentProfileSchema = z.object({
   profileId: z.string(),
   role: CeoAgentRoleSchema,
@@ -67,6 +76,10 @@ export const CeoAgentProfileSchema = z.object({
     baseIds: z.array(z.string()).default([]), // base-planner 可见基地（A6 行级·跨基地剪枝/403）
   }),
   focusMetrics: z.array(z.string()).default([]), // 关注面预设（该角色默认盯的指标 key）
+  agentId: z.string().optional(), // 绑定的 seed agent（Coordinator 扇出时经 invoke_agent 真调此 agent）
+  toolWhitelist: z.array(z.string()).default([]), // 该角色可用工具（展示·真实约束以绑定 agent scopeDeclaration.toolNames 为准）
+  objectTypes: z.array(z.string()).default([]), // 该角色取证对象域（真实约束以绑定 agent scopeDeclaration.objectTypes 为准·越界拒）
+  systemKey: z.string().optional(), // system 片段 key（prompts.ts ROLE_SYSTEM_FRAGMENTS）
 });
 export type CeoAgentProfile = z.infer<typeof CeoAgentProfileSchema>;
 

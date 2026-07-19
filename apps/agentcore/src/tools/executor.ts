@@ -28,7 +28,16 @@ export interface ExecutorOptions {
   budget?: BudgetTracker;
   /** Agent scopeDeclaration.toolNames — calls outside it are rejected regardless of user perms. */
   scopeToolNames?: string[];
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Agent scopeDeclaration.objectTypes 强制（**opt-in**，仅 Coordinator 角色扇出置）——
+   * 对象读取工具（query_objects/get_object/aggregate_objects）的 objectType 不在此集内即 DENIED（AGENT_SCOPE_VIOLATION）。
+   * 未设（既有全部调用路径）= 不强制 → 字节兼容零回归。让"供应链只能查 Material、生产只能查 Line"成真隔离（越界拒）。
+   */
+  scopeObjectTypes?: string[];
 }
+
+/** 对象读取工具集：其 input.objectType/typeKey 受 scopeObjectTypes 约束（越界拒）。 */
+const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);
 
 export interface ExecutorDeps {
   dataCore: DataCoreClient;
@@ -109,6 +118,21 @@ export class GuardedToolExecutor {
     // 0) agent scopeDeclaration gate (platform PRD §6.3 Q2 — independent of user perms)
     if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
       return this.finish(toolName, input, { error: ErrorCodes.AGENT_SCOPE_VIOLATION }, "DENIED", started, false);
+    }
+    // 0.1) WO-FIVE-ROLE P1 · 对象类型 scope 门（opt-in·仅 Coordinator 角色扇出）：读对象工具的 objectType 越界即 DENIED。
+    if (this.opts.scopeObjectTypes && OBJECT_SCOPED_TOOLS.has(toolName)) {
+      const inObj = (input ?? {}) as Record<string, unknown>;
+      const requested = String(inObj.objectType ?? inObj.typeKey ?? "");
+      if (requested && !this.opts.scopeObjectTypes.includes(requested)) {
+        return this.finish(
+          toolName,
+          input,
+          { error: ErrorCodes.AGENT_SCOPE_VIOLATION, objectType: requested, allowed: this.opts.scopeObjectTypes },
+          "DENIED",
+          started,
+          false,
+        );
+      }
     }
 
     // 0.5) OBO token about to expire (<60s) → refuse to start new tool calls (platform PRD §11)
