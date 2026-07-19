@@ -242,12 +242,23 @@ const DEMAND_ATTAIN_CAUSAL_FACTORS = [
   { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "DYNAMIC-MBAL", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain" },
 ];
 
+// WO-CAUSAL-DOMAIN-DEEPCHAIN：OEE/产能因果域（结构瓶颈叶 `equip:{base}` 的**因果子链**·果→因·下钻真对象·
+// metricKey:"" 共享域·与供应链域并行）——补「利用率瓶颈」下钻不出「为什么 OEE 低（换型/老化/认证滞后）」的断头。
+// 动态 drillId（DYNAMIC-*）在 generateExtended 绑「本域最差设备/换型/认证」→ 改真设备颗粒→severity 变。
+const OEE_CAUSAL_FACTORS = [
+  { factorId: "cf-oee-deficit", label: "设备综合效率不足", drillType: "Equipment", drillId: "DYNAMIC-EQUIP", drillField: "oee_current", kind: "实测", isRoot: false, provenanceSynthetic: false, metricKey: "" },
+  { factorId: "cf-changeover-loss", label: "换型损失(root)", drillType: "ChangeoverMatrix", drillId: "DYNAMIC-CHG", drillField: "minutes", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "" },
+  { factorId: "cf-equip-aging", label: "设备老化(root)", drillType: "Equipment", drillId: "DYNAMIC-EQUIP", drillField: "oee_current", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "" },
+  { factorId: "cf-cert-lag", label: "认证滞后(root)", drillType: "Certification", drillId: "DYNAMIC-CERT", drillField: "certHours", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "" },
+];
+
 export const CAUSAL_FACTORS = [
   ...SUPPLY_CAUSAL_FACTORS,
   ...MARKET_SHARE_CAUSAL_FACTORS,
   ...REVENUE_CAUSAL_FACTORS,
   ...CASH_CAUSAL_FACTORS,
   ...DEMAND_ATTAIN_CAUSAL_FACTORS,
+  ...OEE_CAUSAL_FACTORS,
 ];
 
 // WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry.params 覆盖·C3）。
@@ -298,12 +309,20 @@ const DEMAND_ATTAIN_CAUSAL_EDGES: { from: string; to: string }[] = [
   { from: "cf-demand-attain-gap", to: "cf-material-short" },
 ];
 
+// WO-CAUSAL-DOMAIN-DEEPCHAIN：OEE 因果子链边（cf-oee-deficit 果 → 3 根 因）。
+const OEE_CAUSAL_EDGES: { from: string; to: string }[] = [
+  { from: "cf-oee-deficit", to: "cf-changeover-loss" },
+  { from: "cf-oee-deficit", to: "cf-equip-aging" },
+  { from: "cf-oee-deficit", to: "cf-cert-lag" },
+];
+
 export const CAUSAL_EDGES: { from: string; to: string }[] = [
   ...SUPPLY_CAUSAL_EDGES,
   ...MARKET_SHARE_CAUSAL_EDGES,
   ...REVENUE_CAUSAL_EDGES,
   ...CASH_CAUSAL_EDGES,
   ...DEMAND_ATTAIN_CAUSAL_EDGES,
+  ...OEE_CAUSAL_EDGES,
 ];
 const PROVINCE_GRID: Record<string, number> = { changzhou: 0.55, hefei: 0.58, xian: 0.62, chengdu: 0.78, zaozhuang: 0.7, jiangmen: 0.5 };
 
@@ -617,9 +636,19 @@ export function generateExtended(
   const worstMbal = ctx.materialBalances.length
     ? ctx.materialBalances.slice().sort((a, b) => (b.gapTon ?? 0) - (a.gapTon ?? 0))[0]
     : undefined;
+  // WO-CAUSAL-DOMAIN-DEEPCHAIN：OEE 因果域动态 drillId 绑「本域最差」真对象（改真颗粒→severity 变·R6 稳定序）。
+  const worstChangeover = changeoverMatrix.length
+    ? changeoverMatrix.slice().sort((a, b) => (Number(b.minutes) || 0) - (Number(a.minutes) || 0) || String(a.pairId).localeCompare(String(b.pairId)))[0]
+    : undefined;
+  const worstCert = certifications.length
+    ? certifications.slice().sort((a, b) => (Number(b.certHours) || 0) - (Number(a.certHours) || 0) || String(a.certId).localeCompare(String(b.certId)))[0]
+    : undefined;
   const causalFactors = CAUSAL_FACTORS.map((cf) => {
     if (cf.factorId === "cf-capacity-short" && worstEquip) return { ...cf, drillId: worstEquip.equipId };
     if (cf.factorId === "cf-material-short" && worstMbal) return { ...cf, drillId: worstMbal.matBalId };
+    if ((cf.factorId === "cf-oee-deficit" || cf.factorId === "cf-equip-aging") && worstEquip) return { ...cf, drillId: worstEquip.equipId };
+    if (cf.factorId === "cf-changeover-loss" && worstChangeover) return { ...cf, drillId: String(worstChangeover.pairId) };
+    if (cf.factorId === "cf-cert-lag" && worstCert) return { ...cf, drillId: String(worstCert.certId) };
     return cf;
   });
 

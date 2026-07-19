@@ -956,7 +956,7 @@ export class SolverService {
     const drillVal = async (type: string, id: string, field: string): Promise<number> => {
       if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
       const rows = drillCache.get(type)!;
-      const pkField = { MaterialBalance: "matBalId", Supplier: "supplierId", LongTermAgreement: "ltaId", CommodityPriceTrend: "trendId", ExternalSignal: "signalKey", BackupSupplierPool: "poolId", DecisionGap: "gapId" }[type] ?? "id";
+      const pkField = { MaterialBalance: "matBalId", Supplier: "supplierId", LongTermAgreement: "ltaId", CommodityPriceTrend: "trendId", ExternalSignal: "signalKey", BackupSupplierPool: "poolId", DecisionGap: "gapId", Equipment: "equipId", Certification: "certId", ChangeoverMatrix: "pairId" }[type] ?? "id";
       const row = rows.find((r) => str(r[pkField]) === id);
       return row ? num(row[field]) : 0;
     };
@@ -972,6 +972,10 @@ export class SolverService {
       else if (cf.factorId === "cf-backup-thin") sev = Math.min(1, Math.max(0, (5 - raw) / 5)); // 成员越少越重
       else if (cf.factorId === "cf-cert-cycle") sev = Math.min(1, raw / 26); // 认证周
       else if (cf.factorId === "cf-decision-gap") sev = Math.min(1, raw); // severity 0–1
+      // WO-CAUSAL-DOMAIN-DEEPCHAIN·OEE 域 severity（改真设备/换型/认证颗粒→severity 变·C5）：
+      else if (cf.factorId === "cf-oee-deficit" || cf.factorId === "cf-equip-aging") sev = Math.min(1, Math.max(0, 1 - raw)); // oee_current 越低越重（1−oee）
+      else if (cf.factorId === "cf-changeover-loss") sev = Math.min(1, raw / 180); // 换型分钟/上限 180
+      else if (cf.factorId === "cf-cert-lag") sev = Math.min(1, raw / 200); // 认证工时/上限
       else sev = 0.5;
       return { sev: round(sev, 4), raw };
     };
@@ -1059,6 +1063,47 @@ export class SolverService {
     if (causalNodes.length) {
       levels.push({ depth: 3, label: "因果链（caused_by）", nodes: causalNodes, residual: causalResidual });
       reconChecks.push({ depth: 3, label: "因果链（物料短缺→根因）", parentGap: matContribution, sumChildren: causalSum, residual: causalResidual, ok: Math.abs(causalSum + causalResidual - matContribution) <= 1e-4 });
+    }
+
+    // WO-CAUSAL-DOMAIN-DEEPCHAIN：**多种子第二源**——结构 OEE 瓶颈叶 `equip:{base}` 接 OEE 因果子链（换型/老化/认证滞后·
+    // 果→因）。additive·不动供应链 BFS/勾稽（各种子子树各自 `Σ子+residual=父` 独立成立·reconciled 不破）。锚在最重 OEE
+    // 瓶颈叶（垂直切片·全基地满覆盖后续）；OEE 根 `path` 指向该 equip 叶（前端递归树把 OEE 根因挂 OEE 叶下）。改真设备
+    // /换型/认证颗粒→OEE 子链 severity/contribution 变（C5·与物料链互不串）。
+    const oeeSeedId = "cf-oee-deficit";
+    const equipLeaves = atomicLeaves.filter((n) => str((n as { id: string }).id).startsWith("equip:"));
+    const oeeAnchor = equipLeaves.slice().sort((a, b) => num((b as { contribution?: number }).contribution) - num((a as { contribution?: number }).contribution))[0] as { id: string; contribution?: number } | undefined;
+    if (cfById.has(oeeSeedId) && oeeAnchor) {
+      const oeeParentGap = num(oeeAnchor.contribution);
+      const anchorId = str(oeeAnchor.id);
+      const oeeVisited = new Set<string>([oeeSeedId]);
+      const oeeReached: { id: string; pathIds: string[] }[] = [];
+      const oeeQueue: { id: string; path: string[] }[] = [{ id: oeeSeedId, path: [oeeSeedId] }];
+      while (oeeQueue.length) {
+        const cur = oeeQueue.shift()!;
+        for (const nx of adj.get(cur.id) ?? []) {
+          causalEdges.push({ from: cur.id, to: nx, viaLinkKey: "caused_by" });
+          if (!oeeVisited.has(nx)) { oeeVisited.add(nx); const np = [...cur.path, nx]; oeeReached.push({ id: nx, pathIds: np }); oeeQueue.push({ id: nx, path: np }); }
+        }
+      }
+      const oeeSev = await Promise.all(oeeReached.map(async (rf) => ({ rf, cf: cfById.get(rf.id)!, ...(await severityOf(cfById.get(rf.id)!)) })));
+      const oeeTotalSev = oeeSev.reduce((a, s) => a + s.sev, 0) || 1;
+      const oeeNodes: Record<string, unknown>[] = [];
+      for (const s of oeeSev.sort((a, b) => b.sev - a.sev || a.rf.id.localeCompare(b.rf.id))) {
+        const share = s.sev / oeeTotalSev;
+        const node = {
+          id: `cf:${s.rf.id}`, factor: str(s.cf.label), contribution: round(oeeParentGap * causalExplained * share, 4), unit, share: round(share, 4),
+          path: [anchorId], causalPath: s.rf.pathIds,
+          provenance: { kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策", drillType: str(s.cf.drillType), drillId: str(s.cf.drillId), drillField: str(s.cf.drillField), drillValue: s.raw, severityKind: severityKindOf(s.sev) },
+        };
+        oeeNodes.push(node);
+        if (Boolean(s.cf.isRoot) || (adj.get(s.rf.id) ?? []).length === 0) atomicLeaves.push(node);
+      }
+      if (oeeNodes.length) {
+        const oeeSum = round(oeeNodes.reduce((a, n) => a + num(n.contribution), 0), 4);
+        const oeeResidual = round(oeeParentGap - oeeSum, 4);
+        levels.push({ depth: 3, label: "OEE 因果链（设备瓶颈→根因）", nodes: oeeNodes, residual: oeeResidual });
+        reconChecks.push({ depth: 3, label: "OEE 因果链（设备瓶颈→根因）", parentGap: oeeParentGap, sumChildren: oeeSum, residual: oeeResidual, ok: Math.abs(oeeSum + oeeResidual - oeeParentGap) <= 1e-4 });
+      }
     }
 
     const reconciled = reconChecks.every((r) => r.ok);

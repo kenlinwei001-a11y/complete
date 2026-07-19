@@ -80,6 +80,6 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
     expect(a.types.length).toBe(86);
-    expect(a.objs.length).toBe(3790); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-WAREHOUSE-CUSTLOC：+46 对象（13 基地×2-3 仓=34 Warehouse + 8 客户×1-2=12 CustomerLocation；类型集 81→83）；WO-INVENTORY-3TIER：+445 对象（260 WorkOrder 完工源物化[2/线×130 线] + 57 FinishedGoodsInventory[完工 128 单聚合到 model×成品仓] + 128 InventoryTxn[每完工单一条 RECEIPT]；类型集 83→85）；WO-ATP-PROMISE：+24 对象（24 OPEN 订单各一条 OrderPromise 承诺台账；类型集 85→86）
+    expect(a.objs.length).toBe(3794); // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-WAREHOUSE-CUSTLOC：+46 对象（13 基地×2-3 仓=34 Warehouse + 8 客户×1-2=12 CustomerLocation；类型集 81→83）；WO-INVENTORY-3TIER：+445 对象（260 WorkOrder 完工源物化[2/线×130 线] + 57 FinishedGoodsInventory[完工 128 单聚合到 model×成品仓] + 128 InventoryTxn[每完工单一条 RECEIPT]；类型集 83→85）；WO-ATP-PROMISE：+24 对象（24 OPEN 订单各一条 OrderPromise 承诺台账；类型集 85→86）；WO-CAUSAL-DOMAIN-DEEPCHAIN：+4 OEE CausalFactor 实例（cf-oee-deficit/changeover-loss/equip-aging/cert-lag·同一 CausalFactor 类型新实例·类型仍 86·+3 caused_by link 不计对象）→ 3790→3794
   });
 });
