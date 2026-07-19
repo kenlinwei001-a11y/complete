@@ -834,6 +834,17 @@ const shipmentProps: PropertyDef[] = [
   { propKey: "coverageDays", dataType: "number", isPrimaryKey: false }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
 ];
 
+// WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点·成品仓 FINISHED 必有供 WO-INVENTORY FG 挂位）。
+const warehouseProps: PropertyDef[] = [
+  { propKey: "warehouseId", dataType: "string", isPrimaryKey: true },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "whType", dataType: "enum", isPrimaryKey: false }, // RAW | FINISHED | TRANSIT
+  { propKey: "capacityUnits", dataType: "number", isPrimaryKey: false },
+  { propKey: "province", dataType: "string", isPrimaryKey: false },
+  { propKey: "city", dataType: "string", isPrimaryKey: false },
+];
+
 const dataHealthProps: PropertyDef[] = [
   { propKey: "sourceId", dataType: "string", isPrimaryKey: true },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
@@ -1116,6 +1127,8 @@ export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMa
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+  // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
+  Warehouse: "factory",
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
   BOMHeader: "product", BOMDetail: "product", Routing: "process", Operation: "process", ProcessCapabilityWindow: "process",
   QualityStandard: "quality", InspectionCharacteristic: "quality",
@@ -1191,6 +1204,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("MaintPlan", "检修计划", maintPlanProps),
     plain("Segment", "应用细分", segmentProps),
     plain("Shipment", "在途批次", shipmentProps),
+    // WO-WAREHOUSE-CUSTLOC：仓库（库存仓位与交付地理落点·factory 域）
+    plain("Warehouse", "仓库", warehouseProps),
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
@@ -1240,6 +1255,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // SA-3：Workshop 车间层链路（Base→Workshop→Line 四层结构）
     // 契约 cardinality 只允许 1:1/1:N/N:N；N:1 语义通过翻转方向表达为 1:N。
     { key: "workshop_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Workshop", cardinality: "1:N" },
+    // WO-WAREHOUSE-CUSTLOC：仓库归属基地（Warehouse N:1 Base；契约方向翻转为 Base 1:N Warehouse，参照 workshop_belongs_to_base）
+    { key: "warehouse_of_base", fromTypeKey: "Base", toTypeKey: "Warehouse", cardinality: "1:N" },
     { key: "line_belongs_to_workshop", fromTypeKey: "Workshop", toTypeKey: "Line", cardinality: "1:N" },
     // line_belongs_to_base 保留向后兼容（Workshop 层不删旧链路）
     { key: "line_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Line", cardinality: "1:N" },
@@ -1268,6 +1285,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
     { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
+    // WO-WAREHOUSE-CUSTLOC：客户交付地点归属客户（CustomerLocation N:1 Customer·参照 order_of_customer 方向）
+    { key: "custloc_of_customer", fromTypeKey: "CustomerLocation", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多地点归一客户）
     // 8 域切片增量：补全 supply 深链 / commercial 深链 / 工厂扩展 / 设备-检修 / 产能 / 质量 / 计划 跨域边。
     { key: "model_has_cert", fromTypeKey: "Model", toTypeKey: "Certification", cardinality: "N:N" }, // factory（认证）
     { key: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice", cardinality: "N:N" }, // commercial（应收）
@@ -1774,6 +1793,8 @@ export interface GeneratedBattery {
   maintPlans: Record<string, unknown>[];
   segments: Record<string, unknown>[];
   shipments: Record<string, unknown>[];
+  // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
+  warehouses: Record<string, unknown>[];
   dataHealth: Record<string, unknown>[];
   // cockpit P1 绿地
   demandSegments: Record<string, unknown>[];
@@ -1868,6 +1889,25 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       status: "运营中",
       start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
     };
+  });
+
+  // WO-WAREHOUSE-CUSTLOC：每基地 N 仓（成品仓 FINISHED 必有·供 WO-INVENTORY FG 挂位；原料仓 RAW 必有；
+  // 中转仓 TRANSIT 由确定性哈希决定有无 → 2~3 仓/基地）。独立 hashString 子流·不消耗 rng（不插既有流中间→
+  // 守 R6 字节基线·下游合成值零位移）。省市从生成态 bases 派生（base.province/base.city 源 BASE_REGISTRY，
+  // 守 boundary-singlesource·不内联基地字面量）。
+  const WH_TYPE_LABEL: Record<string, string> = { RAW: "原料", FINISHED: "成品", TRANSIT: "中转" };
+  const warehouses = bases.flatMap((b) => {
+    const whTypes = ["RAW", "FINISHED"]; // 成品仓 FINISHED + 原料仓 RAW 每基地必有
+    if (hashString(`wh_transit_${b.baseId}`) % 2 === 0) whTypes.push("TRANSIT"); // 确定性第三仓
+    return whTypes.map((whType) => ({
+      warehouseId: `WH-${b.baseId}-${whType}`,
+      baseId: b.baseId,
+      name: `${b.city}${WH_TYPE_LABEL[whType]}仓`,
+      whType,
+      capacityUnits: 5000 + (hashString(`wh_cap_${b.baseId}_${whType}`) % 45000),
+      province: b.province,
+      city: b.city,
+    }));
   });
 
   // Phase 2 Wave 1：产品域基础（ProductPlatform / ProductSeries / ProductVersion）
@@ -2947,7 +2987,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
 }
 
 // ---------------------------------------------------------------------------

@@ -42,3 +42,4 @@ export * from "./decision-engine.js"; // WO-CEO-3 · 决策推演引擎契约（
 export * from "./decision-kernel.js"; // WO-C1 · L2 统一决策内核（一等 Decision·根因→方案→选定→落 Action·闭 C1）
 export * from "./ceo-agent.js"; // WO-CEO-6 · PageContext + CeoAgentProfile + 深问路由（闭 G-3）
 export * from "./ceo-dataset.js"; // WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集生成契约
+export * from "./warehouse.js"; // WO-WAREHOUSE-CUSTLOC · 仓库 Warehouse + 客户地点 CustomerLocation（库存仓位与交付地理落点）
