@@ -5,7 +5,8 @@ import type { ActionService } from "../actions.js";
 import type { OntologyService } from "../ontology.js";
 import { AppError, validationError, notFound } from "../errors.js";
 import { hashString } from "../prng.js";
-import type { Decision, DecisionOption, DecisionTraceStep, ActionPlan, CreateDecisionInput } from "@platform/contracts";
+import type { Decision, DecisionOption, DecisionTraceStep, ActionPlan, CreateDecisionInput, RecordOutcomeInput, DecisionOutcome, DecisionOutcomeStat } from "@platform/contracts";
+import { aggregateOutcomeStats } from "./outcome-stats.js";
 
 /**
  * WO-C1 · L2 统一决策内核服务（闭 C1·根因→方案→选定→落 Action 一条龙）。
@@ -89,6 +90,7 @@ export class DecisionKernelService {
       chosenOptionIds: input.chosenOptionIds,
       actionDraftIds: [],
       status: "PROPOSED",
+      outcome: null, // WO-LEARNING-LOOP：成效反馈闭环前为 null（COMMITTED→REALIZED 时回填）。
       trace,
       decidedBy: ctx.userId,
       createdAt: generatedAt,
@@ -130,5 +132,51 @@ export class DecisionKernelService {
     await this.repos.decisions.put(committed);
     await this.outbox.emit(ctx.tenantId, "decision.committed", { decisionId: id, actionDraftIds, actionCount: actionDraftIds.length, status: "COMMITTED" }, id);
     return committed;
+  }
+
+  /**
+   * WO-LEARNING-LOOP-FEEDBACK · recordOutcome：COMMITTED → REALIZED（成效反馈闭环·仿 calibration 元闭环 §6 realizedMape）。
+   * 注入**外部实测** realizedGapClose（运营回填·KILL-MOCK：系统绝不自造）→ 对照**预言** Σ 选定方案 closesGap →
+   * effectivenessPct（预言 vs 实现）→ 写 outcome + status REALIZED → emit `decision.realized`。
+   * **绝不直改业务真值**（RL4·outcome 是决策台账元数据·非改计划/派新 Action）。generatedAt/realizedAt 由调用方注入（R6）。
+   * 状态机：非 COMMITTED（PROPOSED 未定 / 已 REALIZED）记 outcome → 409（非法转移·仿 commit）。
+   */
+  async recordOutcome(ctx: AuthCtx, id: string, input: RecordOutcomeInput, realizedAt: string): Promise<Decision> {
+    const d = await this.get(ctx, id);
+    if (d.status !== "COMMITTED") {
+      throw new AppError("INVALID_TRANSITION", `decision ${id} 状态 ${d.status}（仅 COMMITTED 可记成效·PROPOSED 未定/REALIZED 已记）`, 409);
+    }
+    // 预言侧：Σ 选定方案 closesGap（成决策时的推演补缺口·非写死·随根因颗粒变）。
+    const predicted = d.chosenOptionIds.reduce((s, optId) => {
+      const o = d.optionsRef.options.find((x) => x.optionId === optId);
+      return s + (o ? o.closesGap : 0);
+    }, 0);
+    const effectivenessPct = predicted !== 0 ? Math.round((input.realizedGapClose / predicted) * 1000) / 10 : 0;
+    const outcome: DecisionOutcome = {
+      realizedGapClose: input.realizedGapClose,
+      predictedGapClose: predicted,
+      effectivenessPct,
+      realizedAt,
+      ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.provId !== undefined ? { provId: input.provId } : {}),
+    };
+    const realized: Decision = { ...d, status: "REALIZED", outcome, updatedAt: realizedAt };
+    await this.repos.decisions.put(realized);
+    await this.outbox.emit(
+      ctx.tenantId,
+      "decision.realized",
+      { decisionId: id, metricKey: d.metricKey, factorId: d.factorId, realizedGapClose: input.realizedGapClose, predictedGapClose: predicted, effectivenessPct, status: "REALIZED" },
+      id,
+    );
+    return realized;
+  }
+
+  /**
+   * WO-LEARNING-LOOP-FEEDBACK · 决策成效权重归集（本租户全部 REALIZED 决策 → 确定性纯聚合）。
+   * 后续 decision_play 排序可读此权重（本单落数据 + 纯函数·排序接入列后续单）。R2：只列本租户。
+   */
+  async outcomeStats(ctx: AuthCtx): Promise<DecisionOutcomeStat[]> {
+    const realized = await this.repos.decisions.list(ctx.tenantId, (x) => x.status === "REALIZED");
+    return aggregateOutcomeStats(realized);
   }
 }
