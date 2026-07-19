@@ -2011,6 +2011,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     const sig = ((await ontology.queryObjects(c, "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[]).find((r) => String(r.props.signalKey) === key)?.props;
     if (!sig) throw notFound(`external signal ${key}`);
+    // WO-GEO-REAL-SIGNAL：provenanceSynthetic 由**本信号真源态**派生（去硬编码）——合成源（mock_external·SYNTHETIC）
+    // 标灰 true；真源覆盖（external_feed/rest_api/record-materialize·真 datasetId）翻 false。判定复用 buildSynthProvenancePredicate（单一出处·避口径漂移）。
+    const isSynthProv = await solvers.buildSynthProvenancePredicate(c.tenantId);
+    const sigObj = (await repos.objects.listByType(c.tenantId, "ExternalSignal")).find((o) => String(o.props.signalKey) === key);
+    const signalSynthetic = sigObj ? isSynthProv(sigObj) : true; // 无对象 → 诚实标灰（不冒充真）
     const cfRows = ((await ontology.queryObjects(c, "CausalFactor", {}, 500)).data as { props: Record<string, unknown> }[]).map((r) => r.props);
     // 反查：本信号被哪些因果因子引用为下钻源（drillId==signalKey）。R6 确定性排序。
     const refFactors = cfRows.filter((p) => String(p.drillId) === key).sort((a, b) => String(a.factorId).localeCompare(String(b.factorId)));
@@ -2027,7 +2032,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       drillField: String(p.drillField),
       drillValue: Number(sig[String(p.drillField)] ?? 0), // 本信号在该因子下钻字段的当前真值（改信号值→此变·C2）
       isRoot: Boolean(p.isRoot),
-      provenanceSynthetic: Boolean(p.provenanceSynthetic), // 无真外部源诚实标灰（G-DM-1）
+      provenanceSynthetic: signalSynthetic, // WO-GEO-REAL-SIGNAL：由信号真源态派生（真源覆盖翻 false·非硬编码 G-DM-1）
       boundMetricKeys: Array.isArray(p.boundMetricKeys) ? (p.boundMetricKeys as string[]) : [], // 前向兼容 metric-aware-gap·未种=空
     }));
     const metricsAffected = [...new Set(factors.flatMap((f) => f.boundMetricKeys))].sort();
