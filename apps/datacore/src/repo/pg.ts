@@ -30,7 +30,7 @@ import type {
   VectorIndex,
 } from "./repo.js";
 import { cosineSimilarity } from "./memory.js";
-import type { PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import type { ActionPropagationRule, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
 const { Pool } = pg;
 
@@ -111,6 +111,15 @@ class PgSimRepo implements SimRepo {
   async listPropagationRules(tenantId: string, publishedOnly = true) {
     const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
     const all = r.rows.map((row) => row.doc as PropagationRule);
+    return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
+  }
+  async putActionPropagationRule(rule: ActionPropagationRule) {
+    await this.pool.query(`INSERT INTO sim_action_propagation_rule (id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc=$3, updated_at=now()`,
+      [rule.id, rule.tenantId, JSON.stringify(rule)]);
+  }
+  async listActionPropagationRules(tenantId: string, publishedOnly = true) {
+    const r = await this.pool.query(`SELECT doc FROM sim_action_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
+    const all = r.rows.map((row) => row.doc as ActionPropagationRule);
     return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
   }
 }

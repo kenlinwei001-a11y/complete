@@ -63,6 +63,11 @@ if (existsSync(CORE)) {
   if (!/coefficient|effectiveCoefficient/.test(src)) fail.push("核未引用 coefficient（系数缺位）");
   if (!/arriveTick\s*[:=]/.test(src) || !/delayTicks/.test(src)) fail.push("核未实现延迟（arriveTick/delayTicks 缺位）");
   if (!/coefficientRef/.test(src)) fail.push("核未实现系数引用 coefficientRef（G-10 P1「改规则即改推演」）");
+
+  // WO-SANDBOX-ACTION-PROPAGATION：action→stateVar 注入结构自检（防空实现·扰动源须经系数×幅度）。
+  if (!/computeActionInjections|applyActionTriggers/.test(src)) fail.push("核未实现动作注入（computeActionInjections/applyActionTriggers 缺位）");
+  if (!/sourceKind\s*:\s*["']action["']/.test(src)) fail.push("核未标记动作注入 trace 源（sourceKind:\"action\" 缺位·审计不可分辨扰动源）");
+  if (!/magnitudeField|readPath/.test(src)) fail.push("核未从 payload 取扰动幅度（magnitudeField/readPath 缺位）");
 }
 
 // 4) R14 零业务常数（sim/ 目录子集自查；与 debattery 同范式，避免行业锁死）。
@@ -94,6 +99,21 @@ if (existsSync(TEST)) {
     const out = (err.stdout || "") + (err.stderr || "");
     fail.push(`传导单测未绿（系数/延迟/确定性背书失败）：\n${out.split("\n").slice(-20).join("\n")}`);
   }
+}
+
+// 1b) SEAM test-backed（WO-SANDBOX-ACTION-PROPAGATION）：动作→stateVar 传导闭环组合测试。
+//     守数据半(ActionPropagationRule 种子)×引擎半(propagateTick action 注入)×端点半(apply-action) 接缝驱动通。
+const ACTION_TEST = "apps/datacore/test/sim-action-propagation.test.ts";
+if (existsSync(ACTION_TEST)) {
+  try {
+    execSync("pnpm --filter datacore exec vitest run sim-action-propagation", { stdio: "pipe", encoding: "utf8" });
+    ok("SEAM test-backed：sim-action-propagation.test.ts 全绿（动作即时/延迟注入 + 跨对象扩散 + 改系数果变 + R4 模拟态不落真值 + 决策→沙盘桥）");
+  } catch (err) {
+    const out = (err.stdout || "") + (err.stderr || "");
+    fail.push(`动作传导 SEAM 测未绿（接缝驱动失败）：\n${out.split("\n").slice(-20).join("\n")}`);
+  }
+} else {
+  fail.push(`缺动作传导 SEAM 测 ${ACTION_TEST}`);
 }
 
 if (fail.length) {

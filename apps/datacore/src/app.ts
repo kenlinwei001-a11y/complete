@@ -44,7 +44,7 @@ import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestS
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { PropagationRuleSchema, SandboxViewConfigSchema, type ActionTrigger, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -1158,6 +1158,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simState = (deltaTarget: TickState): TickState => JSON.parse(JSON.stringify(deltaTarget)) as TickState;
   const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
     (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
+  // 物化传导图 + coefficientRef 解析表（走正门 R16/R4：读已物化对象+链路+PUBLISHED 规则 params；任意行业·零硬编码）。
+  // tick 与 apply-action 共用，避免两处漂移（SEAM：同图同参 → 动作扰动与逐 tick 扩散口径一致）。
+  const buildSimGraph = async (c: AuthCtx): Promise<{ graph: PropagationGraph; ruleParams: RuleParamLookup }> => {
+    const objects: PropagationGraph["objects"] = [];
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
+    }
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
+    const ruleParams: RuleParamLookup = {};
+    for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
+      if (r.params) ruleParams[r.key] = r.params;
+    }
+    return { graph: { objects, links }, ruleParams };
+  };
 
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
@@ -1191,43 +1205,64 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    const body = (req.body ?? {}) as { n?: number; actions?: ActionTrigger[] };
+    const n = Math.max(1, Math.floor(Number(body.n ?? 1)));
+    // WO-SANDBOX-ACTION-PROPAGATION：tick 可携带已提交动作扰动（缺省无 → 与既有逐 tick 传导字节一致 R6）。
+    // 动作只在首 tick 注入（appliedAtTick=起始 tick），随后沿 stateVar→stateVar 规则自然扩散。
+    const actions = Array.isArray(body.actions) ? body.actions : [];
     let state = await simCurrent(c, s);
     // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
-    const propagate = propRules.length > 0;
+    const actionRules = actions.length > 0 ? await repos.sim.listActionPropagationRules(c.tenantId, true) : [];
+    const propagate = propRules.length > 0 || actionRules.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };
-    const ruleParams: RuleParamLookup = {};
+    let ruleParams: RuleParamLookup = {};
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
-    if (propagate) {
-      // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
-      const objects: PropagationGraph["objects"] = [];
-      for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-        for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
-      }
-      const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
-      graph = { objects, links };
-      // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
-      for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
-        if (r.params) ruleParams[r.key] = r.params;
-      }
-    }
+    if (propagate) ({ graph, ruleParams } = await buildSimGraph(c));
     let trace: PropagationTrace[] | null = null;
     for (let i = 0; i < n; i++) {
       const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
+      // 动作扰动仅在首 tick 施加（i===0）；后续 tick 只让注入值沿链路继续扩散。
+      const inject = i === 0 && actions.length > 0 ? { rules: actionRules, triggers: actions } : undefined;
       if (propagate) {
-        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams);
+        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams, inject);
         state = out.next; pending = out.pending; trace = out.trace; s.curTick += 1;
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
         state = simState(state); pending = []; trace = null; s.curTick += 1;
       }
+      // R4：模拟态逐 tick 快照落 sim 仓储，绝不写真值（对象库/派生表不受沙盘影响）。
       await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace });
     }
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
     return { curTick: s.curTick, state, ...(propagate ? { trace } : {}) };
+  });
+  // WO-SANDBOX-ACTION-PROPAGATION · SEAM：已提交决策/动作 → 沙盘状态变量真传导（改系数则果变）。
+  // body { actionTypeKey, payload, tick? }：组一条 ActionTrigger，走扩展后的 propagateTick 单 tick 注入 →
+  // 落 putTickState（trace 含 sourceKind:"action" 注入）→ 发 sim.action_applied。模拟态不落真值 R4。
+  app.post("/a/v1/sim/sessions/:id/apply-action", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const b = (req.body ?? {}) as { actionTypeKey?: string; payload?: Record<string, unknown>; tick?: number };
+    if (!b.actionTypeKey || typeof b.actionTypeKey !== "string") throw validationError("actionTypeKey required");
+    const trigger: ActionTrigger = { actionTypeKey: b.actionTypeKey, payload: b.payload ?? {}, appliedAtTick: s.curTick };
+    const actionRules = await repos.sim.listActionPropagationRules(c.tenantId, true); // PUBLISHED only
+    const propRules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const { graph, ruleParams } = await buildSimGraph(c);
+    const state = await simCurrent(c, s);
+    const pending = (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? [];
+    const beforeTick = s.curTick;
+    const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams, { rules: actionRules, triggers: [trigger] });
+    s.curTick += 1;
+    // R4：动作扰动只落 sim_tick_state（模拟态），不触碰对象库真值 / 派生表。
+    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state: out.next, pending: out.pending, trace: out.trace });
+    s.status = "RUNNING"; await repos.sim.putSession(s);
+    // trace 中标记为 action 注入的条数（下游沿链路扩散记为 link）——供审计/前端标注扰动源。
+    const injected = out.trace.filter((t) => t.sourceKind === "action").length;
+    await outbox.emit(c.tenantId, "sim.action_applied", { sessionId: s.id, curTick: s.curTick, actionTypeKey: trigger.actionTypeKey, injected });
+    return { curTick: s.curTick, state: out.next, trace: out.trace, injected };
   });
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
@@ -2660,6 +2695,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/decisions/:id/commit", async (req) => {
     const { id } = req.params as { id: string };
     return decisionKernel.commit(ctx(req), id, new Date().toISOString());
+  });
+  // WO-SANDBOX-ACTION-PROPAGATION：决策→沙盘只读桥。返回该决策选定方案映射的 ActionTrigger 预览
+  // （actionTypeKey+payload）——供前端「若采纳，在沙盘里推演」直接喂 POST /sim/sessions/:id/apply-action。
+  // 纯读·不改状态·不落真值（R4）；命中与否取决于租户已配 ActionPropagationRule（未命中=诚实空）。
+  app.get("/a/v1/decisions/:id/sandbox-triggers", async (req) => {
+    const { id } = req.params as { id: string };
+    const d = await decisionKernel.get(ctx(req), id);
+    return { triggers: decisionKernel.sandboxApplicable(d) };
   });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };

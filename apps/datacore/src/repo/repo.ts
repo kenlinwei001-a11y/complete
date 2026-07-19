@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ActionPropagationRule, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -329,4 +329,7 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  // WO-SANDBOX-ACTION-PROPAGATION：action→stateVar 传导规则（一等·PUBLISHED 消费·R9 四处）。
+  putActionPropagationRule(r: ActionPropagationRule): Promise<void>;
+  listActionPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<ActionPropagationRule[]>;
 }

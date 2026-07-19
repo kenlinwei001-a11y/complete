@@ -1,4 +1,4 @@
-import type { PropagationRule } from "@platform/contracts";
+import type { ActionPropagationRule, PropagationRule } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
@@ -126,12 +126,52 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
   },
 ];
 
+// WO-SANDBOX-ACTION-PROPAGATION：demo action→stateVar 传导规则（幂等·沿真 demo 本体 stateVar）。
+const DEMO_ACTION_PROPAGATION_RULES: ReadonlyArray<Omit<ActionPropagationRule, "tenantId">> = [
+  // ① "改订单优先级" Action → Order.demandPressure 即时变（随后沿规则①② 传到 Model.demandLoad→Base.loadIndex）。
+  {
+    id: "simapr_demo_order_reprioritize",
+    key: "demo_action_order_reprioritize",
+    actionTypeKey: "reprioritize_order",
+    matchPredicate: null,
+    targetTypeKey: "Order",
+    targetStateVar: "demandPressure",
+    targetSelector: "orderId", // payload.orderId → 目标订单对象
+    magnitudeField: "deltaPressure", // payload.deltaPressure → 扰动幅度
+    coefficient: 1.0,
+    coefficientRef: null,
+    delayTicks: 0,
+    combine: "sum",
+    status: "PUBLISHED",
+  },
+  // ② "追加产能" Action → Base.loadIndex 下降（负系数·延迟 2 tick 生效，演示产能扩建的时序）。
+  {
+    id: "simapr_demo_capacity_add",
+    key: "demo_action_capacity_add",
+    actionTypeKey: "adopt_mitigation",
+    matchPredicate: { path: "kind", equals: "capacity_add" }, // 仅产能类方案触发
+    targetTypeKey: "Base",
+    targetStateVar: "loadIndex",
+    targetSelector: "baseId",
+    magnitudeField: "deltaGwh",
+    coefficient: -0.4, // 追加产能 → 负载下降（负系数）
+    coefficientRef: null,
+    delayTicks: 2,
+    combine: "sum",
+    status: "PUBLISHED",
+  },
+];
+
 /**
  * 播 demo 的 sim 传导规则种子（幂等：固定 id + 直接 put 覆盖）。仅写 sim 仓储，不动合成。
  * 由 SEED_DEMO 启动路径在 seedDemoSynthetic 之后调用（本体已物化才有链路可挂）。
+ * WO-SANDBOX-ACTION-PROPAGATION：一并种 action→stateVar 传导规则。
  */
 export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
   for (const r of DEMO_PROPAGATION_RULES) {
     await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
+  }
+  for (const r of DEMO_ACTION_PROPAGATION_RULES) {
+    await repos.sim.putActionPropagationRule({ ...r, tenantId: DEMO_TENANT });
   }
 }
