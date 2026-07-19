@@ -58,6 +58,13 @@ export interface LlmAgentRequest {
    * 仅 Anthropic adapter（capability 开启时）下发；其它 adapter 忽略。
    */
   contextEdits?: { type: string }[];
+  /**
+   * WO-TIER3-AGENT-TIMEOUT-FALLBACK：单次 agent 调用的取消信号（可选，向后兼容）。
+   * 由工具循环侧的 per-call deadline AbortController 驱动；真实适配器透传进 SDK
+   * create 的 RequestOptions（Anthropic/OpenAI 均原生支持 { signal } 取消），到点即中断请求，
+   * 循环捕获后走优雅降级（不裸抛 INTERNAL_ERROR）。custom-http stub 忽略。
+   */
+  signal?: AbortSignal;
 }
 
 export interface LlmAgentResponse {

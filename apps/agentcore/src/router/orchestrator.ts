@@ -751,6 +751,8 @@ export class Orchestrator {
       metrics: this.deps.metrics,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       isCancelled: () => this.cancelled.has(taskId),
+      // WO-TIER3：per-call LLM/工具 deadline（到点 AbortController 取消 → 循环捕获 → 优雅降级，决不 hang）。
+      llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
     });
 
     await this.deps.repos.agentRuns.insert(result.run);

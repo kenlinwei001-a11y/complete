@@ -89,6 +89,11 @@ export class Metrics {
     "qos_agent_budget_exhausted_total",
     "Agent runs ended by budget exhaustion",
   );
+  /** WO-TIER3：单次 agent LLM 调用/墙钟 deadline 超时导致优雅降级收尾的 agent 运行数。 */
+  readonly agentTimeout = new Counter(
+    "qos_agent_timeout_total",
+    "Agent runs ended by per-call/wallclock timeout",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
@@ -132,6 +137,7 @@ export class Metrics {
         this.classifierErrors,
         this.clarificationRounds,
         this.agentBudgetExhausted,
+        this.agentTimeout,
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,

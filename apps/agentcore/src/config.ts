@@ -16,6 +16,11 @@ const ConfigSchema = z.object({
   QOS_TAU_LOW: z.coerce.number().default(0.55),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
+  /**
+   * WO-TIER3：path-B agent 单次 LLM 调用（及工具调用）的墙钟上限。到点由 AbortController 取消，
+   * 循环捕获后走优雅降级（诚实部分发现），决不 hang。默认 60s，仍 < DEFAULT_AGENT_BUDGET.maxDurationMs(90s)。
+   */
+  QOS_AGENT_LLM_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */

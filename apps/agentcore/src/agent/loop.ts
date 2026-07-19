@@ -82,6 +82,11 @@ export interface AgentLoopOpts {
    * 生产可注入 LLM 摘要器；缺省为确定性兜底（拼接末 N 条，CI 可复现）。
    */
   summarizer?: (notes: string[]) => string | Promise<string>;
+  /**
+   * WO-TIER3：单次 LLM 调用（及工具调用）的墙钟上限（ms）。到点由 AbortController 取消，
+   * 循环捕获后走优雅降级。缺省回退到 budget.maxDurationMs（老调用方/单测直调 loop 行为不变）。
+   */
+  llmCallTimeoutMs?: number;
 }
 
 export interface AgentLoopResult {
@@ -91,6 +96,8 @@ export interface AgentLoopResult {
   structured?: unknown;
   run: AgentRunRecord;
   sketch: { toolName: string; inputSummary: string }[];
+  /** WO-TIER3：超时/预算降级时置位（reason 供 orchestrator/测试识别）；正常 ANSWERED 不置。 */
+  degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" };
 }
 
 const FINAL_ANSWER_DESC =
@@ -142,6 +149,14 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: nu
   });
   await Promise.all(workers);
   return out;
+}
+
+/** WO-TIER3：识别 per-call deadline 触发的取消（AbortController.abort / AbortError）。 */
+function isAbortError(err: unknown): boolean {
+  const name = (err as { name?: unknown } | null)?.name;
+  if (name === "AbortError") return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\babort/i.test(msg);
 }
 
 /** Hand-written agent tool loop (QOS-PRD §6.3 — toolRunner is intentionally NOT used). */
@@ -211,19 +226,72 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...(budgeter.ops.length > 0 ? { contextOps: [...budgeter.ops] } : {}),
   });
 
-  const degrade = (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): AgentLoopResult => {
-    const markdown = lastText || "（探索模式未能产出回答）";
-    const blocks: AnswerBlock[] = [{ type: "text", markdown }];
+  /**
+   * WO-TIER3：优雅降级收尾。诚实红线——只复述工具已查到的线索（模型文字优先；空则从
+   * 已执行工具的结果首行摘要确定性拼「已探索线索」），**决不编造结论/数字**；保留 scanBlocks
+   * 未验证数字护栏。带 reason（TIMEOUT/BUDGET_EXHAUSTED）时：早于 answer.final 发一条降级伪
+   * step（复用 step.completed·type:"agent_degraded"·事件枚举未变）+ 记指标 + 置 degraded 字段。
+   * ANSWERED 软收尾不传 reason（不误报降级事件/timeout）。
+   */
+  const degrade = async (
+    outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED",
+    reason?: "TIMEOUT" | "BUDGET_EXHAUSTED",
+  ): Promise<AgentLoopResult> => {
+    const blocks: AnswerBlock[] = buildPartialFindings(reason);
     const unverified = scanBlocks(blocks);
     if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
     if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
+    if (reason === "TIMEOUT") opts.metrics.agentTimeout.inc();
+    if (reason) {
+      // 降级伪 step（PRD §8.2 line 529 伪 step 语义；不新增顶层事件名）。degrade 先发 → 循环 return →
+      // orchestrator 随后发 answer.final（终态）→ 降级信号必早于终态，SSE/repos.events 可断言。
+      await opts.emit("step.completed", {
+        stepId: newId("degrade"),
+        type: "agent_degraded",
+        outcome: reason,
+        durationMs: opts.budget.elapsedMs(),
+      });
+    }
     return {
       outcome,
       answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance: [], unverifiedNumerics: unverified },
       run: finishRun(outcome === "BUDGET_EXHAUSTED"),
       sketch,
+      ...(reason ? { degraded: { reason } } : {}),
     };
   };
+
+  /**
+   * WO-TIER3 诚实部分发现：主 text = 模型已产出文字（lastText）优先；为空则从已执行工具轮
+   * （frames 的结果首行摘要 firstLine）+ 滚动摘要确定性拼「已探索线索」——只复述工具查到什么，
+   * 不下结论、不造数。再按 reason 追加「未能完全解答」诚实说明块。
+   */
+  function buildPartialFindings(reason?: "TIMEOUT" | "BUDGET_EXHAUSTED"): AnswerBlock[] {
+    let findings: string;
+    if (lastText.trim()) {
+      findings = lastText;
+    } else {
+      const clues = frames.flatMap((f) => f.tools.map((t) => `- ${t.name}：${t.firstLine || "（已调用，无摘要）"}`));
+      if (clues.length === 0 && sketch.length > 0) {
+        clues.push(...sketch.map((s) => `- ${s.toolName}（入参 ${s.inputSummary}）`));
+      }
+      const noteLine = rollingNotes.length > 0 ? `\n\n已折叠轮次：${summaryCache || rollingNotes.join(" ｜ ")}` : "";
+      findings =
+        clues.length > 0
+          ? `## 已探索线索\n本次探索调用了以下工具查询（仅复述已获取的信息，尚未收敛为结论）：\n${clues.join("\n")}${noteLine}`
+          : "## 已探索线索\n本次探索尚未取得可复述的工具结果。";
+    }
+    const why =
+      reason === "TIMEOUT"
+        ? "本次探索超时（单次模型调用或总时长超限），已就已获取信息作答，未及完成完整推演。"
+        : reason === "BUDGET_EXHAUSTED"
+          ? "已达最大探索轮次/工具预算，未能收敛到确定结论。"
+          : "探索模式未能产出完整回答。";
+    return [
+      { type: "text", markdown: findings },
+      { type: "text", markdown: `## 未能完全解答\n${why}` },
+    ];
+  }
 
   /** 增量 §5：同轮 sideEffect 判定（READ 全并行；含 COMPUTE/ACTION_DRAFT/EXTERNAL 全串行）。 */
   const sideEffectOf = (name: string): "READ" | "COMPUTE" | "ACTION_DRAFT" | "EXTERNAL" => {
@@ -348,7 +416,13 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
 
     const binding: ToolBinding = spec && spec.binding.kind === "MCP" ? spec.binding : { kind: "BUILTIN" };
-    const r = await opts.executor.run(block.name, block.input, { binding, budgetDecision });
+    // WO-TIER3：per-tool-call deadline（同 per-LLM-call 纪律）——令 executor 的 withTimeout 生效，
+    // EXTERNAL/MCP 工具挂住时收敛为 {ok:false} tool_result（既有语义），循环自然续/收尾，不 hang。
+    const toolTimeoutMs = Math.max(
+      1,
+      Math.min(opts.llmCallTimeoutMs ?? opts.budget.budget.maxDurationMs, opts.budget.budget.maxDurationMs - opts.budget.elapsedMs()),
+    );
+    const r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: toolTimeoutMs });
     await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
     await opts.emit("step.completed", {
       stepId: r.toolCallId,
@@ -411,8 +485,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   };
 
   for (let i = 0; opts.budget.iterations < opts.budget.budget.maxIterations; i++) {
-    if (opts.isCancelled?.()) return degrade("FAILED");
-    if (opts.budget.durationExceeded()) return degrade("BUDGET_EXHAUSTED");
+    if (opts.isCancelled?.()) return await degrade("FAILED");
+    if (opts.budget.durationExceeded()) return await degrade("BUDGET_EXHAUSTED", "TIMEOUT");
     opts.budget.iterations += 1;
 
     // -----------------------------------------------------------------------
@@ -435,7 +509,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       }
       // 第 3 刀：硬阈值 → 注入收尾提醒，再给 1 次迭代机会
       if (tokens >= budgeter.hardLimit && !finalizePending) {
-        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        if (finalizeUsed) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
         finalizeUsed = true;
         finalizePending = true;
         budgeter.record("force_finalize", i, "hard threshold");
@@ -444,6 +518,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
 
     let response;
+    // WO-TIER3：per-call deadline —— 单次 llm.agent 的墙钟上限（不超过剩余总预算）。到点 abort，
+    // signal 穿到适配器（SDK 原生取消）；mock 挂起 turn 只在 abort 时 reject。防「某次调用挂住 → await
+    // 永不返回 → 轮首时长闸永够不着 → 整任务 hang」的真缺口。timer.unref + finally clearTimeout 防泄漏。
+    const remainingMs = opts.budget.budget.maxDurationMs - opts.budget.elapsedMs();
+    const callMs = Math.max(1, Math.min(opts.llmCallTimeoutMs ?? opts.budget.budget.maxDurationMs, remainingMs));
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), callMs);
+    timer.unref?.();
     try {
       response = await opts.llm.agent({
         model: opts.model,
@@ -452,12 +534,18 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         messages,
         maxTokens: 16000,
         tenantId: opts.tenantId,
+        signal: ac.signal,
         ...(contextEdits ? { contextEdits } : {}),
       });
     } catch (err) {
+      // WO-TIER3：deadline 触发的取消 → **不裸抛** → 优雅降级（把已有 lastText/frames 收敛成诚实
+      // 部分发现 + 发 TIMEOUT 降级事件 + 计 agentTimeout）。非 abort 的真错误维持原有语义。
+      if (ac.signal.aborted || isAbortError(err)) {
+        return await degrade("BUDGET_EXHAUSTED", "TIMEOUT");
+      }
       // 第 3 刀（model_context_window_exceeded 形态）：折叠所有可折叠轮 + 注入收尾提醒后重试一次
       if (isContextWindowExceededError(err)) {
-        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        if (finalizeUsed) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
         for (let f = foldOldestFrame(messages, frames); f; f = foldOldestFrame(messages, frames)) {
           rollingNotes.push(noteOfFrame(f));
           budgeter.record("fold", i, "context window exceeded");
@@ -469,6 +557,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         continue;
       }
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
     // 空响应护栏（PRD）：agent 用途 LLM 返回 undefined/缺 usage（多因用途未绑定/key 失效/兼容网关缺 usage）→
     // 早失败为结构化错误（R7 code=LLM_EMPTY_RESPONSE），不再裸读 .usage 崩成 INTERNAL_ERROR·reading 'usage'。
@@ -495,7 +585,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     if (response.stopReason !== "tool_use" || toolUses.length === 0) {
       // finished without final_answer (§5.4-6 degraded text answer)
-      return degrade("ANSWERED");
+      return await degrade("ANSWERED");
     }
 
     // If this turn carries final_answer, accept it first and terminate (no tool_results needed).
@@ -513,7 +603,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         };
       }
       // 第 3 刀「最后机会」轮给出的 final_answer 无效 → 按预算耗尽语义降级（不再续轮）
-      if (finalizePending) return degrade("BUDGET_EXHAUSTED");
+      if (finalizePending) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
       // invalid final_answer input → tell the model and continue
       messages.push({
         role: "user",
@@ -531,7 +621,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
 
     // 第 3 刀「最后机会」轮未调用 final_answer → 按预算耗尽语义（QOS-PRD §5.4-6）降级收尾
-    if (finalizePending) return degrade("BUDGET_EXHAUSTED");
+    if (finalizePending) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
 
     for (const block of toolUses) {
       if (!(block.name === "load_skill" && opts.loadSkillEnabled)) {
@@ -583,7 +673,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     // 3 consecutive permission denials → force finish (§5.4-4)
     if (consecutiveDenies >= 3) {
-      if (forceFinishNotified) return degrade("ANSWERED");
+      if (forceFinishNotified) return await degrade("ANSWERED");
       forceFinishNotified = true;
       messages.push({
         role: "user",
@@ -592,7 +682,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
   }
 
-  return degrade("BUDGET_EXHAUSTED");
+  return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
 }
 
 async function acceptFinalAnswer(

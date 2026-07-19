@@ -155,7 +155,11 @@ export class AnthropicLlmClient implements FullLlmClient {
 
     const response = await this.client.messages.create(
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
-      compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
+      // WO-TIER3：透传 per-call 取消 signal（与 compaction beta header 合并）；SDK 原生支持 { signal }。
+      {
+        ...(compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : {}),
+        ...(req.signal ? { signal: req.signal } : {}),
+      },
     );
     requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);

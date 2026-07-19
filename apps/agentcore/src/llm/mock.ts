@@ -16,9 +16,17 @@ export function text(t: string): LlmContentBlock {
   return { type: "text", text: t };
 }
 
+/**
+ * WO-TIER3 SEAM：挂起哨兵。queueAgentTurn(HANG) 命中时 agent() 返回一个**永不 resolve**
+ * 的 Promise —— 只在 req.signal abort 时以 AbortError reject。据此工具循环的 per-call
+ * deadline 定时器（固定小 timeout，确定性）到点 → abort → 降级，决不 hang。
+ */
+export const HANG = Symbol("agent-turn-hang");
+
 export type ScriptedTurn =
   | { content: LlmContentBlock[]; stopReason?: string }
-  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string });
+  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string })
+  | typeof HANG;
 
 /**
  * Scripted LLM mock: fixed classification sequences + scripted tool_use turns for the agent loop.
@@ -67,6 +75,18 @@ export class ScriptedLlmClient implements LlmClient {
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
     this.agentRequests.push(req);
     const next = this.agentTurns.shift();
+    if (next === HANG) {
+      // 挂起 turn：自身永不 resolve，只在 signal abort 时 reject AbortError（确定性，无定时器）。
+      return new Promise<LlmAgentResponse>((_, reject) => {
+        const abort = () => {
+          const err = new Error("The operation was aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        if (req.signal?.aborted) return abort();
+        req.signal?.addEventListener("abort", abort, { once: true });
+      });
+    }
     if (!next) {
       // default: end politely without tools
       return {

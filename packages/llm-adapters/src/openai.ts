@@ -59,7 +59,12 @@ export interface OpenAiChatCompletion {
 }
 
 export interface OpenAiChatPort {
-  chat: { completions: { create(params: Record<string, unknown>): Promise<OpenAiChatCompletion> } };
+  chat: {
+    completions: {
+      // WO-TIER3：可选第二参 RequestOptions（透传 { signal } 取消）；SDK 原生支持。
+      create(params: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<OpenAiChatCompletion>;
+    };
+  };
 }
 
 // --- classification structured output ---------------------------------------
@@ -218,15 +223,19 @@ export class OpenAiLlmClient implements FullLlmClient {
       { role: "system", content: req.system },
       ...req.messages.flatMap((m) => toOpenAiMessages(m)),
     ];
-    const resp = await this.client.chat.completions.create({
-      model: req.model,
-      max_tokens: req.maxTokens ?? 16000,
-      tools: req.tools.map((t) => ({
-        type: "function",
-        function: { name: t.name, description: t.description, parameters: t.inputSchema },
-      })),
-      messages,
-    });
+    const resp = await this.client.chat.completions.create(
+      {
+        model: req.model,
+        max_tokens: req.maxTokens ?? 16000,
+        tools: req.tools.map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.inputSchema },
+        })),
+        messages,
+      },
+      // WO-TIER3：透传 per-call 取消 signal（OpenAI SDK 第二参 RequestOptions 支持 signal）。
+      req.signal ? { signal: req.signal } : undefined,
+    );
     this.trackUsage(req.model, resp.usage);
 
     const choice = resp.choices[0];
