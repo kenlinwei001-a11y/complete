@@ -30,6 +30,7 @@ export const PageContextSchema = z.object({
       base: z.string().optional(),
       line: z.string().optional(),
       factorId: z.string().optional(), // 聚焦根因（gap_attribution 叶）
+      order: z.string().optional(), // 聚焦订单号（WO-SOP-RESCHEDULE：产销重排 targetOrderId 源·如 SO-3402）
     })
     .optional(),
   entities: z.array(PageEntitySchema).max(50).default([]), // 页面渲染的真对象（每个 drillRef→源对象）
@@ -76,6 +77,7 @@ export const CeoRouteKindSchema = z.enum([
   "decision_play", // 方案（怎么补/有哪些选择）
   "signal", // 信号（外部信号/触发）
   "metric_rollup", // 达标（差多少）
+  "sop_reschedule", // 产销重排（能否提前/挤占谁/拆哪些基地/代价·WO-SOP-RESCHEDULE·避 decision_play 劫持）
 ]);
 export type CeoRouteKind = z.infer<typeof CeoRouteKindSchema>;
 

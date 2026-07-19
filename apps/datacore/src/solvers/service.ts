@@ -24,6 +24,7 @@ import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
+import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
@@ -108,6 +109,9 @@ export const SOLVER_KEYS = [
   "decision_play",
   // WO-CEO-Q7 供需失衡双向归因：产销缺口→需求端⊥供给端双向分摊(勾稽·真颗粒占比)→各端下钻叶。
   "supply_demand_gap_attribution",
+  // WO-SOP-RESCHEDULE 产销重排推演：目标订单+新交期→跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价，
+  // 落到基地×订单×日执行方案（确定性 R6·勾稽 Σalloc+residual==qty·每值 provenance R13）。
+  "sop_reschedule",
 ] as const;
 
 /**
@@ -164,6 +168,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary"],
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
+  sop_reschedule: ["feasible", "verdict", "targetOrder", "allocation", "displaced", "cost", "residualQty", "reconChecks", "reconciled", "objective", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -1737,6 +1742,35 @@ export class SolverService {
   }
 
   /**
+   * WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演求解器（跨半·数据×引擎×渲染）。
+   * 读真对象（Order/Base/Line/ChangeoverMatrix）+ forecastStart 时间锚（禁 Date.now·R6），系数走
+   * PUBLISHED RuleEntry `sop_reschedule_coeffs`.params（R14 可校准·缺省诚实兜底），委派纯算法 runSopReschedule。
+   * 避免被 decision_play 劫持：ceo-route 产销意图直绑此 solver（args 从 pageContext.focus.order 派生）。
+   */
+  private async sopReschedule(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const targetOrderId = str(args.targetOrderId);
+    if (!targetOrderId) throw validationError("sop_reschedule 需 targetOrderId（目标订单号）");
+    const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
+    const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
+    const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
+    const changeover = (await this.repos.objects.listByType(ctx.tenantId, "ChangeoverMatrix")).map((o) => o.props);
+    const params = await this.getParams(ctx.tenantId);
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const coeffRule = pubRules.find((r) => r.key === "sop_reschedule_coeffs");
+    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    if (!orders.find((o) => str(o.so) === targetOrderId)) throw notFound(`Order ${targetOrderId}`);
+    return runSopReschedule({
+      targetOrderId,
+      newDueDate: args.newDueDate ? str(args.newDueDate) : undefined,
+      advanceDays: args.advanceDays != null ? num(args.advanceDays) : undefined,
+      advancePct: args.advancePct != null ? num(args.advancePct) : undefined,
+      objective: args.objective ? (str(args.objective) as "min_delay" | "min_changeover" | "min_cost") : undefined,
+      forecastStart: str(params.forecastStart),
+      orders, bases, lines, changeover, coeff,
+    }) as unknown as Record<string, unknown>;
+  }
+
+  /**
    * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
    * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
    * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
@@ -2682,6 +2716,7 @@ export class SolverService {
     if (solverKey === "gap_attribution") return this.gapAttribution(ctx, args);
     if (solverKey === "decision_play") return this.decisionPlay(ctx, args);
     if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
+    if (solverKey === "sop_reschedule") return this.sopReschedule(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);

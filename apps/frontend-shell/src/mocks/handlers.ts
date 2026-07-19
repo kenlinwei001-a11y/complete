@@ -48,6 +48,7 @@ import {
   mockPlanAudit,
   mockPlanGenerate,
   mockSopAdvance,
+  mockSopReschedule,
   PLAN_VERSION_CURRENT,
   SopMockError,
   sopPlanLocked,
@@ -1999,6 +2000,8 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "sop_reschedule")
+      return HttpResponse.json({ data: mockSopReschedule(args), snapshotVersion: "ov-12" });
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";

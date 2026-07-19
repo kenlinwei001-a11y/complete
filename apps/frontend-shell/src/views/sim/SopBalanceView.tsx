@@ -9,6 +9,7 @@ import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { Provenance } from "@/components/Provenance";
+import { SopReschedulePanel } from "./SopReschedulePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -251,6 +252,9 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
           onFinalize={finalize}
         />
       )}
+
+      {/* WO-SOP-RESCHEDULE 产销重排推演（能否提前/挤占谁/拆哪些基地/代价·读真求解器·additive） */}
+      <SopReschedulePanel />
 
       {/* 改字段尝试（FINAL → 409 PLAN_LOCKED 演示；非 FINAL 可正常保存） */}
       <div className={styles.miniForm} style={{ marginTop: 16, borderTop: "1px dashed var(--line2)", paddingTop: 10 }}>
