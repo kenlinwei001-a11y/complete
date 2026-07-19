@@ -250,7 +250,7 @@ describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
     { factorId: "cf-churn", drillType: "Customer", drillId: "cust_0", drillField: "maxOverdueDays", isRoot: true, metricKey: "revenue" },
     // cash
     { factorId: "cf-cash-gap", drillType: "ARAging", drillId: "ar-total", drillField: "amount", isRoot: false, metricKey: "cash" },
-    { factorId: "cf-ar-aging", drillType: "ARAging", drillId: "ar-90plus", drillField: "bucket", isRoot: true, metricKey: "cash" },
+    { factorId: "cf-ar-aging", drillType: "ARAging", drillId: "ar-90plus", drillField: "amount", isRoot: true, metricKey: "cash" }, // WO-TIER3 加固：bucket(枚举→0)→amount(数值)
     { factorId: "cf-dso-stretch", drillType: "DSO", drillId: "dso-ess", drillField: "days", isRoot: true, metricKey: "cash" },
     { factorId: "cf-customer-concentration", drillType: "Customer", drillId: "cust_0", drillField: "receivables", isRoot: true, metricKey: "cash" },
     // demand_attain
@@ -258,6 +258,11 @@ describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
     { factorId: "cf-forecast-bias", drillType: "DecisionGap", drillId: "dgap-forecast", drillField: "severity", isRoot: true, metricKey: "demand_attain" },
     { factorId: "cf-capacity-short", drillType: "Equipment", drillField: "oee_current", isRoot: true, metricKey: "demand_attain" },
     { factorId: "cf-material-short", drillType: "MaterialBalance", drillField: "gapTon", isRoot: true, metricKey: "demand_attain" },
+    // gross_profit（WO-TIER3 毛利专属域·下钻 GrossMarginBridge.impactYi）
+    { factorId: "cf-gm-gap", drillType: "GrossMarginBridge", drillId: "gmb-total", drillField: "impactYi", isRoot: false, metricKey: "gross_profit" },
+    { factorId: "cf-volume-shortfall", drillType: "GrossMarginBridge", drillId: "gmb-volume", drillField: "impactYi", isRoot: true, metricKey: "gross_profit" },
+    { factorId: "cf-price-erosion-gm", drillType: "GrossMarginBridge", drillId: "gmb-price", drillField: "impactYi", isRoot: true, metricKey: "gross_profit" },
+    { factorId: "cf-cost-inflation", drillType: "GrossMarginBridge", drillId: "gmb-cost", drillField: "impactYi", isRoot: true, metricKey: "gross_profit" },
   ];
 
   it("D1·每指标因果因素对象存在且 drillType/drillId/drillField/isRoot 正确", async () => {

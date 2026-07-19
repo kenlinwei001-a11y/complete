@@ -95,6 +95,11 @@ export function extendedObjectTypes(): TypeDef[] {
     def("DSO", "应收账款周转天数", "finance", [
       p("dsoId", "string", true), p("segment", "string"), p("days"), p("period", "string"),
     ]),
+    // WO-TIER3 毛利归因桥（毛利额缺口按 量/价/成本 分解·gross_profit 专属域 drill 真证据）。
+    def("GrossMarginBridge", "毛利归因桥", "finance", [
+      p("bridgeId", "string", true), p("lever", "string"), p("segment", "string"),
+      p("impactYi"), p("driver", "string"), p("period", "string"),
+    ]),
     def("OverdueRecord", "逾期记录", "finance", [
       p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"), p("amount"),
     ]),
@@ -229,7 +234,8 @@ const REVENUE_CAUSAL_FACTORS = [
 // WO-CEO-DATA-2 现金域因果因素（多假设：AR 账龄·DSO 拉伸·客户集中度）。
 const CASH_CAUSAL_FACTORS = [
   { factorId: "cf-cash-gap", label: "经营现金缺口", drillType: "ARAging", drillId: "ar-total", drillField: "amount", kind: "派生", isRoot: false, provenanceSynthetic: false, metricKey: "cash" },
-  { factorId: "cf-ar-aging", label: "应收账龄恶化(root)", drillType: "ARAging", drillId: "ar-90plus", drillField: "bucket", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "cash" },
+  // WO-TIER3 加固：drillField bucket(枚举"90+"→num→0·恒 0 贡献违 R13/C5) → amount(ar-90plus.amount=38000·数值·越大=账龄越坏)。
+  { factorId: "cf-ar-aging", label: "应收账龄恶化(root)", drillType: "ARAging", drillId: "ar-90plus", drillField: "amount", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "cash" },
   { factorId: "cf-dso-stretch", label: "DSO 拉伸(root)", drillType: "DSO", drillId: "dso-ess", drillField: "days", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "cash" },
   { factorId: "cf-customer-concentration", label: "客户集中度(root)", drillType: "Customer", drillId: "cust_0", drillField: "receivables", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "cash" },
 ];
@@ -242,12 +248,22 @@ const DEMAND_ATTAIN_CAUSAL_FACTORS = [
   { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "DYNAMIC-MBAL", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain" },
 ];
 
+// WO-TIER3 毛利域因果因素（量/价/成本三根·各下钻 GrossMarginBridge 真分量·gross_profit 专属域·
+// 收窄 GAP-ATTR 残口：此前 gross_profit 复用供应链结构分摊→回落 cathode·现落到量/价/成本毛利叶）。
+const GROSS_PROFIT_CAUSAL_FACTORS = [
+  { factorId: "cf-gm-gap", label: "毛利额缺口", drillType: "GrossMarginBridge", drillId: "gmb-total", drillField: "impactYi", kind: "派生", isRoot: false, provenanceSynthetic: false, metricKey: "gross_profit" },
+  { factorId: "cf-volume-shortfall", label: "销量未达(root)", drillType: "GrossMarginBridge", drillId: "gmb-volume", drillField: "impactYi", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "gross_profit" },
+  { factorId: "cf-price-erosion-gm", label: "价格实现下滑(root)", drillType: "GrossMarginBridge", drillId: "gmb-price", drillField: "impactYi", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "gross_profit" },
+  { factorId: "cf-cost-inflation", label: "物料成本上行(root)", drillType: "GrossMarginBridge", drillId: "gmb-cost", drillField: "impactYi", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "gross_profit" },
+];
+
 export const CAUSAL_FACTORS = [
   ...SUPPLY_CAUSAL_FACTORS,
   ...MARKET_SHARE_CAUSAL_FACTORS,
   ...REVENUE_CAUSAL_FACTORS,
   ...CASH_CAUSAL_FACTORS,
   ...DEMAND_ATTAIN_CAUSAL_FACTORS,
+  ...GROSS_PROFIT_CAUSAL_FACTORS,
 ];
 
 // WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry.params 覆盖·C3）。
@@ -298,12 +314,20 @@ const DEMAND_ATTAIN_CAUSAL_EDGES: { from: string; to: string }[] = [
   { from: "cf-demand-attain-gap", to: "cf-material-short" },
 ];
 
+// 毛利域：毛利缺口→销量未达/价格实现下滑/物料成本上行。
+const GROSS_PROFIT_CAUSAL_EDGES: { from: string; to: string }[] = [
+  { from: "cf-gm-gap", to: "cf-volume-shortfall" },
+  { from: "cf-gm-gap", to: "cf-price-erosion-gm" },
+  { from: "cf-gm-gap", to: "cf-cost-inflation" },
+];
+
 export const CAUSAL_EDGES: { from: string; to: string }[] = [
   ...SUPPLY_CAUSAL_EDGES,
   ...MARKET_SHARE_CAUSAL_EDGES,
   ...REVENUE_CAUSAL_EDGES,
   ...CASH_CAUSAL_EDGES,
   ...DEMAND_ATTAIN_CAUSAL_EDGES,
+  ...GROSS_PROFIT_CAUSAL_EDGES,
 ];
 const PROVINCE_GRID: Record<string, number> = { changzhou: 0.55, hefei: 0.58, xian: 0.62, chengdu: 0.78, zaozhuang: 0.7, jiangmen: 0.5 };
 
@@ -340,6 +364,8 @@ export interface ExtendedData {
   arAgings: Record<string, unknown>[];
   dsos: Record<string, unknown>[];
   overdueRecords: Record<string, unknown>[];
+  // WO-TIER3 毛利归因桥（量/价/成本分量·gross_profit 域 drill 真证据）
+  grossMarginBridges: Record<string, unknown>[];
 }
 
 // WO-WAREHOUSE-CUSTLOC：客户交付地确定性地理配置表（R14 非散落写死·同 seed 字节一致 R6）。
@@ -364,6 +390,8 @@ export function generateExtended(
     lines: { lineId: string }[];
     equipment: { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number; oee_current?: number }[];
     materialBalances: { matBalId: string; gapTon?: number }[];
+    // WO-TIER3：毛利桥 impactYi 确定性派生所需的需求细分（tgt/act/p50/priceWan/marginPct·R6 无 rng）。
+    demandSegments?: { tgt?: number; act?: number; p50?: number; priceWan?: number; marginPct?: number }[];
   },
   scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
@@ -606,6 +634,32 @@ export function generateExtended(
     { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400 },
   ];
 
+  // WO-TIER3 毛利归因桥：量/价/成本三分量 + 合计，由既有种子确定性派生（R6 无 rng·R14 值落对象属性·非引擎内联常数）。
+  //  量 = Σ 需求未达(tgt−act)×priceWan×marginPct/100（DemandSegment 真颗粒·负=拉低毛利）。
+  //  价 = 营收 × 价格实现下滑比（priceRealizations listPrice vs realizedPrice 平均侵蚀比）。
+  //  成本 = 营收 × 矿价累计涨幅(Σ CommodityPriceTrend.pctChange) × 物料成本敏感系数（矿价向毛利传导）。
+  const GM_MATERIAL_COST_SENSITIVITY = 0.06; // 物料成本对营收的敏感系数（数据层单一定义·非散落魔数）
+  const segs = ctx.demandSegments ?? [];
+  const nSeg = Math.max(1, segs.length);
+  const totalRevYi = round(
+    segs.reduce((s, d) => s + (d.p50 ?? 0) * (d.priceWan ?? 0), 0) || nSeg * 100, 2,
+  );
+  const volumeShortfallYi = -round(
+    segs.reduce((s, d) => s + Math.max(0, (d.tgt ?? 0) - (d.act ?? 0)) * (d.priceWan ?? 0) * (d.marginPct ?? 0) / 100, 0) || 1, 2,
+  );
+  const priceErosionRatio =
+    priceRealizations.reduce((s, pr) => s + (pr.listPrice - pr.realizedPrice) / pr.listPrice, 0) / priceRealizations.length;
+  const priceErosionGmYi = -round(totalRevYi * priceErosionRatio, 2);
+  const licarbCumPct = COMMODITY_PRICE_TRENDS.reduce((s, tr) => s + tr.pctChange, 0);
+  const costInflationYi = -round(totalRevYi * licarbCumPct / 100 * GM_MATERIAL_COST_SENSITIVITY, 2);
+  const gmTotalYi = round(volumeShortfallYi + priceErosionGmYi + costInflationYi, 2);
+  const grossMarginBridges = [
+    { bridgeId: "gmb-total", lever: "合计", segment: "全域", impactYi: gmTotalYi, driver: "毛利额缺口合计（量/价/成本）", period: "2026-Q2" },
+    { bridgeId: "gmb-volume", lever: "量", segment: "全域", impactYi: volumeShortfallYi, driver: "销量未达预期拉低毛利", period: "2026-Q2" },
+    { bridgeId: "gmb-price", lever: "价", segment: "全域", impactYi: priceErosionGmYi, driver: "价格实现低于挂牌", period: "2026-Q2" },
+    { bridgeId: "gmb-cost", lever: "成本", segment: "全域", impactYi: costInflationYi, driver: "物料成本上行侵蚀毛利", period: "2026-Q2" },
+  ];
+
   // WO-CEO-DATA-2：动态绑定 demand_attain 产能/物料短缺下钻到真实对象（不消耗 rng·R6 稳定）。
   const worstEquip = ctx.equipment.length
     ? ctx.equipment.slice().sort((a, b) => {
@@ -630,6 +684,6 @@ export function generateExtended(
     commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
     triggerRules: TRIGGER_RULES,
     competitorShares, bidRecords, competitorPrices, pipelineOpportunities, winLossRecords,
-    priceRealizations, arAgings, dsos, overdueRecords,
+    priceRealizations, arAgings, dsos, overdueRecords, grossMarginBridges,
   };
 }

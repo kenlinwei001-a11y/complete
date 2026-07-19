@@ -65,8 +65,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["QualityStandard", "InspectionCharacteristic", "QualityLot", "InspectionResult", "DefectRecord", "DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
-      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）、应收账龄/DSO/逾期记录与碳因子。",
-      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan", "ARAging", "DSO", "OverdueRecord"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）、应收账龄/DSO/逾期记录、毛利归因桥（量/价/成本）与碳因子。",
+      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan", "ARAging", "DSO", "OverdueRecord", "GrossMarginBridge"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "external_signal", displayName: "外部信号", description: "锂价/镍价/汇率/需求指数/政策等市场与环境信号，及大宗商品价格趋势（矿价逐周涨幅）。",

@@ -676,7 +676,7 @@ export class SyntheticService {
         if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
       }
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number }[] }, scale);
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number }[], demandSegments: g.demandSegments as { tgt?: number; act?: number; p50?: number; priceWan?: number; marginPct?: number }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
@@ -708,6 +708,7 @@ export class SyntheticService {
     await putAll("ARAging", ext.arAgings, "agingId");
     await putAll("DSO", ext.dsos, "dsoId");
     await putAll("OverdueRecord", ext.overdueRecords, "overdueId");
+    await putAll("GrossMarginBridge", ext.grossMarginBridges, "bridgeId"); // WO-TIER3 毛利归因桥（量/价/成本 drill 真证据）
     // WO-EXCEPTION-EVENT · 四源归一异常事件（G-EXCEPTION-SCATTER）。
     //  ① 物化 3 源对象（DefectRecord/EquipmentDowntime/EquipmentAlarm）使 refId 可下钻回真源（R13）——
     //     此前仅本体类型存在、无 demo 实例；MaterialBalance/TriggerRule 上文已物化。

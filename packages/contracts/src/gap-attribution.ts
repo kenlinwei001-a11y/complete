@@ -251,3 +251,14 @@ export const OverdueRecordSchema = z.object({
   amount: z.number(),
 });
 export type OverdueRecord = z.infer<typeof OverdueRecordSchema>;
+
+/** 毛利归因桥（WO-TIER3）：毛利额缺口按 量/价/成本 分解（price-volume-cost bridge）。impactYi 负=拉低毛利。 */
+export const GrossMarginBridgeSchema = z.object({
+  bridgeId: z.string(), // pk：gmb-total / gmb-volume / gmb-price / gmb-cost
+  lever: z.string(), // 归因杠杆（量 / 价 / 成本 / 合计）
+  segment: z.string(), // 细分或"全域"
+  impactYi: z.number(), // 该杠杆对毛利额的影响（亿元·真颗粒·改它→归因变 C5）
+  driver: z.string(), // 人话说明（如"销量未达预期拉低毛利"）
+  period: z.string(),
+});
+export type GrossMarginBridge = z.infer<typeof GrossMarginBridgeSchema>;

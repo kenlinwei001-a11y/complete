@@ -120,6 +120,10 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
     const rev = await t.repos.objects.get(ADMIN.tenantId, "obj_metric_kpi-revenue");
     expect(rev, "revenue Metric 对象应存在").toBeTruthy();
     await t.repos.objects.put({ ...rev!, props: { ...rev!.props, actual: 640 } });
+    // gross_profit 种子 actual(≈118.9)>target(112) → 无缺口，须先构造 actual<target 驱动毛利归因（WO-TIER3）。
+    const gm = await t.repos.objects.get(ADMIN.tenantId, "obj_metric_kpi-gross-profit");
+    expect(gm, "gross_profit Metric 对象应存在").toBeTruthy();
+    await t.repos.objects.put({ ...gm!, props: { ...gm!.props, actual: 100 } }); // < floor 108.5
 
     // 每指标 → {入口 gap 因子, 本域三根}。北极星：market_share→cf-competitor-price·cash→cf-ar-aging·
     // demand_attain→cf-forecast-bias·revenue→cf-pipeline-shrink，跨指标叶集互不相同、均不含 cathode。
@@ -128,6 +132,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
       cash: { entry: "cf-cash-gap", roots: ["cf-ar-aging", "cf-dso-stretch", "cf-customer-concentration"] },
       demand_attain: { entry: "cf-demand-attain-gap", roots: ["cf-forecast-bias", "cf-capacity-short", "cf-material-short"] },
       revenue: { entry: "cf-revenue-gap", roots: ["cf-pipeline-shrink", "cf-price-erosion", "cf-churn"] },
+      gross_profit: { entry: "cf-gm-gap", roots: ["cf-volume-shortfall", "cf-price-erosion-gm", "cf-cost-inflation"] },
     };
     // cathode 供应链根/中继（旧回落目标）——任一出现即证明未 metric-aware 路由。
     const cathodeLeaves = ["cf:cf-decision-gap", "cf:cf-cert-cycle", "cf:cf-cathode-shortage", "cf:cf-geopolitical"];
@@ -172,6 +177,58 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
         expect(sig(primaryLeaves[keys[i]!]!), `${keys[i]} vs ${keys[j]} 叶集应不同`).not.toBe(sig(primaryLeaves[keys[j]!]!));
       }
     }
+  });
+
+  it("SEAM-GATE·TIER3 · 毛利/现金深问归因到真叶子（量/价/成本·应收/DSO）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // —— 毛利：种子 actual(≈118.9)>target → 强制缺口（照 revenue 先例确定性构造）——
+    const gm = await t.repos.objects.get(ADMIN.tenantId, "obj_metric_kpi-gross-profit");
+    await t.repos.objects.put({ ...gm!, props: { ...gm!.props, actual: 100 } }); // < floor 108.5
+    const g = await runGapAttribution(t, "gross_profit");
+
+    expect(g.totalGap).toBeGreaterThan(0);
+    expect(g.noGap ?? false).toBe(false);
+    expect(g.rootMetric.key).toBe("gross_profit");
+    // ① 因果边从 cf-gm-gap 出发，落到 量/价/成本三根
+    expect(g.causalEdges.some((e) => e.from === "cf-gm-gap")).toBe(true);
+    for (const root of ["cf-volume-shortfall", "cf-price-erosion-gm", "cf-cost-inflation"]) {
+      expect(g.atomicLeaves.some((l) => l.id === `cf:${root}`)).toBe(true);
+      expect(g.causalEdges.some((e) => e.to === root)).toBe(true);
+    }
+    // ② 绝不回落 cathode 供应链根（北极星红线）
+    for (const bad of ["cf:cf-cathode-shortage", "cf:cf-decision-gap", "cf:cf-cert-cycle", "cf:cf-geopolitical"])
+      expect(g.atomicLeaves.map((l) => l.id)).not.toContain(bad);
+    // ③ R13：每叶 provenance 下钻 GrossMarginBridge 真数值（drillValue!==0）
+    for (const l of g.atomicLeaves) {
+      expect(l.provenance.drillType).toBe("GrossMarginBridge");
+      expect(l.provenance.drillField).toBe("impactYi");
+      expect(Math.abs(Number((l.provenance as { drillValue?: number }).drillValue))).toBeGreaterThan(0);
+    }
+    // ④ 勾稽：逐层 Σ子+residual==父gap
+    expect(g.reconciled).toBe(true);
+    for (const rc of (g as unknown as { reconChecks: { ok: boolean }[] }).reconChecks) expect(rc.ok).toBe(true);
+
+    // ⑤ C5 铁律（改颗粒→归因变）：改 gmb-cost.impactYi → 成本根贡献变
+    const before = g.atomicLeaves.find((l) => l.id === "cf:cf-cost-inflation")!.contribution;
+    const cost = await t.repos.objects.get(ADMIN.tenantId, "obj_grossmarginbridge_gmb-cost");
+    await t.repos.objects.put({ ...cost!, props: { ...cost!.props, impactYi: Number(cost!.props.impactYi) * 3 } });
+    const g2 = await runGapAttribution(t, "gross_profit");
+    expect(g2.atomicLeaves.find((l) => l.id === "cf:cf-cost-inflation")!.contribution).not.toBe(before);
+
+    // —— 现金加固：cf-ar-aging 现由 ARAging.amount 驱动（此前 bucket 枚举→0）——
+    const c = await runGapAttribution(t, "cash");
+    const arLeaf = c.atomicLeaves.find((l) => l.id === "cf:cf-ar-aging");
+    expect(arLeaf, "应收账龄恶化根应在叶集").toBeTruthy();
+    expect(arLeaf!.provenance.drillField).toBe("amount");
+    expect(Math.abs(Number((arLeaf!.provenance as { drillValue?: number }).drillValue))).toBeGreaterThan(0); // 不再恒 0
+    // C5：改 ar-90plus.amount → cf-ar-aging 贡献变
+    const arBefore = arLeaf!.contribution;
+    const ar = await t.repos.objects.get(ADMIN.tenantId, "obj_araging_ar-90plus");
+    await t.repos.objects.put({ ...ar!, props: { ...ar!.props, amount: Number(ar!.props.amount) * 4 } });
+    const c2 = await runGapAttribution(t, "cash");
+    expect(c2.atomicLeaves.find((l) => l.id === "cf:cf-ar-aging")!.contribution).not.toBe(arBefore);
   });
 
   it("metric-aware 归因：market_share 发布 MetricCausalBinding → 只选绑定根并多假设分配", async () => {

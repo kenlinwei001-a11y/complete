@@ -1435,6 +1435,7 @@ export class SolverService {
         DSO: "dsoId",
         Customer: "custId",
         Equipment: "equipId",
+        GrossMarginBridge: "bridgeId", // WO-TIER3 毛利域 drill pk（否则按 "id" 查不到→drillValue 0→severity 退化）
       }[type] ?? "id";
       const row = rows.find((r) => str(r[pkField]) === id);
       return row ? num(row[field]) : 0;
