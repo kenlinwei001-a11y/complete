@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -73,6 +73,17 @@ export interface IamClient {
   check(ctx: ToolAuthCtx, toolName: string, args: unknown): Promise<{ allowed: boolean; reason?: string }>;
 }
 
+/**
+ * WO-DECISION-KERNEL-WIRE：L2 决策内核出口（OBO）——闭"CEO 深问止步方案·不成决策"脑裂。
+ * 深问出真方案（decision_play）后按意图落一等 `Decision`：`create` → PROPOSED（bundling 真 gap_attribution +
+ * decision_play·选定 chosenOptionIds）；`commit` → COMMITTED + 派 ActionDraft（S2 DRAFT·审批门不绕）。
+ * 透传用户 JWT/X-Debug-User（OBO），DataCore 侧 kernel 从真推演派生（非写死·改根因→重推→Decision 变）。
+ */
+export interface DecisionClient {
+  create(ctx: ToolAuthCtx, input: CreateDecisionInput): Promise<Decision>;
+  commit(ctx: ToolAuthCtx, decisionId: string): Promise<Decision>;
+}
+
 /** S4.1 knowledge-base hit shape (also the KB_CHUNK provenance payload). */
 export interface KbHit {
   text: string;
@@ -145,6 +156,8 @@ export interface DataCoreClient {
   solver: SolverClient;
   rules: RuleEngineClient;
   action: ActionClient;
+  /** WO-DECISION-KERNEL-WIRE：L2 决策内核（CEO 深问出方案后成一等 Decision·commit 派 ActionDraft 进 S2）。 */
+  decision: DecisionClient;
   iam: IamClient;
   kb: KbClient;
   timeseries: TimeseriesClient;

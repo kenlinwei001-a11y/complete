@@ -14,6 +14,24 @@ const RE_OPTION = /(怎么补|怎么办|方案|选择|应对|对策|怎么解决
 const RE_SIGNAL = /(信号|触发|预警|涨|外部|地缘|矿价)/;
 const RE_ATTAIN = /(差多少|达成|缺口多少|还差|完成率|达标)/;
 
+/**
+ * WO-DECISION-KERNEL-WIRE：决策类深问的「成决策」意图判定（闭"深问止步方案·不成决策"脑裂·纯函数 R6）。
+ * 深问出方案后，若用户表达采纳/落地意图 → 经 L2 内核落一等 Decision 台账（PROPOSED），立即落地意图再 commit
+ * → COMMITTED + ActionDraft 进 S2。此为**意图分档**，非改路由（仍先跑 decision_play 出方案·再据意图成决策）。
+ */
+const RE_DECIDE = /(采纳|拍板|成决策|做决策|定这个|定下来|就这个方案|批准方案)/; // → create Decision(PROPOSED)
+const RE_LAND = /(立即落地|马上落地|现在落地|立刻执行|立即执行|直接下发|下发工单|一键落地|立即采纳)/; // → 再 commit(COMMITTED·派 ActionDraft)
+export function decisionCommitIntent(q: string): "none" | "propose" | "commit" {
+  const s = q ?? "";
+  if (RE_LAND.test(s)) return "commit"; // 立即落地：create + commit
+  if (RE_DECIDE.test(s)) return "propose"; // 成决策：create(PROPOSED) 待人 commit
+  return "none";
+}
+/** 该路由是否决策类（可成决策）——decision_play/signal 出方案·gap_attribution 只根因（不成决策）。 */
+export function isDecisionRoute(route: CeoQueryRoute["route"]): boolean {
+  return route === "decision_play" || route === "signal";
+}
+
 /** 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。 */
 export function isCeoQuestion(q: string): boolean {
   return [RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));

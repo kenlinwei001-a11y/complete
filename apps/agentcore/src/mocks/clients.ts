@@ -1,10 +1,11 @@
-import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
   CatalogClient,
   DataCoreClient,
   DataGenClient,
+  DecisionClient,
   IamClient,
   KbClient,
   KbHit,
@@ -339,6 +340,38 @@ export class MockSolverClient implements SolverClient {
         snapshotVersion: SNAPSHOT,
       };
     }
+    // WO-DECISION-KERNEL-WIRE：decision_play 出**推荐组合**（recommendedPlan.optionIds）——orchestrator 决策钩子据此
+    // 成一等 Decision（chosenOptionIds 默认取真推演推荐组合）。形状对齐 DecisionPlayOutputSchema（rootCause/options/
+    // recommendedPlan），metricKey/factorId 从 args 派生（证 PageContext 真达求解器·同问句不同上下文→不同 Decision）。
+    if (solverKey === "decision_play") {
+      const metricKey = typeof args.metricKey === "string" && args.metricKey ? args.metricKey : "seg_attain_ess";
+      const factorId = typeof args.factorId === "string" && args.factorId ? args.factorId : "cf-cathode-shortage";
+      const rnd = prngFor({ solverKey, metricKey, factorId });
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      const options = [
+        { optionId: `opt-${factorId}-a`, factorId, label: "扩备份供应池", sourceKind: "solver" as const, closesGap: round1(8 + rnd() * 6), cost: 120, cycleDays: 30, risk: 0.3, exposure: 0.4, reversibility: 0.7, provenance: { kind: "求解器" as const, basis: "mitigation_select" } },
+        { optionId: `opt-${factorId}-b`, factorId, label: "长协提量", sourceKind: "solver" as const, closesGap: round1(5 + rnd() * 5), cost: 80, cycleDays: 45, risk: 0.4, exposure: 0.3, reversibility: 0.6, provenance: { kind: "求解器" as const, basis: "mitigation_select" } },
+      ];
+      const recommendedPlan = {
+        planId: `plan-${factorId}`,
+        optionIds: options.map((o) => o.optionId),
+        steps: options.map((o, i) => ({ phase: (i === 0 ? "即刻" : "本季") as "即刻" | "本季" | "半年", action: o.label, optionRef: o.optionId })),
+        totalClosesGap: round1(options.reduce((s, o) => s + o.closesGap, 0)),
+        totalCost: options.reduce((s, o) => s + o.cost, 0),
+      };
+      return {
+        data: {
+          rootCause: { factorId, label: "上游正极材料减供", metricKey, gap: 27.8, unit: "%" },
+          options,
+          matrix: options.map((o) => ({ optionId: o.optionId, label: o.label, dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility } })),
+          triggers: [],
+          recommendedPlan,
+          sandboxNarrowing: { beforeGap: 27.8, afterGap: round1(27.8 - recommendedPlan.totalClosesGap), narrowedPct: round1((recommendedPlan.totalClosesGap / 27.8) * 100), ticks: 3 },
+          summary: `根因「${factorId}」的 ${options.length} 个方案与推荐组合`,
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
     // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
     // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
     // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。
@@ -410,6 +443,80 @@ export class MockActionClient implements ActionClient {
     const draftId = newId("draft");
     this.drafts.push({ draftId, actionType, payload, status: "PENDING_APPROVAL" });
     return { draftId, status: "PENDING_APPROVAL" };
+  }
+}
+
+/**
+ * WO-DECISION-KERNEL-WIRE：L2 决策内核 mock（DataCore kernel 的测试替身）。
+ * 记录 create/commit 调用（`created`/`committed`）供 orchestrator 决策钩子的接缝断言（成决策入参=真推演推荐组合·
+ * 立即落地才 commit）。commit 派 ActionDraft id（对齐真 kernel：每选定方案一 DRAFT·走 S2）。真 HTTP·非 mock 的
+ * POST /a/v1/decisions 由 datacore 侧 seam 测试（decision-wire-seam）证；此 mock 只固化 agentcore 侧钩子逻辑。
+ */
+export class MockDecisionClient implements DecisionClient {
+  readonly created: { input: CreateDecisionInput; decision: Decision }[] = [];
+  readonly committed: string[] = [];
+  private readonly store = new Map<string, Decision>();
+
+  async create(ctx: ToolAuthCtx, input: CreateDecisionInput): Promise<Decision> {
+    const id = newId("dec");
+    const now = "2024-01-01T00:00:00.000Z";
+    const options = input.chosenOptionIds.map((optionId) => ({
+      optionId,
+      factorId: input.factorId ?? "cf-root",
+      label: `方案 ${optionId}`,
+      sourceKind: "solver" as const,
+      closesGap: 5,
+      cost: 100,
+      cycleDays: 30,
+      risk: 0.3,
+      exposure: 0.3,
+      reversibility: 0.7,
+      provenance: { kind: "求解器" as const, basis: "mitigation_select" },
+    }));
+    const decision: Decision = {
+      id,
+      tenantId: ctx.tenantId,
+      metricKey: input.metricKey,
+      factorId: input.factorId ?? null,
+      rootRef: {
+        solverKey: "gap_attribution",
+        metricKey: input.metricKey,
+        factorId: input.factorId ?? null,
+        rootMetric: { key: input.metricKey, name: input.metricKey, unit: "%", gap: 27.8 },
+        residualPct: null,
+        topBase: null,
+        summary: `根因快照 ${input.metricKey}`,
+      },
+      optionsRef: {
+        solverKey: "decision_play",
+        options,
+        recommendedPlan: { planId: `plan-${id}`, optionIds: input.chosenOptionIds, steps: [], totalClosesGap: 0, totalCost: 0 },
+      },
+      chosenOptionIds: input.chosenOptionIds,
+      actionDraftIds: [],
+      status: "PROPOSED",
+      trace: [],
+      decidedBy: ctx.userId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.set(id, decision);
+    this.created.push({ input, decision });
+    return decision;
+  }
+
+  async commit(ctx: ToolAuthCtx, decisionId: string): Promise<Decision> {
+    const d = this.store.get(decisionId);
+    if (!d || d.tenantId !== ctx.tenantId) throw new Error(`decision not found: ${decisionId}`);
+    const committed: Decision = {
+      ...d,
+      status: "COMMITTED",
+      actionDraftIds: d.chosenOptionIds.map(() => newId("draft")), // 每选定方案派一 ActionDraft（DRAFT·S2）
+      updatedAt: "2024-01-01T00:00:01.000Z",
+    };
+    this.store.set(decisionId, committed);
+    this.committed.push(decisionId);
+    return committed;
   }
 }
 
@@ -615,6 +722,7 @@ export interface MockDataCore extends DataCoreClient {
   solver: MockSolverClient;
   rules: MockRuleEngineClient;
   action: MockActionClient;
+  decision: MockDecisionClient;
   iam: MockIamClient;
   kb: MockKbClient;
   timeseries: MockTimeseriesClient;
@@ -629,6 +737,7 @@ export function createMockDataCore(): MockDataCore {
     solver: new MockSolverClient(),
     rules: new MockRuleEngineClient(),
     action: new MockActionClient(),
+    decision: new MockDecisionClient(),
     iam: new MockIamClient(),
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
