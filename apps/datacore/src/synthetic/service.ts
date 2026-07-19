@@ -649,6 +649,7 @@ export class SyntheticService {
     await putAll("MaintPlan", g.maintPlans, "planId");
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
+    await putAll("InterBaseTransfer", g.interBaseTransfers, "transferId"); // WO-INTERBASE-TRANSFER：跨基地调拨对象化（R13）
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
     // cockpit P1 绿地
     await putAll("DemandSegment", g.demandSegments, "segId");
@@ -786,6 +787,15 @@ export class SyntheticService {
     for (const m of ext.materials) {
       const supplierId = (m as { supplierId?: string }).supplierId;
       if (supplierId) await putLink(`lnk_msb_${(m as { matId: string }).matId}`, "material_supplied_by", oid("Material", (m as { matId: string }).matId), oid("Supplier", supplierId));
+    }
+
+    // WO-INTERBASE-TRANSFER：调拨三条链路（transfer_from_base/transfer_to_base→Base·transfer_of_model→Model·N:1）。
+    // fromId/toId 是 baseId（下钻 obj_base_<baseId> = BASE_REGISTRY 真基地），model 是 modelId（obj_model_<modelId>）。
+    for (const x of g.interBaseTransfers) {
+      const tid = x.transferId as string;
+      await putLink(`lnk_xff_${tid}`, "transfer_from_base", oid("InterBaseTransfer", tid), oid("Base", x.fromBase));
+      await putLink(`lnk_xft_${tid}`, "transfer_to_base", oid("InterBaseTransfer", tid), oid("Base", x.toBase));
+      await putLink(`lnk_xfm_${tid}`, "transfer_of_model", oid("InterBaseTransfer", tid), oid("Model", x.model));
     }
 
     // factory: Base → Workshop（Workshop.baseId；方向翻转：Base 1:N Workshop）

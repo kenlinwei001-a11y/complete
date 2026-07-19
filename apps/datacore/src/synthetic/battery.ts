@@ -831,6 +831,26 @@ const shipmentProps: PropertyDef[] = [
   { propKey: "coverageDays", dataType: "number", isPrimaryKey: false }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
 ];
 
+// WO-INTERBASE-TRANSFER：跨基地调拨台账（从字符串杠杆升一等·R13 可溯真对象）。
+// fromBase/toBase→Base(baseId)·model→Model(modelId) 用 ref；status 用 enum；
+// etaDay 走 derivedProperties（数值管线 dispatchDay+transitDays），etaDate/dispatchDate 为 ISO 展示。
+const interBaseTransferProps: PropertyDef[] = [
+  { propKey: "transferId", dataType: "string", isPrimaryKey: true },
+  { propKey: "fromBase", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "toBase", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false }, // 套
+  { propKey: "transitDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // PLANNED | IN_TRANSIT | DELIVERED | CANCELLED
+  { propKey: "dispatchDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "dispatchDay", dataType: "number", isPrimaryKey: false }, // 相对 forecastStart 的天偏移（etaDay 派生输入）
+  { propKey: "etaDay", dataType: "number", isPrimaryKey: false }, // 派生 = dispatchDay + transitDays（derivedProperties 管线算）
+  { propKey: "etaDate", dataType: "date", isPrimaryKey: false }, // = forecastStart + etaDay 的 ISO 展示
+  { propKey: "reason", dataType: "string", isPrimaryKey: false },
+];
+// etaDate(到货) = dispatch + transitDays：数值派生管线只支持数值算术，故派生落在 etaDay（天偏移·确定性·无时钟）。
+const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays" }];
+
 const dataHealthProps: PropertyDef[] = [
   { propKey: "sourceId", dataType: "string", isPrimaryKey: true },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
@@ -1113,6 +1133,7 @@ export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMa
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+  InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
   BOMHeader: "product", BOMDetail: "product", Routing: "process", Operation: "process", ProcessCapabilityWindow: "process",
   QualityStandard: "quality", InspectionCharacteristic: "quality",
@@ -1188,6 +1209,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("MaintPlan", "检修计划", maintPlanProps),
     plain("Segment", "应用细分", segmentProps),
     plain("Shipment", "在途批次", shipmentProps),
+    // WO-INTERBASE-TRANSFER：跨基地调拨台账（etaDay 派生·R13 可溯真对象）。
+    { key: "InterBaseTransfer", displayName: "跨基地调拨", domain: "capacity", properties: withGovernance("InterBaseTransfer", interBaseTransferProps), derivedProperties: interBaseTransferDerived, sourceBindings: BINDINGS.InterBaseTransfer ?? [] },
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
@@ -1273,6 +1296,10 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "material_carbon", fromTypeKey: "Material", toTypeKey: "CarbonFactor", cardinality: "N:N" }, // supply（碳因子）
     { key: "base_energy_meter", fromTypeKey: "Base", toTypeKey: "EnergyMeter", cardinality: "N:N" }, // factory（能耗）
     { key: "base_has_shipment", fromTypeKey: "Base", toTypeKey: "Shipment", cardinality: "N:N" }, // capacity（在途）
+    // WO-INTERBASE-TRANSFER：跨基地调拨三条链路（调拨→调出基地/调入基地/型号·N:1·下钻到 BASE_REGISTRY 真基地/Model）。
+    { key: "transfer_from_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调出）
+    { key: "transfer_to_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调入）
+    { key: "transfer_of_model", fromTypeKey: "InterBaseTransfer", toTypeKey: "Model", cardinality: "N:1" }, // capacity→product（型号）
     { key: "base_maint_plan", fromTypeKey: "Base", toTypeKey: "MaintPlan", cardinality: "N:N" }, // equip（检修）
     { key: "model_changeover", fromTypeKey: "Model", toTypeKey: "ChangeoverMatrix", cardinality: "N:N" }, // factory（换型）
     { key: "model_in_segment", fromTypeKey: "Model", toTypeKey: "Segment", cardinality: "N:N" }, // product（细分）
@@ -1771,6 +1798,8 @@ export interface GeneratedBattery {
   maintPlans: Record<string, unknown>[];
   segments: Record<string, unknown>[];
   shipments: Record<string, unknown>[];
+  /** WO-INTERBASE-TRANSFER：跨基地调拨台账（一等对象·可查/可溯·R13）。 */
+  interBaseTransfers: Record<string, unknown>[];
   dataHealth: Record<string, unknown>[];
   // cockpit P1 绿地
   demandSegments: Record<string, unknown>[];
@@ -2941,7 +2970,46 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
+  // WO-INTERBASE-TRANSFER：跨基地调拨台账（一等对象·R13）。
+  // 配对规则：对每个多产地型号（MODEL_BASE_MAP ≥2 基地），在其可产基地相邻对间产一条调拨
+  //（bases[i]→bases[i+1]，如 4680-NCM: 常州→成都→合肥→金华 得 3 条），基地全取自 MODEL_BASE_MAP
+  //（其值域已是 BASE_REGISTRY baseId·不内联新基地字面量，守 R14/boundary-singlesource）。
+  // qty/transitDays/dispatchDay 由独立哈希子流 hashString("xfer_"+from+to+model) 派生（不插既有 rng 流·R6 字节基线不动）；
+  // etaDay 由 derivedProperties(dispatchDay+transitDays) 管线算；etaDate/dispatchDate 为 ISO 展示（无时钟）。
+  const xferT0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+  const baseNameById = new Map(bases.map((b) => [b.baseId as string, b.name as string]));
+  const XFER_STATUS = ["PLANNED", "IN_TRANSIT", "DELIVERED"] as const;
+  const interBaseTransfers: Record<string, unknown>[] = [];
+  for (const [modelId, producibleBases] of Object.entries(MODEL_BASE_MAP)) {
+    for (let i = 0; i + 1 < producibleBases.length; i++) {
+      const fromId = producibleBases[i]!;
+      const toId = producibleBases[i + 1]!;
+      const h = hashString(`xfer_${fromId}_${toId}_${modelId}`);
+      const qty = 500 + (h % 46) * 100; // 500..5000 套
+      const transitDays = 2 + (Math.floor(h / 46) % 12); // 2..13 天
+      const dispatchDay = 1 + (Math.floor(h / 1000) % 20); // 1..20（相对 forecastStart）
+      const etaDay = dispatchDay + transitDays; // 与 derivedProperties 同式（materialize 早填，管线重算不变·R6）
+      const status = XFER_STATUS[h % XFER_STATUS.length]!;
+      const fromName = baseNameById.get(fromId) ?? fromId;
+      const toName = baseNameById.get(toId) ?? toId;
+      interBaseTransfers.push({
+        transferId: `XFER-${fromId}-${toId}-${modelId}`,
+        fromBase: fromId,
+        toBase: toId,
+        model: modelId,
+        qty,
+        transitDays,
+        status,
+        dispatchDate: isoDate(xferT0 + dispatchDay * 86400000),
+        dispatchDay,
+        etaDay,
+        etaDate: isoDate(xferT0 + etaDay * 86400000),
+        reason: `${fromName}→${toName} ${modelId} 产能调剂`,
+      });
+    }
+  }
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
 }
 
 // ---------------------------------------------------------------------------
