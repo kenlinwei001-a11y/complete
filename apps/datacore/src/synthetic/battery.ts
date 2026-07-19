@@ -852,6 +852,31 @@ const dataHealthProps: PropertyDef[] = [
   { propKey: "lagHours", dataType: "number", isPrimaryKey: false },
 ];
 
+// WO-INVENTORY-3TIER：成品库存（按 model×warehouse 一行）+ 统一库存流水（收/发/移/退）。
+// 三层闭环 WIP(WIPLot)→完工入库事务(InventoryTxn RECEIPT)→成品库存(FinishedGoodsInventory)。
+const finishedGoodsInvProps: PropertyDef[] = [
+  { propKey: "fgId", dataType: "string", isPrimaryKey: true },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+  { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
+  { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false }, // = Σ RECEIPT − Σ ISSUE（勾稽）
+  { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false },
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false },
+];
+// 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
+const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved" }];
+
+const inventoryTxnProps: PropertyDef[] = [
+  { propKey: "txnId", dataType: "string", isPrimaryKey: true },
+  { propKey: "txnType", dataType: "enum", isPrimaryKey: false }, // RECEIPT | ISSUE | TRANSFER | RETURN
+  { propKey: "fgRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "FinishedGoodsInventory" },
+  { propKey: "woRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" }, // 收货来源工单
+  { propKey: "qty", dataType: "number", isPrimaryKey: false }, // 带正负
+  { propKey: "fromWarehouse", dataType: "string", isPrimaryKey: false },
+  { propKey: "toWarehouse", dataType: "string", isPrimaryKey: false },
+  { propKey: "refDoc", dataType: "string", isPrimaryKey: false },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false },
+];
+
 // Phase 3 MES Domain: Production Planning
 const workOrderProps: PropertyDef[] = [
   { propKey: "woId", dataType: "string", isPrimaryKey: true },
@@ -1149,6 +1174,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   EquipmentOEE: "equip", EquipmentDowntime: "equip", EquipmentAlarm: "equip",
   MaintenanceOrder: "equip", SparePartConsumption: "equip",
   OperatorAttendance: "people", OperatorSkillCert: "people",
+  // WO-INVENTORY-3TIER 库存三层闭环（成品库存 + 统一流水；归 supply 域·refbase 归一化 supply→material）
+  FinishedGoodsInventory: "supply", InventoryTxn: "supply",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -1206,6 +1233,9 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("Shipment", "在途批次", shipmentProps),
     // WO-WAREHOUSE-CUSTLOC：仓库（库存仓位与交付地理落点·factory 域）
     plain("Warehouse", "仓库", warehouseProps),
+    // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
+    { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
+    plain("InventoryTxn", "库存流水", inventoryTxnProps),
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
@@ -1333,6 +1363,11 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder", cardinality: "N:1" }, // equip
     { key: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line", cardinality: "N:1" }, // people
     { key: "cert_for_operator", fromTypeKey: "OperatorSkillCert", toTypeKey: "OperatorAttendance", cardinality: "N:1" }, // people
+    // WO-INVENTORY-3TIER 库存三层闭环链路（成品库存 → 型号/仓位；流水 → 成品/工单）
+    { key: "fg_of_model", fromTypeKey: "FinishedGoodsInventory", toTypeKey: "Model", cardinality: "N:1" }, // supply
+    { key: "fg_at_warehouse", fromTypeKey: "FinishedGoodsInventory", toTypeKey: "Warehouse", cardinality: "N:1" }, // supply→factory
+    { key: "txn_for_fg", fromTypeKey: "InventoryTxn", toTypeKey: "FinishedGoodsInventory", cardinality: "N:1" }, // supply
+    { key: "txn_from_wo", fromTypeKey: "InventoryTxn", toTypeKey: "WorkOrder", cardinality: "N:1" }, // supply→process（完工入库溯源）
   ];
 }
 
@@ -1826,6 +1861,9 @@ export interface GeneratedBattery {
   sparePartConsumptions: Record<string, unknown>[];
   operatorAttendances: Record<string, unknown>[];
   operatorSkillCerts: Record<string, unknown>[];
+  // WO-INVENTORY-3TIER：成品库存 + 库存流水（完工入库确定性派生）
+  finishedGoodsInv: Record<string, unknown>[];
+  inventoryTxns: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -1850,6 +1888,60 @@ const WORKSHOP_DEFS = [
 
 function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** 完工工单状态（供完工入库派生判定；WorkOrder.status 枚举中的"已完工"口径）。 */
+const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
+
+/**
+ * WO-INVENTORY-3TIER · 完工入库派生（确定性·非事件后处理·R6）。
+ *
+ * 遍历已完工 WorkOrder（status∈{已完成,已关闭} 且 qtyActual>0）→ 每单产一条 InventoryTxn{RECEIPT,qty:+qtyActual}
+ * 并把该 model×warehouse 的 FinishedGoodsInventory.qtyOnHand += qtyActual。
+ * 勾稽铁律：FG.qtyOnHand = Σ该 model×warehouse RECEIPT.qty − Σ ISSUE.qty（本切片仅 RECEIPT，故 = Σ RECEIPT）。
+ * SEAM 铁律：改 WorkOrder.qtyActual → RECEIPT.qty 与 FG.qtyOnHand 同步变（KILL-MOCK-RED）。
+ *
+ * @param finishedWhByBase baseId → 成品仓 warehouseId（whType=FINISHED；WO-WAREHOUSE 每基地必有）
+ * 纯函数：无 random / 无时钟；FG 键按 fgId 稳定排序、Txn 按入参 workOrders 顺序 → 字节一致。
+ */
+export function deriveFinishedGoodsIntake(
+  workOrders: Record<string, unknown>[],
+  finishedWhByBase: Map<string, string>,
+  asOf: string,
+): { finishedGoodsInv: Record<string, unknown>[]; inventoryTxns: Record<string, unknown>[] } {
+  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; asOf: string }>();
+  const inventoryTxns: Record<string, unknown>[] = [];
+  for (const wo of workOrders) {
+    const status = String(wo.status ?? "");
+    const qtyActual = Number(wo.qtyActual ?? 0);
+    if (!COMPLETED_WO_STATUSES.has(status) || qtyActual <= 0) continue;
+    const modelId = String(wo.modelId ?? "");
+    const baseId = String(wo.baseId ?? "");
+    const warehouseId = finishedWhByBase.get(baseId);
+    if (!warehouseId) continue; // 无成品仓（理论不发生：每基地必有 FINISHED 仓）→ 诚实跳过不臆造
+    const fgId = `FG-${modelId}-${warehouseId}`;
+    let fg = fgMap.get(fgId);
+    if (!fg) {
+      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, asOf };
+      fgMap.set(fgId, fg);
+    }
+    fg.qtyOnHand += qtyActual;
+    inventoryTxns.push({
+      txnId: `TXN-RCPT-${String(wo.woId)}`,
+      txnType: "RECEIPT",
+      fgRef: fgId,
+      woRef: String(wo.woId),
+      qty: qtyActual, // 带正负：入库为正
+      fromWarehouse: "",
+      toWarehouse: warehouseId,
+      refDoc: String(wo.moNo ?? wo.woId),
+      occurredAt: String(wo.endDate ?? asOf),
+    });
+  }
+  const finishedGoodsInv = [...fgMap.values()]
+    .sort((a, b) => (a.fgId < b.fgId ? -1 : a.fgId > b.fgId ? 1 : 0))
+    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, asOf: f.asOf }));
+  return { finishedGoodsInv, inventoryTxns };
 }
 
 /**
@@ -2717,7 +2809,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         qtyActual,
         startDate,
         endDate,
-        status: MES_STATUSES.wo[w % MES_STATUSES.wo.length],
+        // WO-INVENTORY-3TIER：状态确定性铺满 4 态（此前 w%4 仅取到 已排产/生产中·从无完工单 →
+        // 完工入库派生无源）。改按 woId 哈希铺满 → 约半数 已完成/已关闭 可承接 FG 入库（R6 确定性）。
+        status: MES_STATUSES.wo[hashString(`${woId}_status`) % MES_STATUSES.wo.length]!,
       });
 
       // ProductionSchedule per WorkOrder: 2-3 schedules
@@ -2987,7 +3081,15 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
+  // WO-INVENTORY-3TIER · 完工入库派生（确定性·从 workOrders 真值派生 FG + RECEIPT 流水；无 rng/时钟·R6）。
+  // 成品仓落点：每基地成品仓（whType=FINISHED，WO-WAREHOUSE 每基地必有）。asOf=预测起点 t0。
+  const finishedWhByBase = new Map<string, string>();
+  for (const w of warehouses) {
+    if (w.whType === "FINISHED") finishedWhByBase.set(String(w.baseId), String(w.warehouseId));
+  }
+  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0));
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns };
 }
 
 // ---------------------------------------------------------------------------

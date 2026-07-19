@@ -41,6 +41,10 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["WorkOrder", "ProductionSchedule", "ShiftPlan", "WIPLot", "WIPMove", "WIPQualityCheckpoint"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
     {
+      key: "finished_goods_inventory", displayName: "成品库存与流水", description: "成品库存（按型号×成品仓·可用量派生）与库存流水（完工入库/发货/移库/退货），MES 完工入库三层闭环（WIP→完工入库→成品库存）。",
+      typeKeys: ["FinishedGoodsInventory", "InventoryTxn"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "sap_erp", "rest_api", "file_upload"],
+    },
+    {
       key: "process_routing", displayName: "工艺路线与工序", description: "工艺路线、工序定义、工艺能力边界及换型矩阵（瓶颈/换型排序推演）。",
       typeKeys: ["Process", "ChangeoverMatrix", "Routing", "Operation", "ProcessCapabilityWindow"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "generic_jdbc", "rest_api"],
     },
