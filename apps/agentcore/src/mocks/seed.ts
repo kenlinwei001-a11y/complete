@@ -514,6 +514,11 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_root_cause", name: "CEO 根因深问", solver: "gap_attribution", examples: ["为什么没达标", "根因是什么", "缺口拆解到最终根因"], slotNames: ["metricKey"] },
     { key: "ceo_decision", name: "CEO 决策推演", solver: "decision_play", examples: ["这个根因怎么补", "有哪些方案", "怎么应对"], slotNames: ["metricKey", "factorId"] },
     { key: "ceo_metric", name: "CEO 达标查询", solver: "metric_rollup", examples: ["各指标差多少", "哪些指标越线", "达成情况"], slotNames: ["metricKey"] },
+    // WO-TIER2-B：B/C 域高频意图确定性直绑 solver（resolveCeoRoute 路由 → 对应 intent/plan → invoke_solver）
+    { key: "ceo_credit_exposure", name: "CEO 信用敞口", solver: "credit_exposure", examples: ["客户信用逾期多少", "信用敞口多大"], slotNames: [] },
+    { key: "ceo_finance_pnl", name: "CEO 量价本利", solver: "finance_pnl", examples: ["毛利为什么下滑", "量价本利情况"], slotNames: [] },
+    { key: "ceo_supply_demand_gap", name: "CEO 供需失衡归因", solver: "supply_demand_gap_attribution", examples: ["供需为什么对不上", "产销缺口归因"], slotNames: ["metricKey"] },
+    { key: "ceo_atp_check", name: "CEO 订单承诺", solver: "atp_check", examples: ["这单能不能接", "能接多少何时能交"], slotNames: ["orderRef"] },
   ];
   for (const cap of ceoCaps) {
     const planId = `plan_${cap.key}_v1${sfx}`;
