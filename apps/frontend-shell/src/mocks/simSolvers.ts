@@ -682,6 +682,10 @@ const SOP_PER_BASE = [
   { baseId: "其余9基地", monthly: 143.3, certFactor: 1 },
 ];
 
+/** ③供给基线（决议前）= Σ SOP_PER_BASE.monthly = 367.9 万套（对齐 fixtures.ts:485 注释·f17 sop-balance 用同值）。
+ *  供需失衡双向归因 mock 桩从此派生总缺口 G = 需求(dem 375.0) − 供给基线（非写死）。 */
+export const SOP_SUPPLY_BASELINE = Math.round(SOP_PER_BASE.reduce((s, b) => s + b.monthly, 0) * 10) / 10;
+
 const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
 
