@@ -5,7 +5,7 @@ import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
-import { BATTERY_SOLVER_PARAMS } from "../synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, computeOrderPromise, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
@@ -108,6 +108,10 @@ export const SOLVER_KEYS = [
   "decision_play",
   // WO-CEO-Q7 供需失衡双向归因：产销缺口→需求端⊥供给端双向分摊(勾稽·真颗粒占比)→各端下钻叶。
   "supply_demand_gap_attribution",
+  // WO-ATP-PROMISE 订单承诺（ATP/CTP·「这单能不能接、何时交」）：净读对象图三源供给
+  //（成品现货 FinishedGoodsInventory + 在制未交 WorkOrder + 交期前可排产能 Line）→ 可承接量 + 承诺日 +
+  // 缺口/瓶颈。改产能/库存颗粒→承诺真变（SEAM）；纯读纯算无 random/时钟（asOf=T0·R6）。
+  "atp_check",
 ] as const;
 
 /**
@@ -164,6 +168,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary"],
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
+  // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
+  atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -2075,6 +2081,54 @@ export class SolverService {
   }
 
   /**
+   * WO-ATP-PROMISE · 订单承诺（ATP/CTP·「这单能不能接、何时交」）净室求解器（读对象图·确定性 R6）。
+   * args: { orderRef?: string }（缺省取首张 OPEN 订单·同 order_fullchain 口径）。
+   * 净读三源供给（成品现货 FinishedGoodsInventory + 在制未交 WorkOrder + 交期前可排产能 Line），
+   * 经 computeOrderPromise（数据半 seed 同一口径·不拆两半）算可承接量 + 承诺日 + 缺口/瓶颈 + 三源拆解。
+   * asOf 取固定 T0（forecastStart·无 Date.now/Math.random）。A6 行级过滤由 ctx 继承（残口下沉 WO-ORDERLINE）。
+   */
+  private async atpCheck(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const orderRef = str(args.orderRef ?? args.so);
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
+    if (orders.length === 0) throw validationError("atp_check 需先合成 Order");
+    const order = orderRef
+      ? orders.find((o) => str(o.props.so) === orderRef)
+      : orders.filter((o) => str(o.props.status) === "OPEN").sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]
+        ?? orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0];
+    if (!order) throw notFound(`order ${orderRef}`);
+    const op = order.props;
+
+    // 三源净读（改这三源任一颗粒→承诺真变·SEAM 铁律）。
+    const supply: AtpSupplyInputs = {
+      finishedGoodsInv: (await this.repos.objects.listByType(ctx.tenantId, "FinishedGoodsInventory")).map((o) => o.props),
+      workOrders: (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props),
+      lines: (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props),
+    };
+    const asOf = String(BATTERY_SOLVER_PARAMS.forecastStart ?? "2026-06-10").slice(0, 10);
+    const r = computeOrderPromise({ model: op.model, qty: op.qty, due: op.due, bases: op.bases }, supply, asOf);
+
+    const statusLabel = r.atpStatus === "CONFIRMED" ? "全量可承接" : r.atpStatus === "PARTIAL" ? "部分可承接" : "交期前几无可承接";
+    const bn = r.bottleneck ? `·卡口=${r.bottleneck}` : "";
+    const pd = r.promiseDate ?? "不可期";
+    const summary =
+      `订单 ${str(op.so)}（${str(op.model)}·需求 ${r.requestedQty}）：${statusLabel}，` +
+      `可承接 ${r.committableQty}（现货 ${r.onHand}/在制 ${r.wip}/交期前产能 ${r.dailyCapacity}/日×${r.dueDay}天），` +
+      `承诺日 ${pd}，缺口 ${r.shortfallQty}${bn}。`;
+
+    return {
+      orderRef: str(op.so),
+      requestedQty: r.requestedQty,
+      committableQty: r.committableQty,
+      promiseDate: r.promiseDate,
+      atpStatus: r.atpStatus,
+      shortfallQty: r.shortfallQty,
+      bottleneck: r.bottleneck,
+      breakdown: r.breakdown,
+      summary,
+    };
+  }
+
+  /**
    * PRD-fde §8 Q2 单一供应商断供的影响半径（净室,零依赖,确定性 R6）：从断供根（如某二级供应商）
    * 沿"谁引用我"的反向多跳逐层扇出——物料→订单→客户，逐层算出受冲击集合、扩散半径（穿透层数）、
    * 叶层敞口。与 concentration_risk（多源收敛到一根）互为反向：这里是一根扇出冲击多个叶子。
@@ -2682,6 +2736,7 @@ export class SolverService {
     if (solverKey === "gap_attribution") return this.gapAttribution(ctx, args);
     if (solverKey === "decision_play") return this.decisionPlay(ctx, args);
     if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
+    if (solverKey === "atp_check") return this.atpCheck(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);

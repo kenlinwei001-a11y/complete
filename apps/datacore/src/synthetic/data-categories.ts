@@ -13,8 +13,8 @@ export function batteryDataCategories(): DataCategory[] {
   const BOTH = ["SYSTEM_INTEGRATION", "FILE_UPLOAD"] as const;
   return [
     {
-      key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单（型号/数量/交期/状态）。",
-      typeKeys: ["Order"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "salesforce_crm", "rest_api", "file_upload"],
+      key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单（型号/数量/交期/状态）、订单明细行（一单多型号多行·SO→型号行）及订单承诺台账（ATP/CTP·能不能接/何时交）。",
+      typeKeys: ["Order", "OrderLine", "OrderPromise"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "salesforce_crm", "rest_api", "file_upload"],
     },
     {
       key: "demand_forecast", displayName: "销售预测与计划", description: "需求预测、年度情景与触发条件、计划目标（驱动产能/排产推演）。",
@@ -22,7 +22,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
-      typeKeys: ["Customer", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
+      typeKeys: ["Customer", "CustomerLocation", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
     },
     {
       key: "commercial_intelligence", displayName: "商务情报", description: "竞品份额/价格、投标记录、赢丢单与价格实现（市场份额与营收根因下钻真源）。",
@@ -34,11 +34,15 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "capacity_base", displayName: "产能与基地", description: "生产基地、车间、产线、产能投资项目及产品-产线/设备制造能力。",
-      typeKeys: ["Base", "Workshop", "Line", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      typeKeys: ["Base", "Workshop", "Line", "Warehouse", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "production_execution", displayName: "生产执行", description: "生产工单、排程、班次计划与在制（WIP）批次/移动/质检点（MES 生产执行域）。",
       typeKeys: ["WorkOrder", "ProductionSchedule", "ShiftPlan", "WIPLot", "WIPMove", "WIPQualityCheckpoint"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
+    },
+    {
+      key: "finished_goods_inventory", displayName: "成品库存与流水", description: "成品库存（按型号×成品仓·可用量派生）与库存流水（完工入库/发货/移库/退货），MES 完工入库三层闭环（WIP→完工入库→成品库存）。",
+      typeKeys: ["FinishedGoodsInventory", "InventoryTxn"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "sap_erp", "rest_api", "file_upload"],
     },
     {
       key: "process_routing", displayName: "工艺路线与工序", description: "工艺路线、工序定义、工艺能力边界及换型矩阵（瓶颈/换型排序推演）。",
