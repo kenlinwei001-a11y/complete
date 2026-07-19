@@ -73,7 +73,9 @@ export function batteryDataCategories(): DataCategory[] {
       // WO-CEO-DATA-2 每指标因果域 drill 真对象（CompetitorShare/…/OverdueRecord）**归其业务域类目**
       // （commercial_intelligence / demand_forecast / finance_carbon），不再同时挂 decision_cockpit——
       // 每对象类型恰归一类（无重复），守 computeCategoryCoverage 的 duplicateTypes==[] 不变量（SEAM-GATE 补漏）。
-      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      // WO-EXCEPTION-EVENT：ExceptionEvent（四源归一异常事件）归此类目——统一异常入口即 Agent「全监听」的决策监听面，
+      // 与其源类型（设备/质量/物料/触发规则各归本域类目）正交、恰归一类（守 computeCategoryCoverage duplicateTypes==[]）。
+      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule", "ExceptionEvent"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "workforce", displayName: "人力与班组", description: "操作工考勤与技能认证（MES 人力执行域，班组排产/技能匹配前置）。",

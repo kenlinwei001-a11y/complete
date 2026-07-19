@@ -31,6 +31,7 @@ import {
   batteryObjectTypes,
   generateBattery,
   generatePlanDomain,
+  projectExceptionEvents,
   BINDINGS,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -698,6 +699,18 @@ export class SyntheticService {
     await putAll("ARAging", ext.arAgings, "agingId");
     await putAll("DSO", ext.dsos, "dsoId");
     await putAll("OverdueRecord", ext.overdueRecords, "overdueId");
+    // WO-EXCEPTION-EVENT · 四源归一异常事件（G-EXCEPTION-SCATTER）。
+    //  ① 物化 3 源对象（DefectRecord/EquipmentDowntime/EquipmentAlarm）使 refId 可下钻回真源（R13）——
+    //     此前仅本体类型存在、无 demo 实例；MaterialBalance/TriggerRule 上文已物化。
+    await putAll("DefectRecord", g.defectRecords, "defectId");
+    await putAll("EquipmentDowntime", g.equipmentDowntimes, "dtId");
+    await putAll("EquipmentAlarm", g.equipmentAlarms, "alarmId");
+    //  ② 统一异常流：generateBattery 已投 4 本地源（停机/告警/缺陷/缺料）；此处合并第 5 源 TriggerRule
+    //     （→CUSTOMER，出自 generateExtended，同一 projectExceptionEvents·纯投影 R6），四源归一落一等对象。
+    const t0Exc = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+    const triggerExc = projectExceptionEvents({ triggerRules: ext.triggerRules }, t0Exc);
+    const exceptionEvents = [...(g.exceptionEvents as Record<string, unknown>[]), ...triggerExc];
+    await putAll("ExceptionEvent", exceptionEvents, "excId");
     // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
     await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
@@ -859,6 +872,13 @@ export class SyntheticService {
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
     // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
     for (const fa of ext.financeAccounts) await putLink(`lnk_bfn_${P(fa).accId}`, "base_finance", oid("Base", P(fa).baseId), oid("FinanceAccount", P(fa).accId));
+    // WO-EXCEPTION-EVENT · 异常事件→源对象溯源边（exc_sourced_from·R13 全监听下钻）。toType 异构（5 源），
+    // 真实源类型落 edge props.refType；目标 obj 已物化（3 源上文 putAll + MaterialBalance/TriggerRule 已物化）。
+    for (const ev of exceptionEvents) {
+      const refType = String(ev.refType);
+      const refId = String(ev.refId);
+      await putLink(`lnk_exc_${String(ev.excId)}`, "exc_sourced_from", oid("ExceptionEvent", ev.excId), oid(refType, refId), { refType, refId });
+    }
 
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。

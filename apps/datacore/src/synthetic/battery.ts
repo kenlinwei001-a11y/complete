@@ -1,5 +1,6 @@
 import type { IndustryTemplate } from "@platform/contracts";
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR } from "@platform/contracts";
+import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -987,6 +988,164 @@ const equipmentAlarmProps: PropertyDef[] = [
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 已确认 | 已清除
 ];
 
+// ---------------------------------------------------------------------------
+// WO-EXCEPTION-EVENT · 四源归一「异常事件」聚合投影（G-EXCEPTION-SCATTER）。
+// 病根：EquipmentDowntime / EquipmentAlarm / DefectRecord / TriggerRule（+MaterialBalance 缺料）
+// 五处散落、无统一入口 → Agent「全监听」无处落地。ExceptionEvent = 确定性聚合投影。
+// R6：纯从源行派生（无随机/无时钟/不消费 mulberry32 流·同源同投影字节一致）。
+// R13：refType/refId 保留下钻回源对象。R14：严重度阈值集中配置表（不散落魔数）。
+// ---------------------------------------------------------------------------
+const exceptionEventProps: PropertyDef[] = [
+  { propKey: "excId", dataType: "string", isPrimaryKey: true, searchable: true },
+  { propKey: "excType", dataType: "enum", isPrimaryKey: false }, // MATERIAL_SHORTAGE | EQUIPMENT | QUALITY | CUSTOMER
+  { propKey: "source", dataType: "enum", isPrimaryKey: false }, // downtime | alarm | defect | trigger | material_balance
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false }, // LOW | MEDIUM | HIGH | CRITICAL
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // OPEN | ACK | RESOLVED
+  { propKey: "refType", dataType: "string", isPrimaryKey: false }, // 源对象类型键（R13 下钻）
+  { propKey: "refId", dataType: "string", isPrimaryKey: false }, // 源对象业务主键
+  { propKey: "summary", dataType: "string", isPrimaryKey: false, searchable: true },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false }, // 源时间戳或 T0 派生
+];
+
+/** R14：严重度阈值配置表（集中·可审计·非散落魔数）。 */
+export const EXCEPTION_SEVERITY_CONFIG = {
+  // 停机：按 durationMin 分档（分钟·降序命中）。
+  downtime: [
+    { min: 240, sev: "CRITICAL" },
+    { min: 120, sev: "HIGH" },
+    { min: 60, sev: "MEDIUM" },
+    { min: 0, sev: "LOW" },
+  ] as { min: number; sev: ExcSeverity }[],
+  // 告警：按 alarmLevel 枚举（默认 MEDIUM）。
+  alarmLevel: { 紧急: "CRITICAL", 警告: "HIGH", 提示: "LOW" } as Record<string, ExcSeverity>,
+  // 缺陷：按 severity 枚举（默认 MEDIUM）+ qty 升档阈值。
+  defectSeverity: { 严重: "HIGH", 一般: "MEDIUM", 轻微: "LOW" } as Record<string, ExcSeverity>,
+  defectQtyCritical: 4, // qty ≥ 此值 → CRITICAL（大批量不良升级）
+  // 触发规则：按比较算子（默认 MEDIUM）。
+  triggerOp: { ">": "HIGH", ">=": "HIGH", "<": "MEDIUM", "<=": "MEDIUM", "==": "LOW" } as Record<string, ExcSeverity>,
+  // 缺料：按 gapTon 分档（吨·降序命中）。
+  materialGap: [
+    { min: 5000, sev: "CRITICAL" },
+    { min: 2000, sev: "HIGH" },
+    { min: 500, sev: "MEDIUM" },
+    { min: 0, sev: "LOW" },
+  ] as { min: number; sev: ExcSeverity }[],
+};
+
+function bucketByThreshold(value: number, table: { min: number; sev: ExcSeverity }[]): ExcSeverity {
+  for (const row of table) if (value >= row.min) return row.sev;
+  return "LOW";
+}
+
+// 源状态字段 → 统一处置状态（无源状态默认 OPEN）。
+const DOWNTIME_STATUS: Record<string, ExcStatus> = { 进行中: "OPEN", 已恢复: "RESOLVED" };
+const ALARM_STATUS: Record<string, ExcStatus> = { 活跃: "OPEN", 已确认: "ACK", 已清除: "RESOLVED" };
+
+export interface ExceptionSourceBundle {
+  equipmentDowntimes?: Record<string, unknown>[];
+  equipmentAlarms?: Record<string, unknown>[];
+  defectRecords?: Record<string, unknown>[];
+  triggerRules?: Record<string, unknown>[];
+  materialBalances?: Record<string, unknown>[];
+}
+
+/**
+ * 四源（+缺料）归一投影：从各源行确定性投影统一异常事件。
+ * refType/refId 保留下钻回源对象（R13）；occurredAt 取源时间戳或 T0 派生；纯函数（R6）。
+ * 分源投影可拆调（generateBattery 投 4 本地源·service 层投 trigger 源后合并），皆字节一致。
+ */
+export function projectExceptionEvents(src: ExceptionSourceBundle, t0: number): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const t0Iso = new Date(t0).toISOString().slice(0, 10);
+  // 设备停机 → EQUIPMENT
+  for (const dt of src.equipmentDowntimes ?? []) {
+    const dtId = String(dt.dtId);
+    const dur = Number(dt.durationMin ?? 0);
+    out.push({
+      excId: `EXC-DT-${dtId}`,
+      excType: "EQUIPMENT",
+      source: "downtime",
+      severity: bucketByThreshold(dur, EXCEPTION_SEVERITY_CONFIG.downtime),
+      status: DOWNTIME_STATUS[String(dt.status)] ?? "OPEN",
+      refType: "EquipmentDowntime",
+      refId: dtId,
+      summary: `设备 ${String(dt.equipId)} 停机 ${dur} 分钟（${String(dt.reason ?? "")}）`,
+      occurredAt: String(dt.startTime ?? t0Iso),
+    });
+  }
+  // 设备告警 → EQUIPMENT
+  for (const al of src.equipmentAlarms ?? []) {
+    const alarmId = String(al.alarmId);
+    const level = String(al.alarmLevel ?? "");
+    out.push({
+      excId: `EXC-AL-${alarmId}`,
+      excType: "EQUIPMENT",
+      source: "alarm",
+      severity: EXCEPTION_SEVERITY_CONFIG.alarmLevel[level] ?? "MEDIUM",
+      status: ALARM_STATUS[String(al.status)] ?? "OPEN",
+      refType: "EquipmentAlarm",
+      refId: alarmId,
+      summary: `设备 ${String(al.equipId)} 告警 ${String(al.alarmCode ?? "")}（${level}）`,
+      occurredAt: String(al.triggeredAt ?? t0Iso),
+    });
+  }
+  // 缺陷记录 → QUALITY
+  for (const df of src.defectRecords ?? []) {
+    const defectId = String(df.defectId);
+    const qty = Number(df.qty ?? 0);
+    const sevEnum = String(df.severity ?? "");
+    const severity: ExcSeverity =
+      qty >= EXCEPTION_SEVERITY_CONFIG.defectQtyCritical
+        ? "CRITICAL"
+        : EXCEPTION_SEVERITY_CONFIG.defectSeverity[sevEnum] ?? "MEDIUM";
+    out.push({
+      excId: `EXC-DF-${defectId}`,
+      excType: "QUALITY",
+      source: "defect",
+      severity,
+      status: "OPEN",
+      refType: "DefectRecord",
+      refId: defectId,
+      summary: `缺陷 ${String(df.defectType ?? "")} ×${qty}（${sevEnum}·${String(df.processName ?? "")}）`,
+      occurredAt: String(df.foundAt ?? t0Iso),
+    });
+  }
+  // 触发规则 → CUSTOMER（信号阈值→行动的客户/市场侧监听）
+  for (const tr of src.triggerRules ?? []) {
+    const triggerId = String(tr.triggerId);
+    const op = String(tr.op ?? "");
+    out.push({
+      excId: `EXC-TR-${triggerId}`,
+      excType: "CUSTOMER",
+      source: "trigger",
+      severity: EXCEPTION_SEVERITY_CONFIG.triggerOp[op] ?? "MEDIUM",
+      status: "OPEN",
+      refType: "TriggerRule",
+      refId: triggerId,
+      summary: `触发规则 ${String(tr.signalRef ?? "")} ${op} ${String(tr.threshold ?? "")} → ${String(tr.action ?? "")}`,
+      occurredAt: t0Iso,
+    });
+  }
+  // 物料平衡缺口 → MATERIAL_SHORTAGE（仅 gapTon>0，缺料才成异常，缺料域有数据）
+  for (const mb of src.materialBalances ?? []) {
+    const gap = Number(mb.gapTon ?? 0);
+    if (!(gap > 0)) continue;
+    const matBalId = String(mb.matBalId);
+    out.push({
+      excId: `EXC-MB-${matBalId}`,
+      excType: "MATERIAL_SHORTAGE",
+      source: "material_balance",
+      severity: bucketByThreshold(gap, EXCEPTION_SEVERITY_CONFIG.materialGap),
+      status: "OPEN",
+      refType: "MaterialBalance",
+      refId: matBalId,
+      summary: `${String(mb.material ?? "")} 现货缺口 ${gap} ${String(mb.unit ?? "")}`,
+      occurredAt: String(mb.etaDate || t0Iso),
+    });
+  }
+  return out;
+}
+
 // Phase 3 MES Domain: Maintenance Execution
 const maintenanceOrderProps: PropertyDef[] = [
   { propKey: "moId", dataType: "string", isPrimaryKey: true },
@@ -1136,6 +1295,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   EquipmentOEE: "equip", EquipmentDowntime: "equip", EquipmentAlarm: "equip",
   MaintenanceOrder: "equip", SparePartConsumption: "equip",
   OperatorAttendance: "people", OperatorSkillCert: "people",
+  // WO-EXCEPTION-EVENT 四源归一异常事件（归 quality 域·跨域聚合投影，DataCategory 归 decision_cockpit）
+  ExceptionEvent: "quality",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -1222,6 +1383,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("EquipmentOEE", "设备OEE", equipmentOEEProps),
     plain("EquipmentDowntime", "设备停机", equipmentDowntimeProps),
     plain("EquipmentAlarm", "设备告警", equipmentAlarmProps),
+    // WO-EXCEPTION-EVENT：四源归一异常事件（EquipmentDowntime/Alarm/DefectRecord/TriggerRule/MaterialBalance 聚合投影）
+    plain("ExceptionEvent", "异常事件", exceptionEventProps),
     // Phase 3 MES Domain: Maintenance Execution
     plain("MaintenanceOrder", "维修工单", maintenanceOrderProps),
     plain("SparePartConsumption", "备件消耗", sparePartConsumptionProps),
@@ -1310,6 +1473,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "oee_for_equip", fromTypeKey: "EquipmentOEE", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "dt_for_equip", fromTypeKey: "EquipmentDowntime", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "alarm_for_equip", fromTypeKey: "EquipmentAlarm", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    // WO-EXCEPTION-EVENT：异常事件→源对象溯源边（R13·全监听下钻）。toType 为异构（5 源）·代表声明为 EquipmentDowntime，
+    // 真实归属由 ExceptionEvent.refType 判别（edge props.refType 落每边真实源类型）。
+    { key: "exc_sourced_from", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentDowntime", cardinality: "N:1" }, // quality（四源归一溯源）
     { key: "maint_for_equip", fromTypeKey: "MaintenanceOrder", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder", cardinality: "N:1" }, // equip
     { key: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line", cardinality: "N:1" }, // people
@@ -1801,6 +1967,8 @@ export interface GeneratedBattery {
   equipmentOEEs: Record<string, unknown>[];
   equipmentDowntimes: Record<string, unknown>[];
   equipmentAlarms: Record<string, unknown>[];
+  // WO-EXCEPTION-EVENT：四源归一异常事件（本地 4 源投影；trigger 源在 service 层合并·见 projectExceptionEvents）。
+  exceptionEvents: Record<string, unknown>[];
   maintenanceOrders: Record<string, unknown>[];
   sparePartConsumptions: Record<string, unknown>[];
   operatorAttendances: Record<string, unknown>[];
@@ -2947,7 +3115,15 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
+  // WO-EXCEPTION-EVENT：四源归一异常事件投影（本地 4 源：停机/告警/缺陷/缺料 → EQUIPMENT/QUALITY/MATERIAL_SHORTAGE）。
+  // 独立于 mulberry32 主流（纯从已生成源行派生·无随机/时钟），不移位下游字节（R6）。
+  // 第 5 源 TriggerRule（→CUSTOMER）在 service 层合并（triggerRules 出自 generateExtended，同一 projectExceptionEvents）。
+  const exceptionEvents = projectExceptionEvents(
+    { equipmentDowntimes, equipmentAlarms, defectRecords, materialBalances },
+    t0,
+  );
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
 }
 
 // ---------------------------------------------------------------------------
