@@ -60,7 +60,16 @@ export function QueryDock() {
   const placeholder = scene?.uiHints.placeholder ?? zh.dock.placeholder;
   // 已验证场景触发问句（本视图）优先 + 场景入口自由建议问句兜底，去重。
   const verified = (cards?.items ?? []).filter((c) => c.view === view).map((c) => c.triggerQuestion);
-  const suggestions = [...new Set([...verified, ...(scene?.uiHints.suggestedQuestions ?? [])])];
+  const pageSuggestions = [...new Set([...verified, ...(scene?.uiHints.suggestedQuestions ?? [])])];
+  // 修（块对话·建议问句串页·你报"不是与供需相关的问题"）：锚定某块时起手问句应**关于本块**（非页面级泛问）。
+  // 无锚定块 → 页面级（C5 退化不变）。问句锚 blockTitle·submit 时 buildContext 仍把该块真数据推 agent。
+  const suggestions = activeBlock
+    ? [
+        `「${activeBlock.blockTitle}」这个结果是怎么来的？帮我拆解`,
+        `针对「${activeBlock.blockTitle}」有哪些可行的改善动作？`,
+        `「${activeBlock.blockTitle}」的主要驱动因素 / 占比是什么？`,
+      ]
+    : pageSuggestions;
 
   return (
     <>
@@ -106,10 +115,11 @@ export function QueryDock() {
                 并抑制页面级预载历史，避免展示"其他页面的信息"。无锚定块 → 页面级不变（C5 退化）。 */}
             {activeBlock && (
               <div data-testid="dock-block-anchor" style={{ margin: "0 0 12px", padding: "9px 11px", border: "1px solid var(--accent)", borderRadius: 8, background: "rgba(76,144,240,.06)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 7 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 4 }}>
                   <span>💬 已锚定此块：<b>{activeBlock.blockTitle}</b></span>
                   <button className="btn sm" style={{ marginLeft: "auto" }} onClick={clearActiveBlock} title="取消锚定，回到页面级提问" data-testid="dock-block-clear">回页面级</button>
                 </div>
+                <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 7 }}>本块下列真实数据已随提问推给 AI，答案将针对此块作答：</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {Object.entries(activeBlock.blockData).slice(0, 8).map(([k, v]) => (
                     <span key={k} className="badge blue" style={{ fontSize: 10.5 }} data-testid={`dock-block-field-${k}`}>
