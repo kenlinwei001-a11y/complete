@@ -16,8 +16,9 @@ import zh from "@/locales/zh";
  * KILL-MOCK 铁律：5 区全部从真 `invokeSolver('decision_play')` 输出渲染，零写死数字/叙事串——改后端根因颗粒
  * （LTA 实际交付 / BackupSupplierPool.certWeeks / MaterialBalance.gapTon）→ 方案 closesGap / 推荐组合 / narrowedPct
  * 随之变（引擎侧 decision-play.test C6 已锁；本页仅忠实投影）。
- * 诚实标注：sourceKind=solver →「确定性求解」，agent →「策略推理·非真 LLM」（datacore 侧确定性策略生成·读真对象派生·
- * 非真 LLM 推理=CEO-6），**绝不**标成"数据库事实"。空根因 / 空因果 → 诚实空态，不编方案。
+ * 诚实标注（三态之二·本页 solver 产物侧）：sourceKind=solver →「确定性求解」，agent →「策略推理·确定性生成」
+ *（datacore 侧确定性策略生成·读真对象派生·非真 LLM 推理），**绝不**标成"数据库事实"。第三态「真 LLM 推理」在
+ * 对话侧 AnswerCard（path-B 真 LLM 深问·据页/块上下文工具取证·WO-REAL-LLM-FREE-QUERY）。空根因/空因果→诚实空态，不编方案。
  */
 
 interface DPProvenance {
@@ -389,13 +390,13 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
           <span style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 11 }}>{open ? "收起 ▲" : "展开 ▼"}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {/* 诚实徽标：solver=确定性求解（绿）/ agent=策略推理·非真 LLM（灰）——绝不标"数据库事实"。 */}
+          {/* 诚实徽标（三态之二）：solver=确定性求解（绿）/ agent=策略推理·确定性生成（灰·datacore 确定性策略·非真 LLM）——绝不标"数据库事实"。 */}
           <span
             className={`badge ${isSolver ? "green" : ""}`}
             data-testid={`dp-src-${o.optionId}`}
             style={isSolver ? undefined : { color: "var(--muted)", borderColor: "var(--line2)" }}
           >
-            {isSolver ? "确定性求解" : "策略推理·非真 LLM"}
+            {isSolver ? "确定性求解" : "策略推理·确定性生成"}
           </span>
           <span style={{ fontSize: 12 }}>
             补缺口 <b className="mono" data-testid={`dp-option-cg-${o.optionId}`} style={{ color: "var(--ok)" }}>{fmt(o.closesGap)}{unit}</b>
@@ -442,7 +443,7 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
                 >
                   来自 <b>{o.provenance.drillType}</b>.<b>{o.provenance.drillId}</b> · {o.provenance.basis} = <b className="mono">{fmt(o.provenance.drillValue)}</b>
                   <div style={{ color: "var(--muted2)", marginTop: 4 }}>
-                    {isSolver ? "确定性求解器输出（读真对象派生）" : "策略推理·确定性生成（读真对象派生·非真 LLM 推理·CEO-6 另单）"}
+                    {isSolver ? "确定性求解器输出（读真对象派生）" : "策略推理·确定性生成（读真对象派生·datacore 确定性策略·非真 LLM 推理）"}
                   </div>
                 </div>
               )}

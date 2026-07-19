@@ -15,6 +15,21 @@ export const AGENT_SYSTEM_CORE = `你是企业决策系统的分析助手。你�
 完成分析后必须调用 final_answer 工具输出结构化回答。`;
 
 /**
+ * WO-REAL-LLM-FREE-QUERY：CEO/块级**深问模式** system 叠加片段（在 AGENT_SYSTEM_CORE 之上旁路注入，
+ * 经 path-B `runAgentLoop` 传入·不改 AGENT_SYSTEM_CORE 本体）。面向企业决策者的开放式深问：据页/块上下文
+ * **自由多跳取证**（先 discover/query_objects 查真对象 → invoke_solver 算 → 按结果再查/再算 → 综合），
+ * 给「根因 + 方案 + 每跳溯源 ⟦ref:N⟧」。数字红线不放松（每个业务数字仍须来自本轮工具结果并标 ⟦ref:N⟧）。
+ */
+export const CEO_DEEP_QUESTION_SYSTEM = `${AGENT_SYSTEM_CORE}
+
+【CEO 深问模式】你正在服务一位企业决策者的开放式深问。请**据页面/块上下文自由多跳推理取证**，不要满足于单跳：
+- 先用 discover/query_objects 查清相关真对象（页面 focus 指标 / 块内根因 / 选中项），必要时 invoke_solver 做确定性推演；
+- 依据前一跳结果决定下一跳（查对象→算求解器→再查→再算），逐层拆到可行动的根因；
+- 若涉及沙盘/假设/推进 tick，用 sim_* 工具驱动（模拟态·不写真值）；
+- 最终 final_answer 给「根因（为什么）+ 方案（怎么补）+ 每跳溯源 ⟦ref:N⟧」，业务数字一律来自工具结果并标注。
+你不是在填一张固定表格——上下文里的具体数（如某块 demandPct/某指标缺口）应驱动你查什么、算什么。`;
+
+/**
  * 注入可用技能段。传入 query 时启用 skill 语义路由（Phase5C）：仅注入相关性 top-k 的全文
  * summary，其余降级为 id/名（仍可 load_skill 取全文）→ 收紧上下文预算、提升相关性。
  * 不传 query（或技能数 ≤ topK）时全量注入，与旧行为一致（向后兼容）。
@@ -133,6 +148,13 @@ export function buildAgentUser(task: QueryTask, priorSummary?: string): string {
   const ctx = task.context;
   const selected = ctx.selectedObjects.map((o) => `${o.objectType}:${o.label ?? o.objectId}`).join(", ");
   const pageCtx = pageContextSummary(ctx.pageContext); // WO-CEO-6：注入页面上下文（闭 G-3·agent 知在哪页看什么）
+  // WO-REAL-LLM-FREE-QUERY（AI 指挥台 NL 入口）：沙盘会话在上下文里 → 显式提示 sessionId/当前 tick，
+  // 供 agent 直接用 sim_tick/sim_world 驱动（NL「推进两个 tick 看负载」→ 调 sim_tick(sessionId,n)）。
+  const simSessionId = (ctx.filters?.simSessionId as string | undefined) ?? undefined;
+  const simTickHint =
+    typeof simSessionId === "string" && simSessionId
+      ? `沙盘会话: sessionId=${simSessionId}${ctx.filters?.simCurTick ? `·当前 curTick=${ctx.filters.simCurTick}` : ""}（用 sim_tick(sessionId,n) 推进 / sim_world(sessionId) 读世界态·模拟态不写真值）`
+      : "";
   return [
     priorSummary ? `前情摘要（同会话最近已完成任务）：\n${priorSummary}` : "",
     `<user_query>${task.query}</user_query>`,
@@ -140,6 +162,7 @@ export function buildAgentUser(task: QueryTask, priorSummary?: string): string {
     selected ? `选中对象: ${selected}` : "",
     Object.keys(ctx.filters).length > 0 ? `筛选: ${JSON.stringify(ctx.filters)}` : "",
     ctx.timeWindow ? `时间窗: ${ctx.timeWindow.from} ~ ${ctx.timeWindow.to}` : "",
+    simTickHint,
     pageCtx,
   ]
     .filter(Boolean)
