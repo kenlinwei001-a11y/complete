@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18",
+  "generatedAt": "2026-07-19",
   "ontology": {
     "invariants": [
       "R1",
@@ -11,6 +11,7 @@
       "R15",
       "R16",
       "R17",
+      "R18",
       "R2",
       "R3",
       "R4",

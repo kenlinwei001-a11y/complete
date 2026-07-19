@@ -1,5 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
@@ -112,6 +112,21 @@ export const BN_FACTORS = [
 export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   forecastStart: "2026-06-10",
   packCellCount: 96,
+  // WO-SCALE-COHERENCE（R14/R18）：gwh↔套 桥常数 + 尺度锚，值来自 @platform/contracts 单一来源（禁内联）。
+  packEnergyKwh, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwh = 名牌套
+  operatingDaysPerYear, // 年运营日：capacityDaily/max_capacity_day 年化口径
+  scaleAnchorRevenue, // 各 scale 档目标年营收锚（亿）
+  // 产能微观参数按 gwhᵢ 派生的确定性系数（令 capacity_rollup 的 min 绑定 gwh 夹点·不改求解器）。
+  scaleCoherence: {
+    lineHeadroom: 1.2, // 线级夹点相对基地(gwh)夹点的余量 → 令 min() 绑基地夹点(化成/老化)而非玩具线级
+    channelOutputBase: 85, // 单化成通道日产(套) 基值
+    channelOutputSpan: 11, // 单化成通道日产抖动幅（确定性 hash·85–95）
+    agingHeadroom: 1.02, // 老化库位相对线级夹点余量
+    serialCellsPerCtSec: 79600, // 保守估：串行工序在最坏 avail/oee/yield/att/util 下 日产(电芯)/(1/ct) 系数 → 据此反解 ctSeconds 令 serial≥夹点
+    ctSecMin: 0.4, // 节拍下限（防大基地 ct 过小失真）
+    ctSecMax: 1.9, // 节拍上限（小基地保留原区间量级）
+    modelPriceVarPpk: 30, // 型号单价 ±30‰ 确定性微差（围绕 SEG.priceWan）
+  },
   certFactors: { 量产: 1.0, 认证中: 0.6 },
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
@@ -2498,13 +2513,21 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
     const mappedBases = MODEL_BASE_MAP[m.modelId] ?? shuffled.slice(0, n);
     const spec = MODEL_SPEC_MAP[m.modelId];
+    // WO-SCALE-COHERENCE 断裂点C：Model.unitPrice 从 SEG_REGISTRY 派生（元/套=priceWan×1e4，±确定性微差），
+    // 消灭"订单侧 ~600 元/套 vs 需求侧 ~18667 元/套 差 31×"。型号→细分统一按 pos 映射（动力→乘用车 pas / 储能→ess），
+    // Order.unitPrice=model.unitPrice 自动继承（Model 侧与 Order 侧同一口径，不打架 R14）。
+    void randInt(rng, 380, 980); // R6：保持 rng 流步长不变（下游订单/拓扑字节一致）
+    const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
+    const seg = SEG_REGISTRY.find((s) => s.key === (m.pos === "储能" ? "ess" : "pas"))!;
+    const priceVar = ((hashString(`${m.modelId}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000; // ±modelPriceVarPpk‰
+    const unitPrice = Math.round(seg.priceWan * 1e4 * (1 + priceVar));
     return {
       modelId: m.modelId,
       name: m.name,
       chem: m.chem,
       pos: m.pos,
       bases: [...mappedBases].sort(),
-      unitPrice: randInt(rng, 380, 980),
+      unitPrice,
       // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
       carbonFootprint: m.modelId.includes("NCM") ? 76 : 58,
       seriesId: MODEL_SERIES_MAP[m.modelId],
@@ -2766,7 +2789,24 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];
   const equipment: Record<string, unknown>[] = [];
+  const scaleCoh = BATTERY_SOLVER_PARAMS.scaleCoherence as {
+    lineHeadroom: number; channelOutputBase: number; channelOutputSpan: number; agingHeadroom: number;
+    serialCellsPerCtSec: number; ctSecMin: number; ctSecMax: number;
+  };
+  const nLinesPerBase = WORKSHOP_DEFS.length;
   for (const b of bases) {
+    // WO-SCALE-COHERENCE 断裂点B：产能微观参数按 gwhᵢ 派生（令 computeRollup 的 min 绑定 gwh 夹点·不改求解器）。
+    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwh；有效套/年 = 名牌套×util（util 为百分数，÷100）。
+    const utilFrac = b.util / 100; // BASE_REGISTRY.util 为百分口径（88/85…），÷100 取分数
+    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwh * utilFrac; // 有效套/年（名牌×利用率）
+    // 化成/老化 基地共享夹点（电芯/日）——周产能口径：weeklyWan=dailyCells×7/packCellCount/1e4 → ×52 年化=52×7=364 日历日。
+    const baseDailyCellsWeekly = Math.round((annualEffectivePacks * (BATTERY_SOLVER_PARAMS.packCellCount as number)) / (52 * 7));
+    // 每线套/日（供 supply_demand ×operatingDaysPerYear/1e4 年化）——13 基地×10 线 Σ×300/1e4 = Σ有效套/1e4 = 名牌×util 尺度。
+    const perLineDailyPacks = Math.max(1, Math.round(annualEffectivePacks / (operatingDaysPerYear * nLinesPerBase)));
+    // 线级夹点（电芯/日）：略高于基地夹点（headroom）→ lineMean 不低于基地夹点 → min() 绑 gwh 夹点（非玩具线级=SEAM 反例）。
+    const lineTargetCells = Math.round(baseDailyCellsWeekly * scaleCoh.lineHeadroom);
+    // 节拍反解：令串行工序在最坏因子下日产 ≥ lineTargetCells（serialCellsPerCtSec/ct ≥ target → ct ≤ 系数/target）。
+    const ctSecondsBase = Math.min(scaleCoh.ctSecMax, Math.max(scaleCoh.ctSecMin, round(scaleCoh.serialCellsPerCtSec / lineTargetCells, 2)));
     for (const wsDef of WORKSHOP_DEFS) {
       const workshopId = `WS-${b.baseId}-${wsDef.suffix}`;
       workshops.push({
@@ -2783,10 +2823,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         name: `${b.name}${wsDef.type}线`,
         // SA-5：产线台账字段（R12 全建模对齐）
         line_code: lineId.replace("LINE-", "L-"),
-        max_capacity_day: 2000 + (lineHash % 6001), // 件/日，确定性
-        // 套/日 运营日产能（确定性·lineHash）：按 demo 需求/产线数标定（≈需求×0.9·锂电产能紧俏略欠）
-        // → supply_demand 产能缺口叶出真数(非虚空)·单位=套/日 与需求(万套)同口径 ×300/1e4 年化。
-        capacityDaily: 72 + (lineHash % 29), // 套/日 · 72–100 · 确定性(R6·无 rng)
+        // WO-SCALE-COHERENCE：件/日(电芯) = 套/日 × 单PACK电芯数（gwhᵢ 派生·确定性·无 rng）。
+        max_capacity_day: perLineDailyPacks * (BATTERY_SOLVER_PARAMS.packCellCount as number),
+        // 套/日 运营日产能：gwhᵢ 派生（Σ全线 ×operatingDaysPerYear/1e4 = 名牌×util 尺度，与需求万套同口径）
+        // → supply_demand 产能缺口叶出真数(非虚空)。
+        capacityDaily: perLineDailyPacks, // 套/日 · gwhᵢ 派生 · 确定性(R6·无 rng)
         target_yield: round(0.95 + (lineHash % 100) / 100 * 0.04, 3),
         status: lineHash % 10 < 9 ? "运行中" : "调试",
       });
@@ -2814,12 +2855,14 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           const typeMap: Record<string, string> = { coating: "涂布机", calendering: "辊压机", slitting: "分切机", winding: "卷绕机", assembly: "装配线", filling: "注液机", formation: "化成柜", aging: "老化库", pack: "PACK线" };
           const processSuffix = processId.split("-").pop() ?? "";
           const manufacturerPool = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
+          void rngTopo(); // WO-SCALE-COHERENCE R6：占 ctSeconds 原 rng 位（保持后续 avail/oee 字节一致），ct 改 gwhᵢ 派生
           equipment.push({
             equipId,
             processId,
             lineId,
             baseId: b.baseId,
-            ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
+            // 节拍(s/电芯)：gwhᵢ 派生 → 串行工序日产 ≥ 基地夹点（令 min 绑 gwh 夹点·非玩具线级）
+            ctSeconds: ctSecondsBase,
             availFactor: round(0.86 + rngTopo() * 0.08, 3),
             oeeA: round(0.9 + rngTopo() * 0.06, 3),
             oeeP: round(0.88 + rngTopo() * 0.08, 3),
@@ -2844,8 +2887,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
         }
       }
-      const channels = randInt(rngTopo, 600, 780);
-      const channelOutputDaily = randInt(rngTopo, 80, 95);
+      // WO-SCALE-COHERENCE：化成通道数/单通道日产按 gwhᵢ 派生（令线级化成夹点 ≥ 基地夹点·headroom）。
+      void randInt(rngTopo, 600, 780); // R6：占原 channels rng 位
+      void randInt(rngTopo, 80, 95); // R6：占原 channelOutputDaily rng 位
+      const channelOutputDaily = scaleCoh.channelOutputBase + (hashString(`${lineId}:cod`) % scaleCoh.channelOutputSpan); // 85–95 套/通道·日
+      const channels = Math.ceil(lineTargetCells / (channelOutputDaily * 0.97)); // 通道数×日产×良率 ≥ 线级夹点
       processes.push({
         processId: `${lineId}-formation`,
         lineId,
@@ -2862,8 +2908,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         agingSlots: 0,
         agingDays: 0,
       });
-      const agingSlots = randInt(rngTopo, 260000, 340000);
+      void randInt(rngTopo, 260000, 340000); // R6：占原 agingSlots rng 位
       const agingDays = 5;
+      // 老化库位按 gwhᵢ 派生（agingSlots/agingDays = 线级老化夹点 ≥ 线级夹点·headroom）。
+      const agingSlots = Math.ceil(lineTargetCells * agingDays * scaleCoh.agingHeadroom);
       processes.push({
         processId: `${lineId}-aging`,
         lineId,
@@ -2882,8 +2930,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       });
       // Shared-resource caps：仅第一个 workshop 更新基地级共享容量（避免重复覆盖）
       if (wsDef.suffix === WORKSHOP_DEFS[0]!.suffix) {
-        b.formationCapDaily = channels * channelOutputDaily + randInt(rngTopo, 2000, 6000);
-        b.agingCapDaily = Math.floor(agingSlots / agingDays) + randInt(rngTopo, 2000, 6000);
+        void randInt(rngTopo, 2000, 6000); // R6：占原 formationCapDaily 噪声 rng 位
+        void randInt(rngTopo, 2000, 6000); // R6：占原 agingCapDaily 噪声 rng 位
+        // WO-SCALE-COHERENCE 断裂点B 主修：基地共享化成/老化夹点 = gwhᵢ 派生日电芯数 → computeRollup 的 min 由 gwh 夹定。
+        b.formationCapDaily = baseDailyCellsWeekly;
+        b.agingCapDaily = baseDailyCellsWeekly;
       }
     }
   }
@@ -3078,6 +3129,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
   // 需求结构：乘用车201.7 / 储能139.2 / 商用车34.1（合计375万套/年），
   // 经 SEG_REGISTRY 单价推导 totalRev=700.0亿、gmRate≈17.0%（R14 从边界册派生）。
+  // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（Σp50×priceWan===scaleAnchorRevenue.S），
+  // 是被金值锁死的事实锚（spine.test:58 硬钉 revenue.actual===700）——本单不动锚，把物理/产能/财务/订单四层往此对齐。
+  // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=Σp50），tgt/p50/p90/act 数值字节一致（下方内联即锚值本体）。
   const SEG_DEMAND = [
     { segment: "乘用车", tgt: 201.7, p50: 201.7, p90: 199.6, act: 200.6 },
     { segment: "储能", tgt: 139.2, p50: 139.2, p90: 108.4, act: 100.5 },

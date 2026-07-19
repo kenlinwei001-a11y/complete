@@ -949,13 +949,19 @@ export class SyntheticService {
         baseCert.set(baseId, Math.max(baseCert.get(baseId) ?? 0, params.certFactors[status] ?? 1));
       }
     }
+    // WO-SCALE-COHERENCE 断裂点D：weeklyTotal = Σ weeklyWan×certFactor（认证中 0.6 ramp）——与 planviews.ts 季度
+    // 滚动看板 sup 同口径（dem=PlanTarget=annualBase 与 sup 同 cert 基·三档缺口平衡·不desync）。AnnualScenario.revenue
+    // = 认证产能×52×P̄ ≈ 599 亿（= 需求 700 亿 − 认证爬坡供给缺口 ~14.5%，非玩具尺度）。修好断裂点B+C 后由玩具 15 亿
+    // 升到企业级 599 亿（脱离玩具 40×）；与需求锚 700 亿的差 = 真实供给/认证缺口（SEAM 营收容差覆盖此 ramp）。
     const weeklyTotal = round(
       rollup.bases.reduce((a, b) => a + b.weeklyWan * (baseCert.get(b.baseId) ?? 0), 0),
       4,
     );
-    const avgUnitPrice = Math.round(
-      g.models.reduce((a, m) => a + (typeof m.unitPrice === "number" ? m.unitPrice : 0), 0) / Math.max(1, g.models.length),
-    );
+    // WO-SCALE-COHERENCE 断裂点D：avgUnitPrice 改需求加权 P̄ = Σ(p50×priceWan)/Σp50（≈1.8667 万元/套=18667 元/套），
+    // 而非型号等权 mean → AOP.revenue = weeklyTotal×52×P̄ 收敛到 700 亿锚（收紧四方营收互核容差 ε≤12%）。
+    const dsP50 = g.demandSegments.reduce((a, d) => a + (typeof d.p50 === "number" ? d.p50 : 0), 0);
+    const dsRev = g.demandSegments.reduce((a, d) => a + (typeof d.p50 === "number" ? d.p50 : 0) * (typeof d.priceWan === "number" ? d.priceWan : 0), 0);
+    const avgUnitPrice = Math.round((dsP50 > 0 ? dsRev / dsP50 : 0) * 1e4); // 万元/套 → 元/套
     const pd = generatePlanDomain(weeklyTotal, avgUnitPrice);
     await putAll("AnnualScenario", pd.scenarios, "scnId");
     await putAll("ScenarioTrigger", pd.triggers, "trigId");

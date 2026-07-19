@@ -47,6 +47,29 @@ export const SEG_REGISTRY: CanonicalSeg[] = [
   { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551" },
 ];
 
+/**
+ * WO-SCALE-COHERENCE · 尺度自洽锚常数（round-trip 单一来源 · R14 · R18）。
+ * 病根（G-SCALE-COHERENCE）：物理(Base.gwh)/需求(DemandSegment)/产能(weeklyWan)/财务(AnnualScenario)/订单
+ * 五层各自独立造、gwh 与"套(pack)"之间无任何换算常数把它们焊在一起 → 差 25~300× 不 round-trip。
+ * 本册立唯一桥常数：
+ *  - `packEnergyKwh`：能量/套(kWh) —— gwh↔套 的唯一换算常数（scale 无关物理常数）。
+ *    名牌套 = Σ(Base.gwh)×1e6/packEnergyKwh；有效套/年 = 名牌套×util。取值令有效产能≈需求锚 375 万套（略低留缺口→供需缺口可归因）。
+ *  - `operatingDaysPerYear`：年运营日 —— capacityDaily/max_capacity_day 年化口径（与 battery ×300/1e4 一致）。
+ *  - `scaleAnchorRevenue`：各 scale 档目标年营收锚（亿）。S=700（= 既有 DemandSegment/CEO-Metric 锚，不动）；
+ *    M/L/XL 按订单规模系数(20/300/825/10000)同比给锚（数据量档位；物理/需求册跨档不变，故 S 档为业务锚）。
+ * 三常数随 BASE/SEG/PLAN 进 boundaryVersion() 指纹（改锚→digest 变，可审计/跨服务缓存失效）。
+ * R6：纯常数，同 seed 字节一致。消费端 datacore/synthetic/battery.ts 派生产能/单价（禁内联魔数）。
+ */
+export const packEnergyKwh = 166;
+export const operatingDaysPerYear = 300;
+export type ScaleTier = "S" | "M" | "L" | "XL";
+export const scaleAnchorRevenue: Record<ScaleTier, number> = {
+  S: 700,
+  M: 10500, // 700 × 300/20（订单规模系数）
+  L: 28875, // 700 × 825/20
+  XL: 350000, // 700 × 10000/20
+};
+
 // Wave 1 (#59)：基地产能同步放大到 700 亿收入 / 375 万套年需求规模。
 // 缩放系数 SCALE = 375万套 / 132万套 ≈ 2.84（由 SEG_DEMAND 总需求推导，不硬编码在消费端）。
 // gwh/lines 为产能指标随需求同比放大；util 为利用率百分比保持原设计区间；
@@ -232,5 +255,12 @@ export function boundaryVersion(): BoundaryVersion {
     { registry: "SEG_REGISTRY", members: SEG_REGISTRY.length, digest: djb2Hex(JSON.stringify(SEG_REGISTRY)) },
     { registry: "PLAN_GOAL_TARGETS", members: Object.keys(PLAN_GOAL_TARGETS).length, digest: djb2Hex(JSON.stringify(PLAN_GOAL_TARGETS)) },
   ];
-  return { semver: BOUNDARY_SEMVER, digest: djb2Hex(registries.map((r) => `${r.registry}:${r.digest}`).join("|")), registries };
+  // WO-SCALE-COHERENCE：尺度锚常数进全册合并指纹（registries 仍为三册，守 boundary-version.test 结构；
+  // 改 packEnergyKwh/operatingDaysPerYear/scaleAnchorRevenue → 合并 digest 变 → 可审计/跨服务缓存失效）。
+  const anchorDigest = djb2Hex(JSON.stringify({ packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue }));
+  return {
+    semver: BOUNDARY_SEMVER,
+    digest: djb2Hex(registries.map((r) => `${r.registry}:${r.digest}`).join("|") + `|ANCHORS:${anchorDigest}`),
+    registries,
+  };
 }
