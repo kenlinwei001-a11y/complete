@@ -1,6 +1,7 @@
 import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
+import type { ResourceDescriptor } from "@platform/contracts";
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -116,6 +117,34 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
 export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG];
+
+/**
+ * WO-RESOURCE-DESCRIPTOR · 把 datacore 本地可发现资源池（求解器全集 + 内置切片）投影成统一
+ * ResourceDescriptor（R13 派生投影，不改各池存储）。供发现门 `resource-descriptor:check` 与
+ * SEAM 组合测复用——「无描述不允许发布」纪律从求解器一池推广到全池的 datacore 半。
+ * 确定性（R6）：纯映射，无 IO。description 为空的条目会被 findUndescribed 捕获（门红）。
+ */
+export function datacoreResourceDescriptors(): ResourceDescriptor[] {
+  const solvers: ResourceDescriptor[] = ALL_SOLVER_CATALOG.map((s) => ({
+    kind: "solver",
+    key: s.key,
+    label: s.name,
+    description: s.description,
+    argHints: s.argHints,
+    ...(s.domain ? { domain: s.domain } : {}),
+    ...(s.featureKey ? { featureKey: s.featureKey } : {}),
+  }));
+  const slices: ResourceDescriptor[] = BUILTIN_SLICE_CATALOG.map((s) => ({
+    kind: "slice",
+    key: s.key,
+    label: s.name,
+    description: s.description,
+    argHints: s.argHints,
+    ...(s.domain ? { domain: s.domain } : {}),
+    ...(s.featureKey ? { featureKey: s.featureKey } : {}),
+  }));
+  return [...solvers, ...slices];
+}
 
 function matches(item: CatalogItem, query?: string): boolean {
   if (!query) return true;

@@ -51,3 +51,4 @@ export * from "./order-line.js"; // WO-ORDERLINE · 订单拆行 OrderLine（SO�
 export * from "./warehouse.js"; // WO-WAREHOUSE-CUSTLOC · 仓库 Warehouse + 客户地点 CustomerLocation（库存仓位与交付地理落点）
 export * from "./inventory.js"; // WO-INVENTORY-3TIER · 库存三层闭环 FinishedGoodsInventory + InventoryTxn（WIP→完工入库→成品库存·勾稽 R13·确定性 R6）
 export * from "./atp-promise.js"; // WO-ATP-PROMISE · 订单承诺 ATP/CTP（OrderPromise + atp_check：能不能接/何时交·净读三源·SEAM 改产能/库存→承诺变·R6）
+export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资源描述契约 + 发现门（全5池 description 覆盖·additive）
