@@ -9,10 +9,13 @@ import type { CeoQueryRoute, PageContext, CeoAgentRole } from "@platform/contrac
  * （测试可验路由决策·非蒙 LLM），二者共用 PageContext（G-3 注入同源）。
  */
 
-const RE_ROOTCAUSE = /(为什么|根因|归因|原因|为何|拆解|溯源)/;
-const RE_OPTION = /(怎么补|怎么办|方案|选择|应对|对策|怎么解决|如何补|补救)/;
+// WO-METRIC-ROLLUP-SPLIT 拓宽根因深问：加"拖累/拉低/短板/卡在哪/哪个环节/瓶颈/掉队"等归因措辞（不含 涨/矿价/外部/地缘=RE_SIGNAL 领地），此前落到 RE_ATTAIN 被 metric_rollup 劫持。
+const RE_ROOTCAUSE = /(为什么|根因|归因|原因|为何|拆解|溯源|拖累|拖后腿|拉低|短板|症结|瓶颈|卡在|薄弱|掉队|哪个环节|哪些环节|哪块|谁在拖)/;
+// WO-METRIC-ROLLUP-SPLIT 拓宽方案深问：加"改善/提升/追平/杠杆/抓手/补上/扭转/优化"等抓手措辞，此前落到 RE_ATTAIN 被 metric_rollup 劫持（不含裸"提"以免撞 RE_SOP 提前/挤占）。
+const RE_OPTION = /(怎么补|怎么办|方案|选择|应对|对策|怎么解决|如何补|补救|补齐|补上|改善|改进|提升|提高|提上去|追平|扭转|优化|抓手|杠杆|发力)/;
 const RE_SIGNAL = /(信号|触发|预警|涨|外部|地缘|矿价)/;
-const RE_ATTAIN = /(差多少|达成|缺口多少|还差|完成率|达标)/;
+// WO-METRIC-ROLLUP-SPLIT 收窄纯对账：去裸 token 达成/达标（顺带提及即误吞深问），只留"目标 vs 实际/还差/缺口多少/完成率"等纯对账措辞。
+const RE_ATTAIN = /(差多少|还差|缺口(是)?多少|完成率|达成率|目标.{0,4}(实际|完成)|实际.{0,4}目标|哪些.{0,4}(越线|未达|达标)|各.{0,6}(指标|KPI|kpi).{0,4}(达成|达标)|对账)/;
 // WO-SOP-RESCHEDULE：产销重排意图（能否提前/挤占/跨基地拆产/重排交期）——优先级高于 decision_play，
 // 避免"提前/挤占/排产"被 RE_OPTION 劫持答非所问；命中即绑 sop_reschedule（args 从订单号/focus.order 派生）。
 const RE_SOP = /(提前.*交|能否提前|挤占|抢产|插单|重排|拆产|拆哪些基地|产销.{0,4}(重排|平衡|重排产|调))/;
