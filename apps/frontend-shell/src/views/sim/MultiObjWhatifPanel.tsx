@@ -148,12 +148,14 @@ function MultiObjWhatifInner() {
         </thead>
         <tbody>
           {ORDERS.map((o) => {
+            const loaded = !!occ.data;
             const on = occ.data?.occupancy.find((a) => a.order === o.id);
             const displaced = occ.data?.displaced.includes(o.id) ?? false;
             return (
               <tr key={o.id} data-testid={`multiobj-row-${o.id}`} style={displaced ? { opacity: 0.55 } : undefined}>
                 <td>{orderLabel(o.id)}</td>
-                <td>{on ? on.line : <span style={{ color: "#c0392b" }} data-testid={`multiobj-displaced-${o.id}`}>被挤（未排）</span>}</td>
+                {/* 未加载完不得渲染「被挤」占位（否则 loading 态伪装成 displaced）；仅数据到手且真未排才标被挤。 */}
+                <td>{!loaded ? "…" : on ? on.line : <span style={{ color: "#c0392b" }} data-testid={`multiobj-displaced-${o.id}`}>被挤（未排）</span>}</td>
                 <td>{fmt(o.revenue, 0)}</td>
                 <td>{displaced ? fmt(o.penalty, 0) : "0"}</td>
               </tr>
