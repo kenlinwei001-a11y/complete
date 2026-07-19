@@ -34,6 +34,7 @@ import {
   BINDINGS,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
+import { deriveSliceHops } from "../databuilder/comprehend.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
@@ -980,13 +981,43 @@ export class SyntheticService {
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
+    // 修（本体切片·无契约/跳数0 成片）：coverage 裸切片此前恒 `paths:[]`+无契约。经 `deriveSliceHops`
+    // （WO-DB-LINK-STABILIZE·确定性 R6·沿 refToTypeKey+FK 名启发建图 → planSlice 真 BFS）派生**真实多跳**，
+    // 并补 smoke 契约 → 消灭"跳数0/无契约"成片，试切预览随之出真子图。**诚实**：无出向关系的叶类型
+    // 派生为空 hops → 跳数仍 0（非缺陷·强造非0 即造假）；契约则一律补齐（≥1 节点 smoke）。内置切片已带真路径/契约，不动。
+    const planTypesForHops = [...batteryObjectTypes(), ...extendedObjectTypes()].map((t) => ({
+      typeKey: t.key,
+      displayName: t.displayName,
+      domain: t.domain ?? "unassigned",
+      sourceDataset: String(t.key).toLowerCase(),
+      properties: (t.properties ?? []).map((p) => ({
+        propKey: p.propKey,
+        sourceField: p.propKey,
+        // deriveSliceHops 只读 propKey+refToTypeKey；dataType 仅需类型兼容（json→string 归一）。
+        dataType: (p.dataType === "json" ? "string" : p.dataType) as "string" | "number" | "boolean" | "enum" | "date" | "ref",
+        isPrimaryKey: p.isPrimaryKey ?? false,
+        refToTypeKey: p.refToTypeKey ?? null,
+      })),
+    }));
+    const hopsByRoot = deriveSliceHops(planTypesForHops);
     for (const s of [...batteryBuiltinSlices(), ...batteryCoverageSlices()]) {
+      let spec = s.spec;
+      if (s.sliceKey.startsWith("coverage_") && (!spec.paths || spec.paths.length === 0)) {
+        const rootType = spec.root.typeKey;
+        const linkKeys = hopsByRoot.get(rootType) ?? [];
+        const paths = linkKeys.length > 0 ? [linkKeys.map((linkKey) => ({ linkKey, direction: "out" as const }))] : spec.paths;
+        spec = {
+          ...spec,
+          paths,
+          contractFixtures: [{ name: "smoke", args: {}, expect: { rootType, minNodes: 1, mustIncludeTypes: [rootType] } }],
+        };
+      }
       await this.repos.sliceSpecs.put({
         id: `slice_${s.sliceKey}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         sliceKey: s.sliceKey,
         version: s.version,
-        spec: s.spec,
+        spec,
       });
     }
     // 轨L 增量2：chainMode → 全 34 rawDataset 经真建模链产本体类型+对象（provenance 因果真实）。
