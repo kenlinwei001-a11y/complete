@@ -36,6 +36,8 @@ export interface AgentStepInvoker {
     prompt: string;
     expectsSchema?: Record<string, unknown>;
     nesting: NestingCtx;
+    /** WO-FIVE-ROLE P1：本步是否强制被调 agent 的 objectTypes scope（Coordinator 角色扇出 → 越界读对象拒）。 */
+    enforceObjectScope?: boolean;
   }): Promise<{ structured?: unknown; answer: Answer }>;
 }
 
@@ -260,6 +262,8 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
             prompt: typeof resolvedParams.prompt === "string" ? resolvedParams.prompt : JSON.stringify(resolvedParams.prompt),
             expectsSchema: step.params.expectsSchema,
             nesting: child,
+            // WO-FIVE-ROLE P1：Coordinator 角色扇出的 invoke_agent 步声明 enforceObjectScope → 被调 agent 对象 scope 强制。
+            ...((step.params as { enforceObjectScope?: boolean }).enforceObjectScope ? { enforceObjectScope: true } : {}),
           });
           stepOutputs[step.id] =
             step.params.expectsSchema !== undefined

@@ -43,13 +43,24 @@ export interface RunRegisteredAgentOpts {
   isCancelled?: () => boolean;
   /** 引用模式增量 §2.2：执行时解析到的实际版本留痕回调（agent/skill/rule/workflow）。 */
   onResolvedRef?: (ref: ResolvedRef) => void;
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · opt-in：强制 agent scopeDeclaration.objectTypes（越界读对象拒）。
+   * Coordinator 角色扇出置 true（scope 真隔离）；既有路径不置 = 字节兼容不强制。
+   */
+  enforceObjectScope?: boolean;
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
 export class ExecutionEngine {
   constructor(readonly deps: EngineDeps) {}
 
-  makeExecutor(taskId: string, ctx: ToolAuthCtx, budget?: BudgetTracker, scopeToolNames?: string[]): GuardedToolExecutor {
+  makeExecutor(
+    taskId: string,
+    ctx: ToolAuthCtx,
+    budget?: BudgetTracker,
+    scopeToolNames?: string[],
+    scopeObjectTypes?: string[],
+  ): GuardedToolExecutor {
     return new GuardedToolExecutor(
       {
         dataCore: this.deps.dataCore,
@@ -58,7 +69,7 @@ export class ExecutionEngine {
         metrics: this.deps.metrics,
         skillResources: this.deps.skillResources,
       },
-      { taskId, ctx, budget, scopeToolNames },
+      { taskId, ctx, budget, scopeToolNames, ...(scopeObjectTypes ? { scopeObjectTypes } : {}) },
     );
   }
 
@@ -191,7 +202,13 @@ export class ExecutionEngine {
     // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
     const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
-    const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.nesting.budget, agent.scopeDeclaration.toolNames);
+    const executor = this.makeExecutor(
+      opts.taskId,
+      opts.ctx,
+      opts.nesting.budget,
+      agent.scopeDeclaration.toolNames,
+      opts.enforceObjectScope ? agent.scopeDeclaration.objectTypes : undefined,
+    );
 
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
@@ -342,6 +359,8 @@ export class ExecutionEngine {
     trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
     budgetForTools?: BudgetTracker;
     onResolvedRef?: (ref: ResolvedRef) => void;
+    /** WO-FIVE-ROLE P1：本工作流内 invoke_agent 步是否强制被调 agent 的 objectTypes scope（Coordinator 扇出置 true）。 */
+    enforceAgentObjectScope?: boolean;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     return runWorkflow(
@@ -364,6 +383,8 @@ export class ExecutionEngine {
             emit: opts.emit,
             expectsSchema: params.expectsSchema,
             onResolvedRef: opts.onResolvedRef,
+            // WO-FIVE-ROLE P1：Coordinator 扇出（enforceAgentObjectScope）或步显式声明 enforceObjectScope → 强制被调 agent 对象 scope。
+            ...(opts.enforceAgentObjectScope || params.enforceObjectScope ? { enforceObjectScope: true } : {}),
           });
           return { structured: r.structured, answer: r.answer };
         },

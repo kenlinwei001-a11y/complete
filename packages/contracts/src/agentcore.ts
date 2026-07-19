@@ -48,6 +48,12 @@ export const AgentDefinitionSchema = z.object({
   }),
   budget: AgentBudgetSchema.partial().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1（additive·可选·向后兼容）：角色标签——把扁平 agent 配置加"角色"维，
+   * 供 Coordinator 按角色选/组 agent、path-B 按 role 选对应 agent。值取 AgentRole
+   *（ceo/supply-chain/production/quality/base-planner）或 "coordinator"；未标 = 通用 agent（既有行为不变）。
+   */
+  role: z.string().optional(),
 });
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
 

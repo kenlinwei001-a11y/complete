@@ -1,6 +1,7 @@
 import {
   LIVED_IN_SCENE_HISTORY,
   type AgentDefinition,
+  type CeoAgentProfile,
   type ExecutionPlan,
   type IntentDefinition,
   type McpServerConfig,
@@ -831,6 +832,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       },
       budget: { maxIterations: 8, maxToolCalls: 12 },
       status: "PUBLISHED",
+      role: "ceo", // WO-FIVE-ROLE P1：全域 analyst 兼作 CEO/base-planner 角色底座（全对象域·全工具）。
     },
     {
       id: "agt_seed_explore", tenantId: SEED_TENANT, key: "explore_agent", version: 1,
@@ -872,6 +874,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       scopeDeclaration: { objectTypes: ["Base", "Line", "Model", "Order"], toolNames: ["query_objects", "invoke_solver"] },
       budget: { maxIterations: 8, maxToolCalls: 10 },
       status: "DRAFT",
+      role: "production", // WO-FIVE-ROLE P1：生产角色 agent（产能/产线/工序·Line/Process/Model 域）。
     },
     {
       id: "agt_quality_inspector", tenantId: SEED_TENANT, key: "quality_inspector", version: 1,
@@ -883,6 +886,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       scopeDeclaration: { objectTypes: ["Process", "Equipment", "QualityStandard"], toolNames: ["query_objects", "invoke_solver"] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
+      role: "quality", // WO-FIVE-ROLE P1：质量角色 agent（良率/检验/合规·Process/Equipment/QualityStandard 域）。
     },
     {
       id: "agt_supply_chain", tenantId: SEED_TENANT, key: "supply_chain", version: 1,
@@ -894,6 +898,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       scopeDeclaration: { objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], toolNames: ["query_objects", "invoke_solver"] },
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
+      role: "supply-chain", // WO-FIVE-ROLE P1：供应链角色 agent（物料齐套/供应/采购·Material/Supplier/PO 域）。
     },
     {
       id: "agt_finance_analyst", tenantId: SEED_TENANT, key: "finance_analyst", version: 1,
@@ -949,8 +954,71 @@ export function seedRegistry(now = new Date().toISOString()): {
       budget: { maxIterations: 6, maxToolCalls: 8 },
       status: "DRAFT",
     },
+    {
+      // WO-FIVE-ROLE-AI-EMPLOYEE P1：Coordinator 编排 agent —— 一个跨域问题→确定性拆多角色子问→经 invoke_agent 扇出调
+      // 供应链/生产/质量等角色 agent→汇总（谁答什么 + 冲突/一致 + 综合结论 + 每角色溯源）。P2 双向 A2A 二期。
+      id: "agt_coordinator", tenantId: SEED_TENANT, key: "coordinator", version: 1,
+      name: "跨域协调 Agent（Coordinator）", description: "跨域问题的多角色编排：拆子问→分派 CEO/供应链/生产/质量/base-planner 角色 agent→结构化汇总",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是跨域协调者（Coordinator）。面对跨越供应链/生产/质量等多域的复杂问题，你把它确定性拆成子问、分派给对应角色的专职 agent，再汇总各角色作答为综合结论（含一致/冲突标注与每角色溯源）。你自己不直接取数，取数由各角色 agent 在其 scope 内完成。",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Material", "Supplier"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6, maxToolCalls: 12 },
+      status: "PUBLISHED",
+      role: "coordinator",
+    },
   ];
   return { agents, workflows, skills };
+}
+
+/**
+ * WO-FIVE-ROLE-AI-EMPLOYEE P1 · 五角色画像单一来源（激活 CeoAgentProfile·此前 app 侧零消费的死契约）。
+ * 每角色绑：scope（全域/单基地）+ focusMetrics + **seed agentId**（Coordinator 经 invoke_agent 真调）+ 工具白名单 +
+ * 对象类型域 + system 片段 key。**真实取证约束**以绑定 agent 的 scopeDeclaration 为准（越界拒·非声明装饰）。
+ */
+export const ROLE_PROFILES: CeoAgentProfile[] = [
+  {
+    profileId: "role_ceo", role: "ceo",
+    scope: { allBases: true, baseIds: [] },
+    focusMetrics: ["revenue", "gross_profit", "market_share", "cash"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "aggregate_objects", "get_object", "resolve_slice", "invoke_solver", "evaluate_rules", "search_knowledge", "query_timeseries_agg"],
+    objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"], systemKey: "ceo",
+  },
+  {
+    profileId: "role_supply_chain", role: "supply-chain",
+    scope: { allBases: true, baseIds: [] },
+    focusMetrics: ["kit_readiness", "lta_coverage"],
+    agentId: "agt_supply_chain", toolWhitelist: ["query_objects", "invoke_solver"],
+    objectTypes: ["Material", "Supplier", "PurchaseOrder", "Shipment"], systemKey: "supply-chain",
+  },
+  {
+    profileId: "role_production", role: "production",
+    scope: { allBases: true, baseIds: [] },
+    focusMetrics: ["capacity_util", "bottleneck"],
+    agentId: "agt_capacity_planner", toolWhitelist: ["query_objects", "invoke_solver"],
+    objectTypes: ["Base", "Line", "Model", "Order"], systemKey: "production",
+  },
+  {
+    profileId: "role_quality", role: "quality",
+    scope: { allBases: true, baseIds: [] },
+    focusMetrics: ["yield", "quality_compliance"],
+    agentId: "agt_quality_inspector", toolWhitelist: ["query_objects", "invoke_solver"],
+    objectTypes: ["Process", "Equipment", "QualityStandard"], systemKey: "quality",
+  },
+  {
+    profileId: "role_base_planner", role: "base-planner",
+    scope: { allBases: false, baseIds: [] }, // baseIds 运行时由 OBO 身份 baseScope 注入（A6 行级）
+    focusMetrics: ["capacity_util", "kit_readiness"],
+    agentId: "agt_seed_analyst", toolWhitelist: ["query_objects", "invoke_solver", "resolve_slice", "evaluate_rules"],
+    objectTypes: ["Base", "Order", "Model", "Line", "Process"], systemKey: "base-planner",
+  },
+];
+
+/** role → 画像（未登记角色返 undefined）。 */
+export function roleProfile(role: string): CeoAgentProfile | undefined {
+  return ROLE_PROFILES.find((p) => p.role === role);
 }
 
 /** MCP 服务器出厂种子（3 条演示配置，覆盖 streamable_http / stdio 两种传输，使 MCP 库页不为空）。 */
