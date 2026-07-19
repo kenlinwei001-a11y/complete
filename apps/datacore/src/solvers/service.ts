@@ -93,6 +93,9 @@ export const SOLVER_KEYS = [
   "assignment_optimize",
   "sequencing_optimize",
   "packing_optimize",
+  // A8 小时级工序排程（CP-SAT IntervalVar/AddNoOverlap，单目标 makespan 可证最优）：读 WorkOrder×Operation×Equipment
+  // 排出带开始-结束时刻的工序时间轴（涂布→卷绕→化成），换型取 ChangeoverMatrix。经 sidecar，未配 OPTIMIZER_BASE_URL 显式"未接入"。
+  "job_shop_schedule",
   // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧；零业务常数 R14，行业靠 OntologyBinding 绑进来）。
   // 走 optimizer-client sidecar 可证最优；args 给抽象 role→本体类型/字段（增量2 OntologyBinding 统一预处理）。
   "facility_location",
@@ -145,6 +148,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
   sequencing_optimize: ["status", "optimal", "sequence", "changeovers", "objective", "jobType", "jobCount", "summary"],
   packing_optimize: ["status", "optimal", "bins", "binCount", "objective", "itemType", "itemCount", "binCapacity", "summary"],
+  job_shop_schedule: ["status", "optimal", "schedule", "makespan", "objective", "jobType", "jobCount", "summary"],
   // 轨B·增量1 抽象优化模板池 5 核心输出形状（权威=求解器实现成功路径顶层 key）。
   facility_location: ["status", "optimal", "openFacilities", "assignments", "objective", "facilityType", "clientType", "facilityCount", "clientCount", "summary"],
   min_cost_flow: ["status", "optimal", "flows", "objective", "nodeType", "arcCount", "nodeCount", "summary"],
@@ -2313,6 +2317,72 @@ export class SolverService {
     };
   }
 
+  /**
+   * A8 工序排程（CP-SAT sidecar 代理·IntervalVar/AddNoOverlap 单目标 makespan 可证最优）：
+   * 读 WorkOrder×Operation×Equipment —— 每道工序（opType 对象）带所属工单（jobField）、机器（machineField）、
+   * 时长（durationField）、工艺序号（orderField），可选换型分组（groupField）；换型矩阵取 ChangeoverMatrix
+   * （fromModel→toModel 分钟数）。组 payload → sidecar 求带开始-结束时刻的排程（涂布→卷绕→化成）。
+   * args: { opType?, jobType?, jobField?, machineField?, durationField?, orderField?, groupField?, changeoverType?, seed? }。
+   * R14 零业务常数：job/op/machine/换型全从对象类型化字段读、字段名可配。R6：稳定 .sort()。未配引擎 → 显式"未接入"不兜底。
+   */
+  private async jobShopSchedule(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveJobShop) throw validationError("job_shop_schedule 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const opType = str(args.opType, "Operation");
+    const jobType = str(args.jobType, "WorkOrder");
+    const jobField = str(args.jobField, "jobId");
+    const machineField = str(args.machineField, "machine");
+    const durationField = str(args.durationField, "duration");
+    const orderField = str(args.orderField, "order");
+    const groupField = str(args.groupField, "group");
+    const changeoverType = str(args.changeoverType, "ChangeoverMatrix");
+    // 读工序对象（稳定序 R6）：每 op 带所属 job（jobField）、机器、时长、工艺序号、可选换型分组。
+    const opDef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === opType))[0];
+    const opPk = opDef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const opObjs = (await this.repos.objects.listByType(ctx.tenantId, opType)).sort((a, b) => a.id.localeCompare(b.id));
+    if (!opObjs.length) {
+      throw validationError(`job_shop_schedule 需 ${opType} 工序对象（每工序带 ${jobField}/${machineField}/${durationField}/${orderField}）`);
+    }
+    const jobMap = new Map<string, { jobId: string; ops: { opId: string; machine: string; duration: number; order: number; group: string }[] }>();
+    for (const o of opObjs) {
+      const jobId = String(o.props[jobField] ?? "");
+      if (!jobId) continue;
+      const opId = String((opPk ? o.props[opPk] : undefined) ?? o.id);
+      let job = jobMap.get(jobId);
+      if (!job) {
+        job = { jobId, ops: [] };
+        jobMap.set(jobId, job);
+      }
+      job.ops.push({
+        opId,
+        machine: String(o.props[machineField] ?? ""),
+        duration: num(o.props[durationField]),
+        order: num(o.props[orderField]),
+        group: String(o.props[groupField] ?? jobId),
+      });
+    }
+    const jobs = [...jobMap.values()].sort((a, b) => a.jobId.localeCompare(b.jobId));
+    for (const j of jobs) j.ops.sort((a, b) => a.order - b.order || a.opId.localeCompare(b.opId));
+    // 换型矩阵（可选·分组→分组 分钟数），稳定序。
+    const coObjs = (await this.repos.objects.listByType(ctx.tenantId, changeoverType)).sort((a, b) => a.id.localeCompare(b.id));
+    const changeover = coObjs.map((o) => ({ from: String(o.props.fromModel ?? ""), to: String(o.props.toModel ?? ""), minutes: num(o.props.minutes) }));
+    const result = await this.optimizer.solveJobShop({
+      model: "job_shop_schedule",
+      seed: Number(args.seed ?? 42),
+      jobs,
+      changeover: changeover.length ? changeover : undefined,
+    });
+    return {
+      status: result.status,
+      optimal: result.optimal,
+      schedule: result.schedule,
+      makespan: result.makespan,
+      objective: result.objective,
+      jobType,
+      jobCount: jobs.length,
+      summary: `${jobs.length} 个${jobType}共 ${opObjs.length} 道工序排程，完工跨度 makespan ${result.makespan}（${optWord(result)}）`,
+    };
+  }
+
   // ── 轨B·增量2 本体绑定层（OntologyBinding · invoke 前统一 args 预处理） ──────────
   /**
    * 绑定→求解：把 OntologyBinding（role→本体类型/属性）在 invoke 前统一预处理成 5 核心结构化 args，
@@ -2816,6 +2886,7 @@ export class SolverService {
     if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);
     if (solverKey === "packing_optimize") return this.packingOptimize(ctx, args);
+    if (solverKey === "job_shop_schedule") return this.jobShopSchedule(ctx, args);
     // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（sidecar 重解，先于 loadContext 拦截，同既有 *_optimize）。
     if (solverKey === "facility_location") return this.facilityLocation(ctx, args);
     if (solverKey === "min_cost_flow") return this.minCostFlow(ctx, args);

@@ -817,11 +817,104 @@ def solve_cross_object_occupancy(payload: dict) -> dict:
     }
 
 
+def solve_job_shop_schedule(payload: dict) -> dict:
+    """小时/分钟级工序排程（job-shop scheduling · 单目标最小化 makespan）：每 (job,op) 建 IntervalVar，
+    同机器 op 集不重叠（AddNoOverlap；带 sequence-dependent 换型时用成对析取代替），同 job 内工艺顺序
+    end[op_i] <= start[op_{i+1}]（涂布→卷绕→化成），目标 min makespan。CP-SAT 可证最优——规则/贪心排程给不出。
+
+    抽象/零业务常数（R14）：jobs/ops/machines/changeover 全由 datacore 绑定层从本体类型化字段填，引擎只认数值。
+    确定性 R6：固定 seed + 单线程 + 二级目标（左压紧 Σstart 消同 makespan 多解抖动）。
+    协议：{ model:"job_shop_schedule", seed?, horizon?,
+           jobs:[{jobId, ops:[{opId, machine, duration, order, group?}]}],
+           changeover?:[{from, to, minutes}] }（换型按 op.group 对查，缺省 group=jobId → 无换型）。
+    输出：{ status, optimal, schedule:[{jobId, opId, machine, start, end}], makespan, objective }。
+    """
+    jobs = payload.get("jobs") or []
+    tasks = []  # 扁平任务集（稳定顺序 = jobs 序 × 各 job 内 (order, opId) 序）
+    for j in jobs:
+        job_id = str(j.get("jobId", ""))
+        ops = sorted((j.get("ops") or []), key=lambda o: (int(o.get("order", 0)), str(o.get("opId", ""))))
+        for o in ops:
+            tasks.append({
+                "jobId": job_id,
+                "opId": str(o.get("opId", "")),
+                "machine": str(o.get("machine", "")),
+                "duration": int(round(float(o.get("duration", 0)))),
+                "order": int(o.get("order", 0)),
+                "group": str(o.get("group", job_id)),
+            })
+    if not tasks:
+        return {"status": "INFEASIBLE", "optimal": False, "schedule": [], "makespan": 0, "objective": 0}
+    seed = int(payload.get("seed", 42))
+    co = {(str(c["from"]), str(c["to"])): int(round(float(c.get("minutes", 0)))) for c in (payload.get("changeover") or [])}
+    total_dur = sum(t["duration"] for t in tasks)
+    total_co = sum(co.values())
+    horizon = int(payload.get("horizon", total_dur + total_co + 1))
+
+    def changeover(gi: str, gj: str) -> int:
+        return 0 if gi == gj else co.get((gi, gj), 0)
+
+    model = cp_model.CpModel()
+    starts, ends, intervals = {}, {}, {}
+    by_machine, by_job = {}, {}
+    for k, t in enumerate(tasks):
+        s = model.NewIntVar(0, horizon, f"s_{k}")
+        e = model.NewIntVar(0, horizon, f"e_{k}")
+        intervals[k] = model.NewIntervalVar(s, t["duration"], e, f"iv_{k}")
+        starts[k], ends[k] = s, e
+        by_machine.setdefault(t["machine"], []).append(k)
+        by_job.setdefault(t["jobId"], []).append(k)
+
+    # 工艺顺序：同 job 内按 (order, opId) end[prev] <= start[next]。
+    for ks in by_job.values():
+        ks_sorted = sorted(ks, key=lambda k: (tasks[k]["order"], tasks[k]["opId"]))
+        for a, b in zip(ks_sorted, ks_sorted[1:]):
+            model.Add(ends[a] <= starts[b])
+
+    # 设备能力=同机器不重叠；有 sequence-dependent 换型的机器改用成对析取（含换型间隔）。
+    for ks in by_machine.values():
+        has_co = any(changeover(tasks[a]["group"], tasks[b]["group"]) > 0 for a in ks for b in ks if a != b)
+        if not has_co:
+            model.AddNoOverlap([intervals[k] for k in ks])
+        else:
+            ks_sorted = sorted(ks)
+            for x in range(len(ks_sorted)):
+                for y in range(x + 1, len(ks_sorted)):
+                    a, b = ks_sorted[x], ks_sorted[y]
+                    before = model.NewBoolVar(f"before_{a}_{b}")
+                    model.Add(starts[b] >= ends[a] + changeover(tasks[a]["group"], tasks[b]["group"])).OnlyEnforceIf(before)
+                    model.Add(starts[a] >= ends[b] + changeover(tasks[b]["group"], tasks[a]["group"])).OnlyEnforceIf(before.Not())
+
+    makespan = model.NewIntVar(0, horizon, "makespan")
+    model.AddMaxEquality(makespan, [ends[k] for k in range(len(tasks))])
+    # 主目标 min makespan；二级左压紧 Σstart（同 makespan 多解下唯一化，R6 确定性）。
+    big = horizon + 1
+    model.Minimize(makespan * big + sum(starts[k] for k in range(len(tasks))))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "schedule": [], "makespan": 0, "objective": 0}
+    schedule = [
+        {"jobId": t["jobId"], "opId": t["opId"], "machine": t["machine"],
+         "start": int(solver.Value(starts[k])), "end": int(solver.Value(ends[k]))}
+        for k, t in enumerate(tasks)
+    ]
+    schedule.sort(key=lambda r: (r["jobId"], r["start"], r["opId"]))
+    mk = int(solver.Value(makespan))
+    return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "schedule": schedule, "makespan": mk, "objective": mk}
+
+
 MODELS = {
     "selection": solve_selection,
     "assignment": solve_assignment,
     "sequencing": solve_sequencing,
     "packing": solve_packing,
+    # A8 小时级工序排程（CP-SAT IntervalVar/AddNoOverlap，单目标 makespan，可证最优）。
+    "job_shop_schedule": solve_job_shop_schedule,
     # 轨B·增量1 5 CP-SAT 核心（抽象优化模板池 OptModelTemplate 的引擎侧实现，零业务常数 R14）。
     "facility_location": solve_facility_location,
     "min_cost_flow": solve_min_cost_flow,

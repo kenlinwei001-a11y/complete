@@ -100,6 +100,7 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）：把待办项指派到容器/基地，最小化总成本，满足容量约束。", argHints: { items: "待指派项", bins: "容器(容量/成本)" }, domain: "generic" },
   { key: "sequencing_optimize", name: "排序最优化", description: "通用排序最优化（CP-SAT 可证最优）：在切换成本矩阵上求最短换型路径序列。", argHints: { jobs: "作业集", changeover: "两两切换成本" }, domain: "generic" },
   { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic" },
+  { key: "job_shop_schedule", name: "工序排程最优化", description: "通用小时/分钟级工序排程（CP-SAT IntervalVar 可证最优）：每(工单,工序)建区间变量，同机器不重叠 + 同工单工艺顺序 + 换型间隔，最小化完工跨度 makespan，排出带开始-结束时刻的时间轴（涂布→卷绕→化成）。读工序/机器/换型对象即用，任意行业。", argHints: { opType: "工序对象类型(默认 Operation)", jobField: "工序所属工单字段", machineField: "机器字段", durationField: "工序时长字段" }, domain: "generic" },
   // 优化融合（G-12）：抽象优化模板池 5 核心 + optimize_whatif（经 OntologyBinding 绑租户本体，CP-SAT sidecar 求最优）。
   { key: "facility_location", name: "选址最优化", description: "通用选址最优化（CP-SAT 可证最优）：在开设成本与服务成本下选最优设施集并分派需求点。经本体绑定喂任意行业（仓/店、诊所/社区…）。", argHints: { facilities: "候选设施(开设成本)", clients: "需求点", serveCost: "服务成本矩阵" }, domain: "generic" },
   { key: "min_cost_flow", name: "最小成本流", description: "通用最小成本流（CP-SAT 可证最优）：在带容量/成本的网络上满足供需的最小成本流分配。", argHints: { nodes: "节点(供给/需求)", arcs: "弧(容量/单位成本)" }, domain: "generic" },

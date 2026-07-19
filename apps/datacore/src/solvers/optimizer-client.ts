@@ -13,7 +13,7 @@ export interface OptimizationItem {
 }
 
 export interface OptimizationRequest {
-  model: "selection";
+  model: "selection" | "job_shop_schedule";
   seed: number;
   items: OptimizationItem[];
   budget: number;
@@ -79,6 +79,27 @@ export interface PackingResult {
   /** 每个使用中的 bin 及其装入的 item id。 */
   bins: { items: string[]; load: number }[];
   binCount: number;
+  objective: number;
+}
+
+// A8 小时级工序排程（job-shop scheduling）：每 (job,op) 建 IntervalVar，同机器不重叠 + 同 job 工艺顺序 →
+// 单目标最小化 makespan（可证最优）。changeover 可选（按 op.group 对查换型分钟数）。零业务常数 R14。
+export interface JobShopScheduleRequest {
+  model: "job_shop_schedule";
+  seed: number;
+  jobs: { jobId: string; ops: { opId: string; machine: string; duration: number; order: number; group?: string }[] }[];
+  /** 可选 sequence-dependent 换型（分组 from→to 分钟数）；缺省 = 无换型（纯 AddNoOverlap）。 */
+  changeover?: { from: string; to: string; minutes: number }[];
+  /** 可选时间轴上界（缺省 = Σduration + Σchangeover + 1）。 */
+  horizon?: number;
+}
+export interface JobShopScheduleResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  /** 每工序带开始-结束时刻（涂布 0-120、卷绕 120-210…）。 */
+  schedule: { jobId: string; opId: string; machine: string; start: number; end: number }[];
+  /** 完工跨度（最大 end）。 */
+  makespan: number;
   objective: number;
 }
 
@@ -213,6 +234,8 @@ export interface OptimizerClient {
   solveAssignment?(req: AssignmentRequest): Promise<AssignmentResult>;
   solveSequencing?(req: SequencingRequest): Promise<SequencingResult>;
   solvePacking?(req: PackingRequest): Promise<PackingResult>;
+  /** A8 工序排程（IntervalVar/AddNoOverlap，makespan 最优；未实现 → 调用方抛"未接入"）。 */
+  solveJobShop?(req: JobShopScheduleRequest): Promise<JobShopScheduleResult>;
   /** 轨B·增量1 抽象模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧；未实现 → 调用方抛"未接入"）。 */
   solveFacilityLocation?(req: FacilityLocationRequest): Promise<FacilityLocationResult>;
   solveMinCostFlow?(req: MinCostFlowRequest): Promise<MinCostFlowResult>;
@@ -255,6 +278,10 @@ export class HttpOptimizerClient implements OptimizerClient {
 
   async solvePacking(req: PackingRequest): Promise<PackingResult> {
     return this.post<PackingResult>("/solve", req);
+  }
+
+  async solveJobShop(req: JobShopScheduleRequest): Promise<JobShopScheduleResult> {
+    return this.post<JobShopScheduleResult>("/solve", req); // sidecar 单端点按 model 判别（dispatch）
   }
 
   // 轨B·增量1：5 核心同走单端点 /solve（sidecar 按 model 字段 dispatch）。
