@@ -944,3 +944,103 @@ export function mockMultiObj(key: string, args: Record<string, unknown>): Record
     summary: `多目标 what-if：${Object.entries(deltaByObjective).map(([k, d]) => `${k} Δ${d}`).join("、")}`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// WO-SOP-RESCHEDULE · sop_reschedule（逐口径移植 datacore/solvers/sop-reschedule.ts）
+// 无后端 mock 态形状回放：读演示订单(HTML 24 单)+BASE_REGISTRY util+基地线产能，同真算法口径
+// （freeDaily=Σcap×(1−util/100)·挤占按(优先级低,交期远)·代价=换型+加班+延误·Σalloc+residual==qty）。
+// 徽标诚实标「推演结果·非数据库事实」；改 targetOrderId/advancePct → 方案真变（非写死）。
+// ---------------------------------------------------------------------------
+const SOP_FORECAST_START = "2026-06-10"; // = BATTERY_SOLVER_PARAMS.forecastStart（R6 锚点）
+const SOP_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string; bases: string[] }[] = [
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高", bases: ["changzhou", "chengdu"] },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高", bases: ["changzhou", "jinhua"] },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中", bases: ["changzhou", "hefei"] },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 10485, due: "2026-07-09", pri: "高", bases: ["chengdu", "hefei"] },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 10485, due: "2026-07-11", pri: "高", bases: ["changzhou", "jinhua"] },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 16131, due: "2026-07-06", pri: "高", bases: ["changzhou", "hefei"] },
+];
+// 演示基地日产能（套/日·代表值·与 datacore lineHash 同量级）：freeDaily = cap×(1−util/100)。
+const SOP_BASE_CAP: Record<string, number> = { changzhou: 835, jinhua: 871, chengdu: 820, hefei: 790 };
+const dayFromISO = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
+const isoAt = (start: string, day: number) => new Date(Date.parse(`${start.slice(0, 10)}T00:00:00Z`) + Math.round(day) * 86400000).toISOString().slice(0, 10);
+const PRI_RANK: Record<string, number> = { 低: 0, 中: 1, 高: 2 };
+
+export function mockSopReschedule(args: Record<string, unknown>): Record<string, unknown> {
+  const targetOrderId = String(args.targetOrderId ?? "SO-3402");
+  const target = SOP_ORDERS.find((o) => o.so === targetOrderId) ?? SOP_ORDERS[1]!;
+  const qty = target.qty;
+  const origDueDay = dayFromISO(SOP_FORECAST_START, target.due);
+  let newDueDay: number;
+  if (typeof args.newDueDate === "string" && args.newDueDate) newDueDay = dayFromISO(SOP_FORECAST_START, args.newDueDate);
+  else if (typeof args.advanceDays === "number") newDueDay = origDueDay - Math.max(0, Math.round(args.advanceDays as number));
+  else newDueDay = Math.round(origDueDay * (1 - (typeof args.advancePct === "number" ? (args.advancePct as number) : 0.2)));
+  newDueDay = Math.max(1, newDueDay);
+  const daysAvail = newDueDay;
+  const requiredDaily = round(qty / daysAvail, 2);
+  const objective = String(args.objective ?? "min_delay");
+
+  const utilOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.util ?? 80;
+  const nameOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.name ?? bid;
+  const baseCaps = target.bases.map((bid) => {
+    const cap = SOP_BASE_CAP[bid] ?? 800;
+    const freeDaily = round(cap * Math.max(0, 1 - utilOf(bid) / 100), 2);
+    return { baseId: bid, baseName: nameOf(bid), freeDaily };
+  });
+  const totalFreeCap = round(baseCaps.reduce((a, bc) => a + bc.freeDaily * daysAvail, 0), 2);
+  const alloc = new Map<string, number>();
+  const freeUse = Math.min(qty, totalFreeCap);
+  for (const bc of baseCaps) alloc.set(bc.baseId, round(freeUse * (totalFreeCap > 0 ? (bc.freeDaily * daysAvail) / totalFreeCap : 1 / baseCaps.length), 2));
+  const residualAfterFree = round(qty - freeUse, 2);
+
+  const competitors = SOP_ORDERS.filter((o) => o.model === target.model && o.so !== targetOrderId)
+    .map((o) => ({ ...o, dueDay: dayFromISO(SOP_FORECAST_START, o.due) }));
+  const rank = (c: { pri: string; dueDay: number; qty: number }) =>
+    objective === "min_changeover" ? [c.qty, -(PRI_RANK[c.pri] ?? 2), -c.dueDay] : [PRI_RANK[c.pri] ?? 2, -c.dueDay, -c.qty];
+  competitors.sort((a, b) => { const ra = rank(a), rb = rank(b); for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i]! - rb[i]!; return a.so.localeCompare(b.so); });
+
+  const displaced: Record<string, unknown>[] = [];
+  let freed = 0;
+  const bid0 = baseCaps[0]?.baseId, fd0 = baseCaps[0]?.freeDaily || 1;
+  for (const c of competitors) {
+    if (residualAfterFree - freed <= 1e-6) break;
+    const take = Math.min(c.qty, round(residualAfterFree - freed, 2));
+    if (bid0) alloc.set(bid0, round((alloc.get(bid0) ?? 0) + take, 2));
+    freed = round(freed + take, 2);
+    displaced.push({ orderId: c.so, customer: c.cust, qty: c.qty, origDueDay: c.dueDay, priority: c.pri,
+      delayDays: Math.max(1, Math.round(newDueDay + take / Math.max(1, fd0) - c.dueDay)),
+      provenance: { kind: "派生", drillType: "Order", drillId: c.so, drillField: "qty", drillValue: c.qty } });
+  }
+  const residualQty = round(Math.max(0, residualAfterFree - freed), 2);
+  const scheduledQty = round(qty - residualQty, 2);
+  const allocation = baseCaps.map((bc) => {
+    const a = round(alloc.get(bc.baseId) ?? 0, 2);
+    return { baseId: bc.baseId, baseName: bc.baseName, qty: a, dailyRate: round(a / daysAvail, 2), daysAvail, freeDaily: bc.freeDaily,
+      overtimeUnits: round(Math.max(0, a - bc.freeDaily * daysAvail), 2),
+      provenance: { kind: "派生", drillType: "Line", drillId: bc.baseId, drillField: "capacityDaily", drillValue: bc.freeDaily } };
+  });
+  if (allocation.length > 0) {
+    const rest = round(allocation.slice(0, -1).reduce((s, a) => s + a.qty, 0), 2);
+    const last = allocation[allocation.length - 1]!;
+    last.qty = round(scheduledQty - rest, 2); last.dailyRate = round(last.qty / daysAvail, 2);
+    last.overtimeUnits = round(Math.max(0, last.qty - last.freeDaily * daysAvail), 2);
+  }
+  const overtime = round(allocation.reduce((a, x) => a + x.overtimeUnits, 0) * 2.5, 2);
+  const delay = round(displaced.reduce((a, d) => a + (d.delayDays as number) * (d.qty as number) * 0.05, 0), 2);
+  const total = round(overtime + delay, 2); // 同型号挤占 → 换型 0（诚实）
+  const sumAlloc = round(allocation.reduce((a, x) => a + x.qty, 0), 2);
+  const feasible = residualQty <= 1e-6;
+  const verdict = !feasible ? `部分可行：残余缺口 ${residualQty} 套`
+    : displaced.length === 0 ? "可直接提前（空闲产能足·无需挤占）"
+    : `可提前：挤占 ${displaced.length} 单腾产能（跨 ${allocation.filter((a) => a.qty > 0).length} 基地拆产）`;
+  return {
+    feasible, verdict, objective,
+    targetOrder: { orderId: targetOrderId, customer: target.cust, model: target.model, qty, origDueDay, origDueDate: target.due, newDueDay, newDueDate: isoAt(SOP_FORECAST_START, newDueDay), daysAvail, requiredDaily },
+    allocation, displaced,
+    cost: { changeover: 0, overtime, delay, total, unit: "代价单位" },
+    residualQty,
+    reconChecks: [{ label: "分配勾稽（Σalloc + residual == qty）", parentGap: qty, sumChildren: sumAlloc, residual: residualQty, ok: Math.abs(sumAlloc + residualQty - qty) <= 1e-4 }],
+    reconciled: Math.abs(sumAlloc + residualQty - qty) <= 1e-4,
+    summary: `${targetOrderId}（${target.cust}·${target.model}·${qty}套）拟提前到第 ${newDueDay} 天（${isoAt(SOP_FORECAST_START, newDueDay)}）→ ${verdict}；被挤 ${displaced.map((d) => d.orderId).join("、") || "无"}；代价 ${total}`,
+  };
+}

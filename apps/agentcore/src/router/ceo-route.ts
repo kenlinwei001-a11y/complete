@@ -13,10 +13,28 @@ const RE_ROOTCAUSE = /(为什么|根因|归因|原因|为何|拆解|溯源)/;
 const RE_OPTION = /(怎么补|怎么办|方案|选择|应对|对策|怎么解决|如何补|补救)/;
 const RE_SIGNAL = /(信号|触发|预警|涨|外部|地缘|矿价)/;
 const RE_ATTAIN = /(差多少|达成|缺口多少|还差|完成率|达标)/;
+// WO-SOP-RESCHEDULE：产销重排意图（能否提前/挤占/跨基地拆产/重排交期）——优先级高于 decision_play，
+// 避免"提前/挤占/排产"被 RE_OPTION 劫持答非所问；命中即绑 sop_reschedule（args 从订单号/focus.order 派生）。
+const RE_SOP = /(提前.*交|能否提前|挤占|抢产|插单|重排|拆产|拆哪些基地|产销.{0,4}(重排|平衡|重排产|调))/;
+const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
+/** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
+function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const m = q.match(RE_ORDER_ID);
+  const orderId = (m ? m[0].toUpperCase().replace(/^SO(\d)/, "SO-$1") : undefined) ?? focus?.order;
+  if (orderId) args.targetOrderId = orderId;
+  // 交期解析：ISO（2026-06-26）或"6/26"/"6月26"→ 本年 ISO；否则默认 advancePct=0.2。
+  const iso = q.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const md = q.match(/(\d{1,2})\s*[\/月]\s*(\d{1,2})/);
+  if (iso) args.newDueDate = `${iso[1]}-${iso[2]!.padStart(2, "0")}-${iso[3]!.padStart(2, "0")}`;
+  else if (md) args.newDueDate = `2026-${md[1]!.padStart(2, "0")}-${md[2]!.padStart(2, "0")}`;
+  else args.advancePct = 0.2;
+  return args;
+}
 
 /** 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。 */
 export function isCeoQuestion(q: string): boolean {
-  return [RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+  return [RE_SOP, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
 /** CEO 深问专属意图 key 集（种子于 mocks/seed.ts·单一真源）——仅 PageContext 注入时进候选池（否则平台行为与 CEO-6 前逐字节一致·纯 additive·不劫持既有意图）。 */
@@ -29,7 +47,7 @@ export function isCeoIntentKey(key: string): boolean {
 
 /** 路由 → 落地 CEO 意图 key（种子 intent·path A 执行 invoke_solver→solver_summary）。 */
 export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
-  if (route === "decision_play" || route === "signal") return "ceo_decision";
+  if (route === "decision_play" || route === "signal" || route === "sop_reschedule") return "ceo_decision";
   if (route === "metric_rollup") return "ceo_metric";
   return "ceo_root_cause";
 }
@@ -115,9 +133,11 @@ export function resolveCeoRoute(
   const q = question ?? "";
   const focus = pageContext?.focus;
   const selection = pageContext?.selection ?? [];
-  // 意图分类（确定性·关键词优先级：方案 > 根因 > 信号 > 达标 > 缺省根因）。
+  // 意图分类（确定性·关键词优先级：产销重排 > 方案 > 根因 > 信号 > 达标 > 缺省根因）。
+  // RE_SOP 置顶：产销重排（提前/挤占/拆产）绝不被 decision_play 劫持（KILL-MOCK·答非所问的老坑）。
   let route: CeoQueryRoute["route"];
-  if (RE_OPTION.test(q)) route = "decision_play";
+  if (RE_SOP.test(q)) route = "sop_reschedule";
+  else if (RE_OPTION.test(q)) route = "decision_play";
   else if (RE_ROOTCAUSE.test(q)) route = "gap_attribution";
   else if (RE_SIGNAL.test(q)) route = "signal";
   else if (RE_ATTAIN.test(q)) route = "metric_rollup";
@@ -126,13 +146,17 @@ export function resolveCeoRoute(
   // args 从 PageContext.focus/selection 派生（证 presetContext 真注入·非写死）。
   const metricKey = focus?.metric;
   const factorId = focus?.factorId ?? (selection.length ? selection[0] : undefined);
-  const args: Record<string, unknown> = {};
-  if (metricKey) args.metricKey = metricKey;
-  if (factorId && (route === "decision_play" || route === "gap_attribution")) args.factorId = factorId;
+  let args: Record<string, unknown> = {};
+  if (route === "sop_reschedule") {
+    args = sopArgsFrom(q, focus); // targetOrderId(问句 SO-号/focus.order) + newDueDate/advancePct
+  } else {
+    if (metricKey) args.metricKey = metricKey;
+    if (factorId && (route === "decision_play" || route === "gap_attribution")) args.factorId = factorId;
+  }
 
-  const solverKey = route === "signal" ? "decision_play" : route; // signal 深问经 decision_play 触发规则回答
+  const solverKey = route === "signal" ? "decision_play" : route; // signal 深问经 decision_play 触发规则回答；sop_reschedule 直绑同名 solver
   const scope = scopeBasesFor(role, baseScope);
-  const usedPageContext = Boolean(metricKey || factorId || (focus?.base));
+  const usedPageContext = Boolean(metricKey || factorId || (focus?.base) || (route === "sop_reschedule" && (focus?.order || args.targetOrderId)));
   const scopedBaseIds = scope.allBases ? [] : scope.baseIds;
 
   const reason = `问句意图=${route}${metricKey ? `·聚焦指标 ${metricKey}` : ""}${factorId ? `·根因 ${factorId}` : ""}${usedPageContext ? "（用了 PageContext）" : "（无页面上下文·仅问句）"}${scope.allBases ? "·全域" : `·限基地[${scopedBaseIds.join(",")}]`}`;
