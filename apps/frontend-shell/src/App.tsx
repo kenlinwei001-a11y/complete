@@ -75,6 +75,8 @@ const SimInitWizard = lazy(() => import("@/views/sim/SimInitWizard"));
 const DecisionPlayView = lazy(() => import("@/views/DecisionPlayView"));
 // 断供影响半径投影页（supplier_disruption_radius 反向多跳逐层扇出）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配）。
 const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
+// 通用假设推演页（generic_inference·G-5 通用 what-if）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+const WhatIfView = lazy(() => import("@/views/WhatIfView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -130,6 +132,8 @@ export const routes: RouteObject[] = [
       { path: "v/decision-play", element: lazyWrap(<DecisionPlayView />) },
       // 断供影响半径投影页专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/disruption-radius", element: lazyWrap(<DisruptionRadiusView />) },
+      // 通用假设推演页专用 route（generic_inference 5 步试算·静态段先于 :viewKey 匹配·免依赖 workspace.views）。
+      { path: "v/what-if", element: lazyWrap(<WhatIfView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

@@ -1249,6 +1249,31 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "generic_inference") {
+      // 通用 what-if（G-5）确定性桩：包装本体 recompute(dryRun+apply) 的形状 —— 前向重算下游派生链，
+      // after 随假设值变（KILL-MOCK：前端仅投影本响应，改假设值→重算→deltas 变）。空 apply → 400（不静默）。
+      const apply = Array.isArray(invArgs.apply)
+        ? (invArgs.apply as { objectType?: unknown; objectId?: unknown; prop?: unknown; value?: unknown }[])
+        : [];
+      if (apply.length === 0) return err(400, "VALIDATION", "generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）");
+      const a0 = apply[0]!;
+      const objType = String(a0.objectType ?? "");
+      const objId = String(a0.objectId ?? "");
+      const v = Number(a0.value);
+      const vnum = Number.isFinite(v) ? v : 1;
+      // 下游派生：自身派生字段 capacity_h（∝ 假设值）+ 上游聚合 capacity（前向传播）。确定性、随假设值变。
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const deltas = [
+        { objId, type: objType, prop: "capacity_h", before: 100, after: round2(100 * vnum) },
+        { objId: `parent-of-${objId}`, type: "Line", prop: "capacity", before: 1000, after: round2(900 + 100 * vnum) },
+      ];
+      const rows = deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after }));
+      const affected = new Set(deltas.map((d) => d.objId)).size;
+      return HttpResponse.json({
+        data: { deltas, rows, affectedObjects: affected, count: deltas.length, rootTypes: [...new Set(apply.map((x) => String(x.objectType ?? "")))] },
+        snapshotVersion: "ov-gi",
+      });
+    }
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 
