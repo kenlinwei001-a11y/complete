@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
-import { datacoreResourceDescriptors } from "../src/catalog.js";
+import { datacoreResourceDescriptors, SOLVER_CATALOG, COCKPIT_SOLVER_CATALOG } from "../src/catalog.js";
 import { findUndescribed, ResourceDescriptorSchema } from "@platform/contracts";
 
 /**
@@ -43,9 +43,9 @@ describe("WO-RESOURCE-DESCRIPTOR · SEAM 发现门（discover 召回 × descript
     expect(findUndescribed(dirty)).toHaveLength(1);
   });
 
-  it("无关键词 discover 全量基线不回归（求解器 22 · 与 catalog.test 一致）", async () => {
+  it("无关键词 discover 全量基线不回归（求解器 36 · 与 catalog.test 一致）", async () => {
     const t = await makeApp();
     const all = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN })).json() as { items: unknown[] };
-    expect(all.items.length).toBe(22);
+    expect(all.items.length).toBe(SOLVER_CATALOG.length + COCKPIT_SOLVER_CATALOG.length);
   });
 });
