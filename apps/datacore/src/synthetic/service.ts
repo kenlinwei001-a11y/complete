@@ -705,6 +705,14 @@ export class SyntheticService {
     await putAll("DefectRecord", g.defectRecords, "defectId");
     await putAll("EquipmentDowntime", g.equipmentDowntimes, "dtId");
     await putAll("EquipmentAlarm", g.equipmentAlarms, "alarmId");
+    //  ①b 决策相关执行层 5 类（disjoint 于上 exc 的 3 类·生成器已产、原物化清单漏）：库存/Bug2(WorkOrder/WIPLot)、
+    //     良率(QualityLot/InspectionResult)、设备(EquipmentOEE)——补齐使 yield_diagnosis/库存/设备问题有真源。
+    //     高量低值执行类(ShiftPlan/ProductionSchedule/WIPMove/操作工考勤等)保持模型态不物化（避单次 seed 逾万对象拖垮）。
+    await putAll("WorkOrder", g.workOrders, "woId");
+    await putAll("WIPLot", g.wipLots, "lotId");
+    await putAll("QualityLot", g.qualityLots, "qlotId");
+    await putAll("InspectionResult", g.inspectionResults, "resultId");
+    await putAll("EquipmentOEE", g.equipmentOEEs, "oeeId");
     //  ② 统一异常流：generateBattery 已投 4 本地源（停机/告警/缺陷/缺料）；此处合并第 5 源 TriggerRule
     //     （→CUSTOMER，出自 generateExtended，同一 projectExceptionEvents·纯投影 R6），四源归一落一等对象。
     const t0Exc = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
