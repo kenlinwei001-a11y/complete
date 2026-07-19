@@ -119,19 +119,46 @@ export default function DashboardView({ view }: ViewRendererProps) {
         </div>
       </div>
 
-      {/* 💡 决策推演入口（decision_play 5 区决策页·CEO「每个行动点开看·为何做/何用/为何有用」）。 */}
-      <div className="panel" style={{ marginTop: 14, borderLeft: "3px solid var(--accent)" }} data-testid="dash-decision-entry">
-        <div className="section-title">💡 决策推演</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 220, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-            从越线根因一路到对症方案（各维真算 + provenance 下钻）、比对矩阵、触发规则、推荐组合与差距收窄试算——每个行动点开看为何做 / 何用 / 为何有用。
-          </div>
-          <button className="btn primary" data-testid="dash-decision-go" onClick={() => navigate("/v/decision-play")}>
-            进入决策推演 ›
-          </button>
-        </div>
-      </div>
+      {/* 💡 决策推演入口·修（客户"莫名其妙"·Gap4）：去掉泛功能描述，接真 decision_play 最严重越线——
+          按真根因/缺口/方案数 grounding，按钮带 metricKey/factorId 直达该指标的决策推演（非泛按钮）。 */}
+      <DecisionEntry />
     </>
+  );
+}
+
+/** 💡 决策推演入口·grounded（修客户"莫名其妙"·闭 Gap4）：接真 decision_play（无参→最严重越线）——
+ *  展示**当前真实待决策**（越线根因 label + 缺口 gap + 方案数 + 引擎 summary），按钮带 metricKey/factorId
+ *  直达该指标的 5 区决策推演（非泛按钮）。诚实空态：无越线根因 → 不显示入口（不编泛描述）。 */
+interface DecisionEntryVM {
+  rootCause?: { factorId?: string; label: string; metricKey?: string; gap: number; unit: string };
+  options?: unknown[];
+  recommendedPlan?: { optionIds?: string[] };
+  summary?: string;
+}
+function DecisionEntry() {
+  const navigate = useNavigate();
+  const { data, isError } = useQuery({
+    queryKey: ["a", "decision_play", "dash-entry"],
+    queryFn: async () => (await invokeSolver("decision_play", {})).data as DecisionEntryVM,
+    retry: false,
+  });
+  if (isError || !data?.rootCause) return null; // 诚实：无越线根因 → 不显示（不摆泛功能卡）
+  const rc = data.rootCause;
+  const nOpt = data.options?.length ?? 0;
+  const nRec = data.recommendedPlan?.optionIds?.length ?? 0;
+  const to = `/v/decision-play?metricKey=${encodeURIComponent(rc.metricKey ?? "")}${rc.factorId ? `&factorId=${encodeURIComponent(rc.factorId)}` : ""}`;
+  return (
+    <div className="panel" style={{ marginTop: 14, borderLeft: "3px solid var(--accent)" }} data-testid="dash-decision-entry">
+      <div className="section-title">💡 决策推演 · 当前最严重待决策</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+          越线根因 <b style={{ color: "var(--txt)" }} data-testid="dash-decision-rc">{rc.label}</b>（缺口 <b style={{ color: "var(--c-forecast)" }}>{rc.gap}{rc.unit}</b>）→ 已推演 <b>{nOpt}</b> 个对症方案，推荐组合 <b>{nRec}</b> 项。{data.summary}
+        </div>
+        <button className="btn primary" data-testid="dash-decision-go" onClick={() => navigate(to)}>
+          展开该决策推演 ›
+        </button>
+      </div>
+    </div>
   );
 }
 
