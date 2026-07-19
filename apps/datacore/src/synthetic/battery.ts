@@ -654,6 +654,19 @@ const orderProps: PropertyDef[] = [
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
 
+// WO-ORDERLINE：订单明细行（OrderLine）——一单多型号行级下沉。首行保留原单 model（additive，不破坏
+// order_for_model 链与 24 单头级基线）；Σ行 qty BY orderRef === Order.qty（尾行取余额保精确）。
+const orderLineProps: PropertyDef[] = [
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true },
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }, // → Order（line_of_order N:1）
+  { propKey: "lineNo", dataType: "number", isPrimaryKey: false },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" }, // → Model（orderline_for_model N:1）
+  { propKey: "qty", dataType: "number", isPrimaryKey: false },
+  { propKey: "due", dataType: "date", isPrimaryKey: false },
+  { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false }, // OPEN | COMMITTED | PARTIAL | SHIPPED
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false }, // 从型号反范式化（SEG_REGISTRY 派生·守 R14 单价单一来源）
+];
+
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
@@ -1118,6 +1131,7 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   QualityStandard: "quality", InspectionCharacteristic: "quality",
   ProductLineCapability: "factory", ProductEquipmentCapability: "equip",
   EngineeringChange: "product", MaterialAlternative: "supply",
+  OrderLine: "product", // WO-ORDERLINE：订单明细行与 Order 同域（product）
   Supplier: "supply",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   // cockpit P1 绿地
@@ -1181,6 +1195,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("EngineeringChange", "工程变更", engineeringChangeProps),
     plain("MaterialAlternative", "物料替代关系", materialAlternativeProps),
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    // WO-ORDERLINE：订单明细行（一等对象·一单多型号行级下沉·Σ行 qty===单头 qty 勾稽）
+    plain("OrderLine", "订单明细行", orderLineProps),
     plain("Line", "产线", lineProps),
     plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
@@ -1232,6 +1248,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
   return [
     { key: "model_producible_at", fromTypeKey: "Model", toTypeKey: "Base", cardinality: "N:N" },
     { key: "order_for_model", fromTypeKey: "Order", toTypeKey: "Model", cardinality: "1:N" },
+    // WO-ORDERLINE：订单明细行链路（订单头→明细行结构补齐·行级归因/承诺下沉）
+    { key: "line_of_order", fromTypeKey: "OrderLine", toTypeKey: "Order", cardinality: "N:1" },
+    { key: "orderline_for_model", fromTypeKey: "OrderLine", toTypeKey: "Model", cardinality: "N:1" },
     // §S1.2: certification state lives on the model↔line edge (props.status 量产 | 认证中).
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
     // SA-3：Workshop 车间层链路（Base→Workshop→Line 四层结构）
@@ -1750,6 +1769,7 @@ export interface GeneratedBattery {
   bases: Record<string, unknown>[];
   models: Record<string, unknown>[];
   orders: Record<string, unknown>[];
+  orderLines: Record<string, unknown>[]; // WO-ORDERLINE：订单明细行（一单多型号行级下沉）
   productPlatforms: Record<string, unknown>[];
   productSeries: Record<string, unknown>[];
   productVersions: Record<string, unknown>[];
@@ -2167,6 +2187,61 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
       leadDays: dueDay,
     });
+  }
+
+  // WO-ORDERLINE：订单拆行（SO→型号行）。每单产 ≥1 条 OrderLine；部分单确定性拆 2-3 行到不同 model
+  // （首行保留原单 model → 不破坏既有 order_for_model 链与 24 单头级基线，additive）。
+  // 拆行铁律：Σ OrderLine.qty (BY orderRef) === Order.qty——拆行不改总量，尾行取余额保 Σ 精确。
+  // 确定性（R6）：拆行数/model 选取/qty 分配全用**独立哈希子流** hashString("oline_"+so)，绝不插既有
+  // order rng 流（rng 一步未动 → 24 单头级 + 拓扑/合成全链字节基线不移）。unitPrice 从型号反范式化
+  // （modelById.unitPrice，同 orderProps.unitPrice 口径·SEG_REGISTRY 派生·守 R14 单价单一来源）。
+  const MODEL_POOL = MODELS.map((m) => m.modelId); // 6 真型号（orderline_for_model 指向真 Model 对象，链可解析）
+  const LINE_STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
+  const orderLines: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    const so = o.so as string;
+    const headModel = o.model as string;
+    const headQty = o.qty as number;
+    const h = hashString(`oline_${so}`); // 独立哈希子流锚（不碰 rng）
+    const nLines = 1 + (h % 3); // 1 / 2 / 3 行（约各 1/3，部分单拆多行）
+    // ① 逐行 model：首行 = 原单 model，其余从型号池取**互异**型号（SEAM-1 要求各行 model 不同）。
+    const lineModels: string[] = [headModel];
+    const used = new Set<string>([headModel]);
+    for (let k = 1; k < nLines; k++) {
+      const off = hashString(`oline_${so}_m${k}`) % MODEL_POOL.length;
+      for (let step = 0; step < MODEL_POOL.length; step++) {
+        const cand = MODEL_POOL[(off + step) % MODEL_POOL.length]!;
+        if (!used.has(cand)) { lineModels.push(cand); used.add(cand); break; }
+      }
+    }
+    // ② 逐行 qty：确定性比例分配（哈希派生），尾行取余额 → Σ 精确；每行 ≥1（仿 WO-Q7 末叶取余额分摊法）。
+    const qtys: number[] = [];
+    let remaining = headQty;
+    for (let k = 0; k < nLines - 1; k++) {
+      const base = Math.floor(headQty / nLines);
+      const jitter = (hashString(`oline_${so}_q${k}`) % 21) - 10; // -10%..+10% 抖动
+      let part = base + Math.floor((base * jitter) / 100);
+      // 夹紧：≥1 且给后续每行留 ≥1（remaining - part ≥ 剩余行数）。
+      part = Math.max(1, Math.min(part, remaining - (nLines - 1 - k)));
+      qtys.push(part);
+      remaining -= part;
+    }
+    qtys.push(remaining); // 尾行取余额 → Σ qtys === headQty 精确
+    // ③ 组行对象。lineStatus 由种子基线态确定性派生（独立子流·承诺/齐套下沉行级后可覆写）。
+    for (let k = 0; k < nLines; k++) {
+      const lineNo = k + 1;
+      const lineModel = lineModels[k]!;
+      orderLines.push({
+        lineId: `${so}-L${lineNo}`,
+        orderRef: so,
+        lineNo,
+        model: lineModel,
+        qty: qtys[k],
+        due: o.due,
+        lineStatus: LINE_STATUSES[hashString(`oline_${so}_s${lineNo}`) % LINE_STATUSES.length],
+        unitPrice: (modelById.get(lineModel)?.unitPrice as number | undefined) ?? (o.unitPrice as number),
+      });
+    }
   }
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
@@ -2941,7 +3016,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
+  return { bases, models, orders, orderLines, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts };
 }
 
 // ---------------------------------------------------------------------------

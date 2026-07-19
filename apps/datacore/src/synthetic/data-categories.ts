@@ -13,8 +13,8 @@ export function batteryDataCategories(): DataCategory[] {
   const BOTH = ["SYSTEM_INTEGRATION", "FILE_UPLOAD"] as const;
   return [
     {
-      key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单（型号/数量/交期/状态）。",
-      typeKeys: ["Order"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "salesforce_crm", "rest_api", "file_upload"],
+      key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单（型号/数量/交期/状态）及其明细行（一单多型号行级下沉）。",
+      typeKeys: ["Order", "OrderLine"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "salesforce_crm", "rest_api", "file_upload"],
     },
     {
       key: "demand_forecast", displayName: "销售预测与计划", description: "需求预测、年度情景与触发条件、计划目标（驱动产能/排产推演）。",

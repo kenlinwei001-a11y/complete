@@ -643,6 +643,7 @@ export class SyntheticService {
     await putAll("MaterialAlternative", g.materialAlternatives, "altId");
     await putAll("Workshop", g.workshops, "workshopId");
     await putAll("Order", g.orders, "so");
+    await putAll("OrderLine", g.orderLines, "lineId"); // WO-ORDERLINE：订单明细行（一单多型号行级下沉·Σ行 qty===单头 qty）
     await putAll("Line", g.lines, "lineId");
     await putAll("Process", g.processes, "processId");
     await putAll("Equipment", g.equipment, "equipId");
@@ -720,6 +721,27 @@ export class SyntheticService {
         type: "order_for_model",
         fromId: `obj_order_${o.so}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         toId: `obj_model_${o.model}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        origin,
+      });
+    }
+    // WO-ORDERLINE：订单明细行两条链路（line_of_order → Order N:1 · orderline_for_model → Model N:1）。
+    // obj id 统一约定 obj_{type.toLowerCase()}_{pk}（CJK 型号 id 用 \p{L}\p{N} 保不折叠，R8/R6）。
+    for (const ol of g.orderLines) {
+      const lineId = ol.lineId as string;
+      await this.repos.links.put({
+        id: `lnk_lof_${lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        tenantId: ctx.tenantId,
+        type: "line_of_order",
+        fromId: `obj_orderline_${lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_order_${ol.orderRef}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        origin,
+      });
+      await this.repos.links.put({
+        id: `lnk_olfm_${lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        tenantId: ctx.tenantId,
+        type: "orderline_for_model",
+        fromId: `obj_orderline_${lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_model_${ol.model}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         origin,
       });
     }
