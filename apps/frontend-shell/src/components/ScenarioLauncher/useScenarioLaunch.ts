@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { submitQuery, type ScenarioCardVM } from "@/api/endpoints";
+import { safeUuid } from "@/lib/uuid";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
@@ -25,7 +26,7 @@ export function useQuickLaunch(): (input: {
     const store = useSessionStore.getState();
     store.setView(targetView);
     store.setSelectedObjects(selectedObjects);
-    const localId = crypto.randomUUID();
+    const localId = safeUuid();
     // 每张场景卡启动 = 一段独立对话线程（清上一卡、重置 conversationId），不与别的卡混合。
     store.startConversation({ localId, query });
     store.setDockExpanded(true);
@@ -33,7 +34,7 @@ export function useQuickLaunch(): (input: {
     try {
       const res = await submitQuery(
         { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets } },
-        crypto.randomUUID(),
+        safeUuid(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
       store.setConversationId(res.taskId);

@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
+import { safeUuid } from "@/lib/uuid";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -16,7 +17,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
   const { data, isLoading, refetch } = useQuery({ queryKey: ["b", "query-history", "panel"], queryFn: () => fetchQueryHistory(50) });
   const replay = useMutation({
     mutationFn: (item: QueryHistoryItem) =>
-      submitQuery({ packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } }, crypto.randomUUID()),
+      submitQuery({ packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } }, safeUuid()),
     onSuccess: (res) => {
       onClose();
       navigate(`/tasks/${res.taskId}`);

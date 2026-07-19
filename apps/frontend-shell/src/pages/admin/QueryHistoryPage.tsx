@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
+import { safeUuid } from "@/lib/uuid";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 
@@ -18,7 +19,7 @@ export default function QueryHistoryPage() {
     mutationFn: (item: QueryHistoryItem) =>
       submitQuery(
         { packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } },
-        crypto.randomUUID(),
+        safeUuid(),
       ),
     onSuccess: (res) => navigate(`/tasks/${res.taskId}`),
     onError: toastError,

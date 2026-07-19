@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { safeUuid } from "@/lib/uuid";
 import { fetchScene, fetchScenarioCards, submitQuery } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
@@ -19,6 +20,8 @@ export function QueryDock() {
   const setExpanded = useSessionStore((s) => s.setDockExpanded);
   const conversation = useSessionStore((s) => s.conversation);
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
+  const activeBlock = useSessionStore((s) => s.activeBlock);
+  const clearActiveBlock = useSessionStore((s) => s.clearActiveBlock);
   const [input, setInput] = useState("");
 
   const { data: scene } = useQuery({
@@ -36,13 +39,13 @@ export function QueryDock() {
     const text = q.trim();
     if (!text || !packageId) return;
     const store = useSessionStore.getState();
-    const localId = crypto.randomUUID();
+    const localId = safeUuid();
     store.appendConversation({ localId, query: text });
     setExpanded(true);
     setInput("");
     try {
       const context = store.buildContext();
-      const res = await submitQuery({ packageId, query: text, context }, crypto.randomUUID());
+      const res = await submitQuery({ packageId, query: text, context }, safeUuid());
       store.updateConversation(localId, { taskId: res.taskId });
       if (!store.conversationId && context.conversationId == null) {
         // 同一会话多次提问 conversationId 保持
@@ -99,8 +102,26 @@ export function QueryDock() {
             </button>
           </div>
           <div className={styles.panelBody}>
-            {/* 运营态出厂配置增量 §4.4：按场景预载历史问答（半透明 + 日期 + 信任级徽章 + 分隔线） */}
-            {(scene?.preloadedHistory?.length ?? 0) > 0 && (
+            {/* WO-BLOCK-DIALOGUE 修（Bug·块对话串页）：锚定某块时，对话头显示**该块**（标题 + 真实渲染数据快照），
+                并抑制页面级预载历史，避免展示"其他页面的信息"。无锚定块 → 页面级不变（C5 退化）。 */}
+            {activeBlock && (
+              <div data-testid="dock-block-anchor" style={{ margin: "0 0 12px", padding: "9px 11px", border: "1px solid var(--accent)", borderRadius: 8, background: "rgba(76,144,240,.06)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 7 }}>
+                  <span>💬 已锚定此块：<b>{activeBlock.blockTitle}</b></span>
+                  <button className="btn sm" style={{ marginLeft: "auto" }} onClick={clearActiveBlock} title="取消锚定，回到页面级提问" data-testid="dock-block-clear">回页面级</button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {Object.entries(activeBlock.blockData).slice(0, 8).map(([k, v]) => (
+                    <span key={k} className="badge blue" style={{ fontSize: 10.5 }} data-testid={`dock-block-field-${k}`}>
+                      <span style={{ opacity: 0.65 }}>{k}:</span>{" "}
+                      {typeof v === "object" && v !== null ? JSON.stringify(v).slice(0, 48) : String(v).slice(0, 48)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 运营态出厂配置增量 §4.4：按场景预载历史问答。锚定块时抑制（避免串到其他页面历史）。 */}
+            {!activeBlock && (scene?.preloadedHistory?.length ?? 0) > 0 && (
               <div className={styles.history} data-testid="dock-history">
                 {scene!.preloadedHistory!.map((h, i) => (
                   <div key={i} className={styles.historyTurn} data-testid={`dock-history-${i}`}>

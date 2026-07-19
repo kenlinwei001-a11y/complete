@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { invokeSolver } from "@/api/endpoints";
 import { BlockConversable } from "@/components/BlockConversable";
+import { useSessionStore } from "@/store/sessionStore";
 import { api } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
@@ -117,6 +118,12 @@ export default function DecisionPlayView({ view }: { view?: ViewConfigVM }) {
   const [params] = useSearchParams();
   const metricKey = params.get("metricKey") ?? ((view?.layout as { metricKey?: string } | undefined)?.metricKey ?? "");
   const factorId = params.get("factorId") ?? "";
+  // 修 Bug（块对话串页·3a）：决策推演是专用 route（App.tsx），不走 ViewPage 的 setView → 此前 sessionStore.view
+  // 陈旧（停留在上一个页面），QueryDock 便拉「上一页」的 scene/预载历史 = 用户看到的"其他页面的信息"。进本页即校正。
+  const setView = useSessionStore((s) => s.setView);
+  useEffect(() => {
+    setView("decision-play");
+  }, [setView]);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["a", "decision_play", metricKey, factorId],

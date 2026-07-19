@@ -12,6 +12,7 @@ import {
   submitQuery,
   type SimCompareSeries,
 } from "@/api/endpoints";
+import { safeUuid } from "@/lib/uuid";
 import { toast, toastError } from "@/store/toastStore";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
@@ -169,7 +170,7 @@ function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; cu
       // 带沙盘 sessionId 作上下文（filters.simSessionId）→ orchestrator 指挥台分路 → agent 用 sim_tick/sim_world 驱动本会话。
       const res = await submitQuery(
         { packageId, query: q, context: { view: "sim-sandbox", selectedObjects: [], filters: { simSessionId: sessionId, simCurTick: String(curTick) } } },
-        crypto.randomUUID(),
+        safeUuid(),
       );
       setTaskId(res.taskId);
       setInput("");
