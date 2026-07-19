@@ -31,6 +31,7 @@ const VIEW_ALIAS: Record<string, string> = {
   risk: "risk-board",
   dash: "dashboard",
   decision: "decision-play",
+  optimize: "optimize-whatif",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
@@ -43,6 +44,8 @@ registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));
 // 决策推演页（decision_play 求解器 5 区决策产物落地·CEO-3）：既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
 registerRenderer("decision-play", () => import("./DecisionPlayView"));
+// 优化推演页（optimize_whatif·轨B增量3·闭 G-12 前端半）：改目标/约束→真 CP-SAT 重解→Δ目标（专用 route 见 App.tsx）。
+registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));

@@ -129,6 +129,10 @@ export default function DashboardView({ view }: ViewRendererProps) {
           <button className="btn primary" data-testid="dash-decision-go" onClick={() => navigate("/v/decision-play")}>
             进入决策推演 ›
           </button>
+          {/* WO-OPTIMIZE-WHATIF-FE：优化推演入口（改目标/约束→真 CP-SAT 重解→Δ目标·闭 G-12 前端半）。 */}
+          <button className="btn" data-testid="dash-optimize-go" onClick={() => navigate("/v/optimize-whatif")}>
+            优化推演（Δ目标）›
+          </button>
         </div>
       </div>
     </>

@@ -1079,6 +1079,30 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "optimize_whatif") {
+      // 优化推演 mock（仅测渲染逻辑·真 CP-SAT Δ 须打真 sidecar）：Δ 随扰动 delta 之和确定性变化 →
+      // 组件测「改扰动→重取→Δ 变」有牙；conflict/feasible 随扰动量级切换（模拟约束越界）。
+      const owArgs = invArgs as { family?: string; perturbations?: { delta?: number }[] };
+      const perts = Array.isArray(owArgs.perturbations) ? owArgs.perturbations : [];
+      const deltaSum = perts.reduce((s, p) => s + (typeof p.delta === "number" ? p.delta : 0), 0);
+      const baseline = 100;
+      const perturbed = baseline + deltaSum;
+      const feasible = deltaSum < 500;
+      return HttpResponse.json({
+        data: {
+          baselineObjective: baseline,
+          perturbedObjective: perturbed,
+          deltaObjective: perturbed - baseline,
+          feasible,
+          conflictConstraints: feasible ? [] : [`capacity(${owArgs.family ?? "f1"}) 扰动超限 ${deltaSum}`],
+          explanation: `family=${owArgs.family ?? "?"}：基线 ${baseline} → 扰动后 ${perturbed}（Δ=${perturbed - baseline}·${feasible ? "可行" : "不可行"}）`,
+          optimal: true,
+          status: "OPTIMAL",
+          summary: "optimize_whatif mock（Δ 随扰动真变·渲染测试用）",
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
     if (key === "plan_rootcause")
       // cockpit P2 根因归因 DAG（mock：物料保障率越线 → 现货缺口 → 取证叶）
       return HttpResponse.json({

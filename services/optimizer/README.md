@@ -43,3 +43,15 @@ python3 -m pytest test_optimizer.py -q   # 真求解测试（需 ortools）
 
 datacore 经环境变量 `OPTIMIZER_BASE_URL`（如 `http://optimizer:4003`）发现本服务；未配置时
 `selection_optimize` 求解器报「引擎未接入」错误（不静默兜底）。
+
+## optimize_whatif 前端消费面（WO-OPTIMIZE-WHATIF-FE）
+
+优化推演页 `/v/optimize-whatif`（frontend-shell·入口：驾驶舱「优化推演（Δ目标）」按钮）调
+`POST /a/v1/solvers/optimize_whatif/invoke {args:{family,args|binding,perturbations,seed}}`：选 family（5 CP-SAT
+核心之一）+ 编辑扰动（改目标/约束）→ 经本 sidecar 对基线与扰动各求一次最优 → 渲 **baseline→perturbed 的 Δ目标** +
+`feasible` 徽标 + `conflictConstraints` 列表 + `explanation`。
+
+- **本地 dev**：`OPTIMIZER_BASE_URL` 未配 → 后端返「未接入最优化引擎」→ 前端**诚实提示**（不假渲 Δ）。本地起 sidecar
+  见 `DEPLOY.md` §6.x。
+- **SEAM（KILL-MOCK）**：改扰动（如 `perturbations[0].delta` 50→600）→ 真 CP-SAT 重解 → `deltaObjective` /
+  `feasible` / `conflictConstraints` 随之真变（前端 MSW mock 仅测渲染逻辑·真解须打到本 `server.py`）。
