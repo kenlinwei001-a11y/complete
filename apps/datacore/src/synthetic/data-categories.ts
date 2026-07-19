@@ -53,8 +53,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Material", "MaterialBatch", "MaterialBalance", "BOMHeader", "BOMDetail", "MaterialAlternative"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单、在途批次、长期协议与备份供应商池（到货延误/缺料/断供备份推演）。",
-      typeKeys: ["Supplier", "PurchaseOrder", "Shipment", "LongTermAgreement", "BackupSupplierPool"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
+      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单、在途批次、长期协议、备份供应商池与跨基地调拨（到货延误/缺料/断供备份/跨基地余缺调剂推演）。",
+      typeKeys: ["Supplier", "PurchaseOrder", "Shipment", "LongTermAgreement", "BackupSupplierPool", "InterBaseTransfer"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
       key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、质检批次/检验结果/缺陷记录、数据源健康度与产品认证（合规/碳护照前置）。",
