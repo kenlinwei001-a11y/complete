@@ -78,6 +78,11 @@ export const CeoRouteKindSchema = z.enum([
   "signal", // 信号（外部信号/触发）
   "metric_rollup", // 达标（差多少）
   "sop_reschedule", // 产销重排（能否提前/挤占谁/拆哪些基地/代价·WO-SOP-RESCHEDULE·避 decision_play 劫持）
+  // WO-TIER2-B：B/C 域高频意图确定性直绑 solver
+  "credit_exposure", // 信用/逾期/敞口
+  "finance_pnl", // 毛利/量价本利
+  "supply_demand_gap_attribution", // 供需/产销对不上
+  "atp_check", // 能不能接/交期/承诺
 ]);
 export type CeoRouteKind = z.infer<typeof CeoRouteKindSchema>;
 

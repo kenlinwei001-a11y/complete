@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
-import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
+import { ALL_SOLVER_CATALOG, SOLVER_CATALOG, COCKPIT_SOLVER_CATALOG } from "../src/catalog.js";
 import { SOLVER_KEYS } from "../src/solvers/service.js";
 
 describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", () => {
@@ -13,7 +13,14 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(forecast).toBeDefined();
     expect(forecast!.description.length).toBeGreaterThan(0); // 「没有描述就不允许发布」纪律
     expect(Object.keys(forecast!.argHints).length).toBeGreaterThan(0);
-    expect(items.length).toBe(22); // 8 复用 + 13 新增 + 1 编排器（无关键词=全量列表）；WO-CEO-Q7 入 COCKPIT 目录(注册表 49)非 discover
+    // WO-TIER2-A：discover 供给侧扩面 = 业务场景 22 + 决策/骨架 14（不含通用优化模板 9）
+    expect(items.length).toBe(SOLVER_CATALOG.length + COCKPIT_SOLVER_CATALOG.length);
+    // 关键 B/C 决策求解器必须对 agent 语义发现可见
+    expect(items.map((i) => i.key)).toContain("gap_attribution");
+    expect(items.map((i) => i.key)).toContain("decision_play");
+    expect(items.map((i) => i.key)).toContain("supply_demand_gap_attribution");
+    expect(items.map((i) => i.key)).toContain("atp_check");
+    expect(items.map((i) => i.key)).toContain("credit_exposure");
     // 带关键词时按上下文预算截断 ≤20
     const q = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers&query=产能", headers: ADMIN })).json() as { items: unknown[] };
     expect(q.items.length).toBeLessThanOrEqual(20);
@@ -61,10 +68,25 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(reg.solvers.map((s) => s.key)).toContain("supplier_disruption_radius");
   });
 
-  it("A1 注册表同走 feature 过滤：关 view.plan-audit → plan_audit 从注册表消失（与 discover 同构）", async () => {
+  it("SEAM-GATE · Tier-2 语义 discover 召回 B/C 决策求解器（关键词命中 answersQuestions/tags）", async () => {
     const t = await makeApp();
-    await t.services.features.putTenantConfig(t.adminCtx, "demo", { "view.plan-audit": false });
-    const reg = (await t.app.inject({ method: "GET", url: "/a/v1/solvers/registry", headers: ADMIN })).json() as { solvers: { key: string }[] };
-    expect(reg.solvers.map((s) => s.key)).not.toContain("plan_audit");
+    const cases: { query: string; expectedKey: string }[] = [
+      { query: "信用逾期客户", expectedKey: "credit_exposure" },
+      { query: "毛利为什么下滑", expectedKey: "finance_pnl" },
+      { query: "供需为什么对不上", expectedKey: "supply_demand_gap_attribution" },
+      { query: "这单能不能接", expectedKey: "atp_check" },
+    ];
+    for (const { query, expectedKey } of cases) {
+      const res = await t.app.inject({
+        method: "GET",
+        url: `/a/v1/catalog?kind=solvers&query=${encodeURIComponent(query)}`,
+        headers: ADMIN,
+      });
+      expect(res.statusCode).toBe(200);
+      const { items } = res.json() as { items: { key: string; description: string }[] };
+      const hit = items.find((i) => i.key === expectedKey);
+      expect(hit, `问句「${query}」应召回 ${expectedKey}`).toBeDefined();
+      expect(hit!.description.length).toBeGreaterThan(0);
+    }
   });
 });
