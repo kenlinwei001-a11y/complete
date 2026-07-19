@@ -59,7 +59,12 @@ export interface OpenAiChatCompletion {
 }
 
 export interface OpenAiChatPort {
-  chat: { completions: { create(params: Record<string, unknown>): Promise<OpenAiChatCompletion> } };
+  chat: {
+    completions: {
+      // G-9：第二实参为 SDK RequestOptions（透传 { signal } 供 per-call 有界超时）。
+      create(params: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<OpenAiChatCompletion>;
+    };
+  };
 }
 
 // --- classification structured output ---------------------------------------
@@ -218,15 +223,19 @@ export class OpenAiLlmClient implements FullLlmClient {
       { role: "system", content: req.system },
       ...req.messages.flatMap((m) => toOpenAiMessages(m)),
     ];
-    const resp = await this.client.chat.completions.create({
-      model: req.model,
-      max_tokens: req.maxTokens ?? 16000,
-      tools: req.tools.map((t) => ({
-        type: "function",
-        function: { name: t.name, description: t.description, parameters: t.inputSchema },
-      })),
-      messages,
-    });
+    const resp = await this.client.chat.completions.create(
+      {
+        model: req.model,
+        max_tokens: req.maxTokens ?? 16000,
+        tools: req.tools.map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.inputSchema },
+        })),
+        messages,
+      },
+      // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
+      req.signal ? { signal: req.signal } : undefined,
+    );
     this.trackUsage(req.model, resp.usage);
 
     const choice = resp.choices[0];

@@ -89,6 +89,11 @@ export class Metrics {
     "qos_agent_budget_exhausted_total",
     "Agent runs ended by budget exhaustion",
   );
+  /** G-9：path-B agent 单次 LLM/工具调用有界超时触发的优雅降级次数（挂住时诚实终止）。 */
+  readonly agentTimeout = new Counter(
+    "qos_agent_timeout_total",
+    "Agent runs degraded by per-call LLM/tool timeout",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
@@ -132,6 +137,7 @@ export class Metrics {
         this.classifierErrors,
         this.clarificationRounds,
         this.agentBudgetExhausted,
+        this.agentTimeout,
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,

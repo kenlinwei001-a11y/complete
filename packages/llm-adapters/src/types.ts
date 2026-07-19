@@ -58,6 +58,12 @@ export interface LlmAgentRequest {
    * 仅 Anthropic adapter（capability 开启时）下发；其它 adapter 忽略。
    */
   contextEdits?: { type: string }[];
+  /**
+   * G-9：per-call 有界超时的取消信号。工具循环侧为每轮 agent() 建 AbortController+deadline，
+   * 适配器透传给底层 SDK（messages.create / chat.completions.create 的 { signal }），
+   * 使挂住的单次调用能被上界终止（abort → AbortError，循环收敛为优雅降级）。可选，向后兼容。
+   */
+  signal?: AbortSignal;
 }
 
 export interface LlmAgentResponse {

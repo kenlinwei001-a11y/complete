@@ -16,6 +16,12 @@ const ConfigSchema = z.object({
   QOS_TAU_LOW: z.coerce.number().default(0.55),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
+  /**
+   * path-B agent 工具循环单次 LLM/工具调用有界超时（ms，G-9）：每轮 llm.agent()/executor.run() 的
+   * per-call deadline = min(本值, budget 剩余时长)。防某次调用挂住导致整任务 hang（budget.durationExceeded
+   * 只在轮首检查一次，挂住则永不返回）。超时 → 优雅降级（诚实部分发现 + agent_degraded/TIMEOUT 事件），不放松 budget 下界。
+   */
+  QOS_AGENT_LLM_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */

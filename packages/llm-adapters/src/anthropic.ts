@@ -153,9 +153,13 @@ export class AnthropicLlmClient implements FullLlmClient {
     const compacting = this.enableCompaction && (req.contextEdits?.length ?? 0) > 0;
     if (compacting) params.context_management = { edits: req.contextEdits };
 
+    // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
+    const reqOptions: Record<string, unknown> = {};
+    if (compacting) reqOptions.headers = { "anthropic-beta": COMPACTION_BETA };
+    if (req.signal) reqOptions.signal = req.signal;
     const response = await this.client.messages.create(
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
-      compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
+      Object.keys(reqOptions).length > 0 ? reqOptions : undefined,
     );
     requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);

@@ -16,9 +16,22 @@ export function text(t: string): LlmContentBlock {
   return { type: "text", text: t };
 }
 
+/**
+ * G-9 SEAM：HANG 哨兵 turn —— agent() 遇此 turn 永不 resolve，仅当 req.signal abort 时 reject AbortError。
+ * 用于坐实"某次 llm.agent() 挂住 → per-call deadline abort → 优雅降级"（挂死路径），无需真实网络。
+ */
+export const HANG: unique symbol = Symbol("HANG");
+
 export type ScriptedTurn =
   | { content: LlmContentBlock[]; stopReason?: string }
+  | typeof HANG
   | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string });
+
+function abortError(): Error {
+  const e = new Error("The operation was aborted");
+  e.name = "AbortError";
+  return e;
+}
 
 /**
  * Scripted LLM mock: fixed classification sequences + scripted tool_use turns for the agent loop.
@@ -66,7 +79,17 @@ export class ScriptedLlmClient implements LlmClient {
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
     this.agentRequests.push(req);
+    // G-9：honor req.signal —— 已 abort 直接 reject（模拟 SDK 语义）。
+    if (req.signal?.aborted) throw abortError();
     const next = this.agentTurns.shift();
+    // G-9：HANG 哨兵 —— 永不 resolve，仅在 signal abort 时 reject AbortError（坐实挂死→有界终止）。
+    if (next === HANG) {
+      return await new Promise<LlmAgentResponse>((_resolve, reject) => {
+        const signal = req.signal;
+        if (!signal) return; // 无 signal → 永挂（不应发生：循环恒传 signal）
+        signal.addEventListener("abort", () => reject(abortError()), { once: true });
+      });
+    }
     if (!next) {
       // default: end politely without tools
       return {
