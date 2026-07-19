@@ -21,6 +21,9 @@ export const OptTemplateFamilySchema = z.enum([
   "knapsack",
   "packing",
   "combinatorial_auction",
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）+ 跨对象占用（订单×产线×合同三元互斥）。
+  "multi_objective",
+  "cross_object_occupancy",
   "custom",
 ]);
 export type OptTemplateFamily = z.infer<typeof OptTemplateFamilySchema>;
@@ -90,6 +93,9 @@ export const OptWhatifResultSchema = z.object({
   baselineObjective: z.number().nullable(),
   perturbedObjective: z.number().nullable(),
   deltaObjective: z.number().nullable(),
+  // WO-CROSS-OBJECT-MULTIOBJ：多目标 what-if 各目标 Δ 分解（改权重→各目标 Δ 分别算）。
+  // 向后兼容：单目标模板此字段缺省（undefined）；多目标（multi_objective/cross_object_occupancy）填 {key:Δ}。
+  deltaByObjective: z.record(z.string(), z.number()).optional(),
   feasible: z.boolean(),
   conflictConstraints: z.array(z.string()), // 冲突/不可行约束族 key（IIS 式）
   explanation: z.string().optional(), // R13 解释（新解 vs 原解）

@@ -205,7 +205,95 @@ export async function bindToSolverArgs(
       });
       return { bids, seed, bidType: bidT.key };
     }
+    case "cross_object_occupancy":
+      // WO-CROSS-OBJECT-MULTIOBJ：委托专用绑定层（订单/产线/合同三元组，DF.8 诚实拒绝/报缺）。
+      return bindCrossObjectOccupancy(view, binding, extra);
     default:
-      throw validationError(`绑定层暂不支持模板族 '${family}'（增量1 仅 5 核心）`);
+      throw validationError(`绑定层暂不支持模板族 '${family}'（增量1 仅 5 核心 + cross_object_occupancy；multi_objective 由 vars/constraints 直接给）`);
   }
+}
+
+/**
+ * WO-CROSS-OBJECT-MULTIOBJ 跨对象占用绑定层（R14/DF.8）：把租户本体的 订单/产线/合同 类对象绑成
+ * cross_object_occupancy 引擎所需三元组 args。**零业务常数**——系数全取绑定的类型化字段。
+ *
+ * 必需 role（绑不到 → DF.8 诚实拒绝，不编实体）：
+ *  - order(objectType) · revenue/penalty/qty(property on order) · line(objectType) · line_capacity(property on line)
+ * 可选 role：
+ *  - order_contract(property on order → contractId)
+ *  - contract(objectType) + contract_cap(property on contract)：**无合同类型 → 诚实报缺**（contracts=[]，contractBound=false），不伪造合同额度约束
+ *  - eligibility(objectType) + elig_order/elig_line/elig_cost(property)：显式可产对；未绑 → 诚实标 eligibilityDefaulted（全资格全通、换型成本 0，不编成本数字）
+ */
+export async function bindCrossObjectOccupancy(
+  view: BindingOntologyView,
+  binding: OntologyBinding,
+  extra: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  const byKey = await groundBinding(view, binding);
+  const rm = roleMap(binding);
+  const tid = binding.tenantId;
+  const seed = num(extra.seed, 42);
+
+  const orderT = typeForRole("order", rm, byKey);
+  const lineT = typeForRole("line", rm, byKey);
+  const orderPk = pkOf(orderT), linePk = pkOf(lineT);
+  const revProp = propForRole("revenue", rm, "revenue")!;
+  const penProp = propForRole("penalty", rm, "penalty")!;
+  const qtyProp = propForRole("qty", rm, "qty")!;
+  const contractRefProp = rm.has("order_contract") ? propForRole("order_contract", rm) : undefined;
+  const capProp = propForRole("line_capacity", rm, "capacity")!;
+
+  const orderObjs = (await view.listByType(tid, orderT.key)).sort((a, b) => a.id.localeCompare(b.id));
+  const lineObjs = (await view.listByType(tid, lineT.key)).sort((a, b) => a.id.localeCompare(b.id));
+  const orders = orderObjs.map((o) => {
+    const p = o.props as Record<string, unknown>;
+    return {
+      id: objId(o, orderPk),
+      revenue: num(p[revProp]),
+      penalty: num(p[penProp]),
+      qty: num(p[qtyProp]),
+      ...(contractRefProp ? { contractId: String(p[contractRefProp] ?? "") || undefined } : {}),
+    };
+  });
+  const lines = lineObjs.map((l) => ({ id: objId(l, linePk), capacity: num((l.props as Record<string, unknown>)[capProp]) }));
+
+  // 合同类对象：无绑定 → 诚实报缺（不伪造额度约束）。
+  let contracts: { id: string; cap: number }[] = [];
+  const contractBound = rm.has("contract");
+  if (contractBound) {
+    const contractT = typeForRole("contract", rm, byKey);
+    const contractPk = pkOf(contractT);
+    const capC = propForRole("contract_cap", rm, "cap")!;
+    const contractObjs = (await view.listByType(tid, contractT.key)).sort((a, b) => a.id.localeCompare(b.id));
+    contracts = contractObjs.map((c) => ({ id: objId(c, contractPk), cap: num((c.props as Record<string, unknown>)[capC]) }));
+  }
+
+  // 可产对（eligibility）：显式绑 objectType（elig_order/elig_line/elig_cost）→ 读真对；未绑 → 诚实标 defaulted，全资格全通、成本 0（不编成本）。
+  let eligibility: { order: string; line: string; cost: number }[] = [];
+  const eligibilityBound = rm.has("eligibility");
+  if (eligibilityBound) {
+    const eligT = typeForRole("eligibility", rm, byKey);
+    const eoProp = propForRole("elig_order", rm, "order")!;
+    const elProp = propForRole("elig_line", rm, "line")!;
+    const ecProp = rm.has("elig_cost") ? propForRole("elig_cost", rm) : undefined;
+    const eligObjs = (await view.listByType(tid, eligT.key)).sort((a, b) => a.id.localeCompare(b.id));
+    eligibility = eligObjs.map((e) => {
+      const p = e.props as Record<string, unknown>;
+      return { order: String(p[eoProp]), line: String(p[elProp]), cost: ecProp ? num(p[ecProp]) : 0 };
+    });
+  } else {
+    eligibility = orders.flatMap((o) => lines.map((l) => ({ order: o.id, line: l.id, cost: 0 })));
+  }
+
+  return {
+    orders,
+    lines,
+    contracts,
+    eligibility,
+    seed,
+    orderType: orderT.key,
+    lineType: lineT.key,
+    contractBound,
+    eligibilityDefaulted: !eligibilityBound,
+  };
 }

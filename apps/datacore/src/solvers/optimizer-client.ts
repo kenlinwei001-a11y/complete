@@ -155,6 +155,58 @@ export interface CombinatorialAuctionResult {
   objective: number;
 }
 
+// ── WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）+ 跨对象占用（订单×产线×合同三元互斥） ──
+
+/** 多目标：决策变量（bool/int）+ 线性约束 + 多目标（各带 sense/weight）+ method。零业务名 R14。 */
+export interface MultiObjectiveRequest {
+  model: "multi_objective";
+  seed: number;
+  scale?: number;
+  vars: { id: string; kind: "bool" | "int"; lo?: number; hi?: number }[];
+  constraints: { terms: { var: string; coef: number }[]; op: "<=" | ">=" | "=="; rhs: number }[];
+  objectives: { key: string; sense: "max" | "min"; terms: { var: string; coef: number }[]; weight?: number }[];
+  method: "weighted" | "epsilon" | "lexicographic";
+  /** epsilon 法：次目标转 ε-约束的界。 */
+  epsilon?: { key: string; bound: number }[];
+  /** lexicographic 法：目标优先序（key 序）。 */
+  priority?: string[];
+}
+export interface MultiObjectiveResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  values: Record<string, number>;
+  /** 每目标值分别回报（前端 Δ 分解用）。 */
+  objectiveValues: Record<string, number>;
+  method: string;
+}
+
+/** 跨对象占用：订单×产线×合同三元互斥（一单占某线=同耗产线产能+合同额度，同(线)互斥）。 */
+export interface CrossObjectOccupancyRequest {
+  model: "cross_object_occupancy";
+  seed: number;
+  scale?: number;
+  orders: { id: string; revenue: number; penalty: number; contractId?: string; qty: number }[];
+  lines: { id: string; capacity: number }[];
+  contracts: { id: string; cap: number }[];
+  eligibility: { order: string; line: string; cost: number }[];
+  objectives?: { key: "revenue" | "penalty" | "cost"; weight?: number }[];
+  method?: "weighted" | "epsilon" | "lexicographic";
+  epsilon?: { key: string; bound: number }[];
+  priority?: string[];
+}
+export interface CrossObjectOccupancyResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  values: Record<string, number>;
+  objectiveValues: Record<string, number>;
+  /** 哪些订单上哪条线。 */
+  occupancy: { order: string; line: string }[];
+  /** 被挤订单（未获排产 served=0）。 */
+  displaced: string[];
+  method: string;
+  summary: string;
+}
+
 export interface OptimizerClient {
   solve(req: OptimizationRequest): Promise<OptimizationResult>;
   /** A8.1 指派 / A8.2 排序 / A8.3 装箱（可选实现；未实现的 client 被调时抛"未接入"）。 */
@@ -167,6 +219,9 @@ export interface OptimizerClient {
   solveSetCover?(req: SetCoverRequest): Promise<SetCoverResult>;
   solveIndependentSet?(req: IndependentSetRequest): Promise<IndependentSetResult>;
   solveCombinatorialAuction?(req: CombinatorialAuctionRequest): Promise<CombinatorialAuctionResult>;
+  /** WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用（未实现 → 调用方抛"未接入"）。 */
+  solveMultiObjective?(req: MultiObjectiveRequest): Promise<MultiObjectiveResult>;
+  solveCrossObjectOccupancy?(req: CrossObjectOccupancyRequest): Promise<CrossObjectOccupancyResult>;
 }
 
 /** 生产实现：POST {baseUrl}/solve（背包）、/assignment（指派）。错误转平台错误信封风格的异常。 */
@@ -221,5 +276,14 @@ export class HttpOptimizerClient implements OptimizerClient {
 
   async solveCombinatorialAuction(req: CombinatorialAuctionRequest): Promise<CombinatorialAuctionResult> {
     return this.post<CombinatorialAuctionResult>("/solve", req);
+  }
+
+  // WO-CROSS-OBJECT-MULTIOBJ：多目标 / 跨对象占用同走单端点 /solve（sidecar 按 model 字段 dispatch）。
+  async solveMultiObjective(req: MultiObjectiveRequest): Promise<MultiObjectiveResult> {
+    return this.post<MultiObjectiveResult>("/solve", req);
+  }
+
+  async solveCrossObjectOccupancy(req: CrossObjectOccupancyRequest): Promise<CrossObjectOccupancyResult> {
+    return this.post<CrossObjectOccupancyResult>("/solve", req);
   }
 }

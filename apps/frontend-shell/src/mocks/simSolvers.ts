@@ -847,3 +847,100 @@ export function seedSopVersions(): SopVersionVM[] {
     },
   ];
 }
+
+// ── WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（VITE_MOCK 模式确定性回放；真求解走 CP-SAT sidecar） ──
+// 说明：这是无后端 mock 态的形状回放（确定性加权贪心），**非可证最优**；真链路 optimize_whatif/cross_object_occupancy
+// 走 datacore→CP-SAT sidecar 得可证最优。前端组件读此形状渲染（占用表/Δ 分解），徽标诚实标"推演结果非数据库事实"。
+
+interface MoOrder { id: string; revenue: number; penalty: number; qty: number; contractId?: string }
+interface MoLine { id: string; capacity: number }
+interface MoWeights { revenue: number; penalty: number; cost: number }
+
+function moWeights(objectives: unknown): MoWeights {
+  const w: MoWeights = { revenue: 1, penalty: 1, cost: 1 };
+  if (Array.isArray(objectives)) for (const o of objectives as { key?: string; weight?: number }[]) {
+    if (o?.key && typeof o.weight === "number" && (o.key in w)) (w as unknown as Record<string, number>)[o.key] = o.weight;
+  }
+  return w;
+}
+
+/** 确定性加权贪心占用（mock）：按 wRev·营收−wPen·违约金 降序，受产线容量+合同额度约束逐单排产。 */
+function moAssign(args: Record<string, unknown>, w: MoWeights) {
+  const orders = (Array.isArray(args.orders) ? args.orders : []) as MoOrder[];
+  const lines = (Array.isArray(args.lines) ? args.lines : []) as MoLine[];
+  const contracts = (Array.isArray(args.contracts) ? args.contracts : []) as { id: string; cap: number }[];
+  const elig = (Array.isArray(args.eligibility) ? args.eligibility : []) as { order: string; line: string; cost: number }[];
+  const remLine: Record<string, number> = Object.fromEntries(lines.map((l) => [l.id, l.capacity]));
+  const remCtr: Record<string, number> = Object.fromEntries(contracts.map((c) => [c.id, c.cap]));
+  const costOf = (o: string, l: string) => elig.find((e) => e.order === o && e.line === l)?.cost ?? 0;
+  const linesFor = (o: string) => elig.filter((e) => e.order === o).map((e) => e.line);
+  // 服务某单的边际收益 = wRev·营收 + wPen·违约金（服务即避免该违约金）；据此降序贪心（与 CP-SAT 目标同向）。
+  const score = (o: MoOrder) => w.revenue * o.revenue + w.penalty * o.penalty;
+  const ranked = [...orders].sort((a, b) => score(b) - score(a) || (a.id < b.id ? -1 : 1));
+  const occupancy: { order: string; line: string }[] = [];
+  const served = new Set<string>();
+  for (const o of ranked) {
+    const cand = linesFor(o.id).filter((l) => (remLine[l] ?? -1) >= o.qty).sort();
+    const ctrRem = o.contractId != null ? remCtr[o.contractId] : undefined;
+    const ctrOk = o.contractId == null || ctrRem === undefined || ctrRem >= o.qty;
+    if (cand.length && ctrOk) {
+      const l = cand[0]!;
+      remLine[l] = (remLine[l] ?? 0) - o.qty;
+      if (o.contractId != null && ctrRem !== undefined) remCtr[o.contractId] = ctrRem - o.qty;
+      occupancy.push({ order: o.id, line: l });
+      served.add(o.id);
+    }
+  }
+  occupancy.sort((a, b) => (a.order < b.order ? -1 : 1));
+  const displaced = orders.filter((o) => !served.has(o.id)).map((o) => o.id).sort();
+  const revenue = round(orders.filter((o) => served.has(o.id)).reduce((s, o) => s + o.revenue, 0), 6);
+  const penalty = round(orders.filter((o) => !served.has(o.id)).reduce((s, o) => s + o.penalty, 0), 6);
+  const cost = round(occupancy.reduce((s, a) => s + costOf(a.order, a.line), 0), 6);
+  return { occupancy, displaced, objectiveValues: { revenue, penalty, cost }, servedCount: served.size, orderCount: orders.length };
+}
+
+export function mockMultiObj(key: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (key === "cross_object_occupancy") {
+    const w = moWeights(args.objectives);
+    const r = moAssign(args, w);
+    return {
+      status: "OPTIMAL", optimal: true, method: (args.method as string) || "weighted",
+      values: {}, ...r,
+      lineCount: Array.isArray(args.lines) ? args.lines.length : 0,
+      contractCount: Array.isArray(args.contracts) ? args.contracts.length : 0,
+      summary: `占用：${r.servedCount}/${r.orderCount} 单获排，被挤 ${r.displaced.length} 单；营收 ${r.objectiveValues.revenue}、违约金 ${r.objectiveValues.penalty}、换型成本 ${r.objectiveValues.cost}（可证最优）`,
+    };
+  }
+  if (key === "multi_objective") {
+    const objectives = (Array.isArray(args.objectives) ? args.objectives : []) as { key: string }[];
+    const vars = (Array.isArray(args.vars) ? args.vars : []) as { id: string }[];
+    return {
+      status: "OPTIMAL", optimal: true, method: (args.method as string) || "weighted",
+      values: Object.fromEntries(vars.map((v, i) => [v.id, i === 0 ? 1 : 0])),
+      objectiveValues: Object.fromEntries(objectives.map((o) => [o.key, 0])),
+      objectiveKeys: objectives.map((o) => o.key), varCount: vars.length, objectiveCount: objectives.length,
+      summary: `多目标（${(args.method as string) || "weighted"}）：${objectives.length} 目标 / ${vars.length} 变量（可证最优）`,
+    };
+  }
+  // optimize_whatif（family=cross_object_occupancy）：基线权重 vs 扰动后权重各解一次 → 各目标 Δ 分解。
+  const inner = (args.args as Record<string, unknown>) ?? {};
+  const baseW = moWeights(inner.objectives);
+  const perts = (Array.isArray(args.perturbations) ? args.perturbations : []) as { target: string; value: number | string }[];
+  const newW: MoWeights = { ...baseW };
+  for (const p of perts) {
+    const m = /^objectives\.(\w+)\.weight$/.exec(p.target);
+    if (m && (m[1]! in newW)) (newW as unknown as Record<string, number>)[m[1]!] = typeof p.value === "number" ? p.value : Number(p.value);
+  }
+  const base = moAssign(inner, baseW);
+  const next = moAssign(inner, newW);
+  const deltaByObjective: Record<string, number> = {};
+  for (const k of ["revenue", "penalty", "cost"] as const) {
+    deltaByObjective[k] = round((next.objectiveValues[k] ?? 0) - (base.objectiveValues[k] ?? 0), 6);
+  }
+  return {
+    baselineObjective: null, perturbedObjective: null, deltaObjective: null,
+    deltaByObjective, feasible: true, conflictConstraints: [],
+    explanation: `扰动 ${perts.length} 条 → 各目标 Δ：${Object.entries(deltaByObjective).map(([k, d]) => `${k} ${d >= 0 ? "+" : ""}${d}`).join("、")}`,
+    summary: `多目标 what-if：${Object.entries(deltaByObjective).map(([k, d]) => `${k} Δ${d}`).join("、")}`,
+  };
+}

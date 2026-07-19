@@ -128,6 +128,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  // 优化融合（G-12）：暗发 defaultOff（与后端 features.ts 同步）——关则前端整块不存在（R3）。
+  { key: "opt.solver-pool", name: "优化模板池", level: "VIEW", defaultOn: false },
+  { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["optimize_whatif"] } },
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用。
+  { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
 ];
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
