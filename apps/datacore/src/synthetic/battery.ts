@@ -876,6 +876,18 @@ const orderPromiseProps: PropertyDef[] = [
   { propKey: "asOf", dataType: "date", isPrimaryKey: false }, // 承诺基准日（固定 T0·R6）
 ];
 
+// WO-ORDERLINE · 订单明细行（SO→型号行·一单多型号多行·勾稽 Σ行===头·行级独立态）。
+const orderLineProps: PropertyDef[] = [
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true }, // SO-3391-L1
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }, // 该行属于哪张订单
+  { propKey: "lineNo", dataType: "number", isPrimaryKey: false }, // 行号（1 起·首行保原单 model）
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" }, // 该行型号
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件" }, // Σ BY orderRef === Order.qty（勾稽）
+  { propKey: "due", dataType: "date", isPrimaryKey: false }, // 交期（继承订单头）
+  { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false }, // OPEN | COMMITTED | PARTIAL | SHIPPED
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
+];
+
 const inventoryTxnProps: PropertyDef[] = [
   { propKey: "txnId", dataType: "string", isPrimaryKey: true },
   { propKey: "txnType", dataType: "enum", isPrimaryKey: false }, // RECEIPT | ISSUE | TRANSFER | RETURN
@@ -1189,6 +1201,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   FinishedGoodsInventory: "supply", InventoryTxn: "supply",
   // WO-ATP-PROMISE 订单承诺台账（ATP/CTP·随订单归 commercial 域·refbase 14 域含 commercial）
   OrderPromise: "commercial",
+  // WO-ORDERLINE 订单明细行（SO→型号行·与 Order 同域 product·DOMAIN_MAP）
+  OrderLine: "product",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -1237,6 +1251,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("EngineeringChange", "工程变更", engineeringChangeProps),
     plain("MaterialAlternative", "物料替代关系", materialAlternativeProps),
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·紧随 Order·勾稽 Σ行===头）
+    plain("OrderLine", "订单明细行", orderLineProps),
     plain("Line", "产线", lineProps),
     plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
@@ -1385,6 +1401,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "txn_from_wo", fromTypeKey: "InventoryTxn", toTypeKey: "WorkOrder", cardinality: "N:1" }, // supply→process（完工入库溯源）
     // WO-ATP-PROMISE 订单承诺链路（承诺台账 → 订单·一订单一承诺 N:1）
     { key: "promise_for_order", fromTypeKey: "OrderPromise", toTypeKey: "Order", cardinality: "N:1" }, // commercial（承诺溯源到订单）
+    // WO-ORDERLINE 订单拆行链路（明细行 → 订单·一订单 N 行 N:1 · 明细行 → 型号·N:1）
+    { key: "line_of_order", fromTypeKey: "OrderLine", toTypeKey: "Order", cardinality: "N:1" }, // product（行溯源到订单头）
+    { key: "orderline_for_model", fromTypeKey: "OrderLine", toTypeKey: "Model", cardinality: "N:1" }, // product（行→型号·一单多型号真表达）
   ];
 }
 
@@ -1883,6 +1902,8 @@ export interface GeneratedBattery {
   inventoryTxns: Record<string, unknown>[];
   // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单确定性算 ATP 基线）
   orderPromises: Record<string, unknown>[];
+  // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·勾稽 Σ行===头·additive 不动 24 单头级基线）
+  orderLines: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -2114,6 +2135,65 @@ export function deriveOrderPromises(
       bottleneck: r.bottleneck,
       asOf,
     });
+  }
+  return out;
+}
+
+/**
+ * WO-ORDERLINE · 订单拆行种子（SO→型号明细行·一单多型号多行·Phase3）。
+ * 确定性拆行（独立哈希子流 `hashString("oline_"+so)`·**不插既有 order rng 流中间**→24 单头级字节基线不移 R6）：
+ *  - so 哈希偶数 → 拆 2-3 行到**不同 model**（首行保原单 model·不破坏既有 order_for_model 与 24 单基线·additive）；奇数 → 1 行。
+ *  - **勾稽铁律** `Σ OrderLine.qty (BY orderRef) === Order.qty`（拆行不改总量·确定性比例分配·**尾行取余额保 Σ 精确**·仿 WO-Q7 末叶取余额）。
+ *  - `lineStatus` 种子基线态（`STATUSES[(h+i)%4]`·连续行 i 必不同态→一单多行天然多态·**行级独立态**）。
+ *  - `unitPrice` 按行 model 反范式化（`Model.unitPrice` 单一来源·守 R14·勿写死）。
+ * 纯派生：无 rng（不插 rng 流）、无时钟（due 继承订单头）。lineId=`<so>-L<lineNo>`。
+ */
+export function deriveOrderLines(
+  orders: Record<string, unknown>[],
+  models: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
+  const modelIds = models.map((m) => String(m.modelId));
+  const priceOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitPrice ?? 0)]));
+  const out: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    const so = String(o.so);
+    const m0 = String(o.model ?? "");
+    const totalQty = Number(o.qty ?? 0);
+    const h = hashString(`oline_${so}`);
+    // 拆行数：偶数 → 2-3 行（不同型号）· 奇数 → 1 行（确定性）。
+    const nLines = h % 2 === 0 ? 2 + (Math.floor(h / 4) % 2) : 1;
+    // 型号池：首行保原单 model·其余从型号池按 so 哈希旋转取 distinct（一单多型号真表达）。
+    const lineModels: string[] = [m0];
+    if (nLines > 1 && modelIds.length > 0) {
+      const rot = h % modelIds.length;
+      for (let k = 0; k < modelIds.length && lineModels.length < nLines; k++) {
+        const mid = modelIds[(rot + k) % modelIds.length] as string;
+        if (!lineModels.includes(mid)) lineModels.push(mid);
+      }
+    }
+    const realN = lineModels.length; // 型号池不足时可能 < nLines（诚实）
+    // qty 确定性比例分配（权重 hash 派生）·尾行取余额保 Σ 精确。
+    const weights = lineModels.map((_, i) => 1 + (hashString(`${so}-L${i + 1}_w`) % 100));
+    const W = weights.reduce((a, b) => a + b, 0);
+    let allocated = 0;
+    for (let i = 0; i < realN; i++) {
+      const lineNo = i + 1;
+      const lm = lineModels[i] as string;
+      // 尾行取余额（Σ 精确）；非尾行按权重 floor 分配（≥1·totalQty 千级不会分光）。
+      const qty = i === realN - 1 ? totalQty - allocated : Math.max(1, Math.floor((totalQty * (weights[i] as number)) / W));
+      allocated += qty;
+      out.push({
+        lineId: `${so}-L${lineNo}`,
+        orderRef: so,
+        lineNo,
+        model: lm,
+        qty,
+        due: o.due,
+        lineStatus: STATUSES[(h + i) % 4],
+        unitPrice: priceOf.get(lm) ?? Number(o.unitPrice ?? 0),
+      });
+    }
   }
   return out;
 }
@@ -2477,6 +2557,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       leadDays: dueDay,
     });
   }
+
+  // WO-ORDERLINE：订单拆行（SO→型号明细行·一单多型号多行）。独立哈希子流·**不插既有 order rng 流**→
+  // 24 单头级字节基线不移（R6）；additive 只加 OrderLine 行、Order 头级对象数不变。
+  const orderLines = deriveOrderLines(orders, models);
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
   const workshops: Record<string, unknown>[] = [];
@@ -3264,7 +3348,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // 放在 FG 派生后：需现货(FG)/在制(workOrders)/产能(lines) 三源已就绪；纯派生不消耗 rng（不插既有流中间）。
   const orderPromises = deriveOrderPromises(orders, finishedGoodsInv, workOrders, lines, isoDate(t0));
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises };
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };
 }
 
 // ---------------------------------------------------------------------------

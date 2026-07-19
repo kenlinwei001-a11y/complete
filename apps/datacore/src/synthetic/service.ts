@@ -643,6 +643,7 @@ export class SyntheticService {
     await putAll("MaterialAlternative", g.materialAlternatives, "altId");
     await putAll("Workshop", g.workshops, "workshopId");
     await putAll("Order", g.orders, "so");
+    await putAll("OrderLine", g.orderLines, "lineId"); // WO-ORDERLINE：订单明细行（紧随 Order·SO→型号行·勾稽 Σ行===头）
     await putAll("Line", g.lines, "lineId");
     await putAll("Process", g.processes, "processId");
     await putAll("Equipment", g.equipment, "equipId");
@@ -977,6 +978,12 @@ export class SyntheticService {
     for (const p of g.orderPromises) {
       const promiseId = String(P(p).promiseId);
       await putLink(`lnk_pfo_${promiseId}`, "promise_for_order", oid("OrderPromise", promiseId), oid("Order", P(p).orderRef));
+    }
+    // WO-ORDERLINE 订单拆行链路（明细行 → 订单头 N:1 + 明细行 → 型号 N:1；一单多型号真表达·行级溯源）。
+    for (const ln of g.orderLines) {
+      const lineId = String(P(ln).lineId);
+      await putLink(`lnk_loo_${lineId}`, "line_of_order", oid("OrderLine", lineId), oid("Order", P(ln).orderRef));
+      await putLink(`lnk_olm_${lineId}`, "orderline_for_model", oid("OrderLine", lineId), oid("Model", P(ln).model));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
