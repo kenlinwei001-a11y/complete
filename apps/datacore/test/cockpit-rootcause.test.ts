@@ -13,7 +13,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     const b = generateBattery(42, "S");
     expect(JSON.stringify(a.metrics)).toBe(JSON.stringify(b.metrics));
     expect(JSON.stringify(a.rootCauseChains)).toBe(JSON.stringify(b.rootCauseChains));
-    expect(a.metrics.length).toBe(10); // WO-CEO-1a：3 运营 + 4 顶层目标 + 3 细分
+    expect(a.metrics.length).toBe(26); // WO-CEO-1a：3 运营 + 4 顶层目标 + 3 细分 + WO-PLANKPI 16 月/季
     expect(a.rootCauseChains.length).toBe(4);
     // 毛利率 KPI 的 actual 与财务"毛利"线/收入交叉一致（非写死）：actual = 毛利/收入×100。
     const margin = a.metrics.find((k) => k.metricId === "kpi-margin")!;

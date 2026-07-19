@@ -27,11 +27,16 @@ describe("WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删）", () 
     expect(byId.get("kpi-revenue")!.actual).toBe(700);
   });
 
-  it("level=month/quarter 诚实空（假周期系数已删，无真对象即空，绝不编造）", async () => {
+  it("level=month/quarter 真对象化非空（DS.1 已闭·WO-PLANKPI-MONTH-QUARTER：真月/季需求达成率 Metric·非摊派）", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    expect((await kpisOf(t, { level: "month" })).length).toBe(0);
-    expect((await kpisOf(t, { level: "quarter" })).length).toBe(0);
+    // DS.1 闭：月/季升真 Metric 实例（4 季 + 12 月）→ plan_rootcause 按 level 读即出真根因，不再诚实空。
+    const q = await kpisOf(t, { level: "quarter" });
+    const mo = await kpisOf(t, { level: "month" });
+    expect(q.length).toBe(4);
+    expect(mo.length).toBe(12);
+    // 仍非假周期系数编造：达成率真派生（key demand_attain_{period}·非 op×{0.97/1.04}）。
+    expect(q.every((k) => k.name.includes("需求达成率"))).toBe(true);
   });
 
   it("默认 / level=op 只读 6 个真运营指标（3 运营 + 3 细分，op 级）+ 确定性", async () => {
