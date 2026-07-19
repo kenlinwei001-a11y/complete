@@ -22,6 +22,7 @@ import {
   buildClassifierUser,
   classifierConversationSummary,
   AGENT_SYSTEM_CORE,
+  CEO_DEEP_QUESTION_SYSTEM,
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import type { AppConfig } from "../config.js";
@@ -37,7 +38,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
-import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档
+import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -82,6 +83,29 @@ function appendDecisionBlock(answer: Answer, decision: Decision): Answer {
   const draftNote = decision.actionDraftIds.length > 0 ? `·行动草案 ${decision.actionDraftIds.join("、")}` : "";
   const md = `**决策台账 ${decision.id}** — ${statusLabel}（选定方案 ${decision.chosenOptionIds.join("、")}${draftNote}）`;
   return { ...answer, blocks: [...answer.blocks, { type: "text", markdown: md }] };
+}
+
+/**
+ * WO-REAL-LLM-FREE-QUERY · feature 门①：CEO/块级深问是否可走 path-B 真 LLM 自由多跳。**暗发·默认关**。
+ *
+ * 关键设计（字节兼容·零回归）：`set==="ALL"`（mock 默认 / DataCore 降级 fail-open）→ **返回 false**，即真 LLM 分路
+ * 在 mock 默认态一律不触发（既有 CEO/block 确定性测试逐字节不变）；且生产降级态落确定性安全路径（更稳）。
+ * 仅当 DataCore 解析出的**显式** Set 含 `ceo.free-llm`，或 `sim.commander`+`sim.sandbox` 同开时，真 LLM 分路才启用。
+ * 与 `shouldUseFreeLLM`（问句形态②+上下文丰富③）AND 组合——三者齐备方走真 LLM，否则照走确定性/classifier。
+ */
+function freeLlmEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("ceo.free-llm") || (set.has("sim.commander") && set.has("sim.sandbox"));
+}
+
+/**
+ * WO-REAL-LLM-FREE-QUERY（AI 指挥台 NL 入口）：本查询是否为沙盘会话上下文里的 NL 指挥
+ *（filters.simSessionId 存在，即前端沙盘屏 NL 框带着 sessionId 提交）。命中 + sim.commander 开
+ * → 直接走 path-B（agent 拿 sim_* 工具真驱动 tick），不被 classifier/确定性 CEO 路由拦。
+ */
+function isSimCommanderNl(task: QueryTask): boolean {
+  const sid = task.context.filters?.simSessionId;
+  return typeof sid === "string" && sid.length > 0;
 }
 
 export class HttpError extends Error {
@@ -278,6 +302,27 @@ export class Orchestrator {
           return;
         }
       }
+    }
+
+    // WO-REAL-LLM-FREE-QUERY（AI 指挥台 NL 入口·先于确定性路由/classifier）：沙盘会话上下文 NL 指挥
+    //（filters.simSessionId 存在=前端沙盘屏 NL 框带 sessionId 提交）+ sim.commander 开 → 直接 path-B，
+    // agent 拿 sim_* 工具真驱动 tick（NL「推进两个 tick 看负载」→ 调 sim_tick）。关则不触发·照常分类（R3 暗发）。
+    if (isSimCommanderNl(task) && simCommanderEnabled(enabledFeatures)) {
+      await this.runPathB(taskId, auth, {
+        candidates: [], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "agent:sim-commander-nl",
+      });
+      return;
+    }
+
+    // WO-REAL-LLM-FREE-QUERY（CEO/块级真 LLM 深问·确定性路由之外并列拦截）：feature 开(①) + 开放式/多跳问句(②) +
+    // 上下文丰富(③) → 走增强版 path-B（CEO 深问 system + PageContext/BlockContext 注入 → runAgentLoop 真 LLM 自由多跳：
+    // 查对象→算求解器→再查→综合）。真 LLM 失败（无 provider/超预算/异常）→ 落确定性 resolveCeoRoute/resolveBlockRoute
+    // 兜底·诚实标降级。**暗发默认关**（freeLlmEnabled("ALL")=false·既有 CEO/block 确定性路径 C6/C7 逐字节不变·不劫持）。
+    // ★ 五角色 Coordinator（WO-FIVE-ROLE 另单）分路预留：其确定性协调路由应加在**本分路之前**（更强的显式指派信号），
+    //   本真 LLM 自由分路是"未被显式指派时的开放式深问"缺省增强，二者互不劫持（Coordinator 命中即 return·不落此处）。
+    if (freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
+      await this.runCeoFreeLLM(taskId, auth, enabledFeatures);
+      return;
     }
 
     // WO-CEO-6（闭 G-3 深问侧）：CEO 深问确定性路由——命中意图模式（为什么/怎么补/差多少/信号）+ PageContext →
@@ -773,7 +818,15 @@ export class Orchestrator {
   // -------------------------------------------------------------------------
   // Path B: restricted agent fallback (§5.4)
   // -------------------------------------------------------------------------
-  private async runPathB(taskId: string, auth: RequestAuth, classification?: ClassificationResult): Promise<void> {
+  private async runPathB(
+    taskId: string,
+    auth: RequestAuth,
+    classification?: ClassificationResult,
+    opts?: {
+      /** WO-REAL-LLM-FREE-QUERY：CEO/块级深问用增强 system（CEO_DEEP_QUESTION_SYSTEM）旁路 AGENT_SYSTEM_CORE。 */
+      systemOverride?: string;
+    },
+  ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
     const pkg = await this.deps.repos.packages.get(task.packageId);
@@ -827,7 +880,7 @@ export class Orchestrator {
       taskId,
       model,
       tenantId: task.tenantId,
-      system: AGENT_SYSTEM_CORE,
+      system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
       userContent: buildAgentUser(task, priorSummary || undefined),
       tools,
       llm: this.deps.engine.deps.llm,
@@ -930,6 +983,74 @@ export class Orchestrator {
     } catch {
       /* 回写失败不影响主流程 */
     }
+  }
+
+  /**
+   * WO-REAL-LLM-FREE-QUERY：CEO/块级深问真 LLM 自由多跳（确定性路由之外）。
+   * 增强版 path-B（CEO_DEEP_QUESTION_SYSTEM + PageContext/BlockContext 注入 → runAgentLoop 真 LLM 多跳取证）。
+   * 真 LLM 失败（无 provider / LLM_EMPTY_RESPONSE / 超预算 / 异常）→ try/catch 落**确定性兜底**（resolveBlockRoute/
+   * resolveCeoRoute → path A 求解器）+ 诚实标降级（routing.degraded 事件 + classification.model=deterministic:*-fallback）。
+   * **绝不把真 LLM 输出标"数据库事实"**（trustLevel 由 runAgentLoop 置 AGENT_EXPLORATORY）；无 provider 诚实落确定性。
+   */
+  private async runCeoFreeLLM(taskId: string, auth: RequestAuth, enabledFeatures: FeatureSet): Promise<void> {
+    try {
+      await this.runPathB(
+        taskId,
+        auth,
+        { candidates: [], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "agent:ceo-free-llm" },
+        { systemOverride: CEO_DEEP_QUESTION_SYSTEM },
+      );
+    } catch (err) {
+      // 真 LLM 不可用 → 确定性兜底 + 诚实标降级（不把兜底伪装成真 LLM）。
+      await this.runCeoDeterministicFallback(taskId, auth, enabledFeatures, err);
+    }
+  }
+
+  /**
+   * WO-REAL-LLM-FREE-QUERY：真 LLM 深问失败后的确定性兜底——复用既有确定性路由（块级优先 → 页面级 CEO 问句），
+   * 诚实标 `deterministic:*-fallback` + 发 `routing.degraded`（前端据此标"确定性兜底·真 LLM 不可用"·非"数据库事实"）。
+   */
+  private async runCeoDeterministicFallback(
+    taskId: string,
+    auth: RequestAuth,
+    enabledFeatures: FeatureSet,
+    err: unknown,
+  ): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+    const code = typeof (err as { code?: unknown })?.code === "string" ? (err as { code: string }).code : "AGENT_ERROR";
+    await this.deps.events.emit(taskId, "routing.degraded", {
+      reason: "真 LLM 深问不可用，回退确定性求解（诚实标降级）",
+      code,
+    });
+    const candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
+
+    // 块级定向兜底优先（块是更强的上下文信号）。
+    if (hasBlockContext(task.context.pageContext)) {
+      const route = resolveBlockRoute(task.context.pageContext, "ceo");
+      const ceoIntent = route && candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+      if (route && ceoIntent) {
+        await this.deps.repos.tasks.patch(taskId, {
+          classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:block-route-fallback" },
+        });
+        await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+        return;
+      }
+    }
+    // 页面级 CEO 问句兜底。
+    if (task.context.pageContext && isCeoQuestion(task.query)) {
+      const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
+      const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+      if (ceoIntent) {
+        await this.deps.repos.tasks.patch(taskId, {
+          classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:ceo-route-fallback" },
+        });
+        await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+        return;
+      }
+    }
+    // 无确定性落点（如纯沙盘 NL 深问但无 CEO 意图）→ 换个问法兜底（诚实·不编造）。
+    await this.completeWorkflowOnlyMiss(task, candidates);
   }
 
   /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */

@@ -63,6 +63,13 @@ export function AnswerCard({
             ◇ {zh.dock.exploratoryBadge}
           </span>
         )}
+        {/* WO-REAL-LLM-FREE-QUERY 诚实三态之三：AGENT_EXPLORATORY = path-B 真 LLM 深问（据页/块上下文·工具取证）。
+            与 solver「确定性求解」/ DecisionPlay「策略推理·确定性生成」互斥——绝不把真 LLM 输出标"数据库事实"。 */}
+        {exploratory && (
+          <span className="badge" data-testid="answer-reasoning-mode" style={{ marginLeft: 6, color: "var(--muted)", borderColor: "var(--line2)", fontSize: 10 }}>
+            {zh.dock.llmReasoningBadge}
+          </span>
+        )}
       </div>
       <div className={styles.blocks}>
         {answer.blocks.map((b, i) => (

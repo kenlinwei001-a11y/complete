@@ -100,6 +100,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
   // WO-CEO-DATA-2（R3 暗发·defaultOn:false）：CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·可 back-derivation）。
   { key: "ceo.dataset.generate", name: "CEO 驾驶舱原子数据集生成", level: "VIEW", defaultOn: false, bindings: { apiTags: ["ceo-dataset"] } },
+  // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·关=字节兼容不触发）：CEO/块级深问走 path-B 真 LLM 自由多跳推理
+  // （确定性路由之外·PageContext/BlockContext 注入·失败落确定性兜底）。AgentCore registry 同键双注册（feature parity）。
+  { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
