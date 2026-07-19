@@ -272,6 +272,36 @@ export class Orchestrator {
     // ① candidate narrowing (incl. entitlement filter — QOS-PRD §5.1-1 追加条件:
     // intents bound to disabled features are excluded from candidates AND the classifier catalog)
     const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    // 修（场景卡端到端落 LLM 失败·实测 18/20 FAILED·根因）：场景卡带 scenarioIntentKey = **显式意图指派**，
+    // 卡的 view 只是落点页、不该当路由过滤。原 scenario-bind 在 candidates(按 view 收窄)之后，而多数场景的意图
+    // enabledViews 不含其落点 view → candidates 空 → 先落 path-B agent → 无 LLM provider 即 auth 失败。
+    // 故提前：在**全量已发布意图**里按 key 直取（跳过 view 收窄·§2.4 本意"跳过 LLM classify"），槽位可从上下文满足
+    // → 直绑意图 → path A 求解器（无 LLM 也跑通·恢复"无 LLM 也能跑 demo"）。gated by scenarioIntentKey·非场景查询逐字节不变。
+    const scnIntentKey = task.context.scenarioIntentKey;
+    if (scnIntentKey) {
+      const allIntents = await this.deps.repos.intents.listByPackage(task.packageId);
+      const byKey = new Map<string, IntentDefinition>();
+      for (const i of allIntents) {
+        if (i.status !== "PUBLISHED") continue;
+        if (enabledFeatures !== undefined && !intentAllowed(enabledFeatures, i.key)) continue;
+        const cur = byKey.get(i.key);
+        if (!cur || i.version > cur.version) byKey.set(i.key, i);
+      }
+      const scnIntent = byKey.get(scnIntentKey);
+      // 仅当意图**对本卡 view 合法**（enabledViews="*" 或含 view）才直绑——尊重"故意 view 限定"的意图：
+      // scenario-growth ADVISORY 样本（intent 限 dash·卡 view risk）不直绑·仍走 path-B 探索成 advisory（O12 诚实中间态不破）。
+      // demo 20 场景意图均 enabledViews="*" → 直绑（此前被 scene.intentCatalogFilter 滤空 candidates 而误落 LLM·本修绕过）。
+      if (scnIntent && (scnIntent.enabledViews === "*" || scnIntent.enabledViews.includes(task.context.view))) {
+        const probe = await fillSlots(scnIntent, {}, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+        if (probe.missing.length === 0) {
+          await this.deps.repos.tasks.patch(taskId, {
+            classification: { candidates: [{ intentKey: scnIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:scenario-bind" },
+          });
+          await this.proceedWithIntent(taskId, auth, scnIntent, {});
+          return;
+        }
+      }
+    }
     let candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
     if (scene?.intentCatalogFilter) {
       candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));

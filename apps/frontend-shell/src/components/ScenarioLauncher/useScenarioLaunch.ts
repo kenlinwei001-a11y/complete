@@ -17,11 +17,12 @@ export function useQuickLaunch(): (input: {
   targetView: string;
   selectedObjects?: { objectType: string; objectId: string; label?: string }[];
   slotPresets?: Record<string, unknown>;
+  scenarioIntentKey?: string;
 }) => Promise<void> {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const packageId = workspace?.scenarioPackages[0] ?? "";
-  return async ({ query, targetView, selectedObjects = [], slotPresets = {} }) => {
+  return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey }) => {
     if (!packageId) return;
     const store = useSessionStore.getState();
     store.setView(targetView);
@@ -33,7 +34,9 @@ export function useQuickLaunch(): (input: {
     navigate(`/v/${targetView}`);
     try {
       const res = await submitQuery(
-        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets } },
+        // 修（场景卡落 LLM 失败·你测 18/20 FAILED）：带 scenarioIntentKey → orchestrator 走 deterministic:scenario-bind
+        // （§2.4·跳过 LLM classify·直绑意图→path A 求解器）→ 无 LLM 也跑通；不带则落 path-B agent·无 provider 即 auth 失败。
+        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets, ...(scenarioIntentKey ? { scenarioIntentKey } : {}) } },
         safeUuid(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
@@ -53,5 +56,6 @@ export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,
       slotPresets: card.presetContext.slotPresets,
+      scenarioIntentKey: card.intentKey, // 修：把卡的 intentKey 传后端 → scenario-bind 走确定性求解器（无 LLM 也跑通）
     });
 }
