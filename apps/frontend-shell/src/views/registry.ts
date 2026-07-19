@@ -31,6 +31,9 @@ const VIEW_ALIAS: Record<string, string> = {
   risk: "risk-board",
   dash: "dashboard",
   decision: "decision-play",
+  // 通用假设推演（generic_inference·G-5）：短键 what-if / whatif / 场景目录别名 → 规范键。
+  whatif: "what-if",
+  "generic-inference": "what-if",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
@@ -43,6 +46,9 @@ registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));
 // 决策推演页（decision_play 求解器 5 区决策产物落地·CEO-3）：既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
 registerRenderer("decision-play", () => import("./DecisionPlayView"));
+// 通用假设推演页（generic_inference 求解器 · G-5 通用 what-if · CEO「把某属性改成 X，看下游怎样」）：
+// 既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
+registerRenderer("what-if", () => import("./WhatIfView"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
