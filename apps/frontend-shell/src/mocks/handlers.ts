@@ -1143,6 +1143,44 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    // 净室归因三通用求解器（前端 CleanroomAttrView 接地）：mock 出结构性真值供 VITE_MOCK 浏览；
+    // 测试用 server.use 覆盖精确 payload。输出形状与 datacore solvers/service.ts 一字不差。
+    if (key === "shared_bottleneck") {
+      const rt = String(invArgs.resourceType ?? "Res");
+      const st = String(invArgs.sharedByType ?? "Sharer");
+      return HttpResponse.json({
+        data: {
+          bottlenecks: [{ resourceType: rt, resourceId: `${rt}-01`, capacity: 100, demand: 138, sharerCount: 3 }],
+          contention: [{ resourceId: `${rt}-01`, sharers: [`${st}-a`, `${st}-b`, `${st}-c`] }],
+          downgraded: [{ resourceId: `${rt}-01`, sharedByType: st, objectId: `${st}-c`, reason: "需求最小" }],
+          summary: `1 个共享瓶颈,3 张单争用,1 张被降级`,
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
+    if (key === "concentration_risk") {
+      const path = Array.isArray(invArgs.path) ? (invArgs.path as { toType: string }[]) : [];
+      const rootType = path[path.length - 1]?.toType ?? "Root";
+      const top = { rootType, rootId: `${rootType}-hub`, dependents: ["s-01", "s-02", "s-03"], count: 3 };
+      return HttpResponse.json({
+        data: { concentrations: [top, { rootType, rootId: `${rootType}-b`, dependents: ["s-04", "s-05"], count: 2 }], topExposure: top, summary: `2 个隐性集中单点（${rootType}）,最大敞口 3 个依赖方` },
+        snapshotVersion: "ov-12",
+      });
+    }
+    if (key === "margin_attribution") {
+      const tt = String(invArgs.targetType ?? "Item");
+      const cfs = Array.isArray(invArgs.costFields) ? (invArgs.costFields as { field: string; label?: string }[]) : [];
+      const driver = cfs[0]?.label ?? cfs[0]?.field ?? "成本项";
+      return HttpResponse.json({
+        data: {
+          inverted: [{ id: `${tt}-9`, revenue: 100, totalCost: 128, margin: -28, marginRate: -0.28, topDriver: { label: driver, value: 80, share: 0.625 }, attribution: [{ label: driver, value: 80, share: 0.625 }] }],
+          rootDrivers: [{ label: driver, invertedCount: 1, totalValue: 80 }],
+          invertedCount: 1,
+          summary: `1 个目标毛利倒挂；根因主驱动 ${driver}（拉穿 1 个）`,
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

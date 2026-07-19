@@ -73,6 +73,8 @@ const SandboxView = lazy(() => import("@/views/sim/SandboxView"));
 const SimInitWizard = lazy(() => import("@/views/sim/SimInitWizard"));
 // 决策推演页（decision_play 求解器 5 区决策产物·CEO-3）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配）。
 const DecisionPlayView = lazy(() => import("@/views/DecisionPlayView"));
+// 净室归因投影页（shared_bottleneck/concentration_risk/margin_attribution 三通用求解器接地）：专用 route，直挂 renderer。
+const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -126,6 +128,8 @@ export const routes: RouteObject[] = [
       { path: "v/sim-init", element: <SimInitGuard /> },
       // 决策推演页专用 route（decision_play 5 区决策产物·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/decision-play", element: lazyWrap(<DecisionPlayView />) },
+      // 净室归因投影页专用 route（三通用求解器·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      { path: "v/cleanroom-attr", element: lazyWrap(<CleanroomAttrView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）
