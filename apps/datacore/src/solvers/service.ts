@@ -1435,6 +1435,7 @@ export class SolverService {
         DSO: "dsoId",
         Customer: "custId",
         Equipment: "equipId",
+        GrossMarginBridge: "bridgeId", // WO-TIER3 毛利域 drill（gross_profit 专属域·唯一引擎触点）
       }[type] ?? "id";
       const row = rows.find((r) => str(r[pkField]) === id);
       return row ? num(row[field]) : 0;

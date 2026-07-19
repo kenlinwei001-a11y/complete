@@ -250,7 +250,7 @@ describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
     { factorId: "cf-churn", drillType: "Customer", drillId: "cust_0", drillField: "maxOverdueDays", isRoot: true, metricKey: "revenue" },
     // cash
     { factorId: "cf-cash-gap", drillType: "ARAging", drillId: "ar-total", drillField: "amount", isRoot: false, metricKey: "cash" },
-    { factorId: "cf-ar-aging", drillType: "ARAging", drillId: "ar-90plus", drillField: "bucket", isRoot: true, metricKey: "cash" },
+    { factorId: "cf-ar-aging", drillType: "ARAging", drillId: "ar-90plus", drillField: "amount", isRoot: true, metricKey: "cash" }, // WO-TIER3 加固：bucket→amount（num("90+")→0 修）
     { factorId: "cf-dso-stretch", drillType: "DSO", drillId: "dso-ess", drillField: "days", isRoot: true, metricKey: "cash" },
     { factorId: "cf-customer-concentration", drillType: "Customer", drillId: "cust_0", drillField: "receivables", isRoot: true, metricKey: "cash" },
     // demand_attain
