@@ -12,6 +12,7 @@ import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
+import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -663,24 +664,7 @@ function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
 
 type MitPlan = { key: string; name: string; eff: number; tn: number; cost: string; risk?: string; score: number };
 
-/** CI-b「对症根因」对齐：越线/方案因子 → 根因树结构节点关键词。命中即真链（同一 gap_attribution 投影出处）。 */
-function matchRootCause(factor: string, rootCauseFactors: string[]): string | null {
-  const groups: [RegExp, RegExp][] = [
-    [/物料|齐套|正极|电解液|隔膜/, /物料|正极|短缺|电解液|隔膜/],
-    [/设备|OEE|化成|柜/, /设备|OEE/],
-    [/瓶颈|工序|产能/, /瓶颈|工序|产能/],
-    [/换型|排产|冲突/, /换型|排产|冲突/],
-    [/人力|工时/, /人力|工时/],
-    [/物流|运输/, /物流|运输|订单/],
-  ];
-  for (const [fRe, rRe] of groups) {
-    if (fRe.test(factor)) {
-      const hit = rootCauseFactors.find((l) => rRe.test(l));
-      if (hit) return hit;
-    }
-  }
-  return null;
-}
+// CI-b「对症根因」对齐词表已外置到 config/riskFactorTaxonomy（R14：锂电领域关键词不内联视图·换行业只改配置层）。
 
 /**
  * CI-b 对症方案 + 方案比对推演链（可信=过程可见）：mitigation_select 真求解器优选。
@@ -704,7 +688,7 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
   // 综合评分降序 = 求解器优选序（真出处·排名供「为何推荐」）。
   const ranked = [...plans].sort((a, b) => b.score - a.score);
   const rankOf = (key: string) => ranked.findIndex((p) => p.key === key) + 1;
-  const matched = matchRootCause(factor, rootCauseFactors);
+  const matched = matchRiskFactorToRootCause(factor, rootCauseFactors);
 
   return (
     <div>
