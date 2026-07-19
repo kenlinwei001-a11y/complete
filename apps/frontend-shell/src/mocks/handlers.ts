@@ -49,6 +49,7 @@ import {
   mockPlanGenerate,
   mockSopAdvance,
   PLAN_VERSION_CURRENT,
+  SOP_SUPPLY_BASELINE,
   SopMockError,
   sopPlanLocked,
   type MockAuditInput,
@@ -103,6 +104,108 @@ function mockCounterfactual(reqBase?: string): Record<string, unknown> {
     },
     events: [],
     summary: `如不解决「${card.base}·${card.factor}」：峰值削减 ${Math.max(...baseline) - Math.max(...mitigated)}`,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VITE_MOCK 可见性桩：decision_play（CEO-3 决策推演）+ supply_demand_gap_attribution（供需失衡双向归因）。
+// 病根：WO-D 决策页 + 供需 panel 已合入真部署态，但纯 VITE_MOCK=1 态 base mock 对这两 solver invoke 返 404
+// → 两块诚实空，CEO 在 demo 里看不到。此桩**仅 mock 可见性用途**（真部署走真求解器·不覆盖）。
+// 诚实：数字从已有真 fixtures 确定性派生（PLAN_VERSION_CURRENT.input / SOP_SUPPLY_BASELINE / ess 段 / kitGap / oee），
+// 非编造"来自数据库"；结构与真 solver 一字不差（DecisionPlayOutput / SupplyDemandGapOutput 契约）。R6 无随机·字节一致。
+const r1 = (x: number) => Math.round(x * 10) / 10;
+const r2 = (x: number) => Math.round(x * 100) / 100;
+const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
+
+/**
+ * decision_play mock（CEO-3·5 区决策产物）：根因 seg_attain_ess 缺口从 ess 段（target 139.2 / 实绩 100.5·fixtures.ts:488）
+ * 派生 → 3 对症方案（solver+agent·带 provenance 下钻真对象）→ 比对矩阵 → 触发规则 → 推荐组合 + 差距收窄试算。
+ * 自洽：narrowedPct = totalClosesGap/beforeGap（活算·非写死）；afterGap = beforeGap − totalClosesGap。
+ */
+function mockDecisionPlay(): Record<string, unknown> {
+  // 根因缺口：储能达成率 = 实绩/目标（fixtures ess 段）→ gap = (1 − 100.5/139.2)×100 ≈ 27.8%（与 gap_attribution 桩同源）。
+  const essTarget = PLAN_VERSION_CURRENT.input.seg_ess; // 139.2（fixtures.ts:488 / simSolvers 同源）
+  const essActual = 100.5; // 储能 lastActual（fixtures.ts:488 sopConfig.segments）——实绩偏弱下修
+  const gap = r1((1 - essActual / essTarget) * 100); // 27.8
+  const options = [
+    { optionId: "opt-backup-cert", factorId: "cf-upstream-cut", label: "缩短备份供应商认证周期", sourceKind: "solver",
+      closesGap: 3.2, cost: 248, cycleDays: 112, risk: 0.25, exposure: 0.23, reversibility: 0.8,
+      provenance: { kind: "求解器", basis: "BackupSupplierPool.certWeeks（认证周期越长 → 备份池上量越慢）", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillValue: 16 } },
+    { optionId: "opt-lta-clause", factorId: "cf-upstream-cut", label: "长协加价格联动条款", sourceKind: "agent",
+      closesGap: 4.1, cost: 90, cycleDays: 30, risk: 0.2, exposure: 0.075, reversibility: 0.9,
+      provenance: { kind: "策略推理", basis: "LongTermAgreement.priceLinked（未挂联动 → 违约敞口）", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: 0 } },
+    { optionId: "opt-insource", factorId: "cf-upstream-cut", label: "上游自采矿+战略储备", sourceKind: "agent",
+      closesGap: 5.5, cost: 1160, cycleDays: 180, risk: 0.55, exposure: 0.05, reversibility: 0.2,
+      provenance: { kind: "策略推理", basis: "正极供应缺口（LTA 约定−实际交付吨）", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: 600 } },
+  ];
+  const matrix = options.map((o) => ({ optionId: o.optionId, label: o.label,
+    dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility } }));
+  // 推荐组合 = 低代价高补缺口两项（长协联动 + 备份认证）；重叠去化后组合补缺口取 6.1（供应可解决权重上限·非简单相加）。
+  const recOptionIds = ["opt-lta-clause", "opt-backup-cert"];
+  const totalClosesGap = 6.1;
+  const totalCost = options.filter((o) => recOptionIds.includes(o.optionId)).reduce((s, o) => s + o.cost, 0); // 90+248=338
+  const afterGap = r1(gap - totalClosesGap); // 21.7
+  const narrowedPct = r2((totalClosesGap / gap) * 100); // 21.94（活算·自洽）
+  return {
+    rootCause: { factorId: "cf-upstream-cut", label: "上游减供", metricKey: "seg_attain_ess", gap, unit: "%" },
+    options,
+    matrix,
+    triggers: [
+      { triggerId: "trig-backup-cert", signalRef: "licarb_pct_cum", signalValue: 14.29, op: ">", threshold: 12, fired: true, action: "启动备份供应商认证", thresholdSource: "trigger.default" },
+      { triggerId: "trig-fx-hedge", signalRef: "usd_cny", signalValue: 7.18, op: ">", threshold: 8, fired: false, action: "外汇对冲展期", thresholdSource: "trigger.default" },
+      { triggerId: "trig-lta-reprice", signalRef: "li_carbonate_price", signalValue: 96000, op: ">", threshold: 90000, fired: true, action: "长协重定价谈判", thresholdSource: "trigger.default" },
+    ],
+    recommendedPlan: {
+      planId: "plan-cf-upstream-cut", optionIds: recOptionIds,
+      steps: [
+        { phase: "即刻", action: "长协加价格联动条款", optionRef: "opt-lta-clause" },
+        { phase: "本季", action: "缩短备份供应商认证周期", optionRef: "opt-backup-cert" },
+      ],
+      totalClosesGap, totalCost,
+    },
+    sandboxNarrowing: { beforeGap: gap, afterGap, narrowedPct, ticks: 0 },
+    summary: `根因「上游减供」(储能达成率缺口 ${gap}%) → 3 方案比对·推荐组合 2 项补 ${totalClosesGap}%(收窄 ${narrowedPct}%)·2/3 触发规则 fire`,
+  };
+}
+
+/**
+ * supply_demand_gap_attribution mock（供需失衡双向归因·勾稽 Σ=G）：总缺口 G = 需求(dem 375.0) − 供给基线(367.9·SOP_SUPPLY_BASELINE)
+ * → 需求端(预测虚高) ⊥ 供给端(物料/OEE) + residual。侧/叶贡献确定性分摊，last 叶取余保证 Σ 精确=父（非写死叙事）。
+ * 诚实：供给端**不含** capacity_gap 叶（Line.capacityDaily 未落·忠于 demo 种子）→ 前端渲「产能数据未接·诚实空」，绝不编造产能占比。
+ */
+function mockSupplyDemandGap(): Record<string, unknown> {
+  const dem = PLAN_VERSION_CURRENT.input.dem; // 375.0（三段 rolling 合计·fixtures.ts:484）
+  const G = r1(dem - SOP_SUPPLY_BASELINE); // 375.0 − 367.9 = 7.1
+  // 侧分摊（预测虚高 → 需求端主导·residual 15%·非五五开）：demand 5.0 / supply 1.0 / residual 1.1（Σ=7.1）。
+  const demandContribution = r1(G * 0.704); // ≈5.0
+  const supplyContribution = r1(G * 0.141); // ≈1.0
+  const residual = r1(G - demandContribution - supplyContribution); // 1.1（取余保证 Σ=G）
+  const demandDrivers = [
+    { id: "seg_bias:ess", factor: "储能 预测偏差（rolling−实绩）", contribution: r1(demandContribution * 0.84), share: r4(0.84), unit: "万套", driverValue: 33.3,
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: "ess", drillField: "rolling−lastActual", drillValue: 33.3 } },
+    { id: "order_backlog", factor: "在手订单需求（OPEN 未交付折口径）", contribution: 0, share: 0, unit: "万套", driverValue: 108.4,
+      provenance: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "p90", drillValue: 108.4 } },
+  ];
+  demandDrivers[1]!.contribution = r1(demandContribution - demandDrivers[0]!.contribution); // 取余 → Σ叶=侧
+  demandDrivers[1]!.share = r4(demandDrivers[1]!.contribution / demandContribution);
+  const supplyDrivers = [
+    // 无 capacity_gap 叶（capacityDaily 未落）——诚实缺，非编造。仅物料/OEE 真叶。
+    { id: "material_gap", factor: "正极物料缺口（ΣkitGap 折万套）", contribution: 0, share: 0, unit: "万套", driverValue: PLAN_VERSION_CURRENT.input.kitGap /* 654 */,
+      provenance: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "kitGap", drillValue: PLAN_VERSION_CURRENT.input.kitGap } },
+    { id: "oee_loss", factor: "设备 OEE 损失（1−oee_current×产能）", contribution: r1(supplyContribution * 0.3), share: r4(0.3), unit: "万套", driverValue: 0.84,
+      provenance: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: 0.84 } },
+  ];
+  supplyDrivers[0]!.contribution = r1(supplyContribution - supplyDrivers[1]!.contribution); // 取余 → Σ叶=侧
+  supplyDrivers[0]!.share = r4(supplyDrivers[0]!.contribution / supplyContribution);
+  const sumChildren = r1(demandContribution + supplyContribution);
+  return {
+    rootMetric: { key: "sop_demand_supply", name: "产销供需缺口", unit: "万套", gap: G },
+    totalGap: G, unit: "万套",
+    demandSide: { contribution: demandContribution, share: r4(demandContribution / G), pct: Math.round((demandContribution / G) * 100), drivers: demandDrivers },
+    supplySide: { contribution: supplyContribution, share: r4(supplyContribution / G), pct: Math.round((supplyContribution / G) * 100), drivers: supplyDrivers },
+    residual, reconChecks: [{ label: "Σ子=父", parentGap: G, sumChildren, residual, ok: r1(sumChildren + residual) === G }],
+    reconciled: true, residualPct: Math.round((residual / G) * 100),
+    summary: `产销缺口 ${G}万套 双向归因：需求端(预测虚高) ${Math.round((demandContribution / G) * 100)}% ⊥ 供给端(物料/OEE) ${Math.round((supplyContribution / G) * 100)}%，residual ${Math.round((residual / G) * 100)}%（产能数据未接·诚实空）`,
   };
 }
 
@@ -1049,6 +1152,9 @@ export const handlers = [
       const base = typeof invArgs.base === "string" && invArgs.base !== "" ? invArgs.base : undefined;
       return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
+    // VITE_MOCK 可见性桩（仅 mock 态·真部署走真 solver）：决策推演页 + 供需双向归因 panel。
+    if (key === "decision_play") return HttpResponse.json({ data: mockDecisionPlay(), snapshotVersion: "ov-12" });
+    if (key === "supply_demand_gap_attribution") return HttpResponse.json({ data: mockSupplyDemandGap(), snapshotVersion: "ov-12" });
     if (key === "mitigation_select")
       // cockpit P3 对症方案优选（与 params.risk.mitigations 同源形状）
       return HttpResponse.json({
@@ -1973,6 +2079,9 @@ export const handlers = [
       const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
       return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
+    // VITE_MOCK 可见性桩（/b/v1 等价·与 /a/v1 invoke 同口径）：决策推演 + 供需双向归因。
+    if (key === "decision_play") return HttpResponse.json({ data: mockDecisionPlay(), snapshotVersion: "ov-12" });
+    if (key === "supply_demand_gap_attribution") return HttpResponse.json({ data: mockSupplyDemandGap(), snapshotVersion: "ov-12" });
     if (key === "mrp_netting")
       return HttpResponse.json({
         data: {
