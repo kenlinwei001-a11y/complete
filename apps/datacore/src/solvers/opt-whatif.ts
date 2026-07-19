@@ -28,6 +28,16 @@ function objOf(out: Record<string, unknown>): number | null {
   return feasible && typeof out.objective === "number" ? out.objective : null;
 }
 
+/** WO-CROSS-OBJECT-MULTIOBJ：取多目标各目标值（multi_objective/cross_object_occupancy 回报 objectiveValues）。 */
+function objValuesOf(out: Record<string, unknown>): Record<string, number> | null {
+  const feasible = out.status !== "INFEASIBLE";
+  const ov = out.objectiveValues;
+  if (!feasible || ov == null || typeof ov !== "object") return null;
+  const r: Record<string, number> = {};
+  for (const [k, v] of Object.entries(ov as Record<string, unknown>)) if (typeof v === "number") r[k] = v;
+  return r;
+}
+
 /**
  * DF.8 接地：扰动 target 必须指向**基线 args 内已存在的可寻址参数**（role/对象 id/参数键），
  * 绝不凭空造目标。target 语法（与 5 核心 args 对齐，多行业通用）：
@@ -42,6 +52,9 @@ function resolveTarget(args: Record<string, unknown>, target: string): { ok: boo
   if (target === "objective.weight") return { ok: true };
   const parts = target.split(".");
   if (parts.length < 2) return { ok: false, reason: `target '${target}' 语法须为 <collection>.<id>[.<field>]` };
+  // WO-CROSS-OBJECT-MULTIOBJ：多目标权重扰动 "objectives.<key>.weight"——objectives 按 key 匹配（非 id）。
+  // 权重是"新增/调整目标权重"，即便基线 args 未显式给该目标（用默认权重）也允许，故此处放行（applyOne 负责创建/更新）。
+  if (parts[0] === "objectives") return { ok: true };
   const coll = (args as Record<string, unknown>)[parts[0]!];
   if (!Array.isArray(coll)) return { ok: false, reason: `target 集合 '${parts[0]}' 不在 args 内（DF.8：扰动不得指向本体/参数外）` };
   const id = parts[1]!;
@@ -56,6 +69,25 @@ function resolveTarget(args: Record<string, unknown>, target: string): { ok: boo
 
 /** 把单条扰动施加到 args 克隆（in-place）。返回受影响的约束族 key（供冲突上报）。 */
 function applyOne(args: Record<string, unknown>, p: OptPerturbation): string {
+  // WO-CROSS-OBJECT-MULTIOBJ：多目标"设某目标权重" "objectives.<key>.weight"（objectives 按 key 匹配；缺省则以默认权重 1 创建）。
+  // 须先于下面"全局系数缩放"分支——否则 change_objective_weight 会被误当作全局缩放（掩盖多目标权衡）。
+  if (p.target.startsWith("objectives.")) {
+    const id = p.target.split(".")[1]!;
+    let coll = args.objectives as Record<string, unknown>[] | undefined;
+    if (!Array.isArray(coll)) {
+      coll = [];
+      args.objectives = coll;
+    }
+    let obj = coll.find((e) => String(e.key) === id);
+    if (!obj) {
+      obj = { key: id, weight: 1 };
+      coll.push(obj);
+    }
+    const w = typeof p.value === "number" ? p.value : Number(p.value);
+    if (!Number.isFinite(w)) throw validationError(`objectives.${id}.weight 的 value 须为数值`);
+    obj.weight = w;
+    return `objectives.${id}.weight`;
+  }
   if (p.kind === "change_objective_weight" || p.target === "objective.weight") {
     // 全局目标系数缩放：对所有成本/价值字段乘以权重（universal，确定性）。
     const w = typeof p.value === "number" ? p.value : Number(p.value);
@@ -122,9 +154,23 @@ export async function runOptimizeWhatif(
   const deltaObjective =
     baselineObjective != null && perturbedObjective != null ? Math.round((perturbedObjective - baselineObjective) * 1e6) / 1e6 : null;
 
+  // WO-CROSS-OBJECT-MULTIOBJ：多目标 Δ 分解——各目标（营收/违约金/换型…）扰动前后各算 Δ（改权重→各目标 Δ 分别算）。
+  const baseVals = objValuesOf(baseOut);
+  const newVals = objValuesOf(newOut);
+  let deltaByObjective: Record<string, number> | undefined;
+  if (baseVals && newVals) {
+    deltaByObjective = {};
+    for (const k of new Set([...Object.keys(baseVals), ...Object.keys(newVals)])) {
+      const b = baseVals[k] ?? 0, n = newVals[k] ?? 0;
+      deltaByObjective[k] = Math.round((n - b) * 1e6) / 1e6;
+    }
+  }
+
   const explanation = feasible
-    ? `扰动 ${sorted.length} 条 → 目标 ${baselineObjective ?? "—"} → ${perturbedObjective ?? "—"}（Δ=${deltaObjective ?? "—"}）`
+    ? deltaByObjective
+      ? `扰动 ${sorted.length} 条 → 各目标 Δ：${Object.entries(deltaByObjective).map(([k, d]) => `${k} ${d >= 0 ? "+" : ""}${d}`).join("、")}`
+      : `扰动 ${sorted.length} 条 → 目标 ${baselineObjective ?? "—"} → ${perturbedObjective ?? "—"}（Δ=${deltaObjective ?? "—"}）`
     : `扰动 ${sorted.length} 条 → 不可行；冲突约束族：${conflictConstraints.join("、") || "—"}`;
 
-  return { baselineObjective, perturbedObjective, deltaObjective, feasible, conflictConstraints, explanation };
+  return { baselineObjective, perturbedObjective, deltaObjective, deltaByObjective, feasible, conflictConstraints, explanation };
 }

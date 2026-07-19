@@ -524,6 +524,299 @@ def solve_combinatorial_auction(payload: dict) -> dict:
     return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "winners": winners, "objective": round(obj, 6)}
 
 
+# ── WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（加权/ε-约束/字典序） ──────────────
+# 病根修：既有 9 模型每个单一 Maximize/Minimize（`*big`+tie-break 只是消抖非多目标），
+# 表达不了「营收↑且违约金↓且换型↓」的冲突权衡。这里加通用多目标合成引擎 + 跨对象三元占用模型。
+# 照抄确定性红线：num_search_workers=1 + random_seed + 不设挂钟时限 + to_int(scale) + 二级 tie-break。
+
+_WEIGHT_SCALE = 1000  # 权重定点化（支持小数权重，如 0.7/0.3）。
+
+
+def _new_solver(seed: int) -> "cp_model.CpSolver":
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    # 不设 max_time_in_seconds（挂钟时限破坏可复现性 R6）。
+    return solver
+
+
+def _expr(terms, const=0):
+    """把 [(coef_int, var)] + 常量 → CP-SAT 线性表达式。"""
+    e = const
+    for c, v in terms:
+        e = e + c * v
+    return e
+
+
+def _eval(terms, solver, const=0) -> int:
+    """在已解模型上求某目标表达式的整数值（用于分目标回报/字典序钉值）。"""
+    return const + sum(c * solver.Value(v) for c, v in terms)
+
+
+def _optimize_multi(model, objectives, method, *, seed, big, tiebreak, epsilon=None, priority=None):
+    """通用多目标求解引擎（三 method）。
+
+    objectives: [{key, sense:'max'|'min', terms:[(coef_int,var)], const:int}]（terms/const 均已 scale 定点化）。
+    method:
+      - weighted:  各目标按 weight 归一线性合成单 Maximize（min 取负），tie-break 消抖。
+      - epsilon:   主目标(objectives[0])为目标，其余转 ε-约束（epsilon[{key,bound}] 给界）。
+      - lexicographic: 按 priority(或声明序)逐目标多轮 Solve——先求目标1最优、钉为等式约束，再求目标2…（seed 固定 R6）。
+    返回 (status, solver)。tie-break：`总目标*big - Σ(k+1)*var`（big 大于 tie-break 上界，不影响真最优）。
+    """
+    by_key = {o["key"]: o for o in objectives}
+
+    def sense_sign(o):
+        return 1 if o["sense"] == "max" else -1
+
+    if method == "lexicographic":
+        order = priority or [o["key"] for o in objectives]
+        solver = None
+        for key in order:
+            o = by_key[key]
+            model.Maximize(sense_sign(o) * _expr(o["terms"], o.get("const", 0)) * big - tiebreak)
+            solver = _new_solver(seed)
+            status = solver.Solve(model)
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                return status, solver
+            # 钉住本目标最优值为等式约束（后续目标在此约束下再求），确定性逐级收敛。
+            v = _eval(o["terms"], solver, o.get("const", 0))
+            model.Add(_expr(o["terms"], o.get("const", 0)) == v)
+        return cp_model.OPTIMAL, solver
+
+    if method == "epsilon":
+        primary = objectives[0]
+        bounds = {e["key"]: e["bound"] for e in (epsilon or [])}
+        for o in objectives[1:]:
+            if o["key"] not in bounds:
+                continue
+            b = int(bounds[o["key"]])  # bound 已按 scale 传入定点值
+            e = _expr(o["terms"], o.get("const", 0))
+            if o["sense"] == "max":
+                model.Add(e >= b)   # 次目标须不低于 ε 下界
+            else:
+                model.Add(e <= b)   # 次目标须不高于 ε 上界
+        model.Maximize(sense_sign(primary) * _expr(primary["terms"], primary.get("const", 0)) * big - tiebreak)
+        solver = _new_solver(seed)
+        status = solver.Solve(model)
+        return status, solver
+
+    # weighted（默认）：Σ sign·weight·目标 → 单 Maximize。
+    combined = 0
+    for o in objectives:
+        w = int(round(float(o.get("weight", 1.0)) * _WEIGHT_SCALE))
+        combined = combined + sense_sign(o) * w * _expr(o["terms"], o.get("const", 0))
+    model.Maximize(combined * big - tiebreak)
+    solver = _new_solver(seed)
+    status = solver.Solve(model)
+    return status, solver
+
+
+def solve_multi_objective(payload: dict) -> dict:
+    """多目标最优化（加权/ε-约束/字典序）·零业务名 R14。
+
+    协议：{model:"multi_objective", seed, scale,
+           vars:[{id, kind:"bool"|"int", lo?, hi?}],
+           constraints:[{terms:[{var,coef}], op:"<="|">="|"==", rhs}],
+           objectives:[{key, sense:"max"|"min", terms:[{var,coef}], weight?}],
+           method:"weighted"|"epsilon"|"lexicographic",
+           epsilon?:[{key,bound}], priority?:[key...]}
+    返回：{status, optimal, values:{varId:val}, objectiveValues:{key:val}, method}
+    （每目标值分别回报 → 前端 Δ 分解用）。可对小规模枚举全解对拍验证 = 全局最优。
+    """
+    var_specs = payload.get("vars") or []
+    if not var_specs:
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "method": payload.get("method", "weighted")}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+    method = payload.get("method", "weighted")
+
+    def to_int(x) -> int:
+        return int(round(float(x) * scale))
+
+    model = cp_model.CpModel()
+    varmap = {}
+    order = []  # 稳定 tie-break 顺序
+    for spec in var_specs:
+        vid = str(spec["id"])
+        kind = spec.get("kind", "bool")
+        if kind == "bool":
+            varmap[vid] = model.NewBoolVar(f"v_{vid}")
+        else:
+            lo = int(spec.get("lo", 0))
+            hi = int(spec.get("hi", 1))
+            varmap[vid] = model.NewIntVar(lo, hi, f"v_{vid}")
+        order.append(vid)
+
+    for c in payload.get("constraints") or []:
+        terms = [(to_int(t.get("coef", 0)), varmap[str(t["var"])]) for t in (c.get("terms") or []) if str(t["var"]) in varmap]
+        rhs = to_int(c.get("rhs", 0))
+        op = c.get("op", "<=")
+        expr = _expr(terms)
+        if op == "<=":
+            model.Add(expr <= rhs)
+        elif op == ">=":
+            model.Add(expr >= rhs)
+        else:
+            model.Add(expr == rhs)
+
+    objectives = []
+    for o in payload.get("objectives") or []:
+        terms = [(to_int(t.get("coef", 0)), varmap[str(t["var"])]) for t in (o.get("terms") or []) if str(t["var"]) in varmap]
+        objectives.append({"key": str(o["key"]), "sense": o.get("sense", "max"), "terms": terms, "const": 0, "weight": o.get("weight", 1.0)})
+    if not objectives:
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "method": method}
+
+    # tie-break：Σ(k+1)·var（稳定序），big 大于其上界 → 不影响真最优，仅消多解抖动（R6）。
+    tb_terms = []
+    tb_max = 0
+    for k, vid in enumerate(order):
+        v = varmap[vid]
+        hi = 1 if var_specs[k].get("kind", "bool") == "bool" else int(var_specs[k].get("hi", 1))
+        tb_terms.append(((k + 1), v))
+        tb_max += (k + 1) * max(hi, 0)
+    tiebreak = _expr(tb_terms)
+    big = tb_max + 1
+
+    epsilon = payload.get("epsilon")
+    if epsilon:
+        epsilon = [{"key": e["key"], "bound": to_int(e["bound"])} for e in epsilon]
+    status, solver = _optimize_multi(model, objectives, method, seed=seed, big=big, tiebreak=tiebreak, epsilon=epsilon, priority=payload.get("priority"))
+
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "method": method}
+    values = {vid: int(solver.Value(varmap[vid])) for vid in order}
+    objective_values = {o["key"]: round(_eval(o["terms"], solver, o.get("const", 0)) / scale, 6) for o in objectives}
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "values": values,
+        "objectiveValues": objective_values,
+        "method": method,
+    }
+
+
+def solve_cross_object_occupancy(payload: dict) -> dict:
+    """跨对象占用最优化（订单×产线×合同 三元互斥）·零业务名 R14。
+
+    协议：{model:"cross_object_occupancy", seed, scale,
+           orders:[{id, revenue, penalty, contractId, qty}],
+           lines:[{id, capacity}], contracts:[{id, cap}],
+           eligibility:[{order, line, cost}],
+           objectives?:[{key:"revenue"|"penalty"|"cost", weight?}], method?, epsilon?, priority?}
+    变量 x[o,l]∈{0,1} + served[o]∈{0,1}。约束：
+      · 每订单至多一线      Σ_l x[o,l] == served[o]
+      · 产线占用互斥        Σ_o qty·x[o,l] <= capacity[l]
+      · 合同额度            Σ_{o∈c} qty·served[o] <= cap[c]
+    目标 max Σserved·revenue − Σ(1−served)·penalty − Σx·cost（拆 3 目标走 weighted/epsilon/lexicographic）。
+    返回含 occupancy/displaced(被挤订单)/objectiveValues/summary。
+    """
+    orders = payload.get("orders") or []
+    lines = payload.get("lines") or []
+    contracts = payload.get("contracts") or []
+    eligibility = payload.get("eligibility") or []
+    if not orders or not lines:
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "occupancy": [], "displaced": [], "summary": "missing orders or lines"}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+    method = payload.get("method", "weighted")
+
+    def to_int(x) -> int:
+        return int(round(float(x) * scale))
+
+    order_ids = [str(o["id"]) for o in orders]
+    revenue = {str(o["id"]): to_int(o.get("revenue", 0)) for o in orders}
+    penalty = {str(o["id"]): to_int(o.get("penalty", 0)) for o in orders}
+    qty = {str(o["id"]): to_int(o.get("qty", 0)) for o in orders}
+    contract_of = {str(o["id"]): (str(o["contractId"]) if o.get("contractId") is not None else None) for o in orders}
+    line_ids = [str(l["id"]) for l in lines]
+    capacity = {str(l["id"]): to_int(l.get("capacity", 0)) for l in lines}
+    cap_of = {str(c["id"]): to_int(c.get("cap", 0)) for c in contracts}
+    elig_cost = {(str(e["order"]), str(e["line"])): to_int(e.get("cost", 0)) for e in eligibility}
+
+    model = cp_model.CpModel()
+    x = {(o, l): model.NewBoolVar(f"x_{o}_{l}") for (o, l) in elig_cost}
+    served = {o: model.NewBoolVar(f"s_{o}") for o in order_ids}
+
+    # 每订单至多一线：Σ_l x[o,l] == served[o]（无资格线的订单 served 强制 0）。
+    for o in order_ids:
+        xs = [x[(o, l)] for l in line_ids if (o, l) in x]
+        if xs:
+            model.Add(sum(xs) == served[o])
+        else:
+            model.Add(served[o] == 0)
+    # 产线占用互斥：Σ_o qty·x[o,l] <= capacity[l]。
+    for l in line_ids:
+        model.Add(sum(qty[o] * x[(o, l)] for o in order_ids if (o, l) in x) <= capacity[l])
+    # 合同额度：Σ_{o∈c} qty·served[o] <= cap[c]。
+    for c, cap in cap_of.items():
+        members = [o for o in order_ids if contract_of[o] == c]
+        if members:
+            model.Add(sum(qty[o] * served[o] for o in members) <= cap)
+
+    # 三目标（terms 已 scale 定点化；const 供违约金常量项）。
+    rev_terms = [(revenue[o], served[o]) for o in order_ids]
+    # 违约金 = Σ penalty[o]·(1−served) = Σpenalty − Σ penalty·served。
+    pen_terms = [(-penalty[o], served[o]) for o in order_ids]
+    pen_const = sum(penalty[o] for o in order_ids)
+    cost_terms = [(elig_cost[(o, l)], x[(o, l)]) for (o, l) in x]
+
+    weights = {"revenue": 1.0, "penalty": 1.0, "cost": 1.0}
+    for ob in payload.get("objectives") or []:
+        weights[str(ob["key"])] = ob.get("weight", 1.0)
+    objectives = [
+        {"key": "revenue", "sense": "max", "terms": rev_terms, "const": 0, "weight": weights["revenue"]},
+        {"key": "penalty", "sense": "min", "terms": pen_terms, "const": pen_const, "weight": weights["penalty"]},
+        {"key": "cost", "sense": "min", "terms": cost_terms, "const": 0, "weight": weights["cost"]},
+    ]
+
+    # tie-break：稳定序 served 后接 x（消多解抖动 R6）。
+    tb_terms = []
+    idx = 1
+    for o in order_ids:
+        tb_terms.append((idx, served[o]))
+        idx += 1
+    for (o, l) in sorted(x.keys()):
+        tb_terms.append((idx, x[(o, l)]))
+        idx += 1
+    tiebreak = _expr(tb_terms)
+    big = idx + 1
+
+    epsilon = payload.get("epsilon")
+    if epsilon:
+        epsilon = [{"key": e["key"], "bound": to_int(e["bound"])} for e in epsilon]
+    status, solver = _optimize_multi(model, objectives, method, seed=seed, big=big, tiebreak=tiebreak, epsilon=epsilon, priority=payload.get("priority"))
+
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "occupancy": [], "displaced": [], "summary": "不可行"}
+
+    occupancy = sorted(
+        ({"order": o, "line": l} for (o, l) in x if solver.Value(x[(o, l)]) == 1),
+        key=lambda a: (a["order"], a["line"]),
+    )
+    displaced = sorted(o for o in order_ids if solver.Value(served[o]) == 0)
+    values = {o: int(solver.Value(served[o])) for o in order_ids}
+    for (o, l) in x:
+        values[f"x_{o}_{l}"] = int(solver.Value(x[(o, l)]))
+    objective_values = {ob["key"]: round(_eval(ob["terms"], solver, ob.get("const", 0)) / scale, 6) for ob in objectives}
+    served_count = len(order_ids) - len(displaced)
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "values": values,
+        "objectiveValues": objective_values,
+        "occupancy": occupancy,
+        "displaced": displaced,
+        "method": method,
+        "summary": (
+            f"占用：{served_count}/{len(order_ids)} 单获排（占 {len(line_ids)} 线），"
+            f"被挤 {len(displaced)} 单；营收 {objective_values['revenue']}、违约金 {objective_values['penalty']}、换型成本 {objective_values['cost']}"
+            f"（{'可证最优' if status == cp_model.OPTIMAL else '可行解'}）"
+        ),
+    }
+
+
 MODELS = {
     "selection": solve_selection,
     "assignment": solve_assignment,
@@ -535,6 +828,9 @@ MODELS = {
     "set_cover": solve_set_cover,
     "independent_set": solve_independent_set,
     "combinatorial_auction": solve_combinatorial_auction,
+    # WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）+ 跨对象占用（订单×产线×合同三元互斥）。
+    "multi_objective": solve_multi_objective,
+    "cross_object_occupancy": solve_cross_object_occupancy,
 }
 
 

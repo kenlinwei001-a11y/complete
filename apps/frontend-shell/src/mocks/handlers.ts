@@ -45,6 +45,7 @@ import { scriptForQuery } from "./sseScripts";
 import {
   mockBottleneckMatrix,
   mockCapacityForecast,
+  mockMultiObj,
   mockPlanAudit,
   mockPlanGenerate,
   mockSopAdvance,
@@ -1985,6 +1986,10 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用 + 多目标 what-if（mock 形状，真求解走 CP-SAT sidecar）。
+    if (key === "cross_object_occupancy" || key === "multi_objective" || key === "optimize_whatif") {
+      return HttpResponse.json({ data: mockMultiObj(key, args), snapshotVersion: "ov-12" });
+    }
     if (key === "finance_pnl")
       return HttpResponse.json({
         data: {

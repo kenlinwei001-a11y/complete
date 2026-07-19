@@ -106,7 +106,10 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "set_cover", name: "集合覆盖", description: "通用集合覆盖最优化（CP-SAT 可证最优）：用最小成本子集覆盖全部元素。", argHints: { universe: "待覆盖元素集", subsets: "候选子集(覆盖/成本)" }, domain: "generic" },
   { key: "independent_set", name: "最大独立集", description: "通用最大权独立集（CP-SAT 可证最优）：在冲突图上选互不相邻的最大权点集。", argHints: { nodes: "节点(权重)", edges: "冲突边" }, domain: "generic" },
   { key: "combinatorial_auction", name: "组合拍卖", description: "通用组合拍卖赢家裁定（CP-SAT 可证最优）：在物品不重复分配约束下最大化中标价值。", argHints: { items: "拍卖物品", bids: "投标(物品组合/出价)" }, domain: "generic" },
-  { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic" },
+  { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束（多目标模板另回 deltaByObjective 各目标 Δ 分解）。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic" },
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（CP-SAT 可证最优；对小规模枚举全解对拍）。
+  { key: "multi_objective", name: "多目标最优化", description: "一次求解权衡多个冲突目标（营收↑且违约金↓且换型↓），支持加权/ε-约束/字典序三法；每目标值分别回报，改权重→最优真漂移。CP-SAT 可证最优（非贪心/启发式）。", argHints: { vars: "决策变量(bool/int)", constraints: "线性约束", objectives: "多目标(sense/weight)", method: "weighted|epsilon|lexicographic" }, domain: "generic" },
+  { key: "cross_object_occupancy", name: "跨对象占用最优化", description: "订单×产线×合同三元互斥占用（一单占某线=同耗产线产能+合同额度、同线互斥）→ 最优指派 + 被挤订单(displaced)；改产线/合同颗粒→占用真变。CP-SAT 可证最优。", argHints: { orders: "订单(营收/违约金/合同/量)", lines: "产线(产能)", contracts: "合同(额度)", eligibility: "订单-产线可产对(成本)" }, domain: "generic" },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */

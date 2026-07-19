@@ -100,6 +100,12 @@ export const SOLVER_KEYS = [
   "set_cover",
   "independent_set",
   "combinatorial_auction",
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）：一次求解权衡多个冲突目标（营收↑且违约金↓且换型↓），
+  // 每目标值分别回报（前端 Δ 分解用）；改权重→最优真漂移。CP-SAT 可证最优（对小规模枚举全解对拍）。
+  "multi_objective",
+  // WO-CROSS-OBJECT-MULTIOBJ 跨对象占用（订单×产线×合同三元互斥）：一单占某线时段=同耗产线产能+合同额度、同(线)互斥，
+  // 求最优指派 + 被挤订单(displaced)；改产线/合同颗粒→占用真变（SEAM）。CP-SAT 可证最优。
+  "cross_object_occupancy",
   // 轨B·增量3 优化目标级 what-if：结构化扰动→DF.8 接地→sidecar 重解→Δ目标/可行性/冲突约束（FUS1 不进 A18 沙箱）。
   "optimize_whatif",
   // WO-CEO-2 深度反向归因：总目标缺口→结构反向多跳分摊(gap单位·勾稽)+caused_by 因果遍历→~20 叶子原子因素（GAP-ATTR）。
@@ -145,8 +151,11 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   set_cover: ["status", "optimal", "chosen", "objective", "setType", "universeSize", "setCount", "summary"],
   independent_set: ["status", "optimal", "chosen", "objective", "nodeType", "edgeCount", "nodeCount", "summary"],
   combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用 输出形状（权威=求解器实现成功路径顶层 key）。
+  multi_objective: ["status", "optimal", "values", "objectiveValues", "method", "objectiveKeys", "varCount", "objectiveCount", "summary"],
+  cross_object_occupancy: ["status", "optimal", "values", "objectiveValues", "occupancy", "displaced", "method", "orderCount", "lineCount", "contractCount", "servedCount", "summary"],
   // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary）。
-  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "feasible", "conflictConstraints", "explanation", "summary"],
+  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -2459,6 +2468,66 @@ export class SolverService {
     };
   }
 
+  // ── WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）+ 跨对象占用（三元互斥） ──────
+  // 全走 optimizer-client sidecar（FUS1 不进 A18 沙箱）；未配 OPTIMIZER_BASE_URL → 显式"未接入"不兜底。
+
+  /** multi_objective 多目标：vars+constraints+objectives(各带 sense/weight)+method → 每目标值分别回报（前端 Δ 分解用）。 */
+  private async multiObjective(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveMultiObjective) throw validationError("multi_objective 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const vars = asArr<{ id: string; kind: "bool" | "int"; lo?: number; hi?: number }>(args.vars, "vars");
+    const constraints = args.constraints === undefined ? [] : asArr<{ terms: { var: string; coef: number }[]; op: "<=" | ">=" | "=="; rhs: number }>(args.constraints, "constraints");
+    const objectives = asArr<{ key: string; sense: "max" | "min"; terms: { var: string; coef: number }[]; weight?: number }>(args.objectives, "objectives");
+    if (!vars.length || !objectives.length) throw validationError("multi_objective 需 vars[] + objectives[]");
+    const method = (str(args.method) || "weighted") as "weighted" | "epsilon" | "lexicographic";
+    const r = await this.optimizer.solveMultiObjective({
+      model: "multi_objective",
+      seed: Number(args.seed ?? 42),
+      scale: args.scale === undefined ? undefined : Number(args.scale),
+      vars: [...vars].sort((a, b) => a.id.localeCompare(b.id)),
+      constraints,
+      objectives,
+      method,
+      epsilon: args.epsilon === undefined ? undefined : asArr<{ key: string; bound: number }>(args.epsilon, "epsilon"),
+      priority: args.priority === undefined ? undefined : asArr<string>(args.priority, "priority"),
+    });
+    const objectiveKeys = objectives.map((o) => o.key);
+    return {
+      status: r.status, optimal: r.optimal, values: r.values, objectiveValues: r.objectiveValues, method: r.method,
+      objectiveKeys, varCount: vars.length, objectiveCount: objectives.length,
+      summary: `多目标（${method}）：${objectives.length} 目标 / ${vars.length} 变量，各目标值 ${objectiveKeys.map((k) => `${k}=${r.objectiveValues?.[k] ?? "—"}`).join("、")}（${optWord(r)}）`,
+    };
+  }
+
+  /** cross_object_occupancy 跨对象占用：orders×lines×contracts 三元互斥 → 最优指派 + displaced（被挤订单）。 */
+  private async crossObjectOccupancy(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveCrossObjectOccupancy) throw validationError("cross_object_occupancy 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const orders = asArr<{ id: string; revenue: number; penalty: number; contractId?: string; qty: number }>(args.orders, "orders");
+    const lines = asArr<{ id: string; capacity: number }>(args.lines, "lines");
+    const contracts = args.contracts === undefined ? [] : asArr<{ id: string; cap: number }>(args.contracts, "contracts");
+    const eligibility = asArr<{ order: string; line: string; cost: number }>(args.eligibility, "eligibility");
+    if (!orders.length || !lines.length || !eligibility.length) throw validationError("cross_object_occupancy 需 orders[] + lines[] + eligibility[]");
+    const r = await this.optimizer.solveCrossObjectOccupancy({
+      model: "cross_object_occupancy",
+      seed: Number(args.seed ?? 42),
+      scale: args.scale === undefined ? undefined : Number(args.scale),
+      orders: [...orders].sort((a, b) => a.id.localeCompare(b.id)),
+      lines: [...lines].sort((a, b) => a.id.localeCompare(b.id)),
+      contracts: [...contracts].sort((a, b) => a.id.localeCompare(b.id)),
+      eligibility: [...eligibility].sort((a, b) => a.order.localeCompare(b.order) || a.line.localeCompare(b.line)),
+      objectives: args.objectives === undefined ? undefined : asArr<{ key: "revenue" | "penalty" | "cost"; weight?: number }>(args.objectives, "objectives"),
+      method: args.method === undefined ? undefined : (str(args.method) as "weighted" | "epsilon" | "lexicographic"),
+      epsilon: args.epsilon === undefined ? undefined : asArr<{ key: string; bound: number }>(args.epsilon, "epsilon"),
+      priority: args.priority === undefined ? undefined : asArr<string>(args.priority, "priority"),
+    });
+    return {
+      status: r.status, optimal: r.optimal, values: r.values, objectiveValues: r.objectiveValues,
+      occupancy: r.occupancy, displaced: r.displaced, method: r.method,
+      orderCount: orders.length, lineCount: lines.length, contractCount: contracts.length,
+      servedCount: orders.length - r.displaced.length,
+      summary: r.summary,
+    };
+  }
+
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const stored = (rec?.params ?? {}) as Record<string, unknown>;
@@ -2753,6 +2822,9 @@ export class SolverService {
     if (solverKey === "set_cover") return this.setCover(ctx, args);
     if (solverKey === "independent_set") return this.independentSet(ctx, args);
     if (solverKey === "combinatorial_auction") return this.combinatorialAuction(ctx, args);
+    // WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用（sidecar 重解，先于 loadContext 拦截，同既有 opt 核心）。
+    if (solverKey === "multi_objective") return this.multiObjective(ctx, args);
+    if (solverKey === "cross_object_occupancy") return this.crossObjectOccupancy(ctx, args);
     // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
     if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });

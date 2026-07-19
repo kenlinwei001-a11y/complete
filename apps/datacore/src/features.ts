@@ -92,6 +92,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
   { key: "opt.solver-pool", name: "优化模板池", level: "VIEW", defaultOn: false, bindings: { apiTags: ["opt"] } },
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（暗发 defaultOff，依赖优化模板池）。
+  { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。

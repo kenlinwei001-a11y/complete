@@ -16,6 +16,7 @@ import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
+import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
@@ -941,6 +942,8 @@ function StepBody({
           </Feature>
         </div>
       </Feature>
+      {/* WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用 what-if（opt.multiobj 关则整块不存在 R3）。 */}
+      <MultiObjWhatifPanel />
     </div>
   );
 }

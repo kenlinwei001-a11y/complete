@@ -257,3 +257,247 @@ def test_new_cores_determinism_r6():
     assert sc() == sc()
     assert iset() == iset()
     assert ca() == ca()
+
+
+# ── WO-CROSS-OBJECT-MULTIOBJ 多目标（三 method）+ 跨对象占用（三元互斥）· 可证最优对拍 ──────
+
+import itertools
+
+
+def _brute_multi_weighted(var_specs, constraints, objectives):
+    """小规模枚举全解 → 找 weighted 合成目标全局最优（对拍验证 CP-SAT 非启发式/非贪心）。"""
+    domains = []
+    ids = [v["id"] for v in var_specs]
+    for v in var_specs:
+        if v.get("kind", "bool") == "bool":
+            domains.append([0, 1])
+        else:
+            domains.append(list(range(int(v.get("lo", 0)), int(v.get("hi", 1)) + 1)))
+    best = None
+    best_val = None
+    for combo in itertools.product(*domains):
+        asg = dict(zip(ids, combo))
+        ok = True
+        for c in constraints:
+            lhs = sum(t.get("coef", 0) * asg[t["var"]] for t in c["terms"])
+            op, rhs = c.get("op", "<="), c["rhs"]
+            if op == "<=" and not lhs <= rhs: ok = False
+            if op == ">=" and not lhs >= rhs: ok = False
+            if op == "==" and not lhs == rhs: ok = False
+            if not ok:
+                break
+        if not ok:
+            continue
+        val = 0.0
+        for o in objectives:
+            sign = 1 if o.get("sense", "max") == "max" else -1
+            oval = sum(t.get("coef", 0) * asg[t["var"]] for t in o["terms"])
+            val += sign * o.get("weight", 1.0) * oval
+        if best_val is None or val > best_val:
+            best_val, best = val, asg
+    return best_val, best
+
+
+def test_multi_objective_weighted_provably_optimal_vs_enumeration():
+    """加权多目标：CP-SAT 合成目标值 = 枚举全解全局最优（可证最优，非贪心）。"""
+    var_specs = [{"id": "a", "kind": "bool"}, {"id": "b", "kind": "bool"}, {"id": "c", "kind": "bool"}]
+    constraints = [{"terms": [{"var": "a", "coef": 1}, {"var": "b", "coef": 1}, {"var": "c", "coef": 1}], "op": "<=", "rhs": 2}]
+    objectives = [
+        {"key": "profit", "sense": "max", "terms": [{"var": "a", "coef": 5}, {"var": "b", "coef": 3}, {"var": "c", "coef": 4}], "weight": 0.7},
+        {"key": "risk", "sense": "min", "terms": [{"var": "a", "coef": 4}, {"var": "b", "coef": 1}, {"var": "c", "coef": 1}], "weight": 0.3},
+    ]
+    payload = {"model": "multi_objective", "seed": 42, "scale": 1, "vars": var_specs, "constraints": constraints, "objectives": objectives, "method": "weighted"}
+    out = server.solve_multi_objective(payload)
+    assert out["status"] == "OPTIMAL" and out["optimal"] is True
+    # CP-SAT 合成目标值（用返回的 objectiveValues 重算 weighted 组合）= 枚举最优。
+    got = 0.7 * out["objectiveValues"]["profit"] - 0.3 * out["objectiveValues"]["risk"]
+    best_val, _ = _brute_multi_weighted(var_specs, constraints, objectives)
+    assert abs(got - best_val) < 1e-6
+    # 分目标值分别回报（前端 Δ 分解用）。
+    assert set(out["objectiveValues"]) == {"profit", "risk"}
+
+
+def test_multi_objective_weight_drift_changes_optimum():
+    """权重漂移：营收优先 vs 风险优先 → 最优真漂移（不同 values），非同一解贴标签。"""
+    var_specs = [{"id": "a", "kind": "bool"}, {"id": "b", "kind": "bool"}]
+    # a：高营收高风险；b：低营收低风险。恰选一个（否则"不选"目标 0 会占优，掩盖漂移）。
+    constraints = [{"terms": [{"var": "a", "coef": 1}, {"var": "b", "coef": 1}], "op": "==", "rhs": 1}]
+    base_obj = lambda: [
+        {"key": "rev", "sense": "max", "terms": [{"var": "a", "coef": 10}, {"var": "b", "coef": 6}]},
+        {"key": "risk", "sense": "min", "terms": [{"var": "a", "coef": 9}, {"var": "b", "coef": 1}]},
+    ]
+    wa = base_obj(); wa[0]["weight"] = 0.9; wa[1]["weight"] = 0.1  # 营收优先
+    wb = base_obj(); wb[0]["weight"] = 0.1; wb[1]["weight"] = 0.9  # 风险优先
+    common = {"model": "multi_objective", "seed": 42, "scale": 1, "vars": var_specs, "constraints": constraints, "method": "weighted"}
+    out_a = server.solve_multi_objective({**common, "objectives": wa})
+    out_b = server.solve_multi_objective({**common, "objectives": wb})
+    assert out_a["values"] != out_b["values"]  # 权重变 → 最优指派真变
+    assert out_a["values"]["a"] == 1  # 营收优先选高营收 a
+    assert out_b["values"]["b"] == 1  # 风险优先选低风险 b
+
+
+def test_multi_objective_epsilon_constraint():
+    """ε-约束：主目标最大化营收，风险作 ε-约束（≤ 上界）→ 高风险解被界外剔除。"""
+    var_specs = [{"id": "a", "kind": "bool"}, {"id": "b", "kind": "bool"}]
+    constraints = [{"terms": [{"var": "a", "coef": 1}, {"var": "b", "coef": 1}], "op": "<=", "rhs": 1}]
+    objectives = [
+        {"key": "rev", "sense": "max", "terms": [{"var": "a", "coef": 10}, {"var": "b", "coef": 6}]},
+        {"key": "risk", "sense": "min", "terms": [{"var": "a", "coef": 9}, {"var": "b", "coef": 1}]},
+    ]
+    # risk ≤ 5 → a(risk9) 被排除，只能选 b（rev6, risk1）。
+    out = server.solve_multi_objective({"model": "multi_objective", "seed": 42, "scale": 1, "vars": var_specs, "constraints": constraints, "objectives": objectives, "method": "epsilon", "epsilon": [{"key": "risk", "bound": 5}]})
+    assert out["status"] == "OPTIMAL"
+    assert out["values"]["b"] == 1 and out["values"]["a"] == 0
+    assert out["objectiveValues"]["risk"] <= 5
+
+
+def test_multi_objective_lexicographic_priority_order():
+    """字典序：先最大化营收（选 a），再在营收最优约束下最小化风险 → 营收锁死不被风险牺牲。"""
+    var_specs = [{"id": "a", "kind": "bool"}, {"id": "b", "kind": "bool"}]
+    constraints = [{"terms": [{"var": "a", "coef": 1}, {"var": "b", "coef": 1}], "op": "<=", "rhs": 1}]
+    objectives = [
+        {"key": "rev", "sense": "max", "terms": [{"var": "a", "coef": 10}, {"var": "b", "coef": 6}]},
+        {"key": "risk", "sense": "min", "terms": [{"var": "a", "coef": 9}, {"var": "b", "coef": 1}]},
+    ]
+    out = server.solve_multi_objective({"model": "multi_objective", "seed": 42, "scale": 1, "vars": var_specs, "constraints": constraints, "objectives": objectives, "method": "lexicographic", "priority": ["rev", "risk"]})
+    assert out["status"] == "OPTIMAL"
+    # 营收第一优先 → 选 a（rev10>rev6），即便 a 风险更高也不让步。
+    assert out["values"]["a"] == 1 and out["values"]["b"] == 0
+    assert out["objectiveValues"]["rev"] == 10
+
+
+def test_multi_objective_determinism_r6():
+    var_specs = [{"id": f"v{i}", "kind": "bool"} for i in range(6)]
+    constraints = [{"terms": [{"var": f"v{i}", "coef": 1} for i in range(6)], "op": "<=", "rhs": 3}]
+    objectives = [{"key": "k", "sense": "max", "terms": [{"var": f"v{i}", "coef": (i * 3) % 7 + 1} for i in range(6)]}]
+    p = {"model": "multi_objective", "seed": 42, "scale": 1, "vars": var_specs, "constraints": constraints, "objectives": objectives, "method": "weighted"}
+    assert server.solve_multi_objective(p) == server.solve_multi_objective(p)
+
+
+def _brute_cross_object(orders, lines, contracts, elig, weights):
+    """枚举 x[o,l] 全组合 → weighted 目标全局最优（对拍 CP-SAT）。规模需小。"""
+    cap = {l["id"]: l["capacity"] for l in lines}
+    ccap = {c["id"]: c["cap"] for c in contracts}
+    cost = {(e["order"], e["line"]): e["cost"] for e in elig}
+    pairs = list(cost.keys())
+    oids = [o["id"] for o in orders]
+    rev = {o["id"]: o["revenue"] for o in orders}
+    pen = {o["id"]: o["penalty"] for o in orders}
+    qty = {o["id"]: o["qty"] for o in orders}
+    cof = {o["id"]: o.get("contractId") for o in orders}
+    best_val, best = None, None
+    for bits in itertools.product([0, 1], repeat=len(pairs)):
+        asg = dict(zip(pairs, bits))
+        served = {}
+        ok = True
+        for o in oids:
+            s = sum(asg[(o, l)] for l in [ll["id"] for ll in lines] if (o, l) in asg)
+            if s > 1:
+                ok = False; break
+            served[o] = s
+        if not ok:
+            continue
+        for l in [ll["id"] for ll in lines]:
+            if sum(qty[o] * asg[(o, l)] for o in oids if (o, l) in asg) > cap[l]:
+                ok = False; break
+        if not ok:
+            continue
+        for c, cc in ccap.items():
+            if sum(qty[o] * served[o] for o in oids if cof[o] == c) > cc:
+                ok = False; break
+        if not ok:
+            continue
+        revenue = sum(served[o] * rev[o] for o in oids)
+        penalty = sum((1 - served[o]) * pen[o] for o in oids)
+        c_cost = sum(cost[p] * asg[p] for p in pairs)
+        val = weights["revenue"] * revenue - weights["penalty"] * penalty - weights["cost"] * c_cost
+        if best_val is None or val > best_val:
+            best_val, best = val, (dict(served), dict(asg))
+    return best_val, best
+
+
+def _cross_fixture():
+    """固定三元：产线容量只容部分订单 → 逼出权衡（SEAM-1/2 共用）。"""
+    orders = [
+        {"id": "O_hi", "revenue": 100, "penalty": 5, "qty": 6, "contractId": "K1"},   # 高营收低违约
+        {"id": "O_pen", "revenue": 60, "penalty": 80, "qty": 6, "contractId": "K1"},  # 低营收高违约
+    ]
+    lines = [{"id": "L1", "capacity": 6}]  # 只容一单（qty6）
+    contracts = [{"id": "K1", "cap": 100}]
+    elig = [{"order": "O_hi", "line": "L1", "cost": 1}, {"order": "O_pen", "line": "L1", "cost": 1}]
+    return orders, lines, contracts, elig
+
+
+def test_cross_object_seam1_weight_drift_optimal_reassignment():
+    """SEAM-1 可证最优真漂移：产线只容一单 → 营收优先排 O_hi / 违约优先排 O_pen，两组不同最优。"""
+    orders, lines, contracts, elig = _cross_fixture()
+    common = {"model": "cross_object_occupancy", "seed": 42, "scale": 1, "orders": orders, "lines": lines, "contracts": contracts, "eligibility": elig, "method": "weighted"}
+    # w_A 营收优先。
+    a = server.solve_cross_object_occupancy({**common, "objectives": [{"key": "revenue", "weight": 1.0}, {"key": "penalty", "weight": 0.1}, {"key": "cost", "weight": 0.01}]})
+    # w_B 违约金优先。
+    b = server.solve_cross_object_occupancy({**common, "objectives": [{"key": "revenue", "weight": 0.1}, {"key": "penalty", "weight": 1.0}, {"key": "cost", "weight": 0.01}]})
+    assert a["optimal"] and b["optimal"]
+    assert a["occupancy"] == [{"order": "O_hi", "line": "L1"}]    # 营收优先保 O_hi
+    assert b["occupancy"] == [{"order": "O_pen", "line": "L1"}]   # 违约优先保 O_pen
+    assert a["displaced"] == ["O_pen"] and b["displaced"] == ["O_hi"]  # displaced 变
+    # 对拍枚举 = 全局最优（非贪心）。
+    va, _ = _brute_cross_object(orders, lines, contracts, elig, {"revenue": 1.0, "penalty": 0.1, "cost": 0.01})
+    got_a = 1.0 * a["objectiveValues"]["revenue"] - 0.1 * a["objectiveValues"]["penalty"] - 0.01 * a["objectiveValues"]["cost"]
+    assert abs(got_a - va) < 1e-6
+
+
+def test_cross_object_seam1_revenue_threshold_flips_winner():
+    """SEAM-1 续：改一订单 revenue 跨阈 → 最优真换人（displaced 变），非贴标签。"""
+    orders, lines, contracts, elig = _cross_fixture()
+    common = {"model": "cross_object_occupancy", "seed": 42, "scale": 1, "lines": lines, "contracts": contracts, "eligibility": elig, "method": "weighted",
+              "objectives": [{"key": "revenue", "weight": 1.0}, {"key": "penalty", "weight": 1.0}, {"key": "cost", "weight": 0.01}]}
+    # 现状：O_hi rev100/pen5，O_pen rev60/pen80 → 合成 O_hi=105 vs O_pen=140 → 排 O_pen。
+    before = server.solve_cross_object_occupancy({**common, "orders": orders})
+    assert before["occupancy"] == [{"order": "O_pen", "line": "L1"}]
+    # 把 O_hi 营收拉到 200 跨阈 → 合成 O_hi=205 > O_pen=140 → 翻转排 O_hi。
+    orders2 = [dict(o) for o in orders]
+    orders2[0]["revenue"] = 200
+    after = server.solve_cross_object_occupancy({**common, "orders": orders2})
+    assert after["occupancy"] == [{"order": "O_hi", "line": "L1"}]
+    assert before["displaced"] != after["displaced"]  # displaced 真变
+
+
+def test_cross_object_seam2_capacity_mutex_displaces():
+    """SEAM-2 占用互斥真挤占：产线 capacity 调小 → Σqty·x<=cap 生效 → 低价订单被挤（displaced 非空）。"""
+    orders = [
+        {"id": "O1", "revenue": 100, "penalty": 5, "qty": 5, "contractId": "K1"},
+        {"id": "O2", "revenue": 90, "penalty": 5, "qty": 5, "contractId": "K1"},
+    ]
+    lines = [{"id": "L1", "capacity": 10}]  # 容量足 → 两单都排
+    contracts = [{"id": "K1", "cap": 100}]
+    elig = [{"order": "O1", "line": "L1", "cost": 1}, {"order": "O2", "line": "L1", "cost": 1}]
+    common = {"model": "cross_object_occupancy", "seed": 42, "scale": 1, "orders": orders, "contracts": contracts, "eligibility": elig, "method": "weighted",
+              "objectives": [{"key": "revenue", "weight": 1.0}, {"key": "penalty", "weight": 1.0}, {"key": "cost", "weight": 0.01}]}
+    full = server.solve_cross_object_occupancy({**common, "lines": lines})
+    assert full["displaced"] == []  # 容量足，无挤占
+    # 产线 capacity 调小到 5 → 只容一单 → 低营收 O2 被挤。
+    tight = server.solve_cross_object_occupancy({**common, "lines": [{"id": "L1", "capacity": 5}]})
+    assert tight["displaced"] == ["O2"]  # 低价被挤
+    assert tight["objectiveValues"]["penalty"] == 5  # 被挤单违约金入目标
+
+
+def test_cross_object_contract_cap_binds():
+    """三元耦合：合同额度 cap 收紧 → 即便产线容量足，合同额度也限制获排单数（证三元非各自独立）。"""
+    orders = [
+        {"id": "O1", "revenue": 100, "penalty": 5, "qty": 5, "contractId": "K1"},
+        {"id": "O2", "revenue": 90, "penalty": 5, "qty": 5, "contractId": "K1"},
+    ]
+    lines = [{"id": "L1", "capacity": 100}]  # 产线容量充足
+    contracts = [{"id": "K1", "cap": 5}]     # 但合同 K1 额度只够一单（qty5）
+    elig = [{"order": "O1", "line": "L1", "cost": 1}, {"order": "O2", "line": "L1", "cost": 1}]
+    out = server.solve_cross_object_occupancy({"model": "cross_object_occupancy", "seed": 42, "scale": 1, "orders": orders, "lines": lines, "contracts": contracts, "eligibility": elig, "method": "weighted",
+                                               "objectives": [{"key": "revenue", "weight": 1.0}, {"key": "penalty", "weight": 1.0}, {"key": "cost", "weight": 0.01}]})
+    assert len(out["occupancy"]) == 1     # 合同额度限制 → 只排一单
+    assert out["occupancy"] == [{"order": "O1", "line": "L1"}]  # 保高营收 O1
+    assert out["displaced"] == ["O2"]
+
+
+def test_cross_object_determinism_r6():
+    orders, lines, contracts, elig = _cross_fixture()
+    p = {"model": "cross_object_occupancy", "seed": 42, "scale": 1, "orders": orders, "lines": lines, "contracts": contracts, "eligibility": elig, "method": "weighted"}
+    assert server.solve_cross_object_occupancy(p) == server.solve_cross_object_occupancy(p)
