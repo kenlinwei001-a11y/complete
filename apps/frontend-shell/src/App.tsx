@@ -77,6 +77,8 @@ const DecisionPlayView = lazy(() => import("@/views/DecisionPlayView"));
 const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
 // 通用假设推演页（generic_inference·G-5 通用 what-if）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
 const WhatIfView = lazy(() => import("@/views/WhatIfView"));
+// 净室归因投影页（shared_bottleneck/concentration_risk/margin_attribution 三通用求解器接地）：专用 route，直挂 renderer。
+const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -134,6 +136,8 @@ export const routes: RouteObject[] = [
       { path: "v/disruption-radius", element: lazyWrap(<DisruptionRadiusView />) },
       // 通用假设推演页专用 route（generic_inference 5 步试算·静态段先于 :viewKey 匹配·免依赖 workspace.views）。
       { path: "v/what-if", element: lazyWrap(<WhatIfView />) },
+      // 净室归因投影页专用 route（三通用求解器·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      { path: "v/cleanroom-attr", element: lazyWrap(<CleanroomAttrView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

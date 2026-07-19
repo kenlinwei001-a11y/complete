@@ -34,6 +34,7 @@ const VIEW_ALIAS: Record<string, string> = {
   // 通用假设推演（generic_inference·G-5）：短键 what-if / whatif / 场景目录别名 → 规范键。
   whatif: "what-if",
   "generic-inference": "what-if",
+  cleanroom: "cleanroom-attr",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
@@ -62,3 +63,6 @@ registerRenderer("order-chain", () => import("./plan/OrderChainView"));
 registerRenderer("geo-map", () => import("./plan/GeoMapView"));
 // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
 registerRenderer("review", () => import("./ReviewView"));
+// 净室归因投影页（三通用净室求解器 shared_bottleneck/concentration_risk/margin_attribution 首次前端接地·
+// 参数从真对象类型倒推·既作 renderer 供 ViewPage 分发，也有专用 route 见 App.tsx）。
+registerRenderer("cleanroom-attr", () => import("./cleanroom/CleanroomAttrView"));
