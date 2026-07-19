@@ -104,7 +104,7 @@ import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, valida
 import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
 import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
 import { DecisionKernelService } from "./decision/kernel.js"; // WO-C1 · L2 统一决策内核
-import { CreateDecisionInputSchema } from "@platform/contracts"; // WO-C1
+import { CreateDecisionInputSchema, RecordOutcomeInputSchema } from "@platform/contracts"; // WO-C1 · WO-LEARNING-LOOP-FEEDBACK
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -2655,6 +2655,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/decisions/:id/commit", async (req) => {
     const { id } = req.params as { id: string };
     return decisionKernel.commit(ctx(req), id, new Date().toISOString());
+  });
+  // WO-LEARNING-LOOP-FEEDBACK：成效反馈闭环（COMMITTED→REALIZED·注入外部实测 realizedGapClose → 效果% vs 预言）。
+  // additive·非 COMMITTED→409·R2 跨租户 404（经 kernel.get→notFound）。realizedAt 由端点注入（R6·内部不取时钟）。
+  app.post("/a/v1/decisions/:id/outcome", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(RecordOutcomeInputSchema, req.body);
+    return decisionKernel.recordOutcome(ctx(req), id, body, new Date().toISOString());
+  });
+  // 决策成效权重归集（本租户全部 REALIZED → 确定性聚合·后续 decision_play 排序可读·亲手真跑可观测）。
+  app.get("/a/v1/decision-outcome-stats", async (req) => {
+    return decisionKernel.outcomeStats(ctx(req));
   });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };
