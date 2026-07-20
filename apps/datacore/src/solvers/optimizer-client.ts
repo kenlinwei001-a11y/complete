@@ -228,6 +228,50 @@ export interface CrossObjectOccupancyResult {
   summary: string;
 }
 
+// ── WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合（共享产能守恒·冻结子集·多方案） ──
+// cross_object_occupancy 的「加时间窗」变体：每 (base,窗口) 是容量 bin，需求项按可行窗口 mask 指派，
+// Σ_i qty_i·x[i,b,t] ≤ cap[b,t] 共享产能守恒（防重复占用）。系数全在调用层预算好（R14·零业务名）。
+export interface PortfolioCell {
+  item: string;
+  base: string;
+  window: number;
+  /** 该格是否按期（t ≤ dueWindow → 1）。 */
+  ontime: 0 | 1;
+  /** 延误量 = qty × 延误天（min_delay 目标）。 */
+  delayUnits: number;
+  /** 换型量（该基地切到该型号的换型分钟·min_changeover 目标）。 */
+  changeUnits: number;
+  /** 该格综合代价（延误罚 + 换型代价·min_cost 目标）。 */
+  cost: number;
+}
+export interface PortfolioRequest {
+  model: "portfolio";
+  seed: number;
+  scale?: number;
+  items: { id: string; qty: number; unservedPenalty?: number }[];
+  /** cap[b,t] 共享产能（Σ 该基地 Line.capacityDaily × 窗口天数）。 */
+  capacity: { base: string; window: number; cap: number }[];
+  cells: PortfolioCell[];
+  /** 优化目标子集（缺省 ontime 单目标）；4 项均恒计回报。 */
+  objectives?: { key: "ontime" | "delay" | "changeover" | "cost"; sense?: "max" | "min"; weight?: number }[];
+  method?: "weighted" | "epsilon" | "lexicographic";
+  epsilon?: { key: string; bound: number }[];
+  priority?: string[];
+}
+export interface PortfolioResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  /** served_<id> + x_<i>_<b>_<w> 决策值。 */
+  values: Record<string, number>;
+  /** 4 项目标值（ontime/delay/changeover/cost·恒计·供方案对比）。 */
+  objectiveValues: Record<string, number>;
+  /** x=1 的指派格（需求项 → 基地×窗口）。 */
+  occupancy: { item: string; base: string; window: number }[];
+  /** 未获排（served=0）的需求项 id。 */
+  displaced: string[];
+  method: string;
+}
+
 export interface OptimizerClient {
   solve(req: OptimizationRequest): Promise<OptimizationResult>;
   /** A8.1 指派 / A8.2 排序 / A8.3 装箱（可选实现；未实现的 client 被调时抛"未接入"）。 */
@@ -245,6 +289,8 @@ export interface OptimizerClient {
   /** WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用（未实现 → 调用方抛"未接入"）。 */
   solveMultiObjective?(req: MultiObjectiveRequest): Promise<MultiObjectiveResult>;
   solveCrossObjectOccupancy?(req: CrossObjectOccupancyRequest): Promise<CrossObjectOccupancyResult>;
+  /** WO-PORTFOLIO-OPTIMAL 联合最优组合（未实现 → 调用方抛"未接入"）。 */
+  solvePortfolio?(req: PortfolioRequest): Promise<PortfolioResult>;
 }
 
 /** 生产实现：POST {baseUrl}/solve（背包）、/assignment（指派）。错误转平台错误信封风格的异常。 */
@@ -312,5 +358,10 @@ export class HttpOptimizerClient implements OptimizerClient {
 
   async solveCrossObjectOccupancy(req: CrossObjectOccupancyRequest): Promise<CrossObjectOccupancyResult> {
     return this.post<CrossObjectOccupancyResult>("/solve", req);
+  }
+
+  // WO-PORTFOLIO-OPTIMAL 联合最优组合同走单端点 /solve（sidecar 按 model 字段 dispatch）。
+  async solvePortfolio(req: PortfolioRequest): Promise<PortfolioResult> {
+    return this.post<PortfolioResult>("/solve", req);
   }
 }

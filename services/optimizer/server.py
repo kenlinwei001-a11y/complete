@@ -817,6 +817,148 @@ def solve_cross_object_occupancy(payload: dict) -> dict:
     }
 
 
+def solve_portfolio(payload: dict) -> dict:
+    """全订单×全基地×时间 联合最优组合推演（portfolio）·零业务名 R14。
+
+    病根修（G-PORTFOLIO-LOCAL-ONLY）：逐单/逐项目单独求解只到局部最优——两单在各自交期前的重叠窗口
+    都假设同一基地×窗口产能可用 → 分开 invoke 时重复占用（S4/S7 都挤 SO-3415）。这里把产能索引到
+    (基地 b, 时间窗 t)，让**所有需求项联合守恒**分配：`Σ_i qty_i·x[i,b,t] ≤ cap[b,t]`（跨单不重复占用）。
+
+    这是 cross_object_occupancy（订单×产线互斥）的「加时间窗」变体 = 装箱/指派族：每 (base,窗口) 是容量
+    bin，需求项按可行窗口 mask 指派，目标走通用多目标引擎 _optimize_multi（weighted/epsilon/lexicographic）。
+    禁碰既有 9 模型，仅**复用** _optimize_multi/_new_solver/_expr/_eval + 确定性红线。
+
+    协议：{model:"portfolio", seed, scale?,
+           items:[{id, qty, unservedPenalty?}],          # 需求项（served + 未排罚）
+           capacity:[{base, window, cap}],               # cap[b,t] 共享产能
+           cells:[{item, base, window, ontime(0/1), delayUnits, changeUnits, cost}],  # 可行指派格（预算好系数·R14 全在调用层）
+           objectives?:[{key:"ontime"|"delay"|"changeover"|"cost", sense?, weight?}], method?, epsilon?, priority?}
+    变量 x[cell]∈{0,1} + served[i]∈{0,1}。约束：
+      · 每需求项至多一处   Σ_{cells of i} x == served[i]（无可行格 → served 强制 0）
+      · 共享产能守恒       Σ_{cells at (b,t)} qty_i·x ≤ cap[b,t]（核心·防重复占用）
+    目标（全 4 项恒计并回报，供方案对比）：ontime(max Σ 按期格)·delay(min Σ 延误量)·
+      changeover(min Σ 换型量)·cost(min Σ 格代价 + Σ未排罚·(1−served))。
+    返回含 occupancy(x=1 格)/displaced(served=0)/objectiveValues(4 项)/values。
+    """
+    items = payload.get("items") or []
+    capacity = payload.get("capacity") or []
+    cells = payload.get("cells") or []
+    method = payload.get("method", "weighted")
+    if not items or not cells:
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "occupancy": [], "displaced": [str(it.get("id")) for it in items], "method": method}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1))
+
+    def to_int(x) -> int:
+        return int(round(float(x) * scale))
+
+    item_ids = [str(it["id"]) for it in items]
+    qty = {str(it["id"]): to_int(it.get("qty", 0)) for it in items}
+    unserved_pen = {str(it["id"]): to_int(it.get("unservedPenalty", 0)) for it in items}
+    cap = {(str(c["base"]), int(c["window"])): to_int(c.get("cap", 0)) for c in capacity}
+
+    # 稳定序（R6）：cells 按 (item, base, window) 排 → 变量创建/tie-break 顺序确定。
+    cell_list = sorted(
+        ({"item": str(c["item"]), "base": str(c["base"]), "window": int(c["window"]),
+          "ontime": int(c.get("ontime", 0)), "delayUnits": to_int(c.get("delayUnits", 0)),
+          "changeUnits": to_int(c.get("changeUnits", 0)), "cost": to_int(c.get("cost", 0))} for c in cells),
+        key=lambda c: (c["item"], c["base"], c["window"]),
+    )
+
+    model = cp_model.CpModel()
+    x = [model.NewBoolVar(f"x_{k}") for k in range(len(cell_list))]
+    served = {i: model.NewBoolVar(f"s_{i}") for i in item_ids}
+
+    # 每需求项至多一处：Σ_{cells of i} x == served[i]（无可行格 → served 强制 0）。
+    cells_of = {}
+    for k, c in enumerate(cell_list):
+        cells_of.setdefault(c["item"], []).append(k)
+    for i in item_ids:
+        ks = cells_of.get(i, [])
+        if ks:
+            model.Add(sum(x[k] for k in ks) == served[i])
+        else:
+            model.Add(served[i] == 0)
+
+    # 共享产能守恒（核心）：对每 (base,窗口) Σ qty_i·x ≤ cap[b,t]。
+    cells_at = {}
+    for k, c in enumerate(cell_list):
+        cells_at.setdefault((c["base"], c["window"]), []).append(k)
+    for (b, t), ks in cells_at.items():
+        model.Add(sum(qty[cell_list[k]["item"]] * x[k] for k in ks) <= cap.get((b, t), 0))
+
+    # 4 项目标（terms 已 scale 定点化；cost 含未排罚常量项）。
+    ontime_terms = [(cell_list[k]["ontime"], x[k]) for k in range(len(cell_list))]
+    delay_terms = [(cell_list[k]["delayUnits"], x[k]) for k in range(len(cell_list))]
+    change_terms = [(cell_list[k]["changeUnits"], x[k]) for k in range(len(cell_list))]
+    # cost = Σ 格代价·x + Σ 未排罚·(1−served) = Σcell.cost·x − Σpen·served + Σpen。
+    cost_terms = [(cell_list[k]["cost"], x[k]) for k in range(len(cell_list))]
+    cost_terms += [(-unserved_pen[i], served[i]) for i in item_ids]
+    cost_const = sum(unserved_pen[i] for i in item_ids)
+    all_objs = {
+        "ontime": {"key": "ontime", "sense": "max", "terms": ontime_terms, "const": 0},
+        "delay": {"key": "delay", "sense": "min", "terms": delay_terms, "const": 0},
+        "changeover": {"key": "changeover", "sense": "min", "terms": change_terms, "const": 0},
+        "cost": {"key": "cost", "sense": "min", "terms": cost_terms, "const": cost_const},
+    }
+
+    # 选中的优化目标（缺省 = ontime 单目标）；未选中的仍恒计回报。
+    sel = payload.get("objectives") or [{"key": "ontime"}]
+    objectives = []
+    for o in sel:
+        base_obj = all_objs.get(str(o.get("key")))
+        if base_obj is None:
+            continue
+        objectives.append({**base_obj, "sense": o.get("sense", base_obj["sense"]), "weight": o.get("weight", 1.0)})
+    if not objectives:
+        objectives = [{**all_objs["ontime"], "weight": 1.0}]
+
+    # tie-break：稳定序 served 后接 cells（消多解抖动 R6）。
+    tb_terms = []
+    idx = 1
+    for i in item_ids:
+        tb_terms.append((idx, served[i]))
+        idx += 1
+    for k in range(len(cell_list)):
+        tb_terms.append((idx, x[k]))
+        idx += 1
+    tiebreak = _expr(tb_terms)
+    big = idx + 1
+
+    epsilon = payload.get("epsilon")
+    if epsilon:
+        epsilon = [{"key": e["key"], "bound": to_int(e["bound"])} for e in epsilon]
+    status, solver = _optimize_multi(model, objectives, method, seed=seed, big=big, tiebreak=tiebreak, epsilon=epsilon, priority=payload.get("priority"))
+
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "values": {}, "objectiveValues": {}, "occupancy": [], "displaced": item_ids, "method": method}
+
+    occupancy = [
+        {"item": cell_list[k]["item"], "base": cell_list[k]["base"], "window": cell_list[k]["window"]}
+        for k in range(len(cell_list))
+        if solver.Value(x[k]) == 1
+    ]
+    occupancy.sort(key=lambda a: (a["item"], a["base"], a["window"]))
+    displaced = sorted(i for i in item_ids if solver.Value(served[i]) == 0)
+    values = {f"served_{i}": int(solver.Value(served[i])) for i in item_ids}
+    for k in range(len(cell_list)):
+        if solver.Value(x[k]) == 1:
+            c = cell_list[k]
+            values[f"x_{c['item']}_{c['base']}_{c['window']}"] = 1
+    # 4 项目标值恒计（供方案对比），回原尺度。
+    objective_values = {key: round(_eval(o["terms"], solver, o.get("const", 0)) / scale, 6) for key, o in all_objs.items()}
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "values": values,
+        "objectiveValues": objective_values,
+        "occupancy": occupancy,
+        "displaced": displaced,
+        "method": method,
+    }
+
+
 def solve_job_shop_schedule(payload: dict) -> dict:
     """小时/分钟级工序排程（job-shop scheduling · 单目标最小化 makespan）：每 (job,op) 建 IntervalVar，
     同机器 op 集不重叠（AddNoOverlap；带 sequence-dependent 换型时用成对析取代替），同 job 内工艺顺序
@@ -924,6 +1066,8 @@ MODELS = {
     # WO-CROSS-OBJECT-MULTIOBJ 多目标（加权/ε-约束/字典序）+ 跨对象占用（订单×产线×合同三元互斥）。
     "multi_objective": solve_multi_objective,
     "cross_object_occupancy": solve_cross_object_occupancy,
+    # WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合（共享产能守恒·冻结子集·多方案）。
+    "portfolio": solve_portfolio,
 }
 
 

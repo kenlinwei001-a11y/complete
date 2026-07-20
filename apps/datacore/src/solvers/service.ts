@@ -5,7 +5,7 @@ import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
-import { BATTERY_SOLVER_PARAMS, computeOrderPromise, type AtpSupplyInputs } from "../synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
@@ -25,6 +25,7 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
+import { portfolioOptimize as runPortfolioOptimize, type PortfolioObjectiveKey } from "./portfolio.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
@@ -125,6 +126,9 @@ export const SOLVER_KEYS = [
   // WO-SOP-RESCHEDULE 产销重排推演：目标订单+新交期→跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价，
   // 落到基地×订单×日执行方案（确定性 R6·勾稽 Σalloc+residual==qty·每值 provenance R13）。
   "sop_reschedule",
+  // WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合：全 OPEN 订单+在产 WorkOrder+DemandSegment.p50 三源归一
+  // 联合需求→跨基地×窗口 CP-SAT 求最优（Σ_i qty·x[i,b,t]≤cap[b,t] 共享产能守恒·防重复占用）+ 冻结子集 + ≥2方案量化利弊。
+  "portfolio",
 ] as const;
 
 /**
@@ -188,6 +192,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
   atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
   sop_reschedule: ["feasible", "verdict", "targetOrder", "allocation", "displaced", "cost", "residualQty", "reconChecks", "reconciled", "objective", "summary"],
+  // WO-PORTFOLIO-OPTIMAL portfolio 输出形状（联合最优组合·共享产能守恒 capacityLedger/reconChecks·多方案 scenarios）。
+  portfolio: ["status", "optimal", "feasible", "allocation", "occupancy", "displaced", "scenarios", "objectiveValues", "capacityLedger", "reconChecks", "reconciled", "cost", "frozen", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -1791,6 +1797,44 @@ export class SolverService {
   }
 
   /**
+   * WO-PORTFOLIO-OPTIMAL · portfolio 全订单×全基地×时间 联合最优组合推演（G-PORTFOLIO-LOCAL-ONLY 闭）。
+   * 照 sop_reschedule/atp_check 兄弟模式：invoke if 链拦截、私有方法内 inline listByType 读三源需求
+   * （Order OPEN + 在产 WorkOrder + DemandSegment.p50×1e4）+ Base/Line/ChangeoverMatrix，forecastStart 时间锚
+   * （禁 Date.now·R6），系数走 PUBLISHED RuleEntry `portfolio_optimize_coeffs`.params（R14·缺省诚实兜底），
+   * 委派纯算法 runPortfolioOptimize（跨基地×窗口 CP-SAT 共享产能守恒·多方案量化利弊）。未接入 → 显式报错不兜底。
+   */
+  private async portfolioOptimize(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solvePortfolio) throw validationError("portfolio 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
+    const workOrders = (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props);
+    const demandSegments = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
+    const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
+    const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
+    const changeover = (await this.repos.objects.listByType(ctx.tenantId, "ChangeoverMatrix")).map((o) => o.props);
+    const params = await this.getParams(ctx.tenantId);
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const coeffRule = pubRules.find((r) => r.key === "portfolio_optimize_coeffs");
+    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    const solve = this.optimizer.solvePortfolio.bind(this.optimizer);
+    const objArr = (v: unknown): PortfolioObjectiveKey[] | undefined =>
+      Array.isArray(v) ? (v.map(String) as PortfolioObjectiveKey[]) : undefined;
+    const out = await runPortfolioOptimize({
+      forecastStart: str(params.forecastStart),
+      orders, workOrders, demandSegments, bases, lines, changeover,
+      modelBaseMap: MODEL_BASE_MAP,
+      orderIds: objArr(args.orderIds) as string[] | undefined,
+      frozenOrderIds: Array.isArray(args.frozenOrderIds) ? args.frozenOrderIds.map(String) : undefined,
+      frozenCapacityMode: args.frozenCapacityMode === "release" ? "release" : "reserve",
+      objective: args.objective ? (str(args.objective) as PortfolioObjectiveKey) : undefined,
+      scenarios: objArr(args.scenarios),
+      method: args.method ? (str(args.method) as "weighted" | "epsilon" | "lexicographic") : undefined,
+      seed: Number(args.seed ?? 42),
+      coeff,
+    }, solve);
+    return out as unknown as Record<string, unknown>;
+  }
+
+  /**
    * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
    * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
    * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
@@ -2912,6 +2956,7 @@ export class SolverService {
     if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
     if (solverKey === "atp_check") return this.atpCheck(ctx, args);
     if (solverKey === "sop_reschedule") return this.sopReschedule(ctx, args);
+    if (solverKey === "portfolio") return this.portfolioOptimize(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);

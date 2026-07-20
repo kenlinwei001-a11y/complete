@@ -48,6 +48,7 @@ import {
   mockMultiObj,
   mockPlanAudit,
   mockPlanGenerate,
+  mockPortfolio,
   mockSopAdvance,
   mockSopReschedule,
   PLAN_VERSION_CURRENT,
@@ -2203,6 +2204,9 @@ export const handlers = [
       });
     if (key === "sop_reschedule")
       return HttpResponse.json({ data: mockSopReschedule(args), snapshotVersion: "ov-12" });
+    // WO-PORTFOLIO-OPTIMAL portfolio 全局联合推演（mock 逐口径移植·守恒 + ≥2 方案 + 冻结·真求解走 CP-SAT sidecar）。
+    if (key === "portfolio")
+      return HttpResponse.json({ data: mockPortfolio(args), snapshotVersion: "ov-12" });
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";

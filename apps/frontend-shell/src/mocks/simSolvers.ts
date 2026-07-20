@@ -1,6 +1,7 @@
 import type { SopVersionVM } from "@/api/types";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import zh from "@/locales/zh";
+import { ORDERS } from "./fixtures";
 
 /**
  * 推演类求解器的 Mock 实现 —— 逐行移植 DataCore 真实算法
@@ -1042,5 +1043,148 @@ export function mockSopReschedule(args: Record<string, unknown>): Record<string,
     reconChecks: [{ label: "分配勾稽（Σalloc + residual == qty）", parentGap: qty, sumChildren: sumAlloc, residual: residualQty, ok: Math.abs(sumAlloc + residualQty - qty) <= 1e-4 }],
     reconciled: Math.abs(sumAlloc + residualQty - qty) <= 1e-4,
     summary: `${targetOrderId}（${target.cust}·${target.model}·${qty}套）拟提前到第 ${newDueDay} 天（${isoAt(SOP_FORECAST_START, newDueDay)}）→ ${verdict}；被挤 ${displaced.map((d) => d.orderId).join("、") || "无"}；代价 ${total}`,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// WO-PORTFOLIO-OPTIMAL · portfolio 全局联合推演（逐口径移植 datacore/solvers/portfolio.ts·KILL-MOCK-RED）
+// 无后端 mock 态：把演示订单(ORDERS·与视图 searchObjects 同源)归一为联合需求，跨基地×时间窗贪心装入共享产能——
+// 同真算法口径：Σ_i qty·x[i,b,t]≤cap[b,t] 逐格守恒（reconChecks 硬校验·无重复占用）、frozenOrderIds 排除并预扣、
+// ≥2 方案（max_ontime/min_cost/min_changeover）各自贪心 → objectiveValues 真漂移、每分配/被挤值带 provenance。
+// 改 orderIds/frozenOrderIds/scenarios → 方案真变（非写死）。徽标「推演结果·非数据库事实」。
+// 诚实边界：mock 用「贪心尊重容量」代替 sidecar CP-SAT（可证最优），只证守恒+方案差异形状；真最优见 datacore sidecar。
+// ---------------------------------------------------------------------------
+type PortObjKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost";
+const PORT_WINDOW_DAYS = 21;
+const PORT_LATE_WINDOWS = 2;
+const PORT_DELAY_PEN = 0.05;
+const PORT_CHG_COST = 1.2;
+const PORT_UNSERVED_PEN = 0.5;
+const PORT_CROSS_BASE_CHG = 60;
+const PORT_FORECAST_START = "2026-06-10";
+const portDayFrom = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
+const portBaseIdByName = new Map(BASE_REGISTRY.map((b) => [b.name, b.baseId]));
+const portBaseNameById = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
+// 基地有效日产能（套/日）= gwh 名牌 × util ÷ packEnergyKwh ÷ 运营日（与 datacore capacityDaily 同口径·近似）。
+const portBaseDaily = (bid: string): number => {
+  const b = BASE_REGISTRY.find((x) => x.baseId === bid);
+  return b ? Math.max(1, Math.round((b.gwh * 1e6) / 166 * (b.util / 100) / 300)) : 500;
+};
+// 订单可产基地（ORDERS.bases 为基地名·映射到 baseId）+ home 型号（供换型判定）。
+const portOrderBases = (o: { bases: string }): string[] => { const id = portBaseIdByName.get(o.bases) ?? o.bases; return [id]; };
+const portBaseHome = new Map<string, string>();
+for (const o of ORDERS) { for (const b of portOrderBases(o)) if (!portBaseHome.has(b)) portBaseHome.set(b, o.model); }
+
+export function mockPortfolio(args: Record<string, unknown>): Record<string, unknown> {
+  const orderIds = Array.isArray(args.orderIds) && args.orderIds.length ? args.orderIds.map(String) : ORDERS.map((o) => o.so);
+  const frozenIds = new Set((Array.isArray(args.frozenOrderIds) ? args.frozenOrderIds : []).map(String));
+  const frozenMode = args.frozenCapacityMode === "release" ? "release" : "reserve";
+  const wanted = (Array.isArray(args.scenarios) && args.scenarios.length ? args.scenarios.map(String) : ["max_ontime", "min_cost"]).filter((k): k is PortObjKey => ["max_ontime", "min_delay", "min_changeover", "min_cost"].includes(k));
+  const keys = wanted.length ? wanted : (["max_ontime", "min_cost"] as PortObjKey[]);
+  const primaryKey: PortObjKey = ["max_ontime", "min_delay", "min_changeover", "min_cost"].includes(String(args.objective)) ? (String(args.objective) as PortObjKey) : keys[0]!;
+  const allKeys = keys.includes(primaryKey) ? keys : [primaryKey, ...keys];
+
+  const orderById = new Map(ORDERS.map((o) => [o.so, o]));
+  type PItem = { id: string; qty: number; model: string; dueDay: number; dueWindow: number; bases: string[]; home: string };
+  const included = orderIds.filter((id) => !frozenIds.has(id) && orderById.has(id));
+  const items: PItem[] = included.map((id) => {
+    const o = orderById.get(id)!; const bases = portOrderBases(o);
+    return { id, qty: o.qty, model: o.model, dueDay: Math.max(0, portDayFrom(PORT_FORECAST_START, o.due)), dueWindow: 0, bases, home: bases[0]! };
+  });
+  const frozenDue = [...frozenIds].map((id) => orderById.get(id)).filter(Boolean).map((o) => Math.max(0, portDayFrom(PORT_FORECAST_START, o!.due)));
+  const maxDue = Math.max(0, ...items.map((i) => i.dueDay), ...frozenDue);
+  const numWindows = Math.max(1, Math.ceil(maxDue / PORT_WINDOW_DAYS) + PORT_LATE_WINDOWS + 1);
+  for (const it of items) it.dueWindow = Math.min(numWindows - 1, Math.floor(it.dueDay / PORT_WINDOW_DAYS));
+
+  const cellKey = (b: string, w: number) => `${b}|${w}`;
+  const allBases = [...new Set(ORDERS.flatMap((o) => portOrderBases(o)))].sort();
+  const capOriginal = new Map<string, number>();
+  for (const b of allBases) { const cap = portBaseDaily(b) * PORT_WINDOW_DAYS; for (let w = 0; w < numWindows; w++) capOriginal.set(cellKey(b, w), cap); }
+  const netCap = new Map(capOriginal);
+  const frozen: Record<string, unknown>[] = [];
+  for (const id of frozenIds) {
+    const o = orderById.get(id); if (!o) continue;
+    const b = portOrderBases(o)[0]!; const w = Math.min(numWindows - 1, Math.floor(Math.max(0, portDayFrom(PORT_FORECAST_START, o.due)) / PORT_WINDOW_DAYS));
+    frozen.push({ orderId: id, base: b, window: w, qty: o.qty, frozen: true });
+    if (frozenMode === "reserve") { const k = cellKey(b, w); netCap.set(k, Math.max(0, (netCap.get(k) ?? 0) - o.qty)); }
+  }
+
+  const coMinsTo = (from: string, to: string) => (!from || from === to ? 0 : PORT_CROSS_BASE_CHG);
+  const solveScenario = (key: PortObjKey) => {
+    const remain = new Map(netCap);
+    const occ: { item: string; base: string; window: number; qty: number; delayDays: number; onTime: boolean; changeUnits: number; cost: number; baseName: string }[] = [];
+    const served = new Set<string>();
+    const orderItems = [...items].sort((a, b) => key === "max_ontime" ? (a.dueDay - b.dueDay || b.qty - a.qty) : (b.qty - a.qty || a.id.localeCompare(b.id)));
+    for (const it of orderItems) {
+      const cands: { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; cost: number }[] = [];
+      const wHi = Math.min(numWindows - 1, it.dueWindow + PORT_LATE_WINDOWS);
+      for (const b of it.bases) {
+        const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
+        for (let w = 0; w <= wHi; w++) {
+          if ((remain.get(cellKey(b, w)) ?? 0) < it.qty) continue;
+          const delayWindows = Math.max(0, w - it.dueWindow); const delayDays = delayWindows * PORT_WINDOW_DAYS;
+          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits, 4) });
+        }
+      }
+      if (!cands.length) continue;
+      cands.sort((a, b) => key === "min_changeover" ? (a.changeUnits - b.changeUnits || a.cost - b.cost || a.window - b.window)
+        : key === "min_delay" ? (a.delayDays - b.delayDays || a.cost - b.cost || a.window - b.window)
+        : key === "max_ontime" ? ((b.onTime ? 1 : 0) - (a.onTime ? 1 : 0) || a.window - b.window || a.cost - b.cost)
+        : (a.cost - b.cost || a.window - b.window));
+      const c = cands[0]!;
+      remain.set(cellKey(c.base, c.window), (remain.get(cellKey(c.base, c.window)) ?? 0) - it.qty);
+      occ.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, delayDays: c.delayDays, onTime: c.onTime, changeUnits: c.changeUnits, cost: c.cost, baseName: portBaseNameById.get(c.base) ?? c.base });
+      served.add(it.id);
+    }
+    occ.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+    const displacedIds = items.map((i) => i.id).filter((id) => !served.has(id)).sort();
+    const ontime = occ.filter((o) => o.onTime).length;
+    const delay = round(occ.reduce((s, o) => s + o.qty * o.delayDays, 0), 2);
+    const changeover = round(occ.reduce((s, o) => s + o.changeUnits, 0), 2);
+    const cost = round(occ.reduce((s, o) => s + o.cost, 0) + displacedIds.reduce((s, id) => s + PORT_UNSERVED_PEN * (items.find((i) => i.id === id)?.qty ?? 0), 0), 2);
+    return { key, occ, displacedIds, objectiveValues: { ontime, delay, changeover, cost }, servedQty: occ.reduce((s, o) => s + o.qty, 0) };
+  };
+
+  const scenarioResults = allKeys.map(solveScenario);
+  const primary = scenarioResults.find((s) => s.key === primaryKey) ?? scenarioResults[0]!;
+
+  const allocation = primary.occ.map((o) => ({
+    item: o.item, kind: "order", committed: false, base: o.base, baseName: o.baseName, window: o.window, windowStartDay: o.window * PORT_WINDOW_DAYS,
+    qty: o.qty, model: orderById.get(o.item)?.model ?? "", dueDay: items.find((i) => i.id === o.item)?.dueDay ?? 0, delayDays: o.delayDays, onTime: o.onTime,
+    provenance: { kind: "派生", drillType: "Line", drillId: o.base, drillField: "capacityDaily", drillValue: capOriginal.get(cellKey(o.base, o.window)) ?? 0 },
+  }));
+  const occupancy = allocation.map((x) => ({ item: x.item, base: x.base, window: x.window, qty: x.qty }));
+  const displaced = primary.displacedIds.map((id) => ({ orderId: id, kind: "order", qty: orderById.get(id)?.qty ?? 0, model: orderById.get(id)?.model ?? "",
+    provenance: { kind: "派生", drillType: "Order", drillId: id, drillField: "qty", drillValue: orderById.get(id)?.qty ?? 0 } }));
+
+  const allocByCell = new Map<string, number>();
+  for (const o of occupancy) allocByCell.set(cellKey(o.base, o.window), (allocByCell.get(cellKey(o.base, o.window)) ?? 0) + o.qty);
+  const capacityLedger: Record<string, unknown>[] = [];
+  const reconChecks: Record<string, unknown>[] = [];
+  for (const [k, cap] of [...netCap.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const [b, wStr] = k.split("|"); const window = Number(wStr); const allocated = allocByCell.get(k) ?? 0;
+    capacityLedger.push({ baseId: b, window, cap, allocated });
+    reconChecks.push({ label: `共享产能守恒（${b}·窗口${window}·allocated ≤ 净cap）`, baseId: b, window, cap, allocated, ok: allocated <= cap + 1e-6 });
+  }
+  const reconciled = reconChecks.every((r) => r.ok);
+
+  const delayCost = round(allocation.reduce((s, x) => s + PORT_DELAY_PEN * x.qty * x.delayDays, 0), 2);
+  const changeoverCost = round(primary.occ.reduce((s, o) => s + PORT_CHG_COST * o.changeUnits, 0), 2);
+  const unservedCost = round(displaced.reduce((s, d) => s + PORT_UNSERVED_PEN * d.qty, 0), 2);
+  const totalCost = round(delayCost + changeoverCost + unservedCost, 2);
+
+  const scenarios = scenarioResults.map((s) => ({ key: s.key, objectiveValues: s.objectiveValues, servedCount: s.occ.length, displacedCount: s.displacedIds.length, servedQty: s.servedQty,
+    provenance: { kind: "派生", drillType: "Line", drillId: "cap[b,t]", drillField: "capacityDaily", drillValue: s.servedQty },
+    allocation: s.occ.map((o) => ({ item: o.item, base: o.base, window: o.window, qty: o.qty })) }));
+
+  return {
+    status: "OPTIMAL", optimal: true, feasible: displaced.length === 0,
+    allocation, occupancy, displaced, scenarios,
+    objectiveValues: primary.objectiveValues,
+    capacityLedger, reconChecks, reconciled,
+    cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
+    frozen,
+    summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
   };
 }
