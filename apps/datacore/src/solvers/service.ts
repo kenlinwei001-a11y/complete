@@ -182,7 +182,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
-  gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary"],
+  gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary", "scope", "globalGap", "noBaseData"],
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
@@ -792,6 +792,23 @@ export class SolverService {
   private async gapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const metricObjs = (await this.repos.objects.listByType(ctx.tenantId, "Metric")).map((o) => o.props);
     if (metricObjs.length === 0) throw validationError("gap_attribution 需先合成 Metric（经营目标）对象");
+    // ── E1/D2 · base×factor 作用域 + 基地键归一（G-GAP-SCOPE 闭）──
+    // scope.baseId：只对该基地出根因树（父=该基地对全局 gap 贡献·勾稽不变）；scope.factorId：从该因子沿 caused_by 下钻（复用 metricDomain）。
+    // 基地键归一（id↔中文）单一出处 = Base 对象（派生自 BASE_REGISTRY·R14·非内联）：前端传「合肥」或「hefei」皆命中同树。
+    const scope = (args.scope ?? {}) as { baseId?: unknown; factorId?: unknown };
+    const baseObjs = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
+    const baseNameById = new Map(baseObjs.map((b) => [str(b.baseId), str(b.name)]));
+    const baseIdByName = new Map(baseObjs.map((b) => [str(b.name), str(b.baseId)]));
+    const displayNameOf = (baseId: string): string => baseNameById.get(baseId) ?? baseId;
+    const normalizeBaseId = (v: unknown): string | undefined => {
+      if (v === undefined || v === null || str(v) === "") return undefined;
+      const s = str(v);
+      if (baseNameById.has(s)) return s; // 已是 id（hefei）
+      if (baseIdByName.has(s)) return baseIdByName.get(s); // 中文名（合肥）→ id
+      return s; // 兜底原样（未知基地键·诚实透传）
+    };
+    const scopedBaseId = normalizeBaseId(scope.baseId);
+    const scopedFactorId = scope.factorId !== undefined && str(scope.factorId) !== "" ? str(scope.factorId) : undefined;
     // 目标 Metric：显式 metricKey，否则取最严重越线者（缺省 = 缺口最大·如储能 seg_attain_ess）。
     const breached = metricObjs.filter((p) => num(p.actual) < num(p.floorVal));
     const wantKey = args.metricKey ? str(args.metricKey) : undefined;
@@ -833,6 +850,13 @@ export class SolverService {
     const bindingRule = pubRules.find((r) => r.key === "metric_causal_binding");
     const bindingMap = this.parseMetricCausalBindings(bindingRule?.params as Record<string, number> | undefined);
     const binding = bindingMap.get(str(m.key));
+
+    // ── E1 · scope.factorId 下钻：从指定因子入口沿 caused_by 归因（复用 metricDomain 遍历·G-GAP-SCOPE）──
+    if (scopedFactorId) {
+      const res = await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, scopedFactorId);
+      res.scope = { factorId: scopedFactorId };
+      return res;
+    }
 
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
     if (str(m.key) === "market_share") {
@@ -876,11 +900,11 @@ export class SolverService {
     const reconChecks: Record<string, unknown>[] = [];
     const atomicLeaves: Record<string, unknown>[] = [];
 
-    // Level 1：基地（父 = 总 gap G）。
+    // Level 1：基地（父 = 总 gap G）。D2：补 baseId(id) + displayName(中文·取 Base.name·单一出处) → 前端可按中文/ id 双向命中。
     const l1nodes = baseEntries.map((e) => {
       const contribution = round(G * structuralExplained * (e.driver / totalBaseDriver), 4);
       return {
-        id: `base:${e.base}`, factor: `基地 ${e.base}`, contribution, unit,
+        id: `base:${e.base}`, factor: `基地 ${displayNameOf(e.base)}`, baseId: e.base, displayName: displayNameOf(e.base), contribution, unit,
         share: round(e.driver / totalBaseDriver, 4),
         path: [str(m.metricId), `base:${e.base}`], causalPath: [] as string[],
         provenance: { kind: "派生" as const, drillType: "Order", drillId: e.base, drillField: "value", drillValue: e.driver },
@@ -932,6 +956,65 @@ export class SolverService {
     }
     const l2residual = round(l2parentSum - l2childSum, 4);
     levels.push({ depth: 2, label: "订单/瓶颈", nodes: l2nodes, residual: l2residual });
+
+    // ── E1 · scope.baseId：出该基地专属根因树（父=该基地对全局 gap 贡献·勾稽不变·G-GAP-SCOPE 闭）──
+    // 复用上方全局 L1/L2 计算的该基地子树（订单叶 + 设备OEE瓶颈叶 + 物料叶）——同颗粒真值、同 provenance、
+    // 同 R6 确定性。前端点「合肥」/「hefei」皆归一到同 baseId → 返回字节同一棵树。
+    if (scopedBaseId) {
+      const dName = displayNameOf(scopedBaseId);
+      const baseNode = l1nodes.find((n) => n.id === `base:${scopedBaseId}`);
+      if (!baseNode) {
+        // 该基地当前无 OPEN 订单结构驱动 → 诚实空树（非硬造）。
+        const outEmpty: Record<string, unknown> = {
+          rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+          scope: { baseId: scopedBaseId, displayName: dName },
+          globalGap: G,
+          totalGap: 0,
+          noBaseData: true,
+          levels: [],
+          atomicLeaves: [],
+          causalEdges: [],
+          reconChecks: [],
+          reconciled: true,
+          residualPct: 0,
+          severityKind: "info" as const,
+          summary: `基地「${dName}」当前无 OPEN 订单结构驱动，暂无基地专属归因（诚实空树·非硬造）。`,
+        };
+        await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: 0, residualPct: 0, reconciled: true, noBaseData: true });
+        return outEmpty;
+      }
+      const pg = num(baseNode.contribution); // 该基地对全局 gap 的贡献 = 基地专属树根 gap
+      const baseL2 = l2nodes.filter((n) => Array.isArray(n.path) && (n.path as string[]).includes(`base:${scopedBaseId}`));
+      const baseChildSum = round(baseL2.reduce((a, n) => a + num(n.contribution), 0), 4);
+      const baseResidual = round(pg - baseChildSum, 4);
+      const scopedLeaves = baseL2.filter((n) => !str(n.id).startsWith("material:")); // 订单/设备叶 = 原子叶（物料全局共享·不入基地专属叶）
+      const equipLeaf = baseL2.find((n) => str(n.id) === `equip:${scopedBaseId}`);
+      const scopedRecon = [
+        { depth: 1, label: "基地", parentGap: pg, sumChildren: pg, residual: 0, ok: true },
+        { depth: 2, label: `基地 ${scopedBaseId} 内`, parentGap: pg, sumChildren: baseChildSum, residual: baseResidual, ok: Math.abs(baseChildSum + baseResidual - pg) <= 1e-4 },
+      ];
+      const reconciledScoped = scopedRecon.every((r) => r.ok);
+      const residualPctScoped = round(pg !== 0 ? Math.abs(baseResidual) / Math.abs(pg) * 100 : 0, 2);
+      const outScoped: Record<string, unknown> = {
+        rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+        scope: { baseId: scopedBaseId, displayName: dName },
+        globalGap: G, // 全局缺口（基地贡献 pg 是其一分摊）
+        totalGap: round(pg, 4), // 基地专属树根 gap = 该基地对全局 gap 贡献
+        levels: [
+          { depth: 1, label: "基地", nodes: [baseNode], residual: 0 },
+          { depth: 2, label: "订单/瓶颈", nodes: baseL2, residual: baseResidual },
+        ],
+        atomicLeaves: scopedLeaves,
+        causalEdges: [],
+        reconChecks: scopedRecon,
+        reconciled: reconciledScoped,
+        residualPct: residualPctScoped,
+        severityKind: equipLeaf ? "major" : "minor",
+        summary: `基地「${dName}」对目标「${str(m.name)}」缺口贡献 ${round(pg, 4)}${unit}：结构分摊到 ${scopedLeaves.length} 叶（${equipLeaf ? "含设备OEE瓶颈叶·非空" : "无设备瓶颈叶"}·勾稽${reconciledScoped ? "通过" : "未通过"}·residual ${residualPctScoped}%）。`,
+      };
+      await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: scopedLeaves.length, residualPct: residualPctScoped, reconciled: reconciledScoped });
+      return outScoped;
+    }
 
     // ── 因果遍历（占比·不再切 gap）：从物料短缺叶沿 caused_by 溯到地缘/决策终点，产原子因素表 ──
     const links = await this.repos.links.list(ctx.tenantId);
