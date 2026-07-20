@@ -43,7 +43,7 @@ describe("WO-RESOURCE-DESCRIPTOR · SEAM 发现门（discover 召回 × descript
     expect(findUndescribed(dirty)).toHaveLength(1);
   });
 
-  it("无关键词 discover 全量基线不回归（求解器 36 · 与 catalog.test 一致）", async () => {
+  it("无关键词 discover 全量基线不回归（求解器 37 · WO-B +base_capacity_outlook · 与 catalog.test 一致）", async () => {
     const t = await makeApp();
     const all = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN })).json() as { items: unknown[] };
     expect(all.items.length).toBe(SOLVER_CATALOG.length + COCKPIT_SOLVER_CATALOG.length);

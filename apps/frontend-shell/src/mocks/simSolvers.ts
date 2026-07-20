@@ -1188,3 +1188,92 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
   };
 }
+
+// ---------------------------------------------------------------------------
+// WO-B / F1 · base_capacity_outlook（逐口径移植 datacore/solvers/base-outlook.ts·KILL-MOCK）
+// 四线：可用产能 Σ Line.capacityDaily×(1−util/100)×窗 ⊥ 在产 WorkOrder.qtyActual 铺窗 ⊥ 未来订单 Order.due 落窗
+// ⊥ 销售预测 ΣDemandSegment.p50×1e4 按产能占比摊窗 → 缺口/富余 + crossDay + P1 逐日 dayPlan（触发→加班/跨基地/外协→收窄·provenance）。
+// forecastStart 锚（禁 Date.now·R6）·每线/每日值 provenance（R13）。改 baseId/horizon → 前瞻真变（非写死）。
+// ---------------------------------------------------------------------------
+// 演示 DemandSegment.p50（万·= datacore seed 同量级 201.7/139.2/34.1 → Σ375）。
+const OUTLOOK_SEG_P50: number[] = [201.7, 139.2, 34.1];
+// 演示每基地在产占用总量（未完工 WorkOrder.qtyActual·代表值·确定性）。
+const OUTLOOK_INPROD: Record<string, number> = { changzhou: 35738, jinhua: 28800, chengdu: 26400, hefei: 24100 };
+
+export function mockBaseOutlook(args: Record<string, unknown>): Record<string, unknown> {
+  const arg = String(args.baseId ?? "changzhou");
+  const baseRow = BASE_REGISTRY.find((b) => b.baseId === arg || b.name === arg) ?? BASE_REGISTRY[0]!;
+  const baseId = baseRow.baseId;
+  const baseName = baseRow.name;
+  const utilOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.util ?? 80;
+  const capOf = (bid: string) => SOP_BASE_CAP[bid] ?? 800;
+  const freeDailyOf = (bid: string) => round(capOf(bid) * Math.max(0, 1 - utilOf(bid) / 100), 2);
+
+  const freeDaily = freeDailyOf(baseId);
+  const freeDailyAll = round(BASE_REGISTRY.reduce((a, b) => a + freeDailyOf(b.baseId), 0), 2);
+  const baseShare = freeDailyAll > 0 ? freeDaily / freeDailyAll : 1 / BASE_REGISTRY.length;
+  const inProdTotal = OUTLOOK_INPROD[baseId] ?? round(freeDaily * 90 * 0.9, 2);
+  const p50TotalWan = round(OUTLOOK_SEG_P50.reduce((a, v) => a + v, 0), 4);
+  const forecastUnitsAnnual = round(p50TotalWan * 1e4 * baseShare, 2);
+  const baseOrders = SOP_ORDERS.filter((o) => o.bases[0] === baseId).map((o) => ({ so: o.so, qty: o.qty, dueDay: dayFromISO(SOP_FORECAST_START, o.due) }));
+
+  const inProdRefDays = 90, annualDays = 365, overtimeUpliftPct = 0.15, crossBaseAbsorbPct = 0.6;
+  const buildHorizon = (H: number) => {
+    const available = round(freeDaily * H, 2);
+    const inProduction = round(inProdTotal * Math.min(1, H / inProdRefDays), 2);
+    const futureQty = round(baseOrders.filter((o) => o.dueDay >= 0 && o.dueDay <= H).reduce((a, o) => a + o.qty, 0), 2);
+    const salesForecast = round((forecastUnitsAnnual * H) / annualDays, 2);
+    const demand = round(inProduction + futureQty, 2);
+    const gap = round(available - demand, 2);
+    const status = gap < -1e-6 ? "缺口" : gap > 1e-6 ? "富余" : "平衡";
+    const lines = [
+      { key: "available", label: "可用产能", value: available, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } },
+      { key: "inProduction", label: "在产订单占用", value: inProduction, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } },
+      { key: "futureOrders", label: "未来订单", value: futureQty, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } },
+      { key: "salesForecast", label: "销售预测", value: salesForecast, provenance: { kind: "派生", drillType: "DemandSegment", drillId: "p50", drillField: "p50", drillValue: p50TotalWan } },
+    ];
+    // crossDay + P1 dayPlan（触发→贪心补→收窄·沿 decision_play 口径）。
+    const dailyInProd = inProduction / Math.max(1, H);
+    const orderByDay = new Map<number, number>();
+    for (const o of baseOrders) if (o.dueDay >= 0 && o.dueDay <= H) orderByDay.set(o.dueDay, (orderByDay.get(o.dueDay) ?? 0) + o.qty);
+    let crossDay: number | null = null, cumOrder = 0;
+    for (let d = 1; d <= H; d++) { cumOrder += orderByDay.get(d) ?? 0; if (dailyInProd * d + cumOrder > freeDaily * d + 1e-6) { crossDay = d; break; } }
+    const dayPlan: Record<string, unknown>[] = [];
+    const shortfall = Math.max(0, round(-gap, 2));
+    if (shortfall > 0) {
+      const trigDay = crossDay ?? Math.max(1, Math.round(H / 2));
+      let remaining = shortfall;
+      const overtime = round(Math.min(remaining, available * overtimeUpliftPct), 2);
+      if (overtime > 0) {
+        dayPlan.push({ day: trigDay, date: isoAt(SOP_FORECAST_START, trigDay), action: "加班承接（本地空闲产能上浮）",
+          rationale: `第${trigDay}天累计需求越过可用产能（触发缺口 ${shortfall}套）→ 加班上浮 ${round(overtimeUpliftPct * 100, 0)}% 收窄 ${overtime}套（溯 Line.capacityDaily=${freeDaily}/日）`,
+          triggerValue: shortfall, closesGap: overtime, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } });
+        remaining = round(remaining - overtime, 2);
+      }
+      if (remaining > 1e-6) {
+        const crossBase = round(Math.min(remaining, remaining * crossBaseAbsorbPct), 2);
+        const crossDayAt = Math.min(H, trigDay + 7);
+        dayPlan.push({ day: crossDayAt, date: isoAt(SOP_FORECAST_START, crossDayAt), action: "跨基地调剂（挤占低优先在手单）",
+          rationale: `第${crossDayAt}天残余缺口 ${remaining}套 → 跨基地吸收 ${round(crossBaseAbsorbPct * 100, 0)}% 收窄 ${crossBase}套（溯 WorkOrder.qtyActual=${inProdTotal}）`,
+          triggerValue: remaining, closesGap: crossBase, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } });
+        remaining = round(remaining - crossBase, 2);
+      }
+      if (remaining > 1e-6) {
+        const outDayAt = Math.min(H, trigDay + 14);
+        dayPlan.push({ day: outDayAt, date: isoAt(SOP_FORECAST_START, outDayAt), action: "外协补足（残余缺口）",
+          rationale: `第${outDayAt}天仍余 ${remaining}套 → 外协补足 ${remaining}套（触发源：未来订单 Σqty=${futureQty}）`,
+          triggerValue: remaining, closesGap: remaining, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } });
+      }
+    }
+    return { horizon: H, windowStart: isoAt(SOP_FORECAST_START, 0), windowEnd: isoAt(SOP_FORECAST_START, H), lines, available, inProduction, futureOrders: futureQty, salesForecast, demand, gap, status, crossDay, dayPlan };
+  };
+
+  const horizonList = args.horizon != null ? [Math.max(1, Math.round(Number(args.horizon)))] : [30, 60, 90];
+  const horizons = horizonList.map(buildHorizon);
+  const primary = horizons.length === 1 ? horizons[0]! : horizons[horizons.length - 1]!;
+  const shortH = horizons.find((h) => h.status === "缺口");
+  const summary = shortH
+    ? `${baseName} 前瞻产能推演：${horizons.length} 档窗口（${horizonList.join("/")}天）·最近 ${shortH.horizon}天窗现缺口 ${round(-shortH.gap, 2)}套 → ${primary.dayPlan.length} 步逐日处置；销售预测线 ${primary.salesForecast}套`
+    : `${baseName} 前瞻产能推演：各窗产能富余；销售预测线 ${primary.salesForecast}套`;
+  return { baseId, baseName, forecastStart: SOP_FORECAST_START, horizons, dayPlan: primary.dayPlan, summary };
+}
