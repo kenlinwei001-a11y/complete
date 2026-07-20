@@ -178,6 +178,41 @@ export function foldOldestFrame(messages: LlmAgentMessage[], frames: IterationFr
 }
 
 // ---------------------------------------------------------------------------
+// §7C 默认滚动摘要（确定性·无 LLM·CI 可复现）
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase7C / WO-FIX-REASONING-CONTENT：确定性默认滚动摘要。把已折叠轮次的蒸馏笔记压成有界
+ * 「已查证据」digest——去重、保留全部工具名与首行事实、按时间序，总量有界（自最近向前累加至
+ * maxChars，超出以"更早 N 轮已略"计数省略·近端优先保留）。相比朴素"末 N 条拼接"：①去重复述
+ * ②有界防膨胀 ③结构化为条目便于模型回忆。生产可注入 LLM 摘要器覆盖（llmRollingSummarizer）。
+ * 纯函数、无时钟/随机 → 同输入字节级一致。
+ */
+export function defaultRollingSummary(notes: string[], maxChars = 1600): string {
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const n of notes) {
+    const key = n.trim();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      uniq.push(key);
+    }
+  }
+  const kept: string[] = [];
+  let used = 0;
+  for (let idx = uniq.length - 1; idx >= 0; idx--) {
+    const line = `- ${uniq[idx]}`;
+    if (kept.length > 0 && used + line.length > maxChars) {
+      kept.unshift(`（更早 ${idx + 1} 轮已略）`);
+      break;
+    }
+    kept.unshift(line);
+    used += line.length + 1;
+  }
+  return kept.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // §1.1/§1.3 预算器（阈值 + 测量节奏 + contextOps 留痕）
 // ---------------------------------------------------------------------------
 

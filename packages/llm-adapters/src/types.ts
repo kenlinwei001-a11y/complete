@@ -64,6 +64,13 @@ export interface LlmAgentRequest {
    * 使挂住的单次调用能被上界终止（abort → AbortError，循环收敛为优雅降级）。可选，向后兼容。
    */
   signal?: AbortSignal;
+  /**
+   * WO-FIX-REASONING-CONTENT：强制本轮工具选择（tool_choice）。缺省 `auto`（模型自决）；
+   * 收尾/兜底轮传 `{type:"tool", name:"final_answer"}` 令模型**必须**产出结构化收尾——
+   * 破解推理型模型（kimi-k2.6 / o1 / r1）"在推理通道给结论却漏调 final_answer"的死角。
+   * 适配器各自映射：OpenAI 兼容 → tool_choice；Anthropic → tool_choice；不支持的忽略（向后兼容）。
+   */
+  toolChoice?: { type: "auto" } | { type: "tool"; name: string };
 }
 
 export interface LlmAgentResponse {
@@ -71,6 +78,13 @@ export interface LlmAgentResponse {
   stopReason: string; // "tool_use" | "end_turn" | ...
   usage: { inputTokens: number; outputTokens: number };
   raw?: unknown;
+  /**
+   * WO-FIX-REASONING-CONTENT：本轮**终结文本抢救自 reasoning_content**（推理型模型把结论写进
+   * 推理通道、content 为空且未调 final_answer）时置位。工具循环据此对该"漏调收尾"轮补一次
+   * 强制 final_answer 收尾（Manus 级韧性），而非直接降级为无溯源的散文答复。
+   * 普通文本终结（content 非空）不置位 → 既有降级路径逐字节不变（mock 从不置位）。
+   */
+  salvagedReasoning?: boolean;
 }
 
 /** Agent 运行时增量 §1.1：provider 能力声明（token 预算器/服务端 compaction）。 */

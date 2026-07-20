@@ -235,3 +235,55 @@ describe("WO-REAL-LLM-FREE-QUERY · SEAM ⑤ 指挥台 NL→sim_tick→curTick �
     await t.app.close();
   });
 });
+
+/**
+ * WO-FIX-REASONING-CONTENT · SEAM ⑥（推理型模型 kimi-k2.6 在 agent 循环里"漏调 final_answer 收尾"的死角闭合）。
+ *
+ * 10 问真跑坐实：kimi-k2.6 把结论写进 reasoning_content、content 空、且不以 final_answer 收尾 → 旧行为整轮回答
+ * 被丢成占位「探索模式未能产出回答」。修复接缝（适配器抢救 salvagedReasoning × 循环补一次强制 final_answer 轮）：
+ *  ① 抢救轮（salvagedReasoning）→ 循环不直接降级，而是回述结论 + **强制 tool_choice=final_answer** 再逼一轮；
+ *  ② 最终答案取自 final_answer 结构化收尾（可溯源），既非"把 reasoning 当散文答复"降级、更非空占位；
+ *  ③ 强制**只补一次**——控制轮（普通文本终结·无 salvagedReasoning）逐字节走既有降级路径（refs/validation-trace 不回归）。
+ */
+describe("WO-FIX-REASONING-CONTENT · SEAM ⑥ 推理模型漏调 final_answer → 抢救+强制收尾（非空回答·非占位）", () => {
+  it("reasoning 终结轮（salvagedReasoning）→ 循环补一次强制 final_answer 轮 → 答案取自 final_answer（非降级散文/占位）", async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "ceo.free-llm"]);
+    const reasoningText = "综合分析：常州储能缺口约 12 万套，根因正极到货延迟。"; // 模型只写进 reasoning_content 的结论（漏调 final_answer）
+    const groundedMd = "常州储能缺口 12 万套，建议空运正极并加开夜班 ⟦ref:0⟧。"; // 被强制轮逼出的 final_answer 结构化答案
+    t.llm.queueAgentTurn(
+      { content: [text(reasoningText)], salvagedReasoning: true }, // ① kimi-k2.6 在推理通道给结论、未收尾
+      { content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: groundedMd }], provenance: [] })] }, // ② 被强制轮逼出 final_answer
+    );
+    const pc = mkBlockPC(supplyDemandBlock(28.5));
+    const { taskId } = await submitQuery(t, ADMIN, "综合分析这块供需失衡的前因后果和连锁影响", { view: "dashboard", pageContext: pc });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+
+    expect(task.path).toBe("AGENT");
+    // 头号判据：答案取自 final_answer（groundedMd），而非降级散文（reasoningText）或占位。
+    const md = (task.answer?.blocks ?? []).map((b) => (b.type === "text" ? b.markdown : "")).join("\n");
+    expect(md).toContain("建议空运正极"); // = groundedMd 特征串（final_answer 结构化收尾生效）
+    expect(md).not.toContain("综合分析：常州储能缺口约"); // 非"把 reasoning 当散文答复"的降级
+    expect(md).not.toContain("探索模式未能产出回答"); // 非空回答占位
+
+    // 接缝证据：补救轮请求真带 toolChoice 强制 final_answer（真强制·非蒙）；首轮不强制。
+    expect(t.llm.agentRequests[0]?.toolChoice).toBeUndefined();
+    expect(t.llm.agentRequests.some((r) => r.toolChoice?.type === "tool" && r.toolChoice.name === "final_answer")).toBe(true);
+    await t.app.close();
+  });
+
+  it("控制轮：普通文本终结（无 salvagedReasoning）→ 既有降级路径不变（不补强制轮·不劫持）", async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "ceo.free-llm"]);
+    t.llm.queueAgentTurn({ content: [text("这是普通文本终结答复。")] }); // 无 salvagedReasoning → 不触发补救
+    const pc = mkBlockPC(supplyDemandBlock(28.5));
+    const { taskId } = await submitQuery(t, ADMIN, "综合分析这块供需失衡的前因后果和连锁影响", { view: "dashboard", pageContext: pc });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    // 仅 1 轮（无补救轮）；答案即该文本终结（既有降级路径逐字节不变）。
+    expect(t.llm.agentRequests.length).toBe(1);
+    expect(t.llm.agentRequests.every((r) => r.toolChoice === undefined)).toBe(true);
+    const md = (task.answer?.blocks ?? []).map((b) => (b.type === "text" ? b.markdown : "")).join("\n");
+    expect(md).toContain("这是普通文本终结答复。");
+    await t.app.close();
+  });
+});

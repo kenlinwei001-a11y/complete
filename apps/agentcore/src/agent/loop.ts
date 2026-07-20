@@ -21,6 +21,7 @@ import { checkJsonSchema } from "../util/jsonschema.js";
 import {
   CONTEXT_FULL_REMINDER,
   ContextBudgeter,
+  defaultRollingSummary,
   estimateTokensChars,
   firstLineSummary,
   foldOldestFrame,
@@ -169,7 +170,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   // Phase7C 消息级滚动摘要：折叠轮次的蒸馏素材在此累积，每轮压成「前情摘要」注入 system。
   // summarizer 可插拔（Phase8 生产可注入 LLM 摘要器，返回 Promise）；缺省确定性拼接（CI 可复现）。
   const rollingNotes: string[] = [];
-  const summarize = opts.summarizer ?? ((notes: string[]) => notes.slice(-12).join(" ｜ "));
+  const summarize = opts.summarizer ?? defaultRollingSummary;
   const noteOfFrame = (f: IterationFrame) => `第${f.iteration + 1}轮[${f.tools.map((t) => `${t.name}:${t.firstLine}`).join("；")}]`;
   let summaryCache = "";
   let summaryLen = -1; // 仅当折叠轮数增加时重算摘要（LLM 摘要器调用次数 ≈ 折叠次数）
@@ -190,6 +191,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   // 增量 §1.3 第 3 刀：收尾提醒已注入（finalizePending = 本轮就是「最后机会」轮）
   let finalizeUsed = false;
   let finalizePending = false;
+  // WO-FIX-REASONING-CONTENT：本轮强制 final_answer 工具选择（收尾/兜底轮），发出即复位（只强制一轮）。
+  let forceFinalAnswer = false;
+  // 推理型模型"在推理通道给结论却漏调 final_answer"的补救只做一次（避免与降级路径互斥死循环）。
+  let finalAnswerNudged = false;
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -499,6 +504,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         if (finalizeUsed) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
         finalizeUsed = true;
         finalizePending = true;
+        forceFinalAnswer = true; // WO-FIX-REASONING-CONTENT：收尾轮强制 final_answer（防推理模型漏调 → 无谓降级）
         budgeter.record("force_finalize", i, "hard threshold");
         messages.push({ role: "user", content: CONTEXT_FULL_REMINDER });
       }
@@ -512,6 +518,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     const callTimer = setTimeout(() => callAbort.abort(), callMs);
     callTimer.unref?.();
     let response;
+    // WO-FIX-REASONING-CONTENT：收尾/兜底/补救轮强制 final_answer（发出即复位，只强制这一轮）。
+    const forcingFinal = forceFinalAnswer;
+    forceFinalAnswer = false;
     try {
       response = await opts.llm.agent({
         model: opts.model,
@@ -522,6 +531,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         tenantId: opts.tenantId,
         signal: callAbort.signal, // G-9：透传给适配器 → 底层 SDK，使挂住的调用可被上界终止
         ...(contextEdits ? { contextEdits } : {}),
+        ...(forcingFinal ? { toolChoice: { type: "tool" as const, name: "final_answer" } } : {}),
       });
     } catch (err) {
       // G-9：per-call deadline abort / AbortError → 不 throw（非真错），收敛为诚实降级（TIMEOUT）。
@@ -537,6 +547,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         }
         finalizeUsed = true;
         finalizePending = true;
+        forceFinalAnswer = true; // WO-FIX-REASONING-CONTENT：超窗收尾轮同样强制 final_answer
         budgeter.record("force_finalize", i, "model_context_window_exceeded");
         messages.push({ role: "user", content: CONTEXT_FULL_REMINDER });
         continue;
@@ -570,6 +581,22 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
 
     if (response.stopReason !== "tool_use" || toolUses.length === 0) {
+      // WO-FIX-REASONING-CONTENT：推理型模型（kimi-k2.6 等）把结论写进 reasoning_content 却漏调 final_answer
+      //（适配器置 salvagedReasoning）→ 补一次「结构化收尾」强制轮（Manus 级韧性）：回述其结论、下一轮强制 final_answer，
+      // 把"无溯源散文答复"升级为可溯源 final_answer。仅补一次（finalAnswerNudged）、且非「最后机会」轮，避免与降级互斥死循环。
+      // 普通文本终结（非 reasoning 抢救）不介入 → 既有降级路径逐字节不变。
+      if (response.salvagedReasoning && !finalAnswerNudged && !finalizePending) {
+        finalAnswerNudged = true;
+        forceFinalAnswer = true;
+        messages.push({
+          role: "user",
+          content:
+            "你已在推理中给出结论，但尚未调用 final_answer 工具收尾。请立即调用 final_answer，" +
+            "把上面的结论输出为结构化 blocks；每个业务数字用 ⟦ref:N⟧ 引用你已调用工具的 tool_call_id。",
+        });
+        iterations.push({ index: i, toolCalls: [] });
+        continue;
+      }
       // finished without final_answer (§5.4-6 degraded text answer)
       return await degrade("ANSWERED");
     }

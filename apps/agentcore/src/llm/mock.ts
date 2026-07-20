@@ -22,10 +22,9 @@ export function text(t: string): LlmContentBlock {
  */
 export const HANG: unique symbol = Symbol("HANG");
 
-export type ScriptedTurn =
-  | { content: LlmContentBlock[]; stopReason?: string }
-  | typeof HANG
-  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string });
+/** WO-FIX-REASONING-CONTENT：turn 可标 salvagedReasoning，模拟"推理型模型把结论写进 reasoning_content 却漏调 final_answer"。 */
+type TurnBody = { content: LlmContentBlock[]; stopReason?: string; salvagedReasoning?: boolean };
+export type ScriptedTurn = TurnBody | typeof HANG | ((req: LlmAgentRequest) => TurnBody);
 
 function abortError(): Error {
   const e = new Error("The operation was aborted");
@@ -104,6 +103,7 @@ export class ScriptedLlmClient implements LlmClient {
       content: turn.content,
       stopReason: turn.stopReason ?? (hasToolUse ? "tool_use" : "end_turn"),
       usage: { inputTokens: 100, outputTokens: 50 },
+      ...(turn.salvagedReasoning ? { salvagedReasoning: true } : {}),
     };
   }
 

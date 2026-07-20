@@ -51,6 +51,14 @@ export interface OpenAiChatMessage {
   content?: string | null;
   tool_calls?: OpenAiToolCall[];
   tool_call_id?: string;
+  /**
+   * WO-FIX-REASONING-CONTENT：推理型模型（DeepSeek-R1 / Moonshot kimi-k2.6 / OpenAI o1 等）
+   * 把「思考链」放在 reasoning_content（部分端点用 reasoning）而非 content。多数轮它只是思考，
+   * 但当 content 为空、也未发起 tool_calls 时，reasoning_content 里其实就是最终结论——
+   * 适配器抢救为文本，避免"空回答"（详见 agent()）。
+   */
+  reasoning_content?: string | null;
+  reasoning?: string | null;
 }
 
 export interface OpenAiChatCompletion {
@@ -231,6 +239,8 @@ export class OpenAiLlmClient implements FullLlmClient {
           type: "function",
           function: { name: t.name, description: t.description, parameters: t.inputSchema },
         })),
+        // WO-FIX-REASONING-CONTENT：收尾/兜底轮强制 final_answer（否则默认 auto·模型自决）。
+        ...(req.toolChoice ? { tool_choice: toOpenAiToolChoice(req.toolChoice) } : {}),
         messages,
       },
       // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
@@ -254,6 +264,16 @@ export class OpenAiLlmClient implements FullLlmClient {
       content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
     }
     const hasToolUse = (msg?.tool_calls?.length ?? 0) > 0;
+
+    // WO-FIX-REASONING-CONTENT：推理型模型（kimi-k2.6 / o1 / DeepSeek-R1）在**终结轮**把结论写进
+    // reasoning_content 而 content 为空、且未发起 tool_calls——若不抢救，这一整轮回答会被丢成"空回答"
+    // （content=[] → 循环 lastText 空 → 降级占位「探索模式未能产出回答」）。仅在此终结死角抢救为文本：
+    //  · content 已有文本 或 已发 tool_calls → 不介入（探索轮逐字节不变）；
+    //  · raw 归一化为 {role:"assistant", content:<抢救文本>}，令后续强制收尾轮回看到干净的自述。
+    const reasoningText = firstNonEmpty(msg?.reasoning_content, msg?.reasoning);
+    const salvaged = !hasToolUse && content.length === 0 && reasoningText.length > 0;
+    if (salvaged) content.push({ type: "text", text: reasoningText });
+
     return {
       content,
       stopReason: hasToolUse || choice?.finish_reason === "tool_calls" ? "tool_use" : "end_turn",
@@ -261,8 +281,10 @@ export class OpenAiLlmClient implements FullLlmClient {
         inputTokens: resp.usage?.prompt_tokens ?? 0,
         outputTokens: resp.usage?.completion_tokens ?? 0,
       },
-      // assistant message echoed verbatim on the next turn (tool_calls round-trip)
-      raw: msg,
+      // assistant message echoed verbatim on the next turn (tool_calls round-trip)；
+      // 抢救轮把 raw 归一化为携带抢救文本的 assistant 消息（原始 msg 的 content 为空·回传易被端点拒）。
+      raw: salvaged ? { role: "assistant", content: reasoningText } : msg,
+      ...(salvaged ? { salvagedReasoning: true } : {}),
     };
   }
 
@@ -355,6 +377,22 @@ export function extractJsonText(content: string): string {
   const last = content.lastIndexOf("}");
   if (first >= 0 && last > first) return content.slice(first, last + 1);
   return content.trim();
+}
+
+/**
+ * WO-FIX-REASONING-CONTENT：内部 toolChoice → OpenAI tool_choice。
+ * `auto` → "auto"；`{type:"tool", name}` → {type:"function", function:{name}}（OpenAI 兼容端点强制某函数的标准形态）。
+ */
+export function toOpenAiToolChoice(tc: { type: "auto" } | { type: "tool"; name: string }): unknown {
+  return tc.type === "tool" ? { type: "function", function: { name: tc.name } } : "auto";
+}
+
+/** 取首个非空白字符串（reasoning_content / reasoning 兼容不同端点字段名）；都空返 ""。 */
+function firstNonEmpty(...vals: (string | null | undefined)[]): string {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim().length > 0) return v;
+  }
+  return "";
 }
 
 /** Convert an internal LlmAgentMessage to OpenAI chat messages (1:N for tool results). */

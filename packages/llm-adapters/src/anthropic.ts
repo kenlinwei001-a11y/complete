@@ -148,6 +148,13 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => toAnthropicMessage(m)),
     } as Record<string, unknown>;
 
+    // WO-FIX-REASONING-CONTENT：收尾/兜底轮强制工具选择（缺省 auto·模型自决）。
+    // `{type:"tool", name}` → Anthropic tool_choice {type:"tool", name}；令模型必须产出结构化收尾。
+    if (req.toolChoice) {
+      params.tool_choice =
+        req.toolChoice.type === "tool" ? { type: "tool", name: req.toolChoice.name } : { type: "auto" };
+    }
+
     // Agent 运行时增量 §1.3 第 2 刀：服务端 compaction（beta compact-2026-01-12）。
     // 响应中的 compaction 块按官方语义原样回传（raw 透传，见 toAnthropicMessage 的 raw echo）。
     const compacting = this.enableCompaction && (req.contextEdits?.length ?? 0) > 0;
