@@ -23,6 +23,10 @@ const RE_SOP = /(提前.*交|能否提前|挤占|抢产|插单|重排|拆产|拆
 const RE_CREDIT = /(信用|逾期|敞口|额度)/;
 const RE_MARGIN = /(毛利|毛利率|量价本利|margin|cost)/;
 const RE_SUPPLY_DEMAND = /(供需|产销|需求预测|供给|对不上)/;
+// 审核方接缝调和（tier2 semantic-discover × metric-rollup-split 撞路由）：达标语境（指标达成/达标）。
+// 归因/方案深问 IN 达标语境 = 指标达标根因/方案（metric-split·gap_attribution/decision_play），先于 B/C 直绑（tier2·finance_pnl 等）；
+// 无达标语境的纯 B/C 深问（"毛利为什么下滑"）仍落 B/C。RE_ROOTCAUSE 含"为什么"和"拉低"两者，故唯一可分信号=达标语境。
+const RE_ATTAIN_CTX = /(达成|达标|达成率|完成率|份额)/;
 const RE_ATP = /(能不能接|能接多少|何时能交|交期|承诺|ATP|CTP)/;
 const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
 /** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
@@ -176,6 +180,9 @@ export function resolveCeoRoute(
   // RE_SOP 置顶：产销重排（提前/挤占/拆产）绝不被 decision_play 劫持（KILL-MOCK·答非所问的老坑）。
   let route: CeoQueryRoute["route"];
   if (RE_SOP.test(q)) route = "sop_reschedule";
+  // 接缝调和：达标语境下的归因/方案深问先于 B/C 直绑（"毛利被什么拉低才没达成目标"=达标根因→gap_attribution·非 finance_pnl；
+  // 而"毛利为什么下滑"无达标语境→仍走下方 RE_MARGIN→finance_pnl）。方案(OPTION)优先根因(ROOTCAUSE)同既有口径。
+  else if ((RE_ROOTCAUSE.test(q) || RE_OPTION.test(q)) && RE_ATTAIN_CTX.test(q)) route = RE_OPTION.test(q) ? "decision_play" : "gap_attribution";
   else if (RE_CREDIT.test(q)) route = "credit_exposure";
   else if (RE_MARGIN.test(q)) route = "finance_pnl";
   else if (RE_SUPPLY_DEMAND.test(q)) route = "supply_demand_gap_attribution";
