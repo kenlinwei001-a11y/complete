@@ -34,6 +34,8 @@ import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } 
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
+import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
+import { runProcessing } from "./pipeline/processing.js"; // OntoFlow（P3）· 数据处理折叠·嫁接自 main
 import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
@@ -43,6 +45,7 @@ import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./d
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
@@ -302,6 +305,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
+  const workflows = new WorkflowService(repos, ontology, ontologyCore); // OntoFlow（PRD v2）· 本体建模工作流 CRUD/校验/预览/发布·嫁接自 main
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
   solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
   solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
@@ -403,6 +407,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
         await ontology.runDerivations(sysCtx);
         return { ok: true, targetRef: `OBJ-${objectId}` };
+      }
+      // OntoFlow（P3）流水线发布物化：rows 经数据处理折叠成对象落库(origin PIPELINE)，坏行入隔离区。嫁接自 main 平行线。
+      if (draft.actionTypeKey === "流水线发布物化") {
+        const workflowId = String(draft.payload.workflowId ?? "");
+        const nodeId = String(draft.payload.nodeId ?? "");
+        const rows = Array.isArray(draft.payload.rows) ? (draft.payload.rows as Record<string, unknown>[]) : [];
+        const wfRec = await repos.ontologyWorkflows.get(draft.tenantId, workflowId);
+        const node = wfRec?.doc.nodes.find((n) => n.id === nodeId);
+        if (!node || node.kind !== "SUBGRAPH_ENTITY") return { ok: false, error: `entity node not found: ${nodeId}` };
+        let spec = node.processing;
+        if (!spec) {
+          const up = wfRec!.doc.edges.filter((e) => e.to === node.id).map((e) => e.from);
+          const proc = wfRec!.doc.nodes.find((n) => n.kind === "PROCESS" && up.includes(n.id));
+          if (proc && proc.kind === "PROCESS") spec = proc.spec;
+        }
+        if (!spec) return { ok: false, error: "no processing spec" };
+        const typeKey = node.modeling.typeKey;
+        const pk = node.modeling.primaryKey;
+        const records = runProcessing(rows, spec);
+        let n = 0;
+        for (const rec of records) {
+          const pkVal = rec.props[pk];
+          if (pkVal === undefined || pkVal === null || pkVal === "") {
+            await quarantine.record(draft.tenantId, { connId: workflowId, dataset: typeKey, raw: rec.props, reason: "SCHEMA_MISMATCH", detail: `主键 '${pk}' 缺失`, reprocess: { targetKey: typeKey, mapping: spec.mappings.map((m) => ({ propKey: m.targetProp, sourceField: m.sourceField })), pk } });
+            continue;
+          }
+          if (rec.expired) continue;
+          await repos.objects.put({ id: `obj_${typeKey.toLowerCase()}_${String(pkVal)}`.replace(/[^\w-]/g, "_"), tenantId: draft.tenantId, type: typeKey, props: rec.props, origin: { type: "PIPELINE", workflowId } });
+          n++;
+        }
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        return { ok: true, targetRef: `WF-${workflowId}:${n}` };
       }
       return mockExecutor.execute(draft);
     },
@@ -1834,6 +1870,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!elementKind || !key) throw validationError("elementKind 与 key 必填");
     return governance.references(ctx(req), { elementKind, key, prop: q["prop"] });
   });
+
+  // ---- OntoFlow（PRD v2）本体建模工作流：CRUD/校验(P1) + 数据处理预览(P2) + 提升/发布(P3)。嫁接自 main 平行线。 ----
+  app.get("/a/v1/ontology-workflows", async (req) => ({ items: await workflows.list(ctx(req)) }));
+  app.post("/a/v1/ontology-workflows", async (req, reply) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    const wf = await workflows.create(ctx(req), body);
+    return reply.status(201).send(wf);
+  });
+  app.get("/a/v1/ontology-workflows/:id", async (req) => workflows.get(ctx(req), (req.params as { id: string }).id));
+  app.put("/a/v1/ontology-workflows/:id", async (req) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    return workflows.update(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/validate", async (req) => workflows.validate(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
+    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
+    return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {
+    const { id, nodeId } = req.params as { id: string; nodeId: string };
+    return workflows.promote(ctx(req), id, nodeId);
+  });
+  app.post("/a/v1/ontology-workflows/:id/publish", async (req) => workflows.publish(ctx(req), (req.params as { id: string }).id));
   app.get("/a/v1/slices/:key/references", async (req) => {
     const { key } = req.params as { key: string };
     return governance.sliceReferences(ctx(req), key);

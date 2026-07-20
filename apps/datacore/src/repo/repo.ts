@@ -42,6 +42,7 @@ import type {
   OntologyVersion,
   OpsScheduleStoreRecord,
   OpsTickReportRecord,
+  OntologyWorkflowRecord,
   OutboxEvent,
   PermissionPolicy,
   RawDataset,
@@ -237,6 +238,8 @@ export interface Repos {
   mergeCandidates: Store<import("@platform/contracts").MergeCandidate>;
   objectMerges: Store<import("@platform/contracts").ObjectMerge>;
   notifications: Store<NotificationRecord>;
+  /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。嫁接自 main 平行线。 */
+  ontologyWorkflows: Store<OntologyWorkflowRecord>;
   validationRuns: Store<ValidationRunRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;
