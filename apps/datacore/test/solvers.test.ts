@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, type TestApp } from "./helpers.js";
-import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, NOMINAL_PROCESS_YIELD } from "../src/synthetic/battery.js";
 import { round } from "../src/prng.js";
 
 const P = BATTERY_SOLVER_PARAMS as {
@@ -126,7 +126,11 @@ describe("S1 solvers", () => {
       lineCaps.push(round(Math.min(Math.min(...serial), formation, aging), 2));
     }
     const lineMean = lineCaps.length > 0 ? lineCaps.reduce((a, v) => a + v, 0) / lineCaps.length : 0;
-    const daily = round(Math.min(lineMean, base.props.formationCapDaily as number, base.props.agingCapDaily as number), 2);
+    // WO-SCALE-COHERENCE 镜像：共享化成/老化封顶按「基地代表良率/名义」缩放（同 computeRollup·保良率敏感度）。
+    const baseYields = procs.filter((x) => lineIds.includes(x.props.lineId)).map((pr) => (pr.props.yield as number) ?? 1).filter((y) => y > 0);
+    const baseMeanYield = baseYields.length > 0 ? baseYields.reduce((a, v) => a + v, 0) / baseYields.length : 1;
+    const yf = baseMeanYield / NOMINAL_PROCESS_YIELD;
+    const daily = round(Math.min(lineMean, (base.props.formationCapDaily as number) * yf, (base.props.agingCapDaily as number) * yf), 2);
     expect(r0.weeklyCap).toBe(round((daily * 7) / P.packCellCount / 10000, 4));
   });
 

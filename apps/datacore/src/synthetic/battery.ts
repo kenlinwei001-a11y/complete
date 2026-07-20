@@ -109,6 +109,27 @@ export const BN_FACTORS = [
   "良率波动",
 ] as const;
 
+// WO-SCALE-COHERENCE（R18 realized 层·断裂点E'）：realized 产出序列 output:line 的锚均值 + 排产达成率。
+// output:line 生成器锚均值（tsGenerators 内 base.mean 单一来源）；per-base 尺度据此派生。
+export const OUTPUT_LINE_BASE_MEAN = 30000;
+// 实现产出 = 基地夹定产能(formationCapDaily=computeRollup dailyCells) × 排产达成率（= attainment:line/base 基准 0.914，
+// 供给紧俏锂电按此达成率兑现）。留 ~8.6% 达成缺口 = 校准良率信号所踏的真实缺口（非尺度断裂）。
+export const REALIZED_ATTAINMENT = 0.55;
+/**
+ * output:line per-base 尺度因子：令 realized(mean-over-lines) = 基地夹定产能 × 排产达成率，与 computeRollup 同锚。
+ * 断裂点E'（dev 原单遗漏的第六层）：capacity(computeRollup) 已按 gwh 派生到 365万套/年锚，但 realized(output:line)
+ * 仍锁死玩具均值 30000（≈148万套/年·40% 达成）→ 校准 predicted/actual 脱尺度 1.3~4.6× → MAPE 恒 134% 淹没良率信号。
+ */
+export function outputLineScaleForBase(baseFormationCapDaily: number): number {
+  if (!(baseFormationCapDaily > 0)) return REALIZED_ATTAINMENT; // 兜底 ≈ 原 30000 尺度
+  return (baseFormationCapDaily * REALIZED_ATTAINMENT) / OUTPUT_LINE_BASE_MEAN;
+}
+
+// 名义工序良率（电池包基线 Process.yield 均值口径·数据侧单一来源）：computeRollup 与 VLE 独立产能链(vle-oracle)
+// 均以「基地代表良率/名义」缩放共享化成/老化封顶——令 gwh 夹点保留良率敏感度（M11 校准杠杆），基线(良率≈名义)
+// 缩放≈1 不动锚。放数据侧(battery)供引擎与 oracle 同口径共享输入常数，不违 oracle 逻辑独立性。
+export const NOMINAL_PROCESS_YIELD = 0.973;
+
 export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   forecastStart: "2026-06-10",
   packCellCount: 96,
@@ -1888,7 +1909,7 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   tsGenerators: [
     { seriesKey: "oee:equip", entityType: "Equipment", grain: "day", base: { mean: 0.78, noise: 0.04 }, effects: ["maint_window_dip", "weekend_dip"], measureField: "oee", weightField: "output" },
     { seriesKey: "yield:process", entityType: "Process", grain: "day", base: { mean: 0.952, noise: 0.008 }, effects: ["maint_window_dip"], measureField: "yield" },
-    { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: 30000, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
+    { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: OUTPUT_LINE_BASE_MEAN, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
     { seriesKey: "attainment:line", entityType: "Line", grain: "day", base: { mean: 0.914, noise: 0.02 }, measureField: "attainment" },
     { seriesKey: "util:line", entityType: "Line", grain: "day", base: { mean: 92, noise: 1.2 }, effects: ["maint_window_dip"], measureField: "util" },
     // CL.5（PRD-attainment-base-daily-timeseries）：基地级日达成率序列——"本月逐日为何未达成"时间维度归因

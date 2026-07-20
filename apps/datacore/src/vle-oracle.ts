@@ -1,5 +1,5 @@
 import type { Repos } from "./repo/repo.js";
-import { BATTERY_SOLVER_PARAMS } from "./synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, NOMINAL_PROCESS_YIELD } from "./synthetic/battery.js";
 
 /**
  * VLE 参照实现预言机（PRD-addendum-validation-loop §2「参照实现」类）。
@@ -118,8 +118,14 @@ function weeklyWanByBase(
       lineCaps.push(r2(lineDaily));
     }
     const lineMean = lineCaps.length > 0 ? lineCaps.reduce((a, v) => a + v, 0) / lineCaps.length : 0;
-    const sharedFormation = n(base.props.formationCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY;
-    const sharedAging = n(base.props.agingCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY;
+    // WO-SCALE-COHERENCE 回补镜像（与 computeRollup 同口径）：共享化成/老化封顶按「基地代表良率/名义」缩放，
+    // 令 gwh 夹点保留良率敏感度（基线缩放≈1 不动锚）——双算独立重写此逻辑，任一半漏改即 VLE 红。
+    const baseProcs = baseLines.flatMap((l) => processesByLine[s(l.props.lineId)] ?? []);
+    const baseYields = baseProcs.map((pr) => n(pr.props.yield, 1)).filter((y) => y > 0);
+    const baseMeanYield = baseYields.length > 0 ? baseYields.reduce((a, v) => a + v, 0) / baseYields.length : 1;
+    const yieldFactor = baseMeanYield / NOMINAL_PROCESS_YIELD;
+    const sharedFormation = (n(base.props.formationCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY) * yieldFactor;
+    const sharedAging = (n(base.props.agingCapDaily, Number.POSITIVE_INFINITY) || Number.POSITIVE_INFINITY) * yieldFactor;
     const dailyCells = r2(Math.min(lineMean, sharedFormation, sharedAging));
     const weeklyWan = r4((dailyCells * 7) / Math.max(1, packCellCount) / 10000);
     out.set(baseId, weeklyWan);

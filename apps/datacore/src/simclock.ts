@@ -6,7 +6,7 @@ import type { OntologyService } from "./ontology.js";
 import type { RuleScanService } from "./scheduler.js";
 import type { SolverService } from "./solvers/service.js";
 import { genPoint, maintWindowsFor, windowFor, type ScenarioModifiers, type TsGenSpec } from "./synthetic/tsgen.js";
-import { BATTERY_TEMPLATE } from "./synthetic/battery.js";
+import { BATTERY_TEMPLATE, outputLineScaleForBase } from "./synthetic/battery.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound } from "./errors.js";
 import { round } from "./prng.js";
@@ -188,6 +188,9 @@ export class SimClockService {
     }));
     const windows = maintWindowsFor(maintPlans, clock.t0);
     const mods = this.scenarioModifiers(clock);
+    // WO-SCALE-COHERENCE：output:line 实现产出按基地夹定产能派生 per-base 尺度（与 generateHistory 同锚·tick 续接不断尺度）。
+    const baseCap = new Map<string, number>();
+    for (const b of await this.repos.objects.listByType(ctx.tenantId, "Base")) baseCap.set(str(b.props.baseId), num(b.props.formationCapDaily));
 
     // ① new ts points for the advanced day
     let newPoints = 0;
@@ -195,6 +198,7 @@ export class SimClockService {
       const entities = await this.repos.objects.listByType(ctx.tenantId, gen.entityType);
       const series = await this.ts.seriesByKey(ctx.tenantId, gen.seriesKey);
       if (!series) continue;
+      const scaleFor = (baseId: string) => (gen.seriesKey === "output:line" ? outputLineScaleForBase(baseCap.get(baseId) ?? 0) : undefined);
       const points = entities
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map((e) => {
@@ -203,7 +207,7 @@ export class SimClockService {
           return {
             entityId,
             ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods),
+            values: genPoint(gen, { entityId, baseId, scale: scaleFor(baseId) }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods),
             tick: tickIndex,
           };
         });

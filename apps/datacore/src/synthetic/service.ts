@@ -33,6 +33,7 @@ import {
   generatePlanDomain,
   projectExceptionEvents,
   BINDINGS,
+  outputLineScaleForBase,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
@@ -429,6 +430,9 @@ export class SyntheticService {
     }));
     const windows = maintWindowsFor(maintPlans, BATTERY_SOLVER_PARAMS.forecastStart as string);
     const generators = (BATTERY_TEMPLATE.tsGenerators ?? []) as unknown as TsGenSpec[];
+    // WO-SCALE-COHERENCE：output:line 实现产出按基地夹定产能派生 per-base 尺度（realized 层入 round-trip）。
+    const baseCap = new Map<string, number>();
+    for (const b of await this.repos.objects.listByType(ctx.tenantId, "Base")) baseCap.set(String(b.props.baseId), Number(b.props.formationCapDaily) || 0);
     for (const gen of generators) {
       const series = await this.ts.ensureSeries(ctx.tenantId, {
         seriesKey: gen.seriesKey,
@@ -445,12 +449,13 @@ export class SyntheticService {
       for (const e of entities) {
         const entityId = String(e.props[entityRefFieldOf(gen.entityType)] ?? e.id);
         const baseId = String(e.props.baseId ?? "");
+        const scale = gen.seriesKey === "output:line" ? outputLineScaleForBase(baseCap.get(baseId) ?? 0) : undefined;
         for (let d = 0; d < HISTORY_DAYS; d++) {
           const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
           points.push({
             entityId,
             ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, d, seed, windowFor(windows, baseId, dateIso)),
+            values: genPoint(gen, { entityId, baseId, scale }, dateIso, d, seed, windowFor(windows, baseId, dateIso)),
             tick: 0,
           });
         }

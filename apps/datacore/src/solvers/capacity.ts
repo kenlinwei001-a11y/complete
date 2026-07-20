@@ -1,5 +1,6 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
+import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
 import { baseName, baseProvenanceSynthetic, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { liveTightness, primaryFactor } from "./risk.js";
 
@@ -144,8 +145,16 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
     // 实际值聚合（pairing/simclock 按基地取各车间均值）同尺度，且保留化成/串行工序的良率敏感度（校准可观测）。
     const lineMean =
       lineNodes.length > 0 ? lineNodes.reduce((a, l) => a + l.capacityPerDay, 0) / lineNodes.length : 0;
-    const sharedFormation = num(b.props.formationCapDaily, Infinity) || Infinity;
-    const sharedAging = num(b.props.agingCapDaily, Infinity) || Infinity;
+    // WO-SCALE-COHERENCE 回补（保 SA-3 良率敏感度不被 gwh 夹点抹平）：scale-coherence 令共享化成/老化封顶
+    // 按 gwh 派生并夹定 dailyCells，但这两个封顶不含 Process.yield → min 绑它们时 dailyCells 对良率零敏感，
+    // M11 校准（重放调 Process.yield 观改善）失去杠杆。以基地代表良率/名义良率 之比缩放共享封顶：基线(良率≈名义)
+    // 缩放≈1（锚不动），良率被下调时缩放<1 → dailyCells 同比降 → 校准重放可观测（dailyCells ∝ yield，R6 确定性）。
+    const baseProcs = lines.flatMap((l) => processesByLine[str(l.props.lineId)] ?? []);
+    const baseYields = baseProcs.map((pr) => num(pr.props.yield, 1)).filter((y) => y > 0);
+    const baseMeanYield = baseYields.length > 0 ? baseYields.reduce((a, v) => a + v, 0) / baseYields.length : 1;
+    const yieldFactor = baseMeanYield / NOMINAL_PROCESS_YIELD;
+    const sharedFormation = (num(b.props.formationCapDaily, Infinity) || Infinity) * yieldFactor;
+    const sharedAging = (num(b.props.agingCapDaily, Infinity) || Infinity) * yieldFactor;
     const dailyCells = round(Math.min(lineMean, sharedFormation, sharedAging), 2);
     const weeklyWan = round((dailyCells * 7) / Math.max(1, c.params.packCellCount) / 10000, 4);
     out.push({
