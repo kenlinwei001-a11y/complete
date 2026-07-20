@@ -184,6 +184,31 @@ export const fetchOntologyGraph = (packageId: string) =>
 export const invokeSolver = (solverKey: string, args: Record<string, unknown>) =>
   api.a<{ data: unknown; snapshotVersion: string }>(`/a/v1/solvers/${solverKey}/invoke`, { body: { args } });
 
+/** WO-PROJECT-SIM-WHATIF · 杠杆发现薄封装（generic_inference mode:"levers"）：从⑤瓶颈因子反推候选杠杆
+ *  + 服务端算敏感度（∂目标/∂杠杆），返回按 |敏感度| 排序的 top-K 杠杆。杠杆集随瓶颈变（R14）。 */
+export interface DiscoveredLever {
+  objectType: string;
+  objectId: string;
+  prop: string;
+  factor?: string;
+  unit?: string;
+  currentValue: number;
+  sensitivity: number;
+  bound?: { min: number; max: number } | null;
+  provenance?: { src: string; formula: string; inputs: string[] };
+}
+export const discoverLevers = (args: {
+  factors?: string[];
+  scopeObjectIds?: string[];
+  targetType?: string;
+  targetProp?: string;
+  topK?: number;
+}) =>
+  api.a<{ data: { levers: DiscoveredLever[]; count: number; rootTypes: string[] }; snapshotVersion: string }>(
+    "/a/v1/solvers/generic_inference/invoke",
+    { body: { args: { mode: "levers", ...args } } },
+  );
+
 /** C5 求解器目录（只读发现页 + workflow invoke_solver 引用下拉数据源）。
  *  来自注册表 `/a/v1/solvers/registry`（业务场景 22 + 通用 9 + 决策 8，feature 过滤；R5 零业务常数）。 */
 export interface SolverCatalogItem {

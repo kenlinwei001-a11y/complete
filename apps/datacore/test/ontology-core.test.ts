@@ -544,4 +544,52 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     const res = await invokeSolver(t, "generic_inference", { apply: [] });
     expect(res.statusCode).toBe(400);
   });
+
+  // WO-PROJECT-SIM-WHATIF · 杠杆发现 mode:"levers"（G-WHATIF-HARDCODED-LEVERS）：反向 walk 派生 DAG →
+  // 叶输入候选杠杆 + 服务端 ±ε recompute 算敏感度 + 排序（引擎半·SEAM 之杠杆随瓶颈变/真敏感度）。
+  it("mode:levers 反向 walk 派生 DAG → 叶输入候选杠杆，服务端算 |敏感度| 排序 + 确定性 R6", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 1, 3, 4); // 12 设备 3 工序 1 线 1 厂
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const res = await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", topK: 8 });
+    expect(res.statusCode).toBe(200);
+    const out = (res.json() as { data: { levers: { objectType: string; objectId: string; prop: string; sensitivity: number; provenance: unknown }[]; count: number; deltas: unknown[] } }).data;
+    // 反推到叶输入（Equipment 的 oee_current/takt/availFactor + Process.yield_baseline），非派生 capacity_h/capacity
+    const props = new Set(out.levers.map((l) => `${l.objectType}.${l.prop}`));
+    expect(props.has("Equipment.oee_current")).toBe(true);
+    expect(props.has("Process.yield_baseline")).toBe(true);
+    expect(props.has("Equipment.capacity_h")).toBe(false); // 派生属性不作杠杆（只反推到叶）
+    // 每根杠杆指向真对象实例 + provenance + 非零敏感度
+    for (const l of out.levers) {
+      expect(equipIds.includes(l.objectId) || l.objectId.startsWith("obj_Process_")).toBe(true);
+      expect(l.sensitivity).not.toBe(0);
+      expect(l.provenance).toBeTruthy();
+    }
+    // 按 |敏感度| 降序（tornado 排序 = 真敏感度）
+    for (let i = 1; i < out.levers.length; i++) expect(Math.abs(out.levers[i - 1]!.sensitivity)).toBeGreaterThanOrEqual(Math.abs(out.levers[i]!.sensitivity));
+    // 确定性 R6：同输入字节级一致
+    const res2 = await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", topK: 8 });
+    expect(JSON.stringify((res2.json() as { data: unknown }).data)).toBe(JSON.stringify(out));
+    // 默认路径输出形状键保留（deltas 存在·SHAPE 不破）
+    expect(Array.isArray(out.deltas)).toBe(true);
+  });
+
+  it("mode:levers · factors 过滤 → 杠杆随瓶颈变（设备OEE 瓶颈只出 Equipment.oee_current 杠杆，不含无关杠杆）", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 1, 2, 3);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const oee = (await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", factors: ["设备OEE"] })).json() as { data: { levers: { objectType: string; prop: string }[] } };
+    const yieldF = (await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", factors: ["良率波动"] })).json() as { data: { levers: { objectType: string; prop: string }[] } };
+    // 设备OEE 瓶颈 → 只出 OEE 杠杆；良率波动瓶颈 → 只出良率杠杆；两瓶颈杠杆集不同（证非写死）
+    expect(oee.data.levers.every((l) => `${l.objectType}.${l.prop}` === "Equipment.oee_current")).toBe(true);
+    expect(oee.data.levers.length).toBeGreaterThan(0);
+    expect(yieldF.data.levers.every((l) => `${l.objectType}.${l.prop}` === "Process.yield_baseline")).toBe(true);
+    expect(JSON.stringify(oee.data.levers)).not.toBe(JSON.stringify(yieldF.data.levers));
+  });
 });

@@ -1,0 +1,334 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
+import { Feature } from "@/workspace/featureGate";
+import { Provenance } from "@/components/Provenance";
+import { fmt, useActionDraft } from "./shared";
+import { useLiveSolver } from "./useLiveSolver";
+import zh from "@/locales/zh";
+import styles from "./SimViews.module.css";
+
+/**
+ * WO-PROJECT-SIM-WHATIF ⑥ · 动态杠杆面板（闭 G-WHATIF-HARDCODED-LEVERS）：
+ * 替换焊死 3 滑杆（夜班/加产线/外协）为「自⑤瓶颈反推 + 敏感度排序」的动态杠杆集——
+ *   ① 杠杆自本体派生 DAG 反推（generic_inference mode:"levers"·服务端算敏感度，杠杆随瓶颈变，非写死）；
+ *   ② top-K 动态滑杆 + tornado 条（∂目标/∂杠杆 降序，排序=真敏感度）；
+ *   ③ 拖动 → generic_inference recompute 真重算 → before/after deltas + 每值 provenance（R13）；
+ *   ④ 边界自规则闸（外协 C08 读规则表·非内联 20）/ 物理域；
+ *   ⑤ 多方案利弊矩阵（每方案 generic_inference 真算·一键采纳回填）。
+ * 纯投影（KILL-MOCK）：deltas / 敏感度 / 矩阵全部从真求解器输出渲染，零写死数字。
+ */
+
+interface Delta {
+  objId: string;
+  type: string;
+  prop: string;
+  before: unknown;
+  after: unknown;
+}
+interface GenericInferenceOut {
+  deltas: Delta[];
+  rows: { objectId: string; type: string; prop: string; before: unknown; after: unknown }[];
+  affectedObjects: number;
+  count: number;
+  rootTypes: string[];
+}
+
+const leverKey = (l: { objectType: string; objectId: string; prop: string }): string => `${l.objectType}.${l.objectId}.${l.prop}`;
+const isOutsource = (prop: string): boolean => /outsource/i.test(prop);
+
+/** 边界自规则闸（R14·非内联）：外协类杠杆上限读 C08 阈值（从规则表达式解析 ratio），其余取物理域 [0,1] 或值域兜底。 */
+function leverBound(l: DiscoveredLever, c08Ratio: number): { min: number; max: number; step: number; pct: boolean; gated: boolean } {
+  if (l.bound && Number.isFinite(l.bound.min) && Number.isFinite(l.bound.max) && !isOutsource(l.prop)) {
+    const span = l.bound.max - l.bound.min;
+    return { min: l.bound.min, max: l.bound.max, step: span > 0 ? Math.max(span / 20, 0.001) : 0.01, pct: false, gated: false };
+  }
+  if (isOutsource(l.prop)) {
+    return { min: 0, max: c08Ratio, step: c08Ratio / 4 || 0.05, pct: true, gated: true };
+  }
+  // OEE / 利用率 / 良率：物理域 [0,1]。
+  if (l.currentValue >= 0 && l.currentValue <= 1) return { min: 0, max: 1, step: 0.01, pct: false, gated: false };
+  const max = Math.max(l.currentValue * 2, l.currentValue + 1);
+  return { min: 0, max, step: Math.max(max / 20, 0.1), pct: false, gated: false };
+}
+
+function deltaDir(before: unknown, after: unknown): { arrow: string; diff: string; color: string } | null {
+  if (typeof before !== "number" || typeof after !== "number" || !Number.isFinite(before) || !Number.isFinite(after)) return null;
+  const d = Math.round((after - before) * 1e6) / 1e6;
+  if (d === 0) return { arrow: "＝", diff: "0", color: "var(--muted2)" };
+  return d > 0 ? { arrow: "▲", diff: `+${d}`, color: "var(--ok)" } : { arrow: "▼", diff: String(d), color: "var(--danger)" };
+}
+
+/** C08 阈值解析（R14·非内联）：从规则表达式取第一个 0–1 小数 = 外协比例上限；缺则物理兜底 0.2。 */
+function parseC08Ratio(rules: { key: string; expression?: string }[] | undefined): number {
+  const c08 = rules?.find((r) => r.key === "C08");
+  const m = c08?.expression?.match(/(\d*\.?\d+)/);
+  const v = m ? parseFloat(m[1]!) : NaN;
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.2; // debattery-allow：规则缺失时的物理域兜底（真闸值优先读 C08）
+}
+
+export function DynamicLeverPanel({
+  baseP50,
+  baseGap,
+  factors,
+  scopeObjectIds,
+  modelId,
+  snapshot,
+}: {
+  baseP50: number;
+  baseGap: number;
+  factors: string[];
+  scopeObjectIds?: string[];
+  modelId: string;
+  snapshot: { mode: string; qty: number; p50: number; p90: number; mainBn: string };
+}) {
+  const action = useActionDraft();
+  const [values, setValues] = useState<Record<string, number>>({});
+
+  // ① 杠杆发现（generic_inference mode:levers·服务端算敏感度，随⑤瓶颈变）。
+  const leversQ = useQuery({
+    queryKey: ["a", "levers", { factors, scope: scopeObjectIds }],
+    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType: "Base", targetProp: "oeeIndex", topK: 6 })).data.levers,
+    retry: false,
+  });
+  const levers = useMemo(() => leversQ.data ?? [], [leversQ.data]);
+
+  // ④ 边界：C08 规则闸值（外协上限，读规则表·非内联）。
+  const rulesQ = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules, staleTime: 60_000 });
+  const c08Ratio = parseC08Ratio(rulesQ.data as { key: string; expression?: string }[] | undefined);
+
+  const valueOf = (l: DiscoveredLever): number => values[leverKey(l)] ?? l.currentValue;
+  const bounds = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof leverBound>>();
+    for (const l of levers) m.set(leverKey(l), leverBound(l, c08Ratio));
+    return m;
+  }, [levers, c08Ratio]);
+
+  // ③ 拖动 → 携真 {objectType,objectId,prop,value} 调 generic_inference 真重算（debounce + AbortController）。
+  const activeApply = useMemo(
+    () =>
+      levers
+        .filter((l) => {
+          const v = values[leverKey(l)];
+          return v !== undefined && v !== l.currentValue;
+        })
+        .map((l) => ({ objectType: l.objectType, objectId: l.objectId, prop: l.prop, value: values[leverKey(l)] as number })),
+    [levers, values],
+  );
+  const live = useLiveSolver<GenericInferenceOut>(
+    "generic_inference",
+    activeApply.length > 0 ? { apply: activeApply } : null,
+    (raw) => raw as GenericInferenceOut,
+  );
+  const out = live.data;
+
+  const maxSens = Math.max(1e-9, ...levers.map((l) => Math.abs(l.sensitivity)));
+
+  // ⑤ 多方案候选组合（objective 驱动·确定性·非写死）：max_产能 / min_代价 / 均衡。
+  const schemes = useMemo(() => {
+    if (levers.length === 0) return [] as { key: string; label: string; apply: { objectType: string; objectId: string; prop: string; value: number }[] }[];
+    const mk = (fn: (l: DiscoveredLever, b: ReturnType<typeof leverBound>) => number) =>
+      levers.map((l) => {
+        const b = bounds.get(leverKey(l))!;
+        return { objectType: l.objectType, objectId: l.objectId, prop: l.prop, value: Math.round(fn(l, b) * 1e6) / 1e6 };
+      });
+    return [
+      { key: "maxCap", label: zh.sim.proj.lever.schemes.maxCap, apply: mk((_l, b) => b.max) },
+      { key: "minCost", label: zh.sim.proj.lever.schemes.minCost, apply: mk((l, b) => (isOutsource(l.prop) ? l.currentValue : l.currentValue + (b.max - l.currentValue) * 0.3)) },
+      { key: "balanced", label: zh.sim.proj.lever.schemes.balanced, apply: mk((l, b) => (l.currentValue + b.max) / 2) },
+    ];
+  }, [levers, bounds]);
+
+  const schemesQ = useQuery({
+    queryKey: ["a", "lever-schemes", schemes.map((s) => s.apply)],
+    enabled: schemes.length > 0,
+    retry: false,
+    queryFn: async () => {
+      const results = await Promise.all(
+        schemes.map(async (s) => {
+          const res = await runSolver("generic_inference", { apply: s.apply });
+          const d = res.data as GenericInferenceOut;
+          const capGain = (d.deltas ?? []).reduce((acc, x) => acc + Math.max(0, Number(x.after) - Number(x.before)), 0);
+          const ruleFlag = s.apply.some((a) => isOutsource(a.prop) && a.value >= c08Ratio);
+          return { key: s.key, label: s.label, capGain: Math.round(capGain * 1e6) / 1e6, impact: d.affectedObjects ?? 0, ruleFlag };
+        }),
+      );
+      return results;
+    },
+  });
+
+  const adoptCombo = (apply: { objectType: string; objectId: string; prop: string; value: number }[]): void => {
+    action.mutate({
+      actionTypeKey: "采纳产能保障方案",
+      payload: {
+        modelId,
+        levers: apply, // 迁移：动态杠杆组合 [{objectType,prop,value}]（替原 whatIf 三系数）
+        snapshot: { ...snapshot, p50: snapshot.p50, baselineGap: baseGap },
+      },
+    });
+  };
+
+  const applyScheme = (schemeKey: string): void => {
+    const s = schemes.find((x) => x.key === schemeKey);
+    if (!s) return;
+    const next: Record<string, number> = { ...values };
+    for (const a of s.apply) next[`${a.objectType}.${a.objectId}.${a.prop}`] = a.value;
+    setValues(next);
+  };
+
+  return (
+    <div className={styles.whatIfPanel} data-testid="dynamic-lever-panel">
+      <div className="section-title">{zh.sim.proj.lever.title}</div>
+      <div className={styles.noteInfo}>{zh.sim.proj.lever.hint}</div>
+
+      {leversQ.isLoading && <div className="empty-state">{zh.common.loading}</div>}
+      {!leversQ.isLoading && levers.length === 0 && (
+        <div className={styles.noteInfo} data-testid="lever-empty">{zh.sim.proj.lever.empty}</div>
+      )}
+
+      {levers.length > 0 && (
+        <>
+          {/* ② tornado 条（敏感度降序·排序=真敏感度） */}
+          <div data-testid="lever-tornado" style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.tornadoTitle}</div>
+            {levers.map((l) => (
+              <div key={leverKey(l)} data-testid={`tornado-bar-${l.prop}`} style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0" }}>
+                <span style={{ width: 128, fontSize: 11 }} className="zh">{l.factor ?? `${l.objectType}.${l.prop}`}</span>
+                <span className={styles.tightBar} style={{ flex: 1 }}>
+                  <i style={{ width: `${Math.min(100, (Math.abs(l.sensitivity) / maxSens) * 100)}%`, background: "var(--c-capacity)" }} />
+                </span>
+                <span className="mono" data-testid={`tornado-sens-${l.prop}`} style={{ fontSize: 11, width: 64, textAlign: "right" }}>{fmt(l.sensitivity, 3)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ③ top-K 动态滑杆（非焊死 3 根） */}
+          {levers.map((l) => {
+            const b = bounds.get(leverKey(l))!;
+            const v = valueOf(l);
+            const hitBound = v >= b.max;
+            return (
+              <div className={styles.sliderRow} key={leverKey(l)}>
+                <span className="zh">
+                  {l.factor ?? `${l.objectType}.${l.prop}`}
+                  <span style={{ color: "var(--muted2)", fontSize: 10 }}> · {zh.sim.proj.lever.current} {fmt(l.currentValue, 3)}{b.pct ? "（比例）" : ""}</span>
+                </span>
+                <input
+                  type="range"
+                  min={b.min}
+                  max={b.max}
+                  step={b.step}
+                  value={v}
+                  aria-label={l.factor ?? `${l.objectType}.${l.prop}`}
+                  data-testid={`lever-slider-${l.prop}`}
+                  data-object-id={l.objectId}
+                  data-object-type={l.objectType}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [leverKey(l)]: parseFloat(e.target.value) }))}
+                />
+                <b className="mono">{b.pct ? `${Math.round(v * 100)}%` : fmt(v, 3)}</b>
+                {hitBound && b.gated && (
+                  <span className={styles.noteAmber} data-testid={`lever-bound-${l.prop}`} style={{ marginLeft: 6, fontSize: 10 }}>
+                    {zh.sim.proj.lever.ruleGate(`${Math.round(c08Ratio * 100)}%`)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          {/* A/B 对比 + 真重算 deltas（before/after + 每值 provenance R13） */}
+          <div className={styles.abCompare} data-testid="lever-ab">
+            <div>
+              <span>{zh.sim.proj.before}</span>
+              <b data-testid="lever-before-p50">{fmt(baseP50)}</b>
+            </div>
+            <div>
+              <span>影响面</span>
+              <b data-testid="lever-affected-count">{out?.affectedObjects ?? 0}</b>
+            </div>
+          </div>
+
+          {out && out.count > 0 && (
+            <div style={{ marginTop: 8 }} data-testid="lever-deltas">
+              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</div>
+              <table className="cmp">
+                <thead>
+                  <tr><th>对象</th><th>派生字段</th><th>before</th><th>after</th><th>变化</th></tr>
+                </thead>
+                <tbody>
+                  {out.rows.map((r, i) => {
+                    const dir = deltaDir(r.before, r.after);
+                    return (
+                      <tr key={`${r.objectId}-${r.prop}-${i}`} data-testid={`lever-delta-row-${r.objectId}-${r.prop}`}>
+                        <td className="mono" style={{ fontSize: 10 }}>{r.objectId}</td>
+                        <td className="mono">{r.prop}</td>
+                        <td className="mono" data-testid={`lever-before-${r.objectId}-${r.prop}`}>{fmt(Number(r.before), 3)}</td>
+                        <td className="mono" data-testid={`lever-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>
+                          <Provenance
+                            testId={`ld-${r.objectId}-${r.prop}`}
+                            src="generic_inference · recompute(dryRun)"
+                            formula={zh.sim.proj.lever.provFormula}
+                            inputs={[`${r.type}.${r.prop}`, ...activeApply.map((a) => `${a.objectType}.${a.prop}=${a.value}`)]}
+                            rule="C03/C08"
+                          >
+                            {fmt(Number(r.after), 3)}
+                          </Provenance>
+                        </td>
+                        <td className="mono" data-testid={`lever-diff-${r.objectId}-${r.prop}`} style={dir ? { color: dir.color, fontWeight: 600 } : undefined}>
+                          {dir ? `${dir.arrow} ${dir.diff}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ⑤ 多方案利弊量化矩阵（每方案 generic_inference 真算·一键采纳回填） */}
+          <div style={{ marginTop: 12 }} data-testid="lever-scheme-matrix">
+            <div className="section-title">{zh.sim.proj.lever.schemeTitle}</div>
+            <div className={styles.noteInfo}>{zh.sim.proj.lever.schemeHint}</div>
+            {schemesQ.data && (
+              <table className="cmp">
+                <thead>
+                  <tr>
+                    <th>{zh.sim.proj.lever.col.scheme}</th>
+                    <th>{zh.sim.proj.lever.col.capGain}</th>
+                    <th>{zh.sim.proj.lever.col.impact}</th>
+                    <th>{zh.sim.proj.lever.col.ruleFlag}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {schemesQ.data.map((s) => (
+                    <tr key={s.key} data-testid={`scheme-row-${s.key}`}>
+                      <td className="zh"><b>{s.label}</b></td>
+                      <td className="mono" data-testid={`scheme-capgain-${s.key}`}>
+                        <Provenance testId={`scheme-prov-${s.key}`} src="generic_inference · 方案重算" formula={zh.sim.proj.lever.provFormula} inputs={[s.label]}>
+                          {fmt(s.capGain, 3)}
+                        </Provenance>
+                      </td>
+                      <td className="mono" data-testid={`scheme-impact-${s.key}`}>{s.impact}</td>
+                      <td data-testid={`scheme-rule-${s.key}`}>{s.ruleFlag ? "⚠ C08" : "—"}</td>
+                      <td>
+                        <button className="btn sm" data-testid={`scheme-adopt-${s.key}`} onClick={() => applyScheme(s.key)}>
+                          {zh.sim.proj.lever.adoptScheme}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <Feature flag="act.adopt-to-draft">
+            <button className="btn sm primary" style={{ marginTop: 10 }} data-testid="lever-adopt" onClick={() => adoptCombo(activeApply.length > 0 ? activeApply : schemes[0]?.apply ?? [])}>
+              {zh.sim.proj.lever.adopt}（杠杆组合 + 推演快照 → Action）
+            </button>
+          </Feature>
+        </>
+      )}
+    </div>
+  );
+}
