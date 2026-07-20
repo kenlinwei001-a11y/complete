@@ -467,6 +467,48 @@ const VLE_MOCK_ASSERTIONS = [
   { segment: "⑦校准注入", point: "校准注入即收敛（mapeAfter<mapeBefore）", oracle: "invariant", pass: true, expected: 0, actual: 0 },
 ] as const;
 
+/**
+ * WO-PROJECT-SIM-WHATIF · generic_inference mode:"levers" 确定性桩（杠杆随⑤瓶颈变·服务端算敏感度镜像）：
+ * 从 args.factors（⑤瓶颈因子/瓶颈名）映到候选杠杆集——产能瓶颈出产能杠杆、物料瓶颈出物料杠杆，两集不同（证非写死）。
+ * 每根杠杆带确定性 sensitivity（tornado 排序=真敏感度）+ provenance；SEAM 测可 server.use 覆盖精确 payload（KILL-MOCK）。
+ */
+function mockLeverDiscovery(args: Record<string, unknown>): Record<string, unknown> {
+  const factors = Array.isArray(args.factors) ? (args.factors as unknown[]).map(String) : [];
+  const prov = (leaf: string) => ({ src: "generic_inference · recompute(dryRun,+ε)", formula: `∂(Base.oeeIndex) / ∂(${leaf})`, inputs: [leaf] });
+  const levers: Record<string, unknown>[] = [];
+  // 主瓶颈（factors[0]=⑤ mainBn）决定杠杆集类别：物料主瓶颈 → 物料杠杆，其余 → 产能杠杆（杠杆随瓶颈变）。
+  const material = /物料|齐套|料/.test(factors[0] ?? "");
+  if (material) {
+    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "物料齐套·外协", unit: "", currentValue: 0, sensitivity: 1.1, provenance: prov("Order.outsourceRatio") });
+    levers.push({ objectType: "MaterialBalance", objectId: "obj_MaterialBalance_MB-1", prop: "coverage", factor: "物料齐套·长协覆盖", unit: "", currentValue: 0.72, sensitivity: 0.7, provenance: prov("MaterialBalance.coverage") });
+  } else {
+    // 产能瓶颈（化成/通道/工序/OEE/利用/良率）：产能杠杆集（含外协杠杆供 C08 边界演示）。
+    levers.push({ objectType: "Equipment", objectId: "obj_Equipment_E1", prop: "oee_current", factor: "设备OEE", unit: "", currentValue: 0.82, sensitivity: 1.8, provenance: prov("Equipment.oee_current") });
+    levers.push({ objectType: "Process", objectId: "obj_Process_P1", prop: "yield_baseline", factor: "良率波动", unit: "", currentValue: 0.9, sensitivity: 1.2, provenance: prov("Process.yield_baseline") });
+    levers.push({ objectType: "Line", objectId: "obj_Line_L1", prop: "utilization", factor: "瓶颈工序·利用率", unit: "", currentValue: 0.75, sensitivity: 0.9, provenance: prov("Line.utilization") });
+    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "外协替代", unit: "", currentValue: 0, sensitivity: 0.6, provenance: prov("Order.outsourceRatio") });
+  }
+  levers.sort((a, b) => Math.abs(Number(b.sensitivity)) - Math.abs(Number(a.sensitivity)));
+  return { levers, deltas: [], rows: [], affectedObjects: 0, count: levers.length, rootTypes: [...new Set(levers.map((l) => String(l.objectType)))] };
+}
+
+/** generic_inference 默认路径（apply）确定性桩：前向重算下游派生 before/after，after 随假设值变（KILL-MOCK）。 */
+function mockGenericInference(args: Record<string, unknown>): Record<string, unknown> | { __err: string } {
+  const apply = Array.isArray(args.apply) ? (args.apply as { objectType?: unknown; objectId?: unknown; prop?: unknown; value?: unknown }[]) : [];
+  if (apply.length === 0) return { __err: "generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）" };
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const deltas = apply.map((a) => {
+    const objId = String(a.objectId ?? "");
+    const objType = String(a.objectType ?? "");
+    const v = Number(a.value);
+    const vnum = Number.isFinite(v) ? v : 1;
+    // 下游聚合派生（Base.oeeIndex 口径）∝ 假设值，确定性、随假设值变。
+    return { objId: `base-of-${objId}`, type: "Base", prop: "oeeIndex", before: 0.8, after: round2(0.8 * 0.5 + vnum * 0.5), rootObj: objId, rootType: objType };
+  });
+  const rows = deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after }));
+  return { deltas, rows, affectedObjects: new Set(deltas.map((d) => d.objId)).size, count: deltas.length, rootTypes: [...new Set(apply.map((x) => String(x.objectType ?? "")))] };
+}
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -1276,6 +1318,8 @@ export const handlers = [
         snapshotVersion: "ov-12",
       });
     if (key === "generic_inference") {
+      // WO-PROJECT-SIM-WHATIF：杠杆发现 mode:levers（杠杆随⑤瓶颈变·服务端算敏感度）。
+      if (String(invArgs.mode) === "levers") return HttpResponse.json({ data: mockLeverDiscovery(invArgs), snapshotVersion: "ov-lv" });
       // 通用 what-if（G-5）确定性桩：包装本体 recompute(dryRun+apply) 的形状 —— 前向重算下游派生链，
       // after 随假设值变（KILL-MOCK：前端仅投影本响应，改假设值→重算→deltas 变）。空 apply → 400（不静默）。
       const apply = Array.isArray(invArgs.apply)
@@ -2159,6 +2203,14 @@ export const handlers = [
       return HttpResponse.json({ data, snapshotVersion: "ov-12" });
     }
     if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    // WO-PROJECT-SIM-WHATIF：⑥ 拖动杠杆经 useLiveSolver → B 侧 run 真重算（generic_inference）；
+    // mode:levers 杠杆发现同经 B 侧（若前端改走 runSolver）。默认路径 apply → deltas（after 随假设值变·KILL-MOCK）。
+    if (key === "generic_inference") {
+      if (String(args.mode) === "levers") return HttpResponse.json({ data: mockLeverDiscovery(args), snapshotVersion: "ov-lv" });
+      const gi = mockGenericInference(args);
+      if ("__err" in gi) return err(400, "VALIDATION", String(gi.__err));
+      return HttpResponse.json({ data: gi, snapshotVersion: "ov-gi" });
+    }
     if (key === "affected_orders") {
       // §S1.5 扩展输出：summary + rows + problems[]（4 类归并 + rootChains）
       const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;

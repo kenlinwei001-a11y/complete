@@ -14,8 +14,9 @@ import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
-import { fmt, SnapshotBadge, useActionDraft } from "./shared";
+import { fmt, SnapshotBadge } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
+import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -89,24 +90,6 @@ function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number
   return { rows, skipped };
 }
 
-interface WhatIfState {
-  nightShifts: number; // 0–3
-  extraChannels: number; // 0–6
-  outsourcePct: number; // 0–20 step 5（20 截止 + C08 提示，§7.13）
-}
-
-interface WhatIfOut {
-  rejected: boolean;
-  reason?: string;
-  adjustedP50?: number;
-  adjustedP90?: number;
-  physicalCap?: number;
-  capped?: boolean;
-  capNote?: string;
-  gap?: number;
-  ok?: boolean;
-}
-
 /**
  * 项目推演（renderer=project-sim，增量 §7.13）：参数区（型号/整单·分批）→ 六步 stepper
  * （①场景解析…⑥结论与对策）+ 常显 DAG 面板（随步骤点亮）；任何参数变更 debounce 重算。
@@ -133,13 +116,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     { qty: 18, dueDate: "2026-07-13", address: "上海" },
     { qty: 22, dueDate: "2026-08-10", address: "海外" },
   ]);
-  const [whatIf, setWhatIf] = useState<WhatIfState>({ nightShifts: 0, extraChannels: 0, outsourcePct: 0 });
   const [uploadMsg, setUploadMsg] = useState(""); // PRD-IND-model §4.3 CSV 导入提示
   const [step, setStep] = useState(1);
   const [bnOpen, setBnOpen] = useState(false);
   const [dagNode, setDagNode] = useState<string | null>(null); // #3：点 DAG 节点 → 抽屉看判定/推导/输入/规则
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const action = useActionDraft();
 
   // PRD-IND-model §4.3：CSV 上传 → parseBatchTable → 切分批模式；模板下载（纯前端文件交互）。
   const onUploadCsv = (e: ChangeEvent<HTMLInputElement>) => {
@@ -175,18 +156,17 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     queryFn: () => searchObjects("Order", ""),
   });
 
-  // 任何参数变更 → debounce 300ms 重算 capacity_forecast（what-if 滑杆同路径，拖动即重算）
+  // ⑤瓶颈定位基线：capacity_forecast 出 P50/gap/perBaseRows/mainBn（⑥ 杠杆反推的瓶颈种子）。
+  // ⑥ what-if 已从「焊死 capacity_forecast whatIf 三系数」迁到动态杠杆走 generic_inference（见 DynamicLeverPanel）。
   const args = useMemo<Record<string, unknown>>(
     () => ({
       modelId,
       ...(mode === "single" ? { qty, weeks } : { batches: batches.map((b) => ({ qty: b.qty, dueDate: b.dueDate, address: b.address })) }),
-      whatIf: { nightShifts: whatIf.nightShifts, extraChannels: whatIf.extraChannels, outsourceRatio: whatIf.outsourcePct / 100 },
     }),
-    [modelId, mode, qty, weeks, batches, whatIf],
+    [modelId, mode, qty, weeks, batches],
   );
   const forecast = useLiveSolver("capacity_forecast", args, (raw) => CapacityForecastOutputSchema.parse(raw));
   const out = forecast.data;
-  const wi = out ? ((out as Record<string, unknown>).whatIf as WhatIfOut | undefined) : undefined;
 
   // ⑤ 多维瓶颈矩阵（bottleneck_matrix 求解器，弹窗按需取数）
   const bnBases = useMemo(() => (out ? out.perBaseRows.map((r) => r.base) : []), [out]);
@@ -207,27 +187,6 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     const q = Number(o.props.qty ?? 0);
     if (q > 0) setQty(Math.max(1, Math.round(q / 100))); // 套 → 万套（演示折算）
     useSessionStore.getState().setSelectedObjects([{ objectType: "Order", objectId: o.id, label: String(o.props.so ?? o.id) }]);
-  };
-
-  const adopt = () => {
-    if (!out) return;
-    action.mutate({
-      actionTypeKey: "采纳产能保障方案",
-      payload: {
-        modelId,
-        whatIf: { nightShifts: whatIf.nightShifts, extraChannels: whatIf.extraChannels, outsourcePct: whatIf.outsourcePct },
-        snapshot: {
-          mode,
-          qty: Number((out as Record<string, unknown>).qty ?? qty),
-          p50: out.p50,
-          p90: out.p90,
-          adjustedP50: wi?.adjustedP50 ?? out.p50,
-          adjustedP90: wi?.adjustedP90 ?? out.p90,
-          gap: wi?.gap ?? out.gap,
-          mainBn: out.mainBn,
-        },
-      },
-    });
   };
 
   return (
@@ -407,11 +366,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   modelId={modelId}
                   qty={qty}
                   weeks={Number((out as Record<string, unknown>).weeks ?? weeks)}
-                  whatIf={whatIf}
-                  setWhatIf={setWhatIf}
-                  wi={wi}
                   onOpenBn={() => setBnOpen(true)}
-                  onAdopt={adopt}
                 />
               </div>
 
@@ -496,11 +451,7 @@ function StepBody({
   modelId,
   qty,
   weeks,
-  whatIf,
-  setWhatIf,
-  wi,
   onOpenBn,
-  onAdopt,
 }: {
   step: number;
   out: CapacityForecastOutput;
@@ -508,11 +459,7 @@ function StepBody({
   modelId: string;
   qty: number;
   weeks: number;
-  whatIf: WhatIfState;
-  setWhatIf: (w: WhatIfState) => void;
-  wi: WhatIfOut | undefined;
   onOpenBn: () => void;
-  onAdopt: () => void;
 }) {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
 
@@ -786,9 +733,8 @@ function StepBody({
     );
   }
 
-  // ⑥ 结论与对策 + what-if 三滑杆（拖动即重算）
+  // ⑥ 结论与对策 + 动态杠杆（DynamicLeverPanel · generic_inference 真重算）
   const okColor = out.ok ? "var(--ok)" : "var(--danger)";
-  const effGap = wi && !wi.rejected && wi.gap != null ? wi.gap : out.gap;
   return (
     <div data-testid="pm-step6">
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
@@ -848,99 +794,17 @@ function StepBody({
         </div>
       </div>
 
+      {/* ⑥ what-if：焊死 3 滑杆 → 动态杠杆（自⑤瓶颈反推 + 敏感度排序，走 generic_inference 真重算）。
+          G-WHATIF-HARDCODED-LEVERS 收（本体 §8e）。杠杆集随瓶颈变、拖动真重算、每值 provenance、tornado 排序、
+          边界自 C08 规则闸、多方案矩阵 —— 全在 DynamicLeverPanel。 */}
       <Feature flag="view.project-sim.whatif">
-        <div className={styles.whatIfPanel} data-testid="whatif-panel">
-          <div className="section-title">{zh.sim.proj.whatIf}</div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.nightShift}（0–3 班）</span>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={1}
-              value={whatIf.nightShifts}
-              aria-label={zh.sim.proj.nightShift}
-              data-testid="whatif-night"
-              onChange={(e) => setWhatIf({ ...whatIf, nightShifts: parseInt(e.target.value) })}
-            />
-            <b>+{whatIf.nightShifts}</b>
-          </div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.extraChannels}（0–6 条）</span>
-            <input
-              type="range"
-              min={0}
-              max={6}
-              step={1}
-              value={whatIf.extraChannels}
-              aria-label={zh.sim.proj.extraChannels}
-              data-testid="whatif-channels"
-              onChange={(e) => setWhatIf({ ...whatIf, extraChannels: parseInt(e.target.value) })}
-            />
-            <b>+{whatIf.extraChannels}</b>
-          </div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.outsource}（0–20% · step 5）</span>
-            <input
-              type="range"
-              min={0}
-              max={20}
-              step={5}
-              value={whatIf.outsourcePct}
-              aria-label={zh.sim.proj.outsource}
-              data-testid="whatif-outsource"
-              onChange={(e) => setWhatIf({ ...whatIf, outsourcePct: parseInt(e.target.value) })}
-            />
-            <b>{whatIf.outsourcePct}%</b>
-          </div>
-          {whatIf.outsourcePct >= 20 && (
-            <div className={styles.noteAmber} data-testid="whatif-c08">
-              ⚠ {zh.sim.proj.outsourceCap}
-            </div>
-          )}
-          {wi?.rejected && (
-            <div className={styles.noteRed} data-testid="whatif-rejected">
-              ⛔ {wi.reason}
-            </div>
-          )}
-
-          <div className={styles.okBar} style={{ borderColor: effGap <= 0 ? "var(--ok)" : "var(--danger)", color: effGap <= 0 ? "var(--ok)" : "var(--danger)" }} data-testid="whatif-gap">
-            {effGap <= 0 ? zh.sim.proj.gapZero(fmt(-effGap)) : zh.sim.proj.gapLeft(fmt(effGap))}
-          </div>
-          {wi && !wi.rejected && (
-            <div className={styles.abCompare} data-testid="whatif-compare">
-              <div>
-                <span>{zh.sim.proj.before}</span>
-                <b data-testid="whatif-before">{fmt(out.p50)}</b>
-              </div>
-              <div style={{ borderColor: "rgba(98,190,119,.5)" }}>
-                <span>
-                  {zh.sim.proj.after}（P90 {fmt(wi.adjustedP90 ?? 0)}）
-                </span>
-                {/* 产能推演峰值/对策量（#4 backlog）：对策后P50 六要素溯源（受物理上限截顶 C03/C08） */}
-                <Provenance
-                  testId="whatif-after"
-                  src="capacity_forecast · what-if 叠加"
-                  formula="对策后P50 = min(基线P50 ×(1 + 夜班 + 扩产能通道 + 外协增益), 物理产能上限)"
-                  inputs={[`基线P50 ${fmt(out.p50)}`, `加夜班 ×${whatIf.nightShifts}`, `扩产能通道 ×${whatIf.extraChannels}`, `外协 ${whatIf.outsourcePct}%`]}
-                  rule="C03/C08"
-                  note={wi.capped ? `已触物理产能上限封顶（${wi.capNote ?? "C03"}）` : "外协≥20% 触发 C08 红线提示"}
-                >
-                  <b style={{ color: "var(--ok)" }} data-testid="whatif-after">
-                    {fmt(wi.adjustedP50 ?? 0)}
-                  </b>
-                </Provenance>
-              </div>
-            </div>
-          )}
-          {wi && !wi.rejected && wi.capped && <div className={styles.noteAmber}>{wi.capNote}</div>}
-
-          <Feature flag="act.adopt-to-draft">
-            <button className="btn sm primary" style={{ marginTop: 10 }} data-testid="proj-adopt" onClick={onAdopt}>
-              {zh.sim.proj.adopt}（参数组合 + 推演快照 → Action）
-            </button>
-          </Feature>
-        </div>
+        <DynamicLeverPanel
+          baseP50={out.p50}
+          baseGap={out.gap}
+          factors={[out.mainBn, ...new Set(out.perBaseRows.map((r) => r.bottleneck).filter(Boolean))].filter(Boolean) as string[]}
+          modelId={modelId}
+          snapshot={{ mode, qty: totalQty, p50: out.p50, p90: out.p90, mainBn: out.mainBn }}
+        />
       </Feature>
       {/* WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用 what-if（opt.multiobj 关则整块不存在 R3）。 */}
       <MultiObjWhatifPanel />

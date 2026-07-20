@@ -200,6 +200,18 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
 const DAY_MS = 86400000;
 
 /**
+ * WO-PROJECT-SIM-WHATIF · 瓶颈因子 → 可写对象输入属性（杠杆落点）结构映射，mirror `risk.ts liveTightness`
+ * 的因子→属性映射（"撬得动该瓶颈"的真输入）。用于 generic_inference mode:"levers" 按 ⑤瓶颈因子过滤候选杠杆，
+ * 使杠杆集随瓶颈变（非写死）。键=瓶颈因子名（与 bottleneck.factors 同源），值=`Type.prop` 叶输入。
+ */
+const LEVER_FACTOR_PROPS: Record<string, string[]> = {
+  设备OEE: ["Equipment.oee_current"], // debattery-allow：瓶颈因子键（mirror risk.ts liveTightness）
+  瓶颈工序: ["Line.utilization"], // debattery-allow
+  良率波动: ["Process.yield_baseline"], // debattery-allow
+  物料齐套: ["MaterialBalance.coverage", "Order.outsourceRatio"], // debattery-allow
+};
+
+/**
  * S1 real solver algorithms. All numeric constants come from the per-tenant
  * solver_params storage (seeded by the scenario pack); the battery defaults are
  * the fallback when a tenant has no record yet. Deterministic: same input +
@@ -425,6 +437,10 @@ export class SolverService {
    */
   private async genericInference(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!this.ontologyCore) throw validationError("generic_inference 未注入 ontologyCore");
+    // WO-PROJECT-SIM-WHATIF：杠杆发现薄层（G-WHATIF-HARDCODED-LEVERS）——从派生 DAG 反推候选杠杆，
+    // 每根杠杆 ±ε recompute(dryRun) 服务端算敏感度 ∂目标/∂杠杆（R6 确定性），排序 top-K。走同一 generic_inference
+    // 求解器 mode 分支（不新建 solver·不动 SOLVER_KEYS），输出与默认路径同键（deltas/rows/affectedObjects/count/rootTypes）+ levers。
+    if (str(args.mode) === "levers") return this.discoverLevers(ctx, args);
     const apply = Array.isArray(args.apply) ? (args.apply as { objectType: string; objectId: string; prop: string; value: unknown }[]) : [];
     if (apply.length === 0) throw validationError("generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）");
     const changes = apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
@@ -436,6 +452,111 @@ export class SolverService {
       affectedObjects: result.updatedObjects,
       count: deltas.length,
       rootTypes: [...new Set(apply.map((a) => a.objectType))],
+    };
+  }
+
+  /**
+   * WO-PROJECT-SIM-WHATIF · 杠杆发现（generic_inference mode:"levers"，G-WHATIF-HARDCODED-LEVERS）：
+   * 从派生 DAG 反向 walk 目标派生属性 spec.deps → 叶输入（非派生·可写）= 候选杠杆；每根杠杆取 scope 内
+   * 真对象实例，当前值 +ε 跑 recompute(dryRun) → 敏感度 = Δ目标 / Δ杠杆（服务端算·R6 确定性，无 Date/random）；
+   * 按 |敏感度| 排序取 top-K。factors（⑤瓶颈因子）过滤 → 杠杆随瓶颈变（结构映射 mirror risk.ts liveTightness）。
+   * 只读 derivationSpecs + 调 recompute dryRun，不动 recompute 数学。args:
+   *   { mode:"levers", targetType?, targetProp?, scopeObjectIds?:string[], factors?:string[], epsilon?, topK? }。
+   */
+  private async discoverLevers(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const targetType = args.targetType ? str(args.targetType) : undefined;
+    const targetProp = args.targetProp ? str(args.targetProp) : undefined;
+    const epsilon = num(args.epsilon, 0.05) || 0.05;
+    const topK = Math.max(1, Math.floor(num(args.topK, 6)));
+    const scope = Array.isArray(args.scopeObjectIds) ? args.scopeObjectIds.map(String) : undefined;
+    const factorFilter = Array.isArray(args.factors) ? args.factors.map(String) : undefined;
+    const PROBE_CAP = 50; // 确定性上界（sorted 取前 N），避免大对象图上探针失控。
+
+    const specs = await this.repos.derivationSpecs.list(ctx.tenantId, (s) => s.status === "ACTIVE");
+    const specByNode = new Map(specs.map((s) => [`${s.targetType}.${s.targetProp}`, s]));
+
+    // 反向 walk：从目标派生属性沿 spec.deps 逆链 chase 到叶输入（非派生·可写）= 候选杠杆。
+    const leaves = new Map<string, { typeKey: string; prop: string; consumers: string[] }>();
+    const visited = new Set<string>();
+    const walk = (node: string, consumer: string): void => {
+      const spec = specByNode.get(node);
+      if (!spec) {
+        const dot = node.indexOf(".");
+        if (dot <= 0) return;
+        const tk = node.slice(0, dot);
+        const pk = node.slice(dot + 1);
+        const rec = leaves.get(node) ?? { typeKey: tk, prop: pk, consumers: [] };
+        if (consumer && !rec.consumers.includes(consumer)) rec.consumers.push(consumer);
+        leaves.set(node, rec);
+        return;
+      }
+      if (visited.has(node)) return; // 防环
+      visited.add(node);
+      for (const d of spec.deps) {
+        if (d.prop === "*") continue; // COUNT 通配不作杠杆
+        walk(`${d.typeKey}.${d.prop}`, `${spec.targetType}.${spec.targetProp}`);
+      }
+    };
+    const roots = targetType && targetProp ? [`${targetType}.${targetProp}`] : [...specByNode.keys()];
+    for (const r of roots) walk(r, "");
+
+    // factors（⑤瓶颈因子）→ 对象属性映射，仅保留匹配的叶（杠杆随瓶颈变）；缺省=全部叶。
+    // 宽容：若 factors 均未识别（映射空）→ 退化为不过滤（返回全部反推叶），不误吞所有杠杆。
+    const mapped = factorFilter ? new Set(factorFilter.flatMap((f) => LEVER_FACTOR_PROPS[f] ?? [])) : undefined;
+    const wantProps = mapped && mapped.size > 0 ? mapped : undefined;
+
+    const levers: Record<string, unknown>[] = [];
+    for (const leaf of [...leaves.values()].sort((a, b) => `${a.typeKey}.${a.prop}`.localeCompare(`${b.typeKey}.${b.prop}`))) {
+      if (wantProps && !wantProps.has(`${leaf.typeKey}.${leaf.prop}`)) continue;
+      const objs = (await this.repos.objects.listByType(ctx.tenantId, leaf.typeKey))
+        .filter((o) => (scope ? scope.includes(o.id) : true) && typeof o.props[leaf.prop] === "number")
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, PROBE_CAP);
+      let best: { objectId: string; currentValue: number; sensitivity: number } | null = null;
+      for (const o of objs) {
+        const cur = num(o.props[leaf.prop]);
+        const res = await this.ontologyCore!.recompute(
+          ctx,
+          [{ typeKey: leaf.typeKey, prop: leaf.prop, objectIds: [o.id] }],
+          { dryRun: true, apply: [{ objectId: o.id, prop: leaf.prop, value: cur + epsilon }] },
+        );
+        const deltas = res.dryRunDeltas ?? [];
+        const impact = deltas
+          .filter((d) => (targetType && targetProp ? d.type === targetType && d.prop === targetProp : true))
+          .reduce((s, d) => s + Math.abs(Number(d.after) - Number(d.before)), 0);
+        const sensitivity = round(impact / epsilon, 6);
+        // 确定性 tiebreak：|敏感度| 更大者胜，同则先到（id 升序）者胜。
+        if (!best || Math.abs(sensitivity) > Math.abs(best.sensitivity)) best = { objectId: o.id, currentValue: cur, sensitivity };
+      }
+      if (!best || best.sensitivity === 0) continue; // 无下游影响 → 非有效杠杆（诚实空，不臆造）
+      levers.push({
+        objectType: leaf.typeKey,
+        objectId: best.objectId,
+        prop: leaf.prop,
+        currentValue: best.currentValue,
+        sensitivity: best.sensitivity,
+        consumers: leaf.consumers,
+        provenance: {
+          src: "generic_inference · recompute(dryRun,+ε)",
+          formula: `∂(${targetType && targetProp ? `${targetType}.${targetProp}` : "下游派生"}) / ∂(${leaf.typeKey}.${leaf.prop})（ε=${epsilon}）`,
+          inputs: leaf.consumers,
+        },
+      });
+    }
+    levers.sort(
+      (a, b) =>
+        Math.abs(Number(b.sensitivity)) - Math.abs(Number(a.sensitivity)) ||
+        String(a.objectType).localeCompare(String(b.objectType)) ||
+        String(a.prop).localeCompare(String(b.prop)),
+    );
+    const top = levers.slice(0, topK);
+    return {
+      levers: top,
+      deltas: [],
+      rows: [],
+      affectedObjects: 0,
+      count: top.length,
+      rootTypes: [...new Set(top.map((l) => String(l.objectType)))],
     };
   }
 
