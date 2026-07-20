@@ -112,11 +112,12 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 36 求解器（22 业务场景 + 14 B/C 决策域·WO-TIER2 语义发现扩面）", async () => {
+  it("catalog discover 列出全部 37 求解器（22 业务场景 + 15 B/C 决策域·WO-TIER2 语义发现扩面 + WO-B base_capacity_outlook）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(36);
+    expect(items.length).toBe(37); // WO-B +1 base_capacity_outlook（COCKPIT_SOLVER_CATALOG 14→15）
+    expect(items.map((i) => i.key)).toContain("base_capacity_outlook");
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
   });
 });

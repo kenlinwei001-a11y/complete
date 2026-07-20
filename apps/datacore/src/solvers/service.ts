@@ -25,6 +25,7 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
+import { baseCapacityOutlook as runBaseCapacityOutlook } from "./base-outlook.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
@@ -125,6 +126,10 @@ export const SOLVER_KEYS = [
   // WO-SOP-RESCHEDULE 产销重排推演：目标订单+新交期→跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价，
   // 落到基地×订单×日执行方案（确定性 R6·勾稽 Σalloc+residual==qty·每值 provenance R13）。
   "sop_reschedule",
+  // WO-B / F1 每基地前瞻产能推演：per-base × horizon∈{30,60,90} 四线（可用产能 Line.capacityDaily×(1−util/100)
+  // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.p50×1e4）+ 缺口/富余标记 +
+  // P1 行动计划逐日过程（触发缺口→贪心补→收窄·每步 provenance）。forecastStart 时间锚·系数 RuleEntry.params（R6/R13/R14）。
+  "base_capacity_outlook",
 ] as const;
 
 /**
@@ -188,6 +193,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
   atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
   sop_reschedule: ["feasible", "verdict", "targetOrder", "allocation", "displaced", "cost", "residualQty", "reconChecks", "reconciled", "objective", "summary"],
+  // WO-B / F1 base_capacity_outlook 输出形状（= BaseOutlookResult 顶层 key·四线前瞻 + P1 逐日 dayPlan）。
+  base_capacity_outlook: ["baseId", "baseName", "forecastStart", "horizons", "dayPlan", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -1791,6 +1798,37 @@ export class SolverService {
   }
 
   /**
+   * WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演求解器（跨半·数据×引擎×渲染）。
+   * inline listByType（照 sop_reschedule 模式）读真对象四源（Line/WorkOrder/Order/DemandSegment/Base）+ forecastStart
+   * 时间锚（禁 Date.now·R6），系数走 PUBLISHED RuleEntry `base_outlook_coeffs`.params（R14 可校准·缺省诚实兜底），
+   * 委派纯算法 runBaseCapacityOutlook。args{baseId（id 或中文名归一到 baseId）, horizon?（默认全 30/60/90）}。
+   */
+  private async baseCapacityOutlook(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const baseArg = str(args.baseId);
+    if (!baseArg) throw validationError("base_capacity_outlook 需 baseId（基地 ID 或名称）");
+    const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
+    // 归一：接受基地 id（hefei）或中文名（合肥），内部收敛到 baseId。
+    const baseObj = bases.find((b) => str(b.baseId) === baseArg || str(b.name) === baseArg);
+    if (!baseObj) throw notFound(`Base ${baseArg}`);
+    const baseId = str(baseObj.baseId);
+    const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
+    const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
+    const workOrders = (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props);
+    const segments = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
+    const params = await this.getParams(ctx.tenantId);
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const coeffRule = pubRules.find((r) => r.key === "base_outlook_coeffs");
+    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    const horizons = args.horizon != null ? [num(args.horizon)] : [30, 60, 90];
+    return runBaseCapacityOutlook({
+      baseId,
+      horizons,
+      forecastStart: str(params.forecastStart),
+      orders, bases, lines, workOrders, segments, coeff,
+    }) as unknown as Record<string, unknown>;
+  }
+
+  /**
    * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
    * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
    * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
@@ -2912,6 +2950,7 @@ export class SolverService {
     if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
     if (solverKey === "atp_check") return this.atpCheck(ctx, args);
     if (solverKey === "sop_reschedule") return this.sopReschedule(ctx, args);
+    if (solverKey === "base_capacity_outlook") return this.baseCapacityOutlook(ctx, args);
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);

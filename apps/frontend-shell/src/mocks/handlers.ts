@@ -50,6 +50,7 @@ import {
   mockPlanGenerate,
   mockSopAdvance,
   mockSopReschedule,
+  mockBaseOutlook,
   PLAN_VERSION_CURRENT,
   SOP_SUPPLY_BASELINE,
   SopMockError,
@@ -2203,6 +2204,8 @@ export const handlers = [
       });
     if (key === "sop_reschedule")
       return HttpResponse.json({ data: mockSopReschedule(args), snapshotVersion: "ov-12" });
+    if (key === "base_capacity_outlook")
+      return HttpResponse.json({ data: mockBaseOutlook(args), snapshotVersion: "ov-12" });
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";
