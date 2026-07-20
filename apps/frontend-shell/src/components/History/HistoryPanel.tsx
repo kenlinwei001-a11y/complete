@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
+import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10（非安全上下文防崩）
 import zh from "@/locales/zh";
 
 /**
@@ -16,7 +17,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
   const { data, isLoading, refetch } = useQuery({ queryKey: ["b", "query-history", "panel"], queryFn: () => fetchQueryHistory(50) });
   const replay = useMutation({
     mutationFn: (item: QueryHistoryItem) =>
-      submitQuery({ packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } }, crypto.randomUUID()),
+      submitQuery({ packageId, query: item.query, context: { view: item.view ?? "dash", selectedObjects: [], filters: {} } }, safeUuid()),
     onSuccess: (res) => {
       onClose();
       navigate(`/tasks/${res.taskId}`);

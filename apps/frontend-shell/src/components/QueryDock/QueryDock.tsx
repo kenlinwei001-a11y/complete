@@ -4,6 +4,7 @@ import { fetchScene, fetchScenarioCards, submitQuery } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
+import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10
 import zh from "@/locales/zh";
 import { TaskRun } from "./TaskRun";
 import styles from "./QueryDock.module.css";
@@ -36,13 +37,13 @@ export function QueryDock() {
     const text = q.trim();
     if (!text || !packageId) return;
     const store = useSessionStore.getState();
-    const localId = crypto.randomUUID();
+    const localId = safeUuid();
     store.appendConversation({ localId, query: text });
     setExpanded(true);
     setInput("");
     try {
       const context = store.buildContext();
-      const res = await submitQuery({ packageId, query: text, context }, crypto.randomUUID());
+      const res = await submitQuery({ packageId, query: text, context }, safeUuid());
       store.updateConversation(localId, { taskId: res.taskId });
       if (!store.conversationId && context.conversationId == null) {
         // 同一会话多次提问 conversationId 保持
