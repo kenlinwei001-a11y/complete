@@ -38,8 +38,8 @@ describe("G-9 · path-B agent 有界超时 + 优雅降级（SEAM）", () => {
 
     it("有界返回 COMPLETED + 降级事件(BUDGET_EXHAUSTED 早于 answer.final) + 诚实部分发现 + B3 不回归", async () => {
       t.llm.queueClassification(OUT_OF_CATALOG);
-      // 函数 turn 恒返 READ 工具、无 text（纯空转，无定时器）；8 轮 × 2 工具 > maxToolCalls(10) → 预算耗尽
-      for (let i = 0; i < 8; i++) {
+      // 函数 turn 恒返 READ 工具、无 text（纯空转，无定时器）；预算调参后 24 轮 = maxIterations(24) → 预算耗尽
+      for (let i = 0; i < 24; i++) {
         t.llm.queueAgentTurn(() => ({
           content: [
             toolUse("query_objects", { objectType: "Order", filter: {} }),
