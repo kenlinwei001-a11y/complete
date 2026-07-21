@@ -621,7 +621,7 @@ export function seedSceneEntries(): SceneEntryConfig[] {
     },
     {
       id: "scn_project_sim", tenantId: SEED_TENANT, viewKey: "project-sim", mode: "WORKFLOW_FIRST",
-      uiHints: { placeholder: "项目沙盘推演相关问题", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？"] },
+      uiHints: { placeholder: "项目推演相关问题", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？"] },
       ...history("project-sim"),
     },
     {

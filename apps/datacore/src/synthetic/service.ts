@@ -1455,7 +1455,7 @@ export class SyntheticService {
       order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
       "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
       "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
-      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
+      "project-sim": { title: "项目推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
       "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
       // 增量 §7.14–7.17
       "annual-scenario": {

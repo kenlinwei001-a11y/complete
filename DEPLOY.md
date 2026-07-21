@@ -75,7 +75,7 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | 订单台账 order | 对象分页查询 + 列筛选（`GET /a/v1/objects?type=Order&f_*=`，行级权限过滤） |
 | 规划体检 plan-audit | S1 `plan_audit` 求解器（约束扫描 + 一键修正 Action） |
 | 方案生成 plan-generate | S1 `plan_generate` 求解器（处置方案候选 + 采纳为草稿） |
-| 项目沙盘推演 project-sim | S1 `capacity_forecast` 求解器（P50/P90 产能、What-if 调参，`POST /b/v1/solvers/{key}/run`） |
+| 项目推演 project-sim | S1 `capacity_forecast` 求解器（P50/P90 产能、What-if 调参，`POST /b/v1/solvers/{key}/run`） |
 | S&OP 月度平衡 sop-balance | S1.8 `/a/v1/sop/*` 五步月度平衡流程（版本/推进/锁定） |
 | 查询对话 Dock | QOS 全链路：意图分类 → 工作流（路径 A）/探索 Agent（路径 B）→ SSE 流式过程 → 可溯源回答 |
 

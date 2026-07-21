@@ -18,7 +18,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
   { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
   { key: "view.sop-balance", name: "S&OP 月度平衡", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
-  { key: "view.project-sim", name: "项目沙盘推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
+  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
   // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
   { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
