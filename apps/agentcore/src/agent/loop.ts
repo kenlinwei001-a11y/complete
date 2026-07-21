@@ -89,6 +89,13 @@ export interface AgentLoopOpts {
    * 防某次调用挂住导致整任务 hang（budget.durationExceeded 只在轮首查一次）。
    */
   llmCallTimeoutMs?: number;
+  /**
+   * WO-QOS-2 · 规划式执行 plan 自检：本题导航图（NavigationSlice）投影出的对口 solver key 集。
+   * 传入即启用「plan-then-execute」自检——某轮模型批量发起的 invoke_solver（= 一次性 plan）里引用的 solver
+   * 若全部落在图内 = 采纳规划式快路径；有越界 = 该 solver 不在本题图 → 记 planFellBackToReAct（**不阻断真工具**·
+   * ReAct 兜底，模型可继续逐跳）。缺省（不传）= 逐字节沿用既有 ReAct（既有全部 agent 测试不受影响）。
+   */
+  sliceSolverKeys?: string[];
 }
 
 export interface AgentLoopResult {
@@ -103,6 +110,22 @@ export interface AgentLoopResult {
    * BUDGET_EXHAUSTED=预算/轮次耗尽）。编排层据此在 answer.final 之前发 agent_degraded 伪 step。
    */
   degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" };
+  /**
+   * WO-QOS-2：仅当传入 sliceSolverKeys 时有值——本次运行中是否出现过「plan 引用了图外 solver」而回退 ReAct
+   *（true = 至少一轮越界·false = 全程 plan 落在图内）。观测用（不改答案/溯源）。
+   */
+  planFellBackToReAct?: boolean;
+}
+
+/**
+ * WO-QOS-2 · plan 自检（纯函数 R6）：本轮模型批量发起的 invoke_solver 引用的 solver key 是否**全部**落在
+ * NavigationSlice 图内。全部在 → 采纳规划式快路径；有越界 → 回退 ReAct（调用方不阻断真工具·仅记观测）。
+ * 空 turnSolverKeys（本轮没调 solver）→ 视为在图内（true）；未提供图（sliceSolverKeys 空）→ 不判定（true）。
+ */
+export function planWithinSlice(turnSolverKeys: string[], sliceSolverKeys: string[]): boolean {
+  if (sliceSolverKeys.length === 0 || turnSolverKeys.length === 0) return true;
+  const inSlice = new Set(sliceSolverKeys);
+  return turnSolverKeys.every((k) => inSlice.has(k));
 }
 
 /** G-9：AbortController abort 或 SDK 抛出的 AbortError/TimeoutError 的统一识别。 */
@@ -188,6 +211,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let lastText = "";
   let consecutiveDenies = 0;
   let forceFinishNotified = false;
+  // WO-QOS-2：规划式执行观测——某轮 plan（批量 invoke_solver）引用了图外 solver 而回退 ReAct 时置位（仅当 opts.sliceSolverKeys 传入）。
+  let planFellBackToReAct = false;
   // 增量 §1.3 第 3 刀：收尾提醒已注入（finalizePending = 本轮就是「最后机会」轮）
   let finalizeUsed = false;
   let finalizePending = false;
@@ -613,6 +638,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
           structured: accepted.structured,
           run: finishRun(false),
           sketch,
+          ...(opts.sliceSolverKeys ? { planFellBackToReAct } : {}),
         };
       }
       // 第 3 刀「最后机会」轮给出的 final_answer 无效 → 按预算耗尽语义降级（不再续轮）
@@ -635,6 +661,16 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     // 第 3 刀「最后机会」轮未调用 final_answer → 按预算耗尽语义（QOS-PRD §5.4-6）降级收尾
     if (finalizePending) return degrade("BUDGET_EXHAUSTED");
+
+    // WO-QOS-2 · plan 自检：本轮（= 一次 plan）批量发起的 invoke_solver 引用的 solver 若有图外者 → 记回退 ReAct
+    //（不阻断真工具·ReAct 兜底照跑）。仅当传入导航图 solver 集时判定；缺省不介入（既有行为逐字节不变）。
+    if (opts.sliceSolverKeys && opts.sliceSolverKeys.length > 0) {
+      const turnSolvers = toolUses
+        .filter((b) => b.name === "invoke_solver")
+        .map((b) => String((b.input as { solverKey?: unknown } | undefined)?.solverKey ?? ""))
+        .filter(Boolean);
+      if (!planWithinSlice(turnSolvers, opts.sliceSolverKeys)) planFellBackToReAct = true;
+    }
 
     for (const block of toolUses) {
       if (!(block.name === "load_skill" && opts.loadSkillEnabled)) {

@@ -1,6 +1,7 @@
 import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
+import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
 import { selectMcpTools } from "./agent/mcp-router.js";
 import type { Embedder } from "./agent/skill-router.js";
 import { buildProviderEmbedder, llmRollingSummarizer } from "./agent/production-cognition.js";
@@ -202,6 +203,14 @@ export class ExecutionEngine {
     // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
     const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
+    // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：据本 agent 的 scopeDeclaration（objectTypes/toolNames）
+    // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位、
+    // 不再 discover 盲扫逐跳。R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
+    const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration);
+    const sliceSection = renderNavigationSlice(navSlice);
+    const userContent = sliceSection ? `${opts.prompt}\n\n${sliceSection}` : opts.prompt;
+    const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
+
     const executor = this.makeExecutor(
       opts.taskId,
       opts.ctx,
@@ -218,7 +227,8 @@ export class ExecutionEngine {
       model,
       tenantId: agent.tenantId,
       system,
-      userContent: opts.prompt,
+      userContent,
+      ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
       tools,
       llm: this.deps.llm,
       ...(summarizer ? { summarizer } : {}),

@@ -27,6 +27,7 @@ import {
   CEO_DEEP_QUESTION_SYSTEM,
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
+import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
@@ -951,12 +952,21 @@ export class Orchestrator {
 
     // 增量 §1.4：同 conversationId 后续任务不复用上一任务原始 messages —— 注入前情摘要块
     const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
+    // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：通用 path-B（含 CEO/块级真 LLM 深问）——
+    // 据问句 domain + 本轮工具白名单（toolNames）确定性投影本题导航图注入首轮 user，agent 有对口 solver 就一步到位、
+    // 不再逐跳盲选重编排。通用 path-B 不做对象域收窄（objectTypes 不声明·由 A6 行级过滤真隔离）。R6 纯投影·空图不注入。
+    const navSlice = projectNavigationSlice(task.query, task.context.pageContext, { toolNames: tools.map((t) => t.name) });
+    const sliceSection = renderNavigationSlice(navSlice);
+    const baseUser = buildAgentUser(task, priorSummary || undefined);
+    const userContent = sliceSection ? `${baseUser}\n\n${sliceSection}` : baseUser;
+    const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
     const result = await runAgentLoop({
       taskId,
       model,
       tenantId: task.tenantId,
       system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
-      userContent: buildAgentUser(task, priorSummary || undefined),
+      userContent,
+      ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
       tools,
       llm: this.deps.engine.deps.llm,
       executor,
