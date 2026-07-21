@@ -66,7 +66,7 @@ registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
 registerRenderer("geo-map", () => import("./plan/GeoMapView"));
-// 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
+// 运营态出厂配置增量 §4.2：运营复盘（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
 registerRenderer("review", () => import("./ReviewView"));
 // 净室归因投影页（三通用净室求解器 shared_bottleneck/concentration_risk/margin_attribution 首次前端接地·
 // 参数从真对象类型倒推·既作 renderer 供 ViewPage 分发，也有专用 route 见 App.tsx）。

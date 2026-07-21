@@ -222,7 +222,7 @@ export class SyntheticService {
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
-      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营复盘）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
         input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
       await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
@@ -1456,15 +1456,15 @@ export class SyntheticService {
       "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
       "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
       "project-sim": { title: "项目推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
-      "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
+      "sop-balance": { title: "月度规划", renderer: "sop-balance", layout: { apiTag: "sop" } },
       // 增量 §7.14–7.17
       "annual-scenario": {
-        title: "年度情景规划台",
+        title: "年度规划",
         renderer: "annual-scenario",
         layout: { endpoint: "/a/v1/plan/aop", year: 2026, actionTypeKey: "AOP情景拍板", finalizeFeature: "act.aop-finalize" },
       },
       "quarterly-rolling": {
-        title: "季度滚动看板",
+        title: "季度规划",
         renderer: "quarterly-rolling",
         layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5 },
       },
@@ -1478,8 +1478,8 @@ export class SyntheticService {
         renderer: "geo-map",
         layout: { objectType: "Base", sizeProp: "gwh", colorProp: "kind", utilThresholds: [92, 85, 78] },
       },
-      // 运营态增量 §4.2：运营回顾（只读历史证据链页面，消费 history/bundle）
-      review: { title: "运营回顾", renderer: "review", layout: { apiTag: "history" } },
+      // 运营态增量 §4.2：运营复盘（只读历史证据链页面，消费 history/bundle）
+      review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
       // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
       // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
       "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { description: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),

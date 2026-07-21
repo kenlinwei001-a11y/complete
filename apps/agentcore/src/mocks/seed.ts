@@ -629,7 +629,7 @@ export function seedSceneEntries(): SceneEntryConfig[] {
       uiHints: { placeholder: "S&OP 月度平衡相关问题", suggestedQuestions: [] },
     },
     {
-      // 运营态增量 §2/§4：运营回顾（只读历史证据链页面，「越用越准」）
+      // 运营态增量 §2/§4：运营复盘（只读历史证据链页面，「越用越准」）
       id: "scn_review", tenantId: SEED_TENANT, viewKey: "review", mode: "WORKFLOW_FIRST",
       uiHints: {
         placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？",

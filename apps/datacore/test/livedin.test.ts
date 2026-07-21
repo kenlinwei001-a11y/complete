@@ -75,7 +75,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(bundle.sopVersions[0]!.attainment).toBe(88);
     expect(bundle.sopVersions[11]!.attainment).toBe(94);
     expect(bundle.sopVersions[11]!.label).toBe("V12");
-    // 运营回顾视图进 workspace（零配置导航）
+    // 运营复盘视图进 workspace（零配置导航）
     const ws = t.app.inject({ method: "GET", url: "/a/v1/me/workspace", headers: ADMIN });
     return ws.then((res) => {
       const body = res.json() as { views: { viewKey: string; renderer: string }[]; navigation: { key: string }[] };

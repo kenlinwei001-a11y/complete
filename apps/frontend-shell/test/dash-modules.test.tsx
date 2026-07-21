@@ -29,7 +29,7 @@ describe("dash · 回采校准链 + 模块直达", () => {
     for (const k of ["aop", "quarter", "sop", "risk", "order", "all"]) {
       expect(screen.getByTestId(`dash-mod-${k}`)).toBeInTheDocument();
     }
-    expect(mods).toHaveTextContent("年度情景规划台");
+    expect(mods).toHaveTextContent("年度规划");
 
     // 点「产能推演」→ 路由 /v/risk
     await user.click(screen.getByTestId("dash-mod-risk"));

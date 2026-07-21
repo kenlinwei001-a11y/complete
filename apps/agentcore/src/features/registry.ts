@@ -37,7 +37,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   },
   {
     key: "view.sop-balance",
-    name: "S&OP 平衡",
+    name: "月度规划",
     level: "VIEW",
     defaultOn: true,
     bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop-balance"] },
@@ -50,8 +50,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     bindings: { intents: ["capacity_feasibility"], solverKeys: ["capacity_forecast"], apiTags: ["project-sim"] },
   },
   // 剩余视图增量（前端 PRD §7.14–7.19 / 修订点 4）—— 与 DataCore FeatureRegistry 同步
-  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
-  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
+  { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true },
+  { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true },
   // 场景启动器视图（catalog SL2：关闭 view.scenarios → 启动器/场景卡消失）。此前未注册 → viewAllowed 恒真不可关。
   { key: "view.scenarios", name: "场景启动器", level: "VIEW", defaultOn: true },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },

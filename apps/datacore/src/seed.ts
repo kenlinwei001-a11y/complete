@@ -48,7 +48,7 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
 
 /**
  * SEED_DEMO=1 → generate the battery synthetic dataset for tenant demo with seed 42.
- * SEED_LIVED_IN=1 → 额外回放 365 天运营态（运营回顾 / 风险历史案例 / 校准史等才有数据）。
+ * SEED_LIVED_IN=1 → 额外回放 365 天运营态（运营复盘 / 风险历史案例 / 校准史等才有数据）。
  */
 export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCtx): Promise<void> {
   const livedIn = process.env.SEED_LIVED_IN === "1";

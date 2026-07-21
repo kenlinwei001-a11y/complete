@@ -98,18 +98,18 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders"] } },
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
   { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
-  { key: "view.sop-balance", name: "S&OP 平衡", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
+  { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
   { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
   { key: "view.global-sim", name: "全局联合推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
   // 原型中的 story 视图无后端支持 → 保留 aop 直链入口演示「该视图类型暂不支持」兜底（renderer="aop" 未注册）
-  { key: "view.aop", name: "年度情景规划台（旧入口）", level: "VIEW", defaultOn: true },
+  { key: "view.aop", name: "年度规划（旧入口）", level: "VIEW", defaultOn: true },
   // 剩余视图增量（§7.14–7.17 / §7.19）
-  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
-  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
+  { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true },
+  { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
-  // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
-  { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
+  // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
+  { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
@@ -430,10 +430,10 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
     // WO-PORTFOLIO-OPTIMAL 全局联合推演（全订单×全基地×时间联合最优组合·共享产能守恒·冻结子集·多方案）
     { key: "global-sim", title: "全局联合推演", renderer: "global-sim", layout: {} },
-    { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },
+    { key: "sop-balance", title: "月度规划", renderer: "sop-balance", layout: {} },
     // 剩余视图增量（§7.14–7.17）
-    { key: "annual-scenario", title: "年度情景规划台", renderer: "annual-scenario", layout: {} },
-    { key: "quarterly-rolling", title: "季度滚动看板", renderer: "quarterly-rolling", layout: {} },
+    { key: "annual-scenario", title: "年度规划", renderer: "annual-scenario", layout: {} },
+    { key: "quarterly-rolling", title: "季度规划", renderer: "quarterly-rolling", layout: {} },
     {
       key: "order-chain",
       title: "订单全链聚合",
@@ -445,12 +445,12 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       },
     },
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
-    // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面）
-    { key: "review", title: "运营回顾", renderer: "review", layout: {} },
+    // 运营态出厂配置增量 §4.2：运营复盘（只读历史证据链页面）
+    { key: "review", title: "运营复盘", renderer: "review", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
-    { key: "aop", title: "年度情景规划台（旧）", renderer: "aop", layout: {} },
+    { key: "aop", title: "年度规划（旧）", renderer: "aop", layout: {} },
   ];
   const featureKeyOf = (viewKey: string) =>
     viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
@@ -1021,7 +1021,7 @@ export const SCENES: SceneEntryConfig[] = [
   { id: "scn-plan-generate", tenantId: TENANT_ID, viewKey: "plan-generate", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问方案取舍，如：推荐哪个方案？为什么？", suggestedQuestions: ["推荐哪个方案？为什么？", "三个方案最大的差异是什么？"] }, ...sceneHistory("plan-generate") },
   { id: "scn-project-sim", tenantId: TENANT_ID, viewKey: "project-sim", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中订单/型号提问，如：能按期交付吗？", suggestedQuestions: ["能按期交付吗？", "主瓶颈在哪？"] }, ...sceneHistory("project-sim") },
   { id: "scn-sop-balance", tenantId: TENANT_ID, viewKey: "sop-balance", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问月度平衡，如：本月产销缺口多大？", suggestedQuestions: ["本月产销缺口多大？"] } },
-  // 运营态增量 §2：运营回顾入口（只读历史）
+  // 运营态增量 §2：运营复盘入口（只读历史）
   { id: "scn-review", tenantId: TENANT_ID, viewKey: "review", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？", suggestedQuestions: ["到货危机当时是怎么闭环的？", "S&OP 达成率趋势如何？"] }, ...sceneHistory("review") },
 ];
 

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
 
-describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
+describe("F22 · 季度规划（quarterly-rolling）", () => {
   it("缺口徽章三档色：>4 红 / >0 黄 / ≤0 绿", async () => {
     loginAs("planner");
     renderApp("/v/quarterly-rolling");

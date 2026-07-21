@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
 
-describe("F21 · 年度情景规划台（annual-scenario）", () => {
+describe("F21 · 年度规划（annual-scenario）", () => {
   it("三情景卡渲染 + 已拍板态 + 规则徽章可点开 expression", async () => {
     const user = userEvent.setup();
     loginAs("planner");

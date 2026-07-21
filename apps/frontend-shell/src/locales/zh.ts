@@ -190,9 +190,9 @@ export const zh = {
     lineageText: (conn: string, dataset: string, n: number) => `${conn} · ${dataset} · ${n} 字段`,
     locateHint: "点击行：关闭弹层并在图谱中定位该节点",
   },
-  /** §7.14 年度情景规划台 */
+  /** §7.14 年度规划 */
   aop: {
-    title: (year: number) => `年度情景规划台 · AOP ${year}`,
+    title: (year: number) => `年度规划 · AOP ${year}`,
     demandUnit: "万套/年",
     capacityDecision: "产能决策",
     ltaLock: "长协锁量",
@@ -226,7 +226,7 @@ export const zh = {
     wcGapWin: (from: string, to: string) => `缺口窗口 ${from}→${to}`,
     wcSurplusWin: (from: string, to: string) => `过剩窗口 ${from}→${to}`,
   },
-  /** §7.15 季度滚动看板 */
+  /** §7.15 季度规划 */
   dash: {
     // PRD-IND-dash §2.3/§2.5/§2.6
     problemsTitle: (n: number) => `🧩 待解决的问题（${n}）· 全部订单根源归并`,
@@ -247,7 +247,7 @@ export const zh = {
     exportProblemHeader: ["待解决的问题", "影响单数", "财务影响(亿)"] as const,
   },
   quarter: {
-    title: "季度滚动看板",
+    title: "季度规划",
     sub: "4–6 季滚动 · 需求 vs 供给 · 承接年度分解、向月度再分解",
     demand: "需求",
     supply: "供给",
@@ -538,7 +538,7 @@ export const zh = {
       },
     },
     sop: {
-      title: "S&OP 月度平衡台",
+      title: "月度规划",
       newVersion: "新建版本",
       versions: "版本列表",
       steps: ["① 产品评审", "② 需求评审", "③ 供应评审", "④ 财务整合", "⑤ 高管决策会"],

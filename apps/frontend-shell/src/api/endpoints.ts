@@ -635,7 +635,7 @@ export const runCalibration = async (): Promise<CalibrationRunResult> =>
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));
 
-// ---- 运营态出厂配置增量 §5：一年运营态历史（运营回顾/驾驶舱/风险案例/水印消费） ----
+// ---- 运营态出厂配置增量 §5：一年运营态历史（运营复盘/驾驶舱/风险案例/水印消费） ----
 
 export const fetchHistoryBundle = async (params?: { page?: number; pageSize?: number }): Promise<HistoryBundle> => {
   const sp = new URLSearchParams();

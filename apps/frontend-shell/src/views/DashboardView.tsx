@@ -37,9 +37,9 @@ export function buildDashExportRows(metrics: DashExportMetric[], problems: DashE
 // PRD-IND-dash §2.5/§2.6：回采校准链（5 节点）+ 模块直达（6 卡）。结构/导航/叙事，view.layout 优先下发。
 type ModLink = { key: string; route: string; title: string; sub: string; color: string };
 const MODULE_LINKS: ModLink[] = [
-  { key: "aop", route: "/v/annual-scenario", title: "年度情景规划台", sub: "三情景 · 触发挂牌 · 目标分解", color: "#9D8BF0" }, // debattery-allow
-  { key: "quarter", route: "/v/quarterly-rolling", title: "季度滚动看板", sub: "爬坡 vs 需求 · 长协偏差", color: "#5E8FE8" }, // debattery-allow
-  { key: "sop", route: "/v/sop-balance", title: "月度 S&OP", sub: "五步法 · 三线差异 · 版本管理", color: "#B07FD8" }, // debattery-allow
+  { key: "aop", route: "/v/annual-scenario", title: "年度规划", sub: "三情景 · 触发挂牌 · 目标分解", color: "#9D8BF0" }, // debattery-allow
+  { key: "quarter", route: "/v/quarterly-rolling", title: "季度规划", sub: "爬坡 vs 需求 · 长协偏差", color: "#5E8FE8" }, // debattery-allow
+  { key: "sop", route: "/v/sop-balance", title: "月度规划", sub: "五步法 · 三线差异 · 版本管理", color: "#B07FD8" }, // debattery-allow
   { key: "risk", route: "/v/risk", title: "产能推演", sub: "计划-执行之桥 · 8 风险基地", color: "#DD7E9E" }, // debattery-allow
   { key: "order", route: "/v/project-sim", title: "项目推演", sub: "订单全链 + 型号产能模拟", color: "#36BFA5" }, // debattery-allow
   { key: "all", route: "/v/graph", title: "业务建模全景", sub: "14 域 · 含外部域与决策应用域", color: "#54B5C4" }, // debattery-allow

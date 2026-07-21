@@ -6,7 +6,7 @@ import { z } from "zod";
 //
 // taskHistory 落位决策（§5）：任务/对话史的**事实源是常量种子**（本文件），
 // A（DataCore）在 livedIn 合成时把全量副本写入 lived_in_states 并经
-// GET /a/v1/history/bundle 下发（运营回顾页消费）；B（AgentCore）在场景入口
+// GET /a/v1/history/bundle 下发（运营复盘页消费）；B（AgentCore）在场景入口
 // 种子里携带同一常量（SceneEntryConfig.preloadedHistory），前端对话坞按场景
 // 预载。两侧消费同一确定性常量 —— 无运行时跨系统拷贝，同 seed 字节级一致。
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ export const LIVED_IN_SCENE_HISTORY: Record<string, DialogHistoryEntry[]> = {
     { question: "本月计划达成率怎么样？", answer: "2026-06 计划达成率 94.0%，较年初（88.0%）提升 6 个百分点；常州/合肥两基地贡献最大。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-21" },
     { question: "上季度准交率多少？", answer: "2026-Q2 已交付订单准交率 85.0%（51/60 按期），9 单曾延期，其中 7 单经处置方案挽回至 ≤2 天。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-08" },
     { question: "12 月产出为什么下凹？", answer: "2025-11/12 受正极到货危机与部分基地检修叠加影响，产出环比下降约 8%；2026-01 起恢复爬坡。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-01-12" },
-    { question: "今年累计执行了多少工单？", answer: "近 12 个月 Action 审计共 200 条，其中 164 条已执行（EXECUTED），22 条被驳回，详见运营回顾页。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-05-30" },
+    { question: "今年累计执行了多少工单？", answer: "近 12 个月 Action 审计共 200 条，其中 164 条已执行（EXECUTED），22 条被驳回，详见运营复盘页。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-05-30" },
   ],
   risk: [
     { question: "影响哪些订单？", answer: "常州基地 2025-11 到货危机窗口内受影响订单 4 张（SO-20007 等），其中 3 张经提前备料方案挽回。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-26" },

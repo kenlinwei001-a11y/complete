@@ -24,7 +24,7 @@ import { RISK_TIMELINE } from "./fixtures";
 // 剩余视图增量固定数据（全部经契约 schema.parse 校验 —— 与 DataCore 端点同形）
 // ---------------------------------------------------------------------------
 
-/** §7.14 年度情景规划台（AOP 2027，基准已拍板；一条 TRIGGERED 触发记录） */
+/** §7.14 年度规划（AOP 2027，基准已拍板；一条 TRIGGERED 触发记录） */
 export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
   scenarios: [
     {

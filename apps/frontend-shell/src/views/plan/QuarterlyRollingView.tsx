@@ -18,7 +18,7 @@ export function gapTier(gap: number): "red" | "amber" | "green" {
 
 const TIER_COLOR = { red: "var(--danger)", amber: "var(--amber)", green: "var(--ok)" } as const;
 
-/** 季度滚动看板（renderer=quarterly-rolling，§7.15）：需求/供给双条 + 长协执行偏差 */
+/** 季度规划（renderer=quarterly-rolling，§7.15）：需求/供给双条 + 长协执行偏差 */
 export default function QuarterlyRollingView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：缺口档位阈值由 ViewConfig.layout.gapTiers 声明（后端 VIEW_DEFS 已下发），常量仅兜底
   const gapTiers = (view.layout?.gapTiers as { red?: number; yellow?: number } | undefined) ?? { red: 4, yellow: 0 };

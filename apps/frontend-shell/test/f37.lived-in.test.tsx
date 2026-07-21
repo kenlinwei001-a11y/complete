@@ -5,11 +5,11 @@ import { loginAs, renderApp } from "./utils";
 
 /**
  * F37 · 运营态出厂配置（lived-in，PRD-addendum-lived-in-state §4 前端落点 + Y8）：
- * 运营回顾证据链页面 / 驾驶舱 12 个月趋势与准交率 / 风险视图历史处置案例（点击回放）
+ * 运营复盘证据链页面 / 驾驶舱 12 个月趋势与准交率 / 风险视图历史处置案例（点击回放）
  * / 对话坞按场景预载历史问答（半透明 + 日期 + 信任级徽章 + 分隔线）/ 全局合成水印。
  */
 describe("F37 · 运营态出厂配置（lived-in）", () => {
-  it("运营回顾：MAPE 回弹标注 + 校准被拒原因 + S&OP V1–V12 爬坡 + 规则演进 + 孵化记录", async () => {
+  it("运营复盘：MAPE 回弹标注 + 校准被拒原因 + S&OP V1–V12 爬坡 + 规则演进 + 孵化记录", async () => {
     loginAs("planner");
     renderApp("/v/review");
 
@@ -35,7 +35,7 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     expect(within(screen.getByTestId("incubation-list")).getAllByText(/孵化于/)).toHaveLength(3);
   });
 
-  it("运营回顾：Action 审计史分页（60 条 / 每页 20 → 3 页，翻页换数据）", async () => {
+  it("运营复盘：Action 审计史分页（60 条 / 每页 20 → 3 页，翻页换数据）", async () => {
     const user = userEvent.setup();
     cleanup();
     loginAs("planner");

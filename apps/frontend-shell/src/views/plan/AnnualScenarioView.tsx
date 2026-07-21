@@ -23,7 +23,7 @@ const SCEN_COLORS: Record<string, string> = {
   aggressive: "#E8B54A",
 };
 
-/** 年度情景规划台（renderer=annual-scenario，§7.14）：三情景卡 + 触发挂牌 + 目标分解流 */
+/** 年度规划（renderer=annual-scenario，§7.14）：三情景卡 + 触发挂牌 + 目标分解流 */
 export default function AnnualScenarioView(_props: ViewRendererProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["a", "plan-aop", { year: YEAR }],
