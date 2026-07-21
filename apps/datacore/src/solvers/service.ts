@@ -7,7 +7,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
-import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -26,7 +26,7 @@ import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { portfolioOptimize as runPortfolioOptimize, type PortfolioObjectiveKey } from "./portfolio.js";
-import { baseCapacityOutlook as runBaseCapacityOutlook } from "./base-outlook.js";
+import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
@@ -200,7 +200,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-PORTFOLIO-OPTIMAL portfolio 输出形状（联合最优组合·共享产能守恒 capacityLedger/reconChecks·多方案 scenarios）。
   portfolio: ["status", "optimal", "feasible", "allocation", "occupancy", "displaced", "scenarios", "objectiveValues", "capacityLedger", "reconChecks", "reconciled", "cost", "frozen", "summary"],
   // WO-B / F1 base_capacity_outlook 输出形状（= BaseOutlookResult 顶层 key·四线前瞻 + P1 逐日 dayPlan）。
-  base_capacity_outlook: ["baseId", "baseName", "forecastStart", "horizons", "dayPlan", "summary"],
+  // WO-CAPACITY-DEEPEN-ADDITIVE 块D：+ byModel（optional·每产品前瞻·join capacity_forecast·纯加字段·per-base 零改）。
+  base_capacity_outlook: ["baseId", "baseName", "forecastStart", "horizons", "dayPlan", "summary", "byModel"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
@@ -2068,12 +2069,81 @@ export class SolverService {
     const coeffRule = pubRules.find((r) => r.key === "base_outlook_coeffs");
     const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
     const horizons = args.horizon != null ? [num(args.horizon)] : [30, 60, 90];
-    return runBaseCapacityOutlook({
+    const result = runBaseCapacityOutlook({
       baseId,
       horizons,
       forecastStart: str(params.forecastStart),
       orders, bases, lines, workOrders, segments, coeff,
-    }) as unknown as Record<string, unknown>;
+    });
+    // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（纯加字段·跨半接缝：数据 capacity_forecast × 展示按产品 tab）。
+    // 把已有 capacity_forecast per-model（P50/mainBn）join 进本基地 outlook——同源勾稽·跨求解器一致·per-base 四线零改。
+    result.byModel = await this.outlookByModel(ctx, baseId, str(params.forecastStart), orders);
+    return result as unknown as Record<string, unknown>;
+  }
+
+  /**
+   * WO-CAPACITY-DEEPEN-ADDITIVE 块D · 每产品前瞻（SEAM 数据半）。
+   * 对本基地每个可产型号（certByModel 含 baseId），逐 horizon∈{30,60,90} 调 `capacity_forecast`（同求解器·同 context），
+   * 取该基地 perBaseRows.cumTotal（万套）×1e4 作 p50@H（与四线同单位·同源勾稽·改 capacity_forecast 输入即真变·R13）；
+   * mainBn = capacity_forecast 该 model 主瓶颈（跨求解器一致）；gap = p50@90 − 该型号 90 天落窗未来订单（本基地首产地）。
+   * 确定性（无 Date.now/随机·forecastStart 锚）·纯读（不写库）。
+   */
+  private async outlookByModel(
+    ctx: AuthCtx,
+    baseId: string,
+    forecastStart: string,
+    orders: Record<string, unknown>[],
+  ): Promise<ByModelOutlook[]> {
+    const c = await this.loadContext(ctx.tenantId);
+    const horizons = [30, 60, 90] as const;
+    const rows: ByModelOutlook[] = [];
+    for (const m of c.models) {
+      const modelId = str(m.props.modelId);
+      const cert = c.certByModel.get(modelId);
+      if (!cert || !cert.has(baseId)) continue; // 仅本基地可产型号
+      const p50: Record<number, number> = {};
+      let mainBn = "";
+      let ok = true;
+      for (const H of horizons) {
+        let fc: Record<string, unknown>;
+        try {
+          fc = capacityForecast(c, { modelId, weeks: Math.max(1, Math.ceil(H / 7)) } as unknown as ForecastArgs);
+        } catch {
+          ok = false;
+          break;
+        }
+        const perBaseRows = (fc.perBaseRows as Record<string, unknown>[]) ?? [];
+        const pb = perBaseRows.find((r) => str(r.baseId) === baseId);
+        p50[H] = round(num(pb?.cumTotal) * 1e4, 2); // 万套→套（与四线 available 同单位）
+        mainBn = str(fc.mainBn, mainBn); // 该 model 主瓶颈（跨求解器一致·最后一档取全窗口口径）
+      }
+      if (!ok) continue;
+      // gap = p50@90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。
+      const demand90 = round(
+        orders
+          .filter(
+            (o) =>
+              Array.isArray(o.bases) &&
+              str((o.bases as unknown[])[0]) === baseId &&
+              str(o.model) === modelId &&
+              dayFrom(forecastStart, str(o.due)) >= 0 &&
+              dayFrom(forecastStart, str(o.due)) <= 90,
+          )
+          .reduce((a, o) => a + num(o.qty), 0),
+        2,
+      );
+      rows.push({
+        model: modelId,
+        modelName: str(m.props.name, modelId),
+        p50At30: p50[30] ?? 0,
+        p50At60: p50[60] ?? 0,
+        p50At90: p50[90] ?? 0,
+        mainBn,
+        gap: round((p50[90] ?? 0) - demand90, 2),
+        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "p50/mainBn" },
+      });
+    }
+    return rows;
   }
 
   /**

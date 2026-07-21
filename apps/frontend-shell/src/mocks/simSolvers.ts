@@ -1275,5 +1275,31 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
   const summary = shortH
     ? `${baseName} 前瞻产能推演：${horizons.length} 档窗口（${horizonList.join("/")}天）·最近 ${shortH.horizon}天窗现缺口 ${round(-shortH.gap, 2)}套 → ${primary.dayPlan.length} 步逐日处置；销售预测线 ${primary.salesForecast}套`
     : `${baseName} 前瞻产能推演：各窗产能富余；销售预测线 ${primary.salesForecast}套`;
-  return { baseId, baseName, forecastStart: SOP_FORECAST_START, horizons, dayPlan: primary.dayPlan, summary };
+
+  // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（逐口径移植 datacore service.outlookByModel·KILL-MOCK·纯加字段）。
+  // 把 capacity_forecast per-model（weeklyCap × certFactor × curveMult 累计）join 进本基地——同源勾稽·mainBn 跨求解器一致·per-base 四线零改。
+  const p50AtH = (def: CapBaseDef, H: number): number => {
+    const cf = CAP_P.certFactors[def.status] ?? 1;
+    const weeks = Math.max(1, Math.ceil(H / 7));
+    let cum = 0;
+    for (let w = 1; w <= weeks; w++) cum += def.weeklyCap * cf * curveMult(w, def.maintWeek);
+    return round(cum * 1e4, 2); // 万套→套（与四线同单位）
+  };
+  const byModel = Object.entries(MODEL_CAP_NET)
+    .map(([model, defs]) => {
+      const def = defs.find((d) => d.base === baseName || d.baseId === baseName || d.baseId === baseId);
+      if (!def) return null;
+      const p50At90 = p50AtH(def, 90);
+      const demand90 = SOP_ORDERS.filter(
+        (o) => o.bases[0] === baseId && o.model === model && dayFromISO(SOP_FORECAST_START, o.due) >= 0 && dayFromISO(SOP_FORECAST_START, o.due) <= 90,
+      ).reduce((a, o) => a + o.qty, 0);
+      return {
+        model, modelName: model, p50At30: p50AtH(def, 30), p50At60: p50AtH(def, 60), p50At90,
+        mainBn: def.bottleneck, gap: round(p50At90 - demand90, 2),
+        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "p50/mainBn" },
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r != null);
+
+  return { baseId, baseName, forecastStart: SOP_FORECAST_START, horizons, dayPlan: primary.dayPlan, summary, byModel };
 }

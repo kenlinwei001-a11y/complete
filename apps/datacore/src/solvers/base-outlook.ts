@@ -70,6 +70,26 @@ export interface HorizonOutlook {
   crossDay: number | null;
   dayPlan: DayAction[];
 }
+/**
+ * WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（纯加字段·optional·向后兼容）。
+ * 每 model 的 T+30/60/90 产能预测（同源 `capacity_forecast` 该基地 P50·跨求解器勾稽）+ 主瓶颈工序（= `capacity_forecast` 该 model mainBn）+ 缺口。
+ * 由 service.ts 把已有 `capacity_forecast` per-model（P50/mainBn）join 进本基地 outlook（现有 per-base 四线零改·R13 每值溯 capacity_forecast）。
+ */
+export interface ByModelOutlook {
+  model: string;
+  modelName: string;
+  /** T+30 天该基地该型号累计可承接（套·= capacity_forecast 该基地 cumTotal×1e4）。 */
+  p50At30: number;
+  p50At60: number;
+  p50At90: number;
+  /** 该型号主瓶颈工序（= capacity_forecast 该 model mainBn·跨求解器一致）。 */
+  mainBn: string;
+  /** 缺口 = p50@90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。 */
+  gap: number;
+  /** R13 溯源：每值来自 capacity_forecast（P50/mainBn），join 进 outlook。 */
+  provenance: { kind: string; source: string; drillType: string; drillField: string };
+}
+
 export interface BaseOutlookResult {
   baseId: string;
   baseName: string;
@@ -78,6 +98,8 @@ export interface BaseOutlookResult {
   /** 主 horizon（请求单值时=该值，否则=最大窗）的逐日行动过程（P1 顶层便捷字段）。 */
   dayPlan: DayAction[];
   summary: string;
+  /** WO-CAPACITY-DEEPEN-ADDITIVE 块D · 每产品前瞻（optional·由 service.ts join capacity_forecast 填充·纯加字段）。 */
+  byModel?: ByModelOutlook[];
 }
 
 const isoAtDay = (startIso: string, day: number): string =>
