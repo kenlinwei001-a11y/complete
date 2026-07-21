@@ -400,16 +400,33 @@ export type LlmRole = "classifier" | "agent" | "compose";
  */
 export class LlmSettings {
   constructor(
-    private readonly repos: Pick<Repos, "llmBindings">,
+    private readonly repos: Pick<Repos, "llmBindings" | "llmProviders" | "credentials">,
     private readonly config: AppConfig,
     /** LLM Provider 增量 §1.3：DataCore 用途绑定目录（source of truth）。 */
     private readonly directory?: DataCoreProviderDirectory,
   ) {}
 
   async roleModel(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<string> {
-    if (explicit) return explicit; // scenario package field wins（场景包覆盖）
-    if (tenantId && this.directory) {
-      // 用途矩阵租户级默认（A 为 source of truth；role 名与 purpose key 同名）
+    if (explicit) {
+      // #4 静默空答修复（KILL-MOCK · SYSTEM-ONTOLOGY §8）：explicit（场景包字段 / 注册 agent.model，
+      // 如 seed 角色 agent 硬编 "claude-opus-4-8"）在 :410 一律直返 → 裸名落无 key 的默认 provider
+      // (anthropic) → 静默 AGENT_ERROR/空答。改为：explicit 的 provider 若本部署无凭据 → 回落租户
+      // 已绑定 LLM（用途绑定该 role，如本例 kimi-k2.5）；连绑定也无 → 保留 explicit 交下游真适配器，
+      // 由其失败落诚实错误（gap 块带 provider 缺失码），绝不静默空答。有凭据 → 保持 explicit 不变（正常路不回归）。
+      if (await this.explicitProviderUsable(tenantId, explicit)) return explicit;
+      const bound = await this.tenantBoundModel(tenantId, role);
+      return bound ?? explicit;
+    }
+    const bound = await this.tenantBoundModel(tenantId, role);
+    if (bound) return bound;
+    return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
+  }
+
+  /** 租户级用途绑定（A 为 source of truth）→ B 本地旧通道 → undefined（由调用方落 env 默认）。 */
+  private async tenantBoundModel(tenantId: string | undefined, role: LlmRole): Promise<string | undefined> {
+    if (!tenantId) return undefined;
+    if (this.directory) {
+      // 用途矩阵租户级默认（role 名与 purpose key 同名）
       const bound = await this.directory.bindingFor(tenantId, role);
       if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${bound.modelId}`;
       if (role === "compose") {
@@ -417,15 +434,51 @@ export class LlmSettings {
         if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${agentBound.modelId}`;
       }
     }
-    if (tenantId) {
-      const bound = await this.repos.llmBindings.get(tenantId, role);
-      if (bound) return `${bound.providerKey}:${bound.model}`;
-      if (role === "compose") {
-        // compose falls back to the agent binding before env defaults
-        const agentBound = await this.repos.llmBindings.get(tenantId, "agent");
-        if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
+    const bound = await this.repos.llmBindings.get(tenantId, role);
+    if (bound) return `${bound.providerKey}:${bound.model}`;
+    if (role === "compose") {
+      // compose falls back to the agent binding before env defaults
+      const agentBound = await this.repos.llmBindings.get(tenantId, "agent");
+      if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
+    }
+    return undefined;
+  }
+
+  /**
+   * #4 修复核心：判定 explicit spec 解析到的 provider 是否有可用凭据（keyless → false → 触发回落）。
+   * dcp:providerId:modelId → 经 directory 查 provider 存在/未禁用/凭据；否则 providerKey:model / 裸名
+   * → 落 tenant/platform/builtin provider 配置后按 kind 判定 key。判 false 从不抛，只指引 roleModel 回落。
+   */
+  private async explicitProviderUsable(tenantId: string | undefined, spec: string): Promise<boolean> {
+    const dc = parseDataCoreSpec(spec);
+    if (dc) {
+      if (!this.directory || !tenantId) return false;
+      try {
+        const p = await this.directory.provider(tenantId, dc.providerId);
+        if (!p || p.status === "DISABLED") return false;
+        if (!p.hasApiKey) return true; // 本地/自带鉴权端点：无需 key
+        return !!(await this.directory.credential(tenantId, p.id));
+      } catch {
+        return false;
       }
     }
-    return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
+    const idx = spec.indexOf(":");
+    const providerKey = idx > 0 ? spec.slice(0, idx) : this.config.QOS_DEFAULT_LLM_PROVIDER;
+    const cfg =
+      (tenantId ? await this.repos.llmProviders.byKey(tenantId, providerKey) : undefined) ??
+      (await this.repos.llmProviders.byKey(undefined, providerKey)) ??
+      BUILTIN_PROVIDERS[providerKey];
+    if (!cfg || cfg.status === "DISABLED") return false;
+    return this.cfgHasCredential(cfg);
+  }
+
+  /** provider 配置是否有可用密钥（apiKeyEnv 环境值 / 加密 credentialRef / anthropic 走 SDK 的 ANTHROPIC_API_KEY）。 */
+  private async cfgHasCredential(cfg: LlmProviderConfig): Promise<boolean> {
+    if (cfg.apiKeyEnv) return !!process.env[cfg.apiKeyEnv];
+    if (cfg.credentialRef) return !!(await this.repos.credentials.get(cfg.credentialRef));
+    // 无显式 key 配置：anthropic builtin 由 SDK 解析 ANTHROPIC_API_KEY（config/env）——本部署未配 → 不可用；
+    // openai_compatible 无 key 配置视为 baseUrl 驱动的本地/自带鉴权端点（不误判回落）。
+    if (cfg.kind === "anthropic") return !!(this.config.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY);
+    return cfg.kind === "openai_compatible";
   }
 }
