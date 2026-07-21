@@ -1,0 +1,339 @@
+/* WO-GLOBALSIM-GLASS-REDESIGN · 全局推演磨砂玻璃重设计（committed 深空蓝·像素级 token）
+   本视图刻意 committed 深色（不做浅色主题翻转）——像素基准 = claude.ai 深空蓝 artifact。
+   所有 token 已按基准图调校，严格照实现（并排比对是审核方的活）。 */
+
+/* 背景：径向双光晕 + 深空蓝竖向渐变（像素规格·勿改） */
+.root {
+  min-height: 100%;
+  margin: -18px;            /* 抵消 ShellLayout 内边距 → 背景满溢至内容区边缘 */
+  padding: 22px 26px 40px;
+  background:
+    radial-gradient(900px 520px at 40% 32%, rgba(52, 68, 98, 0.55), transparent 62%),
+    radial-gradient(700px 500px at 85% 60%, rgba(60, 74, 110, 0.3), transparent 60%),
+    linear-gradient(168deg, #1a2333 0%, #121a27 46%, #0c1119 100%);
+  color: #eff2f7;
+  font-family: var(--font-sans);
+}
+
+/* —— 文字层级（主/次/弱·像素规格） —— */
+.textPrimary { color: #eff2f7; }
+.textSecondary { color: #a7b1c2; }
+.textMuted { color: #717c91; }
+
+/* 分组标签：括号 + 大写 + letter-spacing（[ 联合求解配置 ]） */
+.grpLabel {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #8b96a8;
+  margin: 0 0 10px;
+  display: block;
+}
+
+/* 页头 */
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.titleBlock h2 {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: #eff2f7;
+  margin: 0 0 4px;
+}
+.titleBlock p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a7b1c2;
+  max-width: 720px;
+  margin: 0;
+}
+.badge {
+  margin-left: auto;
+  flex: none;
+  font-size: 10.5px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  color: #b7c0d0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+/* —— 磨砂玻璃卡（像素规格·勿改） —— */
+.glass {
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  box-shadow: 0 24px 48px -26px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+/* 全局在先：Hero（左·产能占用矩阵）+ 右侧配置栈 */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: 1fr; }
+}
+
+/* Hero 工具条 */
+.heroTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.segmented {
+  display: inline-flex;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.segBtn {
+  border: none;
+  background: none;
+  color: #a7b1c2;
+  font-size: 11.5px;
+  padding: 6px 13px;
+  cursor: pointer;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+.segBtn:last-child { border-right: none; }
+.segBtn.segOn {
+  color: #eff2f7;
+  background: linear-gradient(180deg, rgba(108, 123, 246, 0.32), rgba(84, 96, 232, 0.22));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.miniConserve {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #8fd6a8;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.miniConserve.bad { color: #e88b95; }
+
+/* 产能占用矩阵热力（基地 × 窗口） */
+.matrixWrap {
+  overflow-x: auto;
+}
+.heatMatrix {
+  border-collapse: separate;
+  border-spacing: 3px;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.heatMatrix th {
+  font-size: 10px;
+  font-weight: 500;
+  color: #8b96a8;
+  text-align: center;
+  padding: 2px 4px;
+  font-family: var(--font-mono);
+}
+.heatMatrix td.rowHead {
+  font-size: 11px;
+  color: #c3ccda;
+  white-space: nowrap;
+  text-align: left;
+  padding-right: 8px;
+}
+.heatCell {
+  width: 44px;
+  height: 30px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: #dfe5ee;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.pin {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e0626c;
+  border: 1.5px solid #1a2333;
+  font-size: 8px;
+  line-height: 10px;
+  color: #fff;
+  text-align: center;
+}
+
+/* —— 求解结果读数 —— */
+.readoutRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 9px;
+  margin: 12px 0;
+}
+.readout {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 11px;
+  padding: 9px 11px;
+}
+.readout b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 19px;
+  color: #eff2f7;
+  display: block;
+  line-height: 1.1;
+}
+.readout span {
+  font-size: 10px;
+  color: #8b96a8;
+}
+
+/* —— 按钮 —— */
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.btnPrimary {
+  border: none;
+  border-radius: 10px;
+  padding: 9px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(180deg, #6c7bf6, #5460e8);
+  box-shadow: 0 10px 22px -10px rgba(84, 96, 232, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btnPrimary:disabled { opacity: 0.6; cursor: default; }
+.btnGhost {
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #cbd3e0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.btnGhost:disabled { opacity: 0.5; cursor: default; }
+
+/* 复选 / 方案切换标签 */
+.scenPicks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.scenChk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: #b7c0d0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+/* —— 表格（分配台账 / 守恒台账 / 订单集 / 方案矩阵） —— */
+.gtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.gtable th {
+  text-align: left;
+  font-weight: 500;
+  color: #8b96a8;
+  font-size: 10.5px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.gtable td {
+  padding: 6px 8px;
+  color: #cbd3e0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.gtable td.mono, .gtable td.num { font-family: var(--font-mono); }
+.gtable td.num { text-align: right; }
+.ok { color: #8fd6a8; }
+.bad { color: #e88b95; }
+
+/* —— 订单/被挤/冻结卡 —— */
+.cardGrid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.orderCard {
+  min-width: 168px;
+  flex: 1 1 168px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 11.5px;
+  color: #c3ccda;
+}
+.orderCard.displaced { border-color: rgba(224, 98, 108, 0.5); }
+.orderCard.frozen { border-color: rgba(140, 155, 200, 0.5); }
+.orderCard strong { color: #eff2f7; font-size: 12.5px; }
+.orderCard .amt {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: #e0b4b9;
+}
+.drillLink {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #98a6f2;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(152, 166, 242, 0.5);
+  padding-bottom: 1px;
+}
+.drillLink:hover { color: #b6c1ff; }
+
+.summary {
+  font-size: 11px;
+  color: #717c91;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+.noteRed {
+  border: 1px solid rgba(224, 98, 108, 0.5);
+  background: rgba(224, 98, 108, 0.1);
+  color: #e88b95;
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  margin-top: 8px;
+}
+.empty { color: #717c91; font-size: 11.5px; }
+
+/* 迁入面板（MultiObjWhatifPanel）在深空底上的容器微调 */
+.migrated { margin-top: 4px; }

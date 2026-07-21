@@ -1,5 +1,6 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   BottleneckMatrixOutputSchema,
   CapacityForecastOutputSchema,
@@ -17,7 +18,6 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { DynamicLeverPanel } from "./DynamicLeverPanel";
-import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
@@ -189,8 +189,37 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     useSessionStore.getState().setSelectedObjects([{ objectType: "Order", objectId: o.id, label: String(o.props.so ?? o.id) }]);
   };
 
+  // WO-GLOBALSIM-GLASS-REDESIGN 双向下钻：全局页「进项目推演细排 →」跳 /v/project-sim?order=SO-xxxx，
+  // 到达后按 so 自动选中该单细排（订单加载后一次性归结·避免用户再手点）。
+  const [searchParams] = useSearchParams();
+  const orderParam = searchParams.get("order");
+  const orderItems = orders.data?.items;
+  useEffect(() => {
+    if (!orderParam || !orderItems) return;
+    const hit = orderItems.find((o) => String(o.props.so ?? o.id) === orderParam);
+    if (hit && selectedOrder !== hit.id) pickOrder(hit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderParam, orderItems]);
+
   return (
     <div data-testid="project-sim-view">
+      {/* 全局在先：项目推演是「全局主计划框架内的细排」，常驻标注受约束 + 双向跳回全局重排（纯内联样式·不出 CSS 边界）。 */}
+      <div
+        data-testid="proj-global-constraint"
+        style={{
+          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          border: "1px solid rgba(232,181,74,.45)", borderLeft: "3px solid var(--amber)",
+          background: "rgba(232,181,74,.08)", borderRadius: 10, padding: "8px 14px",
+          fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
+        }}
+      >
+        <span>⚠ 当前排程受<strong style={{ color: "var(--amber)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以全局联合最优为准。</span>
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>← 自全局页 {orderParam} 下钻</span>}
+          <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起求全局最优 →</Link>
+          <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
+        </span>
+      </div>
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.proj.title}</h3>
@@ -806,8 +835,8 @@ function StepBody({
           snapshot={{ mode, qty: totalQty, p50: out.p50, p90: out.p90, mainBn: out.mainBn }}
         />
       </Feature>
-      {/* WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用 what-if（opt.multiobj 关则整块不存在 R3）。 */}
-      <MultiObjWhatifPanel />
+      {/* WO-GLOBALSIM-GLASS-REDESIGN 去重：多目标 + 跨对象占用联合 what-if 本是「全局能力」，
+          已迁至全局联合推演页（/v/global-sim）。单项目 what-if（generic_inference 动态杠杆）留此。 */}
     </div>
   );
 }
