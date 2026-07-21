@@ -59,10 +59,15 @@ export function useTaskStream(
     let retryDelay = 1000;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
-    // 转圈兜底：重连有上限——后端始终不发终结事件（挂死/崩溃）时，前端不再无限重连空转，
-    // 达上限即合成 task.failed 终态 → 停转 + 显"未收到结果·可重试"（后端超时修复是定因·此为症状侧安全网）。
+    // 转圈兜底：重连有上限——后端始终不发终结事件（挂死/崩溃）时，前端不再无限重连空转。
+    // 但达上限**不凭空判失败**：先 fetchTask 核实任务真状态——长推演（真 Kimi 76~137s）可能仍在跑，
+    // 只是 SSE 抖动；此时 6 次重连（~60s）远早于任务完成，直接报 STREAM_UNAVAILABLE 会**误杀在跑的任务**
+    // （用户实测「4680 加 20%」正是此症：path-B 真 Kimi 慢 → 前端 60s 放弃 → 空壳断流）。
     let reconnects = 0;
     const MAX_RECONNECTS = 6;
+    // 任务仍在跑时的有限延展（每次 ~60s）：覆盖后端 600s 预算上限，仍有界（不无限）。
+    let extensions = 0;
+    const MAX_EXTENSIONS = 10;
 
     const connect = () => {
       if (disposed || terminatedRef.current) return;
@@ -102,17 +107,49 @@ export function useTaskStream(
         es.addEventListener(name, (ev) => handle(ev, name));
       }
       es.onmessage = (ev) => handle(ev, "message");
+      const streamFailed = (message: string) => {
+        terminatedRef.current = true;
+        dispatch({ type: "event", frame: { id: "", event: "task.failed", data: { code: "STREAM_UNAVAILABLE", message } } });
+      };
       es.onerror = () => {
         if (disposed || terminatedRef.current) return;
         es?.close();
         reconnects += 1;
         if (reconnects > MAX_RECONNECTS) {
-          // 达重连上限仍无终结事件 → 合成 task.failed 终态，停转（不再无限重连空转）。
-          terminatedRef.current = true;
-          dispatch({
-            type: "event",
-            frame: { id: "", event: "task.failed", data: { code: "STREAM_UNAVAILABLE", message: "推演流连接中断，未收到结果，请重试。" } },
-          });
+          // 达重连上限：**先核实任务真状态**，不凭空判失败（长推演可能仍在跑·或已出答，只是 SSE 抖动）。
+          reconnects = 0;
+          void fetchTask(taskId)
+            .then((task) => {
+              if (disposed || terminatedRef.current) return;
+              const status = (task as { status?: string })?.status;
+              if (status && ["COMPLETED", "FAILED", "CANCELLED"].includes(status)) {
+                // 任务真终态 → 用真结果收尾（真答案/真失败·非空壳 STREAM_UNAVAILABLE）。缓存写全量任务（渲染权威）。
+                terminatedRef.current = true;
+                queryClient.setQueryData(["b", "task", taskId], task);
+                const t = task as { answer?: Record<string, unknown>; error?: Record<string, unknown> };
+                if (status === "COMPLETED") {
+                  dispatch({ type: "event", frame: { id: "", event: "answer.final", data: t.answer ?? {} } });
+                } else {
+                  dispatch({ type: "event", frame: { id: "", event: "task.failed", data: t.error ?? { code: "TASK_FAILED", message: "推演任务失败" } } });
+                }
+              } else if (status) {
+                // 任务仍在跑（长推演·真 Kimi 慢）→ 别放弃：有限次延展继续拉流。
+                extensions += 1;
+                if (extensions > MAX_EXTENSIONS) {
+                  streamFailed("推演流连接持续中断，请重试。");
+                  return;
+                }
+                retryDelay = 1000;
+                retryTimer = setTimeout(connect, retryDelay);
+              } else {
+                // 取不到任务（后端真不可达）→ 才合成断流失败。
+                streamFailed("推演流连接中断，未收到结果，请重试。");
+              }
+            })
+            .catch(() => {
+              if (disposed || terminatedRef.current) return;
+              streamFailed("推演流连接中断，未收到结果，请重试。");
+            });
           return;
         }
         retryTimer = setTimeout(connect, retryDelay);
