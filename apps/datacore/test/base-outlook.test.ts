@@ -115,4 +115,78 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     expect(byName.baseName).toBe("合肥");
     expect(a.forecastStart).toBe("2026-06-10"); // forecastStart 时间锚（非 Date.now）
   });
+
+  // ===== WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel SEAM（数据 capacity_forecast × 展示按产品·跨半驱动接缝·非各半绿）=====
+  type ByModel = { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; provenance: { kind: string; source: string; drillType: string; drillField: string } };
+  type OutlookD = Outlook & { byModel?: ByModel[] };
+  const runD = async (t: TestApp, args: Record<string, unknown>): Promise<OutlookD> =>
+    (await t.services.solvers.invoke(ADMIN, "base_capacity_outlook", args)) as unknown as OutlookD;
+  type Forecast = { p50: number; mainBn: string; perBaseRows: { base: string; baseId: string; cumTotal: number }[] };
+  const runFc = async (t: TestApp, args: Record<string, unknown>): Promise<Forecast> =>
+    (await t.services.solvers.invoke(ADMIN, "capacity_forecast", args)) as unknown as Forecast;
+
+  it("SEAM 块D：changzhou byModel 每 model p50@30/60/90 与 capacity_forecast 该基地 P50 同源勾稽 + mainBn 跨求解器一致", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const g = await runD(t, { baseId: "changzhou" });
+
+    expect(Array.isArray(g.byModel)).toBe(true);
+    expect(g.byModel!.length).toBeGreaterThan(0); // changzhou 至少一可产型号（4680-NCM/4680-LFP/方形-NCM）
+    const row = g.byModel!.find((r) => r.model === "4680-NCM")!;
+    expect(row).toBeTruthy();
+    expect(row.p50At30).toBeLessThan(row.p50At90); // 窗口越长累计可承接越多（前瞻单调·非写死）
+
+    // 同源勾稽：byModel p50@H === capacity_forecast(该 model, weeks=ceil(H/7)) 该基地 perBaseRows.cumTotal × 1e4。
+    for (const [H, p50] of [[30, row.p50At30], [60, row.p50At60], [90, row.p50At90]] as const) {
+      const fc = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(H / 7) });
+      const pb = fc.perBaseRows.find((r) => r.baseId === "changzhou")!;
+      expect(pb).toBeTruthy();
+      expect(p50).toBeCloseTo(pb.cumTotal * 1e4, 1); // 同源·跨求解器勾稽（非独立写死）
+    }
+    // mainBn 跨求解器一致（= capacity_forecast 该 model 主瓶颈）。
+    const fc90 = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(90 / 7) });
+    expect(row.mainBn).toBe(fc90.mainBn);
+    // R13：每值溯 capacity_forecast。
+    expect(row.provenance.source).toBe("capacity_forecast");
+  });
+
+  it("SEAM 块D 改颗粒：改 capacity_forecast 输入（changzhou Process.yield）→ byModel p50 真变（非写死·勾稽咬合）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const before = (await runD(t, { baseId: "changzhou" })).byModel!.find((r) => r.model === "4680-NCM")!;
+
+    // 改 capacity_forecast 上游输入：把 changzhou 某产线一道工序良率下调 → computeRollup 周产能降 → cumTotal 降 → byModel p50 真降。
+    const lines = await t.repos.objects.listByType("demo", "Line");
+    const czLineIds = new Set(lines.filter((l) => String(l.props.baseId) === "changzhou").map((l) => String(l.props.lineId)));
+    const procs = await t.repos.objects.listByType("demo", "Process");
+    const proc = procs.find((p) => czLineIds.has(String(p.props.lineId)) && Number(p.props.yield) > 0);
+    expect(proc).toBeTruthy();
+    proc!.props.yield = Number(proc!.props.yield) * 0.5;
+    await t.repos.objects.put(proc!);
+
+    const after = (await runD(t, { baseId: "changzhou" })).byModel!.find((r) => r.model === "4680-NCM")!;
+    expect(after.p50At90).toBeLessThan(before.p50At90); // 改 capacity_forecast 输入 → byModel 真变（接缝咬合·非写死）
+    // 且仍与 capacity_forecast 同源（改后再勾稽）。
+    const fc90 = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(90 / 7) });
+    const pb = fc90.perBaseRows.find((r) => r.baseId === "changzhou")!;
+    expect(after.p50At90).toBeCloseTo(pb.cumTotal * 1e4, 1);
+  });
+
+  it("块D 向后兼容 + R6：byModel 为纯加字段（per-base 四线/dayPlan 零改）·同输入 byModel 字节级一致", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const a = await runD(t, { baseId: "changzhou" });
+    const b = await runD(t, { baseId: "changzhou" });
+    expect(JSON.stringify(a.byModel)).toBe(JSON.stringify(b.byModel)); // 确定性
+    // per-base 四线仍在（byModel 未动既有输出）。
+    expect(a.horizons[0]!.lines.map((l) => l.key)).toContain("available");
+    // 每 byModel 行结构齐（model/p50@30/60/90/mainBn/gap）。
+    for (const r of a.byModel!) {
+      expect(typeof r.model).toBe("string");
+      expect(typeof r.p50At30).toBe("number");
+      expect(typeof r.p50At60).toBe("number");
+      expect(typeof r.p50At90).toBe("number");
+      expect(r.mainBn.length).toBeGreaterThan(0);
+    }
+  });
 });

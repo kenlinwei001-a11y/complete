@@ -18,7 +18,9 @@ interface Horizon {
   available: number; inProduction: number; futureOrders: number; salesForecast: number;
   demand: number; gap: number; status: "缺口" | "富余" | "平衡"; crossDay: number | null; dayPlan: DayAction[];
 }
-interface Outlook { baseId: string; baseName: string; forecastStart: string; horizons: Horizon[]; dayPlan: DayAction[]; summary: string }
+// WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（后端 base_capacity_outlook 纯加字段·optional）。
+interface ByModel { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; provenance: { kind: string; source: string; drillType: string; drillField: string } }
+interface Outlook { baseId: string; baseName: string; forecastStart: string; horizons: Horizon[]; dayPlan: DayAction[]; summary: string; byModel?: ByModel[] }
 
 const LINE_COLOR: Record<string, string> = {
   available: "var(--c-capacity, #43B7D7)",
@@ -31,9 +33,12 @@ const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 export function BaseOutlookPanel({ baseId }: { baseId: string }) {
   const [horizon, setHorizon] = useState<30 | 60 | 90>(30);
   const [showProcess, setShowProcess] = useState(true);
+  // WO-CAPACITY-DEEPEN-ADDITIVE 块D · 维度切换：按基地（现有·零改）/ 按产品（新·byModel）。默认"按基地"→现有 testid/交互照旧。
+  const [dim, setDim] = useState<"base" | "model">("base");
   const res = useLiveSolver<Outlook>("base_capacity_outlook", { baseId, horizon }, (raw) => raw as Outlook);
   const out = res.data;
   const hz = out?.horizons?.[0];
+  const byModel = out?.byModel ?? [];
 
   return (
     <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`base-outlook-${baseId}`}>
@@ -41,6 +46,66 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
         <b>📈 前瞻产能推演（{out?.baseName ?? baseId}）</b>
         <span>未来 {horizon} 天：可用产能 vs 在产 / 未来订单 / 销售预测 · 缺口窗给逐日处置过程</span>
       </div>
+
+      {/* 块D · 维度切换（按基地 / 按产品）。"按基地"现有视图零改。 */}
+      <div className={styles.rkHsel} style={{ marginBottom: 8 }} data-testid="outlook-dim-tabs">
+        {([["base", "按基地"], ["model", "按产品"]] as const).map(([k, label]) => (
+          <span
+            key={k}
+            className={`${styles.tierChip} ${dim === k ? styles.tierChipOn : ""}`}
+            data-testid={`outlook-dim-${k}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => setDim(k)}
+            onKeyDown={(e) => e.key === "Enter" && setDim(k)}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {dim === "model" ? (
+        /* 块D · 按产品：每产品 T+30/60/90 产能预测 + 每产品瓶颈工序（byModel·同源 capacity_forecast·R13）。 */
+        <div data-testid="outlook-bymodel">
+          {byModel.length === 0 ? (
+            <div className="empty-state" data-testid="outlook-bymodel-empty" style={{ fontSize: 12 }}>
+              {res.error ? "每产品前瞻求解器不可用（诚实空·未伪造）" : hz ? "本基地无可产型号 byModel（诚实空）" : "每产品前瞻加载中…"}
+            </div>
+          ) : (
+            <>
+              <table className="cmp" data-testid="outlook-bymodel-table" style={{ fontSize: 11.5, width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>产品型号</th>
+                    <th style={{ textAlign: "right" }}>T+30</th>
+                    <th style={{ textAlign: "right" }}>T+60</th>
+                    <th style={{ textAlign: "right" }}>T+90</th>
+                    <th style={{ textAlign: "left" }}>主瓶颈工序</th>
+                    <th style={{ textAlign: "right" }}>缺口</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byModel.map((m) => (
+                    <tr key={m.model} data-testid={`outlook-bymodel-${m.model}`}
+                      title={`溯源 ${m.provenance.source}（${m.provenance.drillType}.${m.provenance.drillField}）·跨求解器勾稽`}>
+                      <td style={{ textAlign: "left" }}><b>{m.modelName}</b></td>
+                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p30`} style={{ textAlign: "right" }}>{fmt(m.p50At30)}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{fmt(m.p50At60)}</td>
+                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p90`} style={{ textAlign: "right" }}>{fmt(m.p50At90)}</td>
+                      <td data-testid={`outlook-bymodel-${m.model}-bn`} style={{ textAlign: "left", color: "var(--c-solver)" }}>{m.mainBn}</td>
+                      <td className="mono" style={{ textAlign: "right", color: m.gap < 0 ? "var(--danger)" : "var(--ok)" }}>{fmt(m.gap)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
+                每产品 T+30/60/90 与主瓶颈工序均从 capacity_forecast 该基地 P50/mainBn 同源 join（跨求解器勾稽·R13），改 capacity_forecast 输入即真变（R6/R14·非写死）。
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <>
 
       {/* 三档窗口 tab（30/60/90）。 */}
       <div className={styles.rkHsel} style={{ marginBottom: 10 }} data-testid="base-outlook-tabs">
@@ -152,6 +217,8 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
           <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
             四线均从真对象派生（Line.capacityDaily / WorkOrder.qtyActual / Order.due / DemandSegment.p50），改颗粒即前瞻真变；逐日过程沿产能推演触发→补缺口→收窄口径（R6/R13·非写死）。
           </div>
+        </>
+      )}
         </>
       )}
     </div>

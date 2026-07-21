@@ -12,6 +12,9 @@ import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
+import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
+import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
+import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 import zh from "@/locales/zh";
@@ -567,10 +570,19 @@ function RiskDetailPanel({
 
       {/* CI-a 基地根因推演树（可信=过程可见）：为什么这基地越线——结构反向归因（设备OEE/物料gapTon/订单）
           → caused_by 溯终点根因，每节点下钻真对象字段（R13）。数据 = gap_attribution 真求解器投影到本基地。 */}
+      {/* WO-CAPACITY-DEEPEN 块C · 20 因素本体图例 + 给现有根因/瓶颈因素附加本体徽标（纯附加·现有 ②④ 零改）。 */}
+      <CapacityFactorOntology baseId={card.base} factors={[card.factor, ...bnFactors, ...rootCauseFactors]} />
+
       <RootCausePanel base={card.base} factor={card.factor} dag={baseDag} loading={gaLoading} error={gaError} hasGa={!!ga} />
+
+      {/* WO-CAPACITY-DEEPEN 块A · 可用产能派生诊断 DAG（插在 ③ 之上·不替代四线图）。 */}
+      <CapacityDerivationDag baseId={card.base} />
 
       {/* F1 · 每基地前瞻产能推演（30/60/90 四线 + 缺口标记 + P1 逐日过程）。基地名归一由求解器内部处理。 */}
       <BaseOutlookPanel baseId={card.base} />
+
+      {/* WO-CAPACITY-DEEPEN 块B · 产能爬坡 min 包络（插在 ③ 之后）。 */}
+      <CapacityRampEnvelope baseId={card.base} />
 
       {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
       <div className={styles.rkTwo}>

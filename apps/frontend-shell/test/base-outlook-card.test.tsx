@@ -56,4 +56,33 @@ describe("WO-B / F1 · BaseOutlookPanel 前瞻产能推演卡", () => {
     expect(step0.textContent ?? "").toContain("收窄");
     expect(step0.textContent ?? "").toMatch(/溯源 (Line|WorkOrder|Order)\./);
   });
+
+  // ===== WO-CAPACITY-DEEPEN-ADDITIVE 块D · 按产品 tab（byModel·SEAM 展示半）=====
+  it("块D 按产品 tab：切到「按产品」→ 每产品行渲染 T+30/60/90 + 主瓶颈工序（outlook-bymodel-{model}·非写死）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    render(<BaseOutlookPanel baseId="changzhou" />);
+
+    // 默认「按基地」——现有四线在（零回归）。
+    await waitFor(() => expect(screen.getByTestId("outlook-line-available")).toBeInTheDocument());
+
+    // 切到「按产品」。
+    await user.click(screen.getByTestId("outlook-dim-model"));
+    const tbl = await screen.findByTestId("outlook-bymodel-table");
+    expect(tbl).toBeInTheDocument();
+
+    // changzhou 可产型号至少 4680-NCM 一行（byModel testid）+ T+30/T+90 + 瓶颈工序。
+    const row = await screen.findByTestId("outlook-bymodel-4680-NCM");
+    expect(row).toBeInTheDocument();
+    const p30 = Number((screen.getByTestId("outlook-bymodel-4680-NCM-p30").textContent ?? "0").replace(/[^0-9.]/g, ""));
+    const p90 = Number((screen.getByTestId("outlook-bymodel-4680-NCM-p90").textContent ?? "0").replace(/[^0-9.]/g, ""));
+    expect(p90).toBeGreaterThan(p30); // 窗口越长累计越多（前瞻真变·非写死）
+    expect((screen.getByTestId("outlook-bymodel-4680-NCM-bn").textContent ?? "").length).toBeGreaterThan(0); // 主瓶颈工序
+    // R13 溯源 capacity_forecast（title 勾稽）。
+    expect(row.getAttribute("title") ?? "").toContain("capacity_forecast");
+
+    // 切回「按基地」→ 现有 testid 不回归。
+    await user.click(screen.getByTestId("outlook-dim-base"));
+    await waitFor(() => expect(screen.getByTestId("outlook-line-available")).toBeInTheDocument());
+  });
 });

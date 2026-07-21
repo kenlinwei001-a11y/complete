@@ -334,3 +334,24 @@ export const SolverGenDraftSchema = z.object({
   rationale: z.string().default(""),
 });
 export type SolverGenDraft = z.infer<typeof SolverGenDraftSchema>;
+
+/**
+ * WO-CAPACITY-DEEPEN-ADDITIVE 块D · base_capacity_outlook.byModel 每产品前瞻行（跨半契约·optional·向后兼容）。
+ * 每 model 的 T+30/60/90 产能预测（同源 capacity_forecast 该基地 P50·跨求解器勾稽）+ 主瓶颈工序 + 缺口。
+ * 现有 base_capacity_outlook per-base 四线输出零改——byModel 为纯加字段（两系统共享此形状·灭前后端漂移）。
+ */
+export const BaseCapacityOutlookByModelSchema = z.object({
+  model: z.string(),
+  modelName: z.string(),
+  /** T+30 天该基地该型号累计可承接（套·= capacity_forecast 该基地 cumTotal×1e4）。 */
+  p50At30: z.number(),
+  p50At60: z.number(),
+  p50At90: z.number(),
+  /** 该型号主瓶颈工序（= capacity_forecast 该 model mainBn·跨求解器一致）。 */
+  mainBn: z.string(),
+  /** 缺口 = p50@90 − 该型号 90 天落窗未来订单（本基地首产地·套）。 */
+  gap: z.number(),
+  /** R13 溯源：每值来自 capacity_forecast（P50/mainBn）。 */
+  provenance: z.object({ kind: z.string(), source: z.string(), drillType: z.string(), drillField: z.string() }),
+});
+export type BaseCapacityOutlookByModel = z.infer<typeof BaseCapacityOutlookByModelSchema>;
