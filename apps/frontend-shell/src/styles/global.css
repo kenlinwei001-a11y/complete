@@ -13,10 +13,8 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1100px 700px at 78% -10%, rgba(76, 144, 240, 0.075), transparent 62%),
-    radial-gradient(900px 600px at 4% 108%, rgba(196, 112, 184, 0.045), transparent 55%),
-    var(--bg);
+  /* 扁平青蓝底（对齐参考图·无渐变——用户明确"无需渐变色·如图片颜色即可"，去掉原径向辉光）。 */
+  background: var(--bg);
   color: var(--txt);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -139,10 +137,18 @@ a {
 }
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  /* 磨砂玻璃卡（对齐参考图·青蓝底上：半透光 veil + 背景模糊 + 亮描边 + 内高光 + 柔投影）。
+     背景走 --panel-glass（主题感知：暗色=白veil磨砂 / 浅色=不透明白卡·浅底磨砂无意义）；
+     backdrop-filter 在扁平底上主要呈玻璃质感（有内容/叠层在后时才见真模糊）。 */
+  background: var(--panel-glass);
+  border: 1px solid var(--line2);
   border-radius: 12px;
   padding: 14px 16px;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .section-title {

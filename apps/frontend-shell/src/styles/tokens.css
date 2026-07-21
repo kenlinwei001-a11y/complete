@@ -1,10 +1,14 @@
 :root {
-  --bg: #0d1117;
-  --bg2: #11161d;
-  --panel: #161c24;
-  --panel2: #10151c;
-  --line: rgba(226, 235, 245, 0.07);
-  --line2: rgba(226, 235, 245, 0.13);
+  /* 青蓝磨砂主题（对齐参考图·浅一点的青蓝色·扁平无渐变底）——暗色层栈整族退火至 teal-blue，
+     保持层级序（bg 最深 < panel2 导航/内嵌 < panel 抬升卡）。底色取参考图背景主场中位 #26314f 侧、
+     偏浅端 #223251（用户："浅一点的青蓝色·如图片颜色即可"）。 */
+  --bg: #223251;                                 /* 扁平青蓝页面底（最低层·对齐参考图主场） */
+  --bg2: #283a5c;                                /* 输入 / 微抬升面（较 bg 略亮） */
+  --panel: #2c3d5e;                              /* 不透明抬升卡（模块卡等非玻璃消费者·安全·较 bg 亮） */
+  --panel-glass: rgba(255, 255, 255, 0.06);      /* 磨砂玻璃卡 veil（.panel 专用·配 backdrop-blur 见 global.css；主题感知） */
+  --panel2: #1c2942;                             /* 导航栏 / 卡内嵌区（较 bg 略暗·内容后退·镜像参考图深色导航轨） */
+  --line: rgba(226, 235, 245, 0.08);
+  --line2: rgba(226, 235, 245, 0.14);
   --txt: #e9eef5;
   --muted: #9aa8b6;
   --muted2: #67737f;
@@ -31,8 +35,8 @@
 
   /* WO-THEME-SWITCH-U8：chrome 表面/交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
      暗色值 == 收口前的渲染字面（逐值等价·保证黑曜石视觉不变·C3 additive）。 */
-  --topbar-bg: linear-gradient(180deg, rgba(24, 31, 40, 0.82), rgba(14, 18, 24, 0.66));
-  --topbar-border: rgba(226, 235, 245, 0.09);
+  --topbar-bg: linear-gradient(180deg, rgba(42, 58, 92, 0.82), rgba(28, 41, 66, 0.66));  /* 青蓝玻璃顶栏（随主题退火·纵向微渐变系玻璃条本体·非"背景渐变"） */
+  --topbar-border: rgba(226, 235, 245, 0.1);
   --hover-tint: rgba(226, 235, 245, 0.04);        /* nav / 菜单 / 搜索 / 表行 hover 底 */
   --hover-tint-strong: rgba(226, 235, 245, 0.06);
   --scrollbar-thumb: rgba(226, 235, 245, 0.12);
@@ -54,6 +58,7 @@
   --bg: #f5f7fb;          /* 浅灰蓝页面底（最低层） */
   --bg2: #ffffff;         /* 输入 / 微抬升面 */
   --panel: #ffffff;       /* 卡片面（最亮层） */
+  --panel-glass: #ffffff; /* 浅底磨砂无意义 → 维持不透明白卡（.panel 在浅色下逐值不变·theme-invariant） */
   --panel2: #edf1f7;      /* 导航栏 / 卡内嵌区（较 panel 略暗，同暗色下 panel2<panel 的层级关系） */
   --line: rgba(20, 28, 44, 0.1);   /* 发丝边（深墨低透） */
   --line2: rgba(20, 28, 44, 0.16); /* 较重边：输入 / 徽标 / 表头 */
