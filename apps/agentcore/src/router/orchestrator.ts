@@ -41,6 +41,7 @@ import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
+import { domainResolve, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -346,6 +347,19 @@ export class Orchestrator {
       }
     }
 
+    // ★ WO-QOS-1 · A 确定性优先门（治本·闭 G-AGENT-BLIND-REACT 路由侧一半）——插在 free-LLM/agent 入口**之前**。
+    // 真 Kimi 20 题实测：99% 时延在 path-B 的 LLM 盲目选型推理；治本头号杠杆 = 有对口**确定性** solver 的高置信题
+    // 别送进慢 agent。domainResolve（R6 纯函数·复用 ceo-route 意图模式，A 门与 WO-QOS-2 切片投影单一来源）→
+    // preferDeterministicSolver → 高置信（≥THRESHOLD·用 20 题金标校准使**误降级=0**）+ 有对口 solver → 拉回 path-A
+    // 求解器（一次 invoke_solver + 模板投影·秒级出答·答案口径不变）。
+    // **fail-safe 铁律**：低置信 / 无匹配 / 未能绑意图 → **照落下方 free-LLM / classifier**（绝不把开放题误降级给
+    // 窄 solver 出"自信错答"）。**字节兼容**：命中即走既有 tryDeterministicBind（block-route/ceo-route→proceedWithIntent·
+    // 与下方原位逐字节同 model/路径），既有行为零回归——唯一新增行为 = 本会被 free-LLM 劫持的高置信定式深问改走 path-A。
+    const det = preferDeterministicSolver(domainResolve(task.query, task.context.pageContext));
+    if (det.confidence >= DETERMINISTIC_PREFERENCE_THRESHOLD && det.solverKey) {
+      if (await this.tryDeterministicBind(taskId, auth, task, candidates)) return;
+    }
+
     // WO-REAL-LLM-FREE-QUERY（CEO/块级真 LLM 深问·确定性路由之外并列拦截·未被 Coordinator 显式指派时的开放式深问缺省增强）。
     if (freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
       await this.runCeoFreeLLM(taskId, auth, enabledFeatures);
@@ -361,31 +375,7 @@ export class Orchestrator {
     // 快照（blockData）+ 块身份 → 按 blockType 定向落对应推演求解器（不依赖问句关键词·块本身即意图锚），blockData 作
     // 强上下文（extractedSlots 留存 + pageContextSummary 进 agent prompt），答案针对性锚定该块。优先于页面级 CEO 问句路由
     // （块是更强的上下文信号）。门控：`hasBlockContext` + blockType 已登记 + 目标 CEO 意图在候选内；否则退化走下方页面级/classifier。
-    if (hasBlockContext(task.context.pageContext)) {
-      const route = resolveBlockRoute(task.context.pageContext, "ceo");
-      if (route) {
-        const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
-        if (ceoIntent) {
-          await this.deps.repos.tasks.patch(taskId, {
-            classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:block-route" },
-          });
-          await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
-          return;
-        }
-      }
-    }
-
-    if (hasPageContext && isCeoQuestion(task.query)) {
-      const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
-      const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
-      if (ceoIntent) {
-        await this.deps.repos.tasks.patch(taskId, {
-          classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:ceo-route" },
-        });
-        await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
-        return;
-      }
-    }
+    if (await this.tryDeterministicBind(taskId, auth, task, candidates)) return;
 
     // #5 单候选短路：候选收窄后只剩 1 个意图，且其必填槽位可仅从上下文（presetContext/选中对象
     // defaultFrom）满足时，跳过 LLM 分类直接进路径 A —— 省一次分类往返。仍保留槽位填充语义：
@@ -469,6 +459,53 @@ export class Orchestrator {
 
     // high confidence → slot filling → path A
     await this.proceedWithIntent(taskId, auth, intent, classification.extractedSlots);
+  }
+
+  /**
+   * WO-CEO-6 / WO-BLOCK-DIALOGUE 确定性绑定（块级定向优先 → 页面级 CEO 问句意图）→ path-A invoke_solver。
+   * WO-QOS-1 抽取为可复用方法：A 确定性优先门（free-LLM 入口前·高置信时）与原位（free-LLM 之后·默认路径）
+   * **共用同一实现** —— 保证两处逐字节同 model（`deterministic:block-route`/`deterministic:ceo-route`）+ 同 proceedWithIntent
+   * 路径（字节兼容·零回归）。命中并绑定成功 → true（调用方须 return）；未命中/意图不在候选 → false（照落下游·不劫持）。
+   */
+  private async tryDeterministicBind(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+  ): Promise<boolean> {
+    // WO-BLOCK-DIALOGUE（闭 G-3 块级）：块级定向路由——用户点某 block「深问此块」→ PageContext.block 携该块**真实数据**
+    // 快照（blockData）+ 块身份 → 按 blockType 定向落对应推演求解器（不依赖问句关键词·块本身即意图锚），blockData 作
+    // 强上下文（extractedSlots 留存 + pageContextSummary 进 agent prompt）。优先于页面级 CEO 问句路由（块是更强上下文信号）。
+    if (hasBlockContext(task.context.pageContext)) {
+      const route = resolveBlockRoute(task.context.pageContext, "ceo");
+      if (route) {
+        const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+        if (ceoIntent) {
+          await this.deps.repos.tasks.patch(taskId, {
+            classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:block-route" },
+          });
+          await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+          return true;
+        }
+      }
+    }
+
+    // WO-CEO-6（闭 G-3 深问侧）：CEO 深问确定性路由——命中意图模式（为什么/怎么补/差多少/信号）+ PageContext →
+    // resolveCeoRoute（args 从 PageContext.focus 派生）→ 绑定 CEO 意图 → path A 执行 invoke_solver(CEO 求解器) → 答案+溯源。
+    // 门控：仅「注入了 PageContext + CEO 深问模式命中 + 目标意图在候选内」才绑定（无 PageContext 或非 CEO 问句照常走
+    // 下游 classifier·不劫持）。行级 scope（A6）由 datacore OBO 依身份真过滤，非本层强制。
+    if (Boolean(task.context.pageContext) && isCeoQuestion(task.query)) {
+      const route = resolveCeoRoute(task.query, task.context.pageContext, "ceo");
+      const ceoIntent = candidates.find((c) => c.key === ceoIntentKeyForRoute(route.route));
+      if (ceoIntent) {
+        await this.deps.repos.tasks.patch(taskId, {
+          classification: { candidates: [{ intentKey: ceoIntent.key, confidence: 1 }], outOfCatalog: false, extractedSlots: route.args, latencyMs: 0, model: "deterministic:ceo-route" },
+        });
+        await this.proceedWithIntent(taskId, auth, ceoIntent, route.args);
+        return true;
+      }
+    }
+    return false;
   }
 
   private async publishedIntentsForView(
