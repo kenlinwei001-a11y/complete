@@ -224,6 +224,11 @@ export class ExecutionEngine {
       ...(summarizer ? { summarizer } : {}),
       executor,
       budget: opts.nesting.budget,
+      // G-9 转圈根因修复：runRegisteredAgent（角色 agent / CEO 深问 / 场景启动器路径）此前漏传 per-call 超时，
+      // 真 LLM 某次调用挂住时只有 budget.durationExceeded（轮首查一次）能兜——单次调用卡死永远到不了下一轮，
+      // 循环卡死 → 不发终结事件 → 前端 useTaskStream 无限重连 → 转圈。接上 llmCallTimeoutMs 后：挂住的调用被
+      // AbortController 上界终止 → 优雅降级（TIMEOUT）→ 发 answer.final/agent_degraded 终结事件 → 前端停转。
+      llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
       repos: this.deps.repos,
       metrics: this.deps.metrics,
       emit: opts.emit,

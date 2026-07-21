@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import type { AgentDefinition } from "@platform/contracts";
+import { createTestApp, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { HANG, text, toolUse } from "../src/llm/mock.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 
 /**
  * G-9 SEAM 组合测（经真 QOS 管线 submitQuery → runPipeline → runPathB → runAgentLoop，非直调 loop unit）：
@@ -120,6 +122,41 @@ describe("G-9 · path-B agent 有界超时 + 优雅降级（SEAM）", () => {
       // signal 穿到适配器面（证 AbortSignal 从 loop → llm.agent 请求）
       expect(t.llm.agentRequests[0]?.signal).toBeDefined();
       expect(t.llm.agentRequests[0]?.signal).toBeInstanceOf(AbortSignal);
+    });
+  });
+
+  describe("Case C · engine.runRegisteredAgent 路径挂死（角色 agent / CEO 深问 / 场景启动器）→ 同样有界降级", () => {
+    // 转圈根因修复：runRegisteredAgent 此前漏传 llmCallTimeoutMs（engine.ts:216）→ 真 LLM 某次调用挂住时循环卡死、
+    // 永不发终结事件 → 前端 useTaskStream 无限重连 → 转圈（用户三次实测：深问块 / 场景启动器）。本例短超时 + 首轮 HANG，
+    // 直击 engine.runRegisteredAgent（非 submitQuery 主 path B），断言有界降级 TIMEOUT。**修前此测 hang → 超时红。**
+    it("HANG + QOS_AGENT_LLM_TIMEOUT_MS=50 → engine.runRegisteredAgent <<4s 有界返回 degraded=TIMEOUT（非挂死）", async () => {
+      t = await createTestApp({ env: { QOS_AGENT_LLM_TIMEOUT_MS: "50" } });
+      const agent: AgentDefinition = {
+        id: "agt_ceo_timeout", key: "ceo_timeout_agent", tenantId: TENANT, version: 1,
+        name: "ceo_timeout_agent", description: "test", model: "claude-opus-4-8",
+        systemPrompt: "你是测试角色 agent。", tools: [{ kind: "BUILTIN", name: "query_objects" }],
+        ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" }, skills: [], mcpServers: [],
+        scopeDeclaration: { objectTypes: ["Base"], toolNames: ["query_objects"] }, status: "PUBLISHED",
+      };
+      await t.repos.agents.insert(agent);
+      t.llm.queueAgentTurn(HANG); // 首轮就挂住（HANG 仅在 signal abort 时 reject）
+
+      const started = Date.now();
+      const result = await t.deps.engine.runRegisteredAgent({
+        taskId: "task_ceo_timeout", agentId: agent.id, version: "latest",
+        prompt: "为什么这个基地长期未达成？给我根因",
+        ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+        nesting: { callChain: [], budget: new BudgetTracker() },
+        emit: async () => undefined,
+      });
+      const elapsed = Date.now() - started;
+
+      // 修前：无 per-call 超时 → 此调用永挂 → 测试超时红。修后：<<4s 有界返回优雅降级。
+      expect(elapsed).toBeLessThan(4000);
+      expect(result.degraded?.reason).toBe("TIMEOUT");
+      expect(result.outcome).toBe("BUDGET_EXHAUSTED");
+      expect(result.answer.blocks.length).toBeGreaterThan(0); // 诚实降级答复非空壳
+      expect(t.llm.agentRequests[0]?.signal).toBeInstanceOf(AbortSignal); // signal 真穿到适配器面
     });
   });
 });

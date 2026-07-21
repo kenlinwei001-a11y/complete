@@ -59,6 +59,10 @@ export function useTaskStream(
     let retryDelay = 1000;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
+    // 转圈兜底：重连有上限——后端始终不发终结事件（挂死/崩溃）时，前端不再无限重连空转，
+    // 达上限即合成 task.failed 终态 → 停转 + 显"未收到结果·可重试"（后端超时修复是定因·此为症状侧安全网）。
+    let reconnects = 0;
+    const MAX_RECONNECTS = 6;
 
     const connect = () => {
       if (disposed || terminatedRef.current) return;
@@ -81,6 +85,7 @@ export function useTaskStream(
         const id = (ev.lastEventId as string) || "";
         if (id) lastEventIdRef.current = id;
         retryDelay = 1000; // 收到事件即重置退避
+        reconnects = 0; // 收到任何事件即重置重连计数（连接健康）
         dispatch({ type: "event", frame: { id, event: eventName, data } });
         if (isTerminalEvent(eventName)) {
           terminatedRef.current = true;
@@ -100,6 +105,16 @@ export function useTaskStream(
       es.onerror = () => {
         if (disposed || terminatedRef.current) return;
         es?.close();
+        reconnects += 1;
+        if (reconnects > MAX_RECONNECTS) {
+          // 达重连上限仍无终结事件 → 合成 task.failed 终态，停转（不再无限重连空转）。
+          terminatedRef.current = true;
+          dispatch({
+            type: "event",
+            frame: { id: "", event: "task.failed", data: { code: "STREAM_UNAVAILABLE", message: "推演流连接中断，未收到结果，请重试。" } },
+          });
+          return;
+        }
         retryTimer = setTimeout(connect, retryDelay);
         retryDelay = Math.min(retryDelay * 2, 30_000);
       };
