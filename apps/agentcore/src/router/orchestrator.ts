@@ -199,11 +199,12 @@ export class Orchestrator {
     if (!pkg || pkg.tenantId !== auth.tenantId) {
       throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${body.packageId}`);
     }
-    // 内部批量（如 eval 套件逐条跑）不受"每用户并发 ≤3"节流——那是面向交互用户的限流，不应卡内部回归。
+    // 每用户并发执行中任务上限（面向交互用户的限流；内部批量如 eval 套件逐条跑不受此节流，不应卡内部回归）。
+    const MAX_ACTIVE_TASKS_PER_USER = 10;
     if (!opts?.internal) {
       const active = await this.deps.repos.tasks.countActiveByUser(auth.tenantId, auth.userId);
-      if (active >= 3) {
-        throw new HttpError(429, ErrorCodes.RATE_LIMITED, "每用户并发执行中任务 ≤3");
+      if (active >= MAX_ACTIVE_TASKS_PER_USER) {
+        throw new HttpError(429, ErrorCodes.RATE_LIMITED, `每用户并发执行中任务 ≤${MAX_ACTIVE_TASKS_PER_USER}`);
       }
     }
 
