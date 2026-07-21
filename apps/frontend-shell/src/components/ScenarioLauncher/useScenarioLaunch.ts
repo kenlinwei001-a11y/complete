@@ -17,11 +17,14 @@ export function useQuickLaunch(): (input: {
   targetView: string;
   selectedObjects?: { objectType: string; objectId: string; label?: string }[];
   slotPresets?: Record<string, unknown>;
+  /** 场景卡意图（确定性绑定键）——传入即让 orchestrator 强制走 path-A 求解器（deterministic:scenario-bind·秒级·真数据），
+   *  不落慢 path-B agent。这是"场景问题具象化"的落点：卡已带 intentKey+槽位，此处透传即可 <30s 流式出答。 */
+  scenarioIntentKey?: string;
 }) => Promise<void> {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const packageId = workspace?.scenarioPackages[0] ?? "";
-  return async ({ query, targetView, selectedObjects = [], slotPresets = {} }) => {
+  return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey }) => {
     if (!packageId) return;
     const store = useSessionStore.getState();
     store.setView(targetView);
@@ -33,7 +36,7 @@ export function useQuickLaunch(): (input: {
     navigate(`/v/${targetView}`);
     try {
       const res = await submitQuery(
-        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets } },
+        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets, ...(scenarioIntentKey ? { scenarioIntentKey } : {}) } },
         safeUuid(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
@@ -53,5 +56,6 @@ export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,
       slotPresets: card.presetContext.slotPresets,
+      scenarioIntentKey: card.intentKey, // 具象化：透传卡意图 → orchestrator 强制 path-A 秒级出答（不落慢 agent）
     });
 }
