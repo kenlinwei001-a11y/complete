@@ -149,7 +149,7 @@ export interface SandboxViewProps {
 
 /**
  * WO-REAL-LLM-FREE-QUERY · AI 指挥台 NL 入口（R17「…→AI」一格落地）：自然语言指挥沙盘
- *（如「把常州产能推进两个 tick 看负载」）→ 带**本沙盘 sessionId** 提交 QOS → orchestrator 识别沙盘上下文
+ *（如「把某基地产能推进两个 tick 看负载」）→ 带**本沙盘 sessionId** 提交 QOS → orchestrator 识别沙盘上下文
  *（filters.simSessionId）+ sim.commander 开 → path-B → agent 调 sim_* 工具**真驱动本会话**（模拟态·不写真值 R4）。
  * `sim.commander` 关 → 入口**不存在**（R3 暗发·useFeature 门）。答案经 TaskRun 流式渲染（诚实标真 LLM 推理）。
  */
@@ -183,7 +183,7 @@ function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; cu
     <div className="panel" data-testid="sim-commander-dock" style={{ padding: 12, marginTop: 12 }}>
       <div className={styles.secHead}>AI 指挥台 · 自然语言驱动推演</div>
       <div className={styles.sub} style={{ marginBottom: 8 }}>
-        用自然语言指挥本沙盘会话（如「把常州产能推进两个 tick 看负载」）——AI 经 path-B 调 sim_* 工具真驱动（模拟态·不写真值 R4）。
+        用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 path-B 调 sim_* 工具真驱动（模拟态·不写真值 R4）。
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <input
