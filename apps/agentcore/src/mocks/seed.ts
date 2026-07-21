@@ -22,6 +22,15 @@ import type { ExperienceCaseRow } from "../persistence/repos.js";
 export const SEED_TENANT = "demo";
 export const SEED_PACKAGE_ID = "pkg_battery_manufacturing";
 
+/**
+ * #4 修（消种子硬编 LLM provider·配合 providers.ts roleModel 回落）：种子 agent 的默认模型**不再逐处硬编
+ * `claude-opus-4-8`**，改为单一配置源 `DEFAULT_AGENT_MODEL`（env·换 provider/部署只改这一处或经用途绑定）。
+ * 缺省保留 `claude-opus-4-8`（现有 Anthropic 部署零行为变化）；**留空 ("") → roleModel 回落租户已绑 LLM**
+ * （如只配 Kimi 的部署 `DEFAULT_AGENT_MODEL=""` 即让所有种子 agent 走租户绑定，不再静默落无 key 的 anthropic）。
+ * 与 `providers.ts roleModel`（explicit provider 无 key → 回落租户绑定/诚实报错）双保险：种子不硬编 + 运行时兜底。
+ */
+export const SEED_AGENT_MODEL = process.env.DEFAULT_AGENT_MODEL ?? "claude-opus-4-8";
+
 export interface SeedBase {
   objectId: string;
   name: string;
@@ -791,7 +800,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       // （数字红线 / 写降级 / 能力边界 / 注入防护）+ scopeDeclaration + 预算，出厂即发布。
       id: "agt_seed_analyst", tenantId: SEED_TENANT, key: "analyst", version: 1,
       name: "分析师 Agent", description: "目录外问题的出厂默认分析 agent（路径 B；自由探索入口绑定）",
-      model: "claude-opus-4-8",
+      model: SEED_AGENT_MODEL,
       systemPrompt: [
         "你是全域数字化智能决策支撑系统的分析师 agent，服务电池制造场景的经营/产能决策。",
         "",
@@ -837,7 +846,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_seed_explore", tenantId: SEED_TENANT, key: "explore_agent", version: 1,
       name: "探索分析 Agent", description: "目录外问题兜底分析（路径 B）",
-      model: "claude-opus-4-8",
+      model: SEED_AGENT_MODEL,
       systemPrompt: "你是企业决策系统的分析助手。所有业务数字必须来自工具结果并以 ⟦ref:N⟧ 标注；无法溯源的数字需声明 unverified。",
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
@@ -854,7 +863,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_risk_advisor", tenantId: SEED_TENANT, key: "risk_advisor", version: 1,
       name: "风险顾问 Agent", description: "基地风险画像与越线根因分析（路径 A→B 混合）",
-      model: "claude-opus-4-8", systemPrompt: "你是电池制造场景的风险分析专家。专注于产能风险、物料齐套、交期风险的识别与根因归因。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是电池制造场景的风险分析专家。专注于产能风险、物料齐套、交期风险的识别与根因归因。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "BUILTIN", name: "evaluate_rules" }, { kind: "WORKFLOW", workflowId: "wf_seed_risk_digest", version: "latest" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
@@ -866,7 +875,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_capacity_planner", tenantId: SEED_TENANT, key: "capacity_planner", version: 1,
       name: "产能规划 Agent", description: "型号需求增量可行性评估与产能排程建议",
-      model: "claude-opus-4-8", systemPrompt: "你是产能规划专家，服务电池制造场景。评估需求增量可行性，识别瓶颈，给出排程与外协建议。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是产能规划专家，服务电池制造场景。评估需求增量可行性，识别瓶颈，给出排程与外协建议。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
@@ -879,7 +888,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_quality_inspector", tenantId: SEED_TENANT, key: "quality_inspector", version: 1,
       name: "质量检验 Agent", description: "良率波动诊断与质量合规审查",
-      model: "claude-opus-4-8", systemPrompt: "你是质量分析专家。诊断良率波动根因，审查质量合规状态，输出改进建议。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是质量分析专家。诊断良率波动根因，审查质量合规状态，输出改进建议。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [], mcpServers: [],
@@ -891,7 +900,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_supply_chain", tenantId: SEED_TENANT, key: "supply_chain", version: 1,
       name: "供应链 Agent", description: "物料齐套、库存优化与采购策略分析",
-      model: "claude-opus-4-8", systemPrompt: "你是供应链分析专家。分析物料齐套状态、库存水位、采购策略，识别断供风险。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是供应链分析专家。分析物料齐套状态、库存水位、采购策略，识别断供风险。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [], mcpServers: [],
@@ -903,7 +912,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_finance_analyst", tenantId: SEED_TENANT, key: "finance_analyst", version: 1,
       name: "财务分析 Agent", description: "毛利评审、现金流与投资回报率分析",
-      model: "claude-opus-4-8", systemPrompt: "你是财务分析专家。评审接单毛利、分析现金流安全垫、评估 CAPEX 投资回报率。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是财务分析专家。评审接单毛利、分析现金流安全垫、评估 CAPEX 投资回报率。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [], mcpServers: [],
@@ -914,7 +923,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_carbon_auditor", tenantId: SEED_TENANT, key: "carbon_auditor", version: 1,
       name: "碳审计 Agent", description: "产品碳足迹核算与欧盟碳护照合规审查",
-      model: "claude-opus-4-8", systemPrompt: "你是碳审计专家。核算电池产品碳足迹，审查欧盟碳护照合规性，输出减排建议。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是碳审计专家。核算电池产品碳足迹，审查欧盟碳护照合规性，输出减排建议。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
       skills: [], mcpServers: [],
@@ -925,7 +934,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_external_market", tenantId: SEED_TENANT, key: "external_market", version: 1,
       name: "外部市场 Agent", description: "通过 MCP 接入外部市场行情与竞品情报分析",
-      model: "claude-opus-4-8", systemPrompt: "你是市场情报分析专家。通过 MCP 工具接入外部数据源，获取原材料价格、竞品动态、政策变化，并结合内部数据给出经营建议。所有数字必须标注来源。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是市场情报分析专家。通过 MCP 工具接入外部数据源，获取原材料价格、竞品动态、政策变化，并结合内部数据给出经营建议。所有数字必须标注来源。",
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "BUILTIN", name: "invoke_solver" },
@@ -942,7 +951,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_code_assistant", tenantId: SEED_TENANT, key: "code_assistant", version: 1,
       name: "代码助手 Agent", description: "通过 MCP 接入代码分析工具，辅助数据工程与规则脚本审查",
-      model: "claude-opus-4-8", systemPrompt: "你是数据工程助手。通过 MCP 工具接入代码仓库与文档系统，辅助完成 SQL 审查、规则脚本验证、数据管道诊断。禁止执行任何写操作。",
+      model: SEED_AGENT_MODEL, systemPrompt: "你是数据工程助手。通过 MCP 工具接入代码仓库与文档系统，辅助完成 SQL 审查、规则脚本验证、数据管道诊断。禁止执行任何写操作。",
       tools: [
         { kind: "BUILTIN", name: "query_objects" },
         { kind: "MCP", mcpConfigId: "mcp_code_tools", toolFilter: ["lint_sql", "review_script"] },
@@ -959,7 +968,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       // 供应链/生产/质量等角色 agent→汇总（谁答什么 + 冲突/一致 + 综合结论 + 每角色溯源）。P2 双向 A2A 二期。
       id: "agt_coordinator", tenantId: SEED_TENANT, key: "coordinator", version: 1,
       name: "跨域协调 Agent（Coordinator）", description: "跨域问题的多角色编排：拆子问→分派 CEO/供应链/生产/质量/base-planner 角色 agent→结构化汇总",
-      model: "claude-opus-4-8",
+      model: SEED_AGENT_MODEL,
       systemPrompt: "你是跨域协调者（Coordinator）。面对跨越供应链/生产/质量等多域的复杂问题，你把它确定性拆成子问、分派给对应角色的专职 agent，再汇总各角色作答为综合结论（含一致/冲突标注与每角色溯源）。你自己不直接取数，取数由各角色 agent 在其 scope 内完成。",
       tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
       ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
