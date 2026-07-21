@@ -1,23 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
-
-// 面板与 proj-verdict-bar 同处 stepper 第 6 步（结论与对策·what-if 所在）→ 断言前先导航到步骤 6。
-async function gotoStep6() {
-  await screen.findByTestId("pm-stepper");
-  await userEvent.click(screen.getByTestId("pm-step-chip-6"));
-  await screen.findByTestId("proj-verdict-bar");
-}
 
 /**
  * WO-CROSS-OBJECT-MULTIOBJ 前端 · MultiObjWhatifPanel（多目标 Δ 分解 + 跨对象占用表 · R3）。
  *
+ * WO-GLOBALSIM-GLASS-REDESIGN 去重：本面板（多目标联合 what-if 本是「全局能力」）已从项目推演页
+ * 迁至全局联合推演页（/v/global-sim）。测随组件同迁（挂载点从 project-sim step6 → global-sim）。
+ *
  * 证：① opt.multiobj 关 → 整块不存在（R3）② 开 → 读真求解器输出渲染占用表/被挤订单
  *  ③ 改权重滑杆 → 占用真漂移（营收权重拉高 → 翻转服务哪张单、被挤订单变）+ 各目标 Δ 分解卡出现。
  */
-describe("WO-CROSS-OBJECT-MULTIOBJ · 多目标 what-if 面板", () => {
+describe("WO-CROSS-OBJECT-MULTIOBJ · 多目标 what-if 面板（迁至 global-sim）", () => {
   afterEach(() => {
     delete db.tenantOverrides["opt.solver-pool"];
     delete db.tenantOverrides["opt.whatif"];
@@ -26,8 +21,8 @@ describe("WO-CROSS-OBJECT-MULTIOBJ · 多目标 what-if 面板", () => {
 
   it("R3：opt.multiobj 关 → 面板整块不存在", async () => {
     loginAs("planner");
-    renderApp("/v/project-sim");
-    await gotoStep6();
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim");
     expect(screen.queryByTestId("multiobj-whatif")).not.toBeInTheDocument();
   });
 
@@ -36,8 +31,8 @@ describe("WO-CROSS-OBJECT-MULTIOBJ · 多目标 what-if 面板", () => {
     db.tenantOverrides["opt.whatif"] = true;
     db.tenantOverrides["opt.multiobj"] = true;
     loginAs("planner");
-    renderApp("/v/project-sim");
-    await gotoStep6();
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim");
 
     const panel = await screen.findByTestId("multiobj-whatif");
     // 诚实徽标：可证最优 · 推演结果（非数据库事实）。
