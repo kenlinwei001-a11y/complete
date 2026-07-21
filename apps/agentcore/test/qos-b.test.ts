@@ -93,8 +93,8 @@ describe("Path B (QOS-PRD §12 B1–B5)", () => {
 
   it("B3: budget guard → BUDGET_EXHAUSTED + metric", async () => {
     t.llm.queueClassification(OUT_OF_CATALOG);
-    // 8 iterations × 2 tool calls = 16 attempts > maxToolCalls(10)
-    for (let i = 0; i < 8; i++) {
+    // 预算调参：maxToolCalls 10→40（free-LLM 600s 多跳）。24 轮 × 2 = 48（且 24 轮 = maxIterations） → 预算耗尽
+    for (let i = 0; i < 24; i++) {
       t.llm.queueAgentTurn({
         content: [
           text(`第 ${i + 1} 轮探索`),
@@ -117,7 +117,7 @@ describe("Path B (QOS-PRD §12 B1–B5)", () => {
     // budget-exceeded calls audited
     const calls = await t.repos.toolCalls.listByTask(taskId);
     expect(calls.some((c) => c.outcome === "BUDGET_EXCEEDED")).toBe(true);
-    expect(calls.filter((c) => c.outcome === "OK").length).toBeLessThanOrEqual(10);
+    expect(calls.filter((c) => c.outcome === "OK").length).toBeLessThanOrEqual(40);
   });
 
   it("B4: unreferenced number → unverifiedNumerics=true + metric", async () => {

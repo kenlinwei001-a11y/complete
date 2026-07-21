@@ -569,10 +569,10 @@ export const AgentBudgetSchema = z.object({
 export type AgentBudget = z.infer<typeof AgentBudgetSchema>;
 
 export const DEFAULT_AGENT_BUDGET: AgentBudget = {
-  maxIterations: 8,
-  maxToolCalls: 10,
-  maxSolverCalls: 2,
-  maxDurationMs: 90_000,
+  maxIterations: 24,
+  maxToolCalls: 40,
+  maxSolverCalls: 8,
+  maxDurationMs: 600_000,
   maxClarifications: 0,
 };
 
