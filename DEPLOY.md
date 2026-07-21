@@ -115,16 +115,20 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，但查询对话的分类与探索回答、A2/A3 的 LLM 抽取会失败报错（界面有明确错误提示） |
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
-| `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**本地内存模式 dev 默认不设** → 5 个 CP-SAT 核心 + `optimize_whatif` 显式返「未接入最优化引擎」（诚实兜底·不静默）；本地要用见下方「§6.x 本地起 sidecar」 |
+| `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**源码/内存模式默认不设** → **整个组合最优化族**（`portfolio` 全局联合推演、`cross_object_occupancy` 多目标+跨对象占用、`selection`/`assignment`/`sequencing`/`packing`/`job_shop_schedule`、5 个 CP-SAT 核心、`optimize_whatif`）显式返「未接入最优化引擎」400（诚实兜底·不静默）。**后果：前端「全局联合推演」「项目推演·多目标」「优化推演」等面板结果区全空/红字"求解失败"——非 bug，是没起引擎。要用这些面板见 §6.x（必起）** |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
 
-## 6.x 本地 dev 起最优化 sidecar（CP-SAT·可选）
+## 6.x 起最优化引擎 sidecar（CP-SAT·组合最优化推演必需·源码模式不用 Docker）
 
-CLAUDE.md 的本地内存双服务命令**不含** `OPTIMIZER_BASE_URL` → `optimize_whatif`（优化推演页 `/v/optimize-whatif`）与 5 个
-CP-SAT 核心（facility_location / min_cost_flow / set_cover / independent_set / combinatorial_auction）会显式返
-「未接入最优化引擎」（诚实兜底·前端页显提示不假渲 Δ）。本地要真解，三行起 sidecar 再给 datacore 加一个 env：
+> **源码/内存模式部署必读**：CLAUDE.md 的本地内存双服务命令**不含** `OPTIMIZER_BASE_URL`。不设时，整个**组合最优化求解器族**——
+> `portfolio`（全局联合推演）/ `cross_object_occupancy`（多目标+跨对象占用）/ `selection` / `assignment` / `sequencing` /
+> `packing` / `job_shop_schedule` / `optimize_whatif`（优化推演页 `/v/optimize-whatif`）+ 5 个 CP-SAT 核心
+> （facility_location / min_cost_flow / set_cover / independent_set / combinatorial_auction）——全部显式返
+> 「未接入最优化引擎」400。**后果：前端「全局联合推演视图」「项目推演·多目标+跨对象占用」「优化推演」等面板结果区全空 /
+> 红字"求解失败"——这不是 bug，是没起引擎。** 要用这些推演面板，此 sidecar **必起（非可选）**。sidecar 是纯 Python 进程、
+> 唯一依赖 `ortools`、**不需要 Docker**。三行起 sidecar 再给 datacore 加一个 env：
 
 ```bash
 # ① 起 CP-SAT sidecar（本地·services/optimizer·需 python3 + pip）
@@ -141,7 +145,17 @@ curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/optimize_whatif/invoke \
   -H 'content-type: application/json' -H 'x-debug-user: demo:admin:admin' \
   -d '{"args":{"family":"facility_location","args":{...},"perturbations":[{"kind":"cost","target":"f1","delta":50}],"seed":42}}'
 #   改 perturbations.delta（如 50→600）重跑 → deltaObjective / feasible / conflictConstraints 随之真变。
+
+# ③-bis 冒烟验证 portfolio（全局联合推演·本文档作者已亲手真跑：OK OPTIMAL 方案3 分配147 被挤12 守恒True）
+curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/portfolio/invoke \
+  -H 'content-type: application/json' -H 'x-debug-user: demo:admin:admin|planner|catalog_admin' \
+  -d '{"args":{"scenarios":["max_ontime","min_cost","min_changeover"]}}' \
+  | python3 -c "import sys,json;d=json.load(sys.stdin)['data'];print('OK',d['status'],'方案',len(d['scenarios']),'分配',len(d['allocation']),'被挤',len(d['displaced']),'守恒',d['reconciled'])"
+#   期望：OK OPTIMAL 方案 3 分配 147 被挤 12 守恒 True → 前端「全局联合推演」方案对比矩阵/分配台账/被挤单卡/守恒台账满渲。
 ```
+
+> **源码模式生产守护**：`python3 server.py` 用 `nohup …&` 或 systemd/pm2/supervisor 守护（sidecar 无状态、无业务数据落盘、
+> 仅本机可达、R6 确定性同输入同解）。容器化则用 `docker-compose.yml` 的 `optimizer` 服务，无需手动起。
 
 > compose 态（`docker compose up`）已自动接：`docker-compose.yml` 有 `optimizer` 服务（build `services/optimizer` ·
 > expose 4003 · healthcheck）+ `OPTIMIZER_BASE_URL` 默认值 + datacore `depends_on optimizer(service_healthy)`——
