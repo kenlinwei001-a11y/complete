@@ -77,6 +77,7 @@ const CapabilityNeedsSchema = z.object({
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
+import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
@@ -309,10 +310,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
   solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
   solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
-  if (process.env.OPTIMIZER_BASE_URL) {
-    // selection_optimize 走自托管 CP-SAT sidecar（OR-Tools, Apache-2.0）；数据不出边界。未配置则该求解器报"未接入"。
-    solvers.setOptimizer(new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL));
-  }
+  // WO-MEMSIM-OPTIMIZER：配了 OPTIMIZER_BASE_URL → 自托管 CP-SAT sidecar（OR-Tools·可证最优·数据不出边界）；
+  // 未配（内存模式）→ InProcOptimizerClient 确定性贪心兜底（portfolio 出可行解·FEASIBLE/optimal:false·诚实不作假；
+  // 其余未兜底模型仍显式"未接入"）。两态差异靠 optimal 徽标透明告知。
+  solvers.setOptimizer(
+    process.env.OPTIMIZER_BASE_URL
+      ? new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL)
+      : new InProcOptimizerClient(),
+  );
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const configBundle = new ConfigBundleService(repos, features);
