@@ -418,7 +418,7 @@ export async function portfolioOptimize(
   const orderItems = a.items.filter((it) => it.kind === "order").length;
   const wipCount = a.committed.filter((c) => c.kind === "wip").length;
   const summary =
-    `联合最优组合（${primaryKey}·CP-SAT）：${orderItems} 订单 + ${wipCount} 在产承诺 + ${a.items.filter((it) => it.kind === "forecast").length} 预测 × ${a.capOriginal.size} (基地,窗口)格 → ` +
+    `联合最优组合（${primaryKey}·${optimal ? "CP-SAT" : "启发式贪心"}）：${orderItems} 订单 + ${wipCount} 在产承诺 + ${a.items.filter((it) => it.kind === "forecast").length} 预测 × ${a.capOriginal.size} (基地,窗口)格 → ` +
     `${primaryScenario.servedCount} 决策项获排（${primaryScenario.servedQty} 套）、被挤 ${displaced.length} 项（含订单 ${orderDisplaced.length}）；` +
     `${frozen.length ? `冻结 ${frozen.length} 单（产能${(input.frozenCapacityMode ?? "reserve") === "reserve" ? "锁定" : "释放"}）；` : ""}` +
     `共享产能守恒${reconciled ? "通过" : "未通过"}（逐格 allocated≤cap·无重复占用）；` +
