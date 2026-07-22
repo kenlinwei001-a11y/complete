@@ -40,6 +40,46 @@ const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover"] as const;
 const SCEN_LABEL: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型", min_delay: "最小延误" };
 const provTitle = (p: Prov) => `溯源 ${p.kind}：${p.drillType}.${p.drillField}[${p.drillId}] = ${p.drillValue}`;
 
+/**
+ * WO-GLOBALSIM-DRILL-SEAM · 下钻语义按 item.kind 分流（口径不一致接缝·消除 WIP:/FC: 静默空跳）。
+ *
+ * 病根：GlobalSim 需求项池 = 三源并集（portfolio.ts）——销售订单 `SO-xxxx`(kind order) ∪ 在产工单
+ * `WIP:${woId}`(kind wip·预扣产能) ∪ 销售预测 `FC:${segId}`(kind forecast·未落订单)；ProjectSim 池仅 Order。
+ * 旧下钻对所有 item 一刀切 `?order=<item>`，把 WIP:/FC: 前缀 id 也塞进去 → ProjectSim 只认 Order.props.so，
+ * 命中才 pickOrder → WIP/预测永远 hit=undefined → **silent no-op（点了没反应）**。
+ *
+ * 分流：只有 kind=order（SO-xxxx）在 ProjectSim 1:1 命中可细排 → 保留指向 project-sim 的链接；
+ * wip/forecast 非 Order，指向 project-sim 必空跳 → 不给该链接，改诚实静态标注（悬浮复用 provTitle）。
+ * 差异化下钻（指向 WorkOrder/DemandSegment 详情视图）视有无对应视图而定：现 registry 未注册此类视图，
+ * 故退化为标注而非硬造映射（不瞎猜）。台账「来源」列已区分 committed/forecast/order，下钻 affordance 与之一致。
+ */
+const NON_DRILLABLE_NOTE: Record<string, string> = {
+  wip: "在产承诺 · 预扣产能（非可细排订单）",
+  forecast: "销售预测需求（未落订单 · 不可细排）",
+};
+function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: string; label: string; testId: string; prov?: Prov }) {
+  // order(SO-xxxx)：1:1 命中 ProjectSim → 保留细排链接（现状有效·不回归）。
+  if (kind === "order") {
+    return (
+      <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(id)}`} data-testid={testId}>
+        {label}
+      </Link>
+    );
+  }
+  // wip / forecast：非 Order → 不给指向 project-sim 的链接（否则空跳），改诚实标注 + provenance 悬浮。
+  const note = NON_DRILLABLE_NOTE[kind] ?? "非可细排项（非销售订单）";
+  return (
+    <span
+      data-testid={testId}
+      data-drill-blocked="true"
+      title={prov ? provTitle(prov) : note}
+      style={{ fontSize: 11, fontStyle: "italic", color: "var(--muted2, #8a94a6)", whiteSpace: "nowrap" }}
+    >
+      {note}
+    </span>
+  );
+}
+
 /** 占用率 → 冷暖热力色（低=冷蓝，满=暖红·committed 深空底上可读）。 */
 function heatColor(util: number): string {
   const u = Math.max(0, Math.min(1, util));
@@ -252,9 +292,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               <div className={styles.cardGrid} data-testid="global-sim-displaced">
                 {d.displaced.length ? d.displaced.map((x) => (
                   <div key={x.orderId} className={`${styles.orderCard} ${styles.displaced}`} data-testid={`global-sim-displaced-${x.orderId}`} title={provTitle(x.provenance)}>
-                    <strong>{x.orderId}</strong>（{x.kind === "forecast" ? "预测" : x.model}）<br />
+                    <strong>{x.orderId}</strong>（{x.kind === "forecast" ? "预测" : x.kind === "wip" ? "在产" : x.model}）<br />
                     <span className="amt">{fmt(x.qty, 0)}</span> 套 · 未获排
-                    <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(x.orderId)}`} data-testid={`global-sim-drill-${x.orderId}`}>进项目推演细排 →</Link>
+                    <DrillAffordance kind={x.kind} id={x.orderId} label="进项目推演细排 →" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} />
                   </div>
                 )) : <span className={styles.empty}>全部需求项获排（无被挤）</span>}
               </div>
@@ -287,7 +327,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <td>{a.committed ? "在产承诺" : a.kind === "forecast" ? "预测" : "订单"}</td>
                   <td>{a.baseName}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
                   <td className={`num ${a.onTime ? styles.ok : styles.bad}`}>{a.onTime ? "按期" : fmt(a.delayDays, 0)}</td>
-                  <td><Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(a.item)}`} data-testid={`global-sim-alloc-drill-${a.item}`}>细排 →</Link></td>
+                  <td><DrillAffordance kind={a.kind} id={a.item} label="细排 →" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} /></td>
                 </tr>
               ))}
             </tbody>
