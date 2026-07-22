@@ -44,7 +44,8 @@ type DomainFamilyKey =
   | "capacity"
   | "quality"
   | "material"
-  | "carbon";
+  | "carbon"
+  | "whatif";
 
 /** 业务域族问句信号（确定性正则·R6）——命中即把该族 solver 拉入本题图。 */
 const FAMILY_SIGNALS: { key: DomainFamilyKey; re: RegExp }[] = [
@@ -60,6 +61,7 @@ const FAMILY_SIGNALS: { key: DomainFamilyKey; re: RegExp }[] = [
   { key: "quality", re: /(质量|良率|合格|检验|不良|缺陷|一致性|合规|SPC)/ },
   { key: "material", re: /(物料|齐套|供应商|采购|断供|缺料|库存|长协|到货|BOM)/ },
   { key: "carbon", re: /(碳|碳足迹|碳护照|减排|排放)/ },
+  { key: "whatif", re: /(扩\d+\s*通道|加\d*\s*夜班|加班|加\d+\s*%|外包\d+|降\d+%|如果.*会怎样|假设)/ },
 ];
 
 /**
@@ -126,6 +128,12 @@ const SOLVER_CATALOG: Record<string, SolverCatalogEntry> = {
     outputShape: ["matrix", "bottlenecks", "summary", "ruleRefs"],
     reads: ["Line", "Process", "Equipment"],
     families: ["capacity", "quality"],
+  },
+  generic_inference: {
+    capability: "结构化 what-if 杠杆前向重算（扩通道/加夜班/加%%/外包/降%% → 候选杠杆与敏感度）",
+    outputShape: ["levers", "deltas", "rows", "affectedObjects", "count", "rootTypes"],
+    reads: ["Line", "Process", "Order"],
+    families: ["whatif", "capacity"],
   },
   yield_diagnosis: {
     capability: "良率断点诊断（定位良率波动的工序/设备根因）",

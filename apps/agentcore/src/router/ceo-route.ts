@@ -35,6 +35,10 @@ const RE_ATP = /(能不能接|能接多少|何时能交|交期|承诺|ATP|CTP)/;
 const RE_BOTTLENECK = /(瓶颈|OEE|稼动|换型损失|哪(个|道).{0,4}工序.{0,6}(卡|慢|满|最))/;
 // WO-QOS-ROUTE-COVER（#9 未来产能前瞻/穿仓无确定性意图 → path-B 洪泛）→ base_capacity_outlook。
 const RE_BASE_OUTLOOK = /(未来.{0,6}(天|周|月|季).{0,10}产能|产能.{0,10}(够不够|够吗|接得住|接住)|穿仓|30\/60\/90)/;
+// WO-Phase1-D+A：结构化 what-if 杠杆（仅命中明确可解析杠杆，避免裸"如果…会怎样"误走 path-A）。
+const RE_WHATIF = /(扩\d+\s*通道|加\d*\s*夜班|加班|加\d+\s*%|外包\d+|降\d+%)/;
+// WO-Phase1-D+A：Q7 消歧——型号 + 周期 + 加/扩 → 产能可行性（S01），优先于 RE_ATP 的"能不能接"。
+const RE_CAPACITY_FEASIBILITY = /([\w\-一-龥]{2,40}?)\s*加\s*(\d+(?:\.\d+)?)\s*%\s*(\d+|[一二两三四五六七八九十]+)\s*周/;
 const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
 /** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
 function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
@@ -99,6 +103,45 @@ function baseOutlookArgsFrom(q: string, focus: PageContext["focus"]): Record<str
   return args;
 }
 
+/** 中文数字 → 阿拉伯数字（仅覆盖常见口语数字；解析失败返回 undefined）。 */
+function chineseNumberToInt(s: string): number | undefined {
+  const map: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  if (/^\d+$/.test(s)) return Number(s);
+  if (s.length === 1) return map[s];
+  // 简单处理"十一"~"十九"
+  if (s.length === 2 && s[0] === "十") return 10 + (map[s[1]!] ?? 0);
+  return undefined;
+}
+
+/** WO-Phase1-D+A：Q7 产能可行性 args（型号 + 需求增量 + 周数）。 */
+function capacityForecastArgsFrom(q: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const m = RE_CAPACITY_FEASIBILITY.exec(q);
+  if (m) {
+    const modelToken = m[1]!.trim();
+    const weeks = chineseNumberToInt(m[3]!);
+    if (modelToken) args.model = modelToken;
+    args.demandDelta = Number(m[2]) / 100;
+    if (weeks !== undefined) args.weeks = weeks;
+  }
+  return args;
+}
+
+/** WO-Phase1-D+A：结构化杠杆 → generic_inference mode:"levers" 的因子/作用域。 */
+function whatIfArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = { mode: "levers", targetType: "Line", targetProp: "utilization", topK: 6 };
+  const baseId = parseBaseFromQuery(q)?.baseId ?? normalizeBaseId(focus?.base);
+  if (baseId) args.scopeObjectIds = [baseId];
+  const factors: string[] = [];
+  if (/扩\d+\s*通道|加\d*\s*夜班|加班|加\d+\s*%/.test(q)) factors.push("瓶颈工序");
+  if (/外包\d+/.test(q)) factors.push("物料齐套");
+  if (/降\d+%/.test(q)) factors.push("毛利");
+  if (/良率|yield/.test(q)) factors.push("良率波动");
+  if (/OEE|oee|设备/.test(q)) factors.push("设备OEE");
+  if (factors.length > 0) args.factors = [...new Set(factors)];
+  return args;
+}
+
 /**
  * WO-DECISION-KERNEL-WIRE：决策类深问的「成决策」意图判定（闭"深问止步方案·不成决策"脑裂·纯函数 R6）。
  * 深问出方案后，若用户表达采纳/落地意图 → 经 L2 内核落一等 Decision 台账（PROPOSED），立即落地意图再 commit
@@ -124,7 +167,7 @@ export function isDecisionRoute(route: CeoQueryRoute["route"]): boolean {
  * → 落 path-B 洪泛（v4 实测 #1/#4/#9 病根）。加入后这类题才能真绑对口 solver。
  */
 export function isCeoQuestion(q: string): boolean {
-  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_BOTTLENECK, RE_BASE_OUTLOOK, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_BOTTLENECK, RE_BASE_OUTLOOK, RE_WHATIF, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
 /**
@@ -169,6 +212,8 @@ export const CEO_INTENT_KEYS = new Set([
   // WO-QOS-ROUTE-COVER：瓶颈定位 / 每基地产能前瞻（v4 实测 #1/#4/#9 补全对口意图·各绑真 solver）
   "ceo_bottleneck",
   "ceo_base_outlook",
+  // WO-Phase1-D+A：what-if 结构化杠杆（generic_inference）
+  "ceo_whatif",
 ]);
 
 /** 是否 CEO 专属意图（用于候选池 PageContext 门控过滤）。 */
@@ -188,6 +233,9 @@ export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
   // WO-QOS-ROUTE-COVER：瓶颈定位 / 每基地产能前瞻直绑对口 solver（免落 ceo_root_cause 误跑 gap_attribution）
   if (route === "bottleneck_matrix") return "ceo_bottleneck";
   if (route === "base_capacity_outlook") return "ceo_base_outlook";
+  // WO-Phase1-D+A：what-if 结构化杠杆 + Q7 产能可行性歧义修
+  if (route === "generic_inference") return "ceo_whatif";
+  if (route === "capacity_forecast") return "capacity_feasibility";
   return "ceo_root_cause";
 }
 
@@ -283,6 +331,10 @@ export function resolveCeoRoute(
   // 上一分支已把「达标语境 + 归因」题落 gap_attribution → 此处不影响 #10（储能份额逐层拆根因）。
   else if (RE_BOTTLENECK.test(q)) route = "bottleneck_matrix";
   else if (RE_BASE_OUTLOOK.test(q)) route = "base_capacity_outlook";
+  // WO-Phase1-D+A：Q7 消歧（型号+周期+加/扩 → capacity_forecast）必须在 RE_ATP 之前；
+  // 结构化 what-if 杠杆必须在开放"如果"之前被捕获，避免误落 path-B。
+  else if (RE_CAPACITY_FEASIBILITY.test(q)) route = "capacity_forecast";
+  else if (RE_WHATIF.test(q)) route = "generic_inference";
   else if (RE_CREDIT.test(q)) route = "credit_exposure";
   else if (RE_MARGIN.test(q)) route = "finance_pnl";
   else if (RE_SUPPLY_DEMAND.test(q)) route = "supply_demand_gap_attribution";
@@ -307,6 +359,10 @@ export function resolveCeoRoute(
     args = bottleneckArgsFrom(q, focus); // baseIds(问句基地名→id / focus.base·无则求解器默认全域)
   } else if (route === "base_capacity_outlook") {
     args = baseOutlookArgsFrom(q, focus); // baseId(问句基地名→id / focus.base·求解器必填)
+  } else if (route === "capacity_forecast") {
+    args = capacityForecastArgsFrom(q); // model(型号)+demandDelta+weeks（Q7 产能可行性）
+  } else if (route === "generic_inference") {
+    args = whatIfArgsFrom(q, focus); // mode:"levers"+scopeObjectIds(baseId)+factors（结构化杠杆）
   } else {
     if (metricKey) args.metricKey = metricKey;
     if (factorId && (route === "decision_play" || route === "gap_attribution" || route === "supply_demand_gap_attribution")) args.factorId = factorId;
@@ -321,7 +377,9 @@ export function resolveCeoRoute(
       (route === "sop_reschedule" && (focus?.order || args.targetOrderId)) ||
       (route === "atp_check" && (focus?.order || args.orderRef)) ||
       (route === "bottleneck_matrix" && args.baseIds) ||
-      (route === "base_capacity_outlook" && args.baseId),
+      (route === "base_capacity_outlook" && args.baseId) ||
+      (route === "capacity_forecast" && args.model) ||
+      (route === "generic_inference" && args.scopeObjectIds),
   );
   const scopedBaseIds = scope.allBases ? [] : scope.baseIds;
 

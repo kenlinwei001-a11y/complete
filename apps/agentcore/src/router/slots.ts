@@ -222,6 +222,21 @@ export async function validateSlotValue(
       const s = String(value);
       return slot.enumValues?.includes(s) ? { ok: true, value: s } : { ok: false };
     }
+    case "json": {
+      // WO-Phase1-D+A：json 槽接受对象/数组原值；也接受 JSON 字符串（从模板/LLM 抽出时可能仍是字符串）。
+      if (value !== null && typeof value === "object") return { ok: true, value };
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+          try {
+            return { ok: true, value: JSON.parse(trimmed) };
+          } catch {
+            return { ok: false };
+          }
+        }
+      }
+      return { ok: false };
+    }
     case "objectRef": {
       // Must be resolvable in the ontology (OntologyClient.getObject).
       if (typeof value === "object" && value !== null && "objectId" in (value as Record<string, unknown>)) {

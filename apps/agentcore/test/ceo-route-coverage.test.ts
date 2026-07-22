@@ -140,3 +140,106 @@ describe("WO-QOS-ROUTE-COVER SEAM · 真 orchestrator 端到端绑对口意图�
     await t.app.close();
   });
 });
+
+describe("WO-Phase1-D+A · generic_inference / Q7 产能可行性 纯函数 golden", () => {
+  it("#Q2 结构化 what-if（扩通道）→ generic_inference + ceo_whatif（不被开放假设信号压到 path-B）", () => {
+    const q = "常州化成扩2通道能补多少缺口？";
+    expect(isCeoQuestion(q)).toBe(true);
+    const route = resolveCeoRoute(q, pc({ base: "changzhou" }), "ceo");
+    expect(route.route).toBe("generic_inference");
+    expect(route.solverKey).toBe("generic_inference");
+    expect(ceoIntentKeyForRoute(route.route)).toBe("ceo_whatif");
+    expect(route.args.scopeObjectIds).toEqual(["changzhou"]);
+    expect(route.args.mode).toBe("levers");
+    expect(route.args.factors).toContain("瓶颈工序");
+  });
+
+  it("#Q2b 结构化 what-if（加夜班）→ generic_inference + ceo_whatif", () => {
+    const q = "常州加夜班产能能提多少？";
+    const route = resolveCeoRoute(q, pc({ base: "changzhou" }), "ceo");
+    expect(route.route).toBe("generic_inference");
+    expect(ceoIntentKeyForRoute(route.route)).toBe("ceo_whatif");
+    expect(route.args.factors).toContain("瓶颈工序");
+  });
+
+  it("#Q7 型号+周期+加% → capacity_forecast（capacity_feasibility 意图·不被 atp_check 抢）", () => {
+    const q = "4680-NCM 加 20% 六周能不能接？";
+    expect(isCeoQuestion(q)).toBe(true);
+    const route = resolveCeoRoute(q, pc({}), "ceo");
+    expect(route.route).toBe("capacity_forecast");
+    expect(route.solverKey).toBe("capacity_forecast");
+    expect(ceoIntentKeyForRoute(route.route)).toBe("capacity_feasibility");
+    expect(route.args.model).toBe("4680-NCM");
+    expect(route.args.demandDelta).toBe(0.2);
+    expect(route.args.weeks).toBe(6);
+  });
+
+  it("#Q7b 裸'能不能接/何时交' → atp_check（不与产能可行性混淆）", () => {
+    const q = "这单能不能接？何时能交？";
+    const route = resolveCeoRoute(q, pc({ order: "SO-3402" }), "ceo");
+    expect(route.route).toBe("atp_check");
+    expect(ceoIntentKeyForRoute(route.route)).toBe("ceo_atp_check");
+    expect(route.args.orderRef).toBe("SO-3402");
+  });
+
+  it("新 CEO 意图 key 登记（ceo_whatif）", () => {
+    expect(isCeoIntentKey("ceo_whatif")).toBe(true);
+  });
+});
+
+describe("WO-Phase1-D+A · QOS-1 确定性优先门（generic_inference / Q7）", () => {
+  it("#Q2 what-if：置信 ≥ 阈值 + 对口 generic_inference", () => {
+    const det = preferDeterministicSolver(domainResolve("常州化成扩2通道能补多少缺口？", pc({ base: "changzhou" })));
+    expect(det.solverKey).toBe("generic_inference");
+    expect(det.intentKey).toBe("ceo_whatif");
+    expect(det.confidence).toBeGreaterThanOrEqual(DETERMINISTIC_PREFERENCE_THRESHOLD);
+  });
+
+  it("#Q7 产能可行性：置信 ≥ 阈值 + 对口 capacity_forecast", () => {
+    const det = preferDeterministicSolver(domainResolve("4680-NCM 加 20% 六周能不能接？", pc({})));
+    expect(det.solverKey).toBe("capacity_forecast");
+    expect(det.intentKey).toBe("capacity_feasibility");
+    expect(det.confidence).toBeGreaterThanOrEqual(DETERMINISTIC_PREFERENCE_THRESHOLD);
+  });
+
+  it("#Q7b 裸能不能接：仍 atp_check", () => {
+    const det = preferDeterministicSolver(domainResolve("这单能不能接？何时能交？", pc({ order: "SO-3402" })));
+    expect(det.solverKey).toBe("atp_check");
+    expect(det.intentKey).toBe("ceo_atp_check");
+    expect(det.confidence).toBeGreaterThanOrEqual(DETERMINISTIC_PREFERENCE_THRESHOLD);
+  });
+});
+
+describe("WO-Phase1-D+A SEAM · generic_inference / Q7 真 orchestrator 端到端", () => {
+  it("#Q2 what-if 经真 orchestrator → matchedIntent=ceo_whatif + generic_inference 执行完成", async () => {
+    const t = await createTestApp();
+    const context = { view: "project-sim", pageContext: pc({ base: "changzhou" }, "project-sim") };
+    const { taskId, statusCode } = await submitQuery(t, ADMIN, "常州化成扩2通道能补多少缺口？", context);
+    expect(statusCode).toBe(202);
+    const task = await waitForTask(t, taskId);
+    expect(task.status).toBe("COMPLETED");
+    expect(task.classification?.model).toMatch(/^deterministic:ceo-route/);
+    expect(task.matchedIntent?.intentKey).toBe("ceo_whatif");
+    expect((task.answer?.blocks?.length ?? 0)).toBeGreaterThan(0);
+    await t.app.close();
+  });
+
+  it("#Q7 产能可行性经真 orchestrator → matchedIntent=capacity_feasibility + 真 capacity_forecast 求解", async () => {
+    const t = await createTestApp();
+    const context = {
+      view: "project-sim",
+      pageContext: pc({}, "project-sim"),
+      selectedObjects: [{ objectType: "Model", objectId: "model_4680_ncm" }],
+    };
+    const { taskId, statusCode } = await submitQuery(t, ADMIN, "4680-NCM 加 20% 六周能不能接？", context);
+    expect(statusCode).toBe(202);
+    const task = await waitForTask(t, taskId);
+    expect(task.status).toBe("COMPLETED");
+    expect(task.classification?.model).toMatch(/^deterministic:ceo-route/);
+    expect(task.matchedIntent?.intentKey).toBe("capacity_feasibility");
+    expect(task.slots?.model?.objectId).toBe("model_4680_ncm");
+    expect((task.answer?.blocks?.length ?? 0)).toBeGreaterThan(0);
+    await t.app.close();
+  });
+});
+
