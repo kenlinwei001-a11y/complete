@@ -47,14 +47,17 @@ const PROVIDERS = () => [
     name: "moonshot",
     kind: "openai_compatible",
     baseUrl: `${base}/kimi`,
-    models: [{ modelId: "kimi-k2.5", displayName: "Kimi K2.5", capabilities: { tools: true, structuredOutput: true, maxContext: 128000 } }],
+    models: [
+      { modelId: "kimi-k2.5", displayName: "Kimi K2.5（推理）", capabilities: { tools: true, structuredOutput: true, maxContext: 128000, reasoning: true } },
+      { modelId: "moonshot-v1-32k", displayName: "Moonshot v1 32K", capabilities: { tools: true, structuredOutput: true, maxContext: 32000 } },
+    ],
     status: "ACTIVE",
     hasApiKey: true,
   },
 ];
 
-/** 每个测试用例注入自己的用途绑定（classifier/agent → kimi）。 */
-let bindings: { purpose: string; providerId: string; modelId: string }[] = [];
+/** 每个测试用例注入自己的用途绑定（classifier/agent → kimi；可带 noReasoning 开关）。 */
+let bindings: { purpose: string; providerId: string; modelId: string; noReasoning?: boolean }[] = [];
 
 /** 分类：outOfCatalog=true → 逼入路径 B（→ 单域 role 选择）。 */
 const OUT_OF_CATALOG = JSON.stringify({ candidates: [], outOfCatalog: true, extractedSlotsJson: "{}" });
@@ -220,5 +223,28 @@ describe("#4 SEAM · roleModel 决策（有 anthropic key 不回归正常路 / �
     const settings = new LlmSettings(createMemoryRepos(), config, directory());
     const spec = await settings.roleModel(TENANT, "agent", "claude-opus-4-8");
     expect(spec).toBe(`dcp:${KIMI_ID}:kimi-k2.5`); // keyless → 回落租户绑定
+  });
+});
+
+describe("WO-QOS-NOREASON SEAM · 用途绑定「关推理」开关 → 解析期改用非推理兄弟模型", () => {
+  const directory = () => new DataCoreProviderDirectory({ baseUrl: base, serviceToken: "svc-secret" });
+  const cfg = () => loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv);
+
+  it("④ noReasoning ON + 绑定推理型 kimi-k2.5 → 解析改用同 provider 非推理兄弟 moonshot-v1-32k（根因治本·因 Moonshot 无请求级关推理参数）", async () => {
+    bindings = [{ purpose: "classifier", providerId: KIMI_ID, modelId: "kimi-k2.5", noReasoning: true }];
+    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "classifier", undefined);
+    expect(spec).toBe(`dcp:${KIMI_ID}:moonshot-v1-32k`);
+  });
+
+  it("④b noReasoning ON 但绑定的本就是非推理模型 → 原样保留（无兄弟切换）", async () => {
+    bindings = [{ purpose: "classifier", providerId: KIMI_ID, modelId: "moonshot-v1-32k", noReasoning: true }];
+    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "classifier", undefined);
+    expect(spec).toBe(`dcp:${KIMI_ID}:moonshot-v1-32k`);
+  });
+
+  it("④c 开关关（noReasoning 缺省）→ 保持绑定的推理模型 kimi-k2.5（既有行为逐字节零回归）", async () => {
+    bindings = [{ purpose: "classifier", providerId: KIMI_ID, modelId: "kimi-k2.5" }];
+    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "classifier", undefined);
+    expect(spec).toBe(`dcp:${KIMI_ID}:kimi-k2.5`);
   });
 });

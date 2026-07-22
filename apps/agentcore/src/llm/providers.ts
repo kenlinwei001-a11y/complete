@@ -1,4 +1,4 @@
-import type { LlmProvider, LlmProviderConfig } from "@platform/contracts";
+import type { LlmProvider, LlmProviderConfig, PurposeBinding } from "@platform/contracts";
 import {
   AnthropicLlmClient,
   classifyWithJsonModeDegradation,
@@ -426,12 +426,12 @@ export class LlmSettings {
   private async tenantBoundModel(tenantId: string | undefined, role: LlmRole): Promise<string | undefined> {
     if (!tenantId) return undefined;
     if (this.directory) {
-      // 用途矩阵租户级默认（role 名与 purpose key 同名）
+      // 用途矩阵租户级默认（role 名与 purpose key 同名）；「关推理」开关在此解析期把推理型模型换成非推理兄弟。
       const bound = await this.directory.bindingFor(tenantId, role);
-      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${bound.modelId}`;
+      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${await this.effectiveModelId(tenantId, bound)}`;
       if (role === "compose") {
         const agentBound = await this.directory.bindingFor(tenantId, "agent");
-        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${agentBound.modelId}`;
+        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${await this.effectiveModelId(tenantId, agentBound)}`;
       }
     }
     const bound = await this.repos.llmBindings.get(tenantId, role);
@@ -442,6 +442,28 @@ export class LlmSettings {
       if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
     }
     return undefined;
+  }
+
+  /**
+   * WO-QOS-NOREASON「关推理」解析（R6 纯解析·失败不抛）：绑定开了 noReasoning + 绑定模型是推理型
+   * （capabilities.reasoning）+ 该 provider 有满足用途的非推理兄弟（reasoning 非真 + tools）→ 改用兄弟模型 id
+   * 出快答。根因治本：部分厂商（实测 Moonshot kimi-*·锁 temperature=1）无请求级关推理参数，唯一杠杆是换非推理模型。
+   * 非推理模型 / 无兄弟 / provider 取不到 → 原样返回绑定 modelId（既有行为零回归）。
+   */
+  private async effectiveModelId(tenantId: string, bound: PurposeBinding): Promise<string> {
+    if (!bound.noReasoning || !this.directory) return bound.modelId;
+    try {
+      const provider = await this.directory.provider(tenantId, bound.providerId);
+      const models = provider?.models ?? [];
+      const current = models.find((m) => m.modelId === bound.modelId);
+      if (!current?.capabilities.reasoning) return bound.modelId; // 非推理模型 → 无需换
+      const sibling = models
+        .filter((m) => m.modelId !== bound.modelId && !m.capabilities.reasoning && m.capabilities.tools)
+        .sort((a, b) => b.capabilities.maxContext - a.capabilities.maxContext)[0];
+      return sibling?.modelId ?? bound.modelId;
+    } catch {
+      return bound.modelId;
+    }
   }
 
   /**

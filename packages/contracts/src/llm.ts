@@ -66,6 +66,9 @@ export const LlmModelCapabilitiesSchema = z.object({
   tools: z.boolean(),
   structuredOutput: z.boolean(),
   maxContext: z.number().int(),
+  /** 推理型模型（默认走思考通道·如 kimi 系 / o3 / deepseek-reasoner）。绑定「关推理」开关（PurposeBinding.noReasoning）
+   *  据此在解析期改用同 provider 的非推理兄弟模型——因部分厂商（实测 Moonshot）无请求级关推理参数。缺省=非推理。 */
+  reasoning: z.boolean().optional(),
 });
 export type LlmModelCapabilities = z.infer<typeof LlmModelCapabilitiesSchema>;
 
@@ -117,7 +120,7 @@ export const LlmVendorSchema = z.object({
 });
 export type LlmVendor = z.infer<typeof LlmVendorSchema>;
 
-const cap = (tools: boolean, structuredOutput: boolean, maxContext: number): LlmModelCapabilities => ({ tools, structuredOutput, maxContext });
+const cap = (tools: boolean, structuredOutput: boolean, maxContext: number, reasoning?: boolean): LlmModelCapabilities => ({ tools, structuredOutput, maxContext, ...(reasoning ? { reasoning: true } : {}) });
 const m = (modelId: string, displayName: string, c: LlmModelCapabilities): LlmProviderModel => ({ modelId, displayName, capabilities: c });
 
 /** 厂商 + 型号目录（配置页下拉数据源；可随厂商发版增删，不影响后端）。 */
@@ -137,21 +140,22 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     models: [
       m("gpt-4o", "GPT-4o", cap(true, true, 128000)),
       m("gpt-4o-mini", "GPT-4o mini", cap(true, true, 128000)),
-      m("o3", "o3", cap(true, true, 200000)),
-      m("o4-mini", "o4-mini", cap(true, true, 200000)),
+      m("o3", "o3（推理）", cap(true, true, 200000, true)),
+      m("o4-mini", "o4-mini（推理）", cap(true, true, 200000, true)),
     ],
   },
   {
     key: "moonshot", displayName: "Moonshot（月之暗面 Kimi）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.moonshot.cn/v1", docUrl: "https://platform.moonshot.cn",
     models: [
-      m("kimi-k2-5", "Kimi 2.5", cap(true, true, 256000)),
-      m("kimi-k2-5-long-context", "Kimi 2.5 Long Context", cap(true, true, 2000000)),
-      m("kimi-k2", "Kimi K2", cap(true, true, 256000)),
-      m("kimi-k1-5", "Kimi K1.5", cap(true, true, 256000)),
-      m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 128000)),
-      m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32000)),
-      m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8000)),
+      // 真实 Moonshot /v1/models id（kimi-* 为推理型·锁 temperature=1·无请求级关推理参数 → 关推理开关改用 moonshot-v1-* 兄弟）。
+      m("kimi-k2.5", "Kimi 2.5（推理）", cap(true, true, 262144, true)),
+      m("kimi-k2.6", "Kimi 2.6（推理）", cap(true, true, 262144, true)),
+      m("kimi-k3", "Kimi K3（推理）", cap(true, true, 262144, true)),
+      m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 131072)),
+      m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32768)),
+      m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8192)),
+      m("moonshot-v1-auto", "Moonshot v1 Auto", cap(true, true, 131072)),
     ],
   },
   {
@@ -191,7 +195,7 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
       m("deepseek-v4", "DeepSeek-V4", cap(true, true, 128000)),
       m("deepseek-v4-pro", "DeepSeek-V4 Pro", cap(true, true, 128000)),
       m("deepseek-chat", "DeepSeek-V3 Chat", cap(true, true, 64000)),
-      m("deepseek-reasoner", "DeepSeek-R1 Reasoner", cap(true, false, 64000)),
+      m("deepseek-reasoner", "DeepSeek-R1 Reasoner（推理）", cap(true, false, 64000, true)),
     ],
   },
   {
@@ -227,6 +231,10 @@ export const PurposeBindingSchema = z.object({
   purpose: LlmPurposeSchema,
   providerId: z.string(),
   modelId: z.string(),
+  /** WO-QOS-NOREASON「关推理」开关：ON → 解析期若绑定模型为推理型（capabilities.reasoning）且 provider 有非推理
+   *  兄弟模型（capabilities.reasoning 非真 + 满足用途 tools），则改用兄弟模型出快答（因部分厂商无请求级关推理参数）。
+   *  非推理模型或无兄弟 → 无操作（保持绑定模型）。默认关（既有绑定逐字节不变）。 */
+  noReasoning: z.boolean().optional(),
 });
 export type PurposeBinding = z.infer<typeof PurposeBindingSchema>;
 
