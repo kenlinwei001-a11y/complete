@@ -194,10 +194,22 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const [searchParams] = useSearchParams();
   const orderParam = searchParams.get("order");
   const orderItems = orders.data?.items;
+  // WO-GLOBALSIM-DRILL-SEAM 3.2：?order= 传入但订单池匹配不到时不再 silent no-op——诚实提示。
+  // 项目推演池 = 仅销售订单（searchObjects("Order")）；全局页需求项池 = 订单 ∪ 在产工单(WIP:) ∪ 预测(FC:)。
+  // 传入 WIP:/FC: 前缀 id（或任何未落订单项）→ orderItems.find 必未命中 → 兜底显式提示（防其它入口直带 ?order=WIP:…）。
+  const [notFoundOrder, setNotFoundOrder] = useState<string | null>(null);
   useEffect(() => {
-    if (!orderParam || !orderItems) return;
+    if (!orderParam || !orderItems) {
+      setNotFoundOrder(null);
+      return;
+    }
     const hit = orderItems.find((o) => String(o.props.so ?? o.id) === orderParam);
-    if (hit && selectedOrder !== hit.id) pickOrder(hit);
+    if (hit) {
+      setNotFoundOrder(null);
+      if (selectedOrder !== hit.id) pickOrder(hit);
+    } else {
+      setNotFoundOrder(orderParam); // 补 else：未命中不再静默
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderParam, orderItems]);
 
@@ -220,6 +232,26 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
         </span>
       </div>
+      {/* WO-GLOBALSIM-DRILL-SEAM 3.2：?order= 匹配不到时的诚实提示（复用琥珀提示样式）——口径差异 UI 显式，不装 1:1。 */}
+      {notFoundOrder && (
+        <div
+          data-testid="proj-order-notfound"
+          style={{
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+            border: "1px solid rgba(232,181,74,.45)", borderLeft: "3px solid var(--amber)",
+            background: "rgba(232,181,74,.08)", borderRadius: 10, padding: "8px 14px",
+            fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
+          }}
+        >
+          <span>
+            ⚠ 未找到订单 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--amber)" }}>{notFoundOrder}</strong>
+            ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；项目推演仅细排销售订单。
+          </span>
+          <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
+            返回全局联合推演 →
+          </Link>
+        </div>
+      )}
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.proj.title}</h3>
