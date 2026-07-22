@@ -529,6 +529,10 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_finance_pnl", name: "CEO 量价本利", solver: "finance_pnl", examples: ["毛利为什么下滑", "量价本利情况"], slotNames: [] },
     { key: "ceo_supply_demand_gap", name: "CEO 供需失衡归因", solver: "supply_demand_gap_attribution", examples: ["供需为什么对不上", "产销缺口归因"], slotNames: ["metricKey"] },
     { key: "ceo_atp_check", name: "CEO 订单承诺", solver: "atp_check", examples: ["这单能不能接", "能接多少何时能交"], slotNames: ["orderRef"] },
+    // WO-QOS-ROUTE-COVER（真 Kimi 10 题 v3/v4 实测 #1/#4/#9：瓶颈定位 / 每基地产能前瞻无对口意图 → 落 path-B 洪泛
+    // 或被 gap_attribution 过度捕获）。补全对口意图直绑真 solver（bottleneck_matrix 默认全域·base_capacity_outlook 必填 baseId）。
+    { key: "ceo_bottleneck", name: "CEO 瓶颈定位", solver: "bottleneck_matrix", examples: ["哪个工序是瓶颈", "化成 OEE 多少换型损失占几成", "常州瓶颈卡在哪道工序"], slotNames: [] },
+    { key: "ceo_base_outlook", name: "CEO 产能前瞻", solver: "base_capacity_outlook", examples: ["常州未来 90 天产能够不够", "未来 30/60/90 天会不会穿仓", "这个基地接得住在手订单吗"], slotNames: ["baseId"] },
   ];
   for (const cap of ceoCaps) {
     const planId = `plan_${cap.key}_v1${sfx}`;
@@ -546,7 +550,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,
       examples: cap.examples, enabledViews: "*",
-      slots: cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" })),
+      slots: cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" })),
       planId, riskLevel: "COMPUTE" as const, owner: "seed", createdAt: now, updatedAt: now,
     });
   }

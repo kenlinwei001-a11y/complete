@@ -1,4 +1,5 @@
 import type { CeoQueryRoute, PageContext, CeoAgentRole } from "@platform/contracts";
+import { BASE_REGISTRY } from "@platform/contracts"; // WO-QOS-ROUTE-COVER：基地册单一来源（问句/focus.base → 规范 baseId·喂 bottleneck_matrix/base_capacity_outlook）。
 
 /**
  * WO-CEO-6 · CEO 深问确定性路由（闭 G-3·纯函数·R6 无 LLM/时钟/随机）。
@@ -28,6 +29,12 @@ const RE_SUPPLY_DEMAND = /(供需|产销|需求预测|供给|对不上)/;
 // 无达标语境的纯 B/C 深问（"毛利为什么下滑"）仍落 B/C。RE_ROOTCAUSE 含"为什么"和"拉低"两者，故唯一可分信号=达标语境。
 const RE_ATTAIN_CTX = /(达成|达标|达成率|完成率|份额)/;
 const RE_ATP = /(能不能接|能接多少|何时能交|交期|承诺|ATP|CTP)/;
+// WO-QOS-ROUTE-COVER（真 Kimi 10 题 v3/v4 实测：#1/#4 瓶颈定位题无确定性意图 → 被 RE_ROOTCAUSE 的「瓶颈/为什么」
+// 过度捕获成 gap_attribution 或落 path-B 洪泛）。瓶颈信号（瓶颈/OEE/稼动/换型损失/哪道工序卡）→ bottleneck_matrix，
+// 置于 RE_ROOTCAUSE 之前、达标语境分支之后（#10 储能份额逐层拆根因仍走 gap_attribution·不回归）。
+const RE_BOTTLENECK = /(瓶颈|OEE|稼动|换型损失|哪(个|道).{0,4}工序.{0,6}(卡|慢|满|最))/;
+// WO-QOS-ROUTE-COVER（#9 未来产能前瞻/穿仓无确定性意图 → path-B 洪泛）→ base_capacity_outlook。
+const RE_BASE_OUTLOOK = /(未来.{0,6}(天|周|月|季).{0,10}产能|产能.{0,10}(够不够|够吗|接得住|接住)|穿仓|30\/60\/90)/;
 const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
 /** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
 function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
@@ -61,6 +68,37 @@ function creditArgsFrom(q: string): Record<string, unknown> {
   return args;
 }
 
+/** WO-QOS-ROUTE-COVER：从问句解析基地（BASE_REGISTRY 中文名或拼音 id·单一来源）→ 规范 baseId + 中文名；无则 undefined。 */
+function parseBaseFromQuery(q: string): { baseId: string; name: string } | undefined {
+  for (const b of BASE_REGISTRY) {
+    if (q.includes(b.name) || q.includes(b.baseId)) return { baseId: b.baseId, name: b.name };
+  }
+  return undefined;
+}
+
+/** 归一 focus.base（可能是中文名或拼音 id）到规范 baseId（喂 bottleneck_matrix.baseIds·需 id）；无匹配则原样透出。 */
+function normalizeBaseId(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  const b = BASE_REGISTRY.find((x) => x.baseId === v || x.name === v);
+  return b?.baseId ?? v;
+}
+
+/** 从问句/焦点派生瓶颈矩阵 args（baseIds 优先取问句基地名→id·其次 focus.base·无则求解器默认全域）。 */
+function bottleneckArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const baseId = parseBaseFromQuery(q)?.baseId ?? normalizeBaseId(focus?.base);
+  if (baseId) args.baseIds = [baseId];
+  return args;
+}
+
+/** 从问句/焦点派生每基地产能前瞻 args（baseId 优先取问句基地名→id·其次 focus.base；base_capacity_outlook 求解器接受 id 或中文名）。 */
+function baseOutlookArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const baseId = parseBaseFromQuery(q)?.baseId ?? normalizeBaseId(focus?.base);
+  if (baseId) args.baseId = baseId;
+  return args;
+}
+
 /**
  * WO-DECISION-KERNEL-WIRE：决策类深问的「成决策」意图判定（闭"深问止步方案·不成决策"脑裂·纯函数 R6）。
  * 深问出方案后，若用户表达采纳/落地意图 → 经 L2 内核落一等 Decision 台账（PROPOSED），立即落地意图再 commit
@@ -79,9 +117,14 @@ export function isDecisionRoute(route: CeoQueryRoute["route"]): boolean {
   return route === "decision_play" || route === "signal";
 }
 
-/** 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。 */
+/**
+ * 是否 CEO 深问（命中任一意图模式）——门控确定性路由绑定（非 CEO 问句照常走 classifier·不劫持）。
+ * WO-QOS-ROUTE-COVER：**必须**含 RE_BOTTLENECK / RE_BASE_OUTLOOK——否则只命中瓶颈/产能前瞻词（如「化成 OEE / 换型损失」
+ * 无 为什么/瓶颈）的题 isCeoQuestion 恒假 → orchestrator（tryDeterministicBind 门）与 domainResolve（A 门）都不入 CEO 路由
+ * → 落 path-B 洪泛（v4 实测 #1/#4/#9 病根）。加入后这类题才能真绑对口 solver。
+ */
 export function isCeoQuestion(q: string): boolean {
-  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_BOTTLENECK, RE_BASE_OUTLOOK, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
 /**
@@ -123,6 +166,9 @@ export const CEO_INTENT_KEYS = new Set([
   "ceo_finance_pnl",
   "ceo_supply_demand_gap",
   "ceo_atp_check",
+  // WO-QOS-ROUTE-COVER：瓶颈定位 / 每基地产能前瞻（v4 实测 #1/#4/#9 补全对口意图·各绑真 solver）
+  "ceo_bottleneck",
+  "ceo_base_outlook",
 ]);
 
 /** 是否 CEO 专属意图（用于候选池 PageContext 门控过滤）。 */
@@ -139,6 +185,9 @@ export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
   if (route === "finance_pnl") return "ceo_finance_pnl";
   if (route === "supply_demand_gap_attribution") return "ceo_supply_demand_gap";
   if (route === "atp_check") return "ceo_atp_check";
+  // WO-QOS-ROUTE-COVER：瓶颈定位 / 每基地产能前瞻直绑对口 solver（免落 ceo_root_cause 误跑 gap_attribution）
+  if (route === "bottleneck_matrix") return "ceo_bottleneck";
+  if (route === "base_capacity_outlook") return "ceo_base_outlook";
   return "ceo_root_cause";
 }
 
@@ -230,6 +279,10 @@ export function resolveCeoRoute(
   // 接缝调和：达标语境下的归因/方案深问先于 B/C 直绑（"毛利被什么拉低才没达成目标"=达标根因→gap_attribution·非 finance_pnl；
   // 而"毛利为什么下滑"无达标语境→仍走下方 RE_MARGIN→finance_pnl）。方案(OPTION)优先根因(ROOTCAUSE)同既有口径。
   else if ((RE_ROOTCAUSE.test(q) || RE_OPTION.test(q)) && RE_ATTAIN_CTX.test(q)) route = RE_OPTION.test(q) ? "decision_play" : "gap_attribution";
+  // WO-QOS-ROUTE-COVER：瓶颈定位 / 产能前瞻 先于 RE_ROOTCAUSE（免"瓶颈/为什么"被 gap_attribution 抢·#1/#4/#9）。
+  // 上一分支已把「达标语境 + 归因」题落 gap_attribution → 此处不影响 #10（储能份额逐层拆根因）。
+  else if (RE_BOTTLENECK.test(q)) route = "bottleneck_matrix";
+  else if (RE_BASE_OUTLOOK.test(q)) route = "base_capacity_outlook";
   else if (RE_CREDIT.test(q)) route = "credit_exposure";
   else if (RE_MARGIN.test(q)) route = "finance_pnl";
   else if (RE_SUPPLY_DEMAND.test(q)) route = "supply_demand_gap_attribution";
@@ -250,6 +303,10 @@ export function resolveCeoRoute(
     args = atpArgsFrom(q, focus); // orderRef(问句 SO-号/focus.order)
   } else if (route === "credit_exposure") {
     args = creditArgsFrom(q);
+  } else if (route === "bottleneck_matrix") {
+    args = bottleneckArgsFrom(q, focus); // baseIds(问句基地名→id / focus.base·无则求解器默认全域)
+  } else if (route === "base_capacity_outlook") {
+    args = baseOutlookArgsFrom(q, focus); // baseId(问句基地名→id / focus.base·求解器必填)
   } else {
     if (metricKey) args.metricKey = metricKey;
     if (factorId && (route === "decision_play" || route === "gap_attribution" || route === "supply_demand_gap_attribution")) args.factorId = factorId;
@@ -262,7 +319,9 @@ export function resolveCeoRoute(
       factorId ||
       focus?.base ||
       (route === "sop_reschedule" && (focus?.order || args.targetOrderId)) ||
-      (route === "atp_check" && (focus?.order || args.orderRef)),
+      (route === "atp_check" && (focus?.order || args.orderRef)) ||
+      (route === "bottleneck_matrix" && args.baseIds) ||
+      (route === "base_capacity_outlook" && args.baseId),
   );
   const scopedBaseIds = scope.allBases ? [] : scope.baseIds;
 

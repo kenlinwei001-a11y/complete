@@ -96,6 +96,9 @@ export const CeoRouteKindSchema = z.enum([
   "finance_pnl", // 毛利/量价本利
   "supply_demand_gap_attribution", // 供需/产销对不上
   "atp_check", // 能不能接/交期/承诺
+  // WO-QOS-ROUTE-COVER（真 Kimi 10 题 v3/v4 实测：以下题无确定性意图→落 path-B 洪泛/被 gap_attribution 过度捕获）：
+  "bottleneck_matrix", // 瓶颈定位/OEE/换型损失（#1/#4·先于 RE_ROOTCAUSE 免被 gap_attribution 抢）
+  "base_capacity_outlook", // 未来 30/60/90 天产能前瞻/穿仓（#9）
 ]);
 export type CeoRouteKind = z.infer<typeof CeoRouteKindSchema>;
 
