@@ -400,8 +400,30 @@ function fmtNum(n: number): string {
 }
 function cellOf(v: unknown): string | number | null {
   if (v === null || v === undefined) return null;
+  if (typeof v === "boolean") return v ? "是" : "否";
   if (typeof v === "number") return v;
   if (typeof v === "string") return v;
+  if (Array.isArray(v)) {
+    if (v.length === 0) return "—";
+    // 对象数组：尝试用业务上可读字段拼接，避免整段 JSON
+    if (v.every((x) => x && typeof x === "object")) {
+      return v
+        .map((x) => {
+          const o = x as Record<string, unknown>;
+          if (typeof o.factor === "string" && typeof o.contribution === "number") {
+            return `${o.factor} ${o.contribution}${(o.unit as string) ?? ""}`;
+          }
+          return String(o.label ?? o.name ?? o.factor ?? o.id ?? JSON.stringify(o));
+        })
+        .join("；");
+    }
+    return v.map(String).join("、");
+  }
+  // 单个对象：优先取 label/name/id，fallback JSON
+  const o = v as Record<string, unknown>;
+  if (typeof o.label === "string") return o.label;
+  if (typeof o.name === "string") return o.name;
+  if (typeof o.id === "string") return o.id;
   return JSON.stringify(v);
 }
 
