@@ -35,7 +35,7 @@ type NavItemRef = { kind: "view" | "admin"; key: string };
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "推演", items: ["project-sim", "global-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
+  { title: "推演", items: ["project-sim", "global-sim", "risk", "order-chain", "decision-play"].map((key) => ({ kind: "view" as const, key })) },
   { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
   { title: "数据接入", items: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"].map((key) => ({ kind: "admin" as const, key })) },
   {

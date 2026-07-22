@@ -38,6 +38,12 @@ const VIEW_ALIAS: Record<string, string> = {
   optimize: "optimize-whatif",
 };
 
+/** 把场景启动器/URL 里的视图短键（如 risk/project/sop）解析为规范 viewKey（如 risk-board/project-sim/sop-balance）。 */
+export function resolveViewKey(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+  return VIEW_ALIAS[key] ?? key;
+}
+
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
   if (!key) return undefined;
   return registry.get(VIEW_ALIAS[key] ?? key);

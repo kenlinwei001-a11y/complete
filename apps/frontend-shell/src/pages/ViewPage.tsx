@@ -2,7 +2,7 @@ import { Suspense, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
-import { getRenderer } from "@/views/registry";
+import { getRenderer, resolveViewKey } from "@/views/registry";
 import { ForbiddenPage, NotFoundPage, UnsupportedViewCard } from "./ErrorPages";
 import zh from "@/locales/zh";
 
@@ -11,9 +11,17 @@ import zh from "@/locales/zh";
  * Entitlement §7：先查 feature（关闭 → 404，FEATURE_NOT_FOUND 语义），后判权限（403）。
  */
 export default function ViewPage() {
-  const { viewKey = "" } = useParams();
+  const { viewKey: rawViewKey = "" } = useParams();
   const { data: workspace } = useWorkspace();
   const setView = useSessionStore((s) => s.setView);
+
+  // 场景启动器/URL 可能用视图短键别名（如 project → project-sim）。
+  // 优先保留原键（如 risk 已对应 workspace 里的 risk 视图），原键不存在才解析为规范键。
+  const features = workspace?.features;
+  const rawOk = !!(
+    workspace?.views.find((v) => v.key === rawViewKey) && features?.includes(`view.${rawViewKey}`)
+  );
+  const viewKey = rawOk ? rawViewKey : (resolveViewKey(rawViewKey) ?? rawViewKey);
 
   useEffect(() => {
     setView(viewKey);
@@ -22,7 +30,6 @@ export default function ViewPage() {
   if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
 
   // ① feature 检查（404 优先于 403，不泄露功能存在性）
-  const features = workspace.features;
   if (features && !features.includes(`view.${viewKey}`)) {
     return <NotFoundPage />;
   }
