@@ -24,7 +24,9 @@ export type ScenarioPackage = z.infer<typeof ScenarioPackageSchema>;
 
 export const SlotDefSchema = z.object({
   name: z.string(),
-  type: z.enum(["string", "number", "date", "timeWindow", "objectRef", "enum"]),
+  // WO-PHASE1-D+A：新增 json 槽类型，支持把结构化数组/对象（如 generic_inference 的 apply/levers/factors）
+  // 原样穿过模板注入求解器 args，而不被字符串化。
+  type: z.enum(["string", "number", "date", "timeWindow", "objectRef", "enum", "json"]),
   required: z.boolean(),
   enumValues: z.array(z.string()).optional(),
   defaultFrom: z.string().optional(),

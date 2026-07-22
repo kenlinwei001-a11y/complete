@@ -533,24 +533,45 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     // 或被 gap_attribution 过度捕获）。补全对口意图直绑真 solver（bottleneck_matrix 默认全域·base_capacity_outlook 必填 baseId）。
     { key: "ceo_bottleneck", name: "CEO 瓶颈定位", solver: "bottleneck_matrix", examples: ["哪个工序是瓶颈", "化成 OEE 多少换型损失占几成", "常州瓶颈卡在哪道工序"], slotNames: [] },
     { key: "ceo_base_outlook", name: "CEO 产能前瞻", solver: "base_capacity_outlook", examples: ["常州未来 90 天产能够不够", "未来 30/60/90 天会不会穿仓", "这个基地接得住在手订单吗"], slotNames: ["baseId"] },
+    // WO-Phase1-D+A：what-if 结构化杠杆 → generic_inference mode:"levers"
+    { key: "ceo_whatif", name: "CEO 假设推演", solver: "generic_inference", examples: ["扩 2 通道能补多少缺口", "加夜班产能能提多少", "外包 10% 能不能补上"], slotNames: ["baseId", "factors"] },
   ];
   for (const cap of ceoCaps) {
     const planId = `plan_${cap.key}_v1${sfx}`;
+    // WO-Phase1-D+A：ceo_whatif 用 generic_inference mode:"levers"，args 结构与常规单字段注入不同。
+    const solverArgs: Record<string, TemplateValue> =
+      cap.key === "ceo_whatif"
+        ? {
+            mode: "levers",
+            scopeObjectIds: ["{{slots.baseId}}"],
+            factors: "{{slots.factors}}",
+            targetType: "Line",
+            targetProp: "utilization",
+            topK: 6,
+          }
+        : (Object.fromEntries(cap.slotNames.map((n) => [n, `{{slots.${n}}}`])) as Record<string, TemplateValue>);
     plans.push({
       id: planId, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       steps: [
-        { id: "s1", type: "invoke_solver", params: { solverKey: cap.solver, args: Object.fromEntries(cap.slotNames.map((n) => [n, `{{slots.${n}}}`])) } },
+        { id: "s1", type: "invoke_solver", params: { solverKey: cap.solver, args: solverArgs } },
         { id: "render", type: "render_answer", params: { blocks: [
           { type: "text", markdown: `${cap.name}（求解器 ${cap.solver}·溯源见下 ⟦ref:0⟧）：` },
           { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
         ] } },
       ],
     });
+    const slotDefs: IntentDefinition["slots"] =
+      cap.key === "ceo_whatif"
+        ? [
+            { name: "baseId", type: "string", required: false, description: "基地 ID 或中文名（问句/PageContext.focus.base 注入）" },
+            { name: "factors", type: "json", required: false, description: "结构化杠杆映射的瓶颈因子列表（如 [\"瓶颈工序\"]）" },
+          ]
+        : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
     intents.push({
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,
       examples: cap.examples, enabledViews: "*",
-      slots: cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" })),
+      slots: slotDefs,
       planId, riskLevel: "COMPUTE" as const, owner: "seed", createdAt: now, updatedAt: now,
     });
   }

@@ -99,6 +99,9 @@ export const CeoRouteKindSchema = z.enum([
   // WO-QOS-ROUTE-COVER（真 Kimi 10 题 v3/v4 实测：以下题无确定性意图→落 path-B 洪泛/被 gap_attribution 过度捕获）：
   "bottleneck_matrix", // 瓶颈定位/OEE/换型损失（#1/#4·先于 RE_ROOTCAUSE 免被 gap_attribution 抢）
   "base_capacity_outlook", // 未来 30/60/90 天产能前瞻/穿仓（#9）
+  // WO-Phase1-D+A：what-if 结构化杠杆 + Q7 产能可行性歧义修
+  "generic_inference", // 扩通道/加夜班/加%%/外包/降%% 等结构化杠杆前向重算
+  "capacity_forecast", // 型号+周期+加/扩 → 产能可行性（S01）
 ]);
 export type CeoRouteKind = z.infer<typeof CeoRouteKindSchema>;
 

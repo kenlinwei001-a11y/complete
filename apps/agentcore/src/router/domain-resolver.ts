@@ -131,6 +131,10 @@ export function domainResolve(query: string, pageContext?: PageContext): DomainR
     intentKey = ceoIntentKeyForRoute(cr.route);
   }
 
+  // WO-Phase1-D+A：结构化 what-if / Q7 产能可行性虽可能含"如果"，但已被明确杠杆捕获，
+  // 不应再被 RE_OPEN 压低置信 → 确保它们能进 path-A。
+  if (route === "generic_inference" || route === "capacity_forecast") signals.open = false;
+
   const matchScore = scoreFor(route, contextRich, focus, signals);
   const candidateSolvers: CandidateSolver[] = solverKey ? [{ key: solverKey, matchScore }] : [];
   const domain = pageContext?.block?.blockType ?? pageContext?.view ?? "unknown";
