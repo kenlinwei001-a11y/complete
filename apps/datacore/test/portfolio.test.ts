@@ -169,9 +169,30 @@ describe("WO-PORTFOLIO-OPTIMAL · portfolio 默认门（守恒 + 方案 + 冻结
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
   });
 
-  it("未接入最优化引擎（无 solvePortfolio）→ 显式报错不兜底（同 opt 族·不静默假绿）", async () => {
+  it("未兜底 opt 模型仍显式报错不兜底（同 opt 族·不静默假绿）", async () => {
     const t = await makeApp(); await seedBattery(t);
-    // 不注入 optimizer。
-    await expect(run(t, {})).rejects.toThrow();
+    // WO-MEMSIM-OPTIMIZER 后 makeApp 默认装 InProcOptimizerClient（portfolio 恒可跑·见下方内存态 describe）；
+    // 但 InProc 只兜底 portfolio，未实现的 multi_objective 仍走 `!this.optimizer?.solveMultiObjective` 守卫显式「未接入」。
+    await expect(
+      t.services.solvers.invoke(ADMIN, "multi_objective", { vars: [{ id: "a", kind: "bool" }], objectives: [{ key: "k", sense: "max", terms: [] }], method: "weighted" }),
+    ).rejects.toThrow(/未接入/);
+  });
+});
+
+/**
+ * WO-MEMSIM-OPTIMIZER · portfolio 内存态默认门（**无 sidecar**·app.ts §3.2 默认 InProcOptimizerClient 兜底）。
+ * 与上方「mock optimizer」门互补：这里**不 setOptimizer**，证内存模式接缝不再空（详尽 SEAM 见 inproc-optimizer.test.ts）。
+ */
+describe("WO-MEMSIM-OPTIMIZER · portfolio 内存态默认门（无 sidecar·InProc 兜底·守恒）", () => {
+  it("默认 InProc → 真出可行解·FEASIBLE/optimal:false·capacityLedger 守恒（reconciled）", async () => {
+    const t = await makeApp(); await seedBattery(t);
+    // 不 setOptimizer → 走 app.ts §3.2 默认 InProc（内存模式无 OPTIMIZER_BASE_URL）。
+    const g = await run(t, { scenarios: ["max_ontime", "min_cost"] });
+    expect(g.status).toBe("FEASIBLE");
+    expect(g.optimal).toBe(false); // 诚实红线：贪心不可证最优
+    expect(g.occupancy.length).toBeGreaterThan(0);
+    for (const c of g.capacityLedger) expect(c.allocated).toBeLessThanOrEqual(c.cap + 1e-6);
+    expect(g.reconChecks.every((r) => r.ok)).toBe(true);
+    expect(g.reconciled).toBe(true);
   });
 });
