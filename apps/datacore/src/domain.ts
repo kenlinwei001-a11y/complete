@@ -358,7 +358,10 @@ export type ObjectOrigin =
   // Dogfooding：系统本体自反投影（从 SYSTEM-ONTOLOGY.md/prd-index 确定性重生成,可溯回章节锚点）。
   | { type: "META"; source: string; anchor?: string }
   // OntoFlow（PRD v2 P3）：流水线发布物化落地的对象（origin 记工作流 backref）。嫁接自 main 平行线。
-  | { type: "PIPELINE"; workflowId: string };
+  | { type: "PIPELINE"; workflowId: string }
+  // WO-GSIM-5-ACTION：S2 Action 执行回灌物化的对象（在产 WorkOrder / 跨基地调剂 InterBaseTransfer），
+  // origin 记 actionId + 方案指纹 backref → R13 溯回采纳的方案（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  | { type: "ACTION"; actionId: string; source?: string; fingerprint?: string };
 
 export interface ObjectInstance {
   id: string; // obj_
@@ -504,6 +507,8 @@ export interface ActionDraft {
   status: ActionStatus;
   approvalSteps: ApprovalStep[];
   executionResult?: { ok: boolean; targetRef?: string; error?: string; attempts: number };
+  /** WO-GSIM-5-ACTION：确定性方案指纹（同方案两次采纳 → 幂等·返回既有草稿不重复生成·R6）。 */
+  fingerprint?: string;
   createdAt: string;
   updatedAt: string;
 }

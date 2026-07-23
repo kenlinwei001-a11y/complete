@@ -25,7 +25,7 @@ interface Prov { kind: string; drillType: string; drillId: string; drillField: s
 interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number }
 interface PortResult {
   status: string; optimal: boolean; feasible: boolean; reconciled: boolean;
-  allocation: { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; qty: number; delayDays: number; onTime: boolean; provenance: Prov }[];
+  allocation: { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; windowStartDay: number; qty: number; model: string; delayDays: number; onTime: boolean; provenance: Prov }[];
   displaced: { orderId: string; kind: string; qty: number; model: string; provenance: Prov }[];
   scenarios: Scenario[];
   objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number };
@@ -136,7 +136,12 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
   const onAdopt = () => {
     if (!d) return;
-    adopt.mutate({ actionTypeKey: "plan_change", payload: { source: "global-sim", objective: primary, servedQty: d.scenarios.find((s) => s.key === primary)?.servedQty ?? 0, displaced: d.displaced.map((x) => x.orderId), summary: d.summary } });
+    // WO-GSIM-5-ACTION：additive 附上 served 订单分配（回灌基线数据源）——执行器据此物化在产 WorkOrder
+    // + 跨基地调剂 InterBaseTransfer，使采纳后下一轮联合推演基线真变（G-LOOP-FEEDBACK）。
+    const served = d.allocation
+      .filter((a) => a.kind === "order" && !a.committed)
+      .map((a) => ({ orderId: a.item, base: a.base, baseName: a.baseName, window: a.window, windowStartDay: a.windowStartDay, qty: a.qty, model: a.model }));
+    adopt.mutate({ actionTypeKey: "plan_change", payload: { source: "global-sim", objective: primary, servedQty: d.scenarios.find((s) => s.key === primary)?.servedQty ?? 0, displaced: d.displaced.map((x) => x.orderId), summary: d.summary, served } });
   };
 
   const primaryScen = d?.scenarios.find((s) => s.key === primary) ?? d?.scenarios[0];

@@ -80,7 +80,7 @@ import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
+import { ActionService, MockActionExecutor, GlobalSimPlanExecutor, type ActionExecutor } from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -382,8 +382,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
   // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
   const mockExecutor = new MockActionExecutor();
+  // WO-GSIM-5-ACTION · 全局联合推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  const globalSimExecutor = new GlobalSimPlanExecutor(
+    {
+      repos,
+      forecastStart: async (tid) => String((await solvers.getParams(tid)).forecastStart ?? "2026-06-10"),
+      runDerivations: async (tid) => {
+        await ontology.runDerivations({ tenantId: tid, userId: "system:action", roles: ["admin"], attributes: {} });
+      },
+    },
+    mockExecutor,
+  );
   const domainExecutor: ActionExecutor = {
     async execute(draft) {
+      // 全局联合推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
+      if (draft.actionTypeKey === "plan_change" && (draft.payload as Record<string, unknown>).source === "global-sim") {
+        return globalSimExecutor.execute(draft);
+      }
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };
