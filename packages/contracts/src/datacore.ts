@@ -254,6 +254,15 @@ export const SyntheticJobBodySchema = z.object({
   seed: z.number().int().optional(),
   /** 运营态出厂配置增量 §1.1：true → 合成后从 T−365 天回放至 T0（一年运营态）。 */
   livedIn: z.boolean().optional(),
+  /**
+   * WO-SYNTH-VALIDATION-LITE：合成剖面。FULL（默认，向后兼容）= 全量 90 天 TS 历史；
+   * VALIDATION_LITE = 跳过 TS 历史与聚合（historyDays 语义=0），仅物化对象/派生/规则/权限/视图。
+   * 关键安全性：TS 历史（genPoint）不消耗对象 RNG 游标，VLE 幂等指纹只覆盖对象，
+   * 故 LITE 与 FULL 的对象字节完全一致——校验效力零损、耗时砍去大头。
+   */
+  profile: z.enum(["FULL", "VALIDATION_LITE"]).optional(),
+  /** 显式覆盖 TS 历史天数（0=不生成 TS；未给且 profile=VALIDATION_LITE 时按 0；否则默认 90）。 */
+  historyDays: z.number().int().min(0).optional(),
 });
 export type SyntheticJobBody = z.infer<typeof SyntheticJobBodySchema>;
 

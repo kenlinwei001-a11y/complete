@@ -345,13 +345,17 @@ export class VleService {
     return { pass: true, expected: 0, actual: 0 };
   }
 
-  /** 同 seed 两次生成 → 对象数与属性指纹一致（在临时子租户上比对，比对后清理）。 */
+  /** 同 seed 两次生成 → 对象数与属性指纹一致（在临时子租户上比对，比对后清理）。
+   * WO-SYNTH-VALIDATION-LITE §3.2：两次均走 profile=VALIDATION_LITE（跳 TS 历史/聚合）。
+   * 指纹只覆盖对象、genPoint 不消耗对象 RNG 游标 → LITE 对象字节 === FULL，校验效力零损、2×70s→2×10s。
+   * ⚠ 仍是 tenant a + tenant b 两次**独立**真跑再比 fingerprint(a)===fingerprint(b)——
+   *   绝不退化成「跑一次 + 克隆到 b + 自比」（那是恒等假绿；反陷阱守护见 synth-validation-lite.test.ts §3）。 */
   private async determinismCheck(seed: number): Promise<{ pass: boolean; expected: string; actual: string }> {
     const a = `vle_det_a_${newId("d")}`;
     const b = `vle_det_b_${newId("d")}`;
     try {
-      await this.synthetic.runJob({ tenantId: a, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed });
-      await this.synthetic.runJob({ tenantId: b, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed });
+      await this.synthetic.runJob({ tenantId: a, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed, profile: "VALIDATION_LITE" });
+      await this.synthetic.runJob({ tenantId: b, userId: "vle", roles: ["admin"], attributes: {} }, { industry: "battery-manufacturing", scale: "S", seed, profile: "VALIDATION_LITE" });
       const fa = await this.fingerprint(a);
       const fb = await this.fingerprint(b);
       return { pass: fa === fb, expected: fa, actual: fb };
