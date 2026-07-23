@@ -429,6 +429,30 @@ async function cmdDo(args) {
   if (cls.cliCommand) console.log(C.dim(`  CLI 等价命令：${cls.cliCommand}`));
 }
 
+// ontology-query：WO-Phase3-B §3.5 本体查询引擎 CLI 对等（R15）。复用同一 REST（/a/v1/solvers/ontology_query/invoke）+R3+R4。
+//   ontology-query --input '{"rootType":"Base","rootFilter":[{"field":"name","op":"eq","value":"常州"}],"select":[{"type":"Order","fields":["so","qty","due"]}]}'
+//   ontology-query "常州基地关联哪些订单"        （NL advisory → nl-to-query → 引擎确定性执行；无法映射诚实报 NO_QUERY_PLAN）
+async function cmdOntologyQuery(args) {
+  const { flags, pos } = parseFlags(args);
+  let payload;
+  if (flags.input) {
+    try { payload = JSON.parse(flags.input); } catch { console.error(C.red("--input 非合法 JSON")); process.exit(1); }
+  } else if (pos[0]) {
+    payload = { nl: pos.join(" ") }; // NL advisory 入口
+  } else {
+    console.error('用法: ontology-query --input \'{"rootType":...,"select":[...]}\'  或  ontology-query "<自然语言>" [--json]');
+    process.exit(1);
+  }
+  const r = await http(`${DC}/a/v1/solvers/ontology_query/invoke`, { method: "POST", headers: authHeader(), body: JSON.stringify({ args: payload }) });
+  if (flags.json) return console.log(JSON.stringify(r));
+  const d = r.data ?? {};
+  console.log(`${C.green("✓")} ontology_query  rows=${(d.rows ?? []).length}  cols=[${(d.columns ?? []).join(", ")}]  snapshot=${r.snapshotVersion ?? "-"}`);
+  if (d.queryPlan) console.log("  " + C.dim(`plan: hops=${(d.queryPlan.hops ?? []).map((h) => h.linkKey + ":" + h.direction).join(" → ") || "(root)"}  slices=[${(d.queryPlan.usedSliceKeys ?? []).join(",")}]  agg=[${(d.queryPlan.aggregation ?? []).join(",")}]`));
+  for (const row of (d.rows ?? []).slice(0, 10)) console.log("  " + C.dim(JSON.stringify(row)));
+  if ((d.rows ?? []).length > 10) console.log("  " + C.dim(`… 共 ${d.rows.length} 行`));
+  if (d.deltas?.length) console.log("  " + C.yellow(`what-if before/after: ${d.deltas.length} 项`));
+}
+
 function help() {
   console.log(`平台对话式 CLI —— 一句话驱动整个平台（QOS 意图识别 + 权限路由 + 求解器/工作流/Agent）
 
@@ -438,6 +462,7 @@ function help() {
   ask "<问句>" [--view v]          提问 → 流式答案（含多轮澄清）
   build "<故事>" [--mode PROVISIONAL] 故事建域（FDE）；--mode 走未审核态
   solve <key> [--args '<json>']    调用既有求解器（A1）
+  ontology-query --input '<json>' | "<自然语言>"  本体多跳遍历查询（planSlice+executeSlice+简单聚合·R15 对等）
   generate <key> "<意图>"          LLM 临时求解器（沙箱跑通注册 PROVISIONAL，A18.2）
   synth <industry> [--scale --seed] 合成数据作业
   types [--domain d]               对象/类型浏览（A4）
@@ -446,7 +471,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, "ontology-query": cmdOntologyQuery, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();

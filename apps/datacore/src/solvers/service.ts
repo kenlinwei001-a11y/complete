@@ -27,6 +27,9 @@ import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { portfolioOptimize as runPortfolioOptimize, type PortfolioObjectiveKey } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
+import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
+import { nlToQuery } from "../ontology/nl-to-query.js";
+import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
@@ -134,6 +137,10 @@ export const SOLVER_KEYS = [
   // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.p50×1e4）+ 缺口/富余标记 +
   // P1 行动计划逐日过程（触发缺口→贪心补→收窄·每步 provenance）。forecastStart 时间锚·系数 RuleEntry.params（R6/R13/R14）。
   "base_capacity_outlook",
+  // WO-Phase3-B 薄层本体遍历求解器（净室通用·join≠compute）：包装现有 planSlice(rootType→targetType 最短路)
+  // + executeSlice(沿路读对象/链路) + 引擎内简单聚合(sum/count/avg/max)。只做遍历+聚合，复杂业务公式留专用 solver。
+  // 减少 path-B Agent 多次 query_objects 往返（一次 query 顶多次·discover 露出后直 invoke）。R6 确定性·R13 逐行可溯。
+  "ontology_query",
 ] as const;
 
 /**
@@ -209,6 +216,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
   audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold", "events", "affectedOrders"],
   ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
+  // WO-Phase3-B ontology_query 输出形状（= OntologyQueryOutput 顶层 key·遍历行 + 溯源 + queryPlan·what-if 时附 deltas）。
+  ontology_query: ["rows", "columns", "provenance", "queryPlan", "deltas", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -455,8 +464,13 @@ export class SolverService {
     // 每根杠杆 ±ε recompute(dryRun) 服务端算敏感度 ∂目标/∂杠杆（R6 确定性），排序 top-K。走同一 generic_inference
     // 求解器 mode 分支（不新建 solver·不动 SOLVER_KEYS），输出与默认路径同键（deltas/rows/affectedObjects/count/rootTypes）+ levers。
     if (str(args.mode) === "levers") return this.discoverLevers(ctx, args);
+    // WO-Phase3-B §3.3：apply 空但给了本体遍历查询（rootType/select 或 nl）→ fallback 到 Query Engine
+    //（本体遍历 + 假设注入 overrides + 派生重算），输出必带 before/after(deltas) + provenance。
     const apply = Array.isArray(args.apply) ? (args.apply as { objectType: string; objectId: string; prop: string; value: unknown }[]) : [];
-    if (apply.length === 0) throw validationError("generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）");
+    if (apply.length === 0 && (args.rootType !== undefined || args.select !== undefined || typeof args.nl === "string")) {
+      return this.ontologyQuery(ctx, args);
+    }
+    if (apply.length === 0) throw validationError("generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）或 rootType/select（遍历 fallback）");
     const changes = apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
     const result = await this.ontologyCore.recompute(ctx, changes, { dryRun: true, apply: apply.map((a) => ({ objectId: a.objectId, prop: a.prop, value: a.value })) });
     const deltas = result.dryRunDeltas ?? [];
@@ -690,6 +704,62 @@ export class SolverService {
       topExposure: concentrations[0] ?? null,
       summary: `${concentrations.length} 个隐性集中单点（${rootType}）,最大敞口 ${concentrations[0]?.count ?? 0} 个依赖方`,
     };
+  }
+
+  /**
+   * WO-Phase3-B §3.1/§3.2 本体查询求解器 `ontology_query`（净室通用·join≠compute·R6·R12·R13）。
+   * 薄层入口：装配 QueryEngineDeps（planSlice + executeSlice + recompute）→ 委托纯引擎 runOntologyQuery。
+   * NL 入口（advisory·不进确定性核）：args.nl 存在时先 nlToQuery 建议映射；失败诚实返 NO_QUERY_PLAN 不编造，
+   * 成功也仍由 Query Engine 确定性执行（核心答案=引擎输出，非 NL）。
+   */
+  private async ontologyQuery(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.ontologyCore) throw validationError("ontology_query 未注入 ontologyCore");
+    const typeDefs = await this.repos.ontologyTypes.list(ctx.tenantId);
+    const linkDefs = await this.repos.ontologyLinks.list(ctx.tenantId);
+    const pkOf = (typeKey: string): string => {
+      const t = typeDefs.find((d) => d.key === typeKey);
+      return t?.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
+    };
+
+    // NL advisory 入口：仅当无结构化 rootType/select 时启用（NL 建议 → 结构化 input）。
+    let rawInput: unknown = args;
+    if (typeof args.nl === "string" && args.rootType === undefined && args.select === undefined) {
+      const nlPlan = nlToQuery(args.nl, {
+        types: typeDefs.map((t) => ({ key: t.key, searchProps: t.properties.filter((p) => p.searchable).map((p) => p.propKey) })),
+      });
+      if (!nlPlan) throw validationError(`ontology_query NL 映射失败 NO_QUERY_PLAN：无法把「${args.nl}」确定性映射为查询计划（不编造·请给结构化 rootType/hops/select）`);
+      rawInput = { ...nlPlan, ...(args.overrides ? { overrides: args.overrides } : {}) };
+    }
+
+    const parsed = OntologyQueryInputSchema.safeParse(rawInput);
+    if (!parsed.success) throw validationError(`ontology_query 参数非法：${parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; ")}`);
+    const input = parsed.data;
+
+    const deps: QueryEngineDeps = {
+      types: typeDefs.map((t) => ({ key: t.key, domain: t.domain, pk: pkOf(t.key) })),
+      links: linkDefs.map((l) => ({ key: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey })),
+      listRoots: async (typeKey) => {
+        const pk = pkOf(typeKey);
+        const objs = await this.repos.objects.listByType(ctx.tenantId, typeKey);
+        return objs.filter((o) => !o.mergedInto).map((o) => ({ id: o.id, objectKey: String(o.objectKey ?? o.props[pk] ?? o.id), props: o.props }));
+      },
+      executeSlice: async (spec, sargs) => {
+        const out = await this.ontologyCore!.executeSlice(ctx, spec as never, sargs);
+        return { nodes: out.nodes };
+      },
+      recompute: async (overrides: OntologyQueryOverride[]): Promise<OntologyQueryDelta[]> => {
+        const changes = overrides.map((o) => ({ typeKey: o.objectType, prop: o.prop, objectIds: [o.objectId] }));
+        const result = await this.ontologyCore!.recompute(ctx, changes, { dryRun: true, apply: overrides.map((o) => ({ objectId: o.objectId, prop: o.prop, value: o.value })) });
+        return (result.dryRunDeltas ?? []).map((d) => ({ objId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after }));
+      },
+    };
+
+    try {
+      return (await runOntologyQuery(deps, input)) as unknown as Record<string, unknown>;
+    } catch (e) {
+      if (e instanceof NoQueryPlanError) throw validationError(`ontology_query ${e.code}：${e.message}`);
+      throw e;
+    }
   }
 
   /**
@@ -3276,6 +3346,8 @@ export class SolverService {
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
+    // WO-Phase3-B 薄层遍历（读任意对象图 + executeSlice，非电池 context），先于 loadContext 拦截。
+    if (solverKey === "ontology_query") return this.ontologyQuery(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
     if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);

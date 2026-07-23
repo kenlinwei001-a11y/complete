@@ -119,6 +119,28 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（CP-SAT 可证最优；对小规模枚举全解对拍）。
   { key: "multi_objective", name: "多目标最优化", description: "一次求解权衡多个冲突目标（营收↑且违约金↓且换型↓），支持加权/ε-约束/字典序三法；每目标值分别回报，改权重→最优真漂移。CP-SAT 可证最优（非贪心/启发式）。", argHints: { vars: "决策变量(bool/int)", constraints: "线性约束", objectives: "多目标(sense/weight)", method: "weighted|epsilon|lexicographic" }, domain: "generic" },
   { key: "cross_object_occupancy", name: "跨对象占用最优化", description: "订单×产线×合同三元互斥占用（一单占某线=同耗产线产能+合同额度、同线互斥）→ 最优指派 + 被挤订单(displaced)；改产线/合同颗粒→占用真变。CP-SAT 可证最优。", argHints: { orders: "订单(营收/违约金/合同/量)", lines: "产线(产能)", contracts: "合同(额度)", eligibility: "订单-产线可产对(成本)" }, domain: "generic" },
+  // WO-Phase3-B 本体查询引擎（薄层遍历+简单聚合·join≠compute）：planSlice 规划 rootType→目标最短路 + executeSlice 读对象/链路 + 引擎内 sum/count/avg/max。
+  {
+    key: "ontology_query",
+    name: "本体查询",
+    description: "对任意已发布本体做多跳遍历查询：给定 rootType(+rootFilter) 沿 hops 或自动最短路走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。每行带 {typeKey,objId,linkPath} 溯源(R13)、确定性(R6)。只做遍历+简单聚合，复杂业务公式(ATP/SOP/portfolio/财务信用)fallback 到专用求解器(join≠compute)。一次 query 顶多次 query_objects。",
+    argHints: {
+      rootType: "起点对象类型(如 Base)",
+      rootFilter: "根过滤 [{field,op,value}]",
+      hops: "多跳 [{linkKey,direction:forward|backward,targetType?,filter?}]，省略则自动规划最短路",
+      select: "投影 [{type,fields[],aggregate?,groupBy?}]",
+      overrides: "假设注入 [{objectType,objectId,prop,value}]（what-if·出 before/after）",
+    },
+    answersQuestions: [
+      "常州基地关联哪些订单",
+      "哪些订单受某基地影响",
+      "某供应商断供会影响哪些客户",
+      "某基地的产线总产能是多少",
+      "沿本体从 X 走到 Y 有哪些对象",
+    ],
+    tags: ["本体", "遍历", "查询", "关联", "聚合", "graph", "traversal", "join"],
+    domain: "generic",
+  },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */

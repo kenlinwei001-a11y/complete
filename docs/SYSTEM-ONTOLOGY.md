@@ -244,6 +244,24 @@ DataCore SolverRegistry(全集 32 = 业务场景 22 + 净室通用 9 + 决策驾
   · 收敛纪律：「无 LLM 描述不允许发布」→ 注册表每条带描述（catalog.test 守无漂移：注册表键集 === SOLVER_KEYS）
   · feature 过滤先于 authz（关 view.plan-audit → plan_audit 工具消失，R3）；与 QOS 场景 discover(22) 分列、互不影响
 ```
+**本体查询引擎链（WO-Phase3-B · `ontology_query` 薄层遍历求解器·join≠compute·R6/R12/R13/R14/R15）**
+```
+Query Engine（apps/datacore/src/ontology/query-engine.ts·纯函数 R6）=
+  planSlice(规划 rootType→目标类型最短路→SlicePlan) + executeSlice(按 SlicePlan 读 ObjectInstance/Link·A6 行级过滤内建)
+  + 引擎内简单聚合(sum/count/avg/max) + recompute(可选·overrides 假设注入前向重算→before/after)
+  · 输入 { rootType, rootFilter?, hops[{linkKey,direction:forward|backward,targetType?,filter?}], select[{type,fields[],aggregate?,groupBy?}], orderBy?, limit?, overrides? }
+  · 输出 { rows, columns, provenance[{typeKey,objId,linkPath,derivedFrom?}], queryPlan{usedSliceKeys,hops,aggregation}, deltas? }
+  · 能力边界 guard（join≠compute）：只遍历+简单聚合；约束求解/组合优化/跨对象复杂公式(ATP/SOP/portfolio/财务信用) fallback 到专用 solver·不内置
+注册（§3.2）：SOLVER_KEYS + SOLVER_OUTPUT_SHAPES(rows/columns/provenance/queryPlan/deltas) + invoke 拦截 → runOntologyQuery；
+  catalog.ts GENERIC_SOLVER_CATALOG 露出（description + answersQuestions[] + tags[]·过 resource-descriptor:check）；
+  AgentCore tools/registry.ts `query_ontology`(READ·必填 rootType+select) --executor OBO--> DataCore ontology_query；
+  agent/navigation-slice.ts SOLVER_CATALOG(ontology_query·reads/families) + OBJECT_KEY_PROPS 登记
+generic_inference fallback（§3.3）：apply 空 + rootType/select/nl → 路由到 Query Engine（遍历+假设注入+派生重算·输出必带 before/after+provenance）
+nl-to-query（§3.4·advisory·不进确定性核）：确定性正则+类型词表把问句**建议**映射为 Query Engine 输入；失败诚实返 NO_QUERY_PLAN 不编造·成功仍由引擎确定性执行（核心答案=引擎输出非 NL）
+CLI 对等（§3.5·R15）：`platform ontology-query --input '<json>' | "<自然语言>"` → 同一 REST /a/v1/solvers/ontology_query/invoke（复用 R3/R4）
+SEAM 守门：ontology-query-engine.test.ts（前向/反向遍历 + filter + 聚合 + 红咬改 Order.qty/due·Line.max_capacity_day→查询真变 + R6 双跑一致）
+  ⊕ generic-inference-query.test.ts（fallback before/after）⊕ agentcore navigation-ontology-query.test.ts（query_ontology 带 provenance）
+```
 **场景/入口链**
 ```
 ScenarioCard --view--> View(规划与平衡/推演与风险/…)
