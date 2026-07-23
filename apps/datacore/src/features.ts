@@ -19,6 +19,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
   { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
   { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
+  { key: "view.global-sim", name: "全局联合推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
   // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
   { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
   { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
@@ -121,6 +122,7 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "plan-generate": "view.plan-generate",
   "sop-balance": "view.sop-balance",
   "project-sim": "view.project-sim",
+  "global-sim": "view.global-sim",
   "annual-scenario": "view.annual-scenario",
   "quarterly-rolling": "view.quarterly-rolling",
   "order-chain": "view.order-chain",

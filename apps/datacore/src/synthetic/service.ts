@@ -54,6 +54,7 @@ const PLANVIEW_EXTRA_KEYS = [
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
+  "global-sim",
   "geo-map",
   "graph-all",
   "graph-backbone",
@@ -1456,6 +1457,8 @@ export class SyntheticService {
       "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
       "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
       "project-sim": { title: "项目推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
+      // 全局联合推演（portfolio 求解器·全订单×全基地×时间联合最优）：renderer/solver 均已就绪，此前漏接 workspace 导航致真实态 404。
+      "global-sim": { title: "全局联合推演", renderer: "global-sim", layout: { solverKey: "portfolio" } },
       "sop-balance": { title: "月度规划", renderer: "sop-balance", layout: { apiTag: "sop" } },
       // 增量 §7.14–7.17
       "annual-scenario": {
