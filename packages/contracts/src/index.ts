@@ -58,3 +58,4 @@ export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流�
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
 export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
+export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）

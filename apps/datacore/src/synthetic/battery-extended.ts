@@ -119,7 +119,7 @@ export function extendedObjectTypes(): TypeDef[] {
     def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
-    def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes")]),
+    def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes"), p("hours"), p("lineId", "string")]),
     def("CapexProject", "产能投资项目", "plan", [p("projectId", "string", true), p("name", "string"), p("irr"), p("util24"), p("c23pass", "boolean")]),
     def("PurchaseOrder", "采购订单", "supply", [p("poId", "string", true), p("matId", "string"), p("qty"), p("etaDay"), p("delayed", "boolean")]),
     def("CarbonFactor", "碳因子", "supply", [p("factorId", "string", true), p("kind", "string"), p("key", "string"), p("factor")]),
@@ -527,17 +527,28 @@ export function generateExtended(
     gridFactor: PROVINCE_GRID[b.baseId] ?? round(0.5 + rng() * 0.3, 2),
   }));
 
-  // ChangeoverMatrix：型号两两（对角 0，同体系 30–60，跨体系 90–180 —— 用名字简化）
+  // ChangeoverMatrix：型号两两（对角 0）。
+  //  · minutes：工序级换型分钟（保留·job_shop/changeover_sequence 消费·同体系 30–60，跨体系 90–180）。
+  //  · hours（★WO-GSIM-2-SOLVER 用户校正·量级重标 minutes→hours）：宏观型号换型**小时**——同体系 3–6h、跨体系 8–24h。
+  //    由同一 minutes 抽样**确定性重标**（不新增 rng 抽样 → 下游字节流零位移·R6 基线守）；portfolio/sop_reschedule 读 hours。
+  //  · lineId：产线维（无线级实测 → 全局值 lineId=null·诚实回退+标注；portfolio coHoursTo 线级缺则回退本全局行）。
   const changeoverMatrix: Record<string, unknown>[] = [];
   for (const a of ctx.models) {
     for (const b of ctx.models) {
       if (a.modelId === b.modelId) continue;
       const cross = a.modelId.includes("LFP") !== b.modelId.includes("LFP");
+      const minutes = cross ? 90 + Math.floor(rng() * 90) : 30 + Math.floor(rng() * 30);
+      // 确定性小时重标（无新 rng）：跨体系 [90,180)→[8,24)h；同体系 [30,60)→[3,6)h。
+      const hours = cross
+        ? round(8 + ((minutes - 90) / 90) * 16, 1)
+        : round(3 + ((minutes - 30) / 30) * 3, 1);
       changeoverMatrix.push({
         pairId: `${a.modelId}__${b.modelId}`,
         fromModel: a.modelId,
         toModel: b.modelId,
-        minutes: cross ? 90 + Math.floor(rng() * 90) : 30 + Math.floor(rng() * 30),
+        minutes, // 工序级分钟（保留·向后兼容 job_shop/changeover_sequence）
+        hours, // ★宏观换型小时（portfolio/sop_reschedule 读此·全链小时）
+        lineId: null, // 无线级实测 → 全局值（诚实回退·portfolio 线级缺则回退本行）
       });
     }
   }

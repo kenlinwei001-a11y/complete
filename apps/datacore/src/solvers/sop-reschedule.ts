@@ -156,19 +156,25 @@ export function sopReschedule(input: SopRescheduleInput): SopRescheduleResult {
   }
 
   // ── 代价（R14 系数）：换型 + 加班 + 延误 ──
-  const changeoverCostPerMin = coeff("changeoverCostPerMin", 1.2);
+  // ★换型单位口径迁移 minutes→hours（WO-GSIM-2-SOLVER·全链小时·不残留分钟）。
+  const changeoverCostPerHour = coeff("changeoverCostPerHour", 72); // ≈ 旧 changeoverCostPerMin(1.2)×60
   const overtimeCostPerUnit = coeff("overtimeCostPerUnit", 2.5);
   const delayPenaltyPerUnitDay = coeff("delayPenaltyPerUnitDay", 0.05);
-  // 换型：被挤单让位后，线上重排 → 从被挤单型号切到 target 型号的换型分钟（同型号=0·诚实）。
-  const coMinsTo = (fromModel: string): number => {
+  // 换型：被挤单让位后，线上重排 → 从被挤单型号切到 target 型号的换型**小时**（同型号=0·诚实）；
+  // 读 ChangeoverMatrix.hours；无 hours 有 minutes → minutes/60（诚实换算·兼容旧数据）。
+  const coHoursTo = (fromModel: string): number => {
+    if (!fromModel || fromModel === model) return 0;
     const row = changeover.find((cm) => str(cm.fromModel) === fromModel && str(cm.toModel) === model);
-    return row ? num(row.minutes) : 0;
+    if (!row) return 0;
+    if (row.hours != null) return num(row.hours);
+    if (row.minutes != null) return round(num(row.minutes) / 60, 4);
+    return 0;
   };
-  const changeoverMin = displaced.reduce((a, d) => {
+  const changeoverHours = displaced.reduce((a, d) => {
     const dm = str(orders.find((o) => str(o.so) === d.orderId)?.model, model);
-    return a + coMinsTo(dm);
+    return a + coHoursTo(dm);
   }, 0);
-  const changeoverCost = round(changeoverMin * changeoverCostPerMin, 2);
+  const changeoverCost = round(changeoverHours * changeoverCostPerHour, 2);
   const overtimeUnitsTot = round(allocation.reduce((a, x) => a + x.overtimeUnits, 0), 2);
   const overtimeCost = round(overtimeUnitsTot * overtimeCostPerUnit, 2);
   const delayCost = round(displaced.reduce((a, d) => a + d.delayDays * d.qty * delayPenaltyPerUnitDay, 0), 2);

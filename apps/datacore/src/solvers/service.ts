@@ -25,7 +25,7 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
-import { portfolioOptimize as runPortfolioOptimize, type PortfolioObjectiveKey } from "./portfolio.js";
+import { portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
 import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
 import { nlToQuery } from "../ontology/nl-to-query.js";
@@ -2100,7 +2100,27 @@ export class SolverService {
     const solve = this.optimizer.solvePortfolio.bind(this.optimizer);
     const objArr = (v: unknown): PortfolioObjectiveKey[] | undefined =>
       Array.isArray(v) ? (v.map(String) as PortfolioObjectiveKey[]) : undefined;
-    const out = await runPortfolioOptimize({
+
+    // ── WO-GSIM-2-SOLVER additive：从真对象派生两阶段/线级/物料/递进 字段（args 覆盖·WO-DATA 未落处诚实 mock+标注） ──
+    const asBool = (v: unknown): boolean | undefined => (v == null ? undefined : v === true || v === "true");
+    const asRec = (v: unknown): Record<string, unknown> | undefined =>
+      (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+    // factory_type 真数据（Base）：PACK-only 基地 / 含 CELL 供芯能力基地（电芯-Pack 两阶段判基地能力）。
+    const packOnlyBases = bases.filter((b) => str(b.factory_type) === "PACK").map((b) => str(b.baseId));
+    const cellCapableBases = bases.filter((b) => /CELL/.test(str(b.factory_type))).map((b) => str(b.baseId));
+    // 线上/基地当前在跑型号（灭 home-base 近似）：未完工 WorkOrder 按 endDate 末者 modelId（WorkOrder 末型号·真数据）。
+    const woActive = workOrders.filter((w) => !["已完成", "已关闭"].includes(str(w.status)) && num(w.qtyActual) > 0);
+    const baseCurrentModel: Record<string, string> = {};
+    const lineCurrentModel: Record<string, string> = {};
+    for (const w of [...woActive].sort((a, b) => str(a.endDate).localeCompare(str(b.endDate)))) {
+      baseCurrentModel[str(w.baseId)] = str(w.modelId);
+      if (w.lineId) lineCurrentModel[str(w.lineId)] = str(w.modelId);
+    }
+    const materialConstraint = asBool(args.materialConstraint);
+    const materials = materialConstraint ? (await this.repos.objects.listByType(ctx.tenantId, "Material")).map((o) => o.props) : undefined;
+    const bom = asRec(args.bom) as Record<string, { material: string; supplier: string; perUnit: number }[]> | undefined;
+
+    const shared: PortfolioInput = {
       forecastStart: str(params.forecastStart),
       orders, workOrders, demandSegments, bases, lines, changeover,
       modelBaseMap: MODEL_BASE_MAP,
@@ -2112,7 +2132,35 @@ export class SolverService {
       method: args.method ? (str(args.method) as "weighted" | "epsilon" | "lexicographic") : undefined,
       seed: Number(args.seed ?? 42),
       coeff,
-    }, solve);
+      // ② 线级 + 换型小时（换型判定读 WorkOrder 末型号）
+      lineGranularity: asBool(args.lineGranularity),
+      lineCurrentModel: Object.keys(lineCurrentModel).length ? lineCurrentModel : undefined,
+      baseCurrentModel: Object.keys(baseCurrentModel).length ? baseCurrentModel : undefined,
+      lineModelCompat: asRec(args.lineModelCompat) as Record<string, string[]> | undefined,
+      // ④ 分批
+      allowSplit: asBool(args.allowSplit),
+      splitBatch: args.splitBatch != null ? num(args.splitBatch) : undefined,
+      // ① 物料联合约束（无 Material/BOM → 求解器诚实回退 materialConstraint:false）
+      materialConstraint, materials, bom,
+      // ③ 电芯-Pack 两阶段（factory_type 真数据；cellSourceMap/transitDays/freight WO-DATA 未落 → 诚实 mock+标注）
+      twoStage: asBool(args.twoStage),
+      cellSourceMap: asRec(args.cellSourceMap) as Record<string, string> | undefined,
+      transitDaysMap: asRec(args.transitDaysMap) as Record<string, number> | undefined,
+      freightCostMap: asRec(args.freightCostMap) as Record<string, number> | undefined,
+      packOnlyBases: packOnlyBases.length ? packOnlyBases : undefined,
+      cellCapableBases: cellCapableBases.length ? cellCapableBases : undefined,
+      // ⑤ 杠杆 ⑥ 硬锁 ⑦ 递进批次
+      levers: Array.isArray(args.levers) ? (args.levers as PortfolioInput["levers"]) : undefined,
+      priorityLocks: Array.isArray(args.priorityLocks) ? (args.priorityLocks as PortfolioInput["priorityLocks"]) : undefined,
+      committedBatches: Array.isArray(args.committedBatches) ? (args.committedBatches as PortfolioInput["committedBatches"]) : undefined,
+      scope: args.scope ? str(args.scope) : undefined,
+    };
+
+    // 编排路由：两阶段/物料/杠杆/硬锁/显式 globalSim → globalSimOptimize（GlobalSimResponse）；否则经典 portfolio（新增 线级/分批/递进 additive 亦经典路可达）。
+    const orchestrate = shared.twoStage === true || shared.materialConstraint === true
+      || (shared.levers?.length ?? 0) > 0 || (shared.priorityLocks?.length ?? 0) > 0 || asBool(args.globalSim) === true;
+    if (orchestrate) return (await runGlobalSimOptimize(shared, solve)) as unknown as Record<string, unknown>;
+    const out = await runPortfolioOptimize(shared, solve);
     return out as unknown as Record<string, unknown>;
   }
 
