@@ -22,6 +22,15 @@ const ConfigSchema = z.object({
    * 只在轮首检查一次，挂住则永不返回）。超时 → 优雅降级（诚实部分发现 + agent_degraded/TIMEOUT 事件），不放松 budget 下界。
    */
   QOS_AGENT_LLM_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  /**
+   * WO-Phase4 · ReAct Fallback 硬预算（只作用于 residual path-B `runPathB→runAgentLoop`，= Phase1–3 都没接住的真开放深问）：
+   * maxRoundTrips = 完成「LLM→工具执行→结果返回」轮次上界；maxDiscoverCalls = discover/search_experience/query_system_ontology
+   * 盲扫次数上界。超任一 → 优雅降级（BUDGET_EXHAUSTED·诚实部分发现·复用 finalize-force 抢救）。
+   * **opt-in（缺省不设 → 不覆写 DEFAULT_AGENT_BUDGET 的宽松值 → 既有 path-B 测试逐字节不变）**；
+   * 部署态收紧建议：`QOS_AGENT_MAX_ROUND_TRIPS=4`、`QOS_AGENT_MAX_DISCOVER_CALLS=1`（DEPLOY 指南）。机制本体由单测坐实。
+   */
+  QOS_AGENT_MAX_ROUND_TRIPS: z.coerce.number().int().optional(),
+  QOS_AGENT_MAX_DISCOVER_CALLS: z.coerce.number().int().optional(),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */

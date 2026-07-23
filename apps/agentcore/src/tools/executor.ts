@@ -39,6 +39,12 @@ export interface ExecutorOptions {
 /** 对象读取工具集：其 input.objectType/typeKey 受 scopeObjectTypes 约束（越界拒）。 */
 const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);
 
+/**
+ * WO-Phase4：探索类（"盲扫"）工具集——消耗 budget.maxDiscoverCalls 专用配额（与通用 tool 预算正交）。
+ * 真开放 residual 题最多允许 N 次盲扫（默认 residual=1），超即 BUDGET_EXCEEDED 并置 budget.exhausted → loop 硬预算降级。
+ */
+const DISCOVER_TOOLS = new Set(["discover", "search_experience", "query_system_ontology"]);
+
 export interface ExecutorDeps {
   dataCore: DataCoreClient;
   mcp?: McpClientPort;
@@ -166,6 +172,15 @@ export class GuardedToolExecutor {
       }
     } catch (err) {
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+    }
+
+    // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
+    // 串行/并行轮均在此消耗（确定性 R6）。超 maxDiscoverCalls → BUDGET_EXCEEDED + 置 budget.exhausted（loop 下轮降级）。
+    if (this.opts.budget && DISCOVER_TOOLS.has(toolName)) {
+      const d = this.opts.budget.tryConsumeDiscover();
+      if (!d.ok) {
+        return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: d.reason }, "BUDGET_EXCEEDED", started, false);
+      }
     }
 
     // 2) budget (path B only)；并行轮由循环侧预计数（budgetDecision 传入）

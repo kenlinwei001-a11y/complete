@@ -289,11 +289,15 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     reason?: "TIMEOUT" | "BUDGET_EXHAUSTED",
   ): Promise<AgentLoopResult> => {
     const blocks: AnswerBlock[] = [];
+    // WO-Phase4：有界终止（TIMEOUT/BUDGET_EXHAUSTED）收尾——诚实摘要前缀 + 复用「部分发现」抢救（不造数）+ provenance 列已调工具。
     if (reason) {
+      const budgetNote =
+        opts.budget.exhaustedReason ??
+        (reason === "TIMEOUT" ? "单次调用超出有界时限" : `round-trip/迭代上界（已 ${opts.budget.roundTrips} 轮）`);
       const header =
         reason === "TIMEOUT"
-          ? "⚠️ 探索超时：本次深问未能完全解答（单次调用超出有界时限，已诚实终止）。以下为已探索到的线索："
-          : "⚠️ 已达最大探索轮次/预算：本次深问未能完全解答。以下为已探索到的线索：";
+          ? `[预算耗尽·诚实摘要] ⚠️ 探索超时：本次深问未能完全解答（${budgetNote}，已诚实终止）。以下为已探索到的线索：`
+          : `[预算耗尽·诚实摘要] ⚠️ 已达最大探索轮次/预算（${budgetNote}）：本次深问未能完全解答。以下为已探索到的线索：`;
       blocks.push({ type: "text", markdown: header });
       blocks.push({ type: "text", markdown: synthesizePartialFindings() });
     } else {
@@ -303,9 +307,22 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
     if (reason === "TIMEOUT") opts.metrics.agentTimeout.inc();
     else if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
+    // WO-Phase4 · R13：有界终止摘要复述已调工具 → provenance 列所有成功产出结果的 toolCallId（去重·仅 OK 调用·
+    // 无成功调用则为空 = 诚实 NO_ANSWER，不编造溯源）。软收尾（无 reason）沿用既有空 provenance。
+    const provenance: ProvenanceRef[] = [];
+    if (reason) {
+      const seen = new Set<string>();
+      for (const it of iterations) {
+        for (const c of it.toolCalls) {
+          if (c.outcome !== "OK" || seen.has(c.toolCallId)) continue;
+          seen.add(c.toolCallId);
+          provenance.push({ id: newId("prov"), source: "TOOL_RESULT", toolCallId: c.toolCallId, toolName: c.toolName, outputPath: "$" });
+        }
+      }
+    }
     return {
       outcome,
-      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance: [], unverifiedNumerics: unverified },
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: unverified },
       run: finishRun(outcome === "BUDGET_EXHAUSTED"),
       sketch,
       ...(reason ? { degraded: { reason } } : {}),
@@ -504,6 +521,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   for (let i = 0; opts.budget.iterations < opts.budget.budget.maxIterations; i++) {
     if (opts.isCancelled?.()) return await degrade("FAILED");
     if (opts.budget.durationExceeded()) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
+    // WO-Phase4 · 硬预算兜底（确定性 R6·不依赖 LLM 输出内容）：探索类工具预算被 executor 消尽（exhausted）或
+    // round-trip 上界已达 → 立即优雅降级收尾（复用 finalize-force / 部分发现抢救路径），不再空转。
+    if (opts.budget.exhausted) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
+    if (opts.budget.roundTripsExceeded()) return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
     opts.budget.iterations += 1;
 
     // -----------------------------------------------------------------------
@@ -719,6 +740,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       })),
       folded: false,
     });
+    // WO-Phase4：完成一轮「LLM→工具执行→结果返回」→ round-trip +1（超 maxRoundTrips 在下一轮迭代前触发硬预算降级）。
+    opts.budget.roundTrips += 1;
 
     // 3 consecutive permission denials → force finish (§5.4-4)
     if (consecutiveDenies >= 3) {

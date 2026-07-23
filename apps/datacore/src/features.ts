@@ -111,6 +111,14 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
 
+/**
+ * WO-Phase4 · QOS 路由暗发特性——**即便行业模板「全开」也保持默认关**，必须经**显式**租户 override 才启用。
+ * 这两个门直接改写 QOS 编排路由（把有对口确定性 solver 的题劫持进慢/无预算的 path-B ReAct）——若被 battery
+ * 「all on」模板顺带打开，会让 demo 租户在无真 provider 部署态里空转超时（真因=无预算 ReAct，本 WO 硬预算治之，
+ * 但暗发门也必须诚实锁死默认关，不靠行业模板顺带开）。产品分档特性（sim.* / opt.* 等）不在此列，照常随模板开。
+ */
+export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set(["ceo.free-llm", "agent.coordinator"]);
+
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
   dash: "view.dash",
@@ -210,7 +218,11 @@ export class FeatureService {
     const tenant = await this.repos.tenants.get(tenantId, tenantId);
     const industry = tenant?.industry;
     if (!industry) return undefined;
-    if (industry === "battery-manufacturing") return new Set(ALL_FEATURE_KEYS); // battery default: all on
+    // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
+    // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
+    if (industry === "battery-manufacturing") {
+      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k)));
+    }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)
     )[0];
