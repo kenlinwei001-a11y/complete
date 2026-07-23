@@ -28,6 +28,10 @@ import {
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
+import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
+import { executePlan } from "./execute-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径执行器（服务端多步 + 一次综合·不经 runAgentLoop）
+import type { GuardedToolExecutor } from "../tools/executor.js";
+import type { ComposePlan } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
@@ -113,6 +117,16 @@ function freeLlmEnabled(set: FeatureSet): boolean {
 function coordinatorEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("agent.coordinator");
+}
+
+/**
+ * WO-Phase2-C-COMPLETE · feature 门：runPathB 内是否启用**组合路径**（多对口 solver 服务端编排 + 一次综合）。**暗发·默认关**。
+ * 与 coordinatorEnabled/freeLlmEnabled 同款字节兼容策略：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——
+ * 既有 path-B（含 CEO/块级真 LLM 深问经 runCeoFreeLLM→runPathB）逐字节不变·不劫持；仅**显式** Set 含 `qos.compose-path` 才启用。
+ */
+function composePathEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.compose-path");
 }
 
 /**
@@ -957,6 +971,29 @@ export class Orchestrator {
     // 不再逐跳盲选重编排。通用 path-B 不做对象域收窄（objectTypes 不声明·由 A6 行级过滤真隔离）。R6 纯投影·空图不注入。
     const navSlice = projectNavigationSlice(task.query, task.context.pageContext, { toolNames: tools.map((t) => t.name) });
     const sliceSection = renderNavigationSlice(navSlice);
+
+    // ★ WO-Phase2-C-COMPLETE · 组合路径挂点（本会落 path-B 的题·在 navSlice 之后、runAgentLoop 之前插·最小 additive）。
+    // 导航图有多个对口且**已登记 args schema** 的 solver 且可串时 → compileSolverPlan 出机器计划 →
+    // executePlan 服务端逐步 invoke_solver（复用上方 executor = path-A invoke 通道·动态接线在服务端做·**全程不经 runAgentLoop**）→ 一次综合。
+    // 编不出（无对口 / required arg 静态+上游都填不上）→ 把 why 进 trace 可诊断·**照落下方既有 runAgentLoop**（fallback-safe·绝不误降级开放题）。
+    // 命门：composeCompiled.ok===true 时，本会落 path-B 的这条 runAgentLoop（下方 :runAgentLoop）**绝不被走到**。
+    // 暗发门（qos.compose-path·defaultOn:false）：关（含 "ALL" 降级）→ 整条组合分支不存在 → 既有 path-B 逐字节不变·不劫持（C4）。
+    if (composePathEnabled(enabledFeatures)) {
+      const composeCompiled = compileSolverPlan(task.query, navSlice, this.composeSlots(task));
+      if (composeCompiled.ok) {
+        await this.executePlanPath(taskId, auth, task, composeCompiled.plan, classification, executor, model);
+        return; // 走组合路径·全程不落 runAgentLoop
+      }
+      await this.deps.events
+        .emit(taskId, "step.completed", {
+          stepId: newId("compose-miss"),
+          type: "compose_fallback",
+          outcome: composeCompiled.why,
+          durationMs: 0,
+        })
+        .catch(() => undefined);
+    }
+
     const baseUser = buildAgentUser(task, priorSummary || undefined);
     const userContent = sliceSection ? `${baseUser}\n\n${sliceSection}` : baseUser;
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
@@ -1026,6 +1063,80 @@ export class Orchestrator {
         durationMs: budget.elapsedMs(),
       });
     }
+    await this.deps.events.emit(taskId, "answer.final", result.answer);
+    this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+    await this.recordExperience(taskId);
+  }
+
+  /**
+   * WO-Phase2-C-COMPLETE · 组合器静态槽位派生（从 task.query / domainResolve.args / pageContext.focus 派生可填入参）。
+   * 纯派生（无 LLM/时钟/随机·R6）：domainResolve 单一来源取页面派生 args + focus 锚 + 问句里的订单/型号引用。
+   * 值非空即视为可静态填该 arg（compileSolverPlan 据此判 required arg 能否满足·填不上则回退 ReAct）。
+   */
+  private composeSlots(task: QueryTask): CompileSlots {
+    const slots: Record<string, unknown> = {};
+    const q = task.query ?? "";
+    const pc = task.context.pageContext;
+    // ① domainResolve.args（页面上下文派生·单一来源·复用 A 门同一解析器）。
+    const dr = domainResolve(q, pc);
+    for (const [k, v] of Object.entries(dr.args ?? {})) if (v != null) slots[k] = v;
+    // ② PageContext.focus 锚（metric/order/base/factor → 对口 arg 名）。
+    const focus = pc?.focus ?? {};
+    if (focus.metric != null && slots.metricKey == null) slots.metricKey = focus.metric;
+    if (focus.factorId != null && slots.factorId == null) slots.factorId = focus.factorId;
+    if (focus.base != null && slots.baseId == null) slots.baseId = focus.base;
+    if (focus.order != null) {
+      if (slots.targetOrderId == null) slots.targetOrderId = focus.order;
+      if (slots.orderRef == null) slots.orderRef = focus.order;
+      if (slots.so == null) slots.so = focus.order;
+    }
+    // ③ 问句文本里的订单引用（SO-xxxx）→ targetOrderId/orderRef/so（sop_reschedule/atp_check 定位主体）。
+    const orderM = q.match(/\bSO-?\d+\b/i);
+    if (orderM) {
+      const so = orderM[0];
+      if (slots.targetOrderId == null) slots.targetOrderId = so;
+      if (slots.orderRef == null) slots.orderRef = so;
+      if (slots.so == null) slots.so = so;
+    }
+    return slots;
+  }
+
+  /**
+   * WO-Phase2-C-COMPLETE · 组合路径出口：executePlan 服务端逐步 invoke_solver + 一次综合·**全程不落 runAgentLoop**。
+   * 复用 runPathB 已建的 executor（= makeExecutor 产物·path-A invoke 通道）与已解析 model；自行完成 task 收尾（COMPLETED + answer.final）。
+   * 与 path-B 分水岭：组合命中题绝不进 agent 盲选多跳。含 LLM 综合 → trustLevel=AGENT_EXPLORATORY（不冒充「数据库事实」）。
+   */
+  private async executePlanPath(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    plan: ComposePlan,
+    classification: ClassificationResult | undefined,
+    executor: GuardedToolExecutor,
+    model: string,
+  ): Promise<void> {
+    void auth; // executor 已挟带 OBO ctx（makeExecutor(taskId, auth, budget)）→ 无需二次透传
+    const result = await executePlan(plan, {
+      executor,
+      llm: this.deps.engine.deps.llm,
+      model,
+      tenantId: task.tenantId,
+      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+    });
+
+    if (this.cancelled.has(taskId)) {
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "CANCELLED" });
+      return;
+    }
+
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      answer: result.answer,
+      classification,
+      completedAt: new Date().toISOString(),
+    });
     await this.deps.events.emit(taskId, "answer.final", result.answer);
     this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
     await this.recordExperience(taskId);

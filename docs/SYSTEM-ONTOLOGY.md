@@ -209,6 +209,21 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
      · D 模型分层：**选型/规划已确定性化**（NavigationSlice + domainResolve + skill-router 全 R6·零 LLM）→ 推理档模型只做最终综合
        （不新增 LLM 用途枚举·purpose 枚举本体声明固定不可扩展）
      · 效果（真需 agent 的题）：discover 4-5→≤1 · round-trip 17→≤4 · 答案/溯源不劣化（R13·仍 AGENT_EXPLORATORY）
+   ★**组合路径（WO-Phase2-C·path-A 单跳 ↔ path-B ReAct 之间的中间路径·已接线·可执行）**：在 runPathB 内 navSlice 之后、
+     runAgentLoop 之前挂——
+       navSlice(已投影本题图) + composeSlots(orchestrator.composeSlots·从 task.query/domainResolve.args/PageContext.focus 静态派生·R6)
+         --compileSolverPlan(compile-plan.ts·纯函数 R6·消费 SOLVER_ARGS_SCHEMAS 地基·退化单步表 COMPOSE_SELF_SUFFICIENT 防双算)-->
+           · ok:true(ComposePlan{steps,synthesizeBlocks}) → **executePlan(execute-plan.ts)**：按 parallelGroup **升序**（组内并发 Promise.all·
+             组间串行）逐步 `executor.run("invoke_solver",…)`（**复用 path-A invoke 通道 = makeExecutor 产物**·动态接线 argsFrom{fromStep,
+             outputPath,toArg} **在服务端做·不经 LLM**）→ 全步跑完 **调一次 `llm.compose` 综合**产 synthesizeBlocks
+             （无 provider→诚实确定性兜底）→ patch task.answer(trustLevel=AGENT_EXPLORATORY·含 LLM 综合不冒充「数据库事实」)
+             —— **★分水岭：compiled.ok===true 时全程不落 runAgentLoop（SEAM-1 集成态 spy==0 坐实）**
+           · ok:false{fallback:"react",why} → why 落 step.completed(type=compose_fallback)可诊断·**照落既有 runAgentLoop**
+             （fallback-safe·SEAM-3 集成态 spy≥1 坐实·绝不误降级开放题）
+     · 不变量：R6(executePlan 同 plan 同执行序同产物·组内无共享写·汇总按 step 稳定) · 数字红线(综合步不产数·每数字 ⟦ref:N⟧ 溯到某步产物·
+       scan 未溯源裸数→unverifiedNumerics) · R13(每步一条 provenance source=TOOL_RESULT 贯通) · R1(ComposePlan 契约在 contracts·A/B 共享形状)
+     · 边界实录（消费不改）：组合仅覆盖 **navigation-slice SOLVER_CATALOG ∩ SOLVER_ARGS_SCHEMAS 已登记** 的 solver；portfolio/affected_orders
+       已登记 args schema 但未入 SOLVER_CATALOG → 经真 navSlice 暂不投影（serial argsFrom 由 executePlan 直驱测坐实·待补 catalog 即可端到端）
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
                        ├─**跨域 Coordinator 编排（WO-FIVE-ROLE P1·Ch63·暗发 agent.coordinator）**：Query --planCoordination(跨域判定·R6)-->
                        │  CoordinatorPlan{dispatches} --invoke_agent 扇出(enforceObjectScope)--> {供应链|生产|质量} 角色 Agent

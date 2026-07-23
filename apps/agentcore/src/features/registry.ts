@@ -97,6 +97,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 跨域问题→Coordinator 多角色编排（拆子问→invoke_agent 扇出调 CEO/供应链/生产/质量角色 agent→汇总）。
   // orchestrator coordinatorEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·不劫持单 agent path-B）。
   { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
+  // WO-Phase2-C-COMPLETE（R3 暗发·defaultOn:false·字节兼容·不劫持既有 path-B）：path-A 单跳 ↔ path-B ReAct 之间的
+  // **组合路径**——runPathB 内多对口 solver 可串时 compileSolverPlan→executePlan 服务端多步 + 一次综合（不落 runAgentLoop）。
+  // orchestrator composePathEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变）。
+  { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
