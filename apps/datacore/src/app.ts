@@ -27,7 +27,8 @@ import { QuarantineService } from "./quarantine.js";
 import { MetaOntologyService } from "./meta/service.js";
 import { NotificationService } from "./notifications.js";
 import { EntityResolutionService } from "./entity-resolution.js";
-import { CatalogService } from "./catalog.js";
+import { CatalogService, ALL_SOLVER_CATALOG } from "./catalog.js";
+import { projectTypeSemantics } from "./ontology/type-semantics.js";
 import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
@@ -2253,6 +2254,40 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     return buildMappingRegistries(repos, c.tenantId);
   });
+  // WO-QOS-ONTOLOGY-CONTEXT · 本体口径/语义投影（问句→本体口径/语义投影层的单一真值原料·天然只读·确定性 R6）。
+  // 入 domain?/focus?（仅回显·投影返全量原料·相关性选择由引擎半 assembleContextBundle 定）；口径来自本体单一真值。
+  const typeSemanticsHandler = async (req: FastifyRequest) => {
+    const c = ctx(req);
+    const src = (req.method === "GET" ? (req.query as Record<string, unknown>) : ((req.body as Record<string, unknown>) ?? {})) ?? {};
+    const domainFilter = typeof src.domain === "string" && src.domain.length > 0 ? src.domain : undefined;
+    const types = await ontology.listTypes(c);
+    const links = (await repos.ontologyLinks.list(c.tenantId)).filter((l) => l.published !== false);
+    // 因果证据类型宇宙：CausalFactor 实例 drillType 去重（数据源自本体真实因果图·非内联）。
+    const causalType = types.find((t) => t.key === "CausalFactor");
+    const causalDrillTypes: string[] = [];
+    if (causalType) {
+      for (const o of await repos.objects.listByType(c.tenantId, "CausalFactor")) {
+        if (o.mergedInto) continue;
+        const dt = o.props?.drillType;
+        if (typeof dt === "string" && dt.length > 0) causalDrillTypes.push(dt);
+      }
+    }
+    const solverTargets: Record<string, string> = {};
+    for (const [k, v] of Object.entries(SOLVER_GRAPH)) solverTargets[k] = v.target;
+    return projectTypeSemantics({
+      types,
+      links,
+      solverCatalog: ALL_SOLVER_CATALOG,
+      solverOutputShapes: SOLVER_OUTPUT_SHAPES,
+      solverTargets,
+      graphDomain: GRAPH_DOMAIN,
+      causalDrillTypes,
+      ...(causalType ? { causalDomain: causalType.domain ?? GRAPH_DOMAIN["CausalFactor"] ?? "unassigned" } : {}),
+      ...(domainFilter ? { domainFilter } : {}),
+    });
+  };
+  app.get("/a/v1/ontology/type-semantics", typeSemanticsHandler);
+  app.post("/a/v1/ontology/type-semantics", typeSemanticsHandler);
   // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
   app.get("/a/v1/catalog", async (req) => {
     const { kind, query } = req.query as { kind?: string; query?: string };

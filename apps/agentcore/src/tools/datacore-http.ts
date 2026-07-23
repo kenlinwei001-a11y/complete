@@ -1,4 +1,4 @@
-import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload, TypeSemanticsPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -115,6 +115,10 @@ class HttpOntologyClient implements OntologyClient {
       this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types/stats`,
     );
     return (res?.stats ?? []).map((s) => ({ key: s.key, label: s.displayName ?? s.key, domain: s.domain ?? "unassigned", instanceCount: s.count ?? 0 }));
+  }
+  typeSemantics(ctx: ToolAuthCtx, req?: { domain?: string }): Promise<TypeSemanticsPayload> {
+    const qs = req?.domain ? `?domain=${encodeURIComponent(req.domain)}` : "";
+    return call<TypeSemanticsPayload>(this.baseUrl, ctx, "GET", `/a/v1/ontology/type-semantics${qs}`);
   }
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/ontology/cross-validate`, req);

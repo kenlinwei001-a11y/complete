@@ -1,4 +1,5 @@
-import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload, TypeSemanticsPayload } from "@platform/contracts";
+import { MOCK_TYPE_SEMANTICS } from "./type-semantics-fixture.js";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -249,6 +250,12 @@ export class MockOntologyClient implements OntologyClient {
       { key: "Order", label: "销售订单", domain: "sales", instanceCount: await count("Order") },
       { key: "Model", label: "产品型号", domain: "product", instanceCount: await count("Model") },
     ];
+  }
+
+  // WO-QOS-ONTOLOGY-CONTEXT · 本体口径/语义投影原料（mock 忠实镜像真 datacore projectTypeSemantics 形状·
+  // 真投影由 datacore type-semantics.test.ts 守·此处供引擎半 resolveOntologyContext 接缝测·域仅回显）。
+  async typeSemantics(_ctx: ToolAuthCtx, req?: { domain?: string }): Promise<TypeSemanticsPayload> {
+    return { ...MOCK_TYPE_SEMANTICS, ...(req?.domain ? { domain: req.domain } : {}) };
   }
 
   // 推演验证痕迹 Layer 2：对照 mock 知识图谱事实核对断言（确定性，与 mock 对象一致）。

@@ -54,3 +54,4 @@ export * from "./inventory.js"; // WO-INVENTORY-3TIER · 库存三层闭环 Fini
 export * from "./atp-promise.js"; // WO-ATP-PROMISE · 订单承诺 ATP/CTP（OrderPromise + atp_check：能不能接/何时交·净读三源·SEAM 改产能/库存→承诺变·R6）
 export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资源描述契约 + 发现门（全5池 description 覆盖·additive）
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
+export * from "./ontology-context.js"; // WO-QOS-ONTOLOGY-CONTEXT · 本体口径/语义投影地基（问句→相关类型/求解器/口径 context bundle·三消费方共同前置·R6 确定性·灭 mirror 漂移）

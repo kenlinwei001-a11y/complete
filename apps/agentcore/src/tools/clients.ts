@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload, TypeSemanticsPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -39,6 +39,8 @@ export interface OntologyClient {
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /** CL.3 discover 真实类型名：本租户已发布对象类型 {key,label(中文),domain,instanceCount}（agent 照真名查不再猜）。 */
   listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]>;
+  /** WO-QOS-ONTOLOGY-CONTEXT · 本体口径/语义投影原料（问句→context bundle 的单一真值源·datacore 半确定性 R6）。 */
+  typeSemantics(ctx: ToolAuthCtx, req?: { domain?: string }): Promise<TypeSemanticsPayload>;
   /** 推演验证痕迹 Layer 2：把结论断言交给 DataCore 对照知识图谱已有事实交叉验证。 */
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse>;
   /** 自成长 P2：缺数据真人正门补——确定性生成 CSV 经公开上传门导入。 */
