@@ -247,7 +247,14 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
      · 不变量：R6(executePlan 同 plan 同执行序同产物·组内无共享写·汇总按 step 稳定) · 数字红线(综合步不产数·每数字 ⟦ref:N⟧ 溯到某步产物·
        scan 未溯源裸数→unverifiedNumerics) · R13(每步一条 provenance source=TOOL_RESULT 贯通) · R1(ComposePlan 契约在 contracts·A/B 共享形状)
      · 边界实录（消费不改）：组合仅覆盖 **navigation-slice SOLVER_CATALOG ∩ SOLVER_ARGS_SCHEMAS 已登记** 的 solver；portfolio/affected_orders
-       已登记 args schema 但未入 SOLVER_CATALOG → 经真 navSlice 暂不投影（serial argsFrom 由 executePlan 直驱测坐实·待补 catalog 即可端到端）
+       已登记 args schema 但未入 SOLVER_CATALOG → 经真 navSlice 暂不投影（serial argsFrom 由 executePlan 直驱测坐实）
+     ★**推演 NL 大脑（WO-GSIM-4-AGENT·消费 Phase2-C·补 portfolio 端到端）**：推演类 NL（全局联合排产/跨基地最优/递进批次）
+       经 `agent/sim-planner.ts isSimComposeQuery` 识别 → `buildSimNavSlice`（R6 纯投影·portfolio 为中心的推演专属 navSlice·
+       portfolio ⊕ affected_orders ⊕ capacity_forecast·**不碰 navigation-slice 系统级 catalog / 组合器内部**）→ orchestrator 一处挂点
+       用 sim slice 喂 `compileSolverPlan` → executePlan 服务端多步 → 一次综合 · **runAgentLoop 零调用**（agentRequests==0 坐实）。
+       非推演题照用通用 navSlice（不劫持）。SEAM `compose-sim-seam.test.ts`（推演 NL→portfolio 服务端跑·综合一次·runAgentLoop 未调·R6·不劫持·4 绿）。
+       **诚实边界**：推演链 §3.1 全量含 mrp_netting/margin_attribution 尚未登记 args schema（地基在 datacore/contracts·本单范围禁碰）→ 组合仅纳已登记子集
+       （无 modelId → capacity_forecast 诚实落选）；§3.2 多方案叙述口径依赖 `PRD-全局推演-并行派发套件.md §1 契约`（未随附）→ 本单只落 §3.1 组合骨架 + §4 SEAM
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
                        ├─**跨域 Coordinator 编排（WO-FIVE-ROLE P1·Ch63·暗发 agent.coordinator）**：Query --planCoordination(跨域判定·R6)-->
                        │  CoordinatorPlan{dispatches} --invoke_agent 扇出(enforceObjectScope)--> {供应链|生产|质量} 角色 Agent

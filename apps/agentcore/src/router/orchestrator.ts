@@ -32,6 +32,7 @@ import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKey
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
 import { executePlan } from "./execute-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径执行器（服务端多步 + 一次综合·不经 runAgentLoop）
+import { isSimComposeQuery, buildSimNavSlice } from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT · 推演 NL 大脑（portfolio 为中心的推演链投影·消费 Phase2-C 组合器）
 import type { GuardedToolExecutor } from "../tools/executor.js";
 import type { ComposePlan } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
@@ -986,7 +987,11 @@ export class Orchestrator {
     // 命门：composeCompiled.ok===true 时，本会落 path-B 的这条 runAgentLoop（下方 :runAgentLoop）**绝不被走到**。
     // 暗发门（qos.compose-path·defaultOn:false）：关（含 "ALL" 降级）→ 整条组合分支不存在 → 既有 path-B 逐字节不变·不劫持（C4）。
     if (composePathEnabled(enabledFeatures)) {
-      const composeCompiled = compileSolverPlan(task.query, navSlice, this.composeSlots(task));
+      // ★ WO-GSIM-4-AGENT · 推演 NL 大脑：推演类问句（全局联合排产/跨基地最优/递进批次）→ 用 portfolio 为中心的
+      // **推演专属 navSlice**（通用 catalog 不含 portfolio）交给 Phase2-C compileSolverPlan → executePlan 服务端多步组合。
+      // 非推演题照用通用 navSlice（不劫持·R6 纯投影·不碰 navigation-slice 系统级 catalog / 组合器内部）。
+      const composeSlice = isSimComposeQuery(task.query, task.context.pageContext) ? buildSimNavSlice(task.query) : navSlice;
+      const composeCompiled = compileSolverPlan(task.query, composeSlice, this.composeSlots(task));
       if (composeCompiled.ok) {
         await this.executePlanPath(taskId, auth, task, composeCompiled.plan, classification, executor, model);
         return; // 走组合路径·全程不落 runAgentLoop
