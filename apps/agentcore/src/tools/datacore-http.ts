@@ -1,4 +1,4 @@
-import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -60,8 +60,38 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
   return (await res.json()) as T;
 }
 
+/** WO-QOS-ONTOLOGY-CONTEXT · B→A type-semantics 资源缓存（TTL 60s + {kind}.updated 事件失效，与 provider/feature 目录同机制）。 */
+const TYPE_SEMANTICS_TTL_MS = 60_000;
+
 class HttpOntologyClient implements OntologyClient {
   constructor(private readonly baseUrl: string) {}
+  /** 缓存键 = `${tenantId}::${sortedTypeKeys}`；命中且未过期 → 不打 A（不 per-question 打 A）。 */
+  private readonly semanticsCache = new Map<string, { value: TypeSemanticsResponse; fetchedAt: number }>();
+
+  async getTypeSemantics(ctx: ToolAuthCtx, typeKeys: string[]): Promise<TypeSemanticsResponse> {
+    const keys = [...new Set(typeKeys.filter(Boolean))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (keys.length === 0) return { types: [] };
+    const cacheKey = `${ctx.tenantId ?? ""}::${keys.join(",")}`;
+    const hit = this.semanticsCache.get(cacheKey);
+    if (hit && Date.now() - hit.fetchedAt < TYPE_SEMANTICS_TTL_MS) return hit.value;
+    const value = await call<TypeSemanticsResponse>(
+      this.baseUrl,
+      ctx,
+      "GET",
+      `/a/v1/ontology/type-semantics?types=${encodeURIComponent(keys.join(","))}`,
+    );
+    this.semanticsCache.set(cacheKey, { value, fetchedAt: Date.now() });
+    return value;
+  }
+
+  /** {kind}.updated（ontology/rules）事件失效：给 tenantId 清该租户所有键；不给 → 全清（幂等无害）。 */
+  invalidateTypeSemantics(tenantId?: string): void {
+    if (!tenantId) {
+      this.semanticsCache.clear();
+      return;
+    }
+    for (const k of [...this.semanticsCache.keys()]) if (k.startsWith(`${tenantId}::`)) this.semanticsCache.delete(k);
+  }
   resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/slices/${encodeURIComponent(sliceKey)}/resolve`, { args });
   }

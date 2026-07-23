@@ -209,6 +209,21 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
      · D 模型分层：**选型/规划已确定性化**（NavigationSlice + domainResolve + skill-router 全 R6·零 LLM）→ 推理档模型只做最终综合
        （不新增 LLM 用途枚举·purpose 枚举本体声明固定不可扩展）
      · 效果（真需 agent 的题）：discover 4-5→≤1 · round-trip 17→≤4 · 答案/溯源不劣化（R13·仍 AGENT_EXPLORATORY）
+     ★**口径语义锚定（WO-QOS-ONTOLOGY-CONTEXT·缺口③文档三层投喂第二层·导航图→导航图+语义锚定）**：导航图给了字段名
+       (KEY_PROPS)+solver 输出形状+一句话规则提示，但**没给每个数字的口径**——Metric formula/unit、派生 formula
+       (gap=actual-target、SUM(Order.qty BY model))、RuleEntry expression(C03「Order.demandDelta>0.5」) 都在 A 本体里，
+       B 侧只 mirror 了名字没 mirror 口径。故综合步注入紧随导航图 append 一层「口径与规则锚定」：
+       NavigationSlice --selectSemanticTypeKeys(只 slice 涉及对象类型·膨胀防护)--> getTypeSemantics(ctx,typeKeys)
+         --OBO GET /a/v1/ontology/type-semantics?types=..--> DataCore(ontology.listTypes+rules.list PUBLISHED 组装·纯读 R6·R2 租户隔离)
+         --renderOntologySemanticContext(R6 纯渲染·只列涉及项·确定性)--> 「实体/指标口径(description/unit/派生 formula)+规则 expression」块
+       · 注入点：orchestrator.runPathB ⊕ engine.runRegisteredAgent（紧随 renderNavigationSlice·最小 additive·**merge-watch**：
+         Phase2-C once-composer 并入时此钩子需 rebase 到综合装配处）
+       · 单一真值在 A（R1 contracts-only-shared·契约 packages/contracts/ontology-semantics.ts·B 经 REST 读不 import 源·灭语义漂移）；
+         B→A type-semantics 资源缓存 TTL60s + {kind}.updated(ontology.published/rules.updated) 失效（不 per-question 打 A）
+       · 数字红线：块只解释口径·明标「供解释·非数据源」；业务数字仍全部来自工具结果标 ⟦ref:N⟧（此块不产数字）
+       · fail-open：A 不可达/mock 客户端无 getTypeSemantics → 空块（不阻断查询）；缺口径文本(description/formula 未填)→诚实缺省不编造
+       · SEAM（灭 mirror 漂移·非各半绿）：改 A prop.description/rule.expression → B 注入块同步变（datacore type-semantics.test A-半
+         + agentcore ontology-context.test B-半渲染纯度 + 真 HTTP 驱动组合测：改 A 口径+失效→B 块变）
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
                        ├─**跨域 Coordinator 编排（WO-FIVE-ROLE P1·Ch63·暗发 agent.coordinator）**：Query --planCoordination(跨域判定·R6)-->
                        │  CoordinatorPlan{dispatches} --invoke_agent 扇出(enforceObjectScope)--> {供应链|生产|质量} 角色 Agent

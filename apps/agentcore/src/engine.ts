@@ -2,6 +2,7 @@ import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, 
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
+import { buildOntologySemanticContext } from "./agent/ontology-context.js";
 import { selectMcpTools } from "./agent/mcp-router.js";
 import type { Embedder } from "./agent/skill-router.js";
 import { buildProviderEmbedder, llmRollingSummarizer } from "./agent/production-cognition.js";
@@ -208,7 +209,11 @@ export class ExecutionEngine {
     // 不再 discover 盲扫逐跳。R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
     const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration);
     const sliceSection = renderNavigationSlice(navSlice);
-    const userContent = sliceSection ? `${opts.prompt}\n\n${sliceSection}` : opts.prompt;
+    // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径
+    //（Metric formula/unit·派生公式·规则 expression·取自 A 单一真值 getTypeSemantics·TTL60s 缓存·只列涉及项）——
+    // 综合步看"带口径标注的数据"。fail-open·纯 additive（供解释·非数据源·数字仍标 ⟦ref:N⟧）。
+    const semanticSection = await buildOntologySemanticContext(navSlice, opts.ctx, this.deps.dataCore.ontology);
+    const userContent = [opts.prompt, sliceSection, semanticSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
 
     const executor = this.makeExecutor(
