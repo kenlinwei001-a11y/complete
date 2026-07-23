@@ -10,8 +10,10 @@
   --line: rgba(226, 235, 245, 0.08);
   --line2: rgba(226, 235, 245, 0.14);
   --txt: #e9eef5;
-  --muted: #9aa8b6;
-  --muted2: #67737f;
+  /* WO-THEME-A11Y：暗色三级文字补 WCAG AA 校核（当初仅浅色做了·暗色漏）——对最亮底 panel #2c3d5e 亦达标：
+     txt 9.3:1 · muted 5.8:1 · muted2 4.5:1。旧 muted2 #67737f 仅 2.2–2.6:1（青蓝底上失读·本次修复）。 */
+  --muted: #b1bece;
+  --muted2: #9ba9b7;
   --accent: #4c90f0;
   /* 领域色（图谱/图例/标签复用） */
   --c-factory: #5e8fe8;
