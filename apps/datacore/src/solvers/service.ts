@@ -5,7 +5,7 @@ import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
-import { BATTERY_SOLVER_PARAMS, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
@@ -2120,6 +2120,26 @@ export class SolverService {
     const materials = materialConstraint ? (await this.repos.objects.listByType(ctx.tenantId, "Material")).map((o) => o.props) : undefined;
     const bom = asRec(args.bom) as Record<string, { material: string; supplier: string; perUnit: number }[]> | undefined;
 
+    // ③ WO-GSIM 接真收口（WO-DATA 已落·闭 G-CELL-PACK-2STAGE 全接缝）：从真 cellSourceMap/baseDistanceKm 派生
+    //    供芯图（就近首选）+ 在途（ceil 距离/日均卡车里程）+ 运费（距离×吨公里费率×折吨/套），替 solver 端诚实 mock。
+    //    args 显式覆盖优先（供 SEAM 注入）；仅无基地/无 PACK 基地时退回 solver 内 mock。确定性纯派生（R6·无 rng/时钟）。
+    const ib = (BATTERY_SOLVER_PARAMS.interbase ?? { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 }) as {
+      dailyTruckKm: number; minTransitDays: number; tonKmRate: number; qtyToTon: number;
+    };
+    const geoCsm = cellSourceMapFn(bases.map((b) => ({ baseId: str(b.baseId), factory_type: str(b.factory_type) })));
+    const geoCellSourceMap: Record<string, string> = {};
+    const geoTransitDaysMap: Record<string, number> = {};
+    const geoFreightCostMap: Record<string, number> = {};
+    for (const [packBase, cells] of Object.entries(geoCsm)) {
+      const cellBase = cells[0];
+      if (!cellBase) continue;
+      geoCellSourceMap[packBase] = cellBase; // 就近供芯基地（cellSourceMap 已按 baseDistanceKm 升序·R6 断平）
+      const km = baseDistanceKm(cellBase, packBase);
+      const key = `${cellBase}->${packBase}`;
+      geoTransitDaysMap[key] = Math.max(ib.minTransitDays, Math.ceil(km / ib.dailyTruckKm));
+      geoFreightCostMap[key] = round(km * ib.tonKmRate * ib.qtyToTon, 2); // 运费/套（solver 再 ×qty）
+    }
+
     const shared: PortfolioInput = {
       forecastStart: str(params.forecastStart),
       orders, workOrders, demandSegments, bases, lines, changeover,
@@ -2142,11 +2162,11 @@ export class SolverService {
       splitBatch: args.splitBatch != null ? num(args.splitBatch) : undefined,
       // ① 物料联合约束（无 Material/BOM → 求解器诚实回退 materialConstraint:false）
       materialConstraint, materials, bom,
-      // ③ 电芯-Pack 两阶段（factory_type 真数据；cellSourceMap/transitDays/freight WO-DATA 未落 → 诚实 mock+标注）
+      // ③ 电芯-Pack 两阶段（factory_type + cellSourceMap/transitDays/freight 均真数据·WO-GSIM 接真收口·args 覆盖优先·仅无基地时退 solver mock）
       twoStage: asBool(args.twoStage),
-      cellSourceMap: asRec(args.cellSourceMap) as Record<string, string> | undefined,
-      transitDaysMap: asRec(args.transitDaysMap) as Record<string, number> | undefined,
-      freightCostMap: asRec(args.freightCostMap) as Record<string, number> | undefined,
+      cellSourceMap: (asRec(args.cellSourceMap) as Record<string, string> | undefined) ?? (Object.keys(geoCellSourceMap).length ? geoCellSourceMap : undefined),
+      transitDaysMap: (asRec(args.transitDaysMap) as Record<string, number> | undefined) ?? (Object.keys(geoTransitDaysMap).length ? geoTransitDaysMap : undefined),
+      freightCostMap: (asRec(args.freightCostMap) as Record<string, number> | undefined) ?? (Object.keys(geoFreightCostMap).length ? geoFreightCostMap : undefined),
       packOnlyBases: packOnlyBases.length ? packOnlyBases : undefined,
       cellCapableBases: cellCapableBases.length ? cellCapableBases : undefined,
       // ⑤ 杠杆 ⑥ 硬锁 ⑦ 递进批次
