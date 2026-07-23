@@ -101,7 +101,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 120s                     # 首次启动含演示数据播种（90 天时序）
+      start_period: 600s                     # 首次启动含演示数据播种（pg 模式 90 天时序实测 ~487s，留余量）
 
   agentcore:
     build:
