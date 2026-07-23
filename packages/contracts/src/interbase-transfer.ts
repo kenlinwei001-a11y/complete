@@ -28,8 +28,10 @@ export const InterBaseTransferSchema = z.object({
   model: z.string(),
   /** 调拨数量（套）。 */
   qty: z.number().int().nonnegative(),
-  /** 在途天数。 */
+  /** 在途天数（WO-GSIM-1-DATA：由基地经纬度 haversine 距离 ÷ 日卡车里程派生·非哈希·灭 G-TRANSIT-NOT-GEO）。 */
   transitDays: z.number().int().nonnegative(),
+  /** 运费成本（WO-GSIM-1-DATA：= baseDistanceKm × tonKmRate × (qty × qtyToTon)·确定性派生·灭 G-NO-FREIGHT-COST；同基地=0）。 */
+  freightCost: z.number().nonnegative().optional(),
   /** 状态。 */
   status: InterBaseTransferStatus,
   /** 发运日 ISO（= forecastStart + dispatchDay）。 */

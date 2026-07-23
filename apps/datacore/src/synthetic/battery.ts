@@ -53,6 +53,42 @@ export const MODEL_BASE_MAP: Record<string, string[]> = {
   "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
 };
 
+// WO-GSIM-1-DATA · 基地间地理距离（haversine）——灭 G-TRANSIT-NOT-GEO（在途天数此前是哈希常量·与地理无关）。
+// 经纬度取自 BASE_REGISTRY 单一来源（R14·不内联坐标）；任意 (fromBase,toBase) 对可查（非仅 MODEL_BASE_MAP 相邻对）。
+// 纯确定性（无 rng/时钟·R6）；同基地→距离 0（→ 运费 0）。
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // 地球平均半径(km)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** 基地间公路直线距离(km)·haversine 于 BASE_REGISTRY 经纬度（单一来源·R14）。任意基地对可查·同基地=0。 */
+export function baseDistanceKm(fromBase: string, toBase: string): number {
+  const a = BASE_REGISTRY.find((b) => b.baseId === fromBase);
+  const b = BASE_REGISTRY.find((x) => x.baseId === toBase);
+  if (!a || !b) throw new Error(`base not in registry: ${fromBase}/${toBase}`);
+  return haversineKm(a.lat, a.lon, b.lat, b.lon);
+}
+
+// WO-GSIM-1-DATA · 供芯图（G-CELL-PACK-2STAGE 数据半·纯派生函数·非新对象类型→不撞 golden 类型计数）。
+// 电芯→电池包两段制：每个纯 PACK 基地（factory_type==="PACK"）由哪些可产芯基地（CELL/CELL+PACK）就近供芯。
+// factory_type 从生成态 bases 行读（非重派生·守 §2 单一来源）；就近排序按 baseDistanceKm（同距以 baseId 稳定次序断平·R6）。
+export function cellSourceMap(bases: { baseId: string; factory_type?: string }[]): Record<string, string[]> {
+  const cellBases = bases.filter((b) => b.factory_type === "CELL" || b.factory_type === "CELL+PACK");
+  const packBases = bases.filter((b) => b.factory_type === "PACK");
+  const map: Record<string, string[]> = {};
+  for (const p of packBases) {
+    map[p.baseId] = cellBases
+      .map((c) => ({ id: c.baseId, d: baseDistanceKm(p.baseId, c.baseId) }))
+      .sort((x, y) => x.d - y.d || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
+      .map((x) => x.id);
+  }
+  return map;
+}
+
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
 const CUSTOMERS = [
   // 乘用车
@@ -154,6 +190,10 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   health: { normal: 0.93, degraded: 0.9, staleHours: 2 },
   whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
+  // WO-GSIM-1-DATA · 跨基地调拨物流费率常数（R14：业务常数入册·禁生成环内联魔数）。
+  // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
+  // freightCost = baseDistanceKm × tonKmRate × (qty × qtyToTon)（确定性·同基地=0 距=0 费=0）。
+  interbase: { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 },
   bottleneck: {
     factors: [...BN_FACTORS],
     // 基地→主瓶颈因素（HTML 为准：常州·化成=瓶颈工序 92 · 江门·物料齐套 90，dash/sop 同源）。
@@ -890,7 +930,8 @@ const interBaseTransferProps: PropertyDef[] = [
   { propKey: "toBase", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
   { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false }, // 套
-  { propKey: "transitDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "transitDays", dataType: "number", isPrimaryKey: false }, // 距离派生 = ceil(baseDistanceKm / dailyTruckKm)（WO-GSIM-1-DATA）
+  { propKey: "freightCost", dataType: "number", isPrimaryKey: false }, // 运费 = baseDistanceKm × tonKmRate × (qty × qtyToTon)（WO-GSIM-1-DATA）
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // PLANNED | IN_TRANSIT | DELIVERED | CANCELLED
   { propKey: "dispatchDate", dataType: "date", isPrimaryKey: false },
   { propKey: "dispatchDay", dataType: "number", isPrimaryKey: false }, // 相对 forecastStart 的天偏移（etaDay 派生输入）
@@ -3655,6 +3696,14 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const xferT0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
   const baseNameById = new Map(bases.map((b) => [b.baseId as string, b.name as string]));
   const XFER_STATUS = ["PLANNED", "IN_TRANSIT", "DELIVERED"] as const;
+  // WO-GSIM-1-DATA · 物流费率常数（R14·BATTERY_SOLVER_PARAMS 单一来源·不内联魔数）。
+  const ibp = BATTERY_SOLVER_PARAMS.interbase as { dailyTruckKm: number; minTransitDays: number; tonKmRate: number; qtyToTon: number };
+  // 距离派生在途天数（灭 G-TRANSIT-NOT-GEO）：ceil(距/日卡车里程)，下限 minTransitDays（同区非 0）。
+  const transitDaysFor = (fromId: string, toId: string): number =>
+    Math.max(ibp.minTransitDays, Math.ceil(baseDistanceKm(fromId, toId) / ibp.dailyTruckKm));
+  // 运费（灭 G-NO-FREIGHT-COST）：距 × 吨公里费率 × (套×吨/套)；同基地 距=0 → 费=0。确定性（无 rng·R6）。
+  const freightCostFor = (fromId: string, toId: string, qty: number): number =>
+    Math.round(baseDistanceKm(fromId, toId) * ibp.tonKmRate * (qty * ibp.qtyToTon));
   const interBaseTransfers: Record<string, unknown>[] = [];
   for (const [modelId, producibleBases] of Object.entries(MODEL_BASE_MAP)) {
     for (let i = 0; i + 1 < producibleBases.length; i++) {
@@ -3662,9 +3711,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       const toId = producibleBases[i + 1]!;
       const h = hashString(`xfer_${fromId}_${toId}_${modelId}`);
       const qty = 500 + (h % 46) * 100; // 500..5000 套
-      const transitDays = 2 + (Math.floor(h / 46) % 12); // 2..13 天
+      const transitDays = transitDaysFor(fromId, toId); // 距离派生（非哈希·G-TRANSIT-NOT-GEO）
       const dispatchDay = 1 + (Math.floor(h / 1000) % 20); // 1..20（相对 forecastStart）
       const etaDay = dispatchDay + transitDays; // 与 derivedProperties 同式（materialize 早填，管线重算不变·R6）
+      const freightCost = freightCostFor(fromId, toId, qty); // 距离×费率派生（G-NO-FREIGHT-COST）
       const status = XFER_STATUS[h % XFER_STATUS.length]!;
       const fromName = baseNameById.get(fromId) ?? fromId;
       const toName = baseNameById.get(toId) ?? toId;
@@ -3675,6 +3725,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         model: modelId,
         qty,
         transitDays,
+        freightCost,
         status,
         dispatchDate: isoDate(xferT0 + dispatchDay * 86400000),
         dispatchDay,
@@ -3683,6 +3734,42 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         reason: `${fromName}→${toName} ${modelId} 产能调剂`,
       });
     }
+  }
+  // WO-GSIM-1-DATA T5 · 电芯→电池包两段制跨基地供芯样本（G-CELL-PACK-2STAGE·SEAM 物料）。
+  // 每个纯 PACK 基地（factory_type==="PACK"）由 cellSourceMap 就近首选 CELL/CELL+PACK 基地供芯，
+  // 落成真 InterBaseTransfer（fromBase=就近芯厂→toBase=PACK 厂），令「供芯图（数据）× 调拨事实」接缝可查。
+  // model 取该 PACK 基地在 MODEL_BASE_MAP 的首个可产型号（reverse map·芯型即包型）。纯确定性（无 rng·R6）。
+  const modelByBase = new Map<string, string>();
+  for (const [mId, bs] of Object.entries(MODEL_BASE_MAP)) for (const bid of bs) if (!modelByBase.has(bid)) modelByBase.set(bid, mId);
+  const csMap = cellSourceMap(bases as { baseId: string; factory_type?: string }[]);
+  for (const [packBaseId, sources] of Object.entries(csMap)) {
+    const nearest = sources[0];
+    const modelId = modelByBase.get(packBaseId);
+    if (!nearest || !modelId) continue;
+    const h = hashString(`cellxfer_${nearest}_${packBaseId}_${modelId}`);
+    const qty = 800 + (h % 30) * 100; // 800..3700 套（电芯批量→包装配）
+    const transitDays = transitDaysFor(nearest, packBaseId);
+    const dispatchDay = 1 + (Math.floor(h / 1000) % 20);
+    const etaDay = dispatchDay + transitDays;
+    const freightCost = freightCostFor(nearest, packBaseId, qty);
+    const status = XFER_STATUS[h % XFER_STATUS.length]!;
+    const fromName = baseNameById.get(nearest) ?? nearest;
+    const toName = baseNameById.get(packBaseId) ?? packBaseId;
+    interBaseTransfers.push({
+      transferId: `XFER-CELL-${nearest}-${packBaseId}-${modelId}`,
+      fromBase: nearest,
+      toBase: packBaseId,
+      model: modelId,
+      qty,
+      transitDays,
+      freightCost,
+      status,
+      dispatchDate: isoDate(xferT0 + dispatchDay * 86400000),
+      dispatchDay,
+      etaDay,
+      etaDate: isoDate(xferT0 + etaDay * 86400000),
+      reason: `${fromName}→${toName} ${modelId} 电芯→电池包就近供芯`,
+    });
   }
 
   return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };
