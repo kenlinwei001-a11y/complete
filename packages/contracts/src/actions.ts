@@ -76,6 +76,37 @@ export const ActionErrorCodes = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// WO-GSIM-5-ACTION · 全局联合推演「采纳→行动写回」payload 契约（G-DECISION 行动半 / G-LOOP-FEEDBACK）
+// 采纳 GlobalSim 方案 → `plan_change` Action（source:"global-sim"）→ S2 审批 → 执行回灌基线。
+// additive：既有 `plan_change` payload（OrderChainView 的 {so,verdict,reason}）与其它 action 类型不受影响；
+// 仅 source==="global-sim" 走真实执行器 + 回灌（物化在产 WorkOrder / 跨基地调剂 InterBaseTransfer）。
+// ---------------------------------------------------------------------------
+
+/** 采纳方案里的单个订单分配项（回灌基线的数据源·R13 provenance 溯回方案）。 */
+export const GlobalSimServedItemSchema = z.object({
+  orderId: z.string(),
+  base: z.string(),
+  baseName: z.string().optional(),
+  window: z.number().int().nonnegative(),
+  windowStartDay: z.number().int().nonnegative().optional(),
+  qty: z.number().nonnegative(),
+  model: z.string(),
+});
+export type GlobalSimServedItem = z.infer<typeof GlobalSimServedItemSchema>;
+
+/** 采纳 GlobalSim 方案的 Action payload（`plan_change` · source:"global-sim"）。 */
+export const GlobalSimPlanPayloadSchema = z.object({
+  source: z.literal("global-sim"),
+  objective: z.string(),
+  servedQty: z.number().nonnegative().default(0),
+  displaced: z.array(z.string()).default([]),
+  summary: z.string().default(""),
+  /** 采纳方案的订单分配（additive）。缺省 → 只记草稿不物化真对象（诚实降级·不臆造回灌）。 */
+  served: z.array(GlobalSimServedItemSchema).optional(),
+});
+export type GlobalSimPlanPayload = z.infer<typeof GlobalSimPlanPayloadSchema>;
+
+// ---------------------------------------------------------------------------
 // §S3 调度器
 // ---------------------------------------------------------------------------
 

@@ -149,7 +149,12 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
   const onAdopt = () => {
     if (!d) return;
-    adopt.mutate({ actionTypeKey: "plan_change", payload: { source: "global-sim", objective: primary, servedQty: d.scenarios.find((s) => s.key === primary)?.servedQty ?? 0, displaced: d.displaced.map((x) => x.orderId), summary: d.summary } });
+    // WO-GSIM-5-ACTION：additive 附上 served 订单分配（回灌基线数据源）——执行器据此物化在产 WorkOrder
+    // + 跨基地调剂 InterBaseTransfer，使采纳后下一轮联合推演基线真变（G-LOOP-FEEDBACK）。
+    const served = d.allocation
+      .filter((a) => a.kind === "order" && !a.committed)
+      .map((a) => ({ orderId: a.item, base: a.base, baseName: a.baseName, window: a.window, windowStartDay: a.windowStartDay, qty: a.qty, model: a.model }));
+    adopt.mutate({ actionTypeKey: "plan_change", payload: { source: "global-sim", objective: primary, servedQty: d.scenarios.find((s) => s.key === primary)?.servedQty ?? 0, displaced: d.displaced.map((x) => x.orderId), summary: d.summary, served } });
   };
 
   const primaryScen = d?.scenarios.find((s) => s.key === primary) ?? d?.scenarios[0];

@@ -1,4 +1,4 @@
-import type { AuthCtx, ActionDraft, ActionTypeRecord } from "./domain.js";
+import type { AuthCtx, ActionDraft, ActionTypeRecord, ObjectOrigin } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { OutboxService } from "./outbox.js";
 import type { RulesService } from "./rules.js";
@@ -14,6 +14,146 @@ export interface ActionExecutor {
 export class MockActionExecutor implements ActionExecutor {
   async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
     return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WO-GSIM-5-ACTION · 洞察→行动写回·闭决策环（G-DECISION 行动半 / G-LOOP-FEEDBACK）
+// ---------------------------------------------------------------------------
+
+/** 对象 id 归一（照 synthetic/service.ts oid：obj_{type}_{pk}·非字母数字→_·跨路径一致）。 */
+function objId(type: string, pk: unknown): string {
+  return `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
+}
+
+/** forecastStart(ISO date) + days → ISO date（确定性·无 Date.now/random·R6）。 */
+function isoAddDays(startIso: string, days: number): string {
+  const base = Date.parse(startIso.slice(0, 10));
+  const ms = Number.isNaN(base) ? Date.parse("2026-06-10") : base;
+  return new Date(ms + Math.round(days) * 86400000).toISOString().slice(0, 10);
+}
+
+/**
+ * 确定性方案指纹（R6·无 Date.now/random）：只对 `plan_change` + source:"global-sim" 生效，
+ * 由 source|objective|sorted(displaced)|summary 派生 → 同方案两次采纳同一指纹 → 幂等去重（不重复建 Action/物化）。
+ * 生成的 WorkOrder/InterBaseTransfer id 也以此指纹为锚 → 二次执行 put 覆盖同 id 不产重复。
+ */
+export function planFingerprint(actionTypeKey: string, payload: Record<string, unknown>): string | undefined {
+  if (actionTypeKey !== "plan_change" || payload?.source !== "global-sim") return undefined;
+  const displaced = Array.isArray(payload.displaced) ? payload.displaced.map(String).sort() : [];
+  const raw = `global-sim|${String(payload.objective ?? "")}|${displaced.join(",")}|${String(payload.summary ?? "")}`;
+  return `gsim_${hashString(raw).toString(16)}`;
+}
+
+export interface PlanWritebackDeps {
+  repos: Repos;
+  /** 时间锚（= solver_params.forecastStart）；禁 Date.now（R6）。 */
+  forecastStart: (tenantId: string) => Promise<string>;
+  /** 物化后重算派生（etaDay 等派生属性）；缺省则跳过。 */
+  runDerivations?: (tenantId: string) => Promise<void>;
+}
+
+/**
+ * 全局联合推演「采纳方案」真实执行器（G-LOOP-FEEDBACK 数据半）：审批通过 → 执行时把采纳的方案
+ * **回灌基线**——为每个 served 订单物化「在产 WorkOrder（承诺占用·portfolio.assemble 读为 committed WIP·
+ * 预扣净产能）」+ 把该 Order 移出 OPEN 决策集（status→已排产），跨基地分配再生成「InterBaseTransfer
+ * 两段电芯就近调运 leg」→ 下一轮 portfolioOptimize 读到真变基线（served 订单已承诺/产能已占）。
+ * 其余 action 类型/非 global-sim 的 plan_change 一律委派 fallback（不破坏既有 S2 行为）。
+ * 确定性 R6（id/值全由 payload+forecastStart 派生·无 Date.now/random）·tenant 全程作用域·R13 provenance 溯回方案。
+ */
+export class GlobalSimPlanExecutor implements ActionExecutor {
+  constructor(private deps: PlanWritebackDeps, private fallback: ActionExecutor) {}
+
+  async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef?: string; error?: string }> {
+    const payload = draft.payload as Record<string, unknown>;
+    if (draft.actionTypeKey !== "plan_change" || payload?.source !== "global-sim") {
+      return this.fallback.execute(draft);
+    }
+    const tenantId = draft.tenantId;
+    const fp = draft.fingerprint ?? planFingerprint(draft.actionTypeKey, payload) ?? `gsim_${hashString(draft.id).toString(16)}`;
+    const forecastStart = await this.deps.forecastStart(tenantId);
+    const objective = String(payload.objective ?? "");
+    const served = Array.isArray(payload.served) ? (payload.served as Record<string, unknown>[]) : [];
+    const origin: ObjectOrigin = { type: "ACTION", actionId: draft.id, source: "global-sim", fingerprint: fp };
+    const provenance = {
+      kind: "行动写回", source: "global-sim", objective, actionId: draft.id, fingerprint: fp,
+      summary: String(payload.summary ?? ""), drillType: "ActionDraft", drillId: draft.id, drillField: "payload.source",
+    };
+
+    // Order 现状（用于移出 OPEN 决策集 + 推 home 基地）。tenant 作用域读。
+    const orderObjs = await this.deps.repos.objects.listByType(tenantId, "Order");
+    const orderBySo = new Map(orderObjs.map((o) => [String(o.props.so), o]));
+
+    const materializedWos: string[] = [];
+    const transfers: string[] = [];
+
+    // 稳定排序（R6·执行序不依赖入参顺序）。
+    const sortedServed = [...served].sort((a, b) => String(a.orderId).localeCompare(String(b.orderId)));
+    for (const s of sortedServed) {
+      const orderId = String(s.orderId ?? "");
+      const base = String(s.base ?? "");
+      const model = String(s.model ?? "");
+      const qty = Math.max(0, Math.round(Number(s.qty) || 0));
+      const window = Math.max(0, Math.round(Number(s.window) || 0));
+      const windowDaysGuess = 14;
+      const windowStartDay = Math.max(0, Math.round(Number(s.windowStartDay ?? window * windowDaysGuess)));
+      if (!orderId || !base || qty <= 0) continue;
+
+      // ① 物化在产 WorkOrder（承诺占用·portfolio 读 committed WIP：status∉{已完成,已关闭} & qtyActual>0 & baseId 有线）。
+      //    endDate 落在 served 窗口内 → 预扣该 (base,窗口) 净产能（下一轮基线真变）。
+      const woId = `WO-GS-${fp}-${orderId}`;
+      const endDate = isoAddDays(forecastStart, windowStartDay + 1);
+      const startDate = isoAddDays(forecastStart, Math.max(0, windowStartDay - 6));
+      await this.deps.repos.objects.put({
+        id: objId("WorkOrder", woId), tenantId, type: "WorkOrder", origin,
+        props: {
+          woId, moNo: `MO-${woId}`, modelId: model, baseId: base,
+          qtyPlanned: qty, qtyActual: qty, startDate, endDate, status: "生产中",
+          _provenance: provenance, _adoptedOrderId: orderId, _adoptedByAction: draft.id,
+        },
+      });
+      materializedWos.push(woId);
+
+      // ② 采纳即承诺：把该 OPEN 订单移出决策集（status→已排产·portfolio includeOrderIds 默认只收 OPEN）。
+      const orderObj = orderBySo.get(orderId);
+      if (orderObj && String(orderObj.props.status) === "OPEN") {
+        await this.deps.repos.objects.put({
+          ...orderObj,
+          props: { ...orderObj.props, status: "已排产", _committedByAction: draft.id, _provenance: provenance },
+          origin,
+        });
+      }
+
+      // ③ 跨基地调剂：服务基地 ≠ 订单 home 基地（eligibleBases 排序首个·同 portfolio 口径）→ 生成
+      //    InterBaseTransfer「两段电芯就近调运」leg（freightCost/cellSourceMap 留 WO-GSIM-1-DATA 接缝·此处不硬依赖）。
+      const homeBase = orderObj && Array.isArray(orderObj.props.bases) && (orderObj.props.bases as unknown[]).length
+        ? [...(orderObj.props.bases as unknown[])].map(String).sort()[0]!
+        : base;
+      if (homeBase && homeBase !== base) {
+        const transitDays = 1 + (hashString(`xfer_${homeBase}${base}${model}`) % 6);
+        const dispatchDay = Math.max(0, windowStartDay - transitDays);
+        const transferId = `XFER-GS-${fp}-${orderId}`;
+        await this.deps.repos.objects.put({
+          id: objId("InterBaseTransfer", transferId), tenantId, type: "InterBaseTransfer", origin,
+          props: {
+            transferId, fromBase: homeBase, toBase: base, model, qty, transitDays, status: "PLANNED",
+            dispatchDay, dispatchDate: isoAddDays(forecastStart, dispatchDay),
+            etaDay: dispatchDay + transitDays, etaDate: isoAddDays(forecastStart, dispatchDay + transitDays),
+            reason: `全局联合推演采纳·两段电芯就近调运（${homeBase}→${base}）`,
+            _provenance: provenance, _adoptedOrderId: orderId, _adoptedByAction: draft.id,
+          },
+        });
+        transfers.push(transferId);
+      }
+    }
+
+    // 物化后重算派生（etaDay 等；也让后续切片/推演读到新对象）。
+    if (this.deps.runDerivations && (materializedWos.length || transfers.length)) {
+      await this.deps.runDerivations(tenantId);
+    }
+
+    const targetRef = materializedWos[0] ? `MO-${materializedWos[0]}` : `GSIM-${fp}`;
+    return { ok: true, targetRef };
   }
 }
 
@@ -123,6 +263,12 @@ export class ActionService {
       submit?: boolean;
     },
   ): Promise<ActionDraft> {
+    // WO-GSIM-5-ACTION 幂等：同方案（确定性指纹）已采纳 → 返回既有草稿·不重复建 Action/物化（G-LOOP-FEEDBACK）。
+    const fingerprint = planFingerprint(input.actionTypeKey, input.payload);
+    if (fingerprint) {
+      const existing = (await this.repos.actionDrafts.list(ctx.tenantId, (d) => d.fingerprint === fingerprint))[0];
+      if (existing) return existing;
+    }
     const now = new Date().toISOString();
     const draft: ActionDraft = {
       id: newId("act"),
@@ -132,6 +278,7 @@ export class ActionService {
       origin: { ...input.origin, userId: ctx.userId },
       status: "DRAFT",
       approvalSteps: [],
+      ...(fingerprint ? { fingerprint } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -145,8 +292,15 @@ export class ActionService {
     const draft = await this.get(ctx, draftId);
     if (draft.status !== "DRAFT") throw invalidStep(`draft is ${draft.status}, expected DRAFT`);
     const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
-    if (type) {
+    // WO-GSIM-5-ACTION：`plan_change` 键被 S&OP「计划变更」(required versionId) 与全局联合推演采纳共享；
+    // 后者由 source:"global-sim" 判别，校验其自有 payload（source+objective），不套 S&OP paramsSchema。
+    const isGlobalSimPlan = draft.actionTypeKey === "plan_change" && draft.payload?.source === "global-sim";
+    if (isGlobalSimPlan) {
+      if (!draft.payload.objective) throw validationError("payload.objective is required");
+    } else if (type) {
       validateParams(type.paramsSchema, draft.payload);
+    }
+    if (type && !isGlobalSimPlan) {
       if (type.checkRules.length > 0) {
         const verdicts = await this.rules.evaluate(ctx, type.checkRules, draft.payload);
         const blocked = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
