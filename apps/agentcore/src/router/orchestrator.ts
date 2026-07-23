@@ -1,4 +1,5 @@
 import type {
+  AgentBudget,
   Answer,
   CeoAgentProfile,
   ClarificationReplyBody,
@@ -105,7 +106,7 @@ function appendDecisionBlock(answer: Answer, decision: Decision): Answer {
  * 仅当 DataCore 解析出的**显式** Set 含 `ceo.free-llm`，或 `sim.commander`+`sim.sandbox` 同开时，真 LLM 分路才启用。
  * 与 `shouldUseFreeLLM`（问句形态②+上下文丰富③）AND 组合——三者齐备方走真 LLM，否则照走确定性/classifier。
  */
-function freeLlmEnabled(set: FeatureSet): boolean {
+export function freeLlmEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("ceo.free-llm") || (set.has("sim.commander") && set.has("sim.sandbox"));
 }
@@ -115,7 +116,7 @@ function freeLlmEnabled(set: FeatureSet): boolean {
  * 与 freeLlmEnabled 同款字节兼容策略：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**（既有单 agent path-B
  * 逐字节不变·C4 不劫持）；仅当**显式** Set 含 `agent.coordinator` 才启用。双注册（datacore features.ts + agentcore registry）。
  */
-function coordinatorEnabled(set: FeatureSet): boolean {
+export function coordinatorEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("agent.coordinator");
 }
@@ -960,7 +961,13 @@ export class Orchestrator {
       binding: { kind: "BUILTIN" as const },
     }));
 
-    const budget = new BudgetTracker();
+    // WO-Phase4：residual path-B（真开放深问·Phase1–3 都没接住的题）套用硬预算——收紧 round-trip / discover 盲扫上界，
+    // 超即优雅降级（BUDGET_EXHAUSTED）。只约束这条 residual ReAct，不动确定性 path-A / 组合路径 / 角色 agent。
+    // opt-in：env 未设 → 不覆写 DEFAULT（宽松）→ 既有 path-B 逐字节不变（部署态设 4/1 收紧·见 config 注释）。
+    const residualBudget: Partial<AgentBudget> = {};
+    if (this.deps.config.QOS_AGENT_MAX_ROUND_TRIPS !== undefined) residualBudget.maxRoundTrips = this.deps.config.QOS_AGENT_MAX_ROUND_TRIPS;
+    if (this.deps.config.QOS_AGENT_MAX_DISCOVER_CALLS !== undefined) residualBudget.maxDiscoverCalls = this.deps.config.QOS_AGENT_MAX_DISCOVER_CALLS;
+    const budget = new BudgetTracker(residualBudget);
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
     // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
     const model = await this.deps.llmSettings.roleModel(task.tenantId, "agent", pkg.agentModel);

@@ -567,6 +567,12 @@ export const AgentBudgetSchema = z.object({
   maxSolverCalls: z.number().int(),
   maxDurationMs: z.number().int(),
   maxClarifications: z.number().int(),
+  // WO-Phase4 · ReAct Fallback 硬预算（additive·`.default()` 令旧 AgentRunRecord.budget 解析仍合法·字节兼容）：
+  // maxDiscoverCalls = 探索类工具（discover/search_experience/query_system_ontology）总次数上界；
+  // maxRoundTrips = 完成「LLM→工具执行→结果返回」的轮次上界（= SSE iteration 序号）。
+  // 默认值取宽松（= 既有 iteration 口径·不额外收紧 DEFAULT），真正的 residual 收紧在 orchestrator runPathB 侧按 env 配置注入。
+  maxDiscoverCalls: z.number().int().default(8),
+  maxRoundTrips: z.number().int().default(24),
 });
 export type AgentBudget = z.infer<typeof AgentBudgetSchema>;
 
@@ -576,6 +582,9 @@ export const DEFAULT_AGENT_BUDGET: AgentBudget = {
   maxSolverCalls: 8,
   maxDurationMs: 600_000,
   maxClarifications: 0,
+  // 宽松默认（不改既有直调 engine 的多轮上下文管理测试行为）；residual path-B 由 orchestrator 按 env 收紧到硬预算。
+  maxDiscoverCalls: 8,
+  maxRoundTrips: 24,
 };
 
 export const AgentIterationSchema = z.object({
