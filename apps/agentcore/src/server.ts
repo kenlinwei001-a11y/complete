@@ -1602,6 +1602,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     // rules.updated：B 不缓存规则定义（每次求值经 A REST），propagation 即时 —— 仅确认收到
     if (event.startsWith("rules")) invalidated.push("rules(no-cache)");
+    // WO-QOS-ONTOLOGY-CONTEXT · type-semantics 口径缓存失效：本体发布 / 规则变更 → 口径可能变（description/formula/expression），
+    // 清 B 侧 type-semantics 缓存使下次注入取 A 最新真值（TTL 60s 兜底；单一真值在 A·非 B 手写 mirror）。
+    if (!event || event.startsWith("ontology") || event.startsWith("rules")) {
+      deps.dataCore.ontology.invalidateTypeSemantics?.(body.tenantId);
+      invalidated.push("type-semantics");
+    }
     return { ok: true, event: event || "(all)", invalidated };
   });
 

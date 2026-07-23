@@ -28,6 +28,7 @@ import {
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
+import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
@@ -957,8 +958,12 @@ export class Orchestrator {
     // 不再逐跳盲选重编排。通用 path-B 不做对象域收窄（objectTypes 不声明·由 A6 行级过滤真隔离）。R6 纯投影·空图不注入。
     const navSlice = projectNavigationSlice(task.query, task.context.pageContext, { toolNames: tools.map((t) => t.name) });
     const sliceSection = renderNavigationSlice(navSlice);
+    // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随本题导航图 append 一层
+    // 「各字段/规则的口径定义」（Metric formula/unit·派生公式·规则 expression）取自 A 单一真值（getTypeSemantics·
+    // TTL60s 缓存·只列 slice 涉及项）——综合 LLM 看的是"带口径标注的数据"而非"带字段名的数据"。fail-open·纯 additive。
+    const semanticSection = await buildOntologySemanticContext(navSlice, auth, this.deps.engine.deps.dataCore.ontology);
     const baseUser = buildAgentUser(task, priorSummary || undefined);
-    const userContent = sliceSection ? `${baseUser}\n\n${sliceSection}` : baseUser;
+    const userContent = [baseUser, sliceSection, semanticSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
     const result = await runAgentLoop({
       taskId,

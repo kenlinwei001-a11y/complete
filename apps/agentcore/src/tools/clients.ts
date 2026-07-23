@@ -39,6 +39,14 @@ export interface OntologyClient {
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /** CL.3 discover 真实类型名：本租户已发布对象类型 {key,label(中文),domain,instanceCount}（agent 照真名查不再猜）。 */
   listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]>;
+  /**
+   * WO-QOS-ONTOLOGY-CONTEXT · 口径语义（缺口③文档三层投喂第二层）：请求类型的属性口径/派生公式/规则表达式。
+   * 单一真值在 A（GET /a/v1/ontology/type-semantics）·B 经 REST 读（R1 不 import 源）·复用 B→A 资源缓存
+   * TTL60s + {kind}.updated(ontology/rules) 失效（不 per-question 打 A）。可选：mock 客户端不实现 → 注入点降级空块。
+   */
+  getTypeSemantics?(ctx: ToolAuthCtx, typeKeys: string[]): Promise<import("@platform/contracts").TypeSemanticsResponse>;
+  /** WO-QOS-ONTOLOGY-CONTEXT · 失效 type-semantics 缓存（/b/v1/internal/invalidate 钩子按 ontology/rules 事件调）。 */
+  invalidateTypeSemantics?(tenantId?: string): void;
   /** 推演验证痕迹 Layer 2：把结论断言交给 DataCore 对照知识图谱已有事实交叉验证。 */
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse>;
   /** 自成长 P2：缺数据真人正门补——确定性生成 CSV 经公开上传门导入。 */

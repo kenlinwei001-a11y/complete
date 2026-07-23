@@ -1583,6 +1583,46 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { stats };
   });
 
+  // WO-QOS-ONTOLOGY-CONTEXT · 口径语义只读投影（缺口③·文档三层投喂第二层）：
+  // 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则表达式(expression/severity) }。
+  // 单一真值：全部来自本租户已发布本体（ontology.listTypes）+ 规则库（rules.list PUBLISHED·按 scopeObjectTypes 命中）——
+  // 不新增/改写任何口径真值（description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）·R6 确定性字典序·additive 纯读。
+  app.get("/a/v1/ontology/type-semantics", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { types?: string };
+    const requested = String(q.types ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const wanted = requested.length > 0 ? new Set(requested) : undefined;
+    const allTypes = await ontology.listTypes(c);
+    const publishedRules = await rules.list(c, "PUBLISHED");
+    const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const picked = allTypes
+      .filter((t) => t.status === "ACTIVE" && (!wanted || wanted.has(t.key)))
+      .sort((a, b) => byKey(a.key, b.key));
+    const types = picked.map((t) => ({
+      typeKey: t.key,
+      displayName: t.displayName,
+      props: [...t.properties]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((p) => ({
+          propKey: p.propKey,
+          ...(p.description ? { description: p.description } : {}),
+          ...(p.unit ? { unit: p.unit } : {}),
+          dataType: p.dataType,
+        })),
+      derived: [...(t.derivedProperties ?? [])]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((d) => ({ propKey: d.propKey, ...(d.formula ? { formula: d.formula } : {}) })),
+      rules: publishedRules
+        .filter((r) => r.scopeObjectTypes.includes(t.key))
+        .sort((a, b) => byKey(a.key, b.key))
+        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity })),
+    }));
+    return { types };
+  });
+
   // PRD-fde §3.2 实体与字段目录索引（P1 读模型）：
   // 字段目录（类型→字段,标时序）+ 消歧（模糊实体→系统里具体候选,绝不带占位符进数据生成）。
   app.get("/a/v1/entity-catalog", async (req) => {
