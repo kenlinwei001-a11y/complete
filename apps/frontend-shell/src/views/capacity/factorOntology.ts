@@ -94,12 +94,14 @@ export const BN_FACTOR_TO_MARK: Record<string, string> = {
   物流时长: "⑮",
   换型损失: "⑤",
   良率波动: "⑥",
-  // 常见别名（根因树因子/求解器 mainBn 口径）。
-  化成通道: "⑩",
-  化成柜: "⑩",
-  老化库: "⑩",
-  卷绕机稼动: "③",
-  涂布机: "③",
+  // 常见别名（根因树因子/求解器 mainBn 口径）。后端(battery.ts/capacity.ts/llm-gen.ts)真吐这些工序名，
+  // 前端须给它们贴同因素徽标 → 属"必须保留的兜底"（debattery 门显式声明机制·非静默内联偷渡）。
+  // R14 债已跟踪(task#9)：徽标口径本应由后端本体(工序类型→圈号)提供，proper 修=后续 WO-DEBATTERY-FACTOR-SOURCE。
+  化成通道: "⑩", // debattery-allow
+  化成柜: "⑩", // debattery-allow
+  老化库: "⑩", // debattery-allow
+  卷绕机稼动: "③", // debattery-allow
+  涂布机: "③", // debattery-allow
   人员: "⑰",
 };
 
