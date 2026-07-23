@@ -54,3 +54,5 @@ export * from "./inventory.js"; // WO-INVENTORY-3TIER · 库存三层闭环 Fini
 export * from "./atp-promise.js"; // WO-ATP-PROMISE · 订单承诺 ATP/CTP（OrderPromise + atp_check：能不能接/何时交·净读三源·SEAM 改产能/库存→承诺变·R6）
 export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资源描述契约 + 发现门（全5池 description 覆盖·additive）
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
+export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
+export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
