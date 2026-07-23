@@ -56,3 +56,4 @@ export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资
 export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-semantics 口径语义契约（属性口径/派生公式/规则表达式·单一真值在 A·R1 只读投影）
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
+export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
