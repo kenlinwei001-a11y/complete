@@ -3,7 +3,7 @@ import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./v
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
 import { MOCK_EXTERNAL_DATA } from "../connectors/registry.js";
-import type { Repos } from "../repo/repo.js";
+import type { Repos, Store } from "../repo/repo.js";
 import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
 import type { OntologyService } from "../ontology.js";
@@ -158,7 +158,16 @@ export class SyntheticService {
   async runJob(
     ctx: AuthCtx,
     // 轨L 增量2：viaModelingChain（仅 demo 种子内部传 true）→ battery 本体经真建模链产出。API 契约不暴露此内部参数。
-    input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed?: number; livedIn?: boolean; viaModelingChain?: boolean },
+    input: {
+      industry: string;
+      scale: "S" | "M" | "L" | "XL";
+      seed?: number;
+      livedIn?: boolean;
+      viaModelingChain?: boolean;
+      // WO-SYNTH-VALIDATION-LITE：VALIDATION_LITE 跳 TS 历史/聚合（对象字节不变），historyDays 可显式覆盖。
+      profile?: "FULL" | "VALIDATION_LITE";
+      historyDays?: number;
+    },
   ): Promise<SyntheticJob> {
     const t0 = Date.now();
     const seed = input.seed ?? 42;
@@ -196,8 +205,13 @@ export class SyntheticService {
       // 365 天历史与聚合由回放引擎（月批次 × 真实管线）负责。
       if (input.industry === "battery-manufacturing" && this.ts) {
         await this.seedBatteryParamsAndSpecs(ctx, seed, input.scale);
-        if (!input.livedIn) {
-          await this.generateHistory(ctx, seed);
+        // WO-SYNTH-VALIDATION-LITE §3.1：LITE（或 historyDays<=0）跳 90 天 TS 历史与全量聚合。
+        // genPoint 是 (seed,entity,day) 纯函数、不消耗对象 RNG 游标；派生管线(④)读对象而非 TS 原始点，
+        // 故对象指纹 LITE===FULL（SEAM #1 守护）。livedIn 语义不变（其 365 天历史由回放引擎负责）。
+        const historyDays =
+          input.historyDays ?? (input.profile === "VALIDATION_LITE" ? 0 : HISTORY_DAYS);
+        if (!input.livedIn && historyDays > 0) {
+          await this.generateHistory(ctx, seed, historyDays);
           await this.ts.runAggregation(ctx.tenantId, { full: true });
         }
       }
@@ -278,6 +292,44 @@ export class SyntheticService {
       job.error = err instanceof Error ? err.message : String(err);
       await this.repos.syntheticJobs.put(job);
       throw err;
+    }
+  }
+
+  /**
+   * WO-SYNTH-VALIDATION-LITE §3.5：将 src 租户的确定性合成产物深拷贝到 dst 租户（改 tenantId）。
+   * 供 demo 重置 + CI baseline 复用（避免重复全种）。SEAM 铁律：
+   *   fingerprint(cloneTenant(fresh-seed-tenant)) === fingerprint(fresh-seed-tenant)。
+   * 覆盖：对象/链接/规则/权限策略/视图/场景包/合成作业/模拟时钟/本体类型/本体链接/域/求解器参数
+   *   + TS（tsSeries + tsPoints）。所有 Store<T> 均含 list(tenantId)/put(item)，泛型逐条改 tenantId 落盘。
+   */
+  async cloneTenant(src: string, dst: string): Promise<void> {
+    // 泛型 tenant-scoped 存储（item 均带 tenantId）——逐条改 tenantId 复制。
+    const genericStores: Store<{ id: string; tenantId: string }>[] = [
+      this.repos.objects as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.links as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.rules as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.policies as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.viewConfigs as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.scenarioPackages as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.syntheticJobs as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.simulationClocks as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.ontologyTypes as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.ontologyLinks as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.domains as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.solverParams as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.tsSeries as unknown as Store<{ id: string; tenantId: string }>,
+    ];
+    for (const store of genericStores) {
+      for (const it of await store.list(src)) {
+        await store.put({ ...(it as Record<string, unknown>), tenantId: dst } as { id: string; tenantId: string });
+      }
+    }
+    // TS 点：按已复制的 series 逐条搬运（幂等 upsert；keyed by seriesId/entityId/ts）。
+    for (const s of await this.repos.tsSeries.list(dst)) {
+      const pts = await this.repos.tsPoints.list(src, s.id);
+      if (pts.length > 0) {
+        await this.repos.tsPoints.upsert(dst, pts.map((p) => ({ ...p, tenantId: dst })));
+      }
     }
   }
 
@@ -420,10 +472,16 @@ export class SyntheticService {
     });
   }
 
-  /** ③b: deterministic 90-day history per tsGenerators (maint dips share the MaintPlan objects). */
-  private async generateHistory(ctx: AuthCtx, seed: number): Promise<void> {
-    if (!this.ts) return;
+  /** ③b: deterministic history per tsGenerators (maint dips share the MaintPlan objects).
+   * WO-SYNTH-VALIDATION-LITE §3.1/§3.3：historyDays 参数化（默认 90；<=0 直接返回=LITE 跳 TS），
+   * 日期串循环外一次预生成（消 per-entity×N 重复 new Date），输出逐字节不变。 */
+  private async generateHistory(ctx: AuthCtx, seed: number, historyDays: number = HISTORY_DAYS): Promise<void> {
+    if (!this.ts || historyDays <= 0) return;
     const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+    // §3.3：日期串预生成（entity 循环内取用；与旧 per-day new Date 结果逐字节一致）。
+    const dateIsoList = Array.from({ length: historyDays }, (_, d) =>
+      new Date(t0 - (historyDays - d) * DAY_MS).toISOString().slice(0, 10),
+    );
     const maintPlans = (await this.repos.objects.listByType(ctx.tenantId, "MaintPlan")).map((m) => ({
       baseId: String(m.props.baseId),
       week: Number(m.props.week),
@@ -451,8 +509,8 @@ export class SyntheticService {
         const entityId = String(e.props[entityRefFieldOf(gen.entityType)] ?? e.id);
         const baseId = String(e.props.baseId ?? "");
         const scale = gen.seriesKey === "output:line" ? outputLineScaleForBase(baseCap.get(baseId) ?? 0) : undefined;
-        for (let d = 0; d < HISTORY_DAYS; d++) {
-          const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
+        for (let d = 0; d < historyDays; d++) {
+          const dateIso = dateIsoList[d]!;
           points.push({
             entityId,
             ts: `${dateIso}T00:00:00.000Z`,
