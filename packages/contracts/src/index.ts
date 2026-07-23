@@ -56,3 +56,5 @@ export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资
 export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-semantics 口径语义契约（属性口径/派生公式/规则表达式·单一真值在 A·R1 只读投影）
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
+export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
+export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
