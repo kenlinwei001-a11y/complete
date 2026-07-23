@@ -289,6 +289,28 @@ export class MockOntologyClient implements OntologyClient {
 
 export class MockSolverClient implements SolverClient {
   async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
+    // WO-Phase3-B §3.2：本体查询引擎（mock 镜像真 datacore 输出形状·带逐行 provenance{typeKey,objId,linkPath}）。
+    if (solverKey === "ontology_query") {
+      const rootType = String(args.rootType ?? "Base");
+      const select = Array.isArray(args.select) ? (args.select as { type: string; fields: string[] }[]) : [{ type: "Order", fields: ["so", "qty"] }];
+      const sel = select[0]!;
+      const linkPath = rootType === sel.type ? [] : ["model_producible_at:in", "order_for_model:in"];
+      const orders = [
+        { so: "SO-0001", qty: 1200 },
+        { so: "SO-0002", qty: 800 },
+      ];
+      const rows = orders.map((o) => Object.fromEntries(sel.fields.map((f) => [`${sel.type}.${f}`, (o as Record<string, unknown>)[f]])));
+      return {
+        data: {
+          rows,
+          columns: sel.fields.map((f) => `${sel.type}.${f}`),
+          provenance: orders.map((o) => ({ typeKey: sel.type, objId: `obj_order_${o.so}`, linkPath })),
+          queryPlan: { usedSliceKeys: [`biz.plan.${rootType.toLowerCase()}__${sel.type.toLowerCase()}`], hops: linkPath.map((h) => ({ linkKey: h.split(":")[0], direction: "backward", toType: sel.type })), aggregation: [] },
+          summary: `${rootType} 遍历 → ${rows.length} 行`,
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
     if (solverKey === "capacity_forecast") {
       const rnd = prngFor({ solverKey, modelId: args.modelId, demandDelta: args.demandDelta, weeks: args.weeks });
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);

@@ -488,7 +488,7 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
     // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 48（WO-CEO-2 gap_attribution + WO-CEO-3 decision_play）。
     // 双占 reconcile：WO-PORTFOLIO-OPTIMAL portfolio + WO-B base_capacity_outlook 两条 handoff 各自 54→55·合两条 → 56。
-    expect(SOLVER_KEYS.length).toBe(56); // WO-CEO-Q7 supply_demand_gap_attribution + WO-ATP-PROMISE atp_check + integ-wave-11 +4 + WO-PORTFOLIO-OPTIMAL portfolio + WO-B base_capacity_outlook（前瞻产能推演 F1/P1）
+    expect(SOLVER_KEYS.length).toBe(57); // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 

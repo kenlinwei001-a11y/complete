@@ -171,6 +171,12 @@ const SOLVER_CATALOG: Record<string, SolverCatalogEntry> = {
     reads: ["Model", "Material", "CarbonFactor"],
     families: ["carbon"],
   },
+  ontology_query: {
+    capability: "本体多跳遍历查询（rootType→目标类型·投影字段+简单聚合 sum/count/avg/max·每行 linkPath 溯源）",
+    outputShape: ["rows", "columns", "provenance", "queryPlan", "summary"],
+    reads: ["Base", "Order", "Line", "Model", "Material", "Supplier", "Customer"],
+    families: ["capacity", "material"],
+  },
 };
 
 /** 对象类型 → 关键属性（agent 导航用·只列驱动求解器/答案的关键字段）。 */

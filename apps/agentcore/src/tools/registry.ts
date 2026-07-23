@@ -54,6 +54,26 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // WO-Phase3-B §3.2：本体多跳遍历查询（一次 query 顶多次 query_objects）。走 DataCore ontology_query 求解器。
+    name: "query_ontology",
+    descriptionForLLM:
+      "本体多跳遍历查询：给定 rootType(+rootFilter) 沿 hops（或自动最短路）走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。回答『某基地关联哪些订单』『某供应商断供影响哪些客户』『某基地产线总产能』等跨类型关联问题——一次调用顶多次 query_objects。每行带 {typeKey,objId,linkPath} 溯源。仅遍历+简单聚合；复杂业务推演(能不能接/供需归因/组合最优)请用对应 invoke_solver。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rootType: { type: "string", description: "起点对象类型，如 Base" },
+        rootFilter: { type: "array", items: { type: "object" }, description: "根过滤 [{field,op,value}]" },
+        hops: { type: "array", items: { type: "object" }, description: "多跳 [{linkKey,direction:forward|backward,targetType?,filter?}]；省略则自动规划最短路" },
+        select: { type: "array", items: { type: "object" }, description: "投影 [{type,fields[],aggregate?,groupBy?}]" },
+        orderBy: { type: "object", description: "{field,direction:asc|desc}" },
+        limit: { type: "number" },
+      },
+      required: ["rootType", "select"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "query_objects",
     descriptionForLLM:
       "按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。",

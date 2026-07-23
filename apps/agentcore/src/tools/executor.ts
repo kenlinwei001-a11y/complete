@@ -321,6 +321,9 @@ export class GuardedToolExecutor {
         return this.deps.dataCore.ontology.aggregateObjects(ctx, AggregateRequestSchema.parse(input));
       case "invoke_solver":
         return this.deps.dataCore.solver.invoke(ctx, String(args.solverKey), (args.args ?? {}) as Record<string, unknown>);
+      // WO-Phase3-B §3.2：本体遍历查询 → 复用 DataCore ontology_query 求解器（OBO 透传·零重写）。
+      case "query_ontology":
+        return this.deps.dataCore.solver.invoke(ctx, "ontology_query", (args ?? {}) as Record<string, unknown>);
       case "evaluate_rules":
         return this.deps.dataCore.rules.evaluate(
           ctx,
