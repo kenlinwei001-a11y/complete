@@ -241,7 +241,9 @@ export interface PortfolioCell {
   delayUnits: number;
   /** 换型量（该基地切到该型号的换型分钟·min_changeover 目标）。 */
   changeUnits: number;
-  /** 该格综合代价（延误罚 + 换型代价·min_cost 目标）。 */
+  /** 成品持有量 = qty × 提前窗数 × 窗天（min_fg_inventory 目标·对称 delayUnits：提前生产=成品压库）。 */
+  fgHoldUnits: number;
+  /** 该格综合代价（延误罚 + 换型代价 + 成品持有代价·min_cost 目标）。 */
   cost: number;
 }
 export interface PortfolioRequest {
@@ -252,8 +254,8 @@ export interface PortfolioRequest {
   /** cap[b,t] 共享产能（Σ 该基地 Line.capacityDaily × 窗口天数）。 */
   capacity: { base: string; window: number; cap: number }[];
   cells: PortfolioCell[];
-  /** 优化目标子集（缺省 ontime 单目标）；4 项均恒计回报。 */
-  objectives?: { key: "ontime" | "delay" | "changeover" | "cost"; sense?: "max" | "min"; weight?: number }[];
+  /** 优化目标子集（缺省 ontime 单目标）；5 项均恒计回报（含 fgInventory 成品持有）。 */
+  objectives?: { key: "ontime" | "delay" | "changeover" | "cost" | "fgInventory"; sense?: "max" | "min"; weight?: number }[];
   method?: "weighted" | "epsilon" | "lexicographic";
   epsilon?: { key: string; bound: number }[];
   priority?: string[];

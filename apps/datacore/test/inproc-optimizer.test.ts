@@ -54,6 +54,8 @@ describe("WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InPro
     // ② 真出解（非「未接入」静默）。
     expect(g.occupancy.length).toBeGreaterThan(0);
     expect(g.allocation.length).toBeGreaterThan(0);
+    // WO-PORTFOLIO-FG-INVENTORY-OBJ：内存态默认门也出 objectiveValues.fgInventory（度量一致口径·恒计）。
+    for (const s of g.scenarios) expect(typeof (s.objectiveValues as Record<string, number>).fgInventory).toBe("number");
 
     // ③ 共享产能守恒：每格 allocated ≤ cap·reconciled。
     expect(g.capacityLedger.length).toBeGreaterThan(0);
@@ -98,8 +100,8 @@ describe("WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InPro
         { base: "b2", window: 1, cap: 10 },
       ],
       cells: [
-        { item: "X", base: "b1", window: 0, ontime: 1, delayUnits: 0, changeUnits: 0, cost: 100 },
-        { item: "X", base: "b2", window: 1, ontime: 0, delayUnits: 50, changeUnits: 0, cost: 1 },
+        { item: "X", base: "b1", window: 0, ontime: 1, delayUnits: 0, changeUnits: 0, fgHoldUnits: 0, cost: 100 },
+        { item: "X", base: "b2", window: 1, ontime: 0, delayUnits: 50, changeUnits: 0, fgHoldUnits: 0, cost: 1 },
       ],
       method: "weighted",
     };
@@ -114,6 +116,32 @@ describe("WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InPro
     expect(ontimeR.objectiveValues.ontime).toBe(1);
     expect(costR.objectiveValues.ontime).toBe(0);
     expect(costR.objectiveValues.cost).toBeLessThan(ontimeR.objectiveValues.cost);
+  });
+
+  it("引擎单测：min_fg_inventory 真最小化提前压库（早窗 vs 贴交期窗·两窗都按期·保证 strict 漂移）", async () => {
+    // 构造：X 两格都按期（w0/w1 均 ontime=1），w0 提前一窗（fgHold=200）vs w1 贴交期（fgHold=0）。
+    const client = new InProcOptimizerClient();
+    const base: Omit<PortfolioRequest, "objectives"> = {
+      model: "portfolio",
+      seed: 42,
+      items: [{ id: "X", qty: 10, unservedPenalty: 5 }],
+      capacity: [
+        { base: "b1", window: 0, cap: 10 },
+        { base: "b1", window: 1, cap: 10 },
+      ],
+      cells: [
+        { item: "X", base: "b1", window: 0, ontime: 1, delayUnits: 0, changeUnits: 0, fgHoldUnits: 200, cost: 100 },
+        { item: "X", base: "b1", window: 1, ontime: 1, delayUnits: 0, changeUnits: 0, fgHoldUnits: 0, cost: 0 },
+      ],
+      method: "weighted",
+    };
+    const ontimeR = await client.solvePortfolio({ ...base, objectives: [{ key: "ontime", sense: "max", weight: 1 }] });
+    const fgR = await client.solvePortfolio({ ...base, objectives: [{ key: "cost", sense: "min", weight: 1 }, { key: "fgInventory", sense: "min", weight: 10 }] });
+    // max_ontime 两格都按期 → window asc 取早窗 w0（提前压库 fgHold=200）；min_fg_inventory → fgHold asc 取贴交期 w1（fgHold=0）。
+    expect(ontimeR.occupancy).toEqual([{ item: "X", base: "b1", window: 0 }]);
+    expect(fgR.occupancy).toEqual([{ item: "X", base: "b1", window: 1 }]);
+    expect(fgR.objectiveValues.fgInventory).toBe(0);
+    expect(fgR.objectiveValues.fgInventory).toBeLessThan(ontimeR.objectiveValues.fgInventory); // 真降压库·灭假维度
   });
 
   it("R6 确定性：默认 InProc 同参数两跑 deep-equal（贪心稳定序·无 Date.now/random）", async () => {

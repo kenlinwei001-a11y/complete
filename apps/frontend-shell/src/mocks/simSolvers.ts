@@ -1055,11 +1055,13 @@ export function mockSopReschedule(args: Record<string, unknown>): Record<string,
 // 改 orderIds/frozenOrderIds/scenarios → 方案真变（非写死）。徽标「推演结果·非数据库事实」。
 // 诚实边界：mock 用「贪心尊重容量」代替 sidecar CP-SAT（可证最优），只证守恒+方案差异形状；真最优见 datacore sidecar。
 // ---------------------------------------------------------------------------
-type PortObjKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost";
+type PortObjKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost" | "min_fg_inventory";
+const PORT_OBJ_KEYS: PortObjKey[] = ["max_ontime", "min_delay", "min_changeover", "min_cost", "min_fg_inventory"];
 const PORT_WINDOW_DAYS = 21;
 const PORT_LATE_WINDOWS = 2;
 const PORT_DELAY_PEN = 0.05;
 const PORT_CHG_COST = 1.2;
+const PORT_FG_HOLD = 0.5; // 成品持有单位成本（对称 PORT_DELAY_PEN·min_fg_inventory）
 const PORT_UNSERVED_PEN = 0.5;
 const PORT_CROSS_BASE_CHG = 60;
 const PORT_FORECAST_START = "2026-06-10";
@@ -1080,9 +1082,9 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
   const orderIds = Array.isArray(args.orderIds) && args.orderIds.length ? args.orderIds.map(String) : ORDERS.map((o) => o.so);
   const frozenIds = new Set((Array.isArray(args.frozenOrderIds) ? args.frozenOrderIds : []).map(String));
   const frozenMode = args.frozenCapacityMode === "release" ? "release" : "reserve";
-  const wanted = (Array.isArray(args.scenarios) && args.scenarios.length ? args.scenarios.map(String) : ["max_ontime", "min_cost"]).filter((k): k is PortObjKey => ["max_ontime", "min_delay", "min_changeover", "min_cost"].includes(k));
+  const wanted = (Array.isArray(args.scenarios) && args.scenarios.length ? args.scenarios.map(String) : ["max_ontime", "min_cost"]).filter((k): k is PortObjKey => (PORT_OBJ_KEYS as string[]).includes(k));
   const keys = wanted.length ? wanted : (["max_ontime", "min_cost"] as PortObjKey[]);
-  const primaryKey: PortObjKey = ["max_ontime", "min_delay", "min_changeover", "min_cost"].includes(String(args.objective)) ? (String(args.objective) as PortObjKey) : keys[0]!;
+  const primaryKey: PortObjKey = (PORT_OBJ_KEYS as string[]).includes(String(args.objective)) ? (String(args.objective) as PortObjKey) : keys[0]!;
   const allKeys = keys.includes(primaryKey) ? keys : [primaryKey, ...keys];
 
   const orderById = new Map(ORDERS.map((o) => [o.so, o]));
@@ -1113,28 +1115,30 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
   const coMinsTo = (from: string, to: string) => (!from || from === to ? 0 : PORT_CROSS_BASE_CHG);
   const solveScenario = (key: PortObjKey) => {
     const remain = new Map(netCap);
-    const occ: { item: string; base: string; window: number; qty: number; delayDays: number; onTime: boolean; changeUnits: number; cost: number; baseName: string }[] = [];
+    const occ: { item: string; base: string; window: number; qty: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number; baseName: string }[] = [];
     const served = new Set<string>();
     const orderItems = [...items].sort((a, b) => key === "max_ontime" ? (a.dueDay - b.dueDay || b.qty - a.qty) : (b.qty - a.qty || a.id.localeCompare(b.id)));
     for (const it of orderItems) {
-      const cands: { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; cost: number }[] = [];
+      const cands: { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number }[] = [];
       const wHi = Math.min(numWindows - 1, it.dueWindow + PORT_LATE_WINDOWS);
       for (const b of it.bases) {
         const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
         for (let w = 0; w <= wHi; w++) {
           if ((remain.get(cellKey(b, w)) ?? 0) < it.qty) continue;
           const delayWindows = Math.max(0, w - it.dueWindow); const delayDays = delayWindows * PORT_WINDOW_DAYS;
-          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits, 4) });
+          const earlyWindows = Math.max(0, it.dueWindow - w); const fgHoldUnits = it.qty * earlyWindows * PORT_WINDOW_DAYS;
+          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, fgHoldUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits + PORT_FG_HOLD * fgHoldUnits, 4) });
         }
       }
       if (!cands.length) continue;
       cands.sort((a, b) => key === "min_changeover" ? (a.changeUnits - b.changeUnits || a.cost - b.cost || a.window - b.window)
         : key === "min_delay" ? (a.delayDays - b.delayDays || a.cost - b.cost || a.window - b.window)
+        : key === "min_fg_inventory" ? (a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.window - a.window)
         : key === "max_ontime" ? ((b.onTime ? 1 : 0) - (a.onTime ? 1 : 0) || a.window - b.window || a.cost - b.cost)
         : (a.cost - b.cost || a.window - b.window));
       const c = cands[0]!;
       remain.set(cellKey(c.base, c.window), (remain.get(cellKey(c.base, c.window)) ?? 0) - it.qty);
-      occ.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, delayDays: c.delayDays, onTime: c.onTime, changeUnits: c.changeUnits, cost: c.cost, baseName: portBaseNameById.get(c.base) ?? c.base });
+      occ.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, delayDays: c.delayDays, onTime: c.onTime, changeUnits: c.changeUnits, fgHoldUnits: c.fgHoldUnits, cost: c.cost, baseName: portBaseNameById.get(c.base) ?? c.base });
       served.add(it.id);
     }
     occ.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
@@ -1142,8 +1146,9 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     const ontime = occ.filter((o) => o.onTime).length;
     const delay = round(occ.reduce((s, o) => s + o.qty * o.delayDays, 0), 2);
     const changeover = round(occ.reduce((s, o) => s + o.changeUnits, 0), 2);
+    const fgInventory = round(occ.reduce((s, o) => s + o.fgHoldUnits, 0), 2);
     const cost = round(occ.reduce((s, o) => s + o.cost, 0) + displacedIds.reduce((s, id) => s + PORT_UNSERVED_PEN * (items.find((i) => i.id === id)?.qty ?? 0), 0), 2);
-    return { key, occ, displacedIds, objectiveValues: { ontime, delay, changeover, cost }, servedQty: occ.reduce((s, o) => s + o.qty, 0) };
+    return { key, occ, displacedIds, objectiveValues: { ontime, delay, changeover, fgInventory, cost }, servedQty: occ.reduce((s, o) => s + o.qty, 0) };
   };
 
   const scenarioResults = allKeys.map(solveScenario);

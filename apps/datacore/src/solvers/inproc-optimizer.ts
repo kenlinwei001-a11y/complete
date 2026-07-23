@@ -55,16 +55,21 @@ export class InProcOptimizerClient implements OptimizerClient {
     for (const c of req.cells) {
       (byItem.get(c.item) ?? byItem.set(c.item, []).get(c.item)!).push(c);
     }
+    // min_fg_inventory 方案（objectives 含 fgInventory）→ 贪心也须真最小化提前压库：以 fgHoldUnits 作首排序键。
+    const wantsFg = (req.objectives ?? []).some((o) => o.key === "fgInventory");
     const occupancy: { item: string; base: string; window: number }[] = [];
     const served = new Set<string>();
     // 稳定序装入（大单先·id tie-break·确定性 R6）。
     for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
       const cells = [...byItem.get(id)!];
-      // 方案选格：min_* 取代价最小格（cost→ontime→window）；max_ontime 取最按期格（ontime→window→cost）。
+      // 方案选格：min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；max_ontime 取最按期格（ontime→window→cost）；
+      //          其余 min_* 取代价最小格（cost→ontime→window）。
       cells.sort((a, b) =>
-        primary === "ontime"
-          ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
-          : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
+        wantsFg
+          ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
+          : primary === "ontime"
+            ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
+            : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
       );
       const need = qty.get(id) ?? 0;
       for (const c of cells) {
@@ -84,12 +89,14 @@ export class InProcOptimizerClient implements OptimizerClient {
     let ontime = 0,
       delay = 0,
       changeover = 0,
+      fgInventory = 0,
       cost = 0;
     for (const o of occupancy) {
       const c = cellByKey.get(`${o.item}|${o.base}|${o.window}`)!;
       ontime += c.ontime;
       delay += c.delayUnits;
       changeover += c.changeUnits;
+      fgInventory += c.fgHoldUnits; // 成品持有恒计（度量一致·诚实·无论哪个方案都回填）
       cost += c.cost;
     }
     const unservedPen = req.items
@@ -103,7 +110,7 @@ export class InProcOptimizerClient implements OptimizerClient {
       status: "FEASIBLE",
       optimal: false,
       values,
-      objectiveValues: { ontime, delay, changeover, cost },
+      objectiveValues: { ontime, delay, changeover, fgInventory, cost },
       occupancy,
       displaced,
       method: req.method ?? "weighted",

@@ -22,13 +22,13 @@ import styles from "./GlobalSimView.module.css";
  */
 
 interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
-interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number }
+interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number }
 interface PortResult {
   status: string; optimal: boolean; feasible: boolean; reconciled: boolean;
   allocation: { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; qty: number; delayDays: number; onTime: boolean; provenance: Prov }[];
   displaced: { orderId: string; kind: string; qty: number; model: string; provenance: Prov }[];
   scenarios: Scenario[];
-  objectiveValues: { ontime: number; delay: number; changeover: number; cost: number };
+  objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number };
   capacityLedger: { baseId: string; window: number; cap: number; allocated: number }[];
   reconChecks: { ok: boolean }[];
   cost: { delay: number; changeover: number; unserved: number; total: number };
@@ -36,8 +36,8 @@ interface PortResult {
   summary: string;
 }
 
-const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover"] as const;
-const SCEN_LABEL: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型", min_delay: "最小延误" };
+const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover", "min_fg_inventory"] as const;
+const SCEN_LABEL: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型", min_delay: "最小延误", min_fg_inventory: "最少成品库存" };
 const provTitle = (p: Prov) => `溯源 ${p.kind}：${p.drillType}.${p.drillField}[${p.drillId}] = ${p.drillValue}`;
 
 /**
@@ -259,14 +259,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 {/* 方案对比矩阵（改目标 → 分配与各目标值真漂移·吸收方案对比） */}
                 <span className={styles.grpLabel} style={{ marginTop: 8 }}>[ 方案对比矩阵 ]</span>
                 <table className={styles.gtable} data-testid="global-sim-matrix">
-                  <thead><tr><th>方案</th><th>获排</th><th>被挤</th><th style={{ textAlign: "right" }}>获排量</th><th style={{ textAlign: "right" }}>按期</th><th style={{ textAlign: "right" }}>延误量</th><th style={{ textAlign: "right" }}>换型</th><th style={{ textAlign: "right" }}>代价</th></tr></thead>
+                  <thead><tr><th>方案</th><th>获排</th><th>被挤</th><th style={{ textAlign: "right" }}>获排量</th><th style={{ textAlign: "right" }}>按期</th><th style={{ textAlign: "right" }}>延误量</th><th style={{ textAlign: "right" }}>换型</th><th style={{ textAlign: "right" }}>成品库存</th><th style={{ textAlign: "right" }}>代价</th></tr></thead>
                   <tbody>
                     {d.scenarios.map((s) => (
                       <tr key={s.key} data-testid={`global-sim-scen-row-${s.key}`} style={s.key === primary ? { background: "rgba(108,123,246,0.1)" } : undefined}>
                         <td><strong className={styles.textPrimary}>{SCEN_LABEL[s.key] ?? s.key}</strong></td>
                         <td className="num">{s.servedCount}</td><td className="num">{s.displacedCount}</td><td className="num">{fmt(s.servedQty, 0)}</td>
                         <td className="num">{fmt(s.objectiveValues.ontime, 0)}</td><td className="num">{fmt(s.objectiveValues.delay, 0)}</td>
-                        <td className="num">{fmt(s.objectiveValues.changeover, 0)}</td><td className="num">{fmt(s.objectiveValues.cost, 0)}</td>
+                        <td className="num">{fmt(s.objectiveValues.changeover, 0)}</td><td className="num" data-testid={`global-sim-fginv-${s.key}`}>{fmt(s.objectiveValues.fgInventory, 0)}</td><td className="num">{fmt(s.objectiveValues.cost, 0)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -27,6 +27,7 @@ class MockPortfolio implements OptimizerClient {
   async solvePortfolio(req: PortfolioRequest): Promise<PortfolioResult> {
     this.lastReqs.push(req);
     const primary = req.objectives?.[0]?.key ?? "ontime";
+    const wantsFg = (req.objectives ?? []).some((o) => o.key === "fgInventory"); // min_fg_inventory → fgHold 首排序键
     const remain = new Map(req.capacity.map((c) => [`${c.base}|${c.window}`, c.cap]));
     const qty = new Map(req.items.map((i) => [i.id, i.qty]));
     const byItem = new Map<string, PortfolioRequest["cells"]>();
@@ -37,9 +38,11 @@ class MockPortfolio implements OptimizerClient {
     for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
       const cells = [...byItem.get(id)!];
       // 方案选格：min_cost/min_delay/min_changeover 取代价最小格；max_ontime 取最按期(delay 最小·window 最小)格。
-      cells.sort((a, b) => primary === "ontime"
-        ? (b.ontime - a.ontime) || (a.window - b.window) || (a.cost - b.cost)
-        : (a.cost - b.cost) || (b.ontime - a.ontime) || (a.window - b.window));
+      cells.sort((a, b) => wantsFg
+        ? (a.fgHoldUnits - b.fgHoldUnits) || (a.cost - b.cost) || (b.ontime - a.ontime) || (b.window - a.window)
+        : primary === "ontime"
+          ? (b.ontime - a.ontime) || (a.window - b.window) || (a.cost - b.cost)
+          : (a.cost - b.cost) || (b.ontime - a.ontime) || (a.window - b.window));
       const need = qty.get(id) ?? 0;
       for (const c of cells) {
         const k = `${c.base}|${c.window}`;
@@ -50,8 +53,8 @@ class MockPortfolio implements OptimizerClient {
     const displaced = req.items.map((i) => i.id).filter((id) => !served.has(id)).sort();
     // objectiveValues 从选中格真算（4 项恒计）。
     const cellByKey = new Map(req.cells.map((c) => [`${c.item}|${c.base}|${c.window}`, c]));
-    let ontime = 0, delay = 0, changeover = 0, cost = 0;
-    for (const o of occupancy) { const c = cellByKey.get(`${o.item}|${o.base}|${o.window}`)!; ontime += c.ontime; delay += c.delayUnits; changeover += c.changeUnits; cost += c.cost; }
+    let ontime = 0, delay = 0, changeover = 0, fgInventory = 0, cost = 0;
+    for (const o of occupancy) { const c = cellByKey.get(`${o.item}|${o.base}|${o.window}`)!; ontime += c.ontime; delay += c.delayUnits; changeover += c.changeUnits; fgInventory += c.fgHoldUnits; cost += c.cost; }
     const unservedPen = req.items.filter((i) => displaced.includes(i.id)).reduce((s, i) => s + (i.unservedPenalty ?? 0), 0);
     cost += unservedPen;
     // 造方案差异（仅证 datacore 逐方案透传各自 objectiveValues·真 CP-SAT 方案差异见 integration ④）：
@@ -59,7 +62,7 @@ class MockPortfolio implements OptimizerClient {
     cost += primary.length;
     const values: Record<string, number> = {};
     for (const i of req.items) values[`served_${i.id}`] = served.has(i.id) ? 1 : 0;
-    return { status: "OPTIMAL", optimal: true, values, objectiveValues: { ontime, delay, changeover, cost }, occupancy, displaced, method: req.method ?? "weighted" };
+    return { status: "OPTIMAL", optimal: true, values, objectiveValues: { ontime, delay, changeover, fgInventory, cost }, occupancy, displaced, method: req.method ?? "weighted" };
   }
 }
 
@@ -194,5 +197,29 @@ describe("WO-MEMSIM-OPTIMIZER · portfolio 内存态默认门（无 sidecar·InP
     for (const c of g.capacityLedger) expect(c.allocated).toBeLessThanOrEqual(c.cap + 1e-6);
     expect(g.reconChecks.every((r) => r.ok)).toBe(true);
     expect(g.reconciled).toBe(true);
+  });
+});
+
+/**
+ * WO-PORTFOLIO-FG-INVENTORY-OBJ · 「最少成品库存」目标维度（真降压库·灭假维度）。默认 InProc 真引擎驱动：
+ * 提前生产 = 成品压库（提前窗计 fgHoldUnits），min_fg_inventory 把生产贴向交期窗最小化提前持有。
+ */
+describe("WO-PORTFOLIO-FG-INVENTORY-OBJ · 最少成品库存目标维度（默认 InProc·真降压库）", () => {
+  it("头号判据：min_fg_inventory.fgInventory < max_ontime.fgInventory（真把生产贴向交期·灭假维度）", async () => {
+    const t = await makeApp(); await seedBattery(t); // 默认 InProc（无 sidecar）
+    const g = await run(t, { scenarios: ["max_ontime", "min_fg_inventory"] });
+    const byKey = new Map(g.scenarios.map((s) => [s.key, s.objectiveValues]));
+    const fgMax = byKey.get("max_ontime")!.fgInventory as number;
+    const fgMin = byKey.get("min_fg_inventory")!.fgInventory as number;
+    expect(typeof fgMax).toBe("number");
+    expect(typeof fgMin).toBe("number");
+    // max_ontime 前置生产（早窗）压库最多·min_fg_inventory 贴交期压库最少 → 严格更低（两者恒等即假维度红咬）。
+    expect(fgMin).toBeLessThan(fgMax);
+  });
+  it("R6：min_fg_inventory 同参两跑 fgInventory + 分配字节一致（稳定序·无 Date.now/random）", async () => {
+    const t = await makeApp(); await seedBattery(t);
+    const a = await run(t, { scenarios: ["max_ontime", "min_fg_inventory"] });
+    const b = await run(t, { scenarios: ["max_ontime", "min_fg_inventory"] });
+    expect(JSON.stringify(b.scenarios)).toBe(JSON.stringify(a.scenarios));
   });
 });

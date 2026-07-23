@@ -14,8 +14,8 @@ import type { PortfolioRequest, PortfolioResult } from "./optimizer-client.js";
  * 每分配/被挤/方案值带 provenance（R13）·capacityLedger + reconChecks 逐格守恒硬校验。
  */
 
-export type PortfolioObjectiveKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost";
-const OBJ_KEYS: PortfolioObjectiveKey[] = ["max_ontime", "min_delay", "min_changeover", "min_cost"];
+export type PortfolioObjectiveKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost" | "min_fg_inventory";
+const OBJ_KEYS: PortfolioObjectiveKey[] = ["max_ontime", "min_delay", "min_changeover", "min_cost", "min_fg_inventory"];
 const isObjKey = (k: string): k is PortfolioObjectiveKey => (OBJ_KEYS as string[]).includes(k);
 
 interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
@@ -221,6 +221,8 @@ function assemble(input: PortfolioInput): Assembled {
   const delayPenaltyPerUnitDay = coeff("delayPenaltyPerUnitDay", 0.05);
   const unservedPenaltyPerUnit = coeff("unservedPenaltyPerUnit", 0.5);
   const crossBaseChangeoverMin = coeff("crossBaseChangeoverMin", 60);
+  // 提前生产的成品持有单位成本（min_fg_inventory 目标·对称 delayPenaltyPerUnitDay·R14 可校准·缺省诚实兜底）。
+  const fgHoldingCostPerUnitDay = coeff("fgHoldingCostPerUnitDay", 0.5);
 
   const coMinsTo = (fromModel: string, toModel: string): number => {
     if (!fromModel || fromModel === toModel) return 0;
@@ -246,8 +248,11 @@ function assemble(input: PortfolioInput): Assembled {
         const delayDays = delayWindows * windowDays;
         const ontime: 0 | 1 = delayWindows === 0 ? 1 : 0;
         const delayUnits = it.qty * delayDays;
-        const cost = round(delayPenaltyPerUnitDay * delayUnits + changeoverCostPerMin * changeUnits, 4);
-        cells.push({ item: it.id, base: b, window: w, ontime, delayUnits, changeUnits, cost });
+        // 成品持有（对称 delay）：提前窗数 = max(0, dueWindow − w)；提前生产即成品压库 = qty × 提前窗 × 窗天。
+        const earlyWindows = Math.max(0, it.dueWindow - w);
+        const fgHoldUnits = it.qty * earlyWindows * windowDays;
+        const cost = round(delayPenaltyPerUnitDay * delayUnits + changeoverCostPerMin * changeUnits + fgHoldingCostPerUnitDay * fgHoldUnits, 4);
+        cells.push({ item: it.id, base: b, window: w, ontime, delayUnits, changeUnits, fgHoldUnits, cost });
       }
     }
   }
@@ -265,6 +270,8 @@ function scenarioObjectives(key: PortfolioObjectiveKey): PortfolioRequest["objec
     case "min_delay": return [{ key: "cost", sense: "min", weight: 1 }, { key: "delay", sense: "min", weight: 10 }];
     case "min_changeover": return [{ key: "cost", sense: "min", weight: 1 }, { key: "changeover", sense: "min", weight: 10 }];
     case "min_cost": return [{ key: "cost", sense: "min", weight: 1 }];
+    // 并入 cost（含未排罚·激励排产），否则「不排任何单」即令 fgInventory=0 退化最优；权重 10 与 min_delay/min_changeover 同量级。
+    case "min_fg_inventory": return [{ key: "cost", sense: "min", weight: 1 }, { key: "fgInventory", sense: "min", weight: 10 }];
   }
 }
 

@@ -53,4 +53,23 @@ describe("global-sim · 全局联合推演（方案矩阵 + 守恒台账 + 冻�
     const ledger = screen.getByTestId("global-sim-ledger");
     for (const r of within(ledger).getAllByTestId(/global-sim-ledger-/)) expect(r.textContent).toContain("✓");
   });
+
+  it("WO-PORTFOLIO-FG-INVENTORY-OBJ：最少成品库存目标进 UI 方案 + 对比矩阵「成品库存」列渲染（mock 出真 fgInventory）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/global-sim");
+
+    await screen.findByTestId("global-sim");
+    const matrix = await screen.findByTestId("global-sim-matrix");
+    // 对比矩阵新增「成品库存」列头 + 默认方案行渲染 fgInventory 单元。
+    expect(within(matrix).getByText("成品库存")).toBeInTheDocument();
+    expect(within(matrix).getByTestId("global-sim-fginv-max_ontime")).toBeInTheDocument();
+
+    // 勾选「最少成品库存」方案 → 进对比矩阵，其成品库存单元渲染真值（非贴标签）。
+    await user.click(screen.getByTestId("global-sim-scen-min_fg_inventory"));
+    await waitFor(() => expect(screen.getByTestId("global-sim-scen-row-min_fg_inventory")).toBeInTheDocument());
+    const fgCell = screen.getByTestId("global-sim-fginv-min_fg_inventory");
+    expect(fgCell).toBeInTheDocument();
+    expect(Number.isNaN(Number(fgCell.textContent!.replace(/[^0-9.-]/g, "")))).toBe(false);
+  });
 });

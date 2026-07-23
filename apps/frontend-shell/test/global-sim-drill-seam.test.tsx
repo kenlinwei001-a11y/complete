@@ -40,10 +40,10 @@ const THREE_KIND_PORTFOLIO = {
     { orderId: "FC:SEG-2", kind: "forecast", qty: 40, model: "预测", provenance: PROV("DemandSegment", "FC:SEG-2", "p50", 40) },
   ],
   scenarios: [
-    { key: "max_ontime", objectiveValues: { ontime: 3, delay: 0, changeover: 0, cost: 10 }, servedCount: 3, displacedCount: 2, servedQty: 230 },
-    { key: "min_cost", objectiveValues: { ontime: 2, delay: 5, changeover: 1, cost: 8 }, servedCount: 3, displacedCount: 2, servedQty: 230 },
+    { key: "max_ontime", objectiveValues: { ontime: 3, delay: 0, changeover: 0, fgInventory: 40, cost: 10 }, servedCount: 3, displacedCount: 2, servedQty: 230 },
+    { key: "min_cost", objectiveValues: { ontime: 2, delay: 5, changeover: 1, fgInventory: 12, cost: 8 }, servedCount: 3, displacedCount: 2, servedQty: 230 },
   ],
-  objectiveValues: { ontime: 3, delay: 0, changeover: 0, cost: 10 },
+  objectiveValues: { ontime: 3, delay: 0, changeover: 0, fgInventory: 40, cost: 10 },
   capacityLedger: [
     { baseId: "changzhou", window: 0, cap: 500, allocated: 150 },
     { baseId: "hefei", window: 1, cap: 400, allocated: 80 },

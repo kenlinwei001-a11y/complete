@@ -831,14 +831,14 @@ def solve_portfolio(payload: dict) -> dict:
     协议：{model:"portfolio", seed, scale?,
            items:[{id, qty, unservedPenalty?}],          # 需求项（served + 未排罚）
            capacity:[{base, window, cap}],               # cap[b,t] 共享产能
-           cells:[{item, base, window, ontime(0/1), delayUnits, changeUnits, cost}],  # 可行指派格（预算好系数·R14 全在调用层）
-           objectives?:[{key:"ontime"|"delay"|"changeover"|"cost", sense?, weight?}], method?, epsilon?, priority?}
+           cells:[{item, base, window, ontime(0/1), delayUnits, changeUnits, fgHoldUnits, cost}],  # 可行指派格（预算好系数·R14 全在调用层）
+           objectives?:[{key:"ontime"|"delay"|"changeover"|"fgInventory"|"cost", sense?, weight?}], method?, epsilon?, priority?}
     变量 x[cell]∈{0,1} + served[i]∈{0,1}。约束：
       · 每需求项至多一处   Σ_{cells of i} x == served[i]（无可行格 → served 强制 0）
       · 共享产能守恒       Σ_{cells at (b,t)} qty_i·x ≤ cap[b,t]（核心·防重复占用）
-    目标（全 4 项恒计并回报，供方案对比）：ontime(max Σ 按期格)·delay(min Σ 延误量)·
-      changeover(min Σ 换型量)·cost(min Σ 格代价 + Σ未排罚·(1−served))。
-    返回含 occupancy(x=1 格)/displaced(served=0)/objectiveValues(4 项)/values。
+    目标（全 5 项恒计并回报，供方案对比）：ontime(max Σ 按期格)·delay(min Σ 延误量)·
+      changeover(min Σ 换型量)·fgInventory(min Σ 成品持有量·提前生产压库)·cost(min Σ 格代价 + Σ未排罚·(1−served))。
+    返回含 occupancy(x=1 格)/displaced(served=0)/objectiveValues(5 项)/values。
     """
     items = payload.get("items") or []
     capacity = payload.get("capacity") or []
@@ -861,7 +861,8 @@ def solve_portfolio(payload: dict) -> dict:
     cell_list = sorted(
         ({"item": str(c["item"]), "base": str(c["base"]), "window": int(c["window"]),
           "ontime": int(c.get("ontime", 0)), "delayUnits": to_int(c.get("delayUnits", 0)),
-          "changeUnits": to_int(c.get("changeUnits", 0)), "cost": to_int(c.get("cost", 0))} for c in cells),
+          "changeUnits": to_int(c.get("changeUnits", 0)), "fgHoldUnits": to_int(c.get("fgHoldUnits", 0)),
+          "cost": to_int(c.get("cost", 0))} for c in cells),
         key=lambda c: (c["item"], c["base"], c["window"]),
     )
 
@@ -891,6 +892,7 @@ def solve_portfolio(payload: dict) -> dict:
     ontime_terms = [(cell_list[k]["ontime"], x[k]) for k in range(len(cell_list))]
     delay_terms = [(cell_list[k]["delayUnits"], x[k]) for k in range(len(cell_list))]
     change_terms = [(cell_list[k]["changeUnits"], x[k]) for k in range(len(cell_list))]
+    fghold_terms = [(cell_list[k]["fgHoldUnits"], x[k]) for k in range(len(cell_list))]  # 成品持有（对称 delay·min_fg_inventory）
     # cost = Σ 格代价·x + Σ 未排罚·(1−served) = Σcell.cost·x − Σpen·served + Σpen。
     cost_terms = [(cell_list[k]["cost"], x[k]) for k in range(len(cell_list))]
     cost_terms += [(-unserved_pen[i], served[i]) for i in item_ids]
@@ -899,6 +901,7 @@ def solve_portfolio(payload: dict) -> dict:
         "ontime": {"key": "ontime", "sense": "max", "terms": ontime_terms, "const": 0},
         "delay": {"key": "delay", "sense": "min", "terms": delay_terms, "const": 0},
         "changeover": {"key": "changeover", "sense": "min", "terms": change_terms, "const": 0},
+        "fgInventory": {"key": "fgInventory", "sense": "min", "terms": fghold_terms, "const": 0},
         "cost": {"key": "cost", "sense": "min", "terms": cost_terms, "const": cost_const},
     }
 
