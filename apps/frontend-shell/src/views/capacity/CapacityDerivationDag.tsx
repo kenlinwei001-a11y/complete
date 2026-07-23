@@ -18,9 +18,23 @@ interface OutlookLine { key: string; value: number; provenance: Prov }
 interface Horizon { available: number; gap: number; status: string; lines: OutlookLine[] }
 interface Outlook { baseName: string; horizons: Horizon[] }
 interface BnRow { base: string; tightness: Record<string, number>; primary: string }
-interface Bn { factors: string[]; rows: BnRow[] }
+interface Bn { factors: string[]; rows: BnRow[]; dataMode?: string }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+
+/**
+ * WO-GSIM-3 灰数据修（G-DATAMODE-PROV 残口·产线派生 DAG 恒灰）：张力值 → 冷暖热力色。
+ * 灰(v==null·无 LIVE 真源) vs 有真值即按幅度冷蓝→暖红上色 → 改 Equipment.oee_current 使 bottleneck_matrix
+ * 张力真变 → 本层锚点格**真变色**（非恒灰·SEAM §5.4）。张力口径 0–100（越高越紧）。
+ */
+function tightColor(v: number | null): string {
+  if (v == null) return "var(--muted2)"; // 无 LIVE 真源 → 诚实灰（不伪造热度）
+  const u = Math.max(0, Math.min(100, v)) / 100;
+  if (u >= 0.9) return "var(--danger)";
+  if (u >= 0.75) return "var(--c-forecast)";
+  if (u >= 0.55) return "var(--accent)";
+  return "var(--ok)";
+}
 
 /** 每层驱动因素圈号（沿产能金字塔·factorOntology 单源）+ 该层锚点数据来源。 */
 const LAYER_SPEC: { layer: number; marks: string[]; anchor: "bnOEE" | "bnYield" | "bnPrimary" | "bnMaterial" | "available" | "gap" }[] = [
@@ -35,7 +49,9 @@ const LAYER_SPEC: { layer: number; marks: string[]; anchor: "bnOEE" | "bnYield" 
 export function CapacityDerivationDag({ baseId }: { baseId: string }) {
   const [open, setOpen] = useState<number | null>(5); // 默认展开"预测层"（可用产能数所在）。
   const outlook = useLiveSolver<Outlook>("base_capacity_outlook", { baseId, horizon: 90 }, (r) => r as Outlook);
-  const bn = useLiveSolver<Bn>("bottleneck_matrix", { baseIds: [baseId] }, (r) => r as Bn);
+  // WO-GSIM-3 灰数据修：显式请求 LIVE 口径 → bottleneck_matrix 读真 Equipment.oee_current/Line.utilization/
+  // Process.yield_baseline 派生张力（否则后端回落 MOCK 恒定 seed 值·产线派生 DAG 恒灰·改设备 OEE 不动）。
+  const bn = useLiveSolver<Bn>("bottleneck_matrix", { baseIds: [baseId], dataMode: "LIVE" }, (r) => r as Bn);
   const hz = outlook.data?.horizons?.[0];
   const bnRow = bn.data?.rows?.find((r) => r.base === baseId) ?? bn.data?.rows?.[0];
 
@@ -50,15 +66,24 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
     );
   }
 
-  const tOf = (f: string): number | null => (bnRow?.tightness?.[f] != null ? bnRow.tightness[f]! : null);
-  const anchorVal = (a: (typeof LAYER_SPEC)[number]["anchor"]): { label: string; value: string; field: string; kind: string } => {
+  // tOf 兜底口径：优先本基地行，缺则退回矩阵首行（单基地请求 rows 恒有一行）→ 产线派生 DAG 接真值非恒 null。
+  const tOf = (f: string): number | null => {
+    const t = bnRow?.tightness?.[f];
+    if (typeof t === "number" && Number.isFinite(t)) return t;
+    const fb = bn.data?.rows?.[0]?.tightness?.[f];
+    return typeof fb === "number" && Number.isFinite(fb) ? fb : null;
+  };
+  // dataMode=LIVE 且矩阵真回 LIVE → 张力锚点为"实测"（读真 Equipment/Line/Process）；否则诚实标"估算(无实测)"。
+  const bnLive = bn.data?.dataMode === "LIVE";
+  const bnKind = bnLive ? "实测" : "估算(无实测)";
+  const anchorVal = (a: (typeof LAYER_SPEC)[number]["anchor"]): { label: string; value: string; field: string; kind: string; tight: number | null } => {
     switch (a) {
-      case "available": return { label: "可用产能数", value: `${fmt(hz.available)} 套`, field: "base_capacity_outlook.available", kind: "派生" };
-      case "gap": return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生" };
-      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.设备OEE", kind: "实测" }; }
-      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.良率波动", kind: "实测" }; }
-      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"} 张力`, value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.primary", kind: "实测" }; }
-      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.物料齐套", kind: "实测" }; }
+      case "available": return { label: "可用产能数", value: `${fmt(hz.available)} 套`, field: "base_capacity_outlook.available", kind: "派生", tight: null };
+      case "gap": return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生", tight: null };
+      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v }; }
+      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v }; }
+      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"} 张力`, value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.primary", kind: bnKind, tight: v }; }
+      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v }; }
     }
   };
 
@@ -90,7 +115,19 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
                   <span style={{ width: 16, height: 16, borderRadius: 4, background: L.colorVar, opacity: 0.85, flexShrink: 0 }} aria-hidden />
                   <b>{spec.layer}. {L.name}</b>
                   <span style={{ color: "var(--muted2)", fontSize: 10.5 }}>{L.role}</span>
-                  <span className="mono" data-testid={`cap-dag-anchor-${spec.layer}`} style={{ marginLeft: "auto", color: spec.anchor === "gap" ? "var(--danger)" : "var(--txt)" }}>
+                  <span
+                    className="mono"
+                    data-testid={`cap-dag-anchor-${spec.layer}`}
+                    data-tight={anchor.tight != null ? Math.round(anchor.tight) : ""}
+                    data-live={anchor.tight != null ? String(bnLive) : ""}
+                    style={{
+                      marginLeft: "auto",
+                      // 张力锚点按幅度上色（改 Equipment.oee → 张力变 → 真变色·非恒灰）；产能/缺口锚点保原口径。
+                      color: anchor.tight != null ? tightColor(anchor.tight) : spec.anchor === "gap" ? "var(--danger)" : "var(--txt)",
+                      fontWeight: anchor.tight != null ? 600 : undefined,
+                    }}
+                    title={anchor.tight != null ? `${anchor.label} = ${anchor.value}（${anchor.kind}·溯 ${anchor.field}）` : undefined}
+                  >
                     {anchor.label} {anchor.value}
                   </span>
                   <span style={{ color: "var(--muted2)" }}>{isOpen ? "▾" : "▸"}</span>

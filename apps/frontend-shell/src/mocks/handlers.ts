@@ -714,6 +714,14 @@ export const handlers = [
         })),
       );
       rows = workshops;
+    } else if (type === "InterBaseTransfer") {
+      // WO-GSIM-3：跨基地调拨（喂区⑤两段排产表·电芯段→在途→Pack段）。fromBase/toBase=真 baseId·model 对齐订单型号。
+      // 逐口径移植 datacore battery.ts interBaseTransfers（键 XFER-{from}-{to}-{model}·transitDays 真值·MODEL_BASE_MAP 派生）。
+      rows = [
+        { transferId: "XFER-changzhou-handan-4680-NCM", fromBase: "changzhou", toBase: "handan", model: "4680-NCM", qty: 2000, transitDays: 3, status: "PLANNED" },
+        { transferId: "XFER-xiamen-jiangmen-4680-LFP", fromBase: "xiamen", toBase: "jiangmen", model: "4680-LFP", qty: 1500, transitDays: 5, status: "IN_TRANSIT" },
+        { transferId: "XFER-chengdu-meishan-刀片-LFP", fromBase: "chengdu", toBase: "meishan", model: "刀片-LFP", qty: 1800, transitDays: 4, status: "PLANNED" },
+      ].map((r) => ({ id: r.transferId, props: r }));
     } else if (type === "SopVersionRow") {
       // SOP.4 版本演进对比（V1/V3/V5/V7）
       rows = [
