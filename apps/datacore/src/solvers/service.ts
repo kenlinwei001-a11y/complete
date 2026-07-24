@@ -483,12 +483,19 @@ export class SolverService {
     const changes = apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
     const result = await this.ontologyCore.recompute(ctx, changes, { dryRun: true, apply: apply.map((a) => ({ objectId: a.objectId, prop: a.prop, value: a.value })) });
     const deltas = result.dryRunDeltas ?? [];
+    // P0 hollow recompute 诚实化（KILL-MOCK-RED·抄 decision/derive-fields DerivedDataMode.EMPTY）：apply 命中但
+    // dryRunDeltas 空（该属性无下游派生边·如 Process.yield_baseline 死叶，见断点 G-CAPACITY-YIELD-DERIVATION）→
+    // 不静默返 deltas:[] 冒充"重算了没变"，而是标 dataMode:"EMPTY" + note 披露"无法前向重算"；有 delta → "LIVE"。
+    // 让前端能辨「真的没变」vs「算不了」（数据半：本体缺派生边，非路由半）。
+    const dataMode = deltas.length > 0 ? "LIVE" : "EMPTY";
     return {
       deltas,
       rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after })),
       affectedObjects: result.updatedObjects,
       count: deltas.length,
       rootTypes: [...new Set(apply.map((a) => a.objectType))],
+      dataMode,
+      ...(deltas.length === 0 ? { note: "该属性无下游派生边·无法前向重算（apply 命中但 dryRunDeltas 空）——本体缺派生边而非静默 0，见断点 G-CAPACITY-YIELD-DERIVATION" } : {}),
     };
   }
 

@@ -47,10 +47,13 @@ if (!/liveTightness/.test(cap) || !/dataMode:/.test(cap)) {
   fail("capacity.ts 未用 liveTightness + 透 dataMode（紧张度/主瓶颈真推演）");
 }
 
-// ④ 前端推演红/黄渲染必须消费 dataMode（显"估算/实测"），不裸渲染当真值。
+// ④ 前端推演红/黄渲染必须逐卡消费诚实位 + 显"估算/实测"，不裸渲染当真值。
+// WO-DATAMODE-UNIFY-PROVENANCE 后前端两正交维披露：measurement 维（card.dataMode/card.currentTightness 实测当前张力）
+// 与 provenance 维（card.provenanceSynthetic「合成·未接实测」灰徽章）——比旧单一 card.dataMode 更细。三者任一被消费即诚实
+// 披露；三者全无 = 裸渲染回潮（此哨兵旧版只认 card.dataMode 已随前端演进为 stale 误判，本次校正为认全部诚实位）。
 const riskBoard = read("apps/frontend-shell/src/views/RiskBoardView.tsx");
-if (!/card\.dataMode/.test(riskBoard) || !/估算|实测/.test(riskBoard)) {
-  fail("RiskBoardView 未消费 card.dataMode 显估算/实测（风险红/黄裸渲染回潮）");
+if (!/card\.(dataMode|provenanceSynthetic|currentTightness)/.test(riskBoard) || !/估算|实测/.test(riskBoard)) {
+  fail("RiskBoardView 未消费 card 诚实位(dataMode/provenanceSynthetic/currentTightness) 显估算/实测（风险红/黄裸渲染回潮）");
 }
 const projSim = read("apps/frontend-shell/src/views/sim/ProjectSimView.tsx");
 if (!/r\.live/.test(projSim) || !/估算|实测/.test(projSim)) {
@@ -61,9 +64,39 @@ if (!/bottleneck_matrix"[\s\S]{0,160}dataMode:\s*"LIVE"/.test(projSim)) {
   fail("ProjectSimView 调 bottleneck_matrix 未传 dataMode:LIVE（永远 MOCK 回潮·AUDIT 真值判据③）");
 }
 
+// ⑤ audit_timeline 去哈希诚实标（AUDIT 2026-07-24 P0·假·哈希冒充回潮防线）：
+//    (a) 契约 AuditTimelineOutputSchema 带 dataMode；(b) risk.ts auditTimeline 输出标 dataMode:MOCK + provenanceSynthetic
+//    —— series/peak/crossDay 由 hashString(kind) 派生（无实测源）须诚实披露，不裸渲染当真值。
+{
+  const m = solvers.match(/export const AuditTimelineOutputSchema[\s\S]*?(?=export const \w+Schema|export type)/);
+  if (!m || !/dataMode/.test(m[0])) fail("audit_timeline 输出 schema (AuditTimelineOutputSchema) 缺 dataMode —— 逐日 series/峰值裸渲染当真值（假·哈希冒充回潮）");
+}
+if (!/function auditTimeline/.test(risk) || !/dataMode:\s*"MOCK"/.test(risk) || !/provenanceSynthetic:\s*true/.test(risk)) {
+  fail("risk.ts auditTimeline 未标 dataMode:MOCK + provenanceSynthetic（series/peak/crossDay hash 派生须诚实披露·不裸渲染当实测）");
+}
+
+// ⑥ extended 求解器缺真数据不静默现编（AUDIT P2·假6·KILL-MOCK-RED）：
+//    (a) 删写死 series（yield_diagnosis 40 天 day-33 突变 / maintenance_stagger loadByWeek 常量）；
+//    (b) 缺关键真对象时出 dataMode:EMPTY / provenanceSynthetic 披露，不冒充真算（抄 capex 缺数抛错）。
+const extended = read("apps/datacore/src/solvers/extended.ts");
+if (/yield:\s*d\s*<\s*33\s*\?/.test(extended) || /"6":\s*20,\s*"7":\s*5/.test(extended)) {
+  fail("extended.ts 仍含写死 series（yield_diagnosis day-33 突变 / maintenance_stagger loadByWeek 常量）—— 缺真时序时现编假数据冒充真算（假6 回潮）");
+}
+if (!/dataMode:\s*"EMPTY"/.test(extended) || !/provenanceSynthetic:\s*true/.test(extended)) {
+  fail("extended.ts 缺关键真对象时未标 dataMode:EMPTY/provenanceSynthetic（yield_diagnosis/maintenance_stagger 须诚实披露·抄 capex 缺数抛错）");
+}
+
+// ⑦ hollow recompute 诚实化（AUDIT P0·头号病·generic_inference apply 无下游派生边不静默 0）：
+//    service.ts genericInference apply 命中但 dryRunDeltas 空 → dataMode:EMPTY + note，不静默返 deltas:[] 冒充"重算了没变"。
+const svc = read("apps/datacore/src/solvers/service.ts");
+if (!/dataMode\s*=\s*deltas\.length\s*>\s*0\s*\?\s*"LIVE"\s*:\s*"EMPTY"/.test(svc) || !/无下游派生边/.test(svc)) {
+  fail("service.ts genericInference 未对'apply 命中但无下游派生边(dryRunDeltas 空)'标 dataMode:EMPTY + note（静默 0 冒充重算回潮·hollow recompute）");
+}
+
 if (red) {
   console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 前端消费显估算/实测（抄 capex_scenario 缺数抛错 / LedgerView 逐格 Provenance）。");
   process.exit(1);
 }
 console.log("· genuine-sim：risk_timeline/capacity_forecast/bottleneck_matrix 输出带 dataMode；前端 RiskBoardView/ProjectSimView 消费 dataMode/live 显估算/实测；bottleneck 前端传 LIVE。");
-console.log("✓ genuine-sim:check 通过（保守哨兵：钉死轨M 增量1/1b 诚实通道；假3/假4 修后扩入）。");
+console.log("· genuine-sim（AUDIT 2026-07-24 扩门）：audit_timeline 契约+求解器标 dataMode:MOCK/provenanceSynthetic；extended 删写死 series+缺数标 EMPTY；generic_inference 无派生边标 dataMode:EMPTY 不静默 0。");
+console.log("✓ genuine-sim:check 通过（保守哨兵：钉死轨M 增量1/1b 诚实通道 + AUDIT P0-P2 假·哈希/写死/静默 0 回潮防线）。");
