@@ -2,6 +2,7 @@ import type { FeatureDef } from "@platform/contracts";
 import type { AuthCtx, FeatureAuditRecord, FeatureConfigRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { AppError, validationError } from "./errors.js";
+import { builtInViewFeatureDefs, builtInViewFeatureMap } from "./synthetic/view-manifest.js";
 
 /**
  * Feature entitlement (增量 PRD). FeatureRegistry is code-registered; resolution
@@ -10,17 +11,13 @@ import { AppError, validationError } from "./errors.js";
  */
 
 export const FEATURE_REGISTRY: FeatureDef[] = [
-  // VIEW level
-  { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true, bindings: { apiTags: ["dash"] } },
-  { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
-  { key: "view.risk-board", name: "风险推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
-  { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true },
-  { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
-  { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
-  { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
-  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
-  { key: "view.global-sim", name: "全局联合推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
-  // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
+  // VIEW level · 内置视图（单一来源 synthetic/view-manifest.BUILTIN_VIEWS 派生·防 features/map/VIEW_DEFS/scenarioSeed
+  // 四处漂移·WO-MEMORY-VIEW-RESILIENCE）。含 view.dash/ontology-graph/risk-board/ledger/plan-audit/plan-generate/
+  // project-sim/sop-balance/global-sim——名称/bindings 与此前一字不差，唯 project-sim/sop-balance 相对序随 scenarioSeed
+  // 导航序（无功能行为影响：resolve() 排序 + Set 消费·order 不入任何断言）。**非 VIEW 功能（下方 BLOCK/ACTION/sim.*/
+  // opt.*/ceo.*）保持手注册·顺序原样不动**（PRD §9 风险点：非 VIEW 功能注册序不得被单一来源重构扰动）。
+  ...builtInViewFeatureDefs(),
+  // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）——非出厂种子核心视图（seed:false·不在 BUILTIN_VIEWS）·手注册
   { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
   { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
@@ -121,16 +118,11 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set(["ceo.free-
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
-  dash: "view.dash",
-  risk: "view.risk-board",
-  order: "view.ledger",
-  graph: "view.ontology-graph",
-  "ontology-graph": "view.ontology-graph",
-  "plan-audit": "view.plan-audit",
-  "plan-generate": "view.plan-generate",
-  "sop-balance": "view.sop-balance",
-  "project-sim": "view.project-sim",
-  "global-sim": "view.global-sim",
+  // 内置视图核心段（dash/graph/risk/order/plan-audit/plan-generate/project-sim/sop-balance/global-sim）
+  // 单一来源 view-manifest.BUILTIN_VIEWS 派生（防漂移·WO-MEMORY-VIEW-RESILIENCE）。
+  ...builtInViewFeatureMap(),
+  // 别名与增量视图/图谱视角（非 BUILTIN_VIEWS 成员·手注册）：
+  "ontology-graph": "view.ontology-graph", // graph 的 renderer 同名别名（两 viewKey 指同一功能）
   "annual-scenario": "view.annual-scenario",
   "quarterly-rolling": "view.quarterly-rolling",
   "order-chain": "view.order-chain",

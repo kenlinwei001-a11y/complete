@@ -307,6 +307,28 @@ ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --P
 Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
 ```
+**内置视图种入链（WO-MEMORY-VIEW-RESILIENCE·"内存模式视图默认配置防丢"·单一来源防漂移）**
+```
+view-manifest.BUILTIN_VIEWS(单一真相源·{key,title,renderer,featureKey,featureName,seed,bindings?,layout?})
+  --builtInViewFeatureDefs()--> features.FEATURE_REGISTRY(VIEW 级功能段·view.dash/ontology-graph/risk-board/ledger/
+                                  plan-audit/plan-generate/project-sim/sop-balance/global-sim·非 VIEW 功能仍手注册顺序不动·R3 暗发无关)
+  --builtInViewFeatureMap()--> features.VIEW_FEATURE_MAP(viewKey→featureKey·别名 ontology-graph/增量视图/图谱视角手注册)
+  --SEEDED_VIEW_KEYS(=filter(seed))--> battery.scenarioSeed.views(出厂合成种哪些核心视图)
+  --CORE_VIEW_LAYOUTS 注入 layout--> synthetic/service.VIEW_DEFS(title/renderer 取 BUILTIN_VIEWS·layout 运行时·dash 依 opts.livedIn)
+seedDemoSynthetic --filterByFeatures(VIEW_FEATURE_MAP∩enabled)--> seedViewConfigs
+  --assertViewManifestIntegrity(featureKey 已注册 + VIEW_FEATURE_MAP + VIEW_DEFS 齐备·种子路径 fail-fast 抛)--✅ §4.3
+  --roleViews(admin/planner 全核心+增量·base_manager 排除 dash/graph/plan-audit/plan-generate/**global-sim** 保原样)-->
+    ViewConfig{views[{key,title,renderer,layout,options}],navigation} --GET /a/v1/me/workspace(viewAllowed=VIEW_FEATURE_MAP[k]∈features)-->
+      workspace.views/navigation（前端 ViewPage 双门：workspace.views ∧ features·R3）
+  ✅ 断点闭合：此前 features/map/VIEW_DEFS 三处齐备但 scenarioSeed 手维护漏 global-sim → 内存态(DATABASE_URL 未设)每次重启
+     后 /me/workspace 不含「全局推演」→ 页面隐身（各半 unit 全绿·断在接缝·"绿测试≠能用"）；收敛四处为单一来源 + fail-fast 根治。
+  ⚠ decision-play（renderer=decision-play·DecisionPlayView·decision_play solver）**诚实不种入**：只有前端 renderer + 专用静态
+     路由 /v/decision-play（App.tsx·免依赖 workspace.views 即可达），**无** VIEW_DEF/VIEW_FEATURE_MAP/view.decision-play 功能——
+     配置不完整，种入会 404（PRD §4.1 诚实排除·经静态路由已可达无需种）。
+  ⚠ cross_object_occupancy（多目标+跨对象占用 solver）内存态(未配 OPTIMIZER_BASE_URL) InProcOptimizerClient 加权贪心兜底
+     （§4.5·尊重产线容量+合同额度·确定性 R6·恒返 FEASIBLE/optimal:false 诚实不冒充 CP-SAT 可证最优·与 portfolio 内存态同规矩）；
+     multi_objective 仍「未接入」（不返回编造解）。SEAM：memory-mode-views.test（workspace 含 global-sim + 闭包 + fail-fast 有牙 + cross_object FEASIBLE）。
+```
 **数据→本体→推演链**
 ```
 Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version

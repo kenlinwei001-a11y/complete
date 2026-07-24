@@ -13,11 +13,11 @@
  * `d.optimal ? "✓ 可证最优" : d.status` 因此自动显示「FEASIBLE」而非「可证最优」——不撒谎。docker 模式仍走
  * `HttpOptimizerClient` → CP-SAT 可证最优，行为不变。
  *
- * 范围：本单只兜底 `portfolio`（P0）。其余最优化模型（selection/assignment/sequencing/packing/job_shop/
- * facility_location/min_cost_flow/set_cover/independent_set/combinatorial_auction/multi_objective/
- * cross_object_occupancy）**不实现**——`OptimizerClient` 上它们是 optional，未实现 → 调用方（service.ts 的
- * `!this.optimizer?.solveXxx` 守卫）仍显式「未接入」，**不返回编造解让对应面板假装能用**（follow-up：
- * WO-MEMSIM-OPTIMIZER-2 内存态 multiobj/crossobj）。
+ * 范围：内存态兜底 `portfolio`（P0）+ `cross_object_occupancy`（WO-MEMORY-VIEW-RESILIENCE §4.5·加权贪心·尊重
+ * 产线容量 + 合同额度·确定性 R6·恒返 FEASIBLE/optimal:false·不冒充 CP-SAT 可证最优）。其余最优化模型（selection/
+ * assignment/sequencing/packing/job_shop/facility_location/min_cost_flow/set_cover/independent_set/
+ * combinatorial_auction/**multi_objective**）**仍不实现**——`OptimizerClient` 上它们是 optional，未实现 → 调用方
+ * （service.ts 的 `!this.optimizer?.solveXxx` 守卫）仍显式「未接入」，**不返回编造解让对应面板假装能用**。
  */
 import type {
   OptimizerClient,
@@ -25,6 +25,8 @@ import type {
   OptimizationResult,
   PortfolioRequest,
   PortfolioResult,
+  CrossObjectOccupancyRequest,
+  CrossObjectOccupancyResult,
 } from "./optimizer-client.js";
 
 export class InProcOptimizerClient implements OptimizerClient {
@@ -114,6 +116,81 @@ export class InProcOptimizerClient implements OptimizerClient {
       occupancy,
       displaced,
       method: req.method ?? "weighted",
+    };
+  }
+
+  /**
+   * cross_object_occupancy 内存态确定性加权贪心（WO-MEMORY-VIEW-RESILIENCE §4.5）。
+   *
+   * 订单×产线×合同三元互斥：一单占某线 = 同耗产线产能（Line.capacity）+ 合同额度（Contract.cap），同线互斥。
+   * 贪心：按加权优先分（wRev·revenue + wPen·penalty，营收/避违约都是"该服务"的理由）**稳定降序**（tie-break id 升序·
+   * "score+id"·R6）逐单择线——在资格(eligibility)内取剩余产线容量 ≥ qty 且（若绑合同）剩余合同额度 ≥ qty 的可行线中，
+   * 选加权代价（wCost·cost）最小者（tie-break line id 升序），逐格扣减产线容量 + 合同额度 → 天然守恒不重复占用。
+   * 未获排的订单 = displaced（被挤）。objectiveValues 从结果**真算**：revenue=Σ获排营收、penalty=Σ被挤违约金（未服务
+   * 才计罚）、cost=Σ获排指派代价（与 sidecar/桩语义一致·供 what-if Δ 分解）。
+   *
+   * 诚实红线（KILL-MOCK-RED）：贪心**不能证明最优** → 恒返 `status:"FEASIBLE", optimal:false`（不冒充 CP-SAT 可证
+   * 最优）；docker 模式仍走 HttpOptimizerClient → CP-SAT 可证最优，行为不变。无 `Date.now()`/`Math.random()`（R6）。
+   */
+  async solveCrossObjectOccupancy(req: CrossObjectOccupancyRequest): Promise<CrossObjectOccupancyResult> {
+    const w = Object.fromEntries((req.objectives ?? []).map((o) => [o.key, o.weight ?? 1]));
+    const wRev = w.revenue ?? 1;
+    const wPen = w.penalty ?? 1;
+    const wCost = w.cost ?? 1;
+    const lineRemain = new Map(req.lines.map((l) => [l.id, l.capacity]));
+    const contractRemain = new Map(req.contracts.map((c) => [c.id, c.cap]));
+    // 每订单的资格候选线（cost 升序·line id 升序·确定性）。
+    const eligByOrder = new Map<string, { line: string; cost: number }[]>();
+    for (const e of req.eligibility) {
+      (eligByOrder.get(e.order) ?? eligByOrder.set(e.order, []).get(e.order)!).push({ line: e.line, cost: e.cost });
+    }
+    for (const list of eligByOrder.values()) {
+      list.sort((a, b) => wCost * a.cost - wCost * b.cost || a.line.localeCompare(b.line));
+    }
+    const score = (o: { revenue: number; penalty: number }) => wRev * o.revenue + wPen * o.penalty;
+    // 稳定降序装入（加权优先分高者先·tie-break id 升序·R6："score+id"）。
+    const ordered = [...req.orders].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
+    const occupancy: { order: string; line: string }[] = [];
+    const served = new Set<string>();
+    for (const o of ordered) {
+      const cid = o.contractId;
+      // 合同额度约束仅当该合同有登记额度时生效（未登记 = 不伪造额度约束，honest·与 bindContract=false 对称）。
+      const contractHas = cid !== undefined && contractRemain.has(cid);
+      for (const cand of eligByOrder.get(o.id) ?? []) {
+        const lineOk = (lineRemain.get(cand.line) ?? 0) >= o.qty;
+        const contractOk = !contractHas || (contractRemain.get(cid!) ?? 0) >= o.qty;
+        if (lineOk && contractOk) {
+          lineRemain.set(cand.line, (lineRemain.get(cand.line) ?? 0) - o.qty);
+          if (contractHas) contractRemain.set(cid!, (contractRemain.get(cid!) ?? 0) - o.qty);
+          occupancy.push({ order: o.id, line: cand.line });
+          served.add(o.id);
+          break;
+        }
+      }
+    }
+    occupancy.sort((a, b) => a.order.localeCompare(b.order) || a.line.localeCompare(b.line));
+    const displaced = req.orders.map((o) => o.id).filter((id) => !served.has(id)).sort();
+    const costByOrderLine = new Map(req.eligibility.map((e) => [`${e.order}|${e.line}`, e.cost]));
+    let revenue = 0;
+    let cost = 0;
+    for (const o of occupancy) {
+      const ord = req.orders.find((x) => x.id === o.order)!;
+      revenue += ord.revenue;
+      cost += costByOrderLine.get(`${o.order}|${o.line}`) ?? 0;
+    }
+    const penalty = req.orders.filter((o) => displaced.includes(o.id)).reduce((s, o) => s + o.penalty, 0);
+    const values: Record<string, number> = {};
+    for (const o of req.orders) values[o.id] = served.has(o.id) ? 1 : 0;
+    // 诚实红线：贪心可行解·不可证最优。
+    return {
+      status: "FEASIBLE",
+      optimal: false,
+      values,
+      objectiveValues: { revenue, penalty, cost },
+      occupancy,
+      displaced,
+      method: req.method ?? "weighted",
+      summary: `占用：${served.size}/${req.orders.length} 单获排`,
     };
   }
 }

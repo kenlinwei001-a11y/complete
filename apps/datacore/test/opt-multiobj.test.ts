@@ -107,11 +107,17 @@ describe("WO-CROSS-OBJECT-MULTIOBJ · 多目标接线", () => {
     expect(out.servedCount).toBe(1); // 2 单 - 1 被挤
   });
 
-  it("KILL-MOCK：未接入引擎 → 显式报错（不静默兜底/不启发式）", async () => {
+  it("KILL-MOCK：multi_objective 未接入 → 显式报错（不静默兜底）；cross_object 内存态 InProc 贪心可行（诚实 FEASIBLE·§4.5）", async () => {
     const t = await makeApp();
+    // multi_objective 内存态 InProc 不实现 → 显式"未接入"（不返回编造解让面板假装能用）。
     await expect(t.services.solvers.invoke(ctx, "multi_objective", { vars: [{ id: "a", kind: "bool" }], objectives: [{ key: "k", sense: "max", terms: [] }], method: "weighted" })).rejects.toThrow(/未接入/);
-    await expect(t.services.solvers.invoke(ctx, "cross_object_occupancy", { orders: [{ id: "O", revenue: 1, penalty: 1, qty: 1 }], lines: [{ id: "L", capacity: 1 }], eligibility: [{ order: "O", line: "L", cost: 1 }] })).rejects.toThrow(/未接入/);
-    // 缺必填数组 → 报错。
+    // cross_object_occupancy：makeApp 默认装 InProcOptimizerClient（app.ts·未配 OPTIMIZER_BASE_URL）→ WO-MEMORY-VIEW-RESILIENCE
+    // §4.5 加权贪心兜底 → 恒返可行解 FEASIBLE/optimal:false（诚实不冒充 CP-SAT 可证最优·与 portfolio 内存态同规矩）。
+    const cross = await t.services.solvers.invoke(ctx, "cross_object_occupancy", { orders: [{ id: "O", revenue: 1, penalty: 1, qty: 1 }], lines: [{ id: "L", capacity: 1 }], eligibility: [{ order: "O", line: "L", cost: 1 }] });
+    expect(cross.status).toBe("FEASIBLE");
+    expect(cross.optimal).toBe(false);
+    expect(cross.servedCount).toBe(1);
+    // 缺必填数组 → 报错（即便装了引擎/兜底也先校验入参）。
     t.services.solvers.setOptimizer(new MockMulti());
     await expect(t.services.solvers.invoke(ctx, "cross_object_occupancy", { orders: [], lines: [], eligibility: [] })).rejects.toThrow();
   });
