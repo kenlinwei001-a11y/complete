@@ -195,11 +195,34 @@ export function normalizeQuery(q: string): string {
     .trim();
 }
 
+/**
+ * WO-Phase4 §6 补全 · 从 config 派生 residual 硬预算（纯函数·可单测）。env 未设 → 空 partial → BudgetTracker
+ * 用宽松 DEFAULT（既有多轮行为逐字节不变）；env 设 → 覆写对应上界。供 Orchestrator **每个** BudgetTracker 站点。
+ */
+export function computeResidualBudget(config: {
+  QOS_AGENT_MAX_ROUND_TRIPS?: number;
+  QOS_AGENT_MAX_DISCOVER_CALLS?: number;
+}): Partial<AgentBudget> {
+  const b: Partial<AgentBudget> = {};
+  if (config.QOS_AGENT_MAX_ROUND_TRIPS !== undefined) b.maxRoundTrips = config.QOS_AGENT_MAX_ROUND_TRIPS;
+  if (config.QOS_AGENT_MAX_DISCOVER_CALLS !== undefined) b.maxDiscoverCalls = config.QOS_AGENT_MAX_DISCOVER_CALLS;
+  return b;
+}
+
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarification>();
   private readonly cancelled = new Set<string>();
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  /**
+   * WO-Phase4 §6 补全：从 config 派生 residual 硬预算——env 未设 → 空 → BudgetTracker 用宽松 DEFAULT（既有行为逐字节不变）；
+   * env 设 `QOS_AGENT_MAX_ROUND_TRIPS`/`QOS_AGENT_MAX_DISCOVER_CALLS` → 覆写上界。统一供**每个** BudgetTracker 站点
+   * （主 residual path-B + coordinator 子 agent + 角色 agent + 场景/工作流 path），令硬预算「同样作用于每个子 agent」（WO §6·此前只接主 runPathB）。
+   */
+  private residualBudgetFromConfig(): Partial<AgentBudget> {
+    return computeResidualBudget(this.deps.config);
+  }
 
   // -------------------------------------------------------------------------
   // 8.1 提交查询
@@ -808,7 +831,7 @@ export class Orchestrator {
       if (card?.rules && card.rules.length > 0) steps = injectScenarioRuleStep(steps, card.rules);
     }
 
-    const budget = new BudgetTracker();
+    const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
       steps,
@@ -965,10 +988,7 @@ export class Orchestrator {
     // WO-Phase4：residual path-B（真开放深问·Phase1–3 都没接住的题）套用硬预算——收紧 round-trip / discover 盲扫上界，
     // 超即优雅降级（BUDGET_EXHAUSTED）。只约束这条 residual ReAct，不动确定性 path-A / 组合路径 / 角色 agent。
     // opt-in：env 未设 → 不覆写 DEFAULT（宽松）→ 既有 path-B 逐字节不变（部署态设 4/1 收紧·见 config 注释）。
-    const residualBudget: Partial<AgentBudget> = {};
-    if (this.deps.config.QOS_AGENT_MAX_ROUND_TRIPS !== undefined) residualBudget.maxRoundTrips = this.deps.config.QOS_AGENT_MAX_ROUND_TRIPS;
-    if (this.deps.config.QOS_AGENT_MAX_DISCOVER_CALLS !== undefined) residualBudget.maxDiscoverCalls = this.deps.config.QOS_AGENT_MAX_DISCOVER_CALLS;
-    const budget = new BudgetTracker(residualBudget);
+    const budget = new BudgetTracker(this.residualBudgetFromConfig());
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
     // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
     const model = await this.deps.llmSettings.roleModel(task.tenantId, "agent", pkg.agentModel);
@@ -1285,7 +1305,7 @@ export class Orchestrator {
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: `角色 agent（${prof.role}）`, role: prof.role, agentId: prof.agentId });
 
-    const budget = new BudgetTracker();
+    const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
     const prompt = [roleSystemFragment(prof.role), buildAgentUser(task, priorSummary || undefined)].filter(Boolean).join("\n");
     try {
@@ -1342,7 +1362,7 @@ export class Orchestrator {
     });
 
     const steps = buildDispatchSteps(plan, task.context.pageContext);
-    const budget = new BudgetTracker();
+    const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     const invokedAgentKeys: string[] = [];
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
@@ -1387,7 +1407,7 @@ export class Orchestrator {
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: `场景入口模式 ${scene.mode}` });
 
-    const budget = new BudgetTracker();
+    const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     try {
       // 增量 §1.4：场景入口 agent 同样注入前情摘要（共用同一构建器）
       const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));

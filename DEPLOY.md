@@ -118,7 +118,18 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**源码/内存模式默认不设** → **整个组合最优化族**（`portfolio` 全局联合推演、`cross_object_occupancy` 多目标+跨对象占用、`selection`/`assignment`/`sequencing`/`packing`/`job_shop_schedule`、5 个 CP-SAT 核心、`optimize_whatif`）显式返「未接入最优化引擎」400（诚实兜底·不静默）。**后果：前端「全局联合推演」「项目推演·多目标」「优化推演」等面板结果区全空/红字"求解失败"——非 bug，是没起引擎。要用这些面板见 §6.x（必起）** |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
+| `QOS_AGENT_MAX_ROUND_TRIPS` / `QOS_AGENT_MAX_DISCOVER_CALLS` | AgentCore·WO-Phase4 硬预算：residual path-B（自由深问）+ **每个子 agent**（coordinator/角色/场景）盲扫上界。**opt-in·缺省不设 = 宽松 DEFAULT**（既有多轮行为不变）。**部署态建议设 `=4` / `=1`** 令「有对口确定性 solver 的题被 free-LLM 误降级到慢 agent 盲选」真收紧（对照 live 基线 137s）。超即优雅降级 `BUDGET_EXHAUSTED`（诚实部分发现） |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
+
+## 6.y 部署态验证 checklist（Phase4 硬预算 / dark-feature / live 叙述 —— 沙箱证不了、部署时坐实）
+
+以下三项机制**已在代码态由单测/SEAM 坐实**，但真 live 值（真 LLM 时延、真租户 resolve）**只能在真部署环境验**（无真 provider 的沙箱不编造）：
+
+1. **QOS 硬预算真收紧（对照 137s 基线）** —— AgentCore 设 `QOS_AGENT_MAX_ROUND_TRIPS=4` + `QOS_AGENT_MAX_DISCOVER_CALLS=1`（见 §6 表）。验：跑一道「有对口确定性 solver」的复杂问句（如「储能份额没达标，逐层拆根因」），墙钟应从 free-LLM 盲选的 ~137s 降到确定性 path-A 秒级；path-B 自由深问题 round-trip ≤4 触顶即 `BUDGET_EXHAUSTED` 优雅降级。**该预算同样作用于 coordinator 每个子 agent / 角色 agent / 场景 path**（WO-Phase4 §6·`computeResidualBudget` 统一注入 5 处 BudgetTracker）。
+2. **dark-feature 部署态默认关** —— `scripts/provision-enterprise.mjs` 建 `industry:"battery-manufacturing"` 租户后，验该租户 resolved features **不含** `QOS_DARK_LAUNCH_FEATURES` 排除项（`apps/datacore/src/features.ts` 从 battery all-on 模板剔除）。代码态 `dark-feature-default-off.test.ts` 已锁 `resolve("demo")` 两项 false；部署态用真 provision 建租户后复核 `GET /a/v1/features/registry` 的 resolved 结果。
+3. **live 叙述真跑（§3.2 多方案权衡综合）** —— 推演类 NL 问句的一次 `llm.compose` 综合需真 LLM provider。**无 provider 时走确定性兜底 `deterministicSynthesis`（诚实·不假装 LLM），非缺陷**；要真 live 叙述，经 `/admin/`（意图目录-模型供应商）配真 provider（凭据 AES-GCM 加密存储不回显·见 §5.x），把 `agent` 角色绑上去即可。
+
+> 诚实边界（KILL-MOCK-RED）：以上 live 数字（60s / round-trip / 真 resolve）沙箱无真 provider 证不了 → 机制单测坐实、live 值留部署态复核，不编造。
 
 ## 6.x 起最优化引擎 sidecar（CP-SAT·组合最优化推演必需·源码模式不用 Docker）
 
