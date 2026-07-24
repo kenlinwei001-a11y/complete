@@ -214,6 +214,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* 三栏：② 左轨杠杆盘 · ③ 中央 Hero 热力矩阵 · 右轨配置栈 */}
       <div className={styles.layout3}>
+        {/* 左列：② 杠杆盘 + ③ 热力矩阵 纵向堆叠（填满左列·消除与右轨的高度失衡留白） */}
+        <div className={styles.leftStack}>
         {/* ② 左轨杠杆盘 */}
         <GlobalSimLevers
           value={levers}
@@ -290,6 +292,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           ) : (
             <div className={styles.empty}>{res.isFetching ? "求解中…" : "加载订单与产能中…"}</div>
           )}
+        </div>
         </div>
 
         {/* 右轨：磨砂卡① 联合求解配置 + 订单清单三态 */}

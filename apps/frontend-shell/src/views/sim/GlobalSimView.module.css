@@ -451,13 +451,22 @@
 .tradeoff b { color: #eff2f7; }
 .tradeoffRed { color: #e88b95; }
 
-/* 三列布局（左轨杠杆 · 中央 Hero · 右轨配置）——宽屏三栏，窄屏回退单列 */
+/* 双列布局（左列：杠杆盘+热力矩阵纵向堆叠 · 右列：联合求解配置栈）——宽屏两栏，窄屏回退单列。
+   左列堆叠两卡填满高度，与右轨高栈平衡 → 消除原三栏「短左轨 vs 高右轨」的大块留白。 */
 .layout3 {
   display: grid;
-  grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
 @media (max-width: 1180px) {
   .layout3 { grid-template-columns: 1fr; }
 }
+/* 左列纵向堆叠：杠杆盘 + 热力矩阵，卡间距走 gap（清零卡自带 margin-bottom 免双倍间距） */
+.leftStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.leftStack > * { margin-bottom: 0; }
