@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY } from "@platform/contracts";
 import type { GlobalSimScheduleRow, GlobalSimKpi } from "@platform/contracts";
-import { searchObjects } from "@/api/endpoints";
+import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
+import { toastError } from "@/store/toastStore";
 import { useLiveSolver } from "./useLiveSolver";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
-import { GlobalSimLevers, type LeverState } from "./GlobalSimLevers";
+import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
+import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
 import { ScheduleTable, type Transfer } from "./ScheduleTable";
 import { CustomerImpactBar } from "./CustomerImpactBar";
+import zh from "@/locales/zh";
 import styles from "./GlobalSimView.module.css";
 
 /**
@@ -50,6 +53,54 @@ interface PortResult {
   // WO-SURFACE-7DIM · 编排响应 additively 携带的 7 维产物（经典响应缺省 → 诚实省略·全 optional 守护）。
   schedule?: GlobalSimScheduleRow[];
   mockNotes?: string[];
+  // WO-GSLIVE-1-COCKPIT · 活②：自由杠杆再优化 before/after 七维 KPI（求解器携 levers[] 返·可溯 drillType=Lever）。
+  leverDeltas?: LeverDeltaVM[];
+}
+
+/** WO-GSLIVE-1-COCKPIT · 活①：内嵌 NL 框（复用 SimCommanderDock 范式·带 sessionId）→ compose 路径联合求解叙述。 */
+function GlobalSimNlDock({ sessionId }: { sessionId: string }) {
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState<SimComposeNarrative | null>(null);
+  const submit = async () => {
+    const q = input.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    try {
+      const res = await composeGlobalSimNarrative({ query: q, sessionId, context: { view: "global-sim" } });
+      setAnswer(res);
+      setInput("");
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={styles.glass} data-testid="global-sim-nl-dock">
+      <span className={styles.grpLabel}>[ {zh.gslive.nlTitle} ]</span>
+      <div className={styles.summary}>{zh.gslive.nlHint}</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <input
+          type="text" value={input} placeholder={zh.gslive.nlPlaceholder}
+          data-testid="global-sim-nl-input" disabled={busy}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
+          style={{ flex: 1 }}
+        />
+        <button className={styles.btnPrimary} data-testid="global-sim-nl-submit" disabled={busy || !input.trim()} onClick={() => void submit()}>
+          {busy ? zh.gslive.nlSubmitting : zh.gslive.nlSubmit}
+        </button>
+      </div>
+      {answer && (
+        <div style={{ marginTop: 10 }} data-testid="global-sim-nl-answer" data-path={answer.path} data-ran-agent-loop={answer.ranAgentLoop}>
+          <div className={styles.grpLabel}>{zh.gslive.nlAnswerTitle}</div>
+          <div className={styles.summary} data-testid="global-sim-nl-narrative">{answer.narrative}</div>
+          <span className={styles.badge} data-testid="global-sim-nl-path">{zh.gslive.nlPathBadge(answer.path, answer.ranAgentLoop)}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover", "min_fg_inventory"] as const;
@@ -116,18 +167,24 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const [scenarios, setScenarios] = useState<string[]>(["max_ontime", "min_cost"]);
   const [primary, setPrimary] = useState<string>("max_ontime");
   const [levers, setLevers] = useState<LeverState>({ frozenCapacityMode: "reserve", method: "weighted" });
+  // WO-GSLIVE-1-COCKPIT · 活②：自由杠杆（portfolio 契约 levers[]·key/target/delta·任一变动 → args.levers 变 → 联合重解）。
+  const [freeLevers, setFreeLevers] = useState<FreeLever[]>([]);
   const [nonce, setNonce] = useState(0);
+  // 本页推演会话锚（NL 框 sessionId 上下文·稳定跨渲染）。
+  const [sessionId] = useState(() => `gslive-${Math.random().toString(36).slice(2, 10)}`);
 
   const orderIds = orderList.filter((o) => stateOf(o.id) === "in").map((o) => o.id);
   const frozenOrderIds = orderList.filter((o) => stateOf(o.id) === "frozen").map((o) => o.id);
   const includedCount = orderIds.length;
   const scenSet = useMemo(() => (scenarios.includes(primary) ? scenarios : [primary, ...scenarios]), [scenarios, primary]);
+  const leversKey = JSON.stringify(freeLevers);
 
   const args = useMemo<Record<string, unknown> | null>(
     // WO-SURFACE-7DIM · twoStage:true → 后端编排路由 globalSimOptimize（返 GlobalSimResponse·7 维 schedule[]/kpi/mockNotes
     // additively 叠加经典 portfolio 字段·驾驶舱既有绑定不掉线）；MSW 态由 handlers 派发 mockGlobalSim（同 additive 形状）。
-    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, twoStage: true, nonce } : null),
-    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, nonce],
+    // WO-GSLIVE-1-COCKPIT · 活②：freeLevers 非空 → 携真 levers[{key,target,delta}]（引擎已消费）→ leverDeltas before/after。
+    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, ...(freeLevers.length ? { levers: freeLevers } : {}), twoStage: true, nonce } : null),
+    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, leversKey, nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
   const d = res.data;
@@ -154,6 +211,30 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     return m;
   }, [d]);
 
+  // WO-GSLIVE-1-COCKPIT · 活②：候选杠杆自结果**按占用率反推**（瓶颈基地在先·R14 目标自真结果非内联）。
+  const leverCandidates = useMemo<LeverCandidate[]>(() => {
+    if (!d) return [];
+    const utilByBase = new Map<string, number>();
+    for (const c of d.capacityLedger) {
+      if (c.cap <= 0) continue;
+      utilByBase.set(c.baseId, Math.max(utilByBase.get(c.baseId) ?? 0, c.allocated / c.cap));
+    }
+    const ranked = [...utilByBase.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const keyDefs = [
+      { key: "capacityDaily", keyLabel: zh.gslive.leverKeys.capacityDaily },
+      { key: "formationChannels", keyLabel: zh.gslive.leverKeys.formationChannels },
+    ];
+    const out: LeverCandidate[] = [];
+    ranked.forEach(([baseId, util], i) => {
+      const targetLabel = baseNameById.get(baseId) ?? baseId;
+      // 头号瓶颈基地额外出「化成通道」杠杆；其余出「日产能」杠杆。
+      for (const k of i === 0 ? keyDefs : keyDefs.slice(0, 1)) {
+        out.push({ key: k.key, keyLabel: k.keyLabel, target: baseId, targetLabel, util, step: 1 });
+      }
+    });
+    return out;
+  }, [d, baseNameById]);
+
   const onAdopt = () => {
     if (!d) return;
     // WO-GSIM-5-ACTION：additive 附上 served 订单分配（回灌基线数据源）——执行器据此物化在产 WorkOrder
@@ -167,6 +248,20 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const primaryScen = d?.scenarios.find((s) => s.key === primary) ?? d?.scenarios[0];
   const ontimeRate = primaryScen && primaryScen.servedCount + primaryScen.displacedCount > 0
     ? (primaryScen.objectiveValues.ontime / (primaryScen.servedCount + primaryScen.displacedCount)) * 100 : 0;
+
+  // WO-GSLIVE-1-COCKPIT · 活③：当前推演快照（供方案存/分支·七维 KPI 自主方案 kpi·缺则从 objectiveValues 兜底派生）。
+  const getSnapshot = useCallback((): ScenarioSnapshotInput | null => {
+    if (!primaryScen || !args) return null;
+    const ov = primaryScen.objectiveValues;
+    const kpi: GlobalSimSevenDimKpi = primaryScen.kpi ?? {
+      ontime: ov.ontime ?? 0, cost: ov.cost ?? 0, changeoverHours: ov.changeover ?? 0,
+      freight: 0, fgInv: ov.fgInventory ?? 0, transitInv: 0, margin: 0,
+    };
+    return {
+      label: "", primary, request: args, kpi,
+      servedCount: primaryScen.servedCount, displacedCount: primaryScen.displacedCount, ontimeRate,
+    };
+  }, [primaryScen, args, primary, ontimeRate]);
 
   // 已提交批次链（WIP committed 分配 = 背景承诺·产能 hold 可视）。
   const committedBatches = useMemo(() => (d?.allocation ?? []).filter((a) => a.committed).sort((a, b) => a.item.localeCompare(b.item)), [d]);
@@ -212,9 +307,12 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </span>
       </div>
 
+      {/* 活①·人机对话（内嵌 NL 框·带 sessionId·compose 路径联合求解叙述） */}
+      <GlobalSimNlDock sessionId={sessionId} />
+
       {/* 三栏：② 左轨杠杆盘 · ③ 中央 Hero 热力矩阵 · 右轨配置栈 */}
       <div className={styles.layout3}>
-        {/* ② 左轨杠杆盘 */}
+        {/* ② 左轨杠杆盘（preset + 活②自由杠杆区） */}
         <GlobalSimLevers
           value={levers}
           onChange={setLevers}
@@ -222,6 +320,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           totalCount={orderList.length}
           frozenCount={frozenOrderIds.length}
           pending={res.isFetching}
+          freeLevers={freeLevers}
+          onFreeLeversChange={setFreeLevers}
+          candidates={leverCandidates}
+          leverDeltas={d?.leverDeltas ?? []}
         />
 
         {/* ③ 中央 Hero：产能占用矩阵 + 目标 segmented + 守恒 ✓ */}
@@ -478,6 +580,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+影响额·行动占位） */}
       {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} />}
+
+      {/* 活③·方案存 / 分支 / 横比（decision_play 范式·七维 KPI × 方案·采纳走 plan_change 审批） */}
+      {d && <GlobalSimScenarioBar getSnapshot={getSnapshot} />}
 
       {/* 迁入：多目标 + 跨对象占用联合 what-if（本是全局能力） */}
       <div className={`${styles.glass} ${styles.migrated}`}>

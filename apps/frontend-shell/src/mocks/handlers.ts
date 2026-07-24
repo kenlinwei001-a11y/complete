@@ -513,6 +513,63 @@ function mockGenericInference(args: Record<string, unknown>): Record<string, unk
   return { deltas, rows, affectedObjects: new Set(deltas.map((d) => d.objId)).size, count: deltas.length, rootTypes: [...new Set(apply.map((x) => String(x.objectType ?? "")))] };
 }
 
+// ===================================================================================
+// WO-GSLIVE-1-COCKPIT · 全局推演「活系统」升级 MSW 桩（additive）——依赖两张未落 WO 的预期契约形状：
+//   · 活②自由杠杆：portfolio 携 args.levers[{key,target,delta}] → 派生 leverDeltas（before/after 七维·drillType=Lever）
+//     并把聚合改善反映到主方案 KPI（dev-mode 七维真变·KILL-MOCK）。真 portfolio levers[] 引擎合并态复验。
+//   · 活①compose 路径（WO-LIVE-NL）：POST /b/v1/sim/compose → 联合求解叙述（含被挤单/按期率·ranAgentLoop=false·非 path-B）。
+//   · 活③方案存/分支/横比（WO-LIVE-SCENARIO·SimSession solve-mode）：/a/v1/sim/scenarios(+/:id/branch, /compare)。
+// 确定性（无 Date.now/random 影响数值·R6）；数值取自 mockGlobalSim / 杠杆 delta 派生（非编造）。
+// ===================================================================================
+type GsliveKpi7 = { ontime: number; cost: number; changeoverHours: number; freight: number; fgInv: number; transitInv: number; margin: number };
+function gsliveKpi7From(sc: Record<string, unknown> | undefined): GsliveKpi7 {
+  const kpi = sc?.kpi as Partial<GsliveKpi7> | undefined;
+  if (kpi && typeof kpi.ontime === "number") {
+    return { ontime: kpi.ontime, cost: kpi.cost ?? 0, changeoverHours: kpi.changeoverHours ?? 0, freight: kpi.freight ?? 0, fgInv: kpi.fgInv ?? 0, transitInv: kpi.transitInv ?? 0, margin: kpi.margin ?? 0 };
+  }
+  const ov = (sc?.objectiveValues ?? {}) as Record<string, number>;
+  return { ontime: ov.ontime ?? 0, cost: ov.cost ?? 0, changeoverHours: ov.changeover ?? 0, freight: 0, fgInv: ov.fgInventory ?? 0, transitInv: 0, margin: 0 };
+}
+/** 杠杆 delta → 改善后七维（加产能：按期↑ 代价↓ 毛利↑·确定性系数·before≠after 当 delta≠0）。 */
+function gsliveImprove(kpi: GsliveKpi7, delta: number): GsliveKpi7 {
+  const d = Math.abs(delta);
+  return {
+    ontime: r2(kpi.ontime + Math.max(0, delta)),
+    cost: r2(Math.max(0, kpi.cost - d * 40)),
+    changeoverHours: kpi.changeoverHours,
+    freight: kpi.freight,
+    fgInv: kpi.fgInv,
+    transitInv: kpi.transitInv,
+    margin: r2(kpi.margin + d * 40),
+  };
+}
+/** portfolio 响应携 levers[] → 叠加 leverDeltas + 主方案 KPI 改善（args.levers 空则原样返·无回归）。 */
+function applyGslivePortfolioLevers(resp: Record<string, unknown>, args: Record<string, unknown>): Record<string, unknown> {
+  const levers = (Array.isArray(args.levers) ? args.levers : []) as { key: string; target: string; delta: number }[];
+  if (!levers.length) return resp;
+  const scenarios = (resp.scenarios as Record<string, unknown>[] | undefined) ?? [];
+  const objective = String(args.objective ?? "");
+  const primarySc = scenarios.find((s) => s.key === objective) ?? scenarios[0];
+  const baseKpi = gsliveKpi7From(primarySc);
+  const leverDeltas = levers.map((l) => ({
+    lever: { key: String(l.key), target: String(l.target), delta: Number(l.delta) || 0 },
+    before: baseKpi,
+    after: gsliveImprove(baseKpi, Number(l.delta) || 0),
+    provenance: { kind: "派生", drillType: "Lever", drillId: String(l.target), drillField: String(l.key), drillValue: Number(l.delta) || 0, mockNote: "MSW 桩·leverDeltas（真 portfolio levers[] 引擎合并态复验）" },
+  }));
+  const totalDelta = levers.reduce((s, l) => s + (Number(l.delta) || 0), 0);
+  const aggAfter = gsliveImprove(baseKpi, totalDelta);
+  const newScenarios = scenarios.map((s) => {
+    if (s !== primarySc) return s;
+    const ov = { ...((s.objectiveValues as Record<string, number>) ?? {}) };
+    ov.ontime = aggAfter.ontime; ov.cost = aggAfter.cost;
+    return { ...s, kpi: aggAfter, objectiveValues: ov };
+  });
+  return { ...resp, scenarios: newScenarios, leverDeltas };
+}
+/** 活③方案存/分支 store（模块态·横比 compare 读回·R6 无随机数值）。 */
+const gsliveScenarios = new Map<string, { id: string; label: string; parentId: string | null; page: string; primary: string; createdAt: string; kpi: GsliveKpi7; servedCount: number; displacedCount: number; ontimeRate: number }>();
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -2270,7 +2327,9 @@ export const handlers = [
     if (key === "portfolio") {
       const orchestrate = args.twoStage === true || args.materialConstraint === true || args.globalSim === true
         || (Array.isArray(args.levers) && args.levers.length > 0) || (Array.isArray(args.priorityLocks) && args.priorityLocks.length > 0);
-      return HttpResponse.json({ data: orchestrate ? mockGlobalSim(args) : mockPortfolio(args), snapshotVersion: "ov-12" });
+      const portResp = orchestrate ? mockGlobalSim(args) : mockPortfolio(args);
+      // WO-GSLIVE-1-COCKPIT · 活②：levers 非空 → 叠加 leverDeltas + 主方案 KPI 改善（空则原样·无回归）。
+      return HttpResponse.json({ data: applyGslivePortfolioLevers(portResp, args), snapshotVersion: "ov-12" });
     }
     if (key === "base_capacity_outlook")
       return HttpResponse.json({ data: mockBaseOutlook(args), snapshotVersion: "ov-12" });
@@ -3049,6 +3108,65 @@ export const handlers = [
       b: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 40 } } }],
     }),
   ),
+
+  // ---- WO-GSLIVE-1-COCKPIT 桩 · 活①compose 路径（WO-LIVE-NL 预期契约·ranAgentLoop=false·含被挤单/按期率） ----
+  http.post("*/b/v1/sim/compose", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json().catch(() => ({}))) as { query?: string; sessionId?: string };
+    const res = mockGlobalSim({ scenarios: ["max_ontime", "min_cost", "min_changeover"], objective: "max_ontime", twoStage: true }) as { scenarios: Record<string, unknown>[] };
+    const named: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型" };
+    const rows = (res.scenarios ?? []).map((s) => {
+      const ov = s.objectiveValues as Record<string, number>;
+      const ontime = ov.ontime ?? 0; const cost = ov.cost ?? 0;
+      const served = (s.servedCount as number) ?? 0; const disp = (s.displacedCount as number) ?? 0;
+      const rate = served + disp > 0 ? Math.round((ontime / (served + disp)) * 100) : 0;
+      return { key: String(s.key), ontime, displaced: disp, ontimeRate: rate, cost };
+    });
+    const p = rows[0] ?? { key: "max_ontime", ontime: 0, displaced: 0, ontimeRate: 0, cost: 0 };
+    const narrative = `联合求解（compose 路径 · 未起 agent 循环）：针对「${body.query ?? ""}」逐方案联合求解——`
+      + rows.map((r) => `「${named[r.key] ?? r.key}」按期率 ${r.ontimeRate}%、被挤单 ${r.displaced} 单、代价 ${r.cost}`).join("；")
+      + `。推荐主方案「${named[p.key] ?? p.key}」（按期率最高·被挤单 ${p.displaced}）。数字取自 portfolio 联合求解真值（可溯）。`;
+    return HttpResponse.json({
+      path: "compose", ranAgentLoop: false, narrative, scenarios: rows,
+      provenance: [{ kind: "求解器", drillType: "GlobalSim", drillId: "portfolio", drillField: "ontime", drillValue: p.ontime }],
+    });
+  }),
+
+  // ---- WO-GSLIVE-1-COCKPIT 桩 · 活③方案存/分支/横比（WO-LIVE-SCENARIO 预期契约·SimSession solve-mode） ----
+  http.get("*/a/v1/sim/scenarios/compare", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const ids = (new URL(request.url).searchParams.get("ids") ?? "").split(",").filter(Boolean);
+    const scenarios = ids.map((id) => gsliveScenarios.get(id)).filter(Boolean).map((s) => ({
+      id: s!.id, label: s!.label, kpi: s!.kpi, servedCount: s!.servedCount, displacedCount: s!.displacedCount, ontimeRate: s!.ontimeRate,
+    }));
+    return HttpResponse.json({ scenarios });
+  }),
+  http.post("*/a/v1/sim/scenarios/:id/branch", async ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const parent = gsliveScenarios.get(String(params.id));
+    const b = (await request.json().catch(() => ({}))) as { label?: string; kpi?: GsliveKpi7 };
+    const id = newId("scen");
+    const kpi = b.kpi ?? parent?.kpi ?? { ontime: 0, cost: 0, changeoverHours: 0, freight: 0, fgInv: 0, transitInv: 0, margin: 0 };
+    const snap = {
+      id, label: String(b.label ?? `${parent?.label ?? "方案"}·分支`), parentId: String(params.id),
+      page: parent?.page ?? "global-sim", primary: parent?.primary ?? "", createdAt: new Date().toISOString(),
+      kpi, servedCount: parent?.servedCount ?? 0, displacedCount: parent?.displacedCount ?? 0, ontimeRate: parent?.ontimeRate ?? 0,
+    };
+    gsliveScenarios.set(id, snap);
+    return HttpResponse.json(snap, { status: 201 });
+  }),
+  http.post("*/a/v1/sim/scenarios", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const b = (await request.json().catch(() => ({}))) as { label?: string; parentId?: string | null; page?: string; primary?: string; kpi?: GsliveKpi7; servedCount?: number; displacedCount?: number; ontimeRate?: number };
+    const id = newId("scen");
+    const snap = {
+      id, label: String(b.label ?? id), parentId: b.parentId ?? null, page: String(b.page ?? "global-sim"), primary: String(b.primary ?? ""),
+      createdAt: new Date().toISOString(), kpi: b.kpi ?? { ontime: 0, cost: 0, changeoverHours: 0, freight: 0, fgInv: 0, transitInv: 0, margin: 0 },
+      servedCount: b.servedCount ?? 0, displacedCount: b.displacedCount ?? 0, ontimeRate: b.ontimeRate ?? 0,
+    };
+    gsliveScenarios.set(id, snap);
+    return HttpResponse.json(snap, { status: 201 });
+  }),
   http.get("*/a/v1/sim/sessions/:id/certification", ({ request }) => {
     const url = new URL(request.url);
     const scope = url.searchParams.get("scope") === "LOCAL" ? "LOCAL" : "GLOBAL";
