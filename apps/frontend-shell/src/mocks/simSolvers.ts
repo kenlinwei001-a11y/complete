@@ -1065,6 +1065,15 @@ const PORT_FG_HOLD = 0.5; // 成品持有单位成本（对称 PORT_DELAY_PEN·m
 const PORT_UNSERVED_PEN = 0.5;
 const PORT_CROSS_BASE_CHG = 60;
 const PORT_FORECAST_START = "2026-06-10";
+// WO-SURFACE-7DIM · 演示跨基地调拨（逐口径移植 datacore battery.ts interBaseTransfers·与 handlers InterBaseTransfer mock 单一来源）。
+// mockGlobalSim 据此把经典 allocation 落成两阶段 schedule[]（电芯段=alloc.base 供芯基地·Pack 段=transfer.toBase·transitDays 真值）。
+export const PORT_TRANSFERS: { transferId: string; fromBase: string; toBase: string; model: string; qty: number; transitDays: number; status: string }[] = [
+  { transferId: "XFER-changzhou-handan-4680-NCM", fromBase: "changzhou", toBase: "handan", model: "4680-NCM", qty: 2000, transitDays: 3, status: "PLANNED" },
+  { transferId: "XFER-xiamen-jiangmen-4680-LFP", fromBase: "xiamen", toBase: "jiangmen", model: "4680-LFP", qty: 1500, transitDays: 5, status: "IN_TRANSIT" },
+  { transferId: "XFER-chengdu-meishan-刀片-LFP", fromBase: "chengdu", toBase: "meishan", model: "刀片-LFP", qty: 1800, transitDays: 4, status: "PLANNED" },
+];
+const PORT_FREIGHT_PER_UNIT = 0.15; // 运费/套（mock·跨基地段·镜像后端 mockFreightPerUnit 缺省口径）
+const PORT_CROSS_CHG_H = PORT_CROSS_BASE_CHG / 60; // 换型全链小时（60min → 1.0h·镜像 ScheduleTable/后端换型系数）
 const portDayFrom = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
 const portBaseIdByName = new Map(BASE_REGISTRY.map((b) => [b.name, b.baseId]));
 const portBaseNameById = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
@@ -1191,6 +1200,75 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
     frozen,
     summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WO-SURFACE-7DIM · mockGlobalSim（编排态·MSW）：在 mockPortfolio 经典解之上 additively 叠加求解器 7 维产物
+// （scenarios[].kpi·两阶段 schedule[]·blocked/leverDeltas·mockNotes），令 dev/MSW 态与真后端 globalSimOptimize 同形。
+// 两阶段 schedule[] 复用 PORT_TRANSFERS（演示 InterBaseTransfer·同经典 ScheduleTable JOIN 口径）：电芯段=alloc.base(供芯基地)
+// →在途 transitDays→Pack 段=transfer.toBase→交付。经典字段（allocation/capacityLedger/displaced/frozen/cost/scenarios.objectiveValues）
+// 全数透出不掉线。确定性（无 Date.now/random·R6）。诚实红线：transit/freight 取 InterBaseTransfer 演示值（非引擎内 mock 兜底）→ mockNotes 空。
+// ---------------------------------------------------------------------------
+type PortClassicAlloc = { item: string; kind: string; base: string; window: number; qty: number; model?: string; onTime?: boolean };
+export function mockGlobalSim(args: Record<string, unknown>): Record<string, unknown> {
+  const base = mockPortfolio(args);
+  const twoStage = args.twoStage === true;
+  const orderById = new Map(ORDERS.map((o) => [o.so, o]));
+  const xferByKey = new Map(PORT_TRANSFERS.map((t) => [`${t.model}|${t.fromBase}`, t]));
+  const modelOf = (a: PortClassicAlloc) => a.model ?? orderById.get(a.item)?.model ?? "";
+  const crossOf = (a: PortClassicAlloc) => (twoStage ? xferByKey.get(`${modelOf(a)}|${a.base}`) : undefined);
+
+  const allocation = (base.allocation as PortClassicAlloc[] | undefined) ?? [];
+  // 单条经典分配 → 两阶段排产行（twoStage 且命中 transfer → 电芯段→在途→Pack 段；否则单段·诚实无在途）。
+  const schedule = allocation
+    .filter((a) => a.kind === "order")
+    .map((a) => {
+      const t = crossOf(a);
+      const crossBase = !!t && t.toBase !== a.base;
+      const transitDays = crossBase ? t!.transitDays : 0;
+      const packBase = crossBase ? t!.toBase : a.base;
+      return {
+        orderId: a.item,
+        batches: [{ cellBase: a.base, cellWindow: a.window, qty: a.qty }],
+        transitDays,
+        freightCost: crossBase ? round(PORT_FREIGHT_PER_UNIT * a.qty, 2) : 0,
+        packBase,
+        packWindow: a.window,
+        changeoverHours: crossBase ? PORT_CROSS_CHG_H : 0,
+        deliverDay: a.window * PORT_WINDOW_DAYS + transitDays, // 交付日真含在途（改 transitDays → 真变）
+        status: a.onTime === false ? "displaced" : "ok",
+        provenance: { kind: "派生", drillType: "TransitLane", drillId: `${a.base}->${packBase}`, drillField: "transitDays", drillValue: transitDays, mockNote: null },
+      };
+    })
+    .sort((x, y) => x.orderId.localeCompare(y.orderId));
+
+  // 7 维 KPI per-scenario（从该方案 allocation 派生在途/运费/换型全链小时·经典 objectiveValues 之上叠加·并列不替换）。
+  const avgUnitPrice = 1.8; // 毛利代理均价（镜像后端 avgUnitPrice 缺省·万元/套量级）
+  const kpiOf = (objVals: Record<string, number>, alloc: PortClassicAlloc[]) => {
+    let freight = 0, transitInv = 0, chgH = 0;
+    for (const a of alloc) {
+      const t = crossOf(a);
+      if (t && t.toBase !== a.base) { freight += round(PORT_FREIGHT_PER_UNIT * a.qty, 2); transitInv += a.qty * t.transitDays; chgH += PORT_CROSS_CHG_H; }
+    }
+    const servedQty = alloc.reduce((s, x) => s + x.qty, 0);
+    const cost = round((objVals.cost ?? 0) + freight, 2);
+    return {
+      ontime: round(objVals.ontime ?? 0, 4), cost, changeoverHours: round(chgH, 4), freight: round(freight, 2),
+      fgInv: round(objVals.fgInventory ?? 0, 2), transitInv: round(transitInv, 2), margin: round(servedQty * avgUnitPrice - cost, 2),
+    };
+  };
+  const scenarios = ((base.scenarios as { key: string; objectiveValues: Record<string, number>; allocation: PortClassicAlloc[] }[] | undefined) ?? [])
+    .map((s) => ({ ...s, kpi: kpiOf(s.objectiveValues, s.allocation ?? []) }));
+
+  return {
+    ...base,
+    scenarios,
+    schedule,
+    blocked: [],
+    leverDeltas: [],
+    mockNotes: [], // 诚实：transit/freight 源自 InterBaseTransfer 演示对象（非引擎内 WO-DATA 未落 mock 兜底）
+    materialConstraint: false,
   };
 }
 

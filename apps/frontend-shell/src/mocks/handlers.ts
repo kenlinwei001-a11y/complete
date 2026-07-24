@@ -49,6 +49,8 @@ import {
   mockPlanAudit,
   mockPlanGenerate,
   mockPortfolio,
+  mockGlobalSim,
+  PORT_TRANSFERS,
   mockSopAdvance,
   mockSopReschedule,
   mockBaseOutlook,
@@ -717,11 +719,8 @@ export const handlers = [
     } else if (type === "InterBaseTransfer") {
       // WO-GSIM-3：跨基地调拨（喂区⑤两段排产表·电芯段→在途→Pack段）。fromBase/toBase=真 baseId·model 对齐订单型号。
       // 逐口径移植 datacore battery.ts interBaseTransfers（键 XFER-{from}-{to}-{model}·transitDays 真值·MODEL_BASE_MAP 派生）。
-      rows = [
-        { transferId: "XFER-changzhou-handan-4680-NCM", fromBase: "changzhou", toBase: "handan", model: "4680-NCM", qty: 2000, transitDays: 3, status: "PLANNED" },
-        { transferId: "XFER-xiamen-jiangmen-4680-LFP", fromBase: "xiamen", toBase: "jiangmen", model: "4680-LFP", qty: 1500, transitDays: 5, status: "IN_TRANSIT" },
-        { transferId: "XFER-chengdu-meishan-刀片-LFP", fromBase: "chengdu", toBase: "meishan", model: "刀片-LFP", qty: 1800, transitDays: 4, status: "PLANNED" },
-      ].map((r) => ({ id: r.transferId, props: r }));
+      // WO-SURFACE-7DIM：与 mockGlobalSim 两阶段 schedule[] 同源（PORT_TRANSFERS·单一来源·灭漂移）。
+      rows = PORT_TRANSFERS.map((r) => ({ id: r.transferId, props: r }));
     } else if (type === "SopVersionRow") {
       // SOP.4 版本演进对比（V1/V3/V5/V7）
       rows = [
@@ -2266,8 +2265,13 @@ export const handlers = [
     if (key === "sop_reschedule")
       return HttpResponse.json({ data: mockSopReschedule(args), snapshotVersion: "ov-12" });
     // WO-PORTFOLIO-OPTIMAL portfolio 全局联合推演（mock 逐口径移植·守恒 + ≥2 方案 + 冻结·真求解走 CP-SAT sidecar）。
-    if (key === "portfolio")
-      return HttpResponse.json({ data: mockPortfolio(args), snapshotVersion: "ov-12" });
+    // WO-SURFACE-7DIM · 编排路由（镜像后端 service.ts orchestrate 判据）：twoStage/materialConstraint/levers/priorityLocks/globalSim
+    // → mockGlobalSim（返 7 维 schedule[]/kpi/mockNotes additively 叠加经典字段）；否则经典 mockPortfolio。
+    if (key === "portfolio") {
+      const orchestrate = args.twoStage === true || args.materialConstraint === true || args.globalSim === true
+        || (Array.isArray(args.levers) && args.levers.length > 0) || (Array.isArray(args.priorityLocks) && args.priorityLocks.length > 0);
+      return HttpResponse.json({ data: orchestrate ? mockGlobalSim(args) : mockPortfolio(args), snapshotVersion: "ov-12" });
+    }
     if (key === "base_capacity_outlook")
       return HttpResponse.json({ data: mockBaseOutlook(args), snapshotVersion: "ov-12" });
     if (key === "order_fullchain") {

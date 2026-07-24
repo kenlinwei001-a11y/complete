@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY } from "@platform/contracts";
+import type { GlobalSimScheduleRow, GlobalSimKpi } from "@platform/contracts";
 import { searchObjects } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
@@ -32,7 +33,8 @@ import styles from "./GlobalSimView.module.css";
  */
 
 interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
-interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number }
+// WO-SURFACE-7DIM · Scenario additively 携带 7 维 kpi（编排响应并列·经典 objectiveValues 不动）。
+interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number; kpi?: GlobalSimKpi }
 interface Alloc { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; windowStartDay?: number; qty: number; model?: string; delayDays: number; onTime: boolean; provenance: Prov }
 interface PortResult {
   status: string; optimal: boolean; feasible: boolean; reconciled: boolean;
@@ -45,6 +47,9 @@ interface PortResult {
   cost: { delay: number; changeover: number; unserved: number; total: number };
   frozen: { orderId: string; base: string; window: number; qty: number }[];
   summary: string;
+  // WO-SURFACE-7DIM · 编排响应 additively 携带的 7 维产物（经典响应缺省 → 诚实省略·全 optional 守护）。
+  schedule?: GlobalSimScheduleRow[];
+  mockNotes?: string[];
 }
 
 const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover", "min_fg_inventory"] as const;
@@ -119,7 +124,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const scenSet = useMemo(() => (scenarios.includes(primary) ? scenarios : [primary, ...scenarios]), [scenarios, primary]);
 
   const args = useMemo<Record<string, unknown> | null>(
-    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, nonce } : null),
+    // WO-SURFACE-7DIM · twoStage:true → 后端编排路由 globalSimOptimize（返 GlobalSimResponse·7 维 schedule[]/kpi/mockNotes
+    // additively 叠加经典 portfolio 字段·驾驶舱既有绑定不掉线）；MSW 态由 handlers 派发 mockGlobalSim（同 additive 形状）。
+    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, twoStage: true, nonce } : null),
     [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
@@ -335,6 +342,16 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <div className={styles.readout}><b>{d.frozen.length}</b><span>固定单</span></div>
                 </div>
 
+                {/* WO-SURFACE-7DIM · 7 维联合数学读数（电芯-Pack 两阶段网络产物·换型全链小时·毛利代理·kpi 真值·经典响应缺省则不显） */}
+                {primaryScen.kpi && (
+                  <div className={styles.readoutRow} data-testid="global-sim-gsim-kpi">
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-transitinv">{fmt(primaryScen.kpi.transitInv, 0)}</b><span>在途库存(套·天)</span></div>
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-changeoverhours">{primaryScen.kpi.changeoverHours.toFixed(1)}</b><span>换型(全链小时)</span></div>
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-freight">{fmt(primaryScen.kpi.freight, 0)}</b><span>在途运费</span></div>
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-margin">{fmt(primaryScen.kpi.margin, 0)}</b><span>毛利代理</span></div>
+                  </div>
+                )}
+
                 {/* ⑥ 方案对比矩阵（改目标/杠杆 → 各目标值真漂移） */}
                 <span className={styles.grpLabel} style={{ marginTop: 8 }}>[ 方案量化多维比对 ]</span>
                 <table className={styles.gtable} data-testid="global-sim-matrix">
@@ -404,15 +421,23 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
       </div>
 
-      {/* ⑤ 排产安排表（电芯段→在途→Pack段·真 InterBaseTransfer） */}
+      {/* ⑤ 排产安排表（电芯段→在途→Pack段·优先消费求解器真 schedule[]·无则回退 InterBaseTransfer JOIN） */}
       {d && (
         <ScheduleTable
           allocation={d.allocation}
+          schedule={d.schedule}
           transfers={transfers}
           windowDays={PORT_WINDOW_DAYS}
           forecastStart={PORT_FORECAST_START}
           baseNameById={baseNameById}
         />
+      )}
+
+      {/* WO-SURFACE-7DIM · 诚实标注（KILL-MOCK-RED）：本次编排哪些两阶段供给用了 mock 兜底（WO-DATA 未落）；空则不显。 */}
+      {d && (d.mockNotes?.length ?? 0) > 0 && (
+        <div className={styles.noteRed} data-testid="global-sim-mocknotes">
+          诚实标注 · 两阶段网络供给 mock 兜底（WO-DATA 未落 · 真距离/供芯派生见接真收口）：{d.mockNotes!.join("；")}
+        </div>
       )}
 
       {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡） */}

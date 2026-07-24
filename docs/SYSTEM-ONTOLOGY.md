@@ -436,6 +436,14 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码;多目标扰动 ob
   ⚠ 契约 packages/contracts/src/global-sim.ts（GlobalSimRequest/Response·§3 冻结契约）；service portfolioOptimize 挂点 additive 路由（twoStage/materialConstraint/levers/priorityLocks/globalSim→globalSimOptimize）
   ⚠ 诚实边界（KILL-MOCK-RED）：WO-DATA 未落供给（cellSourceMap/transitDays/freightCost/baseDistanceKm）用 mock 时 mockNotes 逐条标注·材料/线级无实测→诚实回退·系数走 R14 运行时本体零焊死
   ⚠ SEAM（gsim-solver.test.ts·八条·in-proc solve 注入·R6）：物料卡单归因/换型小时改选别线/两段路由交付含在途/分批 Σ=qty/硬锁保护有代价/杠杆在时率真升/递进净产能真减/R6 字节一致
+  ── WO-SURFACE-7DIM 前端上屏（engine→render 接缝闭·additive 不改 7 维语义）──
+  ⚠ 编排响应 additive MERGE：globalSimOptimize 在 7 维（scenarios[].kpi·两阶段 schedule[]·mockNotes）之上**并列**经典 portfolio 字段
+    （allocation/capacityLedger/displaced/frozen/cost/objectiveValues·scenarios[].objectiveValues/served·displacedCount）→ GlobalSimView 发起编排（twoStage:true）后
+    既有驾驶舱绑定（热力矩阵/分配台账/被挤·固定卡/读数/客户级影响）不掉线；契约 packages/contracts/src/global-sim.ts 经典兼容层字段全 optional（纯 7 维消费方诚实省略）
+  ⚠ ScheduleTable 优先消费 schedule[]（电芯段 batches[].cellBase→transitDays→Pack 段 packBase·改 baseDistanceKm/transitDaysMap → 上屏在途真变），无 schedule[] 诚实回退经典 InterBaseTransfer JOIN；
+    KPI 读数上屏 kpi.transitInv/changeoverHours/margin/freight；mockNotes 非空则诚实标注 mock 兜底
+  ⚠ SEAM（global-sim-seam-realsolver.test.tsx·engine→render·非 MSW·非 mock HTTP）：真 globalSimOptimize(真 baseDistanceKm/cellSourceMap) → 真 schedule[] 渲染 ScheduleTable →
+    断言上屏 transitDays 随距离真变(1→2 天·就近 hefei vs 远 changzhou)·≠ solver mock 回退 3·cell-pack mockNotes 空（镜像 gsim-integrate 引擎 oracle·断在渲染上屏而非引擎输出）
 ```
 
 **洞察→行动写回·闭决策环链路（WO-GSIM-5-ACTION · 采纳→S2→执行→回灌基线→下一轮推演真变 · 闭 §8 G-DECISION 行动半 / G-LOOP-FEEDBACK）**

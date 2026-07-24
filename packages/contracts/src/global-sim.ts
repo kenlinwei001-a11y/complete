@@ -171,6 +171,14 @@ export const GlobalSimScenarioSchema = z.object({
   kpi: GlobalSimKpiSchema,
   allocation: z.array(GlobalSimAllocationSchema),
   provenance: GlobalSimProvenanceSchema,
+  // ── WO-SURFACE-7DIM · 驾驶舱经典兼容层（additive·并列不替换）──
+  // 编排响应在 7 维 kpi 之上 additively 并列经典 portfolio 方案字段，令决策驾驶舱既有「方案量化多维比对」
+  // 矩阵/读数绑定（objectiveValues.ontime/delay/changeover/fgInventory/cost·servedCount/displacedCount/servedQty）
+  // 在发起编排（twoStage 等）后不掉线。缺省（纯 7 维消费方）时诚实省略。
+  objectiveValues: z.record(z.string(), z.number()).optional(),
+  servedCount: z.number().optional(),
+  displacedCount: z.number().optional(),
+  servedQty: z.number().optional(),
 });
 export type GlobalSimScenario = z.infer<typeof GlobalSimScenarioSchema>;
 
@@ -194,6 +202,69 @@ export const GlobalSimLeverDeltaSchema = z.object({
 });
 export type GlobalSimLeverDelta = z.infer<typeof GlobalSimLeverDeltaSchema>;
 
+// ── WO-SURFACE-7DIM · 驾驶舱经典兼容层 schema（additive·编排响应并列经典 portfolio 字段）──
+// 目的：发起编排（twoStage/materialConstraint/levers/priorityLocks/globalSim → globalSimOptimize）后，
+// 决策驾驶舱既有绑定（热力矩阵 capacityLedger / 分配台账 allocation / 被挤·固定卡 displaced·frozen /
+// 读数 cost / 客户级影响 displaced）不因返回 GlobalSimResponse（7 维）而掉线——7 维在其上叠加，不替换。
+// provenance 复用 GlobalSimProvenanceSchema（mockNote 可选·经典 Prov 无该字段亦兼容）。
+
+/** 经典联合分配格（portfolio.allocation 形状·驱动热力矩阵/分配台账/排产表 model·onTime）。 */
+export const GlobalSimClassicAllocSchema = z.object({
+  item: z.string(),
+  kind: z.string(),
+  committed: z.boolean(),
+  base: z.string(),
+  baseName: z.string(),
+  window: z.number(),
+  windowStartDay: z.number().optional(),
+  qty: z.number(),
+  model: z.string().optional(),
+  dueDay: z.number().optional(),
+  delayDays: z.number(),
+  onTime: z.boolean(),
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimClassicAlloc = z.infer<typeof GlobalSimClassicAllocSchema>;
+
+/** 经典被挤单（portfolio.displaced 形状·驱动客户级影响 CustomerImpactBar + 被挤卡）。 */
+export const GlobalSimClassicDisplacedSchema = z.object({
+  orderId: z.string(),
+  kind: z.string(),
+  qty: z.number(),
+  model: z.string().optional(),
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimClassicDisplaced = z.infer<typeof GlobalSimClassicDisplacedSchema>;
+
+/** 共享产能守恒逐格台账（驱动热力矩阵 + 守恒台账）。 */
+export const GlobalSimCapacityLedgerSchema = z.object({
+  baseId: z.string(),
+  window: z.number(),
+  cap: z.number(),
+  allocated: z.number(),
+});
+export type GlobalSimCapacityLedger = z.infer<typeof GlobalSimCapacityLedgerSchema>;
+
+/** 冻结/固定单（驱动固定单卡）。 */
+export const GlobalSimFrozenSchema = z.object({
+  orderId: z.string(),
+  base: z.string(),
+  window: z.number(),
+  qty: z.number(),
+  frozen: z.literal(true).optional(),
+});
+export type GlobalSimFrozen = z.infer<typeof GlobalSimFrozenSchema>;
+
+/** 经典代价分解（驱动读数「总代价」）。 */
+export const GlobalSimCostSchema = z.object({
+  delay: z.number(),
+  changeover: z.number(),
+  unserved: z.number(),
+  total: z.number(),
+  unit: z.string().optional(),
+});
+export type GlobalSimCost = z.infer<typeof GlobalSimCostSchema>;
+
 export const GlobalSimResponseSchema = z.object({
   scenarios: z.array(GlobalSimScenarioSchema),
   schedule: z.array(GlobalSimScheduleRowSchema),
@@ -208,5 +279,13 @@ export const GlobalSimResponseSchema = z.object({
   status: z.string(),
   optimal: z.boolean(),
   summary: z.string(),
+  // ── WO-SURFACE-7DIM · 驾驶舱经典兼容层（additive·并列经典 portfolio 字段·缺省诚实省略）──
+  allocation: z.array(GlobalSimClassicAllocSchema).optional(),
+  capacityLedger: z.array(GlobalSimCapacityLedgerSchema).optional(),
+  displaced: z.array(GlobalSimClassicDisplacedSchema).optional(),
+  frozen: z.array(GlobalSimFrozenSchema).optional(),
+  cost: GlobalSimCostSchema.optional(),
+  feasible: z.boolean().optional(),
+  objectiveValues: z.record(z.string(), z.number()).optional(),
 });
 export type GlobalSimResponse = z.infer<typeof GlobalSimResponseSchema>;
