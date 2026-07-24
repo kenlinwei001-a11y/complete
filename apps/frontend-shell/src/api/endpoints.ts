@@ -203,6 +203,10 @@ export const discoverLevers = (args: {
   targetType?: string;
   targetProp?: string;
   topK?: number;
+  /** WO-CAPLIVE-TRUECHAIN：grain 作用域（'process-model'）→ 后端走 discoverCapacityLevers（产能金字塔真链反推）；
+   *  modelId 定位型号（base 级活台传 base 名 → 后端多型号聚合兜底）。缺省 → 原通用叶 walk 反推（ProjectSim 零回归）。 */
+  grain?: string;
+  modelId?: string;
 }) =>
   api.a<{ data: { levers: DiscoveredLever[]; count: number; rootTypes: string[] }; snapshotVersion: string }>(
     "/a/v1/solvers/generic_inference/invoke",
