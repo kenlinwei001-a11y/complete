@@ -6,6 +6,7 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10
 import zh from "@/locales/zh";
+import { env } from "@/env";
 import { TaskRun } from "./TaskRun";
 import styles from "./QueryDock.module.css";
 
@@ -100,6 +101,16 @@ export function QueryDock() {
             </button>
           </div>
           <div className={styles.panelBody}>
+            {/* 假·脚本对话诚实化（KILL-MOCK-RED·AUDIT 2026-07-24）：VITE_MOCK 态答案为脚本样例（含演示 provenance），
+                非真实 QOS 求解——诚实横幅披露，避免用户把 mock 演示当真实数据。部署态（真后端）走真 orchestrator 求解器。 */}
+            {env.mock && (
+              <div
+                data-testid="dock-mock-note"
+                style={{ fontSize: 11, lineHeight: 1.5, padding: "6px 10px", margin: "0 0 8px", borderRadius: 6, background: "rgba(232,181,74,.12)", border: "1px solid rgba(232,181,74,.35)", color: "var(--amber, #E8B54A)" }}
+              >
+                ⓘ 演示模式（VITE_MOCK）· 本对话回答为<b>脚本样例</b>，非真实 QOS 求解 / 真实数据（含演示用 provenance）。连真后端部署态走真 orchestrator 求解器。
+              </div>
+            )}
             {/* 运营态出厂配置增量 §4.4：按场景预载历史问答（半透明 + 日期 + 信任级徽章 + 分隔线） */}
             {(scene?.preloadedHistory?.length ?? 0) > 0 && (
               <div className={styles.history} data-testid="dock-history">

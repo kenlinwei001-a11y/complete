@@ -100,6 +100,13 @@ function MultiObjWhatifInner() {
         </span>
       </div>
 
+      {/* 输入示意披露（假·toy fixture 诚实化·KILL-MOCK-RED·AUDIT 2026-07-24）：SO-A/B/C 三元是演示权衡机制的
+          固定示意场景（产线容量+合约额度双约束），非本租户真实订单簿；下方数字是真求解器基于该示意输入的计算结果。 */}
+      <div className={styles.noteInfo} data-testid="multiobj-input-disclosure" style={{ fontSize: 11, margin: "2px 0 6px" }}>
+        ⓘ 输入为<b>示意样例</b>（SO-A/B/C × 产线 L1/L2 × 合约 K1·演示"产线容量+合约额度双约束逼出权衡"机制），
+        非本租户真实订单簿；下方营收/违约金/换型成本为<b>真求解器</b>（cross_object_occupancy · optimize_whatif）基于该示意输入的计算结果，改权重→最优真漂移。
+      </div>
+
       {/* ① 各目标当前值 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "8px 0" }} data-testid="multiobj-objvalues">
         {(["revenue", "penalty", "cost"] as const).map((k) => (

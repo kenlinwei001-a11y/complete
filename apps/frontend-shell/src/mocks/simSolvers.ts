@@ -915,12 +915,16 @@ export function mockMultiObj(key: string, args: Record<string, unknown>): Record
   if (key === "multi_objective") {
     const objectives = (Array.isArray(args.objectives) ? args.objectives : []) as { key: string }[];
     const vars = (Array.isArray(args.vars) ? args.vars : []) as { id: string }[];
+    // 假·mock 全 0 退化桩诚实化（KILL-MOCK-RED·AUDIT 2026-07-24）：本 mock 未实现真多目标求解，返回退化桩
+    // （objectiveValues 全 0），故绝不冒充"可证最优"——标 dataMode:MOCK + provenanceSynthetic，summary 诚实披露
+    // "mock 占位·未求解"。真解在部署态 datacore multi_objective（VITE_MOCK 关时走真求解器）。
     return {
-      status: "OPTIMAL", optimal: true, method: (args.method as string) || "weighted",
-      values: Object.fromEntries(vars.map((v, i) => [v.id, i === 0 ? 1 : 0])),
+      status: "MOCK_STUB", optimal: false, method: (args.method as string) || "weighted",
+      dataMode: "MOCK", provenanceSynthetic: true,
+      values: Object.fromEntries(vars.map((v) => [v.id, 0])),
       objectiveValues: Object.fromEntries(objectives.map((o) => [o.key, 0])),
       objectiveKeys: objectives.map((o) => o.key), varCount: vars.length, objectiveCount: objectives.length,
-      summary: `多目标（${(args.method as string) || "weighted"}）：${objectives.length} 目标 / ${vars.length} 变量（可证最优）`,
+      summary: `多目标（${(args.method as string) || "weighted"}）mock 占位·未实现真求解：${objectives.length} 目标 / ${vars.length} 变量（objectiveValues 全 0 为桩值·非可证最优·真解见部署态 datacore）`,
     };
   }
   // optimize_whatif（family=cross_object_occupancy）：基线权重 vs 扰动后权重各解一次 → 各目标 Δ 分解。
