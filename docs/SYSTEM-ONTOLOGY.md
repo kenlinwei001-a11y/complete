@@ -224,6 +224,15 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
        · fail-open：A 不可达/mock 客户端无 getTypeSemantics → 空块（不阻断查询）；缺口径文本(description/formula 未填)→诚实缺省不编造
        · SEAM（灭 mirror 漂移·非各半绿）：改 A prop.description/rule.expression → B 注入块同步变（datacore type-semantics.test A-半
          + agentcore ontology-context.test B-半渲染纯度 + 真 HTTP 驱动组合测：改 A 口径+失效→B 块变）
+       ★**A 侧消费者（WO-ONTOLOGY-CONTEXT-A·缺口③A-半·闭「A 侧 unit/口径 inert」）**：口径此前**唯一**消费者是 B（LLM prompt），
+         A 自身输出从不用 unit/formula 做计算或校验。本 WO 把内联组装器抽为 **`OntologyService.getTypeSemantics(ctx,keys?)`**（`ontology.ts`·
+         type-semantics 路由降为薄壳·B 的端点与 A 内部消费者共享**同一单一真值·不留第三份拷贝**），并让 **`POST /a/v1/ontology/validate-output`**
+         （`ontology-validate.ts validateOutputAgainstOntology` 新增可选 `semantics` 参）additive 产出两样此前 A 从不用的口径产物：
+         (a) `fieldSemantics` 逐字段 unit/formula/描述/dataType 溯源注解（R13 输出侧口径）；(b) `ruleViolations` 值越 scope 规则口径线
+         （表达式为真=命中违规）的行标记。**纯 additive 红线**：`ok`/`violations`/rejected/quarantined 结构校验语义逐字节不变（不传 semantics
+         即整段省略·modeling.ts 隔离区校验与 agentcore 执行器仅读 ok/violations→行为零漂移）。SEAM：`datacore/test/ontology-validate-semantics.test.ts`
+         ——MUTATE 口径真值（upsertType unit %→pct/改 formula + rules C03 >0.5→>0.8 + publish）后**同一** validate-output 调用注解/规则判定随之变
+         （证接线到本体单一真值·非快照·A-side 版 agentcore ontology-context.test）。
    ★**组合路径（WO-Phase2-C·path-A 单跳 ↔ path-B ReAct 之间的中间路径·已接线·可执行）**：在 runPathB 内 navSlice 之后、
      runAgentLoop 之前挂——
        navSlice(已投影本题图) + composeSlots(orchestrator.composeSlots·从 task.query/domainResolve.args/PageContext.focus 静态派生·R6)

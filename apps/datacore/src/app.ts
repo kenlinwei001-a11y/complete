@@ -1610,8 +1610,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // WO-QOS-ONTOLOGY-CONTEXT · 口径语义只读投影（缺口③·文档三层投喂第二层）：
   // 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则表达式(expression/severity) }。
-  // 单一真值：全部来自本租户已发布本体（ontology.listTypes）+ 规则库（rules.list PUBLISHED·按 scopeObjectTypes 命中）——
+  // 单一真值：全部来自本租户已发布本体（ontology.listTypes）+ 规则库（PUBLISHED·按 scopeObjectTypes 命中）——
   // 不新增/改写任何口径真值（description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）·R6 确定性字典序·additive 纯读。
+  // WO-ONTOLOGY-CONTEXT-A：组装逻辑已抽为 OntologyService.getTypeSemantics（A 侧内部消费者复用同一单一真值），本路由为薄壳。
   app.get("/a/v1/ontology/type-semantics", async (req) => {
     const c = ctx(req);
     const q = req.query as { types?: string };
@@ -1619,33 +1620,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const wanted = requested.length > 0 ? new Set(requested) : undefined;
-    const allTypes = await ontology.listTypes(c);
-    const publishedRules = await rules.list(c, "PUBLISHED");
-    const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-    const picked = allTypes
-      .filter((t) => t.status === "ACTIVE" && (!wanted || wanted.has(t.key)))
-      .sort((a, b) => byKey(a.key, b.key));
-    const types = picked.map((t) => ({
-      typeKey: t.key,
-      displayName: t.displayName,
-      props: [...t.properties]
-        .sort((a, b) => byKey(a.propKey, b.propKey))
-        .map((p) => ({
-          propKey: p.propKey,
-          ...(p.description ? { description: p.description } : {}),
-          ...(p.unit ? { unit: p.unit } : {}),
-          dataType: p.dataType,
-        })),
-      derived: [...(t.derivedProperties ?? [])]
-        .sort((a, b) => byKey(a.propKey, b.propKey))
-        .map((d) => ({ propKey: d.propKey, ...(d.formula ? { formula: d.formula } : {}) })),
-      rules: publishedRules
-        .filter((r) => r.scopeObjectTypes.includes(t.key))
-        .sort((a, b) => byKey(a.key, b.key))
-        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity })),
-    }));
-    return { types };
+    return ontology.getTypeSemantics(c, requested);
   });
 
   // PRD-fde §3.2 实体与字段目录索引（P1 读模型）：
@@ -1835,7 +1810,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 有效策略 = 连接器持久化基线（适配该源）← 被显式 body.policy 覆盖 ← 全局默认兜底
     const base = body.connId ? (await connectors.getConnection(c, body.connId)).validationPolicy : undefined;
     const policy = ValidationPolicySchema.parse({ ...(base ?? {}), ...(body.policy ?? {}) });
-    return validateOutputAgainstOntology(body.rows, typeDef, policy);
+    // WO-ONTOLOGY-CONTEXT-A · A 侧消费者复用同一 type-semantics 单一真值（口径注解 + scope 规则命中标记）——
+    // 让 unit/formula/规则表达式不再仅喂 B 的 prompt，A 自身输出校验也据本体口径真值产出注解与判定。
+    const semantics = (await ontology.getTypeSemantics(c, [body.objectType])).types.find((t) => t.typeKey === body.objectType);
+    return validateOutputAgainstOntology(body.rows, typeDef, policy, semantics);
   });
   // stage2 持久化：连接器（数据源）级校验策略 + 字段映射（按租户;前端字段画像页编辑）
   app.put("/a/v1/connections/:id/validation-policy", async (req) => {

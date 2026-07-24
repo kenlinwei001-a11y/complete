@@ -1,4 +1,4 @@
-import type { ClaimVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import type {
   AuthCtx,
   DerivationRun,
@@ -134,6 +134,47 @@ export class OntologyService {
       (t) => t.key === key && t.status === "ACTIVE",
     );
     return types[0];
+  }
+
+  /**
+   * WO-QOS-ONTOLOGY-CONTEXT / WO-ONTOLOGY-CONTEXT-A · 口径语义只读投影（单一真值 = A）。
+   *
+   * 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则(expression/severity) }。
+   * `keys` 省略/空 = 全部已发布 ACTIVE 类型；给定 `keys` 只投影这些（未知/未发布类型静默略过）。
+   * 全部字段来自本租户已发布本体（listTypes）+ 规则库（PUBLISHED · 按 scopeObjectTypes 命中）——不新增/改写任何口径真值
+   * （description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）· R6 确定性字典序 · 纯读。
+   *
+   * **单一真值抽取**：GET /a/v1/ontology/type-semantics（喂 B 的 LLM prompt）与 A 侧内部消费者（如
+   * validate-output 口径注解/scope 规则命中）经此一个方法共享同一口径来源——不留第三份拷贝，杜绝语义漂移。
+   */
+  async getTypeSemantics(ctx: AuthCtx, keys?: string[]): Promise<TypeSemanticsResponse> {
+    const wanted = keys && keys.length > 0 ? new Set(keys) : undefined;
+    const allTypes = await this.listTypes(ctx);
+    const publishedRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const picked = allTypes
+      .filter((t) => t.status === "ACTIVE" && (!wanted || wanted.has(t.key)))
+      .sort((a, b) => byKey(a.key, b.key));
+    const types = picked.map((t) => ({
+      typeKey: t.key,
+      displayName: t.displayName,
+      props: [...t.properties]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((p) => ({
+          propKey: p.propKey,
+          ...(p.description ? { description: p.description } : {}),
+          ...(p.unit ? { unit: p.unit } : {}),
+          dataType: p.dataType,
+        })),
+      derived: [...(t.derivedProperties ?? [])]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((d) => ({ propKey: d.propKey, ...(d.formula ? { formula: d.formula } : {}) })),
+      rules: publishedRules
+        .filter((r) => r.scopeObjectTypes.includes(t.key))
+        .sort((a, b) => byKey(a.key, b.key))
+        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity })),
+    }));
+    return { types };
   }
 
   async upsertType(
