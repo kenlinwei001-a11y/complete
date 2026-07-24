@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLiveSolver } from "../sim/useLiveSolver";
 import styles from "../RiskBoardView.module.css";
+import { Provenance } from "@/components/Provenance";
 import { ONTO_FACTORS, layerOf, type OntoFactor } from "./factorOntology";
 
 /**
@@ -128,9 +129,22 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
                       color: anchor.tight != null ? tightColor(anchor.tight) : spec.anchor === "gap" ? "var(--danger)" : "var(--txt)",
                       fontWeight: anchor.tight != null ? 600 : undefined,
                     }}
-                    title={anchor.tight != null ? `${anchor.label} = ${anchor.value}（${anchor.kind}·溯 ${anchor.field}）` : undefined}
                   >
-                    {anchor.label} {anchor.value}
+                    {anchor.label}{" "}
+                    {anchor.value === "—" ? (
+                      // 无 LIVE 真源 → 诚实"—"（不套 provenance·不伪造可溯）。
+                      <span>—</span>
+                    ) : (
+                      <Provenance
+                        testId={`cap-dag-anchorval-${spec.layer}`}
+                        src={anchor.field.startsWith("base_capacity_outlook") ? "base_capacity_outlook 求解器" : "bottleneck_matrix 求解器"}
+                        formula={`溯源字段 ${anchor.field}`}
+                        inputs={anchor.tight != null ? [`张力 ${Math.round(anchor.tight)}`] : [anchor.value]}
+                        note={anchor.kind}
+                      >
+                        {anchor.value}
+                      </Provenance>
+                    )}
                   </span>
                   <span style={{ color: "var(--muted2)" }}>{isOpen ? "▾" : "▸"}</span>
                 </div>

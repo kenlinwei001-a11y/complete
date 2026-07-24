@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { loginAs } from "./utils";
+import { loginAs, renderWithClient as render } from "./utils";
 import { BaseOutlookPanel } from "@/views/BaseOutlookPanel";
 
 /**
