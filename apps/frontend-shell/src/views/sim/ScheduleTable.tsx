@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { GlobalSimScheduleRow } from "@platform/contracts";
 import { fmt } from "./shared";
 import styles from "./GlobalSimView.module.css";
 
@@ -39,9 +40,12 @@ interface SchedRow {
 }
 
 export function ScheduleTable({
-  allocation, transfers, windowDays, forecastStart, baseNameById,
+  allocation, schedule, transfers, windowDays, forecastStart, baseNameById,
 }: {
   allocation: Alloc[];
+  /** WO-SURFACE-7DIM · 求解器真两阶段排产（GlobalSimResponse.schedule[]·transitDays/freightCost/batches[].cellBase 真产物）。
+   *  有则优先消费（改距离/供芯 → transitDays 真变上屏）；无则诚实回退经典 allocation×InterBaseTransfer JOIN。 */
+  schedule?: GlobalSimScheduleRow[];
   transfers: Transfer[];
   windowDays: number;
   forecastStart: string;
@@ -49,6 +53,35 @@ export function ScheduleTable({
   /** 计划级真换型（scenario.objectiveValues.changeover·分钟单位·脚注真值·非按行拆） */
 }) {
   const rows = useMemo<SchedRow[]>(() => {
+    // WO-SURFACE-7DIM · 优先消费求解器真 schedule[]（两阶段网络真产物·电芯段 batches[].cellBase → transitDays → Pack 段 packBase）。
+    // 电芯段/Pack 段/在途/换型小时/交付日全取 solver 真值（改 baseDistanceKm/transitDaysMap → 引擎 transit 真变 → 上屏真变·SEAM）；
+    // 无 schedule[]（经典 portfolio 响应 / §3 注入）→ 落到下方诚实回退经典 JOIN（不伪造两段）。
+    if (schedule && schedule.length) {
+      const orderMeta = new Map(allocation.map((a) => [a.item, { model: a.model ?? "—", onTime: a.onTime, delayDays: a.delayDays }]));
+      return schedule
+        .map((r) => {
+          const cellId = r.batches[0]?.cellBase ?? r.packBase;
+          const crossBase = cellId !== r.packBase; // ID 级比对（供芯基地 ≠ Pack 基地 = 异地两段）
+          const meta = orderMeta.get(r.orderId);
+          const onTime = meta ? meta.onTime : r.status === "ok" || r.status === "must_serve";
+          const qty = r.batches.reduce((s, b) => s + b.qty, 0);
+          return {
+            item: r.orderId,
+            model: meta?.model ?? "—",
+            qty,
+            cellBase: baseNameById.get(cellId) ?? cellId,
+            cellWindow: r.batches[0]?.cellWindow ?? r.packWindow,
+            transitDays: r.transitDays,
+            packBase: baseNameById.get(r.packBase) ?? r.packBase,
+            crossBase,
+            changeoverHours: r.changeoverHours,
+            deliverDay: isoAddDays(forecastStart, r.deliverDay),
+            status: onTime ? "按期" : `延误 ${fmt(meta?.delayDays ?? 0, 0)} 天`,
+            onTime,
+          };
+        })
+        .sort((x, y) => x.item.localeCompare(y.item));
+    }
     // 只排真订单项（WIP 是背景承诺·预测非可排产订单）→ 两段排产表聚焦销售订单执行。
     const orders = allocation.filter((a) => a.kind === "order");
     // 按 (model, fromBase=电芯基地) 索引真调拨。
@@ -74,7 +107,7 @@ export function ScheduleTable({
         };
       })
       .sort((x, y) => x.item.localeCompare(y.item));
-  }, [allocation, transfers, windowDays, forecastStart, baseNameById]);
+  }, [schedule, allocation, transfers, windowDays, forecastStart, baseNameById]);
 
   const crossCount = rows.filter((r) => r.crossBase).length;
 

@@ -781,6 +781,8 @@ export async function globalSimOptimize(
     scenarios.push({
       key: sc.key as GlobalSimScenario["key"], kpi, allocation,
       provenance: { kind: "派生", drillType: "Line", drillId: "cap[b,line,t]", drillField: "capacityDaily", drillValue: sc.servedQty, mockNote: null },
+      // ── WO-SURFACE-7DIM · additive 经典兼容层（驾驶舱方案量化多维比对矩阵/读数绑定·并列 kpi 不替换）──
+      objectiveValues: sc.objectiveValues, servedCount: sc.servedCount, displacedCount: sc.displacedCount, servedQty: sc.servedQty,
     });
     if (sc.key === out.scenarios[0]!.key) primaryRows = rows;
   }
@@ -825,5 +827,10 @@ export async function globalSimOptimize(
     scenarios, schedule: primaryRows, blocked: materialBlocked, leverDeltas,
     reconciled: out.reconciled, mockNotes: [...mockNotes].sort(), materialConstraint: materialOn,
     status: out.status, optimal: out.optimal, summary,
+    // ── WO-SURFACE-7DIM · additive MERGE 经典兼容层（不替换 7 维·驱动驾驶舱既有绑定不掉线）──
+    // out 即经典 portfolioOptimize 核心产物（联合守恒同一套解）→ 直接并列透出，令前端发起编排
+    // （twoStage 等）后 热力矩阵/分配台账/被挤·固定卡/读数/客户级影响 仍读到经典形状。确定性 R6（纯派生·无 rng/时钟）。
+    allocation: out.allocation, capacityLedger: out.capacityLedger, displaced: out.displaced,
+    frozen: out.frozen, cost: out.cost, feasible: out.feasible, objectiveValues: out.objectiveValues,
   };
 }
