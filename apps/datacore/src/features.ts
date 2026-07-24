@@ -92,6 +92,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（暗发 defaultOff，依赖优化模板池）。
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
+  // 全局推演·活系统 NL/方案存比暗发门（R3）：真后端 /b/v1/sim/compose · /a/v1/sim/scenarios 端点未落 → defaultOff 不渲染避 404；WO-LIVE-SCENARIO 落后开门。核心（自由杠杆/矩阵/排产）不受此门·照常真出。
+  { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: false },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。

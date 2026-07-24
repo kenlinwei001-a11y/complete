@@ -7,6 +7,7 @@ import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, ty
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { toastError } from "@/store/toastStore";
+import { Feature } from "@/workspace/featureGate";
 import { useLiveSolver } from "./useLiveSolver";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
@@ -307,8 +308,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </span>
       </div>
 
-      {/* 活①·人机对话（内嵌 NL 框·带 sessionId·compose 路径联合求解叙述） */}
-      <GlobalSimNlDock sessionId={sessionId} />
+      {/* 活①·人机对话（内嵌 NL 框·compose 路径叙述）——暗发门控：真后端 /b/v1/sim/compose 未落时不渲染(R3·避 404·mock 态 on) */}
+      <Feature flag="view.global-sim.live"><GlobalSimNlDock sessionId={sessionId} /></Feature>
 
       {/* 三栏：② 左轨杠杆盘 · ③ 中央 Hero 热力矩阵 · 右轨配置栈 */}
       <div className={styles.layout3}>
@@ -584,8 +585,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+影响额·行动占位） */}
       {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} />}
 
-      {/* 活③·方案存 / 分支 / 横比（decision_play 范式·七维 KPI × 方案·采纳走 plan_change 审批） */}
-      {d && <GlobalSimScenarioBar getSnapshot={getSnapshot} />}
+      {/* 活③·方案存 / 分支 / 横比（decision_play 范式）——暗发门控：真后端 /a/v1/sim/scenarios 未落时不渲染(R3·避 404·mock 态 on) */}
+      {d && <Feature flag="view.global-sim.live"><GlobalSimScenarioBar getSnapshot={getSnapshot} /></Feature>}
 
       {/* 迁入：多目标 + 跨对象占用联合 what-if（本是全局能力） */}
       <div className={`${styles.glass} ${styles.migrated}`}>
