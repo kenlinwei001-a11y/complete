@@ -93,6 +93,18 @@ export const MarginAttributionArgs = z.object({
   revenueField: z.string().optional(),
 });
 
+/**
+ * generic_inference（通用 what-if·service.ts:461-473）：`apply:[{objectType,objectId,prop,value}]` **必填**
+ * （datacore 无 apply 即 validationError）——组合器据此判「解析不出 apply → 诚实落选·落 path-B」（不误编入再炸）。
+ * WO-LIVE-NL 产能 what-if NL 经确定性解析填 apply → 组合器纳入 → executePlan 真算（runAgentLoop 未调）。
+ */
+export const GenericInferenceArgs = z.object({
+  apply: z.array(
+    z.object({ objectType: z.string(), objectId: z.string(), prop: z.string(), value: z.unknown() }),
+  ),
+  mode: z.string().optional(),
+});
+
 /** 求解器 args schema 注册表（key → zod schema）。未登记 = 组合器判输入模式未知 → 回退 ReAct。 */
 export const SOLVER_ARGS_SCHEMAS: Record<string, z.ZodTypeAny> = {
   sop_reschedule: SopRescheduleArgs,
@@ -107,6 +119,8 @@ export const SOLVER_ARGS_SCHEMAS: Record<string, z.ZodTypeAny> = {
   // margin_attribution 必填 targetType/costFields → 填不满时诚实落选（fail-safe·不臆造映射）。
   mrp_netting: MrpNettingArgs,
   margin_attribution: MarginAttributionArgs,
+  // WO-LIVE-NL · 产能 what-if NL 路由（apply 必填 → 确定性解析出因子变动才纳入·fail-safe）。
+  generic_inference: GenericInferenceArgs,
 };
 
 /** 取某 solver 的 args schema（未登记 → undefined·调用方据此回退 ReAct·不臆造映射）。 */
