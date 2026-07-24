@@ -78,6 +78,19 @@ export const CreditExposureArgs = z.object({
   creditLimit: z.number().optional(),
 });
 
+/** mrp_netting（物料齐套/短缺归因·service.ts:3414 `mrpNetting(ctx)`）：ctx-only 派生·无 args。 */
+export const MrpNettingArgs = z.object({});
+
+/**
+ * margin_attribution（毛利反向归因·service.ts:771-776）：需 targetType + costFields（缺则 datacore validationError）。
+ * targetType/costFields 标**必填**——组合器据此判「填不满 → 诚实落选」（不误编入再运行时炸）；revenueField 可选。
+ */
+export const MarginAttributionArgs = z.object({
+  targetType: z.string(),
+  costFields: z.array(z.object({ field: z.string(), label: z.string().optional() })),
+  revenueField: z.string().optional(),
+});
+
 /** 求解器 args schema 注册表（key → zod schema）。未登记 = 组合器判输入模式未知 → 回退 ReAct。 */
 export const SOLVER_ARGS_SCHEMAS: Record<string, z.ZodTypeAny> = {
   sop_reschedule: SopRescheduleArgs,
@@ -88,6 +101,10 @@ export const SOLVER_ARGS_SCHEMAS: Record<string, z.ZodTypeAny> = {
   gap_attribution: GapAttributionArgs,
   atp_check: AtpCheckArgs,
   credit_exposure: CreditExposureArgs,
+  // ① 推演链地基补登记（WO-GSIM-4-AGENT live 缺口①·§3.1 全链）：mrp_netting 无 args → 组合器自动纳入；
+  // margin_attribution 必填 targetType/costFields → 填不满时诚实落选（fail-safe·不臆造映射）。
+  mrp_netting: MrpNettingArgs,
+  margin_attribution: MarginAttributionArgs,
 };
 
 /** 取某 solver 的 args schema（未登记 → undefined·调用方据此回退 ReAct·不臆造映射）。 */

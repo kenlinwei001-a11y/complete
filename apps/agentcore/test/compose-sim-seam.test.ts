@@ -41,8 +41,13 @@ describe("WO-GSIM-4-AGENT · 推演 NL 大脑（纯投影 R6）", () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     expect(a.ok).toBe(true);
     if (a.ok) {
-      expect(a.plan.steps.map((s) => s.solverKey)).toContain("portfolio");
+      const keys = a.plan.steps.map((s) => s.solverKey);
+      expect(keys).toContain("portfolio");
       expect(a.plan.steps.length).toBeGreaterThanOrEqual(2); // ≥2 步真组合（portfolio ⊕ affected_orders）
+      // ① 地基补登记 mrp_netting → 组合器自动纳入（物料短缺归因入链·切「考虑正极短缺」）。
+      expect(keys).toContain("mrp_netting");
+      // margin_attribution 必填 targetType/costFields 填不满 → 诚实落选（fail-safe·不误编入再运行时炸）。
+      expect(keys).not.toContain("margin_attribution");
     }
   });
 });

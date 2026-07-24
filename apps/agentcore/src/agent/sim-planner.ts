@@ -61,11 +61,24 @@ const SIM_SOLVERS: SliceSolver[] = [
     capability: "型号需求增量产能可行性推演（P50/P90·缺口率·主瓶颈）",
     outputShape: ["baseId", "horizon", "lines", "gap", "surplus", "plan", "summary"],
   },
+  // ① 地基补登记后纳入（live 缺口①·§3.1 全链）：mrp_netting 无 args → 恒可编入（切题「正极短缺」物料齐套归因）；
+  // margin_attribution 必填 targetType/costFields → 推演题填不满时组合器诚实落选（fail-safe·不误编入）。
+  {
+    key: "mrp_netting",
+    capability: "物料齐套/短缺归因（BOM 净额 → 短缺物料 + 供应商·切「考虑正极短缺」类推演）",
+    outputShape: ["materials", "shortageCount", "summary"],
+  },
+  {
+    key: "margin_attribution",
+    capability: "毛利反向归因（需 targetType+costFields·填不满诚实落选）",
+    outputShape: ["inverted", "rootDrivers", "invertedCount", "summary"],
+  },
 ];
 
 /**
- * 投影推演专属 navSlice（R6 纯函数）。solvers 恒为 SIM_SOLVERS（已登记子集）——组合器再据 slots 可满足性
- * 筛掉填不满 required 的（如 capacity_forecast 无 modelId），portfolio/affected_orders（required=[]）恒可编入 → ≥2 步并行组合。
+ * 投影推演专属 navSlice（R6 纯函数）。solvers 恒为 SIM_SOLVERS——组合器再据 slots 可满足性筛掉填不满 required 的
+ * （capacity_forecast 无 modelId / margin_attribution 无 targetType 诚实落选），portfolio/affected_orders/mrp_netting
+ * （required=[]）恒可编入 → ≥2 步并行组合（① 地基补登记后 mrp_netting 自动纳入·物料短缺归因入链）。
  */
 export function buildSimNavSlice(query: string): NavigationSlice {
   return {
@@ -73,7 +86,7 @@ export function buildSimNavSlice(query: string): NavigationSlice {
     primarySolver: "portfolio",
     objectTypes: [],
     solvers: SIM_SOLVERS,
-    chain: "对象[Order/Base/Line/DemandSegment] → 求解器[portfolio ⊕ affected_orders] → 综合（每数字 ⟦ref:N⟧ 溯步产物）",
+    chain: "对象[Order/Base/Line/DemandSegment] → 求解器[portfolio ⊕ affected_orders ⊕ mrp_netting] → 综合（每数字 ⟦ref:N⟧ 溯步产物）",
     rules: ["共享产能守恒：Σ_i qty·x[i,b,t] ≤ cap[b,t]（无重复占用）"],
     nonEmpty: true,
   };
