@@ -17,7 +17,8 @@ import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-g
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
-import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
+import { capacityForecast, computeByProcessModel, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
+import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
@@ -227,11 +228,19 @@ const DAY_MS = 86400000;
  * 的因子→属性映射（"撬得动该瓶颈"的真输入）。用于 generic_inference mode:"levers" 按 ⑤瓶颈因子过滤候选杠杆，
  * 使杠杆集随瓶颈变（非写死）。键=瓶颈因子名（与 bottleneck.factors 同源），值=`Type.prop` 叶输入。
  */
+// WO-CAPLIVE-1-ATOM（treat G-CAPACITY-FACTOR-SHALLOW·从 4 因子扩到 7 覆盖深化后可写因子）：BN 瓶颈因子键 → 可写叶输入落点集。
+// 仅作 `mode:"levers"` 的 `factors` 过滤（缺省不过滤）。原 4 因子（设备OEE/瓶颈工序/良率波动/物料齐套）落点**口径不动**
+// （保通用 discoverLevers/抽象 pyramid 语义不回归）；additive 补 物料齐套 到货/关键物料落点 + 新增 人力工时/换型损失/物流时长
+// 三键 → 覆盖更多深化可写落点。注：capacity grain 反推（discoverCapacityLevers）候选来自 CapacityFactorBinding（含全部原子
+// 落点·节拍/通道/班次/在岗…），本表只在传 factors 时收窄——原子因子默认即全数反推（不靠本表枚举）。键=瓶颈因子（同 bottleneck.factors）。
 const LEVER_FACTOR_PROPS: Record<string, string[]> = {
   设备OEE: ["Equipment.oee_current"], // debattery-allow：瓶颈因子键（mirror risk.ts liveTightness）
   瓶颈工序: ["Line.utilization"], // debattery-allow
   良率波动: ["Process.yield_baseline"], // debattery-allow
-  物料齐套: ["MaterialBalance.coverage", "Order.outsourceRatio"], // debattery-allow
+  物料齐套: ["MaterialBalance.coverage", "Material.onHand", "Material.leadTime", "Order.outsourceRatio"], // debattery-allow：物料齐套/关键物料/到货/外协（⑬⑮）
+  人力工时: ["Process.attendance", "Process.shifts", "Process.shiftHours"], // debattery-allow：在岗出勤×班次（⑯⑰）
+  换型损失: ["ChangeoverMatrix.changeoverMin", "Order.outsourceRatio"], // debattery-allow：换型时长/外协（⑤）
+  物流时长: ["Shipment.etaDay", "Material.leadTime"], // debattery-allow：在途时效/到货（⑮）
 };
 
 /**
@@ -492,6 +501,10 @@ export class SolverService {
    *   { mode:"levers", targetType?, targetProp?, scopeObjectIds?:string[], factors?:string[], epsilon?, topK? }。
    */
   private async discoverLevers(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // WO-CAPLIVE-1-ATOM：grain 作用域（'base'|'process'|'process-model'）→ 走 capacity 金字塔反推分支
+    //（demo 无 ontology-core capacity 派生 spec → 通用叶 walk 在 capacity 域反推空；capacity 链是 computeRollup 代码链）。
+    // 无 grain → 现有通用 discoverLevers（ontology-core derivationSpecs 反向 walk）不变（向后兼容·抽象 pyramid 测试不回归）。
+    if (args.grain) return this.discoverCapacityLevers(ctx, args);
     const targetType = args.targetType ? str(args.targetType) : undefined;
     const targetProp = args.targetProp ? str(args.targetProp) : undefined;
     const epsilon = num(args.epsilon, 0.05) || 0.05;
@@ -586,6 +599,113 @@ export class SolverService {
       count: top.length,
       rootTypes: [...new Set(top.map((l) => String(l.objectType)))],
     };
+  }
+
+  /**
+   * WO-CAPLIVE-1-ATOM · capacity grain 杠杆反推（mode:"levers" + grain 作用域·treat G-CAPACITY-FACTOR-SHALLOW）。
+   * 复用"反推候选叶输入 + ±ε recompute 敏感度 + 排序"同款机制，但目标是**产能金字塔链路**（`capacity_forecast.byProcessModel`
+   * Σp50）而非 ontology-core derivationSpecs（demo 未编译 capacity 派生 spec·capacity 链是 computeRollup 代码链）。
+   * 候选原子因子 = `CapacityFactorBinding` 里 writable 且 grain 匹配的落点（作用域随 grain/modelId/processKey/factors 收窄）；
+   * 每候选取作用域内真对象实例，±ε 扰动**克隆 ctx**（无副作用·不落库·不 mutate 原对象）重算 byProcessModel Σp50 →
+   * 敏感度 = Δ(Σp50)/ε（R6 确定·无 Date/random），按 |敏感度| 排序 top-K。不改 recompute/capacity 数学（薄反推层）。
+   * args: { mode:"levers", grain, modelId(必填·定位型号), processKey?, factors?, topK?, epsilon? }。
+   */
+  private async discoverCapacityLevers(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const grain = str(args.grain) as FactorGrain | "process-model";
+    const modelId = str(args.modelId);
+    if (!modelId) throw validationError("discoverLevers grain 作用域需 modelId 定位型号（capacity 反推）");
+    const processKey = args.processKey ? str(args.processKey) : undefined;
+    const epsilon = num(args.epsilon, 0.02) || 0.02;
+    const topK = Math.max(1, Math.floor(num(args.topK, 6)));
+    const PROBE_CAP = 50; // 确定性上界（sorted 取前 N），避免大对象图上探针失控。
+    const factorFilter = Array.isArray(args.factors) ? args.factors.map(String) : undefined;
+    // factors（⑤瓶颈因子·BN 词表）→ 可写叶属性集（LEVER_FACTOR_PROPS 单源）；缺省=不过滤（全部可写绑定）。
+    const wantProps = factorFilter ? new Set(factorFilter.flatMap((f) => LEVER_FACTOR_PROPS[f] ?? [])) : undefined;
+    const cands = CAPACITY_FACTOR_BINDINGS.filter(
+      (b) => b.writable && matchesGrain(b.grain, grain) && (wantProps ? wantProps.has(`${b.objectType}.${b.prop}`) : true),
+    );
+
+    const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
+    const cert = c.certByModel.get(modelId);
+    const empty = { levers: [] as unknown[], deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes: [] as string[] };
+    if (!cert || cert.size === 0) return empty;
+    const certBases = new Set([...cert.keys()]);
+    const total = (rows: { p50: number }[]): number => round(rows.reduce((s, r) => s + r.p50, 0), 6);
+    const baseline = total(computeByProcessModel(c, modelId));
+
+    // typeKey → ctx 对象数组（仅 capacity 链相关类型；ctx 无该类型 → 空，诚实不臆造）。
+    const arrayOf = (typeKey: string): ObjectInstance[] => {
+      switch (typeKey) {
+        case "Process": return c.processes;
+        case "Equipment": return c.equipment;
+        case "Line": return c.lines;
+        case "Material": return c.materials ?? [];
+        case "Order": return c.orders;
+        case "MaintPlan": return c.maintPlans;
+        case "Shipment": return c.shipments;
+        case "ChangeoverMatrix": return c.changeoverMatrix ?? [];
+        default: return [];
+      }
+    };
+    // 作用域过滤：Process/Equipment/Line 归属 model 认证基地（+ processKey 定位该工序）；Material 关键物料（层4 共享 ∩）。
+    const procLineId = processKey ? str(c.processes.find((p) => str(p.props.processId) === processKey)?.props.lineId) : undefined;
+    const inScope = (typeKey: string, o: ObjectInstance): boolean => {
+      if (typeKey === "Process") return certBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
+      if (typeKey === "Equipment") return certBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
+      if (typeKey === "Line") return certBases.has(str(o.props.baseId)) && (!procLineId || str(o.props.lineId) === procLineId);
+      if (typeKey === "Material") return o.props.isKeyMaterial === true || (c.materials ?? []).every((m) => m.props.isKeyMaterial !== true);
+      return true;
+    };
+    // 克隆 ctx 并 patch 单对象单属性（浅克隆相关数组·不 mutate 原对象·R6 无副作用）。
+    const patch = (typeKey: string, objId: string, prop: string, value: number): SolverContext => {
+      const bump = (arr: ObjectInstance[]): ObjectInstance[] => arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o));
+      switch (typeKey) {
+        case "Process": return { ...c, processes: bump(c.processes) };
+        case "Equipment": return { ...c, equipment: bump(c.equipment) };
+        case "Line": return { ...c, lines: bump(c.lines) };
+        case "Material": return { ...c, materials: bump(c.materials ?? []) };
+        default: return { ...c, [`__${typeKey}`]: undefined } as unknown as SolverContext;
+      }
+    };
+
+    const levers: Record<string, unknown>[] = [];
+    for (const b of cands) {
+      const objs = arrayOf(b.objectType)
+        .filter((o) => inScope(b.objectType, o) && typeof o.props[b.prop] === "number")
+        .sort((a, z) => a.id.localeCompare(z.id))
+        .slice(0, PROBE_CAP);
+      let best: { objectId: string; currentValue: number; sensitivity: number } | null = null;
+      for (const o of objs) {
+        const cur = num(o.props[b.prop]);
+        const c2 = patch(b.objectType, o.id, b.prop, cur + epsilon);
+        const sensitivity = round((total(computeByProcessModel(c2, modelId)) - baseline) / epsilon, 6);
+        if (!best || Math.abs(sensitivity) > Math.abs(best.sensitivity)) best = { objectId: o.id, currentValue: cur, sensitivity };
+      }
+      if (!best || best.sensitivity === 0) continue; // 无下游影响 → 非有效杠杆（诚实空·不臆造）
+      levers.push({
+        objectType: b.objectType,
+        objectId: best.objectId,
+        prop: b.prop,
+        factorName: b.factorName,
+        mark: b.mark,
+        grain: b.grain,
+        currentValue: best.currentValue,
+        sensitivity: best.sensitivity,
+        provenance: {
+          src: "capacity_forecast · byProcessModel(±ε)",
+          formula: `∂(Σ byProcessModel.p50 · model=${modelId}) / ∂(${b.objectType}.${b.prop})（ε=${epsilon}）`,
+          factorBinding: `${b.mark} ${b.factorName}`,
+        },
+      });
+    }
+    levers.sort(
+      (a, z) =>
+        Math.abs(Number(z.sensitivity)) - Math.abs(Number(a.sensitivity)) ||
+        String(a.objectType).localeCompare(String(z.objectType)) ||
+        String(a.prop).localeCompare(String(z.prop)),
+    );
+    const top = levers.slice(0, topK);
+    return { levers: top, deltas: [], rows: [], affectedObjects: 0, count: top.length, rootTypes: [...new Set(top.map((l) => String(l.objectType)))] };
   }
 
   /**
@@ -3376,7 +3496,7 @@ export class SolverService {
     args: Record<string, unknown>,
     opts?: { paramsVersion?: number; params?: SolverParamsShape },
   ): Promise<Record<string, unknown>> {
-    const c = await this.loadContext(tenantId, undefined, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
+    const c = await this.loadContext(tenantId, undefined, { withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" });
     const params =
       opts?.params ?? (opts?.paramsVersion !== undefined ? await this.paramsAt(tenantId, opts.paramsVersion) : c.params);
     return this.compute({ ...c, params }, solverKey, args);
@@ -3432,7 +3552,8 @@ export class SolverService {
     if (solverKey === "cross_object_occupancy") return this.crossObjectOccupancy(ctx, args);
     // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
     if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
-    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
+    // WO-CAPLIVE-1-ATOM：capacity_forecast granularity:'process-model' 需 Material（层4 ∩ 物料齐套）→ 载扩展数据。
+    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.

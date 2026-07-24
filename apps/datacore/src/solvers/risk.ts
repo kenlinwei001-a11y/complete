@@ -64,6 +64,31 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
   return { value: mockTightness(c, baseId, factor), live: false };
 }
 
+// ---------------------------------------------------------------------------
+// WO-CAPLIVE-1-ATOM · 逐工序原子因子张力归一（factor enumeration expand·treat G-CAPACITY-FACTOR-SHALLOW）。
+// base 级 liveTightness 只有 3 因子（设备OEE/瓶颈工序/良率波动）且按基地均值——这里暴露**逐值**归一子，
+// 让 capacity.ts byProcessModel 把张力深化到**每工序**颗粒（读该工序自身良率基线/其设备 OEE/该工序利用率）。
+// 系数一律取 params.bottleneck.live（R14 入参·不内联），口径与 liveTightness 分支逐一对齐（同 base=同值）。
+// ---------------------------------------------------------------------------
+
+/** 良率 → 张力（0-100·= liveTightness 良率波动 分支口径：yieldBase + (1−良率)×yieldK）。 */
+export function yieldTension(c: SolverContext, yieldValue: number): number {
+  const lp = c.params.bottleneck.live;
+  return clamp(Math.round(lp.yieldBase + (1 - yieldValue) * lp.yieldK), 0, 100);
+}
+
+/** 设备 OEE → 张力（0-100·= liveTightness 设备OEE 分支口径：oeeBase + (1−OEE)×oeeK）。 */
+export function oeeTension(c: SolverContext, oeeValue: number): number {
+  const lp = c.params.bottleneck.live;
+  return clamp(Math.round(lp.oeeBase + (1 - oeeValue) * lp.oeeK), 0, 100);
+}
+
+/** 利用率 → 张力（0-100·= liveTightness 瓶颈工序 分支口径：利用率×utilK + utilBase）。 */
+export function utilTension(c: SolverContext, utilValue: number): number {
+  const lp = c.params.bottleneck.live;
+  return clamp(Math.round(utilValue * lp.utilK + lp.utilBase), 0, 100);
+}
+
 export function bottleneckMatrix(
   c: SolverContext,
   args: { dataMode?: string; baseIds?: string[] },

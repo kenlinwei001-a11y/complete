@@ -33,6 +33,8 @@ export const CapacityForecastArgs = z.object({
   modelId: z.string().min(1), // 必填：str(args.modelId)
   qty: z.number().optional(),
   weeks: z.number().optional(),
+  // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒（缺省 'base' 不变）。
+  granularity: z.enum(["base", "process-model"]).optional(),
 });
 
 /** portfolio（全局联合推演·service.ts:2037-2041）：全订单×全基地×时间 联合最优组合。 */
