@@ -1051,3 +1051,79 @@ import type { ConfigBundle, ImportJob, ImportConflictPolicy } from "@platform/co
 export const exportConfigBundle = () => api.a<ConfigBundle>("/a/v1/config-bundles/export");
 export const importConfigBundle = (bundle: ConfigBundle, dryRun: boolean, conflictPolicy: ImportConflictPolicy) =>
   api.a<ImportJob>("/a/v1/config-bundles/import", { method: "POST", body: { bundle, dryRun, conflictPolicy } });
+
+// ---------------- 全局推演「活系统」升级（WO-GSLIVE-1-COCKPIT · 前端接线） ----------------
+// 依赖两张未落 WO 的端点，前端对「预期契约形状」并行开工（MSW 桩模拟·真端点合并态复验）：
+//   · WO-LIVE-NL（agentcore）：orchestrator compose 路径（非 path-B agent loop）→ portfolio 联合求解叙述；
+//   · WO-LIVE-SCENARIO（datacore）：SimSession solve-mode 方案存/分支/横比（复用 SimCheckpoint/compare）。
+// 全局推演自由变量走 portfolio `levers[]`（key/target/delta·契约已存·引擎已消费）血脉·非 generic_inference。
+
+/** 前端展示层 7 维 KPI 别名（形状复用契约 GlobalSimKpi）。 */
+export interface GlobalSimSevenDimKpi {
+  ontime: number;
+  cost: number;
+  changeoverHours: number;
+  freight: number;
+  fgInv: number;
+  transitInv: number;
+  margin: number;
+}
+
+/**
+ * 活①·人机对话（WO-LIVE-NL 预期契约）：NL → orchestrator **compose 路径**（compose-path 早返·
+ * `runAgentLoop` 未调 → `ranAgentLoop=false` 铁证）→ portfolio 逐方案联合求解叙述（数字带溯源）。
+ * sessionId 透传本页推演会话上下文。真端点（sim-planner 已判 global-sim 直命中·路由归 WO-LIVE-NL）合并态复验。
+ */
+export interface SimComposeNarrative {
+  path: "compose" | "agent";
+  ranAgentLoop: boolean;
+  narrative: string;
+  scenarios?: { key: string; ontime: number; displaced: number; ontimeRate: number; cost: number }[];
+  provenance?: { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }[];
+}
+export const composeGlobalSimNarrative = (body: {
+  query: string;
+  sessionId?: string | null;
+  context?: Record<string, unknown>;
+}) => api.b<SimComposeNarrative>("/b/v1/sim/compose", { body: { page: "global-sim", ...body } });
+
+/** 活③·方案存/分支/横比（WO-LIVE-SCENARIO 预期契约·SimSession solve-mode 复用·decision_play 范式横比）。 */
+export interface SimScenarioSnapshot {
+  id: string;
+  label: string;
+  parentId?: string | null;
+  page: string;
+  primary?: string;
+  createdAt: string;
+  kpi: GlobalSimSevenDimKpi;
+  servedCount?: number;
+  displacedCount?: number;
+  ontimeRate?: number;
+}
+export const saveSimScenario = (body: {
+  page: string;
+  label: string;
+  primary?: string;
+  request: Record<string, unknown>;
+  kpi: GlobalSimSevenDimKpi;
+  servedCount?: number;
+  displacedCount?: number;
+  ontimeRate?: number;
+  parentId?: string | null;
+}) => api.a<SimScenarioSnapshot>("/a/v1/sim/scenarios", { body });
+export const branchSimScenario = (
+  id: string,
+  body: { label: string; request?: Record<string, unknown>; kpi?: GlobalSimSevenDimKpi },
+) => api.a<SimScenarioSnapshot>(`/a/v1/sim/scenarios/${encodeURIComponent(id)}/branch`, { body });
+export interface SimScenarioCompareCell {
+  id: string;
+  label: string;
+  kpi: GlobalSimSevenDimKpi;
+  servedCount: number;
+  displacedCount: number;
+  ontimeRate: number;
+}
+export const compareSimScenarios = (ids: string[]) =>
+  api.a<{ scenarios: SimScenarioCompareCell[] }>(
+    `/a/v1/sim/scenarios/compare?ids=${ids.map(encodeURIComponent).join(",")}`,
+  );

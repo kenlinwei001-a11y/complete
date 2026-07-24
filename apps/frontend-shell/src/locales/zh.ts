@@ -846,6 +846,61 @@ export const zh = {
       unreachable: (list: string) => `不可达目标：${list}`,
     },
   },
+
+  // 全局推演「活系统」升级（WO-GSLIVE-1-COCKPIT · 自由杠杆 / 人机对话 / 方案存分比）。additive。
+  gslive: {
+    // 活②·自由变量推演（portfolio levers[] 血脉·非 generic_inference）
+    freeLevers: "自由杠杆 · 任意变量联合重解",
+    freeLeversHint: "拨动/新增任意杠杆 {key,target,delta} → portfolio 携 levers[] 联合重解 → 七维 KPI before/after 溯源（R13）。与上方 preset 杠杆并存。",
+    candidatesTitle: "候选杠杆（按占用率反推·瓶颈基地在先）",
+    noCandidates: "先发起联合求解 → 从产能占用反推候选杠杆。",
+    addCustom: "新增自定义杠杆",
+    leverKeyPlaceholder: "变量键（如 capacityDaily）",
+    add: "加入",
+    remove: "移除",
+    activeTitle: "生效杠杆（联合重解入参 levers[]）",
+    noActive: "暂无自由杠杆 · 点候选或新增以给任意变量。",
+    deltasTitle: "杠杆再优化 · 七维 KPI before → after（每值溯源 drillType=Lever）",
+    noDeltas: "拨动杠杆后显示 before/after（求解器返 leverDeltas）。",
+    leverKeys: {
+      capacityDaily: "日产能",
+      formationChannels: "化成通道",
+    },
+    kpiDims: {
+      ontime: "按期项",
+      cost: "综合代价",
+      changeoverHours: "换型(小时)",
+      freight: "在途运费",
+      fgInv: "成品库存",
+      transitInv: "在途库存",
+      margin: "毛利代理",
+    },
+    // 活①·人机对话
+    nlTitle: "人机对话 · 自然语言问全局推演",
+    nlHint: "用自然语言问联合推演（如「把大客户排在前整体按期率怎么变」「储能份额提到 30% 要加多少产线」）——经 compose 路径逐方案联合求解叙述（非 path-B agent·数字带溯源）。",
+    nlPlaceholder: "例：把 SO-3437 排在小客户前，整体按期率与被挤单怎么变？",
+    nlSubmit: "问一句",
+    nlSubmitting: "联合求解中…",
+    nlAnswerTitle: "联合求解叙述",
+    nlPathBadge: (p: string, ran: boolean) => `路径：${p === "compose" ? "compose 联合叙述" : p} · runAgentLoop=${ran ? "调用" : "未调用"}`,
+    // 活③·方案存/分支/横比
+    scenarioTitle: "方案存 / 分支 / 横比（decision_play 范式 · 七维 KPI × 方案）",
+    scenarioHint: "把当前推演（含自由杠杆/目标）存为命名方案 → 分支变体 → 横比矩阵 → 一键采纳走 Action 审批（plan_change·R4）。SimSession 首次被业务页复用。",
+    saveLabelPlaceholder: "方案名（如 A·最多按期+常州扩产）",
+    saveScenario: "存为方案",
+    saving: "存档中…",
+    branch: "分支",
+    branching: "分支中…",
+    adopt: "采纳（→ Action 审批）",
+    adopting: "生成草稿中…",
+    noScenarios: "先「存为方案」保存一次推演，再分支/横比。",
+    needTwo: "存 ≥2 个方案（或分支）以横比。",
+    matrixMetric: "指标 / 方案",
+    metricServed: "获排单",
+    metricDisplaced: "被挤单",
+    metricOntimeRate: "按期率(%)",
+    adopted: (label: string, status: string) => `已采纳「${label}」→ Action 草稿 ${status}`,
+  },
 } as const;
 
 export type Locale = typeof zh;
