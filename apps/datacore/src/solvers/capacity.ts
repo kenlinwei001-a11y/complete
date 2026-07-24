@@ -1,8 +1,9 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
-import { baseName, baseProvenanceSynthetic, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
-import { liveTightness, primaryFactor } from "./risk.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { liveTightness, oeeTension, primaryFactor, yieldTension } from "./risk.js";
+import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
 
 /** Build a lookup map from a key extractor; used to avoid O(n³) nested filters in computeRollup. */
 function groupBy<K extends string | number, T>(items: T[], keyFn: (x: T) => K): Record<string, T[]> {
@@ -179,6 +180,126 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
 }
 
 // ---------------------------------------------------------------------------
+// WO-CAPLIVE-1-ATOM · byProcessModel —— per-工序×型号-物料 颗粒（treat G-CAPACITY-FACTOR-SHALLOW）。
+// 现状缺口：computeRollup 与 modelId 无关、基地产能用代表工序=车间均值（:146-158）→ 未到 per-工序×型号-物料。
+// 本函数沿产能金字塔链路（设备→工序→∩物料）**逐工序×逐型号**真派生（非均值封顶），每格：
+//   p50 = 工序日产能(computeRollup 该工序节点) × 认证系数(型号维·certByModel) × 良率基线再基(Process.yield_baseline)
+//         × 物料齐套系数(层4 ∩·Material 覆盖率)
+//   bottleneck = max{良率波动张力(工序良率), 设备OEE张力(该工序设备均值), 物料齐套张力(覆盖率)}（BN 词表·与 perBaseRows 一致）
+//   gap = p50 × 主瓶颈张力/100（该格因主瓶颈处于风险的产能）
+// **因子落点读 CapacityFactorBinding 单源**（改绑定表即改逐格瓶颈来源·非写死 → SEAM 改坏绑定即红）。R6 确定·R13 每值溯源。
+// ---------------------------------------------------------------------------
+
+export interface ByProcessModelRow {
+  baseId: string;
+  base: string;
+  process: string;
+  processName: string;
+  model: string;
+  material?: string;
+  p50: number;
+  bottleneck: string;
+  bottleneckMark?: string;
+  tightness: number;
+  gap: number;
+  provenance: { objectType: string; objectId: string; prop: string; formula: string };
+}
+
+/** 主瓶颈圈号（CapacityFactorBinding.mark）→ perBaseRows 同款 BN 词表因子名（逐格 bottleneck 与基地级一致）。 */
+const BN_BY_MARK: Record<string, string> = { "⑥": "良率波动", "③": "设备OEE", "⑬": "物料齐套" };
+
+/**
+ * 层4 ∩ 物料齐套约束（model-material 颗粒·读 CapacityFactorBinding ⑬ 落点属性·单源非写死）：
+ * 取关键物料（isKeyMaterial）中**覆盖最紧**者作 ∩ 约束——覆盖率 = onHand /(dailyUse × leadTime)（全为 Material 自身真属性·
+ * 无外部业务常数·R14），clamp 到 [0,1] 作产能系数。无物料数据（未加载 / 缺属性）→ 系数 1、物料名省（向后兼容·不谎报约束）。
+ */
+function materialConstraint(
+  c: SolverContext,
+  binding: CapacityFactorBinding | undefined,
+): { matFactor: number; matName?: string } {
+  const covProp = binding?.prop ?? "onHand";
+  const mats = (c.materials ?? []).filter((m) => typeof m.props[covProp] === "number");
+  if (mats.length === 0) return { matFactor: 1 };
+  const keyMats = mats.filter((m) => m.props.isKeyMaterial === true);
+  const pool = keyMats.length > 0 ? keyMats : mats;
+  let tightest: { factor: number; name: string } | null = null;
+  for (const m of pool.sort((a, b) => a.id.localeCompare(b.id))) {
+    const onHand = num(m.props[covProp]);
+    const denom = Math.max(1, num(m.props.dailyUse, 1) * num(m.props.leadTime, 1));
+    const factor = clamp(onHand / denom, 0, 1);
+    if (!tightest || factor < tightest.factor) tightest = { factor, name: str(m.props.name, str(m.props.matId)) };
+  }
+  return tightest ? { matFactor: round(tightest.factor, 6), matName: tightest.name } : { matFactor: 1 };
+}
+
+export function computeByProcessModel(
+  c: SolverContext,
+  modelId: string,
+  bindings: CapacityFactorBinding[] = CAPACITY_FACTOR_BINDINGS,
+): ByProcessModelRow[] {
+  const cert = c.certByModel.get(modelId);
+  if (!cert || cert.size === 0) return [];
+  const rollup = computeRollup(c);
+  const procCapById = new Map<string, number>();
+  for (const br of rollup.bases) for (const pn of br.processes) procCapById.set(pn.key, pn.capacityPerDay);
+  // 因子落点单源查表（corrupt→读不到属性→逐格派生退化→SEAM 红咬）。
+  const yb = bindings.find((b) => b.mark === "⑥"); // Process.yield_baseline
+  const matb = bindings.find((b) => b.mark === "⑬"); // Material.onHand（层4 ∩）
+  const { matFactor, matName } = materialConstraint(c, matb);
+  const yProp = yb?.prop ?? "yield_baseline";
+  const equipByProcess = groupBy(c.equipment, (e) => str(e.props.processId));
+
+  const rows: ByProcessModelRow[] = [];
+  for (const [baseId, status] of [...cert.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const certFactor = c.params.certFactors[status] ?? 1;
+    const procs = c.processes
+      .filter((p) => str(p.props.baseId) === baseId)
+      .sort((a, b) => str(a.props.processId).localeCompare(str(b.props.processId)));
+    for (const proc of procs) {
+      const pid = str(proc.props.processId);
+      const processCap = procCapById.get(pid) ?? 0;
+      if (processCap <= 0) continue; // 无产能工序（缺设备/静态数据）跳过·不臆造
+      // 良率基线再基（读 binding ⑥ 落点属性·把工序运算良率重基到校准良率基线·mutating yield_baseline 即改 p50）。
+      const yBaseline = num(proc.props[yProp], num(proc.props.yield, 1));
+      const yOper = num(proc.props.yield, 1);
+      const yieldRebase = yOper > 0 ? yBaseline / yOper : 1;
+      // 该工序设备 OEE 均值（capacity 链同口径 equipmentOee·A×P×Q 或 oee_current 快照）。
+      const equips = equipByProcess[pid] ?? [];
+      const oeeAvg = equips.length > 0 ? equips.reduce((a, e) => a + equipmentOee(e.props), 0) / equips.length : 1;
+      const p50 = round(processCap * certFactor * yieldRebase * matFactor, 4);
+      // 逐格候选张力（BN 词表·圈号锚 binding.mark）→ 主瓶颈 = 张力最大（确定性 tiebreak：value desc, mark asc）。
+      const cand = [
+        { mark: "⑥", value: yieldTension(c, yBaseline), objectType: yb?.objectType ?? "Process", prop: yProp, objectId: pid },
+        { mark: "③", value: oeeTension(c, oeeAvg), objectType: "Equipment", prop: "oee_current", objectId: pid },
+        { mark: "⑬", value: clamp(Math.round((1 - matFactor) * 100), 0, 100), objectType: matb?.objectType ?? "Material", prop: matb?.prop ?? "onHand", objectId: matName ?? "" },
+      ].sort((a, b) => b.value - a.value || (a.mark < b.mark ? -1 : 1));
+      const top = cand[0]!;
+      const gap = round((p50 * top.value) / 100, 4);
+      rows.push({
+        baseId,
+        base: baseName(c, baseId),
+        process: pid,
+        processName: str(proc.props.name, pid),
+        model: modelId,
+        ...(matName ? { material: matName } : {}),
+        p50,
+        bottleneck: BN_BY_MARK[top.mark] ?? top.mark,
+        bottleneckMark: top.mark,
+        tightness: top.value,
+        gap,
+        provenance: {
+          objectType: top.objectType,
+          objectId: top.objectId,
+          prop: top.prop,
+          formula: `p50 = 工序产能(${round(processCap, 2)}) × 认证系数(${certFactor}) × 良率基线再基(${round(yieldRebase, 4)}) × 物料齐套(${round(matFactor, 4)})；主瓶颈=max张力→${BN_BY_MARK[top.mark] ?? top.mark}(${top.value})`,
+        },
+      });
+    }
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
 // S1.2 capacity_forecast
 // ---------------------------------------------------------------------------
 
@@ -201,6 +322,8 @@ export interface ForecastArgs {
   whatIf?: { nightShifts?: number; extraChannels?: number; outsourceRatio?: number };
   // legacy alias (AgentCore QOS seed plans)
   demandDelta?: number;
+  // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒。
+  granularity?: "base" | "process-model";
 }
 
 export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<string, unknown> {
@@ -372,6 +495,10 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     })
     .sort((a, b) => (a.base < b.base ? -1 : 1));
 
+  // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' → per-工序×型号-物料 颗粒。
+  // 现有 per-base（perBaseRows）字段零改·byProcessModel 纯加字段（缺省不输出·向后兼容 R6）。
+  const byProcessModel = str(args.granularity) === "process-model" ? computeByProcessModel(c, modelId) : undefined;
+
   return {
     p50,
     p90,
@@ -379,6 +506,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     gap,
     ok,
     perBaseRows,
+    ...(byProcessModel ? { byProcessModel } : {}),
     nonProducible,
     totalBases,
     producibleCount,

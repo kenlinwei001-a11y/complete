@@ -581,8 +581,7 @@
         "packages/contracts/src/solvers.ts"
       ],
       "brokenArtifacts": [
-        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx",
-        "packages/contracts/src/capacity-factors.ts"
+        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx"
       ]
     },
     "PRD-catalog-battery-20-scenarios.md": {

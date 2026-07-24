@@ -79,6 +79,47 @@
 
 - **原子因子绑定单源**（WO-CAPLIVE-1·新建·`packages/contracts`）：`CapacityFactorBinding{ mark(①–⑳), factorName, objectType, prop, grain('base'|'process'|'model-material'), writable, ruleGate? }` —— 把 `factorOntology.ts` 的 20 因子补齐 object.property 落点（R14 单源·前端 `factorOntology.ts` 派生引用之，不再各处散配）。
 - **`capacity_forecast` 颗粒扩**（WO-CAPLIVE-1·向后兼容）：输出 additive 加 `byProcessModel?: Array<{ process, model, material?, p50, bottleneck, gap }>`（现有 per-base/per-model 字段零改）；`ForecastArgs` 加 `granularity?: 'base'|'process-model'`。
+
+#### 4.1 冻结契约（WO-CAPLIVE-1-ATOM 交付·字段名一字不改·WO-CAPLIVE-2 前端据此并行构建）
+
+**`CapacityFactorBinding`**（`packages/contracts/src/capacity-factors.ts`·`CAPACITY_FACTOR_BINDINGS` 20 条·marks ①–⑳）：
+
+```ts
+type FactorGrain = "base" | "process" | "model-material";
+interface CapacityFactorBinding {
+  mark: string;        // 圈号 ①–⑳（= factorOntology.ONTO_FACTORS.mark 单源）
+  num: number;         // 序号 1..20
+  factorName: string;  // 因子名（业务术语·= ONTO_FACTORS.name）
+  objectType: string;  // 落点对象类型（真本体 key·如 Equipment/Process/Line/Material/MaintPlan/Order/ChangeoverMatrix）
+  prop: string;        // 落点属性（真本体属性·可读/可拨动）
+  grain: FactorGrain;  // base / process(每工序) / model-material(每型号-物料)
+  writable: boolean;   // 是否派生叶输入（可作杠杆拨动落点）
+  ruleGate?: string;   // 拨动约束规则闸（C03/C06/C08/C16…）
+}
+// 关键落点（SEAM 咬点）：⑥ 工序良率 = Process.yield_baseline · ⑬ 物料齐套 = Material.onHand
+// 辅助：factorBindingByMark(mark) · writableFactorBindings(grain?) · matchesGrain(bindingGrain, scope)
+```
+
+**`byProcessModel` 行**（`CapacityForecastOutputSchema.byProcessModel?`·`granularity:'process-model'` 时输出·per-base/per-model 字段零改）：
+
+```ts
+interface ByProcessModelRow {
+  baseId: string;          // = perBaseRows.baseId 同源
+  base: string;            // 基地名
+  process: string;         // 工序 id（Process.processId）
+  processName: string;     // 工序名
+  model: string;           // = 请求 modelId
+  material?: string;       // 关键物料名（层4 ∩ 物料齐套约束·无物料数据时省）
+  p50: number;             // 工序×型号日产能贡献（工序产能×认证系数×良率基线再基×物料齐套系数）
+  bottleneck: string;      // 逐格主瓶颈（BN 词表：良率波动/设备OEE/物料齐套·与 perBaseRows.bottleneck 同源）
+  bottleneckMark?: string; // 主瓶颈圈号（①–⑳·映射 CapacityFactorBinding.mark）
+  tightness: number;       // 该格主瓶颈张力（0–100）
+  gap: number;             // = p50 × tightness/100（因主瓶颈处于风险的产能）
+  provenance: { objectType: string; objectId: string; prop: string; formula: string }; // R13 每值溯源
+}
+```
+
+**`discoverCapacityLevers` 出参**（`generic_inference {mode:'levers', grain:'base'|'process'|'process-model', modelId, processKey?, factors?, topK?, epsilon?}`·输出与默认 levers 同键 + 每杠杆 `{objectType,objectId,prop,factorName,mark,grain,currentValue,sensitivity,provenance}`）。
 - **`discoverLevers` 扩**：`LEVER_FACTOR_PROPS`（`service.ts:230-235`）从 4 因子扩到覆盖深化后可写因子；`mode:"levers"` 入参加 `grain`/`modelId`/`processKey` 作用域。
 - **`gap_attribution` 前端接线**（WO-CAPLIVE-2·引擎零改）：`invokeSolver("gap_attribution", { scope:{ baseId, factorId? } })`。
 - **方案快照端点**（WO-LIVE-SCENARIO·复用沙盘表 R9 双实现）：`SimCheckpoint.state` 承载 what-if 快照；`GET /a/v1/sim/compare` 已存在（A/B 比对）；如需多方案矩阵，`decision_play` 范式在前端组装。**双仓储四处同改**若新增字段（migrations+pg+memory+repo 接口）。

@@ -24,10 +24,51 @@ export const PerBaseRowSchema = z.object({
 });
 export type PerBaseRow = z.infer<typeof PerBaseRowSchema>;
 
+/**
+ * WO-CAPLIVE-1-ATOM · `capacity_forecast.byProcessModel` per-工序×型号-物料 颗粒行（跨半契约·optional·向后兼容·**字段名冻结**）。
+ * 治 G-CAPACITY-FACTOR-SHALLOW「派生用代表工序均值未到工序×型号-物料」：`granularity:'process-model'` 时输出，
+ * 每格 = 该基地×该工序×该型号 的真派生（processCap × certFactor × 良率基线再基 × 物料齐套∩），R6 确定·R13 每值 provenance。
+ * 现有 per-base（`perBaseRows`）/ per-model（`byModel`）字段**零改**——本表为纯加字段（前端 WO-CAPLIVE-2 消费·冻结不改）。
+ */
+export const ByProcessModelRowSchema = z.object({
+  /** 基地 id（= perBaseRows.baseId 同源）。 */
+  baseId: z.string(),
+  /** 基地名。 */
+  base: z.string(),
+  /** 工序 id（Process.processId·per-工序 落点）。 */
+  process: z.string(),
+  /** 工序名（Process.name）。 */
+  processName: z.string(),
+  /** 型号 id（= 请求 modelId·per-型号 落点）。 */
+  model: z.string(),
+  /** 关键物料名（层4 ∩ 物料齐套约束·model-material 颗粒·无物料数据时省）。 */
+  material: z.string().optional(),
+  /** 该工序×型号日产能贡献（电芯/日·processCap × certFactor × 良率基线再基 × 物料齐套系数）。 */
+  p50: z.number(),
+  /** 逐格主瓶颈因子（BN 口径·与 perBaseRows.bottleneck 同词表：良率波动/设备OEE/物料齐套）。 */
+  bottleneck: z.string(),
+  /** 逐格主瓶颈圈号（① –⑳·映射 CapacityFactorBinding.mark·前端徽标锚·无则省）。 */
+  bottleneckMark: z.string().optional(),
+  /** 该格紧张度（0–100·= 主瓶颈因子的逐工序张力）。 */
+  tightness: z.number(),
+  /** 缺口 = p50 × 主瓶颈紧张度/100（该格因主瓶颈而处于风险的产能·电芯/日）。 */
+  gap: z.number(),
+  /** R13 每值溯源：来源对象/属性/派生公式。 */
+  provenance: z.object({
+    objectType: z.string(),
+    objectId: z.string(),
+    prop: z.string(),
+    formula: z.string(),
+  }),
+});
+export type ByProcessModelRow = z.infer<typeof ByProcessModelRowSchema>;
+
 export const CapacityForecastOutputSchema = z
   .object({
     p50: z.number(),
     p90: z.number(),
+    // WO-CAPLIVE-1-ATOM（additive·per-工序×型号-物料 深化·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' 时输出。
+    byProcessModel: z.array(ByProcessModelRowSchema).optional(),
     // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
     dataMode: z.enum(["LIVE", "MOCK"]).optional(),
     healthFactor: z.number(), // 默认 0.93；数据源延迟>2h 降 0.90（C09）
