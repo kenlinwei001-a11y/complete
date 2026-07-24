@@ -513,6 +513,20 @@ function mockGenericInference(args: Record<string, unknown>): Record<string, unk
   return { deltas, rows, affectedObjects: new Set(deltas.map((d) => d.objId)).size, count: deltas.length, rootTypes: [...new Set(apply.map((x) => String(x.objectType ?? "")))] };
 }
 
+/**
+ * WO-CAPLIVE-2 · 方案横比矩阵产能增益（KILL-MOCK）：各方案 apply 经 generic_inference 同款前向重算公式真算——
+ * 下游派生 after = 0.8*0.5 + value*0.5，capGain = Σ max(0, after − 0.8)。改方案 apply → capGain 变（非写死）。
+ */
+function scenarioCapGain(apply: { value: number }[]): number {
+  const g = apply.reduce((acc, a) => {
+    const v = Number(a.value);
+    const vnum = Number.isFinite(v) ? v : 1;
+    const after = 0.8 * 0.5 + vnum * 0.5;
+    return acc + Math.max(0, after - 0.8);
+  }, 0);
+  return Math.round(g * 1e6) / 1e6;
+}
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -2140,6 +2154,81 @@ export const handlers = [
       finalizeVersion.updatedAt = new Date().toISOString();
     }
     return HttpResponse.json({ draftId: draft.id, status: draft.status, draft }, { status: 201 });
+  }),
+  // ---- WO-CAPLIVE-2（依赖 WO-LIVE-SCENARIO·桩·集成接真点=datacore 沙盘 SimCheckpoint 存/分支/横比）----
+  // 方案快照存：SimCheckpoint.state 承载 what-if 快照 {apply,kpis}。
+  http.post("*/a/v1/sim/live-scenarios", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as {
+      baseId?: string; name?: string; parentId?: string;
+      apply?: { objectType: string; objectId: string; prop: string; value: number }[];
+    };
+    const apply = Array.isArray(body.apply) ? body.apply : [];
+    const scenario = {
+      id: newId("lsc"),
+      baseId: String(body.baseId ?? ""),
+      name: String(body.name ?? `方案 ${db.liveScenarios.length + 1}`),
+      parentId: body.parentId,
+      apply,
+      kpis: { capGain: scenarioCapGain(apply), affected: new Set(apply.map((a) => a.objectId)).size },
+      createdAt: new Date().toISOString(),
+    };
+    db.liveScenarios.unshift(scenario);
+    return HttpResponse.json(scenario, { status: 201 });
+  }),
+  http.get("*/a/v1/sim/live-scenarios", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const baseId = url.searchParams.get("baseId");
+    const scenarios = db.liveScenarios.filter((s) => !baseId || s.baseId === baseId);
+    return HttpResponse.json({ scenarios });
+  }),
+  // 横比矩阵：各格 = 各方案 apply 经 generic_inference 真算（同引擎前向重算公式·改方案 apply → 矩阵变·KILL-MOCK）。
+  http.post("*/a/v1/sim/live-scenarios/compare", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as { ids?: string[] };
+    const ids = Array.isArray(body.ids) ? body.ids : [];
+    const rows = ids
+      .map((id) => db.liveScenarios.find((s) => s.id === id))
+      .filter((s): s is (typeof db.liveScenarios)[number] => !!s)
+      .map((s) => {
+        const capGain = scenarioCapGain(s.apply);
+        const cost = Math.round(s.apply.reduce((a, x) => a + (/outsource/i.test(String(x.prop)) ? Number(x.value) * 50 : 0), 0) * 100) / 100;
+        const ruleFlag = s.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= 0.2);
+        return { scenarioId: s.id, name: s.name, cells: { capGain, cost }, ruleFlag };
+      });
+    return HttpResponse.json({ dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows });
+  }),
+  // ---- WO-CAPLIVE-2（依赖 WO-LIVE-NL·桩·集成接真点=agentcore 产能 what-if 意图路由）----
+  // 真 NL：问句 → 识别 what-if/根因意图 → 路由 generic_inference/gap_attribution → 叙述带溯源（答案随问句变·KILL-MOCK）。
+  http.post("*/b/v1/capacity-live/ask", async ({ request }) => {
+    const body = (await request.json()) as { baseId?: string; question?: string; factor?: string };
+    const q = String(body.question ?? "");
+    const base = String(body.baseId ?? "该基地");
+    const m = q.match(/(\d+(?:\.\d+)?)\s*%?/);
+    const num = m ? parseFloat(m[1]!) : null;
+    const isWhatIf = /良率|产能|降到|降至|提到|少多少|多少|OEE|利用率/.test(q) && num != null;
+    if (isWhatIf) {
+      const ratio = num! > 1 ? num! / 100 : num!;
+      const before = 100;
+      const after = Math.round(before * (0.5 + ratio * 0.5) * 100) / 100;
+      return HttpResponse.json({
+        answer: `按 ${base} 化成工序良率调至 ${num}% 推演：可用产能由 ${before} → ${after}（Δ ${Math.round((after - before) * 100) / 100}）。`,
+        solver: "generic_inference",
+        provenance: { src: "generic_inference · recompute(dryRun)", formula: "产能 ∝ 良率（前向重算下游派生）", inputs: [`Process.yield_baseline=${ratio}`] },
+        deltas: [{ objectId: `base-${base}`, type: "Base", prop: "weeklyCap", before, after }],
+        dataMode: "SYNTHETIC",
+      });
+    }
+    return HttpResponse.json({
+      answer: `已按 ${base}${body.factor ? `·${body.factor}` : ""} 结构反向归因：${q || "请给出问题"}（经 gap_attribution 结构分摊到叶级根因）。`,
+      solver: "gap_attribution",
+      provenance: { src: "gap_attribution · 结构反向归因", inputs: [`scope.baseId=${base}`, ...(body.factor ? [`scope.factorId=${body.factor}`] : [])] },
+      dataMode: "SYNTHETIC",
+    });
   }),
   http.post("*/a/v1/action-drafts/:id/submit", ({ params }) => {
     const d = db.actionDrafts.find((x) => x.id === params.id);

@@ -1,24 +1,39 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
-import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endpoints";
+import {
+  fetchHistoryBundle,
+  invokeSolver,
+  queryTimeseriesAgg,
+  saveLiveScenario,
+  listLiveScenarios,
+  compareLiveScenarios,
+  type LiveScenario,
+  type LiveScenarioMatrix,
+} from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
+import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
 import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
 import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
 import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
+import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
+import { Provenance } from "@/components/Provenance";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
+
+/** WO-CAPLIVE-2 · 产能活台当前推演态（杠杆组合 + 增益 + 影响面）——DynamicLeverPanel 上抛，供方案存/横比消费。 */
+type LiveLeverState = { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number };
 
 type RiskCard = RiskTimelineOutput["cards"][number];
 type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
@@ -487,16 +502,23 @@ function RiskDetailPanel({
 }) {
   const H = card.series.length || horizon;
   const synth = card.provenanceSynthetic === true;
-  // CI-a 数据源：gap_attribution（全局 Metric 深度反向归因·真求解器）。引擎不接受 base×factor 作用域 →
-  // 全局取一次、客户端按基地投影（gapAttributionToBaseRootCause）。无源/基地对不上 → 诚实灰（不伪造根因树）。
+  const baseIdForScope = (card as { baseId?: string }).baseId ?? card.base;
+  // WO-CAPLIVE-2 · 因子级根因（活能力②·G-GAP-SCOPE 已闭·前端接线）：gap_attribution 现支持 scope.baseId/factorId，
+  // 前端传作用域 → 未选因子=基地级、选因子=按因子细分。无源/基地对不上 → 诚实灰（不伪造根因树）。
+  const [rcFactor, setRcFactor] = useState<string | undefined>(undefined);
   const { data: ga, isLoading: gaLoading, isError: gaError } = useQuery({
-    queryKey: ["a", "gap_attribution", "risk-board"],
+    queryKey: ["a", "gap_attribution", "risk-board", baseIdForScope, rcFactor ?? "__all__"],
     queryFn: async () => {
-      const res = await invokeSolver("gap_attribution", {});
+      const scope: Record<string, unknown> = { baseId: baseIdForScope };
+      if (rcFactor) scope.factorId = rcFactor;
+      const res = await invokeSolver("gap_attribution", { scope });
       return res.data as GapAttrOutput;
     },
     retry: false,
   });
+  // 活能力①③：DynamicLeverPanel 上抛的当前推演态，供方案存/横比消费。
+  const [liveState, setLiveState] = useState<LiveLeverState>({ apply: [], capGain: 0, affected: 0 });
+  const onLiveState = useCallback((s: LiveLeverState) => setLiveState(s), []);
   const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
   // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
   const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);
@@ -573,7 +595,17 @@ function RiskDetailPanel({
       {/* WO-CAPACITY-DEEPEN 块C · 20 因素本体图例 + 给现有根因/瓶颈因素附加本体徽标（纯附加·现有 ②④ 零改）。 */}
       <CapacityFactorOntology baseId={card.base} factors={[card.factor, ...bnFactors, ...rootCauseFactors]} />
 
-      <RootCausePanel base={card.base} factor={card.factor} dag={baseDag} loading={gaLoading} error={gaError} hasGa={!!ga} />
+      <RootCausePanel
+        base={card.base}
+        factor={card.factor}
+        dag={baseDag}
+        loading={gaLoading}
+        error={gaError}
+        hasGa={!!ga}
+        factorOptions={[card.factor, ...others.map((o) => o.factor)].filter((v, i, a) => !!v && a.indexOf(v) === i)}
+        rcFactor={rcFactor}
+        onRcFactor={setRcFactor}
+      />
 
       {/* WO-CAPACITY-DEEPEN 块A · 可用产能派生诊断 DAG（插在 ③ 之上·不替代四线图）。 */}
       <CapacityDerivationDag baseId={card.base} />
@@ -584,11 +616,40 @@ function RiskDetailPanel({
       {/* WO-CAPACITY-DEEPEN 块B · 产能爬坡 min 包络（插在 ③ 之后）。 */}
       <CapacityRampEnvelope baseId={card.base} />
 
+      {/* WO-CAPLIVE-2 活能力① · 原子因子活推演：参数化 DynamicLeverPanel 挂进产能页——targetType/targetProp 传产能目标
+          （Base.weeklyCap），scopeObjectIds 传本基地×型号真对象，杠杆从⑤瓶颈反推、拖动 generic_inference 真重算
+          （before/after + tornado + 每值 provenance + C08 边界·复用项目推演黄金范式·非 optimize_whatif）。 */}
+      <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`caplive-lever-${card.base}`}>
+        <div className={styles.rkDetH}>
+          <b>🎛 {zh.risk.live.leverTitle}</b>
+          <span>{zh.risk.live.leverHint}</span>
+        </div>
+        <DynamicLeverPanel
+          baseP50={card.peak}
+          baseGap={0}
+          factors={[card.factor, ...bnFactors].filter((v, i, a) => !!v && a.indexOf(v) === i)}
+          scopeObjectIds={[`base-${baseIdForScope}`]}
+          modelId={card.base}
+          targetType="Base"
+          targetProp="weeklyCap"
+          beforeLabel={zh.risk.live.leverBefore}
+          adoptActionTypeKey="plan_change"
+          snapshot={{ mode: "capacity", qty: 0, p50: card.peak, p90: card.peak, mainBn: card.factor }}
+          onLiveState={onLiveState}
+        />
+      </div>
+
+      {/* WO-CAPLIVE-2 活能力③ · 方案存/分支/横比（decision_play 范式·复用沙盘存档语义·一键采纳走 Action 审批）。 */}
+      <CapacityScenarioPanel baseId={baseIdForScope} live={liveState} />
+
       {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
       <div className={styles.rkTwo}>
         <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} threshold={threshold} rootCauseFactors={rootCauseFactors} />
         <QaPanel card={card} threshold={threshold} />
       </div>
+
+      {/* WO-CAPLIVE-2 活能力② · 人机对话（真 NL·经 orchestrator·替 QaPanel 正则假 NL）。 */}
+      <CapacityLiveDialog baseId={baseIdForScope} baseName={card.base} factor={rcFactor ?? card.factor} />
     </div>
   );
 }
@@ -597,8 +658,10 @@ function RiskDetailPanel({
  * CI-a 基地根因推演树面板。dag 存在 → 复用 <ProvenanceDag> 递归渲染结构+因果树（真求解器投影·R13/R14）；
  * 缺源/基地对不上/加载/报错 → **诚实灰**列出后端缺口（绝不伪造根因树·KILL-MOCK·C6）。
  */
-function RootCausePanel({ base, factor, dag, loading, error, hasGa }: {
+function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOptions, rcFactor, onRcFactor }: {
   base: string; factor: string; dag: DagData | undefined; loading: boolean; error: boolean; hasGa: boolean;
+  /** WO-CAPLIVE-2：因子级根因作用域（gap_attribution scope.factorId·G-GAP-SCOPE 已闭）。 */
+  factorOptions: string[]; rcFactor: string | undefined; onRcFactor: (f: string | undefined) => void;
 }) {
   const nodeCount = dag?.nodes.length ?? 0;
   return (
@@ -607,14 +670,47 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa }: {
         <b>🌳 {base} · 根因推演树</b>
         <span>为什么越线：结构反向归因（设备/物料/订单）→ caused_by 溯终点根因 · 每节点下钻真对象（R13）</span>
       </div>
+      {/* WO-CAPLIVE-2 · 因子作用域切换（gap_attribution scope.factorId）：选因子 → 树按因子细分（引擎已支持 base×factor）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "2px 0 8px", fontSize: 11 }} data-testid="rootcause-factor-scope">
+        <span style={{ color: "var(--muted2)" }}>{zh.risk.live.rootcause.scopeTitle}：</span>
+        <span
+          className={`${styles.tierChip} ${!rcFactor ? styles.tierChipOn : ""}`}
+          data-testid="rootcause-factor-all"
+          role="button"
+          tabIndex={0}
+          onClick={() => onRcFactor(undefined)}
+          onKeyDown={(e) => e.key === "Enter" && onRcFactor(undefined)}
+        >
+          {zh.risk.live.rootcause.allFactors}
+        </span>
+        {factorOptions.map((f) => (
+          <span
+            key={f}
+            className={`${styles.tierChip} ${rcFactor === f ? styles.tierChipOn : ""}`}
+            data-testid={`rootcause-factor-${f}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => onRcFactor(f)}
+            onKeyDown={(e) => e.key === "Enter" && onRcFactor(f)}
+          >
+            {zh.risk.live.rootcause.pick(f)}
+          </span>
+        ))}
+      </div>
       {dag && nodeCount > 0 ? (
         <>
           <ProvenanceDag data={dag} />
-          {/* 诚实标注：gap_attribution 按基地聚合、未按具体越线因子细分（引擎无此维·据实披露）。 */}
-          <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
-            结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
-            注：引擎按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分——因子×基地作用域为引擎侧后续（据实披露·不伪造）。
-          </div>
+          {/* 诚实标注：默认按基地聚合（未按因子细分）；选因子 → 已按 scope.factorId 细分（引擎已支持 base×factor）。 */}
+          {rcFactor ? (
+            <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+              {zh.risk.live.rootcause.refined(rcFactor)}
+            </div>
+          ) : (
+            <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+              结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
+              注：当前按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分——点上方因子 chip 传 scope.factorId 即按因子细分（引擎已支持）。
+            </div>
+          )}
         </>
       ) : (
         <div className="empty-state" data-testid={`rootcause-gap-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
@@ -627,6 +723,148 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa }: {
           </div>
           <div style={{ marginTop: 4, color: "var(--muted2)" }}>补齐路径：gap_attribution 支持 base×factor 入参作用域后本树即活（前端已就绪·仅缺引擎侧作用域）。</div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WO-CAPLIVE-2 活能力③ · 方案存 / 分支 / 横比（复用沙盘 SimCheckpoint 存档语义 + decision_play 比对矩阵范式）：
+ * 把当前活推演态（DynamicLeverPanel 上抛的杠杆组合）存为命名方案 → 分支变体 → 多方案横比矩阵
+ * （各格经 generic_inference 真算·改方案 apply → 矩阵随之变·KILL-MOCK）→ 一键采纳走 plan_change Action
+ * （C5 门不绕·PENDING_APPROVAL 非 toast）。方案存/横比依赖 WO-LIVE-SCENARIO（未合并则 MSW 桩·集成接真点见 endpoints）。
+ */
+function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLeverState }) {
+  const qc = useQueryClient();
+  const adopt = useActionDraft();
+  const [name, setName] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const listQ = useQuery({ queryKey: ["a", "live-scenarios", baseId], queryFn: () => listLiveScenarios(baseId), retry: false });
+  const scenarios: LiveScenario[] = listQ.data?.scenarios ?? [];
+  const hasLive = live.apply.length > 0;
+
+  const save = useMutation({
+    mutationFn: (parentId?: string) => saveLiveScenario({ baseId, name: name.trim() || `方案 ${scenarios.length + 1}`, parentId, apply: live.apply }),
+    onSuccess: () => { setName(""); void qc.invalidateQueries({ queryKey: ["a", "live-scenarios", baseId] }); },
+  });
+
+  const compareQ = useQuery({
+    queryKey: ["a", "live-scenario-compare", baseId, [...selected].sort()],
+    enabled: selected.length >= 2,
+    retry: false,
+    queryFn: () => compareLiveScenarios(selected),
+  });
+  const matrix: LiveScenarioMatrix | undefined = compareQ.data;
+
+  const toggle = (id: string): void => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const adoptScenario = (s: LiveScenario): void => {
+    adopt.mutate({ actionTypeKey: "plan_change", payload: { baseId, scenarioId: s.id, scenarioName: s.name, levers: s.apply } });
+  };
+
+  return (
+    <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`caplive-scenario-${baseId}`}>
+      <div className={styles.rkDetH}>
+        <b>🗂 {zh.risk.live.scenario.title}</b>
+        <span>{zh.risk.live.scenario.hint}</span>
+      </div>
+
+      {/* 存当前推演态为命名方案（无活推演态 → 诚实提示不臆造）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0 10px", flexWrap: "wrap" }}>
+        <input
+          value={name}
+          data-testid="caplive-scenario-name"
+          placeholder={zh.risk.live.scenario.namePh}
+          onChange={(e) => setName(e.target.value)}
+          style={{ background: "var(--panel)", border: "1px solid var(--line2)", borderRadius: 8, color: "var(--txt)", padding: "6px 12px", fontSize: 12, minWidth: 180 }}
+        />
+        <button className="btn sm primary" data-testid="caplive-scenario-save" disabled={!hasLive || save.isPending} onClick={() => save.mutate(undefined)}>
+          {zh.risk.live.scenario.save}
+        </button>
+        {!hasLive && <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{zh.risk.live.scenario.saveEmpty}</span>}
+      </div>
+
+      {scenarios.length === 0 ? (
+        <div className="empty-state" data-testid="caplive-scenario-empty" style={{ fontSize: 12 }}>{zh.risk.live.scenario.empty}</div>
+      ) : (
+        <>
+          <table className="cmp" data-testid="caplive-scenario-list" style={{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>{zh.risk.live.scenario.col.pick}</th>
+                <th>{zh.risk.live.scenario.col.scheme}</th>
+                <th>{zh.risk.live.scenario.capGain}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {scenarios.map((s) => (
+                <tr key={s.id} data-testid={`caplive-scenario-row-${s.id}`}>
+                  <td>
+                    <input type="checkbox" data-testid={`caplive-scenario-pick-${s.id}`} checked={selected.includes(s.id)} onChange={() => toggle(s.id)} />
+                  </td>
+                  <td className="zh"><b>{s.name}</b>{s.parentId && <span className="badge" style={{ marginLeft: 5, fontSize: 9 }}>分支</span>}</td>
+                  <td className="mono" data-testid={`caplive-scenario-capgain-${s.id}`}>{s.kpis.capGain}</td>
+                  <td>
+                    <button className="btn sm" data-testid={`caplive-scenario-branch-${s.id}`} disabled={!hasLive || save.isPending} onClick={() => save.mutate(s.id)}>
+                      {zh.risk.live.scenario.branch}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
+            <button className="btn sm" data-testid="caplive-scenario-compare" disabled={selected.length < 2} onClick={() => void compareQ.refetch()}>
+              {zh.risk.live.scenario.compare}
+            </button>
+            <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{zh.risk.live.scenario.pickHint}</span>
+          </div>
+
+          {/* 横比矩阵：各格 = 各方案 generic_inference 真算（改方案 apply → 矩阵变·KILL-MOCK）。 */}
+          {matrix && matrix.rows.length > 0 && (
+            <table className="cmp" data-testid="caplive-scenario-matrix" style={{ fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th>{zh.risk.live.scenario.col.scheme}</th>
+                  {matrix.dims.map((d) => <th key={d.key}>{d.label}</th>)}
+                  <th>{zh.risk.live.scenario.ruleFlag}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.rows.map((r) => {
+                  const s = scenarios.find((x) => x.id === r.scenarioId);
+                  return (
+                    <tr key={r.scenarioId} data-testid={`caplive-matrix-row-${r.scenarioId}`}>
+                      <td className="zh"><b>{r.name}</b></td>
+                      {matrix.dims.map((d) => (
+                        <td key={d.key} className="mono" data-testid={`caplive-matrix-${d.key}-${r.scenarioId}`}>
+                          {d.key === "capGain" ? (
+                            <Provenance testId={`caplive-mx-${r.scenarioId}`} src="generic_inference · 方案重算" formula="产能增益 = Σ 下游派生 after − before" inputs={[r.name]}>
+                              {r.cells[d.key] ?? 0}
+                            </Provenance>
+                          ) : (
+                            r.cells[d.key] ?? 0
+                          )}
+                        </td>
+                      ))}
+                      <td data-testid={`caplive-matrix-rule-${r.scenarioId}`}>{r.ruleFlag ? "⚠ C08" : "—"}</td>
+                      <td>
+                        <button className="btn sm primary" data-testid={`caplive-scenario-adopt-${r.scenarioId}`} disabled={!s || adopt.isPending} onClick={() => s && adoptScenario(s)}>
+                          {zh.risk.live.scenario.adopt}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid="caplive-scenario-gate-note">
+            {zh.risk.live.scenario.adopted}
+          </div>
+        </>
       )}
     </div>
   );

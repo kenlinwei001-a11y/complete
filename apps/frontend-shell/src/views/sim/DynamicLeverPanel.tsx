@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
@@ -74,6 +74,12 @@ export function DynamicLeverPanel({
   scopeObjectIds,
   modelId,
   snapshot,
+  targetType = "Base",
+  targetProp = "oeeIndex",
+  topK = 6,
+  beforeLabel,
+  adoptActionTypeKey = "采纳产能保障方案",
+  onLiveState,
 }: {
   baseP50: number;
   baseGap: number;
@@ -81,14 +87,25 @@ export function DynamicLeverPanel({
   scopeObjectIds?: string[];
   modelId: string;
   snapshot: { mode: string; qty: number; p50: number; p90: number; mainBn: string };
+  /** WO-CAPLIVE-2：参数化推演目标（项目推演页默认 Base.oeeIndex；产能页传 Base.weeklyCap/Process 级）。
+   *  硬编（旧 :91 targetType:"Base"/targetProp:"oeeIndex"）→ 参数，杠杆自不同产能目标反推（保 ProjectSimView 默认不回归）。 */
+  targetType?: string;
+  targetProp?: string;
+  topK?: number;
+  /** "调整前" 参照量的标签（项目推演=P50·产能页=可用产能，R14 下发）。 */
+  beforeLabel?: string;
+  /** 采纳杠杆组合的 ActionType（默认产能保障方案·C5 门经审批草稿）。 */
+  adoptActionTypeKey?: string;
+  /** WO-CAPLIVE-2：向父级暴露当前活推演态（当前杠杆组合 apply + 增益 + 影响面），供产能页方案存/分支/横比消费。 */
+  onLiveState?: (s: { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number }) => void;
 }) {
   const action = useActionDraft();
   const [values, setValues] = useState<Record<string, number>>({});
 
-  // ① 杠杆发现（generic_inference mode:levers·服务端算敏感度，随⑤瓶颈变）。
+  // ① 杠杆发现（generic_inference mode:levers·服务端算敏感度，随⑤瓶颈变·目标参数化）。
   const leversQ = useQuery({
-    queryKey: ["a", "levers", { factors, scope: scopeObjectIds }],
-    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType: "Base", targetProp: "oeeIndex", topK: 6 })).data.levers,
+    queryKey: ["a", "levers", { factors, scope: scopeObjectIds, targetType, targetProp, topK }],
+    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType, targetProp, topK })).data.levers,
     retry: false,
   });
   const levers = useMemo(() => leversQ.data ?? [], [leversQ.data]);
@@ -123,6 +140,20 @@ export function DynamicLeverPanel({
   const out = live.data;
 
   const maxSens = Math.max(1e-9, ...levers.map((l) => Math.abs(l.sensitivity)));
+
+  // WO-CAPLIVE-2：把当前活推演态（杠杆组合 + 增益 + 影响面）上抛父级（产能页方案存/分支/横比消费）。
+  // 用序列化 key 稳定依赖、ref 持 callback（避免父级重建触发循环渲染）。
+  const capGain = useMemo(
+    () => (out?.deltas ?? []).reduce((acc, x) => acc + Math.max(0, Number(x.after) - Number(x.before)), 0),
+    [out],
+  );
+  const onLiveStateRef = useRef(onLiveState);
+  onLiveStateRef.current = onLiveState;
+  const liveKey = JSON.stringify({ apply: activeApply, capGain: Math.round(capGain * 1e6), affected: out?.affectedObjects ?? 0 });
+  useEffect(() => {
+    const s = JSON.parse(liveKey) as { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number };
+    onLiveStateRef.current?.({ apply: s.apply, capGain: s.capGain / 1e6, affected: s.affected });
+  }, [liveKey]);
 
   // ⑤ 多方案候选组合（objective 驱动·确定性·非写死）：max_产能 / min_代价 / 均衡。
   const schemes = useMemo(() => {
@@ -159,7 +190,7 @@ export function DynamicLeverPanel({
 
   const adoptCombo = (apply: { objectType: string; objectId: string; prop: string; value: number }[]): void => {
     action.mutate({
-      actionTypeKey: "采纳产能保障方案",
+      actionTypeKey: adoptActionTypeKey,
       payload: {
         modelId,
         levers: apply, // 迁移：动态杠杆组合 [{objectType,prop,value}]（替原 whatIf 三系数）
@@ -238,7 +269,7 @@ export function DynamicLeverPanel({
           {/* A/B 对比 + 真重算 deltas（before/after + 每值 provenance R13） */}
           <div className={styles.abCompare} data-testid="lever-ab">
             <div>
-              <span>{zh.sim.proj.before}</span>
+              <span>{beforeLabel ?? zh.sim.proj.before}</span>
               <b data-testid="lever-before-p50">{fmt(baseP50)}</b>
             </div>
             <div>

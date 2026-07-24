@@ -74,6 +74,12 @@ interface MockDb {
   adminViews: AdminViewConfig[];
   // 回放编排器 §6：运营自动化配置（租户级，缺省空）
   opsSchedule: { forecasts: unknown[]; tenantId: string; updatedAt: string; updatedBy: string } | null;
+  // WO-CAPLIVE-2（依赖 WO-LIVE-SCENARIO·桩）：产能活台方案快照（存/分支/横比·复用沙盘存档语义）
+  liveScenarios: {
+    id: string; baseId: string; name: string; parentId?: string;
+    apply: { objectType: string; objectId: string; prop: string; value: number }[];
+    kpis: { capGain: number; affected: number }; createdAt: string;
+  }[];
 }
 
 function freshDb(): MockDb {
@@ -119,6 +125,7 @@ function freshDb(): MockDb {
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
+    liveScenarios: [],
   };
 }
 

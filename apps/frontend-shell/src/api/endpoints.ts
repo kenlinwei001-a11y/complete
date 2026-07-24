@@ -1051,3 +1051,53 @@ import type { ConfigBundle, ImportJob, ImportConflictPolicy } from "@platform/co
 export const exportConfigBundle = () => api.a<ConfigBundle>("/a/v1/config-bundles/export");
 export const importConfigBundle = (bundle: ConfigBundle, dryRun: boolean, conflictPolicy: ImportConflictPolicy) =>
   api.a<ImportJob>("/a/v1/config-bundles/import", { method: "POST", body: { bundle, dryRun, conflictPolicy } });
+
+// ---------------- 产能推演「活台」（WO-CAPLIVE-2-COCKPIT） ----------------
+
+/**
+ * WO-LIVE-NL（依赖·未合并则 MSW 桩·集成接真点=agentcore 产能 what-if 意图路由）：产能页真人机对话。
+ * 问句 → orchestrator 识别产能 what-if 意图 → 路由 generic_inference/gap_attribution(scope)/capacity_forecast →
+ * 叙述带溯源（替 QaPanel 正则假 NL）。经 B 侧（entitlement 先行 + OBO 透传 DataCore）。
+ */
+export interface CapacityLiveAnswer {
+  answer: string;
+  solver?: string;
+  /** R13：答案数字出处（求解器 / 派生公式 / 输入因子）。 */
+  provenance?: { src: string; formula?: string; inputs?: string[] };
+  /** what-if 类问句可带 before/after（产能少多少）。 */
+  deltas?: { objectId: string; type?: string; prop: string; before: number; after: number }[];
+  /** 诚实数据模式（LIVE=实测·SYNTHETIC=合成未接实测·不谎报）。 */
+  dataMode?: string;
+}
+export const askCapacityLive = (body: { baseId: string; question: string; factor?: string }) =>
+  api.b<CapacityLiveAnswer>("/b/v1/capacity-live/ask", { body });
+
+/**
+ * WO-LIVE-SCENARIO（依赖·未合并则 MSW 桩·集成接真点=datacore 方案快照存/分支/横比·复用沙盘 SimCheckpoint 表 R9 双实现）：
+ * 拨动结果存为命名方案（SimCheckpoint.state 承载 what-if 快照 {apply,kpis}）→ 分支变体 → decision_play 范式横比矩阵。
+ */
+export interface LiveScenario {
+  id: string;
+  baseId: string;
+  name: string;
+  parentId?: string;
+  apply: { objectType: string; objectId: string; prop: string; value: number }[];
+  kpis: { capGain: number; affected: number };
+  createdAt: string;
+}
+export const saveLiveScenario = (body: {
+  baseId: string;
+  name: string;
+  parentId?: string;
+  apply: { objectType: string; objectId: string; prop: string; value: number }[];
+  snapshot?: Record<string, unknown>;
+}) => api.a<LiveScenario>("/a/v1/sim/live-scenarios", { body });
+export const listLiveScenarios = (baseId: string) =>
+  api.a<{ scenarios: LiveScenario[] }>(`/a/v1/sim/live-scenarios?baseId=${encodeURIComponent(baseId)}`);
+/** decision_play 范式横比矩阵：各格 = 各方案经 generic_inference 真算（改方案 apply → 矩阵随之变·KILL-MOCK）。 */
+export interface LiveScenarioMatrix {
+  dims: { key: string; label: string }[];
+  rows: { scenarioId: string; name: string; cells: Record<string, number>; ruleFlag?: boolean }[];
+}
+export const compareLiveScenarios = (ids: string[]) =>
+  api.a<LiveScenarioMatrix>("/a/v1/sim/live-scenarios/compare", { body: { ids } });
