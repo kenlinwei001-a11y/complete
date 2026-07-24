@@ -337,7 +337,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 <div className={styles.readoutRow} data-testid="global-sim-readout">
                   <div className={styles.readout}><b>{ontimeRate.toFixed(0)}%</b><span>按期率（{SCEN_LABEL[primary]}）</span></div>
                   <div className={styles.readout}><b>{fmt(d.cost.total, 0)}</b><span>总代价</span></div>
-                  <div className={styles.readout}><b>{fmt(primaryScen.objectiveValues.changeover, 0)}</b><span>换型(分)</span></div>
+                  {/* 换型指标统一走下方 7 维卡「换型(全链小时)」(= round(objectiveValues.changeover)·同值)·此处去重去误导「(分)」旧标签 */}
                   <div className={styles.readout}><b>{primaryScen.displacedCount}</b><span>被挤单</span></div>
                   <div className={styles.readout}><b>{d.frozen.length}</b><span>固定单</span></div>
                 </div>
