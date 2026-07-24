@@ -32,7 +32,14 @@ import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKey
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
 import { executePlan } from "./execute-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径执行器（服务端多步 + 一次综合·不经 runAgentLoop）
-import { isSimComposeQuery, buildSimNavSlice, simComposeSlots } from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT · 推演 NL 大脑（portfolio 为中心的推演链投影 + 多方案集·消费 Phase2-C 组合器）
+import {
+  isSimComposeQuery,
+  buildSimNavSlice,
+  simComposeSlots,
+  isCapacityWhatIfQuery,
+  buildCapacityNavSlice,
+  capacityComposeSlots,
+} from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT 推演 NL 大脑 + WO-LIVE-NL 产能 what-if NL 意图路由（均投影推演专属 navSlice 交 Phase2-C 组合器）
 import type { GuardedToolExecutor } from "../tools/executor.js";
 import type { ComposePlan } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
@@ -1011,9 +1018,21 @@ export class Orchestrator {
       // **推演专属 navSlice**（通用 catalog 不含 portfolio）交给 Phase2-C compileSolverPlan → executePlan 服务端多步组合。
       // 非推演题照用通用 navSlice（不劫持·R6 纯投影·不碰 navigation-slice 系统级 catalog / 组合器内部）。
       // §3.2：推演题叠加多方案集 slots（portfolio 逐方案联合求解 → GlobalSimResponse.scenarios[] 供综合叙述权衡）。
-      const isSim = isSimComposeQuery(task.query, task.context.pageContext);
-      const composeSlice = isSim ? buildSimNavSlice(task.query) : navSlice;
-      const composeSlotsForTask = isSim ? { ...this.composeSlots(task), ...simComposeSlots() } : this.composeSlots(task);
+      // WO-LIVE-NL · 产能 what-if NL 意图（「常州化成良率降到92%产能少多少」「哪个工序物料最卡 4680」）先于全局推演判定：
+      // 因子变动 what-if → generic_inference 沿派生 DAG 真重算；因子级根因 → gap_attribution(scope)；前瞻 → capacity_forecast。
+      // 结构化解析（parseCapacityWhatIf·R6·无 LLM）填 apply/scope 进 slots → 组合器纳入真算·runAgentLoop 未调（确定性 compose 秒答）。
+      const isCap = isCapacityWhatIfQuery(task.query, task.context.pageContext);
+      const isSim = !isCap && isSimComposeQuery(task.query, task.context.pageContext);
+      const composeSlice = isCap
+        ? buildCapacityNavSlice(task.query)
+        : isSim
+          ? buildSimNavSlice(task.query)
+          : navSlice;
+      const composeSlotsForTask = isCap
+        ? { ...this.composeSlots(task), ...capacityComposeSlots(task.query) }
+        : isSim
+          ? { ...this.composeSlots(task), ...simComposeSlots() }
+          : this.composeSlots(task);
       const composeCompiled = compileSolverPlan(task.query, composeSlice, composeSlotsForTask);
       if (composeCompiled.ok) {
         await this.executePlanPath(taskId, auth, task, composeCompiled.plan, classification, executor, model);
