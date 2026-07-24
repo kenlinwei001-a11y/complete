@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { SEG_REGISTRY } from "@platform/contracts";
-import { fmt } from "./shared";
+import { fmt, useActionDraft } from "./shared";
 import styles from "./GlobalSimView.module.css";
 
 /**
@@ -34,6 +34,8 @@ interface ImpactRow {
 }
 
 export function CustomerImpactBar({ displaced, orders }: { displaced: DisplacedVM[]; orders: OrderVM[] }) {
+  // 死按钮修：行动按钮接 S2 Action 审批（plan_change 草稿·不直接写回真值·R4）。
+  const adopt = useActionDraft();
   const rows = useMemo<ImpactRow[]>(() => {
     const orderById = new Map(orders.map((o) => [o.id, o]));
     return displaced
@@ -82,17 +84,35 @@ export function CustomerImpactBar({ displaced, orders }: { displaced: DisplacedV
                   交付地 {r.deliverTo} · 影响额 <b className={styles.textPrimary} data-testid={`global-sim-impact-yi-${r.orderId}`}>{r.impactYi.toFixed(2)}</b> 亿
                   {!r.traceable && <span className={styles.textMuted}> · 未溯到订单</span>}
                 </div>
-                {/* 行动按钮占位（P2·不写回·G-DECISION 后续经 Action 审批） */}
+                {/* 死按钮修：接 S2 Action 审批（plan_change 草稿·不直接写回真值·R4）。inline 样式覆盖占位灰底 → 可点。 */}
                 <div className={styles.actionsPlaceholder} data-testid={`global-sim-impact-actions-${r.orderId}`}>
-                  <button className={styles.btnPlaceholder} disabled title="P2 占位 · 采纳走 S2 Action 审批（本单不写回）">协调加产（占位）</button>
-                  <button className={styles.btnPlaceholder} disabled title="P2 占位 · 采纳走 S2 Action 审批（本单不写回）">通知客户（占位）</button>
+                  <button
+                    className={styles.btnPlaceholder}
+                    data-testid={`global-sim-impact-coord-${r.orderId}`}
+                    disabled={adopt.isPending}
+                    style={{ cursor: adopt.isPending ? "wait" : "pointer", color: "var(--c-capacity, #43B7D7)", borderStyle: "solid", borderColor: "rgba(67,183,215,.4)" }}
+                    title="生成 plan_change 草稿 → S2 审批（本单不写回真值）"
+                    onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { intent: "coordinate_capacity", orderId: r.orderId, cust: r.cust, seg: r.segLabel, qty: r.qty, impactYi: r.impactYi } })}
+                  >
+                    协调加产
+                  </button>
+                  <button
+                    className={styles.btnPlaceholder}
+                    data-testid={`global-sim-impact-notify-${r.orderId}`}
+                    disabled={adopt.isPending}
+                    style={{ cursor: adopt.isPending ? "wait" : "pointer", color: "var(--c-capacity, #43B7D7)", borderStyle: "solid", borderColor: "rgba(67,183,215,.4)" }}
+                    title="生成 plan_change 草稿 → S2 审批（本单不写回真值）"
+                    onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { intent: "notify_customer", orderId: r.orderId, cust: r.cust, seg: r.segLabel, qty: r.qty } })}
+                  >
+                    通知客户
+                  </button>
                 </div>
               </div>
             ))}
           </div>
           <div className={styles.summary} data-testid="global-sim-impact-summary">
             被挤订单合计影响额 <b className={styles.textPrimary}>{totalYi.toFixed(2)}</b> 亿（Σqty×SEG 价÷1e4·真客户名来自订单对象·可溯真 order·R13）·
-            行动按钮为 P2 占位（采纳走 Action 审批·本单不写回真值·R4）。
+            行动按钮生成 plan_change 草稿 → S2 审批（本单不直接写回真值·R4）。
           </div>
         </>
       )}

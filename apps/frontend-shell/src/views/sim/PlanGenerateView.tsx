@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlanGenerateOutputSchema, RiskTimelineOutputSchema, PLAN_GOAL_TARGETS, type PlanGenerateOutput } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
@@ -17,6 +18,13 @@ import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 type Scheme = PlanGenerateOutput["schemes"][number];
+
+// 假7 修（去魔法基线）：plan_generate 求解器已回显真基线 base（datacore plan.ts / mock simSolvers 均返 { rev, gm, share, turns, cash }），
+// 但 PlanGenerateOutputSchema 只留 schemes+recommend → parse 把 base 剥掉，历史上前端只能写死 rev-100 / share-17 魔法基线
+// （且 share 基线写死 17 与真基线 18 漂移·错一位）。此处扩展解析保留 base，收入增/份额增改用求解器真基线派生（缺基线诚实"—"）。
+const PlanGenBaseSchema = z.object({ rev: z.number(), gm: z.number(), share: z.number(), turns: z.number(), cash: z.number() }).partial();
+const PlanGenParsedSchema = PlanGenerateOutputSchema.extend({ base: PlanGenBaseSchema.optional() });
+type PlanGenBase = z.infer<typeof PlanGenBaseSchema>;
 
 /** 编号色块：稳健绿 / 均衡青 / 进取紫（§7.11） */
 // 编号色块：稳健绿 / 均衡青 / 进取紫（壹/贰/叁，§7.11 / PRD-IND §2.3）
@@ -85,7 +93,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
       },
       hard: { gm: goals.hardGm, cash: goals.hardCash, capex: goals.hardCapex },
     },
-    (raw) => PlanGenerateOutputSchema.parse(raw),
+    (raw) => PlanGenParsedSchema.parse(raw), // 假7：保留求解器回显的真基线 base（去 rev-100/share-17 魔法基线）
   );
 
   // 问题卡传导链（§7.11 与体检页共用 PropagationTimeline，全局唯一实现）
@@ -192,6 +200,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
               onAdopt={() => adoptScheme(s)}
               goals={goals}
               propagation={propagation}
+              base={gen.data!.base}
             />
           ))}
         </div>
@@ -209,6 +218,7 @@ function SchemeCard({
   onAdopt,
   goals,
   propagation,
+  base,
 }: {
   scheme: Scheme;
   recommended: boolean;
@@ -218,10 +228,17 @@ function SchemeCard({
   onAdopt: () => void;
   goals: GoalsState;
   propagation: PropagationVM | null;
+  base?: PlanGenBase;
 }) {
   const color = SCHEME_COLORS[s.no] ?? "var(--accent)";
   const viol = s.hardViol.length > 0;
   const o = s.outcome;
+  // 假7 修：收入增/份额增改用求解器回显的真基线派生（与后端 meets 判定同口径），去写死 rev-100 / share-17 魔法基线；
+  // 求解器未回显基线 → 诚实"—"（不臆造基线）。收入增 = (rev/base.rev−1)×100%；份额增 = share − base.share。
+  const growthPct = base?.rev != null && base.rev !== 0 ? (o.rev / base.rev - 1) * 100 : null;
+  const shareGain = base?.share != null ? o.share - base.share : null;
+  const growthTxt = growthPct != null ? `${growthPct.toFixed(0)}%` : "—";
+  const shareGainTxt = shareGain != null ? `+${shareGain.toFixed(0)}pct` : "—";
   const meetTargetLabel: Record<(typeof MEET_KEYS)[number], string> = {
     meetRevenue: `≥${goals.revGrowthPct}%`,
     meetGm: `≥${goals.gmFloorPct}%${goals.hardGm ? "·硬" : ""}`,
@@ -231,9 +248,9 @@ function SchemeCard({
     meetTurns: "≥基线",
   };
   const meetValue: Record<(typeof MEET_KEYS)[number], string> = {
-    meetRevenue: `${(o.rev - 100).toFixed(0)}%`,
+    meetRevenue: growthTxt, // 假7：求解器真基线派生（去 rev-100 魔法基线）
     meetGm: `${(o.gm * 100).toFixed(1)}%`,
-    meetShare: `+${(o.share - 17).toFixed(0)}pct`,
+    meetShare: shareGainTxt, // 假7：求解器真基线派生（去 share-17 魔法基线）
     meetCapex: `${o.capex} 亿`,
     meetCash: `${o.cash.toFixed(0)} 亿`,
     meetTurns: `${o.turns.toFixed(1)} 次`,
@@ -267,7 +284,7 @@ function SchemeCard({
 
         <div className={`${styles.outcomeRow} mono`}>
           <span>
-            收入增<b>{(o.rev - 100).toFixed(0)}%</b>
+            收入增<b>{growthTxt}</b>
           </span>
           <span>
             毛利率<b>{(o.gm * 100).toFixed(1)}%</b>
