@@ -7,6 +7,7 @@ import type {
   ObjectInstance,
   ObjectTypeDef,
   OntologyVersion,
+  SourceBinding,
 } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
@@ -198,6 +199,17 @@ export class OntologyService {
     };
     await this.repos.ontologyTypes.put(def);
     return def;
+  }
+
+  /**
+   * WO-MODELING-INTERACTIVE：为已存在对象类型补真实来源绑定（provenance 回填），只改 sourceBindings、
+   * 其余字段（属性/派生/域/published/version）原样保留。用于合成 A 路把"由某数据集物化"的类型标上其源
+   * RawDataset（KILL-MOCK：真有源标真源）；类型不存在则静默略过。R2 tenant 隔离（getType 已按 ctx）。
+   */
+  async setSourceBindings(ctx: AuthCtx, key: string, sourceBindings: SourceBinding[]): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({ ...existing, sourceBindings });
   }
 
   async upsertLinkType(

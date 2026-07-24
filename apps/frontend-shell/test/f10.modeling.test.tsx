@@ -60,4 +60,32 @@ describe("F10 · 建模工作台", () => {
     await user.click(screen.getByTestId("publish-draft"));
     await screen.findByText(/发布成功/);
   });
+
+  it("未建模数据集可点击 → 触发 A3 半自动建模 flow（点击建模 → 草案 → 发布 端到端）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/modeling");
+    await screen.findByTestId("type-card-Order"); // 应用与左栏数据源面板均已加载
+
+    // 左栏"未建模"数据集的徽章是**可点击按钮**（解决"这么多未建模的、无法点击"）。
+    await screen.findByTestId("data-source-panel");
+    const modelBtns = await screen.findAllByRole("button", { name: /未建模/ });
+    expect(modelBtns.length).toBeGreaterThan(0);
+
+    // 点击"未建模"数据集 → 打开建模弹窗并预选该数据集（≥1 个 checkbox 勾选）。
+    await user.click(modelBtns[0]!);
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(
+        within(dialog).getAllByRole("checkbox").filter((c) => (c as HTMLInputElement).checked).length,
+      ).toBeGreaterThan(0),
+    );
+
+    // 确定性建模 → 全字段覆盖 → 一键发布为本体（点击 → 建模 → 发布 端到端接缝）。
+    await user.click(within(dialog).getByTestId("modeling-derive-run"));
+    const badge = await screen.findByTestId("modeling-coverage-badge");
+    await waitFor(() => expect(badge).toHaveTextContent("100%"));
+    await user.click(screen.getByTestId("publish-draft"));
+    await screen.findByText(/发布成功/);
+  });
 });

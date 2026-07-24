@@ -25,7 +25,9 @@ export async function buildMappingRows(repos: Repos, tenantId: string): Promise<
       objectKey: t.key,
       displayName: t.displayName ?? t.key,
       kind: "object",
-      sourceSystem: binding ? (CONN_SYSTEM[binding.connId] ?? binding.connId) : domain === "plan" ? "平台·计划域" : "—",
+      // WO-MODELING-INTERACTIVE 合并后：sourceBindings 可能指向合成动态连接（connId 不在静态 CONN_SYSTEM）——
+      // 高层「源系统」标签只认已知连接器系统，未知/合成绑定回落数据域默认（真实源系统连接名走下方 lineage.connName）。
+      sourceSystem: (binding ? CONN_SYSTEM[binding.connId] : undefined) ?? (domain === "plan" ? "平台·计划域" : "—"),
       keyProps: (t.properties ?? []).slice(0, 5).map((p) => p.propKey),
       rules: rules.filter((r) => (r.scopeObjectTypes ?? []).includes(t.key)).map((r) => r.key).sort(),
       derivations: (t.derivedProperties ?? []).map((d) => `${d.propKey} = ${d.formula}`),

@@ -650,6 +650,8 @@ export class SyntheticService {
     let n = 0;
     // chainMode：收集链产 rawDataset id 喂建模链（按 putAll 调用序）。
     const rawDsIds: string[] = [];
+    // WO-MODELING-INTERACTIVE：记录每个类型实际物化来源（连接+数据集+字段映射），供 A 路末尾 provenance 回填。
+    const materializedBindings = new Map<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }>();
     // 活数据可溯（PRD-live-traceable-data §3.1）：合成对象不再凭空落库，而是经"合成数据源→
     // RawDataset(原始行)→物化为对象"的真链路；每对象 origin 记 rawDatasetId/rawRowIdx，使数据源页
     // 可见原始数据、推演结果可溯回源头。确定性：连接/原始表/对象/backref 均由 (industry,scale,seed) 决定。
@@ -673,6 +675,13 @@ export class SyntheticService {
       };
       await this.repos.rawDatasets.put(ds);
       await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
+      // WO-MODELING-INTERACTIVE：该类型真实来源 = 刚落的 RawDataset。字段映射优先用 BINDINGS 的细映射，
+      // 否则用恒等映射（合成物化时 props 即原始行，propKey===sourceField），供末尾回填对象类型 provenance。
+      materializedBindings.set(type, {
+        connId: sourceConnId,
+        dataset: dsName,
+        fieldMappings: binding?.fieldMappings ?? Object.fromEntries(ds.fields.map((f) => [f.name, f.name])),
+      });
       if (chainMode) {
         // chainMode：只产 rawDataset+rawRows，对象由建模链 materialize 产（统一 id 字节同 A 路）。
         rawDsIds.push(ds.id);
@@ -1106,6 +1115,19 @@ export class SyntheticService {
         version: s.version,
         spec: s.spec,
       });
+    }
+    // WO-MODELING-INTERACTIVE（provenance 回填·KILL-MOCK）：A 路每个"由某合成数据集物化"的对象类型，
+    // 若 sourceBindings 为空（batteryObjectTypes 未被 BINDINGS 覆盖者 + 全部 extendedObjectTypes 出厂即空），
+    // 补上它真实物化来源的 RawDataset（putAll 落的 ds.name/连接）——使已发布本体不再"无来源"、左栏数据集
+    // 不再"未建模"（DataSourcePanel 覆盖度按 sourceBindings.dataset 匹配）。BINDINGS 已带更细字段映射者不覆盖；
+    // 纯派生/未物化类型不在 materializedBindings 内 → 诚实留空（不臆造数据集名）。chainMode 由建模链自设 provenance，跳过。
+    if (!chainMode) {
+      for (const [typeKey, b] of materializedBindings) {
+        const ty = await this.ontology.getType(ctx, typeKey);
+        if (ty && (ty.sourceBindings?.length ?? 0) === 0) {
+          await this.ontology.setSourceBindings(ctx, typeKey, [b]);
+        }
+      }
     }
     // 轨L 增量2：chainMode → 全 34 rawDataset 经真建模链产本体类型+对象（provenance 因果真实）。
     // 放在末尾：此前无 repo 对象/类型读依赖（putLink 不读、computeRollup 用内存临时对象、sliceSpecs 不读），
