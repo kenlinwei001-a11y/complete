@@ -126,6 +126,11 @@ export interface AppDeps {
   fetchImpl?: typeof fetch;
   /** 管理平台增量 §1：返回非 null 原因 → /readyz 503（users 空表 + 无 BOOTSTRAP 变量）。 */
   bootstrapRequired?: () => Promise<string | null>;
+  /**
+   * 首启预热闸（Codespaces 健康检查耗尽定位·#5）：返回 true → /readyz 503（reason:"seeding"）。
+   * server 先 listen 再后台播种，播种期间端口已起、healthz/readyz 可应答（不再"端口全程 down"耗尽重试）。
+   */
+  seeding?: () => boolean;
 }
 
 export interface BuiltApp {
@@ -757,6 +762,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       await repos.ping();
     } catch {
       return reply.status(503).send({ status: "not ready" });
+    }
+    // #5 首启预热闸：先 listen 再后台播种，播种期间 /readyz 503（reason:"seeding"）→ 端口已起、
+    // 编排方（depends_on service_healthy）在预热窗内正确等待，不再因"端口全程 down"耗尽 healthcheck 重试。
+    if (deps.seeding?.()) {
+      return reply.status(503).send({ status: "not ready", reason: "seeding" });
     }
     // 管理平台增量 §1：空库且未配置 BOOTSTRAP 变量 → 503 + 明示原因（日志同步报错）。
     const reason = deps.bootstrapRequired ? await deps.bootstrapRequired() : null;

@@ -16,7 +16,7 @@ export interface TestApp extends BuiltApp {
   adminCtx: AuthCtx;
 }
 
-export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string> }): Promise<TestApp> {
+export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string>; seeding?: () => boolean; bootstrapRequired?: () => Promise<string | null> }): Promise<TestApp> {
   const blobDir = await mkdtemp(join(tmpdir(), "dc-test-"));
   const config = loadConfig({
     NODE_ENV: "test",
@@ -33,6 +33,8 @@ export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean;
     blob: new LocalFsBlobStore(blobDir),
     llm,
     fetchImpl: opts?.fetchImpl,
+    seeding: opts?.seeding,
+    bootstrapRequired: opts?.bootstrapRequired,
   });
   let adminCtx: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
   if (opts?.seed !== false) adminCtx = await seedDemo(repos);
