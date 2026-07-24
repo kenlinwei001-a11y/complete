@@ -555,6 +555,36 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-capacity-live-cockpit.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R18",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx",
+        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "packages/contracts/src/capacity-factors.ts",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx",
+        "packages/contracts/src/capacity-factors.ts"
+      ]
+    },
     "PRD-catalog-battery-20-scenarios.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -891,6 +921,37 @@
       ],
       "artifacts": [],
       "brokenArtifacts": []
+    },
+    "PRD-global-sim-live-upgrade.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R18",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/sim-planner.ts",
+        "apps/agentcore/src/router/execute-plan.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx",
+        "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx",
+        "apps/frontend-shell/src/views/sim/GlobalSimView.tsx",
+        "packages/contracts/src/sim.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx"
+      ]
     },
     "PRD-global-sim.md": {
       "hasOntologyRef": true,
@@ -1609,6 +1670,7 @@
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-attribution-routing-plan-audit.md",
       "PRD-demand-pulled-growth-engine.md",
+      "PRD-global-sim-live-upgrade.md",
       "PRD-scenario-launcher.md"
     ],
     "apps/agentcore/src/tools/registry.ts": [
@@ -1622,6 +1684,7 @@
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-build-workflow-runtime.md",
       "PRD-cli-full-coverage.md",
+      "PRD-global-sim-live-upgrade.md",
       "PRD-ontoflow-data-builder.md"
     ],
     "scripts/check-cli-parity.mjs": [
@@ -1640,6 +1703,7 @@
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md",
       "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-capacity-live-cockpit.md",
       "PRD-cli-full-coverage.md",
       "PRD-inference-line.md"
     ],
@@ -1747,6 +1811,41 @@
       "PRD-build-workflow-runtime.md",
       "PRD-fullstack-story-build-g8.md"
     ],
+    "apps/datacore/src/solvers/capacity.ts": [
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/api/endpoints.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/locales/zh.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-inference-line.md"
+    ],
+    "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": [
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": [
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "packages/contracts/src/capacity-factors.ts": [
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/agentcore/src/features/registry.ts": [
       "PRD-cli-full-coverage.md"
     ],
@@ -1770,11 +1869,6 @@
     ],
     "scripts/cli-coverage-baseline.json": [
       "PRD-cli-full-coverage.md"
-    ],
-    "packages/contracts/src/solvers.ts": [
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-plan-audit-1to1.md",
-      "PRD-plan-generate-1to1.md"
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
@@ -1813,6 +1907,24 @@
     ],
     "apps/datacore/src/growth/loop.ts": [
       "PRD-generation-boundary-grounding.md"
+    ],
+    "apps/agentcore/src/agent/sim-planner.ts": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/agentcore/src/router/execute-plan.ts": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "packages/contracts/src/sim.ts": [
+      "PRD-global-sim-live-upgrade.md"
     ],
     "packages/contracts/src/global-sim.ts": [
       "PRD-global-sim.md"
@@ -1857,9 +1969,6 @@
       "PRD-inference-line.md"
     ],
     "apps/datacore/test/supply-demand-gap-attribution.test.ts": [
-      "PRD-inference-line.md"
-    ],
-    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
       "PRD-inference-line.md"
     ],
     "packages/contracts/src/ceo-agent.ts": [
@@ -1919,10 +2028,6 @@
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
-    ],
-    "apps/datacore/src/solvers/risk.ts": [
-      "PRD-order-project-sim-1to1.md",
-      "PRD-plan-audit-1to1.md"
     ],
     "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
       "PRD-order-project-sim-1to1.md"
