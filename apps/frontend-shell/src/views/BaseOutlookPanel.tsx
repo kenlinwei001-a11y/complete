@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLiveSolver } from "./sim/useLiveSolver";
 import styles from "./RiskBoardView.module.css";
+import { Provenance } from "@/components/Provenance";
 
 /**
  * WO-B / F1 · 每基地前瞻产能推演子面板（renderer 内嵌于产能推演看板基地卡详情）。
@@ -27,6 +28,13 @@ const LINE_COLOR: Record<string, string> = {
   inProduction: "var(--c-solver, #8b7bd8)",
   futureOrders: "var(--c-forecast, #E8B54A)",
   salesForecast: "var(--ok, #62be77)",
+};
+// 每线派生公式（R13 结论可溯·hover 弹推导口径）——与 base_capacity_outlook 求解器口径对应。
+const LINE_FORMULA: Record<string, string> = {
+  available: "可用产能 = Σ Line.capacityDaily×(1−util%) × 窗口天",
+  inProduction: "在产订单占用 = Σ 未完工 WorkOrder.qtyActual × 窗口/参照期",
+  futureOrders: "未来订单 = Σ 落窗 Order.qty（首基地=本基地）",
+  salesForecast: "销售预测 = Σ DemandSegment.p50×1e4 × 基地产能占比 × 窗口/年",
 };
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
@@ -142,7 +150,11 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                 fontSize: 11,
               }}
             >
-              {hz.status === "缺口" ? `缺口 ${fmt(-hz.gap)} 套` : hz.status === "富余" ? `富余 ${fmt(hz.gap)} 套` : "供需平衡"}
+              {hz.status === "缺口" ? (
+                <>缺口 <Provenance testId="outlook-gap" src="base_capacity_outlook 求解器" formula="缺口 = 需求 − 供给 = (在产 + 未来订单) − 可用产能" inputs={[`可用产能 ${fmt(hz.available)}`, `在产 ${fmt(hz.inProduction)}`, `未来订单 ${fmt(hz.futureOrders)}`]} note="套 · 改颗粒（Line.capacityDaily/Order.due/DemandSegment.p50）即真变">{fmt(-hz.gap)}</Provenance> 套</>
+              ) : hz.status === "富余" ? (
+                <>富余 <Provenance testId="outlook-gap" src="base_capacity_outlook 求解器" formula="富余 = 供给 − 需求 = 可用产能 − (在产 + 未来订单)" inputs={[`可用产能 ${fmt(hz.available)}`, `在产 ${fmt(hz.inProduction)}`, `未来订单 ${fmt(hz.futureOrders)}`]} note="套 · 改颗粒即真变">{fmt(hz.gap)}</Provenance> 套</>
+              ) : "供需平衡"}
             </span>
             {hz.crossDay != null && (
               <span style={{ fontSize: 11, color: "var(--danger)" }} data-testid="outlook-crossday">累计需求 T+{hz.crossDay} 越可用产能</span>
@@ -166,7 +178,17 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                   <div style={{ flex: 1, height: 12, borderRadius: 4, background: "var(--line2)", overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${Math.round((ln.value / maxV) * 100)}%`, background: LINE_COLOR[ln.key], opacity: 0.85 }} />
                   </div>
-                  <span className="mono" data-testid={`outlook-line-${ln.key}-value`} style={{ width: 82, textAlign: "right", flexShrink: 0 }}>{fmt(ln.value)}</span>
+                  <span className="mono" data-testid={`outlook-line-${ln.key}-value`} style={{ width: 82, textAlign: "right", flexShrink: 0 }}>
+                    <Provenance
+                      testId={`outlook-line-prov-${ln.key}`}
+                      src="base_capacity_outlook 求解器"
+                      formula={LINE_FORMULA[ln.key] ?? ln.label}
+                      inputs={[`${p.drillType}.${p.drillField} = ${fmt(p.drillValue)}`]}
+                      note={`${p.kind} · R13 每线可溯`}
+                    >
+                      {fmt(ln.value)}
+                    </Provenance>
+                  </span>
                 </div>
               );
             })}

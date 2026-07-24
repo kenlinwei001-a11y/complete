@@ -216,7 +216,21 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   )}
                   <div className={styles.rkCM}>
                     <span className={styles.rkPeak} data-testid={`risk-peak-${card.base}`} style={{ color: peakColor }}>
-                      {card.crossDay != null ? `T+${card.crossDay}` : card.peak.toFixed(0)}
+                      <Provenance
+                        testId={`risk-peak-prov-${card.base}`}
+                        src="risk_timeline 求解器"
+                        formula="峰值张力 = max(逐日张力 series)；越线日 = 首个张力 ≥ 阈值之日（张力口径 0–100·越高越紧）"
+                        inputs={[
+                          card.currentTightness?.value != null
+                            ? `当前张力 ${Math.round(card.currentTightness.value)}${card.currentTightness.live ? "（实测）" : "（估算）"}`
+                            : "当前张力 —（无实测源）",
+                          `阈值 ${threshold}`,
+                          `峰值 ${Math.round(card.peak)}`,
+                        ]}
+                        note={synth ? "合成种子底料·未接实测（provenance 维·KILL-MOCK-RED）" : undefined}
+                      >
+                        {card.crossDay != null ? `T+${card.crossDay}` : card.peak.toFixed(0)}
+                      </Provenance>
                     </span>
                     <span className={styles.rkUnit}>{card.crossDay != null ? "最早越线" : "峰值张力"}</span>
                   </div>
@@ -402,16 +416,52 @@ function OrderAggView({ horizon }: { horizon: number }) {
                   <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无成品库存真源">—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>{r.revenue > 0 ? `${wanToYi(r.revenue).toFixed(1)} 亿` : "—"}</td>
-                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{r.gp > 0 ? `${wanToYi(r.gp).toFixed(1)} 亿` : "—"}</td>
-                  <td className="mono">{r.marginPct != null ? `${r.marginPct.toFixed(1)}%` : "—"}</td>
+                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>
+                    {r.revenue > 0 ? (
+                      <Provenance testId={`risk-econ-rev-${r.name}`} src="affected_orders × SEG_REGISTRY" formula="营收(亿) = Σ 数量 × SEG 参考单价(万元/套) ÷ 1e4" inputs={["受影响订单数量", "SEG_REGISTRY 参考单价"]} note="估算口径 · SEG 参考单价（合约域单一来源）非逐单实际成交价">
+                        {`${wanToYi(r.revenue).toFixed(1)} 亿`}
+                      </Provenance>
+                    ) : "—"}
+                  </td>
+                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>
+                    {r.gp > 0 ? (
+                      <Provenance testId={`risk-econ-gp-${r.name}`} src="affected_orders × SEG_REGISTRY" formula="毛利额(亿) = 营收 × SEG 参考毛利率" inputs={["营收", "SEG_REGISTRY 参考毛利率"]} note="估算口径 · SEG 参考毛利率非财务实测值">
+                        {`${wanToYi(r.gp).toFixed(1)} 亿`}
+                      </Provenance>
+                    ) : "—"}
+                  </td>
+                  <td className="mono">
+                    {r.marginPct != null ? (
+                      <Provenance testId={`risk-econ-gm-${r.name}`} src="派生（affected_orders × SEG_REGISTRY）" formula="毛利率 = 毛利额 ÷ 营收 × 100%" inputs={["毛利额", "营收"]} note="估算口径 · 随 SEG 参考单价/毛利率派生">
+                        {`${r.marginPct.toFixed(1)}%`}
+                      </Provenance>
+                    ) : "—"}
+                  </td>
                 </tr>
               ))}
               <tr style={{ borderTop: "1px solid var(--line2)" }}>
                 <td className="zh"><b>合计</b></td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }} data-testid="risk-econ-total-rev">{totalRev > 0 ? `${wanToYi(totalRev).toFixed(1)} 亿` : "—"}</td>
-                <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>{totalGp > 0 ? `${wanToYi(totalGp).toFixed(1)} 亿` : "—"}</td>
-                <td className="mono">{totalRev > 0 ? `${((totalGp / totalRev) * 100).toFixed(1)}%` : "—"}</td>
+                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }} data-testid="risk-econ-total-rev">
+                  {totalRev > 0 ? (
+                    <Provenance testId="risk-econ-total-rev" src="affected_orders × SEG_REGISTRY" formula="合计营收(亿) = Σ 各细分营收" inputs={["各行营收（数量×SEG 参考单价）"]} note="估算口径 · SEG 参考单价非逐单实际成交价">
+                      {`${wanToYi(totalRev).toFixed(1)} 亿`}
+                    </Provenance>
+                  ) : "—"}
+                </td>
+                <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>
+                  {totalGp > 0 ? (
+                    <Provenance testId="risk-econ-total-gp" src="affected_orders × SEG_REGISTRY" formula="合计毛利额(亿) = Σ 各细分毛利额" inputs={["各行毛利额"]} note="估算口径 · SEG 参考毛利率非财务实测值">
+                      {`${wanToYi(totalGp).toFixed(1)} 亿`}
+                    </Provenance>
+                  ) : "—"}
+                </td>
+                <td className="mono">
+                  {totalRev > 0 ? (
+                    <Provenance testId="risk-econ-total-gm" src="派生（affected_orders × SEG_REGISTRY）" formula="综合毛利率 = 合计毛利额 ÷ 合计营收 × 100%" inputs={["合计毛利额", "合计营收"]} note="估算口径 · 随 SEG 参考单价/毛利率派生">
+                      {`${((totalGp / totalRev) * 100).toFixed(1)}%`}
+                    </Provenance>
+                  ) : "—"}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -454,7 +504,11 @@ function OrderAggView({ horizon }: { horizon: number }) {
                   <td className="zh">{r.cust}</td>
                   <td><span className={styles.rkFchip} style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity)" }}>{r.seg}</span></td>
                   <td className="zh">{r.model}</td>
-                  <td className="mono">{r.qty} {UNIT}</td>
+                  <td className="mono">
+                    <Provenance testId={`risk-order-qty-${r.so ?? i}`} src="affected_orders 求解器（订单域）" formula="订单数量（套）= Order.qty 原值" inputs={[`SO ${r.so}`, `型号 ${r.model}`]} note="真值 · 受影响订单逐单数量">
+                      {r.qty}
+                    </Provenance>{" "}{UNIT}
+                  </td>
                   <td className="mono"><b>{r.due}</b></td>
                   <td>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, maxWidth: 420 }}>

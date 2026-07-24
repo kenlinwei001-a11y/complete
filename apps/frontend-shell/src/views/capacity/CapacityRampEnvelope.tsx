@@ -1,5 +1,6 @@
 import { useLiveSolver } from "../sim/useLiveSolver";
 import styles from "../RiskBoardView.module.css";
+import { Provenance } from "@/components/Provenance";
 import { RAMP_SUBCURVES, tightnessToCeiling, rampShape, factorByMark, layerOf } from "./factorOntology";
 
 /**
@@ -82,7 +83,22 @@ export function CapacityRampEnvelope({ baseId }: { baseId: string }) {
           <span key={c.mark} data-testid={`cap-ramp-leg-${c.mark}`}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, color: c.mark === binding.mark ? "var(--danger)" : "var(--muted)" }}>
             <i style={{ width: 10, height: 2, background: c.color, display: "inline-block" }} aria-hidden />
-            {c.mark} {c.name}{c.tight != null ? `（张力 ${Math.round(c.tight)}）` : "（配置爬坡）"}
+            {c.mark} {c.name}
+            {c.tight != null ? (
+              <>
+                （张力{" "}
+                <Provenance
+                  testId={`cap-ramp-tight-${c.mark}`}
+                  src="bottleneck_matrix 求解器"
+                  formula={`子曲线天花板 = tightnessToCeiling(张力)；张力溯 bottleneck_matrix.${c.bnFactor}`}
+                  inputs={[`${c.bnFactor} 张力波动 = ${Math.round(c.tight)}`]}
+                  note={`天花板 ${Math.round(c.ceiling * 100)}%（张力越高天花板越低·拖住爬坡）`}
+                >
+                  {Math.round(c.tight)}
+                </Provenance>
+                ）
+              </>
+            ) : "（配置爬坡）"}
           </span>
         ))}
       </div>
