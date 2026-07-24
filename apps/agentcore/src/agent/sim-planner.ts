@@ -32,6 +32,18 @@ export function isSimComposeQuery(query: string, pageContext?: PageContext): boo
   return SIM_INTENT_RE.test(q);
 }
 
+/**
+ * WO-GSIM-4-AGENT §3.2 · 推演多方案集（基线/激进/保守 → GlobalSimObjective 子集·portfolio 逐方案联合求解 →
+ * GlobalSimResponse.scenarios[]·供综合叙述权衡·每方案 kpi 数字 ⟦ref⟧ 溯 GlobalSimProvenance）。
+ *  - max_ontime（基线·最多按期）· min_cost（激进·最低代价）· min_delay（保守·最小延误）。
+ */
+export const SIM_SCENARIO_SET = ["max_ontime", "min_cost", "min_delay"] as const;
+
+/** 推演专属组合 slots（叠加多方案集 → portfolio 逐方案求解·供 §3.2 叙述权衡）。 */
+export function simComposeSlots(): Record<string, unknown> {
+  return { scenarios: [...SIM_SCENARIO_SET] };
+}
+
 /** 推演链已登记求解器目录（key + 输出形状·镜像 SOLVER_OUTPUT_SHAPES 子集·供组合器编排/下游接线）。 */
 const SIM_SOLVERS: SliceSolver[] = [
   {

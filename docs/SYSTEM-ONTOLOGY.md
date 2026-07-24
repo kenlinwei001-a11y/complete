@@ -244,8 +244,13 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
        portfolio ⊕ affected_orders ⊕ capacity_forecast·**不碰 navigation-slice 系统级 catalog / 组合器内部**）→ orchestrator 一处挂点
        用 sim slice 喂 `compileSolverPlan` → executePlan 服务端多步 → 一次综合 · **runAgentLoop 零调用**（agentRequests==0 坐实）。
        非推演题照用通用 navSlice（不劫持）。SEAM `compose-sim-seam.test.ts`（推演 NL→portfolio 服务端跑·综合一次·runAgentLoop 未调·R6·不劫持·4 绿）。
+       **§3.2 多方案叙述**（对 `contracts/global-sim.ts` GlobalSimScenario/Response 契约编）：sim 路径叠加多方案集 slots
+       `SIM_SCENARIO_SET=[max_ontime 基线/min_cost 激进/min_delay 保守]` → portfolio 逐方案联合求解 → GlobalSimResponse.scenarios[]
+       （每方案 kpi + allocation + GlobalSimProvenance）→ executePlan 一次综合叙述权衡·**数字红线**（综合指令强制每业务数字 ⟦ref:N⟧ 溯步产物·不造数）。
+       **§3.3 自由追问**（根因「为什么X绑定」→ gap_attribution/bottleneck·本体语义题 → Phase3-B ontology_query）由**既有引擎路由**——
+       sim 大脑只保证不劫持追问（isSimComposeQuery 排除·追问落既有 path-B navSlice/ontology_query）。
        **诚实边界**：推演链 §3.1 全量含 mrp_netting/margin_attribution 尚未登记 args schema（地基在 datacore/contracts·本单范围禁碰）→ 组合仅纳已登记子集
-       （无 modelId → capacity_forecast 诚实落选）；§3.2 多方案叙述口径依赖 `PRD-全局推演-并行派发套件.md §1 契约`（未随附）→ 本单只落 §3.1 组合骨架 + §4 SEAM
+       （无 modelId → capacity_forecast 诚实落选）；SEAM `compose-sim-seam.test.ts`（推演意图/R6 编译+portfolio/端到端 runAgentLoop 未调/§3.2 多方案集+数字红线/§3.3 追问不劫持/不劫持 compose-path·4 绿）
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
                        ├─**跨域 Coordinator 编排（WO-FIVE-ROLE P1·Ch63·暗发 agent.coordinator）**：Query --planCoordination(跨域判定·R6)-->
                        │  CoordinatorPlan{dispatches} --invoke_agent 扇出(enforceObjectScope)--> {供应链|生产|质量} 角色 Agent
