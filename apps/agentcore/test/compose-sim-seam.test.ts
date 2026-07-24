@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTestApp, submitQuery, waitForTask, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { defaultOnKeys } from "../src/features/registry.js";
-import { isSimComposeQuery, buildSimNavSlice } from "../src/agent/sim-planner.js";
+import { isSimComposeQuery, buildSimNavSlice, SIM_SCENARIO_SET } from "../src/agent/sim-planner.js";
 import { compileSolverPlan } from "../src/router/compile-plan.js";
 
 /**
@@ -26,6 +26,10 @@ describe("WO-GSIM-4-AGENT · 推演 NL 大脑（纯投影 R6）", () => {
   it("推演意图识别 + buildSimNavSlice 以 portfolio 为中心（通用 catalog 投不出 portfolio·本单补）", () => {
     expect(isSimComposeQuery(SIM_Q)).toBe(true);
     expect(isSimComposeQuery("SO-12345 何时能交")).toBe(false); // 非推演题不劫持
+    // §3.3 自由追问不被推演大脑劫持——「为什么X绑定」根因题 / 本体语义题由既有引擎路由
+    //（path-B navSlice 投 gap_attribution/bottleneck_matrix · Phase3-B ontology_query 兜底·非本模块管辖）。
+    expect(isSimComposeQuery("为什么邯郸被绑定生产")).toBe(false);
+    expect(isSimComposeQuery("邯郸是什么类型的基地")).toBe(false);
     const slice = buildSimNavSlice(SIM_Q);
     expect(slice.primarySolver).toBe("portfolio");
     expect(slice.solvers.map((s) => s.key)).toContain("portfolio");
@@ -48,10 +52,10 @@ describe("WO-GSIM-4-AGENT · SEAM 端到端：推演 NL → 组合路径 portfol
     const t = await createTestApp();
     armPathB(t);
     const composeSpy = vi.spyOn(t.llm, "compose");
-    const invoked: string[] = [];
+    const invoked: { key: string; args: Record<string, unknown> }[] = [];
     const orig = t.dataCore.solver.invoke.bind(t.dataCore.solver);
     t.dataCore.solver.invoke = async (ctx, key, args) => {
-      invoked.push(key);
+      invoked.push({ key, args });
       return orig(ctx, key, args);
     };
 
@@ -61,9 +65,14 @@ describe("WO-GSIM-4-AGENT · SEAM 端到端：推演 NL → 组合路径 portfol
     // ★ 命门：runAgentLoop 零调用（0 agent 往返·组合全程不落 agent 盲选多跳）。
     expect(t.llm.agentRequests.length).toBe(0);
     // portfolio 服务端真跑（正是通用 navSlice 投不出、本单补上的求解器）。
-    expect(invoked).toContain("portfolio");
+    const pf = invoked.find((i) => i.key === "portfolio");
+    expect(pf).toBeTruthy();
+    // §3.2 多方案：portfolio 收到基线/激进/保守方案集（逐方案联合求解 → GlobalSimResponse.scenarios[] 供叙述权衡）。
+    expect(pf!.args.scenarios).toEqual([...SIM_SCENARIO_SET]);
     // 一次综合（compose 单原语·非 agent 循环）。
     expect(composeSpy).toHaveBeenCalledTimes(1);
+    // §3.2 数字红线：综合指令强制每业务数字 ⟦ref:N⟧ 溯步产物（executePlan compose instruction）。
+    expect(String(composeSpy.mock.calls[0]?.[0]?.instruction ?? "")).toContain("⟦ref:N⟧");
     // 答案不劣化 + 溯源齐（R13·每步 provenance）。
     expect((task.answer?.blocks?.length ?? 0)).toBeGreaterThan(0);
     expect((task.answer?.provenance?.length ?? 0)).toBeGreaterThan(0);
