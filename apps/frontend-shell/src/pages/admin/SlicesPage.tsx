@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  deriveAllSliceFixtures,
+  deriveSliceFixture,
   fetchObjectTypes,
   fetchSlices,
   planSlice,
@@ -10,30 +12,83 @@ import {
 } from "@/api/endpoints";
 import type { PlanSliceResponse } from "@platform/contracts";
 import { toast, toastError } from "@/store/toastStore";
+import { useWorkspace } from "@/workspace/useWorkspace";
+import { baseRoles } from "@/pages/adminRegistry";
+import SliceInspector from "./SliceInspector";
 
 /**
  * 本体切片清单 + 编辑器（C7 · addendum §6.3 / AC8 步1）。
  * 切片 = 可追溯子图 root→hops（A6 逐跳剪枝）。本页：
  *  - 列出已注册切片（rootType / 跳数 / 链路 / 契约 fixtures）。
  *  - ＋新建切片：root + targets → 规划器自动求最短路径（planSlice，A3.3 确定性图算法）→ 入库（PUT）。
- *  - 试切预览：resolveSlice → 子图 nodes/edges（所见即所得，复用 executeSlice）。
+ *  - WO-SLICE-GOVERNANCE-FULL：点切片行 → 就地内联子图 + admin 可编辑规格；无契约行可「推进为契约」
+ *    （单）+ 顶部「全部推进」（批）。非 admin 只读。
  */
 export default function SlicesPage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "ontology-slices"], queryFn: fetchSlices });
   const slices = data ?? [];
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data: workspace } = useWorkspace();
+  const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
+  const hasUncontracted = slices.some((s) => s.fixtures === 0);
+
+  const refreshSlice = (key: string) => {
+    void qc.invalidateQueries({ queryKey: ["a", "ontology-slices"] });
+    void qc.invalidateQueries({ queryKey: ["a", "slice-spec", key] });
+    void qc.invalidateQueries({ queryKey: ["a", "slice-graph", key] });
+  };
+
+  const promoteMut = useMutation({
+    mutationFn: (key: string) => deriveSliceFixture(key),
+    onSuccess: (r) => {
+      if (r.promoted) toast(`「${r.sliceKey}」已推进为契约（auto_baseline_v1）`, "success");
+      else toast(`「${r.sliceKey}」未推进：${r.reason === "empty_resolve" ? "空子图（诚实 skip，不伪造）" : r.reason}`, "error");
+      refreshSlice(r.sliceKey);
+    },
+    onError: toastError,
+  });
+
+  const promoteAllMut = useMutation({
+    mutationFn: () => deriveAllSliceFixtures(),
+    onSuccess: (r) => {
+      toast(`全部推进：已推进 ${r.promoted.length} 个，诚实 skip ${r.skipped.length} 个（空子图）`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-slices"] });
+      void qc.invalidateQueries({ queryKey: ["a", "slice-spec"] });
+      void qc.invalidateQueries({ queryKey: ["a", "slice-graph"] });
+    },
+    onError: toastError,
+  });
 
   return (
     <div data-testid="slices-page">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <h2 style={{ fontSize: 16 }}>本体切片</h2>
-        <button className="btn primary sm" data-testid="slice-create" style={{ marginLeft: "auto" }} onClick={() => setEditing((v) => !v)}>
+        {canEdit && hasUncontracted && (
+          <button
+            className="btn sm"
+            data-testid="slice-promote-all"
+            disabled={promoteAllMut.isPending}
+            style={{ marginLeft: "auto" }}
+            onClick={() => promoteAllMut.mutate()}
+          >
+            {promoteAllMut.isPending ? "全部推进中…" : "全部推进为契约"}
+          </button>
+        )}
+        <button
+          className="btn primary sm"
+          data-testid="slice-create"
+          style={{ marginLeft: canEdit && hasUncontracted ? 0 : "auto" }}
+          onClick={() => setEditing((v) => !v)}
+        >
           {editing ? "收起" : "＋新建切片"}
         </button>
       </div>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
+        {canEdit ? "点切片键就地展开内联子图并可编辑规格。" : "点切片键就地查看内联子图（只读）。"}
       </div>
 
       {editing && (
@@ -46,23 +101,65 @@ export default function SlicesPage() {
 
       <table className="cmp" data-testid="slices-table" style={{ width: "100%" }}>
         <thead>
-          <tr><th>切片键</th><th>版本</th><th>根类型</th><th>跳数</th><th>链路</th><th>maxNodes</th><th>契约 fixtures</th></tr>
+          <tr><th>切片键</th><th>版本</th><th>根类型</th><th>跳数</th><th>链路</th><th>maxNodes</th><th>契约 fixtures</th><th>操作</th></tr>
         </thead>
         <tbody>
           {slices.map((s) => (
-            <tr key={s.sliceKey} data-testid={`slice-${s.sliceKey}`}>
-              <td className="mono">{s.sliceKey}</td>
-              <td className="mono">v{s.version}</td>
-              <td><span className="badge">{s.rootType}</span></td>
-              <td className="mono">{s.hops}</td>
-              <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
-              <td className="mono">{s.maxNodes ?? "—"}</td>
-              <td>
-                {s.fixtures > 0
-                  ? <span className="badge green" data-testid={`slice-fixtures-${s.sliceKey}`}>{s.fixtures} ✓</span>
-                  : <span className="badge amber">无契约</span>}
-              </td>
-            </tr>
+            <Fragment key={s.sliceKey}>
+              <tr data-testid={`slice-${s.sliceKey}`}>
+                <td>
+                  <button
+                    className="linklike"
+                    data-testid={`slice-row-${s.sliceKey}`}
+                    onClick={() => setExpanded((k) => (k === s.sliceKey ? null : s.sliceKey))}
+                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent)", cursor: "pointer", padding: 0 }}
+                    title="就地展开内联子图（不跳转图谱模块）"
+                  >
+                    {expanded === s.sliceKey ? "▾ " : "▸ "}{s.sliceKey}
+                  </button>
+                </td>
+                <td className="mono">v{s.version}</td>
+                <td><span className="badge">{s.rootType}</span></td>
+                <td className="mono">{s.hops}</td>
+                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
+                <td className="mono">{s.maxNodes ?? "—"}</td>
+                <td>
+                  {s.fixtures > 0 ? (
+                    <span className="badge green" data-testid={`slice-fixtures-${s.sliceKey}`}>{s.fixtures} ✓</span>
+                  ) : (
+                    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <span className="badge amber" data-testid={`slice-fixtures-${s.sliceKey}`}>无契约</span>
+                      {canEdit && (
+                        <button
+                          className="btn sm"
+                          data-testid={`slice-promote-${s.sliceKey}`}
+                          disabled={promoteMut.isPending}
+                          onClick={() => promoteMut.mutate(s.sliceKey)}
+                        >
+                          推进为契约
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <button
+                    className="btn sm"
+                    data-testid={`slice-toggle-${s.sliceKey}`}
+                    onClick={() => setExpanded((k) => (k === s.sliceKey ? null : s.sliceKey))}
+                  >
+                    {expanded === s.sliceKey ? "收起" : canEdit ? "看子图/编辑" : "看子图"}
+                  </button>
+                </td>
+              </tr>
+              {expanded === s.sliceKey && (
+                <tr data-testid={`slice-expanded-${s.sliceKey}`}>
+                  <td colSpan={8} style={{ background: "var(--panel-2, transparent)" }}>
+                    <SliceInspector sliceKey={s.sliceKey} canEdit={canEdit} onChanged={() => refreshSlice(s.sliceKey)} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

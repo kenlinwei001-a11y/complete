@@ -48,6 +48,7 @@ import { newId } from "./ids.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
 import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
+import { SIM_COMPOSE_SCENARIOS, buildComposeNarrative, classifyCapacityQuestion, mapLeversAnswer, mapGapAnswer } from "./router/live-endpoints.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
@@ -1646,6 +1647,62 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-LIVE-ENDPOINTS · 活①② 全局推演/产能页「人机对话」真后端端点（前端直连·替 MSW 桩）。
+  //   活①compose：NL → 真 portfolio（twoStage·三方案联合求解·OBO 到 DataCore）→ 组装叙述（数字全取真值）。
+  //     compose 单原语 · 非 path-B Agent → ranAgentLoop 恒 false（runAgentLoop 未落·分水岭）。
+  //   活②capacity-live：NL → 识别产能 what-if → 真 generic_inference(levers)/gap_attribution（OBO）→ 叙述带溯源。
+  // ---------------------------------------------------------------------
+  app.post("/b/v1/sim/compose", async (req) => {
+    const a = await auth(req);
+    const body = z.object({
+      query: z.string().default(""),
+      sessionId: z.string().nullish(),
+      page: z.string().optional(),
+      context: z.record(z.string(), z.unknown()).optional(),
+    }).parse(req.body ?? {});
+    // 真 portfolio 联合求解（twoStage → globalSimOptimize·GlobalSimResponse.scenarios[] 供叙述权衡）。
+    const res = await deps.dataCore.solver.invoke(a, "portfolio", {
+      scenarios: [...SIM_COMPOSE_SCENARIOS],
+      objective: "max_ontime",
+      twoStage: true,
+    });
+    const gs = ((res as { data?: unknown }).data ?? res) as { scenarios?: Record<string, unknown>[] };
+    return buildComposeNarrative(body.query, Array.isArray(gs.scenarios) ? gs.scenarios : []);
+  });
+
+  app.post("/b/v1/capacity-live/ask", async (req) => {
+    const a = await auth(req);
+    const body = z.object({
+      baseId: z.string().default(""),
+      question: z.string().optional(),
+      query: z.string().optional(), // 兼容 {query} 变体（前端契约用 question）
+      factor: z.string().optional(),
+    }).parse(req.body ?? {});
+    const q = (body.question ?? body.query ?? "").trim();
+    const base = body.baseId || "该基地";
+    const intent = classifyCapacityQuestion(q);
+    if (intent.isWhatIf) {
+      // 真 generic_inference mode:"levers"：从本基地派生 DAG 反推可撬动杠杆 + ±ε 敏感度（服务端 R6 真算）。
+      const lv = await deps.dataCore.solver.invoke(a, "generic_inference", {
+        mode: "levers",
+        ...(body.baseId ? { scopeObjectIds: [body.baseId] } : {}),
+        factors: intent.factors,
+        topK: 5,
+      });
+      const lvData = ((lv as { data?: unknown }).data ?? lv) as Record<string, unknown>;
+      const ans = mapLeversAnswer(q, base, body.baseId, lvData);
+      if (ans.dataMode !== "EMPTY") return ans;
+      // 杠杆反推空（本体该作用域无下游派生边）→ 诚实转 gap_attribution 真根因（不返空壳·KILL-MOCK-RED）。
+    }
+    // 根因归因：真 gap_attribution（scope 基地×因子·结构反向多跳分摊到叶级根因·带溯源）。
+    const ga = await deps.dataCore.solver.invoke(a, "gap_attribution", {
+      scope: { ...(body.baseId ? { baseId: body.baseId } : {}), ...(body.factor ? { factorId: body.factor } : {}) },
+    });
+    const gaData = ((ga as { data?: unknown }).data ?? ga) as Record<string, unknown>;
+    return mapGapAnswer(q, base, body.baseId, body.factor, gaData);
   });
 
   // ---------------------------------------------------------------------

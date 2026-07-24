@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { Fragment, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchSliceLibrary, planSlice } from "@/api/endpoints";
 import type { PlanSliceResponse, SliceLibraryEntry } from "@platform/contracts";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { useWorkspace } from "@/workspace/useWorkspace";
+import { baseRoles } from "@/pages/adminRegistry";
+import SliceInspector from "./SliceInspector";
 
 const t = zh.admin.sliceLibrary;
 
@@ -44,6 +47,7 @@ export default function SliceLibraryPage() {
 }
 
 function LibraryTab() {
+  const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["a", "slices-library"],
     queryFn: fetchSliceLibrary,
@@ -52,12 +56,18 @@ function LibraryTab() {
     if (!data) return [];
     return [...data.intra, ...data.cross].sort((a, b) => a.sliceKey.localeCompare(b.sliceKey));
   }, [data]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { data: workspace } = useWorkspace();
+  const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
 
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (error) return <div className="badge red">{zh.errors.pageError}</div>;
 
   return (
     <>
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+        {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
+      </div>
       <table className="cmp" data-testid="slice-library-table" style={{ width: "100%" }}>
         <thead>
           <tr>
@@ -70,17 +80,42 @@ function LibraryTab() {
         </thead>
         <tbody>
           {all.map((entry) => (
-            <tr key={entry.sliceKey} data-testid={`slice-library-${entry.sliceKey}`}>
-              <td className="mono">{entry.sliceKey}</td>
-              <td>
-                <span className={`badge ${entry.scope === "intra" ? "blue" : "amber"}`}>
-                  {entry.scope === "intra" ? t.scopeIntra : t.scopeCross}
-                </span>
-              </td>
-              <td className="mono">{entry.rootType}</td>
-              <td>{entry.spannedDomains.join(" / ") || "—"}</td>
-              <td className="mono">{entry.spannedTypes.length}</td>
-            </tr>
+            <Fragment key={entry.sliceKey}>
+              <tr data-testid={`slice-library-${entry.sliceKey}`}>
+                <td>
+                  <button
+                    data-testid={`slice-library-row-${entry.sliceKey}`}
+                    onClick={() => setExpanded((k) => (k === entry.sliceKey ? null : entry.sliceKey))}
+                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent)", cursor: "pointer", padding: 0 }}
+                    title="就地展开内联子图（不跳转图谱模块）"
+                  >
+                    {expanded === entry.sliceKey ? "▾ " : "▸ "}{entry.sliceKey}
+                  </button>
+                </td>
+                <td>
+                  <span className={`badge ${entry.scope === "intra" ? "blue" : "amber"}`}>
+                    {entry.scope === "intra" ? t.scopeIntra : t.scopeCross}
+                  </span>
+                </td>
+                <td className="mono">{entry.rootType}</td>
+                <td>{entry.spannedDomains.join(" / ") || "—"}</td>
+                <td className="mono">{entry.spannedTypes.length}</td>
+              </tr>
+              {expanded === entry.sliceKey && (
+                <tr data-testid={`slice-library-expanded-${entry.sliceKey}`}>
+                  <td colSpan={5} style={{ background: "var(--panel-2, transparent)" }}>
+                    <SliceInspector
+                      sliceKey={entry.sliceKey}
+                      canEdit={canEdit}
+                      onChanged={() => {
+                        void qc.invalidateQueries({ queryKey: ["a", "slices-library"] });
+                        void qc.invalidateQueries({ queryKey: ["a", "slice-spec", entry.sliceKey] });
+                      }}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
