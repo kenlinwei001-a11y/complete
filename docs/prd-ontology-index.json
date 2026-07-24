@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20",
+  "generatedAt": "2026-07-24",
   "ontology": {
     "invariants": [
       "R1",
@@ -454,6 +454,19 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-agent-navigation-slice-latency.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -529,6 +542,17 @@
         "apps/datacore/test/provisioners.test.ts",
         "packages/contracts/src/databuilder.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-capacity-inference-completion.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-catalog-battery-20-scenarios.md": {
@@ -868,6 +892,15 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-global-sim.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "packages/contracts/src/global-sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-goal-metric-owner-spine.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1032,6 +1065,37 @@
       "artifacts": [
         "apps/frontend-shell/src/pages/ShellLayout.tsx",
         "apps/frontend-shell/src/pages/adminRegistry.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-ontoflow-data-builder.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/connectors/parsers.ts",
+        "apps/datacore/src/modeling.ts",
+        "apps/datacore/src/ontology.ts",
+        "apps/datacore/src/pipeline/processing.ts",
+        "apps/datacore/src/pipeline/readiness.ts",
+        "apps/datacore/src/pipeline/service.ts",
+        "apps/datacore/src/pipeline/subgraph.ts",
+        "apps/datacore/src/timeseries.ts",
+        "apps/frontend-shell/src/views/OntologyGraphView.tsx",
+        "packages/contracts/src/pipeline.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/pipeline/readiness.ts"
+      ]
+    },
+    "PRD-ontoflow-v2-unified-modeling.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/domain.ts",
+        "packages/contracts/src/pipeline.ts"
       ],
       "brokenArtifacts": []
     },
@@ -1511,6 +1575,11 @@
       "PRD-query-orchestration-service.md",
       "PRD-unified-build-engine.md"
     ],
+    "G-9": [
+      "PRD-agent-navigation-slice-latency.md",
+      "PRD-scenario-ontogenesis.md",
+      "PRD-simulation-sandbox.md"
+    ],
     "G-5": [
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
@@ -1529,10 +1598,6 @@
     ],
     "G-11": [
       "PRD-sandbox-ontogenesis-buildplan.md",
-      "PRD-simulation-sandbox.md"
-    ],
-    "G-9": [
-      "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
     ]
   },
@@ -1556,7 +1621,8 @@
       "PRD-agent-data-generation-tools.md",
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-build-workflow-runtime.md",
-      "PRD-cli-full-coverage.md"
+      "PRD-cli-full-coverage.md",
+      "PRD-ontoflow-data-builder.md"
     ],
     "scripts/check-cli-parity.mjs": [
       "PRD-A15-cli-universal-operation-shell.md",
@@ -1641,7 +1707,8 @@
       "PRD-aop-annual-scenario-1to1.md"
     ],
     "apps/datacore/src/timeseries.ts": [
-      "PRD-attainment-base-daily-timeseries.md"
+      "PRD-attainment-base-daily-timeseries.md",
+      "PRD-ontoflow-data-builder.md"
     ],
     "packages/contracts/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md"
@@ -1741,10 +1808,14 @@
       "PRD-fullstack-story-build-g8.md"
     ],
     "apps/datacore/src/domain.ts": [
-      "PRD-generation-boundary-grounding.md"
+      "PRD-generation-boundary-grounding.md",
+      "PRD-ontoflow-v2-unified-modeling.md"
     ],
     "apps/datacore/src/growth/loop.ts": [
       "PRD-generation-boundary-grounding.md"
+    ],
+    "packages/contracts/src/global-sim.ts": [
+      "PRD-global-sim.md"
     ],
     "apps/datacore/src/ontology-governance.ts": [
       "PRD-goal-metric-owner-spine.md"
@@ -1816,12 +1887,38 @@
     "apps/frontend-shell/src/pages/adminRegistry.ts": [
       "PRD-nav-ia-reorg.md"
     ],
-    "apps/datacore/src/databuilder/closure.ts": [
-      "PRD-ontology-browser-field-coverage.md"
+    "apps/datacore/src/connectors/parsers.ts": [
+      "PRD-ontoflow-data-builder.md"
     ],
     "apps/datacore/src/modeling.ts": [
+      "PRD-ontoflow-data-builder.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/datacore/src/ontology.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/processing.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/readiness.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/service.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/subgraph.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/frontend-shell/src/views/OntologyGraphView.tsx": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "packages/contracts/src/pipeline.ts": [
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontoflow-v2-unified-modeling.md"
+    ],
+    "apps/datacore/src/databuilder/closure.ts": [
+      "PRD-ontology-browser-field-coverage.md"
     ],
     "apps/datacore/src/solvers/risk.ts": [
       "PRD-order-project-sim-1to1.md",
