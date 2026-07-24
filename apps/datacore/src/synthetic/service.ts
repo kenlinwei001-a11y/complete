@@ -14,7 +14,8 @@ import type { SchedulerService } from "../scheduler.js";
 import type { OutboxService } from "../outbox.js";
 import type { FeatureService } from "../features.js";
 import type { ActionService } from "../actions.js";
-import { VIEW_FEATURE_MAP } from "../features.js";
+import { VIEW_FEATURE_MAP, ALL_FEATURE_KEYS } from "../features.js";
+import { BUILTIN_VIEWS, assertViewManifestIntegrity } from "./view-manifest.js";
 import { AuthService } from "../auth.js";
 import { newId } from "../ids.js";
 import { mulberry32, hashString, round } from "../prng.js";
@@ -49,12 +50,13 @@ const DAY_MS = 86400000;
 const HISTORY_DAYS = 90;
 
 /** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
+// 注：global-sim 已升为核心内置视图（seed:true·进 scenarioSeed.views/BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE），
+// 故从增量视图桶移除（避免与核心 views 双桶重复种入）。
 const PLANVIEW_EXTRA_KEYS = [
   "review",
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
-  "global-sim",
   "geo-map",
   "graph-all",
   "graph-backbone",
@@ -1505,19 +1507,31 @@ export class SyntheticService {
     ];
     const ORDER_CHAIN_LABELS = { DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" };
     const SEG_COLORS = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
+    // 核心内置视图 layout（DF.6 拉取靶：每 solver-backed 视图声明"要拉取的求解器输出字段"——喂 ModuleProvisioner/SHAPE
+    // 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE·G-8/R12 输出侧）。dash 依赖运行时 opts.livedIn，故各核心
+    // 视图 layout 留本地此 map；**成员集 + title + renderer 单一来源 = BUILTIN_VIEWS**（防 scenarioSeed/VIEW_DEFS 漂移·
+    // WO-MEMORY-VIEW-RESILIENCE §4.2）。
+    const CORE_VIEW_LAYOUTS: Record<string, Record<string, unknown>> = {
+      dash: DASH_LAYOUT,
+      graph: {},
+      risk: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] },
+      order: LEDGER_LAYOUT,
+      "plan-audit": { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] },
+      "plan-generate": { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] },
+      "project-sim": { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] },
+      "global-sim": { solverKey: "portfolio" },
+      "sop-balance": { apiTag: "sop" },
+    };
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
-      dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-      graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
-      // DF.6 拉取靶：每 solver-backed 视图声明它"要拉取的求解器输出字段"（pull target）——
-      // 喂 ModuleProvisioner/SHAPE 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE（G-8/R12 输出侧）。
-      risk: { title: "产能推演", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] } },
-      order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
-      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
-      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
-      "project-sim": { title: "项目推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
-      // 全局联合推演（portfolio 求解器·全订单×全基地×时间联合最优）：renderer/solver 均已就绪，此前漏接 workspace 导航致真实态 404。
-      "global-sim": { title: "全局联合推演", renderer: "global-sim", layout: { solverKey: "portfolio" } },
-      "sop-balance": { title: "月度规划", renderer: "sop-balance", layout: { apiTag: "sop" } },
+      // 核心内置视图：成员集/title/renderer 从 BUILTIN_VIEWS 派生（单一来源·防漂移）；layout 取 CORE_VIEW_LAYOUTS。
+      ...Object.fromEntries(
+        BUILTIN_VIEWS.map(
+          (bv): [string, { title: string; renderer: string; layout: Record<string, unknown>; options?: Record<string, unknown> }] => [
+            bv.key,
+            { title: bv.title, renderer: bv.renderer, layout: CORE_VIEW_LAYOUTS[bv.key] ?? bv.layout ?? {}, ...(bv.options ? { options: bv.options } : {}) },
+          ],
+        ),
+      ),
       // 增量 §7.14–7.17
       "annual-scenario": {
         title: "年度规划",
@@ -1557,6 +1571,13 @@ export class SyntheticService {
         { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
       ),
     };
+    // fail-fast（WO-MEMORY-VIEW-RESILIENCE §4.3）：种子路径断言每个 seeded 内置视图接线完整——featureKey 已注册 +
+    // VIEW_FEATURE_MAP 有一致映射 + VIEW_DEFS 有定义。任一半漂移即此处抛错（不再靠人肉发现内存态"视图重启隐身"）。
+    assertViewManifestIntegrity({
+      viewFeatureMap: VIEW_FEATURE_MAP,
+      viewDefs: VIEW_DEFS,
+      registeredFeatureKeys: new Set(ALL_FEATURE_KEYS),
+    });
     const ADMIN_NAV: { key: string; label: string }[] = [
       { key: "connections", label: "数据接入" },
       { key: "rule-docs", label: "规则文档审核" },
@@ -1583,7 +1604,9 @@ export class SyntheticService {
       admin: [...views, ...extraViews],
       planner: [...views, ...extraViews],
       base_manager: [
-        ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
+        // global-sim（全局联合推演）属规划/管理层视图·base_manager 沿用原样不纳入（此前经 extraViews 分桶天然不含·
+        // 升为核心 views 后须显式排除以保行为不变·WO-MEMORY-VIEW-RESILIENCE 只让"该出现的角色"稳定出现，不扩权）。
+        ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate", "global-sim"].includes(v)),
         ...baseManagerExtras,
       ],
     };

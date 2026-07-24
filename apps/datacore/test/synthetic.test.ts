@@ -23,8 +23,10 @@ describe("A7 synthetic data", () => {
     expect(report.rowCounts).toMatchObject({ Base: 13, Model: 6, Order: 24 });
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
+    // global-sim 升为核心内置视图（seed:true·view-manifest.BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE）→ 进 scenarioSeed.views
+    // → 进 report.views 验收快照（此前经 extraViews 分桶不在快照·现收敛回核心，是"缺失视图现身"的诚实体现）。
     expect(report.views).toEqual([
-      "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance",
+      "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 
