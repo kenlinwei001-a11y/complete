@@ -67,11 +67,18 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
 export function bottleneckMatrix(
   c: SolverContext,
   args: { dataMode?: string; baseIds?: string[] },
-): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number>; primary: string }[] } {
+): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number>; primary: string; provenanceSynthetic: boolean }[] } {
   const factors = c.params.bottleneck.factors;
   const wantLive = args.dataMode === "LIVE";
   let anyLive = false;
-  const baseIds = args.baseIds ?? c.bases.map((b) => str(b.props.baseId));
+  // #13 灰数据接缝修：入参 baseId 可为 id 或中文名（前端传 card.base=基地名"常州"）→ 规范到真 baseId("changzhou")，
+  // 否则 liveTightness 按 `e.props.baseId===baseId` 过滤真 Equipment/Line/Process 恒空 → dataMode 恒 MOCK（LIVE 死接线·
+  // 改真 OEE 格子不变色）。未知 ref 保留原值（不抛·不回归·liveTightness 自 MOCK 兜底），口径同 riskTimeline 的 resolveBaseId。
+  const resolveRef = (ref: string): string => {
+    const b = c.bases.find((x) => x.props.baseId === ref || x.props.name === ref);
+    return b ? str(b.props.baseId) : ref;
+  };
+  const baseIds = (args.baseIds ?? c.bases.map((b) => str(b.props.baseId))).map(resolveRef);
   const rows = baseIds
     .sort()
     .map((baseId) => {
@@ -85,7 +92,9 @@ export function bottleneckMatrix(
           tightness[f] = mockTightness(c, baseId, f);
         }
       }
-      return { base: baseName(c, baseId), tightness, primary: primaryFactor(c, baseId) };
+      // #13 provenance 维（守 KILL-MOCK-RED/铁律0.4·加性正交·不改 dataMode）：底层对象是否合成物化 → true →
+      // 前端诚实标"合成·未接实测"，不因 dataMode=LIVE（读到真 OEE/util/良率）就把 demo 合成种子谎报"实测"。镜像 riskTimeline 每卡。
+      return { base: baseName(c, baseId), tightness, primary: primaryFactor(c, baseId), provenanceSynthetic: baseProvenanceSynthetic(c, baseId) };
     });
   return { dataMode: wantLive && anyLive ? "LIVE" : "MOCK", factors, rows };
 }

@@ -72,6 +72,9 @@ export const BottleneckMatrixOutputSchema = z.object({
       base: z.string(),
       tightness: z.record(z.string(), z.number()), // 因素 → 0–100
       primary: z.string(),
+      // #13 灰数据接缝修·provenance 维（加性·守 KILL-MOCK-RED）：底层对象合成物化 → 前端诚实标"合成·未接实测"
+      // （不因 dataMode=LIVE 就把 demo 合成谎报"实测"）。缺省向后兼容。
+      provenanceSynthetic: z.boolean().optional(),
     }),
   ),
 });

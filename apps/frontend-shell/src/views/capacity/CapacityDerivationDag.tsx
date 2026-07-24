@@ -17,7 +17,7 @@ interface Prov { kind: string; drillType: string; drillField: string; drillValue
 interface OutlookLine { key: string; value: number; provenance: Prov }
 interface Horizon { available: number; gap: number; status: string; lines: OutlookLine[] }
 interface Outlook { baseName: string; horizons: Horizon[] }
-interface BnRow { base: string; tightness: Record<string, number>; primary: string }
+interface BnRow { base: string; tightness: Record<string, number>; primary: string; provenanceSynthetic?: boolean }
 interface Bn { factors: string[]; rows: BnRow[]; dataMode?: string }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -73,9 +73,11 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
     const fb = bn.data?.rows?.[0]?.tightness?.[f];
     return typeof fb === "number" && Number.isFinite(fb) ? fb : null;
   };
-  // dataMode=LIVE 且矩阵真回 LIVE → 张力锚点为"实测"（读真 Equipment/Line/Process）；否则诚实标"估算(无实测)"。
+  // #13 灰数据接缝修：dataMode=LIVE 且矩阵真回 LIVE → 读真 Equipment/Line/Process 张力；但底层对象合成物化
+  // （demo 世界）→ 诚实"合成·未接实测"（不谎报"实测"·守 KILL-MOCK-RED/铁律0.4）；无真源 → "估算(无实测)"。
   const bnLive = bn.data?.dataMode === "LIVE";
-  const bnKind = bnLive ? "实测" : "估算(无实测)";
+  const bnSynthetic = bnRow?.provenanceSynthetic === true;
+  const bnKind = bnSynthetic ? "合成·未接实测" : bnLive ? "实测" : "估算(无实测)";
   const anchorVal = (a: (typeof LAYER_SPEC)[number]["anchor"]): { label: string; value: string; field: string; kind: string; tight: number | null } => {
     switch (a) {
       case "available": return { label: "可用产能数", value: `${fmt(hz.available)} 套`, field: "base_capacity_outlook.available", kind: "派生", tight: null };
