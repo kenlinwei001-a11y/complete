@@ -130,18 +130,22 @@ export interface EpochClient {
   current(ctx: ToolAuthCtx): Promise<{ epoch: number }>;
 }
 
-/** 能力发现与路由 §1：资源目录发现（discover 工具的 DataCore 出口）。 */
+/**
+ * 能力发现与路由 §1：资源目录发现（discover 工具的 DataCore 出口）。
+ * WO-DRIL-PRECISION：item 形状补 `answersQuestions`/`tags`（optional）——DataCore 目录本就产出，
+ * 需透传到 DRIL projectSolvers 供语义检索（此前 HTTP 出口 map 时被丢弃 = 断在接缝）。
+ */
 export interface CatalogClient {
   discover(
     ctx: ToolAuthCtx,
     kind: "slices" | "solvers",
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
-  /** A1：求解器全集注册表（31，feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
   solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */

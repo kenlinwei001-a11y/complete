@@ -31,7 +31,10 @@ const GOLDEN_CATALOG: CatalogItem[] = [
   { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", domain: "equip" },
   { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", domain: "plan" },
   { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行。", domain: "finance" },
-  { key: "supply_demand_gap_attribution", name: "供需失衡双向归因", description: "产销缺口双向分摊到需求端(预测偏差)与供给端(产能/物料/设备)，各占多少、每叶证据。", domain: "decision" },
+  { key: "supply_demand_gap_attribution", name: "供需失衡双向归因", description: "产销缺口双向分摊到需求端(预测偏差)与供给端(产能/物料/设备)，各占多少、每叶证据。", domain: "decision", answersQuestions: ["供需为什么对不上", "需求预测虚高还是供不上", "各占多少"], tags: ["supply-demand", "gap", "attribution", "forecast"] },
+  // WO-DRIL-PRECISION：对口根因族——镜像真目录 answersQuestions，让对口 solver 拿到语义分排到榜首。
+  { key: "gap_attribution", name: "深度反向缺口归因", description: "总目标缺口沿本体反向多跳结构分摊到基地×订单×瓶颈叶，再沿因果边溯到终点根因，产原子因素表+residual。回答『总缺口一路归到哪些最终根因、各占多少、每叶证据』。", domain: "decision", answersQuestions: ["为什么这个指标没达标", "份额下降的根因是什么", "储能份额为什么下降逐层拆根因", "逐层拆根因、缺口一路归到哪些最终根因", "总缺口主要来自哪一层、各占多少", "每叶证据是什么"], tags: ["gap", "attribution", "rootcause", "缺口归因", "逐层拆根因", "指标没达标"] },
+  { key: "margin_attribution", name: "毛利倒挂归因", description: "成本项拆解 + 倒挂群主驱动聚合，定位毛利倒挂的根因成本项。净室通用。", domain: "generic", answersQuestions: ["毛利为什么倒挂", "哪个成本项拖垮了毛利", "毛利倒挂的根因成本项是哪些", "成本项怎么拆解定位倒挂", "倒挂群的主驱动成本是什么"], tags: ["margin", "毛利倒挂", "成本项", "cost", "attribution"] },
 ];
 
 const GOLDEN_ONTOLOGY_TYPES = [
@@ -56,6 +59,8 @@ const GOLDEN_QUERIES: { query: string; expect: string }[] = [
   { query: "产品碳足迹核算能耗碳排", expect: "carbon_footprint" },
   { query: "供需产销为什么对不上双向归因", expect: "supply_demand_gap_attribution" },
   { query: "认证工程师怎么排期到周", expect: "cert_schedule" },
+  // WO-DRIL-PRECISION 命门：灌 answersQuestions 后对口根因 solver 须排到榜首（此前 gap_attribution 第4·margin_attribution 抢第1）。
+  { query: "储能份额为什么下降 逐层拆根因", expect: "gap_attribution" },
 ];
 
 function topKeys(res: ResourceSearchResponse, k: number): string[] {
@@ -84,6 +89,21 @@ describe("WO-DRIL-P2 · golden query set → top-3 命中率（SEAM 头号判据
     // 诊断：未命中项打印（便于审核复现真跑）。
     if (misses.length > 0) console.log("[dril-retrieval] top-3 未命中：\n" + misses.join("\n"));
     expect(hitRate, `top-3 命中率 ${(hitRate * 100).toFixed(1)}%`).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("WO-DRIL-PRECISION 命门：储能份额逐层拆根因 → gap_attribution 进 top-3 且压过 margin_attribution（灌样例问句·对口根因 solver 上榜）", () => {
+    const res = engine.search("储能份额为什么下降 逐层拆根因", resources, { maxResults: 10, minScore: 0 });
+    const keys = res.results.map((r) => r.resource.key);
+    const top3 = keys.slice(0, 3);
+    // 命门：对口根因 solver 必进 top-3（此前 gap_attribution 第4·没上 top-3=没做到）。
+    expect(top3, `实得 top-3 [${top3.join(", ")}]`).toContain("gap_attribution");
+    // 病根回归护栏：margin_attribution 不得再抢在 gap_attribution 之前（此前 margin 第1·gap 第4）。
+    const gapRank = keys.indexOf("gap_attribution");
+    const marginRank = keys.indexOf("margin_attribution");
+    expect(gapRank).toBeGreaterThanOrEqual(0);
+    expect(gapRank, `gap_attribution(${gapRank}) 应排在 margin_attribution(${marginRank}) 之前`).toBeLessThan(
+      marginRank === -1 ? Number.POSITIVE_INFINITY : marginRank,
+    );
   });
 
   it("每条结果带 scoreBreakdown（五项）+ 非空 explanation（§7.3 可解释性）", () => {

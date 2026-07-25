@@ -33,15 +33,27 @@ export interface CatalogItem {
   description: string;
   argHints?: Record<string, string>;
   domain?: string;
+  /** 该资源能回答的 NL 样例问句（供近似问句语义检索/选型；search-engine semanticCandidates 已消费）。 */
+  answersQuestions?: string[];
+  /** 检索标签（供语义候选补召回）。 */
+  tags?: string[];
 }
 
-/** solver ← DataCore solverRegistry（含净室通用族 + A8 CP-SAT）。 */
+/**
+ * solver ← DataCore solverRegistry（含净室通用族 + A8 CP-SAT）。
+ * WO-DRIL-PRECISION：把目录侧的 `answersQuestions`（NL 样例问句）+ `tags` 一并投影进
+ * IntelligenceResource——消费方 search-engine.semanticCandidates（:270）本就吃 answersQuestions，
+ * 补齐后对口根因 solver 才拿得到语义分（此前只投 label/description/capability，样例问句被丢弃 →
+ * intent 有样例分高、solver 没有排不上榜的病根）。R6：纯映射静态数据·同输入字节同序。
+ */
 export function projectSolvers(items: CatalogItem[]): SolverResource[] {
   return items.map((s) => ({
     kind: "solver" as const,
     key: s.key,
     label: nonEmpty(s.name, s.key) ?? s.key,
     description: nonEmpty(s.description, s.name, `求解器 ${s.key}`) ?? `求解器 ${s.key}`,
+    ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
+    ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
     argHints: s.argHints,
     domain: s.domain,
     capability: nonEmpty(s.description, s.name),
@@ -58,6 +70,9 @@ export function projectSlices(items: CatalogItem[]): SliceResource[] {
     key: s.key,
     label: nonEmpty(s.name, s.key) ?? s.key,
     description: nonEmpty(s.description, s.name, `本体切片 ${s.key}`) ?? `本体切片 ${s.key}`,
+    // WO-DRIL-PRECISION：切片同理投影样例问句/标签（目录若声明则带上·search-engine 已消费）。
+    ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
+    ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
     argHints: s.argHints,
     domain: s.domain,
     capability: nonEmpty(s.description, s.name),
