@@ -18,6 +18,7 @@ import { builtinTool } from "../tools/registry.js";
 import { enrichProvenance } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
+import { reflectAnswer, type ReflectVerdict } from "./reflect.js";
 import {
   CONTEXT_FULL_REMINDER,
   ContextBudgeter,
@@ -96,6 +97,19 @@ export interface AgentLoopOpts {
    * ReAct 兜底，模型可继续逐跳）。缺省（不传）= 逐字节沿用既有 ReAct（既有全部 agent 测试不受影响）。
    */
   sliceSolverKeys?: string[];
+  /**
+   * WO-REFLECT-LOOP · 收尾前反思步开关（**暗发·默认关**→ 不传即零回归·既有全部 agent 测试逐字节不变）。
+   * 开启后：模型将调 final_answer 收尾时先过一遍确定性复盘（reflect.ts）——不过关则回注原因、硬有界重规划一轮再复盘。
+   * 仅 path-B `runAgentLoop` 生效（path-A/compose 直出不经此循环）。生产接线（据 entitlement 开关）由 orchestrator 侧注入（WO-0 领域·本单不碰）。
+   */
+  reflect?: boolean;
+  /** 反思不过关时的重规划轮次上界（硬有界·默认 1）。 */
+  replanBudget?: number;
+  /**
+   * 可选 LLM critic（entitlement `agent.critic`·暗发）：确定性复盘之后的 advisory 复核——返回 {ok,reason}。
+   * **fail-open**：未注入 / 抛错 → 只用确定性复盘结论（绝不阻断循环·R6 主判仍确定）。
+   */
+  critic?: (input: { blocks: AnswerBlock[]; userContent: string }) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface AgentLoopResult {
@@ -115,6 +129,13 @@ export interface AgentLoopResult {
    *（true = 至少一轮越界·false = 全程 plan 落在图内）。观测用（不改答案/溯源）。
    */
   planFellBackToReAct?: boolean;
+  /**
+   * WO-REFLECT-LOOP：仅当 opts.reflect 开启时有值——本次收尾是否经反思复盘拦下并重规划过
+   *（对齐 planFellBackToReAct 手法·观测用·不改数字/溯源）。
+   */
+  reflected?: boolean;
+  /** 反思不过关的原因（末次复盘的 reasons 拼接·观测/交底用）。 */
+  replanReason?: string;
 }
 
 /**
@@ -186,6 +207,31 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: nu
 }
 
 /** Hand-written agent tool loop (QOS-PRD §6.3 — toolRunner is intentionally NOT used). */
+/**
+ * WO-REFLECT-LOOP · 复盘 = 确定性 `reflectAnswer`（R6 主判）+ 可选 LLM critic（entitlement agent.critic·advisory）。
+ * critic 未注入 / 抛错 → 只用确定性结论（**fail-open**·绝不阻断循环）；critic 判不过 → 追加一条 reason。
+ */
+async function reflectWithCritic(
+  answer: Answer,
+  opts: AgentLoopOpts,
+  iterations: AgentIteration[],
+): Promise<ReflectVerdict> {
+  const base = reflectAnswer({
+    blocks: answer.blocks,
+    provenanceCount: answer.provenance.length,
+    iterations,
+    userContent: opts.userContent,
+  });
+  if (!opts.critic) return base;
+  try {
+    const c = await opts.critic({ blocks: answer.blocks, userContent: opts.userContent });
+    if (!c.ok) return { ok: false, reasons: [...base.reasons, `LLM critic：${c.reason ?? "复核未过"}`] };
+  } catch {
+    // fail-open：critic 抛错不影响确定性主判（R6 复盘仍生效）。
+  }
+  return base;
+}
+
 export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult> {
   const messages: LlmAgentMessage[] = [{ role: "user", content: opts.userContent }];
   const iterations: AgentIteration[] = [];
@@ -220,6 +266,11 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let forceFinalAnswer = false;
   // 推理型模型"在推理通道给结论却漏调 final_answer"的补救只做一次（避免与降级路径互斥死循环）。
   let finalAnswerNudged = false;
+  // WO-REFLECT-LOOP：反思步状态（仅 opts.reflect 开启时用）。replanBudget 硬有界（默认 1）。
+  const replanBudget = Math.max(0, opts.replanBudget ?? 1);
+  let replansUsed = 0;
+  let reflected = false;
+  let lastReplanReason = "";
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -652,6 +703,49 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (finalBlock) {
       const accepted = await acceptFinalAnswer(finalBlock.input, opts);
       if (accepted.ok) {
+        // WO-REFLECT-LOOP · 收尾前反思步（暗发·仅 opts.reflect 开·path-A/compose 不经此循环）。
+        // 确定性复盘（reflect.ts·R6）+ 可选 LLM critic（agent.critic·fail-open advisory）→ 不过关且 replan 预算未尽 →
+        // 把原因当作 final_answer 的 tool_result 回注（复用「无效 final_answer」同款 API 合法机制）+ 重规划一轮再复盘。
+        if (opts.reflect) {
+          const verdict = await reflectWithCritic(accepted.answer, opts, iterations);
+          if (!verdict.ok) {
+            reflected = true;
+            lastReplanReason = verdict.reasons.join("；");
+            const canReplan = replansUsed < replanBudget && !finalizePending && !opts.budget.exhausted && !opts.budget.roundTripsExceeded();
+            if (canReplan) {
+              replansUsed += 1;
+              messages.push({
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    toolUseId: finalBlock.id,
+                    content: `【反思复盘·未过关（第 ${replansUsed} 次重规划）】${lastReplanReason}。请据此补齐证据 / 调用对口 solver 后，重新用 final_answer 收尾。`,
+                    isError: true,
+                  },
+                ],
+              });
+              iterations.push({ index: i, toolCalls: [] });
+              continue;
+            }
+            // 重规划预算尽仍不过关 → 诚实收尾：附「反思发现的残余缺口」块（不静默发半成品·KILL-MOCK-RED）。
+            const gapBlocks: AnswerBlock[] = [
+              ...accepted.answer.blocks,
+              { type: "text", markdown: `【反思发现的残余缺口（已尽重规划预算 ${replanBudget}）】${lastReplanReason}` },
+            ];
+            iterations.push({ index: i, toolCalls: [] });
+            return {
+              outcome: "ANSWERED",
+              answer: { ...accepted.answer, blocks: gapBlocks, unverifiedNumerics: scanBlocks(gapBlocks) },
+              structured: accepted.structured,
+              run: finishRun(false),
+              sketch,
+              reflected: true,
+              replanReason: lastReplanReason,
+              ...(opts.sliceSolverKeys ? { planFellBackToReAct } : {}),
+            };
+          }
+        }
         iterations.push({ index: i, toolCalls: [] });
         return {
           outcome: "ANSWERED",
@@ -659,6 +753,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
           structured: accepted.structured,
           run: finishRun(false),
           sketch,
+          ...(opts.reflect ? { reflected } : {}),
+          ...(reflected && lastReplanReason ? { replanReason: lastReplanReason } : {}),
           ...(opts.sliceSolverKeys ? { planFellBackToReAct } : {}),
         };
       }

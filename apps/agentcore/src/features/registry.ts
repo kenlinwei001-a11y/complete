@@ -101,6 +101,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // **组合路径**——runPathB 内多对口 solver 可串时 compileSolverPlan→executePlan 服务端多步 + 一次综合（不落 runAgentLoop）。
   // orchestrator composePathEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变）。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
+  { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
