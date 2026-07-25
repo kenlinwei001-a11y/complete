@@ -422,6 +422,18 @@ export class LlmSettings {
     return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
   }
 
+  /**
+   * WO-0-NL-WIRING（急救·产出③）：本 role 是否有**可用凭据**的 LLM provider。
+   * 先按 roleModel 同序解析最终 spec（含 explicit keyless 探测 + 租户绑定回落 + env 默认），
+   * 再判该 spec 的 provider 凭据是否齐（复用 explicitProviderUsable·**从不抛**·R6）。
+   * 用于 orchestrator 在 classify 失败（无 LLM）时判「真无 provider」→ 诚实降级而非 INTERNAL_ERROR。
+   * 注：测试用 mock LlmClient（classify 成功·不落此判定路径），此方法只在真·无凭据部署触发。
+   */
+  async providerAvailable(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<boolean> {
+    const spec = await this.roleModel(tenantId, role, explicit);
+    return this.explicitProviderUsable(tenantId, spec);
+  }
+
   /** 租户级用途绑定（A 为 source of truth）→ B 本地旧通道 → undefined（由调用方落 env 默认）。 */
   private async tenantBoundModel(tenantId: string | undefined, role: LlmRole): Promise<string | undefined> {
     if (!tenantId) return undefined;

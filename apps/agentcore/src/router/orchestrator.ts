@@ -448,6 +448,13 @@ export class Orchestrator {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
       }
+      // WO-0-NL-WIRING（急救·产出③）：classify 失败且**真无可用 LLM provider**（凭据缺）→ 诚实降级 COMPLETED，
+      // 不落 runPathB→agent loop 再要 LLM→INTERNAL_ERROR 崩（用户实测的"agent 推演中断"）。
+      // 有 provider（含测试 mock：classify 成功不到此分支；即便到此，绑定/env 有凭据则 true）→ 照旧 runPathB（字节兼容）。
+      if (!(await this.deps.llmSettings.providerAvailable(task.tenantId, "agent", pkg.agentModel))) {
+        await this.completeNoLlmDegradation(task);
+        return;
+      }
       await this.runPathB(taskId, auth, {
         candidates: [],
         outOfCatalog: true,
@@ -1479,6 +1486,34 @@ export class Orchestrator {
     });
     await this.deps.events.emit(task.id, "answer.final", answer);
     this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  /**
+   * WO-0-NL-WIRING（急救·产出③）：无可用 LLM provider 时的诚实降级收尾（COMPLETED·非 FAILED/INTERNAL_ERROR）。
+   * 对话从"崩"变"诚实说未接 LLM 并指路"——绝不静默空答，也绝不红错叙述。
+   */
+  private async completeNoLlmDegradation(task: QueryTask): Promise<void> {
+    const answer: Answer = {
+      trustLevel: "AGENT_EXPLORATORY",
+      blocks: [
+        {
+          type: "text",
+          markdown:
+            "当前未接入可用的 LLM 提供商，无法对这类自由问句做开放推理。请在「设置 → LLM」绑定一个提供商后重试；" +
+            "或改用场景卡/确定性入口提问（产能可行性、缺口归因等预设问题无需 LLM 即可作答）。",
+        },
+      ],
+      provenance: [],
+      unverifiedNumerics: false,
+    };
+    await this.deps.repos.tasks.patch(task.id, {
+      status: "COMPLETED",
+      path: "AGENT",
+      answer,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(task.id, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
   }
 
   // -------------------------------------------------------------------------
