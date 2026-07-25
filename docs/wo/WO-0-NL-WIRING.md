@@ -15,14 +15,23 @@
 - `apps/agentcore/src/llm/providers.ts`
 - 对应 test
 
+## 真实实测证据（产品负责人·无 LLM 本地跑）
+| 问法 | 判给哪条路 | 结果 |
+|---|---|---|
+| 「4680-NCM 加 20% 六周能不能接」自由问 | AI 智能体路 path-B | ❌ agent 推演中断 INTERNAL_ERROR |
+| 同问题 + **场景卡意图绑定** | **还是 path-B** | ❌ 一样失败 |
+
+→ 两条尖锐结论：**(甲)** 连**已绑定意图的场景卡**都落 path-B，说明确定性路由**没吃到绑定/已知意图**——这不只是"缺 LLM"，是路由本身漏了确定性入口；**(乙)** path-B 无 LLM 时是 **INTERNAL_ERROR 崩**，不是诚实降级。
+
 ## 产出
 1. **意图理解真接 LLM**：绑定的 provider（scenario package / DataCore binding / tenant / env `QOS_CLASSIFIER_MODEL`）真正驱动 classifier。意图环节可指轻量模型，其余环节用推理档（`QOS_AGENT_MODEL`）。
-2. **确定性兜底**：低置信 / 无 LLM 时走 `domainResolve` 正则 fail-safe，**不落 path-B 洪泛报错**（`DETERMINISTIC_PREFERENCE_THRESHOLD=0.6`）。
-3. **降级诚实**：真答不了就明说能力边界，不编。
+2. **确定性入口吃到已知意图（对应证据甲）**：**场景卡绑定意图 / `domainResolve` 高置信（≥0.6）→ 必走 path-A 确定性，压根不进 path-B**（不需 LLM）。修当前"连绑定意图都落 path-B"的漏。
+3. **path-B 无 LLM 诚实降级（对应证据乙）**：真开放题落 path-B 且无 LLM/provider 不可达时 → **诚实降级**（"当前未接 LLM，仅能给确定性结论/明确能力边界"），**绝不 INTERNAL_ERROR 崩**。
 
-## SEAM 门（头号判据·env-gated 真 LLM）
-- 真 LLM 下「4680-NCM 加 20% 六周能不能接」→ classify 命中 `capacity_feasibility` → path-A → **COMPLETED 真答案**。
-- **无 LLM 时不 INTERNAL_ERROR**，而是确定性兜底或诚实降级（字节兼容零回归）。
+## SEAM 门（头号判据）
+- **无 LLM**：① 场景卡绑定意图问句 → **path-A** → 出确定性答案（不崩·证据甲修复）；② 纯自由开放问 → path-B **诚实降级文案**（非 INTERNAL_ERROR·证据乙修复）。
+- **真 LLM（env-gated）**：「4680-NCM 加 20% 六周能不能接」自由问 → classify 命中 `capacity_feasibility` → path-A → **COMPLETED 真答案**。
+- 字节兼容零回归。
 
 ## 验收
 - 上面 SEAM 测通过（漏则红）。
