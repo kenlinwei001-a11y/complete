@@ -46,8 +46,15 @@ PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64位he
 PORT=4002 DATACORE_BASE_URL=http://127.0.0.1:4001 node apps/agentcore/dist/main.js
 ```
 开发态认证头（不用真 JWT）：`-H 'X-Debug-User: demo:admin:admin|planner|catalog_admin'`
+> ⚠️ **X-Debug-User 只在非生产（内存/本地 dev）模式生效**（DataCore `app.ts:736`：`NODE_ENV!=="production"` 才认这个头）。**docker/生产模式会忽略它 → 401**，此时必须用**真 JWT**（见下）。
 
-**B. 前端点击态**：`docker compose up --build`（见 DEPLOY.md），登录 `demo / admin / demo1234`。
+**B. 前端点击态 / docker（生产模式·NODE_ENV=production）**：`docker compose up --build`（见 DEPLOY.md），登录 `demo / admin / demo1234`。
+> docker 模式后端 curl 必须带**真 JWT**（X-Debug-User 会 401）：先登录拿 token —
+> ```bash
+> TOKEN=$(curl -s -X POST http://localhost/a/v1/auth/login -H 'Content-Type: application/json' \
+>   -d '{"tenantId":"demo","username":"admin","password":"demo1234"}' | jq -r '.accessToken')
+> AUTH="Authorization: Bearer $TOKEN"    # 下面 curl 用 -H "$AUTH" 代替 X-Debug-User
+> ```
 
 ---
 
@@ -55,24 +62,34 @@ PORT=4002 DATACORE_BASE_URL=http://127.0.0.1:4001 node apps/agentcore/dist/main.
 **目的**：验证所有资源类型都进了统一注册表。
 **步骤**：
 ```bash
-curl -s http://127.0.0.1:4002/b/v1/resources \
-  -H 'X-Debug-User: demo:admin:admin|catalog_admin' | jq '.items | group_by(.kind) | map({kind: .[0].kind, n: length})'
+# docker：-H "$AUTH"（真 JWT）+ 网关同源 localhost；内存态：-H 'X-Debug-User: demo:admin:admin|catalog_admin' + :4002
+curl -s http://localhost/b/v1/resources -H "$AUTH" | jq '.items | group_by(.kind) | map({kind: .[0].kind, n: length})'
 ```
-**期望**：返回里**同时出现 solver / slice / rule / workflow / skill / agent 多种 kind**（不是只有 solver）。每种 n≥1。
+**期望**：返回里**同时出现 solver / slice / rule / workflow / skill / agent / intent / mcp_tool 多类 kind**（docker 全播种态实测 8 类·~144 条；内存态 ~88 条·类数相同）。每类 n≥1。
 **判过**：≥4 种 kind 都有；**判不过**：只回 solver 或某几类缺失、或 500。
 
 ---
 
 ### T2 · DRIL 混合检索：语义搜得到、排序合理（后端）
-**目的**：验证 `retrieve_knowledge`/搜索接口能按语义找到对口资源并排序。
-**步骤**：
+**目的**：验证搜索接口能按语义找到对口资源并排序。
+> **两个坑先看**（否则会误判红）：
+> 1. **返回结构是嵌套** `{resource:{kind,key,...}, score, scoreBreakdown}`，不是扁平——jq 要用 `.resource.kind`。（注：agent 的 `retrieve_knowledge` 工具会**拍扁**成 `{kind,key,score}`；只有这个**原始 endpoint** 是嵌套。）
+> 2. **不加 kinds 过滤时 intent 会排前面是正常的**——intent 带自然语言样例问句，NL 查询语义命中天然高。要验"对口 **solver**"，必须加 `"kinds":["solver"]`（agent 的组包 `buildResourcePackage` 本来就先过滤到 solver 再注入，所以 agent 拿到的是对口 solver·不受 intent 挤占）。
+
+**步骤**（docker 用 `-H "$AUTH"`；内存态用 X-Debug-User）：
 ```bash
-curl -s -X POST http://127.0.0.1:4002/b/v1/resources/search \
-  -H 'X-Debug-User: demo:admin:admin|catalog_admin' -H 'Content-Type: application/json' \
-  -d '{"query":"储能份额为什么下降 逐层拆根因","topK":5}' | jq '.results[] | {kind,key,score}'
+# ① 只看 solver（验对口归因求解器排序）——这是判 DRIL 路由准不准的正解
+curl -s -X POST http://localhost/b/v1/resources/search \
+  -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"query":"储能份额为什么下降 逐层拆根因","kinds":["solver"],"maxResults":5}' \
+  | jq '.results[] | {kind:.resource.kind, key:.resource.key, score}'
+# ② 全类（会看到 intent 在前·正常）——仅用于观察全景
+curl -s -X POST http://localhost/b/v1/resources/search -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"query":"储能份额为什么下降 逐层拆根因","maxResults":8}' \
+  | jq '.results[] | {kind:.resource.kind, key:.resource.key, score}'
 ```
-**期望**：结果里**排在前面的应是归因类求解器**（如 `gap_attribution` / `supply_demand_gap_attribution`），score 从高到低。
-**判过**：对口归因 solver 进前 3 且分数最高一档；**判不过**：对口 solver 根本没出现，或排在无关资源后面。
+**期望**：①（kinds=solver）里**归因类 solver**（`gap_attribution` / `supply_demand_gap_attribution`）进前 3、score 从高到低。②里 intent 靠前属正常。
+**判过**：①中对口归因 solver 进前 3；**判不过**：①里（已限 solver）对口归因 solver 仍不进前 3 或根本不出现（那才是真排序 bug）。
 
 ---
 
