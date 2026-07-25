@@ -92,6 +92,7 @@ export const zh = {
     solverReview: "求解器审核台",
     solvers: "求解器目录",
     configMigration: "配置迁移",
+    resources: "智能资源治理",
   },
   errors: {
     notFoundTitle: "页面不存在",

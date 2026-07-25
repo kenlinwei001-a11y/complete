@@ -1229,3 +1229,46 @@ export interface LiveScenarioMatrix {
 }
 export const compareLiveScenarios = (ids: string[]) =>
   api.a<LiveScenarioMatrix>("/a/v1/sim/live-scenarios/compare", { body: { ids } });
+
+// ---------------------------------------------------------------------------
+// WO-DRIL-P4 · Decision Resource Intelligence Layer 治理页端点（AgentCore /b/v1/resources·消费 P1/P2/P3·R1 契约不重定义）。
+// ---------------------------------------------------------------------------
+import type {
+  IntelligenceResource,
+  ResourceSearchResponse,
+  ResourceRelation,
+} from "@platform/contracts";
+
+/** 1-hop 关系图响应（出边含对象类型派生边 + 入边·server relationsOf/inbound）。 */
+export interface ResourceRelationsResponse {
+  resource: { kind: string; key: string };
+  relations: ResourceRelation[];
+  inbound: { fromKind: string; fromKey: string; relType: string }[];
+}
+/** 运行时质量分响应（server: { kind, key, quality: 质量分行 | null }·EWMA·null=尚无观测）。 */
+export interface ResourceQualityResponse {
+  kind: string;
+  key: string;
+  quality: { successRate?: number; usageCount?: number; avgLatencyMs?: number; lastProbeAt?: string } | null;
+}
+
+/** 资源列表（可选 kind/tag 过滤）——治理页左栏。 */
+export const fetchResources = (params: { kind?: string; tag?: string } = {}) => {
+  const qs = new URLSearchParams();
+  if (params.kind) qs.set("kind", params.kind);
+  if (params.tag) qs.set("tag", params.tag);
+  const suffix = qs.toString();
+  return api.b<{ items: IntelligenceResource[]; total: number }>(`/b/v1/resources${suffix ? `?${suffix}` : ""}`);
+};
+
+/** 混合检索（NL query → 排序 + scoreBreakdown + explanation）——治理页搜索框。 */
+export const searchResources = (body: { query: string; kinds?: string[]; maxResults?: number; minScore?: number }) =>
+  api.b<ResourceSearchResponse>("/b/v1/resources/search", { body });
+
+/** 单资源 1-hop 关系图。 */
+export const fetchResourceRelations = (kind: string, key: string) =>
+  api.b<ResourceRelationsResponse>(`/b/v1/resources/${encodeURIComponent(kind)}/${encodeURIComponent(key)}/relations`);
+
+/** 单资源运行时质量分（EWMA·null=尚无观测）。 */
+export const fetchResourceQuality = (kind: string, key: string) =>
+  api.b<ResourceQualityResponse>(`/b/v1/resources/${encodeURIComponent(kind)}/${encodeURIComponent(key)}/quality`);

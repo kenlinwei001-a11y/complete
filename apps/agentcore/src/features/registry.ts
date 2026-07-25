@@ -102,6 +102,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator composePathEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变）。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
   { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-DRIL-P4（R3 暗发·defaultOn:false·字节兼容·不劫持既有 path-B·PRD-decision-resource-intelligence-layer §8.3）：
+  // Path-B Agent Loop 注入 DRIL 资源包（ResourceRouter.buildResourcePackage 跨 solver/slice/rule/skill/workflow 预选）
+  // 到首轮 user prompt——agent 有预置资源包 → 不再盲 discover 逐跳（round-trip ≤4·SEAM）。
+  // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
+  { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
