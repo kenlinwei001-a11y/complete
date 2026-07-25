@@ -9,6 +9,17 @@
 
 结论：LLM 主要就用在**意图分类+抽槽位**这一步；分类成功后多数问题走确定性 path-A（不再需 LLM）。现在的病根 = 分类器那步没真接上绑定的 LLM。
 
+## 精确崩点定位（审核方已挖·dev 直接下手）
+无 LLM 时 INTERNAL_ERROR 的确切链路（`apps/agentcore/src/router/orchestrator.ts`）：
+1. `classify()`（:580）无 provider → `llm.classify` 抛错 → 循环重试 3 次全失败（:609-620）→ **返回 `undefined`**（:622）。
+2. 主流程 `if (!classification)`（:445）→ 落 `runPathB(taskId, auth, {outOfCatalog:true,...})`（:451）。
+3. `runPathB` → `runAgentLoop` 又要 LLM provider → 无 → **INTERNAL_ERROR**。
+
+**拦截点（产出③落地处）**：在 :445 的 `!classification` 分支（及其它落 runPathB 的分支，如 :467/:482）**先探"是否有可用 LLM provider"**——
+- **无 provider** → 不进 runPathB/runAgentLoop，直接产**诚实降级答案**（status COMPLETED·文案"当前未接 LLM，无法理解自由问句；请绑定 LLM 或改用场景卡/确定性入口"）；若存在确定性候选（domainResolve/ceo-route 命中）→ 先走确定性 path-A。
+- **有 provider**（真开放题）→ 照走 runPathB（字节兼容）。
+> 注：`preferDeterministicSolver(domainResolve(...))`（:406）与场景卡 `scenarioIntentKey` 绑定（:357）已是确定性入口——**产出②要修的是让它们真命中**（你实测场景卡绑定仍落 path-B = 绑定意图的槽位没从上下文满足 or 该意图无对口确定性 solver → 未被 :357/:406 拦住）。dev 需查这两处为何没拦下"4680 加 20%"类问句。
+
 ## 🚦 文件边界（只碰这些）
 - `apps/agentcore/src/router/orchestrator.ts`
 - `apps/agentcore/src/router/domain-resolver.ts`
