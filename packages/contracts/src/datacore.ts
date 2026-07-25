@@ -110,6 +110,9 @@ export const RuleEntrySchema = z.object({
   // A3-SUITE-1：params 同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys），
   // 保持单一 RuleEntry 一等实体，不改 PropagationRule 的数值读取路径（冷启动 fallback）。
   params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
+  // WO-RULES-CLASSIFY（加性·向后兼容）：规则业务类别（如 产能/物料/财务/合规/换型…）。规则库按此可筛选；
+  // 单一来源=场景包 rule 元数据（种子/文档抽取时随规则一并授予，前端只读渲染 chip，非写死清单）。旧规则/手工规则可空 → 前端归「未分类」。
+  category: z.string().optional(),
   origin: RuleOriginSchema,
   version: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
@@ -333,6 +336,8 @@ export const IndustryTemplateSchema = z.object({
       // 规则即引用（PRD-rules-as-references）：命名阈值，供求解器读（P2）+ 规则编辑器改。
       // 注：切片契约元数据不进 rules（见 sliceContracts）——它非行为规则、无 DSL 表达式、不进 planviews 域映射。
       params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
+      // WO-RULES-CLASSIFY（加性）：规则业务类别（种子随规则授予，规则库分类筛选的真元数据源）。
+      category: z.string().optional(),
       origin: RuleOriginSchema.optional(),
       version: z.number().int().optional(),
       status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
