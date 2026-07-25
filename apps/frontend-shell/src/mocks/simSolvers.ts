@@ -1092,8 +1092,20 @@ const portOrderBases = (o: { bases: string }): string[] => { const id = portBase
 const portBaseHome = new Map<string, string>();
 for (const o of ORDERS) { for (const b of portOrderBases(o)) if (!portBaseHome.has(b)) portBaseHome.set(b, o.model); }
 
+// WO-W5·mock 业务类型 regime（dev 态镜像 datacore businessTypeRegime·预测虚高倍率·令三档场景标签正确；真求解走 datacore）。
+const MOCK_BT_FORECAST_MULT: Record<string, number> = { passenger: 15, commercial: 19, storage: 11 };
+// 占用率锚（dev 态·= datacore 观测三档：乘用车产能不足>1 / 储能≈95%稳 / 商用车空闲<0.6；真反应态见 allocatedQty 随勾选真变）。
+const MOCK_BT_UTIL_ANCHOR: Record<string, number> = { passenger: 1.2, commercial: 0.4, storage: 0.95 };
+const MOCK_BT_TYPES = ["passenger", "commercial", "storage"] as const;
+const MOCK_BT_LABEL: Record<string, string> = { passenger: "乘用车", commercial: "商用车", storage: "储能" };
+const btOfOrder = (o: { businessType?: string; cust?: string }): string =>
+  o.businessType ?? (/储能|电网|电投|电力/.test(o.cust ?? "") ? "storage" : /客车|商用/.test(o.cust ?? "") ? "commercial" : "passenger");
+
 export function mockPortfolio(args: Record<string, unknown>): Record<string, unknown> {
-  const orderIds = Array.isArray(args.orderIds) && args.orderIds.length ? args.orderIds.map(String) : ORDERS.map((o) => o.so);
+  const btFilter = new Set((Array.isArray(args.businessTypes) ? args.businessTypes : []).map(String).filter((t) => (MOCK_BT_TYPES as readonly string[]).includes(t)));
+  const btScoped = btFilter.size > 0;
+  const orderIds = (Array.isArray(args.orderIds) && args.orderIds.length ? args.orderIds.map(String) : ORDERS.map((o) => o.so))
+    .filter((id) => { const o = ORDERS.find((x) => x.so === id); return !btScoped || (o && btFilter.has(btOfOrder(o))); });
   const frozenIds = new Set((Array.isArray(args.frozenOrderIds) ? args.frozenOrderIds : []).map(String));
   const frozenMode = args.frozenCapacityMode === "release" ? "release" : "reserve";
   const wanted = (Array.isArray(args.scenarios) && args.scenarios.length ? args.scenarios.map(String) : ["max_ontime", "min_cost"]).filter((k): k is PortObjKey => (PORT_OBJ_KEYS as string[]).includes(k));
@@ -1114,7 +1126,9 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
   for (const it of items) it.dueWindow = Math.min(numWindows - 1, Math.floor(it.dueDay / PORT_WINDOW_DAYS));
 
   const cellKey = (b: string, w: number) => `${b}|${w}`;
-  const allBases = [...new Set(ORDERS.flatMap((o) => portOrderBases(o)))].sort();
+  // WO-W5·产能作用域随勾选收窄到选中类订单可产基地（真重算·矩阵基地集随勾选真变·非前端假过滤）。
+  const scopeOrders = btScoped ? ORDERS.filter((o) => btFilter.has(btOfOrder(o))) : ORDERS;
+  const allBases = [...new Set(scopeOrders.flatMap((o) => portOrderBases(o)))].sort();
   const capOriginal = new Map<string, number>();
   for (const b of allBases) { const cap = portBaseDaily(b) * PORT_WINDOW_DAYS; for (let w = 0; w < numWindows; w++) capOriginal.set(cellKey(b, w), cap); }
   const netCap = new Map(capOriginal);
@@ -1197,13 +1211,42 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     provenance: { kind: "派生", drillType: "Line", drillId: "cap[b,t]", drillField: "capacityDaily", drillValue: s.servedQty },
     allocation: s.occ.map((o) => ({ item: o.item, base: o.base, window: o.window, qty: o.qty })) }));
 
+  // WO-W5·业务类型分口径汇总（dev 态·稳定口径 over 全 ORDERS·allocated/displaced 反映勾选态 primary 解·镜像 datacore）。
+  const allocTypeQty = new Map<string, number>();
+  for (const o of allocation) allocTypeQty.set(btOfOrder(orderById.get(o.item) ?? {}), (allocTypeQty.get(btOfOrder(orderById.get(o.item) ?? {})) ?? 0) + o.qty);
+  const dispTypeQty = new Map<string, number>();
+  for (const d of displaced) dispTypeQty.set(btOfOrder(orderById.get(d.orderId) ?? {}), (dispTypeQty.get(btOfOrder(orderById.get(d.orderId) ?? {})) ?? 0) + d.qty);
+  const businessTypeSummary = MOCK_BT_TYPES.map((bt) => {
+    const typeOrders = ORDERS.filter((o) => btOfOrder(o) === bt);
+    const qtys = typeOrders.map((o) => o.qty);
+    const orderQty = qtys.reduce((s, q) => s + q, 0);
+    const orderCount = typeOrders.length;
+    const mean = orderCount ? orderQty / orderCount : 0;
+    const variance = orderCount ? qtys.reduce((s, q) => s + (q - mean) ** 2, 0) / orderCount : 0;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    const earlyDeliveryCount = typeOrders.filter((o) => o.early === true).length;
+    const forecastQty = Math.round(orderQty * (MOCK_BT_FORECAST_MULT[bt] ?? 12));
+    const demandAnnual = forecastQty + orderQty;
+    const capacityUtil = MOCK_BT_UTIL_ANCHOR[bt] ?? 0.9; // dev 态锚（三档场景标签）·真反应态见 allocatedQty 随勾选真变
+    const capacityAnnual = round(demandAnnual / capacityUtil, 2);
+    return {
+      businessType: bt, label: MOCK_BT_LABEL[bt] ?? bt,
+      orderCount, orderQty, forecastQty, forecastGap: forecastQty - orderQty,
+      earlyDeliveryCount, orderQtyMean: round(mean, 2), orderQtyCv: round(cv, 4),
+      capacityAnnual, demandAnnual, capacityUtil,
+      allocatedQty: allocTypeQty.get(bt) ?? 0, displacedQty: dispTypeQty.get(bt) ?? 0,
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "p50", drillValue: forecastQty, mockNote: "dev 态·mock 预测/配比派生（真求解走 datacore globalSimOptimize）" },
+    };
+  });
+
   return {
     status: "OPTIMAL", optimal: true, feasible: displaced.length === 0,
     allocation, occupancy, displaced, scenarios,
     objectiveValues: primary.objectiveValues,
     capacityLedger, reconChecks, reconciled,
     cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
-    frozen,
+    frozen, businessTypeSummary,
+    ...(btScoped ? { businessTypes: [...btFilter] } : {}),
     summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
   };
 }

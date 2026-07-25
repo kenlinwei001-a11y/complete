@@ -2481,7 +2481,8 @@ export const handlers = [
     // → mockGlobalSim（返 7 维 schedule[]/kpi/mockNotes additively 叠加经典字段）；否则经典 mockPortfolio。
     if (key === "portfolio") {
       const orchestrate = args.twoStage === true || args.materialConstraint === true || args.globalSim === true
-        || (Array.isArray(args.levers) && args.levers.length > 0) || (Array.isArray(args.priorityLocks) && args.priorityLocks.length > 0);
+        || (Array.isArray(args.levers) && args.levers.length > 0) || (Array.isArray(args.priorityLocks) && args.priorityLocks.length > 0)
+        || (Array.isArray(args.businessTypes) && args.businessTypes.length > 0);
       const portResp = orchestrate ? mockGlobalSim(args) : mockPortfolio(args);
       // WO-GSLIVE-1-COCKPIT · 活②：levers 非空 → 叠加 leverDeltas + 主方案 KPI 改善（空则原样·无回归）。
       return HttpResponse.json({ data: applyGslivePortfolioLevers(portResp, args), snapshotVersion: "ov-12" });
