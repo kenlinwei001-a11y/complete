@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { BASE_REGISTRY } from "@platform/contracts";
-import type { GlobalSimScheduleRow, GlobalSimKpi } from "@platform/contracts";
+import { BASE_REGISTRY, BUSINESS_TYPE_LABEL } from "@platform/contracts";
+import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType } from "@platform/contracts";
 import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
@@ -56,6 +56,9 @@ interface PortResult {
   mockNotes?: string[];
   // WO-GSLIVE-1-COCKPIT · 活②：自由杠杆再优化 before/after 七维 KPI（求解器携 levers[] 返·可溯 drillType=Lever）。
   leverDeltas?: LeverDeltaVM[];
+  // WO-W5·业务类型分口径汇总（乘/商/储各一行·占用率/预测缺口/提前交付/订单波动·求解器真聚合）。
+  businessTypeSummary?: GlobalSimBusinessTypeSummary[];
+  businessTypes?: BusinessType[];
 }
 
 /** WO-GSLIVE-1-COCKPIT · 活①：内嵌 NL 框（复用 SimCommanderDock 范式·带 sessionId）→ compose 路径联合求解叙述。 */
@@ -151,7 +154,7 @@ type OrderState = "in" | "frozen" | "excluded";
 
 export default function GlobalSimView(_props: ViewRendererProps) {
   const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => searchObjects("Order", "") });
-  const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => ({ id: String(o.props.so ?? o.id), cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—") })), [orders.data]);
+  const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => ({ id: String(o.props.so ?? o.id), cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—"), businessType: String(o.props.businessType ?? ""), early: o.props.early === true })), [orders.data]);
 
   // 真 InterBaseTransfer 对象（跨基地调拨·transitDays 真值·喂区⑤两段排产表；缺则单段·诚实不伪造）。
   const xfers = useQuery({ queryKey: ["a", "objects", { type: "InterBaseTransfer" }], queryFn: () => searchObjects("InterBaseTransfer", ""), retry: false });
@@ -164,6 +167,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const [orderState, setOrderState] = useState<Record<string, OrderState>>({});
   const stateOf = (id: string): OrderState => orderState[id] ?? "in";
   const setState = (id: string, s: OrderState) => setOrderState((prev) => ({ ...prev, [id]: prev[id] === s ? "in" : s }));
+
+  // WO-W5·业务类型勾选筛选（乘/商/储·空 = 全类型）：勾选 → args.businessTypes → 后端在收窄世界真重解（矩阵/KPI/客户影响真变·非前端假过滤）。
+  const [btFilter, setBtFilter] = useState<Set<BusinessType>>(new Set());
+  const toggleBt = (t: BusinessType) => setBtFilter((prev) => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n; });
 
   const [scenarios, setScenarios] = useState<string[]>(["max_ontime", "min_cost"]);
   const [primary, setPrimary] = useState<string>("max_ontime");
@@ -179,13 +186,15 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const includedCount = orderIds.length;
   const scenSet = useMemo(() => (scenarios.includes(primary) ? scenarios : [primary, ...scenarios]), [scenarios, primary]);
   const leversKey = JSON.stringify(freeLevers);
+  const btArr = useMemo(() => [...btFilter].sort(), [btFilter]);
 
   const args = useMemo<Record<string, unknown> | null>(
     // WO-SURFACE-7DIM · twoStage:true → 后端编排路由 globalSimOptimize（返 GlobalSimResponse·7 维 schedule[]/kpi/mockNotes
     // additively 叠加经典 portfolio 字段·驾驶舱既有绑定不掉线）；MSW 态由 handlers 派发 mockGlobalSim（同 additive 形状）。
     // WO-GSLIVE-1-COCKPIT · 活②：freeLevers 非空 → 携真 levers[{key,target,delta}]（引擎已消费）→ leverDeltas before/after。
-    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, ...(freeLevers.length ? { levers: freeLevers } : {}), twoStage: true, nonce } : null),
-    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, leversKey, nonce],
+    // WO-W5 · businessTypes 非空 → 后端只对勾选类订单+预测联合推演·产能作用域收窄 → 矩阵/KPI 真变（真重算·非前端假过滤）。
+    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, ...(freeLevers.length ? { levers: freeLevers } : {}), ...(btArr.length ? { businessTypes: btArr } : {}), twoStage: true, nonce } : null),
+    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, leversKey, btArr.join(","), nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
   const d = res.data;
@@ -306,6 +315,48 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               ))
             : <span className={styles.textMuted}>（无在产承诺占用）</span>}
         </span>
+      </div>
+
+      {/* WO-W5 · 业务类型勾选筛选（乘/商/储）+ 分口径经营场景（勾选 → 后端在收窄世界真重解·矩阵/KPI 真变） */}
+      <div className={styles.glass} data-testid="global-sim-business-type">
+        <span className={styles.grpLabel}>[ 业务类型（乘用车 / 商用车 / 储能）· 勾选筛选后联合推演 ]</span>
+        <div className={styles.scenPicks} data-testid="global-sim-bt-filter">
+          <span className={styles.textMuted} style={{ fontSize: 11 }}>勾选筛选（空 = 全类型）：</span>
+          {(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => (
+            <label key={t} className={styles.scenChk} data-testid={`global-sim-bt-${t}`}>
+              <input type="checkbox" checked={btFilter.has(t)} onChange={() => toggleBt(t)} /> {BUSINESS_TYPE_LABEL[t]}
+            </label>
+          ))}
+          {btFilter.size > 0 && <span className={styles.badge} data-testid="global-sim-bt-active">仅推演：{[...btFilter].map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}</span>}
+        </div>
+        {d?.businessTypeSummary && (
+          <table className={styles.gtable} data-testid="global-sim-bt-summary">
+            <thead><tr><th>业务类型</th><th style={{ textAlign: "right" }}>产能占用</th><th style={{ textAlign: "right" }}>订单量(套)</th><th style={{ textAlign: "right" }}>预测量(套)</th><th style={{ textAlign: "right" }}>预测缺口</th><th style={{ textAlign: "right" }}>提前交付</th><th style={{ textAlign: "right" }}>订单波动(CV)</th><th style={{ textAlign: "right" }}>实排量</th><th style={{ textAlign: "right" }}>被挤量</th></tr></thead>
+            <tbody>
+              {d.businessTypeSummary.map((s) => {
+                const util = s.capacityUtil;
+                const scene = util >= 1 ? "产能不足" : util >= 0.85 ? "≈满载稳" : "产能空闲";
+                return (
+                  <tr key={s.businessType} data-testid={`global-sim-bt-row-${s.businessType}`}>
+                    <td><strong className={styles.textPrimary}>{s.label}</strong></td>
+                    <td className={`num ${util >= 1 ? styles.bad : styles.ok}`} data-testid={`global-sim-bt-util-${s.businessType}`} title={scene}>{(util * 100).toFixed(0)}% · {scene}</td>
+                    <td className="num">{fmt(s.orderQty, 0)}</td>
+                    <td className="num">{fmt(s.forecastQty, 0)}</td>
+                    <td className="num" data-testid={`global-sim-bt-gap-${s.businessType}`}>{fmt(s.forecastGap, 0)}</td>
+                    <td className="num" data-testid={`global-sim-bt-early-${s.businessType}`}>{s.earlyDeliveryCount}</td>
+                    <td className="num" data-testid={`global-sim-bt-cv-${s.businessType}`}>{s.orderQtyCv.toFixed(2)}</td>
+                    <td className="num">{fmt(s.allocatedQty, 0)}</td>
+                    <td className={`num ${s.displacedQty > 0 ? styles.bad : ""}`}>{fmt(s.displacedQty, 0)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <div className={styles.summary}>
+          乘用车：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · 商用车：产能空闲 + 订单波动大（CV 最高）· 储能：产能 ~95% 稳定。
+          勾选 → 后端只对选中类订单+预测联合重解、产能作用域收窄到该类可产基地（矩阵/KPI/客户级影响全链真变·非展示层过滤）。
+        </div>
       </div>
 
       {/* 活①·人机对话（内嵌 NL 框·compose 路径叙述）——暗发门控：真后端 /b/v1/sim/compose 未落时不渲染(R3·避 404·mock 态 on) */}

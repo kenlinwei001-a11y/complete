@@ -4,7 +4,9 @@ import type { PortfolioRequest, PortfolioResult } from "./optimizer-client.js";
 import type {
   GlobalSimResponse, GlobalSimKpi, GlobalSimScenario, GlobalSimScheduleRow,
   GlobalSimBlocked, GlobalSimLever, GlobalSimLeverDelta, GlobalSimPriorityLock,
+  GlobalSimBusinessTypeSummary, BusinessType,
 } from "@platform/contracts";
+import { BUSINESS_TYPE_LABEL } from "@platform/contracts";
 
 /**
  * WO-PORTFOLIO-OPTIMAL · 全订单×全基地×时间 联合最优组合推演（纯算法·数据组装 + 结果后处理）。
@@ -79,6 +81,13 @@ export interface PortfolioInput {
   scope?: string;
   /** 诚实标注累积（WO-DATA 未落用 mock 处·KILL-MOCK-RED）。 */
   mockNotes?: string[];
+  // ── WO-W5 业务类型（乘/商/储）差异化 additive（全部可选·默认关；默认路径字节不变） ──
+  /** 勾选筛选：非空 → 只对这些业务类型的订单+预测联合推演，产能作用域收窄到该类订单可产基地（真重算·非前端假过滤）。 */
+  businessTypes?: string[];
+  /** 业务类型经营场景 regime（R14·battery businessTypeRegime）：dedicationWeight = 该业务线专线产能配比（算类占用率）。 */
+  businessTypeRegime?: Record<string, { dedicationWeight: number }>;
+  /** 年运营日（类年产能 = Σ Line.capacityDaily × annualDays·业务类型占用率口径·缺省 300）。 */
+  operatingDaysPerYear?: number;
 }
 
 interface ItemMeta {
@@ -575,11 +584,32 @@ export async function portfolioOptimize(
 //   输出 GlobalSimResponse（§3 冻结契约·R6·R13·KILL-MOCK-RED 诚实标注）。
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 应用细分（battery.ts 口径）：含 储能/电网 → 储能；含 客车/商用 → 商用车；否则 乘用车。 */
+/** 应用细分（battery.ts 口径）：含 储能/电网/电投/电力 → 储能；含 客车/商用 → 商用车；否则 乘用车。 */
 export function classifySegment(customer: string): string {
-  if (/储能|电网/.test(customer)) return "储能";
+  if (/储能|电网|电投|电力/.test(customer)) return "储能";
   if (/客车|商用/.test(customer)) return "商用车";
   return "乘用车";
+}
+
+// ── WO-W5 业务类型（乘/商/储）分类器（订单/预测优先读 seed businessType·缺省按名兜底·灭旧误判） ──
+const BUSINESS_TYPES: BusinessType[] = ["passenger", "commercial", "storage"];
+const isBusinessType = (v: unknown): v is BusinessType => typeof v === "string" && (BUSINESS_TYPES as string[]).includes(v);
+const CN_TO_BT: Record<string, BusinessType> = { 乘用车: "passenger", 商用车: "commercial", 储能: "storage" };
+/** 客户 → 业务类型（regex 兜底·与 battery businessTypeOfCustomer 同口径）。 */
+export function businessTypeOfCustomer(customer: string): BusinessType {
+  return CN_TO_BT[classifySegment(customer)] ?? "passenger";
+}
+/** 订单对象 → 业务类型（种子 businessType 优先·缺省按客户名兜底）。 */
+function businessTypeOfOrder(o: Record<string, unknown>): BusinessType {
+  return isBusinessType(o.businessType) ? o.businessType : businessTypeOfCustomer(str(o.cust));
+}
+/** 需求细分对象 → 业务类型（种子 businessType 优先·缺省按 segment 名兜底）。 */
+function businessTypeOfSegmentObj(d: Record<string, unknown>): BusinessType {
+  if (isBusinessType(d.businessType)) return d.businessType;
+  const seg = str(d.segment);
+  if (/储能/.test(seg)) return "storage";
+  if (/商用/.test(seg)) return "commercial";
+  return "passenger";
 }
 
 const baseIdOfUnit = (uid: string): string => uid.split("#")[0]!;
@@ -699,10 +729,37 @@ export async function globalSimOptimize(
   const objectives: PortfolioObjectiveKey[] = (input.scenarios && input.scenarios.length ? input.scenarios : ["max_ontime", "min_cost"]) as PortfolioObjectiveKey[];
   const windowDays = Math.max(1, Math.round(input.coeff("windowDays", 14)));
 
+  const eligibleBasesOf = (o: Record<string, unknown>): string[] =>
+    (Array.isArray(o.bases) && o.bases.length ? (o.bases as unknown[]).map(String) : (input.modelBaseMap[str(o.model)] ?? [])).slice();
+
+  // ── WO-W5 业务类型勾选筛选（真作用域收窄·非前端假过滤）：勾选类型集非空 → ①决策集只留该类订单
+  //    ②产能作用域收窄到该类订单可产基地（bases/lines 过滤）③预测只留该类 DemandSegment → portfolio 真在收窄世界重解，
+  //    capacityLedger/矩阵/被挤/KPI 全随勾选真变（后端真重算·SEAM 门守）。缺省/空 = 全类型（向后兼容·字节不变）。
+  const btFilter = new Set((input.businessTypes ?? []).filter((t) => (BUSINESS_TYPES as string[]).includes(t)));
+  const btScoped = btFilter.size > 0;
+  const scopedBaseIds = new Set<string>();
+  if (btScoped) {
+    for (const o of input.orders) {
+      if (str(o.status) !== "OPEN") continue;
+      if (!btFilter.has(businessTypeOfOrder(o))) continue;
+      for (const b of eligibleBasesOf(o)) scopedBaseIds.add(b);
+    }
+  }
+  const scopedInput: PortfolioInput = btScoped
+    ? {
+        ...input,
+        bases: input.bases.filter((b) => scopedBaseIds.has(str(b.baseId))),
+        lines: input.lines.filter((l) => scopedBaseIds.has(str(l.baseId))),
+        demandSegments: input.demandSegments.filter((d) => btFilter.has(businessTypeOfSegmentObj(d))),
+      }
+    : input;
+
   // ⑥ 优先级硬锁 → must_serve：锁中订单先派 homeBase@dueWindow 预占（转 committedBatches·移出决策集·保护有代价）。
   const locks = input.priorityLocks ?? [];
-  const allOrders = input.orders.filter((o) => str(o.status) === "OPEN");
-  const inScope = new Set((input.orderIds && input.orderIds.length ? input.orderIds : allOrders.map((o) => str(o.so))).map(String));
+  const allOrders = scopedInput.orders.filter((o) => str(o.status) === "OPEN" && (!btScoped || btFilter.has(businessTypeOfOrder(o))));
+  const inScope = new Set((input.orderIds && input.orderIds.length
+    ? input.orderIds.filter((id) => allOrders.some((o) => str(o.so) === String(id)))
+    : allOrders.map((o) => str(o.so))).map(String));
   const isLocked = (o: Record<string, unknown>): boolean =>
     locks.some((lk) => (lk.customer && str(o.cust) === lk.customer) || (lk.segment && classifySegment(str(o.cust)) === lk.segment));
   const lockedOrders = locks.length ? allOrders.filter((o) => inScope.has(str(o.so)) && isLocked(o)) : [];
@@ -716,7 +773,7 @@ export async function globalSimOptimize(
   const decisionOrderIds = [...inScope].filter((id) => !lockedIds.has(id)).sort();
 
   const coreInput: PortfolioInput = {
-    ...input,
+    ...scopedInput,
     orderIds: decisionOrderIds,
     committedBatches: [...(input.committedBatches ?? []), ...lockCommitted],
     scenarios: objectives,
@@ -816,8 +873,46 @@ export async function globalSimOptimize(
     }
   }
 
+  // ── WO-W5 业务类型分口径汇总（乘/商/储各一行·占用率/预测缺口/提前交付/订单波动·稳定口径 over 全 input·allocated/displaced 反映勾选态 out）──
+  const annualDays = Math.max(1, Math.round(input.operatingDaysPerYear ?? input.coeff("operatingDaysPerYear", 300)));
+  const regime = input.businessTypeRegime ?? {};
+  const openOrders = input.orders.filter((o) => str(o.status) === "OPEN");
+  const orderTypeById = new Map<string, BusinessType>();
+  for (const o of openOrders) orderTypeById.set(str(o.so), businessTypeOfOrder(o));
+  const baseAnnualCap = new Map<string, number>();
+  for (const l of input.lines) baseAnnualCap.set(str(l.baseId), (baseAnnualCap.get(str(l.baseId)) ?? 0) + num(l.capacityDaily) * annualDays);
+  const allocByType = new Map<BusinessType, number>();
+  for (const al of out.allocation) { if (al.committed) continue; const t = orderTypeById.get(al.item); if (t) allocByType.set(t, (allocByType.get(t) ?? 0) + al.qty); }
+  const dispByType = new Map<BusinessType, number>();
+  for (const d of out.displaced) { if (d.kind !== "order") continue; const t = orderTypeById.get(d.orderId); if (t) dispByType.set(t, (dispByType.get(t) ?? 0) + d.qty); }
+  const businessTypeSummary: GlobalSimBusinessTypeSummary[] = BUSINESS_TYPES.map((bt) => {
+    const typeOrders = openOrders.filter((o) => businessTypeOfOrder(o) === bt);
+    const qtys = typeOrders.map((o) => num(o.qty));
+    const orderQty = qtys.reduce((s, q) => s + q, 0);
+    const orderCount = typeOrders.length;
+    const mean = orderCount ? orderQty / orderCount : 0;
+    const variance = orderCount ? qtys.reduce((s, q) => s + (q - mean) ** 2, 0) / orderCount : 0;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    const earlyDeliveryCount = typeOrders.filter((o) => o.early === true).length;
+    const forecastQty = input.demandSegments.filter((d) => businessTypeOfSegmentObj(d) === bt).reduce((s, d) => s + Math.round(num(d.p50) * 1e4), 0);
+    const typeBases = new Set<string>();
+    for (const o of typeOrders) for (const b of eligibleBasesOf(o)) typeBases.add(b);
+    const weight = regime[bt]?.dedicationWeight ?? 1;
+    const capacityAnnual = round([...typeBases].reduce((s, b) => s + (baseAnnualCap.get(b) ?? 0), 0) * weight, 2);
+    const demandAnnual = forecastQty + orderQty;
+    return {
+      businessType: bt, label: BUSINESS_TYPE_LABEL[bt],
+      orderCount, orderQty, forecastQty, forecastGap: forecastQty - orderQty,
+      earlyDeliveryCount, orderQtyMean: round(mean, 2), orderQtyCv: round(cv, 4),
+      capacityAnnual, demandAnnual, capacityUtil: capacityAnnual > 0 ? round(demandAnnual / capacityAnnual, 4) : 0,
+      allocatedQty: allocByType.get(bt) ?? 0, displacedQty: dispByType.get(bt) ?? 0,
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "p50", drillValue: forecastQty, mockNote: null },
+    };
+  });
+
   const summary =
     `全域联合仿真（${objectives.join("/")}·${out.optimal ? "CP-SAT可证最优" : "启发式贪心"}）：决策 ${decisionOrderIds.length} 单` +
+    `${btScoped ? `·业务类型筛选[${[...btFilter].join("/")}]` : ""}` +
     `${lockCommitted.length ? `·硬锁 must_serve ${lockCommitted.length} 单` : ""}` +
     `${input.committedBatches?.length ? `·递进承诺 ${input.committedBatches.length} 批` : ""}` +
     `${materialOn ? `·物料约束启用（卡单 ${materialBlocked.filter((b) => b.reason === "material").length}）` : "·物料约束未启用（诚实回退）"}` +
@@ -827,6 +922,8 @@ export async function globalSimOptimize(
     scenarios, schedule: primaryRows, blocked: materialBlocked, leverDeltas,
     reconciled: out.reconciled, mockNotes: [...mockNotes].sort(), materialConstraint: materialOn,
     status: out.status, optimal: out.optimal, summary,
+    businessTypeSummary,
+    ...(btScoped ? { businessTypes: [...btFilter] as BusinessType[] } : {}),
     // ── WO-SURFACE-7DIM · additive MERGE 经典兼容层（不替换 7 维·驱动驾驶舱既有绑定不掉线）──
     // out 即经典 portfolioOptimize 核心产物（联合守恒同一套解）→ 直接并列透出，令前端发起编排
     // （twoStage 等）后 热力矩阵/分配台账/被挤·固定卡/读数/客户级影响 仍读到经典形状。确定性 R6（纯派生·无 rng/时钟）。

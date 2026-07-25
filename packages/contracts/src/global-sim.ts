@@ -19,6 +19,27 @@ import { z } from "zod";
  * 不假装真数据。确定性 R6（forecastStart 锚·禁 Date.now/random·同输入同杠杆两跑对象/KPI 字节一致）。
  */
 
+// ── 业务类型维度（WO-W5·乘用车/商用车/储能三类差异化经营场景） ──
+
+/**
+ * 业务类型（乘用车/商用车/储能）——全局推演的一等数据维度（R14·不写死电池魔数）。
+ * 三类真实经营场景截然不同（产品负责人 spec）：
+ *   passenger 乘用车：产能不足 + 销售预测远大于实际订单（预测虚高）+ 部分客户需提前交付；
+ *   commercial 商用车：产能空闲 + 订单波动大；
+ *   storage 储能：产能 ~95% 稳定 + 订单平稳。
+ * Order/DemandSegment 各带此维度（合成种子按类型差异化·R6 同 seed 字节一致），
+ * 求解器按类型分口径聚合（各类占用率/预测缺口/交付率分别可算），前端可勾选筛选后**真重算**。
+ */
+export const BusinessTypeSchema = z.enum(["passenger", "commercial", "storage"]);
+export type BusinessType = z.infer<typeof BusinessTypeSchema>;
+
+/** 业务类型中文标签（细分 segment 名 ↔ 类型枚举，单一来源·前后端同口径）。 */
+export const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
+  passenger: "乘用车",
+  commercial: "商用车",
+  storage: "储能",
+};
+
 // ── 请求侧 ──
 
 /** 决策订单项（进联合决策集·`x[i,b,t]` 自由变量）。 */
@@ -97,6 +118,11 @@ export const GlobalSimRequestSchema = z.object({
   frozenCapacityMode: z.enum(["reserve", "release"]).optional(),
   /** 求解种子（R6·缺省 42）。 */
   seed: z.number().optional(),
+  /**
+   * WO-W5·业务类型勾选筛选（乘/商/储）：非空 → 只对勾选类型的订单+预测集联合推演，产能作用域收窄到该类
+   * 订单可产基地 → 矩阵/KPI/客户级影响**真变**（后端真重算·非前端假过滤）。缺省/空 = 全类型（向后兼容）。
+   */
+  businessTypes: z.array(BusinessTypeSchema).optional(),
 });
 export type GlobalSimRequest = z.infer<typeof GlobalSimRequestSchema>;
 
@@ -265,6 +291,34 @@ export const GlobalSimCostSchema = z.object({
 });
 export type GlobalSimCost = z.infer<typeof GlobalSimCostSchema>;
 
+/**
+ * WO-W5·业务类型分口径汇总（乘/商/储各一行·求解器按类型真聚合，非前端写死三套假数）。
+ * 三类真实经营场景经此逐项量化：
+ *   capacityUtil 占用率（储能≈0.95 稳 / 乘用车>1 产能不足 / 商用车<0.6 空闲）；
+ *   forecastGap 预测虚高缺口（forecastQty − orderQty·乘用车最大·预测远大于实际订单）；
+ *   earlyDeliveryCount 需提前交付订单数（乘用车三重张力之一）；
+ *   orderQtyCv 订单量变异系数（商用车订单波动大）。
+ * 每值确定性派生自真种子 + 真求解分配（R6/R13·改勾选集 → 真重算 → 真变）。
+ */
+export const GlobalSimBusinessTypeSummarySchema = z.object({
+  businessType: BusinessTypeSchema,
+  label: z.string(), // 中文标签（乘用车/商用车/储能）
+  orderCount: z.number(), // 该类在范围内订单数
+  orderQty: z.number(), // 订单总量（套·实际订单）
+  forecastQty: z.number(), // 销售预测总量（套·DemandSegment.p50×1e4）
+  forecastGap: z.number(), // 预测缺口 = forecastQty − orderQty（乘用车预测虚高 → 大正值）
+  earlyDeliveryCount: z.number(), // 需提前交付订单数（乘用车部分客户提前交期）
+  orderQtyMean: z.number(), // 订单量均值（套）
+  orderQtyCv: z.number(), // 订单量变异系数 σ/μ（商用车波动大 → 高）
+  capacityAnnual: z.number(), // 该类可产基地年有效产能（套/年·R13 溯 Line.capacityDaily）
+  demandAnnual: z.number(), // 该类年需求（forecast + 订单·套/年）
+  capacityUtil: z.number(), // 占用率 = demandAnnual / capacityAnnual（储能≈0.95 / 乘用车>1 / 商用车<0.6）
+  allocatedQty: z.number(), // 联合求解为该类实排产量（套·主方案）
+  displacedQty: z.number(), // 该类被挤量（套·产能不足体现）
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimBusinessTypeSummary = z.infer<typeof GlobalSimBusinessTypeSummarySchema>;
+
 export const GlobalSimResponseSchema = z.object({
   scenarios: z.array(GlobalSimScenarioSchema),
   schedule: z.array(GlobalSimScheduleRowSchema),
@@ -287,5 +341,9 @@ export const GlobalSimResponseSchema = z.object({
   cost: GlobalSimCostSchema.optional(),
   feasible: z.boolean().optional(),
   objectiveValues: z.record(z.string(), z.number()).optional(),
+  // WO-W5·业务类型分口径汇总（乘/商/储各一行·additive·缺省诚实省略；勾选筛选态按选中类型作用域收窄）。
+  businessTypeSummary: z.array(GlobalSimBusinessTypeSummarySchema).optional(),
+  /** WO-W5·本次推演生效的业务类型筛选（回显·空/缺省 = 全类型）。 */
+  businessTypes: z.array(BusinessTypeSchema).optional(),
 });
 export type GlobalSimResponse = z.infer<typeof GlobalSimResponseSchema>;

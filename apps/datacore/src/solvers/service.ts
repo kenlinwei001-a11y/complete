@@ -2356,11 +2356,16 @@ export class SolverService {
       priorityLocks: Array.isArray(args.priorityLocks) ? (args.priorityLocks as PortfolioInput["priorityLocks"]) : undefined,
       committedBatches: Array.isArray(args.committedBatches) ? (args.committedBatches as PortfolioInput["committedBatches"]) : undefined,
       scope: args.scope ? str(args.scope) : undefined,
+      // WO-W5 业务类型（乘/商/储）勾选筛选 + 经营 regime（R14·battery businessTypeRegime·禁求解器内联魔数）+ 年运营日。
+      businessTypes: Array.isArray(args.businessTypes) ? args.businessTypes.map(String) : undefined,
+      businessTypeRegime: BATTERY_SOLVER_PARAMS.businessTypeRegime as PortfolioInput["businessTypeRegime"],
+      operatingDaysPerYear: num(BATTERY_SOLVER_PARAMS.operatingDaysPerYear, 300),
     };
 
-    // 编排路由：两阶段/物料/杠杆/硬锁/显式 globalSim → globalSimOptimize（GlobalSimResponse）；否则经典 portfolio（新增 线级/分批/递进 additive 亦经典路可达）。
+    // 编排路由：两阶段/物料/杠杆/硬锁/业务类型筛选/显式 globalSim → globalSimOptimize（GlobalSimResponse）；否则经典 portfolio（新增 线级/分批/递进 additive 亦经典路可达）。
     const orchestrate = shared.twoStage === true || shared.materialConstraint === true
-      || (shared.levers?.length ?? 0) > 0 || (shared.priorityLocks?.length ?? 0) > 0 || asBool(args.globalSim) === true;
+      || (shared.levers?.length ?? 0) > 0 || (shared.priorityLocks?.length ?? 0) > 0
+      || (shared.businessTypes?.length ?? 0) > 0 || asBool(args.globalSim) === true;
     if (orchestrate) return (await runGlobalSimOptimize(shared, solve)) as unknown as Record<string, unknown>;
     const out = await runPortfolioOptimize(shared, solve);
     return out as unknown as Record<string, unknown>;
