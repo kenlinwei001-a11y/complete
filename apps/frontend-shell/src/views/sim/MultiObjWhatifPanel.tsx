@@ -125,12 +125,19 @@ function MultiObjWhatifInner() {
         </div>
       )}
 
-      {/* ① 各目标当前值 */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "8px 0" }} data-testid="multiobj-objvalues">
+      {/* ① 各目标当前值 —— 数字诚实化（KILL-MOCK·防误读成亿/万元）：这些是「当前权重下最优方案」的目标值，
+          示意值·无量纲（示意 fixture 非真金额）·会随权重此消彼长；接真订单簿后才标真实口径（万元/亿元）。 */}
+      <div style={{ fontSize: 11, opacity: 0.7, margin: "6px 0 2px" }} data-testid="multiobj-objvalues-caption">
+        当前权重下<b>最优方案</b>的各目标值（<b>示意值·无量纲</b>·非金额·随权重变）
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "4px 0 8px" }} data-testid="multiobj-objvalues">
         {(["revenue", "penalty", "cost"] as const).map((k) => (
           <div key={k} className={styles.kpi} style={{ minWidth: 120 }}>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>{OBJ_META[k]!.name}</div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>{typeof ov[k] === "number" ? fmt(ov[k]!, 0) : "—"}</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>{OBJ_META[k]!.name}{OBJ_META[k]!.goodWhenNeg ? "（越低越好）" : "（越高越好）"}</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>
+              {typeof ov[k] === "number" ? fmt(ov[k]!, 0) : "—"}
+              {typeof ov[k] === "number" ? <span style={{ fontSize: 10, opacity: 0.5, fontWeight: 400, marginLeft: 3 }}>示意值</span> : null}
+            </div>
           </div>
         ))}
       </div>
