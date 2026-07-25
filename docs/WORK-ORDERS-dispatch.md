@@ -29,7 +29,19 @@
 
 ---
 
-## 2 · Bug 修复 / 部署排查（最高优先·你正在踩）
+## 2 · 急救工单（最高优先·"人机对话能不能用"的命门）
+
+### WO-0-NL-WIRING · 分类器接 LLM + 确定性兜底（急救）
+> ⚠ **状态**：原由 NL-ROBUST agent 在做，**容器重启导致未提交工作丢失，需重新派发**。这是所有 NL 对话的前提——不做，绑了 LLM 也"点了没反应"。
+- **目标**：让绑定的 LLM provider **真正驱动 classifier**（真实 Kimi 实测：分类命中→path-A→出真答案 P50 12.3GWh；不接→path-B→INTERNAL_ERROR）。
+- **🚦边界**：`apps/agentcore/src/router/orchestrator.ts` · `apps/agentcore/src/router/domain-resolver.ts` · `apps/agentcore/src/llm/providers.ts` · test
+- **产出**：① 意图理解环节真接 LLM（`QOS_CLASSIFIER_MODEL` 可指轻量模型）；② 确定性兜底——低置信/无 LLM 时走 domainResolve 正则 fail-safe，不落 path-B 洪泛报错；③ 降级诚实（答不了明说，不编）。
+- **SEAM 门**（env-gated 真 LLM）：「4680-NCM 加 20% 六周能不能接」→ classify 命中 `capacity_feasibility` → path-A → COMPLETED 真答案；无 LLM 时不 INTERNAL_ERROR 而是确定性兜底或诚实降级。
+- **依赖**：无。**最高优先，第一波先派这张**。
+
+---
+
+## 2.5 · Bug 修复 / 部署排查（你正在踩）
 
 ### BUG-GLOBAL-SOLVE · 全局联合求解「Failed to fetch」
 
