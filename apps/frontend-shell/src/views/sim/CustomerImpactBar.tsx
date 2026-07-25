@@ -96,16 +96,6 @@ export function CustomerImpactBar({ displaced, orders }: { displaced: DisplacedV
                   >
                     协调加产
                   </button>
-                  <button
-                    className={styles.btnPlaceholder}
-                    data-testid={`global-sim-impact-notify-${r.orderId}`}
-                    disabled={adopt.isPending}
-                    style={{ cursor: adopt.isPending ? "wait" : "pointer", color: "var(--c-capacity, #43B7D7)", borderStyle: "solid", borderColor: "rgba(67,183,215,.4)" }}
-                    title="生成 plan_change 草稿 → S2 审批（本单不写回真值）"
-                    onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { intent: "notify_customer", orderId: r.orderId, cust: r.cust, seg: r.segLabel, qty: r.qty } })}
-                  >
-                    通知客户
-                  </button>
                 </div>
               </div>
             ))}
