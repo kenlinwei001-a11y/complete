@@ -363,7 +363,7 @@ describe("增量 §1.3 第 2 刀 · 服务端 compaction", () => {
   it("循环：折叠不足以回到软阈值 → 请求 compaction；响应 compaction 块后历史被其替代", async () => {
     await t.repos.agents.insert(agentDef({ id: "agt_cmp", key: "cmp_agent" }));
     t.llm.caps = { countTokens: true, compaction: true, maxContextTokens: 8000 };
-    const bigPrompt = `分析任务：${"内容填充。".repeat(4200)}`; // ~21000 chars ≈ 6000 tokens（soft=5600, hard=7200 之间）
+    const bigPrompt = `分析任务：${"内容填充。".repeat(3950)}`; // ≈ 19755 chars ≈ 5645 tokens；含 system(AGENT_SYSTEM_CORE)+tools 后落 soft=5600~hard=7200 之间（触发 compaction 第2刀、不触发第3刀硬提醒·压缩后恰 3 条）
 
     t.llm.queueAgentTurn(
       (req) => {
