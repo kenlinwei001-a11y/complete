@@ -92,6 +92,23 @@ export const GlobalSimObjectiveSchema = z.enum([
 ]);
 export type GlobalSimObjective = z.infer<typeof GlobalSimObjectiveSchema>;
 
+/**
+ * ⑤ G-VAR-3 · 求解方法旋钮（多目标组合法·灭 G-WHATIF-HARDCODED-LEVERS 方法半）：把「怎么权衡多目标」
+ * 做成可调旋钮——三法结果形状截然不同（改旋钮 → 引擎按对应方法真重解 → objectiveValues/分配真变）：
+ *   weighted 加权：各目标按权重线性组合（改权重 → 天平偏移）；
+ *   epsilon ε-约束：主目标最优、次目标各不超过 ε 上界（收紧 ε → 主目标让位）；
+ *   lexicographic 字典序：按优先级序逐层最优（改优先序 → 分层结果换形）。
+ */
+export const GlobalSimMethodSchema = z.enum(["weighted", "epsilon", "lexicographic"]);
+export type GlobalSimMethod = z.infer<typeof GlobalSimMethodSchema>;
+
+/** ε-约束单条界（key = 次目标键·bound = 上界·收紧即约束更紧·主目标让位）。 */
+export const GlobalSimEpsilonSchema = z.object({
+  key: z.string(),
+  bound: z.number(),
+});
+export type GlobalSimEpsilon = z.infer<typeof GlobalSimEpsilonSchema>;
+
 export const GlobalSimRequestSchema = z.object({
   /** 推演范围标签（如 "全乘用车跨基地"·仅供溯源/展示）。 */
   scope: z.string().optional(),
@@ -123,6 +140,24 @@ export const GlobalSimRequestSchema = z.object({
    * 订单可产基地 → 矩阵/KPI/客户级影响**真变**（后端真重算·非前端假过滤）。缺省/空 = 全类型（向后兼容）。
    */
   businessTypes: z.array(BusinessTypeSchema).optional(),
+  /**
+   * ③ G-VAR-1 · 分批交付 per-order 开关（灭「一次交付」硬口径）：集合内订单 → 引擎按分批重算（x∈{0,1}→
+   * y∈ℤ≥0·Σ子批=qty·各批可落不同窗口/基地）→ 交付率/成品持库真变。与全局 allowSplit 并存（并集·additive）。
+   */
+  splitOrderIds: z.array(z.string()).optional(),
+  /**
+   * ④ G-VAR-2 · 最终交期 per-order（orderId → 最终可接受交付日·自 forecastStart 的天偏移）：放宽该单可排的
+   * 最晚时间窗上界 → 引擎在更晚窗口仍可行地承接（而非被挤）→ 推演出「目标交期 vs 最终可达交期」差（真求解·非写死）。
+   */
+  finalDueDays: z.record(z.string(), z.number()).optional(),
+  /** ⑤ G-VAR-3 · 求解方法（缺省 weighted·仅当带方法旋钮时驱动 methodScenario 联合重解）。 */
+  method: GlobalSimMethodSchema.optional(),
+  /** ⑤ 加权法权重（objectiveKey → 权重·改权重 → 加权组合天平真偏移）。 */
+  methodWeights: z.record(z.string(), z.number()).optional(),
+  /** ⑤ ε-约束上界集（收紧 ε → 主目标让位·分配真变）。 */
+  epsilon: z.array(GlobalSimEpsilonSchema).optional(),
+  /** ⑤ 字典序优先级（objectiveKey 序·改序 → 分层最优换形）。 */
+  priority: z.array(z.string()).optional(),
 });
 export type GlobalSimRequest = z.infer<typeof GlobalSimRequestSchema>;
 
@@ -319,6 +354,43 @@ export const GlobalSimBusinessTypeSummarySchema = z.object({
 });
 export type GlobalSimBusinessTypeSummary = z.infer<typeof GlobalSimBusinessTypeSummarySchema>;
 
+/**
+ * ④ G-VAR-2 · 每订单「目标交期 vs 最终可达交期」推演（真求解·非写死）。
+ *   targetDueDay：原始目标交期（seed due·天）；finalDueDay：用户设的最终可接受交期（天·null=未设）；
+ *   achievableDay：联合求解可达交付日（天·含两阶段在途·null=被挤未获排）；
+ *   gapDays = achievableDay − targetDueDay（正=晚于目标·null=不可达）；meetsFinal：可达 ≤ 最终交期（null=未设/不可达）。
+ */
+export const GlobalSimDueComparisonSchema = z.object({
+  orderId: z.string(),
+  targetDueDay: z.number(),
+  finalDueDay: z.number().nullable(),
+  achievableDay: z.number().nullable(),
+  gapDays: z.number().nullable(),
+  meetsFinal: z.boolean().nullable(),
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimDueComparison = z.infer<typeof GlobalSimDueComparisonSchema>;
+
+/**
+ * ⑤ G-VAR-3 · 方法旋钮驱动的联合方案（三法结果形状不同·改旋钮真重解）。
+ * 与 scenarios[]（逐目标单解·比对矩阵）正交：本方案是按 method 组合全目标的**单一联合解**，
+ * objectiveValues/allocation 随 权重/ε上界/字典序 真变（前端假旋钮此门抓）。
+ */
+export const GlobalSimMethodScenarioSchema = z.object({
+  method: GlobalSimMethodSchema,
+  objectiveValues: z.record(z.string(), z.number()),
+  servedCount: z.number(),
+  displacedCount: z.number(),
+  servedQty: z.number(),
+  allocation: z.array(GlobalSimAllocationSchema),
+  /** 回显生效的方法旋钮（权重/ε/优先序·溯源可审）。 */
+  weights: z.record(z.string(), z.number()).optional(),
+  epsilon: z.array(GlobalSimEpsilonSchema).optional(),
+  priority: z.array(z.string()).optional(),
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimMethodScenario = z.infer<typeof GlobalSimMethodScenarioSchema>;
+
 export const GlobalSimResponseSchema = z.object({
   scenarios: z.array(GlobalSimScenarioSchema),
   schedule: z.array(GlobalSimScheduleRowSchema),
@@ -345,5 +417,9 @@ export const GlobalSimResponseSchema = z.object({
   businessTypeSummary: z.array(GlobalSimBusinessTypeSummarySchema).optional(),
   /** WO-W5·本次推演生效的业务类型筛选（回显·空/缺省 = 全类型）。 */
   businessTypes: z.array(BusinessTypeSchema).optional(),
+  /** ④ G-VAR-2·每订单目标vs最终可达交期推演（additive·缺省省略）。 */
+  dueComparison: z.array(GlobalSimDueComparisonSchema).optional(),
+  /** ⑤ G-VAR-3·方法旋钮驱动的联合方案（additive·仅带方法旋钮时出·缺省省略）。 */
+  methodScenario: GlobalSimMethodScenarioSchema.optional(),
 });
 export type GlobalSimResponse = z.infer<typeof GlobalSimResponseSchema>;

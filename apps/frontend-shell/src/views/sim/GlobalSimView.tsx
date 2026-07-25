@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY, BUSINESS_TYPE_LABEL } from "@platform/contracts";
-import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType } from "@platform/contracts";
+import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario } from "@platform/contracts";
 import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
@@ -59,7 +59,16 @@ interface PortResult {
   // WO-W5·业务类型分口径汇总（乘/商/储各一行·占用率/预测缺口/提前交付/订单波动·求解器真聚合）。
   businessTypeSummary?: GlobalSimBusinessTypeSummary[];
   businessTypes?: BusinessType[];
+  // ④ G-VAR-2·目标 vs 最终可达交期推演；⑤ G-VAR-3·方法旋钮联合方案（求解器真产物·additive）。
+  dueComparison?: GlobalSimDueComparison[];
+  methodScenario?: GlobalSimMethodScenario;
 }
+
+/** ⑤ 方法旋钮目标键（与求解器 objectiveValues 同口径·中文标签）。 */
+const OBJ_KNOB_KEYS = ["ontime", "cost", "changeover", "delay", "fgInventory"] as const;
+type ObjKnobKey = (typeof OBJ_KNOB_KEYS)[number];
+const OBJ_KNOB_LABEL: Record<ObjKnobKey, string> = { ontime: "按期", cost: "代价", changeover: "换型", delay: "延误", fgInventory: "成品库存" };
+const METHOD_LABEL2: Record<string, string> = { weighted: "加权", lexicographic: "字典序", epsilon: "ε约束" };
 
 /** WO-GSLIVE-1-COCKPIT · 活①：内嵌 NL 框（复用 SimCommanderDock 范式·带 sessionId）→ compose 路径联合求解叙述。 */
 function GlobalSimNlDock({ sessionId }: { sessionId: string }) {
@@ -158,7 +167,33 @@ type OrderState = "in" | "frozen" | "excluded";
 
 export default function GlobalSimView(_props: ViewRendererProps) {
   const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => searchObjects("Order", "") });
-  const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => ({ id: String(o.props.so ?? o.id), cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—"), businessType: String(o.props.businessType ?? ""), early: o.props.early === true })), [orders.data]);
+  const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => {
+    // ② G-UI-2·home 基地 = 首个可产基地 id（真数据·非占位）；base 保留原（数组时逗号串·仅回显兜底）。
+    const homeBase = Array.isArray(o.props.bases) ? String((o.props.bases as unknown[])[0] ?? "") : String(o.props.bases ?? o.props.base ?? "");
+    return { id: String(o.props.so ?? o.id), cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—"), homeBase, businessType: String(o.props.businessType ?? ""), early: o.props.early === true };
+  }), [orders.data]);
+
+  // ② G-UI-2·真 Line 对象（每基地代表产线 = PACK 线·成品下线·非占位）：订单/客户级展开显示 base + line 真数据。
+  const linesQ = useQuery({ queryKey: ["a", "objects", { type: "Line", view: "global-sim" }], queryFn: () => searchObjects("Line", ""), retry: false });
+  const packLineByBase = useMemo(() => {
+    const m = new Map<string, { lineId: string; name: string }>();
+    for (const l of linesQ.data?.items ?? []) {
+      const baseId = String(l.props.baseId ?? "");
+      if (!baseId) continue;
+      const lineId = String(l.props.lineId ?? l.id);
+      const name = String(l.props.name ?? lineId);
+      if (/-pack$/i.test(lineId) || /PACK/i.test(name)) m.set(baseId, { lineId, name }); // PACK 线优先（成品下线）
+      else if (!m.has(baseId)) m.set(baseId, { lineId, name }); // 无 PACK 则首条兜底
+    }
+    return m;
+  }, [linesQ.data]);
+  // baseKey 可能是拼音 id（changzhou·真 datacore/分配台账）或基地名（常州·mock 订单 bases）→ 两形态互解命中真 Line。
+  const lineNameOf = useCallback((baseKey: string): string => {
+    const direct = packLineByBase.get(baseKey);
+    if (direct) return direct.name;
+    const alt = BASE_NAME_BY_ID.has(baseKey) ? BASE_NAME_BY_ID.get(baseKey)! : (BASE_REGISTRY.find((b) => b.name === baseKey)?.baseId ?? "");
+    return (alt && packLineByBase.get(alt)?.name) || "—";
+  }, [packLineByBase]);
 
   // 真 InterBaseTransfer 对象（跨基地调拨·transitDays 真值·喂区⑤两段排产表；缺则单段·诚实不伪造）。
   const xfers = useQuery({ queryKey: ["a", "objects", { type: "InterBaseTransfer" }], queryFn: () => searchObjects("InterBaseTransfer", ""), retry: false });
@@ -174,7 +209,22 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
   // WO-W5·业务类型勾选筛选（乘/商/储·空 = 全类型）：勾选 → args.businessTypes → 后端在收窄世界真重解（矩阵/KPI/客户影响真变·非前端假过滤）。
   const [btFilter, setBtFilter] = useState<Set<BusinessType>>(new Set());
-  const toggleBt = (t: BusinessType) => setBtFilter((prev) => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n; });
+  const toggleBt = (t: BusinessType) => setBtFilter((prev) => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
+
+  // ③ G-VAR-1·分批交付 per-order（集合内单 → 后端按分批重算·交付率/持库真变）。
+  const [splitOrders, setSplitOrders] = useState<Set<string>>(new Set());
+  const toggleSplit = (id: string) => setSplitOrders((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // ④ G-VAR-2·最终交期 per-order（orderId → 天偏移·空 = 未设）。设值 → 后端放宽最晚窗 + 出目标vs可达差。
+  const [finalDueDays, setFinalDueDays] = useState<Record<string, number>>({});
+  const setFinalDue = (id: string, v: string) => setFinalDueDays((prev) => {
+    const n = { ...prev }; const num = Number(v);
+    if (v.trim() === "" || !Number.isFinite(num) || num < 0) delete n[id]; else n[id] = Math.round(num);
+    return n;
+  });
+  // ⑤ G-VAR-3·方法旋钮（加权权重 / ε上界 / 字典序优先·改旋钮 → 后端按对应方法真重解 methodScenario）。
+  const [methodWeights, setMethodWeights] = useState<Record<string, number>>({ ontime: 1, cost: 1, changeover: 1, delay: 1, fgInventory: 1 });
+  const [epsilonBounds, setEpsilonBounds] = useState<Record<string, number>>({});
+  const [priority, setPriority] = useState<string[]>([...OBJ_KNOB_KEYS]);
 
   const [scenarios, setScenarios] = useState<string[]>(["max_ontime", "min_cost"]);
   const [primary, setPrimary] = useState<string>("max_ontime");
@@ -191,14 +241,34 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const scenSet = useMemo(() => (scenarios.includes(primary) ? scenarios : [primary, ...scenarios]), [scenarios, primary]);
   const leversKey = JSON.stringify(freeLevers);
   const btArr = useMemo(() => [...btFilter].sort(), [btFilter]);
+  // ③④⑤ 派生 arg 片段。
+  const splitArr = useMemo(() => [...splitOrders].sort(), [splitOrders]);
+  const finalDueKey = JSON.stringify(finalDueDays);
+  const weightsChanged = OBJ_KNOB_KEYS.some((k) => (methodWeights[k] ?? 1) !== 1);
+  const epsArr = useMemo(() => Object.entries(epsilonBounds).filter(([, b]) => Number.isFinite(b)).map(([key, bound]) => ({ key, bound })), [epsilonBounds]);
+  // ⑤ 方法旋钮 → arg（weighted 默认未调 → 不携旋钮·护默认路径·不空转触发 methodScenario；调权重/切 ε/字典序 → 携对应旋钮）。
+  const methodArg = useMemo<Record<string, unknown>>(() => {
+    if (levers.method === "epsilon") return { method: "epsilon", ...(epsArr.length ? { epsilon: epsArr } : {}) };
+    if (levers.method === "lexicographic") return { method: "lexicographic", priority };
+    return weightsChanged ? { method: "weighted", methodWeights } : { method: "weighted" };
+  }, [levers.method, epsArr, priority, weightsChanged, methodWeights]);
 
   const args = useMemo<Record<string, unknown> | null>(
     // WO-SURFACE-7DIM · twoStage:true → 后端编排路由 globalSimOptimize（返 GlobalSimResponse·7 维 schedule[]/kpi/mockNotes
     // additively 叠加经典 portfolio 字段·驾驶舱既有绑定不掉线）；MSW 态由 handlers 派发 mockGlobalSim（同 additive 形状）。
     // WO-GSLIVE-1-COCKPIT · 活②：freeLevers 非空 → 携真 levers[{key,target,delta}]（引擎已消费）→ leverDeltas before/after。
     // WO-W5 · businessTypes 非空 → 后端只对勾选类订单+预测联合推演·产能作用域收窄 → 矩阵/KPI 真变（真重算·非前端假过滤）。
-    () => (orderList.length ? { orderIds, frozenOrderIds, scenarios: scenSet, objective: primary, frozenCapacityMode: levers.frozenCapacityMode, method: levers.method, ...(freeLevers.length ? { levers: freeLevers } : {}), ...(btArr.length ? { businessTypes: btArr } : {}), twoStage: true, nonce } : null),
-    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.method, leversKey, btArr.join(","), nonce],
+    // ③④⑤ · splitOrderIds/finalDueDays/方法旋钮 → 后端真重解（分批/交期/方法·交付率/可达交期/objectiveValues 真变）。
+    () => (orderList.length ? {
+      orderIds, frozenOrderIds, scenarios: scenSet, objective: primary,
+      frozenCapacityMode: levers.frozenCapacityMode, ...methodArg,
+      ...(freeLevers.length ? { levers: freeLevers } : {}),
+      ...(btArr.length ? { businessTypes: btArr } : {}),
+      ...(splitArr.length ? { splitOrderIds: splitArr } : {}),
+      ...(Object.keys(finalDueDays).length ? { finalDueDays } : {}),
+      twoStage: true, nonce,
+    } : null),
+    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
   const d = res.data;
@@ -323,7 +393,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* WO-W5 · 业务类型勾选筛选（乘/商/储）+ 分口径经营场景（勾选 → 后端在收窄世界真重解·矩阵/KPI 真变） */}
       <div className={styles.glass} data-testid="global-sim-business-type">
-        <span className={styles.grpLabel}>[ 业务类型（乘用车 / 商用车 / 储能）· 勾选筛选后联合推演 ]</span>
+        <span className={styles.grpLabel}>[ 业务类型（{(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}）· 勾选筛选后联合推演 ]</span>
         <div className={styles.scenPicks} data-testid="global-sim-bt-filter">
           <span className={styles.textMuted} style={{ fontSize: 11 }}>勾选筛选（空 = 全类型）：</span>
           {(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => (
@@ -358,7 +428,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           </table>
         )}
         <div className={styles.summary}>
-          乘用车：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · 商用车：产能空闲 + 订单波动大（CV 最高）· 储能：产能 ~95% 稳定。
+          {BUSINESS_TYPE_LABEL.passenger}：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · {BUSINESS_TYPE_LABEL.commercial}：产能空闲 + 订单波动大（CV 最高）· {BUSINESS_TYPE_LABEL.storage}：产能 ~95% 稳定。
           勾选 → 后端只对选中类订单+预测联合重解、产能作用域收窄到该类可产基地（矩阵/KPI/客户级影响全链真变·非展示层过滤）。
         </div>
       </div>
@@ -468,13 +538,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               ))}
             </div>
 
-            {/* ④ 订单清单三态（参与 ✓ / 固定 🔒 / 排除 ☐） */}
-            <div style={{ marginTop: 12, maxHeight: 240, overflow: "auto" }}>
+            {/* ④ 订单清单三态（参与 ✓ / 固定 🔒 / 排除 ☐）+ ② 基地/产线 + ③ 分批 + ④ 最终交期 */}
+            <div style={{ marginTop: 12, maxHeight: 300, overflow: "auto" }}>
               <table className={styles.gtable} data-testid="global-sim-orders">
-                <thead><tr><th>参与/固定/排除</th><th>订单</th><th>客户</th><th>型号</th><th style={{ textAlign: "right" }}>数量(套)</th><th>交期</th></tr></thead>
+                <thead><tr><th>参与/固定/排除</th><th>订单</th><th>客户</th><th>型号</th><th style={{ textAlign: "right" }}>数量(套)</th><th>交期</th><th title="② 每订单产出基地（首个可产基地·真数据）">基地</th><th title="② 每订单产线（该基地 PACK 成品线·真 Line 对象·非占位）">产线</th><th title="③ 分批交付：勾选 → 该单按分批联合重解（交付率/成品持库真变）">分批</th><th title="④ 最终交期（自今起天数·放宽最晚可排窗 → 推演目标 vs 最终可达交期差）">最终交期(天)</th></tr></thead>
                 <tbody>
                   {orderList.map((o) => {
                     const st = stateOf(o.id);
+                    const baseName = (baseNameById.get(o.homeBase) ?? o.homeBase) || "—";
                     return (
                       <tr key={o.id} data-testid={`global-sim-order-${o.id}`} data-order-state={st}>
                         <td>
@@ -485,12 +556,96 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                           </span>
                         </td>
                         <td className="mono">{o.id}</td><td>{o.cust}</td><td className="mono">{o.model}</td><td className="num">{fmt(o.qty, 0)}</td><td className="mono">{o.due}</td>
+                        {/* ② 基地 + 产线（真数据·非占位） */}
+                        <td data-testid={`global-sim-order-base-${o.id}`}>{baseName}</td>
+                        <td className="mono" data-testid={`global-sim-order-line-${o.id}`} title={`产线 id：${packLineByBase.get(o.homeBase)?.lineId ?? "—"}`}>{lineNameOf(o.homeBase)}</td>
+                        {/* ③ 分批交付开关（per-order） */}
+                        <td style={{ textAlign: "center" }}>
+                          <input type="checkbox" checked={splitOrders.has(o.id)} data-testid={`global-sim-split-${o.id}`} data-split={splitOrders.has(o.id)} title="分批 vs 一次交付" onChange={() => toggleSplit(o.id)} />
+                        </td>
+                        {/* ④ 最终交期（天·空 = 用目标交期） */}
+                        <td>
+                          <input type="number" min={0} value={finalDueDays[o.id] ?? ""} placeholder="—" data-testid={`global-sim-finaldue-${o.id}`} onChange={(e) => setFinalDue(o.id, e.target.value)} style={{ width: 64, textAlign: "right" }} />
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+
+            {/* ⑤ G-VAR-3 · 方法旋钮（左轨切方法·此处调该法参数 → 后端按对应方法真重解 methodScenario·结果真变） */}
+            <div style={{ marginTop: 12 }} data-testid="global-sim-method-knobs" data-method={levers.method}>
+              <span className={styles.grpLabel}>[ 求解方法旋钮 · {METHOD_LABEL2[levers.method] ?? levers.method}（改旋钮 → 引擎按对应方法真重解） ]</span>
+              <div className={styles.leverHint} style={{ marginBottom: 6 }}>方法在左轨「优先级 · 多目标求解方法」切换；此处调该方法参数 → 下方 methodScenario 联合方案真变（非旋钮空转）。</div>
+
+              {levers.method === "weighted" && (
+                <div data-testid="global-sim-method-weighted">
+                  {OBJ_KNOB_KEYS.map((k) => (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      <span style={{ flex: "0 0 76px", fontSize: 12 }}>{OBJ_KNOB_LABEL[k]} 权重</span>
+                      <input type="range" min={0} max={10} step={0.5} value={methodWeights[k] ?? 1} data-testid={`global-sim-weight-${k}`} onChange={(e) => setMethodWeights((p) => ({ ...p, [k]: Number(e.target.value) }))} style={{ flex: 1 }} />
+                      <span className="mono" style={{ width: 32, textAlign: "right" }} data-testid={`global-sim-weight-val-${k}`}>{(methodWeights[k] ?? 1).toFixed(1)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {levers.method === "epsilon" && (
+                <div data-testid="global-sim-method-epsilon">
+                  <div className={styles.leverHint}>为次目标设上界（收紧 → 主目标让位·分配真变）。空 = 不约束。</div>
+                  {(["delay", "changeover", "cost", "fgInventory"] as const).map((k) => (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      <span style={{ flex: "0 0 76px", fontSize: 12 }}>{OBJ_KNOB_LABEL[k]} ≤</span>
+                      <input type="number" min={0} value={epsilonBounds[k] ?? ""} placeholder="不约束" data-testid={`global-sim-epsilon-${k}`} onChange={(e) => setEpsilonBounds((p) => { const n = { ...p }; if (e.target.value.trim() === "") delete n[k]; else n[k] = Number(e.target.value); return n; })} style={{ width: 100, textAlign: "right" }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {levers.method === "lexicographic" && (
+                <div data-testid="global-sim-method-lexicographic">
+                  <div className={styles.leverHint}>调优先级（上=先·改序 → 分层最优换形）。</div>
+                  {priority.map((k, i) => (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }} data-testid={`global-sim-priority-${k}`} data-rank={i}>
+                      <span style={{ flex: 1, fontSize: 12 }}>{i + 1}. {OBJ_KNOB_LABEL[k as ObjKnobKey] ?? k}</span>
+                      <button className={styles.segBtn} disabled={i === 0} data-testid={`global-sim-priority-up-${k}`} onClick={() => setPriority((p) => { const n = [...p]; [n[i - 1], n[i]] = [n[i]!, n[i - 1]!]; return n; })}>↑</button>
+                      <button className={styles.segBtn} disabled={i === priority.length - 1} data-testid={`global-sim-priority-down-${k}`} onClick={() => setPriority((p) => { const n = [...p]; [n[i + 1], n[i]] = [n[i]!, n[i + 1]!]; return n; })}>↓</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {d?.methodScenario && (
+                <div className={styles.readoutRow} data-testid="global-sim-methodscenario" data-method={d.methodScenario.method} style={{ marginTop: 8 }}>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-served">{d.methodScenario.servedCount}</b><span>方法解·获排</span></div>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-ontime">{fmt(d.methodScenario.objectiveValues.ontime ?? 0, 0)}</b><span>按期</span></div>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-changeover">{(d.methodScenario.objectiveValues.changeover ?? 0).toFixed(1)}</b><span>换型</span></div>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-cost">{fmt(d.methodScenario.objectiveValues.cost ?? 0, 0)}</b><span>代价</span></div>
+                </div>
+              )}
+            </div>
+
+            {/* ④ G-VAR-2 · 目标 vs 最终可达交期推演（真求解产物·仅设了最终交期时出） */}
+            {d?.dueComparison && d.dueComparison.length > 0 && (
+              <div style={{ marginTop: 12 }} data-testid="global-sim-duecompare">
+                <span className={styles.grpLabel}>[ 目标 vs 最终可达交期推演（每订单·真求解·非写死） ]</span>
+                <table className={styles.gtable}>
+                  <thead><tr><th>订单</th><th style={{ textAlign: "right" }}>目标(天)</th><th style={{ textAlign: "right" }}>最终(天)</th><th style={{ textAlign: "right" }}>可达(天)</th><th style={{ textAlign: "right" }}>差(天)</th><th>达最终</th></tr></thead>
+                  <tbody>
+                    {d.dueComparison.map((c) => (
+                      <tr key={c.orderId} data-testid={`global-sim-duecompare-${c.orderId}`}>
+                        <td className="mono">{c.orderId}</td>
+                        <td className="num">{c.targetDueDay}</td>
+                        <td className="num">{c.finalDueDay ?? "—"}</td>
+                        <td className="num" data-testid={`global-sim-achievable-${c.orderId}`}>{c.achievableDay ?? "被挤"}</td>
+                        <td className={`num ${(c.gapDays ?? 0) > 0 ? styles.bad : styles.ok}`} data-testid={`global-sim-gap-${c.orderId}`}>{c.gapDays == null ? "—" : c.gapDays > 0 ? `+${c.gapDays}` : c.gapDays}</td>
+                        <td className={c.meetsFinal === false ? styles.bad : c.meetsFinal ? styles.ok : ""}>{c.meetsFinal == null ? "—" : c.meetsFinal ? "✓" : "✗"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className={styles.summary}>目标交期 = 订单原始交期；可达交期 = 联合求解真实排产交付日（含两阶段在途）；差 = 可达 − 目标（正 = 晚于目标）。设最终交期放宽最晚可排窗 → 引擎在更晚窗真承接（而非被挤）·非写死。</div>
+              </div>
+            )}
 
             {/* 求解结果读数（KPI 卡） */}
             {d && primaryScen && (
@@ -606,13 +761,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <div className={styles.glass}>
           <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · 悬停查看数据来源） ]</span>
           <table className={styles.gtable} data-testid="global-sim-alloc">
-            <thead><tr><th>需求项</th><th>来源</th><th>基地</th><th>窗口</th><th style={{ textAlign: "right" }}>量(套)</th><th style={{ textAlign: "right" }}>延误(天)</th><th /></tr></thead>
+            <thead><tr><th>需求项</th><th>来源</th><th>基地</th><th title="② 产线（该基地 PACK 成品线·真 Line 对象）">产线</th><th>窗口</th><th style={{ textAlign: "right" }}>量(套)</th><th style={{ textAlign: "right" }}>延误(天)</th><th /></tr></thead>
             <tbody>
               {d.allocation.map((a) => (
                 <tr key={`${a.item}-${a.base}-${a.window}`} data-testid={`global-sim-alloc-${a.item}`} title={provTitle(a.provenance)}>
                   <td className="mono">{a.item}</td>
                   <td>{a.committed ? "在产承诺" : a.kind === "forecast" ? "预测" : "订单"}</td>
-                  <td>{a.baseName}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
+                  {/* ② 基地 + 产线（真数据·产线取该基地 PACK 成品线） */}
+                  <td>{a.baseName}</td><td className="mono" data-testid={`global-sim-alloc-line-${a.item}`}>{lineNameOf(a.base)}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
                   <td className={`num ${a.onTime ? styles.ok : styles.bad}`}>{a.onTime ? "按期" : fmt(a.delayDays, 0)}</td>
                   <td><DrillAffordance kind={a.kind} id={a.item} label="细排 →" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} /></td>
                 </tr>
@@ -637,8 +793,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
       )}
 
-      {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+影响额·行动占位） */}
-      {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} />}
+      {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+产线+影响额·⑥ 卡 click → 真项目详情·协调加产预览→确认→草稿） */}
+      {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} lineNameOf={lineNameOf} sessionId={sessionId} />}
 
       {/* 活③·方案存 / 分支 / 横比（decision_play 范式）——暗发门控：真后端 /a/v1/sim/scenarios 未落时不渲染(R3·避 404·mock 态 on) */}
       {d && <Feature flag="view.global-sim.live"><GlobalSimScenarioBar getSnapshot={getSnapshot} /></Feature>}

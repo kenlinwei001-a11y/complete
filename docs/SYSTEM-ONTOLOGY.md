@@ -517,6 +517,14 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码;多目标扰动 ob
   ⚠ SEAM（WO-W5·global-sim-business-type-seam·datacore+frontend merge 态·三半接缝）：勾选储能→占用≈95% 稳 / 乘用车→产能不足(>1)+预测虚高缺口(预测>订单)+提前交付>0 / 商用车→空闲(<0.6)+波动 cv 最高；改勾选→portfolio 真重解→矩阵基地集/分口径实排/总代价真变（前端假过滤此门抓·mockPortfolio 无 businessTypeSummary 无从伪造）
   ⚠ 诚实边界（KILL-MOCK-RED）：WO-DATA 未落供给（cellSourceMap/transitDays/freightCost/baseDistanceKm）用 mock 时 mockNotes 逐条标注·材料/线级无实测→诚实回退·系数走 R14 运行时本体零焊死
   ⚠ SEAM（gsim-solver.test.ts·八条·in-proc solve 注入·R6）：物料卡单归因/换型小时改选别线/两段路由交付含在途/分批 Σ=qty/硬锁保护有代价/杠杆在时率真升/递进净产能真减/R6 字节一致
+  ── WO-GLOBALSIM-SUITE 全域推演前端整套（W5+G-UI-2+G-VAR-1/2/3+G-UI-3·一 dev 整单·跨契约+引擎+前端+mock 四半）──
+  ② G-UI-2 每订单基地+产线：订单级影响表/客户级展开/分配台账逐单显 base（首个可产基地）+ line（该基地 PACK 成品线·真 Line 对象·`lineNameOf` 拼音id/基地名互解命中·非占位·前端 GlobalSimView/CustomerImpactBar·MSW `objects?type=Line` 出真 10 线/基地）
+  ③ G-VAR-1 分批交付 per-order（契约 GlobalSimRequest.splitOrderIds·并集全局 allowSplit）：集合内单 → assemble 拆 batch 子项 y∈ℤ≥0·Σ=qty → 交付率/成品持库真变（前端 per-order 开关·mock 同口径·datacore SEAM 守）
+  ④ G-VAR-2 最终交期 per-order（契约 GlobalSimRequest.finalDueDays{orderId→天}·响应 dueComparison[]）：放宽该单最晚可排窗上界（finalWindow）+ 纳 maxDueDay 扩视界 → 更晚窗真承接（而非被挤）→ 逐单出「目标交期 vs 最终可达交期」差（achievableDay=联合解交付日含两阶段在途·gap=可达−目标·真求解非写死）
+  ⑤ G-VAR-3 方法旋钮（契约 GlobalSimRequest.{method,methodWeights,epsilon,priority}·响应 methodScenario）：把多目标组合法做成可调旋钮——加权权重/ε上界/字典序优先·经 `buildComboRequest`（全 5 目标 multiObjective:true）+ InProc/CP-SAT 按 method 择格（weighted 归一加权和·epsilon 滤越界格·lexicographic 逐层）→ 改旋钮 → objectiveValues/分配真变（三法结果形状不同）·与 scenarios[] 逐目标比对矩阵正交·**默认路径 multiObjective 缺省 → 字节不变护既有全部测**
+  ⑥ G-UI-3 客户卡去死按钮：客户卡 click → `/v/project-sim?order=<id>`（真路由·ProjectSimView 反查真 Order·数据一致）；原「协调加产」占位死按钮 → 预览 Modal→确认→plan_change 草稿真动作（S2 审批·R4）
+  ⚠ **plan_change 非 global-sim payload 必带 versionId+reason**（后端 paramsSchema required·缺则 VALIDATION_ERROR·真 bug）：CustomerImpactBar 协调加产（versionId=`global-sim-impact:{sessionId}:{orderId}`）+ GlobalSimScenarioBar 横比采纳（versionId=`global-sim-scenario:{cellId}`）均补；source:"global-sim" 主采纳仍 fingerprint 免 versionId（actions.ts:297 判别不变）
+  ⚠ SEAM（datacore global-sim-var-seam.test.ts 十条 + frontend global-sim-suite-seam.test.tsx 七条）：分批前后交付量真升+Σ子批=qty / 最终交期放宽→可达交期gap真算 / 三方法旋钮改权重·ε·字典序→分配真变 / ②line来自真Line·⑥卡→真路由·协调加产预览→确认草稿带versionId+reason
   ── WO-SURFACE-7DIM 前端上屏（engine→render 接缝闭·additive 不改 7 维语义）──
   ⚠ 编排响应 additive MERGE：globalSimOptimize 在 7 维（scenarios[].kpi·两阶段 schedule[]·mockNotes）之上**并列**经典 portfolio 字段
     （allocation/capacityLedger/displaced/frozen/cost/objectiveValues·scenarios[].objectiveValues/served·displacedCount）→ GlobalSimView 发起编排（twoStage:true）后

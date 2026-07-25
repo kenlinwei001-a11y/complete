@@ -2339,9 +2339,12 @@ export class SolverService {
       lineCurrentModel: Object.keys(lineCurrentModel).length ? lineCurrentModel : undefined,
       baseCurrentModel: Object.keys(baseCurrentModel).length ? baseCurrentModel : undefined,
       lineModelCompat: asRec(args.lineModelCompat) as Record<string, string[]> | undefined,
-      // ④ 分批
+      // ④ 分批（全局）+ ③ G-VAR-1 分批交付 per-order 集合
       allowSplit: asBool(args.allowSplit),
       splitBatch: args.splitBatch != null ? num(args.splitBatch) : undefined,
+      splitOrderIds: Array.isArray(args.splitOrderIds) ? args.splitOrderIds.map(String) : undefined,
+      // ④ G-VAR-2 最终交期 per-order（orderId → 天偏移）
+      finalDueDays: asRec(args.finalDueDays) as Record<string, number> | undefined,
       // ① 物料联合约束（无 Material/BOM → 求解器诚实回退 materialConstraint:false）
       materialConstraint, materials, bom,
       // ③ 电芯-Pack 两阶段（factory_type + cellSourceMap/transitDays/freight 均真数据·WO-GSIM 接真收口·args 覆盖优先·仅无基地时退 solver mock）
@@ -2351,6 +2354,10 @@ export class SolverService {
       freightCostMap: (asRec(args.freightCostMap) as Record<string, number> | undefined) ?? (Object.keys(geoFreightCostMap).length ? geoFreightCostMap : undefined),
       packOnlyBases: packOnlyBases.length ? packOnlyBases : undefined,
       cellCapableBases: cellCapableBases.length ? cellCapableBases : undefined,
+      // ⑤ G-VAR-3 方法旋钮（加权权重 / ε上界 / 字典序优先·驱动 methodScenario 联合重解）
+      methodWeights: asRec(args.methodWeights) as Record<string, number> | undefined,
+      epsilon: Array.isArray(args.epsilon) ? (args.epsilon as PortfolioInput["epsilon"]) : undefined,
+      priority: Array.isArray(args.priority) ? args.priority.map(String) : undefined,
       // ⑤ 杠杆 ⑥ 硬锁 ⑦ 递进批次
       levers: Array.isArray(args.levers) ? (args.levers as PortfolioInput["levers"]) : undefined,
       priorityLocks: Array.isArray(args.priorityLocks) ? (args.priorityLocks as PortfolioInput["priorityLocks"]) : undefined,
@@ -2365,7 +2372,12 @@ export class SolverService {
     // 编排路由：两阶段/物料/杠杆/硬锁/业务类型筛选/显式 globalSim → globalSimOptimize（GlobalSimResponse）；否则经典 portfolio（新增 线级/分批/递进 additive 亦经典路可达）。
     const orchestrate = shared.twoStage === true || shared.materialConstraint === true
       || (shared.levers?.length ?? 0) > 0 || (shared.priorityLocks?.length ?? 0) > 0
-      || (shared.businessTypes?.length ?? 0) > 0 || asBool(args.globalSim) === true;
+      || (shared.businessTypes?.length ?? 0) > 0 || asBool(args.globalSim) === true
+      // ③④⑤ G-VAR-1/2/3：分批交付 / 最终交期 / 方法旋钮 亦经 globalSimOptimize（出 dueComparison/methodScenario）。
+      || (shared.splitOrderIds?.length ?? 0) > 0 || Object.keys(shared.finalDueDays ?? {}).length > 0
+      || (shared.methodWeights != null && Object.keys(shared.methodWeights).length > 0)
+      || (shared.epsilon?.length ?? 0) > 0 || (shared.priority?.length ?? 0) > 0
+      || (shared.method != null && shared.method !== "weighted");
     if (orchestrate) return (await runGlobalSimOptimize(shared, solve)) as unknown as Record<string, unknown>;
     const out = await runPortfolioOptimize(shared, solve);
     return out as unknown as Record<string, unknown>;

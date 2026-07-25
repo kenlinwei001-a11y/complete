@@ -78,7 +78,12 @@ export function GlobalSimScenarioBar({ getSnapshot }: { getSnapshot: () => Scena
     mutationFn: (cell: SimScenarioCompareCell) =>
       createActionDraft({
         actionTypeKey: "plan_change",
-        payload: { source: "global-sim-scenario", scenarioId: cell.id, label: cell.label, kpi: cell.kpi, ontimeRate: cell.ontimeRate, displaced: cell.displacedCount },
+        // plan_change 非 global-sim payload（source:"global-sim-scenario"）→ **必带 versionId + reason**（后端 paramsSchema required·缺则 VALIDATION_ERROR·真 bug 修）。
+        payload: {
+          source: "global-sim-scenario", scenarioId: cell.id, label: cell.label, kpi: cell.kpi, ontimeRate: cell.ontimeRate, displaced: cell.displacedCount,
+          versionId: `global-sim-scenario:${cell.id}`,
+          reason: `采纳方案：${cell.label}`,
+        },
         origin: { userId: workspace?.user?.id ?? "usr-unknown" },
         submit: true,
       }).then((res) => ({ res, cell })),
