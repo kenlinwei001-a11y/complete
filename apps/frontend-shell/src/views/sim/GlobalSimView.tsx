@@ -107,7 +107,11 @@ function GlobalSimNlDock({ sessionId }: { sessionId: string }) {
 const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover", "min_fg_inventory"] as const;
 const SCEN_LABEL: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型", min_delay: "最小延误", min_fg_inventory: "最少成品库存" };
 const provTitle = (p: Prov) => `溯源 ${p.kind}：${p.drillType}.${p.drillField}[${p.drillId}] = ${p.drillValue}`;
-const PORT_WINDOW_DAYS = 21;    // 与 mock/后端 portfolio windowDays 同口径（交付日/窗起换算）
+// 时间窗天数（每个时间窗 = 多少天）：对齐 datacore portfolio 求解器真实口径——
+// windowDays = coeff("windowDays", 14)，仓内无 PUBLISHED `portfolio_optimize_coeffs` 覆盖 → 引擎实跑缺省 14。
+// 曾误标 21（"标 21 实跑 14"·与后端求解器不一致·误导用户）→ 校正为 14，令 UI 标注 / 交付日换算与后端同口径
+// （KILL-MOCK-RED·不标假口径）。注：mock apps/frontend-shell/src/mocks/simSolvers.ts 仍写死 21（本单只读边界·见回报）。
+const PORT_WINDOW_DAYS = 14;    // = datacore portfolio.ts windowDays 缺省口径
 const PORT_FORECAST_START = "2026-06-10"; // 原型 T0（HTML_ORDERS forecastStart·交付日 ISO 锚）
 /** 基地 id→名（BASE_REGISTRY 单一来源·R14·补 transfer.toBase 等未在分配中的基地名）。 */
 const BASE_NAME_BY_ID = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
@@ -283,21 +287,21 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* ① 顶栏 */}
       <div className={styles.header}>
         <div className={styles.titleBlock}>
-          <h2>全局联合推演 · 决策驾驶舱（全局最优在先）</h2>
-          <p>全订单 × 全基地 × 时间共享产能不重复占用 → 一次联合最优。调杠杆 / 勾选订单子集 / 切目标 → 联合最优真变：矩阵、KPI、排产安排、客户影响全链重算。</p>
+          <h2 title="联合推演（联合求解）：把全部订单、全部基地、各个时间段放在一起统一排产，不是一单一单单独算，而是一次算出全局最划算的方案。">全局联合推演 · 决策驾驶舱（全局最优在先）</h2>
+          <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次算出全局最优。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
         </div>
-        <span className={styles.badge} title="联合最优在求解器上求可行方案，非数据库既有事实" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
+        <span className={styles.badge} title="这些数字是算法在满足产能约束下试算出来的最优方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
       </div>
 
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
       <div className={styles.batchBar} data-testid="global-sim-batchbar">
-        <span className={styles.batchScope}>范围：全 {matrix?.bases.length ?? "—"} 基地 × {matrix?.windows.length ?? "—"} 窗（{PORT_WINDOW_DAYS}天/窗）</span>
+        <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：全 {matrix?.bases.length ?? "—"} 个基地 × {matrix?.windows.length ?? "—"} 个时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
         <span>主方案：{SCEN_LABEL[primary]}</span>
-        <span className={`${styles.batchStatus} ${d && !d.feasible ? styles.bad : ""}`} data-testid="global-sim-feasible">
-          {d ? (d.feasible ? "FEASIBLE · 全订单获排" : `${d.status}${d.optimal ? "·可证最优" : ""} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
+        <span className={`${styles.batchStatus} ${d && !d.feasible ? styles.bad : ""}`} data-testid="global-sim-feasible" title="「可行」= 现有产能下所选订单全部都能排下、没有订单被挤掉；「有被挤单」= 产能不够，部分订单排不下（下方「被挤单」卡逐单可查）。">
+          {d ? (d.feasible ? "可行 · 全部订单都排下了" : `${d.status}${d.optimal ? "·可证最优" : ""} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
         </span>
-        <span className={styles.batchChain} data-testid="global-sim-batchchain">
-          已提交批次链（产能 hold）：
+        <span className={styles.batchChain} data-testid="global-sim-batchchain" title="已在产 / 已排定的订单（在产承诺）会先占住对应基地和时间窗的产能；本轮推演把这部分产能视为已被占用、不再重复分配给别的订单。">
+          已排定批次 · 先占产能（在产承诺）：
           {committedBatches.length
             ? committedBatches.slice(0, 8).map((c) => (
                 <span key={c.item} className={styles.batchChip} title={provTitle(c.provenance)} data-testid={`global-sim-committed-${c.item}`}>
@@ -331,7 +335,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
         {/* ③ 中央 Hero：产能占用矩阵 + 目标 segmented + 守恒 ✓ */}
         <div className={styles.glass}>
-          <span className={styles.grpLabel}>[ 产能占用矩阵 · 基地 × 时间窗 · hover 溯 provenance ]</span>
+          <span className={styles.grpLabel} title="每个格子 = 某基地在某个时间窗的产能占用率（已排产量 ÷ 可用产能）；颜色越暖代表越接近满载。鼠标悬停格子可查看该数字的数据来源（溯源）。">[ 产能占用矩阵 · 基地 × 时间窗 · 悬停格子查看数据来源 ]</span>
           <div className={styles.heroTools}>
             <div className={styles.segmented} data-testid="global-sim-objective">
               {ALL_SCENARIOS.map((k) => (
@@ -345,7 +349,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 </button>
               ))}
             </div>
-            <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict">
+            <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict" title="「可证最优」= 算法已从数学上证明这是最好的方案；「产能台账守恒」= 每个基地每个时间窗排下去的量都没超过可用产能、也没有被重复占用（一份产能只算一次）。">
               {d ? `${d.optimal ? "✓ 可证最优" : d.status} · 产能台账守恒${d.reconciled ? "通过" : "未通过"}` : res.isFetching ? "求解中…" : "—"}
             </span>
           </div>
@@ -389,7 +393,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 </tbody>
               </table>
               <div className={styles.summary}>
-                色阶 冷蓝→暖红 按占用率（&lt;50% / &lt;80% / &lt;95% / 满载）· 「满」= 挤压点，联合求解在此产生被挤单（下方客户级影响逐单可溯）· hover 单元溯 Line/Order provenance。
+                颜色 冷蓝→暖红 表示产能占用率（&lt;50% / &lt;80% / &lt;95% / 满载）·「满」= 产能被排满的挤压点，订单在此被挤下（下方「客户级影响」逐单可查）· 悬停单元格可查看产能 / 订单的数据来源。
               </div>
             </div>
           ) : (
@@ -401,7 +405,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         {/* 右轨：磨砂卡① 联合求解配置 + 订单清单三态 */}
         <div>
           <div className={styles.glass}>
-            <span className={styles.grpLabel}>[ 联合求解配置 ]</span>
+            <span className={styles.grpLabel} title="联合求解：把下面勾选的订单放在一起、跨所有基地和时间窗统一排产，一次算出全局最划算的方案（不是一单一单单独算）。">[ 联合求解配置 ]</span>
 
             {/* ⑥ 对比方案（目标切换 = 多方案对比） */}
             <div className={styles.scenPicks} data-testid="global-sim-scens">
@@ -486,7 +490,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 )}
 
                 <div className={styles.actions}>
-                  <button className={styles.btnPrimary} data-testid="global-sim-solve" disabled={res.isFetching} onClick={() => setNonce((n) => n + 1)}>
+                  <button className={styles.btnPrimary} data-testid="global-sim-solve" disabled={res.isFetching} onClick={() => setNonce((n) => n + 1)} title="按当前的杠杆、勾选订单和目标，重新做一次全局联合排产。">
                     {res.isFetching ? "求解中…" : "发起联合求解"}
                   </button>
                   <button className={styles.btnGhost} data-testid="global-sim-adopt" disabled={adopt.isPending} onClick={onAdopt} title="采纳 → 生成 plan_change Action 草稿（走 S2 审批·不直改排产真值 R4）">
@@ -549,7 +553,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡） */}
       {d && (
         <div className={styles.glass}>
-          <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · provenance 悬浮） ]</span>
+          <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · 悬停查看数据来源） ]</span>
           <table className={styles.gtable} data-testid="global-sim-alloc">
             <thead><tr><th>需求项</th><th>来源</th><th>基地</th><th>窗口</th><th style={{ textAlign: "right" }}>量(套)</th><th style={{ textAlign: "right" }}>延误(天)</th><th /></tr></thead>
             <tbody>
@@ -565,7 +569,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             </tbody>
           </table>
 
-          <span className={styles.grpLabel} style={{ marginTop: 14 }}>[ 共享产能守恒台账 · 逐格 allocated ≤ 净cap · 无重复占用 ]</span>
+          <span className={styles.grpLabel} style={{ marginTop: 14 }} title="逐格核对：每个基地每个时间窗的「已排产量」都不超过「可用净产能」，确保一份产能只被用一次、没有重复占用。">[ 共享产能守恒台账 · 逐格「已排产量 ≤ 可用产能」· 无重复占用 ]</span>
           <table className={styles.gtable} data-testid="global-sim-ledger">
             <thead><tr><th>基地</th><th>窗口</th><th style={{ textAlign: "right" }}>净产能</th><th style={{ textAlign: "right" }}>已分配</th><th>守恒</th></tr></thead>
             <tbody>
