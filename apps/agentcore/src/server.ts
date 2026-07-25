@@ -66,6 +66,8 @@ import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
+import { ResourceQualityService } from "./dril/quality.js";
+import { relationsOf } from "./dril/relations.js";
 
 /** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
 function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
@@ -850,6 +852,53 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/api/v1/resources/search", searchResources);
   app.get("/b/v1/resources/:kind/:key", getResource);
   app.get("/api/v1/resources/:kind/:key", getResource);
+
+  // WO-DRIL-P3 · 关系图（1-hop·§6.4）：资源↔资源出边（invokes/includes/binds）+ 即时派生对象类型边（reads/scopes）
+  // + 入边（谁指向本资源）。派生投影 R13·租户隔离 R2·不存在 404。
+  const getRelations = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const outRows = await deps.repos.resourceRelations.listFrom(a.tenantId, kind, key);
+    const allRows = await deps.repos.resourceRelations.listByTenant(a.tenantId);
+    const relations = relationsOf(outRows, kind, key, resource); // 出边（含对象类型 1-hop）
+    const inbound = allRows
+      .filter((r) => r.toKind === kind && r.toKey === key)
+      .map((r) => ({ fromKind: r.fromKind, fromKey: r.fromKey, relType: r.relType }))
+      .sort((x, y) => (x.fromKind + x.fromKey < y.fromKind + y.fromKey ? -1 : 1));
+    return { resource: { kind, key }, relations, inbound };
+  };
+  app.get("/b/v1/resources/:kind/:key/relations", getRelations);
+  app.get("/api/v1/resources/:kind/:key/relations", getRelations);
+
+  // WO-DRIL-P3 · 运行时质量分（§5.4/§6.4）。GET 读当前 EWMA 分行；POST 记一次观测（success/latency）→ EWMA 更新
+  // （运行时探针入口 + 可解释性演示）。派生投影 R13·租户隔离 R2。
+  const qualityService = new ResourceQualityService(deps.repos);
+  const getQuality = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const row = await qualityService.get(a, kind, key);
+    return { kind, key, quality: row ?? null };
+  };
+  const postQuality = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const body = (req.body ?? {}) as { success?: unknown; latencyMs?: unknown };
+    if (typeof body.success !== "boolean" || typeof body.latencyMs !== "number" || !Number.isFinite(body.latencyMs)) {
+      throw new HttpError(400, "INVALID_QUALITY_PROBE", "body 须含 { success: boolean, latencyMs: number }");
+    }
+    const row = await qualityService.record(a, kind, key, { success: body.success, latencyMs: Math.max(0, body.latencyMs) });
+    return { kind, key, quality: row };
+  };
+  app.get("/b/v1/resources/:kind/:key/quality", getQuality);
+  app.get("/api/v1/resources/:kind/:key/quality", getQuality);
+  app.post("/b/v1/resources/:kind/:key/quality", postQuality);
+  app.post("/api/v1/resources/:kind/:key/quality", postQuality);
 
   app.get("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);

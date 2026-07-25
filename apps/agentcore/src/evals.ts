@@ -4,6 +4,7 @@ import type { Orchestrator } from "./router/orchestrator.js";
 import type { RequestAuth } from "./auth.js";
 import { newId } from "./ids.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+import { ResourceQualityService } from "./dril/quality.js";
 
 /** A14：把失败信息归类为 parity 失因（首要项；意图>工具序列>答案>其它）。 */
 export function classifyFailKind(failures: string[]): EvalFailKind {
@@ -166,6 +167,27 @@ export class EvalService {
     };
     await this.deps.repos.evalRuns.insert(report);
     return report;
+  }
+
+  /**
+   * WO-DRIL-P3 · 质量分 parity 回灌钩子（PRD-DRIL §5.4·姊妹篇 evals 接缝）。
+   * 把一次 eval run 的每 case 观测（pass=成功收敛 / latencyMs）回灌到其命中 intent 资源的运行时质量分
+   * （EWMA·§5.4）→ 低通过率 intent 的 successRate 随之下降 → DRIL 检索 history 子分随真实 parity 移动。
+   *
+   * **opt-in**（不在 run() 自动触发·避免污染确定性用例状态）；nowIso 取 report.finishedAt（不引 Date.now·可复现）。
+   * 返回回灌条数。fail-open：无 intentKey 的 case 跳过。
+   */
+  async feedbackQuality(auth: RequestAuth, report: EvalRunReport): Promise<{ updated: number }> {
+    const quality = new ResourceQualityService(this.deps.repos);
+    const ctx: RequestAuth = { ...auth, tenantId: report.tenantId };
+    let updated = 0;
+    for (const r of report.results) {
+      const intentKey = r.observed.intentKey;
+      if (!intentKey) continue; // fail-open：未命中意图不回灌
+      await quality.record(ctx, "intent", intentKey, { success: r.pass, latencyMs: r.observed.latencyMs }, report.finishedAt);
+      updated++;
+    }
+    return { updated };
   }
 
   private async runCase(auth: RequestAuth, c: EvalCase, timeoutMs: number): Promise<EvalCaseResult> {

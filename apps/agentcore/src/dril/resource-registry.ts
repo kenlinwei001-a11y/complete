@@ -8,7 +8,6 @@ import type { DataCoreClient, ToolAuthCtx } from "../tools/clients.js";
 import type { FeatureGate } from "../features/gate.js";
 import { featureEnabled, intentAllowed, solverAllowed, type FeatureSet } from "../features/registry.js";
 import {
-  extractRelations,
   projectAgents,
   projectIntents,
   projectMcp,
@@ -20,7 +19,9 @@ import {
   type CatalogItem,
 } from "./resource-projector.js";
 import { extractTieredTags } from "./tag-taxonomy.js";
-import { ResourceSearchEngine, type Embedder } from "./search-engine.js";
+import { ResourceSearchEngine, extractContextObjectTypes, type Embedder } from "./search-engine.js";
+import { extractResourceRelations, relationsOf } from "./relations.js";
+import { overlayQuality } from "./quality.js";
 
 type OntologyType = { key: string; label?: string };
 
@@ -159,13 +160,20 @@ export class ResourceRegistryService {
       indexedAt: now,
       updatedAt: now,
     }));
-    await this.deps.repos.intelligenceResources.replaceForTenant(tenantId, rows);
 
-    // 派生关系（resource_relations）。仅保留两端资源均在册的边（无死路）。
+    // WO-DRIL-P3 · 派生关系（resource_relations）。仅保留两端资源均在册的边（无死路·R13）。
     const present = new Set(rows.map((r) => `${r.kind}|${r.key}`));
-    const rels: ResourceRelationRow[] = extractRelations({ workflows, agents, skills, rules: ruleSummaries })
+    const rels: ResourceRelationRow[] = extractResourceRelations({ workflows, agents, skills, rules: ruleSummaries })
       .filter((r) => present.has(`${r.fromKind}|${r.fromKey}`) && present.has(`${r.toKind}|${r.toKey}`))
       .map((r) => ({ tenantId, ...r }));
+
+    // WO-DRIL-P3 · 回填 resource.relations（出边·供 relationStrength 打分 + /relations 端点·R6 确定序）。
+    for (const row of rows) {
+      const outEdges = relationsOf(rels, row.kind, row.key);
+      if (outEdges.length > 0) row.resource = { ...row.resource, relations: outEdges } as IntelligenceResource;
+    }
+
+    await this.deps.repos.intelligenceResources.replaceForTenant(tenantId, rows);
     await this.deps.repos.resourceRelations.replaceForTenant(tenantId, rels);
 
     const counts: Record<string, number> = {};
@@ -187,28 +195,85 @@ export class ResourceRegistryService {
       .map((r) => r.resource);
   }
 
-  /** 单资源详情。 */
+  /** 单资源详情（P3 叠加运行时质量分·R13）。 */
   async get(ctx: ToolAuthCtx, kind: string, key: string): Promise<IntelligenceResource | undefined> {
     await this.projectTenant(ctx);
     const row = await this.deps.repos.intelligenceResources.get(ctx.tenantId, kind, key);
-    return row?.resource;
+    if (!row) return undefined;
+    const q = await this.deps.repos.resourceQualityScores.get(ctx.tenantId, kind, key);
+    return overlayQuality(row.resource, q);
   }
 
   /**
-   * WO-DRIL-P2 · 混合检索（§7）。先全量重投影（R13·entitlement 前置 R3·L4 回填 R14），再交
-   * ResourceSearchEngine 做 structured filter + embedding + 确定性加权排序。检索面 = 已开通资源全集。
+   * WO-DRIL-P2/P3 · 混合检索（§7）。先全量重投影（R13·entitlement 前置 R3·L4 回填 R14），再交
+   * ResourceSearchEngine 做 structured filter + embedding + graph traversal + 确定性加权排序。检索面 = 已开通资源全集。
+   *
+   * P3 补：① 叠加运行时质量分（resource_quality_scores → resource.quality·history 子分随 EWMA 移动）；
+   * ② graphDistance：从 req.context 焦点类型经 DataCore planSlice BFS 求最短跳数（复用非重写·R6）；
+   * ③ relationStrength：opts.selectedKeys（组包场景）→ resource.relations 指向已选中资源占比。
    */
-  async search(ctx: ToolAuthCtx, req: ResourceSearchRequest): Promise<ResourceSearchResponse> {
+  async search(
+    ctx: ToolAuthCtx,
+    req: ResourceSearchRequest,
+    opts: { selectedKeys?: Set<string> } = {},
+  ): Promise<ResourceSearchResponse> {
     await this.projectTenant(ctx);
     const rows = await this.deps.repos.intelligenceResources.listByTenant(ctx.tenantId);
-    const resources = rows.map((r) => r.resource);
+    // ① 叠加运行时质量分（R13 派生·无分行 → 原样）。
+    const qRows = await this.deps.repos.resourceQualityScores.listByTenant(ctx.tenantId);
+    const qByPk = new Map(qRows.map((q) => [`${q.kind}|${q.key}`, q] as const));
+    const resources = rows.map((r) => overlayQuality(r.resource, qByPk.get(`${r.kind}|${r.key}`)));
+
     const ontologyTypes = await this.collectOntologyTypes(ctx);
+    // ② graphDistance 图：焦点类型 → 各对象类型最短跳数（planSlice BFS·fail-open 空图）。
+    const focusTypes = extractContextObjectTypes(req.context);
+    const hopsFromFocus = await this.buildHopsFromFocus(ctx, focusTypes, ontologyTypes);
+
     const engine = new ResourceSearchEngine({
       ...(this.deps.embedder !== undefined ? { embedder: this.deps.embedder } : {}),
       ontologyTypes,
+      ...(hopsFromFocus.size > 0 ? { hopsFromFocus } : {}),
+      ...(opts.selectedKeys ? { selectedKeys: opts.selectedKeys } : {}),
     });
     const { query, ...rest } = req;
     return engine.search(query, resources, rest);
+  }
+
+  /**
+   * WO-DRIL-P3 · 焦点类型→各对象类型最短跳数（复用 DataCore `planSlice` BFS·R6·非重写）。
+   * 每个焦点自身跳数 0；对全类型求最短路，取多焦点最小。fail-open：planSlice 不可达/异常 → 跳过（该类型不进图）。
+   */
+  private async buildHopsFromFocus(
+    ctx: ToolAuthCtx,
+    focusTypes: string[],
+    ontologyTypes: OntologyType[],
+  ): Promise<Map<string, number>> {
+    const hops = new Map<string, number>();
+    if (focusTypes.length === 0) return hops;
+    const allKeys = ontologyTypes.map((t) => t.key);
+    const relax = (target: string, d: number): void => {
+      const cur = hops.get(target);
+      if (cur === undefined || d < cur) hops.set(target, d);
+    };
+    for (const focus of focusTypes) {
+      relax(focus, 0);
+      const targets = allKeys.filter((k) => k !== focus);
+      if (targets.length === 0) continue;
+      try {
+        let res = await this.deps.dataCore.ontology.planSlice(ctx, { rootType: focus, targets, maxHops: 6 });
+        if (!res.ok) {
+          // 部分不可达 → 只对可达目标重规划（镜像 comprehend.ts 容错·非一枝断整体退空）。
+          const unreachable = new Set(res.reason.unreachable);
+          const reachable = targets.filter((k) => !unreachable.has(k));
+          if (reachable.length === 0) continue;
+          res = await this.deps.dataCore.ontology.planSlice(ctx, { rootType: focus, targets: reachable, maxHops: 6 });
+        }
+        if (res.ok) for (const p of res.plan.paths) relax(p.target, p.hops.length);
+      } catch {
+        /* fail-open */
+      }
+    }
+    return hops;
   }
 
   /** 已发布本体对象类型（best-effort·fail-open）：listObjectTypes(带中文 label)优先，退化到 listObjectTypeKeys。 */

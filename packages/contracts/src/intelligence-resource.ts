@@ -343,3 +343,37 @@ export function ewmaUpdate(
     avgLatencyMs: alpha * observed.latencyMs + (1 - alpha) * prevLatency,
   };
 }
+
+/**
+ * WO-DRIL-P3 · graphDistance 子分（§7.2 ontology 第二项·纯函数·R6）。
+ * 焦点类型到 resource 可达类型的**最近跳数** → `1/(1+minHops)`，多类型取最大。焦点类型自身 hops=0 → 1.0；
+ * 无图/无可达 → 0（fail-open 中性·不崩）。`hopsFromFocus` 由 DataCore `planSlice` BFS 最短路派生（复用非重写）。
+ */
+export function graphDistanceScore(
+  hopsFromFocus: Map<string, number> | undefined,
+  resourceTypes: string[],
+): number {
+  if (!hopsFromFocus || hopsFromFocus.size === 0) return 0;
+  let best = 0;
+  for (const t of resourceTypes) {
+    const h = hopsFromFocus.get(t);
+    if (h === undefined) continue;
+    best = Math.max(best, 1 / (1 + h));
+  }
+  return best;
+}
+
+/**
+ * WO-DRIL-P3 · relationStrength 子分（§7.2 ontology 第三项·纯函数·R6）。
+ * resource 的关系里指向「已选中资源」（`${toKind}|${toKey}` ∈ selectedKeys）的占比；
+ * 无关系 / 无选中 → 0（普通检索无"已选中"时该项中性，仅在 buildResourcePackage 组包时生效）。
+ */
+export function relationStrengthScore(
+  relations: { toKind: string; toKey: string }[] | undefined,
+  selectedKeys: Set<string> | undefined,
+): number {
+  if (!relations || relations.length === 0 || !selectedKeys || selectedKeys.size === 0) return 0;
+  let hit = 0;
+  for (const rel of relations) if (selectedKeys.has(`${rel.toKind}|${rel.toKey}`)) hit++;
+  return hit / relations.length;
+}

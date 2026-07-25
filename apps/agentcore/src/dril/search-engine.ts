@@ -2,6 +2,8 @@ import {
   DRIL_DOMAIN_LAYER_WEIGHTS,
   DRIL_RANK_WEIGHTS,
   TRUST_LEVEL_ORDER,
+  graphDistanceScore,
+  relationStrengthScore,
   type IntelligenceResource,
   type ResourceSearchRequest,
   type ResourceSearchResponse,
@@ -18,11 +20,16 @@ import { extractTieredTags } from "./tag-taxonomy.js";
  *
  * 管线（§7.1）：① Intent Tag 抽取（R6 正则/关键词）→ ② Structured Filter（entitlement 已由 registry 前置·
  * 此处做 kinds/requiredTags/excludeKeys/minTrustLevel 硬过滤）→ ③ Embedding 语义（advisory·可插拔·
- * 无 embedder 时降级词法）→ ④ 确定性加权排序（§7.1 权重精确）。**graph traversal（§7.1 ④）留 P3**——
- * 本引擎 ontology 分只算 objectTypeOverlap（§7.2 的 0.5 项），graphDistance/relationStrength 项 P3 补。
+ * 无 embedder 时降级词法）→ ④ Graph Traversal（§7.1 ④·graphDistance 复用 planSlice BFS 最短路）→
+ * ⑤ 确定性加权排序（§7.1 权重精确）。
  *
- * fail-open（铁律 4）：embedder=null → 词法回退（非崩溃·仍返排序结果）；无 quality → history/cost 用中性默认。
- * R6：pseudoEmbed 与词法均确定性 → 同 query 同 registry 字节级同序（分值 round 到 1e-6 消浮点漂移）。
+ * **WO-DRIL-P3 · ontology 子分补全（§7.2）**：`ontology = 0.5·objectTypeOverlap + 0.3·graphDistance
+ * + 0.2·relationStrength`。graphDistance 由 `hopsFromFocus`（DataCore planSlice BFS 派生的焦点→类型最短跳数）
+ * 算 `1/(1+minHops)`；relationStrength 由 resource.relations 指向 `selectedKeys` 的占比算（组包场景）。
+ * 二者缺省（无焦点图 / 无已选中）→ 中性 0 → ontology 退回纯 objectTypeOverlap（**P2 golden 字节不变**）。
+ *
+ * fail-open（铁律 4）：embedder=null → 词法回退（非崩溃·仍返排序结果）；无 quality → history/cost 用中性默认；
+ * 无 hopsFromFocus → graphDistance 0。R6：pseudoEmbed/词法/BFS 均确定性 → 同 query 同 registry 字节级同序。
  */
 
 export type Embedder = ((text: string) => number[]) | null;
@@ -36,15 +43,29 @@ export interface SearchEngineOptions {
   embedder?: Embedder;
   /** 已发布本体对象类型（L4 派生 + ontology 兼容分用）。 */
   ontologyTypes?: OntologyType[];
+  /**
+   * WO-DRIL-P3 · 焦点类型→各对象类型的**最短跳数**（DataCore planSlice BFS 派生·R6）。
+   * 供 graphDistance 子分；缺省/空 → graphDistance 中性 0（fail-open）。
+   */
+  hopsFromFocus?: Map<string, number>;
+  /**
+   * WO-DRIL-P3 · 已选中资源键集（`${kind}|${key}`）——buildResourcePackage 组包时的"已选中"基准。
+   * 供 relationStrength 子分；缺省/空 → relationStrength 中性 0（普通检索不参与）。
+   */
+  selectedKeys?: Set<string>;
 }
 
 export class ResourceSearchEngine {
   private readonly embedder: Embedder;
   private readonly ontologyTypes: OntologyType[];
+  private readonly hopsFromFocus: Map<string, number> | undefined;
+  private readonly selectedKeys: Set<string> | undefined;
 
   constructor(opts: SearchEngineOptions = {}) {
     this.embedder = opts.embedder === undefined ? (t) => pseudoEmbed(t) : opts.embedder;
     this.ontologyTypes = opts.ontologyTypes ?? [];
+    this.hopsFromFocus = opts.hopsFromFocus;
+    this.selectedKeys = opts.selectedKeys;
   }
 
   /** 混合检索主入口：query + 候选资源（已过 entitlement）→ 排序结果 + 解释。 */
@@ -167,19 +188,37 @@ export class ResourceSearchEngine {
     return best;
   }
 
-  /** Ontology（§7.2）：P2 只算 0.5·objectTypeOverlap（graphDistance/relationStrength 项 P3）。 */
+  /**
+   * Ontology（§7.2·WO-DRIL-P3 补全）：`0.5·objectTypeOverlap + 0.3·graphDistance + 0.2·relationStrength`。
+   * - objectTypeOverlap：query/context 提到的对象类型 ∩ resource 声明/派生类型的占比。
+   * - graphDistance：resource 可达类型到焦点的最近跳数 → 1/(1+minHops)（planSlice BFS·缺图 → 0）。
+   * - relationStrength：resource 关系指向已选中资源的占比（组包场景·普通检索 → 0）。
+   */
   private ontologyScore(
     resource: IntelligenceResource,
     resTags: TieredTags,
     queryTags: TieredTags,
     contextTypes: string[],
   ): number {
+    const rTypes = [...new Set<string>([...(resTags.l4_object ?? []), ...resourceObjectTypes(resource)])];
+
+    // (1) objectTypeOverlap（0.5）。
     const qTypes = new Set<string>([...(queryTags.l4_object ?? []), ...contextTypes]);
-    if (qTypes.size === 0) return 0;
-    const rTypes = new Set<string>([...(resTags.l4_object ?? []), ...resourceObjectTypes(resource)]);
-    let inter = 0;
-    for (const t of qTypes) if (rTypes.has(t)) inter++;
-    return 0.5 * (inter / qTypes.size);
+    let overlap = 0;
+    if (qTypes.size > 0) {
+      const rSet = new Set(rTypes);
+      let inter = 0;
+      for (const t of qTypes) if (rSet.has(t)) inter++;
+      overlap = inter / qTypes.size;
+    }
+
+    // (2) graphDistance（0.3）：焦点→resource 类型最短跳数（planSlice BFS·R6·缺图中性 0）。
+    const graphDistance = graphDistanceScore(this.hopsFromFocus, rTypes);
+
+    // (3) relationStrength（0.2）：resource 关系指向已选中资源占比（缺选中中性 0）。
+    const relationStrength = relationStrengthScore(resource.relations, this.selectedKeys);
+
+    return 0.5 * overlap + 0.3 * graphDistance + 0.2 * relationStrength;
   }
 }
 
@@ -256,7 +295,7 @@ function resourceObjectTypes(r: IntelligenceResource): string[] {
 }
 
 /** 从 PageContext 提取焦点对象类型（宽松探测：objectTypes / focus.objectType / block.objectType）。 */
-function extractContextObjectTypes(context: Record<string, unknown> | undefined): string[] {
+export function extractContextObjectTypes(context: Record<string, unknown> | undefined): string[] {
   if (!context) return [];
   const out: string[] = [];
   const arr = context.objectTypes;
