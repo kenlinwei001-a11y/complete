@@ -212,6 +212,42 @@ export function defaultRollingSummary(notes: string[], maxChars = 1600): string 
   return kept.join("\n");
 }
 
+/**
+ * WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（补齐上下文压缩最后一块——`defaultRollingSummary` 是确定性拼接，
+ * 此处接上没实现的 LLM 摘要器 hook）。返回 `(notes) => Promise<string>` 供 runAgentLoop `opts.summarizer` 注入。
+ *
+ * - `providerAvailable=true`：调 `llm.compose` 把已折叠轮次笔记压成 ≤1600 字前情摘要；**compose 抛错 / 返回空 → 兜底
+ *   `defaultRollingSummary(notes)`**（fail-open·绝不阻断 agent 循环）。
+ * - `providerAvailable=false`：直接 `defaultRollingSummary(notes)`（fail-open·CI 可复现·零额外 LLM 调用）。
+ *
+ * 数字红线不放松：摘要「仅供回忆·业务事实仍以工具结果为准」（与 loop.ts effectiveSystem 注入措辞一致）。
+ */
+export function makeLlmRollingSummarizer(
+  llm: Pick<LlmClient, "compose">,
+  model: string,
+  tenantId: string | undefined,
+  providerAvailable: boolean,
+): (notes: string[]) => Promise<string> {
+  return async (notes: string[]): Promise<string> => {
+    if (!providerAvailable) return defaultRollingSummary(notes);
+    try {
+      const out = await llm.compose({
+        model,
+        instruction:
+          "把以下已折叠轮次的调查笔记压成 ≤1600 字中文『前情摘要』：只保留已验证事实 + 工具名 + 关键数字，去重，不编造。" +
+          "该摘要仅供回忆·业务事实仍以工具结果为准。",
+        inputs: notes.map((note, i) => ({ round: i + 1, note })),
+        ...(tenantId ? { tenantId } : {}),
+      });
+      const s = (out ?? "").trim();
+      return s.length > 0 ? s : defaultRollingSummary(notes);
+    } catch {
+      // fail-open：compose 抛错（无 provider / key 失效 / 网关异常）→ 退确定性兜底，不阻断循环。
+      return defaultRollingSummary(notes);
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // §1.1/§1.3 预算器（阈值 + 测量节奏 + contextOps 留痕）
 // ---------------------------------------------------------------------------

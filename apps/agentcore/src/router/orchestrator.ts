@@ -30,6 +30,7 @@ import {
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
+import { makeLlmRollingSummarizer } from "../agent/context.js"; // WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（fail-open 注入 runAgentLoop.summarizer）
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
 import { executePlan } from "./execute-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径执行器（服务端多步 + 一次综合·不经 runAgentLoop）
 import { isSimComposeQuery, buildSimNavSlice, simComposeSlots } from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT · 推演 NL 大脑（portfolio 为中心的推演链投影 + 多方案集·消费 Phase2-C 组合器）
@@ -1037,6 +1038,16 @@ export class Orchestrator {
     const baseUser = buildAgentUser(task, priorSummary || undefined);
     const userContent = [baseUser, sliceSection, semanticSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
+    // WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器注入（fail-open）：折叠轮次的前情摘要优先用 llm.compose 蒸馏，
+    // compose 抛错/无 provider → 退确定性 defaultRollingSummary（既有 500 测全走此路·零回归）。providerAvailable 由 llmSettings
+    // 判定；若其 providerAvailable 方法尚未落地（WO-0 领域·本单不改 providers）→ 退 false（确定性兜底），落地后自动启用真 LLM 摘要。
+    const settingsForSummary = this.deps.llmSettings as unknown as {
+      providerAvailable?: (tenantId: string | undefined, role: string, explicit?: string) => Promise<boolean>;
+    };
+    const summaryProviderAvailable =
+      typeof settingsForSummary.providerAvailable === "function"
+        ? await settingsForSummary.providerAvailable(task.tenantId, "compose").catch(() => false)
+        : false;
     const result = await runAgentLoop({
       taskId,
       model,
@@ -1044,6 +1055,7 @@ export class Orchestrator {
       system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
+      summarizer: makeLlmRollingSummarizer(this.deps.engine.deps.llm, model, task.tenantId, summaryProviderAvailable),
       tools,
       llm: this.deps.engine.deps.llm,
       executor,
