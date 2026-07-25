@@ -234,6 +234,8 @@ export class SyntheticService {
             | "WARN"
             | "INFO",
           params: r.params ?? {},
+          // WO-RULES-CLASSIFY：业务类别随种子规则透传（规则库分类筛选的真元数据源）。
+          category: r.category,
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
         });

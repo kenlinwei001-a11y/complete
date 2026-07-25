@@ -199,6 +199,8 @@ export interface Rule {
   /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。
    * A3-SUITE-1：同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys）。 */
   params?: Record<string, number | string | string[]>;
+  /** WO-RULES-CLASSIFY（加性）：业务类别（产能/物料/财务/合规/换型…），规则库分类筛选的真元数据。可空（手工/旧规则）。 */
+  category?: string;
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";

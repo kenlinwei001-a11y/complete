@@ -39,6 +39,8 @@ export class RulesService {
       scopeObjectTypes: string[];
       severity: "BLOCK" | "WARN" | "INFO";
       params?: Record<string, number | string | string[]>;
+      /** WO-RULES-CLASSIFY（加性）：业务类别，随规则落库供规则库分类筛选。 */
+      category?: string;
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
     },
@@ -60,6 +62,7 @@ export class RulesService {
       scopeObjectTypes: input.scopeObjectTypes,
       severity: input.severity,
       params: input.params ?? {},
+      ...(input.category ? { category: input.category } : {}),
       origin: input.origin ?? { type: "MANUAL" },
       version,
       status: input.status ?? "DRAFT",
@@ -160,7 +163,7 @@ export class RulesService {
   async update(
     ctx: AuthCtx,
     id: string,
-    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params">>,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params" | "category">>,
   ): Promise<Rule> {
     const rule = await this.get(ctx, id);
     if (rule.status !== "DRAFT") {

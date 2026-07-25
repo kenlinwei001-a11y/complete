@@ -26,6 +26,39 @@ export default function RulesPage() {
   } | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "rules"] });
 
+  // WO-RULES-CLASSIFY：分类筛选 + 「约束条件」独立入口。数据源=规则真元数据：
+  // category（种子随规则授予，见 datacore battery.ts）+ severity==="BLOCK"（硬约束=约束条件）。
+  // chip 列表由返回数据去重生成——非写死清单；无 category 的旧/手工规则归「未分类」。
+  const UNCLASSIFIED = t.uncategorized;
+  const allRules = rules ?? [];
+  const [viewMode, setViewMode] = useState<"all" | "constraint" | "general">("all");
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of allRules) set.add(r.category ?? UNCLASSIFIED);
+    return [...set].sort((a, b) => (a === UNCLASSIFIED ? 1 : b === UNCLASSIFIED ? -1 : a.localeCompare(b, "zh")));
+  }, [allRules, UNCLASSIFIED]);
+  const counts = useMemo(
+    () => ({
+      all: allRules.length,
+      constraint: allRules.filter((r) => r.severity === "BLOCK").length,
+      general: allRules.filter((r) => r.severity !== "BLOCK").length,
+    }),
+    [allRules],
+  );
+  const toggleCat = (c: string) =>
+    setSelectedCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  const visibleRules = useMemo(
+    () =>
+      allRules.filter((r) => {
+        if (viewMode === "constraint" && r.severity !== "BLOCK") return false;
+        if (viewMode === "general" && r.severity === "BLOCK") return false;
+        if (selectedCats.length > 0 && !selectedCats.includes(r.category ?? UNCLASSIFIED)) return false;
+        return true;
+      }),
+    [allRules, viewMode, selectedCats, UNCLASSIFIED],
+  );
+
   const publishMut = useMutation({
     mutationFn: (id: string) => publishRule(id),
     onSuccess: (r) => {
@@ -65,12 +98,59 @@ export default function RulesPage() {
           {t.create}
         </button>
       </div>
+
+      {/* WO-RULES-CLASSIFY：分类筛选栏 —— ①「约束条件」独立入口（severity=BLOCK 硬约束）+ 一般规则 ② 类别多选 chip。 */}
+      <div className="panel" style={{ marginBottom: 12 }} data-testid="rules-filter-bar">
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {(
+            [
+              ["all", t.viewAll, counts.all],
+              ["constraint", t.viewConstraint, counts.constraint],
+              ["general", t.viewGeneral, counts.general],
+            ] as const
+          ).map(([mode, label, n]) => (
+            <button
+              key={mode}
+              type="button"
+              className={`btn sm ${viewMode === mode ? "primary" : ""}`}
+              onClick={() => setViewMode(mode)}
+              data-testid={`rules-view-${mode}`}
+              aria-pressed={viewMode === mode}
+            >
+              {label}（{n}）
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{t.filterByCategory}</span>
+          {categories.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`badge ${selectedCats.includes(c) ? "blue" : ""}`}
+              style={{ cursor: "pointer", border: `1px solid ${selectedCats.includes(c) ? "var(--accent, #2563eb)" : "var(--border, #ccc)"}` }}
+              onClick={() => toggleCat(c)}
+              data-testid={`rules-cat-chip-${c}`}
+              aria-pressed={selectedCats.includes(c)}
+            >
+              {c}
+            </button>
+          ))}
+          {selectedCats.length > 0 && (
+            <button type="button" className="btn sm" onClick={() => setSelectedCats([])} data-testid="rules-cat-clear">
+              {t.filterClear}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="panel">
         <table className="cmp">
           <thead>
             <tr>
               <th>key</th>
               <th>名称</th>
+              <th>{t.category}</th>
               <th>severity</th>
               <th>作用域</th>
               <th>来源</th>
@@ -80,13 +160,16 @@ export default function RulesPage() {
             </tr>
           </thead>
           <tbody>
-            {(rules ?? []).map((r) => (
+            {visibleRules.map((r) => (
               <Fragment key={r.id}>
                 <tr style={{ cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)} data-testid={`rule-${r.key}`}>
                   <td>
                     <span className="badge blue">{r.key}</span>
                   </td>
                   <td className="zh">{r.name}</td>
+                  <td className="zh">
+                    <span className={`badge ${r.category ? "" : "muted"}`} data-testid={`rule-cat-${r.key}`}>{r.category ?? t.uncategorized}</span>
+                  </td>
                   <td>
                     <span className={`badge ${r.severity === "BLOCK" ? "red" : r.severity === "WARN" ? "amber" : ""}`}>{r.severity}</span>
                   </td>
@@ -120,7 +203,7 @@ export default function RulesPage() {
                 </tr>
                 {open === r.id && (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
                       </div>
@@ -129,6 +212,13 @@ export default function RulesPage() {
                 )}
               </Fragment>
             ))}
+            {visibleRules.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ textAlign: "center", color: "var(--muted)", padding: 16 }} data-testid="rules-empty">
+                  {t.filterEmpty}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -211,6 +301,8 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
   const [expression, setExpression] = useState(rule?.expression ?? "");
   const [scope, setScope] = useState((rule?.scopeObjectTypes ?? []).join(","));
   const [severity, setSeverity] = useState<RuleEntry["severity"]>(rule?.severity ?? "WARN");
+  // WO-RULES-CLASSIFY：业务类别（可选；随规则落库供规则库分类筛选）。
+  const [category, setCategory] = useState(rule?.category ?? "");
   // 规则即引用 §2.2/§4：命名阈值（key→value）可增/删/改。用有序数组承载编辑态（保留次序、允许编辑空 key）。
   const [paramRows, setParamRows] = useState<{ k: string; v: string }[]>(() =>
     Object.entries(rule?.params ?? {}).map(([k, v]) => ({ k, v: String(v) })),
@@ -265,6 +357,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         scopeObjectTypes: scope.split(",").map((s) => s.trim()).filter(Boolean),
         severity,
         params: paramsObject(),
+        category: category.trim() || undefined,
       };
       return rule ? updateRule(rule.id, body) : createRule({ key, ...body });
     },
@@ -297,10 +390,29 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
           </select>
         </label>
       </div>
-      <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 8 }}>
-        作用域（逗号分隔对象类型）
-        <input style={{ width: "100%" }} value={scope} aria-label="作用域" onChange={(e) => setScope(e.target.value)} />
-      </label>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <label style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
+          作用域（逗号分隔对象类型）
+          <input style={{ width: "100%" }} value={scope} aria-label="作用域" onChange={(e) => setScope(e.target.value)} />
+        </label>
+        <label style={{ fontSize: 12, color: "var(--muted)", width: 160 }}>
+          {t.category}（{t.categoryOptional}）
+          <input
+            style={{ width: "100%" }}
+            value={category}
+            list="rule-category-options"
+            placeholder={t.categoryPlaceholder}
+            aria-label={t.category}
+            onChange={(e) => setCategory(e.target.value)}
+            data-testid="rule-category-input"
+          />
+          <datalist id="rule-category-options">
+            {[...new Set((allRules ?? []).map((r) => r.category).filter(Boolean) as string[])].map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
+      </div>
 
       <div className="section-title">命名阈值（params · 表达式可直接引用 key）</div>
       <div data-testid="rule-params">

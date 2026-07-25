@@ -846,6 +846,17 @@ export const zh = {
       originManual: "MANUAL",
       originDocument: "DOCUMENT",
       originSynthetic: "SYNTHETIC",
+      // WO-RULES-CLASSIFY：分类筛选 + 约束条件独立入口
+      category: "类别",
+      categoryOptional: "可选",
+      categoryPlaceholder: "如 产能/物料/财务",
+      uncategorized: "未分类",
+      viewAll: "全部",
+      viewConstraint: "约束条件",
+      viewGeneral: "一般规则",
+      filterByCategory: "按类别筛选：",
+      filterClear: "清除",
+      filterEmpty: "当前筛选条件下无规则",
     },
     empty: {
       connections: "暂无连接 —— 上传文件或创建连接开始接入数据",
