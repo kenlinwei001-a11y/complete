@@ -1061,7 +1061,8 @@ export function mockSopReschedule(args: Record<string, unknown>): Record<string,
 // ---------------------------------------------------------------------------
 type PortObjKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost" | "min_fg_inventory";
 const PORT_OBJ_KEYS: PortObjKey[] = ["max_ontime", "min_delay", "min_changeover", "min_cost", "min_fg_inventory"];
-const PORT_WINDOW_DAYS = 21;
+// 与 datacore portfolio 求解器同口径：coeff("windowDays", 14)（KILL-MOCK-RED·避免 mock 态 21 实态 14 的假口径分裂）。
+const PORT_WINDOW_DAYS = 14;
 const PORT_LATE_WINDOWS = 2;
 const PORT_DELAY_PEN = 0.05;
 const PORT_CHG_COST = 1.2;
