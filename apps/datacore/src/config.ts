@@ -5,6 +5,9 @@ export const ConfigSchema = z.object({
   PORT: z.coerce.number().int().default(4001),
   HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.string().default("development"),
+  // 安全后门显式 opt-in（默认关·生产安全）：X-Debug-User 头绕过 JWT，仅当非 production 或本值="1" 才认。
+  // 真实生产切勿设 1；仅 demo/测试部署为省每次 login 而显式开（见 docker-compose 注释）。
+  ALLOW_DEBUG_USER: z.string().default("0"),
   /** When set, the pg repository implementation is used; otherwise in-memory. */
   DATABASE_URL: z.string().optional(),
   /** Used to sign refresh-token binding / misc HMACs. */

@@ -733,7 +733,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       return;
     }
     const debugHeader = req.headers["x-debug-user"];
-    if (config.NODE_ENV !== "production" && typeof debugHeader === "string") {
+    // X-Debug-User 绕过 JWT：非 production 恒认；production 下**必须显式** ALLOW_DEBUG_USER=1 才认（安全后门 opt-in·
+    // 默认关→生产安全）。demo/测试部署可在 compose 设 1 省去每次 login·真实生产切勿开。
+    const debugAuthAllowed = config.NODE_ENV !== "production" || config.ALLOW_DEBUG_USER === "1";
+    if (debugAuthAllowed && typeof debugHeader === "string") {
       req.authCtx = await auth.debugCtx(debugHeader);
       return;
     }
