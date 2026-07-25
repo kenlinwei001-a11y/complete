@@ -8,7 +8,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoEntitlements } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +35,8 @@ async function main(): Promise<void> {
     logger.info("generated battery-manufacturing synthetic dataset (seed 42)");
     await seedDemoPropagationRules(repos);
     logger.info("seeded demo sim propagation rules (sandbox non-empty)");
+    await seedDemoEntitlements(repos);
+    logger.info("lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
   }
   await repos.close();
 }

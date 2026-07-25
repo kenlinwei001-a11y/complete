@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +57,9 @@ async function main(): Promise<void> {
       // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
       await seedDemoPropagationRules(repos);
       logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+      // WO-LIGHTUP：生产 demo 点亮 5 个 QOS 暗发功能（DRIL/反思/free-llm/coordinator/compose-path）——仅生产播种路径，不入基座 seedDemo。
+      await seedDemoEntitlements(repos);
+      logger.info("SEED_DEMO=1: lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）

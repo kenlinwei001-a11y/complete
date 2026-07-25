@@ -43,27 +43,35 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
       attributes: w.attributes,
     });
   }
-  // WO-LIGHTUP：demo 租户显式点亮 5 个 QOS 暗发功能（battery「all on」模板诚实排除它们·须显式 override 开·见 features.ts
-  // QOS_DARK_LAUNCH_FEATURES）。让 demo 开箱即体验：DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径。
-  // 幂等（固定 id + 仅缺失时写）；确定性 updatedAt（R6·不引时钟）。真 provider 未绑时 path-B 诚实降级（不崩·WO-0③）。
-  const fcfgId = `fcfg_${DEMO_TENANT}`;
-  if (!(await repos.featureConfigs.get(DEMO_TENANT, fcfgId))) {
-    await repos.featureConfigs.put({
-      id: fcfgId,
-      tenantId: DEMO_TENANT,
-      overrides: {
-        "qos.dril-routing": true,
-        "agent.critic": true,
-        "ceo.free-llm": true,
-        "agent.coordinator": true,
-        "qos.compose-path": true,
-      },
-      configVersion: 1,
-      updatedBy: "system:seed-lightup",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-  }
   return { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
+}
+
+/**
+ * WO-LIGHTUP：demo 租户显式点亮 5 个 QOS 暗发功能（battery「all on」模板诚实排除它们·须显式 override 开·见 features.ts
+ * QOS_DARK_LAUNCH_FEATURES）。让 demo 开箱即体验：DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径。
+ *
+ * **只在生产 SEED_DEMO=1 播种路径调用**（server.ts / seed-cli.ts·在 seedDemo 之后）——**不放进基座 seedDemo**：
+ * 单测 makeApp 只调 seedDemo 需要「干净 demo·configVersion=0·暗发默认关」的基线（features.test / dark-feature-default-off
+ * 等回归门据此）。生产才点亮 → 两不冲突。幂等（固定 id + 仅缺失时写）；确定性 updatedAt（R6·不引时钟）。
+ * 真 provider 未绑时 path-B 诚实降级（不崩·硬预算 Phase4 + WO-0③ 已消「空转超时」隐患）。
+ */
+export async function seedDemoEntitlements(repos: Repos): Promise<void> {
+  const fcfgId = `fcfg_${DEMO_TENANT}`;
+  if (await repos.featureConfigs.get(DEMO_TENANT, fcfgId)) return; // 幂等：已有 override 不覆盖
+  await repos.featureConfigs.put({
+    id: fcfgId,
+    tenantId: DEMO_TENANT,
+    overrides: {
+      "qos.dril-routing": true,
+      "agent.critic": true,
+      "ceo.free-llm": true,
+      "agent.coordinator": true,
+      "qos.compose-path": true,
+    },
+    configVersion: 1,
+    updatedBy: "system:seed-lightup",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
 }
 
 /**
