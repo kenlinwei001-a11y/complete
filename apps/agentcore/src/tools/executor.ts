@@ -43,7 +43,7 @@ const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_o
  * WO-Phase4：探索类（"盲扫"）工具集——消耗 budget.maxDiscoverCalls 专用配额（与通用 tool 预算正交）。
  * 真开放 residual 题最多允许 N 次盲扫（默认 residual=1），超即 BUDGET_EXCEEDED 并置 budget.exhausted → loop 硬预算降级。
  */
-const DISCOVER_TOOLS = new Set(["discover", "search_experience", "query_system_ontology"]);
+const DISCOVER_TOOLS = new Set(["discover", "search_experience", "query_system_ontology", "retrieve_knowledge"]);
 
 export interface ExecutorDeps {
   dataCore: DataCoreClient;
@@ -52,6 +52,11 @@ export interface ExecutorDeps {
   metrics: Metrics;
   /** 增量 §3：read_skill_resource 的附件内容读取端口（缺省 → 仅返回元信息）。 */
   skillResources?: SkillResourceReader;
+  /** WO-DRIL-P2 · retrieve_knowledge 的检索端口（缺省 → 工具降级返回空结果·fail-open 不崩）。 */
+  retrieveResources?: (
+    ctx: ToolAuthCtx,
+    req: import("@platform/contracts").ResourceSearchRequest,
+  ) => Promise<import("@platform/contracts").ResourceSearchResponse>;
 }
 
 const OUTPUT_LIMIT = 64 * 1024;
@@ -261,6 +266,30 @@ export class GuardedToolExecutor {
           return { items: [] };
         }
         return this.deps.dataCore.catalog.discover(ctx, kind, args.query ? String(args.query) : undefined);
+      }
+      // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类资源按 NL 选型（fail-open：无端口 → 空结果不崩）。
+      case "retrieve_knowledge": {
+        if (!this.deps.retrieveResources) return { results: [], explanation: "资源检索未启用（无 registry 端口）。" };
+        const maxResults = args.maxResults === undefined ? 8 : Math.min(Number(args.maxResults), 50);
+        const req = {
+          query: String(args.query ?? ""),
+          maxResults,
+          minScore: 0.2,
+          ...(Array.isArray(args.kinds) ? { kinds: args.kinds.map(String) } : {}),
+        } as import("@platform/contracts").ResourceSearchRequest;
+        const res = await this.deps.retrieveResources(ctx, req);
+        // 收敛回执：只留 kind/key/label/score/scoreBreakdown（不回灌全 resource 体·省 token）。
+        return {
+          results: res.results.map((r) => ({
+            kind: r.resource.kind,
+            key: r.resource.key,
+            label: r.resource.label,
+            description: r.resource.description,
+            score: r.score,
+            scoreBreakdown: r.scoreBreakdown,
+          })),
+          explanation: res.explanation,
+        };
       }
       case "resolve_slice":
         return this.deps.dataCore.ontology.resolveSlice(
