@@ -70,6 +70,26 @@ const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
  * 这两键不在 AgentCore FeatureRegistry 里（权威集来自 DataCore），故不能用 featureEnabled（它对未注册键恒真）；
  * 显式要求两键齐备。set="ALL"（mock 默认/降级 fail-open）→ 视为全开（与现有 entitlement 语义一致）。
  */
+/**
+ * WO-0-NL-WIRING（补 SEAM 门残口）：识别 path-B LLM 调用因**无可用 provider/凭据/鉴权**而抛的错——
+ * 这类错非 abort/timeout（runAgentLoop 降级机制不接），若不拦会逃逸成 raw INTERNAL_ERROR（真 Kimi「无 LLM」铁证）。
+ * 命中 → runPathB 转诚实能力边界降级（非洪泛）。仅匹配鉴权/凭据/provider-解析类签名；mock 注入的 LlmClient 从不抛此类错。
+ */
+function isLlmUnavailableError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? "")).toLowerCase();
+  return (
+    msg.includes("authentication method") ||
+    msg.includes("apikey") ||
+    msg.includes("api key") ||
+    msg.includes("api-key") ||
+    msg.includes("could not resolve auth") ||
+    msg.includes("no usable provider") ||
+    msg.includes("no usable model") ||
+    msg.includes("credential") ||
+    msg.includes("llm_provider_unavailable")
+  );
+}
+
 function simCommanderEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return true;
   return set.has("sim.commander") && set.has("sim.sandbox");
@@ -1108,24 +1128,38 @@ export class Orchestrator {
     const baseUser = buildAgentUser(task, priorSummary || undefined);
     const userContent = [baseUser, sliceSection, semanticSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
-    const result = await runAgentLoop({
-      taskId,
-      model,
-      tenantId: task.tenantId,
-      system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
-      userContent,
-      ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
-      tools,
-      llm: this.deps.engine.deps.llm,
-      executor,
-      budget,
-      repos: this.deps.repos,
-      metrics: this.deps.metrics,
-      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
-      isCancelled: () => this.cancelled.has(taskId),
-      // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
-      llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
-    });
+    let result: Awaited<ReturnType<typeof runAgentLoop>>;
+    try {
+      result = await runAgentLoop({
+        taskId,
+        model,
+        tenantId: task.tenantId,
+        system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
+        userContent,
+        ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
+        tools,
+        llm: this.deps.engine.deps.llm,
+        executor,
+        budget,
+        repos: this.deps.repos,
+        metrics: this.deps.metrics,
+        emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+        isCancelled: () => this.cancelled.has(taskId),
+        // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
+        llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
+      });
+    } catch (err) {
+      // WO-0-NL-WIRING（补 SEAM 门残口「无 LLM 时不 INTERNAL_ERROR」）：path-B 首个 LLM 调用因 provider 无可用
+      // 凭据/鉴权而抛（非 abort/timeout → runAgentLoop 的降级机制不接·会逃逸到 runPipeline catch → failFromError →
+      // raw INTERNAL_ERROR·真 Kimi「无 LLM」铁证）。转**诚实能力边界降级**（列可用确定性意图·请换个问法），绝不洪泛。
+      // mock 测注入的 LlmClient 从不抛此类鉴权错 → 既有 path-B 用例逐字节零回归。真开放题在场 LLM 时照常跑（本 catch 不触）。
+      if (isLlmUnavailableError(err)) {
+        const candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
+        await this.completeWorkflowOnlyMiss(task, candidates);
+        return;
+      }
+      throw err;
+    }
 
     await this.deps.repos.agentRuns.insert(result.run);
     await this.deps.repos.fallbackTraces.insert({

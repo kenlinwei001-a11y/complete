@@ -94,6 +94,30 @@ describe("WO-0-NL-WIRING · SEAM（mock 路·CI 恒绿）", () => {
     await t.app.close();
   });
 
+  it("④ 补 SEAM 残口（live 真跑暴露·绿测试≠能用）：path-B 无可用 LLM → 诚实能力边界降级（非 raw INTERNAL_ERROR）", async () => {
+    const t: TestApp = await createTestApp();
+    // 真开放题落 path-B（domainResolve 无 solver）；agent 首调因 provider 无凭据/鉴权抛（模拟真「无 LLM」态·SDK auth 错）。
+    // 此前：该错非 abort/timeout → runAgentLoop 降级机制不接 → 逃逸 runPipeline catch → failFromError → raw INTERNAL_ERROR
+    //（真 Kimi「无 LLM + 开放题」live 铁证）。现：runPathB catch 识别 provider-鉴权错 → completeWorkflowOnlyMiss 诚实降级。
+    t.llm.queueAgentTurn(() => {
+      throw new Error(
+        "Could not resolve authentication method. Expected one of apiKey, authToken, credentials, config, or profile to be set.",
+      );
+    });
+
+    const { taskId } = await submitQuery(t, ADMIN, OPEN_Q, { view: "risk" });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED" || x.status === "FAILED");
+
+    // 不是 raw INTERNAL_ERROR / FAILED：转诚实能力边界降级（COMPLETED·换个问法/列可用意图·绝不编答案）。
+    expect(task.status).toBe("COMPLETED");
+    expect(task.error).toBeFalsy();
+    expect((task.answer?.blocks?.[0] as { markdown?: string } | undefined)?.markdown ?? "").toContain("换个问法");
+    // agent 首调即抛 → 被 catch 拦（非无界重试洪泛）。
+    expect(t.llm.agentRequests.length).toBe(1);
+
+    await t.app.close();
+  });
+
   it("R6 确定性：domainResolve 兜底对 capacity 题解析出 capacity_feasibility·同问句重跑字节一致（无 LLM/时钟/随机）", () => {
     const a = JSON.stringify(domainResolve(CAPACITY_Q, undefined));
     const b = JSON.stringify(domainResolve(CAPACITY_Q, undefined));
