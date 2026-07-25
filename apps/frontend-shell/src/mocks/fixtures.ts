@@ -71,6 +71,20 @@ export const BASES = BASE_REGISTRY.map((b) => ({
 
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
 
+// WO-GUI4-MULTIOBJ-REAL · mock 同步真 Order 口径（VITE_MOCK 也带 unitPrice/pri 真形状·不再写死另一套假单）：
+// unitPrice 元/套（动力 NCM 溢价 / 储能 LFP 偏低·对齐 datacore Model.unitPrice≈priceWan×1e4 量级），供
+// 营收=qty×unitPrice 真派生；pri 优先级驱动违约金口径。与真后端 /a/v1/objects?type=Order 同字段集。
+const MODEL_UNIT_PRICE: Record<string, number> = {
+  "4680-NCM": 22000,
+  "VDA-NCM": 20000,
+  "4680-LFP": 16000,
+  "刀片-LFP": 15000,
+  "储能-280Ah": 14000,
+  "储能-314Ah": 14500,
+};
+// 优先级循环周期 7（与 qty 随 i 单调递增去相关 → 同化学体系内小单可高优先/大单可低优先·令权重取舍真翻转）。
+const PRI_CYCLE = ["高", "中", "低", "中", "高", "低", "中"];
+
 const CUSTS = ["蔚途汽车", "星河储能", "极光新能源", "蓝海电网", "山岳重工"];
 // WO-W5·mock 客户 → 业务类型（乘/商/储·与 datacore businessTypeOfCustomer 同口径·三类都覆盖）。
 const CUST_BUSINESS_TYPE: Record<string, "passenger" | "commercial" | "storage"> = {
@@ -81,6 +95,7 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
   const base = BASES[i % 13]!;
   const cust = CUSTS[i % CUSTS.length]!;
   const businessType = CUST_BUSINESS_TYPE[cust] ?? "passenger";
+  const model = MODELS[i % MODELS.length]!;
   // 商用车订单波动整形（确定性·镜像 datacore shapeBusinessTypeQty·体量小·dev 态波动可见）。
   const rawQty = Math.round((500 + i * 137) * 2.84);
   const volFactors = [0.32, 2.3, 0.55, 1.9];
@@ -91,13 +106,16 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
     id: `ord-${String(i + 1).padStart(3, "0")}`,
     so: `SO-${String(10001 + i)}`,
     cust,
-    model: MODELS[i % MODELS.length]!,
+    model,
     qty,
     due: `2026-0${(i % 6) + 4}-${String((i % 27) + 1).padStart(2, "0")}`,
     bases: base.name,
     status: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",
     businessType,
     early,
+    // WO-GUI4-MULTIOBJ-REAL：单价（营收=qty×unitPrice）+ 优先级（驱动违约金口径）·真后端 Order 同字段集。
+    unitPrice: MODEL_UNIT_PRICE[model] ?? 18000,
+    pri: PRI_CYCLE[i % PRI_CYCLE.length]!,
   };
 });
 

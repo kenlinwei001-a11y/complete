@@ -875,9 +875,18 @@ function moAssign(args: Record<string, unknown>, w: MoWeights) {
   const remCtr: Record<string, number> = Object.fromEntries(contracts.map((c) => [c.id, c.cap]));
   const costOf = (o: string, l: string) => elig.find((e) => e.order === o && e.line === l)?.cost ?? 0;
   const linesFor = (o: string) => elig.filter((e) => e.order === o).map((e) => e.line);
-  // 服务某单的边际收益 = wRev·营收 + wPen·违约金（服务即避免该违约金）；据此降序贪心（与 CP-SAT 目标同向）。
-  const score = (o: MoOrder) => w.revenue * o.revenue + w.penalty * o.penalty;
-  const ranked = [...orders].sort((a, b) => score(b) - score(a) || (a.id < b.id ? -1 : 1));
+  // 服务某单的边际收益按**单位产能价值密度**降序贪心（产能以 qty 计 → knapsack 正确性：同一产能优先保"每套贡献高"的单）。
+  // 两处纪律缺一 Δ 就塌成 0（G-UI-4 病根）：
+  //  ① 除以 qty 去耦量纲——否则营收/违约金均 ∝ qty，大单量纲淹没一切，改权重不改被挤集；
+  //  ② 各目标先归一到 [0,1] 再加权——否则营收密度(unitPrice≈1.4~2.2万)与违约金密度(优先级单价 0.26~2.6万)量纲不同，
+  //     绝对谱宽大的一维恒主导，1→2 的权重微调翻不动排序（与 moMultiMethod:1313 归一加权同法·多目标一致口径）。
+  const revD = (o: MoOrder) => (o.qty > 0 ? o.revenue / o.qty : 0); // 营收密度 = unitPrice
+  const penD = (o: MoOrder) => (o.qty > 0 ? o.penalty / o.qty : 0); // 违约金密度 = 优先级单价
+  const rVals = orders.map(revD), pVals = orders.map(penD);
+  const rLo = Math.min(...rVals), rHi = Math.max(...rVals), pLo = Math.min(...pVals), pHi = Math.max(...pVals);
+  const norm = (v: number, lo: number, hi: number) => (hi > lo ? (v - lo) / (hi - lo) : 0);
+  const density = (o: MoOrder) => w.revenue * norm(revD(o), rLo, rHi) + w.penalty * norm(penD(o), pLo, pHi);
+  const ranked = [...orders].sort((a, b) => density(b) - density(a) || (a.id < b.id ? -1 : 1));
   const occupancy: { order: string; line: string }[] = [];
   const served = new Set<string>();
   for (const o of ranked) {
