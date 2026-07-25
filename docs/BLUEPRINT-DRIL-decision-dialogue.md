@@ -91,6 +91,11 @@ invoke_solver/query → classifyGap(task)   （7 码：NO_INTENT/NO_PLAN/NO_SLIC
 ```
 **接线要求**：QOS 对话失败（尤其 EMPTY_DATA）应能**触发/建议** growth probe（`/api/v1/growth/probe` 已在）→ 让"引擎知道如何补齐"落到每个真实失败。**这条接线是否覆盖对话链的所有失败模式 = 可测的，不是天花板。**
 
+> **★真跑铁证（2026-07-25·DATABUILDER-SELFIMPROVE-LOG 迭代0）**：对"OEE/物流时长时序推演"跑 growth/probe → 诊断
+> **不是 EMPTY_DATA，而是 NO_INTENT**（分类 outOfCatalog）；growth/run `advanced:false`（只开工单不自建）→ BOUNDARY。
+> **实测坐实**：数据接地环**被上游 ① 意图路由层的 NO_INTENT 阻断**——引擎根本走不到 EMPTY_DATA 就卡死。故"补数据"永远没机会触发。
+> **推论**：修数据构建 agent（WO-DATABUILDER-HARNESS）**必须与** ①路由（急救/DRIL/分类器 prompt）**一起**才有效——单修数据层，query 进不了门。这正是本蓝图"全链接缝"的价值：局部各自绿≠对话能用。
+
 ---
 
 ## §4 跨 WO 接缝所有权（★本蓝图的核心★）
