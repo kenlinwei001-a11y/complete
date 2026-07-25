@@ -1,4 +1,5 @@
-import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
+import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -10,6 +11,7 @@ import type {
   KbClient,
   KbHit,
   OntologyClient,
+  PromptClient,
   RuleEngineClient,
   SimClient,
   SolverClient,
@@ -755,6 +757,35 @@ export class MockSimClient implements SimClient {
   }
 }
 
+/**
+ * WO-PROMPT-DEFAULTS-WIRING · 提示词模板 mock（测试替身）。默认无 override → 返 PLATFORM_DEFAULT
+ * （消费方 resolvePromptOverride 只采纳 TENANT_OVERRIDE → 行为 = 兜底硬编码·R6 字节兼容·既有测试零回归）。
+ * 测试可 setOverride(tid,key,tmpl) 注入租户 override，驱动"改模板 → 分类 prompt 变"的取值逻辑；
+ * 真 HTTP 驱动的灭漂移接缝由 datacore-http SEAM 测（起真源 + createHttpDataCore）证。
+ */
+export class MockPromptClient implements PromptClient {
+  private readonly overrides = new Map<string, { template: string; version: number }>();
+
+  /** 测试注入：为 (tenantId,key) 设租户 override（模拟 admin PUT /a/v1/prompt-templates/:key）。 */
+  setOverride(tenantId: string, key: PromptKey, template: string): void {
+    const cur = this.overrides.get(`${tenantId}::${key}`);
+    this.overrides.set(`${tenantId}::${key}`, { template, version: (cur?.version ?? 0) + 1 });
+  }
+  /** 测试清除：删 (tenantId,key) override（回落 PLATFORM_DEFAULT）。 */
+  clearOverride(tenantId: string, key: PromptKey): void {
+    this.overrides.delete(`${tenantId}::${key}`);
+  }
+
+  async getPromptTemplate(ctx: ToolAuthCtx, key: PromptKey): Promise<ResolvedPrompt | undefined> {
+    const ov = this.overrides.get(`${ctx.tenantId ?? ""}::${key}`);
+    return ov
+      ? { key, template: ov.template, source: "TENANT_OVERRIDE", version: ov.version }
+      : { key, template: PLATFORM_PROMPT_DEFAULTS[key], source: "PLATFORM_DEFAULT", version: 0 };
+  }
+  /** mock 无缓存（每次直读 overrides）；失效为 no-op（幂等无害·满足接口）。 */
+  invalidatePromptTemplate(): void {}
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -767,6 +798,7 @@ export interface MockDataCore extends DataCoreClient {
   catalog: MockCatalogClient;
   datagen: MockDataGenClient;
   sim: MockSimClient;
+  prompts: MockPromptClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -783,5 +815,6 @@ export function createMockDataCore(): MockDataCore {
     epoch: { async current() { return { epoch: 1 }; } },
     datagen: new MockDataGenClient(),
     sim: new MockSimClient(),
+    prompts: new MockPromptClient(),
   };
 }

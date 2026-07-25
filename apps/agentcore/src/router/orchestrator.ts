@@ -24,6 +24,7 @@ import {
   buildClassifierSystem,
   buildClassifierUser,
   classifierConversationSummary,
+  resolvePromptOverride,
   AGENT_SYSTEM_CORE,
   CEO_DEEP_QUESTION_SYSTEM,
 } from "../agent/prompts.js";
@@ -441,7 +442,7 @@ export class Orchestrator {
     }
 
     // ② LLM classification (with up to 2 retries)
-    const classification = await this.classify(task, pkg, candidates);
+    const classification = await this.classify(task, pkg, candidates, auth);
     if (!classification) {
       this.deps.metrics.classifierErrors.inc();
       if (mode === "WORKFLOW_ONLY") {
@@ -588,6 +589,7 @@ export class Orchestrator {
     task: QueryTask,
     pkg: ScenarioPackage,
     candidates: IntentDefinition[],
+    auth: RequestAuth,
   ): Promise<ClassificationResult | undefined> {
     // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
     const model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
@@ -610,7 +612,10 @@ export class Orchestrator {
       .map((o) => `${o.objectType}:${o.label ?? o.objectId}`)
       .join(",")}${pcScope ? `; ${pcScope}` : ""}`;
 
-    const system = buildClassifierSystem(catalog);
+    // WO-PROMPT-DEFAULTS-WIRING：先读 DataCore 可配 classifier 模板（OBO·TTL60s 缓存）——admin 配了 TENANT_OVERRIDE
+    // 则替换硬编码指令头（灭漂移）；无配置 / A 不可达 / 非 admin 403 → undefined → 兜底硬编码（fail-open·R6·绝不阻断）。
+    const promptOverride = await resolvePromptOverride(this.deps.engine.deps.dataCore.prompts, auth, "classifier");
+    const system = buildClassifierSystem(catalog, promptOverride);
     const user = buildClassifierUser({ query: task.query, historySummary, contextSummary });
 
     for (let attempt = 0; attempt < 3; attempt++) {

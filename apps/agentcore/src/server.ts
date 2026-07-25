@@ -1638,6 +1638,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       deps.dataCore.ontology.invalidateTypeSemantics?.(body.tenantId);
       invalidated.push("type-semantics");
     }
+    // WO-PROMPT-DEFAULTS-WIRING · prompt.updated：admin 改了 DataCore 提示词模板 → 清 B 侧提示词缓存，
+    // 使下次 classify 取 A 最新模板（TTL 60s 兜底；单一真值在 A·消硬编码漂移·传播 SLO ≤60s）。
+    if (!event || event.startsWith("prompt")) {
+      deps.dataCore.prompts?.invalidatePromptTemplate?.(body.tenantId);
+      invalidated.push("prompt-templates");
+    }
     return { ok: true, event: event || "(all)", invalidated };
   });
 
