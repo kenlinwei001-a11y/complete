@@ -265,6 +265,34 @@ export class GuardedToolExecutor {
           // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
           return { items: [] };
         }
+        // WO-DRIL-P4 · discover(solvers|slices) **先查 Resource Registry**（P2 混合检索·五级标签+语义+确定性加权排序·
+        // entitlement 已在 registry 内前置过滤 R3），有结果即用其排序（比 keyword 目录更准）；无端口/空结果/异常 →
+        // fall back 既有 CatalogService.discover（additive·fail-open·返回形状与 catalog 一致 {items:[{key,name,description,argHints,domain}]}）。
+        if (this.deps.retrieveResources && (kind === "solvers" || kind === "slices")) {
+          try {
+            const drilKind = kind === "solvers" ? "solver" : "slice";
+            const res = await this.deps.retrieveResources(ctx, {
+              query: args.query ? String(args.query) : "",
+              kinds: [drilKind],
+              maxResults: 50,
+              minScore: 0, // 发现语义=枚举可选项（非精度检索）→ 门槛 0·由排序定优先级
+            } as import("@platform/contracts").ResourceSearchRequest);
+            if (res.results.length > 0) {
+              return {
+                items: res.results.map((r) => ({
+                  key: r.resource.key,
+                  name: r.resource.label,
+                  description: r.resource.description,
+                  argHints: r.resource.argHints ?? {},
+                  ...(r.resource.domain ? { domain: r.resource.domain } : {}),
+                })),
+                source: "dril-registry",
+              };
+            }
+          } catch {
+            /* fail-open → 落既有 catalog.discover */
+          }
+        }
         return this.deps.dataCore.catalog.discover(ctx, kind, args.query ? String(args.query) : undefined);
       }
       // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类资源按 NL 选型（fail-open：无端口 → 空结果不崩）。

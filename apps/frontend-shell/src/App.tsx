@@ -59,6 +59,8 @@ const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const SolversPage = lazy(() => import("@/pages/admin/SolversPage"));
 const ConfigMigrationPage = lazy(() => import("@/pages/admin/ConfigMigrationPage"));
 const MetaPage = lazy(() => import("@/pages/admin/MetaPage"));
+// WO-DRIL-P4 · 智能资源治理台（DRIL·entitlement qos.dril-routing 门控·关→404 不泄露存在性）。
+const ResourcesPage = lazy(() => import("@/pages/admin/ResourcesPage"));
 const BoundaryPage = lazy(() => import("@/pages/admin/BoundaryPage"));
 const PrototypeIntakePage = lazy(() => import("@/pages/admin/PrototypeIntakePage"));
 const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
@@ -184,6 +186,15 @@ export const routes: RouteObject[] = [
       admin("solvers", <SolversPage />),
       admin("config-migration", <ConfigMigrationPage />),
       admin("meta", <MetaPage />),
+      // WO-DRIL-P4 · DRIL 治理台：entitlement qos.dril-routing 门控（关→404·暗发默认关·不泄露功能存在性）。
+      {
+        path: "admin/resources",
+        element: (
+          <AdminGuard path="resources" featureKey="qos.dril-routing">
+            {lazyWrap(<ResourcesPage />)}
+          </AdminGuard>
+        ),
+      },
       admin("boundary", <BoundaryPage />),
       admin("prototype-intake", <PrototypeIntakePage />),
       admin("query-history", <QueryHistoryPage />),

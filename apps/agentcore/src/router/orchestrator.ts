@@ -62,6 +62,8 @@ import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画�
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
+import { ResourceRegistryService } from "../dril/resource-registry.js"; // WO-DRIL-P4 · Path-B 组包注入（PRD §8.3·消费 P2/P3 registry·不改真值源）
+import { ResourceRouter, type ResourcePackage } from "../dril/resource-router.js"; // WO-DRIL-P4 · buildResourcePackage 组包（P3 地基·additive 消费）
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
@@ -137,6 +139,41 @@ export function coordinatorEnabled(set: FeatureSet): boolean {
 function composePathEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.compose-path");
+}
+
+/**
+ * WO-DRIL-P4 · feature 门：runPathB 内是否在 runAgentLoop 前注入 **DRIL 资源包**（跨 solver/slice/rule/skill/workflow
+ * 一次预选，写入首轮 user prompt → agent 不再盲 discover 逐跳）。**暗发·默认关**（PRD-decision-resource-intelligence-layer §8.3）。
+ * 与 composePathEnabled/coordinatorEnabled 同款字节兼容策略：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——
+ * 既有 path-B（含 CEO/块级真 LLM 深问）逐字节不变·不劫持；仅**显式** Set 含 `qos.dril-routing` 才启用（组包空亦不注入）。
+ */
+function drilRoutingEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.dril-routing");
+}
+
+/**
+ * WO-DRIL-P4 · DRIL 资源包 → 首轮 user prompt 段（PRD §8.3·可解释性 §4⑤）。
+ * 空包（无任何 solver/slice/rule/skill/workflow）→ 返回 ""（不注入·byte-compatible）。
+ * 纯字符串投影·R6 确定性（同包同段）。资源包是**预选导航提示**（供 agent 直接对口下手·省盲选），
+ * 数字溯源仍由实际 invoke_solver / query_objects 工具调用产出（⟦ref⟧ 不在此段伪造）。
+ */
+export function renderDrilPackage(pkg: ResourcePackage): string {
+  const solverKeys = pkg.solvers.map((s) => s.key);
+  if (solverKeys.length === 0 && pkg.slices.length === 0 && pkg.rules.length === 0 && pkg.skills.length === 0 && pkg.workflows.length === 0) {
+    return "";
+  }
+  const lines: string[] = ["【DRIL 智能资源包】（已据本题跨资源检索预选，优先直接使用对口资源，无需再 discover 盲扫）："];
+  if (solverKeys.length > 0) {
+    const withShape = pkg.solvers.map((s) => (s.outputShape && s.outputShape.length > 0 ? `${s.key}（输出 ${s.outputShape.join("/")}）` : s.key));
+    lines.push(`· 求解器（invoke_solver 首选）：${withShape.join("、")}`);
+  }
+  if (pkg.slices.length > 0) lines.push(`· 切片（resolve_slice）：${pkg.slices.join("、")}`);
+  if (pkg.rules.length > 0) lines.push(`· 规则（evaluate_rules）：${pkg.rules.join("、")}`);
+  if (pkg.skills.length > 0) lines.push(`· 技能：${pkg.skills.join("、")}`);
+  if (pkg.workflows.length > 0) lines.push(`· 工作流：${pkg.workflows.join("、")}`);
+  if (pkg.explanation) lines.push(`选型说明：${pkg.explanation}`);
+  return lines.join("\n");
 }
 
 /**
@@ -219,8 +256,23 @@ export function computeResidualBudget(config: {
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarification>();
   private readonly cancelled = new Set<string>();
+  /** WO-DRIL-P4 · Path-B 组包用 ResourceRouter（懒建·仅 qos.dril-routing 开时首次触达才构造·消费 P2/P3 registry）。 */
+  private drilRouter?: ResourceRouter;
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  /** WO-DRIL-P4 · 懒建 ResourceRouter（复用 orchestrator 已有 repos/features + engine 的 DataCore OBO 客户端·非新真值源 R13）。 */
+  private getDrilRouter(): ResourceRouter {
+    if (!this.drilRouter) {
+      const registry = new ResourceRegistryService({
+        repos: this.deps.repos,
+        dataCore: this.deps.engine.deps.dataCore,
+        features: this.deps.features,
+      });
+      this.drilRouter = new ResourceRouter(registry);
+    }
+    return this.drilRouter;
+  }
 
   /**
    * WO-Phase4 §6 补全：从 config 派生 residual 硬预算——env 未设 → 空 → BudgetTracker 用宽松 DEFAULT（既有行为逐字节不变）；
@@ -1061,7 +1113,35 @@ export class Orchestrator {
     // 合并注（Phase2-C 并入）：compose 命中经上方 early-return 不达此层·executePlan 自有 llm.compose 综合；此层只服务下方 runAgentLoop 路径的 userContent。
     const semanticSection = await buildOntologySemanticContext(navSlice, auth, this.deps.engine.deps.dataCore.ontology);
     const baseUser = buildAgentUser(task, priorSummary || undefined);
-    const userContent = [baseUser, sliceSection, semanticSection].filter(Boolean).join("\n\n");
+    // ★ WO-DRIL-P4 · Path-B Agent Loop DRIL 组包注入挂点（PRD §8.3·在 userContent 组装前、runAgentLoop 之前·**自成一格 additive**）。
+    // 暗发门（qos.dril-routing·defaultOn:false）：关（含 "ALL" 降级）→ drilSection="" → userContent 逐字节等同既有 → 既有 path-B 不劫持（C4）。
+    // 开 → ResourceRouter.buildResourcePackage 跨 solver/slice/rule/skill/workflow 一次组包（复用 P2 混合检索 + P3 图/质量加权·R6 确定）
+    // → renderDrilPackage 成"预选导航"段 append 首轮 user；agent 有预置对口资源 → 一步对口下手·不再盲 discover 逐跳（round-trip ≤4·SEAM）。
+    // 组包空（无任何资源）→ renderDrilPackage 返 ""→ 仍不注入（byte-compatible）。fail-open：组包异常吞掉不阻断既有 path-B。
+    let drilSection = "";
+    if (drilRoutingEnabled(enabledFeatures)) {
+      try {
+        const drilPkg = await this.getDrilRouter().buildResourcePackage(
+          auth,
+          task.query,
+          task.context.pageContext as Record<string, unknown> | undefined,
+        );
+        drilSection = renderDrilPackage(drilPkg);
+        if (drilSection) {
+          await this.deps.events
+            .emit(taskId, "step.completed", {
+              stepId: newId("dril-inject"),
+              type: "dril_package_injected",
+              outcome: `DRIL 预选：solver=${drilPkg.solvers.map((s) => s.key).join(",") || "—"}｜slice=${drilPkg.slices.join(",") || "—"}｜rule=${drilPkg.rules.join(",") || "—"}`,
+              durationMs: 0,
+            })
+            .catch(() => undefined);
+        }
+      } catch {
+        drilSection = ""; // fail-open：不因组包异常阻断既有 path-B
+      }
+    }
+    const userContent = [baseUser, sliceSection, semanticSection, drilSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
     const result = await runAgentLoop({
       taskId,

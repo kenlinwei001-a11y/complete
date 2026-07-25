@@ -106,6 +106,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-FIVE-ROLE-AI-EMPLOYEE P1（R3 暗发·defaultOn:false·关=字节兼容不触发）：跨域问题→Coordinator 多角色编排
   //（拆子问→invoke_agent 扇出调各角色 agent→汇总·scope 真隔离越界拒）。AgentCore registry 同键双注册（feature parity）。
   { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
+  // WO-DRIL-P4（R3 暗发·defaultOn:false·关=字节兼容不触发）：Path-B Agent Loop 注入 DRIL 资源包（跨 solver/slice/rule
+  // 预选组包）到首轮 prompt → agent 不再盲 discover 逐跳。AgentCore registry 同键双注册（feature parity）·暗发只经显式 override 开。
+  { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -116,7 +119,7 @@ export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
  * 「all on」模板顺带打开，会让 demo 租户在无真 provider 部署态里空转超时（真因=无预算 ReAct，本 WO 硬预算治之，
  * 但暗发门也必须诚实锁死默认关，不靠行业模板顺带开）。产品分档特性（sim.* / opt.* 等）不在此列，照常随模板开。
  */
-export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set(["ceo.free-llm", "agent.coordinator"]);
+export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set(["ceo.free-llm", "agent.coordinator", "qos.dril-routing"]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
