@@ -41,7 +41,9 @@ describe("G · 自成长自动补：骨架工单富契约 + B 兜底 + growth.* 
     expect(tk.ioContract.inputs).toEqual(expect.arrayContaining(["region", "quarter", "Base"]));
     expect(tk.ioContract.outputShape.length).toBeGreaterThan(0); // 按 gapCode 的输出形状骨架
     expect(tk.ontologyRefs.objectTypes).toEqual(expect.arrayContaining(["Base", "risk"])); // view + 选中类型
-    expect(tk.acceptance).toContain(FILL[tk.gapCode as keyof typeof FILL]); // 补法写进验收线索（含 B 兜底命名）
+    // WO-DATABUILDER-HARNESS：NO_INTENT 现自补 DRAFT 意图 → 工单 acceptance 反映"已 scaffold DRAFT 骨架·施工=审批发布"（非从零开发）。
+    expect(tk.gapCode).toBe("NO_INTENT");
+    expect(tk.acceptance).toContain("审批发布");
   });
 
   it("E-b：growth.gap_detected / fill_proposed / ticket_opened 经 E-c 馈源（/b/v1/outbox）发出 → F1 传播", async () => {
