@@ -43,6 +43,26 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
       attributes: w.attributes,
     });
   }
+  // WO-LIGHTUP：demo 租户显式点亮 5 个 QOS 暗发功能（battery「all on」模板诚实排除它们·须显式 override 开·见 features.ts
+  // QOS_DARK_LAUNCH_FEATURES）。让 demo 开箱即体验：DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径。
+  // 幂等（固定 id + 仅缺失时写）；确定性 updatedAt（R6·不引时钟）。真 provider 未绑时 path-B 诚实降级（不崩·WO-0③）。
+  const fcfgId = `fcfg_${DEMO_TENANT}`;
+  if (!(await repos.featureConfigs.get(DEMO_TENANT, fcfgId))) {
+    await repos.featureConfigs.put({
+      id: fcfgId,
+      tenantId: DEMO_TENANT,
+      overrides: {
+        "qos.dril-routing": true,
+        "agent.critic": true,
+        "ceo.free-llm": true,
+        "agent.coordinator": true,
+        "qos.compose-path": true,
+      },
+      configVersion: 1,
+      updatedBy: "system:seed-lightup",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+  }
   return { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
 }
 

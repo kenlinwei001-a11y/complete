@@ -109,6 +109,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-DRIL-P4（R3 暗发·defaultOn:false·关=字节兼容不触发）：Path-B Agent Loop 注入 DRIL 资源包（跨 solver/slice/rule
   // 预选组包）到首轮 prompt → agent 不再盲 discover 逐跳。AgentCore registry 同键双注册（feature parity）·暗发只经显式 override 开。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
+  // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：Path-B 收尾前**反思闭环**——
+  // 确定性复盘（reflect.ts·R6）+ LLM critic advisory（fail-open）。orchestrator reflectEnabled 据本键 set.has 注入 runAgentLoop。
+  { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B 多对口 solver **服务端组合编排**
+  //（executePlan 逐步 invoke_solver + 一次综合·不经 runAgentLoop·确定性 compose 秒答）。orchestrator composePathEnabled 据本键 set.has 挂点。
+  { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -119,7 +125,13 @@ export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
  * 「all on」模板顺带打开，会让 demo 租户在无真 provider 部署态里空转超时（真因=无预算 ReAct，本 WO 硬预算治之，
  * 但暗发门也必须诚实锁死默认关，不靠行业模板顺带开）。产品分档特性（sim.* / opt.* 等）不在此列，照常随模板开。
  */
-export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set(["ceo.free-llm", "agent.coordinator", "qos.dril-routing"]);
+export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "ceo.free-llm",
+  "agent.coordinator",
+  "qos.dril-routing",
+  "agent.critic",
+  "qos.compose-path",
+]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {

@@ -1,6 +1,7 @@
 import type {
   AgentBudget,
   Answer,
+  AnswerBlock,
   CeoAgentProfile,
   ClarificationReplyBody,
   ClassificationResult,
@@ -152,6 +153,17 @@ function composePathEnabled(set: FeatureSet): boolean {
 function drilRoutingEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.dril-routing");
+}
+
+/**
+ * WO-LIGHTUP · feature 门：runPathB 收尾前是否启用**反思闭环**（reflect.ts 确定性复盘 R6 + LLM critic advisory·fail-open）。
+ * **暗发·默认关**——补齐 REFLECT-LOOP 当年甩给「WO-0 领域」未做的**生产接线**（loop.ts 早支持 opts.reflect/critic，但 orchestrator
+ * 从未注入 → 反思步一直是死代码）。与 composePathEnabled 同款字节兼容：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——
+ * 既有 path-B 逐字节不变·不劫持；仅**显式** Set 含 `agent.critic` 才启用（reflect 确定性主判 + critic advisory 叠加）。
+ */
+export function reflectEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("agent.critic");
 }
 
 /**
@@ -1175,6 +1187,30 @@ export class Orchestrator {
       metrics: this.deps.metrics,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       isCancelled: () => this.cancelled.has(taskId),
+      // WO-LIGHTUP · 反思闭环接线（暗发·仅 agent.critic 开才注入·关=既有 path-B 逐字节不变·不劫持）：
+      // reflect=收尾前确定性复盘（reflect.ts·R6·补齐 REFLECT-LOOP 未做的生产接线）；critic=LLM advisory 复核（compose 单发·
+      // fail-open：抛错/无 provider → 视为过关·绝不阻断循环·确定性 reflect 仍为主判）。
+      ...(reflectEnabled(enabledFeatures)
+        ? {
+            reflect: true,
+            critic: async ({ blocks, userContent: uc }: { blocks: AnswerBlock[]; userContent: string }) => {
+              try {
+                const out = await this.deps.engine.deps.llm.compose({
+                  model,
+                  instruction:
+                    "你是答案质检员。判断下面的『回答』是否真正回答了『问题』、有无明显硬伤（答非所问 / 缺关键结论 / 自相矛盾 / 该调求解器却空口给数）。" +
+                    "只输出一行：过关输出 PASS；否则输出简短原因（≤30字）。",
+                  inputs: [{ 问题: uc, 回答: blocks }],
+                });
+                const s = String(out ?? "").trim();
+                if (!s || /^PASS\b/i.test(s) || s === "过关") return { ok: true };
+                return { ok: false, reason: s.slice(0, 60) };
+              } catch {
+                return { ok: true }; // fail-open：critic 抛错/无 provider → 不阻断（确定性 reflect 主判仍生效）
+              }
+            },
+          }
+        : {}),
       // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
       llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
     });

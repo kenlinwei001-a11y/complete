@@ -43,6 +43,7 @@ export class ScriptedLlmClient implements LlmClient {
 
   readonly classifyRequests: { model: string; system: string; user: string }[] = [];
   readonly agentRequests: LlmAgentRequest[] = [];
+  readonly composeRequests: { model: string; instruction: string; inputs: unknown[] }[] = [];
   readonly countTokensRequests: LlmAgentRequest[] = [];
 
   /** 增量 §1.1：测试可覆盖的能力声明（缺省模拟 Anthropic：count_tokens 可用）。 */
@@ -108,7 +109,7 @@ export class ScriptedLlmClient implements LlmClient {
   }
 
   async compose(req: { model: string; instruction: string; inputs: unknown[] }): Promise<string> {
-    void req;
+    this.composeRequests.push(req);
     return this.composeResults.shift() ?? "根据材料分析如上 ⟦ref:0⟧。";
   }
 }
