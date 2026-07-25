@@ -72,4 +72,16 @@ describe("global-sim · 全局联合推演（方案矩阵 + 守恒台账 + 冻�
     expect(fgCell).toBeInTheDocument();
     expect(Number.isNaN(Number(fgCell.textContent!.replace(/[^0-9.-]/g, "")))).toBe(false);
   });
+
+  it("windowDays 正口径：时间窗标注 = 引擎真实 windowDays 14（校正「标 21 实跑 14」·KILL-MOCK-RED）", async () => {
+    loginAs("planner");
+    renderApp("/v/global-sim");
+
+    // datacore portfolio 求解器真实口径 windowDays = coeff("windowDays", 14)，仓内无 PUBLISHED
+    // `portfolio_optimize_coeffs` 覆盖 → 引擎实跑缺省 14（另见 datacore actions.ts windowDaysGuess=14）。
+    // UI 的时间窗标注必须与后端同口径，不得回退到旧的假口径 21（历史误标「标 21 实跑 14」·误导用户）。
+    const bar = await screen.findByTestId("global-sim-batchbar");
+    await waitFor(() => expect(bar.textContent).toContain("每窗 14 天"));
+    expect(bar.textContent).not.toMatch(/21\s*天/);
+  });
 });
