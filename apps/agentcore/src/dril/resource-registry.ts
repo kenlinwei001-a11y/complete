@@ -1,4 +1,8 @@
-import type { IntelligenceResource } from "@platform/contracts";
+import type {
+  IntelligenceResource,
+  ResourceSearchRequest,
+  ResourceSearchResponse,
+} from "@platform/contracts";
 import type { Repos, IntelligenceResourceRow, ResourceRelationRow } from "../persistence/repos.js";
 import type { DataCoreClient, ToolAuthCtx } from "../tools/clients.js";
 import type { FeatureGate } from "../features/gate.js";
@@ -15,6 +19,36 @@ import {
   projectWorkflows,
   type CatalogItem,
 } from "./resource-projector.js";
+import { extractTieredTags } from "./tag-taxonomy.js";
+import { ResourceSearchEngine, type Embedder } from "./search-engine.js";
+
+type OntologyType = { key: string; label?: string };
+
+/** 组装资源全文（tieredTags 派生用）。 */
+function resourceText(r: IntelligenceResource): string {
+  const parts = [r.label, r.description, r.capability ?? "", ...(r.answersQuestions ?? []), ...(r.tags ?? [])];
+  if (r.argHints) parts.push(...Object.values(r.argHints));
+  return parts.join(" ");
+}
+
+/** 资源显式声明的对象类型（L4 派生候选）。 */
+function resourceObjectTypes(r: IntelligenceResource): string[] {
+  const anyR = r as { scopeObjectTypes?: string[]; includedTypes?: string[]; inputSpec?: { objectTypes?: string[] } };
+  return [...(anyR.scopeObjectTypes ?? []), ...(anyR.includedTypes ?? []), ...(anyR.inputSpec?.objectTypes ?? [])];
+}
+
+/**
+ * WO-DRIL-P2 · 投影期回填五级标签（R14：L4 从已发布 OntologyType 派生·无手写业务对象名）。
+ * 纯投影 additive：不改真值源，仅在资源上补 tieredTags 供检索加权。
+ */
+function enrichTieredTags(res: IntelligenceResource, ontologyTypes: OntologyType[]): IntelligenceResource {
+  const tieredTags = extractTieredTags(resourceText(res), {
+    domain: res.domain,
+    candidateTypes: resourceObjectTypes(res),
+    ontologyTypes,
+  });
+  return { ...res, tieredTags } as IntelligenceResource;
+}
 
 /**
  * WO-DRIL-P1 · ResourceRegistryService（PRD-decision-resource-intelligence-layer §6）。
@@ -39,6 +73,8 @@ export interface RegistryDeps {
   repos: Repos;
   dataCore: DataCoreClient;
   features: FeatureGate;
+  /** WO-DRIL-P2 · 检索语义层向量器（缺省 pseudoEmbed；显式 null → 词法回退·fail-open）。 */
+  embedder?: Embedder;
 }
 
 interface ProjectedWithSource {
@@ -54,6 +90,7 @@ export class ResourceRegistryService {
     const tenantId = ctx.tenantId;
     const now = new Date().toISOString();
     const enabled = await this.deps.features.enabledSet(tenantId, ctx.token);
+    const ontologyTypes = await this.collectOntologyTypes(ctx);
 
     // --- 供给侧采集（best-effort per source·某源不可达不拖垮整体发现，G-DRIL-1 fail-open）。 ---
     let solverItems: CatalogItem[] = [];
@@ -117,7 +154,8 @@ export class ResourceRegistryService {
       kind: p.res.kind,
       key: p.res.key,
       source: p.source,
-      resource: p.res,
+      // WO-DRIL-P2 · 投影期回填五级标签（L4 派生自已发布 OntologyType·R14）。
+      resource: enrichTieredTags(p.res, ontologyTypes),
       indexedAt: now,
       updatedAt: now,
     }));
@@ -154,6 +192,38 @@ export class ResourceRegistryService {
     await this.projectTenant(ctx);
     const row = await this.deps.repos.intelligenceResources.get(ctx.tenantId, kind, key);
     return row?.resource;
+  }
+
+  /**
+   * WO-DRIL-P2 · 混合检索（§7）。先全量重投影（R13·entitlement 前置 R3·L4 回填 R14），再交
+   * ResourceSearchEngine 做 structured filter + embedding + 确定性加权排序。检索面 = 已开通资源全集。
+   */
+  async search(ctx: ToolAuthCtx, req: ResourceSearchRequest): Promise<ResourceSearchResponse> {
+    await this.projectTenant(ctx);
+    const rows = await this.deps.repos.intelligenceResources.listByTenant(ctx.tenantId);
+    const resources = rows.map((r) => r.resource);
+    const ontologyTypes = await this.collectOntologyTypes(ctx);
+    const engine = new ResourceSearchEngine({
+      ...(this.deps.embedder !== undefined ? { embedder: this.deps.embedder } : {}),
+      ontologyTypes,
+    });
+    const { query, ...rest } = req;
+    return engine.search(query, resources, rest);
+  }
+
+  /** 已发布本体对象类型（best-effort·fail-open）：listObjectTypes(带中文 label)优先，退化到 listObjectTypeKeys。 */
+  private async collectOntologyTypes(ctx: ToolAuthCtx): Promise<OntologyType[]> {
+    try {
+      const types = await this.deps.dataCore.ontology.listObjectTypes(ctx);
+      if (types.length > 0) return types.map((t) => ({ key: t.key, label: t.label }));
+    } catch {
+      /* fail-open */
+    }
+    try {
+      return (await this.deps.dataCore.ontology.listObjectTypeKeys(ctx)).map((k) => ({ key: k }));
+    } catch {
+      return [];
+    }
   }
 }
 

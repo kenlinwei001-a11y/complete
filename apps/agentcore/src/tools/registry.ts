@@ -20,6 +20,29 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类智能资源（求解器/切片/规则/技能/工作流/Agent/意图）按 NL 选型。
+    // 不确定该用哪个 solver/slice/rule 时先调本工具（比 discover 更强：五级标签 + 语义 + 确定性加权排序 + 打分解释），
+    // 再据 top 结果 invoke_solver / resolve_slice / evaluate_rules。
+    name: "retrieve_knowledge",
+    descriptionForLLM:
+      "DRIL 智能资源混合检索：按自然语言 query 跨求解器/切片/规则/技能/工作流/Agent/意图检索最相关资源，返回排序结果（含 scoreBreakdown 语义/域/本体/历史/成本分项 + 解释）。选型不确定时先调本工具再执行；比 discover 更精准（五级标签+语义+确定性加权）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "自然语言检索问题" },
+        kinds: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选：限定资源类别（solver/slice/rule/skill/workflow/agent/intent/mcp_tool/field）",
+        },
+        maxResults: { type: "number", description: "返回条数上限，默认 8" },
+      },
+      required: ["query"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "resolve_slice",
     descriptionForLLM:
       "解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。",

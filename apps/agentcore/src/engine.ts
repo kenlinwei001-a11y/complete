@@ -18,6 +18,8 @@ import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
+import type { FeatureGate } from "./features/gate.js";
+import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
 
 export interface EngineDeps {
@@ -31,6 +33,8 @@ export interface EngineDeps {
   llmSettings: LlmSettings;
   /** 增量 §3：read_skill_resource 内容读取端口（缺省仅元信息）。 */
   skillResources?: SkillResourceReader;
+  /** WO-DRIL-P2 · entitlement 门（DRIL 检索 registry 依赖；缺省则 retrieve_knowledge 降级空结果）。 */
+  features?: FeatureGate;
 }
 
 export interface RunRegisteredAgentOpts {
@@ -54,7 +58,18 @@ export interface RunRegisteredAgentOpts {
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
 export class ExecutionEngine {
-  constructor(readonly deps: EngineDeps) {}
+  /** WO-DRIL-P2 · DRIL 检索注册表（features 存在时懒建；供 retrieve_knowledge 工具）。 */
+  private readonly resourceRegistry?: ResourceRegistryService;
+
+  constructor(readonly deps: EngineDeps) {
+    if (deps.features) {
+      this.resourceRegistry = new ResourceRegistryService({
+        repos: deps.repos,
+        dataCore: deps.dataCore,
+        features: deps.features,
+      });
+    }
+  }
 
   makeExecutor(
     taskId: string,
@@ -70,6 +85,9 @@ export class ExecutionEngine {
         repos: this.deps.repos,
         metrics: this.deps.metrics,
         skillResources: this.deps.skillResources,
+        ...(this.resourceRegistry
+          ? { retrieveResources: (ctx2: ToolAuthCtx, req) => this.resourceRegistry!.search(ctx2, req) }
+          : {}),
       },
       { taskId, ctx, budget, scopeToolNames, ...(scopeObjectTypes ? { scopeObjectTypes } : {}) },
     );

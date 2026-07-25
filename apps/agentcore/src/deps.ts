@@ -62,6 +62,7 @@ export function wireDeps(base: {
     config: base.config,
     llmSettings,
     skillResources: base.skillResources,
+    features,
   });
   const orchestrator = new Orchestrator({
     repos: base.repos,

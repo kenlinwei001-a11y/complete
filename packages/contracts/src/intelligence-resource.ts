@@ -211,6 +211,74 @@ export const AnyIntelligenceResourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type IntelligenceResource = z.infer<typeof AnyIntelligenceResourceSchema>;
 
+// --- WO-DRIL-P2 · 混合检索请求/响应契约（§6.4·R1 契约在 @platform/contracts）。 ---
+
+/** 信任级序（minTrustLevel 硬过滤用；序越高越可信）。 */
+export const TRUST_LEVEL_ORDER = { EXPERIMENTAL: 0, PRODUCTION: 1, GOVERNED: 2 } as const;
+
+/**
+ * `POST /b/v1/resources/search` 请求体（§6.4）。query 自然语言；requiredTags 硬过滤（Partial 五级标签）；
+ * excludeKeys 排除；minTrustLevel 信任下限；kinds 限类；maxResults/minScore 截断门槛。
+ */
+export const ResourceSearchRequestSchema = z.object({
+  query: z.string().default(""),
+  context: z.record(z.string(), z.unknown()).optional(),
+  kinds: z.array(ResourceKindExtendedSchema).optional(),
+  requiredTags: TieredTagsSchema.partial().optional(),
+  excludeKeys: z.array(z.string()).optional(),
+  includeRelations: z.boolean().optional(),
+  maxResults: z.number().int().positive().max(100).default(20),
+  minScore: z.number().min(0).max(1).default(0.3),
+  minTrustLevel: z.enum(["EXPERIMENTAL", "PRODUCTION", "GOVERNED"]).optional(),
+});
+export type ResourceSearchRequest = z.infer<typeof ResourceSearchRequestSchema>;
+
+/** 分项得分（§4 设计原则⑤可解释性·§7.2）：五项加权来源逐项回报。 */
+export const ScoreBreakdownSchema = z.object({
+  semantic: z.number(),
+  domain: z.number(),
+  ontology: z.number(),
+  history: z.number(),
+  cost: z.number(),
+});
+export type ScoreBreakdown = z.infer<typeof ScoreBreakdownSchema>;
+
+/** 单条检索结果（§6.4 响应 results[] 元素）。 */
+export interface ResourceSearchResultItem {
+  resource: IntelligenceResource;
+  score: number;
+  scoreBreakdown: ScoreBreakdown;
+  related?: IntelligenceResource[];
+  explanation: string;
+}
+
+/** `POST /b/v1/resources/search` 响应（§6.4）。 */
+export interface ResourceSearchResponse {
+  results: ResourceSearchResultItem[];
+  explanation: string;
+}
+
+/**
+ * 混合检索排序权重（§7.1 顶层加权·R6 常量）。Score = Σ weight[k]·subScore[k]。
+ * **精确对齐 PRD §7.1**：不得私改（审核头号判据之一）。
+ */
+export const DRIL_RANK_WEIGHTS = {
+  semantic: 0.35,
+  domain: 0.25,
+  ontology: 0.2,
+  history: 0.1,
+  cost: 0.1,
+} as const;
+
+/** 业务域匹配的层级权重（§7.2 domain = Σ layerWeight[l]·hitRatio[l]）。 */
+export const DRIL_DOMAIN_LAYER_WEIGHTS = {
+  l1_domain: 0.3,
+  l2_decisionType: 0.25,
+  l3_scenario: 0.2,
+  l4_object: 0.15,
+  l5_algorithm: 0.1,
+} as const;
+
 /** 投影校验失败信息（结构同 resource-descriptor DescriptorViolation）。 */
 export interface ResourceViolation {
   index: number;

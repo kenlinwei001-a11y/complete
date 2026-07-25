@@ -25,6 +25,7 @@ import {
   SubmitQueryBodySchema,
   WorkflowDefinitionSchema,
   InferenceTraceSchema,
+  ResourceSearchRequestSchema,
   type QueryTask,
   type ExecutionPlan,
   type AgentDefinition,
@@ -833,8 +834,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!res) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
     return res;
   };
+  // WO-DRIL-P2 · 混合检索（§6.4/§7）。POST 主入口（复杂 body）；GET 便捷入口（?query=）。
+  const searchResources = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const raw = req.method === "GET" ? { query: (req.query as { query?: string }).query ?? "" } : (req.body ?? {});
+    const parsed = ResourceSearchRequestSchema.safeParse(raw);
+    if (!parsed.success) throw new HttpError(400, "INVALID_SEARCH_REQUEST", parsed.error.message);
+    return resourceRegistry.search(a, parsed.data);
+  };
   app.get("/b/v1/resources", listResources);
   app.get("/api/v1/resources", listResources);
+  app.post("/b/v1/resources/search", searchResources);
+  app.post("/api/v1/resources/search", searchResources);
+  app.get("/b/v1/resources/search", searchResources);
+  app.get("/api/v1/resources/search", searchResources);
   app.get("/b/v1/resources/:kind/:key", getResource);
   app.get("/api/v1/resources/:kind/:key", getResource);
 
