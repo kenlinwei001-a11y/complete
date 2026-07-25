@@ -72,18 +72,32 @@ export const BASES = BASE_REGISTRY.map((b) => ({
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
 
 const CUSTS = ["蔚途汽车", "星河储能", "极光新能源", "蓝海电网", "山岳重工"];
+// WO-W5·mock 客户 → 业务类型（乘/商/储·与 datacore businessTypeOfCustomer 同口径·三类都覆盖）。
+const CUST_BUSINESS_TYPE: Record<string, "passenger" | "commercial" | "storage"> = {
+  蔚途汽车: "passenger", 星河储能: "storage", 极光新能源: "commercial", 蓝海电网: "storage", 山岳重工: "commercial",
+};
 
 export const ORDERS = Array.from({ length: 20 }, (_, i) => {
   const base = BASES[i % 13]!;
+  const cust = CUSTS[i % CUSTS.length]!;
+  const businessType = CUST_BUSINESS_TYPE[cust] ?? "passenger";
+  // 商用车订单波动整形（确定性·镜像 datacore shapeBusinessTypeQty·体量小·dev 态波动可见）。
+  const rawQty = Math.round((500 + i * 137) * 2.84);
+  const volFactors = [0.32, 2.3, 0.55, 1.9];
+  const qty = businessType === "commercial" ? Math.max(1, Math.round(rawQty * volFactors[i % volFactors.length]!)) : rawQty;
+  // 乘用车部分客户提前交付（确定性·i%3）。
+  const early = businessType === "passenger" && i % 3 === 0;
   return {
     id: `ord-${String(i + 1).padStart(3, "0")}`,
     so: `SO-${String(10001 + i)}`,
-    cust: CUSTS[i % CUSTS.length]!,
+    cust,
     model: MODELS[i % MODELS.length]!,
-    qty: Math.round((500 + i * 137) * 2.84),
+    qty,
     due: `2026-0${(i % 6) + 4}-${String((i % 27) + 1).padStart(2, "0")}`,
     bases: base.name,
     status: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",
+    businessType,
+    early,
   };
 });
 

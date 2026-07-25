@@ -1,4 +1,4 @@
-import type { IndustryTemplate } from "@platform/contracts";
+import type { IndustryTemplate, BusinessType } from "@platform/contracts";
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
@@ -99,6 +99,39 @@ const CUSTOMERS = [
   // 储能
   "国家电网", "国家电投", "南方电网", "龙源电力",
 ];
+
+// WO-W5·业务类型（乘/商/储）单一来源客户册：客户名 → 业务类型（passenger|commercial|storage）。
+// 显式映射（不靠 regex·防「国家电投」不含「电网」被误判乘用车 / 奇瑞·瑞驰不含「客车」被误判乘用车的旧坑）。
+export const CUSTOMER_BUSINESS_TYPE: Record<string, BusinessType> = {
+  广汽集团: "passenger", 长安汽车: "passenger", 吉利汽车: "passenger", 东风汽车: "passenger", 小鹏汽车: "passenger",
+  宇通客车: "commercial", 金龙客车: "commercial", 奇瑞: "commercial", 瑞驰新能源: "commercial", "Ashok Leyland": "commercial",
+  国家电网: "storage", 国家电投: "storage", 南方电网: "storage", 龙源电力: "storage",
+};
+/** 客户 → 业务类型（册命中优先·未知客户按名兜底 regex·仍无 → 乘用车 default）。 */
+export function businessTypeOfCustomer(cust: string): BusinessType {
+  const hit = CUSTOMER_BUSINESS_TYPE[cust];
+  if (hit) return hit;
+  if (/储能|电网|电投|电力/.test(cust)) return "storage";
+  if (/客车|商用/.test(cust)) return "commercial";
+  return "passenger";
+}
+/** 细分名（乘用车/储能/商用车）→ 业务类型枚举（DemandSegment.segment 口径）。 */
+export function businessTypeOfSegment(segment: string): BusinessType {
+  if (/储能/.test(segment)) return "storage";
+  if (/商用/.test(segment)) return "commercial";
+  return "passenger";
+}
+/**
+ * WO-W5·业务类型订单量整形（确定性 R6·体量极小仅商用车）：商用车订单波动大 → 按 volatilityFactors 取模缩放
+ * （hashString(so)%len·同 seed 字节一致），乘用/储能不动（量口径不变·金值安全）。返回 ≥1 的整数套。
+ */
+export function shapeBusinessTypeQty(businessType: BusinessType, qty: number, so: string): number {
+  const reg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { volatilityFactors?: number[] }>)[businessType];
+  const factors = reg?.volatilityFactors;
+  if (!factors || factors.length === 0) return qty;
+  const f = factors[hashString(so) % factors.length]!;
+  return Math.max(1, Math.round(qty * f));
+}
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
 
 // PRD-IND-order-aggregate §4：HTML 24 单语义基底（so/cust/model/qty/due/pri）。
@@ -195,6 +228,18 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
   // freightCost = baseDistanceKm × tonKmRate × (qty × qtyToTon)（确定性·同基地=0 距=0 费=0）。
   interbase: { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 },
+  // WO-W5 · 业务类型（乘/商/储）经营场景 regime（R14·入册·禁求解器内联魔数）。三类差异化经营场景的确定性种子参数：
+  //   dedicationWeight：该业务线在共享工厂中的**专线产能配比**——求解器据此按类可产基地年产能 × 权重算类占用率
+  //     （util = 类年需求 / 类年产能×权重）。默认令三类占用率落到产品负责人 spec 的三档：乘用车产能不足(>1)、
+  //     储能~95%稳、商用车空闲(<0.6)。改需求集(勾选) → util 真变（capacity 与需求解耦·非前端假过滤）。
+  //   earlyDeliveryLeadDays：乘用车部分客户需**提前交付**的提前天数（订单加 early 标 + earlyDue 提前交期·additive）。
+  //   earlyDeliveryMod：乘用车订单命中提前交付的确定性取模（hashString(so)%mod===0·同 seed 字节一致 R6）。
+  businessTypeRegime: {
+    passenger: { dedicationWeight: 0.86, earlyDeliveryLeadDays: 14, earlyDeliveryMod: 3 }, // → 占用率≈1.20（产能不足·>1）
+    // 商用车 volatilityFactors：订单量确定性高波动整形（hashString(so)%len 取因子·体量极小仅商用·R6 字节一致）→ 订单波动大。
+    commercial: { dedicationWeight: 1.0, volatilityFactors: [0.32, 2.3, 0.55, 1.9] }, // → 占用率≈0.40（产能空闲·<0.6）+ 订单波动
+    storage: { dedicationWeight: 0.84 }, // → 占用率≈0.95（稳·订单平稳经 util 稳定体现）
+  } as Record<string, { dedicationWeight: number; earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number; volatilityFactors?: number[] }>,
   bottleneck: {
     factors: [...BN_FACTORS],
     // 基地→主瓶颈因素（HTML 为准：常州·化成=瓶颈工序 92 · 江门·物料齐套 90，dash/sop 同源）。
@@ -729,6 +774,10 @@ const orderProps: PropertyDef[] = [
   { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
   { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false }, // 按型号反范式化的单价（value 派生依赖）
+  // WO-W5·业务类型维度（乘/商/储·全局推演勾选筛选 + 分口径聚合）。early/earlyDue = 乘用车部分客户提前交付（三重张力之一）。
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // passenger | commercial | storage
+  { propKey: "early", dataType: "boolean", isPrimaryKey: false }, // 是否需提前交付（乘用车部分客户）
+  { propKey: "earlyDue", dataType: "date", isPrimaryKey: false }, // 提前交期（early 时·= due − 提前天数）
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
 
@@ -824,6 +873,7 @@ const demandSegmentProps: PropertyDef[] = [
   { propKey: "priceWan", dataType: "number", isPrimaryKey: false }, // 单价(万/万件)
   { propKey: "marginPct", dataType: "number", isPrimaryKey: false }, // 毛利率(%)
   { propKey: "floorPct", dataType: "number", isPrimaryKey: false }, // 毛利底线(%)
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
 ];
 const demandSegmentDerived: DerivedPropertyDef[] = [
   { propKey: "revenueWan", formula: "p50 * priceWan" }, // 收入(万) = 需求×单价
@@ -2820,16 +2870,26 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       ? Array.from({ length: Math.min(nBases, producible.length) }, (_, k) => producible[(startIdx + k) % producible.length] as string).sort()
       : [];
     const dueDay = Math.max(0, Math.round((Date.parse(`${o.due}T00:00:00Z`) - t0ms) / 86400000));
+    // WO-W5·业务类型维度（additive·不改既有 qty/due 数值口径·R6）：客户名 → 业务类型；乘用车部分客户需提前交付
+    // → early:true + earlyDue（提前 earlyDeliveryLeadDays 天·确定性 hashString(so)%mod）；商用/储能 无提前交付标。
+    const businessType = businessTypeOfCustomer(o.cust);
+    const btReg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number; volatilityFactors?: number[] }>)[businessType] ?? {};
+    const early = businessType === "passenger" && (hashString(o.so) % (btReg.earlyDeliveryMod ?? 3) === 0);
+    const earlyDue = early ? new Date(Date.parse(`${o.due}T00:00:00Z`) - (btReg.earlyDeliveryLeadDays ?? 14) * 86400000).toISOString().slice(0, 10) : undefined;
+    const qty = shapeBusinessTypeQty(businessType, o.qty, o.so);
     return {
       so: o.so,
       cust: o.cust,
       model: o.model,
-      qty: o.qty,
+      qty,
       due: o.due,
       pri: o.pri,
       bases: orderBases,
       status: "OPEN",
       unitPrice: model?.unitPrice ?? 600,
+      businessType,
+      early,
+      ...(earlyDue ? { earlyDue } : {}),
       // 约束扫描字段：确定性派生（不依赖 rng），按固定步长植入越线行（C03/C08/C13/C29）。
       demandDelta: i % 8 === 0 ? 0.6 : round((hashString(o.so) % 50) / 100, 2),
       outsourceRatio: i % 6 === 0 ? 0.35 : round((hashString(`${o.so}o`) % 18) / 100, 2),
@@ -2850,9 +2910,15 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const dueDay = randInt(rng, 0, 180);
     const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
     const so = `SO-9${String(i).padStart(5, "0")}`;
+    const cust = pick(rng, CUSTOMERS);
+    const businessType = businessTypeOfCustomer(cust);
+    const btReg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number }>)[businessType] ?? {};
+    const early = businessType === "passenger" && (hashString(so) % (btReg.earlyDeliveryMod ?? 3) === 0);
+    const earlyDue = early ? new Date(t0ms + Math.max(0, dueDay - (btReg.earlyDeliveryLeadDays ?? 14)) * 86400000).toISOString().slice(0, 10) : undefined;
     orders.push({
-      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 1420, 7668), due,
+      so, cust, model: model.modelId, qty: shapeBusinessTypeQty(businessType, randInt(rng, 1420, 7668), so), due,
       pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
+      businessType, early, ...(earlyDue ? { earlyDue } : {}),
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
       creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
@@ -3224,6 +3290,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const demandSegments = SEGMENTS.map((s, i) => ({
     segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt, p50: s.p50, p90: s.p90, act: s.act,
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
+    // WO-W5·业务类型维度（additive·细分名 → 类型枚举·求解器按类聚合预测口径）。
+    businessType: businessTypeOfSegment(s.segment),
   }));
   // Wave 1 (#59)：物料净需求按 375万套 / 132万套 ≈ 2.84 放大，与需求规模对齐；
   // MAT 扩至 9 项关键物料，覆盖正极/负极/隔膜/电解液/铜铝箔/结构件/包材。

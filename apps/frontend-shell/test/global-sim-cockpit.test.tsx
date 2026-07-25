@@ -134,4 +134,38 @@ describe("global-sim cockpit · 五区决策驾驶舱 SEAM-GATE", () => {
     expect(colorLo).not.toContain("--danger"); // 低张力 → 冷绿（改 OEE 后真变色·非恒灰）
     expect(colorLo).toContain("--ok");
   });
+
+  it("WO-W5 业务类型：分口径汇总三行上屏（乘/商/储）+ 勾选储能 → 请求携 businessTypes → 后端真重解（矩阵/分口径真变·非前端假过滤）", async () => {
+    const user = userEvent.setup();
+    // 拦截 portfolio run·记录每次请求 args（证勾选 → 请求真带 businessTypes → 后端真重算，非展示层过滤）。
+    const seen: unknown[] = [];
+    server.use(http.post("*/b/v1/solvers/portfolio/run", async ({ request }) => {
+      const body = (await request.json()) as { args?: Record<string, unknown> };
+      seen.push(body.args?.businessTypes ?? null);
+      const { mockGlobalSim } = await import("@/mocks/simSolvers");
+      return HttpResponse.json({ data: mockGlobalSim(body.args ?? {}), snapshotVersion: "ov-bt" });
+    }));
+
+    loginAs("planner");
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim");
+
+    // 分口径汇总三行上屏（乘/商/储各一行·真求解器 businessTypeSummary·非写死）。
+    await screen.findByTestId("global-sim-bt-summary");
+    expect(screen.getByTestId("global-sim-bt-row-passenger")).toBeInTheDocument();
+    expect(screen.getByTestId("global-sim-bt-row-commercial")).toBeInTheDocument();
+    expect(screen.getByTestId("global-sim-bt-row-storage")).toBeInTheDocument();
+    // 乘用车产能不足（util ≥100%·上屏「产能不足」）、商用车空闲、储能≈满载稳（口径分层·非贴标签）。
+    expect(screen.getByTestId("global-sim-bt-util-passenger").textContent).toContain("产能不足");
+    expect(screen.getByTestId("global-sim-bt-util-commercial").textContent).toContain("产能空闲");
+
+    // 勾选储能 → 请求真带 businessTypes:["storage"]（联合重解·后端真收窄·非前端假过滤）。
+    const before = seen.length;
+    await user.click(screen.getByTestId("global-sim-bt-storage"));
+    await waitFor(() => expect(seen.length).toBeGreaterThan(before));
+    await waitFor(() => expect(seen.at(-1)).toEqual(["storage"]));
+    // 勾选态徽标上屏（仅推演储能）。
+    await screen.findByTestId("global-sim-bt-active");
+    expect(screen.getByTestId("global-sim-bt-active").textContent).toContain("储能");
+  });
 });
