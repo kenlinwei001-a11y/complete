@@ -813,7 +813,17 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
 
   const toggle = (id: string): void => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const adoptScenario = (s: LiveScenario): void => {
-    adopt.mutate({ actionTypeKey: "plan_change", payload: { baseId, scenarioId: s.id, scenarioName: s.name, levers: s.apply } });
+    adopt.mutate({
+      actionTypeKey: "plan_change",
+      payload: {
+        versionId: `risk:${baseId}:${s.id}`,
+        reason: `采纳风险处置方案：${s.name}（基地 ${baseId}）`,
+        baseId,
+        scenarioId: s.id,
+        scenarioName: s.name,
+        levers: s.apply,
+      },
+    });
   };
 
   return (

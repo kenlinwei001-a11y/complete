@@ -479,7 +479,7 @@ function OrderFullchainPanel() {
             </tbody>
           </table>
           <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending}
-            onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { so: data.so, verdict: data.verdict, reason: data.summary } })}>
+            onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: `order-chain:${data.so}`, reason: data.summary, so: data.so, verdict: data.verdict } })}>
             采纳结论 → 工单（C10 留痕）
           </button>
         </>
