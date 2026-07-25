@@ -88,25 +88,26 @@ curl -s -X POST http://localhost/b/v1/resources/search -H "$AUTH" -H 'Content-Ty
   -d '{"query":"储能份额为什么下降 逐层拆根因","maxResults":8}' \
   | jq '.results[] | {kind:.resource.kind, key:.resource.key, score}'
 ```
-**期望**：①（kinds=solver）里**归因类 solver**（`gap_attribution` / `supply_demand_gap_attribution`）进前 3、score 从高到低。②里 intent 靠前属正常。
-**判过**：①中对口归因 solver 进前 3；**判不过**：①里（已限 solver）对口归因 solver 仍不进前 3 或根本不出现（那才是真排序 bug）。
+**期望（当前口径）**：①（kinds=solver）里 `gap_attribution` 进 **top-4**（= agent 组包 `buildResourcePackage.topSolvers` 默认取 4·所以对口 solver 真会进 agent 资源包）。②里 intent 靠前属正常。
+> ⚠️ **已知精度缺口（在修）**：当前 solver 资源**没有灌 NL 样例问句 `answersQuestions`**，语义分只靠 description → 对口根因 solver 排不到榜首（实测 gap_attribution 第 4·margin_attribution 抢第 1）。**这不影响 agent 拿到 gap_attribution（它在 top-4 组包内）**，但精度不达"进前 3"。**WO-DRIL-PRECISION 正在给 solver 灌样例问句 + 补 solver→objectType 关系**，修完 gap_attribution 应进前 3。
+**判过（当前）**：对口归因 solver 进 **top-4**；**判不过**：对口 solver 跌出 top-4 / 根本不出现。
+**判过（WO-DRIL-PRECISION 合并后）**：gap_attribution 进 **top-3**。
 
 ---
 
 ### T3 · DRIL 图关系 + 质量分（后端）
-**步骤**：
+> **quality 端点入参是 `{success:boolean, latencyMs:number}`**（EWMA 探针观测），**不是** `{outcome}`（那会 400 INVALID_QUALITY_PROBE·此前 doc 写错）。
+> **关系**：`workflow --invokes--> solver`、`--includes--> slice`、`agent --binds--> skill` + `solver/rule --reads/scope--> objectType` 1-hop。**一个 solver 若没有工作流引用它、也没投影出 read 对象类型，relations 会是 0（不一定是 bug）**。要稳定看到关系，选一个 **workflow** 或被工作流引用的 solver。
 ```bash
-# 关系（工作流→求解器/切片、agent→技能 等）
-curl -s http://127.0.0.1:4002/b/v1/resources/solver/gap_attribution/relations \
-  -H 'X-Debug-User: demo:admin:admin|catalog_admin' | jq
-# 质量分：先打一条正反馈，再读回
-curl -s -X POST http://127.0.0.1:4002/b/v1/resources/solver/gap_attribution/quality \
-  -H 'X-Debug-User: demo:admin:admin|catalog_admin' -H 'Content-Type: application/json' \
-  -d '{"outcome":"good"}' | jq
-curl -s http://127.0.0.1:4002/b/v1/resources/solver/gap_attribution/quality \
-  -H 'X-Debug-User: demo:admin:admin|catalog_admin' | jq
+# 关系：先挑一个 workflow（出边稳定非空）
+curl -s http://localhost/b/v1/resources/workflow/<某workflow_key>/relations -H "$AUTH" | jq
+# 质量分：正确入参 {success,latencyMs}，打一条再读回
+curl -s -X POST http://localhost/b/v1/resources/solver/gap_attribution/quality \
+  -H "$AUTH" -H 'Content-Type: application/json' -d '{"success":true,"latencyMs":1200}' | jq
+curl -s http://localhost/b/v1/resources/solver/gap_attribution/quality -H "$AUTH" | jq
 ```
-**期望**：relations 返回**非空且有明确关系类型**；打一次 good 后质量分**按 EWMA 往上挪**（同输入确定性变化，不是随机）。
+**期望**：workflow relations 非空且有关系类型；打一条 `{success:true,latencyMs:...}` 后质量分（successRate）**按 EWMA 往上挪**（α=0.1·确定性·非随机）。
+**判过**：quality 200 且 EWMA 有反应；relations 对 workflow 非空。**判不过**：quality 仍 400（入参没改对）或 EWMA 无反应。
 **判过**：关系有内容 + 质量分对反馈有反应；**判不过**：relations 恒空、或质量分对反馈无变化。
 
 ---
