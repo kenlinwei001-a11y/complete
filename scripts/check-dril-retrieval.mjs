@@ -53,7 +53,10 @@ const GOLDEN_CATALOG = [
   { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", domain: "equip" },
   { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", domain: "plan" },
   { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行。", domain: "finance" },
-  { key: "supply_demand_gap_attribution", name: "供需失衡双向归因", description: "产销缺口双向分摊到需求端(预测偏差)与供给端(产能/物料/设备)，各占多少、每叶证据。", domain: "decision" },
+  { key: "supply_demand_gap_attribution", name: "供需失衡双向归因", description: "产销缺口双向分摊到需求端(预测偏差)与供给端(产能/物料/设备)，各占多少、每叶证据。", domain: "decision", answersQuestions: ["供需为什么对不上", "需求预测虚高还是供不上", "各占多少"], tags: ["supply-demand", "gap", "attribution", "forecast"] },
+  // WO-DRIL-PRECISION：对口根因族——镜像真目录 answersQuestions（NL 样例问句·让对口 solver 拿语义分）。
+  { key: "gap_attribution", name: "深度反向缺口归因", description: "总目标缺口沿本体反向多跳结构分摊到基地×订单×瓶颈叶，再沿因果边溯到终点根因，产原子因素表+residual。回答『总缺口一路归到哪些最终根因、各占多少、每叶证据』。", domain: "decision", answersQuestions: ["为什么这个指标没达标", "份额下降的根因是什么", "储能份额为什么下降逐层拆根因", "逐层拆根因、缺口一路归到哪些最终根因", "总缺口主要来自哪一层、各占多少", "每叶证据是什么"], tags: ["gap", "attribution", "rootcause", "缺口归因", "逐层拆根因", "指标没达标"] },
+  { key: "margin_attribution", name: "毛利倒挂归因", description: "成本项拆解 + 倒挂群主驱动聚合，定位毛利倒挂的根因成本项。净室通用。", domain: "generic", answersQuestions: ["毛利为什么倒挂", "哪个成本项拖垮了毛利", "毛利倒挂的根因成本项是哪些", "成本项怎么拆解定位倒挂", "倒挂群的主驱动成本是什么"], tags: ["margin", "毛利倒挂", "成本项", "cost", "attribution"] },
 ];
 const ONTOLOGY_TYPES = [
   { key: "Base", label: "基地" }, { key: "Line", label: "产线" }, { key: "Model", label: "型号" },
@@ -71,6 +74,8 @@ const GOLDEN_QUERIES = [
   { query: "产品碳足迹核算能耗碳排", expect: "carbon_footprint" },
   { query: "供需产销为什么对不上双向归因", expect: "supply_demand_gap_attribution" },
   { query: "认证工程师怎么排期到周", expect: "cert_schedule" },
+  // WO-DRIL-PRECISION 命门：对口根因 solver 须排到榜首（此前 gap_attribution 第4·margin_attribution 抢第1）。
+  { query: "储能份额为什么下降 逐层拆根因", expect: "gap_attribution" },
 ];
 
 const resources = projectSolvers(GOLDEN_CATALOG).map((r) => ({

@@ -304,22 +304,33 @@ class HttpCatalogClient implements CatalogClient {
     ctx: ToolAuthCtx,
     kind: "slices" | "solvers",
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }> {
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }> {
     const qs = `kind=${kind}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
     return call(this.baseUrl, ctx, "GET", `/a/v1/catalog?${qs}`);
   }
   async solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }> {
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }> {
     const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string }[] }>(
+    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>(
       this.baseUrl,
       ctx,
       "GET",
       `/a/v1/solvers/registry${qs}`,
     );
-    return { items: (res.solvers ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description, argHints: s.argHints ?? {}, domain: s.domain })) };
+    // WO-DRIL-PRECISION：透传 answersQuestions/tags（DataCore 目录已产出），供 DRIL 语义检索——勿在接缝丢弃。
+    return {
+      items: (res.solvers ?? []).map((s) => ({
+        key: s.key,
+        name: s.name,
+        description: s.description,
+        argHints: s.argHints ?? {},
+        domain: s.domain,
+        ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
+        ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
+      })),
+    };
   }
 }
 

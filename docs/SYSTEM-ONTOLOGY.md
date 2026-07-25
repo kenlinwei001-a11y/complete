@@ -291,7 +291,11 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
 User Query --[DRIL]--> ResourceRouter（AgentCore·派生投影 R13·非新真值源）
   ResourceRegistryService.projectTenant（请求态全量重投影·9 类 IntelligenceResource）
     ├─ Ontology/Slice Router ← reads → DataCore SliceSpec/OntologyType/Link（OBO·L4 对象标签从已发布类型派生 R14）
-    ├─ Solver Router ← reads → DataCore SolverRegistry（entitlement 前置过滤 R3）
+    ├─ Solver Router ← reads → DataCore SolverRegistry（entitlement 前置过滤 R3·**WO-DRIL-PRECISION 精度补**：
+    │    solver 目录每条灌 3–6 条 `answersQuestions`[NL 样例问句·领域精准区分度高]；projectSolvers 把 answersQuestions/tags
+    │    投影进 IntelligenceResource → 喂 ResourceSearchEngine semantic 子分[semanticCandidates:270]，对口根因 solver
+    │    才拿得到语义分排到榜首[实测 gap_attribution 对「份额为什么下降 逐层拆根因」57-solver 池 rank4→rank0·压过 margin_attribution]。
+    │    HTTP 出口 datacore-http.solverRegistry 同透传 answersQuestions/tags 不在接缝丢弃·R6 静态数据字节同序·R14 领域文本非魔数）
     ├─ Rule Router   ← reads → DataCore RuleEntry
     └─ Skill/Workflow/Agent/Intent/MCP Router ← reads → AgentCore 本地 repo
   ResourceSearchEngine（混合检索·structured filter + advisory embedding + graphDistance[复用 planSlice BFS]
