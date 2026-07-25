@@ -402,6 +402,21 @@ export const zh = {
     planRule: "规则",
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-GRAY-NODE-AUTOFILL：灰节点（EMPTY_DATA 时序维度·如设备OEE/物流时长逐日）从"诚实灰终点"变"自动补齐起点"。
+    grayFill: {
+      cta: "补此维度数据",
+      ctaHint: "该维度缺逐日时序（诚实灰）——点此经自成长发动机探针→补齐（probe/run），据引擎真返回接地",
+      running: "探针诊断中（真跑 orchestrator）→ 补齐重跑…",
+      // SOFT（无具体业务实体·引擎合成）→ 灰升级为诚实 PROVISIONAL 有数（仍标来源·绝不冒充实测/LIVE）。
+      softTag: "已补·PROVISIONAL·未接实测",
+      softNote: "无具体业务实体 → 经管线确定性合成 PROVISIONAL 逐日时序（未接实测·业务真值待接实测覆盖）",
+      // HARD（真实基地实体·引擎出 DataRequest）→ 显精确 DataRequest 待真人正门/连接器补（非静默·非假实测）。
+      hardTitle: "需导入真实数据（真人正门·不静默合成）",
+      hardCols: "须补列",
+      hardEntities: "涉及实体",
+      boundaryNote: (s: string) => `补齐收敛到边界：${s}`,
+      adminOnly: "（补齐入口需管理员权限）",
+    },
     // WO-CAPLIVE-2 · 产能推演「活台」：原子因子活推演 / 因子级根因 / 人机对话 / 方案存比（R14 下发·不内联）。
     live: {
       leverTitle: "原子因子活推演（拨动即 generic_inference 真重算）",

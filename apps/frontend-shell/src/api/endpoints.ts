@@ -1035,9 +1035,22 @@ export const fetchObjectMerges = () => api.a<{ items: ObjectMerge[] }>("/a/v1/ob
 export const unmergeObjects = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merges/${id}/unmerge`, { method: "POST" });
 
 // ---- 自成长发动机驾驶舱（P6）：运行 LOOP / 成长账本 / 工单看板 ----
-import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket } from "@platform/contracts";
+import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket, GapReport } from "@platform/contracts";
 export const runGrowth = (query: string, maxRounds = 4, packageId = "pkg_battery_manufacturing", view = "dash") =>
   api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body: { packageId, query, context: { view, selectedObjects: [], filters: {} }, maxRounds } });
+
+/**
+ * WO-GRAY-NODE-AUTOFILL（灰节点补齐入口·真引擎响应形状 GapReport/GrowthRunReport）：
+ * 携真 packageId + 完整 SessionContext（含 pageContext）触发自成长发动机——
+ *  - probeGrowthQuery：把该维度时序问句真跑 orchestrator → 诊断 gapCode（EMPTY_DATA 时序）。
+ *  - runGrowthQuery：探针→补齐→重跑闭环，回 GrowthRunReport；据 rounds[].fillApplied.fillMode
+ *    区分 SOFT（引擎合成 PROVISIONAL 逐日时序）/ HARD（真实业务实体 → 出精确 DataRequest，走真人正门）。
+ * KILL-MOCK：真实体时序前端只显 DataRequest·不触发静默合成·永不显 LIVE/实测（延续诚实灰纪律）。
+ */
+export const probeGrowthQuery = (body: { packageId: string; query: string; context: SessionContext }) =>
+  api.b<GapReport>("/b/v1/growth/probe", { method: "POST", body });
+export const runGrowthQuery = (body: { packageId: string; query: string; context: SessionContext; maxRounds?: number }) =>
+  api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body });
 export const fetchGrowthLedger = () => api.b<{ items: GrowthLedgerEntry[] }>("/b/v1/growth/ledger");
 export const fetchGrowthTickets = () => api.b<{ items: GrowthTicket[] }>("/b/v1/growth/tickets");
 export const claimGrowthTicket = (id: string) => api.b<GrowthTicket>(`/b/v1/growth/tickets/${id}/claim`, { method: "POST", body: { assignee: "cli-agent" } });

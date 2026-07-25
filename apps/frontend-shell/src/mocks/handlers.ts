@@ -1,6 +1,6 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { PlanStep, Scenario } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, BASE_REGISTRY } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -74,6 +74,10 @@ import {
 
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
+
+/** WO-GRAY-NODE-AUTOFILL：镜像真引擎 detectTimeseries（growth/data-boundary.ts）——命中时间维度措辞即时序诉求。 */
+const GRAY_TS_MARKERS = ["时序", "逐日", "逐月", "逐周", "每日", "时间序列", "趋势", "未来", "序列", "timeseries", "trend", "daily", "OEE", "物流时长"];
+const grayIsTimeseries = (q: string): boolean => GRAY_TS_MARKERS.some((m) => q.toLowerCase().includes(m.toLowerCase()));
 
 /**
  * 反事实双轨 mock（基地感知·KILL-MOCK）：从 RISK_TIMELINE 各基地的 peak/crossDay 派生 do-nothing baseline ‖
@@ -1014,8 +1018,45 @@ export const handlers = [
   ),
   http.post("*/a/v1/objects/merges/:id/unmerge", () => HttpResponse.json({ ok: true })),
 
+  // WO-GRAY-NODE-AUTOFILL：灰节点补齐探针（真引擎响应形状 GapReport）——该维度时序问句 → EMPTY_DATA 缺口诊断。
+  http.post("*/b/v1/growth/probe", async ({ request }) => {
+    const b = (await request.json()) as { query: string };
+    if (grayIsTimeseries(b.query)) {
+      return HttpResponse.json({
+        question: b.query, taskId: "gtask_gray", verdict: "BLOCKED", path: "WORKFLOW",
+        findings: [{ gapCode: "EMPTY_DATA", atStep: "resolve_slice", evidence: "切片/查询返回空集（该维度逐日时序未接地）", suggestedFill: "生成 Excel→连接器页导入→物化（真人正门），经 Action 审批", blocking: true }],
+        generatedAt: "2026-06-17T00:00:00Z",
+      });
+    }
+    return HttpResponse.json({ question: b.query, taskId: "gtask_x", verdict: "BOUNDARY", path: "AGENT", findings: [{ gapCode: "NO_INTENT", evidence: "无意图覆盖", suggestedFill: "scaffold", blocking: false }], generatedAt: "2026-06-17T00:00:00Z" });
+  }),
   http.post("*/b/v1/growth/run", async ({ request }) => {
     const b = (await request.json()) as { query: string; maxRounds?: number };
+    // WO-GRAY-NODE-AUTOFILL（对齐真引擎 decideDataGap + detectTimeseries + scenario-grow fill）：
+    // 灰维度时序 EMPTY_DATA → HARD（问句含真实基地实体·出精确 DataRequest·绝不静默合成）/ SOFT（无具体实体·合成 PROVISIONAL 逐日时序）。
+    if (grayIsTimeseries(b.query)) {
+      const entities = BASE_REGISTRY.map((x) => x.name).filter((n) => b.query.includes(n));
+      if (entities.length > 0) {
+        // HARD：真实业务实体时序 → 真人正门 DataRequest（时序维度须补时间戳+度量列）。
+        const dataRequest = {
+          typeKey: "Object",
+          columns: ["ts（时间戳/日期·逐日）", "value（该实体逐日度量值·随时间变化）", "（其余按该对象类型已发布字段——连接器导入页/数据模版可见）"],
+          entities,
+          reason: `问句涉及真实业务实体「${entities.join("、")}」——自动合成将造业务事实；须经真人正门（连接器导入 / Excel 上传 → Action 审批）补真实数据，不静默合成（时序维度：须补真实逐日时序——时间戳+度量列，绝不伪造真实体时序）`,
+        };
+        return HttpResponse.json({
+          question: b.query, maxRounds: b.maxRounds ?? 4,
+          rounds: [{ round: 1, gapReport: { question: b.query, taskId: "gtask_gray", verdict: "BLOCKED", path: "WORKFLOW", findings: [{ gapCode: "EMPTY_DATA", evidence: "切片返回空集", suggestedFill: "真人正门导入", blocking: true }], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "EMPTY_DATA", action: `HARD 缺真实业务数据（${entities.join("、")}·逐日时序（真实体时序绝不伪造））→ 真人正门导入，不静默合成`, advanced: false, fillMode: "HARD", dataRequest, ticket: { gapCode: "EMPTY_DATA", detail: dataRequest.reason } } }],
+          terminalState: "BOUNDARY", openTickets: [{ gapCode: "EMPTY_DATA", detail: dataRequest.reason }], generatedAt: "2026-06-17T00:00:00Z",
+        });
+      }
+      // SOFT：无具体业务实体 → 经管线确定性合成 PROVISIONAL 逐日时序（未接实测）。
+      return HttpResponse.json({
+        question: b.query, maxRounds: b.maxRounds ?? 4,
+        rounds: [{ round: 1, gapReport: { question: b.query, taskId: "gtask_gray", verdict: "ANSWERABLE", path: "WORKFLOW", findings: [], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "EMPTY_DATA", action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL 逐日时序（未接实测，业务真值待接实测覆盖）", advanced: true, fillMode: "SOFT" } }],
+        terminalState: "CONVERGED", openTickets: [], generatedAt: "2026-06-17T00:00:00Z",
+      });
+    }
     // CL.7：可补齐的缺口（EMPTY_DATA 类，含"达成率"标记）→ CONVERGED（续推可出答案）；其余 → BOUNDARY（诚实工单）。
     if (b.query.includes("达成率")) {
       return HttpResponse.json({

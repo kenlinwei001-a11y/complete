@@ -10,10 +10,14 @@ import {
   saveLiveScenario,
   listLiveScenarios,
   compareLiveScenarios,
+  probeGrowthQuery,
+  runGrowthQuery,
   type LiveScenario,
   type LiveScenarioMatrix,
 } from "@/api/endpoints";
+import type { DataRequest, GrowthRunReport } from "@platform/contracts";
 import { useSessionStore } from "@/store/sessionStore";
+import { useWorkspace } from "@/workspace/useWorkspace";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
@@ -618,15 +622,10 @@ function RiskDetailPanel({
             onDay={onDay}
             affectedByDay={affectedByDay}
           />
-          {/* 其余因素：仅当前值（无逐日源）→ 灰点 + 当前值标注（不伪造逐日·G-DM-1）。 */}
+          {/* 其余因素：仅当前值（无逐日源）→ 灰点 + 当前值标注（不伪造逐日·G-DM-1）。
+              WO-GRAY-NODE-AUTOFILL：每条灰时序维度旁给"补此维度数据"入口——从"诚实灰终点"变"自动补齐起点"。 */}
           {others.map((o) => (
-            <FactorRow
-              key={o.factor}
-              label={o.factor}
-              sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 无逐日实测源`}
-              color={tierColor(o.value, threshold)}
-              dots={card.series.map(() => ({ color: "rgba(138,148,166,.28)", value: null }))}
-            />
+            <GrayFactorRow key={o.factor} base={card.base} factor={o.factor} value={o.value} threshold={threshold} dayCount={card.series.length} />
           ))}
         </div>
       ) : (
@@ -966,6 +965,115 @@ function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * WO-GRAY-NODE-AUTOFILL · 灰时序维度行（EMPTY_DATA 逐日时序·如设备OEE/物流时长）：
+ * 诚实灰 FactorRow（延续「无逐日实测源」诚实标记·不伪造逐日）+ 旁挂"补此维度数据"入口（admin 可点）。
+ * 点击 → probe 诊断 gapCode（该维度时序）→ run 探针→补齐→重跑闭环，据引擎 fillApplied.fillMode 重渲染：
+ *  - SOFT（无具体业务实体·引擎合成）→ 灰终点升级为诚实 PROVISIONAL 有数（标"未接实测"·绝不冒充 LIVE/实测）。
+ *  - HARD（真实基地实体·引擎出 DataRequest）→ 显精确 DataRequest（须补对象类型/列/实体·真人正门待导入·不静默合成）。
+ * KILL-MOCK 命门：真实体（基地/设备）时序只显 DataRequest·不触发前端静默合成·永不显 LIVE/实测。
+ */
+function GrayFactorRow({ base, factor, value, threshold, dayCount }: {
+  base: string; factor: string; value: number | null; threshold: number; dayCount: number;
+}) {
+  const { data: workspace } = useWorkspace();
+  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const isAdmin = (workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "planner" || r === "catalog_admin");
+  const [phase, setPhase] = useState<"idle" | "running" | "soft" | "hard" | "boundary" | "error">("idle");
+  const [dataRequest, setDataRequest] = useState<DataRequest | null>(null);
+  const [note, setNote] = useState<string>("");
+
+  // 该维度时序诉求问句（如"常州设备OEE逐日时序"）——命中时序标记 detectTimeseries + 真实体（基地名）→ 引擎判 HARD。
+  const question = `${base}${factor}逐日时序`;
+
+  const onFill = async () => {
+    if (!packageId) { setPhase("error"); setNote("无可用场景包（packageId 空）"); return; }
+    setPhase("running");
+    try {
+      const context = useSessionStore.getState().buildContext();
+      // ① 探针：把该维度时序问句真跑 orchestrator → 诊断 gapCode（EMPTY_DATA 时序）。
+      await probeGrowthQuery({ packageId, query: question, context });
+      // ② 补齐闭环：探针→补齐→重跑，据引擎真返回决定 SOFT/HARD（非前端臆断）。
+      const report: GrowthRunReport = await runGrowthQuery({ packageId, query: question, context, maxRounds: 4 });
+      // 取最近一轮的 EMPTY_DATA 补法（引擎 fillApplied.fillMode 是 SOFT/HARD 单一真相）。
+      const fill = [...report.rounds].reverse().map((r) => r.fillApplied).find((f) => f?.gapCode === "EMPTY_DATA");
+      if (fill?.fillMode === "HARD" && fill.dataRequest) {
+        setDataRequest(fill.dataRequest); setNote(fill.action); setPhase("hard");
+      } else if (fill?.fillMode === "SOFT") {
+        setNote(fill.action); setPhase("soft");
+      } else {
+        // 无 EMPTY_DATA 补法（收敛到别的缺口/边界）→ 诚实提示，不假装补上。
+        setNote(report.openTickets[0]?.detail ?? `补齐终态 ${report.terminalState}`); setPhase("boundary");
+      }
+    } catch (e) {
+      setNote((e as Error).message); setPhase("error");
+    }
+  };
+
+  // 诚实标记延续：SOFT 升级为 PROVISIONAL（标"未接实测"）；HARD/idle/其余仍为诚实灰"无逐日实测源"。
+  const sub =
+    phase === "soft" ? zh.risk.grayFill.softTag
+      : phase === "running" ? zh.risk.grayFill.running
+      : `当前 ${value != null ? Math.round(value) : "—"} · 无逐日实测源`;
+  const rowColor = phase === "soft" ? "var(--c-forecast)" : tierColor(value, threshold);
+  const dotColor = phase === "soft" ? "rgba(90,169,230,.42)" : "rgba(138,148,166,.28)";
+
+  return (
+    <div data-testid={`gray-node-${factor}`} data-phase={phase}>
+      <FactorRow
+        label={factor}
+        sub={sub}
+        color={rowColor}
+        dots={Array.from({ length: Math.max(1, dayCount) }, () => ({ color: dotColor, value: null }))}
+      />
+      {/* 补齐入口 + 据引擎返回的重渲染区（诚实：SOFT→PROVISIONAL 有数标来源 / HARD→精确 DataRequest 待导入）。 */}
+      <div className={styles.rkFrow} style={{ marginTop: -4, paddingTop: 0 }}>
+        <div className={styles.rkFlab} />
+        <div style={{ flex: 1, fontSize: 10.5, lineHeight: 1.5 }}>
+          {phase === "idle" && (
+            isAdmin ? (
+              <button
+                className={styles.qaChip}
+                data-testid={`gray-fill-cta-${factor}`}
+                title={zh.risk.grayFill.ctaHint}
+                onClick={onFill}
+                style={{ fontSize: 10.5, padding: "2px 9px" }}
+              >
+                ⬆ {zh.risk.grayFill.cta}
+              </button>
+            ) : (
+              <span style={{ color: "var(--muted2)" }} data-testid={`gray-fill-adminonly-${factor}`}>{zh.risk.grayFill.adminOnly}</span>
+            )
+          )}
+          {phase === "running" && <span style={{ color: "var(--muted2)" }} data-testid={`gray-fill-running-${factor}`}>{zh.risk.grayFill.running}</span>}
+          {phase === "soft" && (
+            // SOFT：诚实灰 → PROVISIONAL 有数（仍标"未接实测"·绝不显 LIVE/实测）。
+            <div data-testid={`gray-fill-soft-${factor}`}>
+              <span className={styles.rkSynth} style={{ display: "inline-block" }}>{zh.risk.grayFill.softTag}</span>
+              <div style={{ color: "var(--muted2)", marginTop: 3 }}>{zh.risk.grayFill.softNote}</div>
+            </div>
+          )}
+          {phase === "hard" && dataRequest && (
+            // HARD：真实业务实体 → 只显精确 DataRequest（须补对象类型/列/实体）待真人正门补·永不 LIVE/实测·不静默合成。
+            <div data-testid={`gray-fill-hard-${factor}`} style={{ border: "1px solid var(--line2)", borderRadius: 8, padding: "6px 9px" }}>
+              <b style={{ color: "var(--danger)" }}>⚠ {zh.risk.grayFill.hardTitle}</b>
+              <div style={{ marginTop: 3 }}>
+                <span data-testid={`gray-fill-hard-type-${factor}`}>对象类型：<b>{dataRequest.typeKey}</b></span>
+                {" · "}
+                <span>{zh.risk.grayFill.hardEntities}：{dataRequest.entities.join("、")}</span>
+              </div>
+              <div style={{ color: "var(--muted2)", marginTop: 2 }}>{zh.risk.grayFill.hardCols}：{dataRequest.columns.join("；")}</div>
+              <div style={{ color: "var(--muted2)", marginTop: 2 }}>{dataRequest.reason}</div>
+            </div>
+          )}
+          {phase === "boundary" && <span style={{ color: "var(--muted2)" }} data-testid={`gray-fill-boundary-${factor}`}>{zh.risk.grayFill.boundaryNote(note)}</span>}
+          {phase === "error" && <span style={{ color: "var(--danger)" }} data-testid={`gray-fill-error-${factor}`}>补齐失败：{note}</span>}
+        </div>
       </div>
     </div>
   );
