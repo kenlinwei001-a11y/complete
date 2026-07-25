@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -174,6 +174,20 @@ export interface SimClient {
   certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>>;
 }
 
+/**
+ * WO-PROMPT-DEFAULTS-WIRING · 平台内置提示词模板 OBO 读取（消硬编码漂移）。
+ * 单一真值在 DataCore（R1·B 经 REST 读不 import A 源）；`GET /a/v1/prompt-templates/:key/resolve`
+ * 返 ResolvedPrompt（含 source: TENANT_OVERRIDE|PLATFORM_DEFAULT）。TTL60s 缓存 + `prompt.updated` 事件失效
+ * （复用 B→A 资源缓存纪律）。消费方仅采纳 **TENANT_OVERRIDE**（admin 真配了才生效）；PLATFORM_DEFAULT/失败/不可达
+ * → 兜底 AgentCore 现有硬编码默认（fail-open·R6 字节兼容）。可选：mock/精简客户端不实现 → 消费点自然降级。
+ */
+export interface PromptClient {
+  /** OBO 读生效模板；失败/不可达按 call 语义抛（消费方 fail-open catch）。mock 可返 undefined。 */
+  getPromptTemplate(ctx: ToolAuthCtx, key: PromptKey): Promise<ResolvedPrompt | undefined>;
+  /** `prompt.updated` 事件失效（/b/v1/internal/invalidate 钩子调）；给 tenantId 清该租户键，缺省全清。 */
+  invalidatePromptTemplate(tenantId?: string): void;
+}
+
 export interface DataCoreClient {
   ontology: OntologyClient;
   solver: SolverClient;
@@ -189,6 +203,8 @@ export interface DataCoreClient {
   datagen: DataGenClient;
   /** 增量4 §5：AI 推演指挥台的沙盘工具出口（仅 sim.commander/sim.sandbox 开通时对 agent 可见）。 */
   sim: SimClient;
+  /** WO-PROMPT-DEFAULTS-WIRING：平台内置提示词模板读取（可选·缺省则消费点降级硬编码兜底·fail-open）。 */
+  prompts?: PromptClient;
 }
 
 export class DataCoreUnavailableError extends Error {

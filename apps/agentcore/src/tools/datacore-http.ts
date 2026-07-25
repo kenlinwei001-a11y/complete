@@ -1,4 +1,4 @@
-import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
+import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -11,6 +11,7 @@ import {
   type IamClient,
   type KbClient,
   type OntologyClient,
+  type PromptClient,
   type RuleEngineClient,
   type SimClient,
   type SolverClient,
@@ -62,6 +63,8 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
 
 /** WO-QOS-ONTOLOGY-CONTEXT · B→A type-semantics 资源缓存（TTL 60s + {kind}.updated 事件失效，与 provider/feature 目录同机制）。 */
 const TYPE_SEMANTICS_TTL_MS = 60_000;
+/** WO-PROMPT-DEFAULTS-WIRING · B→A 提示词模板缓存 TTL（60s + prompt.updated 事件失效，同 B→A 资源缓存纪律）。 */
+const PROMPT_TEMPLATE_TTL_MS = 60_000;
 
 class HttpOntologyClient implements OntologyClient {
   constructor(private readonly baseUrl: string) {}
@@ -356,6 +359,40 @@ class HttpIamClient implements IamClient {
   }
 }
 
+/**
+ * WO-PROMPT-DEFAULTS-WIRING · B→A 提示词模板 OBO 读取 + 缓存（TTL60s + `prompt.updated` 事件失效，
+ * 与 type-semantics/provider 目录同机制·不 per-question 打 A）。经 `GET /a/v1/prompt-templates/:key/resolve`
+ * （admin 门·OBO 透传用户 JWT/X-Debug-User）取 ResolvedPrompt；非 admin/不可达 → 抛（消费方 fail-open 兜底硬编码）。
+ */
+class HttpPromptClient implements PromptClient {
+  constructor(private readonly baseUrl: string) {}
+  /** 缓存键 = `${tenantId}::${key}`；命中且未过期 → 不打 A。 */
+  private readonly cache = new Map<string, { value: ResolvedPrompt; fetchedAt: number }>();
+
+  async getPromptTemplate(ctx: ToolAuthCtx, key: PromptKey): Promise<ResolvedPrompt | undefined> {
+    const cacheKey = `${ctx.tenantId ?? ""}::${key}`;
+    const hit = this.cache.get(cacheKey);
+    if (hit && Date.now() - hit.fetchedAt < PROMPT_TEMPLATE_TTL_MS) return hit.value;
+    const value = await call<ResolvedPrompt>(
+      this.baseUrl,
+      ctx,
+      "GET",
+      `/a/v1/prompt-templates/${encodeURIComponent(key)}/resolve`,
+    );
+    this.cache.set(cacheKey, { value, fetchedAt: Date.now() });
+    return value;
+  }
+
+  /** `prompt.updated` 事件失效：给 tenantId 清该租户所有键；不给 → 全清（幂等无害）。 */
+  invalidatePromptTemplate(tenantId?: string): void {
+    if (!tenantId) {
+      this.cache.clear();
+      return;
+    }
+    for (const k of [...this.cache.keys()]) if (k.startsWith(`${tenantId}::`)) this.cache.delete(k);
+  }
+}
+
 export function createHttpDataCore(baseUrl: string): DataCoreClient {
   return {
     ontology: new HttpOntologyClient(baseUrl),
@@ -370,5 +407,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     epoch: new HttpEpochClient(baseUrl),
     datagen: new HttpDataGenClient(baseUrl),
     sim: new HttpSimClient(baseUrl),
+    prompts: new HttpPromptClient(baseUrl),
   };
 }
