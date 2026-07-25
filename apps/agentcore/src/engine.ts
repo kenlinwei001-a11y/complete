@@ -219,6 +219,12 @@ export class ExecutionEngine {
       const keep = new Set(full.map((t) => t.name));
       tools = expanded.filter((t) => t.binding.kind !== "MCP" || keep.has(t.name));
     }
+    // WO-AGENT-RUNTIME-S01 · item 6（治 workflow_capacity_check DENIED）：scopeToolNames = 声明白名单 ∪ **本 agent 实际
+    // 被授予的工具名**（expanded：BUILTIN/workflow_<key>/mcp__…）。根因——seed 给 agt_capacity_planner 配了 workflow_capacity_check
+    // 工具，但其 scopeDeclaration.toolNames 漏列该名 → 调用即 AGENT_SCOPE_VIOLATION DENIED（子 agent 盲扫烧预算的一环）。
+    // 一个 agent 被显式配置的工具**绝不应被自身 scope 门拒**（「给它该工具」）；并集**只加不减**（声明已覆盖者 = 原集·byte-compatible），
+    // 越界工具（未配置给该 agent）仍被拒（安全语义不变）。此处修 scope 派生，不动 seed（seed.ts 禁碰）。
+    const effectiveScopeToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...tools.map((t) => t.name)])];
     // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
     const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
@@ -238,7 +244,7 @@ export class ExecutionEngine {
       opts.taskId,
       opts.ctx,
       opts.nesting.budget,
-      agent.scopeDeclaration.toolNames,
+      effectiveScopeToolNames,
       opts.enforceObjectScope ? agent.scopeDeclaration.objectTypes : undefined,
     );
 
@@ -268,7 +274,7 @@ export class ExecutionEngine {
       isCancelled: opts.isCancelled,
       expectsSchema: opts.expectsSchema,
       loadSkillEnabled: true,
-      scopeToolNames: agent.scopeDeclaration.toolNames,
+      scopeToolNames: effectiveScopeToolNames,
       loadSkill: async (skillId: string) => {
         const pinned = agent.skills.find((x) => x.skillId === skillId)?.version ?? "latest";
         const skill = await this.resolveSkill(agent.tenantId, skillId, pinned);

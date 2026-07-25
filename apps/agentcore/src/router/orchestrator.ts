@@ -42,7 +42,11 @@ import {
   isCapacityWhatIfQuery,
   buildCapacityNavSlice,
   capacityComposeSlots,
-} from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT 推演 NL 大脑 + WO-LIVE-NL 产能 what-if NL 意图路由（均投影推演专属 navSlice 交 Phase2-C 组合器）
+  isCapacityFeasibilityQuery,
+  parseCapacityFeasibilityVariant,
+  buildFeasibilityNavSlice,
+  feasibilityComposeSlots,
+} from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT 推演 NL 大脑 + WO-LIVE-NL 产能 what-if NL 意图路由 + WO-AGENT-RUNTIME-S01 产能可行性变体（均投影推演专属 navSlice 交 Phase2-C 组合器）
 import type { GuardedToolExecutor } from "../tools/executor.js";
 import type { ComposePlan } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
@@ -435,6 +439,15 @@ export class Orchestrator {
       }
     }
 
+    // ★ WO-AGENT-RUNTIME-S01 · 【最优先】场景变体继承意图（治「场景启动器变体问句卡死 5 分钟」·插在 Coordinator/path-B 之前）。
+    // 病根：S01「订单可承接性评审」点卡带 presetSlots{modelId,demandDelta,weeks}→capacity_feasibility→capacity_forecast 秒答；
+    // 改写成自由问句「4680-NCM 上浮10%、8周还能接吗」后丢了 scenarioIntentKey/presetSlots → 判开放题 → 进多角色 Coordinator
+    // → 子 agent 不会把「上浮10%/8周/4680-NCM」映射成 {modelId,demandDelta,weeks} → 反复失败烧预算 ~5min 像卡死。
+    // 修：新 query 无显式 scenarioIntentKey 但同会话最近任务是场景启动（scenarioKey/scenarioIntentKey 非空）且新问句仍是
+    // 产能可行性变体（同业务视图）→ 继承 scenarioIntentKey + parseCapacityFeasibilityVariant 填槽 → path-A 直路 capacity_forecast
+    // （秒级·不进 Coordinator/path-B）。命中即 return；未命中（无继承/非变体/槽填不满）→ 照落下游（不劫持·byte-compatible）。
+    if (!forcedKey && (await this.tryInheritScenarioVariant(taskId, auth, task, candidates))) return;
+
     // WO-REAL-LLM-FREE-QUERY（AI 指挥台 NL 入口·先于确定性路由/classifier）：沙盘会话上下文 NL 指挥
     //（filters.simSessionId 存在=前端沙盘屏 NL 框带 sessionId 提交）+ sim.commander 开 → 直接 path-B，
     // agent 拿 sim_* 工具真驱动 tick（NL「推进两个 tick 看负载」→ 调 sim_tick）。关则不触发·照常分类（R3 暗发）。
@@ -627,6 +640,49 @@ export class Orchestrator {
       }
     }
     return false;
+  }
+
+  /**
+   * WO-AGENT-RUNTIME-S01 · 场景变体继承意图（会话继承·item 1·治病根头号杠杆）。
+   * 新 query 无显式 scenarioIntentKey 时，读同会话最近的场景启动任务；若其 scenarioIntentKey 为 `capacity_feasibility`
+   * （本单治的对口单一 solver 定式意图）、本问句仍是产能可行性变体（isCapacityFeasibilityQuery）→ 继承该意图 +
+   * parseCapacityFeasibilityVariant 确定性填槽（型号从问句取·缺则从继承的选中对象/presetSlots 补；demandDelta/weeks 从问句）
+   * → probe fillSlots 满足则 proceedWithIntent 直路 path-A（capacity_forecast·秒级·不进 Coordinator/path-B）。
+   * 命中并绑定 → true（调用方 return·model=`deterministic:scenario-inherit`）；否则 false（照落下游·不劫持·byte-compatible）。
+   */
+  private async tryInheritScenarioVariant(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+  ): Promise<boolean> {
+    // 只对产能可行性变体启用继承（否则不把无关追问强绑旧场景意图·narrow-safe）。
+    if (!isCapacityFeasibilityQuery(task.query, task.context.pageContext)) return false;
+    // 同会话最近的场景启动任务（scenarioIntentKey/scenarioKey 非空·最近优先）。
+    const history = await this.previousConversationTasks(task);
+    const prev = history
+      .filter((t) => t.context.scenarioIntentKey || (t.context as { scenarioKey?: string }).scenarioKey)
+      .sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+    if (!prev || prev.context.scenarioIntentKey !== "capacity_feasibility") return false;
+    const forced = candidates.find((c) => c.key === "capacity_feasibility");
+    if (!forced) return false;
+    // 变体槽（型号从问句·缺则从继承的选中对象/presetSlots 补·R6 纯派生）。
+    const variant = parseCapacityFeasibilityVariant(task.query);
+    const prevSel = (prev.context.selectedObjects ?? [])[0];
+    const prevPresetModel = typeof prev.context.presetSlots?.modelId === "string" ? (prev.context.presetSlots.modelId as string) : undefined;
+    const modelId = variant.modelId ?? prevSel?.objectId ?? prevPresetModel;
+    const extracted: Record<string, unknown> = {};
+    if (modelId) extracted.model = modelId; // `model` 为 objectRef 槽（bare string 经 ontology 解析成 ObjectRef）
+    if (variant.demandDelta !== undefined) extracted.demandDelta = variant.demandDelta;
+    if (variant.weeks !== undefined) extracted.weeks = variant.weeks;
+    // 探针 fillSlots（extracted 优先·继承选中对象/presetSlots 兜底）；填不满 → 不继承（照落下游·诚实不臆造）。
+    const probe = await fillSlots(forced, extracted, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+    if (probe.missing.length > 0) return false;
+    await this.deps.repos.tasks.patch(taskId, {
+      classification: { candidates: [{ intentKey: forced.key, confidence: 1 }], outOfCatalog: false, extractedSlots: extracted, latencyMs: 0, model: "deterministic:scenario-inherit" },
+    });
+    await this.proceedWithIntent(taskId, auth, forced, extracted);
+    return true;
   }
 
   private async publishedIntentsForView(
@@ -1098,18 +1154,28 @@ export class Orchestrator {
       // WO-LIVE-NL · 产能 what-if NL 意图（「常州化成良率降到92%产能少多少」「哪个工序物料最卡 4680」）先于全局推演判定：
       // 因子变动 what-if → generic_inference 沿派生 DAG 真重算；因子级根因 → gap_attribution(scope)；前瞻 → capacity_forecast。
       // 结构化解析（parseCapacityWhatIf·R6·无 LLM）填 apply/scope 进 slots → 组合器纳入真算·runAgentLoop 未调（确定性 compose 秒答）。
-      const isCap = isCapacityWhatIfQuery(task.query, task.context.pageContext);
-      const isSim = !isCap && isSimComposeQuery(task.query, task.context.pageContext);
-      const composeSlice = isCap
-        ? buildCapacityNavSlice(task.query)
-        : isSim
-          ? buildSimNavSlice(task.query)
-          : navSlice;
-      const composeSlotsForTask = isCap
-        ? { ...this.composeSlots(task), ...capacityComposeSlots(task.query) }
-        : isSim
-          ? { ...this.composeSlots(task), ...simComposeSlots() }
-          : this.composeSlots(task);
+      // WO-AGENT-RUNTIME-S01 · item 2：产能可行性变体（「型号+上浮X%+N周+能不能接」）先于 what-if/推演判定 →
+      // capacity_forecast 为唯一对口 solver 的专属 navSlice + feasibilityComposeSlots 填 {modelId,demandDelta,weeks}
+      // （型号从问句取·缺则从选中对象补）→ compileSolverPlan 生成 invoke_solver:capacity_forecast 服务端执行·不落 runAgentLoop。
+      // 既有 isCapacityWhatIfQuery 只认「因子变动」（良率/OEE 降升）·此变体是「型号需求增量可行性」·两者互斥不劫持。
+      const isFeas = isCapacityFeasibilityQuery(task.query, task.context.pageContext);
+      const isCap = !isFeas && isCapacityWhatIfQuery(task.query, task.context.pageContext);
+      const isSim = !isFeas && !isCap && isSimComposeQuery(task.query, task.context.pageContext);
+      const feasFallbackModel = (task.context.selectedObjects ?? []).find((o) => o.objectType === "Model")?.objectId;
+      const composeSlice = isFeas
+        ? buildFeasibilityNavSlice()
+        : isCap
+          ? buildCapacityNavSlice(task.query)
+          : isSim
+            ? buildSimNavSlice(task.query)
+            : navSlice;
+      const composeSlotsForTask = isFeas
+        ? { ...this.composeSlots(task), ...feasibilityComposeSlots(task.query, feasFallbackModel) }
+        : isCap
+          ? { ...this.composeSlots(task), ...capacityComposeSlots(task.query) }
+          : isSim
+            ? { ...this.composeSlots(task), ...simComposeSlots() }
+            : this.composeSlots(task);
       const composeCompiled = compileSolverPlan(task.query, composeSlice, composeSlotsForTask);
       if (composeCompiled.ok) {
         await this.executePlanPath(taskId, auth, task, composeCompiled.plan, classification, executor, model);
@@ -1520,7 +1586,24 @@ export class Orchestrator {
       dispatches: plan.dispatches.map((d) => ({ role: d.role, agentId: d.agentId, subQuestion: d.subQuestion })),
     });
 
-    const steps = buildDispatchSteps(plan, task.context.pageContext);
+    // WO-AGENT-RUNTIME-S01 · item 5：DRIL 智能资源包（对口 solver/slice 预选）传进每个角色子 agent 的 prompt——
+    // 让子 agent 也优先调对口 solver·不盲扫烧预算。暗发门（qos.dril-routing·关/组包空 → drilSection="" → 子 agent
+    // prompt 逐字节不变·byte-compatible）；组包异常吞掉不阻断 Coordinator 扇出（fail-open）。
+    let drilSection = "";
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    if (drilRoutingEnabled(enabledFeatures)) {
+      try {
+        const drilPkg = await this.getDrilRouter().buildResourcePackage(
+          auth,
+          task.query,
+          task.context.pageContext as Record<string, unknown> | undefined,
+        );
+        drilSection = renderDrilPackage(drilPkg);
+      } catch {
+        drilSection = "";
+      }
+    }
+    const steps = buildDispatchSteps(plan, task.context.pageContext, drilSection);
     const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     const invokedAgentKeys: string[] = [];
     const result = await this.deps.engine.runWorkflowSteps({

@@ -178,6 +178,15 @@ const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
  * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。 */
 const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
 
+/**
+ * WO-AGENT-RUNTIME-S01 · 停滞早停阈值（治病根：workflow_capacity_check DENIED + invoke_solver ERROR + 反复 query_objects
+ * 烧满预算 ~5min 像卡死）。连续工具失败（ERROR/DENIED）计数 ≥ STALL_CONSECUTIVE_FAILURES **且** 近 ≥ STALL_MIN_ROUNDS
+ * 轮零成功工具产出 → 立即优雅降级（复用既有 BUDGET_EXHAUSTED 降级路径），不烧完预算。
+ * 双条件（连续失败数 + 近 N 轮零成功）联合判定 = 防误伤「先错后恢复」的正常流：任一成功工具产出即复位两计数器。
+ */
+const STALL_CONSECUTIVE_FAILURES = 3;
+const STALL_MIN_ROUNDS = 2;
+
 /** 增量 §5：并行 READ 轮的最大并发。 */
 const PARALLEL_READ_CONCURRENCY = 4;
 
@@ -256,6 +265,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let totalOutput = 0;
   let lastText = "";
   let consecutiveDenies = 0;
+  // WO-AGENT-RUNTIME-S01 · 停滞早停计数（连续工具失败 ERROR/DENIED；近 N 轮零成功产出）——任一成功工具产出即复位两者。
+  let consecutiveToolFailures = 0;
+  let roundsWithoutSuccess = 0;
   let forceFinishNotified = false;
   // WO-QOS-2：规划式执行观测——某轮 plan（批量 invoke_solver）引用了图外 solver 而回退 ReAct 时置位（仅当 opts.sliceSolverKeys 传入）。
   let planFellBackToReAct = false;
@@ -818,11 +830,24 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     const iteration: AgentIteration = { index: i, toolCalls: [] };
     const toolResults: ToolResultBlock[] = [];
+    // WO-AGENT-RUNTIME-S01：本轮工具是否有成功产出 / 失败（ERROR/DENIED/BUDGET_EXCEEDED）计数（停滞早停用）。
+    let roundHadSuccess = false;
+    let roundFailures = 0;
     for (const o of outcomes) {
       if (o.call) iteration.toolCalls.push(o.call);
       toolResults.push(o.result);
       if (o.denyKind === "PERMISSION") consecutiveDenies += 1;
       else if (o.ok) consecutiveDenies = 0;
+      if (o.ok) roundHadSuccess = true;
+      else if (o.result.isError) roundFailures += 1;
+    }
+    // WO-AGENT-RUNTIME-S01 · 停滞早停计数更新：任一成功工具产出 → 复位；否则本轮失败累加 + 无成功轮 +1。
+    if (roundHadSuccess) {
+      consecutiveToolFailures = 0;
+      roundsWithoutSuccess = 0;
+    } else if (roundFailures > 0) {
+      consecutiveToolFailures += roundFailures;
+      roundsWithoutSuccess += 1;
     }
 
     iterations.push(iteration);
@@ -838,6 +863,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     });
     // WO-Phase4：完成一轮「LLM→工具执行→结果返回」→ round-trip +1（超 maxRoundTrips 在下一轮迭代前触发硬预算降级）。
     opts.budget.roundTrips += 1;
+
+    // WO-AGENT-RUNTIME-S01 · 停滞早停（治病根 ~5min 卡死）：连续工具失败（ERROR/DENIED）≥ 阈值 **且** 近 ≥ N 轮零成功
+    // 工具产出 → 立即优雅降级（复用 BUDGET_EXHAUSTED 降级路径），不再空转烧完预算。双条件联合 = 不误伤「先错后恢复」的
+    // 正常流（任一成功产出即上面复位两计数器）。此前 loop 只对连续 PERMISSION 拒绝（consecutiveDenies）先 nudge——ERROR
+    // 型停滞（invoke_solver ERROR/权限外 workflow DENIED 反复）无此护栏，会一路烧到 maxIterations（病根实测 ~5min）。
+    if (consecutiveToolFailures >= STALL_CONSECUTIVE_FAILURES && roundsWithoutSuccess >= STALL_MIN_ROUNDS) {
+      return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
+    }
 
     // 3 consecutive permission denials → force finish (§5.4-4)
     if (consecutiveDenies >= 3) {

@@ -4,6 +4,7 @@ import { roleProfile } from "../mocks/seed.js";
 import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
 import type { ExtendedPlanStep } from "../workflow/executor.js";
+import { isCapacityFeasibilityQuery } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Coordinator 编排（确定性·R6 无 LLM/时钟/随机）。
@@ -66,6 +67,11 @@ export function planCoordination(
   baseScope: string[] = [],
 ): CoordinatorPlan | undefined {
   const q = question ?? "";
+  // WO-AGENT-RUNTIME-S01 · 直路（治病根头号杠杆）：产能可行性变体（「型号+上浮X%+N周+能不能接」）有对口**单一**
+  // solver（capacity_forecast），**绝不拆多角色会诊**——否则供应链/产能/质量子 agent 各自盲扫烧预算（decision-trace
+  // 铁证 ~5min 卡死）。命中即返 undefined → orchestrator 上游确定性路由（会话继承 path-A / compose 直路）已先接住；
+  // 即便未被上游接住（feature/上下文差异），这里也拒绝拆分 → 落 path-B 单 agent（有导航切片·仍对口 capacity_forecast）。
+  if (isCapacityFeasibilityQuery(q, pageContext)) return undefined;
   const matched = new Set<RoleDispatch["role"]>();
   const hintByRole = new Map<string, string>();
   for (const k of ROLE_KEYWORDS) {
@@ -116,14 +122,28 @@ export function planCoordination(
  */
 export function detectSingleRole(question: string): RoleDispatch["role"] | undefined {
   const q = question ?? "";
+  // WO-AGENT-RUNTIME-S01：产能可行性变体不落单域角色 agent（该 agent 仍需把「上浮X%/N周」映射成 solver 参·同样盲扫）——
+  // 让它落到 runPathB 组合路径（compileSolverPlan→capacity_forecast）或既有 path-B 导航切片（对口 solver 一步到位）。
+  if (isCapacityFeasibilityQuery(q)) return undefined;
   if (DELIVERY_RISK_RE.test(q) || COMPOSITE_RE.test(q)) return undefined; // 跨域 → 不作单域
   const hit = ROLE_KEYWORDS.filter((k) => k.re.test(q));
   return hit.length === 1 ? hit[0]!.role : undefined;
 }
 
-/** 每条 dispatch → 一个 invoke_agent 步（扇出）：prompt = 角色 system 片段 + 页面上下文 + 子问；enforceObjectScope 真隔离。 */
-export function buildDispatchSteps(plan: CoordinatorPlan, pageContext: PageContext | undefined): ExtendedPlanStep[] {
+/**
+ * 每条 dispatch → 一个 invoke_agent 步（扇出）：prompt = 角色 system 片段 + 页面上下文 + [DRIL 资源包] + 子问；enforceObjectScope 真隔离。
+ *
+ * WO-AGENT-RUNTIME-S01 · item 5：把 Coordinator 组好的 DRIL 智能资源包（对口 solver/slice 预选）作为子 agent prompt 的
+ * 一部分传下去——让每个角色子 agent 也知道优先调对口 solver（如 capacity_forecast）· 不盲扫烧预算。drilSection 空（未开
+ * qos.dril-routing / 组包空）→ 不注入（byte-compatible·既有 Coordinator 扇出 prompt 逐字节不变）。
+ */
+export function buildDispatchSteps(
+  plan: CoordinatorPlan,
+  pageContext: PageContext | undefined,
+  drilSection?: string,
+): ExtendedPlanStep[] {
   const pcSummary = pageContextSummary(pageContext);
+  const dril = (drilSection ?? "").trim();
   return plan.dispatches.map((d, i) => {
     const scopeNote = d.scope.allBases
       ? "全域"
@@ -132,6 +152,7 @@ export function buildDispatchSteps(plan: CoordinatorPlan, pageContext: PageConte
       roleSystemFragment(d.role),
       `你的取证对象域：${d.objectTypes.join("/") || "（全域）"}（越界读对象会被拒）。scope：${scopeNote}。`,
       pcSummary ? `页面上下文：\n${pcSummary}` : "",
+      dril || "",
       `<sub_question>${d.subQuestion}</sub_question>`,
     ]
       .filter(Boolean)

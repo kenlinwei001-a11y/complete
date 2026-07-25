@@ -173,10 +173,20 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: "invoke_solver",
     descriptionForLLM:
-      "调用确定性求解器进行计算（如产能推演 capacity_forecast、受影响订单 affected_orders）。计算成本高，仅在确有必要时调用。",
+      "调用确定性求解器进行计算。计算成本高，仅在确有必要时调用。**入参口径（缺必填即报错，勿空调）**：" +
+      "capacity_forecast（型号需求增量产能可行性/能不能接）必填 args={modelId(型号如 4680-NCM),demandDelta(需求增量比例，如上浮10%→0.1),weeks(周数)}——" +
+      "modelId 从当前选中对象/问句里的型号显式取，把「上浮X%」换算成 demandDelta=X/100、「N周」换算成 weeks=N；" +
+      "affected_orders（某基地受影响订单）args={baseId}；gap_attribution（指标缺口反向归因）args={metricKey?,factorId?,scope?}。" +
+      "「某型号加X%、N周能不能接」这类可承接性问题一律直接调 capacity_forecast，不要先反复 query_objects 盲扫。",
     inputSchema: {
       type: "object",
-      properties: { solverKey: { type: "string" }, args: { type: "object" } },
+      properties: {
+        solverKey: { type: "string", description: "求解器 key，如 capacity_forecast / affected_orders / gap_attribution" },
+        args: {
+          type: "object",
+          description: "求解器入参。capacity_forecast 必填 {modelId, demandDelta, weeks}；缺必填求解器会返回明确参数错误，不要空调。",
+        },
+      },
       required: ["solverKey", "args"],
     },
     sideEffect: "COMPUTE",

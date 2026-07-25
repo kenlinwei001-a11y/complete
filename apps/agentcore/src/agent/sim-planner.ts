@@ -186,3 +186,129 @@ export function buildCapacityNavSlice(query: string): NavigationSlice {
     nonEmpty: true,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-AGENT-RUNTIME-S01 · 产能可行性变体（治「场景启动器变体问句卡死 5 分钟」）
+// 病根（decision-trace 铁证）：S01「订单可承接性评审」原问句靠 presetSlots{modelId,demandDelta,weeks} 命中
+//   capacity_feasibility → capacity_forecast·3 秒出答。改写成自由问句「4680-NCM 上浮10%、8周还能接吗」后丢了
+//   scenarioIntentKey/presetSlots → 路由判开放题 → 进多角色 Coordinator → 子 agent 不会把「上浮10%/8周/4680-NCM」
+//   映射成 {modelId,demandDelta,weeks} → workflow_capacity_check DENIED + invoke_solver ERROR + 反复 query_objects
+//   烧预算 → ~5min 像卡死。
+// 本模块补：① 识别「型号 + 上浮X% + N周 + 能不能接」变体（isCapacityFeasibilityQuery·R6）② 确定性解析出
+//   {modelId,demandDelta,weeks}（parseCapacityFeasibilityVariant·R6·无 LLM）→ 供 orchestrator 会话继承 path-A /
+//   compose 直路 capacity_forecast（秒级·不进 Coordinator/path-B）。isCapacityWhatIfQuery 只认「因子变动」what-if，
+//   此变体是「型号需求增量可行性」——正是 capacity_feasibility 意图/capacity_forecast 求解器的对口题。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 型号 token 正则（出厂 Model：4680-NCM/2170-NCM/方形-NCM/方形-LFP/圆柱-LFP/4680-LFP·前缀-化学体系）。 */
+const MODEL_TOKEN_RE = /((?:\d{3,4}|方形|圆柱|刀片|软包|大圆柱)-(?:NCM|LFP|NCA|LFMP))/iu;
+/** 需求增量正则：「上浮/加/增/上调/提/多/涨 X%」→ 比例。 */
+const DEMAND_DELTA_RE = /(?:上浮|上调|增加|增长|加|增|提高|提|多|涨)\s*(\d+(?:\.\d+)?)\s*%/;
+/** 周数正则：「N周」（Arabic 或中文数字）。 */
+const WEEKS_RE = /(\d+|[一二两三四五六七八九十]+)\s*周/;
+/**
+ * 可承接问句正则（「能不能接/还能接/能接吗/接得下/可承接/产能够不够/够吗…」）。
+ * 含「够不够/够吗」类——与「型号增量 + 周数」信号联合判定，不会误吞因子变动 what-if（那类无需求增量%、无周数）。
+ */
+const FEASIBILITY_ACCEPT_RE = /(能不能接|能否接|接得下|接不接|还能接|能接|可承接|能承接|承接|接得住|接得了|够不够|够吗|够不够接)/;
+
+const CN_DIGIT: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+/** 小整数解析（Arabic 或中文 1..99·仅用于周数·R6 纯函数·无区域/时钟依赖）。 */
+function parseSmallInt(raw: string): number | undefined {
+  const s = raw.trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  // 中文数字 1..99：十 / 十X / X十 / X十X。
+  if (s === "十") return 10;
+  const m1 = /^([一二两三四五六七八九])十([一二三四五六七八九])?$/.exec(s); // X十[Y]
+  if (m1) return CN_DIGIT[m1[1]!]! * 10 + (m1[2] ? CN_DIGIT[m1[2]!]! : 0);
+  const m2 = /^十([一二三四五六七八九])$/.exec(s); // 十Y
+  if (m2) return 10 + CN_DIGIT[m2[1]!]!;
+  if (CN_DIGIT[s] !== undefined) return CN_DIGIT[s];
+  return undefined;
+}
+
+export interface CapacityFeasibilityVariant {
+  /** 从问句解析出的型号（Model objectId/name·无则 undefined→由上层从选中对象/继承上下文补）。 */
+  modelId?: string;
+  /** 需求增量比例（「上浮10%」→0.1·与 capacity_feasibility 意图 demandDelta 槽同口径）。 */
+  demandDelta?: number;
+  /** 周数（「8周」→8·capacity_forecast weeks 参·缺省由意图槽 default 6 兜底）。 */
+  weeks?: number;
+}
+
+/**
+ * 确定性解析产能可行性变体 NL → {modelId, demandDelta, weeks}（R6 纯函数·无 LLM/时钟/随机）。
+ * 例「4680-NCM 上浮10%、8周还能接吗」→ {modelId:"4680-NCM", demandDelta:0.1, weeks:8}；
+ *   「4680-NCM 加 20% 六周能不能接？」→ {modelId:"4680-NCM", demandDelta:0.2, weeks:6}。
+ * 解析不出某项 → 该字段 undefined（上层据可用性决定是否命中·宁缺不臆造·fail-safe）。
+ */
+export function parseCapacityFeasibilityVariant(query: string): CapacityFeasibilityVariant {
+  const q = query ?? "";
+  const out: CapacityFeasibilityVariant = {};
+  const model = MODEL_TOKEN_RE.exec(q);
+  if (model) out.modelId = model[1]!.toUpperCase(); // 归一化学体系大写（4680-ncm→4680-NCM·CJK 前缀不受影响）
+  const delta = DEMAND_DELTA_RE.exec(q);
+  if (delta) out.demandDelta = Number((Number(delta[1]) / 100).toFixed(4));
+  const weeks = WEEKS_RE.exec(q);
+  if (weeks) {
+    const n = parseSmallInt(weeks[1]!);
+    if (n !== undefined) out.weeks = n;
+  }
+  return out;
+}
+
+/**
+ * 是否产能可行性变体问句（据问句 + 可选 PageContext 视图辅助·R6 纯函数）。
+ * 判据：命中「能不能接」类可承接问句 ∧（有需求增量 ∨ 有周数）——即「某型号增加一定需求、给定周数内能否承接」。
+ * **排除单订单重排**（SO-号 + 重排/提前/挤占/拆产 = sop_reschedule 领域·防误劫持既有退化单步路径）。
+ * 型号可缺省（由上层从选中对象/继承上下文补·如场景变体沿用 S01 选中的 4680-NCM）。
+ */
+export function isCapacityFeasibilityQuery(query: string, pageContext?: PageContext): boolean {
+  const q = query ?? "";
+  if (/\bSO-?\d+\b/i.test(q) && /(重排|提前|挤占|拆产)/.test(q)) return false; // 单订单重排 → sop_reschedule
+  const v = parseCapacityFeasibilityVariant(q);
+  const hasAccept = FEASIBILITY_ACCEPT_RE.test(q);
+  const hasDelta = v.demandDelta !== undefined;
+  const hasWeeks = v.weeks !== undefined;
+  // 页上下文辅助：产能/可承接页可放宽（但仍需可承接问句 + 增量或周数信号，避免误劫持）。
+  void pageContext;
+  return hasAccept && (hasDelta || hasWeeks);
+}
+
+/**
+ * 产能可行性变体专属 navSlice：**capacity_forecast 为唯一对口 solver**（型号需求增量可行性前瞻·必填 modelId）。
+ * 与 buildCapacityNavSlice（因子变动 what-if·gap_attribution 主体）区分——此变体是「型号增量可行性」正是 capacity_forecast 对口题。
+ */
+const FEASIBILITY_SOLVERS: SliceSolver[] = [
+  {
+    key: "capacity_forecast",
+    capability: "型号需求增量产能可行性前瞻（P50/P90·缺口率·主瓶颈·必填 {modelId,demandDelta,weeks}）",
+    outputShape: ["p50", "p90", "gapPct", "mainBottleneck", "baseId", "horizon", "lines", "gap", "surplus", "plan", "summary"],
+  },
+];
+
+export function buildFeasibilityNavSlice(): NavigationSlice {
+  return {
+    domain: "capacity-feasibility",
+    primarySolver: "capacity_forecast",
+    objectTypes: [],
+    solvers: FEASIBILITY_SOLVERS,
+    chain: "对象[Model/Base/Line] → 求解器[capacity_forecast 型号需求增量可行性] → 综合（每数字 ⟦ref:N⟧ 溯步产物）",
+    rules: ["需求增量比例越线（C03）·产能缺口率红线"],
+    nonEmpty: true,
+  };
+}
+
+/**
+ * 产能可行性变体组合 slots（capacity_forecast 必填 modelId + 可选 demandDelta/weeks·R6）。
+ * modelId 缺省时上层可注入（从选中对象/继承上下文）——compileSolverPlan 无 modelId 则 capacity_forecast 诚实落选（fail-safe）。
+ */
+export function feasibilityComposeSlots(query: string, fallbackModelId?: string): Record<string, unknown> {
+  const v = parseCapacityFeasibilityVariant(query);
+  const modelId = v.modelId ?? fallbackModelId;
+  const slots: Record<string, unknown> = {};
+  if (modelId) slots.modelId = modelId;
+  if (v.demandDelta !== undefined) slots.demandDelta = v.demandDelta;
+  if (v.weeks !== undefined) slots.weeks = v.weeks;
+  return slots;
+}
