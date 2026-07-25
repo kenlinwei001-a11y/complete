@@ -90,6 +90,10 @@ function MultiObjWhatifInner() {
   const orderLabel = (id: string) => ORDERS.find((o) => o.id === id)?.label ?? id;
   const ov = occ.data?.objectiveValues ?? {};
   const delta = whatif.data?.deltaByObjective;
+  // KILL-MOCK-RED：优化器 CP-SAT sidecar 未接入时后端**显式抛「未接入」错**（service.ts）——面板须诚实披露，
+  // 不能静默把空/0 当结果显示（0 会被误读为「真求解出来是 0」）。有任何求解错就披露。
+  const solverErr = occ.error ?? whatif.error;
+  const notWired = !!solverErr && /未接入|OPTIMIZER_BASE_URL|sidecar/i.test(solverErr.message);
 
   return (
     <div className={styles.audCard} data-testid="multiobj-whatif">
@@ -106,6 +110,20 @@ function MultiObjWhatifInner() {
         ⓘ 输入为<b>示意样例</b>（SO-A/B/C × 产线 L1/L2 × 合约 K1·演示"产线容量+合约额度双约束逼出权衡"机制），
         非本租户真实订单簿；下方营收/违约金/换型成本为<b>真求解器</b>（cross_object_occupancy · optimize_whatif）基于该示意输入的计算结果，改权重→最优真漂移。
       </div>
+
+      {/* KILL-MOCK-RED：优化器未接入/求解失败 → 显式披露，绝不让空/0 冒充真实结果 */}
+      {solverErr && (
+        <div
+          data-testid="multiobj-not-wired"
+          style={{ fontSize: 12, margin: "4px 0 8px", padding: "6px 10px", borderRadius: 6, background: "rgba(192,57,43,.08)", border: "1px solid rgba(192,57,43,.35)", color: "var(--c-danger, #c0392b)" }}
+        >
+          {notWired ? (
+            <>⚠ <b>优化器引擎（CP-SAT sidecar）未接入</b>——需设 <code>OPTIMIZER_BASE_URL</code> 并启动 <code>services/optimizer</code>。下方数值为空/0 表示<b>「尚未求解」</b>，<b>不是</b>真实推演结果。</>
+          ) : (
+            <>⚠ 求解失败：{solverErr.message}。下方数值非有效结果。</>
+          )}
+        </div>
+      )}
 
       {/* ① 各目标当前值 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "8px 0" }} data-testid="multiobj-objvalues">
