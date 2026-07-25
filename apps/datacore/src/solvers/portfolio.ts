@@ -5,6 +5,7 @@ import type {
   GlobalSimResponse, GlobalSimKpi, GlobalSimScenario, GlobalSimScheduleRow,
   GlobalSimBlocked, GlobalSimLever, GlobalSimLeverDelta, GlobalSimPriorityLock,
   GlobalSimBusinessTypeSummary, BusinessType,
+  GlobalSimDueComparison, GlobalSimMethodScenario, GlobalSimAllocation,
 } from "@platform/contracts";
 import { BUSINESS_TYPE_LABEL } from "@platform/contracts";
 
@@ -65,6 +66,10 @@ export interface PortfolioInput {
   /** ④ 订单分批（x∈{0,1}→y∈ℤ≥0·Σ=qty·分批固定成本+最小批量）。 */
   allowSplit?: boolean;
   splitBatch?: number;
+  /** ③ G-VAR-1 · 分批交付 per-order 集合（并集 allowSplit·集合内单按分批重算·交付率/持库真变）。 */
+  splitOrderIds?: string[];
+  /** ④ G-VAR-2 · 最终交期 per-order（orderId → 最晚可达交付日·天偏移·放宽该单排产窗上界·目标vs最终可达差真求）。 */
+  finalDueDays?: Record<string, number>;
   /** ③ 电芯-Pack 两阶段网络。 */
   twoStage?: boolean;
   cellSourceMap?: Record<string, string>; // packBase→供芯基地
@@ -74,6 +79,10 @@ export interface PortfolioInput {
   cellCapableBases?: string[]; // factory_type 含 CELL 的基地
   /** ⑤ 杠杆再优化（灭 G-WHATIF-HARDCODED-LEVERS）。 */
   levers?: GlobalSimLever[];
+  /** ⑤ G-VAR-3 · 方法旋钮（methodScenario 组合法·改旋钮 → 引擎真重解）。 */
+  methodWeights?: Record<string, number>;
+  epsilon?: { key: string; bound: number }[];
+  priority?: string[];
   /** ⑥ 优先级硬锁（must_serve）。 */
   priorityLocks?: GlobalSimPriorityLock[];
   /** ⑦ 递进批次承诺（转 committed 预扣·固定背景）。 */
@@ -224,6 +233,10 @@ function assemble(input: PortfolioInput): Assembled {
     items.push({ id: `FC:${str(d.segId)}`, kind: "forecast", qty, model: str(d.segment), customer: "预测", dueDay: forecastDueDay, dueWindow: 0, eligibleBases: allBaseIds.slice(), homeBase: allBaseIds[0] ?? "", drillType: "DemandSegment", drillField: "p50" });
   }
 
+  // ④ G-VAR-2 · 最终交期扩视界：finalDueDays 可把某单最晚交付推到默认视界外 → 纳入 maxDueDay 令 numWindows 覆盖
+  //   （否则超窗无格·放宽形同无效）。空集 → 字节不变。
+  for (const fd of Object.values(input.finalDueDays ?? {})) maxDueDay = Math.max(maxDueDay, Math.max(0, Math.round(fd)));
+
   // 时间窗规模：由真实交期视界定 + lateWindows 允许延期窗（硬上限 maxWindows 免模型爆炸·R6 确定）。
   const maxWindows = Math.max(2, Math.round(coeff("maxWindows", 10)));
   const numWindows = Math.min(maxWindows, Math.max(1, Math.ceil(maxDueDay / windowDays) + lateWindows + 1));
@@ -334,14 +347,19 @@ function assemble(input: PortfolioInput): Assembled {
   };
   const hasLiveModel = input.lineCurrentModel != null || input.baseCurrentModel != null;
 
-  // ④ 订单分批：allowSplit → 大单拆 batch 子项(y∈ℤ≥0·各自独立指派·Σ=qty·分批固定成本+最小批量·可落不同窗口/基地)。
+  // ④ 订单分批：allowSplit（全局）∪ ③ splitOrderIds（per-order·G-VAR-1）→ 大单拆 batch 子项
+  //   (y∈ℤ≥0·各自独立指派·Σ=qty·分批固定成本+最小批量·可落不同窗口/基地)。集合空 + allowSplit 关 → 字节不变。
+  const splitSet = new Set((input.splitOrderIds ?? []).map(String));
+  const anySplit = input.allowSplit === true || splitSet.size > 0;
   const splitParent = new Map<string, string>();
-  if (input.allowSplit) {
+  if (anySplit) {
     const batch = Math.max(1, Math.round(input.splitBatch ?? coeff("splitBatch", 3000)));
     const maxParts = Math.max(2, Math.round(coeff("splitMaxParts", 4)));
     const expanded: ItemMeta[] = [];
     for (const it of items) {
-      if (it.kind !== "order" || it.qty <= batch) { expanded.push(it); continue; }
+      // 全局 allowSplit → 所有大订单拆；仅 per-order → 只拆集合内订单（其余原样·交付率/持库 per-order 真变）。
+      const doSplit = it.kind === "order" && it.qty > batch && (input.allowSplit === true || splitSet.has(it.id));
+      if (!doSplit) { expanded.push(it); continue; }
       const parts = Math.min(Math.ceil(it.qty / batch), maxParts);
       const baseQty = Math.floor(it.qty / parts);
       for (let k = 0; k < parts; k++) {
@@ -353,7 +371,16 @@ function assemble(input: PortfolioInput): Assembled {
     }
     items.length = 0; items.push(...expanded);
   }
-  const splitFixedPerUnit = input.allowSplit ? coeff("splitFixedCostPerUnit", 0.02) : 0;
+  const splitFixedPerUnit = anySplit ? coeff("splitFixedCostPerUnit", 0.02) : 0;
+
+  // ④ G-VAR-2 · 最终交期 per-order：放宽该单可排最晚窗上界（finalWindow）→ 更晚窗口仍可行承接（而非被挤）。
+  //   拆批子项继承父单最终交期。空集 → 字节不变（wHi 仍为 dueWindow+lateWindows）。
+  const finalDueDays = input.finalDueDays ?? {};
+  const finalWindowOf = (it: ItemMeta): number | null => {
+    const parentId = splitParent.get(it.id) ?? it.id;
+    const fd = finalDueDays[it.id] ?? finalDueDays[parentId];
+    return fd != null ? Math.min(numWindows - 1, Math.max(0, Math.floor(fd / windowDays))) : null;
+  };
 
   // 可行指派格：item × eligible 产能单元 × 窗口（延期窗允许·带 delay 罚·换型小时）。
   const cells: PortfolioRequest["cells"] = [];
@@ -370,7 +397,9 @@ function assemble(input: PortfolioInput): Assembled {
         const changeUnits = hasLiveModel
           ? coHoursTo(unitCurrentModel.get(uid) ?? "", it.model, lid)
           : (unitBase.get(uid) === it.homeBase ? 0 : coHoursTo(baseHomeModel.get(unitBase.get(uid)!) ?? "", it.model, lid));
-        const wHi = Math.min(numWindows - 1, it.dueWindow + lateWindows);
+        // ④ 最终交期放宽最晚窗：finalWindow 存在则取 max(dueWindow+lateWindows, finalWindow)（更晚窗仍可行承接）。
+        const fw = finalWindowOf(it);
+        const wHi = Math.min(numWindows - 1, fw != null ? Math.max(it.dueWindow + lateWindows, fw) : it.dueWindow + lateWindows);
         for (let w = 0; w <= wHi; w++) {
           const k = cellKey(uid, w);
           if (!capMap.has(k)) continue;
@@ -420,6 +449,42 @@ function buildRequest(a: Assembled, key: PortfolioObjectiveKey): PortfolioReques
     cells: a.cells,
     objectives: scenarioObjectives(key),
     method: a.input.method ?? "weighted",
+  };
+}
+
+// ⑤ G-VAR-3 · 方法旋钮组合请求：把全部 5 目标（ontime max·其余 min）按 method 组合成单一联合解（multiObjective:true
+//   → InProc/CP-SAT 按 weighted/epsilon/lexicographic 择格）。改权重/ε上界/字典序 → 分配/objectiveValues 真变。
+const OBJ_SENSE: Record<PortfolioObjectiveKey, { key: "ontime" | "delay" | "changeover" | "cost" | "fgInventory"; sense: "max" | "min" }> = {
+  max_ontime: { key: "ontime", sense: "max" },
+  min_delay: { key: "delay", sense: "min" },
+  min_changeover: { key: "changeover", sense: "min" },
+  min_cost: { key: "cost", sense: "min" },
+  min_fg_inventory: { key: "fgInventory", sense: "min" },
+};
+function buildComboRequest(
+  a: Assembled,
+  weights: Record<string, number>,
+  method: "weighted" | "epsilon" | "lexicographic",
+  epsilon: { key: string; bound: number }[] | undefined,
+  priority: string[] | undefined,
+): PortfolioRequest {
+  const unservedPenaltyPerUnit = a.coeff("unservedPenaltyPerUnit", 0.5);
+  const items = a.items
+    .map((it) => ({ id: it.id, qty: it.qty, unservedPenalty: round(unservedPenaltyPerUnit * it.qty, 4) }))
+    .sort((x, y) => x.id.localeCompare(y.id));
+  const objectives = (Object.values(OBJ_SENSE)).map((o) => ({ key: o.key, sense: o.sense, weight: weights[o.key] ?? 1 }));
+  return {
+    model: "portfolio",
+    seed: a.input.seed,
+    scale: 1,
+    items,
+    capacity: a.capacity,
+    cells: a.cells,
+    objectives,
+    method,
+    ...(epsilon && epsilon.length ? { epsilon } : {}),
+    ...(priority && priority.length ? { priority } : {}),
+    multiObjective: true,
   };
 }
 
@@ -778,6 +843,11 @@ export async function globalSimOptimize(
     committedBatches: [...(input.committedBatches ?? []), ...lockCommitted],
     scenarios: objectives,
     levers: undefined,
+    // ⑤ 方法旋钮只驱动 methodScenario（buildComboRequest 显式设 method）·不污染逐目标 scenario 比对矩阵（保稳定·字节不变）。
+    method: undefined,
+    methodWeights: undefined,
+    epsilon: undefined,
+    priority: undefined,
   };
 
   const out = await portfolioOptimize(coreInput, solve);
@@ -873,6 +943,64 @@ export async function globalSimOptimize(
     }
   }
 
+  // ── ④ G-VAR-2 · 目标 vs 最终可达交期推演（真求解产物·非写死）：finalDueDays 提供时逐决策单出对比行 ──
+  //    achievableDay = 该单（拆批则末批）联合解交付日（primaryRows.deliverDay·真含两阶段在途）；被挤 → null。
+  const dueComparison: GlobalSimDueComparison[] = [];
+  if (Object.keys(input.finalDueDays ?? {}).length > 0) {
+    const parentOf = (id: string): string => id.replace(/#b\d+$/, "");
+    const achievableByOrder = new Map<string, number>();
+    for (const r of primaryRows) {
+      const pid = parentOf(r.orderId);
+      achievableByOrder.set(pid, Math.max(achievableByOrder.get(pid) ?? -1, r.deliverDay));
+    }
+    const orderBySo = new Map(input.orders.map((o) => [str(o.so), o]));
+    const dueOrderIds = [...new Set([...decisionOrderIds, ...Object.keys(input.finalDueDays ?? {})])]
+      .filter((so) => orderBySo.has(so)).sort();
+    for (const so of dueOrderIds) {
+      const o = orderBySo.get(so)!;
+      const targetDueDay = Math.max(0, dayFrom(input.forecastStart, str(o.due)));
+      const finalDueDay = input.finalDueDays?.[so] ?? null;
+      const achievableDay = achievableByOrder.has(so) ? achievableByOrder.get(so)! : null;
+      const gapDays = achievableDay != null ? achievableDay - targetDueDay : null;
+      const meetsFinal = achievableDay != null && finalDueDay != null ? achievableDay <= finalDueDay + 1e-9 : null;
+      dueComparison.push({
+        orderId: so, targetDueDay, finalDueDay, achievableDay, gapDays, meetsFinal,
+        provenance: { kind: "派生", drillType: "Order", drillId: so, drillField: "due", drillValue: targetDueDay, mockNote: null },
+      });
+    }
+  }
+
+  // ── ⑤ G-VAR-3 · 方法旋钮驱动的联合方案（改权重/ε上界/字典序 → 引擎按对应方法真重解·三法结果形状不同）──
+  let methodScenario: GlobalSimMethodScenario | undefined;
+  const methodKnobOn = (input.methodWeights != null && Object.keys(input.methodWeights).length > 0)
+    || (input.epsilon?.length ?? 0) > 0
+    || (input.priority?.length ?? 0) > 0
+    || (input.method != null && input.method !== "weighted");
+  if (methodKnobOn) {
+    const method = input.method ?? "weighted";
+    const aCombo = assemble(coreInput);
+    const comboReq = buildComboRequest(aCombo, input.methodWeights ?? {}, method, input.epsilon, input.priority);
+    const cr = await solve(comboReq);
+    const metaCombo = new Map(aCombo.items.map((it) => [it.id, it]));
+    const allocation: GlobalSimAllocation[] = cr.occupancy.map((o) => {
+      const it = metaCombo.get(o.item);
+      return {
+        orderId: o.item, base: baseIdOfUnit(o.base), line: lineIdOfUnit(o.base), window: o.window,
+        qty: it?.qty ?? 0, model: it?.model ?? "", onTime: it ? o.window <= it.dueWindow : true,
+        provenance: { kind: "派生", drillType: "Line", drillId: o.base, drillField: "capacityDaily", drillValue: it?.qty ?? 0, mockNote: null },
+      };
+    }).sort((a, b) => a.orderId.localeCompare(b.orderId));
+    const servedQty = allocation.reduce((s, al) => s + al.qty, 0);
+    methodScenario = {
+      method, objectiveValues: cr.objectiveValues,
+      servedCount: cr.occupancy.length, displacedCount: cr.displaced.length, servedQty, allocation,
+      ...(input.methodWeights != null && Object.keys(input.methodWeights).length ? { weights: input.methodWeights } : {}),
+      ...(input.epsilon?.length ? { epsilon: input.epsilon } : {}),
+      ...(input.priority?.length ? { priority: input.priority } : {}),
+      provenance: { kind: "派生", drillType: "Method", drillId: method, drillField: "objective", drillValue: servedQty, mockNote: null },
+    };
+  }
+
   // ── WO-W5 业务类型分口径汇总（乘/商/储各一行·占用率/预测缺口/提前交付/订单波动·稳定口径 over 全 input·allocated/displaced 反映勾选态 out）──
   const annualDays = Math.max(1, Math.round(input.operatingDaysPerYear ?? input.coeff("operatingDaysPerYear", 300)));
   const regime = input.businessTypeRegime ?? {};
@@ -916,7 +1044,7 @@ export async function globalSimOptimize(
     `${lockCommitted.length ? `·硬锁 must_serve ${lockCommitted.length} 单` : ""}` +
     `${input.committedBatches?.length ? `·递进承诺 ${input.committedBatches.length} 批` : ""}` +
     `${materialOn ? `·物料约束启用（卡单 ${materialBlocked.filter((b) => b.reason === "material").length}）` : "·物料约束未启用（诚实回退）"}` +
-    `${input.twoStage ? "·电芯-Pack 两阶段" : ""}·换型全链小时·守恒${out.reconciled ? "通过" : "未通过"}`;
+    `${input.twoStage ? "·电芯-Pack 两阶段" : ""}${dueComparison.length ? `·最终交期推演 ${dueComparison.length} 单` : ""}${methodScenario ? `·方法[${methodScenario.method}]联合解` : ""}·换型全链小时·守恒${out.reconciled ? "通过" : "未通过"}`;
 
   return {
     scenarios, schedule: primaryRows, blocked: materialBlocked, leverDeltas,
@@ -924,6 +1052,8 @@ export async function globalSimOptimize(
     status: out.status, optimal: out.optimal, summary,
     businessTypeSummary,
     ...(btScoped ? { businessTypes: [...btFilter] as BusinessType[] } : {}),
+    ...(dueComparison.length ? { dueComparison } : {}),
+    ...(methodScenario ? { methodScenario } : {}),
     // ── WO-SURFACE-7DIM · additive MERGE 经典兼容层（不替换 7 维·驱动驾驶舱既有绑定不掉线）──
     // out 即经典 portfolioOptimize 核心产物（联合守恒同一套解）→ 直接并列透出，令前端发起编排
     // （twoStage 等）后 热力矩阵/分配台账/被挤·固定卡/读数/客户级影响 仍读到经典形状。确定性 R6（纯派生·无 rng/时钟）。

@@ -1120,8 +1120,32 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     const o = orderById.get(id)!; const bases = portOrderBases(o);
     return { id, qty: o.qty, model: o.model, dueDay: Math.max(0, portDayFrom(PORT_FORECAST_START, o.due)), dueWindow: 0, bases, home: bases[0]! };
   });
+  // ③ G-VAR-1 · 分批交付 per-order（镜像 datacore portfolio·集合内大单拆批·各批独立指派·Σ=qty·交付率/持库真变）。
+  const splitSet = new Set((Array.isArray(args.splitOrderIds) ? args.splitOrderIds : []).map(String));
+  const splitBatch = Math.max(1, Math.round(Number(args.splitBatch ?? 3000)));
+  const splitParent = new Map<string, string>();
+  if (splitSet.size) {
+    const expanded: PItem[] = [];
+    for (const it of items) {
+      if (!splitSet.has(it.id) || it.qty <= splitBatch) { expanded.push(it); continue; }
+      const parts = Math.min(Math.ceil(it.qty / splitBatch), 4);
+      const baseQty = Math.floor(it.qty / parts);
+      for (let k = 0; k < parts; k++) {
+        const q = k === parts - 1 ? it.qty - baseQty * (parts - 1) : baseQty;
+        const subId = `${it.id}#b${k}`; splitParent.set(subId, it.id);
+        expanded.push({ ...it, id: subId, qty: q });
+      }
+    }
+    items.splice(0, items.length, ...expanded);
+  }
+  // ④ G-VAR-2 · 最终交期 per-order（orderId → 最晚交付天·放宽最晚可排窗上界·目标vs可达差真算）。
+  const finalDueDays: Record<string, number> = (args.finalDueDays && typeof args.finalDueDays === "object") ? args.finalDueDays as Record<string, number> : {};
+  const finalWindowOf = (it: PItem): number | null => {
+    const fd = finalDueDays[it.id] ?? finalDueDays[splitParent.get(it.id) ?? it.id];
+    return fd != null ? Math.max(0, Math.floor(fd / PORT_WINDOW_DAYS)) : null;
+  };
   const frozenDue = [...frozenIds].map((id) => orderById.get(id)).filter(Boolean).map((o) => Math.max(0, portDayFrom(PORT_FORECAST_START, o!.due)));
-  const maxDue = Math.max(0, ...items.map((i) => i.dueDay), ...frozenDue);
+  const maxDue = Math.max(0, ...items.map((i) => i.dueDay), ...frozenDue, ...Object.values(finalDueDays).map((d) => Math.max(0, Math.round(d))));
   const numWindows = Math.max(1, Math.ceil(maxDue / PORT_WINDOW_DAYS) + PORT_LATE_WINDOWS + 1);
   for (const it of items) it.dueWindow = Math.min(numWindows - 1, Math.floor(it.dueDay / PORT_WINDOW_DAYS));
 
@@ -1148,7 +1172,9 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     const orderItems = [...items].sort((a, b) => key === "max_ontime" ? (a.dueDay - b.dueDay || b.qty - a.qty) : (b.qty - a.qty || a.id.localeCompare(b.id)));
     for (const it of orderItems) {
       const cands: { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number }[] = [];
-      const wHi = Math.min(numWindows - 1, it.dueWindow + PORT_LATE_WINDOWS);
+      // ④ 最终交期放宽最晚窗（finalWindow 存在 → max(dueWindow+late, finalWindow)·更晚窗仍可行承接）。
+      const fw = finalWindowOf(it);
+      const wHi = Math.min(numWindows - 1, fw != null ? Math.max(it.dueWindow + PORT_LATE_WINDOWS, fw) : it.dueWindow + PORT_LATE_WINDOWS);
       for (const b of it.bases) {
         const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
         for (let w = 0; w <= wHi; w++) {
@@ -1239,6 +1265,94 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     };
   });
 
+  // ④ G-VAR-2 · 目标 vs 最终可达交期推演（真求解产物·非写死·镜像 datacore·mock 无两阶段故可达=窗×窗天）。
+  const dueComparison = Object.keys(finalDueDays).length
+    ? (() => {
+        const parentOf = (id: string) => id.replace(/#b\d+$/, "");
+        const achievableByOrder = new Map<string, number>();
+        for (const o of primary.occ) { const pid = parentOf(o.item); achievableByOrder.set(pid, Math.max(achievableByOrder.get(pid) ?? -1, o.window * PORT_WINDOW_DAYS)); }
+        const ids = [...new Set([...included.map(parentOf), ...Object.keys(finalDueDays)])].filter((id) => orderById.has(id)).sort();
+        return ids.map((so) => {
+          const o = orderById.get(so)!;
+          const targetDueDay = Math.max(0, portDayFrom(PORT_FORECAST_START, o.due));
+          const finalDueDay = finalDueDays[so] ?? null;
+          const achievableDay = achievableByOrder.has(so) ? achievableByOrder.get(so)! : null;
+          const gapDays = achievableDay != null ? achievableDay - targetDueDay : null;
+          const meetsFinal = achievableDay != null && finalDueDay != null ? achievableDay <= finalDueDay + 1e-9 : null;
+          return { orderId: so, targetDueDay, finalDueDay, achievableDay, gapDays, meetsFinal, provenance: { kind: "派生", drillType: "Order", drillId: so, drillField: "due", drillValue: targetDueDay, mockNote: null } };
+        });
+      })()
+    : undefined;
+
+  // ⑤ G-VAR-3 · 方法旋钮驱动的联合方案（镜像 datacore/InProc·改权重/ε上界/字典序 → 择格真变·三法形状不同）。
+  const methodOn = (args.methodWeights != null && typeof args.methodWeights === "object" && Object.keys(args.methodWeights as object).length > 0)
+    || (Array.isArray(args.epsilon) && args.epsilon.length > 0)
+    || (Array.isArray(args.priority) && args.priority.length > 0)
+    || (typeof args.method === "string" && args.method !== "weighted");
+  let methodScenario: Record<string, unknown> | undefined;
+  if (methodOn) {
+    const method = (typeof args.method === "string" ? args.method : "weighted") as "weighted" | "epsilon" | "lexicographic";
+    const weights: Record<string, number> = (args.methodWeights && typeof args.methodWeights === "object") ? args.methodWeights as Record<string, number> : {};
+    const epsilon = (Array.isArray(args.epsilon) ? args.epsilon : []) as { key: string; bound: number }[];
+    const priority = (Array.isArray(args.priority) ? args.priority.map(String) : []) as string[];
+    type Cand = { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number };
+    const objV = (c: Cand, qtyN: number, key: string): number =>
+      key === "ontime" ? (c.onTime ? 1 : 0) : key === "delay" ? qtyN * c.delayDays : key === "changeover" ? c.changeUnits : key === "fgInventory" ? c.fgHoldUnits : c.cost;
+    const comboSort = (cands: Cand[], qtyN: number): Cand[] => {
+      if (method === "lexicographic") {
+        const pk = priority.length ? priority : ["ontime", "cost", "changeover", "delay", "fgInventory"];
+        return [...cands].sort((a, b) => { for (const key of pk) { const d = key === "ontime" ? objV(b, qtyN, key) - objV(a, qtyN, key) : objV(a, qtyN, key) - objV(b, qtyN, key); if (d !== 0) return d; } return a.window - b.window || a.cost - b.cost; });
+      }
+      if (method === "epsilon") {
+        const withinEps = cands.filter((c) => epsilon.every((e) => objV(c, qtyN, e.key) <= e.bound + 1e-9));
+        const pool = withinEps.length ? withinEps : cands;
+        return [...pool].sort((a, b) => ((b.onTime ? 1 : 0) - (a.onTime ? 1 : 0)) || a.cost - b.cost || a.window - b.window);
+      }
+      const keys = [...new Set([...Object.keys(weights), "ontime", "cost", "changeover", "delay", "fgInventory"])];
+      const range = new Map(keys.map((key) => { const vs = cands.map((c) => objV(c, qtyN, key)); return [key, { lo: Math.min(...vs), hi: Math.max(...vs) }] as const; }));
+      const score = (c: Cand): number => keys.reduce((s, key) => { const { lo, hi } = range.get(key)!; const norm = hi > lo ? (objV(c, qtyN, key) - lo) / (hi - lo) : 0; return s + (weights[key] ?? 1) * (key === "ontime" ? 1 - norm : norm); }, 0);
+      return [...cands].sort((a, b) => score(a) - score(b) || a.cost - b.cost || a.window - b.window);
+    };
+    const remain = new Map(netCap);
+    const mOcc: { item: string; base: string; window: number; qty: number; onTime: boolean; delayDays: number; changeUnits: number; fgHoldUnits: number; cost: number }[] = [];
+    const mServed = new Set<string>();
+    for (const it of [...items].sort((a, b) => b.qty - a.qty || a.id.localeCompare(b.id))) {
+      const cands: Cand[] = [];
+      const fw2 = finalWindowOf(it);
+      const wHi = Math.min(numWindows - 1, fw2 != null ? Math.max(it.dueWindow + PORT_LATE_WINDOWS, fw2) : it.dueWindow + PORT_LATE_WINDOWS);
+      for (const b of it.bases) {
+        const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
+        for (let w = 0; w <= wHi; w++) {
+          if ((remain.get(cellKey(b, w)) ?? 0) < it.qty) continue;
+          const delayWindows = Math.max(0, w - it.dueWindow); const delayDays = delayWindows * PORT_WINDOW_DAYS;
+          const earlyWindows = Math.max(0, it.dueWindow - w); const fgHoldUnits = it.qty * earlyWindows * PORT_WINDOW_DAYS;
+          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, fgHoldUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits + PORT_FG_HOLD * fgHoldUnits, 4) });
+        }
+      }
+      if (!cands.length) continue;
+      const c = comboSort(cands, it.qty)[0]!;
+      remain.set(cellKey(c.base, c.window), (remain.get(cellKey(c.base, c.window)) ?? 0) - it.qty);
+      mOcc.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, onTime: c.onTime, delayDays: c.delayDays, changeUnits: c.changeUnits, fgHoldUnits: c.fgHoldUnits, cost: c.cost });
+      mServed.add(it.id);
+    }
+    mOcc.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+    const mDisp = items.map((i) => i.id).filter((id) => !mServed.has(id));
+    const ov = {
+      ontime: mOcc.filter((o) => o.onTime).length,
+      delay: round(mOcc.reduce((s, o) => s + o.qty * o.delayDays, 0), 2),
+      changeover: round(mOcc.reduce((s, o) => s + o.changeUnits, 0), 2),
+      fgInventory: round(mOcc.reduce((s, o) => s + o.fgHoldUnits, 0), 2),
+      cost: round(mOcc.reduce((s, o) => s + o.cost, 0) + mDisp.reduce((s, id) => s + PORT_UNSERVED_PEN * (items.find((i) => i.id === id)?.qty ?? 0), 0), 2),
+    };
+    methodScenario = {
+      method, objectiveValues: ov, servedCount: mOcc.length, displacedCount: mDisp.length,
+      servedQty: mOcc.reduce((s, o) => s + o.qty, 0),
+      allocation: mOcc.map((o) => ({ orderId: o.item, base: o.base, line: null, window: o.window, qty: o.qty, model: orderById.get(o.item.replace(/#b\d+$/, ""))?.model ?? "", onTime: o.onTime, provenance: { kind: "派生", drillType: "Line", drillId: o.base, drillField: "capacityDaily", drillValue: o.qty, mockNote: null } })),
+      ...(Object.keys(weights).length ? { weights } : {}), ...(epsilon.length ? { epsilon } : {}), ...(priority.length ? { priority } : {}),
+      provenance: { kind: "派生", drillType: "Method", drillId: method, drillField: "objective", drillValue: mOcc.reduce((s, o) => s + o.qty, 0), mockNote: null },
+    };
+  }
+
   return {
     status: "OPTIMAL", optimal: true, feasible: displaced.length === 0,
     allocation, occupancy, displaced, scenarios,
@@ -1246,6 +1360,8 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     capacityLedger, reconChecks, reconciled,
     cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
     frozen, businessTypeSummary,
+    ...(dueComparison ? { dueComparison } : {}),
+    ...(methodScenario ? { methodScenario } : {}),
     ...(btScoped ? { businessTypes: [...btFilter] } : {}),
     summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
   };

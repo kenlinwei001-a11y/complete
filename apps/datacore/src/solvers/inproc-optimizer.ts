@@ -59,20 +59,67 @@ export class InProcOptimizerClient implements OptimizerClient {
     }
     // min_fg_inventory 方案（objectives 含 fgInventory）→ 贪心也须真最小化提前压库：以 fgHoldUnits 作首排序键。
     const wantsFg = (req.objectives ?? []).some((o) => o.key === "fgInventory");
+
+    // ⑤ G-VAR-3 · 多目标组合法（opt-in·req.multiObjective）：按 method(weighted/epsilon/lexicographic) 组合全目标择格。
+    //   default（无 multiObjective）→ 走下方原「按首目标」口径（字节不变·护住既有全部 portfolio/scenario 测）。
+    const combo = req.multiObjective === true;
+    const objVal = (c: PortfolioRequest["cells"][number], key: string): number =>
+      key === "ontime" ? c.ontime : key === "delay" ? c.delayUnits : key === "changeover" ? c.changeUnits : key === "fgInventory" ? c.fgHoldUnits : c.cost;
+    // 权重（objectives[].weight·缺省 1）；ε 上界；字典序优先（priority·缺省 objectives 序）。
+    const weightOf = new Map((req.objectives ?? []).map((o) => [o.key as string, o.weight ?? 1]));
+    const epsBounds = req.epsilon ?? [];
+    const priorityKeys = (req.priority && req.priority.length ? req.priority : (req.objectives ?? []).map((o) => o.key as string));
+    // 组合法择格：epsilon 先滤越界格 → 主目标最优；lexicographic 按优先序逐层；weighted 归一加权和最小。
+    const comboSort = (cells: PortfolioRequest["cells"]): PortfolioRequest["cells"] => {
+      if (req.method === "lexicographic") {
+        return [...cells].sort((a, b) => {
+          for (const key of priorityKeys) {
+            const d = key === "ontime" ? objVal(b, key) - objVal(a, key) : objVal(a, key) - objVal(b, key); // ontime 越大越好·其余越小越好
+            if (d !== 0) return d;
+          }
+          return a.window - b.window || a.cost - b.cost;
+        });
+      }
+      if (req.method === "epsilon") {
+        const primaryKey = (req.objectives?.[0]?.key as string) ?? "ontime";
+        const withinEps = cells.filter((c) => epsBounds.every((e) => objVal(c, e.key) <= e.bound + 1e-9)); // 次目标各不超 ε 上界
+        const pool = withinEps.length ? withinEps : cells; // 全越界 → 退回全集（诚实：无可行则不凭空丢单）
+        return [...pool].sort((a, b) =>
+          (primaryKey === "ontime" ? objVal(b, primaryKey) - objVal(a, primaryKey) : objVal(a, primaryKey) - objVal(b, primaryKey))
+          || a.cost - b.cost || a.window - b.window);
+      }
+      // weighted：对该 item 候选集逐目标 min-max 归一 → Σ w·(ontime 取 1−norm·其余取 norm) 最小（改权重 → 天平真偏移）。
+      const keys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
+      const range = new Map<string, { lo: number; hi: number }>();
+      for (const key of keys) { const vs = cells.map((c) => objVal(c, key)); range.set(key, { lo: Math.min(...vs), hi: Math.max(...vs) }); }
+      const score = (c: PortfolioRequest["cells"][number]): number => {
+        let s = 0;
+        for (const key of keys) {
+          const { lo, hi } = range.get(key)!;
+          const norm = hi > lo ? (objVal(c, key) - lo) / (hi - lo) : 0;
+          s += (weightOf.get(key) ?? 1) * (key === "ontime" ? 1 - norm : norm); // ontime 越高越好 → 代价 = 1−norm
+        }
+        return s;
+      };
+      return [...cells].sort((a, b) => score(a) - score(b) || a.cost - b.cost || a.window - b.window);
+    };
+
     const occupancy: { item: string; base: string; window: number }[] = [];
     const served = new Set<string>();
     // 稳定序装入（大单先·id tie-break·确定性 R6）。
     for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
-      const cells = [...byItem.get(id)!];
-      // 方案选格：min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；max_ontime 取最按期格（ontime→window→cost）；
-      //          其余 min_* 取代价最小格（cost→ontime→window）。
-      cells.sort((a, b) =>
-        wantsFg
-          ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
-          : primary === "ontime"
-            ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
-            : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
-      );
+      const raw = byItem.get(id)!;
+      // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
+      //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
+      const cells = combo
+        ? comboSort(raw)
+        : [...raw].sort((a, b) =>
+            wantsFg
+              ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
+              : primary === "ontime"
+                ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
+                : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
+          );
       const need = qty.get(id) ?? 0;
       for (const c of cells) {
         const k = `${c.base}|${c.window}`;

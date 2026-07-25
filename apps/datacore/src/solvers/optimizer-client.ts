@@ -259,6 +259,11 @@ export interface PortfolioRequest {
   method?: "weighted" | "epsilon" | "lexicographic";
   epsilon?: { key: string; bound: number }[];
   priority?: string[];
+  /**
+   * ⑤ G-VAR-3 · 多目标组合法开关（opt-in·灭方法旋钮空转）：true → 按 method(weighted/epsilon/lexicographic)
+   * 组合**全部** objectives 择格（改权重/ε上界/字典序 → 分配真变）；缺省/false → 保原「按首目标贪心」口径（默认路径字节不变）。
+   */
+  multiObjective?: boolean;
 }
 export interface PortfolioResult {
   status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";

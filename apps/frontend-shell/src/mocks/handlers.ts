@@ -820,6 +820,14 @@ export const handlers = [
         })),
       );
       rows = workshops;
+    } else if (type === "Line") {
+      // ② G-UI-2·真产线对象（每基地 10 车间线·PACK 线 = 成品下线代表·镜像 datacore battery.ts LINE-WS-{base}-{suffix}）。
+      // baseId 取基地**名**（与 mock ORDERS.bases=基地名 同键·令前端 lineNameOf(homeBase) 命中；真 datacore 两侧同为拼音 id 亦命中）。
+      const WS: [string, string][] = [["制浆", "slurry"], ["涂布", "coating"], ["辊压", "calendering"], ["分切", "slitting"], ["卷绕", "winding"], ["装配", "assembly"], ["注液", "filling"], ["化成", "formation"], ["分容", "grading"], ["PACK", "pack"]];
+      rows = filterByScope(BASES, account).flatMap((b) => WS.map(([wt, suffix]) => {
+        const lineId = `LINE-WS-${b.name}-${suffix}`;
+        return { id: lineId, props: { lineId, baseId: b.name, name: `${b.name}${wt}线`, line_code: lineId.replace("LINE-", "L-"), status: "运行中" } };
+      }));
     } else if (type === "InterBaseTransfer") {
       // WO-GSIM-3：跨基地调拨（喂区⑤两段排产表·电芯段→在途→Pack段）。fromBase/toBase=真 baseId·model 对齐订单型号。
       // 逐口径移植 datacore battery.ts interBaseTransfers（键 XFER-{from}-{to}-{model}·transitDays 真值·MODEL_BASE_MAP 派生）。
@@ -2482,7 +2490,13 @@ export const handlers = [
     if (key === "portfolio") {
       const orchestrate = args.twoStage === true || args.materialConstraint === true || args.globalSim === true
         || (Array.isArray(args.levers) && args.levers.length > 0) || (Array.isArray(args.priorityLocks) && args.priorityLocks.length > 0)
-        || (Array.isArray(args.businessTypes) && args.businessTypes.length > 0);
+        || (Array.isArray(args.businessTypes) && args.businessTypes.length > 0)
+        // ③④⑤ · 分批交付 / 最终交期 / 方法旋钮 亦经 mockGlobalSim（出 dueComparison/methodScenario·镜像 datacore orchestrate）。
+        || (Array.isArray(args.splitOrderIds) && args.splitOrderIds.length > 0)
+        || (args.finalDueDays != null && typeof args.finalDueDays === "object" && Object.keys(args.finalDueDays as object).length > 0)
+        || (args.methodWeights != null && typeof args.methodWeights === "object" && Object.keys(args.methodWeights as object).length > 0)
+        || (Array.isArray(args.epsilon) && args.epsilon.length > 0) || (Array.isArray(args.priority) && args.priority.length > 0)
+        || (typeof args.method === "string" && args.method !== "weighted");
       const portResp = orchestrate ? mockGlobalSim(args) : mockPortfolio(args);
       // WO-GSLIVE-1-COCKPIT · 活②：levers 非空 → 叠加 leverDeltas + 主方案 KPI 改善（空则原样·无回归）。
       return HttpResponse.json({ data: applyGslivePortfolioLevers(portResp, args), snapshotVersion: "ov-12" });
