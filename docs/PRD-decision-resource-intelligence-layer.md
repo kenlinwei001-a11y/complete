@@ -1,396 +1,604 @@
-# PRD · DRIL 决策资源智能层：统一资源目录 + 独立向量检索 + 资源 MCP 化
+# PRD · Decision Resource Intelligence Layer（DRIL）
 
-> **这份 PRD 解决的是"Agent 怎么精准找到该用的资源"。** 姊妹篇 `docs/PRD-agent-react-harness.md`
-> 解决"Agent 找到资源后怎么想对、用好、验对"。两份的接缝：**DRIL 是那个 router**——当用户意图没命中任何
-> 预设 agent（"内置工具失效"）时，Harness 的第③级全模式靠 DRIL **现场检索**补位缺失的导航图。
+> 版本：v1.0 · 日期：2026-07-25 · 状态：设计稿（待评审）
+> 适用范围：AgentCore QOS 路由层、DataCore 能力目录、前端资源治理页
+> 依赖阅读：`docs/SYSTEM-ONTOLOGY.md` §2–§3、`packages/contracts/src/resource-descriptor.ts`、`apps/datacore/src/catalog.ts`、`apps/agentcore/src/router/*`
 >
-> 核心一句话：今天 agent 找资源靠**"LLM 看描述自己选"或 `discover` 盲扫**，而且 `discover` 只认
-> `solvers/slices`（加对象类型三类），**规则/工作流/技能/agent 根本进不了 discover**。DRIL 把
-> **①所有资源并进一个统一目录（CatalogItem 化，discover 2→6 kind）②加一个独立向量检索层（问句→最相关资源 直接映射）
-> ③把它们暴露成标准 MCP resources**——让"理解-计划-分解-执行-反思"闭环里的每一步都能精准感知全部环境资源。
->
-> 遵铁律 0：见文末《本体引用与影响》。
+> **【审核方核对批注 2026-07-25】** 本 PRD = 产品负责人的「当前系统 vs DRIL 要求」差距分析，审核方已对 §2 现状锚点逐条真跑核对：
+> `ResourceDescriptor` 字段（kind/answersQuestions/tags/argHints/domain/featureKey）✅ 属实；`navigation-slice.ts`(375行)/`compile-plan.ts`(159行)/`skill-router.ts`/`mcp-router.ts` ✅ 存在且行号吻合；
+> `domain-resolver.ts` `DETERMINISTIC_PREFERENCE_THRESHOLD = 0.6` ✅ 精确属实；`operation-intent.ts` ~41 条意图 ✅ 属实（本体 §2 A15 记的「17 条」是 `OPERATION_CATALOG` 子集老口径，非冲突）。**结论：差距分析零硬伤，采纳为正式 PRD。**
+> **姊妹篇** = `docs/PRD-agent-react-harness.md`（Agent 侧：七要素 Harness + 理解-计划-分解-执行-**反思**闭环 + 三级路由「全模式仅在无预设 agent 兜底时启动」+ Solver-first 硬纪律）。**分工**：本 PRD 管「选对资源」，姊妹篇管「想对+用好+验对」；两者在 §8「与 QOS 编排层集成」接缝。
 
 ---
 
-## §0 先说人话：现在找资源为什么"不够精准"
+## 1. 背景与目标
 
-### 0.1 已有的"半个资源路由层"（不要重造，要收拢+补齐）
+企业级 Agent 与普通对话模型的核心差异，不在于模型知道多少，而在于 Agent 能否**准确找到正确的企业能力**。当前 Decision OS 已经具备：
 
-平台**已经有不少路由基建**，别当成从零开始：
+- 统一资源描述契约 `ResourceDescriptor`（`packages/contracts/src/resource-descriptor.ts:17-41`）
+- 求解器/切片/操作意图目录与 `description` 发布门禁（`apps/datacore/src/catalog.ts:155`、`scripts/check-resource-descriptor.mjs`）
+- 确定性优先路由 `domainResolve` + `preferDeterministicSolver`（`apps/agentcore/src/router/domain-resolver.ts:88-171`）
+- NavigationSlice 投影（`apps/agentcore/src/agent/navigation-slice.ts:269-370`）
+- Compose 多 solver 服务端编排（`apps/agentcore/src/router/compile-plan.ts:61-159`）
+- Skill/MCP 的 embedding+词法排序（`apps/agentcore/src/agent/skill-router.ts:49`、`apps/agentcore/src/agent/mcp-router.ts:33`）
 
-| 已有 | 载体 | 干了什么 |
+但以上能力仍是**分散的池子**：求解器、切片、规则、技能、工作流、Agent、MCP 工具各自有目录，缺乏跨资源的统一 ontology、质量评分、关系图与混合检索。DRIL 的目标是在 AgentCore 与 DataCore 之间建立一个**专业化的 Intelligence Resource Router**，把资源从「可被调用的工具」升级为「可被理解、检索、匹配、组合的智能资源」。
+
+---
+
+## 2. 现状快照（已落地的地基）
+
+| 能力 | 位置 | 状态 |
 |---|---|---|
-| **统一目录（部分）** | `catalog.discover(ctx, kind, query)`（`catalog.ts:213`） | **求解器 + 切片 + 对象类型**已进统一目录、已被 agent 索引 |
-| **ResourceDescriptor** | `contracts/resource-descriptor.ts` | 五池投影成统一形状 `{kind,key,label,description,answersQuestions,tags,argHints,domain}` |
-| **domain-resolver** | `router/orchestrator.ts` | 确定性（R6）问句→意图→solver 路由 |
-| **navigation-slice** | `agent/navigation-slice.ts` | 进 agent 前投影本题导航图（对象/solver/链路/规则） |
-| **compile-plan** | `agent/compile-plan.ts`（Phase2-C） | 多 solver 编排计划 |
-| **mcp-router** | `mcp/*` | MCP 工具路由 |
-| **opt-embedding** | `solvers/opt-embedding.ts`（§J） | **已有 embedding 基建**（但只服务优化模板检索·advisory） |
-
-### 0.2 三条精准缺口（你的原话，逐条对上代码）
-
-1. **没有独立向量检索层**：工具检索依赖 **LLM 根据描述自行选择**，没有一层把"用户问题 → 最相关 规则/求解器/切片"
-   **直接向量映射**。→ 证据：agent 靠 `discover`（关键词匹配）/ `query_system_ontology`（盲扫本体）试探，
-   `opt-embedding` 的向量能力**只圈在优化模板里没泛化**。
-
-2. **规则/工作流/技能/agent 进不了 discover**：`catalog.discover` 只认 `kind ∈ {"slices","solvers"}`
-   （+对象类型）。**rules / workflows / skills / agents 没并入同一 discover 索引**，agent 要检索它们得**单独调各自端点**，
-   **不能一次 discover 全量感知**。→ 证据：`catalog.ts:213` 的 `kind: "slices" | "solvers"`；规则走 rules 端点、
-   技能走 load_skill、工作流走 executor，各走各的。
-
-3. **切片/规则没被索引成可语义检索的 MCP resources**：它们是**内置工具**背后的数据，不是标准 MCP **resource**
-   （可 list / 可 read / 可语义检索）。→ 证据：agent 工具集是 `query_objects/invoke_solver/discover/
-   query_system_ontology/evaluate_rules/load_skill/...` 全是**内置工具**；外部 MCP 仅作扩展接入。
-
-### 0.3 结论（你的原话 + 我的定位）
-
-> 系统已具备 **ReAct 循环 + 大工具集环境检索**，求解器/本体/对象/经验都能被 agent 调用，但它们是**内置工具**
-> 而非**标准 MCP resources**。要达到"理解-计划-分解-执行-反思"完整闭环并让**所有环境资源被高效精准检索**，
-> 还需补一个**显式的检索/反思层**——反思层在姊妹篇（Harness）做，**本 PRD 补检索层**：
-> **把 rules/slices/solvers/workflows/skills/agents 全部 CatalogItem 化并向量化，新增 `retrieve_knowledge` 工具，
-> 并暴露为标准 MCP resources。**
-
-DRIL 是**升级不是急救**（急救 = LLM 接线 + 确定性兜底，NL-ROBUST 在做）；它是 Harness 第③级全模式的 **router**。
+| 统一资源描述契约 `ResourceDescriptor` | `packages/contracts/src/resource-descriptor.ts` | 已落，6 类资源（solver/slice/workflow/intent/field/mcp_tool） |
+| 发现门 `resource-descriptor:check` | `scripts/check-resource-descriptor.mjs` | 已落，强制 description 非空 |
+| DataCore 求解器/切片目录 | `apps/datacore/src/catalog.ts:47-177` | 已落，keyword 排序 + feature 过滤 |
+| AgentCore 语义 skill/MCP 排序 | `apps/agentcore/src/agent/skill-router.ts`、`mcp-router.ts` | 已落，pseudo-embedding + 词法 |
+| 确定性路由 A 门 | `apps/agentcore/src/router/domain-resolver.ts` | 已落，R6 纯函数，阈值 0.6 |
+| NavigationSlice 投影 | `apps/agentcore/src/agent/navigation-slice.ts` | 已落，按 agent scope 注入导航图 |
+| Compose 路径 | `apps/agentcore/src/router/compile-plan.ts` | 已落，feature `qos.compose-path` 暗发（默认关） |
+| 操作意图目录 | `packages/contracts/src/operation-intent.ts:53-94` | 已落，41 条操作型意图 |
 
 ---
 
-## §1 目标与非目标
+## 3. 差距分析：当前系统 vs DRIL 要求
 
-### 1.1 目标
-
-- **G1 · 统一资源目录（CatalogItem 化）**：`discover` 从 2 kind（solvers/slices）扩到 **6 kind**
-  （+rules/workflows/skills/agents），每类资源补 `description/answersQuestions/tags`——**一次 discover 全量感知**。
-- **G2 · 独立向量检索层**：把统一目录**向量化**，新增 `retrieve_knowledge("<问句>")` 工具，**问句→最相关资源直接映射**
-  （不再让 LLM 看一堆描述自选，也不再 `discover` 盲扫）。
-- **G3 · 资源标准 MCP 化**：统一目录暴露为**标准 MCP resources**（可 list / 可 read / 可语义检索），
-  内部资源与外部 MCP 走同一发现接口。
-- **G4 · 5 层标签 + 质量分**：每资源带业务域/决策类型/场景/对象/算法五层标签 + 跑出来的质量分（EvalSuite 回灌）。
-- **G5 · 接进多层路由**：检索结果喂 domain-resolver（扩覆盖）/ navigation-slice（排序补位）/ compile-plan（多资源候选）/
-  Harness 第③级全模式（补缺失导航图）。
-
-### 1.2 非目标
-
-- ❌ **不训练**任何模型（向量只做召回/排序·对齐 §J LIC1 不训练红线）。
-- ❌ **不污染确定性路径**：向量检索是 **advisory**——domain-resolver 确定性命中题**不看向量分**（R6 地板·对齐 §J FUS2）。
-- ❌ **不做后门**：资源可被**发现** ≠ 可被**越权调用**；执行期仍走 A6 行级过滤 + agent scopeDeclaration 越界拒 + Action 审批。
-- ❌ **不推倒** ResourceDescriptor / discover / navigation-slice——是**扩展**它们（discover 加 kind，descriptor 加向量与标签）。
+| DRIL 要求 | 当前状态 | 差距说明 |
+|---|---|---|
+| **Resource Ontology：每类资源都是业务对象，有专属 schema（input/output/capability/latency 等）** | 只有扁平的 `ResourceDescriptorSchema`（kind/key/label/description/tags/argHints/domain/featureKey） | 没有 per-kind schema；solver 无 `algorithm/complexity/latency/confidence/outputShape 契约化`，slice 无 `includedObjects/relations/associatedRules/scenario`，rule/skill/workflow/agent 未进入 descriptor |
+| **本体切片专门 Metadata（included objects、relations、required attrs、associated rules/solvers/scenario）** | 切片目录只有 key/name/description/argHints/domain；自定义切片由 `sliceSpecs` 仓库存 `spec` | 没有面向 Agent 的切片元数据投影；`NavigationSlice` 硬编码对象/求解器关系，未从 slice metadata 派生 |
+| **资源描述从「技术描述」变为「业务语义描述」（Business Question/Suitable Questions/Not Suitable）** | 求解器/操作意图已有 description + answersQuestions，但规则、skill、workflow、agent 没有统一业务语义字段 | 规则/技能/工作流/Agent 没有 `answersQuestions`、`suitableQuestions`、`notSuitableQuestions` |
+| **五级标签体系（业务域/决策类型/业务场景/对象/算法）** | 只有扁平 `tags: string[]` | 无标签 taxonomy，无法做结构化过滤；标签混用、无法按层加权 |
+| **混合检索（LLM intent parser → structured filter → embedding search → graph traversal → ranking model）** | 各池独立：solver 用 keyword 分；skill/MCP 用 embedding+词法；无跨资源图遍历 | 没有统一的 Resource Router Engine；无「资源关系图」验证；无运行时 cost/history 加权 |
+| **Resource Quality Score（accuracy/usage/success rate/latency/owner/approval）** | 无持久化质量分 | 仅有运行时 `matchScore`/`cosine` 等临时相似度，无资源级信任度 |
+| **Resource Registry（统一 Schema 的 Ontology/Skill/Solver/Rule/Workflow/Prompt Registry）** | CRUD 分散在 `/a/v1/*` 与 `/b/v1/*` 各端点 | 无统一 `/resources` 注册表，Agent 无法一次性发现全量资源 |
+| **最终 Routing 流程（Intent → 本体 → 规则 → Solver → 执行）** | Path-A/Path-B/Compose 已有雏形，但规则/切片/skill/workflow 的选择主要靠硬编码或 LLM 盲选 | 缺少「按意图自动组合资源包」的正式路由层；rule 与 slice 不参与 ranking |
+| **DRIL 作为 Agent Layer 与 Enterprise Knowledge Layer 之间的核心模块** | 无显式 DRIL 层 | 需在 AgentCore 新增 `Resource Intelligence Layer`，作为 QOS 编排的底层依赖 |
 
 ---
 
-## §2 架构定位：DRIL = 第③级全模式的 router
+## 4. 目标架构
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ Harness 推理闭环（姊妹篇）                                    │
-│  ①命中 solver → path-A     ②命中预设 agent → navigation-slice │
-│  ③谁都没命中（内置工具失效）→ 全模式 ── 需要 router 补位 ──┐    │
-└─────────────────────────────────────────────────────┼────┘
-                                                       ▼
-┌──────────────────────────────────────────────────────────┐
-│ DRIL 决策资源智能层（本 PRD）                                 │
-│  ① 统一资源目录 CatalogItem（discover 6 kind）                │
-│  ② 独立向量检索层（retrieve_knowledge：问句→资源直接映射）      │
-│  ③ 标准 MCP resources 暴露（list/read/语义检索）              │
-│  ④ 5 层标签 + 质量分（EvalSuite parity 回灌）                 │
-└───────────────────────┬──────────────────────────────────┘
-                        │ 派生投影（R13·非新真值源）
-                        ▼
-┌──────────────────────────────────────────────────────────┐
-│ 企业知识层：本体对象/链路 · 规则库 · 求解器目录 · 切片 · 工作流 · 技能 · agent │
-└──────────────────────────────────────────────────────────┘
+                    User Query / PageContext
+                            |
+                            ↓
+                  ┌─────────────────────┐
+                  │  Intent Understanding │  (domainResolve / classifyOperation)
+                  └──────────┬──────────┘
+                             ↓
+        ┌──────────────────────────────────────┐
+        │   Decision Resource Intelligence Layer │
+        │  ┌─────────┐ ┌─────────┐ ┌─────────┐ │
+        │  │Ontology │ │ Solver  │ │  Rule   │ │
+        │  │ Router  │ │ Router  │ │ Router  │ │
+        │  └────┬────┘ └────┬────┘ └────┬────┘ │
+        │  ┌─────────┐ ┌─────────┐ ┌─────────┐ │
+        │  │ Skill   │ │ Workflow│ │  Agent  │ │
+        │  │ Router  │ │ Router  │ │ Router  │ │
+        │  └────┬────┘ └────┬────┘ └────┬────┘ │
+        │       Hybrid Retrieval + Graph + Quality Score              │
+        │       Resource Registry (AgentCore + DataCore projections)  │
+        └───────────────────┬──────────────────┘
+                            ↓
+                  ┌─────────────────────┐
+                  │   QOS 编排层          │
+                  │ Path-A / Compose / Path-B / Coordinator │
+                  └─────────────────────┘
 ```
 
-**三条接线纪律**：
-- 单一真值仍在**企业知识层**；DRIL 只做**派生投影 + 索引**（R13·非新真值源，对齐 ResourceDescriptor 不改各池存储）。
-- 向量检索永远 **advisory**：确定性 domain-resolver 命中**不看向量分**（R6 地板不被污染）。
-- 检索产物**喂现有 navigation-slice**：第②级导航图充实时用它排序；第③级导航图为空时用它**从零补位**。
+**设计原则：**
+
+1. **不替换现有确定性路由**：DRIL 为 Path-B（agent fallback）和 Compose 路径提供更强资源选择，Path-A 的高置信命中保持现有 `domainResolve` 不变。
+2. **派生投影优先**：DRIL 不新建「真值源」，各资源元数据仍由各自模块拥有；DRIL 建索引与投影。
+3. **R6 确定性 floor**：混合检索的 structured filter、graph traversal、quality score 更新公式均为纯函数/确定性；只有 advisory 的 embedding 语义层允许近似。
+4. **Entitlement 先于 authz**：任何资源未开通 feature → 不出现在注册表与检索结果（404 `FEATURE_NOT_FOUND` 同构）。
+5. **可解释性**：每个 routing 决策必须返回 `scoreBreakdown`（semantic/domain/ontology/history/cost 各项得分）。
 
 ---
 
-## §3 统一资源目录（CatalogItem 化 · discover 2→6 kind）
+## 5. Resource Ontology Schema
 
-> 大白话：现在 `discover` 只能查求解器和切片。规则、工作流、技能、agent 各藏各的端点，agent 一次看不全。
-> DRIL 把它们**全塞进同一个目录**，一次 `discover` 就能"看见平台所有能干活的东西"。
+扩展 `ResourceDescriptor` 为 `IntelligenceResource` 基类，并给出 per-kind 扩展。契约位置：`packages/contracts/src/intelligence-resource.ts`（新增）。
 
-### 3.1 CatalogItem 统一契约
+### 5.1 基类
 
-在现有 `ResourceDescriptor` 基础上**收敛为一等 `CatalogItem`**（`contracts/catalog-item.ts`）：
+```ts
+export const IntelligenceResourceSchema = z.object({
+  // 与 ResourceDescriptor 兼容的字段
+  kind: z.enum(RESOURCE_KINDS_EXTENDED),   // 新增 agent/skill/rule
+  key: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().min(1),
+  answersQuestions: z.array(z.string()).optional(),
+  suitableQuestions: z.array(z.string()).optional(),
+  notSuitableQuestions: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  argHints: z.record(z.string(), z.string()).optional(),
+  domain: z.string().optional(),           // 业务域：plan/decision/commercial/quality...
+  featureKey: z.string().optional(),
+
+  // 新增 DRIL 核心字段
+  tieredTags: TieredTagsSchema.optional(),
+  capability: z.string().optional(),       // 一句话能力（给 LLM）
+  inputSpec: ResourceInputOutputSchema.optional(),
+  outputSpec: ResourceInputOutputSchema.optional(),
+  quality: ResourceQualitySchema.optional(),
+  relations: z.array(ResourceRelationSchema).optional(), // 到其它资源的关系
+  runtime: ResourceRuntimeSchema.optional(),
+  governance: ResourceGovernanceSchema.optional(),
+});
+```
+
+### 5.2 五级标签 `TieredTags`
+
+```ts
+export const TieredTagsSchema = z.object({
+  l1_domain: z.array(z.string()),        // Manufacturing / Finance / SupplyChain / Sales / Quality
+  l2_decisionType: z.array(z.string()),  // Prediction / Optimization / Simulation / Diagnosis / Monitoring / Planning
+  l3_scenario: z.array(z.string()),      // 产销匹配 / S&OP / MPS / APS / 库存优化 / 设备维护 / 供应商风险
+  l4_object: z.array(z.string()),        // Factory / Line / Product / Customer / Material / Equipment
+  l5_algorithm: z.array(z.string()),     // MILP / LP / TimeSeries / Graph / Simulation / RuleEngine
+});
+```
+
+Taxonomy 来源：
+
+- L1：复用 `BUSINESS_DOMAINS`（`docs/SYSTEM-ONTOLOGY.md` §10.1 / `ontology/refbase.ts`）
+- L2/L3/L5：新增 `DRIL_TAG_TAXONOMY` 配置表（AgentCore `dril-tag-taxonomy.ts`），租户可扩展但需 `dril-taxonomy:check` 门保证层级不冲突。
+- L4：从已发布 `OntologyType.key` 派生，禁止手写业务对象名（DF.8 接地）。
+
+### 5.3 输入/输出规格
+
+```ts
+export const ResourceInputOutputSchema = z.object({
+  objectTypes: z.array(z.string()).optional(),   // 读取/写入的本体对象类型
+  linkKeys: z.array(z.string()).optional(),      // 涉及的本体链路
+  requiredProps: z.record(z.string(), z.string()).optional(), // prop -> business meaning
+  shape: z.array(z.string()).optional(),         // 输出顶层字段
+  example: z.unknown().optional(),
+});
+```
+
+### 5.4 Resource Quality Score
+
+```ts
+export const ResourceQualitySchema = z.object({
+  accuracy: z.number().min(0).max(1).optional(),      // 正确率（评测/人工标）
+  successRate: z.number().min(0).max(1).optional(),   // 运行时成功收敛率
+  usageCount: z.number().int().min(0).optional(),     // 调用次数
+  avgLatencyMs: z.number().int().min(0).optional(),   // 平均时延
+  lastUpdated: z.string().optional(),                 // ISO date
+  owner: z.string().optional(),                       // 责任团队
+  approval: z.enum(["DRAFT","REVIEWED","APPROVED"]).optional(),
+  trustLevel: z.enum(["EXPERIMENTAL","PRODUCTION","GOVERNED"]).optional(),
+});
+```
+
+Quality score 由运行时探针自动更新，公式：
 
 ```
-CatalogItemSchema {
-  kind: "solver" | "slice" | "objectType" | "rule" | "workflow" | "skill" | "agent"   // 3→7
-  key: string
-  label: string
-  description: string          // 非空（发布纪律）
-  answersQuestions: string[]   // 这资源能答哪些问句（向量检索主料）
-  tags: ResourceTags           // 5 层标签（§6）
-  domain?: string
-  argHints?: ...               // solver/workflow 的入参提示
-  featureKey?: string          // entitlement 门
-  qualityScore?: number        // §9
+Q = 0.30 * successRate
+  + 0.25 * accuracy
+  + 0.20 * exp(-avgLatencyMs / 60000)
+  + 0.15 * log10(usageCount+1) / 5   (封顶 1)
+  + 0.10 * approvalWeight
+
+approvalWeight = DRAFT 0.5 / REVIEWED 0.8 / APPROVED 1.0
+```
+
+更新为确定性 EWMA：
+
+```
+successRate_new = alpha * success + (1-alpha) * successRate_old   (alpha=0.1)
+usageCount_new  = usageCount_old + 1
+avgLatencyMs_new = alpha * latency + (1-alpha) * avgLatencyMs_old
+```
+
+### 5.5 Per-Kind 扩展
+
+#### Solver Resource
+
+```ts
+export const SolverResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("solver"),
+  algorithm: z.string().optional(),           // MILP / CP-SAT / Graph / RuleEngine
+  complexity: z.enum(["LOW","MEDIUM","HIGH"]).optional(),
+  constraintSupport: z.array(z.string()).optional(),
+  applicableScenarios: z.array(z.string()).optional(),
+  isDeterministic: z.boolean().default(true),
+  requiresSidecar: z.boolean().default(false),
+});
+```
+
+#### Slice Resource
+
+```ts
+export const SliceResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("slice"),
+  rootType: z.string(),
+  includedTypes: z.array(z.string()),
+  includedLinkKeys: z.array(z.string()),
+  requiredAttributes: z.array(z.string()).optional(),
+  associatedRules: z.array(z.string()).optional(),
+  associatedSolvers: z.array(z.string()).optional(),
+  scenario: z.string().optional(),
+});
+```
+
+#### Rule Resource
+
+```ts
+export const RuleResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("rule"),
+  scopeObjectTypes: z.array(z.string()),
+  severity: z.enum(["BLOCK","WARN","ADVISORY"]).optional(),
+  expressionSummary: z.string().optional(),   // 人类可读表达式摘要
+  boundSolvers: z.array(z.string()).optional(), // 哪些求解器引用/评估本规则
+});
+```
+
+#### Skill / Workflow / Agent / MCP / Intent Resource
+
+分别继承基类，增加：
+
+- Skill：`boundAgents`, `attachments`, `triggerPatterns`
+- Workflow：`steps`（步骤 kind + 引用资源 key）
+- Agent：`scopeObjectTypes`, `toolNames`, `role`, `boundSkills`
+- MCP：`serverName`, `toolName`, `transportKind`
+- Intent：`boundPlanRef`, `boundScenarios`, `exampleQueries`, `riskLevel`
+
+---
+
+## 6. Resource Registry 设计
+
+### 6.1 存储位置
+
+AgentCore 新增 `ResourceRegistryService` 与持久化表 `intelligence_resources`（memory/pg 双实现，R9 四处同改）。**原因**：
+
+- Solver/Slice/Rule 的真值源在 DataCore，但 DRIL 主要消费者是 AgentCore 路由层。
+- Skill/Workflow/Agent/Intent/MCP 的真值源本就位于 AgentCore。
+- 统一注册表放在 AgentCore 可减少每次查询的跨系统调用；DataCore 变更通过事件失效同步。
+
+### 6.2 表结构（AgentCore）
+
+```sql
+CREATE TABLE intelligence_resources (
+  tenant_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  source TEXT NOT NULL,            -- datacore / agentcore / seed / derived
+  resource JSONB NOT NULL,         -- IntelligenceResource 对象
+  quality JSONB,                   -- ResourceQuality
+  indexed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ,
+  PRIMARY KEY (tenant_id, kind, key)
+);
+
+CREATE TABLE resource_relations (
+  tenant_id TEXT NOT NULL,
+  from_kind TEXT NOT NULL,
+  from_key TEXT NOT NULL,
+  rel_type TEXT NOT NULL,          -- reads / scopes / invokes / binds / includes
+  to_kind TEXT NOT NULL,
+  to_key TEXT NOT NULL,
+  meta JSONB,
+  PRIMARY KEY (tenant_id, from_kind, from_key, rel_type, to_kind, to_key)
+);
+
+CREATE TABLE resource_quality_scores (
+  tenant_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  success_rate REAL,
+  usage_count INT,
+  avg_latency_ms REAL,
+  last_probe_at TIMESTAMPTZ,
+  PRIMARY KEY (tenant_id, kind, key)
+);
+```
+
+### 6.3 投影来源
+
+| 资源 kind | 来源模块 | 投影触发时机 |
+|---|---|---|
+| `solver` | DataCore `CatalogService.solverRegistry` | AgentCore 启动时全量同步 + `solver_registry.updated` 事件 |
+| `slice` | DataCore `/a/v1/slices/library`、`/a/v1/slices/index` | 启动同步 + `slice.planned` / `ontology.published` |
+| `rule` | DataCore `/a/v1/rules` | 启动同步 + `rules.updated` |
+| `workflow` / `intent` | AgentCore 本地 `workflows` / `intents` repo | 发布/更新时实时写 |
+| `skill` / `agent` | AgentCore 本地 `skills` / `agents` repo | 发布/更新时实时写 |
+| `mcp_tool` | MCP server `tools/list` + `mcp-configs` | 配置变更/启动发现 |
+| `field` | DataCore `/a/v1/catalog/search` | 按需索引，不常驻 |
+
+### 6.4 统一 API
+
+AgentCore 新增端点（前缀 `/b/v1/resources`，同时 `/api/v1/resources`）：
+
+```
+GET    /b/v1/resources                    # 列表（kind/filter/tag/entitlement）
+GET    /b/v1/resources/search             # 混合检索（核心入口）
+POST   /b/v1/resources/search             # 同上，复杂 query body
+GET    /b/v1/resources/{kind}/{key}       # 单资源详情
+GET    /b/v1/resources/{kind}/{key}/relations  # 关系图（1-hop）
+GET    /b/v1/resources/{kind}/{key}/quality    # 质量分历史
+POST   /b/v1/resources/reindex            # admin：强制重建索引（幂等）
+```
+
+`GET /b/v1/resources/search` 请求体：
+
+```ts
+{
+  query: string;               // 自然语言
+  context?: PageContext;       // 当前页面/焦点
+  kinds?: ResourceKind[];      // 限定资源类别
+  requiredTags?: Partial<TieredTags>;
+  excludeKeys?: string[];
+  includeRelations?: boolean;  // 是否展开关联资源
+  maxResults?: number;         // 默认 20
+  minScore?: number;           // 默认 0.3
 }
 ```
 
-### 3.2 discover 扩 4 kind
+响应：
 
-`catalog.discover(ctx, kind, query)` 的 `kind` 从 `"slices"|"solvers"` 扩到 7 类：
+```ts
+{
+  results: Array<{
+    resource: IntelligenceResource;
+    score: number;
+    scoreBreakdown: {
+      semantic: number;
+      domain: number;
+      ontology: number;
+      history: number;
+      cost: number;
+    };
+    related?: IntelligenceResource[];
+  }>;
+  explanation: string;         // 人可读：为什么推荐这些
+}
+```
 
-| kind | 新增? | 单一真值源 | 补的可发现性字段 |
+---
+
+## 7. 混合检索引擎
+
+### 7.1 检索管线（R6 floor + advisory embedding）
+
+```
+User Query + PageContext
+        |
+        ↓
+[1] Intent Tag Extraction（R6 正则/关键词）→ 提取 L1-L5 候选标签
+        |
+        ↓
+[2] Structured Filter（硬过滤）
+      · entitlement/feature 过滤
+      · requiredTags 匹配
+      · excludeKeys
+      · minTrustLevel
+        |
+        ↓
+[3] Embedding Semantic Search（advisory）
+      · query 与 resource.label+description+answersQuestions 的 cosine
+      · 生产可插真 embedding，CI/内存模式用 pseudoEmbed
+        |
+        ↓
+[4] Graph Traversal（关系验证）
+      · 从 PageContext.focus 中的对象类型出发，找能 read/scope/include 它的资源
+      · 从已命中的 solver 出发，找依赖的 slice/rule
+        |
+        ↓
+[5] Ranking Model（确定性加权）
+      · Score = 0.35*semantic + 0.25*domain + 0.20*ontology + 0.10*history + 0.10*cost
+        |
+        ↓
+[6] Selected Resource(s)
+```
+
+### 7.2 分项得分
+
+**Semantic（0.35）**
+
+```
+semantic = max(cosine(query, desc), cosine(query, answersQuestions[]), cosine(query, tags[]))
+```
+
+**Business Domain Match（0.25）**
+
+```
+domain = Σ layerWeight[l] * hitRatio[l]
+layerWeight = { l1:0.30, l2:0.25, l3:0.20, l4:0.15, l5:0.10 }
+hitRatio = 命中标签数 / 请求标签数（或该层全部标签数）
+```
+
+**Ontology Compatibility（0.20）**
+
+```
+ontology = 0.5 * objectTypeOverlap(query/context 提及的类型, resource.inputSpec.objectTypes)
+       + 0.3 * graphDistance(焦点类型, resource 可达类型)
+       + 0.2 * relationStrength(到已选中资源的关联)
+```
+
+`graphDistance` 使用 DataCore 已发布本体 link 图（复用 `planSlice` BFS 最短路 + tie-break），纯函数 R6。
+
+**Historical Success（0.10）**
+
+```
+history = 0.5 * quality.successRate + 0.3 * quality.accuracy + 0.2 * trustWeight
+```
+
+**Runtime Cost（0.10）**
+
+```
+cost = 0.5 * exp(-avgLatencyMs/60000) + 0.3 * complexityWeight + 0.2 * sidecarWeight
+complexityWeight = LOW 1.0 / MEDIUM 0.8 / HIGH 0.6
+sidecarWeight = 不需要 sidecar 1.0 / 需要且在线 0.7 / 需要且离线 0.0（直接过滤）
+```
+
+### 7.3 结果解释
+
+每个结果返回 `scoreBreakdown` 与 `explanation` 模板：
+
+```
+「{label}」被推荐因为：
+· 语义匹配：描述/样例问句命中 {keywords}
+· 业务域匹配：L1={domain} / L3={scenario}
+· 本体兼容：资源读取 {objectTypes}，与当前焦点 {focus} 距离 {distance}
+· 历史成功率 {successRate} / 平均时延 {avgLatencyMs}ms
+```
+
+---
+
+## 8. 与 QOS 编排层的集成
+
+DRIL 不替代现有 `domainResolve`，而是增强以下三个入口：
+
+### 8.1 Path-A 增强（已有高置信命中时）
+
+保持 `preferDeterministicSolver` 阈值 0.6 不变。DRIL 仅用于：当存在多个候选 solver 置信相近时，用 quality/cost 做 tie-break。
+
+### 8.2 Compose 路径（主要收益场景）
+
+当前 Compose 路径受 `NavigationSlice.solvers` 限制，只投影 `SOLVER_CATALOG` 中已登记的 solver。DRIL 扩展为：
+
+1. `ResourceRouter.buildResourcePackage(query, context)` 返回推荐的 `{solvers[], slices[], rules[], skills[], workflows[]}`。
+2. `compileSolverPlan` 消费该资源包，支持从 slice 自动补 required arg（如 `baseId`/`modelId` 从切片范围派生）。
+3. 规则匹配：对推荐 solver，自动拉取其 `boundRules` 作为 `evaluate_rules` 步骤。
+
+### 8.3 Path-B Agent Loop
+
+`runPathB` 在注入 NavigationSlice 之前，先调用 DRIL：
+
+```ts
+const drilPackage = await resourceRouter.resolve(query, pageContext, agentScope);
+// drilPackage 写入 task.drilContext，注入 agent system prompt
+```
+
+Agent 的 `discover` 工具优先查 Resource Registry，而不是盲目调用 `CatalogService.discover`。
+
+### 8.4 Coordinator 多角色编排
+
+Coordinator 在拆分子问后，对每个子问调用 DRIL，选择对应角色 Agent + 该角色可用的资源子集，再 `invoke_agent` 扇出。
+
+---
+
+## 9. 关键数据流与事件
+
+新增事件：
+
+| 事件 | 生产者 | 消费者 | 说明 |
 |---|---|---|---|
-| `solvers` | 已有 | `SOLVER_CATALOG` | 已有 description/answersQuestions/tags |
-| `slices` | 已有 | SliceSpec 目录 | 已有（§5 深化） |
-| `objectType` | 已有(索引) | 本体 ObjectType | 补 answersQuestions/tags |
-| **`rules`** | ★新 | `battery.ts rules[]` / RuleEntry | **补 description（这条约束保护什么）/answersQuestions/tags** |
-| **`workflows`** | ★新 | ExecutionPlan(kind=PLAN/ORCHESTRATION) | **补 description/triggerIntents→answersQuestions/tags** |
-| **`skills`** | ★新 | `SkillDefinition` | **补 answersQuestions/tags（description 已有 summary）** |
-| **`agents`** | ★新 | agent 定义 + `ROLE_PROFILES` | **补 description（这 agent 管哪个域）/answersQuestions/tags** |
+| `resource.indexed` | ResourceRegistryService | 前端资源治理页 | 单资源索引完成 |
+| `resource.quality_updated` | 运行时探针 | 资源治理页 / routing cache | 质量分更新 |
+| `resource.tags.updated` | admin 标签编辑 | registry cache | 标签变更 |
+| `dril.registry_invalidated` | 启动同步 / DataCore 事件 | ResourceRegistryService | 批量失效索引 |
 
-- **一次全量感知**：`discover(ctx, "all", query)` 或不传 kind → 返回**跨 7 类**的候选（agent 一跳看全平台）。
-- **派生投影**（R13）：`buildCatalog(ctx)` 从各池现有真值源**确定性聚合**成 `CatalogItem[]`，不新建表。
-- **发布门**（对齐现有 `resource-descriptor:check`）：新增 rule/workflow/skill/agent **没 description 就不许发布**——
-  把"没给 LLM 看的描述就不能上"的纪律从求解器一池推广到全 7 池。
+DataCore → AgentCore 的同步事件（已有）：
 
-### 3.3 可发现性字段怎么补（不加人肉负担）
-
-- **先自动派生**：`deriveDiscoverability(item, ontologyCtx)`（R6）从现有元数据自动生成 description/answersQuestions 初值
-  （如规则从 expression + scope 生成"保护 X 对象的 Y 约束"）。
-- **admin 可覆盖**：自动派生不够精准的，admin 在治理页手工改（写回单一真值源）。
+- `ontology.published` / `rules.updated` / `slice.planned` / `features.updated` → 触发对应 kind 的重新投影。
 
 ---
 
-## §4 Resource Ontology — 七类资源的业务语义元数据
+## 10. 实施阶段
 
-每类资源升级为带**业务语义**（非内联业务常数·R14）的一等对象：
+### P1 · 契约与 Registry 基础（2 周）
 
-| 资源 | 关键元数据 |
-|---|---|
-| **Solver** | `businessPurpose` · `answersQuestions[]` · `inputRoles[]` · `outputShape`(镜像 SOLVER_OUTPUT_SHAPES) · `algorithmClass` · `costTier` |
-| **Slice** | §5 深化 |
-| **ObjectType** | `businessMeaning` · `keyProps[]` · `answersQuestions[]`（这类对象能回答什么） |
-| **Rule** | `ruleSemantic`(保护什么) · `scopeObjectTypes[]` · `severity` · `params`(G-10 可编辑引用) · `usedBySolvers[]` |
-| **Workflow** | `workflowSemantic` · `triggerIntents[]` · `steps 概要` · `outputView`(答完跳哪页) |
-| **Skill** | `skillSemantic` · `answersQuestions[]` · `requiredTools[]` |
-| **Agent** | `agentSemantic`(管哪个决策域) · `role` · `scopeObjectTypes[]` · `boundSolvers[]` |
+- 新增 `packages/contracts/src/intelligence-resource.ts`：基类 + per-kind schema + `RESOURCE_KINDS_EXTENDED`。
+- AgentCore 新增 `dril/resource-registry.ts`、`dril/resource-projector.ts`、memory/pg 仓储。
+- 启动时全量投影 solver/slice/workflow/intent/skill/agent/mcp_tool 到 `intelligence_resources`。
+- 新增端点：`GET /b/v1/resources`、`GET /b/v1/resources/{kind}/{key}`。
+- 新增 `dril-registry:check` 门：断言所有可发现资源能投影为合法 `IntelligenceResource`。
 
----
+### P2 · 五级标签与混合检索（2 周）
 
-## §5 Ontology Slice Definition（切片元数据深化）
+- 新增 `DRIL_TAG_TAXONOMY` 与 `TieredTags` 填充脚本；为现有 solver/slice/operation 回填 tieredTags。
+- 实现 `ResourceSearchEngine`：structured filter + embedding + ranking。
+- 新增 `POST /b/v1/resources/search`。
+- 新增 `dril-retrieval:check` 门：golden query set 命中预期资源 top-3。
 
-> 你第二段特别强调切片要有丰富元数据。切片是 DRIL 里**最该被语义检索命中**的资源——它本就是"回答某类业务问题的可追溯子图"。
+### P3 · Graph Traversal 与 Quality Score（2 周）
 
-`SliceCatalogItem` 在 SliceSpec 上补：
+- 实现 `resource_relations` 自动抽取：solver.reads → objectType、rule.scopeObjectTypes、slice.includes → objectType/link、workflow.step → solver/rule。
+- 实现 graphDistance 打分（复用 DataCore `planSlice` BFS）。
+- 实现运行时质量分更新：`resource_quality_scores` + EWMA。
+- DRIL 接入 Compose 路径：在 `compileSolverPlan` 前调用 `ResourceRouter.buildResourcePackage`。
 
-| 字段 | 含义 |
-|---|---|
-| `sliceSemantic` | 这张子图回答什么业务问题（如"某型号从订单到产线的产能占用链"） |
-| `rootType` / `coveredTypes[]` | 根对象 + 覆盖的对象类型（图遍历检索用） |
-| `answersQuestions[]` | 触发问句样例（向量检索主料） |
-| `hops` / `linkPath[]` | root→hops 的链路路径（复用 slice-planner BFS 产物） |
-| `derivedFrom` | 建域来源（StoryBuildRun / 手工） |
-| `qualityScore` | §9（切片是否恒空/链路是否稳，接 G-BUILD-LINK） |
+### P4 · Router 接入 Path-B 与治理 UI（2 周）
 
-- **接 G-BUILD-LINK**：切片"恒空/链路孤岛"的质量问题，通过 qualityScore 暴露 + 让恒空切片**在检索里降权**（不误导 agent）。
+- Path-B agent loop 注入 DRIL package 到 system prompt。
+- `discover` 工具改造为查 Resource Registry。
+- 前端新增 `/admin/resources` 治理页：资源列表、标签编辑、质量分、关系图。
+- SEAM 组合测试：典型 CEO 深问 → DRIL 选对 solver + slice + rule → Compose/Agent 执行 → 答案可溯源。
 
 ---
 
-## §6 五层标签体系
+## 11. 本体引用与影响
 
-| 层 | 维度 | 取值示例 | 单一来源 |
-|---|---|---|---|
-| L1 | **业务域** | 供应链/生产/质量/财务/销售 | `GRAPH_DOMAIN` + 5 角色域 |
-| L2 | **决策类型** | 可行性/根因归因/优化排产/风险预警/方案比选 | `CeoRouteKind` + intent |
-| L3 | **场景** | ATP接单/S&OP定稿/换型瓶颈/断供风险 | SCENARIO_CATALOG.scenarioKey |
-| L4 | **对象** | Order/Line/Material/Supplier/Model | 本体对象类型 key |
-| L5 | **算法** | 确定性派生/CP-SAT最优/启发式/LLM综合 | §J OptModelTemplate.constraintFamily |
+### 11.1 涉及的对象类型（§2 新增/扩展）
 
-`deriveResourceTags(item, ontologyCtx)`（R6）从现有元数据确定性派生；admin 可覆盖。**标签用于检索②的结构化硬过滤**（§7）。
+- **IntelligenceResource**（新增元类型）：资源注册表条目，kind 扩展为 9 类。
+- **ResourceRelation**（新增元类型）：资源间关系（reads/scopes/invokes/binds/includes）。
+- **ResourceQualityScore**（新增元类型）：运行时质量分。
+- **TieredTagTaxonomy**（新增元类型）：五级标签 taxonomy。
+- **OntologyType / OntologyLink**：DRIL 的 L4 对象标签必须从已发布类型派生；graphDistance 复用 link 图。
+- **Solver / Rule / SliceSpec**：现有类型作为 DRIL 的主要输入；需要在 metadata 中补齐 `tieredTags` / `inputSpec` / `outputSpec`。
 
----
+### 11.2 涉及链路（§3）
 
-## §7 ★核心一：独立向量检索层（retrieve_knowledge）★
-
-> 大白话：新增一层"资源搜索引擎"。你把问句丢进去，它**直接告诉你最该用哪几个资源**（排好序），
-> 而不是把一大堆描述丢给 LLM 让它自己挑。这就是 `retrieve_knowledge` 工具。
-
-### 7.1 新增 `retrieve_knowledge` 工具
-
-- **签名**：`retrieve_knowledge(query, kinds?, topK?) → RankedResource[]`（每条 `{catalogItem, score, whyMatched}`）。
-- **agent 用它替代盲扫**：第③级全模式里，agent 第一步就是 `retrieve_knowledge("<问句>")` 拿候选，
-  而不是 `discover`（关键词）/ `query_system_ontology`（盲扫）。
-- **entitlement**：`dril.retrieve`（默认可开·关则退回现有 discover 关键词行为，**不阻断**）。
-
-### 7.2 混合检索管线（五工序）
+新增链路：
 
 ```
-问句 + PageContext
-  ①【LLM 意图理解】→ intent + 槽位 + 5 层标签倾向（复用 classifier·§0 急救那步）
-  │     低置信/无 LLM → 退 domain-resolver 正则（fail-safe）
-  ②【结构化过滤】按 L1 业务域 + L4 对象 + 租户 entitlement 硬筛（复用 domain-resolver + features 门 R3）
-  ③【向量召回】对剩余候选按 answersQuestions/description 向量相似度召回 top-k
-  │     ↑ 泛化 §J opt-embedding 到全 7 类资源（advisory·不进确定性路径·FUS2）
-  │     无 embedding → 退关键词匹配（现 discover 行为·不阻断）
-  ④【图遍历扩展】顺 OntologyLink 把"对口 solver 依赖的规则/输出对象/切片"一并拉进候选（复用 slice-planner BFS）
-  ⑤【打分排序】综合分（§7.3）→ RankedResource[]
+User Query --[DRIL]--> ResourceRouter
+  ├─ Ontology Router ← reads → OntologyType/Link/SliceSpec
+  ├─ Solver Router  ← reads → Solver Catalog
+  ├─ Rule Router    ← reads → RuleEntry
+  ├─ Skill Router   ← reads → SkillDefinition
+  ├─ Workflow Router← reads → WorkflowDefinition
+  └─ Agent Router   ← reads → AgentDefinition
+ResourceRouter --ranking--> ComposePlan / AgentLoop
 ```
 
-### 7.3 打分公式（`scoreResource`·R6 纯函数·权重可配不写死业务常数）
+### 11.3 涉及事件（§4）
 
-```
-score(r, q) = 0.35·semanticSim(r,q)   // ③ 向量相似度（无 embedding→关键词命中率）
-            + 0.25·domainMatch(r,q)   // ② L1/L2 标签契合
-            + 0.20·ontologyFit(r,q)   // ④ 图上距离（对象/链路贴合）
-            + 0.10·successRate(r)     // ⑨ 质量分历史成功率
-            + 0.10·costScore(r)       // costTier：秒级>重算
-```
+- 新增 `resource.indexed`、`resource.quality_updated`、`resource.tags.updated`、`dril.registry_invalidated`。
+- 消费现有 `ontology.published`、`rules.updated`、`slice.planned`、`workflow.published`、`agent.published`、`skill.published`、`scenario.published`、`features.updated` 以刷新索引。
 
-### 7.4 fail-open 纪律（贯穿五工序）
+### 11.4 涉及不变量
 
-任何一道工序不可用（无 LLM / 无 embedding / A 不可达）→ **退回上一代行为**（正则/关键词/硬投影），
-**绝不阻断查询**——对齐 navigation-slice「空图不注入=字节兼容」+ §J embedding「关 entitlement 退关键词列表不静默」。
+- **R1 contracts-only-shared**：所有新增契约必须在 `@platform/contracts` 定义，禁止跨 app import 源码。
+- **R2 tenant_id everywhere**：`intelligence_resources` / `resource_relations` / `resource_quality_scores` 三表 PK 必须含 `tenant_id`。
+- **R3 entitlement 先于 authz**：未开通 feature 的资源不得在 DRIL 检索结果中出现；DRIL API 先查 feature 再返回。
+- **R6 确定性**：structured filter、graph traversal、quality score EWMA、ranking 公式均为纯函数/确定性；仅 embedding 层为 advisory。
+- **R13 派生投影**：Resource Registry 不是新真值源，所有资源元数据投影自各自模块。
+- **R14 零业务常数**：L4 对象标签从 ontology 派生，禁止手写业务对象字面量。
+- **R15 CLI 对等**：新增 `/b/v1/resources/*` 需注册 CLI 命令（如 `platform resources` / `platform resources search`）。
 
-### 7.5 向量索引怎么建（不训练·平台级元资产）
+### 11.5 已知断点（§8）
 
-- **平台级共享索引**（跨租户元资产：solver/slice/rule 定义本就是平台能力，非租户数据）；**租户场景文本进检索守 R2**。
-- **离线构建 + 事件增量**：`buildResourceIndex()` 启动期建；`{kind}.updated`（solver/rule/slice/workflow/skill/agent published）→ 增量重嵌。
-- **嵌入来源**：`answersQuestions` + `description` + 标签文本（**不含业务数字**·R14）。
+- G-DRIL-1：DataCore 与 AgentCore 资源投影延迟。解决：启动全量同步 + 事件失效 + 60s TTL fallback。
+- G-DRIL-2：自定义切片 `spec` 字段形状不统一，投影可能缺失 `description`。解决：projection 阶段过滤无描述切片，并在管理台提示补全。
+- G-DRIL-3：Skill/Agent/Rule 当前无 `answersQuestions`/`tieredTags`，P1 需要先回填或允许缺省（缺省时检索分降低，不阻断）。
+- G-DRIL-4：真 embedding 服务未上线时，内存模式用 `pseudoEmbed`，语义匹配精度下降。解决： golden test 中允许 lower bound，生产 env-gated。
 
 ---
 
-## §8 ★核心二：资源标准 MCP 化★
+## 12. 验收标准与 SEAM 门
 
-> 大白话：现在求解器/本体/规则都是"内置工具"——写死在 agent 工具集里。DRIL 把它们也**暴露成标准 MCP resources**
-> （能被 list、被 read、被语义检索），内部资源和外部 MCP 走**同一套发现接口**。
-
-### 8.1 为什么要 MCP resource 化（不只是内置工具）
-
-- **内置工具**：agent 得**知道有这个工具**才能调（写死在工具集）。
-- **MCP resource**：agent 可以**先 list 有哪些资源、再 read 某个资源的详情**——**发现性**是一等能力，天然适合"问句→资源"检索。
-- 你的原话："让所有环境资源被高效精准检索"——检索的前提是资源以**可枚举、可读、带元数据**的 resource 形态存在。
-
-### 8.2 落地
-
-- **`CatalogItem` → MCP resource 映射**：每个 `CatalogItem` 暴露为一个 MCP resource（`uri = dril://{kind}/{key}`），
-  `list_resources` 返回全 7 类，`read_resource(uri)` 返回该资源完整元数据 + 用法。
-- **`retrieve_knowledge` 作为 MCP 语义检索入口**：MCP resource 的语义检索层 = §7 的向量检索。
-- **内外统一**：外部 MCP server 接入的资源与内部 `CatalogItem` **同一 list/read/检索接口**——agent 不分内外，一视同仁。
-- **复用现有 MCP 基建**：`mcp/*`（B3）已有 MCP 工具路由 + 安全门（白名单/注入防护/`即时拒绝`）；resource 化复用同一安全框架。
-
----
-
-## §9 Resource Quality Score（EvalSuite parity 回灌）
-
-| 维度 | 权重 | 来源 |
+| 门禁 | 位置 | 通过标准 |
 |---|---|---|
-| 描述完整度 | 0.3 | `findUndescribed` + 可发现性字段齐（description/answersQuestions/tags 非空） |
-| **历史成功率** | 0.5 | **EvalSuite `EvalRunReport.parity` 回灌**（该资源被选中后 parity 是否命中 INTENT/TOOLSEQ/ANSWER） |
-| 契约健康 | 0.2 | chain:check / rule-closure:check（引用闭合·输出形状注册·规则有一等定义） |
-
-- **闭环**：eval 跑得越多 → 质量分越准 → §7.3 检索排序越准 → agent 选得越对。
-- **接 Harness 反思**：姊妹篇 §7 的 reflect 复盘失因（同 parity failKind 语义）**也回灌**质量分——在线反思 + 离线 eval 同一套语言。
-
----
-
-## §10 Intelligence Resource Router（接进多层路由）
-
-> DRIL 检索不是孤立工具，要接进平台**已有的多层路由器**，各取所需：
-
-| 路由器 | DRIL 怎么增强 | 纪律 |
-|---|---|---|
-| **domain-resolver** | 向量召回**兜底正则漏网题**（正则没覆盖的问句，向量仍能找到对口 solver） | 命中确定性仍**不看向量分**（R6） |
-| **navigation-slice** | 第②级导航图充实时**排序** top-k；第③级导航图为空时**从零补位** | 空图 fail-open 退现行为 |
-| **compile-plan** | 给多 solver 编排提供**排好序的候选资源** | advisory |
-| **mcp-router** | 内外资源统一 list/read/检索（§8） | 复用 MCP 安全门 |
-| **Harness 第③级全模式** | `retrieve_knowledge` **替代盲扫**做资源发现 | 见姊妹篇 §1.5/§7 |
-
-- **端点**：`GET /a/v1/dril/{catalog,search,resource}` + CLI 对等 `platform dril {search,catalog}`（R15）。
-- **B 侧消费**：AgentCore 经 REST 读（不 import A 源·R1），TTL 60s + `{kind}.updated` 失效（对齐 type-semantics 缓存纪律）。
+| `dril-contract:check` | `packages/contracts/test/intelligence-resource.test.ts` | 所有 per-kind schema 合法样例通过；非法样例被捕获 |
+| `dril-registry:check` | `apps/agentcore/test/dril-registry.test.ts` | 启动后所有资源可投影；无 description 空资源 |
+| `dril-retrieval:check` | `apps/agentcore/test/dril-retrieval.test.ts` | golden query set 预期资源进入 top-3 ≥ 90% |
+| `dril-routing-seam` | `apps/agentcore/test/dril-routing-seam.test.ts` | 端到端：NL query → DRIL → 选对 solver/slice/rule → 出答案（runAgentLoop 调用次数 ≤4 或 Compose 零 agent） |
+| `dril-quality:check` | `apps/agentcore/test/dril-quality.test.ts` | 模拟调用后 quality score 按 EWMA 更新，低质量资源排名下降 |
+| `cli-parity:check` | 既有 | 新增 `platform resources` CLI 命令 |
 
 ---
 
-## §11 落地 WO 拆分
+## 13. 与现有 PRD/工单的关系
 
-> 每张 WO 一条 handoff 分支；跨数据/引擎两半的一个 dev 整单做；金值/注册即更；SEAM 驱动接缝。
-
-**WO-DRIL-CATALOG-UNIFY** 🚦边界：`contracts/src/catalog-item.ts`(新) · `datacore/src/catalog.ts` · `datacore/src/app.ts`
-- `CatalogItem` 契约（7 kind）+ discover 扩 4 kind（rules/workflows/skills/agents）+ `deriveDiscoverability`（R6 自动派生）+ 发布门推广。
-- 金值：新增 solver/对象/规则/工作流 → discover 计数同步（并入 catalog.test / chain:check）。
-- SEAM：一次 `discover(ctx,"all",q)` 跨 7 类返回 + 新 4 kind 各有 description（漏描述即红）。
-
-**WO-DRIL-VECTOR-RETRIEVE** 🚦边界：`datacore/src/dril/index.ts`+`search.ts`(新) · `agentcore/src/tools/*`(加 retrieve_knowledge) · `agentcore/src/agent/navigation-slice.ts`(接排序)
-- 向量索引（泛化 opt-embedding 到 7 类）+ 五工序管线 + `scoreResource` + `retrieve_knowledge` 工具 + 全工序 fail-open。
-- **SEAM（头号判据）**：真 HTTP 组合测——问句→retrieve_knowledge→top-k 含对口资源→agent 第③级命中→答案不劣化；
-  **且无 LLM/无 embedding 时退回 discover 关键词行为字节兼容**（fail-open 不阻断）。
-
-**WO-DRIL-MCP-RESOURCES** 🚦边界：`agentcore/src/mcp/*`
-- CatalogItem→MCP resource 映射（list/read）+ retrieve_knowledge 作语义检索入口 + 内外统一 + 复用 MCP 安全门。
-- SEAM：list_resources 跨 7 类 + read_resource 返元数据 + 注入防护红线仍守。
-
-**WO-DRIL-QUALITY** 🚦边界：`datacore/src/dril/quality.ts`(新) · `agentcore/src/evals.ts`(回灌钩子)
-- 质量分三维 + EvalSuite parity 回灌 + reflect 失因回灌（接姊妹篇）。
-- SEAM：跑一轮 eval → 某资源命中率变 → qualityScore 变 → 影响下次检索排序（证回灌·非快照）。
-
-> **注意**：VECTOR-RETRIEVE 是跨 A（索引/检索）+ B（工具/导航切片）两半的特性——**一个 dev 整单做**（拆两半接缝必炸）。
-
----
-
-## §12 《本体引用与影响》（铁律 0）
-
-### 12.1 对象类型（§2 目录）
-- **H 交互/编排域**：`ResourceDescriptor`（升级为 CatalogItem）· `Skill/Agent`（新纳入 discover）· `ExecutionPlan/Workflow`（新纳入）·
-  `Intent`（检索①意图源）· `EvalSuite/EvalRunReport`（质量分回灌源）· `MCP tool`（→resource 化）。
-- **B/C/E 域**：`ObjectType`/`OntologyLink`（图遍历④）· `RuleEntry`（新纳入 discover + G-10 params）· `SliceSpec`（§5）· `SOLVER_CATALOG`。
-- **J 优化融合域**：`opt-embedding`（向量基建泛化源）· `OptModelTemplate`（L5 算法标签）。
-
-### 12.2 链路（§3）
-- **编排链**：DRIL 检索插在 `domain-resolver → preferDeterministicSolver` 的**候选扩充**位 + `navigation-slice` 的**排序/补位**位。
-  **不改分水岭**：path-A 命中仍不落 agent；DRIL 只在"要进 agent 前"排序候选。
-- **口径语义锚定链路**：CatalogItem 的 B→A 读取复用 type-semantics 的 TTL60s + `{kind}.updated` 失效纪律。
-
-### 12.3 事件（§4）
-- 新增 `dril.catalog_synced`（统一目录重建·B 缓存失效）+ `dril.index_rebuilt`（向量索引增量重嵌）。
-- 复用 `{kind}.updated`（solver/rule/slice/workflow/skill/agent published）→ 目录/索引/质量分失效。
-
-### 12.4 不变量（§5，R1–R16）
-- **R1**：DRIL 契约进 `packages/contracts`，B 经 REST 读不 import A 源。
-- **R2**：向量索引跨租户是**元资产**；租户场景文本进检索守 R2。
-- **R3**：关闭功能=资源不存在（检索②硬筛·404 FEATURE_NOT_FOUND）；`dril.retrieve` 关=退 discover。
-- **R4**：DRIL 只读/派生·资源被发现≠可越权调用（执行期仍走越界拒 + Action 审批）。
-- **R6**：检索/打分/标签派生全 R6；**向量 advisory 永不进确定性求解路径**（FUS2）。
-- **R13**：CatalogItem/Tags/QualityScore/索引全派生·非新真值源。
-- **R14**：元数据是能力语义·禁内联业务常数；嵌入文本不含业务数字。
-- **R15**：`platform dril *` CLI 对等。
-- **R16**：新增资源 kind 需注册 provisioner·否则测试红。
-
-### 12.5 断点（§8）
-| 断点 | 现状 | 本 PRD 推进 |
-|---|---|---|
-| **G-AGENT-BLIND-REACT** | 半修 | DRIL 检索**把盲扫换成向量检索**——第③级全模式从"discover 试探"升级到"retrieve_knowledge 精准映射" |
-| **G-10 规则一等引用** | params 可编辑 P1 | 规则**纳入 discover + 向量检索**（`usedBySolvers[]` 反向索引）·推进"规则即一等可发现引用" |
-| **G-BUILD-LINK 切片链路孤岛** | 链路不稳 | 切片 qualityScore 暴露恒空/孤岛·检索降权不误导·图遍历④复用 slice-planner |
-| **G-3 场景启动器** | 大部修 | Workflow 资源带 outputView·呼应"答完跳对页" |
-| **G-EXCEPTION-SCATTER** | 异常散落无统一入口 | 统一目录=资源侧的"统一入口"·Agent"全感知"有处落地 |
-
-### 12.6 回写计划
-落地后回写 `docs/SYSTEM-ONTOLOGY.md`：§2.H 新增 **DRIL 统一资源目录 + 向量检索 + MCP resource** 对象条目；
-§3 编排链补 **DRIL 检索插入点**；§4 新增 `dril.catalog_synced`/`dril.index_rebuilt` 事件；
-§7 新增门 `dril-catalog:check`（7 kind 描述非空 + 标签派生齐 + 引用闭合）；§8 更新 **G-AGENT-BLIND-REACT / G-10**。
-
----
-
-## §13 验收（SEAM 驱动·非各半绿）
-
-1. **统一目录**：一次 `discover(ctx,"all",q)` 跨 7 类返回；新 4 kind（rules/workflows/skills/agents）各有 description（漏即红）。
-2. **向量检索 SEAM**（头号判据）：问句→retrieve_knowledge→top-k 含对口资源→agent 第③级命中→答案不劣化；
-   **fail-open：无 LLM/无 embedding 退 discover 关键词字节兼容**。
-3. **MCP resource**：list_resources 跨 7 类 + read_resource 返元数据 + 注入防护红线守。
-4. **质量分闭环**：eval → parity 变 → qualityScore 变 → 检索排序变（证回灌·非快照）。
-5. **确定性未污染**：domain-resolver 命中题**不看向量分**·字节兼容零回归。
-6. **四包全绿**：`pnpm -r build && pnpm -r --workspace-concurrency=1 test`（datacore 勿并发 vitest）。
-
----
-
-> **一句话收尾**：今天 agent 找资源靠"看描述自选 + discover 盲扫"，而且规则/工作流/技能/agent 连 discover 都进不去。
-> DRIL 把**所有资源并进一个统一目录、加一层向量检索、暴露成标准 MCP resources**——让 Agent 在"没有预设兜底"的
-> 第③级全模式里，也能**一次感知、精准检索**到该用的每一个资源。配合姊妹篇的反思闭环，对话推演能力才真正上台阶。
+- 依赖 `WO-RESOURCE-DESCRIPTOR`（已落）：在其基础上扩展 per-kind schema。
+- 依赖 `WO-Phase2-C`（Compose 路径，已落）：DRIL 将 Compose 的输入从硬编码 `NavigationSlice` 扩展到完整资源包。
+- 依赖 `WO-FIVE-ROLE-AI-EMPLOYEE`：Coordinator 子问路由将调用 DRIL。
+- 不阻塞当前 global-sim 修复与 NL compose 缺失端点（`WO-GSIM-4-AGENT`、`WO-LIVE-NL`）；可在这些工单完成后并行接入 DRIL。
