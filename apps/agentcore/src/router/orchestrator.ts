@@ -444,6 +444,12 @@ export class Orchestrator {
     const classification = await this.classify(task, pkg, candidates);
     if (!classification) {
       this.deps.metrics.classifierErrors.inc();
+      // ★ WO-0-NL-WIRING（急救·闭 classifier→path-B 洪泛断点）：classifier LLM 缺席/抛错（无 provider·无 key·
+      // roleModel 回落后仍无凭据·限流×3）——**不把定式深问洪泛给需 LLM 的 path-B**（真 Kimi 铁证 = INTERNAL_ERROR），
+      // 先试确定性兜底：domainResolve（R6 纯正则·无 LLM）解析问句→路由→意图，若落地意图在**候选目录**（已发布 +
+      // entitlement 通过）内 → 确定性绑定 → path-A 求解器（与 LLM 命中同意图时逐字节同路径·秒级出答）。命中即 return。
+      // fail-safe 铁律：解析不出 / 意图不在候选 = 真开放/无匹配题 → 照落下方 path-B（诚实降级·绝不硬造窄 solver 自信错答）。
+      if (await this.tryClassifierFailSafe(taskId, auth, task, candidates)) return;
       if (mode === "WORKFLOW_ONLY") {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
@@ -556,6 +562,44 @@ export class Orchestrator {
     return false;
   }
 
+  /**
+   * WO-0-NL-WIRING · classifier 缺席时的确定性兜底（急救·最高优先·闭 classifier→path-B 洪泛断点）。
+   *
+   * 病根（真 Kimi 铁证 · PRD-agent-react-harness §0.2）：意图理解本该由绑定 LLM 驱动（classify），一旦 LLM 未接入/
+   * 无 key/限流失败 → classify 返 undefined → 定式深问被洪泛给需 LLM 的自由 agent（path-B）→ INTERNAL_ERROR。
+   * 洞见：LLM 主要用于**意图分类 + 槽位抽取**；分类落定后多数题跑确定性 path-A（无需 LLM）。故 classifier 缺席时，
+   * 用 domainResolve（R6 纯正则·与 A 确定性优先门**同一路由来源**·无 LLM/时钟/随机）把问句解析成路由→意图，
+   * 若该意图在**候选目录**（publishedIntentsForView + entitlement 已过滤）内 → 确定性绑定 → path-A 求解器。
+   *
+   * 与 A 确定性优先门（free-LLM 入口前·line 406）的分工：那道门只在**高置信（≥0.6·需 PageContext）**时抢跑，
+   * 避免劫持 LLM 在场时能更好处理的开放题；本兜底只在 **LLM 已缺席**（无更优选项·path-B 同样需 LLM 会崩）时触发，
+   * 故不设置信下限——唯一硬门 = 解析出的意图必须是**真实已发布 + entitled 候选**（绑它=填其声明槽位·非硬造答案）。
+   * 命中并绑定 → true（调用方须 return）；无路由 / 意图不在候选 = 真开放/无匹配 → false（照落 path-B 诚实降级）。
+   * LLM 在场时 classify 正常返回 → 本方法**永不被触及**（既有路径逐字节零回归）。
+   */
+  private async tryClassifierFailSafe(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+  ): Promise<boolean> {
+    const res = domainResolve(task.query, task.context.pageContext);
+    if (!res.solverKey || res.intentKey === "none") return false; // 无对口确定性路由 = 真开放/无匹配 → 照落 path-B
+    const intent = candidates.find((c) => c.key === res.intentKey);
+    if (!intent) return false; // 解析出的意图不在候选目录（未发布/entitlement 关）→ 不硬绑 → 照落 path-B
+    await this.deps.repos.tasks.patch(taskId, {
+      classification: {
+        candidates: [{ intentKey: intent.key, confidence: 1 }],
+        outOfCatalog: false,
+        extractedSlots: res.args,
+        latencyMs: 0,
+        model: "deterministic:classifier-failsafe",
+      },
+    });
+    await this.proceedWithIntent(taskId, auth, intent, res.args);
+    return true;
+  }
+
   private async publishedIntentsForView(
     packageId: string,
     view: string,
@@ -582,8 +626,16 @@ export class Orchestrator {
     pkg: ScenarioPackage,
     candidates: IntentDefinition[],
   ): Promise<ClassificationResult | undefined> {
-    // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
-    const model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
+    // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default.
+    // WO-0-NL-WIRING：意图理解真由绑定 LLM 驱动——classifier 用轻量档（QOS_CLASSIFIER_MODEL / 场景包 classifierModel /
+    // 租户用途绑定），roleModel 内已对无 key 的 explicit 做回落。解析本身若抛（provider 目录不可达等）→ 视为 classifier
+    // 缺席（返 undefined），交由上层 tryClassifierFailSafe 确定性兜底，**绝不让 pipeline 崩**（deliverable「does not throw」）。
+    let model: string;
+    try {
+      model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
+    } catch {
+      return undefined;
+    }
     const catalog = candidates
       .map((i) => {
         const slotDesc = i.slots.map((s) => `${s.name}(${s.type}${s.required ? ",必填" : ""}): ${s.description}`).join("; ");
