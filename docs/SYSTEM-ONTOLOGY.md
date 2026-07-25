@@ -189,6 +189,17 @@ Query --[★确定性优先门 WO-QOS-1]--> domainResolve(问句+PageContext·R6
      · confidence≥THRESHOLD(0.6·20 题金标校准·误降级=0) ∧ 有对口 solver → tryDeterministicBind → **path-A**（拉回·秒级）
      · 低置信/无匹配/未绑意图 → **照落下方 free-LLM/classifier**（fail-safe·绝不误降级开放题·字节兼容零回归）
    ↓（插在 path-B free-LLM/agent 入口**之前**·闭 G-AGENT-BLIND-REACT 路由侧一半）
+   ★**WO-NL-ROBUST · ②「查询对话」在 LLM 通不通都能答（自由问句·无 PageContext）**：WO-QOS-1 门只在 contextRich（有 PageContext）
+     给置信（scoreFor 无上下文返 0），故自由问句/场景卡问句进不了门，只能落 classifier→path-B，**真后端无 LLM 即 INTERNAL_ERROR·FAILED·对话不通**。
+     补：**classify 不可用/未命中时（无 LLM / 3 次重试失败 / outOfCatalog / 低置信），进 path-B 前**再走一道 resolveDeterministicNlBinding
+     （domain-resolver.ts·复用同一 domainResolve·候选目录感知·置信基于问句形态强度·不要求 contextRich）——命中路由**桥接到候选内意图**
+     （CEO 意图缺席时落 seed 计划意图 capacity_feasibility/risk_root_cause·base 从问句 BASE_REGISTRY 解析）→ fillSlots 兜底（填不上照落 path-B）
+     → **path-A 求解器真答（带数字+溯源·不依赖 LLM·KILL-MOCK 非写死）**。fail-safe：开放/编排/跨 ≥2 硬域族 → 置信 0 照落 path-B（绝不给窄 solver 出自信错答）。
+     置于 runPathBOrDeterministic（runPipeline classify-miss 分支）——只影响本会落 path-B 的题·有 LLM 时 classify 成功者逐字节不变·零回归。
+   ★**WO-NL-ROBUST · ③ path-B 失败降级 + 真实报错暴露**：runAgentLoop 抛（无 LLM/LLM_EMPTY_RESPONSE/中断）→ degradePathBFailure：
+     先试确定性降级（有对口 solver 拉回 path-A·候选门同 runPipeline 剔 CEO），仍不行 → failTask 把**明确失因写进 gap 块**
+     （pathBFailureReason·LLM_UNAVAILABLE / SLICE_EMPTY / PARSE_ERROR 标进 evidence·gapCode 落法定枚举）——让运维一眼看出断在哪
+     （"LLM 没接进" vs "切片/ReAct 坏"）。例外：CEO free-LLM 深问（runCeoFreeLLM·传 systemOverride）自带更丰富确定性兜底 → 异常照旧上抛不拦截（零回归）。
 Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | SliceSpec | Rule | ActionType | render }
                        │                                              │
                        └─(路径B回退)──> Agent --uses--> Skill          ├ invoke_solver --OBO HTTP--> DataCore Solver

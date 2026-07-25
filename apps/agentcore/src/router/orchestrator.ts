@@ -1,6 +1,7 @@
 import type {
   AgentBudget,
   Answer,
+  GapCode,
   CeoAgentProfile,
   ClarificationReplyBody,
   ClassificationResult,
@@ -27,7 +28,7 @@ import {
   AGENT_SYSTEM_CORE,
   CEO_DEEP_QUESTION_SYSTEM,
 } from "../agent/prompts.js";
-import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
+import { runAgentLoop, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
@@ -56,7 +57,7 @@ import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
-import { domainResolve, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）
+import { domainResolve, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, resolveDeterministicNlBinding } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-NL-ROBUST 自由问句(无 PageContext)确定性绑定
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -200,6 +201,36 @@ export function normalizeQuery(q: string): string {
     .replace(/\d+(\.\d+)?/g, "#")
     .replace(/[\p{P}\p{S}\s]+/gu, "")
     .trim();
+}
+
+/**
+ * WO-NL-ROBUST · ③ path-B 失败错误码 → 清晰失因（gap 块 gapCode/evidence/suggestedFill）。让用户/运维一眼看出
+ * 断在哪：LLM_UNAVAILABLE=LLM 没接进（provider 未绑/key 失效/空响应/超时）· SLICE_EMPTY=切片空 · PARSE_ERROR=LLM 输出坏；
+ * 其余（含无码 INTERNAL_ERROR / 注入异常）→ OTHER（保 CL.7 GF.2 既有 gap 语义·gap-on-failure 逐字节不变）。
+ */
+export function pathBFailureReason(code: string, message?: string): { gapCode: GapCode; evidence: string; suggestedFill: string } {
+  const suggestedFill = "触发自成长 LOOP 诊断缺口并补齐后续推";
+  const msg = message ?? "";
+  // LLM 不可用识别：既认 typed 码（空响应/超时），也认真后端 SDK 抛的鉴权/连通错误消息——真后端无 LLM 时
+  // 适配器抛 INTERNAL_ERROR「Could not resolve authentication method … apiKey … credentials …」（非 LLM_EMPTY_RESPONSE），
+  // 靠消息模式识别方能诚实标 LLM_UNAVAILABLE。gap-on-failure 的注入异常「agent 推演中断」不含这些词 → 仍落 OTHER（零回归）。
+  const llmUnavailable =
+    code === "LLM_EMPTY_RESPONSE" ||
+    code === "LLM_TIMEOUT" ||
+    code === "TIMEOUT" ||
+    /authentication|api[\s-]?key|x-api-key|authorization|credential|凭证|ECONNREFUSED|ENOTFOUND|getaddrinfo|fetch failed|socket hang up|connection error|LLM_EMPTY/i.test(msg);
+  // 失因标签（LLM_UNAVAILABLE / SLICE_EMPTY / PARSE_ERROR）写进 evidence 首部（法定 GapCode 枚举不含这些·evidence 是自由文本），
+  // 让用户/运维一眼看出断在哪；gapCode 落最贴近的法定枚举（LLM 断=内部错 OTHER·切片空=NO_SLICE）。
+  if (llmUnavailable) {
+    return {
+      gapCode: "OTHER",
+      evidence: `[LLM_UNAVAILABLE] LLM 未接入/不可用（agent 用途 provider 未绑定 / key 失效 / 空响应 / 超时 / 不可达）；本题无对口确定性求解器可降级，故无法作答。${msg ? `原始错误：${msg.slice(0, 160)}` : ""}`,
+      suggestedFill: "检查 LLM 用途绑定 'agent' 是否配置且 key 有效；或改问有对口求解器的产能/风险问题（可不依赖 LLM 确定性作答）",
+    };
+  }
+  if (code === "SLICE_EMPTY") return { gapCode: "NO_SLICE", evidence: "[SLICE_EMPTY] 导航切片为空（本题无可投影的对象/求解器），agent 无从下手。", suggestedFill };
+  if (code === "PARSE_ERROR") return { gapCode: "OTHER", evidence: "[PARSE_ERROR] LLM 输出解析失败（final_answer 结构不合法或工具入参不可解析）。", suggestedFill };
+  return { gapCode: "OTHER", evidence: `路径 B agent 推演中断（${code}）`, suggestedFill };
 }
 
 /**
@@ -448,7 +479,9 @@ export class Orchestrator {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
       }
-      await this.runPathB(taskId, auth, {
+      // WO-NL-ROBUST · ② classify 不可用（无 LLM / 3 次重试均失败）：进 path-B 前先试确定性 solver 绑定——
+      // 产能/风险等有对口 solver 的问句拉回 path-A 真答（不依赖 LLM·求解器真值+溯源），无对口则照落 path-B。
+      await this.runPathBOrDeterministic(taskId, auth, task, candidates, {
         candidates: [],
         outOfCatalog: true,
         extractedSlots: {},
@@ -469,7 +502,8 @@ export class Orchestrator {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
       }
-      await this.runPathB(taskId, auth, classification);
+      // WO-NL-ROBUST · ② 目录外/低置信：进 path-B 前先试确定性 solver 绑定（有对口 solver 拉回 path-A 真答）。
+      await this.runPathBOrDeterministic(taskId, auth, task, candidates, classification);
       return;
     }
 
@@ -479,7 +513,8 @@ export class Orchestrator {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
       }
-      await this.runPathB(taskId, auth, classification);
+      // WO-NL-ROBUST · ② 顶候选意图不在目录（版本/发布漂移）：同样先试确定性 solver 绑定再落 path-B。
+      await this.runPathBOrDeterministic(taskId, auth, task, candidates, classification);
       return;
     }
 
@@ -554,6 +589,89 @@ export class Orchestrator {
       }
     }
     return false;
+  }
+
+  /**
+   * WO-NL-ROBUST · ② 自由问句确定性优先（"查询对话"在 LLM 通不通都能答）：产能/风险等**有对口求解器**的自由问句
+   * （无 PageContext·CEO 确定性门进不去）在进 path-B 前拉回 path-A 求解器真答。resolveDeterministicNlBinding（复用
+   * domainResolve·候选目录感知·置信基于问句形态·fail-safe 压开放/编排/跨域题）→ 桥接到候选内意图
+   * （capacity_feasibility / risk_root_cause / CEO 意图）→ fillSlots 兜底（必填槽位填不上 → false·照落 path-B·
+   * 绝不给窄 solver 出自信错答）→ path-A（invoke_solver + 模板投影·秒级真答·带数字+溯源·不依赖 LLM）。
+   * 命中并绑定 → true（调用方须 return）；未命中/意图不在候选/槽位填不上 → false（照落 path-B·不劫持开放题）。
+   */
+  private async tryDeterministicSolverRoute(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+  ): Promise<boolean> {
+    const binding = resolveDeterministicNlBinding(
+      task.query,
+      task.context.pageContext,
+      candidates.map((c) => c.key),
+    );
+    if (!binding) return false;
+    const intent = candidates.find((c) => c.key === binding.intentKey);
+    if (!intent) return false;
+    // fail-safe：必填槽位从问句派生 args + 上下文（defaultFrom selectedObjects/PageContext）都填不上 → 不绑（照落 path-B·
+    // 不触发交互澄清死等·无 LLM 环境下澄清亦无解）。probe 与 proceedWithIntent 的 fillSlots 同口径（确定性·可重入）。
+    const probe = await fillSlots(intent, binding.args, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+    if (probe.missing.length > 0) return false;
+    await this.deps.repos.tasks.patch(taskId, {
+      classification: {
+        candidates: [{ intentKey: intent.key, confidence: binding.confidence }],
+        outOfCatalog: false,
+        extractedSlots: binding.args,
+        latencyMs: 0,
+        model: "deterministic:nl-solver-route",
+      },
+    });
+    await this.proceedWithIntent(taskId, auth, intent, binding.args);
+    return true;
+  }
+
+  /**
+   * WO-NL-ROBUST · path-B 入口统一钩：先试确定性 solver 绑定（②·有对口 solver 拉回 path-A），否则照走 path-B。
+   * 装在 runPipeline 的 classify 不可用/未命中分支——只影响本会落 path-B 的题（有 LLM 时 classify 成功者逐字节不变·零回归）。
+   */
+  private async runPathBOrDeterministic(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+    classification?: ClassificationResult,
+  ): Promise<void> {
+    if (await this.tryDeterministicSolverRoute(taskId, auth, task, candidates)) return;
+    await this.runPathB(taskId, auth, classification);
+  }
+
+  /**
+   * WO-NL-ROBUST · ③ path-B agent 失败降级 + 真实报错暴露：runAgentLoop 抛（无 LLM/LLM_EMPTY_RESPONSE/异常·中断）时——
+   * 先试确定性降级（该问句有对口 solver 则拉回 path-A 真答·防御纵深·多数已被 ② 拦此处兜 CEO/直接 path-B 入口），
+   * 仍不行 → failFromError（保既有 code 语义·LlmEmptyResponse→LLM_EMPTY_RESPONSE / 无码→INTERNAL_ERROR）→ failTask 把
+   * 明确失因写进 gap 块（LLM_UNAVAILABLE 等），让用户/运维一眼看出断在哪（"LLM 没接进" vs "切片/ReAct 坏"）。
+   */
+  private async degradePathBFailure(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    err: unknown,
+  ): Promise<void> {
+    const code = typeof (err as { code?: unknown })?.code === "string" ? (err as { code: string }).code : "AGENT_ERROR";
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    let candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
+    // 与 runPipeline 候选门一致（line 334）：无 PageContext → 剔除 CEO 深问意图（它们需 focus 上下文·否则 args 空退化）——
+    // 确定性降级只落 seed 计划意图（capacity_feasibility/risk_root_cause·args 从问句真派生），不误绑空 args 的 CEO 意图。
+    if (!task.context.pageContext) candidates = candidates.filter((i) => !isCeoIntentKey(i.key));
+    if (await this.tryDeterministicSolverRoute(taskId, auth, task, candidates)) {
+      await this.deps.events.emit(taskId, "routing.degraded", {
+        reason: "path-B agent 失败，降级确定性求解（诚实标降级·非 LLM 输出）",
+        code,
+      });
+      return;
+    }
+    // 无对口 solver → 诚实暴露断点（failTask 增强 gap·映射清晰失因）。
+    await this.failFromError(taskId, err);
   }
 
   private async publishedIntentsForView(
@@ -1056,24 +1174,34 @@ export class Orchestrator {
     const baseUser = buildAgentUser(task, priorSummary || undefined);
     const userContent = [baseUser, sliceSection, semanticSection].filter(Boolean).join("\n\n");
     const sliceSolverKeys = navigationSliceSolverKeys(navSlice);
-    const result = await runAgentLoop({
-      taskId,
-      model,
-      tenantId: task.tenantId,
-      system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
-      userContent,
-      ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
-      tools,
-      llm: this.deps.engine.deps.llm,
-      executor,
-      budget,
-      repos: this.deps.repos,
-      metrics: this.deps.metrics,
-      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
-      isCancelled: () => this.cancelled.has(taskId),
-      // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
-      llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
-    });
+    let result: AgentLoopResult;
+    try {
+      result = await runAgentLoop({
+        taskId,
+        model,
+        tenantId: task.tenantId,
+        system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
+        userContent,
+        ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
+        tools,
+        llm: this.deps.engine.deps.llm,
+        executor,
+        budget,
+        repos: this.deps.repos,
+        metrics: this.deps.metrics,
+        emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+        isCancelled: () => this.cancelled.has(taskId),
+        // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
+        llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
+      });
+    } catch (err) {
+      // WO-NL-ROBUST · ③ path-B agent 硬失败（无 LLM / LLM_EMPTY_RESPONSE / 异常·中断）→ 先试确定性降级
+      // （有对口 solver 拉回 path-A 真答），仍不行则把明确失因写进 gap 块（暴露断点·非干巴巴 FAILED）。
+      // 例外：CEO/块级真 LLM 深问（runCeoFreeLLM·唯一传 systemOverride 者）自带更丰富的确定性兜底
+      // （block-route/ceo-route→path-A），依赖异常上抛到它的 catch → 此处照旧上抛不拦截（零回归·不夺其兜底）。
+      if (opts?.systemOverride) throw err;
+      return await this.degradePathBFailure(taskId, auth, task, err);
+    }
 
     await this.deps.repos.agentRuns.insert(result.run);
     await this.deps.repos.fallbackTraces.insert({
@@ -1553,6 +1681,8 @@ export class Orchestrator {
     // 自成长 LOOP 实诊断+补 → 续推），而非只剩红错叙述。闭 G-3 对话侧（诚实暴露断点）。其余路径（工作流/
     // 校验）维持纯 FAILED。answer.final 先于 task.failed 发出 → useTaskStream 既得 gap 答案又得失败态。
     if (task.path === "AGENT" && !task.answer) {
+      // WO-NL-ROBUST · ③ 真实报错暴露：错误码 + 消息 → 清晰失因（LLM_UNAVAILABLE 等·非干巴巴"推演中断"·无码/无关消息仍 OTHER 保既有语义）。
+      const fail = pathBFailureReason(code, message);
       const gapAnswer: Answer = {
         trustLevel: "AGENT_EXPLORATORY",
         unverifiedNumerics: false,
@@ -1564,7 +1694,7 @@ export class Orchestrator {
             taskId,
             verdict: "BLOCKED",
             path: "AGENT",
-            findings: [{ gapCode: "OTHER", evidence: `路径 B agent 推演中断（${code}）`, suggestedFill: "触发自成长 LOOP 诊断缺口并补齐后续推", blocking: true }],
+            findings: [{ gapCode: fail.gapCode, evidence: fail.evidence, suggestedFill: fail.suggestedFill, blocking: true }],
             generatedAt: new Date().toISOString(),
           },
         }],
