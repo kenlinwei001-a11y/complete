@@ -363,7 +363,9 @@ describe("增量 §1.3 第 2 刀 · 服务端 compaction", () => {
   it("循环：折叠不足以回到软阈值 → 请求 compaction；响应 compaction 块后历史被其替代", async () => {
     await t.repos.agents.insert(agentDef({ id: "agt_cmp", key: "cmp_agent" }));
     t.llm.caps = { countTokens: true, compaction: true, maxContextTokens: 8000 };
-    const bigPrompt = `分析任务：${"内容填充。".repeat(4200)}`; // ~21000 chars ≈ 6000 tokens（soft=5600, hard=7200 之间）
+    // WO-HARNESS-PROMPT：共享核追加七要素四段后 system 增 ~934 chars，等量下调 filler 以保持
+    // 总 token 落在 soft(5600)/hard(7200) 之间的同一档（校准常量·压缩语义不变）。
+    const bigPrompt = `分析任务：${"内容填充。".repeat(4013)}`; // ~20065 chars ≈ 5733 tokens（soft=5600, hard=7200 之间）
 
     t.llm.queueAgentTurn(
       (req) => {
