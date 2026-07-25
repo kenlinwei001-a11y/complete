@@ -63,10 +63,25 @@ export interface SolverClient {
   invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload>;
 }
 
+/** WO-DRIL-P1 · 规则投影供给侧（DataCore /a/v1/rules 的只读投影行，R1 REST·R13 派生）。 */
+export interface RuleSummary {
+  key: string;
+  name?: string;
+  description?: string;
+  scopeObjectTypes?: string[];
+  severity?: string;
+  expression?: string;
+}
+
 export interface RuleEngineClient {
   evaluate(ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]>;
   /** B→A 存在性探针（引用闭合）：本租户已发布规则 key 全集（workflow evaluate_rules 校验）。 */
   listRuleKeys(ctx: ToolAuthCtx): Promise<string[]>;
+  /**
+   * WO-DRIL-P1 · 规则元数据全量（key/name/description/scopeObjectTypes/severity）——DRIL rule 投影供给侧。
+   * 可选：mock/精简客户端不实现 → 投影层降级到 listRuleKeys（description 合成）。
+   */
+  listRules?(ctx: ToolAuthCtx): Promise<RuleSummary[]>;
 }
 
 export interface ActionClient {

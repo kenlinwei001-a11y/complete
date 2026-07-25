@@ -452,6 +452,21 @@ export class MockRuleEngineClient implements RuleEngineClient {
   async listRuleKeys(): Promise<string[]> {
     return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
   }
+  // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
+  async listRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
+    const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
+      C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
+      C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
+      C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
+    };
+    const keys = await this.listRuleKeys();
+    return keys.map((key) => {
+      const k = known[key];
+      return k
+        ? { key, name: k.name, description: k.description, scopeObjectTypes: k.scope, severity: k.severity, expression: k.expression }
+        : { key, name: key, description: undefined, scopeObjectTypes: [], severity: "WARN" };
+    });
+  }
 }
 
 export class MockActionClient implements ActionClient {

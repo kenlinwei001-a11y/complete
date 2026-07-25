@@ -182,6 +182,20 @@ class HttpRuleEngineClient implements RuleEngineClient {
     const rules = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/rules`);
     return (rules ?? []).map((r) => r.key);
   }
+  async listRules(ctx: ToolAuthCtx): Promise<import("./clients.js").RuleSummary[]> {
+    // WO-DRIL-P1：只投影已发布规则（可发现纪律）；R1 经 REST 读 A 不 import 源。
+    const rules = await call<
+      { key: string; name?: string; description?: string; scopeObjectTypes?: string[]; severity?: string; expression?: string }[]
+    >(this.baseUrl, ctx, "GET", `/a/v1/rules?status=PUBLISHED`);
+    return (rules ?? []).map((r) => ({
+      key: r.key,
+      name: r.name,
+      description: r.description,
+      scopeObjectTypes: r.scopeObjectTypes,
+      severity: r.severity,
+      expression: r.expression,
+    }));
+  }
 }
 
 class HttpActionClient implements ActionClient {

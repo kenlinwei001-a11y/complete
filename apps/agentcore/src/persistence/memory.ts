@@ -19,8 +19,11 @@ import type {
   ExperienceCaseRow,
   FallbackTraceRow,
   IdempotencyRow,
+  IntelligenceResourceRow,
   QueryEventRow,
   Repos,
+  ResourceQualityScoreRow,
+  ResourceRelationRow,
   TaskPatch,
   ToolCallRow,
 } from "./repos.js";
@@ -57,6 +60,11 @@ export function createMemoryRepos(): Repos {
   const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
+  // WO-DRIL-P1 · Resource Registry 三表（key = tenantId|kind|key，R2 租户隔离）。
+  const intelligenceResources = new Map<string, IntelligenceResourceRow>();
+  const resourceRelations: ResourceRelationRow[] = [];
+  const resourceQualityScores = new Map<string, ResourceQualityScoreRow>();
+  const irKey = (t: string, k: string, key: string) => `${t}|${k}|${key}`;
 
   return {
     packages: {
@@ -351,6 +359,47 @@ export function createMemoryRepos(): Repos {
           .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
           .slice(-200)
           .map(clone);
+      },
+    },
+    intelligenceResources: {
+      async replaceForTenant(tenantId, rows) {
+        for (const [k, r] of intelligenceResources) {
+          if (r.tenantId === tenantId) intelligenceResources.delete(k);
+        }
+        for (const r of rows) intelligenceResources.set(irKey(r.tenantId, r.kind, r.key), clone(r));
+      },
+      async get(tenantId, kind, key) {
+        return clone(intelligenceResources.get(irKey(tenantId, kind, key)));
+      },
+      async listByTenant(tenantId) {
+        return [...intelligenceResources.values()].filter((r) => r.tenantId === tenantId).map(clone);
+      },
+    },
+    resourceRelations: {
+      async replaceForTenant(tenantId, rows) {
+        for (let i = resourceRelations.length - 1; i >= 0; i--) {
+          if (resourceRelations[i]!.tenantId === tenantId) resourceRelations.splice(i, 1);
+        }
+        for (const r of rows) resourceRelations.push(clone(r));
+      },
+      async listFrom(tenantId, fromKind, fromKey) {
+        return resourceRelations
+          .filter((r) => r.tenantId === tenantId && r.fromKind === fromKind && r.fromKey === fromKey)
+          .map(clone);
+      },
+      async listByTenant(tenantId) {
+        return resourceRelations.filter((r) => r.tenantId === tenantId).map(clone);
+      },
+    },
+    resourceQualityScores: {
+      async upsert(row) {
+        resourceQualityScores.set(irKey(row.tenantId, row.kind, row.key), clone(row));
+      },
+      async get(tenantId, kind, key) {
+        return clone(resourceQualityScores.get(irKey(tenantId, kind, key)));
+      },
+      async listByTenant(tenantId) {
+        return [...resourceQualityScores.values()].filter((r) => r.tenantId === tenantId).map(clone);
       },
     },
     credentials: {
