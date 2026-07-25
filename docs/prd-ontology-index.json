@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-24",
+  "generatedAt": "2026-07-25",
   "ontology": {
     "invariants": [
       "R1",
@@ -467,6 +467,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-agent-react-harness.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/agent/prompts.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -580,9 +598,7 @@
         "packages/contracts/src/capacity-factors.ts",
         "packages/contracts/src/solvers.ts"
       ],
-      "brokenArtifacts": [
-        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-catalog-battery-20-scenarios.md": {
       "hasOntologyRef": true,
@@ -689,6 +705,39 @@
         "packages/contracts/src/workspace.ts"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-decision-resource-intelligence-layer.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/mcp-router.ts",
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/agentcore/src/agent/skill-router.ts",
+        "apps/agentcore/src/router/compile-plan.ts",
+        "apps/agentcore/src/router/domain-resolver.ts",
+        "apps/agentcore/test/dril-quality.test.ts",
+        "apps/agentcore/test/dril-registry.test.ts",
+        "apps/agentcore/test/dril-retrieval.test.ts",
+        "apps/agentcore/test/dril-routing-seam.test.ts",
+        "apps/datacore/src/catalog.ts",
+        "packages/contracts/src/intelligence-resource.ts",
+        "packages/contracts/src/resource-descriptor.ts",
+        "packages/contracts/test/intelligence-resource.test.ts",
+        "scripts/check-resource-descriptor.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/test/dril-routing-seam.test.ts",
+        "packages/contracts/test/intelligence-resource.test.ts"
+      ]
     },
     "PRD-demand-pulled-growth-engine.md": {
       "hasOntologyRef": true,
@@ -948,9 +997,7 @@
         "apps/frontend-shell/src/views/sim/GlobalSimView.tsx",
         "packages/contracts/src/sim.ts"
       ],
-      "brokenArtifacts": [
-        "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-global-sim.md": {
       "hasOntologyRef": true,
@@ -1759,6 +1806,12 @@
     "apps/agentcore/src/tools/datacore-http.ts": [
       "PRD-agent-data-generation-tools.md"
     ],
+    "apps/agentcore/src/agent/loop.ts": [
+      "PRD-agent-react-harness.md"
+    ],
+    "apps/agentcore/src/agent/prompts.ts": [
+      "PRD-agent-react-harness.md"
+    ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-quarter-rolling-1to1.md"
@@ -1781,7 +1834,8 @@
       "PRD-discover-real-type-names.md"
     ],
     "apps/datacore/src/catalog.ts": [
-      "PRD-attribution-routing-plan-audit.md"
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-decision-resource-intelligence-layer.md"
     ],
     "apps/datacore/src/solvers/plan.ts": [
       "PRD-attribution-routing-plan-audit.md",
@@ -1871,6 +1925,45 @@
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
+    ],
+    "apps/agentcore/src/agent/mcp-router.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/agent/navigation-slice.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/agent/skill-router.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/router/compile-plan.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/router/domain-resolver.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-quality.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-registry.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-retrieval.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-routing-seam.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/src/intelligence-resource.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/src/resource-descriptor.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/test/intelligence-resource.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "scripts/check-resource-descriptor.mjs": [
+      "PRD-decision-resource-intelligence-layer.md"
     ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"

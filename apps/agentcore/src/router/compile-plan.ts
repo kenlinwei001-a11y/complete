@@ -157,3 +157,42 @@ export function compileSolverPlan(query: string, navSlice: NavigationSlice, slot
   };
   return { ok: true, plan };
 }
+
+// ---------------------------------------------------------------------------
+// WO-DRIL-P3 · Compose 路径消费 DRIL 资源包（PRD §8.2·additive·不改 compileSolverPlan 语义）。
+// ResourceRouter.buildResourcePackage 产出 `{solvers,...}`；这里把其 solver 候选**并入**导航图 solver 集，
+// 再走既有 compileSolverPlan。既有 Phase2-C compose 调用路径（直接 compileSolverPlan）完全不受影响。
+// ---------------------------------------------------------------------------
+
+/** DRIL 资源包中与 Compose 相关的最小结构（结构化解耦·不 runtime 依赖 resource-router）。 */
+export interface ComposableResourcePackage {
+  solvers: { key: string; outputShape?: string[] }[];
+}
+
+/**
+ * 把资源包 solver 候选并入导航图（去重·保留导航图已有 outputShape·additive·纯 R6）。
+ * 资源包新带的 solver 若导航图缺 outputShape 则用包内 shape（缺省 []·仍可静态单步入选）。
+ */
+export function mergeResourcePackage(navSlice: NavigationSlice, pkg: ComposableResourcePackage): NavigationSlice {
+  const byKey = new Map(navSlice.solvers.map((s) => [s.key, s] as const));
+  for (const s of pkg.solvers) {
+    if (!byKey.has(s.key)) {
+      byKey.set(s.key, { key: s.key, capability: `${s.key} 能力`, outputShape: s.outputShape ?? [] });
+    }
+  }
+  const solvers = [...byKey.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return { ...navSlice, solvers, nonEmpty: solvers.length > 0 };
+}
+
+/**
+ * DRIL 资源包 → Compose 计划：并入包再走 compileSolverPlan（§8.2 主收益场景）。
+ * 与直接 compileSolverPlan 同签名扩展一个 pkg 参数·同 R6 确定性（同 query/nav/pkg/slots → 同结果）。
+ */
+export function compileWithResourcePackage(
+  query: string,
+  navSlice: NavigationSlice,
+  pkg: ComposableResourcePackage,
+  slots: CompileSlots,
+): ComposeCompileResult {
+  return compileSolverPlan(query, mergeResourcePackage(navSlice, pkg), slots);
+}
