@@ -20,6 +20,21 @@
 - **有 provider**（真开放题）→ 照走 runPathB（字节兼容）。
 > 注：`preferDeterministicSolver(domainResolve(...))`（:406）与场景卡 `scenarioIntentKey` 绑定（:357）已是确定性入口——**产出②要修的是让它们真命中**（你实测场景卡绑定仍落 path-B = 绑定意图的槽位没从上下文满足 or 该意图无对口确定性 solver → 未被 :357/:406 拦住）。dev 需查这两处为何没拦下"4680 加 20%"类问句。
 
+## 实现配方（审核方已挖到近乎机械·test-safe·dev 照做即可）
+
+**① 重要发现（改变优先级）**：`roleModel`（providers.ts:409）**已对 explicit provider 做 keyless 探测 + 无凭据回落到租户已绑定 LLM**（`role-model-fallback.test.ts` #4 SEAM 守）。→ **绑定了 Kimi 就该经此回落生效**（Kimi 实测证实 WITH Kimi 能跑）。**产出① wiring 基本已在**——真正要修的是**纯"无任何 LLM"崩**（产出③）+ **绑定意图仍落 path-B**（产出②）。
+
+**② 检测"真无 provider"的干净信号**：`LlmSettings` 私有 `explicitProviderUsable`/`cfgHasCredential`（providers.ts:474-505·查 `ANTHROPIC_API_KEY`/credentialRef/apiKeyEnv·**从不抛**）。加 public `async providerAvailable(tenantId, role, explicit?)` 复用之（先按 roleModel 同序解析 spec 再判凭据）。
+
+**③ 拦截点必须"错误态"不能"预检"（test-safe 关键·踩这里 500 测试红）**：
+- 测试用 **working mock LLM**：classify 成功、但**无真凭据**（`providerAvailable=false`）。**预检会误把 500 个 mock 测试降级** → 严禁预检。
+- 正解：仅当 classify **真返回 undefined**（orchestrator.ts:445·3 次重试全失败·**mock 场景 classify 成功不会 undefined**）**且** `providerAvailable(agent)=false` → 走诚实降级；否则照旧 runPathB。
+- 备选：在 `failTask`（:1549-1574·"推演中断（${code}）"来源）判 code 属"无 provider 类" → 出 **COMPLETED 诚实降级**而非 FAILED（改 :1555 分支）。
+
+**④ 降级答案**（COMPLETED·非 FAILED/INTERNAL_ERROR）：`Answer{trustLevel:"AGENT_EXPLORATORY", provenance:[], blocks:[{type:"text", markdown:"当前未接入可用 LLM，无法对自由问句做开放推理。请在 设置→LLM 绑定提供商，或改用场景卡/确定性入口提问。"}]}`；status=COMPLETED。
+
+**⑤ 产出②（绑定意图落 path-B）另诊**：`roleModel` 回落已处理"已绑定 LLM"；你实测**场景卡绑定仍落 path-B** = `:357`（scenarioIntentKey 绑定要求槽位从上下文满足·没满足则不 bind）或 `:406`（`preferDeterministicSolver(domainResolve(...))` 对"加 20% 六周能不能接"无对口确定性 solver/未命中 `RE_ATP`）。dev 需查 `domain-resolver.ts`/`ceo-route.ts` 对"能不能接/加 X%/交期"的模式覆盖——**扩确定性正则命中 → 无 LLM 也走 path-A**。
+
 ## 🚦 文件边界（只碰这些）
 - `apps/agentcore/src/router/orchestrator.ts`
 - `apps/agentcore/src/router/domain-resolver.ts`
