@@ -18,7 +18,18 @@ import type {
   WorkflowDefinition,
 } from "@platform/contracts";
 
-import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
+import type {
+  CredentialRow,
+  FallbackTraceRow,
+  IntelligenceResourceRow,
+  QueryEventRow,
+  Repos,
+  ResourceQualityScoreRow,
+  ResourceRelationRow,
+  TaskPatch,
+  ToolCallRow,
+} from "./repos.js";
+import type { IntelligenceResource, ResourceQuality } from "@platform/contracts";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
 
@@ -549,6 +560,85 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         }));
       },
     },
+    // WO-DRIL-P1 · Resource Registry 三表（§6.2·R2 PK 含 tenant_id·R13 派生投影幂等换新）。
+    intelligenceResources: {
+      async replaceForTenant(tenantId, rows) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(`DELETE FROM intelligence_resources WHERE tenant_id = $1`, [tenantId]);
+          for (const r of rows) {
+            await client.query(
+              `INSERT INTO intelligence_resources(tenant_id, kind, key, source, resource, quality, indexed_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [r.tenantId, r.kind, r.key, r.source, JSON.stringify(r.resource), r.quality ? JSON.stringify(r.quality) : null, r.indexedAt, r.updatedAt],
+            );
+          }
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      },
+      async get(tenantId, kind, key) {
+        const r = await q(`SELECT * FROM intelligence_resources WHERE tenant_id = $1 AND kind = $2 AND key = $3`, [tenantId, kind, key]);
+        return r.rows[0] ? rowToIntelligenceResource(r.rows[0]) : undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM intelligence_resources WHERE tenant_id = $1 ORDER BY kind, key`, [tenantId]);
+        return r.rows.map(rowToIntelligenceResource);
+      },
+    },
+    resourceRelations: {
+      async replaceForTenant(tenantId, rows) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(`DELETE FROM resource_relations WHERE tenant_id = $1`, [tenantId]);
+          for (const r of rows) {
+            await client.query(
+              `INSERT INTO resource_relations(tenant_id, from_kind, from_key, rel_type, to_kind, to_key, meta)
+               VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+              [r.tenantId, r.fromKind, r.fromKey, r.relType, r.toKind, r.toKey, r.meta ? JSON.stringify(r.meta) : null],
+            );
+          }
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      },
+      async listFrom(tenantId, fromKind, fromKey) {
+        const r = await q(`SELECT * FROM resource_relations WHERE tenant_id = $1 AND from_kind = $2 AND from_key = $3`, [tenantId, fromKind, fromKey]);
+        return r.rows.map(rowToResourceRelation);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM resource_relations WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map(rowToResourceRelation);
+      },
+    },
+    resourceQualityScores: {
+      async upsert(row) {
+        await q(
+          `INSERT INTO resource_quality_scores(tenant_id, kind, key, success_rate, usage_count, avg_latency_ms, last_probe_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (tenant_id, kind, key) DO UPDATE SET success_rate = $4, usage_count = $5, avg_latency_ms = $6, last_probe_at = $7`,
+          [row.tenantId, row.kind, row.key, row.successRate ?? null, row.usageCount ?? null, row.avgLatencyMs ?? null, row.lastProbeAt ?? null],
+        );
+      },
+      async get(tenantId, kind, key) {
+        const r = await q(`SELECT * FROM resource_quality_scores WHERE tenant_id = $1 AND kind = $2 AND key = $3`, [tenantId, kind, key]);
+        return r.rows[0] ? rowToQualityScore(r.rows[0]) : undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM resource_quality_scores WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map(rowToQualityScore);
+      },
+    },
     async close() {
       await pool.end();
     },
@@ -614,6 +704,43 @@ function rowToTask(row: Record<string, unknown>): QueryTask {
     resolvedRefs: (row.resolved_refs as QueryTask["resolvedRefs"]) ?? undefined,
     createdAt: new Date(row.created_at as string).toISOString(),
     completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : undefined,
+  };
+}
+
+function rowToIntelligenceResource(x: Record<string, unknown>): IntelligenceResourceRow {
+  return {
+    tenantId: x.tenant_id as string,
+    kind: x.kind as string,
+    key: x.key as string,
+    source: x.source as string,
+    resource: x.resource as IntelligenceResource,
+    quality: (x.quality ?? undefined) as ResourceQuality | undefined,
+    indexedAt: new Date(x.indexed_at as string | Date).toISOString(),
+    updatedAt: new Date(x.updated_at as string | Date).toISOString(),
+  };
+}
+
+function rowToResourceRelation(x: Record<string, unknown>): ResourceRelationRow {
+  return {
+    tenantId: x.tenant_id as string,
+    fromKind: x.from_kind as string,
+    fromKey: x.from_key as string,
+    relType: x.rel_type as string,
+    toKind: x.to_kind as string,
+    toKey: x.to_key as string,
+    meta: (x.meta ?? undefined) as Record<string, unknown> | undefined,
+  };
+}
+
+function rowToQualityScore(x: Record<string, unknown>): ResourceQualityScoreRow {
+  return {
+    tenantId: x.tenant_id as string,
+    kind: x.kind as string,
+    key: x.key as string,
+    successRate: (x.success_rate ?? undefined) as number | undefined,
+    usageCount: (x.usage_count ?? undefined) as number | undefined,
+    avgLatencyMs: (x.avg_latency_ms ?? undefined) as number | undefined,
+    lastProbeAt: x.last_probe_at ? new Date(x.last_probe_at as string | Date).toISOString() : undefined,
   };
 }
 

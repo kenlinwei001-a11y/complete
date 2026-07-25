@@ -53,6 +53,7 @@ export * from "./warehouse.js"; // WO-WAREHOUSE-CUSTLOC · 仓库 Warehouse + �
 export * from "./inventory.js"; // WO-INVENTORY-3TIER · 库存三层闭环 FinishedGoodsInventory + InventoryTxn（WIP→完工入库→成品库存·勾稽 R13·确定性 R6）
 export * from "./atp-promise.js"; // WO-ATP-PROMISE · 订单承诺 ATP/CTP（OrderPromise + atp_check：能不能接/何时交·净读三源·SEAM 改产能/库存→承诺变·R6）
 export * from "./resource-descriptor.js"; // WO-RESOURCE-DESCRIPTOR · 统一资源描述契约 + 发现门（全5池 description 覆盖·additive）
+export * from "./intelligence-resource.js"; // WO-DRIL-P1 · Decision Resource Intelligence Layer 契约（9 类 IntelligenceResource + per-kind + 质量分公式·R13·R14·R6）
 export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-semantics 口径语义契约（属性口径/派生公式/规则表达式·单一真值在 A·R1 只读投影）
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）

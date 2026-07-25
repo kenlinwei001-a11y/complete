@@ -385,6 +385,29 @@ async function cmdTypes(args) {
   for (const s of stats.filter((x) => !flags.domain || x.domain === flags.domain)) console.log(`  ${C.cyan(s.key)} ${C.dim("[" + s.domain + "]")} 属性${s.propCount} 派生${s.derivedCount} 物化${s.count}`);
 }
 
+// resources：WO-DRIL-P1 · Resource Registry 一次发现全量资源（R15 CLI 对等）。
+async function cmdResources(args) {
+  const { flags, pos } = parseFlags(args);
+  // 详情：resources <kind> <key>
+  if (pos.length >= 2) {
+    const r = await http(`${AC}/b/v1/resources/${encodeURIComponent(pos[0])}/${encodeURIComponent(pos[1])}`, { headers: authHeader() });
+    return console.log(flags.json ? JSON.stringify(r) : `${C.cyan(r.kind + "/" + r.key)} ${C.bold(r.label)}\n  ${C.dim(r.description)}`);
+  }
+  const qs = [];
+  if (flags.kind) qs.push(`kind=${encodeURIComponent(flags.kind)}`);
+  if (flags.tag) qs.push(`tag=${encodeURIComponent(flags.tag)}`);
+  const r = await http(`${AC}/b/v1/resources${qs.length ? "?" + qs.join("&") : ""}`, { headers: authHeader() });
+  const items = r.items ?? [];
+  if (flags.json) return console.log(JSON.stringify(items));
+  const byKind = {};
+  for (const it of items) (byKind[it.kind] ??= []).push(it);
+  console.log(C.bold(`智能资源注册表（${r.total ?? items.length}，${Object.keys(byKind).length} 类）`));
+  for (const kind of Object.keys(byKind).sort()) {
+    console.log(C.yellow(`  [${kind}] ${byKind[kind].length}`));
+    for (const it of byKind[kind]) console.log(`    ${C.cyan(it.key)} ${it.label}  ${C.dim((it.description ?? "").slice(0, 60))}`);
+  }
+}
+
 // generate：A18.2 LLM 临时求解器生成（缺求解器→生成+沙箱跑通+注册 PROVISIONAL）。
 async function cmdGenerate(args) {
   const { flags, pos } = parseFlags(args);
@@ -466,12 +489,13 @@ function help() {
   generate <key> "<意图>"          LLM 临时求解器（沙箱跑通注册 PROVISIONAL，A18.2）
   synth <industry> [--scale --seed] 合成数据作业
   types [--domain d]               对象/类型浏览（A4）
+  resources [--kind k --tag t] | <kind> <key>  智能资源注册表：一次发现全量资源（DRIL·R15 对等）
   scenarios / approve <id> / whoami / tickets / claim / grow
 环境：DATACORE_URL / AGENTCORE_URL / PACKAGE_ID · --json 供 agent 解析`);
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, "ontology-query": cmdOntologyQuery, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, "ontology-query": cmdOntologyQuery, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, resources: cmdResources, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();

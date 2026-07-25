@@ -7,11 +7,13 @@ import type {
   EvalSuite,
   ExecutionPlan,
   FallbackTrace,
+  IntelligenceResource,
   IntentDefinition,
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
   QueryTask,
+  ResourceQuality,
   ScenarioPackage,
   SceneEntryConfig,
   Scenario,
@@ -82,6 +84,43 @@ export interface IdempotencyRow {
   key: string; // tenantId|userId|Idempotency-Key
   taskId: string;
   createdAt: string;
+}
+
+/**
+ * WO-DRIL-P1 · Resource Registry 三表行（§6.2·R2 PK 含 tenant_id·R13 派生投影非新真值源）。
+ * intelligence_resources：投影后的统一 IntelligenceResource（source 记来源模块）。
+ */
+export interface IntelligenceResourceRow {
+  tenantId: string;
+  kind: string;
+  key: string;
+  source: string; // datacore / agentcore / mcp / seed / derived
+  resource: IntelligenceResource;
+  quality?: ResourceQuality;
+  indexedAt: string;
+  updatedAt: string;
+}
+
+/** resource_relations：资源间关系（reads/scopes/invokes/binds/includes）。 */
+export interface ResourceRelationRow {
+  tenantId: string;
+  fromKind: string;
+  fromKey: string;
+  relType: string;
+  toKind: string;
+  toKey: string;
+  meta?: Record<string, unknown>;
+}
+
+/** resource_quality_scores：运行时质量分（EWMA 更新，P3 落地；P1 仅建表 + 读写通路）。 */
+export interface ResourceQualityScoreRow {
+  tenantId: string;
+  kind: string;
+  key: string;
+  successRate?: number;
+  usageCount?: number;
+  avgLatencyMs?: number;
+  lastProbeAt?: string;
 }
 
 export interface TaskPatch {
@@ -241,6 +280,26 @@ export interface Repos {
   domainEvents: {
     append(e: DomainEventRow): Promise<void>;
     listSince(tenantId: string, since?: string): Promise<DomainEventRow[]>;
+  };
+  /**
+   * WO-DRIL-P1 · Resource Registry（§6·R2·R13 派生投影）。三表统一读写通路，供
+   * ResourceRegistryService 在请求态全量重投影（replaceForTenant 幂等换新）后从表读回。
+   */
+  intelligenceResources: {
+    /** 全量重投影：删除本租户旧行并落新行（派生投影幂等换新，R13）。 */
+    replaceForTenant(tenantId: string, rows: IntelligenceResourceRow[]): Promise<void>;
+    get(tenantId: string, kind: string, key: string): Promise<IntelligenceResourceRow | undefined>;
+    listByTenant(tenantId: string): Promise<IntelligenceResourceRow[]>;
+  };
+  resourceRelations: {
+    replaceForTenant(tenantId: string, rows: ResourceRelationRow[]): Promise<void>;
+    listFrom(tenantId: string, fromKind: string, fromKey: string): Promise<ResourceRelationRow[]>;
+    listByTenant(tenantId: string): Promise<ResourceRelationRow[]>;
+  };
+  resourceQualityScores: {
+    upsert(row: ResourceQualityScoreRow): Promise<void>;
+    get(tenantId: string, kind: string, key: string): Promise<ResourceQualityScoreRow | undefined>;
+    listByTenant(tenantId: string): Promise<ResourceQualityScoreRow[]>;
   };
   close(): Promise<void>;
 }

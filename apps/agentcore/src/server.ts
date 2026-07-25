@@ -64,6 +64,7 @@ import { lintSkill } from "./skill-lint.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
+import { ResourceRegistryService } from "./dril/resource-registry.js";
 
 /** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
 function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
@@ -808,6 +809,34 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     try { items = (await deps.dataCore.catalog.solverRegistry(a, query)).items; } catch { items = []; }
     return { server: SOLVERS_MCP_SERVER_INFO, tools: buildSolverMcpTools(items), count: items.length };
   });
+
+  // ---------------------------------------------------------------------
+  // WO-DRIL-P1 · Resource Registry（Decision Resource Intelligence Layer §6.4）
+  // 一次发现全量资源（7+ 类统一 IntelligenceResource）。派生投影 R13·entitlement 先于 authz R3·租户隔离 R2。
+  // ---------------------------------------------------------------------
+  const resourceRegistry = new ResourceRegistryService({
+    repos: deps.repos,
+    dataCore: deps.dataCore,
+    features: deps.features,
+  });
+  const listResources = async (req: FastifyRequest, reply: import("fastify").FastifyReply) => {
+    const a = await auth(req);
+    const { kind, tag } = req.query as { kind?: string; tag?: string };
+    const items = await resourceRegistry.list(a, { kind, tag });
+    reply.header("x-total-count", String(items.length));
+    return { items, total: items.length };
+  };
+  const getResource = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const res = await resourceRegistry.get(a, kind, key);
+    if (!res) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    return res;
+  };
+  app.get("/b/v1/resources", listResources);
+  app.get("/api/v1/resources", listResources);
+  app.get("/b/v1/resources/:kind/:key", getResource);
+  app.get("/api/v1/resources/:kind/:key", getResource);
 
   app.get("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);

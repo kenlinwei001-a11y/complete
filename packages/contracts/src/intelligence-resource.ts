@@ -1,0 +1,277 @@
+import { z } from "zod";
+import { RESOURCE_KINDS } from "./resource-descriptor.js";
+
+/**
+ * WO-DRIL-P1 · Decision Resource Intelligence Layer 契约地基（PRD-decision-resource-intelligence-layer §5）。
+ *
+ * 把 `ResourceDescriptor`（6 类扁平描述）升级为 `IntelligenceResource`（9 类·带业务语义/输入输出规格/
+ * 五级标签/质量分/关系/治理），并给出 per-kind 扩展。**派生投影（R13）**：注册表非新真值源，各 kind
+ * 元数据投影自各自模块（solver/slice/rule←DataCore·workflow/intent/skill/agent←AgentCore·mcp_tool←MCP）。
+ *
+ * - R1 契约在 `@platform/contracts`（B 经 REST 读 A·不 import A 源）。
+ * - R14 零业务常数：L4 对象标签由已发布 OntologyType 派生（本契约不内联任何业务对象名字面量）。
+ * - R6 确定性：质量分公式（computeQualityScore）与 EWMA 更新（ewmaUpdate）为纯函数。
+ *
+ * 兼容性：基类字段 kind/key/label/description/answersQuestions/tags/argHints/domain/featureKey 与
+ * `ResourceDescriptorSchema` 一一对应——任一 ResourceDescriptor 均可无损升格为 IntelligenceResource。
+ */
+
+/** 扩展资源类别：在发现 6 池（solver/slice/workflow/intent/field/mcp_tool）之上新增 agent/skill/rule → 9 类。 */
+export const RESOURCE_KINDS_EXTENDED = [...RESOURCE_KINDS, "agent", "skill", "rule"] as const;
+export type ResourceKindExtended = (typeof RESOURCE_KINDS_EXTENDED)[number];
+export const ResourceKindExtendedSchema = z.enum(RESOURCE_KINDS_EXTENDED);
+
+/** 五级标签体系（§5.2）：L1 业务域 / L2 决策类型 / L3 业务场景 / L4 对象（从本体派生）/ L5 算法。 */
+export const TieredTagsSchema = z.object({
+  l1_domain: z.array(z.string()).default([]),
+  l2_decisionType: z.array(z.string()).default([]),
+  l3_scenario: z.array(z.string()).default([]),
+  l4_object: z.array(z.string()).default([]),
+  l5_algorithm: z.array(z.string()).default([]),
+});
+export type TieredTags = z.infer<typeof TieredTagsSchema>;
+
+/** 输入/输出规格（§5.3）：读写的本体对象类型/链路/属性口径 + 输出顶层字段。 */
+export const ResourceInputOutputSchema = z.object({
+  objectTypes: z.array(z.string()).optional(),
+  linkKeys: z.array(z.string()).optional(),
+  requiredProps: z.record(z.string(), z.string()).optional(),
+  shape: z.array(z.string()).optional(),
+  example: z.unknown().optional(),
+});
+export type ResourceInputOutput = z.infer<typeof ResourceInputOutputSchema>;
+
+/** Resource Quality Score（§5.4）：运行时探针自动更新，用于路由排序。 */
+export const ResourceQualitySchema = z.object({
+  accuracy: z.number().min(0).max(1).optional(),
+  successRate: z.number().min(0).max(1).optional(),
+  usageCount: z.number().int().min(0).optional(),
+  avgLatencyMs: z.number().int().min(0).optional(),
+  lastUpdated: z.string().optional(),
+  owner: z.string().optional(),
+  approval: z.enum(["DRAFT", "REVIEWED", "APPROVED"]).optional(),
+  trustLevel: z.enum(["EXPERIMENTAL", "PRODUCTION", "GOVERNED"]).optional(),
+});
+export type ResourceQuality = z.infer<typeof ResourceQualitySchema>;
+
+/** 资源关系（§6.2 resource_relations）：reads/scopes/invokes/binds/includes。 */
+export const RESOURCE_RELATION_TYPES = ["reads", "scopes", "invokes", "binds", "includes"] as const;
+export type ResourceRelationType = (typeof RESOURCE_RELATION_TYPES)[number];
+export const ResourceRelationSchema = z.object({
+  relType: z.enum(RESOURCE_RELATION_TYPES),
+  toKind: ResourceKindExtendedSchema,
+  toKey: z.string().min(1),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});
+export type ResourceRelation = z.infer<typeof ResourceRelationSchema>;
+
+/** 运行时特征（成本/时延/是否需 sidecar 等，供 cost 打分）。 */
+export const ResourceRuntimeSchema = z.object({
+  isDeterministic: z.boolean().optional(),
+  requiresSidecar: z.boolean().optional(),
+  avgLatencyMs: z.number().int().min(0).optional(),
+  costHint: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+});
+export type ResourceRuntime = z.infer<typeof ResourceRuntimeSchema>;
+
+/** 治理元数据（发布状态/责任人/版本），派生自各模块的 status/version/owner。 */
+export const ResourceGovernanceSchema = z.object({
+  status: z.string().optional(),
+  version: z.number().int().optional(),
+  owner: z.string().optional(),
+});
+export type ResourceGovernance = z.infer<typeof ResourceGovernanceSchema>;
+
+/**
+ * 基类字段（§5.1）。以对象字面量形式定义，供通用 schema 与 per-kind 扩展共享（避免重复声明）。
+ * per-kind schema 用 `.extend({ kind: z.literal(...) , ...extra })` 覆写 kind 并加专属字段。
+ */
+const intelligenceResourceBaseShape = {
+  kind: ResourceKindExtendedSchema,
+  key: z.string().min(1),
+  label: z.string().min(1),
+  /** LLM 可读描述——**非空是发布/投影硬门**（dril-registry:check 无空描述资源）。 */
+  description: z.string().min(1),
+  answersQuestions: z.array(z.string()).optional(),
+  /** 适合的问句（正向）。 */
+  suitableQuestions: z.array(z.string()).optional(),
+  /** 不适合的问句（负向·防误选）。 */
+  notSuitableQuestions: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  argHints: z.record(z.string(), z.string()).optional(),
+  domain: z.string().optional(),
+  featureKey: z.string().optional(),
+  tieredTags: TieredTagsSchema.optional(),
+  /** 一句话能力（给 LLM 选型）。 */
+  capability: z.string().optional(),
+  inputSpec: ResourceInputOutputSchema.optional(),
+  outputSpec: ResourceInputOutputSchema.optional(),
+  quality: ResourceQualitySchema.optional(),
+  relations: z.array(ResourceRelationSchema).optional(),
+  runtime: ResourceRuntimeSchema.optional(),
+  governance: ResourceGovernanceSchema.optional(),
+} as const;
+
+/** 通用基类 schema（kind 为 9 类枚举）——用于泛型持久化/读取。 */
+export const IntelligenceResourceSchema = z.object(intelligenceResourceBaseShape);
+export type IntelligenceResourceBase = z.infer<typeof IntelligenceResourceSchema>;
+
+// --- per-kind 扩展（§5.5）：discriminated union 成员，validate 时保留 per-kind 字段（非 strip）。 ---
+
+export const SolverResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("solver"),
+  algorithm: z.string().optional(),
+  complexity: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+  constraintSupport: z.array(z.string()).optional(),
+  applicableScenarios: z.array(z.string()).optional(),
+  isDeterministic: z.boolean().default(true),
+  requiresSidecar: z.boolean().default(false),
+});
+export type SolverResource = z.infer<typeof SolverResourceSchema>;
+
+export const SliceResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("slice"),
+  rootType: z.string().default(""),
+  includedTypes: z.array(z.string()).default([]),
+  includedLinkKeys: z.array(z.string()).default([]),
+  requiredAttributes: z.array(z.string()).optional(),
+  associatedRules: z.array(z.string()).optional(),
+  associatedSolvers: z.array(z.string()).optional(),
+  scenario: z.string().optional(),
+});
+export type SliceResource = z.infer<typeof SliceResourceSchema>;
+
+export const RuleResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("rule"),
+  scopeObjectTypes: z.array(z.string()).default([]),
+  severity: z.enum(["BLOCK", "WARN", "ADVISORY", "INFO"]).optional(),
+  expressionSummary: z.string().optional(),
+  boundSolvers: z.array(z.string()).optional(),
+});
+export type RuleResource = z.infer<typeof RuleResourceSchema>;
+
+export const SkillResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("skill"),
+  boundAgents: z.array(z.string()).optional(),
+  attachments: z.array(z.string()).optional(),
+  triggerPatterns: z.array(z.string()).optional(),
+});
+export type SkillResource = z.infer<typeof SkillResourceSchema>;
+
+export const WorkflowResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("workflow"),
+  steps: z.array(z.object({ kind: z.string(), ref: z.string().optional() })).optional(),
+});
+export type WorkflowResource = z.infer<typeof WorkflowResourceSchema>;
+
+export const AgentResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("agent"),
+  scopeObjectTypes: z.array(z.string()).optional(),
+  toolNames: z.array(z.string()).optional(),
+  role: z.string().optional(),
+  boundSkills: z.array(z.string()).optional(),
+});
+export type AgentResource = z.infer<typeof AgentResourceSchema>;
+
+export const McpResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("mcp_tool"),
+  serverName: z.string().optional(),
+  toolName: z.string().optional(),
+  transportKind: z.string().optional(),
+});
+export type McpResource = z.infer<typeof McpResourceSchema>;
+
+export const IntentResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("intent"),
+  boundPlanRef: z.string().optional(),
+  boundScenarios: z.array(z.string()).optional(),
+  exampleQueries: z.array(z.string()).optional(),
+  riskLevel: z.string().optional(),
+});
+export type IntentResource = z.infer<typeof IntentResourceSchema>;
+
+export const FieldResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("field"),
+  objectType: z.string().optional(),
+  propKey: z.string().optional(),
+});
+export type FieldResource = z.infer<typeof FieldResourceSchema>;
+
+/** 全 9 kind discriminated union——投影校验目标（保留 per-kind 字段）。 */
+export const AnyIntelligenceResourceSchema = z.discriminatedUnion("kind", [
+  SolverResourceSchema,
+  SliceResourceSchema,
+  RuleResourceSchema,
+  SkillResourceSchema,
+  WorkflowResourceSchema,
+  AgentResourceSchema,
+  McpResourceSchema,
+  IntentResourceSchema,
+  FieldResourceSchema,
+]);
+export type IntelligenceResource = z.infer<typeof AnyIntelligenceResourceSchema>;
+
+/** 投影校验失败信息（结构同 resource-descriptor DescriptorViolation）。 */
+export interface ResourceViolation {
+  index: number;
+  kind?: string;
+  key?: string;
+  reason: string;
+}
+
+/**
+ * dril-registry:check 核心校验（纯函数·R6）：对一组投影候选逐条跑 AnyIntelligenceResourceSchema。
+ * 任一条不合法（尤以 description 空）→ 记一条 violation。空数组 = 全池达标（门绿）。
+ */
+export function findInvalidResources(candidates: unknown[]): ResourceViolation[] {
+  const out: ResourceViolation[] = [];
+  candidates.forEach((c, index) => {
+    const parsed = AnyIntelligenceResourceSchema.safeParse(c);
+    if (!parsed.success) {
+      const rec = (c ?? {}) as Record<string, unknown>;
+      const reason = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+      out.push({
+        index,
+        ...(typeof rec.kind === "string" ? { kind: rec.kind } : {}),
+        ...(typeof rec.key === "string" ? { key: rec.key } : {}),
+        reason,
+      });
+    }
+  });
+  return out;
+}
+
+/**
+ * Resource Quality Score 复合公式（§5.4·纯函数·R6）：同输入同输出。
+ * Q = 0.30·successRate + 0.25·accuracy + 0.20·exp(-lat/60000) + 0.15·log10(usage+1)/5(封顶1) + 0.10·approvalWeight。
+ */
+export function computeQualityScore(q: ResourceQuality): number {
+  const successRate = q.successRate ?? 0;
+  const accuracy = q.accuracy ?? 0;
+  const lat = q.avgLatencyMs ?? 0;
+  const usage = q.usageCount ?? 0;
+  const approvalWeight = q.approval === "APPROVED" ? 1.0 : q.approval === "REVIEWED" ? 0.8 : 0.5;
+  const usageTerm = Math.min(1, Math.log10(usage + 1) / 5);
+  return (
+    0.3 * successRate +
+    0.25 * accuracy +
+    0.2 * Math.exp(-lat / 60000) +
+    0.15 * usageTerm +
+    0.1 * approvalWeight
+  );
+}
+
+/** 运行时质量分确定性 EWMA 更新（§5.4·纯函数·R6·alpha 默认 0.1）。 */
+export function ewmaUpdate(
+  prev: { successRate?: number; usageCount?: number; avgLatencyMs?: number },
+  observed: { success: boolean; latencyMs: number },
+  alpha = 0.1,
+): { successRate: number; usageCount: number; avgLatencyMs: number } {
+  const prevSuccess = prev.successRate ?? (observed.success ? 1 : 0);
+  const prevLatency = prev.avgLatencyMs ?? observed.latencyMs;
+  return {
+    successRate: alpha * (observed.success ? 1 : 0) + (1 - alpha) * prevSuccess,
+    usageCount: (prev.usageCount ?? 0) + 1,
+    avgLatencyMs: alpha * observed.latencyMs + (1 - alpha) * prevLatency,
+  };
+}
