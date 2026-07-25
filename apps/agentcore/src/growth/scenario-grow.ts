@@ -9,7 +9,7 @@ import type {
 import type { AppDeps } from "../deps.js";
 import type { RequestAuth } from "../auth.js";
 import { classifyGap, FILL } from "./probe.js";
-import { scaffoldDraftPlan, questionSlug } from "./scaffold.js";
+import { scaffoldDraftPlan, scaffoldDraftIntent, questionSlug } from "./scaffold.js";
 import { decideDataGap, groundingVocab } from "./data-boundary.js";
 
 /**
@@ -63,9 +63,11 @@ export function buildGrowthLoopWiring(
       const typeKey = body.context.selectedObjects?.[0]?.objectType || body.context.view || "Object";
       const decision = decideDataGap(body.query, ctxText, groundingVocab(), { typeKey });
       if (decision.mode === "HARD") {
+        // KILL-MOCK：真实业务实体（含逐日时序）→ 绝不静默合成；出精确 DataRequest 走真人正门（连接器/上传→Action 审批）。
+        const tsNote = decision.timeseries ? "·逐日时序（真实体时序绝不伪造）" : "";
         result = {
           gapCode: gap.gapCode,
-          action: `HARD 缺真实业务数据（${decision.entities.join("、")}）→ 真人正门导入，不静默合成`,
+          action: `HARD 缺真实业务数据（${decision.entities.join("、")}${tsNote}）→ 真人正门导入，不静默合成`,
           advanced: false,
           fillMode: "HARD",
           dataRequest: decision.dataRequest!,
@@ -73,11 +75,33 @@ export function buildGrowthLoopWiring(
         };
       } else {
         try {
-          await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });
-          result = { gapCode: gap.gapCode, action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)", advanced: true, fillMode: "SOFT" };
+          // SOFT（无具体实体）：经管线确定性合成 PROVISIONAL。时序诉求 → 合成"时间维度"序列（ts+value），标"未接实测"。
+          const fields = decision.timeseries ? ["id", "ts", "value"] : ["id", "name", "value"];
+          await deps.dataCore.ontology.fillData(a, { typeKey, fields, rows: 6, seed: 42 });
+          result = {
+            gapCode: gap.gapCode,
+            action: decision.timeseries
+              ? "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL 逐日时序（未接实测，业务真值待接实测覆盖）"
+              : "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)",
+            advanced: true,
+            fillMode: "SOFT",
+          };
         } catch {
           result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, fillMode: "SOFT", ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
         }
+      }
+    } else if (gap.gapCode === "NO_INTENT") {
+      // 第一弱点自补（命门起点·镜像 NO_PLAN 口径）：诊断出 NO_INTENT 不再落 else 骨架工单（advanced:false），
+      // 而是 scaffold DRAFT 意图（绑 generic_inference 兜底计划）→ **首遇 advanced:true**（DRAFT 产物就绪即前进）。
+      // DRAFT 未发布（R4 墙·同 O9）→ 问句暂不可答 → 同轮开票有界收敛（施工=审批发布/补槽，非从零）。二遇（幂等）→ advanced:false。
+      if (!scaffoldedByGap.has(gap.gapCode)) {
+        const drafts = await scaffoldDraftIntent(deps, a.tenantId, body.query);
+        scaffoldedByGap.set(gap.gapCode, drafts);
+        result = drafts.length > 0
+          ? { gapCode: gap.gapCode, action: "自动 scaffold DRAFT 意图（绑 generic_inference 兜底计划）→ 待审批发布（R4，DRAFT 未发布仍缺→有界收敛开票）", advanced: true, scaffolded: drafts, ticket: { gapCode: gap.gapCode, detail: gap.evidence } }
+          : { gapCode: gap.gapCode, action: `${FILL[gap.gapCode]}（无法自动 scaffold→骨架工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+      } else {
+        result = { gapCode: gap.gapCode, action: "DRAFT 意图骨架已就绪，待审批发布/补槽", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
       }
     } else if (SCAFFOLDABLE.has(gap.gapCode)) {
       if (!scaffoldedByGap.has(gap.gapCode)) {

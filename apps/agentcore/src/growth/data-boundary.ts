@@ -21,8 +21,28 @@ export interface DataGapDecision {
   mode: "HARD" | "SOFT";
   /** 命中的真实业务实体（HARD 依据；空=SOFT）。 */
   entities: string[];
+  /**
+   * DF.9-TS 时序维度接地：问句是否要一条"时间维度序列"（逐日/时序/未来N天/趋势）——
+   * 如"设备 OEE 逐日""物流时长未来30天时序"。决定补法的**形状**：
+   *  - HARD（真实体）：DataRequest 声明须补**真实逐日时序**（时间戳+度量列），走真人正门（连接器/上传），**绝不伪造真实体时序**；
+   *  - SOFT（无具体实体）：经管线确定性合成 **PROVISIONAL 时序**（标"未接实测"），供探索，业务真值由后续接实测覆盖。
+   */
+  timeseries: boolean;
   /** HARD 时给出的精确补数请求（走真人正门）。 */
   dataRequest?: DataRequest;
+}
+
+/**
+ * 时序维度探测（纯函数·确定性 R6·零业务常数 R14——仅语言标记，不写死天数/度量阈值）。
+ * 命中"逐日/时序/未来/趋势/序列/每日…"等**时间维度**措辞即判为时序诉求（如 OEE/物流时长的逐日推演）。
+ */
+const TS_MARKERS = [
+  "时序", "逐日", "逐月", "逐周", "逐时", "逐年", "每日", "每月", "时间维度", "时间序列",
+  "趋势", "未来", "序列", "timeseries", "time series", "time-series", "trend", "daily",
+];
+export function detectTimeseries(text: string): boolean {
+  const lc = text.toLowerCase();
+  return TS_MARKERS.some((m) => lc.includes(m.toLowerCase()));
 }
 
 /**
@@ -39,18 +59,27 @@ export function decideDataGap(
   opts: { typeKey?: string; columns?: string[] } = {},
 ): DataGapDecision {
   const hay = `${question} ${contextText}`;
+  const timeseries = detectTimeseries(hay);
   const entities = [...new Set(vocab.filter((v) => v && hay.includes(v)))];
-  if (entities.length === 0) return { mode: "SOFT", entities: [] };
+  if (entities.length === 0) return { mode: "SOFT", entities: [], timeseries };
   const typeKey = opts.typeKey || "Object";
-  const columns = opts.columns && opts.columns.length > 0 ? opts.columns : ["（按该对象类型已发布字段——连接器导入页/数据模版可见）"];
+  // 显式列优先；缺省给真人可读占位。时序诉求 → 缺省列声明须补的时间维度（时间戳+度量），不臆造具体度量名。
+  const defaultColumns = timeseries
+    ? ["ts（时间戳/日期·逐日）", "value（该实体逐日度量值·随时间变化）", "（其余按该对象类型已发布字段——连接器导入页/数据模版可见）"]
+    : ["（按该对象类型已发布字段——连接器导入页/数据模版可见）"];
+  const columns = opts.columns && opts.columns.length > 0 ? opts.columns : defaultColumns;
+  const tsReason = timeseries
+    ? `（时序维度：须补真实**逐日时序**——时间戳+度量列，绝不伪造真实体时序）`
+    : "";
   return {
     mode: "HARD",
     entities,
+    timeseries,
     dataRequest: {
       typeKey,
       columns,
       entities,
-      reason: `问句涉及真实业务实体「${entities.join("、")}」——自动合成将造业务事实；须经真人正门（连接器导入 / Excel 上传 → Action 审批）补真实数据，不静默合成`,
+      reason: `问句涉及真实业务实体「${entities.join("、")}」——自动合成将造业务事实；须经真人正门（连接器导入 / Excel 上传 → Action 审批）补真实数据，不静默合成${tsReason}`,
     },
   };
 }

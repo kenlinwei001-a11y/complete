@@ -90,7 +90,7 @@ describe("A3 · POST /api/v1/growth/run 真补（NO_PLAN → DRAFT 骨架 + 工�
     expect(noPlanTicket!.acceptance).toContain("审批发布");
   });
 
-  it("非接线缺口（缺意图/笑话）不乱 scaffold 计划（避免污染目录）", async () => {
+  it("NO_INTENT 自补 DRAFT 意图+计划（WO-DATABUILDER-HARNESS）→ 但恒 DRAFT 不发布（R4 守·活体路由/目录不被污染）", async () => {
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn({ content: [{ type: "text", text: "x" }, { type: "tool_use", id: "tu", name: "final_answer", input: { blocks: [{ type: "text", markdown: "x" }], provenance: [] } }] } as never);
     await t.app.inject({
@@ -98,8 +98,15 @@ describe("A3 · POST /api/v1/growth/run 真补（NO_PLAN → DRAFT 骨架 + 工�
       headers: { "x-debug-user": PLANNER, "content-type": "application/json" },
       payload: { packageId: PKG, query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2 },
     });
-    // 没有任何 plan_growth_* 被建（NO_INTENT 不在 SCAFFOLDABLE 集）
+    // NO_INTENT 现自补：intent_growth_*（绑 plan_growth_*）已 scaffold——但"避免污染目录"由 R4 门守而非拒绝 scaffold：
+    // scaffold 出的意图/计划恒 DRAFT（不进分类候选、不改活体路由），须真人经正门发布方生效。
     const plans = await t.repos.plans.listByPackage(PKG);
-    expect(plans.some((p) => p.key.startsWith("plan_growth_"))).toBe(false);
+    const grownPlans = plans.filter((p) => p.key.startsWith("plan_growth_"));
+    expect(grownPlans.length).toBeGreaterThan(0);
+    expect(grownPlans.every((p) => p.status === "DRAFT")).toBe(true); // R4：一律 DRAFT 未发布
+    const intents = await t.repos.intents.listByPackage(PKG);
+    const grownIntents = intents.filter((i) => i.key.startsWith("intent_growth_"));
+    expect(grownIntents.length).toBeGreaterThan(0);
+    expect(grownIntents.every((i) => i.status === "DRAFT")).toBe(true); // R4：草稿意图不污染活体目录
   });
 });
