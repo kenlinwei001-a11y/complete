@@ -122,6 +122,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 逐域枚举 + 并行 solver + 零 LLM 块装配（改写 QOS 编排路由·排在 LLM classify 之前）。orchestrator deterministicMultiEnabled 据本键 set.has 挂点。
   // 与 ceo.free-llm/agent.coordinator 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开）。
   { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：⑤ LLM 多意图兜底——
+  // ②确定性没覆盖的跨域题 → classify 多候选并行 solver（改写 QOS 编排·排在 clarification 之前）。同列 QOS_DARK_LAUNCH_FEATURES
+  // → battery「all on」也保持默认关（不随模板顺带开）。orchestrator multiIntentEnabled 据本键 set.has 挂点。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -140,6 +144,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.compose-path",
   "qos.reasoning-trace",
   "qos.deterministic-multi-domain",
+  "qos.multi-intent-orchestration",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

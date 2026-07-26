@@ -28,6 +28,12 @@ const MAX_DOMAINS = 4;
 const COUPLED_ROUTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["supply_demand_gap_attribution", "atp_check"],
   ["sop_reschedule", "atp_check"],
+  // WO-QOS-CROSS-DOMAIN-UNIFIED · Q2 依赖链（良率↓→有效产出↓→缺口→订单延误→外协补·L3 真传导）——
+  // route 名 = solver 真名（domainResolveMulti Q2 扩展里 route=solverKey）。检出即诚实标「独立测算·未链式传导·见 L3」。
+  ["yield_diagnosis", "capacity_forecast"],
+  ["capacity_forecast", "affected_orders"],
+  ["affected_orders", "outsourcing_split"],
+  ["lta_gap", "outsourcing_split"],
 ];
 
 /** 硬域族 → 中文分节名（装配可读·不含业务数字）。 */
@@ -37,6 +43,13 @@ const DOMAIN_LABELS: Record<string, string> = {
   supply: "供需失衡",
   atp: "交期/订单承诺",
   sop: "产销重排",
+  // WO-QOS-CROSS-DOMAIN-UNIFIED · Q2 域族分节名。
+  yield: "良率诊断",
+  capacity: "有效产出/产能",
+  lta: "长协覆盖缺口",
+  affected: "受影响订单",
+  outsourcing: "外协/加班补缺口",
+  // ⑤ LLM 多意图兜底：domain 取 intentKey（无登记 → 装配回退用 route/solverKey·见 assemble 的 `?? p.route.domain`）。
 };
 
 /**
@@ -51,11 +64,23 @@ export function selectDeterministicMultiRoute(
   threshold: number = DETERMINISTIC_PREFERENCE_THRESHOLD,
 ): DomainRoute[] | null {
   if (routes.length < 2) return null;
-  const qualified = routes.filter((r) => r.perDomainScore >= threshold && Boolean(r.solverKey));
-  if (qualified.length < 2) return null;
-  // 诚实边界：任一枚举域不够格 → 整体回落（不硬凑）。
-  if (qualified.length !== routes.length) return null;
-  return qualified.slice(0, MAX_DOMAINS);
+  // ① 置信门（诚实边界·治真开放题）：≥2 域各够格 + 有 solver；**任一**枚举域被 open/orchestration 压到阈下 →
+  // 整体回落（这题本质开放/需会诊·不硬凑成确定性多路·让位 Coordinator/LLM）。这一道是"综合分析连锁影响"类
+  // 无 solver 锚问句仍能落 Coordinator 的关键（perDomainScoreFor 对 open/orchestration 惩罚 −0.6）。
+  const scoreQualified = routes.filter((r) => r.perDomainScore >= threshold && Boolean(r.solverKey));
+  if (scoreQualified.length < 2) return null;
+  if (scoreQualified.length !== routes.length) return null;
+  // ② 槽可填硬门（fillSlots 语义·治"只认关键词不校验槽 = 绕 Coordinator 后建不出 args = 更差"）：
+  // 逐域校验该 solver 的硬必填参（requiredArgs·如 capacity_forecast 的 modelId）是否已从问句/上下文填满；
+  // 填不满的域**剔除**（不带缺参跑错答）——剩 ≥2 仍走确定性多路，剩 <2 → 回落（whole-fallback·不强凑）。
+  const slotQualified = scoreQualified.filter((r) =>
+    (r.requiredArgs ?? []).every((k) => {
+      const v = r.args[k];
+      return v !== undefined && v !== null && v !== "";
+    }),
+  );
+  if (slotQualified.length < 2) return null;
+  return slotQualified.slice(0, MAX_DOMAINS);
 }
 
 /** 检出入选路由集里的已知耦合对（诚实标源·R6·空 = 纯独立）。 */
@@ -157,14 +182,17 @@ export interface MultiRunResult {
 }
 
 /**
- * 确定性多域后半（R6·零 LLM）：**并行**跑各域 solver（单失败不塌·partial 容错）→ 确定性块装配 → 产出 Answer + `multiIntentPlan`。
- * `classification.model="deterministic:multi-domain"` 由调用方（orchestrator）置。事件复用 `step.completed` 伪 step
- * （type=det_multi_domain_dispatch / _solver / _synthesis·同多意图 PRD 做法·`ontology:check` 保 51/51·不新增事件名）。
+ * WO-QOS-CROSS-DOMAIN-UNIFIED · **共享后半**（②确定性多域 ＋ ⑤LLM 多意图**共用这一份**·R6·零 LLM）：
+ * **并行**跑各路 solver（单失败不塌·partial 容错）→ 确定性块装配 → 产出 Answer + `multiIntentPlan`。
+ * `routeSource` 区分前半 trigger（`deterministic-multi-domain`＝②主路 / `llm-multi-intent`＝⑤兜底）——**装配/并行逻辑完全一致**，
+ * 只是 plan.routeSource 不同。`classification.model` 由调用方（orchestrator）置。事件复用 `step.completed` 伪 step
+ * （type=multi_route_dispatch / _solver / _synthesis·`ontology:check` 保 51/51·不新增事件名）。
  */
-export async function runDeterministicMultiPath(
+export async function runParallelRoutes(
   routes: DomainRoute[],
   coupledPairs: [string, string][],
   ctx: MultiRunCtx,
+  routeSource: MultiIntentPlan["routeSource"] = "deterministic-multi-domain",
 ): Promise<MultiRunResult> {
   await ctx.emit?.("step.completed", {
     stepId: newId("det-multi-dispatch"),
@@ -208,7 +236,7 @@ export async function runDeterministicMultiPath(
   });
 
   const plan: MultiIntentPlan = {
-    routeSource: "deterministic-multi-domain",
+    routeSource,
     synthesisMode: "deterministic",
     selectedIntents: products.map((p) => ({
       intentKey: p.route.domain,
@@ -223,4 +251,62 @@ export async function runDeterministicMultiPath(
   };
 
   return { answer, plan };
+}
+
+// ---------------------------------------------------------------------------
+// WO-QOS-CROSS-DOMAIN-UNIFIED · ⑤ LLM 多意图兜底判定（确定性没覆盖时·PRD-multi-intent §3.2·纯函数 R6）。
+//
+// ②（确定性多域）覆盖不到的跨域题（无对口硬域族 solver 锚）→ 落 LLM classify → 分类器吐**多个高置信候选**。
+// 本判定把「分类器多候选 + 各候选已解析的 solverKey/args/槽可填状态」→ 选中集（≥2·≥tauMid·槽可填·无 solver 冲突）→
+// **接到同一份 `runParallelRoutes`**（routeSource="llm-multi-intent"）并行跑、确定性块装配。命中即并行·不反问（排在 clarification 前）；
+// 未命中 → null（→ orchestrator **逐字节沿用**现单意图/澄清路径·byte-compat）。
+//
+// 诚实边界：只跑分类器**已吐**的候选（不补漏 = L2 路线图）；耦合对经 `detectCoupledPairs` 诚实标（L1 不假装 L3）。
+// ---------------------------------------------------------------------------
+
+/** ⑤ 输入：分类器一个候选 + 已由 orchestrator 解析好的 solverKey/args/槽可填（IO 在 orchestrator·本判定保持纯）。 */
+export interface MultiIntentCandidate {
+  intentKey: string;
+  confidence: number;
+  /** 该意图对口 solver 真名（orchestrator 从意图 plan 的 invoke_solver 步解析·无 → 该候选不入选）。 */
+  solverKey?: string;
+  /** 从 slotBag/pageContext 填出的 solver args（fillSlots 产物）。 */
+  args: Record<string, unknown>;
+  /** 必填槽是否已填满（fillSlots.missing.length===0）——填不满即丢弃该意图（绝不带缺槽跑错答）。 */
+  slotsFillable: boolean;
+}
+
+export interface MultiIntentSelection {
+  routes: DomainRoute[];
+  coupledPairs: [string, string][];
+}
+
+/**
+ * ⑤ 多意图判定（纯函数 R6）：≥2 候选 `confidence ≥ tauMid` + 各有对口 solver + 各槽可填 + solver 无重复冲突 →
+ * 选中集（截 `maxIntents`）转 `DomainRoute[]`（接共享后半 `runParallelRoutes`）+ 诚实耦合对；否则 `null`。
+ */
+export function selectMultiIntent(
+  candidates: MultiIntentCandidate[],
+  opts: { tauMid: number; maxIntents: number },
+): MultiIntentSelection | null {
+  const seen = new Set<string>();
+  const qualified: DomainRoute[] = [];
+  for (const c of candidates) {
+    if (c.confidence < opts.tauMid) continue;
+    if (!c.solverKey) continue; // 无对口 solver → 不入选（诚实·不硬塞）
+    if (!c.slotsFillable) continue; // 槽填不满 → 丢弃该意图（绝不带缺槽跑错答）
+    if (seen.has(c.solverKey)) continue; // solver scope 冲突（同 solver 重复）→ 去重
+    seen.add(c.solverKey);
+    qualified.push({
+      domain: c.intentKey,
+      route: c.solverKey,
+      solverKey: c.solverKey,
+      args: c.args,
+      perDomainScore: c.confidence,
+      requiredArgs: [], // 槽可填已在 orchestrator 侧 fillSlots 校验（slotsFillable）
+    });
+  }
+  if (qualified.length < 2) return null; // <2 独立多意图 → 沿用现单意图路径
+  const routes = qualified.slice(0, opts.maxIntents);
+  return { routes, coupledPairs: detectCoupledPairs(routes) };
 }

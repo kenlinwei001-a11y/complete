@@ -112,6 +112,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
   // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。
   { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：⑤ LLM 多意图兜底——
+  // ②确定性没覆盖的跨域题 → classify 多候选（≥2 ≥tauMid·槽可填·无冲突）→ 接共享后半 runParallelRoutes 并行·确定性块装配。
+  // orchestrator multiIntentEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有单意图/澄清路径逐字节不变）。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
