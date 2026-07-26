@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-20",
+  "generatedAt": "2026-07-26",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
     "PRD-A15-cli-universal-operation-shell.md": {
@@ -185,6 +185,22 @@
       ],
       "covered": [
         "F55"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-capacity-inference-completion.md": {
+      "acceptanceIds": [
+        "D1",
+        "D2",
+        "E1",
+        "F1"
+      ],
+      "covered": [
+        "D1",
+        "D2",
+        "E1",
+        "F1"
       ],
       "uncovered": [],
       "coverage": 1

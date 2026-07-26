@@ -268,6 +268,8 @@ export class ExecutionEngine {
       // 循环卡死 → 不发终结事件 → 前端 useTaskStream 无限重连 → 转圈。接上 llmCallTimeoutMs 后：挂住的调用被
       // AbortController 上界终止 → 优雅降级（TIMEOUT）→ 发 answer.final/agent_degraded 终结事件 → 前端停转。
       llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
+      // WO-LOOP-CONTROL-P1：Loop Detector 环检测 cap（opt-in·缺省 undefined → 禁用 → 角色 agent 路径逐字节不变）
+      loopRepeatCap: cfg.QOS_AGENT_LOOP_REPEAT_CAP,
       repos: this.deps.repos,
       metrics: this.deps.metrics,
       emit: opts.emit,

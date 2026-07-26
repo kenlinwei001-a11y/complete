@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-25",
+  "generatedAt": "2026-07-26",
   "ontology": {
     "invariants": [
       "R1",
@@ -454,6 +454,25 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-agent-execution-governance-loop-control.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "scripts/check-dril-retrieval.mjs",
+        "scripts/check-loop-control.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-agent-navigation-slice-latency.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -735,7 +754,6 @@
         "scripts/check-resource-descriptor.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/test/dril-routing-seam.test.ts",
         "packages/contracts/test/intelligence-resource.test.ts"
       ]
     },
@@ -1683,6 +1701,7 @@
       "PRD-unified-build-engine.md"
     ],
     "G-9": [
+      "PRD-agent-execution-governance-loop-control.md",
       "PRD-agent-navigation-slice-latency.md",
       "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
@@ -1807,7 +1826,14 @@
       "PRD-agent-data-generation-tools.md"
     ],
     "apps/agentcore/src/agent/loop.ts": [
+      "PRD-agent-execution-governance-loop-control.md",
       "PRD-agent-react-harness.md"
+    ],
+    "scripts/check-dril-retrieval.mjs": [
+      "PRD-agent-execution-governance-loop-control.md"
+    ],
+    "scripts/check-loop-control.mjs": [
+      "PRD-agent-execution-governance-loop-control.md"
     ],
     "apps/agentcore/src/agent/prompts.ts": [
       "PRD-agent-react-harness.md"
