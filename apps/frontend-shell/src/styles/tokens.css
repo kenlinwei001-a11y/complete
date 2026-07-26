@@ -101,14 +101,16 @@
   --muted2: #bebebe;      /* 三级文本（中性浅灰·吸色 tab 未选 #bebebe） */
   --accent: #f76401;      /* 品牌橙（逐像素吸色 Report 卡饱和核 rgb 247,100,1·不为 AA 妥协） */
 
-  /* chrome 表面 / 交互（亮橙变体） */
-  --topbar-bg: linear-gradient(180deg, #ffffff, #f9f9f9);
+  /* chrome 表面 / 交互（亮橙变体·Apple-clean：全纯色·无渐变·无半透，治"像 AI 做的 UI"） */
+  --topbar-bg: #ffffff;               /* 顶栏纯白（原渐变 → 实心） */
   --topbar-border: #ececec;
-  --hover-tint: rgba(20, 20, 20, 0.05);
-  --hover-tint-strong: rgba(20, 20, 20, 0.08);
-  --scrollbar-thumb: rgba(20, 20, 20, 0.18);
-  --nav-active-bg: linear-gradient(90deg, rgba(247, 100, 1, 0.14), rgba(247, 100, 1, 0.03));
-  --nav-active-border: rgba(247, 100, 1, 0.42);
-  --nav-active-txt: #c85009;  /* 活动导航文字（较橙 accent 略压深保可读·仅此 chrome 项非参考图像素） */
+  --hover-tint: #f4f4f4;              /* hover 底纯色（原半透 rgba → 实心浅灰） */
+  --hover-tint-strong: #ededed;
+  --scrollbar-thumb: #d4d4d4;
+  --nav-active-bg: #fdeee2;           /* 活动导航底纯色浅橙（原渐变 → 实心） */
+  --nav-active-border: #f76401;       /* 活动导航实心橙边（原半透 → 纯橙） */
+  --nav-active-txt: #c85009;          /* 活动导航文字（较橙 accent 略压深保可读） */
+  --logo-bg: #f76401;                 /* 顶栏 logo 纯橙实心（原 conic 域色环渐变·仅 warm 覆盖·暗/冷蓝走 fallback 不变） */
+  --logo-glow: none;                  /* 去 logo 蓝色辉光（Apple-clean·无 glow） */
   /* --on-accent 保持 #fff（橙底恒配白字） */
 }

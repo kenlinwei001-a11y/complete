@@ -31,8 +31,9 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: conic-gradient(from 210deg, var(--c-capacity), var(--c-forecast), var(--c-solver), var(--c-factory), var(--c-capacity));
-  box-shadow: 0 0 10px rgba(76, 144, 240, 0.4);
+  /* 主题可覆盖（fallback = 原 conic 域色环 + 蓝辉光·暗/冷蓝逐值不变）；warm 覆盖成纯橙实心+无辉光。 */
+  background: var(--logo-bg, conic-gradient(from 210deg, var(--c-capacity), var(--c-forecast), var(--c-solver), var(--c-factory), var(--c-capacity)));
+  box-shadow: var(--logo-glow, 0 0 10px rgba(76, 144, 240, 0.4));
 }
 
 .tenant {
