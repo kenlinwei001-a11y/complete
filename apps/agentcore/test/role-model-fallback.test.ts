@@ -242,9 +242,15 @@ describe("WO-QOS-NOREASON SEAM · 用途绑定「关推理」开关 → 解析�
     expect(spec).toBe(`dcp:${KIMI_ID}:moonshot-v1-32k`);
   });
 
-  it("④c 开关关（noReasoning 缺省）→ 保持绑定的推理模型 kimi-k2.5（既有行为逐字节零回归）", async () => {
-    bindings = [{ purpose: "classifier", providerId: KIMI_ID, modelId: "kimi-k2.5" }];
-    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "classifier", undefined);
+  it("④c 开关关 + 非 classifier 用途（agent）→ 保持推理模型 kimi-k2.5（既有零回归·推理档留给 agent 多步/最终综合·§3）", async () => {
+    bindings = [{ purpose: "agent", providerId: KIMI_ID, modelId: "kimi-k2.5" }];
+    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "agent", undefined);
     expect(spec).toBe(`dcp:${KIMI_ID}:kimi-k2.5`);
+  });
+
+  it("④d WO-CLASSIFY-NO-REASON：classifier 用途**默认**避推理——即便 noReasoning 缺省也自动换非推理兄弟 moonshot-v1-32k（治 Q1 分类器 82s·§3「D 模型分层：分类不用推理档」）", async () => {
+    bindings = [{ purpose: "classifier", providerId: KIMI_ID, modelId: "kimi-k2.5" }]; // 无 noReasoning
+    const spec = await new LlmSettings(createMemoryRepos(), cfg(), directory()).roleModel(TENANT, "classifier", undefined);
+    expect(spec).toBe(`dcp:${KIMI_ID}:moonshot-v1-32k`); // 分类器被强制避推理·换非推理兄弟
   });
 });

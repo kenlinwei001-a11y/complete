@@ -440,7 +440,10 @@ export class LlmSettings {
     if (this.directory) {
       // 用途矩阵租户级默认（role 名与 purpose key 同名）；「关推理」开关在此解析期把推理型模型换成非推理兄弟。
       const bound = await this.directory.bindingFor(tenantId, role);
-      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${await this.effectiveModelId(tenantId, bound)}`;
+      // WO-CLASSIFY-NO-REASON（Q1 Issue B·治分类器 82s）：分类=结构化抽取(问句→意图+槽位)·**不需推理档**
+      //（§3「D 模型分层」：推理档只做最终综合）。classifier 用途**默认**避开推理模型——有非推理兄弟即换，不必靠
+      // per-binding noReasoning 手动开；无兄弟/provider 取不到 → 原样返回绑定模型（诚实零回归·换不了不假装）。
+      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${await this.effectiveModelId(tenantId, bound, role === "classifier")}`;
       if (role === "compose") {
         const agentBound = await this.directory.bindingFor(tenantId, "agent");
         if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${await this.effectiveModelId(tenantId, agentBound)}`;
@@ -461,9 +464,11 @@ export class LlmSettings {
    * （capabilities.reasoning）+ 该 provider 有满足用途的非推理兄弟（reasoning 非真 + tools）→ 改用兄弟模型 id
    * 出快答。根因治本：部分厂商（实测 Moonshot kimi-*·锁 temperature=1）无请求级关推理参数，唯一杠杆是换非推理模型。
    * 非推理模型 / 无兄弟 / provider 取不到 → 原样返回绑定 modelId（既有行为零回归）。
+   * `forceNonReasoning`（WO-CLASSIFY-NO-REASON）：分类器用途传 true → 即便绑定没开 noReasoning 也换非推理兄弟
+   *（§3 D-模型分层：分类不用推理档）。
    */
-  private async effectiveModelId(tenantId: string, bound: PurposeBinding): Promise<string> {
-    if (!bound.noReasoning || !this.directory) return bound.modelId;
+  private async effectiveModelId(tenantId: string, bound: PurposeBinding, forceNonReasoning = false): Promise<string> {
+    if ((!bound.noReasoning && !forceNonReasoning) || !this.directory) return bound.modelId;
     try {
       const provider = await this.directory.provider(tenantId, bound.providerId);
       const models = provider?.models ?? [];

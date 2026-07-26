@@ -208,7 +208,10 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
      · 规划式执行（loop.ts）：一轮 plan（批量 invoke_solver·loop 一轮多 tool_use 并行/批量）→ 一轮综合；**plan 自检**
        planWithinSlice(引用 solver ⊆ 图内)——越界 → 回退 ReAct（**不阻断真工具**·兜底保留）
      · D 模型分层：**选型/规划已确定性化**（NavigationSlice + domainResolve + skill-router 全 R6·零 LLM）→ 推理档模型只做最终综合
-       （不新增 LLM 用途枚举·purpose 枚举本体声明固定不可扩展）
+       （不新增 LLM 用途枚举·purpose 枚举本体声明固定不可扩展）。**WO-CLASSIFY-NO-REASON（Q1 Issue B·治分类器 82s）**：
+       分类=结构化抽取(问句→意图+槽位)·不需推理档 → `LlmSettings.roleModel` 对 **classifier 用途默认避推理**（`effectiveModelId(...,forceNonReasoning=role==="classifier")`·
+       `providers.ts`）——绑定即便没开 `noReasoning`，有非推理兄弟(如 moonshot-v1·reasoning=false+tools)即自动换出快答；无兄弟→原样(诚实零回归·换不了不假装)。
+       只强制 classifier·agent/compose 推理档不动(留给多步/最终综合)。SEAM `role-model-fallback.test.ts ④c/④d`。
      · 效果（真需 agent 的题）：discover 4-5→≤1 · round-trip 17→≤4 · 答案/溯源不劣化（R13·仍 AGENT_EXPLORATORY）
      ★**口径语义锚定（WO-QOS-ONTOLOGY-CONTEXT·缺口③文档三层投喂第二层·导航图→导航图+语义锚定）**：导航图给了字段名
        (KEY_PROPS)+solver 输出形状+一句话规则提示，但**没给每个数字的口径**——Metric formula/unit、派生 formula
