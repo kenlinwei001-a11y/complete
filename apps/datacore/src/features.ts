@@ -118,6 +118,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
   // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：跨域 solver 题在
+  // **确定性层**逐域枚举 + 并行 solver + 零 LLM 块装配（排在 Coordinator/classify 之前·治 Q2 5 分钟）。orchestrator deterministicMultiEnabled 挂点。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false）：确定性没覆盖的跨域题 classify 出 ≥2 高置信候选 → 并行多意图（共享后半·排澄清前）。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图并行编排（确定性没覆盖的跨域题兜底）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -135,6 +140,8 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.critic",
   "qos.compose-path",
   "qos.reasoning-trace",
+  "qos.deterministic-multi-domain",
+  "qos.multi-intent-orchestration",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

@@ -440,6 +440,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       ontologyValidation,
       humanReviewRequired,
       toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      // WO-QOS-CROSS-DOMAIN-UNIFIED：多路编排计划随 DecisionTrace 走（②确定性多域 / ⑤LLM 多意图·区分 routeSource·诚实 coupledPairs）。
+      ...(task.multiIntentPlan ? { multiIntentPlan: task.multiIntentPlan } : {}),
       createdAt: task.createdAt,
       completedAt: task.completedAt,
     });

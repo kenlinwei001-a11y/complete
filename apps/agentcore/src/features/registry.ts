@@ -108,6 +108,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示·建人机信任）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·双注册 parity·权威集来自 DataCore）：② 确定性跨域分路（多域并行 solver·零 LLM·
+  // 排在 Coordinator 之前）。orchestrator deterministicMultiEnabled 据本键 set.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现行为）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·双注册 parity）：⑤ LLM 多意图并行兜底（classify 出 ≥2 高置信候选·排澄清前）。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图并行编排（确定性没覆盖的跨域题兜底）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

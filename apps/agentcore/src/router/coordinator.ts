@@ -5,6 +5,7 @@ import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
 import type { ExtendedPlanStep } from "../workflow/executor.js";
 import { isCapacityFeasibilityQuery } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast
+import { domainResolveMulti, selectDeterministicMultiRoute } from "./domain-resolver.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级判据（能 solver 分解的跨域题让位 ②·§3.3）
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Coordinator 编排（确定性·R6 无 LLM/时钟/随机）。
@@ -65,6 +66,7 @@ export function planCoordination(
   question: string,
   pageContext: PageContext | undefined,
   baseScope: string[] = [],
+  opts: { canDeterministicMulti?: boolean } = {},
 ): CoordinatorPlan | undefined {
   const q = question ?? "";
   // WO-AGENT-RUNTIME-S01 · 直路（治病根头号杠杆）：产能可行性变体（「型号+上浮X%+N周+能不能接」）有对口**单一**
@@ -72,6 +74,13 @@ export function planCoordination(
   // 铁证 ~5min 卡死）。命中即返 undefined → orchestrator 上游确定性路由（会话继承 path-A / compose 直路）已先接住；
   // 即便未被上游接住（feature/上下文差异），这里也拒绝拆分 → 落 path-B 单 agent（有导航切片·仍对口 capacity_forecast）。
   if (isCapacityFeasibilityQuery(q, pageContext)) return undefined;
+  // WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator **降级**（§3.3·紧跟 S01 拒绝之后·**同款一道**·治 Q2 5 分钟根因）：
+  // 该题若能被 `selectDeterministicMultiRoute` 分解成 ≥2 solver 路（各真 solver + **槽可填**）→ 返 undefined **让位 ②**
+  // （确定性层并行秒答·不再拆 3 角色 agent 烧 300s）。**判据只有这一个**（≥2 真 solver + 槽可填）——**不无脑按多域关键词
+  // bypass**（§3.7 拒·那会把真开放·无 solver 锚的会诊题也抢走）。**flag 门控**（canDeterministicMulti = ② 暗发键·默认关）：
+  // 关 → 逐字节不变（现状·SEAM-6/SEAM-Q2 control：flag 关仍进 Coordinator）；开 → orchestrator ② 已在 Coordinator 门前先接住·
+  // 此道为**防御性同款拒绝**（即便上游未接住也不误召集会诊）。
+  if (opts.canDeterministicMulti && selectDeterministicMultiRoute(domainResolveMulti(q, pageContext))) return undefined;
   const matched = new Set<RoleDispatch["role"]>();
   const hintByRole = new Map<string, string>();
   for (const k of ROLE_KEYWORDS) {

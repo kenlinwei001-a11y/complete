@@ -14,6 +14,10 @@ const ConfigSchema = z.object({
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),
   QOS_TAU_HIGH: z.coerce.number().default(0.85),
   QOS_TAU_LOW: z.coerce.number().default(0.55),
+  /** WO-QOS-CROSS-DOMAIN-UNIFIED · ⑤ LLM 多意图兜底：≥2 候选各 confidence≥本值 + 槽可填 → 并行（不反问·排澄清前）。 */
+  QOS_MULTI_INTENT_TAU_MID: z.coerce.number().default(0.8),
+  /** WO-QOS-CROSS-DOMAIN-UNIFIED · 多路并行上界（②⑤ 共用·装配上界）。 */
+  QOS_MULTI_INTENT_MAX_INTENTS: z.coerce.number().int().default(4),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
   /**
