@@ -13,6 +13,7 @@ import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } 
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
 import type { LlmClient } from "../llm.js";
+import { FeatureService } from "../features.js";
 import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-gen.js";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
@@ -144,6 +145,62 @@ export const SOLVER_KEYS = [
   "ontology_query",
 ] as const;
 
+/** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
+export type CoreSolverObjectType =
+  | "Base"
+  | "Line"
+  | "Process"
+  | "Equipment"
+  | "MaintPlan"
+  | "Model"
+  | "Order"
+  | "Shipment"
+  | "Segment"
+  | "DataSourceHealth";
+
+/**
+ * WO-DATACORE-LAZY-SOLVER-CONTEXT · SolverContext **核心 10 类按需加载声明表**（性能收窄·冷启 187→≤80ms）。
+ *
+ * 每个 compute() 路径核心求解器声明它**真读**的核心对象类型（未列 = 不需要 → loadContext 置 `[]`·省全表扫）。
+ * loadContext 仅在 `dc.lazy-solver-context` 暗发门开 + 派发处透传 solverKey + 本表有该键声明时裁剪；否则**全量**
+ * （逐字节现行为·向后兼容）。params/rules/ruleSetVersion/isSynthProvenance 便宜共享 → 永远加载（不裁·不在本表）。
+ *
+ * ⚠ SEAM-EQ 命门：**漏声明一个类型 → 求解器拿到空数组 → 出错数字而非报错（静默污染 R13·比崩溃更毒）**。
+ *   故声明**宁缺毋滥**——没把握的求解器**不列**（走全量兜底比漏声明出错数强）。
+ * ⚠ 派生连带：需 `certByModel`（由 Line+Model+model_certified_on link 派生）的求解器**必须连带声明 "Line"+"Model"**；
+ *   需 baseName/baseProvenanceSynthetic 的连带 "Base"。
+ *
+ * 覆盖范围：仅 compute() 路径核心求解器（早返回的通用/优化/沙箱求解器自建 ctx·不经此 loadContext·不入本表）。
+ * 扩展 10 类（E6b·withExtended）不受本表影响（仍按 withExtended 加载·本单不动扩展层）。
+ */
+export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
+  // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
+  capacity_rollup: ["Base", "Line", "Process", "Equipment"],
+  // capacity_forecast：computeRollup(Base/Line/Process/Equipment) + certByModel(⟹连带 Line+Model) + 数据健康 C09(DataSourceHealth)
+  //   + 检修周(MaintPlan) + model chem/pos(Model) + liveTightness(Base/Line/Process/Equipment) + ruleEvalPayload 最坏源(DataSourceHealth)。
+  //   无 Order/Shipment/Segment（byProcessModel 的 Material 属**扩展层**·随 withExtended·不在核心表）。
+  capacity_forecast: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "DataSourceHealth"],
+  // bottleneck_matrix：liveTightness/mockTightness/primaryFactor/baseProvenanceSynthetic 只读 Base/Line/Process/Equipment。
+  bottleneck_matrix: ["Base", "Line", "Process", "Equipment"],
+  // risk_timeline：基线 climb + 事件脉冲 riskEvents(⟹MaintPlan/Order/Shipment/Base) + liveTightness(Line/Process/Equipment)
+  //   + affectedOrders(Order/Shipment/Base/Segment)。无 Model/DataSourceHealth/certByModel。
+  risk_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Order", "Shipment", "Segment"],
+  // counterfactual_timeline：内部编排 risk_timeline（同依赖集·双轨推演）。
+  counterfactual_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Order", "Shipment", "Segment"],
+  // audit_timeline：kind hash 形状 + riskEvents(MaintPlan/Order/Shipment/Base) + affectedOrders(Order/Shipment/Base/Segment)。
+  //   不读 Line/Process/Equipment/Model/DataSourceHealth/certByModel。
+  audit_timeline: ["Base", "MaintPlan", "Order", "Shipment", "Segment"],
+  // affected_orders：有 baseId 走单基地 affectedOrders(Base/Order/Shipment/Segment)·无 baseId 走 aggregate
+  //   (+riskEvents ⟹ MaintPlan)。取**两路径并集**覆盖。无 Line/Process/Equipment/Model/DataSourceHealth/certByModel。
+  affected_orders: ["Base", "MaintPlan", "Order", "Shipment", "Segment"],
+  // plan_audit：仅读 Segment(segMargins) + params·其余全取 args 数值（dem/seg_*/sup/...）。
+  plan_audit: ["Segment"],
+  // plan_generate：纯读 params.planGenerate + args·**不读任何核心对象类型**（→ 空声明·全部裁掉）。
+  plan_generate: [],
+  // capex_scenario：纯读 params.capexScenario + args(demand/projects/s0)·**不读任何核心对象类型**（deriveS0 是 planviews 路径·非 compute）。
+  capex_scenario: [],
+};
+
 /**
  * R11-SHAPE 求解器输出形状注册（顶层输出 key 全集，权威来源=契约输出 schema 的 `.shape`）。
  * validateClosure 据此校验 BuildPlan.solverNeeds[].renderBindings ⊆ 输出形状 —— 把跨服务
@@ -272,6 +329,17 @@ export class SolverService {
   private outbox?: OutboxService;
   setLlm(llm: LlmClient): void { this.llm = llm; }
   setOutbox(o: OutboxService): void { this.outbox = o; }
+
+  /**
+   * WO-DATACORE-LAZY-SOLVER-CONTEXT · `dc.lazy-solver-context` 暗发门解析器（self-instantiate·同 repos·同 entitlement 口径）。
+   * FeatureService 无状态（仅包 repos）→ 惰性建一次即可，无需 app.ts 注入（保守留在本单文件边界内）。
+   */
+  private featureSvc?: FeatureService;
+  /** 求解器上下文按需加载是否启用（关 = loadContext 全量·逐字节现行为）。tenant 隔离（entitlement 按租户解析）。 */
+  private async lazyContextEnabled(tenantId: string): Promise<boolean> {
+    this.featureSvc ??= new FeatureService(this.repos);
+    return this.featureSvc.enabled(tenantId, "dc.lazy-solver-context");
+  }
 
   /** A18.2：构建沙箱 ctx（按对象类型分组的实例图；LLM 临时求解器只读这个 + args，净室隔离）。 */
   private async buildSandboxCtx(tenantId: string): Promise<{ objectsByType: Record<string, Record<string, unknown>[]> }> {
@@ -3396,20 +3464,28 @@ export class SolverService {
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean },
+    opts?: { withExtended?: boolean; solverKey?: string },
   ): Promise<SolverContext> {
+    // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
+    // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
+    // （逐字节现行为·向后兼容·无 solverKey 调用方 simclock/sop/planviews/calibration 一律走此路）。门禁在派发处
+    //（invoke/runWithParams·仅 dc.lazy-solver-context 开时透传 solverKey）；此处仅按 solverKey 存在与否 + 声明表裁剪。
+    const required = opts?.solverKey ? SOLVER_REQUIRED_TYPES[opts.solverKey] : undefined;
+    const emptyCore: ObjectInstance[] = [];
+    const loadCore = (t: CoreSolverObjectType): Promise<ObjectInstance[]> =>
+      !required || required.includes(t) ? this.repos.objects.listByType(tenantId, t) : Promise.resolve(emptyCore);
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
       await Promise.all([
-        this.repos.objects.listByType(tenantId, "Base"),
-        this.repos.objects.listByType(tenantId, "Line"),
-        this.repos.objects.listByType(tenantId, "Process"),
-        this.repos.objects.listByType(tenantId, "Equipment"),
-        this.repos.objects.listByType(tenantId, "MaintPlan"),
-        this.repos.objects.listByType(tenantId, "Model"),
-        visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, "Order"),
-        this.repos.objects.listByType(tenantId, "Shipment"),
-        this.repos.objects.listByType(tenantId, "Segment"),
-        this.repos.objects.listByType(tenantId, "DataSourceHealth"),
+        loadCore("Base"),
+        loadCore("Line"),
+        loadCore("Process"),
+        loadCore("Equipment"),
+        loadCore("MaintPlan"),
+        loadCore("Model"),
+        visibleOrders ? Promise.resolve(visibleOrders) : loadCore("Order"),
+        loadCore("Shipment"),
+        loadCore("Segment"),
+        loadCore("DataSourceHealth"),
       ]);
     const certByModel = new Map<string, Map<string, string>>();
     const certLinks = await this.repos.links.list(tenantId, (l) => l.type === "model_certified_on");
@@ -3575,7 +3651,12 @@ export class SolverService {
     args: Record<string, unknown>,
     opts?: { paramsVersion?: number; params?: SolverParamsShape },
   ): Promise<Record<string, unknown>> {
-    const c = await this.loadContext(tenantId, undefined, { withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" });
+    // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
+    const lazy = await this.lazyContextEnabled(tenantId);
+    const c = await this.loadContext(tenantId, undefined, {
+      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast",
+      ...(lazy ? { solverKey } : {}),
+    });
     const params =
       opts?.params ?? (opts?.paramsVersion !== undefined ? await this.paramsAt(tenantId, opts.paramsVersion) : c.params);
     return this.compute({ ...c, params }, solverKey, args);
@@ -3632,7 +3713,12 @@ export class SolverService {
     // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
     if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
     // WO-CAPLIVE-1-ATOM：capacity_forecast granularity:'process-model' 需 Material（层4 ∩ 物料齐套）→ 载扩展数据。
-    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" });
+    // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
+    const lazy = await this.lazyContextEnabled(ctx.tenantId);
+    const c = await this.loadContext(ctx.tenantId, visibleOrders, {
+      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast",
+      ...(lazy ? { solverKey } : {}),
+    });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.

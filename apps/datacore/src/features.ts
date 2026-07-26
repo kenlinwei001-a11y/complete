@@ -118,6 +118,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
   // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // WO-DATACORE-LAZY-SOLVER-CONTEXT（R3 暗发·defaultOn:false·关=逐字节现行为）：SolverContext 核心 10 类**按需加载**——
+  // 开 → invoke/runWithParams 按 solverKey 只 listByType 该求解器真读的核心对象类型（见 service.ts SOLVER_REQUIRED_TYPES），
+  // 冷启 187→≤80ms。纯性能收窄·裁剪加载结果与全量**逐字节一致**（SEAM-EQ）·无链路/事件/对象变更。同 QOS 暗发门一样
+  // **不随 battery「all on」模板顺带开**（见 PERF_DARK_LAUNCH_FEATURES）——只经显式租户 override 启用（既有租户零回归）。
+  { key: "dc.lazy-solver-context", name: "求解器上下文按需加载（性能收窄）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -135,6 +140,15 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.critic",
   "qos.compose-path",
   "qos.reasoning-trace",
+]);
+
+/**
+ * WO-DATACORE-LAZY-SOLVER-CONTEXT · 性能暗发门——同 QOS 暗发门一样**不随行业模板「all on」顺带开**：
+ * 纯性能收窄（求解器上下文按需加载），必须经**显式**租户 override 启用（default-off 锁死 → 既有租户逐字节现行为·SEAM-FLAG-OFF）。
+ * 与 QOS 路由门语义不同（这里是性能、非路由）故单列一个集合，不污染 QOS_DARK_LAUNCH_FEATURES 的原意。
+ */
+export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "dc.lazy-solver-context",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
@@ -234,7 +248,7 @@ export class FeatureService {
     // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
     // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
     if (industry === "battery-manufacturing") {
-      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k)));
+      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k) && !PERF_DARK_LAUNCH_FEATURES.has(k)));
     }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)
