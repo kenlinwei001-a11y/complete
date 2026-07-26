@@ -48,7 +48,7 @@ import {
   feasibilityComposeSlots,
 } from "../agent/sim-planner.js"; // WO-GSIM-4-AGENT 推演 NL 大脑 + WO-LIVE-NL 产能 what-if NL 意图路由 + WO-AGENT-RUNTIME-S01 产能可行性变体（均投影推演专属 navSlice 交 Phase2-C 组合器）
 import type { GuardedToolExecutor } from "../tools/executor.js";
-import type { ComposePlan } from "@platform/contracts";
+import type { ComposePlan, MultiIntentPlan } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
@@ -64,7 +64,7 @@ import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
-import { selectDeterministicMultiRoute, detectCoupledPairs, runDeterministicMultiPath as execDeterministicMultiPath } from "./multi-route.js"; // WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路（判定 + 并行 solver + 零 LLM 块装配·排在 LLM classify 之前）
+import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -190,6 +190,16 @@ export function reasoningTraceEnabled(set: FeatureSet): boolean {
 export function deterministicMultiEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.deterministic-multi-domain");
+}
+
+/**
+ * WO-QOS-CROSS-DOMAIN-UNIFIED · ⑤ feature 门：LLM classify 后是否启用**多意图兜底**（确定性没覆盖的跨域题·分类器多候选并行）。
+ * **暗发·默认关**·同款字节兼容（`set==="ALL"`→false·既有单意图/澄清路径逐字节不变·SEAM 零回归·不劫持）；仅**显式** Set 含
+ * `qos.multi-intent-orchestration` 才启用。双注册（datacore features.ts + agentcore registry·同列 QOS_DARK_LAUNCH_FEATURES）。
+ */
+export function multiIntentEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.multi-intent-orchestration");
 }
 
 /**
@@ -488,25 +498,29 @@ export class Orchestrator {
     //   命中"交付风险/多角色关键词共现"即确定性拆多角色子问，经 invoke_agent 真调对应角色 agent 扇出→汇总）。
     //   命中即 return·不落下方真 LLM/确定性 CEO 路由（二者经暗发 feature 门 agent.coordinator·defaultOn:false 天然隔离·
     //   coordinatorEnabled("ALL")=false → 既有单 agent path-B 逐字节不变·C4 不劫持）。planCoordination 单域返 undefined→照走。
-    if (coordinatorEnabled(enabledFeatures)) {
-      const plan = planCoordination(task.query, task.context.pageContext, []);
-      if (plan) {
-        await this.runCoordinator(taskId, auth, plan);
+    // ★ WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域分路（把跨域题留在确定性层·零 LLM）——**排在 Coordinator 门之前**（治 Q2 5min）。
+    // Q2 铁证：`orchestrator` 的 Coordinator 门在 domainResolve 之前开火，Q2 三角色关键词共现（长协/涂布/良率）被 Coordinator
+    // 先抢走 → 扇出 3 角色 agent 烧 300s 无结论。**先试 ②**：`domainResolveMulti`（逐域枚举·扩域覆盖 Q2·R6 纯函数·去 −0.4 跨域惩罚）
+    // → `selectDeterministicMultiRoute`（≥2 域各够格 + 各有金库 solver + **槽可填硬门**·任一不够格整体回落·诚实边界）→
+    // `runParallelRoutes` **并行** solver + **零 LLM 块装配**（每域独立 ⟦ref⟧·耦合诚实标）·秒级。**② 命中就走 ②·根本不进 Coordinator。**
+    // **暗发默认关**（deterministicMultiEnabled("ALL")=false → 既有管线逐字节不变·SEAM-6 零回归·含 Coordinator 行为不变）；命中即 return
+    //（agentRequests=0·无 classify），未命中（<2 域 / 任一域不够格 / 槽填不满）→ null → 照落下方 Coordinator / 单域 / free-LLM / classifier（fail-safe）。
+    if (deterministicMultiEnabled(enabledFeatures)) {
+      const multiRoutes = selectDeterministicMultiRoute(domainResolveMulti(task.query, task.context.pageContext));
+      if (multiRoutes) {
+        await this.runMultiRoute(taskId, auth, multiRoutes, "deterministic-multi-domain");
         return;
       }
     }
 
-    // ★ WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路（把跨域题留在确定性层·零 LLM）——插在 A 单域确定性门 / free-LLM / classify **之前**。
-    // 病根（domain-resolver.ts:80）：跨域题（≥2 硬域族）被 `domainFamilies>=2 → −0.4` **故意压到阈下** → 落慢 LLM（free-LLM/classify）。
-    // 本分路让确定性层**自己**把跨域题逐域枚举 + 逐域路由（`domainResolveMulti` 复用 ceo-route 映射·R6 纯函数·perDomainScore
-    // 去 −0.4 跨域惩罚）→ `selectDeterministicMultiRoute`（≥2 域各够格 + 各有 solver·任一不够格整体回落·诚实边界）→
-    // `execDeterministicMultiPath` **并行** solver + **零 LLM 块装配**（每域独立 ⟦ref⟧·耦合诚实标）·秒级。
-    // **暗发默认关**（deterministicMultiEnabled("ALL")=false → 既有管线逐字节不变·SEAM-5 零回归）；命中即 return（agentRequests=0·无 classify），
-    // 未命中（<2 域 / 任一域不够格）→ null → **照落下方**单域确定性门 / free-LLM / classifier（不劫持·fail-safe）。
-    if (deterministicMultiEnabled(enabledFeatures)) {
-      const multiRoutes = selectDeterministicMultiRoute(domainResolveMulti(task.query, task.context.pageContext));
-      if (multiRoutes) {
-        await this.runDeterministicMulti(taskId, auth, multiRoutes);
+    // ★ WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域 Coordinator 编排（**排在 ② 之后**——② 已把能 solver 分解的跨域题接走·此处只留"真开放·
+    //   无 solver 可拆"的会诊题）。planCoordination 传 deterministicMultiEnabled → **Coordinator 降级**：能被 selectDeterministicMultiRoute
+    //   分解的题让位②（同 S01 机制·§3.3）·防①漏接（如槽不满被②回落）时又被 Coordinator 抢去烧预算；真开放会诊题（无 solver 锚）仍落此。
+    //   命中即 return·暗发 agent.coordinator·defaultOn:false（coordinatorEnabled("ALL")=false → 既有单 agent path-B 逐字节不变·C4 不劫持）。
+    if (coordinatorEnabled(enabledFeatures)) {
+      const plan = planCoordination(task.query, task.context.pageContext, [], deterministicMultiEnabled(enabledFeatures));
+      if (plan) {
+        await this.runCoordinator(taskId, auth, plan);
         return;
       }
     }
@@ -581,6 +595,18 @@ export class Orchestrator {
       return;
     }
     await this.deps.repos.tasks.patch(taskId, { classification });
+
+    // ★ WO-QOS-CROSS-DOMAIN-UNIFIED · ⑤ LLM 多意图兜底（②确定性没覆盖的跨域题·分类器多候选并行·**排在 clarification 之前**·
+    //   否则中置信澄清会把多意图逼成单选）。selectMultiIntent（≥2 候选 ≥tauMid + 各有对口 solver + 各槽可填 + 无 solver 冲突）→
+    //   接同一份 `runParallelRoutes`（routeSource="llm-multi-intent"）并行·确定性块装配·不反问。未命中 → null → 照走下方 τ 决策/澄清（byte-compat）。
+    //   **暗发默认关**（multiIntentEnabled("ALL")=false → 既有单意图/澄清路径逐字节不变·不劫持）。
+    if (multiIntentEnabled(enabledFeatures)) {
+      const selection = await this.trySelectMultiIntent(task, auth, classification, candidates);
+      if (selection) {
+        await this.runMultiRoute(taskId, auth, selection.routes, "llm-multi-intent");
+        return;
+      }
+    }
 
     // ③ τ decision
     const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
@@ -680,16 +706,19 @@ export class Orchestrator {
   }
 
   /**
-   * WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路出口：并行跑各域 solver（复用 makeExecutor = path-A invoke 通道·
-   * **全程不落 runAgentLoop/classify**）+ **零 LLM 块装配**，自行完成 task 收尾（COMPLETED + answer.final）。
-   * `classification.model="deterministic:multi-domain"`·`agentRequests=0`·`multiIntentPlan` 留痕（routeSource=deterministic-multi-domain·
-   * synthesisMode=deterministic·coupledPairs 诚实标）。确定性 solver 产物 + 零 LLM 装配 → trustLevel=VERIFIED_WORKFLOW。
+   * WO-QOS-CROSS-DOMAIN-UNIFIED · **共享多路出口**（②确定性多域 + ⑤LLM 多意图共用）：并行跑各路 solver（复用 makeExecutor =
+   * path-A invoke 通道·**全程不落 runAgentLoop**）+ **零 LLM 块装配**，自行完成 task 收尾（COMPLETED + answer.final）。
+   * `routeSource="deterministic-multi-domain"`（②·model=`deterministic:multi-domain`·classify 耗时=0·agentRequests=0·SEAM-Q2/2 头号证据）
+   * 或 `"llm-multi-intent"`（⑤·model=`llm-multi-intent`·保留真 classify 留痕）。`multiIntentPlan` 留痕（区分 routeSource·coupledPairs 诚实标）。
    */
-  private async runDeterministicMulti(
+  private async runMultiRoute(
     taskId: string,
     auth: RequestAuth,
     routes: DomainRoute[],
+    routeSource: MultiIntentPlan["routeSource"],
   ): Promise<void> {
+    const isDet = routeSource === "deterministic-multi-domain";
+    const prior = isDet ? undefined : (await this.deps.repos.tasks.get(taskId))?.classification;
     const budget = new BudgetTracker(this.residualBudgetFromConfig()); // 复用硬预算站点（env 未设→宽松 DEFAULT 不变）
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
     const coupledPairs = detectCoupledPairs(routes);
@@ -698,13 +727,13 @@ export class Orchestrator {
     this.deps.metrics.recordRouting(true);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "WORKFLOW",
-      note: `确定性多域分路（零 LLM·${routes.length} 域${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
+      note: `${isDet ? "确定性多域分路" : "LLM 多意图并行"}（零 LLM 装配·${routes.length} 路${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
     });
 
-    const { answer, plan } = await execDeterministicMultiPath(routes, coupledPairs, {
+    const { answer, plan } = await runParallelRoutes(routes, coupledPairs, {
       executor,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
-    });
+    }, routeSource);
 
     if (this.cancelled.has(taskId)) {
       await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
@@ -713,13 +742,22 @@ export class Orchestrator {
       return;
     }
 
-    const classification: ClassificationResult = {
-      candidates: routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore })),
-      outOfCatalog: false,
-      extractedSlots: {},
-      latencyMs: 0, // 零 LLM classify（本 WO 头号证据·SEAM-2：确定性接住·分类耗时=0）
-      model: "deterministic:multi-domain",
-    };
+    const classification: ClassificationResult = isDet
+      ? {
+          candidates: routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore })),
+          outOfCatalog: false,
+          extractedSlots: {},
+          latencyMs: 0, // 零 LLM classify（②头号证据·SEAM-Q2/2：确定性接住·分类耗时=0）
+          model: "deterministic:multi-domain",
+        }
+      : {
+          // ⑤：保留真 classify 候选/耗时留痕（分类器已跑）·model 标为 llm-multi-intent（本次经多意图并行接住）。
+          candidates: (prior?.candidates ?? routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore }))),
+          outOfCatalog: false,
+          extractedSlots: prior?.extractedSlots ?? {},
+          latencyMs: prior?.latencyMs ?? 0,
+          model: "llm-multi-intent",
+        };
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       classification,
@@ -730,6 +768,47 @@ export class Orchestrator {
     await this.deps.events.emit(taskId, "answer.final", answer);
     this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
     await this.recordExperience(taskId);
+  }
+
+  /**
+   * WO-QOS-CROSS-DOMAIN-UNIFIED · ⑤ 判定的 IO 胶水（把纯判定 `selectMultiIntent` 需要的 solverKey/args/槽可填**在此解析**·保判定纯 R6）：
+   * 逐候选（≥tauMid·在候选目录内）→ 解析对口 solverKey（从意图 plan 的首个 invoke_solver 步）+ fillSlots（extractedSlots⊕上下文·
+   * missing.length===0 = 槽可填）→ 交 `selectMultiIntent`（≥2 · 无 solver 冲突 · 截 maxIntents）。env：QOS_MULTI_INTENT_TAU_MID(0.80)/_MAX_INTENTS(4)。
+   */
+  private async trySelectMultiIntent(
+    task: QueryTask,
+    auth: RequestAuth,
+    classification: ClassificationResult,
+    candidates: IntentDefinition[],
+  ): Promise<MultiIntentSelection | null> {
+    const tauMid = Number(process.env.QOS_MULTI_INTENT_TAU_MID ?? 0.8);
+    const maxIntents = Number(process.env.QOS_MULTI_INTENT_MAX_INTENTS ?? 4);
+    const resolved: MultiIntentCandidate[] = [];
+    for (const cand of classification.candidates) {
+      if (cand.confidence < tauMid) continue;
+      const intent = candidates.find((c) => c.key === cand.intentKey);
+      if (!intent) continue;
+      const solverKey = await this.solverKeyForIntent(intent);
+      const { slots, missing } = await fillSlots(
+        intent,
+        classification.extractedSlots,
+        task.context,
+        this.deps.engine.deps.dataCore.ontology,
+        auth,
+      );
+      resolved.push({ intentKey: intent.key, confidence: cand.confidence, solverKey, args: slots, slotsFillable: missing.length === 0 });
+    }
+    return selectMultiIntent(resolved, { tauMid, maxIntents });
+  }
+
+  /** 意图 → 对口 solver 真名（从其 plan 的首个 invoke_solver 步取·无 plan/无 solver 步 → undefined·该候选不入⑤）。 */
+  private async solverKeyForIntent(intent: IntentDefinition): Promise<string | undefined> {
+    const resolution = await resolvePlanForIntent(this.deps.repos, intent);
+    if (!resolution) return undefined;
+    for (const step of resolution.plan.steps) {
+      if (step.type === "invoke_solver") return step.params.solverKey;
+    }
+    return undefined;
   }
 
   /**

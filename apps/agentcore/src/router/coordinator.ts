@@ -5,6 +5,8 @@ import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
 import type { ExtendedPlanStep } from "../workflow/executor.js";
 import { isCapacityFeasibilityQuery } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast
+import { domainResolveMulti } from "./domain-resolver.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级：能 solver 分解的跨域题让位②
+import { selectDeterministicMultiRoute } from "./multi-route.js";
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Coordinator 编排（确定性·R6 无 LLM/时钟/随机）。
@@ -65,8 +67,16 @@ export function planCoordination(
   question: string,
   pageContext: PageContext | undefined,
   baseScope: string[] = [],
+  deterministicMultiEnabled = false,
 ): CoordinatorPlan | undefined {
   const q = question ?? "";
+  // ★ WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级（Q2 修复·关键）——与 S01 `isCapacityFeasibilityQuery` 同一机制、
+  // **非新开关/非裸关键词 bypass**：若本题能被 `selectDeterministicMultiRoute` 分解成 ≥2 条**真 solver 路**（各有金库 solver +
+  // 槽可填）→ 返 undefined **让位②确定性多路**（秒答·零 LLM·不烧 5min）。判据用 selectDeterministicMultiRoute 一个（非"命中多域
+  // 关键词就无脑 bypass"）——真开放/需会诊的题（"综合分析连锁影响给整体结论"·无 solver 锚·被 open/orchestration 惩罚压到阈下）
+  // selectDeterministicMultiRoute 返 null → **仍落 Coordinator**（保住只能会诊的题）。暗发门 `deterministicMultiEnabled` 关
+  // → 逐字节沿用现 Coordinator 行为（SEAM-6 零回归·含默认关态 Coordinator 一字不变）。
+  if (deterministicMultiEnabled && selectDeterministicMultiRoute(domainResolveMulti(q, pageContext))) return undefined;
   // WO-AGENT-RUNTIME-S01 · 直路（治病根头号杠杆）：产能可行性变体（「型号+上浮X%+N周+能不能接」）有对口**单一**
   // solver（capacity_forecast），**绝不拆多角色会诊**——否则供应链/产能/质量子 agent 各自盲扫烧预算（decision-trace
   // 铁证 ~5min 卡死）。命中即返 undefined → orchestrator 上游确定性路由（会话继承 path-A / compose 直路）已先接住；

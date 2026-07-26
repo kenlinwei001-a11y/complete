@@ -192,6 +192,12 @@ export interface DomainRoute {
   args: Record<string, unknown>;
   /** 该域**单独**看的置信——**不含** `−0.4 跨域惩罚`（那个惩罚正是本 WO 要消灭的根）。 */
   perDomainScore: number;
+  /**
+   * WO-QOS-CROSS-DOMAIN-UNIFIED · **必填槽（solver 硬入参）键**——`selectDeterministicMultiRoute` 的**槽可填硬门**
+   * 据此校验 `args` 是否已把该域 solver 的硬必填参（如 capacity_forecast 的 `modelId`）填满；填不满 → 该域不够格
+   * （落回退·绝不带缺参跑出错答）。ceo-route 派生的 5 域走既有派生·无额外硬门（`[]`）。
+   */
+  requiredArgs: string[];
 }
 
 /**
@@ -281,11 +287,80 @@ export function domainResolveMulti(query: string, pageContext?: PageContext): Do
       solverKey: cr.solverKey ?? cr.route,
       args: cr.args ?? {},
       perDomainScore: perDomainScoreFor(contextRich, focus, baseSignals),
+      requiredArgs: [], // ceo-route 5 域走既有派生·无额外硬门
     });
     // 剥离该族**全部**触发词 → 暴露下一族（下一轮 resolveCeoRoute 顶路由让位）。
     // 用全局版正则一次去尽（某些族一个问句里命中多 token·如供需族"供需"+"对不上"·单次 replace 去不净会自锁死循环）。
     const gre = new RegExp(meta.re.source, meta.re.flags.includes("g") ? meta.re.flags : `${meta.re.flags}g`);
     remaining = remaining.replace(gre, "");
   }
+
+  // ── WO-QOS-CROSS-DOMAIN-UNIFIED · Q2 域族扩展（治缺口④·**单一真值源追加**·非第三张关键词表） ──
+  // ceo-route 的 5 硬域族（信用/毛利/供需/ATP/重排）根本不含 Q2 的域（良率/有效产出/长协/订单延误/外协加班），
+  // 故上面的 peel 循环对 Q2 类问句枚举不出多路。此处**直接按域族正则枚举**（关键词素材复用 coordinator.ts ROLE_KEYWORDS
+  // 的 涂布/卷绕/良率/长协·**非 fork 第三张表**），每族**直接绑金库真名 solver**（service.ts SOLVER 注册·非 `_q` 场景意图 key）。
+  // perDomainScore 同去 −0.4 跨域惩罚（R6·逐域独立看够不够格）。requiredArgs = 该 solver 的硬必填参（capacity_forecast→modelId），
+  // 供 selectDeterministicMultiRoute 的**槽可填硬门**校验（填不满该域即被剔除·绝不带缺参跑错答）。
+  const q2Score = perDomainScoreFor(contextRich, focus, baseSignals);
+  for (const fam of Q2_DOMAIN_FAMILY_META) {
+    if (seenRoutes.has(fam.solverKey)) continue;
+    if (!fam.re.test(q)) continue;
+    seenRoutes.add(fam.solverKey);
+    routes.push({
+      domain: fam.name,
+      route: fam.solverKey, // 沿用 solver 真名作 route（不新造语义）
+      solverKey: fam.solverKey,
+      args: fam.argsFrom(q, focus),
+      perDomainScore: q2Score,
+      requiredArgs: fam.requiredArgs,
+    });
+  }
   return routes;
 }
+
+// ---------------------------------------------------------------------------
+// WO-QOS-CROSS-DOMAIN-UNIFIED · Q2 域族 → 金库真名 solver 静态映射（单一真值源·§6 范围边界）。
+// 素材复用 coordinator.ts ROLE_KEYWORDS（长协→供应链 / 涂布·卷绕·OEE→生产 / 良率·合格·一致性→质量），
+// 但这里是**域→solver**（不是 role），solver key 一律用金库真名（yield_diagnosis/capacity_forecast/lta_gap/
+// affected_orders/outsourcing_split·service.ts SOLVER 注册）——**不是** yield_diag/lta_gap_q/outsourcing_q（那些是场景意图 key）。
+// ---------------------------------------------------------------------------
+
+/** 型号 token（如 `4680-NCM`）——capacity_forecast 硬必填 `modelId` 的抽取源（R6 纯正则）。 */
+const RE_MODEL_TOKEN = /(\d{3,4}-?[A-Za-z]{2,4}\d?)/;
+
+interface Q2DomainFamily {
+  name: string;
+  re: RegExp;
+  solverKey: string;
+  requiredArgs: string[];
+  argsFrom: (q: string, focus: DomainResolution["focus"]) => Record<string, unknown>;
+}
+
+/** 从问句/焦点派生「基地锚」args（EXTENDED solver 缺 args 时从对象数据派生·base 只作 scope 锚）。 */
+function baseArgsFrom(_q: string, focus: DomainResolution["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  if (focus.base) args.base = focus.base;
+  return args;
+}
+
+/** 产能前瞻 args：型号（硬必填 modelId·从问句 4680-NCM 类 token 抽）+ 基地锚。 */
+function capacityArgsFrom(q: string, focus: DomainResolution["focus"]): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const m = q.match(RE_MODEL_TOKEN);
+  if (m) args.modelId = m[1]!.toUpperCase();
+  if (focus.base) args.base = focus.base;
+  return args;
+}
+
+const Q2_DOMAIN_FAMILY_META: Q2DomainFamily[] = [
+  // 质量·良率（复用 ROLE_KEYWORDS quality 素材）→ yield_diagnosis（2σ 突变定位 breakpoint·EXTENDED·从对象派生）。
+  { name: "yield", re: /(良率|合格率|合格|CPK|cpk|一致性|不良率|不良)/, solverKey: "yield_diagnosis", requiredArgs: [], argsFrom: baseArgsFrom },
+  // 生产·有效产出（复用 ROLE_KEYWORDS production 素材 涂布/卷绕/OEE）→ capacity_forecast（硬必填 modelId）。
+  { name: "capacity", re: /(有效产出|产出|OEE|oee|涂布|卷绕|稼动)/, solverKey: "capacity_forecast", requiredArgs: ["modelId"], argsFrom: capacityArgsFrom },
+  // 供应链·长协覆盖（复用 ROLE_KEYWORDS supply-chain 素材 长协/齐套）→ lta_gap（净需求 vs 长协覆盖·EXTENDED）。
+  { name: "lta", re: /(长协|齐套|覆盖率|覆盖|净需求)/, solverKey: "lta_gap", requiredArgs: [], argsFrom: baseArgsFrom },
+  // 订单延误（受影响订单投影器）→ affected_orders（无 baseId 走跨基地聚合·EXTENDED 兼容）。
+  { name: "affected", re: /(订单.{0,4}延|延误|延期|受影响|哪些订单|交付延|拖期)/, solverKey: "affected_orders", requiredArgs: [], argsFrom: baseArgsFrom },
+  // 外协/加班补缺口 → outsourcing_split（外协 vs 加班分配·EXTENDED）。
+  { name: "outsourcing", re: /(外协|外包|加班|补缺口|外委)/, solverKey: "outsourcing_split", requiredArgs: [], argsFrom: baseArgsFrom },
+];
