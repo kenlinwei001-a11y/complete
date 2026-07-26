@@ -33,6 +33,7 @@ describe("WO-Phase4 · dark feature 默认关（demo 部署态防回归）", () 
     // 统一单 步4：⑤ 多意图并行门同列暗发排除集。
     expect(QOS_DARK_LAUNCH_FEATURES.has("qos.multi-intent-orchestration")).toBe(true);
     expect(QOS_DARK_LAUNCH_FEATURES.has("qos.multi-intent-l2-decompose")).toBe(true);
+    expect(QOS_DARK_LAUNCH_FEATURES.has("qos.multi-intent-l3-coupled")).toBe(true);
     // ALL_FEATURE_KEYS 仍含（注册未删·仅模板不顺带开）
     expect(ALL_FEATURE_KEYS).toContain("ceo.free-llm");
     expect(ALL_FEATURE_KEYS).toContain("agent.coordinator");
@@ -52,6 +53,7 @@ describe("WO-Phase4 · dark feature 默认关（demo 部署态防回归）", () 
     expect(resolved.features).not.toContain("qos.deterministic-multi-domain"); // WO-DETERMINISTIC-CROSS-DOMAIN：all-on 也保持关
     expect(resolved.features).not.toContain("qos.multi-intent-orchestration"); // 统一单 步4：⑤ 门 all-on 也保持关
     expect(resolved.features).not.toContain("qos.multi-intent-l2-decompose"); // L2 真分解门 all-on 也保持关
+    expect(resolved.features).not.toContain("qos.multi-intent-l3-coupled"); // L3 耦合联合门 all-on 也保持关
     // 回归护栏：只排除 QOS 暗发门·battery 产品分档特性仍随模板开
     expect(resolved.features).toContain("sim.commander");
     expect(resolved.features).toContain("sim.sandbox");

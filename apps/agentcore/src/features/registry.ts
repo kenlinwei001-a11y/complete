@@ -118,6 +118,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // PRD-multi-intent-L2L3 P1（暗发·defaultOn:false）：L2 真分解——novel 措辞复合问句 → LLM 产 solver 计划（只分解/选型/
   // 抽参·绝不产数字）→ 确定性校验（solverKey ∈ SOLVER_ARGS_SCHEMAS + args 过 zod schema）→ 共享确定性后半并行。
   { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P2（暗发·defaultOn:false）：L3 耦合联合求解——耦合链 + 组合方案型问句 → 一次 portfolio
+  // 守恒解（真传导·真残差外协·近似环诚实标）。关 → L1 独立并行 + 耦合诚实标（现状·零回归）。
+  { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
