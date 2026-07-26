@@ -237,6 +237,33 @@ export const ClassificationResultSchema = z.object({
 });
 export type ClassificationResult = z.infer<typeof ClassificationResultSchema>;
 
+/**
+ * WO-DETERMINISTIC-CROSS-DOMAIN / WO-MULTI-INTENT · 多路（多域/多意图）编排计划（additive·可选）。
+ * 两 PRD **共享后半**（并行 solver + 确定性块装配）；`routeSource` 区分前半 trigger——
+ *   `deterministic-multi-domain`＝确定性主路（domainResolveMulti 出多路·**零 LLM**·本 WO）；
+ *   `llm-multi-intent`＝LLM 兜底（分类器多候选·多意图 PRD·未接线时不产此值）。
+ * `synthesisMode="deterministic"`＝零 LLM 块装配地板（R6·同问句同解字节一致）；`compose`＝可选 LLM 润色（暗发）。
+ * `coupledPairs`＝检出的耦合子结论对（诚实标「独立测算·未链式传导·见 L3」·装配**不造跨域新数字**·R13）。
+ */
+export const MultiIntentPlanSchema = z.object({
+  routeSource: z.enum(["deterministic-multi-domain", "llm-multi-intent"]),
+  synthesisMode: z.enum(["deterministic", "compose"]),
+  selectedIntents: z.array(
+    z.object({
+      intentKey: z.string(),
+      confidence: z.number(),
+      solverKey: z.string(),
+      slots: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  parallelResults: z.record(
+    z.string(),
+    z.object({ ok: z.boolean(), durationMs: z.number(), summary: z.string() }),
+  ),
+  coupledPairs: z.array(z.tuple([z.string(), z.string()])),
+});
+export type MultiIntentPlan = z.infer<typeof MultiIntentPlanSchema>;
+
 export const QueryTaskStatusSchema = z.enum([
   "ROUTING",
   "AWAITING_CLARIFICATION",
@@ -428,6 +455,8 @@ export const QueryTaskSchema = z.object({
     .optional(),
   /** 引用模式增量 §2.2（additive）：执行时解析到的实际版本留痕（「当时生效」） */
   resolvedRefs: z.array(ResolvedRefSchema).optional(),
+  /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路（domainResolveMulti→并行 solver→零 LLM 块装配）留痕。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });
@@ -552,6 +581,8 @@ export const DecisionTraceSchema = z.object({
   /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
   humanReviewRequired: z.boolean(),
   toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路计划留痕（区分 routeSource·诚实 coupledPairs）。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });

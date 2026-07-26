@@ -108,6 +108,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示·建人机信任）", level: "BLOCK", defaultOn: false },
+  // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：跨域题在**确定性层**
+  // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
+  // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
