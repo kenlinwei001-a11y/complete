@@ -206,7 +206,16 @@ export interface CalibrationConfigShape {
   params: CalibratableParamDef[];
 }
 
-/** Ontology slice snapshot every solver computes from (deterministic input). */
+/**
+ * Ontology slice snapshot every solver computes from (deterministic input).
+ *
+ * WO-DATACORE-LAZY-SOLVER-CONTEXT（性能注记·字段结构不变）：核心 10 类
+ * （bases/lines/processes/equipment/maintPlans/models/orders/shipments/segments/dataHealth）此前一律全表扫。
+ * loadContext 现支持按 solverKey 裁剪（见 service.ts `SOLVER_REQUIRED_TYPES` 声明表 + `dc.lazy-solver-context` 暗发门）——
+ * 未声明的核心类型置 `[]`（求解器不读即逐字节等价）。**字段形状本身不改**：裁掉的类型仍是 `ObjectInstance[]`（空数组），
+ * 求解器无需感知加载策略。⚠ certByModel 由 Line+Model+model_certified_on link 派生 → 需它的求解器必须连带声明 Line+Model。
+ * params/rules/ruleSetVersion/isSynthProvenance 便宜且共享 → 永远加载（不裁）。
+ */
 export interface SolverContext {
   tenantId: string;
   params: SolverParamsShape;
