@@ -123,6 +123,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 冷启 187→≤80ms。纯性能收窄·裁剪加载结果与全量**逐字节一致**（SEAM-EQ）·无链路/事件/对象变更。同 QOS 暗发门一样
   // **不随 battery「all on」模板顺带开**（见 PERF_DARK_LAUNCH_FEATURES）——只经显式租户 override 启用（既有租户零回归）。
   { key: "dc.lazy-solver-context", name: "求解器上下文按需加载（性能收窄）", level: "BLOCK", defaultOn: false },
+  // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：跨域题在**确定性层**
+  // 逐域枚举 + 并行 solver + 零 LLM 块装配（改写 QOS 编排路由·排在 LLM classify 之前）。orchestrator deterministicMultiEnabled 据本键 set.has 挂点。
+  // 与 ceo.free-llm/agent.coordinator 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -140,6 +144,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.critic",
   "qos.compose-path",
   "qos.reasoning-trace",
+  "qos.deterministic-multi-domain",
 ]);
 
 /**

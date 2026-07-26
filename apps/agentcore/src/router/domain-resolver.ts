@@ -169,3 +169,123 @@ export function preferDeterministicSolver(res: DomainResolution): DeterministicP
     intentKey: res.intentKey,
   };
 }
+
+// ---------------------------------------------------------------------------
+// WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路（把跨域题留在确定性层·零 LLM）
+//
+// 病根：跨域问句（命中 ≥2 硬域族）被 scoreFor 的 `domainFamilies>=2 → −0.4`（本文件 :80）**故意压到阈值下**——
+// 从"跨域 = 我不会 = 甩给 LLM"落进慢 path-B/classifier。本节反过来：确定性层**自己**把跨域题**逐域枚举 + 逐域路由**
+// 成多路 solver（**复用** ceo-route 的既有单域路由映射·不新造语义），并行跑、确定性拼答。
+//
+// R6 命门：`domainResolveMulti` **全纯函数·零 LLM/随机/时钟**——同问句同 PageContext → 字节一致的多路结果。
+// ---------------------------------------------------------------------------
+
+/** 逐域确定性路由（domainResolveMulti 产物·内部结构·非对外契约）。 */
+export interface DomainRoute {
+  /** 硬域族名（credit/margin/supply/atp/sop·审计/装配分节用）。 */
+  domain: string;
+  /** 复用 ceo-route 落地的确定性路由。 */
+  route: string;
+  /** 对口确定性求解器 key。 */
+  solverKey: string;
+  /** 从 PageContext.focus/问句派生的 solver args（**复用** resolveCeoRoute 的既有派生·零重写）。 */
+  args: Record<string, unknown>;
+  /** 该域**单独**看的置信——**不含** `−0.4 跨域惩罚`（那个惩罚正是本 WO 要消灭的根）。 */
+  perDomainScore: number;
+}
+
+/**
+ * 硬域族 → ceo-route 路由的静态映射（**与 `DOMAIN_FAMILIES` 逐项对齐**·镜像 ceo-route 的 RE_CREDIT/RE_MARGIN/
+ * RE_SUPPLY_DEMAND/RE_ATP/RE_SOP → 路由）。这不是新语义——只是给既有 `DOMAIN_FAMILIES` 命名它各自对口的路由，
+ * 供逐域枚举时按 route 认族并剥离（peel）。
+ */
+const DOMAIN_FAMILY_META: { name: string; re: RegExp; route: string }[] = [
+  { name: "credit", re: DOMAIN_FAMILIES[0]!, route: "credit_exposure" },
+  { name: "margin", re: DOMAIN_FAMILIES[1]!, route: "finance_pnl" },
+  { name: "supply", re: DOMAIN_FAMILIES[2]!, route: "supply_demand_gap_attribution" },
+  { name: "atp", re: DOMAIN_FAMILIES[3]!, route: "atp_check" },
+  { name: "sop", re: DOMAIN_FAMILIES[4]!, route: "sop_reschedule" },
+];
+const ROUTE_TO_FAMILY = new Map(DOMAIN_FAMILY_META.map((m, i) => [m.route, i] as const));
+
+/**
+ * 逐域置信（R6 纯函数）：镜像 `scoreFor` 但**去掉 `domainFamilies>=2 → −0.4` 跨域惩罚**（PRD §3.1）——
+ * 该域单独看是否够格走确定性 solver。orchestration/open 惩罚保留（真开放/需编排的域诚实压低 = 诚实边界，
+ * 不硬凑）。无页面上下文 → 0（镜像 scoreFor 的 contextRich 门）。
+ */
+function perDomainScoreFor(
+  contextRich: boolean,
+  focus: DomainResolution["focus"],
+  signals: DomainResolution["signals"],
+): number {
+  if (!contextRich) return 0;
+  let s = 0.6;
+  const hasAnchor = Boolean(focus.metric || focus.factorId || focus.order);
+  s += hasAnchor ? 0.25 : 0.1;
+  if (signals.drill) s += 0.05;
+  if (signals.orchestration) s -= 0.6;
+  if (signals.open) s -= 0.6;
+  // 注意：**无** domainFamilies −0.4——跨域不再自我压分（本 WO 的根本解）。
+  return Math.max(0, Math.min(1, s));
+}
+
+/**
+ * 确定性多域分路（R6 纯函数·零 LLM/随机/时钟）：问句(+PageContext) → 逐域 `DomainRoute[]`。
+ *
+ * 机制（**复用 resolveCeoRoute·零重写语义**）：按 ceo-route 的既有优先级取顶路由；若该路由属某硬域族 →
+ * 记一条 DomainRoute（route/solverKey/args **原样取自 resolveCeoRoute**·perDomainScore 去跨域惩罚），随后从问句
+ * **剥离**该族触发词，重解析暴露下一族——直到顶路由不再属硬域族（含默认 gap_attribution）或问句不再是 CEO 深问。
+ * 顶路由若一开始就不属硬域族（如瓶颈/产能可行性等更高优先级模式）→ 返回目前已收集集（可能 <2 → 上游回落单域路径·不劫持）。
+ *
+ * 同问句同 PageContext → **字节一致**（剥离/重解析全确定）。`≥2` 判定与"每域够格"过滤在 `multi-route.ts` 做。
+ */
+export function domainResolveMulti(query: string, pageContext?: PageContext): DomainRoute[] {
+  const q = query ?? "";
+  const focus: DomainResolution["focus"] = {};
+  const f = pageContext?.focus ?? {};
+  if (f.metric) focus.metric = f.metric;
+  if (f.factorId) focus.factorId = f.factorId;
+  if (f.base) focus.base = f.base;
+  if (f.order) focus.order = f.order;
+
+  const contextRich = Boolean(
+    pageContext &&
+      (pageContext.focus ||
+        pageContext.block ||
+        (pageContext.entities?.length ?? 0) > 0 ||
+        (pageContext.selection?.length ?? 0) > 0),
+  );
+  // orchestration/open/drill 信号取自**原始**问句（全局形态·各域共享）；domainFamilies 不参与逐域置信。
+  const baseSignals = {
+    drill: RE_DRILL.test(q),
+    orchestration: RE_ORCHESTRATION.test(q),
+    open: RE_OPEN.test(q),
+    domainFamilies: DOMAIN_FAMILIES.filter((re) => re.test(q)).length,
+  };
+
+  const routes: DomainRoute[] = [];
+  const seenRoutes = new Set<string>();
+  let remaining = q;
+  // 上界：硬域族数（5）——防御性 loop 边界（R6 确定）。
+  for (let i = 0; i < DOMAIN_FAMILY_META.length; i++) {
+    if (!isCeoQuestion(remaining)) break;
+    const cr = resolveCeoRoute(remaining, pageContext, "ceo");
+    const famIdx = ROUTE_TO_FAMILY.get(cr.route);
+    if (famIdx === undefined) break; // 顶路由不属硬域族（更高优先级非族模式）→ 停（交上游单域路径）
+    if (seenRoutes.has(cr.route)) break;
+    seenRoutes.add(cr.route);
+    const meta = DOMAIN_FAMILY_META[famIdx]!;
+    routes.push({
+      domain: meta.name,
+      route: cr.route,
+      solverKey: cr.solverKey ?? cr.route,
+      args: cr.args ?? {},
+      perDomainScore: perDomainScoreFor(contextRich, focus, baseSignals),
+    });
+    // 剥离该族**全部**触发词 → 暴露下一族（下一轮 resolveCeoRoute 顶路由让位）。
+    // 用全局版正则一次去尽（某些族一个问句里命中多 token·如供需族"供需"+"对不上"·单次 replace 去不净会自锁死循环）。
+    const gre = new RegExp(meta.re.source, meta.re.flags.includes("g") ? meta.re.flags : `${meta.re.flags}g`);
+    remaining = remaining.replace(gre, "");
+  }
+  return routes;
+}
