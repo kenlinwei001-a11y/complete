@@ -67,6 +67,7 @@ export async function seedDemoEntitlements(repos: Repos): Promise<void> {
       "ceo.free-llm": true,
       "agent.coordinator": true,
       "qos.compose-path": true,
+      "qos.reasoning-trace": true,
     },
     configVersion: 1,
     updatedBy: "system:seed-lightup",

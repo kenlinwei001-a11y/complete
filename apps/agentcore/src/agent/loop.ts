@@ -110,6 +110,12 @@ export interface AgentLoopOpts {
    * **fail-open**：未注入 / 抛错 → 只用确定性复盘结论（绝不阻断循环·R6 主判仍确定）。
    */
   critic?: (input: { blocks: AnswerBlock[]; userContent: string }) => Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * WO-REASONING-TRACE（暗发 `qos.reasoning-trace`·建人机信任）：开启后把每轮"思考旁白"（模型在工具调用之间产出的
+   * 自由文本 = ReAct 的 thought）经 `step.completed` 伪 step（`type=agent_narration`·**不新增 §8.2 事件名**）实时流给前端，
+   * 让用户看到"agent 为什么下一步调这个工具"。缺省 false → 零回归（不发·既有 agent 测试字节不变）。
+   */
+  emitNarration?: boolean;
 }
 
 export interface AgentLoopResult {
@@ -688,6 +694,17 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (texts.length > 0) lastText = texts.map((t) => t.text).join("\n");
 
     const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
+
+    // WO-REASONING-TRACE（暗发 `qos.reasoning-trace`·建人机信任）：把本轮"思考旁白"（模型在工具调用之间产出的自由文本 =
+    // ReAct 的 thought）实时流给前端——复用 `step.completed` 伪 step（`type=agent_narration`·**不新增 §8.2 事件名**·
+    // `stepId=narration-${i}` 独立行·不污染工具步时间线聚合）。仅当有旁白文本 **且** 本轮确有真工具动作（非纯 final_answer
+    // 收尾）才发；纯收尾散文归 answer.final，不重复外露。`opts.emitNarration` 缺省 false → 零回归（既有 agent 测试字节不变）。
+    if (opts.emitNarration && toolUses.some((b) => b.name !== "final_answer")) {
+      const narration = texts.map((t) => t.text).join("\n").trim();
+      if (narration) {
+        await opts.emit("step.completed", { stepId: `narration-${i}`, type: "agent_narration", text: narration.slice(0, 600), iteration: i });
+      }
+    }
 
     if (response.stopReason !== "tool_use" || toolUses.length === 0) {
       // WO-FIX-REASONING-CONTENT：推理型模型（kimi-k2.6 等）把结论写进 reasoning_content 却漏调 final_answer

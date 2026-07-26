@@ -171,6 +171,15 @@ export function reflectEnabled(set: FeatureSet): boolean {
 }
 
 /**
+ * WO-REASONING-TRACE · 是否把 path-B agent 每轮"思考旁白"实时流给前端（建人机信任·暗发 `qos.reasoning-trace`）。
+ * `set==="ALL"`（mock 默认/降级）→ false = 字节兼容零回归（既有 agent 测试不发旁白·事件流逐字节不变）。
+ */
+export function reasoningTraceEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.reasoning-trace");
+}
+
+/**
  * WO-DRIL-P4 · DRIL 资源包 → 首轮 user prompt 段（PRD §8.3·可解释性 §4⑤）。
  * 空包（无任何 solver/slice/rule/skill/workflow）→ 返回 ""（不注入·byte-compatible）。
  * 纯字符串投影·R6 确定性（同包同段）。资源包是**预选导航提示**（供 agent 直接对口下手·省盲选），
@@ -1244,6 +1253,7 @@ export class Orchestrator {
       system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
+      emitNarration: reasoningTraceEnabled(enabledFeatures), // WO-REASONING-TRACE：暗发开 → 每轮思考旁白流前端（建信任）
       summarizer: makeLlmRollingSummarizer(this.deps.engine.deps.llm, model, task.tenantId, summaryProviderAvailable),
       tools,
       llm: this.deps.engine.deps.llm,

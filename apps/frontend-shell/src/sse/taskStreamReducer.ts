@@ -132,6 +132,8 @@ export interface StepRow {
   outcome?: string;
   durationMs?: number;
   running: boolean;
+  /** WO-REASONING-TRACE：type==="agent_narration" 时携带本轮"思考旁白"文本（建人机信任·非工具步·💭 展示）。 */
+  text?: string;
 }
 
 export function selectStepRows(state: TaskStreamState): StepRow[] {
@@ -142,7 +144,7 @@ export function selectStepRows(state: TaskStreamState): StepRow[] {
       if (!d.stepId) continue;
       rows.set(d.stepId, { stepId: d.stepId, type: d.type ?? "", running: true });
     } else if (e.event === "step.completed") {
-      const d = e.data as { stepId?: string; type?: string; outcome?: string; durationMs?: number };
+      const d = e.data as { stepId?: string; type?: string; outcome?: string; durationMs?: number; text?: string };
       if (!d.stepId) continue;
       const prev = rows.get(d.stepId);
       rows.set(d.stepId, {
@@ -151,6 +153,7 @@ export function selectStepRows(state: TaskStreamState): StepRow[] {
         outcome: d.outcome,
         durationMs: d.durationMs,
         running: false,
+        ...(d.text ? { text: d.text } : prev?.text ? { text: prev.text } : {}),
       });
     }
   }

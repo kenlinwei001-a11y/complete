@@ -115,6 +115,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B 多对口 solver **服务端组合编排**
   //（executePlan 逐步 invoke_solver + 一次综合·不经 runAgentLoop·确定性 compose 秒答）。orchestrator composePathEnabled 据本键 set.has 挂点。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
+  // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
+  // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
+  { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -131,6 +134,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.dril-routing",
   "agent.critic",
   "qos.compose-path",
+  "qos.reasoning-trace",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

@@ -48,15 +48,37 @@ export function Timeline({ state }: { state: TaskStreamState }) {
           )}
         </div>
       )}
-      {steps.map((s) => (
-        <StepRowView key={s.stepId} stepId={s.stepId} type={s.type} outcome={s.outcome} durationMs={s.durationMs} running={s.running} />
-      ))}
+      {steps.map((s) =>
+        s.type === "agent_narration" ? (
+          <NarrationRow key={s.stepId} text={s.text ?? ""} />
+        ) : (
+          <StepRowView key={s.stepId} stepId={s.stepId} type={s.type} outcome={s.outcome} durationMs={s.durationMs} running={s.running} />
+        ),
+      )}
       {running && (
         <div className={styles.spinnerRow}>
           <span className={styles.spinner} />
           {stale && <span data-testid="still-running">{zh.dock.running}</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+/** WO-REASONING-TRACE：agent 每轮"思考旁白"气泡（💭·建人机信任·实时展示"为什么下一步这么做"·暗发 qos.reasoning-trace 才有）。 */
+function NarrationRow({ text }: { text: string }) {
+  if (!text.trim()) return null;
+  return (
+    <div
+      data-testid="agent-narration"
+      style={{
+        display: "flex", gap: 6, alignItems: "flex-start", padding: "3px 8px", margin: "2px 0",
+        fontSize: 12, fontStyle: "italic", color: "var(--muted2)",
+        borderLeft: "2px solid var(--c-capacity, #43B7D7)", opacity: 0.9,
+      }}
+    >
+      <span style={{ flexShrink: 0 }}>💭</span>
+      <span style={{ whiteSpace: "pre-wrap", minWidth: 0 }}>{text}</span>
     </div>
   );
 }
