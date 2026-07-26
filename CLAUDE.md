@@ -55,6 +55,7 @@ VITE_MOCK=1 pnpm --filter frontend-shell dev
 
 ## 关键约定（违反即返工）
 
+- **并行优先 · 不逼用户单选（违反即返工）**：多条**相互独立**的工作线（复审 A ＋ 派 dev 做 B ＋ 出文档 C）能并行就**全部并行推进**——审核方自己就是并行调度器（派后台 dev ⊕ 自己开工 ⊕ 发产物同时进行），边做边报、不等许可。**绝不**把独立工作摆成"选一个"逼用户单选：用户的时间不该花在裁剪我本可同时做的事上，默认答案永远是"都做"而非"选一个"。**只有**当选项真互斥（同一文件冲突改法 / 二者取一的架构决策）、或用户优先级真会改变"做什么"时，才用 `AskUserQuestion`。（唯一并发红线：`datacore` 勿并发多 vitest gate，见下 LOOP 纪律——串行化 gate，但派活/复审/出文档等其余工作线照并行。）
 - **contracts-only-shared**：跨包只允许依赖 `@platform/contracts`；前端不得重定义契约已有类型。
 - **tenant_id everywhere**：所有仓储读写、事件、缓存键都带 tenantId；跨租户访问一律 403/404。
 - **Entitlement 先于 authz**：功能关闭 = 不存在 → 404 `FEATURE_NOT_FOUND`（见 datacore features.ts / agentcore features/gate.ts）。
