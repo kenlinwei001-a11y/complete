@@ -81,32 +81,34 @@
   /* --on-accent 保持 #fff（accent 蓝底恒配白字·主题不变） */
 }
 
-/* WO-THEME-WARM · 第三套颜色版本「暖砂金融」（[data-theme=warm]）——纯加性，与暗色/冷蓝两套完全正交：
+/* WO-THEME-WARM · 第三套颜色版本「亮橙金融」（[data-theme=warm]）——纯加性，与暗色/冷蓝两套完全正交：
    不设 data-theme → 暗色（默认·逐值不变）；=light → 冷蓝（逐值不变）；=warm → 本块。上两块一个字节不改。
-   像素基准 = 用户参考图（暖白+橙 金融仪表盘 artifact）精确源值：底 #efede9 / 卡 #fff / 橙 #f26a21 / 墨 #1a1a1c。
+   像素基准 = 用户参考图（Steadi 金融仪表盘 JPG·仓库 733b4f79….jpg）【逐像素吸色】——
+   Playwright canvas 9×9 patch 采样（scratchpad/sample-colors{1,2,3}.mjs）：底 #f9f9f9（近白·多点一致·非暖米色）
+   / 卡 #ffffff / 橙 #f76401（Report 卡饱和核 rgb 247,100,1）/ 墨 #1c1c1c（深卡 #1f1f1f·按钮 #1c1e1d）/ tab 灰 #bebebe。
    覆盖集合 == [data-theme=light] 同一组「表面/结构/文本/accent/chrome」token；语义域色（--ok/--warn/--amber/--danger/--c-*）
    刻意不翻（theme-invariant·与冷蓝一致：风险红仍红、正向绿仍绿）。 */
 :root[data-theme="warm"] {
-  --bg: #efede9;          /* 暖砂页面底（最低层·参考图主场） */
+  --bg: #f9f9f9;          /* 页面底（近白·吸色多点一致 #f9f9f9·非暖米色） */
   --bg2: #ffffff;         /* 输入 / 微抬升面（白） */
-  --panel: #ffffff;       /* 卡片面（白·最亮层） */
-  --panel-glass: #ffffff; /* 暖底磨砂无意义 → 不透明白卡（同冷蓝处理） */
-  --panel2: #f4f2ee;      /* 导航栏 / 卡内嵌区（faint·较 panel 略暗） */
-  --line: #eae7e1;        /* 发丝边（暖灰） */
-  --line2: #ded9d0;       /* 较重边（line-strong） */
-  --txt: #1a1a1c;         /* 主文本（近黑墨·参考图 ink） */
-  --muted: #8b8880;       /* 次要文本（暖灰） */
-  --muted2: #b4b0a8;      /* 三级文本（更浅暖灰） */
-  --accent: #f26a21;      /* 品牌橙（参考图精确值·不为 AA 妥协） */
+  --panel: #ffffff;       /* 卡片面（白·吸色 #ffffff） */
+  --panel-glass: #ffffff; /* 浅底磨砂无意义 → 不透明白卡（同冷蓝处理） */
+  --panel2: #f2f2f2;      /* 导航栏 / 卡内嵌区（较底略暗·中性） */
+  --line: #ececec;        /* 发丝边（中性浅灰） */
+  --line2: #e2e2e2;       /* 较重边 */
+  --txt: #1c1c1c;         /* 主文本（近黑·吸色深卡 #1f1f1f / 按钮 #1c1e1d） */
+  --muted: #8a8a8a;       /* 次要文本（中性灰） */
+  --muted2: #bebebe;      /* 三级文本（中性浅灰·吸色 tab 未选 #bebebe） */
+  --accent: #f76401;      /* 品牌橙（逐像素吸色 Report 卡饱和核 rgb 247,100,1·不为 AA 妥协） */
 
-  /* chrome 表面 / 交互（暖砂变体） */
-  --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 237, 233, 0.78));
-  --topbar-border: #eae7e1;
-  --hover-tint: rgba(40, 34, 24, 0.05);
-  --hover-tint-strong: rgba(40, 34, 24, 0.08);
-  --scrollbar-thumb: rgba(40, 34, 24, 0.2);
-  --nav-active-bg: linear-gradient(90deg, rgba(242, 106, 33, 0.16), rgba(242, 106, 33, 0.04));
-  --nav-active-border: rgba(242, 106, 33, 0.42);
-  --nav-active-txt: #c2540e;  /* 活动导航文字（较橙 accent 略压深·仅此 chrome 项非参考图像素·可按需改回 #f26a21） */
+  /* chrome 表面 / 交互（亮橙变体） */
+  --topbar-bg: linear-gradient(180deg, #ffffff, #f9f9f9);
+  --topbar-border: #ececec;
+  --hover-tint: rgba(20, 20, 20, 0.05);
+  --hover-tint-strong: rgba(20, 20, 20, 0.08);
+  --scrollbar-thumb: rgba(20, 20, 20, 0.18);
+  --nav-active-bg: linear-gradient(90deg, rgba(247, 100, 1, 0.14), rgba(247, 100, 1, 0.03));
+  --nav-active-border: rgba(247, 100, 1, 0.42);
+  --nav-active-txt: #c85009;  /* 活动导航文字（较橙 accent 略压深保可读·仅此 chrome 项非参考图像素） */
   /* --on-accent 保持 #fff（橙底恒配白字） */
 }
