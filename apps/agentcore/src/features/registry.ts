@@ -129,6 +129,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 抽满 + 无 scope 冲突）→ 命中即接共享后半 runParallelRoutes（补 ②/⑤ 关键词/候选漏的意图·治 novel 措辞被 free-LLM 长度门劫持）。
   // orchestrator l2DecomposeEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=free-LLM 长度门逐字节不变·零回归）。
   { key: "qos.multi-intent-l2-decompose", name: "L2 多意图真分解（LLM 产 solver 计划·确定性校验·接共享后半）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P2（暗发·defaultOn:false）：L3 耦合联合求解——耦合链 + 组合方案型问句 → 一次 portfolio
+  // 守恒解（真传导·真残差外协·近似环诚实标）。关 → L1 独立并行 + 耦合诚实标（现状·零回归）。
+  { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

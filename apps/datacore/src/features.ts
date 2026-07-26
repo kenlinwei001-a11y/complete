@@ -138,6 +138,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif。orchestrator optWhatifRouteEnabled 据本键 set.has 挂点。
   // 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开·底层求解仍受 opt.whatif/opt.solver-pool 依赖链门）。
   { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P1/P2（暗发·defaultOn:false·同 AgentCore registry parity·同列 QOS_DARK_LAUNCH_FEATURES all-on 也关）：
+  // L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）+ L3 耦合联合求解（一次 portfolio 守恒解·真传导）。
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
+  { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -159,6 +163,8 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.deterministic-multi-domain",
   "qos.multi-intent-orchestration",
   "qos.opt-whatif-route",
+  "qos.multi-intent-l2-decompose",
+  "qos.multi-intent-l3-coupled",
 ]);
 
 /**

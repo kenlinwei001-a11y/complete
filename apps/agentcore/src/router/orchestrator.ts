@@ -70,6 +70,7 @@ import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, s
 import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）
+import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -237,6 +238,14 @@ export function optWhatifRouteEnabled(set: FeatureSet): boolean {
 export function l2DecomposeEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.multi-intent-l2-decompose");
+}
+
+/**
+ * PRD-multi-intent-L2L3 P2 · L3 耦合联合求解门（暗发·默认关）。关 → L1 独立并行 + 耦合诚实标（现状·零回归）。
+ */
+export function l3CoupledEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.multi-intent-l3-coupled");
 }
 
 /**
@@ -545,7 +554,7 @@ export class Orchestrator {
     if (deterministicMultiEnabled(enabledFeatures)) {
       const multiRoutes = selectDeterministicMultiRoute(domainResolveMulti(task.query, task.context.pageContext));
       if (multiRoutes) {
-        await this.runMultiRoute(taskId, auth, multiRoutes, "deterministic-multi-domain");
+        await this.runMultiRoute(taskId, auth, multiRoutes, "deterministic-multi-domain", { query: task.query, enabledFeatures });
         return;
       }
     }
@@ -668,7 +677,7 @@ export class Orchestrator {
     if (multiIntentEnabled(enabledFeatures)) {
       const selection = await this.trySelectMultiIntent(task, auth, classification, candidates);
       if (selection) {
-        await this.runMultiRoute(taskId, auth, selection.routes, "llm-multi-intent");
+        await this.runMultiRoute(taskId, auth, selection.routes, "llm-multi-intent", { query: task.query, enabledFeatures, classification });
         return;
       }
     }
@@ -781,6 +790,13 @@ export class Orchestrator {
     auth: RequestAuth,
     routes: DomainRoute[],
     routeSource: MultiIntentPlan["routeSource"],
+    // PRD-multi-intent-L2L3 P2 · L3 升格线程（可选）：仅 ②/⑤ 传 `query`+`enabledFeatures` 时判 L3 耦合联合解；
+    // 关门 / 无耦合对 / 非组合方案问句 / portfolio 失败 → 照走下方 L1 独立并行（runParallelRoutes·零回归）。
+    opts?: {
+      query?: string;
+      enabledFeatures?: FeatureSet;
+      classification?: ClassificationResult;
+    },
   ): Promise<void> {
     const isDet = routeSource === "deterministic-multi-domain";
     const prior = isDet ? undefined : (await this.deps.repos.tasks.get(taskId))?.classification;
@@ -795,10 +811,47 @@ export class Orchestrator {
       note: `${isDet ? "确定性多域分路" : routeSource === "llm-l2-decompose" ? "L2 真分解并行" : "LLM 多意图并行"}（零 LLM 装配·${routes.length} 路${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
     });
 
-    const { answer, plan } = await runParallelRoutes(routes, coupledPairs, {
-      executor,
-      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
-    }, routeSource);
+    const emit = (e: string, p: unknown) => this.deps.events.emit(taskId, e, p).then(() => undefined);
+    // ★ PRD-multi-intent-L2L3 P2 · L3 升格（暗发 qos.multi-intent-l3-coupled）：选中集含依赖对（SOLVER_DEP_GRAPH
+    //   从"标注"升级为"路由信号"）∧ 问句是「给组合方案/连锁传导」型 → **不走 L1 独立并行**·改一次 portfolio 联合解
+    //  （守恒内真传导·真残差喂外协·近似环诚实标）。portfolio 失败/关门 → 照走 L1（独立并行 + 耦合诚实标·零回归）。
+    if (
+      opts?.enabledFeatures !== undefined &&
+      l3CoupledEnabled(opts.enabledFeatures) &&
+      coupledPairs.length > 0 &&
+      isCombinationAsk(opts?.query ?? "")
+    ) {
+      const l3 = await runL3CoupledPath(opts?.query ?? "", routes, coupledPairs, { executor, emit });
+      if (l3.ok) {
+        if (this.cancelled.has(taskId)) {
+          await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+          await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+          this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "CANCELLED" });
+          return;
+        }
+        const classification: ClassificationResult = opts?.classification ?? {
+          candidates: routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore })),
+          outOfCatalog: false,
+          extractedSlots: {},
+          latencyMs: 0,
+          model: "deterministic:multi-domain",
+        };
+        await this.deps.repos.tasks.patch(taskId, {
+          status: "COMPLETED",
+          classification,
+          answer: l3.answer,
+          multiIntentPlan: l3.plan,
+          completedAt: new Date().toISOString(),
+        });
+        await this.deps.events.emit(taskId, "answer.final", l3.answer);
+        this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+        await this.recordExperience(taskId);
+        return;
+      }
+      // portfolio 失败 → fail-open 落 L1 独立并行（下方·不塌）。
+    }
+
+    const { answer, plan } = await runParallelRoutes(routes, coupledPairs, { executor, emit }, routeSource);
 
     if (this.cancelled.has(taskId)) {
       await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
