@@ -9,7 +9,7 @@ import {
 } from "@/workspace/themeMode";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-// WO-THEME-SWITCH-U8 · 明暗主题开关（轨O）单测：默认暗（无属性）、切浅置 data-theme=light、持久化、语义色不翻。
+// WO-THEME-SWITCH-U8 + WO-THEME-WARM · 主题开关单测：默认暗（无属性）、切浅置 data-theme=light、暖砂置 data-theme=warm、持久化、语义色不翻。
 describe("WO-THEME-SWITCH-U8 · themeMode", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -48,6 +48,20 @@ describe("WO-THEME-SWITCH-U8 · themeMode", () => {
     localStorage.setItem("ui.theme-mode", "neon");
     expect(getStoredThemeMode()).toBeNull();
   });
+
+  // WO-THEME-WARM · 第三套（加性）：applyThemeMode/setThemeMode/getStored 全接受 warm，且 warm → data-theme=warm。
+  it("warm 第三档：applyThemeMode → data-theme=warm；持久化 + 读回", () => {
+    applyThemeMode("warm");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("warm");
+    setThemeMode("warm");
+    expect(localStorage.getItem("ui.theme-mode")).toBe("warm");
+    expect(getStoredThemeMode()).toBe("warm");
+    // 暗/冷蓝两档仍逐值不变（加性正交）
+    applyThemeMode("light");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    applyThemeMode("dark");
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+  });
 });
 
 describe("WO-THEME-SWITCH-U8 · ThemeToggle", () => {
@@ -56,22 +70,30 @@ describe("WO-THEME-SWITCH-U8 · ThemeToggle", () => {
     document.documentElement.removeAttribute("data-theme");
   });
 
-  it("点击切浅 → <html data-theme=light> + 持久化；再点回暗 → 移除属性", async () => {
+  it("三档循环：暗 → 冷蓝(light) → 暖砂(warm) → 回暗；每档持久化 + 改 data-theme", async () => {
     const user = userEvent.setup();
     render(<ThemeToggle />);
     const btn = screen.getByTestId("theme-toggle");
-    // 默认暗：显示 ☀（去浅），aria-pressed=false
+    // 默认暗：data-theme-mode=dark，无 data-theme 属性
     expect(btn).toHaveAttribute("data-theme-mode", "dark");
-    expect(btn).toHaveAttribute("aria-pressed", "false");
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
 
+    // 第 1 击 → 冷蓝
     await user.click(btn);
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(localStorage.getItem("ui.theme-mode")).toBe("light");
     expect(btn).toHaveAttribute("data-theme-mode", "light");
-    expect(btn).toHaveAttribute("aria-pressed", "true");
 
+    // 第 2 击 → 暖砂（第三套）
+    await user.click(btn);
+    expect(document.documentElement.getAttribute("data-theme")).toBe("warm");
+    expect(localStorage.getItem("ui.theme-mode")).toBe("warm");
+    expect(btn).toHaveAttribute("data-theme-mode", "warm");
+
+    // 第 3 击 → 回暗（移除属性·默认黑曜石态）
     await user.click(btn);
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
     expect(localStorage.getItem("ui.theme-mode")).toBe("dark");
+    expect(btn).toHaveAttribute("data-theme-mode", "dark");
   });
 });

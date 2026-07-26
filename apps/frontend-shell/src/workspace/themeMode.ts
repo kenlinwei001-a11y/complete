@@ -10,7 +10,7 @@
  * - 浅色 = document.documentElement[data-theme=light]（CSS 覆盖表面/文本 token；语义域色不翻）。
  * - 选择持久化于 localStorage（key `ui.theme-mode`）；刷新记住。
  */
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "dark" | "light" | "warm";
 
 const STORAGE_KEY = "ui.theme-mode";
 
@@ -18,17 +18,17 @@ const STORAGE_KEY = "ui.theme-mode";
 export function getStoredThemeMode(): ThemeMode | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    return v === "light" || v === "dark" ? v : null;
+    return v === "light" || v === "dark" || v === "warm" ? v : null;
   } catch {
     return null;
   }
 }
 
-/** 只作用于 DOM（不落库）：light → 置 data-theme=light；dark → 移除属性（默认态）。 */
+/** 只作用于 DOM（不落库）：dark → 移除属性（默认黑曜石态·不变）；light/warm → 置 data-theme=<mode>（驱动 tokens.css 对应覆盖块）。 */
 export function applyThemeMode(mode: ThemeMode): void {
   const root = document.documentElement;
-  if (mode === "light") root.setAttribute("data-theme", "light");
-  else root.removeAttribute("data-theme");
+  if (mode === "dark") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", mode);
 }
 
 /** 落库 + 应用。 */

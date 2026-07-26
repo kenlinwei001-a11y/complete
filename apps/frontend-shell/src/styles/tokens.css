@@ -80,3 +80,33 @@
   --nav-active-txt: #2f49be;  /* 活动导航文字（较 --accent 再压深以对蓝染活动底达 AA·5.5:1） */
   /* --on-accent 保持 #fff（accent 蓝底恒配白字·主题不变） */
 }
+
+/* WO-THEME-WARM · 第三套颜色版本「暖砂金融」（[data-theme=warm]）——纯加性，与暗色/冷蓝两套完全正交：
+   不设 data-theme → 暗色（默认·逐值不变）；=light → 冷蓝（逐值不变）；=warm → 本块。上两块一个字节不改。
+   像素基准 = 用户参考图（暖白+橙 金融仪表盘 artifact）精确源值：底 #efede9 / 卡 #fff / 橙 #f26a21 / 墨 #1a1a1c。
+   覆盖集合 == [data-theme=light] 同一组「表面/结构/文本/accent/chrome」token；语义域色（--ok/--warn/--amber/--danger/--c-*）
+   刻意不翻（theme-invariant·与冷蓝一致：风险红仍红、正向绿仍绿）。 */
+:root[data-theme="warm"] {
+  --bg: #efede9;          /* 暖砂页面底（最低层·参考图主场） */
+  --bg2: #ffffff;         /* 输入 / 微抬升面（白） */
+  --panel: #ffffff;       /* 卡片面（白·最亮层） */
+  --panel-glass: #ffffff; /* 暖底磨砂无意义 → 不透明白卡（同冷蓝处理） */
+  --panel2: #f4f2ee;      /* 导航栏 / 卡内嵌区（faint·较 panel 略暗） */
+  --line: #eae7e1;        /* 发丝边（暖灰） */
+  --line2: #ded9d0;       /* 较重边（line-strong） */
+  --txt: #1a1a1c;         /* 主文本（近黑墨·参考图 ink） */
+  --muted: #8b8880;       /* 次要文本（暖灰） */
+  --muted2: #b4b0a8;      /* 三级文本（更浅暖灰） */
+  --accent: #f26a21;      /* 品牌橙（参考图精确值·不为 AA 妥协） */
+
+  /* chrome 表面 / 交互（暖砂变体） */
+  --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 237, 233, 0.78));
+  --topbar-border: #eae7e1;
+  --hover-tint: rgba(40, 34, 24, 0.05);
+  --hover-tint-strong: rgba(40, 34, 24, 0.08);
+  --scrollbar-thumb: rgba(40, 34, 24, 0.2);
+  --nav-active-bg: linear-gradient(90deg, rgba(242, 106, 33, 0.16), rgba(242, 106, 33, 0.04));
+  --nav-active-border: rgba(242, 106, 33, 0.42);
+  --nav-active-txt: #c2540e;  /* 活动导航文字（较橙 accent 略压深·仅此 chrome 项非参考图像素·可按需改回 #f26a21） */
+  /* --on-accent 保持 #fff（橙底恒配白字） */
+}
