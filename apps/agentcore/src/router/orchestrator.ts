@@ -63,7 +63,8 @@ import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
-import { domainResolve, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）
+import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
+import { selectDeterministicMultiRoute, detectCoupledPairs, runDeterministicMultiPath as execDeterministicMultiPath } from "./multi-route.js"; // WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路（判定 + 并行 solver + 零 LLM 块装配·排在 LLM classify 之前）
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -177,6 +178,18 @@ export function reflectEnabled(set: FeatureSet): boolean {
 export function reasoningTraceEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.reasoning-trace");
+}
+
+/**
+ * WO-DETERMINISTIC-CROSS-DOMAIN · feature 门：是否启用**确定性多域分路**（跨域题在确定性层逐域枚举 + 并行 solver +
+ * 零 LLM 块装配·排在 LLM classify 之前）。**暗发·默认关**。与 freeLlmEnabled/coordinatorEnabled 同款字节兼容：
+ * `set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——既有"跨域压分→落 LLM/单域"管线逐字节不变（SEAM-5 零回归·
+ * 不劫持）；仅**显式** Set 含 `qos.deterministic-multi-domain` 才启用（DataCore 侧已加入 all-on/dark-launch 排除·
+ * battery「all on」也保持关）。
+ */
+export function deterministicMultiEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.deterministic-multi-domain");
 }
 
 /**
@@ -483,6 +496,21 @@ export class Orchestrator {
       }
     }
 
+    // ★ WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路（把跨域题留在确定性层·零 LLM）——插在 A 单域确定性门 / free-LLM / classify **之前**。
+    // 病根（domain-resolver.ts:80）：跨域题（≥2 硬域族）被 `domainFamilies>=2 → −0.4` **故意压到阈下** → 落慢 LLM（free-LLM/classify）。
+    // 本分路让确定性层**自己**把跨域题逐域枚举 + 逐域路由（`domainResolveMulti` 复用 ceo-route 映射·R6 纯函数·perDomainScore
+    // 去 −0.4 跨域惩罚）→ `selectDeterministicMultiRoute`（≥2 域各够格 + 各有 solver·任一不够格整体回落·诚实边界）→
+    // `execDeterministicMultiPath` **并行** solver + **零 LLM 块装配**（每域独立 ⟦ref⟧·耦合诚实标）·秒级。
+    // **暗发默认关**（deterministicMultiEnabled("ALL")=false → 既有管线逐字节不变·SEAM-5 零回归）；命中即 return（agentRequests=0·无 classify），
+    // 未命中（<2 域 / 任一域不够格）→ null → **照落下方**单域确定性门 / free-LLM / classifier（不劫持·fail-safe）。
+    if (deterministicMultiEnabled(enabledFeatures)) {
+      const multiRoutes = selectDeterministicMultiRoute(domainResolveMulti(task.query, task.context.pageContext));
+      if (multiRoutes) {
+        await this.runDeterministicMulti(taskId, auth, multiRoutes);
+        return;
+      }
+    }
+
     // ★ WO-QOS-1 · A 确定性优先门（治本·闭 G-AGENT-BLIND-REACT 路由侧一半）——插在 free-LLM/agent 入口**之前**。
     // 真 Kimi 20 题实测：99% 时延在 path-B 的 LLM 盲目选型推理；治本头号杠杆 = 有对口**确定性** solver 的高置信题
     // 别送进慢 agent。domainResolve（R6 纯函数·复用 ceo-route 意图模式，A 门与 WO-QOS-2 切片投影单一来源）→
@@ -649,6 +677,59 @@ export class Orchestrator {
       }
     }
     return false;
+  }
+
+  /**
+   * WO-DETERMINISTIC-CROSS-DOMAIN · 确定性多域分路出口：并行跑各域 solver（复用 makeExecutor = path-A invoke 通道·
+   * **全程不落 runAgentLoop/classify**）+ **零 LLM 块装配**，自行完成 task 收尾（COMPLETED + answer.final）。
+   * `classification.model="deterministic:multi-domain"`·`agentRequests=0`·`multiIntentPlan` 留痕（routeSource=deterministic-multi-domain·
+   * synthesisMode=deterministic·coupledPairs 诚实标）。确定性 solver 产物 + 零 LLM 装配 → trustLevel=VERIFIED_WORKFLOW。
+   */
+  private async runDeterministicMulti(
+    taskId: string,
+    auth: RequestAuth,
+    routes: DomainRoute[],
+  ): Promise<void> {
+    const budget = new BudgetTracker(this.residualBudgetFromConfig()); // 复用硬预算站点（env 未设→宽松 DEFAULT 不变）
+    const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
+    const coupledPairs = detectCoupledPairs(routes);
+
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    this.deps.metrics.recordRouting(true);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "WORKFLOW",
+      note: `确定性多域分路（零 LLM·${routes.length} 域${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
+    });
+
+    const { answer, plan } = await execDeterministicMultiPath(routes, coupledPairs, {
+      executor,
+      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+    });
+
+    if (this.cancelled.has(taskId)) {
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+      this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "CANCELLED" });
+      return;
+    }
+
+    const classification: ClassificationResult = {
+      candidates: routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore })),
+      outOfCatalog: false,
+      extractedSlots: {},
+      latencyMs: 0, // 零 LLM classify（本 WO 头号证据·SEAM-2：确定性接住·分类耗时=0）
+      model: "deterministic:multi-domain",
+    };
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      classification,
+      answer,
+      multiIntentPlan: plan,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+    await this.recordExperience(taskId);
   }
 
   /**

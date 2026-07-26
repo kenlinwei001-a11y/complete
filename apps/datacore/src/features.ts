@@ -118,6 +118,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
   // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：跨域题在**确定性层**
+  // 逐域枚举 + 并行 solver + 零 LLM 块装配（改写 QOS 编排路由·排在 LLM classify 之前）。orchestrator deterministicMultiEnabled 据本键 set.has 挂点。
+  // 与 ceo.free-llm/agent.coordinator 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -135,6 +139,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.critic",
   "qos.compose-path",
   "qos.reasoning-trace",
+  "qos.deterministic-multi-domain",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

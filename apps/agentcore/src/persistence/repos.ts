@@ -135,6 +135,8 @@ export interface TaskPatch {
   completedAt?: string;
   /** 引用模式增量 §2.2：执行时解析到的实际版本留痕 */
   resolvedRefs?: QueryTask["resolvedRefs"];
+  /** WO-DETERMINISTIC-CROSS-DOMAIN：确定性多域分路计划留痕（additive·memory 直存·pg 见下 patch 列映射）。 */
+  multiIntentPlan?: QueryTask["multiIntentPlan"];
 }
 
 export interface Repos {
