@@ -116,6 +116,12 @@ export interface AgentLoopOpts {
    * 让用户看到"agent 为什么下一步调这个工具"。缺省 false → 零回归（不发·既有 agent 测试字节不变）。
    */
   emitNarration?: boolean;
+  /**
+   * WO-LOOP-CONTROL-P1 · Loop Detector 环检测 cap（**opt-in·缺省禁用=现行为字节兼容**）。设正整数 N → 某 callSignature
+   *（工具名 + 稳定序列化入参）累计调用 ≥ N → 视为无进度环 → 优雅降级 STALL_LOOP（补 S01「成功但空转」洞）。
+   * 生产经 config `QOS_AGENT_LOOP_REPEAT_CAP` 注入（推荐 3）；undefined/≤0 = 不检测（既有全部治理测逐字节不变·R6）。
+   */
+  loopRepeatCap?: number;
 }
 
 export interface AgentLoopResult {
@@ -127,9 +133,10 @@ export interface AgentLoopResult {
   sketch: { toolName: string; inputSummary: string }[];
   /**
    * G-9：本次运行因"有界终止"降级收尾时置位（TIMEOUT=某次调用挂住被 abort；
-   * BUDGET_EXHAUSTED=预算/轮次耗尽）。编排层据此在 answer.final 之前发 agent_degraded 伪 step。
+   * BUDGET_EXHAUSTED=预算/轮次耗尽；STALL_LOOP=WO-LOOP-CONTROL-P1 环检测·同签名反复调用无进度）。
+   * 编排层据此在 answer.final 之前发 agent_degraded 伪 step（outcome 取 reason·前端零改）。
    */
-  degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" };
+  degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" | "STALL_LOOP" };
   /**
    * WO-QOS-2：仅当传入 sliceSolverKeys 时有值——本次运行中是否出现过「plan 引用了图外 solver」而回退 ReAct
    *（true = 至少一轮越界·false = 全程 plan 落在图内）。观测用（不改答案/溯源）。
@@ -192,6 +199,44 @@ const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_res
  */
 const STALL_CONSECUTIVE_FAILURES = 3;
 const STALL_MIN_ROUNDS = 2;
+
+/**
+ * WO-LOOP-CONTROL-P1 · Loop Detector 环检测（补 S01「成功但空转」最后一个洞）：S01 只认"失败"——若 agent 反复以
+ * **相同参数**调用**同一工具**（如 `query_objects(type=Order,filter=X)`）每次都"成功"返回相同（空）结果 → roundHadSuccess
+ * 恒真 → S01 两计数器复位 → 永不触发停滞 → 一路烧到 maxIterations。本检测对每个真实 tool_use 算 `callSignature =
+ * fnv1a(工具名 + 稳定序列化入参)`，维护 Map<签名,count>；某签名 count ≥ 有效 cap → 视为**无进度环** → 优雅降级
+ * STALL_LOOP（复用唯一诚实出口 degrade·非 500·R7/R13）。**opt-in·缺省禁用**：`opts.loopRepeatCap` 未设/≤0 → 不检测
+ *（既有全部治理测逐字节不变·R6 字节兼容）；生产经 config `QOS_AGENT_LOOP_REPEAT_CAP` 注入（推荐 3·mirror
+ * `QOS_AGENT_MAX_ROUND_TRIPS` 的 opt-in 语义）。**不误伤**：签名含入参 → 不同入参的合法多次调用各自独立计数不累加。
+ */
+const LOOP_REPEAT_CAP_DEFAULT = 3;
+
+/**
+ * 稳定序列化（键排序·R6：无 `Date.now()`/`Math.random()`/时钟）：同一 input 恒得同一字符串，供环检测签名。
+ * JSON.stringify 不保证对象键序稳定；此处对对象键排序后递归序列化，确保 `{a:1,b:2}` 与 `{b:2,a:1}` 同签名。
+ */
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  const obj = v as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
+/**
+ * FNV-1a 32-bit（与 `util/embedding.ts` 同族·纯函数·无副作用/时钟/随机·R6）→ callSignature 十六进制串。
+ * budget.ts 无现成 FNV-1a（PRD 假设有误·本单实测确认）；此处自写小纯 FNV-1a，与 embedding.ts 的 0x811c9dc5/
+ * 0x01000193 参数一致（Math.imul 保 32 位溢出语义）。
+ */
+function callSignature(name: string, input: unknown): string {
+  const s = `${name} ${stableStringify(input)}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
 
 /** 增量 §5：并行 READ 轮的最大并发。 */
 const PARALLEL_READ_CONCURRENCY = 4;
@@ -289,6 +334,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let replansUsed = 0;
   let reflected = false;
   let lastReplanReason = "";
+  // WO-LOOP-CONTROL-P1 · Loop Detector 环检测状态（opt-in·repeatCap≤0 = 禁用 = 现行为字节兼容）。
+  const repeatCap = opts.loopRepeatCap && opts.loopRepeatCap > 0 ? opts.loopRepeatCap : 0;
+  const callSignatureCounts = new Map<string, number>();
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -355,18 +403,22 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
    */
   const degrade = async (
     outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED",
-    reason?: "TIMEOUT" | "BUDGET_EXHAUSTED",
+    reason?: "TIMEOUT" | "BUDGET_EXHAUSTED" | "STALL_LOOP",
   ): Promise<AgentLoopResult> => {
     const blocks: AnswerBlock[] = [];
-    // WO-Phase4：有界终止（TIMEOUT/BUDGET_EXHAUSTED）收尾——诚实摘要前缀 + 复用「部分发现」抢救（不造数）+ provenance 列已调工具。
+    // WO-Phase4/P1：有界终止（TIMEOUT/BUDGET_EXHAUSTED/STALL_LOOP）收尾——诚实摘要前缀 + 复用「部分发现」抢救（不造数）+ provenance 列已调工具。
     if (reason) {
       const budgetNote =
-        opts.budget.exhaustedReason ??
-        (reason === "TIMEOUT" ? "单次调用超出有界时限" : `round-trip/迭代上界（已 ${opts.budget.roundTrips} 轮）`);
+        reason === "STALL_LOOP"
+          ? `反复以相同参数调用同一工具、未获新信息（环检测·loopRepeatCap=${opts.loopRepeatCap ?? LOOP_REPEAT_CAP_DEFAULT}）`
+          : opts.budget.exhaustedReason ??
+            (reason === "TIMEOUT" ? "单次调用超出有界时限" : `round-trip/迭代上界（已 ${opts.budget.roundTrips} 轮）`);
       const header =
         reason === "TIMEOUT"
           ? `[预算耗尽·诚实摘要] ⚠️ 探索超时：本次深问未能完全解答（${budgetNote}，已诚实终止）。以下为已探索到的线索：`
-          : `[预算耗尽·诚实摘要] ⚠️ 已达最大探索轮次/预算（${budgetNote}）：本次深问未能完全解答。以下为已探索到的线索：`;
+          : reason === "STALL_LOOP"
+            ? `[预算耗尽·诚实摘要] ⚠️ 检测到无进度循环：${budgetNote}——本次深问未能完全解答（已诚实终止，未烧尽预算）。以下为已探索到的线索：`
+            : `[预算耗尽·诚实摘要] ⚠️ 已达最大探索轮次/预算（${budgetNote}）：本次深问未能完全解答。以下为已探索到的线索：`;
       blocks.push({ type: "text", markdown: header });
       blocks.push({ type: "text", markdown: synthesizePartialFindings() });
     } else {
@@ -375,6 +427,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     const unverified = scanBlocks(blocks); // 未验证数字护栏（复述里若含裸数 → 标记，不放水）
     if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
     if (reason === "TIMEOUT") opts.metrics.agentTimeout.inc();
+    else if (reason === "STALL_LOOP") opts.metrics.agentLoopRepeat.inc(); // P1 环检测归因（与 timeout 同款：只计专属 counter）
     else if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
     // WO-Phase4 · R13：有界终止摘要复述已调工具 → provenance 列所有成功产出结果的 toolCallId（去重·仅 OK 调用·
     // 无成功调用则为空 = 诚实 NO_ANSWER，不编造溯源）。软收尾（无 reason）沿用既有空 provenance。
@@ -821,6 +874,23 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     for (const block of toolUses) {
       if (!(block.name === "load_skill" && opts.loadSkillEnabled)) {
         sketch.push({ toolName: block.name, inputSummary: JSON.stringify(block.input ?? {}).slice(0, 200) });
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // WO-LOOP-CONTROL-P1 · Loop Detector 环检测（opt-in·补 S01 只认失败的洞：成功但原地打转）。
+    // 对本轮每个真实 tool_use（final_answer 已在上处理返回·load_skill 元操作不计）算 callSignature 并累计；
+    // 某签名累计 ≥ repeatCap → 无进度环 → 优雅降级 STALL_LOOP（纯 R6·稳定序列化·无 Date.now/随机·唯一诚实出口 degrade）。
+    // sketch 已在上一步收录本轮调用 → degrade 的「部分发现」可诚实复述（不造数·R13）。**不误伤**：签名含入参 →
+    // 不同入参各自独立计数不累加（对照组「每轮异参」永不触顶）。
+    // -----------------------------------------------------------------------
+    if (repeatCap > 0) {
+      for (const b of toolUses) {
+        if (b.name === "final_answer" || b.name === "load_skill") continue;
+        const sig = callSignature(b.name, b.input ?? {});
+        const n = (callSignatureCounts.get(sig) ?? 0) + 1;
+        callSignatureCounts.set(sig, n);
+        if (n >= repeatCap) return await degrade("BUDGET_EXHAUSTED", "STALL_LOOP");
       }
     }
 

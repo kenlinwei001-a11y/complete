@@ -1289,6 +1289,8 @@ export class Orchestrator {
         : {}),
       // G-9：per-call 有界超时（挂住时上界终止 → 优雅降级），不放松 budget 下界
       llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
+      // WO-LOOP-CONTROL-P1：Loop Detector 环检测 cap（opt-in·缺省 undefined → 禁用 → 既有 path-B 逐字节不变）
+      loopRepeatCap: this.deps.config.QOS_AGENT_LOOP_REPEAT_CAP,
     });
 
     await this.deps.repos.agentRuns.insert(result.run);

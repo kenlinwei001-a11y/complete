@@ -31,6 +31,13 @@ const ConfigSchema = z.object({
    */
   QOS_AGENT_MAX_ROUND_TRIPS: z.coerce.number().int().optional(),
   QOS_AGENT_MAX_DISCOVER_CALLS: z.coerce.number().int().optional(),
+  /**
+   * WO-LOOP-CONTROL-P1 · Loop Detector 环检测 cap（**opt-in·缺省不设 → 禁用 → 既有全部治理测逐字节不变**）。
+   * 设正整数 N → path-B agent 某工具 callSignature（工具名+稳定序列化入参）累计调用 ≥ N → 无进度环优雅降级
+   *（STALL_LOOP·补 S01「成功但空转」洞：即便每次"成功"返回相同结果也早停·不烧到 maxIterations）。
+   * mirror `QOS_AGENT_MAX_ROUND_TRIPS` 的 opt-in 语义；部署态建议 `QOS_AGENT_LOOP_REPEAT_CAP=3`。机制本体由 SEAM 坐实。
+   */
+  QOS_AGENT_LOOP_REPEAT_CAP: z.coerce.number().int().optional(),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */

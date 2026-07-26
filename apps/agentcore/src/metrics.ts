@@ -94,6 +94,11 @@ export class Metrics {
     "qos_agent_timeout_total",
     "Agent runs degraded by per-call LLM/tool timeout",
   );
+  /** WO-LOOP-CONTROL-P1：Loop Detector 环检测（同工具名+入参签名反复调用·成功但空转）触发的优雅降级次数。 */
+  readonly agentLoopRepeat = new Counter(
+    "qos_agent_loop_repeat_total",
+    "Agent runs degraded by loop-hash repeat detection (same tool+input signature)",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
@@ -138,6 +143,7 @@ export class Metrics {
         this.clarificationRounds,
         this.agentBudgetExhausted,
         this.agentTimeout,
+        this.agentLoopRepeat,
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,
