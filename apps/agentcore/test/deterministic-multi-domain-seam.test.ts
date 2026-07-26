@@ -22,15 +22,16 @@ function riskPc(): PageContext {
 }
 
 describe("WO-DETERMINISTIC-CROSS-DOMAIN · 纯函数判定（R6·零 LLM）", () => {
-  it("R6：同问句同 PageContext → domainResolveMulti 字节一致·风控员例枚举出 [margin→finance_pnl, atp→atp_check]", () => {
+  it("R6：同问句同 PageContext → domainResolveMulti 字节一致·风控员例枚举三域 [margin, atp, yield]（统一单 SEAM-1：并行 3 solver）", () => {
     const a = domainResolveMulti(RISK_Q, riskPc());
     const b = domainResolveMulti(RISK_Q, riskPc());
     expect(JSON.stringify(a)).toBe(JSON.stringify(b)); // R6 命门
-    expect(a.map((r) => r.solverKey)).toEqual(["finance_pnl", "atp_check"]);
+    // 统一单 步2：Q2 缺失域族直扫补上 良率→yield_diagnosis（「良率掉2%」自身即一域·此前只出 果域二路）。
+    expect(a.map((r) => r.solverKey)).toEqual(["finance_pnl", "atp_check", "yield_diagnosis"]);
     expect(a.every((r) => r.perDomainScore >= 0.6)).toBe(true); // 逐域去 −0.4 跨域惩罚后各够格
     const sel = selectDeterministicMultiRoute(a);
     expect(sel).not.toBeNull();
-    expect(sel!.length).toBe(2);
+    expect(sel!.length).toBe(3);
   });
 
   it("无 PageContext → perDomainScore=0 → 判定 null（不冒进·上游照落单域/LLM）", () => {
@@ -90,8 +91,8 @@ describe("WO-DETERMINISTIC-CROSS-DOMAIN · 活系统 SEAM（真跑 orchestrator�
     const plan = task.multiIntentPlan!;
     expect(plan.routeSource).toBe("deterministic-multi-domain");
     expect(plan.synthesisMode).toBe("deterministic");
-    expect(plan.selectedIntents.map((s) => s.solverKey)).toEqual(["finance_pnl", "atp_check"]); // 并行 2 solver
-    expect(Object.keys(plan.parallelResults).length).toBe(2);
+    expect(plan.selectedIntents.map((s) => s.solverKey)).toEqual(["finance_pnl", "atp_check", "yield_diagnosis"]); // 统一单 SEAM-1：并行 3 solver
+    expect(Object.keys(plan.parallelResults).length).toBe(3);
 
     const md = (task.answer?.blocks ?? []).map((b) => (b.type === "text" ? b.markdown : "")).join("\n");
     expect(md).toContain("⟦ref:0⟧"); // 每域独立溯源

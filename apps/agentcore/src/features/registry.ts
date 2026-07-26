@@ -112,6 +112,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
   // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。
   { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // 统一单 步4（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：⑤ LLM 多意图兜底——classify 出 ≥2
+  // 高置信候选（确定性 ② 没接住）→ selectMultiIntent 判定 → **同一份**确定性后半并行 + 装配（不另建执行半·不劫持单意图路径）。
+  { key: "qos.multi-intent-orchestration", name: "QOS 多意图并行编排（⑤ LLM 兜底·共享确定性后半）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

@@ -182,7 +182,7 @@ export function preferDeterministicSolver(res: DomainResolution): DeterministicP
 
 /** 逐域确定性路由（domainResolveMulti 产物·内部结构·非对外契约）。 */
 export interface DomainRoute {
-  /** 硬域族名（credit/margin/supply/atp/sop·审计/装配分节用）。 */
+  /** 硬域族名（credit/margin/supply/atp/sop + 统一单扩 yield/output/lta/delay/outsource·审计/装配分节用）。 */
   domain: string;
   /** 复用 ceo-route 落地的确定性路由。 */
   route: string;
@@ -192,6 +192,8 @@ export interface DomainRoute {
   args: Record<string, unknown>;
   /** 该域**单独**看的置信——**不含** `−0.4 跨域惩罚`（那个惩罚正是本 WO 要消灭的根）。 */
   perDomainScore: number;
+  /** 分节标题（装配用·缺省回落 multi-route DOMAIN_LABELS/domain 名）。⑤ LLM 兜底路传意图名。 */
+  label?: string;
 }
 
 /**
@@ -207,6 +209,59 @@ const DOMAIN_FAMILY_META: { name: string; re: RegExp; route: string }[] = [
   { name: "sop", re: DOMAIN_FAMILIES[4]!, route: "sop_reschedule" },
 ];
 const ROUTE_TO_FAMILY = new Map(DOMAIN_FAMILY_META.map((m, i) => [m.route, i] as const));
+
+/**
+ * WO-QOS-CROSS-DOMAIN-UNIFIED 步2 · Q2 缺失域族（**直接 family→solver 映射**·不经 resolveCeoRoute——ceo-route 无这些
+ * 路由语义，硬造会撞其优先级表；solver 金名对齐 `datacore service.ts SOLVER_KEYS`·非 `_q` 场景意图 key）。
+ * `requiredArg` = 必填槽硬门（WO：「槽可填是硬门」——填不出 → 该族**不产 route**（诚实缺席·不硬凑），
+ * 其余族照常，绝不因单域缺槽整体扑街）。args 派生 R6 确定（token 抽取/PageContext.focus·零 LLM）。
+ */
+const SOLVER_FAMILY_META: {
+  name: string;
+  label: string;
+  re: RegExp;
+  solverKey: string;
+  /** 派生 args + 必填可满足性（satisfiable=false → 本族诚实缺席）。 */
+  derive: (q: string, pc?: PageContext) => { args: Record<string, unknown>; satisfiable: boolean };
+}[] = [
+  {
+    name: "yield", label: "良率诊断", re: /(良率|合格率|CPK|直通率|一致性)/i, solverKey: "yield_diagnosis",
+    // yield_diagnosis 无必填（无 series → datacore 诚实返 dataMode:EMPTY·不臆造）；processKey best-effort 抽工序词。
+    derive: (q) => {
+      const proc = q.match(/(涂布|辊压|卷绕|叠片|化成|分容|注液|封装|装配)/)?.[0];
+      return { args: proc ? { processKey: proc } : {}, satisfiable: true };
+    },
+  },
+  {
+    name: "output", label: "产能/有效产出", re: /(有效产出|产出|OEE|产能|涂布|卷绕)/i, solverKey: "capacity_forecast",
+    // capacity_forecast **必填 modelId**（datacore capacity.ts:362 无它即 validationError）——问句无型号 token → 诚实缺席。
+    derive: (q) => {
+      const model = q.match(/\b(\d{3,5}-?[A-Za-z]{2,3}|[A-Za-z]{2,4}-\d{2,4}Ah|刀片-?[A-Za-z]{2,3})\b/)?.[0];
+      return model ? { args: { modelId: model }, satisfiable: true } : { args: {}, satisfiable: false };
+    },
+  },
+  {
+    name: "lta", label: "长协覆盖", re: /(长协|齐套)/, solverKey: "lta_gap",
+    // lta_gap 无必填（datacore deriveExtendedArgs 从上下文物料派生）。material best-effort 抽正极/负极等。
+    derive: (q) => {
+      const mat = q.match(/(三元|正极|负极|隔膜|电解液|铜箔|铝箔|磷酸铁锂)/)?.[0];
+      return { args: mat ? { material: mat } : {}, satisfiable: true };
+    },
+  },
+  {
+    name: "delay", label: "交期延误/受影响订单", re: /(延误|受影响|哪些订单)/, solverKey: "affected_orders",
+    // affected_orders 无必填（无 baseId → datacore 跨基地聚合）；baseId 从 PageContext.focus.base 派生。
+    derive: (_q, pc) => {
+      const base = pc?.focus?.base;
+      return { args: base ? { baseId: base } : {}, satisfiable: true };
+    },
+  },
+  {
+    name: "outsource", label: "外协/加班补缺", re: /(外协|加班|补缺口)/, solverKey: "outsourcing_split",
+    // outsourcing_split 无必填（gap/totalDemand 缺省从订单上下文派生）。
+    derive: () => ({ args: {}, satisfiable: true }),
+  },
+];
 
 /**
  * 逐域置信（R6 纯函数）：镜像 `scoreFor` 但**去掉 `domainFamilies>=2 → −0.4` 跨域惩罚**（PRD §3.1）——
@@ -286,6 +341,23 @@ export function domainResolveMulti(query: string, pageContext?: PageContext): Do
     // 用全局版正则一次去尽（某些族一个问句里命中多 token·如供需族"供需"+"对不上"·单次 replace 去不净会自锁死循环）。
     const gre = new RegExp(meta.re.source, meta.re.flags.includes("g") ? meta.re.flags : `${meta.re.flags}g`);
     remaining = remaining.replace(gre, "");
+  }
+  // ★ 统一单 步2 · 第二相：Q2 缺失域族直扫（良率/产出/长协/延误/外协 → 对口 solver 金名）。
+  // 独立于 ceo-route（其优先级表无这些语义·顶路由早停不影响本相）；按 SOLVER_FAMILY_META 声明序扫描（R6 稳定序）。
+  // 必填槽硬门：derive().satisfiable=false → 该族**诚实缺席**（不硬凑·其余族照常）；solverKey 去重（旧族已覆盖不重复）。
+  for (const fam of SOLVER_FAMILY_META) {
+    if (!fam.re.test(q)) continue;
+    if (routes.some((r) => r.solverKey === fam.solverKey)) continue;
+    const d = fam.derive(q, pageContext);
+    if (!d.satisfiable) continue;
+    routes.push({
+      domain: fam.name,
+      route: fam.solverKey,
+      solverKey: fam.solverKey,
+      args: d.args,
+      perDomainScore: perDomainScoreFor(contextRich, focus, baseSignals),
+      label: fam.label,
+    });
   }
   return routes;
 }

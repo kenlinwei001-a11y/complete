@@ -1,6 +1,7 @@
 import type { Answer, AnswerBlock, MultiIntentPlan, ProvenanceRef } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
+import { summarizeSolverOutput } from "../workflow/executor.js"; // 统一单 步1：复用既有 solver_summary 投影（KPI/表/规则·不重造）
 import { DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js";
 
 /**
@@ -18,25 +19,48 @@ import { DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-r
  *  - **R7 / partial**：单 solver 失败该域诚实标"未计算 + 原因"·不塌其余·不 hallucinate。
  */
 
-/** 装配上界（复用多意图 PRD `QOS_MULTI_INTENT_MAX_INTENTS` 语义·默认 4）。 */
-const MAX_DOMAINS = 4;
+/** 装配上界（统一单：Q2 五域全覆盖 → 5；防扇出爆炸的确定性硬帽·非静默常态截断）。 */
+const MAX_DOMAINS = 5;
 
 /**
- * 硬域族间**已知耦合对**（静态声明·治 G-PORTFOLIO-LOCAL-ONLY 的诚实标签源）：并行独立测算对**独立**域安全，
- * 对**耦合**域仅能诚实标——真解在 L3（`solve_portfolio` 守恒）。此处只登记族间已知依赖（供需/重排 → 交期传导）。
+ * 统一单 步1b · `SOLVER_DEP_GRAPH`——solver 间**已知耦合对**静态声明表（无向·治 G-PORTFOLIO-LOCAL-ONLY 的诚实标签源）：
+ * 并行独立测算对**独立**solver 安全，对**耦合**solver 仅能诚实标"独立测算·未链式传导"——真解在 L3（solve_portfolio 守恒·
+ * 届时本表从"标注"升级为"路由信号"）。合并来源：det-cross-domain 原 2 对（供需/重排→交期）⊕ multi-intent-p1 donor 7 对
+ * ⊕ 统一单 `*←lta_gap`（长协物料约束波及产能/交期/良率）。
  */
-const COUPLED_ROUTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+export const SOLVER_DEP_GRAPH: ReadonlyArray<readonly [string, string]> = [
   ["supply_demand_gap_attribution", "atp_check"],
   ["sop_reschedule", "atp_check"],
+  ["outsourcing_split", "capacity_forecast"],
+  ["outsourcing_split", "affected_orders"],
+  ["outsourcing_split", "quarterly_gap"],
+  ["outsourcing_split", "lta_gap"],
+  ["affected_orders", "capacity_forecast"],
+  ["lta_gap", "quarterly_gap"],
+  ["quarterly_gap", "capacity_forecast"],
+  // *←lta_gap：长协/物料约束对产能与交期与良率的物料侧传导（统一单 步1b）。
+  ["lta_gap", "capacity_forecast"],
+  ["lta_gap", "affected_orders"],
+  ["lta_gap", "yield_diagnosis"],
 ];
 
-/** 硬域族 → 中文分节名（装配可读·不含业务数字）。 */
+/** 两 solver 是否已知耦合（无向·⑤ 判定与装配共用）。 */
+export function solversCoupled(a: string, b: string): boolean {
+  return SOLVER_DEP_GRAPH.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+}
+
+/** 硬域族 → 中文分节名（装配可读·不含业务数字；route.label 优先·此表兜底）。 */
 const DOMAIN_LABELS: Record<string, string> = {
   credit: "信用敞口",
   margin: "量价本利/毛利",
   supply: "供需失衡",
   atp: "交期/订单承诺",
   sop: "产销重排",
+  yield: "良率诊断",
+  output: "产能/有效产出",
+  lta: "长协覆盖",
+  delay: "交期延误/受影响订单",
+  outsource: "外协/加班补缺",
 };
 
 /**
@@ -58,11 +82,11 @@ export function selectDeterministicMultiRoute(
   return qualified.slice(0, MAX_DOMAINS);
 }
 
-/** 检出入选路由集里的已知耦合对（诚实标源·R6·空 = 纯独立）。 */
+/** 检出入选路由集里的已知耦合对（诚实标源·R6·空 = 纯独立；按 solverKey 匹配·route/solverKey 同名域两可）。 */
 export function detectCoupledPairs(routes: DomainRoute[]): [string, string][] {
-  const present = new Set(routes.map((r) => r.route));
+  const present = new Set(routes.flatMap((r) => [r.route, r.solverKey]));
   const out: [string, string][] = [];
-  for (const [a, b] of COUPLED_ROUTE_PAIRS) {
+  for (const [a, b] of SOLVER_DEP_GRAPH) {
     if (present.has(a) && present.has(b)) out.push([a, b]);
   }
   return out;
@@ -118,20 +142,29 @@ export function assembleMultiDomainAnswer(
     );
   }
 
-  const sectionBlocks: AnswerBlock[] = products.map((p, i) => {
-    const label = DOMAIN_LABELS[p.route.domain] ?? p.route.domain;
+  const sectionBlocks: AnswerBlock[] = products.flatMap((p, i) => {
+    const label = p.route.label ?? DOMAIN_LABELS[p.route.domain] ?? p.route.domain;
     if (!p.ok) {
       // R7 诚实 gap：该域未计算 + 原因（不 hallucinate·不占位假数）。
-      return {
-        type: "text" as const,
-        markdown: `## ${label}（${p.route.solverKey}）\n该域未计算（原因：${p.outcome}）——诚实标·不臆造。`,
-      };
+      return [
+        {
+          type: "text" as const,
+          markdown: `## ${label}（${p.route.solverKey}）\n该域未计算（原因：${p.outcome}）——诚实标·不臆造。`,
+        },
+      ];
     }
-    // 零 LLM 装配：只"摆放"该域 solver 真产物的溯源指针；业务数字经 ⟦ref:${i}⟧ 溯到该域产物（本步不写任何裸数）。
-    return {
-      type: "text" as const,
-      markdown: `## ${label}（${p.route.solverKey}）\n本域确定性测算完成，结论与数值见 ⟦ref:${i}⟧。`,
-    };
+    // 统一单 步1：**复用既有 solver_summary 投影**（KPI/表/规则块·provId 溯到本域 provenance[i]·不重造投影不写裸数）。
+    // 投影里的规则依据文本带 ⟦ref:0⟧（单 solver 语境的下标假设）→ 平移为本域下标 ⟦ref:${i}⟧（provId 型 KPI/表块免平移）。
+    const projected = summarizeSolverOutput(p.data, provenance[i]!.id).map((b) =>
+      b.type === "text" ? { ...b, markdown: b.markdown.replace(/⟦ref:0⟧/g, `⟦ref:${i}⟧`) } : b,
+    );
+    return [
+      {
+        type: "text" as const,
+        markdown: `## ${label}（${p.route.solverKey}）\n本域确定性测算完成（每值溯 ⟦ref:${i}⟧）：`,
+      },
+      ...projected,
+    ];
   });
 
   const blocks: AnswerBlock[] = [{ type: "text", markdown: overviewLines.join("\n") }, ...sectionBlocks];
@@ -165,12 +198,14 @@ export async function runDeterministicMultiPath(
   routes: DomainRoute[],
   coupledPairs: [string, string][],
   ctx: MultiRunCtx,
+  routeSource: MultiIntentPlan["routeSource"] = "deterministic-multi-domain",
 ): Promise<MultiRunResult> {
   await ctx.emit?.("step.completed", {
     stepId: newId("det-multi-dispatch"),
     type: "det_multi_domain_dispatch",
     outcome:
-      `确定性多域分路（零 LLM）：${routes.map((r) => `${r.domain}→${r.solverKey}`).join("、")}` +
+      `${routeSource === "llm-multi-intent" ? "多意图并行（⑤ LLM 兜底·同一确定性后半）" : "确定性多域分路（零 LLM）"}：` +
+      `${routes.map((r) => `${r.domain}→${r.solverKey}`).join("、")}` +
       (coupledPairs.length > 0 ? `｜耦合 ${coupledPairs.length} 对（诚实标·未链式传导）` : "｜纯独立"),
     durationMs: 0,
   });
@@ -208,7 +243,7 @@ export async function runDeterministicMultiPath(
   });
 
   const plan: MultiIntentPlan = {
-    routeSource: "deterministic-multi-domain",
+    routeSource,
     synthesisMode: "deterministic",
     selectedIntents: products.map((p) => ({
       intentKey: p.route.domain,

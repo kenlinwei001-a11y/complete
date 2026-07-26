@@ -30,10 +30,13 @@ describe("WO-Phase4 · dark feature 默认关（demo 部署态防回归）", () 
     expect(QOS_DARK_LAUNCH_FEATURES.has("sim.sandbox")).toBe(false);
     // WO-DETERMINISTIC-CROSS-DOMAIN：确定性跨域分路门亦在暗发排除集（battery「all on」保持默认关）。
     expect(QOS_DARK_LAUNCH_FEATURES.has("qos.deterministic-multi-domain")).toBe(true);
+    // 统一单 步4：⑤ 多意图并行门同列暗发排除集。
+    expect(QOS_DARK_LAUNCH_FEATURES.has("qos.multi-intent-orchestration")).toBe(true);
     // ALL_FEATURE_KEYS 仍含（注册未删·仅模板不顺带开）
     expect(ALL_FEATURE_KEYS).toContain("ceo.free-llm");
     expect(ALL_FEATURE_KEYS).toContain("agent.coordinator");
     expect(ALL_FEATURE_KEYS).toContain("qos.deterministic-multi-domain");
+    expect(ALL_FEATURE_KEYS).toContain("qos.multi-intent-orchestration");
   });
 
   it("demo（battery）resolved features 二者 false·sim.* 仍在（不误伤产品分档）", async () => {
@@ -46,6 +49,7 @@ describe("WO-Phase4 · dark feature 默认关（demo 部署态防回归）", () 
     expect(resolved.features).not.toContain("ceo.free-llm");
     expect(resolved.features).not.toContain("agent.coordinator");
     expect(resolved.features).not.toContain("qos.deterministic-multi-domain"); // WO-DETERMINISTIC-CROSS-DOMAIN：all-on 也保持关
+    expect(resolved.features).not.toContain("qos.multi-intent-orchestration"); // 统一单 步4：⑤ 门 all-on 也保持关
     // 回归护栏：只排除 QOS 暗发门·battery 产品分档特性仍随模板开
     expect(resolved.features).toContain("sim.commander");
     expect(resolved.features).toContain("sim.sandbox");

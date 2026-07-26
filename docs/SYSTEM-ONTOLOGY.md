@@ -185,11 +185,20 @@
 
 **编排链（问句→答案）**
 ```
-Query --[★确定性多域分路 WO-DETERMINISTIC-CROSS-DOMAIN·暗发 qos.deterministic-multi-domain]--> domainResolveMulti(问句+PageContext·R6 纯函数·复用 ceo-route 逐域路由映射)
-   --selectDeterministicMultiRoute--> DomainRoute[]（≥2 硬域族各 perDomainScore≥THRESHOLD·**去 −0.4 跨域惩罚**·各有对口 solver）
-     · 命中 → runDeterministicMultiPath：**并行** invoke_solver（复用 path-A invoke 通道·不落 runAgentLoop/classify）→ **确定性块装配（零 LLM·每域独立 ⟦ref⟧·耦合诚实标）** → path-A（model=deterministic:multi-domain·agentRequests=0）
-     · 任一域不够格/无 solver/无模式 → **整体回落 null**（诚实边界·不硬凑）→ 照落下方单域门/classifier
-   ↓（**排在下方单域确定性门 / free-LLM / LLM classify 之前**·把跨域题留在确定性层·闭 G-AGENT-BLIND-REACT 从单域扩到跨域·关=逐字节沿用现"跨域压分→落 LLM/单域"）
+Query --[★② 确定性多域分路 WO-QOS-CROSS-DOMAIN-UNIFIED·暗发 qos.deterministic-multi-domain]--> domainResolveMulti(问句+PageContext·R6 纯函数)
+   两相枚举：相一 复用 ceo-route 逐域路由映射（credit/margin/supply/atp/sop 剥离重解析）⊕ 相二 **Q2 缺失域族直扫**（统一单 步2：
+   良率→yield_diagnosis · 有效产出/OEE/涂布→capacity_forecast（**必填 modelId 问句 token 抽取·抽不出该族诚实缺席**）·
+   长协/齐套→lta_gap · 延误/受影响→affected_orders · 外协/加班→outsourcing_split·solver 金名对齐 datacore SOLVER_KEYS）
+   --selectDeterministicMultiRoute--> DomainRoute[]（≥2 域各 perDomainScore≥THRESHOLD·**去 −0.4 跨域惩罚**·各有对口 solver·槽可填硬门）
+     · 命中 → runDeterministicMultiPath（**②⑤ 共享后半**）：**并行** invoke_solver（复用 path-A invoke 通道·不落 runAgentLoop/classify）→
+       **确定性块装配（零 LLM·复用 solver_summary 投影 KPI/表/规则·每域独立 ⟦ref⟧·SOLVER_DEP_GRAPH 检耦合 → 诚实标「独立测算·未链式传导·见 L3」）**
+       → path-A（model=deterministic:multi-domain·agentRequests=0·multiIntentPlan 留痕 DecisionTrace）
+     · 任一域不够格/无 solver/无模式 → **整体回落 null**（诚实边界·不硬凑）→ 照落下方 Coordinator/单域门/classifier
+   ↓（统一单路由顺序：**② 排在 Coordinator 门之前**（治 Q2 5 分钟黑洞——Coordinator 不再抢走可确定性拆的跨域题；planCoordination
+     加第二道让位 preferDeterministicSplit·双保险）→ Coordinator → 单域确定性门 → free-LLM → LLM classify →
+     **⑤ LLM 多意图兜底（暗发 qos.multi-intent-orchestration·classify 后/澄清前）**：selectMultiIntent（≥2 候选 conf≥tauMid(0.80)·
+     fillSlots 真探针槽可填·同 solver 去重）→ 入选意图 plan 的 invoke_solver args 经 resolveTemplate 渲染 → **同一份共享后半**
+     （routeSource=llm-multi-intent·classify 真产物保留不冒充确定性）·未命中逐字节沿用单意图路径）
 Query --[★确定性优先门 WO-QOS-1]--> domainResolve(问句+PageContext·R6 纯函数·复用 ceo-route 意图模式)
    --preferDeterministicSolver--> {confidence, solverKey}
      · confidence≥THRESHOLD(0.6·20 题金标校准·误降级=0) ∧ 有对口 solver → tryDeterministicBind → **path-A**（拉回·秒级）

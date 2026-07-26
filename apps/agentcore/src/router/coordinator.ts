@@ -5,6 +5,8 @@ import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
 import type { ExtendedPlanStep } from "../workflow/executor.js";
 import { isCapacityFeasibilityQuery } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast
+import { domainResolveMulti } from "./domain-resolver.js"; // 统一单 步3 · 第二道让位判据（DAG 无环：coordinator→domain-resolver→ceo-route）
+import { selectDeterministicMultiRoute } from "./multi-route.js"; // 统一单 步3 · 同一个判据·不另造（multi-route→domain-resolver·无环）
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Coordinator 编排（确定性·R6 无 LLM/时钟/随机）。
@@ -65,6 +67,16 @@ export function planCoordination(
   question: string,
   pageContext: PageContext | undefined,
   baseScope: string[] = [],
+  opts?: {
+    /**
+     * 统一单 步3 · 第二道让位（Q2 关键修复·紧跟 S01 直路同款机制）：调用方（orchestrator）已开
+     * `qos.deterministic-multi-domain` 时置 true → 本题若能被 ② 确定性拆 ≥2 solver 路（各有真 solver + 槽可填）
+     * → 返 undefined 让位 ②（绝不进多角色会诊烧预算）。缺省 false = 直调方（含既有测试）逐字节不变；
+     * flag 关时 orchestrator 传 false → Coordinator 行为不变（SEAM-6 零回归）。**只用 selectDeterministicMultiRoute
+     * 这一个判据**——真开放无 solver 锚的会诊题（选择器返 null）仍归 Coordinator（不无脑 bypass）。
+     */
+    preferDeterministicSplit?: boolean;
+  },
 ): CoordinatorPlan | undefined {
   const q = question ?? "";
   // WO-AGENT-RUNTIME-S01 · 直路（治病根头号杠杆）：产能可行性变体（「型号+上浮X%+N周+能不能接」）有对口**单一**
@@ -72,6 +84,9 @@ export function planCoordination(
   // 铁证 ~5min 卡死）。命中即返 undefined → orchestrator 上游确定性路由（会话继承 path-A / compose 直路）已先接住；
   // 即便未被上游接住（feature/上下文差异），这里也拒绝拆分 → 落 path-B 单 agent（有导航切片·仍对口 capacity_forecast）。
   if (isCapacityFeasibilityQuery(q, pageContext)) return undefined;
+  // 统一单 步3 · 第二道让位（同款机制·见 opts.preferDeterministicSplit 注）。正常路径下 orchestrator 已把 ② 排在
+  // Coordinator 门之前（命中早 return 不达此处）——本道是防重排/其它调用方的双保险（belt & suspenders）。
+  if (opts?.preferDeterministicSplit && selectDeterministicMultiRoute(domainResolveMulti(q, pageContext))) return undefined;
   const matched = new Set<RoleDispatch["role"]>();
   const hintByRole = new Map<string, string>();
   for (const k of ROLE_KEYWORDS) {
