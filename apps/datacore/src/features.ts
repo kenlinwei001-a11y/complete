@@ -123,6 +123,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 与 ceo.free-llm/agent.coordinator 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开）。
   { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
   { key: "qos.multi-intent-orchestration", name: "QOS 多意图并行编排（⑤ LLM 兜底·共享确定性后半）", level: "BLOCK", defaultOn: false },
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -142,6 +143,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.reasoning-trace",
   "qos.deterministic-multi-domain",
   "qos.multi-intent-orchestration",
+  "qos.multi-intent-l2-decompose",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

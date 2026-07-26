@@ -198,7 +198,12 @@ Query --[★② 确定性多域分路 WO-QOS-CROSS-DOMAIN-UNIFIED·暗发 qos.de
      加第二道让位 preferDeterministicSplit·双保险）→ Coordinator → 单域确定性门 → free-LLM → LLM classify →
      **⑤ LLM 多意图兜底（暗发 qos.multi-intent-orchestration·classify 后/澄清前）**：selectMultiIntent（≥2 候选 conf≥tauMid(0.80)·
      fillSlots 真探针槽可填·同 solver 去重）→ 入选意图 plan 的 invoke_solver args 经 resolveTemplate 渲染 → **同一份共享后半**
-     （routeSource=llm-multi-intent·classify 真产物保留不冒充确定性）·未命中逐字节沿用单意图路径）
+     （routeSource=llm-multi-intent·classify 真产物保留不冒充确定性）·未命中逐字节沿用单意图路径 →
+     **L2 真分解（暗发 qos.multi-intent-l2-decompose·⑤ 未命中后/τ 决策前·PRD-multi-intent-L2L3 P1·缩 G-SOP-COMPOSE 残面）**：
+     novel 措辞复合问句（② 关键词族没写全·⑤ 候选拆不出）→ llm.compose 产 solver 执行计划（`l2-decompose.ts`·
+     **LLM 只分解/选型/抽参·绝不产业务数字**·菜单从 SOLVER_ARGS_SCHEMAS 单一来源派生）→ `validateSolverPlan`
+     **确定性校验**（R6：solverKey 已登记 + args 过该 solver zod schema·验不过逐条丢弃诚实 gap·同 solver 去重·≥2 幸存）→
+     `l2EntriesToRoutes` → 同一份共享后半（routeSource=llm-multi-intent）；LLM 失败/垃圾输出/幸存 <2 → fail-open 照落 path-B）
 Query --[★确定性优先门 WO-QOS-1]--> domainResolve(问句+PageContext·R6 纯函数·复用 ceo-route 意图模式)
    --preferDeterministicSolver--> {confidence, solverKey}
      · confidence≥THRESHOLD(0.6·20 题金标校准·误降级=0) ∧ 有对口 solver → tryDeterministicBind → **path-A**（拉回·秒级）

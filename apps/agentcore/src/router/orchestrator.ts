@@ -66,6 +66,7 @@ import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, r
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runDeterministicMultiPath as execDeterministicMultiPath } from "./multi-route.js"; // 统一单 · ②⑤ 共享后半（判定 + 并行 solver + 确定性块装配·② 排在 Coordinator 之前）
 import { selectMultiIntent, type MultiIntentCandidateInput } from "./multi-intent.js"; // 统一单 步4 · ⑤ LLM 多意图兜底判定（salvage 自 multi-intent-p1·执行走共享后半）
+import { isCompoundQuery, buildL2Instruction, validateSolverPlan, l2EntriesToRoutes } from "./l2-decompose.js"; // L2 真分解（LLM 产计划·确定性校验·共享后半）
 import { resolveTemplate } from "../util/template.js"; // ⑤ 入选意图 plan 的 invoke_solver args 模板渲染（已填槽 → 具体 solver args）
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
@@ -201,6 +202,14 @@ export function deterministicMultiEnabled(set: FeatureSet): boolean {
 export function multiIntentEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.multi-intent-orchestration");
+}
+
+/**
+ * PRD-multi-intent-L2L3 P1 · L2 真分解门（暗发·默认关）。同款字节兼容策略："ALL" → false → 既有路径逐字节不变。
+ */
+export function l2DecomposeEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.multi-intent-l2-decompose");
 }
 
 /**
@@ -604,6 +613,14 @@ export class Orchestrator {
       return;
     }
 
+    // ★ PRD-multi-intent-L2L3 P1 · L2 真分解（⑤ 未命中后·τ 决策前）：novel 措辞复合问句（② 关键词族没写全·
+    //   ⑤ 候选也拆不出 ≥2）→ LLM 产 solver 执行计划（只分解/选型/抽参·绝不产数字）→ **确定性校验**
+    //  （solverKey 已登记 + args 过 zod schema·验不过逐条丢弃·诚实 gap）→ 幸存 ≥2 → 同一份共享后半并行。
+    //   未命中/LLM 失败 → false（fail-open·逐字节沿用下方 τ 决策/path-B）。暗发 qos.multi-intent-l2-decompose。
+    if (l2DecomposeEnabled(enabledFeatures) && (await this.tryL2Decompose(taskId, auth, task, classification))) {
+      return;
+    }
+
     // ③ τ decision
     const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
     const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
@@ -836,6 +853,48 @@ export class Orchestrator {
     if (routes.length < 2) return false;
 
     await this.runDeterministicMulti(taskId, auth, routes, { routeSource: "llm-multi-intent", classification });
+    return true;
+  }
+
+  /**
+   * PRD-multi-intent-L2L3 P1 · L2 真分解：复合问句 → llm.compose 产 solver 计划（compose 用途·LLM 只分解/选型/抽参·
+   * instruction 硬约束绝不产业务数字）→ `validateSolverPlan` 确定性校验（R6·solverKey ∈ SOLVER_ARGS_SCHEMAS +
+   * args 过 zod schema·逐条丢弃不硬凑）→ ≥2 幸存 → `l2EntriesToRoutes` → **同一份共享后半**（routeSource=llm-multi-intent·
+   * classify 真产物保留）。任何失败（非复合/LLM 抛错/垃圾输出/幸存 <2）→ false（fail-open·不劫持既有路径）。
+   */
+  private async tryL2Decompose(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    classification: ClassificationResult,
+  ): Promise<boolean> {
+    if (!isCompoundQuery(task.query)) return false;
+    let rawPlan: string;
+    try {
+      const model = await this.deps.llmSettings.roleModel(task.tenantId, "compose");
+      rawPlan = await this.deps.engine.deps.llm.compose({
+        model,
+        instruction: buildL2Instruction(),
+        inputs: [{ query: task.query, pageFocus: task.context.pageContext?.focus ?? null }],
+        tenantId: task.tenantId,
+      });
+    } catch {
+      return false; // fail-open：无 provider / compose 异常 → 照走既有路径（绝不阻断）
+    }
+    const entries = validateSolverPlan(rawPlan, this.deps.config.QOS_MULTI_INTENT_MAX_INTENTS);
+    if (!entries) return false;
+    await this.deps.events
+      .emit(taskId, "step.completed", {
+        stepId: newId("l2-decompose"),
+        type: "det_multi_domain_dispatch",
+        outcome: `L2 真分解：LLM 计划 ${entries.length} 条经确定性校验（solverKey 登记 + args 过 schema）·未过条目已丢弃`,
+        durationMs: 0,
+      })
+      .catch(() => undefined);
+    await this.runDeterministicMulti(taskId, auth, l2EntriesToRoutes(entries), {
+      routeSource: "llm-multi-intent",
+      classification,
+    });
     return true;
   }
 

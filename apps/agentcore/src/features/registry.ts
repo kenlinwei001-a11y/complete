@@ -115,6 +115,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 统一单 步4（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：⑤ LLM 多意图兜底——classify 出 ≥2
   // 高置信候选（确定性 ② 没接住）→ selectMultiIntent 判定 → **同一份**确定性后半并行 + 装配（不另建执行半·不劫持单意图路径）。
   { key: "qos.multi-intent-orchestration", name: "QOS 多意图并行编排（⑤ LLM 兜底·共享确定性后半）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P1（暗发·defaultOn:false）：L2 真分解——novel 措辞复合问句 → LLM 产 solver 计划（只分解/选型/
+  // 抽参·绝不产数字）→ 确定性校验（solverKey ∈ SOLVER_ARGS_SCHEMAS + args 过 zod schema）→ 共享确定性后半并行。
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
