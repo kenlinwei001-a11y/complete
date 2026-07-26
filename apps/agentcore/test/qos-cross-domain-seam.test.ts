@@ -55,6 +55,8 @@ describe("WO-QOS-CROSS-DOMAIN-UNIFIED · 纯函数判定（R6·零 LLM）", () =
     expect(cap.args.modelId).toBe("4680-NCM");
     const sel = selectDeterministicMultiRoute(routes)!;
     expect(sel.length).toBeGreaterThanOrEqual(3);
+    // 收口：MAX_DOMAINS 4→5·Q2 全 5 域入选（"外协还是加班"=outsourcing_split 是 Q2 收尾决策·不可被上界丢）。
+    expect(sel.map((r) => r.solverKey)).toContain("outsourcing_split");
     expect(sel.every((r) => r.perDomainScore >= 0.6 && r.solverKey)).toBe(true);
     expect(JSON.stringify(domainResolveMulti(Q2, riskPc()))).toBe(JSON.stringify(routes)); // R6 字节一致
   });
