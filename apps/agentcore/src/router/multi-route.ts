@@ -18,8 +18,11 @@ import { DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-r
  *  - **R7 / partial**：单 solver 失败该域诚实标"未计算 + 原因"·不塌其余·不 hallucinate。
  */
 
-/** 装配上界（复用多意图 PRD `QOS_MULTI_INTENT_MAX_INTENTS` 语义·默认 4）。 */
-const MAX_DOMAINS = 4;
+/**
+ * 装配上界（②确定性多路）。5 = 覆盖头号例 Q2 的全 5 域（良率/有效产出/长协/延误/外协——"外协还是加班"是 Q2 的收尾决策·不可丢）。
+ * ⑤ LLM 多意图另用 `opts.maxIntents`(QOS_MULTI_INTENT_MAX_INTENTS·默认 4)·两者独立（收口 tweak：审核方据 Q2 live 丢外协上调 4→5）。
+ */
+const MAX_DOMAINS = 5;
 
 /**
  * 硬域族间**已知耦合对**（静态声明·治 G-PORTFOLIO-LOCAL-ONLY 的诚实标签源）：并行独立测算对**独立**域安全，
