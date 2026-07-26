@@ -14,6 +14,13 @@ const ConfigSchema = z.object({
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),
   QOS_TAU_HIGH: z.coerce.number().default(0.85),
   QOS_TAU_LOW: z.coerce.number().default(0.55),
+  /**
+   * WO-MULTI-INTENT-P1 · 多意图并行判定阈值：入选子意图的最低置信（≥本值才纳入并行集）。
+   * 介于 τ_low/τ_high 之间（默认 0.80）——低于此不算"高置信独立子意图"。
+   */
+  QOS_MULTI_INTENT_TAU_MID: z.coerce.number().default(0.8),
+  /** WO-MULTI-INTENT-P1 · 并行子意图上界（防扇出爆炸；分类器 candidates 本就 ≤3，本值为安全帽）。 */
+  QOS_MULTI_INTENT_MAX_INTENTS: z.coerce.number().int().default(4),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
   /**

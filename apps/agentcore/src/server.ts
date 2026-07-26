@@ -440,6 +440,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       ontologyValidation,
       humanReviewRequired,
       toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      ...(task.multiIntentPlan ? { multiIntentPlan: task.multiIntentPlan } : {}),
       createdAt: task.createdAt,
       completedAt: task.completedAt,
     });

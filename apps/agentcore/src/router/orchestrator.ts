@@ -36,6 +36,12 @@ import { makeLlmRollingSummarizer } from "../agent/context.js"; // WO-CONTEXT-CO
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
 import { executePlan } from "./execute-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径执行器（服务端多步 + 一次综合·不经 runAgentLoop）
 import {
+  selectMultiIntent,
+  assembleMultiIntentAnswer,
+  type MultiIntentCandidateInput,
+  type MultiIntentSubResult,
+} from "./multi-intent.js"; // WO-MULTI-INTENT-P1 · 跨域/多意图编排（L1 独立多意图·判定 + 确定性块装配·纯函数核）
+import {
   isSimComposeQuery,
   buildSimNavSlice,
   simComposeSlots,
@@ -177,6 +183,16 @@ export function reflectEnabled(set: FeatureSet): boolean {
 export function reasoningTraceEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.reasoning-trace");
+}
+
+/**
+ * WO-MULTI-INTENT-P1 · feature 门：是否启用**多意图并行分路**（≥2 独立子意图 → 并行 solver → 确定性块装配）。
+ * **暗发·默认关**——与 composePathEnabled 同款字节兼容：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**，
+ * 逐字节沿用现单意图路径（零回归·不劫持）；仅**显式** Set 含 `qos.multi-intent-orchestration` 才启用。
+ */
+export function multiIntentEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.multi-intent-orchestration");
 }
 
 /**
@@ -554,6 +570,14 @@ export class Orchestrator {
     }
     await this.deps.repos.tasks.patch(taskId, { classification });
 
+    // ★ WO-MULTI-INTENT-P1 · 独立多意图并行分路（插在 top-1 路由 _和_ clarification 之前·排序铁律先于澄清——
+    //   否则中置信多候选会被下方 INTENT_CHOICE 澄清逼成单选）。命中（≥2 独立可满足子意图）→ runMultiIntentPath 并行 +
+    //   确定性块装配 → return；未命中 → null → **逐字节沿用现单意图路径**（下方 τ 决策）。
+    //   暗发门 qos.multi-intent-orchestration（defaultOn:false·"ALL" 降级→false→零回归·不劫持）。
+    if (multiIntentEnabled(enabledFeatures) && (await this.tryMultiIntent(taskId, auth, task, candidates, classification))) {
+      return;
+    }
+
     // ③ τ decision
     const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
     const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
@@ -602,6 +626,166 @@ export class Orchestrator {
 
     // high confidence → slot filling → path A
     await this.proceedWithIntent(taskId, auth, intent, classification.extractedSlots);
+  }
+
+  // -------------------------------------------------------------------------
+  // WO-MULTI-INTENT-P1 · 跨域/多意图并行分路（L1 独立多意图）
+  // -------------------------------------------------------------------------
+  /**
+   * 判定并（命中则）执行多意图并行路径。命中 → runMultiIntentPath 并 return true（调用方 return·不落 τ 决策/澄清）；
+   * 未命中 → false → 逐字节沿用现单意图路径。判定核 selectMultiIntent 为纯函数（R6）；本方法只负责**接线**：
+   * 从分类候选解析对口 solver + fillSlots 探针求"可满足槽位"（真接地·非猜），喂给纯函数。
+   */
+  private async tryMultiIntent(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    candidates: IntentDefinition[],
+    classification: ClassificationResult,
+  ): Promise<boolean> {
+    const ontology = this.deps.engine.deps.dataCore.ontology;
+    // 逐候选预解析（solver + 槽位可满足性）——保留 fillSlots 结果供命中后 runWorkflowSteps 复用（不二次填槽）。
+    const prepped = new Map<
+      string,
+      { intent: IntentDefinition; confidence: number; solverKey: string; slots: Record<string, unknown> }
+    >();
+    const inputs: MultiIntentCandidateInput[] = [];
+    for (const c of classification.candidates) {
+      const intent = candidates.find((x) => x.key === c.intentKey);
+      if (!intent) continue;
+      const resolution = await resolvePlanForIntent(this.deps.repos, intent);
+      if (!resolution) continue;
+      const solverStep = resolution.plan.steps.find((s) => s.type === "invoke_solver");
+      const solverKey = solverStep?.type === "invoke_solver" ? solverStep.params.solverKey : undefined;
+      if (!solverKey) continue; // 无对口 solver 的意图不进多意图集（诚实·不硬凑）
+      const filled = await fillSlots(intent, classification.extractedSlots, task.context, ontology, auth);
+      const filledSlots = Object.entries(filled.slots)
+        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+        .map(([k]) => k);
+      prepped.set(intent.key, { intent, confidence: c.confidence, solverKey, slots: filled.slots });
+      inputs.push({
+        intentKey: intent.key,
+        confidence: c.confidence,
+        solverKey,
+        requiredSlots: intent.slots.filter((s) => s.required).map((s) => s.name),
+        filledSlots,
+        sectionTitle: intent.name,
+      });
+    }
+
+    const selection = selectMultiIntent(inputs, {
+      tauMid: this.deps.config.QOS_MULTI_INTENT_TAU_MID,
+      maxIntents: this.deps.config.QOS_MULTI_INTENT_MAX_INTENTS,
+    });
+    if (!selection) return false;
+
+    await this.runMultiIntentPath(taskId, auth, task, selection, prepped, classification);
+    return true;
+  }
+
+  /**
+   * 并行跑各入选子意图的对口 solver（barrier·各从 slotBag 独立生成 args·单失败不塌·R7 partial），
+   * 再**确定性块装配**（零 LLM·<50ms·R6/R13）成分节综合答案。复用 path-A 的 runWorkflowSteps（= solver_summary
+   * 既有投影·不重造）跑各子意图完整计划 → 收集子答案 → assembleMultiIntentAnswer 摆放成节。事件复用 step.completed
+   * 伪 step（multi_intent_dispatch/solver/synthesis·不新增 §8.2 事件名·ontology:check 保 51/51·前端零改）。
+   */
+  private async runMultiIntentPath(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    selection: ReturnType<typeof selectMultiIntent> & object,
+    prepped: Map<string, { intent: IntentDefinition; confidence: number; solverKey: string; slots: Record<string, unknown> }>,
+    classification: ClassificationResult,
+  ): Promise<void> {
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    this.deps.metrics.recordRouting(true);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "WORKFLOW",
+      note: "多意图并行（独立子意图 L1）",
+      intentKeys: selection.selected.map((s) => s.intentKey),
+    });
+    // dispatch 伪 step（选中意图集 + 耦合标记）。
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: newId("mi-dispatch"),
+      type: "multi_intent_dispatch",
+      outcome:
+        `并行选中：${selection.selected.map((s) => `${s.intentKey}(${s.solverKey})`).join(" ∥ ")}` +
+        (selection.coupledPairs.length > 0
+          ? `｜检出耦合对（独立测算·未链式传导·见 L3）：${selection.coupledPairs.map((p) => p.join("↔")).join(", ")}`
+          : "｜纯独立"),
+      durationMs: 0,
+    });
+
+    // 并行 barrier：各子意图独立跑对口计划（各自 budget·互不争用）。单失败标 partial 不塌其余。
+    const subs: MultiIntentSubResult[] = await Promise.all(
+      selection.selected.map(async (sel): Promise<MultiIntentSubResult> => {
+        const p = prepped.get(sel.intentKey)!;
+        const t0 = Date.now();
+        const base = {
+          intentKey: sel.intentKey,
+          confidence: sel.confidence,
+          solverKey: sel.solverKey,
+          sectionTitle: sel.sectionTitle,
+          slots: p.slots,
+        };
+        try {
+          const resolution = await resolvePlanForIntent(this.deps.repos, p.intent);
+          if (!resolution) return { ...base, durationMs: Date.now() - t0, ok: false, reason: "对口执行计划未找到" };
+          const result = await this.deps.engine.runWorkflowSteps({
+            taskId,
+            steps: resolution.plan.steps,
+            slots: p.slots,
+            context: task.context,
+            ctx: auth,
+            nesting: { callChain: [], budget: new BudgetTracker() },
+            emit: (e, pl) => this.deps.events.emit(taskId, e, pl).then(() => undefined),
+            trustLevel: "VERIFIED_WORKFLOW",
+          });
+          const durationMs = Date.now() - t0;
+          await this.deps.events.emit(taskId, "step.completed", {
+            stepId: newId("mi-solver"),
+            type: "multi_intent_solver",
+            outcome: `${sel.intentKey}·${sel.solverKey}:${result.status}`,
+            durationMs,
+          });
+          if (result.status === "FAILED" || !result.answer) {
+            return { ...base, durationMs, ok: false, reason: result.status === "FAILED" ? result.error.message : "无答案产出" };
+          }
+          return { ...base, durationMs, ok: true, answer: result.answer };
+        } catch (err) {
+          const durationMs = Date.now() - t0;
+          await this.deps.events
+            .emit(taskId, "step.completed", { stepId: newId("mi-solver"), type: "multi_intent_solver", outcome: `${sel.intentKey}·${sel.solverKey}:ERROR`, durationMs })
+            .catch(() => undefined);
+          return { ...base, durationMs, ok: false, reason: err instanceof Error ? err.message : String(err) };
+        }
+      }),
+    );
+
+    // 确定性块装配（零 LLM·<50ms）。装配不造跨结论新数字（R13·KILL-MOCK-RED）。
+    const { answer, plan } = assembleMultiIntentAnswer(subs, selection.coupledPairs);
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: newId("mi-synth"),
+      type: "multi_intent_synthesis",
+      outcome: `deterministic·${plan.selectedIntents.length} 节·${subs.filter((s) => s.ok).length} 成 / ${subs.filter((s) => !s.ok).length} partial`,
+      durationMs: 0,
+    });
+
+    if (this.cancelled.has(taskId)) {
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+      this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "CANCELLED" });
+      return;
+    }
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      answer,
+      multiIntentPlan: plan,
+      classification,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
   }
 
   /**

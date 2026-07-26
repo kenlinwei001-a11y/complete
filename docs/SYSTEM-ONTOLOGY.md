@@ -125,7 +125,7 @@
 
 ### G. 治理/平台域（DataCore）
 - **Tenant / User**：多租户与用户（IAM，JWT RS256+JWKS）· `tenants`,`auth.ts`。
-- **FeatureConfig / DynamicFeature / FeatureAudit**：功能开通（entitlement）· `features.ts`。
+- **FeatureConfig / DynamicFeature / FeatureAudit**：功能开通（entitlement）· `features.ts`。**QOS 暗发门**（`QOS_DARK_LAUNCH_FEATURES`·即便行业模板全开也默认关·只经显式租户 override 启）新增 **`qos.multi-intent-orchestration`**（多意图并行编排 L1·独立子意图并行 solver + 确定性块装配·WO-MULTI-INTENT-P1·双注册 datacore `features.ts` ⊕ agentcore `features/registry.ts`·orchestrator `multiIntentEnabled` set.has 直判）+ 可选 **`qos.multi-intent-synthesis-llm`**（确定性装配之上 LLM 润色·默认关）——见 §3 编排链「多意图并行分路」节。
 - **PromptTemplate（OC6）/ LlmBudget（OC7）/ FactoryCalendar（OC9）/ WritebackEcho（OC5）· 运营完备性平台配置**：① OC6 平台内置提示词配置化（平台默认 `PLATFORM_PROMPT_DEFAULTS` + 租户 override，`resolvePrompt` 生效；`GET/PUT /a/v1/prompt-templates`,migration018）；② OC7 LLM 成本配额（租户 token 软/硬线 → 降级/拒，`GET/PUT/record /a/v1/llm-budgets`,migration019）；③ OC9 工厂日历（净生产窗口扣减：周末+节假日/检修扣除、加班日补回，春节周用例；`/a/v1/calendars/:key{,/net-window}`,migration020）；④ OC5 写回回声抑制（Action 写回登记→源回流对账：同值 `ECHO_SUPPRESSED`/异值 `writeback.divergence`(L5) 告警；`/a/v1/writeback-echoes{,/reconcile}`,migration021）。`contracts/{prompt-template,llm-budget,factory-calendar,writeback-echo}.ts`,仓储四处。
 - **ConfigBundle / ImportJob（OC3 环境间配置迁移 + 跨系统 Saga · execution-semantics §3）**：导出本租户配置（首维=featureOverrides，entitlement=可售包形态）为 `ConfigBundle`（带 `platformSchemaVersion`）→ 另一环境导入跑 **Saga 状态机**：`VALIDATING`(schemaVersion major 兼容 + 未知键拒)→`DRY_RUN_OK`(diff vs 目标,冲突=changed)→`APPLYING_A`(DataCore featureOverrides)→`APPLYING_B`(AgentCore,注入客户端)→`COMMITTED`；B 失败→`COMPENSATING`(回滚 A 到导入前)→`COMPENSATED`（Saga 一致）。冲突策略 SKIP/OVERWRITE/FAIL · `config-bundle.ts ConfigBundleService` · `GET/POST /a/v1/config-bundles/{export,import}`(admin) · `import_jobs`(migration017,R9 四处) · `bundle_import` 执行锁。`contracts/config-bundle.ts`。
 - **LlmProvider / LlmPurposeBinding**：LLM 供应商 + **用途绑定矩阵**（6 用途 classifier/agent/extraction/modeling/template_gen/compose）· `contracts/llm.ts:205`。
@@ -295,6 +295,29 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
                           --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
                           连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）
 ```
+★**多意图并行分路（WO-MULTI-INTENT-P1·跨域/多意图编排·L1 独立多意图·暗发 `qos.multi-intent-orchestration`·PRD `docs/PRD-multi-intent-orchestration.md`）**：
+  一个复杂问句含**多个相互独立**、槽可分别抽满的子意图时，别只答 top-1、也别把复合题逼成澄清单选——**并行**跑对口的多个 solver、
+  **确定性块装配**成一份带溯源综合答案。**插点在 `orchestrator.route` classify 之后、top-1 路由 _和_ clarification 之前**（排序铁律先于澄清·
+  否则中置信多候选被 INTENT_CHOICE 逼成单选）。链：`classify → 多候选 --selectMultiIntent(router/multi-intent.ts·纯函数 R6：①≥2 候选
+  confidence≥tauMid(QOS_MULTI_INTENT_TAU_MID=0.80) ②必填槽从共享 slotBag+pageContext 抽满·抽不满即丢弃该意图 ③无 scope 冲突(同 solver 去重)
+  ④**独立性检查**查 `SOLVER_DEP_GRAPH`(solver 间已知依赖静态声明表)·检出依赖对标 coupledPairs ⑤上界 MAX_INTENTS=4)--> 命中(≥2 独立可满足)
+  --runMultiIntentPath--> **并行 barrier**（各入选意图从 slotBag 独立填槽·复用 path-A `engine.runWorkflowSteps` 跑对口计划 = solver_summary
+  **既有投影不重造**·各自 budget·单失败标 partial 不塌其余 R7）--> **assembleMultiIntentAnswer(纯函数 R6·零 LLM·<50ms)**：每子 solver 既有投影块
+  按域拼成分节答案(## 分节 …⟦ref:N⟧·子答案 ⟦ref:k⟧ 按 offset 平移·结构化块携 provId)+顶部总览+诚实标签 --> Answer`。
+  未命中(<2 独立子意图) → return null → **逐字节沿用现单意图路径**（下方 τ 决策·零回归）。
+  **诚实边界（本特性灵魂·治 §8 G-PORTFOLIO-LOCAL-ONLY）**：本期只做**独立**多意图（一因多果·果与果互不影响）；**耦合**型依赖链推演
+  （转拨→产能→延误→外协·如 Q1）**不在本期**（需联合求解 L3·复用 solve_portfolio 共享产能守恒）——检出耦合的子意图**仍并行各自独立测算**，
+  但综合答案**诚实标注**"独立测算·未链式传导·见 L3"、trustLevel 降 AGENT_EXPLORATORY 触发人工复核，**绝不假装做了联合求解**（拿并行独立
+  solver 硬做只得"数字各自对·合起来不勾稽"的假综合·绿测试≠能用）。**事件复用 step.completed 伪 step**（`type=multi_intent_dispatch /
+  multi_intent_solver / multi_intent_synthesis`·**不新增 §8.2 事件名**·`ontology:check` 保 51/51·前端 Timeline 零改）。
+  **可选润色** `qos.multi-intent-synthesis-llm`（默认关·地板确定性装配已可交付）。不变量：R6(判定+装配纯函数·无随机/时钟) · R13(每子结论独立
+  ⟦ref⟧·装配不造跨结论新数字·只摆放各 solver 真出的数) · R7(partial 诚实标未计算+原因·不 hallucinate) · R3(暗发关=逐字节现单意图路径·
+  `multiIntentEnabled(set)` 用 set.has 直判·"ALL" 降级→false 不劫持)。留痕 `QueryTask.multiIntentPlan`/`DecisionTrace.multiIntentPlan`
+  （contracts `qos.ts MultiIntentPlanSchema`·additive 可选·selectedIntents/parallelResults/coupledPairs/synthesisMode）。SEAM
+  `multi-intent-seam.test.ts`（SEAM-1 独立三 solver 并行分节 + **SEAM-2 Q1 耦合不假综合**（头号·断言不出现"已给出联合组合方案") +
+  SEAM-3 无推理档综合延迟 + SEAM-4 partial 诚实 + SEAM-5 关则零回归）。**分层诚实**：L1 独立(本期)｜L2 真分解(补分类器漏掉子意图·路线图)｜
+  L3 耦合联合求解(依赖链传导·复用 solve_portfolio·Q1 真解·路线图)。
+
 **DRIL 智能资源路由链（WO-DRIL·Decision Resource Intelligence Layer·PRD-decision-resource-intelligence-layer §8·暗发 qos.dril-routing）**
 ```
 User Query --[DRIL]--> ResourceRouter（AgentCore·派生投影 R13·非新真值源）

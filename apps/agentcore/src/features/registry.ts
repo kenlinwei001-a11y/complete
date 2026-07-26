@@ -108,6 +108,13 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示·建人机信任）", level: "BLOCK", defaultOn: false },
+  // WO-MULTI-INTENT-P1（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：
+  // 一个复杂问句含 ≥2 个**相互独立**、槽可分别抽满的子意图 → 并行跑对口 solver → **确定性块装配**成带溯源综合答案
+  // （插在 top-1 路由 _和_ clarification 之前）。orchestrator multiIntentEnabled 用 enabledSet.has 直判
+  // （"ALL" 降级不触发 → 既有单意图路径逐字节不变·不劫持）。
+  { key: "qos.multi-intent-orchestration", name: "QOS 多意图并行编排（独立子意图·L1）", level: "BLOCK", defaultOn: false },
+  // 可选润色：确定性块装配之上叠 LLM(compose) 综合成连贯散文（默认关·地板确定性装配已可交付；开则引入 compose 延迟）。
+  { key: "qos.multi-intent-synthesis-llm", name: "QOS 多意图综合 LLM 润色（可选·默认关）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

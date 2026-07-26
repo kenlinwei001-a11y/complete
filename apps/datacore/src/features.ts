@@ -118,6 +118,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
   // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // WO-MULTI-INTENT-P1（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：一个复杂问句含 ≥2 个**相互独立**、
+  // 槽可分别抽满的子意图 → 并行跑对口 solver → **确定性块装配**成带溯源综合答案（插在 top-1 路由 _和_ clarification 之前）。
+  // 独立性检查（solverDepGraph）检出的耦合子意图诚实标"未链式传导·见 L3"，不假综合（G-PORTFOLIO-LOCAL-ONLY 诚实边界）。
+  { key: "qos.multi-intent-orchestration", name: "QOS 多意图并行编排（独立子意图·L1）", level: "BLOCK", defaultOn: false },
+  { key: "qos.multi-intent-synthesis-llm", name: "QOS 多意图综合 LLM 润色（可选·默认关）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -135,6 +140,8 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.critic",
   "qos.compose-path",
   "qos.reasoning-trace",
+  "qos.multi-intent-orchestration",
+  "qos.multi-intent-synthesis-llm",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */

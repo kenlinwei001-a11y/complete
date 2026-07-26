@@ -406,6 +406,35 @@ export const AnswerSchema = z.object({
 });
 export type Answer = z.infer<typeof AnswerSchema>;
 
+// ---------------------------------------------------------------------------
+// WO-MULTI-INTENT-P1 · 跨域/多意图编排（L1 独立多意图）留痕（additive·可选）。
+// 一个复杂问句含 ≥2 个**相互独立**、槽位可分别抽满的子意图 → 并行跑对口 solver →
+// **确定性块装配**成一份带溯源的综合答案。`coupledPairs` 是**独立性检查**（查 solverDepGraph）
+// 检出的**耦合对**（产能→延误→外协式依赖链·G-PORTFOLIO-LOCAL-ONLY）——L1 仍并行各自独立测算，
+// 但综合答案诚实标注"未链式传导·见 L3"，**绝不假装做了联合求解**（KILL-MOCK-RED·诚实边界）。
+// ---------------------------------------------------------------------------
+export const MultiIntentPlanSchema = z.object({
+  /** 命中并行的入选子意图（confidence≥tauMid·必填槽可满足·无 scope 冲突·独立性检查后）。 */
+  selectedIntents: z.array(
+    z.object({
+      intentKey: z.string(),
+      confidence: z.number(),
+      solverKey: z.string(),
+      slots: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  /** 每子意图并行 solver 执行结果（intentKey → {ok, durationMs, summary}·单失败不塌 partial R7）。 */
+  parallelResults: z.record(
+    z.string(),
+    z.object({ ok: z.boolean(), durationMs: z.number(), summary: z.string() }),
+  ),
+  /** 独立性检查检出的耦合对（intentKey 对）——非空即综合诚实标"独立测算未链式传导·见 L3"。 */
+  coupledPairs: z.array(z.tuple([z.string(), z.string()])),
+  /** 综合方式：deterministic（零 LLM 确定性块装配·默认地板）/ compose（可选 LLM 润色·暗发）。 */
+  synthesisMode: z.enum(["deterministic", "compose"]),
+});
+export type MultiIntentPlan = z.infer<typeof MultiIntentPlanSchema>;
+
 export const QueryTaskSchema = z.object({
   id: z.string(), // task_
   tenantId: z.string(),
@@ -426,6 +455,8 @@ export const QueryTaskSchema = z.object({
   error: z
     .object({ code: z.string(), message: z.string(), stepId: z.string().optional() })
     .optional(),
+  /** WO-MULTI-INTENT-P1（additive·可选）：多意图并行分路命中时的编排留痕（选中集/并行结果/耦合对/综合方式）。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
   /** 引用模式增量 §2.2（additive）：执行时解析到的实际版本留痕（「当时生效」） */
   resolvedRefs: z.array(ResolvedRefSchema).optional(),
   createdAt: IsoTime,
@@ -552,6 +583,8 @@ export const DecisionTraceSchema = z.object({
   /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
   humanReviewRequired: z.boolean(),
   toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  /** WO-MULTI-INTENT-P1（additive·可选）：多意图并行分路留痕（选中集/并行结果/耦合对/综合方式）。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });
