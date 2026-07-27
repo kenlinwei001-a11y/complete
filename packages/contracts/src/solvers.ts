@@ -70,7 +70,8 @@ export const CapacityForecastOutputSchema = z
     // WO-CAPLIVE-1-ATOM（additive·per-工序×型号-物料 深化·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' 时输出。
     byProcessModel: z.array(ByProcessModelRowSchema).optional(),
     // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
-    dataMode: z.enum(["LIVE", "MOCK"]).optional(),
+    // PRD-CAP-DEMANDDELTA：EMPTY=已认证但产能数据全零，诚实降级。
+    dataMode: z.enum(["LIVE", "MOCK", "EMPTY"]).optional(),
     healthFactor: z.number(), // 默认 0.93；数据源延迟>2h 降 0.90（C09）
     gap: z.number(),
     ok: z.boolean(),
@@ -95,6 +96,20 @@ export const CapacityForecastOutputSchema = z
     mainBn: z.string(),
     pendingCertList: z.array(z.string()),
     degradeNote: z.string().optional(), // C09 降级说明
+    // PRD-CAP-DEMANDDELTA：demandDelta 驱动 effectiveDemand 后的回显与口径字段。
+    baselineDemand: z.number().optional(),
+    effectiveDemand: z.number().optional(),
+    demandDelta: z.number().optional(),
+    feasibilityNote: z.string().optional(),
+    provenance: z
+      .record(
+        z.string(),
+        z.object({
+          formula: z.string(),
+          valueLabel: z.string(),
+        }),
+      )
+      .optional(),
     // 规则即引用 P2：求解器透出真规则评估 + 规则集版本（关联规则显 PASS/WARN/BLOCK，改规则即改此处）。
     evaluatedRules: z
       .array(z.object({ key: z.string(), name: z.string(), severity: z.enum(["BLOCK", "WARN", "INFO"]), outcome: z.enum(["PASS", "WARN", "BLOCK", "NOT_APPLICABLE"]), expression: z.string(), evidence: z.string().optional() }))

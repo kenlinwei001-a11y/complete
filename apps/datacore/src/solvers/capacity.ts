@@ -344,13 +344,40 @@ export function curveMult(
   return m;
 }
 
+/**
+ * PRD-CAP-DEMANDDELTA · 订单簿基线需求（选项 b）：
+ * 取 `Order.model===modelId` 且状态 OPEN、交期落在 [forecastStart, forecastStart+weeks×7] 的订单 qty 求和，
+ * 归一到「万套/窗口」口径（与 p50/p90 同轴）。确定性 R6：只读 c.orders 快照，无随机/时钟。
+ */
+function computeBaselineDemand(
+  c: SolverContext,
+  modelId: string,
+  forecastStart: string,
+  weeks: number,
+): number {
+  const modelName = str(c.models.find((m) => str(m.props.modelId) === modelId)?.props.name);
+  const endDay = weeks * 7;
+  let total = 0;
+  for (const o of c.orders) {
+    if (str(o.props.status, "OPEN") !== "OPEN") continue;
+    const orderModel = str(o.props.model);
+    if (orderModel !== modelId && orderModel !== modelName) continue;
+    const due = str(o.props.due);
+    if (!due) continue;
+    const day = dayFrom(forecastStart, due);
+    if (day < 0 || day > endDay) continue;
+    total += num(o.props.qty);
+  }
+  return round(total / 10000, 4); // 万套/窗口
+}
+
 export interface ForecastArgs {
   modelId: string;
   qty?: number;
   weeks?: number;
   batches?: { qty: number; dueDate: string; address?: string }[];
   whatIf?: { nightShifts?: number; extraChannels?: number; outsourceRatio?: number };
-  // legacy alias (AgentCore QOS seed plans)
+  // PRD-CAP-DEMANDDELTA：相对增量，驱动 effectiveDemand = 基线 × (1 + demandDelta)。
   demandDelta?: number;
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒。
   granularity?: "base" | "process-model";
@@ -441,6 +468,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   p50 = round(p50, 4);
   const p90 = round(p50 * healthFactor, 4);
 
+  // PRD-CAP-DEMANDDELTA · effectiveDemand = (显式 qty 或 订单簿基线) × (1 + demandDelta)。
+  const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeks);
+  const demandDelta = num(args.demandDelta, 0);
+  const effectiveDemand = round((qty > 0 ? qty : baselineDemand) * (1 + demandDelta), 4);
+
   // Whole-order vs batch verdict.
   let gap: number;
   let ok: boolean;
@@ -462,7 +494,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     gap = round(Math.max(worst, 0), 4);
     ok = batchRows.every((r) => r.ok === true);
   } else {
-    gap = round(qty - p90, 4);
+    gap = round(effectiveDemand - p90, 4);
     ok = gap <= 0;
   }
 
@@ -501,8 +533,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
         physicalCap,
         capped,
         ...(capped ? { capNote: `调整后产能触及物理上限 ${physicalCap}（C03），按上限封顶` } : {}),
-        gap: round(qty - adjP90, 4),
-        ok: qty - adjP90 <= 0,
+        gap: round(effectiveDemand - adjP90, 4),
+        ok: effectiveDemand - adjP90 <= 0,
       };
     }
   }
@@ -525,9 +557,35 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     })
     .sort((a, b) => (a.base < b.base ? -1 : 1));
 
+  // PRD-CAP-DEMANDDELTA · 全零诚实门：已认证但认证基地全零产能 → 数据缺口，不得输出自信瓶颈。
+  if (p50 === 0) {
+    return {
+      p50: 0,
+      p90: 0,
+      healthFactor,
+      gap: 0,
+      ok: false,
+      perBaseRows,
+      nonProducible,
+      totalBases,
+      producibleCount,
+      mainBn: "",
+      pendingCertList,
+      ...(degradeNote ? { degradeNote } : {}),
+      weeks,
+      qty: 0,
+      dataMode: "EMPTY",
+      feasibilityNote: "该型号认证基地当前产能数据为零，无法评估可承接性（数据缺口，见断点 G-CAPACITY-BASE-DATA）",
+      gapPct: 0,
+      mainBottleneck: "",
+    };
+  }
+
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' → per-工序×型号-物料 颗粒。
   // 现有 per-base（perBaseRows）字段零改·byProcessModel 纯加字段（缺省不输出·向后兼容 R6）。
   const byProcessModel = str(args.granularity) === "process-model" ? computeByProcessModel(c, modelId) : undefined;
+
+  const gapPctDenom = batches ? qty : effectiveDemand;
 
   return {
     p50,
@@ -547,10 +605,21 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     ...(whatIf ? { whatIf } : {}),
     weeks,
     qty,
+    baselineDemand,
+    effectiveDemand,
+    demandDelta,
+    // PRD-CAP-DEMANDDELTA · R13 溯源：compute 步可下钻的公式/口径。
+    provenance: {
+      p50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
+      p90: { formula: "p50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
+      baselineDemand: { formula: "Σ Order.qty（modelId，due in weeks，OPEN）/ 10000", valueLabel: "订单簿基线需求（万套/窗口）" },
+      effectiveDemand: { formula: "(qty > 0 ? qty : baselineDemand) × (1 + demandDelta)", valueLabel: "有效需求（万套/窗口）" },
+      gap: { formula: "max(0, effectiveDemand − p90) / effectiveDemand", valueLabel: "缺口比例" },
+    },
     // 轨M 增量1（假2）：紧张度数据模式——LIVE=任一基地主瓶颈来自真 OEE/利用率/良率；MOCK=全回落 → 前端红/橙显"估算"。
     dataMode: anyLive ? "LIVE" : "MOCK",
-    // legacy aliases consumed by AgentCore QOS seed plans
-    gapPct: qty > 0 ? round(Math.max(0, gap) / qty, 4) : 0,
+    // PRD-CAP-DEMANDDELTA：缺口分母改为 effectiveDemand（qty 显式路径保留 batches 分母）。
+    gapPct: gapPctDenom > 0 ? round(Math.max(0, gap) / gapPctDenom, 4) : 0,
     mainBottleneck: mainBn,
   };
 }

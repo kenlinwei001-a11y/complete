@@ -301,6 +301,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
           stepAudits,
           trustLevel,
           deps.metrics,
+          stepOutputs,
         );
         await emitDone("OK");
         return completed(answer);
@@ -317,12 +318,26 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   });
 }
 
+/** 从 render_answer 块模板中推导应溯源的 outputPath：KPI 值若引用 steps.<id>.output.data.<field>，
+ *  则返回 $.data.<field>，使 invoke_solver 能命中 solver 自报的 provenance{formula,valueLabel}。 */
+function deriveBlockOutputPath(type: string, tpl: Record<string, unknown>): string | undefined {
+  // PRD-CAP-DEMANDDELTA：render 块可显式声明 outputPath，避免模板被 resolve 后无法反推字段名。
+  if (typeof tpl.outputPath === "string") return tpl.outputPath;
+  if (type === "solver_summary") return "$.data";
+  if (type === "kpi" && typeof tpl.value === "string") {
+    const m = /^\{\{\s*steps\.[\w-]+\.output\.data\.([\w-]+)\s*\}\}$/.exec(tpl.value);
+    if (m) return `$.data.${m[1] as string}`;
+  }
+  return undefined;
+}
+
 /** render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef. */
 function renderAnswer(
   blockTemplates: Record<string, unknown>[],
   stepAudits: Record<string, StepAudit>,
   trustLevel: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY",
   metrics: Metrics,
+  stepOutputs: Record<string, unknown>,
 ): Answer {
   const provenance: ProvenanceRef[] = [];
   const blocks: AnswerBlock[] = [];
@@ -333,14 +348,20 @@ function renderAnswer(
     if (fromStep) {
       const audit = stepAudits[fromStep];
       provId = newId("prov");
-      // fromStep on a ts-agg / kb step picks the right source + meta (A8.3/S4.1)
+      const outputPath = deriveBlockOutputPath(rest.type as string, rest) ?? "$.data";
+      // PRD-CAP-DEMANDDELTA：invoke_solver 按块引用的具体字段命中 solver  provenance{formula,valueLabel}；
+      // 其余工具保持 audit.enrichment（TS_AGGREGATE/KB_CHUNK 不走错）。
+      const enrichment: ProvenanceEnrichment =
+        audit?.toolName === "invoke_solver"
+          ? enrichProvenance(audit.toolName, stepOutputs[fromStep], outputPath)
+          : (audit?.enrichment ?? { source: "TOOL_RESULT" });
       provenance.push({
         id: provId,
         toolCallId: audit?.toolCallId ?? "unknown",
         toolName: audit?.toolName ?? "unknown",
-        outputPath: "$.data",
+        outputPath,
         ...(audit?.snapshotVersion ? { snapshotVersion: audit.snapshotVersion } : {}),
-        ...(audit?.enrichment ?? { source: "TOOL_RESULT" }),
+        ...enrichment,
       });
     }
     const type = rest.type as string;
