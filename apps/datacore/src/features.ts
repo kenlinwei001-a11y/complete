@@ -112,6 +112,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：Path-B 收尾前**反思闭环**——
   // 确定性复盘（reflect.ts·R6）+ LLM critic advisory（fail-open）。orchestrator reflectEnabled 据本键 set.has 注入 runAgentLoop。
   { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-LOOP-CONTROL-P2（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B agent 停滞时**升级阶梯**——
+  // rung① 换策略再试一轮（早于 degrade·发 agent_escalated 伪 step·不新增事件名）→ rung③ 诚实降级。orchestrator escalationEnabled 据本键 set.has 挂点。
+  { key: "agent.escalation", name: "Agent 停滞升级阶梯（换策略再试→诚实降级·暗发）", level: "BLOCK", defaultOn: false },
   // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B 多对口 solver **服务端组合编排**
   //（executePlan 逐步 invoke_solver + 一次综合·不经 runAgentLoop·确定性 compose 秒答）。orchestrator composePathEnabled 据本键 set.has 挂点。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
@@ -146,6 +149,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "agent.coordinator",
   "qos.dril-routing",
   "agent.critic",
+  "agent.escalation",
   "qos.compose-path",
   "qos.reasoning-trace",
   "qos.deterministic-multi-domain",

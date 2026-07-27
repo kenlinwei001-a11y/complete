@@ -99,6 +99,16 @@ export class Metrics {
     "qos_agent_loop_repeat_total",
     "Agent runs degraded by loop-hash repeat detection (same tool+input signature)",
   );
+  /** WO-LOOP-CONTROL-P2 · Retry Manager：瞬时/传输层错触发的有界重试发生次数（每次实际重试 +1）。 */
+  readonly agentRetry = new Counter(
+    "qos_agent_retry_total",
+    "Agent transient tool errors retried (bounded) by the retry manager",
+  );
+  /** WO-LOOP-CONTROL-P2 · Escalation Ladder：停滞时先升级（换策略再试一轮·rung①）而非直接降级的发生次数。 */
+  readonly agentEscalation = new Counter(
+    "qos_agent_escalation_total",
+    "Agent stall escalations (change-strategy retry before honest degrade)",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
@@ -144,6 +154,8 @@ export class Metrics {
         this.agentBudgetExhausted,
         this.agentTimeout,
         this.agentLoopRepeat,
+        this.agentRetry,
+        this.agentEscalation,
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,

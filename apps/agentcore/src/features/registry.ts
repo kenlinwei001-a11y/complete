@@ -102,6 +102,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator composePathEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变）。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
   { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-LOOP-CONTROL-P2（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：path-B agent 停滞时**升级阶梯**——
+  // rung① 换提示策略再试一轮（早于 degrade·发 agent_escalated 伪 step）→ rung③ 诚实降级（rung② 升 Coordinator 延后）。
+  // orchestrator escalationEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=停滞直接 degrade·不劫持）。
+  { key: "agent.escalation", name: "Agent 停滞升级阶梯（换策略再试→诚实降级·暗发）", level: "BLOCK", defaultOn: false },
   // WO-DRIL-P4（R3 暗发·defaultOn:false·字节兼容·不劫持既有 path-B·PRD-decision-resource-intelligence-layer §8.3）：
   // Path-B Agent Loop 注入 DRIL 资源包（ResourceRouter.buildResourcePackage 跨 solver/slice/rule/skill/workflow 预选）
   // 到首轮 user prompt——agent 有预置资源包 → 不再盲 discover 逐跳（round-trip ≤4·SEAM）。

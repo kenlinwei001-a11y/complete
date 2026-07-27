@@ -122,6 +122,25 @@ export interface AgentLoopOpts {
    * 生产经 config `QOS_AGENT_LOOP_REPEAT_CAP` 注入（推荐 3）；undefined/≤0 = 不检测（既有全部治理测逐字节不变·R6）。
    */
   loopRepeatCap?: number;
+  /**
+   * WO-LOOP-CONTROL-P2 · per-tool 调用上界（PRD §3.3·机制 #3·**opt-in·缺省 undefined/≤0=不限=现行为字节兼容**）。
+   * 设正整数 N → 某工具（按名）累计调用达 N → 置 `budget.exhausted` → 下一轮 `budget.exhausted` 守卫优雅降级
+   *（补 P1 loop-hash「同参重复」外的「同工具**异参**刷屏」）。生产经 config `QOS_AGENT_PER_TOOL_CALL_CAP` 注入（推荐 8）。
+   */
+  perToolCallCap?: number;
+  /**
+   * WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4·**opt-in·缺省 undefined=0 次重试=现行为字节兼容**）。
+   * `maxAttempts` = 瞬时/传输层错的**最大重试次数**（额外尝试·不含首次）。retryable 回执且重试未尽 → 有界重试
+   *（退避复用 per-call deadline·不新起定时器）→ 成功则不入停滞计数；确定性错/重试耗尽 → 立即入停滞（现行为）。
+   */
+  retry?: { maxAttempts: number };
+  /**
+   * WO-LOOP-CONTROL-P2 · Escalation Ladder（PRD §3.4·机制 #7·**暗发 `agent.escalation`·缺省 false=直接降级=现行为字节兼容**）。
+   * 开启后：停滞（P1 hash 触顶 / S01 连续失败）时先走一级阶梯——rung① 换提示策略再试一轮（注入换角度 nudge + 复位停滞计数
+   * 一次 + 发 `step.completed{type=agent_escalated}` 伪 step·**早于** degrade·不新增 §8.2 事件名）；仍停滞 → rung③ 落既有
+   * `degrade`（rung② 升级 Coordinator 延后·见 WO 裁定 1·本单不在叶子造扇出）。一次性（`escalated` 状态位·mirror forceFinishNotified）。
+   */
+  escalation?: boolean;
 }
 
 export interface AgentLoopResult {
@@ -337,6 +356,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   // WO-LOOP-CONTROL-P1 · Loop Detector 环检测状态（opt-in·repeatCap≤0 = 禁用 = 现行为字节兼容）。
   const repeatCap = opts.loopRepeatCap && opts.loopRepeatCap > 0 ? opts.loopRepeatCap : 0;
   const callSignatureCounts = new Map<string, number>();
+  // WO-LOOP-CONTROL-P2 · per-tool 调用上界（opt-in）：设入 budget（缺省不设=不限=现行为字节兼容）。补 P1 hash「同参重复」外的「异参刷屏」。
+  if (opts.perToolCallCap !== undefined && opts.perToolCallCap > 0) opts.budget.perToolCallCap = opts.perToolCallCap;
+  // WO-LOOP-CONTROL-P2 · Retry Manager 最大重试次数（opt-in·0=不重试=现行为字节兼容）。
+  const retryMaxAttempts = opts.retry && opts.retry.maxAttempts > 0 ? opts.retry.maxAttempts : 0;
+  // WO-LOOP-CONTROL-P2 · Escalation Ladder 一次性状态位（暗发 escalation·mirror forceFinishNotified·升级至多一次·仍停滞即诚实降级）。
+  let escalated = false;
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -449,6 +474,37 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       sketch,
       ...(reason ? { degraded: { reason } } : {}),
     };
+  };
+
+  /**
+   * WO-LOOP-CONTROL-P2 · Escalation Ladder rung①（PRD §3.4·暗发·一次性·**升级而非只降级**）：停滞时先「换提示策略再试一轮」
+   * 而非直接认输——注入换角度 nudge（复用 discover·mirror consecutiveDenies forceFinish nudge）+ 复位停滞计数一次 + 发
+   * `step.completed{type=agent_escalated}` 伪 step（**早于** degrade·复用既有 step.completed·**不新增 §8.2 事件名**·前端零改）。
+   * 返回 true → 调用方 `continue` 再跑一轮（rung① 换策略轮）；返回 false（feature 关 / 已升级过）→ 调用方落既有 `degrade`
+   *（rung③ 认输·唯一诚实出口·字节兼容）。R6：主判为确定性状态位（emit 的 durationMs 仅审计时长·不入答案/溯源）。
+   * rung②（升级 Coordinator）延后（WO 裁定 1·叶子不造扇出）——本单只交 rung①+rung③。
+   */
+  const maybeEscalate = async (iter: number): Promise<boolean> => {
+    if (!opts.escalation || escalated) return false;
+    escalated = true;
+    opts.metrics.agentEscalation.inc();
+    await opts.emit("step.completed", {
+      stepId: `escalate-${iter}`,
+      type: "agent_escalated",
+      outcome: "RETRY_STRATEGY",
+      durationMs: opts.budget.elapsedMs(),
+    });
+    messages.push({
+      role: "user",
+      content:
+        "你已多轮无进展或反复失败。换个角度重来：先调用 discover(kind=\"object_types\")（或 discover(kind=\"solvers\")）" +
+        "拿到本租户真实对象类型名/可用求解器，再据此换条件重查，避免重复相同的无效调用。",
+    });
+    // 复位停滞计数一次（给换策略轮一个干净起点·仅本次·后续再停滞→degrade·升级不可无限）。
+    consecutiveToolFailures = 0;
+    roundsWithoutSuccess = 0;
+    callSignatureCounts.clear();
+    return true;
   };
 
   /** 增量 §5：同轮 sideEffect 判定（READ 全并行；含 COMPUTE/ACTION_DRAFT/EXTERNAL 全串行）。 */
@@ -578,7 +634,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // deadline = min(llmCallTimeoutMs ?? maxDurationMs, budget 剩余)；超时被 executor 收敛为 {ok:false} ERROR tool_result。
     const remainingMs = opts.budget.budget.maxDurationMs - opts.budget.elapsedMs();
     const callTimeoutMs = Math.max(1, Math.min(opts.llmCallTimeoutMs ?? opts.budget.budget.maxDurationMs, remainingMs));
-    const r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+    // WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：瞬时/传输层错（executor 回执 retryable=true·DataCore 不可达/
+    // MCP 传输抖动）有界重试至多 retryMaxAttempts 次（退避复用同一 per-call deadline callTimeoutMs·**不新起定时器体系**）——
+    // 重试成功（OK）→ 下游 roundHadSuccess 复位停滞计数（= 瞬时错**不入停滞**）；确定性错（retryable=false）不重试立即入停滞（现行为）。
+    let r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+    for (let attempt = 0; r.retryable && attempt < retryMaxAttempts; attempt++) {
+      opts.metrics.agentRetry.inc();
+      r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+    }
     await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
     await opts.emit("step.completed", {
       stepId: r.toolCallId,
@@ -884,13 +947,31 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // sketch 已在上一步收录本轮调用 → degrade 的「部分发现」可诚实复述（不造数·R13）。**不误伤**：签名含入参 →
     // 不同入参各自独立计数不累加（对照组「每轮异参」永不触顶）。
     // -----------------------------------------------------------------------
+    // WO-LOOP-CONTROL-P2 · per-tool 调用上界（PRD §3.3·机制 #3）：某工具（按名·**异参亦累计**）达 perToolCallCap → 置
+    // budget.exhausted → 下一轮迭代前 `budget.exhausted` 守卫优雅降级（补 P1 hash 只认「同参重复」的洞·**零新降级路径**）。
+    // 缺省不设 cap → 直接放行（现行为字节兼容）。final_answer/load_skill 元操作不计。
+    if (opts.budget.perToolCallCap !== undefined) {
+      for (const b of toolUses) {
+        if (b.name === "final_answer" || b.name === "load_skill") continue;
+        opts.budget.tryConsumeTool(b.name);
+      }
+    }
+
     if (repeatCap > 0) {
+      // P1 hash 环检测：本轮任一真实 tool_use 的 callSignature 累计达 repeatCap → 无进度环。
+      let hashStalled = false;
       for (const b of toolUses) {
         if (b.name === "final_answer" || b.name === "load_skill") continue;
         const sig = callSignature(b.name, b.input ?? {});
         const n = (callSignatureCounts.get(sig) ?? 0) + 1;
         callSignatureCounts.set(sig, n);
-        if (n >= repeatCap) return await degrade("BUDGET_EXHAUSTED", "STALL_LOOP");
+        if (n >= repeatCap) hashStalled = true;
+      }
+      if (hashStalled) {
+        // WO-LOOP-CONTROL-P2 · Escalation Ladder：rung① 换策略再试一轮（**早于** degrade·暗发·一次性）；仍停滞才落 rung③ 认输。
+        if (await maybeEscalate(i)) continue;
+        // rung③ 唯一诚实出口 degrade(STALL_LOOP)（loop-control:check 门守·升级阶梯至多延后一轮·不新增第二降级出口）。
+        return await degrade("BUDGET_EXHAUSTED", "STALL_LOOP");
       }
     }
 
@@ -956,6 +1037,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // 正常流（任一成功产出即上面复位两计数器）。此前 loop 只对连续 PERMISSION 拒绝（consecutiveDenies）先 nudge——ERROR
     // 型停滞（invoke_solver ERROR/权限外 workflow DENIED 反复）无此护栏，会一路烧到 maxIterations（病根实测 ~5min）。
     if (consecutiveToolFailures >= STALL_CONSECUTIVE_FAILURES && roundsWithoutSuccess >= STALL_MIN_ROUNDS) {
+      // WO-LOOP-CONTROL-P2 · Escalation Ladder：rung① 换策略再试一轮（**早于** degrade·暗发·一次性）；仍停滞才落 rung③ 认输。
+      if (await maybeEscalate(i)) continue;
       return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
     }
 
