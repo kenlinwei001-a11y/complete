@@ -52,4 +52,19 @@ describe("SEAM · gap_attribution 细分作用域（G-SEG-ATTR-CROSS-SEGMENT）"
     expect(custs.some((c: string) => STORAGE.some((s) => c.includes(s)))).toBe(false); // 无储能（精准裁·非黑名单）
     expect(g.reconciled).toBe(true);
   });
+
+  it("③ base 作用域下钻不套业态过滤（合肥非储能基地根因树跨全业态·非空）——治 base 作用域回归（0079ba31）", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    // 合肥(hefei) = 乘用车订单首基地、非储能基地。base 作用域下钻（RiskBoard 每基地根因推演树）应展示其订单树·非空——
+    // 即便默认指标是 seg_attain_ess(储能)。回归守：储能全局过滤若误伤 base 作用域 → noBaseData=true 空树（合肥/成都/武汉曾断）。
+    const g: any = await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "hefei" } });
+    expect(g.noBaseData ?? false).toBe(false); // 非空树（回归时此处为 true）
+    expect(g.scope?.baseId).toBe("hefei");
+    const l1 = g.levels.find((L: any) => L.depth === 1);
+    expect(l1?.nodes?.length ?? 0).toBeGreaterThan(0); // L1 有该基地根
+    const orderLeaves = g.atomicLeaves.filter((l: any) => l.provenance?.drillType === "Order" && l.provenance?.kind === "实测");
+    expect(orderLeaves.length).toBeGreaterThan(0); // 有订单叶（跨全业态·非被储能过滤空）
+    expect(g.reconciled).toBe(true);
+  });
 });

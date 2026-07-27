@@ -1348,8 +1348,14 @@ export class SolverService {
       : (segSuffix ? SEG_SUFFIX_BT[segSuffix] : undefined);
     // 受影响订单 = OPEN ∩ 目标细分（真状态·按基地分组 Order.bases 首基地）；无目标细分
     // （非细分指标）时不缩窄 → 字节兼容不变。一处过滤同源喂 L1（基地分组）与 L2（订单叶）。
+    // ── base 作用域正交修（G-SEG-ATTR-BASE-SCOPE·治 0079ba31 回归 2026-07-27）──
+    // 业态过滤**仅对全局细分达成率下钻**（无 scope.baseId）生效；当 scope.baseId 存在（每基地根因推演树·
+    // RiskBoard RootCausePanel）→ **不套业态过滤**：base 视图与业态正交，须展示该基地**跨全部业态**订单。
+    // 否则非储能基地（合肥/成都/武汉等·乘用车/商用车订单首基地）在储能默认指标下空树（正是本次回归病灶）。
+    // 原修不回退：全局 seg_attain_ess 下钻（无 scope.baseId）仍只归因储能（用户初报的"储能冒乘用车"仍修好）。
+    const effectiveBusinessType = scopedBaseId ? undefined : targetBusinessType;
     const affected = orders.filter(
-      (o) => str(o.status) === "OPEN" && (!targetBusinessType || str(o.businessType) === targetBusinessType),
+      (o) => str(o.status) === "OPEN" && (!effectiveBusinessType || str(o.businessType) === effectiveBusinessType),
     );
     const byBase = new Map<string, Record<string, unknown>[]>();
     for (const o of affected) {
