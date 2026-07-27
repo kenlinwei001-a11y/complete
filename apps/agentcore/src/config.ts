@@ -14,6 +14,12 @@ const ConfigSchema = z.object({
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),
   QOS_TAU_HIGH: z.coerce.number().default(0.85),
   QOS_TAU_LOW: z.coerce.number().default(0.55),
+  /**
+   * WO-L2-DECOMPOSE · L2 真分解的 LLM 选型模型（可选覆写·缺省回落 classifier 模型）。L2 是**结构化分解/选型**（非推理·
+   * 非算数·§3 D-模型分层），宜用便宜的非推理档（同 classifier 语义）；部署可经此 env 指定专用便宜模型。缺省 undefined
+   * → orchestrator 用 `roleModel("classifier", pkg.classifierModel)` 解析（零新行为·暗发门关时根本不触达此路径）。
+   */
+  QOS_L2_DECOMPOSE_MODEL: z.string().optional(),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
   /**

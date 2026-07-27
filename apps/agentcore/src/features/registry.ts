@@ -124,6 +124,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif（据 selection 从已发布本体真装配基线 + 真扰动重解）。
   // orchestrator optWhatifRouteEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有管线逐字节不变·不劫持）。
   { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
+  // WO-L2-DECOMPOSE（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：L2 多意图**真分解**——free-LLM
+  // 门前插一道，对复合/长问句让 LLM 产 solver 执行计划 → 确定性校验（solverKey 已注册 + 必填槽可从共享 slotBag/pageContext
+  // 抽满 + 无 scope 冲突）→ 命中即接共享后半 runParallelRoutes（补 ②/⑤ 关键词/候选漏的意图·治 novel 措辞被 free-LLM 长度门劫持）。
+  // orchestrator l2DecomposeEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=free-LLM 长度门逐字节不变·零回归）。
+  { key: "qos.multi-intent-l2-decompose", name: "L2 多意图真分解（LLM 产 solver 计划·确定性校验·接共享后半）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

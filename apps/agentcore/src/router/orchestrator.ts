@@ -69,6 +69,7 @@ import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINI
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
 import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
+import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -225,6 +226,17 @@ export function multiIntentEnabled(set: FeatureSet): boolean {
 export function optWhatifRouteEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.opt-whatif-route");
+}
+
+/**
+ * WO-L2-DECOMPOSE · feature 门：free-LLM 门前是否启用**L2 多意图真分解**（LLM 产 solver 执行计划 → 确定性校验 →
+ * 接共享后半 runParallelRoutes·补 novel 措辞被 free-LLM 长度门劫持的确定题）。**暗发·默认关**·同款字节兼容
+ * （`set==="ALL"`→false·既有 free-LLM 长度门逐字节不变·SEAM-零回归·不劫持）；仅**显式** Set 含 `qos.multi-intent-l2-decompose`
+ * 才启用。双注册（datacore features.ts + agentcore registry·同列 QOS_DARK_LAUNCH_FEATURES）。
+ */
+export function l2DecomposeEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.multi-intent-l2-decompose");
 }
 
 /**
@@ -580,6 +592,17 @@ export class Orchestrator {
       if (await this.tryDeterministicBind(taskId, auth, task, candidates)) return;
     }
 
+    // ★ WO-L2-DECOMPOSE · L2 多意图**真分解**门（**排在 free-LLM `runCeoFreeLLM` 之前**·治病根：novel 措辞
+    //   「接不接得住」不含"产能"字面 → ②域族/⑤候选都漏意图 → 落 free-LLM 的**长度门**（q.length≥24）被 agent:ceo-free-llm
+    //   慢路接走·绕过确定性 solver。**长≠开放**——这题其实高度确定）。触发面 = 与 free-LLM 同一 `shouldUseFreeLLM` 群体
+    //   （复合/长问句·上下文丰富）·但**先试真分解**：LLM 产一份 solver 执行计划 → 逐条确定性验真（solverKey 已注册 +
+    //   必填槽可从共享 slotBag/pageContext 抽满 + 无 scope 冲突）→ 命中(≥1)即接 canonical `runParallelRoutes`（复用后半·
+    //   零 LLM 块装配·⟦ref⟧ 溯源）；一条都映射不到 solver（真开放）→ 落下方 free-LLM（不劫持）。命中即 return。
+    //   **暗发默认关**（l2DecomposeEnabled("ALL")=false → 既有 free-LLM 长度门逐字节不变·SEAM-零回归·不劫持）。
+    if (l2DecomposeEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
+      if (await this.tryL2Decompose(taskId, auth, task, pkg)) return;
+    }
+
     // WO-REAL-LLM-FREE-QUERY（CEO/块级真 LLM 深问·确定性路由之外并列拦截·未被 Coordinator 显式指派时的开放式深问缺省增强）。
     if (freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
       await this.runCeoFreeLLM(taskId, auth, enabledFeatures);
@@ -769,7 +792,7 @@ export class Orchestrator {
     this.deps.metrics.recordRouting(true);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "WORKFLOW",
-      note: `${isDet ? "确定性多域分路" : "LLM 多意图并行"}（零 LLM 装配·${routes.length} 路${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
+      note: `${isDet ? "确定性多域分路" : routeSource === "llm-l2-decompose" ? "L2 真分解并行" : "LLM 多意图并行"}（零 LLM 装配·${routes.length} 路${coupledPairs.length > 0 ? `·耦合 ${coupledPairs.length} 对诚实标` : "·纯独立"}）`,
     });
 
     const { answer, plan } = await runParallelRoutes(routes, coupledPairs, {
@@ -793,12 +816,13 @@ export class Orchestrator {
           model: "deterministic:multi-domain",
         }
       : {
-          // ⑤：保留真 classify 候选/耗时留痕（分类器已跑）·model 标为 llm-multi-intent（本次经多意图并行接住）。
+          // ⑤：保留真 classify 候选/耗时留痕（分类器已跑）·model=llm-multi-intent。
+          // L2（llm-l2-decompose·free-LLM 门前·**未经** classify）：prior 恒 undefined → 候选回退 routes·latencyMs=0·model=llm-l2-decompose。
           candidates: (prior?.candidates ?? routes.slice(0, 3).map((r) => ({ intentKey: r.domain, confidence: r.perDomainScore }))),
           outOfCatalog: false,
           extractedSlots: prior?.extractedSlots ?? {},
           latencyMs: prior?.latencyMs ?? 0,
-          model: "llm-multi-intent",
+          model: routeSource === "llm-l2-decompose" ? "llm-l2-decompose" : "llm-multi-intent",
         };
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
@@ -908,6 +932,47 @@ export class Orchestrator {
       if (step.type === "invoke_solver") return step.params.solverKey;
     }
     return undefined;
+  }
+
+  /**
+   * WO-L2-DECOMPOSE · L2 真分解（free-LLM 门前·治 novel 措辞被长度门劫持）：**LLM 只做分解/选型**——`compose` 产一份
+   * solver 执行计划 → `parseSolverPlan` 解析 → `validateSolverPlan` **逐条确定性验真**（solverKey 已注册 + 必填槽可从
+   * **确定性 slotBag**（`buildSlotBag`·非 LLM 数值·KILL-MOCK-RED）抽满 + 无 scope 冲突）→ 命中(≥1)即接**共享后半**
+   * `runMultiRoute`（复用 `runParallelRoutes`·并行 solver + 零 LLM 块装配·⟦ref⟧ 溯源）·model=`llm-l2-decompose`。
+   *
+   * 命中并接住 → `true`（调用方 return）；一条都验不过 / LLM 不可用（无 provider/异常）/ 计划空 → `false`
+   *（照落下方 free-LLM·**不劫持**·诚实：真开放题就该走自由推理）。LLM 失败**吞掉**（fail-open 到 free-LLM·再由其兜底）。
+   */
+  private async tryL2Decompose(taskId: string, auth: RequestAuth, task: QueryTask, pkg: ScenarioPackage): Promise<boolean> {
+    // L2 是**结构化分解/选型**（非推理·非算数·§3 D-模型分层）→ 用 classifier 档（可经 QOS_L2_DECOMPOSE_MODEL 覆写）。
+    const explicit = this.deps.config.QOS_L2_DECOMPOSE_MODEL ?? pkg.classifierModel;
+    let raw: string;
+    try {
+      const model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", explicit);
+      const { instruction, inputs } = buildL2Prompt(task.query, task.context.pageContext);
+      raw = await this.deps.engine.deps.llm.compose({ model, instruction, inputs, tenantId: task.tenantId });
+    } catch {
+      return false; // 真 LLM 不可用（无 provider/异常）→ 落 free-LLM（不劫持·诚实降级）
+    }
+
+    const entries = parseSolverPlan(raw);
+    if (entries.length === 0) return false;
+    const slotBag = buildSlotBag(task.query, task.context.pageContext);
+    const { routes, rejected } = validateSolverPlan(entries, slotBag);
+    if (routes.length === 0) return false; // 一条都映射不到 solver（真开放）→ 落 free-LLM
+
+    // 诊断留痕（复用 step.completed 伪 step·**不新增 §8.2 事件名**·保 ontology:check 51/51）。
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: newId("l2-decompose"),
+      type: "l2_decompose_plan",
+      outcome:
+        `L2 真分解命中：${routes.map((r) => r.solverKey).join("、")}` +
+        (rejected.length > 0 ? `｜丢弃 ${rejected.map((x) => `${x.solverKey}(${x.reason})`).join("、")}` : ""),
+      durationMs: 0,
+    });
+
+    await this.runMultiRoute(taskId, auth, routes, "llm-l2-decompose");
+    return true;
   }
 
   /**

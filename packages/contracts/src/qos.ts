@@ -241,12 +241,13 @@ export type ClassificationResult = z.infer<typeof ClassificationResultSchema>;
  * WO-DETERMINISTIC-CROSS-DOMAIN / WO-MULTI-INTENT · 多路（多域/多意图）编排计划（additive·可选）。
  * 两 PRD **共享后半**（并行 solver + 确定性块装配）；`routeSource` 区分前半 trigger——
  *   `deterministic-multi-domain`＝确定性主路（domainResolveMulti 出多路·**零 LLM**·本 WO）；
- *   `llm-multi-intent`＝LLM 兜底（分类器多候选·多意图 PRD·未接线时不产此值）。
+ *   `llm-multi-intent`＝LLM 兜底（分类器多候选·多意图 PRD·未接线时不产此值）；
+ *   `llm-l2-decompose`＝L2 真分解（LLM 产 solver 执行计划 → 确定性校验 → 接同一后半·补②关键词漏的意图·WO-L2-DECOMPOSE）。
  * `synthesisMode="deterministic"`＝零 LLM 块装配地板（R6·同问句同解字节一致）；`compose`＝可选 LLM 润色（暗发）。
  * `coupledPairs`＝检出的耦合子结论对（诚实标「独立测算·未链式传导·见 L3」·装配**不造跨域新数字**·R13）。
  */
 export const MultiIntentPlanSchema = z.object({
-  routeSource: z.enum(["deterministic-multi-domain", "llm-multi-intent"]),
+  routeSource: z.enum(["deterministic-multi-domain", "llm-multi-intent", "llm-l2-decompose"]),
   synthesisMode: z.enum(["deterministic", "compose"]),
   selectedIntents: z.array(
     z.object({
