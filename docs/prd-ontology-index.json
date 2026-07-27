@@ -604,9 +604,7 @@
         "packages/contracts/src/solvers.ts",
         "scripts/check-genuine-sim.mjs"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-capacity-inference-completion.md": {
       "hasOntologyRef": true,
