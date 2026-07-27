@@ -19,6 +19,12 @@ export interface ToolRunResult {
   toolCallId: string;
   outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED";
   durationMs: number;
+  /**
+   * WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：仅 ERROR 回执置位——**瞬时/传输层错**（DataCore 不可达、
+   * MCP 传输层抖动）标 `true` → 循环侧可**有界重试**（成功则不入停滞计数）；**确定性错**（校验/逻辑/未知工具·TOOL_ERROR）
+   * 标 `false`（保守·不重试·立即入停滞）。缺省 undefined = 不重试 = 现行为字节兼容（R6·纯分类无 Date.now/随机）。
+   */
+  retryable?: boolean;
 }
 
 export interface ExecutorOptions {
@@ -176,7 +182,7 @@ export class GuardedToolExecutor {
         );
       }
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
 
     // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
@@ -233,7 +239,7 @@ export class GuardedToolExecutor {
       if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
   }
 
@@ -593,6 +599,8 @@ export class GuardedToolExecutor {
     outcome: ToolRunResult["outcome"],
     started: number,
     ok: boolean,
+    /** WO-LOOP-CONTROL-P2 · Retry Manager：ERROR 回执的瞬时/确定性分类（仅 ERROR 传入·缺省 undefined=不重试=现行为）。 */
+    retryable?: boolean,
   ): Promise<ToolRunResult> {
     const durationMs = Date.now() - started;
     const toolCallId = newId("tc");
@@ -611,8 +619,20 @@ export class GuardedToolExecutor {
     };
     await this.deps.repos.toolCalls.insert(row);
     this.deps.metrics.toolCalls.inc({ tool: toolName, outcome });
-    return { ok, payload, toolCallId, outcome, durationMs };
+    return { ok, payload, toolCallId, outcome, durationMs, ...(retryable !== undefined ? { retryable } : {}) };
   }
+}
+
+/**
+ * WO-LOOP-CONTROL-P2 · Retry Manager 错误分类（PRD §3.2·纯函数 R6·无 Date.now/随机）：区分**瞬时/传输层错**（可重试）
+ * 与**确定性错**（不可重试）。传输层 = DataCore 不可达（`DataCoreUnavailableError`）或 MCP 传输/协议抖动（binding=MCP 的
+ * 抛错）——重试大概率恢复；确定性错（zod 校验失败、未知工具、逻辑 TOOL_ERROR）重试无益 → false（保守·不放大预算）。
+ * DENIED/BUDGET/ONTOLOGY_VALIDATION 等非 ERROR 出口本就不经此（各有既有分支·不重试）。
+ */
+export function classifyRetryable(err: unknown, binding: ToolBinding): boolean {
+  if (err instanceof DataCoreUnavailableError) return true; // 传输层不可达·瞬时
+  if (binding.kind === "MCP") return true; // MCP 传输/协议抖动·瞬时（EXTERNAL 传输层错）
+  return false; // 确定性错（校验/逻辑/未知工具）·不重试·字节兼容缺省
 }
 
 /** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */

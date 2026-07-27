@@ -181,6 +181,17 @@ export function reasoningTraceEnabled(set: FeatureSet): boolean {
 }
 
 /**
+ * WO-LOOP-CONTROL-P2 · feature 门：path-B `runAgentLoop` 停滞时是否启用**升级阶梯**（Escalation Ladder：rung① 换策略再试一轮
+ * → rung③ 诚实降级·rung② 升级 Coordinator 延后）。**暗发·默认关**。与 reflectEnabled 同款字节兼容：`set==="ALL"`（mock 默认 /
+ * DataCore 降级）→ **false**——既有 path-B 停滞直接 degrade（P1/S01 逐字节不变·不劫持）；仅**显式** Set 含 `agent.escalation` 才启用。
+ * 双注册（datacore features.ts + agentcore registry）。
+ */
+export function escalationEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("agent.escalation");
+}
+
+/**
  * WO-DETERMINISTIC-CROSS-DOMAIN · feature 门：是否启用**确定性多域分路**（跨域题在确定性层逐域枚举 + 并行 solver +
  * 零 LLM 块装配·排在 LLM classify 之前）。**暗发·默认关**。与 freeLlmEnabled/coordinatorEnabled 同款字节兼容：
  * `set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——既有"跨域压分→落 LLM/单域"管线逐字节不变（SEAM-5 零回归·
@@ -1451,6 +1462,11 @@ export class Orchestrator {
       llmCallTimeoutMs: this.deps.config.QOS_AGENT_LLM_TIMEOUT_MS,
       // WO-LOOP-CONTROL-P1：Loop Detector 环检测 cap（opt-in·缺省 undefined → 禁用 → 既有 path-B 逐字节不变）
       loopRepeatCap: this.deps.config.QOS_AGENT_LOOP_REPEAT_CAP,
+      // WO-LOOP-CONTROL-P2 · Escalation Ladder 暗发门（agent.escalation·关=停滞直接 degrade·字节兼容·不劫持）
+      escalation: escalationEnabled(enabledFeatures),
+      // WO-LOOP-CONTROL-P2 · per-tool 调用上界 / Retry Manager（opt-in env·缺省不设 → 不限/不重试 → 既有 path-B 逐字节不变）
+      ...(this.deps.config.QOS_AGENT_PER_TOOL_CALL_CAP !== undefined ? { perToolCallCap: this.deps.config.QOS_AGENT_PER_TOOL_CALL_CAP } : {}),
+      ...(this.deps.config.QOS_AGENT_RETRY_MAX_ATTEMPTS !== undefined ? { retry: { maxAttempts: this.deps.config.QOS_AGENT_RETRY_MAX_ATTEMPTS } } : {}),
     });
 
     await this.deps.repos.agentRuns.insert(result.run);

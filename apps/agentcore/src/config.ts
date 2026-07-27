@@ -38,6 +38,18 @@ const ConfigSchema = z.object({
    * mirror `QOS_AGENT_MAX_ROUND_TRIPS` 的 opt-in 语义；部署态建议 `QOS_AGENT_LOOP_REPEAT_CAP=3`。机制本体由 SEAM 坐实。
    */
   QOS_AGENT_LOOP_REPEAT_CAP: z.coerce.number().int().optional(),
+  /**
+   * WO-LOOP-CONTROL-P2 · per-tool 调用上界（PRD §3.3·**opt-in·缺省不设 → 不限 → 既有 path-B 逐字节不变**）。
+   * 设正整数 N → path-B agent 某工具（按名）累计调用达 N → 置 budget.exhausted → 下一轮优雅降级（补 P1 loop-hash
+   * 只认「同参重复」的洞：认「同工具**异参**刷屏」）。部署态建议 `QOS_AGENT_PER_TOOL_CALL_CAP=8`。机制由 SEAM 坐实。
+   */
+  QOS_AGENT_PER_TOOL_CALL_CAP: z.coerce.number().int().optional(),
+  /**
+   * WO-LOOP-CONTROL-P2 · Retry Manager 最大重试次数（PRD §3.2·**opt-in·缺省不设 → 0 次重试 → 既有 path-B 逐字节不变**）。
+   * 设正整数 N → 瞬时/传输层错（DataCore 不可达 / MCP 传输抖动）**有界重试**至多 N 次（退避复用 per-call deadline·不新起
+   * 定时器体系）→ 成功则不入停滞计数；确定性错立即入停滞（现行为）。部署态建议 `QOS_AGENT_RETRY_MAX_ATTEMPTS=1`。
+   */
+  QOS_AGENT_RETRY_MAX_ATTEMPTS: z.coerce.number().int().optional(),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */
