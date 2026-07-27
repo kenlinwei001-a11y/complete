@@ -3354,7 +3354,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   };
   const cashActual = (BATTERY_SOLVER_PARAMS.planview as { scenarios: { finance: { baseline: { cashCushion: number } } } }).scenarios.finance.baseline.cashCushion;
   const marketShareActual = 21.5; // 诚实合成：无市场规模真数据源，种子常数（synthetic 标灰，不冒充实测）
-  const metrics = [
+  const metrics: Record<string, unknown>[] = [
     // 运营指标（op）——metricId 保持既有 kpi-margin/attain/material 不变（R6 obj id 集稳定）；target/floorVal 现取自 GOAL_REGISTRY。
     goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix"),
     goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand"),
@@ -3371,6 +3371,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const k = SEG_METRIC_KEY[d.segment as string]!;
     metrics.push({
       metricId: `kpi-seg-${k}`, key: `seg_attain_${k}`, name: `${d.segment}达成率`, level: "op", category: "segment",
+      businessType: businessTypeOfSegment(d.segment as string), // WO-SEG-ATTR-SCOPE：细分升 Metric 一等字段（储能→storage·与 Order.businessType 同源同口径·R-一致），使 gap_attribution 按业态裁订单
       target: 100, actual: round((d.act as number) / (d.tgt as number) * 100, 1), floorVal: 95, unit: "%", weight: 0.1,
       ksfRef: "ksf-dem", ownerRef: `prin-seg-${k}`, chainKey: "rc-scale-demand",
     });

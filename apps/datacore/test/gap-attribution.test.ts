@@ -68,7 +68,9 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
     const t = await makeApp();
     await seedBattery(t);
     const g = await run(t);
-    expect(g.atomicLeaves.length).toBeGreaterThanOrEqual(18);
+    // WO-SEG-ATTR-SCOPE 再基线：seg_attain_ess 下钻现按储能细分裁订单（9 张 storage OPEN·非全 24 单）→
+    // 原子叶 24→17（细分作用域后叶数下降是**正确**结果·非回归）。阈值改为储能作用域真值 17。
+    expect(g.atomicLeaves.length).toBeGreaterThanOrEqual(17);
     const baseNodes = g.levels.find((L) => L.depth === 1)!.nodes;
     expect(baseNodes.length).toBeGreaterThanOrEqual(3);
   });
