@@ -157,6 +157,14 @@ export interface AgentLoopResult {
    */
   degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" | "STALL_LOOP" };
   /**
+   * WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（orchestrator 层升级重路由）可判别停滞信号：
+   * 仅当 **escalation 开** 且 rung① 已用尽（`escalated` 已置位）后单 agent 仍停滞时置位——上抛给 runPathB 决定是否
+   * 反应式重路由到 Coordinator 扇出（早于 degrade 兜底）。escalation 关 → 恒 undefined（逐字节同 P2·byte-compat）。
+   * **注意**：本字段仅为编排层可判别标记，不改 degrade 收尾块/答案/溯源（degrade 仍是 loop.ts 唯一诚实出口·R7/R13）。
+   * reason：STALL_LOOP=P1 hash 环触顶后仍停滞；STALL_CONSECUTIVE=S01 连续失败停滞。
+   */
+  stalled?: { reason: "STALL_LOOP" | "STALL_CONSECUTIVE" };
+  /**
    * WO-QOS-2：仅当传入 sliceSolverKeys 时有值——本次运行中是否出现过「plan 引用了图外 solver」而回退 ReAct
    *（true = 至少一轮越界·false = 全程 plan 落在图内）。观测用（不改答案/溯源）。
    */
@@ -362,6 +370,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const retryMaxAttempts = opts.retry && opts.retry.maxAttempts > 0 ? opts.retry.maxAttempts : 0;
   // WO-LOOP-CONTROL-P2 · Escalation Ladder 一次性状态位（暗发 escalation·mirror forceFinishNotified·升级至多一次·仍停滞即诚实降级）。
   let escalated = false;
+  // WO-LOOP-CONTROL-P2.5 · rung② 可判别停滞标记（仅在 rung① 用尽后的停滞点置位·由 degrade 在 escalation 开时挂到结果 stalled 上抛
+  // 编排层·关=永 undefined=逐字节同 P2）。不改 degrade 收尾块/答案/溯源——degrade 仍是唯一诚实出口。
+  let stalledForReroute: { reason: "STALL_LOOP" | "STALL_CONSECUTIVE" } | undefined;
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -473,6 +484,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       run: finishRun(outcome === "BUDGET_EXHAUSTED"),
       sketch,
       ...(reason ? { degraded: { reason } } : {}),
+      // WO-LOOP-CONTROL-P2.5：escalation 开 + rung① 已用尽后仍停滞 → 上抛可判别 stalled（供 runPathB 决定 rung② 重路由·早于
+      // 兜底）。escalation 关 / 非停滞出口（TIMEOUT / 硬预算 duration/roundTrip / ANSWERED / FAILED）→ stalledForReroute 未设 →
+      // 无此字段 → 逐字节同 P2（byte-compat·degrade 答案本体不变）。
+      ...(opts.escalation && stalledForReroute ? { stalled: stalledForReroute } : {}),
     };
   };
 
@@ -970,7 +985,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       if (hashStalled) {
         // WO-LOOP-CONTROL-P2 · Escalation Ladder：rung① 换策略再试一轮（**早于** degrade·暗发·一次性）；仍停滞才落 rung③ 认输。
         if (await maybeEscalate(i)) continue;
-        // rung③ 唯一诚实出口 degrade(STALL_LOOP)（loop-control:check 门守·升级阶梯至多延后一轮·不新增第二降级出口）。
+        // WO-P2.5：rung① 用尽仍停滞 → 标 stalled 上抛（rung② 由 orchestrator 决定重路由）；rung③ 唯一诚实出口 degrade(STALL_LOOP)。
+        stalledForReroute = { reason: "STALL_LOOP" };
         return await degrade("BUDGET_EXHAUSTED", "STALL_LOOP");
       }
     }
@@ -1039,6 +1055,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (consecutiveToolFailures >= STALL_CONSECUTIVE_FAILURES && roundsWithoutSuccess >= STALL_MIN_ROUNDS) {
       // WO-LOOP-CONTROL-P2 · Escalation Ladder：rung① 换策略再试一轮（**早于** degrade·暗发·一次性）；仍停滞才落 rung③ 认输。
       if (await maybeEscalate(i)) continue;
+      // WO-LOOP-CONTROL-P2.5：rung① 已用尽仍停滞（S01 连续失败）→ 标 stalled 上抛（rung② 由 orchestrator 决定重路由·早于兜底）。
+      stalledForReroute = { reason: "STALL_CONSECUTIVE" };
       return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
     }
 

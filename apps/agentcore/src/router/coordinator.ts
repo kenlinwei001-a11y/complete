@@ -127,6 +127,43 @@ export function planCoordination(
 }
 
 /**
+ * WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung② stalled-mode 兜底拆解（**reactive·仅 orchestrator 反应式重路由调用**）。
+ *
+ * 缺口：`planCoordination` 只对**命中 ≥2 域关键词 / 交付风险**的题拆多角色；单 agent 自由多跳题若**没命中**这些关键词、
+ * 却在 `runAgentLoop` 停滞 → proactive Coordinator 从不接手 → 现只能 rung①→rung③ 直接 degrade·**从不尝试拆多角色重解**。
+ * 本函数是 rung② 的最后一级：单 agent **已停滞**（rung① 换策略仍无进展）时，即便无跨域关键词信号，也召集"交付风险三角"
+ *（供应链[物料齐套] + 生产[产能瓶颈] + 质量[良率]）多角色重解——各自 scope 取证 → `synthesize` 汇总（复用零改扇出/汇总）。
+ *
+ * **不改既有 proactive `planCoordination` 行为**（本函数仅 reactive rung② 路径调用·proactive 路由一字不动·SEAM ③ 防双）。
+ * 无绑定 agent 的角色跳过（诚实不空调）；绑定后不足 2 角色 → 返 undefined（rung② no-op → 落既有 degrade·诚实边界）。
+ * R6 确定性（AGENT_ROLE_ORDER 稳定序·无 LLM/时钟/随机·同题两跑同 plan）。
+ */
+export function planStalledCoordination(
+  question: string,
+  _pageContext: PageContext | undefined,
+  _baseScope: string[] = [],
+): CoordinatorPlan | undefined {
+  const q = question ?? "";
+  const dispatches: RoleDispatch[] = [];
+  for (const role of AGENT_ROLE_ORDER) {
+    if (!DELIVERY_TRIAD.includes(role)) continue; // 停滞兜底只召集交付风险三角（供应链/生产/质量）
+    const prof = roleProfile(role);
+    if (!prof?.agentId) continue; // 无绑定 agent 的角色跳过（诚实不空调）
+    const focusHint = ROLE_LABELS[role] ?? role;
+    dispatches.push({
+      role,
+      subQuestion: subQuestionFor(role, focusHint, q),
+      agentId: prof.agentId,
+      scope: { allBases: prof.scope.allBases, baseIds: [...prof.scope.baseIds] },
+      objectTypes: [...prof.objectTypes],
+      focusHint,
+    });
+  }
+  if (dispatches.length < 2) return undefined; // 绑定后仍不足 2 角色 → 不跨域（rung② no-op → 落既有 degrade）
+  return { question: q, trigger: "单 agent 停滞→反应式升级三角会诊（rung②·供应链/生产/质量）", dispatches };
+}
+
+/**
  * WO-FIVE-ROLE P1 · C2：单域问题 → 该域角色（path-B 按 role 选对应 agent·非永远 universal）。
  * 恰好命中一个角色关键词组、且**非**跨域触发（交付风险/复合）→ 返该角色；否则 undefined（走通用 path-B）。
  */
