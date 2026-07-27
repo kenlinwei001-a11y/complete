@@ -93,11 +93,60 @@ if (!/if\s*\(!opts\.escalation\s*\|\|\s*escalated\)\s*return false/.test(loopSrc
   errors.push("loop.ts · maybeEscalate 缺一次性/暗发守卫（!opts.escalation || escalated → return false·防无限升级/字节兼容）");
 }
 {
-  const escalateGuards = [...loopSrc.matchAll(/if\s*\(await maybeEscalate\(i\)\)\s*continue;\s*[\s\S]{0,160}?return await degrade\(/g)];
+  // 窗口 0..300：容纳 P2.5 在 rung① 与 rung③ degrade 之间插入的可判别 stalled 标记（stalledForReroute = {...}）+ 注释，
+  // 但仍强制 `if (await maybeEscalate(i)) continue;`（rung① 早于） … `return await degrade(`（rung③ 唯一诚实出口）—— 不变量不松。
+  const escalateGuards = [...loopSrc.matchAll(/if\s*\(await maybeEscalate\(i\)\)\s*continue;\s*[\s\S]{0,300}?return await degrade\(/g)];
   if (escalateGuards.length < 2) {
     errors.push(
       `loop.ts · 停滞点升级早于降级的守卫（if (await maybeEscalate(i)) continue; … return await degrade）应 ≥2（P1 hash + S01），实为 ${escalateGuards.length}`,
     );
+  }
+}
+
+// -----------------------------------------------------------------------
+// WO-LOOP-CONTROL-P2.5 静态守门（rung② orchestrator 层反应式重路由·收口 P2 诚实延后的 rung②）。
+// 不变量：rung② 至多一次（一次性）+ 防双 Coordinator（usedCoordinator 短路）+ rung② 失败/未开仍落既有 degrade（唯一诚实出口·
+// reason 白名单不放松·升级耗尽不加新 reason）。
+// -----------------------------------------------------------------------
+{
+  const ORCH = join(ROOT, "apps/agentcore/src/router/orchestrator.ts");
+  const orchSrc = readFileSync(ORCH, "utf8");
+  const oLineOf = (idx) => orchSrc.slice(0, idx).split("\n").length;
+
+  // ⑩ loop.ts 上抛可判别 stalled（rung② 触发信号）——仅编排层可判别标记，不改 degrade 唯一出口。
+  if (!/stalled\?:\s*\{\s*reason:\s*"STALL_LOOP"\s*\|\s*"STALL_CONSECUTIVE"\s*\}/.test(loopSrc)) {
+    errors.push("loop.ts · AgentLoopResult 缺 stalled?:{reason} 上抛标记（rung② 反应式重路由触发信号缺失）");
+  }
+  if (!/opts\.escalation\s*&&\s*stalledForReroute\s*\?\s*\{\s*stalled:\s*stalledForReroute\s*\}/.test(loopSrc)) {
+    errors.push("loop.ts · stalled 标记未门控在 opts.escalation（escalation 关须逐字节同 P2·byte-compat）");
+  }
+
+  // ⑪ rung② 反应式重路由分支存在（result.stalled × escalationEnabled × !usedCoordinator 三守卫齐备）。
+  if (!/result\.stalled\s*&&\s*escalationEnabled\(enabledFeatures\)\s*&&\s*!usedCoordinator/.test(orchSrc)) {
+    errors.push("orchestrator.ts · rung② 分支缺三守卫（result.stalled && escalationEnabled && !usedCoordinator）");
+  }
+  // ⑫ 防双 Coordinator：usedCoordinator = proactive Coordinator 会接手本题（coordinatorEnabled && planCoordination!==undefined）→ 短路。
+  if (!/const usedCoordinator\s*=[\s\S]{0,240}coordinatorEnabled\(enabledFeatures\)[\s\S]{0,240}planCoordination\([\s\S]{0,120}!==\s*undefined/.test(orchSrc)) {
+    errors.push("orchestrator.ts · usedCoordinator 防双 Coordinator 守卫缺失（proactive 会接手则短路·不反应式重入）");
+  }
+  // ⑬ 一次性：rung② 成功即 return（runCoordinator 完成收尾·非递归·防无限重路由 G2）。
+  if (!/maybeRerouteToCoordinator\(taskId, auth, task, result\)\)\s*return;/.test(orchSrc)) {
+    errors.push("orchestrator.ts · rung② 非一次性（maybeReroute 成功须即 return·防无限重路由）");
+  }
+  // ⑭ rung② 失败/未开仍落既有唯一诚实出口 degrade（result.degraded → agent_degraded·不新增 reason·白名单不松）：
+  //    rung② 分支之后仍有既有 result.degraded → agent_degraded 收尾（rung② no-op/关 → 落既有 degrade·byte-compat）。
+  const rerouteIdx = orchSrc.indexOf("maybeRerouteToCoordinator(taskId, auth, task, result)");
+  const degradedEmitIdx = orchSrc.indexOf('type: "agent_degraded"', rerouteIdx >= 0 ? rerouteIdx : 0);
+  if (rerouteIdx < 0 || degradedEmitIdx < 0 || degradedEmitIdx <= rerouteIdx) {
+    errors.push("orchestrator.ts · rung② 之后缺既有 degrade 兜底（result.degraded → agent_degraded·rung② 失败/未开须落唯一诚实出口）");
+  }
+  // ⑮ rung② 升级信号复用 agent_escalated 伪 step（不新增 §8.2 事件名·前端零改）。
+  if (!/type:\s*"agent_escalated"[\s\S]{0,120}outcome:\s*"REROUTE_COORDINATOR"/.test(orchSrc)) {
+    errors.push(`orchestrator.ts:${rerouteIdx >= 0 ? oLineOf(rerouteIdx) : "?"} · rung② 未复用 agent_escalated 伪 step（REROUTE_COORDINATOR·不新增事件名）`);
+  }
+  // ⑯ rung② 扇出前诚实门：只 fan out 到真实存在角色 agent（repos.agents.get）·存活 <2 → return false（落 degrade）。
+  if (!/repos\.agents\.get\(d\.agentId\)[\s\S]{0,200}live\.length\s*<\s*2[\s\S]{0,80}return false/.test(orchSrc)) {
+    errors.push("orchestrator.ts · rung② 缺角色 agent 存在性诚实门（缺失不空调·存活<2 → return false → 落既有 degrade）");
   }
 }
 

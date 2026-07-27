@@ -10,6 +10,7 @@ import type {
   IntentDefinition,
   QueryTask,
   ResolvedRef,
+  RoleDispatch,
   ScenarioPackage,
   SceneEntryConfig,
   SlotDef,
@@ -29,7 +30,7 @@ import {
   AGENT_SYSTEM_CORE,
   CEO_DEEP_QUESTION_SYSTEM,
 } from "../agent/prompts.js";
-import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
+import { runAgentLoop, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { makeLlmRollingSummarizer } from "../agent/context.js"; // WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（fail-open 注入 runAgentLoop.summarizer）
@@ -65,7 +66,7 @@ import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
-import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
+import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -182,9 +183,10 @@ export function reasoningTraceEnabled(set: FeatureSet): boolean {
 
 /**
  * WO-LOOP-CONTROL-P2 · feature 门：path-B `runAgentLoop` 停滞时是否启用**升级阶梯**（Escalation Ladder：rung① 换策略再试一轮
- * → rung③ 诚实降级·rung② 升级 Coordinator 延后）。**暗发·默认关**。与 reflectEnabled 同款字节兼容：`set==="ALL"`（mock 默认 /
- * DataCore 降级）→ **false**——既有 path-B 停滞直接 degrade（P1/S01 逐字节不变·不劫持）；仅**显式** Set 含 `agent.escalation` 才启用。
- * 双注册（datacore features.ts + agentcore registry）。
+ * → rung③ 诚实降级）。**WO-LOOP-CONTROL-P2.5 起同门控 rung② orchestrator 层反应式重路由**（loop 上抛 result.stalled → runPathB
+ * `maybeRerouteToCoordinator` 拆多角色扇出·早于 degrade 兜底·防双 Coordinator·一次性）——本门关 → 停滞既不 rung① 也不 rung②·
+ * 直接 degrade。**暗发·默认关**。与 reflectEnabled 同款字节兼容：`set==="ALL"`（mock 默认 / DataCore 降级）→ **false**——既有
+ * path-B 停滞直接 degrade（P1/S01 逐字节不变·不劫持）；仅**显式** Set 含 `agent.escalation` 才启用。双注册（datacore features.ts + agentcore registry）。
  */
 export function escalationEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
@@ -1492,6 +1494,21 @@ export class Orchestrator {
       return;
     }
 
+    // ★ WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（orchestrator 层升级重路由·收口 P2 诚实延后的 rung②）。
+    // 叶子 agent 在 runAgentLoop 造不出扇出（rung② 属 orchestrator/runPathB 层）——P2 只交 rung①（换策略再试一轮）+ rung③（degrade）。
+    // 本层补 rung②：单 agent **停滞**（rung① 用尽仍无进展·loop 上抛 result.stalled）→ **反应式重路由到 Coordinator 扇出**
+    // 多角色重解 → 再不行才落既有 degrade（rung③ 兜底不删·唯一诚实出口）。三守卫：
+    //   ① 一次性（rung② 至多一次·runCoordinator 完成即 return·非递归·G2 防无限重路由）；
+    //   ② 防双 Coordinator（usedCoordinator=proactive Coordinator 会接手本题 → 短路·不反应式重入·SEAM ③）；
+    //   ③ 暗发（escalationEnabled 关 → 整分支短路 → 停滞直接 degrade·逐字节同 P2·byte-compat）。
+    // 预算不绕：rung② 扇出复用 runCoordinator（各角色 agent 同受 residualBudgetFromConfig 硬预算·同 proactive Coordinator）。
+    const usedCoordinator =
+      coordinatorEnabled(enabledFeatures) &&
+      planCoordination(task.query, task.context.pageContext, [], deterministicMultiEnabled(enabledFeatures)) !== undefined;
+    if (result.stalled && escalationEnabled(enabledFeatures) && !usedCoordinator) {
+      if (await this.maybeRerouteToCoordinator(taskId, auth, task, result)) return; // rung② 成功 → runCoordinator 已 COMPLETED + answer.final
+    }
+
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       answer: result.answer,
@@ -1749,6 +1766,50 @@ export class Orchestrator {
     } catch (err) {
       await this.failFromError(taskId, err, "AGENT_ERROR");
     }
+  }
+
+  /**
+   * WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung② 反应式重路由到 Coordinator（停滞单 agent → 拆多角色重解·早于 degrade 兜底）。
+   *
+   * 触发前置（调用点已判）：`result.stalled`（rung① 用尽仍停滞）× `escalationEnabled` 开 × `!usedCoordinator`（proactive 未接手·防双 G2）。
+   * 本方法内再守两道诚实门：
+   *  ① 拆解 plan：优先复用既有 `planCoordination`（若本题实含 ≥2 域关键词但因 proactive 关而落到单 agent）；否则 rung② stalled-mode
+   *     兜底 `planStalledCoordination`（交付风险三角·即便无跨域关键词也召集重解）。二者皆 undefined → return false（rung② no-op → 落既有 degrade）。
+   *  ② 只 fan out 到**真实存在**的角色 agent（`repos.agents.get`·mirror runPathB :1274）——缺失 agent 不空调；存活角色 < 2 → return false（诚实降级）。
+   * 通过 → 发 `agent_escalated` 伪 step（rung②·**复用** P2·**不新增** §8.2 事件名·**早于** degrade）→ 复用 `runCoordinator` 真扇出（invoke_agent
+   * 各角色·enforceAgentObjectScope 真隔离·同一 residualBudgetFromConfig 硬预算·**不绕预算**）→ synthesize 综合答案收尾（COMPLETED + answer.final）。
+   * 一次性：runCoordinator 完成即 return true·runPathB 随即 return（不落 degrade·rung② 至多一次·非递归·G2）。
+   */
+  private async maybeRerouteToCoordinator(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    result: AgentLoopResult,
+  ): Promise<boolean> {
+    // ① 拆解 plan：proactive planCoordination 优先（本题实含 ≥2 域关键词）→ 否则 rung② stalled-mode 兜底三角（复用零改扇出/汇总）。
+    const plan =
+      planCoordination(task.query, task.context.pageContext, [], false) ??
+      planStalledCoordination(task.query, task.context.pageContext, []);
+    if (!plan) return false; // 无可拆多角色 → rung② no-op → 落既有 degrade（诚实边界）
+    // ② 诚实门：只 fan out 到真实存在的角色 agent（缺失不空调）；存活 < 2 → 不 reroute → 落既有 degrade。
+    const live: RoleDispatch[] = [];
+    for (const d of plan.dispatches) {
+      if (await this.deps.repos.agents.get(d.agentId)) live.push(d);
+    }
+    if (live.length < 2) return false;
+    const livePlan: CoordinatorPlan = { ...plan, dispatches: live };
+    // rung② 升级信号（复用 agent_escalated 伪 step·不新增 §8.2 事件名·**早于** degrade·前端零改）。durationMs=0（R6·无 Date.now）。
+    this.deps.metrics.agentEscalation.inc();
+    void result; // result.stalled 已在调用点判真（rung② 前置）；payload 复用 P2 agent_escalated 形状·不新增字段
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: newId("escalate"),
+      type: "agent_escalated",
+      outcome: "REROUTE_COORDINATOR",
+      durationMs: 0,
+    });
+    // 复用既有 runCoordinator 真扇出（invoke_agent 各角色·scope 真隔离·同硬预算·不绕预算）→ synthesize 收尾（COMPLETED + answer.final）。
+    await this.runCoordinator(taskId, auth, livePlan);
+    return true;
   }
 
   /**
