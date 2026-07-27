@@ -133,16 +133,25 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         const r = await deps.executor.run(step.type, resolvedParams, { timeoutMs });
 
         if (r.outcome === "DENIED") {
-          // Permission denial → COMPLETED with 权限不足 text (NOT FAILED), no data-existence leak.
+          // DENIED 真因有多种（tools/executor）：① OBO 会话令牌将过期（须重登·非权限）② agent objectType scope 越界
+          // ③ IAM/行级拒。旧实现把三者一律渲成"你没有访问 X 的权限"→ 误导（admin 会话过期被说成没权限·cert_schedule 复盘）。
+          // 按错误码分流诚实文案：过期→提示重登；有具体 reason→带出真因；否则→保留权限不足文案。
           await emitDone("DENIED");
           const target =
             (resolvedParams.objectType as string | undefined) ??
             (resolvedParams.sliceKey as string | undefined) ??
             (resolvedParams.solverKey as string | undefined) ??
             step.type;
+          const deny = r.payload as { error?: string; reason?: string } | undefined;
+          const markdown =
+            deny?.error === "OBO_TOKEN_EXPIRING"
+              ? "登录会话即将过期，请重新登录后重试（非权限不足）。"
+              : deny?.reason
+                ? `你没有访问 ${target} 的权限（${deny.reason}）`
+                : `你没有访问 ${target} 的权限`;
           const answer: Answer = {
             trustLevel,
-            blocks: [{ type: "text", markdown: `你没有访问 ${target} 的权限` }],
+            blocks: [{ type: "text", markdown }],
             provenance: [],
             unverifiedNumerics: false,
           };
