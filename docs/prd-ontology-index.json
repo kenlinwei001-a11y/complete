@@ -1576,9 +1576,7 @@
         "apps/frontend-shell/src/mocks/fixtures.ts",
         "apps/frontend-shell/src/views/DashboardView.tsx"
       ],
-      "brokenArtifacts": [
-        "apps/datacore/test/gap-attribution-segment-scope.test.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-self-driving-qos-data-foundation.md": {
       "hasOntologyRef": true,
