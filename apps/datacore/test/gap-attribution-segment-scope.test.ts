@@ -20,7 +20,9 @@ describe("SEAM · gap_attribution 细分作用域（G-SEG-ATTR-CROSS-SEGMENT）"
     await seedBattery(t);
     const g: any = await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey: "seg_attain_ess" });
     expect(g.rootMetric.key).toBe("seg_attain_ess");
-    const orderLeaves = g.atomicLeaves.filter((l: any) => l.provenance?.drillType === "Order");
+    // 收紧过滤（复审建议·健壮性）：仅 L2 订单叶(prov.kind="实测")；L1 基地节点(service.ts kind:"派生"·drillType 亦为 "Order"·factor="基地 X")
+    // 排除在外——否则 custOf("基地 X")→"" 会让 every(∈储能) 假失败。真订单叶 kind 恒 "实测"。
+    const orderLeaves = g.atomicLeaves.filter((l: any) => l.provenance?.drillType === "Order" && l.provenance?.kind === "实测");
     expect(orderLeaves.length).toBeGreaterThan(0);
     const custs = orderLeaves.map((l: any) => custOf(l.factor));
     // 头号断言：不含任何整车厂/商用车客户
@@ -43,7 +45,7 @@ describe("SEAM · gap_attribution 细分作用域（G-SEG-ATTR-CROSS-SEGMENT）"
     const g: any = await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey: "seg_attain_pas" });
     expect(g.rootMetric.key).toBe("seg_attain_pas");
     const custs = g.atomicLeaves
-      .filter((l: any) => l.provenance?.drillType === "Order")
+      .filter((l: any) => l.provenance?.drillType === "Order" && l.provenance?.kind === "实测") // 仅 L2 订单叶·排 L1 基地节点(复审建议)
       .map((l: any) => custOf(l.factor));
     expect(custs.length).toBeGreaterThan(0);
     expect(custs.every((c: string) => AUTOMAKER.some((a) => c.includes(a)))).toBe(true); // 全乘用车整车厂
