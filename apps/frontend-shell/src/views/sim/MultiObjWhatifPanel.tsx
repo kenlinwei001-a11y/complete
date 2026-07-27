@@ -187,7 +187,7 @@ function MultiObjWhatifInner() {
           ? OBJ_KEYS.map((k) => {
               const d = delta[k] ?? 0;
               const good = OBJ_META[k]!.goodWhenNeg ? d < 0 : d > 0;
-              const color = d === 0 ? "#888" : good ? "#2e9e5b" : "#c0392b";
+              const color = d === 0 ? "var(--muted2)" : good ? "var(--ok)" : "var(--danger)";
               return (
                 <div key={k} className={styles.kpi} style={{ minWidth: 140, borderLeft: `3px solid ${color}` }} data-testid={`multiobj-delta-${k}`}>
                   <div style={{ fontSize: 12, opacity: 0.7 }}>{OBJ_META[k]!.name} Δ（相对权重 1×）</div>
@@ -216,7 +216,7 @@ function MultiObjWhatifInner() {
                   <td>{r.model}<span style={{ opacity: 0.5, marginLeft: 4 }}>{r.chem}</span></td>
                   <td>{r.pri}</td>
                   {/* 未加载完不得渲染「被挤」占位（否则 loading 态伪装成 displaced）；仅数据到手且真未排才标被挤。 */}
-                  <td>{!loaded ? "…" : on ? on.line : <span style={{ color: "#c0392b" }} data-testid={`multiobj-displaced-${r.id}`}>被挤（未排）</span>}</td>
+                  <td>{!loaded ? "…" : on ? on.line : <span style={{ color: "var(--danger)" }} data-testid={`multiobj-displaced-${r.id}`}>被挤（未排）</span>}</td>
                   <td className="num">{yi(r.revenue)}</td>
                   <td className="num">{displaced ? yi(r.penalty) : "0.00"}</td>
                 </tr>

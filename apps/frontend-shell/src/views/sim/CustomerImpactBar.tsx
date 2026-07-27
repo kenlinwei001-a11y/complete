@@ -76,7 +76,7 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
           model: o?.model ?? d.model ?? "—",
           qty,
           segLabel: segLabelOf(segKey),
-          segColor: segMeta?.color ?? "#8b96a8",
+          segColor: segMeta?.color ?? "var(--muted)",
           deliverTo: o?.base ?? "—",
           // ② 产线（真 Line 对象·经 lineNameOf 派生·非占位）。
           deliverLine: lineNameOf && homeBase ? lineNameOf(homeBase) : "—",
@@ -117,7 +117,7 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
                     <strong data-testid={`global-sim-impact-cust-${r.orderId}`}>{r.cust}</strong>
                     <span className={styles.segChip} style={{ borderColor: r.segColor, color: r.segColor }}>{r.segLabel}</span>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: "#a7b1c2" }}>
+                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted)" }}>
                     {r.orderId} · {r.model} · <span className="amt">{fmt(r.qty, 0)}</span> 套未获排
                   </div>
                   <div style={{ marginTop: 3, fontSize: 11 }}>
@@ -126,7 +126,7 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
                     {!r.traceable && <span className={styles.textMuted}> · 未溯到订单</span>}
                   </div>
                   <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: "#6c7bf6", fontWeight: 600 }} data-testid={`global-sim-impact-goto-${r.orderId}`}>进 {r.cust} 项目详情 →</span>
+                    <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600 }} data-testid={`global-sim-impact-goto-${r.orderId}`}>进 {r.cust} 项目详情 →</span>
                     {/* ⑥ 死按钮改真动作：预览 → 确认 → plan_change 草稿（stopPropagation 不触发整卡跳转）。 */}
                     <button
                       className={styles.btnGhost}

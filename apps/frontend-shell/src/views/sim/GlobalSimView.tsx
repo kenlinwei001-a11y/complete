@@ -153,14 +153,15 @@ function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: 
   );
 }
 
-/** 占用率 → 冷暖热力色（低=冷蓝，满=暖红·committed 深空底上可读）。 */
+/** 占用率 → 冷暖热力色（低=冷蓝，满=暖红）。半透明语义色阶叠加在 heatCell 上·配 --txt 文字·明暗主题皆可读；
+    空占用回退主题感知中性底 var(--hover-tint)（原 rgba(255,255,255,.03) 白 veil 在浅色系不可见）。 */
 function heatColor(util: number): string {
   const u = Math.max(0, Math.min(1, util));
   if (u >= 0.95) return "rgba(224,98,108,0.55)";
   if (u >= 0.8) return "rgba(221,149,81,0.45)";
   if (u >= 0.5) return "rgba(210,176,76,0.32)";
   if (u > 0) return `rgba(84,181,196,${0.16 + u * 0.28})`;
-  return "rgba(255,255,255,0.03)";
+  return "var(--hover-tint)";
 }
 
 type OrderState = "in" | "frozen" | "excluded";
@@ -674,7 +675,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <thead><tr><th>方案</th><th>获排</th><th>被挤</th><th style={{ textAlign: "right" }}>获排量</th><th style={{ textAlign: "right" }}>按期</th><th style={{ textAlign: "right" }}>延误量</th><th style={{ textAlign: "right" }}>换型</th><th style={{ textAlign: "right" }}>成品库存</th><th style={{ textAlign: "right" }}>代价</th></tr></thead>
                   <tbody>
                     {d.scenarios.map((s) => (
-                      <tr key={s.key} data-testid={`global-sim-scen-row-${s.key}`} style={s.key === primary ? { background: "rgba(108,123,246,0.1)" } : undefined}>
+                      <tr key={s.key} data-testid={`global-sim-scen-row-${s.key}`} style={s.key === primary ? { background: "var(--nav-active-bg)" } : undefined}>
                         <td><strong className={styles.textPrimary}>{SCEN_LABEL[s.key] ?? s.key}</strong></td>
                         <td className="num">{s.servedCount}</td><td className="num">{s.displacedCount}</td><td className="num">{fmt(s.servedQty, 0)}</td>
                         <td className="num">{fmt(s.objectiveValues.ontime, 0)}</td><td className="num">{fmt(s.objectiveValues.delay, 0)}</td>
