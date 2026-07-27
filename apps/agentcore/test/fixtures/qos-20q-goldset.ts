@@ -69,4 +69,10 @@ export const QOS_20Q_GOLDSET: GoldQuestion[] = [
   { no: 19, query: "帮我推演一下未来三个月的经营沙盘", cls: "path-B-open", expectPathA: false, pageContext: pc({ metric: "aop_attain" }) },
   // #20（WO SEAM 头号例）：综合分析连锁影响（真开放）→ 仍走 path-B（不误降级）。
   { no: 20, query: "综合分析连锁影响", cls: "path-B-open", expectPathA: false, pageContext: pc({ metric: "seg_attain_ess" }) },
+
+  // ───────────── WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if（正例 path-A + 双命中门负例 path-B·守回归） ─────────────
+  // #21 正例：优化决策族词（选址）∧ 目标参数+数值（开设成本涨到 150）∧ 点名决策对象（f1）三命中 → optimize_whatif（path-A·CP-SAT 重解）。
+  { no: 21, query: "如果 f1 的开设成本涨到 150，最优选址方案怎么变？", cls: "path-A", expectPathA: true, expectSolver: "optimize_whatif", pageContext: pc({ base: "changzhou" }) },
+  // #22 负例（双命中门·守回归）：有选址族词 + 点名 f1，但**无目标参数数值**（"很高/不划算"非"到 N"）→ 不触发 optimize_whatif → 真开放照落 path-B（误降级=0）。
+  { no: 22, query: "如果 f1 的开设成本很高，选址会不会不划算？", cls: "path-B-open", expectPathA: false, pageContext: pc({ base: "changzhou" }) },
 ];

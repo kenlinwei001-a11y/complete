@@ -1,4 +1,4 @@
-import type { AuthCtx, CalibrationForecastRecord, ObjectInstance } from "../domain.js";
+import type { AuthCtx, CalibrationForecastRecord, ObjectInstance, ObjectTypeDef } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
@@ -26,6 +26,7 @@ import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
+import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
@@ -33,6 +34,11 @@ import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ont
 import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
+
+/** WO-OPTWHATIF-NL-WIRING · 选中决策对象引用（= AgentCore ObjectRef 结构·经 invoke args 透传）。 */
+interface SelectionRef { objectType: string; objectId: string; label?: string }
+/** WO-OPTWHATIF-NL-WIRING · role 提示（AgentCore opt-whatif-route 透传·候选承载类型·不硬编）。 */
+interface OptWhatifRoleHints { decisionObjectType?: string; selectionIds?: string[] }
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -3273,9 +3279,29 @@ export class SolverService {
     const family = str(args.family) as OptTemplateFamily;
     if (!family) throw validationError("optimize_whatif 需 family（5 核心之一）");
     const perturbations = asArr<OptPerturbation>(args.perturbations, "perturbations");
-    // 基线 args：直接给 args 或经 binding 预处理（增量2）。
+    // 基线 args：① selection+autoBind 自动装配（WO-OPTWHATIF-NL-WIRING·人机对话入口）② 显式 binding 预处理（增量2）
+    // ③ 直接给 args（增量1）。②③ 分支**逐字节不变**（byte-compat）。
     let baselineArgs: Record<string, unknown>;
-    if (args.binding) {
+    if (args.autoBind && Array.isArray(args.selection)) {
+      // WO-OPTWHATIF-NL-WIRING（闭断点3）：据选中决策对象从已发布本体真装配基线（A13 角色推断 + DF.8 接地·不硬编类型名·
+      // 不伪造系数）。装配报缺（role 支撑属性不存在）→ 返 applicable:false（orchestrator 落回 path-B 或诚实缺口·绝不伪造）。
+      const assembled = await this.assembleBaselineFromSelection(
+        ctx, family,
+        args.selection as SelectionRef[],
+        (args.roleHints as OptWhatifRoleHints | undefined),
+        args.seed,
+      );
+      if (!assembled.applicable) {
+        return {
+          applicable: false, missingRoles: assembled.missingRoles,
+          baselineObjective: null, perturbedObjective: null, deltaObjective: null,
+          feasible: false, conflictConstraints: [],
+          explanation: `装配报缺：缺角色支撑 ${assembled.missingRoles.join("、")}（不伪造系数·诚实落回·DF.8 不造实体）`,
+          summary: `optimize_whatif 装配报缺（${assembled.missingRoles.join("、")}）——诚实落回，未重解`,
+        };
+      }
+      baselineArgs = assembled.args;
+    } else if (args.binding) {
       const view: BindingOntologyView = {
         listTypes: (tid) => this.repos.ontologyTypes.list(tid),
         listByType: (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
@@ -3295,6 +3321,108 @@ export class SolverService {
         result.explanation ??
         `基线 ${result.baselineObjective ?? "—"} → 扰动后 ${result.perturbedObjective ?? "—"}（Δ=${result.deltaObjective ?? "—"}，${result.feasible ? "可行" : "不可行"}）`,
     };
+  }
+
+  /**
+   * WO-OPTWHATIF-NL-WIRING（闭断点3·DataCore 半）：据**选中决策对象**从**已发布本体**真装配 optimize_whatif 基线 args。
+   *
+   * 机制（**零 LLM·零业务常数·R6**）：
+   *  ① role 推断复用 A13 `resolveFieldRoles`（结构信号 fanIn/fanOut）+ 配置词库 `lexiconHit`（成本/需求/客户/订单）——
+   *     facility 承载类型 = **选中对象的统一类型**（whatever·**不硬编 Base→facility**），open_cost = 该类型上命中成本词库的数值字段，
+   *     client 类型 = 命中"客户/订单/leaf"词库的另一类型（tie-break：fanOut 高→字典序·resolveFieldRoles 结构信号）。
+   *  ② 构造 OntologyBinding{tenantId:ctx.tenantId, templateKey:family, roleBindings, scope(选中子图 id), coeffSource:"property"}。
+   *  ③ DF.8 接地 + 装配调既有 `bindToSolverArgs`（groundBinding 校验类型/属性存在于已发布本体·越界报错不造实体·按 id 稳定排序）。
+   *  ④ **选中范围收窄**：facility 承载类型只读选中 id（其余需求点类型全量）。
+   *
+   * 诚实报缺（仿 bindCrossObjectOccupancy 范式）：role 支撑类型/属性不存在 → `{applicable:false, missingRoles}`
+   *（**绝不伪造系数**·orchestrator 落回 path-B 或诚实缺口）。
+   */
+  private async assembleBaselineFromSelection(
+    ctx: AuthCtx,
+    family: OptTemplateFamily,
+    selection: SelectionRef[],
+    roleHints: OptWhatifRoleHints | undefined,
+    seed: unknown,
+  ): Promise<{ applicable: true; args: Record<string, unknown> } | { applicable: false; missingRoles: string[] }> {
+    const types = (await this.repos.ontologyTypes.list(ctx.tenantId)).filter((t) => t.status === "ACTIVE");
+    const byKey = new Map(types.map((t) => [t.key, t]));
+    const pkOf = (t: ObjectTypeDef): string | undefined => t.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const numProps = (t: ObjectTypeDef) => t.properties.filter((p) => p.dataType === "number" && !p.isPrimaryKey);
+    // fanOut 结构信号（复用 A13 resolveFieldRoles 同款结构语义·此处直接算 out-ref 计数供 tie-break）。
+    const fanOut = (t: ObjectTypeDef) => t.properties.filter((p) => p.dataType === "ref" || p.refToTypeKey).length;
+
+    // 决策承载类型 = 选中对象统一类型（不硬编）；空/非统一 → roleHints.decisionObjectType。
+    const selTypes = new Set(selection.map((s) => s.objectType).filter(Boolean));
+    const decisionType = selTypes.size === 1 ? [...selTypes][0]! : roleHints?.decisionObjectType;
+    if (!decisionType || !byKey.has(decisionType)) return { applicable: false, missingRoles: ["decision-object-type（选中对象类型缺失/非统一/未发布）"] };
+    const selIds = new Set(selection.map((s) => s.objectId).filter(Boolean));
+
+    // 选中范围收窄视图：决策承载类型只读选中 id（match o.id 或 pk 值）；其余类型全量。
+    const decDef = byKey.get(decisionType)!;
+    const decPk = pkOf(decDef);
+    const view: BindingOntologyView = {
+      listTypes: (tid) => this.repos.ontologyTypes.list(tid),
+      listByType: async (tid, typeKey) => {
+        const objs = await this.repos.objects.listByType(tid, typeKey);
+        if (typeKey === decisionType && selIds.size > 0) {
+          return objs.filter((o) => selIds.has(o.id) || (decPk ? selIds.has(String((o.props as Record<string, unknown>)[decPk])) : false));
+        }
+        return objs;
+      },
+    };
+
+    if (family === "facility_location") {
+      // open_cost = 决策类型上命中"成本"词库的数值字段（不硬编 openCost）。
+      const openProp = numProps(decDef).map((p) => p.propKey).find((k) => lexiconHit(k, "cost"));
+      if (!openProp) return { applicable: false, missingRoles: [`open_cost（${decisionType} 无命中成本词库的数值字段）`] };
+      // client 类型 = 命中"客户/订单/leaf"词库的另一类型（tie-break：fanOut 降序 → 字典序）。
+      const clientCands = types.filter((t) => t.key !== decisionType && lexiconHit(t.key, "leaf"))
+        .sort((a, b) => fanOut(b) - fanOut(a) || a.key.localeCompare(b.key));
+      const clientType = clientCands[0]?.key;
+      if (!clientType) return { applicable: false, missingRoles: ["client（无命中客户/订单词库的对象类型）"] };
+      // assign_cost 可选：决策类型上命中"成本"词库的**另一**数值字段（≠ open_cost）；无则 bindToSolverArgs 默认 1。
+      const assignProp = numProps(decDef).map((p) => p.propKey).find((k) => k !== openProp && lexiconHit(k, "cost"));
+      const binding: OntologyBinding = {
+        id: `autobind_${ctx.tenantId}_${family}`, tenantId: ctx.tenantId, templateKey: family, scope: { selectionIds: [...selIds] },
+        roleBindings: [
+          { role: "facility", bind: { kind: "objectType", ref: decisionType } },
+          { role: "client", bind: { kind: "objectType", ref: clientType } },
+          { role: "open_cost", bind: { kind: "property", ref: `${decisionType}.${openProp}` } },
+          ...(assignProp ? [{ role: "assign_cost" as const, bind: { kind: "property" as const, ref: `${decisionType}.${assignProp}` } }] : []),
+        ],
+        coeffSource: "property", status: "PUBLISHED",
+      };
+      const solverArgs = await bindToSolverArgs(view, family, binding, { seed });
+      return { applicable: true, args: solverArgs };
+    }
+
+    if (family === "min_cost_flow") {
+      // node = 决策承载类型；supply = node 上命中"需求/供给"词库的数值字段。
+      const supplyProp = numProps(decDef).map((p) => p.propKey).find((k) => lexiconHit(k, "demand"));
+      if (!supplyProp) return { applicable: false, missingRoles: [`supply（${decisionType} 无命中供需词库的数值字段）`] };
+      // arc 类型 = 有 ≥2 个 ref 属性（from/to）指向 node 的类型；cost = 其上命中"成本"词库的数值字段。
+      const arcDef = types.find((t) => t.key !== decisionType && t.properties.filter((p) => p.refToTypeKey === decisionType).length >= 2);
+      if (!arcDef) return { applicable: false, missingRoles: ["arc（无 ≥2 ref 指向决策类型的弧类型）"] };
+      const refs = arcDef.properties.filter((p) => p.refToTypeKey === decisionType).map((p) => p.propKey).sort();
+      const costProp = numProps(arcDef).map((p) => p.propKey).find((k) => lexiconHit(k, "cost"));
+      if (!costProp) return { applicable: false, missingRoles: [`arc_cost（${arcDef.key} 无命中成本词库的数值字段）`] };
+      const binding: OntologyBinding = {
+        id: `autobind_${ctx.tenantId}_${family}`, tenantId: ctx.tenantId, templateKey: family, scope: { selectionIds: [...selIds] },
+        roleBindings: [
+          { role: "node", bind: { kind: "objectType", ref: decisionType } },
+          { role: "arc", bind: { kind: "objectType", ref: arcDef.key } },
+          { role: "supply", bind: { kind: "property", ref: `${decisionType}.${supplyProp}` } },
+          { role: "arc_from", bind: { kind: "property", ref: `${arcDef.key}.${refs[0]}` } },
+          { role: "arc_to", bind: { kind: "property", ref: `${arcDef.key}.${refs[1]}` } },
+          { role: "arc_cost", bind: { kind: "property", ref: `${arcDef.key}.${costProp}` } },
+        ],
+        coeffSource: "property", status: "PUBLISHED",
+      };
+      const solverArgs = await bindToSolverArgs(view, family, binding, { seed });
+      return { applicable: true, args: solverArgs };
+    }
+
+    return { applicable: false, missingRoles: [`family '${family}' selection 自动装配暂未支持（请显式 binding）`] };
   }
 
   // ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心 ──────────────────────────────────

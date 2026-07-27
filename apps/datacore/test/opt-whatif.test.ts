@@ -78,10 +78,12 @@ describe("轨B·增量3 · optimize_whatif 纯函数（runOptimizeWhatif）", ()
 });
 
 class MockFL implements OptimizerClient {
+  last?: FacilityLocationRequest;
   async solve(_req: OptimizationRequest): Promise<OptimizationResult> {
     return { status: "INFEASIBLE", optimal: false, selected: [], totalValue: 0, totalWeight: 0 };
   }
   async solveFacilityLocation(req: FacilityLocationRequest): Promise<FacilityLocationResult> {
+    this.last = req;
     // 真实回放：开 openCost 最小的设施，指派全部，objective = minOpen + Σ(该设施指派成本)。
     const cheapest = [...req.facilities].sort((a, b) => a.openCost - b.openCost)[0]!;
     const ac = req.assignCosts.filter((a) => a.facility === cheapest.id);
@@ -109,5 +111,96 @@ describe("轨B·增量3 · optimize_whatif 经 service.invoke（接 5 核心 sid
     expect(out.deltaObjective).toBe(10);
     expect(out.feasible).toBe(true);
     expect(String(out.summary)).toContain("Δ");
+  });
+});
+
+/**
+ * WO-OPTWHATIF-NL-WIRING · **数据装配 × 引擎 真 SEAM**（闭 §8 G-WHATIF-NL-UNREACHABLE·DataCore 半）：
+ * selection+autoBind → assembleBaselineFromSelection（A13 词库/结构角色推断·DF.8 接地·**不硬编 Base→facility**）→
+ * bindToSolverArgs 从**已发布本体真装配** → 真扰动重解（MockFive 真会重优化：开 openCost 最小的设施）→
+ * **头号判据：baselineSolution.openFacilities ≠ perturbedSolution.openFacilities**（决策方案切换·数据×引擎驱动接缝）。
+ * KILL-MOCK：MockFive 每次按 openCost argmin 真重解（非返回同一方案的桩）·真 CP-SAT 由 opt-real-sidecar.integration env-gated 坐实。
+ */
+async function seedSites(t: Awaited<ReturnType<typeof makeApp>>) {
+  // **决策承载类型故意命名 "Site"（非 "Base"）**——证 assembleBaselineFromSelection 不硬编 Base→facility（选中什么类型即绑什么）。
+  await t.repos.ontologyTypes.put({ id: "ot_site", tenantId: "acme", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false }] });
+  await t.repos.ontologyTypes.put({ id: "ot_cust", tenantId: "acme", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }] });
+  await t.repos.objects.put({ id: "f1", tenantId: "acme", type: "Site", props: { siteId: "f1", setupCost: 10 } });
+  await t.repos.objects.put({ id: "f2", tenantId: "acme", type: "Site", props: { siteId: "f2", setupCost: 20 } });
+  await t.repos.objects.put({ id: "f3", tenantId: "acme", type: "Site", props: { siteId: "f3", setupCost: 30 } });
+  await t.repos.objects.put({ id: "c1", tenantId: "acme", type: "Customer", props: { custId: "c1" } });
+}
+
+describe("WO-OPTWHATIF-NL-WIRING · 装配器 SEAM（selection+autoBind·数据装配×引擎·真重解）", () => {
+  it("头号：selection+autoBind → 真装配 + 真扰动重解 → 决策方案切换（openFacilities 从 f1→f2·Δ≠0）", async () => {
+    const t = await makeApp();
+    t.services.solvers.setOptimizer(new MockFL()); // MockFive：开 openCost 最小设施（真 argmin 重解·决策切换非桩）
+    const ctx: AuthCtx = { tenantId: "acme", userId: "u", roles: ["admin"], attributes: {} };
+    await seedSites(t);
+    const out = await t.services.solvers.invoke(ctx, "optimize_whatif", {
+      family: "facility_location",
+      autoBind: true,
+      selection: [
+        { objectType: "Site", objectId: "f1" },
+        { objectType: "Site", objectId: "f2" },
+        { objectType: "Site", objectId: "f3" },
+      ],
+      perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }],
+    });
+    expect((out as { applicable?: boolean }).applicable).not.toBe(false); // 真装配成功
+    const base = out.baselineSolution as { openFacilities: string[] };
+    const pert = out.perturbedSolution as { openFacilities: string[] };
+    expect(base.openFacilities).toEqual(["f1"]); // 基线：最便宜 f1(10)
+    expect(pert.openFacilities).toEqual(["f2"]); // f1→150 ⇒ 最便宜切到 f2(20)
+    expect(base.openFacilities).not.toEqual(pert.openFacilities); // **头号：决策方案切换**
+    expect(out.deltaObjective).not.toBe(0);
+    expect(out.deltaObjective).not.toBeNull();
+    expect(out.feasible).toBe(true);
+  });
+
+  it("R6：同 selection 同扰动两跑字节一致", async () => {
+    const run = async () => {
+      const t = await makeApp();
+      t.services.solvers.setOptimizer(new MockFL());
+      const ctx: AuthCtx = { tenantId: "acme", userId: "u", roles: ["admin"], attributes: {} };
+      await seedSites(t);
+      return t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }, { objectType: "Site", objectId: "f2" }, { objectType: "Site", objectId: "f3" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
+    };
+    expect(JSON.stringify(await run())).toBe(JSON.stringify(await run()));
+  });
+
+  it("选中范围收窄：只选 f1/f2 → facilities 只含选中（f3 不入·真收窄非全量）", async () => {
+    const t = await makeApp();
+    const mock = new MockFL();
+    t.services.solvers.setOptimizer(mock);
+    const ctx: AuthCtx = { tenantId: "acme", userId: "u", roles: ["admin"], attributes: {} };
+    await seedSites(t);
+    await t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }, { objectType: "Site", objectId: "f2" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
+    // MockFive.last 捕获最后一次 solveFacilityLocation 请求（基线/扰动同一 facility 集）。
+    expect(mock.last!.facilities.map((f) => f.id).sort()).toEqual(["f1", "f2"]); // f3 被收窄掉
+  });
+
+  it("DF.8 诚实报缺（不造实体）：无客户/订单类型 → applicable:false·missingRoles 含 client（绝不伪造系数）", async () => {
+    const t = await makeApp();
+    t.services.solvers.setOptimizer(new MockFL());
+    const ctx: AuthCtx = { tenantId: "acme2", userId: "u", roles: ["admin"], attributes: {} };
+    // 只种 Site（有成本字段）·**不种任何客户/订单类型** → client role 无从接地。
+    await t.repos.ontologyTypes.put({ id: "ot_site2", tenantId: "acme2", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.objects.put({ id: "f1", tenantId: "acme2", type: "Site", props: { siteId: "f1", setupCost: 10 } });
+    const out = await t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
+    expect((out as { applicable?: boolean }).applicable).toBe(false);
+    expect(String((out as { missingRoles?: string[] }).missingRoles?.join(""))).toContain("client");
+  });
+
+  it("DF.8 诚实报缺：决策类型无成本字段 → applicable:false·missingRoles 含 open_cost（不硬编 openCost·不伪造）", async () => {
+    const t = await makeApp();
+    t.services.solvers.setOptimizer(new MockFL());
+    const ctx: AuthCtx = { tenantId: "acme3", userId: "u", roles: ["admin"], attributes: {} };
+    await t.repos.ontologyTypes.put({ id: "ot_site3", tenantId: "acme3", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "area", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_cust3", tenantId: "acme3", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }] });
+    await t.repos.objects.put({ id: "f1", tenantId: "acme3", type: "Site", props: { siteId: "f1", area: 10 } });
+    const out = await t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
+    expect((out as { applicable?: boolean }).applicable).toBe(false);
+    expect(String((out as { missingRoles?: string[] }).missingRoles?.join(""))).toContain("open_cost");
   });
 });

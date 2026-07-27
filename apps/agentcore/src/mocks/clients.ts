@@ -422,6 +422,45 @@ export class MockSolverClient implements SolverClient {
         snapshotVersion: SNAPSHOT,
       };
     }
+    // WO-OPTWHATIF-NL-WIRING · optimize_whatif（会话路由 SEAM 用）：MockDataCore 无真本体，故据 selection 派生
+    // 决策承载对象 + **真做 argmin 重解**（施加扰动后重算最优）——**决策方案切换是重解的真结果·非返回同一方案的桩**
+    // （KILL-MOCK）。真本体绑定 × 真 CP-SAT 的「数据装配×引擎」接缝由 DataCore `test/opt-whatif.test.ts` 装配器 SEAM
+    // 坐实（真 assembleBaselineFromSelection + bindToSolverArgs + MockFive 真重解·f1→f2）；此处只证「会话路由 × 决策切换传导」。
+    if (solverKey === "optimize_whatif") {
+      const family = String(args.family ?? "facility_location");
+      const selection = Array.isArray(args.selection) ? (args.selection as { objectId: string }[]) : [];
+      const perts = Array.isArray(args.perturbations) ? (args.perturbations as { target: string; value: number | string }[]) : [];
+      // 决策承载对象 → openCost（选中序确定性 10/20/30…·真会重优化的口径·不同扰动→不同最优）。
+      const baseFac = selection.map((s, i) => ({ id: s.objectId, openCost: (i + 1) * 10 }));
+      if (family === "facility_location" && baseFac.length > 0) {
+        const argmin = (facs: { id: string; openCost: number }[]) =>
+          [...facs].sort((a, b) => a.openCost - b.openCost || a.id.localeCompare(b.id))[0]!;
+        const applyPerts = (facs: { id: string; openCost: number }[]) =>
+          facs.map((f) => {
+            const p = perts.find((x) => x.target === `facilities.${f.id}.openCost`);
+            return p ? { ...f, openCost: Number(p.value) } : { ...f };
+          });
+        const baseWin = argmin(baseFac);
+        const pertFac = applyPerts(baseFac);
+        const pertWin = argmin(pertFac);
+        const baselineObjective = baseWin.openCost;
+        const perturbedObjective = pertWin.openCost;
+        const deltaObjective = Math.round((perturbedObjective - baselineObjective) * 1e6) / 1e6;
+        return {
+          data: {
+            baselineObjective, perturbedObjective, deltaObjective,
+            feasible: true, conflictConstraints: [],
+            explanation: `扰动 ${perts.length} 条 → 目标 ${baselineObjective} → ${perturbedObjective}（Δ=${deltaObjective}）`,
+            baselineSolution: { openFacilities: [baseWin.id], objective: baselineObjective, optimal: true },
+            perturbedSolution: { openFacilities: [pertWin.id], objective: perturbedObjective, optimal: true },
+            summary: `基线 ${baselineObjective} → 扰动后 ${perturbedObjective}（Δ=${deltaObjective}，可行）`,
+          },
+          snapshotVersion: SNAPSHOT,
+        };
+      }
+      // 装配不出（无选中/未支持族）→ 诚实报缺（orchestrator 落回 path-B·不伪造）。
+      return { data: { applicable: false, missingRoles: ["selection（无选中决策对象）"], feasible: false, baselineObjective: null, perturbedObjective: null, deltaObjective: null, conflictConstraints: [], summary: "optimize_whatif 装配报缺——诚实落回" }, snapshotVersion: SNAPSHOT };
+    }
     // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
     // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
     // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。

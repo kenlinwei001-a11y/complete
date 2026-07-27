@@ -1,5 +1,6 @@
 import type { PageContext } from "@platform/contracts";
 import { domainResolve } from "../router/domain-resolver.js";
+import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中信号（单一来源·leaf 模块·无环）
 
 /**
  * WO-QOS-2 · NavigationSlice 投影器（闭 G-AGENT-BLIND-REACT · agent 侧另一半）。
@@ -45,7 +46,11 @@ type DomainFamilyKey =
   | "quality"
   | "material"
   | "carbon"
-  | "whatif";
+  | "whatif"
+  // WO-OPTWHATIF-NL-WIRING（闭 §8 G-WHATIF-NL-UNREACHABLE）：**优化目标级** what-if（改一约束/系数→CP-SAT 重解→
+  // Δ目标+可行性+IIS+决策方案切换）——与 `"whatif"`（→generic_inference 前向重算杠杆敏感度）**区分**：前者是
+  // CP-SAT 可证最优的重优化（optimize_whatif·换设施/换路径），后者是确定性派生前向推算（不重优化）。
+  | "opt_whatif";
 
 /** 业务域族问句信号（确定性正则·R6）——命中即把该族 solver 拉入本题图。 */
 const FAMILY_SIGNALS: { key: DomainFamilyKey; re: RegExp }[] = [
@@ -134,6 +139,15 @@ const SOLVER_CATALOG: Record<string, SolverCatalogEntry> = {
     outputShape: ["levers", "deltas", "rows", "affectedObjects", "count", "rootTypes"],
     reads: ["Line", "Process", "Order"],
     families: ["whatif", "capacity"],
+  },
+  // WO-OPTWHATIF-NL-WIRING · 优化目标级 what-if（CP-SAT 可证最优重解·改一约束/系数→Δ目标+可行性+冲突约束 IIS+
+  // 决策方案切换）。outputShape **逐项镜像** DataCore `SOLVER_OUTPUT_SHAPES.optimize_whatif`（权威在 A 侧·此为只读投影；
+  // 漂移由 `test/optimize-whatif-conversational-seam.test.ts` 镜像守护单测抓）。
+  optimize_whatif: {
+    capability: "优化目标级 what-if（改一约束/系数→CP-SAT 重解→Δ目标+可行性+冲突约束+最优决策方案切换）",
+    outputShape: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
+    reads: ["Base", "Order", "Model", "DemandSegment"],
+    families: ["opt_whatif"],
   },
   yield_diagnosis: {
     capability: "良率断点诊断（定位良率波动的工序/设备根因）",
@@ -275,6 +289,8 @@ export function projectNavigationSlice(query: string, pageContext?: PageContext,
   // 命中的域族（问句信号）。
   const hitFamilies = new Set<DomainFamilyKey>();
   for (const f of FAMILY_SIGNALS) if (f.re.test(q)) hitFamilies.add(f.key);
+  // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中门（决策族词 ∧ 参数改动值）——单一 whatif 词不误拉 optimize_whatif（守回归）。
+  if (isOptWhatifSignal(q)) hitFamilies.add("opt_whatif");
 
   // 候选 solver：① domain-resolver 对口 solver（primary）② 命中族的 solver ③ scope 内对象域覆盖的 solver。
   const candidateKeys = new Set<string>();
