@@ -1336,8 +1336,21 @@ export class SolverService {
     const equipment = (await this.repos.objects.listByType(ctx.tenantId, "Equipment")).map((o) => o.props);
     const matBal = (await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance")).map((o) => o.props);
     const orderVal = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice, 600) / 1e4, 2); // 万元
-    // 受影响订单 = OPEN（真状态），按基地分组（Order.bases 首基地）。
-    const affected = orders.filter((o) => str(o.status) === "OPEN");
+    // ── 业务细分作用域（WO-SEG-ATTR-SCOPE·闭 §8 G-SEG-ATTR-CROSS-SEGMENT）──
+    // seg_attain_{ess|pas|com} 是「细分达成率」，其根因下钻必须只归因**本细分**订单
+    // （储能达成率→仅 storage 客户/订单）。目标业态优先取 Metric.businessType（种子经
+    // businessTypeOfSegment 派生的一等字段·R13 可溯），缺省回落 key 后缀解析（向后兼容）。
+    const SEG_SUFFIX_BT: Record<string, "passenger" | "commercial" | "storage"> =
+      { ess: "storage", pas: "passenger", com: "commercial" };
+    const segSuffix = /^seg_attain_(ess|pas|com)$/.exec(str(m.key))?.[1];
+    const targetBusinessType = m.businessType
+      ? str(m.businessType)
+      : (segSuffix ? SEG_SUFFIX_BT[segSuffix] : undefined);
+    // 受影响订单 = OPEN ∩ 目标细分（真状态·按基地分组 Order.bases 首基地）；无目标细分
+    // （非细分指标）时不缩窄 → 字节兼容不变。一处过滤同源喂 L1（基地分组）与 L2（订单叶）。
+    const affected = orders.filter(
+      (o) => str(o.status) === "OPEN" && (!targetBusinessType || str(o.businessType) === targetBusinessType),
+    );
     const byBase = new Map<string, Record<string, unknown>[]>();
     for (const o of affected) {
       const bs = Array.isArray(o.bases) ? (o.bases as string[]) : [];
@@ -1383,10 +1396,11 @@ export class SolverService {
       const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / baseEquip.length, 4) : 0;
       const matDriver = round(matBal.reduce((a, mb) => a + num(mb.gapTon), 0) / 1e4, 4); // 万吨级
       // 子驱动：各订单 value + 设备瓶颈 + 物料瓶颈。
-      const childDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown> }[] = [];
+      const childDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown>; businessType?: string }[] = [];
       for (const o of e.os) {
+        // 订单叶携业态（WO-SEG-ATTR-SCOPE·R13 出处透明·前端可显示/二次过滤）；仅订单叶带，设备/物料叶无业态语义。
         childDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
-          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) } });
+          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
       }
       if (oeeDeficit > 0) childDrivers.push({ id: `equip:${e.base}`, factor: `${e.base} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * e.driver, 2),
         prov: { kind: "实测", drillType: "Equipment", drillId: e.base, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
@@ -1400,7 +1414,8 @@ export class SolverService {
           const contribution = round(pg * structuralExplained * (c.driver / cdTotal), 4);
           l2childSum = round(l2childSum + contribution, 4);
           const node = { id: c.id, factor: c.factor, contribution, unit, share: round(c.driver / cdTotal, 4),
-            path: [str(m.metricId), `base:${e.base}`, c.id], causalPath: [] as string[], provenance: c.prov };
+            path: [str(m.metricId), `base:${e.base}`, c.id], causalPath: [] as string[], provenance: c.prov,
+            ...(c.businessType ? { businessType: c.businessType } : {}) };
           l2nodes.push(node);
           if (!c.id.startsWith("material:")) atomicLeaves.push(node); // 订单/设备叶 = 原子叶
           return node;
