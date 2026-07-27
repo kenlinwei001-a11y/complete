@@ -236,8 +236,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用 输出形状（权威=求解器实现成功路径顶层 key）。
   multi_objective: ["status", "optimal", "values", "objectiveValues", "method", "objectiveKeys", "varCount", "objectiveCount", "summary"],
   cross_object_occupancy: ["status", "optimal", "values", "objectiveValues", "occupancy", "displaced", "method", "orderCount", "lineCount", "contractCount", "servedCount", "summary"],
-  // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary）。
-  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "summary"],
+  // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary + 决策比对方案结构透传）。
+  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],

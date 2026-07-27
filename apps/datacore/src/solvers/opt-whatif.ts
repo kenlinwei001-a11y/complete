@@ -28,6 +28,21 @@ function objOf(out: Record<string, unknown>): number | null {
   return feasible && typeof out.objective === "number" ? out.objective : null;
 }
 
+/**
+ * 透传方案结构（前端「决策比对」用：开哪些设施 / 怎么指派 / 选哪些集合 / 中标包…按 family 异构）。
+ * 去掉已在 OptWhatifResult 顶层单列的 status（→feasible）与 summary（→explanation），其余决策字段全留
+ * （openFacilities/assignments/flows/chosen/winners + objective/optimal + count/type 元信息）。
+ * 让用户直接看到"改一个参数，最优决策怎么切换"，而非只有一个 Δ 数字（G-12 前端半的可懂性缺口）。
+ */
+function solutionOf(out: Record<string, unknown>): Record<string, unknown> {
+  const sol: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(out)) {
+    if (k === "status" || k === "summary") continue;
+    sol[k] = v;
+  }
+  return sol;
+}
+
 /** WO-CROSS-OBJECT-MULTIOBJ：取多目标各目标值（multi_objective/cross_object_occupancy 回报 objectiveValues）。 */
 function objValuesOf(out: Record<string, unknown>): Record<string, number> | null {
   const feasible = out.status !== "INFEASIBLE";
@@ -172,5 +187,19 @@ export async function runOptimizeWhatif(
       : `扰动 ${sorted.length} 条 → 目标 ${baselineObjective ?? "—"} → ${perturbedObjective ?? "—"}（Δ=${deltaObjective ?? "—"}）`
     : `扰动 ${sorted.length} 条 → 不可行；冲突约束族：${conflictConstraints.join("、") || "—"}`;
 
-  return { baselineObjective, perturbedObjective, deltaObjective, deltaByObjective, feasible, conflictConstraints, explanation };
+  // 「决策比对」透传：基线解 / 扰动后解的方案结构（前端渲"开f1→开f2"式决策切换·而非只 Δ 数字）。
+  const baselineSolution = solutionOf(baseOut);
+  const perturbedSolution = solutionOf(newOut);
+
+  return {
+    baselineObjective,
+    perturbedObjective,
+    deltaObjective,
+    deltaByObjective,
+    feasible,
+    conflictConstraints,
+    explanation,
+    baselineSolution,
+    perturbedSolution,
+  };
 }

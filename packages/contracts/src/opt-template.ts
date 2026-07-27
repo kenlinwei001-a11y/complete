@@ -99,5 +99,11 @@ export const OptWhatifResultSchema = z.object({
   feasible: z.boolean(),
   conflictConstraints: z.array(z.string()), // 冲突/不可行约束族 key（IIS 式）
   explanation: z.string().optional(), // R13 解释（新解 vs 原解）
+  // 「决策比对」方案结构透传（前端重设计用·让用户看到"开哪些设施 / 怎么指派"如何随扰动**切换**，
+  // 而非只看一个 Δ 数字）。按 family 异构：facility_location→openFacilities+assignments·
+  // min_cost_flow→flows·set_cover/independent_set→chosen·combinatorial_auction→winners（各含 objective/optimal）。
+  // 开放记录（异构·前端按 family 挑字段渲染）；向后兼容：老消费方忽略即可（optional·additive R1）。
+  baselineSolution: z.record(z.string(), z.unknown()).optional(),
+  perturbedSolution: z.record(z.string(), z.unknown()).optional(),
 });
 export type OptWhatifResult = z.infer<typeof OptWhatifResultSchema>;

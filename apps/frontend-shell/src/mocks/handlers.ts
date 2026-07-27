@@ -1384,10 +1384,100 @@ export const handlers = [
         snapshotVersion: "ov-12",
       });
     if (key === "optimize_whatif") {
-      // 优化推演 mock（仅测渲染逻辑·真 CP-SAT Δ 须打真 sidecar）：Δ 随扰动 delta 之和确定性变化 →
-      // 组件测「改扰动→重取→Δ 变」有牙；conflict/feasible 随扰动量级切换（模拟约束越界）。
-      const owArgs = invArgs as { family?: string; perturbations?: { delta?: number }[] };
-      const perts = Array.isArray(owArgs.perturbations) ? owArgs.perturbations : [];
+      // 优化推演 mock（无 sidecar 态）：facility_location 用**真·小规模暴力枚举**求最优（2^n 设施子集 × 客户就近指派），
+      // 基线 vs 扰动后各解一次 → 真 Δ + 真「决策切换」（开哪些设施 / 怎么指派）——让决策比对卡有牙、随任意编辑真变。
+      // 镜像后端 opt-whatif.ts：data_override 施加到 args 克隆（DF.8 接地 target=facilities.<id>.openCost 等）。
+      // 其余 family 保留形状回放（delta 之和）兜底。真 CP-SAT 可证最优仍须打真 sidecar（services/optimizer·见 DEPLOY.md）。
+      const ow = invArgs as {
+        family?: string;
+        args?: Record<string, unknown>;
+        perturbations?: { kind?: string; target?: string; value?: number | string; delta?: number }[];
+      };
+      const family = ow.family ?? "";
+      const perts = Array.isArray(ow.perturbations) ? ow.perturbations : [];
+
+      // data_override 施加到 args 克隆（寻址与后端一致：collection.id.field；arcs 用 from-to 复合 id）。
+      const applyPerts = (base: Record<string, unknown>): Record<string, unknown> => {
+        const a = JSON.parse(JSON.stringify(base ?? {})) as Record<string, unknown>;
+        for (const p of perts) {
+          const parts = String(p.target ?? "").split(".");
+          if (parts.length < 2) continue;
+          const [coll, id, field] = parts;
+          const arr = a[coll!] as Record<string, unknown>[] | undefined;
+          if (!Array.isArray(arr)) continue;
+          const obj = arr.find((e) => (coll === "arcs" ? `${e.from}-${e.to}` === id : String(e.id) === id));
+          if (!obj) continue;
+          const f = field ?? (coll === "facilities" ? "openCost" : coll === "bids" ? "value" : "cost");
+          const v = typeof p.value === "number" ? p.value : Number(p.value);
+          if (Number.isFinite(v)) obj[f] = v;
+        }
+        return a;
+      };
+
+      // facility_location 真暴力最优：min 总成本 = Σ开设 + Σ就近指派；容量：开设总容量 ≥ 总需求即可行（就近指派近似）。
+      const solveFL = (a: Record<string, unknown>) => {
+        const facilities = (a.facilities as { id: string; openCost: number; capacity?: number }[]) ?? [];
+        const clients = (a.clients as { id: string; demand?: number }[]) ?? [];
+        const assign = (a.assignCosts as { client: string; facility: string; cost: number }[]) ?? [];
+        const n = facilities.length;
+        if (!n || !clients.length) return null;
+        const costOf = (c: string, f: string) => assign.find((x) => x.client === c && x.facility === f)?.cost;
+        const totalDemand = clients.reduce((s, c) => s + (c.demand ?? 0), 0);
+        let best: { openFacilities: string[]; assignments: { client: string; facility: string }[]; objective: number } | null = null;
+        for (let mask = 1; mask < 1 << n; mask++) {
+          const open = facilities.filter((_, i) => (mask & (1 << i)) !== 0);
+          const cap = open.reduce((s, f) => s + (f.capacity ?? Number.POSITIVE_INFINITY), 0);
+          if (cap < totalDemand) continue; // 容量不足 → 该组合不可行
+          let obj = open.reduce((s, f) => s + f.openCost, 0);
+          const assignments: { client: string; facility: string }[] = [];
+          let ok = true;
+          for (const c of clients) {
+            let bf: string | null = null;
+            let bc = Number.POSITIVE_INFINITY;
+            for (const f of open) {
+              const cc = costOf(c.id, f.id);
+              if (typeof cc === "number" && cc < bc) { bc = cc; bf = f.id; }
+            }
+            if (bf == null) { ok = false; break; }
+            obj += bc;
+            assignments.push({ client: c.id, facility: bf });
+          }
+          if (!ok) continue;
+          if (!best || obj < best.objective) best = { openFacilities: open.map((f) => f.id), assignments, objective: obj };
+        }
+        return best;
+      };
+
+      if (family === "facility_location" && ow.args) {
+        const base = solveFL(ow.args);
+        const pert = solveFL(applyPerts(ow.args));
+        const feasible = pert != null;
+        const baselineObjective = base?.objective ?? null;
+        const perturbedObjective = pert?.objective ?? null;
+        const deltaObjective =
+          baselineObjective != null && perturbedObjective != null ? Math.round((perturbedObjective - baselineObjective) * 1e6) / 1e6 : null;
+        const switched = !!base && !!pert && JSON.stringify(base.openFacilities) !== JSON.stringify(pert.openFacilities);
+        return HttpResponse.json({
+          data: {
+            baselineObjective,
+            perturbedObjective,
+            deltaObjective,
+            feasible,
+            conflictConstraints: feasible ? [] : ["capacity: 开设总容量 < 总需求（扰动后不可行）"],
+            explanation: feasible
+              ? `基线开 ${base?.openFacilities.join("/")}（成本 ${baselineObjective}）→ 扰动后开 ${pert?.openFacilities.join("/")}（成本 ${perturbedObjective}·Δ=${deltaObjective}）${switched ? "·最优决策切换" : "·决策不变"}`
+              : "扰动后不可行：开设总容量不足以覆盖总需求",
+            optimal: true,
+            status: feasible ? "OPTIMAL" : "INFEASIBLE",
+            baselineSolution: base ? { openFacilities: base.openFacilities, assignments: base.assignments, objective: base.objective, optimal: true } : undefined,
+            perturbedSolution: pert ? { openFacilities: pert.openFacilities, assignments: pert.assignments, objective: pert.objective, optimal: true } : undefined,
+            summary: "optimize_whatif mock（facility_location 真暴力最优·决策比对有牙）",
+          },
+          snapshotVersion: "ov-12",
+        });
+      }
+
+      // 其余 family：形状回放（delta 之和·渲染/兜底测试用·真解须打 sidecar）。
       const deltaSum = perts.reduce((s, p) => s + (typeof p.delta === "number" ? p.delta : 0), 0);
       const baseline = 100;
       const perturbed = baseline + deltaSum;
@@ -1398,8 +1488,8 @@ export const handlers = [
           perturbedObjective: perturbed,
           deltaObjective: perturbed - baseline,
           feasible,
-          conflictConstraints: feasible ? [] : [`capacity(${owArgs.family ?? "f1"}) 扰动超限 ${deltaSum}`],
-          explanation: `family=${owArgs.family ?? "?"}：基线 ${baseline} → 扰动后 ${perturbed}（Δ=${perturbed - baseline}·${feasible ? "可行" : "不可行"}）`,
+          conflictConstraints: feasible ? [] : [`capacity(${family || "?"}) 扰动超限 ${deltaSum}`],
+          explanation: `family=${family || "?"}：基线 ${baseline} → 扰动后 ${perturbed}（Δ=${perturbed - baseline}·${feasible ? "可行" : "不可行"}）`,
           optimal: true,
           status: "OPTIMAL",
           summary: "optimize_whatif mock（Δ 随扰动真变·渲染测试用）",
