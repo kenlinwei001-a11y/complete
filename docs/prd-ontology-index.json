@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-26",
+  "generatedAt": "2026-07-27",
   "ontology": {
     "invariants": [
       "R1",
@@ -581,6 +581,33 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-capacity-feasibility-demanddelta-fix.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R14",
+        "R18",
+        "R4",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "packages/contracts/src/solvers.ts",
+        "scripts/check-genuine-sim.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts"
+      ]
+    },
     "PRD-capacity-inference-completion.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -775,6 +802,17 @@
         "apps/agentcore/src/router/orchestrator.ts",
         "scripts/platform-cli.mjs"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-deterministic-cross-domain.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-discover-real-type-names.md": {
@@ -1178,6 +1216,29 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-multi-intent-L2-L3-coupled-solving.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-multi-intent-orchestration.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-nav-ia-reorg.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1242,6 +1303,41 @@
         "apps/datacore/src/modeling.ts"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-optimize-whatif-conversational-wiring.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/agentcore/src/router/domain-resolver.ts",
+        "apps/agentcore/src/router/opt-whatif-route.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/solvers/opt-binding.ts",
+        "apps/datacore/src/solvers/opt-whatif.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/opt-real-sidecar.integration.test.ts",
+        "packages/contracts/src/opt-template.ts",
+        "packages/contracts/src/qos.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/router/opt-whatif-route.ts",
+        "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts"
+      ]
     },
     "PRD-order-project-sim-1to1.md": {
       "hasOntologyRef": true,
@@ -1331,6 +1427,18 @@
         "apps/datacore/src/entity-resolution.ts",
         "apps/datacore/src/modeling.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-qos-cross-domain-unified.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-quarter-rolling-1to1.md": {
@@ -1447,6 +1555,30 @@
         "scripts/check-ontogenesis.mjs"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-segment-scoped-gap-attribution.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R14",
+        "R18",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/gap-attribution-segment-scope.test.ts",
+        "apps/datacore/test/gap-attribution.test.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/test/gap-attribution-segment-scope.test.ts"
+      ]
     },
     "PRD-self-driving-qos-data-foundation.md": {
       "hasOntologyRef": true,
@@ -1722,20 +1854,22 @@
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
+    "G-12": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
     "G-11": [
       "PRD-sandbox-ontogenesis-buildplan.md",
       "PRD-simulation-sandbox.md"
     ]
   },
-  "orphanBreakpoints": [
-    "G-12"
-  ],
+  "orphanBreakpoints": [],
   "byArtifact": {
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-attribution-routing-plan-audit.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-global-sim-live-upgrade.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-scenario-launcher.md"
     ],
     "apps/agentcore/src/tools/registry.ts": [
@@ -1768,9 +1902,12 @@
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md",
       "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-capacity-feasibility-demanddelta-fix.md",
       "PRD-capacity-live-cockpit.md",
       "PRD-cli-full-coverage.md",
-      "PRD-inference-line.md"
+      "PRD-inference-line.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/datacore/src/ontology/slice-index.ts": [
       "PRD-A3-multihop-slice-completion.md"
@@ -1798,19 +1935,22 @@
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
       "PRD-inference-line.md",
-      "PRD-quarter-rolling-1to1.md"
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/datacore/src/synthetic/seed.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md"
     ],
     "apps/frontend-shell/src/mocks/fixtures.ts": [
-      "PRD-addendum-excel-seed-700B-expansion.md"
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/frontend-shell/src/mocks/simSolvers.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md"
     ],
     "apps/frontend-shell/src/views/DashboardView.tsx": [
-      "PRD-addendum-excel-seed-700B-expansion.md"
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "packages/contracts/src/base-registry.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
@@ -1890,8 +2030,32 @@
       "PRD-build-workflow-runtime.md",
       "PRD-fullstack-story-build-g8.md"
     ],
+    "apps/agentcore/src/mocks/seed.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-inference-line.md"
+    ],
+    "apps/agentcore/src/scenarios-catalog.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
+    ],
+    "apps/agentcore/src/workflow/executor.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
+    ],
+    "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
+    ],
     "apps/datacore/src/solvers/capacity.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
       "PRD-capacity-live-cockpit.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "scripts/check-genuine-sim.mjs": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
     ],
     "apps/datacore/src/solvers/risk.ts": [
       "PRD-capacity-live-cockpit.md",
@@ -1918,12 +2082,6 @@
     ],
     "packages/contracts/src/capacity-factors.ts": [
       "PRD-capacity-live-cockpit.md"
-    ],
-    "packages/contracts/src/solvers.ts": [
-      "PRD-capacity-live-cockpit.md",
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-plan-audit-1to1.md",
-      "PRD-plan-generate-1to1.md"
     ],
     "apps/agentcore/src/features/registry.ts": [
       "PRD-cli-full-coverage.md"
@@ -1956,7 +2114,8 @@
       "PRD-decision-resource-intelligence-layer.md"
     ],
     "apps/agentcore/src/agent/navigation-slice.ts": [
-      "PRD-decision-resource-intelligence-layer.md"
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-optimize-whatif-conversational-wiring.md"
     ],
     "apps/agentcore/src/agent/skill-router.ts": [
       "PRD-decision-resource-intelligence-layer.md"
@@ -1965,7 +2124,8 @@
       "PRD-decision-resource-intelligence-layer.md"
     ],
     "apps/agentcore/src/router/domain-resolver.ts": [
-      "PRD-decision-resource-intelligence-layer.md"
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-optimize-whatif-conversational-wiring.md"
     ],
     "apps/agentcore/test/dril-quality.test.ts": [
       "PRD-decision-resource-intelligence-layer.md"
@@ -2056,9 +2216,6 @@
     "apps/agentcore/src/growth/loop.ts": [
       "PRD-in-dialog-gap-fill-loop.md"
     ],
-    "apps/agentcore/src/mocks/seed.ts": [
-      "PRD-inference-line.md"
-    ],
     "apps/agentcore/src/router/ceo-route.ts": [
       "PRD-inference-line.md"
     ],
@@ -2084,7 +2241,8 @@
       "PRD-inference-line.md"
     ],
     "apps/datacore/test/gap-attribution.test.ts": [
-      "PRD-inference-line.md"
+      "PRD-inference-line.md",
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/datacore/test/supply-demand-gap-attribution.test.ts": [
       "PRD-inference-line.md"
@@ -2147,6 +2305,31 @@
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
     ],
+    "apps/agentcore/src/router/opt-whatif-route.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/src/features.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/src/solvers/opt-binding.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/src/solvers/opt-whatif.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/test/opt-real-sidecar.integration.test.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "packages/contracts/src/opt-template.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "packages/contracts/src/qos.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-scenario-launcher.md"
+    ],
     "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
       "PRD-order-project-sim-1to1.md"
     ],
@@ -2171,14 +2354,14 @@
     "packages/contracts/src/agentcore.ts": [
       "PRD-scenario-launcher.md"
     ],
-    "packages/contracts/src/qos.ts": [
-      "PRD-scenario-launcher.md"
-    ],
     "scripts/check-chain-closure.mjs": [
       "PRD-scenario-launcher.md"
     ],
     "scripts/check-ontogenesis.mjs": [
       "PRD-scenario-ontogenesis.md"
+    ],
+    "apps/datacore/test/gap-attribution-segment-scope.test.ts": [
+      "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
