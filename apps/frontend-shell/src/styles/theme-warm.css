@@ -1,37 +1,44 @@
-/* WO-THEME-WARM · Apple-clean 实心化覆盖层
- * 仅作用于 :root[data-theme="warm"]（暗色/冷蓝主题零影响·选择器全限定）。
- * 目标：治"像 AI 做的 UI"——纯色、无渐变、无玻璃磨砂、无辉光、实心发丝框线。
- * 与 tokens.css 的 [data-theme=warm] token 块配套（那块管颜色值，本表管质感/去渐变）。 */
+/* WO-THEME-WARM · warm 主题质感层（仅 :root[data-theme="warm"]·暗/冷蓝主题零影响·选择器全限定）
+ * 设计定稿·Apple material 语言：磨砂玻璃(半透 + 背景模糊·保留) + 纯色深橙实心 accent + 实心发丝边。
+ * 去掉的只是：渐变变色、conic 彩虹 logo、辉光 glow、渐变框线。玻璃质感保留。
+ * 与 tokens.css [data-theme=warm] token 块配套（那块管色值·本表管质感）。 */
 
-/* —— 顶栏 logo：conic 彩色渐变+蓝辉光 → 纯橙实心+无辉光。
-   注：.logo 是 CSS Module 哈希类·全局选择器匹配不到 → 改由 ShellLayout.module.css 走 --logo-bg/--logo-glow token（本表不管）。 —— */
-
-/* —— 卡片 .panel：去磨砂玻璃 / 背景模糊 / 内高光 / 柔投影 → Apple 平面卡（纯白 + 实心发丝边 + 极轻平投影） —— */
-:root[data-theme="warm"] .panel {
-  background: #ffffff;
-  border: 1px solid var(--line);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+/* —— 暖色环境光：给 frosted 玻璃可"透/糊"的底（背景氛围·非元素渐变·可调强弱） —— */
+:root[data-theme="warm"] body {
+  background-image:
+    radial-gradient(760px 520px at 4% -4%, rgba(232, 89, 12, 0.07), transparent 60%),
+    radial-gradient(820px 560px at 100% 104%, rgba(245, 158, 66, 0.09), transparent 58%);
+  background-attachment: fixed;
 }
 
-/* —— 主按钮 .btn.primary：蓝色线性渐变(global.css) → 纯橙实心 —— */
+/* —— 卡片 .panel：磨砂玻璃（半透明 + 背景模糊·Apple material）·实心发丝边·柔投影·无渐变无辉光 —— */
+:root[data-theme="warm"] .panel {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 1px 2px rgba(17, 17, 26, 0.04), 0 10px 30px rgba(17, 17, 26, 0.06);
+}
+
+/* —— 顶栏 logo：由 tokens 的 --logo-bg（纯深橙）/ --logo-glow（none）驱动（ShellLayout.module.css） —— */
+
+/* —— 主按钮 .btn.primary：蓝渐变(global.css) → 纯深橙实心 —— */
 :root[data-theme="warm"] .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #ffffff;
 }
 :root[data-theme="warm"] .btn.primary:hover {
-  background: #e15c00; /* 纯色深一档·非渐变 */
-  border-color: #e15c00;
+  background: #c2410c; /* 深一档纯色·非渐变 */
+  border-color: #c2410c;
 }
 
-/* —— 通用按钮：实心描边 hover（无渐变/无辉光） —— */
+/* —— 通用按钮：实心描边 hover —— */
 :root[data-theme="warm"] .btn:hover {
   border-color: var(--accent);
 }
 
-/* —— 徽章/badge：实心浅底 + 实心边（沿用 token·此处仅确保无渐变残留） —— */
+/* —— 徽章/badge：实心浅底 —— */
 :root[data-theme="warm"] .badge {
   background: #f4f4f4;
 }

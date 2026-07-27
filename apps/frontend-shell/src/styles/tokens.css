@@ -99,18 +99,18 @@
   --txt: #1c1c1c;         /* 主文本（近黑·吸色深卡 #1f1f1f / 按钮 #1c1e1d） */
   --muted: #8a8a8a;       /* 次要文本（中性灰） */
   --muted2: #bebebe;      /* 三级文本（中性浅灰·吸色 tab 未选 #bebebe） */
-  --accent: #f76401;      /* 品牌橙（逐像素吸色 Report 卡饱和核 rgb 247,100,1·不为 AA 妥协） */
+  --accent: #E8590C;      /* 品牌深橙（实心主导·设计定稿·较参考 #f76501 深一档更"实"·纯色不渐变） */
 
-  /* chrome 表面 / 交互（亮橙变体·Apple-clean：全纯色·无渐变·无半透，治"像 AI 做的 UI"） */
-  --topbar-bg: #ffffff;               /* 顶栏纯白（原渐变 → 实心） */
+  /* chrome 表面 / 交互（磨砂玻璃 material：顶栏半透 + 活跃导航实心深橙白字 + logo 实心深橙） */
+  --topbar-bg: rgba(255, 255, 255, 0.62);  /* 顶栏半透（配 ShellLayout backdrop-blur 呈磨砂条） */
   --topbar-border: #ececec;
-  --hover-tint: #f4f4f4;              /* hover 底纯色（原半透 rgba → 实心浅灰） */
+  --hover-tint: #f4f4f4;
   --hover-tint-strong: #ededed;
   --scrollbar-thumb: #d4d4d4;
-  --nav-active-bg: #fdeee2;           /* 活动导航底纯色浅橙（原渐变 → 实心） */
-  --nav-active-border: #f76401;       /* 活动导航实心橙边（原半透 → 纯橙） */
-  --nav-active-txt: #c85009;          /* 活动导航文字（较橙 accent 略压深保可读） */
-  --logo-bg: #f76401;                 /* 顶栏 logo 纯橙实心（原 conic 域色环渐变·仅 warm 覆盖·暗/冷蓝走 fallback 不变） */
-  --logo-glow: none;                  /* 去 logo 蓝色辉光（Apple-clean·无 glow） */
+  --nav-active-bg: #E8590C;            /* 活动导航实心深橙 pill（非浅色 tint·橙主导） */
+  --nav-active-border: #E8590C;
+  --nav-active-txt: #ffffff;           /* 橙底白字 */
+  --logo-bg: #E8590C;                  /* 顶栏 logo 纯深橙实心（原 conic 彩环·仅 warm 覆盖·暗/冷蓝走 fallback 不变） */
+  --logo-glow: none;                   /* 无辉光 */
   /* --on-accent 保持 #fff（橙底恒配白字） */
 }
