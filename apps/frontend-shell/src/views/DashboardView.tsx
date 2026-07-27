@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
@@ -52,8 +52,36 @@ const FEEDBACK_CHAIN: string[] = [
   "↻ 精度校准器 C12 反向调参",
 ];
 
+/**
+ * KPI 卡装饰查找（真序列派生·KILL-MOCK）：一次取 history bundle → 给有**真时序**的 KPI 卡挂 sparkline + 环比 delta；
+ * 计划达成率标 accent（实心橙卡·进度由真值派生）。无真序列的卡不挂装饰（诚实空·不编趋势）。
+ */
+function useKpiDecor(): (key: string) => KpiDecor | undefined {
+  const { data } = useQuery({
+    queryKey: ["a", "dash-kpi-decor-history"],
+    queryFn: () => fetchHistoryBundle({ pageSize: 1 }),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const trend = (data?.trend ?? []).map((p) => p.output).filter((n): n is number => typeof n === "number");
+  const supply = (data?.deviation ?? []).map((d) => d.supply).filter((n): n is number => typeof n === "number");
+  return (key: string): KpiDecor | undefined => {
+    if (key === "gwh" && trend.length >= 2) {
+      const sd = sparkDelta(trend);
+      return { spark: trend.slice(-12), sparkLabel: "近月产出趋势（万套·真序列）", delta: sd?.delta, deltaTone: sd?.tone };
+    }
+    if (key === "supply-v7" && supply.length >= 2) {
+      const sd = sparkDelta(supply);
+      return { spark: supply.slice(-12), sparkLabel: "近月可供给趋势（万套·真序列）", delta: sd?.delta, deltaTone: sd?.tone };
+    }
+    if (key === "attain") return { accent: true }; // 计划达成率 → 实心橙 accent 卡（进度=真值 vs 100%）
+    return undefined;
+  };
+}
+
 export default function DashboardView({ view }: ViewRendererProps) {
   const navigate = useNavigate();
+  const decorFor = useKpiDecor();
   const widgets = ((view.layout?.widgets as DashboardWidgetDef[] | undefined) ?? []).filter(Boolean);
   if (widgets.length === 0) return <div className="empty-state">{zh.common.none}</div>;
   const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
@@ -73,10 +101,10 @@ export default function DashboardView({ view }: ViewRendererProps) {
         {widgets.map((w) =>
           w.featureKey ? (
             <Feature key={w.key} flag={w.featureKey}>
-              <Widget def={w} />
+              <Widget def={w} decor={decorFor(w.key)} />
             </Feature>
           ) : (
-            <Widget key={w.key} def={w} />
+            <Widget key={w.key} def={w} decor={decorFor(w.key)} />
           ),
         )}
       </div>
@@ -386,6 +414,30 @@ function SupplyDemandAttributionPanel() {
   );
 }
 
+// ─── iOS 分段控件（结构层·全主题）：圆角容器 + 滑动实心活跃 pill；warm 下活跃 pill 走深橙（经 .segGroup 的
+// --seg-active-* 变量·见 theme-warm.css），其余主题回落 var(--panel) 白 pill。活跃色用 var(fallback) 规避 inline 冲突。
+const segBarStyle: CSSProperties = { display: "inline-flex", background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10, padding: 3, gap: 2 };
+function segBtnStyle(active: boolean): CSSProperties {
+  return {
+    padding: "4px 12px", borderRadius: 8, fontSize: 12, border: "none", cursor: "pointer", whiteSpace: "nowrap",
+    fontWeight: active ? 600 : 400, transition: "0.15s",
+    background: active ? "var(--seg-active-bg, var(--panel))" : "transparent",
+    color: active ? "var(--seg-active-txt, var(--txt))" : "var(--muted)",
+    boxShadow: active ? "0 1px 2px rgba(17,17,26,.10)" : "none",
+  };
+}
+
+/** 延期药丸（mono 小 pill）：重延（≥4d）重红 · 轻延（1–3d）轻橙 · 无延显破折号。真值派生·右对齐列用。 */
+function DelayPill({ delay }: { delay: number }) {
+  if (delay <= 0) return <span style={{ color: "var(--muted2)" }}>—</span>;
+  const heavy = delay >= 4;
+  return (
+    <span className="mono" style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: heavy ? "rgba(229,72,77,.12)" : "rgba(232,89,12,.12)", color: heavy ? "var(--danger)" : "#E8590C" }}>
+      +{delay}d
+    </span>
+  );
+}
+
 /** SEG 经济派生（单价/毛利率，单一来源 SEG_REGISTRY，R14）。 */
 const SEG_ECON: Record<string, { price: number; margin: number }> = Object.fromEntries(
   SEG_REGISTRY.map((s) => [s.seg, { price: s.priceWan, margin: s.marginPct }]),
@@ -417,10 +469,12 @@ function OrderLedgerWidget() {
   return (
     <div data-testid="dash-order-ledger">
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
-        <button className="badge" data-testid="ledger-seg-all" style={{ cursor: "pointer", opacity: seg ? 0.55 : 1 }} onClick={() => setSeg("")}>{zh.dash.ledgerAll}</button>
-        {segs.map((s) => (
-          <button key={s} className="badge" data-testid={`ledger-seg-${s}`} style={{ cursor: "pointer", opacity: seg === s ? 1 : 0.55 }} onClick={() => setSeg(s)}>{s}</button>
-        ))}
+        <div className="segGroup" style={segBarStyle}>
+          <button data-testid="ledger-seg-all" style={segBtnStyle(!seg)} onClick={() => setSeg("")}>{zh.dash.ledgerAll}</button>
+          {segs.map((s) => (
+            <button key={s} data-testid={`ledger-seg-${s}`} style={segBtnStyle(seg === s)} onClick={() => setSeg(s)}>{s}</button>
+          ))}
+        </div>
         <span style={{ marginLeft: "auto", fontSize: 12 }}>
           {zh.dash.ledgerGm}{" "}
           {/* 假5 修：毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 实测）——逐格 Provenance + 脚注披露。 */}
@@ -431,13 +485,20 @@ function OrderLedgerWidget() {
         </span>
       </div>
       <table className="cmp" data-testid="ledger-table" style={{ fontSize: 12, width: "100%" }}>
-        <thead><tr><th>订单</th><th>客户</th><th>细分</th><th>型号</th><th>数量</th><th>交期</th><th>延期</th><th>风险</th></tr></thead>
+        <thead><tr>
+          <th>订单</th><th>客户</th><th>细分</th><th>型号</th>
+          <th style={{ textAlign: "right" }}>数量</th>
+          <th style={{ textAlign: "right" }}>交期</th>
+          <th style={{ textAlign: "right" }}>延期</th>
+          <th>风险</th>
+        </tr></thead>
         <tbody>
           {filtered.slice(0, 12).map((r) => (
             <tr key={r.so} data-testid={`ledger-row-${r.so}`} style={{ cursor: "pointer" }} title={zh.dash.ledgerDrill} onClick={() => navigate("/v/order-chain")}>
               <td>{r.so}</td><td>{r.cust}</td><td>{r.seg}</td><td>{r.model}</td>
-              <td className="mono">{r.qty}</td><td>{r.due}</td>
-              <td className="mono" style={{ color: r.delay > 0 ? "var(--danger)" : "var(--muted2)" }}>{r.delay > 0 ? `+${r.delay}d` : "—"}</td>
+              <td className="mono" style={{ textAlign: "right" }}>{r.qty.toLocaleString()}</td>
+              <td className="mono" style={{ textAlign: "right", color: "var(--muted2)" }}>{r.due}</td>
+              <td style={{ textAlign: "right" }}><DelayPill delay={r.delay} /></td>
               <td style={{ fontSize: 11 }}>{[...new Set(r.risks.map((k) => k.factor))].join("/") || "—"}</td>
             </tr>
           ))}
@@ -481,11 +542,13 @@ function PlanDrillWidget() {
     <BlockConversable blockId="dash-plan-drill" blockType="root-cause-tree" blockTitle="规划根因下钻（根因树 DAG）" getData={drillBlockData} provenanceRef="gap_attribution">
     <div data-testid="dash-plan-drill">
       <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
-        {(["op", "month", "quarter", "year"] as const).map((lv) => (
-          <button key={lv} className="badge" data-testid={`drill-level-${lv}`} style={{ cursor: "pointer", opacity: level === lv ? 1 : 0.55 }} onClick={() => { setLevel(lv); setOpenKpi(null); }}>
-            {zh.dash.drillLevels[lv]}
-          </button>
-        ))}
+        <div className="segGroup" style={segBarStyle}>
+          {(["op", "month", "quarter", "year"] as const).map((lv) => (
+            <button key={lv} data-testid={`drill-level-${lv}`} style={segBtnStyle(level === lv)} onClick={() => { setLevel(lv); setOpenKpi(null); }}>
+              {zh.dash.drillLevels[lv]}
+            </button>
+          ))}
+        </div>
         <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button className="badge" data-testid="drill-to-generate" style={{ cursor: "pointer" }} onClick={() => navigate("/v/plan-generate")}>{zh.dash.drillToGenerate} ›</button>
           <button className="badge" data-testid="drill-to-audit" style={{ cursor: "pointer" }} onClick={() => navigate("/v/plan-audit")}>{zh.dash.drillToAudit} ›</button>
@@ -587,11 +650,13 @@ function useWidgetData(q: WidgetQueryDef) {
   });
 }
 
-function Widget({ def }: { def: DashboardWidgetDef }) {
+function Widget({ def, decor }: { def: DashboardWidgetDef; decor?: KpiDecor }) {
   const { data, isLoading } = useWidgetData(def.query);
+  // 结构层类名（warm 专属样式挂钩·其余主题无规则即回落普通卡）：accent 实心橙卡 / 深炭灰签名卡。
+  const markerClass = [def.type === "kpi" && decor?.accent ? "warmKpiAccent" : "", def.type === "metric-strip" ? "warmSignature" : ""].filter(Boolean).join(" ");
 
   return (
-    <div className={styles.card} style={{ gridColumn: `span ${def.span ?? 1}` }} data-testid={`widget-${def.key}`}>
+    <div className={`${styles.card} ${markerClass}`} style={{ gridColumn: `span ${def.span ?? 1}`, display: "flex", flexDirection: "column", alignSelf: def.type === "kpi" ? "start" : undefined }} data-testid={`widget-${def.key}`}>
       <div className={styles.cardHead}>
         <span>{def.title}</span>
         {def.provenance && (
@@ -612,7 +677,7 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : def.type === "kpi" ? (
-        <KpiWidget value={data} unit={def.unit} />
+        <KpiWidget value={data} unit={def.unit} decor={decor} />
       ) : def.type === "chart" ? (
         <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} />
       ) : def.type === "summary" ? (
@@ -647,20 +712,42 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
     metrics: rows.map((m) => ({ metricId: m.metricId, name: m.name, unit: m.unit, target: m.target, actual: m.actual, delta: m.delta, miss: m.miss })),
     missCount: rows.filter((m) => m.miss).length,
   });
+  // 综合达成健康度（真派生）：越线数 → 良好/中等/偏弱（顶部汇总头·非写死）。
+  const missCount = rows.filter((m) => m.miss).length;
+  const health = missCount === 0 ? { word: "良好", color: "var(--ok)" } : missCount <= 1 ? { word: "中等", color: "var(--amber)" } : { word: "偏弱", color: "var(--danger)" };
   return (
     <BlockConversable blockId="metric-strip" blockType="metric-strip" blockTitle="经营指标条（KPI 达标）" getData={msBlockData} provenanceRef="metric_rollup">
-    <div data-testid="metric-strip" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-      {rows.map((m) => (
-        <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: "var(--txt)" }}>
-            {formatKpiValue(m.actual, m.unit)}<small style={{ fontSize: 11 }}>{m.unit}</small>
+    <div data-testid="metric-strip" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 顶部「综合达成健康度」汇总头（真派生自越线数） */}
+      <div data-testid="metric-health" style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: "var(--muted)" }}>综合达成健康度</span>
+        <b style={{ fontSize: 22, fontWeight: 700, color: health.color, letterSpacing: "0.02em" }}>{health.word}</b>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }}>{rows.length} 项指标 · {missCount} 项越线</span>
+      </div>
+      {rows.map((m) => {
+        const status = m.miss ? "var(--danger)" : "var(--ok)";
+        const pct = m.target > 0 ? Math.max(0, Math.min(100, (m.actual / m.target) * 100)) : 0;
+        return (
+          <div key={m.metricId} data-testid={`metric-${m.metricId}`} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--txt)" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: status, flex: "none" }} />
+                {m.name}
+              </span>
+              <b className="mono" style={{ fontSize: 16, fontWeight: 700, color: m.miss ? "var(--danger)" : "var(--txt)" }}>
+                {formatKpiValue(m.actual, m.unit)}{m.unit}
+              </b>
+            </div>
+            {/* 达成进度条（actual/target·真值）——绿达标 / 红越线 */}
+            <div style={{ height: 5, borderRadius: 999, background: "var(--line2)", overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: status }} />
+            </div>
+            <div style={{ fontSize: 10.5, color: m.miss ? "var(--danger)" : "var(--muted2)" }}>
+              目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.unit}{m.miss ? " · 越线" : ""}
+            </div>
           </div>
-          <div style={{ fontSize: 10.5, color: m.miss ? "#DD7E9E" : "var(--muted2)" }}>
-            目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.miss ? " · 越线" : ""}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
     </BlockConversable>
   );
@@ -785,12 +872,107 @@ function formatKpiValue(value: unknown, unit?: string): string {
   return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
 }
 
-function KpiWidget({ value, unit }: { value: unknown; unit?: string }) {
-  const display = formatKpiValue(value, unit);
+/**
+ * KPI 卡装饰（结构层·全主题共享）——**全部由真数据派生**（KILL-MOCK）：
+ * - spark：真时序序列（如 history.trend 月度产出 / deviation 月度可供给）→ SVG 折线 sparkline；
+ * - delta / deltaTone：由同一真序列 末点 vs 前点 环比派生（非写死）；
+ * - accent：实心深橙 accent 卡（warm 专属·经 .warmKpiAccent 类，其余主题回落普通卡）；
+ * - progressPct：accent 卡进度条（如计划达成率 value 相对 100% 目标）——真值派生。
+ * 无真序列/无进度 → 该装饰缺省不渲染（诚实空·不编趋势）。
+ */
+export interface KpiDecor {
+  spark?: number[];
+  sparkLabel?: string;
+  delta?: number;
+  deltaUnit?: string;
+  deltaTone?: "up" | "down" | "flat";
+  accent?: boolean;
+  progressPct?: number;
+  progressNote?: string;
+}
+
+/** 环比 delta（末点 vs 前点·%），真序列派生；序列 < 2 或前点 0 → undefined（不编）。 */
+export function sparkDelta(series: number[] | undefined): { delta: number; tone: "up" | "down" | "flat" } | undefined {
+  if (!series || series.length < 2) return undefined;
+  const last = series[series.length - 1]!;
+  const prev = series[series.length - 2]!;
+  if (!Number.isFinite(last) || !Number.isFinite(prev) || prev === 0) return undefined;
+  const delta = Math.round(((last - prev) / Math.abs(prev)) * 1000) / 10;
+  return { delta, tone: delta > 0.05 ? "up" : delta < -0.05 ? "down" : "flat" };
+}
+
+const TONE_COLOR: Record<string, string> = { up: "var(--ok)", down: "var(--danger)", flat: "var(--muted2)" };
+
+/** 细 sparkline（SVG polyline·趋势色低透明·末点实心）——纯真序列渲染，无坐标/无写死。 */
+function Sparkline({ series, tone = "flat", w = 96, h = 28 }: { series: number[]; tone?: "up" | "down" | "flat"; w?: number; h?: number }) {
+  const pts = series.filter((n) => Number.isFinite(n));
+  if (pts.length < 2) return null;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const span = max - min || 1;
+  const pad = 3;
+  const step = (w - pad * 2) / (pts.length - 1);
+  const xy = pts.map((v, i) => [pad + i * step, pad + (h - pad * 2) * (1 - (v - min) / span)] as const);
+  const poly = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const [lx, ly] = xy[xy.length - 1]!;
+  const color = TONE_COLOR[tone];
   return (
-    <div className={styles.kpiValue}>
-      {display}
-      {unit && <small>{unit}</small>}
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" aria-hidden style={{ display: "block" }}>
+      <polyline points={poly} stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.55} />
+      <circle cx={lx} cy={ly} r={2.4} fill={color} />
+    </svg>
+  );
+}
+
+/** delta 药丸（↑绿 / ↓红 / 中性灰）——真序列环比派生。 */
+function DeltaPill({ delta, tone, unit, testId }: { delta: number; tone: "up" | "down" | "flat"; unit?: string; testId?: string }) {
+  const arrow = tone === "up" ? "↑" : tone === "down" ? "↓" : "→";
+  const bg = tone === "up" ? "rgba(48,209,88,.14)" : tone === "down" ? "rgba(229,72,77,.14)" : "rgba(139,152,165,.16)";
+  return (
+    <span
+      data-testid={testId}
+      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: bg, color: TONE_COLOR[tone], fontFamily: "var(--font-mono)" }}
+    >
+      {arrow} {Math.abs(delta)}{unit ?? "%"}
+    </span>
+  );
+}
+
+function KpiWidget({ value, unit, decor }: { value: unknown; unit?: string; decor?: KpiDecor }) {
+  const display = formatKpiValue(value, unit);
+  const d = decor ?? {};
+  const sd = d.delta !== undefined && d.deltaTone ? { delta: d.delta, tone: d.deltaTone } : undefined;
+  // accent 进度：优先 decor.progressPct，否则由真值派生（百分比 KPI → value 相对 100% 目标）。
+  const pctVal = typeof value === "number" ? (unit === "%" && value > 0 && value <= 1 ? value * 100 : value) : undefined;
+  const accentPct = d.accent ? (d.progressPct ?? (unit === "%" && pctVal !== undefined ? pctVal : undefined)) : d.progressPct;
+  const accentNote = d.progressNote ?? (d.accent && unit === "%" && pctVal !== undefined ? `目标 100% · 差 ${(100 - pctVal).toFixed(1)}pt` : undefined);
+  const hasFoot = !!sd || (d.spark && d.spark.length >= 2);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div className={`${styles.kpiValue} ${d.accent ? "warmKpiAccentValue" : ""}`}>
+        {display}
+        {unit && <small>{unit}</small>}
+      </div>
+      {/* accent 卡：真值进度条（value 相对目标）——warm 下白条，其余主题回落 accent 色条。 */}
+      {d.accent && accentPct !== undefined && (
+        <div style={{ marginTop: "auto", paddingTop: 12 }}>
+          <div className={"warmKpiAccentTrack"} style={{ height: 6, borderRadius: 999, background: "var(--line2)", overflow: "hidden" }}>
+            <div className={"warmKpiAccentFill"} style={{ width: `${Math.max(0, Math.min(100, accentPct))}%`, height: "100%", borderRadius: 999, background: "var(--accent)" }} />
+          </div>
+          {accentNote && <div className={"warmKpiAccentNote"} style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{accentNote}</div>}
+        </div>
+      )}
+      {/* delta 药丸 + sparkline（真序列派生·非 accent 卡时展示） */}
+      {!d.accent && hasFoot && (
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 10 }}>
+          {sd ? <DeltaPill delta={sd.delta} tone={sd.tone} unit={d.deltaUnit} testId={`kpi-delta`} /> : <span />}
+          {d.spark && d.spark.length >= 2 && (
+            <span title={d.sparkLabel}>
+              <Sparkline series={d.spark} tone={sd?.tone ?? d.deltaTone ?? "flat"} />
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
