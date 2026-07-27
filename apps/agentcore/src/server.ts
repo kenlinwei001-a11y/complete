@@ -2070,7 +2070,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       if (await deps.repos.agents.latestByKey(m.tenantId, an.agentKey)) { items.push({ kind: "agent", key: an.agentKey, status: "REUSED" }); continue; }
       await deps.repos.agents.insert({
         id: newId("agt"), tenantId: m.tenantId, key: an.agentKey, version: 1,
-        name: an.agentKey, description: "g8 故事倒推 scaffold（DRAFT）", model: "claude-opus-4-8",
+        name: an.agentKey, description: "g8 故事倒推 scaffold（DRAFT）", model: "",  // 空=继承租户用途绑定（不硬编 claude·同 seed）
         systemPrompt: an.systemPrompt || `针对 ${an.agentKey} 的推演 agent`,
         tools: [], ruleBindings: { ruleKeys: [], mode: "POST_CHECK" }, skills: [], mcpServers: [],
         scopeDeclaration: { objectTypes: an.scopeObjectTypes ?? [], toolNames: an.tools ?? [] },

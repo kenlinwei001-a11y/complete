@@ -28,7 +28,7 @@ export const AgentDefinitionSchema = z.object({
   version: z.number().int(),
   name: z.string(),
   description: z.string(),
-  model: z.string().default("claude-opus-4-8"),
+  model: z.string().default(""),  // 空=继承租户「用途绑定矩阵」的 agent 模型（运行时 roleModel 回落；无绑定再落 env QOS_AGENT_MODEL）。写死具体模型会盖过用户在 LLM Provider 里配的绑定。
   systemPrompt: z.string(),
   tools: z.array(AgentToolRefSchema),
   ruleBindings: z.object({

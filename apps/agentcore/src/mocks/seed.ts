@@ -25,11 +25,12 @@ export const SEED_PACKAGE_ID = "pkg_battery_manufacturing";
 /**
  * #4 修（消种子硬编 LLM provider·配合 providers.ts roleModel 回落）：种子 agent 的默认模型**不再逐处硬编
  * `claude-opus-4-8`**，改为单一配置源 `DEFAULT_AGENT_MODEL`（env·换 provider/部署只改这一处或经用途绑定）。
- * 缺省保留 `claude-opus-4-8`（现有 Anthropic 部署零行为变化）；**留空 ("") → roleModel 回落租户已绑 LLM**
- * （如只配 Kimi 的部署 `DEFAULT_AGENT_MODEL=""` 即让所有种子 agent 走租户绑定，不再静默落无 key 的 anthropic）。
+ * 缺省 `""`（**继承租户「用途绑定矩阵」** → 配了 LLM Provider 并绑定 agent 用途即用配置的模型·修「agent 绑不上配置模型」bug）；
+ * 无绑定时 roleModel 回落 env `QOS_AGENT_MODEL`（默认 claude-opus-4-8）→ 现有 Anthropic 部署零行为变化。
+ * 病根：非空裸名（如硬编 `claude-opus-4-8`）作 explicit 会被 roleModel 的 explicitProviderUsable 直返·盖过租户绑定。
  * 与 `providers.ts roleModel`（explicit provider 无 key → 回落租户绑定/诚实报错）双保险：种子不硬编 + 运行时兜底。
  */
-export const SEED_AGENT_MODEL = process.env.DEFAULT_AGENT_MODEL ?? "claude-opus-4-8";
+export const SEED_AGENT_MODEL = process.env.DEFAULT_AGENT_MODEL ?? "";
 
 export interface SeedBase {
   objectId: string;
