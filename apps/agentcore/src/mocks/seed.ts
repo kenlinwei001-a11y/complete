@@ -195,13 +195,16 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           type: "render_answer",
           params: {
             blocks: [
-              { type: "kpi", label: "P50 产能", value: "{{steps.s2.output.data.p50}}", unit: "GWh", fromStep: "s2" },
-              { type: "kpi", label: "P90 产能", value: "{{steps.s2.output.data.p90}}", unit: "GWh", fromStep: "s2" },
-              { type: "kpi", label: "缺口比例", value: "{{steps.s2.output.data.gapPct}}", unit: "%", fromStep: "s2" },
+              // PRD-CAP-DEMANDDELTA：capacity_forecast 输出单位统一为「万套/窗口」，不再沿用 GWh。
+              { type: "kpi", label: "P50 产能", value: "{{steps.s2.output.data.p50}}", unit: "万套", fromStep: "s2", outputPath: "$.data.p50" },
+              { type: "kpi", label: "P90 产能", value: "{{steps.s2.output.data.p90}}", unit: "万套", fromStep: "s2", outputPath: "$.data.p90" },
+              { type: "kpi", label: "有效需求", value: "{{steps.s2.output.data.effectiveDemand}}", unit: "万套", fromStep: "s2", outputPath: "$.data.effectiveDemand" },
+              { type: "kpi", label: "缺口比例", value: "{{steps.s2.output.data.gapPct}}", fromStep: "s2", outputPath: "$.data.gapPct" },
+              { type: "kpi", label: "主要瓶颈", value: "{{steps.s2.output.data.mainBottleneck}}", fromStep: "s2", outputPath: "$.data.mainBottleneck" },
               {
                 type: "text",
                 markdown:
-                  "主要瓶颈为{{steps.s2.output.data.mainBottleneck}}，P50/P90 与缺口见上方指标 ⟦ref:0⟧⟦ref:1⟧⟦ref:2⟧。",
+                  "P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
               },
             ],
           },

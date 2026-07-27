@@ -39,7 +39,7 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     expect(answer?.unverifiedNumerics).toBe(false); // A6
   });
 
-  it("A2: capacity_feasibility → 3 kpi blocks each with provId", async () => {
+  it("A2: capacity_feasibility → 5 kpi blocks each with provId", async () => {
     t.llm.queueClassification({
       candidates: [{ intentKey: "capacity_feasibility", confidence: 0.92 }],
       outOfCatalog: false,
@@ -50,12 +50,18 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     expect(task.status).toBe("COMPLETED");
     expect(task.path).toBe("WORKFLOW");
     const kpis = task.answer?.blocks.filter((b) => b.type === "kpi") ?? [];
-    expect(kpis.length).toBe(3);
+    expect(kpis.length).toBe(5);
     for (const kpi of kpis) {
       if (kpi.type !== "kpi") continue;
       expect(kpi.provId).toMatch(/^prov_/);
       expect(task.answer?.provenance.some((p) => p.id === kpi.provId)).toBe(true);
     }
+    // PRD-CAP-DEMANDDELTA：invoke_solver 的 provenance 应携带 formula/valueLabel
+    const p50Prov = task.answer?.provenance.find((p) => p.outputPath === "$.data.p50");
+    expect(p50Prov?.formula).toContain("weeklyCap");
+    expect(p50Prov?.valueLabel).toContain("P50");
+    const edProv = task.answer?.provenance.find((p) => p.outputPath === "$.data.effectiveDemand");
+    expect(edProv?.valueLabel).toContain("有效需求");
     expect(task.answer?.unverifiedNumerics).toBe(false); // A6
   });
 

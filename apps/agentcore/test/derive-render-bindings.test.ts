@@ -13,8 +13,8 @@ describe("#1 · deriveRenderBindings（从 render_answer 自动派生渲染契�
     const plan = plans.find((p) => p.key === "capacity_feasibility")!;
     const bindings = deriveRenderBindings(plan.steps as ExtendedPlanStep[]);
     expect(bindings.capacity_forecast).toBeDefined();
-    // render_answer 引用了 output.data.{p50,p90,gapPct,mainBottleneck}
-    expect(bindings.capacity_forecast).toEqual(expect.arrayContaining(["p50", "p90", "gapPct", "mainBottleneck"]));
+    // render_answer 引用了 output.data.{p50,p90,effectiveDemand,gapPct,mainBottleneck}
+    expect(bindings.capacity_forecast).toEqual(expect.arrayContaining(["p50", "p90", "effectiveDemand", "gapPct", "mainBottleneck"]));
   });
 
   it("非求解器引用（slice）不计入；无 render 求解器引用 → 空", () => {

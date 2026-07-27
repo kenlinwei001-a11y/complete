@@ -342,6 +342,9 @@ export const ProvenanceRefSchema = z.object({
       score: z.number().optional(),
     })
     .optional(),
+  /** PRD-CAP-DEMANDDELTA：求解器 compute 步公式/口径标签，供前端 popover  richer provenance。 */
+  formula: z.string().optional(),
+  valueLabel: z.string().optional(),
 });
 export type ProvenanceRef = z.infer<typeof ProvenanceRefSchema>;
 
