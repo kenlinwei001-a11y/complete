@@ -22,35 +22,35 @@ export type DialogHistoryEntry = z.infer<typeof DialogHistoryEntrySchema>;
 /** 出厂预置的每场景历史问答（§1.2 每场景 2–6 条；§2 七入口零配置）。 */
 export const LIVED_IN_SCENE_HISTORY: Record<string, DialogHistoryEntry[]> = {
   dash: [
-    { question: "本月计划达成率怎么样？", answer: "2026-06 计划达成率 94.0%，较年初（88.0%）提升 6 个百分点；常州/合肥两基地贡献最大。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-21" },
-    { question: "上季度准交率多少？", answer: "2026-Q2 已交付订单准交率 85.0%（51/60 按期），9 单曾延期，其中 7 单经处置方案挽回至 ≤2 天。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-08" },
-    { question: "12 月产出为什么下凹？", answer: "2025-11/12 受正极到货危机与部分基地检修叠加影响，产出环比下降约 8%；2026-01 起恢复爬坡。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-01-12" },
-    { question: "今年累计执行了多少工单？", answer: "近 12 个月 Action 审计共 200 条，其中 164 条已执行（EXECUTED），22 条被驳回，详见运营复盘页。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-05-30" },
+    { question: "2026-07 常州基地 4680-NCM 计划达成率怎么样？", answer: "2026-07 常州基地 4680-NCM 计划达成率 96.0%，较年初（88.0%）提升 8 个百分点。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-07-21" },
+    { question: "2026-Q2 常州基地准交率多少？", answer: "2026-Q2 常州基地已交付订单准交率 85.0%（51/60 按期），9 单曾延期，其中 7 单经处置方案挽回至 ≤2 天。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-08" },
+    { question: "2025-12 常州与宜宾基地产出为什么下凹？", answer: "2025-11/12 受正极到货危机与常州、宜宾基地检修叠加影响，产出环比下降约 8%；2026-01 起恢复爬坡。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-01-12" },
+    { question: "2026 年至今累计执行了多少 Action 工单？", answer: "2026 年至今 Action 审计共 112 条，其中 94 条已执行（EXECUTED），12 条被驳回，详见运营复盘页。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-07-15" },
   ],
   risk: [
-    { question: "影响哪些订单？", answer: "常州基地 2025-11 到货危机窗口内受影响订单 4 张（SO-20007 等），其中 3 张经提前备料方案挽回。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-26" },
-    { question: "为什么这天越线？", answer: "根因：正极材料到货延迟 5 天导致齐套断档，叠加产线利用率高位运行；详见历史处置案例 CASE-007。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-20" },
-    { question: "采纳常州的提前备料方案", answer: "已生成「提前备料」处置 Action 草稿并经审批执行（act_lh 审计可查），风险曲线于 12-01 消解。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-21" },
+    { question: "常州基地化成瓶颈 2025-11 未来90天影响哪些订单？", answer: "常州基地化成瓶颈 2025-11 未来90天窗口内受影响订单 4 张（SO-20007 等），其中 3 张经提前备料方案挽回。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-26" },
+    { question: "常州基地物料齐套 2025-11-18 为什么越线？", answer: "根因：正极材料到货延迟 5 天导致齐套断档，叠加产线利用率高位运行；详见历史处置案例 CASE-007。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-20" },
+    { question: "采纳常州基地 2025-11 提前备料方案", answer: "已生成「提前备料」处置 Action 草稿并经审批执行（act_lh 审计可查），风险曲线于 12-01 消解。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-21" },
   ],
   "project-sim": [
-    { question: "4680-NCM 加 20% 六周能不能接？", answer: "P50 口径可承接，P90 口径缺口 3.2%；瓶颈在化成工序，建议增开夜班或外协 8%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-15" },
-    { question: "S192 储能需求上修 15% 影响多大？", answer: "需求上修后季度供需缺口扩大至 4.1 万套，已按 C21 提报 S&OP 议程（V10 决议增开宜宾二线）。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-18" },
+    { question: "常州基地 4680-NCM 未来六周加 20% 能不能接？", answer: "P50 口径可承接，P90 口径缺口 3.2%；瓶颈在化成工序，建议增开夜班或外协 8%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-15" },
+    { question: "S192 储能 圆柱-LFP 需求上修 15% 对合肥基地影响多大？", answer: "需求上修后合肥基地季度供需缺口扩大至 4.1 万套，已按 C21 提报 S&OP 议程（V10 决议增开宜宾二线）。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-18" },
   ],
   "plan-audit": [
-    { question: "最近定稿版本体检结果如何？", answer: "基线 = 2026-06 V12：总评 92 分通过；现金垫 58 亿高于底线，齐套缺口 654 吨为软性提示。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-25" },
-    { question: "外协比例现在卡多少？", answer: "C08 外协比例红线现行 v1.3 ≤20%（年初 v1.0 为 ≤25%，经三次复盘收紧），当前实际 14.2%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-05-11" },
+    { question: "2026-06 V12 S&OP 版本现金垫 45 亿过得了体检吗？", answer: "基线 = 2026-06 V12：现金垫 58 亿高于 45 亿底线，总评 92 分通过；齐套缺口 654 吨为软性提示。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-25" },
+    { question: "2026-07 常州基地外协比例是否超过 C08 红线 20%？", answer: "C08 外协比例红线现行 v1.3 ≤20%（年初 v1.0 为 ≤25%，经三次复盘收紧），常州基地当前实际 14.2%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-07-11" },
   ],
   "plan-generate": [
-    { question: "保毛利和保规模怎么选？", answer: "按当前目标面板：均衡方案（B+A 混合）综合分最高；保毛利路径现金垫最厚但份额增长受限。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-18" },
-    { question: "上次采纳的是哪个方案？", answer: "2026-02 采纳「均衡」方案（Action 已执行），营收目标 +18%、毛利率底线 13.5% 保持不变。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-20" },
+    { question: "常州基地 4680-NCM 缺口 8 万套是外协还是加班？", answer: " outsourcing_split 推演：外协 4.8 万套成本 6.72 亿、自产加班 3.2 万套成本 3.2 亿、延期 0；总成本 9.92 亿，建议优先加班保交期。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-18" },
+    { question: "2026-Q3 常州基地保毛利与保规模两个经营方案怎么选？", answer: "按当前目标面板：均衡方案（B+A 混合）综合分最高；保毛利路径现金垫最厚但份额增长受限。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-20" },
   ],
   graph: [
-    { question: "哪个客户的订单延期风险最高", answer: "经验回看：蓝海储能集中在 圆柱-LFP 且交付窗口贴近检修月，历史延期 3 次居首（数字均有工具溯源）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-05-19" },
-    { question: "精度为什么越用越准？", answer: "校准闭环 52 周内将 MAPE 从 12% 收敛到 7%：6 次参数生效、2 次按方法学门槛拒绝（漂移闸门/回测不足）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-06-12" },
+    { question: "蓝海储能 圆柱-LFP 未来 30 天延期风险最高吗？", answer: "经验回看：蓝海储能集中在 圆柱-LFP 且交付窗口贴近检修月，未来 30 天历史延期 3 次居首（数字均有工具溯源）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-05-19" },
+    { question: "常州基地化成工序需求预测 MAPE 为什么从 12% 收敛到 7%？", answer: "校准闭环 52 周内将 MAPE 从 12% 收敛到 7%：6 次参数生效、2 次按方法学门槛拒绝（漂移闸门/回测不足）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-06-12" },
   ],
   review: [
-    { question: "到货危机当时是怎么闭环的？", answer: "2025-11-18 风险越线 → 11-21 采纳提前备料（Action 执行）→ 12-01 曲线消解 → C16 覆盖天数 3→5 天收紧 → MAPE 回弹 +1.8pct 后继续收敛。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-12-05" },
-    { question: "S&OP 达成率趋势如何？", answer: "V1（88%）至 V12（94%）逐月爬升，与月度实绩同源勾稽；两次明显波动分别对应检修季与到货危机。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-28" },
+    { question: "2025-11 常州正极到货危机 CASE-007 是怎么闭环的？", answer: "2025-11-18 风险越线 → 11-21 采纳提前备料（Action 执行）→ 12-01 曲线消解 → C16 覆盖天数 3→5 天收紧 → MAPE 回弹 +1.8pct 后继续收敛。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-12-05" },
+    { question: "2026-01 至 2026-06 S&OP 达成率趋势如何？", answer: "V1（88%）至 V12（94%）逐月爬升，与月度实绩同源勾稽；两次明显波动分别对应检修季与到货危机。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-28" },
   ],
 };
 
