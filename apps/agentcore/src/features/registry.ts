@@ -116,6 +116,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // ②确定性没覆盖的跨域题 → classify 多候选（≥2 ≥tauMid·槽可填·无冲突）→ 接共享后半 runParallelRoutes 并行·确定性块装配。
   // orchestrator multiIntentEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有单意图/澄清路径逐字节不变）。
   { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
+  // WO-OPTWHATIF-NL-WIRING（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：结构化优化 what-if
+  // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif（据 selection 从已发布本体真装配基线 + 真扰动重解）。
+  // orchestrator optWhatifRouteEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=既有管线逐字节不变·不劫持）。
+  { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

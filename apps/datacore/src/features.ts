@@ -131,6 +131,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // ②确定性没覆盖的跨域题 → classify 多候选并行 solver（改写 QOS 编排·排在 clarification 之前）。同列 QOS_DARK_LAUNCH_FEATURES
   // → battery「all on」也保持默认关（不随模板顺带开）。orchestrator multiIntentEnabled 据本键 set.has 挂点。
   { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
+  // WO-OPTWHATIF-NL-WIRING（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：结构化优化 what-if
+  // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif。orchestrator optWhatifRouteEnabled 据本键 set.has 挂点。
+  // 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开·底层求解仍受 opt.whatif/opt.solver-pool 依赖链门）。
+  { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -150,6 +154,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.reasoning-trace",
   "qos.deterministic-multi-domain",
   "qos.multi-intent-orchestration",
+  "qos.opt-whatif-route",
 ]);
 
 /**

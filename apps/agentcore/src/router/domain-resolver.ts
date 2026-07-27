@@ -1,5 +1,6 @@
 import type { PageContext } from "@platform/contracts";
 import { resolveCeoRoute, resolveBlockRoute, isCeoQuestion, hasBlockContext, ceoIntentKeyForRoute } from "./ceo-route.js";
+import { resolveOptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 抽取（leaf 模块·无环）
 
 /**
  * WO-QOS-1 · domain 解析器（确定性优先门地基 · 与 WO-QOS-2 导航切片投影**单一来源**）。
@@ -131,9 +132,23 @@ export function domainResolve(query: string, pageContext?: PageContext): DomainR
     intentKey = ceoIntentKeyForRoute(cr.route);
   }
 
+  // WO-OPTWHATIF-NL-WIRING（闭 §8 G-WHATIF-NL-UNREACHABLE）：结构化**优化目标级** what-if（选址/网络流改一系数→CP-SAT
+  // 重解）判据 = 优化决策族词 ∧ 可抽取「目标参数+数值」∧ 问句点名具体决策对象（domainResolve 只见问句·"选中决策对象"
+  // 分支由 orchestrator 暗发门用真 selectedObjects 补齐）。命中 → 覆盖 route/solverKey="optimize_whatif"（否则会被
+  // RE_OPTION「最优选址方案」误落 decision_play）。**优先级置于 L3 耦合后·与 generic_inference/capacity_forecast 同层**
+  // （双命中门高精度·纯「如果…会怎样」不触发·守回归）。
+  const optRoute = resolveOptWhatifRoute(q);
+  if (optRoute.applicable) {
+    route = "optimize_whatif";
+    solverKey = "optimize_whatif";
+    args = { family: optRoute.family, autoBind: true, perturbations: optRoute.perturbations, selection: [] };
+    intentKey = "opt_whatif";
+  }
+
   // WO-Phase1-D+A：结构化 what-if / Q7 产能可行性虽可能含"如果"，但已被明确杠杆捕获，
   // 不应再被 RE_OPEN 压低置信 → 确保它们能进 path-A。
-  if (route === "generic_inference" || route === "capacity_forecast") signals.open = false;
+  // WO-OPTWHATIF-NL-WIRING：optimize_whatif 同理清 open 惩罚（镜像先例·使不被 RE_OPEN 经 :79 s−=0.6 压到阈下）。
+  if (route === "generic_inference" || route === "capacity_forecast" || route === "optimize_whatif") signals.open = false;
 
   const matchScore = scoreFor(route, contextRich, focus, signals);
   const candidateSolvers: CandidateSolver[] = solverKey ? [{ key: solverKey, matchScore }] : [];

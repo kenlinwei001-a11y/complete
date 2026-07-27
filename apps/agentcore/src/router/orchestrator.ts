@@ -8,6 +8,7 @@ import type {
   Decision,
   CoordinatorPlan,
   IntentDefinition,
+  ProvenanceRef,
   QueryTask,
   ResolvedRef,
   ScenarioPackage,
@@ -66,6 +67,7 @@ import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, r
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
 import { planCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排
+import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -200,6 +202,16 @@ export function deterministicMultiEnabled(set: FeatureSet): boolean {
 export function multiIntentEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("qos.multi-intent-orchestration");
+}
+
+/**
+ * WO-OPTWHATIF-NL-WIRING · feature 门：是否启用**结构化优化 what-if 会话路由**（NL「改一系数→CP-SAT 重解→最优决策
+ * 切换」→ path-A optimize_whatif）。**暗发·默认关**·同款字节兼容（`set==="ALL"`→false·关=既有管线逐字节不变·不劫持）；
+ * 仅**显式** Set 含 `qos.opt-whatif-route` 才启用（双注册：datacore features.ts + agentcore registry·权威集来自 DataCore）。
+ */
+export function optWhatifRouteEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.opt-whatif-route");
 }
 
 /**
@@ -525,6 +537,20 @@ export class Orchestrator {
       }
     }
 
+    // ★ WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 暗发门（闭 §8 G-WHATIF-NL-UNREACHABLE）——**排在 L3 耦合检测(②)之后·
+    //   与 generic_inference/capacity_forecast 同层**（置于 WO-QOS-1 A 门之前）。判据与 ②(耦合依赖对) **不同不劫持**：
+    //   opt_whatif = 优化决策族词 ∧ 可抽取「目标参数+数值」∧（选中决策对象 或 问句点名）——单命名决策+值（非耦合对）。
+    //   命中 + flag 开 → path-A `optimize_whatif`（OBO 真打 datacore invoke·据 selection 从已发布本体真装配基线 + 真扰动重解·
+    //   model=deterministic:opt-whatif·classify=0·agentRequests=0）。**暗发默认关**（optWhatifRouteEnabled("ALL")=false →
+    //   既有管线逐字节不变·不劫持）；未命中/诚实落回 → 照落下方（A 门对 optimize_whatif route 加 guard 跳过·避免被 decision_play 劫持·落 path-B）。
+    if (optWhatifRouteEnabled(enabledFeatures)) {
+      const optRoute = resolveOptWhatifRoute(task.query, task.context.selectedObjects ?? [], task.context.pageContext);
+      if (optRoute.applicable) {
+        await this.runOptWhatifRoute(taskId, auth, optRoute);
+        return;
+      }
+    }
+
     // ★ WO-QOS-1 · A 确定性优先门（治本·闭 G-AGENT-BLIND-REACT 路由侧一半）——插在 free-LLM/agent 入口**之前**。
     // 真 Kimi 20 题实测：99% 时延在 path-B 的 LLM 盲目选型推理；治本头号杠杆 = 有对口**确定性** solver 的高置信题
     // 别送进慢 agent。domainResolve（R6 纯函数·复用 ceo-route 意图模式，A 门与 WO-QOS-2 切片投影单一来源）→
@@ -534,7 +560,10 @@ export class Orchestrator {
     // 窄 solver 出"自信错答"）。**字节兼容**：命中即走既有 tryDeterministicBind（block-route/ceo-route→proceedWithIntent·
     // 与下方原位逐字节同 model/路径），既有行为零回归——唯一新增行为 = 本会被 free-LLM 劫持的高置信定式深问改走 path-A。
     const det = preferDeterministicSolver(domainResolve(task.query, task.context.pageContext));
-    if (det.confidence >= DETERMINISTIC_PREFERENCE_THRESHOLD && det.solverKey) {
+    // WO-OPTWHATIF-NL-WIRING · guard：optimize_whatif route 无对口 CEO 意图（tryDeterministicBind 会 fall to resolveCeoRoute
+    // 误绑 decision_play）。故 A 门对 optimize_whatif route **跳过**——flag 开时上方暗发门已接走；flag 关时诚实落 path-B
+    //（不被 decision_play 劫持成"自信错答"·SEAM④ 字节兼容：暗发关→同问句落 path-B·无 optimize_whatif 路由）。
+    if (det.route !== "optimize_whatif" && det.confidence >= DETERMINISTIC_PREFERENCE_THRESHOLD && det.solverKey) {
       if (await this.tryDeterministicBind(taskId, auth, task, candidates)) return;
     }
 
@@ -763,6 +792,63 @@ export class Orchestrator {
       classification,
       answer,
       multiIntentPlan: plan,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+    await this.recordExperience(taskId);
+  }
+
+  /**
+   * WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 专属 path-A 出口（闭 §8 G-WHATIF-NL-UNREACHABLE）：
+   * 复用 path-A invoke 通道（makeExecutor → `invoke_solver("optimize_whatif", {family, selection, autoBind:true, perturbations})`）
+   * **全程不落 runAgentLoop/classify**；OBO 真打 datacore invoke（据 selection 从已发布本体真装配基线 + 真扰动重解）→
+   * 装配「最优决策方案切换」答案（baselineSolution→perturbedSolution + Δ目标 + 可行性/冲突约束 + 每业务数字 ⟦ref:0⟧ 溯源）。
+   * model=`deterministic:opt-whatif`·classify=0·agentRequests=0（SEAM 头号证据）。
+   * 诚实边界：invoke 失败（如 opt.whatif 未开→404 FEATURE_NOT_FOUND）或装配报缺（applicable:false·role 支撑属性不存在）
+   * → 落回 path-B（不伪造系数/方案·KILL-MOCK）。
+   */
+  private async runOptWhatifRoute(taskId: string, auth: RequestAuth, route: Extract<OptWhatifRoute, { applicable: true }>): Promise<void> {
+    const budget = new BudgetTracker(this.residualBudgetFromConfig());
+    const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    this.deps.metrics.recordRouting(true);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "WORKFLOW",
+      note: `优化目标级 what-if（确定性路由·零 LLM）：${route.family}·扰动 ${route.perturbations.length} 条 → CP-SAT 重解`,
+    });
+
+    const args = { family: route.family, selection: route.selection, autoBind: true, perturbations: route.perturbations };
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: newId("optwhatif-invoke"), type: "opt_whatif_invoke",
+      outcome: `invoke_solver optimize_whatif（${route.family}·selection ${route.selection.length}·扰动 ${route.perturbations.map((p) => `${p.target}=${p.value}`).join("、")}）`,
+      durationMs: 0,
+    });
+    const run = await executor.run("invoke_solver", { solverKey: "optimize_whatif", args });
+    const { data, snapshotVersion } = extractOptWhatifData(run.payload);
+
+    // 诚实边界：invoke 失败 / 装配报缺（applicable:false）→ 落回 path-B（不伪造·KILL-MOCK）。
+    if (!run.ok || !data || data.applicable === false) {
+      await this.deps.events.emit(taskId, "routing.degraded", {
+        reason: !run.ok ? `optimize_whatif 未接入/被门（${run.outcome}）` : `装配报缺（缺角色支撑：${(data?.missingRoles ?? []).join("、") || "—"}）`,
+        fallback: "path-B",
+      });
+      await this.runPathB(taskId, auth, { candidates: [], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "agent:opt-whatif-fallback" });
+      return;
+    }
+
+    const answer = assembleOptWhatifAnswer(route, data, run.toolCallId, snapshotVersion);
+    const classification: ClassificationResult = {
+      candidates: [{ intentKey: "opt_whatif", confidence: 1 }],
+      outOfCatalog: false,
+      extractedSlots: args,
+      latencyMs: 0, // 零 LLM classify（SEAM 头号证据）
+      model: "deterministic:opt-whatif",
+    };
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      classification,
+      answer,
       completedAt: new Date().toISOString(),
     });
     await this.deps.events.emit(taskId, "answer.final", answer);
