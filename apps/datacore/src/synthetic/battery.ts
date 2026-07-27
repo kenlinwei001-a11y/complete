@@ -913,6 +913,10 @@ const metricProps: PropertyDef[] = [
   { propKey: "ksfRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "KSF" }, // 归属 KSF
   { propKey: "ownerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" }, // 责任人
   { propKey: "chainKey", dataType: "string", isPrimaryKey: false }, // 越线根因装配 key
+  // WO-SEG-ATTR-SCOPE：细分达成率指标（seg_attain_ess/pas/com）携业态（storage|passenger|commercial·经
+  // businessTypeOfSegment 派生，与 Order.businessType 同源同口径 R-一致），供 gap_attribution 按业态裁订单。
+  // 声明于类型以对齐合成字段（否则 seg Metric 实例的 businessType 成孤儿字段·synthetic-field-alignment 红）。
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
 ];
 const metricDerived: DerivedPropertyDef[] = [
   { propKey: "delta", formula: "actual - target" }, // 差异（带符号）

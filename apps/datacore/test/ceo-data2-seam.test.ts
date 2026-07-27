@@ -317,34 +317,34 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
   });
 
   // ── WO-A · 产能推演域补全接缝门（D1 全基地设备数据 × E1 base 作用域·G-CAPACITY-BASE-DATA + G-GAP-SCOPE）──
-  // 头号判据：gap_attribution({scope:{baseId:"hefei"}}) 真出合肥专属树，L2 设备OEE 瓶颈叶非空（drillValue=合肥真设备 oee_current）·勾稽·可溯。
-  it("SEAM D1×E1：scope.baseId=hefei → 合肥专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯", async () => {
+  // 头号判据：gap_attribution({scope:{baseId:"jiangmen"}}) 真出江门专属树，L2 设备OEE 瓶颈叶非空（drillValue=江门真设备 oee_current）·勾稽·可溯。
+  it("SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯", async () => {
     const t = await makeApp();
     await seedBattery(t);
 
-    // D1 数据半：合肥必须有 Equipment（全基地铺开·非仅常州）→ 否则设备叶恒空（旧断点）。
-    const hefeiEquip = (await t.repos.objects.listByType(ADMIN.tenantId, "Equipment")).filter((o) => String(o.props.baseId) === "hefei");
-    expect(hefeiEquip.length, "合肥应有 Equipment（D1 全基地设备数据）").toBeGreaterThan(0);
+    // D1 数据半：江门必须有 Equipment（全基地铺开·非仅常州）→ 否则设备叶恒空（旧断点）。
+    const jiangmenEquip = (await t.repos.objects.listByType(ADMIN.tenantId, "Equipment")).filter((o) => String(o.props.baseId) === "jiangmen");
+    expect(jiangmenEquip.length, "江门应有 Equipment（D1 全基地设备数据）").toBeGreaterThan(0);
 
-    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "hefei" } })) as unknown as GA & {
+    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "jiangmen" } })) as unknown as GA & {
       scope?: { baseId: string; displayName: string }; globalGap?: number;
     };
-    // 引擎半：返回的是合肥专属树（scope 回显 + 单基地根）。
-    expect(g.scope?.baseId).toBe("hefei");
-    expect(g.scope?.displayName, "displayName 取 Base.name（合肥·归一源单一出处）").toBe("合肥");
+    // 引擎半：返回的是江门专属树（scope 回显 + 单基地根）。
+    expect(g.scope?.baseId).toBe("jiangmen");
+    expect(g.scope?.displayName, "displayName 取 Base.name（江门·归一源单一出处）").toBe("江门");
     const l1 = g.levels.find((L) => L.depth === 1)!;
     expect(l1.nodes.length, "基地专属树 L1 只含该基地根").toBe(1);
-    expect((l1.nodes[0] as { baseId?: string }).baseId).toBe("hefei");
+    expect((l1.nodes[0] as { baseId?: string }).baseId).toBe("jiangmen");
 
-    // 接缝核心断言：L2 设备OEE 瓶颈叶非空，drillValue = 合肥真设备 oee_current（不再恒 0·R13）。
+    // 接缝核心断言：L2 设备OEE 瓶颈叶非空，drillValue = 江门真设备 oee_current（不再恒 0·R13）。
     const l2 = g.levels.find((L) => L.depth === 2)!;
-    const equipLeaf = l2.nodes.find((n) => n.id === "equip:hefei") as
+    const equipLeaf = l2.nodes.find((n) => n.id === "equip:jiangmen") as
       | { contribution: number; provenance: { drillType: string; drillField: string; drillValue: number } }
       | undefined;
-    expect(equipLeaf, "合肥 L2 设备OEE 瓶颈叶应非空（D1×E1 接缝通）").toBeTruthy();
+    expect(equipLeaf, "江门 L2 设备OEE 瓶颈叶应非空（D1×E1 接缝通）").toBeTruthy();
     expect(equipLeaf!.provenance.drillType).toBe("Equipment");
     expect(equipLeaf!.provenance.drillField).toBe("oee_current");
-    expect(equipLeaf!.provenance.drillValue, "drillValue=合肥真设备 oee_current 均值（∈(0,1)·非恒 0）").toBeGreaterThan(0);
+    expect(equipLeaf!.provenance.drillValue, "drillValue=江门真设备 oee_current 均值（∈(0,1)·非恒 0）").toBeGreaterThan(0);
     expect(equipLeaf!.provenance.drillValue).toBeLessThan(1);
     expect(equipLeaf!.contribution, "设备瓶颈叶贡献>0").toBeGreaterThan(0);
 
@@ -365,17 +365,17 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
     expect(g.globalGap!).toBeGreaterThan(g.totalGap);
   });
 
-  it("SEAM D2：scope.baseId '合肥' 与 'hefei' 返回字节同一棵树（基地键归一 id↔中文生效）", async () => {
+  it("SEAM D2：scope.baseId '江门' 与 'jiangmen' 返回字节同一棵树（基地键归一 id↔中文生效）", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const gId = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "hefei" } })) as unknown as GA;
-    const gCn = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "合肥" } })) as unknown as GA;
+    const gId = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "jiangmen" } })) as unknown as GA;
+    const gCn = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "江门" } })) as unknown as GA;
     expect(JSON.stringify(gCn.levels)).toBe(JSON.stringify(gId.levels));
     expect(JSON.stringify(gCn.atomicLeaves)).toBe(JSON.stringify(gId.atomicLeaves));
     expect(JSON.stringify(gCn.reconChecks)).toBe(JSON.stringify(gId.reconChecks));
   });
 
-  it("SEAM 兼容：无 scope = 现全局行为不回归（全基地 L1·hefei 只是其中一节点·带 baseId/displayName）", async () => {
+  it("SEAM 兼容：无 scope = 现全局行为不回归（全基地 L1·jiangmen 只是其中一节点·带 baseId/displayName）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey: "seg_attain_ess" })) as unknown as GA & {
@@ -385,9 +385,9 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
     const l1 = g.levels.find((L) => L.depth === 1)!;
     expect(l1.nodes.length, "全局树含多基地 L1").toBeGreaterThanOrEqual(3);
     // D2：全局 L1 节点补 baseId + displayName（前端可按中文/id 双向命中）。
-    const hefeiNode = l1.nodes.find((n) => (n as { baseId?: string }).baseId === "hefei") as { displayName?: string } | undefined;
-    expect(hefeiNode, "全局树含 hefei 节点").toBeTruthy();
-    expect(hefeiNode!.displayName).toBe("合肥");
+    const jiangmenNode = l1.nodes.find((n) => (n as { baseId?: string }).baseId === "jiangmen") as { displayName?: string } | undefined;
+    expect(jiangmenNode, "全局树含 jiangmen 节点").toBeTruthy();
+    expect(jiangmenNode!.displayName).toBe("江门");
     expect(g.reconciled).toBe(true);
   });
 });
