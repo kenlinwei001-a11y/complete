@@ -116,13 +116,61 @@ function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: Adm
   );
 }
 
+/**
+ * 侧栏导航图标（Feather 风·线性·stroke=currentColor·18px）。
+ * 结构层（全主题共享）：图标随 navItem 的 color 走 —— 活跃项 pill 上转白（--nav-active-txt），
+ * 非活跃取 --muted。按 nav key 映射业务语义；未知 key 落通用「圆点」图标（不丢项、看齐旧行为）。
+ */
+const NAV_ICON_PATHS: Record<string, string> = {
+  // 经营驾驶舱 —— grid
+  dash: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+  // 规划与平衡 —— calendar（年度/季度/月度/生成）
+  "annual-scenario": "M3 4h18v18H3zM3 10h18M8 2v4M16 2v4",
+  "quarterly-rolling": "M3 4h18v18H3zM3 10h18M8 2v4M16 2v4",
+  "sop-balance": "M3 4h18v18H3zM3 10h18M8 2v4M16 2v4",
+  "plan-generate": "M3 4h18v18H3zM3 10h18M8 2v4M16 2v4",
+  // 体检 / 复审 —— check-circle
+  "plan-audit": "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3",
+  review: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3",
+  calibration: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3",
+  // 推演 —— 项目推演(activity) / 全局(globe) / 产能(bar) / 订单全链(layers) / 决策(zap)
+  "project-sim": "M22 12h-4l-3 9L9 3l-3 9H2",
+  "global-sim": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20",
+  risk: "M12 20V10M18 20V4M6 20v-4",
+  "order-chain": "M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  "decision-play": "M13 2 3 14h9l-1 8 10-12h-9z",
+  "sim-sandbox": "M13 2 3 14h9l-1 8 10-12h-9z",
+  "sim-init": "M13 2 3 14h9l-1 8 10-12h-9z",
+  // 台账与地图 —— list / map-pin
+  order: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+  "geo-map": "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  // 建模与图谱 —— share
+  graph: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 3.9M15.4 6.5 8.6 10.5",
+  // 数据接入 —— link / file / database / radio / shield
+  connections: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1",
+  "rule-docs": "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  synthetic: "M12 2C7 2 4 4 4 6s3 4 8 4 8-2 8-4-3-4-8-4zM4 6v6c0 2 3 4 8 4s8-2 8-4V6M4 12v6c0 2 3 4 8 4s8-2 8-4v-6",
+  "external-signals": "M4.9 19.1a10 10 0 0 1 0-14.2M8.5 15.5a5 5 0 0 1 0-7M12 12h.01M15.5 8.5a5 5 0 0 1 0 7M19.1 4.9a10 10 0 0 1 0 14.2",
+  quarantine: "M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z",
+};
+const NAV_ICON_DEFAULT = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"; // 通用圆点（未知业务 key 兜底·不丢项）
+
+function NavIcon({ nav }: { nav: string }) {
+  const d = NAV_ICON_PATHS[nav] ?? NAV_ICON_DEFAULT;
+  return (
+    <svg className={styles.navIcon} viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+}
+
 function NavItemLink({ item }: { item: NavItemVM }) {
   return (
     <NavLink
       to={`/v/${item.viewKey ?? item.key}`}
       className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
     >
-      <span className={styles.dot} />
+      <NavIcon nav={item.viewKey ?? item.key} />
       {item.label}
     </NavLink>
   );
@@ -131,7 +179,7 @@ function NavItemLink({ item }: { item: NavItemVM }) {
 function AdminItemLink({ page }: { page: AdminPage }) {
   return (
     <NavLink to={`/admin/${page.path}`} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
-      <span className={styles.dot} />
+      <NavIcon nav={page.path} />
       {page.label}
     </NavLink>
   );
@@ -237,6 +285,7 @@ export default function ShellLayout() {
 
       <aside className={styles.nav} data-testid="left-nav">
         {/* 场景启动器入口（PRD-scenario-launcher §3.5）：目录墙 + ⌘K 快搜 */}
+        {/* 场景启动器（顶层特殊入口·保留 ⚡ 前缀：既作图标、又使链接文案 ≠ 启动器页标题「场景启动器」，避免 getByText 撞车 f53b） */}
         <NavLink to="/scenarios" data-testid="nav-scenario-launcher" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
           ⚡ 场景启动器
         </NavLink>
@@ -253,7 +302,7 @@ export default function ShellLayout() {
               data-testid="nav-sim-sandbox"
               className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
             >
-              <span className={styles.dot} />
+              <NavIcon nav="sim-sandbox" />
               推演沙盘
             </NavLink>
           )}
@@ -264,7 +313,7 @@ export default function ShellLayout() {
               data-testid="nav-sim-init"
               className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
             >
-              <span className={styles.dot} />
+              <NavIcon nav="sim-init" />
               推演初始化向导
             </NavLink>
           )}
@@ -323,10 +372,14 @@ function SyntheticWatermark() {
 function UserMenu({ username }: { username: string }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  // 头像位（圆形·取用户名首字·大写）：视觉锚点，保留原 testid/菜单行为不变。
+  const initial = (username.trim()[0] ?? "?").toUpperCase();
   return (
     <div className={styles.userMenu}>
-      <button className="btn sm" onClick={() => setOpen(!open)} data-testid="user-menu-btn">
-        {username} ▾
+      <button className={styles.userBtn} onClick={() => setOpen(!open)} data-testid="user-menu-btn" title={username} aria-label={username}>
+        <span className={styles.avatar} aria-hidden>{initial}</span>
+        <span className={styles.userName}>{username}</span>
+        <span aria-hidden style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
       </button>
       {open && (
         <div className={styles.menuPop}>

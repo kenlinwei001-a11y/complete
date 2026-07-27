@@ -42,3 +42,47 @@
 :root[data-theme="warm"] .badge {
   background: #f4f4f4;
 }
+
+/* ═══ WO-WARM-STRUCTURAL · 结构层 warm 专属皮肤（DOM 结构在 DashboardView 全主题共享·此处仅 warm 上色/质感） ═══ */
+
+/* —— 经营指标 → 深炭灰磨砂签名卡（.warmSignature 挂在该 widget 的 .card 上·仅 warm 生效） ——
+   卡内 token 局部反相（--txt/--muted/... 翻亮）→ 卡内所有 var() 文字（含 CSS-module cardHead）自动转白；
+   状态域色（--ok/--danger/--amber）刻意不翻（绿达标/红越线在深底上仍鲜明）。 */
+:root[data-theme="warm"] .warmSignature {
+  background: rgba(38, 40, 47, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 1px 2px rgba(17, 17, 26, 0.1), 0 16px 44px rgba(17, 17, 26, 0.18);
+  color: var(--txt);
+  --txt: #ffffff;
+  --muted: rgba(255, 255, 255, 0.72);
+  --muted2: rgba(255, 255, 255, 0.5);
+  --line: rgba(255, 255, 255, 0.1);
+  --line2: rgba(255, 255, 255, 0.16);
+}
+
+/* —— KPI accent 卡 → 实心深橙（白字 + 白进度条）：--accent 局部改白 → 进度 fill(var(--accent)) 转白条 —— */
+:root[data-theme="warm"] .warmKpiAccent {
+  background: #e8590c;
+  border-color: #e8590c;
+  box-shadow: 0 10px 28px rgba(232, 89, 12, 0.28);
+  color: var(--txt);
+  --txt: #ffffff;
+  --muted: rgba(255, 255, 255, 0.9);
+  --muted2: rgba(255, 255, 255, 0.75);
+  --line2: rgba(255, 255, 255, 0.35);
+  --accent: #ffffff;
+}
+
+/* —— iOS 分段控件（.segGroup）：warm 下活跃 pill 深橙白字（经 --seg-active-* 变量·段按钮 inline 读取回落） —— */
+:root[data-theme="warm"] .segGroup {
+  --seg-active-bg: #e8590c;
+  --seg-active-txt: #ffffff;
+}
+
+/* —— 订单台账表：warm 下去竖线、仅留极淡行分隔（对齐签名磨砂的克制感）—— */
+:root[data-theme="warm"] table[data-testid="ledger-table"] td,
+:root[data-theme="warm"] table[data-testid="ledger-table"] th {
+  border-color: rgba(17, 17, 26, 0.06);
+}
