@@ -46,10 +46,42 @@ const FAMILY_EXAMPLE: Record<string, string> = {
     null,
     2,
   ),
-  min_cost_flow: JSON.stringify({ nodes: [], arcs: [] }, null, 2),
-  set_cover: JSON.stringify({ universe: [], sets: [] }, null, 2),
-  independent_set: JSON.stringify({ nodes: [], edges: [] }, null, 2),
-  combinatorial_auction: JSON.stringify({ items: [], bids: [] }, null, 2),
+  min_cost_flow: JSON.stringify(
+    {
+      nodes: [{ id: "s1", supply: 10 }, { id: "s2", supply: 5 }, { id: "d1", supply: -8 }, { id: "d2", supply: -7 }],
+      arcs: [
+        { from: "s1", to: "d1", cost: 4, cap: 10 }, { from: "s1", to: "d2", cost: 6, cap: 10 },
+        { from: "s2", to: "d1", cost: 5, cap: 10 }, { from: "s2", to: "d2", cost: 3, cap: 10 },
+      ],
+    }, null, 2),
+  set_cover: JSON.stringify(
+    {
+      sets: [
+        { id: "A", cost: 3, covers: ["e1", "e2", "e3"] }, { id: "B", cost: 2, covers: ["e2", "e4"] },
+        { id: "C", cost: 4, covers: ["e3", "e4", "e5"] }, { id: "D", cost: 2, covers: ["e5", "e1"] },
+      ],
+    }, null, 2),
+  independent_set: JSON.stringify(
+    {
+      nodes: [{ id: "n1", weight: 5 }, { id: "n2", weight: 4 }, { id: "n3", weight: 6 }, { id: "n4", weight: 3 }],
+      edges: [{ a: "n1", b: "n2" }, { a: "n2", b: "n3" }, { a: "n3", b: "n4" }],
+    }, null, 2),
+  combinatorial_auction: JSON.stringify(
+    {
+      bids: [
+        { id: "b1", value: 10, items: ["i1", "i2"] }, { id: "b2", value: 8, items: ["i2", "i3"] },
+        { id: "b3", value: 6, items: ["i3"] }, { id: "b4", value: 7, items: ["i1"] },
+      ],
+    }, null, 2),
+};
+
+/** 每 family 的默认扰动示例（合法 kind=data_override + value·非 delta·target 接地到对应 family 的对象）——让"改一下即见 Δ"开箱可跑。 */
+const FAMILY_PERTURB: Record<string, string> = {
+  facility_location: JSON.stringify([{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }], null, 2),
+  min_cost_flow: JSON.stringify([{ kind: "data_override", target: "arcs.s2-d2.cost", value: 9 }], null, 2),
+  set_cover: JSON.stringify([{ kind: "data_override", target: "sets.A.cost", value: 8 }], null, 2),
+  independent_set: JSON.stringify([{ kind: "data_override", target: "nodes.n3.weight", value: 2 }], null, 2),
+  combinatorial_auction: JSON.stringify([{ kind: "data_override", target: "bids.b1.value", value: 3 }], null, 2),
 };
 
 /** optimize_whatif 输出（= SOLVER_OUTPUT_SHAPES.optimize_whatif·service.ts:145）。 */
@@ -71,13 +103,14 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
   const initialFamily = (view?.layout as { family?: string } | undefined)?.family ?? "facility_location";
   const [family, setFamily] = useState(initialFamily);
   const [baselineText, setBaselineText] = useState(FAMILY_EXAMPLE[initialFamily] ?? "{}");
-  const [perturbText, setPerturbText] = useState(JSON.stringify([{ kind: "cost", target: "facilities.f1.openCost", delta: 50 }], null, 2));  // 接地格式须 <collection>.<id>[.<field>]（opt-whatif.ts）；裸 "f1" 会接地失败
+  const [perturbText, setPerturbText] = useState(FAMILY_PERTURB[initialFamily] ?? "[]");
   // 已提交求解的入参（点「求解」才更新·避免每次敲键重取）。
   const [submitted, setSubmitted] = useState<{ family: string; baseline: string; perturb: string } | null>(null);
 
   const onPickFamily = (k: string) => {
     setFamily(k);
     setBaselineText(FAMILY_EXAMPLE[k] ?? "{}");
+    setPerturbText(FAMILY_PERTURB[k] ?? "[]");  // 扰动示例随 family 走·否则切 family 后扰动 target 仍指旧 family 会接地失败
   };
 
   const parseErr = useMemo(() => {
