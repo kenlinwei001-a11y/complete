@@ -118,8 +118,8 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     await user.click(screen.getByRole("button", { name: "展开对话" }));
     const history = await screen.findByTestId("dock-history");
     // dash 场景 4 条（§1.2 每场景 2–6 条）
-    expect(within(history).getByText("本月计划达成率怎么样？")).toBeInTheDocument();
-    expect(within(history).getByText("2026-06-21")).toBeInTheDocument();
+    expect(within(history).getByText("2026-07 常州基地 4680-NCM 计划达成率怎么样？")).toBeInTheDocument();
+    expect(within(history).getByText("2026-07-21")).toBeInTheDocument();
     // 信任级徽章正确（dash 历史 = VERIFIED_WORKFLOW）
     expect(screen.getByTestId("dock-history-trust-0")).toHaveAttribute("data-trust", "VERIFIED_WORKFLOW");
     expect(screen.getByTestId("dock-history-trust-0")).toHaveTextContent("已验证 · 工作流");
