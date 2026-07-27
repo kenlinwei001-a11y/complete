@@ -179,7 +179,7 @@ export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType
   // capacity_forecast：computeRollup(Base/Line/Process/Equipment) + certByModel(⟹连带 Line+Model) + 数据健康 C09(DataSourceHealth)
   //   + 检修周(MaintPlan) + model chem/pos(Model) + liveTightness(Base/Line/Process/Equipment) + ruleEvalPayload 最坏源(DataSourceHealth)。
   //   无 Order/Shipment/Segment（byProcessModel 的 Material 属**扩展层**·随 withExtended·不在核心表）。
-  capacity_forecast: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "DataSourceHealth"],
+  capacity_forecast: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "DataSourceHealth", "Order"],
   // bottleneck_matrix：liveTightness/mockTightness/primaryFactor/baseProvenanceSynthetic 只读 Base/Line/Process/Equipment。
   bottleneck_matrix: ["Base", "Line", "Process", "Equipment"],
   // risk_timeline：基线 climb + 事件脉冲 riskEvents(⟹MaintPlan/Order/Shipment/Base) + liveTightness(Line/Process/Equipment)

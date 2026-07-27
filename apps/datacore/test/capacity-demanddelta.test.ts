@@ -39,7 +39,9 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
     expect(out.demandDelta).toBe(demandDelta);
 
     const p90 = out.p90 as number;
-    expect(gap).toBe(round(Math.max(0, effective - p90), 4));
+    // gap 是**带符号**（capacity.ts:497 `effectiveDemand - p90`·富余为负·与下方 gapPct 的 Math.max(0,gap) 一致）；
+    // 当前 canonical 产能 > 订单簿×1.2 时 4680-NCM 为富余（gap<0）——原断言误裹 Math.max(0,…) 会假失败。
+    expect(gap).toBe(round(effective - p90, 4));
     if (effective > 0) {
       expect(gapPct).toBe(round(Math.max(0, gap) / effective, 4));
     }
