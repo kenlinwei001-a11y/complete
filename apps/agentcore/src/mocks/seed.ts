@@ -617,57 +617,91 @@ export function seedSceneEntries(): SceneEntryConfig[] {
     {
       id: "scn_dash", tenantId: SEED_TENANT, viewKey: "dash", mode: "WORKFLOW_FIRST",
       uiHints: {
-        placeholder: "问问经营数据，如：本月计划达成率怎么样？",
-        suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"],
+        placeholder: "问问经营数据，如：2026-07 常州基地 4680-NCM 计划达成率怎么样？",
+        suggestedQuestions: [
+          "常州基地 4680-NCM 未来六周加 20% 能不能接？",
+          "2026-07 常州基地 4680-NCM 计划达成率怎么样？",
+        ],
       },
       ...history("dash"),
     },
     {
       id: "scn_risk", tenantId: SEED_TENANT, viewKey: "risk", mode: "WORKFLOW_FIRST",
       uiHints: {
-        placeholder: "针对选中基地提问，如：影响哪些订单？",
-        suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"],
+        placeholder: "针对选中基地提问，如：常州基地的化成瓶颈未来90天会影响哪些订单？",
+        suggestedQuestions: [
+          "常州基地的化成瓶颈未来90天会影响哪些订单？",
+          "常州基地物料齐套 2026-07-15 为什么越线？",
+          "采纳常州基地化成工序三班制方案",
+        ],
       },
       ...history("risk"),
     },
     {
       id: "scn_order", tenantId: SEED_TENANT, viewKey: "order", mode: "WORKFLOW_FIRST",
-      uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] },
+      uiHints: {
+        placeholder: "查订单，如：常州基地 4680-NCM 订单 SO-20007 未来两周会延期吗？",
+        suggestedQuestions: ["常州基地 4680-NCM 订单 SO-20007 未来两周会延期吗？"],
+      },
     },
     {
       // §2：自由探索 = AGENT_FIRST，绑定出厂 analyst agent（§3）
       id: "scn_graph", tenantId: SEED_TENANT, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt_seed_analyst",
       uiHints: {
         placeholder: "围绕本体随便问（探索性回答，AGENT 信任级）",
-        suggestedQuestions: ["哪个客户的订单延期风险最高", "精度为什么越用越准？"],
+        suggestedQuestions: [
+          "蓝海储能 圆柱-LFP 未来 30 天延期风险最高吗？",
+          "常州基地化成工序需求预测 MAPE 为什么从 12% 收敛到 7%？",
+        ],
       },
       ...history("graph"),
     },
     {
       id: "scn_plan_audit", tenantId: SEED_TENANT, viewKey: "plan-audit", mode: "WORKFLOW_ONLY",
-      uiHints: { placeholder: "规划体检（基线 = 最近定稿 S&OP 版本）", suggestedQuestions: ["最近定稿版本体检结果如何？"] },
+      uiHints: {
+        placeholder: "规划体检（基线 = 2026-06 V12 S&OP 版本，现金垫 45 亿）",
+        suggestedQuestions: [
+          "2026-06 V12 S&OP 版本现金垫 45 亿过得了体检吗？",
+          "2026-07 常州基地外协比例是否超过 C08 红线 20%？",
+        ],
+      },
       ...history("plan-audit"),
     },
     {
       id: "scn_plan_generate", tenantId: SEED_TENANT, viewKey: "plan-generate", mode: "WORKFLOW_FIRST",
-      uiHints: { placeholder: "方案生成相关问题", suggestedQuestions: ["保毛利和保规模怎么选？"] },
+      uiHints: {
+        placeholder: "生成经营方案，如：常州基地 4680-NCM 缺口 8 万套是外协还是加班？",
+        suggestedQuestions: [
+          "常州基地 4680-NCM 缺口 8 万套是外协还是加班？",
+          "2026-Q3 常州基地保毛利与保规模两个经营方案怎么选？",
+        ],
+      },
       ...history("plan-generate"),
     },
     {
       id: "scn_project_sim", tenantId: SEED_TENANT, viewKey: "project-sim", mode: "WORKFLOW_FIRST",
-      uiHints: { placeholder: "项目推演相关问题", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？"] },
+      uiHints: {
+        placeholder: "项目推演，如：常州基地 4680-NCM 未来六周需求加 20% 能不能接？",
+        suggestedQuestions: ["常州基地 4680-NCM 未来六周需求加 20% 能不能接？"],
+      },
       ...history("project-sim"),
     },
     {
       id: "scn_sop_balance", tenantId: SEED_TENANT, viewKey: "sop-balance", mode: "WORKFLOW_FIRST",
-      uiHints: { placeholder: "S&OP 月度平衡相关问题", suggestedQuestions: [] },
+      uiHints: {
+        placeholder: "S&OP 月度平衡，如：2026-07 常州基地 4680-NCM 产销差多少？",
+        suggestedQuestions: ["2026-07 常州基地 4680-NCM 产销差多少？"],
+      },
     },
     {
       // 运营态增量 §2/§4：运营复盘（只读历史证据链页面，「越用越准」）
       id: "scn_review", tenantId: SEED_TENANT, viewKey: "review", mode: "WORKFLOW_FIRST",
       uiHints: {
-        placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？",
-        suggestedQuestions: ["到货危机当时是怎么闭环的？", "S&OP 达成率趋势如何？"],
+        placeholder: "回顾一年运营，如：2025-11 常州基地正极到货危机 CASE-007 是怎么闭环的？",
+        suggestedQuestions: [
+          "2025-11 常州基地正极到货危机 CASE-007 是怎么闭环的？",
+          "2026-01 至 2026-06 S&OP 达成率趋势如何？",
+        ],
       },
       ...history("review"),
     },
