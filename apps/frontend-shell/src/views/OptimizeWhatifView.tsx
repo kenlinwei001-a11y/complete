@@ -71,7 +71,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
   const initialFamily = (view?.layout as { family?: string } | undefined)?.family ?? "facility_location";
   const [family, setFamily] = useState(initialFamily);
   const [baselineText, setBaselineText] = useState(FAMILY_EXAMPLE[initialFamily] ?? "{}");
-  const [perturbText, setPerturbText] = useState(JSON.stringify([{ kind: "cost", target: "f1", delta: 50 }], null, 2));
+  const [perturbText, setPerturbText] = useState(JSON.stringify([{ kind: "cost", target: "facilities.f1.openCost", delta: 50 }], null, 2));  // 接地格式须 <collection>.<id>[.<field>]（opt-whatif.ts）；裸 "f1" 会接地失败
   // 已提交求解的入参（点「求解」才更新·避免每次敲键重取）。
   const [submitted, setSubmitted] = useState<{ family: string; baseline: string; perturb: string } | null>(null);
 
