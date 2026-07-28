@@ -175,7 +175,11 @@ export const RiskCardSchema = z.object({
   provenanceSynthetic: z.boolean().optional(),
   peak: z.number(),
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
-  series: z.array(z.number()), // 逐日 tension
+  series: z.array(z.number()), // 逐日 tension（瓶颈因素）
+  // 治 #1/#3 时序推演无梯度：逐因素真逐日序列（factor → series）——每因素走与 series（瓶颈）**同一** tensionSeries 机制、
+  // 由该因素实测当前张力（liveTightness）起锚 + 确定性前瞻（riskTarget 爬坡 + 真事件脉冲），供详情面板「其余因素」渲染真
+  // 蓝→黄→红逐日梯度（替持平示意）。factorSeries[card.factor] === series（恒等）。缺省（旧后端）→ 前端回落持平当前值（向后兼容 R6）。
+  factorSeries: z.record(z.string(), z.array(z.number())).optional(),
   events: z.array(RiskEventSchema),
   affectedOrders: z.array(AffectedOrderSchema).optional(),
   mitigated: z

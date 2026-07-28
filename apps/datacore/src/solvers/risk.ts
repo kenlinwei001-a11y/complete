@@ -294,6 +294,23 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 改真 Equipment.oee_current → lt.value 变 → cur 变 → series/peak 真变（curl 前后可验）。
     const baseline = lt.live ? lt.value : undefined;
     const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
+    // 治 #1/#3「时序推演全灰/无梯度」· 逐因素真逐日序列（per-factor tensionSeries）：此前仅瓶颈因素（card.series）
+    // 有真逐日 series，其余因素（物流时长/设备OEE/人力工时/物料齐套/换型损失/良率波动）前端只拿到单点当前张力 →
+    // 持平线呈现。现在**每个**因素都走与瓶颈**同一** tensionSeries 机制：由该因素自身「实测当前张力」liveTightness
+    // 起锚（有真源=LIVE 实测锚 设备OEE/瓶颈工序/良率波动，无真源=回落 mock 人力工时/物料齐套/物流时长/换型损失，
+    // 与 card.series/baseline 口径逐一对齐）+ 确定性前瞻（riskTarget 爬坡 + 真事件脉冲 riskEvents）→ 每因素蓝→黄→红真逐日梯度。
+    // R6 确定性：liveTightness/tensionSeries/riskEvents/riskTarget 全纯函数（无随机/时钟）→ 同种子字节一致。
+    // 诚实（KILL-MOCK-RED·铁律0.4）：series 从真当前张力**派生**（非写死轨迹）；卡级 dataMode/provenanceSynthetic 披露不变。
+    // key 序取 params.bottleneck.factors（与 pair.factor 无关·稳定）；factorSeries[pair.factor] === series（同 baseline 同 events 恒等·作 reconcile 锚）。
+    const factorSeries: Record<string, number[]> = {};
+    for (const f of c.params.bottleneck.factors) {
+      if (f === pair.factor) {
+        factorSeries[f] = series; // 瓶颈因素：复用已算 series（同 baseline 同 events 同机制·恒等）
+        continue;
+      }
+      const ltf = liveTightness(c, pair.baseId, f);
+      factorSeries[f] = tensionSeries(c, pair.baseId, f, horizon, events, undefined, ltf.live ? ltf.value : undefined);
+    }
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
     const card: Record<string, unknown> = {
@@ -309,6 +326,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       peak: Math.max(...series),
       crossDay,
       series,
+      // 治 #1/#3：逐因素真逐日序列（factor → series）供详情面板「其余因素」渲染真蓝→黄→红梯度（替持平示意）。factorSeries[factor]===series。
+      factorSeries,
       events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
       affectedOrders: affectedOrders(c, {
         baseId: pair.baseId,

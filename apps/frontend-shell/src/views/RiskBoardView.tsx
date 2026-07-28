@@ -619,18 +619,36 @@ function RiskDetailPanel({
             onDay={onDay}
             affectedByDay={affectedByDay}
           />
-          {/* 其余因素：无逐日 series → 用当前值确定性上色（持平线·真当前值·不伪造逐日变化·G-DM-1）。
-              物流时长 92(≥阈) 以红持平呈现 → 一眼可辨其亦在瓶颈区，而非灰藏当"缺数据"（治 #1 灰藏红）。
-              真逐日梯度由 R16 数据自愈闭环后续接入（per-factor tensionSeries）→ 届时此持平线升为真序列。 */}
-          {others.map((o) => (
-            <FactorRow
-              key={o.factor}
-              label={o.factor}
-              sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 持平示意（无逐日源）`}
-              color={tierColor(o.value, threshold)}
-              dots={card.series.map(() => ({ color: o.value != null ? heatColor(o.value, threshold) : "rgba(138,148,166,.28)", value: o.value }))}
-            />
-          ))}
+          {/* 其余因素：逐因素真逐日序列（治 #1/#3·per-factor tensionSeries）——每因素走与主因素**同一** tensionSeries
+              机制、由该因素实测当前张力（liveTightness）起锚 + 确定性前瞻（riskTarget 爬坡 + 真事件脉冲）→ 真蓝→黄→红
+              逐日梯度（非持平示意）。诚实：series 从真当前张力**派生**（非写死轨迹），卡级 provenanceSynthetic 已披露合成
+              种子。无 factorSeries（旧后端/契约缺字段）时回落持平当前值 + 标"无逐日源"（向后兼容 R6·绝不伪造逐日变化）。 */}
+          {others.map((o) => {
+            const fs = card.factorSeries?.[o.factor];
+            if (fs && fs.length > 0) {
+              const peakF = Math.max(...fs);
+              const crossIdx = fs.findIndex((v) => v >= threshold); // 0-based → 越线日 T+(idx+1)（与 card.crossDay 口径一致）
+              return (
+                <FactorRow
+                  key={o.factor}
+                  label={o.factor}
+                  sub={`${o.value != null ? Math.round(o.value) : "—"}→${Math.round(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}`}
+                  color={tierColor(peakF, threshold)}
+                  dots={fs.map((v) => ({ color: heatColor(v, threshold), value: v }))}
+                />
+              );
+            }
+            // 回落（无 factorSeries）：持平当前值 + 诚实标"无逐日源"（向后兼容·绝不伪造逐日变化·G-DM-1）。
+            return (
+              <FactorRow
+                key={o.factor}
+                label={o.factor}
+                sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 持平示意（无逐日源）`}
+                color={tierColor(o.value, threshold)}
+                dots={card.series.map(() => ({ color: o.value != null ? heatColor(o.value, threshold) : "rgba(138,148,166,.28)", value: o.value }))}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="empty-state" data-testid="risk-detail-nodata" style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)", marginBottom: 10 }}>
