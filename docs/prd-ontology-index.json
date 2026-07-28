@@ -1564,6 +1564,17 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-seam-arg-drop-audit.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "scripts/check-arg-drop-seam.mjs"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-arg-drop-seam.mjs"
+      ]
+    },
     "PRD-segment-scoped-gap-attribution.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2366,6 +2377,9 @@
     ],
     "scripts/check-ontogenesis.mjs": [
       "PRD-scenario-ontogenesis.md"
+    ],
+    "scripts/check-arg-drop-seam.mjs": [
+      "PRD-seam-arg-drop-audit.md"
     ],
     "apps/datacore/test/gap-attribution-segment-scope.test.ts": [
       "PRD-segment-scoped-gap-attribution.md"
