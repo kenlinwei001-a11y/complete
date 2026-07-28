@@ -575,7 +575,7 @@ export const zh = {
       lever: {
         title: "动态杠杆（自瓶颈反推 · 敏感度排序）",
         hint: "杠杆集随⑤瓶颈变——每根杠杆是撬得动本项目瓶颈的可写对象属性，敏感度由 generic_inference 服务端 ±ε 真重算得出。",
-        tornadoTitle: "敏感度 Tornado（∂目标/∂杠杆 · 降序）",
+        tornadoTitle: "敏感度龙卷图（∂目标/∂杠杆 · 降序）",
         sensitivity: "敏感度",
         current: "当前",
         boundHit: (name: string) => `⚠ 已达「${name}」规则闸/物理域上限`,

@@ -37,6 +37,19 @@ interface GenericInferenceOut {
 const leverKey = (l: { objectType: string; objectId: string; prop: string }): string => `${l.objectType}.${l.objectId}.${l.prop}`;
 const isOutsource = (prop: string): boolean => /outsource/i.test(prop);
 
+/** 杠杆键中文化（后端未随 `factor` 下发中文名时兜底·把 `Material.leadTime` 类英文键译为中文·未收录 prop 保留原词不臆造）。 */
+const LEVER_OBJTYPE_ZH: Record<string, string> = { Material: "物料", Process: "工序", Base: "基地", Line: "产线", Order: "订单", Model: "型号", DemandSegment: "需求细分" };
+const LEVER_PROP_ZH: Record<string, string> = {
+  leadTime: "到货周期", onHand: "现货库存", yield_baseline: "良率基线", attendance: "出勤率", shifts: "班次数",
+  oeeIndex: "OEE 指数", weeklyCap: "周产能", utilization: "利用率", util: "利用率", outsourceRatio: "外协比例",
+  changeoverMin: "换型时长", headcount: "人数", capacityDaily: "日产能", formationChannels: "化成通道",
+};
+/** 显示名：优先后端 `factor`（已中文）→ 否则「对象类型·属性」中文兜底。 */
+function leverLabel(l: { objectType: string; prop: string; factor?: string }): string {
+  if (l.factor) return l.factor;
+  return `${LEVER_OBJTYPE_ZH[l.objectType] ?? l.objectType}·${LEVER_PROP_ZH[l.prop] ?? l.prop}`;
+}
+
 /** 边界自规则闸（R14·非内联）：外协类杠杆上限读 C08 阈值（从规则表达式解析 ratio），其余取物理域 [0,1] 或值域兜底。 */
 function leverBound(l: DiscoveredLever, c08Ratio: number): { min: number; max: number; step: number; pct: boolean; gated: boolean } {
   if (l.bound && Number.isFinite(l.bound.min) && Number.isFinite(l.bound.max) && !isOutsource(l.prop)) {
@@ -228,7 +241,7 @@ export function DynamicLeverPanel({
             <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.tornadoTitle}</div>
             {levers.map((l) => (
               <div key={leverKey(l)} data-testid={`tornado-bar-${l.prop}`} style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0" }}>
-                <span style={{ width: 128, fontSize: 11 }} className="zh">{l.factor ?? `${l.objectType}.${l.prop}`}</span>
+                <span style={{ width: 128, fontSize: 11 }} className="zh">{leverLabel(l)}</span>
                 <span className={styles.tightBar} style={{ flex: 1 }}>
                   <i style={{ width: `${Math.min(100, (Math.abs(l.sensitivity) / maxSens) * 100)}%`, background: "var(--c-capacity)" }} />
                 </span>
@@ -245,7 +258,7 @@ export function DynamicLeverPanel({
             return (
               <div className={styles.sliderRow} key={leverKey(l)}>
                 <span className="zh">
-                  {l.factor ?? `${l.objectType}.${l.prop}`}
+                  {leverLabel(l)}
                   <span style={{ color: "var(--muted2)", fontSize: 10 }}> · {zh.sim.proj.lever.current} {fmt(l.currentValue, 3)}{b.pct ? "（比例）" : ""}</span>
                 </span>
                 <input
@@ -254,7 +267,7 @@ export function DynamicLeverPanel({
                   max={b.max}
                   step={b.step}
                   value={v}
-                  aria-label={l.factor ?? `${l.objectType}.${l.prop}`}
+                  aria-label={leverLabel(l)}
                   data-testid={`lever-slider-${l.prop}`}
                   data-object-id={l.objectId}
                   data-object-type={l.objectType}
