@@ -1345,10 +1345,7 @@
         "packages/contracts/src/opt-template.ts",
         "packages/contracts/src/qos.ts"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/src/router/opt-whatif-route.ts",
-        "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-order-project-sim-1to1.md": {
       "hasOntologyRef": true,
