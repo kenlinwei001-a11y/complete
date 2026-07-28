@@ -1411,7 +1411,7 @@ export class SyntheticService {
         // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
         // 从 PlanKpi/RootCauseChain/活数据算出，前端零写死 R14；R13 求解器溯源）。
         {
-          key: "rootcause", type: "dag", title: "规划决策推演 · 根因归因 DAG", span: 2, featureKey: "view.dash.widget.rootcause",
+          key: "rootcause", type: "dag", title: "规划决策推演 · 未达成指标根因下钻", span: 2, featureKey: "view.dash.widget.rootcause",
           query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
           provenance: { toolName: "invoke_solver", outputPath: "$.dag", label: "plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）" },
         },

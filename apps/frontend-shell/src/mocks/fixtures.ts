@@ -279,7 +279,7 @@ const DASH_LAYOUT = {
       provenance: { toolName: "invoke_solver", outputPath: "$.metrics", snapshotVersion: "ov-12" },
     },
     {
-      key: "rootcause", type: "dag", title: "规划决策推演 · 根因归因 DAG", span: 2,
+      key: "rootcause", type: "dag", title: "规划决策推演 · 未达成指标根因下钻", span: 2,
       query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
       provenance: { toolName: "invoke_solver", outputPath: "$.dag", snapshotVersion: "ov-12" },
     },
