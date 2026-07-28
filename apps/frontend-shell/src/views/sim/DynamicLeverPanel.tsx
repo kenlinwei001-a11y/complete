@@ -37,17 +37,10 @@ interface GenericInferenceOut {
 const leverKey = (l: { objectType: string; objectId: string; prop: string }): string => `${l.objectType}.${l.objectId}.${l.prop}`;
 const isOutsource = (prop: string): boolean => /outsource/i.test(prop);
 
-/** 杠杆键中文化（后端未随 `factor` 下发中文名时兜底·把 `Material.leadTime` 类英文键译为中文·未收录 prop 保留原词不臆造）。 */
-const LEVER_OBJTYPE_ZH: Record<string, string> = { Material: "物料", Process: "工序", Base: "基地", Line: "产线", Order: "订单", Model: "型号", DemandSegment: "需求细分" };
-const LEVER_PROP_ZH: Record<string, string> = {
-  leadTime: "到货周期", onHand: "现货库存", yield_baseline: "良率基线", attendance: "出勤率", shifts: "班次数",
-  oeeIndex: "OEE 指数", weeklyCap: "周产能", utilization: "利用率", util: "利用率", outsourceRatio: "外协比例",
-  changeoverMin: "换型时长", headcount: "人数", capacityDaily: "日产能", formationChannels: "化成通道",
-};
-/** 显示名：优先后端 `factor`（已中文）→ 否则「对象类型·属性」中文兜底。 */
+/** 显示名：杠杆中文名的**单一真值在后端**（`discoverLevers` 下发 `factor`·datacore `LEVER_PROP_LABELS`）——
+ *  前端只兜底：缺 `factor` 时回退「对象类型.属性」原键（露出后端单源缺项以便补·**不在视图内联业务常数标签**·R14 去电池锁死门守）。 */
 function leverLabel(l: { objectType: string; prop: string; factor?: string }): string {
-  if (l.factor) return l.factor;
-  return `${LEVER_OBJTYPE_ZH[l.objectType] ?? l.objectType}·${LEVER_PROP_ZH[l.prop] ?? l.prop}`;
+  return l.factor ?? `${l.objectType}.${l.prop}`;
 }
 
 /** 边界自规则闸（R14·非内联）：外协类杠杆上限读 C08 阈值（从规则表达式解析 ratio），其余取物理域 [0,1] 或值域兜底。 */

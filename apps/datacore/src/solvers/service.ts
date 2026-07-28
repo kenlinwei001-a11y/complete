@@ -307,6 +307,28 @@ const LEVER_FACTOR_PROPS: Record<string, string[]> = {
 };
 
 /**
+ * WO-LEVER-FACTOR-I18N · 杠杆属性 → 中文显示名**单一真值**（治本单源：`discoverLevers` 下发 `factor` 中文名·
+ * 前端只兜底·灭"前后端各存一份标签"漂移·R14 非内联）。键 = `对象类型.属性`（与 LEVER_FACTOR_PROPS 值域对齐·
+ * 缺项 → 下游诚实回退英文键·不臆造）。这是"属性口径中文名"的后端正源；如需经 type-semantics API 查询另附投影（follow-up）。
+ */
+const LEVER_PROP_LABELS: Record<string, string> = {
+  "Equipment.oee_current": "设备·OEE", // debattery-allow
+  "Line.utilization": "产线·利用率", // debattery-allow
+  "Process.yield_baseline": "工序·良率基线", // debattery-allow
+  "Process.attendance": "工序·出勤率", // debattery-allow
+  "Process.shifts": "工序·班次数", // debattery-allow
+  "Process.shiftHours": "工序·班次工时", // debattery-allow
+  "MaterialBalance.coverage": "物料齐套·覆盖率", // debattery-allow
+  "Material.onHand": "物料·现货库存", // debattery-allow
+  "Material.leadTime": "物料·到货周期", // debattery-allow
+  "Order.outsourceRatio": "订单·外协比例", // debattery-allow
+  "ChangeoverMatrix.changeoverMin": "换型·时长", // debattery-allow
+  "Shipment.etaDay": "在途·到货天", // debattery-allow
+};
+/** 杠杆中文显示名（单一真值·缺则 undefined → 下游诚实兜底·不臆造）。 */
+const leverPropLabel = (typeKey: string, prop: string): string | undefined => LEVER_PROP_LABELS[`${typeKey}.${prop}`];
+
+/**
  * S1 real solver algorithms. All numeric constants come from the per-tenant
  * solver_params storage (seeded by the scenario pack); the battery defaults are
  * the fallback when a tenant has no record yet. Deterministic: same input +
@@ -662,6 +684,7 @@ export class SolverService {
         objectType: leaf.typeKey,
         objectId: best.objectId,
         prop: leaf.prop,
+        factor: leverPropLabel(leaf.typeKey, leaf.prop), // WO-LEVER-FACTOR-I18N：中文显示名单源下发（前端只兜底·缺则 undefined 诚实回退）
         currentValue: best.currentValue,
         sensitivity: best.sensitivity,
         consumers: leaf.consumers,
@@ -767,6 +790,7 @@ export class SolverService {
         objectType: b.objectType,
         objectId: best.objectId,
         prop: b.prop,
+        factor: leverPropLabel(b.objectType, b.prop) ?? b.factorName, // WO-LEVER-FACTOR-I18N：优先属性中文名·退 factorName（因子组名·均中文·前端不再回退英文）
         factorName: b.factorName,
         mark: b.mark,
         grain: b.grain,
