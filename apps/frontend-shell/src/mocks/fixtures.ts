@@ -1048,7 +1048,7 @@ export const MCP_CONFIGS: McpServerConfig[] = [
 const sceneHistory = (scene: string) => ({ preloadedHistory: LIVED_IN_SCENE_HISTORY[scene] ?? [] });
 
 export const SCENES: SceneEntryConfig[] = [
-  { id: "scn-dash", tenantId: TENANT_ID, viewKey: "dash", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问问经营数据，如：本月计划达成率怎么样？", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"] }, ...sceneHistory("dash") },
+  { id: "scn-dash", tenantId: TENANT_ID, viewKey: "dash", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问问经营数据，如：2026-07 常州基地 4680-NCM 计划达成率怎么样？", suggestedQuestions: ["常州基地 4680-NCM 未来六周加 20% 能不能接？", "2026-07 常州基地 4680-NCM 计划达成率怎么样？"] }, ...sceneHistory("dash") },
   { id: "scn-risk", tenantId: TENANT_ID, viewKey: "risk", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中基地提问，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"] }, ...sceneHistory("risk") },
   { id: "scn-order", tenantId: TENANT_ID, viewKey: "order", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] } },
   { id: "scn-graph", tenantId: TENANT_ID, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt-explore", uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: [] }, ...sceneHistory("graph") },

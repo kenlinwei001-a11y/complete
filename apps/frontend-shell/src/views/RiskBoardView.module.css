@@ -205,16 +205,19 @@
 .rkTl {
   position: relative;
   padding: 6px 0 2px;
+  /* WO-TL-OVERFLOW：90 天全景横向不溢出面板——超宽时本容器内滚动（页面本体不横滚·守响应式）。 */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 /* 日期刻度行：margin-left 178 = rk-flab 168 + rk-frow gap 10（严格对齐圆点起列）。 */
 .rkTicks {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   margin: 0 0 4px 178px;
 }
 .rkTick {
   flex: 1;
-  min-width: 8px;
+  min-width: 4px;
   max-width: 18px;
   font-size: 8px;
   color: var(--muted2);
@@ -247,7 +250,7 @@
 }
 .rkDots {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex-wrap: nowrap;
   flex: 1;
 }
@@ -257,7 +260,7 @@
   border-radius: 50%;
   cursor: pointer;
   flex: 1;
-  min-width: 8px;
+  min-width: 4px;
   max-width: 18px;
   transition: transform 0.1s;
   border: none;

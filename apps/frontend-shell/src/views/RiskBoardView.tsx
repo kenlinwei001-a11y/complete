@@ -619,14 +619,16 @@ function RiskDetailPanel({
             onDay={onDay}
             affectedByDay={affectedByDay}
           />
-          {/* 其余因素：仅当前值（无逐日源）→ 灰点 + 当前值标注（不伪造逐日·G-DM-1）。 */}
+          {/* 其余因素：无逐日 series → 用当前值确定性上色（持平线·真当前值·不伪造逐日变化·G-DM-1）。
+              物流时长 92(≥阈) 以红持平呈现 → 一眼可辨其亦在瓶颈区，而非灰藏当"缺数据"（治 #1 灰藏红）。
+              真逐日梯度由 R16 数据自愈闭环后续接入（per-factor tensionSeries）→ 届时此持平线升为真序列。 */}
           {others.map((o) => (
             <FactorRow
               key={o.factor}
               label={o.factor}
-              sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 无逐日实测源`}
+              sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 持平示意（无逐日源）`}
               color={tierColor(o.value, threshold)}
-              dots={card.series.map(() => ({ color: "rgba(138,148,166,.28)", value: null }))}
+              dots={card.series.map(() => ({ color: o.value != null ? heatColor(o.value, threshold) : "rgba(138,148,166,.28)", value: o.value }))}
             />
           ))}
         </div>

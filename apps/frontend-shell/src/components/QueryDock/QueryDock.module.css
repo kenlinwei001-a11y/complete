@@ -9,7 +9,9 @@
 }
 .bar input {
   flex: 1;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.92), rgba(16, 21, 28, 0.94));
+  /* WO-DOCK-THEME：主题感知面（原焊死深色渐变 → 跟随 --bg2·浅色白/暗色抬升）。 */
+  background: var(--bg2);
+  color: var(--txt);
   border: 1px solid var(--line2);
   border-radius: 10px;
   padding: 10px 14px;
@@ -23,7 +25,9 @@
   bottom: 0;
   width: 720px;
   max-width: 90vw;
-  background: linear-gradient(180deg, rgba(22, 28, 36, 0.99), rgba(13, 17, 23, 0.99));
+  /* WO-DOCK-THEME：对话坞抽屉跟随系统面色（原焊死深色 → --panel·浅色白卡/暗色抬升卡·与全站一致）。 */
+  background: var(--panel);
+  color: var(--txt);
   border-left: 1px solid var(--line2);
   box-shadow: -20px 0 60px rgba(0, 0, 0, 0.45);
   display: flex;
