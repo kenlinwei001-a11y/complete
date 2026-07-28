@@ -307,26 +307,36 @@ const LEVER_FACTOR_PROPS: Record<string, string[]> = {
 };
 
 /**
- * WO-LEVER-FACTOR-I18N · 杠杆属性 → 中文显示名**单一真值**（治本单源：`discoverLevers` 下发 `factor` 中文名·
- * 前端只兜底·灭"前后端各存一份标签"漂移·R14 非内联）。键 = `对象类型.属性`（与 LEVER_FACTOR_PROPS 值域对齐·
- * 缺项 → 下游诚实回退英文键·不臆造）。这是"属性口径中文名"的后端正源；如需经 type-semantics API 查询另附投影（follow-up）。
+ * WO-LEVER-FACTOR-I18N + WO-LEVER-UNIT · 杠杆属性 → {中文显示名·单位·值类}**单一真值**（治本单源：
+ * `discoverLevers` 下发 `factor`/`unit`/`valueKind`·前端只格式化不内联·灭"前后端各存一份标签/单位"漂移·R14 非内联）。
+ * 键 = `对象类型.属性`（与 LEVER_FACTOR_PROPS 值域对齐·缺项 → 下游诚实兜底不臆造）。
+ * `kind` 决定前端格式化：ratio=比率（0–1 存储自动×100 显示 %）；days/hours/count/qty=整数+单位后缀。
+ * 单位真值随电池合成口径核定（utilization/oee/yield/attendance/coverage/outsourceRatio 存 0–1 → %；
+ * leadTime/etaDay 存天；shifts 存班；shiftHours 存小时；changeoverMin 存分钟；onHand 整数库存·单位随物料不臆造）。
  */
-const LEVER_PROP_LABELS: Record<string, string> = {
-  "Equipment.oee_current": "设备·OEE", // debattery-allow
-  "Line.utilization": "产线·利用率", // debattery-allow
-  "Process.yield_baseline": "工序·良率基线", // debattery-allow
-  "Process.attendance": "工序·出勤率", // debattery-allow
-  "Process.shifts": "工序·班次数", // debattery-allow
-  "Process.shiftHours": "工序·班次工时", // debattery-allow
-  "MaterialBalance.coverage": "物料齐套·覆盖率", // debattery-allow
-  "Material.onHand": "物料·现货库存", // debattery-allow
-  "Material.leadTime": "物料·到货周期", // debattery-allow
-  "Order.outsourceRatio": "订单·外协比例", // debattery-allow
-  "ChangeoverMatrix.changeoverMin": "换型·时长", // debattery-allow
-  "Shipment.etaDay": "在途·到货天", // debattery-allow
+type LeverValueKind = "ratio" | "days" | "count" | "hours" | "minutes" | "qty";
+const LEVER_PROP_META: Record<string, { label: string; unit: string; kind: LeverValueKind }> = {
+  "Equipment.oee_current": { label: "设备·OEE", unit: "%", kind: "ratio" }, // debattery-allow
+  "Line.utilization": { label: "产线·利用率", unit: "%", kind: "ratio" }, // debattery-allow
+  "Process.yield_baseline": { label: "工序·良率基线", unit: "%", kind: "ratio" }, // debattery-allow
+  "Process.attendance": { label: "工序·出勤率", unit: "%", kind: "ratio" }, // debattery-allow
+  "Process.shifts": { label: "工序·班次数", unit: "班", kind: "count" }, // debattery-allow
+  "Process.shiftHours": { label: "工序·班次工时", unit: "小时", kind: "hours" }, // debattery-allow
+  "MaterialBalance.coverage": { label: "物料齐套·覆盖率", unit: "%", kind: "ratio" }, // debattery-allow
+  "Material.onHand": { label: "物料·现货库存", unit: "", kind: "qty" }, // debattery-allow
+  "Material.leadTime": { label: "物料·到货周期", unit: "天", kind: "days" }, // debattery-allow
+  "Order.outsourceRatio": { label: "订单·外协比例", unit: "%", kind: "ratio" }, // debattery-allow
+  "ChangeoverMatrix.changeoverMin": { label: "换型·时长", unit: "分钟", kind: "minutes" }, // debattery-allow
+  "Shipment.etaDay": { label: "在途·到货天", unit: "天", kind: "days" }, // debattery-allow
 };
+const leverPropMeta = (typeKey: string, prop: string) => LEVER_PROP_META[`${typeKey}.${prop}`];
 /** 杠杆中文显示名（单一真值·缺则 undefined → 下游诚实兜底·不臆造）。 */
-const leverPropLabel = (typeKey: string, prop: string): string | undefined => LEVER_PROP_LABELS[`${typeKey}.${prop}`];
+const leverPropLabel = (typeKey: string, prop: string): string | undefined => leverPropMeta(typeKey, prop)?.label;
+/** 杠杆值单位 + 值类下发字段（单一真值·缺则空对象 → 前端诚实回退旧显示·不臆造单位）。 */
+const leverUnitFields = (typeKey: string, prop: string): { unit?: string; valueKind?: LeverValueKind } => {
+  const m = leverPropMeta(typeKey, prop);
+  return m ? { unit: m.unit, valueKind: m.kind } : {};
+};
 
 /**
  * S1 real solver algorithms. All numeric constants come from the per-tenant
@@ -685,6 +695,7 @@ export class SolverService {
         objectId: best.objectId,
         prop: leaf.prop,
         factor: leverPropLabel(leaf.typeKey, leaf.prop), // WO-LEVER-FACTOR-I18N：中文显示名单源下发（前端只兜底·缺则 undefined 诚实回退）
+        ...leverUnitFields(leaf.typeKey, leaf.prop), // WO-LEVER-UNIT：值单位 + 值类单源下发（前端按 kind 格式化·比率→%/天/班…）
         currentValue: best.currentValue,
         sensitivity: best.sensitivity,
         consumers: leaf.consumers,
@@ -791,6 +802,7 @@ export class SolverService {
         objectId: best.objectId,
         prop: b.prop,
         factor: leverPropLabel(b.objectType, b.prop) ?? b.factorName, // WO-LEVER-FACTOR-I18N：优先属性中文名·退 factorName（因子组名·均中文·前端不再回退英文）
+        ...leverUnitFields(b.objectType, b.prop), // WO-LEVER-UNIT：值单位 + 值类单源下发（前端按 kind 格式化）
         factorName: b.factorName,
         mark: b.mark,
         grain: b.grain,

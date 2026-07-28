@@ -58,6 +58,18 @@ function leverBound(l: DiscoveredLever, c08Ratio: number): { min: number; max: n
   return { min: 0, max, step: Math.max(max / 20, 0.1), pct: false, gated: false };
 }
 
+/** WO-LEVER-UNIT · 杠杆值配单位（治本单源·后端 `valueKind`/`unit` 下发·前端只格式化不内联业务单位·R14）：
+ *  ratio=比率（0–1 存储自动×100 显示 %，让"0.9"读作"90%"）；days/count/hours/minutes/qty=整数+单位后缀（如 26天/2班）。
+ *  缺后端元数据（`valueKind` undefined）→ 诚实回退旧显示：pct 边界显 %（外协）、其余 3 位小数（不臆造单位）。 */
+function fmtLeverValue(v: number, valueKind?: string, unit?: string, pct?: boolean): string {
+  if (valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+  if (valueKind) {
+    const n = Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
+    return `${n}${unit ?? ""}`;
+  }
+  return pct ? `${Math.round(v * 100)}%` : fmt(v, 3); // 无后端元数据 → 旧兜底（不臆造单位）
+}
+
 function deltaDir(before: unknown, after: unknown): { arrow: string; diff: string; color: string } | null {
   if (typeof before !== "number" || typeof after !== "number" || !Number.isFinite(before) || !Number.isFinite(after)) return null;
   const d = Math.round((after - before) * 1e6) / 1e6;
@@ -252,7 +264,7 @@ export function DynamicLeverPanel({
               <div className={styles.sliderRow} key={leverKey(l)}>
                 <span className="zh">
                   {leverLabel(l)}
-                  <span style={{ color: "var(--muted2)", fontSize: 10 }}> · {zh.sim.proj.lever.current} {fmt(l.currentValue, 3)}{b.pct ? "（比例）" : ""}</span>
+                  <span style={{ color: "var(--muted2)", fontSize: 10 }}> · {zh.sim.proj.lever.current} {fmtLeverValue(l.currentValue, l.valueKind, l.unit, b.pct)}</span>
                 </span>
                 <input
                   type="range"
@@ -266,7 +278,7 @@ export function DynamicLeverPanel({
                   data-object-type={l.objectType}
                   onChange={(e) => setValues((prev) => ({ ...prev, [leverKey(l)]: parseFloat(e.target.value) }))}
                 />
-                <b className="mono">{b.pct ? `${Math.round(v * 100)}%` : fmt(v, 3)}</b>
+                <b className="mono" data-testid={`lever-value-${l.prop}`}>{fmtLeverValue(v, l.valueKind, l.unit, b.pct)}</b>
                 {hitBound && b.gated && (
                   <span className={styles.noteAmber} data-testid={`lever-bound-${l.prop}`} style={{ marginLeft: 6, fontSize: 10 }}>
                     {zh.sim.proj.lever.ruleGate(`${Math.round(c08Ratio * 100)}%`)}

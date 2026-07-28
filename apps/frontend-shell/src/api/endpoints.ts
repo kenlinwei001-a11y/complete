@@ -191,7 +191,9 @@ export interface DiscoveredLever {
   objectId: string;
   prop: string;
   factor?: string;
+  /** WO-LEVER-UNIT：值单位后缀（%/天/班/小时/分钟…）+ 值类（后端单源下发·前端只格式化）。缺则前端诚实回退旧显示。 */
   unit?: string;
+  valueKind?: string;
   currentValue: number;
   sensitivity: number;
   bound?: { min: number; max: number } | null;

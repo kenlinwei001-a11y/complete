@@ -494,15 +494,16 @@ function mockLeverDiscovery(args: Record<string, unknown>): Record<string, unkno
   const levers: Record<string, unknown>[] = [];
   // 主瓶颈（factors[0]=⑤ mainBn）决定杠杆集类别：物料主瓶颈 → 物料杠杆，其余 → 产能杠杆（杠杆随瓶颈变）。
   const material = /物料|齐套|料/.test(factors[0] ?? "");
+  // WO-LEVER-UNIT：mock 镜像后端单源——比率类杠杆下发 unit:"%"+valueKind:"ratio"（前端 0–1 存储显示为 %·mock/真同口径）。
   if (material) {
-    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "物料齐套·外协", unit: "", currentValue: 0, sensitivity: 1.1, provenance: prov("Order.outsourceRatio") });
-    levers.push({ objectType: "MaterialBalance", objectId: "obj_MaterialBalance_MB-1", prop: "coverage", factor: "物料齐套·长协覆盖", unit: "", currentValue: 0.72, sensitivity: 0.7, provenance: prov("MaterialBalance.coverage") });
+    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "物料齐套·外协", unit: "%", valueKind: "ratio", currentValue: 0, sensitivity: 1.1, provenance: prov("Order.outsourceRatio") });
+    levers.push({ objectType: "MaterialBalance", objectId: "obj_MaterialBalance_MB-1", prop: "coverage", factor: "物料齐套·长协覆盖", unit: "%", valueKind: "ratio", currentValue: 0.72, sensitivity: 0.7, provenance: prov("MaterialBalance.coverage") });
   } else {
     // 产能瓶颈（化成/通道/工序/OEE/利用/良率）：产能杠杆集（含外协杠杆供 C08 边界演示）。
-    levers.push({ objectType: "Equipment", objectId: "obj_Equipment_E1", prop: "oee_current", factor: "设备OEE", unit: "", currentValue: 0.82, sensitivity: 1.8, provenance: prov("Equipment.oee_current") });
-    levers.push({ objectType: "Process", objectId: "obj_Process_P1", prop: "yield_baseline", factor: "良率波动", unit: "", currentValue: 0.9, sensitivity: 1.2, provenance: prov("Process.yield_baseline") });
-    levers.push({ objectType: "Line", objectId: "obj_Line_L1", prop: "utilization", factor: "瓶颈工序·利用率", unit: "", currentValue: 0.75, sensitivity: 0.9, provenance: prov("Line.utilization") });
-    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "外协替代", unit: "", currentValue: 0, sensitivity: 0.6, provenance: prov("Order.outsourceRatio") });
+    levers.push({ objectType: "Equipment", objectId: "obj_Equipment_E1", prop: "oee_current", factor: "设备OEE", unit: "%", valueKind: "ratio", currentValue: 0.82, sensitivity: 1.8, provenance: prov("Equipment.oee_current") });
+    levers.push({ objectType: "Process", objectId: "obj_Process_P1", prop: "yield_baseline", factor: "良率波动", unit: "%", valueKind: "ratio", currentValue: 0.9, sensitivity: 1.2, provenance: prov("Process.yield_baseline") });
+    levers.push({ objectType: "Line", objectId: "obj_Line_L1", prop: "utilization", factor: "瓶颈工序·利用率", unit: "%", valueKind: "ratio", currentValue: 0.75, sensitivity: 0.9, provenance: prov("Line.utilization") });
+    levers.push({ objectType: "Order", objectId: "obj_Order_SO-10001", prop: "outsourceRatio", factor: "外协替代", unit: "%", valueKind: "ratio", currentValue: 0, sensitivity: 0.6, provenance: prov("Order.outsourceRatio") });
   }
   levers.sort((a, b) => Math.abs(Number(b.sensitivity)) - Math.abs(Number(a.sensitivity)));
   return { levers, deltas: [], rows: [], affectedObjects: 0, count: levers.length, rootTypes: [...new Set(levers.map((l) => String(l.objectType)))] };

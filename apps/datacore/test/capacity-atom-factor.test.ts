@@ -25,7 +25,7 @@ async function byProcessModel(t: TestApp, modelId = MODEL): Promise<Bpm[]> {
 async function levers(t: TestApp, args: Record<string, unknown>) {
   const res = await invokeSolver(t, "generic_inference", { mode: "levers", ...args });
   expect(res.statusCode).toBe(200);
-  return (res.json() as { data: { levers: { objectType: string; prop: string; objectId: string; sensitivity: number; factorName: string; factor?: string }[]; count: number } }).data;
+  return (res.json() as { data: { levers: { objectType: string; prop: string; objectId: string; sensitivity: number; factorName: string; factor?: string; unit?: string; valueKind?: string }[]; count: number } }).data;
 }
 
 // ---- 纯函数最小 ctx（corrupt-binding 反证·不经服务·可注入 corrupted bindings） -----------------
@@ -102,9 +102,12 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     const yl = lv.levers.find((l) => l.objectType === "Process" && l.prop === "yield_baseline" && l.objectId === proc.id);
     expect(yl, "discoverLevers 应反推出该工序 Process.yield_baseline").toBeTruthy();
     expect(Math.abs(yl!.sensitivity)).toBeGreaterThan(0);
-    // WO-LEVER-FACTOR-I18N SEAM：中文显示名**单一真值**（LEVER_PROP_LABELS）下发 factor·前端不再回退英文键
-    // （改 LEVER_PROP_LABELS 即改此断言·证单源真接线·非前端各存一份）。
+    // WO-LEVER-FACTOR-I18N SEAM：中文显示名**单一真值**（LEVER_PROP_META）下发 factor·前端不再回退英文键
+    // （改 LEVER_PROP_META 即改此断言·证单源真接线·非前端各存一份）。
     expect(yl!.factor).toBe("工序·良率基线");
+    // WO-LEVER-UNIT SEAM：值单位 + 值类同源下发（yield_baseline 存 0–1 → unit="%"·valueKind="ratio"·前端据此显 90% 非 0.900）。
+    expect(yl!.unit).toBe("%");
+    expect(yl!.valueKind).toBe("ratio");
   });
 
   it("SEAM 红咬②：改一个 Material.onHand（层4 ∩ 物料齐套）→ byProcessModel Σp50 真变", async () => {

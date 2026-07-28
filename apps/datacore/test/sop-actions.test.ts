@@ -230,6 +230,39 @@ describe("增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action", ()
       expect(keys).toContain(k);
     }
   });
+
+  // WO-LEVER-ADOPT-DRIFT · SEAM（数据半 schema × 引擎半前端 payload）：前端 DynamicLeverPanel.adoptCombo 迁到
+  // 动态杠杆组合后发 {modelId, levers, snapshot}（不再发 whatIf）→ 后端 ActionType schema 必接 levers，否则采纳恒
+  // 报 `payload.whatIf is required` 假阴。红咬：① 前端真实 payload 形状被接受；② 缺 levers（旧 whatIf-only 形状）诚实 400。
+  it("采纳产能保障方案 · 接受前端动态杠杆 payload（levers）·缺 levers 诚实 400（治 whatIf→levers 漂移）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // ① 前端 adoptCombo 的真实 payload 形状（modelId + 杠杆组合 + 推演快照）→ 被接受（草稿建成）。
+    const ok = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/action-drafts",
+      headers: ADMIN,
+      payload: {
+        actionTypeKey: "采纳产能保障方案",
+        payload: {
+          modelId: "4680-NCM",
+          levers: [{ objectType: "Process", objectId: "obj_Process_P1", prop: "yield_baseline", value: 0.95 }],
+          snapshot: { mode: "batch", p50: 100, mainBn: "良率波动" },
+        },
+      },
+    });
+    expect([200, 201]).toContain(ok.statusCode);
+    expect((ok.json() as { draftId?: string; id?: string }).draftId ?? (ok.json() as { id?: string }).id).toBeTruthy();
+    // ② 缺 levers（旧 whatIf-only 形状）→ 诚实 VALIDATION_ERROR「payload.levers is required」（证 required 已从 whatIf 改到 levers）。
+    const bad = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/action-drafts",
+      headers: ADMIN,
+      payload: { actionTypeKey: "采纳产能保障方案", payload: { modelId: "4680-NCM", whatIf: {} } },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: { code: string; message: string } }).error.message).toContain("levers");
+  });
 });
 
 describe("S2 action approval (V9)", () => {

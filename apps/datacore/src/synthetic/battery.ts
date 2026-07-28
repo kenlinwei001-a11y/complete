@@ -2109,14 +2109,17 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
-  // 增量 §7.13：项目推演 what-if「采纳产能保障方案」（payload = 参数组合 + 推演快照）。
+  // 增量 §7.13：项目推演 what-if「采纳产能保障方案」（payload = 动态杠杆组合 + 推演快照）。
+  // WO-LEVER-ADOPT-DRIFT：前端已从「焊死 3 系数 whatIf」迁到「动态杠杆组合 levers[{objectType,objectId,prop,value}]」
+  // （见 DynamicLeverPanel.adoptCombo「替原 whatIf 三系数」）；schema 随之改 required whatIf→levers（否则采纳恒
+  // 报 `payload.whatIf is required` 假阴）。whatIf 保留为可选属性（向后兼容旧草稿·不再必填）。
   {
     key: "采纳产能保障方案",
     name: "采纳产能保障方案",
     paramsSchema: {
       type: "object",
-      required: ["modelId", "whatIf"],
-      properties: { modelId: { type: "string" }, whatIf: { type: "object" }, snapshot: { type: "object" } },
+      required: ["modelId", "levers"],
+      properties: { modelId: { type: "string" }, levers: { type: "array" }, whatIf: { type: "object" }, snapshot: { type: "object" } },
     },
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
