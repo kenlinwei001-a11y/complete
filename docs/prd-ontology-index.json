@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-27",
+  "generatedAt": "2026-07-28",
   "ontology": {
     "invariants": [
       "R1",
@@ -729,6 +729,19 @@
         "G-5",
         "G-6",
         "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-data-gap-self-healing-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-9"
       ],
       "artifacts": [],
       "brokenArtifacts": []
@@ -1831,6 +1844,7 @@
     "G-9": [
       "PRD-agent-execution-governance-loop-control.md",
       "PRD-agent-navigation-slice-latency.md",
+      "PRD-data-gap-self-healing-loop.md",
       "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
     ],
