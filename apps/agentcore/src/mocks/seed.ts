@@ -182,6 +182,10 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
               modelId: "{{slots.model.objectId}}",
               demandDelta: "{{slots.demandDelta}}",
               weeks: "{{slots.weeks}}",
+              // WO-BASE-ID-FIDELITY 症①：base 透传（专门映射·whole-slot·同 ceo_bottleneck baseIds 范式）——有基地→
+              // capacity_forecast 只算该基地该型号产能（scope:BASE）；无基地→槽 null→整值 null→solver scope:ALL 全网合计诚实标。
+              // 此前 slotNames 无 base → solverArgs 丢 base → capacity_forecast 恒全网 → 「常州基地 4680 加20%」与「4680 加20%」答案相同。
+              base: "{{slots.base}}",
             },
           },
         },
@@ -371,6 +375,10 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
         { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "型号（Model 对象引用）" },
         { name: "demandDelta", type: "number", required: true, description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
+        // WO-BASE-ID-FIDELITY 症①：base 作用域槽（问句「XX基地/常州基地」→ baseId·sim-planner parseCapacityFeasibilityVariant 抽·
+        // 或场景 presetSlots/选中基地填）。可选——缺省 null → capacity_forecast 全网合计（scope:ALL 诚实标·非冒充某基地）。
+        // 认 obj_base_<id>/中文名/baseId（datacore resolveBaseId 单一出处归一）。补此槽后「常州基地 4680 加20%」≠「4680 加20%（全网）」。
+        { name: "base", type: "string", required: false, description: "基地 ID 或中文名（限定单基地产能作用域·缺省全网合计）" },
       ],
       planId: `plan_capacity_feasibility_v1${sfx}`,
       riskLevel: "COMPUTE",

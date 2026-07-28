@@ -66,3 +66,20 @@ sim-planner 走 **compose 路径**（`compileSolverPlan(query, navSlice, slots)`
 - **不变量（新增）R-ARG-FIDELITY**：路由解析出的过滤实体必达求解器或被显式声明/豁免；求解器缺过滤维不得静默返全域/首个（本体 §5 回写）。
 - **断点（新增）G-ARG-DROP-SEAM**：路由解析→计划构建静默丢参 + 求解器全部/首个默认 → 静默错答（本体 §8 回写·Phase 3 门落地即闭）。
 - **门（新增）** `arg-drop-seam:check`（`scripts/check-arg-drop-seam.mjs`·并入 `pnpm gates`·本体 §7 回写）。
+
+## F. base 族续篇（WO-BASE-ID-FIDELITY · 2026-07-28 · 用户实测两症·同根：base 标识没穿到求解器 / 没对齐）
+
+> 同 G-ARG-DROP-SEAM 病类（base 族）：路由/前端解析出 base 但**格式不规范 / 求解器无过滤维** → 静默错答或硬 400。
+> 沿链路走（本体 §3）：`问句/前端「XX基地/obj_base_<id>」→ 解析 base → (compose slots | fillSlots) → solver`。**断点在接缝**：base 键形态不统一（`obj_base_<id>` 图节点 id vs 拼音 baseId vs 中文名）+ 求解器缺 base 过滤维。
+> **③（作废·非本单）**：疑似「gap_attribution base×factor 根因树暂不可用」经 canonical 新构 datacore 亲验 **G-GAP-SCOPE 早已闭**（`{scope:{baseId}}`/`{scope:{baseId,factorId}}` 均返真根因树·noBaseData undefined）——用户所见「暂不可用」= 后端镜像陈旧未 rebuild datacore·非代码 bug。本单**不碰 gap_attribution**（service.ts 逐字节不动）。
+
+**规范化单一出处（收敛·勿散落·可复用）**：`apps/datacore/src/solvers/types.ts` `normalizeBaseRef(ref)`——strip `obj_base_` 前缀 + object ref 取 id + trim；`risk.ts` `resolveBaseId`（唯一严格解析·未知 throw）与 `bottleneckMatrix.resolveRef` 均经它；`capacity.ts` base 过滤复用 `resolveBaseId`。
+
+| # | 症状（用户实测·canonical 复现确认） | 数据/路由半（file:line） | 引擎半（file:line） | 判定 |
+|---|---|---|---|---|
+| ① | **base 静默丢（错答）**：`capacity_feasibility` 槽 `[model,demandDelta,weeks]` 无 base + `parseCapacityFeasibilityVariant` 不抽 base → 「常州基地 4680-NCM 加20%」≡「4680-NCM 加20%（全网）」（capacity_forecast 跑全网多基地·复现 net.p50=base.p50=12.3016） | `mocks/seed.ts` capacity_feasibility 补 `base` 槽（string·非必填）+ plan s2 专门透传 `base:"{{slots.base}}"`；`agent/sim-planner.ts` `parseCapacityFeasibilityVariant` 抽「XX基地」→ baseId（BASE_REGISTRY 单源）+ `feasibilityComposeSlots` 带 base | `solvers/capacity.ts` `capacityForecast` 可选 base 过滤（给 base→收窄该基地 cert·`scope:"BASE"`；无→`scope:"ALL"` 全网合计诚实标·不冒充）·`computeByProcessModel`/`computeBaselineDemand` 同尺度收窄 | **✅ CONFIRMED→已修**（复现后 base=常州 p50=5.5176≠全网12.3016） |
+| ② | **base 格式不规范（硬 400）**：`affected_orders`→`resolveBaseId` 不识 `obj_base_changzhou`（`synthetic/service.ts:820 toId:obj_base_${baseId}` 产的图节点 id）→ `400 unknown base: obj_base_changzhou`；`changzhou`/`常州` 本已 200（复现确认·修很窄=多认 `obj_base_` 前缀） | —（前端/图发 `obj_base_<id>` 形态·无需改数据半） | `solvers/risk.ts` `resolveBaseId` 经 `normalizeBaseRef` strip `obj_base_` 前缀 → 认 `obj_base_<id>`/`<id>`/中文名/object ref；未知仍诚实 throw | **✅ CONFIRMED→已修**（obj_base_changzhou 200·三形态同订单集·未知仍 400） |
+
+**门扩（`scripts/check-arg-drop-seam.mjs`·门有牙亲验）**：新增 `PROJECT_BASE_EMITS`（capacity_feasibility/affected_orders/risk_root_cause/adopt_mitigation）断言「吃 base 维 intent 的 base ∈ slotNames ∩ plan 任一步 {{slots.base}} 透传」（声明⊕透传双半齐）+ 两引擎哨兵（capacity `scope:"BASE"|"ALL"` 诚实标 · risk.resolveBaseId 经 normalizeBaseRef 归一）。**门牙测**：删 capacity_feasibility base 槽 → `pnpm --filter agentcore build` 后门变红（读 dist 编译产物·已亲验红/绿）。
+
+**SEAM 测（接缝驱动·非各半绿）**：`apps/datacore/test/base-id-fidelity-seam.test.ts`（症② obj_base_×solver 规范化三形态同订单集/未知仍 400 + 症① 带基地 vs 全网真区分 scope:BASE/ALL/未认证 throw·2 测）；`apps/agentcore/test/base-id-fidelity-seam.test.ts`（parse→compose→compileSolverPlan 带 base + seed 意图/计划声明⊕透传 + compose 直路端到端 capacity_forecast args.base='changzhou'·6 测）。

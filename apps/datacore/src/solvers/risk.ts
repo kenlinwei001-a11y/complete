@@ -1,7 +1,7 @@
 import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { validationError } from "../errors.js";
-import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -100,8 +100,10 @@ export function bottleneckMatrix(
   // 否则 liveTightness 按 `e.props.baseId===baseId` 过滤真 Equipment/Line/Process 恒空 → dataMode 恒 MOCK（LIVE 死接线·
   // 改真 OEE 格子不变色）。未知 ref 保留原值（不抛·不回归·liveTightness 自 MOCK 兜底），口径同 riskTimeline 的 resolveBaseId。
   const resolveRef = (ref: string): string => {
-    const b = c.bases.find((x) => x.props.baseId === ref || x.props.name === ref);
-    return b ? str(b.props.baseId) : ref;
+    // WO-BASE-ID-FIDELITY：归一到单一出处（认 obj_base_<id> / <id> / 中文名）——前端可能传 card.baseId=`obj_base_xinyang`。
+    const key = normalizeBaseRef(ref);
+    const b = c.bases.find((x) => x.props.baseId === key || x.props.name === key);
+    return b ? str(b.props.baseId) : ref; // 未知 ref 保留原值（不抛·liveTightness 自 MOCK 兜底）
   };
   const baseIds = (args.baseIds ?? c.bases.map((b) => str(b.props.baseId))).map(resolveRef);
   const rows = baseIds
@@ -257,9 +259,15 @@ export interface RiskTimelineArgs {
   mitigation?: { base?: string; factor?: string; planKey: string };
 }
 
-function resolveBaseId(c: SolverContext, ref: string): string {
-  const b = c.bases.find((x) => x.props.baseId === ref || x.props.name === ref);
-  if (!b) throw validationError(`unknown base: ${ref}`);
+/**
+ * base 引用 → 规范 baseId（**唯一严格解析出处**·WO-BASE-ID-FIDELITY 症②）。
+ * 经 normalizeBaseRef 归一（认 `obj_base_<id>`〔synthetic 图节点 id〕/ `<id>` / 中文名 / object ref），
+ * 再按 Base.baseId|name 匹配；未知基地 throw（错误信封·诚实报错·不静默）。capacity.ts 复用本函数（勿另起规范化）。
+ */
+export function resolveBaseId(c: SolverContext, ref: unknown): string {
+  const key = normalizeBaseRef(ref);
+  const b = c.bases.find((x) => x.props.baseId === key || x.props.name === key);
+  if (!b) throw validationError(`unknown base: ${typeof ref === "string" ? ref : key || String(ref)}`);
   return str(b.props.baseId);
 }
 
@@ -598,7 +606,7 @@ export function affectedOrders(
   orders?: { id: string; props: Record<string, unknown> }[],
 ): { baseId: string; affected: Record<string, unknown>[]; total: number; count: number; columns: string[]; rows: unknown[][]; fallback: boolean; problems: OrderProblemGroupOut[] } {
   const p = c.params;
-  const baseId = resolveBaseId(c, str(args.baseId));
+  const baseId = resolveBaseId(c, args.baseId); // 归一（认 obj_base_<id>/中文名/baseId·症②）·未知 throw
   const pool = (orders ?? c.orders).filter((o) => {
     const bases = Array.isArray(o.props.bases) ? (o.props.bases as string[]) : [];
     return bases.includes(baseId);
@@ -697,7 +705,7 @@ export function affectedOrdersAggregate(
 } {
   const threshold = c.params.risk.threshold;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
-  const filterBase = args.base ? resolveBaseId(c, str(args.base)) : null;
+  const filterBase = args.base ? resolveBaseId(c, args.base) : null;
   const baseIds = c.bases
     .map((b) => str(b.props.baseId))
     .filter((id) => (filterBase ? id === filterBase : true));

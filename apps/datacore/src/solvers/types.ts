@@ -263,6 +263,32 @@ export function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+/**
+ * WO-BASE-ID-FIDELITY · base 标识符规范化**单一出处**（跨 solver 复用·勿散落）。
+ * 认多形态并归一到「裸 base 键」：
+ *   - `obj_base_<id>`（synthetic 图节点 id·synthetic/service.ts toId=`obj_base_${baseId}`）→ strip 前缀 → `<id>`
+ *   - `<id>`（baseId 拼音 changzhou）/ 中文名（常州）→ 原样（由调用方各自按 baseId/name 匹配）
+ *   - object ref（{objectId} / {baseId} / {id}）→ 取其 id 字段再归一
+ * 只做**字符串归一**（strip 前缀 + 对象取 id + trim），不做数据查找——各调用方（risk.resolveBaseId /
+ * bottleneckMatrix.resolveRef / service.gapAttribution.normalizeBaseId / capacity 基地过滤）按自身数据集匹配。
+ * R6 纯函数·无随机/时钟/副作用。空/无效 → ""。
+ */
+export function normalizeBaseRef(ref: unknown): string {
+  let s: string;
+  if (ref !== null && typeof ref === "object") {
+    const o = ref as Record<string, unknown>;
+    s =
+      typeof o.objectId === "string" ? o.objectId :
+      typeof o.baseId === "string" ? o.baseId :
+      typeof o.id === "string" ? o.id : "";
+  } else {
+    s = typeof ref === "string" ? ref : ref == null ? "" : String(ref);
+  }
+  s = s.trim();
+  if (s.startsWith("obj_base_")) s = s.slice("obj_base_".length);
+  return s;
+}
+
 export function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
