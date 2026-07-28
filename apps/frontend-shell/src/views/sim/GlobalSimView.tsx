@@ -232,6 +232,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const [levers, setLevers] = useState<LeverState>({ frozenCapacityMode: "reserve", method: "weighted" });
   // WO-GSLIVE-1-COCKPIT · 活②：自由杠杆（portfolio 契约 levers[]·key/target/delta·任一变动 → args.levers 变 → 联合重解）。
   const [freeLevers, setFreeLevers] = useState<FreeLever[]>([]);
+  // WO-L3-TRANSFER · L3 耦合联动推演：转拨量滑杆（→ committedBatches 预占目标基地净产能·L3 mapCoupledChainToPortfolio 同 arg）。
+  // 拖转拨量 → 目标基地净产能↓ → 该基地他单被挤/延后（交期）+ 联合解残差↑（需外协）·守恒内真传导实时联动（非前端假联动）。
+  const [transferBase, setTransferBase] = useState<string>("");
+  const [transferWan, setTransferWan] = useState<number>(0); // 转拨量（万套·0 = 不转拨·基线）
   const [nonce, setNonce] = useState(0);
   // 本页推演会话锚（NL 框 sessionId 上下文·稳定跨渲染）。
   const [sessionId] = useState(() => `gslive-${Math.random().toString(36).slice(2, 10)}`);
@@ -260,6 +264,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     // WO-GSLIVE-1-COCKPIT · 活②：freeLevers 非空 → 携真 levers[{key,target,delta}]（引擎已消费）→ leverDeltas before/after。
     // WO-W5 · businessTypes 非空 → 后端只对勾选类订单+预测联合推演·产能作用域收窄 → 矩阵/KPI 真变（真重算·非前端假过滤）。
     // ③④⑤ · splitOrderIds/finalDueDays/方法旋钮 → 后端真重解（分批/交期/方法·交付率/可达交期/objectiveValues 真变）。
+    // WO-L3-TRANSFER · transferWan>0 且选了目标基地 → 携 committedBatches[{base,qty}]（预占目标基地净产能·L3 同 arg）→
+    //   联合解在守恒内真传导（交期/被挤/残差随转拨真变）·转拨=0 即基线（不携·零回归）。
     () => (orderList.length ? {
       orderIds, frozenOrderIds, scenarios: scenSet, objective: primary,
       frozenCapacityMode: levers.frozenCapacityMode, ...methodArg,
@@ -267,9 +273,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       ...(btArr.length ? { businessTypes: btArr } : {}),
       ...(splitArr.length ? { splitOrderIds: splitArr } : {}),
       ...(Object.keys(finalDueDays).length ? { finalDueDays } : {}),
+      ...(transferWan > 0 && transferBase ? { committedBatches: [{ base: transferBase, qty: Math.round(transferWan * 10000) }] } : {}),
       twoStage: true, nonce,
     } : null),
-    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, nonce],
+    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, transferBase, transferWan, nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
   const d = res.data;
@@ -333,6 +340,17 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const primaryScen = d?.scenarios.find((s) => s.key === primary) ?? d?.scenarios[0];
   const ontimeRate = primaryScen && primaryScen.servedCount + primaryScen.displacedCount > 0
     ? (primaryScen.objectiveValues.ontime / (primaryScen.servedCount + primaryScen.displacedCount)) * 100 : 0;
+
+  // WO-L3-TRANSFER · 交期/外协联动读数（联合解真产物·随转拨 committedBatches 在同一次守恒解内实时变）。
+  //   需外协残差 = 被挤单量（联合解算不下的量·真残差）；延后单 = 分配里未按期的单（交期传导）。
+  const displacedQty = useMemo(() => (d?.displaced ?? []).reduce((s, x) => s + (Number(x.qty) || 0), 0), [d]);
+  const delayedAllocCount = useMemo(() => (d?.allocation ?? []).filter((a) => !a.onTime).length, [d]);
+  // 转拨目标基地候选（结果 capacityLedger 基地 id·post-solve；基线前 BASE_REGISTRY 兜底·名从单一来源映射）。
+  const transferBaseOptions = useMemo(() => {
+    const ids = matrix?.bases?.length ? matrix.bases : BASE_REGISTRY.slice(0, 8).map((b) => b.baseId);
+    return ids.map((id) => ({ id, name: baseNameById.get(id) ?? BASE_NAME_BY_ID.get(id) ?? id }));
+  }, [matrix, baseNameById]);
+  const transferBaseName = baseNameById.get(transferBase) ?? BASE_NAME_BY_ID.get(transferBase) ?? transferBase;
 
   // WO-GSLIVE-1-COCKPIT · 活③：当前推演快照（供方案存/分支·七维 KPI 自主方案 kpi·缺则从 objectiveValues 兜底派生）。
   const getSnapshot = useCallback((): ScenarioSnapshotInput | null => {
@@ -431,6 +449,42 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <div className={styles.summary}>
           {BUSINESS_TYPE_LABEL.passenger}：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · {BUSINESS_TYPE_LABEL.commercial}：产能空闲 + 订单波动大（CV 最高）· {BUSINESS_TYPE_LABEL.storage}：产能 ~95% 稳定。
           勾选 → 后端只对选中类订单+预测联合重解、产能作用域收窄到该类可产基地（矩阵/KPI/客户级影响全链真变·非展示层过滤）。
+        </div>
+      </div>
+
+      {/* WO-L3-TRANSFER · L3 耦合联动推演：拖转拨量 → 交期 / 需外协 整条链在同一次 portfolio 守恒解内实时联动（非独立测算拼接） */}
+      <div className={styles.glass} data-testid="global-sim-l3-transfer">
+        <span className={styles.grpLabel} title="转拨量 = 把产能预先划拨、预占某个目标基地的净产能。拖动滑杆：目标基地可用产能减少 → 其它订单被挤下或延后（交期）→ 联合解算不下的量成为真残差（需外协）。三者在同一次守恒求解内联动传导，不是分开算再拼——这正是 L3 耦合联合求解。">
+          [ L3 耦合联动推演 · 转拨量 → 交期 / 外协（整条链一次守恒解 · 实时联动） ]
+        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "8px 0" }} data-testid="global-sim-transfer-controls">
+          <span style={{ fontSize: 12 }}>转入基地（预占其净产能）：</span>
+          <select value={transferBase} data-testid="global-sim-transfer-base" onChange={(e) => setTransferBase(e.target.value)} style={{ minWidth: 120 }}>
+            <option value="">选择目标基地…</option>
+            {transferBaseOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <span style={{ fontSize: 12 }}>转拨量：</span>
+          <input
+            type="range" min={0} max={20} step={0.5} value={transferWan}
+            aria-label="转拨量（万套）" data-testid="global-sim-transfer-slider" disabled={!transferBase}
+            onChange={(e) => setTransferWan(parseFloat(e.target.value))}
+            style={{ flex: "1 1 160px", minWidth: 120 }}
+          />
+          <b className="mono" data-testid="global-sim-transfer-qty">{transferWan} 万套</b>
+          {transferWan > 0 && transferBase && (
+            <button className={styles.btnGhost} data-testid="global-sim-transfer-reset" onClick={() => setTransferWan(0)} style={{ fontSize: 11 }}>归零（回基线）</button>
+          )}
+        </div>
+
+        {/* 三阶段联动读数（转拨 → 交期 → 残差外协·同一次守恒解真产物·随滑杆实时变） */}
+        <div className={styles.readoutRow} data-testid="global-sim-transfer-chain">
+          <div className={styles.readout}><b data-testid="global-sim-transfer-chain-in">{transferWan}</b><span>① 转拨(万套)→{transferBase ? transferBaseName : "—"}</span></div>
+          <div className={styles.readout}><b data-testid="global-sim-transfer-chain-ontime">{d ? `${ontimeRate.toFixed(0)}%` : "—"}</b><span>② 交期·按期率</span></div>
+          <div className={styles.readout}><b data-testid="global-sim-transfer-chain-delayed">{d ? delayedAllocCount : "—"}</b><span>② 延后单</span></div>
+          <div className={styles.readout}><b data-testid="global-sim-transfer-chain-residual" className={displacedQty > 0 ? styles.bad : styles.ok}>{d ? fmt(displacedQty, 0) : "—"}</b><span>③ 残差→需外协(套)</span></div>
+        </div>
+        <div className={styles.summary}>
+          拖动转拨量 → 目标基地净产能被预占（committedBatches）→ 该基地他单被挤/延后（交期传导）+ 联合解算不下的<b>真残差</b>成为需外协量——全在<b>同一次 portfolio 守恒解</b>内联动求定（Σ 分配 ≤ 净产能·逐格守恒），非独立测算再拼接。残差的外协/加班细分见人机对话「L3 耦合联合求解」路径。
         </div>
       </div>
 

@@ -210,6 +210,7 @@ Query --[★⑤LLM 多意图兜底 WO-QOS-CROSS-DOMAIN-UNIFIED·暗发 qos.multi
    SEAM：agentcore `l3-coupled-seam.test.ts`（升格一次 portfolio/映射/真残差 passthrough/对照/回落）⊥
    datacore `portfolio-l3-linkage.test.ts`（**头号 SEAM-L3-守恒**·真 globalSimOptimize+InProc：改转拨量→延误联动变·
    残差为真·守恒硬校验·R6 字节一致——「真联合 vs 假综合」唯一真门）
+   · **L3 前端出口（WO-L3-TRANSFER·`GlobalSimView` 转拨量滑杆）**：拖转拨量 → `args.committedBatches[{base,qty}]`（**与 L3 dialogue 同 arg·同预占目标基地净产能机制**）→ 既有 `useLiveSolver("portfolio")` 守恒重解 → 交期（按期率/延后单）+ 需外协残差（被挤量）在**同一次守恒解内**实时联动上屏（非独立测算/前端假联动·残差外协细分见 dialogue L3 路径）。SEAM `frontend/global-sim-l3-transfer-seam.test.tsx`（① mock 守恒解转拨→残差+延误单调严格增 ⊥ ② DOM 拖滑杆→committedBatches 真达求解器+读数上屏+归零撤回）；mock `mockPortfolio` 补 committedBatches 预占（同 datacore 口径·KILL-MOCK-RED）。
 Query --[★确定性优先门 WO-QOS-1]--> domainResolve(问句+PageContext·R6 纯函数·复用 ceo-route 意图模式)
    --preferDeterministicSolver--> {confidence, solverKey}
      · confidence≥THRESHOLD(0.6·20 题金标校准·误降级=0) ∧ 有对口 solver → tryDeterministicBind → **path-A**（拉回·秒级）

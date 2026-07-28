@@ -1172,6 +1172,16 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
     frozen.push({ orderId: id, base: b, window: w, qty: o.qty, frozen: true });
     if (frozenMode === "reserve") { const k = cellKey(b, w); netCap.set(k, Math.max(0, (netCap.get(k) ?? 0) - o.qty)); }
   }
+  // WO-L3-TRANSFER · 转拨/递进承诺预占（committedBatches → 预扣目标基地净产能·镜像 datacore portfolio.ts committed
+  // 机制 + L3 mapCoupledChainToPortfolio「转拨=预占目标基地净产能·首窗记账」）：转拨量↑ → 目标基地可用净产能↓ →
+  // 该基地他单被挤/延后↑（交期）→ 联合解残差↑（需外协）。守恒内真传导·非前端假联动（L3 前端滑杆的引擎侧根据）。
+  for (const cb of (Array.isArray(args.committedBatches) ? args.committedBatches : []) as { base?: string; qty?: number; window?: number }[]) {
+    const b = String(cb.base ?? ""); const q = Number(cb.qty ?? 0);
+    if (!b || !(q > 0)) continue;
+    const w = Math.max(0, Math.min(numWindows - 1, Math.floor(Number(cb.window ?? 0))));
+    const k = cellKey(b, w);
+    if (netCap.has(k)) netCap.set(k, Math.max(0, (netCap.get(k) ?? 0) - q));
+  }
 
   const coMinsTo = (from: string, to: string) => (!from || from === to ? 0 : PORT_CROSS_BASE_CHG);
   const solveScenario = (key: PortObjKey) => {
