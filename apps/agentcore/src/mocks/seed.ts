@@ -529,7 +529,11 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_decision", name: "CEO 决策推演", solver: "decision_play", examples: ["这个根因怎么补", "有哪些方案", "怎么应对"], slotNames: ["metricKey", "factorId"] },
     { key: "ceo_metric", name: "CEO 达标查询", solver: "metric_rollup", examples: ["各指标差多少", "哪些指标越线", "达成情况"], slotNames: ["metricKey"] },
     // WO-TIER2-B：B/C 域高频意图确定性直绑 solver（resolveCeoRoute 路由 → 对应 intent/plan → invoke_solver）
-    { key: "ceo_credit_exposure", name: "CEO 信用敞口", solver: "credit_exposure", examples: ["客户信用逾期多少", "信用敞口多大"], slotNames: [] },
+    // WO-SEAM-ARG-DROP（CONFIRMED 锚点·两半一并）：ceo_credit_exposure 补 custName 槽 → 问句解析的客户名（creditArgsFrom
+    //   /XX客户|XX公司/）真达 credit_exposure（此前 slotNames:[] → solverArgs 丢 custName → extended.ts deriveExtendedArgs
+    //   `?? customers[0]` 静默落**首个客户**·敞口错算成整车厂A→答非所问）。引擎半同步诚实化（无匹配报 AMBIGUOUS_SCOPE·
+    //   未指定标 scope:ALL 合计·不静默落首客户），见 solvers/extended.ts credit_exposure 分支。
+    { key: "ceo_credit_exposure", name: "CEO 信用敞口", solver: "credit_exposure", examples: ["蔚云汽车客户信用逾期多少", "电网公司信用敞口多大"], slotNames: ["custName"] },
     { key: "ceo_finance_pnl", name: "CEO 量价本利", solver: "finance_pnl", examples: ["毛利为什么下滑", "量价本利情况"], slotNames: [] },
     { key: "ceo_supply_demand_gap", name: "CEO 供需失衡归因", solver: "supply_demand_gap_attribution", examples: ["供需为什么对不上", "产销缺口归因"], slotNames: ["metricKey"] },
     { key: "ceo_atp_check", name: "CEO 订单承诺", solver: "atp_check", examples: ["这单能不能接", "能接多少何时能交"], slotNames: ["orderRef"] },
@@ -540,7 +544,10 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_bottleneck", name: "CEO 瓶颈定位", solver: "bottleneck_matrix", examples: ["哪个工序是瓶颈", "化成 OEE 多少换型损失占几成", "常州瓶颈卡在哪道工序"], slotNames: ["baseIds"] },
     { key: "ceo_base_outlook", name: "CEO 产能前瞻", solver: "base_capacity_outlook", examples: ["常州未来 90 天产能够不够", "未来 30/60/90 天会不会穿仓", "这个基地接得住在手订单吗"], slotNames: ["baseId"] },
     // WO-Phase1-D+A：what-if 结构化杠杆 → generic_inference mode:"levers"
-    { key: "ceo_whatif", name: "CEO 假设推演", solver: "generic_inference", examples: ["扩 2 通道能补多少缺口", "加夜班产能能提多少", "外包 10% 能不能补上"], slotNames: ["baseId", "factors"] },
+    // WO-SEAM-ARG-DROP（CONFIRMED·名字不对接丢参）：路由 whatIfArgsFrom **发的是 `scopeObjectIds`（数组）**，此前槽名叫
+    //   `baseId` → extracted 无 `baseId` → 槽落空 → 旧映射 `scopeObjectIds:["{{slots.baseId}}"]` 串成 `[null]` → 基地作用域
+    //   静默丢（whatif 恒全域）。改槽名对齐路由输出 `scopeObjectIds`（json/数组槽·下 slotDefs/solverArgs 特例同改）。
+    { key: "ceo_whatif", name: "CEO 假设推演", solver: "generic_inference", examples: ["扩 2 通道能补多少缺口", "加夜班产能能提多少", "外包 10% 能不能补上"], slotNames: ["scopeObjectIds", "factors"] },
     // WO-DIALOGUE-Q1Q2（Q1 修）：产能反向阈值——「型号 加 多少 需求量 N 周就不能接了/穿仓」→ capacity_forecast(mode:"threshold")
     // 反推「还能加多少 = P90 天花板 − 已占基线需求」。solverArgs/slotDefs 见下特例（weeks 为 number 槽·mode 常量注入）。
     { key: "ceo_capacity_threshold", name: "CEO 产能反向阈值", solver: "capacity_forecast", examples: ["4680-NCM 加多少需求量六周就不能接了", "还能加多少订单才穿仓", "加到多少就满了"], slotNames: ["modelId", "weeks"] },
@@ -554,7 +561,9 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
       cap.key === "ceo_whatif"
         ? {
             mode: "levers",
-            scopeObjectIds: ["{{slots.baseId}}"],
+            // WO-SEAM-ARG-DROP：whole-slot 注入（scopeObjectIds 是路由发的数组·非包 baseId 单值）——
+            // 有基地 → ["changzhou"]；无基地 → 槽 null → 整值 null → discoverLevers Array.isArray 假 → scope=undefined 全域（诚实）。
+            scopeObjectIds: "{{slots.scopeObjectIds}}",
             factors: "{{slots.factors}}",
             targetType: "Line",
             targetProp: "utilization",
@@ -578,7 +587,9 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     const slotDefs: IntentDefinition["slots"] =
       cap.key === "ceo_whatif"
         ? [
-            { name: "baseId", type: "string", required: false, description: "基地 ID 或中文名（问句/PageContext.focus.base 注入）" },
+            // WO-SEAM-ARG-DROP：json/数组槽（路由 whatIfArgsFrom 发 scopeObjectIds=[baseId]·数组值经 validateSlotValue 原样保留·
+            //   string 槽会 String([...]) 断数组）——对齐路由输出名，基地作用域真达 generic_inference（不再 [null] 静默丢）。
+            { name: "scopeObjectIds", type: "json", required: false, description: "作用域对象 ID 列表（问句基地名→[baseId]·PageContext.focus.base 注入·generic_inference 限域；缺省全域）" },
             { name: "factors", type: "json", required: false, description: "结构化杠杆映射的瓶颈因子列表（如 [\"瓶颈工序\"]）" },
           ]
         : // WO-DIALOGUE-Q1Q2：baseIds 必须是 json 槽（数组值经 validateSlotValue 原样保留·string 槽会 String([...]) 断数组）。
@@ -590,7 +601,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
                 { name: "modelId", type: "string", required: false, description: "型号 ID（问句解析·如 4680-NCM）" },
                 { name: "weeks", type: "number", required: false, description: "周数窗口（问句解析·如 六周→6）" },
               ] as IntentDefinition["slots"])
-            : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
+            : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : n === "custName" ? "客户名（问句 XX客户/XX公司 解析·creditArgsFrom 注入·credit_exposure 客户维过滤·WO-SEAM-ARG-DROP）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
     intents.push({
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,

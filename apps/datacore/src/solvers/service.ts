@@ -256,7 +256,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
   quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
-  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "ruleRefs"],
+  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "ruleRefs"],
   quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
@@ -595,7 +595,9 @@ export class SolverService {
     const targetProp = args.targetProp ? str(args.targetProp) : undefined;
     const epsilon = num(args.epsilon, 0.05) || 0.05;
     const topK = Math.max(1, Math.floor(num(args.topK, 6)));
-    const scope = Array.isArray(args.scopeObjectIds) ? args.scopeObjectIds.map(String) : undefined;
+    // WO-SEAM-ARG-DROP（引擎半·防御）：过滤 null/"null"/空——避免丢参时 ["null"] 冒充真作用域（scope 空 → undefined=全域诚实发现）。
+    const scopeRaw = Array.isArray(args.scopeObjectIds) ? args.scopeObjectIds.map(String).filter((s) => s && s !== "null" && s !== "undefined") : undefined;
+    const scope = scopeRaw && scopeRaw.length > 0 ? scopeRaw : undefined;
     const factorFilter = Array.isArray(args.factors) ? args.factors.map(String) : undefined;
     const PROBE_CAP = 50; // 确定性上界（sorted 取前 N），避免大对象图上探针失控。
 
