@@ -114,9 +114,52 @@ for (const [key, emits] of Object.entries(ROUTER_EMITS)) {
   }
 }
 
+// ── 断言①·base 族（WO-BASE-ID-FIDELITY·project/QOS 吃 base 作用域维的意图）──
+// bug 类同源（G-ARG-DROP-SEAM·base 族）：路由可解析 base（sim-planner parseCapacityFeasibilityVariant「XX基地」/ 分类器 /
+//   选中基地 / PageContext.focus.base）→ 若 base 未声明为 slot 或 plan 未透传 → fillSlots 静默丢 → 求解器恒全网/首基地
+//   （capacity_forecast「常州基地 4680 加20%」与「4680 加20%」答案相同·affected_orders 缺 base 全域）。
+// 断言：每「吃 base 维」intent 的 base ∈ slotNames ∪ base ∈ plan 任一步的 {{slots.base…}} 引用（声明⊕透传双半齐·任缺即静默丢）。
+const PROJECT_BASE_EMITS = {
+  capacity_feasibility: ["base"], // WO-BASE-ID-FIDELITY 症①（本单补 base 槽 + 专门 solverArgs 透传）
+  affected_orders: ["base"], // 既有 objectRef base 槽（受影响订单限基地）
+  risk_root_cause: ["base"], // 既有 base 槽（基地风险画像）
+  adopt_mitigation: ["base"], // 既有 base 槽（处置方案落基地）
+};
+let okBase = 0;
+for (const [key, emits] of Object.entries(PROJECT_BASE_EMITS)) {
+  const intent = intentByKey.get(key);
+  if (!intent) {
+    fails.push(`断言①·base族：project intent「${key}」在种子中缺失（PROJECT_BASE_EMITS 登记却无对口意图）`);
+    continue;
+  }
+  const slotNames = new Set((intent.slots ?? []).map((s) => s.name));
+  const plan = planById.get(intent.planId);
+  // 全步扫描 {{slots.X}} 引用（base 可经 invoke_solver args / resolve_slice args / evaluate_rules|create_action_draft payload 透传）。
+  const planRefs = plan ? collectSlotRefs(plan.steps ?? []) : new Set();
+  for (const ent of emits) {
+    if (!slotNames.has(ent)) {
+      fails.push(
+        `断言①·base族 丢参接缝：project intent「${key}」吃 base 维但未声明 slot「${ent}」(slotNames=[${[...slotNames].join(",")}])` +
+          ` → fillSlots 静默丢 base → 求解器恒全网/首基地（G-ARG-DROP-SEAM·base 族）。修：seed.ts 补 base 槽。`,
+      );
+      continue;
+    }
+    if (!planRefs.has(ent)) {
+      fails.push(
+        `断言①·base族 断透传：project intent「${key}」声明了 slot「${ent}」但 plan 任一步都未引用 {{slots.${ent}…}}` +
+          ` → base 声明了却没进 solverArgs → 仍静默丢。修：plan 步 args/payload 补 base 映射。`,
+      );
+      continue;
+    }
+    okBase++;
+  }
+}
+
 // ── 断言② 引擎半（静态哨兵·读 solver 源）──
 const extendedSrc = readFileSync(abs("apps/datacore/src/solvers/extended.ts"), "utf8");
 const serviceSrc = readFileSync(abs("apps/datacore/src/solvers/service.ts"), "utf8");
+const capacitySrc = readFileSync(abs("apps/datacore/src/solvers/capacity.ts"), "utf8");
+const riskSrc = readFileSync(abs("apps/datacore/src/solvers/risk.ts"), "utf8");
 
 /** 取 deriveExtendedArgs 里某 case 块（`case "X": {` 到下一 `case "`）。 */
 function caseBlock(src, key) {
@@ -143,6 +186,17 @@ if (!creditBlock) {
 if (!serviceSrc.includes("base_capacity_outlook 需 baseId"))
   fails.push('断言② 引擎半：base_capacity_outlook 缺「缺 baseId 即 throw」的诚实报错（诚实典范丢失）');
 
+// ── 断言②·base 族引擎半（静态哨兵·WO-BASE-ID-FIDELITY 三症·删则红）──
+// 症① capacity_forecast：给 base → 收窄该基地 scope:"BASE"；无 base → scope:"ALL" 诚实标（无静默全网冒充某基地）。
+if (!/scope:\s*"BASE"/.test(capacitySrc) || !/scope:\s*"ALL"/.test(capacitySrc))
+  fails.push('断言②·base族 引擎半：capacity.ts 缺 base 作用域诚实标（scope:"BASE"|"ALL"）——症①：删则「常州基地 X 加20%」静默冒充「X 加20%（全网）」');
+// 症① base 归一复用单一出处（capacity.ts 不另起规范化·复用 risk.resolveBaseId）。
+if (!/resolveBaseId\(c,\s*args\.base\)/.test(capacitySrc))
+  fails.push('断言②·base族 引擎半：capacity.ts 未经 resolveBaseId 归一 base（症①/②同源单一规范化出处·勿散落）');
+// 症② resolveBaseId 经 normalizeBaseRef 归一（认 obj_base_<id> 图节点 id）——回潮成裸 find(baseId===ref) 即 obj_base_ 硬 400。
+if (!/normalizeBaseRef/.test(riskSrc))
+  fails.push('断言②·base族 引擎半：risk.ts resolveBaseId 未经 normalizeBaseRef 归一（症②：obj_base_<id> 不 strip → unknown base 硬 400）');
+
 // ── 汇总 ──
 if (notes.length) {
   console.log("arg-drop-seam:check · 豁免登记（带理由·非静默丢）：");
@@ -154,7 +208,10 @@ if (fails.length) {
   process.exit(1);
 }
 const emitCount = Object.values(ROUTER_EMITS).reduce((a, b) => a + b.length, 0);
+const baseEmitCount = Object.values(PROJECT_BASE_EMITS).reduce((a, b) => a + b.length, 0);
 console.log(
   `\n✓ arg-drop-seam:check 通过：${Object.keys(ROUTER_EMITS).length} 个 CEO intent · ${emitCount} 条路由解析实体` +
-    ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。`,
+    ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。` +
+    `\n  base 族（WO-BASE-ID-FIDELITY）：${Object.keys(PROJECT_BASE_EMITS).length} 个吃 base 维 project intent · ${baseEmitCount} 条 base 声明⊕透传齐（${okBase} 达标）；` +
+    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
 );

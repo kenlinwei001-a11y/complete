@@ -234,6 +234,12 @@ export interface CapacityFeasibilityVariant {
   demandDelta?: number;
   /** 周数（「8周」→8·capacity_forecast weeks 参·缺省由意图槽 default 6 兜底）。 */
   weeks?: number;
+  /**
+   * WO-BASE-ID-FIDELITY 症①：问句「XX基地/常州基地」→ 规范 baseId（BASE_REGISTRY 名/id 匹配·R6 正则·无 LLM）。
+   * 限定单基地产能作用域 → capacity_forecast 只算该基地该型号（scope:BASE）；无则 undefined → 全网合计（scope:ALL 诚实标·非冒充）。
+   * 此前只抽 {modelId,demandDelta,weeks} 丢 base → 「常州基地 4680 加20%」与「4680 加20%」答案相同（capacity_forecast 恒全网）。
+   */
+  baseId?: string;
 }
 
 /**
@@ -254,6 +260,10 @@ export function parseCapacityFeasibilityVariant(query: string): CapacityFeasibil
     const n = parseSmallInt(weeks[1]!);
     if (n !== undefined) out.weeks = n;
   }
+  // WO-BASE-ID-FIDELITY 症①：抽基地（「常州基地」含中文名「常州」·或裸 baseId「changzhou」）→ 规范 baseId。
+  // 与 parseCapacityWhatIf 同口径（BASE_REGISTRY 单一出处·R6）；无匹配 → 不带 baseId（全网·fail-safe 不臆造）。
+  const base = BASE_REGISTRY.find((b) => q.includes(b.name) || q.toLowerCase().includes(b.baseId.toLowerCase()));
+  if (base) out.baseId = base.baseId;
   return out;
 }
 
@@ -310,5 +320,8 @@ export function feasibilityComposeSlots(query: string, fallbackModelId?: string)
   if (modelId) slots.modelId = modelId;
   if (v.demandDelta !== undefined) slots.demandDelta = v.demandDelta;
   if (v.weeks !== undefined) slots.weeks = v.weeks;
+  // WO-BASE-ID-FIDELITY 症①：base 作用域随 compose 直达 capacity_forecast（compileSolverPlan §3.1 非必填槽也带上 args·
+  // compile-plan.ts:111-112「非必填但 slots 有值也带」）——有基地→scope:BASE 单基地·无基地→不带→scope:ALL 全网。
+  if (v.baseId) slots.base = v.baseId;
   return slots;
 }

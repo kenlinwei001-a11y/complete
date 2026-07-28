@@ -2,7 +2,7 @@ import { round } from "../prng.js";
 import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
-import { liveTightness, oeeTension, primaryFactor, yieldTension } from "./risk.js";
+import { liveTightness, oeeTension, primaryFactor, resolveBaseId, yieldTension } from "./risk.js";
 import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
 
 /** Build a lookup map from a key extractor; used to avoid O(n³) nested filters in computeRollup. */
@@ -236,9 +236,13 @@ export function computeByProcessModel(
   c: SolverContext,
   modelId: string,
   bindings: CapacityFactorBinding[] = CAPACITY_FACTOR_BINDINGS,
+  // WO-BASE-ID-FIDELITY 症①：给 baseFilter（已规范 baseId）→ 只出该基地逐工序格（与 capacity_forecast base 作用域同尺度）。
+  baseFilter?: string,
 ): ByProcessModelRow[] {
-  const cert = c.certByModel.get(modelId);
-  if (!cert || cert.size === 0) return [];
+  const certAll = c.certByModel.get(modelId);
+  if (!certAll || certAll.size === 0) return [];
+  const cert = baseFilter ? new Map([...certAll].filter(([b]) => b === baseFilter)) : certAll;
+  if (cert.size === 0) return []; // 该型号未在该基地认证 → 无逐工序格（诚实空·不臆造）
   const rollup = computeRollup(c);
   const procCapById = new Map<string, number>();
   for (const br of rollup.bases) for (const pn of br.processes) procCapById.set(pn.key, pn.capacityPerDay);
@@ -354,6 +358,8 @@ function computeBaselineDemand(
   modelId: string,
   forecastStart: string,
   weeks: number,
+  // WO-BASE-ID-FIDELITY 症①：给 baseId → 只计该基地可承接订单（Order.bases∋baseId）·与 base 作用域产能同尺度（诚实·不拿全网需求比单基地产能）。
+  baseId?: string,
 ): number {
   const modelName = str(c.models.find((m) => str(m.props.modelId) === modelId)?.props.name);
   const endDay = weeks * 7;
@@ -362,6 +368,10 @@ function computeBaselineDemand(
     if (str(o.props.status, "OPEN") !== "OPEN") continue;
     const orderModel = str(o.props.model);
     if (orderModel !== modelId && orderModel !== modelName) continue;
+    if (baseId) {
+      const bs = Array.isArray(o.props.bases) ? (o.props.bases as string[]) : [];
+      if (!bs.includes(baseId)) continue; // base 作用域：只计该基地可承接订单
+    }
     const due = str(o.props.due);
     if (!due) continue;
     const day = dayFrom(forecastStart, due);
@@ -383,14 +393,32 @@ export interface ForecastArgs {
   granularity?: "base" | "process-model";
   // WO-DIALOGUE-Q1Q2（additive·向后兼容）：'threshold' → 反向阈值分支；缺省/'forecast' 前向 what-if 不变。
   mode?: "forecast" | "threshold";
+  // WO-BASE-ID-FIDELITY 症①（additive·可选 base 作用域）：给 base → 只算该基地该型号产能（认 obj_base_<id>/中文名/baseId·
+  // 归一走 resolveBaseId 单一出处）；不给 → 全网合计·结果显式带 scope:"ALL"（诚实标·不冒充某基地）。
+  base?: unknown;
 }
 
 export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<string, unknown> {
   const p = c.params;
   const modelId = str(args.modelId);
   if (!modelId) throw validationError("modelId required");
-  const cert = c.certByModel.get(modelId);
-  if (!cert || cert.size === 0) throw validationError(`model ${modelId} has no certified lines`);
+  const certAll = c.certByModel.get(modelId);
+  if (!certAll || certAll.size === 0) throw validationError(`model ${modelId} has no certified lines`);
+
+  // WO-BASE-ID-FIDELITY 症① · 可选 base 作用域（治「常州基地 4680-NCM 加20%」与「4680-NCM 加20%」答案相同的静默丢 base）。
+  // 给 base → 规范化（resolveBaseId 单一出处·认 obj_base_<id>/中文名/baseId）→ 只保留该基地认证条目 → p50/perBaseRows/
+  // 缺口全部收窄到该基地该型号；该型号未在该基地认证 → 诚实 throw（非静默空/冒充）。不给 → 全网合计·scope:"ALL" 诚实标。
+  const hasBase = args.base !== undefined && args.base !== null && str(args.base) !== "";
+  const scopeBaseId = hasBase ? resolveBaseId(c, args.base) : undefined;
+  const scopeBaseName = scopeBaseId ? baseName(c, scopeBaseId) : undefined;
+  let cert = certAll;
+  if (scopeBaseId) {
+    cert = new Map([...certAll].filter(([b]) => b === scopeBaseId));
+    if (cert.size === 0) throw validationError(`model ${modelId} not certified at base ${scopeBaseId}`);
+  }
+  const scopeOut: Record<string, unknown> = scopeBaseId
+    ? { scope: "BASE", scopeBaseId, scopeBaseName, scopeNote: `仅 ${scopeBaseName} 基地（该型号该基地产能·非全网合计）` }
+    : { scope: "ALL", scopeNote: "全网合计（未指定基地·跨该型号全部认证基地）" };
 
   const rollup = computeRollup(c);
   const weeklyByBase = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
@@ -471,7 +499,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const p90 = round(p50 * healthFactor, 4);
 
   // PRD-CAP-DEMANDDELTA · effectiveDemand = (显式 qty 或 订单簿基线) × (1 + demandDelta)。
-  const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeks);
+  // WO-BASE-ID-FIDELITY 症①：base 作用域下基线需求也收窄到该基地可承接订单（诚实·base 产能 vs base 需求同尺度）。
+  const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeks, scopeBaseId);
   const demandDelta = num(args.demandDelta, 0);
   const effectiveDemand = round((qty > 0 ? qty : baselineDemand) * (1 + demandDelta), 4);
 
@@ -488,6 +517,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
         ? `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
         : `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
     return {
+      ...scopeOut,
       mode: "threshold",
       weeks,
       p50,
@@ -582,7 +612,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const pos = str(model?.props.pos);
   const totalBases = c.bases.length;
   const producibleCount = cert.size;
-  const nonProducible = c.bases
+  // WO-BASE-ID-FIDELITY 症①：base 作用域下不做「全网可产收敛」清单（否则会把其余基地误列 nonProducible）——诚实空。
+  const nonProducible = scopeBaseId ? [] : c.bases
     .filter((b) => !cert.has(str(b.props.baseId)))
     .map((b) => {
       const kind = str(b.props.kind);
@@ -597,6 +628,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   // PRD-CAP-DEMANDDELTA · 全零诚实门：已认证但认证基地全零产能 → 数据缺口，不得输出自信瓶颈。
   if (p50 === 0) {
     return {
+      ...scopeOut,
       p50: 0,
       p90: 0,
       healthFactor,
@@ -620,11 +652,12 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
 
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' → per-工序×型号-物料 颗粒。
   // 现有 per-base（perBaseRows）字段零改·byProcessModel 纯加字段（缺省不输出·向后兼容 R6）。
-  const byProcessModel = str(args.granularity) === "process-model" ? computeByProcessModel(c, modelId) : undefined;
+  const byProcessModel = str(args.granularity) === "process-model" ? computeByProcessModel(c, modelId, CAPACITY_FACTOR_BINDINGS, scopeBaseId) : undefined;
 
   const gapPctDenom = batches ? qty : effectiveDemand;
 
   return {
+    ...scopeOut,
     p50,
     p90,
     healthFactor,
