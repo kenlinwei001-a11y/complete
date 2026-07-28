@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { AgentBudgetSchema, ObjectRefSchema, PlanStepSchema } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
+import {
+  CapabilityMetaSchema,
+  SkillLifecycleStatusSchema,
+  SkillAttachmentSchema,
+} from "./capability.js";
 
 // ---------------------------------------------------------------------------
 // 平台 PRD §8.1 B1 Agent 注册表
@@ -137,28 +142,19 @@ export const McpServerConfigSchema = z.object({
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 // ---------------------------------------------------------------------------
-// 平台 PRD §8.4 B4 Skill 库
+// 平台 PRD §8.4 B4 Skill 库（WO-CAP-0：复用 CapabilityMeta 信封）
 // ---------------------------------------------------------------------------
 
-export const SkillDefinitionSchema = z.object({
+export const SkillDefinitionSchema = CapabilityMetaSchema.omit({ status: true, capability: true }).extend({
   id: z.string(), // skl_
-  tenantId: z.string(),
-  key: z.string(),
+  capability: z.literal("SKILL"),
   version: z.number().int(),
-  name: z.string(),
   summary: z.string().max(400),
   body: z.string().max(50_000),
   /** 增量 §3（additive）：mime/description 让模型知道附件是什么、何时读（read_skill_resource） */
-  resources: z.array(
-    z.object({
-      name: z.string(),
-      blobKey: z.string(),
-      mime: z.string().optional(),
-      description: z.string().optional(),
-    }),
-  ),
+  resources: z.array(SkillAttachmentSchema),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
-  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  status: SkillLifecycleStatusSchema,
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 

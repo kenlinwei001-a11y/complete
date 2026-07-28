@@ -781,43 +781,54 @@ export function seedRegistry(now = new Date().toISOString()): {
       updatedAt: now,
     },
   ];
+  const skill = (
+    s: Omit<SkillDefinition, "capability" | "createdAt" | "createdBy" | "sideEffect" | "references" | "provenancePolicy">,
+  ): SkillDefinition => ({
+    ...s,
+    capability: "SKILL",
+    createdAt: now,
+    createdBy: "seed",
+    sideEffect: "READ_ONLY",
+    references: [],
+    provenancePolicy: { trustLevel: "VERIFIED", sourceLabel: "seed", requiresAdvisory: false },
+  });
   const skills: SkillDefinition[] = [
-    {
+    skill({
       id: "skl_seed_capacity", tenantId: SEED_TENANT, key: "capacity_analysis", version: 1,
       name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
       body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
       resources: [], status: "PUBLISHED",
-    },
-    {
+    }),
+    skill({
       id: "skl_seed_sop_meeting", tenantId: SEED_TENANT, key: "sop_meeting", version: 1,
       name: "S&OP 会议纪要技能", summary: "S&OP 会议纪要结构化要点。",
       body: "# S&OP 会议纪要\n\n1. 需求侧：月度需求总量、分 segment 需求。\n2. 供给侧：可供给量、长协覆盖率、物料缺口。\n3. 财务侧：毛利率目标、现金安全垫、CAPEX。\n4. 行动项：责任人、完成时间、风险标记。",
       resources: [], status: "DRAFT",
-    },
-    {
+    }),
+    skill({
       id: "skl_seed_risk_analysis", tenantId: SEED_TENANT, key: "risk_analysis", version: 1,
       name: "风险分析方法论", summary: "基地风险画像解读与越线根因归因要点。",
       body: "# 风险分析\n\n1. 风险画像三维度：产能利用率、物料齐套、交期达成。\n2. 越线根因优先看瓶颈工序（化成/卷绕/涂布/装配/注液）。\n3. 处置方案候选：三班制、外协、调拨、检修错峰。",
       resources: [], status: "PUBLISHED",
-    },
-    {
+    }),
+    skill({
       id: "skl_seed_supply_chain", tenantId: SEED_TENANT, key: "supply_chain_mgmt", version: 1,
       name: "供应链管理技能", summary: "物料齐套、库存优化与采购策略分析框架。",
       body: "# 供应链管理\n\n1. 齐套检查：BOM 展开 → 库存扣减 → 在途确认 → 缺口计算。\n2. 库存优化：安全库存 = MAX(需求波动× lead time, 最小订货量)。\n3. 采购策略：长协保底 + 现货补缺 + 外协弹性。",
       resources: [], status: "PUBLISHED",
-    },
-    {
+    }),
+    skill({
       id: "skl_seed_quality_control", tenantId: SEED_TENANT, key: "quality_control", version: 1,
       name: "质量控制技能", summary: "良率波动诊断与质量改进 PDCA 框架。",
       body: "# 质量控制\n\n1. 良率监控：SPC 控制图（X-bar / R / p-chart）。\n2. 波动归因：人、机、料、法、环五维度鱼骨图。\n3. 改进闭环：Plan（根因）→ Do（试点）→ Check（验证）→ Act（推广）。",
       resources: [], status: "DRAFT",
-    },
-    {
+    }),
+    skill({
       id: "skl_seed_mcp_guide", tenantId: SEED_TENANT, key: "mcp_integration", version: 1,
       name: "MCP 集成指南", summary: "MCP 服务器接入与工具调用规范。",
       body: "# MCP 集成指南\n\n1. 传输协议：streamable_http（推荐）或 stdio（本地子进程）。\n2. 命名空间：serverName 由展示名推导，限小写字母/数字/下划线，2–24 字符。\n3. 工具全名：mcp__{serverName}__{toolName}，scopeDeclaration 与审计均用全名。\n4. 故障恢复：连续 5 次调用失败 → ERROR，自动探测恢复 → ACTIVE。",
       resources: [], status: "PUBLISHED",
-    },
+    }),
   ];
   const agents: AgentDefinition[] = [
     {

@@ -116,6 +116,10 @@
 - **通用图求解器地板语义确定化（A13）**：`solvers/field-roles.ts resolveFieldRoles` 把"哪个类型/字段是 root/sink/resource/priority(地板)/leaf"的角色解析做成**纯函数 + 结构信号(扇入/扇出/PK/数值) + 配置词库(`field-role-lexicon.ts` R14) + 固定 tie-break**，**去掉 LLM 消歧（R6 字节一致）**；真歧义返回**确定性排序候选 + 置信度 + ambiguous 标**（取 top1 默认 / 喂 A5 比差 / A4 让人选，**绝不调 Kimi**）。覆盖 shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius（后者断供根=被 ref 的终端汇点，结构确定，rootId 运行期标量仍留空）· `SOLVER_FIELD_ROLES` · 契约 `FieldRoleResolutionSchema` · `GET /a/v1/solvers/:key/field-roles` · 门 `floor-semantics:check`。
 - **ForecastSnapshot / RiskCase / SopVersion**：预测快照 / 风险案 / S&OP 月度平衡台 · `sop.ts`。
 - **Calibration{Pairs,Proposals,History,Forecasts}**：M11 校准引擎（EMA/重放归因/分位）· `calibration/`。
+- **CapabilityMeta（WO-CAP-0 · 共享能力元数据信封）**：`Skill` / `SolverDraft` / `ModelArtifact` 的共享字段（id/key/version/name/summary/sideEffect/inputSchema/outputSchema/references/provenancePolicy/status/hash/createdBy/createdAt）。避免三处各写一套注册表，契约 `packages/contracts/src/capability.ts`。
+- **SolverDraft（WO-C · 临时求解器草稿）**：Deep Agent 经 `draft_solver` 生成的临时纯函数代码，状态 `GENERATED→LINT_PASS→EVAL_PASS→ADVISORY_REVIEW→GOVERNED→PUBLISHED→RETIRED`；GOVERNED 前结果标 `UNVERIFIED`。· `capability.ts SolverDraftSchema`。
+- **DraftRun（WO-C · 草稿沙箱执行记录）**：一次 SolverDraft 在受限沙箱中的执行（OK/ERROR/TIMEOUT/MEMORY_EXCEEDED/LINT_FAILED），带输入/输出/日志/耗时。· `capability.ts DraftRunSchema`。
+- **ModelArtifact（WO-C · 轻量模型制品）**：LLM/平台生成的评分卡/分类器/预测补丁/规则补丁，状态 `GENERATED→EVALUATING→GOVERNED→PUBLISHED→RETIRED`，必须评测+人审才 GOVERNED。· `capability.ts ModelArtifactSchema`。
 
 ### F. 时序/运营域（DataCore）
 - **TsAggSpec / TsAggRun / TsLateArrival**：时序聚合 · `timeseries.ts`。
@@ -152,6 +156,9 @@
 - **SystemObjectType / SystemInvariant / SystemBreakpoint / SystemEvent / SystemDomain / SystemSlice / SystemGate / SystemLink（Dogfooding 元层对象 · #12 落库 PoC）**：把本体本身（§2/§3/§4/§5/§7/§8/§10 + `prd-ontology-index.json`）确定性投影为元租户 `__platform__` 的 `ObjectInstance`+`Link`（origin `META`，可溯回 markdown 章节）。markdown 仍单一来源、对象只读派生（R4 豁免）· `meta/parse.ts`(纯解析 R6) + `meta/service.ts MetaOntologyService` · `POST /a/v1/meta/sync`(幂等,发 `meta.ontology_synced` L14) · `GET /a/v1/meta/{ontology,breakpoints/:id,impact}`(**Entitlement 先于 authz**：`requireMetaAccess` 先查 feature `admin.meta-ontology`(默认开)关闭→404 FEATURE_NOT_FOUND,再 MetaAccessPolicy 角色白名单门 403,配置化 P2) · 影响分析 = META links 上轻量 BFS。复用 objects/links 仓储,不新建表（R9）。业务租户经 R2 见不到（PRD-dogfooding-self-ontology）。
 - **ValidationTrace（推演验证痕迹）**：凡推演用到本体切片即附于 `Answer.validationTrace`——① 一致性验证（实体定义/公理裁决/数字溯源/版本钉，本体内自动）② 交叉验证（结论对象断言 vs 知识图谱已有事实 CONSISTENT/CONFLICT/NO_EVIDENCE）。让用户信任结果（R13 输出侧纪律的"可视化成品"）· `contracts/qos.ts ValidationTraceSchema` · 组装 `workflow/executor.ts buildValidationTrace` · 前端 `components/Answer/ValidationTracePanel.tsx`。
 - **MCP tool / RefReport**：外部工具 / 引用上报。
+- **PlanBuilderCanvas（WO-A · 无代码计划画布）**：业务用户拖拽构建的多 solver 推演链可视化图；节点类型 INPUT/SOLVER/TRANSFORM/CONDITION/LOOP/MERGE/OUTPUT；与 PlanDSL 100% 等价（R24）。契约待建。
+- **AgentJob（WO-B · 长程自主任务）**：跨会话、可恢复、可观察的 Agent 任务持久化单元，状态 `RUNNING|PAUSED|WAITING|COMPLETED|FAILED|ESCALATED`，带 checkpoint 与 timeout。契约待建。
+- **AgentMemory（WO-B · 长程任务记忆）**：AgentJob 运行中沉淀的关键事实（VERIFIED/HYPOTHESIS/DISPROVED）、计划、决策。最终答案必须区分事实可信度。契约待建。
 - **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
 
 ### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落，对象 schema 见 `docs/SPEC-sandbox-propagation-and-session.md` / `docs/SPEC-sandbox-readiness-certification.md`）
@@ -602,6 +609,29 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
   残口：ATP/齐套行级消费、affected_orders 行级归因下沉归后续 WO（本单只立行级数据 + rollup 勾稽）
 ```
 
+**AIP 增强链（WO-CAP-0/A/B/C · 契约已立，运行时刻待落）**
+```
+Deep DeductionTask --draft_solver--> SolverDraftService
+  --generate+lint--> SolverDraft(status=GENERATED, hash)
+  --sandbox_run--> SandboxRunner（独立进程/容器，白名单 API，零网络/零文件/零外部进程）
+    --metered_exec--> DraftRun(outcome, outputs, logs)
+    --result--> GoalResult --synthesize--> Answer
+  SolverDraft --promote{lint+eval≥5+advisory}--> GOVERNED
+    --register--> SolverArtifact（获得 solverKey，可被路径 A 调用）
+
+PlanBuilderCanvas --serialize--> PlanDSL（YAML/JSON，可 Git diff）
+  --compile--> ExecutionPlan --executePlan--> Workflow/Plan
+  Canvas ↔ PlanDSL 必须 100% 等价（R24）
+
+AgentJob（status=RUNNING|PAUSED|WAITING|...）--decompose--> Goal
+  Goal --execute--> AgentMemory（VERIFIED/HYPOTHESIS/DISPROVED 事实）
+  AgentJob --checkpoint--> AgentMemory --replan--> ActionQueue
+  外部事件到达 --> AgentJob RESUME（R23 可恢复）
+
+ModelArtifact（SCORECARD/CLASSIFIER/FORECAST_PATCH/RULE_PATCH）
+  --eval--> EVALUATING --advisory--> GOVERNED --publish--> PUBLISHED
+```
+
 ---
 
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
@@ -676,6 +706,18 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 | L-sim | `sim.tick_completed` | 沙盘推进 1+ tick（`propagateTick` 传导落 SimTickState，增量 1/3）→ 失效沙盘态/轨迹可视化 | IN_SESSION | sim-session-view, propagation-timeline | — |
 | L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |
 | L-sim | `sim.branched` | 以检查点态开新分支会话（增量 1）→ 失效会话树/对比视图 | IN_SESSION | sim-sessions, sim-compare | — |
+| L-aip | `solver.draft.created` | Deep Agent / 用户创建 SolverDraft → 失效求解器草稿列表/审核台 | IN_SESSION | solver-drafts, provisional-review | — |
+| L-aip | `solver.draft.ran` | SolverDraft 沙箱执行完成（ outcome OK/ERROR/TIMEOUT/... ）→ 失效运行历史 | IN_SESSION | solver-draft-runs | — |
+| L-aip | `solver.draft.promoted` | SolverDraft 提交晋升流水线 → 失效审核台 | IN_SESSION | solver-drafts, provisional-review | — |
+| L-aip | `solver.draft.governed` | SolverDraft 晋升通过（GOVERNED）→ 失效求解器目录/审核台 | IN_SESSION | solver-registry, provisional-review | — |
+| L-aip | `agent.job.created` | 创建长程 AgentJob → 失效 Job 监控列表 | IN_SESSION | agent-jobs | — |
+| L-aip | `agent.job.paused` | 长程任务暂停 | IN_SESSION | agent-jobs | — |
+| L-aip | `agent.job.resumed` | 长程任务恢复（外部事件或用户触发） | IN_SESSION | agent-jobs | — |
+| L-aip | `agent.job.completed` | 长程任务完成 → 失效 Job 详情/对话答案 | IN_SESSION | agent-jobs, query-dock | — |
+| L-aip | `agent.job.escalated` | 长程任务升级人工 → 通知运营/审批收件箱 | NOTIFY | agent-jobs, notifications | — |
+| L-aip | `plan.canvas.published` | PlanBuilderCanvas 发布为场景包计划 → 失效计划/场景目录 | IN_SESSION | plan-builder, scenarios | — |
+| L-aip | `model.artifact.generated` | ModelArtifact 生成（SCORECARD/CLASSIFIER/...）→ 失效模型制品列表 | IN_SESSION | model-artifacts, provisional-review | — |
+| L-aip | `model.artifact.governed` | ModelArtifact 通过治理 → 失效模型目录 | IN_SESSION | model-artifacts, model-registry | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 
@@ -710,6 +752,10 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 | **R18** | **尺度自洽（round-trip · WO-SCALE-COHERENCE）**：物理(Base.gwh)/需求(DemandSegment)/产能(weeklyWan)/订单(Order.qty×unitPrice)/财务(AnnualScenario.revenue) 五层经**唯一桥常数 `packEnergyKwh` + 锚 `scaleAnchorRevenue`**（contracts 单一来源·进 `boundaryVersion()` 指纹·R14）round-trip 自洽：名牌套=Σgwh×1e6/packEnergyKwh，有效产能=名牌×util 锚定于需求下方（**C<B**·留缺口可归因），Model.unitPrice 从 SEG.priceWan 派生，DemandSegment 值字节不动（锚）。营收四方互核 ε≤12%、量纲四方互核 ε≤15%；违反即“物理企业级/派生玩具级”的假数据。门=`scale-coherence.test.ts` 四方互核 SEAM（`C<B` + 常州 weeklyCap 对 gwh≤15% 直堵原 180× 病灶）。**第六层 realized（回补·集成复验补漏）**：实现产出序列 `output:line` 亦须随 gwh 产能同锚——realized(mean-over-lines)=基地夹定产能×排产达成率(`REALIZED_ATTAINMENT`)，per-base 派生（否则 realized 锁死玩具均值 30000/40% 达成 → 校准 predicted/actual 脱尺度 1.3~4.6×·MAPE 恒 134%）。**且 `computeRollup` 须保良率敏感度**：gwh 化成/老化夹点不含 Process.yield，须按「基地代表良率/`NOMINAL_PROCESS_YIELD`」缩放共享封顶（基线≈1 不动锚·良率被调时 dailyCells 同比降），否则 M11 校准重放调良率零杠杆。**门（回补）= m11-calibration C7/C9（良率提案改善≥门槛）+ VLE 双算/solvers V1 独立公式镜像同缩放**（引擎/oracle/测三处独立重写，任一漏改即红）。 | ✅ 已立（WO-SCALE-COHERENCE·SEAM 四方互核绿：物理365/需求375/产能365/财务321/订单375 万套·C<B·常州 weeklyCap 对 gwh 0 误差；需求锚 375万套/700亿 字节不动；**realized 第六层 + 良率敏感度回补绿·m11 10/10·四包全绿**） |
 | **R-共享产能守恒** | **跨单联合守恒·非各单独立超发（WO-PORTFOLIO-OPTIMAL）**：`∀(base b, 时间窗 t): Σ_{跨所有订单 i} qty_i·x[i,b,t] ≤ cap[b,t]`——同一基地×时间窗的产能被跨全部订单**联合守恒**分配，根治「两单分开求解都假设同一 SO-3415 产能可用 → 重复占用」（G-PORTFOLIO-LOCAL-ONLY 病根）。引擎落点=CP-SAT sidecar `solve_portfolio` 共享产能约束（真 CP-SAT 约束的产物，mock 冒充即绿测试≠能用）；`reconChecks` 逐格硬校验 `allocated≤cap`→`noDoubleOccupancy`，`capacityLedger` 逐格亮出（与 `sop_reschedule` 端内 `Σalloc+residual==qty`、`supply_demand` 双向勾稽同族守恒纪律）。在产 WIP/冻结单以承诺占用**预扣净产能**（非自由决策变量）。 | ✅ SEAM 层2 真 sidecar 亲验（`portfolio-sidecar.integration.test.ts`·单/联对拍 SO-3415 分开 Σ>其量 vs 联合只指派一次·全订单每格 Σ≤cap·R6 双跑字节一致）+ 层1 默认门 `portfolio.test.ts`（mock 也逃不掉守恒/方案差异/冻结） |
 | **十红线（推演沙盘落地纪律 · `docs/HANDOFF-sandbox-build-and-review-contract.md` §4 · 越线即停）** | RL1 本体先行(改接线先回写本体过 `ontology:check`) · RL2 暗发(新模块 `defaultOn:false` 不动现有租户) · RL3 单一来源(不出双份；就绪=投影既有 closure 零新校验；单源门复用 `boundary-singlesource:check` 勿造 `ia-single-source:check`) · RL4 走正门(沙盘 act 模拟态，采纳才经 Action R4 写真值) · RL5 零业务常数(传导核/表无行业实体名，两行业验收 R14) · RL6 确定性(传导核纯函数，无 Date.now/随机，R6) · RL7 CLI 先于 UI(R15) · RL8 倒序长出(世界态经连接器/合成/runStory，禁硬编码 seed，R16) · RL9 additive 可回退(迁移有 down，entitlement 关=404，旧路径在) · RL10 不与在建分叉(复用 sim-views/A8/recompute/replay/ontogenesis/closure，不平行造第二套)。 | 大多复用既有不变量（RL1=R16本体先行·RL3=R-一致·RL4=R4·RL5=R14·RL6=R6·RL7=R15·RL8=R16·RL10=不分叉）；逐 PR 评审硬判据（HANDOFF §5） |
+| **R21** | **草稿不直接上生产（AIP 增强）**：SolverDraft / ModelArtifact 在 `GOVERNED` 之前不得被路径 A 调用、不得写入生产真值；结果必须标 `UNVERIFIED`。 | `draft_solver` 工具/晋升流水线 |
+| **R22** | **沙箱零副作用（AIP 增强）**：SolverDraft 执行环境零网络、零文件系统写、零外部进程；可用 API 仅白名单（Math/Array/Object/JSON/Map/Set + 注入只读上下文）。 | `SandboxRunner` lint + seccomp/VM |
+| **R23** | **AgentJob 可恢复（AIP 增强）**：每完成一个 Goal 写入 checkpoint；服务重启后从 checkpoint 恢复；WAITING 状态不计入活跃预算但保留上下文。 | `AgentJobService` checkpoint/resume |
+| **R24** | **Canvas 与 PlanDSL 100% 等价（AIP 增强）**：PlanBuilderCanvas 只是 PlanDSL 的可视化编辑层，画布必须可序列化为 DSL，DSL 必须可反序列化为等价画布；PlanDSL 编译产物 = 现有 `ExecutionPlan`。 | `PlanBuilderService` compile/serialize |
 
 ---
 

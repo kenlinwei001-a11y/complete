@@ -1171,7 +1171,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------------
   // B4 Skills
   // ---------------------------------------------------------------------
-  const CreateSkillBody = SkillDefinitionSchema.omit({ id: true, tenantId: true, version: true, status: true });
+  const CreateSkillBody = SkillDefinitionSchema.omit({
+    id: true,
+    tenantId: true,
+    version: true,
+    status: true,
+    capability: true,
+    createdAt: true,
+    createdBy: true,
+    updatedAt: true,
+    sideEffect: true,
+    references: true,
+    provenancePolicy: true,
+    hash: true,
+  });
 
   app.get("/b/v1/skills", async (req, reply) => {
     const a = await auth(req);
@@ -1204,6 +1217,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       tenantId: a.tenantId,
       version: Math.max(0, ...existing.map((s) => s.version)) + 1,
       status: "DRAFT",
+      capability: "SKILL",
+      createdAt: new Date().toISOString(),
+      createdBy: a.userId,
+      sideEffect: "READ_ONLY",
+      references: [],
+      provenancePolicy: { trustLevel: "UNVERIFIED", sourceLabel: "manual", requiresAdvisory: false },
     };
     await deps.repos.skills.insert(skill);
     return reply.status(201).send(skill);
@@ -2063,6 +2082,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         id: newId("skl"), tenantId: m.tenantId, key: sk.skillKey, version: 1,
         name: sk.skillKey, summary: `能力 ${sk.capability}（g8 scaffold）`, body: "g8 故事倒推 scaffold（DRAFT，待补全）",
         resources: [], status: "DRAFT",
+        capability: "SKILL",
+        createdAt: new Date().toISOString(),
+        createdBy: "scaffold",
+        sideEffect: "READ_ONLY",
+        references: [],
+        provenancePolicy: { trustLevel: "UNVERIFIED", sourceLabel: "scaffold", requiresAdvisory: false },
       });
       items.push({ kind: "skill", key: sk.skillKey, status: "SCAFFOLDED" });
     }
