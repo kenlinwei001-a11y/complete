@@ -1440,24 +1440,69 @@ export class SolverService {
       const dName = displayNameOf(scopedBaseId);
       const baseNode = l1nodes.find((n) => n.id === `base:${scopedBaseId}`);
       if (!baseNode) {
-        // 该基地当前无 OPEN 订单结构驱动 → 诚实空树（非硬造）。
-        const outEmpty: Record<string, unknown> = {
+        // 该基地不是任何 OPEN 订单的**首基地**（bases[0]·全局 L1 按 bases[0] 分组）——如厦门/枣庄
+        // （Order.bases 字母序恒排在 bases[1]，从不当首基地）。但它可能是这些订单的**可产基地**（bases 含它）。
+        // ── base 作用域敞口树（G-SEG-ATTR-BASE-BASES0·2026-07-27）：出「该基地可承接订单敞口」树，让每个
+        //    可产基地都有根因推演树（exposure·非全局分摊份额·诚实标注 scope.exposure）；真无可产订单才空。──
+        const exposureOrders = orders.filter(
+          (o) => str(o.status) === "OPEN" && Array.isArray(o.bases) && (o.bases as string[]).includes(scopedBaseId),
+        );
+        if (exposureOrders.length === 0) {
+          const outEmpty: Record<string, unknown> = {
+            rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
+            scope: { baseId: scopedBaseId, displayName: dName },
+            globalGap: G, totalGap: 0, noBaseData: true,
+            levels: [], atomicLeaves: [], causalEdges: [], reconChecks: [], reconciled: true, residualPct: 0,
+            severityKind: "info" as const,
+            summary: `基地「${dName}」当前无可承接 OPEN 订单，暂无基地专属归因（诚实空树·非硬造）。`,
+          };
+          await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: 0, residualPct: 0, reconciled: true, noBaseData: true });
+          return outEmpty;
+        }
+        // 敞口驱动 = Σ 可产订单 value；父 gap = 敞口占全局驱动比 × 可解释 gap（exposure·honest·非分摊份额）。
+        const expDriver = round(exposureOrders.reduce((a, o) => a + orderVal(o), 0), 2) || 1;
+        const pgExp = round(G * structuralExplained * (expDriver / totalBaseDriver), 4);
+        const baseEquip = equipment.filter((q) => str(q.baseId) === scopedBaseId);
+        const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / baseEquip.length, 4) : 0;
+        const expDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown>; businessType?: string }[] = [];
+        for (const o of exposureOrders) {
+          expDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
+            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
+        }
+        if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
+          prov: { kind: "实测", drillType: "Equipment", drillId: scopedBaseId, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+        const expTot = expDrivers.reduce((a, d) => a + d.driver, 0) || 1;
+        const expLeaves = expDrivers
+          .sort((a, b) => b.driver - a.driver || a.id.localeCompare(b.id))
+          .map((c) => ({
+            id: c.id, factor: c.factor, contribution: round(pgExp * (c.driver / expTot), 4), unit, share: round(c.driver / expTot, 4),
+            path: [str(m.metricId), `base:${scopedBaseId}`, c.id], causalPath: [] as string[], provenance: c.prov,
+            ...(c.businessType ? { businessType: c.businessType } : {}),
+          }));
+        const expChildSum = round(expLeaves.reduce((a, n) => a + num(n.contribution), 0), 4);
+        const expResidual = round(pgExp - expChildSum, 4);
+        const expReconciled = Math.abs(expChildSum + expResidual - pgExp) <= 1e-4;
+        const outExp: Record<string, unknown> = {
           rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-          scope: { baseId: scopedBaseId, displayName: dName },
-          globalGap: G,
-          totalGap: 0,
-          noBaseData: true,
-          levels: [],
-          atomicLeaves: [],
+          scope: { baseId: scopedBaseId, displayName: dName, exposure: true },
+          globalGap: G, totalGap: pgExp,
+          levels: [
+            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expDriver } }] },
+            { depth: 2, label: "订单/瓶颈", nodes: expLeaves, residual: expResidual },
+          ],
+          atomicLeaves: expLeaves.filter((n) => !str(n.id).startsWith("material:")),
           causalEdges: [],
-          reconChecks: [],
-          reconciled: true,
-          residualPct: 0,
+          reconChecks: [
+            { depth: 1, label: "基地", parentGap: pgExp, sumChildren: pgExp, residual: 0, ok: true },
+            { depth: 2, label: `基地 ${scopedBaseId} 内（可产订单敞口）`, parentGap: pgExp, sumChildren: expChildSum, residual: expResidual, ok: expReconciled },
+          ],
+          reconciled: expReconciled,
+          residualPct: round(pgExp !== 0 ? Math.abs(expResidual) / Math.abs(pgExp) * 100 : 0, 2),
           severityKind: "info" as const,
-          summary: `基地「${dName}」当前无 OPEN 订单结构驱动，暂无基地专属归因（诚实空树·非硬造）。`,
+          summary: `基地「${dName}」可承接订单敞口树（该基地为这些订单的可产基地·非首基地分摊份额·exposure）。`,
         };
-        await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: 0, residualPct: 0, reconciled: true, noBaseData: true });
-        return outEmpty;
+        await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: expLeaves.length, residualPct: outExp.residualPct, reconciled: expReconciled, exposure: true });
+        return outExp;
       }
       const pg = num(baseNode.contribution); // 该基地对全局 gap 的贡献 = 基地专属树根 gap
       const baseL2 = l2nodes.filter((n) => Array.isArray(n.path) && (n.path as string[]).includes(`base:${scopedBaseId}`));

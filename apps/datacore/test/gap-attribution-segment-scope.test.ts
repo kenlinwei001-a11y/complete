@@ -67,4 +67,18 @@ describe("SEAM · gap_attribution 细分作用域（G-SEG-ATTR-CROSS-SEGMENT）"
     expect(orderLeaves.length).toBeGreaterThan(0); // 有订单叶（跨全业态·非被储能过滤空）
     expect(g.reconciled).toBe(true);
   });
+
+  it("④ 非首基地也有敞口树（厦门 base 作用域·可产订单敞口·非空·勾稽）——治 G-SEG-ATTR-BASE-BASES0", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    // 厦门(xiamen) 因 Order.bases 字母序恒 bases[1]、从不当首基地 → 全局 L1 无它（旧洞：空树）。
+    // 但它是 2170-NCM 可产基地 → base 作用域应出「可承接订单敞口」树·非空（exposure 标注·勾稽守）。
+    const g: any = await t.services.solvers.invoke(ADMIN, "gap_attribution", { scope: { baseId: "xiamen" } });
+    expect(g.noBaseData ?? false).toBe(false); // 敞口树非空（旧洞时为 true）
+    expect(g.scope?.baseId).toBe("xiamen");
+    expect(g.scope?.exposure).toBe(true); // 诚实标注 exposure（非全局分摊份额）
+    const orderLeaves = g.atomicLeaves.filter((l: any) => l.provenance?.drillType === "Order" && l.provenance?.kind === "实测");
+    expect(orderLeaves.length).toBeGreaterThan(0); // 有可产订单叶
+    expect(g.reconciled).toBe(true); // 勾稽 Σ子+residual=父
+  });
 });

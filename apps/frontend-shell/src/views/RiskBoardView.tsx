@@ -576,11 +576,12 @@ function RiskDetailPanel({
   const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
   // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
   const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);
-  // 其余越线/临近因素（当前值·无逐日 series 源→灰点·不伪造）。
+  // 其余因素（当前值·无逐日 series 源→灰点·不伪造 G-DM-1）。展示**所有有值因素**（含物流时长等低张力项）——
+  // 用户要看全貌·不再按阈值隐藏（否则物流时长 61–69<70 被藏、看着像"缺数据"；灰点+当前值已诚实标"无逐日源"）。
   const others = (bnFactors ?? [])
     .filter((f) => f !== card.factor)
     .map((f) => ({ factor: f, value: bnRow?.tightness[f] ?? null }))
-    .filter((x) => x.value != null && x.value >= threshold - BAND)
+    .filter((x) => x.value != null)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const tickLabel = (d: number): string => (d === 1 || d % 5 === 0 || d === H ? `D+${d}` : "");
   // CT-a（⑤ 订单交付 icon）：逐日受影响订单数（与 onDay/AffectedOrdersModal 同源·同 day 口径 dueDay===i·非写死）。
