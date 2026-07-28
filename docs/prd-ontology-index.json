@@ -1571,9 +1571,7 @@
       "artifacts": [
         "scripts/check-arg-drop-seam.mjs"
       ],
-      "brokenArtifacts": [
-        "scripts/check-arg-drop-seam.mjs"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-segment-scoped-gap-attribution.md": {
       "hasOntologyRef": true,

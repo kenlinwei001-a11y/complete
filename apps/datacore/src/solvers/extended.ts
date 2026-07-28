@@ -1,4 +1,5 @@
 import type { ObjectInstance } from "../domain.js";
+import { AppError } from "../errors.js";
 import { round } from "../prng.js";
 import { maintWeekOf, num, str, type SolverContext } from "./types.js";
 
@@ -302,6 +303,8 @@ export function quoteMargin(args: Record<string, unknown>) {
 }
 
 // S16 credit_exposure：敞口=应收+在产未开票；可用=额度−敞口；逾期 dueDate+30 未回（C32）。
+// WO-SEAM-ARG-DROP（引擎半·诚实化）：透出 `scope`（客户维作用域）——CUSTOMER=定位到具体客户 / ALL=未指定客户的全域合计 /
+//   EXPLICIT=调用方直传数值（无客户上下文）。让前端可见"这答案算的是谁"（R-ARG-FIDELITY），杜绝首客户静默冒充。
 export function creditExposure(args: Record<string, unknown>) {
   const limit = num(args.creditLimit);
   const receivables = num(args.receivables);
@@ -312,7 +315,8 @@ export function creditExposure(args: Record<string, unknown>) {
   const hasOverdue = overdue.some((o) => o.overdueDays > 30); // C32
   const newOrder = num(args.newOrderAmount, 0);
   const verdict = hasOverdue ? "冻结（存在逾期>30天）" : newOrder <= available ? "可接" : "超出可用额度";
-  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, ruleRefs: ["C13", "C32"] };
+  const scope = (args.scope as Record<string, unknown> | undefined) ?? { mode: "EXPLICIT" };
+  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, scope, ruleRefs: ["C13", "C32"] };
 }
 
 // S19 quarterly_gap：对策按成本升序贪心覆盖季度缺口；残余缺口明示。
@@ -464,10 +468,35 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
     }
     case "credit_exposure": {
+      // 调用方直传数值（测试/规则 payload·rules-p3/solvers-extended）→ 原样（无客户维推导，creditExposure 标 scope:EXPLICIT）。
       if (has("creditLimit")) return args;
-      const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
-      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
-      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
+      // WO-SEAM-ARG-DROP（引擎半·诚实化默认·闭 G-ARG-DROP-SEAM 求解器侧）：客户维过滤**不静默落首客户**。
+      const custObjs = (c.customers ?? []).map(props);
+      const arRows = (c.arInvoices ?? []).map(props);
+      const overdueFor = (name: string) =>
+        arRows.filter((iv) => str(iv.custName) === name && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      const wanted = str(args.custName);
+      if (wanted) {
+        // 稳健匹配：精确 → 双向子串（路由 creditArgsFrom /XX公司/ 正则会截掉尾部拉丁字符·如「电网公司」需匹配真实「电网公司F」）。
+        const cust =
+          custObjs.find((x) => str(x.custName) === wanted) ??
+          custObjs.find((x) => str(x.custName).includes(wanted) || wanted.includes(str(x.custName)));
+        // 指定了客户却匹配不到 → 报 AMBIGUOUS_SCOPE（错误信封·不静默落首个客户冒充答案）。
+        if (!cust)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `credit_exposure：问句指定客户「${wanted}」在客户库中无匹配——拒绝静默落首个客户（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+        const name = str(cust.custName);
+        return { ...args, custName: name, creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue: overdueFor(name), scope: { mode: "CUSTOMER", custName: name } };
+      }
+      // 未指定客户 → **显式全域合计**（scope:ALL·前端可见"未指定客户→全部客户合计敞口"），而非静默取首个客户。
+      const totalLimit = round(custObjs.reduce((s, x) => s + num(x.creditLimit, 5000), 0), 2);
+      const totalRecv = round(custObjs.reduce((s, x) => s + num(x.receivables), 0), 2);
+      const totalWip = round(custObjs.reduce((s, x) => s + num(x.wipUnbilled), 0), 2);
+      const overdueAll = arRows.filter((iv) => num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      return { ...args, custName: "全部客户合计", creditLimit: totalLimit, receivables: totalRecv, wipUnbilled: totalWip, overdue: overdueAll, scope: { mode: "ALL", customerCount: custObjs.length, note: "未指定客户→全部客户合计敞口（非首客户）" } };
     }
     case "carbon_footprint": {
       if (has("materials")) return args;
