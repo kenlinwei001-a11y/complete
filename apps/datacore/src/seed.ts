@@ -69,6 +69,11 @@ export async function seedDemoEntitlements(repos: Repos): Promise<void> {
       "qos.compose-path": true,
       "qos.reasoning-trace": true,
       "agent.escalation": true,
+      // WO-DEMO-L3-LIGHTUP：demo 开箱体验 L3 耦合联合求解——② 确定性多域分路（LLM-free·无超时风险·Q2 治本）
+      // 把耦合型问句接进 runMultiRoute，L3 门在其入口升格成一次 portfolio 守恒解（转拨→产能→延误→外协真传导）。
+      // 两门缺一不可：det-multi 产耦合路由 × l3-coupled 升格（见 l3-coupled-seam「det+l3 同开 → 一次 portfolio」）。
+      "qos.deterministic-multi-domain": true,
+      "qos.multi-intent-l3-coupled": true,
     },
     configVersion: 1,
     updatedBy: "system:seed-lightup",
