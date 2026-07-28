@@ -494,8 +494,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     gap = round(Math.max(worst, 0), 4);
     ok = batchRows.every((r) => r.ok === true);
   } else {
-    gap = round(effectiveDemand - p90, 4);
-    ok = gap <= 0;
+    gap = round(Math.max(effectiveDemand - p90, 0), 4);
+    ok = effectiveDemand <= p90;
   }
 
   // What-if (S1.2-7): 调整后P50 = P50×(1+0.06×夜班+0.05×扩通道)+qty×外协比例; C03 physical cap; C08 reject.
@@ -533,8 +533,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
         physicalCap,
         capped,
         ...(capped ? { capNote: `调整后产能触及物理上限 ${physicalCap}（C03），按上限封顶` } : {}),
-        gap: round(effectiveDemand - adjP90, 4),
-        ok: effectiveDemand - adjP90 <= 0,
+        gap: round(Math.max(effectiveDemand - adjP90, 0), 4),
+        ok: effectiveDemand <= adjP90,
       };
     }
   }
