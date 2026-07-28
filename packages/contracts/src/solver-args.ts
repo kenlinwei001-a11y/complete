@@ -35,6 +35,8 @@ export const CapacityForecastArgs = z.object({
   weeks: z.number().optional(),
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒（缺省 'base' 不变）。
   granularity: z.enum(["base", "process-model"]).optional(),
+  // WO-DIALOGUE-Q1Q2（additive·向后兼容）：'threshold' → 反向阈值分支（还能加多少 = P90 天花板 − 已占基线需求）；缺省 'forecast' 前向不变。
+  mode: z.enum(["forecast", "threshold"]).optional(),
 });
 
 /** portfolio（全局联合推演·service.ts:2037-2041）：全订单×全基地×时间 联合最优组合。 */

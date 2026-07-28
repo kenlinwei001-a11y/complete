@@ -102,6 +102,9 @@ export const CeoRouteKindSchema = z.enum([
   // WO-Phase1-D+A：what-if 结构化杠杆 + Q7 产能可行性歧义修
   "generic_inference", // 扩通道/加夜班/加%%/外包/降%% 等结构化杠杆前向重算
   "capacity_forecast", // 型号+周期+加/扩 → 产能可行性（S01）
+  // WO-DIALOGUE-Q1Q2：产能反向阈值（「型号 加 多少 需求量 N 周就不能接了/穿仓」）→ capacity_forecast(mode:"threshold")
+  // 反推「还能加多少 = P90 天花板 − 已占基线需求」。独立路由值，映射到 ceo_capacity_threshold 意图（forward S01 口径不动）。
+  "capacity_threshold", // 反向：还能加多少需求量才穿仓（阈值增量·mode:"threshold"）
 ]);
 export type CeoRouteKind = z.infer<typeof CeoRouteKindSchema>;
 

@@ -39,6 +39,9 @@ const RE_BASE_OUTLOOK = /(未来.{0,6}(天|周|月|季).{0,10}产能|产能.{0,1
 const RE_WHATIF = /(扩\d+\s*通道|加\d*\s*夜班|加班|加\d+\s*%|外包\d+|降\d+%)/;
 // WO-Phase1-D+A：Q7 消歧——型号 + 周期 + 加/扩 → 产能可行性（S01），优先于 RE_ATP 的"能不能接"。
 const RE_CAPACITY_FEASIBILITY = /([\w\-一-龥]{2,40}?)\s*加\s*(\d+(?:\.\d+)?)\s*%\s*(\d+|[一二两三四五六七八九十]+)\s*周/;
+// WO-DIALOGUE-Q1Q2（反向阈值 Q1）：型号 + 「加 多少」（未给具体 %）+ 穿仓/不能接 语义 → 反推「还能加多少需求量才穿仓」。
+// 与 RE_CAPACITY_FEASIBILITY（前向 加 N% N周）互斥（前者带具体 %·后者「多少」为疑问量）→ 置于其前判定，前向 S01 口径不动。
+const RE_CAPACITY_THRESHOLD = /([\w\-一-龥]{2,40}?)\s*加\s*多少[\s\S]*?(不能接|就满了|穿仓|就不能接了|加满)/;
 const RE_ORDER_ID = /\bSO-?\d{3,}\b/i;
 /** 从问句/焦点派生产销重排 args（targetOrderId + 可选 newDueDate/advancePct）。 */
 function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
@@ -127,6 +130,21 @@ function capacityForecastArgsFrom(q: string): Record<string, unknown> {
   return args;
 }
 
+/** WO-DIALOGUE-Q1Q2：反向阈值 args（型号 modelId + 周数 weeks）——喂 capacity_forecast(mode:"threshold") 反推余量。
+ *  modelId 走 string 槽（直传·不经 objectRef 解析）；weeks 走 number 槽（solver num() 需数值·非字符串）。 */
+function capacityThresholdArgsFrom(q: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  const m = RE_CAPACITY_THRESHOLD.exec(q);
+  if (m) {
+    const modelToken = m[1]!.trim();
+    if (modelToken) args.modelId = modelToken;
+  }
+  const wm = q.match(/(\d+|[一二两三四五六七八九十]+)\s*周/);
+  const weeks = wm ? chineseNumberToInt(wm[1]!) : undefined;
+  if (weeks !== undefined) args.weeks = weeks;
+  return args;
+}
+
 /** WO-Phase1-D+A：结构化杠杆 → generic_inference mode:"levers" 的因子/作用域。 */
 function whatIfArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unknown> {
   const args: Record<string, unknown> = { mode: "levers", targetType: "Line", targetProp: "utilization", topK: 6 };
@@ -167,7 +185,7 @@ export function isDecisionRoute(route: CeoQueryRoute["route"]): boolean {
  * → 落 path-B 洪泛（v4 实测 #1/#4/#9 病根）。加入后这类题才能真绑对口 solver。
  */
 export function isCeoQuestion(q: string): boolean {
-  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_BOTTLENECK, RE_BASE_OUTLOOK, RE_WHATIF, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
+  return [RE_SOP, RE_CREDIT, RE_MARGIN, RE_SUPPLY_DEMAND, RE_ATP, RE_BOTTLENECK, RE_BASE_OUTLOOK, RE_WHATIF, RE_CAPACITY_THRESHOLD, RE_ROOTCAUSE, RE_OPTION, RE_SIGNAL, RE_ATTAIN].some((re) => re.test(q ?? ""));
 }
 
 /**
@@ -214,6 +232,8 @@ export const CEO_INTENT_KEYS = new Set([
   "ceo_base_outlook",
   // WO-Phase1-D+A：what-if 结构化杠杆（generic_inference）
   "ceo_whatif",
+  // WO-DIALOGUE-Q1Q2：产能反向阈值（还能加多少需求量才穿仓·capacity_forecast mode:"threshold"）
+  "ceo_capacity_threshold",
 ]);
 
 /** 是否 CEO 专属意图（用于候选池 PageContext 门控过滤）。 */
@@ -236,6 +256,8 @@ export function ceoIntentKeyForRoute(route: CeoQueryRoute["route"]): string {
   // WO-Phase1-D+A：what-if 结构化杠杆 + Q7 产能可行性歧义修
   if (route === "generic_inference") return "ceo_whatif";
   if (route === "capacity_forecast") return "capacity_feasibility";
+  // WO-DIALOGUE-Q1Q2：反向阈值意图（还能加多少·mode:"threshold"）——独立于 forward capacity_feasibility。
+  if (route === "capacity_threshold") return "ceo_capacity_threshold";
   return "ceo_root_cause";
 }
 
@@ -327,6 +349,9 @@ export function resolveCeoRoute(
   // 接缝调和：达标语境下的归因/方案深问先于 B/C 直绑（"毛利被什么拉低才没达成目标"=达标根因→gap_attribution·非 finance_pnl；
   // 而"毛利为什么下滑"无达标语境→仍走下方 RE_MARGIN→finance_pnl）。方案(OPTION)优先根因(ROOTCAUSE)同既有口径。
   else if ((RE_ROOTCAUSE.test(q) || RE_OPTION.test(q)) && RE_ATTAIN_CTX.test(q)) route = RE_OPTION.test(q) ? "decision_play" : "gap_attribution";
+  // WO-DIALOGUE-Q1Q2：反向阈值（型号 加 多少 … 不能接/穿仓/加满）—— 高度特异（「加 多少」+ 终止语义）→ 置最前，
+  // 先于 RE_BOTTLENECK / RE_BASE_OUTLOOK（后者含「穿仓」会误吞）/ RE_CAPACITY_FEASIBILITY（后者带具体 %·此处「多少」为疑问量·互斥）。
+  else if (RE_CAPACITY_THRESHOLD.test(q)) route = "capacity_threshold";
   // WO-QOS-ROUTE-COVER：瓶颈定位 / 产能前瞻 先于 RE_ROOTCAUSE（免"瓶颈/为什么"被 gap_attribution 抢·#1/#4/#9）。
   // 上一分支已把「达标语境 + 归因」题落 gap_attribution → 此处不影响 #10（储能份额逐层拆根因）。
   else if (RE_BOTTLENECK.test(q)) route = "bottleneck_matrix";
@@ -361,6 +386,8 @@ export function resolveCeoRoute(
     args = baseOutlookArgsFrom(q, focus); // baseId(问句基地名→id / focus.base·求解器必填)
   } else if (route === "capacity_forecast") {
     args = capacityForecastArgsFrom(q); // model(型号)+demandDelta+weeks（Q7 产能可行性）
+  } else if (route === "capacity_threshold") {
+    args = capacityThresholdArgsFrom(q); // modelId(型号)+weeks（反向阈值·还能加多少）
   } else if (route === "generic_inference") {
     args = whatIfArgsFrom(q, focus); // mode:"levers"+scopeObjectIds(baseId)+factors（结构化杠杆）
   } else {
@@ -379,6 +406,7 @@ export function resolveCeoRoute(
       (route === "bottleneck_matrix" && args.baseIds) ||
       (route === "base_capacity_outlook" && args.baseId) ||
       (route === "capacity_forecast" && args.model) ||
+      (route === "capacity_threshold" && args.modelId) ||
       (route === "generic_inference" && args.scopeObjectIds),
   );
   const scopedBaseIds = scope.allBases ? [] : scope.baseIds;

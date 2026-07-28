@@ -381,6 +381,8 @@ export interface ForecastArgs {
   demandDelta?: number;
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒。
   granularity?: "base" | "process-model";
+  // WO-DIALOGUE-Q1Q2（additive·向后兼容）：'threshold' → 反向阈值分支；缺省/'forecast' 前向 what-if 不变。
+  mode?: "forecast" | "threshold";
 }
 
 export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<string, unknown> {
@@ -472,6 +474,41 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeks);
   const demandDelta = num(args.demandDelta, 0);
   const effectiveDemand = round((qty > 0 ? qty : baselineDemand) * (1 + demandDelta), 4);
+
+  // WO-DIALOGUE-Q1Q2 · 反向阈值分支（「型号 加 多少 需求量 N 周就不能接了/穿仓」）：
+  //   thresholdQty = 还能加多少 = **P90 产能天花板 − 已占基线需求(baselineDemand)** = 增量余量（万套）。
+  // ⚠ 口径纠正（非 raw P90）：raw P90 是产能天花板绝对值，而「还能加多少」须扣掉已在制承诺量（订单簿基线需求）。
+  // 用 **P90**（保守/承诺口径·p90 = p50×healthFactor ≤ p50）；baselineDemand ≥ p90 → thresholdQty=0（诚实「已无余量」·不报负）。
+  // summary 透明列全三值（天花板 P90 / 已占 baselineDemand / 还能加 thresholdQty）使口径可核。R6 确定·R13 每值溯源。
+  if (str(args.mode) === "threshold") {
+    const modelName = str(c.models.find((m) => str(m.props.modelId) === modelId)?.props.name, modelId);
+    const thresholdQty = baselineDemand >= p90 ? 0 : round(p90 - baselineDemand, 4);
+    const summary =
+      thresholdQty > 0
+        ? `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
+        : `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
+    return {
+      mode: "threshold",
+      weeks,
+      p50,
+      p90,
+      baselineDemand,
+      thresholdQty,
+      thresholdUnit: "万套",
+      mainBottleneck: mainBn,
+      mainBn,
+      summary,
+      healthFactor,
+      dataMode: anyLive ? "LIVE" : "MOCK",
+      perBaseRows,
+      // R13 溯源：口径三值可下钻（thresholdQty = P90 天花板 − 已占基线需求·非 raw P90）。
+      provenance: {
+        thresholdQty: { formula: "P90 产能天花板 − 订单簿基线需求（增量余量·还能加多少·万套）", valueLabel: "阈值增量（万套/窗口）" },
+        p90: { formula: "p50 × healthFactor（P90 产能天花板·承诺口径）", valueLabel: "P90 产能天花板（万套/窗口）" },
+        baselineDemand: { formula: "Σ Order.qty（modelId，due in weeks，OPEN）/ 10000", valueLabel: "已占基线需求（万套/窗口）" },
+      },
+    };
+  }
 
   // Whole-order vs batch verdict.
   let gap: number;

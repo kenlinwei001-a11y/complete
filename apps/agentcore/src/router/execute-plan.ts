@@ -89,11 +89,36 @@ function scanUnverified(text: string): boolean {
   return /\d/.test(stripped);
 }
 
-/** 无 LLM provider 时的确定性兜底（诚实：明说未经 LLM 综合叙述·不假装）。每步以 ⟦ref:N⟧ 指向其产物。 */
+/**
+ * 提取单步产物的**核心标量字段**（top-level number/string/boolean）→ 供确定性兜底内嵌可核数字。
+ * 跳过数组/嵌套对象（perBaseRows/provenance 等大结构·避免噪声）；核心口径值（thresholdQty/p90/baselineDemand/
+ * mainBottleneck/gap/ok/summary …）均为 top-level 标量，故此过滤即覆盖各求解器的可核心数。长串截断。
+ */
+export function coreScalars(data: unknown): { key: string; value: string }[] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  const out: { key: string; value: string }[] = [];
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    if (typeof v === "number" || typeof v === "boolean") out.push({ key: k, value: String(v) });
+    else if (typeof v === "string" && v.length > 0) out.push({ key: k, value: v.length > 160 ? `${v.slice(0, 157)}…` : v });
+    // 数组/对象跳过（大结构·非顶层标量口径值）。
+  }
+  return out;
+}
+
+/**
+ * 无 LLM provider 时的确定性兜底（诚实：明说未经 LLM 综合叙述·不假装）。每步以 ⟦ref:N⟧ 指向其产物。
+ * WO-DIALOGUE-Q1Q2（治「未溯源空壳」类·reviewer flag）：**为所有 solver 步**内嵌其核心标量字段
+ * （thresholdQty/p90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
+ * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。
+ */
 function deterministicSynthesis(products: StepProduct[], blocks: string[]): string {
-  const head = `【组合路径·确定性汇总（无 LLM provider → 未作综合叙述，逐步产物如下）】`;
+  const head = `【组合路径·确定性汇总（无 LLM provider → 未作综合叙述，逐步产物+核心数字如下）】`;
   const want = blocks.length ? `（拟综合：${blocks.join("/")}）` : "";
-  const lines = products.map((p, i) => `- 步骤 ${i} · ${p.solverKey}：产物见 ⟦ref:${i}⟧（outcome=${p.outcome}）`);
+  const lines = products.map((p, i) => {
+    const scalars = coreScalars(p.data);
+    const nums = scalars.length ? `：${scalars.map((s) => `${s.key}=${s.value}`).join("，")}` : "（无标量字段·详见 ⟦ref⟧）";
+    return `- 步骤 ${i} · ${p.solverKey}（outcome=${p.outcome}·⟦ref:${i}⟧）${nums}`;
+  });
   return [head + want, ...lines].join("\n");
 }
 

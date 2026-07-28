@@ -535,14 +535,21 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_atp_check", name: "CEO 订单承诺", solver: "atp_check", examples: ["这单能不能接", "能接多少何时能交"], slotNames: ["orderRef"] },
     // WO-QOS-ROUTE-COVER（真 Kimi 10 题 v3/v4 实测 #1/#4/#9：瓶颈定位 / 每基地产能前瞻无对口意图 → 落 path-B 洪泛
     // 或被 gap_attribution 过度捕获）。补全对口意图直绑真 solver（bottleneck_matrix 默认全域·base_capacity_outlook 必填 baseId）。
-    { key: "ceo_bottleneck", name: "CEO 瓶颈定位", solver: "bottleneck_matrix", examples: ["哪个工序是瓶颈", "化成 OEE 多少换型损失占几成", "常州瓶颈卡在哪道工序"], slotNames: [] },
+    // WO-DIALOGUE-Q1Q2（Q2 修）：ceo_bottleneck 补 baseIds 槽 → 问句解析的 [baseId]（如 信阳→["xinyang"]）真达 bottleneck_matrix
+    //（此前 slotNames:[] → solverArgs 丢 baseIds → risk.ts 默认全域·答非所问）。baseIds 为 json/数组槽（见下 slotDefs 特例）。
+    { key: "ceo_bottleneck", name: "CEO 瓶颈定位", solver: "bottleneck_matrix", examples: ["哪个工序是瓶颈", "化成 OEE 多少换型损失占几成", "常州瓶颈卡在哪道工序"], slotNames: ["baseIds"] },
     { key: "ceo_base_outlook", name: "CEO 产能前瞻", solver: "base_capacity_outlook", examples: ["常州未来 90 天产能够不够", "未来 30/60/90 天会不会穿仓", "这个基地接得住在手订单吗"], slotNames: ["baseId"] },
     // WO-Phase1-D+A：what-if 结构化杠杆 → generic_inference mode:"levers"
     { key: "ceo_whatif", name: "CEO 假设推演", solver: "generic_inference", examples: ["扩 2 通道能补多少缺口", "加夜班产能能提多少", "外包 10% 能不能补上"], slotNames: ["baseId", "factors"] },
+    // WO-DIALOGUE-Q1Q2（Q1 修）：产能反向阈值——「型号 加 多少 需求量 N 周就不能接了/穿仓」→ capacity_forecast(mode:"threshold")
+    // 反推「还能加多少 = P90 天花板 − 已占基线需求」。solverArgs/slotDefs 见下特例（weeks 为 number 槽·mode 常量注入）。
+    { key: "ceo_capacity_threshold", name: "CEO 产能反向阈值", solver: "capacity_forecast", examples: ["4680-NCM 加多少需求量六周就不能接了", "还能加多少订单才穿仓", "加到多少就满了"], slotNames: ["modelId", "weeks"] },
   ];
   for (const cap of ceoCaps) {
     const planId = `plan_${cap.key}_v1${sfx}`;
     // WO-Phase1-D+A：ceo_whatif 用 generic_inference mode:"levers"，args 结构与常规单字段注入不同。
+    // WO-DIALOGUE-Q1Q2：ceo_bottleneck 的 baseIds 是 json/数组槽（非通用单字段串映射·串化会把 ["xinyang"]→"xinyang" 断数组）；
+    //   ceo_capacity_threshold 须常量注入 mode:"threshold"（通用单字段映射不会带 mode → 落前向）。
     const solverArgs: Record<string, TemplateValue> =
       cap.key === "ceo_whatif"
         ? {
@@ -553,7 +560,11 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
             targetProp: "utilization",
             topK: 6,
           }
-        : (Object.fromEntries(cap.slotNames.map((n) => [n, `{{slots.${n}}}`])) as Record<string, TemplateValue>);
+        : cap.key === "ceo_bottleneck"
+          ? ({ baseIds: "{{slots.baseIds}}" } as Record<string, TemplateValue>)
+          : cap.key === "ceo_capacity_threshold"
+            ? ({ modelId: "{{slots.modelId}}", weeks: "{{slots.weeks}}", mode: "threshold" } as Record<string, TemplateValue>)
+            : (Object.fromEntries(cap.slotNames.map((n) => [n, `{{slots.${n}}}`])) as Record<string, TemplateValue>);
     plans.push({
       id: planId, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       steps: [
@@ -570,7 +581,16 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
             { name: "baseId", type: "string", required: false, description: "基地 ID 或中文名（问句/PageContext.focus.base 注入）" },
             { name: "factors", type: "json", required: false, description: "结构化杠杆映射的瓶颈因子列表（如 [\"瓶颈工序\"]）" },
           ]
-        : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
+        : // WO-DIALOGUE-Q1Q2：baseIds 必须是 json 槽（数组值经 validateSlotValue 原样保留·string 槽会 String([...]) 断数组）。
+          cap.key === "ceo_bottleneck"
+          ? [{ name: "baseIds", type: "json", required: false, description: "限定基地 ID 列表（问句/PageContext.focus.base 解析 → [baseId]·bottleneck_matrix 限域；缺省全域）" }]
+          : // WO-DIALOGUE-Q1Q2：weeks 必须是 number 槽（solver num(args.weeks) 需数值·string \"6\" 会被 num() 忽略回落缺省）。
+            cap.key === "ceo_capacity_threshold"
+            ? ([
+                { name: "modelId", type: "string", required: false, description: "型号 ID（问句解析·如 4680-NCM）" },
+                { name: "weeks", type: "number", required: false, description: "周数窗口（问句解析·如 六周→6）" },
+              ] as IntentDefinition["slots"])
+            : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
     intents.push({
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,
