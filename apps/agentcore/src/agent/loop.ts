@@ -65,6 +65,10 @@ export interface AgentLoopOpts {
   isCancelled?: () => boolean;
   /** When set, final_answer's input_schema is replaced by this schema and the raw input is returned. */
   expectsSchema?: Record<string, unknown>;
+  /** WO-SKILL-2：聚合后的 provenance 策略（required|best_effort|none），缺省 best_effort。 */
+  provenancePolicy?: "required" | "best_effort" | "none";
+  /** WO-SKILL-2：true 表示挂载了写操作型 Skill，final_answer 必须含 action_draft。 */
+  writeMode?: boolean;
   /** load_skill support (B1 agents). */
   loadSkill?: (skillId: string) => Promise<
     | {
@@ -1116,6 +1120,16 @@ async function acceptFinalAnswer(
     });
   }
   const blocks: AnswerBlock[] = parsed.data.blocks;
+  const provenancePolicy = opts.provenancePolicy ?? "best_effort";
+  if (provenancePolicy === "required" && provenance.length === 0) {
+    return { ok: false, errors: ["Skill provenancePolicy=required：final_answer 必须包含 provenance"] };
+  }
+  if (opts.writeMode) {
+    const hasActionDraft = blocks.some((b) => b.type === "action_draft");
+    if (!hasActionDraft) {
+      return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
+    }
+  }
   const unverified = scanBlocks(blocks);
   if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
   return {

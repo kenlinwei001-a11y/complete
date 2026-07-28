@@ -1,4 +1,4 @@
-import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
+import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
@@ -21,6 +21,62 @@ import { BUILTIN_TOOLS } from "./tools/registry.js";
 import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
+import { newId } from "./ids.js";
+
+// ---------------------------------------------------------------------------
+// WO-SKILL-2 · Skill 运行时辅助（provenance 策略 / 写模式 / 规则引用预检后验）
+// ---------------------------------------------------------------------------
+
+function skillProvenancePolicy(skills: SkillDefinition[]): "required" | "best_effort" | "none" {
+  if (skills.some((s) => s.provenancePolicy === "required")) return "required";
+  if (skills.some((s) => s.provenancePolicy === "best_effort" || s.provenancePolicy === undefined)) return "best_effort";
+  return "none";
+}
+
+function skillWriteMode(skills: SkillDefinition[]): boolean {
+  return skills.some((s) => s.sideEffect === "WRITE" || (s.approvalGate && s.approvalGate !== "none"));
+}
+
+function skillRuleRefs(skills: SkillDefinition[], role: "precondition" | "postcheck"): string[] {
+  const keys: string[] = [];
+  for (const s of skills) {
+    for (const r of s.references ?? []) {
+      if (r.kind === "rule" && r.role === role && (r.required === undefined || r.required)) {
+        keys.push(r.key);
+      }
+    }
+  }
+  return [...new Set(keys)];
+}
+
+function ruleViolationAnswer(verdicts: RuleVerdict[]): Answer {
+  const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+  return {
+    trustLevel: "AGENT_EXPLORATORY",
+    blocks: blocking.map((v) => ({
+      type: "rule_violation" as const,
+      ruleId: v.ruleId,
+      severity: v.severity,
+      explanation: v.explanation,
+      provId: "prov_skill_rule_check",
+    })),
+    provenance: [],
+    unverifiedNumerics: false,
+  };
+}
+
+function emptyAgentRunRecord(taskId: string, model: string, budget: BudgetTracker): AgentRunRecord {
+  return {
+    id: newId("run"),
+    taskId,
+    model,
+    iterations: [],
+    budget: budget.budget,
+    budgetExhausted: false,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+  };
+}
 
 export interface EngineDeps {
   repos: Repos;
@@ -200,6 +256,33 @@ export class ExecutionEngine {
       }
     }
 
+    // WO-SKILL-2 · Skill 运行时策略聚合
+    const effectiveProvenancePolicy = skillProvenancePolicy(skills);
+    const writeMode = skillWriteMode(skills);
+
+    // WO-SKILL-2 · Skill 规则引用预检：任一 precondition BLOCK → 立即返回 rule_violation，不调用 LLM
+    const preRuleKeys = skillRuleRefs(skills, "precondition");
+    if (preRuleKeys.length > 0) {
+      try {
+        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, preRuleKeys, { queryText: opts.prompt });
+        for (const v of verdicts) {
+          if (v.ruleVersion !== undefined) {
+            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+          }
+        }
+        if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
+          return {
+            outcome: "ANSWERED",
+            answer: ruleViolationAnswer(verdicts),
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget),
+            sketch: [],
+          };
+        }
+      } catch {
+        // fail-open：规则引擎不可用时，预检不阻断主流程
+      }
+    }
+
     // Phase8：路由用真 embedding provider（配置时一次性批量预算 query+候选文本向量，
     // 包成同步 Embedder 喂给 skill/MCP router；未配置或失败 → 上层回退 pseudoEmbed）。
     const cfg = this.deps.config;
@@ -263,18 +346,15 @@ export class ExecutionEngine {
       ...(summarizer ? { summarizer } : {}),
       executor,
       budget: opts.nesting.budget,
-      // G-9 转圈根因修复：runRegisteredAgent（角色 agent / CEO 深问 / 场景启动器路径）此前漏传 per-call 超时，
-      // 真 LLM 某次调用挂住时只有 budget.durationExceeded（轮首查一次）能兜——单次调用卡死永远到不了下一轮，
-      // 循环卡死 → 不发终结事件 → 前端 useTaskStream 无限重连 → 转圈。接上 llmCallTimeoutMs 后：挂住的调用被
-      // AbortController 上界终止 → 优雅降级（TIMEOUT）→ 发 answer.final/agent_degraded 终结事件 → 前端停转。
       llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
-      // WO-LOOP-CONTROL-P1：Loop Detector 环检测 cap（opt-in·缺省 undefined → 禁用 → 角色 agent 路径逐字节不变）
       loopRepeatCap: cfg.QOS_AGENT_LOOP_REPEAT_CAP,
       repos: this.deps.repos,
       metrics: this.deps.metrics,
       emit: opts.emit,
       isCancelled: opts.isCancelled,
       expectsSchema: opts.expectsSchema,
+      provenancePolicy: effectiveProvenancePolicy,
+      writeMode,
       loadSkillEnabled: true,
       scopeToolNames: effectiveScopeToolNames,
       loadSkill: async (skillId: string) => {
@@ -306,6 +386,28 @@ export class ExecutionEngine {
           onResolvedRef: opts.onResolvedRef,
         }),
     });
+
+    // WO-SKILL-2 · Skill 规则引用后验：postcheck BLOCK → 替换为 rule_violation（在 agent.ruleBindings POST_CHECK 之前）
+    const postRuleKeys = skillRuleRefs(skills, "postcheck");
+    if (postRuleKeys.length > 0 && result.outcome === "ANSWERED") {
+      const answerText = result.answer.blocks
+        .map((b) => (b.type === "text" ? b.markdown : ""))
+        .filter(Boolean)
+        .join("\n");
+      try {
+        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, postRuleKeys, { answerText });
+        for (const v of verdicts) {
+          if (v.ruleVersion !== undefined) {
+            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+          }
+        }
+        if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
+          return { ...result, answer: ruleViolationAnswer(verdicts) };
+        }
+      } catch {
+        // fail-open
+      }
+    }
 
     // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
     const mode = agent.ruleBindings.mode;
