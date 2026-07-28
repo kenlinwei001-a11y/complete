@@ -113,6 +113,18 @@ function mockCounterfactual(reqBase?: string): Record<string, unknown> {
   };
 }
 
+/**
+ * #9 驾驶舱经营指标（metric_rollup 单一出处）——「经营指标」条渲染 + gap_attribution noGap 判据同源。
+ * 含一条**已达成**指标（交付达成率 98.2 ≥ 95）以驱动「达成·无缺口」下钻路径：镜像真 solver 零缺口短路
+ * （service.ts:1279 · actual≥target → noGap=true·levels 空），让"点已达成指标也能下钻其结构"可测。
+ */
+const COCKPIT_ROLLUP_METRICS = [
+  { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", unit: "%", level: "op", category: "profit", target: 16, actual: 15.2, delta: -0.8, miss: false },
+  { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", unit: "%", level: "op", category: "scale", target: 100, actual: 96.4, delta: -3.6, miss: false },
+  { metricId: "kpi-material", key: "material_cov", name: "物料保障率", unit: "%", level: "op", category: "material", target: 100, actual: 77.3, delta: -22.7, miss: true },
+  { metricId: "kpi-delivery", key: "delivery_attain", name: "交付达成率", unit: "%", level: "op", category: "delivery", target: 95, actual: 98.2, delta: 3.2, miss: false },
+] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // VITE_MOCK 可见性桩：decision_play（CEO-3 决策推演）+ supply_demand_gap_attribution（供需失衡双向归因）。
 // 病根：WO-D 决策页 + 供需 panel 已合入真部署态，但纯 VITE_MOCK=1 态 base mock 对这两 solver invoke 返 404
@@ -1370,19 +1382,17 @@ export const handlers = [
     if (key === "cockpit_kpi")
       // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）
       return HttpResponse.json({ data: { supplyV7: 132, revAttainPct: 102, utilPeak: 88, aopBaseRev: 240, cashCushion: 58 }, snapshotVersion: "ov-12" });
-    if (key === "metric_rollup")
-      // SPINE.4 经营指标条（mock：op 级三指标，物料保障率越线）
+    if (key === "metric_rollup") {
+      // SPINE.4 经营指标条（mock：op 级 4 指标·物料保障率越线·交付达成率已达成——单一出处 COCKPIT_ROLLUP_METRICS）
+      const missCount = COCKPIT_ROLLUP_METRICS.filter((m) => m.miss).length;
       return HttpResponse.json({
         data: {
-          metrics: [
-            { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", unit: "%", level: "op", category: "profit", target: 16, actual: 15.2, delta: -0.8, miss: false },
-            { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", unit: "%", level: "op", category: "scale", target: 100, actual: 96.4, delta: -3.6, miss: false },
-            { metricId: "kpi-material", key: "material_cov", name: "物料保障率", unit: "%", level: "op", category: "material", target: 100, actual: 77.3, delta: -22.7, miss: true },
-          ],
-          missCount: 1, byLevel: { op: 3 }, summary: "3 项指标，1 项越线",
+          metrics: COCKPIT_ROLLUP_METRICS,
+          missCount, byLevel: { op: COCKPIT_ROLLUP_METRICS.length }, summary: `${COCKPIT_ROLLUP_METRICS.length} 项指标，${missCount} 项越线`,
         },
         snapshotVersion: "ov-12",
       });
+    }
     if (key === "optimize_whatif") {
       // 优化推演 mock（无 sidecar 态）：facility_location 用**真·小规模暴力枚举**求最优（2^n 设施子集 × 客户就近指派），
       // 基线 vs 扰动后各解一次 → 真 Δ + 真「决策切换」（开哪些设施 / 怎么指派）——让决策比对卡有牙、随任意编辑真变。
@@ -1521,7 +1531,22 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
-    if (key === "gap_attribution")
+    if (key === "gap_attribution") {
+      // #9 已达成指标（actual≥target）→ 镜像真 solver 零缺口短路（service.ts:1279）：noGap=true·levels 空·诚实不编因果链。
+      // 前端据 noGap 走「达成·无缺口」正向框 + 仅渲该指标结构根（gapAttributionToDag 产 GREEN KPI 根·非空树）。
+      const wantKey = typeof invArgs.metricKey === "string" && invArgs.metricKey !== "" ? invArgs.metricKey : undefined;
+      const selMetric = wantKey ? COCKPIT_ROLLUP_METRICS.find((m) => m.key === wantKey || m.metricId === wantKey) : undefined;
+      if (selMetric && selMetric.actual >= selMetric.target) {
+        const gap = Math.round((selMetric.target - selMetric.actual) * 10) / 10; // ≤0
+        return HttpResponse.json({
+          data: {
+            rootMetric: { key: selMetric.key, name: selMetric.name, unit: selMetric.unit, target: selMetric.target, actual: selMetric.actual, gap },
+            totalGap: gap, noGap: true, levels: [], atomicLeaves: [], causalEdges: [], reconChecks: [], reconciled: true, residualPct: 0,
+            severityKind: "info", summary: `目标「${selMetric.name}」已达成（actual ${selMetric.actual} ≥ target ${selMetric.target}），无需归因。`,
+          },
+          snapshotVersion: "ov-12",
+        });
+      }
       // WO-COCKPIT-INFER gap_attribution（CEO-2 深度反向归因·多跳 caused_by 因果树·mock 同后端形状）：
       // 储能达成率越线 → 结构分摊 + caused_by 逐跳（上游减供→长协违约→矿价→地缘→决策 / 备份薄→认证周期）→ 终点根因 + 下钻真值叶。
       return HttpResponse.json({
@@ -1561,6 +1586,7 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    }
     if (key === "generic_inference") {
       // WO-PROJECT-SIM-WHATIF：杠杆发现 mode:levers（杠杆随⑤瓶颈变·服务端算敏感度）。
       if (String(invArgs.mode) === "levers") return HttpResponse.json({ data: mockLeverDiscovery(invArgs), snapshotVersion: "ov-lv" });

@@ -86,6 +86,8 @@ export default function DashboardView({ view }: ViewRendererProps) {
   if (widgets.length === 0) return <div className="empty-state">{zh.common.none}</div>;
   const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
   const feedbackChain = (view.layout?.feedbackChain as string[] | undefined) ?? FEEDBACK_CHAIN;
+  // #9 「经营指标」→「未达成指标根因下钻」联动：左侧点行选中该指标 → 右侧 rootcause 面板以 metricKey 真调 gap_attribution 下钻。
+  const [drillMetric, setDrillMetric] = useState<CockpitMetricSel | null>(null);
   const handleExport = async () => {
     const [ao, mr] = await Promise.allSettled([invokeSolver("affected_orders", {}), invokeSolver("metric_rollup", { level: "op" })]);
     const problems = ao.status === "fulfilled" ? ((ao.value.data as { problems?: DashExportProblem[] })?.problems ?? []) : [];
@@ -101,10 +103,10 @@ export default function DashboardView({ view }: ViewRendererProps) {
         {widgets.map((w) =>
           w.featureKey ? (
             <Feature key={w.key} flag={w.featureKey}>
-              <Widget def={w} decor={decorFor(w.key)} />
+              <Widget def={w} decor={decorFor(w.key)} drillMetric={drillMetric} onDrillMetric={setDrillMetric} />
             </Feature>
           ) : (
-            <Widget key={w.key} def={w} decor={decorFor(w.key)} />
+            <Widget key={w.key} def={w} decor={decorFor(w.key)} drillMetric={drillMetric} onDrillMetric={setDrillMetric} />
           ),
         )}
       </div>
@@ -650,7 +652,7 @@ function useWidgetData(q: WidgetQueryDef) {
   });
 }
 
-function Widget({ def, decor }: { def: DashboardWidgetDef; decor?: KpiDecor }) {
+function Widget({ def, decor, drillMetric, onDrillMetric }: { def: DashboardWidgetDef; decor?: KpiDecor; drillMetric?: CockpitMetricSel | null; onDrillMetric?: (m: CockpitMetricSel | null) => void }) {
   const { data, isLoading } = useWidgetData(def.query);
   // 结构层类名（warm 专属样式挂钩·其余主题无规则即回落普通卡）：accent 实心橙卡 / 深炭灰签名卡。
   const markerClass = [def.type === "kpi" && decor?.accent ? "warmKpiAccent" : "", def.type === "metric-strip" ? "warmSignature" : ""].filter(Boolean).join(" ");
@@ -683,9 +685,14 @@ function Widget({ def, decor }: { def: DashboardWidgetDef; decor?: KpiDecor }) {
       ) : def.type === "summary" ? (
         <SummaryWidget data={data} />
       ) : def.type === "dag" ? (
-        <ProvenanceDag data={data as DagData | undefined} />
+        // #9 rootcause 面板：与左「经营指标」联动——选中指标 → 以 metricKey 真调 gap_attribution 下钻（达成/未达成皆可）；未选 → 回落 plan_rootcause.dag。
+        def.key === "rootcause" ? (
+          <RootCauseDrillWidget selectedMetric={drillMetric ?? null} fallbackDag={data as DagData | undefined} />
+        ) : (
+          <ProvenanceDag data={data as DagData | undefined} />
+        )
       ) : def.type === "metric-strip" ? (
-        <MetricStrip metrics={data as MetricRow[] | undefined} />
+        <MetricStrip metrics={data as MetricRow[] | undefined} selectedKey={drillMetric?.key ?? null} onSelect={onDrillMetric} />
       ) : def.type === "counterfactual" ? (
         <CounterfactualWidget def={def} />
       ) : def.type === "version-toggle" ? (
@@ -702,10 +709,14 @@ function Widget({ def, decor }: { def: DashboardWidgetDef; decor?: KpiDecor }) {
 }
 
 /** SPINE.4 经营指标条：metric_rollup 产出的 Metric（目标 vs 实际 + delta + 越线红），各视图 KPI 单一出处 R-一致。 */
-type MetricRow = { metricId: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean };
-function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
+type MetricRow = { metricId: string; key?: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean };
+/** #9 驾驶舱指标下钻选择：点左「经营指标」任一行 → 右「未达成指标根因下钻」联动该指标（达成/未达成皆可）。 */
+export type CockpitMetricSel = { key: string; name: string };
+function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] | undefined; selectedKey?: string | null; onSelect?: (m: CockpitMetricSel | null) => void }) {
   const rows = metrics ?? [];
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  // #9 metricKey 单一口径：优先 Metric.key（gap_attribution 一等键·如 material_cov），回落 metricId（真 solver 二者皆匹配 service.ts:1271）。
+  const keyOf = (m: MetricRow) => m.key ?? m.metricId;
   // WO-BLOCK-DIALOGUE：块级 getData 返 KPI 指标条该块真实数据（每指标 目标/实际/差/是否越线·metricKey 锚定首个越线指标）。
   const msBlockData = (): Record<string, unknown> => ({
     metricKey: (rows.find((m) => m.miss) ?? rows[0])?.metricId,
@@ -727,12 +738,29 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
       {rows.map((m) => {
         const status = m.miss ? "var(--danger)" : "var(--ok)";
         const pct = m.target > 0 ? Math.max(0, Math.min(100, (m.actual / m.target) * 100)) : 0;
+        const mk = keyOf(m);
+        const selected = selectedKey != null && selectedKey === mk;
+        // #9 每行可点：下钻该指标根因（达成/未达成皆可）；点选中行再点 → 取消（回落默认越线根因）。
         return (
-          <div key={m.metricId} data-testid={`metric-${m.metricId}`} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <button
+            type="button"
+            key={m.metricId}
+            data-testid={`metric-${m.metricId}`}
+            data-selected={selected ? "1" : "0"}
+            title="点击下钻该指标根因（达成 / 未达成皆可）"
+            onClick={() => onSelect?.(selected ? null : { key: mk, name: m.name })}
+            style={{
+              display: "flex", flexDirection: "column", gap: 5, textAlign: "left", cursor: "pointer",
+              background: selected ? "var(--panel2)" : "transparent", border: "none",
+              borderLeft: `3px solid ${selected ? "var(--accent)" : "transparent"}`,
+              padding: "4px 8px", borderRadius: 6, width: "100%", font: "inherit", color: "inherit",
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--txt)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: status, flex: "none" }} />
                 {m.name}
+                <span style={{ fontSize: 10, color: selected ? "var(--accent)" : "var(--muted2)" }}>{selected ? "下钻中 ›" : "下钻 ›"}</span>
               </span>
               <b className="mono" style={{ fontSize: 16, fontWeight: 700, color: m.miss ? "var(--danger)" : "var(--txt)" }}>
                 {formatKpiValue(m.actual, m.unit)}{m.unit}
@@ -745,11 +773,67 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
             <div style={{ fontSize: 10.5, color: m.miss ? "var(--danger)" : "var(--muted2)" }}>
               目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.unit}{m.miss ? " · 越线" : ""}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
     </BlockConversable>
+  );
+}
+
+/**
+ * #9 规划决策推演 · 未达成指标根因下钻（右面板·与左「经营指标」联动）：
+ * 点左侧任一指标行 → 以该指标 metricKey 真调 **gap_attribution**（复用 PlanDrillWidget 同一深度反向归因路径），
+ * 下钻其根因（**达成 / 未达成皆可**）。
+ *   · 未达成（有缺口）→ gapAttributionToDag 投影多跳 caused_by 因果树（越线根 → 结构叶 → 逐跳终点根因）。
+ *   · 已达成（actual≥target · solver 返 noGap=true · levels 空）→ **不空/不报错**：诚实正向框「达成·无缺口」
+ *     + 仅渲该指标结构根（gapAttributionToDag 仍产 GREEN KPI 根节点）。**绝不为达成指标编造缺口子树**
+ *     （KILL-MOCK-RED·铁律0.4——真 solver 零缺口短路 service.ts:1279 本就返空 levels，前端如实呈现结构根而非伪造分摊）。
+ * 未选任何指标 → 回落 plan_rootcause.dag（默认自动展示越线根因·不破现状）。
+ */
+type GapAttrWithFlag = GapAttrOutput & { noGap?: boolean; totalGap?: number };
+function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric: CockpitMetricSel | null; fallbackDag: DagData | undefined }) {
+  const metricKey = selectedMetric?.key ?? null;
+  // 选中指标 → 以 metricKey 真调 gap_attribution（与 PlanDrillWidget 同路径·引擎不改）。切指标 → queryKey 变 → 真重下钻。
+  const { data: ga, isLoading } = useQuery({
+    queryKey: ["a", "cockpit-rootcause-drill", metricKey],
+    queryFn: async () => (await invokeSolver("gap_attribution", { metricKey })).data as GapAttrWithFlag,
+    enabled: !!metricKey,
+    retry: false,
+  });
+  // 未选指标 → 默认展示越线根因（plan_rootcause.dag·不破现状）+ 提示点左侧指标联动。
+  if (!metricKey) {
+    return (
+      <div data-testid="cockpit-rootcause" data-metric="">
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }} data-testid="rootcause-hint">
+          点击左侧「经营指标」任一行 → 下钻该指标根因（达成 / 未达成皆可）
+        </div>
+        <ProvenanceDag data={fallbackDag} />
+      </div>
+    );
+  }
+  if (isLoading || !ga?.rootMetric) return <div style={{ color: "var(--muted2)" }} data-testid="rootcause-loading">{zh.common.loading}</div>;
+  const rm = ga.rootMetric;
+  // noGap（达成）判据：solver noGap 标志优先（单一来源·前端不自判缺口）；兜底 totalGap<=0 / actual>=target。
+  const achieved = ga.noGap === true || (typeof ga.totalGap === "number" ? ga.totalGap <= 0 : rm.actual != null && rm.target != null && rm.actual >= rm.target);
+  const dag = gapAttributionToDag(ga); // 达成态 levels 空 → 仅产 GREEN KPI 根（结构根·非空树）。
+  return (
+    <div data-testid="cockpit-rootcause" data-metric={metricKey} data-achieved={achieved ? "1" : "0"}>
+      {achieved ? (
+        // 达成·无缺口：诚实正向框（不空不报错）——solver noGap（levels 空）→ 仅展示达成结构根，不编缺口子树。
+        <div className="panel" data-testid="rootcause-achieved" style={{ padding: 8, marginBottom: 8, borderLeft: "3px solid var(--ok)" }}>
+          <b style={{ color: "var(--ok)" }}>✓ 「{rm.name}」已达成 · 无缺口</b>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
+            实际 <b className="mono">{rm.actual}{rm.unit}</b> ≥ 目标 <b className="mono">{rm.target}{rm.unit}</b> —— 无需归因；下方为该指标达成结构（无缺口子树·诚实不编造）。
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }} data-testid="rootcause-drilled">
+          下钻指标「<b>{rm.name}</b>」根因 · 缺口 <b className="mono">{ga.totalGap ?? rm.gap}{rm.unit}</b>（gap_attribution 深度反向归因）
+        </div>
+      )}
+      <ProvenanceDag data={dag} />
+    </div>
   );
 }
 
