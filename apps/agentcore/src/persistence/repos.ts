@@ -219,6 +219,7 @@ export interface Repos {
     update(s: SkillDefinition): Promise<void>;
     remove(id: string): Promise<void>;
     get(id: string): Promise<SkillDefinition | undefined>;
+    latestByKey(tenantId: string, key: string): Promise<SkillDefinition | undefined>;
     listByTenant(tenantId: string): Promise<SkillDefinition[]>;
   };
   mcpConfigs: {

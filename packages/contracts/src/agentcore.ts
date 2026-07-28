@@ -39,6 +39,8 @@ export const AgentDefinitionSchema = z.object({
     z.object({
       skillId: z.string(),
       version: z.union([z.number().int(), z.literal("latest")]),
+      /** WO-SKILL-1：技能绑定处可预填 inputSchema 默认值 */
+      arguments: z.record(z.string(), z.unknown()).optional(),
     }),
   ),
   mcpServers: z.array(z.object({ mcpConfigId: z.string() })),
@@ -137,8 +139,42 @@ export const McpServerConfigSchema = z.object({
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 // ---------------------------------------------------------------------------
-// 平台 PRD §8.4 B4 Skill 库
+// 平台 PRD §8.4 B4 Skill 库（WO-SKILL-1 工业级能力契约）
 // ---------------------------------------------------------------------------
+
+/** Skill 能力维度 */
+export const SkillCapabilitySchema = z.enum([
+  "analysis",
+  "forecast",
+  "diagnosis",
+  "prescription",
+  "optimization",
+  "planning",
+  "approval",
+]);
+export type SkillCapability = z.infer<typeof SkillCapabilitySchema>;
+
+/** Skill 副作用级别：READ/只读、COMPUTE/计算、WRITE/会改变状态 */
+export const SkillSideEffectSchema = z.enum(["READ", "COMPUTE", "WRITE"]);
+export type SkillSideEffect = z.infer<typeof SkillSideEffectSchema>;
+
+/** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
+export const SkillReferenceSchema = z.object({
+  kind: z.enum(["rule", "constraint", "slice", "ontologyType", "solver", "skill", "workflow", "agent"]),
+  key: z.string().min(1),
+  version: z.number().int().optional(),
+  required: z.boolean().default(true),
+  role: z.enum(["precondition", "postcheck", "context", "fallback"]).default("context"),
+});
+export type SkillReference = z.infer<typeof SkillReferenceSchema>;
+
+export const SkillAttachmentSchema = z.object({
+  name: z.string(),
+  blobKey: z.string(),
+  mime: z.string().optional(),
+  description: z.string().optional(),
+});
+export type SkillAttachment = z.infer<typeof SkillAttachmentSchema>;
 
 export const SkillDefinitionSchema = z.object({
   id: z.string(), // skl_
@@ -149,16 +185,22 @@ export const SkillDefinitionSchema = z.object({
   summary: z.string().max(400),
   body: z.string().max(50_000),
   /** 增量 §3（additive）：mime/description 让模型知道附件是什么、何时读（read_skill_resource） */
-  resources: z.array(
-    z.object({
-      name: z.string(),
-      blobKey: z.string(),
-      mime: z.string().optional(),
-      description: z.string().optional(),
-    }),
-  ),
+  resources: z.array(SkillAttachmentSchema),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+
+  // WO-SKILL-1 新增工业级能力契约（additive·可选；运行时按如下缺省兜底）
+  // sideEffect 缺省 READ，provenancePolicy 缺省 best_effort，approvalGate 缺省 none
+  // references / dependsOn 缺省 []
+  capability: SkillCapabilitySchema.optional(),
+  sideEffect: SkillSideEffectSchema.optional(),
+  inputSchema: JsonSchemaObject.optional(),
+  outputSchema: JsonSchemaObject.optional(),
+  references: z.array(SkillReferenceSchema).optional(),
+  dependsOn: z.array(SkillReferenceSchema).optional(),
+  approvalGate: z.enum(["none", "human", "workflow"]).optional(),
+  provenancePolicy: z.enum(["required", "best_effort", "none"]).optional(),
+  maxBudgetRounds: z.number().int().positive().optional(),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 

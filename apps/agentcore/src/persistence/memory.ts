@@ -269,6 +269,12 @@ export function createMemoryRepos(): Repos {
       async get(id) {
         return clone(skills.get(id));
       },
+      async latestByKey(tenantId, key) {
+        const list = [...skills.values()]
+          .filter((s) => s.tenantId === tenantId && s.key === key)
+          .sort((a, b) => b.version - a.version);
+        return clone(list[0]);
+      },
       async listByTenant(tenantId) {
         return [...skills.values()].filter((s) => s.tenantId === tenantId).map(clone);
       },
