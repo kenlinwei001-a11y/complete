@@ -154,6 +154,12 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const openCard = openBase ? cards.find((c) => c.base === openBase) ?? null : null;
   // WO-LIVE-DISPOSITION：处置表数据源 = 点过「生成/重算」则用**重算结果**（吃当前杠杆推演态），否则基线查询结果。
   const planRows: PlanRow[] = livePlan?.rows ?? data.planRows ?? [];
+  // 换推演窗口 → 丢弃上一窗口的重算结果（否则 30 天窗算出的计划挂在 90 天窗下=串窗·诚实回落基线）。
+  const pickHorizon = (h: number) => {
+    setHorizon(h);
+    setLivePlan(null);
+    setOpenPlanRow(null);
+  };
 
   return (
     <div className={styles.riskwrap}>
@@ -178,8 +184,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               data-testid={`risk-window-${h}`}
               role="button"
               tabIndex={0}
-              onClick={() => setHorizon(h)}
-              onKeyDown={(e) => e.key === "Enter" && setHorizon(h)}
+              onClick={() => pickHorizon(h)}
+              onKeyDown={(e) => e.key === "Enter" && pickHorizon(h)}
             >
               {h}天
             </span>
