@@ -62,7 +62,8 @@ describe("global-sim · 全局联合推演（方案矩阵 + 守恒台账 + 冻�
     await screen.findByTestId("global-sim");
     const matrix = await screen.findByTestId("global-sim-matrix");
     // 对比矩阵新增「成品库存」列头 + 默认方案行渲染 fgInventory 单元。
-    expect(within(matrix).getByText("成品库存")).toBeInTheDocument();
+    // WO-UNIT-MEANING：列头须带量纲（成品库存口径为**套·天**·裸数字无意义）——退回裸列头即红。
+    expect(within(matrix).getByText("成品库存(套·天)")).toBeInTheDocument();
     expect(within(matrix).getByTestId("global-sim-fginv-max_ontime")).toBeInTheDocument();
 
     // 勾选「最少成品库存」方案 → 进对比矩阵，其成品库存单元渲染真值（非贴标签）。
