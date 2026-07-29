@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
-import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY } from "@platform/contracts";
+import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
 import {
   fetchHistoryBundle,
@@ -263,18 +263,22 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                         ]}
                         note={synth ? "合成种子底料·未接实测（provenance 维·KILL-MOCK-RED）" : undefined}
                       >
-                        {card.crossDay != null ? `T+${card.crossDay}` : card.peak.toFixed(0)}
+                        {/* WO-UNIT-MEANING：峰值是 0–100 张力指数（量纲原只藏在 hover 里）→ 主数字直接带量程。 */}
+                        {card.crossDay != null ? `T+${card.crossDay}` : formatTightness(card.peak)}
                       </Provenance>
                     </span>
-                    <span className={styles.rkUnit}>{card.crossDay != null ? "最早越线" : "峰值张力"}</span>
+                    <span className={styles.rkUnit}>{card.crossDay != null ? "最早越线" : `峰值张力（${TIGHTNESS_METRIC.hint}）`}</span>
                   </div>
                   {chips.length > 0 && (
                     <div className={styles.rkChips} data-testid={`risk-chips-${card.base}`}>
                       {chips.map((ch) => {
                         const col = tierColor(ch.value, threshold);
                         return (
-                          <span key={ch.factor} className={styles.rkFchip} style={{ borderColor: `${col}66`, color: col }}>
-                            {ch.factor} {ch.value != null ? Math.round(ch.value) : "—"}
+                          // WO-UNIT-MEANING：原渲染「设备OEE 76」——76 紧贴 OEE 会被读成 OEE=76%，
+                          // 实为该因素的**张力 76/100**（误导性最强的一处）。经 formatTightness 单源带量纲。
+                          <span key={ch.factor} className={styles.rkFchip} style={{ borderColor: `${col}66`, color: col }}
+                            title={`${ch.factor} 的紧张度（${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax}·${TIGHTNESS_METRIC.hint}）·非该指标本身的值`}>
+                            {ch.factor} {formatTightness(ch.value)}
                           </span>
                         );
                       })}
@@ -685,7 +689,8 @@ function RiskDetailPanel({
           {/* 主因素：真逐日 series（点击某日→受影响订单）。 */}
           <FactorRow
             label={card.factor}
-            sub={`${card.currentTightness?.value != null ? Math.round(card.currentTightness.value) : "—"}→${Math.round(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "窗口内不越线"}`}
+            // WO-UNIT-MEANING：「62→83」原无量纲（易读成百分比）→ 带张力量程单源。
+            sub={`${formatTightness(card.currentTightness?.value)}→${formatTightness(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "窗口内不越线"}`}
             color={tierColor(card.peak, threshold)}
             dots={card.series.map((v) => ({ color: heatColor(v, threshold), value: v }))}
             onDay={onDay}
@@ -704,7 +709,7 @@ function RiskDetailPanel({
                 <FactorRow
                   key={o.factor}
                   label={o.factor}
-                  sub={`${o.value != null ? Math.round(o.value) : "—"}→${Math.round(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}`}
+                  sub={`${formatTightness(o.value)}→${formatTightness(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}`}
                   color={tierColor(peakF, threshold)}
                   dots={fs.map((v) => ({ color: heatColor(v, threshold), value: v }))}
                 />
@@ -1043,7 +1048,8 @@ function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
       <div className={styles.rkDots}>
         {dots.map((d, i) => {
           const nAff = affectedByDay?.[i] ?? 0; // CT-a：该日受影响订单数（同源真数据·非写死）
-          const dotTitle = d.value != null ? `D+${i + 1} · ${Math.round(d.value)}` : `D+${i + 1} · 无实测`;
+          // WO-UNIT-MEANING：逐日点 tooltip 原「D+5 · 78」无量纲 → 带张力量程（单源）。
+          const dotTitle = d.value != null ? `D+${i + 1} · ${formatTightness(d.value)}` : `D+${i + 1} · 无实测`;
           const title = nAff > 0 ? `${dotTitle} · ${nAff} 单交付受影响` : dotTitle;
           return (
             <button

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY, BUSINESS_TYPE_LABEL } from "@platform/contracts";
-import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario } from "@platform/contracts";
+import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario, GlobalSimCost } from "@platform/contracts";
 import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
@@ -48,7 +48,9 @@ interface PortResult {
   objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number };
   capacityLedger: { baseId: string; window: number; cap: number; allocated: number }[];
   reconChecks: { ok: boolean }[];
-  cost: { delay: number; changeover: number; unserved: number; total: number };
+  // R1 contracts-only-shared：原此处**重定义**了一份 cost 类型且漏了 `unit`（契约 GlobalSimCostSchema 早已含
+  // unit，后端/mock 也都在发）→ 前端读不到量纲，总代价只能裸渲染。改为直接引用契约类型（不再各存一份）。
+  cost: GlobalSimCost;
   frozen: { orderId: string; base: string; window: number; qty: number }[];
   summary: string;
   // WO-SURFACE-7DIM · 编排响应 additively 携带的 7 维产物（经典响应缺省 → 诚实省略·全 optional 守护）。
@@ -707,7 +709,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               <>
                 <div className={styles.readoutRow} data-testid="global-sim-readout">
                   <div className={styles.readout}><b>{ontimeRate.toFixed(0)}%</b><span>按期率（{SCEN_LABEL[primary]}）</span></div>
-                  <div className={styles.readout}><b>{fmt(d.cost.total, 0)}</b><span>总代价</span></div>
+                  {/* WO-UNIT-MEANING：后端 portfolio 已下发 cost.unit（"代价单位"=惩罚加权分·非货币），
+                      前端此前未读 → 裸数字易被当成"元"。改读后端单源；缺则诚实留空不臆造。 */}
+                  <div className={styles.readout}><b>{fmt(d.cost.total, 0)}</b><span>总代价{d.cost.unit ? `（${d.cost.unit}·非货币）` : ""}</span></div>
                   {/* 换型指标统一走下方 7 维卡「换型(全链小时)」(= round(objectiveValues.changeover)·同值)·此处去重去误导「(分)」旧标签 */}
                   <div className={styles.readout}><b>{primaryScen.displacedCount}</b><span>被挤单</span></div>
                   <div className={styles.readout}><b>{d.frozen.length}</b><span>固定单</span></div>

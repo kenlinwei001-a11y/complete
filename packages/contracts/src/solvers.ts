@@ -7,6 +7,33 @@ import { DispositionStepSchema } from "./disposition.js";
 // ---------------------------------------------------------------------------
 
 /** S1.2 capacity_forecast 输出 */
+/**
+ * WO-UNIT-MEANING · 张力（tightness）量纲**单一真值**（治 G-UNIT-NORMALIZE）。
+ *
+ * 张力是 **0–100 的紧张度指数**（越高越紧），不是百分比、不是被测量本身的值。
+ * 病灶：卡面 chip 渲染成「设备OEE 76」时，76 紧贴 "OEE" 会被直接读成 **OEE=76%** ——
+ * 而真实含义是「设备OEE 这个因素的张力为 76/100」，两者含义天差地别（审计中误导性最强的一处）。
+ * 故一律经 `formatTightness` 渲染成「张力76/100」，量程随本常量走（改这里即改全部消费点·前端不内联）。
+ *
+ * 消费方：RiskBoardView（卡面 chip / 峰值 / 详情逐因素 / 逐日点 tooltip）· CapacityDerivationDag。
+ * 出数方：`bottleneck_matrix.rows[].tightness` · `risk_timeline.cards[].peak/currentTightness` ·
+ *        `capacity_forecast.byProcessModel[].tightness`（口径同一·见本文件各 schema 注释「0–100」）。
+ */
+export const TIGHTNESS_METRIC = {
+  /** 显示名（区别于被测量本身，如"设备OEE"）。 */
+  label: "张力",
+  scaleMin: 0,
+  scaleMax: 100,
+  /** 方向说明（悬浮/图例用）。 */
+  hint: "越高越紧",
+} as const;
+
+/** 张力值 → 带量纲显示（「张力76/100」）。null/未知 → 诚实「—」，不臆造 0。 */
+export function formatTightness(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${TIGHTNESS_METRIC.label}${Math.round(v)}/${TIGHTNESS_METRIC.scaleMax}`;
+}
+
 export const PerBaseRowSchema = z.object({
   base: z.string(),
   weeklyCap: z.number(),

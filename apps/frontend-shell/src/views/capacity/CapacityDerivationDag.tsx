@@ -3,6 +3,8 @@ import { useLiveSolver } from "../sim/useLiveSolver";
 import styles from "../RiskBoardView.module.css";
 import { Provenance } from "@/components/Provenance";
 import { ONTO_FACTORS, layerOf, type OntoFactor } from "./factorOntology";
+// WO-UNIT-MEANING：张力 0–100 量程单源（原裸 Math.round(v) 无量程·用户无从判断满分与方向）。
+import { formatTightness } from "@platform/contracts";
 
 /**
  * WO-CAPACITY-DEEPEN-ADDITIVE 块A · 派生诊断 DAG（插在 ③BaseOutlookPanel 之上·不替代四线图）。
@@ -83,10 +85,10 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
     switch (a) {
       case "available": return { label: "可用产能数", value: `${fmt(hz.available)} 套`, field: "base_capacity_outlook.available", kind: "派生", tight: null };
       case "gap": return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生", tight: null };
-      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v }; }
-      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v }; }
-      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"} 张力`, value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.primary", kind: bnKind, tight: v }; }
-      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套 张力", value: v != null ? `${Math.round(v)}` : "—", field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v }; }
+      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE 张力", value: formatTightness(v), field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v }; }
+      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动 张力", value: formatTightness(v), field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v }; }
+      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"} 张力`, value: formatTightness(v), field: "bottleneck_matrix.primary", kind: bnKind, tight: v }; }
+      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套 张力", value: formatTightness(v), field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v }; }
     }
   };
 

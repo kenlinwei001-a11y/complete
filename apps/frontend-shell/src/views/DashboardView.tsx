@@ -939,7 +939,8 @@ function VersionToggleWidget({ data }: { data: { items?: { props: Record<string,
       </div>
       {cur && (
         <div style={{ marginTop: 6, fontSize: 12 }} data-testid="version-detail">
-          供给 <b className="mono">{cur.supply}</b> · 缺口 <b className="mono" style={{ color: cur.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{cur.gap}</b> 万套
+          {/* WO-UNIT-MEANING：供给原为裸数字（同行缺口已带「万套」）→ 两者同口径显式标注，避免只有一半带单位。 */}
+          供给 <b className="mono">{cur.supply}</b> 万套 · 缺口 <b className="mono" style={{ color: cur.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{cur.gap}</b> 万套
           <div style={{ fontSize: 11, color: "var(--muted)" }}>{cur.note}</div>
         </div>
       )}
@@ -1119,7 +1120,8 @@ function SummaryWidget({ data }: { data: unknown }) {
             <b>{p.title}</b>
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)" }}>
-            {p.orderCount} 单 · 财务影响 {p.financeImpact} · <span className="zh">{p.rootCauseSummary}</span>
+            {/* WO-UNIT-MEANING：财务影响口径为**亿**（同视图 :200 与 planFixtures「金额(亿)」同源），此处原漏标 → 补齐同口径。 */}
+            {p.orderCount} 单 · 财务影响 {p.financeImpact} 亿 · <span className="zh">{p.rootCauseSummary}</span>
           </div>
         </div>
       ))}
