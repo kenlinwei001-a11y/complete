@@ -156,7 +156,7 @@
 - **SystemObjectType / SystemInvariant / SystemBreakpoint / SystemEvent / SystemDomain / SystemSlice / SystemGate / SystemLink（Dogfooding 元层对象 · #12 落库 PoC）**：把本体本身（§2/§3/§4/§5/§7/§8/§10 + `prd-ontology-index.json`）确定性投影为元租户 `__platform__` 的 `ObjectInstance`+`Link`（origin `META`，可溯回 markdown 章节）。markdown 仍单一来源、对象只读派生（R4 豁免）· `meta/parse.ts`(纯解析 R6) + `meta/service.ts MetaOntologyService` · `POST /a/v1/meta/sync`(幂等,发 `meta.ontology_synced` L14) · `GET /a/v1/meta/{ontology,breakpoints/:id,impact}`(**Entitlement 先于 authz**：`requireMetaAccess` 先查 feature `admin.meta-ontology`(默认开)关闭→404 FEATURE_NOT_FOUND,再 MetaAccessPolicy 角色白名单门 403,配置化 P2) · 影响分析 = META links 上轻量 BFS。复用 objects/links 仓储,不新建表（R9）。业务租户经 R2 见不到（PRD-dogfooding-self-ontology）。
 - **ValidationTrace（推演验证痕迹）**：凡推演用到本体切片即附于 `Answer.validationTrace`——① 一致性验证（实体定义/公理裁决/数字溯源/版本钉，本体内自动）② 交叉验证（结论对象断言 vs 知识图谱已有事实 CONSISTENT/CONFLICT/NO_EVIDENCE）。让用户信任结果（R13 输出侧纪律的"可视化成品"）· `contracts/qos.ts ValidationTraceSchema` · 组装 `workflow/executor.ts buildValidationTrace` · 前端 `components/Answer/ValidationTracePanel.tsx`。
 - **MCP tool / RefReport**：外部工具 / 引用上报。
-- **PlanBuilderCanvas（WO-A · 无代码计划画布）**：业务用户拖拽构建的多 solver 推演链可视化图；节点类型 INPUT/SOLVER/TRANSFORM/CONDITION/LOOP/MERGE/OUTPUT；与 PlanDSL 100% 等价（R24）。契约待建。
+- **PlanBuilderCanvas（WO-A · 无代码计划画布）**：业务用户拖拽构建的多 solver 推演链可视化图；节点类型 INPUT/SOLVER/TRANSFORM/CONDITION/LOOP/MERGE/OUTPUT；序列化形态为 `PlanDSL`（JSON/YAML），编译产物 = 现有 `ExecutionPlan`；Canvas ↔ PlanDSL 100% 等价（R24）。Phase 1 先支持线性节点（INPUT/SOLVER/TRANSFORM/OUTPUT），CONDITION/LOOP/MERGE 待 Phase 2 扩展执行语义。
 - **AgentJob（WO-B · 长程自主任务）**：跨会话、可恢复、可观察的 Agent 任务持久化单元，状态 `RUNNING|PAUSED|WAITING|COMPLETED|FAILED|ESCALATED`，带 checkpoint 与 timeout。契约待建。
 - **AgentMemory（WO-B · 长程任务记忆）**：AgentJob 运行中沉淀的关键事实（VERIFIED/HYPOTHESIS/DISPROVED）、计划、决策。最终答案必须区分事实可信度。契约待建。
 - **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
@@ -619,9 +619,9 @@ Deep DeductionTask --draft_solver--> SolverDraftService
   SolverDraft --promote{lint+eval≥5+advisory}--> GOVERNED
     --register--> SolverArtifact（获得 solverKey，可被路径 A 调用）
 
-PlanBuilderCanvas --serialize--> PlanDSL（YAML/JSON，可 Git diff）
+PlanBuilderCanvas --serialize--> PlanDSL（JSON/YAML，可 Git diff）
   --compile--> ExecutionPlan --executePlan--> Workflow/Plan
-  Canvas ↔ PlanDSL 必须 100% 等价（R24）
+  Canvas ↔ PlanDSL 必须 100% 等价（R24）；Phase 1 仅线性节点（INPUT/SOLVER/TRANSFORM/OUTPUT），CONDITION/LOOP/MERGE 需 ExecutionPlan 分支/循环语义扩展后全量支持。
 
 AgentJob（status=RUNNING|PAUSED|WAITING|...）--decompose--> Goal
   Goal --execute--> AgentMemory（VERIFIED/HYPOTHESIS/DISPROVED 事实）
@@ -715,7 +715,7 @@ ModelArtifact（SCORECARD/CLASSIFIER/FORECAST_PATCH/RULE_PATCH）
 | L-aip | `agent.job.resumed` | 长程任务恢复（外部事件或用户触发） | IN_SESSION | agent-jobs | — |
 | L-aip | `agent.job.completed` | 长程任务完成 → 失效 Job 详情/对话答案 | IN_SESSION | agent-jobs, query-dock | — |
 | L-aip | `agent.job.escalated` | 长程任务升级人工 → 通知运营/审批收件箱 | NOTIFY | agent-jobs, notifications | — |
-| L-aip | `plan.canvas.published` | PlanBuilderCanvas 发布为场景包计划 → 失效计划/场景目录 | IN_SESSION | plan-builder, scenarios | — |
+| L-aip | `plan.canvas.published` | PlanBuilderCanvas 发布为场景包计划 → 失效计划/场景目录 | IN_SESSION | plan-builder, scenarios, intent-editor.workflow-bindings | — |
 | L-aip | `model.artifact.generated` | ModelArtifact 生成（SCORECARD/CLASSIFIER/...）→ 失效模型制品列表 | IN_SESSION | model-artifacts, provisional-review | — |
 | L-aip | `model.artifact.governed` | ModelArtifact 通过治理 → 失效模型目录 | IN_SESSION | model-artifacts, model-registry | — |
 
@@ -755,13 +755,13 @@ ModelArtifact（SCORECARD/CLASSIFIER/FORECAST_PATCH/RULE_PATCH）
 | **R21** | **草稿不直接上生产（AIP 增强）**：SolverDraft / ModelArtifact 在 `GOVERNED` 之前不得被路径 A 调用、不得写入生产真值；结果必须标 `UNVERIFIED`。 | `draft_solver` 工具/晋升流水线 |
 | **R22** | **沙箱零副作用（AIP 增强）**：SolverDraft 执行环境零网络、零文件系统写、零外部进程；可用 API 仅白名单（Math/Array/Object/JSON/Map/Set + 注入只读上下文）。 | `SandboxRunner` lint + seccomp/VM |
 | **R23** | **AgentJob 可恢复（AIP 增强）**：每完成一个 Goal 写入 checkpoint；服务重启后从 checkpoint 恢复；WAITING 状态不计入活跃预算但保留上下文。 | `AgentJobService` checkpoint/resume |
-| **R24** | **Canvas 与 PlanDSL 100% 等价（AIP 增强）**：PlanBuilderCanvas 只是 PlanDSL 的可视化编辑层，画布必须可序列化为 DSL，DSL 必须可反序列化为等价画布；PlanDSL 编译产物 = 现有 `ExecutionPlan`。 | `PlanBuilderService` compile/serialize |
+| **R24** | **Canvas 与 PlanDSL 100% 等价（AIP 增强）**：PlanBuilderCanvas 只是 PlanDSL 的可视化编辑层，画布必须可序列化为 DSL，DSL 必须可反序列化为等价画布；PlanDSL 编译产物 = 现有 `ExecutionPlan`。 | `PlanBuilderService` compile/serialize、`PlanBuilderPage` DSL tab、SEAM 测试 `plan-builder.test.ts` |
 
 ---
 
 ## 6. 行动（系统状态变更，多数经 Action 审批）
 
-发布本体(publishVersion) · 物化对象(materialize) · 创建/审批 ActionDraft · 对象级数据变更(Phase9B) · 运行派生(runDerivations) · 生成合成数据(syntheticJob) · 模拟时钟 tick · 校准提案应用(calibration.applied) · 规则发布 · 意图/工作流/技能/Agent 发布·退役 · 场景入口编辑 · 构建发动机 publish · 实体合并 · 隔离行 reprocess/discard · 功能开通配置 · LLM 用途绑定。
+发布本体(publishVersion) · 物化对象(materialize) · 创建/审批 ActionDraft · 对象级数据变更(Phase9B) · 运行派生(runDerivations) · 生成合成数据(syntheticJob) · 模拟时钟 tick · 校准提案应用(calibration.applied) · 规则发布 · 意图/工作流/技能/Agent/PlanBuilderCanvas 发布·退役 · 场景入口编辑 · 构建发动机 publish · 实体合并 · 隔离行 reprocess/discard · 功能开通配置 · LLM 用途绑定。
 
 ---
 

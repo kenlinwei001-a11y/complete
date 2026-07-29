@@ -27,6 +27,7 @@ import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
 import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
 import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
 import { Provenance } from "@/components/Provenance";
+import { DispositionDetailPanel } from "./DispositionDetailPanel";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 import zh from "@/locales/zh";
@@ -70,11 +71,21 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const [riskTab, setRiskTab] = useState<"risk" | "order">("risk");
   const [openBase, setOpenBase] = useState<string | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
+  // WO-LIVE-DISPOSITION：当前活推演杠杆 overlay（DynamicLeverPanel 上抛），用于重算行动计划。
+  const [liveApply, setLiveApply] = useState<{ base: string; apply: { objectType: string; objectId: string; prop: string; value: number }[] } | null>(null);
+  const [regenArgs, setRegenArgs] = useState<{ apply: { objectType: string; objectId: string; prop: string; value: number }[] } | null>(null);
+  const [expandedPlanRow, setExpandedPlanRow] = useState<number | null>(null);
+
+  const timelineArgs = useMemo(() => {
+    const base: Record<string, unknown> = { horizon };
+    if (regenArgs?.apply && regenArgs.apply.length > 0) base.apply = regenArgs.apply;
+    return base;
+  }, [horizon, regenArgs]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["a", "risk-timeline", { horizon }],
+    queryKey: ["a", "risk-timeline", timelineArgs],
     queryFn: async () => {
-      const res = await invokeSolver("risk_timeline", { horizon });
+      const res = await invokeSolver("risk_timeline", timelineArgs);
       return RiskTimelineOutputSchema.parse(res.data);
     },
   });
@@ -265,18 +276,31 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               horizon={horizon}
               isPrimary={maxPeak > 0 && openCard.peak === maxPeak}
               onDay={(day) => setOrdersDay({ card: openCard, day })}
+              onLiveState={(s) => setLiveApply({ base: openCard.base, apply: s.apply })}
             />
           )}
 
           {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
 
-          {/* 处置计划表：按越线日前置排启动·采纳经审批下发工单。导出最终规划（前端生成独立浅色 HTML 文档下载）。 */}
+          {/* 处置计划表：按越线日前置排启动·采纳经审批下发工单。导出最终规划 + 活推演重算行动计划。 */}
           {(data.planRows?.length ?? 0) > 0 && (
             <div className={styles.rkDet} style={{ marginTop: 14 }} data-testid="risk-plan-panel">
               <div className={styles.rkDetH}>
                 <b>📋 {zh.risk.planTitle}</b>
                 <span>
                   {zh.risk.planSub(data.planRows!.length)}
+                  {"　"}
+                  <span
+                    className={styles.tierChip}
+                    data-testid="risk-plan-regenerate"
+                    role="button"
+                    tabIndex={0}
+                    style={{ display: "inline-block" }}
+                    onClick={() => setRegenArgs({ apply: liveApply?.apply ?? [] })}
+                    onKeyDown={(e) => e.key === "Enter" && setRegenArgs({ apply: liveApply?.apply ?? [] })}
+                  >
+                    {zh.risk.regeneratePlan}
+                  </span>
                   {"　"}
                   <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
                     style={{ display: "inline-block" }}
@@ -300,15 +324,33 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 </thead>
                 <tbody>
                   {data.planRows!.map((r, i) => (
-                    <tr key={i} data-testid={`risk-plan-row-${i}`}>
-                      <td className="mono"><b>{i + 1}</b></td>
-                      <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
-                      <td className="zh">{r.owner}</td>
-                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.start}</td>
-                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.done}</td>
-                      <td className="zh" style={{ color: "var(--ok)" }}>{r.eff}</td>
-                      <td><span className="badge">{r.rule}</span></td>
-                    </tr>
+                    <>
+                      <tr
+                        key={i}
+                        data-testid={`risk-plan-row-${i}`}
+                        className={expandedPlanRow === i ? styles.rkCardOpen : ""}
+                        style={{ cursor: r.steps && r.steps.length > 0 ? "pointer" : "default" }}
+                        role={r.steps && r.steps.length > 0 ? "button" : undefined}
+                        tabIndex={r.steps && r.steps.length > 0 ? 0 : undefined}
+                        onClick={() => r.steps && r.steps.length > 0 && setExpandedPlanRow((prev) => (prev === i ? null : i))}
+                        onKeyDown={(e) => e.key === "Enter" && r.steps && r.steps.length > 0 && setExpandedPlanRow((prev) => (prev === i ? null : i))}
+                      >
+                        <td className="mono"><b>{i + 1}</b></td>
+                        <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
+                        <td className="zh">{r.owner}</td>
+                        <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.start}</td>
+                        <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.done}</td>
+                        <td className="zh" style={{ color: "var(--ok)" }}>{r.eff}</td>
+                        <td><span className="badge">{r.rule}</span></td>
+                      </tr>
+                      {expandedPlanRow === i && r.steps && r.steps.length > 0 && (
+                        <tr data-testid={`risk-plan-detail-${i}`}>
+                          <td colSpan={7} style={{ padding: 0, border: "none" }}>
+                            <DispositionDetailPanel steps={r.steps} />
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -544,7 +586,7 @@ function RkK({ testId, value, label, color }: { testId: string; value: string; l
  * → 图例 → 两栏（对症方案 rk-sol + 对话态 QA）。
  */
 function RiskDetailPanel({
-  card, bnRow, bnFactors, threshold, horizon, isPrimary, onDay,
+  card, bnRow, bnFactors, threshold, horizon, isPrimary, onDay, onLiveState: propsOnLiveState,
 }: {
   card: RiskCard;
   bnRow?: BottleneckOutput["rows"][number];
@@ -553,6 +595,8 @@ function RiskDetailPanel({
   horizon: number;
   isPrimary: boolean;
   onDay: (day: number) => void;
+  /** WO-LIVE-DISPOSITION：把当前活推演态上抛给 risk 看板，用于重算全局行动计划。 */
+  onLiveState?: (s: LiveLeverState) => void;
 }) {
   const H = card.series.length || horizon;
   const synth = card.provenanceSynthetic === true;
@@ -570,9 +614,12 @@ function RiskDetailPanel({
     },
     retry: false,
   });
-  // 活能力①③：DynamicLeverPanel 上抛的当前推演态，供方案存/横比消费。
+  // 活能力①③：DynamicLeverPanel 上抛的当前推演态，供方案存/横比消费；同时上抛给 RiskBoardView 用于重算行动计划。
   const [liveState, setLiveState] = useState<LiveLeverState>({ apply: [], capGain: 0, affected: 0 });
-  const onLiveState = useCallback((s: LiveLeverState) => setLiveState(s), []);
+  const onLiveState = useCallback((s: LiveLeverState) => {
+    setLiveState(s);
+    propsOnLiveState?.(s);
+  }, [propsOnLiveState]);
   const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
   // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
   const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);

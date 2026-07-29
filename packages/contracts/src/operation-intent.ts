@@ -12,7 +12,7 @@ import { z } from "zod";
 
 export const OPERATION_KINDS = [
   "import", "model", "browse", "rule", "solve", "synth", "build",
-  "scene-config", "scenario", "approve", "agent", "workflow", "skill", "mcp",
+  "scene-config", "scenario", "approve", "agent", "workflow", "plan-builder", "skill", "mcp",
   "eval", "llm", "ops", "tenant", "catalog", "connection",
   "meta", "slice", "rule-extract", "sop", "platform-config", "validate",
   "metric", "notify", "config-bundle", "boundary",
@@ -64,6 +64,7 @@ export const OPERATION_CATALOG: OperationCatalogEntry[] = [
   { op: "approve", label: "Action 审批", description: "审批 Action 草稿：批复/驳回待执行的写真值动作（R4 唯一落地闸）。", keywords: ["审批", "批复", "approve", "草稿", "draft"], endpoint: "/a/v1/action-drafts", requiredSlots: ["draftId"], r4: true, cliCommand: "approve" },
   { op: "agent", label: "Agent/智能体 配置", description: "配置智能体：建/编辑 Agent 定义、工具授权与场景绑定。", keywords: ["agent", "智能体"], endpoint: "/b/v1/agents", requiredSlots: [], r4: false, cliCommand: "agent" },
   { op: "workflow", label: "工作流编排·建/发布/列", description: "编排工作流：建/发布/列出多步声明式流程（路径 A 查询编排的供给侧）。", keywords: ["工作流", "编排", "workflow", "流程", "步骤"], endpoint: "/b/v1/workflows", requiredSlots: [], r4: false, cliCommand: "workflow" },
+  { op: "plan-builder", label: "计划构建画布·建/列/发布", description: "无代码计划构建画布：拖拽构建多 solver 推演链，序列化为 PlanDSL 并发布为场景包执行计划。", keywords: ["计划", "plan", "画布", "plan-builder", "推演链"], endpoint: "/b/v1/plan-builders", requiredSlots: [], r4: false, cliCommand: "plan-builder", uiDeepLink: "/admin/plan-builder" },
   { op: "skill", label: "技能·建/绑定/列", description: "管理技能：建/绑定/列出可渐进披露的能力句与附件资源。", keywords: ["技能", "skill", "能力句", "解读"], endpoint: "/b/v1/skills", requiredSlots: [], r4: false, cliCommand: "skill" },
   { op: "mcp", label: "MCP·服务/工具配置", description: "配置 MCP：注册外部工具服务与工具清单，治理按需加载的 mcp_tool 池。", keywords: ["mcp", "外部工具", "工具服务", "server", "tool"], endpoint: "/b/v1/mcp-configs", requiredSlots: [], r4: false, cliCommand: "mcp" },
   { op: "eval", label: "评测套件·跑/历史/parity", description: "评测：跑测试套件、查历史与 parity 回归，守能力不漂移。", keywords: ["评测", "eval", "用例", "套件", "回归", "parity"], endpoint: "/b/v1/evals", requiredSlots: [], r4: false, cliCommand: "eval" },

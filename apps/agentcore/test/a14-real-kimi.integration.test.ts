@@ -46,7 +46,6 @@ describe.skipIf(!KEY)("A14 · 真 LLM 分类比对 PRD（env-gated）", () => {
           fails.push(`${sc.sNo}: THREW ${String((e as Error)?.message ?? e).slice(0, 50)}`);
         }
       }
-      // eslint-disable-next-line no-console
       console.log(`[A14-REAL] 真分 ${correct}/${SCENARIO_CATALOG.length}` + (fails.length ? "  ✗ " + fails.join(" | ") : ""));
       expect(correct).toBeGreaterThanOrEqual(Math.ceil(SCENARIO_CATALOG.length * 0.95)); // ≥19/20；实测 20/20
     },

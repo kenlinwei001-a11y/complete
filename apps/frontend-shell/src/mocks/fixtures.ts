@@ -168,6 +168,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["optimize_whatif"] } },
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用。
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
+  // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
+  { key: "admin.plan-builder", name: "计划构建画布", level: "BLOCK", defaultOn: true },
 ];
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
@@ -780,11 +782,79 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
     { base: "武汉", baseId: "wuhan", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
   // PRD-IND-risk §2.4：处置行动计划表（主因素首选 + 峰值≥90 备份 + 14 天内反提 S&OP，按启动排序）
+  // WO-LIVE-DISPOSITION：每条行动项带逐日推演步骤（rationale + triggerValue + closesGap + provenance）。
   planRows: [
-    { act: "关键正极提前备料（常州）", det: "峰值96·产线负载率", owner: "基地负责人 · 王经理", start: "T-2·06-08（越线前7天）", done: "T+5·06-15（越线日）", eff: "消解≈12·2天起效", rule: "C05" },
-    { act: "增开夜班（常州·备份方案）", det: "峰值≥90 双保险", owner: "基地负责人 · 王经理", start: "T+2·06-12", done: "T+12·06-22", eff: "消解≈11·2天起效", rule: "C05" },
-    { act: "近端仓+供应商VMI（江门）", det: "峰值91·物料供给齐套", owner: "基地负责人 · 李经理", start: "T+1·06-11（越线前7天）", done: "T+8·06-18（越线日）", eff: "消解≈9·5天起效", rule: "C05" },
-    { act: "反提月度计划差异（常州、江门）", det: "14 天内越线，需计划层资源协同", owner: "计划中心 → S&OP", start: "T+1·06-11", done: "本周 S&OP", eff: "计划-执行闭环，差异进入月度议程", rule: "C21" },
+    {
+      act: "关键正极提前备料（常州）",
+      det: "峰值96·产线负载率",
+      owner: "基地负责人 · 王经理",
+      start: "T-2·06-08（越线前7天）",
+      done: "T+5·06-15（越线日）",
+      eff: "消解≈12·2天起效",
+      rule: "C05",
+      steps: [
+        {
+          action: "触发提前备料",
+          rationale: "T+3 紧张度 87 ≥ 阈值 85，正极安全库存覆盖降至 4 天，需提前锁定上游产能",
+          triggerValue: 87,
+          closesGap: 12,
+          provenance: { kind: "risk_timeline", drillType: "Mitigation", drillId: "early_stock", drillField: "eff", drillValue: 12, src: "risk_timeline 求解器", formula: "closesGap = f(触发值, 阈值, 峰值)" },
+        },
+        {
+          action: "供应商加急排产",
+          rationale: "T+5 越线日需到货，倒逼正极供应商 48h 内切换产线优先供料",
+          triggerValue: 96,
+          closesGap: 0,
+          provenance: { kind: "SRM/ERP", drillType: "PurchaseOrder", drillId: "PO-CATHODE-001", drillField: "leadDays", drillValue: 2, src: "SRM/ERP 采购订单", formula: "leadDays = 供应商承诺交期 - 当前日期" },
+        },
+      ],
+    },
+    {
+      act: "增开夜班（常州·备份方案）",
+      det: "峰值≥90 双保险",
+      owner: "基地负责人 · 王经理",
+      start: "T+2·06-12",
+      done: "T+12·06-22",
+      eff: "消解≈11·2天起效",
+      rule: "C05",
+      steps: [
+        {
+          action: "启动双班",
+          rationale: "T+5 越线后峰值仍 84，叠加夜班提升可用产能 11 点",
+          triggerValue: 84,
+          closesGap: 11,
+          provenance: { kind: "risk_timeline", drillType: "Mitigation", drillId: "night_shift", drillField: "eff", drillValue: 11, src: "risk_timeline 求解器", formula: "closesGap = 夜班产能增量 / 日需求" },
+        },
+      ],
+    },
+    {
+      act: "近端仓+供应商VMI（江门）",
+      det: "峰值91·物料供给齐套",
+      owner: "基地负责人 · 李经理",
+      start: "T+1·06-11（越线前7天）",
+      done: "T+8·06-18（越线日）",
+      eff: "消解≈9·5天起效",
+      rule: "C05",
+      steps: [
+        {
+          action: "前置仓补货",
+          rationale: "T+4 齐套率跌至 78% < 80% 阈值，VMI 安全库存需提前 4 天补足",
+          triggerValue: 78,
+          closesGap: 9,
+          provenance: { kind: "risk_timeline", drillType: "Mitigation", drillId: "vmi_buffer", drillField: "eff", drillValue: 9, src: "risk_timeline 求解器", formula: "closesGap = VMI 安全库存缺口收窄量" },
+        },
+      ],
+    },
+    {
+      act: "反提月度计划差异（常州、江门）",
+      det: "14 天内越线，需计划层资源协同",
+      owner: "计划中心 → S&OP",
+      start: "T+1·06-11",
+      done: "本周 S&OP",
+      eff: "计划-执行闭环，差异进入月度议程",
+      rule: "C21",
+      steps: [],
+    },
   ],
 };
 
@@ -1346,3 +1416,6 @@ export const LLM_BINDINGS = [
   { purpose: "classifier" as const, providerId: "llmp-anthropic", modelId: "claude-haiku-4-5" },
   { purpose: "agent" as const, providerId: "llmp-anthropic", modelId: "claude-opus-4-8" },
 ];
+
+// WO-A · PlanBuilder fixtures 复用（避免 handlers/db 直接依赖新文件）。
+export { PLAN_BUILDER_FIXTURES, newPlanBuilderCanvas } from "./planBuilderFixtures";

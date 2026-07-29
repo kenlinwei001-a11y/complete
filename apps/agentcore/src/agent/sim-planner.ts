@@ -81,7 +81,7 @@ const SIM_SOLVERS: SliceSolver[] = [
  * （capacity_forecast 无 modelId / margin_attribution 无 targetType 诚实落选），portfolio/affected_orders/mrp_netting
  * （required=[]）恒可编入 → ≥2 步并行组合（① 地基补登记后 mrp_netting 自动纳入·物料短缺归因入链）。
  */
-export function buildSimNavSlice(query: string): NavigationSlice {
+export function buildSimNavSlice(_query: string): NavigationSlice {
   return {
     domain: "global-sim",
     primarySolver: "portfolio",
@@ -112,7 +112,6 @@ const CAPACITY_FACTOR_MAP: { re: RegExp; objectType: string; prop: string; facto
   { re: /节拍/, objectType: "Process", prop: "cycle_time", factorId: "cf-takt" },
 ];
 /** 常见工序名（objectId 定位·best-effort·真 NL→精确对象需实体消解引擎·follow-up）。 */
-const CAPACITY_PROCESS_RE = /(涂布|辊压|卷绕|叠片|化成|分容|注液|封装|模组|pack|组装|清洗)/i;
 
 /**
  * 是否产能 what-if NL（据问句 + 可选 PageContext 视图：risk/capacity/产能 页辅助）。
@@ -175,7 +174,7 @@ const CAPACITY_SOLVERS: SliceSolver[] = [
   { key: "generic_inference", capability: "沿派生 DAG 前向重算任意因子假设值 → before/after deltas（待本体补派生边·当前无 apply 诚实落选）", outputShape: ["deltas", "rows", "affectedObjects", "count", "rootTypes"] },
 ];
 
-export function buildCapacityNavSlice(query: string): NavigationSlice {
+export function buildCapacityNavSlice(_query: string): NavigationSlice {
   return {
     domain: "capacity-whatif",
     primarySolver: "gap_attribution",

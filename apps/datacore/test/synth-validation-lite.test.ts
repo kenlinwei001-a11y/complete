@@ -92,7 +92,7 @@ describe("WO-SYNTH-VALIDATION-LITE · SEAM 五条", { timeout: 180000 }, () => {
     const l0 = Date.now();
     await t.services.synthetic.runJob(ctxFor("t_lite2"), battery({ profile: "VALIDATION_LITE" }));
     const liteMs = Date.now() - l0;
-    // eslint-disable-next-line no-console
+     
     console.log(`[SEAM#2] FULL=${fullMs}ms LITE=${liteMs}ms ratio=${(liteMs / fullMs).toFixed(3)}`);
     expect(liteMs).toBeLessThan(fullMs); // 严格更快（LITE 做严格更少的工作）
     expect(liteMs).toBeLessThan(fullMs * 0.7); // 宽松半阈：省下 TS 历史+聚合大头

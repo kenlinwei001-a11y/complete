@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { PlanStep, Scenario } from "@platform/contracts";
+import type { PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import {
   ACCOUNTS,
@@ -23,6 +23,7 @@ import {
   workspaceForAccount,
   type MockAccount,
 } from "./fixtures";
+import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
@@ -615,6 +616,60 @@ function mockSliceGraph(sliceKey: string) {
 export function __resetSliceGovMock(): void {
   mockSliceGov.model_capacity_network = { rootType: "Model", fixtures: 1 };
   mockSliceGov.base_risk_profile = { rootType: "Base", fixtures: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// WO-A · PlanBuilder mock endpoints
+// ---------------------------------------------------------------------------
+
+function compilePlanBuilderDSL(dsl: PlanBuilderCanvas["dsl"]): PlanBuilderCompileResult {
+  const errors: { code: string; message: string; nodeId?: string }[] = [];
+  for (const n of dsl.nodes) {
+    if (n.type === "CONDITION" || n.type === "LOOP" || n.type === "MERGE") {
+      errors.push({ code: "UNSUPPORTED_NODE", message: `${n.type} 节点在 Phase 1 仅占位，暂不支持编译`, nodeId: n.id });
+    }
+  }
+  // 简单环检测（DFS）
+  const adj = new Map<string, string[]>();
+  for (const n of dsl.nodes) adj.set(n.id, []);
+  for (const e of dsl.edges) adj.get(e.from)?.push(e.to);
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const dfs = (id: string): boolean => {
+    if (visiting.has(id)) {
+      errors.push({ code: "CYCLIC_GRAPH", message: `检测到环，节点 ${id}` });
+      return true;
+    }
+    if (visited.has(id)) return false;
+    visiting.add(id);
+    for (const to of adj.get(id) ?? []) if (dfs(to)) return true;
+    visiting.delete(id);
+    visited.add(id);
+    return false;
+  };
+  for (const n of dsl.nodes) dfs(n.id);
+
+  const outputCount = dsl.nodes.filter((n) => n.type === "OUTPUT").length;
+  if (outputCount === 0) errors.push({ code: "MISSING_OUTPUT", message: "至少需要一个 OUTPUT 节点" });
+
+  if (errors.length > 0) return { ok: false, errors };
+  // 生成一个占位 ExecutionPlan 形状（R24：DSL ↔ ExecutionPlan 等价可证）
+  const plan: Record<string, unknown> = {
+    version: 1,
+    steps: dsl.nodes
+      .filter((n) => n.type !== "INPUT")
+      .map((n) => {
+        if (n.type === "SOLVER") return { id: n.id, type: "invoke_solver", params: { solverKey: n.solverKey, args: n.args } };
+        if (n.type === "TRANSFORM") return { id: n.id, type: n.stepType, params: n.params };
+        if (n.type === "OUTPUT") return { id: n.id, type: "render_answer", params: { blocks: n.blocks } };
+        return { id: n.id, type: n.type, params: {} };
+      }),
+  };
+  return { ok: true, plan, errors: [] };
+}
+
+function planBuilderById(id: string): PlanBuilderCanvas | undefined {
+  return db.planBuilders.find((c) => c.id === id);
 }
 
 export const handlers = [
@@ -1336,7 +1391,33 @@ export const handlers = [
     // bottleneck_matrix 漏接（chip 空）。改读 body.args → base 真裁剪 + bottleneck 真出（与真后端 /a/v1 invoke 同口径）。
     const invBody = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
     const invArgs = invBody.args ?? {};
-    if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    if (key === "risk_timeline") {
+      // WO-LIVE-DISPOSITION：mock 接受 live apply overlay，返回差异化 planRows（有牙测试）。
+      const apply = Array.isArray(invArgs.apply) ? (invArgs.apply as { objectType: string; objectId: string; prop: string; value: number }[]) : [];
+      const hasApply = apply.length > 0;
+      const baseRows = RISK_TIMELINE.planRows ?? [];
+      const planRows = hasApply
+        ? baseRows.map((r, i) =>
+            i === 0
+              ? {
+                  ...r,
+                  act: `${r.act} · 已应用活推演`,
+                  eff: "消解≈18·1天起效",
+                  steps: [
+                    {
+                      action: "触发提前备料（重算）",
+                      rationale: `应用 ${apply.length} 条杠杆重算：触发值由 87 升至 92，闭 gap 提升至 18`,
+                      triggerValue: 92,
+                      closesGap: 18,
+                      provenance: { kind: "risk_timeline+generic_inference", drillType: "Mitigation", drillId: "early_stock_live", drillField: "eff", drillValue: 18, src: "risk_timeline + generic_inference 重算", formula: "closesGap = 触发值 × 杠杆敏感度 / 阈值" },
+                    },
+                  ],
+                }
+              : r
+          )
+        : baseRows;
+      return HttpResponse.json({ data: { ...RISK_TIMELINE, planRows }, snapshotVersion: "ov-12" });
+    }
     if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix(invArgs as { baseIds?: string[] }), snapshotVersion: "ov-12" });
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 91.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")
@@ -2431,7 +2512,33 @@ export const handlers = [
       if ("error" in data) return err(422, "VALIDATION_ERROR", String(data.error));
       return HttpResponse.json({ data, snapshotVersion: "ov-12" });
     }
-    if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    if (key === "risk_timeline") {
+      // WO-LIVE-DISPOSITION：B 侧 run 同口径接受 live apply overlay。
+      const apply = Array.isArray(args.apply) ? (args.apply as { objectType: string; objectId: string; prop: string; value: number }[]) : [];
+      const hasApply = apply.length > 0;
+      const baseRows = RISK_TIMELINE.planRows ?? [];
+      const planRows = hasApply
+        ? baseRows.map((r, i) =>
+            i === 0
+              ? {
+                  ...r,
+                  act: `${r.act} · 已应用活推演`,
+                  eff: "消解≈18·1天起效",
+                  steps: [
+                    {
+                      action: "触发提前备料（重算）",
+                      rationale: `应用 ${apply.length} 条杠杆重算：触发值由 87 升至 92，闭 gap 提升至 18`,
+                      triggerValue: 92,
+                      closesGap: 18,
+                      provenance: { kind: "risk_timeline+generic_inference", drillType: "Mitigation", drillId: "early_stock_live", drillField: "eff", drillValue: 18, src: "risk_timeline + generic_inference 重算", formula: "closesGap = 触发值 × 杠杆敏感度 / 阈值" },
+                    },
+                  ],
+                }
+              : r
+          )
+        : baseRows;
+      return HttpResponse.json({ data: { ...RISK_TIMELINE, planRows }, snapshotVersion: "ov-12" });
+    }
     // WO-PROJECT-SIM-WHATIF：⑥ 拖动杠杆经 useLiveSolver → B 侧 run 真重算（generic_inference）；
     // mode:levers 杠杆发现同经 B 侧（若前端改走 runSolver）。默认路径 apply → deltas（after 随假设值变·KILL-MOCK）。
     if (key === "generic_inference") {
@@ -3361,6 +3468,120 @@ export const handlers = [
       canEnterSimulation: false,
       gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
       computedAt: new Date().toISOString(),
+    });
+  }),
+
+  // WO-A · PlanBuilder endpoints（Phase 1：线性多 solver 链）。
+  http.get("*/b/v1/plan-builders", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const packageId = url.searchParams.get("packageId") ?? PACKAGE_ID;
+    const items = db.planBuilders
+      .filter((c) => c.packageId === packageId)
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+    return HttpResponse.json({ items, total: items.length });
+  }),
+  http.post("*/b/v1/plan-builders", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const packageId = url.searchParams.get("packageId") ?? PACKAGE_ID;
+    const body = (await request.json().catch(() => ({}))) as CreatePlanBuilderBody;
+    if (!body.key || !body.name) return err(400, "VALIDATION_ERROR", "key 与 name 必填");
+    const id = `pbc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const canvas: PlanBuilderCanvas = {
+      id,
+      tenantId: TENANT_ID,
+      packageId,
+      key: body.key,
+      version: 1,
+      name: body.name,
+      description: body.description,
+      status: "DRAFT",
+      dsl: body.dsl ?? newPlanBuilderCanvas(id, packageId).dsl,
+      createdBy: `usr-${account.username}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.planBuilders.unshift(canvas);
+    return HttpResponse.json(canvas, { status: 201 });
+  }),
+  http.get("*/b/v1/plan-builders/:id", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json(canvas);
+  }),
+  http.put("*/b/v1/plan-builders/:id", async ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    if (canvas.status !== "DRAFT") return err(409, "IMMUTABLE_VERSION", "仅 DRAFT 可编辑");
+    const body = (await request.json().catch(() => ({}))) as UpdatePlanBuilderBody;
+    const next: PlanBuilderCanvas = {
+      ...canvas,
+      ...body,
+      id: canvas.id,
+      tenantId: canvas.tenantId,
+      version: canvas.version,
+      status: canvas.status,
+      createdBy: canvas.createdBy,
+      createdAt: canvas.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    db.planBuilders = db.planBuilders.map((c) => (c.id === canvas.id ? next : c));
+    return HttpResponse.json(next);
+  }),
+  http.post("*/b/v1/plan-builders/:id/compile", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json(compilePlanBuilderDSL(canvas.dsl));
+  }),
+  http.post("*/b/v1/plan-builders/:id/publish", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    const compiled = compilePlanBuilderDSL(canvas.dsl);
+    if (!compiled.ok) {
+      const result: PlanBuilderPublishResult = {
+        ok: false,
+        canvas,
+        errors: compiled.errors,
+        impact: { agents: 0, plans: 0, intents: 0 },
+      };
+      return HttpResponse.json(result);
+    }
+    const next: PlanBuilderCanvas = {
+      ...canvas,
+      status: "PUBLISHED",
+      compiledPlanId: `plan_${canvas.id}`,
+      updatedAt: new Date().toISOString(),
+    };
+    db.planBuilders = db.planBuilders.map((c) => (c.id === canvas.id ? next : c));
+    const result: PlanBuilderPublishResult = {
+      ok: true,
+      canvas: next,
+      plan: compiled.plan,
+      errors: [],
+      impact: { agents: 0, plans: 1, intents: 0 },
+    };
+    return HttpResponse.json(result);
+  }),
+  http.post("*/b/v1/plan-builders/:id/run", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json({
+      runId: `pbr_${Date.now()}`,
+      status: "COMPLETED",
+      answer: { blocks: [{ type: "text", markdown: `PlanBuilder ${canvas.name} mock run completed` }] },
     });
   }),
 ];

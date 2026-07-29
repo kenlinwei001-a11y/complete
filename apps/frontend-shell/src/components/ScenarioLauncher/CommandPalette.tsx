@@ -56,7 +56,8 @@ export function CommandPalette() {
               style={{ justifyContent: "flex-start", textAlign: "left" }}
               onClick={() => {
                 setOpen(false);
-                void launch(c);
+                const userQuery = q.trim();
+                void launch(c, userQuery || undefined);
               }}
             >
               <b className="mono" style={{ marginRight: 6 }}>{c.sNo}</b>

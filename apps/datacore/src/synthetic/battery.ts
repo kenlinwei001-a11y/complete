@@ -2764,9 +2764,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { materialId: "cell_case", quantity: 1, unit: "个", level: 1, isKeyComponent: true },
   ];
 
-  let bomSeq = 0;
-  let opSeq = 0;
-  let capSeq = 0;
+  const bomSeq = 0;
+  const opSeq = 0;
+  const capSeq = 0;
   for (const v of productVersions) {
     const modelId = v.modelId as string;
     const versionId = v.versionId as string;

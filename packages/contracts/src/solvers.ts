@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DispositionStepSchema } from "./disposition.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -169,7 +170,9 @@ export const RiskCardSchema = z.object({
   // 以基地为主体时，汇总该基地所有越线 factor 的简要信息（产能推演每基地一张卡片）
   allFactors: z.array(z.object({ factor: z.string(), peak: z.number(), crossDay: z.number().int().nullable() })).optional(),
 });
-/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
+/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。
+ * WO-LIVE-DISPOSITION：每行附带由后端贪心算法从 shortfall 派生的处置步骤（R13/R14）。
+ */
 export const RiskPlanRowSchema = z.object({
   act: z.string(), // 行动项（方案名（基地））
   det: z.string(), // 详情（峰值·对象）
@@ -178,6 +181,8 @@ export const RiskPlanRowSchema = z.object({
   done: z.string(), // 完成 T+{cross}·{date}
   eff: z.string(), // 预期（消解幅度·起效时间）
   rule: z.string(), // 关联规则 C05/C21
+  // WO-LIVE-DISPOSITION：每条行动项可下钻逐日推演步骤
+  steps: z.array(DispositionStepSchema).default([]),
 });
 export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 

@@ -6,6 +6,7 @@ import type {
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
+  PlanBuilderCanvas,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
@@ -65,6 +66,8 @@ export function createMemoryRepos(): Repos {
   const resourceRelations: ResourceRelationRow[] = [];
   const resourceQualityScores = new Map<string, ResourceQualityScoreRow>();
   const irKey = (t: string, k: string, key: string) => `${t}|${k}|${key}`;
+  // WO-A · Plan Builder Canvas 索引：id + (tenantId|packageId|key)  latestByKey
+  const planBuilders = new Map<string, PlanBuilderCanvas>();
 
   return {
     packages: {
@@ -330,6 +333,29 @@ export function createMemoryRepos(): Repos {
       },
       async listByTenant(tenantId) {
         return [...scenarios.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    planBuilders: {
+      async insert(c) {
+        planBuilders.set(c.id, clone(c));
+      },
+      async update(c) {
+        planBuilders.set(c.id, clone(c));
+      },
+      async get(id) {
+        return clone(planBuilders.get(id));
+      },
+      async listByPackage(packageId) {
+        return [...planBuilders.values()]
+          .filter((c) => c.packageId === packageId)
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+          .map(clone);
+      },
+      async latestByKey(tenantId, packageId, key) {
+        const list = [...planBuilders.values()]
+          .filter((c) => c.tenantId === tenantId && c.packageId === packageId && c.key === key)
+          .sort((a, b) => b.version - a.version);
+        return clone(list[0]);
       },
     },
     experience: {

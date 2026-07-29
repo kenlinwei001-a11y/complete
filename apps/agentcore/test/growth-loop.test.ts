@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { GapFinding, GapReport, GrowthFillResult } from "@platform/contracts";
 import { runGrowthLoop } from "../src/growth/loop.js";
-import { createTestApp, PLANNER, debugHeaders, type TestApp } from "./helpers.js";
+import { createTestApp, PLANNER, type TestApp } from "./helpers.js";
 
 /**
  * 自成长发动机 P3 · LOOP：探针→补齐→重跑→收敛（K 有界）。

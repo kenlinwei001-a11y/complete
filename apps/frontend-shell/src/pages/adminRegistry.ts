@@ -57,6 +57,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "config-migration", label: zh.nav.configMigration, roles: ["admin"] },
   // WO-DRIL-P4 · 智能资源治理台（DRIL·entitlement qos.dril-routing 门控·见 App.tsx 路由 featureKey）：资源列表/五级标签/质量分/1-hop 关系图。
   { path: "resources", label: zh.nav.resources, roles: ["admin", "catalog_admin"] },
+  // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
+  { path: "plan-builder", label: zh.nav.planBuilder, roles: ["admin", "catalog_admin"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
   { path: "boundary", label: "边界册治理", roles: ["admin"] },
   { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
@@ -94,7 +96,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "slice-library", "merge", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
-  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "ops/fallback", "views"] },
+  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },
 ];

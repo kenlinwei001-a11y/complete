@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestApp, ADMIN, type TestApp } from "./helpers.js";
+import { createTestApp, ADMIN } from "./helpers.js";
 import { buildComposeNarrative, classifyCapacityQuestion } from "../src/router/live-endpoints.js";
 
 /**

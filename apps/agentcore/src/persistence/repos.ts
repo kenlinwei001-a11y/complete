@@ -12,6 +12,7 @@ import type {
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
+  PlanBuilderCanvas,
   QueryTask,
   ResourceQuality,
   ScenarioPackage,
@@ -240,6 +241,14 @@ export interface Repos {
     get(id: string): Promise<Scenario | undefined>;
     byKey(tenantId: string, scenarioKey: string): Promise<Scenario | undefined>;
     listByTenant(tenantId: string): Promise<Scenario[]>;
+  };
+  /** WO-A · No-code Plan Builder Canvas ↔ PlanDSL */
+  planBuilders: {
+    insert(c: PlanBuilderCanvas): Promise<void>;
+    update(c: PlanBuilderCanvas): Promise<void>;
+    get(id: string): Promise<PlanBuilderCanvas | undefined>;
+    listByPackage(packageId: string): Promise<PlanBuilderCanvas[]>;
+    latestByKey(tenantId: string, packageId: string, key: string): Promise<PlanBuilderCanvas | undefined>;
   };
   credentials: {
     insert(c: CredentialRow): Promise<void>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
@@ -44,7 +44,7 @@ describe("F39 · 场景启动器（目录墙 + ⌘K）", () => {
     await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("4680-NCM"))).toBe(true));
   });
 
-  it("⌘K 命令面板：快捷键唤起 → 搜索 → 选中启动", async () => {
+  it("⌘K 命令面板：快捷键唤起 → 搜索 → 选中启动，保留用户输入而非替换为触发问句", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/scenarios");
@@ -53,10 +53,14 @@ describe("F39 · 场景启动器（目录墙 + ⌘K）", () => {
     // Cmd+K 唤起面板
     await user.keyboard("{Meta>}k{/Meta}");
     const palette = await screen.findByTestId("command-palette");
-    await user.type(within(palette).getByTestId("command-palette-input"), "齐套");
-    const item = await screen.findByTestId("command-palette-item-S08");
-    expect(item).toHaveTextContent("物料齐套分析");
+    // 输入能搜到 S01 但不同于 triggerQuestion 的自定义问句；选中后应使用用户输入启动
+    const userQuery = "订单可承接";
+    const input = within(palette).getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: userQuery } });
+    const item = await screen.findByTestId("command-palette-item-S01");
     await user.click(item);
-    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("缺料"))).toBe(true));
+    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query === userQuery)).toBe(true));
+    // 触发问句不应出现
+    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("六周能不能接"))).toBe(false));
   });
 });

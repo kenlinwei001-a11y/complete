@@ -48,7 +48,7 @@ function sopArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unk
   if (orderId) args.targetOrderId = orderId;
   // 交期解析：ISO（2026-06-26）或"6/26"/"6月26"→ 本年 ISO；否则默认 advancePct=0.2。
   const iso = q.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  const md = q.match(/(\d{1,2})\s*[\/月]\s*(\d{1,2})/);
+  const md = q.match(/(\d{1,2})\s*[/月]\s*(\d{1,2})/);
   if (iso) args.newDueDate = `${iso[1]}-${iso[2]!.padStart(2, "0")}-${iso[3]!.padStart(2, "0")}`;
   else if (md) args.newDueDate = `2026-${md[1]!.padStart(2, "0")}-${md[2]!.padStart(2, "0")}`;
   else args.advancePct = 0.2;

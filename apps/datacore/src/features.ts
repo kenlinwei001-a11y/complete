@@ -54,6 +54,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   // Dogfooding（系统本体自反）：/meta 元本体 entitlement（功能关闭=404 FEATURE_NOT_FOUND 先于角色门）。默认开。
   { key: "admin.meta-ontology", name: "系统自我（元本体 Dogfooding）", level: "BLOCK", defaultOn: true },
+  // WO-A · No-code Plan Builder Canvas ↔ PlanDSL（默认开）。
+  { key: "admin.plan-builder", name: "计划构建器", level: "BLOCK", defaultOn: true },
   // 治理增量 §1.4：域级开关（domain.{key}）——关一个域 = 该域类型在图谱/检索/建模/聚合整体不可见。
   // 默认全开；卖"财务域"为可选包的商业形态由此支持。
   { key: "domain.factory", name: "域·工厂", level: "BLOCK", defaultOn: true },

@@ -11,6 +11,7 @@ import type { Repos } from "./persistence/repos.js";
 import { makeRefReporter, type RefReporter } from "./refs/report.js";
 import { Orchestrator } from "./router/orchestrator.js";
 import { CatalogService } from "./catalog/service.js";
+import { PlanBuilderService } from "./plan-builder/service.js";
 import { EvalService } from "./evals.js";
 import type { DataCoreClient } from "./tools/clients.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
@@ -26,6 +27,7 @@ export interface AppDeps {
   events: TaskEvents;
   orchestrator: Orchestrator;
   catalog: CatalogService;
+  planBuilder: PlanBuilderService;
   evals: EvalService;
   features: FeatureGate;
   llmSettings: LlmSettings;
@@ -75,6 +77,7 @@ export function wireDeps(base: {
   });
   const reportRefs = makeRefReporter(base.config);
   const catalog = new CatalogService(base.repos, reportRefs);
+  const planBuilder = new PlanBuilderService(base.repos, catalog, base.dataCore, engine, events);
   const evals = new EvalService({ repos: base.repos, orchestrator });
   return {
     config: base.config,
@@ -87,6 +90,7 @@ export function wireDeps(base: {
     events,
     orchestrator,
     catalog,
+    planBuilder,
     evals,
     features,
     llmSettings,

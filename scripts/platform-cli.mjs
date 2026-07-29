@@ -169,6 +169,69 @@ async function cmdSim(args) {
   } catch (e) { console.error(C.red(`sim ${sub} 失败: ${e.message}`)); process.exit(1); }
 }
 
+// ---- plan-builder：WO-A 无代码计划构建画布 -------------------------------------------------
+async function cmdPlanBuilder(args) {
+  const [sub, ...rest] = args;
+  const PB = `${AC}/b/v1/plan-builders`;
+  const J = (b) => ({ method: "POST", headers: authHeader(), body: JSON.stringify(b) });
+  const packageId = argVal(rest, "--package") ?? process.env.PACKAGE_ID ?? "pkg_battery_manufacturing";
+  try {
+    if (sub === "ls") {
+      const r = await http(`${PB}?packageId=${encodeURIComponent(packageId)}`, { headers: authHeader() });
+      const items = r ?? [];
+      console.log(C.bold(`计划构建画布（${items.length}）`));
+      for (const c of items) console.log(`  ${C.cyan(c.id)} ${c.name} v${c.version} · ${c.status}${c.compiledPlanId ? " · compiled=" + c.compiledPlanId : ""}`);
+      return;
+    }
+    if (sub === "get") {
+      const id = rest.find((a) => !a.startsWith("--"));
+      if (!id) { console.error("用法: plan-builder get <id>"); process.exit(1); }
+      const r = await http(`${PB}/${encodeURIComponent(id)}`, { headers: authHeader() });
+      console.log(JSON.stringify(r, null, 2)); return;
+    }
+    if (sub === "create") {
+      const name = rest.find((a) => !a.startsWith("--"));
+      if (!name) { console.error("用法: plan-builder create <name> [--dsl <file>] [--package <pkg>]"); process.exit(1); }
+      const key = name.toLowerCase().replace(/[^a-z0-9_一-龥]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64) || `plan_${Date.now()}`;
+      const dslFile = argVal(rest, "--dsl");
+      const dsl = dslFile
+        ? JSON.parse(readFileSync(dslFile, "utf8"))
+        : {
+            version: "1",
+            nodes: [
+              { id: "in", type: "INPUT", label: "输入", position: { x: 50, y: 100 } },
+              { id: "out", type: "OUTPUT", label: "输出", position: { x: 300, y: 100 }, blocks: [{ type: "text", markdown: "（模板）请编辑画布" }] },
+            ],
+            edges: [{ id: "e1", from: "in", to: "out" }],
+          };
+      const r = await http(PB, J({ packageId, key, name, dsl }));
+      console.log(C.green(`✓ 已创建 ${r.id}`), C.dim(`${r.name} v${r.version}`));
+      return;
+    }
+    if (sub === "compile") {
+      const id = rest.find((a) => !a.startsWith("--"));
+      if (!id) { console.error("用法: plan-builder compile <id>"); process.exit(1); }
+      const r = await http(`${PB}/${encodeURIComponent(id)}/compile`, J({}));
+      console.log(C.bold(`编译 ${r.ok ? C.green("通过") : C.red("失败")}`));
+      for (const e of r.errors ?? []) console.log(`  ${C.red(e.code)} ${e.message}${e.nodeId ? ` @${e.nodeId}` : ""}`);
+      return;
+    }
+    if (sub === "publish") {
+      const id = rest.find((a) => !a.startsWith("--"));
+      if (!id) { console.error("用法: plan-builder publish <id>"); process.exit(1); }
+      const r = await http(`${PB}/${encodeURIComponent(id)}/publish`, J({}));
+      if (!r.ok) {
+        console.log(C.red("发布失败"));
+        for (const e of r.errors ?? []) console.log(`  ${C.red(e.code)} ${e.message}${e.nodeId ? ` @${e.nodeId}` : ""}`);
+        return;
+      }
+      console.log(C.green(`✓ 已发布 ${r.canvas.id}`), C.dim(`plan=${r.canvas.compiledPlanId}`));
+      return;
+    }
+    console.error('用法: plan-builder ls|get|create|compile|publish …'); process.exit(1);
+  } catch (e) { console.error(C.red(`plan-builder ${sub} 失败: ${e.message}`)); process.exit(1); }
+}
+
 // ---- ask：提交 → SSE 流 → 渲染 → 多轮澄清 -----------------------------------
 function renderBlocks(blocks = []) {
   for (const b of blocks) {
@@ -485,6 +548,7 @@ function help() {
   ask "<问句>" [--view v]          提问 → 流式答案（含多轮澄清）
   build "<故事>" [--mode PROVISIONAL] 故事建域（FDE）；--mode 走未审核态
   solve <key> [--args '<json>']    调用既有求解器（A1）
+  plan-builder ls|create|compile|publish  无代码计划构建画布（WO-A）
   ontology-query --input '<json>' | "<自然语言>"  本体多跳遍历查询（planSlice+executeSlice+简单聚合·R15 对等）
   generate <key> "<意图>"          LLM 临时求解器（沙箱跑通注册 PROVISIONAL，A18.2）
   synth <industry> [--scale --seed] 合成数据作业
@@ -495,7 +559,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, "ontology-query": cmdOntologyQuery, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, resources: cmdResources, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, "ontology-query": cmdOntologyQuery, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, resources: cmdResources, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim, "plan-builder": cmdPlanBuilder };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();

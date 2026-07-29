@@ -2,6 +2,8 @@ import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { deriveDisposition } from "./disposition.js";
+import type { ObjectInstance } from "../domain.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -255,6 +257,38 @@ export interface RiskTimelineArgs {
   factor?: string;
   horizon?: number;
   mitigation?: { base?: string; factor?: string; planKey: string };
+  /** WO-LIVE-DISPOSITION：活台拨杆假设值，与 capacityInferenceApply 同一克隆语义（无副作用·R6）。 */
+  apply?: { objectType: string; objectId: string; prop: string; value: unknown }[];
+}
+
+/** 与 capacity.ts patchCapacityContext 同一覆盖语义：浅克隆对应对象数组、不 mutate 原 ctx。 */
+function patchContext(
+  c: SolverContext,
+  typeKey: string,
+  objId: string,
+  prop: string,
+  value: unknown,
+): SolverContext {
+  const bump = (arr: ObjectInstance[]): ObjectInstance[] =>
+    arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o));
+  switch (typeKey) {
+    case "Process":
+      return { ...c, processes: bump(c.processes) };
+    case "Equipment":
+      return { ...c, equipment: bump(c.equipment) };
+    case "Line":
+      return { ...c, lines: bump(c.lines) };
+    case "Material":
+      return { ...c, materials: bump(c.materials ?? []) };
+    default:
+      return { ...c };
+  }
+}
+
+function baseFreeDaily(baseId: string, lines: ObjectInstance[], baseObj: ObjectInstance | undefined): number {
+  const capDaily = lines.filter((l) => str(l.props.baseId) === baseId).reduce((a, l) => a + num(l.props.capacityDaily), 0);
+  const util = num(baseObj?.props.util);
+  return round(capDaily * Math.max(0, 1 - util / 100), 2);
 }
 
 function resolveBaseId(c: SolverContext, ref: string): string {
@@ -266,15 +300,26 @@ function resolveBaseId(c: SolverContext, ref: string): string {
 export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
   const p = c.params.risk;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
+
+  // WO-LIVE-DISPOSITION：活台拨杆假设值，与 capacityInferenceApply 同一克隆语义（不 mutate 原 ctx·R6）。
+  let ctx = c;
+  const apply = Array.isArray(args.apply) ? args.apply : [];
+  for (const ov of apply) {
+    if (typeof ov.objectType !== "string" || typeof ov.objectId !== "string" || typeof ov.prop !== "string") {
+      throw validationError("apply 项需包含 objectType/objectId/prop/value");
+    }
+    ctx = patchContext(ctx, ov.objectType, ov.objectId, ov.prop, ov.value);
+  }
+
   const pairs: { baseId: string; factor: string; forced: boolean }[] = [];
   if (args.base && args.factor) {
-    pairs.push({ baseId: resolveBaseId(c, args.base), factor: args.factor, forced: true });
+    pairs.push({ baseId: resolveBaseId(ctx, args.base), factor: args.factor, forced: true });
   } else {
-    for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
-      const primary = primaryFactor(c, b);
-      for (const f of c.params.bottleneck.factors) {
+    for (const b of ctx.bases.map((x) => str(x.props.baseId)).sort()) {
+      const primary = primaryFactor(ctx, b);
+      for (const f of ctx.params.bottleneck.factors) {
         if (f === primary) continue;
-        if (mockTightness(c, b, f) >= p.threshold) continue;
+        if (mockTightness(ctx, b, f) >= p.threshold) continue;
         pairs.push({ baseId: b, factor: f, forced: false });
       }
     }
@@ -282,22 +327,22 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
 
   const cards: Record<string, unknown>[] = [];
   for (const pair of pairs) {
-    const events = riskEvents(c, pair.baseId, horizon);
+    const events = riskEvents(ctx, pair.baseId, horizon);
     // 轨M 增量1（真推演红线）：series 是确定性 forward 推演（基线 climb + 真事件脉冲）。
     // 诚实披露：liveTightness 给该因素的"实测当前张力"——有真数据(LIVE: 设备OEE/瓶颈工序/良率波动 读
     // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
     // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
-    const lt = liveTightness(c, pair.baseId, pair.factor);
+    const lt = liveTightness(ctx, pair.baseId, pair.factor);
     // 轨M 增量1（假1 红曲线锚实测·KILL-MOCK-RED·治 tensionSeries baseline 死代码）：有真数据（lt.live：设备OEE/瓶颈工序/
     // 良率波动 读真 OEE/利用率/良率）时把「实测当前张力」lt.value 作 baseline 传入 → 红曲线锚实测而非 charCode 哈希 mockTightness；
     // 无真源（人力工时/物料齐套/物流时长/换型损失）→ undefined 回落 mock，card.dataMode=MOCK 诚实披露。
     // 改真 Equipment.oee_current → lt.value 变 → cur 变 → series/peak 真变（curl 前后可验）。
     const baseline = lt.live ? lt.value : undefined;
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
+    const series = tensionSeries(ctx, pair.baseId, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
     const card: Record<string, unknown> = {
-      base: baseName(c, pair.baseId),
+      base: baseName(ctx, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
       // measurement 维（读到真 OEE/util/良率即 LIVE·不动）——保 currentTightness.live 语义与轨M 增量1。
@@ -305,12 +350,12 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       currentTightness: { value: lt.value, live: lt.live },
       // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·两正交维·不改 dataMode/live）：本卡底层对象是否合成物化。
       // demo 合成世界（Base/设备/产线/工序全 MATERIALIZED-from-synthetic）→ true → 前端诚实灰、不显"实测当前 N"。
-      provenanceSynthetic: baseProvenanceSynthetic(c, pair.baseId),
+      provenanceSynthetic: baseProvenanceSynthetic(ctx, pair.baseId),
       peak: Math.max(...series),
       crossDay,
       series,
       events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
-      affectedOrders: affectedOrders(c, {
+      affectedOrders: affectedOrders(ctx, {
         baseId: pair.baseId,
         day: crossDay ?? horizon,
         peak: Math.max(...series),
@@ -318,12 +363,12 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     };
     // 处置方案消解: tension − eff from T+n, both curves returned side by side.
     const mit = args.mitigation;
-    if (mit && (!mit.base || resolveBaseId(c, mit.base) === pair.baseId) && (!mit.factor || mit.factor === pair.factor)) {
+    if (mit && (!mit.base || resolveBaseId(ctx, mit.base) === pair.baseId) && (!mit.factor || mit.factor === pair.factor)) {
       const plans = p.mitigations[pair.factor] ?? [];
       const plan = plans.find((pl) => pl.key === mit.planKey || pl.name === mit.planKey);
       if (!plan) throw validationError(`unknown mitigation plan '${mit.planKey}' for factor ${pair.factor}`);
       // 处置曲线与基线同锚（baseline·lt.live 时为实测当前张力）→ 削减量作用在真实锚点上，不回落哈希。
-      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
+      const mitSeries = tensionSeries(ctx, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
       card.mitigated = {
         series: mitSeries,
         appliedPlan: plan.name,
@@ -352,8 +397,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     const best = bestByBase.get(b)!;
     const all = allByBase.get(b) ?? [];
     best.allFactors = all
-      .filter((c) => c !== best)
-      .map((c) => ({ factor: str(c.factor), peak: num(c.peak), crossDay: (c.crossDay as number | null) ?? null }));
+      .filter((c2) => c2 !== best)
+      .map((c2) => ({ factor: str(c2.factor), peak: num(c2.peak), crossDay: (c2.crossDay as number | null) ?? null }));
     cards.push(best);
   }
   cards.sort((a, b) => {
@@ -371,7 +416,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     dataMode,
     cards: shown,
     mitigationLibrary: p.mitigations,
-    planRows: buildRiskPlanRows(c, shown, p.threshold),
+    planRows: buildRiskPlanRows(ctx, shown, p.threshold, horizon),
   };
 }
 
@@ -399,12 +444,48 @@ function buildRiskPlanRows(
   c: SolverContext,
   cards: Record<string, unknown>[],
   threshold: number,
+  horizon: number,
 ): Record<string, unknown>[] {
   const fs = c.params.forecastStart;
   const mits = c.params.risk.mitigations;
+  // WO-LIVE-DISPOSITION：处置系数复用 base_capacity_outlook 的 PUBLISHED 规则（R14·单源）。
+  const coeffRule = c.rules?.base_outlook_coeffs;
+  const overtimeUpliftPct = num(coeffRule?.params?.overtimeUpliftPct, 0.15);
+  const crossBaseAbsorbPct = num(coeffRule?.params?.crossBaseAbsorbPct, 0.6);
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   const early: string[] = [];
+
+  const makeSteps = (card: Record<string, unknown>): ReturnType<typeof deriveDisposition> => {
+    const baseId = str(card.baseId);
+    const baseObj = c.bases.find((b) => str(b.props.baseId) === baseId);
+    const freeDaily = baseFreeDaily(baseId, c.lines, baseObj);
+    const futureQty = round(
+      c.orders
+        .filter((o) => {
+          if (!Array.isArray(o.props.bases)) return false;
+          const firstBase = str((o.props.bases as unknown[])[0]);
+          if (firstBase !== baseId) return false;
+          const dueDay = dayFrom(fs, str(o.props.due));
+          return dueDay >= 1 && dueDay <= horizon;
+        })
+        .reduce((a, o) => a + num(o.props.qty), 0),
+      2,
+    );
+    const shortfall = round(Math.max(0, num(card.peak) - threshold), 2);
+    return deriveDisposition(shortfall, {
+      horizon,
+      crossDay: (card.crossDay as number | null) ?? null,
+      forecastStart: fs,
+      baseId,
+      overtimeUpliftPct,
+      crossBaseAbsorbPct,
+      freeDaily,
+      inProdTotal: 0,
+      futureQty,
+    });
+  };
+
   for (const card of cards) {
     const base = str(card.base);
     const factor = str(card.factor);
@@ -417,6 +498,7 @@ function buildRiskPlanRows(
     const sols = mits[factor] ?? [];
     const s0 = sols[0];
     if (!s0) continue;
+    const steps = makeSteps(card);
     rows.push({
       act: `${s0.name}（${base.replace("基地", "").replace("·总部", "")}）`,
       det: `峰值${peak}·${RISK_FACTOR_OBJ[factor] ?? factor}`,
@@ -425,6 +507,7 @@ function buildRiskPlanRows(
       done: `T+${cross}·${mmdd(fs, cross)}（越线日）`,
       eff: `消解≈${s0.eff}·${s0.tn}天起效`,
       rule: "C05",
+      steps,
     });
     if (peak >= 90 && sols[1]) {
       rows.push({
@@ -435,6 +518,7 @@ function buildRiskPlanRows(
         done: `T+${cross + 7}·${mmdd(fs, cross + 7)}`,
         eff: `消解≈${sols[1].eff}·${sols[1].tn}天起效`,
         rule: "C05",
+        steps,
       });
     }
   }
@@ -447,9 +531,9 @@ function buildRiskPlanRows(
       done: "本周 S&OP",
       eff: "计划-执行闭环，差异进入月度议程",
       rule: "C21",
+      steps: [],
     });
   }
-  void threshold;
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
   return rows;
 }

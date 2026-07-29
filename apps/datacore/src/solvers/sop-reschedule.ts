@@ -98,7 +98,7 @@ export function sopReschedule(input: SopRescheduleInput): SopRescheduleResult {
     const share = totalFreeCap > 0 ? (bc.freeDaily * daysAvail) / totalFreeCap : 1 / baseCaps.length;
     alloc.set(bc.baseId, round(freeUse * share, 2));
   }
-  let residualAfterFree = round(qty - freeUse, 2);
+  const residualAfterFree = round(qty - freeUse, 2);
 
   // ── 阶段2：挤占同型号在手竞争单腾产能（min_delay：先挤优先级低/交期远者）──
   const competitors = orders

@@ -9,7 +9,6 @@ import type {
   BackfillReport,
   ClosureReport,
   DataBuilderAgent,
-  DataBuilderConfig,
   InputManifest,
   ScaffoldManifest,
   ScaffoldReceipt,

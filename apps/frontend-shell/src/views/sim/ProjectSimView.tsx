@@ -45,7 +45,7 @@ interface BatchRowInput {
 }
 
 // PRD-IND-model §4.3：分批交货 CSV 模板（含 BOM）+ 解析（parseBatchTable/pmNormDate/pmMatchAddr，纯前端）。
-const PM_CSV_TEMPLATE = "﻿数量(万套),交付日期,交付地址\n15,2026-07-10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n10,2026-09-04,海外 · 欧洲（海运）\n";
+const PM_CSV_TEMPLATE = "\uFEFF数量(万套),交付日期,交付地址\n15,2026-07-10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n10,2026-09-04,海外 · 欧洲（海运）\n";
 const PM_KNOWN_ADDRS = ["上海", "广州", "北京", "成都", "深圳", "武汉", "欧洲", "海外"]; // debattery-allow：CSV 地址模糊匹配的交付地名词表（物流地，非业务种子）
 
 function pmNormDate(raw: string): string {
@@ -64,7 +64,7 @@ function pmMatchAddr(raw: string): string {
   return parts[parts.length - 1] ?? s;
 }
 function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number } {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return { rows: [], skipped: 0 };
   const head = lines[0]!;
   const delim = head.includes("\t") ? "\t" : head.includes("，") ? "，" : ",";
@@ -210,7 +210,6 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     } else {
       setNotFoundOrder(orderParam); // 补 else：未命中不再静默
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderParam, orderItems]);
 
   return (

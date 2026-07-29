@@ -16,7 +16,6 @@ import type { ExecutionPlan, IntentDefinition, Scenario } from "@platform/contra
 describe("O9 · growScenario 自动调 runGrowthLoop（缺件→自动补→诚实定级）", () => {
   it("缺件卡（无意图死路）grow → 触发自成长 LOOP（账本+ growth_triggered 事件）→ 诚实 PROVISIONAL + GrowthTicket（不假 GOVERNED）", async () => {
     const t = await createTestApp();
-    const now = new Date().toISOString();
     // 缺件卡：指向不存在的意图（capability 死路）→ 首验 gapCode=MISSING_INTENT（AUTO_DERIVE）。
     const scenario: Scenario = {
       id: `scn_${TENANT}_GAP_CARD`,

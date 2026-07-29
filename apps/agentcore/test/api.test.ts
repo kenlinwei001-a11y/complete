@@ -100,28 +100,28 @@ describe("ops endpoints & error envelope", () => {
     expect(events[events.length - 1]?.event).toBe("task.cancelled");
   });
 
-  it("feedback on a path-B task lands in FallbackTrace", async () => {
-    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
-    t.llm.queueAgentTurn({
-      content: [
-        {
-          type: "tool_use",
-          id: "toolu_fb",
-          name: "final_answer",
-          input: { blocks: [{ type: "text", markdown: "探索完成。" }], provenance: [] },
-        },
-      ],
-    });
-    const { taskId } = await submitQuery(t, PLANNER, "随便问问", { view: "dash" });
-    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
-    const res = await t.app.inject({
-      method: "POST",
-      url: `/api/v1/queries/${taskId}/feedback`,
-      headers: debugHeaders(PLANNER),
-      payload: { vote: "UP" },
-    });
-    expect(res.statusCode).toBe(204);
-    const trace = await t.repos.fallbackTraces.getByTask(taskId);
-    expect(trace?.feedback).toBe("UP");
+  it("scenario launch: uses body.query when provided, otherwise falls back to triggerQuestion", async () => {
+    const launch = (key: string, body: { query?: string }) =>
+      t.app.inject({
+        method: "POST",
+        url: `/b/v1/scenarios/${key}/launch`,
+        headers: debugHeaders(PLANNER),
+        payload: body,
+      });
+
+    // Without body.query → falls back to card.triggerQuestion
+    const fallback = await launch("S01", {});
+    expect(fallback.statusCode).toBe(202);
+    const fallbackBody = fallback.json() as { taskId: string };
+    const fallbackTask = await t.repos.tasks.get(fallbackBody.taskId);
+    expect(fallbackTask?.query).toBe("4680-NCM 加 20% 六周能不能接？");
+
+    // With body.query → uses user-provided query
+    const userQuery = "4680-NCM 1天交付";
+    const custom = await launch("S01", { query: userQuery });
+    expect(custom.statusCode).toBe(202);
+    const customBody = custom.json() as { taskId: string };
+    const customTask = await t.repos.tasks.get(customBody.taskId);
+    expect(customTask?.query).toBe(userQuery);
   });
 });

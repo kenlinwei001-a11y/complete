@@ -237,7 +237,8 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   );
 }
 
-function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; currentProp?: TypeProp }) {
+function WhatIfResult({ out, currentProp: _currentProp }: { out: GenericInferenceOutput; currentProp?: TypeProp }) {
+  void _currentProp;
   const rows = out.rows ?? [];
   // 诚实空态：无 delta（该属性无下游派生 / 改动不引起任何重算）——不编造影响。
   if (out.count === 0 || rows.length === 0) {

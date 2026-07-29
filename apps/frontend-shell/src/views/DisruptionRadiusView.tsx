@@ -272,7 +272,6 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
       prevId = id;
     });
     return { nodes: ns, edges: es, titles: ts };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [out, leafIdx]);
 
   return (

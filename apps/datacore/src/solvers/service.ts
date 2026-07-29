@@ -1257,7 +1257,7 @@ export class SolverService {
     //    seg_attain/gm_rate…）才走下方通用供应链结构反向分摊（兼容 v1）。 ──
     const cfForDomain = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
     const domainEntry = cfForDomain
-      .filter((c) => str(c.metricKey) === str(m.key) && !Boolean(c.isRoot))
+      .filter((c) => str(c.metricKey) === str(m.key) && !c.isRoot)
       .sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)))[0];
     if (domainEntry) {
       return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, str(domainEntry.factorId));
@@ -2160,7 +2160,7 @@ export class SolverService {
 
     // ── 供给端驱动（真颗粒·万套等效）──
     const supplyDrv: Drv[] = [];
-    const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
+    const finalDemand = num([...sop].sort((a, b) => (b.isFinal ? 1 : 0) - (a.isFinal ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
     const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
     // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
     const capBase = totalCapWan > 0 ? totalCapWan : finalDemand;

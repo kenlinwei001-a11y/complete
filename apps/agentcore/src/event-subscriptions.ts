@@ -44,6 +44,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "scenario.published", producer: "场景发布（升一等对象）", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
   { event: "scenario.retired", producer: "场景退役", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
   { event: "scenario.growth_triggered", producer: "场景发育闭环·缺件 grow 触发 runGrowthLoop（O9）", tier: "IN_SESSION", invalidates: ["scenarios", "growth-ledger", "growth-tickets"] },
+  // WO-A · Plan Builder Canvas 发布 → 画布列表/场景/意图绑定失效。
+  { event: "plan.canvas.published", producer: "Plan Builder 画布发布", tier: "IN_SESSION", invalidates: ["plan-builder", "scenarios", "intent-editor.workflow-bindings"] },
   // L5 行动环 / DL4
   { event: "action.pending_approval", producer: "Action 草稿提交", tier: "NOTIFY", invalidates: ["notifications", "approval-inbox"] },
   { event: "action.executed", producer: "Action 写回执行", tier: "IN_SESSION", invalidates: ["dashboard", "object-queries"], dl: "DL4" },

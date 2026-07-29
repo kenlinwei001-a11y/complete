@@ -67,13 +67,13 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     const R_order = (sumOrderVal / 1e8) * (52 / windowWeeks); // 亿（年化订单快照·验单价 SEG 尺度）
 
     // ── 诊断输出（亲手真跑·绿测试≠能用）──
-    // eslint-disable-next-line no-console
+     
     console.log("[SCALE-COHERENCE] packEnergyKwh=%d opDays=%d P̄=%s万元/套 窗口=%s周", packEnergyKwh, operatingDaysPerYear, Pbar.toFixed(4), windowWeeks.toFixed(3));
-    // eslint-disable-next-line no-console
+     
     console.log("[SCALE-COHERENCE] 量纲(万套) A物理=%s B需求=%s C产能=%s D财务=%s E订单=%s", A.toFixed(1), B.toFixed(1), C.toFixed(1), D.toFixed(1), E.toFixed(1));
-    // eslint-disable-next-line no-console
+     
     console.log("[SCALE-COHERENCE] 营收(亿) R_demand=%s R_aop=%s R_order=%s", R_demand.toFixed(1), R_aop.toFixed(1), R_order.toFixed(1));
-    // eslint-disable-next-line no-console
+     
     console.log("[SCALE-COHERENCE] 常州 weeklyCap 实=%s 隐含(gwh)=%s rel=%s | ΣweeklyWan×52=%s", czRow.weeklyCap.toFixed(4), czImpliedWeekly.toFixed(4), rel(czRow.weeklyCap, czImpliedWeekly).toFixed(3), C.toFixed(1));
 
     // ── 量纲四方互核 pairwise ε≤15% ──

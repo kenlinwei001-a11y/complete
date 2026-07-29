@@ -111,7 +111,7 @@ export function validateOutputAgainstOntology(
     // ⑤ WO-ONTOLOGY-CONTEXT-A · 口径 scope 规则：值命中违规条件表达式（表达式为真）→ 标记（不改 ok/violations）。
     // 表达式经 Metric.actual 解析到 row.actual（resolveField 允许省略 typeKey 前缀）。求值异常按不命中处理（诚实不误报）。
     for (const sr of scopeRules) {
-      let violated = false;
+      let violated: boolean;
       try {
         violated = evaluateAst(sr.ast, { payload: row });
       } catch {

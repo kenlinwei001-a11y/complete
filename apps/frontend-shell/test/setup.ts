@@ -67,6 +67,7 @@ beforeAll(() => {
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       if (init && "signal" in init && init.signal != null) {
         const { signal: _signal, ...rest } = init;
+        void _signal;
         return baseFetch(input, rest);
       }
       return baseFetch(input, init);
@@ -81,6 +82,7 @@ beforeAll(() => {
       constructor(input: RequestInfo | URL, init?: RequestInit) {
         if (init && "signal" in init && init.signal != null) {
           const { signal: _signal, ...rest } = init;
+          void _signal;
           super(input as RequestInfo, rest);
         } else {
           super(input as RequestInfo, init);
