@@ -183,6 +183,9 @@ curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/portfolio/invoke \
 | 登录 401 | 确认租户填 `demo`；改过库后想重置：`docker compose down -v` 清卷重来 |
 | 查询对话报模型错误 | 未配置 `ANTHROPIC_API_KEY`（见 §6）；其余模块不受影响 |
 | 改了代码不生效 | `docker compose up --build` 强制重建镜像 |
+| **只重建了前端 → 后端改动不生效（假 bug 制造机）** | 改动落在 `datacore`/`agentcore` 时，只 `docker compose build frontend` 或不带 `--build` 的 `up -d` 会**继续跑旧后端镜像**。症状极具迷惑性：求解器新参数报「unknown key」、时序推演全灰/全平、根因树「暂不可用」、新点亮的功能开关查无此项——**看着像功能没做，实为后端是旧的**。正解：`docker compose build --no-cache datacore agentcore frontend && docker compose up -d`。诊断口诀：**先确认后端是新的，再判断功能有没有 bug**（本项目已因此误诊过多次） |
+| **租户功能开关改了却不生效** | PG 卷持久化了租户 override：重建镜像**不会**重置已落库的开关。`PUT /a/v1/tenants/:id/features` 是**整体替换**（非合并），须一次性提交全部开关键，漏传的会被清空；或 `docker compose down -v` 清卷让 `SEED_DEMO` 重新播种 |
+| GitHub 上 agent 提交显示 **Unverified** | 本远程环境的 commit 签名密钥 `/home/claude/.ssh/commit_signing_key.pub` 为 **0 字节空文件**（签名 helper `/tmp/code-sign` 本身可用，缺的是密钥内容），故所有 agent 提交均未签名——**本仓 2400+ 个 agent commit 自建仓起一直如此，非新退化**。`git commit --amend --reset-author` 只改 author/committer，**修不了签名**，勿反复 rebase 空转。影响面**仅限 GitHub 那枚 Verified 徽章**，不影响代码、CI、合并。需要 Verified 时：在 **GitHub 网页做 squash merge**（网页产生的 commit 由 GitHub 签名 → Verified）。根治需环境侧下发有效签名密钥（Anthropic 侧配置，可经 `/bug` 反馈） |
 
 ## 8. 数据持久化与重置
 
