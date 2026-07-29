@@ -1,6 +1,7 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { PlanStep, Scenario } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
+import type { RiskTimelineOutput } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -14,6 +15,7 @@ import {
   POLICIES,
   PLANS,
   RISK_TIMELINE,
+  RISK_DISPOSITION_SEED,
   ROLES_RESPONSE,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
@@ -74,6 +76,92 @@ import {
 
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
+
+// ---------------------------------------------------------------------------
+// WO-LIVE-DISPOSITION · mock 处置表**真重算**（KILL-MOCK：不写死两套结果）。
+// 与后端 `buildRiskPlanRows` 同结构（主因素行 + 峰值≥90 备份行 + 14 天内 C21 反提 S&OP，按启动排序），
+// 且逐行 steps 由**同一份** `deriveDisposition`（@platform/contracts·后端 risk.ts / base-outlook.ts 也 import 它）
+// 从 mock 真数据（RISK_DISPOSITION_SEED.freeDaily × capRatio × horizon vs 卡上 affectedOrders Σqty）派生。
+// 基线（apply 空 → capRatio=1）与杠杆推演态（apply 非空 → capRatio≠1）走**同一条路径**，故"调杠杆→重算→真变"。
+// 确定性 R6：无 Date.now/随机。
+// ---------------------------------------------------------------------------
+function mockCapRatio(apply: { objectType?: unknown; prop?: unknown; value?: unknown }[]): number {
+  let ratio = 1;
+  for (const a of apply) {
+    const key = `${String(a.objectType ?? "")}.${String(a.prop ?? "")}`;
+    const baseline = RISK_DISPOSITION_SEED.leverBaseline[key];
+    const v = Number(a.value);
+    if (!Number.isFinite(baseline) || !Number.isFinite(v) || baseline === 0 || v === 0) continue;
+    // 利用率类为反向（利用率↑ = 空闲可用产能↓）；其余（OEE/良率/在手/覆盖/外协）正向。
+    ratio *= RISK_DISPOSITION_SEED.inverseProps.includes(String(a.prop)) ? baseline! / v : v / baseline!;
+  }
+  return Math.round(ratio * 1e6) / 1e6;
+}
+
+function mmddMock(startIso: string, day: number): string {
+  return new Date(Date.parse(`${startIso}T00:00:00Z`) + day * 86400000).toISOString().slice(5, 10);
+}
+
+function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
+  const apply = Array.isArray(args.apply) ? (args.apply as { objectType?: unknown; prop?: unknown; value?: unknown }[]) : [];
+  const capRatio = mockCapRatio(apply);
+  const H = Number.isFinite(Number(args.horizon)) && Number(args.horizon) > 0 ? Number(args.horizon) : RISK_DISPOSITION_SEED.defaultHorizon;
+  const fs = RISK_DISPOSITION_SEED.forecastStart;
+  const rows: NonNullable<RiskTimelineOutput["planRows"]> = [];
+  const early: string[] = [];
+  for (const card of RISK_TIMELINE.cards) {
+    const seed = RISK_DISPOSITION_SEED.bases.find((b) => b.base === card.base);
+    const cross = card.crossDay ?? RISK_TIMELINE.horizon;
+    if (card.crossDay != null && card.crossDay <= 14 && !early.includes(card.base)) early.push(card.base);
+    if (!seed) continue;
+    const freeDaily = Math.round(seed.freeDaily * capRatio * 100) / 100;
+    const available = Math.round(freeDaily * H * 100) / 100;
+    const futureQty = (card.affectedOrders ?? []).reduce((a, o) => a + Number((o as { qty?: number }).qty ?? 0), 0);
+    const shortfall = Math.round(Math.max(0, futureQty - available) * 100) / 100;
+    const d = deriveDisposition({
+      baseId: seed.baseId, forecastStart: fs, horizon: H, trigDay: Math.max(1, cross), shortfall,
+      freeDaily, available, inProdTotal: 0, futureQty,
+      overtimeUpliftPct: RISK_DISPOSITION_SEED.coeff.overtimeUpliftPct,
+      crossBaseAbsorbPct: RISK_DISPOSITION_SEED.coeff.crossBaseAbsorbPct,
+    });
+    const head = d.steps[0];
+    const p0 = seed.plans[0]!;
+    const common = {
+      owner: seed.owner, rule: "C05", baseId: seed.baseId, shortfall, residual: d.residual, steps: d.steps,
+      ...(apply.length > 0 ? { overlay: { count: apply.length, capRatio } } : {}),
+    };
+    rows.push({
+      act: `${head ? head.action : p0.name}（${card.base}）`,
+      det: `${d.summary} · 峰值${card.peak}`,
+      start: `T+${cross - 7}·${mmddMock(fs, cross - 7)}（越线前7天）`,
+      done: `T+${cross}·${mmddMock(fs, cross)}（越线日）`,
+      eff: head ? `${d.steps.length} 步收窄 ${d.closedTotal}套 · 残留 ${d.residual}套` : `消解≈${p0.eff}·${p0.tn}天起效`,
+      plan: p0.name,
+      ...common,
+    });
+    const p1 = seed.plans[1];
+    if (card.peak >= 90 && p1) {
+      rows.push({
+        act: `${p1.name}（${card.base}·备份方案）`,
+        det: `峰值≥90 双保险 · ${d.summary}`,
+        start: `T+${cross - 3}·${mmddMock(fs, cross - 3)}`,
+        done: `T+${cross + 7}·${mmddMock(fs, cross + 7)}`,
+        eff: `消解≈${p1.eff}·${p1.tn}天起效`,
+        plan: p1.name,
+        ...common,
+      });
+    }
+  }
+  if (early.length > 0) {
+    rows.push({
+      act: `反提月度计划差异（${early.join("、")}）`, det: "14 天内越线，需计划层资源协同",
+      owner: "计划中心 → S&OP", start: `T+1·${mmddMock(fs, 1)}`, done: "本周 S&OP",
+      eff: "计划-执行闭环，差异进入月度议程", rule: "C21",
+    });
+  }
+  rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
+  return { ...RISK_TIMELINE, planRows: rows };
+}
 
 /**
  * 反事实双轨 mock（基地感知·KILL-MOCK）：从 RISK_TIMELINE 各基地的 peak/crossDay 派生 do-nothing baseline ‖
@@ -1349,7 +1437,7 @@ export const handlers = [
     // bottleneck_matrix 漏接（chip 空）。改读 body.args → base 真裁剪 + bottleneck 真出（与真后端 /a/v1 invoke 同口径）。
     const invBody = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
     const invArgs = invBody.args ?? {};
-    if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    if (key === "risk_timeline") return HttpResponse.json({ data: mockRiskTimeline(invArgs), snapshotVersion: "ov-12" });
     if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix(invArgs as { baseIds?: string[] }), snapshotVersion: "ov-12" });
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 91.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")
@@ -2548,7 +2636,8 @@ export const handlers = [
       if ("error" in data) return err(422, "VALIDATION_ERROR", String(data.error));
       return HttpResponse.json({ data, snapshotVersion: "ov-12" });
     }
-    if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    // WO-LIVE-DISPOSITION：B 侧 run 路径同走 mock 真重算（与 A 侧 invoke 同一函数·不两套）。
+    if (key === "risk_timeline") return HttpResponse.json({ data: mockRiskTimeline(args), snapshotVersion: "ov-12" });
     // WO-PROJECT-SIM-WHATIF：⑥ 拖动杠杆经 useLiveSolver → B 侧 run 真重算（generic_inference）；
     // mode:levers 杠杆发现同经 B 侧（若前端改走 runSolver）。默认路径 apply → deltas（after 随假设值变·KILL-MOCK）。
     if (key === "generic_inference") {

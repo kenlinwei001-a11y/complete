@@ -179,6 +179,13 @@ export type CoreSolverObjectType =
  * 覆盖范围：仅 compute() 路径核心求解器（早返回的通用/优化/沙箱求解器自建 ctx·不经此 loadContext·不入本表）。
  * 扩展 10 类（E6b·withExtended）不受本表影响（仍按 withExtended 加载·本单不动扩展层）。
  */
+/**
+ * WO-LIVE-DISPOSITION：走**逐工序×型号产能链**（computeByProcessModel·层4 ∩ 物料齐套读 Material）的核心求解器 →
+ * 需扩展层 Material（同 capacity_forecast granularity:'process-model' 的既有理由：Material 属 E6b 扩展 10 类）。
+ * 无 Material（未播种/空）→ 链上 matFactor=1 诚实回落，不谎报约束。
+ */
+const CHAIN_MATERIAL_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
+
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
@@ -189,10 +196,12 @@ export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType
   // bottleneck_matrix：liveTightness/mockTightness/primaryFactor/baseProvenanceSynthetic 只读 Base/Line/Process/Equipment。
   bottleneck_matrix: ["Base", "Line", "Process", "Equipment"],
   // risk_timeline：基线 climb + 事件脉冲 riskEvents(⟹MaintPlan/Order/Shipment/Base) + liveTightness(Line/Process/Equipment)
-  //   + affectedOrders(Order/Shipment/Base/Segment)。无 Model/DataSourceHealth/certByModel。
-  risk_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Order", "Shipment", "Segment"],
+  //   + affectedOrders(Order/Shipment/Base/Segment)。
+  //   WO-LIVE-DISPOSITION：planRows 真缺口派生经**产能链**（baseChainCapacityDaily→computeByProcessModel）吸收杠杆
+  //   overlay → 需 Model（certByModel 由 Model+link 装配）；Material 属扩展层（随 withExtended·见 invoke/runWithParams）。
+  risk_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "Order", "Shipment", "Segment"],
   // counterfactual_timeline：内部编排 risk_timeline（同依赖集·双轨推演）。
-  counterfactual_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Order", "Shipment", "Segment"],
+  counterfactual_timeline: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Model", "Order", "Shipment", "Segment"],
   // audit_timeline：kind hash 形状 + riskEvents(MaintPlan/Order/Shipment/Base) + affectedOrders(Order/Shipment/Base/Segment)。
   //   不读 Line/Process/Equipment/Model/DataSourceHealth/certByModel。
   audit_timeline: ["Base", "MaintPlan", "Order", "Shipment", "Segment"],
@@ -3887,7 +3896,7 @@ export class SolverService {
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
     const lazy = await this.lazyContextEnabled(tenantId);
     const c = await this.loadContext(tenantId, undefined, {
-      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast",
+      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -3949,7 +3958,7 @@ export class SolverService {
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
     const lazy = await this.lazyContextEnabled(ctx.tenantId);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, {
-      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast",
+      withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const out = this.compute(c, solverKey, args);

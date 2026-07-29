@@ -1,5 +1,6 @@
 import { num, str, dayFrom } from "./types.js";
 import { round } from "../prng.js";
+import { deriveDisposition, type DispositionStep } from "@platform/contracts";
 
 /**
  * WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演（纯算法·R6 确定性·净读对象图）。
@@ -46,15 +47,12 @@ export interface OutlookLine {
   value: number;
   provenance: OutlookProv;
 }
-export interface DayAction {
-  day: number;
-  date: string;
-  action: string;
-  rationale: string;
-  triggerValue: number;
-  closesGap: number;
-  provenance: OutlookProv;
-}
+/**
+ * WO-LIVE-DISPOSITION：DayAction 收敛为共享 `DispositionStep`（@platform/contracts/disposition）——
+ * 与 `risk_timeline.planRows[].steps` 同一形状同一派生（deriveDisposition 单源），不再各自定义。
+ * 形状逐字段等同（day/date/action/rationale/triggerValue/closesGap/provenance），既有消费方零改。
+ */
+export type DayAction = DispositionStep;
 export interface HorizonOutlook {
   horizon: number;
   windowStart: string;
@@ -108,8 +106,12 @@ export interface BaseOutlookResult {
 const isoAtDay = (startIso: string, day: number): string =>
   new Date(Date.parse(`${startIso.slice(0, 10)}T00:00:00Z`) + Math.round(day) * 86400000).toISOString().slice(0, 10);
 
-/** 某基地 Σ Line.capacityDaily × (1 − util/100)（空闲日产能·套/日）。 */
-function baseFreeDaily(baseId: string, lines: Record<string, unknown>[], baseObj: Record<string, unknown> | undefined): number {
+/**
+ * 某基地 Σ Line.capacityDaily × (1 − util/100)（空闲日产能·套/日）。
+ * WO-LIVE-DISPOSITION：导出为**单一出处**——risk.ts buildRiskPlanRows 复用同一空闲产能口径
+ * （处置表缺口与 base_capacity_outlook 四线同源·跨视图不漂移·R-一致）。
+ */
+export function baseFreeDaily(baseId: string, lines: Record<string, unknown>[], baseObj: Record<string, unknown> | undefined): number {
   const capDaily = lines.filter((l) => str(l.baseId) === baseId).reduce((a, l) => a + num(l.capacityDaily), 0);
   const util = num(baseObj?.util); // BASE_REGISTRY util = 百分比（88=88%）
   return round(capDaily * Math.max(0, 1 - util / 100), 2);
@@ -204,55 +206,22 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
     }
 
     // P1 逐日行动过程：缺口窗（gap<0 或 crossDay 命中）→ 触发→贪心补缺口→试算收窄（沿 decision_play 口径）。
-    const dayPlan: DayAction[] = [];
+    // WO-LIVE-DISPOSITION：三杠杆贪心已抽为共享纯函数 `deriveDisposition`（@platform/contracts/disposition·单源），
+    // 与 risk_timeline 处置表 planRows[].steps **同一份实现**（禁两处各写一套→口径漂移）。此处行为逐字节不变。
     const shortfall = Math.max(0, round(-gap, 2));
-    if (shortfall > 0) {
-      const trigDay = crossDay ?? Math.max(1, Math.round(H / 2));
-      let remaining = shortfall;
-      // 杠杆①加班（本地空闲产能加班上浮）。
-      const overtime = round(Math.min(remaining, available * overtimeUpliftPct), 2);
-      if (overtime > 0) {
-        dayPlan.push({
-          day: trigDay,
-          date: isoAtDay(forecastStart, trigDay),
-          action: "加班承接（本地空闲产能上浮）",
-          rationale: `第${trigDay}天累计需求越过可用产能（触发缺口 ${shortfall}套）→ 加班上浮 ${round(overtimeUpliftPct * 100, 0)}% 收窄 ${overtime}套（溯 Line.capacityDaily=${freeDaily}/日）`,
-          triggerValue: shortfall,
-          closesGap: overtime,
-          provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily },
-        });
-        remaining = round(remaining - overtime, 2);
-      }
-      // 杠杆②跨基地调剂（挤占同网络其他基地空闲产能）。
-      if (remaining > 1e-6) {
-        const crossBase = round(Math.min(remaining, remaining * crossBaseAbsorbPct), 2);
-        const crossDayAt = Math.min(H, trigDay + 7);
-        dayPlan.push({
-          day: crossDayAt,
-          date: isoAtDay(forecastStart, crossDayAt),
-          action: "跨基地调剂（挤占低优先在手单）",
-          rationale: `第${crossDayAt}天残余缺口 ${remaining}套 → 跨基地吸收 ${round(crossBaseAbsorbPct * 100, 0)}% 收窄 ${crossBase}套（溯 WorkOrder.qtyActual=${inProdTotal}）`,
-          triggerValue: remaining,
-          closesGap: crossBase,
-          provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal },
-        });
-        remaining = round(remaining - crossBase, 2);
-      }
-      // 杠杆③外协补足（残余交由外协·补到 gap 或诚实残留）。
-      if (remaining > 1e-6) {
-        const outDayAt = Math.min(H, trigDay + 14);
-        dayPlan.push({
-          day: outDayAt,
-          date: isoAtDay(forecastStart, outDayAt),
-          action: "外协补足（残余缺口）",
-          rationale: `第${outDayAt}天仍余 ${remaining}套 → 外协补足 ${remaining}套（触发源：未来订单 Σqty=${futureQty}）`,
-          triggerValue: remaining,
-          closesGap: remaining,
-          provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty },
-        });
-        remaining = 0;
-      }
-    }
+    const dayPlan: DayAction[] = deriveDisposition({
+      baseId,
+      forecastStart,
+      horizon: H,
+      trigDay: crossDay ?? Math.max(1, Math.round(H / 2)),
+      shortfall,
+      freeDaily,
+      available,
+      inProdTotal,
+      futureQty,
+      overtimeUpliftPct,
+      crossBaseAbsorbPct,
+    }).steps;
 
     return {
       horizon: H,

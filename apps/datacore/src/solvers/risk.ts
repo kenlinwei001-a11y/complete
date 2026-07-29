@@ -1,7 +1,12 @@
 import { round, hashString } from "../prng.js";
-import { SEG_REGISTRY } from "@platform/contracts";
+import { SEG_REGISTRY, deriveDisposition } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
+// WO-LIVE-DISPOSITION T2：克隆-覆写 + 逐工序×型号产能链**复用 capacity.ts 单源**（= service.ts capacityInferenceApply
+// 用的同两个函数），杜绝处置表另写一套 override / 另算一套产能 → 与产能活台口径漂移。
+import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
+// WO-LIVE-DISPOSITION T1：空闲日产能口径与 base_capacity_outlook 四线同一出处（跨视图不漂移·R-一致）。
+import { baseFreeDaily } from "./base-outlook.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -257,6 +262,41 @@ export interface RiskTimelineArgs {
   factor?: string;
   horizon?: number;
   mitigation?: { base?: string; factor?: string; planKey: string };
+  /**
+   * WO-LIVE-DISPOSITION T2 · 杠杆推演态 overlay（可选·向后兼容：不传/空数组 → 与现状逐字节一致）。
+   * 形状 = 前端 DynamicLeverPanel 上抛的 `liveState.apply`（{objectType,objectId,prop,value}[]）。
+   * 有 overlay → 复用 capacity.ts `patchCapacityContext`（**与 service.ts capacityInferenceApply 同一克隆语义·单源**）
+   * 把假设值打进对象快照 props → cards + planRows 全部在覆写后的世界里重算（不落库·无副作用·R6）。
+   */
+  apply?: { objectType: string; objectId: string; prop: string; value: unknown }[];
+}
+
+/**
+ * WO-LIVE-DISPOSITION · 杠杆 overlay 克隆-覆写（**复用** capacity.ts patchCapacityContext 单源克隆语义）。
+ * 逐项浅克隆 patch，不 mutate 原 ctx（R6 无副作用）；空 overlay → 原引用返回（零成本·字节一致）。
+ * 禁另写一套 override：否则处置表与产能活台（capacityInferenceApply）两半口径漂移 = "看着变了但不是一个世界"。
+ */
+export function applyLeverOverlay(
+  c: SolverContext,
+  apply: { objectType: string; objectId: string; prop: string; value: unknown }[] | undefined,
+): SolverContext {
+  if (!Array.isArray(apply) || apply.length === 0) return c;
+  let c2 = c;
+  for (const ov of apply) c2 = patchCapacityContext(c2, ov.objectType, ov.objectId, ov.prop, ov.value);
+  return c2;
+}
+
+/**
+ * WO-LIVE-DISPOSITION · 逐基地产能链日产能（Σ 逐工序×型号 p50·**与 service.ts capacityInferenceApply 逐字同口径**：
+ * 同 `computeByProcessModel`、同 key 粒度 `${baseId}|${process}|${model}`、同 Σ 聚合）。
+ * 处置表用它算「覆写后/基线」产能比 capRatio → 物料/良率/OEE 杠杆经真产能链传导进缺口（非另算一套）。
+ * 无 Material/Model 数据（未载扩展层 / 空认证）→ 返回空 Map（诚实·上层 capRatio 回落 1·不臆造）。
+ */
+export function baseChainCapacityDaily(c: SolverContext): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const modelId of [...c.certByModel.keys()].sort())
+    for (const r of computeByProcessModel(c, modelId)) m.set(r.baseId, round((m.get(r.baseId) ?? 0) + r.p50, 4));
+  return m;
 }
 
 /**
@@ -271,7 +311,12 @@ export function resolveBaseId(c: SolverContext, ref: unknown): string {
   return str(b.props.baseId);
 }
 
-export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
+export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
+  // WO-LIVE-DISPOSITION T2：先套杠杆 overlay（克隆-覆写单源），之后**整条 riskTimeline 都在覆写后的世界里跑**——
+  // cards（liveTightness 读覆写后 Line.utilization/Equipment.oee_current/Process.yield_baseline）+ planRows（产能链缺口）
+  // 一并真变。无 overlay → c === c0（同引用）→ 与现状逐字节一致（向后兼容）。
+  const overlay = Array.isArray(args.apply) ? args.apply : [];
+  const c = applyLeverOverlay(c0, overlay);
   const p = c.params.risk;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
   const pairs: { baseId: string; factor: string; forced: boolean }[] = [];
@@ -398,7 +443,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     dataMode,
     cards: shown,
     mitigationLibrary: p.mitigations,
-    planRows: buildRiskPlanRows(c, shown, p.threshold),
+    planRows: buildRiskPlanRows(c, shown, p.threshold, horizon, c0, overlay),
   };
 }
 
@@ -422,18 +467,66 @@ function mmdd(startIso: string, day: number): string {
   const ms = Date.parse(`${startIso.slice(0, 10)}T00:00:00Z`) + day * 86400000;
   return new Date(ms).toISOString().slice(5, 10);
 }
+/**
+ * WO-LIVE-DISPOSITION T1 · 处置表真缺口派生（闭断点 G-DISPOSITION-STATIC）。
+ *
+ * 修前（静态）：`act = mits[factor][0].name`（配置方案库选第 0 个）· `det = 峰值N·对象名`（浅）·
+ * `eff` 取配置固定 eff/tn · `void threshold`（阈值都没真用）· 无杠杆入口 · 无 per-row 推导字段
+ * → 用户三痛点：没有触发按钮 / 调杠杆结论不变 / 每行点不开看不到推导。
+ *
+ * 修后（活推演）：每基地行的方案与效果从**真缺口三杠杆贪心**派生（`deriveDisposition` 单源·与
+ * `base_capacity_outlook.dayPlan` 同一份实现），并携带可展开的 `steps`（动作 + rationale + 触发值→收窄量 +
+ * provenance·R13）。缺口口径与 base_capacity_outlook 四线同源（`baseFreeDaily` 单一出处），并经**真产能链**
+ * （`baseChainCapacityDaily` = capacityInferenceApply 同口径）吸收杠杆 overlay 的产能增益 → 调杠杆→重算→数字真变。
+ *
+ * 缺口定义（诚实·可溯）：
+ *   freeDaily  = Σ Line.capacityDaily×(1−Base.util/100)（base-outlook 单源 baseFreeDaily）
+ *   capRatio   = 产能链(覆写后)/产能链(基线)（无 overlay 或链上无落点 → 1）
+ *   available  = freeDaily × capRatio × horizon（推演窗内可攒下的空闲产能）
+ *   demand     = Σ 窗内（due ≤ horizon）本基地首产地未来订单 qty
+ *   shortfall  = max(0, demand − available)
+ * 触发日 trigDay = 该卡 crossDay（越线日·由 crossDayOf(series, threshold) 判定 → threshold 真参与）。
+ * shortfall=0 → 无步骤（诚实：det 说明窗内无缺口，方案回落配置库参照名·不臆造动作）。
+ */
 function buildRiskPlanRows(
   c: SolverContext,
   cards: Record<string, unknown>[],
   threshold: number,
+  horizon: number,
+  cBase: SolverContext,
+  overlay: { objectType: string; objectId: string; prop: string; value: unknown }[],
 ): Record<string, unknown>[] {
   const fs = c.params.forecastStart;
   const mits = c.params.risk.mitigations;
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   const early: string[] = [];
+
+  // R14 系数单源：与 base_capacity_outlook 同一条 PUBLISHED RuleEntry `base_outlook_coeffs`.params（缺省诚实兜底）。
+  const coeffRule = c.rules?.base_outlook_coeffs?.params;
+  const coeff = (k: string, dflt: number): number => num(coeffRule?.[k], dflt);
+  const overtimeUpliftPct = coeff("overtimeUpliftPct", 0.15);
+  const crossBaseAbsorbPct = coeff("crossBaseAbsorbPct", 0.6);
+
+  // 产能链比（只在有 overlay 时算·无 overlay 恒 1 且零成本 → 与现状字节一致）。
+  // **单源证据**：两侧都走 computeByProcessModel（= capacityInferenceApply 的 rowsOf 同一函数同一聚合），
+  // 覆写侧的 ctx 由 patchCapacityContext 克隆（= capacityInferenceApply 同一克隆语义）。
+  const capRatioByBase = new Map<string, number>();
+  if (overlay.length > 0) {
+    const before = baseChainCapacityDaily(cBase);
+    const after = baseChainCapacityDaily(c);
+    for (const [b, v0] of before) {
+      const v1 = after.get(b);
+      capRatioByBase.set(b, v0 > 0 && v1 !== undefined ? round(v1 / v0, 6) : 1);
+    }
+  }
+
+  const linesProps = c.lines.map((l) => l.props);
+  const basesProps = c.bases.map((b) => b.props);
+
   for (const card of cards) {
     const base = str(card.base);
+    const baseId = str(card.baseId, base);
     const factor = str(card.factor);
     const peak = Math.round(num(card.peak));
     const cross = (card.crossDay as number | null) ?? num(card.horizon, 14);
@@ -444,24 +537,77 @@ function buildRiskPlanRows(
     const sols = mits[factor] ?? [];
     const s0 = sols[0];
     if (!s0) continue;
+
+    // ---- 真缺口派生（沿 base_capacity_outlook 同源口径·杠杆经产能链传导）----
+    const capRatio = capRatioByBase.get(baseId) ?? 1;
+    const freeDaily = round(baseFreeDaily(baseId, linesProps, basesProps.find((b) => str(b.baseId) === baseId)) * capRatio, 2);
+    // 推演窗 = risk_timeline horizon（与 base_capacity_outlook 四线同口径：窗内可用产能 vs 窗内需求）。
+    const win = Math.max(1, horizon);
+    const available = round(freeDaily * win, 2);
+    const futureQty = round(
+      c.orders
+        .filter((o) => (Array.isArray(o.props.bases) ? String((o.props.bases as unknown[])[0] ?? "") : "") === baseId)
+        .filter((o) => {
+          const d = dayFrom(fs, str(o.props.due));
+          return d >= 0 && d <= win;
+        })
+        .reduce((a, o) => a + num(o.props.qty), 0),
+      2,
+    );
+    // 在产占用：risk_timeline 的 SolverContext 不载 WorkOrder（诚实 0·不臆造），需求=窗内未来订单。
+    const inProdTotal = 0;
+    const demand = round(inProdTotal + futureQty, 2);
+    const shortfall = round(Math.max(0, demand - available), 2);
+    const d = deriveDisposition({
+      baseId,
+      forecastStart: fs,
+      horizon,
+      trigDay: Math.max(1, cross),
+      shortfall,
+      freeDaily,
+      available,
+      inProdTotal,
+      futureQty,
+      overtimeUpliftPct,
+      crossBaseAbsorbPct,
+    });
+    const head = d.steps[0];
+    const shortBase = base.replace("基地", "").replace("·总部", "");
     rows.push({
-      act: `${s0.name}（${base.replace("基地", "").replace("·总部", "")}）`,
-      det: `峰值${peak}·${RISK_FACTOR_OBJ[factor] ?? factor}`,
+      // 真派生首步动作作行动项（有缺口）；无缺口 → 回落方案库参照名（诚实·不臆造动作）。
+      act: head ? `${head.action}（${shortBase}）` : `${s0.name}（${shortBase}）`,
+      // 真派生摘要（替原「峰值N·对象名」配置串）；追加峰值/对象作风险上下文（R13 不裸渲染）。
+      det: `${d.summary} · 峰值${peak}·${RISK_FACTOR_OBJ[factor] ?? factor}`,
       owner,
       start: `T+${cross - 7}·${mmdd(fs, cross - 7)}（越线前7天）`,
       done: `T+${cross}·${mmdd(fs, cross)}（越线日）`,
-      eff: `消解≈${s0.eff}·${s0.tn}天起效`,
+      eff: head
+        ? `${d.steps.length} 步收窄 ${d.closedTotal}套 · 残留 ${d.residual}套`
+        : `消解≈${s0.eff}·${s0.tn}天起效`,
       rule: "C05",
+      baseId,
+      shortfall,
+      residual: d.residual,
+      steps: d.steps,
+      plan: s0.name,
+      ...(overlay.length > 0 ? { overlay: { count: overlay.length, capRatio } } : {}),
     });
     if (peak >= 90 && sols[1]) {
       rows.push({
-        act: `${sols[1].name}（${base.replace("基地", "").replace("·总部", "")}·备份方案）`,
-        det: "峰值≥90 双保险",
+        act: `${sols[1].name}（${shortBase}·备份方案）`,
+        // 备份方案（方案库第 2 选）同样挂真派生摘要 + steps（点开可见同一推导过程·非空壳）。
+        det: `峰值≥90 双保险 · ${d.summary}`,
         owner,
         start: `T+${cross - 3}·${mmdd(fs, cross - 3)}`,
         done: `T+${cross + 7}·${mmdd(fs, cross + 7)}`,
         eff: `消解≈${sols[1].eff}·${sols[1].tn}天起效`,
         rule: "C05",
+        baseId,
+        shortfall,
+        residual: d.residual,
+        steps: d.steps,
+        plan: sols[1].name,
+        ...(overlay.length > 0 ? { overlay: { count: overlay.length, capRatio } } : {}),
       });
     }
   }
@@ -476,6 +622,8 @@ function buildRiskPlanRows(
       rule: "C21",
     });
   }
+  // WO-LIVE-DISPOSITION：threshold 不再是死参——它经 crossDayOf(series, threshold) 决定每卡 crossDay，
+  // 而 crossDay 就是本表的缺口窗（win）+ 触发日（trigDay）；此处保留形参以显式记录该依赖来源。
   void threshold;
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
   return rows;

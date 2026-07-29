@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DispositionStepSchema } from "./disposition.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -190,13 +191,29 @@ export const RiskCardSchema = z.object({
 });
 /** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
 export const RiskPlanRowSchema = z.object({
-  act: z.string(), // 行动项（方案名（基地））
-  det: z.string(), // 详情（峰值·对象）
+  act: z.string(), // 行动项（真派生首步动作（基地）·无缺口时回落方案库名）
+  det: z.string(), // 详情（WO-LIVE-DISPOSITION：真派生摘要「触发缺口 N套 · K 步收窄 M套 · 残留 R套」）
   owner: z.string(), // 责任人（基地负责人 · X经理 / 计划中心→S&OP）
   start: z.string(), // 启动 T+{cross−7}·{date}
   done: z.string(), // 完成 T+{cross}·{date}
-  eff: z.string(), // 预期（消解幅度·起效时间）
+  eff: z.string(), // 预期（真派生收窄量/残留·无缺口时回落方案库 eff/tn）
   rule: z.string(), // 关联规则 C05/C21
+  // ---- WO-LIVE-DISPOSITION（加性·optional·向后兼容）：每行可点开的「如何推演出来的」 ----
+  /** 该行所属基地 id（前端钻取/横比锚点）。 */
+  baseId: z.string().optional(),
+  /** 真缺口（套·deriveDisposition 入参 shortfall）。 */
+  shortfall: z.number().optional(),
+  /** 三杠杆走完后的诚实残留（守恒：Σ steps.closesGap + residual == shortfall）。 */
+  residual: z.number().optional(),
+  /** 逐步推导过程（动作 + rationale + 触发值→收窄量 + provenance·R13 悬浮即出处）。 */
+  steps: z.array(DispositionStepSchema).optional(),
+  /** 方案库参照名（保留 mitigation library 链路·采纳→Action 用）。 */
+  plan: z.string().optional(),
+  /**
+   * 杠杆推演态覆写指纹（有 apply overlay 时出）：`{ count, capRatio }`——
+   * count=本次推演吃进的杠杆项数；capRatio=覆写后/基线 产能链比（=1 即杠杆未落在产能链上·诚实）。
+   */
+  overlay: z.object({ count: z.number().int(), capRatio: z.number() }).optional(),
 });
 export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 

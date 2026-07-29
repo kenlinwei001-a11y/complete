@@ -7,6 +7,7 @@ export * from "./refs.js";
 export * from "./features.js";
 export * from "./timeseries.js";
 export * from "./actions.js";
+export * from "./disposition.js";
 export * from "./solvers.js";
 export * from "./workspace.js";
 export * from "./planviews.js";
