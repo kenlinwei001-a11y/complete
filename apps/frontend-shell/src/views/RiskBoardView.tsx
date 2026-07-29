@@ -22,6 +22,7 @@ import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
+import { DispositionDetailPanel } from "./DispositionDetailPanel";
 import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
 import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
 import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
@@ -36,6 +37,8 @@ import styles from "./RiskBoardView.module.css";
 type LiveLeverState = { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number };
 
 type RiskCard = RiskTimelineOutput["cards"][number];
+/** WO-LIVE-DISPOSITION：处置表行（契约单源·前端不重定义 R1/R14）。 */
+type PlanRow = NonNullable<RiskTimelineOutput["planRows"]>[number];
 type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
 
 /** 越线带宽（阈值下探关注区）：阈值−15 起为「关注」。参照 HTML 三档口径。 */
@@ -70,6 +73,15 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const [riskTab, setRiskTab] = useState<"risk" | "order">("risk");
   const [openBase, setOpenBase] = useState<string | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
+  // WO-LIVE-DISPOSITION T2/T3（治 G-DISPOSITION-STATIC 前端半）：
+  // ① `boardLive` 把 RiskDetailPanel 里 DynamicLeverPanel 上抛的推演态**提到看板级**——处置表才吃得到杠杆
+  //    （修前 liveState 只在详情面板内部、完全没回流 planRows → 调杠杆处置表纹丝不动 = 用户痛点②）。
+  // ② `livePlan` = 点「⚙ 生成/重算行动计划」后用当前 apply 重新 invoke risk_timeline 得到的处置表（真重算·不是前端改字）。
+  // ③ `openPlanRow` = 点开的行 index → DispositionDetailPanel 逐 step 展开推导过程（用户痛点③）。
+  const [boardLive, setBoardLive] = useState<LiveLeverState>({ apply: [], capGain: 0, affected: 0 });
+  const onBoardLive = useCallback((s: LiveLeverState) => setBoardLive(s), []);
+  const [livePlan, setLivePlan] = useState<{ rows: PlanRow[]; leverCount: number } | null>(null);
+  const [openPlanRow, setOpenPlanRow] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["a", "risk-timeline", { horizon }],
@@ -88,6 +100,20 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   });
 
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
+
+  // WO-LIVE-DISPOSITION T2 · 「⚙ 生成/重算行动计划」：把当前杠杆推演态（boardLive.apply）作 overlay 回传
+  // risk_timeline **服务端真重算**（克隆-覆写产能链 → 真缺口 → 三杠杆贪心派生），不在前端拼字。
+  // apply 空 → 基线方案（等同现状·后端逐字节兼容）；apply 非空 → 标注「含 N 项杠杆推演」。
+  const regen = useMutation({
+    mutationFn: async (apply: LiveLeverState["apply"]) => {
+      const res = await invokeSolver("risk_timeline", apply.length > 0 ? { horizon, apply } : { horizon });
+      return RiskTimelineOutputSchema.parse(res.data);
+    },
+    onSuccess: (out, apply) => {
+      setLivePlan({ rows: out.planRows ?? [], leverCount: apply.length });
+      setOpenPlanRow(null);
+    },
+  });
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -126,6 +152,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const earliestCross = crossDays.length ? Math.min(...crossDays) : null;
 
   const openCard = openBase ? cards.find((c) => c.base === openBase) ?? null : null;
+  // WO-LIVE-DISPOSITION：处置表数据源 = 点过「生成/重算」则用**重算结果**（吃当前杠杆推演态），否则基线查询结果。
+  const planRows: PlanRow[] = livePlan?.rows ?? data.planRows ?? [];
 
   return (
     <div className={styles.riskwrap}>
@@ -265,23 +293,44 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               horizon={horizon}
               isPrimary={maxPeak > 0 && openCard.peak === maxPeak}
               onDay={(day) => setOrdersDay({ card: openCard, day })}
+              onLiveStateChange={onBoardLive}
             />
           )}
 
           {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
 
-          {/* 处置计划表：按越线日前置排启动·采纳经审批下发工单。导出最终规划（前端生成独立浅色 HTML 文档下载）。 */}
-          {(data.planRows?.length ?? 0) > 0 && (
+          {/* 处置计划表：按越线日前置排启动·采纳经审批下发工单。导出最终规划（前端生成独立浅色 HTML 文档下载）。
+              WO-LIVE-DISPOSITION：① 「⚙ 生成/重算行动计划」触发按钮（吃 boardLive.apply → 后端真重算）；
+              ② 每行可点开 → DispositionDetailPanel 逐 step 推导过程 + provenance（R13）。 */}
+          {(planRows.length ?? 0) > 0 && (
             <div className={styles.rkDet} style={{ marginTop: 14 }} data-testid="risk-plan-panel">
               <div className={styles.rkDetH}>
                 <b>📋 {zh.risk.planTitle}</b>
                 <span>
-                  {zh.risk.planSub(data.planRows!.length)}
+                  {zh.risk.planSub(planRows.length)}
+                  {"　"}
+                  <span className={styles.tierChip} data-testid="risk-plan-regen" role="button" tabIndex={0}
+                    title={zh.risk.plan.regenHint}
+                    style={{ display: "inline-block" }}
+                    onClick={() => regen.mutate(boardLive.apply)}
+                    onKeyDown={(e) => e.key === "Enter" && regen.mutate(boardLive.apply)}>
+                    {regen.isPending ? zh.risk.plan.regenBusy : zh.risk.plan.regen}
+                  </span>
+                  {"　"}
+                  <span data-testid="risk-plan-live-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
+                    {livePlan
+                      ? livePlan.leverCount > 0
+                        ? `（${zh.risk.plan.withLevers(livePlan.leverCount)}）`
+                        : `（${zh.risk.plan.baseline}）`
+                      : boardLive.apply.length > 0
+                        ? `（${zh.risk.plan.withLevers(boardLive.apply.length)} · ${zh.risk.plan.regenHint}）`
+                        : ""}
+                  </span>
                   {"　"}
                   <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
                     style={{ display: "inline-block" }}
-                    onClick={() => exportPlanRows(data.planRows!, zh.risk.planTitle)}
-                    onKeyDown={(e) => e.key === "Enter" && exportPlanRows(data.planRows!, zh.risk.planTitle)}>
+                    onClick={() => exportPlanRows(planRows, zh.risk.planTitle)}
+                    onKeyDown={(e) => e.key === "Enter" && exportPlanRows(planRows, zh.risk.planTitle)}>
                     ⬇ 导出最终规划
                   </span>
                 </span>
@@ -299,8 +348,12 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.planRows!.map((r, i) => (
-                    <tr key={i} data-testid={`risk-plan-row-${i}`}>
+                  {planRows.map((r, i) => (
+                    <tr key={i} data-testid={`risk-plan-row-${i}`} role="button" tabIndex={0}
+                      title={zh.risk.plan.rowHint}
+                      style={{ cursor: "pointer", background: openPlanRow === i ? "var(--panel2, rgba(120,160,200,.10))" : undefined }}
+                      onClick={() => setOpenPlanRow(openPlanRow === i ? null : i)}
+                      onKeyDown={(e) => e.key === "Enter" && setOpenPlanRow(openPlanRow === i ? null : i)}>
                       <td className="mono"><b>{i + 1}</b></td>
                       <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
                       <td className="zh">{r.owner}</td>
@@ -312,6 +365,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   ))}
                 </tbody>
               </table>
+              {openPlanRow != null && planRows[openPlanRow] && (
+                <DispositionDetailPanel row={planRows[openPlanRow]!} onClose={() => setOpenPlanRow(null)} />
+              )}
             </div>
           )}
         </>
@@ -544,7 +600,7 @@ function RkK({ testId, value, label, color }: { testId: string; value: string; l
  * → 图例 → 两栏（对症方案 rk-sol + 对话态 QA）。
  */
 function RiskDetailPanel({
-  card, bnRow, bnFactors, threshold, horizon, isPrimary, onDay,
+  card, bnRow, bnFactors, threshold, horizon, isPrimary, onDay, onLiveStateChange,
 }: {
   card: RiskCard;
   bnRow?: BottleneckOutput["rows"][number];
@@ -553,6 +609,8 @@ function RiskDetailPanel({
   horizon: number;
   isPrimary: boolean;
   onDay: (day: number) => void;
+  /** WO-LIVE-DISPOSITION：把 DynamicLeverPanel 上抛的推演态**继续上抛到看板级**，供处置表「生成/重算」消费。 */
+  onLiveStateChange?: (s: LiveLeverState) => void;
 }) {
   const H = card.series.length || horizon;
   const synth = card.provenanceSynthetic === true;
@@ -571,8 +629,16 @@ function RiskDetailPanel({
     retry: false,
   });
   // 活能力①③：DynamicLeverPanel 上抛的当前推演态，供方案存/横比消费。
+  // WO-LIVE-DISPOSITION：**同时**上抛到看板级（onLiveStateChange）——修前它只停在本面板内，处置表拿不到 →
+  // 「调完杠杆点行动计划实时输出」根本没接线（用户痛点②的结构性病根）。
   const [liveState, setLiveState] = useState<LiveLeverState>({ apply: [], capGain: 0, affected: 0 });
-  const onLiveState = useCallback((s: LiveLeverState) => setLiveState(s), []);
+  const onLiveState = useCallback(
+    (s: LiveLeverState) => {
+      setLiveState(s);
+      onLiveStateChange?.(s);
+    },
+    [onLiveStateChange],
+  );
   const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
   // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
   const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);

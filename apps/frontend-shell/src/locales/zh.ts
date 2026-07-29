@@ -401,6 +401,25 @@ export const zh = {
     planDone: "完成",
     planEff: "预期",
     planRule: "规则",
+    // WO-LIVE-DISPOSITION：处置表活推演化（生成/重算按钮 + 每行可点开看推导过程）。R14 文案下发·前端不内联业务常数。
+    plan: {
+      regen: "⚙ 生成/重算行动计划",
+      regenHint: "吃当前杠杆推演态实时重算（真缺口三杠杆贪心派生·非配置库选方案）",
+      regenBusy: "重算中…",
+      baseline: "基线方案（未含杠杆调整）",
+      withLevers: (n: number) => `含 ${n} 项杠杆推演`,
+      rowHint: "点任意行看该行动如何推演出来",
+      detailTitle: "推导过程",
+      detailSub: (base: string, shortfall: number, residual: number) =>
+        `${base} · 触发缺口 ${shortfall} 套 · 三杠杆贪心收窄 · 残留 ${residual} 套`,
+      stepNo: (i: number) => `第 ${i} 步`,
+      trigger: "触发值",
+      closes: "收窄",
+      noSteps: "该行无真缺口推导（窗内可用产能覆盖需求）——方案取自处置方案库参照名，非派生动作。",
+      conserve: (sum: number, residual: number, shortfall: number) =>
+        `守恒校验：Σ 收窄 ${sum} + 残留 ${residual} = 触发缺口 ${shortfall}`,
+      close: "收起",
+    },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
     // WO-CAPLIVE-2 · 产能推演「活台」：原子因子活推演 / 因子级根因 / 人机对话 / 方案存比（R14 下发·不内联）。

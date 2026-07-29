@@ -779,12 +779,39 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
     { base: "成都", baseId: "chengdu", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
     { base: "武汉", baseId: "wuhan", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
-  // PRD-IND-risk §2.4：处置行动计划表（主因素首选 + 峰值≥90 备份 + 14 天内反提 S&OP，按启动排序）
-  planRows: [
-    { act: "关键正极提前备料（常州）", det: "峰值96·产线负载率", owner: "基地负责人 · 王经理", start: "T-2·06-08（越线前7天）", done: "T+5·06-15（越线日）", eff: "消解≈12·2天起效", rule: "C05" },
-    { act: "增开夜班（常州·备份方案）", det: "峰值≥90 双保险", owner: "基地负责人 · 王经理", start: "T+2·06-12", done: "T+12·06-22", eff: "消解≈11·2天起效", rule: "C05" },
-    { act: "近端仓+供应商VMI（江门）", det: "峰值91·物料供给齐套", owner: "基地负责人 · 李经理", start: "T+1·06-11（越线前7天）", done: "T+8·06-18（越线日）", eff: "消解≈9·5天起效", rule: "C05" },
-    { act: "反提月度计划差异（常州、江门）", det: "14 天内越线，需计划层资源协同", owner: "计划中心 → S&OP", start: "T+1·06-11", done: "本周 S&OP", eff: "计划-执行闭环，差异进入月度议程", rule: "C21" },
+  // PRD-IND-risk §2.4：处置行动计划表。
+  // WO-LIVE-DISPOSITION（KILL-MOCK·mock 也真重算·不写死两套）：planRows 不再是静态字面量，而是由
+  // `mockRiskPlanRows()`（handlers.ts）用**与后端同一份** `deriveDisposition`（@platform/contracts）从下方
+  // RISK_DISPOSITION_SEED 真派生——基线（apply 空）与杠杆推演态（apply 非空）走**同一条代码路径**，
+  // 只是 capRatio 不同 → 前端 mock 模式下调杠杆点「生成/重算」处置表也真变（与真引擎口径一致）。
+  planRows: [],
+};
+
+/**
+ * WO-LIVE-DISPOSITION · mock 世界的处置推演真数据源（镜像后端 SolverContext 的对应输入）：
+ *   freeDaily  ← 后端 Σ Line.capacityDaily×(1−util/100)
+ *   demand     ← 该卡 affectedOrders Σqty（mock 的"窗内未来订单"）
+ *   capRatio   ← 杠杆 overlay 经"产能链"吸收（后端 = computeByProcessModel 覆写前后比；mock = Π 值/基线）
+ *   plans      ← 后端 params.risk.mitigations（方案库参照名·仅作 act/eff 回落与 plan 字段）
+ * 所有数值都是 mock 数据，但**派生过程与后端同一函数**（非两套写死结果）。
+ */
+export const RISK_DISPOSITION_SEED = {
+  forecastStart: "2026-06-10",
+  defaultHorizon: 30,
+  coeff: { overtimeUpliftPct: 0.15, crossBaseAbsorbPct: 0.6 },
+  /** 产能链原子因子当前值（mock 基线）——capRatio = Π（覆写值/基线，utilization 类取倒数：利用率↑=可用产能↓）。 */
+  leverBaseline: {
+    "Equipment.oee_current": 0.82,
+    "Process.yield_baseline": 0.9,
+    "Line.utilization": 0.75,
+    "Material.onHand": 6116,
+    "MaterialBalance.coverage": 0.72,
+    "Order.outsourceRatio": 0.2,
+  } as Record<string, number>,
+  inverseProps: ["utilization"],
+  bases: [
+    { base: "常州", baseId: "changzhou", owner: "基地负责人 · 王经理", freeDaily: 100, plans: [{ name: "关键正极提前备料", eff: 12, tn: 2 }, { name: "增开夜班", eff: 11, tn: 2 }] },
+    { base: "江门", baseId: "jiangmen", owner: "基地负责人 · 李经理", freeDaily: 20, plans: [{ name: "近端仓+供应商VMI", eff: 9, tn: 5 }, { name: "跨基地调剂", eff: 8, tn: 4 }] },
   ],
 };
 
