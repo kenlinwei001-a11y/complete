@@ -86,6 +86,9 @@ export interface ByModelOutlook {
   mainBn: string;
   /** 缺口 = p50@90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。 */
   gap: number;
+  /** WO-UNIT-MEANING · p50At30/60/90 与 gap 的量纲**单一真值**（治本单源·前端只格式化不内联·治 G-UNIT-NORMALIZE）：
+   *  T+30/60/90 = 该窗内**累计**可承接 → `套`（区别于 byProcessModel 的"套/天"日产能）。 */
+  unit: string;
   /** R13 溯源：每值来自 capacity_forecast（P50/mainBn），join 进 outlook。 */
   provenance: { kind: string; source: string; drillType: string; drillField: string };
 }

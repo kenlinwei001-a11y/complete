@@ -20,7 +20,7 @@ interface Horizon {
   demand: number; gap: number; status: "缺口" | "富余" | "平衡"; crossDay: number | null; dayPlan: DayAction[];
 }
 // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（后端 base_capacity_outlook 纯加字段·optional）。
-interface ByModel { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; provenance: { kind: string; source: string; drillType: string; drillField: string } }
+interface ByModel { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; unit?: string; provenance: { kind: string; source: string; drillType: string; drillField: string } }
 interface Outlook { baseId: string; baseName: string; forecastStart: string; horizons: Horizon[]; dayPlan: DayAction[]; summary: string; byModel?: ByModel[] }
 
 const LINE_COLOR: Record<string, string> = {
@@ -47,6 +47,8 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
   const out = res.data;
   const hz = out?.horizons?.[0];
   const byModel = out?.byModel ?? [];
+  // WO-UNIT-MEANING：量纲取自后端 byModel.unit（单一真值·R14 前端不内联业务单位）；缺则诚实留空不臆造。
+  const byModelUnit = byModel[0]?.unit ?? "";
 
   return (
     <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`base-outlook-${baseId}`}>
@@ -84,12 +86,14 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
               <table className="cmp" data-testid="outlook-bymodel-table" style={{ fontSize: 11.5, width: "100%" }}>
                 <thead>
                   <tr>
+                    {/* WO-UNIT-MEANING：列头带量纲（单位来自后端 byModel.unit 单源·前端只拼不内联）——
+                        用户不再面对"T+30 = 8600"这种无意义裸数字，而是"T+30 累计可承接(套)"。 */}
                     <th style={{ textAlign: "left" }}>产品型号</th>
-                    <th style={{ textAlign: "right" }}>T+30</th>
-                    <th style={{ textAlign: "right" }}>T+60</th>
-                    <th style={{ textAlign: "right" }}>T+90</th>
+                    <th style={{ textAlign: "right" }}>T+30 累计{byModelUnit ? `(${byModelUnit})` : ""}</th>
+                    <th style={{ textAlign: "right" }}>T+60 累计{byModelUnit ? `(${byModelUnit})` : ""}</th>
+                    <th style={{ textAlign: "right" }}>T+90 累计{byModelUnit ? `(${byModelUnit})` : ""}</th>
                     <th style={{ textAlign: "left" }}>主瓶颈工序</th>
-                    <th style={{ textAlign: "right" }}>缺口</th>
+                    <th style={{ textAlign: "right" }}>缺口{byModelUnit ? `(${byModelUnit})` : ""}</th>
                   </tr>
                 </thead>
                 <tbody>

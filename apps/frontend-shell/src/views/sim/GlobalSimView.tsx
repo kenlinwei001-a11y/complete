@@ -718,15 +718,18 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <div className={styles.readoutRow} data-testid="global-sim-gsim-kpi">
                     <div className={styles.readout}><b data-testid="global-sim-kpi-transitinv">{fmt(primaryScen.kpi.transitInv, 0)}</b><span>在途库存(套·天)</span></div>
                     <div className={styles.readout}><b data-testid="global-sim-kpi-changeoverhours">{primaryScen.kpi.changeoverHours.toFixed(1)}</b><span>换型(全链小时)</span></div>
-                    <div className={styles.readout}><b data-testid="global-sim-kpi-freight">{fmt(primaryScen.kpi.freight, 0)}</b><span>在途运费</span></div>
-                    <div className={styles.readout}><b data-testid="global-sim-kpi-margin">{fmt(primaryScen.kpi.margin, 0)}</b><span>毛利代理</span></div>
+                    {/* WO-UNIT-MEANING：运费/毛利代理原为裸整数（不知是元/万元/代价分）→ 标注量纲。 */}
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-freight">{fmt(primaryScen.kpi.freight, 0)}</b><span>在途运费(元)</span></div>
+                    <div className={styles.readout}><b data-testid="global-sim-kpi-margin">{fmt(primaryScen.kpi.margin, 0)}</b><span>毛利代理(元)</span></div>
                   </div>
                 )}
 
                 {/* ⑥ 方案对比矩阵（改目标/杠杆 → 各目标值真漂移） */}
                 <span className={styles.grpLabel} style={{ marginTop: 8 }}>[ 方案量化多维比对 ]</span>
                 <table className={styles.gtable} data-testid="global-sim-matrix">
-                  <thead><tr><th>方案</th><th>获排</th><th>被挤</th><th style={{ textAlign: "right" }}>获排量</th><th style={{ textAlign: "right" }}>按期</th><th style={{ textAlign: "right" }}>延误量</th><th style={{ textAlign: "right" }}>换型</th><th style={{ textAlign: "right" }}>成品库存</th><th style={{ textAlign: "right" }}>代价</th></tr></thead>
+                  {/* WO-UNIT-MEANING：列头带量纲（原六列裸整数无从判断口径）——延误/库存为「套·天」，
+                      换型为全链小时（contracts 单位红线），代价为惩罚加权分（非货币·勿当元读）。 */}
+                  <thead><tr><th>方案</th><th>获排(单)</th><th>被挤(单)</th><th style={{ textAlign: "right" }}>获排量(套)</th><th style={{ textAlign: "right" }}>按期(单)</th><th style={{ textAlign: "right" }}>延误量(套·天)</th><th style={{ textAlign: "right" }}>换型(小时)</th><th style={{ textAlign: "right" }}>成品库存(套·天)</th><th style={{ textAlign: "right" }}>代价(代价单位)</th></tr></thead>
                   <tbody>
                     {d.scenarios.map((s) => (
                       <tr key={s.key} data-testid={`global-sim-scen-row-${s.key}`} style={s.key === primary ? { background: "var(--nav-active-bg)" } : undefined}>
@@ -745,7 +748,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                     权衡：主方案「{SCEN_LABEL[primary]}」相对「最低代价」——
                     代价 <b>{fmt(tradeoff.primCost, 0)}</b> vs <b>{fmt(tradeoff.cheapCost, 0)}</b>
                     （<span className={tradeoff.dCost > 0 ? styles.tradeoffRed : styles.ok}>{tradeoff.dCost > 0 ? "+" : ""}{fmt(tradeoff.dCost, 0)}</span>）·
-                    按期 {tradeoff.dOntime >= 0 ? "+" : ""}{fmt(tradeoff.dOntime, 0)} 单 · 换型 {tradeoff.dChg >= 0 ? "+" : ""}{fmt(tradeoff.dChg, 0)} 分。
+                    {/* WO-UNIT-MEANING 真 bug 修：换型口径为**全链小时**（contracts/global-sim.ts:16 单位红线「不残留分钟」·
+                        与本页 :720「换型(全链小时)」同源），此处原误标「分」→ 错单位比缺单位更误导，改「小时」。 */}
+                    按期 {tradeoff.dOntime >= 0 ? "+" : ""}{fmt(tradeoff.dOntime, 0)} 单 · 换型 {tradeoff.dChg >= 0 ? "+" : ""}{fmt(tradeoff.dChg, 0)} 小时。
                     {tradeoff.dCost > 0 ? "多按期以更高代价换取（数字取自求解器真值·非估算）。" : "当前主方案代价不高于最低代价方案。"}
                   </div>
                 )}

@@ -14,7 +14,7 @@ import type { ObjectInstance } from "../src/domain.js";
 
 const MODEL = "2170-NCM"; // 多基地可产型号（武汉/厦门/自贡·certByModel 非空）
 
-interface Bpm { baseId: string; base: string; process: string; model: string; material?: string; p50: number; bottleneck: string; bottleneckMark?: string; tightness: number; gap: number; provenance: { objectType: string; objectId: string; prop: string; formula: string } }
+interface Bpm { baseId: string; base: string; process: string; model: string; material?: string; p50: number; unit?: string; bottleneck: string; bottleneckMark?: string; tightness: number; gap: number; provenance: { objectType: string; objectId: string; prop: string; formula: string } }
 
 async function byProcessModel(t: TestApp, modelId = MODEL): Promise<Bpm[]> {
   const res = await invokeSolver(t, "capacity_forecast", { modelId, granularity: "process-model" });
@@ -71,6 +71,10 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
       expect(typeof r.p50).toBe("number");
       expect(["良率波动", "设备OEE", "物料齐套"]).toContain(r.bottleneck);
       expect(r.provenance.formula).toContain("p50 =");
+      // WO-UNIT-MEANING SEAM：p50 量纲**后端单源下发**（用户曾问"每一行是天/周/月/年"）——
+      // p50 = 工序**日**产能 → unit 恒 "套/天"；formula 亦带量纲（R13 溯源即见意义·前端只格式化不内联）。
+      expect(r.unit).toBe("套/天");
+      expect(r.provenance.formula).toContain("套/天");
     }
     // 逐格真下钻：至少两个不同工序 + 不止一种主瓶颈（宽而浅 → 深而真）
     expect(new Set(rows.map((r) => r.process)).size).toBeGreaterThan(3);

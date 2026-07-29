@@ -198,6 +198,9 @@ export interface ByProcessModelRow {
   model: string;
   material?: string;
   p50: number;
+  /** WO-UNIT-MEANING · p50/gap 的量纲**单一真值**（治本单源·前端只格式化不内联·治 G-UNIT-NORMALIZE）：
+   *  p50 = **工序日产能** → `套/天`（用户曾问"每一行是天/周/月/年"·裸数字无意义即此坑）。 */
+  unit: string;
   bottleneck: string;
   bottleneckMark?: string;
   tightness: number;
@@ -287,6 +290,7 @@ export function computeByProcessModel(
         model: modelId,
         ...(matName ? { material: matName } : {}),
         p50,
+        unit: "套/天", // WO-UNIT-MEANING：p50 量纲单源下发（工序**日**产能·前端不再裸渲染无意义数字）
         bottleneck: BN_BY_MARK[top.mark] ?? top.mark,
         bottleneckMark: top.mark,
         tightness: top.value,
@@ -295,7 +299,7 @@ export function computeByProcessModel(
           objectType: top.objectType,
           objectId: top.objectId,
           prop: top.prop,
-          formula: `p50 = 工序产能(${round(processCap, 2)}) × 认证系数(${certFactor}) × 良率基线再基(${round(yieldRebase, 4)}) × 物料齐套(${round(matFactor, 4)})；主瓶颈=max张力→${BN_BY_MARK[top.mark] ?? top.mark}(${top.value})`,
+          formula: `p50 = 工序产能(${round(processCap, 2)}) × 认证系数(${certFactor}) × 良率基线再基(${round(yieldRebase, 4)}) × 物料齐套(${round(matFactor, 4)}) = ${p50} 套/天；主瓶颈=max张力→${BN_BY_MARK[top.mark] ?? top.mark}(${top.value}/100)`,
         },
       });
     }

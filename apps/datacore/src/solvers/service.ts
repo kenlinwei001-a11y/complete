@@ -2655,6 +2655,7 @@ export class SolverService {
         p50At90: p50[90] ?? 0,
         mainBn,
         gap: round((p50[90] ?? 0) - demand90, 2),
+        unit: "套", // WO-UNIT-MEANING：T+30/60/90 累计可承接 + 缺口的量纲单源下发（前端只格式化·不内联）
         provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "p50/mainBn" },
       });
     }
