@@ -75,7 +75,7 @@ export function wireDeps(base: {
   });
   const reportRefs = makeRefReporter(base.config);
   const catalog = new CatalogService(base.repos, reportRefs);
-  const evals = new EvalService({ repos: base.repos, orchestrator });
+  const evals = new EvalService({ repos: base.repos, orchestrator, engine });
   return {
     config: base.config,
     repos: base.repos,
