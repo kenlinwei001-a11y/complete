@@ -61,7 +61,7 @@ import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
-import { lintSkill } from "./skill-lint.js";
+import { lintSkill, classifySkillEvalCases } from "./skill-lint.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -1239,6 +1239,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const skillCases = (await deps.repos.evalCases.listByTenant(a.tenantId, "skill_quality")).filter((c) => c.skillKey === skill.key);
     if (skillCases.length < 3 && force !== "true") {
       throw new HttpError(422, "SKILL_EVAL_INSUFFICIENT", `技能发布需 ≥3 个 skill_quality 评测用例（含行为增益维度），当前 ${skillCases.length}；补用例或 force=true 审计豁免`);
+    }
+    // 门只数数 → 门真判别（修「名不副实」）：此前仅 length>=3，3 条同类用例即放行，而文案宣称"含行为增益维度"。
+    // PRD §4 三类各须 ≥1（应触发/不应触发/行为增益）——尤其"不应触发"缺失时，误触发（污染所有无关任务）无人把守。
+    if (force !== "true") {
+      const cov = classifySkillEvalCases(skillCases);
+      if (!cov.ok) {
+        throw new HttpError(
+          422,
+          "SKILL_EVAL_COVERAGE",
+          `skill_quality 评测用例类型覆盖不足（PRD §4 三类各需 ≥1）：缺 ${cov.missing.join("、")}；当前 应触发${cov.shouldTrigger}/不应触发${cov.shouldNotTrigger}/行为增益${cov.behaviorGain}；补用例或 force=true 审计豁免`,
+        );
+      }
     }
     if (skillCases.length >= 3 && force !== "true") {
       const run = await deps.evals.run(a, "skill_quality", {});

@@ -31,6 +31,47 @@ function registeredToolNames(extra: string[] = []): Set<string> {
   ]);
 }
 
+/**
+ * 门禁二 · 评测用例**类型判别**（PRD §4 三类：应触发 / 不应触发 / 行为增益）。
+ *
+ * 修「门只数数不判别」：此前发布门仅校验 `cases.length >= 3`，3 条同类用例（甚至 3 条完全相同的）
+ * 即放行，而报错文案却宣称「含行为增益维度」——**名不副实的门**。误触发是污染所有无关任务的行为，
+ * 「不应触发」用例缺失时该风险完全无人把守，故三类各须 ≥1。
+ *
+ * 判据（与 PRD §4 表逐行对齐）：
+ *   应触发   = expect.toolSequence 含 `load_skill`（问句应加载本技能）
+ *   不应触发 = expect.toolSequence 已声明但**不含** `load_skill`（"不适用"场景不得加载）
+ *   行为增益 = expect.behaviorGain === true（挂载/不挂载两态对比更优）
+ */
+export interface SkillEvalCoverage {
+  shouldTrigger: number;
+  shouldNotTrigger: number;
+  behaviorGain: number;
+  missing: string[];
+  ok: boolean;
+}
+
+export function classifySkillEvalCases(
+  cases: { expect?: { toolSequence?: { name: string }[]; behaviorGain?: boolean } }[],
+): SkillEvalCoverage {
+  let shouldTrigger = 0;
+  let shouldNotTrigger = 0;
+  let behaviorGain = 0;
+  for (const c of cases) {
+    const seq = c.expect?.toolSequence;
+    if (Array.isArray(seq)) {
+      if (seq.some((s) => s.name === LOAD_SKILL_TOOL.name)) shouldTrigger++;
+      else shouldNotTrigger++;
+    }
+    if (c.expect?.behaviorGain === true) behaviorGain++;
+  }
+  const missing: string[] = [];
+  if (shouldTrigger < 1) missing.push(`应触发（toolSequence 含 ${LOAD_SKILL_TOOL.name}）`);
+  if (shouldNotTrigger < 1) missing.push(`不应触发（toolSequence 已声明且不含 ${LOAD_SKILL_TOOL.name}）`);
+  if (behaviorGain < 1) missing.push("行为增益（expect.behaviorGain=true）");
+  return { shouldTrigger, shouldNotTrigger, behaviorGain, missing, ok: missing.length === 0 };
+}
+
 export function lintSkill(
   skill: { summary: string; body: string; resources: { name: string }[] },
   opts: { extraToolNames?: string[] } = {},

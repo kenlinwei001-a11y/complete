@@ -25,15 +25,27 @@ const GOOD_BODY = `## 目的
 ## 输出要求
 每个口径解释必须挂溯源角标。`;
 
-const mkCase = (n: number, behaviorGain: boolean): EvalCase => ({
+/**
+ * 三类用例 fixture（PRD §4）。**修此前假 fixture**：原 mkCase 三次产出除 behaviorGain 外完全相同
+ * （都只有 answerMust、无 toolSequence），"应触发/不应触发"只活在注释里——门只数数不判类型即由此被掩盖。
+ * 现在三类**形状真不同**，撤掉任一类即触 SKILL_EVAL_COVERAGE（红咬）。
+ */
+type SkillCaseKind = "trigger" | "noTrigger" | "gain";
+const mkCase = (n: number, kind: SkillCaseKind): EvalCase => ({
   id: `ec_skl_${n}`,
   tenantId: TENANT,
   suite: "skill_quality",
   packageId: PKG,
   skillKey: "cap_interp",
   input: { query: `产能口径问题 ${n}`, context: { view: "dash", selectedObjects: [], filters: {} } },
-  // answerMust 含不可能 token → 评测必不全过（确定性挡发布；行为增益维度独立标注）。
-  expect: { answerMust: ["__IMPOSSIBLE_GAIN_TOKEN_XYZ__"], behaviorGain },
+  // answerMust 含不可能 token → 评测套件必不全过（确定性挡发布，与覆盖门分层解耦）。
+  expect: {
+    answerMust: ["__IMPOSSIBLE_GAIN_TOKEN_XYZ__"],
+    // 应触发 = toolSequence 含 load_skill；不应触发 = 已声明 toolSequence 但不含它（"不适用"场景不得加载）。
+    ...(kind === "trigger" ? { toolSequence: [{ name: "load_skill" }] } : {}),
+    ...(kind === "noTrigger" ? { toolSequence: [{ name: "final_answer" }] } : {}),
+    ...(kind === "gain" ? { behaviorGain: true } : {}),
+  },
   origin: "MANUAL",
   createdAt: new Date().toISOString(),
 });
@@ -64,17 +76,46 @@ describe("Skill 门禁二 · 评测门禁（≥3 EvalCase 含行为增益 + 套�
   it("≥3 评测用例（含行为增益维度）→ 过了数量门，跑套件门：未全过 → 422 SKILL_EVAL_FAILED", async () => {
     const t = await createTestApp();
     const id = await createSkill(t);
-    // 3 个 skill_quality 用例（关联 cap_interp），含一个行为增益维度（§4 评测三类之三）
-    await t.repos.evalCases.upsert(mkCase(1, false)); // 应触发
-    await t.repos.evalCases.upsert(mkCase(2, false)); // 不应触发（answerMustNot）
-    await t.repos.evalCases.upsert(mkCase(3, true)); // 行为增益（挂载 vs 不挂载）
+    // 3 个 skill_quality 用例（关联 cap_interp）· §4 三类各一（形状真不同·非注释冒充）
+    await t.repos.evalCases.upsert(mkCase(1, "trigger"));
+    await t.repos.evalCases.upsert(mkCase(2, "noTrigger"));
+    await t.repos.evalCases.upsert(mkCase(3, "gain"));
     const cases = await t.repos.evalCases.listByTenant(TENANT, "skill_quality");
     expect(cases.filter((c) => c.skillKey === "cap_interp").length).toBe(3);
     expect(cases.some((c) => c.expect.behaviorGain === true)).toBe(true); // 行为增益维度落地
 
     const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: H });
-    // 数量门已过（不再 INSUFFICIENT）；评测套件未全过 → FAILED（绿测试≠能用：缺真实增益证据则挡发布）
+    // 数量门 + 类型覆盖门均已过；评测套件未全过 → FAILED（绿测试≠能用：缺真实增益证据则挡发布）
     expect(pub.statusCode).toBe(422);
     expect((pub.json() as { error: { code: string } }).error.code).toBe("SKILL_EVAL_FAILED");
+  });
+
+  // ——— 红咬：门必须**判类型**而非只数数（SA2「不应触发」此前完全无人把守）———
+  it("红咬 SA2：3 条用例但全是「应触发」（数量够·类型缺）→ 422 SKILL_EVAL_COVERAGE（此前假绿放行）", async () => {
+    const t = await createTestApp();
+    const id = await createSkill(t);
+    // 数量门满足（3 条），但三类只占一类——旧门只看 length 会直接放行到套件门。
+    await t.repos.evalCases.upsert(mkCase(1, "trigger"));
+    await t.repos.evalCases.upsert(mkCase(2, "trigger"));
+    await t.repos.evalCases.upsert(mkCase(3, "trigger"));
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: H });
+    expect(pub.statusCode).toBe(422);
+    const err = (pub.json() as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("SKILL_EVAL_COVERAGE");
+    expect(err.message).toContain("不应触发"); // 逐类定位缺哪类（零判断力可据以补齐）
+    expect(err.message).toContain("行为增益");
+  });
+
+  it("红咬 SA3：缺「行为增益」一类（应触发+不应触发×2）→ 仍 422 COVERAGE（防摆设技能混过）", async () => {
+    const t = await createTestApp();
+    const id = await createSkill(t);
+    await t.repos.evalCases.upsert(mkCase(1, "trigger"));
+    await t.repos.evalCases.upsert(mkCase(2, "noTrigger"));
+    await t.repos.evalCases.upsert(mkCase(3, "noTrigger"));
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: H });
+    expect(pub.statusCode).toBe(422);
+    const err = (pub.json() as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("SKILL_EVAL_COVERAGE");
+    expect(err.message).toContain("行为增益");
   });
 });
