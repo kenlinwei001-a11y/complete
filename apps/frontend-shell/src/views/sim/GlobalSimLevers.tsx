@@ -1,4 +1,6 @@
 import { useState } from "react";
+// WO-UNIT-MEANING：7 维 before/after 表的量纲取自 contracts 单源（i18n 只给中文标签·不内联单位）。
+import { kpiDimUnit } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { fmt } from "./shared";
 import styles from "./GlobalSimView.module.css";
@@ -201,7 +203,7 @@ export function GlobalSimLevers({
                       const changed = Math.abs(a - b) > 1e-9;
                       return (
                         <tr key={dim} data-testid={`global-sim-leverdelta-${leverId(dlt.lever)}-${dim}`} data-changed={changed}>
-                          <td>{(zh.gslive.kpiDims as Record<string, string>)[dim] ?? dim}</td>
+                          <td>{(zh.gslive.kpiDims as Record<string, string>)[dim] ?? dim}{kpiDimUnit(dim) ? `(${kpiDimUnit(dim)})` : ""}</td>
                           <td className="num">{fmt(b, 0)}</td>
                           <td className="num" style={changed ? { color: a > b ? "var(--danger,#c0392b)" : "var(--ok,#2e7d32)" } : undefined}>{fmt(a, 0)}</td>
                         </tr>

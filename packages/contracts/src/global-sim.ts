@@ -317,6 +317,57 @@ export const GlobalSimFrozenSchema = z.object({
 export type GlobalSimFrozen = z.infer<typeof GlobalSimFrozenSchema>;
 
 /** 经典代价分解（驱动读数「总代价」）。 */
+/**
+ * WO-UNIT-MEANING · 多目标量纲**单一真值**（治 G-UNIT-NORMALIZE 范式级断点）。
+ *
+ * `objectiveValues` 的 5 个目标键此前在前端**逐处内联单位**（对比矩阵列头 / 方法旋钮读数 /
+ * 自由杠杆 7 维 before-after），换口径要改多处、且各处易漂移。此表为唯一出处：
+ * 改这里 → 矩阵列头 + 旋钮 + 杠杆读数同步变（前端只拼不内联·R14）。
+ *
+ * 口径说明（**勿自行改动，与求解器实算一致**）：
+ *  - ontime/served/displaced 计**单**（订单条数），非套数
+ *  - delay / fgInventory 计**套·天**（量 × 时长的积分量，非纯数量）
+ *  - changeover 计**小时**——`contracts/global-sim.ts` 顶部单位红线「换型全链**小时**·不残留分钟」
+ *  - cost 计**代价单位** = 惩罚加权分（`delayPenalty×延误 + changeoverCostPerHour×换型 + …`），
+ *    **非货币**：曾出现「总代价 12345」被当成元读的误解，故 note 显式标注
+ */
+export const OBJECTIVE_UNITS: Record<string, { label: string; unit: string; note?: string }> = {
+  ontime: { label: "按期", unit: "单" },
+  delay: { label: "延误量", unit: "套·天" },
+  changeover: { label: "换型", unit: "小时", note: "全链小时·不残留分钟" },
+  fgInventory: { label: "成品库存", unit: "套·天" },
+  cost: { label: "代价", unit: "代价单位", note: "惩罚加权分·非货币" },
+};
+
+/** 目标键 → 单位后缀（缺则空串：诚实不臆造，前端渲染为无后缀）。 */
+export const objectiveUnit = (key: string): string => OBJECTIVE_UNITS[key]?.unit ?? "";
+
+/** 目标键 → 「标签(单位)」列头文案（无单位则只回标签·缺项回退键名本身）。 */
+export function objectiveHeader(key: string): string {
+  const m = OBJECTIVE_UNITS[key];
+  if (!m) return key;
+  return m.unit ? `${m.label}(${m.unit})` : m.label;
+}
+
+/**
+ * WO-UNIT-MEANING · 7 维 KPI 量纲单源（`GlobalSimKpi` / 自由杠杆 before-after 表用）。
+ * 键集与 `objectiveValues` **不同**（这里是编排 7 维产物：changeoverHours/fgInv/transitInv/freight/margin），
+ * 故单列一表而非复用——两表都在本文件，改口径一处可查。
+ * 中文**标签**仍走 i18n（`zh.gslive.kpiDims`·R14 文案归 i18n），**单位**归此处（避免 i18n 内联「(小时)」这类量纲）。
+ */
+export const KPI_DIM_UNITS: Record<string, string> = {
+  ontime: "单",
+  cost: "代价单位",
+  changeoverHours: "小时",
+  freight: "元",
+  fgInv: "套·天",
+  transitInv: "套·天",
+  margin: "元",
+};
+
+/** 7 维 KPI 键 → 单位后缀（缺则空串·诚实不臆造）。 */
+export const kpiDimUnit = (key: string): string => KPI_DIM_UNITS[key] ?? "";
+
 export const GlobalSimCostSchema = z.object({
   delay: z.number(),
   changeover: z.number(),

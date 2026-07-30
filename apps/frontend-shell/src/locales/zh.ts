@@ -953,7 +953,8 @@ export const zh = {
     kpiDims: {
       ontime: "按期项",
       cost: "综合代价",
-      changeoverHours: "换型(小时)",
+      // 量纲走 contracts KPI_DIM_UNITS（WO-UNIT-MEANING·i18n 只管文案不内联单位）
+      changeoverHours: "换型",
       freight: "在途运费",
       fgInv: "成品库存",
       transitInv: "在途库存",

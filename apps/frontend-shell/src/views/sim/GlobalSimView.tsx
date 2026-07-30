@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { BASE_REGISTRY, BUSINESS_TYPE_LABEL } from "@platform/contracts";
+import { BASE_REGISTRY, BUSINESS_TYPE_LABEL, objectiveHeader } from "@platform/contracts";
 import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario, GlobalSimCost } from "@platform/contracts";
 import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
@@ -674,9 +674,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               {d?.methodScenario && (
                 <div className={styles.readoutRow} data-testid="global-sim-methodscenario" data-method={d.methodScenario.method} style={{ marginTop: 8 }}>
                   <div className={styles.readout}><b data-testid="global-sim-ms-served">{d.methodScenario.servedCount}</b><span>方法解·获排</span></div>
-                  <div className={styles.readout}><b data-testid="global-sim-ms-ontime">{fmt(d.methodScenario.objectiveValues.ontime ?? 0, 0)}</b><span>按期</span></div>
-                  <div className={styles.readout}><b data-testid="global-sim-ms-changeover">{(d.methodScenario.objectiveValues.changeover ?? 0).toFixed(1)}</b><span>换型</span></div>
-                  <div className={styles.readout}><b data-testid="global-sim-ms-cost">{fmt(d.methodScenario.objectiveValues.cost ?? 0, 0)}</b><span>代价</span></div>
+                  {/* WO-UNIT-MEANING：方法旋钮读数原为裸「按期/换型/代价」无量纲 → 复用同一单位字典单源。 */}
+                  <div className={styles.readout}><b data-testid="global-sim-ms-ontime">{fmt(d.methodScenario.objectiveValues.ontime ?? 0, 0)}</b><span>{objectiveHeader("ontime")}</span></div>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-changeover">{(d.methodScenario.objectiveValues.changeover ?? 0).toFixed(1)}</b><span>{objectiveHeader("changeover")}</span></div>
+                  <div className={styles.readout}><b data-testid="global-sim-ms-cost">{fmt(d.methodScenario.objectiveValues.cost ?? 0, 0)}</b><span>{objectiveHeader("cost")}</span></div>
                 </div>
               )}
             </div>
@@ -731,9 +732,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 {/* ⑥ 方案对比矩阵（改目标/杠杆 → 各目标值真漂移） */}
                 <span className={styles.grpLabel} style={{ marginTop: 8 }}>[ 方案量化多维比对 ]</span>
                 <table className={styles.gtable} data-testid="global-sim-matrix">
-                  {/* WO-UNIT-MEANING：列头带量纲（原六列裸整数无从判断口径）——延误/库存为「套·天」，
-                      换型为全链小时（contracts 单位红线），代价为惩罚加权分（非货币·勿当元读）。 */}
-                  <thead><tr><th>方案</th><th>获排(单)</th><th>被挤(单)</th><th style={{ textAlign: "right" }}>获排量(套)</th><th style={{ textAlign: "right" }}>按期(单)</th><th style={{ textAlign: "right" }}>延误量(套·天)</th><th style={{ textAlign: "right" }}>换型(小时)</th><th style={{ textAlign: "right" }}>成品库存(套·天)</th><th style={{ textAlign: "right" }}>代价(代价单位)</th></tr></thead>
+                  {/* WO-UNIT-MEANING：列头量纲由 contracts `objectiveHeader` **单源**下发（此前本行内联
+                      「(套·天)/(小时)/(代价单位)」——换口径要改多处且易漂移；现改这一处即全站同步·R14 不内联）。 */}
+                  <thead><tr><th>方案</th><th>获排(单)</th><th>被挤(单)</th><th style={{ textAlign: "right" }}>获排量(套)</th><th style={{ textAlign: "right" }}>{objectiveHeader("ontime")}</th><th style={{ textAlign: "right" }}>{objectiveHeader("delay")}</th><th style={{ textAlign: "right" }}>{objectiveHeader("changeover")}</th><th style={{ textAlign: "right" }}>{objectiveHeader("fgInventory")}</th><th style={{ textAlign: "right" }}>{objectiveHeader("cost")}</th></tr></thead>
                   <tbody>
                     {d.scenarios.map((s) => (
                       <tr key={s.key} data-testid={`global-sim-scen-row-${s.key}`} style={s.key === primary ? { background: "var(--nav-active-bg)" } : undefined}>
