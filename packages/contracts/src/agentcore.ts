@@ -158,6 +158,35 @@ export type SkillCapability = z.infer<typeof SkillCapabilitySchema>;
 export const SkillSideEffectSchema = z.enum(["READ", "COMPUTE", "WRITE"]);
 export type SkillSideEffect = z.infer<typeof SkillSideEffectSchema>;
 
+/**
+ * 副作用词表**单一来源**（R-一致：一个事实一个出处）+ 跨域别名归一。
+ *
+ * 病灶（真实假绿·第 6 例）：`sideEffect` 这个概念在仓里曾有三套互不相识的词表——
+ *   ① 本枚举（Skill）           `READ | COMPUTE | WRITE`
+ *   ② `ToolDef.sideEffect`(qos.ts) `READ | COMPUTE | ACTION_DRAFT | EXTERNAL`（≈30 个工具在用）
+ *   ③ CapabilityMeta 拟用词表     `NONE | READ_ONLY | WRITE_BACK | EXTERNAL_ACTION`（**该文件根本不在仓里**）
+ * `skill-probe.ts` 的 SP5 判定按 ③ 写（`=== "WRITE_BACK"`），而生产里没有任何 Skill 会带 ③ 的值 →
+ * **SP5 永远不触发**（写回型技能拿不到 create_action_draft）；测试却是绿的，因为 fixture 自己造了
+ * `sideEffect: "WRITE_BACK"`（测试自产自销·`as SkillDefinition` 绕过类型）。
+ *
+ * 故此处把判定收敛为唯一出处，并**显式吸收** ②③ 的写侧词汇：跨域值宁可归一到 WRITE，
+ * 也不许静默掉回 READ——静默降级正是上面那种「绿灯照着空气亮」的成因。
+ */
+const WRITE_EFFECT_ALIASES = new Set([
+  "WRITE", // ① 本枚举
+  "ACTION_DRAFT", "EXTERNAL", // ② ToolDef 词表的写侧
+  "WRITE_BACK", "EXTERNAL_ACTION", // ③ CapabilityMeta 拟用词表的写侧
+]);
+
+/**
+ * 是否「会改变真值」的技能 → 探针/运行时须追加 `create_action_draft`、并受审批门约束（R4 真值经 Action）。
+ * 缺省（无 sideEffect 字段）视为只读，与 SkillDefinitionSchema 的缺省兜底一致。
+ */
+export function isWriteEffectSkill(skill: { sideEffect?: string | null }): boolean {
+  const se = skill.sideEffect;
+  return typeof se === "string" && WRITE_EFFECT_ALIASES.has(se);
+}
+
 /** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
 export const SkillReferenceSchema = z.object({
   kind: z.enum(["rule", "constraint", "slice", "ontologyType", "solver", "skill", "workflow", "agent"]),

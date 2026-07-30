@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentDefinition, AgentLoopResult, Answer, EvalCase, SkillDefinition } from "@platform/contracts";
+import { SkillDefinitionSchema, type AgentDefinition, type AgentLoopResult, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { SkillProbeRunner, extractAnswerText } from "../src/skill-probe.js";
 import type { ExecutionEngine } from "../src/engine.js";
@@ -14,8 +14,16 @@ function auth(tenantId: string): RequestAuth {
   return { tenantId, userId: "u1", roles: ["catalog_admin"] };
 }
 
+/**
+ * 出厂即过契约校验（`.strict().parse`），fixture **不许**自造契约里没有的字段/值。
+ *
+ * 旧写法是「假绿第 6 例」的产地：`as SkillDefinition` 强转 + `capability: "SKILL"` +
+ * `sideEffect: "READ_ONLY"` —— 这三项都不在 `SkillDefinitionSchema` 里，生产中任何 skill 都
+ * 不可能带上，于是 SP5「写回型追加 create_action_draft」的判定**永远不触发**，而测试自产自销
+ * 一个 `"WRITE_BACK"` 照样绿。改用 strict parse 后：写错枚举值 → 抛；多写字段 → 抛。
+ */
 function skillFixture(overrides: Partial<SkillDefinition> & { key: string; name: string }): SkillDefinition {
-  return {
+  return SkillDefinitionSchema.strict().parse({
     id: overrides.id ?? `skl_${overrides.key}_v1`,
     tenantId: overrides.tenantId ?? TENANT_A,
     key: overrides.key,
@@ -25,12 +33,9 @@ function skillFixture(overrides: Partial<SkillDefinition> & { key: string; name:
     body: overrides.body ?? "skill body",
     resources: [],
     status: overrides.status ?? "DRAFT",
-    capability: "SKILL",
-    createdBy: "u1",
-    createdAt: new Date().toISOString(),
-    sideEffect: overrides.sideEffect ?? "READ_ONLY",
+    sideEffect: overrides.sideEffect ?? "READ",
     ...overrides,
-  } as SkillDefinition;
+  });
 }
 
 function answerFixture(text: string): Answer {
@@ -157,10 +162,25 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     expect(run.results[0].failures.some((f) => f.startsWith("probe timeout"))).toBe(true);
   });
 
-  it("SP5 · 工具集补全：只读 skill 含通用工具，WRITE_BACK 追加 create_action_draft", async () => {
+  it("SP5 · 词表可达性（假绿第 6 例反证）：判定用的值必须是契约真枚举，生产 skill 才可能带上", () => {
+    // 旧测试拿 "WRITE_BACK"/"READ_ONLY" 当输入——那是 CapabilityMeta 拟用词表，`SkillDefinitionSchema`
+    // 里根本没有。若判定继续按那套词表写，生产永不触发；下面两条断言正是「不可达」的反证。
+    for (const bogus of ["WRITE_BACK", "EXTERNAL_ACTION", "READ_ONLY", "NONE"]) {
+      expect(
+        () => skillFixture({ key: "x", name: "X", sideEffect: bogus as never }),
+        `${bogus} 不在 SkillSideEffect 枚举内，fixture 必须拒收（旧写法用 as 强转绕过 → 假绿）`,
+      ).toThrow();
+    }
+    // 真枚举三值必须都过得去（判定读的就是这套）
+    for (const real of ["READ", "COMPUTE", "WRITE"] as const) {
+      expect(skillFixture({ key: "x", name: "X", sideEffect: real }).sideEffect).toBe(real);
+    }
+  });
+
+  it("SP5 · 工具集补全：只读 skill 含通用工具，WRITE 追加 create_action_draft", async () => {
     const { repos, runner } = await setup();
-    const ro = skillFixture({ key: "ro", name: "RO", sideEffect: "READ_ONLY" });
-    const wr = skillFixture({ key: "wr", name: "WR", sideEffect: "WRITE_BACK" });
+    const ro = skillFixture({ key: "ro", name: "RO", sideEffect: "READ" });
+    const wr = skillFixture({ key: "wr", name: "WR", sideEffect: "WRITE" });
     await repos.skills.insert(ro);
     await repos.skills.insert(wr);
 
