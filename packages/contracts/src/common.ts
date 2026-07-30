@@ -52,6 +52,8 @@ export const ErrorCodes = {
   AGENT_SCOPE_VIOLATION: "AGENT_SCOPE_VIOLATION",
   NESTING_DEPTH_EXCEEDED: "NESTING_DEPTH_EXCEEDED",
   CYCLIC_INVOCATION: "CYCLIC_INVOCATION",
+  /** WO-SCENARIO-INPUT-PHASE0：共享预算耗尽（嵌套 workflow / agent 拒绝继续）。 */
+  BUDGET_EXCEEDED: "BUDGET_EXCEEDED",
   /** 管理平台增量 §4：PUBLISHED 版本不可变（PUT → 409） */
   IMMUTABLE_VERSION: "IMMUTABLE_VERSION",
   /** 引用模式增量 §2.3：破坏性 schema 变更 + 存在 latest 引用方 → 发布被拒 */

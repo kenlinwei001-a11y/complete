@@ -34,6 +34,8 @@ export const ComposePlanSchema = z.object({
   planId: z.string(),
   steps: z.array(ComposeStepSchema).min(1),
   synthesizeBlocks: z.array(z.string()), // 综合步要产出的 block（根因/方案/台账…）
+  /** R13 · 槽位归一化留痕（如 {weeks:{raw:"1天", normalized:0.142857, unit:"day"}}），不进入 solver args。 */
+  normalizedSlots: z.record(z.string(), z.unknown()).optional(),
 });
 export type ComposePlan = z.infer<typeof ComposePlanSchema>;
 

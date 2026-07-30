@@ -1,4 +1,4 @@
-import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
+import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
@@ -362,6 +362,11 @@ export class ExecutionEngine {
     opts.onResolvedRef?.({ kind: "workflow", key: wf.key, version: wf.version });
     this.deps.metrics.nestedInvocations.inc({ kind: "workflow" });
     const child = enterNesting(opts.nesting, "workflow", wf.id);
+    // WO-SCENARIO-INPUT-PHASE0：嵌套 workflow 必须先消耗共享预算，防止无限烧。
+    const budgetOk = child.budget.tryConsumeWorkflow();
+    if (!budgetOk.ok) {
+      throw new Error(`${ErrorCodes.BUDGET_EXCEEDED}: ${budgetOk.reason}`);
+    }
     const result = await this.runWorkflowSteps({
       taskId: opts.taskId,
       steps: wf.steps,
@@ -373,6 +378,9 @@ export class ExecutionEngine {
       trustLevel: "AGENT_EXPLORATORY",
       onResolvedRef: opts.onResolvedRef,
     });
+    if (result.status === "CANCELLED") {
+      throw new Error(`CANCELLED: ${result.reason}`);
+    }
     if (result.status === "FAILED") {
       throw new Error(`${result.error.code}: ${result.error.message}`);
     }

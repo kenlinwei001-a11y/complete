@@ -275,6 +275,12 @@ export const ScenarioSchema = z.object({
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 
+/** WO-SCENARIO-INPUT-PHASE0：场景启动器允许用户覆盖自由文本 query（缺省用卡 triggerQuestion）。 */
+export const LaunchScenarioBodySchema = z.object({
+  query: z.string().min(1).max(500).optional(),
+});
+export type LaunchScenarioBody = z.infer<typeof LaunchScenarioBodySchema>;
+
 // ---------------------------------------------------------------------------
 // AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测
 // ---------------------------------------------------------------------------

@@ -206,6 +206,8 @@ const MODEL_TOKEN_RE = /((?:\d{3,4}|方形|圆柱|刀片|软包|大圆柱)-(?:NC
 const DEMAND_DELTA_RE = /(?:上浮|上调|增加|增长|加|增|提高|提|多|涨)\s*(\d+(?:\.\d+)?)\s*%/;
 /** 周数正则：「N周」（Arabic 或中文数字）。 */
 const WEEKS_RE = /(\d+|[一二两三四五六七八九十]+)\s*周/;
+/** 时间跨度正则：WO-SCENARIO-INPUT-PHASE0 支持 天/日/周/月 归一化为周（R6）。 */
+const TIME_SPAN_RE = /(\d+|[一二两三四五六七八九十]+)\s*(天|日|周|月)/;
 /**
  * 可承接问句正则（「能不能接/还能接/能接吗/接得下/可承接/产能够不够/够吗…」）。
  * 含「够不够/够吗」类——与「型号增量 + 周数」信号联合判定，不会误吞因子变动 what-if（那类无需求增量%、无周数）。
@@ -232,7 +234,7 @@ export interface CapacityFeasibilityVariant {
   modelId?: string;
   /** 需求增量比例（「上浮10%」→0.1·与 capacity_feasibility 意图 demandDelta 槽同口径）。 */
   demandDelta?: number;
-  /** 周数（「8周」→8·capacity_forecast weeks 参·缺省由意图槽 default 6 兜底）。 */
+  /** 周数（「8周」→8·「1天」→1/7·「1个月」→4.345·capacity_forecast weeks 参·缺省由意图槽 default 6 兜底）。 */
   weeks?: number;
   /**
    * WO-BASE-ID-FIDELITY 症①：问句「XX基地/常州基地」→ 规范 baseId（BASE_REGISTRY 名/id 匹配·R6 正则·无 LLM）。
@@ -240,12 +242,15 @@ export interface CapacityFeasibilityVariant {
    * 此前只抽 {modelId,demandDelta,weeks} 丢 base → 「常州基地 4680 加20%」与「4680 加20%」答案相同（capacity_forecast 恒全网）。
    */
   baseId?: string;
+  /** 归一化留痕：原始时间单位 → 周（R13）。 */
+  normalizedSlots?: { weeks: { raw: string; normalized: number; unit: "day" | "week" | "month" } };
 }
 
 /**
  * 确定性解析产能可行性变体 NL → {modelId, demandDelta, weeks}（R6 纯函数·无 LLM/时钟/随机）。
  * 例「4680-NCM 上浮10%、8周还能接吗」→ {modelId:"4680-NCM", demandDelta:0.1, weeks:8}；
- *   「4680-NCM 加 20% 六周能不能接？」→ {modelId:"4680-NCM", demandDelta:0.2, weeks:6}。
+ *   「4680-NCM 加 20% 六周能不能接？」→ {modelId:"4680-NCM", demandDelta:0.2, weeks:6}；
+ *   「4680-NCM 加 20% 1天交付」→ {modelId:"4680-NCM", demandDelta:0.2, weeks:1/7}。
  * 解析不出某项 → 该字段 undefined（上层据可用性决定是否命中·宁缺不臆造·fail-safe）。
  */
 export function parseCapacityFeasibilityVariant(query: string): CapacityFeasibilityVariant {
@@ -255,10 +260,28 @@ export function parseCapacityFeasibilityVariant(query: string): CapacityFeasibil
   if (model) out.modelId = model[1]!.toUpperCase(); // 归一化学体系大写（4680-ncm→4680-NCM·CJK 前缀不受影响）
   const delta = DEMAND_DELTA_RE.exec(q);
   if (delta) out.demandDelta = Number((Number(delta[1]) / 100).toFixed(4));
-  const weeks = WEEKS_RE.exec(q);
-  if (weeks) {
-    const n = parseSmallInt(weeks[1]!);
-    if (n !== undefined) out.weeks = n;
+  // WO-SCENARIO-INPUT-PHASE0：时间单位归一化（天→/7，周→1，月→4.345），留痕 normalizedSlots。
+  const span = TIME_SPAN_RE.exec(q);
+  if (span) {
+    const n = parseSmallInt(span[1]!);
+    if (n !== undefined) {
+      const unitRaw = span[2]!;
+      const unit: "day" | "week" | "month" = unitRaw === "天" || unitRaw === "日" ? "day" : unitRaw === "月" ? "month" : "week";
+      const factor = unit === "day" ? 1 / 7 : unit === "month" ? 4.345 : 1;
+      const weeks = Number((n * factor).toFixed(6));
+      out.weeks = weeks;
+      out.normalizedSlots = { weeks: { raw: `${span[1]}${unitRaw}`, normalized: weeks, unit } };
+    }
+  } else {
+    // 兼容只含「N周」的旧问句（无 天/日/月 时仍命中 WEEKS_RE）。
+    const weeks = WEEKS_RE.exec(q);
+    if (weeks) {
+      const n = parseSmallInt(weeks[1]!);
+      if (n !== undefined) {
+        out.weeks = n;
+        out.normalizedSlots = { weeks: { raw: `${weeks[1]}周`, normalized: n, unit: "week" } };
+      }
+    }
   }
   // WO-BASE-ID-FIDELITY 症①：抽基地（「常州基地」含中文名「常州」·或裸 baseId「changzhou」）→ 规范 baseId。
   // 与 parseCapacityWhatIf 同口径（BASE_REGISTRY 单一出处·R6）；无匹配 → 不带 baseId（全网·fail-safe 不臆造）。
@@ -323,5 +346,7 @@ export function feasibilityComposeSlots(query: string, fallbackModelId?: string)
   // WO-BASE-ID-FIDELITY 症①：base 作用域随 compose 直达 capacity_forecast（compileSolverPlan §3.1 非必填槽也带上 args·
   // compile-plan.ts:111-112「非必填但 slots 有值也带」）——有基地→scope:BASE 单基地·无基地→不带→scope:ALL 全网。
   if (v.baseId) slots.base = v.baseId;
+  // R13 留痕：把归一化时间写进 trace，便于 seam-gate 校验与诊断；_solver args 侧会 strip 下划线键。
+  if (v.normalizedSlots) slots._normalizedSlots = v.normalizedSlots;
   return slots;
 }

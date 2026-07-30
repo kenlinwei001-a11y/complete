@@ -209,6 +209,18 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
     blocks,
     provenance,
     unverifiedNumerics,
+    // R13 · 槽位归一化留痕：如天→周归一化，供诊断与 seam-gate 断言。
+    ...(plan.normalizedSlots
+      ? {
+          validationTrace: {
+            slicesUsed: [],
+            consistency: { checks: [], verdict: "ALL_PASS" as const },
+            crossValidation: { claims: [], verdict: "NO_CLAIMS" as const },
+            normalizedSlots: plan.normalizedSlots,
+            generatedAt: new Date().toISOString(),
+          },
+        }
+      : {}),
   };
 
   return { answer, stepCount: ordered.length, synthCount, usedLlm, products: ordered };
