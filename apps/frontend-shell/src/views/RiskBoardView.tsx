@@ -939,7 +939,9 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOption
           <ProvenanceDag data={dag} />
           {/* WO-CAPACITY-PAGE-100PCT ③ · 作用域标注**以引擎回传的 scope 为准**（不再由前端假设"点了就细分了"）：
               factorApplied=true → 真按因子细分；传了因子但引擎无该因果域 → 据实说"未按该因子细分"并给引擎原话。 */}
-          {rcFactor && scope?.factorApplied ? (
+          {/* 向后兼容（R6·不回归）：只有引擎**显式**回执 `factorApplied:false` 时才走"未细分"诚实注解；
+              旧后端/桩不带 scope 字段（undefined）→ 维持原"已按因子细分"语义，既有 SEAM 测试零回归。 */}
+          {rcFactor && scope?.factorApplied !== false ? (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
               {zh.risk.live.rootcause.refined(rcFactor)}
             </div>
