@@ -67,6 +67,7 @@ VITE_MOCK=1 pnpm --filter frontend-shell dev
 - **演示账号**：tenant `demo`，admin（admin+planner+catalog_admin）/ planner / base_manager:常州，密码均 demo1234；workspace 按角色返回不同导航/视图/主题。
 - **仓储双实现**：memory（测试默认）与 pg（DATABASE_URL 触发，启动自动迁移）。新增表需同时改 migrations/*.sql + repo/pg.ts + repo/memory.ts + repo.ts 接口。
 - **接缝门 SEAM-GATE**：凡「数据+引擎两半」或「A+B 两系统」拆开做的特性，交付必须含一条**驱动接缝的组合测试**——在 merge/集成态断言端到端行为，而非只测各半 unit。例：metric-aware 须测 `gap_attribution(market_share)→cf-competitor-price`（数据种绑定 × 引擎路由，任一半漏即红）。**审核方复验头号判据 = 接缝驱动通，非各半绿**；「绿测试≠能用·断在接缝」的老坑靠此门堵死。
+- **门必须显式捕获退出码（违反即事故·已真实发生）**：交付门一律走 `bash scripts/gate.sh`。**禁止** `cmd | tail -n; echo "EXIT=$?"` —— `$?` 取的是管道末端 `tail` 的退出码（恒 0），曾据此把一个 **agentcore 编译失败**的 commit 判为"BUILD 通过"并入正线，直到部署方 build 失败才暴露（错误原文当时就在日志里，被假绿盖过）。失败时须打印 `error TS|FAIL|AssertionError` 原文，不许只 tail 几行把错误挤掉。
 - **LOOP 派发/复验纪律**：功能拆成 WO（工单）派 dev。① **每张 WO = 一条 handoff 分支**（dev 建 → push `claude/handoff-<wo>`，不碰正线）。② **审核方隔离复验**：worktree 独立 checkout → **组合四包 gate**（`pnpm -r build && pnpm -r --workspace-concurrency=1 test`·datacore 勿并发多 vitest）→ cherry-pick 上 canonical → push。**头号判据 = 接缝驱动通（SEAM-GATE）+ 四包全绿 + 亲手真跑（绿测试≠能用）**，退则给精确 file:line + 最小修路径。③ **一 WO 一 fresh dedicated dev·靠文件边界不靠身份**：每张 WO 顶部写 **🚦范围边界**（只碰哪些文件/包）——这就是该 dev 本单的"身份"，无需追问"哪个 dev 是哪个"。**跨数据/引擎两半的特性必须一个 dev 整单做（拆两半用不同机制不对接 = metric-aware 反复炸的根）。** ④ 金值/注册即更（新增 solver/对象类型 → 同步 golden 计数·demo-chain/catalog/ontology-core），漏金值即退。
 
 ## 文档索引
