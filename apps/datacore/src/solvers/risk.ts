@@ -465,9 +465,17 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     // 效果层：信阳 物流时长(92) 压过 瓶颈工序(91)、江门 物料齐套(96) 压过 瓶颈工序(91) → 各基地首要风险不再雷同。
     const curOf = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
     const crossOf = (x: Record<string, unknown>): number => (x.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
+    // ⚠️ 审核方并线调序（本单 ④b × WO-RISK-SATURATE 的交互）：原写法主序是 `peak↓`、当前张力仅作 tie-break。
+    // 在**旧的硬截断**下 peak 恒等于 98 → tie-break 每次都触发 → 等效于"按当前张力排"，本单注释与测试
+    // （「首要风险因子 = 该基地**实测张力最高**的因子」·预期效果"信阳 物流时长(92) 压过 瓶颈工序(91)"，
+    //  92/91 是**当前张力**不是 peak）描述的正是这个结果。而 saturateTension 让 peak 变得互不相同后，
+    // tie-break 不再触发、主序 peak↓ 接管 → 信阳回落 瓶颈工序，本单 ① 测试真红。
+    // 即：原实现是**靠 clamp 巧合**达成其声明意图的。此处把意图写实——当前张力为主序，peak 降为 tie-break。
+    // 产品语义取舍：卡面「首要风险因子」= 此刻最紧、运营方当下能动手的那个（卡面本身也是"当前→峰值"的读法）；
+    // 若后续判定应以"未来最痛"为准，改回 peak 主序并同步改本单 ① 的断言——**但两者必须一致，不许再靠巧合对齐**。
     const better = (a: Record<string, unknown>, e: Record<string, unknown>): boolean =>
-      num(a.peak) !== num(e.peak) ? num(a.peak) > num(e.peak)
-        : curOf(a) !== curOf(e) ? curOf(a) > curOf(e)
+      curOf(a) !== curOf(e) ? curOf(a) > curOf(e)
+        : num(a.peak) !== num(e.peak) ? num(a.peak) > num(e.peak)
         : crossOf(a) !== crossOf(e) ? crossOf(a) < crossOf(e)
         : str(a.factor) < str(e.factor);
     if (!existing || better(card, existing)) {

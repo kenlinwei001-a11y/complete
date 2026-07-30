@@ -59,7 +59,12 @@ const wanToYi = (v: number) => v / 1e4;
  * 入参优先用 `card.baseId`（求解器回传的规范 baseId，如 `xinyang`）；已是 `obj_base_` 前缀则原样返回
  * （幂等·后端 `normalizeBaseRef` 也认这两种形态）。
  */
-const baseObjectId = (baseId: string): string => (baseId.startsWith("obj_base_") ? baseId : `obj_base_${baseId}`);
+export const baseObjectId = (ref: string | { base: string; baseId?: string }): string => {
+  // 两种入参：卡对象（优先 baseId·缺则**回落基地名**，不伪造 obj_base_undefined）或裸 baseId 串。
+  const id = typeof ref === "string" ? ref : (ref.baseId ?? "");
+  if (!id) return typeof ref === "string" ? ref : ref.base;
+  return id.startsWith("obj_base_") ? id : `obj_base_${id}`;
+};
 
 /**
  * 三档色（与 heatColor 同阈值口径·用于文字/边框实色）：≥阈值 高危红 · [阈值−15,阈值) 关注黄 · <阈值−15 正常青。
@@ -926,8 +931,11 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, fa
       ) : dag && nodeCount > 0 ? (
         <>
           <ProvenanceDag data={dag} />
-          {/* 诚实标注：默认按基地聚合（未按因子细分）；选因子 → 已按 scope.factorId 细分（引擎已支持 base×factor）。 */}
-          {rcFactor ? (
+          {/* WO-CAPACITY-PAGE-100PCT ③ · 作用域标注**以引擎回传的 scope 为准**（不再由前端假设"点了就细分了"）：
+              factorApplied=true → 真按因子细分；传了因子但引擎无该因果域 → 据实说"未按该因子细分"并给引擎原话。 */}
+          {/* 向后兼容（R6·不回归）：只有引擎**显式**回执 `factorApplied:false` 时才走"未细分"诚实注解；
+              旧后端/桩不带 scope 字段（undefined）→ 维持原"已按因子细分"语义，既有 SEAM 测试零回归。 */}
+          {rcFactor && (ga as { scope?: { factorApplied?: boolean } } | undefined)?.scope?.factorApplied !== false ? (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
               {zh.risk.live.rootcause.refined(rcFactor)}
             </div>

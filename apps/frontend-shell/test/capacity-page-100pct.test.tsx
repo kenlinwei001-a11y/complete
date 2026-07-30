@@ -5,7 +5,14 @@ import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 import { useSessionStore } from "@/store/sessionStore";
-import { tensionDotColor, plateauNote, baseObjectId } from "@/views/RiskBoardView";
+import { baseObjectId } from "@/views/RiskBoardView";
+// ⚠️ 审核方并线注记：本单原有的 `tensionDotColor`（档内 alpha 斜坡）与 `plateauNote`（披露末段贴顶 N 天）
+// 在并线时**被更强的机制取代，非删覆盖**：
+//   · 点阵表达 → `dotVisual`（同档 alpha ⊕ **柱高**双通道·信息量严格超集），且带一条反向红咬
+//     「逐日恒等的行被渲染出起伏 = 伪造」，防止为了好看而造假起伏；
+//   · plateauNote → 引擎侧 `saturateTension` 已消除平顶本身（三因子峰值 97.9508/97.9248/97.8399 互不相同），
+//     再留"贴顶 N 天"的披露文案将永不触发 = 看着像功能的死代码。
+// 对应断言已迁至 `risk-honest-gray-and-daily.test.tsx`（柱高档数 ≥8 / 恒定行恒 1 档）。
 
 /**
  * WO-CAPACITY-PAGE-100PCT · 「产能推演」页 100% 功能实证 LOOP —— 前端半（效果层断言）。
@@ -32,42 +39,6 @@ const useRisk = (): void => {
 };
 
 describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 前端", () => {
-  it("R2-a：同一档内不同张力必须渲出不同色值（修前红档是平色常量 → 30 点一色）", () => {
-    // 信阳 瓶颈工序真序列 91→98 全在红档内：修前 heatColor 一律 `rgba(224,98,108,.85)` → 30 个点色值完全相同。
-    const reds = [91, 93, 95, 98].map((v) => tensionDotColor(v, 85));
-    expect(new Set(reds).size, `红档内 91/93/95/98 仍渲成同色：${reds.join(" ")}`).toBeGreaterThan(1);
-    // 黄档同理（关注区内也要有深浅）。
-    const ambers = [70, 76, 84].map((v) => tensionDotColor(v, 85));
-    expect(new Set(ambers).size).toBeGreaterThan(1);
-    // 档位口径不变：≥阈值 红 / [阈值−15,阈值) 黄 / 其余 青 / 无实测 灰（诚实·不伪造分档）。
-    expect(tensionDotColor(90, 85)).toContain("224,98,108");
-    expect(tensionDotColor(75, 85)).toContain("232,181,74");
-    expect(tensionDotColor(40, 85)).toContain("67,183,215");
-    expect(tensionDotColor(null, 85)).toContain("138,148,166");
-  });
-
-  it("R2-b：末段贴顶必须据实标注（三因子终点同为 98 = 求解器量表上界·非逐日恶化）", () => {
-    expect(plateauNote([91, 93, 95, 98, 98, 98, 98])).toContain("末段贴顶");
-    expect(plateauNote([91, 93, 95, 98, 98, 98, 98])).toContain("4 天");
-    // 未贴顶 / 只贴 1–2 天 → 不标（避免噪声·不臆造）。
-    expect(plateauNote([60, 62, 64, 66])).toBe("");
-    expect(plateauNote([60, 62, 66, 66])).toBe("");
-    expect(plateauNote(undefined)).toBe("");
-  });
-
-  it("R2-c：屏幕上瓶颈行的 30 个逐日点不得只有一个色值 + 行标带贴顶说明", async () => {
-    useRisk();
-    loginAs("planner");
-    renderApp("/v/risk");
-    const card = await screen.findByTestId("risk-card-信阳");
-    await userEvent.click(card);
-
-    const row = await screen.findByTestId("risk-frow-物流时长");
-    const dots = within(row).getAllByRole("button");
-    const colors = new Set(dots.map((d) => (d as HTMLElement).style.background || (d as HTMLElement).style.backgroundColor));
-    expect(colors.size, `逐日点仍一色（${[...colors].join(" ")}）`).toBeGreaterThan(1);
-    expect(row).toHaveTextContent("末段贴顶");
-  });
 
   it("R3-a：gap_attribution 还在飞的时候，绝不出现「暂不可用」（loading≠失败）", async () => {
     useRisk();
