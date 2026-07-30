@@ -38,9 +38,42 @@ run "debattery:check" node scripts/check-debattery.mjs
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
 run "arg-drop-seam:check" node scripts/check-arg-drop-seam.mjs
 
-if [ "${1:-}" != "--no-test" ]; then
+# TEST 段专用：成功时也必须**逐包点名**。
+#
+# 包数 = 5，不是长期口口相传的"四包"：除 datacore/agentcore/frontend-shell/@platform/contracts 外，
+# @platform/llm-adapters 也有 17 个真测试（在 src/ 内联，不在 test/ 目录，故一直被漏数）。
+#
+# 为何单列（第二层假绿·真实踩过的报告盲区）：run() 成功分支只 `tail -3`，四包串行跑完
+# 只剩最后一包的汇总，看不出前三包到底跑没跑。`pnpm -r test` 确实会因任一包失败而整体非 0，
+# 但"某包 test 脚本被删/改名 → 该包被静默跳过"同样是 RC=0——「看不见它跑过」正是上次假绿的成因。
+# 故此处断言汇总行数 ≥ EXPECT_PKGS：少一包即红，并把实际点名打出来。
+EXPECT_PKGS=5
+run_test() {
+  echo "───── TEST (五包·串行) ─────"
+  local out rc roll cnt
   # datacore 勿并发多 vitest（CLAUDE.md LOOP 纪律）→ workspace-concurrency=1
-  run "TEST (四包·串行)" pnpm -r --workspace-concurrency=1 test
+  out="$(pnpm -r --workspace-concurrency=1 test 2>&1)"; rc=$?   # ★ 先捕获退出码，绝不经管道
+  roll="$(echo "$out" | grep -E "Tests +[0-9]+ (passed|failed)|Tests +no tests")"
+  cnt="$(echo "$roll" | grep -c . )"
+  if [ $rc -ne 0 ]; then
+    echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_" | head -25
+    echo "$out" | tail -15
+    echo "❌ TEST (五包·串行) RC=${rc}"
+    FAILED+=("TEST (五包·串行)")
+    return
+  fi
+  echo "· 逐包点名（每包一行汇总）："
+  echo "$roll" | sed 's/^/  /'
+  if [ "$cnt" -lt "$EXPECT_PKGS" ]; then
+    echo "❌ TEST (五包·串行) 只有 ${cnt}/${EXPECT_PKGS} 包产出测试汇总 —— 有包被静默跳过（test 脚本缺失/改名？），RC=0 不算通过"
+    FAILED+=("TEST 逐包点名 ${cnt}/${EXPECT_PKGS}")
+    return
+  fi
+  echo "✅ TEST (五包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名）"
+}
+
+if [ "${1:-}" != "--no-test" ]; then
+  run_test
 fi
 
 echo
