@@ -362,6 +362,11 @@ export async function fillSlots(
     if (slot.required) missing.push(slot);
     else slots[slot.name] = null;
   }
+  // WO-SCENARIO-INPUT-PHASE0 · R13 留痕：下划线开头的诊断元数据（如 _normalizedSlots）不是意图槽，
+  // 但必须原样透传，让路径 A / 组合路径能写入 validationTrace。
+  for (const [k, v] of Object.entries(context.presetSlots ?? {})) {
+    if (k.startsWith("_")) slots[k] = v;
+  }
   return { slots, missing, outOfDomain };
 }
 

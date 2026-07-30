@@ -413,7 +413,7 @@ export const CrossValidateResponseSchema = z.object({
 export type CrossValidateResponse = z.infer<typeof CrossValidateResponseSchema>;
 
 export const ValidationTraceSchema = z.object({
-  /** 触发钩子：用到的本体切片键（非空即代表"涉及本体切片"，前端据此强制展示）。 */
+  /** 触发钩子：用到的本体切片键（非空即代表“涉及本体切片”，前端据此强制展示）。 */
   slicesUsed: z.array(z.string()),
   consistency: z.object({
     checks: z.array(ConsistencyCheckSchema),
@@ -423,6 +423,8 @@ export const ValidationTraceSchema = z.object({
     claims: z.array(ClaimVerdictSchema),
     verdict: z.enum(["ALL_CONSISTENT", "PARTIAL", "CONFLICT", "NO_CLAIMS"]),
   }),
+  /** R13 · 槽位归一化痕迹：如天/月等原始输入被归一化为周后的值（诊断与 seam-gate 用）。 */
+  normalizedSlots: z.record(z.string(), z.unknown()).optional(),
   generatedAt: IsoTime,
 });
 export type ValidationTrace = z.infer<typeof ValidationTraceSchema>;

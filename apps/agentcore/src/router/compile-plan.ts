@@ -109,7 +109,8 @@ export function compileSolverPlan(query: string, navSlice: NavigationSlice, slot
       };
     }
     // 静态入参再补：非必填但 slots 有值的也带上（不影响可满足性）。
-    for (const [k, v] of Object.entries(slots)) if (v != null && !(k in args)) args[k] = v;
+    // WO-SCENARIO-INPUT-PHASE0：下划线开头键是路由/诊断元数据（如 _normalizedSlots），不许进入 solver args。
+    for (const [k, v] of Object.entries(slots)) if (v != null && !(k in args) && !k.startsWith("_")) args[k] = v;
     const step: ComposeStep = {
       stepId: `s${selected.length + 1}`,
       solverKey: c.key,
@@ -154,6 +155,10 @@ export function compileSolverPlan(query: string, navSlice: NavigationSlice, slot
     planId: `compose_${candidates.map((c) => c.key).join("-")}`,
     steps: selected.map((s) => s.step),
     synthesizeBlocks: navSlice.primarySolver === "decision_play" ? ["根因", "方案"] : ["根因", "台账"],
+    // R13 · 槽位归一化留痕（如 _normalizedSlots）—— 不进入 solver args，但随 plan 透出给 executePlan 写 validationTrace。
+    ...(typeof slots._normalizedSlots === "object" && slots._normalizedSlots !== null
+      ? { normalizedSlots: slots._normalizedSlots as Record<string, unknown> }
+      : {}),
   };
   return { ok: true, plan };
 }

@@ -66,7 +66,8 @@ export interface WorkflowRunInput {
 
 export type WorkflowResult =
   | { status: "COMPLETED"; answer: Answer; stepOutputs: Record<string, unknown> }
-  | { status: "FAILED"; error: { code: string; message: string; stepId?: string }; stepOutputs: Record<string, unknown> };
+  | { status: "FAILED"; error: { code: string; message: string; stepId?: string }; stepOutputs: Record<string, unknown> }
+  | { status: "CANCELLED"; reason: string; stepOutputs: Record<string, unknown> };
 
 interface StepAudit {
   toolCallId: string;
@@ -98,10 +99,17 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
     error: { code, message, stepId },
     stepOutputs,
   });
+  const cancelled = (reason: string): WorkflowResult => ({ status: "CANCELLED", reason, stepOutputs });
 
   for (const step of input.steps) {
     const started = Date.now();
     await deps.emit("step.started", { stepId: step.id, type: step.type });
+
+    // WO-SCENARIO-INPUT-PHASE0：每步前检查取消信号，避免已取消任务继续烧预算。
+    if (input.nesting.isCancelled?.()) {
+      await deps.emit("step.completed", { stepId: step.id, type: step.type, outcome: "CANCELLED", durationMs: 0 });
+      return cancelled("cancelled by upstream signal");
+    }
 
     let resolvedParams: Record<string, unknown>;
     try {

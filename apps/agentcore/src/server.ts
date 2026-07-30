@@ -18,6 +18,7 @@ import {
   DecisionTraceSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
+  LaunchScenarioBodySchema,
   OperationClassifyRequestSchema,
   IntentClassifyPreviewRequestSchema,
   classifyOperation,
@@ -53,6 +54,7 @@ import { SIM_COMPOSE_SCENARIOS, buildComposeNarrative, classifyCapacityQuestion,
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
+import { parseCapacityFeasibilityVariant } from "./agent/sim-planner.js";
 import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
@@ -1151,6 +1153,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       nesting: { callChain: [], budget }, // top-level run not counted toward nesting depth
       emit: (e, p) => deps.events.emit(runId, e, p).then(() => undefined),
     });
+    if (result.status === "CANCELLED") {
+      await deps.events.emit(runId, "task.cancelled", { reason: result.reason });
+      return reply.status(200).send({ runId, status: "CANCELLED", reason: result.reason, stepOutputs: result.stepOutputs });
+    }
     if (result.status === "FAILED") {
       await deps.events.emit(runId, "task.failed", result.error);
       return reply.status(200).send({ runId, status: "FAILED", error: result.error, stepOutputs: result.stepOutputs });
@@ -2163,21 +2169,35 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!viewAllowed(enabled, sc.targetView)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
     if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
+    // WO-SCENARIO-INPUT-PHASE0：用户可覆盖自由文本 query；缺省仍用卡 triggerQuestion。
+    const launchBody = LaunchScenarioBodySchema.parse(req.body ?? {});
+    const userQuery = launchBody.query?.trim() || sc.triggerQuestion;
+    // 产能可行性变体（如 "1天交付"）从用户 query 确定性解析，更新 presetSlots 让 path-A 真拿到归一化周数。
+    let slotPresets = { ...sc.presetContext.slotPresets };
+    if (userQuery !== sc.triggerQuestion) {
+      const variant = parseCapacityFeasibilityVariant(userQuery);
+      if (variant.modelId) slotPresets.model = variant.modelId;
+      if (variant.demandDelta !== undefined) slotPresets.demandDelta = variant.demandDelta;
+      if (variant.weeks !== undefined) slotPresets.weeks = variant.weeks;
+      if (variant.baseId) slotPresets.base = variant.baseId;
+      // R13 留痕：把天/周/月归一化结果带进去，让路径 A 答案的 validationTrace 可校验。
+      if (variant.normalizedSlots) slotPresets._normalizedSlots = variant.normalizedSlots;
+    }
     const body = SubmitQueryBodySchema.parse({
       packageId: pkg.id,
-      query: sc.triggerQuestion,
+      query: userQuery,
       context: {
         view: sc.presetContext.targetView,
         selectedObjects: sc.presetContext.selectedObjects,
         filters: {},
-        presetSlots: sc.presetContext.slotPresets,
+        presetSlots: slotPresets,
         // §2.4 确定性绑定：卡声明的意图键随上下文进编排器 → GOVERNED 卡直接绑定意图（跳过 classify）。
         scenarioIntentKey: sc.intentKey,
         scenarioKey: sc.scenarioKey,
       },
     });
     const result = await deps.orchestrator.submitQuery(a, body);
-    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: sc.scenarioKey });
+    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: sc.scenarioKey, query: userQuery });
   });
 
   // ---- PRD-scenario-ontogenesis P1：卡发育闭环（grow=亲手把 triggerQuestion 经 QOS 跑通验证→留痕→定 maturity）----

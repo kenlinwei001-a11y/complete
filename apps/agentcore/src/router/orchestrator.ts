@@ -1381,13 +1381,34 @@ export class Orchestrator {
       this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "FAILED" });
       return;
     }
+    if (result.status === "CANCELLED") {
+      await this.deps.repos.tasks.patch(taskId, {
+        status: "CANCELLED",
+        resolvedRefs: dedupeRefs(resolvedRefs),
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: result.reason });
+      this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "CANCELLED" });
+      return;
+    }
 
     // WO-DECISION-KERNEL-WIRE（闭"CEO 深问止步方案·不成决策"脑裂·本体 §3 决策链）：
     // CEO 决策类深问（intent=ceo_decision·由 decision_play/signal 路由映射）出**真方案**后，若问句表达采纳/落地意图
     // → 经 L2 内核 OBO 落一等 Decision(PROPOSED·chosenOptionIds 默认取真推演 recommendedPlan.optionIds)；「立即落地」
     // 意图再 commit → COMMITTED + 派 ActionDraft(S2 DRAFT·审批门不绕)。引擎不改（decision_play 已在上方 workflow 跑完·
     // 此处只据真推演成决策）。透出 decisionId/status/actionDraftIds：SSE(decision.created/committed·已注册) + 答案块。
-    const answer = await this.maybeMakeDecision(taskId, auth, intent, slots, result.answer, result.stepOutputs);
+    // WO-SCENARIO-INPUT-PHASE0 · R13 留痕：path-A 工作流也要把槽位归一化（如天→周）写回答案 validationTrace。
+    let answer = await this.maybeMakeDecision(taskId, auth, intent, slots, result.answer, result.stepOutputs);
+    const normalizedSlots = slots._normalizedSlots as Record<string, unknown> | undefined;
+    if (normalizedSlots) {
+      const baseTrace = answer.validationTrace ?? {
+        slicesUsed: [],
+        consistency: { checks: [], verdict: "ALL_PASS" as const },
+        crossValidation: { claims: [], verdict: "NO_CLAIMS" as const },
+        generatedAt: new Date().toISOString(),
+      };
+      answer = { ...answer, validationTrace: { ...baseTrace, normalizedSlots } };
+    }
 
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
@@ -2075,6 +2096,15 @@ export class Orchestrator {
     });
 
     // 收各角色答（invoke_agent 步 stepOutputs[dispatch_i].data.answer）→ synthesize。
+    if (result.status === "CANCELLED") {
+      await this.deps.repos.tasks.patch(taskId, {
+        status: "CANCELLED",
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: result.reason });
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "CANCELLED" });
+      return;
+    }
     const outputs = result.stepOutputs;
     const roleAnswers: RoleAnswerInput[] = plan.dispatches.map((d, i) => {
       const out = outputs[`dispatch_${i}`] as { data?: { answer?: Answer } } | null | undefined;

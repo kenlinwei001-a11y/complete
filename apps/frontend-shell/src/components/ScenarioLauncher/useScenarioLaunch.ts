@@ -50,11 +50,11 @@ export function useQuickLaunch(): (input: {
   };
 }
 
-export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
+export function useScenarioLaunch(): (card: ScenarioCardVM, userQuery?: string) => Promise<void> {
   const quickLaunch = useQuickLaunch();
-  return async (card: ScenarioCardVM) =>
+  return async (card: ScenarioCardVM, userQuery?: string) =>
     quickLaunch({
-      query: card.triggerQuestion,
+      query: userQuery?.trim() || card.triggerQuestion,
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,
       slotPresets: card.presetContext.slotPresets,

@@ -60,7 +60,16 @@ function cmdWhoami() {
   console.log(s ? `${C.bold(s.who ?? "?")} ${C.dim(s.at ?? "")}` : "未登录");
 }
 
-async function cmdScenarios() {
+async function cmdScenarios(args = []) {
+  const [sub, key, ...rest] = args;
+  if (sub === "launch") {
+    if (!key) { console.error("用法: scenarios launch <sNo> [--query '<自定义问句>']"); process.exit(1); }
+    const query = argVal(rest, "--query");
+    const body = query ? JSON.stringify({ query }) : "{}";
+    const r = await http(`${AC}/b/v1/scenarios/${encodeURIComponent(key)}/launch`, { method: "POST", headers: authHeader(), body });
+    console.log(C.bold(`启动场景 ${r.scenario ?? key}`), C.dim(`taskId=${r.taskId} query=${r.query ?? ""}`));
+    return;
+  }
   const r = await http(`${AC}/b/v1/scenarios`, { headers: authHeader() });
   const items = r.items ?? [];
   console.log(C.bold(`场景目录（${r.total ?? items.length}）`));

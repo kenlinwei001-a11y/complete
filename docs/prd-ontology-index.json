@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-28",
+  "generatedAt": "2026-07-30",
   "ontology": {
     "invariants": [
       "R1",
@@ -128,6 +128,27 @@
         "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-WO-LIVE-DISPOSITION.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/base-outlook.ts",
+        "apps/datacore/src/solvers/disposition.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/test/live-disposition-seam.test.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/solvers/disposition.ts"
+      ]
     },
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": true,
@@ -1938,6 +1959,31 @@
       "PRD-IND-plan-generate-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
+    "apps/datacore/src/solvers/base-outlook.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/datacore/src/solvers/disposition.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/datacore/test/live-disposition-seam.test.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/frontend-shell/src/locales/zh.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-inference-line.md"
+    ],
     "apps/datacore/src/rules/constraints.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md"
     ],
@@ -2073,22 +2119,9 @@
     "scripts/check-genuine-sim.mjs": [
       "PRD-capacity-feasibility-demanddelta-fix.md"
     ],
-    "apps/datacore/src/solvers/risk.ts": [
-      "PRD-capacity-live-cockpit.md",
-      "PRD-order-project-sim-1to1.md",
-      "PRD-plan-audit-1to1.md"
-    ],
     "apps/frontend-shell/src/api/endpoints.ts": [
       "PRD-capacity-live-cockpit.md",
       "PRD-global-sim-live-upgrade.md"
-    ],
-    "apps/frontend-shell/src/locales/zh.ts": [
-      "PRD-capacity-live-cockpit.md",
-      "PRD-global-sim-live-upgrade.md"
-    ],
-    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
-      "PRD-capacity-live-cockpit.md",
-      "PRD-inference-line.md"
     ],
     "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": [
       "PRD-capacity-live-cockpit.md"

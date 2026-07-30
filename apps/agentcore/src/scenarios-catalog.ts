@@ -58,18 +58,18 @@ const M = (id: string, label: string) => ({ objectType: "Model", objectId: id, l
 const B = (id: string, label: string) => ({ objectType: "Base", objectId: id, label });
 
 export const SCENARIO_CATALOG: ScenarioCard[] = [
-  card("S01", "订单可承接性评审", "project", "capacity_feasibility", "4680-NCM 加 20% 六周能不能接？", "capacity_forecast", ["C01", "C02", "C03", "C09"], "COMPUTE", "解读产能可承接结论的口径", [M("4680-NCM", "4680-NCM")], { modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 }),
-  card("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "affected_orders", ["C05"], "COMPUTE", "解读交期风险扫描结果", [B("changzhou", "常州")], { baseId: "changzhou" }),
-  card("S03", "风险越线根因", "risk", "risk_root_cause", "常州物料齐套为什么这天越线？", "risk_timeline", ["C06", "C11"], "COMPUTE", "解释风险越线的根因与时序", [B("changzhou", "常州")], { baseId: "changzhou", factor: "物料齐套" }),
+  card("S01", "订单可承接性评审", "project", "capacity_feasibility", "4680-NCM 加 20% 六周能不能接？", "capacity_forecast", ["C01", "C02", "C03", "C09"], "COMPUTE", "解读产能可承接结论的口径", [M("4680-NCM", "4680-NCM")], { model: "4680-NCM", demandDelta: 0.2, weeks: 6 }),
+  card("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "affected_orders", ["C05"], "COMPUTE", "解读交期风险扫描结果", [B("changzhou", "常州")], { base: "changzhou" }),
+  card("S03", "风险越线根因", "risk", "risk_root_cause", "常州物料齐套为什么这天越线？", "risk_timeline", ["C06", "C11"], "COMPUTE", "解释风险越线的根因与时序", [B("changzhou", "常州")], { base: "changzhou" }),
   card("S04", "月度规划体检", "audit", "plan_audit_q", "现金垫 45 亿过得了体检吗？", "plan_audit", ["C15", "C16", "C18", "C21", "C23"], "COMPUTE", "解读规划体检结论", [], { cashCushion: 4_500_000_000 }),
   card("S05", "经营方案比选", "generate", "plan_recommend", "推荐哪个经营方案？", "plan_generate", ["C08", "C15", "C18"], "COMPUTE", "解读三方案比选", [], {}),
-  card("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "mitigation_select", ["C08", "C10"], "ACTION_DRAFT", "协助采纳风险处置方案", [B("changzhou", "常州")], { baseName: "常州", factor: "物料齐套", solutionName: "三班制" }),
+  card("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "mitigation_select", ["C08", "C10"], "ACTION_DRAFT", "协助采纳风险处置方案", [B("changzhou", "常州")], { base: "常州", factor: "物料齐套", solutionName: "三班制" }),
   card("S07", "产线认证排期", "project", "cert_scheduling", "待认证的型号怎么排认证顺序？", "cert_schedule", ["C04", "C26"], "COMPUTE", "解读认证排期建议", [], { horizonWeeks: 12 }),
   card("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "kit_readiness", ["C06", "C16"], "COMPUTE", "解读齐套分析", [], { fromDay: 1, toDay: 14 }),
   card("S09", "长协执行与补缺", "dash", "lta_gap_q", "7 月正极长协覆盖够吗？缺口怎么补？", "lta_gap", ["C16", "C27"], "COMPUTE", "解读长协覆盖与补缺", [], { material: "三元正极", month: "2026-07" }),
   card("S10", "库存水位优化", "dash", "inventory_opt", "哪些物料超储/欠储？能释放多少资金？", "inventory_optimize", ["C16", "C28"], "COMPUTE", "解读库存优化清单", [], {}),
   card("S11", "换型排序优化", "project", "changeover_opt", "下周订单怎么排能少换型？", "changeover_sequence", ["C22", "C29"], "COMPUTE", "解读换型排序建议", [], { lineId: "常州·动力线-A", week: 1 }),
-  card("S12", "良率波动诊断", "risk", "yield_diag", "涂布良率为什么掉了？", "yield_diagnosis", ["C30"], "COMPUTE", "解读良率波动诊断", [B("changzhou", "常州")], { processKey: "涂布", baseName: "常州" }),
+  card("S12", "良率波动诊断", "risk", "yield_diag", "涂布良率为什么掉了？", "yield_diagnosis", ["C30"], "COMPUTE", "解读良率波动诊断", [B("changzhou", "常州")], { processKey: "涂布", base: "常州" }),
   card("S13", "检修窗口错峰", "risk", "maint_stagger", "检修计划和交付高峰撞了怎么调？", "maintenance_stagger", ["C11"], "COMPUTE", "解读检修错峰建议", [], {}),
   card("S14", "外协决策", "generate", "outsourcing_q", "缺口 8 万套自产加班还是外协？", "outsourcing_split", ["C08", "C31"], "COMPUTE", "解读外协分配方案", [], { gap: 80000, weeks: 6 }),
   card("S15", "接单毛利评审", "dash", "quote_margin_q", "电网公司 F 这单毛利过线吗？", "quote_margin", ["C15", "C24"], "COMPUTE", "解读接单毛利评审", [], { custName: "电网公司F" }),

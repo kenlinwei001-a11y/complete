@@ -83,6 +83,14 @@ export class BudgetTracker {
   }
 
   /**
+   * WO-SCENARIO-INPUT-PHASE0：嵌套 workflow-as-tool 消耗共享预算（按 EXPENSIVE 计，
+   * 与 solver 调用共享上界，防止子 workflow 无限烧预算）。
+   */
+  tryConsumeWorkflow(): { ok: true } | { ok: false; reason: string } {
+    return this.tryConsume("EXPENSIVE");
+  }
+
+  /**
    * WO-LOOP-CONTROL-P2 · per-tool 调用上界消耗（PRD §3.3）：某工具（按名）累计调用达 perToolCallCap → 置 exhausted
    *（复用既有 exhausted 降级路径·loop 下一轮迭代前 `budget.exhausted` 守卫优雅降级·零新降级路径）。缺省不设 cap →
    * 直接放行（现行为字节兼容）。确定性 R6（纯计数·无 Date.now/随机）。补 P1 loop-hash「同参重复」之外的「异参刷屏」。
