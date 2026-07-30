@@ -186,6 +186,29 @@ if (!creditBlock) {
 if (!serviceSrc.includes("base_capacity_outlook 需 baseId"))
   fails.push('断言② 引擎半：base_capacity_outlook 缺「缺 baseId 即 throw」的诚实报错（诚实典范丢失）');
 
+/** 取 service.ts 里某私有方法块（签名起 → 下一个 `\n  private ` 止）。 */
+function methodBlock(src, sig) {
+  const start = src.indexOf(sig);
+  if (start < 0) return "";
+  const rest = src.slice(start + sig.length);
+  const next = rest.indexOf("\n  private ");
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
+// 症②续 base_capacity_outlook（base 族最后一个漏归一的求解器·本门此前对"是否归一"零断言 → 门绿而 bug 活）：
+//   base 标识归一必经单一出处 normalizeBaseRef；回潮成 `str(args.baseId)` 裸比 → 前端地图选中基地写入的真实对象 id
+//   `obj_base_<id>` 硬 404 `Base obj_base_changzhou`（同页同选中对象：已归一的 bottleneck_matrix 却通·一通一炸）。
+const outlookBlock = methodBlock(serviceSrc, "private async baseCapacityOutlook(");
+if (!outlookBlock) {
+  fails.push("断言②·base族 引擎半：service.ts 缺 baseCapacityOutlook 方法块（哨兵失锚·改签名须同步本门）");
+} else if (!/normalizeBaseRef\(\s*args\.baseId\s*\)/.test(outlookBlock)) {
+  fails.push(
+    '断言②·base族 引擎半：base_capacity_outlook 未经 normalizeBaseRef 归一 baseId（症②续）——回潮成 `str(args.baseId)` 裸比' +
+      ' → 地图选中基地传的真实对象 id `obj_base_<id>` 硬 404 `Base obj_base_changzhou`，而同页 bottleneck_matrix（已归一）却通。' +
+      '修：apps/datacore/src/solvers/service.ts baseCapacityOutlook 改用 types.normalizeBaseRef（单一出处·勿另写一套归一）。',
+  );
+}
+
 // ── 断言②·base 族引擎半（静态哨兵·WO-BASE-ID-FIDELITY 三症·删则红）──
 // 症① capacity_forecast：给 base → 收窄该基地 scope:"BASE"；无 base → scope:"ALL" 诚实标（无静默全网冒充某基地）。
 if (!/scope:\s*"BASE"/.test(capacitySrc) || !/scope:\s*"ALL"/.test(capacitySrc))
@@ -213,5 +236,5 @@ console.log(
   `\n✓ arg-drop-seam:check 通过：${Object.keys(ROUTER_EMITS).length} 个 CEO intent · ${emitCount} 条路由解析实体` +
     ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。` +
     `\n  base 族（WO-BASE-ID-FIDELITY）：${Object.keys(PROJECT_BASE_EMITS).length} 个吃 base 维 project intent · ${baseEmitCount} 条 base 声明⊕透传齐（${okBase} 达标）；` +
-    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
+    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 与 service.baseCapacityOutlook 均经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
 );

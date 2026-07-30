@@ -7,7 +7,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
-import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -2608,10 +2608,14 @@ export class SolverService {
    * 委派纯算法 runBaseCapacityOutlook。args{baseId（id 或中文名归一到 baseId）, horizon?（默认全 30/60/90）}。
    */
   private async baseCapacityOutlook(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const baseArg = str(args.baseId);
+    // WO-BASE-ID-FIDELITY：base 标识归一走**单一出处** `types.normalizeBaseRef`（同 risk.resolveBaseId / capacity 基地过滤·
+    // 勿另起一套）——认 `obj_base_<id>`（synthetic 图节点 id·synthetic/service.ts `obj_${type}_${pk}`；前端地图/对话坞选中
+    // 基地传的就是它）/ `<id>`（changzhou）/ 中文名（常州）/ object ref。此前只 `str(args.baseId)` 裸比 → obj_base_<id> 硬 404
+    // （同页同选中对象：base_capacity_outlook 炸而已归一的 bottleneck_matrix 通）。
+    const baseArg = normalizeBaseRef(args.baseId);
     if (!baseArg) throw validationError("base_capacity_outlook 需 baseId（基地 ID 或名称）");
     const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
-    // 归一：接受基地 id（hefei）或中文名（合肥），内部收敛到 baseId。
+    // 归一后按 baseId|name 匹配（三形态收敛到同一 Base）；未知基地仍诚实 404（不静默兜首基地）。
     const baseObj = bases.find((b) => str(b.baseId) === baseArg || str(b.name) === baseArg);
     if (!baseObj) throw notFound(`Base ${baseArg}`);
     const baseId = str(baseObj.baseId);
