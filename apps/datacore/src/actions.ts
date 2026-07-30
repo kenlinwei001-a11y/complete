@@ -5,6 +5,13 @@ import type { RulesService } from "./rules.js";
 import { newId } from "./ids.js";
 import { AppError, notFound, validationError } from "./errors.js";
 import { hashString } from "./prng.js";
+import { Metrics, ActionMetrics, type ActionSubmitOutcome } from "./metrics.js";
+import {
+  actionTypeVersionOf,
+  actionWriteTargets,
+  type ActionEffectSpec,
+  type ActionWriteTarget,
+} from "@platform/contracts";
 
 /** Write-back adapter interface (S2): this period ships the Mock implementation. */
 export interface ActionExecutor {
@@ -157,6 +164,108 @@ export class GlobalSimPlanExecutor implements ActionExecutor {
   }
 }
 
+// ---------------------------------------------------------------------------
+// ActionType 回写声明 · 平台内置执行器登记
+//
+// 范围与诚实边界（务必照读，勿当作"全平台回写目录"）：
+//  · 这里**只**登记回写实现与本声明同在 `apps/datacore/src/actions.ts` 的执行器
+//    （= `GlobalSimPlanExecutor`），因此声明可被 SEAM 测试逐属性对拍——执行器改了、声明没跟，测试变红。
+//  · `app.ts domainExecutor` 其余分支（AOP情景拍板 / 校准参数变更 / 定稿月度计划版本 / 计划版本变更 /
+//    对象数据变更 / 流水线发布物化）的回写**没有**登记在此：它们要么写的不是 ObjectInstance
+//    （solver params、S&OP 版本记录），要么目标类型/属性由 payload 或工作流定义在运行期决定
+//    （`对象数据变更` 的 objectType/patch、`流水线发布物化` 的 node.modeling.typeKey），
+//    静态声明表达不了。**宁可留空（coverage=NONE）也不编造**。
+//  · 租户经 `POST /a/v1/action-types` 注册的 `effects` 优先级高于本表（本表只是缺省兜底）。
+// ---------------------------------------------------------------------------
+export const BUILTIN_ACTION_EFFECTS: Record<string, ActionEffectSpec> = {
+  plan_change: {
+    coverage: "PARTIAL",
+    writes: [
+      {
+        objectType: "WorkOrder",
+        op: "UPSERT",
+        properties: [
+          "woId", "moNo", "modelId", "baseId", "qtyPlanned", "qtyActual",
+          "startDate", "endDate", "status", "_provenance", "_adoptedOrderId", "_adoptedByAction",
+        ],
+        selector: { kind: "BY_PAYLOAD", payloadPath: "served[].orderId" },
+        cardinality: "MANY",
+        condition: { payloadPath: "source", equals: "global-sim" },
+        note: "采纳全局联合推演方案 → 每个 served 订单物化一张在产工单（承诺占用·预扣净产能）",
+      },
+      {
+        objectType: "Order",
+        op: "UPDATE",
+        properties: ["status", "_committedByAction", "_provenance"],
+        selector: { kind: "BY_PAYLOAD", payloadPath: "served[].orderId" },
+        cardinality: "MANY",
+        condition: { payloadPath: "source", equals: "global-sim" },
+        note: "采纳即承诺：OPEN → 已排产，移出自由决策集（仅当该订单当前为 OPEN）",
+      },
+      {
+        objectType: "InterBaseTransfer",
+        op: "UPSERT",
+        properties: [
+          "transferId", "fromBase", "toBase", "model", "qty", "transitDays", "status",
+          "dispatchDay", "dispatchDate", "etaDay", "etaDate", "reason",
+          "_provenance", "_adoptedOrderId", "_adoptedByAction",
+        ],
+        selector: { kind: "BY_PAYLOAD", payloadPath: "served[].orderId" },
+        cardinality: "MANY",
+        condition: { payloadPath: "source", equals: "global-sim" },
+        note: "服务基地 ≠ 订单 home 基地时才生成跨基地调运 leg（同基地不产生此条回写）",
+      },
+    ],
+    undeclared: [
+      "执行末尾 runDerivations() 会重算全租户派生属性（etaDay 等），二阶写入的对象/属性集由 DerivationSpec 决定，静态声明枚举不了",
+      "非 global-sim 的 plan_change 在 app.ts domainExecutor 里没有分支 → 落 MockActionExecutor，审批通过后实际零回写（上列三条 writes 均带 source==='global-sim' 条件，已把这一情况标出）",
+    ],
+  },
+};
+
+/**
+ * 解析某 ActionType 的有效回写声明：**注册在类型上的 `effects` 优先**，缺省回落平台内置登记表。
+ * 纯函数（无 IO），供服务层与影响分析共用一条规则。
+ */
+export function resolveActionEffects(
+  actionTypeKey: string,
+  type?: { effects?: ActionEffectSpec } | null,
+): ActionEffectSpec | undefined {
+  return type?.effects ?? BUILTIN_ACTION_EFFECTS[actionTypeKey];
+}
+
+/** 影响分析结果：批准执行这个 Action 会动到什么。 */
+export interface ActionImpact {
+  actionTypeKey: string;
+  /** 生效版本（缺省 = ACTION_TYPE_DEFAULT_VERSION，见 contracts 注释）。 */
+  version: number;
+  coverage: "COMPLETE" | "PARTIAL" | "NONE";
+  writes: ActionWriteTarget[];
+  /** 声明表达不了的回写（诚实交底，供人读）。 */
+  undeclared: string[];
+}
+
+/** 纯函数：把 ActionType（可能没注册）投影成影响分析结论。确定性排序（R6）。 */
+export function describeActionImpact(actionTypeKey: string, type?: ActionTypeRecord | null): ActionImpact {
+  const effects = resolveActionEffects(actionTypeKey, type);
+  return {
+    actionTypeKey,
+    version: actionTypeVersionOf(type),
+    coverage: effects?.coverage ?? "NONE",
+    writes: actionWriteTargets(effects ? { effects } : undefined),
+    undeclared: effects?.undeclared ?? [],
+  };
+}
+
+/**
+ * ActionDraft + 本单 additive 字段的**局部结构视图**。
+ * 缘由：datacore 运行期用的是 `domain.ts` 手写的 `ActionDraft` 接口（与 contracts 的
+ * `ActionDraftSchema` 早已各写一份，例如 `fingerprint` 只在 domain 侧有）。本单范围边界不含
+ * `domain.ts`，故在此以交集类型加宽；值本身照常经仓储落库（memory=structuredClone、
+ * pg=`JSON.stringify(item)` 存 doc 列，两路都原样保留该字段，无需迁移/不触 R9）。
+ */
+type VersionedActionDraft = ActionDraft & { actionTypeVersion?: number };
+
 const invalidStep = (msg: string) => new AppError("INVALID_STEP", msg, 409);
 const noEligibleApprover = (role: string) =>
   new AppError("NO_ELIGIBLE_APPROVER", `审批链角色 ${role} 没有可用审批人（发起人不得自批）`, 422);
@@ -222,18 +331,45 @@ function validateParams(schema: Record<string, unknown>, payload: Record<string,
 export class ActionService {
   private executor: ActionExecutor = new MockActionExecutor();
   private retryDelaysMs = [50, 100, 200];
+  /**
+   * Action 三段埋点注册表。构造点（`app.ts`）当前不传 → 退化为服务自有注册表：计数照记、
+   * 可经 `services.actions.metrics` 读到，但**尚未汇入 `/metrics` 输出**（暴露需在 app.ts
+   * 构造处多传一个 metrics 实参，超出本单范围边界，已在交付报告里交底）。
+   */
+  readonly metrics: Metrics;
+  private am: ActionMetrics;
 
   constructor(
     private repos: Repos,
     private rules: RulesService,
     private outbox: OutboxService,
     private notifications?: import("./notifications.js").NotificationService,
-  ) {}
+    metrics?: Metrics,
+  ) {
+    this.metrics = metrics ?? new Metrics();
+    this.am = new ActionMetrics(this.metrics);
+  }
 
   /** Test hook / deployment hook: swap the write-back adapter. */
   setExecutor(executor: ActionExecutor, retryDelaysMs?: number[]): void {
     this.executor = executor;
     if (retryDelaysMs) this.retryDelaysMs = retryDelaysMs;
+  }
+
+  /** 部署/测试钩子：把 Action 埋点并入外部（app 级）注册表。 */
+  setMetrics(metrics: Metrics): void {
+    (this as { metrics: Metrics }).metrics = metrics;
+    this.am = new ActionMetrics(metrics);
+  }
+
+  /**
+   * 影响分析：批准执行这个 ActionType 会写哪个 ObjectType 的哪些 property。
+   * 读注册在类型上的 `effects`，缺省回落 `BUILTIN_ACTION_EFFECTS`；未声明诚实返回 coverage=NONE
+   * （**不知道 ≠ 无副作用**）。
+   */
+  async describeImpact(ctx: AuthCtx, actionTypeKey: string): Promise<ActionImpact> {
+    const type = await this.getType(ctx.tenantId, actionTypeKey);
+    return describeActionImpact(actionTypeKey, type);
   }
 
   async registerType(ctx: AuthCtx, type: Omit<ActionTypeRecord, "id" | "tenantId">): Promise<ActionTypeRecord> {
@@ -290,27 +426,60 @@ export class ActionService {
   /** C10 submit validation: zod/schema params + rule pre-check + non-empty chain + self-approval skip. */
   async submit(ctx: AuthCtx, draftId: string): Promise<ActionDraft> {
     const draft = await this.get(ctx, draftId);
-    if (draft.status !== "DRAFT") throw invalidStep(`draft is ${draft.status}, expected DRAFT`);
+    // 埋点：失败分型逐个 throw 点显式登记（不靠猜 error code），未预期异常兜底 "unexpected"。
+    let outcome: ActionSubmitOutcome = "unexpected";
+    const typeKey = draft.actionTypeKey;
+    try {
+      const result = await this.submitInner(ctx, draft, (o) => { outcome = o; });
+      outcome = "success";
+      return result;
+    } finally {
+      this.am.submit(typeKey, outcome);
+    }
+  }
+
+  private async submitInner(
+    ctx: AuthCtx,
+    draft: ActionDraft,
+    fail: (outcome: ActionSubmitOutcome) => void,
+  ): Promise<ActionDraft> {
+    if (draft.status !== "DRAFT") {
+      fail("invalid_state");
+      throw invalidStep(`draft is ${draft.status}, expected DRAFT`);
+    }
     const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
     // WO-GSIM-5-ACTION：`plan_change` 键被 S&OP「计划变更」(required versionId) 与全局联合推演采纳共享；
     // 后者由 source:"global-sim" 判别，校验其自有 payload（source+objective），不套 S&OP paramsSchema。
     const isGlobalSimPlan = draft.actionTypeKey === "plan_change" && draft.payload?.source === "global-sim";
     if (isGlobalSimPlan) {
-      if (!draft.payload.objective) throw validationError("payload.objective is required");
+      if (!draft.payload.objective) {
+        fail("validation_failed");
+        throw validationError("payload.objective is required");
+      }
     } else if (type) {
-      validateParams(type.paramsSchema, draft.payload);
+      try {
+        validateParams(type.paramsSchema, draft.payload);
+      } catch (err) {
+        fail("validation_failed");
+        throw err;
+      }
     }
     if (type && !isGlobalSimPlan) {
       if (type.checkRules.length > 0) {
         const verdicts = await this.rules.evaluate(ctx, type.checkRules, draft.payload);
         const blocked = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
         if (blocked.length > 0) {
+          // 规则引擎 BLOCK ≠ payload 写错：分开计数，"失败率"才指导得了行动。
+          fail("rule_blocked");
           throw validationError(`规则预检不通过: ${blocked.map((b) => b.explanation).join("; ")}`);
         }
       }
     }
     const chain = type?.approvalChain ?? [{ role: "admin" }];
-    if (chain.length === 0) throw validationError("approval chain is empty");
+    if (chain.length === 0) {
+      fail("validation_failed");
+      throw validationError("approval chain is empty");
+    }
     if (type) {
       // Self-approval guard: every step role must have an approver ≠ the originator
       // (the step auto-skips to another user with the role; none → submit fails).
@@ -329,10 +498,17 @@ export class ActionService {
         );
         if (eligible.length === 0) {
           const selfEligible = selfOk && hasStepRole(originRoles, step.role);
-          if (!selfEligible) throw noEligibleApprover(step.role);
+          if (!selfEligible) {
+            fail("no_approver");
+            throw noEligibleApprover(step.role);
+          }
         }
       }
     }
+    // ActionType 演进：提交即快照「本 payload 是按哪一版 paramsSchema 校验通过的」。
+    // payload 提交后不可变，所以这一刻的版本就是这条历史记录的永久解释坐标（R13）。
+    // 类型未注册（chain 回落 admin 兜底）→ 不写版本：诚实留空好过记一个凭空的 1。
+    if (type) (draft as VersionedActionDraft).actionTypeVersion = actionTypeVersionOf(type);
     draft.approvalSteps = chain.map((s, i) => ({ seq: i + 1, role: s.role }));
     draft.status = "PENDING_APPROVAL";
     draft.updatedAt = new Date().toISOString();
@@ -386,17 +562,26 @@ export class ActionService {
 
   async approve(ctx: AuthCtx, id: string, comment?: string): Promise<ActionDraft> {
     const draft = await this.get(ctx, id);
-    if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
-    const step = draft.approvalSteps.find((s) => !s.decision);
-    if (!step) throw invalidStep("no pending step");
-    if (!ctx.roles.some((r) => baseRole(r) === step.role || r === step.role)) {
-      throw invalidStep(`当前步骤需要角色 ${step.role}`);
-    }
-    if (ctx.userId === draft.origin.userId) {
-      // SA：发起人自批——按租户策略/类型放行并显式留痕（R13）；否则维持现职责分离阻断。
-      const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
-      if (!selfApproveAllowedFor(ctx.tenantId, type, ctx.roles)) throw invalidStep("发起人不得自批");
-      step.selfApproved = true;
+    // 前置校验段：任何一条不过 = denied（角色不符 / 自批被拦 / 状态机非法）。
+    // 与 rejected（审批人主动拒绝，业务结论）分开计，别把人的决定算进系统失败率。
+    let step: ActionDraft["approvalSteps"][number];
+    try {
+      if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
+      const pending = draft.approvalSteps.find((s) => !s.decision);
+      if (!pending) throw invalidStep("no pending step");
+      if (!ctx.roles.some((r) => baseRole(r) === pending.role || r === pending.role)) {
+        throw invalidStep(`当前步骤需要角色 ${pending.role}`);
+      }
+      if (ctx.userId === draft.origin.userId) {
+        // SA：发起人自批——按租户策略/类型放行并显式留痕（R13）；否则维持现职责分离阻断。
+        const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
+        if (!selfApproveAllowedFor(ctx.tenantId, type, ctx.roles)) throw invalidStep("发起人不得自批");
+        pending.selfApproved = true;
+      }
+      step = pending;
+    } catch (err) {
+      this.am.approval(draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
+      throw err;
     }
     step.decision = "APPROVE";
     step.approverId = ctx.userId;
@@ -404,6 +589,7 @@ export class ActionService {
     step.decidedAt = new Date().toISOString();
     const next = draft.approvalSteps.find((s) => !s.decision);
     if (next) {
+      this.am.approval(draft.actionTypeKey, "step_advanced");
       draft.updatedAt = step.decidedAt;
       await this.repos.actionDrafts.put(draft);
       await this.outbox.emit(ctx.tenantId, "action.pending_approval", {
@@ -421,6 +607,7 @@ export class ActionService {
       });
       return draft;
     }
+    this.am.approval(draft.actionTypeKey, "approved");
     draft.status = "APPROVED";
     draft.updatedAt = step.decidedAt;
     await this.repos.actionDrafts.put(draft);
@@ -439,14 +626,26 @@ export class ActionService {
   }
 
   async reject(ctx: AuthCtx, id: string, comment: string): Promise<ActionDraft> {
-    if (!comment || !comment.trim()) throw validationError("reject comment is required");
-    const draft = await this.get(ctx, id);
-    if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
-    const step = draft.approvalSteps.find((s) => !s.decision);
-    if (!step) throw invalidStep("no pending step");
-    if (!ctx.roles.some((r) => baseRole(r) === step.role || r === step.role)) {
-      throw invalidStep(`当前步骤需要角色 ${step.role}`);
+    if (!comment || !comment.trim()) {
+      // 请求本身不合法，且此刻还没取到草稿 → action_type 只能诚实记 "unknown"（不猜）。
+      this.am.approval("unknown", "invalid_request");
+      throw validationError("reject comment is required");
     }
+    const draft = await this.get(ctx, id);
+    let step: ActionDraft["approvalSteps"][number];
+    try {
+      if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
+      const pending = draft.approvalSteps.find((s) => !s.decision);
+      if (!pending) throw invalidStep("no pending step");
+      if (!ctx.roles.some((r) => baseRole(r) === pending.role || r === pending.role)) {
+        throw invalidStep(`当前步骤需要角色 ${pending.role}`);
+      }
+      step = pending;
+    } catch (err) {
+      this.am.approval(draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
+      throw err;
+    }
+    this.am.approval(draft.actionTypeKey, "rejected");
     step.decision = "REJECT";
     step.approverId = ctx.userId;
     step.comment = comment;
@@ -489,7 +688,11 @@ export class ActionService {
 
   async execute(tenantId: string, draftId: string): Promise<ActionDraft> {
     const draft = await this.repos.actionDrafts.get(tenantId, draftId);
-    if (!draft || draft.status !== "APPROVED") throw invalidStep("draft not in APPROVED state");
+    if (!draft || draft.status !== "APPROVED") {
+      this.am.execute(draft?.actionTypeKey ?? "unknown", "invalid_state");
+      throw invalidStep("draft not in APPROVED state");
+    }
+    const typeKey = draft.actionTypeKey;
     draft.status = "EXECUTING";
     draft.updatedAt = new Date().toISOString();
     await this.repos.actionDrafts.put(draft);
@@ -500,6 +703,8 @@ export class ActionService {
       try {
         const result = await this.executor.execute(draft);
         if (result.ok) {
+          this.am.executeAttempt(typeKey, "success");
+          this.am.execute(typeKey, "success");
           draft.status = "EXECUTED";
           draft.executionResult = { ok: true, targetRef: result.targetRef, attempts };
           draft.updatedAt = new Date().toISOString();
@@ -511,12 +716,16 @@ export class ActionService {
           });
           return draft;
         }
+        // 执行器"有序拒绝"（ok:false）与"抛异常"分开计：前者查业务前提，后者查平台/依赖故障。
+        this.am.executeAttempt(typeKey, "executor_rejected");
         lastError = result.error ?? "executor returned ok=false";
       } catch (err) {
+        this.am.executeAttempt(typeKey, "executor_error");
         lastError = err instanceof Error ? err.message : String(err);
       }
       if (attempts < this.retryDelaysMs.length) await this.sleep(this.retryDelaysMs[attempts - 1] as number);
     }
+    this.am.execute(typeKey, "failed");
     draft.status = "EXECUTION_FAILED";
     draft.executionResult = { ok: false, error: lastError, attempts };
     draft.updatedAt = new Date().toISOString();
