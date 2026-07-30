@@ -16,7 +16,7 @@ import {
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
-import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
@@ -43,10 +43,53 @@ type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
 
 /** 越线带宽（阈值下探关注区）：阈值−15 起为「关注」。参照 HTML 三档口径。 */
 const BAND = 15;
+/**
+ * WO-CAPACITY-PAGE-100PCT ⑦ · 风险卡 → **真实基地对象 id**（`obj_base_<baseId>`·单一出处）。
+ * 一切写进 selectedObjects / 求解器 scopeObjectIds 的基地引用都走这里，杜绝 `base-<中文名>` 这类
+ * 后端查不到的 mock 形态 id（后端 `normalizeBaseRef` 认 `obj_base_<id>` / `<id>` / 中文名，不认 `base-x`）。
+ */
+export function baseObjectId(card: { base: string; baseId?: string }): string {
+  return card.baseId ? `obj_base_${card.baseId}` : card.base;
+}
 /** 电池产量单位（换行业经 ViewConfig.layout.unit 下发·此处域内兜底）。WO-UNIT-NORMALIZE：Order.qty 单位=套。 */
 const UNIT = "套"; // debattery-allow
 /** WO-UNIT-NORMALIZE：万元→亿 单位换算（NOT 业务常数·R14）。营收=Σ qty(套)×priceWan(万元)→ /1e4 = 亿。 */
 const wanToYi = (v: number) => v / 1e4;
+
+/**
+ * WO-CAPACITY-PAGE-100PCT ⑧（R2「30 点一色」的渲染半）：共享 `heatColor` 的**红档/黄档是纯平色**
+ * （`rgba(224,98,108,.85)` 常量），于是一条 91→98 的真序列 30 个点渲成**完全同一个色值**，
+ * 用户看到的就是"一条死杠"，误判为写死。这里在**不改档位口径**的前提下加档内深浅：
+ * 同档内按 值在档内的相对位置 调 alpha（红档 .55→1、黄档 .45→.85），越紧越实。
+ * 只影响本页逐日点阵（不动共享 heatColor·OrderChain 等消费方零回归）。R6 纯函数。
+ */
+export function tensionDotColor(v: number | null | undefined, threshold: number): string {
+  if (v == null) return "rgba(138,148,166,.28)"; // 无实测 → 中性灰（诚实·不伪造分档）
+  if (v >= threshold) {
+    const t = Math.min(1, Math.max(0, (v - threshold) / Math.max(1, 100 - threshold)));
+    return `rgba(224,98,108,${(0.55 + t * 0.45).toFixed(3)})`;
+  }
+  if (v >= threshold - BAND) {
+    const t = Math.min(1, Math.max(0, (v - (threshold - BAND)) / BAND));
+    return `rgba(232,181,74,${(0.45 + t * 0.4).toFixed(3)})`;
+  }
+  return `rgba(67,183,215,${(0.15 + (v / 100) * 0.55).toFixed(3)})`;
+}
+
+/**
+ * WO-CAPACITY-PAGE-100PCT ⑤（R2「三因子终点同为 98」的诚实披露半）：求解器 `tensionSeries` 末段有
+ * `Math.min(params.risk.cap, …)` 封顶（demo cap=98），起点 91/92/84 的三条真序列会**一起削平到同一个 98**
+ * 并连续贴顶多日——数值口径本身是有意的量表上界，但界面此前只画一条平线、不说"这里到顶了"，
+ * 于是用户第三次报"98 是写死的"。这里据实标注**可观测事实**（贴顶值 + 连续天数），不改口径、不臆造。
+ * 少于 3 天的短平顶不标（避免噪声）。R6 纯函数。
+ */
+export function plateauNote(series: number[] | undefined): string {
+  if (!Array.isArray(series) || series.length === 0) return "";
+  const max = Math.max(...series);
+  let run = 0;
+  for (let i = series.length - 1; i >= 0 && series[i] === max; i--) run++;
+  return run >= 3 ? ` · 末段贴顶 ${formatTightness(max)} 连续 ${run} 天（张力量表上界·非逐日恶化）` : "";
+}
 
 /**
  * 三档色（与 heatColor 同阈值口径·用于文字/边框实色）：≥阈值 高危红 · [阈值−15,阈值) 关注黄 · <阈值−15 正常青。
@@ -142,7 +185,10 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       .slice(0, n);
   };
 
-  const maxPeak = cards.length ? Math.max(0, ...cards.map((c) => c.peak)) : 0;
+  // WO-CAPACITY-PAGE-100PCT ⑨：修前「首要风险」= `card.peak === max(peak)`，而 peak 被求解器 cap 封顶（98）
+  // → 7/8 张卡 peak 全等于 98 → **7 张卡同时挂"⚠ 首要风险"**（徽章失去意义）。求解器现已按
+  // 越线日↑→实测当前张力↓→峰值↓ 全序返回，故"首要"= 该序第一张（唯一·可核查），不再靠封顶值比大小。
+  const primaryBase = cards[0]?.base;
 
   // rk-kpi 5 指标（全聚合自真 risk_timeline / bottleneck·非硬编）。
   const riskFactorPoints = cards.reduce((s, c) => s + Math.max(1, factorsOver(c.base).length), 0);
@@ -214,7 +260,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               const synth = card.provenanceSynthetic === true;
               const peakColor = tierColor(card.peak, threshold);
               const chips = topFactors(card.base, 2);
-              const isPrimary = maxPeak > 0 && card.peak === maxPeak;
+              const isPrimary = card.base === primaryBase;
               const orderCount = card.affectedOrders?.length ?? 0;
               const factorCount = Math.max(1, factorsOver(card.base).length);
               return (
@@ -227,7 +273,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   tabIndex={0}
                   style={{ borderColor: `${peakColor}55` }}
                   onClick={() => {
-                    useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: `base-${card.base}`, label: card.base });
+                    // WO-CAPACITY-PAGE-100PCT ⑦（R5）：修前写的是 mock 形态 `base-<中文名>`——真实对象 id 是
+                    // 后端返回的 `obj_base_<baseId>`（见 /a/v1/objects?type=Base）。于是"点风险卡（视觉已选中）
+                    // → 问受影响订单 → 系统反问请提供基地"：selectedObjects 里躺着一个查不到的 id。
+                    // 现在一律用**后端回传的 card.baseId** 拼真 id（缺 baseId 的旧后端才回落基地名·向后兼容）。
+                    useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: baseObjectId(card), label: card.base });
                     setOpenBase((b) => (b === card.base ? null : card.base));
                   }}
                   onKeyDown={(e) => e.key === "Enter" && setOpenBase((b) => (b === card.base ? null : card.base))}
@@ -301,7 +351,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               bnFactors={bn?.factors ?? []}
               threshold={threshold}
               horizon={horizon}
-              isPrimary={maxPeak > 0 && openCard.peak === maxPeak}
+              isPrimary={openCard.base === primaryBase}
               onDay={(day) => setOrdersDay({ card: openCard, day })}
               onLiveStateChange={onBoardLive}
             />
@@ -336,6 +386,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                         ? `（${zh.risk.plan.withLevers(boardLive.apply.length)} · ${zh.risk.plan.regenHint}）`
                         : ""}
                   </span>
+                  {/* WO-CAPACITY-PAGE-100PCT ⑪（D 类静默降级）：契约里 `planRows[].overlay {count,capRatio}` 一直有值，
+                      前端**从来没渲染过** → 用户拖完 5 根杠杆点「重算」，表格一个字没变、页面也不解释为什么，
+                      看着就像"杠杆是假的"。这里把引擎的回执如实亮出来：杠杆落在哪些基地的产能链上、比值多少、
+                      其中几个基地窗内确有缺口（行动项因此重算）、几个无缺口（故不变）。 */}
+                  {livePlan && <OverlayEffectNote rows={planRows} />}
                   {"　"}
                   <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
                     style={{ display: "inline-block" }}
@@ -387,6 +442,32 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
     </div>
+  );
+}
+
+/**
+ * WO-CAPACITY-PAGE-100PCT ⑪ · 杠杆推演回执（治「调完杠杆点重算·屏幕一个字没变·也不说为什么」的静默降级）。
+ * 数据全部来自求解器回传的 `planRows[].overlay`（`{count, capRatio}`·契约既有字段·前端零编造）：
+ *   - capRatio ≠ 1 → 杠杆**真落在**该基地产能链上（比值即覆写后/基线）
+ *   - capRatio = 1 → 杠杆没落在该基地链上（诚实说"未落在本基地产能链"，不假装有效）
+ *   - shortfall = 0 → 该基地窗内本就无缺口，行动项**理应**不变（这才是"没变"的真原因）
+ */
+function OverlayEffectNote({ rows }: { rows: PlanRow[] }) {
+  const byBase = new Map<string, { capRatio: number; shortfall: number }>();
+  for (const r of rows) {
+    const ov = r.overlay;
+    if (!ov || !r.baseId) continue;
+    if (!byBase.has(r.baseId)) byBase.set(r.baseId, { capRatio: ov.capRatio, shortfall: r.shortfall ?? 0 });
+  }
+  if (byBase.size === 0) return null;
+  const landed = [...byBase.entries()].filter(([, v]) => v.capRatio !== 1);
+  const withGap = landed.filter(([, v]) => v.shortfall > 0);
+  return (
+    <span data-testid="risk-plan-overlay-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
+      {landed.length === 0
+        ? "（杠杆未落在任何风险基地的产能链上 → 行动项理应不变）"
+        : `（杠杆落在 ${landed.map(([b, v]) => `${b} ×${v.capRatio.toFixed(3)}`).join("、")}；其中 ${withGap.length} 个基地窗内有缺口→行动项已随之重算，${landed.length - withGap.length} 个窗内无缺口→行动项理应不变）`}
+    </span>
   );
 }
 
@@ -690,9 +771,9 @@ function RiskDetailPanel({
           <FactorRow
             label={card.factor}
             // WO-UNIT-MEANING：「62→83」原无量纲（易读成百分比）→ 带张力量程单源。
-            sub={`${formatTightness(card.currentTightness?.value)}→${formatTightness(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "窗口内不越线"}`}
+            sub={`${formatTightness(card.currentTightness?.value)}→${formatTightness(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "窗口内不越线"}${plateauNote(card.series)}`}
             color={tierColor(card.peak, threshold)}
-            dots={card.series.map((v) => ({ color: heatColor(v, threshold), value: v }))}
+            dots={card.series.map((v) => ({ color: tensionDotColor(v, threshold), value: v }))}
             onDay={onDay}
             affectedByDay={affectedByDay}
           />
@@ -709,9 +790,9 @@ function RiskDetailPanel({
                 <FactorRow
                   key={o.factor}
                   label={o.factor}
-                  sub={`${formatTightness(o.value)}→${formatTightness(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}`}
+                  sub={`${formatTightness(o.value)}→${formatTightness(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}${plateauNote(fs)}`}
                   color={tierColor(peakF, threshold)}
-                  dots={fs.map((v) => ({ color: heatColor(v, threshold), value: v }))}
+                  dots={fs.map((v) => ({ color: tensionDotColor(v, threshold), value: v }))}
                 />
               );
             }
@@ -722,7 +803,7 @@ function RiskDetailPanel({
                 label={o.factor}
                 sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 持平示意（无逐日源）`}
                 color={tierColor(o.value, threshold)}
-                dots={card.series.map(() => ({ color: o.value != null ? heatColor(o.value, threshold) : "rgba(138,148,166,.28)", value: o.value }))}
+                dots={card.series.map(() => ({ color: tensionDotColor(o.value, threshold), value: o.value }))}
               />
             );
           })}
@@ -757,6 +838,7 @@ function RiskDetailPanel({
         factorOptions={[card.factor, ...others.map((o) => o.factor)].filter((v, i, a) => !!v && a.indexOf(v) === i)}
         rcFactor={rcFactor}
         onRcFactor={setRcFactor}
+        scope={ga?.scope}
       />
 
       {/* WO-CAPACITY-DEEPEN 块A · 可用产能派生诊断 DAG（插在 ③ 之上·不替代四线图）。 */}
@@ -780,7 +862,7 @@ function RiskDetailPanel({
           baseP50={card.peak}
           baseGap={0}
           factors={[card.factor, ...bnFactors].filter((v, i, a) => !!v && a.indexOf(v) === i)}
-          scopeObjectIds={[`base-${baseIdForScope}`]}
+          scopeObjectIds={[baseObjectId(card)]}
           modelId={card.base}
           grain="process-model"
           targetType="Base"
@@ -811,10 +893,12 @@ function RiskDetailPanel({
  * CI-a 基地根因推演树面板。dag 存在 → 复用 <ProvenanceDag> 递归渲染结构+因果树（真求解器投影·R13/R14）；
  * 缺源/基地对不上/加载/报错 → **诚实灰**列出后端缺口（绝不伪造根因树·KILL-MOCK·C6）。
  */
-function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOptions, rcFactor, onRcFactor }: {
+function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOptions, rcFactor, onRcFactor, scope }: {
   base: string; factor: string; dag: DagData | undefined; loading: boolean; error: boolean; hasGa: boolean;
   /** WO-CAPLIVE-2：因子级根因作用域（gap_attribution scope.factorId·G-GAP-SCOPE 已闭）。 */
   factorOptions: string[]; rcFactor: string | undefined; onRcFactor: (f: string | undefined) => void;
+  /** 引擎回传的实际生效作用域（单一出处·前端不自行推断是否细分了）。 */
+  scope?: GapAttrOutput["scope"];
 }) {
   const nodeCount = dag?.nodes.length ?? 0;
   return (
@@ -853,28 +937,42 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOption
       {dag && nodeCount > 0 ? (
         <>
           <ProvenanceDag data={dag} />
-          {/* 诚实标注：默认按基地聚合（未按因子细分）；选因子 → 已按 scope.factorId 细分（引擎已支持 base×factor）。 */}
-          {rcFactor ? (
+          {/* WO-CAPACITY-PAGE-100PCT ③ · 作用域标注**以引擎回传的 scope 为准**（不再由前端假设"点了就细分了"）：
+              factorApplied=true → 真按因子细分；传了因子但引擎无该因果域 → 据实说"未按该因子细分"并给引擎原话。 */}
+          {rcFactor && scope?.factorApplied ? (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
               {zh.risk.live.rootcause.refined(rcFactor)}
+            </div>
+          ) : rcFactor ? (
+            <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+              结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
+              注：本次作用域 = 基地「{base}」；<b>未</b>按因子「{rcFactor}」细分——{scope?.factorNote ?? "引擎无该因子的因果域（CausalFactor）"}。
             </div>
           ) : (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
               结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
-              注：当前按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分——点上方因子 chip 传 scope.factorId 即按因子细分（引擎已支持）。
+              注：当前按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分。
             </div>
           )}
         </>
+      ) : loading ? (
+        /* WO-CAPACITY-PAGE-100PCT ⑥（R3-a）：修前 loading 与失败**共用**「根因推演树暂不可用」标题——
+           请求还在飞就先宣告不可用（把加载态渲成失败态·本项目前科）。加载态必须只说"加载中"。 */
+        <div className="empty-state" data-testid={`rootcause-loading-${base}`} style={{ fontSize: 12, color: "var(--muted)" }}>
+          {zh.common.loading}
+        </div>
       ) : (
         <div className="empty-state" data-testid={`rootcause-gap-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
           <b style={{ color: "var(--muted2)" }}>根因推演树暂不可用（诚实灰·未伪造过程）</b>
-          <div style={{ marginTop: 6 }}>后端缺口：
-            {loading ? "gap_attribution 加载中…"
-              : error ? "gap_attribution 求解器不可用/未开通（无法取结构归因）"
-              : !hasGa ? "gap_attribution 无返回"
-              : `gap_attribution 全局归因中无「${base}」的结构节点——引擎按全局最严重 Metric 归因，且不接受 base×factor 作用域；该基地未落入结构分摊基地集（或基地名与 Order.bases 未对齐）`}
+          {/* WO-CAPACITY-PAGE-100PCT ⑥（R3-b·KILL-MOCK-RED）：修前这里内联了一段**因果推断**
+              （"引擎…不接受 base×factor 作用域"+"仅缺引擎侧作用域"）——该诊断早已过期（G-GAP-SCOPE 已闭·
+              引擎支持 scope.baseId/factorId），属于对用户撒谎式的"伪造病因"。现只陈述**可观测事实**：
+              请求失败 / 无返回 / 返回里没有本基地节点，不再替引擎下因果结论、不再给过期的补齐路径。 */}
+          <div style={{ marginTop: 6 }}>可观测事实：
+            {error ? "gap_attribution 调用失败（求解器不可用/未开通/网络错误）"
+              : !hasGa ? "gap_attribution 无返回内容"
+              : `gap_attribution 已返回，但返回的结构层里没有「${base}」节点（本次作用域：${rcFactor ? `基地=${base} · 因子=${rcFactor}` : `基地=${base}`}）`}
           </div>
-          <div style={{ marginTop: 4, color: "var(--muted2)" }}>补齐路径：gap_attribution 支持 base×factor 入参作用域后本树即活（前端已就绪·仅缺引擎侧作用域）。</div>
         </div>
       )}
     </div>

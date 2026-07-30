@@ -7,7 +7,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
-import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -793,9 +793,29 @@ export class SolverService {
     if (models.length === 0) return empty;
     const certBases = new Set(models.flatMap((m) => [...(c.certByModel.get(m)?.keys() ?? [])]));
     if (certBases.size === 0) return empty;
+    // WO-CAPACITY-PAGE-100PCT ①（R-ARG-FIDELITY·断在接缝）：`scopeObjectIds` 此前被本分支**整个丢弃**——
+    // 产能推演页每张基地卡都传 `scopeObjectIds=[本基地]`，但候选对象只按 `certBases`（= 全部认证基地）过滤，
+    // 再按 `id.localeCompare` 排序 slice(PROBE_CAP=50) → 前 50 条恒为字母序最前的基地（常州）→
+    // **任何基地卡打开都返回常州的杠杆**（信阳/江门 curl 返回逐字节相同），拖杆改的是别人家的工序，
+    // 处置表自然纹丝不动（用户痛点②的结构性病根）。修法：先按作用域基地过滤再探针，且目标产能同尺度收窄到该基地。
+    const scopeRefs = Array.isArray(args.scopeObjectIds) ? args.scopeObjectIds.map(String) : [];
+    const scopeBases = new Set(
+      scopeRefs
+        .map((r) => normalizeBaseRef(r).replace(/^base-/, "")) // 认 obj_base_<id> / <id> / 中文名 /（历史）base-<名>
+        .map((k) => c.bases.find((b) => str(b.props.baseId) === k || str(b.props.name) === k))
+        .filter((b): b is NonNullable<typeof b> => !!b)
+        .map((b) => str(b.props.baseId)),
+    );
+    // 作用域基地 ∩ 认证基地。**传了 scope 就必须受 scope 约束**：无论是解析不出基地（未知 ref）
+    // 还是解析出来但与认证集无交集，一律诚实空——绝不回落全域冒充本基地（R-ARG-FIDELITY：缺过滤维不得静默返全域）。
+    const scopeGiven = scopeRefs.length > 0;
+    const activeBases = scopeGiven ? new Set([...scopeBases].filter((b) => certBases.has(b))) : certBases;
+    if (activeBases.size === 0) return empty;
+    // 单基地作用域 → 目标产能 = 该基地逐工序格 Σp50（同尺度·敏感度才是"对本基地产能的偏导"）。
+    const baseFilter = scopeGiven && activeBases.size === 1 ? [...activeBases][0] : undefined;
     const modelLabel = models.join(",");
     const total = (ctx2: SolverContext): number =>
-      round(models.reduce((s, m) => s + computeByProcessModel(ctx2, m).reduce((a, r) => a + r.p50, 0), 0), 6);
+      round(models.reduce((s, m) => s + computeByProcessModel(ctx2, m, CAPACITY_FACTOR_BINDINGS, baseFilter).reduce((a, r) => a + r.p50, 0), 0), 6);
     const baseline = total(c);
 
     // typeKey → ctx 对象数组（仅 capacity 链相关类型；ctx 无该类型 → 空，诚实不臆造）。
@@ -815,9 +835,9 @@ export class SolverService {
     // 作用域过滤：Process/Equipment/Line 归属 model 认证基地（+ processKey 定位该工序）；Material 关键物料（层4 共享 ∩）。
     const procLineId = processKey ? str(c.processes.find((p) => str(p.props.processId) === processKey)?.props.lineId) : undefined;
     const inScope = (typeKey: string, o: ObjectInstance): boolean => {
-      if (typeKey === "Process") return certBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
-      if (typeKey === "Equipment") return certBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
-      if (typeKey === "Line") return certBases.has(str(o.props.baseId)) && (!procLineId || str(o.props.lineId) === procLineId);
+      if (typeKey === "Process") return activeBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
+      if (typeKey === "Equipment") return activeBases.has(str(o.props.baseId)) && (!processKey || str(o.props.processId) === processKey);
+      if (typeKey === "Line") return activeBases.has(str(o.props.baseId)) && (!procLineId || str(o.props.lineId) === procLineId);
       if (typeKey === "Material") return o.props.isKeyMaterial === true || (c.materials ?? []).every((m) => m.props.isKeyMaterial !== true);
       return true;
     };
@@ -1391,11 +1411,24 @@ export class SolverService {
     const binding = bindingMap.get(str(m.key));
 
     // ── E1 · scope.factorId 下钻：从指定因子入口沿 caused_by 归因（复用 metricDomain 遍历·G-GAP-SCOPE）──
-    if (scopedFactorId) {
+    // WO-CAPACITY-PAGE-100PCT ③（R-ARG-FIDELITY + KILL-MOCK-RED）：修前本分支
+    //   ① 把已解析的 `scope.baseId` **整个丢掉**（`res.scope = { factorId }`），
+    //   ② 且对**任何**字符串都当合法因子入口 → 产能推演页传的是 BN 词表因子名（"瓶颈工序"/"物流时长"，
+    //      不是 CausalFactor.factorId），于是 7 个因子 chip 返回**逐字节相同**的单节点退化树，
+    //      前端 `gapAttributionToBaseRootCause` 匹配不到基地节点 → 整棵树消失成"诚实灰"。
+    // 修后：factorId 必须命中真 CausalFactor 才走因果域；命中不了 → **保留 base 作用域结构树**并诚实标注
+    //      `scope.factorApplied=false` + 原因（绝不静默退化，也绝不假装按因子细分了）。
+    const causalFactorIds = new Set(
+      (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => str(o.props.factorId)),
+    );
+    if (scopedFactorId && causalFactorIds.has(scopedFactorId)) {
       const res = await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, scopedFactorId);
-      res.scope = { factorId: scopedFactorId };
+      res.scope = { ...(scopedBaseId ? { baseId: scopedBaseId, displayName: displayNameOf(scopedBaseId) } : {}), factorId: scopedFactorId, factorApplied: true };
       return res;
     }
+    const unsupportedFactor = scopedFactorId
+      ? { factorId: scopedFactorId, factorApplied: false, factorNote: `因子「${scopedFactorId}」无对应 CausalFactor 因果域（引擎按结构反向分摊出基地树·未按该因子细分）` }
+      : undefined;
 
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
     if (str(m.key) === "market_share") {
@@ -1534,7 +1567,7 @@ export class SolverService {
         if (exposureOrders.length === 0) {
           const outEmpty: Record<string, unknown> = {
             rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-            scope: { baseId: scopedBaseId, displayName: dName },
+            scope: { baseId: scopedBaseId, displayName: dName, ...(unsupportedFactor ?? {}) },
             globalGap: G, totalGap: 0, noBaseData: true,
             levels: [], atomicLeaves: [], causalEdges: [], reconChecks: [], reconciled: true, residualPct: 0,
             severityKind: "info" as const,
@@ -1568,7 +1601,7 @@ export class SolverService {
         const expReconciled = Math.abs(expChildSum + expResidual - pgExp) <= 1e-4;
         const outExp: Record<string, unknown> = {
           rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-          scope: { baseId: scopedBaseId, displayName: dName, exposure: true },
+          scope: { baseId: scopedBaseId, displayName: dName, exposure: true, ...(unsupportedFactor ?? {}) },
           globalGap: G, totalGap: pgExp,
           levels: [
             { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expDriver } }] },
@@ -1602,7 +1635,7 @@ export class SolverService {
       const residualPctScoped = round(pg !== 0 ? Math.abs(baseResidual) / Math.abs(pg) * 100 : 0, 2);
       const outScoped: Record<string, unknown> = {
         rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-        scope: { baseId: scopedBaseId, displayName: dName },
+        scope: { baseId: scopedBaseId, displayName: dName, ...(unsupportedFactor ?? {}) },
         globalGap: G, // 全局缺口（基地贡献 pg 是其一分摊）
         totalGap: round(pg, 4), // 基地专属树根 gap = 该基地对全局 gap 贡献
         levels: [
@@ -2611,8 +2644,11 @@ export class SolverService {
     const baseArg = str(args.baseId);
     if (!baseArg) throw validationError("base_capacity_outlook 需 baseId（基地 ID 或名称）");
     const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
-    // 归一：接受基地 id（hefei）或中文名（合肥），内部收敛到 baseId。
-    const baseObj = bases.find((b) => str(b.baseId) === baseArg || str(b.name) === baseArg);
+    // 归一：经 `normalizeBaseRef` 单一出处认 **真实对象 id `obj_base_<id>`** / baseId（hefei）/ 中文名（合肥）。
+    // WO-CAPACITY-PAGE-100PCT ②（G-CAPACITY-BASE-OUTLOOK 残口）：修前只比 baseId|name，而地图页/看板写进
+    // selectedObjects 的恰是 `obj_base_<id>` 形态 → 前瞻四线整块硬 404（兄弟求解器 risk.ts 早已走 normalizeBaseRef）。
+    const baseKey = normalizeBaseRef(baseArg) || baseArg;
+    const baseObj = bases.find((b) => str(b.baseId) === baseKey || str(b.name) === baseKey);
     if (!baseObj) throw notFound(`Base ${baseArg}`);
     const baseId = str(baseObj.baseId);
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
