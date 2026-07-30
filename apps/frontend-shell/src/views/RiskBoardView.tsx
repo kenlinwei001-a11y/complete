@@ -16,7 +16,7 @@ import {
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
-import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
@@ -47,6 +47,19 @@ const BAND = 15;
 const UNIT = "套"; // debattery-allow
 /** WO-UNIT-NORMALIZE：万元→亿 单位换算（NOT 业务常数·R14）。营收=Σ qty(套)×priceWan(万元)→ /1e4 = 亿。 */
 const wanToYi = (v: number) => v / 1e4;
+
+/**
+ * 基地对象的**真 objectId**（对齐后端 `synthetic/service.ts` 的 `obj_${type}_${pk}` 形态：`obj_base_changzhou`）。
+ *
+ * 修前本视图传 `base-${card.base}`（中文名，如 `base-常州`）——该形态**只存在于前端 mock fixture**，
+ * 后端对象库里没有这个 id。症状：在风险看板点常州风险卡（视觉已高亮"选中"）→ 对话坞问「受影响订单有哪些」
+ * → 系统反问「请提供基地」（选中态在后端解析不出对象，等于没选）；同一基地在地图页点却正常
+ * （`GeoMapView` 传的是 objects 端点返回的真 `b.id`）。
+ *
+ * 入参优先用 `card.baseId`（求解器回传的规范 baseId，如 `xinyang`）；已是 `obj_base_` 前缀则原样返回
+ * （幂等·后端 `normalizeBaseRef` 也认这两种形态）。
+ */
+const baseObjectId = (baseId: string): string => (baseId.startsWith("obj_base_") ? baseId : `obj_base_${baseId}`);
 
 /**
  * 三档色（与 heatColor 同阈值口径·用于文字/边框实色）：≥阈值 高危红 · [阈值−15,阈值) 关注黄 · <阈值−15 正常青。
@@ -227,7 +240,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   tabIndex={0}
                   style={{ borderColor: `${peakColor}55` }}
                   onClick={() => {
-                    useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: `base-${card.base}`, label: card.base });
+                    // 选中态必须携**真 objectId**（`obj_base_<baseId>`），否则对话坞拿到的作用域在后端解析不出对象 →
+                    // 「受影响订单有哪些」被反问「请提供基地」（视觉选中≠真选中）。`card.baseId` 由 risk_timeline 回传。
+                    useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: baseObjectId(card.baseId), label: card.base });
                     setOpenBase((b) => (b === card.base ? null : card.base));
                   }}
                   onKeyDown={(e) => e.key === "Enter" && setOpenBase((b) => (b === card.base ? null : card.base))}
@@ -418,13 +433,19 @@ type OrderAgg = {
 function OrderAggView({ horizon }: { horizon: number }) {
   const [seg, setSeg] = useState<"app" | "base">("app");
   const [baseFilter, setBaseFilter] = useState<string>("__all__");
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["a", "affected_orders", "agg", horizon, baseFilter],
     queryFn: async () => {
       const res = await invokeSolver("affected_orders", { horizon, ...(baseFilter !== "__all__" ? { base: baseFilter } : {}) });
       return res.data as OrderAgg;
     },
   });
+  // 同「诚实灰」纪律：请求失败 ≠ "没有受影响订单"。修前失败 → data undefined → rows=[] → 界面说
+  // "当前范围无受影响订单（无在产订单落入越线传导窗口）"——把**请求失败**伪装成一个**业务结论**。
+  const fail = error ? observedFailure(error) : null;
+  const failLine = fail
+    ? `affected_orders 请求失败${fail.status != null ? ` · HTTP ${fail.status}` : ""}${fail.code ? ` · 错误码 ${fail.code}` : ""}${fail.requestId ? ` · requestId ${fail.requestId}` : ""}${fail.message ? ` · ${fail.message}` : ""}`
+    : "";
   // 单价/毛利率单一真相源 = SEG_REGISTRY（按细分名或 key 均可查·R6 字节复现）。
   const segPrice = useMemo(() => Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.priceWan], [s.key, s.priceWan]])) as Record<string, number>, []);
   const segMargin = useMemo(() => Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.marginPct], [s.key, s.marginPct]])) as Record<string, number>, []);
@@ -465,7 +486,7 @@ function OrderAggView({ horizon }: { horizon: number }) {
           <span className={`${styles.tierChip} ${seg === "base" ? styles.tierChipOn : ""}`} data-testid="risk-seg-base" role="button" tabIndex={0} onClick={() => setSeg("base")} onKeyDown={(e) => e.key === "Enter" && setSeg("base")}>按基地</span>
         </div>
         {econRows.length === 0 ? (
-          <div className="empty-state" style={{ fontSize: 12 }}>{zh.common.none}</div>
+          <div className="empty-state" style={{ fontSize: 12 }} data-testid="risk-econ-empty">{fail ? failLine : zh.common.none}</div>
         ) : (
           <table className="cmp" data-testid="risk-econ-table">
             <thead>
@@ -557,7 +578,9 @@ function OrderAggView({ horizon }: { horizon: number }) {
           <span>{data?.summary?.orderCount ?? rows.length} 批 · {data?.summary?.custCount ?? 0} 家客户 · 按交期排序</span>
         </div>
         {rows.length === 0 ? (
-          <div className="empty-state" data-testid="risk-order-empty" style={{ fontSize: 12 }}>当前范围无受影响订单（无在产订单落入越线传导窗口）。</div>
+          <div className="empty-state" data-testid="risk-order-empty" style={{ fontSize: 12 }}>
+            {fail ? failLine : "affected_orders 返回 0 行：当前范围（窗口 + 基地筛选）内无受影响订单。"}
+          </div>
         ) : (
           <table className="cmp" data-testid="risk-order-detail-table">
             <thead>
@@ -628,7 +651,9 @@ function RiskDetailPanel({
   // WO-CAPLIVE-2 · 因子级根因（活能力②·G-GAP-SCOPE 已闭·前端接线）：gap_attribution 现支持 scope.baseId/factorId，
   // 前端传作用域 → 未选因子=基地级、选因子=按因子细分。无源/基地对不上 → 诚实灰（不伪造根因树）。
   const [rcFactor, setRcFactor] = useState<string | undefined>(undefined);
-  const { data: ga, isLoading: gaLoading, isError: gaError } = useQuery({
+  // 空态只能陈述**可观测事实**（HTTP 状态码 / 错误码 / requestId / 响应里实际有哪些基地）→ 必须拿到真错误对象，
+  // 不能只留一个 isError 布尔（布尔只够说"失败了"，说不出"失败在哪"，于是过去被一句内联的因果猜测顶替）。
+  const { data: ga, isLoading: gaLoading, error: gaError } = useQuery({
     queryKey: ["a", "gap_attribution", "risk-board", baseIdForScope, rcFactor ?? "__all__"],
     queryFn: async () => {
       const scope: Record<string, unknown> = { baseId: baseIdForScope };
@@ -692,7 +717,8 @@ function RiskDetailPanel({
             // WO-UNIT-MEANING：「62→83」原无量纲（易读成百分比）→ 带张力量程单源。
             sub={`${formatTightness(card.currentTightness?.value)}→${formatTightness(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "窗口内不越线"}`}
             color={tierColor(card.peak, threshold)}
-            dots={card.series.map((v) => ({ color: heatColor(v, threshold), value: v }))}
+            values={card.series}
+            threshold={threshold}
             onDay={onDay}
             affectedByDay={affectedByDay}
           />
@@ -711,7 +737,8 @@ function RiskDetailPanel({
                   label={o.factor}
                   sub={`${formatTightness(o.value)}→${formatTightness(peakF)} · ${crossIdx >= 0 ? `T+${crossIdx + 1} 越线` : "窗口内不越线"}`}
                   color={tierColor(peakF, threshold)}
-                  dots={fs.map((v) => ({ color: heatColor(v, threshold), value: v }))}
+                  values={fs}
+                  threshold={threshold}
                 />
               );
             }
@@ -722,7 +749,9 @@ function RiskDetailPanel({
                 label={o.factor}
                 sub={`当前 ${o.value != null ? Math.round(o.value) : "—"} · 持平示意（无逐日源）`}
                 color={tierColor(o.value, threshold)}
-                dots={card.series.map(() => ({ color: o.value != null ? heatColor(o.value, threshold) : "rgba(138,148,166,.28)", value: o.value }))}
+                // 无逐日源 → 逐日全等于当前值：hi===lo → 全等高，诚实呈现"确实没有逐日变化"（不伪造起伏）。
+                values={card.series.map(() => o.value)}
+                threshold={threshold}
               />
             );
           })}
@@ -753,7 +782,8 @@ function RiskDetailPanel({
         dag={baseDag}
         loading={gaLoading}
         error={gaError}
-        hasGa={!!ga}
+        ga={ga}
+        scopeBaseId={baseIdForScope}
         factorOptions={[card.factor, ...others.map((o) => o.factor)].filter((v, i, a) => !!v && a.indexOf(v) === i)}
         rcFactor={rcFactor}
         onRcFactor={setRcFactor}
@@ -780,7 +810,8 @@ function RiskDetailPanel({
           baseP50={card.peak}
           baseGap={0}
           factors={[card.factor, ...bnFactors].filter((v, i, a) => !!v && a.indexOf(v) === i)}
-          scopeObjectIds={[`base-${baseIdForScope}`]}
+          // 杠杆发现按 `scope.includes(o.id)` 逐对象过滤（datacore `service.ts discoverLevers`）→ 必须是真 objectId。
+          scopeObjectIds={[baseObjectId(baseIdForScope)]}
           modelId={card.base}
           grain="process-model"
           targetType="Base"
@@ -808,15 +839,51 @@ function RiskDetailPanel({
 }
 
 /**
- * CI-a 基地根因推演树面板。dag 存在 → 复用 <ProvenanceDag> 递归渲染结构+因果树（真求解器投影·R13/R14）；
- * 缺源/基地对不上/加载/报错 → **诚实灰**列出后端缺口（绝不伪造根因树·KILL-MOCK·C6）。
+ * 请求失败时的**可观测事实**（只读 ApiClientError 的公开字段，不做任何推断）。
+ * 拿不到结构化字段（网络层抛的裸 Error）→ 只回 message，宁可少说也不猜。
  */
-function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOptions, rcFactor, onRcFactor }: {
-  base: string; factor: string; dag: DagData | undefined; loading: boolean; error: boolean; hasGa: boolean;
+function observedFailure(err: unknown): { status?: number; code?: string; requestId?: string; message: string } {
+  if (err && typeof err === "object") {
+    const e = err as { status?: unknown; code?: unknown; requestId?: unknown; message?: unknown };
+    return {
+      ...(typeof e.status === "number" ? { status: e.status } : {}),
+      ...(typeof e.code === "string" ? { code: e.code } : {}),
+      ...(typeof e.requestId === "string" ? { requestId: e.requestId } : {}),
+      message: typeof e.message === "string" ? e.message : String(err),
+    };
+  }
+  return { message: String(err) };
+}
+
+/**
+ * CI-a 基地根因推演树面板。dag 存在 → 复用 <ProvenanceDag> 递归渲染结构+因果树（真求解器投影·R13/R14）；
+ * 无树 → **诚实灰**。
+ *
+ * ⚠ 本面板的诚实纪律（曾经违反·把用户引偏过一次排查方向）：
+ * 「诚实灰」诚实的只是「我没有数据」，**病因不是我能从这儿看出来的**。此前这里
+ * ① 把 `loading` 和 error/空数据塞进同一个「暂不可用」块（请求还在飞，界面已宣告失败）；
+ * ② 无条件渲染一行「补齐路径：gap_attribution 支持 base×factor 入参作用域后本树即活（仅缺引擎侧作用域）」——
+ *    不分支、斩钉截铁，且**该结论早已过期**（本体 §8 `G-GAP-SCOPE` 已闭：`gapAttribution` 早就接受
+ *    `scope.baseId/factorId`；本面板自己就在传 scope）。用户照着这句话去查引擎，而引擎是好的。
+ * 现在：loading 独立成加载态（不出现"暂不可用"）；失败/空态**只陈述能从响应直接读出的事实**
+ * （HTTP 状态码 / 错误码 / requestId / 响应里实际返回了哪些基地）；下一步动作按分支给且必带依据（错误码或字段名），
+ * 不内联任何"引擎缺什么"的因果断言。
+ */
+function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, factorOptions, rcFactor, onRcFactor }: {
+  base: string; factor: string; dag: DagData | undefined; loading: boolean;
+  /** 真错误对象（ApiClientError：status/code/requestId/message）——空态据此陈述事实，不做因果推断。 */
+  error: unknown;
+  /** 求解器原始返回（用于陈述"响应里实际有哪些基地"这类可观测事实）。 */
+  ga: GapAttrOutput | undefined;
+  /** 本次实际发出的 scope.baseId（可复现请求·让用户自己去核，而不是听我猜）。 */
+  scopeBaseId: string;
   /** WO-CAPLIVE-2：因子级根因作用域（gap_attribution scope.factorId·G-GAP-SCOPE 已闭）。 */
   factorOptions: string[]; rcFactor: string | undefined; onRcFactor: (f: string | undefined) => void;
 }) {
   const nodeCount = dag?.nodes.length ?? 0;
+  const reqLine = `gap_attribution · scope.baseId=${scopeBaseId}${rcFactor ? ` · scope.factorId=${rcFactor}` : ""}`;
+  // 响应里 L1 结构层实际返回了哪些节点（= "归因基地集"）——纯读响应字段，不推断。
+  const l1Labels = (ga?.levels?.find((L) => L.depth === 1)?.nodes ?? []).map((n) => n.factor).filter(Boolean);
   return (
     <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`rootcause-panel-${base}`}>
       <div className={styles.rkDetH}>
@@ -850,7 +917,13 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOption
           </span>
         ))}
       </div>
-      {dag && nodeCount > 0 ? (
+      {loading ? (
+        /* 加载态**独立**：请求还在飞，什么结论都还没有 → 只说"在取"，绝不出现"暂不可用"。 */
+        <div className="empty-state" data-testid={`rootcause-loading-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
+          <b style={{ color: "var(--muted2)" }}>正在取「{base}」的根因归因…</b>
+          <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
+        </div>
+      ) : dag && nodeCount > 0 ? (
         <>
           <ProvenanceDag data={dag} />
           {/* 诚实标注：默认按基地聚合（未按因子细分）；选因子 → 已按 scope.factorId 细分（引擎已支持 base×factor）。 */}
@@ -867,14 +940,49 @@ function RootCausePanel({ base, factor, dag, loading, error, hasGa, factorOption
         </>
       ) : (
         <div className="empty-state" data-testid={`rootcause-gap-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
-          <b style={{ color: "var(--muted2)" }}>根因推演树暂不可用（诚实灰·未伪造过程）</b>
-          <div style={{ marginTop: 6 }}>后端缺口：
-            {loading ? "gap_attribution 加载中…"
-              : error ? "gap_attribution 求解器不可用/未开通（无法取结构归因）"
-              : !hasGa ? "gap_attribution 无返回"
-              : `gap_attribution 全局归因中无「${base}」的结构节点——引擎按全局最严重 Metric 归因，且不接受 base×factor 作用域；该基地未落入结构分摊基地集（或基地名与 Order.bases 未对齐）`}
-          </div>
-          <div style={{ marginTop: 4, color: "var(--muted2)" }}>补齐路径：gap_attribution 支持 base×factor 入参作用域后本树即活（前端已就绪·仅缺引擎侧作用域）。</div>
+          <b style={{ color: "var(--muted2)" }}>根因推演树无数据（诚实灰·未伪造过程）</b>
+          <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
+          {error ? (
+            /* 失败态：只报响应里读得出的东西——HTTP 状态码、错误码、requestId、后端 message。不猜原因。 */
+            (() => {
+              const f = observedFailure(error);
+              return (
+                <>
+                  <div style={{ marginTop: 4 }} data-testid={`rootcause-fact-${base}`}>
+                    观测到：请求失败
+                    {f.status != null ? ` · HTTP ${f.status}` : ""}
+                    {f.code ? ` · 错误码 ${f.code}` : ""}
+                    {f.requestId ? ` · requestId ${f.requestId}` : ""}
+                    {f.message ? ` · 后端 message：${f.message}` : ""}
+                  </div>
+                  <div style={{ marginTop: 4, color: "var(--muted2)" }} data-testid={`rootcause-next-${base}`}>
+                    {/* 下一步按分支给，依据 = 上面那个错误码本身，不内联任何"引擎缺什么"的结论。 */}
+                    下一步：以上面的<b>错误码</b>
+                    {f.requestId ? "与 requestId " : ""}
+                    在 DataCore 侧核对该次 <span className="mono">/a/v1/solvers/gap_attribution/invoke</span> 调用；
+                    错误码含义以后端错误信封 <span className="mono">{"{error:{code,message,requestId}}"}</span> 为准。
+                  </div>
+                </>
+              );
+            })()
+          ) : !ga ? (
+            <div style={{ marginTop: 4 }} data-testid={`rootcause-fact-${base}`}>
+              观测到：请求已完成但<b>响应体为空</b>（无 data）。
+            </div>
+          ) : (
+            <>
+              <div style={{ marginTop: 4 }} data-testid={`rootcause-fact-${base}`}>
+                观测到：响应已返回（归因指标 <span className="mono">{ga.rootMetric?.key ?? "—"}</span>），但结构层（levels.depth=1）
+                的 {l1Labels.length} 个节点里<b>没有「{base}」</b>
+                {l1Labels.length > 0 ? <>——本次返回的是：<span className="mono">{l1Labels.join("、")}</span></> : "（结构层为空）"}。
+              </div>
+              <div style={{ marginTop: 4, color: "var(--muted2)" }} data-testid={`rootcause-next-${base}`}>
+                {/* 依据 = 上面列出的字段名 levels[0].nodes[].factor 与本基地名，不做"谁的锅"的因果断言。 */}
+                下一步：比对本卡基地名与响应 <span className="mono">levels[depth=1].nodes[].factor</span> 的取值是否同名；
+                若确实不在该集合内，则本窗口下该基地无结构归因份额可展开。
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1033,35 +1141,81 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
   );
 }
 
-/** 单因素时间轴行（.rk-frow）：168px 标签 + 逐日圆点。主因素点可点→受影响订单。 */
-function FactorRow({ label, sub, color, dots, onDay, affectedByDay }: {
-  label: string; sub: string; color: string; dots: { color: string; value: number | null }[]; onDay?: (day: number) => void;
+/**
+ * 逐日点的**双通道编码**（治「30 个点只表达 1 个 bit」）。
+ *
+ * ── 取证（信阳·30 天·seed 42·`risk_timeline` 真调）──
+ * 后端逐日值**是真的逐日变化**：瓶颈工序 91,91,92,…,96,97,97.72,97.85,97.95,97.94,… 共 15 个不同值；
+ * 设备OEE 14 个、人力工时 16 个。**丢信息的是渲染层**：旧 `heatColor(v,threshold)` 对 `v ≥ threshold`
+ * 一律返回同一个 `rgba(224,98,108,.85)`、对 `[threshold−15, threshold)` 一律同一个黄——三个全程 ≥85 的因子
+ * 于是 30 个点同色（零信息量），低张力因子则只有「蓝一段/黄一段」一次跳变。
+ *
+ * 现在：
+ * - **颜色通道**：三档 hue 不动（图例口径不变：≥阈值红 / 关注黄 / 正常青），但**档内不透明度随真值连续变化**；
+ * - **高度通道（非颜色）**：柱高 = 该日值在**本行自身值域** `[lo,hi]` 中的相对位置——即使整行全红，
+ *   "哪天开始爬 / 哪天到顶 / 还有几天可干预"也直接看得出（色觉障碍同样可读）。
+ * 值恒定的行（无逐日源的回落态）→ `hi===lo` → 全等高，诚实呈现"确实没有逐日变化"，不伪造起伏。
+ */
+function dotVisual(v: number | null, threshold: number, lo: number, hi: number): { color: string; fill: number } {
+  if (v == null) return { color: "rgba(138,148,166,.28)", fill: 0.16 };
+  const hue = v >= threshold ? "224,98,108" : v >= threshold - BAND ? "232,181,74" : "67,183,215";
+  const t = hi > lo ? (v - lo) / (hi - lo) : 1; // 本行值域内的相对位置 0..1
+  return { color: `rgba(${hue},${(0.34 + t * 0.62).toFixed(3)})`, fill: 0.24 + t * 0.76 };
+}
+
+/**
+ * 单因素时间轴行（.rk-frow）：168px 标签 + 逐日柱。主因素柱可点→受影响订单。
+ * `values` 是该因素的真逐日张力（求解器 series/factorSeries 原值·前端不再预先压成颜色）。
+ */
+function FactorRow({ label, sub, color, values, threshold, onDay, affectedByDay }: {
+  label: string; sub: string; color: string; values: (number | null)[]; threshold: number; onDay?: (day: number) => void;
   /** CT-a（⑤）：逐日受影响订单数（index=day·与 onDay/AffectedOrdersModal 同源）。>0 的日叠交付 icon。 */
   affectedByDay?: number[];
 }) {
+  const nums = values.filter((v): v is number => v != null);
+  const lo = nums.length > 0 ? Math.min(...nums) : 0;
+  const hi = nums.length > 0 ? Math.max(...nums) : 0;
   return (
-    <div className={styles.rkFrow} data-testid={`risk-frow-${label}`}>
+    <div className={styles.rkFrow} data-testid={`risk-frow-${label}`} data-span={nums.length > 0 ? `${lo}~${hi}` : undefined}>
       <div className={styles.rkFlab}>
         <b style={{ color }}>{label}</b>
         <span>{sub}</span>
       </div>
       <div className={styles.rkDots}>
-        {dots.map((d, i) => {
+        {values.map((v, i) => {
           const nAff = affectedByDay?.[i] ?? 0; // CT-a：该日受影响订单数（同源真数据·非写死）
-          // WO-UNIT-MEANING：逐日点 tooltip 原「D+5 · 78」无量纲 → 带张力量程（单源）。
-          const dotTitle = d.value != null ? `D+${i + 1} · ${formatTightness(d.value)}` : `D+${i + 1} · 无实测`;
+          const { color: dc, fill } = dotVisual(v, threshold, lo, hi);
+          // WO-UNIT-MEANING：逐日点 tooltip 带张力量程（单源）。顶端压缩带里 formatTightness 会把
+          // 97.95/97.55 都四舍五入成同一个「98」→ 额外附**未取整真值**，让"哪天最重"在 hover 里也读得出。
+          const exact = v != null && !Number.isInteger(v) ? `（精确 ${v.toFixed(2)}）` : "";
+          const dotTitle = v != null ? `D+${i + 1} · ${formatTightness(v)}${exact}` : `D+${i + 1} · 无实测`;
           const title = nAff > 0 ? `${dotTitle} · ${nAff} 单交付受影响` : dotTitle;
           return (
             <button
               key={i}
               className={styles.rkDot}
-              style={{ background: d.color, position: "relative", overflow: "visible" }}
+              style={{
+                background: "transparent",
+                position: "relative",
+                overflow: "visible",
+                height: 20,
+                borderRadius: 3,
+                display: "flex",
+                alignItems: "flex-end",
+              }}
               title={title}
               aria-label={title}
               data-testid={onDay ? `risk-dot-${i}` : undefined}
               data-affected={nAff > 0 ? nAff : undefined}
+              data-value={v != null ? String(v) : undefined}
+              data-fill={v != null ? String(Math.round(fill * 100)) : undefined}
               onClick={onDay ? () => onDay(i) : undefined}
             >
+              {/* 高度通道：柱高编码真值（非颜色通道·全红行也有形状）。 */}
+              <i
+                aria-hidden="true"
+                style={{ display: "block", width: "100%", height: `${Math.round(fill * 100)}%`, minHeight: 3, background: dc, borderRadius: 2 }}
+              />
               {nAff > 0 && (
                 // ⑤ 订单交付受影响 icon（该日 affected_orders 非空·同源）——小三角挂在点上方，一眼可辨。
                 <span
@@ -1094,13 +1248,15 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
   base: string; factor: string; tightness: number; threshold: number; rootCauseFactors: string[];
 }) {
   const adopt = useActionDraft();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: mitError } = useQuery({
     queryKey: ["a", "mitigation_select", base, factor, tightness],
     queryFn: async () => {
       const res = await invokeSolver("mitigation_select", { baseName: base, factor, tightness });
       return res.data as { plans?: MitPlan[]; recommended?: string; error?: string };
     },
   });
+  // 同纪律：请求失败 ≠ "没有对症方案"。失败时报可观测事实（状态码/错误码/requestId），不显示成"无"。
+  const mitFail = mitError ? observedFailure(mitError) : null;
   const plans = data?.plans ?? [];
   const recommended = data?.recommended;
   // 综合评分降序 = 求解器优选序（真出处·排名供「为何推荐」）。
@@ -1113,6 +1269,14 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
       <div className={styles.wfT} style={{ color: "var(--ok)" }}>💡 对症方案 · 比对推演 · {factor}（{plans.length} 个）</div>
       {isLoading ? (
         <div style={{ color: "var(--muted2)", fontSize: 11 }}>{zh.common.loading}</div>
+      ) : mitFail ? (
+        <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-error">
+          mitigation_select 请求失败
+          {mitFail.status != null ? ` · HTTP ${mitFail.status}` : ""}
+          {mitFail.code ? ` · 错误码 ${mitFail.code}` : ""}
+          {mitFail.requestId ? ` · requestId ${mitFail.requestId}` : ""}
+          {mitFail.message ? ` · ${mitFail.message}` : ""}
+        </div>
       ) : !plans.length ? (
         <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-empty">{zh.common.none}</div>
       ) : (

@@ -219,6 +219,36 @@ export function riskTarget(c: SolverContext, baseId: string, factor: string, cur
   return Math.min(96, cur + lift);
 }
 
+/**
+ * 张力上限的**保序饱和**（治「不同因子/不同日同落一个 98」·硬截断压平）。
+ *
+ * ── 取证（信阳·horizon 30·seed 42·`risk_timeline` 真调）──
+ * 旧口径 `v = Math.min(cap, Math.round(vb + pulse))` 是**硬截断**。瓶颈工序 D+23…D+30 的
+ * 原始驱动值分别是 98.65 / 99.97 / 101.29 / 99.97 / 98.65 / 100.72 / 98.55 / 97.70
+ * ——里面清清楚楚有两个真事件脉冲峰（D+25 检修窗 amp14、D+28 交付高峰 amp9），
+ * 却被压成同一个 `98`：30 个点里 8 天零信息量，且瓶颈工序 / 物流时长 / 设备OEE
+ * 三个因子在顶部完全不可区分（"还有几天可以干预 / 哪天最该干预"直接丢失）。
+ *
+ * ── 新口径 ──
+ * ① `raw ≤ knee (= cap − 0.5)`：走 `Math.round`，与旧口径**逐字节相同**（未触顶数据一个不动，
+ *    因为 `Math.round(raw) ≥ cap` 需要 `raw ≥ cap − 0.5`，恰是压缩带的下界）；
+ * ② `raw > knee`：指数压缩 `cap − band·e^{−(raw−knee)/SCALE}` 落进 **(knee, cap) 开区间**——
+ *    **严格单调**（raw 大者值必更大 ⇒ 不同因子/不同日不再同落一个数，区分度保住）、
+ *    **恒 < cap**（上限仍然在·0–100 张力指数不越界）、四位小数（`Math.round` 后仍显示同一个整数
+ *    量程值，故 `formatTightness` 文案零回归）。
+ * ③ 纯函数：无随机 / 无时钟 / 无外部状态 → R6 同入参字节一致。
+ *
+ * `band`/`SCALE` 是**饱和曲线的形状参数**（数学形参，非业务常数 R14）：band 由 cap 派生，
+ * SCALE=2 表示"过冲 2 分压掉 1/e"——只影响压缩带内部的分辨率，不改任何业务阈值。
+ */
+export function saturateTension(raw: number, cap: number): number {
+  const band = 0.5;
+  const knee = cap - band;
+  if (raw <= knee) return Math.round(raw);
+  const SCALE = 2;
+  return round(cap - band * Math.exp(-(raw - knee) / SCALE), 4);
+}
+
 /** tension(b,f,d) per S1.4 — returns the daily series for d=1..H. */
 export function tensionSeries(
   c: SolverContext,
@@ -245,8 +275,9 @@ export function tensionSeries(
       const ps = Math.max(p.psFloor, 1 - (vb - p.psStart) / p.psDen);
       pulse += e.amp * ps * (1 - dist / p.pulseDecayDen);
     }
-    let v = Math.min(p.cap, Math.round(vb + pulse));
-    if (mitigation && d >= mitigation.tn) v = Math.max(0, v - mitigation.eff);
+    // 保序饱和（替代硬截断 `Math.min(cap, round(...))`）：未触顶逐字节不变，触顶段保留区分度。
+    let v = saturateTension(vb + pulse, p.cap);
+    if (mitigation && d >= mitigation.tn) v = round(Math.max(0, v - mitigation.eff), 4);
     series.push(v);
   }
   return series;
