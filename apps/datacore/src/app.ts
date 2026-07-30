@@ -345,7 +345,39 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const notifications = new NotificationService(repos);
   const entityResolution = new EntityResolutionService(repos, outbox);
   const rules = new RulesService(repos, outbox);
-  const solvers = new SolverService(repos);
+  const solvers = new SolverService(repos, authz);
+
+  /**
+   * A6 列级（属性级）写校验 —— 「对象数据变更」Action 的 patch 逐属性过 `authz` 同一份决策。
+   * 命中不可写属性 → 403 `PROPERTY_FORBIDDEN`（拒绝而非静默丢弃，值绝不落库）。
+   * 无 propertyPolicy 的策略在此**恒为空操作**（S4 向后兼容：不新增任何对象级写门禁）。
+   */
+  async function assertObjectPatchWritable(c: AuthCtx, payload: Record<string, unknown>): Promise<void> {
+    const objectId = String(payload.objectId ?? "");
+    const patch = payload.patch;
+    if (!objectId || !patch || typeof patch !== "object" || Array.isArray(patch)) return;
+    const obj = await repos.objects.get(c.tenantId, objectId);
+    if (!obj) return; // 对象不存在交由执行期如实报错，不在此伪装成权限问题
+    const d = await authz.decide(c, "OBJECT_TYPE", obj.type, "WRITE");
+    authz.assertPropsWritable(d, patch as Record<string, unknown>, `对象 ${obj.type}:${objectId}`);
+  }
+
+  /** 执行期复校：用发起人存档角色重建 AuthCtx，堵「先建草稿、后收紧策略」的时间窗。 */
+  async function assertDraftPatchWritableAtExecute(draft: {
+    tenantId: string;
+    origin: { userId?: string };
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const originId = draft.origin?.userId;
+    if (!originId) return; // 系统发起（无用户主体）→ 不套用户列级策略
+    const users = await repos.users.list(draft.tenantId);
+    const u = users.find((x) => x.id === originId || x.username === originId);
+    if (!u) return;
+    await assertObjectPatchWritable(
+      { tenantId: draft.tenantId, userId: originId, roles: u.roles, attributes: {} },
+      draft.payload,
+    );
+  }
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   const workflows = new WorkflowService(repos, ontology, ontologyCore); // OntoFlow（PRD v2）· 本体建模工作流 CRUD/校验/预览/发布·嫁接自 main
@@ -475,6 +507,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const patch = (draft.payload.patch ?? {}) as Record<string, unknown>;
         const obj = await repos.objects.get(draft.tenantId, objectId);
         if (!obj) return { ok: false, error: `object not found: ${objectId}` };
+        // A6 列级复校（防「建草稿后策略收紧」）：不可写属性在此仍 403，值不落库。
+        await assertDraftPatchWritableAtExecute(draft);
         await repos.objects.put({ ...obj, props: { ...obj.props, ...patch }, origin: { type: "MANUAL" } });
         const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
         await ontology.runDerivations(sysCtx);
@@ -1386,6 +1420,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           z.object({ role: z.string(), ops: z.array(z.enum(["READ", "WRITE", "EXECUTE"])) }),
         ),
         rowFilter: z.string().optional(),
+        // A6 列级（属性级）策略：不透传就等于本特性只能靠代码种子配置（API 配不出来）。
+        // 白/黑名单互斥校验与契约同源（PermissionPolicySchema.propertyPolicy）。
+        propertyPolicy: z
+          .object({
+            readable: z.array(z.string()).optional(),
+            denyRead: z.array(z.string()).optional(),
+            writable: z.array(z.string()).optional(),
+            denyWrite: z.array(z.string()).optional(),
+          })
+          .optional()
+          .superRefine((pp, cx) => {
+            if (!pp) return;
+            if (pp.readable && pp.denyRead) {
+              cx.addIssue({ code: "custom", message: "propertyPolicy.readable 与 denyRead 互斥，不可同时配置" });
+            }
+            if (pp.writable && pp.denyWrite) {
+              cx.addIssue({ code: "custom", message: "propertyPolicy.writable 与 denyWrite 互斥，不可同时配置" });
+            }
+          }),
       }),
       req.body,
     );
@@ -3493,6 +3546,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const key = body.actionTypeKey ?? body.actionType;
     if (!key) throw validationError("actionTypeKey required");
     await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
+    // A6 列级（属性级）安全：对象数据变更是**唯一**的用户态对象写路径（R4 真值经 Action）。
+    // patch 命中不可写属性 → 此处即 403 PROPERTY_FORBIDDEN，草稿根本不创建（值绝不落库），
+    // 绝不静默丢字段后返回成功。执行期（app.ts「对象数据变更」分支）另有一道同机制复校。
+    await assertObjectPatchWritable(c, body.payload);
     // 增量 §7.12：定稿走 Action —— 先校验版本可定稿（FINAL → 409 PLAN_LOCKED），创建后标记待审批。
     const finalizeVersionId =
       key === "定稿月度计划版本" && typeof body.payload.versionId === "string" ? body.payload.versionId : null;

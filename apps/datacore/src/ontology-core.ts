@@ -7,7 +7,7 @@
  *      （沿 to_id 反向导航定受影响对象集）、求值语义（null 传播/COALESCE/除零/decimal）。
  *  §3 resolveSlice 声明式切片执行（批量 IN 展开、每跳后 A6 行级过滤剪枝、去重、截断）。
  */
-import type { AuthzService } from "./authz.js";
+import type { AccessDecision, AuthzService } from "./authz.js";
 import type {
   AuthCtx,
   DerivationSpecRecord,
@@ -576,13 +576,23 @@ export class OntologyCoreService {
       let rowFilters: string[] = [];
       let denied = false;
       try {
-        rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", typeKey, "READ");
+        const d = await this.authz.requireDecision(ctx, "OBJECT_TYPE", typeKey, "READ");
+        rowFilters = d.rowFilters;
+        columnCache.set(typeKey, d); // A6 列级：图遍历节点 props 同样投影（见下 projectNode）
       } catch {
         denied = true;
       }
       const fn = denied ? () => false : (o: ObjectInstance) => this.authz.rowAllowed(ctx, rowFilters, o.props);
       visibleCache.set(typeKey, fn);
       return fn;
+    };
+    // A6 列级（属性级）：子图节点 props 走与 REST 同一份决策投影，不可读属性**剔除键**。
+    const columnCache = new Map<string, AccessDecision>();
+    // 缓存未命中即**按需求解**（绝不 fail-open 返回未投影 props）；被拒类型此处也拿不到节点。
+    const projectNode = async (typeKey: string, props: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      if (!columnCache.has(typeKey)) await visibilityFor(typeKey);
+      const d = columnCache.get(typeKey);
+      return d ? this.authz.projectProps(d, props) : props;
     };
 
     const objCache = new Map<string, ObjectInstance[]>();
@@ -639,9 +649,12 @@ export class OntologyCoreService {
         truncated = true;
         return false;
       }
+      // A6 列级：先按 A6 投影（剔除不可读键），再套 spec 的 project 列选 —— 顺序要紧，
+      // 否则 spec.project 显式点名一个不可读属性就能绕过列级安全。
+      const visible = await projectNode(o.type, o.props);
       const props = project
-        ? Object.fromEntries(project.filter((p) => p in o.props).map((p) => [p, o.props[p]]))
-        : o.props;
+        ? Object.fromEntries(project.filter((p) => p in visible).map((p) => [p, visible[p]]))
+        : visible;
       // origin/epoch 加性带出（R13）：溯源随对象走，不再在投影这一步被丢掉。
       nodes.set(o.id, {
         id: o.id,
