@@ -29,7 +29,8 @@ interface Delta {
 }
 interface GenericInferenceOutput {
   deltas: Delta[];
-  rows: { objectId: string; type: string; prop: string; before: unknown; after: unknown }[];
+  // WO-UNIT-MEANING：逐行量纲由后端取本体 PropertyDef.unit 下发（缺则省略·前端不臆造）。
+  rows: { objectId: string; type: string; prop: string; before: unknown; after: unknown; unit?: string }[];
   affectedObjects: number;
   count: number;
   rootTypes: string[];
@@ -295,9 +296,11 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
                   <tr key={`${r.objectId}-${r.prop}-${i}`} data-testid={`wi-delta-row-${r.objectId}-${r.prop}`}>
                     <td className="mono" style={{ fontSize: 11 }}>{r.objectId}</td>
                     <td className="zh">{r.type}</td>
-                    <td className="mono">{r.prop}</td>
-                    <td className="mono" data-testid={`wi-before-${r.objectId}-${r.prop}`}>{fmtVal(r.before)}</td>
-                    <td className="mono" data-testid={`wi-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>{fmtVal(r.after)}</td>
+                    {/* WO-UNIT-MEANING：逐行是不同派生字段（产能/天数/比率/金额混排），
+                        原先 before/after 全裸数字无从判断口径 → 带后端下发的量纲（缺则不显·不臆造）。 */}
+                    <td className="mono">{r.prop}{r.unit ? <span style={{ color: "var(--muted2)", fontSize: 10 }}> ({r.unit})</span> : null}</td>
+                    <td className="mono" data-testid={`wi-before-${r.objectId}-${r.prop}`}>{fmtVal(r.before)}{r.unit ? ` ${r.unit}` : ""}</td>
+                    <td className="mono" data-testid={`wi-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>{fmtVal(r.after)}{r.unit ? ` ${r.unit}` : ""}</td>
                     <td className="mono" data-testid={`wi-diff-${r.objectId}-${r.prop}`} style={dir ? { color: dir.color, fontWeight: 600 } : { color: "var(--muted2)" }}>
                       {dir ? `${dir.arrow} ${dir.diff}` : "—"}
                     </td>

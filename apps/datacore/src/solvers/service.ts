@@ -608,9 +608,11 @@ export class SolverService {
     // 不静默返 deltas:[] 冒充"重算了没变"，而是标 dataMode:"EMPTY" + note 披露"无法前向重算"；有 delta → "LIVE"。
     // 让前端能辨「真的没变」vs「算不了」（数据半：本体缺派生边，非路由半）。
     const dataMode = deltas.length > 0 ? "LIVE" : "EMPTY";
+    // WO-UNIT-MEANING：逐行量纲取本体 PropertyDef.unit（有界查询·缺则省略不臆造）。
+    const unitOf = await this.unitsForDeltas(ctx.tenantId, deltas);
     return {
       deltas,
-      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after })),
+      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after, ...(unitOf.get(`${d.type}.${d.prop}`) ? { unit: unitOf.get(`${d.type}.${d.prop}`) } : {}) })),
       affectedObjects: result.updatedObjects,
       count: deltas.length,
       rootTypes: [...new Set(apply.map((a) => a.objectType))],
@@ -741,6 +743,33 @@ export class SolverService {
    * 敏感度 = Δ(Σp50)/ε（R6 确定·无 Date/random），按 |敏感度| 排序 top-K。不改 recompute/capacity 数学（薄反推层）。
    * args: { mode:"levers", grain, modelId?(合法→单型号·缺省/非法 base 名→多型号聚合), processKey?, factors?, topK?, epsilon? }。
    */
+  /**
+   * WO-UNIT-MEANING · `generic_inference` 逐行量纲（治 G-UNIT-NORMALIZE 最后一处范式项）。
+   *
+   * 病灶：recompute 的 before/after 表逐行是**不同派生字段**（产能/天数/比率/金额混排），
+   * 前端 `WhatIfView` 只能裸渲染数字 → 用户无从判断每行口径。
+   * 治法：单位取**本体既有 `PropertyDef.unit`**（59 个属性已登记·真值源不另建·R1），
+   * 前端只格式化。缺 unit → 该行诚实省略（不臆造）。
+   *
+   * 性能纪律（本方法在 apply 热路径上）：只查 deltas **实际涉及的类型**（`typeSet` 过滤），
+   * 不全量 list 本体；类型数 = deltas 里的 distinct type（通常 1–3），一次调用。
+   */
+  private async unitsForDeltas(
+    tenantId: string,
+    deltas: { type?: string; prop?: string }[],
+  ): Promise<Map<string, string>> {
+    const m = new Map<string, string>();
+    const typeSet = new Set(deltas.map((d) => String(d.type ?? "")).filter(Boolean));
+    if (typeSet.size === 0) return m;
+    const types = await this.repos.ontologyTypes.list(tenantId, (t) => typeSet.has(t.key));
+    for (const t of types) {
+      for (const pd of t.properties ?? []) {
+        if (pd.unit) m.set(`${t.key}.${pd.propKey}`, pd.unit);
+      }
+    }
+    return m;
+  }
+
   private async discoverCapacityLevers(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const grain = str(args.grain) as FactorGrain | "process-model";
     const modelId = str(args.modelId);
@@ -879,7 +908,9 @@ export class SolverService {
     const sum = (m: Map<string, number>): number => [...m.values()].reduce((s, v) => s + v, 0);
     return {
       deltas,
-      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after })),
+      // WO-UNIT-MEANING：本路径 delta 恒为 ProcessModel.p50 = **工序日产能** → 与 capacity.ts
+      // byProcessModel 同口径「套/天」（同一 p50 语义·跨接缝不漂移）。
+      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after, unit: "套/天" })),
       affectedObjects: deltas.length,
       count: deltas.length,
       rootTypes,
