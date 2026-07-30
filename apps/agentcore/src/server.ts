@@ -1236,7 +1236,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
     // Skill 编写规范 §4 门禁一：结构 lint 必过（force=true 走审计豁免）。
     const { force } = req.query as { force?: string };
-    const lint = lintSkill(skill);
+    // ⚠️ 必须传 ctx.allSkills：WO-SKILL-3 的跨资源规则（dependsOn 可解析 / 依赖图无环）在
+    //    `ctx.allSkills` 缺省时会直接 `return []`——只调 `lintSkill(skill)` 等于把这两条规则**接了没通**
+    //    （lint 恒过，真正的环/悬挂依赖照样发布出去，而单测因为直接调函数并传了 ctx 仍是绿的）。
+    const lint = lintSkill(skill, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId), requirePublishedDeps: true });
     if (!lint.ok && force !== "true") {
       throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
     }

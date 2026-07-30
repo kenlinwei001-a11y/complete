@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef, AffectedOrdersOutputVM } from "@/api/types";
-import { SEG_REGISTRY } from "@platform/contracts";
+import { SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { BlockConversable } from "@/components/BlockConversable";
@@ -897,8 +897,16 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
         </select>
         <span style={{ fontSize: 11, color: "var(--muted2)" }}>切换基地看各自双轨</span>
       </div>
+      {/*
+        WO-UNIT-MEANING · peakCut 是**张力指数的削减量**（Δ，同 risk_timeline 的 0–100 张力空间），
+        此前渲染为裸「峰值削减 12」——会被读成 12 台/12%。差值不能套 formatTightness（那是水平值「张力12/100」，
+        语义相反），故用 contracts `TIGHTNESS_METRIC` 的名称+量程拼出「削减 12 点张力（0–100 指数）」，量程不内联。
+      */}
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
-        <b data-testid="cf-base">{data.base}</b>·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
+        <b data-testid="cf-base">{data.base}</b>·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> 点{TIGHTNESS_METRIC.label}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数） · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
+      </div>
+      <div data-testid="cf-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+        纵轴：{TIGHTNESS_METRIC.label}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数·{TIGHTNESS_METRIC.hint}）· 越线阈值 {formatTightness(data.threshold)}
       </div>
       <EChart
         height={180}
@@ -908,7 +916,7 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
           legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 }, data: ["不解决", "处置后"] },
           tooltip: { trigger: "axis" },
           xAxis: { type: "category", data: days },
-          yAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+          yAxis: { type: "value", max: TIGHTNESS_METRIC.scaleMax, name: `${TIGHTNESS_METRIC.label}(${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax})`, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
           series: [
             { name: "不解决", type: "line", smooth: true, data: data.baselineSeries, itemStyle: { color: "#DD7E9E" } },
             { name: "处置后", type: "line", smooth: true, data: data.mitigatedSeries, itemStyle: { color: "#62BE77" } },

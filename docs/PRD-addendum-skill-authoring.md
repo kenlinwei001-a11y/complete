@@ -10,8 +10,34 @@
 
 > 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
 
-- **触及不变量**（§5）：R1
-- **触及断点**（§8）：（无特定断点）
+- **触及对象类型**（`docs/SYSTEM-ONTOLOGY.md` §2.H）：
+  - `Skill`（`SkillDefinitionSchema`，`packages/contracts/src/agentcore.ts`）：工业级字段 capability/sideEffect/inputSchema/outputSchema/references/dependsOn/approvalGate/provenancePolicy/maxBudgetRounds/resources；生命周期 DRAFT→PUBLISHED→RETIRED。
+  - `SkillReference`：kind∈{rule,constraint,slice,ontologyType,solver,skill,workflow,agent}，含 required/role/version。
+  - `SkillAttachment`：resources 附件（mime/description）。
+  - `AgentDefinition.skills[]`：挂载 skillId+version+arguments。
+  - `EvalCase`：新增 `suite=skill_quality`、`skillKey`、`expect.behaviorGain`。
+  - `SkillResource`（DRIL 统一资源投影，WO-SKILL-4）。
+- **触及链路**（`docs/SYSTEM-ONTOLOGY.md` §3）：
+  - `Agent --binds--> Skill`（运行时挂载）。
+  - `Skill --references|dependsOn--> {rule|constraint|slice|ontologyType|solver|skill|workflow|agent}`。
+  - `Skill --evaluatedBy--> EvalCase(suite=skill_quality)`。
+  - `Skill --projectedTo--> SkillResource`（DRIL 检索）。
+  - `Skill --published--> skill.published` 事件。
+- **触及事件**（`docs/SYSTEM-ONTOLOGY.md` §4）：`skill.published`（B 栈 outbox，失效 agent-editor.skill-bindings）。
+- **触及不变量**（§5）：
+  - R1（contracts-only-shared：Skill 契约在 `@platform/contracts` 定义，跨包复用）。
+  - R3（entitlement：feature 关则不存在，Skill 相关入口受 catalog_admin/authz 守护）。
+  - R4（版本化/发布态：DRAFT 可编辑，PUBLISHED 不可变，RETIRED 退役；引用 latest 的 agent 下次加载即新内容）。
+  - R6（确定性：SkillProbeRunner 行为增益对照、lint 规则纯函数、依赖环检测稳定）。
+  - R9（仓储双实现+迁移：skills/evalCases/resource_relations 表 memory/pg 同改）。
+  - R13（诚实输出：provenancePolicy=required 必须带 provenance；WRITE/approvalGate 必须产 action_draft；无行为增益的技能被评测门禁拒）。
+  - R14（零业务常数：Skill 资源投影不从代码内联业务对象名）。
+  - R16（发育闭环：Skill 发布经 lint+eval 两门，跨资源 dependsOn/references 必须指向 PUBLISHED，无环）。
+- **触及门禁**（`docs/SYSTEM-ONTOLOGY.md` §7）：
+  - `skill-lint:check`（结构 lint：summary/body/契约字段/依赖解析/无环）。
+  - `skill-eval:check`（评测门禁：≥3 skill_quality 用例 + SkillProbeRunner 挂载真实 agent 全过）。
+  - `ontology-writeback:check`（新增门须回写 §7，本次补录同步满足）。
+- **触及断点**（§8）：（无新增特定断点；诚实边界：mock LLM 下评测分数仅证管线与断言框架正确，接 REAL 模型后才是真质量分。）
 - **范畴**：Skill 编写规范与质量门禁：技能优秀=可校验属性（lint + 评测用例）
 
 ## 1. 三级职责铁律（写错层级 = 发布拒绝）

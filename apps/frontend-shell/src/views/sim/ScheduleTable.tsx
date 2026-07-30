@@ -145,7 +145,8 @@ export function ScheduleTable({
                     {r.crossBase && <span className={styles.xbadge} title="电芯与 Pack 异地·跨基地执行">异地</span>}
                   </td>
                   <td className="num" data-testid={`global-sim-sched-chg-${r.item}`} title={r.crossBase ? "跨基地换型停机（派生·镜像后端换型系数）" : "同基地·无跨基地换型"}>
-                    {r.changeoverHours > 0 ? `${r.changeoverHours.toFixed(1)} 小时` : "0"}
+                    {/* 0 值此前掉了单位（非零走「N 小时」、零走裸「0」）——同列量纲必须一致。 */}
+                    {`${r.changeoverHours > 0 ? r.changeoverHours.toFixed(1) : "0"} 小时`}
                   </td>
                   <td className="mono" data-testid={`global-sim-sched-deliver-${r.item}`}>{r.deliverDay}</td>
                   <td className={r.onTime ? styles.ok : styles.bad}>{r.status}</td>

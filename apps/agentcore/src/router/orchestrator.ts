@@ -266,7 +266,10 @@ export function renderDrilPackage(pkg: ResourcePackage): string {
   }
   if (pkg.slices.length > 0) lines.push(`· 切片（resolve_slice）：${pkg.slices.join("、")}`);
   if (pkg.rules.length > 0) lines.push(`· 规则（evaluate_rules）：${pkg.rules.join("、")}`);
-  if (pkg.skills.length > 0) lines.push(`· 技能：${pkg.skills.join("、")}`);
+  if (pkg.skills.length > 0) {
+    const skillLine = pkg.skills.map((s) => (s.capability ? `${s.key}（${s.capability}）` : s.key)).join("、");
+    lines.push(`· 技能（相关时可参考其策略）：${skillLine}`);
+  }
   if (pkg.workflows.length > 0) lines.push(`· 工作流：${pkg.workflows.join("、")}`);
   if (pkg.explanation) lines.push(`选型说明：${pkg.explanation}`);
   return lines.join("\n");

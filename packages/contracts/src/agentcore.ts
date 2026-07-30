@@ -188,12 +188,23 @@ export function isWriteEffectSkill(skill: { sideEffect?: string | null }): boole
 }
 
 /** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
+/**
+ * 引用 kind / role 词表**单一来源**（导出成具名数组，供 skill-lint 等消费方 import）。
+ *
+ * 为何导出数组而不是让消费方掏 zod 内部（`schema.shape.kind.options`）：内部结构会随 zod 版本碎；
+ * 更要紧的是 —— WO-SKILL-3 原稿在 `skill-lint.ts` 里**手抄了一份** `VALID_REF_KINDS`/`VALID_REF_ROLES`，
+ * 与本枚举各自维护。那正是本会话刚治过的病（`sideEffect` 词表分裂→判定永不触发·假绿第 6 例）：
+ * 谁新增一种 kind，lint 那半必然漏，且两边测试都能是绿的。一个事实一个出处（R-一致）。
+ */
+export const SKILL_REFERENCE_KINDS = ["rule", "constraint", "slice", "ontologyType", "solver", "skill", "workflow", "agent"] as const;
+export const SKILL_REFERENCE_ROLES = ["precondition", "postcheck", "context", "fallback"] as const;
+
 export const SkillReferenceSchema = z.object({
-  kind: z.enum(["rule", "constraint", "slice", "ontologyType", "solver", "skill", "workflow", "agent"]),
+  kind: z.enum(SKILL_REFERENCE_KINDS),
   key: z.string().min(1),
   version: z.number().int().optional(),
   required: z.boolean().default(true),
-  role: z.enum(["precondition", "postcheck", "context", "fallback"]).default("context"),
+  role: z.enum(SKILL_REFERENCE_ROLES).default("context"),
 });
 export type SkillReference = z.infer<typeof SkillReferenceSchema>;
 

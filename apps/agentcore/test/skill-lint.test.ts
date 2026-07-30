@@ -104,3 +104,98 @@ describe("Skill 编写规范 §4 — 发布门禁（endpoint）", () => {
     expect((res.json() as { ok: boolean }).ok).toBe(false);
   });
 });
+
+describe("WO-SKILL-3 · Skill 工业级契约静态 lint 与发布依赖闭合", () => {
+  async function postSkill(t: Awaited<ReturnType<typeof createTestApp>>, payload: Record<string, unknown>): Promise<string> {
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/skills", headers: debugHeaders(ADMIN), payload });
+    expect(res.statusCode).toBe(201);
+    return (res.json() as { id: string }).id;
+  }
+
+  it("lint：inputSchema/outputSchema 缺 type 或非法 → metadata 违规", () => {
+    const base = { summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [] };
+    const r1 = lintSkill({ ...base, inputSchema: { properties: {} } } as any);
+    expect(r1.violations.some((v) => v.rule === "inputSchema.missingType")).toBe(true);
+
+    const r2 = lintSkill({ ...base, outputSchema: [{ type: "object" }] } as any);
+    expect(r2.violations.some((v) => v.rule === "outputSchema.invalid")).toBe(true);
+
+    const ok = lintSkill({ ...base, inputSchema: { type: "object" }, outputSchema: { type: "object" } } as any);
+    expect(ok.violations.some((v) => v.rule.startsWith("inputSchema") || v.rule.startsWith("outputSchema"))).toBe(false);
+  });
+
+  it("lint：references 非法 kind / role / version / 重复 → metadata 违规", () => {
+    const refs = [
+      { kind: "solver", key: "S1", role: "precondition" },
+      { kind: "bad_kind", key: "X" },
+      { kind: "rule", key: "R1", role: "bad_role" },
+      { kind: "skill", key: "DUP" },
+      { kind: "skill", key: "DUP", version: 0 },
+    ];
+    const r = lintSkill({ summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], references: refs } as any);
+    const rules = new Set(r.violations.map((v) => v.rule));
+    expect(rules.has("references[1].kind")).toBe(true);
+    expect(rules.has("references[2].role")).toBe(true);
+    expect(rules.has("references[4].duplicate")).toBe(true);
+    expect(rules.has("references[4].version")).toBe(true);
+  });
+
+  it("lint：dependsOn 指向不存在的 skill → unresolved；提供 allSkills 后可解析", () => {
+    const r1 = lintSkill(
+      { summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "missing" }] } as any,
+      {},
+      { allSkills: [] },
+    );
+    expect(r1.violations.some((v) => v.rule === "dependsOn[0].unresolved")).toBe(true);
+
+    const ctxSkill = { id: "skl_ctx", tenantId: "t", key: "exists", version: 1, name: "x", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], status: "PUBLISHED" } as any;
+    const r2 = lintSkill(
+      { summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "exists" }] } as any,
+      {},
+      { allSkills: [ctxSkill] },
+    );
+    expect(r2.violations.some((v) => v.rule === "dependsOn[0].unresolved")).toBe(false);
+  });
+
+  it("lint：dependsOn 成环 → dependencyCycle", () => {
+    const a = { id: "skl_a", tenantId: "t", key: "A", version: 1, name: "A", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], status: "DRAFT", dependsOn: [{ kind: "skill", key: "B" }] } as any;
+    const b = { id: "skl_b", tenantId: "t", key: "B", version: 1, name: "B", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], status: "DRAFT", dependsOn: [{ kind: "skill", key: "A" }] } as any;
+    const r = lintSkill(a, {}, { allSkills: [a, b] });
+    expect(r.violations.some((v) => v.rule === "metadata.dependencyCycle")).toBe(true);
+  });
+
+  it("publish：dependsOn 指向 DRAFT skill → 422 SKILL_LINT_FAILED；force 可豁免", async () => {
+    const t = await createTestApp();
+    const depId = await postSkill(t, { key: "draft_dep", name: "Draft Dep", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [] });
+    const mainId = await postSkill(t, { key: "needs_draft", name: "Needs Draft", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "draft_dep" }] });
+
+    const blocked = await t.app.inject({ method: "POST", url: `/b/v1/skills/${mainId}/publish`, headers: debugHeaders(ADMIN) });
+    expect(blocked.statusCode).toBe(422);
+    expect((blocked.json() as { error: { code: string } }).error.code).toBe("SKILL_LINT_FAILED");
+
+    const forced = await t.app.inject({ method: "POST", url: `/b/v1/skills/${mainId}/publish?force=true`, headers: debugHeaders(ADMIN) });
+    expect(forced.statusCode).toBe(200);
+  });
+
+  it("publish：dependsOn 指向 PUBLISHED skill → 可发布", async () => {
+    const t = await createTestApp();
+    const depId = await postSkill(t, { key: "published_dep", name: "Published Dep", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [] });
+    const pubDep = await t.app.inject({ method: "POST", url: `/b/v1/skills/${depId}/publish?force=true`, headers: debugHeaders(ADMIN) });
+    expect(pubDep.statusCode).toBe(200);
+
+    const mainId = await postSkill(t, { key: "needs_published", name: "Needs Published", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "published_dep" }] });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${mainId}/publish?force=true`, headers: debugHeaders(ADMIN) });
+    expect(pub.statusCode).toBe(200);
+  });
+
+  it("publish：dependsOn 成环 → 422 SKILL_LINT_FAILED", async () => {
+    const t = await createTestApp();
+    const idA = await postSkill(t, { key: "cycle_a", name: "Cycle A", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "cycle_b" }] });
+    const idB = await postSkill(t, { key: "cycle_b", name: "Cycle B", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "cycle_a" }] });
+
+    const blocked = await t.app.inject({ method: "POST", url: `/b/v1/skills/${idA}/publish`, headers: debugHeaders(ADMIN) });
+    expect(blocked.statusCode).toBe(422);
+    expect((blocked.json() as { error: { code: string } }).error.code).toBe("SKILL_LINT_FAILED");
+    expect(JSON.stringify(blocked.json())).toContain("dependencyCycle");
+  });
+});

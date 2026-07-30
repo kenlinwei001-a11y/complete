@@ -42,8 +42,13 @@ export function Timeline({ state }: { state: TaskStreamState }) {
             <span className="badge amber">◇ {zh.dock.exploreMode}</span>
           )}
           {state.routing.confidence != null && (
-            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>
-              conf {state.routing.confidence.toFixed(2)}
+            /*
+              WO-UNIT-MEANING：此前渲染成「conf 0.94」——既不知道是什么、也不知道满分是 1 还是 100。
+              量纲＝分类置信度 0–1（QOS `routing.completed` 事件 confidence，契约 qos.ts 为纯 z.number()、
+              无 unit 字段可消费；agentcore 侧与阈值 tauHigh/tauMid 同尺度比较，恒 0–1），故就近写成「置信度 0.94/1」。
+            */
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }} data-testid="routing-confidence" title="分类置信度（0–1·越高越确定）">
+              置信度 {state.routing.confidence.toFixed(2)}/1
             </span>
           )}
         </div>

@@ -426,7 +426,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
         {d?.businessTypeSummary && (
           <table className={styles.gtable} data-testid="global-sim-bt-summary">
-            <thead><tr><th>业务类型</th><th style={{ textAlign: "right" }}>产能占用</th><th style={{ textAlign: "right" }}>订单量(套)</th><th style={{ textAlign: "right" }}>预测量(套)</th><th style={{ textAlign: "right" }}>预测缺口</th><th style={{ textAlign: "right" }}>提前交付</th><th style={{ textAlign: "right" }}>订单波动(CV)</th><th style={{ textAlign: "right" }}>实排量</th><th style={{ textAlign: "right" }}>被挤量</th></tr></thead>
+            {/*
+              WO-UNIT-MEANING：订单量/预测量本来就带 (套)，同表的 预测缺口/提前交付/实排量/被挤量 却裸奔——
+              同一行里「12,000」和「3」量纲不同却都没标，最易误读。单位取自契约字段注释（contracts/global-sim.ts
+              `GlobalSimBusinessTypeSummarySchema`：forecastGap/allocatedQty/displacedQty=套，earlyDeliveryCount=订单数）。
+              「订单波动(CV)」**故意不加单位**：变异系数 σ/μ 是无量纲比值，列头已点名 CV。
+            */}
+            <thead><tr><th>业务类型</th><th style={{ textAlign: "right" }}>产能占用</th><th style={{ textAlign: "right" }}>订单量(套)</th><th style={{ textAlign: "right" }}>预测量(套)</th><th style={{ textAlign: "right" }}>预测缺口(套)</th><th style={{ textAlign: "right" }}>提前交付(单)</th><th style={{ textAlign: "right" }}>订单波动(CV·无量纲)</th><th style={{ textAlign: "right" }}>实排量(套)</th><th style={{ textAlign: "right" }}>被挤量(套)</th></tr></thead>
             <tbody>
               {d.businessTypeSummary.map((s) => {
                 const util = s.capacityUtil;

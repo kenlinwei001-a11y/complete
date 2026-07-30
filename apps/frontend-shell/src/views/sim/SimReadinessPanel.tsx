@@ -183,8 +183,13 @@ export function SimReadinessPanel({
               对象：<span className="mono">{cert.targetRef}</span>
             </div>
           )}
-          <div className={styles.sub} style={{ marginTop: 2 }}>
-            综合 {cert.dims.composite.toFixed(0)} · 结构 {cert.dims.structure.toFixed(0)} / 知识 {cert.dims.knowledge.toFixed(0)} / 行为 {cert.dims.behavior.toFixed(0)}
+          {/*
+            WO-UNIT-MEANING：四个分数此前裸奔（「综合 78 · 结构 82 …」看不出满分是 100 还是 10）。
+            量纲来源＝契约 `SimCertificationSchema.dims` 注释「三维准备度 0-100」（contracts/src/sim.ts）——
+            该字段是纯 z.number()、无 unit 字段也无导出常量可消费，故就近在标题里标一次量程（不逐值重复）。
+          */}
+          <div className={styles.sub} style={{ marginTop: 2 }} data-testid="sim-cert-dims">
+            准备度（0–100 分）：综合 {cert.dims.composite.toFixed(0)} · 结构 {cert.dims.structure.toFixed(0)} / 知识 {cert.dims.knowledge.toFixed(0)} / 行为 {cert.dims.behavior.toFixed(0)}
           </div>
         </div>
       </div>

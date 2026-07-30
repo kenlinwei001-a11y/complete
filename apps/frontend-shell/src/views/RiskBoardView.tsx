@@ -1239,7 +1239,8 @@ function HistoricalCasesSection() {
       <div className="section-title">历史处置案例（{cases.length} 例 · 越线 → 采纳 → 消解）</div>
       <table className="cmp" data-testid="risk-cases-table">
         <thead>
-          <tr><th>编号</th><th>案例</th><th>因子</th><th>越线日</th><th>采纳处置</th><th>消解日</th><th>受影响订单</th></tr>
+          {/* 末列此前只出一个裸数「3」——列名「受影响订单」不足以说明是**批数**还是套数，故列头带单位（与 §7.3 台账「N 批」同口径）。 */}
+          <tr><th>编号</th><th>案例</th><th>因子</th><th>越线日</th><th>采纳处置</th><th>消解日</th><th>受影响订单(批)</th></tr>
         </thead>
         <tbody>
           {cases.map((c) => (
@@ -1262,24 +1263,38 @@ function HistoricalCasesSection() {
 
 /** 案例点击 → 回放当时的时序曲线（curve = query_timeseries_agg 参数，数字与回放写入同源）。 */
 function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: () => void }) {
+  // 回放口径三元组（与下面 queryTimeseriesAgg 的入参**同一常量**，避免图注与真实请求漂移）。
+  const CURVE_AGG = "sum" as const;
+  const CURVE_GRAIN = "day" as const;
   const { data } = useQuery({
     queryKey: ["a", "case-replay", kase.id],
-    queryFn: () => queryTimeseriesAgg({ seriesKey: kase.curve.seriesKey, entityIds: [kase.curve.entityId], window: { from: kase.curve.from, to: kase.curve.to, grain: "day" }, agg: "sum" }),
+    queryFn: () => queryTimeseriesAgg({ seriesKey: kase.curve.seriesKey, entityIds: [kase.curve.entityId], window: { from: kase.curve.from, to: kase.curve.to, grain: CURVE_GRAIN }, agg: CURVE_AGG }),
   });
   const points = data?.points ?? [];
+  // WO-UNIT-MEANING · 纵轴口径：此前 y 轴是纯裸数值（「38000」既可能是套数也可能是 OEE%）。
+  // 单源现状：`QueryTimeseriesAggOutput.points[]` 只有 {entityId,bucket,value}，**没有 unit 字段**，
+  // `RiskCaseSchema.curve` 也只给 seriesKey——契约里没有 seriesKey→单位的字典可消费。故此处**不臆造单位**，
+  // 而是标注可核验的真口径：序列键 + 聚合方式 + 粒度 + 实体（单位随该序列定义走，由 seriesKey 唯一确定）。
+  // 收敛路径：后端 /a/v1/timeseries/agg-query 回传 series.unit（或 contracts 出 SERIES_UNITS 字典）后，此处改为直接消费。
+  const yAxisCaption = `纵轴：序列 ${kase.curve.seriesKey} · 按${CURVE_GRAIN === "day" ? "日" : CURVE_GRAIN}${CURVE_AGG === "sum" ? "合计" : CURVE_AGG} · 实体 ${kase.curve.entityId}`;
   return (
     <Modal title={`${kase.caseNo} · ${kase.title}`} onClose={onClose} width={760}>
       <div data-testid="case-replay-modal">
         <div className="section-title">当时的时序曲线（{kase.curve.from} ~ {kase.curve.to}）</div>
+        <div data-testid="case-replay-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+          {yAxisCaption}
+          <span style={{ marginLeft: 6 }}>（量纲随该序列定义·接口未回传 unit 字段，故只标口径不臆造单位）</span>
+        </div>
         <EChart
           height={180}
           testId="case-replay-curve"
           option={{
-            grid: { top: 14, bottom: 28, left: 48, right: 12 },
+            grid: { top: 22, bottom: 28, left: 48, right: 12 },
             tooltip: { trigger: "axis" },
-            xAxis: { type: "category", data: points.map((p) => p.bucket.slice(0, 10)) },
-            yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
-            series: [{ type: "line", smooth: true, data: points.map((p) => p.value), itemStyle: { color: "#43B7D7" }, markLine: { data: [{ xAxis: kase.crossedAt, label: { formatter: "越线" } }, { xAxis: kase.adoptedAt, label: { formatter: "采纳" } }, { xAxis: kase.resolvedAt, label: { formatter: "消解" } }] } }],
+            xAxis: { type: "category", data: points.map((p) => p.bucket.slice(0, 10)), name: "日期", nameLocation: "end" },
+            // 轴名 = 真口径（seriesKey·聚合·粒度），浏览器里贴在 y 轴顶端；jsdom 无 canvas 故同文案另以 caption 落 DOM。
+            yAxis: { type: "value", name: `${kase.curve.seriesKey}（${CURVE_GRAIN === "day" ? "日" : CURVE_GRAIN}${CURVE_AGG === "sum" ? "合计" : CURVE_AGG}）`, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+            series: [{ name: kase.curve.seriesKey, type: "line", smooth: true, data: points.map((p) => p.value), itemStyle: { color: "#43B7D7" }, markLine: { data: [{ xAxis: kase.crossedAt, label: { formatter: "越线" } }, { xAxis: kase.adoptedAt, label: { formatter: "采纳" } }, { xAxis: kase.resolvedAt, label: { formatter: "消解" } }] } }],
           }}
         />
         <div className="section-title" style={{ marginTop: 10 }}>处置时间线</div>

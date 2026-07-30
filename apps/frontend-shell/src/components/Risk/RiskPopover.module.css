@@ -37,3 +37,11 @@
   height: 14px;
   border-radius: 2px;
 }
+
+/* 逐日 strip 的量纲图例（WO-UNIT-MEANING：色块不裸奔，标明张力量程与越线阈值） */
+.stripLegend {
+  margin-top: 5px;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--muted2);
+}

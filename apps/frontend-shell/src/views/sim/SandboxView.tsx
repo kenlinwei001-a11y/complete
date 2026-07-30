@@ -372,10 +372,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         </div>
       </div>
 
-      {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染） */}
+      {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染）
+          WO-UNIT-MEANING：这些读数此前是裸数「62.5」。量纲＝**0–100 状态指数**——由本文件 deriveBaseSnapshot
+          （`hash01()*100`）与 aggregate（"所有 stateVar 均值，0-100"）共同界定，是**前端沙盘自有口径**，
+          后端/契约无对应 unit 字段可消费（tick 引擎只回 Record<string,number>），故就近在标签上标量程。 */}
       <div className={styles.threeKpiRow} data-testid="sandbox-kpis">
         <div className={styles.kpi} data-testid="sandbox-kpi-global">
-          <span>全局态（tick {curTick}）</span>
+          <span>全局态（0–100 指数 · tick {curTick}）</span>
           <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
         </div>
         {cfg.stateVars.map((v) => {
@@ -383,7 +386,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
           return (
             <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
-              <span>{v}</span>
+              <span>{v}（0–100 指数·全对象均值）</span>
               <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
             </div>
           );

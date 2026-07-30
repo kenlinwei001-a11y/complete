@@ -8,7 +8,9 @@ import {
 import { createTestApp, debugHeaders, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { seedRegistry, seedMcpConfigs } from "../src/mocks/seed.js";
 import {
+  extractRelations,
   projectRules,
+  projectSkills,
   projectSolvers,
   projectWorkflows,
 } from "../src/dril/resource-projector.js";
@@ -143,6 +145,65 @@ describe("WO-DRIL-P1 · 投影纯函数 + 质量分公式（R6 确定性）", ()
     const all = [...solvers, ...rules, ...workflows];
     for (const r of all) expect(r.description.trim().length).toBeGreaterThan(0);
     expect(findInvalidResources(all)).toEqual([]);
+  });
+
+  it("projectSkills 投影工业级契约字段（capability/inputSpec/outputSpec/triggerPatterns）", () => {
+    const skills = projectSkills([
+      {
+        id: "skl1",
+        tenantId: "t",
+        key: "capacity_threshold",
+        version: 1,
+        name: "产能阈值分析",
+        summary: "当问某型号未来还能加多少量时使用。",
+        body: "## 目的\n…",
+        resources: [{ name: "table.csv", blobKey: "b1" }],
+        status: "PUBLISHED",
+        capability: "forecast",
+        inputSchema: { type: "object", required: ["modelId", "weeks"], properties: { modelId: { type: "string" } } },
+        outputSchema: { type: "object", required: ["thresholdQty", "unit"], properties: { thresholdQty: { type: "number" } } },
+      } as never,
+    ]);
+    expect(skills).toHaveLength(1);
+    const s = skills[0]!;
+    expect(s.capability).toBe("forecast");
+    expect(s.inputSpec).toMatchObject({ shape: ["modelId", "weeks"] });
+    expect(s.outputSpec).toMatchObject({ shape: ["thresholdQty", "unit"] });
+    expect(s.triggerPatterns).toContain("当问某型号未来还能加多少量时使用。");
+    expect(s.attachments).toContain("table.csv");
+    expect(findInvalidResources(skills)).toEqual([]);
+  });
+
+  it("extractRelations 派生 Skill 引用/依赖边", () => {
+    const skills = [
+      {
+        id: "skl_a",
+        tenantId: "t",
+        key: "skill_a",
+        version: 1,
+        name: "A",
+        summary: "sum",
+        body: "b",
+        resources: [],
+        status: "PUBLISHED",
+        references: [{ kind: "rule", key: "C03", role: "postcheck", required: true }],
+        dependsOn: [{ kind: "skill", key: "skill_b" }],
+      },
+      {
+        id: "skl_b",
+        tenantId: "t",
+        key: "skill_b",
+        version: 1,
+        name: "B",
+        summary: "sum",
+        body: "b",
+        resources: [],
+        status: "PUBLISHED",
+      },
+    ] as never[];
+    const rels = extractRelations({ workflows: [], agents: [], skills, rules: [] });
+    expect(rels.some((r) => r.fromKind === "skill" && r.fromKey === "skill_a" && r.relType === "references" && r.toKind === "rule" && r.toKey === "C03")).toBe(true);
+    expect(rels.some((r) => r.fromKind === "skill" && r.fromKey === "skill_a" && r.relType === "dependsOn" && r.toKind === "skill" && r.toKey === "skill_b")).toBe(true);
   });
 
   it("computeQualityScore/ewmaUpdate 确定性同输入同输出", () => {

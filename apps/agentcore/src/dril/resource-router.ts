@@ -17,7 +17,7 @@ export interface ResourcePackage {
   solvers: { key: string; outputShape?: string[] }[];
   slices: string[];
   rules: string[];
-  skills: string[];
+  skills: { key: string; label: string; capability?: string }[];
   workflows: string[];
   /** 组包解释（透传底层检索 explanation·可解释性 §4⑤）。 */
   explanation: string;
@@ -66,6 +66,14 @@ export class ResourceRouter {
         .slice(0, maxPerKind)
         .map((r) => r.resource.key);
 
+    const skillDetails = withRel.results
+      .filter((r) => r.resource.kind === "skill")
+      .slice(0, maxPerKind)
+      .map((r) => {
+        const resource = r.resource as { key: string; label?: string; capability?: string };
+        return { key: resource.key, label: resource.label ?? resource.key, capability: resource.capability };
+      });
+
     return {
       query,
       solvers: solverKeys.map((k) => {
@@ -75,7 +83,7 @@ export class ResourceRouter {
       }),
       slices: pick("slice"),
       rules: pick("rule"),
-      skills: pick("skill"),
+      skills: skillDetails,
       workflows: pick("workflow"),
       explanation: base.explanation,
     };

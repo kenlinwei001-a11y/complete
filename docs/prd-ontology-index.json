@@ -397,13 +397,21 @@
       "hasOntologyRef": true,
       "invariants": [
         "R1",
-        "R14"
+        "R13",
+        "R14",
+        "R16",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
       ],
       "breakpoints": [
         "G-1",
         "G-8"
       ],
-      "artifacts": [],
+      "artifacts": [
+        "packages/contracts/src/agentcore.ts"
+      ],
       "brokenArtifacts": []
     },
     "PRD-addendum-solvers-and-gaps.md": {
@@ -2018,6 +2026,10 @@
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-inference-line.md"
     ],
+    "packages/contracts/src/agentcore.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-scenario-launcher.md"
+    ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
     ],
@@ -2398,9 +2410,6 @@
       "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
-      "PRD-scenario-launcher.md"
-    ],
-    "packages/contracts/src/agentcore.ts": [
       "PRD-scenario-launcher.md"
     ],
     "scripts/check-chain-closure.mjs": [

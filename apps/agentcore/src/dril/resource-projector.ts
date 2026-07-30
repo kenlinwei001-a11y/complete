@@ -12,6 +12,7 @@ import type {
   WorkflowDefinition,
   WorkflowResource,
 } from "@platform/contracts";
+import { SKILL_REFERENCE_KINDS } from "@platform/contracts";
 import type { McpServerConfig } from "@platform/contracts";
 import type { RuleSummary } from "../tools/clients.js";
 
@@ -134,17 +135,53 @@ export function projectIntents(intents: IntentDefinition[]): IntentResource[] {
   }));
 }
 
-/** skill ← AgentCore 本地 skills repo（summary 作描述）。 */
+/** skill ← AgentCore 本地 skills repo（summary 作描述；WO-SKILL-4 补齐 capability/input/output/relations）。 */
 export function projectSkills(skills: SkillDefinition[]): SkillResource[] {
   return skills.map((s) => ({
     kind: "skill" as const,
     key: s.key,
     label: nonEmpty(s.name, s.key) ?? s.key,
     description: nonEmpty(s.summary, s.name, `技能 ${s.key}`) ?? `技能 ${s.key}`,
-    capability: nonEmpty(s.summary, s.name),
+    capability: s.capability ?? nonEmpty(s.summary, s.name),
+    inputSpec: s.inputSchema ? ioSpecFromJsonSchema(s.inputSchema) : undefined,
+    outputSpec: s.outputSchema ? ioSpecFromJsonSchema(s.outputSchema) : undefined,
+    triggerPatterns: s.summary ? [s.summary] : undefined,
     attachments: s.resources.map((r) => r.name),
     governance: { status: s.status, version: s.version },
   }));
+}
+
+/** 资源关系图可作为目标的 kind：= 契约引用词表减去 ontologyType（本体类型非资源图节点）。派生自单一来源，
+ *  免得新增一种引用 kind 时这里悄悄漏掉（原稿是就地手写的字面量数组）。 */
+const RESOURCE_REL_TARGET_KINDS: ReadonlySet<string> = new Set(
+  SKILL_REFERENCE_KINDS.filter((k) => k !== "ontologyType"),
+);
+
+/**
+ * 把 JSON Schema 投影为 `ResourceInputOutput`（契约 `intelligence-resource.ts:35`）。
+ *
+ * 两个字段按**契约语义**填，别按名字直觉填（原稿把二者接反了）：
+ *   `requiredProps`（Record<名, 口径>）= 只收 `schema.required` 列出的那些属性 —— 原稿收了**全部** properties，
+ *      于是 Agent 在资源目录里会把可选参数当必填，照着编造入参。
+ *   `shape`（string[]·契约注释="输出顶层字段"）= 顶层字段名全集 `Object.keys(properties)` —— 原稿塞的是
+ *      `schema.required`，既非顶层字段全集，用在 inputSpec 上也不是"输出字段"这个语义。
+ */
+function ioSpecFromJsonSchema(schema: Record<string, unknown>): { shape?: string[]; requiredProps?: Record<string, string> } {
+  const props = (schema.properties ?? {}) as Record<string, { type?: string; description?: string }>;
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((x): x is string => typeof x === "string")
+    : [];
+  // 顶层字段全集 = 必填名（保序在前）∪ 其余已声明属性。二者取任一单边都会丢字段：
+  // 只取 required → 丢可选字段；只取 properties → 丢「声明了必填却没写属性定义」的字段。
+  const shape = [...required, ...Object.keys(props).filter((k) => !required.includes(k))];
+  // 只有 required 里的才是必填；无属性定义的必填字段诚实标 unknown，不假装知道它的口径。
+  const requiredProps = Object.fromEntries(
+    required.map((k) => [k, props[k]?.type ?? props[k]?.description ?? "unknown"]),
+  );
+  return {
+    ...(shape.length > 0 ? { shape } : {}),
+    ...(Object.keys(requiredProps).length > 0 ? { requiredProps } : {}),
+  };
 }
 
 /** agent ← AgentCore 本地 agents repo（description 契约已保证非空）。 */
@@ -202,11 +239,26 @@ export function extractRelations(input: {
     }
   }
   const skillById = new Map(input.skills.map((s) => [s.id, s.key] as const));
+  const skillByKey = new Map(input.skills.map((s) => [s.key, s] as const));
   for (const a of input.agents) {
     for (const sk of a.skills) {
       const key = skillById.get(sk.skillId);
       if (key) out.push({ fromKind: "agent", fromKey: a.key, relType: "binds", toKind: "skill", toKey: key });
     }
+  }
+  // WO-SKILL-4：Skill 工业级引用 → 派生资源关系（precondition/postcheck/context/dependsOn）。
+  for (const s of input.skills) {
+    const pushRef = (ref: { kind: string; key: string }, relType: string) => {
+      // ontologyType 不是资源图节点 → **真的略过**。
+      // 原稿写的是 `ref.kind === "ontologyType" ? "slice" : ref.kind`，注释说"略过"、代码却把它改写成 slice，
+      // 于是产出一条 toKind:"slice" 而 toKey 其实是本体类型键的**悬挂关系**（下游按 slice 查必然查不到）。
+      if (ref.kind === "ontologyType") return;
+      if (RESOURCE_REL_TARGET_KINDS.has(ref.kind)) {
+        out.push({ fromKind: "skill", fromKey: s.key, relType, toKind: ref.kind, toKey: ref.key });
+      }
+    };
+    for (const ref of s.references ?? []) pushRef(ref, "references");
+    for (const dep of s.dependsOn ?? []) pushRef(dep, "dependsOn");
   }
   return out;
 }

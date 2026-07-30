@@ -125,19 +125,25 @@ export default function EvalsPage() {
 
       <div className="section-title">评测历史</div>
       <table className="cmp" data-testid="eval-runs" style={{ width: "100%" }}>
-        <thead><tr><th>套件</th><th>通过率</th><th>意图准确率</th><th>工具正确率</th><th>parity 失因（对 PRD 期望）</th><th>平均时延</th><th>模式</th></tr></thead>
+        {/*
+          WO-UNIT-MEANING：parity 失因此前渲染成「意图错分 3 · 工具序列偏 1」——3 是**用例数**还是次数看不出来；
+          通过率括号里的 9/10 同理。故列头带单位(例)且逐值补「例」。单位来源：后端 evals 返回的
+          `parity.byFailKind[k]` / `passed` / `total` 计的都是**评测用例条数**（同页「用例 N 条」同口径）——
+          契约未给 unit 字段（纯计数字段），故就近在展示层标注。
+        */}
+        <thead><tr><th>套件</th><th>通过率（例）</th><th>意图准确率</th><th>工具正确率</th><th>parity 失因（对 PRD 期望·例）</th><th>平均时延</th><th>模式</th></tr></thead>
         <tbody>
           {runItems.map((r) => (
             <tr key={r.id} data-testid={`eval-run-${r.id}`}>
               <td><span className="badge">{SUITE_LABEL[r.suite] ?? r.suite}</span></td>
-              <td className="mono"><b style={{ color: r.passRate >= 0.9 ? "var(--ok)" : "var(--warn,#c90)" }}>{Math.round(r.passRate * 100)}%</b> ({r.passed}/{r.total})</td>
+              <td className="mono"><b style={{ color: r.passRate >= 0.9 ? "var(--ok)" : "var(--warn,#c90)" }}>{Math.round(r.passRate * 100)}%</b> ({r.passed}/{r.total} 例)</td>
               <td className="mono">{Math.round(r.metrics.intentAccuracy * 100)}%</td>
               <td className="mono">{Math.round(r.metrics.toolCorrectness * 100)}%</td>
               <td className="mono" data-testid={`eval-parity-${r.id}`}>
                 {r.parity
                   ? (["INTENT", "TOOLSEQ", "ANSWER", "OTHER"] as const)
                       .filter((k) => r.parity!.byFailKind[k] > 0)
-                      .map((k) => `${PARITY_LABEL[k]} ${r.parity!.byFailKind[k]}`)
+                      .map((k) => `${PARITY_LABEL[k]} ${r.parity!.byFailKind[k]} 例`)
                       .join(" · ") || "全对 ✓"
                   : "—"}
               </td>

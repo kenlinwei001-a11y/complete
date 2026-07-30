@@ -90,14 +90,17 @@ export function SimComparePanel({
         </div>
       </div>
 
-      {/* 逐 tick 并排差异表 */}
+      {/* 逐 tick 并排差异表
+          WO-UNIT-MEANING：格内此前是裸数「60.0 / 30.0 / +12.0」。这些是沙盘**全局态 0–100 指数**
+          （SimCompareSeries.mean = 逐 tick 全对象状态均值，与 SandboxView aggregate 同口径），
+          后端无 unit 字段可消费 → 列头就近标量程；tick 列是**序号**（无量纲），标「第N步」不标单位。 */}
       <table className="data-table" data-testid="sim-compare-table" style={{ marginTop: 10, width: "100%", fontSize: 12 }}>
         <thead>
           <tr>
-            <th>tick</th>
-            <th>{labelA}</th>
-            <th>{labelB}</th>
-            <th>差异 (B−A)</th>
+            <th>tick（第N步·序号）</th>
+            <th>{labelA}（0–100 指数）</th>
+            <th>{labelB}（0–100 指数）</th>
+            <th>差异 (B−A)·指数点</th>
           </tr>
         </thead>
         <tbody>

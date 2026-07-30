@@ -861,39 +861,320 @@ export function seedRegistry(now = new Date().toISOString()): {
   const skills: SkillDefinition[] = [
     {
       id: "skl_seed_capacity", tenantId: SEED_TENANT, key: "capacity_analysis", version: 1,
-      name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
-      body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
+      name: "产能分析方法论",
+      summary: "当用户问某型号产能口径、P50/P90 含义或缺口解释时使用。不适用：直接计算未来产能（应调用 capacity_forecast 求解器）。",
+      body: `## 目的
+解释产能数字口径、P50/P90 含义与缺口处置思路，确保用户理解“能不能接、差多少、怎么办”。
+
+## 适用边界
+适用：某型号产能金字塔口径、认证状态、爬坡折减、P50/P90 差异解释。
+不适用：重新计算未来产能（应由 capacity_forecast 求解器输出）。
+
+## 前置检查
+确认数字对应的 modelId、weeks、snapshotVersion，避免拿不同参数对比。
+
+## 步骤
+1. 确认型号认证状态（量产/认证中）。
+2. 解释 P50（均衡口径）与 P90（保守口径）差异。
+3. 缺口为负时列出外协、排程平移、认证加速候选方案。
+4. 每个数字标注 ⟦ref:N⟧ 溯源。
+
+## 示例
+正例：用户问“4680-NCM 还能加多少量？”→说明 P50/P90 口径、当前缺口比例、建议外协。
+反例：直接平均 P50 和 P90 给一个综合值（错：分位数不可平均）。
+
+## 失败处理
+求解器/数据缺失时，说明缺哪项数据，不编造数字。
+
+## 输出要求
+按 结论/分析/证据/建议/风险 组织；业务数字一律 ⟦ref:N⟧。`,
       resources: [], status: "PUBLISHED",
+      capability: "analysis",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { modelId: { type: "string" }, weeks: { type: "number" } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, p50: { type: "number" }, p90: { type: "number" }, gapPct: { type: "number" } },
+      },
+      references: [
+        { kind: "solver", key: "capacity_forecast", role: "context", required: true },
+        { kind: "rule", key: "C03", role: "postcheck", required: true },
+      ],
     },
     {
       id: "skl_seed_sop_meeting", tenantId: SEED_TENANT, key: "sop_meeting", version: 1,
-      name: "S&OP 会议纪要技能", summary: "S&OP 会议纪要结构化要点。",
-      body: "# S&OP 会议纪要\n\n1. 需求侧：月度需求总量、分 segment 需求。\n2. 供给侧：可供给量、长协覆盖率、物料缺口。\n3. 财务侧：毛利率目标、现金安全垫、CAPEX。\n4. 行动项：责任人、完成时间、风险标记。",
+      name: "S&OP 会议纪要技能",
+      summary: "当需要结构化 S&OP 会议纪要、对齐需求/供给/财务/行动项时使用。不适用：替代产销平衡计算（应调用 sop_balance 工作流）。",
+      body: `## 目的
+把 S&OP 月度产销会内容结构化为需求、供给、财务、行动项四栏。
+
+## 适用边界
+适用：会议纪要整理、行动项跟踪、会议结论结构化。
+不适用：替代 sop_balance 工作流的真实产销平衡计算。
+
+## 前置检查
+确认会议月份、segment、参会方结论已录入或可从工作流输出提取。
+
+## 步骤
+1. 需求侧：月度总量、分 segment 需求。
+2. 供给侧：可供给量、长协覆盖率、物料缺口。
+3. 财务侧：毛利率目标、现金安全垫、CAPEX。
+4. 行动项：责任人、完成时间、风险标记。
+
+## 示例
+正例：输入“10月动力 segment 会议纪要”→输出四栏+行动项。
+反例：只罗列原始发言，未归类到需求/供给/财务/行动项。
+
+## 失败处理
+缺 segment 或月份时，反问澄清，不臆造。
+
+## 输出要求
+输出 markdown 表格或列表，关键数字标 ⟦ref:N⟧。`,
       resources: [], status: "DRAFT",
+      capability: "planning",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { month: { type: "string" }, segment: { type: "string" } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, actions: { type: "array", items: { type: "object" } } },
+      },
+      references: [{ kind: "workflow", key: "sop_balance_wf", role: "context", required: true }],
     },
     {
       id: "skl_seed_risk_analysis", tenantId: SEED_TENANT, key: "risk_analysis", version: 1,
-      name: "风险分析方法论", summary: "基地风险画像解读与越线根因归因要点。",
-      body: "# 风险分析\n\n1. 风险画像三维度：产能利用率、物料齐套、交期达成。\n2. 越线根因优先看瓶颈工序（化成/卷绕/涂布/装配/注液）。\n3. 处置方案候选：三班制、外协、调拨、检修错峰。",
+      name: "风险分析方法论",
+      summary: "当需要解读基地风险画像、越线根因或处置方案时使用。不适用：实时风险值重算（应由 risk_timeline 求解器输出）。",
+      body: `## 目的
+解释基地风险画像三维度与越线根因归因，给出处置判断。
+
+## 适用边界
+适用：基地风险日报解读、越线根因分析、处置方案建议。
+不适用：实时风险值重算（应由 risk_timeline 求解器输出）。
+
+## 前置检查
+确认 baseId 与 horizon，避免跨基地混用数据。
+
+## 步骤
+1. 三维度扫描：产能利用率、物料齐套、交期达成。
+2. 越线根因优先定位瓶颈工序（化成/卷绕/涂布/装配/注液）。
+3. 处置候选：三班制、外协、调拨、检修错峰。
+4. 给出风险等级与责任方。
+
+## 示例
+正例：用户问“合肥基地为什么标红？”→指出卷绕瓶颈、利用率、建议调拨。
+反例：只列风险分数，不解释根因和动作。
+
+## 失败处理
+数据缺失时说明“无法归因”，不编造根因。
+
+## 输出要求
+按 结论/分析/证据/建议/风险 组织；关键数字标 ⟦ref:N⟧。`,
       resources: [], status: "PUBLISHED",
+      capability: "analysis",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { baseId: { type: "string" }, horizon: { type: "number" } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, topRisks: { type: "array", items: { type: "object" } } },
+      },
+      references: [{ kind: "solver", key: "risk_timeline", role: "context", required: true }],
     },
     {
       id: "skl_seed_supply_chain", tenantId: SEED_TENANT, key: "supply_chain_mgmt", version: 1,
-      name: "供应链管理技能", summary: "物料齐套、库存优化与采购策略分析框架。",
-      body: "# 供应链管理\n\n1. 齐套检查：BOM 展开 → 库存扣减 → 在途确认 → 缺口计算。\n2. 库存优化：安全库存 = MAX(需求波动× lead time, 最小订货量)。\n3. 采购策略：长协保底 + 现货补缺 + 外协弹性。",
+      name: "供应链管理技能",
+      summary: "当需要分析物料齐套、库存优化或采购策略时使用。不适用：直接生成采购/调拨指令（应走 create_action_draft 审批）。",
+      body: `## 目的
+解释物料齐套、库存优化与采购策略分析框架，识别断供风险与缺口。
+
+## 适用边界
+适用：齐套状态解读、安全库存建议、采购策略评估。
+不适用：直接生成采购/调拨指令（应走 create_action_draft 审批）。
+
+## 前置检查
+确认 baseId、BOM 版本、在途订单范围。
+
+## 步骤
+1. BOM 展开 → 库存扣减 → 在途确认 → 缺口计算。
+2. 安全库存 = MAX(需求波动×lead time, 最小订货量)。
+3. 采购策略：长协保底 + 现货补缺 + 外协弹性。
+4. 输出断供风险等级与建议。
+
+## 示例
+正例：用户问“4680-NCM 缺什么料？”→列出缺料、缺口数量、预计补齐时间。
+反例：未确认 BOM 版本就给出缺料结论。
+
+## 失败处理
+库存/在途数据缺失时，说明缺失项，不补全数字。
+
+## 输出要求
+按 结论/分析/证据/建议/风险 组织；数字标 ⟦ref:N⟧。`,
       resources: [], status: "PUBLISHED",
+      capability: "analysis",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { baseId: { type: "string" }, materialId: { type: "string" } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, kitGap: { type: "array", items: { type: "object" } } },
+      },
+      references: [{ kind: "solver", key: "kit_readiness", role: "context", required: true }],
     },
     {
       id: "skl_seed_quality_control", tenantId: SEED_TENANT, key: "quality_control", version: 1,
-      name: "质量控制技能", summary: "良率波动诊断与质量改进 PDCA 框架。",
-      body: "# 质量控制\n\n1. 良率监控：SPC 控制图（X-bar / R / p-chart）。\n2. 波动归因：人、机、料、法、环五维度鱼骨图。\n3. 改进闭环：Plan（根因）→ Do（试点）→ Check（验证）→ Act（推广）。",
+      name: "质量控制技能",
+      summary: "当需要诊断良率波动、质量改进 PDCA 时使用。不适用：自动修改工艺参数（应走审批流）。",
+      body: `## 目的
+解释良率波动诊断与质量改进 PDCA 框架。
+
+## 适用边界
+适用：工序良率波动根因、SPC 控制图解读、改进闭环建议。
+不适用：自动修改工艺参数或质量标准（应走审批流）。
+
+## 前置检查
+确认 processKey、baseId、统计天数与数据粒度。
+
+## 步骤
+1. 良率监控：SPC 控制图（X-bar / R / p-chart）。
+2. 波动归因：人、机、料、法、环五维度鱼骨图。
+3. 改进闭环：Plan（根因）→ Do（试点）→ Check（验证）→ Act（推广）。
+
+## 示例
+正例：用户问“化成良率下降原因”→从人/机/料/法/环给出根因与试点。
+反例：未看控制图就直接归咎于单一因素。
+
+## 失败处理
+数据不足时说明“样本不足”，不强行归因。
+
+## 输出要求
+按 结论/分析/证据/建议/风险 组织；关键数字标 ⟦ref:N⟧。`,
       resources: [], status: "DRAFT",
+      capability: "diagnosis",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { processKey: { type: "string" }, baseId: { type: "string" }, days: { type: "number" } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, rootCause: { type: "string" } },
+      },
+      references: [{ kind: "solver", key: "yield_diagnosis", role: "context", required: true }],
     },
     {
       id: "skl_seed_mcp_guide", tenantId: SEED_TENANT, key: "mcp_integration", version: 1,
-      name: "MCP 集成指南", summary: "MCP 服务器接入与工具调用规范。",
-      body: "# MCP 集成指南\n\n1. 传输协议：streamable_http（推荐）或 stdio（本地子进程）。\n2. 命名空间：serverName 由展示名推导，限小写字母/数字/下划线，2–24 字符。\n3. 工具全名：mcp__{serverName}__{toolName}，scopeDeclaration 与审计均用全名。\n4. 故障恢复：连续 5 次调用失败 → ERROR，自动探测恢复 → ACTIVE。",
+      name: "MCP 集成指南",
+      summary: "当需要指导 MCP 服务器接入、命名规范或故障恢复时使用。不适用：业务产能/供应链/质量分析。",
+      body: `## 目的
+指导 MCP 服务器接入、工具命名与故障恢复。
+
+## 适用边界
+适用：MCP 配置、命名空间、工具调用规范、故障排查。
+不适用：业务产能/供应链/质量分析。
+
+## 前置检查
+确认传输协议（streamable_http / stdio）与服务器展示名。
+
+## 步骤
+1. 传输协议：streamable_http（推荐）或 stdio（本地子进程）。
+2. 命名空间：serverName 由展示名推导，限小写字母/数字/下划线，2–24 字符。
+3. 工具全名：mcp__{serverName}__{toolName}，scopeDeclaration 与审计均用全名。
+4. 故障恢复：连续 5 次调用失败 → ERROR，自动探测恢复 → ACTIVE。
+
+## 示例
+正例：接入 market_data MCP → 工具名 mcp__market_data__get_commodity_price。
+反例：serverName 含大写或连字符，导致工具名不合法。
+
+## 失败处理
+协议不可达时给出检查清单（URL/命令/网络/凭证），不泄露凭证明文。
+
+## 输出要求
+给出操作步骤与检查清单，引用官方规范片段。`,
       resources: [], status: "PUBLISHED",
+      capability: "analysis",
+      sideEffect: "READ",
+      provenancePolicy: "best_effort",
+      approvalGate: "none",
+      inputSchema: {
+        type: "object",
+        properties: { serverName: { type: "string" }, transport: { type: "string", enum: ["streamable_http", "stdio"] } },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { conclusion: { type: "string" }, nextStep: { type: "string" } },
+      },
+      references: [],
+    },
+    {
+      // ⚠️ 出厂唯一的**写回型**技能（sideEffect:"WRITE"）。存在的理由不是业务补全，而是**让判定有演练者**：
+      // SP5「写回型技能才追加 create_action_draft」的判定曾比对一套仓里根本不存在的词表（假绿第 6 例），
+      // 而彼时/此后所有种子技能又清一色 READ —— 判定即便退化回死代码，也没有任何真实数据会让它红。
+      // 保留本条：它同时是 engine.ts `skillWriteMode`（任一 WRITE → final_answer 必须含 action_draft 块）
+      // 与 approvalGate:"human"（R4 真值经 Action）在出厂态的唯一活体样本。改成 READ 前请先想清楚谁来兜。
+      id: "skl_seed_capacity_action", tenantId: SEED_TENANT, key: "capacity_action_draft", version: 1,
+      name: "产能处置行动拟稿",
+      summary: "当产能推演已给出结论、需要把结论落成可审批的行动项时使用（例如「按这个方案生成行动计划」）。不适用：只问数不要行动、或尚未跑过推演。",
+      body: `## 目的
+把产能推演结论转成**可审批的行动草案**，而不是直接改真值（R4：真值只经 Action 审批链变更）。
+
+## 适用边界
+仅在已有推演结论（capacity_forecast / risk_timeline 输出）时使用；无结论则先跑推演。
+
+## 前置检查
+1. 已有推演结论及其 provenance；2. 调整量有明确口径与单位；3. 影响基地/型号已确定。
+
+## 步骤
+1. 读推演结论与关键因子。
+2. 逐条拟行动：动作 + 责任基地 + 幅度（带单位）+ 期望效果。
+3. 调 create_action_draft 产出草案，等待人工审批。
+
+## 示例
+正例：「常州基地 4680-NCM 未来 6 周缺口 12 套 → 拟稿：加开 1 个班次（+1 班/日，预计补 8 套）」。
+反例：直接宣称"已调整产线"——本技能不写真值，只出草案。
+
+## 失败处理
+缺 provenance 或口径不明 → 拒绝拟稿并说明缺什么，不臆造数字。
+
+## 输出要求
+必须产出 action_draft 块；每个数字带单位；结论可溯源到推演 provenance。`,
+      resources: [], status: "PUBLISHED",
+      capability: "prescription",
+      sideEffect: "WRITE",
+      approvalGate: "human",
+      provenancePolicy: "required",
+      inputSchema: {
+        type: "object",
+        required: ["modelId"],
+        properties: {
+          modelId: { type: "string", description: "型号键" },
+          baseId: { type: "string", description: "基地键（缺省=全网）" },
+        },
+      },
+      outputSchema: {
+        type: "object",
+        properties: { actions: { type: "array" }, rationale: { type: "string" } },
+      },
+      references: [{ kind: "solver", key: "capacity_forecast", role: "precondition", required: true }],
     },
   ];
   const agents: AgentDefinition[] = [
