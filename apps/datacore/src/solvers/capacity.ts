@@ -439,23 +439,36 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
 
   const batches = Array.isArray(args.batches) && args.batches.length > 0 ? [...args.batches] : undefined;
   const qty = batches ? batches.reduce((a, b) => a + num(b.qty), 0) : num(args.qty, 0);
-  const weeks = Math.max(
-    1,
-    Math.floor(
-      num(
-        args.weeks,
-        batches
-          ? Math.max(
-              ...batches.map((b) => Math.max(1, Math.floor((dayFrom(p.forecastStart, b.dueDate) - logisticsDays(p, b.address)) / 7))),
-            )
-          : 6,
-      ),
+  // WO-SCENARIO-INPUT-PHASE0 收口（复验退单修·治「1天交付被当成 1 周」）：
+  //   旧写法 `Math.max(1, Math.floor(weeks))` 把亚周窗口直接抹成 1 周 —— 解析半已能把「1天」归一为
+  //   0.143，但求解器 floor 成 1，**「1天」与「1周」返回字节相同的结果**（实测 p50 均 1.9642）。
+  // 分离两个概念（勿再合并）：
+  //   weeksExact  = 真实窗口周数（**可小数**·下界 1/7 = 最小 1 天·线性口径用）
+  //   weekSlots   = 整数周槽位（数组长度 / 逐周循环 / 数组索引用·ceil 保证索引不越界）
+  //   windowScale = weeksExact / weekSlots —— **整数窗口恒为 1**，故所有既有整数入参逐字节不回归（R6）
+  // 诚实披露（本体 §5 已回写）：非整数窗口按**线性比例**折算；跨周时爬坡曲线 curveMult 做混合近似
+  //   （如 1.5 周 = 2 周槽 × 0.75），非逐日精确模型。
+  const weeksExact = Math.max(
+    1 / 7,
+    num(
+      args.weeks,
+      batches
+        ? Math.max(
+            ...batches.map((b) => Math.max(1, Math.floor((dayFrom(p.forecastStart, b.dueDate) - logisticsDays(p, b.address)) / 7))),
+          )
+        : 6,
     ),
   );
+  const weekSlots = Math.max(1, Math.ceil(weeksExact));
+  const windowScale = weeksExact / weekSlots;
+  // 输出字段诚实回显**请求窗口**（非内部整数槽位）；文案对亚周窗口改用「N 天」以便人读懂
+  // （「未来 0.1429 周」不可读；这是 WO-UNIT-MEANING「数字要配得懂的意义」同一条纪律）。
+  const weeksOut = round(weeksExact, 4);
+  const weeksLabel = weeksExact < 1 ? `${round(weeksExact * 7, 1)} 天` : `${weeksOut} 周`;
 
   // P50 accumulation + per-base drilldown rows.
   const perBaseRows: Record<string, unknown>[] = [];
-  const cumP50ByWeek: number[] = new Array(weeks).fill(0); // cumulative P50 at end of week w (1-based index w-1)
+  const cumP50ByWeek: number[] = new Array(weekSlots).fill(0); // cumulative P50 at end of week w (1-based index w-1)
   let p50 = 0;
   const pendingCertList: string[] = [];
   let mainBn = "";
@@ -469,10 +482,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     const weekly = weeklyByBase.get(baseId) ?? 0;
     const mw = maintWeekOf(c, baseId);
     let cumTotal = 0;
-    for (let w = 1; w <= weeks; w++) {
-      const add = weekly * certFactor * curveMult(p, w, mw);
+    for (let w = 1; w <= weekSlots; w++) {
+      // windowScale：非整数窗口线性折算（整数窗口 =1 → 逐字节不变）。
+      const add = weekly * certFactor * curveMult(p, w, mw) * windowScale;
       cumTotal += add;
-      for (let i = w - 1; i < weeks; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
+      for (let i = w - 1; i < weekSlots; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
     }
     p50 += cumTotal;
     // S1.3 tightness for the per-base bottleneck column + global mainBn —— LIVE 优先（真数据），无真数据源回落 MOCK。
@@ -504,7 +518,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
 
   // PRD-CAP-DEMANDDELTA · effectiveDemand = (显式 qty 或 订单簿基线) × (1 + demandDelta)。
   // WO-BASE-ID-FIDELITY 症①：base 作用域下基线需求也收窄到该基地可承接订单（诚实·base 产能 vs base 需求同尺度）。
-  const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeks, scopeBaseId);
+  const baselineDemand = computeBaselineDemand(c, modelId, p.forecastStart, weeksExact, scopeBaseId);
   const demandDelta = num(args.demandDelta, 0);
   const effectiveDemand = round((qty > 0 ? qty : baselineDemand) * (1 + demandDelta), 4);
 
@@ -518,12 +532,12 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     const thresholdQty = baselineDemand >= p90 ? 0 : round(p90 - baselineDemand, 4);
     const summary =
       thresholdQty > 0
-        ? `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
-        : `${modelName} 未来 ${weeks} 周产能天花板 P90=${p90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
+        ? `${modelName} 未来 ${weeksLabel}产能天花板 P90=${p90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
+        : `${modelName} 未来 ${weeksLabel}产能天花板 P90=${p90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
     return {
       ...scopeOut,
       mode: "threshold",
-      weeks,
+      weeks: weeksOut,
       p50,
       p90,
       baselineDemand,
@@ -557,7 +571,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       const dueDay = dayFrom(p.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(p, b.address)) / 7));
       cumDemand += num(b.qty);
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
+      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weekSlots) - 1] as number) * healthFactor, 4);
       const rowOk = cumDemand <= cumP90;
       if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
       batchRows.push({ qty: num(b.qty), dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
@@ -585,7 +599,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       let adjusted = p50 * (1 + p.whatIf.nightShiftCoef * n + p.whatIf.channelCoef * ch) + qty * ratio;
       // C03 physical ceiling: full-cert, no-ramp weekly capacity over the window.
       let physicalCap = 0;
-      for (const baseId of cert.keys()) physicalCap += (weeklyByBase.get(baseId) ?? 0) * weeks;
+      for (const baseId of cert.keys()) physicalCap += (weeklyByBase.get(baseId) ?? 0) * weeksExact;
       physicalCap = round(physicalCap, 4);
       let capped = false;
       if (adjusted > physicalCap) {
@@ -645,7 +659,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       mainBn: "",
       pendingCertList,
       ...(degradeNote ? { degradeNote } : {}),
-      weeks,
+      weeks: weeksOut,
       qty: 0,
       dataMode: "EMPTY",
       feasibilityNote: "该型号认证基地当前产能数据为零，无法评估可承接性（数据缺口，见断点 G-CAPACITY-BASE-DATA）",
@@ -677,7 +691,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     pendingCertList,
     ...(degradeNote ? { degradeNote } : {}),
     ...(whatIf ? { whatIf } : {}),
-    weeks,
+    weeks: weeksOut,
     qty,
     baselineDemand,
     effectiveDemand,
