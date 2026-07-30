@@ -54,8 +54,11 @@ export default function MergePage() {
         const allKeys = [...new Set(c.objects.flatMap((o) => Object.keys(o.props)))];
         return (
           <div key={c.id} className="panel" data-testid={`merge-cand-${c.id}`} style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
-              {c.typeKey} · {c.rule} · 得分 {c.score} · {c.objectIds.length} 个对象
+            {/* WO-UNIT-MEANING：「得分 0.92」曾裸奔（0–1 还是百分制看不出）。量纲来自契约注释
+                （contracts/entity-resolution.ts `MergeCandidateSchema.score`：匹配得分 [0,1]·名称归一相似度）——
+                字段无 unit 可消费，故就近写量程。 */}
+            <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }} data-testid={`merge-cand-meta-${c.id}`}>
+              {c.typeKey} · {c.rule} · 匹配得分 {c.score}/1（相似度） · {c.objectIds.length} 个对象
             </div>
             <table className="cmp" style={{ width: "100%" }}>
               <thead>

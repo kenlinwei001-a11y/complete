@@ -57,7 +57,12 @@ describe("F43 · 管理页整簇", () => {
     expect(await screen.findByTestId("eval-case-ec_1")).toHaveTextContent("capacity_feasibility");
     expect(await screen.findByTestId("eval-run-erun_1")).toHaveTextContent("95%");
     // A14：parity 失因列（对 PRD 期望的偏差）
-    expect(await screen.findByTestId("eval-parity-erun_1")).toHaveTextContent(/意图错分 1/);
+    // WO-UNIT-MEANING：失因数曾是裸「意图错分 1」——1 是用例数还是次数看不出；后端 byFailKind 计的是**用例条数**，
+    // 故逐值带「例」、列头带（例）。通过率括号里的 19/20 同理。退回裸数即红。
+    expect(await screen.findByTestId("eval-parity-erun_1")).toHaveTextContent(/意图错分 1 例/);
+    expect(await screen.findByTestId("eval-run-erun_1")).toHaveTextContent(/\(\d+\/\d+ 例\)/);
+    expect(screen.getByText("parity 失因（对 PRD 期望·例）")).toBeInTheDocument();
+    expect(screen.getByText("通过率（例）")).toBeInTheDocument();
     await user.click(screen.getByTestId("eval-run"));
     await screen.findByText(/评测完成：20\/20 通过/);
   });
@@ -79,6 +84,8 @@ describe("F43 · 管理页整簇", () => {
     // 候选并排对照
     const cand = await screen.findByTestId("merge-cand-mc_1");
     expect(cand).toHaveTextContent("常州");
+    // WO-UNIT-MEANING：匹配得分是 [0,1] 相似度（契约 MergeCandidateSchema.score 注释），此前渲染成裸「得分 0.92」。
+    expect(screen.getByTestId("merge-cand-meta-mc_1").textContent ?? "").toMatch(/匹配得分 [\d.]+\/1（相似度）/);
     // 选 obj_a 为 golden 合并
     await user.click(within(cand).getByTestId("merge-golden-mc_1-obj_a"));
     await screen.findByText(/已合并/);

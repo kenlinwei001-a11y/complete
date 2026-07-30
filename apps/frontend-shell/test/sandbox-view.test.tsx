@@ -88,6 +88,12 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     // KPI 行 = 全局 + 每个 stateVar 一个。
     expect(screen.getByTestId("sandbox-kpi-global")).toBeTruthy();
     for (const v of CONFIG_A.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
+    // WO-UNIT-MEANING：读数曾是裸「62.5」——看不出满分是 100 还是 10。沙盘态是 0–100 指数
+    // （deriveBaseSnapshot 的 hash01()*100 与 aggregate 的"均值 0-100"共同界定·前端自有口径），标签须带量程。
+    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    for (const v of CONFIG_A.stateVars) {
+      expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").toContain("0–100 指数");
+    }
     // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）。
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
     // WO-RC-UX-DOOR-TEXT：未认证态显「可试跑（未认证·结论仅供参考）」——标准页 tick 未被 canEnter 门控·非劝退（诚实门）。

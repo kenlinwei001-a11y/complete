@@ -14,7 +14,8 @@ function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string |
   return (
     <div className="panel" style={{ marginTop: 12 }} data-testid="ot-instance-panel">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        实例 · <code>{typeKey}</code> <span className="badge">{q.data?.total ?? rows.length}</span>
+        {/* WO-UNIT-MEANING：徽章此前只有裸数「20」——是实例数还是页码看不出。计数无 unit 契约，就近点明"个实例"。 */}
+        实例 · <code>{typeKey}</code> <span className="badge" data-testid="ot-instance-total">共 {q.data?.total ?? rows.length} 个实例</span>
         <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose} data-testid="ot-instance-close">关闭</button>
       </div>
       {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>无物化实例。</div>}
@@ -86,10 +87,11 @@ export default function ObjectTypesBrowserPage() {
       {[...byDomain.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([dom, rows]) => (
         <div key={dom} className="panel" style={{ marginBottom: 10 }} data-testid={`ot-domain-${dom}`}>
           <div className="section-title" style={{ borderLeft: `3px solid ${domColor(dom)}`, paddingLeft: 8 }}>
-            {domLabel(dom)} <span className="badge">{rows.length}</span>
+            {domLabel(dom)} <span className="badge" data-testid={`ot-domain-count-${dom}`}>{rows.length} 个类型</span>
           </div>
+          {/* WO-UNIT-MEANING：「物化数」的格子是**已物化对象条数**，列头点明单位（个），避免与"属性数"混读。 */}
           <table className="cmp">
-            <thead><tr><th>类型</th><th>属性(源/派生)</th><th>主键</th><th>物化数</th><th /></tr></thead>
+            <thead><tr><th>类型</th><th>属性数(源/派生·个)</th><th>主键</th><th>物化对象数(个)</th><th /></tr></thead>
             <tbody>
               {rows.map((s) => (
                 <tr key={s.key} data-testid={`ot-row-${s.key}`}>

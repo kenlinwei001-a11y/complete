@@ -35,6 +35,10 @@ describe("global-sim cockpit · 五区决策驾驶舱 SEAM-GATE", () => {
     expect(within(row).getByTestId("global-sim-sched-chg-SO-10001").textContent).toContain("小时");
     // 至少一段两段行（电芯↔Pack 异地）。
     expect(within(sched).getAllByText(/异地/).length).toBeGreaterThanOrEqual(1);
+    // WO-UNIT-MEANING：同基地行（换型 0）此前掉单位渲染成裸「0」——同列量纲必须一致，0 也得是「0 小时」。
+    const sameBaseCells = within(sched).getAllByTestId(/^global-sim-sched-chg-/).filter((c) => (c.textContent ?? "").startsWith("0 "));
+    expect(sameBaseCells.length, "应存在同基地零换型行").toBeGreaterThanOrEqual(1);
+    for (const c of sameBaseCells) expect(c.textContent ?? "").toContain("小时");
   });
 
   it("§1 跨半咬合（命门）：排除 SO-10001 → 真打 portfolio → 排产表/分配台账该单真消失（输入→输出真变）", async () => {
@@ -158,6 +162,16 @@ describe("global-sim cockpit · 五区决策驾驶舱 SEAM-GATE", () => {
     // 乘用车产能不足（util ≥100%·上屏「产能不足」）、商用车空闲、储能≈满载稳（口径分层·非贴标签）。
     expect(screen.getByTestId("global-sim-bt-util-passenger").textContent).toContain("产能不足");
     expect(screen.getByTestId("global-sim-bt-util-commercial").textContent).toContain("产能空闲");
+
+    /*
+     * WO-UNIT-MEANING：同一行里「12000」（套）与「3」（单）曾都不带量纲——只有 订单量/预测量 两列带 (套)。
+     * 单位取自契约 GlobalSimBusinessTypeSummarySchema 字段注释（forecastGap/allocatedQty/displacedQty=套，
+     * earlyDeliveryCount=订单数）。orderQtyCv **故意不加单位**：变异系数 σ/μ 无量纲，列头标明"无量纲"即可。
+     */
+    const btTable = screen.getByTestId("global-sim-bt-summary");
+    for (const header of ["预测缺口(套)", "提前交付(单)", "实排量(套)", "被挤量(套)", "订单波动(CV·无量纲)"]) {
+      expect(within(btTable).getByText(header), `列头应带量纲：${header}`).toBeInTheDocument();
+    }
 
     // 勾选储能 → 请求真带 businessTypes:["storage"]（联合重解·后端真收窄·非前端假过滤）。
     const before = seen.length;

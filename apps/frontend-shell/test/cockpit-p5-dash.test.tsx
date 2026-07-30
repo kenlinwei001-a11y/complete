@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TIGHTNESS_METRIC } from "@platform/contracts";
 import { loginAs, renderApp } from "./utils";
 
 /**
@@ -23,6 +24,17 @@ describe("cockpit P5 · 驾驶舱版本切换 + 反事实双线图", () => {
     const cf = await screen.findByTestId("cf-widget");
     await waitFor(() => expect(within(cf).getByTestId("cf-peakcut")).toBeInTheDocument());
     expect(within(cf).getByTestId("cf-chart")).toBeTruthy();
+
+    /*
+     * WO-UNIT-MEANING：「峰值削减 12」曾裸奔——12 是台/百分点看不出，实为**张力指数的削减量**。
+     * 差值不能套 formatTightness（那是水平值「张力12/100」，语义相反），故拼「N 点张力（0–100 指数）」；
+     * 双轨曲线的纵轴同样补口径行（jsdom 无 canvas，轴名不可见，故同文案落 DOM caption）。
+     */
+    expect(within(cf).getByText(/点张力（0–100 指数）/)).toBeInTheDocument();
+    const cap = within(cf).getByTestId("cf-axis-caption").textContent ?? "";
+    expect(cap).toContain(`纵轴：${TIGHTNESS_METRIC.label}`);
+    expect(cap).toContain(TIGHTNESS_METRIC.hint);
+    expect(cap).toMatch(new RegExp(`越线阈值 ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
   });
 
   it("反事实基地选择器：默认最严重基地 + 切基地→双轨真变（KILL-MOCK·C1/C2/C3）", async () => {

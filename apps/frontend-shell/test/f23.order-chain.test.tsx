@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TIGHTNESS_METRIC } from "@platform/contracts";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -68,6 +69,17 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     expect(pop).toHaveTextContent("化成柜张力");
     expect(pop).toHaveTextContent("D+5");
     expect(within(pop).getByTestId("risk-popover-strip")).toBeInTheDocument();
+    // WO-UNIT-MEANING：峰值是**张力 0–100 指数**，此前弹窗渲染成裸「峰值 91」（会被读成 91%）。
+    // 卡面早已经 formatTightness 单源治好，本共用弹窗曾是同一指标的漏网消费点——退回裸数即红。
+    const peak = within(pop).getByTestId("risk-popover-peak");
+    expect(peak.textContent ?? "").toMatch(new RegExp(`^${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}$`));
+    // 逐日色块 strip 也不再只有颜色：图例给出量纲 + 越线阈值（阈值同样带量纲）。
+    const stripLegend = within(pop).getByTestId("risk-popover-strip-legend");
+    expect(stripLegend.textContent ?? "").toContain(`${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax}`);
+    expect(stripLegend.textContent ?? "").toMatch(new RegExp(`越线阈值 ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
+    // 逐日格 tooltip 同口径（D+n · 张力N/100）。
+    const cells = within(pop).getByTestId("risk-popover-strip").querySelectorAll("span");
+    expect(cells[0]?.getAttribute("title") ?? "").toMatch(new RegExp(`D\\+0 · ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
     await user.unhover(chip);
     await waitFor(() => expect(screen.queryByTestId("risk-popover")).not.toBeInTheDocument());
 
@@ -79,6 +91,7 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     await user.hover(badge);
     const pop2 = await screen.findByTestId("risk-popover");
     expect(pop2).toHaveTextContent("化成柜张力");
+    expect(within(pop2).getByTestId("risk-popover-peak").textContent ?? "").toContain(TIGHTNESS_METRIC.label);
   });
 
   it("待解决问题 4 类卡 → 点开抽屉渲染 LayeredDag 四层（订单→判定→根因→对策）", async () => {

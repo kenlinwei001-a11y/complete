@@ -94,6 +94,8 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
 
     const table = await screen.findByTestId("risk-cases-table");
     expect(within(table).getAllByRole("row").length).toBeGreaterThanOrEqual(4); // 表头 + 3 例
+    // WO-UNIT-MEANING：末列此前只出裸数「3」，列名「受影响订单」看不出是批数还是套数 → 列头带单位。
+    expect(within(table).getByText("受影响订单(批)")).toBeInTheDocument();
     const crisis = screen.getByTestId("risk-case-CASE-007");
     expect(crisis).toHaveTextContent("到货危机");
     expect(crisis).toHaveTextContent("提前备料");
@@ -101,6 +103,17 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     // 回放弹窗：当时的时序曲线（query_timeseries_agg）+ 完整时间线 + 受影响订单
     const modal = await screen.findByTestId("case-replay-modal");
     expect(within(modal).getByTestId("case-replay-curve")).toBeInTheDocument();
+    /*
+     * WO-UNIT-MEANING · 历史回放纵轴曾完全裸奔（只有数值，看不出是套数还是 OEE%）。
+     * 契约无单源可消费（QueryTimeseriesAggOutput.points 只有 {entityId,bucket,value}，无 unit；
+     * RiskCaseSchema.curve 只给 seriesKey），故**不臆造单位**而标真口径：序列键 + 聚合 + 粒度 + 实体，
+     * 并显式披露「接口未回传 unit」。退回无口径图即红。
+     */
+    const caption = within(modal).getByTestId("case-replay-axis-caption");
+    expect(caption.textContent ?? "").toContain("纵轴：序列 output:line"); // 序列键来自 curve.seriesKey（真口径，非前端硬编）
+    expect(caption.textContent ?? "").toContain("按日合计"); // 与请求 agg=sum / grain=day 同一常量拼出
+    expect(caption.textContent ?? "").toContain("LINE-changzhou"); // 实体 = curve.entityId
+    expect(caption.textContent ?? "").toContain("未回传 unit"); // 诚实披露：无单源，不假装有单位
     const timeline = within(modal).getByTestId("case-timeline");
     expect(timeline).toHaveTextContent("风险越线");
     expect(timeline).toHaveTextContent("采纳「提前备料」处置方案");

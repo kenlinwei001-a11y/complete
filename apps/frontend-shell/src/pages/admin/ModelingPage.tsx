@@ -115,8 +115,10 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
           <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
             <th style={{ padding: "4px 8px" }}>类型</th>
             <th style={{ padding: "4px 8px" }}>域</th>
-            <th style={{ padding: "4px 8px" }}>属性</th>
-            <th style={{ padding: "4px 8px" }}>派生</th>
+            {/* WO-UNIT-MEANING：格内是计数（properties.length / derivedProperties.length），列头须点明"数(个)"，
+                否则「属性 12」易被读成属性值本身。计数字段无 unit 契约可消费，就近标注。 */}
+            <th style={{ padding: "4px 8px" }}>属性数(个)</th>
+            <th style={{ padding: "4px 8px" }}>派生数(个)</th>
             <th style={{ padding: "4px 8px" }}>来源数据集（provenance）</th>
           </tr>
         </thead>

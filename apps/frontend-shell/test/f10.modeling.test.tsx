@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { server } from "./setup";
 import { loginAs, renderApp } from "./utils";
 
 describe("F10 · 建模工作台", () => {
@@ -87,5 +89,23 @@ describe("F10 · 建模工作台", () => {
     await waitFor(() => expect(badge).toHaveTextContent("100%"));
     await user.click(screen.getByTestId("publish-draft"));
     await screen.findByText(/发布成功/);
+  });
+
+  /**
+   * WO-UNIT-BARE-NUMBERS：无活动草案（发布完的**稳态**，真实用户日常所见）→「已发布本体」表。
+   * 病灶：「属性 12 / 派生 3」两列格内是**计数**，列头却只有名词 → 12 易被读成属性值本身。
+   * 计数字段在契约里是纯 length（无 unit 可消费），故列头就近带「数(个)」。退回裸列头即红。
+   */
+  it("已发布本体（无草案稳态）：属性/派生列头带计数单位（不裸奔）", async () => {
+    // 清空草案 → ModelingPage 走 PublishedOntologyView 分支。
+    server.use(http.get("*/a/v1/modeling/drafts", () => HttpResponse.json([])));
+    loginAs("planner");
+    renderApp("/admin/modeling");
+
+    const pub = await screen.findByTestId("published-ontology");
+    expect(within(pub).getByText("属性数(个)")).toBeInTheDocument();
+    expect(within(pub).getByText("派生数(个)")).toBeInTheDocument();
+    // 顶部计数本来就带「个对象类型」（不回退）。
+    expect(screen.getByTestId("published-ontology-count").textContent ?? "").toMatch(/\d+ 个对象类型/);
   });
 });

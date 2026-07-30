@@ -19,6 +19,11 @@ describe("A4 · 对象/类型浏览器（域分组 + 物化计数 + 筛选 + 实
     expect(within(page).getByTestId("ot-domain-product")).toBeTruthy();
     expect(within(page).getByTestId("ot-count-Base").textContent).toBe("3");
     expect(within(page).getByTestId("ot-count-Order").textContent).toBe("20");
+    // WO-UNIT-MEANING：格内计数由列头带单位（「物化对象数(个)」/「属性数(源/派生·个)」），域徽章点明"个类型"。
+    const factoryGroup = within(page).getByTestId("ot-domain-factory");
+    expect(within(factoryGroup).getByText("物化对象数(个)")).toBeInTheDocument();
+    expect(within(factoryGroup).getByText("属性数(源/派生·个)")).toBeInTheDocument();
+    expect(within(page).getByTestId("ot-domain-count-factory").textContent ?? "").toMatch(/^\d+ 个类型$/);
 
     // 域筛选：选 product → 仅 product 组，factory 组消失
     await user.selectOptions(within(page).getByTestId("ot-domain-filter"), "product");
@@ -36,6 +41,8 @@ describe("A4 · 对象/类型浏览器（域分组 + 物化计数 + 筛选 + 实
     await user.click(within(page).getByTestId("ot-instances-Base"));
     const panel = await within(page).findByTestId("ot-instance-panel");
     expect(panel).toBeTruthy();
+    // WO-UNIT-MEANING：面板徽章此前是裸数（「3」看不出是实例数还是页码）→「共 N 个实例」。
+    expect(within(panel).getByTestId("ot-instance-total").textContent ?? "").toMatch(/^共 \d+ 个实例$/);
     const links = within(panel).getAllByRole("link");
     expect(links.length).toBeGreaterThan(0);
     expect(links[0]!.getAttribute("href")).toMatch(/^\/o\/Base\//); // 下钻到 Object360

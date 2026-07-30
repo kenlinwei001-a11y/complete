@@ -139,6 +139,12 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     expect(diff1.textContent).toContain("-30.0");
     expect(screen.getByTestId("sim-compare-a-1").textContent).toContain("60.0");
     expect(screen.getByTestId("sim-compare-b-1").textContent).toContain("30.0");
+    // WO-UNIT-MEANING：60.0 / 30.0 / −30.0 曾无任何量纲——它们是**全局态 0–100 指数**（逐 tick 全对象均值）。
+    // 列头须标量程与"差值是指数点"；tick 列是纯序号（无量纲）故只点明"第N步·序号"，不硬凑单位。
+    const cmpTable = screen.getByTestId("sim-compare-table");
+    expect(cmpTable.textContent ?? "").toContain("0–100 指数");
+    expect(cmpTable.textContent ?? "").toContain("指数点");
+    expect(cmpTable.textContent ?? "").toContain("序号");
   });
 
   it("③ 就绪面板 6 项：L0-L4 stepper / L4 三元组 / Trial Tick / 完整度 gauge / entering 清单 / scope 切换", async () => {
@@ -163,6 +169,10 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
 
     // 完整度 gauge（72%）。
     expect(screen.getByTestId("sim-cert-gauge-pct").textContent).toContain("72");
+
+    // WO-UNIT-MEANING：三维准备度曾是裸「综合 78 · 结构 82 …」（满分 100 还是 10 看不出）。
+    // 量纲来源＝契约 SimCertificationSchema.dims 注释「三维准备度 0-100」——字段无 unit 可消费，故标题标一次量程。
+    expect(screen.getByTestId("sim-cert-dims").textContent ?? "").toContain("准备度（0–100 分）");
 
     // entering 清单（2 项 + 真 source，非硬编码 FULFILLS）。
     expect(screen.getByTestId("sim-cert-entering-0")).toBeTruthy();
