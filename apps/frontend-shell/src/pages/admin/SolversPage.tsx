@@ -62,7 +62,10 @@ export default function SolversPage() {
           onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1 }}
         />
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>共 {solvers.length} 个 · 命中 {filtered.length}</span>
+        {/* WO-UNIT-MEANING：「命中 3」此前是裸数——命中几个求解器？几条参数？看不出。计数无 unit 契约可消费，就近点明"个求解器"。 */}
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }} data-testid="solver-count-meta">
+          共 {solvers.length} 个求解器 · 当前筛选命中 {filtered.length} 个
+        </span>
       </div>
 
       {/* WO-RULES-CLASSIFY：求解器分类筛选 chip（domain 真元数据去重，多选，选中即过滤）。 */}
@@ -93,7 +96,8 @@ export default function SolversPage() {
       {byDomain.map(([domain, items]) => (
         <div key={domain} style={{ marginBottom: 14 }}>
           <div className="section-title">
-            {domainLabel(domain)}（{items.length}）
+            {/* WO-UNIT-MEANING：域分组标题括号内此前是裸数，补"个求解器"点明所数何物。 */}
+            {domainLabel(domain)}（{items.length} 个求解器）
           </div>
           <table className="cmp" style={{ width: "100%" }}>
             <thead>

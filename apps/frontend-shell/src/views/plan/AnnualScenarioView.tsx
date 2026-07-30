@@ -70,12 +70,20 @@ function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
     { xAxis: w.fromQ, itemStyle: { color: w.kind === "gap" ? "rgba(221,126,158,.14)" : "rgba(84,181,196,.12)" } },
     { xAxis: w.toQ },
   ]);
+  // WO-UNIT-MEANING · 纵轴量纲：改前 y 轴纯裸刻度（「1150」是万套？亿元？GWh？看不出）。
+  // 单源：**沿用页面内唯一的数量单位常量 `zh.aop.demandUnit`（"万套/年"）**，不新造第二处「万套」字面量。
+  //   为何要换分母：本曲线是**季度**序列——datacore/planviews.ts `capexScenarioFor` 把年需求按季节权重卷积到季
+  //   （`demand.push(annualDemand * wq / 12)`），supply/gap 与 demand 同尺，故量纲 = 数量单位 + 季粒度。
+  // 为何前端就近而非消费单源：契约 `planviews.ts` 的 `AnnualScenarioSchema.demand` / `capexScenario.demand`
+  //   只有代码注释「年需求（万套）」，**没有运行时 unit 字段**可消费；收敛路径 = 后端把 unit 随 capexScenario 一起回传。
+  const qtyUnit = zh.aop.demandUnit.split("/")[0] ?? zh.aop.demandUnit; // "万套/年" → "万套"（唯一单位来源）
+  const yAxisName = zh.aop.wcAxisName(qtyUnit);
   const option = {
     grid: { left: 44, right: 16, top: 28, bottom: 24 },
     tooltip: { trigger: "axis" },
     legend: { data: [zh.aop.wcDemand, zh.aop.wcSupply, zh.aop.wcGap], top: 0, textStyle: { color: "#9AA8B6" } },
     xAxis: { type: "category", data: cs.quarters, axisLine: { lineStyle: { color: "#3A4655" } } },
-    yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(58,70,85,.4)" } } },
+    yAxis: { type: "value", name: yAxisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(58,70,85,.4)" } } },
     series: [
       { name: zh.aop.wcDemand, type: "line", smooth: true, data: cs.demand, lineStyle: { color: "#E8B54A" }, itemStyle: { color: "#E8B54A" },
         markArea: markAreas.length > 0 ? { silent: true, data: markAreas } : undefined },
@@ -86,6 +94,10 @@ function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="aop-window-curve">
       <div className="section-title">{zh.aop.windowSection}</div>
+      {/* jsdom 无 canvas（EChart 静默降级），轴名同文案另以 caption 落 DOM——可测 + 浏览器里也是有用的图注。 */}
+      <div data-testid="aop-window-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+        {zh.aop.wcAxisCaption(yAxisName)}
+      </div>
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }}>
         {zh.aop.windowHint(s.name)}
         {cs.windows.map((w) => (

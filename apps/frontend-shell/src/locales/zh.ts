@@ -226,6 +226,10 @@ export const zh = {
     wcGap: "缺口",
     wcGapWin: (from: string, to: string) => `缺口窗口 ${from}→${to}`,
     wcSurplusWin: (from: string, to: string) => `过剩窗口 ${from}→${to}`,
+    // WO-UNIT-MEANING：窗口曲线纵轴量纲。数量单位由调用方从 demandUnit 派生传入（唯一来源），
+    // 此处只拼粒度（季）——契约无 unit 字段可消费，故量纲落在前端唯一常量上。
+    wcAxisName: (qtyUnit: string) => `${qtyUnit}/季`,
+    wcAxisCaption: (axis: string) => `纵轴：${axis}（需求 / 供给 / 缺口三序列同尺 · 年需求按季节权重卷积到季）`,
   },
   /** §7.15 季度规划 */
   dash: {

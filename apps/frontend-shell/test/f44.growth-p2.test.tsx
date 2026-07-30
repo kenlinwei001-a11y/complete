@@ -16,7 +16,8 @@ describe("F44 · 数据构建发动机就地审批", () => {
 
     // 就地审批面板列出 PENDING_APPROVAL 草稿（act-001）
     const panel = await screen.findByTestId("db-approvals");
-    expect(within(panel).getByTestId("db-approval-count")).toHaveTextContent("1");
+    // WO-UNIT-MEANING：徽章此前只有裸数「1」——数的是**待批 Action 草稿条数**，锁进带口径的新文案
+    expect(within(panel).getByTestId("db-approval-count").textContent).toBe("1 条待批");
     const row = within(panel).getByTestId("db-approval-act-001");
     expect(row).toHaveTextContent("shift_plan_change");
 

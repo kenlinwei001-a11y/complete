@@ -18,6 +18,10 @@ describe("F39 · 场景启动器（目录墙 + ⌘K）", () => {
     await screen.findByTestId("scenario-launcher");
     const card = await screen.findByTestId("launcher-card-S01");
     expect(card).toHaveTextContent("订单可承接性评审");
+    // WO-UNIT-MEANING：域分组标题此前是「{域} · 6」的纯裸数（6 是卡数还是编号？）→ 现点明"个场景"
+    const domainTitles = screen.getAllByTestId(/^launcher-domain-/);
+    expect(domainTitles.length).toBeGreaterThanOrEqual(1);
+    for (const t of domainTitles) expect(t.textContent).toMatch(/· \d+ 个场景$/);
 
     // ▶启动 → 触发问句进对话、selectedObjects 注入、dock 展开
     await user.click(within(card).getByTestId("launcher-launch-S01"));

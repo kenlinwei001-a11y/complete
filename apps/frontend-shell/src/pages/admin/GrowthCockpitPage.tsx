@@ -60,9 +60,12 @@ export default function GrowthCockpitPage() {
 
       {/* 量化指标 */}
       <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 24, fontSize: 12 }}>
-        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{answerRate}%</b> <span className="muted">({answerable}/{runs.length})</span></span>
-        <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{tks.filter((t) => t.status === "OPEN").length}</b></span>
-        <span>累计运行 <b>{runs.length}</b></span>
+        {/* WO-UNIT-MEANING：三个指标此前都是裸数——「开放工单 4」是 4 张还是 4 类？「累计运行 12」是 12 次还是 12 轮？
+            契约 growth.ts 里 tickets/runs 都是数组（无 unit 字段可消费），故就近点明计数单位；
+            可答率括号内补「可答/总运行」说明这是**次数比**而非百分数第二遍。 */}
+        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{answerRate}%</b> <span className="muted">(可答 {answerable} 次 / 共 {runs.length} 次)</span></span>
+        <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{tks.filter((t) => t.status === "OPEN").length}</b> 张</span>
+        <span>累计运行 <b>{runs.length}</b> 次</span>
       </div>
 
       {/* 本次运行结果 */}
@@ -70,7 +73,8 @@ export default function GrowthCockpitPage() {
         <div className="panel" style={{ marginBottom: 12 }} data-testid="growth-report">
           <div className="section-title">
             本次运行 <span className={`badge ${TERMINAL_BADGE[report.terminalState]?.cls}`} data-testid="growth-terminal">{TERMINAL_BADGE[report.terminalState]?.label}</span>
-            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{report.rounds.length} 轮 / K={report.maxRounds}</span>
+            {/* WO-UNIT-MEANING：`K=8` 此前是无解释的裸参数——K 即**最大轮数上限**（同单位：轮）。 */}
+            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>已跑 {report.rounds.length} 轮 / 上限 K={report.maxRounds} 轮</span>
           </div>
           {report.rounds.map((rd) => (
             <div key={rd.round} data-testid={`growth-round-${rd.round}`} style={{ fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
@@ -102,7 +106,8 @@ export default function GrowthCockpitPage() {
       {/* 成长账本 */}
       <div className="section-title">成长账本（demand-indexed）</div>
       <table className="cmp" data-testid="growth-ledger" style={{ width: "100%" }}>
-        <thead><tr><th>客户问题</th><th>终态</th><th>轮数</th><th>工单</th></tr></thead>
+        {/* WO-UNIT-MEANING：末两列格内是 length 计数；列头「工单」此前易被读成工单号，故点明"开放工单数(张)"。 */}
+        <thead><tr><th>客户问题</th><th>终态</th><th>轮数(轮)</th><th>开放工单数(张)</th></tr></thead>
         <tbody>
           {runs.map((e) => (
             <tr key={e.id} data-testid={`ledger-${e.id}`}>

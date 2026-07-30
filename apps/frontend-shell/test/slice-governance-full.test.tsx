@@ -35,12 +35,17 @@ describe("WO-SLICE-GOVERNANCE-FULL · 切片可编辑 / 推进为契约 / 内联
     await user.click(screen.getByTestId("slice-row-model_capacity_network"));
     await screen.findByTestId("slice-graph-model_capacity_network");
     expect(screen.getByTestId("slice-graph-nodes-model_capacity_network").textContent).toBe("3");
+    // WO-UNIT-MEANING：内联子图摘要此前是「节点 3 · 边 2」的裸数 → 补计数单位（节点计个、边计条），锁进断言
+    expect(screen.getByTestId("slice-graph-nodes-model_capacity_network").parentElement!.textContent)
+      .toMatch(/节点\s*3\s*个 · 边\s*\d+\s*条/);
     expect(router.state.location.pathname).toBe("/admin/slices");
     // 断言未进图谱模块：无本体图谱视图容器
     expect(screen.queryByTestId("ontology-graph-view")).toBeNull();
 
     // admin 可编辑：改 maxNodes → 保存（putSliceSpec）成功（不崩、不跳转）
     const editor = await screen.findByTestId("slice-editor-model_capacity_network");
+    // WO-UNIT-MEANING：契约 fixtures 徽章此前只有裸数「1 ✓」→ 现「1 条 ✓」（数的是契约夹具条数）
+    expect(within(editor).getByTestId("slice-fixtures-count-model_capacity_network").textContent).toMatch(/^\d+ 条 ✓$/);
     const maxNodes = within(editor).getByTestId("slice-edit-maxnodes-model_capacity_network");
     await user.clear(maxNodes);
     await user.type(maxNodes, "321");

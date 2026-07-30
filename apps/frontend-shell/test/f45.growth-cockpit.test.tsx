@@ -16,6 +16,15 @@ describe("F45 · 自成长发动机驾驶舱", () => {
     // 量化指标（账本 2 条、1 条 CONVERGED → 可答率 50%）
     expect(await screen.findByTestId("metric-answer-rate")).toHaveTextContent("50%");
     expect(screen.getByTestId("metric-open-tickets")).toHaveTextContent("1");
+    // WO-UNIT-MEANING：三个指标此前都是裸数——补量纲后锁死
+    //（可答率括号内说明是「次数比」而非第二个百分数；工单计"张"；累计运行计"次"）
+    expect(screen.getByTestId("metric-answer-rate")).toHaveTextContent("(可答 1 次 / 共 2 次)");
+    expect(screen.getByTestId("metric-open-tickets").parentElement!.textContent).toMatch(/开放工单\s*1\s*张/);
+    expect(screen.getByText(/累计运行/).textContent).toMatch(/累计运行\s*2\s*次/);
+    // 成长账本列头：格内是 length 计数，列头必须点明单位（此前「工单」易被读成工单号）
+    const ledger = screen.getByTestId("growth-ledger");
+    expect(within(ledger).getByText("轮数(轮)")).toBeTruthy();
+    expect(within(ledger).getByText("开放工单数(张)")).toBeTruthy();
 
     // 成长账本列出历史运行
     expect(await screen.findByTestId("ledger-glr_1")).toHaveTextContent("常州影响哪些订单");
@@ -31,6 +40,8 @@ describe("F45 · 自成长发动机驾驶舱", () => {
     await user.click(screen.getByTestId("growth-run"));
     const report = await screen.findByTestId("growth-report");
     expect(within(report).getByTestId("growth-terminal")).toHaveTextContent("边界");
+    // WO-UNIT-MEANING：`K=8` 此前是无解释的裸参数 → 点明 K 即最大轮数上限（同单位：轮）
+    expect(report.textContent).toMatch(/已跑 \d+ 轮 \/ 上限 K=\d+ 轮/);
     expect(within(report).getByTestId("growth-round-1")).toHaveTextContent("NO_INTENT");
   });
 });
