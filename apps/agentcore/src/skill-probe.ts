@@ -24,6 +24,23 @@ export interface SkillProbeRunResult {
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
+/**
+ * SP5 · 写回型技能判定（**前瞻式防御读取**）。
+ *
+ * `sideEffect` 目前**尚未挂到 `SkillDefinition`/`SkillSchema`** —— 该枚举
+ * （`CapabilitySideEffectSchema` = NONE/READ_ONLY/WRITE_BACK/EXTERNAL_ACTION）
+ * 只存在于 WO-CAP-0 的 `capability.ts`，且是挂在 CapabilityMeta 上、不是 Skill。
+ * 直接写 `skill.sideEffect` 会编译不过（本单曾因此被回滚·假绿事故 8977db85）。
+ *
+ * 故此处按**可选前瞻字段**读取：缺字段 → 视为 READ_ONLY（不追加写回工具），
+ * 与 SP5 语义一致（"只有 WRITE_BACK/EXTERNAL_ACTION 才追加 create_action_draft"）。
+ * ⚠️ WO-SKILL-1 把 `sideEffect` 正式并入 `SkillSchema` 后，删掉本 helper、直接读 `skill.sideEffect` 即可。
+ */
+function isWriteBackSkill(skill: SkillDefinition): boolean {
+  const se = (skill as { sideEffect?: string }).sideEffect ?? "READ_ONLY";
+  return se === "WRITE_BACK" || se === "EXTERNAL_ACTION";
+}
+
 /** 探针 agent 通用评测工具集（读写类技能再追加 create_action_draft）。 */
 const PROBE_TOOL_NAMES = [
   "query_objects",
@@ -248,7 +265,7 @@ export class SkillProbeRunner {
 
   private buildProbeTools(skill: SkillDefinition): AgentDefinition["tools"] {
     const refs: AgentDefinition["tools"] = PROBE_TOOL_NAMES.map((name) => ({ kind: "BUILTIN", name }));
-    if (skill.sideEffect === "WRITE_BACK" || skill.sideEffect === "EXTERNAL_ACTION") {
+    if (isWriteBackSkill(skill)) {
       refs.push({ kind: "BUILTIN", name: "create_action_draft" });
     }
     return refs;
