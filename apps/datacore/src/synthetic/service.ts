@@ -1718,6 +1718,26 @@ export class SyntheticService {
         grants: [{ role: "base_manager", ops: ["READ"] }],
         rowFilter: "Object.baseId IN ${user.attributes.baseScope}",
       },
+      // ── A6 列级（属性级）安全 · demo 受限角色样例 ────────────────────────────────
+      // Material 此前无任何策略（= default allow）。列级演示必须显式建策略，故这里成对下种：
+      // ① 宽策略保住既有角色的现状（不因“新增策略”把 default-allow 翻成 deny）；
+      // ② 受限策略只授给**新角色** line_operator（产线操作员）——只有它拿列级约束。
+      // 两条并存下 line_operator 只匹配 ②（不匹配 ① 的任何 grant），故并集语义不会把限制“解除”。
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [
+          { role: "admin", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "planner", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "base_manager", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "catalog_admin", ops: ["READ", "WRITE", "EXECUTE"] },
+        ],
+      },
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [{ role: "line_operator", ops: ["READ", "WRITE"] }],
+        // 产线操作员看得到料号/库存/交期，但看不到也改不了采购单价（成本属敏感列）。
+        propertyPolicy: { denyRead: ["unitPrice"], denyWrite: ["unitPrice"] },
+      },
     ];
     for (let i = 0; i < wanted.length; i++) {
       const w = wanted[i] as Omit<PermissionPolicy, "id" | "tenantId">;

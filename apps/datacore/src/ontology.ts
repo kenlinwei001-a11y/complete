@@ -309,24 +309,31 @@ export class OntologyService {
     limit = 100,
     asOfEpoch?: number,
   ): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6：行级过滤 + 列级（属性级）投影同出一份决策（authz 单一机制）。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
       .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      // 行级过滤读**未投影**的 props（策略作者可用不可读字段做行筛选）；投影只作用于返回值。
       .filter((o) => this.matchFilter(o.props, filter))
       .sort((a, b) => (a.id < b.id ? -1 : 1))
       .slice(0, Math.min(limit, 1000));
     if (asOfEpoch === undefined) {
       return {
-        data: visible.map((o) => ({ id: o.id, type: o.type, props: o.props })),
+        data: visible.map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
         snapshotVersion: await this.snapshotVersion(ctx.tenantId),
       };
     }
     const type = await this.getType(ctx, objectType);
     const temporal = new Set((type?.properties ?? []).filter((p) => p.temporal).map((p) => p.propKey));
     const data = await Promise.all(visible.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
-    return { data, snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}` };
+    // 时间回溯读同样过列级投影（否则 asOfEpoch 成为绕过列级安全的后门）。
+    return {
+      data: data.map((d) => ({ ...d, props: this.authz.projectProps(dec, d.props) })),
+      snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}`,
+    };
   }
 
   /** §13.1: reconstruct an object's value as of `asOfEpoch` (temporal rollback + approx flag). */
@@ -374,14 +381,16 @@ export class OntologyService {
     filter: Record<string, unknown> = {},
   ): Promise<{ rows: { props: Record<string, unknown> }[]; total: number; truncated: boolean }> {
     const CAP = 200_000; // 安全上限：超此返回 truncated=true（防 OOM；真正下推属 E2 转换引擎）
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6 列级：聚合同样只能看可读列 —— 否则 sum(unitPrice) 就是列级安全的算术后门。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
       .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       .filter((o) => this.matchFilter(o.props, filter));
     return {
-      rows: visible.slice(0, CAP).map((o) => ({ props: o.props })),
+      rows: visible.slice(0, CAP).map((o) => ({ props: this.authz.projectProps(dec, o.props) })),
       total: visible.length,
       truncated: visible.length > CAP,
     };
@@ -389,7 +398,8 @@ export class OntologyService {
 
   /** GET /a/v1/objects/:type/:id */
   async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const obj = await this.repos.objects.get(ctx.tenantId, objectId);
     let found: ObjectInstance | undefined = obj && obj.type === objectType ? obj : undefined;
     if (!found) {
@@ -401,7 +411,7 @@ export class OntologyService {
     }
     if (!found || !this.authz.rowAllowed(ctx, rowFilters, found.props)) throw notFound("object");
     return {
-      data: { id: found.id, type: found.type, props: found.props },
+      data: { id: found.id, type: found.type, props: this.authz.projectProps(dec, found.props) },
       snapshotVersion: await this.snapshotVersion(ctx.tenantId),
     };
   }

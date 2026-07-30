@@ -244,6 +244,28 @@ export const PermissionPolicySchema = z.object({
     }),
   ),
   rowFilter: z.string().optional(),
+  /**
+   * 列级（属性级）策略。`rowFilter` 管"看哪些行"，本字段管"看/改哪些字段"。
+   * 缺省（不配）= 沿用现状：该资源全部属性按 grants.ops 处理（**向后兼容硬要求**）。
+   * 白名单与黑名单互斥：同时配 → 校验期报错（不许静默取其一）。
+   */
+  propertyPolicy: z
+    .object({
+      readable: z.array(z.string()).optional(),
+      denyRead: z.array(z.string()).optional(),
+      writable: z.array(z.string()).optional(),
+      denyWrite: z.array(z.string()).optional(),
+    })
+    .optional()
+    .superRefine((pp, cx) => {
+      if (!pp) return;
+      if (pp.readable && pp.denyRead) {
+        cx.addIssue({ code: "custom", message: "propertyPolicy.readable 与 denyRead 互斥，不可同时配置" });
+      }
+      if (pp.writable && pp.denyWrite) {
+        cx.addIssue({ code: "custom", message: "propertyPolicy.writable 与 denyWrite 互斥，不可同时配置" });
+      }
+    }),
 });
 export type PermissionPolicy = z.infer<typeof PermissionPolicySchema>;
 

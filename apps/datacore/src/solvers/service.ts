@@ -1,4 +1,5 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance, ObjectTypeDef } from "../domain.js";
+import type { AccessDecision, AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
@@ -357,7 +358,11 @@ const leverUnitFields = (typeKey: string, prop: string): { unit?: string; valueK
  * 支持 runWithParams(指定版本/参数集) —— 校准引擎重放归因与回测的执行体。
  */
 export class SolverService {
-  constructor(private repos: Repos) {}
+  constructor(
+    private repos: Repos,
+    /** A6 列级（属性级）安全：求解器上下文投影用（与 REST 同一份 decide()·一个机制）。 */
+    private authz: AuthzService,
+  ) {}
 
   /** generic_inference 需读对象图 + 前向重算（recompute 在 OntologyCore）；app.ts 构造后注入。 */
   private ontologyCore?: OntologyCoreService;
@@ -3734,19 +3739,47 @@ export class SolverService {
     return this.mutateParams(tenantId, () => undefined, note);
   }
 
+  /**
+   * A6 列级（属性级）安全 —— 求解器上下文投影器。
+   *
+   * **头号坑**：求解器上下文此前完全绕开 authz（`loadContext` 只收 tenantId、无 AuthCtx），
+   * 于是"REST 看不到 unitPrice、但把同一个字段喂给求解器再读结果"就是一条完整的绕行通道。
+   * 传入 `authCtx` 时，每个对象类型都用**与 REST 同一份 `decide()` 决策**投影 props（一个机制）。
+   * 不传 authCtx（系统内部调用：simclock / 派生 / 校准 / sop）→ 恒等，逐字节现行为。
+   */
+  private async columnProjector(
+    authCtx?: AuthCtx,
+  ): Promise<(typeKey: string, objs: ObjectInstance[]) => Promise<ObjectInstance[]>> {
+    if (!authCtx) return async (_t, objs) => objs;
+    const cache = new Map<string, AccessDecision | null>();
+    return async (typeKey, objs) => {
+      if (objs.length === 0) return objs;
+      if (!cache.has(typeKey)) {
+        // 读不了该类型（403）在求解器上下文里退化为空集，而非抛错中断整个求解。
+        const d = await this.authz.decide(authCtx, "OBJECT_TYPE", typeKey, "READ");
+        cache.set(typeKey, d.allowed ? d : null);
+      }
+      const d = cache.get(typeKey);
+      if (!d) return [];
+      if (!d.columnRestricted) return objs; // 零成本恒等
+      return objs.map((o) => this.authz.projectObject(d, o));
+    };
+  }
+
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean; solverKey?: string },
+    opts?: { withExtended?: boolean; solverKey?: string; authCtx?: AuthCtx },
   ): Promise<SolverContext> {
+    const project = await this.columnProjector(opts?.authCtx);
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
     // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
     // （逐字节现行为·向后兼容·无 solverKey 调用方 simclock/sop/planviews/calibration 一律走此路）。门禁在派发处
     //（invoke/runWithParams·仅 dc.lazy-solver-context 开时透传 solverKey）；此处仅按 solverKey 存在与否 + 声明表裁剪。
     const required = opts?.solverKey ? SOLVER_REQUIRED_TYPES[opts.solverKey] : undefined;
     const emptyCore: ObjectInstance[] = [];
-    const loadCore = (t: CoreSolverObjectType): Promise<ObjectInstance[]> =>
-      !required || required.includes(t) ? this.repos.objects.listByType(tenantId, t) : Promise.resolve(emptyCore);
+    const loadCore = async (t: CoreSolverObjectType): Promise<ObjectInstance[]> =>
+      !required || required.includes(t) ? project(t, await this.repos.objects.listByType(tenantId, t)) : emptyCore;
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
       await Promise.all([
         loadCore("Base"),
@@ -3755,7 +3788,8 @@ export class SolverService {
         loadCore("Equipment"),
         loadCore("MaintPlan"),
         loadCore("Model"),
-        visibleOrders ? Promise.resolve(visibleOrders) : loadCore("Order"),
+        // 调用方传入的 visibleOrders 已过行级过滤，但列级投影仍须在此补上（否则是绕行口）。
+        visibleOrders ? project("Order", visibleOrders) : loadCore("Order"),
         loadCore("Shipment"),
         loadCore("Segment"),
         loadCore("DataSourceHealth"),
@@ -3786,19 +3820,22 @@ export class SolverService {
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
+    // A6 列级：扩展 10 类与核心 10 类走同一投影器（一个机制，不是两套）。
+    const loadExt = async (t: string): Promise<ObjectInstance[]> =>
+      project(t, await this.repos.objects.listByType(tenantId, t));
     const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors] =
       opts?.withExtended
         ? await Promise.all([
-            this.repos.objects.listByType(tenantId, "Material"),
-            this.repos.objects.listByType(tenantId, "MaterialBatch"),
-            this.repos.objects.listByType(tenantId, "Customer"),
-            this.repos.objects.listByType(tenantId, "ARInvoice"),
-            this.repos.objects.listByType(tenantId, "Certification"),
-            this.repos.objects.listByType(tenantId, "EnergyMeter"),
-            this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
-            this.repos.objects.listByType(tenantId, "CapexProject"),
-            this.repos.objects.listByType(tenantId, "PurchaseOrder"),
-            this.repos.objects.listByType(tenantId, "CarbonFactor"),
+            loadExt("Material"),
+            loadExt("MaterialBatch"),
+            loadExt("Customer"),
+            loadExt("ARInvoice"),
+            loadExt("Certification"),
+            loadExt("EnergyMeter"),
+            loadExt("ChangeoverMatrix"),
+            loadExt("CapexProject"),
+            loadExt("PurchaseOrder"),
+            loadExt("CarbonFactor"),
           ])
         : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
     // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实
@@ -3991,6 +4028,7 @@ export class SolverService {
     const c = await this.loadContext(ctx.tenantId, visibleOrders, {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
+      authCtx: ctx, // A6 列级：用户发起的求解走列级投影（S3 —— 求解器不是列级安全的绕行口）
     });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
