@@ -187,6 +187,23 @@ export function isWriteEffectSkill(skill: { sideEffect?: string | null }): boole
   return typeof se === "string" && WRITE_EFFECT_ALIASES.has(se);
 }
 
+/**
+ * **写模式**判定（探针与运行时必须同用此一处）：会改变真值 **或** 需要审批。
+ *
+ * 为何单列（红队复审抓到·上一版单源只收了一半）：`engine.ts skillWriteMode` 用的是
+ * `sideEffect==="WRITE" || approvalGate≠"none"`，而探针 `buildProbeTools` 只判了 `isWriteEffectSkill`
+ * （仅 sideEffect 半）。于是 `sideEffect:"COMPUTE"` + `approvalGate:"human"` 的技能——
+ *   运行时：writeMode=true → `final_answer` **必须**含 `action_draft` 块；
+ *   探针：  不给 `create_action_draft` 工具 → 它根本造不出那个块。
+ * 即**探针在比生产更小的工具集上给技能发合格证**（探针绿 ≠ 生产能用），正是本仓反复吃亏的那一族。
+ * 判定只此一处，两侧同调，谁改口径两侧一起变。
+ */
+export function isWriteModeSkill(skill: { sideEffect?: string | null; approvalGate?: string | null }): boolean {
+  if (isWriteEffectSkill(skill)) return true;
+  const gate = skill.approvalGate;
+  return typeof gate === "string" && gate !== "none";
+}
+
 /** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
 /**
  * 引用 kind / role 词表**单一来源**（导出成具名数组，供 skill-lint 等消费方 import）。

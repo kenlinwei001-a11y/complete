@@ -1,4 +1,4 @@
-import { isWriteEffectSkill, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type EvalRunReport, type SkillDefinition } from "@platform/contracts";
+import { isWriteModeSkill, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type EvalRunReport, type SkillDefinition } from "@platform/contracts";
 import type { ExecutionEngine } from "./engine.js";
 import type { RequestAuth } from "./auth.js";
 import type { Repos } from "./persistence/repos.js";
@@ -248,8 +248,9 @@ export class SkillProbeRunner {
 
   private buildProbeTools(skill: SkillDefinition): AgentDefinition["tools"] {
     const refs: AgentDefinition["tools"] = PROBE_TOOL_NAMES.map((name) => ({ kind: "BUILTIN", name }));
-    // SP5 · 写回型技能才追加 create_action_draft（判定词表单源在 contracts·见 isWriteEffectSkill 注释「假绿第 6 例」）
-    if (isWriteEffectSkill(skill)) {
+    // SP5 · 写模式技能才追加 create_action_draft。判定**必须**与 engine.ts skillWriteMode 同源
+    // （contracts isWriteModeSkill：写副作用 ∪ 需审批），否则探针的工具集会比生产小 → 绿证书发给跑不通的技能。
+    if (isWriteModeSkill(skill)) {
       refs.push({ kind: "BUILTIN", name: "create_action_draft" });
     }
     return refs;
@@ -290,14 +291,20 @@ export class SkillProbeRunner {
     }
 
     // behaviorGain 用例再跑 twin（不挂 skill），校验增益真实存在。
-    let twinAnswerText = "";
+    //
+    // ⚠️ twin 跑挂 ≠ 增益成立。旧写法 `catch { twinAnswerText = "" }` 把「没能验证」无声换成了「已验证」：
+    // behaviorGain 的唯一判据是「twin 不应含该内容」，而 `"".includes(非空串)` 恒 false → 失败项永远
+    // push 不进去 → 用例判 pass。且「无法对比」这个状态在代码里没有任何落点（不进 failures / failKind / observed）。
+    // 更险的是测试期 LLM 全 mock、twin 几乎不会挂，所以这条路**只在真 LLM 生产态被走到**。
+    // 现在：null = 未验证（禁止参与比对），并直接计入 failures——宁可报「没证成」，不许默认「证成了」。
+    let twinAnswerText: string | null = null;
     if (c.expect.behaviorGain && failures.length === 0) {
       try {
         const twinResult = await this.runAgent(auth, twinAgent, c, timeoutMs);
         twinAnswerText = extractAnswerText(twinResult.answer);
-      } catch {
-        // twin 跑失败不影响 probe 结果判定，只表示无法对比。
-        twinAnswerText = "";
+      } catch (e) {
+        twinAnswerText = null;
+        failures.push(`behaviorGain: 对照组(twin)未能跑通，无法证明增益 —— ${(e as Error).message}`);
       }
     }
 
@@ -318,7 +325,8 @@ export class SkillProbeRunner {
     for (const must of c.expect.answerMust ?? []) {
       if (!probeAnswerText.includes(must)) failures.push(`answerMust: missing "${must}"`);
       // behaviorGain 要求该内容必须依赖 skill：twin（不挂 skill）不应出现。
-      else if (c.expect.behaviorGain && twinAnswerText.includes(must)) {
+      // twinAnswerText === null（对照组跑挂）时**不得**走比对分支：上面已计入 failures，此处再比会拿 null 当"twin 没提到"。
+      else if (c.expect.behaviorGain && twinAnswerText !== null && twinAnswerText.includes(must)) {
         failures.push(`behaviorGain: "${must}" present without skill (twin also contains it)`);
       }
     }

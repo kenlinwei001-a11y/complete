@@ -1,4 +1,4 @@
-import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
+import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
@@ -34,7 +34,8 @@ function skillProvenancePolicy(skills: SkillDefinition[]): "required" | "best_ef
 }
 
 function skillWriteMode(skills: SkillDefinition[]): boolean {
-  return skills.some((s) => s.sideEffect === "WRITE" || (s.approvalGate && s.approvalGate !== "none"));
+  // 判定单源在 contracts（见 isWriteModeSkill 注释：探针曾只判 sideEffect 半 → 在更小工具集上发合格证）
+  return skills.some((s) => isWriteModeSkill(s));
 }
 
 function skillRuleRefs(skills: SkillDefinition[], role: "precondition" | "postcheck"): string[] {
