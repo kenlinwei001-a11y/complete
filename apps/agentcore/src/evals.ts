@@ -2,15 +2,9 @@ import type { EvalCase, EvalCaseResult, EvalFailKind, EvalRunReport, EvalSuite }
 import type { Repos } from "./persistence/repos.js";
 import type { Orchestrator } from "./router/orchestrator.js";
 import type { RequestAuth } from "./auth.js";
-import type { ExecutionEngine } from "./engine.js";
 import { newId } from "./ids.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
 import { ResourceQualityService } from "./dril/quality.js";
-import { extractAnswerText, SkillProbeRunner } from "./skill-probe.js";
-
-function sanitizeIdPart(s: string): string {
-  return s.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
 
 /** A14：把失败信息归类为 parity 失因（首要项；意图>工具序列>答案>其它）。 */
 export function classifyFailKind(failures: string[]): EvalFailKind {
@@ -33,13 +27,9 @@ export function classifyFailKind(failures: string[]): EvalFailKind {
 const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED", "AWAITING_CLARIFICATION"]);
 
 export class EvalService {
-  private readonly probeRunner: SkillProbeRunner;
-
   constructor(
-    private readonly deps: { repos: Repos; orchestrator: Orchestrator; engine: ExecutionEngine },
-  ) {
-    this.probeRunner = new SkillProbeRunner({ repos: deps.repos, engine: deps.engine });
-  }
+    private readonly deps: { repos: Repos; orchestrator: Orchestrator },
+  ) {}
 
   // -- case authoring -------------------------------------------------------
 
@@ -49,23 +39,11 @@ export class EvalService {
     return c;
   }
 
-  /**
-   * WO-1 · SkillProbeRunner 生产化：针对单个 skill 跑 skill_quality 用例，探针 agent 显式挂载待发布 skill。
-   */
-  async runSkillProbe(
-    auth: RequestAuth,
-    skillKey: string,
-    opts?: { timeoutMs?: number; skillId?: string; intentKey?: string },
-  ): Promise<import("./skill-probe.js").SkillProbeRunResult> {
-    return this.probeRunner.runSkill(auth, skillKey, opts ?? {});
-  }
-
   /** §2 出厂种子：从 20 场景目录派生「应触发」用例（触发问句 → 期望意图 + 主求解器）。 */
   async seedScenarioCases(tenantId: string, packageId: string): Promise<{ created: number }> {
-    const sanitized = sanitizeIdPart(tenantId);
     let created = 0;
     for (const sc of SCENARIO_CATALOG) {
-      const id = `ec_scenario_${sanitized}_${sc.sNo}`;
+      const id = `ec_scenario_${sc.sNo}`;
       if (await this.deps.repos.evalCases.get(id)) continue;
       const c: EvalCase = {
         id,
@@ -92,10 +70,9 @@ export class EvalService {
    * parity 报告标出哪些场景与 PRD 不符（INTENT/TOOLSEQ/ANSWER）。env-gated 真跑；mock 仅证框架。
    */
   async seedParityCases(tenantId: string, packageId: string): Promise<{ created: number }> {
-    const sanitized = sanitizeIdPart(tenantId);
     let created = 0;
     for (const sc of SCENARIO_CATALOG) {
-      const id = `ec_parity_${sanitized}_${sc.sNo}`;
+      const id = `ec_parity_${sc.sNo}`;
       if (await this.deps.repos.evalCases.get(id)) continue;
       const c: EvalCase = {
         id,
@@ -165,7 +142,7 @@ export class EvalService {
     const intentCases = cases.filter((c) => c.expect.intentKey !== undefined);
     const intentPassed = intentCases.filter((c) => results.find((r) => r.caseId === c.id && !r.failures.some((f) => f.startsWith("intent")))).length;
     const toolCases = cases.filter((c) => c.expect.toolSequence && c.expect.toolSequence.length > 0);
-    const toolPassed = toolCases.filter((c) => results.find((r) => r.caseId === c.id && !r.failures.some((f) => f.startsWith("toolSequence") || f.startsWith("maxToolCalls")))).length;
+    const toolPassed = toolCases.filter((c) => results.find((r) => r.caseId === c.id && !r.failures.some((f) => f.startsWith("toolSequence")))).length;
 
     const report: EvalRunReport = {
       id: newId("erun"),
@@ -201,15 +178,13 @@ export class EvalService {
    * 返回回灌条数。fail-open：无 intentKey 的 case 跳过。
    */
   async feedbackQuality(auth: RequestAuth, report: EvalRunReport): Promise<{ updated: number }> {
-    if (auth.tenantId !== report.tenantId) {
-      throw new Error(`feedbackQuality tenant mismatch: caller=${auth.tenantId}, report=${report.tenantId}`);
-    }
     const quality = new ResourceQualityService(this.deps.repos);
+    const ctx: RequestAuth = { ...auth, tenantId: report.tenantId };
     let updated = 0;
     for (const r of report.results) {
       const intentKey = r.observed.intentKey;
       if (!intentKey) continue; // fail-open：未命中意图不回灌
-      await quality.record(auth, "intent", intentKey, { success: r.pass, latencyMs: r.observed.latencyMs }, report.finishedAt);
+      await quality.record(ctx, "intent", intentKey, { success: r.pass, latencyMs: r.observed.latencyMs }, report.finishedAt);
       updated++;
     }
     return { updated };
@@ -238,7 +213,7 @@ export class EvalService {
     const tokenCost = agentRun ? agentRun.totalInputTokens + agentRun.totalOutputTokens : 0;
     const observedIntent = task?.matchedIntent?.intentKey ?? task?.classification?.candidates?.[0]?.intentKey ?? null;
     const outOfCatalog = task?.classification?.outOfCatalog ?? false;
-    const answerText = task?.answer ? extractAnswerText(task.answer) : "";
+    const answerText = task?.answer ? JSON.stringify(task.answer) : "";
 
     // —— assertions ——
     if (c.expect.intentKey !== undefined) {

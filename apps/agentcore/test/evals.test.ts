@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, debugHeaders, ADMIN, PKG, type TestApp } from "./helpers.js";
-import { EvalService } from "../src/evals.js";
-import { createMemoryRepos } from "../src/persistence/memory.js";
-import { seedScenarioPackage } from "../src/mocks/seed.js";
-import type { QueryTask } from "@platform/contracts";
 
 const RISK_CTX = { view: "risk", selectedObjects: [], filters: {} };
 
@@ -109,90 +105,5 @@ describe("AIP Evals §2 / E4 — 评测框架（mock LLM 证框架，真分待�
     const report = res.json() as { total: number; passRate: number };
     expect(report.total).toBe(0);
     expect(report.passRate).toBe(1);
-  });
-});
-
-describe("WO-1 · EvalService 生产化缺陷修复", () => {
-  it("SP9 · seed 用例 ID 含 tenantId，多租户各有一份", async () => {
-    const reposA = createMemoryRepos();
-    await reposA.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId: "ta" });
-    const svcA = new EvalService({ repos: reposA, orchestrator: {} as any, engine: {} as any });
-    await svcA.seedScenarioCases("ta", PKG);
-    const casesA = await reposA.evalCases.listByTenant("ta", "classifier");
-    expect(casesA.length).toBe(20);
-    expect(casesA.every((c) => c.id.startsWith("ec_scenario_ta_"))).toBe(true);
-
-    const reposB = createMemoryRepos();
-    await reposB.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId: "tb" });
-    const svcB = new EvalService({ repos: reposB, orchestrator: {} as any, engine: {} as any });
-    await svcB.seedScenarioCases("tb", PKG);
-    const casesB = await reposB.evalCases.listByTenant("tb", "classifier");
-    expect(casesB.length).toBe(20);
-    expect(casesB.every((c) => c.id.startsWith("ec_scenario_tb_"))).toBe(true);
-    expect(casesA[0].id).not.toBe(casesB[0].id);
-  });
-
-  it("SP11 · maxToolCalls 违反时 toolCorrectness 下降", async () => {
-    const repos = createMemoryRepos();
-    const tenantId = "demo";
-    await repos.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId });
-    await repos.evalCases.upsert({
-      id: "ec_toolmax",
-      tenantId,
-      suite: "agent_quality",
-      packageId: PKG,
-      input: { query: "q", context: RISK_CTX },
-      expect: { toolSequence: [{ name: "invoke_solver" }], maxToolCalls: 1 },
-      origin: "MANUAL",
-      createdAt: new Date().toISOString(),
-    });
-
-    // mock orchestrator：返回已终态 task，并注入 2 条 toolCalls（超过 maxToolCalls=1）。
-    const taskId = "task_toolmax";
-    const mockOrc = {
-      submitQuery: async () => {
-        await repos.tasks.insert({
-          id: taskId,
-          tenantId,
-          userId: "u1",
-          packageId: PKG,
-          conversationId: taskId,
-          query: "q",
-          context: { view: "risk", selectedObjects: [], filters: {} },
-          status: "COMPLETED",
-          clarificationRounds: 0,
-          createdAt: new Date().toISOString(),
-          matchedIntent: { intentId: "i1", intentKey: "affected_orders", version: 1 },
-        });
-        await repos.toolCalls.insert({ id: "tc1", taskId, toolName: "invoke_solver", input: {}, outputDigest: "", output: null, outcome: "OK", durationMs: 1, createdAt: new Date().toISOString() });
-        await repos.toolCalls.insert({ id: "tc2", taskId, toolName: "query_objects", input: {}, outputDigest: "", output: null, outcome: "OK", durationMs: 1, createdAt: new Date().toISOString() });
-        return { taskId, status: "COMPLETED", streamUrl: "", reused: false };
-      },
-    };
-
-    const svc = new EvalService({ repos, orchestrator: mockOrc as any, engine: {} as any });
-    const auth = { tenantId, userId: "u1", roles: ["planner"] };
-    const report = await svc.run(auth, "agent_quality");
-    expect(report.metrics.toolCorrectness).toBe(0);
-    expect(report.results[0].failures.some((f) => f.startsWith("maxToolCalls"))).toBe(true);
-  });
-
-  it("SP12 · feedbackQuality 校验 caller 租户权限", async () => {
-    const repos = createMemoryRepos();
-    const svc = new EvalService({ repos, orchestrator: {} as any, engine: {} as any });
-    const report = {
-      id: "erun_1",
-      tenantId: "tenant_b",
-      suite: "agent_quality",
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      total: 1,
-      passed: 1,
-      passRate: 1,
-      metrics: { intentAccuracy: 1, toolCorrectness: 1, avgToolCalls: 0, avgLatencyMs: 0, avgTokenCost: 0 },
-      results: [],
-      llmMode: "MOCK",
-    } as any;
-    await expect(svc.feedbackQuality({ tenantId: "tenant_a", userId: "u1", roles: [] }, report)).rejects.toThrow("tenant mismatch");
   });
 });

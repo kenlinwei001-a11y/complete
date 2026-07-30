@@ -1253,7 +1253,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
     }
     if (skillCases.length >= 3 && force !== "true") {
-      const run = await deps.evals.runSkillProbe(a, skill.key, { skillId: skill.id });
+      const run = await deps.evals.run(a, "skill_quality", {});
       if (run.passRate < 1) {
         throw new HttpError(422, "SKILL_EVAL_FAILED", `skill_quality 评测未全过（通过率 ${run.passRate}，${skillCases.length} 用例）；修用例或 force=true 审计豁免`);
       }
