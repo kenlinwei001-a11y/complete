@@ -357,8 +357,12 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
       const primary = primaryFactor(c, b);
       for (const f of c.params.bottleneck.factors) {
-        if (f === primary) continue;
-        if (mockTightness(c, b, f) >= p.threshold) continue;
+        // WO-CAPACITY-PAGE-100PCT ④（R1 用户亲报「所有基地瓶颈都一样」的根）：修前**本基地的主瓶颈因素被
+        // 无条件排除**（`if (f === primary) continue`），候选只剩非主因素；而 `瓶颈工序` 的 LIVE 张力
+        // （利用率派生·各基地都 90–91）恒为非主因素里的最大值 → 每基地卡的"首要风险对象"退化成同一个
+        // `瓶颈工序`（8/8 卡全同），而卡面 chip 却诚实显 `信阳 物流时长 92 > 瓶颈工序 91`——同一张卡自相矛盾。
+        // 修后：主瓶颈因素恒为候选（它本就是该基地最该被看见的那个），非主因素维持原「mock 张力已越线则不重复计入」筛。
+        if (f !== primary && mockTightness(c, b, f) >= p.threshold) continue;
         pairs.push({ baseId: b, factor: f, forced: false });
       }
     }
@@ -413,9 +417,17 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
       // 治 #1/#3：逐因素真逐日序列（factor → series）供详情面板「其余因素」渲染真蓝→黄→红梯度（替持平示意）。factorSeries[factor]===series。
       factorSeries,
       events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
+      // WO-CAPACITY-PAGE-100PCT ⑫（R7「受影响订单恒空」+ R-一致 同页两个数字打架）：
+      // 修前传 `day: crossDay`（=1）→ affectedOrders 只取 [crossDay−7, crossDay+14] 这个 21 天小窗，
+      // 而看板顶上写的是「未来 {horizon} 天内预测越线」、「订单聚合」tab 用的又是 [0, horizon] 全窗 →
+      // **同一屏**上卡片/KPI 说「受影响订单 1 批」、订单聚合 tab 说 24 批（8 个基地各 2–8 批）。
+      // 而且 21 天小窗几乎不含任何订单交期，导致 8 张卡里 7 张恒显「0 批订单受影响」、
+      // 逐日点上的「订单交付 icon」（CT-a）几乎永远不亮、点任一天弹窗恒空。
+      // 修后：与页面口径/订单聚合 tab 统一为**整个推演窗口** [0, horizon]（同一事实一个出处·R-一致）。
       affectedOrders: affectedOrders(c, {
         baseId: pair.baseId,
-        day: crossDay ?? horizon,
+        fromDay: 0,
+        toDay: horizon,
         peak: Math.max(...series),
       }).affected,
     };
@@ -446,7 +458,19 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     list.push(card);
     allByBase.set(b, list);
     const existing = bestByBase.get(b);
-    if (!existing || num(card.peak) > num(existing.peak)) {
+    // WO-CAPACITY-PAGE-100PCT ④b（R1/R2 耦合的真根）：修前 tie-break 是**隐式的数组序**——
+    // `peak` 被 `params.risk.cap=98` 硬封顶，凡爬过 98 的因素 peak **全等于 98**，`>` 比较恒 false，
+    // 于是每基地留下的永远是 `bottleneck.factors[0]` = `瓶颈工序`（8/8 卡雷同的直接原因）。
+    // 修后：peak 相等时按**实测当前张力**（liveTightness·真数据）降序、再按越线日升序、再按因素名定序（R6 全序确定）。
+    // 效果层：信阳 物流时长(92) 压过 瓶颈工序(91)、江门 物料齐套(96) 压过 瓶颈工序(91) → 各基地首要风险不再雷同。
+    const curOf = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
+    const crossOf = (x: Record<string, unknown>): number => (x.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
+    const better = (a: Record<string, unknown>, e: Record<string, unknown>): boolean =>
+      num(a.peak) !== num(e.peak) ? num(a.peak) > num(e.peak)
+        : curOf(a) !== curOf(e) ? curOf(a) > curOf(e)
+        : crossOf(a) !== crossOf(e) ? crossOf(a) < crossOf(e)
+        : str(a.factor) < str(e.factor);
+    if (!existing || better(card, existing)) {
       bestByBase.set(b, card);
     }
   }
@@ -459,10 +483,14 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
       .map((c) => ({ factor: str(c.factor), peak: num(c.peak), crossDay: (c.crossDay as number | null) ?? null }));
     cards.push(best);
   }
+  // WO-CAPACITY-PAGE-100PCT ④c：越线日全相同（demo 里 8+ 基地 crossDay 均为 1）时，修前 tie-break 直接退化为
+  // **基地名字典序**，再 `slice(maxCards)` → 全公司张力最高的基地（江门·物料齐套 96）被字母序挤出看板，
+  // 而 91 的基地在榜。修后依次按 越线日↑ → 实测当前张力↓ → 峰值↓ → 基地名（R6 全序确定·同输入同序）。
+  const curOfCard = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
   cards.sort((a, b) => {
     const ca = (a.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
     const cb = (b.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
-    return ca - cb || (str(a.base) < str(b.base) ? -1 : 1);
+    return ca - cb || curOfCard(b) - curOfCard(a) || num(b.peak) - num(a.peak) || (str(a.base) < str(b.base) ? -1 : 1);
   });
   const shown = cards.slice(0, p.maxCards);
   // 顶层 dataMode：全 LIVE→LIVE，全 MOCK→MOCK，混合→PARTIAL（前端据此提示"部分估算"）。

@@ -430,7 +430,9 @@ export const zh = {
     live: {
       leverTitle: "原子因子活推演（拨动即 generic_inference 真重算）",
       leverHint: "从本基地瓶颈反推的原子影响因子（细到工序×型号-物料），拖动经 generic_inference 沿派生 DAG 真重算——before/after + tornado 敏感度 + 每值溯源 + C08 边界。",
-      leverBefore: "调整前可用产能",
+      // WO-CAPACITY-PAGE-100PCT ⑩（R8 量纲错标）：本页传给面板的 before 值是 `card.peak`＝**峰值张力（0–100 指数）**，
+      // 却被标成"可用产能"——屏幕上出现「调整前可用产能 98.0」这种量纲错到底的数字。改为按其真实口径标注。
+      leverBefore: "调整前峰值张力（0–100）",
       rootcause: {
         scopeTitle: "因子作用域",
         allFactors: "全部因子（基地级）",

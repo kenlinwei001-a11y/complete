@@ -82,6 +82,12 @@ export interface GapAttrOutput {
   levels?: { depth: number; label: string; nodes: GapAttrNode[] }[];
   causalEdges?: { from: string; to: string; viaLinkKey?: string }[];
   atomicLeaves?: { id: string; factor: string; contribution: number; unit?: string; share?: number }[];
+  /**
+   * WO-CAPACITY-PAGE-100PCT ③ · 求解器回传的**实际生效作用域**（引擎单一出处，前端不再自行推断）。
+   * `factorApplied=false` + `factorNote` = 传了 factorId 但引擎无该因子的因果域 → 树仍按基地出，
+   * 界面必须据实标"未按该因子细分"，而不是把树藏掉再编一个"引擎不支持作用域"的病因。
+   */
+  scope?: { baseId?: string; displayName?: string; exposure?: boolean; factorId?: string; factorApplied?: boolean; factorNote?: string };
 }
 export function gapAttributionToDag(ga: GapAttrOutput | undefined): DagData | undefined {
   if (!ga?.rootMetric) return undefined;
