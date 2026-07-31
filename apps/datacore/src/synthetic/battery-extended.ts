@@ -16,6 +16,22 @@ const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrim
   isPrimaryKey,
 });
 
+/**
+ * WO-69 P3 · `Approvable` 接口要求的审批字段（approver / approvedAt）确定性合成。
+ *
+ * **R6 零位移**：由业务主键**加盐哈希**派生（同 WO-SA-2 设备可靠性字段的既有做法）——
+ * **不消耗 mulberry32 主流**，故既有全部合成值逐字节不动；无 `Date.now`/随机（锚点为固定 UTC 常量）。
+ * **诚实合成非实测**：随对象 `origin=SYNTHETIC` 走既有诚实灰标注，不冒充真实审批留痕。
+ */
+const APPROVAL_ANCHOR_MS = Date.UTC(2026, 0, 1);
+const approvalFields = (bizKey: string): { approver: string; approvedAt: string } => {
+  const h = hashString(`apprv_${bizKey}`);
+  return {
+    approver: `usr_approver_${(h % 3) + 1}`,
+    approvedAt: new Date(APPROVAL_ANCHOR_MS + (h % 90) * 86_400_000).toISOString().slice(0, 10),
+  };
+};
+
 type TypeDef = Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">;
 const def = (key: string, displayName: string, domain: string, props: PropertyDef[]): TypeDef => ({
   key,
@@ -498,11 +514,13 @@ export function generateExtended(
   const arInvoices: Record<string, unknown>[] = [];
   for (const [ci, c] of customers.entries()) {
     for (let i = 0; i < invoicesPerCust; i++) {
+      const invoiceId = `arinvoice_${ci}_${i}`; // ascii pk（避免与搜索 token 碰撞）
       arInvoices.push({
-        invoiceId: `arinvoice_${ci}_${i}`, // ascii pk（避免与搜索 token 碰撞）
+        invoiceId,
         custName: c.custName,
         amount: round((200 + rng() * 1500) * WAVE1_SCALE_FACTOR, 0),
         overdueDays: c.custName === "商用车集团G" && i === 0 ? 38 : Math.floor(rng() * 20),
+        ...approvalFields(invoiceId), // WO-69 P3 · Approvable 契约字段
       });
     }
   }
@@ -648,8 +666,8 @@ export function generateExtended(
     { dsoId: "dso-com", segment: "商用车", days: 95, period: "2026-Q2" },
   ];
   const overdueRecords = [
-    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "商用车集团G", amount: 12600 },
-    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400 },
+    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "商用车集团G", amount: 12600, ...approvalFields("od-cg") },
+    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400, ...approvalFields("od-sd") },
   ];
 
   // WO-CEO-DATA-2：动态绑定 demand_attain 产能/物料短缺下钻到真实对象（不消耗 rng·R6 稳定）。
