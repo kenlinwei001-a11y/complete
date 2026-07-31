@@ -160,7 +160,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       .slice(0, n);
   };
 
-  const maxPeak = cards.length ? Math.max(0, ...cards.map((c) => c.peak)) : 0;
+  // WO-CAPACITY-PAGE-100PCT ⑨：修前「首要风险」= `card.peak === max(peak)`，而 peak 被求解器 cap 封顶（98）
+  // → 7/8 张卡 peak 全等于 98 → **7 张卡同时挂"⚠ 首要风险"**（徽章失去意义）。求解器现已按
+  // 越线日↑→实测当前张力↓→峰值↓ 全序返回，故"首要"= 该序第一张（唯一·可核查），不再靠封顶值比大小。
+  // ⚠️ 审核方复并注记：本行在 WO-CAPACITY-PAGE-100PCT 并线时**整块丢失**（cherry-pick 冲突取错版本，
+  //    退回了 maxPeak 写法），测试半却完整并入 → 带红并线。别再退回 `Math.max(peak)`：
+  //    `saturateTension` 让 peak 互不相同后徽章会"看着只挂一个"，那是巧合不是契约（本仓反复出事的病根）。
+  const primaryBase = cards[0]?.base;
 
   // rk-kpi 5 指标（全聚合自真 risk_timeline / bottleneck·非硬编）。
   const riskFactorPoints = cards.reduce((s, c) => s + Math.max(1, factorsOver(c.base).length), 0);
@@ -232,7 +238,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               const synth = card.provenanceSynthetic === true;
               const peakColor = tierColor(card.peak, threshold);
               const chips = topFactors(card.base, 2);
-              const isPrimary = maxPeak > 0 && card.peak === maxPeak;
+              const isPrimary = card.base === primaryBase;
               const orderCount = card.affectedOrders?.length ?? 0;
               const factorCount = Math.max(1, factorsOver(card.base).length);
               return (
@@ -321,7 +327,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               bnFactors={bn?.factors ?? []}
               threshold={threshold}
               horizon={horizon}
-              isPrimary={maxPeak > 0 && openCard.peak === maxPeak}
+              isPrimary={openCard.base === primaryBase}
               onDay={(day) => setOrdersDay({ card: openCard, day })}
               onLiveStateChange={onBoardLive}
             />
@@ -356,6 +362,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                         ? `（${zh.risk.plan.withLevers(boardLive.apply.length)} · ${zh.risk.plan.regenHint}）`
                         : ""}
                   </span>
+                  {/* WO-CAPACITY-PAGE-100PCT ⑪（D 类静默降级）：契约里 `planRows[].overlay {count,capRatio}` 一直有值，
+                      前端**从来没渲染过** → 用户拖完 5 根杠杆点「重算」，表格一个字没变、页面也不解释为什么，
+                      看着就像"杠杆是假的"。这里把引擎的回执如实亮出来：杠杆落在哪些基地的产能链上、比值多少、
+                      其中几个基地窗内确有缺口（行动项因此重算）、几个无缺口（故不变）。 */}
+                  {livePlan && <OverlayEffectNote rows={planRows} />}
                   {"　"}
                   <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
                     style={{ display: "inline-block" }}
@@ -407,6 +418,32 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
     </div>
+  );
+}
+
+/**
+ * WO-CAPACITY-PAGE-100PCT ⑪ · 杠杆推演回执（治「调完杠杆点重算·屏幕一个字没变·也不说为什么」的静默降级）。
+ * 数据全部来自求解器回传的 `planRows[].overlay`（`{count, capRatio}`·契约既有字段·前端零编造）：
+ *   - capRatio ≠ 1 → 杠杆**真落在**该基地产能链上（比值即覆写后/基线）
+ *   - capRatio = 1 → 杠杆没落在该基地链上（诚实说"未落在本基地产能链"，不假装有效）
+ *   - shortfall = 0 → 该基地窗内本就无缺口，行动项**理应**不变（这才是"没变"的真原因）
+ */
+function OverlayEffectNote({ rows }: { rows: PlanRow[] }) {
+  const byBase = new Map<string, { capRatio: number; shortfall: number }>();
+  for (const r of rows) {
+    const ov = r.overlay;
+    if (!ov || !r.baseId) continue;
+    if (!byBase.has(r.baseId)) byBase.set(r.baseId, { capRatio: ov.capRatio, shortfall: r.shortfall ?? 0 });
+  }
+  if (byBase.size === 0) return null;
+  const landed = [...byBase.entries()].filter(([, v]) => v.capRatio !== 1);
+  const withGap = landed.filter(([, v]) => v.shortfall > 0);
+  return (
+    <span data-testid="risk-plan-overlay-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
+      {landed.length === 0
+        ? "（杠杆未落在任何风险基地的产能链上 → 行动项理应不变）"
+        : `（杠杆落在 ${landed.map(([b, v]) => `${b} ×${v.capRatio.toFixed(3)}`).join("、")}；其中 ${withGap.length} 个基地窗内有缺口→行动项已随之重算，${landed.length - withGap.length} 个窗内无缺口→行动项理应不变）`}
+    </span>
   );
 }
 

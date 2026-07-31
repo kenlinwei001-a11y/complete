@@ -69,8 +69,17 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 前端", () => {
     await userEvent.click(await screen.findByTestId("risk-card-信阳"));
 
     const gray = await screen.findByTestId("rootcause-gap-信阳");
-    expect(gray).toHaveTextContent("可观测事实");
-    // 病因不得再内联"引擎不接受作用域 / 仅缺引擎侧作用域"这类已过期的因果结论。
+    // ⚠️ 审核方复并注记（别把这条读成"放松"）：原断言是 `toHaveTextContent("可观测事实")`——
+    //    一条**文案指纹**。并线时诚实灰被整体重写（loading 独立块 / 失败态只报 HTTP 状态码·错误码·requestId /
+    //    空态只报"响应里实际有哪些 level-1 节点"），行为严格变强，但"可观测事实"这五个字挪进了代码注释，
+    //    于是指纹落空、测试转红。**修法不是把那五个字塞回界面**（那是给文案背书，正是本仓的假绿老路），
+    //    而是改咬**结构**：诚实灰必须真的渲出「观测到什么」+「下一步查什么」两个可寻址节点，
+    //    且事实节点里说的是**从响应直接读得出的东西**（归因层级字段名 + 本基地不在其中），不是猜的因果。
+    const fact = within(gray).getByTestId("rootcause-fact-信阳");
+    expect(fact).toHaveTextContent("levels.depth=1"); // 事实的出处 = 响应字段路径本身
+    expect(fact).toHaveTextContent("没有「信阳」"); // 陈述的是"本基地不在返回集合里"这个可核查事实
+    within(gray).getByTestId("rootcause-next-信阳"); // 下一步必须给，且依据只能是上面那些字段
+    // 病因不得再内联"引擎不接受作用域 / 仅缺引擎侧作用域"这类已过期的因果结论（G-GAP-SCOPE 早已闭）。
     expect(gray).not.toHaveTextContent("不接受 base×factor 作用域");
     expect(gray).not.toHaveTextContent("仅缺引擎侧作用域");
   });
