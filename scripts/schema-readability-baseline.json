@@ -1,0 +1,17 @@
+{
+  "_note": "WO-63-SCHEMA-READABILITY 可读性门槛。改坏本体口径数据即跌破门槛 → 门红。门槛是「不许倒退」线，抬高须连同数据一起提交（不许只抬数字）。P0 基线（改造前实测）见 _p0Baseline。",
+  "_p0Baseline": {
+    "_measuredOn": "canonical 8511b017 · 90 类型 / 761 PropertyDef",
+    "propDescription": 0.004,
+    "numericUnit": 0.045,
+    "propDisplayName": 0.0,
+    "typeBusinessDefinition": 0.0
+  },
+  "coreTypes": ["Order", "Base", "Model", "Customer", "Equipment", "Material", "Process", "Metric"],
+  "thresholds": {
+    "propDescription": 1.0,
+    "numericUnit": 0.95,
+    "propDisplayName": 1.0,
+    "typeBusinessDefinition": 0.088
+  }
+}

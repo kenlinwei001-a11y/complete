@@ -220,6 +220,13 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
   // 新类型发布前必须人工归域（A4 治理门）；下拉来源 = 业务域注册表（R14 非内联）。
   const { data: domainsData } = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
   const domains = domainsData?.domains ?? [];
+  // WO-63 可读性：已发布本体是属性中文名/单位/口径的唯一出处（R14 前端零硬编码）。
+  // 映射到既有类型的属性即可读到真口径；新建类型本体里还没有 → 返回 undefined，界面诚实回落 propKey。
+  const { data: publishedForSemantics } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const semanticsOf = (existingTypeKey: string | null | undefined, propKey: string) =>
+    existingTypeKey
+      ? (publishedForSemantics ?? []).find((t) => t.key === existingTypeKey)?.properties.find((p) => p.propKey === propKey)
+      : undefined;
 
   // PATCH 操作：即时调端点，乐观更新 + 失败回滚（PRD §7.6）
   const patchMut = useMutation({
@@ -342,18 +349,24 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
                   )}
                   <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>conf {(ot.confidence * 100).toFixed(0)}%</span>
                 </div>
-                {ot.properties.map((p) => (
-                  <div key={p.propKey} className={styles.propRow} data-testid={`prop-${ot.typeKey}-${p.propKey}`}>
+                {ot.properties.map((p) => {
+                  // WO-63：映射到已发布类型时，属性列显示本体里的中文名/单位/口径（真值来自后端，前端零硬编码）。
+                  // 新建类型尚未发布、本体里还没有口径 → 诚实回落显示 propKey，不编造中文名。
+                  const sem = semanticsOf(ot.action === "MAP_TO_EXISTING" ? ot.existingTypeKey : null, p.propKey);
+                  return (
+                  <div key={p.propKey} className={styles.propRow} data-testid={`prop-${ot.typeKey}-${p.propKey}`} title={sem?.description ?? ""}>
                     <span>
                       {p.isPrimaryKey && <span title="主键" style={{ color: "var(--c-forecast)" }}>★ </span>}
-                      {p.propKey}
+                      <span data-testid={`prop-label-${ot.typeKey}-${p.propKey}`}>{sem?.displayName ?? p.propKey}</span>
                     </span>
                     <span className={styles.arrow}>←</span>
                     <span className="mono" style={{ color: "var(--muted)" }}>{ot.sourceDataset}.{p.sourceField}</span>
                     <span className="badge">{p.dataType}</span>
+                    {sem?.unit && <span className="badge" data-testid={`prop-unit-${ot.typeKey}-${p.propKey}`}>{sem.unit}</span>}
                     {p.refToTypeKey && <span className="badge blue">ref → {p.refToTypeKey}</span>}
                   </div>
-                ))}
+                  );
+                })}
                 {errors.map((e, i) => (
                   <div key={i} className="badge red" style={{ marginTop: 6 }} data-testid={`publish-error-${ot.typeKey}`}>
                     {e.message}
