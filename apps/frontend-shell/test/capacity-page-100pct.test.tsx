@@ -44,16 +44,22 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 前端", () => {
     useRisk();
     server.use(
       http.post("*/a/v1/solvers/gap_attribution/invoke", async () => {
-        await delay(3000); // 请求挂着 → 此刻界面必须是"加载中"，不是"暂不可用"
+        // 请求挂着 → 此刻界面必须是"加载中"，不是"暂不可用"。
+        // ⚠ 观察窗取 60s 而非 3s（本单实测踩到）：`test/setup.ts` 已把 asyncUtilTimeout 设成 15s，
+        //   所以问题不在轮询超时，而在**观察窗本身太短**——整包跑 + 本机并行多套件（实测 load avg > 20）时，
+        //   "点卡 → 面板挂载"可能超过 3s，等断言去看时响应早已返回、loading 元素已消失 → **假红**
+        //   （单跑该文件恒绿、整包跑偶红，正是这类时序脆弱测试的典型症状）。
+        //   观察窗必须远大于最坏渲染耗时；testTimeout=20s < 60s，故这个 timer 在测试内永不触发。
+        await delay(60_000);
         return HttpResponse.json({ data: { rootMetric: { key: "k", name: "n", unit: "%", gap: 1 }, levels: [] }, snapshotVersion: "ov" });
       }),
     );
     loginAs("planner");
     renderApp("/v/risk");
-    await userEvent.click(await screen.findByTestId("risk-card-信阳"));
+    await userEvent.click(await screen.findByTestId("risk-card-信阳", {}, { timeout: 15_000 }));
 
-    const panel = await screen.findByTestId("rootcause-panel-信阳");
-    await screen.findByTestId("rootcause-loading-信阳");
+    const panel = await screen.findByTestId("rootcause-panel-信阳", {}, { timeout: 15_000 });
+    await screen.findByTestId("rootcause-loading-信阳", {}, { timeout: 15_000 });
     expect(panel, "loading 态被渲成失败态（把加载中宣告为不可用·本项目前科）").not.toHaveTextContent("暂不可用");
   });
 
@@ -141,5 +147,85 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 前端", () => {
     expect(badges.length, `首要风险徽章挂了 ${badges.length} 个`).toBe(1);
     // 且必须挂在求解器排序第一（最严重·当前张力 96）的那张卡上。
     expect(badges[0]!.getAttribute("data-testid")).toBe("risk-primary-江门");
+  });
+
+  it("⑬：切 30→60 天窗口，订单聚合表必须真跟着变（修前后端写死 180 天窗·chip 是死的）", async () => {
+    // 桩按 **收到的 horizon** 返回不同行集：只有前端把 chip 的新 horizon 真送到后端、
+    // 并用新响应重渲，屏幕行数才会变。这是效果层（"表格因此不同"），不是运输层（"参数到达了"）。
+    const seen: number[] = [];
+    useRisk();
+    server.use(
+      http.post("*/a/v1/solvers/affected_orders/invoke", async ({ request }) => {
+        const body = (await request.json()) as { args?: { horizon?: number } };
+        const h = Number(body.args?.horizon ?? 0);
+        seen.push(h);
+        const n = h >= 60 ? 3 : 1;
+        const rows = Array.from({ length: n }, (_, i) => ({
+          so: `SO-${h}-${i}`, cust: "长安汽车", seg: "动力电池", model: "4680-NCM",
+          qty: 1000, due: "2026-07-02", delay: 2, risks: [{ base: "江门", factor: "物料齐套", crossDay: 1, peak: 98, threshold: 85 }],
+        }));
+        return HttpResponse.json({ data: { summary: { orderCount: n, totalQty: 1000 * n, custCount: 1, revenue: 1 }, rows, problems: [] }, snapshotVersion: "ov-cap" });
+      }),
+    );
+    loginAs("planner");
+    renderApp("/v/risk");
+    await screen.findByTestId("risk-card-江门");
+    await userEvent.click(screen.getByTestId("risk-tab-order"));
+
+    await waitFor(() => expect(screen.getAllByTestId(/^risk-order-row-/).length).toBe(1));
+    // 口径交底必须在屏（R-一致：同屏 KPI 与本表覆盖面不同，得说清楚，不许让用户自己猜）。
+    expect(screen.getByTestId("risk-order-agg-caliber")).toHaveTextContent("未来 30 天内交期");
+
+    await userEvent.click(screen.getByTestId("risk-window-60"));
+    await waitFor(() => expect(screen.getAllByTestId(/^risk-order-row-/).length).toBe(3));
+    expect(screen.getByTestId("risk-order-agg-caliber")).toHaveTextContent("未来 60 天内交期");
+    // 后端确实两次都收到了当前 chip 的 horizon（30 与 60 都出现过）。
+    expect(seen).toContain(30);
+    expect(seen).toContain(60);
+  });
+
+  it("⑭：订单聚合「基地筛选」选了一个基地后，下拉里**别的基地还在**（修前选项集塌成只剩自己）", async () => {
+    // 桩照真后端行为：传了 base 就只回该基地的单 —— 修前前端拿"已过滤的响应"派生选项集，
+    // 于是选中合肥后下拉只剩「全部风险基地(1) + 合肥」，想改选金华必须先点 ✕清除，且那个 (1) 是假总数。
+    const mk = (so: string, base: string) => ({
+      so, cust: "长安汽车", seg: "动力电池", model: "4680-NCM", qty: 1000, due: "2026-07-02", delay: 2,
+      risks: [{ base, factor: "物料齐套", crossDay: 1, peak: 98, threshold: 85 }],
+    });
+    const ALL = [mk("SO-1", "合肥"), mk("SO-2", "金华"), mk("SO-3", "武汉")];
+    useRisk();
+    server.use(
+      http.post("*/a/v1/solvers/affected_orders/invoke", async ({ request }) => {
+        const body = (await request.json()) as { args?: { base?: string } };
+        const base = body.args?.base;
+        const rows = base ? ALL.filter((r) => r.risks[0]!.base === base) : ALL;
+        return HttpResponse.json({ data: { summary: { orderCount: rows.length, totalQty: 1000 * rows.length, custCount: 1, revenue: 1 }, rows, problems: [] }, snapshotVersion: "ov-cap" });
+      }),
+    );
+    loginAs("planner");
+    renderApp("/v/risk");
+    await screen.findByTestId("risk-card-江门");
+    await userEvent.click(screen.getByTestId("risk-tab-order"));
+
+    // ⚠ 每次都**重新取** select：切筛选时 `isLoading` 会把整个 OrderAggView 卸掉重渲，
+    //    握着旧引用去断言 = 读一个已经脱离文档的节点（那才是真假绿·本条测试第一版就踩了）。
+    const sel = (): HTMLSelectElement => screen.getByTestId("risk-order-basesel") as HTMLSelectElement;
+    const optsOf = (): string[] => within(sel()).getAllByRole("option").map((o) => (o as HTMLOptionElement).value);
+    await waitFor(() => expect(optsOf().length).toBe(4)); // 全部 + 3 基地
+    await userEvent.selectOptions(sel(), "合肥");
+
+    // 明细真裁剪（筛选确实生效）——
+    await waitFor(() => expect(screen.getAllByTestId(/^risk-order-row-/).length).toBe(1));
+    expect(screen.getByTestId("risk-order-row-SO-1")).toBeInTheDocument();
+    // 效果层头号：选项**不许塌**，金华/武汉必须还能直接选（修前这里只剩「全部(1)+合肥」2 个 option）。
+    const opts = optsOf();
+    expect(opts, `下拉塌成 ${opts.join("/")} → 无法直接改选别的基地`).toContain("金华");
+    expect(opts).toContain("武汉");
+    expect(opts.length).toBe(4);
+    // 「全部风险基地（N）」的 N 必须仍是全域 3，不许显示成过滤后的 1（假总数）。
+    expect(within(sel()).getAllByRole("option")[0]!.textContent).toContain("3");
+    // 直接改选金华（不先清除）必须真生效。
+    await userEvent.selectOptions(sel(), "金华");
+    await waitFor(() => expect(screen.getByTestId("risk-order-row-SO-2")).toBeInTheDocument());
+    expect(screen.queryByTestId("risk-order-row-SO-1")).toBeNull();
   });
 });

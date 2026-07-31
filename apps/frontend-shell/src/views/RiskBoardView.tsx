@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
@@ -492,9 +492,25 @@ function OrderAggView({ horizon }: { horizon: number }) {
   const segPrice = useMemo(() => Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.priceWan], [s.key, s.priceWan]])) as Record<string, number>, []);
   const segMargin = useMemo(() => Object.fromEntries(SEG_REGISTRY.flatMap((s) => [[s.seg, s.marginPct], [s.key, s.marginPct]])) as Record<string, number>, []);
 
+  // WO-CAPACITY-PAGE-100PCT ⑭（R8 轮·下拉自锁死）：修前选项集 = **当前这一次（已被 base 过滤的）响应**派生，
+  // 选中「合肥」后响应里只剩合肥 → 下拉当场塌成「全部风险基地(1) + 合肥」，**没法直接改选金华**（必须先点 ✕清除），
+  // 且「全部风险基地（N）」的 N 从 13 变成 1 —— 那是个**假的总数**（R-一致：同一事实一个出处）。
+  // 修法：选项集只在 `__all__`（未过滤）响应回来时刷新并记住；过滤态沿用全域选项集，绝不用过滤结果冒充全域。
+  const [baseOptions, setBaseOptions] = useState<string[]>([]);
+  const allBases = useMemo(
+    () => (baseFilter === "__all__" ? [...new Set((data?.rows ?? []).flatMap((r) => (r.risks ?? []).map((k) => String(k.base ?? "")).filter(Boolean)))] : null),
+    [baseFilter, data],
+  );
+  useEffect(() => {
+    if (allBases && allBases.join("|") !== baseOptions.join("|")) setBaseOptions(allBases);
+  }, [allBases, baseOptions]);
+
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   const rows = data?.rows ?? [];
+  // `bases` = **本次响应里真有的基地**（经营表按基地聚合时只能列这些，不许凭空多出空行）。
   const bases = [...new Set(rows.flatMap((r) => (r.risks ?? []).map((k) => String(k.base ?? "")).filter(Boolean)))];
+  // `selectBases` = **全域**基地（下拉可选项），过滤态下沿用记住的全域集合，故能直接从合肥改选金华。
+  const selectBases = baseFilter === "__all__" ? bases : baseOptions.length > 0 ? baseOptions : bases;
   // 经营聚合行：app→按 r.seg 聚 · base→按 risks.base 聚。营收=Σ qty×细分单价、毛利=营收×细分毛利率（真值·非写死 0；
   // 跨多基地订单在 base 维不做均摊·计入每关联基地·口径注文案说明）。库存/产能列平台无该维度真源→诚实"—"。
   const econRows: { name: string; revenue: number; gp: number; marginPct: number | null; orderCount: number }[] =
@@ -521,6 +537,15 @@ function OrderAggView({ horizon }: { horizon: number }) {
         <div className={styles.rkDetH}>
           <b>受影响订单 · 经营数据看板</b>
           <span>这些订单牵动的产能与财务（{seg === "app" ? "按应用细分" : "按基地"}）· 金额单位 亿元</span>
+        </div>
+        {/*
+          WO-CAPACITY-PAGE-100PCT ⑬：口径交底（R-一致·同屏两个数必须解释得清）。
+          本表 = 未来 {horizon} 天内交期、且落在**任一**基地风险窗内的订单（全基地）；
+          顶部 KPI「受影响订单(批)」= 上方看板**展示的那几张风险卡**的并集，覆盖面更窄，故可能略少。
+          （修前本表窗口写死 180 天，30/60/90 chip 拖了不动、且与 KPI 差一大截——已修，见 risk.ts affectedOrdersAggregate。）
+        */}
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="risk-order-agg-caliber">
+          口径：未来 {horizon} 天内交期 · 覆盖全部基地（顶部 KPI「受影响订单」只统计上方展示的风险卡，覆盖面更窄，数值可能略少）
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)", margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
           分类维度：
@@ -605,8 +630,8 @@ function OrderAggView({ horizon }: { horizon: number }) {
         基地筛选：
         <select data-testid="risk-order-basesel" value={baseFilter} onChange={(e) => setBaseFilter(e.target.value)}
           style={{ background: "var(--panel)", border: "1px solid var(--line2)", borderRadius: 8, color: "var(--txt)", padding: "6px 12px", fontSize: 12, cursor: "pointer", minWidth: 170 }}>
-          <option value="__all__">全部风险基地（{bases.length}）</option>
-          {bases.map((b) => <option key={b} value={b}>{b}</option>)}
+          <option value="__all__">全部风险基地（{selectBases.length}）</option>
+          {selectBases.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
         {baseFilter !== "__all__" && (
           <span className={styles.rkFchip} data-testid="risk-order-clearbase" role="button" tabIndex={0}
