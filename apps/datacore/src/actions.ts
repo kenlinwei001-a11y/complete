@@ -42,13 +42,31 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   流水线发布物化: "WIRED",
   // plan_change 仅 source==="global-sim" 有真回灌；其余 source 落未实现（执行期按 payload 二次判定）。
   plan_change: "WIRED",
-  // —— 尚未接执行器：审批通过后不写任何真值 ——
-  // ⚠️ 这三条**不是**「设计上无副作用」。`采纳产能保障方案` 在 mapping.ts 里明确声明要写回生产工单MO；
-  // `adopt_mitigation` 是决策内核 commit 的落点。它们是**欠账**，标 NOT_IMPLEMENTED 让欠账可见、可门禁。
+  采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations；写回意图见 mapping.ts:85
+  // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
+  // ⚠️ 逐条写清写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里都有写回意图"，
+  //    对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。门禁的理由本身错了，
+  //    就是这套门自己身上的一小块假绿，故此处逐条据实标注，勿再合并成一句笼统话）：
+  //  · adopt_mitigation —— 决策内核 commit 的落点（decision/kernel.ts:126 真 dispatch 本 key 建 DRAFT）；
+  //    mapping.ts:86「预警处置方案 → 处置工单（写回）+ 风险曲线消解」是同一业务动作的中文登记名（键名不同名）。
+  //  · 采纳经营方案 —— **不在 mapping.ts、kernel 也不派**。写回意图出自它自己的注册声明：
+  //    battery.ts:2076 `required: ["schemeNo","scheme","targets"]`（增量 §0-4 / §7.11 规划建议「采纳方案」，
+  //    payload = 方案快照 + 目标面板值）——载荷里带着方案与目标，却一个字节都不落，正是欠账形态。
+  //    业务裁定（已定·勿改）：采纳一个方案**不得覆盖全局经营目标基线**（PLAN_GOAL_TARGETS）——「目标不能改」。
   adopt_mitigation: "NOT_IMPLEMENTED",
   采纳经营方案: "NOT_IMPLEMENTED",
-  采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations
 };
+
+/**
+ * `NO_WRITE` = **设计上**不写真值（如纯审计/纯登记动作）。它是三态里唯一「绿着却什么都不写」的一态，
+ * 因此也是**最容易被用来洗白欠账**的一态：把 NOT_IMPLEMENTED 改成 NO_WRITE 只要五秒，门当场变绿，
+ * 而问题原封不动——且比 NOT_IMPLEMENTED 更难发现，因为它看起来"已经想清楚了"。
+ *
+ * 故：**已注册内置** ActionType 若标 NO_WRITE，必须在此登记非空理由（`scripts/check-action-wiring.mjs` 断言⑤）。
+ * 当前为空 —— 这不是疏漏，是**现状的事实**：10 个内置全部落 WIRED 或 NOT_IMPLEMENTED，
+ * NO_WRITE 只作为**租户 registerType 自注册键**的默认（平台侧不可能有内置执行器，判 NOT_IMPLEMENTED 会误杀）。
+ */
+export const NO_WRITE_RATIONALE: Record<string, string> = {};
 
 /** plan_change 只有 global-sim 来源真回灌——其余来源等同未实现（不得借 WIRED 之名假装写了）。 */
 export function planChangeIsWired(payload: unknown): boolean {

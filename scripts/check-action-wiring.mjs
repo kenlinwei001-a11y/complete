@@ -75,6 +75,71 @@ if (!/return\s+unwiredExecutor\.execute\(/.test(domBody)) {
   fails.push("断言③ domainExecutor 未接 unwiredExecutor 兜底（未接线动作将无诚实出口）。");
 }
 
+// —— ④⑤ 堵 NO_WRITE 洗白通道 ——
+// 病灶（本门自查时发现的自身漏洞）：①②③ 对 NO_WRITE **零校验**。三态里只有它是「绿着却什么都不写」，
+// 于是把一条 NOT_IMPLEMENTED 改成 NO_WRITE 就能五秒变绿而问题原封不动，且比 NOT_IMPLEMENTED 更难发现
+// ——因为它看起来"已经想清楚了"。以下两条把洗白成本从"改一个词"抬到"要么与另一处声明打架、要么签一份理由"。
+
+// ④ 跨源交叉核对：`mapping.ts` 白纸黑字声明「（写回）」的动作，不得在 ACTION_WIRING 里标成 NO_WRITE。
+//    这是**两处独立声明必须一致**（R-一致：同一事实一个出处），不是自证——mapping.ts 是业务侧登记表，
+//    ACTION_WIRING 是执行侧接线表，二者对同一动作说反话，必有一处在撒谎。
+const mappingSrc = read("apps/datacore/src/mapping.ts");
+const writebackNames = new Set(
+  [...mappingSrc.matchAll(/name:\s*"([^"]+)"[^\n]*写回/g)].map((m) => m[1]),
+);
+if (writebackNames.size === 0) {
+  fails.push("锚点失效：mapping.ts 里解析出 0 条「（写回）」声明（改文案须同步本门·勿让断言④空跑通过）");
+}
+for (const name of writebackNames) {
+  if (wiring.get(name) === "NO_WRITE") {
+    fails.push(
+      `断言④ 「${name}」在 mapping.ts 里声明了**写回**目标，却在 ACTION_WIRING 里标 NO_WRITE（=设计上无副作用）——` +
+        `两处声明自相矛盾，必有一处在撒谎。修：要么接真执行器标 WIRED，要么据实标 NOT_IMPLEMENTED（欠账可见）；` +
+        `若确系 mapping.ts 的写回声明已过期，改那边并说明。`,
+    );
+  }
+}
+
+// ⑤ 已注册**内置** ActionType 若标 NO_WRITE，必须在 actions.ts `NO_WRITE_RATIONALE` 里签一条非空理由。
+//    NO_WRITE 的正当用途只有一个：**租户经 registerType 自注册的键**（平台侧不可能有内置执行器，
+//    判 NOT_IMPLEMENTED 会误杀正当功能）——那条路径走的是 `ACTION_WIRING[key] ?? "NO_WRITE"` 的默认值，
+//    根本不进 ACTION_WIRING 表。所以内置键出现 NO_WRITE 本身就可疑，必须留下可复核的书面理由。
+const ratStart = actionsSrc.indexOf("export const NO_WRITE_RATIONALE");
+if (ratStart < 0) fails.push("锚点失效：actions.ts 找不到 NO_WRITE_RATIONALE（断言⑤ 依赖它·勿删）");
+// ⚠️ 取花括号体用**配平扫描**，不用 `indexOf("\n};")`：后者只认多行缩进写法，遇到单行
+// `= { k: "v" };` 直接 -1 → slice 出垃圾 → 明明登记了却报"没登记"（假红），换个形态就可能变假绿。
+// 这个 bug 是本门自己做变异反证时当场暴露的——门的解析器也要经得起变形。
+const braceBody = (src, from) => {
+  const open = src.indexOf("{", from);
+  if (open < 0) return "";
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return src.slice(open + 1, i);
+  }
+  return "";
+};
+const ratBody = ratStart >= 0 ? braceBody(actionsSrc, ratStart) : "";
+// 不锚行首（单行字面量里多个键挤在一行），键允许带引号 / 中文 / 下划线。
+const rationale = new Map(
+  [...ratBody.matchAll(/(?:^|[{,\s])"?([\p{L}\p{N}_$]+)"?\s*:\s*"([^"]*)"/gu)].map((m) => [m[1], m[2]]),
+);
+const PLACEHOLDER = /^\s*(|-|—|TODO|TBD|N\/A|待定|无|暂无|见上|同上)\s*$/i;
+for (const key of registered) {
+  if (wiring.get(key) !== "NO_WRITE") continue;
+  const why = rationale.get(key);
+  if (why === undefined) {
+    fails.push(
+      `断言⑤ 已注册内置 ActionType「${key}」标了 NO_WRITE 但没在 NO_WRITE_RATIONALE 里登记理由 —— ` +
+        `NO_WRITE 是三态里唯一"绿着却什么都不写"的一态，也是洗白欠账最省事的一态（改一个词即变绿）。` +
+        `若它**设计上**就无真值副作用（纯审计/纯登记），把这句话写进 NO_WRITE_RATIONALE 签字；` +
+        `若只是还没接执行器，据实标 NOT_IMPLEMENTED。`,
+    );
+  } else if (PLACEHOLDER.test(why)) {
+    fails.push(`断言⑤ 「${key}」的 NO_WRITE 理由是占位词「${why}」—— 签字要签真话，占位等于没签。`);
+  }
+}
+
 if (fails.length > 0) {
   console.error(`\n✗ action-wiring:check 失败（${fails.length}）：`);
   for (const f of fails) console.error(`  - ${f}`);
@@ -85,5 +150,6 @@ const byW = [...wiring.values()].reduce((a, w) => ({ ...a, [w]: (a[w] ?? 0) + 1 
 console.log(
   `\n✓ action-wiring:check 通过：${registered.length} 个已注册 ActionType 全部显式归类` +
     `（WIRED ${byW.WIRED ?? 0} · NO_WRITE ${byW.NO_WRITE ?? 0} · NOT_IMPLEMENTED ${byW.NOT_IMPLEMENTED ?? 0}）；` +
-    `WIRED 者在 domainExecutor 均有真分支；兜底为诚实执行器（无假 MO 号产地）。`,
+    `WIRED 者在 domainExecutor 均有真分支；兜底为诚实执行器（无假 MO 号产地）；` +
+    `mapping.ts ${writebackNames.size} 条写回声明与接线态无矛盾；NO_WRITE 内置项 ${byW.NO_WRITE ?? 0} 个均已签实名理由。`,
 );
