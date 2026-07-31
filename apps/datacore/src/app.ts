@@ -80,7 +80,7 @@ import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService, MockActionExecutor, GlobalSimPlanExecutor, type ActionExecutor } from "./actions.js";
+import { ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired, type ActionExecutor } from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -389,6 +389,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
   // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
   const mockExecutor = new MockActionExecutor();
+  // G-ACTION-NOOP-EXEC：未接线动作走**诚实执行器**（未实现即 ok:false），不再返回 MO 形态的假单号。
+  const unwiredExecutor = new UnwiredActionExecutor();
   // WO-GSIM-5-ACTION · 全局联合推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
   const globalSimExecutor = new GlobalSimPlanExecutor(
     {
@@ -403,8 +405,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const domainExecutor: ActionExecutor = {
     async execute(draft) {
       // 全局联合推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
-      if (draft.actionTypeKey === "plan_change" && (draft.payload as Record<string, unknown>).source === "global-sim") {
-        return globalSimExecutor.execute(draft);
+      if (draft.actionTypeKey === "plan_change") {
+        // 仅 global-sim 来源有真回灌；其余来源**不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败。
+        if (planChangeIsWired(draft.payload)) return globalSimExecutor.execute(draft);
+        return unwiredExecutor.execute(draft);
       }
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
@@ -467,7 +471,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         return { ok: true, targetRef: `WF-${workflowId}:${n}` };
       }
-      return mockExecutor.execute(draft);
+      // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
+      // 让"审批通过但什么都没写"在界面与审计里可分辨（G-ACTION-NOOP-EXEC·R4 真值经 Action）。
+      return unwiredExecutor.execute(draft);
     },
   };
   actions.setExecutor(domainExecutor);

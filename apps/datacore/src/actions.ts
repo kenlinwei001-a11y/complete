@@ -18,6 +18,69 @@ export interface ActionExecutor {
   execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef?: string; error?: string }>;
 }
 
+/**
+ * 执行接线态（G-ACTION-NOOP-EXEC 收口）——每个**已注册** ActionType 必须显式归入其一。
+ *
+ * 病灶：`app.ts domainExecutor` 只有 7 个分支，未覆盖者全部落 `MockActionExecutor`，
+ * 后者返回 `MO-2026-${hash}` —— **一个哈希编出来的假工单号，形态与真 MO 一模一样**。
+ * 于是审批链走完 ✅ 审计留痕齐全 ✅ targetRef 看着像真的 ✅ 而**真值一个字节没动**。
+ * 加重情节：平台自己的注册表 `mapping.ts:85` 白纸黑字写着「采纳产能保障方案 → target: 生产工单MO（写回）」。
+ * R4「真值经 Action」在最深处被架空，且用户在界面上**无法分辨**。
+ *
+ * 纪律：**未实现必须诚实失败，绝不允许返回一个看起来像真的假单号**。
+ * 静默返回假成功比报错危险得多——报错至少会被发现，假成功会被当成事实沉淀进决策。
+ */
+export type ActionWiring = "WIRED" | "NO_WRITE" | "NOT_IMPLEMENTED";
+
+export const ACTION_WIRING: Record<string, ActionWiring> = {
+  // —— 有真执行器（app.ts domainExecutor 有分支·改动真值）——
+  AOP情景拍板: "WIRED",
+  校准参数变更: "WIRED",
+  定稿月度计划版本: "WIRED",
+  计划版本变更: "WIRED",
+  对象数据变更: "WIRED",
+  流水线发布物化: "WIRED",
+  // plan_change 仅 source==="global-sim" 有真回灌；其余 source 落未实现（执行期按 payload 二次判定）。
+  plan_change: "WIRED",
+  // —— 尚未接执行器：审批通过后不写任何真值 ——
+  // ⚠️ 这三条**不是**「设计上无副作用」。`采纳产能保障方案` 在 mapping.ts 里明确声明要写回生产工单MO；
+  // `adopt_mitigation` 是决策内核 commit 的落点。它们是**欠账**，标 NOT_IMPLEMENTED 让欠账可见、可门禁。
+  adopt_mitigation: "NOT_IMPLEMENTED",
+  采纳经营方案: "NOT_IMPLEMENTED",
+  采纳产能保障方案: "NOT_IMPLEMENTED",
+};
+
+/** plan_change 只有 global-sim 来源真回灌——其余来源等同未实现（不得借 WIRED 之名假装写了）。 */
+export function planChangeIsWired(payload: unknown): boolean {
+  return (payload as { source?: unknown } | undefined)?.source === "global-sim";
+}
+
+/**
+ * 未接线动作的**诚实执行器**：取代此前返回假 MO 号的兜底。
+ * NOT_IMPLEMENTED → `ok:false`（草稿落 EXECUTION_FAILED·错误码可被前端/审计识别）；
+ * NO_WRITE        → `ok:true` 但 targetRef 显式标注无写入，**绝不产出 MO 形态字符串**。
+ */
+export class UnwiredActionExecutor implements ActionExecutor {
+  async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef?: string; error?: string }> {
+    const key = draft.actionTypeKey;
+    // 未知键 = 租户经 registerType 自注册的**自定义**动作类型：平台侧不可能有内置执行器，
+    // 判 NOT_IMPLEMENTED 会打死这个正当功能。故默认 NO_WRITE——
+    // ⚠️ 关键区分：**不诚实的从来不是 `ok:true`，而是那个 MO 形态的假 ref**（使"没写"与"开了工单"不可分辨）。
+    // NO_WRITE 返回 `NO_WRITE:<key>`：动作确实走完了审批链，且 targetRef **自证没有写入任何真值**。
+    // 而平台**内置已注册**却没接执行器的（adopt_mitigation / 采纳经营方案 / 采纳产能保障方案）是**欠账**，
+    // 在 ACTION_WIRING 里显式标 NOT_IMPLEMENTED → 诚实失败，让欠账可见、可门禁、不可伪装成 NO_WRITE。
+    const wiring: ActionWiring = ACTION_WIRING[key] ?? "NO_WRITE";
+    if (wiring === "NO_WRITE") return { ok: true, targetRef: `NO_WRITE:${key}` };
+    return {
+      ok: false,
+      error:
+        `EXECUTOR_NOT_IMPLEMENTED: 动作类型「${key}」尚未接入真实执行器，审批通过后不会写入任何真值。` +
+        `此处诚实失败而非返回占位单号——曾经的兜底会返回 MO-2026-xxxx 形态的假工单号，` +
+        `使「没做」与「做了」在界面与审计里完全无法区分（G-ACTION-NOOP-EXEC）。`,
+    };
+  }
+}
+
 export class MockActionExecutor implements ActionExecutor {
   async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
     return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };

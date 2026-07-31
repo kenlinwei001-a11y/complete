@@ -323,16 +323,28 @@ describe("S2 action approval (V9)", () => {
     expect(step1.status).toBe("PENDING_APPROVAL");
     expect(step1.approvalSteps[0]).toMatchObject({ decision: "APPROVE", approverId: "planner2" });
 
-    // step 2: admin approves → APPROVED → outbox → mock executor → EXECUTED with MO-2026-xxxx
+    // step 2: admin approves → APPROVED → outbox → 执行器。
+    // ⚠️ G-ACTION-NOOP-EXEC 收口后**断言由 EXECUTED 改为 EXECUTION_FAILED**，这不是回归而是去伪：
+    // 本用例用的 `adopt_mitigation` **至今没有真执行器**（app.ts domainExecutor 无该分支）。
+    // 修前它落 MockActionExecutor → 返回 `MO-2026-xxxx` 假工单号 → 判 EXECUTED，
+    // 于是这条测试（连同它原本的注释「EXECUTED with MO-2026-xxxx」）**在为空执行背书**：
+    // 审批链走完、审计留痕齐全、targetRef 看着像真的，而真值一个字节没动。
+    // 现在未接线动作诚实失败，欠账在测试里可见。**接上真执行器后请把本段断言改回 EXECUTED**
+    // （届时 action-wiring:check 也会要求把 ACTION_WIRING 里的 NOT_IMPLEMENTED 改成 WIRED）。
+    // 本用例的主体覆盖（自审拒绝 / 两步审批 / 拒绝路径 / 事件 / 审计）不受影响，均在下方继续断言。
     const done = (await t.app.inject({ method: "POST", url: `/a/v1/action-drafts/${draftId}/approve`, headers: ADMIN, payload: {} })).json() as ActionDraft;
-    expect(done.status).toBe("EXECUTED");
-    expect(done.executionResult!.ok).toBe(true);
-    expect(done.executionResult!.targetRef).toMatch(/^MO-2026-\d{4}$/);
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult!.ok).toBe(false);
+    expect(done.executionResult!.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    // 头号红咬：绝不允许再出现 MO 形态的假单号（真假不可分辨正是本断点的病灶）。
+    expect(String(done.executionResult!.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
 
     // events through the C-2 outbox
     const events = (await t.repos.outboxEvents.list("demo")).filter((e) => e.payload.draftId === draftId).map((e) => e.event);
     expect(events).toEqual(
-      expect.arrayContaining(["action.pending_approval", "action.approved", "action.executed"]),
+      // 同上（G-ACTION-NOOP-EXEC）：未接线动作走 action.execution_failed，不再发 action.executed。
+      // 接上真执行器后改回 "action.executed"。
+      expect.arrayContaining(["action.pending_approval", "action.approved", "action.execution_failed"]),
     );
     expect(events.filter((e) => e === "action.pending_approval")).toHaveLength(2); // one per step
 
@@ -343,7 +355,8 @@ describe("S2 action approval (V9)", () => {
       events: { event: string }[];
     };
     expect(audit.steps).toHaveLength(2);
-    expect(audit.executionResult.targetRef).toMatch(/^MO-2026-/);
+    // 同上：审计里也不该再出现假 MO 号；未接线时 targetRef 缺省，错误码才是真相。
+    expect(String(audit.executionResult.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
     expect(audit.events.length).toBeGreaterThanOrEqual(3);
 
     // reject path: comment is mandatory; second step reject → REJECTED
