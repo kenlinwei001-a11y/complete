@@ -48,6 +48,33 @@ workflow 钉 pnpm 9，`package.json` 的 `packageManager` 是 10.33.0 → `pnpm/
 **教训**：门存在 ≠ 门在跑。本仓「绿测试≠能用」的下一层是「**门≠在执行**」——
 从此 CI 状态必须经 PR 呈现出来被人看见，这正是本 LOOP 要解决的。
 
+## ⚠ 第三个头号缺陷 · canonical 的测试套件本来就不绿（最低支持版本上功能是死的）
+
+CI 第一次真正跑完测试套件（pnpm 修复之后），立刻红在三条：
+
+```
+test/a18-sandbox.test.ts:47            node: bad option: --permission
+test/grounding-hook.test.ts:54         expected 'UNREGISTERED' to be 'PROVISIONAL'
+test/grounding-vocab-grow.test.ts:53   expected 'UNREGISTERED' to be 'PROVISIONAL'
+❌ 未通过：TEST (五包·串行) —— 不得并线
+```
+
+**一个根因**：`apps/datacore/src/solvers/sandbox.ts` 把 Node 权限模型开关写死成 `--permission`，
+而该开关名随版本变过 —— Node 20 只有 `--experimental-permission`。CLAUDE.md 声明支持 **Node ≥20**，
+于是在声明支持的最低版本上，沙箱子进程直接以 `bad option` 启动失败：**生成式求解器整条路径是死的**，
+连带依赖它的 DF.8 / DF.11 接地链永远停在 `UNREGISTERED`（到不了 `PROVISIONAL`）。
+
+**为什么长期无人发现**：开发机跑 Node 22（本地 14/14 全绿），而 CI 从未真正执行过测试。
+两个盲区叠加，缺陷得以在正线上存活至今。「五包全绿是交付底线」这句话**从未在干净环境里被验证过**。
+
+**教训**：本仓「绿测试 ≠ 能用」的第三层是「**绿只代表在你那台机器上绿**」。
+本地全绿是关于开发机的陈述，不是关于软件的陈述。
+
+**已修**（`WO-INTEGRATION-LOOP`）：改为运行时探测实际可用的开关，而非按版本号猜边界（版本边界本身
+就是这次踩坑的来源）；两个开关都不可用时 **fail-closed 拒绝执行** —— 这里跑的是 LLM 生成的不可信
+代码，没有权限模型就没有沙箱，静默降级等于静默开洞。并新增 `runtime-portability` 矩阵 job
+（Node 20 × 22 复跑沙箱与接地测试），让"在 A 版本绿在 B 版本红"不可能再静默发生。
+
 ## 台账
 
 | branch | 状态 | 说明 |

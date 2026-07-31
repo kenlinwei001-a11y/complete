@@ -49,6 +49,44 @@ jobs:
       - name: 本体回写完整性（每个并入 gates 的门都须在本体 §7 登记）
         run: node scripts/check-ontology-writeback.mjs
 
+  # 运行时便携性门：沙箱依赖 Node 权限模型，而该开关名随版本变过（Node 20 = --experimental-permission，
+  # 较新的 22.x/23+ = --permission）。此前 sandbox.ts 写死 --permission，于是在 CLAUDE.md 声明支持的
+  # **最低版本 Node 20** 上沙箱启动即失败，生成式求解器整条路径连同 DF.8/DF.11 接地链全死；
+  # 而开发机跑 Node 22 本地全绿、CI 又从未真正执行过测试，缺陷因此长期无人发现。
+  #
+  # 主 gate 跑在 Node 20（声明的最低支持版本，也正是它抓出这个缺陷）。此 job 额外在 Node 22 上
+  # 复跑沙箱与接地这两组**直接依赖运行时能力**的测试——只跑这几个文件，成本低，但让"在 A 版本绿
+  # 在 B 版本红"这类便携性漂移不可能再静默发生。
+  runtime-portability:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build (contracts → datacore)
+        run: pnpm --filter @platform/contracts build && pnpm --filter datacore build
+      - name: 沙箱 + 接地链在本 Node 版本上必须真跑通
+        run: |
+          out="$(pnpm --filter datacore exec vitest run \
+            test/a18-sandbox.test.ts \
+            test/grounding-hook.test.ts \
+            test/grounding-vocab-grow.test.ts 2>&1)"
+          rc=$?
+          echo "$out"
+          if [ $rc -ne 0 ]; then
+            echo "::error::沙箱/接地在 Node ${{ matrix.node }} 上失败 —— 运行时便携性回归"
+            exit 1
+          fi
+
   # 并线台账：独立 job，只在 canonical / main 上强制——handoff 分支自己不该为「别人没并线」而红。
   integration-ledger:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/inspiring-gates-aqczjg' || github.base_ref == 'claude/inspiring-gates-aqczjg'
