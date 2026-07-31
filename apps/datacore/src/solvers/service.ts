@@ -25,6 +25,8 @@ import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatri
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
+// WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
+import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
@@ -3972,22 +3974,103 @@ export class SolverService {
     return this.compute({ ...c, params }, solverKey, args);
   }
 
+  /**
+   * WO-69 P2 · **Function 本体签名守卫**（列级/属性级安全的唯一收口，装在唯一分发口 `invoke()` 顶部）。
+   *
+   * ─ 它守的是什么 ─────────────────────────────────────────────────────────────
+   * `invoke()` 是**唯一分发口**：compute() 路径与 ~86 处自建 ctx 的早返回求解器（gap_attribution /
+   * concentration_risk / margin_attribution / plan_rootcause… 直取 repos.objects.listByType·**不经**
+   * loadContext 列投影）全从此过。守在这里一次覆盖两半——闭掉「列策略只接住 loadContext 一半」的残口
+   * （live 实证：加了 Order 列策略后 gap_attribution admin/受限输出**字节相同** 17677==17677，
+   *  即受限用户读到了被禁列算出的数）。
+   *
+   * ─ P1 → P2 收窄 ────────────────────────────────────────────────────────────
+   * P1：调用者在**任一** OBJECT_TYPE 上受列级约束 → 拒**全部**求解器（读取面未知，只能一刀切）。
+   * P2：按签名求交 —— 只拒**真会读到被禁列**的求解器；不相交者**放行出真数字**（这就是收窄的收益）。
+   *
+   * ─ 判定（三分支，缺省一律偏拒）──────────────────────────────────────────────
+   *  ① 调用者无任何列级约束（admin / 无列级策略）→ **零成本返回**（不解析签名、不多读一行 → S8 逐字节现行为）。
+   *  ② 求解器**无签名**（读取面未知）→ **拒**。未知 ≠ 安全：误判「不读」就会放行出错数字，
+   *     而错数字（「没权限」伪装成「业务数字」）比 403 坏得多。这也给「补声明」建立正确激励。
+   *  ③ 有签名 → 声明读/写面 ∩ 调用者**真被禁的属性** ≠ ∅ → 拒；= ∅ → 放行。
+   *
+   * ⚠ 判据全部复用 `authz.decide()`（并集语义与 REST 读写路径同一份），不另造第二套匹配逻辑。
+   */
+  private async columnSignatureGate(ctx: AuthCtx, solverKey: string, args: Record<string, unknown>): Promise<void> {
+    const restrictedTypes = await this.authz.columnRestrictedObjectTypes(ctx);
+    if (restrictedTypes.length === 0) return; // ① 快路径：S4/S8 向后兼容硬底线
+    const sig = SOLVER_ONTOLOGY_SIGNATURES[solverKey];
+    if (!sig) throw solverColumnRestricted(solverKey, restrictedTypes); // ② 未知读取面 → 保守拒
+    // ③ 静态声明 ∪ 动态解析（入参/数据决定读取面的求解器；只在此分支跑 → 无约束调用者零开销）。
+    const dynamic = sig.resolveReads
+      ? await sig.resolveReads({ args, listByType: (t) => this.repos.objects.listByType(ctx.tenantId, t) })
+      : [];
+    const reads = mergeReadSurfaces([...(sig.reads ?? []), ...dynamic]);
+    const restricted = new Set(restrictedTypes);
+    const conflicts = new Set<string>();
+    for (const r of reads) {
+      const denied = await this.deniedProps(ctx, r.typeKey, "READ");
+      if (denied === "TYPE_DENIED") {
+        // 该类型**整型不可读**。此时继续算同样出「装成真的假数」，而且两条读路径的坏法还不一样：
+        //   · loadContext 路径 → 列投影把该类型退化成空集 → 数字算得出来，但是错的；
+        //   · ⑩ 洞早返回路径 → 直取 repos 原始数据（连投影都不经）→ 反而把无权读的行算进结果（泄漏）。
+        // 两种都不许，故一律拒。（本判定只在调用者确有列级约束时才走到 —— 是 P1 拒绝集合的**子集**，不扩大误伤。）
+        conflicts.add(r.typeKey);
+        continue;
+      }
+      if (!restricted.has(r.typeKey)) continue;
+      if (denied === "UNKNOWN_UNIVERSE") {
+        conflicts.add(r.typeKey); // 本体查不到该类型的属性全集 → 无法证明"不读被禁列" → 拒
+        continue;
+      }
+      if (denied.size === 0) continue; // 并集语义下实际全开（多角色叠加解除了限制）→ 不算冲突
+      if (r.propKeys === undefined || r.propKeys.some((p) => denied.has(p))) conflicts.add(r.typeKey);
+    }
+    for (const w of sig.writes ?? []) {
+      if (!restricted.has(w.typeKey)) continue;
+      const denied = await this.deniedProps(ctx, w.typeKey, "WRITE");
+      if (denied === "UNKNOWN_UNIVERSE" || denied === "TYPE_DENIED" || w.propKeys.some((p) => denied.has(p))) {
+        conflicts.add(w.typeKey);
+      }
+    }
+    if (conflicts.size > 0) throw solverColumnRestricted(solverKey, [...conflicts].sort());
+  }
+
+  /**
+   * 该调用者在某对象类型上**真正被禁的属性集**（不是"有没有列策略"，是"到底哪几列读不到"）。
+   *  · 该类型整型不可读/不可写 → `TYPE_DENIED`；
+   *  · 本体查不到该类型（拿不到属性全集，无法证明"不读被禁列"）→ `UNKNOWN_UNIVERSE`；
+   *  · 否则返回被禁属性集（空集 = 实际全开）。
+   * 属性全集取自本租户已发布本体（properties + derivedProperties）。
+   * 仅在调用者确有列级约束时才会走到（无约束路径零开销 → S8 逐字节现行为）。
+   */
+  private async deniedProps(
+    ctx: AuthCtx,
+    typeKey: string,
+    op: "READ" | "WRITE",
+  ): Promise<Set<string> | "UNKNOWN_UNIVERSE" | "TYPE_DENIED"> {
+    const d = await this.authz.decide(ctx, "OBJECT_TYPE", typeKey, op);
+    if (!d.allowed) return "TYPE_DENIED";
+    if (!d.columnRestricted) return new Set();
+    const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === typeKey && t.status === "ACTIVE"))[0];
+    if (!tdef) return "UNKNOWN_UNIVERSE";
+    const universe = [...tdef.properties.map((p) => p.propKey), ...(tdef.derivedProperties ?? []).map((p) => p.propKey)];
+    const out = new Set<string>();
+    for (const p of universe) {
+      const ok = op === "READ" ? this.authz.propReadable(d, p) : this.authz.propWritable(d, p);
+      if (!ok) out.add(p);
+    }
+    return out;
+  }
+
   async invoke(
     ctx: AuthCtx,
     solverKey: string,
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
-    // ★ WO-69 P1 兜底守卫（审核方收口·合入前置条件）——「宁可少答，不许错答」。
-    // 本 invoke() 是**唯一分发口**：compute() 路径与 ~86 处自建 ctx 的早返回求解器（gap_attribution/
-    // concentration_risk/margin_attribution/…直取 repos.objects.listByType·不经 loadContext）全从此过，
-    // 故守在这里可一次覆盖两半——闭掉「列策略只接住 loadContext 一半」的残口（live 实证：加了 Order 列策略后
-    // gap_attribution admin/受限输出字节相同 17677==17677，即受限用户读到了被禁列算出的数）。
-    // 语义：调用者在任一 OBJECT_TYPE 上受列级约束 → **拒绝**（403 SOLVER_COLUMN_RESTRICTED），
-    // 绝不带缺失属性算出「装成真的假数」。admin / 无列级策略 → 空集 → 逐字节现行为（S4 硬底线）。
-    // 粗粒度：不区分该 solver 是否真读受限类型（读取面未知正是 P2 要建的 Function 签名）；保守误伤优于错数。
-    const columnRestrictedTypes = await this.authz.columnRestrictedObjectTypes(ctx);
-    if (columnRestrictedTypes.length > 0) throw solverColumnRestricted(solverKey, columnRestrictedTypes);
+    // ★ WO-69 列级（属性级）守卫 —— 「宁可少答，不许错答」。P1 粗兜底 → **P2 按 Function 本体签名收窄**。
+    await this.columnSignatureGate(ctx, solverKey, args);
     // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
     if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
       const art = await this.activeArtifact(ctx.tenantId, solverKey);

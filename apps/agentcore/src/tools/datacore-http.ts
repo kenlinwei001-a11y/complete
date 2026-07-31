@@ -4,6 +4,7 @@ import {
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
+  type CatalogClientItem,
   type DataGenClient,
   type DecisionClient,
   type EpochClient,
@@ -304,16 +305,16 @@ class HttpCatalogClient implements CatalogClient {
     ctx: ToolAuthCtx,
     kind: "slices" | "solvers",
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }> {
+  ): Promise<{ items: CatalogClientItem[] }> {
     const qs = `kind=${kind}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
     return call(this.baseUrl, ctx, "GET", `/a/v1/catalog?${qs}`);
   }
   async solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }> {
+  ): Promise<{ items: CatalogClientItem[] }> {
     const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>(
+    const res = await call<{ solvers: (Omit<CatalogClientItem, "argHints"> & { argHints?: Record<string, string> })[] }>(
       this.baseUrl,
       ctx,
       "GET",
@@ -329,6 +330,8 @@ class HttpCatalogClient implements CatalogClient {
         domain: s.domain,
         ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
         ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
+        // WO-69 P2：Function 本体签名同样**必须透传**——DRIL inputSpec/outputSpec 由它派生（唯一出处在 A 侧）。
+        ...(s.ontologySignature ? { ontologySignature: s.ontologySignature } : {}),
       })),
     };
   }

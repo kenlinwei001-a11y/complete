@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, OntologySignature, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -131,21 +131,34 @@ export interface EpochClient {
 }
 
 /**
- * 能力发现与路由 §1：资源目录发现（discover 工具的 DataCore 出口）。
- * WO-DRIL-PRECISION：item 形状补 `answersQuestions`/`tags`（optional）——DataCore 目录本就产出，
- * 需透传到 DRIL projectSolvers 供语义检索（此前 HTTP 出口 map 时被丢弃 = 断在接缝）。
+ * DataCore 目录项（HTTP 出口形状）。**接缝纪律**：DataCore 目录产出的字段一律在此透传，不许在 map 时丢弃。
+ *  · WO-DRIL-PRECISION：`answersQuestions`/`tags` 曾被出口 map 丢掉 → DRIL 语义检索恒不命中（断在接缝）。
+ *  · WO-69 P2 新增 `ontologySignature`（Function 本体签名）：DRIL inputSpec/outputSpec 由它**派生**，
+ *    出口一丢，下游派生就恒空 = 又一次「两半各自绿、接缝断」。
  */
+export interface CatalogClientItem {
+  key: string;
+  name: string;
+  description: string;
+  argHints: Record<string, string>;
+  domain?: string;
+  answersQuestions?: string[];
+  tags?: string[];
+  ontologySignature?: OntologySignature;
+}
+
+/** 能力发现与路由 §1：资源目录发现（discover 工具 + 求解器注册表的 DataCore 出口）。 */
 export interface CatalogClient {
   discover(
     ctx: ToolAuthCtx,
     kind: "slices" | "solvers",
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  ): Promise<{ items: CatalogClientItem[] }>;
   /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
   solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  ): Promise<{ items: CatalogClientItem[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */

@@ -1,7 +1,8 @@
 import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
-import type { ResourceDescriptor } from "@platform/contracts";
+import type { OntologySignature, ResourceDescriptor } from "@platform/contracts";
+import { serializableSignature } from "./solvers/ontology-signature.js";
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -23,6 +24,23 @@ export interface CatalogItem {
   tags?: string[];
   /** 关联 feature key（未开通 → 不出现在目录）。 */
   featureKey?: string;
+  /**
+   * WO-69 P2 · Function 本体签名（读/写本体面）。**不在此手填**——由 `attachOntologySignature()`
+   * 从唯一注册表 `SOLVER_ONTOLOGY_SIGNATURES` 派生附加（R13 派生投影·非新真值源）。
+   * 下游 DRIL `inputSpec/outputSpec` 再由它派生，故全链只有**一份**读取面清单。
+   */
+  ontologySignature?: OntologySignature;
+}
+
+/**
+ * 目录项 → 附加 Function 本体签名（唯一出处 = `SOLVER_ONTOLOGY_SIGNATURES`）。
+ * 未签名的求解器**不附字段**（诚实空缺：读取面未知，而不是"读取面为空"——后者会被下游读成"什么都不读"）。
+ */
+export function attachOntologySignature(items: CatalogItem[]): CatalogItem[] {
+  return items.map((it) => {
+    const sig = serializableSignature(it.key);
+    return sig ? { ...it, ontologySignature: sig } : it;
+  });
 }
 
 /** 内置切片目录（与 ontology.resolveSlice 的内置分支一一对应）。 */
@@ -238,7 +256,7 @@ export class CatalogService {
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
       scored.push({ item: it, score });
     }
-    const filtered = scored.sort((a, b) => b.score - a.score).map((s) => s.item);
+    const filtered = attachOntologySignature(scored.sort((a, b) => b.score - a.score).map((s) => s.item));
     // §1：带关键词的发现（agent 上下文预算）截断 ≤20；无关键词=管理台全量列表。
     return { items: query ? filtered.slice(0, 20) : filtered };
   }
@@ -255,6 +273,6 @@ export class CatalogService {
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
       out.push(it);
     }
-    return { items: out };
+    return { items: attachOntologySignature(out) };
   }
 }

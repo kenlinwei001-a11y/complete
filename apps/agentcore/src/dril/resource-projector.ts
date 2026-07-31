@@ -12,7 +12,7 @@ import type {
   WorkflowDefinition,
   WorkflowResource,
 } from "@platform/contracts";
-import type { McpServerConfig } from "@platform/contracts";
+import type { McpServerConfig, OntologySignature, ResourceInputOutput } from "@platform/contracts";
 import type { RuleSummary } from "../tools/clients.js";
 
 /**
@@ -37,6 +37,56 @@ export interface CatalogItem {
   answersQuestions?: string[];
   /** 检索标签（供语义候选补召回）。 */
   tags?: string[];
+  /**
+   * WO-69 P2 · Function 本体签名（读/写本体面）。**唯一出处在 DataCore**
+   * （`apps/datacore/src/solvers/ontology-signature.ts`，由 S5 实跑比对门守住）。
+   */
+  ontologySignature?: OntologySignature;
+}
+
+/**
+ * WO-69 P2 · `ontologySignature` → DRIL `inputSpec/outputSpec`（§5.3 ResourceInputOutput）的**唯一派生器**。
+ *
+ * 纪律：DRIL 侧**不许**再手填第二份「这个求解器读哪些对象类型」的清单——第二份清单必然与实现漂移
+ * （本仓已有前科：清单与实现分家后没人发现，直到出错数）。此处只做**映射**，不做判断：
+ *   · `inputSpec`  ← 签名 `reads`：objectTypes（读哪些类型）/ linkKeys（沿哪些链路）/ requiredProps。
+ *   · `outputSpec` ← 签名 `writes`（只读求解器 = 无 writes → 不产 outputSpec，诚实空缺）。
+ *
+ * ⚠ `requiredProps` 语义**明文钉死**（WO 点名的历史坑：requiredProps/shape 曾被接反）：
+ *   `Record<typeKey, 该类型上真被读到的属性名（逗号分隔）>`。
+ *   **key 是对象类型、value 是属性列表**，不是反过来；某类型省略 propKeys（= 全属性）时**不产条目**
+ *   （产一个空串会被下游读成"不需要任何属性"，正好是反的）。
+ */
+export function projectOntologySignature(sig: OntologySignature | undefined): {
+  inputSpec?: ResourceInputOutput;
+  outputSpec?: ResourceInputOutput;
+} {
+  if (!sig) return {};
+  const out: { inputSpec?: ResourceInputOutput; outputSpec?: ResourceInputOutput } = {};
+  const toSpec = (
+    surfaces: { typeKey: string; propKeys?: string[]; linkKeys?: string[] }[],
+  ): ResourceInputOutput | undefined => {
+    if (surfaces.length === 0) return undefined;
+    const objectTypes = [...new Set(surfaces.map((s) => s.typeKey))].sort();
+    const linkKeys = [...new Set(surfaces.flatMap((s) => s.linkKeys ?? []))].sort();
+    const requiredProps: Record<string, string> = {};
+    for (const s of surfaces) {
+      if (!s.propKeys || s.propKeys.length === 0) continue; // 全属性 / 无精确声明 → 不产条目（见上）
+      const prev = requiredProps[s.typeKey];
+      const merged = [...new Set([...(prev ? prev.split(", ") : []), ...s.propKeys])].sort();
+      requiredProps[s.typeKey] = merged.join(", ");
+    }
+    return {
+      objectTypes,
+      ...(linkKeys.length > 0 ? { linkKeys } : {}),
+      ...(Object.keys(requiredProps).length > 0 ? { requiredProps } : {}),
+    };
+  };
+  const input = toSpec(sig.reads ?? []);
+  if (input) out.inputSpec = input;
+  const output = toSpec(sig.writes ?? []);
+  if (output) out.outputSpec = output;
+  return out;
 }
 
 /**
@@ -57,6 +107,8 @@ export function projectSolvers(items: CatalogItem[]): SolverResource[] {
     argHints: s.argHints,
     domain: s.domain,
     capability: nonEmpty(s.description, s.name),
+    // WO-69 P2：inputSpec/outputSpec **派生自** ontologySignature（无第二份手填清单；未签名 → 诚实空缺）。
+    ...projectOntologySignature(s.ontologySignature),
     isDeterministic: true,
     requiresSidecar: false,
     runtime: { isDeterministic: true },

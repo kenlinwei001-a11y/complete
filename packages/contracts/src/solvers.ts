@@ -488,3 +488,44 @@ export const BaseCapacityOutlookByModelSchema = z.object({
   provenance: z.object({ kind: z.string(), source: z.string(), drillType: z.string(), drillField: z.string() }),
 });
 export type BaseCapacityOutlookByModel = z.infer<typeof BaseCapacityOutlookByModelSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-69 P2 · Function 本体签名（OntologySignature）
+// ---------------------------------------------------------------------------
+
+/**
+ * 求解器**读取面**的一条声明：某个本体对象类型 + （可选）该类型上真被读到的属性 / 链路。
+ *
+ * `propKeys` **省略 = 该类型的全部属性都可能被读**（最保守）。给出 `propKeys` 则是承诺
+ * 「只读这些属性」——该承诺由 S5 实跑比对门机器校验（观测集 ⊆ 声明集，漏声明即红）。
+ */
+export const OntologyReadSurfaceSchema = z.object({
+  typeKey: z.string().min(1),
+  propKeys: z.array(z.string()).optional(),
+  linkKeys: z.array(z.string()).optional(),
+});
+export type OntologyReadSurface = z.infer<typeof OntologyReadSurfaceSchema>;
+
+/** 求解器**写入面**（写真值须经 Action/审批；此处只做声明与投影，不授权写）。 */
+export const OntologyWriteSurfaceSchema = z.object({
+  typeKey: z.string().min(1),
+  propKeys: z.array(z.string()),
+});
+export type OntologyWriteSurface = z.infer<typeof OntologyWriteSurfaceSchema>;
+
+/**
+ * **Function 本体签名**：一个求解器（Function）对本体的读/写面声明。可序列化部分（跨服务投影用）。
+ *
+ * 用途 ①（安全·头号）：列级（属性级）受限调用者调用求解器时，用签名判定「该求解器是否会读到被禁列」——
+ *   相交 → **拒绝**（403 SOLVER_COLUMN_RESTRICTED），不相交 → 放行出真数字。**无签名 = 读取面未知 = 拒绝**。
+ *   反面教训（live 取证）：受限用户曾拿到 quote_margin 毛利 0.868（真值 0.2565）——「没权限」伪装成「业务数字」，
+ *   比泄漏更毒。故签名必须驱动**诚实拒绝**，绝不驱动「带缺列算下去」。
+ * 用途 ②：DRIL `inputSpec/outputSpec` 由本签名**派生**（不许第二份手填清单）。
+ *
+ * ⚠ 与 SOLVER_REQUIRED_TYPES 同族命门：**漏声明比不声明更危险**（漏 → 误判"不读"→ 放行 → 出错数字）。
+ */
+export const OntologySignatureSchema = z.object({
+  reads: z.array(OntologyReadSurfaceSchema).optional(),
+  writes: z.array(OntologyWriteSurfaceSchema).optional(),
+});
+export type OntologySignature = z.infer<typeof OntologySignatureSchema>;
