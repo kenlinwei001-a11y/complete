@@ -125,6 +125,33 @@ export class AuthzService {
     };
   }
 
+  /**
+   * WO-69 P1 兜底守卫的判据（审核方收口·「宁可少答，不许错答」）：本调用者**在哪些 OBJECT_TYPE 上真受列级约束**。
+   *
+   * 病根（live 取证）：列级读投影「剔除键」后，求解器若照常计算 → 受限用户拿到的是**静默不同的错数**
+   * （实测 quote_margin：admin margin=0.2565 vs 受限 0.868），而不是「无权限」。在决策支撑系统里这比泄漏更毒——
+   * 泄漏是「看到不该看的真数」，这是「看到一个装成真的假数并照着做决策」（同族：假 MO 号 / 过期诊断文案）。
+   * 故求解器读取面一旦可能缺列 → **拒绝**，不许带缺失值算下去。
+   *
+   * 判据**复用 `decide()` 本身**（不另造第二套匹配逻辑·守本单「一个机制」纪律）：故并集语义（多角色/多策略
+   * 最宽者胜、无 propertyPolicy 的策略= 全开）与读写路径完全一致，不会把「其实全开」的用户误判为受限。
+   * admin / platform_admin 早返空（S4 向后兼容硬要求：admin 不受列级约束、无策略 = 全开）。
+   */
+  async columnRestrictedObjectTypes(ctx: AuthCtx): Promise<string[]> {
+    if (ctx.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "platform_admin")) return [];
+    const policies = await this.repos.policies.list(
+      ctx.tenantId,
+      (p) => p.resource.kind === "OBJECT_TYPE" && !!p.propertyPolicy,
+    );
+    if (policies.length === 0) return []; // 无任何列级策略 → 逐字节现行为（快路径）
+    const restricted: string[] = [];
+    for (const key of [...new Set(policies.map((p) => p.resource.key))]) {
+      const d = await this.decide(ctx, "OBJECT_TYPE", key, "READ");
+      if (d.allowed && d.columnRestricted) restricted.push(key);
+    }
+    return restricted.sort();
+  }
+
   /** Throws 403 when not allowed; returns the row filters otherwise. */
   async require(ctx: AuthCtx, kind: ResourceKind, key: string, op: Op): Promise<string[]> {
     const d = await this.decide(ctx, kind, key, op);

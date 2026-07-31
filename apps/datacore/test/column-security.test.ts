@@ -141,13 +141,23 @@ describe("A6 列级（属性级）Security · WO-69 P1", () => {
     };
 
     const admin = await run(ADMIN);
-    const operator = await run(OPERATOR);
-
-    // admin 用真单价算 BOM 成本；受限角色 context 里 unitPrice 已被剔除 → 回落默认 1 → 成本坍塌。
-    // **这就是"字段真没进求解器"的活证据**：若只接 REST 而漏接 loadContext，两者会完全相等（假绿）。
+    // admin 用真单价算 BOM 成本（真值未被列级机制误伤）。
     expect(admin.breakdown.bomCost).toBeGreaterThan(100);
-    expect(operator.breakdown.bomCost).toBeLessThan(admin.breakdown.bomCost / 10);
-    expect(operator.margin).not.toBe(admin.margin);
+
+    // ⚠ 本断言经审核方裁决**改写**：原版断言受限角色拿到 200 + 坍塌成本（bomCost≈7.99·margin 0.868 vs 真值
+    // 0.2565），并把"成本坍塌"当作字段没进 context 的活证据。但那恰恰是本单头号风险——**"没权限"被伪装成
+    // "业务数字"**：受限用户拿到一个看不出问题的错数并会照着它做决策（同族：假 MO 号 / 过期诊断文案）。
+    // 裁决：宁可少答，不许错答 → 受限角色在唯一分发口 invoke() 被拒（S3b 守），此处只断言"绝不出数"。
+    // loadContext 的列投影仍在（防御纵深·与 S1 读投影**同一机制** decide()+projectObject）：P2 用 Function
+    // 本体签名把守卫按"该 solver 真读哪些 type.prop"收窄后，投影仍是最后一道。
+    const operatorRes = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/solvers/quote_margin/invoke",
+      headers: OPERATOR,
+      payload: { args: {} },
+    });
+    expect(operatorRes.statusCode).toBe(403);
+    expect((operatorRes.json() as { error?: { code?: string } }).error?.code).toBe("SOLVER_COLUMN_RESTRICTED");
   });
 
   // ── S4：向后兼容（无 propertyPolicy 逐字节现行为）────────────────────────────
@@ -208,5 +218,39 @@ describe("A6 列级（属性级）Security · WO-69 P1", () => {
 
     const onlyOperator = await materials(t, OPERATOR);
     expect(onlyOperator.every((m) => !("unitPrice" in m.props))).toBe(true);
+  });
+
+  // ── S3b 兜底守卫（审核方收口·合入前置）：宁可少答，不许错答 ─────────────────────
+  // 病根 live 取证：读投影剔除键后求解器照算 → 受限用户得到**静默不同的错数**（quote_margin
+  // margin 0.868 vs 真值 0.2565），而非"无权限"；且早返回求解器（gap_attribution 直取
+  // repos.objects.listByType·不经 loadContext）连剔除都绕过（admin/受限输出字节相同）。
+  // 守卫落在唯一分发口 invoke()：受列级约束的调用者 → 403 SOLVER_COLUMN_RESTRICTED，绝不出数。
+  const invokeSolver = async (t: TestApp, headers: Record<string, string>, solverKey: string, args = {}) =>
+    t.app.inject({ method: "POST", url: `/a/v1/solvers/${solverKey}/invoke`, headers, payload: { args } });
+
+  it("S3b：受列级约束的角色调求解器 → 403 SOLVER_COLUMN_RESTRICTED（拒绝·不产出任何数字）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 早返回求解器（自建 ctx·不经 loadContext）与 compute() 路径求解器都必须被守住。
+    for (const key of ["gap_attribution", "quote_margin", "capacity_forecast"]) {
+      const res = await invokeSolver(t, OPERATOR, key, key === "gap_attribution" ? { metricKey: "seg_attain_ess" } : {});
+      expect(res.statusCode, `${key} 应被列级守卫拒绝`).toBe(403);
+      const body = res.json() as { error?: { code?: string }; data?: unknown };
+      expect(body.error?.code).toBe("SOLVER_COLUMN_RESTRICTED");
+      expect(body.data, `${key} 拒绝时不得夹带任何结果`).toBeUndefined();
+    }
+  });
+
+  it("S3b 零回归：admin 与无列级策略角色不受守卫影响（S4 硬底线·逐字节现行为）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // admin 旁路
+    const a = await invokeSolver(t, ADMIN, "quote_margin");
+    expect(a.statusCode).toBe(200);
+    // planner 只匹配未配 propertyPolicy 的宽策略 → 不受限 → 照常出数
+    const p = await invokeSolver(t, PLANNER, "quote_margin");
+    expect(p.statusCode).toBe(200);
+    // 且 admin 的结果是真值（未被守卫或投影改动）
+    expect((a.json() as { data?: Record<string, unknown> }).data).toBeDefined();
   });
 });
