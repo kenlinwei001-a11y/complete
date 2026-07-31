@@ -800,8 +800,18 @@ function kpiOf(
     rows.push(s.row); freight += s.freight; transitInv += s.transitInv;
   }
   const servedQty = allocation.reduce((s, x) => s + x.qty, 0);
-  const avgUnitPrice = input.coeff("avgUnitPrice", 1.8);
+  // ── R18 口径显式标注（WO-UNITPRICE-SCALE 取证结论）──
+  // `avgUnitPrice` 单位 = **万元/套**，**不是** `Order.unitPrice` 的 元/套。缺省 1.8 万元/套 = 18000 元/套，
+  // 与需求加权均价 P̄ = Σ(p50×priceWan)/Σp50 ≈ 1.8667 万元/套（`synthetic/service.ts` 断裂点D）及
+  // `SEG_REGISTRY.priceWan`（乘 2.2 / 商 1.8 / 储 1.4 万元/套）**同一业务口径 · 仅单位不同**。
+  // ⚠ 与 `solvers/service.ts orderVal` 的 `num(o.unitPrice)`（元/套·量加权均值 18471）看着差 ~30×，那是 元↔万元
+  // 的单位差**不是**量纲冲突——**严禁**后人把两处"对齐"成同一个数（对齐即真炸：营收/毛利错 1e4 或 30×）。
+  // 门：`test/unitprice-scale.test.ts` 锚住「1.8×1e4 ≈ Order.unitPrice 均值（ε≤15%）」，误合并即红。
+  const avgUnitPrice = input.coeff("avgUnitPrice", 1.8); // 万元/套（R14 可经 portfolio_optimize_coeffs 校准）
   const baseCost = round(num(objectiveValues.cost) + freight, 2);
+  // 诚实边界：margin 是**毛利代理**（契约 GlobalSimKpi.margin 已声明「相对量」）——被减数
+  // servedQty(套)×avgUnitPrice(万元/套) 是万元营收，减数 baseCost 是「代价单位」(cost.unit)+运费，
+  // 两者不同源，故 margin 只可作**方案间相对比较**，不可当真实毛利读。本单不动其值（避免动既有 KPI 锚）。
   const margin = round(servedQty * avgUnitPrice - baseCost, 2);
   const kpi: GlobalSimKpi = {
     ontime: round(num(objectiveValues.ontime), 4),

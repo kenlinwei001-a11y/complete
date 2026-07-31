@@ -1482,7 +1482,18 @@ export class SolverService {
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
     const equipment = (await this.repos.objects.listByType(ctx.tenantId, "Equipment")).map((o) => o.props);
     const matBal = (await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance")).map((o) => o.props);
-    const orderVal = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice, 600) / 1e4, 2); // 万元
+    // ── R18 尺度/量纲口径（WO-UNITPRICE-SCALE 取证结论·勿再改回魔数）──
+    // `Order.unitPrice` 单位 = **元/套**（battery.ts orderProps/orderLineProps `unit:"元"` +
+    // withGovernance `Model:{unitPrice:"元"}`；种子 `Math.round(seg.priceWan*1e4*(1±ppk))`，
+    // 实测 demo 24 单落在 13902~22022 元/套·算术均值 19138·量加权均值 18471）。故 qty(套)×unitPrice(元/套)/1e4 = **万元**，
+    // 本行换算本身自洽（G-UNIT-NORMALIZE 结案时已 C7 判定「不误伤」）。
+    // ⚠ 但旧兜底 `600` 是 **WO-SCALE-COHERENCE 之前** 的 `Model.unitPrice = randInt(380,980)` 残留——
+    // 恰是该单要消灭的病灶值本身（「订单侧 ~600 元/套 vs 需求侧 ~18667 元/套 差 31×」），较真实均价低 30.8×。
+    // orderVal 只作**相对权重**（driver/Σdriver），全体同尺度时比值可约掉；但一旦样本混合
+    // （部分订单有 unitPrice、部分缺），缺价单会被静默压低 30.8× 权重 → 归因份额悄悄错分摊。
+    // → **禁止静默兜底**（本仓病灶族）：缺 unitPrice 即 0 权重（诚实缺席），绝不冒充一个旧口径业务单价。
+    // 门：`test/unitprice-scale.test.ts`（口径锚 + 兜底效果层断言）。
+    const orderVal = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice) / 1e4, 2); // 万元 = 套 × 元/套 ÷ 1e4
     // ── 业务细分作用域（WO-SEG-ATTR-SCOPE·闭 §8 G-SEG-ATTR-CROSS-SEGMENT）──
     // seg_attain_{ess|pas|com} 是「细分达成率」，其根因下钻必须只归因**本细分**订单
     // （储能达成率→仅 storage 客户/订单）。目标业态优先取 Metric.businessType（种子经

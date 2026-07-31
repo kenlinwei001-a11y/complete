@@ -2062,7 +2062,10 @@ function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
   const units: Record<string, Record<string, string>> = {
     Base: { gwh: "GWh", util: "%" },
     Model: { unitPrice: "元" },
-    Order: { qty: "件" },
+    // WO-UNITPRICE-SCALE（R18 口径显式标注）：Order.unitPrice 此前**未声明单位**，而同源的
+    // Model.unitPrice / OrderLine.unitPrice 都已标 "元" —— 缺声明正是「两处单价看着冲突」的温床。
+    // 补齐后 Order.unitPrice 的元/套口径在 propDef 层可自证（消费侧另见 solvers/service.ts orderVal）。
+    Order: { qty: "件", unitPrice: "元" },
     Shipment: { qtyTons: "吨" },
   };
   return withPropDisplayNames(key, props).map((p) => {
