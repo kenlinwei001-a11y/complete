@@ -777,6 +777,11 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 > - **R13**：`ValidationTrace.normalizedSlots` 记录 `{raw:"1天", normalized:1/7, unit:"day"}`，让「输入被归一化过」可当场亮出，不凭空默认 6 周。
 > - **R15**：CLI `platform scenarios launch <sNo> [--query "..."]` 与 GUI 启动器等价同源，能力不洼地。
 
+> **WO-SCENARIO-FORCED-EXTRACT 回补（Phase 0 复验退单收口）**：
+> - **链路修正**：forced（`scenarioIntentKey` 确定性绑定）分支 `fillSlots`/`proceedWithIntent` 的 extracted 由恒 `{}` 改为经 `parseCapacityFeasibilityVariant`（守卫 `capacity_feasibility`）解析自由文本。`fillSlots` 内建「extracted > presetSlots」优先级（slots.ts）此前拿不到任何抽取值——启动器卡片输入框/CLI/对话坞直打 `/api/v1/queries` 的路（**不走** `/b/v1/scenarios/:key/launch`）吞自由文本：「…常州基地能不能接？」与「…能不能接？」同答案（恒全网合计）。Phase 0 的解析器只接了 launch 端点与继承分支，forced 分支这跳漏接。
+> - **SEAM**：`scenario-forced-extract.seam.test.ts` 复刻前端精确载荷（presetSlots+scenarioIntentKey+selectedObjects 直打 `/api/v1/queries`）断言「常州基地」≠「全网」（mock 金值 24.2≠74.7·生产实测 5.5176≠12.3016）；变异反证 extracted→`{}` 必红。
+> - **mock 保真**：`createMockDataCore.capacity_forecast` 尊重 `args.base` 作用域（此前恒全网——断言不了语义差的假绿温床）；⌘K 面板补传 userQuery（独立漏点）。
+
 ---
 
 ## 6. 行动（系统状态变更，多数经 Action 审批）

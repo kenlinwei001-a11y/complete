@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchScenarioCards } from "@/api/endpoints";
 import { Modal } from "@/components/ui/Modal";
@@ -12,6 +12,9 @@ import zh from "@/locales/zh";
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  // WO-SCENARIO-FORCED-EXTRACT：qRef 与输入同步直写——点击启动时读最新键入值，
+  // 不受 React 批量提交窗口影响（快打字/测试快速键入时闭包 q 可能是上一帧）。
+  const qRef = useRef("");
   const launch = useScenarioLaunch();
   const { data } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), enabled: open });
 
@@ -43,7 +46,10 @@ export function CommandPalette() {
           aria-label={zh.launcher.searchAria}
           data-testid="command-palette-input"
           placeholder={zh.launcher.searchPlaceholder}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            qRef.current = e.target.value;
+            setQ(e.target.value);
+          }}
           style={{ width: "100%", marginBottom: 10 }}
         />
         <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflowY: "auto" }}>
@@ -56,7 +62,10 @@ export function CommandPalette() {
               style={{ justifyContent: "flex-start", textAlign: "left" }}
               onClick={() => {
                 setOpen(false);
-                void launch(c);
+                // WO-SCENARIO-FORCED-EXTRACT：搜索框文本作为自由文本 query 透传（缺省回退卡 triggerQuestion），
+                // 与启动器卡片输入框同语义——不再把用户打的整句问句吞掉。读 qRef 取点击瞬间的最新键入值。
+                const uq = qRef.current.trim();
+                void launch(c, uq || undefined);
               }}
             >
               <b className="mono" style={{ marginRight: 6 }}>{c.sNo}</b>

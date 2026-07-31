@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
@@ -57,10 +57,13 @@ describe("F39 · 场景启动器（目录墙 + ⌘K）", () => {
     // Cmd+K 唤起面板
     await user.keyboard("{Meta>}k{/Meta}");
     const palette = await screen.findByTestId("command-palette");
-    await user.type(within(palette).getByTestId("command-palette-input"), "齐套");
+    // WO-SCENARIO-FORCED-EXTRACT：CJK 走 IME 上屏=一次 change 交付整串（userEvent 逐键在受控 input 下丢键），
+    // fireEvent.change 更贴近真浏览器的中文输入路径
+    fireEvent.change(within(palette).getByTestId("command-palette-input"), { target: { value: "齐套" } });
     const item = await screen.findByTestId("command-palette-item-S08");
     expect(item).toHaveTextContent("物料齐套分析");
     await user.click(item);
-    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("缺料"))).toBe(true));
+    // WO-SCENARIO-FORCED-EXTRACT：⌘K 搜索文本作为 userQuery 透传进对话（此前被吞、回落触发问句）
+    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("齐套"))).toBe(true));
   });
 });

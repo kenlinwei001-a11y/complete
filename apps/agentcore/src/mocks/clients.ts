@@ -316,8 +316,15 @@ export class MockSolverClient implements SolverClient {
     if (solverKey === "capacity_forecast") {
       const rnd = prngFor({ solverKey, modelId: args.modelId, demandDelta: args.demandDelta, weeks: args.weeks });
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);
+      // WO-SCENARIO-FORCED-EXTRACT：mock 尊重 base 作用域（与真 solver scope:BASE/ALL 同语义）——此前无视 base 恒全网，
+      // 导致单测环境断言不了「常州基地 ≠ 全网」语义差（参数到达了、结果却没变=假绿温床）。
+      const baseArg = typeof args.base === "string" && args.base ? args.base.toLowerCase().replace(/^obj_base_/, "").replace(/^base_/, "") : undefined;
       const baseGwh = model
-        ? SEED_BASES.filter((b) => model.bases.includes(b.name)).reduce((s, b) => s + b.gwh, 0)
+        ? SEED_BASES.filter(
+            (b) =>
+              model.bases.includes(b.name) &&
+              (!baseArg || b.objectId.toLowerCase().includes(baseArg) || b.name.toLowerCase().includes(baseArg)),
+          ).reduce((s, b) => s + b.gwh, 0)
         : 20;
       const delta = Number(args.demandDelta ?? 0);
       const p50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;

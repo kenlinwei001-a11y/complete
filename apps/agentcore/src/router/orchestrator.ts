@@ -509,12 +509,23 @@ export class Orchestrator {
     if (forcedKey) {
       const forced = candidates.find((c) => c.key === forcedKey);
       if (forced) {
-        const probe = await fillSlots(forced, {}, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+        // WO-SCENARIO-FORCED-EXTRACT：forced 分支同样解析自由文本——此前 extracted 恒 {}，而 fillSlots 内建
+        // 「extracted > presetSlots」优先级（slots.ts），等于解析器被传空参：卡输入框/CLI/对话坞直打 /api/v1/queries
+        // 带 presetSlots 时自由文本被吞（「常州基地能不能接」与「能不能接」同答案·都是全网合计）。
+        // 守卫 forcedKey === "capacity_feasibility"：parseCapacityFeasibilityVariant 是产能专用解析器，
+        // 无条件套任意 forced 意图是错分层；其他场景卡 extracted 仍 {} → 逐字节不变。
+        const variant = forcedKey === "capacity_feasibility" ? parseCapacityFeasibilityVariant(task.query) : undefined;
+        const extracted: Record<string, unknown> = {};
+        if (variant?.modelId) extracted.model = variant.modelId; // `model` 为 objectRef 槽（bare string 经 ontology 解析）
+        if (variant?.demandDelta !== undefined) extracted.demandDelta = variant.demandDelta;
+        if (variant?.weeks !== undefined) extracted.weeks = variant.weeks;
+        if (variant?.baseId) extracted.base = variant.baseId; // 基地作用域（缺省 → 全网合计·scope:ALL 诚实标）
+        const probe = await fillSlots(forced, extracted, task.context, this.deps.engine.deps.dataCore.ontology, auth);
         if (probe.missing.length === 0) {
           await this.deps.repos.tasks.patch(taskId, {
-            classification: { candidates: [{ intentKey: forced.key, confidence: 1 }], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:scenario-bind" },
+            classification: { candidates: [{ intentKey: forced.key, confidence: 1 }], outOfCatalog: false, extractedSlots: extracted, latencyMs: 0, model: "deterministic:scenario-bind" },
           });
-          await this.proceedWithIntent(taskId, auth, forced, {});
+          await this.proceedWithIntent(taskId, auth, forced, extracted);
           return;
         }
       }
