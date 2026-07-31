@@ -36,8 +36,29 @@ const GRACE_DAYS = 90;
 const SIGNOFF_BEHALF_HOURS = 72;
 const SIGNOFF_EXPIRE_DAYS = 7;
 
-/** 治理增量 §1 单位字典（场景包级；电池模板内置）。 */
-export const UNIT_DICTIONARY = ["万套", "GWh", "%", "吨", "天", "元", "万元", "件", "秒"];
+/**
+ * 治理增量 §1 单位字典（场景包级；电池模板内置）。
+ *
+ * WO-63：出厂本体口径目录用到的单位必须全在此表——否则同一类型经 `POST /a/v1/ontology/types`
+ * 再存一次会被「未知单位」拒绝，**本体自己存不回自己**（数据 × 治理接缝断）。
+ * `scripts/check-schema-readability.mjs` 的 H5 校验锁死这条守恒。
+ */
+export const UNIT_DICTIONARY = [
+  // 既有
+  "万套", "GWh", "%", "吨", "天", "元", "万元", "件", "秒",
+  // WO-63 · 数量（套=Pack、件/电芯=Cell，两者差一个成组系数，切勿混用）
+  "套", "电芯", "个", "人", "台",
+  // WO-63 · 金额（亿元用于经营层，万元用于业务单据，元用于单价）
+  "亿元", "元/套", "万元/套", "元/吨", "元/kWh",
+  // WO-63 · 时间
+  "分钟", "小时", "周", "年",
+  // WO-63 · 物理量
+  "Ah", "V", "Wh", "kWh", "g", "kg", "mm", "㎡", "L",
+  // WO-63 · 速率／强度
+  "套/日", "件/日", "电芯/日", "电芯/通道·日", "件/分钟", "秒/件", "kWh/套",
+  // WO-63 · 碳
+  "kgCO₂e/kWh", "kgCO₂e/kg",
+];
 
 function displayProp(type: ObjectTypeDef | undefined): string {
   if (!type) return "name";

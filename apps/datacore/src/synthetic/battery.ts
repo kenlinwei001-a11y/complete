@@ -5,6 +5,7 @@ import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
 import { SEEDED_VIEW_KEYS } from "./view-manifest.js";
+import { applyReadability } from "./ontology-readability.js";
 
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
@@ -1541,6 +1542,12 @@ function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
 }
 
 export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] {
+  // WO-63：口径目录在此收口注入（description/unit/displayName/businessDefinition）——
+  // 四处调用方（synthetic/service ×3、refbase-coverage）都经本函数拿类型，故一处注入即全链生效。
+  return applyReadability(batteryObjectTypesRaw());
+}
+
+function batteryObjectTypesRaw(): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] {
   const plain = (key: string, displayName: string, properties: PropertyDef[]): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> => ({
     key,
     displayName,

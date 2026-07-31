@@ -1255,17 +1255,26 @@ export const handlers = [
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
     HttpResponse.json([
       {
+        // WO-63 可读性：mock 亦按真后端形状携带口径（businessDefinition + displayName/unit/description/unitExempt），
+        // 使前端「口径」面板与属性列在 mock 模式下走的是与部署态**同一条渲染路径**（前端零硬编码中文名/单位）。
         key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
         sourceBindings: [{ connId: "conn-synth", dataset: "base" }],
+        businessDefinition: {
+          statement: "具备独立产能核算与独立排产权的电池制造工厂实体，以行政地名唯一标识，是产能账、库存账、财务账三本账共同的最小归集单元。",
+          excludes: "不包括基地内部的车间与产线；不包括只做仓储中转、不排产的仓库；不包括尚未投产的扩产项目。",
+          decidedBy: "制造运营中心",
+          decidedAt: "2026-03-18",
+        },
         properties: [
-          { propKey: "baseId", dataType: "string", isPrimaryKey: true },
-          { propKey: "name", dataType: "string", isPrimaryKey: false },
-          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%" },
-          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh" },
+          { propKey: "baseId", dataType: "string", isPrimaryKey: true, displayName: "基地标识", description: "基地唯一标识（英文小写地名）。全平台跨系统关联基地一律用它。" },
+          { propKey: "name", dataType: "string", isPrimaryKey: false, displayName: "基地简称", description: "基地中文简称。展示用，非唯一键。" },
+          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", displayName: "产能利用率", description: "近期实际产出 ÷ 铭牌产能，百分数口径（0–100）。" },
+          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", displayName: "铭牌年产能", description: "设计年产能，不是当期可用产能。" },
+          { propKey: "lon", dataType: "number", isPrimaryKey: false, unitExempt: "dimensionless", displayName: "经度", description: "厂区经度（WGS84）。经纬度天然无量纲，诚实不填单位。" },
         ],
       },
       { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "chemistry", dataType: "string" }] },
-      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "cust", dataType: "string" }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }] },
+      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号", description: "销售订单号。一个 SO = 一次客户成套承诺。" }, { propKey: "cust", dataType: "string", displayName: "客户名称", description: "下单客户的中文名称。" }, { propKey: "qty", dataType: "number", unit: "套", displayName: "订单数量", description: "承诺交付数量，套（Pack）口径。" }, { propKey: "due", dataType: "date", displayName: "客户交期", description: "客户要求的到货日期。" }] },
       { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
       { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
       { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchObjectTypeStats, fetchBusinessDomains, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
+import { fetchObjectTypeStats, fetchBusinessDomains, fetchObjectTypes, queryObjectsPaged, type ObjectTypeStat, type ObjectTypeVM } from "@/api/endpoints";
 
 /**
  * A4 · 对象/类型浏览器（消费 A3 14 域 + 物化计数 + 实例下钻）。闭合用户实测"找不到已发布对象类型在哪看"。
@@ -40,6 +40,63 @@ function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string |
   );
 }
 
+/**
+ * WO-63 · 口径面板："这个概念在业务里指什么" + 逐属性中文名/单位/口径。
+ *
+ * 全部字段来自后端本体（businessDefinition / displayName / unit / unitExempt / description）——
+ * 前端零硬编码中文属性名与单位（R14）：后端改一个 unit，这里显示的就跟着变。
+ * 缺口径的属性诚实显示「—」，不用套话补位。
+ */
+function SemanticsPanel({ type, onClose }: { type: ObjectTypeVM; onClose: () => void }) {
+  const bd = type.businessDefinition;
+  const unitCell = (p: ObjectTypeVM["properties"][number]) => {
+    if (p.unit) return <span className="badge" data-testid={`ot-sem-unit-${p.propKey}`}>{p.unit}</span>;
+    if (p.unitExempt === "dimensionless") return <span className="muted" title="天然无量纲（比率/系数/序号/计数）——诚实不填单位">无量纲</span>;
+    if (p.unitExempt === "per-row") return <span className="muted" title="量纲逐行承载：由同对象的判别字段给出">随行</span>;
+    return <span className="muted">—</span>;
+  };
+  return (
+    <div className="panel" style={{ marginTop: 12 }} data-testid="ot-semantics-panel">
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        口径 · <b className="zh">{type.displayName}</b> <code style={{ fontSize: 11 }}>{type.key}</code>
+        <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose} data-testid="ot-semantics-close">关闭</button>
+      </div>
+      {bd ? (
+        <div style={{ fontSize: 12.5, lineHeight: 1.7, marginBottom: 10 }} data-testid="ot-biz-def">
+          <div>{bd.statement}</div>
+          {bd.excludes && <div className="muted" data-testid="ot-biz-excludes" style={{ marginTop: 4 }}>边界 · {bd.excludes}</div>}
+          {bd.rationale && <div className="muted" style={{ marginTop: 4 }}>取舍 · {bd.rationale}</div>}
+          {(bd.decidedBy || bd.decidedAt) && (
+            <div className="muted" data-testid="ot-biz-source" style={{ marginTop: 4, fontSize: 11.5 }}>
+              定义来源 · {bd.decidedBy ?? "未记录"}{bd.decidedAt ? ` · ${bd.decidedAt}` : ""}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }} data-testid="ot-biz-def-empty">
+          该类型尚未录入业务定义（「是什么 / 谁不算 / 谁定的」）——诚实留空，不以字段名充数。
+        </div>
+      )}
+      <table className="cmp">
+        <thead><tr><th>属性</th><th>类型</th><th>单位</th><th>口径</th></tr></thead>
+        <tbody>
+          {type.properties.map((p) => (
+            <tr key={p.propKey} data-testid={`ot-sem-row-${p.propKey}`}>
+              <td>
+                <b className="zh">{p.displayName ?? p.propKey}</b> <code style={{ fontSize: 11 }}>{p.propKey}</code>
+                {p.isPrimaryKey && <span title="主键"> ★</span>}
+              </td>
+              <td><span className="badge">{p.dataType}</span></td>
+              <td>{unitCell(p)}</td>
+              <td className="muted" style={{ fontSize: 12 }} title={p.description ?? ""}>{p.description ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function ObjectTypesBrowserPage() {
   const statsQ = useQuery({ queryKey: ["a", "object-type-stats"], queryFn: fetchObjectTypeStats });
   const domQ = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
@@ -47,6 +104,10 @@ export default function ObjectTypesBrowserPage() {
   const [kw, setKw] = useState("");
   const [onlyMaterialized, setOnlyMaterialized] = useState(false);
   const [selected, setSelected] = useState<ObjectTypeStat | null>(null);
+  // WO-63：口径面板的数据源 = 已发布本体全量（含 businessDefinition 与逐属性口径）。
+  const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const [semKey, setSemKey] = useState<string | null>(null);
+  const semType = (typesQ.data ?? []).find((t) => t.key === semKey) ?? null;
 
   const stats = statsQ.data?.stats ?? [];
   const domains = domQ.data?.domains ?? [];
@@ -89,7 +150,7 @@ export default function ObjectTypesBrowserPage() {
             {domLabel(dom)} <span className="badge">{rows.length}</span>
           </div>
           <table className="cmp">
-            <thead><tr><th>类型</th><th>属性(源/派生)</th><th>主键</th><th>物化数</th><th /></tr></thead>
+            <thead><tr><th>类型</th><th>属性(源/派生)</th><th>主键</th><th>物化数</th><th /><th /></tr></thead>
             <tbody>
               {rows.map((s) => (
                 <tr key={s.key} data-testid={`ot-row-${s.key}`}>
@@ -98,6 +159,9 @@ export default function ObjectTypesBrowserPage() {
                   <td>{s.pk ?? "—"}</td>
                   <td data-testid={`ot-count-${s.key}`}>
                     {s.count > 0 ? <span className="badge green">{s.count}</span> : <span className="muted">0</span>}
+                  </td>
+                  <td>
+                    <button className="btn sm" data-testid={`ot-semantics-${s.key}`} onClick={() => setSemKey(s.key)}>口径 →</button>
                   </td>
                   <td>
                     <button className="btn sm" data-testid={`ot-instances-${s.key}`} disabled={s.count === 0} onClick={() => setSelected(s)}>看实例 →</button>
@@ -109,6 +173,7 @@ export default function ObjectTypesBrowserPage() {
         </div>
       ))}
 
+      {semType && <SemanticsPanel type={semType} onClose={() => setSemKey(null)} />}
       {selected && <InstancePanel typeKey={selected.key} pk={selected.pk} onClose={() => setSelected(null)} />}
     </div>
   );

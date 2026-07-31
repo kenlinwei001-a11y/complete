@@ -46,6 +46,7 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  BusinessDefinition,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -165,10 +166,28 @@ export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
     `/a/v1/objects/${encodeURIComponent(typeKey)}/${encodeURIComponent(objectKey)}`,
   );
 
-export const fetchObjectTypes = () =>
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
-    "/a/v1/ontology/object-types",
-  );
+// WO-63 可读性：属性口径（中文名/单位/说明）与概念级业务定义全部来自后端本体字段——
+// 前端只渲染 `displayName ?? propKey`，**不得**在应用层写死任何中文属性名或单位字符串（R14）。
+export interface PropertyVM {
+  propKey: string;
+  dataType: string;
+  isPrimaryKey: boolean;
+  unit?: string;
+  temporal?: boolean;
+  displayName?: string;
+  description?: string;
+  unitExempt?: "dimensionless" | "per-row";
+}
+export interface ObjectTypeVM {
+  key: string;
+  displayName: string;
+  domain?: string;
+  properties: PropertyVM[];
+  sourceBindings?: { connId: string; dataset: string }[];
+  derivedProperties?: { propKey: string; formula: string }[];
+  businessDefinition?: BusinessDefinition;
+}
+export const fetchObjectTypes = () => api.a<ObjectTypeVM[]>("/a/v1/ontology/object-types");
 
 // A4 对象/类型浏览器：每已发布类型物化计数 + 域 + 属性数（一次算）。
 export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }

@@ -159,6 +159,8 @@ export class OntologyService {
     const types = picked.map((t) => ({
       typeKey: t.key,
       displayName: t.displayName,
+      // WO-63：概念级业务定义同走此单一真值投影（前端「口径」面板 + B 侧 agent 上下文共用一份）。
+      ...(t.businessDefinition ? { businessDefinition: t.businessDefinition } : {}),
       props: [...t.properties]
         .sort((a, b) => byKey(a.propKey, b.propKey))
         .map((p) => ({
@@ -166,6 +168,8 @@ export class OntologyService {
           ...(p.description ? { description: p.description } : {}),
           ...(p.unit ? { unit: p.unit } : {}),
           dataType: p.dataType,
+          ...(p.displayName ? { displayName: p.displayName } : {}),
+          ...(p.unitExempt ? { unitExempt: p.unitExempt } : {}),
         })),
       derived: [...(t.derivedProperties ?? [])]
         .sort((a, b) => byKey(a.propKey, b.propKey))
@@ -192,6 +196,10 @@ export class OntologyService {
       properties: input.properties,
       derivedProperties: input.derivedProperties ?? [],
       sourceBindings: input.sourceBindings ?? [],
+      // WO-63：业务定义随类型入库（不传即沿用既有，避免 patch 式 upsert 把已填定义抹掉）。
+      ...(input.businessDefinition ?? existing?.businessDefinition
+        ? { businessDefinition: input.businessDefinition ?? existing?.businessDefinition }
+        : {}),
       version: (existing?.version ?? 0) + 1,
       status: "ACTIVE",
       published: existing?.published,

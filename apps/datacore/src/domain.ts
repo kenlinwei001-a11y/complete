@@ -228,6 +228,38 @@ export interface PropertyDef {
   displayFormat?: string;
   /** DF.5 语义目录：属性业务语义描述（"这字段是什么"），喂生成接地 prompt + /catalog/search 检索。 */
   description?: string;
+  /**
+   * WO-63 可读性：中文显示名（"叫什么"）。propKey 是 API 契约不可改（改 key 断所有引用），
+   * 故中文名走此加性字段——前端一律渲染 `displayName ?? propKey`，禁止在应用层写死中文名（R14）。
+   */
+  displayName?: string;
+  /**
+   * WO-63 可读性：数值属性**没有** unit 的诚实原因（缺省 = 应当有单位，可读性门要求填）。
+   * - `dimensionless` 天然无量纲：比率/系数/序号/计数/评分/经纬度（硬凑单位 = 编造，比留空更坏）。
+   * - `per-row` 量纲逐行承载：量纲由同对象（或其所引对象）的判别字段给出——如 Metric.target 随
+   *   Metric.unit、Material.onHand 随 Material.unit、CarbonFactor.factor 随 CarbonFactor.kind。
+   * 与 `unit` 互斥：既标豁免又填 unit → 可读性门红（防"给比率硬塞个单位"）。
+   */
+  unitExempt?: "dimensionless" | "per-row";
+}
+
+/**
+ * WO-63 · 业务定义（Ubiquitous Language 载体）：这个概念**在本企业业务里**指什么。
+ *
+ * 与 displayName 不同——那是"叫什么"，这是"**是什么、边界在哪、谁不算**"。同一个"客户"可以是买产品的人 /
+ * 付钱的人 / 用服务的人 / 影响决策的人，四个答案对应四套数据模型；这个决定做完就丢了只剩一个字段名，
+ * 是本体读不懂的根因。R13 在此扩展：不止数值可溯源，**概念定义也须可溯源**（decidedBy/decidedAt/rationale）。
+ */
+export interface BusinessDefinition {
+  /** 一句话定义，必须能回答"谁算/谁不算"。禁空泛词（可读性门查 BUSINESS_DEFINITION_FORBIDDEN_WORDS）。 */
+  statement: string;
+  /** 排除边界："不包括…"——这一条比正面定义更能防歧义。 */
+  excludes?: string;
+  /** 决策来源：哪个岗位/哪次评审定的（租户内可追）。 */
+  decidedBy?: string;
+  decidedAt?: string;
+  /** 为什么这么定（存在多种合理定义时，记录取舍理由）。 */
+  rationale?: string;
 }
 
 export interface SourceBinding {
@@ -277,6 +309,8 @@ export interface ObjectTypeDef {
   entityCategory?: string;
   /** 对象描述（文档 + agent 提示）。 */
   description?: string;
+  /** WO-63 可读性：概念级业务定义（统一语言载体·"是什么/谁不算/谁定的"）。加性可选，缺省即诚实留空。 */
+  businessDefinition?: BusinessDefinition;
   version: number;
   status: "ACTIVE" | "RETIRED";
   /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */

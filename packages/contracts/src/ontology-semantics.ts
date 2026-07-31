@@ -25,8 +25,50 @@ export const PropSemanticsSchema = z.object({
   unit: z.string().optional(),
   /** 数据类型（string|number|boolean|date|enum|ref|json）。 */
   dataType: z.string().optional(),
+  /** WO-63：中文显示名（"叫什么"）——PropertyDef.displayName。前端渲染 `displayName ?? propKey`，不在应用层写死中文名（R14）。 */
+  displayName: z.string().optional(),
+  /** WO-63：数值属性无 unit 的诚实原因（dimensionless=天然无量纲 / per-row=量纲随行 unit 字段）。与 unit 互斥。 */
+  unitExempt: z.enum(["dimensionless", "per-row"]).optional(),
 });
 export type PropSemantics = z.infer<typeof PropSemanticsSchema>;
+
+/**
+ * WO-63 · 概念级业务定义（Ubiquitous Language 载体）——DataCore `ObjectTypeDef.businessDefinition` 的只读投影。
+ *
+ * displayName 是"叫什么"，本结构是"**是什么、边界在哪、谁不算**"。R13 扩展：概念定义也须可溯源
+ * （decidedBy/decidedAt/rationale）——同一个"客户"四种合理定义对应四套数据模型，取舍理由丢了本体就读不懂。
+ */
+export const BusinessDefinitionSchema = z.object({
+  /** 一句话定义，必须能回答"谁算/谁不算"。 */
+  statement: z.string().min(10).max(500),
+  /** 排除边界："不包括…"。 */
+  excludes: z.string().max(300).optional(),
+  /** 决策来源（岗位/评审）。 */
+  decidedBy: z.string().optional(),
+  decidedAt: z.string().optional(),
+  /** 为什么这么定。 */
+  rationale: z.string().max(1000).optional(),
+});
+export type BusinessDefinition = z.infer<typeof BusinessDefinitionSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-63 · 空泛词表（**单一来源**）
+//
+// 空泛词只占字数不增信息，是"看得懂"的头号敌人。平台两处 lint 共用同一基集：
+//  ① Skill summary lint（agentcore skill-lint）——触发器不能空泛，否则误触发制造机；
+//  ② 业务定义 lint（可读性门）——`businessDefinition.statement` 不能空泛，否则等于没定义。
+// 二者各自追加本场景专属词，但**基集只有这一份**：改一处即两处同步，不许再抄一份词表
+// （本仓吃过"同一词表多处手抄→改一处漏一处"的亏；可读性门另设同源守恒断言防漂移）。
+// ---------------------------------------------------------------------------
+
+/** 空泛词基集（两处 lint 共用）。 */
+export const VAGUE_WORDS_BASE = ["有用", "强大", "全面", "各种"] as const;
+
+/** Skill summary 禁用词（基集 + 触发器场景专属）。 */
+export const SKILL_SUMMARY_FORBIDDEN_WORDS: readonly string[] = [...VAGUE_WORDS_BASE, "帮助你", "介绍"];
+
+/** 业务定义禁用词（基集 + 定义场景专属：`相关的`/`等等` 是"我没想清楚"的自白）。 */
+export const BUSINESS_DEFINITION_FORBIDDEN_WORDS: readonly string[] = [...VAGUE_WORDS_BASE, "相关的", "等等"];
 
 /** 派生口径：派生属性的计算公式（如 "SUM(Order.qty BY model)" / "actual - target"）。 */
 export const DerivedSemanticsSchema = z.object({
@@ -50,6 +92,8 @@ export type RuleSemantics = z.infer<typeof RuleSemanticsSchema>;
 export const TypeSemanticsSchema = z.object({
   typeKey: z.string(),
   displayName: z.string(),
+  /** WO-63：概念级业务定义（"是什么/谁不算/谁定的"）。未填即诚实缺省。 */
+  businessDefinition: BusinessDefinitionSchema.optional(),
   props: z.array(PropSemanticsSchema),
   derived: z.array(DerivedSemanticsSchema),
   rules: z.array(RuleSemanticsSchema),

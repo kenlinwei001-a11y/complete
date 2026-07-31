@@ -1,6 +1,7 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
+import { applyReadability } from "./ontology-readability.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -27,6 +28,11 @@ const def = (key: string, displayName: string, domain: string, props: PropertyDe
 });
 
 export function extendedObjectTypes(): TypeDef[] {
+  // WO-63：与 batteryObjectTypes 同一收口——口径目录（含 Material/Customer 两个核心类型的业务定义）在此注入。
+  return applyReadability(extendedObjectTypesRaw());
+}
+
+function extendedObjectTypesRaw(): TypeDef[] {
   return [
     // Phase 2 Wave 2：扩展 Material 属性 + 新增 Supplier（供应链支撑）
     def("Material", "物料", "supply", [
