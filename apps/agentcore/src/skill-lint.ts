@@ -1,3 +1,5 @@
+import { SKILL_SUMMARY_FORBIDDEN_WORDS } from "@platform/contracts";
+
 import { BUILTIN_TOOLS, FINAL_ANSWER_TOOL, LOAD_SKILL_TOOL } from "./tools/registry.js";
 
 /**
@@ -13,7 +15,11 @@ export interface SkillLintViolation {
   location: "summary" | "body" | "resources";
 }
 
-const FORBIDDEN_WORDS = ["有用", "强大", "全面", "各种", "帮助你", "介绍"];
+// ⛔ 不要在此重新声明词表 —— 单一来源是 contracts 的 `SKILL_SUMMARY_FORBIDDEN_WORDS`
+//    （= 空泛词基集 + 触发器场景专属词）。此前这里手抄了一份字面量副本，与可读性门的
+//    业务定义词表同源却各存一份，正是本仓吃过亏的"同一词表多处手抄 → 改一处漏一处"。
+//    同源守恒门只能事后发现漂移；从 contracts import 才是让漂移**不可能发生**。
+const FORBIDDEN_WORDS = SKILL_SUMMARY_FORBIDDEN_WORDS;
 
 /** body 七段固定骨架（发布校验检查段落存在性）。 */
 const BODY_SECTIONS = ["目的", "适用边界", "前置检查", "步骤", "示例", "失败处理", "输出要求"];
