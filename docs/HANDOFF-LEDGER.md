@@ -43,6 +43,8 @@ workflow 钉 pnpm 9，`package.json` 的 `packageManager` 是 10.33.0 → `pnpm/
 所有"CI 会拦住"的假设都不成立，`gates` 是装饰品。已在 `WO-INTEGRATION-LOOP` 修（去掉 `version:`，
 版本单一来源 = `packageManager`）。
 
+**门上线首日即真抓一例**：`wo-66-rules-p1p2` 在审核方本地校验通过之后才推上来，CI 随即判红并点名「PENDING 但台账无登记」。本地绿 / CI 红的差异不是门不稳，恰是门在按设计工作——**并线状态的真值在远端分支集合，不在任何一个人的工作副本里**。这也是本门必须跑在 CI 而非只在本地跑的理由。
+
 **教训**：门存在 ≠ 门在跑。本仓「绿测试≠能用」的下一层是「**门≠在执行**」——
 从此 CI 状态必须经 PR 呈现出来被人看见，这正是本 LOOP 要解决的。
 
@@ -60,7 +62,7 @@ workflow 钉 pnpm 9，`package.json` 的 `packageManager` 是 10.33.0 → `pnpm/
 | `claude/handoff-wo-multiintent-l3` | 挂起 | L3 耦合联合求解已并线（`l3-coupled.ts` + datacore 守恒测试均在 canonical）；同上两个文件差异 → 归 WO-TESTGAP-BACKFILL。 |
 | `claude/handoff-wo-69-ontology-primitives` | 挂起 | 其它 dev 在做（07-31），缺 `column-security.test.ts`。等其 PR 复验，勿抢并。 |
 | `claude/handoff-wo-69-p2-function-signature` | 挂起 | 同上（07-31），缺 5 件含 `ontology-signature.ts` 与 seam 测试。等其 PR。 |
-| `claude/handoff-wo-69-p3-interface` | 挂起 | 同上（07-31），缺 9 件含 migration `028_object_interfaces.sql`。等其 PR。**注意与 `sandbox-action-propagation` 的 `028_*.sql` 迁移号撞车**，并线前必须重编号。 |
+| `claude/handoff-wo-69-p3-interface` | 挂起 | 同上（07-31），缺 9 件含 migration `028_object_interfaces.sql`。等其 PR。**注意 datacore `028` 为三方撞号**（本分支 / `sandbox-action-propagation` / `wo-66-rules-p1p2`），并线前必须重编号。 |
 | `claude/handoff-wo-capacity-100pct` | 挂起 | 其它 dev（07-30），缺 datacore + frontend 两个 `capacity-page-100pct` 测试。等其 PR。 |
 | `claude/handoff-wo-66-rules-first-class` | 挂起 | 其它 dev（07-30），缺 `docs/rule-threshold-ledger.md`。等其 PR。 |
 | `claude/handoff-diag-100q` | 已驳回 | 缺失件全是**临时诊断产物**（`scratchpad/diag100.pid`、`diag100-results.json`、`diag100.py` 及一次性诊断报告 md）。运行时产物与一次性报告不入正线；结论若有价值应沉淀为门或测试，而非把 pid 文件并进仓库。 |
@@ -73,8 +75,9 @@ workflow 钉 pnpm 9，`package.json` 的 `packageManager` 是 10.33.0 → `pnpm/
 | `claude/handoff-wo-0-nl-wiring` | 挂起 | 缺 `qos-nl-wiring-seam.test.ts` → 同上（SEAM 测试）。 |
 | `claude/handoff-wo-e2e-dialogue-acceptance` | 挂起 | 缺 `e2e-dialogue-acceptance.test.ts` → 同上（端到端验收）。 |
 | `claude/handoff-wo-gray-node-autofill` | 挂起 | 缺 `gray-node-autofill-seam.test.tsx` → 同上（SEAM 测试）。 |
-| `claude/handoff-sandbox-action-propagation` | 挂起 | 缺 migration `028_sim_action_propagation_rule.sql` + `sim-action-propagation.test.ts`。**迁移号 028 与 `wo-69-p3-interface` 撞车**，并线前必须重编号——由 WO-INTEGRATION-AUDIT 处置。 |
+| `claude/handoff-sandbox-action-propagation` | 挂起 | 缺 migration `028_sim_action_propagation_rule.sql` + `sim-action-propagation.test.ts`。**迁移号 028 三方撞车**（`wo-69-p3-interface` / 本分支 / `wo-66-rules-p1p2`），并线前必须重编号——由 WO-INTEGRATION-AUDIT（#9）处置。 |
 | `claude/handoff-ontology-context` | 挂起 | 缺 4 件含 `router/ontology-context.ts`、`contracts/ontology-context.ts` 等**实现**文件。需复验：是被等价实现取代（canonical 已有 `type-semantics` 路由）还是真漏并 → WO-INTEGRATION-AUDIT。 |
 | `claude/handoff-ceo6` | 挂起 | 缺 `apps/agentcore/src/agent/ceo.ts`（实现文件）。需复验是否被 `ceo-route.ts` 等价取代 → WO-INTEGRATION-AUDIT。 |
 | `claude/handoff-wo-aip-cap0` | 挂起 | 缺 11 件（`plan-builder/compiler.ts`、migration、前后端测试）。**迁移号 `010` 与 canonical 已占用的 `010_multi_intent_plan.sql` 实撞（非潜在风险）**，并线前必须重编号。整块特性未并线，规模最大 → WO-INTEGRATION-AUDIT（Issue #9）单独定性。 |
+| `claude/handoff-wo-66-rules-p1p2` | 挂起 | **本门上线首日真抓的第一条**：该分支在审核方本地跑完台账后才推上来，本地绿 / CI 红的差异本身即证据——旧机制下它会静默躺数周。缺 `028_solver_rule_bindings.sql`、`solvers/rule-params.ts`、`rules-first-class-seam.test.ts`。**其 `028` 使 datacore 028 变成三方撞号**（见下）。解挂条件：等其 PR 复验；SEAM 测试归 WO-TESTGAP-BACKFILL（#8），迁移重编号归 WO-INTEGRATION-AUDIT（#9）。 |
 | `claude/handoff-qos-live-evidence` | 已驳回 | 缺失件是一份一次性验收记录 `docs/acceptance-log-qos-live-10q.md`。验收记录属过程产物，不入正线；其结论已由 QOS 相关 SEAM 测试承载。 |
