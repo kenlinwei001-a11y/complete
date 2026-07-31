@@ -149,6 +149,34 @@ class HttpOntologyClient implements OntologyClient {
     );
     return (res?.stats ?? []).map((s) => ({ key: s.key, label: s.displayName ?? s.key, domain: s.domain ?? "unassigned", instanceCount: s.count ?? 0 }));
   }
+  async listObjectTypeDefs(ctx: ToolAuthCtx): Promise<import("./clients.js").ObjectTypeDefSummary[]> {
+    // WO-RESOURCE-CATALOG-ONTOLOGY：object_type/field 投影供给侧（A 侧 listTypes 已过滤 ACTIVE·R1 REST 只读镜像）。
+    const types = await call<
+      {
+        key: string;
+        displayName?: string;
+        domain?: string;
+        description?: string;
+        status?: string;
+        properties?: { propKey: string; description?: string; unit?: string; dataType?: string; isPrimaryKey?: boolean; searchable?: boolean }[];
+      }[]
+    >(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
+    return (types ?? []).map((t) => ({
+      key: t.key,
+      displayName: t.displayName,
+      domain: t.domain,
+      description: t.description,
+      status: t.status,
+      properties: (t.properties ?? []).map((p) => ({
+        propKey: p.propKey,
+        description: p.description,
+        unit: p.unit,
+        dataType: p.dataType,
+        isPrimaryKey: p.isPrimaryKey,
+        searchable: p.searchable,
+      })),
+    }));
+  }
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/ontology/cross-validate`, req);
   }

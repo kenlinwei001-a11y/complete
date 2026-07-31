@@ -4,19 +4,22 @@ import type {
   ResourceSearchResponse,
 } from "@platform/contracts";
 import type { Repos, IntelligenceResourceRow, ResourceRelationRow } from "../persistence/repos.js";
-import type { DataCoreClient, ToolAuthCtx } from "../tools/clients.js";
+import type { DataCoreClient, ObjectTypeDefSummary, ToolAuthCtx } from "../tools/clients.js";
 import type { FeatureGate } from "../features/gate.js";
 import { featureEnabled, intentAllowed, solverAllowed, type FeatureSet } from "../features/registry.js";
 import {
   projectAgents,
+  projectFields,
   projectIntents,
   projectMcp,
+  projectObjectTypes,
   projectRules,
   projectSkills,
   projectSlices,
   projectSolvers,
   projectWorkflows,
   type CatalogItem,
+  type FieldSource,
 } from "./resource-projector.js";
 import { extractTieredTags } from "./tag-taxonomy.js";
 import { ResourceSearchEngine, extractContextObjectTypes, type Embedder } from "./search-engine.js";
@@ -114,6 +117,42 @@ export class ResourceRegistryService {
     } catch {
       /* fail-open */
     }
+    // WO-RESOURCE-CATALOG-ONTOLOGY · 本体对象类型定义（object_type/field 投影源，R1 REST·fail-open）。
+    // 优选 listObjectTypeDefs（含类型级 description + 属性口径）；精简客户端未实现 → 降级 listObjectTypes
+    // （无描述 → 投影层按 WO §4 兜底合成 + descriptionSynthesized 标记，不留空）。
+    let objectTypeDefs: ObjectTypeDefSummary[] = [];
+    try {
+      objectTypeDefs = this.deps.dataCore.ontology.listObjectTypeDefs
+        ? await this.deps.dataCore.ontology.listObjectTypeDefs(ctx)
+        : (await this.deps.dataCore.ontology.listObjectTypes(ctx)).map((t) => ({
+            key: t.key,
+            displayName: t.label,
+            domain: t.domain,
+          }));
+    } catch {
+      /* fail-open */
+    }
+    // 只投影 ACTIVE 类型的属性；被 ACTIVE 过滤裁掉的类型数必须 log（WO §4 禁静默截断）。
+    const activeTypeDefs = objectTypeDefs.filter((d) => d.status === undefined || d.status === "ACTIVE");
+    const prunedTypes = objectTypeDefs.length - activeTypeDefs.length;
+    if (prunedTypes > 0) {
+      console.warn(`[resource-registry] object_type/field 投影：按 ACTIVE 过滤裁掉 ${prunedTypes} 个非 ACTIVE 类型（规则：status!==ACTIVE 不投影）`);
+    }
+    // field 属性口径源：优先 type-semantics（WO T2 指定源·含 unit/description/dataType）；
+    // 未实现/失败/漏型的 ACTIVE 类型回退 defs.properties（同一 PropertyDef 真值·禁静默漏型）。
+    const fieldSourceByType = new Map<string, FieldSource["props"]>();
+    try {
+      if (this.deps.dataCore.ontology.getTypeSemantics && activeTypeDefs.length > 0) {
+        const sem = await this.deps.dataCore.ontology.getTypeSemantics(ctx, activeTypeDefs.map((d) => d.key));
+        for (const t of sem.types) fieldSourceByType.set(t.typeKey, t.props);
+      }
+    } catch {
+      /* fail-open → 全体回退 defs.properties */
+    }
+    const fieldSources: FieldSource[] = activeTypeDefs.map((d) => ({
+      typeKey: d.key,
+      props: fieldSourceByType.get(d.key) ?? d.properties ?? [],
+    }));
 
     const workflows = await this.deps.repos.workflows.listByTenant(tenantId);
     const skills = await this.deps.repos.skills.listByTenant(tenantId);
@@ -138,6 +177,10 @@ export class ResourceRegistryService {
     for (const r of projectSkills(skills)) projected.push({ source: "agentcore", res: r });
     for (const r of projectAgents(agents)) projected.push({ source: "agentcore", res: r });
     for (const r of projectMcp(mcpConfigs)) projected.push({ source: "mcp", res: r });
+    // WO-RESOURCE-CATALOG-ONTOLOGY · object_type（T1）+ field（T2）：本体真值源投影（反虚构纪律——
+    // 投影集 == 本体 ACTIVE 类型集，不手写任何类型/字段清单）。
+    for (const r of projectObjectTypes(objectTypeDefs)) projected.push({ source: "datacore", res: r });
+    for (const r of projectFields(fieldSources)) projected.push({ source: "datacore", res: r });
 
     // 通用 featureKey 门（R3）：任一 kind 带 featureKey 且未开通 → 丢弃。
     const entitled = projected.filter((p) => featureKeyOk(enabled, p.res.featureKey));

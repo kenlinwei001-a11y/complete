@@ -4,7 +4,7 @@ import { RESOURCE_KINDS } from "./resource-descriptor.js";
 /**
  * WO-DRIL-P1 · Decision Resource Intelligence Layer 契约地基（PRD-decision-resource-intelligence-layer §5）。
  *
- * 把 `ResourceDescriptor`（6 类扁平描述）升级为 `IntelligenceResource`（9 类·带业务语义/输入输出规格/
+ * 把 `ResourceDescriptor`（扁平描述）升级为 `IntelligenceResource`（10 类·带业务语义/输入输出规格/
  * 五级标签/质量分/关系/治理），并给出 per-kind 扩展。**派生投影（R13）**：注册表非新真值源，各 kind
  * 元数据投影自各自模块（solver/slice/rule←DataCore·workflow/intent/skill/agent←AgentCore·mcp_tool←MCP）。
  *
@@ -16,7 +16,11 @@ import { RESOURCE_KINDS } from "./resource-descriptor.js";
  * `ResourceDescriptorSchema` 一一对应——任一 ResourceDescriptor 均可无损升格为 IntelligenceResource。
  */
 
-/** 扩展资源类别：在发现 6 池（solver/slice/workflow/intent/field/mcp_tool）之上新增 agent/skill/rule → 9 类。 */
+/**
+ * 扩展资源类别：发现池（solver/slice/workflow/intent/field/mcp_tool/**object_type**）之上新增 agent/skill/rule → 10 类。
+ * WO-RESOURCE-CATALOG-ONTOLOGY：`object_type`（本体对象类型）经 `RESOURCE_KINDS` 并入；`field` 由"已声明未接线"转为已接线
+ * （投影自本体真值源 `GET /a/v1/ontology/object-types` / `type-semantics`，非手写清单）。
+ */
 export const RESOURCE_KINDS_EXTENDED = [...RESOURCE_KINDS, "agent", "skill", "rule"] as const;
 export type ResourceKindExtended = (typeof RESOURCE_KINDS_EXTENDED)[number];
 export const ResourceKindExtendedSchema = z.enum(RESOURCE_KINDS_EXTENDED);
@@ -92,6 +96,11 @@ const intelligenceResourceBaseShape = {
   label: z.string().min(1),
   /** LLM 可读描述——**非空是发布/投影硬门**（dril-registry:check 无空描述资源）。 */
   description: z.string().min(1),
+  /**
+   * WO-RESOURCE-CATALOG-ONTOLOGY §4 兜底标记：description 系 `非空(description, displayName, key)` 合成
+   * （真值源缺描述）时置 true——只拼已有 key/displayName，不编业务含义；真描述存在时缺省。
+   */
+  descriptionSynthesized: z.boolean().optional(),
   answersQuestions: z.array(z.string()).optional(),
   /** 适合的问句（正向）。 */
   suitableQuestions: z.array(z.string()).optional(),
@@ -194,10 +203,34 @@ export const FieldResourceSchema = IntelligenceResourceSchema.extend({
   kind: z.literal("field"),
   objectType: z.string().optional(),
   propKey: z.string().optional(),
+  /** WO-RESOURCE-CATALOG-ONTOLOGY T2：量纲透出（PropertyDef.unit）——Agent 才知道字段单位。 */
+  unit: z.string().optional(),
+  dataType: z.string().optional(),
 });
 export type FieldResource = z.infer<typeof FieldResourceSchema>;
 
-/** 全 9 kind discriminated union——投影校验目标（保留 per-kind 字段）。 */
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY T1 · 本体对象类型资源（Agent 搜得到"系统里有什么业务对象"）。
+ * `properties`/`linkKeys` 为 per-kind 扩展（沿用既有 IntelligenceResource 结构，不另造形状）：
+ * properties 镜像 PropertyDef 只读子集（propKey/description/unit/dataType），供 field 投影与详情查看。
+ */
+export const ObjectTypeResourceSchema = IntelligenceResourceSchema.extend({
+  kind: z.literal("object_type"),
+  properties: z
+    .array(
+      z.object({
+        propKey: z.string(),
+        description: z.string().optional(),
+        unit: z.string().optional(),
+        dataType: z.string().optional(),
+      }),
+    )
+    .optional(),
+  linkKeys: z.array(z.string()).optional(),
+});
+export type ObjectTypeResource = z.infer<typeof ObjectTypeResourceSchema>;
+
+/** 全 10 kind discriminated union——投影校验目标（保留 per-kind 字段）。 */
 export const AnyIntelligenceResourceSchema = z.discriminatedUnion("kind", [
   SolverResourceSchema,
   SliceResourceSchema,
@@ -208,6 +241,7 @@ export const AnyIntelligenceResourceSchema = z.discriminatedUnion("kind", [
   McpResourceSchema,
   IntentResourceSchema,
   FieldResourceSchema,
+  ObjectTypeResourceSchema,
 ]);
 export type IntelligenceResource = z.infer<typeof AnyIntelligenceResourceSchema>;
 

@@ -40,6 +40,12 @@ export interface OntologyClient {
   /** CL.3 discover 真实类型名：本租户已发布对象类型 {key,label(中文),domain,instanceCount}（agent 照真名查不再猜）。 */
   listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]>;
   /**
+   * WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义（含类型级 description + 属性口径 unit/dataType），
+   * DRIL object_type/field 投影供给侧。源 `GET /a/v1/ontology/object-types`（A 侧已过滤 ACTIVE）。
+   * 可选：mock/精简客户端不实现 → 投影层降级 listObjectTypes（描述按 WO §4 兜底合成）。
+   */
+  listObjectTypeDefs?(ctx: ToolAuthCtx): Promise<ObjectTypeDefSummary[]>;
+  /**
    * WO-QOS-ONTOLOGY-CONTEXT · 口径语义（缺口③文档三层投喂第二层）：请求类型的属性口径/派生公式/规则表达式。
    * 单一真值在 A（GET /a/v1/ontology/type-semantics）·B 经 REST 读（R1 不 import 源）·复用 B→A 资源缓存
    * TTL60s + {kind}.updated(ontology/rules) 失效（不 per-question 打 A）。可选：mock 客户端不实现 → 注入点降级空块。
@@ -71,6 +77,28 @@ export interface RuleSummary {
   scopeObjectTypes?: string[];
   severity?: string;
   expression?: string;
+}
+
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义只读投影行（DataCore `GET /a/v1/ontology/object-types`
+ * 的 B 侧镜像，R1 REST·R13 派生）——object_type/field kind 的供给侧。镜像 ObjectTypeDef/PropertyDef
+ * 只读子集；description/unit 缺失即诚实缺省（投影层按 WO §4 兜底合成并标记，不编业务含义）。
+ */
+export interface ObjectTypeDefSummary {
+  key: string;
+  displayName?: string;
+  domain?: string;
+  description?: string;
+  status?: string;
+  properties?: {
+    propKey: string;
+    description?: string;
+    unit?: string;
+    dataType?: string;
+    isPrimaryKey?: boolean;
+    searchable?: boolean;
+  }[];
+  linkKeys?: string[];
 }
 
 export interface RuleEngineClient {

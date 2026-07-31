@@ -1,9 +1,11 @@
 import type {
   AgentDefinition,
   AgentResource,
+  FieldResource,
   IntentDefinition,
   IntentResource,
   McpResource,
+  ObjectTypeResource,
   RuleResource,
   SkillDefinition,
   SkillResource,
@@ -14,7 +16,7 @@ import type {
 } from "@platform/contracts";
 import { SKILL_REFERENCE_KINDS } from "@platform/contracts";
 import type { McpServerConfig } from "@platform/contracts";
-import type { RuleSummary } from "../tools/clients.js";
+import type { ObjectTypeDefSummary, RuleSummary } from "../tools/clients.js";
 
 /**
  * WO-DRIL-P1 · Resource Projector（PRD-decision-resource-intelligence-layer §6.3）。
@@ -209,6 +211,77 @@ export function projectMcp(configs: McpServerConfig[]): McpResource[] {
     transportKind: c.transport.type,
     governance: { status: c.status, version: c.version },
   }));
+}
+
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY T1 · object_type ← `GET /a/v1/ontology/object-types`（ACTIVE）。
+ * 映射：key←typeKey · label←displayName · description←description（缺则按 WO §4 兜底：非空(description,
+ * displayName, key) 合成 + `descriptionSynthesized: true`，**只拼已有 key/displayName，不编业务含义**）。
+ * `inputSpec.objectTypes=[typeKey]`（L4 对象标签经 registry enrichTieredTags 从此派生）。
+ * R14：零手写类型清单——投影集完全等于真值源集，虚构类型无从混入。R6：保真值源序，同输入字节同序。
+ */
+export function projectObjectTypes(defs: ObjectTypeDefSummary[]): ObjectTypeResource[] {
+  const active = defs.filter((d) => d.status === undefined || d.status === "ACTIVE");
+  return active.map((t) => {
+    const label = nonEmpty(t.displayName, t.key) ?? t.key;
+    const desc = nonEmpty(t.description);
+    return {
+      kind: "object_type" as const,
+      key: t.key,
+      label,
+      description: desc ?? label,
+      ...(desc ? {} : { descriptionSynthesized: true }),
+      domain: t.domain,
+      capability: desc ?? label,
+      inputSpec: { objectTypes: [t.key] },
+      ...(t.properties && t.properties.length > 0
+        ? {
+            properties: t.properties.map((p) => ({
+              propKey: p.propKey,
+              ...(p.description !== undefined ? { description: p.description } : {}),
+              ...(p.unit !== undefined ? { unit: p.unit } : {}),
+              ...(p.dataType !== undefined ? { dataType: p.dataType } : {}),
+            })),
+          }
+        : {}),
+      ...(t.linkKeys && t.linkKeys.length > 0 ? { linkKeys: t.linkKeys } : {}),
+    };
+  });
+}
+
+/** field 投影供给侧形状（type-semantics props 或 object-types properties 回退·统一喂 projectFields）。 */
+export interface FieldSource {
+  typeKey: string;
+  props: { propKey: string; description?: string; unit?: string; dataType?: string }[];
+}
+
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY T2 · field ← `GET /a/v1/ontology/type-semantics`（接线契约早已声明的 kind）。
+ * `key = ${typeKey}.${propKey}`（与 resource-descriptor.ts 既定口径一致）；**带量纲** `unit`（PropertyDef.unit
+ * 已登记并被 generic_inference 消费，资源目录同步透出——Agent 才知道字段单位）。只投影 ACTIVE 类型的属性
+ * （ACTIVE 过滤在 registry 供给侧完成并 log 裁剪数）；属性级 description 缺失同样按 §4 合成 + 标记。
+ */
+export function projectFields(sources: FieldSource[]): FieldResource[] {
+  const out: FieldResource[] = [];
+  for (const s of sources) {
+    for (const p of s.props) {
+      const key = `${s.typeKey}.${p.propKey}`;
+      const desc = nonEmpty(p.description);
+      out.push({
+        kind: "field" as const,
+        key,
+        label: p.propKey,
+        description: desc ?? key,
+        ...(desc ? {} : { descriptionSynthesized: true }),
+        objectType: s.typeKey,
+        propKey: p.propKey,
+        ...(p.unit !== undefined ? { unit: p.unit } : {}),
+        ...(p.dataType !== undefined ? { dataType: p.dataType } : {}),
+        inputSpec: { objectTypes: [s.typeKey] },
+      });
+    }
+  }
+  return out;
 }
 
 /** 派生关系（写 resource_relations）：workflow→solver/slice(invokes)·agent→skill(binds)·agent→objectType 略。 */
