@@ -897,6 +897,11 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 > - **G-CAPACITY-BASE-OUTLOOK**：`service.ts baseCapacityOutlook` 只比 `baseId|name`，**不认真实对象 id `obj_base_<id>`**（地图页/看板写进 selectedObjects 的正是该形态）→ 前瞻四线整块硬 404。补闭：经 `normalizeBaseRef` 归一（与兄弟求解器 `risk.ts resolveBaseId` 同一出处），三形态返回逐字节一致。测 `datacore/test/capacity-page-100pct.test.ts` ②。
 > - **G-GAP-SCOPE**：`service.ts gapAttribution` 的 `scope.factorId` 分支 ① 把已解析的 `scope.baseId` **整个丢弃**（`res.scope = { factorId }`·违 R-ARG-FIDELITY）② 把**任何**字符串当合法因果入口 → 产能页传的 BN 词表因子名（`瓶颈工序`/`物流时长`）得到逐字节相同的单节点退化树，前端匹配不到基地节点 → **点任一因子 chip 根因树整棵消失**。补闭：factorId 须命中真 `CausalFactor`；否则**保住 base 结构树**并回执 `scope.factorApplied=false`+`factorNote`（诚实标"未按该因子细分"，不静默退化）。测 ④/④b。
 > - **G-WHATIF-HARDCODED-LEVERS**（引擎侧作用域残口·**R-ARG-FIDELITY**）：`service.ts discoverCapacityLevers` **完全不读 `scopeObjectIds`**，候选按 `id.localeCompare` 排序后 `slice(PROBE_CAP=50)` 恒截到字母序最前的基地 → **任何基地卡返回逐字节相同的常州杠杆**，拖杆改的是别人家的工序，`risk_timeline{apply}` 的 `capRatio` 落不到本基地 → 处置表纹丝不动（被误判为 G-DISPOSITION-STATIC 回潮，实为丢参）。补闭：先按作用域基地过滤再探针 + `computeByProcessModel(..., baseFilter)` 同尺度；**scope 给了但与认证集无交集 → 诚实空，绝不回落全域**。测 ③/③b。
+>
+> **续记（R7/R8 轮·同 WO·仍不新增对象类型/链路/事件/求解器 → 金值不变）**
+> - **R-ARG-FIDELITY + R-一致（`affected_orders` 聚合分支丢窗口参）**：`risk.ts affectedOrdersAggregate` 内写死 `affectedOrders(c,{baseId, toDay:180})`，`horizon` 只用于 `risks[]` 时序、**对行集完全无效** → 产能推演页「30/60/90 天」chip 对订单聚合表逐字节无效（四档 so 列表 md5 全等），且与同屏 KPI 的 `[0,horizon]` 口径打架（KPI 8 批 vs 表 24 单）。补闭：窗口优先级 **显式 `fromDay`/`toDay` > `horizon` > 历史默认 180**，`service.ts` 透传窗口参；**不传窗口的调用方（order-chain 视图/驾驶舱）行为逐字节不变**。测 `capacity-page-100pct.test.ts ⑬`（变异反证：退回写死 180 → 红 `expected 24 to be less than 24`）。
+> - **前端派生态口径（`R-一致` 前端半）**：`RiskBoardView OrderAggView` 的基地下拉选项集由**已被过滤的响应**派生 → 选中一个基地后下拉塌成只剩它、无法直接改选，且「全部风险基地（N）」显示过滤后的假总数。补闭：全域选项集只在未过滤响应回来时刷新并记住，经营表聚合仍用本次响应。测 `frontend-shell/test/capacity-page-100pct.test.tsx ⑭`。
+> - **取证方法论（写给下一个 dev·非产品缺陷）**：前端 `src/env.ts` 在 localhost 下**写死直连 `127.0.0.1:4001`，不走 vite dev proxy**（`VITE_DEV_DATACORE` 改不动它）。多 worktree 并行开发时 :4001 可能属于**别人的构建**，浏览器取证会静默取到别人的输出。判据 `/proc/<pid>/cwd`；对策：自建服务用独立端口 + Playwright `page.route` 改写并打印命中次数。**「端口通 ≠ 对面是我的构建」**，与「进程还在 ≠ 还活着」同类。
 > - 附带（**R-一致**）：`risk.ts` 风险卡的 `affectedOrders` 用 `[crossDay−7, crossDay+14]` 小窗、而同页「订单聚合」tab 用 `[0, horizon]` → 同屏「1 批」vs「24 批」打架且 7/8 卡恒空。已统一到推演窗口 `[0, horizon]`。测 ⑫。
 
 

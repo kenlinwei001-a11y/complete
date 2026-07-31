@@ -3930,7 +3930,9 @@ export class SolverService {
         return auditTimeline(c, args);
       case "affected_orders": {
         // baseId → 单基地明细（risk-board/内部/测试）；无 baseId → 跨基地聚合（order-chain 视图 VM）。
-        if (!args.baseId) return affectedOrdersAggregate(c, args as { base?: string; horizon?: number });
+        // ⑬：窗口参（horizon / fromDay / toDay）必须原样透传到聚合分支——修前此处的类型断言只保留
+        // {base,horizon}，聚合内又把窗口写死 180，产能推演页的 30/60/90 chip 因此对订单聚合表无效。
+        if (!args.baseId) return affectedOrdersAggregate(c, args as { base?: string; horizon?: number; fromDay?: number; toDay?: number });
         return affectedOrders(c, args as unknown as AffectedOrdersArgs);
       }
       case "plan_audit": {

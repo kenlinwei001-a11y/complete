@@ -311,6 +311,33 @@ export function resolveBaseId(c: SolverContext, ref: unknown): string {
   return str(b.props.baseId);
 }
 
+/**
+ * WO-CAPACITY-PAGE-100PCT ④b · 每基地留哪张卡的**排序契约**（纯函数·导出以便直接测，不靠种子巧合）。
+ *
+ * ⚠ 复审裁定（务必别再退回去）：本函数第一版写成 **peak 主序 / 当前张力 tie-break**，
+ * 它之所以"看着对"，纯粹是**靠 `params.risk.cap=98` 的硬截断巧合**——旧态所有爬过顶的因素
+ * peak **全等于 98** ⇒ 主序恒不分胜负 ⇒ tie-break 每次都触发 ⇒ 等效于"按当前张力排"。
+ * 一旦上游把硬截断换成保序饱和（`saturateTension`，峰值 97.9508/97.9248/97.8399 互不相同），
+ * 平顶消失、主序 peak 接管，语义当场翻面——注释与测试描述的（"信阳 物流时长 92 压过 瓶颈工序 91"，
+ * 92/91 是**当前张力**不是 peak）跟代码实际做的事对不上。这正是"靠巧合对齐"的病灶。
+ *
+ * 现按**产品语义**写实，不再依赖任何 clamp 行为：
+ *   主序 = **实测当前张力降序**（liveTightness·真数据："此刻最痛的那个因素"才配当这张卡的首要风险对象）
+ *   ↓ 同分 → **峰值降序**（未来更痛者优先）
+ *   ↓ 同分 → 越线日升序 → 因素名（R6 全序确定·同输入同输出）
+ *
+ * 若后续判定"应以未来最痛（peak）为主序"，**必须同步改 `capacity-page-100pct.test.ts` ① 的断言**，
+ * 两者必须始终一致——不许再出现"代码一套、注释/测试另一套、靠数据巧合对上"的局面。
+ */
+export function preferRiskCard(a: Record<string, unknown>, e: Record<string, unknown>): boolean {
+  const cur = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
+  const cross = (x: Record<string, unknown>): number => (x.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
+  if (cur(a) !== cur(e)) return cur(a) > cur(e);
+  if (num(a.peak) !== num(e.peak)) return num(a.peak) > num(e.peak);
+  if (cross(a) !== cross(e)) return cross(a) < cross(e);
+  return str(a.factor) < str(e.factor);
+}
+
 export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
   // WO-LIVE-DISPOSITION T2：先套杠杆 overlay（克隆-覆写单源），之后**整条 riskTimeline 都在覆写后的世界里跑**——
   // cards（liveTightness 读覆写后 Line.utilization/Equipment.oee_current/Process.yield_baseline）+ planRows（产能链缺口）
@@ -427,19 +454,7 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     list.push(card);
     allByBase.set(b, list);
     const existing = bestByBase.get(b);
-    // WO-CAPACITY-PAGE-100PCT ④b（R1/R2 耦合的真根）：修前 tie-break 是**隐式的数组序**——
-    // `peak` 被 `params.risk.cap=98` 硬封顶，凡爬过 98 的因素 peak **全等于 98**，`>` 比较恒 false，
-    // 于是每基地留下的永远是 `bottleneck.factors[0]` = `瓶颈工序`（8/8 卡雷同的直接原因）。
-    // 修后：peak 相等时按**实测当前张力**（liveTightness·真数据）降序、再按越线日升序、再按因素名定序（R6 全序确定）。
-    // 效果层：信阳 物流时长(92) 压过 瓶颈工序(91)、江门 物料齐套(96) 压过 瓶颈工序(91) → 各基地首要风险不再雷同。
-    const curOf = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
-    const crossOf = (x: Record<string, unknown>): number => (x.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
-    const better = (a: Record<string, unknown>, e: Record<string, unknown>): boolean =>
-      num(a.peak) !== num(e.peak) ? num(a.peak) > num(e.peak)
-        : curOf(a) !== curOf(e) ? curOf(a) > curOf(e)
-        : crossOf(a) !== crossOf(e) ? crossOf(a) < crossOf(e)
-        : str(a.factor) < str(e.factor);
-    if (!existing || better(card, existing)) {
+    if (!existing || preferRiskCard(card, existing)) {
       bestByBase.set(b, card);
     }
   }
@@ -454,7 +469,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
   }
   // WO-CAPACITY-PAGE-100PCT ④c：越线日全相同（demo 里 8+ 基地 crossDay 均为 1）时，修前 tie-break 直接退化为
   // **基地名字典序**，再 `slice(maxCards)` → 全公司张力最高的基地（江门·物料齐套 96）被字母序挤出看板，
-  // 而 91 的基地在榜。修后依次按 越线日↑ → 实测当前张力↓ → 峰值↓ → 基地名（R6 全序确定·同输入同序）。
+  // 而 91 的基地在榜。修后依次按 越线日↑ → **实测当前张力↓** → 峰值↓ → 基地名（R6 全序确定·同输入同序）。
+  // 与 `preferRiskCard` 同一套优先级（当前张力主序 / peak tie-break），**不依赖 peak 是否被截断打平**——
+  // 上游换成保序饱和 `saturateTension`（平顶消失）后本序语义不变。
   const curOfCard = (x: Record<string, unknown>): number => num((x.currentTightness as { value?: unknown } | undefined)?.value, -1);
   cards.sort((a, b) => {
     const ca = (a.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
@@ -873,7 +890,7 @@ const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s
 
 export function affectedOrdersAggregate(
   c: SolverContext,
-  args: { base?: string; horizon?: number },
+  args: { base?: string; horizon?: number; fromDay?: number; toDay?: number },
 ): {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: { so: string; cust: string; seg: string; model: string; qty: number; due: string; delay: number; risks: AggRiskRef[] }[];
@@ -881,6 +898,18 @@ export function affectedOrdersAggregate(
 } {
   const threshold = c.params.risk.threshold;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
+  // WO-CAPACITY-PAGE-100PCT ⑬（R7 轮新增·R-ARG-FIDELITY 丢参 + R-一致 同屏两个数打架）：
+  // 修前订单窗口**写死 `toDay: 180`**，`horizon` 只用来算 risks[] 的时序、对**行集完全不起作用** →
+  //  · 产能推演页「30/60/90 天」chip 切换时，订单聚合表逐字节不变（30/60/90/180 四档 rows so 列表 md5 全等
+  //    = 5390c03a84311685ab742214f167e53c），用户拖了窗口屏幕纹丝不动 → 典型"写死 C 类"；
+  //  · 同一屏 KPI「受影响订单(批)」按 [0,horizon] 真算（30 天=8、60 天=22），聚合表却按 180 天恒列 24 批
+  //    → 一屏两个自相矛盾的数（R-一致：同一事实必须一个出处）。
+  // 修后窗口优先级：**显式 fromDay/toDay > horizon > 历史默认 180**。
+  // 保持向后兼容：order-chain 视图 / 驾驶舱（`affected_orders {}` 不传窗口）与既有测试
+  // （planviews.test.ts 显式传 {fromDay:0,toDay:180}）行为逐字节不变；只有**显式传了 horizon 的调用方**
+  // （= 产能推演页订单聚合 tab）才收窄到该窗口，与卡片/KPI/逐日下钻同口径。
+  const winFrom = num(args.fromDay, 0);
+  const winTo = args.toDay !== undefined ? num(args.toDay, 180) : args.horizon !== undefined ? horizon : 180;
   const filterBase = args.base ? resolveBaseId(c, args.base) : null;
   const baseIds = c.bases
     .map((b) => str(b.props.baseId))
@@ -893,7 +922,7 @@ export function affectedOrdersAggregate(
   const probByCat = new Map<string, OrderProblemGroupOut>();
 
   for (const baseId of baseIds) {
-    const single = affectedOrders(c, { baseId, toDay: 180 });
+    const single = affectedOrders(c, { baseId, fromDay: winFrom, toDay: winTo });
     const factor = primaryFactor(c, baseId);
     const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon));
     const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold };

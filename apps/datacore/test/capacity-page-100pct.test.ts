@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { preferRiskCard } from "../src/solvers/risk.js";
 import type { AuthCtx } from "../src/domain.js";
 
 /**
@@ -34,9 +35,13 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝", () => {
 
     expect(risk.cards.length).toBeGreaterThan(1);
 
-    // 效果层 A：卡面因子必须就是该基地 LIVE 张力最高的因子。
+    // 效果层 A：卡面因子必须就是该基地 **LIVE 当前张力最高**的因子。
     // （修前 8/8 卡恒为 `瓶颈工序`，而信阳的 `物流时长`(92) / 江门的 `物料齐套`(96) 明明更高 →
     //   同一张卡"首要风险=瓶颈工序 91"却挂着"物流时长 92"的 chip，自相矛盾。）
+    // 语义锚（复审裁定·与 `preferRiskCard` 必须始终一致）：**当前张力主序、peak 仅 tie-break**。
+    // 本断言因此**不依赖 peak 是否被 clamp 打平**——上游换保序饱和 `saturateTension` 后仍成立。
+    // 若哪天判定改用 peak 主序，这条断言必须同步改，不许靠数据巧合让两者"看起来"对上。
+    // 前提（据实）：只有窗口内会越线的因素才成卡；demo 里各基地当前张力最高者均 ≥ 阈值故必越线。
     for (const card of risk.cards) {
       const row = bn.rows.find((r) => r.base === card.base);
       expect(row, `bottleneck_matrix 缺基地 ${card.base}`).toBeTruthy();
@@ -49,13 +54,34 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝", () => {
     expect(distinct.size, `所有基地首要因子仍全同：${[...distinct].join("/")}`).toBeGreaterThan(1);
   });
 
-  it("① R1b：峰值被封顶打平时，tie-break 走实测当前张力（不再退化为 bottleneck.factors 数组序）", async () => {
+  it("① R1b：看板排序 = 越线日↑ → 实测当前张力↓（最严重的基地不再被字母序挤出 maxCards）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const risk = (await inv(t, "risk_timeline", { horizon: 30 })) as RiskOut;
-    // 看板按 越线日↑ → 实测当前张力↓ 排序：第一张卡的当前张力必须 ≥ 其后每一张（否则最严重的基地会被挤出 maxCards）。
+    // 第一张卡的当前张力必须 ≥ 其后每一张（同越线日内）。
     const curs = risk.cards.map((c) => c.currentTightness?.value ?? -1);
     for (let i = 1; i < curs.length; i++) expect(curs[0]!).toBeGreaterThanOrEqual(curs[i]!);
+  });
+
+  it("① R1c：排序契约本身（当前张力主序 / peak 仅 tie-break）——直接测纯函数，不靠种子巧合", () => {
+    // ⚠ 复审裁定的病灶：第一版写成 peak 主序，只因 `cap=98` 硬截断把 peak 全打平、tie-break 每次都触发，
+    // 才"看着像"按当前张力排；上游换成保序饱和（peak 97.9508/97.9248/97.8399 互不相同）后语义当场翻面。
+    // 故这里**直接对排序契约下断言**，不经种子数据 —— 数据怎么变都盖不住语义错位。
+    const card = (cur: number, peak: number, factor: string, crossDay: number | null = 1) =>
+      ({ factor, peak, crossDay, currentTightness: { value: cur, live: true } }) as Record<string, unknown>;
+
+    // ① 当前张力不同 → 当前张力说了算，**即使 peak 更低**（peak 不得反超主序）。
+    expect(preferRiskCard(card(92, 97.8399, "物流时长"), card(91, 97.9508, "瓶颈工序"))).toBe(true);
+    expect(preferRiskCard(card(91, 97.9508, "瓶颈工序"), card(92, 97.8399, "物流时长"))).toBe(false);
+
+    // ② 当前张力相同 → 才轮到 peak（未来更痛者优先）；此分支在保序饱和下仍可判定（peak 互不相同）。
+    expect(preferRiskCard(card(91, 97.9508, "A"), card(91, 97.9248, "B"))).toBe(true);
+    expect(preferRiskCard(card(91, 97.9248, "B"), card(91, 97.9508, "A"))).toBe(false);
+
+    // ③ 再同 → 越线日升序；④ 再同 → 因素名（R6 全序确定，无并列 → 结果不依赖遍历顺序）。
+    expect(preferRiskCard(card(91, 97.9, "A", 2), card(91, 97.9, "B", 5))).toBe(true);
+    expect(preferRiskCard(card(91, 97.9, "A", 3), card(91, 97.9, "B", 3))).toBe(true);
+    expect(preferRiskCard(card(91, 97.9, "B", 3), card(91, 97.9, "A", 3))).toBe(false);
   });
 
   it("② R4：base_capacity_outlook 三形态 baseId（obj_base_xinyang / xinyang / 信阳）返回同一份前瞻", async () => {
@@ -128,6 +154,44 @@ describe("WO-CAPACITY-PAGE-100PCT · 产能推演页 后端接缝", () => {
         expect((inAgg!.risks ?? []).some((k) => k.base === card.base), `${o.so} 未关联到 ${card.base}`).toBe(true);
       }
     }
+  });
+
+  it("⑬ 30/60/90 天窗口 chip 对「订单聚合」表**真起作用**（修前写死 180 天·拖窗口屏幕纹丝不动）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    type Agg = { rows: { so: string; due: string }[]; summary: { orderCount: number } };
+    const soOf = (a: Agg): string[] => a.rows.map((r) => r.so).sort();
+    const a30 = (await inv(t, "affected_orders", { horizon: 30 })) as Agg;
+    const a60 = (await inv(t, "affected_orders", { horizon: 60 })) as Agg;
+    const a90 = (await inv(t, "affected_orders", { horizon: 90 })) as Agg;
+
+    // 效果层 A（头号·就是用户拖 chip 时屏幕该有的变化）：窗口放大 → 行集必须真变多。
+    // 修前四档 rows 的 so 列表逐字节相同（实测 md5 全等 5390c03a84311685ab742214f167e53c）→ 此断言直接红。
+    expect(a30.rows.length, "30 天与 90 天的订单聚合行数相同 → 窗口 chip 是死的").toBeLessThan(a90.rows.length);
+    expect(a30.summary.orderCount).toBe(a30.rows.length);
+    expect(a90.summary.orderCount).toBe(a90.rows.length);
+
+    // 效果层 B：窗口单调——小窗行集必须是大窗的子集（不是"换了一批"，而是"真按交期截断"）。
+    const s60 = new Set(soOf(a60));
+    const s90 = new Set(soOf(a90));
+    for (const so of soOf(a30)) expect(s60.has(so), `${so} 在 30 天窗内却不在 60 天窗内`).toBe(true);
+    for (const so of soOf(a60)) expect(s90.has(so), `${so} 在 60 天窗内却不在 90 天窗内`).toBe(true);
+
+    // 效果层 C（R-一致·同屏两个数不许打架）：卡片 affectedOrders（[0,horizon]）出现的每一单，
+    // 必须都在同 horizon 的订单聚合表里 —— 修前 KPI「受影响订单 8 批」旁边聚合表列 24 批（180 天口径）。
+    type CardWithOrders = Card & { affectedOrders?: { so: string }[] };
+    const risk = (await inv(t, "risk_timeline", { horizon: 30 })) as { cards: CardWithOrders[] };
+    const s30 = new Set(soOf(a30));
+    for (const c of risk.cards) for (const o of c.affectedOrders ?? []) {
+      expect(s30.has(o.so), `卡片 ${c.base} 的 ${o.so} 不在同窗口(30d)订单聚合里 → 同屏口径打架`).toBe(true);
+    }
+
+    // 效果层 D（向后兼容·不许顺手改坏别的视图）：不传任何窗口参的调用方（order-chain 视图 / 驾驶舱）
+    // 行为必须与历史默认 180 天逐字节一致。
+    const legacy = (await inv(t, "affected_orders", {})) as Agg;
+    const explicit180 = (await inv(t, "affected_orders", { fromDay: 0, toDay: 180 })) as Agg;
+    expect(soOf(legacy)).toEqual(soOf(explicit180));
+    expect(legacy.rows.length).toBeGreaterThan(a30.rows.length);
   });
 
   it("④ gap_attribution：传 BN 因子名（非 CausalFactor）时保住 base 作用域树 + 诚实标 factorApplied=false", async () => {
