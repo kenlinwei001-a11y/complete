@@ -132,8 +132,11 @@ export function extendedObjectTypes(): TypeDef[] {
     def("DSO", "应收账款周转天数", "finance", [
       p("dsoId", "string", true), p("segment", "string"), p("days"), p("period", "string"),
     ]),
+    // WO-69 P3 · Approvable 实现者②（逾期核销审批）：approver/approvedAt 为接口 `Approvable` 要求的字段，
+    // amount 本就有（逾期金额）。接口约束的是**类型声明**，实例值可为空（未审批 = 尚无审批人）。
     def("OverdueRecord", "逾期记录", "finance", [
       p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"), p("amount"),
+      p("approver", "string"), p("approvedAt", "date"),
     ]),
     // WO-TIER3 毛利桥（gross_profit 专属反向归因域 drill 真对象·impactYi 由 DemandSegment×MaterialBalance 确定性派生）
     def("GrossMarginBridge", "毛利桥", "finance", [
@@ -153,7 +156,12 @@ export function extendedObjectTypes(): TypeDef[] {
       p("province", "string"), p("city", "string"), p("address", "string"),
       p("isDeliveryDefault", "boolean"), p("lon"), p("lat"),
     ]),
-    def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
+    // WO-69 P3 · Approvable 实现者①（应收核销审批）。credit_exposure 的 P2 本体签名声明会读
+    // ARInvoice.{amount,custName,invoiceId,overdueDays} → 接口 functions 的"可兑现性"在此类型上真被校验。
+    def("ARInvoice", "应收发票", "commercial", [
+      p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays"),
+      p("approver", "string"), p("approvedAt", "date"),
+    ]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
     def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes"), p("hours"), p("lineId", "string")]),

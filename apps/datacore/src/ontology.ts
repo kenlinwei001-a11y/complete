@@ -1,5 +1,7 @@
 import type {
   ClaimVerdict,
+  ImplementsRef,
+  InterfaceViolation,
   ObjectRefAttempt,
   ObjectRefHit,
   ObjectRefResolution,
@@ -9,6 +11,10 @@ import type {
   TypeSemanticsResponse,
 } from "@platform/contracts";
 import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
+import { checkInterfaceConformance, formatInterfaceViolations } from "@platform/contracts";
+// WO-69 P3 · `functions` 的真实性靠 P2 的求解器本体签名注册表兑现（**只 import 纯声明模块**：
+// ontology-signature.ts 的运行时依赖为零 → 不引入 ontology ↔ solvers 循环）。
+import { SOLVER_ONTOLOGY_SIGNATURES } from "./solvers/ontology-signature.js";
 import type {
   AuthCtx,
   DerivationRun,
@@ -217,9 +223,33 @@ export class OntologyService {
       status: "ACTIVE",
       published: existing?.published,
       deprecation: existing?.deprecation,
+      // WO-69 P3：接口声明与行动绑定是**可选扩展**——入参给了用入参，没给则沿用既有（不因一次
+      // upsert 把已声明的 implements/actions 悄悄抹掉）。两者皆无 → 字段不出现 = 逐字节沿用现状。
+      ...(input.implements ?? existing?.implements
+        ? { implements: input.implements ?? existing?.implements }
+        : {}),
+      ...(input.actions ?? existing?.actions ? { actions: input.actions ?? existing?.actions } : {}),
     };
     await this.repos.ontologyTypes.put(def);
     return def;
+  }
+
+  /**
+   * WO-69 P3 · 为已存在类型设置「实现的接口 / 绑定的行动」（种子与管理台用）。只改这两个字段，
+   * 其余（属性/派生/域/published/version）原样保留 —— 与 `setSourceBindings` 同型。类型不存在则略过。
+   */
+  async setInterfaceBindings(
+    ctx: AuthCtx,
+    key: string,
+    input: { implements?: ImplementsRef[]; actions?: { actionTypeKey: string }[] },
+  ): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({
+      ...existing,
+      ...(input.implements ? { implements: input.implements } : {}),
+      ...(input.actions ? { actions: input.actions } : {}),
+    });
   }
 
   /**
@@ -250,8 +280,57 @@ export class OntologyService {
     return def;
   }
 
+  /**
+   * WO-69 P3 · **对象接口一致性门（发布门）**。
+   *
+   * 头号纪律：接口不是注释。声明了 `implements` 却没真长出要求的属性/行动/函数 → **拒绝发布**，
+   * 并把缺口**逐条点名**（哪个类型、哪个接口@哪个版本、缺哪个 propKey/actionTypeKey/solverKey）。
+   *
+   * **零回归**：一个 `implements` 都没声明的租户，`checkInterfaceConformance` 直接空转返回 []，
+   * 发布路径逐字节沿用现状（老快照、老租户不受任何影响）。
+   *
+   * **诚实边界**：本门在**发布时**兑现契约。已经落库的**历史 OntologyVersion 快照**不会被追溯改写——
+   * 接口加要求 ⇒ 从下一次发布起全部 `latest` 实现者被要求补齐，而不是把历史快照判为失效。
+   */
+  async assertInterfaceConformance(ctx: AuthCtx): Promise<void> {
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    if (!types.some((t) => (t.implements ?? []).length > 0)) return; // 零回归快路
+    const violations = await this.interfaceViolations(ctx, types);
+    if (violations.length > 0) {
+      throw validationError(
+        `对象接口一致性校验未通过（${violations.length} 项）：${formatInterfaceViolations(violations)}`,
+      );
+    }
+  }
+
+  /** 一致性校验的取数 + 纯函数调用（发布门与只读的 conformance 报告共用同一把尺子）。 */
+  async interfaceViolations(
+    ctx: AuthCtx,
+    types?: ObjectTypeDef[],
+  ): Promise<InterfaceViolation[]> {
+    const allTypes = types ?? (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE"));
+    const interfaces = await this.repos.objectInterfaces.list(ctx.tenantId);
+    const actionTypes = await this.repos.actionTypes.list(ctx.tenantId);
+    return checkInterfaceConformance({
+      types: allTypes.map((t) => ({
+        key: t.key,
+        displayName: t.displayName,
+        properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType })),
+        derivedPropKeys: (t.derivedProperties ?? []).map((d) => d.propKey),
+        actions: t.actions,
+        implements: t.implements,
+      })),
+      interfaces,
+      actionTypeKeys: actionTypes.map((a) => a.key),
+      // WO-69 P2 兑现点：`functions` 校验用的是**真求解器签名注册表**，不是一份手抄清单。
+      solverSignatures: SOLVER_ONTOLOGY_SIGNATURES,
+    });
+  }
+
   /** Snapshot current types+links as a new ontology version and notify webhooks. */
   async publishVersion(ctx: AuthCtx): Promise<OntologyVersion> {
+    // WO-69 P3：接口契约先于快照固化 —— 不合规不许进快照（"绿测试≠能用"靠这道门堵）。
+    await this.assertInterfaceConformance(ctx);
     const versions = await this.repos.ontologyVersions.list(ctx.tenantId);
     const version = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
     // 治理增量 §2.1：发布即固化 API 名（published=true → 此后 key 不可重命名/复用）。

@@ -426,6 +426,7 @@ export function createMemoryRepos(): Repos {
     ontologyLinks: new MemStore(),
     ontologyDrafts: new MemStore(),
     ontologyVersions: new MemStore(),
+    objectInterfaces: new MemStore(), // WO-69 P3 · 对象接口（R9 四方同步：repo.ts + memory + pg + migrations/032）
     objects: new MemObjectStore(),
     links: new MemLinkStore(),
     derivationRuns: new MemStore(),

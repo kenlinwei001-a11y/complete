@@ -2716,6 +2716,59 @@ export const BATTERY_TS_AGG_SPECS: {
   { key: "forecast_dev_daily", seriesKey: "forecast_dev:model", window: { grain: "day" }, agg: "avg", output: { objectType: "Model", property: "forecast_deviation" } },
 ];
 
+// ---------------------------------------------------------------------------
+// WO-69 P3 · 对象接口（多态抽象）种子
+// ---------------------------------------------------------------------------
+
+/**
+ * 内置对象接口。**`Approvable`（可审批物）= WO §七 验收样例**：
+ * "凡是要走审批的东西，都得说得清**谁批的 / 什么时候批的 / 批的是多少钱**"。
+ *
+ * 这不是一份注释：`ARInvoice`（应收发票核销）与 `OverdueRecord`（逾期核销）声明实现它之后，
+ * 三个属性、一个行动、一个函数**同时**成为两者的发布期硬约束——接口加第 4 条要求，
+ * 两个实现者一起被拦下，不用逐个类型去改（这正是"多态抽象"相对"逐类型手抄"的价值）。
+ *
+ * `functions: credit_exposure` 接的是 WO-69 P2 的真求解器本体签名（`SOLVER_ONTOLOGY_SIGNATURES`）：
+ * 该签名声明 credit_exposure 会读 `ARInvoice.{amount,custName,invoiceId,overdueDays}`，
+ * 于是"实现者能不能跑得动这个行为"是**机器可判定**的，而不是接口在自说自话。
+ */
+export const BATTERY_OBJECT_INTERFACES = [
+  {
+    key: "Approvable",
+    name: "可审批物",
+    businessDefinition: {
+      statement:
+        "需要经人工审批才能生效的业务记录：必须能说清审批人（approver）、审批时间（approvedAt）与审批金额（amount）。",
+      excludes: [
+        "系统自动产生、无人工决策环节的派生记录",
+        "只读的统计/投影对象（无状态变更）",
+      ],
+    },
+    properties: [
+      { propKey: "approver", dataType: "string" as const, description: "审批人（用户标识）", required: true },
+      { propKey: "approvedAt", dataType: "date" as const, description: "审批时间", required: true },
+      { propKey: "amount", dataType: "number" as const, description: "本次审批涉及的金额", required: true },
+    ],
+    // 行为继承①：真值变更必须走 S2 审批（R4 唯一用户态对象写路径）。
+    actions: [{ actionTypeKey: "对象数据变更", required: true }],
+    // 行为继承②：金额敞口口径统一走同一求解器（接 P2 签名 → 可判定"实现者喂得饱它吗"）。
+    functions: [{ solverKey: "credit_exposure", required: true }],
+  },
+];
+
+/**
+ * 类型 → 接口/行动绑定（单一来源）。**A 路直 upsert 与 B 路建模链两条种法都从这里取**，
+ * 避免"数据半与引擎半各自写一份"的老坑；不在表内的类型一个字段都不动（零回归）。
+ */
+export const BATTERY_TYPE_INTERFACE_BINDINGS: Record<
+  string,
+  { implements: { interfaceKey: string; version: number | "latest" }[]; actions: { actionTypeKey: string }[] }
+> = {
+  // 跟 latest：接口一演进，下次本体发布即被要求补齐（升级路径显式，不静默失效）。
+  ARInvoice: { implements: [{ interfaceKey: "Approvable", version: "latest" }], actions: [{ actionTypeKey: "对象数据变更" }] },
+  OverdueRecord: { implements: [{ interfaceKey: "Approvable", version: "latest" }], actions: [{ actionTypeKey: "对象数据变更" }] },
+};
+
 /** S2: built-in ActionTypes for the battery pack. */
 export const BATTERY_ACTION_TYPES = [
   {
