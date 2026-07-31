@@ -113,12 +113,36 @@ describe("WO-63 · ④ 空泛词表同源守恒（改一处必须两处同步）
     }
   });
 
-  it("agentcore skill-lint 的字面量与契约常量逐字一致（漂移即红——真单源 import 受 🚦 边界所限，以此守恒门等价堵漏）", () => {
+  // 本断言升级过一次，升级本身值得记：
+  //
+  // 旧版断言「skill-lint.ts 里的字面量词表与契约常量**逐字一致**」——因为当时 🚦 范围边界不许改
+  // agentcore，只能退而求其次留两份副本、用守恒门盯着别漂。但守恒门只能**事后发现**漂移。
+  // 词表改从 contracts import 后，第二份副本不复存在，旧断言的正则自然找不到字面量而红。
+  //
+  // 正确的处置不是删掉这条门，而是把它升级成**更强**的性质：不再检查两份副本是否一致，
+  // 而是检查**第二份副本不存在**。前者容许漂移后被发现，后者让漂移在结构上不可能发生。
+  // 门失效时的默认动作永远是"换成更强的门"，不是"删了它"。
+  it("agentcore skill-lint 不得自带词表副本，必须从 contracts 单源 import（副本重现即红）", () => {
     const src = readFileSync("../agentcore/src/skill-lint.ts", "utf8");
-    const m = src.match(/const FORBIDDEN_WORDS\s*=\s*\[([^\]]*)\]/);
-    expect(m, "skill-lint.ts 找不到 FORBIDDEN_WORDS 字面量").toBeTruthy();
-    const words = m![1]!.split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
-    expect(words).toEqual([...SKILL_SUMMARY_FORBIDDEN_WORDS]);
+
+    // ① 必须真的从 contracts import 该常量（不是恰好同名的本地变量）
+    expect(
+      /import\s*\{[^}]*\bSKILL_SUMMARY_FORBIDDEN_WORDS\b[^}]*\}\s*from\s*["']@platform\/contracts["']/.test(src),
+      "skill-lint.ts 未从 @platform/contracts import SKILL_SUMMARY_FORBIDDEN_WORDS —— 词表必须单源",
+    ).toBe(true);
+
+    // ② 不得再出现任何字面量数组形式的词表（这正是当年"改一处漏一处"的根）
+    const literal = src.match(/const\s+FORBIDDEN_WORDS\s*=\s*\[/);
+    expect(
+      literal,
+      "skill-lint.ts 又出现了字面量词表副本 —— 单源被破坏，请改回 import 契约常量",
+    ).toBeNull();
+
+    // ③ 消费点确实用的是那个单源常量
+    expect(
+      /const\s+FORBIDDEN_WORDS\s*=\s*SKILL_SUMMARY_FORBIDDEN_WORDS\b/.test(src),
+      "skill-lint.ts 的 FORBIDDEN_WORDS 未绑定到契约常量",
+    ).toBe(true);
   });
 });
 
