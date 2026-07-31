@@ -47,7 +47,7 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   // `adopt_mitigation` 是决策内核 commit 的落点。它们是**欠账**，标 NOT_IMPLEMENTED 让欠账可见、可门禁。
   adopt_mitigation: "NOT_IMPLEMENTED",
   采纳经营方案: "NOT_IMPLEMENTED",
-  采纳产能保障方案: "NOT_IMPLEMENTED",
+  采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations
 };
 
 /** plan_change 只有 global-sim 来源真回灌——其余来源等同未实现（不得借 WIRED 之名假装写了）。 */

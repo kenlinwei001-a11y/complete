@@ -471,6 +471,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         return { ok: true, targetRef: `WF-${workflowId}:${n}` };
       }
+      // ── 采纳产能保障方案（G-ACTION-NOOP-EXEC 收口 · 本类型此前审批通过后一字节不写）──
+      // 语义裁决：「采纳」= 把用户拨定的杠杆**落成本体属性真值**，而非开一张生产工单。
+      // 依据：杠杆本来就是本体属性（LEVER_PROP_META：Equipment.oee_current / Process.shifts /
+      // Line.utilization / Process.yield_baseline …），`discoverLevers` 回的每行都带 {objectType,objectId,prop}，
+      // 前端拨杆后发的是 {…, value}。落成属性写入后**下一次推演自动反映**——这才是"产能保障"的实质。
+      // （`mapping.ts` 旧注册表写的 target 是「生产工单MO（写回）」：那是一条新记录，不改变现有真值，
+      //   拨完杠杆再推演仍是老数——与用户"采纳后要看到变化"的预期不符。已按属性写入实现。）
+      if (draft.actionTypeKey === "采纳产能保障方案") {
+        const levers = Array.isArray(draft.payload.levers) ? (draft.payload.levers as Record<string, unknown>[]) : [];
+        if (levers.length === 0) {
+          return { ok: false, error: "采纳产能保障方案：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）" };
+        }
+        const written: string[] = [];
+        for (const l of levers) {
+          const objectId = String(l.objectId ?? "");
+          const prop = String(l.prop ?? "");
+          const value = l.value;
+          // 缺任一要素即**诚实失败**，绝不猜一个值写下去（写错真值比不写危险）。
+          if (!objectId || !prop || typeof value !== "number" || !Number.isFinite(value)) {
+            return { ok: false, error: `采纳产能保障方案：杠杆行缺 objectId/prop/value（收到 ${JSON.stringify(l)}）——拒绝臆造写入` };
+          }
+          const obj = await repos.objects.get(draft.tenantId, objectId);
+          if (!obj) return { ok: false, error: `采纳产能保障方案：对象不存在 ${objectId}` };
+          await repos.objects.put({ ...obj, props: { ...obj.props, [prop]: value }, origin: { type: "MANUAL" } });
+          written.push(`${objectId}.${prop}`);
+        }
+        // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」同一套）。
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        // targetRef 自证写了什么、写了几处——**刻意不使用 MO- 前缀**（那正是假单号的形态）。
+        return { ok: true, targetRef: `CAP-ADOPT:${written.length}:${written[0]}` };
+      }
+
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
       // 让"审批通过但什么都没写"在界面与审计里可分辨（G-ACTION-NOOP-EXEC·R4 真值经 Action）。
       return unwiredExecutor.execute(draft);
