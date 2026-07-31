@@ -20,12 +20,37 @@ import type { ObjectInstance, ObjectTypeDef } from "../domain.js";
 import type { OntologyBinding, OptTemplateFamily } from "@platform/contracts";
 import { validationError } from "../errors.js";
 
-/** 绑定层读本体所需的最小仓储视图（解耦 Repos；app/service 注入真实实现）。 */
+/**
+ * 绑定层读本体所需的最小仓储视图（解耦 Repos；app/service 注入真实实现）。
+ *
+ * WO-66-RULES-FIRST-CLASS P1 · **M5 死接口已删（判断与理由）**：此处原有
+ * `ruleParams?(tenantId, ruleKey): Promise<Record<string, number>|undefined>` —— 声明了但
+ * **全仓无实现、无调用者**（台账 §4.2 M5）。删而不实现的三条理由：
+ *   ① **不可实现**：`OntologyBinding` 只有 `coeffSource: "property"|"rule_params"`，**没有 `coeffRuleKey`**
+ *      —— 即使实现了这个方法也拿不到该读哪条规则，是一个语义不闭合的声明。
+ *   ② **与本体 FUS4 冲突**：本体 §3 优化融合链明记「规则是 gate 非系数源(FUS4)」；优化系数应来自
+ *      绑定的**类型化本体字段**，把系数搬进规则是反向。
+ *   ③ **禁造第 6 套**：真要做也必须走 P1 收敛出的唯一入口 `RuleParamReader`，而不是在绑定层另开一条读法。
+ * 同时（见 `assertCoeffSourceSupported`）把「`coeffSource=rule_params` 的绑定被当成 property 静默处理」
+ * 改为**显式报错**——静默降级是本仓反复吃亏的病灶族。
+ */
 export interface BindingOntologyView {
   listTypes(tenantId: string): Promise<ObjectTypeDef[]>;
   listByType(tenantId: string, typeKey: string): Promise<ObjectInstance[]>;
-  /** coeffSource=rule_params 时取规则参数（G-10「改规则即改优化」）；无则 undefined。 */
-  ruleParams?(tenantId: string, ruleKey: string): Promise<Record<string, number> | undefined>;
+}
+
+/**
+ * WO-66 P1（禁静默降级）：`coeffSource="rule_params"` 目前**未实现**（见上）。
+ * 此前这类绑定会被**静默当成 `property`** 处理 → 用户以为系数来自规则、实际来自对象属性。
+ * 现显式报错，把"没做"说出来，而不是假装做了。
+ */
+export function assertCoeffSourceSupported(binding: OntologyBinding): void {
+  if (binding.coeffSource === "rule_params") {
+    throw validationError(
+      "OntologyBinding.coeffSource='rule_params' 尚未实现（缺 coeffRuleKey 语义；本体 §3 FUS4：规则是 gate 非系数源）。" +
+        "请改用 coeffSource='property' 绑定类型化本体字段；确需读规则参数请先补 coeffRuleKey 契约并走唯一入口 RuleParamReader。",
+    );
+  }
 }
 
 /** roleBindings → Map(role → ref)，便于按 role 取绑定。 */
@@ -112,6 +137,8 @@ export async function bindToSolverArgs(
   if (binding.templateKey !== family && binding.templateKey !== "") {
     // templateKey 与 family 不一致只警示语义；以传入 family 为准（family 来自模板族）。
   }
+  // WO-66 P1（禁静默降级）：未实现的 coeffSource 显式报错，不再被当成 property 静默处理。
+  assertCoeffSourceSupported(binding);
   const byKey = await groundBinding(view, binding);
   const rm = roleMap(binding);
   const tid = binding.tenantId;

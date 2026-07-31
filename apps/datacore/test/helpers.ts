@@ -65,6 +65,27 @@ export async function seedBattery(t: TestApp, seed = 42): Promise<void> {
   if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
 }
 
+/**
+ * WO-66-RULES-FIRST-CLASS P1：发布/覆盖一条规则（保「一 key 一 PUBLISHED」不变量）。
+ *
+ * 背景：多处测试直接 `repos.rules.put({ id: "rule_xxx", status: "PUBLISHED" })` 覆盖某条命名系数规则。
+ * 在这些 ruleKey **从未播种**的旧世界里这是安全的；本单把 `*_coeffs` 等 9 条系数规则真播种进合成种子后
+ * （闭掉「读规则但规则从不存在 → coeff() 恒走兜底 = 死代码」这个 ☠ 洞），裸 put 会造成**同一 key 两条
+ * PUBLISHED 并存**，读取方取到哪条取决于仓储遍历序 —— 这正是生产里 `RulesService.create/publish`
+ * 用「先 RETIRE 旧 PUBLISHED」维护的不变量。
+ *
+ * 本 helper 复刻该不变量：先把同 key 的既有 PUBLISHED 置 RETIRED，再写入新版本。
+ * **断言（回归锚）一字不改**，只修被上述新事实推翻的 setup 前提。
+ */
+export async function publishRuleOverride(
+  t: TestApp,
+  rule: { id: string; tenantId: string; key: string; [k: string]: unknown },
+): Promise<void> {
+  const existing = await t.repos.rules.list(rule.tenantId, (r) => r.key === rule.key && r.status === "PUBLISHED");
+  for (const old of existing) await t.repos.rules.put({ ...old, status: "RETIRED" });
+  await t.repos.rules.put(rule as never);
+}
+
 export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers = ADMIN) =>
   t.app.inject({ method: "POST", url: `/a/v1/solvers/${solverKey}/invoke`, headers, payload: { args } });
 

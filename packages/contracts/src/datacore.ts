@@ -120,8 +120,12 @@ export const RuleEntrySchema = z.object({
 export type RuleEntry = z.infer<typeof RuleEntrySchema>;
 
 /**
- * 规则即引用（PRD-rules-as-references §4/附录B）：每个求解器声明它引用哪些规则（ruleKey）。
- * 单一来源——门 `rule-closure:check` 据此校验「⋃ 引用 ⊆ 已发布规则定义」，杜绝"未找到定义"回潮。
+ * 规则即引用（PRD-rules-as-references §4/附录B）：每个求解器引用哪些规则（ruleKey）。
+ *
+ * ⚠ **WO-66-RULES-FIRST-CLASS P2 起本表降级为「出厂 seed 常量」，不再是运行期真相源**。
+ * 运行期真相源 = 一等绑定表 `SolverRuleBinding`（按租户可编辑，见下）；合成种子把本表物化成绑定行。
+ * 求解器评估**优先读数据侧绑定**，绑定为空才回落本常量（并在输出 `ruleBindingSource` 标来源，禁静默）。
+ * 保留本表的理由：① 出厂默认 ② 空租户/未播种态的冷启动 ③ 闭包门的静态侧断言（`rule-closure:check`）。
  * （sop_balance 是工作流非求解器，其规则引用由 sop 工作流声明，不在此表。）
  */
 export const SOLVER_RULE_REFS: Record<string, string[]> = {
@@ -145,6 +149,30 @@ export const SOLVER_RULE_REFS: Record<string, string[]> = {
   quarterly_gap: ["C08", "C29"],
   carbon_footprint: ["C33"],
 };
+
+/**
+ * WO-66-RULES-FIRST-CLASS · P2 —— **求解器→规则 绑定一等化**（G-10 收尾）。
+ *
+ * 为什么是**独立第三张表**而不是 `RuleEntry.appliesToSolvers`（台账 §7 三条理由）：
+ * ① 消费只有 `solverKey → rules[]` 单向，反向存会诱发第二次全表扫（正是被收敛掉的 M2 的错）；
+ * ② 规则（A2 抽取 / A5 规则库 / 合成种子 三条路）与求解器（`SOLVER_KEYS` 注册）**生命周期不同源**，
+ *    绑定天然属于两个注册表之间的第三张表——挂任一侧都会让另一侧新增走不通；
+ * ③ 独立表才带 `tenantId`（R2 租户隔离）、才好发失效事件（复用 rules.updated + kind 标记）、
+ *    门才能**双向校验**（ruleKey 有定义 ∧ solverKey ∈ SOLVER_KEYS）。
+ *
+ * 「改绑定即改评估面」：改这张表 → 该求解器评估的规则集真变，**不改一行代码、不发版**（= G-10 验收语义）。
+ */
+export const SolverRuleBindingSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  solverKey: z.string(),
+  ruleKey: z.string(),
+  /** 关闭 = 该求解器不再评估此规则（软删，保留审计痕迹）。 */
+  enabled: z.boolean(),
+  /** `factory` = 由 `SOLVER_RULE_REFS` 出厂 seed 物化；`manual` = 业务方在规则库里加的。 */
+  source: z.enum(["factory", "manual"]),
+});
+export type SolverRuleBinding = z.infer<typeof SolverRuleBindingSchema>;
 
 /**
  * 规则即引用（PRD-rules-as-references §4）：求解器透出**真评估结果**（关联规则面板显 PASS/WARN/BLOCK，

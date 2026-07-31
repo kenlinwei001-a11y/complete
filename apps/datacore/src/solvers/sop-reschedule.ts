@@ -68,7 +68,9 @@ export function sopReschedule(input: SopRescheduleInput): SopRescheduleResult {
   let newDueDay: number;
   if (input.newDueDate) newDueDay = dayFrom(forecastStart, input.newDueDate);
   else if (typeof input.advanceDays === "number") newDueDay = origDueDay - Math.max(0, Math.round(input.advanceDays));
-  else newDueDay = Math.round(origDueDay * (1 - (input.advancePct ?? 0.2)));
+  // WO-66 P1：交期提前比例默认此前**未走 coeff()**（台账登记为「否」）→ 现同走唯一入口读
+  // `sop_reschedule_coeffs.defaultAdvancePct`（缺省 0.2 代码兜底，会在 thresholdProvenance 里认账）。
+  else newDueDay = Math.round(origDueDay * (1 - (input.advancePct ?? input.coeff("defaultAdvancePct", 0.2))));
   newDueDay = Math.max(1, newDueDay); // 至少 1 天窗口（禁 0 除）
   const daysAvail = newDueDay;
   const requiredDaily = round(qty / daysAvail, 2);

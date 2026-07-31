@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, type TestApp , publishRuleOverride } from "./helpers.js";
 import type { AuthCtx } from "../src/domain.js";
 import { CAUSAL_FACTORS } from "../src/synthetic/battery-extended.js";
 
@@ -55,7 +55,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
     await seedBattery(t);
 
     // CEO-2-v2 引擎：按 metricKey 读取绑定规则，做确定性多假设分配。
-    await t.repos.rules.put({
+    await publishRuleOverride(t, {
       id: "rule_seam_mcb",
       tenantId: ADMIN.tenantId,
       key: "metric_causal_binding",
@@ -70,7 +70,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
       origin: { type: "SYNTHETIC" },
       version: 1,
       status: "PUBLISHED",
-    } as never);
+    });
 
     const g = await runGapAttribution(t, "seg_attain_ess");
 
@@ -256,7 +256,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
     const t = await makeApp();
     await seedBattery(t);
 
-    await t.repos.rules.put({
+    await publishRuleOverride(t, {
       id: "rule_seam_mcb_share",
       tenantId: ADMIN.tenantId,
       key: "metric_causal_binding",
@@ -271,7 +271,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
       origin: { type: "SYNTHETIC" },
       version: 1,
       status: "PUBLISHED",
-    } as never);
+    });
 
     const g = await runGapAttribution(t, "market_share");
 

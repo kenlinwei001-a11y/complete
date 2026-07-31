@@ -1,4 +1,4 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { IndustryTemplateSchema, SOLVER_RULE_REFS, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -240,6 +240,10 @@ export class SyntheticService {
           status: "PUBLISHED",
         });
       }
+      // ⑤b WO-66-RULES-FIRST-CLASS P2：把出厂 seed `SOLVER_RULE_REFS` **物化成一等绑定行**
+      // （运行期真相源）。物化后业务方改绑定表 → 求解器评估面真变，不改代码不发版（G-10 验收语义）。
+      // 幂等：id = `srb_{solverKey}_{ruleKey}`，重播种 upsert 覆盖，不产生重复行（R6）。
+      await this.seedSolverRuleBindings(ctx);
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
       // 增量视图（§7.14–7.17 + 图谱八视角 + 运营复盘）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
@@ -345,6 +349,35 @@ export class SyntheticService {
     return views.filter((v) => {
       const fk = VIEW_FEATURE_MAP[v];
       return !fk || enabled.has(fk);
+    });
+  }
+
+  /**
+   * WO-66-RULES-FIRST-CLASS P2 · 出厂 seed → **一等绑定行**物化。
+   * `SOLVER_RULE_REFS`（contracts 常量）在此变成 `SolverRuleBinding` 数据行；此后运行期只读绑定表，
+   * 常量仅作未播种态回落。改绑定表 → 求解器评估面真变（改数据不改代码 = G-10 验收语义）。
+   * 幂等（id 确定性）、tenant 隔离（R2）、无时钟/随机（R6）。
+   */
+  private async seedSolverRuleBindings(ctx: AuthCtx): Promise<void> {
+    for (const solverKey of Object.keys(SOLVER_RULE_REFS).sort()) {
+      for (const ruleKey of [...(SOLVER_RULE_REFS[solverKey] ?? [])].sort()) {
+        await this.repos.solverRuleBindings.put({
+          id: `srb_${solverKey}_${ruleKey}`,
+          tenantId: ctx.tenantId,
+          solverKey,
+          ruleKey,
+          enabled: true,
+          source: "factory",
+        });
+      }
+    }
+    // 失效通道**复用既有事件** `rules.updated`（其 invalidates 已含 agent/workflow 的 rule-bindings，
+    // 语义正是"规则接线变了"）。**不新造事件名** —— 事件单一来源在 agentcore/event-subscriptions.ts，
+    // 而本单 🚦范围边界禁改 agentcore；发一个没人订阅的新事件名正是本单在治的"装饰"病。
+    await this.outbox?.emit(ctx.tenantId, "rules.updated", {
+      kind: "solver_rule_binding",
+      solvers: Object.keys(SOLVER_RULE_REFS).length,
+      source: "factory_seed",
     });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, type TestApp , publishRuleOverride } from "./helpers.js";
 import type { AuthCtx } from "../src/domain.js";
 
 /**
@@ -49,11 +49,11 @@ describe("WO-CEO-3 · decision_play 决策推演引擎", () => {
     const t = await makeApp(); await seedBattery(t);
     const before = await run(t);
     expect(before.triggers.find((x) => x.triggerId === "trig-backup-cert")!.fired).toBe(true);
-    await t.repos.rules.put({
+    await publishRuleOverride(t, {
       id: "rule_trig_th", tenantId: ADMIN.tenantId, key: "trigger_thresholds", name: "触发阈值",
       expression: "decision_play", scopeObjectTypes: ["TriggerRule"], severity: "INFO",
       params: { "trig-backup-cert": 20 }, origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED",
-    } as never);
+    });
     const after = await run(t);
     const bk = after.triggers.find((x) => x.triggerId === "trig-backup-cert")!;
     expect(bk.threshold).toBe(20);

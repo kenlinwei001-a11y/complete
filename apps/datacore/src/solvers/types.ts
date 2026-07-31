@@ -1,4 +1,5 @@
 import type { ObjectInstance } from "../domain.js";
+import { createRuleParamReader, type RuleParamReader, type RuleSnapshot } from "./rule-params.js";
 
 /** Typed view over the per-tenant solverParams JSONB (battery defaults in synthetic/battery.ts). */
 export interface SolverParamsShape {
@@ -245,14 +246,27 @@ export interface SolverContext {
   // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
   // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
-  rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number | string | string[]> }>;
+  rules?: RuleSnapshot;
   ruleSetVersion?: string;
+  // WO-66-RULES-FIRST-CLASS P1（机制收敛）：**求解器读业务阈值的唯一入口**（见 `rule-params.ts`）。
+  // loadContext 注入；测试直构 ctx 缺省 → `ruleParamsOf(c)` 就地建空 reader（全走诚实兜底，行为不变）。
+  ruleParams?: RuleParamReader;
   // WO-DATAMODE-UNIFY-PROVENANCE（唯一真相合成 provenance 谓词·SolverService.buildSynthProvenancePredicate 注入）：
   // 逐对象判"是否合成种子物化"——origin SYNTHETIC ∪（MATERIALIZED 且 datasetId ∈ 合成源连接的物化数据集集）。
   // 求解器据此把**合成对象**派生的紧张度/卡/行加性标 provenanceSynthetic（measurement 维 live/dataMode 不动，两维正交），
   // 使合成数据绝不冒充 LIVE/实测（闭 G-DATAMODE-PROVENANCE-LEAK）。optional：缺省（测试直构 ctx / 无合成源）
   // 视为"全非合成"→ 现行行为不变（向后兼容 R6）。
   isSynthProvenance?: (o: ObjectInstance) => boolean;
+}
+
+/**
+ * WO-66-RULES-FIRST-CLASS P1：取本上下文的**唯一阈值读取入口**。
+ * 缺省（测试直构 ctx / 无规则快照）就地建空 reader 并挂回 ctx —— 同一次推演内 trace 累积到同一个 reader，
+ * 输出侧 `attachThresholdProvenance` 才能把「哪些阈值走了代码兜底」一次说全（禁静默降级）。
+ */
+export function ruleParamsOf(c: SolverContext): RuleParamReader {
+  if (!c.ruleParams) c.ruleParams = createRuleParamReader(c.rules);
+  return c.ruleParams;
 }
 
 export function num(v: unknown, fallback = 0): number {

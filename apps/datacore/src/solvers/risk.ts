@@ -1,7 +1,9 @@
 import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY, deriveDisposition } from "@platform/contracts";
 import { validationError } from "../errors.js";
-import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, ruleParamsOf, str, type SolverContext } from "./types.js";
+// WO-66-RULES-FIRST-CLASS P1：业务阈值经**唯一入口**读规则 params（取代 risk.ts:506 的 M3 直读）。
+import { createRuleParamReader, type RuleParamReader } from "./rule-params.js";
 // WO-LIVE-DISPOSITION T2：克隆-覆写 + 逐工序×型号产能链**复用 capacity.ts 单源**（= service.ts capacityInferenceApply
 // 用的同两个函数），杜绝处置表另写一套 override / 另算一套产能 → 与产能活台口径漂移。
 import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
@@ -23,10 +25,19 @@ export function primaryFactor(c: SolverContext, baseId: string): string {
  * 替代 CASE_SPECS 手写 severity 字面量（R13 可溯源：severity 来自 util/primaryFactor/crisis；R6 同输入同判）。
  * 阈值 92/78 + 主瓶颈加成 12（业务区间，后端求解器域参数；高利用率基地的主瓶颈因子=高危）。
  */
-export function caseSeverityFromData(util: number, isPrimaryFactor: boolean, crisis: boolean): "LOW" | "MEDIUM" | "HIGH" {
+export function caseSeverityFromData(
+  util: number,
+  isPrimaryFactor: boolean,
+  crisis: boolean,
+  rp: RuleParamReader = createRuleParamReader(),
+): "LOW" | "MEDIUM" | "HIGH" {
   if (crisis) return "HIGH"; // 结构性危机（到货断供）恒高危
-  const score = util + (isPrimaryFactor ? 12 : 0);
-  return score >= 92 ? "HIGH" : score >= 78 ? "MEDIUM" : "LOW";
+  // WO-66 P1 · B27（rule `risk_thresholds`）：高危线 / 中危线 / 主瓶颈加成（注释自承「业务区间」）。
+  const bonus = rp.num("risk_thresholds", "primaryFactorBonus", 12);
+  const high = rp.num("risk_thresholds", "severityHigh", 92);
+  const medium = rp.num("risk_thresholds", "severityMedium", 78);
+  const score = util + (isPrimaryFactor ? bonus : 0);
+  return score >= high ? "HIGH" : score >= medium ? "MEDIUM" : "LOW";
 }
 
 /** MOCK 口径 (exact prototype formula): seed=(base首字符码+因素首字符码×7) mod 9. */
@@ -216,7 +227,10 @@ export function riskEvents(c: SolverContext, baseId: string, horizon: number): R
 export function riskTarget(c: SolverContext, baseId: string, factor: string, cur: number): number {
   const t = c.params.risk.targetLift;
   const lift = (((baseName(c, baseId).charCodeAt(0) || 0) + (factor.charCodeAt(0) || 0)) % t.mod) + t.base;
-  return Math.min(96, cur + lift);
+  // WO-66 P1 · B31（rule `risk_thresholds.tensionClimbCap`）：张力爬坡上限。
+  // ⚠ 诚实边界：本值 96 与 `BATTERY_SOLVER_PARAMS.risk.cap`(=98) 是**同概念两值**（台账 B31 已登记）。
+  // 本单**只做去硬编码、不改口径**（改成 98 会动既有回归锚 → 违 R6/S7）；口径统一另单裁决。
+  return Math.min(ruleParamsOf(c).num("risk_thresholds", "tensionClimbCap", 96), cur + lift);
 }
 
 /** tension(b,f,d) per S1.4 — returns the daily series for d=1..H. */
@@ -503,8 +517,9 @@ function buildRiskPlanRows(
   const early: string[] = [];
 
   // R14 系数单源：与 base_capacity_outlook 同一条 PUBLISHED RuleEntry `base_outlook_coeffs`.params（缺省诚实兜底）。
-  const coeffRule = c.rules?.base_outlook_coeffs?.params;
-  const coeff = (k: string, dflt: number): number => num(coeffRule?.[k], dflt);
+  // WO-66 P1（机制收敛·接缝要害）：与 base_capacity_outlook **同一入口同一实现**读同一条规则
+  //（此前两侧各走一条取数路径：这里读 ctx 快照、那边当场再查一次库 → 一致性无测试驱动）。
+  const coeff = ruleParamsOf(c).scoped("base_outlook_coeffs");
   const overtimeUpliftPct = coeff("overtimeUpliftPct", 0.15);
   const crossBaseAbsorbPct = coeff("crossBaseAbsorbPct", 0.6);
 
@@ -592,11 +607,13 @@ function buildRiskPlanRows(
       plan: s0.name,
       ...(overlay.length > 0 ? { overlay: { count: overlay.length, capRatio } } : {}),
     });
-    if (peak >= 90 && sols[1]) {
+    // WO-66 P1 · B32（rule `risk_thresholds.secondPlanPeak`）：触发第二处置方案的峰值线。
+    const secondPlanPeak = ruleParamsOf(c).num("risk_thresholds", "secondPlanPeak", 90);
+    if (peak >= secondPlanPeak && sols[1]) {
       rows.push({
         act: `${sols[1].name}（${shortBase}·备份方案）`,
         // 备份方案（方案库第 2 选）同样挂真派生摘要 + steps（点开可见同一推导过程·非空壳）。
-        det: `峰值≥90 双保险 · ${d.summary}`,
+        det: `峰值≥${secondPlanPeak} 双保险 · ${d.summary}`,
         owner,
         start: `T+${cross - 3}·${mmdd(fs, cross - 3)}`,
         done: `T+${cross + 7}·${mmdd(fs, cross + 7)}`,
@@ -935,9 +952,12 @@ export function applyOrderOverride(
   baseCredit: number,
   baseGm: number,
   ov?: { credit?: boolean; mAdj?: number; why?: string },
+  rp: RuleParamReader = createRuleParamReader(),
 ): { creditRatio: number; gm: number } {
+  // WO-66 P1 · B36（C13 客户信用额度）：信用占用比越限线。
+  const overLimit = rp.num("C13", "creditOverLimitRatio", 1.05);
   return {
-    creditRatio: ov?.credit ? Math.max(baseCredit, 1.05) : baseCredit,
+    creditRatio: ov?.credit ? Math.max(baseCredit, overLimit) : baseCredit,
     gm: ov?.mAdj ? round(baseGm + ov.mAdj, 1) : baseGm,
   };
 }

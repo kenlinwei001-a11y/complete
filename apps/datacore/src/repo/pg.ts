@@ -611,6 +611,12 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     ruleDocs: new PgStore(pool, "rule_docs"),
     ruleCandidates: new PgStore(pool, "rule_candidates"),
     rules: new PgStore(pool, "rules"),
+    // WO-66-RULES-FIRST-CLASS P2：求解器→规则 绑定一等表（与 memory.ts / repo.ts / migration028 四方同步）。
+    // 额外列 solver_key/rule_key 供门与运维直接 SQL 查（doc 仍是唯一真相）。
+    solverRuleBindings: new PgStore(pool, "solver_rule_bindings", (b) => ({
+      solver_key: b.solverKey,
+      rule_key: b.ruleKey,
+    })),
     ontologyTypes: new PgStore(pool, "ontology_types"),
     ontologyLinks: new PgStore(pool, "ontology_links"),
     ontologyDrafts: new PgStore(pool, "ontology_drafts"),

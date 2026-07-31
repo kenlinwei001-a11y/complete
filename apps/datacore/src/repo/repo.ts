@@ -204,6 +204,12 @@ export interface Repos {
   ruleDocs: Store<RuleDoc>;
   ruleCandidates: Store<RuleCandidate>;
   rules: Store<Rule>;
+  /**
+   * WO-66-RULES-FIRST-CLASS P2 · 求解器→规则 绑定一等表（migration028）。
+   * 运行期真相源；`SOLVER_RULE_REFS` 降级为出厂 seed（合成种子物化进本表）。
+   * id 约定 `srb_{solverKey}_{ruleKey}` —— 幂等 upsert，重播种不重复。
+   */
+  solverRuleBindings: Store<import("@platform/contracts").SolverRuleBinding>;
   ontologyTypes: Store<ObjectTypeDef>;
   ontologyLinks: Store<LinkTypeDef>;
   ontologyDrafts: Store<OntologyDraft>;

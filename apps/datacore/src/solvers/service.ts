@@ -7,7 +7,9 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
-import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, ruleParamsOf, type SolverContext, type SolverParamsShape } from "./types.js";
+// WO-66-RULES-FIRST-CLASS P1：阈值读规则的唯一入口（禁再写 rules.find(...)/rule?.params?.[k] ?? dflt）。
+import { attachThresholdProvenance, createRuleParamReader, ruleSnapshotOf, type RuleParamReader, type RuleSnapshot } from "./rule-params.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -1328,7 +1330,7 @@ export class SolverService {
    * - actual>=target/gap<=0 短路边界，返回 noGap=true。
    * - 节点与结果增加 severityKind 分级。
    */
-  private async gapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async gapAttribution(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const metricObjs = (await this.repos.objects.listByType(ctx.tenantId, "Metric")).map((o) => o.props);
     if (metricObjs.length === 0) throw validationError("gap_attribution 需先合成 Metric（经营目标）对象");
     // ── E1/D2 · base×factor 作用域 + 基地键归一（G-GAP-SCOPE 闭）──
@@ -1379,27 +1381,34 @@ export class SolverService {
     }
 
     // R14 归因系数（一等 RuleEntry.params·PUBLISHED·改系数即改归因·C10）；缺省内联诚实兜底。
-    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const attrRule = pubRules.find((r) => r.key === "gap_attribution_coeffs");
-    const coeff = (k: string, dflt: number) => num(attrRule?.params?.[k] ?? dflt);
+    // WO-66 P1（机制收敛）：走唯一入口 —— 删旧 `pubRules.find(...)` + 临时 coeff 闭包（M2 四处之一）。
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
+    // WO-66 P1 · B53（C05 产线利用率/设备域）：设备 OEE 名义基线（此前 3 处逐字重复的 0.85）。
+    const nominalOee = rp.num("C05", "nominalOee", 0.85);
+    // WO-66 P1 · B59（rule `severity_grades`）：严重度分级（此前 3 处逐字重复的 0.7/0.4/0.2）。
+    const sevCritical = rp.num("severity_grades", "critical", 0.7);
+    const sevMajor = rp.num("severity_grades", "major", 0.4);
+    const sevMinor = rp.num("severity_grades", "minor", 0.2);
+    const coeff = rp.scoped("gap_attribution_coeffs");
     const structuralExplained = Math.min(1, coeff("structuralExplained", 0.88)); // 结构层可解释比（余入 residual·顶层 <15% C6）
     const causalExplained = Math.min(1, coeff("causalExplained", 0.8)); // 因果层可解释比
 
     // v2·MetricCausalBinding 配置规则：按 metricKey 选择优先因果根 + 域权重。
+    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
     const bindingRule = pubRules.find((r) => r.key === "metric_causal_binding");
     const bindingMap = this.parseMetricCausalBindings(bindingRule?.params as Record<string, number> | undefined);
     const binding = bindingMap.get(str(m.key));
 
     // ── E1 · scope.factorId 下钻：从指定因子入口沿 caused_by 归因（复用 metricDomain 遍历·G-GAP-SCOPE）──
     if (scopedFactorId) {
-      const res = await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, scopedFactorId);
+      const res = await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, scopedFactorId, rp);
       res.scope = { factorId: scopedFactorId };
       return res;
     }
 
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
     if (str(m.key) === "market_share") {
-      return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding);
+      return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding, rp);
     }
 
     // ── 泛化 metric-aware 域路由（WO-metric-aware-integrated）：凡指标配了专属因果域
@@ -1412,7 +1421,7 @@ export class SolverService {
       .filter((c) => str(c.metricKey) === str(m.key) && !Boolean(c.isRoot))
       .sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)))[0];
     if (domainEntry) {
-      return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, str(domainEntry.factorId));
+      return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, str(domainEntry.factorId), rp);
     }
 
     // ── 结构反向分摊：受影响订单（真 Order.value）→ 基地聚合 → 基地内瓶颈（设备 OEE / 物料 gapTon）──
@@ -1483,7 +1492,7 @@ export class SolverService {
       l2parentSum = round(l2parentSum + pg, 4);
       // 该基地设备 OEE 缺口（1−oee_current 均值）作瓶颈驱动；物料 gapTon（全局共享正极）作物料驱动。
       const baseEquip = equipment.filter((q) => str(q.baseId) === e.base);
-      const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / baseEquip.length, 4) : 0;
+      const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, nominalOee)), 0) / baseEquip.length, 4) : 0;
       const matDriver = round(matBal.reduce((a, mb) => a + num(mb.gapTon), 0) / 1e4, 4); // 万吨级
       // 子驱动：各订单 value + 设备瓶颈 + 物料瓶颈。
       const childDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown>; businessType?: string }[] = [];
@@ -1547,7 +1556,7 @@ export class SolverService {
         const expDriver = round(exposureOrders.reduce((a, o) => a + orderVal(o), 0), 2) || 1;
         const pgExp = round(G * structuralExplained * (expDriver / totalBaseDriver), 4);
         const baseEquip = equipment.filter((q) => str(q.baseId) === scopedBaseId);
-        const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / baseEquip.length, 4) : 0;
+        const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, nominalOee)), 0) / baseEquip.length, 4) : 0;
         const expDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown>; businessType?: string }[] = [];
         for (const o of exposureOrders) {
           expDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
@@ -1682,9 +1691,9 @@ export class SolverService {
       return { sev: round(sev, 4), raw };
     };
     const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
-      if (sev >= 0.7) return "critical";
-      if (sev >= 0.4) return "major";
-      if (sev >= 0.2) return "minor";
+      if (sev >= sevCritical) return "critical";
+      if (sev >= sevMajor) return "major";
+      if (sev >= sevMinor) return "minor";
       return "info";
     };
     const kindDomain = (kind: string): string => {
@@ -1810,8 +1819,13 @@ export class SolverService {
     unit: string,
     structuralExplained: number,
     causalExplained: number,
-    binding?: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean },
+    binding: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean } | undefined,
+    rp: RuleParamReader,
   ): Promise<Record<string, unknown>> {
+    // WO-66 P1 · B59（rule `severity_grades`）：严重度分级（此前 3 处逐字重复的 0.7/0.4/0.2）。
+    const sevCritical = rp.num("severity_grades", "critical", 0.7);
+    const sevMajor = rp.num("severity_grades", "major", 0.4);
+    const sevMinor = rp.num("severity_grades", "minor", 0.2);
     const levels: Record<string, unknown>[] = [];
     const reconChecks: Record<string, unknown>[] = [];
     const atomicLeaves: Record<string, unknown>[] = [];
@@ -1928,9 +1942,9 @@ export class SolverService {
       return { sev: round(sev, 4), raw };
     };
     const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
-      if (sev >= 0.7) return "critical";
-      if (sev >= 0.4) return "major";
-      if (sev >= 0.2) return "minor";
+      if (sev >= sevCritical) return "critical";
+      if (sev >= sevMajor) return "major";
+      if (sev >= sevMinor) return "minor";
       return "info";
     };
     const kindDomain = (kind: string): string => {
@@ -2080,7 +2094,12 @@ export class SolverService {
     causalExplained: number,
     binding: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean } | undefined,
     entryFactorId: string,
+    rp: RuleParamReader,
   ): Promise<Record<string, unknown>> {
+    // WO-66 P1 · B59（rule `severity_grades`）：严重度分级（此前 3 处逐字重复的 0.7/0.4/0.2）。
+    const sevCritical = rp.num("severity_grades", "critical", 0.7);
+    const sevMajor = rp.num("severity_grades", "major", 0.4);
+    const sevMinor = rp.num("severity_grades", "minor", 0.2);
     const levels: Record<string, unknown>[] = [];
     const reconChecks: Record<string, unknown>[] = [];
     const atomicLeaves: Record<string, unknown>[] = [];
@@ -2184,9 +2203,9 @@ export class SolverService {
 
     // 通用 severity：叶级真 drill 值幅度在到达集内归一（改颗粒→归因变·C5）。绑定/域权重优先。
     const severityKindOf = (sev: number): "critical" | "major" | "minor" | "info" => {
-      if (sev >= 0.7) return "critical";
-      if (sev >= 0.4) return "major";
-      if (sev >= 0.2) return "minor";
+      if (sev >= sevCritical) return "critical";
+      if (sev >= sevMajor) return "major";
+      if (sev >= sevMinor) return "minor";
       return "info";
     };
     const kindDomain = (kind: string): string => {
@@ -2335,7 +2354,7 @@ export class SolverService {
    * KILL-MOCK-RED：无 S&OP 产销数据 → 诚实空（不编五五开·C6）。R6：排序稳定 + 无时钟/随机。
    * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
    */
-  private async supplyDemandGapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async supplyDemandGapAttribution(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const sop = (await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow")).map((o) => o.props);
     const segs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
@@ -2356,10 +2375,17 @@ export class SolverService {
     }
 
     // R14 归因系数（一等 RuleEntry.params·PUBLISHED·改系数即改归因）；缺省诚实兜底。
-    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const attrRule = pubRules.find((r) => r.key === "supply_demand_gap_coeffs");
-    const explained = Math.min(1, num(attrRule?.params?.explained ?? 0.85)); // 可解释比（余入 residual·诚实承未解释）
-    const matTonToWan = num(attrRule?.params?.matTonToWan ?? 0.01); // 物料缺吨→万套等效折算（R14 可校准）
+    // WO-66 P1（机制收敛）：唯一入口（原为内联 `attrRule?.params?.x ?? dflt` 第 5 处独立读法）。
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
+    // WO-66 P1 · B53（C05 产线利用率/设备域）：设备 OEE 名义基线（此前 3 处逐字重复的 0.85）。
+    const nominalOee = rp.num("C05", "nominalOee", 0.85);
+    // WO-66 P1 · B59（rule `severity_grades`）：严重度分级（此前 3 处逐字重复的 0.7/0.4/0.2）。
+    const sevCritical = rp.num("severity_grades", "critical", 0.7);
+    const sevMajor = rp.num("severity_grades", "major", 0.4);
+    const sevMinor = rp.num("severity_grades", "minor", 0.2);
+    const sdCoeff = rp.scoped("supply_demand_gap_coeffs");
+    const explained = Math.min(1, sdCoeff("explained", 0.85)); // 可解释比（余入 residual·诚实承未解释）
+    const matTonToWan = sdCoeff("matTonToWan", 0.01); // 物料缺吨→万套等效折算（R14 可校准）
 
     type Drv = { id: string; factor: string; driver: number; prov: Record<string, unknown> };
     // ── 需求端驱动（真颗粒·万套等效）──
@@ -2379,7 +2405,10 @@ export class SolverService {
     // ── 供给端驱动（真颗粒·万套等效）──
     const supplyDrv: Drv[] = [];
     const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
-    const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
+    // WO-66 P1 · B71（R-一致修）：年化工作日复用 contracts 单一来源 BATTERY_SOLVER_PARAMS.operatingDaysPerYear
+    // （同文件 :2591 已正确读取，此处曾旁路裸写 300 → 一个事实两个出处）。同值 300 → 既有回归锚逐字节不变。
+    const annualWorkDays = num(BATTERY_SOLVER_PARAMS.operatingDaysPerYear, 300);
+    const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * annualWorkDays, 0) / 1e4, 4); // 年化产能（万套·capacityDaily 缺则 0）
     // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
     const capBase = totalCapWan > 0 ? totalCapWan : finalDemand;
     const capGap = totalCapWan > 0 ? round(Math.max(0, finalDemand - totalCapWan), 4) : 0; // 无产能颗粒→不臆造产能缺口（诚实 0）
@@ -2389,7 +2418,7 @@ export class SolverService {
     if (matGapWan > 0) supplyDrv.push({ id: "material_gap", factor: "物料缺口（ΣgapTon 折万套）", driver: matGapWan,
       prov: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
     // 设备 OEE 损失：Σ(1−oee_current) 均值 × 产能基准（越低 OEE → 供给损失越大·万套等效·随 oee_current 真变 C4）。
-    const oeeDeficit = equipment.length ? round(equipment.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / equipment.length, 4) : 0;
+    const oeeDeficit = equipment.length ? round(equipment.reduce((a, q) => a + (1 - num(q.oee_current, nominalOee)), 0) / equipment.length, 4) : 0;
     const oeeLossWan = round(oeeDeficit * capBase, 4);
     if (oeeLossWan > 0) supplyDrv.push({ id: "oee_loss", factor: "设备 OEE 损失（1−OEE 均值×产能）", driver: oeeLossWan,
       prov: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
@@ -2455,7 +2484,7 @@ export class SolverService {
    * PUBLISHED RuleEntry `sop_reschedule_coeffs`.params（R14 可校准·缺省诚实兜底），委派纯算法 runSopReschedule。
    * 避免被 decision_play 劫持：ceo-route 产销意图直绑此 solver（args 从 pageContext.focus.order 派生）。
    */
-  private async sopReschedule(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async sopReschedule(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const targetOrderId = str(args.targetOrderId);
     if (!targetOrderId) throw validationError("sop_reschedule 需 targetOrderId（目标订单号）");
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
@@ -2463,9 +2492,9 @@ export class SolverService {
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
     const changeover = (await this.repos.objects.listByType(ctx.tenantId, "ChangeoverMatrix")).map((o) => o.props);
     const params = await this.getParams(ctx.tenantId);
-    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const coeffRule = pubRules.find((r) => r.key === "sop_reschedule_coeffs");
-    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    // WO-66 P1（机制收敛）：唯一入口取代 M2 重复闭包 + 重复全表扫。
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
+    const coeff = rp.scoped("sop_reschedule_coeffs");
     if (!orders.find((o) => str(o.so) === targetOrderId)) throw notFound(`Order ${targetOrderId}`);
     return runSopReschedule({
       targetOrderId,
@@ -2485,7 +2514,7 @@ export class SolverService {
    * （禁 Date.now·R6），系数走 PUBLISHED RuleEntry `portfolio_optimize_coeffs`.params（R14·缺省诚实兜底），
    * 委派纯算法 runPortfolioOptimize（跨基地×窗口 CP-SAT 共享产能守恒·多方案量化利弊）。未接入 → 显式报错不兜底。
    */
-  private async portfolioOptimize(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async portfolioOptimize(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     if (!this.optimizer?.solvePortfolio) throw validationError("portfolio 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
     const workOrders = (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props);
@@ -2494,9 +2523,9 @@ export class SolverService {
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
     const changeover = (await this.repos.objects.listByType(ctx.tenantId, "ChangeoverMatrix")).map((o) => o.props);
     const params = await this.getParams(ctx.tenantId);
-    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const coeffRule = pubRules.find((r) => r.key === "portfolio_optimize_coeffs");
-    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    // WO-66 P1（机制收敛）：唯一入口取代 M2 重复闭包 + 重复全表扫。
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
+    const coeff = rp.scoped("portfolio_optimize_coeffs");
     const solve = this.optimizer.solvePortfolio.bind(this.optimizer);
     const objArr = (v: unknown): PortfolioObjectiveKey[] | undefined =>
       Array.isArray(v) ? (v.map(String) as PortfolioObjectiveKey[]) : undefined;
@@ -2607,7 +2636,7 @@ export class SolverService {
    * 时间锚（禁 Date.now·R6），系数走 PUBLISHED RuleEntry `base_outlook_coeffs`.params（R14 可校准·缺省诚实兜底），
    * 委派纯算法 runBaseCapacityOutlook。args{baseId（id 或中文名归一到 baseId）, horizon?（默认全 30/60/90）}。
    */
-  private async baseCapacityOutlook(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async baseCapacityOutlook(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const baseArg = str(args.baseId);
     if (!baseArg) throw validationError("base_capacity_outlook 需 baseId（基地 ID 或名称）");
     const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
@@ -2620,9 +2649,11 @@ export class SolverService {
     const workOrders = (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props);
     const segments = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
     const params = await this.getParams(ctx.tenantId);
-    const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const coeffRule = pubRules.find((r) => r.key === "base_outlook_coeffs");
-    const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    // WO-66 P1（机制收敛·接缝要害）：唯一入口取代 M2 重复闭包 —— `base_outlook_coeffs` 此前被
+    // base_capacity_outlook（M2 查库）与 risk_timeline（M3 读 ctx 快照）**两条不同取数路径**分别取用，
+    // 现两侧同走 RuleParamReader（同一实现·同一诚实兜底语义），接缝消失。
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
+    const coeff = rp.scoped("base_outlook_coeffs");
     const horizons = args.horizon != null ? [num(args.horizon)] : [30, 60, 90];
     const result = runBaseCapacityOutlook({
       baseId,
@@ -2710,7 +2741,7 @@ export class SolverService {
    * 诚实边界：sourceKind=agent 项在 datacore 侧为**确定性策略生成**（真读对象·非套模板文案），真 LLM agent 推理=CEO-6；
    * 收窄=确定性试算（组合补缺口/总缺口·真算非写死），全 propagateTick action→stateVar 建模=沙盘 S6 后续。
    */
-  private async decisionPlay(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async decisionPlay(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     // 1) 根因输入：复用 gap_attribution（CEO-2）。
     const ga = await this.gapAttribution(ctx, { metricKey: args.metricKey ? str(args.metricKey) : "" });
     const rootMetric = ga.rootMetric as { key: string; name: string; unit: string; gap: number };
@@ -2958,13 +2989,14 @@ export class SolverService {
    * ③财务判三闸（毛利率 vs 细分底线 C15 → 信用占用 C13 → 现金 C18）→ 统一结论（信用阻断>毛利提价>交期/齐套对冲）。
    * args: { so }（缺省取首单）。前端零写死：ORDERS/价格/BOM/底线均为合成种子，三判由本求解器实算（R14）。
    */
-  private async orderFullchain(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async orderFullchain(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const so = str(args.so);
     const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     if (orders.length === 0) throw validationError("order_fullchain 需先合成 Order");
     const order = (so ? orders.find((o) => str(o.props.so) === so) : orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]);
     if (!order) throw notFound(`order ${so}`);
     const op = order.props;
+    const rp = rpIn ?? (await this.ruleParamReader(ctx.tenantId));
     const modelId = str(op.model);
     const qty = num(op.qty);
     const models = await this.repos.objects.listByType(ctx.tenantId, "Model");
@@ -2977,12 +3009,34 @@ export class SolverService {
     const marginPct = num(dseg?.props.marginPct);
     const floorPct = num(dseg?.props.floorPct);
 
-    // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
-    const weeklyBase = Math.max(1, bases.length) * 700;
+    // ① 交期判（C02/C03）：周供给 P50/P90 vs 周需求。
+    //
+    // WO-66-RULES-FIRST-CLASS ③（审核方拍板：**接真产能链，不迁 param**）：
+    // 此前 `weeklyBase = 基地数 × 700` —— 这不只是硬编码，是**口径旁路**（违 R-一致「一个事实一个出处」）：
+    // 它绕开了 `capacity_rollup` 的真实产能派生链（设备→工序→产线→基地，`computeRollup` 单源），
+    // 把周产能当成"基地个数"的线性函数，改一个基地的真实产能对它毫无影响。迁 param 只是把假数搬进配置表、
+    // 更难被发现。现改为**真取该型号可产基地在产能链上的周产能之和**（`computeRollup(...).bases[].weeklyWan`
+    // 万套 → ×1e4 换套，与 qty 同量纲）。**效果可验**：改某基地 Line/Process/Equipment 的真实产能 → 本值随之变（S8）。
+    const capCtx = await this.loadContext(ctx.tenantId);
+    const rollup = computeRollup(capCtx).bases;
+    const baseSet = new Set(bases);
+    const chainRows = rollup.filter((r) => baseSet.has(str(r.baseId)));
+    // 诚实兜底：型号未落基地 / 产能链无该基地行（未建模）→ 回落全量基地链产能；仍为 0 → 标 dataMode 说明。
+    const rows = chainRows.length > 0 ? chainRows : rollup;
+    const weeklyBase = round(rows.reduce((a, r) => a + num(r.weeklyWan) * 1e4, 0), 0);
+    const capSource: "capacity_chain" | "chain_empty" = weeklyBase > 0 ? "capacity_chain" : "chain_empty";
+    // B73 后半（C02.p90Discount）：P90 折扣走规则 params（可校准），不再裸写 0.9。
+    const p90Discount = rp.num("C02", "p90Discount", 0.9);
     const p50 = round(weeklyBase, 0);
-    const p90 = round(weeklyBase * 0.9, 0);
+    const p90 = round(weeklyBase * p90Discount, 0);
     const deliveryOk = p90 >= qty;
-    const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
+    const deliveryJudge = {
+      p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"],
+      // R13 可溯源 + 禁静默：这条产能来自哪条链、算了哪几个基地，答案里说得出。
+      capSource,
+      capBases: rows.map((r) => str(r.baseId)).sort(),
+      capFormula: "周供给 P50 = Σ(可产基地 capacity_rollup 周产能万套) × 1e4；P90 = P50 × C02.p90Discount",
+    };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
     const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
@@ -3047,7 +3101,7 @@ export class SolverService {
    * 经 computeOrderPromise（数据半 seed 同一口径·不拆两半）算可承接量 + 承诺日 + 缺口/瓶颈 + 三源拆解。
    * asOf 取固定 T0（forecastStart·无 Date.now/Math.random）。A6 行级过滤由 ctx 继承（残口下沉 WO-ORDERLINE）。
    */
-  private async atpCheck(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async atpCheck(ctx: AuthCtx, args: Record<string, unknown>, rpIn?: RuleParamReader): Promise<Record<string, unknown>> {
     const orderRef = str(args.orderRef ?? args.so);
     const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     if (orders.length === 0) throw validationError("atp_check 需先合成 Order");
@@ -3778,10 +3832,8 @@ export class SolverService {
     const params = await this.getParams(tenantId);
     // 规则即引用：注入本租户已发布规则快照 + 规则集版本指纹（R6 确定性，按 key 排序后 FNV-1a）。
     const publishedRules = (await this.repos.rules.list(tenantId, (r) => r.status === "PUBLISHED")).sort((a, b) => (a.key < b.key ? -1 : 1));
-    const rules: NonNullable<SolverContext["rules"]> = {};
-    for (const r of publishedRules) {
-      rules[r.key] = { key: r.key, name: r.name, expression: r.expression, severity: r.severity, params: r.params };
-    }
+    // WO-66 P1：快照带 version —— R13 溯源串「依据规则 C03@v2 的 xxx=…」需要它（加性，不改 ruleSetVersion 口径）。
+    const rules: RuleSnapshot = ruleSnapshotOf(publishedRules);
     const ruleSetVersion = `rsv_${hashString(canonicalJson(publishedRules.map((r) => ({ k: r.key, v: r.version, e: r.expression, s: r.severity, p: r.params ?? {} })))).toString(16)}`;
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
@@ -3832,7 +3884,31 @@ export class SolverService {
       carbonFactors: sortById(carbonFactors),
       rules,
       ruleSetVersion,
+      // WO-66 P1：唯一阈值读取入口随 ctx 注入（求解器一律经 `ruleParamsOf(c)` 取业务阈值）。
+      ruleParams: createRuleParamReader(rules),
     };
+  }
+
+  /**
+   * WO-66-RULES-FIRST-CLASS P1：**无 SolverContext 的早返回求解器**（gap_attribution / decision_play /
+   * sop_reschedule / portfolio / base_capacity_outlook / order_fullchain …）取阈值的同一入口。
+   * 与 `loadContext` 同口径（PUBLISHED 快照 + version），**不再各自写 `pubRules.find(...)`**。
+   */
+  private async ruleParamReader(tenantId: string): Promise<RuleParamReader> {
+    const published = await this.repos.rules.list(tenantId, (r) => r.status === "PUBLISHED");
+    return createRuleParamReader(ruleSnapshotOf(published));
+  }
+
+  /**
+   * WO-66 P1：早返回求解器的阈值披露包壳 —— 建一次 reader 贯穿整次推演，返回前把
+   * `thresholdProvenance` 挂上（禁静默兜底）。多分支 return 的求解器只需在此包一层。
+   */
+  private async withRuleParams(
+    tenantId: string,
+    fn: (rp: RuleParamReader) => Promise<Record<string, unknown>>,
+  ): Promise<Record<string, unknown>> {
+    const rp = await this.ruleParamReader(tenantId);
+    return attachThresholdProvenance(await fn(rp), rp);
   }
 
   /**
@@ -3911,7 +3987,12 @@ export class SolverService {
       default: {
         // 20 场景目录 §2 新增 13 求解器：缺 args 时从对象数据推导（E6b），再确定性求解
         const ext = EXTENDED_SOLVERS[solverKey];
-        if (ext) return ext(deriveExtendedArgs(c, solverKey, args));
+        // WO-66 P1：13 求解器的业务阈值经**唯一入口**（ctx 上的 RuleParamReader）读规则 params；
+        // 派生 args 侧与求解侧共用同一个 reader → trace 汇总到一处，输出 thresholdProvenance 说全。
+        if (ext) {
+          const rp = ruleParamsOf(c);
+          return ext(deriveExtendedArgs(c, solverKey, args, rp), rp);
+        }
         throw notFound(`solver ${solverKey}`);
       }
     }
@@ -3954,16 +4035,17 @@ export class SolverService {
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
-    if (solverKey === "gap_attribution") return this.gapAttribution(ctx, args);
-    if (solverKey === "decision_play") return this.decisionPlay(ctx, args);
-    if (solverKey === "supply_demand_gap_attribution") return this.supplyDemandGapAttribution(ctx, args);
-    if (solverKey === "atp_check") return this.atpCheck(ctx, args);
-    if (solverKey === "sop_reschedule") return this.sopReschedule(ctx, args);
-    if (solverKey === "portfolio") return this.portfolioOptimize(ctx, args);
-    if (solverKey === "base_capacity_outlook") return this.baseCapacityOutlook(ctx, args);
+    // WO-66 P1：读业务阈值的求解器一律经 withRuleParams 包壳 → 输出带 thresholdProvenance（禁静默兜底）。
+    if (solverKey === "gap_attribution") return this.withRuleParams(ctx.tenantId, (rp) => this.gapAttribution(ctx, args, rp));
+    if (solverKey === "decision_play") return this.withRuleParams(ctx.tenantId, (rp) => this.decisionPlay(ctx, args, rp));
+    if (solverKey === "supply_demand_gap_attribution") return this.withRuleParams(ctx.tenantId, (rp) => this.supplyDemandGapAttribution(ctx, args, rp));
+    if (solverKey === "atp_check") return this.withRuleParams(ctx.tenantId, (rp) => this.atpCheck(ctx, args, rp));
+    if (solverKey === "sop_reschedule") return this.withRuleParams(ctx.tenantId, (rp) => this.sopReschedule(ctx, args, rp));
+    if (solverKey === "portfolio") return this.withRuleParams(ctx.tenantId, (rp) => this.portfolioOptimize(ctx, args, rp));
+    if (solverKey === "base_capacity_outlook") return this.withRuleParams(ctx.tenantId, (rp) => this.baseCapacityOutlook(ctx, args, rp));
     if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
-    if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
+    if (solverKey === "order_fullchain") return this.withRuleParams(ctx.tenantId, (rp) => this.orderFullchain(ctx, args, rp));
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
@@ -4011,16 +4093,43 @@ export class SolverService {
     }
     // 规则即引用（PRD-rules-as-references §2.2/§4）：透出**真评估结果** + 规则集版本（关联规则显
     // PASS/WARN/BLOCK，非装饰标签；改规则即改此处推演结论；R6 记录 ruleSetVersion）。
-    const evaluatedRules = this.evaluateRuleRefs(c, solverKey, this.ruleEvalPayload(c, solverKey, args, out));
+    // WO-66 P2：评估面来自**数据侧绑定表**（可编辑，改绑定即改评估集，无需改代码）；绑定为空回落
+    // 出厂常量并在输出标 ruleBindingSource（禁静默）。
+    const bound = await this.boundRuleKeys(ctx.tenantId, solverKey);
+    const evaluatedRules = this.evaluateRuleRefs(c, solverKey, this.ruleEvalPayload(c, solverKey, args, out), bound.ruleKeys);
     if (evaluatedRules.length > 0) out.evaluatedRules = evaluatedRules;
+    if (bound.ruleKeys.length > 0 || bound.source === "binding_table") out.ruleBindingSource = bound.source;
     if (c.ruleSetVersion) out.ruleSetVersion = c.ruleSetVersion;
+    // WO-66 P1（禁静默兜底）：本次推演读过的业务阈值逐条披露来源（rule / code_fallback）。
+    attachThresholdProvenance(out, c.ruleParams);
     return out;
   }
 
-  /** 规则即引用：对求解器声明的规则（SOLVER_RULE_REFS）逐条按规则引擎评估 → EvaluatedRule[]。
-   *  字段在 payload 全不可解析 → NOT_APPLICABLE（诚实，不冒充 PASS）；违规 → 按 severity 出 BLOCK/WARN。 */
-  evaluateRuleRefs(c: SolverContext, solverKey: string, payload: Record<string, unknown>): EvaluatedRule[] {
-    const refs = SOLVER_RULE_REFS[solverKey] ?? [];
+  /**
+   * WO-66-RULES-FIRST-CLASS P2 —— **求解器评估面的运行期真相源 = 数据侧绑定表**。
+   * 有本租户绑定行 → 用它（`enabled` 过滤；改绑定即改评估集，**不改一行代码**）；
+   * 一行都没有（空租户 / 未播种 / 迁移未跑）→ 回落 `SOLVER_RULE_REFS` 出厂常量，并把来源标出来（禁静默）。
+   * 排序按 ruleKey 码点序 → R6 同输入字节一致（与绑定行的插入序无关）。
+   */
+  private async boundRuleKeys(
+    tenantId: string,
+    solverKey: string,
+  ): Promise<{ ruleKeys: string[]; source: "binding_table" | "factory_default" }> {
+    const rows = await this.repos.solverRuleBindings.list(tenantId, (b) => b.solverKey === solverKey);
+    if (rows.length > 0) {
+      return {
+        ruleKeys: [...new Set(rows.filter((b) => b.enabled).map((b) => b.ruleKey))].sort(),
+        source: "binding_table",
+      };
+    }
+    return { ruleKeys: SOLVER_RULE_REFS[solverKey] ?? [], source: "factory_default" };
+  }
+
+  /** 规则即引用：对求解器**绑定**的规则逐条按规则引擎评估 → EvaluatedRule[]。
+   *  字段在 payload 全不可解析 → NOT_APPLICABLE（诚实，不冒充 PASS）；违规 → 按 severity 出 BLOCK/WARN。
+   *  `refKeys` 缺省 → 回落出厂常量（保直接单测/内部调用的向后兼容）。 */
+  evaluateRuleRefs(c: SolverContext, solverKey: string, payload: Record<string, unknown>, refKeys?: string[]): EvaluatedRule[] {
+    const refs = refKeys ?? SOLVER_RULE_REFS[solverKey] ?? [];
     const out: EvaluatedRule[] = [];
     for (const key of refs) {
       const rule = c.rules?.[key];

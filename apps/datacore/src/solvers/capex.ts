@@ -1,6 +1,6 @@
 import { round } from "../prng.js";
 import { AppError } from "../errors.js";
-import { num, type SolverContext } from "./types.js";
+import { num, ruleParamsOf, type SolverContext } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // C1 · capex_scenario — 年度情景测算（产能建设 CAPEX 求解器，Part C 公式级）。
@@ -10,8 +10,10 @@ import { num, type SolverContext } from "./types.js";
 // 出参含全部中间量（S[q]/G[q]/窗口/项目级 IRR·util24·c23pass）。
 // ---------------------------------------------------------------------------
 
-const TAX_RATE = 0.25; // Part C：税率 25%
-const DEFAULT_RAMP = [0.5, 0.75, 0.9, 1.0]; // 投产后第 k 季爬坡系数（默认）
+// WO-66-RULES-FIRST-CLASS P1 · B42/B43：税率与爬坡默认**改读规则 C23 的 params**（下面 taxRateOf/defaultRampOf）。
+// 保留常量仅作代码兜底的"原值"（禁静默：兜底会在 thresholdProvenance 里认账）。
+const TAX_RATE_FALLBACK = 0.25; // Part C：税率 25%（企业所得税·业务口径，非算法常数）
+const DEFAULT_RAMP_FALLBACK = [0.5, 0.75, 0.9, 1.0]; // 投产后第 k 季爬坡系数（默认）
 
 export interface CapexProjectInput {
   /** 项目标识（仅用于回显与稳定排序） */
@@ -143,10 +145,23 @@ export function computeIrr(cf: number[]): number {
   throw new AppError("IRR_DIVERGED", "IRR 牛顿迭代 20 次未收敛", 422);
 }
 
-/** C23 阈值（IRR / util24）取规则库 C23 当前版本参数；缺省 0.15 / 0.75。 */
+/**
+ * C23 阈值（IRR / util24）—— WO-66 P1 · B44 修：注释此前自称「取规则库 C23 参数」，**实际读的是
+ * SolverParam(`c.params.capexScenario`)，C23 规则的 params 是空的**（名不副实的经典样本）。
+ * 现真读规则 C23：优先级 = SolverParam 显式覆盖（既有行为·测试/租户可调） > 规则 C23.params > 代码兜底。
+ */
 function c23Thresholds(c: SolverContext): { irrMin: number; util24Min: number } {
   const cfg = c.params.capexScenario;
-  return { irrMin: cfg?.irrThreshold ?? 0.15, util24Min: cfg?.util24Threshold ?? 0.75 };
+  const rp = ruleParamsOf(c);
+  return {
+    irrMin: cfg?.irrThreshold ?? rp.num("C23", "irrThreshold", 0.15),
+    util24Min: cfg?.util24Threshold ?? rp.num("C23", "util24Threshold", 0.75),
+  };
+}
+
+/** B42（C23.taxRate）：企业所得税率。 */
+function taxRateOf(c: SolverContext): number {
+  return ruleParamsOf(c).num("C23", "taxRate", TAX_RATE_FALLBACK);
 }
 
 export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record<string, unknown> {
@@ -159,11 +174,12 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
     name: p.name ?? p.id ?? `项目${i + 1}`,
     q0: Math.max(0, Math.floor(num(p.q0))),
     cap: num(p.cap),
-    ramp: Array.isArray(p.ramp) && p.ramp.length > 0 ? p.ramp.map((x) => num(x)) : DEFAULT_RAMP,
+    ramp: Array.isArray(p.ramp) && p.ramp.length > 0 ? p.ramp.map((x) => num(x)) : DEFAULT_RAMP_FALLBACK,
     capex: (p.capex ?? []).map((x) => num(x)),
     m: num(p.m),
     salvageRate: num(p.salvageRate, 0),
-    lifeQuarters: Math.max(1, Math.floor(num(p.lifeQuarters, 40))),
+    // B45（C23.defaultLifeQuarters）：项目生命周期默认（季）。
+    lifeQuarters: Math.max(1, Math.floor(num(p.lifeQuarters, ruleParamsOf(c).num("C23", "defaultLifeQuarters", 40)))),
   }));
 
   // 供给 S[q] = S0[q] + Σ_i (q≥q0_i ? cap_i × ramp_i[q−q0_i] : 0)
@@ -180,8 +196,9 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
   const G: number[] = demand.map((d, q) => round(d - (S[q] ?? 0), 4));
 
   // 窗口标注：连续 ≥gapMin 季 G>0 = 缺口窗口；G < −surplusPct·S = 过剩窗口
-  const gapMin = args.gapMinQuarters ?? 2;
-  const surplusPct = args.surplusPct ?? 0.05;
+  // B46/B47（C23）：过剩窗口判定比 / 缺口窗口最小连续季数（args 显式覆盖优先，其次规则，最后代码兜底）。
+  const gapMin = args.gapMinQuarters ?? ruleParamsOf(c).num("C23", "gapMinQuarters", 2);
+  const surplusPct = args.surplusPct ?? ruleParamsOf(c).num("C23", "surplusPct", 0.05);
   const windows: WindowMark[] = [];
   {
     let runStart = -1;
@@ -230,7 +247,8 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
     }
     const util24 = utilDen > 0 ? round(utilNum / utilDen, 6) : 0;
 
-    // 现金流 CF[t] = −capex[t] + 边际产量[t] × m × (1−税率)；含末期残值回收
+    // 现金流 CF[t] = −capex[t] + 边际产量[t] × m × (1−税率)；税率读 C23.taxRate（B42·WO-66 P1）。
+    const taxRate = taxRateOf(c);
     const horizon = Math.max(p.capex.length, p.q0 + p.lifeQuarters);
     const cf: number[] = [];
     for (let t = 0; t < horizon; t++) {
@@ -238,7 +256,7 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
       const prodWan = t >= p.q0 ? rampAt(p.cap, p.ramp, t - p.q0) : 0;
       // 万套 × 元/套 = 万元；÷1e4 → 亿元。边际毛利按 m 元/套。
       const marginYi = (prodWan * 10000 * p.m) / 1e8;
-      cf.push(round(-capexT + marginYi * (1 - TAX_RATE), 6));
+      cf.push(round(-capexT + marginYi * (1 - taxRate), 6));
     }
     // 末期残值回收
     if (p.salvageRate > 0) {

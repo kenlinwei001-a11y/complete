@@ -200,6 +200,15 @@ export function outputLineScaleForBase(baseFormationCapDaily: number): number {
 // 缩放≈1 不动锚。放数据侧(battery)供引擎与 oracle 同口径共享输入常数，不违 oracle 逻辑独立性。
 export const NOMINAL_PROCESS_YIELD = 0.973;
 
+/**
+ * WO-66-RULES-FIRST-CLASS ①（审核方拍板：同值副本不许并存）—— C04 认证系数 / C09 数据健康系数的
+ * **单一来源**。此前这两组阈值在 `BATTERY_SOLVER_PARAMS`（`capacity.ts` 真读、`no-hardcoded-rules:check` 守）
+ * 与规则种子 `params`（没人读）里**各存一份同值**——同值副本不是单一来源，是诱饵：下一个人会去改规则种子
+ * 那份、以为改了行为。现两处**同源引用**这里（规则种子那份从此是派生而非手抄）。
+ */
+export const CERT_FACTORS: Record<string, number> = { 量产: 1.0, 认证中: 0.6 };
+export const HEALTH_PARAMS = { normal: 0.93, degraded: 0.9, staleHours: 2 };
+
 export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   forecastStart: "2026-06-10",
   packCellCount: 96,
@@ -218,10 +227,10 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     ctSecMax: 1.9, // 节拍上限（小基地保留原区间量级）
     modelPriceVarPpk: 30, // 型号单价 ±30‰ 确定性微差（围绕 SEG.priceWan）
   },
-  certFactors: { 量产: 1.0, 认证中: 0.6 },
+  certFactors: CERT_FACTORS,
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
-  health: { normal: 0.93, degraded: 0.9, staleHours: 2 },
+  health: HEALTH_PARAMS,
   whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
   // WO-GSIM-1-DATA · 跨基地调拨物流费率常数（R14：业务常数入册·禁生成环内联魔数）。
@@ -1962,43 +1971,101 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   // 规则库分类筛选与「约束条件」独立入口的真元数据单一来源（前端只读渲染，非写死清单；约束条件另按 severity=BLOCK 判别）。
   rules: [
     { key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", severity: "BLOCK", category: "产能" },
-    { key: "C08", name: "外协比例红线", expression: "Order.outsourceRatio > 0.3", severity: "WARN", category: "外协" },
-    { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK", category: "财务" },
+    // WO-66 P1：C08 补 params —— outsourcing_split / countermeasure_combo / quarterly_gap 的三渠道成本与
+    // **外协上限红线**此前全裸写在 extended.ts（B14/B15/B16/B26），现读这里；值与迁移前内联兜底逐位相同（R6 锚不动）。
+    { key: "C08", name: "外协比例红线", expression: "Order.outsourceRatio > 0.3", severity: "WARN", params: { overtimeUnitCost: 1.0, overtimeCapPct: 0.4, outsourceUnitCost: 1.4, outsourceRatioMax: 0.2, delayUnitCost: 2.5, defaultGapPct: 0.15, defaultQuarterGap: 50 }, category: "外协" },
+    { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK", params: { defaultCreditLimit: 5000, creditOverLimitRatio: 1.05 }, category: "财务" },
     // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
-    { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN", category: "产能" },
+    { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN", params: { nominalOee: 0.85, affectedWindowDays: 180 }, category: "产能" },
     { key: "C12", name: "预测偏差触发重校", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)", severity: "WARN", category: "需求" },
     // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
     { key: "C18", name: "现金垫底线", expression: "AnnualScenario.cashCushion < 50", severity: "BLOCK", category: "财务" },
-    { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务" },
+    // WO-66 P1：C23 补 params —— capex.ts 的税率/IRR 门槛/24 月利用率门槛/生命周期/过剩窗口（B42/B44/B45/B46）。
+    { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", params: { taxRate: 0.25, irrThreshold: 0.15, util24Threshold: 0.75, defaultLifeQuarters: 40, surplusPct: 0.05, gapMinQuarters: 2 }, category: "财务" },
     // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
     // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
     // / deviationPct=ABS(实际-计划)/计划。此前硬编码在求解器,规则引擎不可见;现注册为一等规则。
-    { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证" },
-    { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料" },
-    { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料" },
+    { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", params: { engineerGroups: 3, certHoursPerWeek: 40, defaultCertHours: 80, defaultCertWeeks: 16, certWeeksCap: 26 }, category: "认证" },
+    { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", params: { ltaLockRatio: 0.8, annualDays: 365, defaultLeadDays: 30, shortfallCapTon: 2000 }, category: "物料" },
+    // WO-66 P1：C28 补 params —— **呆滞判定天数**与超储倍数（B7/B9）。改 idleDaysThreshold 即改 inventory_optimize 的 idle[]。
+    { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", params: { idleDaysThreshold: 90, overstockMultiple: 1.5 }, category: "物料" },
     { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产" },
     { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量" },
     { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协" },
-    { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务" },
+    { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", params: { overdueDaysThreshold: 30 }, category: "财务" },
     // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
-    { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规" },
+    { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", params: { euCarbonThreshold: 70 }, category: "合规" },
     // 规则即引用（PRD-rules-as-references 附录A）：补全 13 条「被引用但未定义」规则为一等规则——
     // 消灭前端"（当前库中未找到定义）"、规则闸不再空过。expression 用既有 DSL（无算术/无 param 插值），
     // 命名阈值落 params（求解器 P2 改读 rule.params 去硬编码；改 param 即改推演）。C15/C24 毛利底线
     // 不复制 SEG_REGISTRY（单一来源），floorPct 由分段对象字段在求值期解析（params 留空）。
     { key: "C01", name: "产线设计产能上限", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", severity: "BLOCK", params: {}, category: "产能" },
-    { key: "C02", name: "化成/老化串并产能口径", expression: "Process.parallelThroughput < Process.requiredThroughput", severity: "WARN", params: { tolerancePct: 0.05 }, category: "产能" },
-    { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证" },
-    { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
-    { key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", severity: "WARN", params: { staleHours: 2, normalFactor: 0.93, degradedFactor: 0.9 }, category: "质量" },
+    { key: "C02", name: "化成/老化串并产能口径", expression: "Process.parallelThroughput < Process.requiredThroughput", severity: "WARN", params: { tolerancePct: 0.05, p90Discount: 0.9 }, category: "产能" },
+    // WO-66 ①：C04/C09 的阈值**不再各存一份同值副本**（同值副本 = 诱饵：改了没人读的那份会以为改了行为）。
+    // 单一来源 = BATTERY_SOLVER_PARAMS.certFactors / .health（`no-hardcoded-rules:check` 守 capacity.ts 读它），
+    // 规则种子 params 从该来源**派生**（一行 import，不是第二份手抄值）。
+    { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: CERT_FACTORS["量产"]!, pendingCertFactor: CERT_FACTORS["认证中"]! }, category: "认证" },
+    { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: { kitFloorPct: 80, coverDaysFloor: 5 }, category: "物料" },
+    { key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", severity: "WARN", params: { staleHours: HEALTH_PARAMS.staleHours, normalFactor: HEALTH_PARAMS.normal, degradedFactor: HEALTH_PARAMS.degraded }, category: "质量" },
     { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
-    { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: { minBufferDays: 3 }, category: "排产" },
-    { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
-    { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+    { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: { minBufferDays: 3, minMaintIntervalWeeks: 26, maxGroupMaintPerWeek: 3, staggerSearchWeeks: 4 }, category: "排产" },
+    // C15 的 floorPct 本体仍由 SEG_REGISTRY 分段对象在求值期解析（**不复制单一来源**）；此处仅承载
+    // deriveExtendedArgs 报价推导用的细分底线默认（B19）。
+    { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: { segmentFloorPct: 0.12 }, category: "财务" },
+    { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: { safetyDays: 5, understockMultiple: 0.8 }, category: "物料" },
     { key: "C21", name: "产销平衡偏差", expression: "SopVersionRow.balanceDeviationPct > 0.10", severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
-    { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: { maxChangeoverMin: 120 }, category: "换型" },
-    { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
+    { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: { maxChangeoverMin: 120, missingChangeoverMin: 999 }, category: "换型" },
+    { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: { segmentFloorPct: 0.1, marginTouchBand: 0.01, defaultQuotePrice: 500, mfgRate: 0.1, logisticsPerUnit: 8, processRate: 0.05 }, category: "财务" },
     { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: { assumeTolerancePct: 0.05 }, category: "需求" },
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // WO-66-RULES-FIRST-CLASS P1 · ☠ 补种「系数规则」（台账 §4.1 头号发现）
+    //
+    // 病：求解器代码里早就写着「读 `rule.params` 取系数」，但这批 ruleKey **从未播种** → 生产/demo 租户里
+    // `coeff()` 恒走内联兜底 →「R14 可校准」架构成立、**运行时是死代码**；相关测试全绿只因测试自己先把
+    // 规则建出来了（绿测试 ≠ 能用）。两道既有门都抓不到（`rule-closure:check` 的正则只认 `Cxx`）。
+    // 治：在此**真播种**（经 synthetic/service.ts 的 `for (const r of template.rules)` 落库 PUBLISHED），
+    // 并由 `check-rule-closure.mjs` 的命名 ruleKey 闭包段 + 生产种子断言（S9）守住不再退化。
+    //
+    // 值 == 迁移前代码内联兜底，逐位相同 → **既有回归锚逐字节不变**（R6 / S7）。
+    // scopeObjectTypes 在 BATTERY_RULE_SCOPES 里显式给 `[]`：系数规则是**配置载体不是行为规则**，
+    // 不进任何对象类型的规则映射（否则污染 planviews 的 Order 域金值——本仓 `expression:"FALSE"` 栽过同款）。
+    // expression 给恒不命中的合法 DSL（`SolverCoefficient.never == TRUE`，本体无此类型 → 永不求值），
+    // 避免裸 `FALSE` 那种非法 DSL 解析报错。
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    { key: "gap_attribution_coeffs", name: "差距归因系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: { structuralExplained: 0.88, causalExplained: 0.8 }, category: "系数" },
+    { key: "supply_demand_gap_coeffs", name: "产销缺口归因系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: { explained: 0.85, matTonToWan: 0.01 }, category: "系数" },
+    { key: "sop_reschedule_coeffs", name: "S&OP 重排系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: { changeoverCostPerHour: 72, overtimeCostPerUnit: 2.5, delayPenaltyPerUnitDay: 0.05, defaultAdvancePct: 0.2 }, category: "系数" },
+    { key: "portfolio_optimize_coeffs", name: "订单组合最优系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      // 诚实边界：`avgUnitPrice`（portfolio.ts:756 的 1.8）**故意不种** —— 它与 service.ts:1422 的 600 的
+      // 单价口径冲突已单独立单（另一 dev 在查），本单不碰；未种 → 输出里诚实标 code_fallback。
+      params: { windowDays: 14, lateWindows: 2, capacityUtilHaircut: 0, capacityFillPct: 1, maxWindows: 10,
+        changeoverCostPerHour: 72, delayPenaltyPerUnitDay: 0.05, unservedPenaltyPerUnit: 0.5,
+        crossBaseChangeoverHours: 1, fgHoldingCostPerUnitDay: 0.5, splitBatch: 3000, splitMaxParts: 4,
+        splitFixedCostPerUnit: 0.02, mockTransitDays: 3, mockFreightPerUnit: 0.15, leverLineCapDaily: 30000,
+        operatingDaysPerYear: 300 }, category: "系数" },
+    { key: "base_outlook_coeffs", name: "基地产能前瞻系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      // ★ 接缝要害：本条被 base_capacity_outlook 与 risk_timeline **两个求解器**取用（此前两条不同取数路径）。
+      params: { inProdRefDays: 90, forecastAnnualDays: 365, overtimeUpliftPct: 0.15, crossBaseAbsorbPct: 0.6 }, category: "系数" },
+    { key: "metric_causal_binding", name: "指标因果绑定配置", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: {}, category: "系数" },
+    { key: "trigger_thresholds", name: "触发规则阈值覆盖", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      // 空 = 不覆盖 TriggerRule 对象自带 threshold（decision_play 已诚实透出 thresholdSource）。
+      params: {}, category: "系数" },
+    { key: "risk_thresholds", name: "风险张力阈值", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: { tensionBaseline: 85, urgencyBase: 70, urgencySpan: 30, severityHigh: 92, severityMedium: 78,
+        primaryFactorBonus: 12, tensionClimbCap: 96, secondPlanPeak: 90 }, category: "系数" },
+    { key: "severity_grades", name: "归因严重度分级", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      // B59：此前 gap_attribution 三处**逐字重复**的 0.7/0.4/0.2，现单一来源。
+      params: { critical: 0.7, major: 0.4, minor: 0.2 }, category: "系数" },
+    { key: "countermeasure_levers", name: "对策组合杠杆系数", expression: "SolverCoefficient.never == TRUE", severity: "INFO",
+      params: { certUnlockReleasePct: 0.3, certUnlockUnitCost: 0.5, certUnlockCostRank: 1,
+        changeoverReleasePct: 0.15, changeoverUnitCost: 0.6, changeoverCostRank: 1,
+        staggerReleasePct: 0.1, staggerUnitCost: 0.7, staggerCostRank: 2,
+        outsourceReleasePct: 0.2, outsourceUnitCost: 1.4, outsourceCostRank: 2,
+        capexReleasePct: 0.5, capexUnitCost: 2.2, capexCostRank: 3 }, category: "系数" },
   ],
   // scenarioSeed.views 单一来源 = view-manifest.SEEDED_VIEW_KEYS（BUILTIN_VIEWS.filter(seed)·防第 4 处漂移·
   // 现含 global-sim：此前手维护此处漏接 → 内存态重启后「全局推演」隐身·WO-MEMORY-VIEW-RESILIENCE §4.2）。
@@ -2184,6 +2251,19 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C22: ["Order"],
   C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order（marginPct/floorPct 与 Quote 命名空间同值·镜像 C15）·Quote 仅 eval 期注入命名空间非本体对象类型（沙盘 cert 前向闭合硬前置）
   C25: ["ExternalSignal"],
+  // WO-66 P1：系数规则的 scope **显式空** —— 它们是配置载体不是行为规则，不该进任何对象类型的规则映射
+  // （synthetic/service.ts 的 `BATTERY_RULE_SCOPES[r.key] ?? ["Order"]` 默认会落到 Order → 污染
+  //  planviews Order 域金值；本仓 `expression:"FALSE"` 那次就是这么栽的）。
+  gap_attribution_coeffs: [],
+  supply_demand_gap_coeffs: [],
+  sop_reschedule_coeffs: [],
+  portfolio_optimize_coeffs: [],
+  base_outlook_coeffs: [],
+  metric_causal_binding: [],
+  trigger_thresholds: [],
+  risk_thresholds: [],
+  severity_grades: [],
+  countermeasure_levers: [],
 };
 
 export interface GeneratedBattery {

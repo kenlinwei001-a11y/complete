@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, type TestApp , publishRuleOverride } from "./helpers.js";
 import type { AuthCtx } from "../src/domain.js";
 import { CAUSAL_EDGES } from "../src/synthetic/battery-extended.js";
 
@@ -156,12 +156,12 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
     await seedBattery(t);
     const before = await run(t);
     // 发布一条 R14 归因系数规则：把结构可解释比压到 0.5（→ residual 翻倍、各结构贡献缩水）。
-    await t.repos.rules.put({
+    await publishRuleOverride(t, {
       id: "rule_gac", tenantId: ADMIN.tenantId, key: "gap_attribution_coeffs", name: "缺口归因系数",
       expression: "gap_attribution", scopeObjectTypes: ["Metric"], severity: "INFO",
       params: { structuralExplained: 0.5, causalExplained: 0.8 },
       origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED",
-    } as never);
+    });
     const after = await run(t);
     // residual 随系数变大（0.88→0.5 → 顶层 residual 从 12% 升到 50%）
     expect(after.residualPct).toBeGreaterThan(before.residualPct + 20);
@@ -195,7 +195,7 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
     const t = await makeApp();
     await seedBattery(t);
     // 发布 MetricCausalBinding 配置规则：为 seg_attain_ess 指定两个优先根 + decision 域权重。
-    await t.repos.rules.put({
+    await publishRuleOverride(t, {
       id: "rule_mcb", tenantId: ADMIN.tenantId, key: "metric_causal_binding", name: "指标因果绑定",
       expression: "gap_attribution", scopeObjectTypes: ["Metric"], severity: "INFO",
       params: {
@@ -204,7 +204,7 @@ describe("WO-CEO-2 · gap_attribution 深度反向归因引擎", () => {
         "seg_attain_ess:domain:decision": 0.5,
       },
       origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED",
-    } as never);
+    });
     const g = await run(t, "seg_attain_ess");
     expect(g.hypotheses).toBeTruthy();
     expect(g.hypotheses!.length).toBeGreaterThanOrEqual(2);
