@@ -58,11 +58,19 @@ describe("G-ACTION-NOOP-EXEC · 未接线动作不得冒充已执行", () => {
     // NO_WRITE 语义 = **设计上**不写真值（如纯审计动作）。把欠账标成 NO_WRITE 会让门变绿而问题仍在，
     // 且比 NOT_IMPLEMENTED 更难发现——因为它看起来"已经想清楚了"。
     // 这三条在 mapping.ts / decision-kernel 里都有明确的写回意图，只能是欠账。
+    // 本断言的**本意**是「欠账不许伪装成 NO_WRITE」，不是「永远不许实现」。
+    // 上一版写成 `.toBe("NOT_IMPLEMENTED")` 过紧：`采纳产能保障方案` 接上真执行器后合法地变成 WIRED，
+    // 测试却红了——那是断言把"当下状态"当成了"应然状态"。改为咬住真正的红线：**不得是 NO_WRITE**。
     for (const key of ["adopt_mitigation", "采纳经营方案", "采纳产能保障方案"]) {
       expect(
         ACTION_WIRING[key],
-        `「${key}」在 mapping.ts/decision-kernel 里有明确写回意图，标成 ${ACTION_WIRING[key]} 会掩盖欠账`,
-      ).toBe("NOT_IMPLEMENTED");
+        `「${key}」在 mapping.ts/decision-kernel 里有明确写回意图，标成 NO_WRITE（=设计上无副作用）会掩盖欠账`,
+      ).not.toBe("NO_WRITE");
+    }
+    // 尚未实现的两个必须显式停在 NOT_IMPLEMENTED（不许悄悄标 WIRED 而 domainExecutor 无分支——
+    // 那种情况 action-wiring:check 断言② 也会红，此处双保险）。
+    for (const key of ["adopt_mitigation", "采纳经营方案"]) {
+      expect(ACTION_WIRING[key], `「${key}」尚无真执行器`).toBe("NOT_IMPLEMENTED");
     }
   });
 
