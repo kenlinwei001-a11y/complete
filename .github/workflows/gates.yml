@@ -14,7 +14,18 @@ name: gates
 on:
   pull_request:
   push:
-    branches: ["**"]
+    # ⚠ 不要写成 branches: ["**"] —— 那会让每次向 PR 分支推送同时触发 push 与 pull_request 两条
+    #   workflow，各跑一遍约 28 分钟的五包全量：CI 成本翻倍，且同一个 sha 产出两条一模一样的
+    #   失败通知，复审时极易把孪生运行误当成两个独立问题去分别排查（本轮真实发生过）。
+    #   handoff 分支的验证由其 PR 承担（本仓 LOOP 纪律要求每张 WO 一条分支一个 PR），
+    #   push 触发因此只保留给没有 PR 的长期分支：canonical 与 main。
+    branches: [main, "claude/inspiring-gates-aqczjg"]
+
+# 同一分支的新推送取消尚未跑完的旧运行：陈旧运行既浪费 runner，其失败通知也会把已修好的问题
+# 反复推回复审视野（本轮多次收到早已被后续提交取代的 sha 的红色告警）。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gates:
