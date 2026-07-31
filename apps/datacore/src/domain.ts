@@ -277,6 +277,14 @@ export interface ObjectTypeDef {
   entityCategory?: string;
   /** 对象描述（文档 + agent 提示）。 */
   description?: string;
+  /**
+   * WO-69 P3 · **实现的对象接口**（多态抽象）。沿用本结构既有的"可选扩展"先例（OntoFlow 字段全可选，
+   * 老快照不破）：**缺省不声明 = 逐字节沿用现状**，发布门一条都不走。
+   * 一个类型可实现 N 个接口（组合优于继承）；平台**没有** `extends`。
+   * `version:"latest"` 跟随最新已发布接口版本（接口一改，下次发布即被要求补齐）；
+   * 固定数字 = pin 住（接口演进不会悄悄让已发布实现者失效）。
+   */
+  implements?: import("@platform/contracts").ImplementsRef[];
   version: number;
   status: "ACTIVE" | "RETIRED";
   /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */
@@ -350,6 +358,12 @@ export interface OntologyVersion {
   snapshot: { objectTypes: ObjectTypeDef[]; linkTypes: LinkTypeDef[] };
   createdAt: string;
 }
+
+/**
+ * WO-69 P3 · 对象接口仓储记录（id 前缀 `oif_`）。契约见 `packages/contracts/src/object-interface.ts`
+ * （契约已含 id/tenantId → 此处只做 domain 侧别名，R1 不重定义）。
+ */
+export type ObjectInterfaceRecord = import("@platform/contracts").ObjectInterface;
 
 export type ObjectOrigin =
   // 活数据可溯（PRD-live-traceable-data §3.1，additive）：合成对象现经"合成数据源→RawDataset→物化"

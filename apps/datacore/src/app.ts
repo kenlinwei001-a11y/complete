@@ -36,7 +36,9 @@ import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
 import { runProcessing } from "./pipeline/processing.js"; // OntoFlow（P3）· 数据处理折叠·嫁接自 main
-import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
+import { ObjectInterfaceService, OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
+// WO-69 P3 · 对象接口契约（多态抽象）
+import { ImplementsRefSchema, ObjectInterfaceInputSchema } from "@platform/contracts";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
@@ -362,6 +364,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const configBundle = new ConfigBundleService(repos, features);
   const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
+  // WO-69 P3 · 对象接口（多态抽象）：CRUD + 版本演进 + "谁实现了 X"/影响面查询。发布门在 ontology.publishVersion。
+  const objectInterfaces = new ObjectInterfaceService(repos, ontology);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
   // LLM Provider 增量 §1：provider 配置落位 A；A2/A3/A7 调用方经租户用途路由消费
@@ -408,6 +412,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     outbox,
     // 轨L 增量2：注入建模链（modeling 在 synthetic 之前构造），供 demo 本体经真链产出。
     modeling,
+    // WO-69 P3：对象接口种子（Approvable + 实现者绑定）。
+    interfaces: objectInterfaces,
     livedInRunner: async (c, input) => {
       const state = await livedInEngine.run(c, input);
       return { replay: state.replay };
@@ -2032,6 +2038,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             }),
           )
           .default([]),
+        // WO-69 P3：对象接口声明 + 行动绑定（**可选扩展**，不给则沿用既有 → 零回归）。
+        // 契约在发布门兑现：声明了却没长出要求的属性/行动/函数 → POST /a/v1/ontology/publish 400 点名。
+        implements: z.array(ImplementsRefSchema).optional(),
+        actions: z.array(z.object({ actionTypeKey: z.string().min(1) })).optional(),
       }),
       req.body,
     );
@@ -2051,6 +2061,49 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
     }
     return reply.status(201).send(await ontology.upsertType(c, body));
+  });
+
+  // ---- WO-69 P3 · 对象接口（多态抽象）--------------------------------------
+  // 一致性由**发布门**兑现（POST /a/v1/ontology/publish → 不合规 400 逐条点名）；此处是定义与查询面。
+  app.get("/a/v1/ontology/interfaces", async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    return objectInterfaces.list(ctx(req), { allVersions: q["allVersions"] === "1" });
+  });
+  app.post("/a/v1/ontology/interfaces", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = ObjectInterfaceInputSchema.parse(req.body);
+    return reply.status(201).send(await objectInterfaces.upsert(c, body));
+  });
+  // 只读一致性报告（= 发布门会说的话，但不改任何东西 → 可先看迁移清单再决定升级路径）。
+  app.get("/a/v1/ontology/interfaces/conformance", async (req) => objectInterfaces.conformance(ctx(req)));
+  app.get("/a/v1/ontology/interfaces/:key", async (req) => {
+    const { key } = req.params as { key: string };
+    const q = req.query as Record<string, string | undefined>;
+    const version = q["version"] ? Number(q["version"]) : undefined;
+    const rec = await objectInterfaces.get(ctx(req), key, version);
+    if (!rec) throw notFound(`对象接口 '${key}' 不存在`);
+    return rec;
+  });
+  app.post("/a/v1/ontology/interfaces/:key/publish", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ version: z.number().int().positive().optional() }).partial(), req.body ?? {});
+    return objectInterfaces.publish(c, key, body.version);
+  });
+  app.post("/a/v1/ontology/interfaces/:key/retire", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ version: z.number().int().positive().optional() }).partial(), req.body ?? {});
+    return objectInterfaces.retire(c, key, body.version);
+  });
+  /** S9：谁实现了这个接口 + 改它会波及什么（类型/行动/函数+P2 签名/视图/迁移清单）。 */
+  app.get("/a/v1/ontology/interfaces/:key/implementers", async (req) => {
+    const { key } = req.params as { key: string };
+    const q = req.query as Record<string, string | undefined>;
+    return objectInterfaces.implementers(ctx(req), key, q["version"] ? Number(q["version"]) : undefined);
   });
 
   // ---- 治理增量 §1 域治理 ----------------------------------------------------

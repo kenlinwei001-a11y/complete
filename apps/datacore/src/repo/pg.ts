@@ -615,6 +615,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     ontologyLinks: new PgStore(pool, "ontology_links"),
     ontologyDrafts: new PgStore(pool, "ontology_drafts"),
     ontologyVersions: new PgStore(pool, "ontology_versions"),
+    objectInterfaces: new PgStore(pool, "object_interfaces"), // WO-69 P3 · 对象接口（R9 四方同步）
     objects: new PgObjectStore(pool),
     links: new PgLinkStore(pool),
     derivationRuns: new PgStore(pool, "derivation_runs"),
