@@ -72,8 +72,12 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
-      - name: Build (contracts → datacore)
-        run: pnpm --filter @platform/contracts build && pnpm --filter datacore build
+      # `datacore...` = datacore **及其全部工作区依赖**（contracts + llm-adapters）。
+      # 不要手写依赖清单 —— 初版只建了 contracts，漏掉 llm-adapters，两个 Node 版本双双红在
+      # `TS2307: Cannot find module '@platform/llm-adapters'`，看着像便携性缺陷、实为门自己写错。
+      # 让 pnpm 解依赖图，新增包时此处无需跟着改。
+      - name: Build (datacore + 其工作区依赖)
+        run: pnpm --filter "datacore..." build
       - name: 沙箱 + 接地链在本 Node 版本上必须真跑通
         run: |
           out="$(pnpm --filter datacore exec vitest run \
