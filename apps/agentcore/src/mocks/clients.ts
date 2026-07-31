@@ -1,4 +1,4 @@
-import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
@@ -10,6 +10,7 @@ import type {
   IamClient,
   KbClient,
   KbHit,
+  ObjectTypeDefSummary,
   OntologyClient,
   PromptClient,
   RuleEngineClient,
@@ -23,6 +24,68 @@ import { hashSeed, prngFor } from "./prng.js";
 import { SEED_BASES, SEED_MODELS, SEED_ORDERS, type SeedBase, type SeedOrder } from "./seed.js";
 
 const SNAPSHOT = "ont-snap-001";
+
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY · mock 本体对象类型定义（object_type/field 投影供给侧）。
+ * 取真实本体核心类型子集（Process/Equipment/WorkOrder/MaterialBalance/OrderLine 等），
+ * 属性带 unit/dataType（SEAM③ 量纲透出）；WIPLot 故意缺类型级 description（SEAM §4 兜底合成探针）。
+ * mock listObjectTypeDefs/listObjectTypes/getTypeSemantics 三者同源于此（防漂移）。
+ */
+const MOCK_OBJECT_TYPE_DEFS: ObjectTypeDefSummary[] = [
+  {
+    key: "Base", displayName: "生产基地", domain: "factory", description: "生产基地主数据", status: "ACTIVE",
+    properties: [
+      { propKey: "baseId", dataType: "string", isPrimaryKey: true, description: "基地编号" },
+      { propKey: "name", dataType: "string", searchable: true, description: "基地名称" },
+    ],
+  },
+  {
+    key: "Order", displayName: "销售订单", domain: "sales", description: "客户销售订单", status: "ACTIVE",
+    properties: [
+      { propKey: "orderId", dataType: "string", isPrimaryKey: true, description: "订单编号" },
+      { propKey: "qty", dataType: "number", unit: "套", description: "订单数量" },
+      { propKey: "dueDate", dataType: "date", description: "交期" },
+    ],
+  },
+  {
+    key: "Model", displayName: "产品型号", domain: "product", description: "产品型号主数据", status: "ACTIVE",
+    properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, description: "型号编号" }],
+  },
+  {
+    key: "Process", displayName: "工序", domain: "factory", description: "制造工序定义", status: "ACTIVE",
+    properties: [
+      { propKey: "processId", dataType: "string", isPrimaryKey: true, description: "工序编号" },
+      { propKey: "changeoverHours", dataType: "number", unit: "小时", description: "换型时长" },
+    ],
+  },
+  {
+    key: "Equipment", displayName: "设备", domain: "factory", description: "生产设备台账", status: "ACTIVE",
+    properties: [
+      { propKey: "equipmentId", dataType: "string", isPrimaryKey: true, description: "设备编号" },
+      { propKey: "oee", dataType: "number", unit: "%", description: "设备综合效率" },
+    ],
+  },
+  {
+    key: "WorkOrder", displayName: "生产工单", domain: "factory", description: "生产执行工单", status: "ACTIVE",
+    properties: [
+      { propKey: "woId", dataType: "string", isPrimaryKey: true, description: "工单编号" },
+      { propKey: "plannedQty", dataType: "number", unit: "套", description: "计划数量" },
+    ],
+  },
+  {
+    key: "MaterialBalance", displayName: "物料平衡", domain: "factory", description: "投入产出物料平衡", status: "ACTIVE",
+    properties: [{ propKey: "yieldRate", dataType: "number", unit: "%", description: "良率" }],
+  },
+  {
+    key: "OrderLine", displayName: "订单明细行", domain: "sales", description: "订单行项目", status: "ACTIVE",
+    properties: [{ propKey: "lineQty", dataType: "number", unit: "套", description: "行数量" }],
+  },
+  {
+    // 故意缺类型级 description：WO §4 兜底合成（descriptionSynthesized: true）探针。
+    key: "WIPLot", displayName: "在制批次", domain: "factory", status: "ACTIVE",
+    properties: [{ propKey: "lotQty", dataType: "number", unit: "批", description: "批次数量" }],
+  },
+];
 
 /**
  * Row-level permission semantics live INSIDE the mock data layer (QOS-PRD §7.2/§7.6):
@@ -61,6 +124,17 @@ function matchFilter(obj: Record<string, unknown>, filter: Record<string, unknow
 }
 
 export class MockOntologyClient implements OntologyClient {
+  /**
+   * WO-RESOURCE-CATALOG-ONTOLOGY · 实例级可变本体定义（SEAM② 活投影探针：测试 push 新类型后
+   * 下次 list/project 即可见——镜像 A 侧"建类型→已发布"语义）。每实例深拷贝，跨测试不串。
+   */
+  readonly objectTypeDefs: ObjectTypeDefSummary[] = JSON.parse(JSON.stringify(MOCK_OBJECT_TYPE_DEFS)) as ObjectTypeDefSummary[];
+
+  /** ACTIVE 子集（镜像 A 侧 listTypes 服务端过滤）。 */
+  private activeTypeDefs(): ObjectTypeDefSummary[] {
+    return this.objectTypeDefs.filter((t) => t.status === undefined || t.status === "ACTIVE");
+  }
+
   async resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     if (sliceKey === "model_capacity_network") {
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);
@@ -244,13 +318,39 @@ export class MockOntologyClient implements OntologyClient {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
   }
   async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
-    // 确定性真实类型清单（key+中文标签+域+实例数）；count 取 mock 可见集，体现"空 vs 不存在"区分。
+    // 与 listObjectTypeDefs 同源（MOCK_OBJECT_TYPE_DEFS·ACTIVE 子集）；count 取 mock 可见集，体现"空 vs 不存在"区分。
     const count = async (k: string) => ((await this.queryObjects(ctx, k, {})).data as { total: number }).total;
-    return [
-      { key: "Base", label: "生产基地", domain: "factory", instanceCount: await count("Base") },
-      { key: "Order", label: "销售订单", domain: "sales", instanceCount: await count("Order") },
-      { key: "Model", label: "产品型号", domain: "product", instanceCount: await count("Model") },
-    ];
+    const out: { key: string; label: string; domain: string; instanceCount: number }[] = [];
+    for (const t of this.activeTypeDefs()) {
+      out.push({ key: t.key, label: t.displayName ?? t.key, domain: t.domain ?? "unassigned", instanceCount: await count(t.key) });
+    }
+    return out;
+  }
+
+  /** WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义 mock（object_type/field 投影供给侧·ACTIVE 过滤镜像 A 侧）。 */
+  async listObjectTypeDefs(): Promise<ObjectTypeDefSummary[]> {
+    return this.activeTypeDefs();
+  }
+
+  /** WO-RESOURCE-CATALOG-ONTOLOGY · type-semantics mock（field 投影的属性口径源·description/unit/dataType）。 */
+  async getTypeSemantics(_ctx: ToolAuthCtx, typeKeys: string[]): Promise<TypeSemanticsResponse> {
+    const want = new Set(typeKeys);
+    return {
+      types: this.activeTypeDefs()
+        .filter((t) => want.has(t.key))
+        .map((t) => ({
+          typeKey: t.key,
+          displayName: t.displayName ?? t.key,
+          props: (t.properties ?? []).map((p) => ({
+            propKey: p.propKey,
+            description: p.description,
+            unit: p.unit,
+            dataType: p.dataType,
+          })),
+          derived: [],
+          rules: [],
+        })),
+    };
   }
 
   // 推演验证痕迹 Layer 2：对照 mock 知识图谱事实核对断言（确定性，与 mock 对象一致）。

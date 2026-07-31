@@ -13,8 +13,11 @@ import { z } from "zod";
  * 投影后 description 为空 → 门红（发布纪律有牙）。R14：描述是能力语义，非内联业务常数。
  */
 
-/** 可发现资源类别（与五池一一对应；workflow/intent 同源于操作意图目录）。 */
-export const RESOURCE_KINDS = ["solver", "slice", "workflow", "intent", "field", "mcp_tool"] as const;
+/**
+ * 可发现资源类别。前 6 类与发现池一一对应（workflow/intent 同源于操作意图目录）；
+ * WO-RESOURCE-CATALOG-ONTOLOGY 增第 7 类 `object_type`（本体对象类型池——Agent 搜得到"有什么数据"）。
+ */
+export const RESOURCE_KINDS = ["solver", "slice", "workflow", "intent", "field", "mcp_tool", "object_type"] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 export const ResourceKindSchema = z.enum(RESOURCE_KINDS);
 
