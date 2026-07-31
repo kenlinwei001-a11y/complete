@@ -102,26 +102,44 @@ if (!Array.isArray(FORBIDDEN) || FORBIDDEN.length === 0) {
   }
 }
 
-// ---- H3 空泛词表同源守恒（agentcore skill-lint ↔ 契约常量） ----------------------
+// ---- H3 空泛词表同源守恒：**副本不得存在**（强于「两份副本逐字一致」） ----------------
+//
+// 旧版要求 skill-lint.ts 里存在 `const FORBIDDEN_WORDS = [...]` 字面量并与契约逐字比对——
+// 那是在**容忍副本存在**的前提下做一致性校验（当时 🚦 范围边界不许改 agentcore，只能等价堵漏）。
+// 词表现已真正单源（skill-lint 直接 import 契约常量），故门升级为消灭副本本身：
+//   ① skill-lint.ts 不得再出现词表字面量（副本重现即红）
+//   ② 必须从 @platform/contracts import SKILL_SUMMARY_FORBIDDEN_WORDS 并绑定给 FORBIDDEN_WORDS
+//   ③ 基集词仍须同时落在两张契约词表里（两处 lint 共用同一基集）
+// ⚠ 此段语义与 datacore/test/schema-readability-seam.test.ts 的同名断言必须保持一致：
+//    门与齿一旦分叉，就会重演「门要求副本、代码消灭副本，门红在自己的成果上」这次事故。
 {
   const src = readFileSync("apps/agentcore/src/skill-lint.ts", "utf8");
-  const m = src.match(/const FORBIDDEN_WORDS\s*=\s*\[([^\]]*)\]/);
-  if (!m) {
-    fail.push("H3 apps/agentcore/src/skill-lint.ts 找不到 FORBIDDEN_WORDS 字面量（同源守恒无法校验）");
-  } else {
-    const skillWords = m[1].split(",").map((s) => s.trim().replace(/^["'`]|["'`]$/g, "")).filter(Boolean);
-    const canon = contracts.SKILL_SUMMARY_FORBIDDEN_WORDS ?? [];
-    if (JSON.stringify(skillWords) !== JSON.stringify([...canon])) {
-      fail.push(
-        `H3 空泛词表漂移：skill-lint=[${skillWords.join("/")}] ≠ 契约 SKILL_SUMMARY_FORBIDDEN_WORDS=[${[...canon].join("/")}]` +
-          "——词表必须单一来源，改一处必须两处同步",
-      );
-    }
-    const base = contracts.VAGUE_WORDS_BASE ?? [];
-    for (const w of base) {
-      if (!skillWords.includes(w)) fail.push(`H3 基集词「${w}」未出现在 skill-lint 词表（两处 lint 不再共用同一基集）`);
-      if (!(FORBIDDEN ?? []).includes(w)) fail.push(`H3 基集词「${w}」未出现在业务定义词表（两处 lint 不再共用同一基集）`);
-    }
+
+  const literal = src.match(/const\s+FORBIDDEN_WORDS\s*=\s*\[([^\]]*)\]/);
+  if (literal) {
+    fail.push(
+      `H3 apps/agentcore/src/skill-lint.ts 又出现字面量词表副本 [${literal[1].trim()}]` +
+        "——单一来源是契约 SKILL_SUMMARY_FORBIDDEN_WORDS，此处只能 import，不得留副本",
+    );
+  }
+
+  const imported =
+    /import\s*\{[^}]*\bSKILL_SUMMARY_FORBIDDEN_WORDS\b[^}]*\}\s*from\s*["']@platform\/contracts["']/.test(src);
+  const bound = /const\s+FORBIDDEN_WORDS\s*=\s*SKILL_SUMMARY_FORBIDDEN_WORDS\b/.test(src);
+  if (!imported || !bound) {
+    fail.push(
+      `H3 apps/agentcore/src/skill-lint.ts 词表单源接线断开（import=${imported} · bind=${bound}）` +
+        "——必须从 @platform/contracts 取 SKILL_SUMMARY_FORBIDDEN_WORDS 并绑定给 FORBIDDEN_WORDS",
+    );
+  }
+
+  const canon = contracts.SKILL_SUMMARY_FORBIDDEN_WORDS ?? [];
+  if (!canon.length) fail.push("H3 契约未导出 SKILL_SUMMARY_FORBIDDEN_WORDS（技能摘要词表单源丢失）");
+
+  const base = contracts.VAGUE_WORDS_BASE ?? [];
+  for (const w of base) {
+    if (!canon.includes(w)) fail.push(`H3 基集词「${w}」未出现在契约 SKILL_SUMMARY_FORBIDDEN_WORDS（两处 lint 不再共用同一基集）`);
+    if (!(FORBIDDEN ?? []).includes(w)) fail.push(`H3 基集词「${w}」未出现在业务定义词表（两处 lint 不再共用同一基集）`);
   }
 }
 
