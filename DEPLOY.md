@@ -17,10 +17,37 @@
 
 ## 2. 部署步骤
 
+### 2.0 部署分支（先看这一条 · WO-INTEGRATION-LOOP 收口）
+
+> ⛔ **本节存在的理由 = 一次真实故障**：本文档此前只写 `git clone <仓库地址>`，没有任何分支说明。
+> 照做即 clone 默认分支，而当时默认分支**落后集成分支 919 个提交**——部署方与 Codespaces
+> 拿到的都是死分支，「拉不到最新代码」的根因在此，不在网络也不在缓存。
+
+| 分支 | 角色 | 谁该用 |
+|---|---|---|
+| `main` | **发布分支**：只接收跑通完整门禁（`scripts/gate.sh` + `pnpm gates` + 并线台账门）的代码 | **部署方、Codespaces、部署 agent 一律用它** |
+| `claude/inspiring-gates-aqczjg` | 集成分支：handoff 经复验后并入此处，门禁全绿后同步到 `main` | 开发/审核方 |
+| `claude/handoff-*` | 单工单交付分支，未复验 | 只用于 PR 复验，**不要部署** |
+
 ```bash
-git clone <仓库地址> && cd <仓库目录>
-docker compose up --build          # 首次构建约几分钟；后台运行加 -d
+# 首次部署
+git clone -b main <仓库地址> && cd <仓库目录>
+docker compose up -d --build       # 首次构建约几分钟
 ```
+
+```bash
+# 更新到最新（部署方 / Codespaces / 部署 agent 的**唯一**刷新命令）
+git fetch origin main
+git checkout main && git pull --ff-only origin main
+docker compose up -d --build       # compose 自动停旧容器→换新镜像→起新容器，无需手动 kill 进程
+docker compose ps                  # 全部 healthy 即完成
+```
+
+> `--ff-only` 是刻意的：若它失败，说明本地有偏离发布分支的改动，**应当停下来查**，
+> 而不是让 merge 悄悄产生一个只存在于部署机上的版本（那正是「线上和仓库对不上」的来源）。
+>
+> `/readyz` 在 `SEED_DEMO=1` 预热期间返回 **503 是正常的**（正在生成合成数据集），
+> 日志出现 `datacore 预热完成 · /readyz ready` 后转 200。别把预热 503 当成部署失败。
 
 等待 `gateway` 服务就绪（`docker compose ps` 全部 healthy）。首次启动 DataCore 会自动：
 

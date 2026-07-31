@@ -91,11 +91,15 @@ beforeAll(() => {
   }
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   server.resetHandlers();
   resetMockDb();
   clearTaskScripts();
+  // ⚠ 先 cancel 再 clear。`clear()` 只丢弃缓存，**不中止在途请求**：已发出的 fetch 会在测试环境
+  //    拆除之后才 resolve，vitest 随即报 "caught after test environment was torn down" 并判整包红。
+  //    因其取决于请求与拆除的先后，同一提交可能一次绿一次红（CI 上真实出现过）。
+  await queryClient.cancelQueries();
   queryClient.clear();
   tokenStore.clear();
   useSessionStore.getState().reset();

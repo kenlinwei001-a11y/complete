@@ -53,8 +53,15 @@ run_test() {
   local out rc roll cnt
   # datacore 勿并发多 vitest（CLAUDE.md LOOP 纪律）→ workspace-concurrency=1
   out="$(pnpm -r --workspace-concurrency=1 test 2>&1)"; rc=$?   # ★ 先捕获退出码，绝不经管道
-  roll="$(echo "$out" | grep -E "Tests +[0-9]+ (passed|failed)|Tests +no tests")"
-  cnt="$(echo "$roll" | grep -c . )"
+  # ⚠ 匹配前必须剥 ANSI 转义码。GitHub Actions 设 CI=true，vitest 因此**强开彩色输出**，
+  #   汇总行实际形如 `Tests \e[22m \e[1m\e[31m16 failed`——"Tests" 与数字之间夹着转义序列，
+  #   而原正则要求二者之间只有空格，于是 CI 上恒匹配 0 行、点名判 0/5 而误报"有包被静默跳过"。
+  #   本地用 $(...) 捕获时无 TTY、vitest 不着色，故本地一直正常——**又一次"本地绿只代表本地绿"**。
+  #   剥码比设 NO_COLOR 更稳：不依赖下游工具是否尊重该环境变量。
+  local plain
+  plain="$(printf '%s\n' "$out" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g')"
+  roll="$(printf '%s\n' "$plain" | grep -E "Tests[[:space:]]+[0-9]+[[:space:]]+(passed|failed)|Tests[[:space:]]+no tests")"
+  cnt="$(printf '%s\n' "$roll" | grep -c . )"
   if [ $rc -ne 0 ]; then
     echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_" | head -25
     echo "$out" | tail -15
