@@ -24,9 +24,12 @@ jobs:
         with:
           # 并线台账门要比对所有 claude/handoff-* 分支与 canonical，浅克隆取不到 → 必须全量。
           fetch-depth: 0
+      # ⛔ 不要在此写 `version:` —— package.json 已有 `packageManager: pnpm@10.33.0`，
+      #    两处同时指定会让 pnpm/action-setup@v4 直接报 "Multiple versions of pnpm specified" 并退出。
+      #    **这正是本仓 CI 长期红而无人察觉的真因**：workflow 钉 pnpm 9、package.json 写 10.33.0，
+      #    每次 run 都在 setup 阶段 8 秒内失败 —— 五包测试与 `pnpm gates` 在 CI 里一次都没真正执行过，
+      #    `gates` workflow 自建立起就是装饰品。版本单一来源 = package.json 的 packageManager。
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20

@@ -28,6 +28,24 @@ canonical 缺失的 68 个 handoff 新增文件里 **27 个是测试**（去重 
 统一由 **WO-TESTGAP-BACKFILL** 处置（逐个测试文件判定：补并 / 已被等价测试取代 / 确应丢弃并写明理由）。
 在它闭合前，相关分支一律标「挂起」，**不许标「已并线」**——本门对「标已并线但测试仍缺」直接判红。
 
+## ⚠ 第二个头号缺陷 · CI 从未真正运行过
+
+台账门促成的 PR 化让 CI 状态第一次被真正查看，随即发现：`gates` workflow **自建立起从未跑过一个测试**。
+
+```
+Error: Multiple versions of pnpm specified:
+  - version 9 in the GitHub Action config with the key "version"
+  - version pnpm@10.33.0 in the package.json with the key "packageManager"
+```
+
+workflow 钉 pnpm 9，`package.json` 的 `packageManager` 是 10.33.0 → `pnpm/action-setup@v4` 拒绝启动，
+每次 run 在 **8 秒内**死于 setup。**五包测试与 `pnpm gates` 在 CI 里一次都没执行过** ——
+所有"CI 会拦住"的假设都不成立，`gates` 是装饰品。已在 `WO-INTEGRATION-LOOP` 修（去掉 `version:`，
+版本单一来源 = `packageManager`）。
+
+**教训**：门存在 ≠ 门在跑。本仓「绿测试≠能用」的下一层是「**门≠在执行**」——
+从此 CI 状态必须经 PR 呈现出来被人看见，这正是本 LOOP 要解决的。
+
 ## 台账
 
 | branch | 状态 | 说明 |
@@ -58,5 +76,5 @@ canonical 缺失的 68 个 handoff 新增文件里 **27 个是测试**（去重 
 | `claude/handoff-sandbox-action-propagation` | 挂起 | 缺 migration `028_sim_action_propagation_rule.sql` + `sim-action-propagation.test.ts`。**迁移号 028 与 `wo-69-p3-interface` 撞车**，并线前必须重编号——由 WO-INTEGRATION-AUDIT 处置。 |
 | `claude/handoff-ontology-context` | 挂起 | 缺 4 件含 `router/ontology-context.ts`、`contracts/ontology-context.ts` 等**实现**文件。需复验：是被等价实现取代（canonical 已有 `type-semantics` 路由）还是真漏并 → WO-INTEGRATION-AUDIT。 |
 | `claude/handoff-ceo6` | 挂起 | 缺 `apps/agentcore/src/agent/ceo.ts`（实现文件）。需复验是否被 `ceo-route.ts` 等价取代 → WO-INTEGRATION-AUDIT。 |
-| `claude/handoff-wo-aip-cap0` | 挂起 | 缺 11 件（`plan-builder/compiler.ts`、migration `010_plan_builder_canvases.sql`、前后端测试）。整块特性未并线，规模最大 → WO-INTEGRATION-AUDIT 单独定性（并 / 驳回 / 拆分）。 |
+| `claude/handoff-wo-aip-cap0` | 挂起 | 缺 11 件（`plan-builder/compiler.ts`、migration、前后端测试）。**迁移号 `010` 与 canonical 已占用的 `010_multi_intent_plan.sql` 实撞（非潜在风险）**，并线前必须重编号。整块特性未并线，规模最大 → WO-INTEGRATION-AUDIT（Issue #9）单独定性。 |
 | `claude/handoff-qos-live-evidence` | 已驳回 | 缺失件是一份一次性验收记录 `docs/acceptance-log-qos-live-10q.md`。验收记录属过程产物，不入正线；其结论已由 QOS 相关 SEAM 测试承载。 |
