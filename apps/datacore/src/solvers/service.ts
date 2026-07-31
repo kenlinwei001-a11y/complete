@@ -3,7 +3,7 @@ import type { AccessDecision, AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
-import { notFound, validationError } from "../errors.js";
+import { notFound, validationError, solverColumnRestricted } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
@@ -4627,6 +4627,16 @@ export class SolverService {
     // WO-D1 检查点①（入口）：请求已被取消（AgentCore 超时 abort / 前端断开）→ 一步都不往下走。
     // 未包裹取消作用域的调用方（内部派生/测试直调）恒 no-op → 行为逐字节不变（R6）。
     throwIfCancelled(`solver ${solverKey} 入口`);
+    // ★ WO-69 P1 兜底守卫（审核方收口·合入前置条件）——「宁可少答，不许错答」。
+    // 本 invoke() 是**唯一分发口**：compute() 路径与 ~86 处自建 ctx 的早返回求解器（gap_attribution/
+    // concentration_risk/margin_attribution/…直取 repos.objects.listByType·不经 loadContext）全从此过，
+    // 故守在这里可一次覆盖两半——闭掉「列策略只接住 loadContext 一半」的残口（live 实证：加了 Order 列策略后
+    // gap_attribution admin/受限输出字节相同 17677==17677，即受限用户读到了被禁列算出的数）。
+    // 语义：调用者在任一 OBJECT_TYPE 上受列级约束 → **拒绝**（403 SOLVER_COLUMN_RESTRICTED），
+    // 绝不带缺失属性算出「装成真的假数」。admin / 无列级策略 → 空集 → 逐字节现行为（S4 硬底线）。
+    // 粗粒度：不区分该 solver 是否真读受限类型（读取面未知正是 P2 要建的 Function 签名）；保守误伤优于错数。
+    const columnRestrictedTypes = await this.authz.columnRestrictedObjectTypes(ctx);
+    if (columnRestrictedTypes.length > 0) throw solverColumnRestricted(solverKey, columnRestrictedTypes);
     // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
     if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
       const art = await this.activeArtifact(ctx.tenantId, solverKey);
