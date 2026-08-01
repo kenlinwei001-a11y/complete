@@ -25,9 +25,15 @@ run() {
     echo "$out" | tail -3
     echo "✅ ${name} RC=0"
   else
-    # 失败时打印足量上下文（含 TS 错误行），而不是只 tail 几行把错误挤掉
-    echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_" | head -25
-    echo "$out" | tail -15
+    # 失败时打印足量上下文（含 TS 错误行），而不是只 tail 几行把错误挤掉。
+    # ⛔ 本过滤器自己出过事（真实踩过）：原模式只有 `error TS|FAIL|✗|AssertionError|ERR_`，
+    #    遇到 **teardown 期未捕获异步错误**（vitest「This error was caught after test environment
+    #    was torn down」·全部用例 passed 但进程退出码非 0）时，**错误本体一个字都没打印出来**，
+    #    只剩一句 ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL —— 诊断时拿不到是哪个文件、哪个 timer 泄漏。
+    #    本脚本抬头写着"不许只 tail 几行把错误挤掉"，那一次它自己犯了这条。已补泄漏/未捕获类特征词
+    #    与堆栈行（`at xxx.tsx:1:1`），并把尾部上下文从 15 行放宽到 40 行。
+    echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_|Unhandled|unhandled|caught after|Errors +[0-9]+ error|Serialized Error|rejection|^\s+at .*\.(ts|tsx):[0-9]+" | head -40
+    echo "$out" | tail -40
     echo "❌ ${name} RC=${rc}"
     FAILED+=("${name}")
   fi
@@ -76,8 +82,14 @@ run_test() {
   roll="$(printf '%s\n' "$plain" | grep -E "Tests[[:space:]]+[0-9]+[[:space:]]+(passed|failed)|Tests[[:space:]]+no tests")"
   cnt="$(printf '%s\n' "$roll" | grep -c . )"
   if [ $rc -ne 0 ]; then
-    echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_" | head -25
-    echo "$out" | tail -15
+    # ⛔ 与 run() 同一处教训（**TEST 段才是真正踩到的那处**）：窄过滤器遇到 teardown 期未捕获异步错误
+    #    （全部用例 passed、`Errors 1 error`、进程退出码非 0）时，错误本体一个字都打不出来，
+    #    只剩 ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL —— 拿不到是哪个文件/哪个 timer 泄漏，无法定性。
+    #    诊断这类"全绿却红"必须看到堆栈行与包名分隔行，故一并放宽。
+    echo "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_|Unhandled|unhandled|caught after|Errors +[0-9]+ error|Serialized Error|rejection|^\s+at .*\.(ts|tsx):[0-9]+" | head -40
+    # 各包分隔行（`/path/apps/xxx:`）能指认是哪个包退的码——全绿却红时这是第一手线索。
+    echo "$out" | grep -E "^/.*/(apps|packages)/[^:]+:$" | head -10
+    echo "$out" | tail -40
     echo "❌ TEST (五包·串行) RC=${rc}"
     FAILED+=("TEST (五包·串行)")
     return
