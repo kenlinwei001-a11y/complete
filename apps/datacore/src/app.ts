@@ -351,7 +351,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
   // V5 双算注入：把被测 solvers.invoke 以回调注入 VLE（vle.ts 不 import solvers/service，V9 静态门守）。
   const vle = new VleService(repos, synthetic, ontology, (c, key, args) => solvers.invoke(c, key, args));
-  const actions = new ActionService(repos, rules, outbox, notifications);
+  // S2 Action 三段埋点必须并入 **app 级** 注册表：不传 metrics 时 ActionService 会退化为自有注册表，
+  // 计数照记但只有 `services.actions.metrics` 读得到，`/metrics`（下方渲染的是这里的 metrics）看不见 ——
+  // 埋点等于对外不存在。传参即接上 dc_action_{submit,approval,execute,execute_attempts}_total。
+  const actions = new ActionService(repos, rules, outbox, notifications, metrics);
   // WO-C1 · L2 决策内核：gap_attribution(根因)+decision_play(方案)→一等 Decision→commit 派 ActionDraft（走 S2）。
   const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);

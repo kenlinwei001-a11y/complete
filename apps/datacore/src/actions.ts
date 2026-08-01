@@ -413,9 +413,10 @@ export class ActionService {
   private executor: ActionExecutor = new MockActionExecutor();
   private retryDelaysMs = [50, 100, 200];
   /**
-   * Action 三段埋点注册表。构造点（`app.ts`）当前不传 → 退化为服务自有注册表：计数照记、
-   * 可经 `services.actions.metrics` 读到，但**尚未汇入 `/metrics` 输出**（暴露需在 app.ts
-   * 构造处多传一个 metrics 实参，超出本单范围边界，已在交付报告里交底）。
+   * Action 三段埋点注册表。`app.ts` 构造处传入 app 级 Metrics → 埋点直接汇入 `/metrics` 输出
+   * （守门测试：`test/action-metrics-endpoint.seam.test.ts`，效果层断言 —— 真跑一个 Action 后
+   * `GET /metrics` 文本里 dc_action_* 计数 > 0）。不传时退化为服务自有注册表：计数仍记、
+   * 但只有 `services.actions.metrics` 读得到，对外等于不存在 —— 单测直连服务时才用这条退路。
    */
   readonly metrics: Metrics;
   private am: ActionMetrics;
