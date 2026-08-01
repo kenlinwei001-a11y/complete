@@ -6,8 +6,12 @@ import {
   type IntelligenceResource,
   type ObjectTypeResource,
 } from "@platform/contracts";
-import { createTestApp, debugHeaders, ADMIN, type TestApp } from "./helpers.js";
+import { createTestApp, debugHeaders, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { projectFields, projectObjectTypes } from "../src/dril/resource-projector.js";
+import { createMemoryRepos } from "../src/persistence/memory.js";
+import { Metrics } from "../src/metrics.js";
+import { GuardedToolExecutor } from "../src/tools/executor.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 
 /**
  * WO-RESOURCE-CATALOG-ONTOLOGY · SEAM 红咬（①反虚构 ②活投影 ③field 量纲 ④描述门有牙 ⑤R6 字节一致）。
@@ -125,6 +129,30 @@ describe("WO-RESOURCE-CATALOG-ONTOLOGY · 本体对象类型/字段进资源目�
     const proc = projected.find((r) => r.key === "Process");
     expect(proc!.description).toBe("制造工序定义");
     expect(proc!.descriptionSynthesized).toBeUndefined();
+  });
+
+  it("SEAM⑥ 守卫同源（F1 回归）：目录可见 object_type 照名 query_objects 不被 UNKNOWN_TYPE 拒收", async () => {
+    // 断在接缝实证（复审 F1）：mock listObjectTypeKeys 曾硬编码旧 10 key，不含目录投影暴露的
+    // WorkOrder/MaterialBalance/OrderLine/WIPLot——Agent discover 看到 → 照名查询被拒 UNKNOWN_TYPE。
+    // 修复后守卫清单 = 出厂基线 ∪ 投影同源 ACTIVE 集；本测试逐一驱动真守卫（executor.ts listObjectTypeKeys 路径）。
+    const projected = (await listResources(t, ADMIN, "?kind=object_type")) as ObjectTypeResource[];
+    expect(projected.length).toBeGreaterThan(0);
+    const exec = new GuardedToolExecutor(
+      { dataCore: t.dataCore, repos: createMemoryRepos(), metrics: new Metrics() },
+      { taskId: "t_seam6", ctx: { tenantId: TENANT, userId: "admin", roles: ["admin"] }, budget: new BudgetTracker() },
+    );
+    for (const r of projected) {
+      const res = await exec.run("query_objects", { objectType: r.key, filter: {} });
+      expect(
+        (res.payload as { error?: string }).error,
+        `${r.key} 目录可见却被 query_objects 守卫 UNKNOWN_TYPE 拒收（F1 接缝回归）`,
+      ).not.toBe("UNKNOWN_TYPE");
+    }
+    // 出厂基线不倒退：seed 引用面类型（Material「已知但 0 实例」语义）仍在守卫清单。
+    const guardKeys = await t.dataCore.ontology.listObjectTypeKeys({ tenantId: TENANT, userId: "admin", roles: ["admin"] });
+    for (const legacy of ["Material", "Shipment", "Segment", "Customer", "Line"]) {
+      expect(guardKeys).toContain(legacy);
+    }
   });
 
   it("投影器单测：projectObjectTypes 只投 ACTIVE + projectFields 量纲/合成兜底", () => {

@@ -132,6 +132,9 @@ export class ResourceRegistryService {
     } catch {
       /* fail-open */
     }
+    // R6：A 侧 pg list 无 ORDER BY（getTypeSemantics 为此自行排序）——投影输入先按 key 字典序归一，
+    // 防 pg 部署两次投影行序漂移（SEAM⑤ 字节一致须对生产路径同构成立）。
+    objectTypeDefs.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     // 只投影 ACTIVE 类型的属性；被 ACTIVE 过滤裁掉的类型数必须 log（WO §4 禁静默截断）。
     const activeTypeDefs = objectTypeDefs.filter((d) => d.status === undefined || d.status === "ACTIVE");
     const prunedTypes = objectTypeDefs.length - activeTypeDefs.length;
@@ -153,6 +156,14 @@ export class ResourceRegistryService {
       typeKey: d.key,
       props: fieldSourceByType.get(d.key) ?? d.properties ?? [],
     }));
+    // 禁静默漏型（F2）：双源（type-semantics ∪ defs.properties）皆空的 ACTIVE 类型聚合计数 warn——
+    // 精简客户端两方法都未实现时 field 池整体为空也能从此日志定位。
+    const zeroFieldTypes = fieldSources.filter((s) => s.props.length === 0).map((s) => s.typeKey);
+    if (zeroFieldTypes.length > 0) {
+      console.warn(
+        `[resource-registry] field 投影：${zeroFieldTypes.length} 个 ACTIVE 类型双源均无属性口径（${zeroFieldTypes.join(", ")}）——field 池缺这些类型的字段`,
+      );
+    }
 
     const workflows = await this.deps.repos.workflows.listByTenant(tenantId);
     const skills = await this.deps.repos.skills.listByTenant(tenantId);

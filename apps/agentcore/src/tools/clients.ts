@@ -98,6 +98,10 @@ export interface ObjectTypeDefSummary {
     isPrimaryKey?: boolean;
     searchable?: boolean;
   }[];
+  /**
+   * 预留字段（当前供给侧恒 undefined）：真值源 `ObjectTypeDef` 无 linkKeys——链接关系在 `LinkTypeDef`，
+   * `/a/v1/ontology/object-types` 不返回。HTTP 客户端不做映射；将来 A 侧透出时投影层自动透传。
+   */
   linkKeys?: string[];
 }
 
