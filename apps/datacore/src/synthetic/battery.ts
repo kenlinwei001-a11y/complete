@@ -1034,6 +1034,30 @@ const sopVersionRowProps: PropertyDef[] = [
 const sopVersionRowDerived: DerivedPropertyDef[] = [
   { propKey: "gap", formula: "demand - supply" }, // 产销缺口（派生）
 ];
+/**
+ * WO-ADOPT-MITIGATION · 已采纳处置方案台账（`adopt_mitigation` Action 审批通过后的**唯一落点**）。
+ *
+ * 病灶：`adopt_mitigation` 审批通过后一个字节不写 → 用户点「采纳」，风险曲线纹丝不动。
+ * 引擎半本来就齐（`risk.ts tensionSeries` 接 `{eff,tn}`、`params.risk.mitigations` 带量化效果），
+ * **唯一缺的是"哪个方案被真采纳了"这条记录**。本类型即那条记录：
+ *   risk_timeline 逐 (baseId,factor) 查 ACTIVE 采纳 → 把 {eff,tn} 喂进**真曲线**（不是"如果采纳"的对照曲线）。
+ * eff/tn 由执行器从 `params.risk.mitigations[factor]` **解出后落库**（非猜、非默认值）：
+ * 解不出即诚实失败，绝不写一个猜的 eff/tn（③ 拒绝 > 静默错数）。
+ * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前先把旧的置 REVOKED·② 单源 > 并存）。
+ */
+const adoptedMitigationProps: PropertyDef[] = [
+  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+  { propKey: "factor", dataType: "string", isPrimaryKey: false }, // 瓶颈因素（params.bottleneck.factors 之一）
+  { propKey: "planKey", dataType: "string", isPrimaryKey: false }, // params.risk.mitigations[factor][].key
+  { propKey: "planName", dataType: "string", isPrimaryKey: false }, // 方案中文名（审计可读·随 key 解出）
+  { propKey: "eff", dataType: "number", isPrimaryKey: false }, // 张力削减量（自方案库解出·非猜）
+  { propKey: "tn", dataType: "number", isPrimaryKey: false }, // 生效天（T+n 起扣 eff）
+  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false },
+  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false }, // R13 溯回审批链
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // ACTIVE | REVOKED
+];
+
 const rootCauseChainProps: PropertyDef[] = [
   { propKey: "chainId", dataType: "string", isPrimaryKey: true },
   { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false }, // 关联 Metric.category
@@ -1589,6 +1613,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
   // cockpit P2 + SPINE 绿地（规划决策推演 + 根因 DAG + 目标-指标-责任骨架）
   Metric: "decision", RootCauseChain: "decision", KSF: "decision", Principal: "people",
+  // WO-ADOPT-MITIGATION：已采纳处置方案（决策落地台账·归 decision 域，同 RootCauseChain/DecisionGap）
+  AdoptedMitigation: "decision",
   // cockpit P5 / sop 绿地（S&OP 版本演进）
   SopVersionRow: "plan",
   // Phase 3 MES Domain
@@ -2096,6 +2122,9 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("KSF", "关键成功要素", ksfProps),
     plain("Principal", "责任主体", principalProps),
     plain("RootCauseChain", "根因归因链", rootCauseChainProps),
+    // WO-ADOPT-MITIGATION：已采纳处置方案台账（adopt_mitigation 执行器落点 → risk_timeline 真曲线消费）。
+    // 出厂**无实例**（运行期由 Action 审批写入），故不入 generation/BINDINGS——注册为一等类型使其可查/可下钻/可审计。
+    plain("AdoptedMitigation", "已采纳处置方案", adoptedMitigationProps),
     // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
     { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
     // Phase 3 MES Domain: Production Planning

@@ -43,17 +43,19 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   // plan_change 仅 source==="global-sim" 有真回灌；其余 source 落未实现（执行期按 payload 二次判定）。
   plan_change: "WIRED",
   采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations；写回意图见 mapping.ts:85
+  // ← 已接：审批通过后写 AdoptedMitigation 台账（app.ts）→ risk_timeline 真曲线自第 tn 天起扣 eff。
+  //   「采纳」的实质不是开一张工单，而是让**风险曲线真的降下去**；效果层断言见 test/action-adopt-mitigation.seam.test.ts。
+  //   写回意图出处：decision/kernel.ts:126 真 dispatch 本 key 建 DRAFT；mapping.ts:86「预警处置方案 →
+  //   处置工单（写回）+ 风险曲线消解」是同一业务动作的中文登记名（键名不同名，据实说明不硬凑）。
+  adopt_mitigation: "WIRED",
   // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
-  // ⚠️ 逐条写清写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里都有写回意图"，
-  //    对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。门禁的理由本身错了，
-  //    就是这套门自己身上的一小块假绿，故此处逐条据实标注，勿再合并成一句笼统话）：
-  //  · adopt_mitigation —— 决策内核 commit 的落点（decision/kernel.ts:126 真 dispatch 本 key 建 DRAFT）；
-  //    mapping.ts:86「预警处置方案 → 处置工单（写回）+ 风险曲线消解」是同一业务动作的中文登记名（键名不同名）。
-  //  · 采纳经营方案 —— **不在 mapping.ts、kernel 也不派**。写回意图出自它自己的注册声明：
-  //    battery.ts:2076 `required: ["schemeNo","scheme","targets"]`（增量 §0-4 / §7.11 规划建议「采纳方案」，
-  //    payload = 方案快照 + 目标面板值）——载荷里带着方案与目标，却一个字节都不落，正是欠账形态。
+  // ⚠️ 只剩这一条了。写清它写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里
+  //    都有写回意图"，对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。
+  //    门禁的理由本身错了，就是这套门自己身上的一小块假绿，故据实标注，勿再合并成一句笼统话）：
+  //    出处 = 它自己的注册声明 battery.ts `required: ["schemeNo","scheme","targets"]`
+  //    （增量 §0-4 / §7.11 规划建议「采纳方案」，payload = 方案快照 + 目标面板值）——
+  //    载荷里带着方案与目标，却一个字节都不落，正是欠账形态。
   //    业务裁定（已定·勿改）：采纳一个方案**不得覆盖全局经营目标基线**（PLAN_GOAL_TARGETS）——「目标不能改」。
-  adopt_mitigation: "NOT_IMPLEMENTED",
   采纳经营方案: "NOT_IMPLEMENTED",
 };
 
@@ -85,7 +87,7 @@ export class UnwiredActionExecutor implements ActionExecutor {
     // 判 NOT_IMPLEMENTED 会打死这个正当功能。故默认 NO_WRITE——
     // ⚠️ 关键区分：**不诚实的从来不是 `ok:true`，而是那个 MO 形态的假 ref**（使"没写"与"开了工单"不可分辨）。
     // NO_WRITE 返回 `NO_WRITE:<key>`：动作确实走完了审批链，且 targetRef **自证没有写入任何真值**。
-    // 而平台**内置已注册**却没接执行器的（adopt_mitigation / 采纳经营方案 / 采纳产能保障方案）是**欠账**，
+    // 而平台**内置已注册**却没接执行器的（现仅剩 `采纳经营方案`）是**欠账**，
     // 在 ACTION_WIRING 里显式标 NOT_IMPLEMENTED → 诚实失败，让欠账可见、可门禁、不可伪装成 NO_WRITE。
     const wiring: ActionWiring = ACTION_WIRING[key] ?? "NO_WRITE";
     if (wiring === "NO_WRITE") return { ok: true, targetRef: `NO_WRITE:${key}` };
