@@ -1,6 +1,7 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
+import { withPropDisplayNames } from "./battery.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -17,11 +18,13 @@ const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrim
 });
 
 type TypeDef = Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">;
+// WO-SCHEMA-ZH：属性中文业务名走 battery.ts 的 PROP_DISPLAY_NAMES 同一张表（单源 > 并存，
+// 本文件不另存一份中文映射）；未登记的属性保持缺省 → 下游诚实回落 propKey。
 const def = (key: string, displayName: string, domain: string, props: PropertyDef[]): TypeDef => ({
   key,
   displayName,
   domain,
-  properties: props,
+  properties: withPropDisplayNames(key, props),
   derivedProperties: [],
   sourceBindings: [],
 });

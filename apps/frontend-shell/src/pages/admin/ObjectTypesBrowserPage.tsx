@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchObjectTypeStats, fetchBusinessDomains, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
+import { fetchObjectTypeStats, fetchBusinessDomains, fetchObjectTypes, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
 
 /**
  * A4 · 对象/类型浏览器（消费 A3 14 域 + 物化计数 + 实例下钻）。闭合用户实测"找不到已发布对象类型在哪看"。
@@ -10,6 +10,11 @@ import { fetchObjectTypeStats, fetchBusinessDomains, queryObjectsPaged, type Obj
  */
 function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string | null; onClose: () => void }) {
   const q = useQuery({ queryKey: ["a", "ot-instances", typeKey], queryFn: () => queryObjectsPaged(typeKey, 1, 20, {}) });
+  // WO-SCHEMA-ZH：属性预览此前是裸键值对（`util=0.87`），业务专家看不出这个数字是什么。
+  // 中文名取后端 PropertyDef.displayName 单一真值（前端不内联映射）；缺则诚实回落 propKey。
+  const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const propZh = (k: string): string =>
+    typesQ.data?.find((t) => t.key === typeKey)?.properties?.find((p) => p.propKey === k)?.displayName ?? k;
   const rows = q.data?.items ?? [];
   return (
     <div className="panel" style={{ marginTop: 12 }} data-testid="ot-instance-panel">
@@ -21,11 +26,11 @@ function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string |
       {rows.length === 0 && <div className="muted" style={{ fontSize: 13 }}>无物化实例。</div>}
       {rows.length > 0 && (
         <table className="cmp">
-          <thead><tr><th>{pk ?? "id"}</th><th>属性预览</th><th /></tr></thead>
+          <thead><tr><th title={pk ?? "id"}>{pk ? propZh(pk) : "id"}</th><th>属性预览</th><th /></tr></thead>
           <tbody>
             {rows.map((o) => {
               const keyVal = pk && o.props[pk] != null ? String(o.props[pk]) : o.id;
-              const preview = Object.entries(o.props).filter(([k]) => k !== pk).slice(0, 3).map(([k, v]) => `${k}=${String(v)}`).join(" · ");
+              const preview = Object.entries(o.props).filter(([k]) => k !== pk).slice(0, 3).map(([k, v]) => `${propZh(k)}=${String(v)}`).join(" · ");
               return (
                 <tr key={o.id} data-testid={`ot-inst-${o.id}`}>
                   <td><Link to={`/o/${encodeURIComponent(o.type)}/${encodeURIComponent(keyVal)}`} data-testid={`ot-inst-link-${o.id}`}>{keyVal}</Link></td>

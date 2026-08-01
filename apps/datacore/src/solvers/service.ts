@@ -324,7 +324,7 @@ const LEVER_FACTOR_PROPS: Record<string, string[]> = {
  * leadTime/etaDay 存天；shifts 存班；shiftHours 存小时；changeoverMin 存分钟；onHand 整数库存·单位随物料不臆造）。
  */
 type LeverValueKind = "ratio" | "days" | "count" | "hours" | "minutes" | "qty";
-const LEVER_PROP_META: Record<string, { label: string; unit: string; kind: LeverValueKind }> = {
+export const LEVER_PROP_META: Record<string, { label: string; unit: string; kind: LeverValueKind }> = {
   "Equipment.oee_current": { label: "设备·OEE", unit: "%", kind: "ratio" }, // debattery-allow
   "Line.utilization": { label: "产线·利用率", unit: "%", kind: "ratio" }, // debattery-allow
   "Process.yield_baseline": { label: "工序·良率基线", unit: "%", kind: "ratio" }, // debattery-allow

@@ -226,6 +226,13 @@ export interface PropertyDef {
   /** 治理增量 §4：单位（场景包单位字典约束）+ 展示格式（如 "0.0"）。 */
   unit?: string;
   displayFormat?: string;
+  /**
+   * WO-SCHEMA-ZH · 属性中文业务名（"leadTime" → "到货周期"）——与 unit 并列的**展示层单一真值**。
+   * 补一层展示名而非改 propKey：key 是求解器/规则/派生公式/金值的接线名，改它会连带打断整条链。
+   * **可缺省 = 诚实留白**：含义未经业务确证的属性不臆造中文名，下游一律回落 propKey（不得渲染 undefined/空白），
+   * 也不得在前端各存一份中文映射（单源优于并存）。值的单一来源见 synthetic/battery.ts PROP_DISPLAY_NAMES。
+   */
+  displayName?: string;
   /** DF.5 语义目录：属性业务语义描述（"这字段是什么"），喂生成接地 prompt + /catalog/search 检索。 */
   description?: string;
 }

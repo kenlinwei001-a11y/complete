@@ -165,8 +165,11 @@ export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
     `/a/v1/objects/${encodeURIComponent(typeKey)}/${encodeURIComponent(objectKey)}`,
   );
 
+// WO-SCHEMA-ZH：properties[].displayName = 属性中文业务名（后端 PropertyDef.displayName 单一真值下发，
+// 同 unit 的范式）。前端**只消费 `displayName ?? propKey`**，不得内联任何中文名映射；缺省即该属性
+// 业务含义尚未确证 → 诚实显裸键，不渲染 undefined/空白。
 export const fetchObjectTypes = () =>
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
     "/a/v1/ontology/object-types",
   );
 

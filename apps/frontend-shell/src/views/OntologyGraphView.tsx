@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
-import { fetchOntologyGraph } from "@/api/endpoints";
+import { fetchObjectTypes, fetchOntologyGraph } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import type { GraphEdgeVM, GraphNodeVM } from "@/api/types";
@@ -501,6 +501,12 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
   const [openRule, setOpenRule] = useState<string | null>(null);
   const cov = fieldCoverage(node);
   const isObject = node.kind === "object";
+  // WO-SCHEMA-ZH：属性中文业务名的单一真值 = 后端 PropertyDef.displayName。
+  // /ontology/graph 的节点投影只带 propKey/dataType，故此处读**权威类型表**（/ontology/object-types）取名——
+  // 仍是后端单源，前端**不内联任何中文名映射**；查不到即诚实回落 propKey（不渲染 undefined/空白）。
+  const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const propZh = (k: string): string =>
+    typesQ.data?.find((t) => t.key === node.key)?.properties?.find((p) => p.propKey === k)?.displayName ?? k;
   return (
     <aside className={styles.inspector} data-testid="graph-inspector">
       <div className={styles.inspectorHead}>
@@ -538,9 +544,9 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
             const derived = (node.derivations ?? []).some((d) => d.propKey === p.propKey);
             return (
               <tr key={p.propKey}>
-                <td>
+                <td title={p.propKey}>
                   {p.isPrimaryKey && <span title="主键">★ </span>}
-                  {p.propKey}
+                  {propZh(p.propKey)}
                 </td>
                 <td className="zh" style={{ color: "var(--muted)" }}>
                   {p.dataType}
