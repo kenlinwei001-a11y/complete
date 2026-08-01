@@ -34,9 +34,22 @@ run() {
 }
 
 run "BUILD (pnpm -r build)" pnpm -r build
-run "debattery:check" node scripts/check-debattery.mjs
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
-run "arg-drop-seam:check" node scripts/check-arg-drop-seam.mjs
+# `pnpm gates` = 13 条治理门（含 debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 …）。
+#
+# ⛔ 为何补进来（第三层假绿·本地与 CI 覆盖面不一致）：本脚本自称"防假绿的单一入口"，
+#    而它原先只跑 3 条静态门，CI 却另跑 `pnpm gates`(13 条) + `check-ontology-writeback.mjs`。
+#    于是**照 LOOP 纪律只跑 `bash scripts/gate.sh` 的审核方，拿到的是比 CI 弱的检查**——
+#    本地全绿 → 推上去 CI 才红，或更糟：本地绿被当成"验过了"直接并线。
+#    「门存在 ≠ 门在跑」的下一层是「**门在跑 ≠ 你跑的那道门等于 CI 那道门**」。
+#    debattery/arg-drop-seam 原先单列，已含在 `pnpm gates` 里，去重后只保留 genuine-sim（不在 gates 列表）。
+run "pnpm gates（13 条治理门）" pnpm gates
+run "ontology-writeback:check" node scripts/check-ontology-writeback.mjs
+# ⚠️ 刻意**不**并入 handoff 并线台账门（`check-handoff-integration.mjs`）：
+#    它以**远端** canonical 为真值，读不到本地未推送的工作副本 → 本地必然红。
+#    把一条设计上本地恒红的门放进日常入口，只会训练出"红了也照并"的习惯，反而拆掉所有门的威慑。
+#    它留在 CI 单独的 job 里（那里的远端视图才是完整的），本地需要时用
+#    `node scripts/check-handoff-integration.mjs --canonical HEAD` 自查。
 
 # TEST 段专用：成功时也必须**逐包点名**。
 #
