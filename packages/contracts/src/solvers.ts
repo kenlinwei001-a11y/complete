@@ -215,6 +215,24 @@ export const RiskCardSchema = z.object({
     .optional(),
   // 以基地为主体时，汇总该基地所有越线 factor 的简要信息（产能推演每基地一张卡片）
   allFactors: z.array(z.object({ factor: z.string(), peak: z.number(), crossDay: z.number().int().nullable() })).optional(),
+  /**
+   * WO-ADOPT-MITIGATION（加性·optional·向后兼容）：该 (base,factor) 上**已被真采纳**的处置方案回执。
+   *
+   * ⚠️ 补这一条的由来（值得记）：服务端已经在 card 上带了这个键，但契约 schema **没声明它** ——
+   * zod 默认 strip 未声明键，而前端 `RiskBoardView` 必经 `RiskTimelineOutputSchema.parse`
+   * ⇒ **服务端写了、契约吞了、前端永远拿不到**，R13 加性披露形同虚设。
+   * 这正是本单要治的「两半各自都对、接缝没接」在**上一层**原样复发，由对抗性证伪测试
+   * （`zz-adversary-adopt.test.ts` E）当场抓出。**加性字段必须同时在契约里声明，否则等于没加。**
+   */
+  adoptedMitigation: z
+    .object({
+      planKey: z.string(),
+      /** 消解幅度（张力点数·来自 params.risk.mitigations 的量化 eff）。 */
+      eff: z.number(),
+      /** 起效日（第 tn 天起曲线开始降）。 */
+      tn: z.number().int(),
+    })
+    .optional(),
 });
 /** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
 export const RiskPlanRowSchema = z.object({
