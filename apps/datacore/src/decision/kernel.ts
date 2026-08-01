@@ -135,7 +135,10 @@ export class DecisionKernelService {
    * 将来若 decision_play 产出基地处置粒度的方案，同一段代码自然就派得出真单。
    *
    * 欠账诚实披露（不在本单范围内、不许靠放宽解析假装解决）：
-   *  · `ACTION_WIRING.adopt_mitigation` 仍是 NOT_IMPLEMENTED——即便派出可执行载荷，审批通过后执行器仍诚实失败；
+   *  · ~~`ACTION_WIRING.adopt_mitigation` 仍是 NOT_IMPLEMENTED~~ —— **此句已过期**：`adopt_mitigation`
+   *    现已接线为 WIRED（审批通过写 AdoptedMitigation 台账 → risk_timeline 真曲线自第 tn 天起扣 eff）。
+   *    **但本段结论不变，且理由更强了**：执行器接没接线，与「该不该派」无关 ——
+   *    派一条语义错的单，执行器越真、伤害越大（错的 eff/tn 会被**真的**写进张力曲线，从此不可分辨）。
    *  · 「公司级战略方案」缺一个语义正确的已接线动作类型（`采纳经营方案` 同样 NOT_IMPLEMENTED），
    *    改派过去只是把注定失败的草稿换个 key，仍违反本单纪律，故不做。
    */
