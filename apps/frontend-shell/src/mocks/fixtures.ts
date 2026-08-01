@@ -1,4 +1,6 @@
 import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：规则表达式/抽取候选里的阈值一律派生，禁内联裸阈值/手写百分数。
+import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlinePct } from "@platform/contracts";
 import type {
   ActionDraft,
   AdminTenant,
@@ -556,7 +558,7 @@ export const GRAPH: OntologyGraphVM = {
     { id: "n-proc", key: "Process", label: "工序", kind: "object", domain: "process", tier: 2, sourceSystem: "MES", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }, { propKey: "yield_baseline", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "process" }], rules: [], derivations: [{ propKey: "yield_baseline", formula: "ts_agg(yield_daily, avg, 7d)" }] },
     { id: "n-equip", key: "Equipment", label: "设备", kind: "object", domain: "equip", tier: 2, sourceSystem: "IoT", properties: [{ propKey: "equipId", dataType: "string", isPrimaryKey: true }, { propKey: "processId", dataType: "ref" }, { propKey: "lineId", dataType: "ref" }, { propKey: "baseId", dataType: "ref" }, { propKey: "ctSeconds", dataType: "number" }, { propKey: "availFactor", dataType: "number" }, { propKey: "oeeA", dataType: "number" }, { propKey: "oeeP", dataType: "number" }, { propKey: "oeeQ", dataType: "number" }, { propKey: "oee_current", dataType: "number" }, { propKey: "equipment_code", dataType: "string" }, { propKey: "equipment_type", dataType: "enum" }, { propKey: "manufacturer", dataType: "string" }, { propKey: "install_date", dataType: "date" }, { propKey: "status", dataType: "enum" }], sourceBindings: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", lineId: "LINE_ID", baseId: "BASE_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q", equipment_code: "EQUIP_CODE", equipment_type: "EQUIP_TYPE", manufacturer: "MANUFACTURER", install_date: "INSTALL_DATE", status: "STATUS" } }], rules: [], derivations: [{ propKey: "oee_current", formula: "ts_agg(oee_daily, weighted_avg, 7d)" }] },
     { id: "n-people", key: "Crew", label: "班组", kind: "object", domain: "people", tier: 3, sourceSystem: "HR", properties: [{ propKey: "crewId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
-    { id: "n-quality", key: "QualityLot", label: "质检批", kind: "object", domain: "quality", tier: 3, sourceSystem: "QMS", properties: [{ propKey: "lotNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2" }], derivations: [] },
+    { id: "n-quality", key: "QualityLot", label: "质检批", kind: "object", domain: "quality", tier: 3, sourceSystem: "QMS", properties: [{ propKey: "lotNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: OUTSOURCE_REDLINE.ruleKey, name: "外协红线", expression: outsourceRedlineConstraintExpr("Outsource.ratio") }], derivations: [] },
     { id: "n-cap", key: "CapacityPyramid", label: "产能金字塔", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C03", name: "产能上限", expression: "demandDelta <= 0.5" }], derivations: [{ propKey: "p90", formula: "capacity_forecast(p90)" }] },
     { id: "n-forecast", key: "DemandForecast", label: "需求预测", kind: "object", domain: "forecast", tier: 2, sourceSystem: "派生", properties: [{ propKey: "period", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
     { id: "n-solver-cap", key: "capacity_forecast", label: "产能推演", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [], derivations: [] },
@@ -806,6 +808,7 @@ export const RISK_DISPOSITION_SEED = {
     "Line.utilization": 0.75,
     "Material.onHand": 6116,
     "MaterialBalance.coverage": 0.72,
+    // redline-allow：这是**观测值**（当前外协比例），非红线阈值本身；恰好等于红线是数据巧合，见 DF.13 报告。
     "Order.outsourceRatio": 0.2,
   } as Record<string, number>,
   inverseProps: ["utilization"],
@@ -871,7 +874,7 @@ export const PLANS = [
 export const RULES: RuleEntry[] = [
   // WO-RULES-CLASSIFY：category 与真后端 battery.ts 种子同步（规则库分类筛选真元数据；约束条件另按 severity=BLOCK 判别）。
   { id: "rule-c03", key: "C03", name: "产能上限", expression: "Order.demandDelta <= 0.5", scopeObjectTypes: ["Order", "CapacityPyramid"], severity: "BLOCK", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 120, end: 180 }, extractJobId: "job-ex1" }, version: 2, status: "PUBLISHED" },
-  { id: "rule-c08", key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2", scopeObjectTypes: ["QualityLot"], severity: "WARN", category: "外协", origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c08", key: "C08", name: "外协红线", expression: outsourceRedlineConstraintExpr("Outsource.ratio"), scopeObjectTypes: ["QualityLot"], severity: "WARN", category: "外协", origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
   { id: "rule-c13", key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit", scopeObjectTypes: ["Order"], severity: "BLOCK", category: "财务", origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
   { id: "rule-c05", key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)", scopeObjectTypes: ["Line"], severity: "WARN", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 320, end: 390 }, extractJobId: "job-ex1" }, version: 1, status: "PUBLISHED" },
   // 规则即引用 P1：曾"未找到定义"的规则补为一等规则（含命名阈值 params）——mock 与真后端同步。
@@ -932,7 +935,8 @@ export const RULE_DOC: RuleDocVM = {
   createdAt: now,
   segments: [
     { idx: 0, heading: "三、产能承接", text: "各基地接单需校核产能上限：单型号需求增量超过基准产能的 50% 时，禁止直接承接，须升级至产销协同会审批。", spanStart: 0, spanEnd: 60 },
-    { idx: 1, heading: "四、外协管理", text: "外协比例原则上不得超过 20%，超出部分需提交外协风险评估报告并由质量部会签。", spanStart: 61, spanEnd: 120 },
+    // DF.13：被抽取的**制度原文**也用同一红线渲染 —— 否则原文说 20%、候选说别的，A2 抽取演示自己就先自相矛盾。
+    { idx: 1, heading: "四、外协管理", text: `外协比例原则上不得超过 ${outsourceRedlinePct()}%，超出部分需提交外协风险评估报告并由质量部会签。`, spanStart: 61, spanEnd: 120 },
     { idx: 2, heading: "五、信用管理", text: "客户在手订单金额不得超过其授信额度，超出时新订单冻结发运。", spanStart: 121, spanEnd: 170 },
   ],
 };
@@ -945,7 +949,7 @@ export const RULE_CANDIDATES: RuleCandidateVM[] = [
   },
   {
     id: "cand-2", docId: "doc-policy", segmentIdx: 1, span: { start: 0, end: 20 },
-    candidate: { name: "外协红线", description: "外协比例不得超过 20%", expression: "Outsource.ratio <= 0.2", expressionConfidence: 0.88, scopeObjectTypes: ["QualityLot"], severity: "WARN", sourceQuote: "外协比例原则上不得超过 20%" },
+    candidate: { name: "外协红线", description: `外协比例不得超过 ${outsourceRedlinePct()}%`, expression: outsourceRedlineConstraintExpr("Outsource.ratio"), expressionConfidence: 0.88, scopeObjectTypes: ["QualityLot"], severity: "WARN", sourceQuote: `外协比例原则上不得超过 ${outsourceRedlinePct()}%` },
     status: "PENDING", diff: "新增",
   },
   {
@@ -1233,6 +1237,7 @@ export const ANSWER_A2: Answer = {
     { type: "kpi", label: "P50 产能", value: "21.4", unit: "GWh", provId: "prov-a2-1" },
     { type: "kpi", label: "P90 产能", value: "18.9", unit: "GWh", provId: "prov-a2-2" },
     { type: "kpi", label: "缺口", value: "-1.2", unit: "GWh", provId: "prov-a2-3" },
+    // redline-allow：20% 是需求增幅（承接问句的回答），非红线阈值。
     { type: "text", markdown: "加 20% 后六周内 P90 口径存在 **1.2 GWh** 缺口⟦ref:prov-a2-3⟧，主要瓶颈为化成柜⟦ref:prov-a2-1⟧。建议评估外协或排程平移。" },
   ],
   provenance: [
@@ -1272,12 +1277,12 @@ export const ANSWER_ADOPT: Answer = {
   trustLevel: "VERIFIED_WORKFLOW",
   unverifiedNumerics: false,
   blocks: [
-    { type: "rule_violation", ruleId: "C08", severity: "WARN", explanation: "三班制将提高外协依赖至 18%，接近 20% 红线，需关注。", provId: "prov-ad-1" },
+    { type: "rule_violation", ruleId: OUTSOURCE_REDLINE.ruleKey, severity: "WARN", explanation: `三班制将提高外协依赖至 18%，接近 ${outsourceRedlinePct()}% 红线，需关注。`, provId: "prov-ad-1" }, // DF.13 红线数派生
     { type: "action_draft", draftId: "act-001", actionType: "shift_plan_change", summary: "常州基地 6/15 起切换三班制，预计释放 12% 张力" },
     { type: "text", markdown: "已生成 Action 草稿并进入审批流，**未直接执行**任何变更。" },
   ],
   provenance: [
-    { id: "prov-ad-1", source: "TOOL_RESULT", toolCallId: "tc-ad-1", toolName: "evaluate_rules", outputPath: "$.verdicts[0]", snapshotVersion: "ov-12", ...({ stepId: "s1", rules: [{ key: "C08", expression: "Outsource.ratio <= 0.2" }], value: "WARN", valueLabel: "规则评估" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-ad-1", source: "TOOL_RESULT", toolCallId: "tc-ad-1", toolName: "evaluate_rules", outputPath: "$.verdicts[0]", snapshotVersion: "ov-12", ...({ stepId: "s1", rules: [{ key: "C08", expression: outsourceRedlineConstraintExpr("Outsource.ratio") }], value: "WARN", valueLabel: "规则评估" } as Record<string, unknown>) } as Answer["provenance"][number],
   ],
 };
 

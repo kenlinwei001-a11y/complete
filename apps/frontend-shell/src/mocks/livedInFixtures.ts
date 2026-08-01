@@ -1,4 +1,6 @@
 import { LIVED_IN_INCUBATED, LIVED_IN_SCENE_HISTORY, type HistoryBundle, type HistoryWatermark } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：版本史 mock 与 datacore 同源派生，禁手抄。
+import { OUTSOURCE_REDLINE, OUTSOURCE_REDLINE_HISTORY, outsourceRedlineViolationExpr } from "@platform/contracts";
 
 /**
  * 运营态出厂配置增量（mock 模式）：GET /a/v1/history/bundle / watermark 的确定性 fixture。
@@ -165,10 +167,19 @@ const CAL_PROPOSALS: HistoryBundle["calibrations"]["proposals"] = [
 ];
 
 const RULE_VERSIONS: HistoryBundle["ruleVersions"] = [
-  { key: "C08", name: "外协比例红线", version: 1, label: "v1.0", expression: "Order.outsourceRatio > 0.3", reason: "场景包出厂基线（上限 30%）", changedAt: "2025-07-01", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 2, label: "v1.1", expression: "Order.outsourceRatio > 0.25", reason: "Q1 外协质量事件复盘：上限 30%→25%", changedAt: "2025-09-12", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 3, label: "v1.2", expression: "Order.outsourceRatio > 0.22", reason: "连续两月外协毛利侵蚀复盘：25%→22%", changedAt: "2026-01-09", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 4, label: "v1.3", expression: "Order.outsourceRatio > 0.2", reason: "年度复盘：外协质量+毛利双重约束，收紧至 20%", changedAt: "2026-04-03", status: "PUBLISHED", tags: [] },
+  // DF.13：C08 版本史从契约 OUTSOURCE_REDLINE_HISTORY 派生（此前是 datacore livedin/engine.ts 那份的**手抄副本**，
+  // 两处各改各的就是漂移；现在改红线 → 后端与本 mock 同时变）。
+  ...OUTSOURCE_REDLINE_HISTORY.map((h) => ({
+    key: OUTSOURCE_REDLINE.ruleKey,
+    name: OUTSOURCE_REDLINE.ruleName,
+    version: h.version,
+    label: h.label,
+    expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio),
+    reason: h.reason,
+    changedAt: h.changedAt,
+    status: h.status,
+    tags: [] as string[],
+  })),
   { key: "C16", name: "齐套覆盖天数下限", version: 1, label: "v1.0", expression: "Shipment.coverageDays < 3", reason: "出厂基线：关键材料齐套覆盖 ≥3 天", changedAt: "2025-07-01", status: "RETIRED", tags: [] },
   { key: "C16", name: "齐套覆盖天数下限", version: 2, label: "v2.0", expression: "Shipment.coverageDays < 5", reason: "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天", changedAt: "2025-12-03", status: "PUBLISHED", tags: ["到货危机复盘"] },
 ];

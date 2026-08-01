@@ -2,6 +2,8 @@ import type { ObjectInstance } from "../domain.js";
 import { AppError } from "../errors.js";
 import { round } from "../prng.js";
 import { maintWeekOf, num, str, type SolverContext } from "./types.js";
+// DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
+import { outsourceRedlineCap } from "@platform/contracts";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -257,13 +259,14 @@ export function maintenanceStagger(args: Record<string, unknown>) {
   return { adjustments, unresolved, ...(synthetic ? { dataMode: "MOCK", provenanceSynthetic: true, note: "无真实逐周负荷/交付高峰源（loadByWeek/peakWeeks 缺真时序）·错峰建议为占位估算" } : {}), ruleRefs: ["C11"] };
 }
 
-// S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×20% C08)/延期c3=2.5。
+// S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×C08 红线)/延期c3=2.5。
+// DF.13：外协上限 = 总需求 × OUTSOURCE_REDLINE.maxRatio —— 求解器分配天然贴着红线封顶，改红线即改分配。
 export function outsourcingSplit(args: Record<string, unknown>) {
   const gap = num(args.gap);
   const totalDemand = num(args.totalDemand, gap);
   const channels = [
     { key: "overtime", name: "自产加班", unitCost: 1.0, cap: gap * 0.4 },
-    { key: "outsource", name: "外协", unitCost: 1.4, cap: totalDemand * 0.2 }, // C08
+    { key: "outsource", name: "外协", unitCost: 1.4, cap: outsourceRedlineCap(totalDemand) }, // C08 红线（DF.13 单一来源）
     { key: "delay", name: "延期", unitCost: 2.5, cap: Infinity },
   ];
   let remaining = gap;
@@ -354,7 +357,7 @@ export function countermeasureCombo(args: Record<string, unknown>) {
     { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: round(gap * 0.3, 4), unitCost: 0.5, costRank: 1 },
     { key: "changeover", solver: "changeover_sequence", scene: "S11", release: round(gap * 0.15, 4), unitCost: 0.6, costRank: 1 },
     { key: "stagger", solver: "maintenance_stagger", scene: "S13", release: round(gap * 0.1, 4), unitCost: 0.7, costRank: 2 },
-    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(gap * 0.2, 4), unitCost: 1.4, costRank: 2 }, // C08 外协 ≤20%
+    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(outsourceRedlineCap(gap), 4), unitCost: 1.4, costRank: 2 }, // C08 外协上限（DF.13 单一来源）
     { key: "capex", solver: "capex_scenario", scene: "S17", release: round(gap * 0.5, 4), unitCost: 2.2, costRank: 3 },
   ];
   const sorted = [...levers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);

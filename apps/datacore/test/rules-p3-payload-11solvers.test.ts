@@ -101,7 +101,8 @@ describe("规则即引用 P3 · 11 求解器 payload 映射真评估（H5 增量
   it("outsourcing_split C08 真评估（外协分配/总需求），C31 诚实 NOT_APPLICABLE", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // gap=100,totalDemand=400 → 外协 cap=80, outsourceRatio=80/400=0.2 ≤ 0.3 → PASS
+    // gap=100,totalDemand=400 → 外协 cap = 总需求×红线 = 80，outsourceRatio=80/400 = 红线本身。
+    // 违规谓词是严格 `>`，分配恰好贴边不越线 → PASS（DF.13：cap 与红线同源后这是**恒等关系**，非巧合）。
     const rs = await rules(t, "outsourcing_split", { gap: 100, totalDemand: 400 });
     expect(out(rs, "C08")).toBe("PASS");
     // C31 良率数据不在分配求解输入/输出 → 诚实 NOT_APPLICABLE

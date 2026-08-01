@@ -4,6 +4,8 @@ import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { liveTightness, oeeTension, primaryFactor, resolveBaseId, yieldTension } from "./risk.js";
 import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：拒绝文案里的百分数由 outsourceRedlineRejectReason 生成，禁手写百分数。
+import { OUTSOURCE_REDLINE, outsourceRedlineRejectReason } from "@platform/contracts";
 
 /** Build a lookup map from a key extractor; used to avoid O(n³) nested filters in computeRollup. */
 function groupBy<K extends string | number, T>(items: T[], keyFn: (x: T) => K): Record<string, T[]> {
@@ -592,8 +594,9 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     if (ratio > p.whatIf.outsourceMax) {
       whatIf = {
         rejected: true,
-        ruleRef: "C08",
-        reason: `外协比例 ${round(ratio * 100, 1)}% 超过红线 ${round(p.whatIf.outsourceMax * 100, 0)}%（C08），拒绝该参数组合`,
+        ruleRef: OUTSOURCE_REDLINE.ruleKey,
+        // DF.13：文案（含「20%」）由契约单一来源格式化——前端 mock simSolvers 用同一出口，两端一字不差。
+        reason: outsourceRedlineRejectReason(ratio, p.whatIf.outsourceMax),
       };
     } else {
       let adjusted = p50 * (1 + p.whatIf.nightShiftCoef * n + p.whatIf.channelCoef * ch) + qty * ratio;

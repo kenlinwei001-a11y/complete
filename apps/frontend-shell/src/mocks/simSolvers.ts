@@ -1,5 +1,7 @@
 import type { SopVersionVM } from "@/api/types";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：mock 求解器的上限与拒绝文案必须与真求解器同源，禁内联裸阈值/手写百分数。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
 
@@ -232,7 +234,8 @@ const GEN = {
     A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
     B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
     C: { name: "扩产型", rev: 1.2, gm: 0.002, share: 22, capex: 27, turns: -0.2, cash: -12 },
-    D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
+    // redline-allow：turns 是库存周转增量（次），非红线阈值（同 datacore battery.ts 同名方案行）。
+  D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
     E: { name: "混合型", rev: 1.18, gm: 0.004, share: 14, capex: 14, turns: 0.3, cash: -2 },
   } as Record<string, { name: string; rev: number; gm: number; share: number; capex: number; turns: number; cash: number }>,
   scores: { profitBase: 50, profitK: 22, scaleBase: 40, scaleK: 3, cashBase: 50, cashK: 4, growthBase: 30, growthK: 2.5, stabBase: 90, stabK: 2.2, hardPenalty: 15 },
@@ -265,7 +268,8 @@ const GEN_FOCUS: Record<string, { keys: string; probs: { n: string; kind: string
   A: { keys: "严守 C15 接单毛利线上浮 1pct；主动收缩储能长尾单；乘用车与高端储能守价。", probs: [{ n: "储能客户份额流失", kind: "share", rule: "C21", why: "拒掉低毛利储能单后客户转向竞对，次年框架议价反转，守价被瓦解。", chain: [["拒低毛利储能单", "C15 上浮执行", "#E8B54A"], ["电网F/集成商D 转单", "储能客户·框架协议", "#54B5C4"], ["次年框架议价权弱化", "长协锁量/价格条款", "#5E8FE8"], ["份额不达 · 守价基础动摇", "C21 结构监测", "#DD7E9E"]] }] },
   B: { keys: "照单全收冲市场份额；信用额度从严（C13）；应收账期按周管控。", probs: [{ n: "毛利率击穿底线", kind: "margin", rule: "C15", why: "储能低毛利放量使结构毛利下滑直逼底线，C15 将阻断接单。", chain: [["低毛利储能单放量", "储能占比 ↑", "#E8B54A"], ["结构毛利 −0.8pct", "细分结构反推", "#54B5C4"], ["逼近 15.5% 底线", "毛利率预算线", "#5E8FE8"], ["击穿即 C15 阻断", "规则 C15", "#DD7E9E"]] }] },
   C: { keys: "枣庄+江门新线动工；C23 门槛测算前置；爬坡曲线保守化。", probs: [{ n: "CAPEX 挤占现金垫", kind: "cash", rule: "C18/C23", why: "27 亿 CAPEX 集中支付击穿现金红线，须分期/融资并先过 C23。", chain: [["CAPEX 27 亿集中支付", "枣庄+江门建设", "#E8B54A"], ["现金垫 58→46 亿", "13周现金最低点", "#54B5C4"], ["击穿红线 50 亿", "现金安全垫", "#5E8FE8"], ["C18 阻断 · C23 未过", "规则 C18/C23", "#DD7E9E"]] }] },
-  D: { keys: "CAPEX 不动；外协补量走资质名录；质量管控与放量同步。", probs: [{ n: "外协比例触红线", kind: "outsource", rule: "C08", why: "缺口全靠外协逼近 20% 红线，超出无法承接，须组合使用。", chain: [["缺口全量外协", "外协占比 ↗", "#E8B54A"], ["比例逼近 20%", "外协比例监测", "#54B5C4"], ["承接能力封顶", "超出无法承接", "#5E8FE8"], ["C08 红线触线即拒", "规则 C08", "#DD7E9E"]] }] },
+  // DF.13：叙事文案里的红线百分数由 outsourceRedlinePct() 生成（禁手写——文案里的数也是同一个业务事实）。
+  D: { keys: "CAPEX 不动；外协补量走资质名录；质量管控与放量同步。", probs: [{ n: "外协比例触红线", kind: "outsource", rule: OUTSOURCE_REDLINE.ruleKey, why: `缺口全靠外协逼近 ${outsourceRedlinePct()}% 红线，超出无法承接，须组合使用。`, chain: [["缺口全量外协", "外协占比 ↗", "#E8B54A"], [`比例逼近 ${outsourceRedlinePct()}%`, "外协比例监测", "#54B5C4"], ["承接能力封顶", "超出无法承接", "#5E8FE8"], [`${OUTSOURCE_REDLINE.ruleKey} 红线触线即拒`, `规则 ${OUTSOURCE_REDLINE.ruleKey}`, "#DD7E9E"]] }] },
   E: { keys: "乘用车守价 + 枣庄扩高端 + 长尾外协；三对策 S&OP 第⑤步统一编排时序。", probs: [{ n: "三对策时序错配", kind: "gap", rule: null, why: "扩产/外协/守价脱节则缺口回弹，时序编排是方案成立前提。", chain: [["任一对策延期", "三线编排", "#E8B54A"], ["爬坡空窗×外协未就位", "供给缺口回弹", "#54B5C4"], ["交付违约+客户流失", "订单交期/客户关系", "#5E8FE8"], ["规模毛利双失", "综合评分坍塌", "#DD7E9E"]] }] },
 };
 
@@ -364,7 +368,7 @@ const CAP_P = {
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
   health: { normal: 0.93, degraded: 0.9 },
-  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
+  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: OUTSOURCE_REDLINE.maxRatio }, // DF.13 单一来源
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 } as Record<string, number>, defaultDays: 7 },
 };
 
@@ -535,8 +539,9 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     if (ratio > CAP_P.whatIf.outsourceMax) {
       whatIf = {
         rejected: true,
-        ruleRef: "C08",
-        reason: `外协比例 ${round(ratio * 100, 1)}% 超过红线 ${round(CAP_P.whatIf.outsourceMax * 100, 0)}%（C08），拒绝该参数组合`,
+        ruleRef: OUTSOURCE_REDLINE.ruleKey,
+        // DF.13：与 datacore capacity.ts 共用同一文案出口，两端一字不差（此前是两份手写副本）。
+        reason: outsourceRedlineRejectReason(ratio, CAP_P.whatIf.outsourceMax),
       };
     } else {
       let adjusted = p50 * (1 + CAP_P.whatIf.nightShiftCoef * n + CAP_P.whatIf.channelCoef * ch) + qty * ratio;

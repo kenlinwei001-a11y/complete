@@ -191,4 +191,5 @@ export const SKELETON_EDGES: readonly InferenceEdge[] = [
 
 /** 场景默认示例文案（被 task.query 覆盖；仅无 task 时的占位）。 */
 export const SKELETON_SCENARIO_EXAMPLE =
+  // redline-allow：这里的 20% 是**需求追加幅度**（问句语料），不是外协红线；同句提到「外协」纯属场景描述。
   "重点客户追加 20% 的 4680 PACK 订单，要求 6 周交付——能否接？瓶颈在哪？要不要加夜班 / 扩化成通道 / 外协？";

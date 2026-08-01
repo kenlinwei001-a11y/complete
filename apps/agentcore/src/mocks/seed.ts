@@ -12,6 +12,8 @@ import {
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
+// DF.13 外协红线单一来源（C08）：场景建议问句里的红线百分数派生，禁手写。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
@@ -705,7 +707,8 @@ export function seedSceneEntries(): SceneEntryConfig[] {
         placeholder: "规划体检（基线 = 2026-06 V12 S&OP 版本，现金垫 45 亿）",
         suggestedQuestions: [
           "2026-06 V12 S&OP 版本现金垫 45 亿过得了体检吗？",
-          "2026-07 常州基地外协比例是否超过 C08 红线 20%？",
+          // DF.13：与契约 LIVED_IN_SCENE_HISTORY 里同一条问句同源派生（此前是手抄副本，红线一改就对不上）。
+          `2026-07 常州基地外协比例是否超过 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${outsourceRedlinePct()}%？`,
         ],
       },
       ...history("plan-audit"),

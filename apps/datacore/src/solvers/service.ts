@@ -4167,7 +4167,8 @@ export class SolverService {
       // 三方案推演（稳健/均衡/进取）；规则评的是「推荐方案」（recommend → 对应 scheme.outcome）的承接判定。
       // C15 Order.marginPct<Order.floorPct：方案毛利 gm（比率）vs 目标面板毛利底线 gmFloor（比率，同尺度）。
       // C18 AnnualScenario.cashCushion<50：方案现金垫 cash（亿，base.cash≈58 同尺度，规则字面阈值 50 亿）。
-      // C08 Order.outsourceRatio>0.3：plan_generate 不产出外协比率（路径名「外协型」是策略标签非比率）→ 诚实 NOT_APPLICABLE（不填 outsourceRatio）。
+      // C08 外协红线（阈值见 contracts OUTSOURCE_REDLINE，DF.13 单一来源·此处不复述数值以免过期）：
+      //   plan_generate 不产出外协比率（路径名「外协型」是策略标签非比率）→ 诚实 NOT_APPLICABLE（不填 outsourceRatio）。
       const schemes = Array.isArray(out.schemes) ? (out.schemes as { pathKey?: unknown; outcome?: { gm?: unknown; cash?: unknown } }[]) : [];
       const rec = schemes.find((s) => str(s.pathKey) === str(out.recommend)) ?? schemes[0];
       const targets = (out.targets ?? {}) as { gmFloor?: unknown; cashFloor?: unknown };
@@ -4189,8 +4190,10 @@ export class SolverService {
       base.Cert = { parallelTasks: maxParallel, engineerGroups: num(out.engineerGroups) };
       // C04 Line.certStatus!='量产'：仅认证产线计入产能 —— 属产能聚合口径，cert_schedule 是排程器不产出 Line.certStatus → NOT_APPLICABLE（诚实）。
     } else if (solverKey === "outsourcing_split") {
-      // C08 Order.outsourceRatio>0.3：外协比例红线。求解器三渠道分配里「outsource」渠道的分配量 / 总需求 = 外协比率。
-      //   求解器对外协渠道设了上限 totalDemand×0.2（即 C08 的 0.2 cap），因此正常 ≤0.2 → PASS；填真比率使规则真评（改 C08 阈值即翻转）。
+      // C08 外协比例红线（阈值 = contracts OUTSOURCE_REDLINE.maxRatio，DF.13 单一来源）。
+      //   求解器三渠道分配里「outsource」渠道的分配量 / 总需求 = 外协比率；外协渠道上限 = 总需求 × 同一红线
+      //   （`outsourceRedlineCap`）→ 分配天然贴红线封顶、不越线 → PASS；填真比率使规则真评（改红线即翻转）。
+      //   ⚠ 此前这两行注释写「>0.3」而下一行写「0.2 cap」—— 同一处注释里两个数，正是漂移被发现的地方。
       const alloc = Array.isArray(out.allocation) ? (out.allocation as { channel?: unknown; qty?: unknown }[]) : [];
       const outsourceQty = alloc.filter((a) => str(a.channel) === "outsource").reduce((m, a) => m + num(a.qty), 0);
       const totalDemand = num(args.totalDemand, num(args.gap));

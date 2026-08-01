@@ -1,5 +1,7 @@
 import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：mock DataCore 的 C08 阈值必须与真 DataCore 同源，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -476,8 +478,12 @@ export class MockSolverClient implements SolverClient {
 }
 
 export class MockRuleEngineClient implements RuleEngineClient {
-  /** 引用模式增量 L5：规则「源头一改、引用方全部生效」—— 测试可改阈值/版本模拟规则发布新版。 */
-  c08Threshold = 0.3;
+  /**
+   * 引用模式增量 L5：规则「源头一改、引用方全部生效」—— 测试可改阈值/版本模拟规则发布新版。
+   * DF.13：初值必须 = 真 DataCore 的 C08 现行红线（`OUTSOURCE_REDLINE.maxRatio`）。此前写死了一个与真值不同的常数 —— mock
+   * 与被 mock 者对同一业务事实各执一词，正是"绿测试≠能用"的温床：agentcore 全绿但接上真 A 行为就变。
+   */
+  c08Threshold: number = OUTSOURCE_REDLINE.maxRatio;
   versions: Record<string, number> = { C03: 1, C08: 1, C13: 1 };
 
   /** 模拟规则 C08 发布新版（阈值变更）：下一次求值即用新阈值 + 新版本号。 */

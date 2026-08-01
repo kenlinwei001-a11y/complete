@@ -1,4 +1,7 @@
 /** 中文文案集中地（预留 i18n 结构，不做翻译） */
+// DF.13：文案里出现的业务阈值百分数一律由 @platform/contracts 单一来源格式化（R14 应用层无业务常数）。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
+
 export const zh = {
   common: {
     appName: "全域数字化智能决策支撑系统",
@@ -580,7 +583,8 @@ export const zh = {
       nightShift: "加夜班",
       extraChannels: "扩产能通道",
       outsource: "外协比例",
-      outsourceCap: "已达 C08 红线 20%（外协比例不得超过 20%）",
+      // DF.13：红线百分数由契约单一来源格式化（此前手写两个「20%」，是唯一真正内联在用户可见文案里的裸数）。
+      outsourceCap: `已达 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${outsourceRedlinePct()}%（外协比例不得超过 ${outsourceRedlinePct()}%）`,
       gapZero: (surplus: string) => `缺口归零 · 富余 ${surplus} 万套`,
       gapLeft: (gap: string) => `缺口 ${gap} 万套`,
       adopt: "采纳产能保障方案",
@@ -594,7 +598,8 @@ export const zh = {
       acts: [
         { action: "加 2 夜班", effect: "+12% 产能 · 当周见效 · 低成本" },
         { action: "扩化成通道", effect: "+20% · 直击主瓶颈 · 含 2 周爬坡" },
-        { action: "部分外协", effect: "+15% · 受 C08 ≤20% 约束" },
+        // DF.13：红线百分数派生（这是第二处手写「20%」的用户可见文案）。
+        { action: "部分外协", effect: `+15% · 受 ${OUTSOURCE_REDLINE.ruleKey} ≤${outsourceRedlinePct()}% 约束` },
       ],
       // WO-PROJECT-SIM-WHATIF ⑥：动态杠杆（自瓶颈反推 + 敏感度排序，走 generic_inference 真重算）文案（R14 下发·不内联）。
       lever: {

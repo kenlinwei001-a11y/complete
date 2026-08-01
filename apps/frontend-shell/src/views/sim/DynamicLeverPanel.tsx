@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+// DF.13 外协红线单一来源（C08）：规则缺失时的兜底上限读契约，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { Provenance } from "@/components/Provenance";
@@ -77,12 +79,16 @@ function deltaDir(before: unknown, after: unknown): { arrow: string; diff: strin
   return d > 0 ? { arrow: "▲", diff: `+${d}`, color: "var(--ok)" } : { arrow: "▼", diff: String(d), color: "var(--danger)" };
 }
 
-/** C08 阈值解析（R14·非内联）：从规则表达式取第一个 0–1 小数 = 外协比例上限；缺则物理兜底 0.2。 */
+/**
+ * C08 阈值解析（R14·非内联）：从规则表达式取第一个 0–1 小数 = 外协比例上限。
+ * DF.13：规则表未返回时的兜底改读契约单一来源 `OUTSOURCE_REDLINE.maxRatio`（此前内联裸阈值）——
+ * 兜底值与真闸值同源，规则表拉不到时 UI 也不会显示一个跟后端对不上的上限。
+ */
 function parseC08Ratio(rules: { key: string; expression?: string }[] | undefined): number {
-  const c08 = rules?.find((r) => r.key === "C08");
+  const c08 = rules?.find((r) => r.key === OUTSOURCE_REDLINE.ruleKey);
   const m = c08?.expression?.match(/(\d*\.?\d+)/);
   const v = m ? parseFloat(m[1]!) : NaN;
-  return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.2; // debattery-allow：规则缺失时的物理域兜底（真闸值优先读 C08）
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : OUTSOURCE_REDLINE.maxRatio;
 }
 
 export function DynamicLeverPanel({
@@ -187,6 +193,7 @@ export function DynamicLeverPanel({
       });
     return [
       { key: "maxCap", label: zh.sim.proj.lever.schemes.maxCap, apply: mk((_l, b) => b.max) },
+      // redline-allow：0.3 是「最省成本」方案对非外协杠杆的**推进比例**（外协杠杆本身在此保持不动），非红线阈值。
       { key: "minCost", label: zh.sim.proj.lever.schemes.minCost, apply: mk((l, b) => (isOutsource(l.prop) ? l.currentValue : l.currentValue + (b.max - l.currentValue) * 0.3)) },
       { key: "balanced", label: zh.sim.proj.lever.schemes.balanced, apply: mk((l, b) => (l.currentValue + b.max) / 2) },
     ];

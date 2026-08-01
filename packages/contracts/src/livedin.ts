@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OUTSOURCE_REDLINE, OUTSOURCE_REDLINE_HISTORY, outsourceRedlinePct } from "./base-registry.js";
 
 // ---------------------------------------------------------------------------
 // PRD 增量 · 运营态出厂配置（"拎包入住"）
@@ -33,12 +34,20 @@ export const LIVED_IN_SCENE_HISTORY: Record<string, DialogHistoryEntry[]> = {
     { question: "采纳常州基地 2025-11 提前备料方案", answer: "已生成「提前备料」处置 Action 草稿并经审批执行（act_lh 审计可查），风险曲线于 12-01 消解。", trustLevel: "VERIFIED_WORKFLOW", date: "2025-11-21" },
   ],
   "project-sim": [
+    // redline-allow：20% 是需求增幅、8% 是建议外协比例（都在红线内的具体取值），均非红线阈值本身。
     { question: "常州基地 4680-NCM 未来六周加 20% 能不能接？", answer: "P50 口径可承接，P90 口径缺口 3.2%；瓶颈在化成工序，建议增开夜班或外协 8%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-15" },
     { question: "S192 储能 圆柱-LFP 需求上修 15% 对合肥基地影响多大？", answer: "需求上修后合肥基地季度供需缺口扩大至 4.1 万套，已按 C21 提报 S&OP 议程（V10 决议增开宜宾二线）。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-04-18" },
   ],
   "plan-audit": [
     { question: "2026-06 V12 S&OP 版本现金垫 45 亿过得了体检吗？", answer: "基线 = 2026-06 V12：现金垫 58 亿高于 45 亿底线，总评 92 分通过；齐套缺口 654 吨为软性提示。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-06-25" },
-    { question: "2026-07 常州基地外协比例是否超过 C08 红线 20%？", answer: "C08 外协比例红线现行 v1.3 ≤20%（年初 v1.0 为 ≤25%，经三次复盘收紧），常州基地当前实际 14.2%。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-07-11" },
+    // DF.13：问句/答案里的红线百分数全部由 OUTSOURCE_REDLINE 派生（禁手写）。
+    // 修正：旧文案把 v1.0 的出厂基线说成了 v1.1 的值（差一档）——现直接取 OUTSOURCE_REDLINE_HISTORY[0]，说不错。
+    {
+      question: `2026-07 常州基地外协比例是否超过 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${outsourceRedlinePct()}%？`,
+      answer: `${OUTSOURCE_REDLINE.ruleKey} ${OUTSOURCE_REDLINE.ruleName}现行 ${OUTSOURCE_REDLINE.versionLabel} ≤${outsourceRedlinePct()}%（年初 ${OUTSOURCE_REDLINE_HISTORY[0]!.label} 为 ≤${outsourceRedlinePct(OUTSOURCE_REDLINE_HISTORY[0]!.maxRatio)}%，经${OUTSOURCE_REDLINE_HISTORY.length - 1}次复盘收紧），常州基地当前实际 14.2%。`,
+      trustLevel: "VERIFIED_WORKFLOW",
+      date: "2026-07-11",
+    },
   ],
   "plan-generate": [
     { question: "常州基地 4680-NCM 缺口 8 万套是外协还是加班？", answer: " outsourcing_split 推演：外协 4.8 万套成本 6.72 亿、自产加班 3.2 万套成本 3.2 亿、延期 0；总成本 9.92 亿，建议优先加班保交期。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-18" },

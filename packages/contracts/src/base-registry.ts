@@ -112,6 +112,146 @@ export const PLAN_GOAL_TARGETS = {
 } as const;
 
 /**
+ * DF.13 外协比例红线单一来源 `OUTSOURCE_REDLINE`（规则 **C08** · GenerationBoundary · VOCAB+RANGE · R14/R-一致）。
+ *
+ * ── 这是什么 ──────────────────────────────────────────────────────────────
+ * 「外协红线」= 一张订单允许外包给第三方代工的最大比例。超过即质量管控失控 + 毛利被外协费侵蚀，
+ * 故为一条**业务红线**（`severity=WARN`：保交付但必须提示，不硬拦）。
+ *
+ * ── 单位（读之前先看这行，历史事故就出在这）──────────────────────────────
+ * `maxRatio` 的单位是**比率 0–1**，不是百分数：20% ⇒ `0.2`。
+ * 任何需要「20%」字样的用户可见文案**一律经 `outsourceRedlinePct()` 格式化**，禁止手写百分数——
+ * 手写的那个数就是下次漂移的种子。
+ *
+ * ── 谁在用（消费端全集，`outsource-redline:check` 逐个强制派生）────────────
+ *  A. 规则表达式：`datacore synthetic/battery.ts rules[C08]`（现行发布态）·
+ *     `datacore livedin/engine.ts`（版本演进 + 版本史）· 前端 `mocks/livedInFixtures.ts`（版本史 mock）·
+ *     前端 `mocks/fixtures.ts`（A2 规则抽取候选/已发布规则 mock）
+ *  B. 求解器：`solvers/extended.ts outsourcingSplit`（外协渠道上限 = 总需求 × maxRatio）·
+ *     `solvers/extended.ts quarterlyGap`（外协对策释放量）· `solvers/capacity.ts` what-if 拒绝判定
+ *     （经 `BATTERY_SOLVER_PARAMS.whatIf.outsourceMax`）· 前端 `mocks/simSolvers.ts`（前端 mock 镜像）
+ *  C. 用户可见文案：`capacity.ts`/`simSolvers.ts` 拒绝原因 · 前端 i18n `zh.ts outsourceCap`
+ *  D. 合成数据：`synthetic/battery.ts` 订单 `outsourceRatio` 的植入越线样本与合规桶（见 `OUTSOURCE_SAMPLE`）
+ *  E. AgentCore mock DataCore：`agentcore mocks/clients.ts c08Threshold`
+ *
+ * ── 为什么立册（真实病灶）────────────────────────────────────────────────
+ * 迁移前**同一条红线有 6 个不同的数**：标准合成规则 `> 0.3` / livedin 发布态 `> 0.2` /
+ * 三个求解器按 `0.2` 算 / 前端 mock 写成 `Outsource.ratio <= 0.2`（主体与极性都另一套）/
+ * AgentCore mock `c08Threshold = 0.3` / 契约 `livedin.ts` 知识库答案自称「年初 v1.0 为 ≤25%」（实为 30%）。
+ * 屏幕上显示 20%、引擎按 20% 算、规则库却写 30% —— 规则与推演各说各话，且**测试全绿**。
+ * 仓主裁定：取 **20%**（红线只收紧不放松），并把「再次不一致」变成结构上不可能。
+ *
+ * R6：纯常数，同 seed 字节一致。`OUTSOURCE_REDLINE_HISTORY` 里的 30%/25%/22% 是**已退役的历史值**
+ * （非重复定义）——版本史是数据，现行值只有 `OUTSOURCE_REDLINE.maxRatio` 一个出处。
+ */
+export const OUTSOURCE_REDLINE = {
+  /** 规则码（DataCore 规则库 key）。 */
+  ruleKey: "C08",
+  ruleName: "外协比例红线",
+  /** 规则 DSL 取值路径（违规谓词的主体）。 */
+  subject: "Order.outsourceRatio",
+  /** ★ 唯一真值：现行外协比例上限。单位 = **比率 0–1**（20% ⇒ 0.2）。 */
+  maxRatio: 0.2,
+  /** WARN = 保交付但提示风险（不 BLOCK：外协是兜底手段，硬拦会把缺口变成断供）。 */
+  severity: "WARN",
+  category: "外协",
+  /** 现行版本标签（与 `OUTSOURCE_REDLINE_HISTORY` 末条一致）。 */
+  versionLabel: "v1.3",
+} as const;
+
+/** 比率 → 百分数（20% 口径的**唯一格式化出口**；`0.2 → 20`）。文案禁止手写百分数。 */
+export function outsourceRedlinePct(ratio: number = OUTSOURCE_REDLINE.maxRatio): number {
+  return Math.round(ratio * 1000) / 10;
+}
+
+/**
+ * 规则引擎口径的**违规谓词**（表达式为真 ⇒ `passed=false`）：`Order.outsourceRatio > 0.2`。
+ * DataCore 规则 DSL 一律用这个方向（见 `synthetic/battery.ts rules[]` 注释）。
+ */
+export function outsourceRedlineViolationExpr(
+  subject: string = OUTSOURCE_REDLINE.subject,
+  ratio: number = OUTSOURCE_REDLINE.maxRatio,
+): string {
+  return `${subject} > ${ratio}`;
+}
+
+/**
+ * 文档口径的**约束式**（人读的「不得超过」，如 A2 规则抽取候选的原文映射）：`Outsource.ratio <= 0.2`。
+ * ⚠ 与 `outsourceRedlineViolationExpr` **极性相反**——同一个数、两种渲染，别混用：
+ * 喂规则引擎必须用违规谓词式，否则语义反转（详见 DF.13 报告的极性说明）。
+ */
+export function outsourceRedlineConstraintExpr(
+  subject: string,
+  ratio: number = OUTSOURCE_REDLINE.maxRatio,
+): string {
+  return `${subject} <= ${ratio}`;
+}
+
+/** 外协渠道**产能上限** = 总量 × 红线（求解器分配用；总量可为总需求或缺口，由调用方定义）。 */
+export function outsourceRedlineCap(total: number, ratio: number = OUTSOURCE_REDLINE.maxRatio): number {
+  return total * ratio;
+}
+
+/**
+ * what-if 触红线的**用户可见拒绝文案**（DataCore 求解器与前端 mock 共用同一出口 → 两端一字不差）。
+ * 百分数全部由 `outsourceRedlinePct` 生成，文案里没有任何手写的数。
+ */
+export function outsourceRedlineRejectReason(
+  actualRatio: number,
+  maxRatio: number = OUTSOURCE_REDLINE.maxRatio,
+): string {
+  const actualPct = Math.round(actualRatio * 100 * 10) / 10;
+  return `外协比例 ${actualPct}% 超过红线 ${Math.round(maxRatio * 100)}%（${OUTSOURCE_REDLINE.ruleKey}），拒绝该参数组合`;
+}
+
+/**
+ * 合成数据侧的红线耦合常数（R6·防「规则变哑弹」回潮）。
+ * 病史：`docs/IMPLEMENTATION-phase1-4-slice-rules.md` P1 —— 已发布规则在真实合成数据上 `violations=0`（哑弹）。
+ * 订单 `outsourceRatio` 按固定步长植入越线行使 C08 真触发；这两个值与红线**强耦合**：
+ * 红线一旦放松到 `violationRatio` 之上、或收紧到合规桶上界之下，C08 立刻退化为哑弹或全量误报。
+ * `outsource-redline:check` 断言这两条不变量，故值虽未变也必须登记在册。
+ */
+export const OUTSOURCE_SAMPLE = {
+  /** 植入的**越线**样本比例（不变量：必须 > `OUTSOURCE_REDLINE.maxRatio`）。 */
+  violationRatio: 0.35,
+  /** 合规订单比例的哈希桶模数：派生值 ∈ [0, (mod−1)/100]（不变量：(mod−1)/100 < `maxRatio`）。 */
+  normalBucketMod: 18,
+} as const;
+
+/** 红线版本史一条（RETIRED 的 maxRatio = 已退役历史值，非现行值的重复定义）。 */
+export interface OutsourceRedlineVersion {
+  version: number;
+  label: string;
+  /** 该版本当时的上限（比率 0–1）。 */
+  maxRatio: number;
+  reason: string;
+  changedAt: string;
+  status: "PUBLISHED" | "RETIRED";
+}
+
+/**
+ * C08 红线**版本史**单一来源（lived-in 叙事：出厂 30% 经三次复盘收紧到现行 20%）。
+ * 末条 = 现行版本，其 `maxRatio` 直接引用 `OUTSOURCE_REDLINE.maxRatio`（改红线自动同步，不会出现
+ * 「现行值改了、版本史还写旧值」的第二次漂移）。复盘理由里的百分数全部由 `outsourceRedlinePct` 生成。
+ * 消费端：datacore `livedin/engine.ts`（真发布 + 版本史接口）· 前端 `mocks/livedInFixtures.ts`（mock 镜像）。
+ */
+const REDLINE_STEPS: { version: number; label: string; maxRatio: number; changedAt: string; note: (prev: number, cur: number) => string }[] = [
+  { version: 1, label: "v1.0", maxRatio: 0.3, changedAt: "2025-07-01", note: (_p, c) => `场景包出厂基线（上限 ${outsourceRedlinePct(c)}%）` },
+  { version: 2, label: "v1.1", maxRatio: 0.25, changedAt: "2025-09-12", note: (p, c) => `Q1 外协质量事件复盘：上限 ${outsourceRedlinePct(p)}%→${outsourceRedlinePct(c)}%` },
+  { version: 3, label: "v1.2", maxRatio: 0.22, changedAt: "2026-01-09", note: (p, c) => `连续两月外协毛利侵蚀复盘：${outsourceRedlinePct(p)}%→${outsourceRedlinePct(c)}%` },
+  { version: 4, label: OUTSOURCE_REDLINE.versionLabel, maxRatio: OUTSOURCE_REDLINE.maxRatio, changedAt: "2026-04-03", note: (_p, c) => `年度复盘：外协质量+毛利双重约束，收紧至 ${outsourceRedlinePct(c)}%` },
+];
+
+export const OUTSOURCE_REDLINE_HISTORY: OutsourceRedlineVersion[] = REDLINE_STEPS.map((s, i) => ({
+  version: s.version,
+  label: s.label,
+  maxRatio: s.maxRatio,
+  reason: s.note(REDLINE_STEPS[Math.max(0, i - 1)]!.maxRatio, s.maxRatio),
+  changedAt: s.changedAt,
+  status: i === REDLINE_STEPS.length - 1 ? "PUBLISHED" : "RETIRED",
+}));
+
+/**
  * WO-CEO-1a 统一目标登记册 GOAL_REGISTRY（企业顶层经营目标 = 一等 Metric 的 target/floor 单一来源 · R-一致）。
  * CEO 决策看板地基：把顶层目标（营收/毛利/份额/现金）与运营指标（毛利率/达成率/保障率）的
  * **目标值 target + 底线 floorVal + 责任人 ownerRef + 关键成功要素 ksfRef** 收敛为唯一出处，

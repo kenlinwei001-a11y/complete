@@ -44,6 +44,8 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
@@ -1664,7 +1666,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const sc = s.scope as unknown as LiveScope;
       const capGain = scenarioCapGain(sc.apply);
       const cost = Math.round(sc.apply.reduce((a, x) => a + (/outsource/i.test(String(x.prop)) ? Number(x.value) * 50 : 0), 0) * 100) / 100;
-      const ruleFlag = sc.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= 0.2);
+      // DF.13：触红线判定读契约单一来源（此前内联裸阈值）。`>=` = "已达红线"提示，比规则引擎的违规谓词 `>` 早一格，有意为之。
+      const ruleFlag = sc.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= OUTSOURCE_REDLINE.maxRatio);
       rows.push({ scenarioId: s.id, name: sc.name, cells: { capGain, cost }, ruleFlag });
     }
     return { dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows };

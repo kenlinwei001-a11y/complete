@@ -19,6 +19,8 @@ import {
 } from "@platform/contracts";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
 import { RISK_TIMELINE } from "./fixtures";
+// DF.13 外协红线单一来源（C08）：季度事件文案里的红线百分数派生，禁手写。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 
 // ---------------------------------------------------------------------------
 // 剩余视图增量固定数据（全部经契约 schema.parse 校验 —— 与 DataCore 端点同形）
@@ -131,7 +133,8 @@ export const QUARTERLY_RESPONSE: QuarterlyResponse = QuarterlyResponseSchema.par
     { q: "2026-Q3", dem: 382, sup: 376, gap: 6, events: [{ label: "常州夜班常态化" }, { label: "江门齐套治理" }] },
     { q: "2026-Q4", dem: 398, sup: 390, gap: 8, events: [{ label: "枣庄储能线动工（CAPEX 14亿）", ruleKey: "C23" }] },
     { q: "2027-Q1", dem: 372, sup: 392, gap: -20, events: [{ label: "春节检修季 · 供给冗余回补库存" }] },
-    { q: "2027-Q2", dem: 404, sup: 396, gap: 8, events: [{ label: "6 周窗口缺口 → 外协过渡（≤20%）", ruleKey: "C08" }] },
+    // DF.13：事件文案里的红线百分数派生（此前手写 ≤20%）。
+    { q: "2027-Q2", dem: 404, sup: 396, gap: 8, events: [{ label: `6 周窗口缺口 → 外协过渡（≤${outsourceRedlinePct()}%）`, ruleKey: OUTSOURCE_REDLINE.ruleKey }] },
     { q: "2027-Q3", dem: 428, sup: 430, gap: -2, events: [{ label: "枣庄线投产 +22/季 · 爬坡 60%→90%" }] },
     { q: "2027-Q4", dem: 452, sup: 448, gap: 4, events: [{ label: "枣庄满产 · 江门线视触发条件" }] },
   ],

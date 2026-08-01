@@ -1,6 +1,8 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { PlanStep, Scenario } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import {
   ACCOUNTS,
@@ -1919,10 +1921,13 @@ export const handlers = [
     const file = form?.get("file");
     const filename = file instanceof File ? file.name : "上传文档.md";
     const docId = newId("doc");
+    // redline-allow：上传制度文档的**原文**，有意与现行红线不同（演示"抽取出的候选需人工裁决"）。
     const seg = { idx: 0, heading: "一、生产约束", text: "单基地外协比例不得超过 25%，超出需提交风险评估。", spanStart: 0, spanEnd: 40 };
     db.ruleDocs.unshift({ id: docId, filename, status: "IN_REVIEW", createdAt: new Date().toISOString(), segments: [seg] });
     db.candidates.push({
       id: newId("cand"), docId, segmentIdx: 0, span: { start: 0, end: 20 },
+      // 演示"候选 ≠ 现行规则、需人工裁决"：若改成派生现行值，A2 审批演示就没有可裁的差异了。
+      // redline-allow：**上传制度文档抽出的待审批候选**，有意与现行红线不同（这正是要给人裁的那个差异）。
       candidate: { name: "外协比例红线", description: "外协比例不得超过 25%", expression: "Outsource.ratio <= 0.25", expressionConfidence: 0.86, scopeObjectTypes: ["QualityLot"], severity: "WARN", sourceQuote: "单基地外协比例不得超过 25%" },
       status: "PENDING", diff: "新增",
     });
@@ -2533,7 +2538,9 @@ export const handlers = [
       .map((s) => {
         const capGain = scenarioCapGain(s.apply);
         const cost = Math.round(s.apply.reduce((a, x) => a + (/outsource/i.test(String(x.prop)) ? Number(x.value) * 50 : 0), 0) * 100) / 100;
-        const ruleFlag = s.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= 0.2);
+        // DF.13：触红线判定读契约单一来源（此前内联 0.2）。注意运算符是 `>=`（"已达红线"提示），
+        // 与规则引擎的违规谓词 `>` 差一个边界点 —— 提示比拦截早一格是有意的，不是漂移。
+        const ruleFlag = s.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= OUTSOURCE_REDLINE.maxRatio);
         return { scenarioId: s.id, name: s.name, cells: { capGain, cost }, ruleFlag };
       });
     return HttpResponse.json({ dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows });

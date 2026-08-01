@@ -10,6 +10,8 @@ import { BATTERY_SOLVER_PARAMS, BATTERY_TEMPLATE, BASES, generateBattery } from 
 import { entityRefFieldOf } from "../synthetic/service.js";
 import { caseSeverityFromData } from "../solvers/risk.js";
 import { BASE_REGISTRY } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：版本演进与版本史表达式/理由全部派生，禁内联裸阈值（R14·R-一致）。
+import { OUTSOURCE_REDLINE, OUTSOURCE_REDLINE_HISTORY, outsourceRedlineViolationExpr } from "@platform/contracts";
 import type { TsGenSpec } from "../synthetic/tsgen.js";
 import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident } from "./tsgen.js";
 
@@ -656,10 +658,11 @@ export class LivedInEngine {
         status: "PUBLISHED",
       });
     };
-    // C08：模板 v1（>0.30）已在标准合成中发布；此处演进 v2–v4
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%");
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%");
-    await mk("C08", "外协比例红线", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%");
+    // C08 红线演进（DF.13 单一来源 OUTSOURCE_REDLINE_HISTORY）：标准合成已发布**现行值**作 v1；
+    // 此处按版本史重放收紧过程，末条（PUBLISHED）落回现行红线 —— 表达式/复盘理由全部派生，禁内联百分数。
+    for (const h of OUTSOURCE_REDLINE_HISTORY.slice(1)) {
+      await mk(OUTSOURCE_REDLINE.ruleKey, OUTSOURCE_REDLINE.ruleName, outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio), h.reason);
+    }
     // C16：齐套覆盖天数 3 → 5（到货危机复盘）
     await mk("C16", "齐套覆盖天数下限", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天");
     await mk(
@@ -679,10 +682,19 @@ export class LivedInEngine {
       tags: string[],
     ) => ({ key, name: key === "C16" ? "齐套覆盖天数下限" : "外协比例红线", version, label, expression, reason, changedAt, status, tags });
     return [
-      row("C08", 1, "v1.0", "Order.outsourceRatio > 0.3", "场景包出厂基线（上限 30%）", "2025-07-01", "RETIRED", []),
-      row("C08", 2, "v1.1", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%", "2025-09-12", "RETIRED", []),
-      row("C08", 3, "v1.2", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%", "2026-01-09", "RETIRED", []),
-      row("C08", 4, "v1.3", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%", "2026-04-03", "PUBLISHED", []),
+      // DF.13：C08 版本史逐条从 OUTSOURCE_REDLINE_HISTORY 派生（末条 PUBLISHED 即现行红线，改红线自动同步）。
+      ...OUTSOURCE_REDLINE_HISTORY.map((h) =>
+        row(
+          OUTSOURCE_REDLINE.ruleKey,
+          h.version,
+          h.label,
+          outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio),
+          h.reason,
+          h.changedAt,
+          h.status,
+          [],
+        ),
+      ),
       row("C16", 1, "v1.0", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天", "2025-07-01", "RETIRED", []),
       row(
         "C16",

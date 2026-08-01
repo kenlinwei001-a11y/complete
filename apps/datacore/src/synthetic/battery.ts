@@ -1,5 +1,7 @@
 import type { IndustryTemplate, BusinessType } from "@platform/contracts";
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
+import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
@@ -222,7 +224,8 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
   health: { normal: 0.93, degraded: 0.9, staleHours: 2 },
-  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
+  // DF.13：outsourceMax 是 C08 红线在求解器侧的同一个数 → 从 OUTSOURCE_REDLINE 派生（禁内联裸阈值）。
+  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: OUTSOURCE_REDLINE.maxRatio },
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
   // WO-GSIM-1-DATA · 跨基地调拨物流费率常数（R14：业务常数入册·禁生成环内联魔数）。
   // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
@@ -433,6 +436,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
       B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
       C: { name: "扩产型", rev: 1.2, gm: 0.002, share: 22, capex: 27, turns: -0.2, cash: -12 },
+      // redline-allow：turns 是**库存周转**增量（次），与外协红线无关；此行含「外协型」只是方案名。
       D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
       E: { name: "混合型", rev: 1.18, gm: 0.004, share: 14, capex: 14, turns: 0.3, cash: -2 },
     },
@@ -472,7 +476,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
         { n: "CAPEX 挤占现金垫", kind: "cash", rule: "C18/C23", why: "27 亿 CAPEX 集中支付使现金垫 58→46 亿，直接击穿 50 亿红线，规划体检即阻断。必须分期支付 / 推后一季 / 配套融资，并先过 C23 门槛测算再写入计划——顺序不能反。", chain: [["CAPEX 27 亿集中支付", "枣庄+江门建设", "#E8B54A"], ["现金垫 58→46 亿", "13周现金最低点", "#54B5C4"], ["击穿红线 50 亿", "现金安全垫", "#5E8FE8"], ["C18 阻断定稿 · C23 门槛未过", "规则 C18/C23", "#DD7E9E"]] },
         { n: "爬坡滞后吞噬新增产能", kind: "ramp", rule: null, why: "按理论爬坡率排计划，认证 T+20 与调试期未计入；参照常州动力线-B 实绩（爬坡 60% vs 计划 70%），Q3 将累出 6 万套缺口、被迫外协兜底。爬坡假设必须用 PLM 认证记录 + MES 实绩校准。", chain: [["认证 T+20 + 调试未计入", "PLM 认证记录", "#E8B54A"], ["爬坡 60% vs 计划 70%", "常州动力线-B 实绩", "#54B5C4"], ["Q3 供给累缺 6 万套", "季度滚动缺口", "#5E8FE8"], ["交付违约风险 · 外协被动兜底", "订单交期判", "#DD7E9E"]] }] },
       D: { keys: "CAPEX 不动；外协补量走资质名录；来料/过程质量管控与放量同步。", probs: [
-        { n: "外协比例触红线", kind: "outsource", rule: "C08", why: "缺口全靠外协时比例逼近 20% 红线，超出部分无法承接；该红线是质量与供应安全的硬约束、不可放宽。外协必须与结构性手段（守价/扩产）组合使用，单押外协等于把承接能力封顶。", chain: [["缺口全量外协", "外协订单占比 ↗", "#E8B54A"], ["比例逼近 20%", "外协比例监测", "#54B5C4"], ["超出部分无法承接", "承接能力封顶", "#5E8FE8"], ["C08 红线 · 触线即拒单", "规则 C08", "#DD7E9E"]] },
+        { n: "外协比例触红线", kind: "outsource", rule: "C08", why: `缺口全靠外协时比例逼近 ${outsourceRedlinePct()}% 红线，超出部分无法承接；该红线是质量与供应安全的硬约束、不可放宽。外协必须与结构性手段（守价/扩产）组合使用，单押外协等于把承接能力封顶。`, chain: [["缺口全量外协", "外协订单占比 ↗", "#E8B54A"], [`比例逼近 ${outsourceRedlinePct()}%`, "外协比例监测", "#54B5C4"], ["超出部分无法承接", "承接能力封顶", "#5E8FE8"], ["C08 红线 · 触线即拒单", "规则 C08", "#DD7E9E"]] },
         { n: "外协质量波动反噬", kind: "outsource", rule: null, why: "外协良率低于自产 1–2pct，不良流入会推高质量域不良率、引发客诉与退货；质量成本与商誉损失会吞掉外协省下的 CAPEX。首件鉴定 + 巡检抽检必须与放量同步，不能事后补。", chain: [["外协良率波动 −1~2pct", "QMS 外协批次", "#E8B54A"], ["不良流入 · 客诉上升", "质量域不良类别", "#54B5C4"], ["退货/返工 + 商誉损失", "质量成本", "#5E8FE8"], ["毛利侵蚀 · 大客户信任受损", "毛利率/客户关系", "#DD7E9E"]] }] },
       E: { keys: "乘用车守价 + 枣庄一线扩高端 + 长尾量外协；三对策在月度 S&OP 第⑤步统一编排时序并设里程碑监测。", probs: [
         { n: "三对策时序错配", kind: "gap", rule: null, why: "扩产爬坡期、外协切换期、守价谈判期一旦脱节，缺口立即回弹：爬坡未达而外协未就位 = 交付违约；守价先行而供给未稳 = 客户流失。混合型的全部收益建立在协同之上，时序编排不是执行细节、是方案成立的前提。", chain: [["任一对策延期", "扩产/外协/守价 三线", "#E8B54A"], ["爬坡空窗 × 外协未就位", "供给缺口回弹", "#54B5C4"], ["交付违约 + 客户流失 双风险", "订单交期判/客户关系", "#5E8FE8"], ["规模与毛利双失 · 方案收益归零", "综合评分坍塌", "#DD7E9E"]] },
@@ -1962,7 +1966,15 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   // 规则库分类筛选与「约束条件」独立入口的真元数据单一来源（前端只读渲染，非写死清单；约束条件另按 severity=BLOCK 判别）。
   rules: [
     { key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", severity: "BLOCK", category: "产能" },
-    { key: "C08", name: "外协比例红线", expression: "Order.outsourceRatio > 0.3", severity: "WARN", category: "外协" },
+    // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
+    // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
+    // `params.outsourceRatioMax` 是给 RULE_PARAM_BINDINGS 预留的**命名阈值面**（与 C04/C09/C18/C21 同形）：
+    // 该机制并线后只需加一行 `{ruleKey:"C08", param:"outsourceRatioMax", path:"whatIf.outsourceMax"}`，
+    // 即可让"改规则→改推演"在运行时生效，且**不引入第二个数**（此处 params 与 expression 同取一个常量）。
+    // ⚠ key/name/severity/category 刻意保持**字面量**：规则码是标识符、不是会漂的业务数，
+    //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
+    //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
+    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(), severity: "WARN", params: { outsourceRatioMax: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
     { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK", category: "财务" },
     // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
     { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN", category: "产能" },
@@ -2899,7 +2911,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       ...(earlyDue ? { earlyDue } : {}),
       // 约束扫描字段：确定性派生（不依赖 rng），按固定步长植入越线行（C03/C08/C13/C29）。
       demandDelta: i % 8 === 0 ? 0.6 : round((hashString(o.so) % 50) / 100, 2),
-      outsourceRatio: i % 6 === 0 ? 0.35 : round((hashString(`${o.so}o`) % 18) / 100, 2),
+      // DF.13：越线样本/合规桶与 C08 红线强耦合（红线放松到样本之上 → C08 立刻变哑弹）→ 从 OUTSOURCE_SAMPLE 派生，值不变。
+      outsourceRatio: i % 6 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${o.so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2),
       creditUsedRatio: i % 7 === 0 ? 1.15 : round(0.4 + (hashString(`${o.so}c`) % 50) / 100, 2),
       leadDays: dueDay,
     };
@@ -2927,7 +2940,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
       businessType, early, ...(earlyDue ? { earlyDue } : {}),
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
-      outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
+      outsourceRatio: i % 17 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2), // DF.13 同上（规模补足段）
+
       creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
       leadDays: dueDay,
     });
