@@ -242,6 +242,16 @@ export interface SolverContext {
   capexProjects?: ObjectInstance[];
   purchaseOrders?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
+  /**
+   * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action
+   * 审批执行写入）。**按需加载**（见 service.ts `ADOPTION_AWARE_SOLVERS`：仅 risk_timeline /
+   * counterfactual_timeline 载·其余求解器不扫此类型），故与核心 10 类的 solverKey 裁剪机制正交。
+   *
+   * 消费方 `risk.ts riskTimeline`：逐 (baseId,factor) 取 status==="ACTIVE" 的采纳记录 → 把其 {eff,tn}
+   * 喂进 **真曲线** `tensionSeries`（不是 `card.mitigated` 那条"如果采纳会怎样"的对照曲线）。
+   * optional：缺省 / 空数组（测试直构 ctx / 无人采纳）→ 与采纳功能上线前**逐字节一致**（向后兼容 R6）。
+   */
+  adoptedMitigations?: ObjectInstance[];
   // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
   // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。

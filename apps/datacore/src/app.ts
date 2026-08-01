@@ -78,6 +78,9 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+// WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
+import { resolveBaseId } from "./solvers/risk.js";
+import type { SolverContext } from "./solvers/types.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { TimeseriesService } from "./timeseries.js";
@@ -506,6 +509,85 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         // targetRef 自证写了什么、写了几处——**刻意不使用 MO- 前缀**（那正是假单号的形态）。
         return { ok: true, targetRef: `CAP-ADOPT:${written.length}:${written[0]}` };
+      }
+
+      // ── 采纳处置方案 adopt_mitigation（G-ACTION-NOOP-EXEC 收口 · 本类型此前审批通过后一字节不写）──
+      // 病灶：用户在风险看板点「采纳」→ 审批链走完 → **风险曲线纹丝不动**。引擎半其实早就齐了：
+      //   · risk.ts tensionSeries 接 `{eff,tn}`，第 tn 天起扣 eff；
+      //   · params.risk.mitigations[factor] 里每个方案自带量化 {eff,tn}；
+      //   · risk.ts 还一直在算 `mitSeries`——但那是「**如果**采纳会怎样」的对照曲线，真曲线用的仍是无 mitigation 那条。
+      // 缺的只有一样：**没有地方记录"哪个方案被真采纳了"**。本分支就补这一样：写 `AdoptedMitigation` 对象
+      //（repos.objects 通用对象仓储·无需建表/迁移），riskTimeline 逐 (baseId,factor) 取 ACTIVE 采纳喂进真曲线。
+      // 语义裁决：「采纳」≠ 开一张生产工单（那是新记录，不改变任何推演真值，用户照样"什么都没变"）。
+      if (draft.actionTypeKey === "adopt_mitigation") {
+        const factor = String(draft.payload.factor ?? "");
+        const planKey = String(draft.payload.planKey ?? "");
+        const params = await solvers.getParams(draft.tenantId);
+        const library = params.risk?.mitigations ?? {};
+        // ① base 解析：复用 risk.ts `resolveBaseId`（**唯一严格解析出处**·认 baseId/中文名/obj_base_ 前缀）。
+        //    解不出（如决策内核在无头部基地时传的 "全域"）→ 诚实失败，绝不挑一个基地写下去。
+        const bases = await repos.objects.listByType(draft.tenantId, "Base");
+        let baseId: string;
+        try {
+          baseId = resolveBaseId({ bases } as unknown as SolverContext, draft.payload.base);
+        } catch {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：base「${String(draft.payload.base ?? "")}」解析不出具体基地——` +
+              `拒绝把方案落到一个猜的基地（写错真值比不写危险）。请传 baseId 或基地中文名。`,
+          };
+        }
+        // ② factor / planKey → 方案库真解出 {eff,tn}。任一解不出即失败，**绝不写一个猜的 eff/tn**。
+        const plans = library[factor];
+        if (!Array.isArray(plans) || plans.length === 0) {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：因素「${factor}」不在处置方案库（params.risk.mitigations）里——` +
+              `无量化效果可依，拒绝臆造 eff/tn。可选因素：${Object.keys(library).join("、") || "（空）"}`,
+          };
+        }
+        const plan = plans.find((pl) => pl.key === planKey || pl.name === planKey);
+        if (!plan) {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：因素「${factor}」下解不出方案「${planKey}」——拒绝臆造 eff/tn。` +
+              `该因素可选方案：${plans.map((pl) => `${pl.key}(${pl.name})`).join("、")}`,
+          };
+        }
+        // ③ 单源不并存（② 单源 > 并存）：同一 (baseId,factor) 旧的 ACTIVE 采纳先置 REVOKED，
+        //    使"至多一条 ACTIVE"成为**写时不变量**——读侧（riskTimeline）无需在多条里挑，也就没有挑错的余地。
+        const adoptionId = `${baseId}-${factor}-${plan.key}`;
+        const objectId = `obj_adoptedmitigation_${adoptionId}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
+        for (const o of await repos.objects.listByType(draft.tenantId, "AdoptedMitigation")) {
+          if (o.id === objectId) continue; // 同方案重复采纳 → 下面整体覆盖（幂等）
+          if (String(o.props.baseId ?? "") !== baseId || String(o.props.factor ?? "") !== factor) continue;
+          if (String(o.props.status ?? "") !== "ACTIVE") continue;
+          await repos.objects.put({ ...o, props: { ...o.props, status: "REVOKED" } });
+        }
+        // ④ 落库。adoptedAt 取**确定性时间锚** forecastStart（同 GlobalSimPlanExecutor 的 `禁 Date.now`(R6) 纪律）。
+        await repos.objects.put({
+          id: objectId,
+          tenantId: draft.tenantId,
+          type: "AdoptedMitigation",
+          props: {
+            adoptionId,
+            baseId,
+            factor,
+            planKey: plan.key,
+            planName: plan.name,
+            eff: plan.eff,
+            tn: plan.tn,
+            adoptedAt: String(params.forecastStart ?? "").slice(0, 10),
+            actionDraftId: draft.id,
+            status: "ACTIVE",
+          },
+          origin: { type: "ACTION", actionId: draft.id, source: "adopt_mitigation" },
+        });
+        // targetRef 自证采纳了什么——**刻意不使用 MO- 前缀**（那正是本仓刚清掉的假工单号形态）。
+        return { ok: true, targetRef: `MIT-ADOPT:${adoptionId}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
