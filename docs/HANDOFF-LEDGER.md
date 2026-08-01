@@ -118,3 +118,43 @@ test/grounding-vocab-grow.test.ts:53   expected 'UNREGISTERED' to be 'PROVISIONA
 | `claude/handoff-wo-66-rules-p1p2` | 挂起 | **本门上线首日真抓的第一条**：该分支在审核方本地跑完台账后才推上来，本地绿 / CI 红的差异本身即证据——旧机制下它会静默躺数周。缺 `028_solver_rule_bindings.sql`、`solvers/rule-params.ts`、`rules-first-class-seam.test.ts`。**其 `028` 使 datacore 028 变成三方撞号**（见下）。解挂条件：等其 PR 复验；SEAM 测试归 WO-TESTGAP-BACKFILL（#8），迁移重编号归 WO-INTEGRATION-AUDIT（#9）。 |
 | `claude/handoff-qos-live-evidence` | 已驳回 | 缺失件是一份一次性验收记录 `docs/acceptance-log-qos-live-10q.md`。验收记录属过程产物，不入正线；其结论已由 QOS 相关 SEAM 测试承载。 |
 | `claude/handoff-wo-scenario-forced-extract` | 已并线 | 并线提交 `57dd0141`（cherry-pick `a6508ce7`）。**含测试**：`scenario-forced-extract.seam.test.ts` 与实现同批并入，不属测试并线缺口。修的是 `orchestrator.ts` forced 分支 `extracted` 恒 `{}` —— `fillSlots` 内建「extracted > presetSlots」优先级，等于解析器被传空参：前端卡输入框/CLI/对话坞直打 `/api/v1/queries` 时自由文本被吞，「常州基地能不能接」与「能不能接」同答案（都是全网合计）。复验：四包 build RC=0；SEAM 绿；**变异反证**先证 `tsc --noEmit` RC=0（红不是编译失败），再把 `extracted` 改回 `{}` → 如期红（`expected null to be 'changzhou'`）。SEAM 是效果层断言（两问句 P50 24.2 vs 74.7 真不同 + 控制了 modelId/demandDelta 同值排除他因），非「参数到达了」的运输层。 |
+
+## 已核验可删分支（删除前登记 · 分支消失后本表即唯一凭据）
+
+> 删除远端分支不可逆。本节在删除**之前**登记每条的 tip sha 与核验结论——
+> 分支没了，sha 还在（GitHub 侧对象保留期内可 `git fetch origin <sha>` 取回），
+> 且内容本就已在 canonical（这正是判可删的理由）。
+>
+> **判据（勿用简化版）**：文件集取 `merge-base..tip` **整支**，不是 `git show --name-only <tip>`（那只是最后一个 commit）。
+> 实测 `handoff-wo-skill-3` 三个 commit：tip 碰 15 个文件、整支碰 22 个 —— 简化版会漏比 7 个文件。
+> 本仓今日真实踩过同一形态：一条 handoff 三个 commit 只 cherry-pick 了两个，第三个（`d52def35`）从未被看到。
+
+| 分支 | tip sha | 核验结论 |
+|---|---|---|
+| `claude/handoff-wo-scenario-forced-extract` | `a6508ce7` | 逐文件核毕：整支新增行全部落在 canonical，或被**更强的单源实现取代**（详见下） |
+| `claude/handoff-wo-1-skill-probe` | `2935a32f` | 逐文件核毕：整支新增行全部落在 canonical，或被**更强的单源实现取代**（详见下） |
+| `claude/handoff-wo-skill-3` | `efaa3479` | 逐文件核毕：整支新增行全部落在 canonical，或被**更强的单源实现取代**（详见下） |
+| `claude/handoff-ceo2v2-data2-seam` | `e99f23c3` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-ceo6-fe` | `0b23aebf` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-metric-aware-integrated` | `4e4b4331` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-scale-coherence` | `aeb823ba` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wip` | `0897fc9c` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-caplive-atom` | `9a1b5cea` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-caplive-cockpit` | `337270d1` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-gslive-cockpit` | `af9637bd` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-live-nl` | `6ce50f61` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-portfolio-fg-inventory` | `a93100ae` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-risk-perfactor-series` | `cc5b6bd6` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+| `claude/handoff-wo-s02-regression` | `91b11d8e` | 台账门判 INTEGRATED（`merge-base..tip` 全部文件内容与 canonical 一致） |
+
+**取代关系（缺行≠丢失，逐条）**：
+
+- `VALID_REF_KINDS`/`VALID_REF_ROLES` 本地硬编码词表 → 提进 `packages/contracts` `SKILL_REFERENCE_KINDS`/`SKILL_REFERENCE_ROLES` 单源（假绿第 6 例的修复）
+- `sideEffect === "WRITE_BACK" || "EXTERNAL_ACTION"` → `isWriteEffectSkill()`；`sideEffect === "WRITE" || approvalGate` → `isWriteModeSkill()`（判定单源在 contracts）
+- `packages/contracts` 里的内联 `z.enum([...])` → 引用上述常量（schema 与词表同源）
+- `checkSkillDependencyClosure`（原在 `server.ts`）→ 迁入 `skill-lint.ts`，由 `skill-lint.test.ts` 守
+- twin 差分 / `behaviorGain` → 在 `skill-probe.ts`（`ensureTwinAgent`/`runCase`），`skill-probe.test.ts` 10 处断言守
+- `SkillProbeRunner`/`runSkillProbe` → 在 `evals.ts`，`server.ts` 路由已挂
+
+**冻结（一条都不许删）**：持有 canonical 里不存在的测试文件的 17 条分支 —— 见 WO-TESTGAP-BACKFILL。
+删它们等于销毁那 15 个测试的唯一副本，把「暂时缺牙」变成「永久缺牙」。
