@@ -151,6 +151,7 @@ class HttpOntologyClient implements OntologyClient {
   }
   async listObjectTypeDefs(ctx: ToolAuthCtx): Promise<import("./clients.js").ObjectTypeDefSummary[]> {
     // WO-RESOURCE-CATALOG-ONTOLOGY：object_type/field 投影供给侧（A 侧 listTypes 已过滤 ACTIVE·R1 REST 只读镜像）。
+    // 注：linkKeys 不映射——真值源 ObjectTypeDef 无此字段（链接在 LinkTypeDef），该面恒缺省（见 clients.ts ObjectTypeDefSummary）。
     const types = await call<
       {
         key: string;

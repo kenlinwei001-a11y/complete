@@ -31,6 +31,12 @@ const SNAPSHOT = "ont-snap-001";
  * 属性带 unit/dataType（SEAM③ 量纲透出）；WIPLot 故意缺类型级 description（SEAM §4 兜底合成探针）。
  * mock listObjectTypeDefs/listObjectTypes/getTypeSemantics 三者同源于此（防漂移）。
  */
+/**
+ * query_objects UNKNOWN_TYPE 守卫的历史基线 key：seed 的 agent scope / intent slot 引用了
+ * Line/Shipment/Segment/Customer/Material 等目录投影之外的类型（discover-real-types.test 依赖
+ * Material「已知但 0 实例」语义）——守卫清单须为其并集，见 listObjectTypeKeys。
+ */
+const MOCK_GUARD_LEGACY_TYPE_KEYS = ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
 const MOCK_OBJECT_TYPE_DEFS: ObjectTypeDefSummary[] = [
   {
     key: "Base", displayName: "生产基地", domain: "factory", description: "生产基地主数据", status: "ACTIVE",
@@ -313,9 +319,11 @@ export class MockOntologyClient implements OntologyClient {
     return { node: `meta_SystemInvariant_${node}`, affected: [{ id: "PRD:PRD-platform-foundry-aip.md", via: "covered_by" }] };
   }
 
-  // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
+  // B→A 探针：守卫已知类型全集 = 出厂基线（seed 引用面）∪ 目录投影同源 ACTIVE 集。
+  // WO-RESOURCE-CATALOG-ONTOLOGY F1：discover 可见的类型（WorkOrder/MaterialBalance/OrderLine/WIPLot）
+  // 必须过 query_objects UNKNOWN_TYPE 守卫，否则「看到 → 照名查被拒」断在接缝。排序保 R6 稳定输出。
   async listObjectTypeKeys(): Promise<string[]> {
-    return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
+    return [...new Set([...MOCK_GUARD_LEGACY_TYPE_KEYS, ...this.activeTypeDefs().map((t) => t.key)])].sort();
   }
   async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
     // 与 listObjectTypeDefs 同源（MOCK_OBJECT_TYPE_DEFS·ACTIVE 子集）；count 取 mock 可见集，体现"空 vs 不存在"区分。
