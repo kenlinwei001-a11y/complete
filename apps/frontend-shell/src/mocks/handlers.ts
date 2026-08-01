@@ -330,6 +330,13 @@ function filterByScope<T extends { bases?: string; name?: string }>(rows: T[], a
   });
 }
 
+// WO-SCHEMA-ZH · 物料实例（对象 360 的 Material 分支）。定值、无随机；
+// 属性列与 ontology/object-types mock 的 Material 属性对齐（含故意留白中文名的 devPct）。
+const MOCK_MATERIALS = [
+  { matId: "pos_ncm", name: "三元正极", unitPrice: 183.4, leadTime: 21, onHand: 6116, devPct: 0.08 },
+  { matId: "sep_film", name: "隔膜", unitPrice: 12.6, leadTime: 14, onHand: 3480, devPct: 0.02 },
+];
+
 let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
@@ -1255,19 +1262,23 @@ export const handlers = [
   ),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
+    // WO-SCHEMA-ZH：properties[].displayName 镜像真后端 PROP_DISPLAY_NAMES（synthetic/battery.ts 单一真值）——
+    // mock 只是后端的替身，**不是第二份中文名来源**；真值改了这里跟着改（datacore seam 测试守真值那一侧）。
+    // 故意保留若干**无 displayName** 的属性（如 Base.position / Material.devPct），用于验前端诚实回落裸键。
     HttpResponse.json([
       {
         key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
         sourceBindings: [{ connId: "conn-synth", dataset: "base" }],
         properties: [
-          { propKey: "baseId", dataType: "string", isPrimaryKey: true },
-          { propKey: "name", dataType: "string", isPrimaryKey: false },
-          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%" },
-          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh" },
+          { propKey: "baseId", dataType: "string", isPrimaryKey: true, displayName: "基地编号" },
+          { propKey: "name", dataType: "string", isPrimaryKey: false, displayName: "基地名称" },
+          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", displayName: "产能利用率" },
+          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", displayName: "铭牌年产能" },
+          { propKey: "position", dataType: "enum", isPrimaryKey: false }, // 留白：与 kind 同值，业务语义待确认
         ],
       },
-      { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "chemistry", dataType: "string" }] },
-      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "cust", dataType: "string" }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }] },
+      { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, displayName: "型号编号" }, { propKey: "name", dataType: "string", displayName: "型号名称" }, { propKey: "chemistry", dataType: "string" }] },
+      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号" }, { propKey: "cust", dataType: "string", displayName: "客户" }, { propKey: "qty", dataType: "number", displayName: "订单数量" }, { propKey: "due", dataType: "date", displayName: "交期" }] },
       { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
       { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
       { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },
@@ -1277,7 +1288,9 @@ export const handlers = [
       { key: "ProductVersion", displayName: "产品版本", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_versions" }], properties: [{ propKey: "versionId", dataType: "string", isPrimaryKey: true }, { propKey: "versionCode", dataType: "string" }, { propKey: "status", dataType: "enum" }] },
       { key: "BOMHeader", displayName: "BOM", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_headers" }], properties: [{ propKey: "bomId", dataType: "string", isPrimaryKey: true }, { propKey: "bomCode", dataType: "string" }, { propKey: "bomLevel", dataType: "number" }] },
       { key: "BOMDetail", displayName: "BOM明细", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_details" }], properties: [{ propKey: "bomDetailId", dataType: "string", isPrimaryKey: true }, { propKey: "sequence", dataType: "number" }, { propKey: "quantity", dataType: "number" }] },
-      { key: "Material", displayName: "物料", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-erp", dataset: "erp_materials" }], properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "unitPrice", dataType: "number" }] },
+      // 用户原话点名的例子：Material.leadTime → 「到货周期」（真后端 PROP_DISPLAY_NAMES["Material.leadTime"] 同值）。
+      // devPct 故意无中文名（口径不明·后端亦留白）→ 界面诚实显裸键 devPct。
+      { key: "Material", displayName: "物料", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-erp", dataset: "erp_materials" }], properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true, displayName: "物料标识" }, { propKey: "name", dataType: "string", displayName: "物料名称" }, { propKey: "unitPrice", dataType: "number", displayName: "单价" }, { propKey: "leadTime", dataType: "number", unit: "天", displayName: "到货周期" }, { propKey: "onHand", dataType: "number", displayName: "现货库存" }, { propKey: "devPct", dataType: "number" }] },
       { key: "Supplier", displayName: "供应商", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-srm", dataset: "srm_suppliers" }], properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "rating", dataType: "enum" }] },
       { key: "MaterialAlternative", displayName: "物料替代", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_material_alts" }], properties: [{ propKey: "altId", dataType: "string", isPrimaryKey: true }, { propKey: "priority", dataType: "number" }, { propKey: "approvalStatus", dataType: "enum" }] },
       { key: "Routing", displayName: "工艺路线", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_routings" }], properties: [{ propKey: "routingId", dataType: "string", isPrimaryKey: true }, { propKey: "routingCode", dataType: "string" }, { propKey: "operationCount", dataType: "number" }] },
@@ -1306,6 +1319,13 @@ export const handlers = [
       const o = filterByScope(ORDERS, account).find((x) => x.id === idRaw || x.so === idRaw);
       if (!o) return err(404, "NOT_FOUND", "object not found");
       return HttpResponse.json({ data: { id: o.id, type, props: { ...o } }, snapshotVersion: "1.1" });
+    }
+    // WO-SCHEMA-ZH：物料实例（对象 360 展示 Material.leadTime 等属性的中文名 + 单位）。
+    // 值取真后端合成量级的定值（mock 无随机·与 object-types mock 的属性列对齐）。
+    if (type === "Material") {
+      const mat = MOCK_MATERIALS.find((m) => m.matId === idRaw);
+      if (!mat) return err(404, "NOT_FOUND", "object not found");
+      return HttpResponse.json({ data: { id: `obj_${mat.matId}`, type, props: { ...mat } }, snapshotVersion: "1.1" });
     }
     return err(404, "NOT_FOUND", "object not found");
   }),

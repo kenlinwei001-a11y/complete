@@ -19,6 +19,12 @@ import { z } from "zod";
 /** 属性口径：字段是什么（description）+ 单位 + 数据类型（镜像 DataCore PropertyDef 只读子集）。 */
 export const PropSemanticsSchema = z.object({
   propKey: z.string(),
+  /**
+   * WO-SCHEMA-ZH · 中文业务名（"leadTime" → "到货周期"）——DataCore PropertyDef.displayName，可缺省。
+   * 与 unit 并列的展示层真值：propKey 是接线名（求解器/规则/派生公式引用，不可改），displayName 是给人看的名。
+   * **缺省 = 该属性的业务含义尚未确证**（诚实留白，不臆造）；消费方一律回落 propKey，不得自建中文映射。
+   */
+  displayName: z.string().optional(),
   /** 业务语义描述（"这字段是什么"）——DataCore PropertyDef.description，可缺省。 */
   description: z.string().optional(),
   /** 单位（场景包单位字典）——PropertyDef.unit，可缺省。 */
