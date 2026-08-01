@@ -43,19 +43,26 @@ describe("WO-DECISION-KERNEL-WIRE · 决策内核跨服务真实联调（真 HTT
     expect(decision.actionDraftIds).toEqual([]); // 未 commit → 无 ActionDraft
   });
 
-  it("dc.decision.commit → 真 POST /:id/commit 得 COMMITTED + 派 ActionDraft（每选定方案一 DRAFT·S2 门不绕）", async () => {
+  it("dc.decision.commit → 真 POST /:id/commit 得 COMMITTED；decision_play 的战略方案落不成处置单 → 诚实不派（每方案 trace 记明理由）", async () => {
     const dp = await dc.solver.invoke(ctx, "decision_play", { metricKey: "seg_attain_ess" });
     const optionIds = (dp.data as { recommendedPlan: { optionIds: string[] } }).recommendedPlan.optionIds;
     const decision = await dc.decision.create(ctx, { metricKey: "seg_attain_ess", chosenOptionIds: optionIds });
 
     const committed = await dc.decision.commit(ctx, decision.id);
     expect(committed.status).toBe("COMMITTED");
-    expect(committed.actionDraftIds.length).toBe(optionIds.length); // 每选定方案 → 1 ActionDraft
-
-    // ActionDraft 真存在且 DRAFT（门不绕：commit 只建草稿·执行仍走 S2 approve）。
-    const draftRes = await t.app.inject({ method: "GET", url: `/a/v1/action-drafts/${committed.actionDraftIds[0]}`, headers: { "x-debug-user": "demo:admin:admin" } });
-    expect(draftRes.statusCode).toBe(200);
-    expect((draftRes.json() as { status: string }).status).toBe("DRAFT");
+    // WO-ADOPT-MITIGATION-DISPATCH 改判（**去伪·非回归**）：此前断言「每选定方案 → 1 ActionDraft」，
+    // 而那些草稿的载荷 `{base:"handan",factor:"cf-decision-gap",planKey:"opt-backup-cert"}` 喂真消费者
+    // `risk_timeline` 直接抛 `unknown mitigation plan` —— 审批一过必 EXECUTION_FAILED。
+    // 现在 commit 只在干跑得过时派单；decision_play 出的是公司级供应链战略（非基地处置方案库里的方案）→ 不派。
+    expect(committed.actionDraftIds).toEqual([]);
+    // 不派 ≠ 悄悄吞掉：每个选定方案在 trace 里都有交代（refId 溯回方案 id）。
+    const actionSteps = committed.trace.filter((s) => s.step === "action");
+    expect(actionSteps.map((s) => s.refId)).toEqual(optionIds);
+    expect(actionSteps.every((s) => s.label.includes("未派 adopt_mitigation"))).toBe(true);
+    // 库里也确实没留下注定失败的草稿。
+    const list = await t.repos.actionDrafts.list("demo", (x) => x.actionTypeKey === "adopt_mitigation");
+    expect(list).toEqual([]);
+    // 「载荷真能解析时照样派 DRAFT·门不绕」的正向覆盖见 adopt-mitigation-dispatch.seam.test.ts。
   });
 
   it("错误信封透传：幽灵方案 → 真内核拒 → client 抛 DataCoreHttpError(400)", async () => {

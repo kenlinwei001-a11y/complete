@@ -4,6 +4,7 @@ import type { ActionService } from "../actions.js";
 import type { SopService } from "../sop.js";
 import type { SolverService } from "../solvers/service.js";
 import { drawFromPool, deterministicDraw, type PoolKey } from "./pools.js";
+import { selectMitigationForBase } from "../decision/mitigation-dispatch.js";
 
 /**
  * 回放编排器（§3 执行模型）。
@@ -199,14 +200,40 @@ export class OpsReplayService {
       }
 
       case "adopt_mitigation": {
-        const approver = await this.deps.resolvePersona(tenantId, "vp_approver_li");
+        // ── 修前：载荷 = `{summary, base: baseName, adoptedAt}`，**缺 factor/planKey** →
+        //    ActionType.paramsSchema（required: base/factor/planKey）在 submit 阶段就 400 挡下，
+        //    这条回放动作从来没真跑成过（异常被 runTick 吞成 skipped，看起来只是"这天没触发"）。
+        // ── 修后（路径 A·全程正门·R6 确定性）：从**该基地自己那张风险卡**取真首要因子 + 实测张力
+        //    → `mitigation_select` 按平台自有打分规则选真方案 → 真消费者 `risk_timeline` 干跑复核
+        //    → 才派单。选不到（基地不在风险看板上 / 因子无方案库 / 干跑不过）→ **诚实跳过**，
+        //    绝不派一个注定失败的草稿，也绝不代执行器编 eff/tn。详见 decision/mitigation-dispatch.ts。
+        // ⚠️ 修 factor/planKey 后**露出被它盖住的第二处断点**（诚实记录·非本单新引入）：
+        //    `adopt_mitigation` 的审批链是 **planner → admin 两步**（battery.ts BATTERY_ACTION_TYPES），
+        //    而本处此前只传 `vp_approver_li`（roles: ["admin"]）一位审批人 → 一审就 409
+        //    `当前步骤需要角色 planner`。修前 400 先炸，这条 409 一直没机会露头。
+        //    这里按真链路补齐：planner persona 过一审 → 仍 PENDING_APPROVAL 则 admin persona 过终审
+        //    （全走 `actions.approve` 正门·R1 不碰仓储；与 app.ts 注释声明的
+        //     「base persona 发起 → approver persona 审批 → EXECUTED」意图一致）。
+        const approver = await this.deps.resolvePersona(tenantId, "vp_approver_li"); // 终审（admin）
         if (!approver) return { skipReason: "approver persona missing" };
-        const r = await this.deps.adoptMitigation(persona, approver, {
-          summary: `${String(persona.attributes.baseName ?? persona.userId)} · 采纳处置方案`,
-          base: String(persona.attributes.baseName ?? ""),
+        const reviewer = await this.deps.resolvePersona(tenantId, "vp_planner_zhang"); // 一审（planner）
+        if (!reviewer) return { skipReason: "reviewer persona missing" };
+        // 基地引用取 persona 行级属性（baseName 中文名 / baseScope 首个 baseId·两者 resolveBaseId 都认）。
+        const scope = persona.attributes.baseScope;
+        const baseRef = String(persona.attributes.baseName ?? (Array.isArray(scope) ? (scope[0] ?? "") : (scope ?? "")));
+        const sel = await selectMitigationForBase(
+          (solverKey, args) => this.deps.solvers.invoke(persona, solverKey, args),
+          baseRef,
+        );
+        if (!sel.ok) return { skipReason: `no adoptable mitigation: ${sel.reason}` };
+        const r = await this.deps.adoptMitigation(persona, reviewer, {
+          ...sel.payload, // base/factor/planKey —— paramsSchema required 三件套，且已干跑验过可解析
+          summary: `${sel.payload.base} · 采纳处置方案「${sel.dry.appliedPlan}」（${sel.payload.factor}·T+${sel.dry.effectiveFrom} 起生效）`,
           adoptedAt: d.date,
         });
-        return { exec: { kind: "adopt_mitigation", persona: action.persona, ref: r.draftId, decision: r.status } };
+        // 一审后仍待批 → 终审（链只有两步；仍待批则如实回传当前状态，不循环猜）。
+        const status = r.status === "PENDING_APPROVAL" ? (await this.deps.actions.approve(approver, r.draftId)).status : r.status;
+        return { exec: { kind: "adopt_mitigation", persona: action.persona, ref: r.draftId, decision: status } };
       }
 
       case "promote_intent": {
