@@ -264,3 +264,133 @@ grep -rniE 'tenant|userId|orgId|principal' packages/{server,protocol,agent}/src 
 2. **是否批准 Phase 1**（pi-ai 替换 LLM 客户端层）？我的建议：**批准**——风险低、收益明确、574 个用例零改动、可 env 开关回退。
 3. **是否批准 Phase 2 的 spike**（只回答三个问题，不实施）？我的建议：**批准 spike，不预批实施**。三个问题的答案会把工作量从"猜"变成"算"。
 4. Phase 3 排除项是否有异议？
+
+---
+
+# 附录 A · 「强化」而非「替换」路线（第二轮 · 审核方亲手读源码后重写）
+
+> 触发：仓主校正提法 —— 不是替换运行时，而是**把 agent 的 UI/UX/CLI 升级到 pi 的水准，作为查遗补漏**；
+> 并指出「目前 agent 的优势在满足本系统定制化，短板是不够完整、**不是一个可扩展的系统**」。
+> 且要求 **不要着急下结论，逐一看 pi 的手册与代码再分析**。
+> 本附录的所有事实均为**审核方亲手 grep / 读源码**所得（正文第 1–10 节是二手综合，保留但降级为背景）。
+
+## A.1 先纠正正文的一个切法错误
+
+正文按**包**切（pi-ai / pi-agent-core / pi-coding-agent / pi-tui）。**这个切法不准**，因为
+**包的边界与成熟度边界不重合**：`pi-agent-core` 里 `agentLoop` 是它自己天天在跑的，
+而同包的 `AgentHarness` **它自己一次都没用过**。按包给结论会把两者混为一谈。
+
+**改按「它自己用不用」切。** 判据不是文档写没写，是 `grep` 得到的实际引用。
+
+## A.2 亲手验的「文档有 · 代码无」（这是本次评估最重要的发现）
+
+pi 呈现出一种成规模的特征：**它的文档在描述一个比代码更完整的系统**。逐条是我自己跑的 grep：
+
+| 声称的能力 | 文档 | 代码 | 取证 |
+|---|---|---|---|
+| durable harness `lane`（一 session 多并行 leaf） | **148 处** | **0** | `grep -rniE '\blane\b' packages/agent/src/harness` |
+| `provisioned`（预分配 id） | **65 处** | **0** | 同上 |
+| `checkpoint` | 41 处 | **1** | 同上 |
+| `harnessEntry`（编排事实私有日志） | 20 处 | **0** | 同上 |
+| `createRef` | 3 处 | **0** | 同上 |
+| observability（span/trace/脱敏） | 376 行完整接口 | **0** | `grep traceOperation\|PiObservability packages/` |
+| skill frontmatter `allowed-tools`（工具预授权） | 文档表格正式列出 | **0** | `SkillFrontmatter` 只声明 `name`/`description`/`disable-model-invocation`，未知字段**静默丢弃** |
+
+两份 harness 文档的标题原文就是 `# Durable AgentHarness **plan**` 与 `# Durable AgentHarness **design**`，
+合计 **4217 行**。
+
+**`AgentHarness` 谁在用**：全仓非 `packages/agent/` 的引用只有 `packages/evals`（评测脚手架，
+且是它自己的 `createPiCodingAgentHarness`，**同名不同物**）与 `protocol/schemas.ts:37` 的**一句注释**。
+**产品 CLI 零引用。**
+
+> ⚠️ **结论不是「pi 不好」** —— 81.8k star、月均约 500 commit，是真活跃的真项目。
+> 结论是：**任何「pi 已具备 X 能力」的判断都必须落到 grep 上，否则会系统性高估**；
+> 而这个高估**恰好集中在我们最想要的那几层**（可扩展性之外的持久化编排、可观测性），
+> 因为那正是它还在设计、还没建的部分。
+>
+> 其中 `allowed-tools` 最刺眼：用户在 skill 里写了它、以为做了工具预授权，**实际一字节不生效且无任何警告**。
+> 这正是本仓反复清理的「声明了但没接线」，出现在一个我们打算借鉴的项目里 —— **借鉴时必须连它的坑一起识别**。
+
+## A.3 我们与 pi 在可扩展性上不是强弱，是**正交**
+
+亲手取证：
+
+```
+apps/agentcore/src 里：
+  registerTool / registerProvider / registerCommand / plugin / extension / loadExtension
+    → 全部 0 处命中
+  BUILTIN 工具表 tools/registry.ts：31 个条目 / 492 行 —— 改它要动源码 + 重部署
+但同时：
+  repos.skills 32 处 · repos.agents 46 处 · repos.workflows 31 处 · repos.llmProviders 8 处
+```
+
+| 面 | 我们 | pi |
+|---|---|---|
+| **数据面**（skill/agent/workflow/rule/solver/对象类型/场景卡） | ✅ DB 驱动 · 带版本 · **带发布门**（skill-probe 要求 ≥3 用例且 passRate=1、依赖闭合检查、skill-lint） | ❌ 基本没有（Skill = 扔个 markdown 文件） |
+| **代码面**（工具/供应商/命令/提示词/渲染器/UI 面板） | ❌ **全要改源码 + 重部署** | ✅ 运行时可注册 · 33 个事件 · npm/git 分发 · ~70 个可跑例子 |
+
+**所以要拿的是 pi 的代码面扩展模型，同时把我们的数据面治理原样保住。**
+这比"替换运行时"目标清晰得多、风险小得多，且**不碰 `loop.ts`、不碰 `check-loop-control` 那 16 条断言、不碰 SSE 契约**。
+
+## A.4 亲手读到的、值得抄的具体设计
+
+> 以下每条都是我读 `extensions.md` 原文所得，不是转述。
+
+**① 工具运行时可注册**（`extensions.md:1341`）：`registerTool` 在加载期与启动后都能调，
+在 `session_start`、命令处理器、任意事件里都行；**新工具当场对 LLM 可见，无需 `/reload`**。
+
+**② 工具自带提示词贡献**（`promptSnippet` / `promptGuidelines`）：不是中心化一个提示词文件列全部工具，
+而是每个工具携带自己那一行。
+> 附带一条**踩过才写得出的经验**（原文）：`promptGuidelines` 是**平铺**追加、**无工具名前缀**，
+> 每条必须自己点名工具 —— **不要写 "Use this tool when..."，LLM 分不出 "this" 指谁**。
+> 我们现在是 `agent/prompts.ts` 集中八段纪律；若改成工具自带，必然撞同一个坑。
+
+**③ `prepareArguments`**：可选兼容垫片，**在 schema 校验之前**跑，把旧字段折叠进新参数形状。
+= **工具参数的版本兼容缝**。我们没有：工具 schema 一改就是破坏性的。
+
+**④ `renderCall` / `renderResult`**：工具**自带渲染**。对照我们 `AnswerBlock` 是 6 个固定类型的 union，
+工具带不了自己的渲染器 —— 这是"代码面不可扩展"最具体的一个实例。
+
+**⑤ `ctx.signal` 贯到扩展自己的异步工作**：扩展里 `fetch` 传 `ctx.signal`，
+用户按 Esc 能把**扩展自己发起的请求**一起取消。我们的 AbortSignal 只覆盖 LLM 与工具调用。
+
+**⑥ 顺序保证与「不保证」都写明**（`extensions.md:749-760`）：
+`tool_call` 触发前会等先前 Agent 事件排干（故 `ctx.sessionManager` 是最新的）；
+但并行模式下**明确不保证**看得到同一条 assistant 消息里兄弟工具的结果。
+—— **把不保证的东西写进契约**，这个习惯本身值得抄。
+
+**⑦ 双队列消息模型**（steer / followUp）：Enter = 下一轮 LLM 前插入、Alt+Enter = 全干完再说、
+Alt+Up = 取回队列到编辑器、**Escape = 中止并把队列文本还给编辑器**（不吞消息）。
+对我们同样适用：「agent 正在跑一个 3 分钟的求解，用户想补一句约束」现在只能 cancel。
+
+## A.5 对我们的硬红线（抄之前必须先加的东西）
+
+**🔴 `tool_call` 里 `event.input` 可原地 mutate，且原文写着「No re-validation is performed after your mutation」**
+（`extensions.md:761-765`，我逐字读到）。
+
+对 pi 无所谓（单人本地、用户即 root）。对我们**等于让扩展绕过契约层**：
+我们的工具 schema 是 zod 且 **contracts-only-shared（R1）**。
+⇒ **要抄这套扩展模型，必须在 mutate 之后重新做 zod 校验**，否则 R1 当场失效。
+
+其余必须自建、pi 明确不做的：多租户（类型系统零存在）、执行期权限闸（`project_trust` 是**加载期**闸门不是执行期）、
+沙箱（"This is intentional"）、MCP。
+
+## A.6 修正后的路线
+
+| Phase | 内容 | 判断 |
+|---|---|---|
+| **0** | **先定动机**（不写代码） | 不变。若动机是"agent 太慢"，pi 不解决 |
+| **1** | pi-ai 替换 `llm/*` | 不变。**批准**（574 用例零改动、env 开关默认关） |
+| **1.5**（新） | **代码面扩展点**：仿 pi 的 `registerTool`/`registerCommand`/事件+归约链，落到我们的工具/命令/提示词/渲染器表面 | **这是本次评估新增的、最对症的一块**（正对「不是可扩展系统」这个短板）。**前置硬条件：mutate 后必须重做 zod 校验** |
+| **2'**（新） | **CLI 交互升级**：`scripts/platform-cli.mjs` 从一次性命令 → 常驻交互会话（双队列 steering / 会话恢复 / 成本可见）。`pi-tui` 依赖只有 `get-east-asian-width` + `marked`、**零 peer**，是四个包里意识形态负担最轻的 | 候选。与已有 **R15「CLI 对等」不变量 + `cli-parity:check` 棘轮门 + RL7「CLI 先于 UI」**同向，不是支线 |
+| **2** | 换循环内核 | **降为最低优先**。按新框架它收益最小、风险最大 |
+| **3** | coding-agent / rpc / server | 排除（不变） |
+
+## A.7 本附录的《本体引用与影响》（增量）
+
+- **触及不变量**：新增 **R1 风险**（typebox↔zod 边界、扩展 mutate 后不重校验）；
+  **R3** 扩展注册的工具必须同样受 entitlement 前置过滤（关闭 = 从 tools 数组剔除）；
+  **R2** 扩展注册面必须带 tenantId 作用域（pi 无此概念）。
+- **触及门禁**：若做 Phase 1.5，需新增一道门断言「扩展注册的工具全部经 zod 重校验 + 经 agent scope 闸」。
+- **触及断点**：新增候选 **G-EXT-BYPASS-CONTRACT**（扩展绕过契约层）——若实施 Phase 1.5 须登记。
+- **R15 CLI 对等**：Phase 2' 天然与之同向；新增交互能力须同步登记 `OPERATION_CATALOG`。
