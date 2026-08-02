@@ -41,15 +41,21 @@ run() {
 
 run "BUILD (pnpm -r build)" pnpm -r build
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
-# `pnpm gates` = 13 条治理门（含 debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 …）。
+# `pnpm gates` = 一批治理门（debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 / 描述覆盖 …）。
 #
 # ⛔ 为何补进来（第三层假绿·本地与 CI 覆盖面不一致）：本脚本自称"防假绿的单一入口"，
-#    而它原先只跑 3 条静态门，CI 却另跑 `pnpm gates`(13 条) + `check-ontology-writeback.mjs`。
+#    而它原先只跑 3 条静态门，CI 却另跑 `pnpm gates` + `check-ontology-writeback.mjs`。
 #    于是**照 LOOP 纪律只跑 `bash scripts/gate.sh` 的审核方，拿到的是比 CI 弱的检查**——
 #    本地全绿 → 推上去 CI 才红，或更糟：本地绿被当成"验过了"直接并线。
 #    「门存在 ≠ 门在跑」的下一层是「**门在跑 ≠ 你跑的那道门等于 CI 那道门**」。
 #    debattery/arg-drop-seam 原先单列，已含在 `pnpm gates` 里，去重后只保留 genuine-sim（不在 gates 列表）。
-run "pnpm gates（13 条治理门）" pnpm gates
+#
+# ⚠️ 门数**现算不写死**：这行标签曾长期写着"13 条治理门"，而实际已涨到 15
+#    （新增 action-wiring / outsource-redline / ontology-descriptions 时没人回来改标签）。
+#    标签说谎与假绿同族——看门的人以为自己知道跑了多少道，其实读的是过期常数。
+#    出处唯一 = package.json 的 gates 脚本，这里只做投影。
+GATES_N="$(node -e 'console.log(require("./package.json").scripts.gates.split("&&").length)' 2>/dev/null || echo "?")"
+run "pnpm gates（${GATES_N} 条治理门）" pnpm gates
 run "ontology-writeback:check" node scripts/check-ontology-writeback.mjs
 # ⚠️ 刻意**不**并入 handoff 并线台账门（`check-handoff-integration.mjs`）：
 #    它以**远端** canonical 为真值，读不到本地未推送的工作副本 → 本地必然红。
