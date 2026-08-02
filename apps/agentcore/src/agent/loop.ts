@@ -26,6 +26,8 @@ import {
   estimateTokensChars,
   firstLineSummary,
   foldOldestFrame,
+  isDegradedSummary,
+  stripDegradedMark,
   truncateToolResultJson,
   type IterationFrame,
 } from "./context.js";
@@ -339,6 +341,12 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (rollingNotes.length !== summaryLen) {
       summaryCache = await summarize(rollingNotes);
       summaryLen = rollingNotes.length;
+    }
+    // WO-SEAM-COMPACT-REDLINE G3：摘要器判失效时（compose 抛错 / 返空 / 未过锚定校验）措辞必须与常态**可区分**。
+    // 常态那句是「可信度声明」；异常态还要多说一件事：**更早轮次确立的约束可能已经不在这段里了**——
+    // 压缩是不可逆有损变换，兜底拼接保不住语义，这时候让模型「照摘要答」正是静默错答的入口。
+    if (isDegradedSummary(summaryCache)) {
+      return `${opts.system}\n\n【前情摘要（⚠ 蒸馏失效，已回退确定性拼接）：本段可信度低，且**更早轮次确立的约束/红线可能已随压缩丢失**。业务事实一律以工具结果为准；若需引用早期约束，必须重新取证，不得据本段推断】\n${stripDegradedMark(summaryCache)}`;
     }
     return `${opts.system}\n\n【前情摘要（已折叠轮次蒸馏，仅供回忆；业务事实仍以工具结果为准）】\n${summaryCache}`;
   };

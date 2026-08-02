@@ -96,3 +96,56 @@ return s.length > 0 ? s : defaultRollingSummary(notes);
 - **触及链路**：`意图 → runAgentLoop → 折叠 → summarizer → effectiveSystem 注入 → 后续轮`
 - **触及不变量**：**R13 结论可溯源**（本单主战场：压缩点是溯源链的断点候选）· **R6 确定性**（SEAM-D 守常态字节一致）· fail-open 铁律（不得因校验阻断循环）
 - **触及断点**：拟新增候选 **G-COMPACT-DROPS-CONSTRAINT**（压缩静默吞掉已确立约束）。**闭合后须回写 `docs/SYSTEM-ONTOLOGY.md` §8**；若本单只闭一半，如实标 🔴 未闭并写清剩什么。
+
+
+---
+
+# 交付记录（审核方自办 · 2026-08-02）
+
+> dev 未开工（GitHub 上无 `claude/handoff-wo-seam-compact-redline`），仓主指示「如果 dev 没做，你自己直接完成」。
+> **本单作者 = 审核方本人，没有第三方独立复审** —— 这是本单最大的方法论弱点，如实记在这里，
+> 不用「我自己验过了」冒充「有人复验过」。补偿手段：三条变异反证逐条真打 + 效果层断言 + 全门。
+
+## 实际改动
+
+| 文件 | 改了什么 |
+|---|---|
+| `apps/agentcore/src/agent/context.ts` | 新增 `SUMMARY_DEGRADED_MARK` / `isDegradedSummary` / `stripDegradedMark` / `summaryLooksAnchored`；`makeLlmRollingSummarizer` 出口从「非空」升级为「非空 **且** 内容锚定」，三条失效路径（抛错 / 返空 / 锚定不过）统一走 `degraded()` 置标记 |
+| `apps/agentcore/src/agent/loop.ts` | `effectiveSystem` 识别降级标记 → 换异常态措辞；标记本身不泄漏进模型上下文 |
+| `apps/agentcore/test/context-compression-seam.test.ts` | 既有 5 条按新契约更新（不是放宽：③/③b 从「字节等于兜底」升级为「**剥标记后**字节等于兜底 **且** 必须带标记」）；新增 SEAM-A/B/B2/C/D/D2 + 锚定判据边界，共 13 条 |
+| `docs/SYSTEM-ONTOLOGY.md` §8 | 登记 `G-COMPACT-DROPS-CONSTRAINT`（标 ✅ 已闭） |
+
+## 三处与工单原文的偏差（如实记，勿当成已按原样交付）
+
+1. **G2 判据落地为「内容锚定」**，不是工单里留白的「判据由 dev 定」。锚点 = 笔记里的数字（含小数/百分比）与 ≥4 位标识符样 token。
+   理由：摘要指令本就要求「保留已验证事实 + 工具名 + 关键数字」，一份真摘要几乎不可能一个锚点都不含；而 8 个字的垃圾必然不含。
+   **已知弱点**：这是启发式，不是证明。一份「用完全不同措辞正确复述、但恰好不含任何原词」的摘要会被误判为失效 → 退兜底（**fail-safe 方向**：宁可退确定性拼接，不让不可信文本冒充摘要）。
+2. **SEAM-A 不断言「答案里还有 20%」**。本套件的 LLM 是脚本化的，答案是我自己排的队——那样断言等于测我的脚本，又掉回运输层。
+   改断言**上下文信息完整性**：折叠后要么约束仍在、要么系统明说可能已丢，「既不在也不说」即红。
+3. **工单猜错一处**：我写「删掉 `loop.ts:343` 那句若不红，说明它从来没被咬过」。实际**本来就被咬着**
+   （`runtime-context.test.ts` 一条字符串匹配），M3 变异打出 2 红。SEAM-A 的价值在于从**效果层**再咬一遍，不是「补上没人咬的洞」。
+
+## 变异反证（三条真打 · 均先证 `tsc --noEmit` RC=0）
+
+```
+M1 删 G2 锚定校验        → 2 红   AssertionError: 垃圾摘要不得进入上下文: expected true to be false
+                                  AssertionError: 长垃圾同样必须被判失效: expected false to be true
+M2 删 G3 降级标记        → 5 红   AssertionError: 摘要器失效必须置降级标记，否则下游分不清真蒸馏与兜底
+M3 删 loop.ts 常态措辞   → 2 红   AssertionError: 折叠后既没保住约束、也没有任何「别据摘要推断」的声明 —— 这是静默错答入口
+                                  AssertionError: 后续 system 注入了折叠轮的前情摘要
+```
+
+## 《本体引用与影响》
+
+- **对象类型**：无新增。
+- **链路**：`runAgentLoop 折叠 → opts.summarizer → 出口锚定校验 → effectiveSystem 注入（常态/降级两种措辞） → 后续轮 system`。
+- **不变量**：**R13 结论可溯源**（主战场——压缩点是溯源链的断点候选，本单把「静默丢失」变成「显式声明丢失」）；
+  **R6 确定性**（SEAM-D/D2 守常态与 provider 不可用路径逐字节不变）；**fail-open 铁律**（校验与降级绝不阻断循环，SEAM-C 用 `outcome=ANSWERED` 守）。
+- **门禁**：未新增静态门。判据活在 SEAM 测试里，且三条变异反证证明它有牙。
+- **断点**：新增并闭合 `G-COMPACT-DROPS-CONSTRAINT`（§8 已回写）。
+
+## 仍未做的（不许当成已闭）
+
+- **压缩点未落为可回放的会话条目**。评估 pi 时看到它把压缩存成 `CompactionEntry`（可审计「这条结论是压缩前还是压缩后得出的」）。
+  我们没有。本单只保证「丢了会说」，**没保证「事后查得出哪一轮丢的」**。这属 R13 的下一层，需单独立单。
+- **结构化 checkpoint 模板**（目标/红线/已采纳方案/待审批 Action/证据引用）未做——摘要指令仍是自由文本。
