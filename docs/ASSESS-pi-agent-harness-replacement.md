@@ -394,3 +394,132 @@ Alt+Up = 取回队列到编辑器、**Escape = 中止并把队列文本还给编
 - **触及门禁**：若做 Phase 1.5，需新增一道门断言「扩展注册的工具全部经 zod 重校验 + 经 agent scope 闸」。
 - **触及断点**：新增候选 **G-EXT-BYPASS-CONTRACT**（扩展绕过契约层）——若实施 Phase 1.5 须登记。
 - **R15 CLI 对等**：Phase 2' 天然与之同向；新增交互能力须同步登记 `OPERATION_CATALOG`。
+
+---
+
+# 附录 B · 亲手真跑（第三轮 · 仓主指令「不仅要看是否有哪些功能，而是真实测试功能的完整性」+「从前端实际测试」）
+
+附录 A 的事实靠 **grep**；本附录的事实靠 **跑**。方法：`npm ci` + `npm run build` 装出真构建，写探针测 API 层，
+用 **pty + pyte 真 VT 模拟器** 驱动 TUI 截真屏，用**假 OpenAI 兼容端点**跑通真回合。
+凡与附录 A 冲突处，**以本附录为准**（跑赢读）。
+
+## B.0 基线（先证跑得起来，否则后面的红都不算数）
+
+| 项 | 结果 |
+|---|---|
+| `npm ci` | RC=0（226 包） |
+| `npm run build` | RC=0 |
+| `pi-agent-core` 自测 | **282 passed / 1 skipped / 19 文件 / 6.5s** |
+| `pi-coding-agent` 自测 | **1697 passed / 16 failed / 48 skipped（195 文件中 6 红）** |
+
+16 红**全部定性为环境**，非缺陷：本机以 **root** 运行（`chmod 000` 文件仍可读 → 6 条 `EACCES`/`not writable`
+断言的前提不成立）+ **`fd` 未安装**（`find.ts:214 ensureTool("fd", true)` 硬依赖）。已逐条核对，未发现真缺陷。
+
+## B.1 API 层探针（`packages/agent/test/zz-probe*.test.ts`）
+
+| 探针 | 问题 | 实测 | 结论 |
+|---|---|---|---|
+| P0 | 基线：faux provider + `Agent` 能跑、工具真被调 | `toolCalls=1 msgs=4` | ✅ |
+| P1 | 循环有没有内建迭代上限 | 请求 30 连轮 → `actualToolCalls=30` | **无任何上限** |
+| P2 | 能否只靠 hook 建出上限 | `turns=0 toolCalls=30` | **`Agent` 类的 `AgentOptions` 根本不接受 `shouldStopAfterTurn`** |
+| Q1 | `beforeToolCall` 返回 `block:true` 能否停住循环 | `seen=20 executed=3 blocked=17` | **拦得住工具，拦不住循环** —— 预算耗尽后仍在烧 17 轮模型调用 |
+| Q2 | `abort()` 之后拿得到什么 | `lastRole=assistant lastStop=aborted lastContent=[] err="Request was aborted"` | **无任何钩子注入诚实的部分结论**；`state.messages` 里的 3 条工具结果得自己在循环外重建 |
+| Q3 | `beforeToolCall` 里改参数会不会重校验 | ctxKeys=`["assistantMessage","toolCall","args","context"]`；schema 声明 `n:Number`，**工具实收 `{"n":"NOT_A_NUMBER"}`** | **脏值直达工具，零重校验**（对应 A 附录已列的 R1 风险，现已实证） |
+| P4 | 同脚本两遍是否字节一致 | `identical=false`，首差在 `"timestamp":1785639388003` vs `…004` | **无可注入时钟**，R6 需自建 |
+| PROBE3 | `skills.md:148` 列的 7 个 frontmatter 字段活下来几个 | 解析后键只剩 `name/description/content/filePath/disableModelInvocation`；`allowed-tools`/`license`/`compatibility`/`metadata` 全 `null`，**`diagnostics=[]`** | **文档承诺"预授权工具清单"，实际连字段都没读，且零诊断** |
+| PROBE3b | 字段拼错能否发现 | `allowedtools`、`totally-made-up-field` 全静默吞掉，`diagnostics=[]` | **fail-open**，与我们「假绿」同族 |
+
+**结论修正（推翻附录 A 的措辞）**：不是"hook 够用、策略缺失"，而是 **用 `Agent` 类就拿不到收口 hook**。
+`shouldStopAfterTurn` 只在 `AgentLoopConfig`（`types.ts:217`，`agent-loop.ts:248` 消费）里，
+`AgentOptions` 只有 `beforeToolCall`/`afterToolCall`/`prepareNextTurn`/`prepareNextTurnWithContext`。
+
+## B.2 结构性发现：pi 有**两套并行的 agent 栈**，产品跑的是治理弱的那套
+
+| | `Agent`（`agent.ts`） | `AgentHarness`（`harness/`） |
+|---|---|---|
+| 出货 CLI `packages/coding-agent`（183 源/195 测试） | **`sdk.ts:294 new Agent({...})`** | **零引用**（全包只有 2 处散文里的 "harness" 字样） |
+| 被谁用 | CLI | 仅 `packages/evals`(3) + `packages/protocol`(1) |
+| 暴露 `shouldStopAfterTurn` | 否 | **也否**（`agent-harness.ts:497` 自己内部用 `beforeToolCall`） |
+| 设计文档 | — | `harness.md`(2390，标题 *plan*) + `harness-v2.md`(1827，*design*) + `agent-harness.md`(506) |
+
+两套栈连工具都各写一份：`agent/src/harness/tools/image.ts:56-68` 与 `coding-agent/src/utils/mime.ts:67-80` 是同一段逻辑的两份拷贝。
+**「按包切」不准，「按它自己用不用」才准**——这是附录 A 已定的判据，本轮又添一例。
+
+## B.3 「文档写了、实际没有」——必须分五类，性质完全不同
+
+**① 文档明说"故意不做"（诚实，不是坑）** ——附录 A 把 MCP/subagent 列进"缺口"是**误判**，此处纠正：
+
+> `usage.md:301`「It intentionally does not include built-in MCP, sub-agents, permission popups, plan mode, to-dos, or background bash.」
+> `README:495`「**No MCP.**」·`README:497`「**No sub-agents.**」
+
+**② 设计稿词汇，代码里为零（读文档必然高估）**
+
+| 概念 | harness 文档提及 | 源码 | 备注 |
+|---|---|---|---|
+| `lane` | 240 | **0** | grep 的 9 处命中全是 `colorPlanes` 子串 |
+| `provisioned` | 42 | **0** | |
+| `checkpoint` | 41 | 2 | |
+| `createRef` | 3 | **0** | |
+| observability（span/trace/metrics） | **376 行专文** | **0** | `observability.md` 标题即 *Design Notes* |
+
+**③ 文档当能力写、实测无效** → B.1 的 PROBE3/PROBE3b（`allowed-tools` 等 4 字段静默丢弃 + 零诊断）。
+
+**④ 能力存在但不在你以为的那层** → B.2（`shouldStopAfterTurn` 只在底层 loop；`AgentHarness` 不被产品用）。
+
+**⑤ 有，但语义与直觉相反** → B.1 的 Q1/Q3/P4（block 不停循环 · 脏参直达 · 无注入时钟）。
+
+## B.4 TUI 实跑（pty + pyte 真 VT，逐屏截图）
+
+**pi 没有 Web 前端**：UI = 自研 TUI（`packages/tui` 37 源/30 测试）；`packages/client`+`server` 是 CBOR 远程会话协议，非 Web UI。
+
+**做得好的（可直接学）**
+
+| 项 | 实测 |
+|---|---|
+| **中文宽字符** | 按显示宽度正确折行；退格删**整字**；左右移按**字符**不按格；插入精确落在「交\|期」之间 —— 无半字符撕裂。**我们全中文，这条是硬需求，pi 过关** |
+| `!` bash 直执行 | `!ls -la` 真跑，输出内联渲染 |
+| `/` 命令菜单 | 23 条，可滚动带描述 |
+| `ctrl+o` | 20 条键位（alt+enter 排队追问 / ctrl+g 外部编辑器 / 拖文件附件） |
+| `/model` | 115 模型，模糊搜索，右侧实时详情 |
+| `/settings` | 27 项，可搜索，Enter/Space 就地切换 |
+| 自定义模型接入 | 只写一份 `models.json`（`baseUrl` + `api: openai-completions`），**零代码**接上假端点跑通 |
+| `esc` 中断 | spinner → `Operation aborted`，**工具确未执行**，会话继续可用 |
+
+**实测出来的问题**
+
+- **B.4.1 启动期从 GitHub 下 `fd` 二进制，失败即静默降级**：屏顶留下
+  `fd not found. Downloading...` / `Failed to download fd: GitHub API error: 403` 后照常进会话，
+  而 **`@` 文件补全整个死掉**（`@`/`@READ`/`@src/al` 三种写法均无弹窗）。
+  **变异反证**：把一个 fd 塞进 PATH → 403 行消失、补全立刻复活（列出 `src/`、`README.md`、`alpha.ts`），`@src/a` 还能过滤。
+  源码自证 `interactive-mode.ts:727`「*fd for autocomplete, rg for grep tool*」。
+  → **对我们是部署级阻断**：内网/代理环境首启即残废且不报警。
+  （更正：`find` 工具**本来就不在默认工具集**，见 B.4.3，所以 fd 挂掉打死的是 `@` 补全，不是默认会话的 find。）
+
+- **B.4.2 工具执行零审批 —— 有实物证据**：让假模型返回 bash 工具调用
+  `echo TOOL_REALLY_RAN > /tmp/pi-approval-probe.txt`，屏幕上只有事后回显（`$ … / done / Took 0.0s`），
+  而 `cat /tmp/pi-approval-probe.txt` → **`TOOL_REALLY_RAN`**。
+  这是 README 明写的取舍，但现在是坐实的：**我们平台 R4「真值经 Action」+ 人工审批门，这一层 pi 一行都没有。**
+
+- **B.4.3 只给模型 4 个工具**：假端点收到 `["read","bash","edit","write"]`；源码对得上——
+  `createCodingTools()` 只返回这 4 个，`find/grep/ls` 在另一套 `createReadOnlyTools()` 里（`tools/index.ts`）。
+
+- **B.4.4 中断后什么都拿不到**：屏幕上只有 `Operation aborted` —— 与 B.1 的 Q2 完全一致。
+  **UI 忠实反映了底层没有诚实降级接缝**，不是 UI 没做。
+
+## B.5 对路线的影响
+
+| 附录 A 结论 | 本轮实测后 |
+|---|---|
+| Phase 1（pi-ai 换 `llm/*`）**批准** | **不变**，B.0 的 282/1697 绿支持它 |
+| Phase 1.5（代码面扩展点）**前置硬条件：mutate 后重做 zod 校验** | **从"预防性要求"升级为"实证必需"** —— Q3 已证脏值直达工具 |
+| Phase 2（换循环内核）**最低优先** | **进一步降级**：P2/Q1/Q2 证明 `Agent` 类上建不出「有界终止 + 诚实降级」，我们的 `degrade()` 无处安放 |
+| Phase 2'（CLI 交互升级） | **加强**：B.4 的中文宽字符、命令面板、设置面板、模型选择器都实测可用，是最值得学的一块 |
+| — | **新增 B.4.1 部署前置**：任何引入 pi CLI 的方案必须预置 `fd`/`rg` 或设 `PI_OFFLINE=1`，否则内网首启静默残废 |
+| — | **新增 B.4.2 硬缺口**：审批门必须我们自建，pi 侧零基础 |
+
+## B.6 复现方式（探针与驱动器）
+
+- API 层：`packages/agent/test/zz-probe-governance.test.ts`（P0–P4）、`zz-probe2.test.ts`（Q1–Q3）、`zz-probe3-skill.test.ts`（PROBE3/3b）。
+  注意 pi 的 vitest 配 `silent: "passed-only"`，**必须 `--silent=false` 才看得到 console 输出**（否则通过的探针一个字都不打，等于白跑）。
+- TUI 层：`pty-drive.py`（pty + pyte，脚本化 `wait/send/key/snap`）+ `fake-llm.py`（假 OpenAI 兼容端点，第 1 轮回 bash 工具调用）。
+- 变异反证：fd 有/无对照（B.4.1）；工具执行留痕文件（B.4.2）。
