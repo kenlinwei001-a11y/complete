@@ -18,6 +18,7 @@ import type {
   SubmitQueryBody,
 } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
+import type { SkillDefinition } from "@platform/contracts";
 import { resolvePlanForIntent } from "../catalog/service.js";
 import { parseDataCoreSpec } from "../llm/providers.js";
 import type { RequestAuth } from "../auth.js";
@@ -30,6 +31,7 @@ import {
   resolvePromptOverride,
   AGENT_SYSTEM_CORE,
   CEO_DEEP_QUESTION_SYSTEM,
+  buildSkillSection,
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
@@ -195,6 +197,34 @@ export function reasoningTraceEnabled(set: FeatureSet): boolean {
 export function escalationEnabled(set: FeatureSet): boolean {
   if (set === "ALL") return false;
   return set.has("agent.escalation");
+}
+
+/**
+ * #90 · feature 门：默认自由问答（泛化 path-B）是否挂载**租户级已发布 Skill**。
+ * 病灶：`buildSkillSection` 全仓只有一个调用方 `engine.ts runRegisteredAgent`（skill 绑在 `agent.skills` 上），
+ * 泛化 path-B 用裸 `AGENT_SYSTEM_CORE` 且不传 `loadSkillEnabled`/`loadSkill` → 整套 Skill 子系统
+ *（发布双门禁 / evals / 语义路由 / embedding 旋钮）对默认路径**完全不可达**——不是"忘传一个 flag"，
+ * 是泛化路径根本没有 agent，需要一条**租户级**技能来源。**暗发·默认关**：`set==="ALL"`（mock 默认 /
+ * DataCore 降级）→ false → 既有 path-B system prompt 与工具集逐字节不变（不劫持）。双注册（datacore + agentcore）。
+ */
+export function skillOnFreeQaEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("agent.skill-on-free-qa");
+}
+
+/**
+ * #90 · 租户级技能池（R6 确定性）：只取 **PUBLISHED**（DRAFT/RETIRED 不进自由问答），
+ * 同 key 保留最高版本，按 key 字典序排——同租户同输入的 system prompt 字节一致。
+ * 注入量由 `buildSkillSection` 的语义路由收窄（top-k 全文 + 其余降级为 id/名·仍可 load_skill 取全文）。
+ */
+export function selectTenantSkills(all: SkillDefinition[]): SkillDefinition[] {
+  const latest = new Map<string, SkillDefinition>();
+  for (const s of all) {
+    if (s.status !== "PUBLISHED") continue;
+    const cur = latest.get(s.key);
+    if (!cur || s.version > cur.version) latest.set(s.key, s);
+  }
+  return [...latest.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
 /**
@@ -1658,11 +1688,21 @@ export class Orchestrator {
       typeof settingsForSummary.providerAvailable === "function"
         ? await settingsForSummary.providerAvailable(task.tenantId, "compose").catch(() => false)
         : false;
+    // #90 · 默认自由问答挂载租户技能（暗发·关 = 下面 system/工具集逐字节同旧）。
+    // 关键差别与注册 agent 路径：那边 skill 绑在 `agent.skills`，泛化 path-B 没有 agent，
+    // 故技能来源是**租户级已发布集**（selectTenantSkills·R6 确定性）；注入量仍由 buildSkillSection
+    // 的语义路由收窄（top-k 全文 + 其余降级为 id/名，模型需要时 load_skill 取全文）。
+    const skillOnFreeQa = skillOnFreeQaEnabled(enabledFeatures);
+    const freeQaSkills = skillOnFreeQa ? selectTenantSkills(await this.deps.repos.skills.listByTenant(task.tenantId)) : [];
+    const baseSystem = opts?.systemOverride ?? AGENT_SYSTEM_CORE;
+    const systemWithSkills =
+      freeQaSkills.length > 0 ? `${baseSystem}${buildSkillSection(freeQaSkills, { query: task.query })}` : baseSystem;
+
     const result = await runAgentLoop({
       taskId,
       model,
       tenantId: task.tenantId,
-      system: opts?.systemOverride ?? AGENT_SYSTEM_CORE,
+      system: systemWithSkills,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
       emitNarration: reasoningTraceEnabled(enabledFeatures), // WO-REASONING-TRACE：暗发开 → 每轮思考旁白流前端（建信任）
@@ -1708,6 +1748,27 @@ export class Orchestrator {
       // WO-LOOP-CONTROL-P2 · per-tool 调用上界 / Retry Manager（opt-in env·缺省不设 → 不限/不重试 → 既有 path-B 逐字节不变）
       ...(this.deps.config.QOS_AGENT_PER_TOOL_CALL_CAP !== undefined ? { perToolCallCap: this.deps.config.QOS_AGENT_PER_TOOL_CALL_CAP } : {}),
       ...(this.deps.config.QOS_AGENT_RETRY_MAX_ATTEMPTS !== undefined ? { retry: { maxAttempts: this.deps.config.QOS_AGENT_RETRY_MAX_ATTEMPTS } } : {}),
+      // #90 · 技能池非空才开 load_skill 工具（空池开了等于给模型一个永远返 undefined 的工具·徒增盲试）。
+      ...(freeQaSkills.length > 0
+        ? {
+            loadSkillEnabled: true,
+            loadSkill: async (skillId: string) => {
+              // 只允许取**本次已注入清单内**的技能（防模型凭空猜 id 越出租户已发布集）。
+              if (!freeQaSkills.some((x) => x.id === skillId)) return undefined;
+              const skill = await this.deps.engine.resolveSkill(task.tenantId, skillId, "latest");
+              if (!skill) return undefined;
+              return {
+                body: skill.body,
+                resources: skill.resources.map((r) => ({
+                  name: r.name,
+                  url: `/b/v1/skills/${skill.id}/resources/${encodeURIComponent(r.name)}`,
+                  ...(r.mime ? { mime: r.mime } : {}),
+                  ...(r.description ? { description: r.description } : {}),
+                })),
+              };
+            },
+          }
+        : {}),
     });
 
     await this.deps.repos.agentRuns.insert(result.run);

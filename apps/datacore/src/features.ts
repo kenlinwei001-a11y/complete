@@ -115,6 +115,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-LOOP-CONTROL-P2（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B agent 停滞时**升级阶梯**——
   // rung① 换策略再试一轮（早于 degrade·发 agent_escalated 伪 step·不新增事件名）→ rung③ 诚实降级。orchestrator escalationEnabled 据本键 set.has 挂点。
   { key: "agent.escalation", name: "Agent 停滞升级阶梯（换策略再试→诚实降级·暗发）", level: "BLOCK", defaultOn: false },
+  // #90（暗发·defaultOn:false·同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关）：
+  // 租户级已发布 Skill 挂到默认自由问答（泛化 path-B）——此前 Skill 只对注册 agent 路径可达。
+  { key: "agent.skill-on-free-qa", name: "自由问答挂载租户技能（默认 path-B 可见并 load_skill·暗发）", level: "BLOCK", defaultOn: false },
   // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B 多对口 solver **服务端组合编排**
   //（executePlan 逐步 invoke_solver + 一次综合·不经 runAgentLoop·确定性 compose 秒答）。orchestrator composePathEnabled 据本键 set.has 挂点。
   { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
@@ -158,6 +161,7 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "qos.dril-routing",
   "agent.critic",
   "agent.escalation",
+  "agent.skill-on-free-qa",
   "qos.compose-path",
   "qos.reasoning-trace",
   "qos.deterministic-multi-domain",

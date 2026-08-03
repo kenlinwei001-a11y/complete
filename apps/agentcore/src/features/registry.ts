@@ -112,6 +112,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
   { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示·建人机信任）", level: "BLOCK", defaultOn: false },
+  // #90（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：把**租户级已发布 Skill** 接到
+  // **默认自由问答**（泛化 path-B `runPathB→runAgentLoop`）。病灶：`buildSkillSection` 全仓只有一个调用方
+  // `engine.ts runRegisteredAgent`（注册 agent 路径·skill 绑在 `agent.skills` 上），泛化 path-B 用裸
+  // AGENT_SYSTEM_CORE、且不传 `loadSkillEnabled`/`loadSkill` → 整套 Skill 子系统（发布双门禁 / evals /
+  // 语义路由 / embedding 旋钮）对默认路径**完全不可达**。关 = 既有 path-B 逐字节不变（不劫持）。
+  { key: "agent.skill-on-free-qa", name: "自由问答挂载租户技能（默认 path-B 可见并 load_skill·暗发）", level: "BLOCK", defaultOn: false },
   // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：跨域题在**确定性层**
   // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
   // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。
