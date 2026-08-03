@@ -358,3 +358,52 @@ solver:
 > **诚实边界**：此定案覆盖"同引擎不同目标"这一主流用法。
 > 若将来出现**真正需要自带模型结构**的 Skill（新变量族/新约束族），
 > 正解是**向求解器注册表新增一个求解器**并被引用，而不是在 Skill 包里夹带模型文件。
+
+---
+
+## §8 · Skill SDK + Runtime API（仓主给定 V1.0）与对照
+
+**SDK 模块**：Skill CLI · DSL Parser · Ontology SDK · Agent SDK · MCP SDK · Rule SDK · Solver SDK ·
+Workflow SDK · Test SDK · Deploy SDK
+**CLI**：`dos skill create|validate|compile|test|package|deploy`
+**编译**：DSL → Parser → AST → Validator → Optimizer → Execution Graph → Runtime Package
+**Runtime 链**：请求 → Intent 识别 → Skill 匹配 → Context 加载 → Ontology 查询 → Agent 推理 →
+Tool 调用 → Rule 校验 → Solver 计算 → Workflow 执行 → 输出 → Memory 更新
+
+### ⚠ 头号风险：**API 面重复** —— 12 组 API 里多数在仓里已有对应端点
+
+| SDK 规格 API | 仓里已有 | 若各建一套的后果 |
+|---|---|---|
+| `/api/v1/ontology/object/{type}/{id}` | DataCore `/a/v1/ontology/*`（91 类型 / 11,087 对象） | 两条本体读路径，权限/租户过滤各判一次 |
+| `/api/v1/mcp/register` · `/invoke` | B3 MCP（配置 + 调用已通） | 工具注册两处 |
+| `/api/v1/solver/run` | `/b/v1/solvers/{key}/run`（57 求解器·**D1 刚接通取消**） | 取消/超时语义要维护两份 |
+| `/api/v1/rule/evaluate` | `evaluate_rules` 工具 + `ruledsl.ts`（28 条） | 规则两处解释 |
+| `/api/v1/workflow/start` · `/{id}` | `workflow/executor.ts` + Action `approvalChain` | 流程状态两处 |
+| `/api/v1/context/query` | `conversationSummary` + DRIL 组包 | 上下文两处 |
+| `/api/v1/agent/task` | `/api/v1/queries` + `runRegisteredAgent` | agent 入口两处 |
+| `/api/v1/evaluation/feedback` | `EvalService` + `ActionMetrics` | 评价两处（且现有指标**跨租户混算**·`/metrics` **裸奔 200**） |
+
+> **建议**：SDK 的 API 面按「**新增薄层 + 复用既有端点**」实现 —— Skill 层的 Registry/Compiler/
+> Orchestrator/Package 是真新增；Ontology/MCP/Rule/Solver/Workflow/Context/Agent **一律代理到既有端点**，
+> 不另起实现。理由与 §5 同：**同一能力两处实现 = 两处会漂**。
+
+### 真新增（仓里完全没有，值得做）
+
+| SDK 项 | 价值 | 今天状态 |
+|---|---|---|
+| **Skill CLI**（create/validate/compile/test/package/deploy） | 把"写 Skill"变成有工具链的工程活动 | 无 |
+| **Skill Compiler**（AST/Validator/Optimizer） | 发布前静态校验（引用是否存在、推理图有无环） | 无 |
+| **`.skill` 包 + `manifest.json` + `signature/`** | **包签名**是 Marketplace 分发的前提 | 无 |
+| **Manifest `runtime: ">=2.0"` + `dependencies`** | 运行时兼容性声明 —— 与 §2-① 的 `supersedes` 互补 | 无（Skill 有 version 无 runtime 约束） |
+| **Skill Orchestrator API**（Skill Graph） | 多 Skill 编排 | 无 |
+| **Permission：data / tool / action 三面** | **per-Skill 的工具与动作权限** | 🔴 **真缺口**。今天有 A6 行级 + entitlement + RBAC，但**没有"这个 Skill 能用哪些工具、能发哪些 Action"** |
+| **Execution Trace（含 Prompt Version）** | 可复盘 | 🟡 有 events + provenance + agentRuns，但**Prompt 无版本**——今天 prompt 在代码里，改了无从追溯 |
+| **§24 生命周期角色**（业务分析师→Skill 设计师→本体工程师→AI 工程师） | 组织分工 | 无对应角色（今天只有 admin/planner/catalog_admin/base_manager） |
+
+### 两处必须先解决的前置（否则 SDK 建在流沙上）
+
+1. **`/api/v1/evaluation/feedback` → Learning Loop**：依赖的「人工采纳率」今天**跨租户混算**
+   （`dc_action_submit_total` 标签仅 `{action_type,outcome}`）且 `/metrics` **两服务均 200 无鉴权**。
+   **在错的指标上建学习闭环，学到的也是错的。**
+2. **Runtime 链的「Intent 识别 → Skill 匹配」**：顺序正确，**但仓里分类器排第 11 站、前有 10 道正则门抢答**
+   （Track A 的病根）。不拆门，新 Runtime 照样被劫持 —— SDK 规格未提及这一层。
