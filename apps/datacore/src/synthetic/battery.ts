@@ -35,6 +35,18 @@ export const BASES: {
   lines: b.lines,
 }));
 
+/**
+ * DF.1 单一来源：**单条基地引用**也查册派生（不只 BASES 集合）——WO-76 修。
+ * 剧本/参数里写死 `baseId: "changzhou"` 与内联整个基地集是同一类漂移（G-5/R14），
+ * 只是粒度为"单条"：册里改 baseId 或删该基地，引用会静默指向不存在的基地。
+ * name 是册自述的"跨端共同 key"；查不到即抛，不留悬空引用。R6：值与迁移前字节一致。
+ */
+export function baseIdOf(name: string): string {
+  const hit = BASE_REGISTRY.find((b) => b.name === name);
+  if (!hit) throw new Error(`[battery] 基地「${name}」不在 BASE_REGISTRY 单一来源册（DF.1/R14）`);
+  return hit.baseId;
+}
+
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
 // PRD-IND-order-aggregate：HTML 6 型号（MODEL_DEF L1542），命名以原型为单一真相源。
 export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
@@ -2523,7 +2535,7 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   ],
   scenarioScript: [
     { tick: 3, event: "iot_delay", params: { lagHours: 4.2 } },
-    { tick: 5, event: "shipment_delay", params: { baseId: "changzhou", days: 5 } },
+    { tick: 5, event: "shipment_delay", params: { baseId: baseIdOf("常州"), days: 5 } },
     { tick: 8, event: "yield_drop", params: { utilBoost: 8, yieldFactor: 0.95 } },
   ],
 };
