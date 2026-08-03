@@ -305,6 +305,18 @@ export function DynamicLeverPanel({
               <span>影响面</span>
               <b data-testid="lever-affected-count">{out?.affectedObjects ?? 0}</b>
             </div>
+            {/* D5 · 在途可见：拖杠杆触发的重算不再无声——已耗时（秒级递增）+ 主动取消。
+                本面板杠杆全是滑杆（连续控件）→ 按仓主定案**不弹二次确认框**（每动一下弹一次不可用），
+                照旧 debounce + 取消前序（D1 并线后底层求解真的会停，取消本就免费）。 */}
+            {live.isFetching && (
+              <div data-testid="lever-live-inflight">
+                <span>求解中 · 已耗时</span>
+                <b className="mono" data-testid="lever-live-elapsed">{Math.floor(live.elapsedMs / 1000)}s</b>
+                <button className="btn sm" data-testid="lever-live-cancel" style={{ marginLeft: 6 }} onClick={live.cancel} title="放弃本次重算（服务端会真的中止底层求解）">
+                  取消
+                </button>
+              </div>
+            )}
           </div>
 
           {out && out.count > 0 && (

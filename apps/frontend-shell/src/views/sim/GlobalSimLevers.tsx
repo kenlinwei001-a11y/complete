@@ -44,6 +44,7 @@ const leverId = (l: { key: string; target: string }) => `${l.key}-${l.target}`;
 export function GlobalSimLevers({
   value, onChange, includedCount, totalCount, frozenCount, pending,
   freeLevers = [], onFreeLeversChange, candidates = [], leverDeltas = [],
+  elapsedMs = 0, onCancel, stale = false, onRecompute,
 }: {
   value: LeverState;
   onChange: (next: LeverState) => void;
@@ -56,6 +57,15 @@ export function GlobalSimLevers({
   onFreeLeversChange?: (next: FreeLever[]) => void;
   candidates?: LeverCandidate[];
   leverDeltas?: LeverDeltaVM[];
+  // D5 · 在途可见 + 旧参数标记（沿用既有 [待重算] 徽标扩展·不新造一套）
+  /** 在途已耗时（ms·秒级递增） */
+  elapsedMs?: number;
+  /** 主动取消本次推演（用户可直接放弃·不必靠改参数间接取消） */
+  onCancel?: () => void;
+  /** 参数已改但屏上结果对应旧参数（用户选「否」或主动取消后） */
+  stale?: boolean;
+  /** 以当前参数重算 */
+  onRecompute?: () => void;
 }) {
   const [customKey, setCustomKey] = useState("");
   const [customTarget, setCustomTarget] = useState("");
@@ -88,7 +98,44 @@ export function GlobalSimLevers({
     <div className={styles.glass} data-testid="global-sim-levers">
       <span className={styles.grpLabel}>
         [ 杠杆盘 · 需求 / 供给 / 物料 / 优先级 ]
-        {pending && <span className={styles.recalcBadge} data-testid="global-sim-recalc">● {"　"}待重算 / 求解中</span>}
+        {/* D5 · 在途可见：既有 [待重算] 徽标扩展出「已耗时」+「取消」（不新造一套状态显示） */}
+        {pending && (
+          <span className={styles.recalcBadge} data-testid="global-sim-recalc">
+            ● {"　"}求解中 · 已耗时 <b className="mono" data-testid="global-sim-elapsed">{Math.floor(Math.max(0, elapsedMs) / 1000)}</b> 秒
+            {onCancel && (
+              <button
+                type="button"
+                data-testid="global-sim-cancel-solve"
+                title="放弃本次推演（服务端会真的中止底层求解）——不必靠改参数间接取消"
+                onClick={onCancel}
+                style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+              >
+                取消本次推演
+              </button>
+            )}
+          </span>
+        )}
+        {/* D5 · 用户选「否」/主动取消后：绝不静默丢改动，也绝不让结果与旁边的参数对不上 → 明标 + 待重算 */}
+        {stale && (
+          <span
+            className={styles.recalcBadge}
+            data-testid="global-sim-stale"
+            title="你的改动已保留，但当前屏上的结果是用旧参数算出来的；点「重算」按新参数重新求解。"
+            style={{ color: "var(--danger)" }}
+          >
+            ⚠ {"　"}参数已改 · 当前结果对应旧参数
+            {onRecompute && (
+              <button
+                type="button"
+                data-testid="global-sim-recompute"
+                onClick={onRecompute}
+                style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+              >
+                重算
+              </button>
+            )}
+          </span>
+        )}
       </span>
 
       {/* 供给：冻结产能处置（真 arg frozenCapacityMode） */}
