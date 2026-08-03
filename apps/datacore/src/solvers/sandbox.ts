@@ -40,6 +40,11 @@ export interface SandboxOpts {
   timeoutMs?: number;
   /** 最大输出字节（防输出炸内存，默认 256KB）。 */
   maxOutputBytes?: number;
+  /**
+   * WO-D1 · 取消信号（上游超时 / 客户端断开）。abort → 立刻 SIGKILL 子进程 —— 这一层是**真取消**：
+   * 沙箱求解跑在我们自己 spawn 的子进程里，杀掉即停，不是"不再等它"。
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -49,7 +54,9 @@ export interface SandboxOpts {
 export function runSolverSandbox(source: string, ctx: unknown, args: unknown, opts: SandboxOpts = {}): Promise<SandboxResult> {
   const timeoutMs = opts.timeoutMs ?? 1500;
   const maxOut = opts.maxOutputBytes ?? 256 * 1024;
+  const signal = opts.signal;
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve({ ok: false, error: "CANCELLED" }); // 已取消 → 连子进程都不 spawn
     const permFlag = permissionFlag();
     if (permFlag === null) {
       // 无权限模型 = 无沙箱。宁可诚实拒绝，也不把不可信代码放进裸子进程。
@@ -69,14 +76,18 @@ export function runSolverSandbox(source: string, ctx: unknown, args: unknown, op
     let out = "";
     let err = "";
     let done = false;
-    const finish = (r: SandboxResult) => { if (done) return; done = true; clearTimeout(timer); try { child.kill("SIGKILL"); } catch { /* ignore */ } resolve(r); };
+    const finish = (r: SandboxResult) => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener("abort", onAbort); try { child.kill("SIGKILL"); } catch { /* ignore */ } resolve(r); };
     const timer = setTimeout(() => finish({ ok: false, error: "TIMEOUT" }), timeoutMs);
+    // WO-D1：取消 → SIGKILL 子进程（finish 内已 kill），底层沙箱求解**真停**而非仅不再等待。
+    const onAbort = () => finish({ ok: false, error: "CANCELLED" });
+    signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (d: Buffer) => { out += d; if (out.length > maxOut) finish({ ok: false, error: "OUTPUT_TOO_LARGE" }); });
     child.stderr.on("data", (d: Buffer) => { err += d; });
     child.on("error", (e) => finish({ ok: false, error: `CHILD_ERROR: ${e.message}` }));
     child.on("close", () => {
       if (done) return;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       done = true;
       try { resolve(JSON.parse(out) as SandboxResult); }
       catch { resolve({ ok: false, error: (err.slice(0, 200) || "NO_OUTPUT").trim() }); }

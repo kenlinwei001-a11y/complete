@@ -12,6 +12,7 @@ import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
+import { currentCancellationSignal, SolverCancelledError, throwIfCancelled } from "./cancellation.js"; // WO-D1 · 取消透传（超时/客户端断开 → 底层求解真停）
 import type { LlmClient } from "../llm.js";
 import { FeatureService } from "../features.js";
 import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-gen.js";
@@ -579,7 +580,9 @@ export class SolverService {
   /** A18.2：在锁死沙箱里执行已注册的 LLM 临时求解器，输出强标 trustLevel/origin（推演可用、写真值另受门控）。 */
   private async invokeArtifact(ctx: AuthCtx, art: SolverArtifact, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const sandboxCtx = await this.buildSandboxCtx(ctx.tenantId);
-    const r = await runSolverSandbox(art.computeSource, sandboxCtx, args, { timeoutMs: 1500 });
+    // WO-D1：把请求作用域取消信号交给沙箱 → 取消即 SIGKILL 子进程（这一层是真停，不是不再等）。
+    const r = await runSolverSandbox(art.computeSource, sandboxCtx, args, { timeoutMs: 1500, signal: currentCancellationSignal() });
+    if (r.error === "CANCELLED") throw new SolverCancelledError(`临时求解器 ${art.key} 沙箱`);
     if (!r.ok) throw validationError(`临时求解器 ${art.key} 沙箱执行失败：${r.error ?? "未知"}`);
     const out = (r.output && typeof r.output === "object" ? r.output : { result: r.output }) as Record<string, unknown>;
     // 强标未审核（R13）：每个临时求解器结果都带 origin/status/trustLevel，绝不冒充正式。
@@ -2539,6 +2542,9 @@ export class SolverService {
     const pubRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
     const coeffRule = pubRules.find((r) => r.key === "portfolio_optimize_coeffs");
     const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
+    // WO-D1 检查点③（portfolio = 最重求解器·全局推演页滑杆 debounce 连发的那个）：六张表读完就被取消 →
+    // 不再进联合求解（sidecar 调用侧另有 fetch signal 真中断连接）。
+    throwIfCancelled("portfolio 联合求解前");
     const solve = this.optimizer.solvePortfolio.bind(this.optimizer);
     const objArr = (v: unknown): PortfolioObjectiveKey[] | undefined =>
       Array.isArray(v) ? (v.map(String) as PortfolioObjectiveKey[]) : undefined;
@@ -3994,6 +4000,9 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
+    // WO-D1 检查点①（入口）：请求已被取消（AgentCore 超时 abort / 前端断开）→ 一步都不往下走。
+    // 未包裹取消作用域的调用方（内部派生/测试直调）恒 no-op → 行为逐字节不变（R6）。
+    throwIfCancelled(`solver ${solverKey} 入口`);
     // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
     if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
       const art = await this.activeArtifact(ctx.tenantId, solverKey);
@@ -4047,6 +4056,9 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
+    // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。
+    // ⚠ 诚实：compute 是**同步**的，一旦进去就无法从外部打断（Node 单线程）——取消只能卡在这个边界上。
+    throwIfCancelled(`solver ${solverKey} compute 前`);
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.
