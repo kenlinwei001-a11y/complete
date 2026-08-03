@@ -51,7 +51,13 @@ export function wireDeps(base: {
   const metrics = base.metrics ?? new Metrics();
   const events = new TaskEvents(base.repos);
   // mock mode (tests / no DATACORE_BASE_URL) → injectable in-memory feature set, all-on default
-  const features = base.features ?? new FeatureGate({ baseUrl: base.config.DATACORE_BASE_URL });
+  // #89：fail-open（拉不到 entitlement 就放行全部功能）必须外透——接 metric，正常部署下应长期为 0。
+  const features =
+    base.features ??
+    new FeatureGate({
+      baseUrl: base.config.DATACORE_BASE_URL,
+      onFailOpen: ({ reason }) => metrics.entitlementFailOpen.inc({ reason }),
+    });
   const llmSettings = new LlmSettings(base.repos, base.config, base.providerDirectory);
   const engine = new ExecutionEngine({
     repos: base.repos,

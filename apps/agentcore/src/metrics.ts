@@ -94,6 +94,15 @@ export class Metrics {
     "qos_agent_timeout_total",
     "Agent runs degraded by per-call LLM/tool timeout",
   );
+  /**
+   * #89：entitlement 拉不到而**放行全部功能**（fail-open → "ALL"）的次数，按 reason 分标签
+   *（`http_401` / `unreachable:*`）。此前这条路径完全静默——一个 entitlement 恒定失效的部署
+   * 与一个健康部署在可观测面上一模一样。非零即须查：正常部署下它应长期为 0。
+   */
+  readonly entitlementFailOpen = new Counter(
+    "qos_entitlement_fail_open_total",
+    "Entitlement lookups that failed open to ALL (feature gating not enforced)",
+  );
   /** WO-LOOP-CONTROL-P1：Loop Detector 环检测（同工具名+入参签名反复调用·成功但空转）触发的优雅降级次数。 */
   readonly agentLoopRepeat = new Counter(
     "qos_agent_loop_repeat_total",
@@ -153,6 +162,7 @@ export class Metrics {
         this.clarificationRounds,
         this.agentBudgetExhausted,
         this.agentTimeout,
+        this.entitlementFailOpen,
         this.agentLoopRepeat,
         this.agentRetry,
         this.agentEscalation,

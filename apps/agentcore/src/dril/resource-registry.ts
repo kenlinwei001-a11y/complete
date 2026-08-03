@@ -93,7 +93,7 @@ export class ResourceRegistryService {
   async projectTenant(ctx: ToolAuthCtx): Promise<{ counts: Record<string, number>; total: number }> {
     const tenantId = ctx.tenantId;
     const now = new Date().toISOString();
-    const enabled = await this.deps.features.enabledSet(tenantId, ctx.token);
+    const enabled = await this.deps.features.enabledSet(tenantId, ctx);
     const ontologyTypes = await this.collectOntologyTypes(ctx);
 
     // --- 供给侧采集（best-effort per source·某源不可达不拖垮整体发现，G-DRIL-1 fail-open）。 ---

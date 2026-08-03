@@ -1746,7 +1746,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/solvers/:key/run", async (req) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     if (!solverAllowed(enabled, key)) {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     }
@@ -2126,7 +2126,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/b/v1/scenarios", async (req) => {
     const a = await auth(req);
     const { includeInactive, includeDraft } = req.query as { includeInactive?: string; includeDraft?: string };
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     const launcherOn = viewAllowed(enabled, "scenarios");
     const all = await ensureScenarios(a.tenantId);
     const cards = all
@@ -2168,7 +2168,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
     if (sc.status !== "PUBLISHED") throw new HttpError(409, ErrorCodes.INVALID_STATE, `场景未发布（${sc.status}），不可启动`);
     // entitlement 先于 authz（R3）：场景所属视图关闭 → 功能不存在
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     if (!viewAllowed(enabled, sc.targetView)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
     if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
@@ -2391,7 +2391,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/b/v1/scenarios/manage", async (req) => {
     const a = await auth(req);
     await ensureScenarios(a.tenantId);
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     const all = await deps.repos.scenarios.listByTenant(a.tenantId);
     // 每个场景附引用闭包就绪（intent→plan→agent 全配置好 = 无死路），前端显示就绪/断链。
     const withClosure = await Promise.all(
@@ -2526,7 +2526,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
     // entitlement PRD §5 (B5 联动): entry referencing a disabled view → marked inactive
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     return entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
   });
 
@@ -2536,7 +2536,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     const view = (req.query as Record<string, unknown>)["view"];
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     const marked = entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
     if (typeof view === "string" && view.length > 0) {
       return reply.send(marked.find((e) => e.viewKey === view) ?? null);

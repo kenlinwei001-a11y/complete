@@ -392,7 +392,7 @@ export class Orchestrator {
     opts?: { internal?: boolean },
   ): Promise<{ taskId: string; status: string; streamUrl: string; reused: boolean }> {
     // entitlement PRD §5: shell.query-dock off → the endpoint "does not exist" (404, not 403)
-    if (!(await this.deps.features.isEnabled(auth.tenantId, "shell.query-dock", auth.token))) {
+    if (!(await this.deps.features.isEnabled(auth.tenantId, "shell.query-dock", auth))) {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     }
     const pkg = await this.deps.repos.packages.get(body.packageId);
@@ -472,7 +472,7 @@ export class Orchestrator {
 
     // ① candidate narrowing (incl. entitlement filter — QOS-PRD §5.1-1 追加条件:
     // intents bound to disabled features are excluded from candidates AND the classifier catalog)
-    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth);
     let candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
     if (scene?.intentCatalogFilter) {
       candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));
@@ -1500,8 +1500,8 @@ export class Orchestrator {
 
     // entitlement PRD §5: qos.agent-fallback off → every would-be path-B branch
     // returns the WORKFLOW_ONLY behavior (请换个问法 + available intents), no agent run.
-    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
-    if (!(await this.deps.features.isEnabled(task.tenantId, "qos.agent-fallback", auth.token))) {
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth);
+    if (!(await this.deps.features.isEnabled(task.tenantId, "qos.agent-fallback", auth))) {
       const candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
       await this.completeWorkflowOnlyMiss(task, candidates);
       return;
@@ -2078,7 +2078,7 @@ export class Orchestrator {
     // 让子 agent 也优先调对口 solver·不盲扫烧预算。暗发门（qos.dril-routing·关/组包空 → drilSection="" → 子 agent
     // prompt 逐字节不变·byte-compatible）；组包异常吞掉不阻断 Coordinator 扇出（fail-open）。
     let drilSection = "";
-    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth);
     if (drilRoutingEnabled(enabledFeatures)) {
       try {
         const drilPkg = await this.getDrilRouter().buildResourcePackage(
