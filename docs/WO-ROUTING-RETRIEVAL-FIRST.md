@@ -354,6 +354,66 @@ C1 是后端接线、C3/C4 是前端消费，拆开做必然出现"后端发的�
 ---
 
 
+## 四之四 · Track E｜Skill 作为「一个意图一份声明」的单一外壳（仓主提案·**待拍板**）
+
+> 仓主提案：每个预设意图对应一个 Skill（内含预设提示词、引用工具、求解器、本体切片）；
+> 意图识别后按 Skill 执行；**未命中意图也单设一个「探索 Skill」**。基数关系：
+> `|Skill| ≥ |意图| ≥ |场景入口|`。
+
+**E12 · 现状实测（跑 seed 代码得出·非 grep）**
+
+| | 数量 |
+|---|---|
+| 场景卡（启动器 SCENARIO_CATALOG） | 20 |
+| 场景入口（seedSceneEntries） | 9 |
+| **意图目录** | **32** |
+| **执行计划 ExecutionPlan** | **32** |
+| **Skill** | **7** |
+
+- 场景卡 `intentKey` 缺意图 = **0**（20/20 全覆盖）→ 仓主要求①**今天已成立**
+- 意图数 − 场景卡数 = **+12** → 仓主要求②**今天已成立**
+- Skill 数 − 意图数 = **−25** → 仓主要求③**未成立**
+
+**关键：每个意图今天已绑一个 `ExecutionPlan`（32/32 零缺）**，而 Plan 装的正是「这个意图怎么答」。
+故本 Track 的真决策**不是"补 25 个 Skill"，而是「Skill 与 ExecutionPlan 谁是权威」**。
+
+| | `ExecutionPlan`（qos.ts:180） | `SkillDefinition`（agentcore.ts:236） |
+|---|---|---|
+| 内容 | `steps[]` 1–12 步（resolve_slice→invoke_solver→evaluate_rules→render_answer） | `body`≤50k · `resources[]` · `references`/`dependsOn` · `inputSchema`/`outputSchema` |
+| 执行 | 确定性 workflow executor·秒级·可溯源 | 注入 agent prompt·LLM 自由使用 |
+| 治理字段 | 无 | `sideEffect` · `approvalGate` · `provenancePolicy` · **`maxBudgetRounds`** |
+
+**建议（需仓主拍板）：Skill 吞并 Plan，不并列。** 即 Skill 成为一个意图唯一的声明外壳，
+确定性步骤降为它的一个字段：
+
+```
+Skill（一意图一份·版本化·entitlement 门控）
+├── plan: PlanStep[]      ← 今日 ExecutionPlan 语义逐字节不变（确定性题走这条·R6 不损）
+├── body                  ← 探索/兜底时注入 agent
+├── references/dependsOn  ← 声明用哪些求解器/切片/规则（今天散在 navSlice/DRIL/角色画像里）
+├── maxBudgetRounds       ← **按题型声明预算**，而非一个全局上界
+└── provenancePolicy      ← 声明这类题必须/尽力有出处
+```
+
+**为什么不并列**：32 个 Plan + 32 个 Skill 同时描述「这个意图怎么答」= **第三份真源**。
+本仓今天已修的 #90 原文就是「Skill 注册表声明了但默认自由问答路径不可达」——
+再加 25 个未接线的 Skill 只会把该病放大。
+
+**「探索 Skill」是本提案里最值钱的一条**（直接治本单已量到的病）：那 203 s 的成因之一是
+**探索预算是全局常数**（`maxRoundTrips`/`maxDiscoverCalls` 不分题型）。审核方建探索型门时被它咬了两次
+（v2/v4 均撞 `maxDiscoverCalls exceeded`）。而 `SkillDefinitionSchema` **已有** `maxBudgetRounds` /
+`provenancePolicy` 两个字段、**零消费方** —— 把探索做成 Skill 即等于给各类开放题**各自声明预算与出处要求**
+（跨基地对比给 6 轮、单点归因给 3 轮），而不是所有开放题共用一个数字。**与 #92（账本零消费方）同族：
+字段早就在，缺的是消费方。**
+
+**与 Track A 的关系（互补非重叠）**：检索前置决定「走哪个 Skill」，Skill 决定「这一题怎么跑、跑多久、要不要出处」。
+两者都落地后，今天散在 4 个文件的路由词表 + 散在 navSlice/DRIL/角色画像的资源声明，收敛成
+**一处检索 + 一处声明**。
+
+**未决**：Skill 吞并 Plan（建议）vs 并列。此决定影响后续是「新建 25 份声明」还是「把 25 份既有 Plan 升格」。
+
+---
+
 ## 五 · SEAM-GATE 验收判据（头号复验依据）
 
 不接受"各半 unit 绿"。必须有一条**驱动接缝**的组合测试，在集成态断言端到端行为：
