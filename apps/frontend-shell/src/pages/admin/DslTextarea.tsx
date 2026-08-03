@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * C11 · DSL 输入辅助（addendum §7 · D-28）：表达式输入框带对象-属性/操作符/命名阈值自动补全。
@@ -73,6 +73,14 @@ export function DslTextarea({
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState("");
   const [active, setActive] = useState(0);
+  // 失焦收起的延时（让 mousedown 先落地）必须可取消：卸载后再 setState 就是残留句柄
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
+    },
+    [],
+  );
 
   const suggestions = useMemo(() => dslSuggestions(schema, token), [schema, token]);
 
@@ -121,7 +129,12 @@ export function DslTextarea({
           else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(suggestions[active]!.insert); }
           else if (e.key === "Escape") setOpen(false);
         }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          blurTimerRef.current = setTimeout(() => {
+            blurTimerRef.current = null;
+            setOpen(false);
+          }, 150);
+        }}
       />
       {open && suggestions.length > 0 && (
         <ul

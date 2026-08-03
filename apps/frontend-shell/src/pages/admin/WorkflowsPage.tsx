@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { PlanStep, WorkflowDefinition } from "@platform/contracts";
@@ -798,6 +798,14 @@ export function TemplateInput({
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  // 失焦收起的延时（让 mousedown 先落地）必须可取消：卸载后再 setState 就是残留句柄
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
+    },
+    [],
+  );
 
   const update = (text: string) => {
     onChange(text);
@@ -832,7 +840,12 @@ export function TemplateInput({
         aria-label={`${stepId}-${label}`}
         data-testid={`tpl-input-${stepId}-${label}`}
         onChange={(e) => update(e.target.value)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          blurTimerRef.current = setTimeout(() => {
+            blurTimerRef.current = null;
+            setOpen(false);
+          }, 150);
+        }}
       />
       {open && filtered.length > 0 && (
         <ul className={styles.suggest} data-testid={`tpl-suggest-${stepId}`} role="listbox">

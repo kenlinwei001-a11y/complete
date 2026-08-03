@@ -46,9 +46,13 @@ export default function MetaPage() {
         </button>
       </div>
 
-      <div className="panel" style={{ marginBottom: 14 }} data-testid="meta-summary">
+      {/* data-ready 由查询真实 status 派生（非恒为 1 的装饰）：摘要面板恒存在，只有它能区分
+          「还没测到」与「测到是空」。加载中不再谎报"未落库"——把加载画成"没有"是同一族的静默错数。 */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="meta-summary" data-ready={ontologyQ.isSuccess ? "1" : "0"}>
         <div className="section-title">本体落库摘要</div>
-        {ontologyQ.data ? (
+        {ontologyQ.isPending ? (
+          <div className="empty-state" style={{ fontSize: 12 }}>加载中…</div>
+        ) : ontologyQ.data ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
             {/* WO-UNIT-MEANING：徽章此前是「共 128」「Solver: 42」的裸数——数的是**已落库的本体节点条数**。
                 契约 meta-ontology.ts 的 total/byKind 是纯计数（无 unit 字段），故就近点明"个节点"。 */}

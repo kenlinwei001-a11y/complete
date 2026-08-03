@@ -1,3 +1,4 @@
+import "./leakGuard"; // 必须最早：包装 setTimeout/setInterval 之前不能有 app 代码排定时器
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup, configure } from "@testing-library/react";
@@ -6,12 +7,14 @@ import { cleanup, configure } from "@testing-library/react";
 // 全套跑因数据加载+渲染 >1s 而 "Unable to find element"。抬高异步断言超时以消除负载诱发的偶发失败。
 configure({ asyncUtilTimeout: 15000 });
 import { setupServer } from "msw/node";
-import { handlers } from "@/mocks/handlers";
+import { clearMockTimers, handlers } from "@/mocks/handlers";
 import { resetMockDb } from "@/mocks/db";
 import { clearTaskScripts, installMockEventSource, MockEventSource } from "@/mocks/mockEventSource";
 import { queryClient } from "@/store/queryClient";
 import { tokenStore } from "@/api/tokenStore";
 import { useSessionStore } from "@/store/sessionStore";
+import { useToastStore } from "@/store/toastStore";
+import { harvestLeakedTimers } from "./leakGuard";
 
 export const server = setupServer(...handlers);
 
@@ -95,7 +98,9 @@ afterEach(async () => {
   cleanup();
   server.resetHandlers();
   resetMockDb();
+  clearMockTimers();
   clearTaskScripts();
+  useToastStore.getState().reset();
   // ⚠ 先 cancel 再 clear。`clear()` 只丢弃缓存，**不中止在途请求**：已发出的 fetch 会在测试环境
   //    拆除之后才 resolve，vitest 随即报 "caught after test environment was torn down" 并判整包红。
   //    因其取决于请求与拆除的先后，同一提交可能一次绿一次红（CI 上真实出现过）。
@@ -103,6 +108,21 @@ afterEach(async () => {
   queryClient.clear();
   tokenStore.clear();
   useSessionStore.getState().reset();
+
+  // ---- 残留句柄守卫（欠账 #79）----------------------------------------------------
+  // 上面这些 reset 全做完、组件也已卸载之后，进程里若还活着 app 排的定时器，它就是下一次
+  // 「teardown 期未捕获异步错误」的火种：回调在 jsdom 环境拆掉后才 fire，vitest 记为
+  // unhandled error，表现成「全部用例 passed / Errors 1 error / 退出码非 0」——同码同上下文
+  // 一次绿一次红。断言咬的是**句柄本身还在不在**（效果层），不是「有没有写 cleanup」（运输层）。
+  // harvest 会先真把它们清掉再报，守卫自己不成为下一条用例的污染源。
+  const leaked = harvestLeakedTimers();
+  if (leaked.length > 0) {
+    throw new Error(
+      `[leak-guard] 用例结束后仍有 ${leaked.length} 个 app 定时器存活，其回调会在测试环境拆除后才 fire` +
+        `（= "This error was caught after test environment was torn down" · 整包随机红的成因）：\n` +
+        leaked.map((l) => `  · ${l}`).join("\n"),
+    );
+  }
 });
 
 afterAll(() => server.close());

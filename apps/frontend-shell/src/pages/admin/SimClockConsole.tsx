@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchSimClock, fetchTickReports, resetSimClock, tickSimClock } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
@@ -20,14 +21,34 @@ export function SimClockConsole() {
   });
   const { data: reports } = useQuery({ queryKey: ["a", "tick-reports", {}], queryFn: fetchTickReports });
 
+  // 推进轮询链的生命线：组件卸下后不许再排下一跳、不许再发请求。
+  // 原先 `setTimeout(() => void poll(), 600)` 既不可取消、其 promise 也无人接 —— 卸载后仍会发 fetch，
+  // 在测试里就成了「环境已拆除、回调才 fire」的未捕获异步错误（全绿却 RC≠0 的成因之一）。
+  const pollAliveRef = useRef(true);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // 置回 true 不是多余：StrictMode 的 mount→unmount→mount 双跑会先把它置 false，
+    // 若只在 cleanup 里写，真实 app 的开发态会永远停在 false（轮询再也不动）。
+    pollAliveRef.current = true;
+    return () => {
+      pollAliveRef.current = false;
+      if (pollTimerRef.current !== null) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
   const tickMut = useMutation({
     mutationFn: (advance: "1d" | "7d") => tickSimClock(advance),
     onSuccess: async () => {
       const poll = async () => {
+        if (!pollAliveRef.current) return;
         const c = await fetchSimClock();
+        if (!pollAliveRef.current) return;
         queryClient.setQueryData(["a", "sim-clock", {}], c);
         if (c.status === "TICKING") {
-          setTimeout(() => void poll(), 600);
+          pollTimerRef.current = setTimeout(() => {
+            pollTimerRef.current = null;
+            void poll().catch(() => undefined); // 卸载竞态下的拒绝不外泄成 unhandled rejection
+          }, 600);
         } else {
           await queryClient.invalidateQueries({ queryKey: ["a", "tick-reports"] });
           await globalQueryClient.invalidateQueries({ queryKey: ["a"] });
