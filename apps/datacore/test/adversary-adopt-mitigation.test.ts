@@ -68,11 +68,14 @@ interface Card {
   adoptedMitigation?: { planKey: string; eff: number; tn: number };
 }
 
+/** `base` 认 baseId（"changzhou"）或中文名（"常州"）——聚合侧 risks[].base 给的是中文名。 */
 async function forcedCard(t: TestApp, base: string, factor: string, horizon = 30): Promise<Card> {
   const res = await invokeSolver(t, "risk_timeline", { base, factor, horizon });
   expect(res.statusCode, res.body).toBe(200);
   const out = (res.json() as { data: { cards: Card[] } }).data;
-  return out.cards.find((c) => c.baseId === base && c.factor === factor)!;
+  const card = out.cards.find((c) => (c.baseId === base || c.base === base) && c.factor === factor);
+  expect(card, `forced risk_timeline(${base}, ${factor}) 未返回该卡`).toBeTruthy();
+  return card!;
 }
 
 describe("ADVERSARY · WO-ADOPT-MITIGATION 证伪", () => {
@@ -111,45 +114,85 @@ describe("ADVERSARY · WO-ADOPT-MITIGATION 证伪", () => {
     expect(cfAfter.data.delta.peakCut, "peakCut 负数 = counterfactual 的 baseline 与 mitigated 不同源（前者含已采纳，后者不含）").toBeGreaterThanOrEqual(0);
   }, 300000);
 
-  // ── 攻击 B：affected_orders 聚合（订单全链）没有吃已采纳 → 同一 (base,factor) 两屏数字打架 ──
-  // ⛔ #82 已登记**未修**缺陷（本体 §8）：affected_orders 聚合与 risk_timeline 卡面对同一 (base,factor)
-  //    报不同 peak/crossDay —— 同一事实两个出处，风险看板已降、订单全链还是老数。
-  //    本条**证实缺陷存在**（不是过期断言），故 `skip` 而非删除或放松：留在文件里当活档案，修好即去 skip。
-  //    ⚠ skip 只用于「已登记 + 未声称修好」的缺陷；**声称修好却回归的一律不许 skip**（那是洗白）。
-  it.skip("B · affected_orders 聚合与 risk_timeline 卡面对同一 (base,factor) 报不同 peak/crossDay【#82 未修·见本体 §8】", async () => {
+  // ── 攻击 B：affected_orders 聚合（订单全链）与 risk_timeline 卡面必须是**同一事实的同一个出处** ──
+  // #82（本体 §8 · R-一致 + R13 可溯源）**已修**。
+  //
+  // 修前实测（demo·seed 42·horizon 30·两侧对同一 (base, primaryFactor)）：
+  //   · 采纳「瓶颈工序扩容」(eff 13 / tn 6) 后 —— 卡面 常州·瓶颈工序 peak 97.9849 → 92，
+  //     聚合同一格 **纹丝不动 97.9849**（风险看板已降、订单全链还是老数）；
+  //   · 未采纳时也已劈裂 —— 武汉/扬州·良率波动 卡面 peak 78/81 且 crossDay=**null**（窗内未越线），
+  //     聚合却报 peak 96 且 crossDay=**1**（"今天就越线"）；厦门·设备OEE 94 vs 96；合肥 97.8502 vs 97.9054。
+  // 根因：`affectedOrdersAggregate` 另起一条 `tensionSeries(...)`（第二个出处），既不传 `baseline`
+  //   （→ 回落 mockTightness 哈希锚，卡面锚的是 liveTightness 实测）也不传 `mitigation`（→ 看不见采纳台账）。
+  // 修法：**第二个出处消失** —— 两侧同走 `risk.ts riskFactorProjection`（峰值/越线日的唯一算法），
+  //   并把 `affected_orders` 纳入 ADOPTION_AWARE_SOLVERS + 补声明 Line/Process/Equipment。
+  //
+  // 本条现为**效果层**断言（不是"把两边数字调成一样"的形状测）：
+  //   ① 聚合列出的**每一格** (base,factor) 都必须与卡面逐字相等（peak + crossDay）——单一出处的定义；
+  //   ② 采纳后两侧仍相等，且两侧 peak 都真的低于采纳前——采纳这件事同时到达两屏。
+  it("B · affected_orders 聚合与 risk_timeline 卡面对同一 (base,factor) 必须同源同数（采纳后两侧同降）【#82】", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const base = "jiangmen";
-    const factor = "瓶颈工序"; // = params.bottleneck.defaultPrimary（affectedOrdersAggregate 用 primaryFactor）
-    const lib = (await invokeSolver(t, "risk_timeline", { horizon: 30 })).json() as {
+    const H = 30;
+    type Ref = { base: string; factor: string; peak: number; crossDay: number | null };
+    type Agg = { data: { rows: { so: string; risks: Ref[] }[] } };
+
+    /** 订单全链聚合列出的每格风险引用（base → ref）。 */
+    const readAggRefs = async (): Promise<Map<string, Ref>> => {
+      const agg = (await invokeSolver(t, "affected_orders", { horizon: H })).json() as Agg;
+      const m = new Map<string, Ref>();
+      for (const r of agg.data.rows) for (const k of r.risks) m.set(k.base, k);
+      return m;
+    };
+
+    /** 单一出处不变量：聚合的每一格 == 风险看板对同一 (base,factor) 的卡面。返回逐格对照文本。 */
+    const assertSameSource = async (tag: string, refs: Map<string, Ref>): Promise<string[]> => {
+      const lines: string[] = [];
+      expect(refs.size, "前提：聚合应至少列出一格风险（否则本条测不到接缝）").toBeGreaterThan(0);
+      for (const [b, ref] of [...refs.entries()].sort()) {
+        const card = await forcedCard(t, b, ref.factor, H);
+        lines.push(`${tag} ${b}|${ref.factor} card=${card.peak}/${card.crossDay} agg=${ref.peak}/${ref.crossDay}`);
+        expect(ref.peak, `${tag} ${b}|${ref.factor}：订单全链峰值 ≠ 风险看板峰值（同一事实两个出处）`).toBe(card.peak);
+        expect(ref.crossDay, `${tag} ${b}|${ref.factor}：订单全链越线日 ≠ 风险看板越线日（同一事实两个出处）`).toBe(card.crossDay);
+      }
+      return lines;
+    };
+
+    const before = await readAggRefs();
+    const linesBefore = await assertSameSource("BEFORE", before);
+
+    // 采纳目标 = 聚合里峰值最高且该因素有对症方案的那格（同名按基地名定序 → R6 确定性）。
+    const lib = (await invokeSolver(t, "risk_timeline", { horizon: H })).json() as {
       data: { mitigationLibrary: Record<string, { key: string; eff: number; tn: number }[]> };
     };
-    const strong = [...lib.data.mitigationLibrary[factor]!].sort((a, b) => b.eff - a.eff)[0]!;
+    const target = [...before.values()]
+      .filter((r) => (lib.data.mitigationLibrary[r.factor] ?? []).length > 0)
+      .sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0]!;
+    expect(target, "前提：聚合里至少一格的因素有对症处置方案").toBeTruthy();
+    const strong = [...lib.data.mitigationLibrary[target.factor]!].sort((a, b) => b.eff - a.eff)[0]!;
+    expect((await adopt(t, { base: target.base, factor: target.factor, planKey: strong.key })).status).toBe("EXECUTED");
 
-    type Agg = { data: { rows: { so: string; risks: { base: string; factor: string; peak: number; crossDay: number | null }[] }[] } };
-    const readAgg = async (baseName: string) => {
-      const agg = (await invokeSolver(t, "affected_orders", { horizon: 30 })).json() as Agg;
-      return agg.data.rows.flatMap((r) => r.risks).find((r) => r.base === baseName);
-    };
-
-    const cardBefore = await forcedCard(t, base, factor, 30);
-    const aggBefore = await readAgg(cardBefore.base);
-    expect((await adopt(t, { base, factor, planKey: strong.key })).status).toBe("EXECUTED");
-    const cardAfter = await forcedCard(t, base, factor, 30);
-    const aggAfter = await readAgg(cardBefore.base);
-
+    const after = await readAggRefs();
+    const linesAfter = await assertSameSource("AFTER", after);
     // eslint-disable-next-line no-console
     console.log(
-      `ADV_B card.peak ${cardBefore.peak}→${cardAfter.peak} | agg(${aggBefore?.factor}).peak ${aggBefore?.peak}→${aggAfter?.peak} ` +
-        `| card.crossDay ${cardBefore.crossDay}→${cardAfter.crossDay} agg.crossDay ${aggBefore?.crossDay}→${aggAfter?.crossDay}`,
+      `ADV_B target=${target.base}|${target.factor} plan=${strong.key}(eff=${strong.eff},tn=${strong.tn})\n` +
+        `${linesBefore.join("\n")}\n${linesAfter.join("\n")}`,
     );
-    // 采纳真的动了卡面（前提）
-    expect(cardAfter.peak, "前提：采纳后卡面峰值应下降").toBeLessThan(cardBefore.peak);
-    // 证伪目标：订单全链聚合（同基地同因素）也应跟着动，否则两屏对同一事实各说各话。
+
+    // ② 采纳这件事必须**同时**到达两屏：卡面与聚合的峰值都真的降了（而不是一边降一边老数）。
+    //    `before`/`after` 两侧的 peak 已由 assertSameSource 钉死 == 同期卡面 peak，故可直接作卡面基准。
+    const peakBefore = before.get(target.base)!.peak;
+    const aggAfter = after.get(target.base)!;
+    const cardAfter = await forcedCard(t, target.base, target.factor, H);
+    expect(cardAfter.peak, "采纳后风险看板卡面峰值应下降").toBeLessThan(peakBefore);
     expect(
-      aggAfter?.peak,
-      "affected_orders 聚合的风险峰值在采纳后纹丝不动 —— 风险看板已降、订单全链还是老数（同一事实两个出处）",
-    ).toBeLessThan(aggBefore!.peak);
+      aggAfter.peak,
+      "采纳后订单全链聚合峰值纹丝不动 —— 风险看板已降、订单全链还是老数（同一事实两个出处·#82 回潮）",
+    ).toBeLessThan(peakBefore);
+    // 两侧同数（已由 assertSameSource 逐格断言，此处再钉住采纳格本身，读者一眼可见）。
+    expect(aggAfter.peak).toBe(cardAfter.peak);
+    expect(aggAfter.crossDay).toBe(cardAfter.crossDay);
   }, 300000);
 
   // ── 攻击 C：并发审批 → "至多一条 ACTIVE" 是不是真的写时不变量 ──

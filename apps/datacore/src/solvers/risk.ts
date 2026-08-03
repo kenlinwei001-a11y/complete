@@ -402,6 +402,65 @@ export function adoptedMitigationIndex(c: SolverContext): Map<string, { eff: num
   return idx;
 }
 
+/** `riskFactorProjection` 的返回形状（风险时序单一出处的产物·见该函数注释）。 */
+export interface RiskFactorProjection {
+  factor: string;
+  series: number[];
+  peak: number;
+  crossDay: number | null;
+  /** 实测当前张力（`live=false` 表示该因素无真数据源·系 mock 估算·由调用方诚实披露 dataMode）。 */
+  currentTightness: { value: number; live: boolean };
+  /** 本投影已吃掉的 ACTIVE 采纳（无采纳则不置键·加性披露 R13）。 */
+  adopted?: { eff: number; tn: number; planKey: string };
+}
+
+/**
+ * 「(基地,因素) 的真张力投影」——**风险时序的单一出处**（#82 修：R-一致「同一事实一个出处」+ R13 可溯源）。
+ *
+ * ── 病灶（本函数存在的理由）──
+ * 修前 `affectedOrdersAggregate`（订单全链）对同一 (base,factor) **另写了一条** `tensionSeries(...)` 调用，
+ * 漏掉了 `riskTimeline` 卡面那条所带的两个入参：
+ *   ① `baseline`（`liveTightness` 实测锚）→ 聚合侧回落 `mockTightness` 哈希锚；
+ *   ② `mitigation`（`adoptedMitigationIndex` 的 ACTIVE 采纳）→ 聚合侧永远看不见「已采纳」。
+ * 实测后果（demo·seed 42·horizon 30）：采纳「瓶颈工序扩容」(eff 13/tn 6) 后 **风险看板 常州·瓶颈工序
+ * 峰值 97.9849→92，订单全链同一格仍报 97.9849**（"曲线已降、订单全链还是老数"）；且未采纳时也已劈裂——
+ * 武汉/扬州·良率波动 卡面 peak 78/81 且 `crossDay=null`（窗内未越线），聚合却报 peak 96 且 `crossDay=1`
+ * （"今天就越线"）；厦门·设备OEE 94 vs 96；合肥 97.8502 vs 97.9054。两屏对同一事实各说各话。
+ *
+ * ── 修法（不是"把两边调成一样"，是让第二个出处消失）──
+ * 峰值/越线日的**唯一**算法在此。`riskTimeline` 的每张卡（含 `factorSeries` 逐因素）与
+ * `affectedOrdersAggregate` 的每条 `risks[]` 都是本函数返回值的**投影**，不再各算各的。
+ * ⚠ 后来者注意：要在别处拿某个 (base,factor) 的 peak/crossDay，**调本函数**，别再新起一条 `tensionSeries`。
+ * 纯函数（无随机/时钟/副作用）→ R6 同入参字节一致。
+ *
+ * 接缝另一半在 service.ts：`affected_orders` 必须进 `ADOPTION_AWARE_SOLVERS`（否则 `c.adoptedMitigations`
+ * 恒空 → 聚合侧看不见采纳）+ `SOLVER_REQUIRED_TYPES` 补 Line/Process/Equipment（否则暗发门开时无实测锚）。
+ *
+ * @param events 该基地该 horizon 的事件脉冲（由调用方 `riskEvents` 算一次复用·避免逐因素重算）
+ * @param adopted `adoptedMitigationIndex(c)` 的 `${baseId}|${factor}` 索引（空 Map = 无人采纳）
+ */
+export function riskFactorProjection(
+  c: SolverContext,
+  baseId: string,
+  factor: string,
+  horizon: number,
+  events: RiskEvent[],
+  adopted: Map<string, { eff: number; tn: number; planKey: string }>,
+): RiskFactorProjection {
+  const lt = liveTightness(c, baseId, factor);
+  const adopt = adopted.get(`${baseId}|${factor}`);
+  // 有真源 → 以实测当前张力起锚（KILL-MOCK-RED）；无真源 → undefined 回落 mock（由 currentTightness.live 披露）。
+  const series = tensionSeries(c, baseId, factor, horizon, events, adopt, lt.live ? lt.value : undefined);
+  return {
+    factor,
+    series,
+    peak: Math.max(...series),
+    crossDay: crossDayOf(series, c.params.risk.threshold),
+    currentTightness: { value: lt.value, live: lt.live },
+    ...(adopt ? { adopted: adopt } : {}),
+  };
+}
+
 export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
   // WO-LIVE-DISPOSITION T2：先套杠杆 overlay（克隆-覆写单源），之后**整条 riskTimeline 都在覆写后的世界里跑**——
   // cards（liveTightness 读覆写后 Line.utilization/Equipment.oee_current/Process.yield_baseline）+ planRows（产能链缺口）
@@ -437,17 +496,16 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     // 诚实披露：liveTightness 给该因素的"实测当前张力"——有真数据(LIVE: 设备OEE/瓶颈工序/良率波动 读
     // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
     // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
-    const lt = liveTightness(c, pair.baseId, pair.factor);
-    // 轨M 增量1（假1 红曲线锚实测·KILL-MOCK-RED·治 tensionSeries baseline 死代码）：有真数据（lt.live：设备OEE/瓶颈工序/
-    // 良率波动 读真 OEE/利用率/良率）时把「实测当前张力」lt.value 作 baseline 传入 → 红曲线锚实测而非 charCode 哈希 mockTightness；
-    // 无真源（人力工时/物料齐套/物流时长/换型损失）→ undefined 回落 mock，card.dataMode=MOCK 诚实披露。
-    // 改真 Equipment.oee_current → lt.value 变 → cur 变 → series/peak 真变（curl 前后可验）。
-    const baseline = lt.live ? lt.value : undefined;
-    // WO-ADOPT-MITIGATION（本单核心一行）：此前恒传 `undefined` —— 采纳与否，真曲线一模一样，
-    // 这就是「点了采纳什么都不变」的引擎侧表现。现按 (baseId,factor) 取 ACTIVE 采纳的 {eff,tn}，
-    // 由 tensionSeries 从第 tn 天起扣 eff（既有能力·非新算法）。无采纳 → undefined → 与上线前逐字节一致。
-    const adopt = adopted.get(`${pair.baseId}|${pair.factor}`);
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, adopt, baseline);
+    // #82：卡面 series/peak/crossDay 一律取自 `riskFactorProjection`（**风险时序单一出处**）——
+    // 订单全链聚合 `affectedOrdersAggregate` 读的是同一个函数，两屏再不可能对同一 (base,factor) 各说各话。
+    // 投影内部承接原两条口径（逐字节不变）：
+    //  · 轨M 增量1（红曲线锚实测·KILL-MOCK-RED）：lt.live 时以实测当前张力起锚，否则回落 mock 并由 dataMode 披露；
+    //  · WO-ADOPT-MITIGATION：按 (baseId,factor) 取 ACTIVE 采纳的 {eff,tn}，由 tensionSeries 第 tn 天起扣 eff。
+    const proj = riskFactorProjection(c, pair.baseId, pair.factor, horizon, events, adopted);
+    const lt = proj.currentTightness;
+    const adopt = proj.adopted;
+    const baseline = lt.live ? lt.value : undefined; // 仅供下方 card.mitigated 对照曲线同锚复用
+    const series = proj.series;
     // 治 #1/#3「时序推演全灰/无梯度」· 逐因素真逐日序列（per-factor tensionSeries）：此前仅瓶颈因素（card.series）
     // 有真逐日 series，其余因素（物流时长/设备OEE/人力工时/物料齐套/换型损失/良率波动）前端只拿到单点当前张力 →
     // 持平线呈现。现在**每个**因素都走与瓶颈**同一** tensionSeries 机制：由该因素自身「实测当前张力」liveTightness
@@ -462,12 +520,12 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         factorSeries[f] = series; // 瓶颈因素：复用已算 series（同 baseline 同 events 同机制·恒等）
         continue;
       }
-      const ltf = liveTightness(c, pair.baseId, f);
-      // 逐因素同样吃自己那条 (baseId,f) 的 ACTIVE 采纳——否则详情面板「其余因素」会与卡面自相矛盾
-      // （卡面已消解、面板还是老曲线）。factorSeries[pair.factor]===series 的恒等锚照旧成立（同 adopt 同参）。
-      factorSeries[f] = tensionSeries(c, pair.baseId, f, horizon, events, adopted.get(`${pair.baseId}|${f}`), ltf.live ? ltf.value : undefined);
+      // 逐因素同样走 `riskFactorProjection` 单一出处（自动吃自己那条 (baseId,f) 的 ACTIVE 采纳）——否则
+      // 详情面板「其余因素」会与卡面自相矛盾（卡面已消解、面板还是老曲线）。
+      // factorSeries[pair.factor]===series 的恒等锚照旧成立（同函数同入参）。
+      factorSeries[f] = riskFactorProjection(c, pair.baseId, f, horizon, events, adopted).series;
     }
-    const crossDay = crossDayOf(series, p.threshold);
+    const crossDay = proj.crossDay;
     if (!pair.forced && crossDay === null) continue;
     const card: Record<string, unknown> = {
       base: baseName(c, pair.baseId),
@@ -479,7 +537,7 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
       // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·两正交维·不改 dataMode/live）：本卡底层对象是否合成物化。
       // demo 合成世界（Base/设备/产线/工序全 MATERIALIZED-from-synthetic）→ true → 前端诚实灰、不显"实测当前 N"。
       provenanceSynthetic: baseProvenanceSynthetic(c, pair.baseId),
-      peak: Math.max(...series),
+      peak: proj.peak, // #82 单一出处：与 affectedOrdersAggregate 的 risks[].peak 同一函数同一次口径
       crossDay,
       series,
       // 治 #1/#3：逐因素真逐日序列（factor → series）供详情面板「其余因素」渲染真蓝→黄→红梯度（替持平示意）。factorSeries[factor]===series。
@@ -496,7 +554,7 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         baseId: pair.baseId,
         fromDay: 0,
         toDay: horizon,
-        peak: Math.max(...series),
+        peak: proj.peak,
       }).affected,
     };
     // WO-ADOPT-MITIGATION · 加性披露（R13）：本卡真曲线已吃掉哪条采纳。**仅在真有采纳时置键** →
@@ -1004,11 +1062,18 @@ export function affectedOrdersAggregate(
   >();
   const probByCat = new Map<string, OrderProblemGroupOut>();
 
+  // #82（R-一致「同一事实一个出处」）：修前此处**另写一条** `tensionSeries(c, baseId, factor, horizon, events)`
+  // ——既不传 `baseline`（→ 回落 mockTightness 哈希锚，而卡面锚 liveTightness 实测），也不传 `mitigation`
+  // （→ 永远看不见已采纳台账）。结果就是用户报的病：**风险看板曲线已降、订单全链还是老数**
+  // （实测 demo·seed 42：采纳「瓶颈工序扩容」后 常州·瓶颈工序 卡面 97.9849→92，聚合仍 97.9849；
+  //   未采纳时 武汉/扬州·良率波动 卡面 crossDay=null 而聚合 crossDay=1）。
+  // 修后：第二个出处**消失**——`risks[]` 是 `riskFactorProjection`（= 卡面 peak/crossDay 的同一算法）的投影。
+  const adopted = adoptedMitigationIndex(c);
   for (const baseId of baseIds) {
     const single = affectedOrders(c, { baseId, fromDay: winFrom, toDay: winTo });
     const factor = primaryFactor(c, baseId);
-    const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon));
-    const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold };
+    const proj = riskFactorProjection(c, baseId, factor, horizon, riskEvents(c, baseId, horizon), adopted);
+    const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: proj.peak, crossDay: proj.crossDay, threshold };
     for (const a of single.affected) {
       const so = str(a.so);
       let e = byOrder.get(so);
