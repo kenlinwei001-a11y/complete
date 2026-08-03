@@ -19,7 +19,11 @@ apps/agentcore/src/agent/sim-planner.ts        定式题识别词表
 apps/agentcore/src/dril/*.ts                   检索层（打分/投影/注册表）
 apps/agentcore/src/tools/registry.ts           仅限：discover 补 intents kind
 apps/agentcore/src/metrics.ts                  仅限：新增 routeSource 计数
-apps/agentcore/test/**                         测试与接缝门
+apps/agentcore/src/engine.ts                   仅限：Track C1 透传 emitNarration + 角色标识
+apps/agentcore/src/agent/loop.ts               仅限：Track B3 超时取证包 · Track C2 进度事件
+packages/llm-adapters/**                       仅限：Track B3-d 接 streaming（**须先经仓主确认**·跨包共享层）
+apps/frontend-shell/src/components/QueryDock/  仅限：Track C3/C4 进度与诊断呈现
+apps/agentcore/test/** · apps/frontend-shell/test/**   测试与接缝门
 scripts/check-*.mjs                            新增词表一致性门
 docs/SYSTEM-ONTOLOGY.md                        §3/§7/§8 回写（强制）
 ```
@@ -212,6 +216,38 @@ E5 证明：即便路由判错，203 s 这个代价本身也是不该付的。�
 
 ---
 
+## 四之二 · Track C｜过程可见（前端 + 后端两半·**必须一个 dev 整单做**）
+
+> 仓主实测：**全程看不到任何流式输出过程**。查证结果不是"前端没做"，而是**前端做了、后端在那条路上没接**。
+
+**E9（本会话实测·三层叠加·缺任一层都看不到）**
+
+| 层 | 现状 | 证据 | 后果 |
+|---|---|---|---|
+| ① Coordinator 路径是否传 `emitNarration` | **不传** —— 全仓唯一调用点是 `orchestrator.ts:1743`（在 `runPathB` 内）；`runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 链上一次都没传，默认 `false` | `grep -rn emitNarration apps/agentcore/src` 仅 1 命中 | 多角色扇出**结构性**无旁白，与超时无关；feature 点亮也没用 |
+| ② 旁白粒度 | **逐轮**发（LLM 非流式，见 B3 硬约束，拿不到 token 级） | `loop.ts:841` | 一轮 60 s → 至少静默 60 s |
+| ③ 发送条件 | 须**本轮确有真工具调用**（`toolUses.some(b => b.name !== "final_answer")`） | `loop.ts:845` | 只思考不调工具的轮次静默 |
+
+**注**：前端消费侧**已就绪**——`Timeline.tsx:73` 的 💭 气泡已实现；`qos.reasoning-trace` 已在
+`seedDemoEntitlements` 为 demo 租户点亮。**本项不是"前端要做功能"，是"后端要把已做的功能接到那条路上"**，
+外加前端在此基础上的体验补强。
+
+| 子项 | 做什么 | 半 | 依赖 |
+|---|---|---|---|
+| **C1**（先做·最小改动·收益最大） | Coordinator / 子 agent 路径透传 `emitNarration`，并让每个角色的旁白**带角色标识**（供前端分栏显示"供应链在查什么/生产在查什么"） | 后端 | 无 |
+| **C2** | 旁白之外补**结构化进度事件**：当前第几轮 / 已调哪些工具 / 已耗时 / 预算余量。**非流式也能发**——每轮边界就是一个天然的进度点 | 后端 | 无 |
+| **C3** | 前端：多角色**并行进度**呈现（配合 B1 并行扇出，三路各自一条进度条），长静默期显示"某角色仍在思考（已 xx s）"而非空白 | 前端 | C1/C2 · B1 |
+| **C4** | 前端消费 B3 的诊断载荷：超时不再显示"未能产出回答"，而是显示**为什么**（provider 排队 / 推理档慢 / 输入过大） | 前端 | B3-a/b |
+| **C5** | 真 token 级流式（依赖 B3-d 接 streaming）→ 首 token 即出字，静默期归零 | 两半 | B3-d |
+
+**为什么必须一个 dev 整单做**：这正是本仓「拆两半用不同机制不对接」的老坑高发区——
+C1 是后端接线、C3/C4 是前端消费，拆开做必然出现"后端发的字段前端不认"或"前端等的事件后端不发"。
+**SEAM 判据**：一条组合测试，从提交查询到看见第一个进度信号，断言 **多角色路径上首个旁白/进度事件
+在 T 秒内到达**（T 由 B1/B2 落地后的实测首轮时延定），且事件载荷含角色标识——
+只测"事件发出来了"不算过（运输层断言），必须断言**前端渲染路径真能消费**。
+
+---
+
 ## 五 · SEAM-GATE 验收判据（头号复验依据）
 
 不接受"各半 unit 绿"。必须有一条**驱动接缝**的组合测试，在集成态断言端到端行为：
@@ -251,6 +287,12 @@ E5 证明：即便路由判错，203 s 这个代价本身也是不该付的。�
 | 意图池是死目录（E8） | 播种按 id 幂等永不更新 · PUT 仅限 DRAFT · 生长回路只报不写 | 属"意图生命周期"域，与路由次序正交；且触及部署/迁移 |
 | 部署库意图版本可能落后 | 若库首次播种早于 `base` 槽加入，那份意图永久缺槽且因已 PUBLISHED 连 PUT 都改不了 | 同上。**须先查实**再立单（本会话无法访问部署库） |
 | WO-80 五包 gate 未过 | `Test Files 1 failed / Tests 0 failed` = 套件级错误；日志被 tail 挤掉失败文件名 | 与本单无关，独立处置 |
+
+**同族债提醒（三例已坐实·排优先级时应合看）**：本单的 E9（旁白对多角色路径不可达）与已修的
+#90（Skill 注册表对默认自由问答路径不可达）、#92（LLM 配额账本状态机完整但零调用方）**是同一个形状**：
+**声明了 → 点亮了 → 这条路径上没接线**。建议本单落地时顺带立一道通用门：
+凡"经 feature flag 点亮的能力"，须有一条测试断言它**在每条会走到它的路径上**都真生效，
+而非只在主路径上测一次。
 
 ---
 
