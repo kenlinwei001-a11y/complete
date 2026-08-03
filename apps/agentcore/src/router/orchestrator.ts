@@ -19,6 +19,7 @@ import type {
 } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import type { SkillDefinition } from "@platform/contracts";
+import type { LlmBudgetPort } from "../ops/llm-budget.js";
 import { resolvePlanForIntent } from "../catalog/service.js";
 import { parseDataCoreSpec } from "../llm/providers.js";
 import type { RequestAuth } from "../auth.js";
@@ -213,6 +214,17 @@ export function skillOnFreeQaEnabled(set: FeatureSet): boolean {
 }
 
 /**
+ * OC7 / #92 · feature 门：租户 LLM token 配额**执行**（硬线耗尽 → 拒新 QOS 任务）。
+ * 病灶：`/a/v1/llm-budgets` 状态机完整且有测试坐实，但 agentcore/frontend **零命中** —— 账本记得对，
+ * 没有任何调用方写它或读它。**记账侧无条件接**（先让账本有真数据），**执行侧才门控**——
+ * 顺序反了就成了拿脏账拦人。关 = `set==="ALL"` 或未含该键 → 只记账不拦（既有行为字节不变）。
+ */
+export function llmBudgetEnforceEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return false;
+  return set.has("qos.llm-budget-enforce");
+}
+
+/**
  * #90 · 租户级技能池（R6 确定性）：只取 **PUBLISHED**（DRAFT/RETIRED 不进自由问答），
  * 同 key 保留最高版本，按 key 字典序排——同租户同输入的 system prompt 字节一致。
  * 注入量由 `buildSkillSection` 的语义路由收窄（top-k 全文 + 其余降级为 id/名·仍可 load_skill 取全文）。
@@ -346,6 +358,8 @@ export interface OrchestratorDeps {
   features: FeatureGate;
   /** Multi-provider model resolution (amends QOS-PRD §6). */
   llmSettings: LlmSettings;
+  /** OC7（#92）：租户 LLM token 配额账本（记账无条件·执行门控于 qos.llm-budget-enforce）。 */
+  llmBudget: LlmBudgetPort;
 }
 
 /** §2.2：留痕去重（同 kind+key+version 只记一次，保持首次出现顺序）。 */
@@ -424,6 +438,19 @@ export class Orchestrator {
     // entitlement PRD §5: shell.query-dock off → the endpoint "does not exist" (404, not 403)
     if (!(await this.deps.features.isEnabled(auth.tenantId, "shell.query-dock", auth))) {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
+    // OC7 / #92 · 硬线耗尽拒新任务（暗发·关则只记账不拦）。放在 entitlement 之后、建任务之前：
+    // 预算是"能不能再花钱"，不是"这个功能存不存在"——不得抢在 R3 的 404 前面改变功能可见性。
+    // 账本不可用 → status() 返 undefined → 视为无约束（fail-open：一次 DataCore 抖动不该让用户不能提问）。
+    if (llmBudgetEnforceEnabled(await this.deps.features.enabledSet(auth.tenantId, auth))) {
+      const st = await this.deps.llmBudget.status(auth.tenantId);
+      if (st?.state === "HARD_EXCEEDED") {
+        throw new HttpError(
+          429,
+          ErrorCodes.LLM_BUDGET_EXCEEDED,
+          `本租户 LLM token 配额已耗尽（已用 ${st.usedTokens} / 硬线 ${st.hardLimitTokens}）——请联系管理员调整配额或等待下个计费周期`,
+        );
+      }
     }
     const pkg = await this.deps.repos.packages.get(body.packageId);
     if (!pkg || pkg.tenantId !== auth.tenantId) {
@@ -1772,6 +1799,10 @@ export class Orchestrator {
     });
 
     await this.deps.repos.agentRuns.insert(result.run);
+    // OC7 / #92 · 记账（无条件·best-effort·失败只计数不抛）。这是账本的**唯一真实写入方**：
+    // 只有 AgentCore 知道一次 path-B 跑烧了多少 token（result.run 已累计 totalInput/OutputTokens）。
+    // 诚实边界：classify()/compose() 的签名不外透 usage，故此处只记 agent 工具循环那部分，**不是全量成本**。
+    void this.deps.llmBudget.record(task.tenantId, (result.run.totalInputTokens ?? 0) + (result.run.totalOutputTokens ?? 0));
     await this.deps.repos.fallbackTraces.insert({
       id: newId("fbt"),
       taskId,

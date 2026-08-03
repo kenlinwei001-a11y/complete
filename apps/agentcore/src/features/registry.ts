@@ -118,6 +118,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // AGENT_SYSTEM_CORE、且不传 `loadSkillEnabled`/`loadSkill` → 整套 Skill 子系统（发布双门禁 / evals /
   // 语义路由 / embedding 旋钮）对默认路径**完全不可达**。关 = 既有 path-B 逐字节不变（不劫持）。
   { key: "agent.skill-on-free-qa", name: "自由问答挂载租户技能（默认 path-B 可见并 load_skill·暗发）", level: "BLOCK", defaultOn: false },
+  // OC7 / #92（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：租户 LLM token 配额**执行**。
+  // 关 = 只记账不拦（账本从此有真数据·业务零影响）；开 = 硬线耗尽拒新 QOS 任务（LLM_BUDGET_EXCEEDED）。
+  // 记账侧**不受本门控**（无条件记）——先让账本有真数据，再谈拿它做拦截，顺序反了就成了拿脏账拦人。
+  { key: "qos.llm-budget-enforce", name: "LLM token 配额执行（硬线耗尽拒新任务·暗发）", level: "BLOCK", defaultOn: false },
   // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：跨域题在**确定性层**
   // 逐域枚举 + 并行 solver + 零 LLM 块装配（domainResolveMulti→selectDeterministicMultiRoute→runDeterministicMultiPath·排在 LLM classify 之前）。
   // orchestrator deterministicMultiEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=沿用现"跨域压分→落 LLM/单域"行为）。

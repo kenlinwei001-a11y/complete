@@ -58,5 +58,7 @@ export const ErrorCodes = {
   IMMUTABLE_VERSION: "IMMUTABLE_VERSION",
   /** 引用模式增量 §2.3：破坏性 schema 变更 + 存在 latest 引用方 → 发布被拒 */
   BREAKING_CHANGE_WITH_LATEST_REFS: "BREAKING_CHANGE_WITH_LATEST_REFS",
+  /** OC7（#92）：租户 LLM token 硬线已耗尽 → 拒新 LLM 任务（软线只降级不拒）。 */
+  LLM_BUDGET_EXCEEDED: "LLM_BUDGET_EXCEEDED",
 } as const;
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

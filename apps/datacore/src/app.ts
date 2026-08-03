@@ -1012,6 +1012,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   const mustAdmin = (c: AuthCtx) => { if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only"); };
+  /**
+   * OC7（#92）：LLM 配额账本的**读 + 记账**允许服务间调用（AgentCore 经 X-Service-Token + X-Tenant-Id）。
+   * 此前三条路由全是 admin-only —— 而账本的天然写入方是 AgentCore（它才知道每次跑烧了多少 token），
+   * 用用户 JWT 又拿不到 admin → 结果状态机完整却**零消费方**（本体 §8 G-LLM-BUDGET-NO-CONSUMER）。
+   * 配置面（PUT 设限额）仍 admin-only：设预算是人的决定，不该被服务改。
+   */
+  const mustAdminOrService = (c: AuthCtx) => {
+    if (c.roles.includes("service")) return;
+    mustAdmin(c);
+  };
 
   // OC7 LLM 成本配额与降级（租户级 token 配额 + 软/硬线）。admin only。
   const budgetStatus = (b: { hardLimitTokens: number; softLimitPct: number; usedTokens: number } | undefined) => {
@@ -1021,7 +1031,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const state = hard > 0 && used >= hard ? "HARD_EXCEEDED" : hard > 0 && used >= soft ? "SOFT_EXCEEDED" : "OK";
     return { usedTokens: used, hardLimitTokens: hard, softLimitTokens: soft, state, degrade: state !== "OK" } as const;
   };
-  app.get("/a/v1/llm-budgets", async (req) => { const c = ctx(req); mustAdmin(c); return budgetStatus(await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`)); });
+  app.get("/a/v1/llm-budgets", async (req) => { const c = ctx(req); mustAdminOrService(c); return budgetStatus(await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`)); });
   app.put("/a/v1/llm-budgets", async (req) => {
     const c = ctx(req); mustAdmin(c);
     const body = PutLlmBudgetBodySchema.parse(req.body);
@@ -1030,7 +1040,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await repos.llmBudgets.put(rec); return budgetStatus(rec);
   });
   app.post("/a/v1/llm-budgets/record", async (req) => {
-    const c = ctx(req); mustAdmin(c);
+    const c = ctx(req); mustAdminOrService(c);
     const body = RecordUsageBodySchema.parse(req.body);
     const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
     const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: prev?.hardLimitTokens ?? 0, softLimitPct: prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: (prev?.usedTokens ?? 0) + body.tokens, updatedAt: new Date().toISOString() };

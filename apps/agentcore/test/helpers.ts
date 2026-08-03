@@ -10,6 +10,7 @@ import { Metrics } from "../src/metrics.js";
 import { createMockDataCore, type MockDataCore } from "../src/mocks/clients.js";
 import { SEED_PACKAGE_ID, SEED_TENANT, seedIntentsAndPlans, seedScenarioPackage } from "../src/mocks/seed.js";
 import { FeatureGate } from "../src/features/gate.js";
+import type { LlmBudgetPort } from "../src/ops/llm-budget.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import type { Repos } from "../src/persistence/repos.js";
 import { buildServer } from "../src/server.js";
@@ -41,6 +42,8 @@ export async function createTestApp(opts?: {
   providerDirectory?: DataCoreProviderDirectory;
   /** #89：注入真 FeatureGate（带 baseUrl + 假 fetch）以驱动真 entitlement 拉取链路；缺省 mock 模式全开。 */
   features?: FeatureGate;
+  /** #92：注入配额账本端口（缺省 Noop → 既有测试字节不变）。 */
+  llmBudget?: LlmBudgetPort;
 }): Promise<TestApp> {
   const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...(opts?.env ?? {}) } as NodeJS.ProcessEnv);
   const repos = createMemoryRepos();
@@ -62,6 +65,7 @@ export async function createTestApp(opts?: {
     metrics,
     providerDirectory: opts?.providerDirectory,
     ...(opts?.features ? { features: opts.features } : {}),
+    ...(opts?.llmBudget ? { llmBudget: opts.llmBudget } : {}),
   });
   const app = await buildServer(deps);
   await app.ready();

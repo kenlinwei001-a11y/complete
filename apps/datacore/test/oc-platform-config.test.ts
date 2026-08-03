@@ -54,3 +54,43 @@ describe("OC5 写回回声抑制 + 不一致告警", () => {
     expect(none.verdict).toBe("NO_PENDING_WRITEBACK");
   });
 });
+
+/**
+ * #92 · 账本的服务间消费面：三条路由此前全是 admin-only，而天然写入方 AgentCore
+ * 拿的是服务间凭证（X-Service-Token + X-Tenant-Id）——进不去，于是账本零消费方。
+ * 现放行 **读 + 记账**给 service 角色；**配置面（PUT 设限额）仍 admin-only**：
+ * 设预算是人的决定，不该被服务改。
+ */
+describe("#92 · LLM 配额账本对服务间调用开放（读+记账）", () => {
+  const SERVICE = { "x-service-token": "svc-secret", "x-tenant-id": "demo", "x-service-caller": "agentcore" };
+
+  it("service 可读、可记账；PUT 设限额仍拒（配置面只归人）", async () => {
+    const t = await makeApp({ env: { SERVICE_TOKEN: "svc-secret" } });
+    await t.app.inject({ method: "PUT", url: "/a/v1/llm-budgets", headers: ADMIN, payload: { hardLimitTokens: 500, softLimitPct: 0.8 } });
+
+    const read = await t.app.inject({ method: "GET", url: "/a/v1/llm-budgets", headers: SERVICE });
+    expect(read.statusCode).toBe(200);
+    expect((read.json() as { hardLimitTokens: number }).hardLimitTokens).toBe(500);
+
+    const rec = await t.app.inject({ method: "POST", url: "/a/v1/llm-budgets/record", headers: SERVICE, payload: { tokens: 450 } });
+    expect(rec.statusCode).toBe(200);
+    expect((rec.json() as { state: string }).state).toBe("SOFT_EXCEEDED"); // 450 ≥ soft 400
+
+    // 配置面不对服务开放：service 改不了限额。
+    const put = await t.app.inject({ method: "PUT", url: "/a/v1/llm-budgets", headers: SERVICE, payload: { hardLimitTokens: 999999 } });
+    expect(put.statusCode).toBe(403);
+  });
+
+  it("R2 租户隔离：service 头带哪个租户就只动哪个租户的账本", async () => {
+    const t = await makeApp({ env: { SERVICE_TOKEN: "svc-secret" } });
+    await t.app.inject({ method: "POST", url: "/a/v1/llm-budgets/record", headers: SERVICE, payload: { tokens: 300 } });
+    const other = await t.app.inject({
+      method: "GET",
+      url: "/a/v1/llm-budgets",
+      headers: { ...SERVICE, "x-tenant-id": "acme" },
+    });
+    expect((other.json() as { usedTokens: number }).usedTokens).toBe(0);
+    const demo = await t.app.inject({ method: "GET", url: "/a/v1/llm-budgets", headers: SERVICE });
+    expect((demo.json() as { usedTokens: number }).usedTokens).toBe(300);
+  });
+});
