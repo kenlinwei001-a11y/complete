@@ -428,6 +428,32 @@ Skill（一意图一份·版本化·entitlement 门控）
 
 **基数目标（仓主给定）**：`|Skill| ≥ |意图| ≥ |场景入口|`。今天 `7 ≥ 32` 不成立 → 迁移后应为 `32+`。
 
+### Skill 完整形态（八层 · 每个字段对应今天实测的一个病，不凭空加）
+
+| 层 | 字段 | 今天缺不缺 | 对应哪个实测的病 |
+|---|---|---|---|
+| ① 身份治理 | `id/key/version/status/tenantId/owner` + **`supersedes`** | 前六项已有·`supersedes` 缺 | E8 意图池是死目录（按 id 幂等·PUBLISHED 后连 PUT 都 409）→ 演进只能建新版顶旧版，那"顶替谁"必须是一等字段 |
+| ② **触发面与选型** | `answers` · `examples[]` · **`antiExamples[]`** · `slots[]` · **`exclusivity`**（单一对口求解器 / 需多角色会诊 / 开放探索） | **全缺** | **本单病根**。E1/E2 + E11：S12「涂布良率」被判跨域、S13 被「交付」拉走 —— 因为**没有任何一处声明"这题归我且只归我"**，判断散在 4 文件正则里互相打架。`examples` 同时是检索层与门的共同真源（今天金标集要靠"从 catalog 派生"防漂移） |
+| ③ **执行**（仓主定案） | `execution.mode`（DETERMINISTIC/EXPLORATORY/HYBRID）· `execution.plan[]` · `execution.body` | plan 在 ExecutionPlan·body 在 Skill·**mode 缺** | `mode` 必须显式声明而非靠"有没有 plan"隐式推断——隐式推断正是那 10 道门的病（靠推断不靠声明） |
+| ④ 资源引用 | `solvers[] · slices[] · rules[] · objectTypes[] · tools[] · mcp[] · dependsOn[]` | 散在 navSlice 投影 / DRIL 组包 / 角色画像**三处** | 收进来的收益不是整洁而是**可校验**：能加门「声明引用的 solver 必须已注册」，今天做不到因为没有一处声明 |
+| ⑤ 输入输出契约 | `inputSchema / outputSchema` | 已有 | 槽位填不满时能诚实说"缺哪个"，而非静默降级 path-B（#64 场景卡绑定静默降级同形） |
+| ⑥ **预算与红线** | `maxBudgetRounds`✱ · `maxDiscoverCalls` · `provenancePolicy`✱ · `sideEffect`✱ · `approvalGate`✱ · **`expectedDurationMs`** · **`cancellable`** | ✱ 号字段**已有但零消费方**；后两项缺 | **E5 的 203 s 成因之一就是这层是全局常数不分题型**（审核方建探索门时被 `maxDiscoverCalls` 咬了两次）。跨基地对比该给 6 轮、单点归因给 3 轮。与 #92（账本记得对没人读）**同族：字段早在，缺消费方** |
+| ⑦ **可观测声明** | `progress.emitsNarration` · `progress.phases[]` | **全缺** | **E9**：旁白在多角色路径上一条不发（真跑：往返 6 次·旁白 0 条），而前端 💭 气泡早就写好。声明出来才能加门断言「每条会走到它的路径上都真发」——那正是 #90/#92/E9 三条同族债共缺的东西 |
+| ⑧ **自带验收** | `acceptance.goldenCases[]{query, expect:{intent\|OPEN}, mustCall?}` · `mustNotRouteTo[]` | **全缺** | 今天为测措辞鲁棒性要在测试文件手写 80 条并特意从 catalog 派生题干防漂移。**skill 自带用例 → 门可从注册表生成**，新增 skill 自动被测、漏配即红，"金标集与目录漂移"这个问题从此不存在。也把"谁负责证明这 skill 能用"从测试文件作者变成 skill 所有者 |
+
+**明确不放进 Skill（防长成上帝对象）**
+
+| 不放 | 该在哪 | 理由 |
+|---|---|---|
+| 真值数据 | 本体/对象层 | R4 真值经 Action |
+| 租户阈值 | rule params / feature config | 一个 skill 多租户复用 |
+| 硬编码业务常数 | 行业模板 | R14 去业务锁死 |
+| 模型选择 | LLM 用途绑定 | 换模型不该改 skill |
+
+> **一句话**：Skill 不是"再加一层配置"，是把今天散在 10 处、互相不知情的判断，
+> 收进**一份可校验、可门控、自带验收**的声明。这也正是为什么并列会出事——
+> 两份声明只会让"互不知情"从 10 处变成 11 处。
+
 ---
 
 ## 五 · SEAM-GATE 验收判据（头号复验依据）
