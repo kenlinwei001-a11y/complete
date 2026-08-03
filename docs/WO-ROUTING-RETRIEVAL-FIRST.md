@@ -224,9 +224,15 @@ E5 证明：即便路由判错，203 s 这个代价本身也是不该付的。�
 
 | 层 | 现状 | 证据 | 后果 |
 |---|---|---|---|
-| ① Coordinator 路径是否传 `emitNarration` | **不传** —— 全仓唯一调用点是 `orchestrator.ts:1743`（在 `runPathB` 内）；`runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 链上一次都没传，默认 `false` | `grep -rn emitNarration apps/agentcore/src` 仅 1 命中 | 多角色扇出**结构性**无旁白，与超时无关；feature 点亮也没用 |
+| ① Coordinator 路径是否传 `emitNarration` | **不传** —— 全仓唯一调用点是 `orchestrator.ts:1743`（在 `runPathB` 内）；`runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 链上一次都没传，默认 `false` | **真跑对照实验**（非仅 grep）：同一份 LLM 脚本、同样点亮 `qos.reasoning-trace`，唯一差别是走哪条路 —— path-B 组 agent LLM 往返 2 次 → `agent_narration` **1** 条；Coordinator 组往返 **6** 次（三角色各两轮·三个发送条件全满足）→ `agent_narration` **0** 条 | 多角色扇出**结构性**无旁白，与超时无关；feature 点亮也没用 |
 | ② 旁白粒度 | **逐轮**发（LLM 非流式，见 B3 硬约束，拿不到 token 级） | `loop.ts:841` | 一轮 60 s → 至少静默 60 s |
 | ③ 发送条件 | 须**本轮确有真工具调用**（`toolUses.some(b => b.name !== "final_answer")`） | `loop.ts:845` | 只思考不调工具的轮次静默 |
+
+> **取证方法论警示（本条真实踩过·写给接单 dev）**：第一版对照实验的实验组 `agent LLM 往返 = 0`——
+> 测试基座 `createTestApp` 默认只种 package/intents/plans、**不种 agent 注册表**，`invoke_agent` 无 agent 可调，
+> 角色 agent 一轮都没跑。那种情况下的「0 条旁白」是**没跑**而非**没接线**，结论作废。
+> 补 `seedRegistry().agents` 后往返变 6 次、旁白仍为 0，才是真结论。
+> **凡断言"某条路径上功能不生效"，必须先证那条路径真的跑起来了**——否则就是拿沉默当证据。
 
 **注**：前端消费侧**已就绪**——`Timeline.tsx:73` 的 💭 气泡已实现；`qos.reasoning-trace` 已在
 `seedDemoEntitlements` 为 demo 租户点亮。**本项不是"前端要做功能"，是"后端要把已做的功能接到那条路上"**，
