@@ -177,17 +177,21 @@ describe("WO-D2 · 超时前先回可行解（incumbent·诚实标注非最优�
 });
 
 describe("WO-D3 · 超时诊断带真值（不是常数占位）", () => {
-  it("④ 耗时是真耗时（换阈值 → 真跟着变）· 规模是真规模（换入参 → 真跟着变）", async () => {
+  it("④ 耗时是真耗时（不是把阈值抄一遍）· 规模是真规模（换入参 → 真跟着变）", async () => {
     const t = await createTestApp();
-    (t.deps.dataCore.solver as { invoke: unknown }).invoke = slowSolver(() => "reject");
 
-    // —— 小入参 + 短阈值 ——
+    // —— 小入参 + 短阈值 + **装死**桩：交卷窗口被完整耗掉 → 真耗时 ≈ 阈值 + 交卷窗口 ——
+    //    这是分辨「真测」与「抄阈值」的关键用例：占位实现（elapsedMs = timeoutMs）此处必红。
+    (t.deps.dataCore.solver as { invoke: unknown }).invoke = slowSolver(() => "silent");
     t.deps.config.SOLVER_RUN_TIMEOUT_MS = 120;
+    const wall1 = Date.now();
     const r1 = await run(t, ARGS_SMALL, "capacity_forecast");
+    const wallElapsed1 = Date.now() - wall1;
     expect(r1.statusCode).toBe(504);
     const d1 = (r1.json() as { diagnostics: SolverTimeoutDiagnostics }).diagnostics;
 
-    // —— 大入参 + 长阈值 ——
+    // —— 大入参 + 长阈值 + **秒拒**桩：交卷窗口几乎不耗 → 真耗时 ≈ 阈值 ——
+    (t.deps.dataCore.solver as { invoke: unknown }).invoke = slowSolver(() => "reject");
     t.deps.config.SOLVER_RUN_TIMEOUT_MS = 420;
     const r2 = await run(t, ARGS_BIG, "portfolio");
     expect(r2.statusCode).toBe(504);
@@ -199,11 +203,17 @@ describe("WO-D3 · 超时诊断带真值（不是常数占位）", () => {
     // timeoutMs：真的是生效阈值
     expect(d1.timeoutMs).toBe(120);
     expect(d2.timeoutMs).toBe(420);
-    // elapsedMs：**真耗时**——≥ 各自阈值，且随阈值真变大（常数占位过不了这关）
+    // ── elapsedMs 必须是**测出来的**，不是从 timeoutMs 派生的 ────────────────────────────
+    // ① 装死用例：真耗时 ≈ 阈值 + 交卷窗口(300ms) → 与阈值的差**必须**明显 > 0（抄阈值 → 差=0 → 红）
+    expect(d1.elapsedMs - d1.timeoutMs).toBeGreaterThanOrEqual(250);
+    // ② 秒拒用例：交卷窗口没耗掉 → 与阈值的差很小 —— 两个用例的「超出量」形态相反，
+    //    任何「elapsedMs 由 timeoutMs 算出」的实现都造不出这种相反形态。
+    expect(d2.elapsedMs - d2.timeoutMs).toBeLessThan(200);
+    expect(d1.elapsedMs - d1.timeoutMs).toBeGreaterThan(d2.elapsedMs - d2.timeoutMs);
+    // ③ 与测试自己掐的墙钟表对得上（±80ms 容差）→ 证明它量的是这次请求，不是别的什么
+    expect(Math.abs(d1.elapsedMs - wallElapsed1)).toBeLessThan(80);
     expect(d1.elapsedMs).toBeGreaterThanOrEqual(120);
-    expect(d1.elapsedMs).toBeLessThan(420);
     expect(d2.elapsedMs).toBeGreaterThanOrEqual(420);
-    expect(d2.elapsedMs - d1.elapsedMs).toBeGreaterThan(200); // 差值 ≈ 阈值差，证明是真测的
     // inputScale：**真规模**——逐键真计数，随入参真变
     expect(d1.inputScale?.source).toBe("args");
     expect(d1.inputScale?.counts).toEqual({ scenarios: 2 });
