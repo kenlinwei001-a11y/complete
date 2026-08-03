@@ -97,6 +97,19 @@ export interface PortfolioInput {
   businessTypeRegime?: Record<string, { dedicationWeight: number }>;
   /** 年运营日（类年产能 = Σ Line.capacityDaily × annualDays·业务类型占用率口径·缺省 300）。 */
   operatingDaysPerYear?: number;
+
+  /**
+   * WO-D2 · **求解时间预算的绝对截止时刻**（epoch ms·可选·缺省 undefined = 关）。
+   *
+   * 为什么要有它：调用方（AgentCore `/b/v1/solvers/{key}/run`）15s 超时后会 **abort 那条 OBO fetch**——
+   * 连接一断，DataCore 再算出解也**没有回程通道**了。所以「超时前先回可行解」的唯一可行做法是：
+   * DataCore 自己盯着预算，在调用方放弃**之前**把已求到的可行解（incumbent）交出去。
+   * 运维必须把 `SOLVER_INCUMBENT_BUDGET_MS` 设成 **< AgentCore 的 SOLVER_RUN_TIMEOUT_MS**。
+   *
+   * ⚠ R6 确定性：本字段**不设即不生效**——所有既有调用方（内部派生/测试/未配置的生产）逐字节不变；
+   * 只有显式给了截止时刻，求解才会在到点时提前收手（此时输出带 `incumbent:true` 诚实自述，不冒充完整解）。
+   */
+  incumbentDeadlineAt?: number;
 }
 
 interface ItemMeta {
@@ -503,6 +516,16 @@ export interface PortfolioOutput {
   cost: { delay: number; changeover: number; unserved: number; total: number; unit: string };
   frozen: { orderId: string; base: string; window: number; qty: number; frozen: true }[];
   summary: string;
+
+  // ── WO-D2 · incumbent（可行但非最优/未算全）诚实自述 additive（缺省不出现 → 既有消费方字节不变） ──
+  /** true = 时间预算到点提前收手，**这不是完整最优解**，是已找到的可行解。出现时 `optimal` 恒 false。 */
+  incumbent?: boolean;
+  /** 为什么只到这一步（人话·可直接展示给用户/排查者）。 */
+  incumbentReason?: string;
+  /** 真正求完的方案键（真值·非占位）。 */
+  solvedScenarios?: PortfolioObjectiveKey[];
+  /** 原计划求的方案键（对比即知漏了哪些）。 */
+  plannedScenarios?: PortfolioObjectiveKey[];
 }
 
 /** 联合最优组合推演主入口（注入 solve = optimizer.solvePortfolio）。 */
@@ -531,9 +554,28 @@ export async function portfolioOptimize(
   const scenarios: PortfolioOutput["scenarios"] = [];
   let primaryResult: PortfolioResult | undefined;
 
+  // ── WO-D2 · 时间预算到点 → 交出已找到的可行解（incumbent），而不是让调用方超时后颗粒无收 ──
+  // 纪律：① 预算未设 → 恒 false，下面这段等于不存在（R6 逐字节不变）；
+  //      ② **主方案未解出之前绝不提前收手**——没有可行解就没有 incumbent，宁可继续算也不编一个空的；
+  //      ③ 提前收手必须诚实自述（incumbent:true / optimal:false / 漏了哪些方案全列出来）。
+  const deadlineAt = input.incumbentDeadlineAt;
+  const budgetExhausted = (): boolean => deadlineAt != null && Date.now() >= deadlineAt;
+  const solvedScenarios: PortfolioObjectiveKey[] = [];
+  let incumbent = false;
+  let incumbentReason = "";
+
   for (const key of scenarioKeys) {
+    if (primaryResult && budgetExhausted()) {
+      incumbent = true;
+      incumbentReason =
+        `求解时间预算耗尽（截止 ${deadlineAt}）：已求出主方案 ${primaryKey} 的可行解，` +
+        `剩余方案 ${scenarioKeys.filter((k) => !solvedScenarios.includes(k)).join("/")} 未求解。` +
+        `返回的是**可行解（incumbent）而非最优/完整解**——方案对比不完整，不得当作最优方案对外承诺。`;
+      break;
+    }
     const req = buildRequest(a, key);
     const r = await solve(req);
+    solvedScenarios.push(key);
     if (key === primaryKey && !primaryResult) primaryResult = r;
     const alloc = r.occupancy.map((o) => ({ item: o.item, base: o.base, window: o.window, qty: metaById.get(o.item)?.qty ?? a.qtyMap.get(o.item) ?? 0 }));
     const servedQty = alloc.reduce((s, x) => s + x.qty, 0);
@@ -616,7 +658,8 @@ export async function portfolioOptimize(
   const orderDisplaced = displaced.filter((d) => d.kind === "order");
   const feasible = orderDisplaced.length === 0;
   const status = primaryResult.status;
-  const optimal = primaryResult.optimal;
+  // WO-D2：提前收手 → **一律 optimal:false**（方案集没算全，谈不上最优；不得让调用方误读为最优解）。
+  const optimal = incumbent ? false : primaryResult.optimal;
 
   const orderItems = a.items.filter((it) => it.kind === "order").length;
   const wipCount = a.committed.filter((c) => c.kind === "wip").length;
@@ -635,7 +678,11 @@ export async function portfolioOptimize(
     capacityLedger, reconChecks, reconciled,
     cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
     frozen,
-    summary,
+    // WO-D2：incumbent 时把「这是可行解不是最优解」摆到 summary 最前面（人第一眼就看见，不藏在字段里）。
+    summary: incumbent ? `【非最优·可行解 incumbent】${incumbentReason} ${summary}` : summary,
+    ...(incumbent
+      ? { incumbent: true as const, incumbentReason, solvedScenarios, plannedScenarios: scenarioKeys }
+      : {}),
   };
 }
 

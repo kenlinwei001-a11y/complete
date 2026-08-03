@@ -27,6 +27,10 @@ import {
   WorkflowDefinitionSchema,
   InferenceTraceSchema,
   ResourceSearchRequestSchema,
+  incumbentNotice,
+  type SolverInputScale,
+  type SolverPhase,
+  type SolverTimeoutDiagnostics,
   type QueryTask,
   type ExecutionPlan,
   type AgentDefinition,
@@ -1738,6 +1742,107 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return deps.repos.llmBindings.list(a.tenantId);
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // WO-D2/D3 · 同步求解超时的两件事：**先回可行解**（incumbent）+ **把诊断说清楚**
+  //
+  // 病灶（审核方真跑坐实·承 WO-D1「取消已通到底层」）：超时之后用户什么都不知道、也什么都拿不到——
+  //   ① 504 载荷只有一个 `SOLVER_TIMEOUT`：不说哪个求解器、跑了多久、数据多大、有没有可行解
+  //      → 前端只能 `toastError` 泛化提示，用户与排查者都无从下手；
+  //   ② CP-SAT 族在证最优之前先有 **incumbent**（逐步改进的可行解），超时却**全丢**——
+  //      宁可给「已找到可行解·非最优」也不该给一片空白。
+  //
+  // ⚠ 诚实边界（哪一层做得到、哪一层做不到，写死在这里，不许被上层话术盖过）：
+  //   - **做得到（本层）**：超时 → 先取消（D1 语义不变）→ 给底层一个**极短交卷窗口**；底层若把
+  //     「自报非最优 + 真带解」的载荷交回来，就以 200 + **诚实标注**（incumbent/optimal:false/proven:false）
+  //     返还，并附真诊断；交不回来 → 照旧 504，**绝不编造**一个 incumbent。
+  //   - **做得到（DataCore 侧）**：`SOLVER_INCUMBENT_BUDGET_MS` 给 portfolio 一个自有时间预算，
+  //     到点即把已求到的可行解**在调用方放弃之前**回过来（见 datacore solvers/portfolio.ts）。
+  //     运维必须把它设成 **< 本服务 SOLVER_RUN_TIMEOUT_MS**，否则解来不及跨过网线。
+  //   - **做不到（诚实标注·不假装）**：走真 HTTP 时，本层的取消 = **abort 那条 OBO fetch**，连接一断，
+  //     DataCore 再想交卷也没有回程通道了；而 `services/optimizer/server.py` 是 ThreadingHTTPServer +
+  //     BaseHTTPRequestHandler，**无取消接口、不感知客户端断开、更没有 incumbent 回传通道**，
+  //     它只会把当次 CP-SAT 求完再写响应。故 **真 HTTP 链路上的 incumbent 只能靠 DataCore 侧的自有预算
+  //     提前交卷**；本层的交卷窗口服务于「能交卷的求解客户端」（进程内/未来可回传的实现）。
+  //     此处不粉饰：拿不到就是拿不到，诊断里 `hasIncumbent:false` 如实写。
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** 超时后给底层的交卷窗口：短到不改变「超时早返」的体感，长到够一次同步回传。 */
+  const INCUMBENT_HANDBACK_MS = 300;
+
+  /** 可能承载「解」的载荷键（数组或非空对象）——incumbent 判定必须**真看到解**，否则就是空壳。 */
+  const SOLUTION_KEYS = [
+    "allocation", "occupancy", "assignments", "schedule", "selected", "sequence", "bins",
+    "openFacilities", "flows", "chosen", "winners", "values", "scenarios", "rows", "plan", "batches",
+  ] as const;
+
+  const sizeOf = (v: unknown): number => {
+    if (Array.isArray(v)) return v.length;
+    if (v && typeof v === "object") return Object.keys(v as Record<string, unknown>).length;
+    return 0;
+  };
+
+  /**
+   * D3 · 从**真入参**统计规模（数组长度 / 对象键数）。
+   * 诚实：代理层只看得见 args——订单/基地等真数据规模在 DataCore 侧，超时后拿不回来，
+   * 故 `source:"args"` 如实标注「这是入参规模，不是全量数据规模」，缺就留空不编。
+   */
+  const summarizeArgScale = (args: Record<string, unknown>): SolverInputScale => {
+    const counts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(args)) {
+      const n = sizeOf(v);
+      if (n > 0) counts[k] = n;
+    }
+    return {
+      source: "args",
+      counts,
+      totalElements: Object.values(counts).reduce((s, n) => s + n, 0),
+      argKeys: Object.keys(args).sort(),
+    };
+  };
+
+  /** D3 · 交回解时把**实测**规模并进来（solution.* 前缀），source 升级为 mixed。 */
+  const observeScale = (base: SolverInputScale, d: Record<string, unknown>): SolverInputScale => {
+    const counts = { ...base.counts };
+    for (const k of SOLUTION_KEYS) {
+      const n = sizeOf(d[k]);
+      if (n > 0) counts[`solution.${k}`] = n;
+    }
+    // 领域可得量：逐格产能台账 → 真实 (基地×窗口) 格数 + 去重基地数（有则给·无则不编）。
+    const ledger = d.capacityLedger;
+    if (Array.isArray(ledger) && ledger.length > 0) {
+      counts["solution.capacityCells"] = ledger.length;
+      const bases = new Set(ledger.map((r) => String((r as { baseId?: unknown }).baseId ?? "")).filter(Boolean));
+      if (bases.size > 0) counts["solution.bases"] = bases.size;
+    }
+    const same = Object.keys(counts).length === Object.keys(base.counts).length;
+    return {
+      source: same ? base.source : "mixed",
+      counts,
+      totalElements: Object.values(counts).reduce((s, n) => s + n, 0),
+      argKeys: base.argKeys,
+    };
+  };
+
+  /**
+   * D2 · incumbent 判定（**两条都满足才算**，缺一即「没有」）：
+   *   ① 底层**自报非最优**：`incumbent:true` / `optimal:false` / `status:"FEASIBLE"`
+   *      （明确 `optimal:true` 一票否决——绝不把最优解改标成 incumbent）；
+   *   ② 载荷**真带解**：至少一个解字段非空。
+   * 两条缺一 → 返回 null → 上层照旧 504。**不许**据此编一个 incumbent 出来。
+   */
+  const readIncumbent = (payload: unknown): { d: Record<string, unknown>; keys: string[] } | null => {
+    if (!payload || typeof payload !== "object") return null;
+    const raw = payload as Record<string, unknown>;
+    const inner = raw.data;
+    const d = (inner && typeof inner === "object" && !Array.isArray(inner) ? inner : raw) as Record<string, unknown>;
+    if (d.optimal === true) return null; // 已证最优 → 不是 incumbent
+    const declaresNonOptimal = d.incumbent === true || d.optimal === false || d.status === "FEASIBLE";
+    if (!declaresNonOptimal) return null; // 没有任何「非最优」自述 → 不臆断
+    const keys = SOLUTION_KEYS.filter((k) => sizeOf(d[k]) > 0);
+    if (keys.length === 0) return null; // 空壳 → 当作「没有可行解」
+    return { d, keys };
+  };
+
   // ---------------------------------------------------------------------
   // Sync solver proxy (entitlement PRD §4): entitlement check FIRST —
   // solverKey bound to any disabled feature → 404 FEATURE_NOT_FOUND (not 403).
@@ -1765,6 +1870,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     reply.raw.on("close", onClientGone);
     let timer: NodeJS.Timeout | undefined;
     let timedOut = false;
+    // WO-D3：真耗时锚点（诊断里的 elapsedMs 必须是**真差值**，不是把 timeoutMs 抄一遍）+ 真入参规模。
+    const startedAt = Date.now();
+    const argScale = summarizeArgScale(body.args);
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         timedOut = true;
@@ -1774,15 +1882,94 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         cancel.abort(new Error(`solver ${key} run exceeded ${timeoutMs}ms`));
       }, timeoutMs);
     });
+    // WO-D2：求解 promise 要**单独持有**——超时后还得回头向它讨 incumbent，不能只丢进 race 就撒手。
+    const run = deps.dataCore.solver.invoke(a, key, body.args, cancel.signal);
+    // 立刻挂旁路收敛（race 定局后 run 若再拒绝，不能变成 unhandledRejection 把进程带下水）。
+    const settled: Promise<{ ok: true; value: unknown } | { ok: false; error: unknown }> = run.then(
+      (value) => ({ ok: true as const, value }),
+      (error) => ({ ok: false as const, error }),
+    );
     try {
-      return await Promise.race([deps.dataCore.solver.invoke(a, key, body.args, cancel.signal), timeout]);
+      return await Promise.race([run, timeout]);
     } catch (e) {
       // 兜底（不依赖上面的微任务顺序）：已判超时的请求，无论先抛出的是 504 还是"被我们取消"的下游错误，
       // 对外一律 504 SOLVER_TIMEOUT —— 我们自己发起的取消不该塌成 500 误导排查。
-      if (timedOut && !(e instanceof HttpError)) {
-        throw new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`);
+      if (!timedOut) throw e;
+
+      // ── D2 · 交卷窗口：已取消（D1 语义不变），但再等一小会儿，看底层肯不肯把 incumbent 交回来 ──
+      // 行为良好的求解客户端会在收到取消时 **resolve 已找到的可行解**（而非一律 reject）；
+      // 交不出来（reject / 窗口耗尽）→ 一切照旧走 504。窗口一旦 settle 立即返回，不白等。
+      let handbackTimer: NodeJS.Timeout | undefined;
+      const handback = await Promise.race([
+        settled,
+        new Promise<null>((resolve) => { handbackTimer = setTimeout(() => resolve(null), INCUMBENT_HANDBACK_MS); }),
+      ]).finally(() => { if (handbackTimer) clearTimeout(handbackTimer); });
+
+      const handbackValue: unknown = handback?.ok === true ? handback.value : undefined;
+      const handbackError: unknown = handback?.ok === false ? handback.error : undefined;
+      const inc = readIncumbent(handbackValue);
+      const elapsedMs = Date.now() - startedAt;
+      const phase: SolverPhase = inc
+        ? "incumbent_returned" // 交回了真可行解
+        : handback === null
+          ? "dispatched" // 窗口耗尽，底层一声不吭
+          : handback.ok
+            ? "incumbent_handback" // 窗口内回来了，但没带可用的可行解
+            : "aborted_no_result"; // 窗口内以错误/取消收场
+      const diagnostics: SolverTimeoutDiagnostics = {
+        solverKey: key,
+        timeoutMs,
+        elapsedMs,
+        handbackWindowMs: INCUMBENT_HANDBACK_MS,
+        inputScale: inc ? observeScale(argScale, inc.d) : argScale,
+        hasIncumbent: !!inc,
+        phase,
+        cancelRequested: true,
+        ...(handbackError !== undefined
+          ? { underlyingError: String((handbackError as { message?: unknown })?.message ?? handbackError).slice(0, 300) }
+          : {}),
+        honestNote:
+          "耗时/规模为实测值；规模仅覆盖代理层可见的入参（订单/基地等全量数据规模在 DataCore 侧，超时后不可得）。" +
+          "走真 HTTP 时取消即断链，DataCore 无回程通道交卷 —— 真链路的 incumbent 依赖 DataCore 自有预算（SOLVER_INCUMBENT_BUDGET_MS）提前返回；" +
+          "CP-SAT sidecar（services/optimizer）无取消接口、无 incumbent 回传通道，这一层确实拿不到，不假装。",
+      };
+
+      if (inc) {
+        // D2 · 有可行解 → 200 返还，并**诚实标注非最优**（顶层 + data 内双份，防调用方只读一处而误判最优）。
+        const notice = incumbentNotice(key, timeoutMs, elapsedMs);
+        const honesty = {
+          incumbent: true as const,
+          optimal: false as const,
+          proven: false as const,
+          resultKind: "incumbent" as const,
+          degraded: true as const,
+          notice,
+        };
+        const raw = (handbackValue && typeof handbackValue === "object" ? handbackValue : {}) as Record<string, unknown>;
+        const innerData = raw.data;
+        const stampedData =
+          innerData && typeof innerData === "object" && !Array.isArray(innerData)
+            ? { ...(innerData as Record<string, unknown>), ...honesty }
+            : innerData;
+        reply.status(200);
+        return {
+          ...raw,
+          ...(innerData !== undefined ? { data: stampedData } : {}),
+          ...honesty,
+          diagnostics,
+        };
       }
-      throw e;
+
+      // D2 · 没有 incumbent → **照旧 504，绝不编一个**；D3 · 但把诊断带上（既有 error 信封逐字节不变·老前端仍可解析）。
+      reply.status(504);
+      return {
+        error: {
+          code: "SOLVER_TIMEOUT",
+          message: `solver ${key} run exceeded ${timeoutMs}ms`,
+          requestId: req.id as string,
+        },
+        diagnostics,
+      };
     } finally {
       if (timer) clearTimeout(timer);
       reply.raw.removeListener("close", onClientGone);
