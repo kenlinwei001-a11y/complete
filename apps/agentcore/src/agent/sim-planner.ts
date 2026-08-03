@@ -111,8 +111,14 @@ const CAPACITY_FACTOR_MAP: { re: RegExp; objectType: string; prop: string; facto
   { re: /利用率/, objectType: "Line", prop: "utilization", factorId: "cf-line-util" },
   { re: /节拍/, objectType: "Process", prop: "cycle_time", factorId: "cf-takt" },
 ];
-/** 常见工序名（objectId 定位·best-effort·真 NL→精确对象需实体消解引擎·follow-up）。 */
-const CAPACITY_PROCESS_RE = /(涂布|辊压|卷绕|叠片|化成|分容|注液|封装|模组|pack|组装|清洗)/i;
+/**
+ * 常见工序名（objectId 定位·best-effort·真 NL→精确对象需实体消解引擎·follow-up）。
+ *
+ * WO-ROUTE-1 · **导出为工序词单一来源**：`router/coordinator.ts` 的「定语位判据」复用本表判定
+ * 「涂布良率 / 卷绕合格率」这类**工序·指标复合术语**（工序词处于指标词定语位 = 一个被测标的，
+ * 不是生产+质量两个独立诉求）。复用而非 fork —— 新增工序名只改这一处，两边同时生效。
+ */
+export const CAPACITY_PROCESS_RE = /(涂布|辊压|卷绕|叠片|化成|分容|注液|封装|模组|pack|组装|清洗)/i;
 
 /**
  * 是否产能 what-if NL（据问句 + 可选 PageContext 视图：risk/capacity/产能 页辅助）。

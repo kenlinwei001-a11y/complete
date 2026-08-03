@@ -4,7 +4,7 @@ import { roleProfile } from "../mocks/seed.js";
 import { roleSystemFragment } from "../agent/prompts.js";
 import { pageContextSummary } from "../agent/prompts.js";
 import type { ExtendedPlanStep } from "../workflow/executor.js";
-import { isCapacityFeasibilityQuery } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast
+import { isCapacityFeasibilityQuery, CAPACITY_PROCESS_RE } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast；WO-ROUTE-1 · 工序词单一来源（定语位判据）
 import { domainResolveMulti } from "./domain-resolver.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级：能 solver 分解的跨域题让位②
 import { selectDeterministicMultiRoute } from "./multi-route.js";
 
@@ -35,6 +35,48 @@ export const DELIVERY_RISK_RE = /(交付|按时交|能不能交|交期)/;
 const COMPOSITE_RE = /(综合诊断|全面评估|整体.{0,4}风险|系统性|会诊|多角度|全链|端到端)/;
 
 const DELIVERY_TRIAD: RoleDispatch["role"][] = ["supply-chain", "production", "quality"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-ROUTE-1 · **结构判据：定语位的域词不构成独立诉求**（治「正则词表在语义分类器之前抢答」的根）
+//
+// 病灶（审核方真跑坐实·80 条措辞金标集 74/80，失败 6 条全部 model=coordinator）：
+//   S12「涂布良率为什么掉了？」 → `涂布`∈生产域 ∧ `良率`∈质量域 → matched.size≥2 → 拆三角会诊；
+//   S13「检修计划和交付高峰撞了怎么调？」 → `交付` 命中 DELIVERY_RISK_RE → 强拉「交付风险三角」。
+// 这与刚修的「交付 vs 接」是同一个病根：**判据建在"子串命中"上，而不是"独立诉求"上**。
+// 再往 ROLE_KEYWORDS 里塞两个词只是打地鼠 —— 下一个同义词（辊压合格率 / 交货旺季…）立刻重演。
+//
+// 结构判据（与 `sim-planner.isCapacityFeasibilityQuery` 的「结构信号兜底」同一机制：
+// **看结构签名，不看动词/同义词**）：
+//   中文名词短语里**中心词定域**，其左侧的域词只是**定语/限定**。处于定语位的域词，填的是
+//   **同一个 solver 的槽**（`涂布` = yield_diagnosis 的 processKey 槽；`交付高峰` = maintenance_stagger
+//   的时间约束入参），而不是**另起一个待会诊的诉求**。故：**定语位的域词从跨域计数中剔除**——
+//   剔除后若只剩一个域，说明问句已唯一确定单一对口 solver → **Coordinator 必须让位**。
+//
+// 为什么下一个同义词不会重演：规则挂在**中心词**（稳定的一侧：良率类指标 / 时间窗名词）上，
+// 定语一侧（工序名、交付动词族）随便换词都自动覆盖——而恰恰是定语一侧才会同义词爆炸。
+// 两侧词料**全部复用既有单一来源**（工序=sim-planner CAPACITY_PROCESS_RE；指标=本文件 ROLE_KEYWORDS
+// quality 条目；交付=本文件 DELIVERY_RISK_RE），**没有新建第二张词表**。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 质量指标中心词（**取自本文件 ROLE_KEYWORDS quality 条目**·单一来源·不另立表）。 */
+const QUALITY_HEAD_SRC = ROLE_KEYWORDS.find((k) => k.role === "quality")!.re.source;
+/** 时间窗中心词：「高峰/高峰期/峰值/旺季/爬坡期」——`交付高峰` 是**时间窗名词**（约束），非「交付风险」诉求本体。 */
+const TIME_WINDOW_HEAD_SRC = "(?:高峰期?|高峰段|峰值期?|旺季|爬坡期)";
+/** 定语与中心词之间允许的连接成分（「涂布**工序的**良率」）。 */
+const QUALIFIER_JOINT_SRC = "(?:工序|工段|环节|工位|段|的)*";
+
+/** ① 工序定语位：`涂布[工序][的]良率` → 剥掉定语「涂布」，中心词「良率」原样保留（域计数落质量域）。 */
+const PROCESS_QUALIFIER_RE = new RegExp(`${CAPACITY_PROCESS_RE.source}${QUALIFIER_JOINT_SRC}(?=${QUALITY_HEAD_SRC})`, "gi");
+/** ② 交付定语位：`交付高峰` → 剥掉定语「交付」，中心词「高峰」保留（不再触发交付风险三角）。 */
+const DELIVERY_QUALIFIER_RE = new RegExp(`${DELIVERY_RISK_RE.source}(?:的)*(?=${TIME_WINDOW_HEAD_SRC})`, "g");
+
+/**
+ * 定语位中和（R6 纯函数）：把处于**定语位**的域词从「用于跨域计数的问句视图」里剥掉，中心词保留。
+ * **只影响域计数**——分派给角色的子问、trigger 文案等一律仍用**原问句**（不改用户措辞）。
+ */
+export function stripQualifierDomainTokens(question: string): string {
+  return (question ?? "").replace(PROCESS_QUALIFIER_RE, "").replace(DELIVERY_QUALIFIER_RE, "");
+}
 
 /** 角色中文名（汇总卡渲染 + 溯源）。 */
 export const ROLE_LABELS: Record<string, string> = {
@@ -82,20 +124,23 @@ export function planCoordination(
   // 铁证 ~5min 卡死）。命中即返 undefined → orchestrator 上游确定性路由（会话继承 path-A / compose 直路）已先接住；
   // 即便未被上游接住（feature/上下文差异），这里也拒绝拆分 → 落 path-B 单 agent（有导航切片·仍对口 capacity_forecast）。
   if (isCapacityFeasibilityQuery(q, pageContext)) return undefined;
+  // WO-ROUTE-1 · 结构判据（见上方「定语位的域词不构成独立诉求」长注释）：域共现统计**只在中和后的视图上做**
+  // ——「涂布良率」只记质量域、「交付高峰」不触发交付三角。子问/trigger 仍用原问句 `q`（不改用户措辞）。
+  const qDomains = stripQualifierDomainTokens(q);
   const matched = new Set<RoleDispatch["role"]>();
   const hintByRole = new Map<string, string>();
   for (const k of ROLE_KEYWORDS) {
-    if (k.re.test(q)) {
+    if (k.re.test(qDomains)) {
       matched.add(k.role);
       hintByRole.set(k.role, k.focusHint);
     }
   }
 
   let trigger = "";
-  const deliveryRisk = DELIVERY_RISK_RE.test(q) || COMPOSITE_RE.test(q);
+  const deliveryRisk = DELIVERY_RISK_RE.test(qDomains) || COMPOSITE_RE.test(qDomains);
   if (deliveryRisk) {
     for (const r of DELIVERY_TRIAD) matched.add(r);
-    trigger = DELIVERY_RISK_RE.test(q) ? "交付风险→供应链/生产/质量三角会诊" : "复合跨域触发→多角色会诊";
+    trigger = DELIVERY_RISK_RE.test(qDomains) ? "交付风险→供应链/生产/质量三角会诊" : "复合跨域触发→多角色会诊";
   }
 
   if (matched.size < 2) return undefined; // 单域/无域 → 不召集 Coordinator（不劫持）
@@ -172,8 +217,11 @@ export function detectSingleRole(question: string): RoleDispatch["role"] | undef
   // WO-AGENT-RUNTIME-S01：产能可行性变体不落单域角色 agent（该 agent 仍需把「上浮X%/N周」映射成 solver 参·同样盲扫）——
   // 让它落到 runPathB 组合路径（compileSolverPlan→capacity_forecast）或既有 path-B 导航切片（对口 solver 一步到位）。
   if (isCapacityFeasibilityQuery(q)) return undefined;
-  if (DELIVERY_RISK_RE.test(q) || COMPOSITE_RE.test(q)) return undefined; // 跨域 → 不作单域
-  const hit = ROLE_KEYWORDS.filter((k) => k.re.test(q));
+  // WO-ROUTE-1：与 planCoordination 同一份中和视图（同一结构判据两处一致——否则「涂布良率」在这里仍被判 2 域
+  // 落通用 agent，而不是落对口的质量角色 agent）。
+  const qDomains = stripQualifierDomainTokens(q);
+  if (DELIVERY_RISK_RE.test(qDomains) || COMPOSITE_RE.test(qDomains)) return undefined; // 跨域 → 不作单域
+  const hit = ROLE_KEYWORDS.filter((k) => k.re.test(qDomains));
   return hit.length === 1 ? hit[0]!.role : undefined;
 }
 

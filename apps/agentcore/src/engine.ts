@@ -111,6 +111,13 @@ export interface RunRegisteredAgentOpts {
    * Coordinator 角色扇出置 true（scope 真隔离）；既有路径不置 = 字节兼容不强制。
    */
   enforceObjectScope?: boolean;
+  /**
+   * WO-ROUTE-1（闭 E9·旁白在多角色路径上结构性不可达）· **纯透传**：`qos.reasoning-trace` 开时把每轮思考旁白
+   * 经 `step.completed`(type=agent_narration) 流给前端。此前 `emitNarration` 全仓唯一调用点是 orchestrator
+   * `runPathB` → `runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 这条链上一次都没传，
+   * 默认 false → 多角色扇出（实测 6 次 agent 往返）一条旁白都发不出。缺省 undefined = 逐字节沿用既有行为。
+   */
+  emitNarration?: boolean;
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -345,6 +352,8 @@ export class ExecutionEngine {
       tools,
       llm: this.deps.llm,
       ...(summarizer ? { summarizer } : {}),
+      // WO-ROUTE-1（E9）· 纯透传：不传 = 逐字节沿用既有（loop 侧 `opts.emitNarration` 缺省 false → 不发）。
+      ...(opts.emitNarration ? { emitNarration: true } : {}),
       executor,
       budget: opts.nesting.budget,
       llmCallTimeoutMs: cfg.QOS_AGENT_LLM_TIMEOUT_MS,
@@ -518,6 +527,11 @@ export class ExecutionEngine {
     onResolvedRef?: (ref: ResolvedRef) => void;
     /** WO-FIVE-ROLE P1：本工作流内 invoke_agent 步是否强制被调 agent 的 objectTypes scope（Coordinator 扇出置 true）。 */
     enforceAgentObjectScope?: boolean;
+    /**
+     * WO-ROUTE-1（闭 E9）· **纯透传**：本工作流内 invoke_agent 步启动的子 agent 是否发思考旁白
+     * （Coordinator 多角色扇出据 `qos.reasoning-trace` 置 true）。缺省不传 = 既有行为逐字节不变。
+     */
+    emitNarration?: boolean;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     return runWorkflow(
@@ -542,6 +556,8 @@ export class ExecutionEngine {
             onResolvedRef: opts.onResolvedRef,
             // WO-FIVE-ROLE P1：Coordinator 扇出（enforceAgentObjectScope）或步显式声明 enforceObjectScope → 强制被调 agent 对象 scope。
             ...(opts.enforceAgentObjectScope || params.enforceObjectScope ? { enforceObjectScope: true } : {}),
+            // WO-ROUTE-1（E9）· 纯透传：多角色扇出的每个子 agent 都发旁白（不传 = 既有行为字节不变）。
+            ...(opts.emitNarration ? { emitNarration: true } : {}),
           });
           return { structured: r.structured, answer: r.answer };
         },

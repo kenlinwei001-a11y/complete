@@ -70,7 +70,7 @@ import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { resolveCeoRoute, isCeoQuestion, ceoIntentKeyForRoute, isCeoIntentKey, resolveBlockRoute, hasBlockContext, decisionCommitIntent, shouldUseFreeLLM } from "./ceo-route.js"; // WO-CEO-6 · CEO 深问确定性路由（闭 G-3）· WO-BLOCK-DIALOGUE 块级定向路由（闭 G-3 块级）· WO-DECISION-KERNEL-WIRE 成决策意图分档 · WO-REAL-LLM-FREE-QUERY 真 LLM 自由多跳判定
 import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js"; // WO-QOS-1 · 确定性优先门（有对口 solver 的高置信题在 path-B 入口前拉回 path-A·闭 G-AGENT-BLIND-REACT 路由侧）· WO-DETERMINISTIC-CROSS-DOMAIN domainResolveMulti（跨域逐域枚举）
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
-import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解
+import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
 import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
@@ -2194,6 +2194,42 @@ export class Orchestrator {
     const steps = buildDispatchSteps(plan, task.context.pageContext, drilSection);
     const budget = new BudgetTracker(this.residualBudgetFromConfig()); // WO-Phase4 §6：子 agent/角色/场景/工作流 path 同受硬预算（env 未设→宽松 DEFAULT 不变）
     const invokedAgentKeys: string[] = [];
+    // ★ WO-ROUTE-1（闭 E9·「旁白在多角色路径上一条都不发」）：`emitNarration` 此前全仓唯一调用点是 runPathB
+    //   —— `runCoordinator → runWorkflowSteps → runAgentStep → runRegisteredAgent` 这条链上一次都没传（默认 false）
+    //   → 对照实验坐实：同一份 LLM 脚本、同样点亮 qos.reasoning-trace，path-B 单 agent 2 次往返发 1 条旁白，
+    //   Coordinator 6 次往返发 0 条。多角色扇出恰恰是**最需要过程可见**的那条路（用户等的就是"三个角色分别在查什么"）。
+    const narrationOn = reasoningTraceEnabled(enabledFeatures);
+    // 每条旁白**带角色标识**（前端要分栏显示"供应链在查什么/生产在查什么"）。角色归属靠 workflow executor 的
+    // **串行步序**确定性推导：executor 逐步 `for (const step of input.steps)` 串行执行并先发 `step.started`
+    //（workflow/executor.ts:104-106）→ 记住当前 dispatch_i 即当前角色（R6 确定·无并发歧义）。
+    // 同时给旁白伪 step 的 stepId 加 dispatch 前缀——各角色 loop 内部都叫 `narration-<i>`，不加前缀会在前端
+    // `selectStepRows` 的 stepId Map 里互相覆盖（只剩最后一个角色的旁白）。
+    const dispatchByStepId = new Map<string, CoordinatorPlan["dispatches"][number]>(
+      plan.dispatches.map((d, i) => [`dispatch_${i}`, d]),
+    );
+    let current: { stepId: string; dispatch: CoordinatorPlan["dispatches"][number] } | undefined;
+    const emitWithRole = (e: string, p: unknown): Promise<void> => {
+      if (e === "step.started") {
+        const sid = (p as { stepId?: string } | undefined)?.stepId;
+        const d = sid ? dispatchByStepId.get(sid) : undefined;
+        if (sid && d) current = { stepId: sid, dispatch: d };
+      }
+      let payload = p;
+      const pl = p as { type?: string; stepId?: string; text?: string } | undefined;
+      if (pl?.type === "agent_narration" && current) {
+        const label = ROLE_LABELS[current.dispatch.role] ?? current.dispatch.role;
+        payload = {
+          ...(p as Record<string, unknown>),
+          stepId: `${current.stepId}/${pl.stepId ?? "narration"}`,
+          role: current.dispatch.role,
+          roleLabel: label,
+          agentId: current.dispatch.agentId,
+          // 结构化字段（role/roleLabel）供前端分栏；同时把标识前缀进文本，使**当下**的时间线（只渲染 text）也看得见是谁在查。
+          text: `【${label}】${pl.text ?? ""}`,
+        };
+      }
+      return this.deps.events.emit(taskId, e, payload).then(() => undefined);
+    };
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
       steps,
@@ -2201,9 +2237,10 @@ export class Orchestrator {
       context: task.context,
       ctx: auth,
       nesting: { callChain: [], budget },
-      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+      emit: emitWithRole,
       trustLevel: "AGENT_EXPLORATORY",
       enforceAgentObjectScope: true, // 角色 scope 真隔离（越界读对象拒）
+      ...(narrationOn ? { emitNarration: true } : {}), // 关 → 不传 → 既有 Coordinator 行为逐字节不变
       onResolvedRef: (r) => {
         if (r.kind === "agent") invokedAgentKeys.push(r.key);
       },
