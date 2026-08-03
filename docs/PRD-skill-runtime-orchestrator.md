@@ -53,7 +53,7 @@
 
 | 事件 | 现状 | 本 PRD 的扩载荷 |
 |---|---|---|
-| `routing.completed` | 已发，载荷 `{path, note?, role?, agentId?}`（`orchestrator.ts:888/985/1424/1588/2075/2166/2284`） | 补 `routeSource`（哪道门做的决定，与 WO Track A Phase 1 **同一字段同一口径**）+ `skillKey`（本题最终由哪个 Skill 执行） |
+| `routing.completed` | 已发，载荷 `{path, note?, role?, agentId?}`（`orchestrator.ts:888/985/1424/1588/2075/2166/2284`） | 补 `routeSource`（哪道门做的决定，与 WO Track A **R1** 同一字段同一口径）+ `skillKey`（本题最终由哪个 Skill 执行） |
 | `step.started` / `step.completed` | 伪 step 已是既定承载（narration `type=agent_narration`·`loop.ts:848`；多域 `det_multi_domain_*`·`multi-route.ts:199/215/232`） | 补 `nodeId` · `nodeKind` · `role`/`roleLabel`（并行后**必须**由节点自带，不得再靠串行序推导）· `phase`（Skill 声明的阶段名）· `budgetLeft` |
 | `task.cancelled` | 已发 | 补 `cancelledNodes[]`（哪些在跑的节点收到了取消） |
 | `routing.degraded` · `coordinator.planned` | 代码已有（`orchestrator.ts:1001/2027`、`:2172`），**不在 QOS-PRD §8.2 表内**——属既有事实，本文不扩不删 | — |
@@ -68,7 +68,7 @@
 | **R4** 真值写入经 Action | `human` 节点**只能**产 `ActionDraft` 走既有 `approvalChain`，绝不在图里直写真值 | 图执行器无写真值能力（无该 dispatch 分支）；`action-wiring:check` 口径不变 |
 | **R6** 确定性 | **红线**：今天 32 个意图的确定性 plan 秒级、同输入同输出、可溯源；图化后不得把这唯一没病的一段变成有病的 | 节点带 `determinism: PURE\|LLM`；`execution.mode=DETERMINISTIC` 的 Skill 图内出现 LLM 节点 → **发布拒绝**。迁移验收 = 同意图同槽位，answer 与 provenance **字节相等**（§10 A1） |
 | **R7** 错误信封 | 并行节点失败聚合后仍须单一 `{error:{code,message,requestId}}` | 多失败取**首个按节点声明序**的错（R6 稳定），其余入 `partialFailures[]` 诚实列出 |
-| **R9** 仓储双实现 | 图运行态若落库（Phase 2 `human` 节点跨请求 resume）→ migrations + pg + memory + repo 接口四处同改 | Phase 1 **不落库**（图在单次请求内跑完），故不触发；Phase 2 立单时四处同改 |
+| **R9** 仓储双实现 | 图运行态若落库（**T2** `human` 节点跨请求 resume）→ migrations + pg + memory + repo 接口四处同改 | **T1** 不落库（图在单次请求内跑完），故不触发；**T2** 立单时四处同改 |
 | **R11** 全链闭包 | 图必须以 `render` 节点收口（对应今天 `render_answer` 须末步的 validate 规则） | `compileGraph` 校验：至少一条从入口到 `render` 节点的可达路径；否则拒绝发布 |
 | **R13** 结论可溯源 | 并行/条件边不得丢 ⟦ref⟧；`human` 节点的等待与超时须诚实标注 | 每节点产出携 `toolCallId`+`snapshotVersion`（今天 `executor.ts:190-198 stepAudits` 已有，图化后按 nodeId 索引） |
 | **R14** 应用层无业务常数 | 图拓扑不得内联业务实体名（基地/型号/工序） | 图节点只引用 solverKey/ruleKey/sliceKey/objectType；`debattery:check` 扫描面覆盖新增文件 |
@@ -197,6 +197,11 @@ SPEC §8 的 Runtime 链首两站是「Intent 识别 → Skill 匹配」。仓�
 
 ## 2. 目标与非目标
 
+> **期号命名空间（`docs/PRD-skill-crossreview.md` C5 收口）**：本套 PRD 里「Phase N」曾同时指三件不同的事，
+> 已拆成三个互不相撞的前缀 —— **M0–M3** 迁移线（`PRD-skill-migration`）· **R0–R4** 路由线（WO Track A）
+> · **T1–T2** 运行时线（`PRD-skill-runtime-orchestrator` 自身范围）。**本文之后不再出现裸「Phase N」。**
+
+
 **目标**
 
 1. G1 · **并行边**：Reasoning Graph 的独立节点真并发执行，且**不引入第三套扇出**。
@@ -213,7 +218,7 @@ SPEC §8 的 Runtime 链首两站是「Intent 识别 → Skill 匹配」。仓�
 - 不改路由门次序（→ WO-ROUTING-RETRIEVAL-FIRST Track A）；本文只声明依赖关系与接口。
 - 不引入第二套规则语法/约束 DSL（SPEC §5 定案：引用不内联）。
 - 不做真 token 级流式（Track C5/B3-d，依赖 `packages/llm-adapters` 接 streaming，跨包）。
-- 不做跨请求持久化图运行态（Phase 2，见 §3.6）。
+- 不做跨请求持久化图运行态（**T2**，见 §3.6）。
 
 ---
 
@@ -238,7 +243,7 @@ ReasoningNode {
   phase?        : string                    // 对应 Skill.progress.phases[]（过程可见的语义名）
   onError?      : "FAIL" | "SKIP"           // 与今天 PlanStep.onError 同义
   timeoutMs?    : number
-  budgetWeight? : number                    // 预留：跨节点预算分配（Phase 2）
+  budgetWeight? : number                    // 预留：跨节点预算分配（T2）
 }
 
 ReasoningEdge {
@@ -339,9 +344,9 @@ SPEC §1-⑩ 要求 `Trigger → 数据准备 → 模型计算 → 专家审核 
 
 **分期决策（诚实边界）**：
 
-- **Phase 1（本 PRD 范围）**：`human` 节点 = **非阻塞**形态 —— 产出 `ActionDraft`（走既有 `create_action_draft` 派发 + `action_draft.created` 事件），图在此节点后**以 render 收口**，答案含 action_draft 块。语义与今天完全一致，**不承诺"图会等审批回来再往下跑"**。
-- **Phase 2（另立单）**：跨请求 resume。落点**不新造**：范式复用 DataCore `BuildWorkflowRun`（本体 §2.A：6 步持久化状态机 + 检查点 + resume + 孤儿恢复 + `buildworkflow.*` 可观测流），迁移四处同改（R9）。
-- **红线**：Phase 1 的 UI/文案**绝不**出现"等待审批中，审批后自动继续"——那是界面替后端许一个它兑现不了的承诺（同 WO D5 对 D1 的硬依赖判据）。
+- **T1（本 PRD 范围）**：`human` 节点 = **非阻塞**形态 —— 产出 `ActionDraft`（走既有 `create_action_draft` 派发 + `action_draft.created` 事件），图在此节点后**以 render 收口**，答案含 action_draft 块。语义与今天完全一致，**不承诺"图会等审批回来再往下跑"**。
+- **T2（另立单）**：跨请求 resume。落点**不新造**：范式复用 DataCore `BuildWorkflowRun`（本体 §2.A：6 步持久化状态机 + 检查点 + resume + 孤儿恢复 + `buildworkflow.*` 可观测流），迁移四处同改（R9）。
+- **红线**：T1 的 UI/文案**绝不**出现"等待审批中，审批后自动继续"——那是界面替后端许一个它兑现不了的承诺（同 WO D5 对 D1 的硬依赖判据）。
 
 ---
 
@@ -515,25 +520,25 @@ makeRuntimeContext({ task, auth, skill, enabledFeatures, config }) → RuntimeCo
 
 ## 7. Runtime 链第一站与 Track A 的关系（必答题）
 
-### 7.1 裁决：**前置依赖 · 但精确到 Phase 2，且有一条必须合并实施的交集**
+### 7.1 裁决：**前置依赖 · 但精确到 Track A 的 R2，且有一条必须合并实施的交集**
 
 | Track A 分期 | 与 Runtime 的关系 | 说明 |
 |---|---|---|
-| **Phase 0**（先量后改·DRIL 金标集与召回率） | **可并行** | 纯度量，不改生产代码；Runtime 不依赖其结论即可施工 |
-| **Phase 1**（给 10 道门打 `routeSource` 标签） | **必须合并实施** | 见 7.2 |
-| **Phase 2**（正则门降级为白名单） | **Runtime 的硬前置** | 见 7.3 |
-| **Phase 3**（检索前置 / 分类器吃收窄目录） | **可后置** | Runtime 不依赖；两者落地后收敛为"一处检索 + 一处声明" |
-| **Phase 4**（`discover` 补 intents kind / 探索强制序） | **可后置** | 但探索强制序与 Reasoning Graph 的 `entry` 语义有重叠，立单时须交叉评审防造两套 |
+| **R0**（先量后改·DRIL 金标集与召回率） | **可并行** | 纯度量，不改生产代码；Runtime 不依赖其结论即可施工 |
+| **R1**（给 10 道门打 `routeSource` 标签） | **必须合并实施** | 见 7.2 |
+| **R2**（正则门降级为白名单） | **Runtime 的硬前置** | 见 7.3 |
+| **R3**（检索前置 / 分类器吃收窄目录） | **可后置** | Runtime 不依赖；两者落地后收敛为"一处检索 + 一处声明" |
+| **R4**（`discover` 补 intents kind / 探索强制序） | **可后置** | 但探索强制序与 Reasoning Graph 的 `entry` 语义有重叠，立单时须交叉评审防造两套 |
 
 ### 7.2 必须合并实施的交集：`routeSource` + `skillKey` 是同一条载荷
 
-Track A Phase 1 要给每道门打 `routeSource`（哪道门做的决定）；Runtime 需要在同一条 `routing.completed` 上标 `skillKey`（本题最终由哪个 Skill 执行）——**因为验收判据要能回答"这题走了哪道门、最终用了谁的预算"**。
+Track A **R1** 要给每道门打 `routeSource`（哪道门做的决定）；Runtime 需要在同一条 `routing.completed` 上标 `skillKey`（本题最终由哪个 Skill 执行）——**因为验收判据要能回答"这题走了哪道门、最终用了谁的预算"**。
 
 若拆两单做，必然出现两套标签口径（一套叫 `routeSource`、一套叫 `route`/`source`/`model` 前缀），而 `classification.model` 今天已经在承担半个标签职责（`deterministic:ceo-route` / `agent:role:<role>` / `llm-multi-intent` …）。**同一份载荷两处定义 = 两处会漂**（§0.4 R-一致）。
 
 → **合并成一张 WO**：`routing.completed` 载荷补 `{routeSource, skillKey}` + metrics 计数器 `qos_route_source_total{source,skill}`（今天 `apps/agentcore/src/metrics.ts` 无此计数器，本会话核实）。
 
-### 7.3 为什么 Phase 2 是硬前置（不拆门会怎样）
+### 7.3 为什么 R2 是硬前置（不拆门会怎样）
 
 具体路径，不是泛论：
 
@@ -545,14 +550,14 @@ Track A Phase 1 要给每道门打 `routeSource`（哪道门做的决定）；Ru
 
 → **不拆门，Runtime 只对"漏网之题"生效**。这会制造最坏的一种假象：Skill 声明齐全、门全绿、而线上大部分题根本没走 Runtime。这正是本仓反复吃亏的「声明了没接线」，只是换了一层。
 
-**Phase 2 的最小充分条件**（Runtime 立单可以只等这一条，不必等 Phase 3 全量检索前置）：每道门从"认得半个词就拦截"改成"**显式白名单才短路**"，判据不满足即放行下游。这一步不动次序、风险最低，且 E1 类事故整类消失。
+**R2 的最小充分条件**（Runtime 立单可以只等这一条，不必等 R3 全量检索前置）：每道门从"认得半个词就拦截"改成"**显式白名单才短路**"，判据不满足即放行下游。这一步不动次序、风险最低，且 E1 类事故整类消失。
 
 ### 7.4 依赖图（可执行的分期）
 
 ```
-Track A Phase 0（度量·可并行）
-Track A Phase 1  ⊕  Runtime W1（routeSource + skillKey 同一载荷）   ← 合并一 WO
-Track A Phase 2（白名单化）
+Track A R0（度量·可并行）
+Track A R1  ⊕  Runtime W1（routeSource + skillKey 同一载荷）   ← 合并一 WO
+Track A R2（白名单化）
         │  硬前置
         ▼
 Runtime W2（Reasoning Graph 编译 + 调度器 + 三处扇出收编）
@@ -627,7 +632,7 @@ Skill A.dependsOn = [B]
 
 | WO | 内容 | 🚦 范围边界（只碰） | 头号 SEAM 判据 |
 |---|---|---|---|
-| **W1** | `routeSource` + `skillKey` 载荷统一 + metrics 计数器（**与 Track A Phase 1 合并**） | `router/orchestrator.ts`（仅 emit 载荷）· `metrics.ts` · `sse/taskStreamReducer.ts` · 对应 test | 每条执行路径各跑一次 → `routing.completed.routeSource` 互不相同且与实际门一一对应 |
+| **W1** | `routeSource` + `skillKey` 载荷统一 + metrics 计数器（**与 Track A R1 合并**） | `router/orchestrator.ts`（仅 emit 载荷）· `metrics.ts` · `sse/taskStreamReducer.ts` · 对应 test | 每条执行路径各跑一次 → `routing.completed.routeSource` 互不相同且与实际门一一对应 |
 | **W2** | Reasoning Graph 契约 + `compileGraph` + `GraphScheduler` + 三处扇出收编 | `packages/contracts/src/qos.ts`（additive）· `agentcore/src/workflow/*` · `router/multi-route.ts` · `router/orchestrator.ts`（Coordinator 段） · scripts/check-graph-runtime.mjs（新建） | **A1 字节等价**（§10）+ **A2 并行真快**（§10） |
 | **W3** | `RuntimeContext` 统一工厂 + 预算接线（9 站点）+ 取消补线（`executor.ts:401`）+ 进度全路径 + 前端消费 | `agentcore/src/{engine,runtime}.ts` · `router/orchestrator.ts` · `tools/{executor,budget}.ts` · `agent/loop.ts`（仅 opts 收编）· `frontend-shell/src/sse/taskStreamReducer.ts` · `components/QueryDock/*` · scripts/check-progress-reachability.mjs（新建） | **B1 预算真变** + **C1 取消真停** + **D1 路径全覆盖**（§4/§5/§6） |
 | **W4** | `dependsOn` 内联展开 + 引用可校验硬门（全 kind） | `agentcore/src/skill-lint.ts` · `skill-compile*.ts`（新）· `server.ts`（lint/publish 两处）· `tools/clients.ts`（只读校验通道） | 「改 C08 影响哪些 Skill」一次查询返回真集合；引用不存在的 key → 发布真被拒（变异反证） |
@@ -706,7 +711,7 @@ Skill A.dependsOn = [B]
 | c | 80 条措辞用例 74/80、失败 6 条全 `model=coordinator` | WO E11 |
 | d | D1 探针「504 后 700ms 底层 `finished=0`」 | 审核方复验；本会话只核实了实现路径与提交，未复跑探针 |
 | e | 真 LLM 分类器对该题 `capacity_feasibility@0.95`、耗时 13.4/14.6/17.5 s | WO E4（真 LLM 探针） |
-| f | DRIL 检索的 top-1 准确率 / 误判率 / P95 耗时 | **尚不存在**——Track A Phase 0 的交付物；本文不据此设计任何判据 |
+| f | DRIL 检索的 top-1 准确率 / 误判率 / P95 耗时 | **尚不存在**——Track A **R0** 的交付物；本文不据此设计任何判据 |
 
 **明确不做的推测**
 

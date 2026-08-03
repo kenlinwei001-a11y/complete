@@ -192,3 +192,20 @@ runtime PRD 自己标注了两处与 WO 的口径差异，处理是对的（显�
 > **没有**逐份 PRD 做完整技术复审（例如 compiler 的编译管线是否可实现、
 > governance 的 trace 采集点是否够用，均未逐条验证）。
 > 五份 PRD 各自的 `file:line` 我抽查了本文引用到的那些，未做全量抽验。
+
+---
+
+## 9. 收口记录（本文提出后已落地的部分）
+
+| 条 | 状态 | 落地方式 |
+|---|---|---|
+| **C1 命名** | ✅ **已裁决（仓主 2026-08-03「ok」= 采纳）** | 采纳 `requires` 结构；`references[]`/`dependsOn[]` 降为**解析期输入别名**（读入即归一，不作为运行时字段）。写入 `docs/SPEC-industrial-skill.md` §9.1；`PRD-skill-migration` §10.3 的偏离行已改为「裁决结果 + 原提案存档」 |
+| **C2 门重名** | ✅ 随 C1 收口 | `skill-refs:check` 与 `skill-ref-closure:check` 合并为一道 `skill-refs:check` |
+| **C3 门总数 16→33** | 🟡 **仍无人认领** | 合并门账（谁跑 / 何时跑 / 红了谁修 / **每道门"曾真红过"的证据**）尚未立单。**任一份 PRD 落地前必须先有这张账** |
+| **C4 传播性错误** | ✅ 三处已掐掉 | `SPEC-industrial-skill.md` 两处（§2-⑫ 表格 + §4「三条最该先做」）· `PRD-skill-migration` §5.2 已改为「接一条已有的线 + 关掉 fail-open，不是造门」 |
+| **C5 Phase 2 三义** | ✅ 已改名 | 拆成 **M0–M3**（迁移线）· **R0–R4**（路由线 / WO Track A）· **T1–T2**（运行时线）。两份 PRD 均已全文替换且插入命名空间图例，**残留裸「Phase N」= 0**（机械核过） |
+| **C6 口径差异** | 🟡 部分 | 决策点计数两种口径（13+1 vs 10 道正则门）尚未在本体里并列写明——留待下次回写本体时补 |
+
+> **另记一条本文写作时未预见、实施中才暴露的事**：`PRD-skill-crossreview.md` 自身被
+> `check-prd-ontology.mjs` 索引为 `hasOntologyRef: false`（它是审查记录不是 PRD，无《本体引用与影响》节）。
+> 门不因此红（该门只生成索引不强制），但 `docs/prd-ontology-index.json` 会被每次 gate 重写 —— 需随提交同步，否则工作区永远脏。

@@ -5,11 +5,11 @@
 | 版本 | v1.0（2026-08-03） |
 | 上游 | `docs/WO-ROUTING-RETRIEVAL-FIRST.md` 四之四 Track E（仓主已定案：**Skill 吞并 Plan，不并列**）· `docs/SPEC-industrial-skill.md`（12 层目标形态 + §5 引用而非内联 + §7 两项定案） |
 | 解决问题 | 今天「这个意图怎么答」的权威在 `ExecutionPlan`（32/32 零缺），Skill（7 个）与意图**零引用边**。本文给出把 32 份 Plan 升格进 Skill 的**可执行迁移路线**：分期、每期的验收门、每道门的"有牙"证明、以及三件地基的前置关系 |
-| 不解决 | 不定义 Skill 的完整 12 层形态（那是 `SPEC-industrial-skill.md` 的职责）；不做路由改造（那是 Track A）；不改执行语义（Phase 1 的字节相等**要求**执行语义不变） |
+| 不解决 | 不定义 Skill 的完整 12 层形态（那是 `SPEC-industrial-skill.md` 的职责）；不做路由改造（那是 Track A）；不改执行语义（M1 的字节相等**要求**执行语义不变） |
 | 交付形态 | 本文只写路线与验收判据。**零代码改动**——实施由后续 WO 承接，范围边界见 §12 |
 
 > **本文的核心主张**：这次迁移最容易失败的方式，不是做不完，而是**做完了但门是恒真的**。
-> 所以本文把最大篇幅给了 Phase 1 的一致性门——它是整条路径的命门，一旦它没牙，
+> 所以本文把最大篇幅给了 M1 的一致性门——它是整条路径的命门，一旦它没牙，
 > 后面的"翻转成功"就只是把一份没人验证过的声明换到了权威位置上。
 
 ---
@@ -17,7 +17,7 @@
 ## 0. 本体引用与影响（铁律 0 · 强制）
 
 - **触及对象类型**（`docs/SYSTEM-ONTOLOGY.md` §2.H 交互/编排域）：
-  - `Intent`（`IntentDefinitionSchema`，`packages/contracts/src/qos.ts`）：`planId`/`planRef` 两个绑定字段在 Phase 2 被 Skill 引用取代。
+  - `Intent`（`IntentDefinitionSchema`，`packages/contracts/src/qos.ts`）：`planId`/`planRef` 两个绑定字段在 M2 被 Skill 引用取代。
   - `ExecutionPlan`（同文件）：从**一等注册对象**降为 `Skill.execution.plan` 的一个字段；`PlanStep` 判别联合**保留不动**（步骤语义是资产，不是负债）。
   - `Skill` / `SkillReference` / `SkillAttachment`（`packages/contracts/src/agentcore.ts`）：新增 `execution`、`businessIntent` 两组字段。
   - `ScenarioPackage`（Plan 的 `packageId` 归属）· `Scenario`（`intentKey` 指向）· `QueryTask`（`resolvedRefs` 的 kind 从 `plan` 变 `skill`）。
@@ -25,9 +25,9 @@
 - **触及链路**（§3 编排链）：
   `Query → [路由门] → classify → proceedWithIntent → fillSlots → **[本迁移改这一跳]** → 计划步（resolve_slice → invoke_solver → evaluate_rules → render_answer）`。
   改的只有「意图→可执行步骤」这一跳的**解析源**（`resolvePlanForIntent` → `resolveSkillForIntent`）；
-  `proceedWithIntent`/`fillSlots` 与右侧步骤执行器**一行不动**（这是 Phase 1 字节相等成立的前提）。
+  `proceedWithIntent`/`fillSlots` 与右侧步骤执行器**一行不动**（这是 M1 字节相等成立的前提）。
 - **触及事件**（§4）：**不新增事件名**。`routing.completed` 载荷不变；`step.started`/`step.completed` 不变。
-  Phase 2 之后 `skill.published` 成为「答法变更」的唯一广播口（今天是 plan publish + skill publish 两处）。
+  M2 之后 `skill.published` 成为「答法变更」的唯一广播口（今天是 plan publish + skill publish 两处）。
 - **触及不变量**（§5）：
 
   | 不变量 | 本迁移的影响 | 处置 |
@@ -35,43 +35,43 @@
   | R1 contracts-only-shared | `execution`/`businessIntent` 一律在 `@platform/contracts` 定义 | 不新增跨包依赖 |
   | R2 tenant_id everywhere | **Skill 是 tenant 级、Intent/Plan 是 package 级**——键空间不同 | §7.3 显式定键；多租户播种缺口见 §11 R-B（**真风险**） |
   | R3 entitlement 先于 authz | 硬约束③：翻转后必须**一处判定** | §7.4 + 新门 `skill-entitlement-single:check` |
-  | R4 真值经 Action | Skill 的 `approvalGate`/`sideEffect` 不得绕过既有 Action 审批链 | Phase 3 才碰；`action-wiring:check` 仍为唯一判据 |
+  | R4 真值经 Action | Skill 的 `approvalGate`/`sideEffect` 不得绕过既有 Action 审批链 | M3 才碰；`action-wiring:check` 仍为唯一判据 |
   | R6 确定性 | 字节相等验收的地基；但 `provId` 天然不稳定（`apps/agentcore/src/ids.ts`） | §6.3 规范化器 + 三条自证 |
   | R7 错误信封 | `PLAN_NOT_FOUND` → `SKILL_NOT_FOUND`（码变、信封形状不变） | 契约同步 |
   | R9 仓储双实现 | `plans` 表退役是**不可回退**动作 | §7.5：翻转与删表**分离**，删表须带 down |
   | R11 全链闭包 | `scenarioClosure` 的"意图未绑定执行计划"判据要改成"未绑定 Skill" | `apps/agentcore/src/server.ts` 两处（§7.2 清单） |
   | R13 结论可溯源 | provenance 是字节相等的比对对象之一 | §6.3 |
-  | R15 CLI 对等 | Plan 的管理面若有 CLI 等价，须随之迁移或登记 GUI 深链 | Phase 2 收口项，`cli-parity:check` 守 |
+  | R15 CLI 对等 | Plan 的管理面若有 CLI 等价，须随之迁移或登记 GUI 深链 | M2 收口项，`cli-parity:check` 守 |
   | R16 发育闭环 | 生长回路 `growth/scaffold.ts` 今天 scaffold 的是 Plan | §7.2 第 6 号写入方，必须一起翻 |
 
 - **触及门禁**（§7）：新增 **7 道**，全部进 `pnpm gates` → 聚合 **16 → 23**（当前 16 条，实测 `package.json:29`）：
 
   | 期 | 门 | 守什么 |
   |---|---|---|
-  | Phase 0 | `skill-export:check` | 32/32 意图各有 Skill，用例集从注册表派生不手抄 |
-  | Phase 0 | `skill-ref-closure:check` | 每个 `references[]` 的 key 真已注册（今天做不了，见 §5.2） |
-  | Phase 0 | `skill-business-intent:check` | Business Intent TODO 数棘轮，只降不升 |
-  | Phase 1 | `skill-plan-parity:check` | **命门**：两条路真跑 + 执行源可判别 + 规范化后字节相等（test-backed，同 `provisional-honesty:check` 模式） |
-  | Phase 2 | `skill-single-source:check` | 硬约束②：无第三处真源、六个写入方全收口 |
-  | Phase 2 | `skill-entitlement-single:check` | 硬约束③：entitlement 一处判定（含非 demo 租户用例） |
-  | Phase 3 | `skill-budget-effect:check` | 硬约束④：改 `maxBudgetRounds` → 探索轮次**真变**（效果层） |
+  | M0 | `skill-export:check` | 32/32 意图各有 Skill，用例集从注册表派生不手抄 |
+  | M0 | `skill-ref-closure:check` | 每个 `references[]` 的 key 真已注册（今天做不了，见 §5.2） |
+  | M0 | `skill-business-intent:check` | Business Intent TODO 数棘轮，只降不升 |
+  | M1 | `skill-plan-parity:check` | **命门**：两条路真跑 + 执行源可判别 + 规范化后字节相等（test-backed，同 `provisional-honesty:check` 模式） |
+  | M2 | `skill-single-source:check` | 硬约束②：无第三处真源、六个写入方全收口 |
+  | M2 | `skill-entitlement-single:check` | 硬约束③：entitlement 一处判定（含非 demo 租户用例） |
+  | M3 | `skill-budget-effect:check` | 硬约束④：改 `maxBudgetRounds` → 探索轮次**真变**（效果层） |
 
   七道门**必须逐条回写本体 §7**，否则 `ontology-writeback:check` 红。
 - **触及断点**（§8）：
   - 直接相关既有断点：`G-9`（场景卡闭包靠一次性手装播种）· `G-4`（意图↔计划配置面）· `G-1`（20 场景端到端）——三条都建立在「Plan 是权威」的前提上，翻转后**其描述必须回写**。
-  - 本迁移**新登记两条**（Phase 0 立项时写入本体 §8，闭合时改状态）：
+  - 本迁移**新登记两条**（M0 立项时写入本体 §8，闭合时改状态）：
 
     ```
     | G-SKILL-PLAN-DUAL-AUTHORITY | 同一意图「怎么答」有两处可写：ExecutionPlan（32/32 绑定·6 个写入方）
       与 SkillDefinition（7 个·与意图零引用边）；两边都能改、都能发布、互不知情
-      | Intent →(planRef)→ ExecutionPlan ⊥ Skill | 🔴 未修（本 PRD Phase 2 治）|
+      | Intent →(planRef)→ ExecutionPlan ⊥ Skill | 🔴 未修（本 PRD M2 治）|
 
     | G-SKILL-TENANT-SEED-ASYMMETRY | 意图/计划有任意租户懒播种通道（server.ts ensureScenarios → ensureScenarioPackageSeed），
       Skill **没有**——seedRegistry() 无 tenantId 入参、7 个种子 skill 全部硬编码 tenantId="demo"，
       只在 main.ts boot 时为 demo 播种。翻转后非 demo 租户必然「有意图·无 Skill」
-      | main.ts 播种 ⊥ server.ts 懒播种 | 🔴 未修（本 PRD Phase 2 硬前置）|
+      | main.ts 播种 ⊥ server.ts 懒播种 | 🔴 未修（本 PRD M2 硬前置）|
     ```
-- **CLI 打通（R15）**：Plan 管理今天**无** CLI 等价命令——`OPERATION_CATALOG`（`packages/contracts/src/operation-intent.ts`，17 条）全文零处提及 plan（已核实：该文件 `plan` 命中数 = 0）。故本迁移**不引入 CLI 洼地**（删掉的东西本来就没有 CLI 面）；但 Phase 2 若给 Skill 侧新增管理入口，须同步登记 `cliCommand` 或 `uiDeepLink`，否则 `cli-parity:check` 红。
+- **CLI 打通（R15）**：Plan 管理今天**无** CLI 等价命令——`OPERATION_CATALOG`（`packages/contracts/src/operation-intent.ts`，17 条）全文零处提及 plan（已核实：该文件 `plan` 命中数 = 0）。故本迁移**不引入 CLI 洼地**（删掉的东西本来就没有 CLI 面）；但 M2 若给 Skill 侧新增管理入口，须同步登记 `cliCommand` 或 `uiDeepLink`，否则 `cli-parity:check` 红。
 - **范畴**：把「一个意图怎么答」的权威从 ExecutionPlan 迁到 Skill，且保证迁移过程零行为漂移、迁移之后单一真源。
 
 ---
@@ -180,17 +180,22 @@ Skill（一意图一份 · 版本化 · entitlement 与意图同处判定）
 
 ## 3. 分期总览
 
+> **期号命名空间（`docs/PRD-skill-crossreview.md` C5 收口）**：本套 PRD 里「Phase N」曾同时指三件不同的事，
+> 已拆成三个互不相撞的前缀 —— **M0–M3** 迁移线（`PRD-skill-migration`）· **R0–R4** 路由线（WO Track A）
+> · **T1–T2** 运行时线（`PRD-skill-runtime-orchestrator` 自身范围）。**本文之后不再出现裸「Phase N」。**
+
+
 ```
-G3 命名定死 ──▶ Phase 0 影子声明 ──▶ Phase 1 一致性门 ──▶ Phase 2 权威翻转 ──┬─▶ G1 并行边 ──┐
-   (§10.3)          (§5)                (§6 · 命门)          (§7)            └─▶ G2 规则 DSL ─┴─▶ Phase 3（§8）
+G3 命名定死 ──▶ M0 影子声明 ──▶ M1 一致性门 ──▶ M2 权威翻转 ──┬─▶ G1 并行边 ──┐
+   (§10.3)          (§5)                (§6 · 命门)          (§7)            └─▶ G2 规则 DSL ─┴─▶ M3（§8）
 ```
 
 | 期 | 一句话 | 线上行为 | 可回退 | 出口判据 |
 |---|---|---|---|---|
-| Phase 0 | 为 32 意图各生成一份**影子** Skill，内容从现有物机械导出 | **一字节不变**（无人消费） | 删数据即回退 | 32/32 生成 + 引用闭包门绿 + Business Intent 全部为显式 TODO 哨兵（不是缺字段） |
-| Phase 1 | 建一致性门：**两条路真跑**，规范化后 answer + provenance 字节相等 | 不变 | — | 32/32 逐意图过 + 门自带三条"有牙"自证 + 两条变异反证按预期红 |
-| Phase 2 | 执行改读 `Skill.execution.plan`；删 Plan 的独立注册/播种/查询入口 | 用户感知为零（Phase 1 保证） | feature flag 一键回退；**表不删** | 双源红门绿 + entitlement 一处判定门绿 + **非 demo 租户**用例绿 |
-| Phase 3 | 扩 Skill 独有能力，**一次一项、每项配效果层门** | 逐项暗发 | 每项独立 flag | 每项：改声明 → 行为**真变**（不是只读出来） |
+| M0 | 为 32 意图各生成一份**影子** Skill，内容从现有物机械导出 | **一字节不变**（无人消费） | 删数据即回退 | 32/32 生成 + 引用闭包门绿 + Business Intent 全部为显式 TODO 哨兵（不是缺字段） |
+| M1 | 建一致性门：**两条路真跑**，规范化后 answer + provenance 字节相等 | 不变 | — | 32/32 逐意图过 + 门自带三条"有牙"自证 + 两条变异反证按预期红 |
+| M2 | 执行改读 `Skill.execution.plan`；删 Plan 的独立注册/播种/查询入口 | 用户感知为零（M1 保证） | feature flag 一键回退；**表不删** | 双源红门绿 + entitlement 一处判定门绿 + **非 demo 租户**用例绿 |
+| M3 | 扩 Skill 独有能力，**一次一项、每项配效果层门** | 逐项暗发 | 每项独立 flag | 每项：改声明 → 行为**真变**（不是只读出来） |
 
 ---
 
@@ -198,14 +203,14 @@ G3 命名定死 ──▶ Phase 0 影子声明 ──▶ Phase 1 一致性门 �
 
 | # | 硬约束原文 | 落成什么门 | 什么样算过 | 什么样是**假过** |
 |---|---|---|---|---|
-| ① | 零行为漂移：迁移前后 answer 与 provenance **字节相等** | `skill-plan-parity:check`（Phase 1 · test-backed + 薄脚本入 gates） | 32/32 意图、两条路**各自真跑**、规范化后字符串全等 | 只比对"Skill 里的 plan 字段 === Plan 的 steps"——**恒真**，因为影子声明本来就是从 Plan 导出的（同一份数据自己跟自己比） |
-| ② | 单一真源硬门：不得存在第三处描述"这个意图怎么答"的注册表 | `skill-single-source:check`（Phase 2，进 `pnpm gates`） | 任一意图同时解析出 Plan 与 Skill → 红；且**6 个写入方全部收口**（§7.2） | 只删 REST 端点、留着 `seed.ts` / `growth/scaffold.ts` / `ops/fallback.ts` / `internal/scaffold` 继续写 plan——端点测试全绿，真源仍是两份 |
-| ③ | entitlement 一处判定 | `skill-entitlement-single:check`（Phase 2） | 全 32 意图 × {feature 开, 关} 四象限，不存在"意图开着但 Skill 关着"或反之 | 只在 demo 租户测——**多租户维必然半开**（§11 R-B），单租户测不出来 |
-| ④ | 探索 Skill 的 `maxBudgetRounds` 必须有真消费方 | `skill-budget-effect:check`（Phase 3 首项 · test-backed） | 同一开放题，`maxBudgetRounds: 2` vs `6` → 观测到的 **LLM 往返次数真的不同**，且 2 的那次落 `degrade` | 断言"字段被读出来了 / 被传给 BudgetTracker 了"——那是运输层断言（#92 同族：账本记得对，没人读） |
+| ① | 零行为漂移：迁移前后 answer 与 provenance **字节相等** | `skill-plan-parity:check`（M1 · test-backed + 薄脚本入 gates） | 32/32 意图、两条路**各自真跑**、规范化后字符串全等 | 只比对"Skill 里的 plan 字段 === Plan 的 steps"——**恒真**，因为影子声明本来就是从 Plan 导出的（同一份数据自己跟自己比） |
+| ② | 单一真源硬门：不得存在第三处描述"这个意图怎么答"的注册表 | `skill-single-source:check`（M2，进 `pnpm gates`） | 任一意图同时解析出 Plan 与 Skill → 红；且**6 个写入方全部收口**（§7.2） | 只删 REST 端点、留着 `seed.ts` / `growth/scaffold.ts` / `ops/fallback.ts` / `internal/scaffold` 继续写 plan——端点测试全绿，真源仍是两份 |
+| ③ | entitlement 一处判定 | `skill-entitlement-single:check`（M2） | 全 32 意图 × {feature 开, 关} 四象限，不存在"意图开着但 Skill 关着"或反之 | 只在 demo 租户测——**多租户维必然半开**（§11 R-B），单租户测不出来 |
+| ④ | 探索 Skill 的 `maxBudgetRounds` 必须有真消费方 | `skill-budget-effect:check`（M3 首项 · test-backed） | 同一开放题，`maxBudgetRounds: 2` vs `6` → 观测到的 **LLM 往返次数真的不同**，且 2 的那次落 `degrade` | 断言"字段被读出来了 / 被传给 BudgetTracker 了"——那是运输层断言（#92 同族：账本记得对，没人读） |
 
 ---
 
-## 5. Phase 0 · 影子声明（不改一行执行代码）
+## 5. M0 · 影子声明（不改一行执行代码）
 
 ### 5.1 做什么
 
@@ -215,19 +220,25 @@ G3 命名定死 ──▶ Phase 0 影子声明 ──▶ Phase 1 一致性门 �
 
 **这一期结束时**：Skill 表里多了 32 份 DRAFT 影子；**没有任何执行路径读它们**；线上行为逐字节不变。
 
-### 5.2 Phase 0 的三道门（都不涉及执行）
+### 5.2 M0 的三道门（都不涉及执行）
 
 1. **导出完备**：`seedIntentsAndPlans().intents.map(i => i.key)` 逐条必须有对应 Skill——**用例集从注册表派生不手抄**
    （沿用 `scenario-phrasing-goldset.ts` 的防漂移纪律）。新增意图不配 Skill → 红。
 2. **引用闭包**（SPEC §5「必配硬门：引用可校验」的第一次落地）：
    每个 `references[]` 条目的 key 必须真已注册——`kind=solver` ∈ DataCore `SOLVER_KEYS`、`kind=rule` ∈ 已发布规则、
    `kind=ontologyType` ∈ 已发布本体、`kind=slice` ∈ 切片库、`kind=skill` ∈ skills。
-   **这道门今天做不了**（`skill-lint.ts:177` 明确跳过所有非 skill 引用），有引用清单后才成为可能——**是本期的直接新增能力，不是附带好处**。
+   ⚠️ **原稿写「这道门今天做不了」，经审核方逐条核对后更正**（`docs/PRD-skill-crossreview.md` C4）：
+   `skill-lint` 确实只校验 `kind=skill` 的引用（属实），**但由此推出"做不了"不成立**——
+   `probeMissingRefs`（`apps/agentcore/src/resources.ts`）**已经能校验非 skill 引用，且已接线两处**：
+   **workflow 发布**（`solverKeys`/`ruleKeys`）与 **agent 发布**（`objectTypes`）。
+   真实缺口只有两条：**① skill 发布路没接**（`POST /b/v1/skills/:id/publish` 只调 `lintSkill`）；**② 它自身 fail-open**。
+   → 本期的工作是**接一条已有的线 + 关掉 fail-open**，**不是从零造一道门**——
+   这条口径直接影响排期与风险评估，原稿的说法会把工作量整体高估。
 3. **Business Intent 棘轮**（`skill-business-intent:check`，见 §9）：
    `businessIntent` 契约上**必填**，允许值为显式哨兵 `{ status: "TODO", owner: "<待指派>" }`；
-   棘轮基线文件记录当前 TODO 数（Phase 0 结束时 = 32），**只许降不许升**（同 `scripts/debattery-baseline.json` 模式）。
+   棘轮基线文件记录当前 TODO 数（M0 结束时 = 32），**只许降不许升**（同 `scripts/debattery-baseline.json` 模式）。
 
-### 5.3 Phase 0 的诚实边界（必须写进导出器注释）
+### 5.3 M0 的诚实边界（必须写进导出器注释）
 
 - 17/32 的 `inputSchema` 是空壳（§1.2 边界 1），已打标 `x-derived: "empty-slots"`；
 - 12/32 无金标变体（11 CEO 意图 + `order_deep_360`），`examples` 只有各自 2~3 条；
@@ -236,11 +247,11 @@ G3 命名定死 ──▶ Phase 0 影子声明 ──▶ Phase 1 一致性门 �
 
 ---
 
-## 6. Phase 1 · 一致性门（**整条路径的命门**）
+## 6. M1 · 一致性门（**整条路径的命门**）
 
 ### 6.1 为什么"Skill 里有 plan 字段且内容相同"是恒真断言
 
-Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源物比对，比的是"复制成功"，不是"执行等价"。
+M0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源物比对，比的是"复制成功"，不是"执行等价"。
 这类断言在**任何**实现下都绿——**包括执行链根本没读 Skill 的实现**。
 （审核方本会话建探索门时，前四版全栽在这一类问题上，第五版才成。这不是理论风险。）
 
@@ -294,11 +305,11 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 
 1. **真 DataCore 下的字节相等**——本门跑在 `createMockDataCore` 上。跨服务面须补一条 `apps/datacore/test/xservice-smoke.test.ts` 同款用例（至少覆盖 `capacity_feasibility` 与 `affected_orders` 两条历史上真炸过接缝的链，见本体 §8 G-2）。
 2. **未覆盖的槽位组合**——32 条用例是每意图一组槽位，不是全组合。
-3. **探索/path-B 路径**——Phase 1 只管确定性题；探索侧到 Phase 3 才有 Skill 参与。
+3. **探索/path-B 路径**——M1 只管确定性题；探索侧到 M3 才有 Skill 参与。
 
 ---
 
-## 7. Phase 2 · 权威翻转
+## 7. M2 · 权威翻转
 
 ### 7.1 必须改的读取点（本分支实测清单，逐条 file:line）
 
@@ -313,7 +324,7 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 | 7 | `apps/agentcore/src/server.ts:2248` `ontologyOk` | **直接读 `intent.planId`** | 改读 Skill 绑定 |
 | 8 | `apps/agentcore/src/server.ts:2520` 场景发布链 | `resolvePlanByRef` + `publishPlan` | 改为 publish Skill |
 | 9 | `apps/agentcore/src/dril/resource-projector.ts:135` `projectIntents` | `boundPlanRef: i.planRef ? … : i.planId` | 改 `boundSkillRef`（DRIL 检索里"这个意图绑了什么"的显示口径） |
-| 10 | `apps/agentcore/src/catalog/service.ts:83/190` | `resolvePlanForIntent` / publish 校验 | 翻转后此函数只保留兼容读（Phase 2 观察期），观察期后删 |
+| 10 | `apps/agentcore/src/catalog/service.ts:83/190` | `resolvePlanForIntent` / publish 校验 | 翻转后此函数只保留兼容读（M2 观察期），观察期后删 |
 
 ### 7.2 **六个** ExecutionPlan 写入方（硬约束②的真实工作量 · 原路线骨架只点了前两个）
 
@@ -339,7 +350,7 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 
 - **既有隐含假设**：`server.ts:2021/2245/2516` 都在做 `repos.packages.listByTenant(tenantId)[0]`——**一租户一包**。
   这是**今天就存在**的假设，不是本迁移引入的；但翻转把它从"取第一个包"升级成**键唯一性要求**。
-- **处置（不许静默）**：Phase 2 加一条启动期断言——`每租户 package 数 ≤ 1` **或** `intentKey 在该租户全局唯一`；
+- **处置（不许静默）**：M2 加一条启动期断言——`每租户 package 数 ≤ 1` **或** `intentKey 在该租户全局唯一`；
   不满足则**拒绝启用翻转 flag** 并打诚实日志，而不是取第一个包接着跑。
 
 ### 7.4 entitlement 一处判定（硬约束③）
@@ -361,20 +372,20 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 ### 7.6 回退与删表：**分离**（这是我加的一条，原骨架未写）
 
 - 翻转由暗发 flag `qos.skill-execution-authority` 控制（`defaultOn:false` → 灰度开 → 全开），**任何时候一键回退**。
-- 回退可行的前提是 `plans` 表**还在**。故：**Phase 2 不删表**。
+- 回退可行的前提是 `plans` 表**还在**。故：**M2 不删表**。
 - 表级退役排到翻转后**连续两个发布周期无回滚**，且 migration 必须带 `down`（R9 可回退），
   memory/pg 双实现 + repo 接口四处同改。删表是不可回退动作——把它和"翻转"绑在一起，等于把回退开关焊死。
 
 ---
 
-## 8. Phase 3 · Skill 独有能力（一次一项 · 每项配效果层门）
+## 8. M3 · Skill 独有能力（一次一项 · 每项配效果层门）
 
 排序按"今天真在流血"，不按"字段表顺序"：
 
 | 序 | 扩展项 | 效果层门（改声明 → 行为**真变**） | 前置 |
 |---|---|---|---|
 | 1 | `maxBudgetRounds` 接消费方（硬约束④） | 同一开放题 `2` vs `6` → **LLM 往返次数真的不同**（用 `ScriptedLlmClient` 计数，`apps/agentcore/test/agent-budget.test.ts` 有同款先例），且 `2` 那次落 `degrade`（`apps/agentcore/src/agent/loop.ts` 唯一降级出口，`loop-control:check` 守）。接线点：`runPathB` 的 `new BudgetTracker(this.residualBudgetFromConfig())`（`apps/agentcore/src/router/orchestrator.ts:1617`）；`BudgetTracker` 构造为 `{...DEFAULT_AGENT_BUDGET, ...overrides}`（`apps/agentcore/src/tools/budget.ts:30-31`，默认 `maxRoundTrips: 24`，`packages/contracts/src/qos.ts:616-625`）。**优先级：env 硬预算 > skill 声明 > DEFAULT**（env 是运维闸，不能被声明绕过，立场同 `deploy-governance:check`） | 无 |
-| 2 | `antiExamples[]` + `exclusivity` | S12「涂布良率为什么掉了？」不再被判跨域会诊、S13 不再被「交付」拉走——`apps/agentcore/test/scenario-phrasing-seam.test.ts` 现有 6 条失败用例转绿即效果 | Track A Phase 2/3（路由改造） |
+| 2 | `antiExamples[]` + `exclusivity` | S12「涂布良率为什么掉了？」不再被判跨域会诊、S13 不再被「交付」拉走——`apps/agentcore/test/scenario-phrasing-seam.test.ts` 现有 6 条失败用例转绿即效果 | Track A R2/R3（路由改造） |
 | 3 | `acceptance.goldenCases[]` 自带验收 | 门**从注册表生成**：新增 skill 不配用例即红。替代今天"测试文件手写 80 条 + 特意从 catalog 派生防漂移"的做法 | 1 |
 | 4 | `outputSchema` 接消费方**或删**（SPEC §4-D5） | 故意让求解器返回缺字段的输出 → 必须被拒或被诚实标注，而不是照单渲染。**做不到就删字段**——留一个不校验的形状声明 = 制造"这件事做过了"的错觉 | 无 |
 | 5 | `progress.emitsNarration` / `phases[]` | 多角色 Coordinator 路径上旁白**真到达**（E9，今天真跑实测 0 条） | Track C1 |
@@ -392,7 +403,7 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
    `businessIntent` 不参与执行（它是给人和检索层看的）。把它列为翻转前置，等于把一条**与命门无关的人工输入**放进关键路径。
    这是本仓吃亏模式的镜像版：不是"声明了没接线"，而是"为了声明完整而推迟接线"——同样是让真正该跑起来的东西继续不跑。
 2. **(a) 的真实成本是双写期变长，而双写期正是漂移的温床。**
-   Phase 0 的影子声明与 Plan 并存期间，任何对 Plan 的改动都要**手动**同步到 Skill（Skill 还没有权威，没有门守）。
+   M0 的影子声明与 Plan 并存期间，任何对 Plan 的改动都要**手动**同步到 Skill（Skill 还没有权威，没有门守）。
    等 128 个语义判断（§1.3）走完组织流程，双写期会长到以周计。**而这次迁移的全部意义就是消灭"两处描述同一件事"**。
    把它拖长来换"声明完整"，是拿本金换利息。
 3. **(a) 会把一条技术迁移挂在一条组织流程上。** KPI 与决策场景需要业务方确认（§1.3），dev 编不出来——
@@ -409,7 +420,7 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 |---|---|---|
 | **契约必填 + 显式哨兵** | `businessIntent` 在 zod 上**必填**，但允许 `{ status:"TODO", owner:"<待指派>" }` | 缺字段可以被忽略，显式 TODO 不能——它会出现在每一次序列化里 |
 | **棘轮门** `skill-business-intent:check` | 基线文件记 TODO 数（翻转时 = 32），**只许降不许升**；新增 Skill 带 TODO 即红，已填的退回 TODO 即红。模式同 `scripts/debattery-baseline.json` | 防"填了一半就停"和"新 Skill 又开始欠债" |
-| **需求拉动，不行政摊派** | Phase 3 的每一项扩展，**必须先把它依赖的那几份 Skill 的 businessIntent 填掉**（谁用谁填），而不是"某天有人一次填 32 份" | R16 发育闭环的口径：由真实需求拉动补齐，一次填 32 份的批处理任务永远排不上优先级 |
+| **需求拉动，不行政摊派** | M3 的每一项扩展，**必须先把它依赖的那几份 Skill 的 businessIntent 填掉**（谁用谁填），而不是"某天有人一次填 32 份" | R16 发育闭环的口径：由真实需求拉动补齐，一次填 32 份的批处理任务永远排不上优先级 |
 
 **外加一条诚实处置**：`businessIntent.status === "TODO"` 的 Skill 在资源目录 / DRIL 检索里**降权但不隐藏**。
 不假装完整，也不制造"看不见就等于不存在"。
@@ -424,20 +435,20 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
 
 ## 10. 三件地基的排期与前置关系
 
-### 10.1 G1 · executor 并行边 —— 必须排在 **Phase 2 之后**、Phase 3 之前
+### 10.1 G1 · executor 并行边 —— 必须排在 **M2 之后**、M3 之前
 
-- **与 Phase 0/1/2 完全不依赖**：迁移不改执行语义，串行照旧。
-- **⛔ 且必须不与 Phase 1 同期**：Phase 1 的验收是**字节相等**。若在对照期间动 `apps/agentcore/src/workflow/executor.ts:104` 的执行次序，
+- **与 M0/1/2 完全不依赖**：迁移不改执行语义，串行照旧。
+- **⛔ 且必须不与 M1 同期**：M1 的验收是**字节相等**。若在对照期间动 `apps/agentcore/src/workflow/executor.ts:104` 的执行次序，
   两个变量同时动 —— 字节不等时**分不清是谁干的**。这是最典型的自毁对照组。
-- **是 Phase 3 序 6（Reasoning Graph 条件分支/汇流）的地基**：没有并行/汇流能力，Reasoning Graph 只能表达线性图，等于没做。
+- **是 M3 序 6（Reasoning Graph 条件分支/汇流）的地基**：没有并行/汇流能力，Reasoning Graph 只能表达线性图，等于没做。
 - **⚠ 真互斥（须点名）**：Track B1（Coordinator 角色并行扇出）落在**同一个文件同一段**。
   两单若并行推进会撞同一处改法 → **必须串行化，或一个 dev 整单做两者**。
 
-### 10.2 G2 · 规则 DSL 定去留 —— 必须先于 **Phase 3 的任何"规则维"扩展**
+### 10.2 G2 · 规则 DSL 定去留 —— 必须先于 **M3 的任何"规则维"扩展**
 
-- **Phase 0**：不受影响。`references[kind=rule]` 导出的是 **rule key**，不是 expression。
-- **Phase 1/2**：不受影响。plan 的 `evaluate_rules` 步语义原样搬运。
-- **Phase 3**：一旦 Skill 开始声明"这类题的阈值口径 / 规则 params 覆写"，就**直接踩上 `G-C08-EXPR-PARAM-SPLIT`**——
+- **M0**：不受影响。`references[kind=rule]` 导出的是 **rule key**，不是 expression。
+- **M1/2**：不受影响。plan 的 `evaluate_rules` 步语义原样搬运。
+- **M3**：一旦 Skill 开始声明"这类题的阈值口径 / 规则 params 覆写"，就**直接踩上 `G-C08-EXPR-PARAM-SPLIT`**——
   Skill 里写的 param 会**静默恒假**（机制见 §1.5），而且**比今天更糟**：
   今天只是 `rule.params` 无人读（一处诱饵），之后会变成"Skill 声明了、规则引擎读不到、四包测试全绿"（两处诱饵 + 假绿）。
 - **给决策的判据（不是本 PRD 定案）**：
@@ -447,26 +458,26 @@ Phase 0 的影子声明就是**从 Plan 机械导出**的。拿导出物跟源�
     把"静默恒假"改成"发布期红"。**这道门才是 G2 的真交付物**——只加个 operand kind 而不加门，
     下一个拼错字段名的人照样静默恒假。
 
-### 10.3 G3 · 命名定死 —— 必须先于 **Phase 0 开工**（成本最低点）
+### 10.3 G3 · 命名定死 —— 必须先于 **M0 开工**（成本最低点）
 
-Phase 0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子一旦有消费方（DRIL / 资源目录）就更贵。
+M0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子一旦有消费方（DRIL / 资源目录）就更贵。
 **要定的名（我的建议，请仓主裁决）**：
 
 | 名 | 建议 | 理由 |
 |---|---|---|
 | `execution` / `execution.mode` / `execution.plan` / `execution.body` | **采用**（同 Track E 表述） | 与已定案措辞一致 |
 | `businessIntent` | **采用** | SPEC §1-② 原词 |
-| 引用清单字段名 | **保留契约现名 `references[]` / `dependsOn[]`，不改叫 `requires`** ⚠ **这是我提的偏离，请裁决** | SPEC §7 定案 1 的**语义**（声明需求、不定义、装载期校验、不满足拒装）**全盘采纳**；但 `requires` 这个**词**在本仓已被 `FeatureDef.requires`（entitlement 依赖级联，`apps/agentcore/src/features/registry.ts`）占用。再用一次 = 同名不同义的第三套词表，正是 `G-SIDEEFFECT-VOCAB-SPLIT` 那一族的病（同一概念三套互不相识的词表 → 判定分支永不触发，测试照样绿）。**定案要的是语义不是词**。SPEC §6 包结构里的 `ontology/requires.yaml` 等**文件名**不受影响——文件名与运行时契约字段名是两回事 |
+| 引用清单字段名 | ✅ **仓主已裁决（2026-08-03）：采纳 `requires`，本偏离不成立** —— 运行时唯一真源为 `skill.requires{...}`（contract PRD §4.5 形状，含 `required`/`minStatus`/`properties[]`）；`references[]`/`dependsOn[]` **降为解析期输入别名**，读入即归一折进 `requires`，不作为运行时字段存在（故存量 7 个 Skill 与两处读取点无需大爆炸迁移）。裁决理由见 `docs/SPEC-industrial-skill.md` §9.1 与 `docs/PRD-skill-crossreview.md` C1：`FeatureDef.requires` 是**另一个对象的字段**、非顶层导出撞车（与 `ExecutionPlanSchema` 那次性质不同，先例不适用）；且扁平 `references[]` **表达不了** 「Factory 必须有 capacity 属性」这类契约式需求 —— 照原提案，定案 1 的语义落不了地。<br><s>原提案（存档）：保留契约现名 `references[]` / `dependsOn[]`，不改叫 `requires`</s> | SPEC §7 定案 1 的**语义**（声明需求、不定义、装载期校验、不满足拒装）**全盘采纳**；但 `requires` 这个**词**在本仓已被 `FeatureDef.requires`（entitlement 依赖级联，`apps/agentcore/src/features/registry.ts`）占用。再用一次 = 同名不同义的第三套词表，正是 `G-SIDEEFFECT-VOCAB-SPLIT` 那一族的病（同一概念三套互不相识的词表 → 判定分支永不触发，测试照样绿）。**定案要的是语义不是词**。SPEC §6 包结构里的 `ontology/requires.yaml` 等**文件名**不受影响——文件名与运行时契约字段名是两回事 |
 | Skill key | **`skill.key === intent.key`**（不另起命名空间） | 任何"意图 key ↔ skill key"映射表都是第三处真源 |
 | 探索 Skill key | 前缀 `explore.`（如 `explore.cross_base_compare` / `explore.default` 兜底） | Track E 说"未命中意图也单设一个探索 Skill"，但硬约束④要"跨基地对比给 6 轮、单点归因给 3 轮" → **必然多于一个**。基数目标 `\|Skill\| ≥ \|意图\|` 由 32 + N(explore) + M(dependsOn 子能力) 满足 |
 | 暗发 flag | `qos.skill-execution-authority`（BLOCK 级 · `defaultOn:false` · 双注册 datacore `features.ts` + agentcore `features/registry.ts`） | 沿用既有暗发纪律 |
 
 ### 10.4 排期结论一句话
 
-- **必须先于 Phase 0**：G3。
-- **必须先于 Phase 3**：G1（若含条件分支/汇流）、G2（若含规则维）。
-- **必须不与 Phase 1 同期**：G1（污染对照组）。
-- G2 与 Phase 0/1/2 **可完全并行**（不同文件、不同系统：G2 在 `apps/datacore`，迁移在 `apps/agentcore`）。
+- **必须先于 M0**：G3。
+- **必须先于 M3**：G1（若含条件分支/汇流）、G2（若含规则维）。
+- **必须不与 M1 同期**：G1（污染对照组）。
+- G2 与 M0/1/2 **可完全并行**（不同文件、不同系统：G2 在 `apps/datacore`，迁移在 `apps/agentcore`）。
 
 ---
 
@@ -474,8 +485,8 @@ Phase 0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子�
 
 | # | 风险 | 严重度 | 证据 | 止损 |
 |---|---|---|---|---|
-| **R-A** | **规范化器是 Phase 1 的单点故障**：过松则门恒绿，过紧则门恒红 | 🔴 | `provId` 天然不稳定（`apps/agentcore/src/ids.ts:15-23`） | §6.3 三条自证 + §6.4 两条变异反证 |
-| **R-B** | **多租户 Skill 播种缺口**（新发现，已登记为断点 `G-SKILL-TENANT-SEED-ASYMMETRY`）：`seedRegistry()` 无 `tenantId` 入参、7 个种子 skill 硬编码 `tenantId: SEED_TENANT`，只在 `apps/agentcore/src/main.ts:29` 为 demo 播种；而意图/计划有任意租户懒播种（`apps/agentcore/src/server.ts:1966` → `seed.ts:641`）。**翻转后非 demo 租户必然"有意图·无 Skill"**，且**单租户测试全绿测不出来** | 🔴 | 见左 | Phase 2 硬前置：`seedRegistry` 接 `tenantId` 并接进 `ensureScenarioPackageSeed`；门必须含非 demo 租户用例 |
+| **R-A** | **规范化器是 M1 的单点故障**：过松则门恒绿，过紧则门恒红 | 🔴 | `provId` 天然不稳定（`apps/agentcore/src/ids.ts:15-23`） | §6.3 三条自证 + §6.4 两条变异反证 |
+| **R-B** | **多租户 Skill 播种缺口**（新发现，已登记为断点 `G-SKILL-TENANT-SEED-ASYMMETRY`）：`seedRegistry()` 无 `tenantId` 入参、7 个种子 skill 硬编码 `tenantId: SEED_TENANT`，只在 `apps/agentcore/src/main.ts:29` 为 demo 播种；而意图/计划有任意租户懒播种（`apps/agentcore/src/server.ts:1966` → `seed.ts:641`）。**翻转后非 demo 租户必然"有意图·无 Skill"**，且**单租户测试全绿测不出来** | 🔴 | 见左 | M2 硬前置：`seedRegistry` 接 `tenantId` 并接进 `ensureScenarioPackageSeed`；门必须含非 demo 租户用例 |
 | **R-C** | **六个 Plan 写入方**（新发现，原路线骨架只点了两个）：目录 REST / 出厂播种 / `internal/scaffold` / `growth/scaffold` / `ops/fallback` / 冒烟脚本 | 🟠 | §7.2 逐条 file:line | `skill-single-source:check` 静态断言 2（禁 `repos.plans.insert(`） |
 | **R-D** | **键空间收窄**：Skill 是 tenant 级、Plan 是 package 级；翻转把"取第一个包"的隐含假设升级成键唯一性要求 | 🟠 | `server.ts:2021/2245/2516` 的 `listByTenant(…)[0]` | §7.3：启动期显式断言，不满足则拒绝启用翻转 flag |
 | **R-E** | **`requires` 词表冲突** | 🟠 | `FeatureDef.requires` 已占用（`features/registry.ts`） | §10.3 定名 |
@@ -492,22 +503,22 @@ Phase 0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子�
 | WO | 内容 | 范围边界（只碰这些） | 依赖 |
 |---|---|---|---|
 | **WO-SKILL-MIG-G3** | 命名定案回写（契约字段名 + 本体 §2.H 措辞） | `packages/contracts/src/agentcore.ts` · `docs/SYSTEM-ONTOLOGY.md` | 仓主裁决 §10.3 |
-| **WO-SKILL-MIG-P0** | 导出器 + 三道 Phase 0 门 | 新建 apps/agentcore/src/mocks/skill-export.ts · `apps/agentcore/src/mocks/seed.ts` · apps/agentcore/test/ 下新增用例 · 新建 scripts/check-skill-export.mjs、scripts/check-skill-ref-closure.mjs、scripts/check-skill-business-intent.mjs | G3 |
+| **WO-SKILL-MIG-P0** | 导出器 + 三道 M0 门 | 新建 apps/agentcore/src/mocks/skill-export.ts · `apps/agentcore/src/mocks/seed.ts` · apps/agentcore/test/ 下新增用例 · 新建 scripts/check-skill-export.mjs、scripts/check-skill-ref-closure.mjs、scripts/check-skill-business-intent.mjs | G3 |
 | **WO-SKILL-MIG-P1** | 一致性门（**数据侧 + 引擎侧同一 dev 整单**——判据 2 与判据 3 分开做必然出现"新路悄悄回落"却测不出来） | `apps/agentcore/src/router/orchestrator.ts`(仅加解析分支+flag) · `apps/agentcore/src/catalog/service.ts` · 新建 apps/agentcore/test/skill-plan-parity.seam.test.ts · `apps/datacore/test/xservice-smoke.test.ts`(补 2 条) | P0 |
 | **WO-SKILL-MIG-P2** | 权威翻转 + 六写入方收口 + 双源门 + entitlement 一处 + 多租户播种（**跨 A/B 与前后端两半，必须一 dev 整单**） | §7.1/§7.2 全清单 · 前端三处 · 新建 scripts/check-skill-single-source.mjs | P1 |
-| **WO-SKILL-MIG-P3-x** | Phase 3 逐项（每项一张 WO，一项一个效果层门） | 按项定 | P2（+ G1/G2 按 §10） |
+| **WO-SKILL-MIG-P3-x** | M3 逐项（每项一张 WO，一项一个效果层门） | 按项定 | P2（+ G1/G2 按 §10） |
 
 ### 12.2 金值 / 注册即更（LOOP 纪律 ④ · 漏一处即退）
 
 - `pnpm gates` 聚合计数：**16 → 23**（`package.json:29` 当前 16 条；七道新门见 §0）。每加一门须同步 §7 本体登记，否则 `ontology-writeback:check` 红。
 - 本体回写：§2.H（`ExecutionPlan` 降为字段）· §3（编排链那一跳的解析源）· §7（四道新门）· §8（两条新断点 + G-1/G-4/G-9 的描述随之改）。
-- 计数金值：Phase 2 后 `plans` 32 → 0（播种侧）、`skills` 7 → 39+（7 既有 + 32 迁移）。
+- 计数金值：M2 后 `plans` 32 → 0（播种侧）、`skills` 7 → 39+（7 既有 + 32 迁移）。
   `docs/SPEC-industrial-skill.md` §4 的「7 个 Skill 实测表」必须同步更新，否则那张表立刻过期。
 - 场景相关金值（20）**不变**——`SCENARIO_CATALOG.length` 派生的断言（如 `apps/agentcore/test/scenarios-wiring.test.ts:24`）不受影响。
 
 ### 12.3 复验判据（审核方头号依据）
 
-1. **SEAM-GATE**：Phase 1 的门本身就是接缝门（数据侧影子声明 × 引擎侧解析源）。**判据 2 与判据 3 必须在同一条测试里**——拆开就是"各半绿"。
+1. **SEAM-GATE**：M1 的门本身就是接缝门（数据侧影子声明 × 引擎侧解析源）。**判据 2 与判据 3 必须在同一条测试里**——拆开就是"各半绿"。
 2. **变异反证**：§6.4 的 M1/M2 必须当场跑给复验方看，且先证 `tsc --noEmit` RC=0（否则红是编译红）。
 3. **四包全绿**：`pnpm -r build && pnpm -r --workspace-concurrency=1 test`（datacore 勿并发多 vitest）。
 4. **门显式捕获退出码**：一律走 `bash scripts/gate.sh`；失败须打印 `error TS|FAIL|AssertionError` 原文，**禁止** `cmd | tail -n` 把错误挤掉。
@@ -530,5 +541,5 @@ Phase 0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子�
 - 17/32 `inputSchema` 空壳的计数是**静态推算**（5 显式 + 11 CEO 中 10 条有槽 → 15 有槽；32−15=17），未跑 `seedIntentsAndPlans()` 实测。
 - 本体 §7 声称"已并入 `pnpm gates`"的 `sim:check` / `propagation:check` / `sim-readiness:check` / `solver-license:check` / `opt-template:check` / `opt-determinism:check` **在本分支 `package.json` 中无对应 script**（`package.json:9-38` 全文核对）。这是本体与 package.json 的一处漂移，**原因未核实**（可能在别的分支、可能是本体过期）。§12.2 的"16 → 23"以 `package.json` 实测为准。
 - 部署库（PG）里已有的 `plans`/`skills` 真实数据分布未核实——本会话无法访问部署库。§7.6"不删表"的建议部分基于这个不确定性。
-- 真 DataCore（非 mock）下 32 条 plan 是否全部能跑通、跑通后的答案形态，未核实。Phase 1 §6.5 边界 1 正是为此留的口子。
+- 真 DataCore（非 mock）下 32 条 plan 是否全部能跑通、跑通后的答案形态，未核实。M1 §6.5 边界 1 正是为此留的口子。
 - Track A/B/C/D 各期的落地状态未核实（本文只引用 WO 文本，未验证其"已完成"章节的当前真伪）。
