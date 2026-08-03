@@ -1743,7 +1743,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // solverKey bound to any disabled feature → 404 FEATURE_NOT_FOUND (not 403).
   // Then OBO passthrough to DataCore /a/v1/solvers/{key}/invoke.
   // ---------------------------------------------------------------------
-  app.post("/b/v1/solvers/:key/run", async (req) => {
+  app.post("/b/v1/solvers/:key/run", async (req, reply) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
     const enabled = await deps.features.enabledSet(a.tenantId, a);
@@ -1753,17 +1753,39 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const body = z.object({ args: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
     // 增量 §0-2：同步求解 15s 超时 → 504 SOLVER_TIMEOUT（错误信封统一）。
     const timeoutMs = deps.config.SOLVER_RUN_TIMEOUT_MS;
+    // ── WO-D1 · 超时/断开 → **真取消**底层求解（此前只有 Promise.race：不再等它 ≠ 取消它） ──────────────
+    // 病灶实测：504@169ms 返回后再等 700ms，桩求解仍 finished=1（服务端还在烧）。全局推演页 portfolio
+    // （最重求解器）滑杆 debounce 300ms 连发 → 用户见「超时」→ 调参重试 → 服务端叠加求解、旧的仍在跑。
+    // 两条触发路径共用同一个控制器：① 本地 15s 超时；② 客户端断开（前端 AbortController / 网关断链）。
+    // abort → OBO fetch 中断 → DataCore 侧 reply.raw "close" → 取消传到求解执行 / 优化器 sidecar 调用。
+    const cancel = new AbortController();
+    const onClientGone = () => {
+      if (!reply.raw.writableEnded) cancel.abort(new Error(`solver ${key} run: client disconnected`));
+    };
+    reply.raw.on("close", onClientGone);
     let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`)),
-        timeoutMs,
-      );
+      timer = setTimeout(() => {
+        timedOut = true;
+        // 顺序要紧：先把 504 定死（race 就此定局），再 abort。反过来的话，取消信号的同步监听器会让
+        // invoke 先抛「已取消」而抢跑赢 race → 用户拿到 500 而非 504（真踩过：本文件测试①先红后绿）。
+        reject(new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`));
+        cancel.abort(new Error(`solver ${key} run exceeded ${timeoutMs}ms`));
+      }, timeoutMs);
     });
     try {
-      return await Promise.race([deps.dataCore.solver.invoke(a, key, body.args), timeout]);
+      return await Promise.race([deps.dataCore.solver.invoke(a, key, body.args, cancel.signal), timeout]);
+    } catch (e) {
+      // 兜底（不依赖上面的微任务顺序）：已判超时的请求，无论先抛出的是 504 还是"被我们取消"的下游错误，
+      // 对外一律 504 SOLVER_TIMEOUT —— 我们自己发起的取消不该塌成 500 误导排查。
+      if (timedOut && !(e instanceof HttpError)) {
+        throw new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`);
+      }
+      throw e;
     } finally {
       if (timer) clearTimeout(timer);
+      reply.raw.removeListener("close", onClientGone);
     }
   });
 

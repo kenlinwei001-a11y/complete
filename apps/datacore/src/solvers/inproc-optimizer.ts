@@ -28,6 +28,8 @@ import type {
   CrossObjectOccupancyRequest,
   CrossObjectOccupancyResult,
 } from "./optimizer-client.js";
+// WO-D1 · 取消透传：内存态贪心是**我们自己**的循环 → 逐项检查取消令牌即可真停（不是"不再等它"）。
+import { currentCancellationSignal, SolverCancelledError } from "./cancellation.js";
 
 export class InProcOptimizerClient implements OptimizerClient {
   /**
@@ -106,8 +108,10 @@ export class InProcOptimizerClient implements OptimizerClient {
 
     const occupancy: { item: string; base: string; window: number }[] = [];
     const served = new Set<string>();
+    const cancel = currentCancellationSignal(); // WO-D1：逐项检查（无信号 → 恒 undefined·行为不变）
     // 稳定序装入（大单先·id tie-break·确定性 R6）。
     for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
+      if (cancel?.aborted) throw new SolverCancelledError("portfolio 内存态贪心装入循环");
       const raw = byItem.get(id)!;
       // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
       //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
@@ -199,7 +203,9 @@ export class InProcOptimizerClient implements OptimizerClient {
     const ordered = [...req.orders].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
     const occupancy: { order: string; line: string }[] = [];
     const served = new Set<string>();
+    const cancel = currentCancellationSignal(); // WO-D1：同 portfolio，逐单检查取消
     for (const o of ordered) {
+      if (cancel?.aborted) throw new SolverCancelledError("cross_object_occupancy 内存态贪心装入循环");
       const cid = o.contractId;
       // 合同额度约束仅当该合同有登记额度时生效（未登记 = 不伪造额度约束，honest·与 bindContract=false 对称）。
       const contractHas = cid !== undefined && contractRemain.has(cid);

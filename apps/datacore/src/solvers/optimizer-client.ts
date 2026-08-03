@@ -5,6 +5,7 @@
  * 对外只暴露平台术语求解器键（selection_optimize…），不出现外部产品名（CLAUDE.md 命名铁律）。
  * 测试用 mock 实现（与 LLM 的 scripted/routed 双实现同构）；生产用 HttpOptimizerClient（env 发现）。
  */
+import { currentCancellationSignal, SolverCancelledError } from "./cancellation.js";
 
 export interface OptimizationItem {
   id: string;
@@ -304,11 +305,27 @@ export interface OptimizerClient {
 export class HttpOptimizerClient implements OptimizerClient {
   constructor(private readonly baseUrl: string) {}
 
+  /**
+   * WO-D1 · 取消透传到 sidecar 调用：请求作用域取消信号（cancellation.ts·客户端断开/上游超时派生）
+   * 直接喂给 fetch → 取消时**连接真中断**，datacore 不再等、不再占用 socket、也不再拿回结果。
+   *
+   * ⚠ 诚实边界（不许假装能取消）：`services/optimizer/server.py` 是 ThreadingHTTPServer +
+   * BaseHTTPRequestHandler，**没有取消接口、也不感知客户端断开** —— 那个 handler 线程会把当次 CP-SAT
+   * 求完（只在最后写响应到已死 socket 时失败）。所以这一层的真相是：**我们取消的是"调用"，不是"求解进程"**。
+   * 要让 sidecar 真停，需给 services/optimizer 加求解句柄 + 取消端点（或让其在 solve 回调里查连接存活），
+   * 那不在本 WO 边界内，故此处如实标注，不在上层谎报"底层已停"。
+   */
   private async post<T>(path: string, req: unknown): Promise<T> {
+    const signal = currentCancellationSignal();
     const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(req),
+      ...(signal ? { signal } : {}),
+    }).catch((e: unknown) => {
+      // 取消导致的 fetch 失败 → 统一成 SolverCancelledError（不冒充"引擎故障"）。
+      if (signal?.aborted) throw new SolverCancelledError(`optimizer ${path}`);
+      throw e;
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };

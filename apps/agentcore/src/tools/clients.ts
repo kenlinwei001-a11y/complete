@@ -66,7 +66,16 @@ export interface OntologyClient {
 }
 
 export interface SolverClient {
-  invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload>;
+  /**
+   * WO-D1 · 求解调用（OBO → DataCore /a/v1/solvers/{key}/invoke）。
+   *
+   * @param signal 可选取消信号。**取消 ≠ 不再等**：`Promise.race([invoke, timeout])` 只是不再等它，
+   * 底层求解照跑到底（审核方探针实测：504@169ms 之后再等 700ms → `finished=1`）。传入 signal 后，
+   * 上游超时 / 客户端断开 → abort → HTTP 请求真中断 → DataCore 侧感知连接断开 → 把取消继续传到
+   * 求解执行与优化器 sidecar 调用（见 datacore `solvers/cancellation.ts` 的可取消层清单与诚实边界）。
+   * 不传 = 现行为（不可取消），向后兼容。
+   */
+  invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolPayload>;
 }
 
 /** WO-DRIL-P1 · 规则投影供给侧（DataCore /a/v1/rules 的只读投影行，R1 REST·R13 派生）。 */
@@ -263,5 +272,17 @@ export class DataCoreHttpError extends Error {
   ) {
     super(message);
     this.name = "DataCoreHttpError";
+  }
+}
+
+/**
+ * WO-D1 · 调用被主动取消（上游超时 abort / 客户端断开）导致的 fetch 失败。
+ * 继承 DataCoreHttpError → 复用既有错误信封映射（499 = client closed request，nginx 惯例），
+ * 不冒充 `DATACORE_UNAVAILABLE`（那是"上游不可达"，与"我们自己取消了"是两回事，混淆会误导排查）。
+ */
+export class DataCoreRequestCancelledError extends DataCoreHttpError {
+  constructor(message: string) {
+    super(499, "SOLVER_CANCELLED", message);
+    this.name = "DataCoreRequestCancelledError";
   }
 }

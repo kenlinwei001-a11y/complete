@@ -83,6 +83,7 @@ import { resolveBaseId } from "./solvers/risk.js";
 import type { SolverContext } from "./solvers/types.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
+import { runWithCancellation } from "./solvers/cancellation.js"; // WO-D1 · 请求作用域求解取消令牌
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired, type ActionExecutor } from "./actions.js";
@@ -2741,7 +2742,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }));
     return resolveFieldRoles(types, solverKey);
   });
-  app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
+  app.post("/a/v1/solvers/:solverKey/invoke", async (req, reply) => {
     const { solverKey } = req.params as { solverKey: string };
     // entitlement first (404 FEATURE_NOT_FOUND), then authz/execution
     await requireFeatureTag(req, "solverKeys", solverKey);
@@ -2757,7 +2758,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         args = { ...cur.input, ...args }; // 基线兜底 + 显式 args 覆盖
       }
     }
-    return ontology.invokeSolver(ctx(req), solverKey, args);
+    // WO-D1 · 求解取消接入点：客户端提前断链（AgentCore 15s 超时后 abort 了 OBO fetch，或前端 AbortController
+    // 断开）→ reply.raw "close" 且响应未写完 → abort 请求作用域取消令牌 → 求解执行链上的可取消层
+    // （优化器 sidecar fetch / A18 沙箱子进程 / 内存态贪心循环 / await 检查点）就近真停，而不是"没人等了还在烧"。
+    // 正常完成路径：handler 先返回 → finally 摘监听 → 之后才写响应，故绝不会误取消（且未包裹时行为逐字节不变）。
+    const cancel = new AbortController();
+    const onClientGone = () => {
+      if (!reply.raw.writableEnded) cancel.abort(new Error("client disconnected"));
+    };
+    reply.raw.on("close", onClientGone);
+    try {
+      return await runWithCancellation(cancel.signal, () => ontology.invokeSolver(ctx(req), solverKey, args));
+    } finally {
+      reply.raw.removeListener("close", onClientGone);
+    }
   });
   app.post("/a/v1/derivations/run", async (req, reply) => {
     const c = ctx(req);

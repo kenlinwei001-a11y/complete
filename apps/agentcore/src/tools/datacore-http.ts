@@ -1,6 +1,7 @@
 import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import {
   DataCoreHttpError,
+  DataCoreRequestCancelledError,
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
@@ -23,7 +24,15 @@ import {
  * HTTP DataCore client: forwards every call to DataCore's REST API with the user's
  * JWT passed through (OBO). Connection errors → DATACORE_UNAVAILABLE.
  */
-async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(
+  baseUrl: string,
+  ctx: ToolAuthCtx,
+  method: string,
+  path: string,
+  body?: unknown,
+  /** WO-D1 · 可选取消信号：abort → 连接真中断（DataCore 侧据此感知客户端断开并取消求解）。 */
+  signal?: AbortSignal,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${baseUrl}${path}`, {
@@ -37,8 +46,11 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
             : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
   } catch {
+    // 取消导致的失败 ≠ 上游不可达：如实报 SOLVER_CANCELLED（499），不塌缩成 DATACORE_UNAVAILABLE。
+    if (signal?.aborted) throw new DataCoreRequestCancelledError(`DataCore ${method} ${path} 已取消（上游超时或客户端断开）`);
     throw new DataCoreUnavailableError();
   }
   if (!res.ok) {
@@ -200,8 +212,9 @@ class HttpOntologyClient implements OntologyClient {
 
 class HttpSolverClient implements SolverClient {
   constructor(private readonly baseUrl: string) {}
-  invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
-    return call(this.baseUrl, ctx, "POST", `/a/v1/solvers/${encodeURIComponent(solverKey)}/invoke`, { args });
+  /** WO-D1：signal 直达 fetch —— 上游超时/客户端断开 → 这条 OBO 请求真中断（DataCore 侧据此取消求解）。 */
+  invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolPayload> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/solvers/${encodeURIComponent(solverKey)}/invoke`, { args }, signal);
   }
 }
 
