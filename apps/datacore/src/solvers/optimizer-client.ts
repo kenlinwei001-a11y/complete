@@ -266,6 +266,20 @@ export interface PortfolioRequest {
    */
   multiObjective?: boolean;
 }
+/**
+ * WO-D2 · incumbent（可行但未证最优解）在**优化器这一层**的诚实现状 —— 写清楚做得到什么、做不到什么：
+ *
+ * - **做得到**：本结果的 `status`/`optimal` 已经是 sidecar 对「这个解到底是不是最优」的**如实自述**——
+ *   `OPTIMAL`+`optimal:true` = 可证最优；`FEASIBLE`+`optimal:false` = **求到了可行解但没证到最优**
+ *   （CP-SAT 打到求解上限时就是这个形态）。上层据此标注 incumbent 是有真依据的，不是猜的。
+ * - **做不到（不假装）**：`services/optimizer/server.py` 是 `ThreadingHTTPServer + BaseHTTPRequestHandler`，
+ *   **一次请求一次终局响应**：没有取消接口、不感知客户端断开、**也没有任何「求解中途把当前 incumbent
+ *   推回来」的通道**（既无 SSE/chunked 流，也无 `GET /incumbent?runId=` 之类的旁路）。
+ *   所以「CP-SAT 跑到一半、我们中途把它的 incumbent 抢出来」这件事**这一层做不到**——
+ *   要做到得给 sidecar 加求解回调 + incumbent 推送/查询端点（不在本 WO 边界）。
+ *   当前可行解的真实来源是：**DataCore 侧自有时间预算**（`SOLVER_INCUMBENT_BUDGET_MS`）在调用方放弃前收手，
+ *   把**已经拿到的**（整次求解已返回的）可行解交出去。上层绝不谎报"我们从 CP-SAT 中途取到了解"。
+ */
 export interface PortfolioResult {
   status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
   optimal: boolean;

@@ -358,6 +358,24 @@ const leverUnitFields = (typeKey: string, prop: string): { unit?: string; valueK
 };
 
 /**
+ * WO-D2 · DataCore 自有求解时间预算 → `PortfolioInput.incumbentDeadlineAt`（可行解截止时刻）。
+ *
+ * 为什么预算必须落在 DataCore 而不是只靠调用方超时：AgentCore `/b/v1/solvers/{key}/run` 超时后会
+ * **abort 那条 OBO fetch**（WO-D1 的真取消）——连接一断，DataCore 就算下一毫秒求出解也**没有回程通道**。
+ * 所以「超时前先回可行解」只有一种做法：**DataCore 自己盯着预算，在调用方放弃之前把已求到的可行解交出去**。
+ *
+ * 配置纪律：`SOLVER_INCUMBENT_BUDGET_MS` 必须 **< AgentCore 的 `SOLVER_RUN_TIMEOUT_MS`**（默认 15000），
+ * 留出回程时间；建议 12000 上下。**缺省不配 = 关**（返回 `{}` → 求解逐字节不变·R6 向后兼容）。
+ *
+ * 每次调用现读 env（非模块加载期快照）：便于运维热改、也便于测试逐用例设不同预算。
+ */
+function solveBudgetDeadline(startedAt: number): { incumbentDeadlineAt?: number } {
+  const raw = Number(process.env.SOLVER_INCUMBENT_BUDGET_MS ?? "");
+  if (!Number.isFinite(raw) || raw <= 0) return {}; // 未配/非法 → 关（不猜一个默认值出来）
+  return { incumbentDeadlineAt: startedAt + Math.floor(raw) };
+}
+
+/**
  * S1 real solver algorithms. All numeric constants come from the per-tenant
  * solver_params storage (seeded by the scenario pack); the battery defaults are
  * the fallback when a tenant has no record yet. Deterministic: same input +
@@ -2532,6 +2550,9 @@ export class SolverService {
    */
   private async portfolioOptimize(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!this.optimizer?.solvePortfolio) throw validationError("portfolio 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    // WO-D2 · 求解时间预算锚点（含下面六张表的读取时间——预算是**端到端**的，不只是求解那几毫秒）。
+    // 见 solveBudgetDeadline()：预算未配 → deadline=undefined → 本行以下逐字节不变（R6）。
+    const solveStartedAt = Date.now();
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
     const workOrders = (await this.repos.objects.listByType(ctx.tenantId, "WorkOrder")).map((o) => o.props);
     const demandSegments = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
@@ -2633,6 +2654,8 @@ export class SolverService {
       businessTypes: Array.isArray(args.businessTypes) ? args.businessTypes.map(String) : undefined,
       businessTypeRegime: BATTERY_SOLVER_PARAMS.businessTypeRegime as PortfolioInput["businessTypeRegime"],
       operatingDaysPerYear: num(BATTERY_SOLVER_PARAMS.operatingDaysPerYear, 300),
+      // WO-D2 · 自有求解预算 → 到点交出 incumbent（可行非最优解），赶在调用方超时放弃**之前**跨过网线。
+      ...solveBudgetDeadline(solveStartedAt),
     };
 
     // 编排路由：两阶段/物料/杠杆/硬锁/业务类型筛选/显式 globalSim → globalSimOptimize（GlobalSimResponse）；否则经典 portfolio（新增 线级/分批/递进 additive 亦经典路可达）。
