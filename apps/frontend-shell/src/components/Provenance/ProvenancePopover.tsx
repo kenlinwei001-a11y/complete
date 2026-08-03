@@ -74,6 +74,14 @@ export function ProvenanceProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => setState(null), []);
 
+  // 悬停延时在卸载时必须撤销：否则 300ms 后仍会 setState 到已卸载树 / 已拆除的测试环境上
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+
   return (
     <Ctx.Provider value={{ open, scheduleOpen, cancelScheduled, close }}>
       {children}

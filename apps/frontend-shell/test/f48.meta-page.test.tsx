@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 
@@ -15,6 +15,10 @@ describe("F48 · 系统自我（meta）页", () => {
 
     // 摘要（八类元对象计数）
     const summary = await screen.findByTestId("meta-summary");
+    // 确定性屏障：meta-summary 面板**恒存在**，findBy 只等到"面板出现"、等不到"数据到位"，
+    // 负载高时就会先撞上占位文案而红（实测复现）。等 data-ready（由查询真实 status 派生）之后
+    // 再用 getBy —— 屏障之后缺元素**立刻抛**，比会重试的 findBy 更严，不是放松断言。
+    await waitFor(() => expect(summary.getAttribute("data-ready")).toBe("1"));
     // WO-UNIT-MEANING：徽章此前是裸数「Breakpoint: 8」/「共 128」——补计数单位，点明数的是**本体节点个数**。
     expect(within(summary).getByText(/Breakpoint: 8 个/)).toBeTruthy();
     expect(within(summary).getByTestId("meta-total").textContent).toMatch(/^共 \d+ 个本体节点$/);

@@ -727,6 +727,20 @@ export function __resetSliceGovMock(): void {
   mockSliceGov.base_risk_profile = { rootType: "Base", fixtures: 0 };
 }
 
+/**
+ * mock 端唯一的异步定时器（模拟时钟推进）。**必须可取消**：用例结束后仍活着的句柄，其回调会在
+ * 测试环境拆除后才 fire —— 正是「全绿却 RC≠0」那条 teardown 期未捕获错误的火种。
+ */
+let clockTickTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 测试 teardown 调用：撤销 mock 端待触发的定时器（与 resetMockDb 配套） */
+export function clearMockTimers(): void {
+  if (clockTickTimer !== null) {
+    clearTimeout(clockTickTimer);
+    clockTickTimer = null;
+  }
+}
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -2457,7 +2471,9 @@ export const handlers = [
     const body = (await request.json()) as { advance: "1d" | "7d" };
     const days = body.advance === "7d" ? 7 : 1;
     db.clock.status = "TICKING";
-    setTimeout(() => {
+    // 记下句柄：mock 端的异步推进定时器若不可取消，用例结束后它仍会 fire（残留句柄 → teardown 期报错）
+    clockTickTimer = setTimeout(() => {
+      clockTickTimer = null;
       for (let i = 0; i < days; i++) {
         db.clock.currentTick += 1;
         const date = new Date(new Date(db.clock.simDate).getTime() + 86400_000);

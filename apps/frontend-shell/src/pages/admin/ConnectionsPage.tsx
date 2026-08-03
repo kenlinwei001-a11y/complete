@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ConnectorType } from "@platform/contracts";
@@ -286,6 +286,14 @@ function UploadCard({ onDone }: { onDone: (connId: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  // 跳转延时必须可取消：卸载后仍 fire 会在已拆除的路由/环境上跑（残留句柄 → teardown 期报错）
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (doneTimerRef.current !== null) clearTimeout(doneTimerRef.current);
+    },
+    [],
+  );
 
   const upload = async (file: File) => {
     setProgress(8);
@@ -293,7 +301,10 @@ function UploadCard({ onDone }: { onDone: (connId: string) => void }) {
     try {
       const res = await uploadFile(file);
       setProgress(100);
-      setTimeout(() => onDone(res.connId), 250);
+      doneTimerRef.current = setTimeout(() => {
+        doneTimerRef.current = null;
+        onDone(res.connId);
+      }, 250);
     } catch (e) {
       toastError(e);
       setProgress(null);
