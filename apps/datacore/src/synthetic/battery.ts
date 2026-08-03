@@ -1046,16 +1046,16 @@ const sopVersionRowDerived: DerivedPropertyDef[] = [
  * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前先把旧的置 REVOKED·② 单源 > 并存）。
  */
 const adoptedMitigationProps: PropertyDef[] = [
-  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "factor", dataType: "string", isPrimaryKey: false }, // 瓶颈因素（params.bottleneck.factors 之一）
-  { propKey: "planKey", dataType: "string", isPrimaryKey: false }, // params.risk.mitigations[factor][].key
-  { propKey: "planName", dataType: "string", isPrimaryKey: false }, // 方案中文名（审计可读·随 key 解出）
-  { propKey: "eff", dataType: "number", isPrimaryKey: false }, // 张力削减量（自方案库解出·非猜）
-  { propKey: "tn", dataType: "number", isPrimaryKey: false }, // 生效天（T+n 起扣 eff）
-  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false },
-  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false }, // R13 溯回审批链
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // ACTIVE | REVOKED
+  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true, description: "采纳记录唯一标识（一次审批通过写一条）" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base", description: "方案生效的生产基地（经 resolveBaseId 严格解析·解不出即拒写）" },
+  { propKey: "factor", dataType: "string", isPrimaryKey: false, description: "被处置的瓶颈因素（params.bottleneck.factors 之一，如 瓶颈工序/设备OEE/物流时长）" },
+  { propKey: "planKey", dataType: "string", isPrimaryKey: false, description: "方案库中的方案键（params.risk.mitigations[factor][].key）" },
+  { propKey: "planName", dataType: "string", isPrimaryKey: false, description: "方案中文名（审计可读·随 planKey 自方案库解出，非自由填写）" },
+  { propKey: "eff", dataType: "number", isPrimaryKey: false, unit: "点", description: "张力削减量：生效后风险张力逐日下调的幅度（自方案库解出·拒绝臆造）" },
+  { propKey: "tn", dataType: "number", isPrimaryKey: false, unit: "天", description: "生效天 T+n：自该日起风险曲线开始扣减 eff，之前逐日不变" },
+  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, description: "采纳时间（ISO 时间戳·审批通过写入时刻）" },
+  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, description: "采纳状态 ACTIVE｜REVOKED；同一 (baseId,factor) 至多一条 ACTIVE，改采新方案时旧条置 REVOKED" },
 ];
 
 const rootCauseChainProps: PropertyDef[] = [
@@ -2073,6 +2073,13 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     derivedProperties: [],
     sourceBindings: BINDINGS[key] ?? [],
   });
+  /** 同 plain，但带类型级 description（`ontology-descriptions:check` 要求 ACTIVE 类型必须有非空描述）。 */
+  const plainD = (
+    key: string,
+    displayName: string,
+    description: string,
+    properties: PropertyDef[],
+  ): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> => ({ ...plain(key, displayName, properties), description });
   return [
     { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
     { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
@@ -2124,7 +2131,14 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("RootCauseChain", "根因归因链", rootCauseChainProps),
     // WO-ADOPT-MITIGATION：已采纳处置方案台账（adopt_mitigation 执行器落点 → risk_timeline 真曲线消费）。
     // 出厂**无实例**（运行期由 Action 审批写入），故不入 generation/BINDINGS——注册为一等类型使其可查/可下钻/可审计。
-    plain("AdoptedMitigation", "已采纳处置方案", adoptedMitigationProps),
+    plainD(
+      "AdoptedMitigation",
+      "已采纳处置方案",
+      "风险处置方案的采纳台账：记录「哪个基地的哪个瓶颈因素、采纳了哪个方案、何时生效、削减多少张力」。" +
+        "它是 risk_timeline 真曲线的输入——没有这条记录，点了「采纳」曲线也不会动（G-ACTION-NOOP-EXEC）。" +
+        "出厂零实例，运行期由 adopt_mitigation 动作审批通过后写入。",
+      adoptedMitigationProps,
+    ),
     // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
     { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
     // Phase 3 MES Domain: Production Planning

@@ -82,26 +82,42 @@ describe("SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚
     expect(captured.length).toBe(1);
     const p = captured[0] as { base: string; factor: string; planKey: string };
 
-    // ① 效果层头号断言：**同一条载荷**原样喂真消费者 risk_timeline。
-    //    解析不出方案 / 基地它自己就抛（`unknown mitigation plan` / `unknown base`）——这一步就是"真的能用"。
-    const card = (await riskTimeline(t, { base: p.base, factor: p.factor, mitigation: { base: p.base, factor: p.factor, planKey: p.planKey } })).cards[0]!;
-    expect(card.mitigated, "risk_timeline 没产出处置曲线 —— 载荷解析不出方案的 {eff,tn}").toBeTruthy();
-    const before = card.series;
-    const after = card.mitigated!.series;
+    // ① 效果层头号断言。**WO-ADOPT-MITIGATION 后本条升级**（原断言已过期，见下）：
+    //    旧世界里「采纳」不改变任何真值，故只能拿**对照曲线** `card.mitigated`（"如果采纳会怎样"）与
+    //    `card.series` 比。执行器接上后，replay 这一跑**真的写了 AdoptedMitigation**，于是
+    //    `card.series` 自己就已经是降过的 —— 再问"如果采纳同一方案会怎样"，正确答案是"没有额外收益"
+    //    （risk.ts:507 语义边界：同因素方案互斥不叠加）。旧断言 `after < before` 因此必然失败，
+    //    **那是修好了的证据，不是回归**（插桩实测：dryRun 那次 before=[91,91,92,…] after=[91,91,83,…]；
+    //    执行后那次 before 已是 [91,91,83,…]）。
+    //    新断言更强：不再问"对照曲线低不低"，直接问**真曲线自己降没降**。
+    const card = (await riskTimeline(t, { base: p.base, factor: p.factor })).cards[0]!;
+    expect(
+      card.adoptedMitigation,
+      "replay 审批链走完但真曲线上看不到采纳 —— 台账没写或 riskTimeline 没消费（正是本单要治的病）",
+    ).toBeTruthy();
+    expect(card.adoptedMitigation!.planKey).toBe(p.planKey);
+    // 对照组：同一 (base,factor) 在**没有采纳**时的曲线（干净上下文重算）——真降的基准线。
+    const t2 = await makeApp();
+    await seedBattery(t2);
+    const clean = (await riskTimeline(t2, { base: p.base, factor: p.factor })).cards[0]!;
+    const before = clean.series;
+    const after = card.series;
 
-    // ② 方案库复核（口径与 risk.ts:438 消费处逐字一致）→ 拿真 tn 作曲线断言的边界。
+    // ② 方案库复核（口径与 risk.ts 消费处逐字一致）→ 拿真 tn 作曲线断言的边界。
     const lib = (await t.services.solvers.getParams("demo")).risk.mitigations[p.factor];
     expect(lib, `factor「${p.factor}」不在 params.risk.mitigations 里 —— 修前 kernel 正是这样派的（cf-decision-gap）`).toBeTruthy();
     const plan = lib!.find((x) => x.key === p.planKey || x.name === p.planKey)!;
     expect(plan, `planKey「${p.planKey}」不在因子「${p.factor}」的方案库里`).toBeTruthy();
     // risk.ts:280 口径：逐日 d 从 1 起，`d >= tn` 才削减 → 数组下标 i = d−1。
-    expect(card.mitigated!.effectiveFrom).toBe(plan.tn);
+    expect(card.adoptedMitigation!.tn).toBe(plan.tn);
+    expect(card.adoptedMitigation!.eff).toBe(plan.eff);
+    // risk.ts 口径：逐日 d 从 1 起，`d >= tn` 才削减 → 数组下标 i = d−1。
     for (let i = plan.tn - 1; i < before.length; i++) {
-      expect(after[i]!, `第 ${i + 1} 天处置后张力 ${after[i]} 未低于基线 ${before[i]}（曲线没真降）`).toBeLessThan(before[i]!);
+      expect(after[i]!, `第 ${i + 1} 天采纳后真曲线 ${after[i]} 未低于未采纳基线 ${before[i]}（曲线没真降）`).toBeLessThan(before[i]!);
     }
     // 生效前（d < tn）两条曲线必须重合——降得「提前」就是编的。
     for (let i = 0; i < plan.tn - 1; i++) expect(after[i], `第 ${i + 1} 天（方案 T+${plan.tn} 才生效）曲线就动了`).toBe(before[i]);
-    expect(card.mitigated!.peak).toBeLessThan(card.peak);
+    expect(card.peak).toBeLessThan(clean.peak);
   });
 
   it("A·链路层：replay 的单真能过 paramsSchema + planner→admin 两步审批链，剩下的唯一失败是执行器欠账", async () => {
@@ -115,10 +131,11 @@ describe("SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚
 
     // 两步审批链真走完（planner 一审 + admin 终审），不是卡在 400/409。
     expect(draft.approvalSteps.map((s) => s.decision)).toEqual(["APPROVE", "APPROVE"]);
-    // 执行侧：`adopt_mitigation` 仍无真执行器 → 诚实失败（**本单范围外的欠账**，此处显式钉住）。
-    // 执行器接上后此断言改为 EXECUTED + AdoptedMitigation 真写入；派单侧不需要再动。
-    expect(draft.status).toBe("EXECUTION_FAILED");
-    expect(draft.executionResult!.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    // 执行侧：WO-ADOPT-MITIGATION 已接真执行器 → **按原注释留下的指示**把断言从 EXECUTION_FAILED
+    // 改为 EXECUTED + AdoptedMitigation 真写入（派单侧一行未动，正如当初预期）。
+    expect(draft.status).toBe("EXECUTED");
+    const ledger = await t.repos.objects.listByType("demo", "AdoptedMitigation");
+    expect(ledger.length, "审批 EXECUTED 了却没写台账 —— 又一次「状态绿、真值空」").toBeGreaterThan(0);
     // 绝不允许出现 MO 形态假单号（真假不可分辨 = 本仓刚清掉的病）。
     expect(String(draft.executionResult!.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
   });
