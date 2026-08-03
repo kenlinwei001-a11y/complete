@@ -316,3 +316,45 @@ skill_package/
 模板的多文件包结构**天然映射到既有 `resources[]`**（`SkillAttachment`，带 mime/description，
 agent 经 `read_skill_resource` 渐进披露）。该字段今天 **7/7 全空**。
 **故不需要新造承载机制** —— 包里每个文件就是一条 resource。
+
+---
+
+## §7 · 两项定案（仓主）
+
+### 定案 1 · `requires` 改造 —— **采纳**
+
+包内四类文件一律改为**需求声明**（`requires`），不得实现成定义：
+
+```
+skill_package/
+├── ontology/requires.yaml   # 我需要 Factory，且它必须有 capacity 属性
+├── rules/requires.yaml      # 我需要 C03、C09，且必须已 PUBLISHED
+├── tools/requires.yaml      # 我需要 invoke_solver、mes.query
+└── solver/requires.yaml     # 我需要 capacity_forecast
+```
+
+**`requires` 是契约，不是副本。** 装载/发布时一道门校验宿主系统是否满足；
+**不满足则拒绝安装**，而不是带着自己那份定义偷偷跑。
+
+两个目标由此同时成立：**包自足可分发**（完整声明依赖）+ **定义单一真源**（规则/本体/工具/求解器各只有一处）。
+
+### 定案 2 · `solver/model.lp` —— **求解器引用 + 参数内联，不带独立模型文件**
+
+```yaml
+solver:
+  ref: capacity_forecast          # 引用已注册求解器（57 个之一）
+  objective:                       # ← 本 Skill 专属·内联
+    maximize: [delivery_rate, profit]
+  weights: { delivery_rate: 0.7, profit: 0.3 }
+```
+
+**理由**：不同 Skill 可以用同一求解器但不同目标函数 —— 目标/权重是 Skill 专属语义（符合 §5 判据：
+"变了只有这一个 Skill 该变"），故**内联**；而求解器本身（引擎、变量、结构性约束）是共享资源，故**引用**。
+
+**明确排除**：包内不带独立 `.lp` / `.mps` 等模型文件。**带模型文件等于绕过求解器注册表自带一个引擎** ——
+那会让「哪个数学模型在跑」失去单一真源，且脱离 `SOLVER_ARGS_SCHEMAS` 的入参校验与
+求解器注册表的可发现性（`discover(kind=solvers)` / DRIL 检索都看不见它）。
+
+> **诚实边界**：此定案覆盖"同引擎不同目标"这一主流用法。
+> 若将来出现**真正需要自带模型结构**的 Skill（新变量族/新约束族），
+> 正解是**向求解器注册表新增一个求解器**并被引用，而不是在 Skill 包里夹带模型文件。
