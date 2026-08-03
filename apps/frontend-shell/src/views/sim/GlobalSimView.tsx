@@ -8,6 +8,7 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { toastError } from "@/store/toastStore";
 import { Feature } from "@/workspace/featureGate";
+import { RecomputeConfirmDialog } from "@/components/RecomputeConfirmDialog";
 import { useLiveSolver } from "./useLiveSolver";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
@@ -127,6 +128,17 @@ const provTitle = (p: Prov) => `溯源 ${p.kind}：${p.drillType}.${p.drillField
 // （KILL-MOCK-RED·不标假口径）。注：mock apps/frontend-shell/src/mocks/simSolvers.ts 仍写死 21（本单只读边界·见回报）。
 const PORT_WINDOW_DAYS = 14;    // = datacore portfolio.ts windowDays 缺省口径
 const PORT_FORECAST_START = "2026-06-10"; // 原型 T0（HTML_ORDERS forecastStart·交付日 ISO 锚）
+/**
+ * D5 · 需二次确认的**离散型** arg 键（开关 / 下拉 / 三态勾选 / 批次增删 / 排序按钮）——
+ * 求解在途时改这些 → 弹窗问一句再决定是否取消上一次推演。
+ * 故意**不含**滑杆/数字输入等连续控件所改的键（methodWeights 权重滑杆 · epsilon 上界 ·
+ * finalDueDays 最终交期 · committedBatches 转拨量滑杆 · twoStage/nonce）：每动一下弹一次框不可用，
+ * 连续控件照旧 debounce + 取消前序（D1 并线后取消是真的，本就免费）。
+ */
+const PORT_CONFIRM_ARG_KEYS = [
+  "orderIds", "frozenOrderIds", "scenarios", "objective",
+  "frozenCapacityMode", "method", "priority", "levers", "businessTypes", "splitOrderIds",
+] as const;
 /** 基地 id→名（BASE_REGISTRY 单一来源·R14·补 transfer.toBase 等未在分配中的基地名）。 */
 const BASE_NAME_BY_ID = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
 
@@ -280,9 +292,11 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     } : null),
     [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, transferBase, transferWan, nonce],
   );
-  const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult);
+  const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult, { confirmKeys: PORT_CONFIRM_ARG_KEYS });
   const d = res.data;
   const adopt = useActionDraft();
+  // D5 · 结果区与参数不一致时（用户选「否」/主动取消后）置灰 —— 红线：绝不让屏上结果与旁边显示的参数对不上。
+  const staleStyle = res.isStale ? { opacity: 0.42, filter: "grayscale(1)" } : undefined;
 
   const toggleScen = (k: string) => setScenarios((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
 
@@ -412,6 +426,30 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </span>
       </div>
 
+      {/* D5 · 二次调参确认（求解在途 + 离散调参才弹；滑杆等连续控件不弹·照旧 debounce + 取消前序） */}
+      {res.needsConfirm && (
+        <RecomputeConfirmDialog
+          elapsedMs={res.elapsedMs}
+          what="全局联合推演"
+          onConfirm={res.confirmRecompute}
+          onKeep={res.keepCurrent}
+        />
+      )}
+
+      {/* D5 · 结果区旧参数标（用户选「否」/主动取消后）：改动已保留、结果未重算 → 明标 + 一键重算，绝不静默不一致 */}
+      {res.isStale && (
+        <div
+          className={styles.noteRed}
+          data-testid="global-sim-stale-banner"
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        >
+          <span>⚠ 参数已改 · 当前结果对应旧参数（你的改动已保留，未被丢弃；下方结果与产能矩阵仍是上一组参数算出来的）。</span>
+          <button className={styles.btnPrimary} data-testid="global-sim-stale-recompute" onClick={res.recompute}>
+            按新参数重算
+          </button>
+        </div>
+      )}
+
       {/* WO-W5 · 业务类型勾选筛选（乘/商/储）+ 分口径经营场景（勾选 → 后端在收窄世界真重解·矩阵/KPI 真变） */}
       <div className={styles.glass} data-testid="global-sim-business-type">
         <span className={styles.grpLabel}>[ 业务类型（{(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}）· 勾选筛选后联合推演 ]</span>
@@ -515,10 +553,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           onFreeLeversChange={setFreeLevers}
           candidates={leverCandidates}
           leverDeltas={d?.leverDeltas ?? []}
+          elapsedMs={res.elapsedMs}
+          onCancel={res.cancel}
+          stale={res.isStale}
+          onRecompute={res.recompute}
         />
 
-        {/* ③ 中央 Hero：产能占用矩阵 + 目标 segmented + 守恒 ✓ */}
-        <div className={styles.glass}>
+        {/* ③ 中央 Hero：产能占用矩阵 + 目标 segmented + 守恒 ✓（D5：参数已改未重算 → 置灰，不与旁边参数对不上） */}
+        <div className={styles.glass} data-testid="global-sim-hero" data-stale={res.isStale} style={staleStyle}>
           <span className={styles.grpLabel} title="每个格子 = 某基地在某个时间窗的产能占用率（已排产量 ÷ 可用产能）；颜色越暖代表越接近满载。鼠标悬停格子可查看该数字的数据来源（溯源）。">[ 产能占用矩阵 · 基地 × 时间窗 · 悬停格子查看数据来源 ]</span>
           <div className={styles.heroTools}>
             <div className={styles.segmented} data-testid="global-sim-objective">
@@ -717,6 +759,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {/* 求解结果读数（KPI 卡） */}
             {d && primaryScen && (
               <>
+                {/* D5：参数已改未重算 → 结果读数置灰（红线：结果绝不与旁边显示的参数不一致） */}
+                <div data-testid="global-sim-results" data-stale={res.isStale} style={staleStyle}>
                 <div className={styles.readoutRow} data-testid="global-sim-readout">
                   <div className={styles.readout}><b>{ontimeRate.toFixed(0)}%</b><span>按期率（{SCEN_LABEL[primary]}）</span></div>
                   {/* WO-UNIT-MEANING：后端 portfolio 已下发 cost.unit（"代价单位"=惩罚加权分·非货币），
@@ -768,13 +812,15 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                     {tradeoff.dCost > 0 ? "多按期以更高代价换取（数字取自求解器真值·非估算）。" : "当前主方案代价不高于最低代价方案。"}
                   </div>
                 )}
+                </div>
 
                 <div className={styles.actions}>
                   <button className={styles.btnPrimary} data-testid="global-sim-solve" disabled={res.isFetching} onClick={() => setNonce((n) => n + 1)} title="按当前的杠杆、勾选订单和目标，重新做一次全局联合排产。">
                     {res.isFetching ? "求解中…" : "发起联合求解"}
                   </button>
-                  <button className={styles.btnGhost} data-testid="global-sim-adopt" disabled={adopt.isPending} onClick={onAdopt} title="采纳 → 生成 plan_change Action 草稿（走 S2 审批·不直改排产真值 R4）">
-                    {adopt.isPending ? "生成草稿中…" : "采纳方案（→ Action 审批）"}
+                  {/* D5：结果对应旧参数时不许采纳（采纳的必须是屏上参数真算出来的方案·非过期解） */}
+                  <button className={styles.btnGhost} data-testid="global-sim-adopt" disabled={adopt.isPending || res.isStale} onClick={onAdopt} title={res.isStale ? "当前结果对应旧参数——请先按新参数重算再采纳" : "采纳 → 生成 plan_change Action 草稿（走 S2 审批·不直改排产真值 R4）"}>
+                    {adopt.isPending ? "生成草稿中…" : res.isStale ? "采纳方案（需先重算）" : "采纳方案（→ Action 审批）"}
                   </button>
                 </div>
               </>

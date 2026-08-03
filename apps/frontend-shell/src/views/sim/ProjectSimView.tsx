@@ -259,7 +259,22 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
             一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
           </div>
         </div>
-        {forecast.isFetching && <span style={{ fontSize: 11, color: "var(--muted2)" }}>重算中…</span>}
+        {/* D5 · 在途可见：不止「重算中…」——补已耗时（秒级递增）+ 主动取消（用户可直接放弃，不必靠改参数间接取消）。
+            本页杠杆全是连续控件（滑杆/数字框）→ 按仓主定案**不弹二次确认框**，照旧 debounce + 取消前序。 */}
+        {forecast.isFetching && (
+          <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid="proj-sim-recalc">
+            重算中… 已耗时 <b className="mono" data-testid="proj-sim-elapsed">{Math.floor(forecast.elapsedMs / 1000)}</b> 秒
+            <button
+              type="button"
+              data-testid="proj-sim-cancel-solve"
+              title="放弃本次推演（服务端会真的中止底层求解）"
+              onClick={forecast.cancel}
+              style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+            >
+              取消
+            </button>
+          </span>
+        )}
       </div>
 
       <div className={styles.projGrid}>
