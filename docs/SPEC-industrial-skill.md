@@ -114,7 +114,7 @@ Trigger → 数据准备 → 模型计算 → **专家审核** → 生成方案 
 | 9 | **Solver Integration** | 🟢 **有真物** | 57 个注册求解器 + CP-SAT sidecar（`services/optimizer`）+ `SOLVER_ARGS_SCHEMAS` | Skill 不声明绑哪个 solver / objective / constraints。**sidecar 无取消接口**（D1 已查实：`ThreadingHTTPServer`，不感知客户端断开——我们取消的是"调用"不是"求解进程"） |
 | 10 | **Workflow Execution** | 🟡 **有物·但审批与 Skill 不连** | `workflow/executor.ts`（**串行 for…await·无 `Promise.all`** ← E5：三角色 203s 的成因）+ Action 审批链（`approvalChain` 1–3 级） | Skill 无 workflow 绑定。**长流程里的"专家审核/审批"今天只在 Action 层有**，Skill 层不声明"我这一步需要人审"。另 `采纳经营方案` 仍是唯一 `NOT_IMPLEMENTED` 的 ActionType（#81） |
 | 11 | **Output Contract** | 🟡 **有形无约束** | Skill 有 `outputSchema`（可选）；答案是 `blocks[] + provenance[] + trustLevel + unverifiedNumerics` | `outputSchema` **零消费方** —— 没有任何地方拿它校验实际输出。**结构化决策（risk[]/recommendation[]）今天靠 LLM 自由生成 blocks**，不受 schema 约束 |
-| 12 | **Governance & Learning** | 🔴 **有传感器·无执行器** | Evaluation：`EvalService` 在；埋点 `ActionMetrics` 在<br>Feedback：`growth/probe.ts` 能精确判出 `NO_INTENT` 并给 `suggestedFill` | **闭环断在最后一步**：全仓 `intents.insert` 调用点里**没有生长回路** —— 它只报缺口，从不建意图（E8）。**人工采纳率**：埋点在但 **跨租户混算**（`dc_action_submit_total` 标签只有 `{action_type,outcome}`，两租户合成一条曲线）且 `/metrics` **两服务均 200 无鉴权**（#65 实测）。**"人工改 20%→10% 后系统学习"这条通道完全不存在** |
+| 12 | **Governance & Learning** | 🔴 **写得了·治不住** | Evaluation：`EvalService` 在；埋点 `ActionMetrics` 在<br>Feedback：`growth/probe.ts` 能精确判出 `NO_INTENT` 并给 `suggestedFill`<br>**生长回路真的会写**（见右） | ⚠️ **本格原稿有错，此处更正**：原写「生长回路只报不写 / 从不建意图（E8）」**是错的**——写链真实存在且已核到底：`growth/scenario-grow.ts:98` → `scaffoldDraftIntent`(`growth/scaffold.ts:54`) → `catalog.createIntent`(`catalog/service.ts:139`) → `intents.insert`(`catalog/service.ts:159`)。错因是**只 grep 了 `intents.insert` 的直接调用方，漏了一层间接**（与本文档另外两处更正同一种病）。**真正的三个 🔴（均亲手核对 file:line）**：① **RBAC 不对称**——`/api/v1/growth/run`（`server.ts:235`）只有 `await auth(req)`，**无角色校验**；而人走正门建同一个对象 `POST /api/v1/catalog/packages/:packageId/intents`（`server.ts:512`）要 `requireRole(a,"catalog_admin")`（`:514`）→ **任何已登录用户都能让 AI 往目录里写 DRAFT 意图，人自己写反而要管理员**（缓解项：`createIntent` 恒落 `status:"DRAFT"`，DRAFT 不进分类候选，故污染有界——是**越权建草稿**，不是越权上线）；② **发布是 RBAC 直发、不在 R4 上**——`publishIntent`（`server.ts:530-532`）与 `publish-chain`（`server.ts:2507`·`requireCatalogAdmin` 于 `:2509`）都只查角色，注释虽写"经审批 R4"，实际**不经 Action 审批对象**，所以没有审批留痕/可追溯链；③ **没有审批面**——前端唯一碰生长回路的是 `components/Answer/GapCard.tsx`，它是**触发面**（「▶ 触发生成缺失数据」调 `/b/v1/growth/run`），**没有任何界面把 AI 建出的 DRAFT 意图列出来供人审**。**人工采纳率**：埋点在但 **跨租户混算**（`dc_action_submit_total` 标签只有 `{action_type,outcome}`，两租户合成一条曲线）且 `/metrics` **两服务均 200 无鉴权**（#65 实测）。**"人工改 20%→10% 后系统学习"这条通道确实不存在**（这半条原判成立） |
 
 ### 汇总
 
@@ -130,7 +130,7 @@ Trigger → 数据准备 → 模型计算 → **专家审核** → 生成方案 
 
 ### 三条最该先做（按"今天真在流血"排序）
 
-1. **⑫ Learning 闭环的最后一步** —— 生长回路只报不写，是全系统唯一一处「系统自己知道缺什么，却没有手去补」。而且埋点跨租户混算 + `/metrics` 裸奔，等于**采纳率这个最关键的治理指标今天是错的**。
+1. **⑫ Learning 闭环的治理面（原稿定性有误，此处改正）** —— 原写「生长回路只报不写…系统自己知道缺什么却没有手去补」**是错的**：它**有手，而且这只手没戴手套**。写链已核到底（`scenario-grow.ts:98 → scaffoldDraftIntent → catalog.createIntent → intents.insert`），真正在流血的是**权限不对称**：`/api/v1/growth/run`（`server.ts:235`）只 `auth(req)` 无角色，人走正门建同一个对象却要 `catalog_admin`（`server.ts:514`）→ **任何已登录用户都能驱动 AI 往目录写 DRAFT**；发布侧（`server.ts:530`/`:2507`）是 **RBAC 直发不经 R4 Action 审批**（无留痕）；且**没有任何审批界面**列出 AI 建的草稿供人过目（`GapCard.tsx` 只是触发面）。缓解项：草稿恒 `DRAFT` 且不进分类候选，故污染有界。另埋点跨租户混算 + `/metrics` 裸奔，等于**采纳率这个最关键的治理指标今天是错的**（这半条原判成立）。
 2. **⑧ 规则 expression 引用 params** —— `G-C08-EXPR-PARAM-SPLIT` 会**静默恒假**。静默错答比跑不通更糟，这是本仓的一级红线。
 3. **② Business Intent** —— 全缺，且它是 ①③④⑥⑪ 的语义前提（不知道服务谁、成功指标是什么，就无法判断输出契约该长什么样）。
 
