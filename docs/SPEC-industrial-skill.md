@@ -191,3 +191,67 @@ capacity_action_draft    body= 493字  resources=0  有值字段 7/9
 4. **body 的扩容不是写更多字**，是把今天散在 navSlice/DRIL/角色画像三处的推理与资源声明**搬进来**（§2-③⑥⑦⑧）。
 5. **`dependsOn` 用于表达 Skill 间复用**（如"产能预测"依赖"物料齐套"），这是 |Skill| > |意图| 的正当来源之一
    —— 超出的那部分 Skill 是**被复用的子能力**，不是多余的重复声明。
+
+---
+
+## §5 · 引用而非内联（仓主定案 · 解 C1/C2/C5）
+
+> 仓主原话：「在 skill 里面引用规则，引用求解器，引用其他资源，而不是把规则写死在 skill 里面，
+> 否则规则变化了，就无需修改所有 skill 的内容。」
+
+**这条原则在本仓已有先例**：WO-76 的 `boundary-singlesource` 门守的正是「基地集必须从
+`BASE_REGISTRY` 派生、不许内联字面量」（实测抓出 9 处真漂移）；而 C08「外协红线 20% vs 30%
+三个消费方打架」正是**同一条约束被内联在多处**的后果。**故本条不是新规矩，是把已有铁律推广到 Skill 层。**
+
+### 形态
+
+```yaml
+skill:
+  rules:       ["C03", "C09", "C18"]       # 引用 key·规则本体留在 ruledsl 注册表（唯一权威）
+  solvers:     ["capacity_forecast"]       # 引用 key·数学约束留在求解器实现里
+  slices:      ["model_capacity_network"]
+  objectTypes: ["Model", "Base", "Line"]
+  tools:       ["invoke_solver", "query_objects"]
+  mcp:         ["mes.query"]
+  dependsOn:   ["material_kitting_skill"]  # 引用其他 skill（|Skill| > |意图| 的正当来源）
+```
+
+### 直接解掉的三处撞车
+
+| 撞车 | 如何消解 |
+|---|---|
+| **C1** PRD §9.7 Rule DSL vs 既有 `ruledsl.ts` + 28 条规则 | **不引入第二套规则语法**。Skill 只列 rule key，规则本体与语法保持 `ruledsl.ts` 唯一权威。（既有的 `G-C08-EXPR-PARAM-SPLIT` 🔴 仍须单独修——它是既有引擎的实缺，与本条无关） |
+| **C2** PRD §9.8 Constraint DSL vs §9.9 Solver DSL | **约束只在求解器里定义一次**，Skill 只说用哪个求解器。同一条约束不再有两处声明 |
+| **C5** Agent / MCP Tool / Workflow / Human Node | **全部是引用**（`AgentDefinition`/30 工具+MCP/`workflow` 定义/Action `approvalChain` 均已存在）。PRD 若按"新建定义"写会造重复 |
+
+### 必配硬门：引用可校验（否则引用退化成空指针）
+
+加门断言**每个被引用的 key 真的已注册**：rule key ∈ `RULES` · solver key ∈ 求解器注册表 ·
+objectType ∈ 已发布本体 · tool ∈ `tools/registry.ts` · dependsOn ∈ skills。
+**这道门今天做不了**（无任何一处声明），有引用清单后才成为可能 —— 是本条设计的**直接新增能力**，不是附带好处。
+
+### 反向收益（比正向更值钱）
+
+有了引用，**「改 C08 会影响哪些 Skill」变成一次查询**。今天回答这个问题只能 grep，
+而 grep 会骗人（本会话已两次据 grep 下错定性、靠真跑纠正）。
+这正是系统本体存在的理由（"改 X 会影响什么"）—— **引用清单等于让 Skill 层也进了本体的可追溯图**。
+
+### 边界判据：哪些引用、哪些内联
+
+> **判据：这个东西变了，是所有用它的 Skill 都该跟着变（→ 引用），还是只有这一个 Skill 该变（→ 内联）？**
+
+| 引用（可复用资源） | 内联（本 Skill 独有语义） |
+|---|---|
+| 规则 C01–C33 | Business Intent（用户角色 / 决策场景 / KPI） |
+| 求解器 + 其数学约束 | `maxBudgetRounds`（这类题给几轮） |
+| 本体对象类型 / 切片 | Reasoning Graph 拓扑 |
+| 工具 / MCP | `provenancePolicy`（这类题要不要强制出处） |
+| 其他 Skill（`dependsOn`） | `antiExamples`（这类问句不归我） |
+
+**防另一个极端**：没有这条判据，会走到"什么都引用、Skill 变成空壳"。内联那一列是 Skill 的**本体**。
+
+### 对升级路径的影响
+
+Phase 0 的「自动导出」因此**更机械**：导出的是**引用清单**（solver key / rule key / objectType 名），
+今天都能从 `navSlice` 投影与 plan steps 直接读出，**不需要理解语义**。
+真正需要人填的缩小到"内联"那一列，其中大头是 Business Intent 四字段。
