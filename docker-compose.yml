@@ -120,6 +120,15 @@ services:
       QOS_AGENT_MODEL: ${QOS_AGENT_MODEL:-claude-opus-4-8}
       QOS_TAU_HIGH: "0.85"
       QOS_TAU_LOW: "0.55"
+      # ── Loop Control 执行治理层（出货默认收紧；单源 = apps/agentcore/src/config.ts 各 env 的「部署态建议」注释）
+      # 这五个开关在**代码里是 opt-in（缺省不设 = 不限）**：不在这里显式给值，出货容器就只带第一层治理（超时），
+      # 环检测 / 盲扫配额 / per-tool 刷屏 / 有界重试**全部不生效**。由 scripts/check-deploy-governance.mjs 守门防回潮。
+      # 需放宽时用 .env 覆写（如 QOS_AGENT_MAX_ROUND_TRIPS=8），不要删行——删行 = 退回「一个都没设」。
+      QOS_AGENT_MAX_ROUND_TRIPS: ${QOS_AGENT_MAX_ROUND_TRIPS:-4}
+      QOS_AGENT_MAX_DISCOVER_CALLS: ${QOS_AGENT_MAX_DISCOVER_CALLS:-1}
+      QOS_AGENT_LOOP_REPEAT_CAP: ${QOS_AGENT_LOOP_REPEAT_CAP:-3}
+      QOS_AGENT_PER_TOOL_CALL_CAP: ${QOS_AGENT_PER_TOOL_CALL_CAP:-8}
+      QOS_AGENT_RETRY_MAX_ATTEMPTS: ${QOS_AGENT_RETRY_MAX_ATTEMPTS:-1}
     ports:
       - "4002:4002"                          # 直连调试入口（前端走 gateway 同源）
     depends_on:
