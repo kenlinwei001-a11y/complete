@@ -71,6 +71,21 @@ export const BASES = BASE_REGISTRY.map((b) => ({
   lat: b.lat,
 }));
 
+/**
+ * DF.1 单一来源：**单条基地引用**也从册派生（不只 BASES 集合）。
+ * 病灶（WO-76 修）：风险卡/处置种子/场景预设曾内联 `base:"常州", baseId:"changzhou"` 这种
+ * (中文名, 拼音 id) 对共 9 处 —— 册里改 baseId 或删基地，这些引用会**静默指向不存在的基地**
+ * （正是 DF.1 要灭的 G-5/R14 漂移，只是粒度是"单条"而非"整集"）。
+ * 现一律 `baseRef(中文名)` 查册派生：name 是册自述的"跨端共同 key"（base-registry.ts:16），
+ * 可派生的 baseId 只从册来；查不到即**抛错早失败**，不留静默悬空引用。
+ * R6：`baseRef("常州")` → `{base:"常州", baseId:"changzhou"}`，与迁移前字节一致。
+ */
+const baseRef = (name: string): { base: string; baseId: string } => {
+  const hit = BASE_REGISTRY.find((b) => b.name === name);
+  if (!hit) throw new Error(`[fixtures] 基地「${name}」不在 BASE_REGISTRY 单一来源册（DF.1/R14）`);
+  return { base: hit.name, baseId: hit.baseId };
+};
+
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
 
 // WO-GUI4-MULTIOBJ-REAL · mock 同步真 Order 口径（VITE_MOCK 也带 unitPrice/pri 真形状·不再写死另一套假单）：
@@ -760,7 +775,7 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
   threshold: 85,
   cards: [
     {
-      base: "常州", baseId: "changzhou", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
+      ...baseRef("常州"), factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
       events: [
         { type: "maint_window", day: 4, amp: 18, factors: ["化成柜"], tag: "检修窗", obj: "常州", desc: "年度检修（第1周）：计划停机 5 天，设备OEE 由基线下调 6 个百分点", src: "EAM/CMMS 检修计划" },
         { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"], tag: "交付高峰", obj: "SO-10001", desc: "SO-10001·蔚途汽车 交付 1500 万套到期：当周产线排产负载 +9 个百分点", src: "S&OP/ERP 订单交期" },
@@ -772,14 +787,14 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
       ],
     },
     {
-      base: "江门", baseId: "jiangmen", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
+      ...baseRef("江门"), factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
       events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }],
       affectedOrders: [{ so: "SO-10002", cust: "星河储能", model: "储能-314Ah", qty: 820, due: "2026-06-25", dueDay: 13, delay: 2, impact: 0.4 }],
     },
-    { base: "合肥", baseId: "hefei", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
-    { base: "眉山", baseId: "meishan", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
-    { base: "成都", baseId: "chengdu", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
-    { base: "武汉", baseId: "wuhan", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
+    { ...baseRef("合肥"), factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
+    { ...baseRef("眉山"), factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
+    { ...baseRef("成都"), factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
+    { ...baseRef("武汉"), factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
   // PRD-IND-risk §2.4：处置行动计划表。
   // WO-LIVE-DISPOSITION（KILL-MOCK·mock 也真重算·不写死两套）：planRows 不再是静态字面量，而是由
@@ -813,8 +828,8 @@ export const RISK_DISPOSITION_SEED = {
   } as Record<string, number>,
   inverseProps: ["utilization"],
   bases: [
-    { base: "常州", baseId: "changzhou", owner: "基地负责人 · 王经理", freeDaily: 100, plans: [{ name: "关键正极提前备料", eff: 12, tn: 2 }, { name: "增开夜班", eff: 11, tn: 2 }] },
-    { base: "江门", baseId: "jiangmen", owner: "基地负责人 · 李经理", freeDaily: 20, plans: [{ name: "近端仓+供应商VMI", eff: 9, tn: 5 }, { name: "跨基地调剂", eff: 8, tn: 4 }] },
+    { ...baseRef("常州"), owner: "基地负责人 · 王经理", freeDaily: 100, plans: [{ name: "关键正极提前备料", eff: 12, tn: 2 }, { name: "增开夜班", eff: 11, tn: 2 }] },
+    { ...baseRef("江门"), owner: "基地负责人 · 李经理", freeDaily: 20, plans: [{ name: "近端仓+供应商VMI", eff: 9, tn: 5 }, { name: "跨基地调剂", eff: 8, tn: 4 }] },
   ],
 };
 
@@ -1107,13 +1122,14 @@ export const SCENARIOS: Scenario[] = [
     { targetView: "project", selectedObjects: [{ objectType: "Model", objectId: "4680-NCM", label: "4680-NCM" }], slotPresets: { modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 } },
     { domain: "产能与项目", solver: "capacity_forecast", rules: ["C01", "C02", "C03", "C09"], summary: "解读产能可承接结论的口径" }),
   scenario("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "WORKFLOW_FIRST",
-    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: "changzhou", label: "常州" }], slotPresets: { baseId: "changzhou" } },
+    // DF.1：场景预设的基地引用同样查册派生（objectId/label/slotPresets.baseId 三处曾各写死一遍）。
+    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: baseRef("常州").baseId, label: baseRef("常州").base }], slotPresets: { baseId: baseRef("常州").baseId } },
     { domain: "风险与齐套", solver: "affected_orders", rules: ["C05"], summary: "解读交期风险扫描结果" }),
   scenario("S04", "月度规划体检", "audit", "plan_audit_q", "现金垫 45 亿过得了体检吗？", "WORKFLOW_ONLY",
     { targetView: "audit", selectedObjects: [], slotPresets: { cashCushion: 4_500_000_000 } },
     { domain: "规划与平衡", solver: "plan_audit", rules: ["C15", "C18", "C21"], summary: "解读规划体检结论" }),
   scenario("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "WORKFLOW_FIRST",
-    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: "changzhou", label: "常州" }], slotPresets: { baseName: "常州", solutionName: "三班制" } },
+    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: baseRef("常州").baseId, label: baseRef("常州").base }], slotPresets: { baseName: baseRef("常州").base, solutionName: "三班制" } },
     { domain: "风险与齐套", solver: "mitigation_select", rules: ["C08", "C10"], riskLevel: "ACTION_DRAFT", summary: "协助采纳风险处置方案" }),
   scenario("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "WORKFLOW_FIRST",
     { targetView: "risk", selectedObjects: [], slotPresets: { fromDay: 1, toDay: 14 } },
