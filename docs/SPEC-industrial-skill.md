@@ -255,3 +255,64 @@ objectType ∈ 已发布本体 · tool ∈ `tools/registry.ts` · dependsOn ∈ 
 Phase 0 的「自动导出」因此**更机械**：导出的是**引用清单**（solver key / rule key / objectType 名），
 今天都能从 `navSlice` 投影与 plan steps 直接读出，**不需要理解语义**。
 真正需要人填的缩小到"内联"那一列，其中大头是 Business Intent 四字段。
+
+---
+
+## §6 · Skill 开发模板（仓主给定 · 包结构）与「读作引用」的落地口径
+
+仓主给定的工业级 Skill 开发模板：一个 Skill 不是一个 YAML，而是**一个完整软件包**。
+
+```
+skill_package/
+├── skill.yaml                  # Skill 主定义
+├── metadata.yaml               # 元数据（business_owner / target_users / business_value / frequency）
+├── ontology/{objects,relations,events}.yaml
+├── context/{context,memory}.yaml
+├── reasoning/{graph.yaml, prompts/, strategies.yaml}
+├── agents/{agents,roles}.yaml
+├── tools/{mcp,api}.yaml
+├── rules/{business_rules,constraints}.yaml
+├── solver/{solver.yaml, model.lp}
+├── workflow/workflow.yaml
+├── evaluation/{metrics,testcases}.yaml
+├── output/schema.yaml
+└── README.md
+```
+
+### ⚠ 落地口径（仓主确认：**目标一致，都是引用模式，不是写死模式**）
+
+模板里 `rules/business_rules.yaml` 的 `condition:`/`action:`、`rules/constraints.yaml` 的 `formula:`、
+`ontology/objects.yaml` 的 `properties:`、`tools/mcp.yaml` 的 `input/output:` —— **写法看起来像定义**。
+
+**统一口径：一律读作「引用 + 需求声明」，不得实现成「在 Skill 包内定义」。**
+仓主已确认目标是引用模式；此口径写在这里是为了**防实现时走样**——本仓今天整天在修的病，
+标准形状正是「原则定了、下游没跟」。
+
+| 模板文件 | ❌ 不得实现成 | ✅ 必须实现成 | 权威在哪 |
+|---|---|---|---|
+| `rules/business_rules.yaml` | 在包内定义规则语法 | 列 rule key（`["C03","C09"]`）+ 声明所需前置（如"必须已 PUBLISHED"） | `ruledsl.ts` + C01–C33 |
+| `rules/constraints.yaml` | 在包内定义数学约束 | 声明所依赖求解器的约束集须包含哪些 | 求解器实现 |
+| `ontology/objects.yaml` | 在包内定义对象与属性 | 声明**所需**对象类型及其**必需属性**（契约式：`Factory` 须有 `capacity`） | 已发布本体（91 类型 / 771 属性） |
+| `ontology/relations.yaml` | 定义关系 | 声明所需关系（`Factory -HAS_LINE-> Line` 须存在） | `ontology_links` / `links` |
+| `tools/mcp.yaml` | 定义工具 schema | 列 tool key + 所需能力 | `tools/registry.ts`（30 个）+ MCP 配置 |
+| `agents/agents.yaml` | 定义 agent | 列 agentId + 所需 scope | `AgentDefinition` / 角色画像 |
+| `workflow/workflow.yaml` | 定义工作流引擎语义 | 列 step 引用（skill / solver / agent / approval） | `workflow/executor.ts` + Action `approvalChain` |
+| `solver/solver.yaml` | — | 列 solver key + **本 Skill 专属的 objective/权重**（这部分是内联，见 §5 判据） | 求解器注册表（57 个） |
+
+**配套硬门（§5 已定）**：装载/发布时校验**每个被引用的 key 真已注册**；不满足则**拒绝安装**，
+而非带着自己那份定义偷偷跑。这道门今天做不了（无任何声明），有引用清单后才成为可能。
+
+### 模板里仓内完全没有、且值得直接采纳的四项
+
+| 模板项 | 价值 | 今天状态 |
+|---|---|---|
+| `evaluation/testcases.yaml` | **与 §2-⑧「自带验收」完全一致**。skill 自带用例 → **门可从注册表生成**，新增 skill 自动被测、漏配即红，「金标集与目录漂移」问题从此不存在 | 无。今天测措辞鲁棒性要在测试文件手写 80 条并特意从 catalog 派生防漂移 |
+| `reasoning/prompts/*.md` **独立文件** | 今天 7 个 skill 的 `body` 平均 **441 字**（上限 50,000·用了 0.9%）——塞在单一字符串字段里没人愿意写长。拆文件才写得下 Reasoning Graph 与约束说明 | 无 |
+| `ontology/events.yaml` | **今天完全没有的一层**：skill 声明"我发哪些事件、消费哪些事件"。仓里有领域事件 + 失效钩子，但没有任何一处声明"谁发谁收" | 无 |
+| §17 **发布检查清单** | 可直接升格成发布门。仓里 `publishIntent` 有校验（plan refs / render_answer 须最后 / slots 非空），但**没有**"推理图无环 / 异常路径已定义 / 审批节点已配 / Tool 权限已控" | 部分 |
+
+### 现成接线点：包文件 → `SkillDefinitionSchema.resources[]`
+
+模板的多文件包结构**天然映射到既有 `resources[]`**（`SkillAttachment`，带 mime/description，
+agent 经 `read_skill_resource` 渐进披露）。该字段今天 **7/7 全空**。
+**故不需要新造承载机制** —— 包里每个文件就是一条 resource。
