@@ -679,12 +679,20 @@ export class Orchestrator {
     //   必填槽可从共享 slotBag/pageContext 抽满 + 无 scope 冲突）→ 命中(≥1)即接 canonical `runParallelRoutes`（复用后半·
     //   零 LLM 块装配·⟦ref⟧ 溯源）；一条都映射不到 solver（真开放）→ 落下方 free-LLM（不劫持）。命中即 return。
     //   **暗发默认关**（l2DecomposeEnabled("ALL")=false → 既有 free-LLM 长度门逐字节不变·SEAM-零回归·不劫持）。
-    if (l2DecomposeEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
+    // ★ WO-DELIVER-VERB-SEAM · **定式题不是开放深问**（治「说『交付』永远答不出」的第二道门）。
+    //   `shouldUseFreeLLM` 的开放性判据里有一条**纯长度门**（q.length ≥ 24·见 ceo-route.ts），而中文里把话说清楚
+    //   （补上基地/型号/动词）天然更长——于是「说得越具体 → 越被判为开放深问 → 越绕开确定性求解器」，因果正好反了。
+    //   仓主实测原句 27 字即栽在此门（Coordinator 那道修好后它就露出来接盘）。**长≠开放**：带「型号+增量%+周数」
+    //   结构签名的产能可行性题高度确定、有唯一对口 solver（capacity_forecast），两道慢路（L2 真分解 / free-LLM
+    //   自由多跳）**都让位**，落下方确定性绑定/分类器——真 Kimi 实测该类问句分类命中 capacity_feasibility@0.95 且四槽全对。
+    const feasibilityFormula = isCapacityFeasibilityQuery(task.query, task.context.pageContext);
+
+    if (!feasibilityFormula && l2DecomposeEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
       if (await this.tryL2Decompose(taskId, auth, task, pkg)) return;
     }
 
     // WO-REAL-LLM-FREE-QUERY（CEO/块级真 LLM 深问·确定性路由之外并列拦截·未被 Coordinator 显式指派时的开放式深问缺省增强）。
-    if (freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
+    if (!feasibilityFormula && freeLlmEnabled(enabledFeatures) && shouldUseFreeLLM(task.query, task.context.pageContext)) {
       await this.runCeoFreeLLM(taskId, auth, enabledFeatures);
       return;
     }

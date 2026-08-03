@@ -213,6 +213,24 @@ const TIME_SPAN_RE = /(\d+|[一二两三四五六七八九十]+)\s*(天|日|周|
  * 含「够不够/够吗」类——与「型号增量 + 周数」信号联合判定，不会误吞因子变动 what-if（那类无需求增量%、无周数）。
  */
 const FEASIBILITY_ACCEPT_RE = /(能不能接|能否接|接得下|接不接|还能接|能接|可承接|能承接|承接|接得住|接得了|够不够|够吗|够不够接)/;
+/**
+ * WO-DELIVER-VERB-SEAM · 可**交付**问句正则——业务上与上面「接」族同义，此前整族缺席。
+ *
+ * 病根（仓主实测「4680-NCM 加 20% 常州基地六周能不能交付？」永远答不出 + 2×2 归属取证）：同一道产能可行性题——
+ *   说「六周能不能**接**」   → deterministic:ceo-route（秒答）
+ *   说「六周能不能**交付**」 → coordinator（扇出供应链/生产/质量三个角色 agent·实测各 60–83s·超时无答案）
+ * 加不加「常州基地」、问句长短均**无影响**，唯一变量就是这个动词。机制是两张互不知情的词表在接缝上打架：
+ *   `router/coordinator.ts` DELIVERY_RISK_RE=/(交付|按时交|能不能交|交期)/  → 认领它，强拉「交付风险三角会诊」；
+ *   本文件 FEASIBILITY_ACCEPT_RE（13 个词条全是「接」族）             → 认不出它，于是 coordinator.ts:84
+ *   那道**专为此题写的**护栏（注释原文：「绝不拆多角色会诊——否则子 agent 各自盲扫烧预算 ~5min 卡死」）静默失效。
+ * 同一个词让护栏认不出、让劫持器认领——断点在接缝，不在任一模块内部。
+ */
+const FEASIBILITY_DELIVER_RE = /(能不能(?:按时)?交付?|能否(?:按时)?交付?|交付?得[了上出完]|来得及交|赶得上交|交不交得)/;
+/**
+ * 显式会诊/综合诉求——用户**明确**要多角度联合诊断时，不做单 solver 短路（让位 Coordinator·诚实边界）。
+ * 与 coordinator.ts COMPOSITE_RE 同义但刻意各自持有：本文件被 coordinator.ts 导入，反向导入会成环。
+ */
+const EXPLICIT_CONSULT_RE = /(综合诊断|综合分析|全面评估|整体.{0,4}(风险|结论|评估)|系统性|会诊|多角度|全链|端到端)/;
 
 const CN_DIGIT: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
 /** 小整数解析（Arabic 或中文 1..99·仅用于周数·R6 纯函数·无区域/时钟依赖）。 */
@@ -300,11 +318,15 @@ export function isCapacityFeasibilityQuery(query: string, pageContext?: PageCont
   const q = query ?? "";
   if (/\bSO-?\d+\b/i.test(q) && /(重排|提前|挤占|拆产)/.test(q)) return false; // 单订单重排 → sop_reschedule
   const v = parseCapacityFeasibilityVariant(q);
-  const hasAccept = FEASIBILITY_ACCEPT_RE.test(q);
+  const hasAccept = FEASIBILITY_ACCEPT_RE.test(q) || FEASIBILITY_DELIVER_RE.test(q);
   const hasDelta = v.demandDelta !== undefined;
   const hasWeeks = v.weeks !== undefined;
   // 页上下文辅助：产能/可承接页可放宽（但仍需可承接问句 + 增量或周数信号，避免误劫持）。
   void pageContext;
+  // WO-DELIVER-VERB-SEAM · **结构信号兜底**（治「同义词打地鼠」的根，非再补一个词）：型号增量% ∧ 周数**同时**
+  // 具备 = 定式产能可行性题的结构签名，与用哪个动词无关——下一个同义词（交货/出货/供得上/来不来得及…）
+  // 不必再改词表。仅在用户**没有**显式要求会诊/综合时短路（要会诊就让位 Coordinator·诚实边界）。
+  if (hasDelta && hasWeeks && !EXPLICIT_CONSULT_RE.test(q)) return true;
   return hasAccept && (hasDelta || hasWeeks);
 }
 

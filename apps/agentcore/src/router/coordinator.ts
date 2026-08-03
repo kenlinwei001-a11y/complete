@@ -31,7 +31,7 @@ const ROLE_KEYWORDS: { role: RoleDispatch["role"]; focusHint: string; re: RegExp
  * 复合跨域触发：交付风险/综合诊断/整体评估等——即便只显式命中一个域关键词，也应召集"交付风险三角"
  *（供应链·生产·质量）联合会诊。命中即把这三角纳入分派集（与显式命中的角色并集）。
  */
-const DELIVERY_RISK_RE = /(交付|按时交|能不能交|交期)/;
+export const DELIVERY_RISK_RE = /(交付|按时交|能不能交|交期)/;
 const COMPOSITE_RE = /(综合诊断|全面评估|整体.{0,4}风险|系统性|会诊|多角度|全链|端到端)/;
 
 const DELIVERY_TRIAD: RoleDispatch["role"][] = ["supply-chain", "production", "quality"];
