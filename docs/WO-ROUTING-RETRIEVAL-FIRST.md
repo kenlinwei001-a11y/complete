@@ -81,7 +81,7 @@ fillSlots → plan 步（resolve_slice → invoke_solver → evaluate_rules → 
 | R7 错误信封 | 不变 | — |
 | R13 结论可溯源 | 路由改道后仍须 ⟦ref⟧ 链完整 | 现有 provenance 断言须全绿 |
 
-**断点（§8）**：本单**新登记两条**，并关闭/降级既有两条。
+**断点（§8）**：本单**新登记三条**，并关闭/降级既有两条。
 
 ```
 | G-ROUTE-REGEX-PREEMPTS-RETRIEVAL | 确定性正则门抢在语义检索/分类器之前做路由决定，
@@ -93,6 +93,12 @@ fillSlots → plan 步（resolve_slice → invoke_solver → evaluate_rules → 
   不留 modelId / 是否推理档 / 输入规模 / provider 当时健康度 → 事后只能靠人对时延手工反推。
   加剧因素：LLM 调用非流式，拿不到 first-token，无法区分挂死与慢但活着
   | runAgentLoop 单次 LLM 调用 deadline（loop.ts:772） | 🔴 未修（本单 Track B3 治）|
+
+| G-SYNC-SOLVE-TIMEOUT-NO-CANCEL | 同步求解端点超时只 `Promise.race` 不取消底层求解：
+  504 已返客户端，DataCore 侧求解仍跑到底（真跑坐实：504 后 700ms 底层 finished=1），
+  调用链无 AbortSignal 透传；前端 AbortController 只断 HTTP 连接。全局推演（CP-SAT portfolio +
+  滑杆 debounce 300ms）重试即叠加。超时亦无部分结果（CP-SAT 有 incumbent 也全丢）
+  | POST /b/v1/solvers/{key}/run（server.ts:1755-1764）| 🔴 未修（本单 Track D 治）|
 ```
 
 - 关联既有断点 `G-AGENT-BLIND-REACT`（路由侧那一半正是本单）；
@@ -251,6 +257,55 @@ C1 是后端接线、C3/C4 是前端消费，拆开做必然出现"后端发的�
 **SEAM 判据**：一条组合测试，从提交查询到看见第一个进度信号，断言 **多角色路径上首个旁白/进度事件
 在 T 秒内到达**（T 由 B1/B2 落地后的实测首轮时延定），且事件载荷含角色标识——
 只测"事件发出来了"不算过（运输层断言），必须断言**前端渲染路径真能消费**。
+
+---
+
+## 四之三 · Track D｜同步求解通道（**非对话式推演页·独立通道·独立病灶**）
+
+> 仓主追问：产能预测 / 全局推演这类**非对话**推演页是否同病。查证：**不是同一个病，是同族的另一个变种，
+> 且在「超时后果」这一维上比对话通道更差。**
+
+**通道差异（先说清，别类推）**：这些页不经 QOS 编排器、无 agent loop、无 LLM ——
+`useLiveSolver`（`views/sim/useLiveSolver.ts`）输入变更 debounce 300 ms → `POST /b/v1/solvers/{key}/run`
+**同步**一发一收。消费方已查实：`ProjectSimView`→`capacity_forecast`、
+**`GlobalSimView:283`→`portfolio`（CP-SAT·最重）**、`PlanAuditView`、`PlanGenerateView`。
+**故 E9（旁白不可达）对本通道不适用。**
+
+**E10（本会话真跑坐实·非源码判读）· 超时不取消底层求解**
+
+`server.ts:1755-1764` 用 `Promise.race([solver.invoke(...), timeout])`——**只是不再等它，不是取消它**；
+`invoke` 调用链上没有任何 AbortSignal。前端的 `AbortController` 只断 HTTP 连接，传不到 DataCore。
+
+```
+探针（SOLVER_RUN_TIMEOUT_MS=150·stub 求解耗时 600ms）：
+  HTTP 504 @ 169ms   body={"error":{"code":"SOLVER_TIMEOUT",...}}
+  超时返回瞬间：started=1  finished=0
+  取消信号透传：(未收到任何取消信号参数)
+  ★ 504 之后再等 700ms：started=1 finished=1  → 底层求解未被取消·跑到底了
+```
+
+**后果**（全局推演最烈：CP-SAT + 滑杆每动一次 debounce 300 ms 就发一次）：
+用户见「超时」→ 调参重试 → 服务端**叠加**新求解，旧的仍在烧。多试几次即可压垮优化器。
+（叠加场景本身未跑并发实验，属由 E10 推得的直接后果。）
+
+**四维对照**
+
+| 维度 | 对话式（QOS 编排） | 同步求解（本 Track） |
+|---|---|---|
+| 旁白/过程可见 | 有机制但多角色路径不可达（E9） | 无此机制；`isFetching` 二值「求解中…」 |
+| 超时是判决还是信号 | **判决**（G-TIMEOUT-AS-VERDICT） | **判决**（504 + toast·不说哪慢/跑多久/有无可行解） |
+| 超时是否取消底层作业 | agent loop 有 abort | **不取消·跑到底**（E10·真跑） |
+| 部分结果 | 有「部分发现」抢救 | **无**·超时即全丢 |
+
+| 子项 | 做什么 | 依赖 |
+|---|---|---|
+| **D1**（先做·止血） | 超时时**真取消**底层求解：`solver.invoke` 接 `AbortSignal`，B→A 转发 `signal`，A 侧向优化器 sidecar 传递取消。**验收须真跑**：504 后底层作业不得再 `finish` | 跨 A/B 两侧 —— 须一个 dev 整单做 |
+| **D2** | 同步端点在超时前先回**可行解**（CP-SAT 有 incumbent）：宁可给「已找到可行解·非最优」也不要全丢 | D1 |
+| **D3** | 超时载荷带诊断（与 B3-a 同款）：哪个求解器 / 跑了多久 / 数据规模 / 有无 incumbent，前端据此显示原因而非 `toastError` 泛化提示 | B3-a |
+| **D4** | 重求解幂等/去重：同 `(solverKey, args)` 在途请求复用，防滑杆连拖叠加 | D1 |
+
+**SEAM 判据**：造可控慢求解器 stub，断言 ①504 后底层作业**已停**（非"没人等"）②重试不叠加
+③有 incumbent 时返回可行解而非全丢。只断言"返回了 504"不算过 —— 那正是今天已有的行为。
 
 ---
 
