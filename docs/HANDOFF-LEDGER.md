@@ -88,6 +88,7 @@ test/grounding-vocab-grow.test.ts:53   expected 'UNREGISTERED' to be 'PROVISIONA
 
 | branch | 状态 | 说明 |
 |---|---|---|
+| `claude/handoff-wo-unitprice-scale` | 挂起 | **未复验·本门首次抓到的漏登条目**（2026-08-04）。独有 1 个 commit `68285bbc`「订单单价口径取证与修正」：禁 `solvers/service.ts` `gap_attribution` 的**静默兜底 600 元/套**（WO-SCALE-COHERENCE 当年消灭的病灶值残留）+ 两处口径显式标注，并带接缝测试 `apps/datacore/test/unitprice-scale.test.ts`（数据半 battery 种子 元/套 × 引擎半 portfolio 万元/套，任一半被「对齐」或兜底改回业务数即红）。**属「静默错答」族，优先级高于一般测试缺口。**解挂条件：审核方隔离复验（五包 gate + 亲手驱动 `gap_attribution` 确认兜底真的不再触发）→ 通过即 cherry-pick 上正线并改标「已并线」+ 提交号。 |
 | `claude/handoff-wo-63-schema-readability` | 挂起 | 本体可读性达标。五包 gate 全绿、`pnpm gates` 绿。等 PR 复验后并线——新 LOOP 的第一条走通用例。 |
 | `claude/handoff-wo-integration-loop` | 挂起 | 本 LOOP 基础设施自身（并线台账门 + CI 改跑 gate.sh + 部署主干收口）。随 PR 复验并线。 |
 | `claude/handoff-wo-scenario-input-phase0` | 挂起 | 主体已并线（`d2f7c356` + `8cca14b0`）；未并 delta `5c9e8537` 放宽了 modelId 断言。解挂条件：`toContain("4680")` 判别力不足（`4680-LFP` 亦过）须收紧，且 `slots.ts:277` `objectId ?? key` 的 A/B 契约静默兜底要么修要么登记为断点。 |
