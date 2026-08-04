@@ -1,6 +1,6 @@
 import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式/抽取候选里的阈值一律派生，禁内联裸阈值/手写百分数。
-import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlinePct } from "@platform/contracts";
+import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlinePct, outsourceRedlineViolationExprPublished, ruleParamRef } from "@platform/contracts";
 import type {
   ActionDraft,
   AdminTenant,
@@ -886,14 +886,36 @@ export const PLANS = [
   { id: "plan-adopt", key: "adopt_mitigation_plan", version: 1, status: "PUBLISHED" },
 ];
 
+/**
+ * 已发布规则库 mock（A5）—— **口径必须与真后端 `datacore synthetic/battery.ts BATTERY_RULES` 一致**。
+ *
+ * WO-RULE-EXPR-PARAMS（欠账 #78）修的病：本表此前与真后端**系统性不同口径**，四处全错且测试全绿：
+ *  ① **极性反了**：写成人读的**约束式**（`Order.demandDelta <= 0.5`「必须不超过」），
+ *     而规则引擎吃的是**违规谓词**（`> 0.5`，表达式为真 ⇒ passed=false）。照 mock 的写法喂引擎，
+ *     每条规则的判定**恰好反过来**——合规订单全部报违规、越线订单全部放行。
+ *     （同一份 mock 里 `simSolvers.ts` 的 evaluatedRules 用的却是违规谓词式 → 前端自己内部都不自洽。）
+ *  ② **主体/字段错**：C08 写成 `Outsource.ratio`（真后端是 `Order.outsourceRatio`）、
+ *     C13 写成 `Order.credit <= Customer.creditLimit`（真后端是 `Order.creditUsedRatio > 1`）。
+ *  ③ **对象类型名被中译**：C05 写成 `SUSTAIN(产线.utilization > 95, 3)` —— `产线` 不是任何已注册
+ *     对象类型 key（真后端是 `Line`），字段永远解析不到 ⇒ 该规则在 mock 态是哑弹。
+ *  ④ **params 多一份已删的阈值**：C09 带 `normalFactor: 0.93`，而真后端刻意把它删了
+ *     （`health.normal` 归 M11 校准参数 `p90_health` 所有，规则再声明一份就是第二个写者 + 诱饵）。
+ *
+ * 判定「哪边对」：**后端对**。理由不是"后端更权威"，而是 `packages/contracts/src/base-registry.ts`
+ * 对这两种渲染有明文分工——`outsourceRedlineViolationExpr` 喂规则引擎、`outsourceRedlineConstraintExpr`
+ * 只用于**文档原文/A2 抽取候选**（人读的「不得超过」）。本表是**已发布规则**，属前者。
+ * （本文件里 A2 抽取候选 `RULE_CANDIDATES` 仍用约束式 —— 那是对的，别"顺手统一"。）
+ *
+ * 阈值一律**只存 params 一处**，expression 用 `params.<名>` 引用（与后端同机制，见 ruleParamRef）。
+ */
 export const RULES: RuleEntry[] = [
   // WO-RULES-CLASSIFY：category 与真后端 battery.ts 种子同步（规则库分类筛选真元数据；约束条件另按 severity=BLOCK 判别）。
-  { id: "rule-c03", key: "C03", name: "产能上限", expression: "Order.demandDelta <= 0.5", scopeObjectTypes: ["Order", "CapacityPyramid"], severity: "BLOCK", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 120, end: 180 }, extractJobId: "job-ex1" }, version: 2, status: "PUBLISHED" },
-  { id: "rule-c08", key: "C08", name: "外协红线", expression: outsourceRedlineConstraintExpr("Outsource.ratio"), scopeObjectTypes: ["QualityLot"], severity: "WARN", category: "外协", origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
-  { id: "rule-c13", key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit", scopeObjectTypes: ["Order"], severity: "BLOCK", category: "财务", origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
-  { id: "rule-c05", key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)", scopeObjectTypes: ["Line"], severity: "WARN", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 320, end: 390 }, extractJobId: "job-ex1" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c03", key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", scopeObjectTypes: ["Order", "CapacityPyramid"], severity: "BLOCK", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 120, end: 180 }, extractJobId: "job-ex1" }, version: 2, status: "PUBLISHED" },
+  { id: "rule-c08", key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExprPublished(), scopeObjectTypes: ["Order"], severity: "WARN", category: "外协", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c13", key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", scopeObjectTypes: ["Order"], severity: "BLOCK", category: "财务", origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c05", key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", scopeObjectTypes: ["Line"], severity: "WARN", category: "产能", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 320, end: 390 }, extractJobId: "job-ex1" }, version: 1, status: "PUBLISHED" },
   // 规则即引用 P1：曾"未找到定义"的规则补为一等规则（含命名阈值 params）——mock 与真后端同步。
-  { id: "rule-c09", key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", scopeObjectTypes: ["DataSourceHealth"], severity: "WARN", category: "质量", params: { staleHours: 2, normalFactor: 0.93, degradedFactor: 0.9 }, origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c09", key: "C09", name: "数据时延临时降级", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, scopeObjectTypes: ["DataSourceHealth"], severity: "WARN", category: "质量", params: { staleHours: 2, degradedFactor: 0.9 }, origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
 ];
 
 export const POLICIES: PermissionPolicy[] = [
@@ -1298,7 +1320,9 @@ export const ANSWER_ADOPT: Answer = {
     { type: "text", markdown: "已生成 Action 草稿并进入审批流，**未直接执行**任何变更。" },
   ],
   provenance: [
-    { id: "prov-ad-1", source: "TOOL_RESULT", toolCallId: "tc-ad-1", toolName: "evaluate_rules", outputPath: "$.verdicts[0]", snapshotVersion: "ov-12", ...({ stepId: "s1", rules: [{ key: "C08", expression: outsourceRedlineConstraintExpr("Outsource.ratio") }], value: "WARN", valueLabel: "规则评估" } as Record<string, unknown>) } as Answer["provenance"][number],
+    // WO-RULE-EXPR-PARAMS：这是 `evaluate_rules` 的**规则引擎求值留痕**，必须显违规谓词式（与已发布 C08 一字不差）；
+    // 此前显的是文档约束式，等于给用户看了一条极性相反、且主体也不同的表达式。
+    { id: "prov-ad-1", source: "TOOL_RESULT", toolCallId: "tc-ad-1", toolName: "evaluate_rules", outputPath: "$.verdicts[0]", snapshotVersion: "ov-12", ...({ stepId: "s1", rules: [{ key: "C08", expression: outsourceRedlineViolationExprPublished() }], value: "WARN", valueLabel: "规则评估" } as Record<string, unknown>) } as Answer["provenance"][number],
   ],
 };
 

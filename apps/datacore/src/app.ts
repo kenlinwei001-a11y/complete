@@ -3112,7 +3112,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/rules", async (req, reply) => {
     const body = parseBody(RuleCreateSchema, req.body);
     // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
-    assertValidExpression(body.expression);
+    // WO-RULE-EXPR-PARAMS：连同 params 一起校验闭包 —— 引用 `params.x` 却没声明 x 的规则当场拒。
+    assertValidExpression(body.expression, body.params ?? {});
     return reply.status(201).send(await rules.create(ctx(req), body));
   });
   // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。
@@ -3141,11 +3142,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 管理平台增量 §5：编辑器「测试」—— 即时求值 / 语法错误定位字符位。
   app.post("/a/v1/rules/dry-run", async (req) => {
     ctx(req);
+    // params（加性·可选）：编辑器里正在编的命名阈值，令 `params.<名>` 在「测试」按钮里也真能解析。
     const body = parseBody(
-      z.object({ expression: z.string(), samplePayload: z.record(z.string(), z.unknown()).default({}) }),
+      z.object({
+        expression: z.string(),
+        samplePayload: z.record(z.string(), z.unknown()).default({}),
+        params: z.record(z.string(), z.unknown()).optional(),
+      }),
       req.body,
     );
-    return rules.dryRun(body.expression, body.samplePayload);
+    return rules.dryRun(body.expression, body.samplePayload, body.params);
   });
   app.post("/a/v1/rules/evaluate", async (req) => {
     const body = parseBody(EvaluateSchema, req.body);

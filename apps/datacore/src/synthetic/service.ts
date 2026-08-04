@@ -1780,7 +1780,9 @@ export class SyntheticService {
       let violations = 0;
       for (const o of orders) {
         try {
-          if (evaluateExpression(r.expression, { payload: { Order: o.props, ...o.props } })) violations++;
+          // WO-RULE-EXPR-PARAMS：合成越线统计也用规则自己的命名阈值（否则 C08 这类
+          // 阈值已迁进 params 的规则会在这里恒 0 违规 = 哑弹，而报告看起来一切正常）。
+          if (evaluateExpression(r.expression, { payload: { Order: o.props, ...o.props }, params: r.params })) violations++;
         } catch {
           /* unevaluable against object props — counts as pass */
         }

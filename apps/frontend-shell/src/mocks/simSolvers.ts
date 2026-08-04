@@ -2,6 +2,8 @@ import type { SopVersionVM } from "@/api/types";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：mock 求解器的上限与拒绝文案必须与真求解器同源，禁内联裸阈值/手写百分数。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
+// WO-RULE-EXPR-PARAMS：规则命名阈值引用（`params.<名>`）——mock 的规则表达式与真后端同机制、同字面。
+import { ruleParamRef } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
 
@@ -610,7 +612,9 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       { key: "C01", name: "产线设计产能上限", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", evidence: "该求解器输出未含此规则字段" },
       { key: "C02", name: "化成/老化串并产能口径", severity: "WARN", outcome: "NOT_APPLICABLE", expression: "Process.parallelThroughput < Process.requiredThroughput", evidence: "该求解器输出未含此规则字段" },
       { key: "C03", name: "产能上限约束", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Order.demandDelta > 0.5", evidence: "该求解器输出未含此规则字段" },
-      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
+      // WO-RULE-EXPR-PARAMS：阈值改由 `params.staleHours` 承载（与真后端 battery.ts C09 一字不差）；
+      // 此前这里写死 `> 2`，真后端改了命名阈值这句话也不会动 —— 又是一个"两个可各自编辑的数"。
+      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
     ],
     ruleSetVersion: "rsv_mock",
   };

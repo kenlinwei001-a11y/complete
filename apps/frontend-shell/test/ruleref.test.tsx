@@ -22,7 +22,11 @@ describe("RuleRef · 规则锚点两跳", () => {
     await user.hover(screen.getByTestId("ruleref-C13"));
     await waitFor(() => expect(screen.getByTestId("ruleref-pop").textContent).toContain("信用额度")); // 规则名
     const pop = screen.getByTestId("ruleref-pop");
-    expect(pop.textContent).toContain("creditLimit"); // 表达式
+    // WO-RULE-EXPR-PARAMS（#78）：C13 表达式改回与真后端同口径的**违规谓词** `Order.creditUsedRatio > 1`。
+    // 原断言咬的是 mock 独有的约束式 `Order.credit <= Customer.creditLimit` —— 那个 `creditLimit` 字段
+    // 真后端从来没有；断言绿只证明"mock 自己和自己一致"，正是 #78 那类假绿。
+    expect(pop.textContent).toContain("Order.creditUsedRatio"); // 表达式（违规谓词口径）
+    expect(pop.textContent).not.toContain("creditLimit"); // 旧的 mock 独有字段不该回潮
     expect(pop.textContent).toContain("BLOCK"); // 严重级
   });
 

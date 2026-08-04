@@ -2,6 +2,8 @@ import type { IndustryTemplate, BusinessType } from "@platform/contracts";
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
+// WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
+import { ruleParamRef } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
@@ -225,13 +227,13 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   { key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", severity: "BLOCK", category: "产能" },
     // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
     // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
-    // `params.outsourceRatioMax` 是给 RULE_PARAM_BINDINGS 预留的**命名阈值面**（与 C04/C09/C18/C21 同形）：
-    // 该机制并线后只需加一行 `{ruleKey:"C08", param:"outsourceRatioMax", path:"whatIf.outsourceMax"}`，
-    // 即可让"改规则→改推演"在运行时生效，且**不引入第二个数**（此处 params 与 expression 同取一个常量）。
+    // WO-RULE-EXPR-PARAMS（闭掉 G-C08-EXPR-PARAM-SPLIT）：expression 现在**引用** `params.outsourceRatioMax`
+    // 而不再把同一个数再渲染一遍字面量 —— 阈值在这条规则上只剩 params 一处，改它即同时改判定与推演
+    // （`RULE_PARAM_BINDINGS` 已补上 C08 → `whatIf.outsourceMax` 那一行，此前该 param 全仓零消费方 = 诱饵）。
     // ⚠ key/name/severity/category 刻意保持**字面量**：规则码是标识符、不是会漂的业务数，
     //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
     //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
-    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(), severity: "WARN", params: { outsourceRatioMax: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
+    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
   { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK", category: "财务" },
   // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
   { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN", category: "产能" },
@@ -240,7 +242,9 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // C18 params.cashFloor：现金垫底线 —— 出厂值从**目标登记册** `PLAN_GOAL_TARGETS.cashFloor` 派生
   // （不再写第三份同值 50：此前 sop.cashFloor / planGenerate.targets.cashFloor / C18 expression 各一份）。
   // 出厂后它是**可编辑的当期口径**：发布新版 C18 即投影进 solver_params 的两处现金底线（见 RULE_PARAM_BINDINGS）。
-  { key: "C18", name: "现金垫底线", expression: "AnnualScenario.cashCushion < 50", severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务" },
+  // WO-RULE-EXPR-PARAMS：expression 引用 `params.cashFloor`，不再复写一遍 50 —— 此前改 params 只改了
+  // 求解器算数（sop.cashFloor / planGenerate.targets.cashFloor），C18 自己的判定仍按 expression 里的 50 走。
+  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务" },
   { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务" },
   // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
   // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
@@ -265,17 +269,23 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //       全代码库无人读 = 诱饵，已删；阈值单源 = expression）。
   { key: "C01", name: "产线设计产能上限", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", severity: "BLOCK", params: {}, category: "产能" },
   { key: "C02", name: "化成/老化串并产能口径", expression: "Process.parallelThroughput < Process.requiredThroughput", severity: "WARN", params: {}, category: "产能" },
+  // C04 **刻意不引用 params**（别"顺手统一"）：它的 expression 是**分类谓词**（认证状态≠量产），
+  // 里面没有可参数化的数值阈值；而它的两个 params 是**产能折算系数**（算数维，经 RULE_PARAM_BINDINGS
+  // 投影进 `certFactors.*` 供求解器乘）。二者不是同一个数的两份拷贝，故无分叉可言 —— 这条规则
+  // 本来就没有 G-C08-EXPR-PARAM-SPLIT 那个病。硬塞一个 `params.x` 进去只会造出一个新的假阈值。
   { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证" },
   { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
   // C09 params：staleHours（何时降级）+ degradedFactor（降到多少）= 规则拥有的两个真阈值，投影进
   // solver_params `health.*`。**normalFactor 已删**：未降级时的 P90 基线系数 `health.normal` 归 M11 校准
   // 参数 `p90_health`（QUANTILE 方法按覆盖率反解）所有——规则再声明一份同值就是第二个写者 + 诱饵。
-  { key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", severity: "WARN", params: { staleHours: 2, degradedFactor: 0.9 }, category: "质量" },
+  // WO-RULE-EXPR-PARAMS：`> params.staleHours` 取代写死的 `> 2` —— 阈值只存 params 一处。
+  { key: "C09", name: "数据时延临时降级", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, severity: "WARN", params: { staleHours: 2, degradedFactor: 0.9 }, category: "质量" },
   { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
   { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产" },
   { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
   { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
-  { key: "C21", name: "产销平衡偏差", expression: "SopVersionRow.balanceDeviationPct > 0.10", severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
+  // WO-RULE-EXPR-PARAMS：`> params.balanceDeviationPct` 取代写死的 `> 0.10`（曾是同值第二份）。
+  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
   { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型" },
   { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
   { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求" },

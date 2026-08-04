@@ -9,7 +9,7 @@ import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
-import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
+import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
 import { currentCancellationSignal, SolverCancelledError, throwIfCancelled } from "./cancellation.js"; // WO-D1 · 取消透传（超时/客户端断开 → 底层求解真停）
@@ -4131,6 +4131,10 @@ export class SolverService {
         const ast = parseExpression(rule.expression);
         const fields = collectFieldPaths(ast);
         if (!fields.some((path) => resolveField(payload, path) !== undefined)) naEvidence = "该求解器输出未含此规则字段（P2 续：补 payload 映射）";
+        // WO-RULE-EXPR-PARAMS：expression 引用的命名阈值必须在 rule.params 里声明。
+        // 缺了就**诚实标 NOT_APPLICABLE**（而不是让下面的 catch 吞成 violated=false 的假 PASS）。
+        const undeclared = [...collectParamRefs(ast)].filter((n) => !(n in (rule.params ?? {})));
+        if (undeclared.length > 0) naEvidence = `规则未声明命名阈值 ${undeclared.map((n) => `params.${n}`).join("、")}`;
       } catch {
         naEvidence = "表达式不可解析";
       }
@@ -4139,7 +4143,8 @@ export class SolverService {
         continue;
       }
       let violated = false;
-      try { violated = evaluateExpression(rule.expression, { payload }); } catch { violated = false; }
+      // 命名阈值随规则一起喂进求值（改 rule.params → 本求解器的规则判定跟着变，无需改代码）。
+      try { violated = evaluateExpression(rule.expression, { payload, params: rule.params }); } catch { violated = false; }
       out.push({
         key, name: rule.name, severity: rule.severity, expression: rule.expression,
         outcome: violated ? (rule.severity === "BLOCK" ? "BLOCK" : "WARN") : "PASS",

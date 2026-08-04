@@ -44,7 +44,9 @@ describe("F5 · 溯源弹窗（全局唯一组件）", () => {
     }
     // 规则段统一用共享 <RuleRef>（收尾#4）：悬浮规则编号 → 弹活规则定义（含 expression）
     await user.hover(within(pop).getByTestId("ruleref-C03"));
-    await waitFor(() => expect(screen.getByTestId("ruleref-pop").textContent).toContain("Order.demandDelta <= 0.5"));
+    // WO-RULE-EXPR-PARAMS（#78）：规则库 mock 改回与真后端同口径的**违规谓词**（`> 0.5`，为真 ⇒ 不通过）。
+    // 原断言咬的是 mock 独有的约束式 `<= 0.5` —— 极性与真后端相反，用户在溯源弹窗里看到的是反的那句。
+    await waitFor(() => expect(screen.getByTestId("ruleref-pop").textContent).toContain("Order.demandDelta > 0.5"));
   });
 
   it("kpi 卡点击打开（含 TS_AGGREGATE 形态文案）", async () => {

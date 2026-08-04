@@ -200,7 +200,7 @@ export class RuleScanService {
     const alerts: RuleAlert[] = [];
     for (const entityId of entities) {
       const holds = await this.ts.sustainHolds(tenantId, objectType, property, entityId, ast.days, (v) =>
-        evaluateAst(ast.inner, { payload: { [objectType]: { [property]: v }, [property]: v } }),
+        evaluateAst(ast.inner, { payload: { [objectType]: { [property]: v }, [property]: v }, params: rule.params }),
       );
       if (holds) {
         alerts.push({
@@ -235,7 +235,8 @@ export class RuleScanService {
         const objs = await this.repos.objects.listByType(tenantId, typeKey);
         for (const o of objs.sort((a, b) => (a.id < b.id ? -1 : 1))) {
           try {
-            if (evaluateAst(ast, { payload: { [typeKey]: o.props, ...o.props } })) {
+            // WO-RULE-EXPR-PARAMS：扫描告警也按规则自己的命名阈值判（改阈值 → 告警面跟着变）。
+            if (evaluateAst(ast, { payload: { [typeKey]: o.props, ...o.props }, params: rule.params })) {
               alerts.push({
                 ruleKey: rule.key,
                 entityId: String(o.props[Object.keys(o.props)[0] as string] ?? o.id),
