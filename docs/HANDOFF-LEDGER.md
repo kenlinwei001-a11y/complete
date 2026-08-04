@@ -88,6 +88,7 @@ test/grounding-vocab-grow.test.ts:53   expected 'UNREGISTERED' to be 'PROVISIONA
 
 | branch | 状态 | 说明 |
 |---|---|---|
+| `claude/handoff-gate-ledger` | 已并线 | 并线提交 `5d96a1e3`（cherry-pick 自 `a212e100`，无冲突）。**它红在 CI 上的那几天，红的正是本门**——我复验通过后既没并线也没登账，于是 PENDING 无登记判红，PR #4 的 `integration-ledger` job 卡在这一条。这恰是本表存在的理由：复验结论只活在我记忆里，机器读不到。内容：门账 `gate-ledger.json`（40 门普查·`gate-census.mjs`）+ `check-gate-ledger.mjs` + `check-ontology-writeback.mjs` 追加 G3 反向断言（§7 宣称「已并入 pnpm gates」而现算零调用方 → `LIE_DEAD` 判红）。复验证据：A6 红在判据③ · A7 红在判据① · A8 的 G3 反向断言抓出声明与现实相反的门；判据③ 现算非快照。零测试文件 → 无测试并线缺口。 |
 | `claude/handoff-wo-unitprice-scale` | 挂起 | **未复验·本门首次抓到的漏登条目**（2026-08-04）。独有 1 个 commit `68285bbc`「订单单价口径取证与修正」：禁 `solvers/service.ts` `gap_attribution` 的**静默兜底 600 元/套**（WO-SCALE-COHERENCE 当年消灭的病灶值残留）+ 两处口径显式标注，并带接缝测试 `apps/datacore/test/unitprice-scale.test.ts`（数据半 battery 种子 元/套 × 引擎半 portfolio 万元/套，任一半被「对齐」或兜底改回业务数即红）。**属「静默错答」族，优先级高于一般测试缺口。**解挂条件：审核方隔离复验（五包 gate + 亲手驱动 `gap_attribution` 确认兜底真的不再触发）→ 通过即 cherry-pick 上正线并改标「已并线」+ 提交号。 |
 | `claude/handoff-wo-63-schema-readability` | 挂起 | 本体可读性达标。五包 gate 全绿、`pnpm gates` 绿。等 PR 复验后并线——新 LOOP 的第一条走通用例。 |
 | `claude/handoff-wo-integration-loop` | 挂起 | 本 LOOP 基础设施自身（并线台账门 + CI 改跑 gate.sh + 部署主干收口）。随 PR 复验并线。 |
