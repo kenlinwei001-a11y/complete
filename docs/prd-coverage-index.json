@@ -511,6 +511,33 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-sandbox-redesign.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "uncovered": [
+        "A9"
+      ],
+      "coverage": 0.89
+    },
     "PRD-skill-runtime-orchestrator.md": {
       "acceptanceIds": [
         "A1",

@@ -1,0 +1,391 @@
+# PRD · 推演沙盘颠覆性重设计：从「能推演」到「**替你发现该推演什么**」
+
+| 项 | 值 |
+|---|---|
+| 版本 | v1.0（2026-08-04） |
+| 上游 | 仓主口述需求（§1 原文）· 任务 #93 |
+| 解决问题 | 今天的沙盘**等人提问**：用户得先知道哪里有问题、自己去调滑杆。仓主要的是反过来——**系统先把全链的卡点/堵点/断点找出来摆到台面上**，每一个再给出多方案与对比 |
+| 不解决 | 不重造推演引擎（`propagateTick` 是现成资产）· 不做 Skill 改造（另五份 PRD）· 不改路由架构（Track A/R 线） |
+| 交付形态 | 本文只是 PRD。**零代码改动**，实施由后续 WO 承接 |
+
+> **本文的核心主张**：沙盘不缺引擎，缺的是**问题发现层**。仓里已有 57 个求解器、17 条 sim 端点、
+> 7,019 行 sim 前端、一个确定性传导引擎。把它们组织成「**先诊断、再开方、后对比**」，
+> 比再造一个推演器有价值得多。
+
+---
+
+## 1. 仓主原始需求（原文记录，不改写）
+
+> 目前左侧导航栏的"推演沙盘"，需要颠覆性重新设计……让用户发现全流程的卡点，堵点，断点。
+> 然后每个卡点，堵点，断点，AI 基于本体，输出不同的解决方案，和方案对比。
+>
+> 业务端分为 3 个业务（乘用车，商用车，储能），都需要你思考。
+>
+> 链路覆盖：销售预测 → 物料采购 全链变量推演。
+>
+> 同时需要考虑源数据的扩充，特别是增加时间间隔的频率。
+
+---
+
+## 2. 本体引用与影响（铁律 0 · 强制）
+
+- **触及对象类型**（`docs/SYSTEM-ONTOLOGY.md` §2）：
+  - 复用既有：`SimSession` / `SimScenario` / `PropagationRule` / `Base` / `Line` / `Process` / `Order` /
+    `Material` / `Supplier` / `DemandSegment` / `Metric` / `RiskCard` / `ActionDraft`。
+  - **新增 1 个**：`ChainImpediment`（链路阻滞点）—— 卡点/堵点/断点的统一载体，见 §5.2。
+    它是**派生对象**（由求解器算出，不落人工录入），故不进 R4 Action 审批面。
+- **触及链路**（§3）：新增一条**诊断链**，挂在既有编排链侧面，不改编排链本身：
+  ```
+  ChainScan（全链扫描）→ ChainImpediment[]（阻滞点集）→ 每点 fanout 方案候选
+    → optimize_whatif / propagateTick 逐方案试算 → SimComparePanel 对比 → ActionDraft（R4）
+  ```
+- **触及事件**（§4）：新增 **2 个**（须回写 §4 并接消费方，否则就是 #92 那族「发了没人收」）：
+  - `chain.scan_completed`：载荷 `{scanId, impedimentCount, bySeverity, grain, window}`
+  - `chain.impediment_resolved`：载荷 `{impedimentId, viaActionId}` —— 供驾驶舱统计「发现→处置」转化率
+- **触及不变量**（§5）：
+
+  | 不变量 | 本设计的处置 |
+  |---|---|
+  | **R2** tenant_id everywhere | 扫描结果按租户隔离；`ChainImpediment` 带 tenantId |
+  | **R4** 真值经 Action | 沙盘**只推演不写真值**；方案落地一律经 `ActionDraft` 审批（既有链） |
+  | **R6** 确定性 | 同 (seed, 场景, 参数版本) 重跑扫描**字节一致**；阻滞点排序须全序（不许靠 `clamp` 巧合，见 §7 教训） |
+  | **R13** 结论可溯源 | 每个阻滞点必须带 `provenance`：哪个求解器、哪条派生边、哪条规则阈值算出来的 |
+  | **R14** 去业务锁死 | 三业务差异一律从 `SEG_REGISTRY` 派生，**禁内联**（`boundary-singlesource:check` 守） |
+  | **R16** 需求拉动 | 扫描发现「算不出来」时走生长回路报缺口，不静默跳过 |
+- **触及门禁**（§7）：新增 **2 道**（须登记 §7 + 进门账 `scripts/gate-ledger.json`，否则 `gate-ledger:check` 红）：
+  - `chain-scan-honesty:check`：阻滞点的每个数字都可溯源到求解器输出，**零写死**（`genuine-sim:check` 同族）
+  - `chain-scan-determinism:check`：同输入两次扫描字节一致（R6）
+- **触及断点**（§8）：
+  - 直接相关既有断点：`G-12`（有确定性派生 what-if 但……）· `G-DECISION`（无决策推演引擎：多方案+比对+触发行动）·
+    `G-SOP-COMPOSE`（产销重排自由问句无落地求解器）· `G-PORTFOLIO-LOCAL-ONLY`（逐订单单独求解、只到局部最优）·
+    `G-EXCEPTION-SCATTER`（四类异常散落无统一入口）。**本 PRD 正面处置的就是 `G-DECISION` + `G-EXCEPTION-SCATTER`。**
+  - **新登记 1 条**（实施时写入 §8）：
+    ```
+    | G-TIMEGRAIN-SPLIT | 时间粒度三层不一致且提频撞上限：A8 引擎支持 shift/day/week
+      （timeseries.ts:48 bucketOf），但合成种子 5 条序列**全部 day**（battery.ts:2526-2530），
+      求解器时间轴亦为 day（base-outlook.ts:8-15 horizon 30/60/90）。且 timeseries.ts:373
+      硬限 bucketCount>120 → day 档最多 120 天、shift 档（3班/日）仅 40 天，
+      而物料采购提前期常 >40 天 ⇒「全链到采购」与「shift 级频率」在现上限下互斥。
+      | 时序引擎 grain 能力 ⊥ 种子产出 ⊥ 求解器时间轴 | 🔴 未修（本 PRD §6 治）|
+    ```
+
+---
+
+## 3. AS-IS：今天沙盘真有什么（逐条 file:line，不拿"应该有"当"有"）
+
+### 3.1 已有资产（**别重造**）
+
+| 资产 | 位置 | 状态 |
+|---|---|---|
+| 沙盘主屏 | `apps/frontend-shell/src/views/sim/SandboxView.tsx`（462 行）· 路由 `v/sim-sandbox`（`App.tsx:134`） | 在，**暗发**（entitlement `sim.sandbox` 关 → 404，`App.tsx:111`） |
+| 初始化向导 | `SimInitWizard.tsx`（353 行） | 在，同 `sim.sandbox` 守门 |
+| 场景对比面板 | `SimComparePanel.tsx`（125 行） | 在 |
+| 就绪度面板 | `SimReadinessPanel.tsx`（269 行） | 在 |
+| **确定性传导引擎** | `apps/datacore/src/sim/propagation.ts` `propagateTick`，经 `app.ts:1428` 调用 | **在，且是纯函数**（R6 确定性、R14 零业务常数，`app.ts:1405` 注释） |
+| sim 端点 | 17 条：`/a/v1/sim/{sessions,scenarios,live-scenarios,compare,propagation-rules,view-config,…}`，含 `tick`/`act`/`branch`/`rollback`/`checkpoint`/`certification`/`scope-precheck` | 在 |
+| sim 前端总量 | `views/sim/**` **7,019 行** / 20 个组件 | 在 |
+| 三业务单一来源 | `SEG_REGISTRY`（`packages/contracts/src/base-registry.ts:44`）：乘用车 `priceWan 2.2/marginPct 19/floorPct 12` · 储能 `1.4/13/11` · 商用车 `1.8/15/11` | 在，**已是单一来源** |
+
+### 3.2 全链求解器覆盖（57 个 `SOLVER_KEYS`，`solvers/service.ts:44`）
+
+按仓主要的「销售预测 → 物料采购」四段映射：
+
+| 链段 | 已有求解器 | 判定 |
+|---|---|---|
+| ① 需求/预测 | `capacity_forecast` · `plan_generate` · `plan_audit` · `plan_rootcause` · `supply_demand_gap_attribution` · `sop_reschedule` | 🟢 够用 |
+| ② 订单/交付 | `risk_timeline` · `affected_orders` · `order_fullchain` · `quote_margin` · `concentration_risk` | 🟢 够用 |
+| ③ 产能/排产 | `capacity_rollup` · `bottleneck_matrix` · `shared_bottleneck` · `job_shop_schedule` · `cert_schedule` · `counterfactual_timeline` · `base_capacity_outlook` · `audit_timeline` | 🟢 最厚的一段 |
+| ④ **物料/采购** | `mrp_netting` · `inventory_optimize` · `supply_demand_gap_attribution` | 🟡 **最薄**：只有净需求与库存优化，**无供应商交期/提前期/最小起订量/断供推演** |
+
+> **结论**：全链**不是从零开始**，薄弱点集中在第 ④ 段。设计应把力气花在补 ④ 段与**串起四段**，
+> 而不是重做 ①②③。
+
+### 3.3 今天沙盘做不到的（= 本 PRD 的真实增量）
+
+1. **没有"问题发现层"**：沙盘是**等人提问**的——用户得自己知道哪儿有问题、自己调滑杆。
+   仓主要的「让用户发现卡点/堵点/断点」今天**一个入口都没有**（`G-EXCEPTION-SCATTER`：四类异常散落）。
+2. **没有多方案生成与对比**：`SimComparePanel` 比的是**用户自己建的两个场景**，
+   不是**系统为同一个问题生成的 N 个解法**（`G-DECISION` 原文：有方案候选但无决策推演引擎）。
+3. **三业务未进沙盘**：`SEG_REGISTRY` 在，但沙盘视图不按 seg 切分、不做跨 seg 权衡。
+4. **链路只到产能，没接到采购**：④ 段薄，且 ①→④ 没有一条贯通的推演。
+
+---
+
+## 4. 目标 / 非目标
+
+### 4.1 目标
+
+1. **G1 · 全链扫描器**：一次扫描产出 `ChainImpediment[]`，覆盖①→④四段 × 三业务。
+2. **G2 · 三类阻滞点可判定**（§5.1）：卡点/堵点/断点各有**机器可算**的定义，不停在文案层。
+3. **G3 · 每点多方案 + 对比**：每个阻滞点给 **2–4 个**候选解法，各自经 `propagateTick`/`optimize_whatif` 真试算，同屏对比。
+4. **G4 · 方案落地经 R4**：采纳 → `ActionDraft` → 既有审批链。**沙盘自己不写真值。**
+5. **G5 · 时间粒度收敛**（§6）：三层粒度不一致 + 120 桶上限，给出明确取舍而非回避。
+
+### 4.2 非目标
+
+- ❌ 不重造 `propagateTick`。
+- ❌ 不做实时流（本期扫描是**按需触发 + 缓存**，不是常驻计算）。
+- ❌ 不引入图数据库（本体是平的，`WITH RECURSIVE` 全仓 0 次；改这个是另一条线）。
+- ❌ 不在本期补齐 ④ 段的全部供应链求解器 —— 只补**断点判定所必需**的最小集（§5.1）。
+
+---
+
+## 5. 设计
+
+### 5.1 三类阻滞点的**可判定定义**（本 PRD 最要害的一节）
+
+仓主给的三个词必须落成能从数据算出来的判据。**每一类都要能回答三问**：怎么算、阈值从哪来、怎么证明不是写死的。
+
+| 类型 | 业务含义 | **机器判据**（怎么算） | 阈值来源（**引用而非写死**） | 主用求解器 |
+|---|---|---|---|---|
+| **卡点**<br>Bottleneck | 产能/资源**不够**，是速率上限 | 某环节 `利用率 ≥ 阈值` 且它是全链 `min(通过率)` 所在环节 —— **它决定整条链的节拍** | 规则 `C*` 的利用率红线（经 `RULE_PARAM_BINDINGS` 读，禁内联） | `bottleneck_matrix` · `shared_bottleneck` · `capacity_rollup` |
+| **堵点**<br>Congestion | 能力够，但**排队/等待**导致实际吞吐掉下来 | `WIP/在制 > 阈值` 或 `实际产出 / 理论产出 < 阈值` 且**该环节利用率未达卡点线** —— 区别于卡点的关键：**不是不够，是流不动** | 同上，另引 `attainment:line` 序列基线 | `job_shop_schedule` · `audit_timeline` · `capacity_forecast` |
+| **断点**<br>Break | 链条**接不上**：上游给不了下游要的 | ① **物理断**：`mrp_netting.shortageCount > 0`（缺料）② **时间断**：上游可用日 > 下游需求日（提前期兜不住）③ **数据断**：该环节 `dataMode = EMPTY`（算不出来，**诚实标记而非静默 0**） | 提前期/齐套率来自 `Material`/`Supplier` 对象属性 | `mrp_netting` · `supply_demand_gap_attribution` |
+
+> **三类必须互斥可判**：一个环节同时满足卡点与堵点判据时，**按"利用率是否达红线"裁决**（达线=卡点）。
+> 判据顺序写进实现注释，**不许靠 if 顺序的巧合**（教训见 §8-③）。
+>
+> **③ 数据断是本设计特意留的**：算不出来**也是一种发现**。今天的做法是静默给 0 或不显示，
+> 那正是 `genuine-sim` 战役打过的假数据病。数据断要**显式呈现**并接生长回路（R16）。
+
+### 5.2 `ChainImpediment` 对象形态
+
+```ts
+{
+  id, tenantId, scanId,
+  kind: "BOTTLENECK" | "CONGESTION" | "BREAK",
+  breakSubtype?: "MATERIAL" | "LEADTIME" | "DATA",   // kind=BREAK 时必填
+  stage: "DEMAND" | "ORDER" | "CAPACITY" | "MATERIAL", // ①②③④
+  seg: "乘用车" | "商用车" | "储能" | "ALL",          // 派生自 SEG_REGISTRY，禁内联
+  locus: { objectType, objectId, label },            // 落在哪个真对象上
+  severity: number,                                   // 0–100，算法见下
+  evidence: {                                         // R13：每个数字可溯源
+    solverKey, ruleKey?, derivationEdge?, metricValue, threshold, unit
+  },
+  dataMode: "LIVE" | "ESTIMATED" | "EMPTY",          // 诚实标注，沿用既有口径
+  candidates: SolutionCandidate[]                     // §5.3
+}
+```
+
+**`severity` 必须是算出来的**，建议 = `归一化(超阈幅度) × 归一化(下游受影响订单金额)`。
+两个因子都必须来自求解器输出。**禁止用固定权重表拍脑袋**——那是 `G-MULTIOBJ-TOY-ORDERBOOK` 的老路。
+
+### 5.3 多方案生成与对比
+
+**方案候选不由 LLM 凭空生成**，而是「**从本体的可动杠杆里选**」——这是「AI 基于本体」的落法：
+
+1. **枚举可动杠杆**：复用既有 `discoverCapacityLevers` / `LEVER_PROP_META`（已带 unit+kind）。
+   对该阻滞点所在对象，取本体上**可改且有下游派生边**的属性。
+2. **按类型给候选模板**（每类 2–4 个，来自杠杆组合，不是写死文案）：
+   - 卡点 → 加班/加线 · 转厂 · 外协 · 降速保良率
+   - 堵点 → 换型合并 · 批量调整 · 缓冲重配 · 排序规则改
+   - 断点 → 替代料 · 提前采购 · 拆单分批 · 改承诺交期
+3. **每个候选真试算**：走 `propagateTick`（确定性传导）或 `optimize_whatif`。
+   **效果层判据**：候选之间的 KPI 必须**真的不同**；若两个候选算出完全一样的结果，
+   要么杠杆没接线，要么候选重复——**门必须能咬住这一点**（§9 验收 A4）。
+4. **对比呈现**：复用 `SimComparePanel` + `MultiObjWhatifPanel`，
+   **不新造对比组件**（`G-MULTIOBJ-TOY-ORDERBOOK` 已修，面板接的是真订单簿）。
+
+### 5.4 三业务（乘用车 / 商用车 / 储能）
+
+**判定：同一套模型换参数，不是三套结构。** 依据：`SEG_REGISTRY` 三条记录的字段完全同构
+（`priceWan` / `marginPct` / `floorPct` / `color`），差异是**经济参数**不是**物理结构**。
+
+设计含义：
+- 扫描器**一次跑全量**，结果按 `seg` 打标 + 可筛，**不为每个 seg 造一套代码**。
+- **跨 seg 权衡是一等场景**：同一条产线被三个 seg 争用时，
+  「保谁」的判据来自 `marginPct` / `floorPct`（毛利底线）——**这正是三业务同屏的价值**。
+  这一条要有专门的场景卡与接缝测试。
+- ⚠ **禁内联**：任何 `"乘用车"` / `2.2` 字面量落进代码 = `boundary-singlesource:check` 红。
+
+---
+
+## 6. 源数据扩充与时间粒度（仓主本轮新增要求 · 正面处置）
+
+### 6.1 实测现状（三层不一致）
+
+| 层 | 今天 | 证据 |
+|---|---|---|
+| A8 时序引擎**能力** | `shift` / `day` / `week` 三档 | `apps/datacore/src/timeseries.ts:48` `bucketOf` |
+| 合成种子**实际产出** | **5 条序列全部 `grain:"day"`** | `battery.ts:2526-2530`（oee:equip · yield:process · output:line · attainment:line · util:line） |
+| 求解器**时间轴** | day（`horizon` 30/60/90 天 · `crossDay` · `toDay:180` · dayPlan 逐日） | `apps/datacore/src/solvers/base-outlook.ts:8-15` |
+| 产能口径 | 日 `capacityDaily` + 周 `weeklyWan` + 年 `operatingDaysPerYear=300` | `base-outlook.ts:110` · `base-registry.ts` |
+| 财务/需求 | 年 / 季 | `scaleAnchorRevenue` · `priceWan` |
+
+**一句话**：**引擎有 shift 档，数据一点没有，求解器按天算。**
+
+### 6.2 提频撞的墙（必须先决策，否则做完发现用不了）
+
+`apps/datacore/src/timeseries.ts:373`：`bucketCount > 120` → 抛 400「use a coarser grain」。
+
+| grain | 最大窗口 | 够不够全链到采购 |
+|---|---|---|
+| week | ~2.3 年 | 够，但太粗看不见堵点 |
+| **day** | **120 天** | **勉强够**（采购提前期常 30–90 天） |
+| shift（3班/日） | **40 天** | **不够** —— 采购提前期就超了 |
+
+> **⇒「全链推演到采购」与「shift 级频率」在现有上限下互斥。** 这是新登记的断点 `G-TIMEGRAIN-SPLIT`。
+
+### 6.3 建议取舍（**分层粒度**，不是全局提频）
+
+**不建议**把所有序列提到 shift —— 那会撞 120 桶墙，且大部分链段不需要。建议**按链段分层**：
+
+| 链段 | 建议 grain | 理由 |
+|---|---|---|
+| ③ 产能/排产（**堵点主战场**） | **shift** | 换型、排队、班次差异只在班次级可见；窗口 40 天足够（排产视野本就短） |
+| ①②④ 需求/订单/物料 | **day** | 提前期以天计，120 天窗口覆盖采购周期 |
+| 财务/复盘 | week | 不需要更细 |
+
+**配套三件（缺一件，提频就是白提）**：
+1. **种子要真产 shift 数据**：`battery.ts` 的序列定义加 `grain:"shift"` 档，
+   并给**班次剧本**（早/中/夜班的良率与产出差异）——否则三个班的数据一模一样，提频等于把同一个数抄三遍，
+   **是新一种假数据**。
+2. **求解器要能吃 shift**：`base-outlook` 一族目前 `dayFrom` 硬按天。
+   本期**不全改**，只让扫描器在③段按 shift 聚合后再喂给既有求解器（适配层，不改求解器）。
+3. **120 桶上限要么放宽要么显式降级**：建议**保留上限**（它防的是前端被打爆），
+   但扫描器超限时**自动降 grain 并在结果里标注 `grainDowngraded:true`**——
+   **不许静默降级**（静默降级 = 用户以为看的是班次级，实际是天级）。
+
+---
+
+---
+
+## 7. 数据关联性（全局视角 · 仓主 2026-08-04 追加）
+
+> 仓主原话：「需要你全局考虑，数据之间的关联性」。
+> **这条不是补充要求，它决定 §6 的提频方案能不能用。** 单独给某一段提频而不管关联，
+> 产出的不是更细的数据，是**更细的错数据**。
+
+### 7.1 关键判断：混用时间粒度 = 混用单位，是**同一族病**
+
+本仓已经在**单位/尺度维**把这个病解过一遍，有现成范式（本体 §5 **R18 尺度自洽**）：
+
+| | 单位维（已解，R18） | **时间维（未解，本 PRD 面对的）** |
+|---|---|---|
+| 病灶 | 物理(`Base.gwh`)/需求/产能(`weeklyWan`)/订单/财务五层**各自造尺度**，无换算常数把它们焊住 → **差 25~300× 不 round-trip** | 引擎 shift/day/week 三档、种子只产 day、求解器按 day 算 → 三层**各说各话** |
+| 修法 | **唯一桥常数** `packEnergyKwh` + 锚 `scaleAnchorRevenue`，contracts 单一来源，进 `boundaryVersion()` 指纹 | **唯一聚合律**：每条序列声明 `grain` + 聚合算子，跨 grain 一律显式经桥 |
+| 门 | `scale-coherence.test.ts` **四方互核** SEAM（ε≤12%/15%） | 建议 `time-coherence` 三档互核（§7.3） |
+| **最要命的后知后觉** | **回补了第六层 `realized`** —— 因为时序 `output:line` 不锚同一尺度时，「predicted/actual **脱尺度 1.3~4.6×**、**MAPE 恒 134%**」 | ← **这正是前车之鉴：时序不自洽，上层校准全废** |
+
+**⇒ 结论：时间粒度不是「每条序列自己的旋钮」，是一条必须全局自洽的不变量。**
+建议立为 **R19 · 时间自洽**，与 R18 同构。
+
+### 7.2 三种关联，缺一条都会出错数
+
+**① 时间维关联（同一事实，三档必须对得上）**
+
+`aggValues`（`apps/datacore/src/timeseries.ts`）已支持 `sum/min/max/avg/p95/weighted_avg`。
+问题不在算子缺失，在**没有规定哪条序列该用哪个算子**：
+
+| 序列语义 | 正确聚合 | 用错的后果 |
+|---|---|---|
+| `output:line`（产出·**存量累加**） | `sum` | 用 avg → 三班产出被平均成一班，**产能凭空少 3×** |
+| `util:line` / `oee:equip`（利用率·**比率**） | `weighted_avg`（按 output 加权） | 用 sum → 利用率 276%，荒谬但不会报错 |
+| `yield:process`（良率·**比率**） | `weighted_avg` | 同上 |
+| `attainment:line`（达成率·**比率**） | `weighted_avg` | 同上 |
+
+> **今天这层没有强制**：序列定义里有 `measureField`/`weightField`（`battery.ts:2526-2530`
+> 已给 `output:line` 配了 `weightField:"output"`），但**没有门保证「比率类必须带 weightField」**。
+> 提频到 shift 后，这个洞会被放大 3 倍触发。**建议本期补一道 lint 级门。**
+
+**② 对象维关联（链路是图，不是四个独立的段）**
+
+卡点/堵点/断点会**沿关系传导**：一个物料断供（④段）会表现为某产线堵点（③段）、
+再表现为某订单交付风险（②段）。**逐段独立扫描必然把同一个根因数成三个问题。**
+
+已核实的现状：
+- **BOM 是一等对象**（`battery.ts:700-706` `bomHeaderProps`，`bomId` 主键），物料链有真结构。
+- **关系是一等行**（`ontology_links`/`links`），不是外键拼接。
+- ⚠ **但本体是平的**：`WITH RECURSIVE` 全仓 **0 次**（实测），图遍历全在应用内存。
+- ✅ **已有现成的反向遍历机制**：`discoverLevers` 反向 walk `derivationSpecs.deps`
+  （本体 §8 `G-WHATIF-HARDCODED-LEVERS` 记载，已修）——**§5.3 的方案候选枚举就该复用它，不新造。**
+
+**设计含义（三条硬性）**：
+1. **扫描必须先建图再判点**，不能四段各扫各的。
+2. **同根因去重**：沿关系可达且同一时间窗的阻滞点，**归并为一条**并标 `rootCause` 与 `manifestations[]`。
+   否则用户面对的是三条重复告警——`G-EXCEPTION-SCATTER`（异常散落）换个形式复发。
+3. **遍历必须限深限量**（本体平、走内存）：深度上限 + 节点数上限，超限**显式标注截断**，不静默。
+
+**③ 尺度维关联（R18 已解决，沙盘不得破坏）**
+
+沙盘任何新算的数（产能、缺口、金额）必须**继续走 R18 的桥**：
+名牌套 = `Σgwh×1e6/packEnergyKwh`、单价从 `SEG.priceWan` 派生。
+**新写一个换算常数 = 直接违反 R14 + R18**，`boundary-singlesource:check` 会红。
+
+### 7.3 配套的门（否则以上全是纸面约定）
+
+| 门 | 判据 | 会红的样子 |
+|---|---|---|
+| `time-coherence:check` | 同一事实在 shift/day/week 三档聚合后 **round-trip 自洽**（ε≤5%）；照抄 R18 的四方互核形态 | 把 `util:line` 的聚合从 `weighted_avg` 改成 `sum` → 必须红 |
+| `series-agg-contract:check` | **比率类序列必须声明 `weightField`**；存量类必须用 `sum` | 新加一条比率序列不配权重字段 → 红 |
+| `chain-scan-dedup:check` | 同根因的阻滞点必须归并；构造一条「物料断→产线堵→订单险」的链，扫描结果**必须是 1 条带 3 个 manifestations**，不是 3 条 | 退化成 3 条 → 红 |
+
+> 三道门都要登记本体 §7 **且**进 `scripts/gate-ledger.json`（`gate-ledger:check` 守）。
+
+### 7.4 这一节对 §6 提频方案的修正
+
+§6.3 原建议「③段上 shift、其余留 day」。**加上关联性约束后，该方案仍成立，但必须附三个前提**：
+
+1. **③段提到 shift 时，参与跨段 join 的量必须先按 §7.2① 的算子聚合回 day** —— 不许 shift 与 day 直接相减。
+2. **聚合发生的位置必须唯一**（一处收口），否则就是"两处各自聚合、口径漂移"的老病。
+3. **降级必须可见**：超 120 桶自动降 grain 时标 `grainDowngraded:true`（§6.3 已述），
+   **且降级后的数不许再进跨段比较**——降过级的数与未降级的数放在一起算，就是新一种脱尺度。
+
+---
+
+## 8. 已知教训（本设计必须绕开的坑，均来自本仓真实事故）
+
+1. **「绿测试 ≠ 能用」**：扫描器测试全绿不代表能发现真问题。验收必须**亲手在真数据上跑一次扫描**，
+   人工核对至少 3 个阻滞点确实是真问题（§9 A5）。
+2. **不许静默兜底**：算不出来标 `dataMode:EMPTY`，**不许拿写死数字冒充**（`genuine-sim:check` 守）。
+   刚在 `wo-unitprice-scale` 抓到的「静默兜底 600 元/套」就是前车之鉴。
+3. **排序不许靠 clamp 巧合**：`wo-capacity-100pct` 的 R7–R9 轮修的正是「排序契约靠 clamp 巧合」。
+   阻滞点排序必须是**全序且显式**，同 severity 时用稳定 tiebreaker（如 objectId 字典序），保 R6。
+4. **窗口参数不许写死**：同一分支还修过「订单聚合窗口写死 180 天」。扫描窗口必须是入参且端到端透传
+   （`R-ARG-FIDELITY` / `G-ARG-DROP-SEAM`）。
+5. **筛选下拉不许自锁死**：同上分支的「基地筛选下拉自锁死」——选项集不许从**已被过滤的响应**派生。
+
+---
+
+## 9. 验收判据（复验方逐条核，缺一不算过）
+
+| # | 判据 | 怎么核 |
+|---|---|---|
+| **A1** | 扫描产出的每个阻滞点，`evidence.solverKey` 指向的求解器**真被调用过** | 抓请求日志比对，不看代码 |
+| **A2** | **零写死**：`chain-scan-honesty:check` 绿；随机抽 5 个数字，逐个溯源到求解器输出 | 抽验 |
+| **A3** | **R6 确定性**：同 (seed, 场景, 参数) 连跑两次，结果**字节一致** | `diff` 两次输出 |
+| **A4** | **候选真不同**（效果层）：同一阻滞点的 N 个候选，KPI 至少一项互不相同；**把某个杠杆接线掐掉 → 对应候选必须变得与基线相同 → 门红** | 变异反证，贴红的原文 |
+| **A5** | **亲手真跑**：在真数据上跑一次全链扫描，人工核对 ≥3 个阻滞点是真问题、非误报 | 截图 + 逐条说明 |
+| **A6** | **三业务**：跨 seg 争用场景能产出阻滞点，且保谁的判据来自 `SEG_REGISTRY.marginPct/floorPct` | 改 `SEG_REGISTRY` 一个值 → 结论真跟着变 |
+| **A7** | **禁内联**：`boundary-singlesource:check` 绿（无 `"乘用车"`/`2.2` 字面量） | 门 |
+| **A8** | **粒度诚实**：超 120 桶时结果带 `grainDowngraded:true` 且 UI 显式提示；**静默降级 → 红** | 构造超限窗口 |
+| **A9** | **R4**：采纳方案只产 `ActionDraft`，沙盘不写真值 | 查数据库无直写 |
+| **A10** | 两个新事件有**真消费方**（不是发了没人收，#92 那族） | 追消费端 |
+| **A11** | 两道新门登记进本体 §7 **且**进 `scripts/gate-ledger.json` | `ontology-writeback:check` + `gate-ledger:check` |
+
+---
+
+## 10. 分期（不求一次做完）
+
+| 期 | 内容 | 出口判据 |
+|---|---|---|
+| **S1** | 扫描器骨架 + **卡点**一类（③段最厚、求解器最全，风险最低） | A1/A2/A3 绿，能在真数据上找出真卡点 |
+| **S2** | 补**堵点**与**断点**（含 ④ 段最小供应链判据） | 三类互斥可判，A5 亲跑过 |
+| **S3** | 多方案生成 + 对比接既有面板 | A4 变异反证真红 |
+| **S4** | 三业务跨 seg 权衡 + 粒度分层（③段上 shift） | A6/A8 |
+| **S5** | 采纳链接 R4 + 两个事件接消费方 | A9/A10 |
+
+**S1 之前必须先做的一件**：`sim.sandbox` 今天是**暗发**（默认关）。
+S1 落地前要决定它**何时点亮**——否则做完了用户也看不见（本仓 `#90` 那族「声明了没接线」）。
+
+---
+
+## 11. 诚实边界
+
+- 本文的 AS-IS 是**静态读码 + 端点枚举**得出的，**没有真跑过沙盘页**（`sim.sandbox` 暗发默认关）。
+  S1 立单前应先真开一次、亲手点一遍，若与本文描述不符**以真跑为准并回改本文**。
+- §5.1 的三类判据是**设计提案**，阈值具体取值未定 —— 必须在 S1 用真数据标定，
+  且一律经规则表引用，**不在本文写死数字**。
+- ④ 段「无供应商交期/提前期/最小起订量」是按 `SOLVER_KEYS` 57 个 key 的**名称**判的，
+  未逐个读实现；若某个求解器内部已含提前期逻辑，S2 立单时按事实修正。
+- `severity` 公式是建议，未经数据验证；S1 应先用真数据看排序是否符合业务直觉，再定稿。

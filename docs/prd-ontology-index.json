@@ -1568,6 +1568,30 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-redesign.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/datacore/src/sim/propagation.ts",
+        "apps/datacore/src/timeseries.ts",
+        "apps/frontend-shell/src/views/sim/SandboxView.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": [
+        "scripts/gate-ledger.json"
+      ]
+    },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2190,6 +2214,7 @@
     ],
     "G-12": [
       "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-sandbox-redesign.md",
       "PRD-skill-governance-learning.md"
     ],
     "G-11": [
@@ -2329,6 +2354,7 @@
     "packages/contracts/src/base-registry.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-inference-line.md",
+      "PRD-sandbox-redesign.md",
       "PRD-skill-governance-learning.md",
       "PRD-skill-migration.md"
     ],
@@ -2381,7 +2407,8 @@
     ],
     "apps/datacore/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md",
-      "PRD-ontoflow-data-builder.md"
+      "PRD-ontoflow-data-builder.md",
+      "PRD-sandbox-redesign.md"
     ],
     "packages/contracts/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md"
@@ -2590,7 +2617,8 @@
       "PRD-gate-ledger.md"
     ],
     "scripts/gate-ledger.json": [
-      "PRD-gate-ledger.md"
+      "PRD-gate-ledger.md",
+      "PRD-sandbox-redesign.md"
     ],
     "scripts/gate.sh": [
       "PRD-gate-ledger.md",
@@ -2773,6 +2801,12 @@
     ],
     "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
       "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/datacore/src/sim/propagation.ts": [
+      "PRD-sandbox-redesign.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SandboxView.tsx": [
+      "PRD-sandbox-redesign.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
