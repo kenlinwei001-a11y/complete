@@ -1,0 +1,707 @@
+{
+  "version": 1,
+  "gates": {
+    "check-action-wiring.mjs": {
+      "alias": "action-wiring:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/mapping.ts",
+        "apps/datacore/src/synthetic/battery.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:841",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行841",
+        "note": "径走 `ACTION_WIRING[key] ?? \"NO_WRITE\"` 根本不进表，故内置键出现 `NO_WRITE` 本身就可疑。四条变异反证已跑：洗白无理由→红 / 与 mapping 打架→红 / 占位理由→红 / **签"
+      },
+      "notes": ""
+    },
+    "check-arg-drop-seam.mjs": {
+      "alias": "arg-drop-seam:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/dist/mocks/seed.js",
+        "apps/agentcore/dist/util/template.js",
+        "apps/agentcore/src/router/ceo-route.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/extended.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:839",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行839",
+        "note": "en→red 有牙：删某 CEO intent 的 slot（如 ceo_credit_exposure 去 custName）→ 门红（已亲测退 1）· `scripts/check-arg-drop-seam.mjs`，`pn"
+      },
+      "notes": ""
+    },
+    "check-boundary-singlesource.mjs": {
+      "alias": "boundary-singlesource:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/mocks/simSolvers.ts",
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:820",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行820 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-bstack-derive.mjs": {
+      "alias": "bstack-derive:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/datacore/dist/databuilder/comprehend.js",
+        "apps/datacore/dist/solvers/service.js",
+        "apps/datacore/src/databuilder/comprehend.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 无该门条目"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-chain-closure.mjs": {
+      "alias": "chain:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:814",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行814 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-cli-parity.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "packages/contracts/src/operation-intent.ts",
+        "scripts/cli-parity-baseline.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:826",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行826 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-cockpit-widgets.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:824",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行824 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-debattery.mjs": {
+      "alias": "debattery:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/pages/admin/**",
+        "apps/frontend-shell/src/views/**",
+        "scripts/debattery-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:818",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行818 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-deploy-governance.mjs": {
+      "alias": "deploy-governance:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/config.ts",
+        "apps/datacore/src/config.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:843",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行843",
+        "note": "删空 ≠ 无事发生）。`APPS` 登记表（config 源 ↔ compose service）新增服务须登记，否则它的建议值无人守。**变异反证 4/4 真红**：compose 删一行 / 值漂移 8→80 / 注释里拼错名字 /"
+      },
+      "notes": ""
+    },
+    "check-dril-quality.mjs": {
+      "alias": "dril-quality:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/agentcore/dist/config.js",
+        "apps/agentcore/dist/deps.js",
+        "apps/agentcore/dist/dril/quality.js",
+        "apps/agentcore/dist/dril/relations.js",
+        "apps/agentcore/dist/dril/search-engine.js"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:931",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行931 未记录已执行的反证"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-dril-registry.mjs": {
+      "alias": "dril-registry:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/agentcore/dist/config.js",
+        "apps/agentcore/dist/deps.js",
+        "apps/agentcore/dist/llm/mock.js",
+        "apps/agentcore/dist/mcp/mock.js",
+        "apps/agentcore/dist/mocks/clients.js"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 无该门条目"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-dril-retrieval.mjs": {
+      "alias": "dril-retrieval:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/agentcore/dist/config.js",
+        "apps/agentcore/dist/deps.js",
+        "apps/agentcore/dist/dril/resource-projector.js",
+        "apps/agentcore/dist/dril/search-engine.js",
+        "apps/agentcore/dist/dril/tag-taxonomy.js"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 无该门条目"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-gate-ledger.mjs": {
+      "alias": "gate-ledger:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "scripts/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:835",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行835",
+        "note": "verCount`（`provenRed=NEVER` 的门数）与 `pendingWireCount`（已建未接线门数）**只降不升**。变异反证 4/4 已跑（摘门→③红 · 幽灵门→①红 · 假路径→④红 · §7 挂未接线门→G"
+      },
+      "notes": ""
+    },
+    "check-genuine-sim.mjs": {
+      "alias": null,
+      "binding": "GATE_SH",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:772",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行772 未记录已执行的反证"
+      },
+      "notes": "已在自动路径内（GATE_SH，由 scripts/gate.sh / scripts/gate.sh 调用），非手动门。",
+      "disposition": "WIRE"
+    },
+    "check-handoff-integration.mjs": {
+      "alias": null,
+      "binding": "GATE_SH",
+      "guardedPaths": [
+        "docs/HANDOFF-LEDGER.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:831",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行831 未记录已执行的反证"
+      },
+      "notes": "已在自动路径内（GATE_SH，由 scripts/gate.sh / .github/workflows / scripts/gate.sh 调用），非手动门。",
+      "disposition": "WIRE"
+    },
+    "check-link-stabilize.mjs": {
+      "alias": "link-stabilize:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/datacore/dist/databuilder/comprehend.js",
+        "apps/datacore/src/databuilder/comprehend.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:815",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行815 未记录已执行的反证"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-loop-control.mjs": {
+      "alias": "loop-control:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/metrics.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/executor.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:833",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行833 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-meta-sync.mjs": {
+      "alias": "meta:sync",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/SYSTEM-ONTOLOGY.md",
+        "docs/prd-ontology-index.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:837",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行837 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-modeling-wire.mjs": {
+      "alias": "modeling-wire:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/databuilder/service.ts",
+        "packages/contracts/src/databuilder.ts",
+        "packages/contracts/src/storybuildrun.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 无该门条目"
+      },
+      "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
+      "disposition": "MANUAL"
+    },
+    "check-no-hardcoded-rules.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/capacity.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:830",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行830 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-ontogenesis.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/agentcore/src/mocks/clients.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "docs/SYSTEM-ONTOLOGY.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:838",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行838 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-ontology-anchors.mjs": {
+      "alias": "ontology-anchors:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/SYSTEM-ONTOLOGY.md",
+        "scripts/ontology-anchor-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:812",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行812 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-ontology-descriptions.mjs": {
+      "alias": "ontology:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/dist/**",
+        "scripts/ontology-description-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:819",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行819 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-ontology-slice-coverage.mjs": {
+      "alias": "ontology-slice-coverage:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/dist/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:832",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行832 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-ontology-writeback.mjs": {
+      "alias": null,
+      "binding": "GATE_SH",
+      "guardedPaths": [
+        "docs/SYSTEM-ONTOLOGY.md",
+        "scripts/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:834",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行834 未记录已执行的反证"
+      },
+      "notes": "已在自动路径内（GATE_SH，由 scripts/gate.sh / .github/workflows / scripts/check-gate-ledger.mjs / scripts/gate.sh 调用），非手动门。",
+      "disposition": "WIRE"
+    },
+    "check-opt-determinism.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/opt-binding.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "services/optimizer/server.py"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:862",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行862 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-opt-template.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "THIRD-PARTY-NOTICES.md",
+        "apps/datacore/src/solvers/opt-binding.ts",
+        "apps/datacore/src/solvers/optimizer-client.ts",
+        "packages/contracts/src/opt-template.ts",
+        "services/optimizer/server.py"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:861",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行861 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-outsource-redline.mjs": {
+      "alias": "outsource-redline:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/**",
+        "apps/datacore/src/**",
+        "apps/frontend-shell/src/**",
+        "docs/SYSTEM-ONTOLOGY.md",
+        "packages/contracts/src/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:823",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行823",
+        "note": "ource-redline.mjs`，`pnpm outsource-redline:check`（已并入 `pnpm gates`）。**变异反证 6/6**：求解器内联 0.3 / 文案手写 20% / 绑定点换裸常数 / 红线放松"
+      },
+      "notes": ""
+    },
+    "check-prd-coverage.mjs": {
+      "alias": "prd:coverage",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/test/**",
+        "apps/datacore/test/**",
+        "apps/frontend-shell/test/**",
+        "docs/prd-coverage-index.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:836",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行836 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-prd-ontology.mjs": {
+      "alias": "prd:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/SYSTEM-ONTOLOGY.md",
+        "docs/prd-ontology-index.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:828",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行828 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-propagation.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/sim/**",
+        "apps/datacore/test/sim-propagation.test.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:853",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行853 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-resource-descriptor.mjs": {
+      "alias": "resource-descriptor:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/dist/tools/registry.js",
+        "apps/datacore/dist/catalog.js",
+        "packages/contracts/dist/index.js"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:817",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行817 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-rule-closure.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "packages/contracts/src/datacore.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:829",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行829 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-scenario-slot-keys.mjs": {
+      "alias": "scenario-slot-keys:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/dist/mocks/seed.js",
+        "apps/agentcore/dist/scenarios-catalog.js"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:840",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行840 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-sim-readiness.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/sim/certification.ts",
+        "apps/datacore/test/sim-certification.test.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:854",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行854 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-sim.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/migrations/026_sim_sessions.sql",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/repo/memory.ts",
+        "apps/datacore/src/repo/pg.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:852",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行852 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-slice-connectivity.mjs": {
+      "alias": "slice-connectivity:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/dist/**",
+        "docs/ONTOLOGY-SLICE-GAPS.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:816",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行816 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-solver-license.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "THIRD-PARTY-NOTICES.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:860",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行860 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    },
+    "check-system-ontology.mjs": {
+      "alias": "ontology:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "docs/SYSTEM-ONTOLOGY.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:811",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行811 未记录已执行的反证"
+      },
+      "notes": ""
+    },
+    "check-validation.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:809",
+      "provenRed": {
+        "kind": "NEVER",
+        "evidence": null,
+        "note": "本体 §7 行809 未记录已执行的反证"
+      },
+      "notes": "",
+      "disposition": "WIRE"
+    }
+  }
+}
