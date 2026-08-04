@@ -1494,6 +1494,25 @@ export class SolverService {
     // → **禁止静默兜底**（本仓病灶族）：缺 unitPrice 即 0 权重（诚实缺席），绝不冒充一个旧口径业务单价。
     // 门：`test/unitprice-scale.test.ts`（口径锚 + 兜底效果层断言）。
     const orderVal = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice) / 1e4, 2); // 万元 = 套 × 元/套 ÷ 1e4
+    // ── R13 口径对齐：provenance 的 drillValue 必须是 **drillField 所指字段本身的真值**（WO-PROV-DRILLFIELD·欠账 #96）──
+    // 病灶（本单修复）：叶/基地节点标 `drillField:"value"`，却把 `orderVal` 的**万元**归因权重塞进 `drillValue`，
+    // 而 `Order.value` 这个本体派生属性的单位是**元** —— 两者恰差 1e4。取证（seed=42·S）：
+    //   `SO-3391` qty=7259 × unitPrice=21626 元/套 → `Order.value = 156983134`（元·runDerivations 物化）
+    //   而旧 `drillValue = orderVal = 15698.31`（万元）。前端 ProvenanceDag 照标签渲染
+    //   （`components/ProvenanceDag.tsx:105` evidence 叶 label=`${drillType}.${drillField}` · value=drillValue），
+    //   用户看到「Order.value = 15698.31」——比该字段真值**小一万倍**，属 R13 结论可溯源的口径错标。
+    // 修法选 ②「drillValue 改回真正的 Order.value（元）」而非 ①「改 drillField 名」：本体里 `Order` **没有**
+    //   任何万元口径属性（`orderProps` 无、`orderDerived` 只有 `value = qty * unitPrice`·battery.ts:881），
+    //   改名就得**臆造**一个属性字典里不存在的字段名，下钻路径 `Order.<so>.<新名>` 在对象详情里点不开 —— 那只是把
+    //   谎话从「值」搬到「字段名」。而 `drillValue` 只作展示/溯源（decision_play 与 decision/kernel 只读
+    //   contribution/id/rootMetric，**不读 drillValue**——已逐个追调用确认），改它不动任何归因数值（R6 字节不变）。
+    // 口径单一出处 = 本体派生属性定义本身（`orderDerived: value = qty * unitPrice`），此处按同式取**当前行**活值：
+    //   与 `runDerivations`（ontology.ts:709 `round(value, 6)`）同精度，正常链路上活值 ≡ 物化值（门逐叶对齐 DB 真值锁死）；
+    //   取活值而非直接读 `o.value`，是因为求解器归因用的就是当前 qty/unitPrice——派生尚未重跑时读陈值会让
+    //   「溯源数」与「它算出来的份额」对不上，那是换一种失真。
+    // 缺 unitPrice → 0：与 `orderVal` 同一「诚实缺席·禁止静默兜底」判定（WO-UNITPRICE-SCALE 已结案），绝不兜一个业务常数。
+    // 门：`test/prov-drillfield-truth.test.ts`（效果层·逐叶断言 drillValue === DB `Order.value` + 前端渲染串）。
+    const orderValueYuan = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice), 6); // 元 = 套 × 元/套（≡ 本体派生属性 Order.value）
     // ── 业务细分作用域（WO-SEG-ATTR-SCOPE·闭 §8 G-SEG-ATTR-CROSS-SEGMENT）──
     // seg_attain_{ess|pas|com} 是「细分达成率」，其根因下钻必须只归因**本细分**订单
     // （储能达成率→仅 storage 客户/订单）。目标业态优先取 Metric.businessType（种子经
@@ -1523,7 +1542,8 @@ export class SolverService {
       byBase.get(base)!.push(o);
     }
     const baseEntries = [...byBase.entries()]
-      .map(([base, os]) => ({ base, os, driver: round(os.reduce((a, o) => a + orderVal(o), 0), 2) }))
+      // driver（万元）= 归因权重，勿动；valueYuan（元）= 该基地受影响订单 Σ`Order.value` 真值，只喂 provenance.drillValue（口径与 drillField 对齐）。
+      .map(([base, os]) => ({ base, os, driver: round(os.reduce((a, o) => a + orderVal(o), 0), 2), valueYuan: round(os.reduce((a, o) => a + orderValueYuan(o), 0), 6) }))
       .filter((e) => e.driver > 0)
       .sort((a, b) => b.driver - a.driver || a.base.localeCompare(b.base));
     const totalBaseDriver = baseEntries.reduce((a, e) => a + e.driver, 0) || 1;
@@ -1539,7 +1559,10 @@ export class SolverService {
         id: `base:${e.base}`, factor: `基地 ${displayNameOf(e.base)}`, baseId: e.base, displayName: displayNameOf(e.base), contribution, unit,
         share: round(e.driver / totalBaseDriver, 4),
         path: [str(m.metricId), `base:${e.base}`], causalPath: [] as string[],
-        provenance: { kind: "派生" as const, drillType: "Order", drillId: e.base, drillField: "value", drillValue: e.driver },
+        // drillValue = Σ`Order.value`（元·与 drillField 同口径）。⚠ 遗留未修：drillId 是**基地键**不是 Order 主键(so)，
+        // 该节点其实是「按基地聚合」（契约 GapProvenanceSchema 备有 `drillId:"*"` 聚合约定）——属 drillId 语义缺陷，
+        // 本单范围只修 drillField/drillValue 口径，已在交接里显式上报。
+        provenance: { kind: "派生" as const, drillType: "Order", drillId: e.base, drillField: "value", drillValue: e.valueYuan },
       };
     });
     const l1sum = round(l1nodes.reduce((a, n) => a + n.contribution, 0), 4);
@@ -1564,7 +1587,8 @@ export class SolverService {
       for (const o of e.os) {
         // 订单叶携业态（WO-SEG-ATTR-SCOPE·R13 出处透明·前端可显示/二次过滤）；仅订单叶带，设备/物料叶无业态语义。
         childDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
-          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
+          // driver 走万元权重；drillValue 回 `Order.value` 元真值（标签所指字段 == 回的值·R13）。
+          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
       }
       if (oeeDeficit > 0) childDrivers.push({ id: `equip:${e.base}`, factor: `${e.base} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * e.driver, 2),
         prov: { kind: "实测", drillType: "Equipment", drillId: e.base, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
@@ -1619,13 +1643,17 @@ export class SolverService {
         }
         // 敞口驱动 = Σ 可产订单 value；父 gap = 敞口占全局驱动比 × 可解释 gap（exposure·honest·非分摊份额）。
         const expDriver = round(exposureOrders.reduce((a, o) => a + orderVal(o), 0), 2) || 1;
+        // 敞口 Σ`Order.value` 元真值（只喂 provenance.drillValue·与 drillField 同口径）。
+        // 注意**不带** expDriver 的 `|| 1` 除零护栏：护栏值 1 是分母兜底，拿它当"该字段真值"回给用户就是编数。
+        const expValueYuan = round(exposureOrders.reduce((a, o) => a + orderValueYuan(o), 0), 6);
         const pgExp = round(G * structuralExplained * (expDriver / totalBaseDriver), 4);
         const baseEquip = equipment.filter((q) => str(q.baseId) === scopedBaseId);
         const oeeDeficit = baseEquip.length ? round(baseEquip.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / baseEquip.length, 4) : 0;
         const expDrivers: { id: string; factor: string; driver: number; prov: Record<string, unknown>; businessType?: string }[] = [];
         for (const o of exposureOrders) {
           expDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
-            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
+            // 同全局路：driver 万元权重 ⊥ drillValue 回 `Order.value` 元真值（R13）。
+            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
         }
         if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
           prov: { kind: "实测", drillType: "Equipment", drillId: scopedBaseId, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
@@ -1645,7 +1673,7 @@ export class SolverService {
           scope: { baseId: scopedBaseId, displayName: dName, exposure: true, ...(unsupportedFactor ?? {}) },
           globalGap: G, totalGap: pgExp,
           levels: [
-            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expDriver } }] },
+            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expValueYuan } }] },
             { depth: 2, label: "订单/瓶颈", nodes: expLeaves, residual: expResidual },
           ],
           atomicLeaves: expLeaves.filter((n) => !str(n.id).startsWith("material:")),
