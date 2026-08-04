@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-03",
+  "generatedAt": "2026-08-04",
   "ontology": {
     "invariants": [
       "R1",
@@ -1026,6 +1026,24 @@
         "packages/contracts/src/growth.ts"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-gate-ledger.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "scripts/check-fake.mjs",
+        "scripts/check-ontology-writeback.mjs",
+        "scripts/debattery-baseline.json",
+        "scripts/gate-census.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-fake.mjs",
+        "scripts/gate-census.mjs",
+        "scripts/gate-ledger.json"
+      ]
     },
     "PRD-generation-boundary-grounding.md": {
       "hasOntologyRef": true,
@@ -2558,6 +2576,26 @@
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"
     ],
+    "scripts/check-fake.mjs": [
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/check-ontology-writeback.mjs": [
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/debattery-baseline.json": [
+      "PRD-gate-ledger.md",
+      "PRD-skill-migration.md"
+    ],
+    "scripts/gate-census.mjs": [
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/gate-ledger.json": [
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/gate.sh": [
+      "PRD-gate-ledger.md",
+      "PRD-skill-compiler-registry.md"
+    ],
     "apps/datacore/src/domain.ts": [
       "PRD-generation-boundary-grounding.md",
       "PRD-ontoflow-v2-unified-modeling.md"
@@ -2789,9 +2827,6 @@
       "PRD-skill-compiler-registry.md",
       "PRD-skill-contract-dsl.md"
     ],
-    "scripts/gate.sh": [
-      "PRD-skill-compiler-registry.md"
-    ],
     "apps/agentcore/src/catalog/service.ts": [
       "PRD-skill-contract-dsl.md",
       "PRD-skill-governance-learning.md",
@@ -2882,9 +2917,6 @@
       "PRD-skill-migration.md"
     ],
     "packages/contracts/src/datacore.ts": [
-      "PRD-skill-migration.md"
-    ],
-    "scripts/debattery-baseline.json": [
       "PRD-skill-migration.md"
     ],
     "apps/agentcore/src/config.ts": [
