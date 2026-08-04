@@ -113,7 +113,9 @@ export function validateOutputAgainstOntology(
     for (const sr of scopeRules) {
       let violated = false;
       try {
-        violated = evaluateAst(sr.ast, { payload: row });
+        // WO-RULE-EXPR-PARAMS：喂该规则的命名阈值，否则 `params.<名>` 求值即抛 → 被下面 catch 成
+        // "不命中"，规则静悄悄变哑弹（C08/C09/C18/C21 都引用命名阈值）。
+        violated = evaluateAst(sr.ast, { payload: row, params: sr.rule.params });
       } catch {
         violated = false;
       }

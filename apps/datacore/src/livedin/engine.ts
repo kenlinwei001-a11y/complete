@@ -646,7 +646,13 @@ export class LivedInEngine {
   // -- ③ 规则演进（≥5 条版本史；C16 收紧挂「到货危机复盘」） -------------------------
 
   private async seedRuleEvolution(ctx: AuthCtx): Promise<LivedInStateRecord["ruleChanges"]> {
-    const mk = async (key: string, name: string, expression: string, description: string) => {
+    const mk = async (
+      key: string,
+      name: string,
+      expression: string,
+      description: string,
+      params?: Record<string, number>,
+    ) => {
       await this.rules.create(ctx, {
         key,
         name,
@@ -654,14 +660,24 @@ export class LivedInEngine {
         expression,
         scopeObjectTypes: key === "C16" ? ["Shipment"] : ["Order"],
         severity: "WARN",
+        ...(params ? { params } : {}),
         origin: { type: "SYNTHETIC" },
         status: "PUBLISHED",
       });
     };
     // C08 红线演进（DF.13 单一来源 OUTSOURCE_REDLINE_HISTORY）：标准合成已发布**现行值**作 v1；
     // 此处按版本史重放收紧过程，末条（PUBLISHED）落回现行红线 —— 表达式/复盘理由全部派生，禁内联百分数。
+    // WO-RULE-EXPR-PARAMS：**每一版都是引用式 expression + 自己那一版的 params**（不是把历史值烤进
+    // 表达式字符串）。否则这条链会重新引入 G-C08-EXPR-PARAM-SPLIT：lived-in 租户的发布态 C08
+    // 判定按 expression 里的字面量走，而 `whatIf.outsourceMax` 按 params 走，两个数又分叉了。
     for (const h of OUTSOURCE_REDLINE_HISTORY.slice(1)) {
-      await mk(OUTSOURCE_REDLINE.ruleKey, OUTSOURCE_REDLINE.ruleName, outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio), h.reason);
+      await mk(
+        OUTSOURCE_REDLINE.ruleKey,
+        OUTSOURCE_REDLINE.ruleName,
+        outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }),
+        h.reason,
+        { [OUTSOURCE_REDLINE.paramKey]: h.maxRatio },
+      );
     }
     // C16：齐套覆盖天数 3 → 5（到货危机复盘）
     await mk("C16", "齐套覆盖天数下限", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天");

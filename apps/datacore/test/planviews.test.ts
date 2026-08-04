@@ -36,7 +36,9 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     const aggressive = body.scenarios[2]!;
     const c18 = aggressive.ruleChecks.find((r) => r.ruleKey === "C18")!;
     expect(c18.passed).toBe(false);
-    expect(c18.explanation).toContain("AnnualScenario.cashCushion < 50");
+    // WO-RULE-EXPR-PARAMS：C18 的底线只存 `params.cashFloor` 一处，expression 引用它（此前这里
+    // 写死 50 = 与 params 并存的第二个数）。判定结论(passed=false)不变，变的是 explanation 里的表达式渲染。
+    expect(c18.explanation).toContain("AnnualScenario.cashCushion < params.cashFloor");
     expect(aggressive.ruleChecks.find((r) => r.ruleKey === "C23")!.passed).toBe(false);
     expect(body.scenarios[0]!.ruleChecks.every((r) => r.passed)).toBe(true);
 

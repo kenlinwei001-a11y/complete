@@ -175,7 +175,8 @@ export class OntologyService {
       rules: publishedRules
         .filter((r) => r.scopeObjectTypes.includes(t.key))
         .sort((a, b) => byKey(a.key, b.key))
-        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity })),
+        // WO-RULE-EXPR-PARAMS：params 随 expression 一起带出（`params.<名>` 的解析源，拆开传即哑弹）。
+        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity, ...(r.params && Object.keys(r.params).length > 0 ? { params: r.params } : {}) })),
     }));
     return { types };
   }

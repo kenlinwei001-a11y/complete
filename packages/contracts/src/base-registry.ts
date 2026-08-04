@@ -11,6 +11,8 @@
  *  - 前端 simSolvers MOCK_BASES 用 {name,kind}
  * kind（动力/储能/动力+储能，业态）与 position（动力/储能/混合，前端配色档）显式并存、不互推，避免映射偏差。
  */
+import { ruleParamRef } from "./datacore.js";
+
 export interface CanonicalBase {
   baseId: string; // datacore 拼音 id（changzhou…）
   name: string; // 中文名（跨端共同 key）
@@ -152,6 +154,8 @@ export const OUTSOURCE_REDLINE = {
   subject: "Order.outsourceRatio",
   /** ★ 唯一真值：现行外协比例上限。单位 = **比率 0–1**（20% ⇒ 0.2）。 */
   maxRatio: 0.2,
+  /** 规则 `params` 里承载该上限的命名阈值键（发布态表达式引用它，见 `outsourceRedlineViolationExpr`）。 */
+  paramKey: "outsourceRatioMax",
   /** WARN = 保交付但提示风险（不 BLOCK：外协是兜底手段，硬拦会把缺口变成断供）。 */
   severity: "WARN",
   category: "外协",
@@ -167,12 +171,25 @@ export function outsourceRedlinePct(ratio: number = OUTSOURCE_REDLINE.maxRatio):
 /**
  * 规则引擎口径的**违规谓词**（表达式为真 ⇒ `passed=false`）：`Order.outsourceRatio > 0.2`。
  * DataCore 规则 DSL 一律用这个方向（见 `synthetic/battery.ts rules[]` 注释）。
+ *
+ * 第二参数两种口径，**按用途选，别混**（WO-RULE-EXPR-PARAMS）：
+ *  · `number`（默认）→ 渲染成**字面量**：`Order.outsourceRatio > 0.2`。
+ *    用于**版本史/已退役快照**——历史上那一版的阈值就是那个数，是数据，不该随现行 params 漂。
+ *  · `{ param }` → 渲染成**命名阈值引用**：`Order.outsourceRatio > params.outsourceRatioMax`。
+ *    用于**发布态规则**——阈值只存 `rule.params` 一处，改 params 即同时改判定与推演
+ *    （否则就是 G-C08-EXPR-PARAM-SPLIT：expression 与 params 两个数各自可编辑、谁也不校验谁）。
  */
 export function outsourceRedlineViolationExpr(
   subject: string = OUTSOURCE_REDLINE.subject,
-  ratio: number = OUTSOURCE_REDLINE.maxRatio,
+  ratio: number | { param: string } = OUTSOURCE_REDLINE.maxRatio,
 ): string {
-  return `${subject} > ${ratio}`;
+  const right = typeof ratio === "number" ? String(ratio) : ruleParamRef(ratio.param);
+  return `${subject} > ${right}`;
+}
+
+/** 发布态 C08 违规谓词（阈值单存 `params.outsourceRatioMax`，expression 只引用不复制）。 */
+export function outsourceRedlineViolationExprPublished(): string {
+  return outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey });
 }
 
 /**

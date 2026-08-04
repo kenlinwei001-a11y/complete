@@ -162,6 +162,31 @@ export const SOLVER_RULE_REFS: Record<string, string[]> = {
  * 与 `SOLVER_RULE_REFS` 的分工：那张表管**哪些规则被哪个求解器评估**（布尔闸），本表管**规则的命名阈值
  * 喂到哪个数值参数**（连续量）。两张表都在 contracts = 引用关系的单一来源。
  */
+/**
+ * 规则 DSL 里引用**本规则命名阈值**的命名空间（`params.<阈值名>`）。
+ *
+ * 为什么要有它（G-C08-EXPR-PARAM-SPLIT 的病根）：在此之前 DSL **只能写字面量**，于是同一个业务阈值
+ * 在一条规则上被写了**两遍**——一遍在 `expression` 字符串里（规则引擎判定用），一遍在 `params` 里
+ * （`RULE_PARAM_BINDINGS` 投影进 solver_params，求解器算数用）。二者可各自编辑、谁也不校验谁：
+ * 管理员在界面上把 `params.cashFloor` 从 50 改成 60，求解器立刻按 60 算，而**同一条规则的判定**
+ * 仍按 expression 里那个 50 走 —— 一条规则的"评估维"和"数值维"各说各话，且四包测试全绿。
+ *
+ * 有了 `params.` 前缀后，阈值**只写在 params 里一处**，expression 引用它：
+ *   `AnnualScenario.cashCushion < params.cashFloor`
+ * 改 params 即同时改判定与算数，结构上不可能再分叉。
+ *
+ * ⚠ 刻意是**独立操作数种类**（不是字段路径）：字段解析 `resolveField` 带"前缀可省"的回退
+ * （`Order.qty` 解不出就试 `qty`），若把 `params.cashFloor` 当字段，解不出时会**静默回退**到
+ * 载荷顶层的 `cashFloor` —— 那正是"看着合理的默认值"式静默兜底。故 params 引用只从 `rule.params`
+ * 解析，取不到即**报错**（诚实缺席），绝不回退。
+ */
+export const RULE_PARAM_NAMESPACE = "params";
+
+/** 构造规则 DSL 的命名阈值引用（`cashFloor` → `params.cashFloor`）。禁手写前缀。 */
+export function ruleParamRef(param: string): string {
+  return `${RULE_PARAM_NAMESPACE}.${param}`;
+}
+
 export interface RuleParamBinding {
   /** 规则码（如 C09）。 */
   ruleKey: string;
@@ -181,6 +206,10 @@ export const RULE_PARAM_BINDINGS: readonly RuleParamBinding[] = [
   { ruleKey: "C18", param: "cashFloor", path: "sop.cashFloor", note: "现金垫底线（亿）：S&OP 版本校验 s4 的 cashOk 判据" },
   { ruleKey: "C18", param: "cashFloor", path: "planGenerate.targets.cashFloor", note: "同一条 C18 的另一个消费口径（plan_generate 硬约束 hardViol='C18'）——两处必须同源，否则同一条规则的两个消费方各说各话" },
   { ruleKey: "C21", param: "balanceDeviationPct", path: "sop.dvThreshold", note: "产销平衡偏差阈值（比率）：S&OP 偏差判定" },
+  // WO-RULE-EXPR-PARAMS：补上 `battery.ts` C08 注释里预告了却一直没接的那一行。此前
+  // `C08.params.outsourceRatioMax` **全仓零消费方**（只在注释里被提到）= 纯诱饵：改它一个数都不动。
+  // 接上后 `whatIf.outsourceMax`（capacity.ts what-if 触红线拒绝判定真读的那个数）成为 C08 的派生副本。
+  { ruleKey: "C08", param: "outsourceRatioMax", path: "whatIf.outsourceMax", note: "外协比例红线（比率 0–1）：what-if 触红线拒绝判定的上限（capacity.ts）" },
 ] as const;
 
 /** 一次投影里被规则改写的一个数值参数。 */

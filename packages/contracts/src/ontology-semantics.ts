@@ -49,6 +49,13 @@ export const RuleSemanticsSchema = z.object({
   /** 违规条件表达式——Rule.expression（如 "Order.demandDelta > 0.5"）。 */
   expression: z.string().optional(),
   severity: z.enum(["BLOCK", "WARN", "INFO"]).optional(),
+  /**
+   * WO-RULE-EXPR-PARAMS：规则的命名阈值（`Rule.params`）—— **表达式里 `params.<名>` 的解析源**。
+   * 必须随 expression 一起带出：否则引用了命名阈值的规则（C08/C09/C18/C21）在本口径的消费方
+   * （`validateOutputRows` 的 scope 规则命中标记）会**求值抛错 → 被 catch 成"不命中"**，
+   * 即规则静悄悄变哑弹，而校验报告看起来一切正常。阈值与表达式是一对，不许拆开传。
+   */
+  params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
 });
 export type RuleSemantics = z.infer<typeof RuleSemanticsSchema>;
 
