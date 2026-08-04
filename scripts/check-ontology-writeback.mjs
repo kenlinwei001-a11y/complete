@@ -44,3 +44,75 @@ if (missing.length > 0) {
   process.exit(1);
 }
 console.log("✓ ontology-writeback:check：pnpm gates 所有门均在本体 §7 登记（门禁维回写无遗漏）。");
+
+/* ========================================================================
+ * G3 · 反向断言（WO-GATE-LEDGER 追加，不改上方正向逻辑）
+ *
+ * 病根：上方正向只断言「进 gates 链的门 → §7 有登记」。**反向不查**——§7 登记了、
+ * 甚至白纸黑字写着「已并入 `pnpm gates`」，实际却没接进任何执行路径的门，一个都抓不到。
+ * #76 的 boundary-singlesource 正是从这个方向漏出去，红着零接线活了 24 个 commit。
+ * 首次普查坐实：12 个零调用方门**全部**在 §7 宣称「已并入 pnpm gates」。
+ *
+ * 三条判据，刻意分开——因为修法完全不同（CLAUDE.md 铁律 0.5）：
+ *   G3-a 未登账      §7 提到的门不在门账里 → 红（新门必须同批登账）
+ *   G3-b 本体撒谎    §7 宣称「已并入 pnpm gates」而现算不在链上 → 红
+ *                    （这不是"漏接线"，是本体自述与现实相反；补一下接线了事会掩盖真问题）
+ *   G3-c 待接线棘轮  账里 binding=NONE 且 disposition=WIRE 的门计数，**只降不升**
+ *                    （承认存量、封死增量；burn-down 由后续 WO 做，见 PRD §2.2 非目标）
+ * ====================================================================== */
+{
+  const { census } = await import("./gate-census.mjs");
+  const { existsSync } = await import("node:fs");
+  const ledgerPath = new URL("scripts/gate-ledger.json", root);
+  if (!existsSync(ledgerPath)) {
+    console.error("✗ ontology-writeback:check G3：找不到 scripts/gate-ledger.json —— 反向断言以门账为准，缺账即红");
+    process.exit(1);
+  }
+  const ledger = JSON.parse(read("scripts/gate-ledger.json")).gates || {};
+  const live = census();
+  const WIRED = new Set(["GATES_CHAIN", "GATE_SH", "CI_ONLY"]);
+  const SIGNED = new Set(["MANUAL", "FOLD", "DELETE"]);
+  const bad = [];
+
+  // §7 正文里出现的所有门脚本名（本体宣称受治理的全集）
+  const inS7 = [...new Set([...s7Body.matchAll(/check-[a-z0-9-]+\.mjs/g)].map((m) => m[0]))];
+
+  for (const f of inS7) {
+    const e = ledger[f];
+    if (!e) { bad.push(`G3-a 未登账：本体 §7 提到 ${f}，门账里却没有该条——§7 宣称受治理的门必须在账上`); continue; }
+    const actual = live.scripts[f]?.binding ?? "NONE";
+    const claim = live.claims[f];
+    if (claim?.verdict === "LIE_DEAD") {
+      bad.push(
+        `G3-b 本体撒谎：${f} 在 §7 行${claim.ontologyLine} 宣称「已并入 pnpm gates」，现算 binding=${actual}（零调用方）。` +
+          `\n      ⚠ 这不是漏接线——是本体自述与现实相反。修法：要么真接进 gates 链，要么把 §7 那句改成真话（如「已建·当前未接线，门账 disposition=WIRE」）。` +
+          `\n        只补接线不改文案，下一个人仍会读到一句无从核实的断言。`,
+      );
+      continue;
+    }
+    if (WIRED.has(actual)) continue;                       // 真接了线
+    if (SIGNED.has(e.disposition)) continue;               // 未接线但已签终态处置
+    if (e.disposition !== "WIRE") {
+      bad.push(`G3-a 未签处置：${f} 未接线（binding=${actual}）且 disposition="${e.disposition ?? ""}" 非法——被制度指定的死门`);
+    }
+  }
+
+  // G3-c 棘轮：已建未接线（disposition=WIRE 且零调用）只降不升
+  const pending = Object.entries(ledger).filter(
+    ([f, e]) => e.disposition === "WIRE" && (live.scripts[f]?.binding ?? "NONE") === "NONE",
+  );
+  let base = null;
+  const basePath = new URL("scripts/gate-ledger-baseline.json", root);
+  if (existsSync(basePath)) base = JSON.parse(read("scripts/gate-ledger-baseline.json")).pendingWireCount ?? null;
+  if (typeof base === "number" && pending.length > base) {
+    bad.push(`G3-c 待接线棘轮：已建未接线的门 ${pending.length} 条 > 基线 ${base} 条——只许降不许升`);
+  }
+  console.log(`· G3 反向：§7 提及 ${inS7.length} 门 · 已建未接线 ${pending.length}${base != null ? `（基线 ${base}）` : ""}`);
+
+  if (bad.length) {
+    console.error(`\n✗ ontology-writeback:check G3 反向断言未通过（${bad.length} 条）：`);
+    for (const m of bad) console.error(`  - ${m}`);
+    process.exit(1);
+  }
+  console.log("✓ ontology-writeback:check G3：§7 宣称受治理的门均已登账，且无「宣称已接线实则零调用」。");
+}

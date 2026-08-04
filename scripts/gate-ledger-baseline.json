@@ -1,0 +1,6 @@
+{
+  "neverCount": 35,
+  "note": "provenRed=NEVER（本体 §7 未记录已执行反证）的门条数基线。只降不升——新门必须带反证，存量随各门补反证逐步收窄。",
+  "pendingWireCount": 12,
+  "noteWire": "已建未接线（§7 宣称受治理、门账 disposition=WIRE、现算零调用）的门条数。只降不升；burn-down 由后续接线 WO 做。"
+}
