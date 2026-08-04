@@ -1053,9 +1053,7 @@
         "scripts/gate.sh"
       ],
       "brokenArtifacts": [
-        "scripts/check-fake.mjs",
-        "scripts/gate-census.mjs",
-        "scripts/gate-ledger.json"
+        "scripts/check-fake.mjs"
       ]
     },
     "PRD-generation-boundary-grounding.md": {
@@ -1601,9 +1599,7 @@
         "packages/contracts/src/base-registry.ts",
         "scripts/gate-ledger.json"
       ],
-      "brokenArtifacts": [
-        "scripts/gate-ledger.json"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
