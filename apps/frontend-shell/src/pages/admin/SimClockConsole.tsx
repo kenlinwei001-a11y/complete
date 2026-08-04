@@ -45,6 +45,9 @@ export function SimClockConsole() {
         if (!pollAliveRef.current) return;
         queryClient.setQueryData(["a", "sim-clock", {}], c);
         if (c.status === "TICKING") {
+          // 链式轮询正常路径下前一个已 fire（ref 已置 null）；但连点两次 tick 会并起两条链，
+          // 后者覆盖 ref 就把前者变成孤儿句柄 —— 覆盖前先清（已 fire 的 id 再清是 no-op）。
+          if (pollTimerRef.current !== null) clearTimeout(pollTimerRef.current);
           pollTimerRef.current = setTimeout(() => {
             pollTimerRef.current = null;
             void poll().catch(() => undefined); // 卸载竞态下的拒绝不外泄成 unhandled rejection

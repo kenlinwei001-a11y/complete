@@ -73,14 +73,15 @@ export function DslTextarea({
   const [open, setOpen] = useState(false);
   const [token, setToken] = useState("");
   const [active, setActive] = useState(0);
-  // 失焦收起的延时（让 mousedown 先落地）必须可取消：卸载后再 setState 就是残留句柄
+  // 失焦收起的延时（让 mousedown 先落地）必须可取消：卸载后再 setState 就是残留句柄。
+  //
+  // ⚠ 只在卸载时清**一个**句柄是不够的（#79 泄漏守卫实测抓出·f34/f48 随机红的真因）：
+  //    ref 只存得下最后一个 id，一次用例里连着两次失焦就会
+  //    `sched 654 → sched 701 覆盖 ref → 卸载只清 701`，654 成孤儿活到 teardown 之后才 fire
+  //    = "This error was caught after test environment was torn down"（整包随机红）。
+  //    所以**排新的之前必须先清旧的**，卸载清理只兜最后一个。
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => () => { if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current); }, []);
 
   const suggestions = useMemo(() => dslSuggestions(schema, token), [schema, token]);
 
@@ -130,6 +131,7 @@ export function DslTextarea({
           else if (e.key === "Escape") setOpen(false);
         }}
         onBlur={() => {
+          if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current); // 覆盖 ref 前先清，否则前一个句柄没人能再清
           blurTimerRef.current = setTimeout(() => {
             blurTimerRef.current = null;
             setOpen(false);

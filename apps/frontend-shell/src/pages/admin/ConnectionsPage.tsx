@@ -301,6 +301,8 @@ function UploadCard({ onDone }: { onDone: (connId: string) => void }) {
     try {
       const res = await uploadFile(file);
       setProgress(100);
+      // 覆盖 ref 前先清：250ms 内连传两个文件会把前一个句柄变成孤儿（#79 同族）
+      if (doneTimerRef.current !== null) clearTimeout(doneTimerRef.current);
       doneTimerRef.current = setTimeout(() => {
         doneTimerRef.current = null;
         onDone(res.connId);

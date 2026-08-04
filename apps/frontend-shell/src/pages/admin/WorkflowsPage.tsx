@@ -841,6 +841,8 @@ export function TemplateInput({
         data-testid={`tpl-input-${stepId}-${label}`}
         onChange={(e) => update(e.target.value)}
         onBlur={() => {
+          // 覆盖 ref 前先清：一次用例里连着两次失焦会把前一个句柄变成孤儿，活到 teardown 之后才 fire（#79）
+          if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
           blurTimerRef.current = setTimeout(() => {
             blurTimerRef.current = null;
             setOpen(false);
