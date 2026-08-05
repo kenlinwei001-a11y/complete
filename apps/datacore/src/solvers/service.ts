@@ -31,6 +31,8 @@ import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING 
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
+// WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
+import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
 import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
@@ -2690,7 +2692,11 @@ export class SolverService {
       committedBatches: Array.isArray(args.committedBatches) ? (args.committedBatches as PortfolioInput["committedBatches"]) : undefined,
       scope: args.scope ? str(args.scope) : undefined,
       // WO-W5 业务类型（乘/商/储）勾选筛选 + 经营 regime（R14·battery businessTypeRegime·禁求解器内联魔数）+ 年运营日。
-      businessTypes: Array.isArray(args.businessTypes) ? args.businessTypes.map(String) : undefined,
+      // WO-SANDBOX-E2：这里原本是 `args.businessTypes.map(String)` —— 不校验枚举，非法值一路带到
+      // `portfolio.ts btFilter`，被 `.filter(t => BUSINESS_TYPES.includes(t))` 滤光 → `btScoped=false`
+      // → **全世界重解**（`businessTypes:["氢能"]` 与不传逐字节同结果 = 用户以为筛了其实没筛）。
+      // 改走归一单源：非法值当场 `VALIDATION_ERROR`；`[]`（前端未勾）归一为"未限定"，与改前逐字节等价（R6）。
+      businessTypes: normalizeChainScope(args).businessTypes,
       businessTypeRegime: BATTERY_SOLVER_PARAMS.businessTypeRegime as PortfolioInput["businessTypeRegime"],
       operatingDaysPerYear: num(BATTERY_SOLVER_PARAMS.operatingDaysPerYear, 300),
       // WO-D2 · 自有求解预算 → 到点交出 incumbent（可行非最优解），赶在调用方超时放弃**之前**跨过网线。
@@ -3066,17 +3072,64 @@ export class SolverService {
   }
 
   /**
+   * WO-SANDBOX-E2 · 「逐单类」求解器的作用域选单**共用出处**（`order_fullchain` / `atp_check` 走同一条）。
+   *
+   * 两个失败形态各修各的，绝不互换：
+   *  ① **点名了一张单，但它不在本次推演里** → `VALIDATION_ERROR` 明说是哪一维把它挡在外面。
+   *     绝不"点名优先、悄悄无视作用域"——那正是用户以为在推演储能、屏幕上却是整车厂那张单的路径。
+   *  ② **没点名、作用域内一张都没有** → `NOT_FOUND` 诚实空。绝不回落到"作用域外的第一张单"（静默全集的逐单版）。
+   *
+   * 作用域未限定 → 与上线前逐字节一致（点名即取、缺省取首单）。
+   */
+  private pickScopedOrder(
+    orders: ObjectInstance[],
+    resolvedBaseIds: Set<string> | null,
+    orderRef: string,
+    scope: ChainScope,
+    solverKey: string,
+    opts?: { openFirst?: boolean },
+  ): ObjectInstance {
+    const inScope = (o: ObjectInstance) => orderInChainScope(scope, o.props, resolvedBaseIds);
+    if (orderRef) {
+      const hit = orders.find((o) => str(o.props.so) === orderRef);
+      if (!hit) throw notFound(`order ${orderRef}`);
+      if (!inScope(hit)) {
+        throw validationError(
+          `${solverKey}：订单 ${orderRef} 不在本次推演作用域内（${describeChainScope(scope)}）——` +
+            `拒绝无视作用域把它算出来（那就是"以为筛了、其实没筛"）。请改作用域或换一张单。`,
+        );
+      }
+      return hit;
+    }
+    const sorted = [...orders].sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)));
+    const scoped = sorted.filter(inScope);
+    const pick = opts?.openFirst
+      ? (scoped.find((o) => str(o.props.status) === "OPEN") ?? scoped[0])
+      : scoped[0];
+    if (!pick) {
+      throw notFound(
+        `${solverKey} 作用域内无订单（${describeChainScope(scope)}）——诚实空，不回落作用域外的单`,
+      );
+    }
+    return pick;
+  }
+
+  /**
    * cockpit P4 / order 视图 订单全链推演（净室读对象图,确定性 R6）：逐单三关联判 + 统一结论 + 业务建模链 DAG。
    * ①交期判（qty vs 可产基地周供给 P50/P90，C02/C03）②齐套判（型号物料 MaterialBalance 缺口，C06/C16）
    * ③财务判三闸（毛利率 vs 细分底线 C15 → 信用占用 C13 → 现金 C18）→ 统一结论（信用阻断>毛利提价>交期/齐套对冲）。
    * args: { so }（缺省取首单）。前端零写死：ORDERS/价格/BOM/底线均为合成种子，三判由本求解器实算（R14）。
+   * WO-SANDBOX-E2 加：`{ businessTypes?, baseIds?, modelIds? }` 推演作用域（与 so 正交·选单经 pickScopedOrder 单源）。
    */
   private async orderFullchain(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const so = str(args.so);
     const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     if (orders.length === 0) throw validationError("order_fullchain 需先合成 Order");
-    const order = (so ? orders.find((o) => str(o.props.so) === so) : orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]);
-    if (!order) throw notFound(`order ${so}`);
+    const scope = normalizeChainScope(args);
+    // 基地表只在**限定了基地维**时才读（未限定 → 不多一次全表扫·零成本·行为逐字节不变）。
+    const baseProps = scope.baseIds ? (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props) : [];
+    const resolvedBaseIds = resolveScopeBaseIds(scope, baseProps); // 未知基地抛·不静默当未限定
+    const order = this.pickScopedOrder(orders, resolvedBaseIds, so, scope, "order_fullchain");
     const op = order.props;
     const modelId = str(op.model);
     const qty = num(op.qty);
@@ -3150,6 +3203,8 @@ export class SolverService {
       conds,
       dag: { nodes, edges },
       summary: `订单 ${str(op.so)}（${modelId}·${qty}）结论：${verdict}${conds.length ? "；" + conds.join("；") : ""}`,
+      // R-ARG-FIDELITY：限定了才回带（未限定 → 字段不出现 → 既有调用方逐字节不变·R6）。
+      ...(isChainScopeUnscoped(scope) ? {} : { scope: echoChainScope(scope, resolvedBaseIds) }),
     };
   }
 
@@ -3159,16 +3214,17 @@ export class SolverService {
    * 净读三源供给（成品现货 FinishedGoodsInventory + 在制未交 WorkOrder + 交期前可排产能 Line），
    * 经 computeOrderPromise（数据半 seed 同一口径·不拆两半）算可承接量 + 承诺日 + 缺口/瓶颈 + 三源拆解。
    * asOf 取固定 T0（forecastStart·无 Date.now/Math.random）。A6 行级过滤由 ctx 继承（残口下沉 WO-ORDERLINE）。
+   * WO-SANDBOX-E2 加：`{ businessTypes?, baseIds?, modelIds? }` 推演作用域（选单经 pickScopedOrder 单源·
+   * `openFirst` 保住原口径「先 OPEN、无 OPEN 再退全集首单」，只是这两步都在作用域内挑）。
    */
   private async atpCheck(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const orderRef = str(args.orderRef ?? args.so);
     const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     if (orders.length === 0) throw validationError("atp_check 需先合成 Order");
-    const order = orderRef
-      ? orders.find((o) => str(o.props.so) === orderRef)
-      : orders.filter((o) => str(o.props.status) === "OPEN").sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]
-        ?? orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0];
-    if (!order) throw notFound(`order ${orderRef}`);
+    const scope = normalizeChainScope(args);
+    const baseProps = scope.baseIds ? (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props) : [];
+    const resolvedBaseIds = resolveScopeBaseIds(scope, baseProps); // 未知基地抛·不静默当未限定
+    const order = this.pickScopedOrder(orders, resolvedBaseIds, orderRef, scope, "atp_check", { openFirst: true });
     const op = order.props;
 
     // 三源净读（改这三源任一颗粒→承诺真变·SEAM 铁律）。
@@ -3198,6 +3254,8 @@ export class SolverService {
       bottleneck: r.bottleneck,
       breakdown: r.breakdown,
       summary,
+      // R-ARG-FIDELITY：限定了才回带（未限定 → 字段不出现 → 既有调用方逐字节不变·R6）。
+      ...(isChainScopeUnscoped(scope) ? {} : { scope: echoChainScope(scope, resolvedBaseIds) }),
     };
   }
 

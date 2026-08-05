@@ -711,8 +711,12 @@ const CN_TO_BT: Record<string, BusinessType> = { 乘用车: "passenger", 商用�
 export function businessTypeOfCustomer(customer: string): BusinessType {
   return CN_TO_BT[classifySegment(customer)] ?? "passenger";
 }
-/** 订单对象 → 业务类型（种子 businessType 优先·缺省按客户名兜底）。 */
-function businessTypeOfOrder(o: Record<string, unknown>): BusinessType {
+/**
+ * 订单对象 → 业务类型（种子 businessType 优先·缺省按客户名兜底）。
+ * WO-SANDBOX-E2：`solvers/scope.ts` 复用本函数作为**唯一**「订单→业务线」判定——新挂载点若另写一份，
+ * 同一张单会在两处判出两种业务线，跨细分泄漏就从"没过滤"变成"过滤口径不一致"。故只加 `export`，逻辑一字未动。
+ */
+export function businessTypeOfOrder(o: Record<string, unknown>): BusinessType {
   return isBusinessType(o.businessType) ? o.businessType : businessTypeOfCustomer(str(o.cust));
 }
 /** 需求细分对象 → 业务类型（种子 businessType 优先·缺省按 segment 名兜底）。 */
