@@ -1,3 +1,4 @@
+import { WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,27 +157,41 @@ describe("SEAM · 基地轴派生自 BASE_REGISTRY（改册 → 视图跟着变�
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2. SEAM：工序轴镜像 datacore 合成种子（source-parity 门）
 // ═══════════════════════════════════════════════════════════════════════════════
-describe("SEAM · 工序轴镜像 battery.ts（改源不改镜像 → 红）", () => {
+describe("SEAM · 工序轴与设备型表**从 contracts 单源派生**（再内联一次 → 红）", () => {
   const src = readRepo("apps/datacore/src/synthetic/battery.ts");
 
-  it("WORKSHOP_DEFS 逐条与源文件一致（10 道工序·顺序即工艺链）", () => {
-    const block = /const WORKSHOP_DEFS = \[([\s\S]*?)\n\];/.exec(src);
-    expect(block, "battery.ts 里没找到 WORKSHOP_DEFS —— 源被改名/删了，镜像必须跟着改").not.toBeNull();
-    const parsed = [...block![1]!.matchAll(/\{\s*type:\s*"([^"]+)",\s*suffix:\s*"([^"]+)"\s*\}/g)].map((m) => ({
-      type: m[1]!,
-      suffix: m[2]!,
-    }));
-    expect(parsed).toHaveLength(10);
-    expect(__mirrors.workshopDefs).toEqual(parsed);
-    expect(PROCESS_CHAIN.map((p) => p.name)).toEqual(parsed.map((p) => p.type));
+  // 并线记录（审核方）：本块原为「镜像 vs 源文件逐条比对」。debattery:check 判红后，
+  // 工序表与设备型表已上提 packages/contracts（WORKSHOP_REGISTRY / EQUIPMENT_TYPE_BY_PROCESS），
+  // 两侧改为派生 —— 镜像消失，比对门失去对象。
+  // **没有删测试变绿**（那是本体明令禁止的），而是换成更强的断言：
+  // 旧门只保证「漂了能发现」，新门保证「**结构上不可能有第二份**」。
+
+  it("前端工序链 === contracts 单源（顺序即工艺链·10 道）", () => {
+    expect(WORKSHOP_REGISTRY).toHaveLength(10);
+    expect(__mirrors.workshopDefs).toEqual(
+      WORKSHOP_REGISTRY.map((w) => ({ type: w.type, suffix: w.suffix })),
+    );
+    expect(PROCESS_CHAIN.map((p) => p.name)).toEqual(WORKSHOP_REGISTRY.map((w) => w.type));
   });
 
-  it("typeMap（工序→设备型）逐条与源文件一致", () => {
-    const line = /const typeMap: Record<string, string> = \{([^}]*)\};/.exec(src);
-    expect(line, "battery.ts 里没找到 typeMap").not.toBeNull();
-    const parsed: Record<string, string> = {};
-    for (const m of line![1]!.matchAll(/(\w+):\s*"([^"]+)"/g)) parsed[m[1]!] = m[2]!;
-    expect(__mirrors.equipmentTypeByProcess).toEqual(parsed);
+  it("datacore 侧也从同一单源派生（不是各写一份）", () => {
+    expect(
+      /const WORKSHOP_DEFS = WORKSHOP_REGISTRY\.map\(/.test(src),
+      "battery.ts 的 WORKSHOP_DEFS 不再从 WORKSHOP_REGISTRY 派生 —— 有人把它内联回去了",
+    ).toBe(true);
+    expect(
+      /const typeMap: Record<string, string> = EQUIPMENT_TYPE_BY_PROCESS;/.test(src),
+      "battery.ts 的 typeMap 不再从 EQUIPMENT_TYPE_BY_PROCESS 派生 —— 有人把它内联回去了",
+    ).toBe(true);
+  });
+
+  it("前端设备型表 === contracts 单源（键集刻意与工序链不同，勿对齐）", () => {
+    expect(__mirrors.equipmentTypeByProcess).toEqual({ ...EQUIPMENT_TYPE_BY_PROCESS });
+    // 这两套是 Workshop 层与 Process 层两个口径：有 aging，无 slurry/grading。
+    // 差异是真实的建模事实，不是笔误 —— 「老化库」瓶颈因此在工序矩阵定位不到列，标 EMPTY 而非硬塞一列。
+    expect(Object.keys(EQUIPMENT_TYPE_BY_PROCESS)).toContain("aging");
+    expect(Object.keys(EQUIPMENT_TYPE_BY_PROCESS)).not.toContain("slurry");
+    expect(Object.keys(EQUIPMENT_TYPE_BY_PROCESS)).not.toContain("grading");
   });
 
   it("四段覆盖工序链全集且不重不漏；段序 = 工艺序", () => {

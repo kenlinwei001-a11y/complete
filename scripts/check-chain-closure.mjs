@@ -25,7 +25,12 @@ const fail = [];
 
 const slv = read(SOLVERS_SRC);
 if (!slv) { console.error(`✗ 缺少 ${SOLVERS_SRC}`); process.exit(1); }
-const block = slv.match(/SOLVER_KEYS\s*=\s*\[([\s\S]*?)\]/);
+// ⚠ 必须锚到 `\n] as const` 收尾，不能用非贪婪 `[\\s\\S]*?\\]`：
+//    数组里的注释含 `x[i,b,t]` 这类方括号，非贪婪会在**注释中间**截断 →
+//    门只看得见 54/57 个键（portfolio / base_capacity_outlook / ontology_query 在视野外），
+//    而它照样打印「代码 54 个，本体覆盖 54 个 ✓ 一致」——两边都是被截断的同一集合，永远"一致"。
+//    这是「门的解析器被数据内容截断，视野残缺却报一致」形态的假绿（WO-SANDBOX-E1 查出）。
+const block = slv.match(/SOLVER_KEYS\s*=\s*\[([\s\S]*?)\n\] as const/);
 const SOLVER_KEYS = new Set(block ? [...block[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : []);
 
 const cat = read(CATALOG_SRC);
