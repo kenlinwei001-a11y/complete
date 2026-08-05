@@ -68,6 +68,11 @@ registerRenderer("project-sim", () => import("./sim/ProjectSimView"));
 // WO-PORTFOLIO-OPTIMAL 全局联合推演（portfolio 求解器·全订单×全基地×时间联合最优组合·闭 G-PORTFOLIO-LOCAL-ONLY 前端半）
 registerRenderer("global-sim", () => import("./sim/GlobalSimView"));
 registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
+// WO-SANDBOX-F3 物理拓扑（13 基地 × 10 工序热力流水矩阵）。
+// ⚠ 审核方并线补线：F3 dev 按边界纪律未碰本文件，交付时组件**零生产调用方**
+//    （registry 是手工登记的字符串键表、无自动扫描）——即 G-SKILL-REFGRAPH-DEAD-EXTRACTOR
+//    形态：实现有、测试有、全绿、但没有任何路由渲染得到它。此行是那条缺失的链路。
+registerRenderer("physical-topology", () => import("./sim/PhysicalTopologyView"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));

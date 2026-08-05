@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { ViewRendererProps } from "../registry";
 import {
   buildTopology,
   clampZoom,
@@ -62,7 +63,12 @@ function MeasureLine({ label, m, testId }: { label: string; m: Measure; testId: 
   );
 }
 
-export function PhysicalTopologyView({ seed = PLACEHOLDER_SEED_DEFAULT }: { seed?: number }) {
+// ⚠ 审核方并线修：原签名 `{ seed?: number }` **不符合 renderer 契约** `ViewRendererProps`
+//    （= `{ view: ViewConfigVM }`），registry 注册时 TS2322 直接打红构建。
+//    vitest 不做类型检查，所以 29 例组件测试全绿、构建却是红的——「绿测试 ≠ 能用」的教科书形态。
+//    今天本组件尚未消费 `view`（渲染的是占位数据），故声明为 Partial 并显式忽略；
+//    接真值时（W4·G1）从 `view` 取 scope/viewKey 即可，届时改为必填。
+export function PhysicalTopologyView({ seed = PLACEHOLDER_SEED_DEFAULT }: Partial<ViewRendererProps> & { seed?: number }) {
   const matrix = useMemo(() => buildTopology(seed), [seed]);
   const [t, setT] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
