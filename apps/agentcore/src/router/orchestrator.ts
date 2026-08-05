@@ -85,6 +85,30 @@ import { ResourceRouter, type ResourcePackage } from "../dril/resource-router.js
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
 /**
+ * ★ WO-COORD-YIELD-AND-TERMINAL · D2（闭 §8 `G-TASK-NO-TERMINAL`）· 终态看门狗默认阈值。
+ *
+ * **180s 的依据（对决策者有意义，不是拍脑袋）**：这是给**人**看的问答坞，等答案的人不会等 3 分钟以上——
+ * 超过就已经是"这系统坏了"的体验，此时给一句诚实的"未收敛，已中止 + 已完成到哪一步"远胜于转圈到天荒地老。
+ * 实测事故里那条 task 是 **19 分钟**仍 `EXECUTING_AGENT`、`completedAt` 为空、token 计数早已冻结、进程 CPU 0.5%
+ * ——它不是在慢慢算，是已经不算了，只是没人给它落终态。180s 也宽于既有各层内部上界
+ * （`QOS_AGENT_LLM_TIMEOUT_MS` 默认 60s per-call），故它只在**那些上界全都没兜住**时才开火 = 真·最后一道兜底。
+ */
+const DEFAULT_TASK_TERMINAL_TIMEOUT_MS = 180_000;
+
+/** 终态状态集（单一来源）——看门狗与 `failTask` 共用，避免两处各写一份字符串数组。 */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+
+/**
+ * 终态看门狗阈值（ms）。env `QOS_TASK_TERMINAL_TIMEOUT_MS` 可配；**每次读取**（而非模块加载时定格），
+ * 让 SEAM 测能把阈值压到毫秒级越线，而不必真等 3 分钟。非法/非正数 → 回落默认值（fail-safe：绝不因配错而关掉看门狗）。
+ * 注：本单 🚦范围边界不含 `config.ts`，故走 env 直读而非新增 AppConfig 键（形态与 `MCP_STDIO_ENABLED` 同源·可后续收编）。
+ */
+export function taskTerminalTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.QOS_TASK_TERMINAL_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TASK_TERMINAL_TIMEOUT_MS;
+}
+
+/**
  * 增量4 §5：AI 推演指挥台 entitlement 判定 —— sim 工具仅当 sim.commander 且 sim.sandbox 同开才对 agent 可见。
  * 这两键不在 AgentCore FeatureRegistry 里（权威集来自 DataCore），故不能用 featureEnabled（它对未注册键恒真）；
  * 显式要求两键齐备。set="ALL"（mock 默认/降级 fail-open）→ 视为全开（与现有 entitlement 语义一致）。
@@ -339,6 +363,17 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * ★ WO-COORD-YIELD-AND-TERMINAL · D2 · 进程内"执行中"看门狗态（非契约）。
+ * `phase` 是给用户看的人话阶段名（"三角色会诊" / "探索模式" / "工作流执行"…），会**原样**进中止答案，
+ * 好让那句"未收敛已中止"说得出**是哪一步**没收敛——而不是又一句笼统 INTERNAL_ERROR。
+ */
+interface ExecutionWatchdogState {
+  timer: NodeJS.Timeout;
+  startedAt: number;
+  phase: string;
+}
+
 /** 进程内澄清等待态（含 auth/timer，非契约）；落在 task 上的契约形态是 contracts `PendingClarification`。 */
 interface PendingClarificationState {
   kind: "INTENT_CHOICE" | "SLOT_FILLING";
@@ -401,6 +436,12 @@ export function computeResidualBudget(config: {
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarificationState>();
   private readonly cancelled = new Set<string>();
+  /**
+   * ★ WO-COORD-YIELD-AND-TERMINAL · D2 · 非终态执行中任务的**终态责任人**登记表（taskId → 看门狗）。
+   * 与 `pending`（AWAITING_CLARIFICATION 的 setTimeout+unref 形态）**同一套机制**，不另造：
+   * 差别只在触发条件（等用户 vs 等自己）与落的终态（CANCELLED vs FAILED+诚实答案）。
+   */
+  private readonly executing = new Map<string, ExecutionWatchdogState>();
   /** WO-DRIL-P4 · Path-B 组包用 ResourceRouter（懒建·仅 qos.dril-routing 开时首次触达才构造·消费 P2/P3 registry）。 */
   private drilRouter?: ResourceRouter;
 
@@ -632,17 +673,15 @@ export class Orchestrator {
       }
     }
 
-    // ★ WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域 Coordinator 编排（**排在 ② 之后**——② 已把能 solver 分解的跨域题接走·此处只留"真开放·
-    //   无 solver 可拆"的会诊题）。planCoordination 传 deterministicMultiEnabled → **Coordinator 降级**：能被 selectDeterministicMultiRoute
-    //   分解的题让位②（同 S01 机制·§3.3）·防①漏接（如槽不满被②回落）时又被 Coordinator 抢去烧预算；真开放会诊题（无 solver 锚）仍落此。
-    //   命中即 return·暗发 agent.coordinator·defaultOn:false（coordinatorEnabled("ALL")=false → 既有单 agent path-B 逐字节不变·C4 不劫持）。
-    if (coordinatorEnabled(enabledFeatures)) {
-      const plan = planCoordination(task.query, task.context.pageContext, [], deterministicMultiEnabled(enabledFeatures));
-      if (plan) {
-        await this.runCoordinator(taskId, auth, plan);
-        return;
-      }
-    }
+    // ★ WO-COORD-YIELD-AND-TERMINAL · D1【门序变更·闭 G-COORD-PHRASE-HIJACK】跨域 Coordinator 门**已从此处移到 classify 之后**
+    //   （见下方 `maybeRunCoordinator` 调用点 + 方法长注释）。此处只留这条路标，防第三次有人把它挪回来。
+    //   病根：Coordinator 的触发判据是「问句里有没有多角色关键词」，而不是「确定性层/分类器能不能直接答」——摆在分类器
+    //   **之前**，等于在"还没人试过能不能好好答"的时候就抢走了题。实测同义句对：
+    //     「常州工厂 交期风险波及哪些在手单」→ planCoordination 非 null → 三角会诊 → 永久 EXECUTING_AGENT；
+    //     「常州这边有哪些单要被拖累」      → planCoordination null   → 12s COMPLETED（affected_orders 确定性路）。
+    //   换个说法就死机 = **同义问句被不同判据对待**。前两次的修法都是「在它前面再加一道让位」（S01 直路 / ②确定性多路），
+    //   而单域够格的题正是从②的「≥2 域」门槛下面漏过去的 —— 继续往前加让位 = 打补丁，第三次还会漏。
+    //   根治 = 让 Coordinator 降级为**兜底**：判断"有没有 solver 锚"的权威是确定性路由 + 分类器，不是关键词表。
 
     // ★ WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 暗发门（闭 §8 G-WHATIF-NL-UNREACHABLE）——**排在 L3 耦合检测(②)之后·
     //   与 generic_inference/capacity_forecast 同层**（置于 WO-QOS-1 A 门之前）。判据与 ②(耦合依赖对) **不同不劫持**：
@@ -768,6 +807,12 @@ export class Orchestrator {
     const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
     const top = classification.candidates[0];
 
+    // ★ WO-COORD-YIELD-AND-TERMINAL · D1【Coordinator 兜底门·新位置】——**必须在 classify 与 ⑤多意图之后、path-B 之前**。
+    //   与下面那行 path-B 判据**共用同一个 τ 谓词**（域外 / 无候选 / 最高候选 < tauLow）：Coordinator 从此就是
+    //   「path-B 的多角色变体」——同一个入口条件，只是扇出给多个角色而不是一个 agent。分类器能给出够格意图 → 走
+    //   path-A 确定性求解器，Coordinator 一步都插不进来（这正是同义句 A/B 被同等对待的机制保证）。
+    if (await this.maybeRunCoordinator(taskId, auth, task, classification, enabledFeatures, tauLow)) return;
+
     if (classification.outOfCatalog || !top || top.confidence < tauLow) {
       if (mode === "WORKFLOW_ONLY") {
         await this.completeWorkflowOnlyMiss(task, candidates);
@@ -880,7 +925,7 @@ export class Orchestrator {
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
     const coupledPairs = detectCoupledPairs(routes);
 
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    await this.enterExecuting(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" }, "多路并行求解"); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(true);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "WORKFLOW",
@@ -977,7 +1022,7 @@ export class Orchestrator {
   private async runOptWhatifRoute(taskId: string, auth: RequestAuth, route: Extract<OptWhatifRoute, { applicable: true }>): Promise<void> {
     const budget = new BudgetTracker(this.residualBudgetFromConfig());
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    await this.enterExecuting(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" }, "优化 what-if 重解"); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(true);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "WORKFLOW",
@@ -1309,6 +1354,167 @@ export class Orchestrator {
     await this.deps.events.emit(taskId, "task.cancelled", { reason: "clarification timeout (10min)" });
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // ★ WO-COORD-YIELD-AND-TERMINAL · D2 · 终态看门狗（闭 §8 `G-TASK-NO-TERMINAL`）
+  //
+  // 病根一句话：**状态机允许进入 `EXECUTING_*` 而不保证有人负责把它带出去。**
+  //  （`AWAITING_CLARIFICATION` 一直是有看门狗的——`CLARIFICATION_TIMEOUT_MS` + `cancelForTimeout`；
+  //   `EXECUTING_AGENT` / `EXECUTING_WORKFLOW` 没有 → 可永久悬挂：实测 19 分钟无 `completedAt`、
+  //   token 冻结、CPU 0.5%、日志里 `level>=40` 一条都没有 —— 错误被完全吞掉。）
+  //
+  // 为什么**不是**"在每个分支各加一个 try/catch"：那是打补丁，下次新加一条执行分支又会漏（本仓已反复吃这个亏）。
+  // 这里把责任挂在**状态转移**上：`enterExecuting` 是进入非终态执行中状态的**唯一**入口，进门即挂看门狗。
+  // 新增一条执行分支时，你要么走 `enterExecuting`（自动有终态责任人），要么就得手写
+  // `repos.tasks.patch({status:"EXECUTING_*"})`——后者在 review 里一眼可见，是可守的边界。
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * 进入「非终态执行中」状态的**唯一**入口：置状态 + 同时挂终态看门狗（不变量 R17）。
+   * @param phase 人话阶段名——中止答案里会原样引用它（"三角色会诊在 Ns 内未收敛"）。
+   */
+  private async enterExecuting(
+    taskId: string,
+    patch: { status: "EXECUTING_AGENT" | "EXECUTING_WORKFLOW"; path: "AGENT" | "WORKFLOW" },
+    phase: string,
+  ): Promise<void> {
+    await this.deps.repos.tasks.patch(taskId, patch);
+    this.armTerminalWatchdog(taskId, phase);
+  }
+
+  /** 挂/重挂看门狗（复用 `requestClarification` 那套 `setTimeout` + `timer.unref?.()` 形态·不另造机制）。 */
+  private armTerminalWatchdog(taskId: string, phase: string): void {
+    const prev = this.executing.get(taskId);
+    if (prev) clearTimeout(prev.timer); // 同一 task 转阶段（如 rung② 由 path-B 重路由到 Coordinator）→ 重置计时，不叠加
+    const timer = setTimeout(() => {
+      void this.forceTerminalOnTimeout(taskId).catch((err) => {
+        // 看门狗自身出错也不许静默——否则又回到"错误被完全吞掉"的老路。
+        this.logSwallowed(taskId, "terminal-watchdog", err);
+      });
+    }, taskTerminalTimeoutMs());
+    timer.unref?.();
+    this.executing.set(taskId, { timer, startedAt: Date.now(), phase });
+  }
+
+  /** 解除看门狗（任务已落终态时调用；未调用也不会出错——回调本身对终态是 no-op·见下）。 */
+  private disarmTerminalWatchdog(taskId: string): void {
+    const w = this.executing.get(taskId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    this.executing.delete(taskId);
+  }
+
+  /**
+   * 看门狗到点：**权威判据是任务的真实状态，不是簿记**——已落终态 → no-op（所以"忘了 disarm"不会误伤，
+   * 这条比"每个终态出口都记得调 disarm"结实得多）。仍非终态 → 强制落终态 + **说真话的**答案。
+   *
+   * 答案铁律（本仓刚因「一句诊断盖所有病」返过工·`execute-plan.ts` 裸 catch 把四种失败说成"未接入 LLM provider"）：
+   * 必须讲清 ①哪个阶段 ②卡了多少秒 ③**已经跑完的角色/步骤**。不许笼统 INTERNAL_ERROR，不许空答案。
+   */
+  private async forceTerminalOnTimeout(taskId: string): Promise<void> {
+    const w = this.executing.get(taskId);
+    this.executing.delete(taskId);
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || TERMINAL_STATUSES.has(task.status)) return; // 已有人负责落终态 → 看门狗闭嘴
+
+    const elapsedMs = w ? Date.now() - w.startedAt : taskTerminalTimeoutMs();
+    const elapsedS = Math.max(1, Math.round(elapsedMs / 1000));
+    const phase = w?.phase ?? "本次推演";
+    const progress = await this.describeStalledProgress(taskId);
+
+    // 让还在跑的循环在下一个边界自行退出（复用既有取消旗标·不新起中断机制）。
+    this.cancelled.add(taskId);
+
+    const roleNote =
+      progress.roles.length > 0
+        ? `${progress.roles.length} 角色会诊（${progress.roles.join("/")}）`
+        : phase;
+    const doneNote =
+      progress.done.length > 0
+        ? `中止前已完成：${progress.done.join("；")}。`
+        : "中止前**没有任何一个子步骤跑完** —— 卡点在第一步之前，最常见成因是某次 LLM 调用没有返回（既非报错也非超时，只是不回）。";
+    const answer: Answer = {
+      trustLevel: "AGENT_EXPLORATORY",
+      unverifiedNumerics: false,
+      provenance: [],
+      blocks: [
+        {
+          type: "text",
+          markdown:
+            `**${roleNote}在 ${elapsedS}s 内未收敛，已中止。**\n\n` +
+            `${doneNote}\n\n` +
+            `这不是"算不出来"，是这条路径超过了 ${Math.round(taskTerminalTimeoutMs() / 1000)}s 的作答上限 —— ` +
+            `与其让你继续等，不如如实告诉你它停在哪。\n\n` +
+            `**你现在可以**：把问题问得更具体（点名基地 / 型号 / 时间窗），走确定性求解器通常十几秒就有答案；` +
+            `或把问题拆小后分别提问。`,
+        },
+      ],
+    };
+    await this.deps.repos.tasks.patch(taskId, { answer });
+    await this.deps.events.emit(taskId, "answer.final", answer);
+    // 计数复用 `failTask` 里既有的 `tasksTotal{status:FAILED}`（`metrics.ts` 不在本单 🚦范围内 → 不新增计数器）。
+    // 「错误被完全吞掉，一个字都没留」是本条断点的一半 —— 落终态必留一条 level>=40。
+    this.logSwallowed(
+      taskId,
+      "terminal-watchdog",
+      new Error(`task stuck in ${task.status} for ${elapsedS}s (phase=${phase}, doneSteps=${progress.done.length}) — forced to FAILED`),
+    );
+    // 复用既有 `failTask` 落终态（answer 已先写入 → 其"路径 B 无答案则补 gap 块"分支不会覆盖这份诚实答案）。
+    await this.failTask(
+      taskId,
+      "TASK_TERMINAL_TIMEOUT",
+      `${roleNote}在 ${elapsedS}s 内未收敛，已中止（阶段 ${phase}·已完成 ${progress.done.length} 步）`,
+    );
+  }
+
+  /**
+   * 从**既有事件流**还原"跑到哪了"（不新建簿记：事件本来就是这条任务的过程真相）。
+   * `coordinator.planned` → 参与角色；`step.completed` 的 `dispatch_i` → 已答完的角色；其余 step → 步骤名。
+   */
+  private async describeStalledProgress(taskId: string): Promise<{ roles: string[]; done: string[] }> {
+    let events: { seq: number; event: string; payload: unknown }[] = [];
+    try {
+      events = await this.deps.repos.events.listAfter(taskId, 0);
+    } catch (err) {
+      this.logSwallowed(taskId, "describeStalledProgress", err);
+      return { roles: [], done: [] };
+    }
+    const planned = events.find((e) => e.event === "coordinator.planned")?.payload as
+      | { dispatches?: { role?: string }[] }
+      | undefined;
+    const dispatchRoles = (planned?.dispatches ?? []).map((d) => d.role ?? "");
+    const roles = dispatchRoles.map((r) => ROLE_LABELS[r] ?? r).filter(Boolean);
+
+    const done: string[] = [];
+    for (const e of events) {
+      if (e.event !== "step.completed") continue;
+      const p = e.payload as { stepId?: string; type?: string } | undefined;
+      const stepId = p?.stepId ?? "";
+      const m = /^dispatch_(\d+)$/.exec(stepId);
+      if (m) {
+        const idx = Number(m[1]);
+        const role = dispatchRoles[idx];
+        done.push(`${ROLE_LABELS[role ?? ""] ?? role ?? stepId} 已作答`);
+      } else if (stepId && p?.type !== "agent_narration") {
+        done.push(stepId);
+      }
+    }
+    return { roles, done };
+  }
+
+  /**
+   * 吞异常必留痕（WO §2-4）：Coordinator 扇出等路径上任何被 `catch {}` 咽下去的异常，至少落一条 **level>=40**。
+   * 现状是 0 条 —— 那本身就是缺陷（"日志里就写着，却被假绿盖过去"的反面：这次是连写都没写）。
+   * Orchestrator 没有注入 logger（`OrchestratorDeps` 无该字段，且 `config.ts` 不在本单 🚦范围内），
+   * 故走 `console.error` 并**手工带上 `level:50`**，使部署态 `level>=40` 的日志检索能捞到它（形态与 dril/resource-registry.ts 的 console.warn 同源）。
+   */
+  private logSwallowed(taskId: string, where: string, err: unknown): void {
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({ level: 50, module: "orchestrator", where, taskId, msg, ...(err instanceof Error && err.stack ? { stack: err.stack } : {}) }),
+    );
+  }
+
   async handleClarification(taskId: string, auth: RequestAuth, body: ClarificationReplyBody): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task || task.tenantId !== auth.tenantId) {
@@ -1458,7 +1664,7 @@ export class Orchestrator {
     // §2.2 留痕：执行时解析到的实际版本
     const resolvedRefs: ResolvedRef[] = [{ kind: "plan", key: resolution.ref.key, version: resolution.ref.version }];
 
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    await this.enterExecuting(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" }, "工作流执行"); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(true);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "WORKFLOW",
@@ -1622,7 +1828,7 @@ export class Orchestrator {
       }
     }
 
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    await this.enterExecuting(taskId, { status: "EXECUTING_AGENT", path: "AGENT" }, "探索模式（单 agent 自由多跳）"); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
 
@@ -2109,7 +2315,7 @@ export class Orchestrator {
     prof: CeoAgentProfile,
     classification?: ClassificationResult,
   ): Promise<void> {
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    await this.enterExecuting(taskId, { status: "EXECUTING_AGENT", path: "AGENT" }, `角色 agent 作答（${ROLE_LABELS[prof.role] ?? prof.role}）`); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: `角色 agent（${prof.role}）`, role: prof.role, agentId: prof.agentId });
 
@@ -2196,11 +2402,49 @@ export class Orchestrator {
    * 越界读对象被拒）→ 收各角色答 → synthesize 结构化汇总（谁答什么 + 一致/冲突 + 综合结论 + 每角色溯源）。
    * 真跨 agent 调用（非单 agent 换 prompt 假装）：每步经 engine.runRegisteredAgent 真调对应 agentId。
    */
+  /**
+   * ★ WO-COORD-YIELD-AND-TERMINAL · D1（闭 §8 `G-COORD-PHRASE-HIJACK`）· **Coordinator 兜底门**（唯一 proactive 入口）。
+   *
+   * 【门序】此方法只允许从 `runPipeline` 的 **τ 决策点**调用 —— 即 `classify` **之后**、path-B **之前**。
+   * 从「关键词命中就抢」降级为「兜底」：判断"这题有没有 solver 锚"的权威是**确定性路由 + 分类器**，不是关键词表。
+   *
+   * 【开火条件·三者与】
+   *  ① `coordinatorEnabled`（暗发 `agent.coordinator`·defaultOn:false·"ALL"→false → 既有 path-B 逐字节不变）；
+   *  ② **分类器答不出**：`outOfCatalog === true` ‖ 无候选 ‖ 最高候选 `confidence < tauLow`
+   *     （τ 复用现有低置信阈值 `pkg.thresholds.low ?? QOS_TAU_LOW`，**不新造常数**，与紧随其后的 path-B 判据同一个谓词）；
+   *  ③ `planCoordination` 仍命中（关键词判据原样保留，但**降为必要不充分条件**——它自己的单测不受影响）。
+   * 任一不成立 → 返 false → 照走既有 τ 决策 / 澄清 / path-B（逐字节不变·不劫持）。
+   *
+   * 【为什么不是"往排除词表里加词"】词表补丁治不了病：`交期风险` 换成 `交付吃紧`/`按期交不了` 立刻重演，
+   * 而**每一个**同义词都得手工登记。判据搬家只搬一次：从此凡是分类器能答的题，Coordinator 一律够不着。
+   */
+  private async maybeRunCoordinator(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    classification: ClassificationResult,
+    enabledFeatures: FeatureSet,
+    tauLow: number,
+  ): Promise<boolean> {
+    if (!coordinatorEnabled(enabledFeatures)) return false;
+    const top = classification.candidates[0];
+    // ② 与下方 path-B 分支**同一个谓词**（改一处两处同步·不会再长出第二套阈值）。
+    const classifierCannotAnswer = classification.outOfCatalog === true || !top || top.confidence < tauLow;
+    if (!classifierCannotAnswer) return false;
+    // ③ 关键词判据保留但降级：命中才可能会诊，不命中 → 照走单 agent path-B。
+    //   仍传 deterministicMultiEnabled → 维持既有「能被②分解的题让位②」的降级（WO-QOS-CROSS-DOMAIN-UNIFIED 不回归）。
+    const plan = planCoordination(task.query, task.context.pageContext, [], deterministicMultiEnabled(enabledFeatures));
+    if (!plan) return false;
+    await this.runCoordinator(taskId, auth, plan);
+    return true;
+  }
+
   private async runCoordinator(taskId: string, auth: RequestAuth, plan: CoordinatorPlan): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    // D2 · 进门即挂终态看门狗：**这条路正是事故现场** —— 三角色扇出后永久 EXECUTING_AGENT、19 分钟无 completedAt。
+    await this.enterExecuting(taskId, { status: "EXECUTING_AGENT", path: "AGENT" }, `${plan.dispatches.length} 角色会诊`);
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", {
       path: "AGENT",
@@ -2226,7 +2470,10 @@ export class Orchestrator {
           task.context.pageContext as Record<string, unknown> | undefined,
         );
         drilSection = renderDrilPackage(drilPkg);
-      } catch {
+      } catch (err) {
+        // WO §2-4：扇出路径上被吞掉的异常**必须**至少留一条 level>=40（此前是裸 `catch {}` → 日志 0 条）。
+        // 仍 fail-open 不阻断扇出（组包只是加速器），但不再一个字都不留。
+        this.logSwallowed(taskId, "runCoordinator/buildResourcePackage", err);
         drilSection = "";
       }
     }
@@ -2305,6 +2552,7 @@ export class Orchestrator {
     });
 
     const answer = synthesize(plan, roleAnswers);
+    this.disarmTerminalWatchdog(taskId); // D2 · 扇出收敛，责任交回正常收尾
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       path: "AGENT",
@@ -2318,7 +2566,7 @@ export class Orchestrator {
 
   /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */
   private async runSceneAgent(task: QueryTask, auth: RequestAuth, scene: SceneEntryConfig): Promise<void> {
-    await this.deps.repos.tasks.patch(task.id, { status: "EXECUTING_AGENT", path: "AGENT" });
+    await this.enterExecuting(task.id, { status: "EXECUTING_AGENT", path: "AGENT" }, `场景入口 agent（${scene.mode}）`); // D2 · 进门即挂终态看门狗
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: `场景入口模式 ${scene.mode}` });
 
@@ -2414,6 +2662,7 @@ export class Orchestrator {
       throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
     }
     this.cancelled.add(taskId);
+    this.disarmTerminalWatchdog(taskId); // D2 · 用户已接管终态责任
     const pending = this.pending.get(taskId);
     if (pending) {
       clearTimeout(pending.timer);
@@ -2438,6 +2687,7 @@ export class Orchestrator {
     for (const t of siblings) {
       if (t.id === keepTaskId || !ACTIVE.has(t.status)) continue;
       this.cancelled.add(t.id);
+      this.disarmTerminalWatchdog(t.id); // D2 · SUPERSEDED 已是终态责任人
       const pending = this.pending.get(t.id);
       if (pending) {
         clearTimeout(pending.timer);
@@ -2472,7 +2722,8 @@ export class Orchestrator {
 
   private async failTask(taskId: string, code: string, message: string): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
-    if (!task || ["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) return;
+    this.disarmTerminalWatchdog(taskId); // D2 · 已有人负责落终态 → 撤看门狗（漏撤也无害：回调对终态是 no-op）
+    if (!task || TERMINAL_STATUSES.has(task.status)) return;
     // CL.7 GF.2：路径 B agent 硬失败 → 在答案流并入结构化缺口块，对话坞渲染可点缺口卡（▶触发
     // 自成长 LOOP 实诊断+补 → 续推），而非只剩红错叙述。闭 G-3 对话侧（诚实暴露断点）。其余路径（工作流/
     // 校验）维持纯 FAILED。answer.final 先于 task.failed 发出 → useTaskStream 既得 gap 答案又得失败态。
