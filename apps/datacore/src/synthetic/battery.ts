@@ -357,7 +357,10 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     },
     defaultPrimary: "瓶颈工序",
     mock: { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilHigh: 0.82, utilHighAdd: 6, utilLowAdd: 2 },
-    live: { oeeK: 220, oeeBase: 30, utilK: 0.9, utilBase: 8, yieldK: 600, yieldBase: 35 },
+    // WO-SANDBOX-D3 · hardCapShortfallK：硬容量缺口比 → 张力 的换算系数。
+    // 100 表示「上游要求里有 x% 推不进硬容量单元 ⇒ 张力 x」。**未夹定（capacity ≥ required）时张力恒 0**
+    // —— 硬约束不是连续张力，没夹住就不该虚报紧张（这也令基线逐字节不回归）。
+    live: { oeeK: 220, oeeBase: 30, utilK: 0.9, utilBase: 8, yieldK: 600, yieldBase: 35, hardCapShortfallK: 100 },
   },
   risk: {
     threshold: 85,
@@ -914,6 +917,18 @@ const processProps: PropertyDef[] = [
   { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false },
   { propKey: "agingSlots", dataType: "number", isPrimaryKey: false },
   { propKey: "agingDays", dataType: "number", isPrimaryKey: false },
+  // WO-SANDBOX-D3 · 硬容量约束的两个新承载物（只落在**真有**硬容量单元的工序上；串行工序**不带此二属性**，
+  // 消费方据此诚实标 EMPTY，绝不给默认柜位数）。
+  //   capacityUnitKind  —— 硬容量单元语义标签（化成柜位 / 老化库位…），是引擎通用发现硬容量的入口；
+  //                        单元数与速率的**数值单源仍是 channels / agingSlots 本身**（见 contracts
+  //                        `HARD_CAPACITY_UNIT_SPECS`），刻意不另存副本，否则拨 ② 杠杆（Process.channels）
+  //                        会让副本悄悄漂移。
+  //   requiredThroughput —— 上游串行段要求该并行段承接的日吞吐（电芯/天）。**这是本单真正新增的信息**：
+  //                        没有它就无法判「柜位够不够」，只能取 min 而说不出谁夹定、差多少。
+  //                        规则 C02 `Process.parallelThroughput < Process.requiredThroughput` 早已按名引用
+  //                        该量，但此前 Process 上无此属性（故 C02 恒不可评估）。
+  { propKey: "capacityUnitKind", dataType: "enum", isPrimaryKey: false, description: "硬容量单元类型（化成柜位 | 老化库位）；无此属性 = 该工序不承载硬容量单元" },
+  { propKey: "requiredThroughput", dataType: "number", isPrimaryKey: false, unit: "电芯/天", description: "上游串行段要求该并行段承接的日吞吐（判「柜位够不够」的比较基准）" },
 ];
 
 const equipmentProps: PropertyDef[] = [
@@ -1685,6 +1700,8 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Process.attendance": "出勤率", // ← LEVER「工序·出勤率」
   "Process.utilization": "利用率", "Process.channels": "化成通道数",
   "Process.channelOutputDaily": "单通道日产出", "Process.agingSlots": "老化工位数", "Process.agingDays": "老化天数",
+  // WO-SANDBOX-D3 · 硬容量约束
+  "Process.capacityUnitKind": "硬容量单元类型", "Process.requiredThroughput": "上游要求日吞吐",
   "Equipment.equipId": "设备编号", "Equipment.processId": "所属工序", "Equipment.lineId": "所属产线",
   "Equipment.baseId": "所属基地", "Equipment.ctSeconds": "节拍", "Equipment.availFactor": "可用系数",
   "Equipment.oeeA": "OEE可用率", "Equipment.oeeP": "OEE表现性", "Equipment.oeeQ": "OEE质量率",
@@ -3581,6 +3598,14 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         channelOutputDaily,
         agingSlots: 0,
         agingDays: 0,
+        // WO-SANDBOX-D3：把「有多少个化成柜位」升为**可被引擎通用发现的硬容量约束**。
+        // 单元数/速率不复制（仍读上面的 channels/channelOutputDaily），只加语义标签 + 比较基准。
+        capacityUnitKind: "化成柜位",
+        // requiredThroughput = 上游串行段要求该并行段承接的日吞吐。
+        // 取 `lineTargetCells`（本线串行段被反解节拍夹定到的目标日产·同一段代码 :3489 算出），
+        // 不是拍脑袋的常数：串行工序的 ctSeconds 正是按 "串行日产 ≥ lineTargetCells" 反解的，
+        // 故「上游能推给化成多少」= lineTargetCells。R6：纯 gwhᵢ 派生，无 rng。
+        requiredThroughput: lineTargetCells,
       });
       void randInt(rngTopo, 260000, 340000); // R6：占原 agingSlots rng 位
       const agingDays = 5;
@@ -3601,6 +3626,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         channelOutputDaily: 0,
         agingSlots,
         agingDays,
+        // WO-SANDBOX-D3：老化库位是同族硬容量约束（数据早已存在，此前同样无人当约束读）。
+        capacityUnitKind: "老化库位",
+        requiredThroughput: lineTargetCells,
       });
       // Shared-resource caps：仅第一个 workshop 更新基地级共享容量（避免重复覆盖）
       if (wsDef.suffix === WORKSHOP_DEFS[0]!.suffix) {

@@ -147,6 +147,31 @@ export const CapacityForecastOutputSchema = z
   .catchall(z.unknown());
 export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema>;
 
+/**
+ * WO-SANDBOX-D3 · 基地硬容量约束读数（加性·随行下发）。
+ * 「有多少个化成柜位 / 老化库位」是**硬约束**，与 OEE/良率那种连续张力不同：它要么夹定要么不夹定。
+ * 本字段把该判定显式下发 —— `binding` 即「该基地当前被硬容量夹住」，`shortfallPerDay` 即夹住多少。
+ * 无数据一律 `status:"EMPTY"` + `reason`，**不给默认柜位数**（基于编造约束的瓶颈判定比算不出来更糟）。
+ */
+export const BottleneckHardCapacitySchema = z.union([
+  z.object({
+    status: z.literal("OK"),
+    /** 该基地最紧的硬容量工序（确定性 tiebreak：张力降序 → processId 升序）。 */
+    processId: z.string(),
+    processName: z.string(),
+    unitKind: z.string(), // 化成柜位 / 老化库位
+    units: z.number(), // 柜位数 —— 数值单源 = Process.channels / Process.agingSlots
+    unitDailyThroughput: z.number(),
+    capacityPerDay: z.number(), // 单元数 × 单元日通过量 × 良率
+    requiredPerDay: z.number(), // Process.requiredThroughput（上游串行段要求承接量）
+    shortfallPerDay: z.number(), // max(0, required − capacity)
+    binding: z.boolean(), // capacity < required ⇒ 硬容量夹定
+    tightness: z.number(), // 0–100，= 缺口比 × hardCapShortfallK
+  }),
+  z.object({ status: z.literal("EMPTY"), reason: z.string() }),
+]);
+export type BottleneckHardCapacity = z.infer<typeof BottleneckHardCapacitySchema>;
+
 /** S1.3 bottleneck_matrix 输出 */
 export const BottleneckMatrixOutputSchema = z.object({
   dataMode: z.enum(["LIVE", "MOCK"]),
@@ -159,6 +184,8 @@ export const BottleneckMatrixOutputSchema = z.object({
       // #13 灰数据接缝修·provenance 维（加性·守 KILL-MOCK-RED）：底层对象合成物化 → 前端诚实标"合成·未接实测"
       // （不因 dataMode=LIVE 就把 demo 合成谎报"实测"）。缺省向后兼容。
       provenanceSynthetic: z.boolean().optional(),
+      // WO-SANDBOX-D3（加性·缺省向后兼容）：柜位类硬容量约束读数（OK 带判定 / EMPTY 带原因）。
+      hardCapacity: BottleneckHardCapacitySchema.optional(),
     }),
   ),
 });
