@@ -73,7 +73,7 @@ import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINI
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
 import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
-import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）
+import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan, deterministicSlotFloor, mergeSlotFloor } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）；WO-SLOT-HARVEST · 主链路确定性槽位底座（同一份确定性抽取器·单源）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -1041,9 +1041,11 @@ export class Orchestrator {
       const intent = candidates.find((c) => c.key === cand.intentKey);
       if (!intent) continue;
       const solverKey = await this.solverKeyForIntent(intent);
+      // ★ WO-SLOT-HARVEST · 确定性槽位底座（**接线点之二 · ⑤ LLM 多意图**）。这条路自己调 fillSlots 判
+      //   "槽可填"，不经 proceedWithIntent —— 只接主路 = 又一次「接错地方」（多意图题照样被 LLM 抖动打掉）。
       const { slots, missing } = await fillSlots(
         intent,
-        classification.extractedSlots,
+        mergeSlotFloor(deterministicSlotFloor(task.query, intent), classification.extractedSlots),
         task.context,
         this.deps.engine.deps.dataCore.ontology,
         auth,
@@ -1376,16 +1378,23 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
+    // ★ WO-SLOT-HARVEST · 确定性槽位底座（**接线点之一 · 主路**）——插在 fillSlots 之前、LLM 之下。
+    //   病根是铁律 0.5 第三形态「接了线接错地方」：确定性抽取器早就有（buildSlotBag），但只接在 L2 分解，
+    //   主链路 classify→fillSlots **没有任何东西在看问句文本** → 一次 LLM 格式抖动就决定用户拿不拿得到答案。
+    //   底座只填空白（冲突时 LLM 赢）、只抽问句里真有的（R6 纯函数）。本方法是**所有** path-A 绑定的必经之路
+    //   （主路高置信 / 确定性 block-route·ceo-route / 场景绑定·继承 / 澄清回填），一处接线全路径覆盖。
+    const effectiveExtracted = mergeSlotFloor(deterministicSlotFloor(task.query, intent), extracted);
+
     const { slots, missing, outOfDomain, resolutions } = await fillSlots(
       intent,
-      extracted,
+      effectiveExtracted,
       task.context,
       this.deps.engine.deps.dataCore.ontology,
       auth,
     );
     // A5 感知层埋点：objectRef 解析尝试（分母）+ 域外实体（分子）→ 发独立事件 + 记误触发率。
     const objectRefAttempts = intent.slots.filter(
-      (s) => s.type === "objectRef" && extracted[s.name] !== undefined && extracted[s.name] !== null && extracted[s.name] !== "",
+      (s) => s.type === "objectRef" && effectiveExtracted[s.name] !== undefined && effectiveExtracted[s.name] !== null && effectiveExtracted[s.name] !== "",
     ).length;
     recordResolutionAttempts(auth.tenantId, objectRefAttempts, outOfDomain.length);
     for (const ood of outOfDomain) {

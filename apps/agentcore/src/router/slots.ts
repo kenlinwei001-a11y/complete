@@ -124,17 +124,44 @@ export async function nearestEntities(
  *   下周/next week → D 所在周 +7 的周一；本周 → D 所在周周一；上周 → -7 周一
  *   本月/this month → D 所在月 1 号；下月 → 次月 1 号；上月 → 上月 1 号
  */
-const REL_TIME_PATTERNS: { re: RegExp; kind: "day" | "tomorrow" | "yesterday" | "thisWeek" | "nextWeek" | "lastWeek" | "thisMonth" | "nextMonth" | "lastMonth" }[] = [
-  { re: /^(这天|今天|当天|本日|today|这一天|此日)$/i, kind: "day" },
-  { re: /^(明天|次日|tomorrow)$/i, kind: "tomorrow" },
-  { re: /^(昨天|前一天|yesterday)$/i, kind: "yesterday" },
-  { re: /^(本周|这周|这一周|this\s*week)$/i, kind: "thisWeek" },
-  { re: /^(下周|下一周|next\s*week)$/i, kind: "nextWeek" },
-  { re: /^(上周|上一周|last\s*week)$/i, kind: "lastWeek" },
-  { re: /^(本月|这个月|当月|this\s*month)$/i, kind: "thisMonth" },
-  { re: /^(下月|下个月|next\s*month)$/i, kind: "nextMonth" },
-  { re: /^(上月|上个月|last\s*month)$/i, kind: "lastMonth" },
+type RelTimeKind = "day" | "tomorrow" | "yesterday" | "thisWeek" | "nextWeek" | "lastWeek" | "thisMonth" | "nextMonth" | "lastMonth";
+
+/**
+ * 相对时间词表 —— **单一出处**（正则由本表派生，不许在别处再抄一份）。
+ * WO-SLOT-HARVEST：确定性槽位底座要从**问句里**取字面相对时间词（`extractRelativeDateToken`），
+ * 归结成具体日期仍由下面的 `resolveRelativeDate` 负责；两者共用本表 —— 词表改一处两边同步。
+ */
+const REL_TIME_ALTERNATIVES: { body: string; kind: RelTimeKind }[] = [
+  { body: "这天|今天|当天|本日|today|这一天|此日", kind: "day" },
+  { body: "明天|次日|tomorrow", kind: "tomorrow" },
+  { body: "昨天|前一天|yesterday", kind: "yesterday" },
+  { body: "本周|这周|这一周|this\\s*week", kind: "thisWeek" },
+  { body: "下周|下一周|next\\s*week", kind: "nextWeek" },
+  { body: "上周|上一周|last\\s*week", kind: "lastWeek" },
+  { body: "本月|这个月|当月|this\\s*month", kind: "thisMonth" },
+  { body: "下月|下个月|next\\s*month", kind: "nextMonth" },
+  { body: "上月|上个月|last\\s*month", kind: "lastMonth" },
 ];
+
+/** 整值匹配（槽值本身就是一个相对时间词）——`resolveRelativeDate` 用。 */
+const REL_TIME_PATTERNS: { re: RegExp; kind: RelTimeKind }[] = REL_TIME_ALTERNATIVES.map(({ body, kind }) => ({
+  re: new RegExp(`^(${body})$`, "i"),
+  kind,
+}));
+
+/**
+ * WO-SLOT-HARVEST · 从**问句文本**里取字面相对时间词（"下周产能够不够" → "下周"）。
+ * 只回答"这句话里出现了哪个相对时间词"，**不做归结**（归结交 `resolveRelativeDate`，不另造第二套）。
+ * 确定性（R6 纯函数）：按 `REL_TIME_ALTERNATIVES` **表序**取首个命中，表序即优先级；无命中 → undefined。
+ */
+export function extractRelativeDateToken(query: string): string | undefined {
+  if (!query) return undefined;
+  for (const { body } of REL_TIME_ALTERNATIVES) {
+    const m = query.match(new RegExp(`(${body})`, "i"));
+    if (m?.[1]) return m[1];
+  }
+  return undefined;
+}
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 
