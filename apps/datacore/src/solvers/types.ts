@@ -260,6 +260,18 @@ export interface SolverContext {
    * optional：缺省 / 空数组（测试直构 ctx / 无人采纳）→ 与采纳功能上线前**逐字节一致**（向后兼容 R6）。
    */
   adoptedMitigations?: ObjectInstance[];
+  /**
+   * WO-DECISION-INFO ③.2 · 跨基地调拨台账（`InterBaseTransfer`）—— 处置推演的**跨基地在途前置期**真值来源
+   * （`transitDays` 距离派生 `ceil(baseDistanceKm/dailyTruckKm)`）+ 跨基地运费单价来源（`freightCost/qty`）。
+   * **按需加载**（service.ts `DECISION_INFO_SOLVERS`·照 ADOPTION_AWARE_SOLVERS 写法），缺省 `[]` →
+   * 前置期诚实 EMPTY（不回落 `+7` 魔数），与本单上线前逐字节一致（向后兼容 R6）。
+   */
+  interBaseTransfers?: ObjectInstance[];
+  /**
+   * WO-DECISION-INFO ③.2 · 供应商台账（`Supplier`）—— 外协补足的**提前期**真值来源（`leadTime`，
+   * 只认 `status==='合格'`：观察/淘汰的供应商不能当作可依赖的外协前置期）。缺省 `[]` → 诚实 EMPTY（不回落 `+14`）。
+   */
+  suppliers?: ObjectInstance[];
   // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
   // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。

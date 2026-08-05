@@ -210,6 +210,15 @@ const CHAIN_MATERIAL_SOLVERS = new Set(["risk_timeline", "counterfactual_timelin
  */
 const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
 
+/**
+ * WO-DECISION-INFO ③.2 · 需要「跨基地调拨台账 + 供应商台账」的求解器（**按需加载**·照 ADOPTION_AWARE_SOLVERS 写法）。
+ * 处置推演的前置期（跨基地在途 / 外协提前期）与跨基地运费单价从这两类真对象读 —— 不加载 → 前置期诚实 EMPTY
+ * （日期不叠加偏移·绝不回落 `+7`/`+14` 魔数），与本单上线前逐字节一致（向后兼容 R6）。
+ * ⚠ 与核心 10 类的 `SOLVER_REQUIRED_TYPES` 裁剪正交（那套仅在 `dc.lazy-solver-context` 开时生效）：
+ *   本集合恒按 solverKey 判，否则暗发门关（默认）时台账压根不会被加载 → 前置期永远 EMPTY = 本单等于没做。
+ */
+const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
+
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
@@ -2765,11 +2774,15 @@ export class SolverService {
     const coeffRule = pubRules.find((r) => r.key === "base_outlook_coeffs");
     const coeff = (k: string, dflt: number) => num(coeffRule?.params?.[k] ?? dflt);
     const horizons = args.horizon != null ? [num(args.horizon)] : [30, 60, 90];
+    // WO-DECISION-INFO ③.2：dayPlan 的跨基地/外协两步不再落 `+7`/`+14` 魔数 —— 前置期从真台账读
+    // （与 risk_timeline 处置表同一对函数·跨视图同口径）。台账为空 → 诚实 EMPTY，不回落魔数。
+    const transfers = (await this.repos.objects.listByType(ctx.tenantId, "InterBaseTransfer")).map((o) => o.props);
+    const suppliers = (await this.repos.objects.listByType(ctx.tenantId, "Supplier")).map((o) => o.props);
     const result = runBaseCapacityOutlook({
       baseId,
       horizons,
       forecastStart: str(params.forecastStart),
-      orders, bases, lines, workOrders, segments, coeff,
+      orders, bases, lines, workOrders, segments, coeff, transfers, suppliers,
     });
     // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（纯加字段·跨半接缝：数据 capacity_forecast × 展示按产品 tab）。
     // 把已有 capacity_forecast per-model（P50/mainBn）join 进本基地 outlook——同源勾稽·跨求解器一致·per-base 四线零改。
@@ -3990,7 +4003,7 @@ export class SolverService {
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean },
+    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean; withDecisionInfo?: boolean },
   ): Promise<SolverContext> {
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
     // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
@@ -4061,11 +4074,20 @@ export class SolverService {
     // WO-ADOPT-MITIGATION：已采纳处置方案台账**按需加载**（仅 ADOPTION_AWARE_SOLVERS·其余求解器一次 listByType 都不做）。
     // 不加载 → 字段为 `[]` → riskTimeline 的 adoptedMitigationIndex 走零成本空 Map → 与上线前逐字节一致（R6）。
     const adoptedMitigations = opts?.withAdoptions ? await this.repos.objects.listByType(tenantId, "AdoptedMitigation") : empty;
+    // WO-DECISION-INFO ③.2：跨基地调拨 + 供应商台账（前置期/运费真值来源）**按需加载**。
+    const [interBaseTransfers, suppliers] = opts?.withDecisionInfo
+      ? await Promise.all([
+          this.repos.objects.listByType(tenantId, "InterBaseTransfer"),
+          this.repos.objects.listByType(tenantId, "Supplier"),
+        ])
+      : [empty, empty];
     return {
       tenantId,
       params,
       isSynthProvenance,
       adoptedMitigations: sortById(adoptedMitigations),
+      interBaseTransfers: sortById(interBaseTransfers),
+      suppliers: sortById(suppliers),
       bases: sortById(bases),
       lines: sortById(lines),
       processes: sortById(processes),
@@ -4189,6 +4211,8 @@ export class SolverService {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
       // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
+      // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
+      withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -4262,6 +4286,8 @@ export class SolverService {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
       // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
+      // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
+      withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。

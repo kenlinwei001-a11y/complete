@@ -1,6 +1,8 @@
 import { num, str, dayFrom } from "./types.js";
 import { round } from "../prng.js";
 import { deriveDisposition, type DispositionStep } from "@platform/contracts";
+// WO-DECISION-INFO ③.2：前置期读数与 risk_timeline 处置表**同一对函数**（单一出处·勿另写一套）。
+import { crossBaseLeadOf, outsourceLeadOf } from "./decision-info.js";
 
 /**
  * WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演（纯算法·R6 确定性·净读对象图）。
@@ -31,6 +33,13 @@ export interface BaseOutlookInput {
   segments: Record<string, unknown>[];
   /** R14 系数（PUBLISHED RuleEntry.params 覆盖·缺省诚实兜底）。 */
   coeff: (k: string, dflt: number) => number;
+  /**
+   * WO-DECISION-INFO ③.2 · 跨基地调拨台账（`InterBaseTransfer` props）—— dayPlan 里"跨基地调剂"那一步
+   * 的在途前置期真值来源（此前是写死的 `trigDay + 7`）。缺省 `[]` → 诚实 EMPTY（不复活魔数）。
+   */
+  transfers?: Record<string, unknown>[];
+  /** WO-DECISION-INFO ③.2 · 供应商台账（`Supplier` props）—— "外协补足"步的提前期真值来源（此前写死 `+14`）。 */
+  suppliers?: Record<string, unknown>[];
 }
 
 export interface OutlookProv {
@@ -128,6 +137,11 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
   const overtimeUpliftPct = coeff("overtimeUpliftPct", 0.15); // 加班可提升可用产能比例
   const crossBaseAbsorbPct = coeff("crossBaseAbsorbPct", 0.6); // 跨基地调剂可吸收剩余缺口比例
 
+  // WO-DECISION-INFO ③.2 · 前置期真值（跨基地在途 / 外协提前期）——与 risk_timeline 处置表复用**同一对函数**
+  // （`decision-info.ts`），杜绝"两条路各读一套前置期"再次漂移。缺台账 → 诚实 EMPTY，不回落 +7/+14。
+  const crossBaseLead = crossBaseLeadOf(input.transfers ?? [], baseId, baseName);
+  const outsourceLead = outsourceLeadOf(input.suppliers ?? []);
+
   const freeDaily = baseFreeDaily(baseId, lines, baseObj);
   const freeDailyAll = round(
     bases.reduce((a, b) => a + baseFreeDaily(str(b.baseId), lines, b), 0),
@@ -221,6 +235,9 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
       futureQty,
       overtimeUpliftPct,
       crossBaseAbsorbPct,
+      // WO-DECISION-INFO ③.2：前置期从真对象读（与 risk_timeline 处置表**同一对函数**·跨视图同口径）。
+      crossBaseLead,
+      outsourceLead,
     }).steps;
 
     return {
