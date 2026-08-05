@@ -1442,7 +1442,7 @@ export class Orchestrator {
           markdown:
             `**${roleNote}在 ${elapsedS}s 内未收敛，已中止。**\n\n` +
             `${doneNote}\n\n` +
-            `这不是"算不出来"，是这条路径超过了 ${Math.round(taskTerminalTimeoutMs() / 1000)}s 的作答上限 —— ` +
+            `这不是"算不出来"，是这条路径超过了 ${Math.max(1, Math.round(taskTerminalTimeoutMs() / 1000))}s 的作答上限 —— ` +
             `与其让你继续等，不如如实告诉你它停在哪。\n\n` +
             `**你现在可以**：把问题问得更具体（点名基地 / 型号 / 时间窗），走确定性求解器通常十几秒就有答案；` +
             `或把问题拆小后分别提问。`,
