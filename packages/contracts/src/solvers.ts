@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { DispositionStepSchema } from "./disposition.js";
+import { DispositionOptionsSchema, DispositionStepSchema } from "./disposition.js";
+// WO-DECISION-INFO：影响面 / 不作为后果 —— **必须在契约里声明**，否则 zod parse 会把服务端加的键 strip 掉
+// （既有教训见 RiskCardSchema.adoptedMitigation 注释：加性字段不进契约 = 等于没加）。
+import { DoNothingSchema, ExposureSchema } from "./decision-info.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -260,6 +263,17 @@ export const RiskCardSchema = z.object({
       tn: z.number().int(),
     })
     .optional(),
+  /**
+   * WO-DECISION-INFO ①（加性·optional·向后兼容）：本卡风险的**影响面** —— 落在哪些订单/客户/多少钱。
+   * `status:"EMPTY"` 是一等结论（本窗无订单敞口 + 窗外最近一张在哪），不是留空让前端猜。
+   * `exposure.rank` 是**影响面排序键**（零敞口者一律降级到有敞口者之后）。
+   */
+  exposure: ExposureSchema.optional(),
+  /**
+   * WO-DECISION-INFO ②（加性·optional·向后兼容）：**不处置会怎样** —— 缺口自然消化天数 / 逐单延误 /
+   * 违约金（本仓恒 EMPTY·C01–C33 无承载·见 DoNothingSchema.penalty 注释）/ 受影响客户名单。
+   */
+  doNothing: DoNothingSchema.optional(),
 });
 /** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
 export const RiskPlanRowSchema = z.object({
@@ -286,6 +300,13 @@ export const RiskPlanRowSchema = z.object({
    * count=本次推演吃进的杠杆项数；capRatio=覆写后/基线 产能链比（=1 即杠杆未落在产能链上·诚实）。
    */
   overlay: z.object({ count: z.number().int(), capRatio: z.number() }).optional(),
+  /**
+   * WO-DECISION-INFO ③（加性·optional·向后兼容）：**可比较的多方案 + 各自代价**。
+   * `steps` 仍是现行的单条贪心路径（口径不动·= options[A] 同解，可对拍）；`options` 是 A/B/C 三个
+   * 可并排比较的方案，每个带 收窄量 / 成本 / 副作用（挤占了**哪几张单**、各延后多少天）/ 前置期（真值派生）。
+   * 只挂在每基地的**主行**（备份行不重复挂同一份大对象）。
+   */
+  options: DispositionOptionsSchema.optional(),
 });
 export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 
