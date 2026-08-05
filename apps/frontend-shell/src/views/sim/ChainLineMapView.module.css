@@ -1,0 +1,345 @@
+/* WO-SANDBOX-F1 · 全链线路图样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   （门：chain-line-map.seam.test.tsx「三色系」组 —— 出现 hex 或任何颜色函数字面量即红；
+     用到的每个 var(--x) 必须定义在 tokens.css 的 :root，只在某个 data-theme 分支里定义的会在别的皮下失效。） */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 74ch;
+}
+.sub code,
+.engineError code,
+.stateLine code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.zoomBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zoomVal {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ── 图例 ─────────────────────────────────────────────────────────────────── */
+.legend {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.legendRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+}
+.legendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+.metaphorWarn {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--amber);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--txt);
+}
+
+/* ── 状态条 ───────────────────────────────────────────────────────────────── */
+.stateLine {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.engineError {
+  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.engineError b {
+  color: var(--danger);
+}
+.engineError p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+.errorHint {
+  color: var(--muted2);
+}
+
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 2px;
+}
+.summaryBar [data-ok="0"] {
+  color: var(--danger);
+}
+
+/* ── 画布 ─────────────────────────────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 12px;
+  align-items: stretch;
+}
+@media (max-width: 1080px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.canvas {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: grab;
+  touch-action: none;
+}
+.canvas:active {
+  cursor: grabbing;
+}
+.canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.stage {
+  transform-origin: 0 0;
+  display: block;
+  overflow: visible;
+}
+
+.hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── 轨道（区间）─────────────────────────────────────────────────────────── */
+.trackLive {
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  fill: none;
+}
+/* 停运区间 = 断点：虚线 + 灰化，一眼与在运区间分开（不是"淡一点的正常线"）。 */
+.trackSuspended {
+  stroke: var(--muted2);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 3 9;
+  fill: none;
+}
+
+/* ── 站图元 ───────────────────────────────────────────────────────────────── */
+.stationStop {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 2.5;
+}
+/* 增值站：语义色（正向）+ 不同描边，与"损失占比≈0 的普通站"在形状/配色上都分得开。 */
+.stationValueAdd {
+  fill: var(--ok);
+  stroke: var(--panel);
+  stroke-width: 2.5;
+}
+/* 换乘站 = 共用工序（共享瓶颈）：地铁标准双环空心。 */
+.interchangeOuter {
+  fill: var(--panel);
+  stroke: var(--txt);
+  stroke-width: 4;
+}
+.interchangeInner {
+  fill: var(--txt);
+  stroke: none;
+}
+
+/* 合流站 = 齐套 AND：D 形闸门 + 汇流母线。**刻意不与换乘站共用任何图元**。 */
+.andGate {
+  fill: var(--panel);
+  stroke: var(--warn);
+  stroke-width: 3;
+}
+.andGlyphText {
+  fill: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+.andBus {
+  stroke: var(--warn);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.andLabel {
+  fill: var(--warn);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* 停运站位 = 断点 */
+.suspendedBox {
+  fill: var(--panel);
+  stroke: var(--muted2);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+.suspendedCross {
+  stroke: var(--muted2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+}
+.suspendedTag {
+  fill: var(--muted2);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+/* 红弧 = 返工逆行 */
+.reworkArc {
+  stroke: var(--danger);
+  stroke-width: 2.5;
+  fill: none;
+}
+.reworkArrowHead {
+  fill: var(--danger);
+}
+
+.lineLabel {
+  fill: var(--muted2);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.stationName {
+  fill: var(--txt);
+  font-size: 11px;
+}
+.stationPct {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ── 详情 ─────────────────────────────────────────────────────────────────── */
+.detail {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow: auto;
+  max-height: 520px;
+}
+.detail small {
+  display: block;
+  color: var(--muted2);
+  margin-top: 2px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 10px 0 0;
+}
+.kv dt {
+  color: var(--muted2);
+}
+.kv dd {
+  margin: 0;
+  color: var(--txt);
+}
+.detailNote {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+.detailProbe {
+  margin: 6px 0 0;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+.detailIdle {
+  margin: 0;
+  color: var(--muted2);
+}
+
+/* ── 诚实边界 ─────────────────────────────────────────────────────────────── */
+.notes {
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted2) 6%, transparent);
+}
+.notes ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

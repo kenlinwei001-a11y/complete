@@ -73,6 +73,11 @@ registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
 //    （registry 是手工登记的字符串键表、无自动扫描）——即 G-SKILL-REFGRAPH-DEAD-EXTRACTOR
 //    形态：实现有、测试有、全绿、但没有任何路由渲染得到它。此行是那条缺失的链路。
 registerRenderer("physical-topology", () => import("./sim/PhysicalTopologyView"));
+// WO-SANDBOX-F1 全链线路图（地铁图隐喻：站=环节·换乘站=共用工序·合流站=齐套 AND·停运区间=断点·红弧=返工逆行）。
+// 站圈大小 ∝ 引擎 chain_loss_attribution 返回的 LossAttribution.pctOfChainLoss。
+// 本行 = 这张图唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
+// 缺它就是 F3 踩过的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
+registerRenderer("chain-line-map", () => import("./sim/ChainLineMapView"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));

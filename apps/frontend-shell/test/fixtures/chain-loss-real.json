@@ -1,0 +1,894 @@
+{
+  "anchor": {
+    "so": "SO-3391",
+    "cust": "广汽集团",
+    "customerId": "cust_0",
+    "modelId": "4680-NCM",
+    "routingId": "RT-4680-NCM-V1.0",
+    "materialId": "pos_lfp",
+    "supplierId": "SUP-001",
+    "baseId": "hefei",
+    "agingProcessId": "LINE-WS-hefei-assembly-aging",
+    "selection": "锚点订单 = Order 按 so 字典序第一张（SO-3391）；其余对象沿本体链路 hop，多解时取对端 id 字典序最小（R6 全序）"
+  },
+  "nodes": [
+    {
+      "nodeId": "order.cash",
+      "label": "订单回款",
+      "stage": "ORDER",
+      "steps": [
+        {
+          "stepId": "order.settlement_terms",
+          "nodeId": "order.cash",
+          "label": "账期等待（回款）",
+          "kind": "queue",
+          "days": 60,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-001",
+      "label": "工序 混料",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-001#work",
+          "nodeId": "capacity.op.OP-001",
+          "label": "混料·标准作业",
+          "kind": "work",
+          "days": 0.020833333333333332,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-001#setup",
+          "nodeId": "capacity.op.OP-001",
+          "label": "混料·换型准备",
+          "kind": "queue",
+          "days": 0.003472222222222222,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-002",
+      "label": "工序 涂布",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-002#work",
+          "nodeId": "capacity.op.OP-002",
+          "label": "涂布·标准作业",
+          "kind": "work",
+          "days": 0.08333333333333333,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-002#setup",
+          "nodeId": "capacity.op.OP-002",
+          "label": "涂布·换型准备",
+          "kind": "queue",
+          "days": 0.020833333333333332,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-003",
+      "label": "工序 辊压",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-003#work",
+          "nodeId": "capacity.op.OP-003",
+          "label": "辊压·标准作业",
+          "kind": "work",
+          "days": 0.041666666666666664,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-003#setup",
+          "nodeId": "capacity.op.OP-003",
+          "label": "辊压·换型准备",
+          "kind": "queue",
+          "days": 0.013888888888888888,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-004",
+      "label": "工序 分切",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-004#work",
+          "nodeId": "capacity.op.OP-004",
+          "label": "分切·标准作业",
+          "kind": "work",
+          "days": 0.03125,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-004#setup",
+          "nodeId": "capacity.op.OP-004",
+          "label": "分切·换型准备",
+          "kind": "queue",
+          "days": 0.010416666666666666,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-005",
+      "label": "工序 卷绕",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-005#work",
+          "nodeId": "capacity.op.OP-005",
+          "label": "卷绕·标准作业",
+          "kind": "work",
+          "days": 0.0625,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-005#setup",
+          "nodeId": "capacity.op.OP-005",
+          "label": "卷绕·换型准备",
+          "kind": "queue",
+          "days": 0.017361111111111112,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-006",
+      "label": "工序 装配",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-006#work",
+          "nodeId": "capacity.op.OP-006",
+          "label": "装配·标准作业",
+          "kind": "work",
+          "days": 0.052083333333333336,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-006#setup",
+          "nodeId": "capacity.op.OP-006",
+          "label": "装配·换型准备",
+          "kind": "queue",
+          "days": 0.013888888888888888,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-007",
+      "label": "工序 注液",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-007#work",
+          "nodeId": "capacity.op.OP-007",
+          "label": "注液·标准作业",
+          "kind": "work",
+          "days": 0.027777777777777776,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-007#setup",
+          "nodeId": "capacity.op.OP-007",
+          "label": "注液·换型准备",
+          "kind": "queue",
+          "days": 0.020833333333333332,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-008",
+      "label": "工序 化成",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-008#work",
+          "nodeId": "capacity.op.OP-008",
+          "label": "化成·标准作业",
+          "kind": "work",
+          "days": 0.5,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-008#setup",
+          "nodeId": "capacity.op.OP-008",
+          "label": "化成·换型准备",
+          "kind": "queue",
+          "days": 0.041666666666666664,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-009",
+      "label": "工序 分容",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-009#work",
+          "nodeId": "capacity.op.OP-009",
+          "label": "分容·标准作业",
+          "kind": "work",
+          "days": 0.25,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-009#setup",
+          "nodeId": "capacity.op.OP-009",
+          "label": "分容·换型准备",
+          "kind": "queue",
+          "days": 0.020833333333333332,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.op.OP-010",
+      "label": "工序 PACK",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.op.OP-010#work",
+          "nodeId": "capacity.op.OP-010",
+          "label": "PACK·标准作业",
+          "kind": "work",
+          "days": 0.125,
+          "valueAdd": true
+        },
+        {
+          "stepId": "capacity.op.OP-010#setup",
+          "nodeId": "capacity.op.OP-010",
+          "label": "PACK·换型准备",
+          "kind": "queue",
+          "days": 0.03125,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "capacity.aging",
+      "label": "老化静置",
+      "stage": "CAPACITY",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "capacity.aging#dwell",
+          "nodeId": "capacity.aging",
+          "label": "老化静置",
+          "kind": "queue",
+          "days": 5,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "material.replenish",
+      "label": "关键物料补货",
+      "stage": "MATERIAL",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "material.supplier_leadtime",
+          "nodeId": "material.replenish",
+          "label": "供应商到货周期",
+          "kind": "handoff",
+          "days": 5,
+          "valueAdd": false
+        }
+      ]
+    }
+  ],
+  "attribution": [
+    {
+      "stepId": "order.settlement_terms",
+      "nonValueDays": 60,
+      "pctOfChainLoss": 85.47685001978631
+    },
+    {
+      "stepId": "capacity.op.OP-001#setup",
+      "nonValueDays": 0.003472222222222222,
+      "pctOfChainLoss": 0.004946576968737634
+    },
+    {
+      "stepId": "capacity.op.OP-002#setup",
+      "nonValueDays": 0.020833333333333332,
+      "pctOfChainLoss": 0.0296794618124258
+    },
+    {
+      "stepId": "capacity.op.OP-003#setup",
+      "nonValueDays": 0.013888888888888888,
+      "pctOfChainLoss": 0.019786307874950535
+    },
+    {
+      "stepId": "capacity.op.OP-004#setup",
+      "nonValueDays": 0.010416666666666666,
+      "pctOfChainLoss": 0.0148397309062129
+    },
+    {
+      "stepId": "capacity.op.OP-005#setup",
+      "nonValueDays": 0.017361111111111112,
+      "pctOfChainLoss": 0.024732884843688168
+    },
+    {
+      "stepId": "capacity.op.OP-006#setup",
+      "nonValueDays": 0.013888888888888888,
+      "pctOfChainLoss": 0.019786307874950535
+    },
+    {
+      "stepId": "capacity.op.OP-007#setup",
+      "nonValueDays": 0.020833333333333332,
+      "pctOfChainLoss": 0.0296794618124258
+    },
+    {
+      "stepId": "capacity.op.OP-008#setup",
+      "nonValueDays": 0.041666666666666664,
+      "pctOfChainLoss": 0.0593589236248516
+    },
+    {
+      "stepId": "capacity.op.OP-009#setup",
+      "nonValueDays": 0.020833333333333332,
+      "pctOfChainLoss": 0.0296794618124258
+    },
+    {
+      "stepId": "capacity.op.OP-010#setup",
+      "nonValueDays": 0.03125,
+      "pctOfChainLoss": 0.0445191927186387
+    },
+    {
+      "stepId": "capacity.aging#dwell",
+      "nonValueDays": 5,
+      "pctOfChainLoss": 7.123070834982192
+    },
+    {
+      "stepId": "material.supplier_leadtime",
+      "nonValueDays": 5,
+      "pctOfChainLoss": 7.123070834982192
+    }
+  ],
+  "evidence": [
+    {
+      "stepId": "order.settlement_terms",
+      "nodeId": "order.cash",
+      "stage": "ORDER",
+      "label": "账期等待（回款）",
+      "kind": "queue",
+      "days": 60,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Customer",
+      "drillId": "cust_0",
+      "drillField": "termDays",
+      "drillValue": 60,
+      "drillUnit": "day",
+      "conversion": "days = Customer.termDays（本就是天，1:1）",
+      "derivationEdge": "order_of_customer"
+    },
+    {
+      "stepId": "capacity.op.OP-001#work",
+      "nodeId": "capacity.op.OP-001",
+      "stage": "CAPACITY",
+      "label": "混料·标准作业",
+      "kind": "work",
+      "days": 0.020833333333333332,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-001",
+      "drillField": "standardTime",
+      "drillValue": 30,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-001#setup",
+      "nodeId": "capacity.op.OP-001",
+      "stage": "CAPACITY",
+      "label": "混料·换型准备",
+      "kind": "queue",
+      "days": 0.003472222222222222,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-001",
+      "drillField": "setupTime",
+      "drillValue": 5,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-002#work",
+      "nodeId": "capacity.op.OP-002",
+      "stage": "CAPACITY",
+      "label": "涂布·标准作业",
+      "kind": "work",
+      "days": 0.08333333333333333,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-002",
+      "drillField": "standardTime",
+      "drillValue": 120,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-002#setup",
+      "nodeId": "capacity.op.OP-002",
+      "stage": "CAPACITY",
+      "label": "涂布·换型准备",
+      "kind": "queue",
+      "days": 0.020833333333333332,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-002",
+      "drillField": "setupTime",
+      "drillValue": 30,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-003#work",
+      "nodeId": "capacity.op.OP-003",
+      "stage": "CAPACITY",
+      "label": "辊压·标准作业",
+      "kind": "work",
+      "days": 0.041666666666666664,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-003",
+      "drillField": "standardTime",
+      "drillValue": 60,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-003#setup",
+      "nodeId": "capacity.op.OP-003",
+      "stage": "CAPACITY",
+      "label": "辊压·换型准备",
+      "kind": "queue",
+      "days": 0.013888888888888888,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-003",
+      "drillField": "setupTime",
+      "drillValue": 20,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-004#work",
+      "nodeId": "capacity.op.OP-004",
+      "stage": "CAPACITY",
+      "label": "分切·标准作业",
+      "kind": "work",
+      "days": 0.03125,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-004",
+      "drillField": "standardTime",
+      "drillValue": 45,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-004#setup",
+      "nodeId": "capacity.op.OP-004",
+      "stage": "CAPACITY",
+      "label": "分切·换型准备",
+      "kind": "queue",
+      "days": 0.010416666666666666,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-004",
+      "drillField": "setupTime",
+      "drillValue": 15,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-005#work",
+      "nodeId": "capacity.op.OP-005",
+      "stage": "CAPACITY",
+      "label": "卷绕·标准作业",
+      "kind": "work",
+      "days": 0.0625,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-005",
+      "drillField": "standardTime",
+      "drillValue": 90,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-005#setup",
+      "nodeId": "capacity.op.OP-005",
+      "stage": "CAPACITY",
+      "label": "卷绕·换型准备",
+      "kind": "queue",
+      "days": 0.017361111111111112,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-005",
+      "drillField": "setupTime",
+      "drillValue": 25,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-006#work",
+      "nodeId": "capacity.op.OP-006",
+      "stage": "CAPACITY",
+      "label": "装配·标准作业",
+      "kind": "work",
+      "days": 0.052083333333333336,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-006",
+      "drillField": "standardTime",
+      "drillValue": 75,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-006#setup",
+      "nodeId": "capacity.op.OP-006",
+      "stage": "CAPACITY",
+      "label": "装配·换型准备",
+      "kind": "queue",
+      "days": 0.013888888888888888,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-006",
+      "drillField": "setupTime",
+      "drillValue": 20,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-007#work",
+      "nodeId": "capacity.op.OP-007",
+      "stage": "CAPACITY",
+      "label": "注液·标准作业",
+      "kind": "work",
+      "days": 0.027777777777777776,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-007",
+      "drillField": "standardTime",
+      "drillValue": 40,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-007#setup",
+      "nodeId": "capacity.op.OP-007",
+      "stage": "CAPACITY",
+      "label": "注液·换型准备",
+      "kind": "queue",
+      "days": 0.020833333333333332,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-007",
+      "drillField": "setupTime",
+      "drillValue": 30,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-008#work",
+      "nodeId": "capacity.op.OP-008",
+      "stage": "CAPACITY",
+      "label": "化成·标准作业",
+      "kind": "work",
+      "days": 0.5,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-008",
+      "drillField": "standardTime",
+      "drillValue": 720,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-008#setup",
+      "nodeId": "capacity.op.OP-008",
+      "stage": "CAPACITY",
+      "label": "化成·换型准备",
+      "kind": "queue",
+      "days": 0.041666666666666664,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-008",
+      "drillField": "setupTime",
+      "drillValue": 60,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-009#work",
+      "nodeId": "capacity.op.OP-009",
+      "stage": "CAPACITY",
+      "label": "分容·标准作业",
+      "kind": "work",
+      "days": 0.25,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-009",
+      "drillField": "standardTime",
+      "drillValue": 360,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-009#setup",
+      "nodeId": "capacity.op.OP-009",
+      "stage": "CAPACITY",
+      "label": "分容·换型准备",
+      "kind": "queue",
+      "days": 0.020833333333333332,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-009",
+      "drillField": "setupTime",
+      "drillValue": 30,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-010#work",
+      "nodeId": "capacity.op.OP-010",
+      "stage": "CAPACITY",
+      "label": "PACK·标准作业",
+      "kind": "work",
+      "days": 0.125,
+      "valueAdd": true,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-010",
+      "drillField": "standardTime",
+      "drillValue": 180,
+      "drillUnit": "min",
+      "conversion": "days = Operation.standardTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.op.OP-010#setup",
+      "nodeId": "capacity.op.OP-010",
+      "stage": "CAPACITY",
+      "label": "PACK·换型准备",
+      "kind": "queue",
+      "days": 0.03125,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Operation",
+      "drillId": "RT-4680-NCM-V1.0-OP-010",
+      "drillField": "setupTime",
+      "drillValue": 45,
+      "drillUnit": "min",
+      "conversion": "days = Operation.setupTime / 1440（分钟 → 天）",
+      "derivationEdge": "order_for_model → routing_belongs_to_model → operation_belongs_to_routing"
+    },
+    {
+      "stepId": "capacity.aging#dwell",
+      "nodeId": "capacity.aging",
+      "stage": "CAPACITY",
+      "label": "老化静置",
+      "kind": "queue",
+      "days": 5,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Process",
+      "drillId": "LINE-WS-hefei-assembly-aging",
+      "drillField": "agingDays",
+      "drillValue": 5,
+      "drillUnit": "day",
+      "conversion": "days = Process.agingDays（本就是天，1:1）",
+      "derivationEdge": "Order.bases → Process(kind=aging)"
+    },
+    {
+      "stepId": "material.supplier_leadtime",
+      "nodeId": "material.replenish",
+      "stage": "MATERIAL",
+      "label": "供应商到货周期",
+      "kind": "handoff",
+      "days": 5,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "Supplier",
+      "drillId": "SUP-001",
+      "drillField": "leadTime",
+      "drillValue": 5,
+      "drillUnit": "day",
+      "conversion": "days = Supplier.leadTime（本就是天，1:1）",
+      "derivationEdge": "order_for_model → model_uses_material → material_supplied_by"
+    }
+  ],
+  "empty": [
+    {
+      "stepId": "demand.sop_cadence",
+      "nodeId": "demand.consensus",
+      "stage": "DEMAND",
+      "label": "等 S&OP 共识会节拍",
+      "kind": "cadence",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "「多久开一次会」在数据层无承载：全仓没有任何对象带 Cadence（everyDays/offsetDays）。等待期望公式 everyDays/2 有了（S0 契约），但没有值可以喂给它 —— 属「新契约已冻结、数据半未交付」（D1 单）。",
+      "probe": "grep -rn 'everyDays' apps packages --include=*.ts → 仅命中 packages/contracts/src/chain-sim.ts（S0 契约自身声明）；另有 apps/datacore/src/opsteam/defaults.ts:64 的 `cadence`，追一层确认是虚拟运营团队 playbook 的 daily/weekly/monthly 动作槽（replay.ts:91-95 按星期几/几号触发 persona 动作），与「环节多久处理一次」是两个口径，不可挪用。"
+    },
+    {
+      "stepId": "order.review_cadence",
+      "nodeId": "order.cash",
+      "stage": "ORDER",
+      "label": "等订单评审节拍",
+      "kind": "cadence",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "同上：订单评审的节拍周期无承载物（D1 单）。",
+      "probe": "同 demand.sop_cadence（Cadence 全仓零数据承载）。"
+    },
+    {
+      "stepId": "material.in_transit",
+      "nodeId": "material.replenish",
+      "stage": "MATERIAL",
+      "label": "物料入厂在途",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "没有「物料入厂在途天数」这个字段。三个看着像的都**不是**：Material.inTransit 是数量（吨）；PurchaseOrder.etaDay / Shipment.etaDay 是相对 forecastStart 的到货日偏移（日期锚，不是时长）；InterBaseTransfer.transitDays 是成品跨基地调拨在途，不是物料入厂在途 —— 挪用任何一个都是口径错标（本仓刚修过差 1e4 的同族病）。",
+      "probe": "读 apps/datacore/src/synthetic/battery.ts 属性定义：materialProps.inTransit（数量）/ shipmentProps.etaDay 注释 'relative to forecastStart' / interBaseTransferProps.transitDays 注释 '距离派生 = ceil(baseDistanceKm / dailyTruckKm)'（成品调拨）。三者语义逐个核过，均非本段。"
+    },
+    {
+      "stepId": "material.customs",
+      "nodeId": "material.replenish",
+      "stage": "MATERIAL",
+      "label": "清关",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "清关段在本体里完全不存在：没有对象、没有字段、没有链路承载它。（D2 单要新增的两段之一。）",
+      "probe": "grep -rni 'customs|清关|报关' apps/*/src packages/*/src --include=*.ts → 0 命中（2026-08-05 在 origin/claude/inspiring-gates-aqczjg + S0 上实测）。"
+    },
+    {
+      "stepId": "material.iqc",
+      "nodeId": "material.replenish",
+      "stage": "MATERIAL",
+      "label": "到货检验（IQC）",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "到货检验段无承载。注意：仓里**有**质量域（QualityLot/InspectionResult/InspectionCharacteristic），但那是**在制/出货**检验（挂 WorkOrder/lotId），不是**来料**检验；拿它冒充 IQC 是换个对象继续说谎。（D2 单要新增的两段之二。）",
+      "probe": "grep -rni '\\bIQC\\b|到货检验|来料检验|incoming.*inspect' apps/*/src packages/*/src --include=*.ts → 0 命中；再追一层核 QualityLot.woId / InspectionResult.charId 的挂载点，确认全部挂在在制工单上，无来料侧。"
+    },
+    {
+      "stepId": "chain.rework",
+      "nodeId": "chain.quality",
+      "stage": "CAPACITY",
+      "label": "返工",
+      "kind": "rework",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "返工**天数**无承载。仓里有不良记录（DefectRecord.qty 85 条 / QualityLot.failQty 260 条 / InspectionResult 520 条），但全是**数量与判定**，没有返工工时或返工天数字段。要从不良数换算成天数得有「单件返工工时率」——那个数仓里不存在，编一个出来就是静默兜底。",
+      "probe": "grep -rni '返工|rework' apps/datacore/src packages/contracts/src --include=*.ts → 仅命中 battery.ts:574 的一段叙事文案（外协质量波动的因果链描述串）与 chain-sim.ts 的 kind 枚举声明本身，**零字段、零对象**；再逐个读 defectRecordProps / qualityLotProps / inspectionResultProps 的属性表，确认无任何时长字段。"
+    }
+  ],
+  "totals": {
+    "leadTimeDays": 71.38888888888889,
+    "valueAddDays": 1.1944444444444444,
+    "nonValueDays": 70.19444444444444,
+    "flowEfficiency": 0.016731517509727626,
+    "stepCount": 23,
+    "emptyCount": 6
+  },
+  "conservation": {
+    "sumPct": 99.99999999999999,
+    "residual": -1.4210854715202004e-14,
+    "tolerancePct": 0.001,
+    "ok": true
+  },
+  "summary": "锚点订单 SO-3391：全链 71.39 天，其中增值 1.19 天、非增值（损失）70.19 天，覆盖 23 个环节；吃掉损失最多的是「账期等待（回款）」85.5%。另有 6 个环节诚实标 EMPTY（6 段本体无承载 / 0 段本链无实例），未补 0。"
+}
