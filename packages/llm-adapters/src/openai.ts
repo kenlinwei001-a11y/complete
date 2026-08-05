@@ -18,6 +18,7 @@ import type {
   ToolLoopReq,
 } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 
 /**
  * OpenAI / OpenAI-compatible adapter（QOS-PRD §6 修订实现收编于 packages/llm-adapters，
@@ -110,11 +111,18 @@ const CLASSIFICATION_JSON_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
+/**
+ * **只校验路由必需的骨架**（candidates + outOfCatalog）。
+ *
+ * WO-SLOT-HARVEST：这里**故意不再声明任何槽位字段** —— 槽位一律由 `harvestClassificationSlots(raw)`
+ * 在**原始报文**上收割。原因是这个 schema 曾经**自己销毁证据**：`z.object({intentKey,confidence})`
+ * 默认剔除未知键，Kimi 放进 `candidates[i].extractedSlots` 的槽位在校验那一行就被删掉，
+ * 之后 `?? {}` 再把「我没在我看的位置找到」报成「模型没给」（真实抓包 5 次踩中 3 次）。
+ * 顺带：槽位字段形态跑偏（如 `extractedSlotsJson` 给成对象）不再让整条响应校验失败→3 次重试→路径 B。
+ */
 const OpenAiClassificationSchema = z.object({
   candidates: z.array(z.object({ intentKey: z.string(), confidence: z.number() })).max(3),
   outOfCatalog: z.boolean(),
-  extractedSlotsJson: z.string().optional(),
-  extractedSlots: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface OpenAiLlmClientOptions {
@@ -190,7 +198,8 @@ export class OpenAiLlmClient implements FullLlmClient {
       ],
       response_format: {
         // strict:false 兼容国产/兼容端点（实测 Moonshot/Kimi 在 strict:true 下返空/不可解析，且会加 reason 等额外字段）；
-        // 形状由 OpenAiClassificationSchema 兜底校验（zod 默认剔除未知键）。
+        // 路由骨架由 OpenAiClassificationSchema 兜底校验，**槽位不走它** —— 见 harvestClassificationSlots(raw)：
+        // 模型爱把槽写哪就写哪（顶层/candidate、对象/JSON 串），读的一方全收，收不掉的进 unconsumed 报出来。
         type: "json_schema",
         json_schema: { name: "intent_classification", strict: false, schema: CLASSIFICATION_JSON_SCHEMA },
       },
@@ -206,23 +215,18 @@ export class OpenAiLlmClient implements FullLlmClient {
     }
     const parsed = OpenAiClassificationSchema.safeParse(raw);
     if (!parsed.success) throw new ClassifierParseError();
-    let extractedSlots: Record<string, unknown> = parsed.data.extractedSlots ?? {};
-    if (parsed.data.extractedSlotsJson !== undefined) {
-      try {
-        const slots = JSON.parse(parsed.data.extractedSlotsJson) as unknown;
-        if (slots !== null && typeof slots === "object" && !Array.isArray(slots)) {
-          extractedSlots = slots as Record<string, unknown>;
-        }
-      } catch {
-        /* slot extraction is best effort — malformed slot JSON degrades to {} */
-      }
-    }
+    // ★ WO-SLOT-HARVEST 命门：收割器跑在 **raw** 上（不是 parsed.data —— 窄 schema 会先把证据删掉）。
+    //   旧代码 `parsed.data.extractedSlots ?? {}` 只看一个位置，看不到就报"没有"；真 Kimi 5 次里 3 次
+    //   把槽写在 candidates[0].extractedSlots，于是"抽对了却进不了系统"。
+    const harvest = harvestClassificationSlots(raw);
+    // 诚实闸的真消费方：出现了槽位形状却没被收割 → 打日志（不许再"我没找到 = 它没有"）。
+    reportUnconsumedSlots("openai.classify", harvest);
     // 不完整结果（既无候选意图、又未明确判域外）= 退化输出（温度强制模型偶发）→ 当作可解析失败触发重试。
     if (parsed.data.candidates.length === 0 && !parsed.data.outOfCatalog) throw new ClassifierParseError();
     return {
       candidates: parsed.data.candidates,
       outOfCatalog: parsed.data.outOfCatalog,
-      extractedSlots,
+      extractedSlots: harvest.slots,
     };
   }
 
