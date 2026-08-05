@@ -25,7 +25,9 @@ export interface SolverParamsShape {
       utilHighAdd: number;
       utilLowAdd: number;
     };
-    live: { oeeK: number; oeeBase: number; utilK: number; utilBase: number; yieldK: number; yieldBase: number };
+    // WO-SANDBOX-D3：hardCapShortfallK 为**可选**——老租户 solverParams 里没有它时，
+    // 硬容量读数诚实退化为 EMPTY（reason 说明缺参），**不静默按 0 或某个默认系数算**。
+    live: { oeeK: number; oeeBase: number; utilK: number; utilBase: number; yieldK: number; yieldBase: number; hardCapShortfallK?: number };
   };
   risk: {
     threshold: number;

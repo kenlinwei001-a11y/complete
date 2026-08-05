@@ -1,5 +1,7 @@
 import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY, deriveDisposition } from "@platform/contracts";
+// WO-SANDBOX-D3 · 工序硬容量单元声明单源（哪个属性承载柜位数/单元速率·零数值重复·诚实缺不兜底）。
+import { HARD_CAPACITY_UNIT_SPECS, readProcessHardCapacity, type BottleneckHardCapacity, type HardCapacityUnitSpec } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
 // WO-LIVE-DISPOSITION T2：克隆-覆写 + 逐工序×型号产能链**复用 capacity.ts 单源**（= service.ts capacityInferenceApply
@@ -42,6 +44,97 @@ export function mockTightness(c: SolverContext, baseId: string, factor: string):
   return Math.min(m.secondaryCap, m.secondaryBase + seed + (util > m.utilHigh ? m.utilHighAdd : m.utilLowAdd));
 }
 
+// ---------------------------------------------------------------------------
+// WO-SANDBOX-D3 · 柜位类**硬容量约束**读进瓶颈判定（数据半 Process.capacityUnitKind/requiredThroughput
+// × 引擎半 bottleneck_matrix）。
+//
+// 治的病（三分法定性 = **接了线接错地方**，不是没接线）：
+//   `Process.channels`（化成通道/柜位数）真实存在、真有数据、且 `capacity.ts:75` capacity_rollup 真读它 ——
+//   但瓶颈判定这条路（`liveTightness` 三分支：Equipment.oee_current / Line.utilization / Process.yield_baseline）
+//   **从不读柜位**；capacity_rollup 虽在 `min(serialMin, formationCap, agingCap)` 里用了柜位产能，
+//   却只取 min、**不记录谁夹定、也不记录差多少** → 全链任何一处都取不到「化成夹定与否」。
+//   于是物理拓扑视图里化成那一列只能标「数据薄」。修法 = **补挂载点**（不是造新对象类型）。
+//
+// 判定口径（硬约束不是连续张力）：
+//   capacityPerDay = 柜位数 × 单柜位日通过量 × 工序良率        （数值单源 = Process.channels/agingSlots）
+//   requiredPerDay = Process.requiredThroughput                （上游串行段要求承接量）
+//   binding        = capacityPerDay < requiredPerDay
+//   tightness      = max(0, (required − capacity) / required) × hardCapShortfallK   （未夹定恒 0）
+// 基地级取**最紧**的那道硬容量工序（tiebreak：张力降序 → processId 升序，R6 确定）。
+//
+// 诚实缺（禁止静默兜底）：工序没打 `capacityUnitKind` 标签 / 柜位数缺失 / 缺 `requiredThroughput`
+// / 缺 `hardCapShortfallK` 参数 —— 一律返回 `{status:"EMPTY", reason}`，**绝不给一个「看着合理」的
+// 默认柜位数或默认要求量**：基于编造约束的瓶颈判定比算不出来更糟。
+// ---------------------------------------------------------------------------
+
+/**
+ * 基地级硬容量约束读数（纯函数·R6 无随机/时钟）。
+ * `specs` 可注入 —— 供 SEAM 变异反证：喂一份指错属性的规格表，判定必须真红而不是"照样出数"。
+ */
+export function baseHardCapacity(
+  c: SolverContext,
+  baseId: string,
+  specs: HardCapacityUnitSpec[] = HARD_CAPACITY_UNIT_SPECS,
+): BottleneckHardCapacity {
+  const k = c.params.bottleneck.live.hardCapShortfallK;
+  if (typeof k !== "number" || !Number.isFinite(k) || k <= 0) {
+    return { status: "EMPTY", reason: "solver_params 缺 bottleneck.live.hardCapShortfallK（不按默认系数臆算硬容量张力）" };
+  }
+  const procs = c.processes.filter((p) => str(p.props.baseId) === baseId);
+  if (procs.length === 0) return { status: "EMPTY", reason: `基地 ${baseId} 无 Process 对象` };
+  let best: Extract<BottleneckHardCapacity, { status: "OK" }> | null = null;
+  let bestHeadroom = Number.POSITIVE_INFINITY;
+  let declared = 0;
+  let lastReason = "";
+  for (const proc of procs) {
+    const reading = readProcessHardCapacity(proc.props, specs);
+    if (reading.status === "EMPTY") {
+      // 没打标签的工序（串行段）不算"缺"，它本来就不承载硬容量单元；其余缺法要留原因。
+      if (typeof proc.props.capacityUnitKind === "string" && proc.props.capacityUnitKind !== "") {
+        declared++;
+        lastReason = `${str(proc.props.processId)}：${reading.reason}`;
+      }
+      continue;
+    }
+    declared++;
+    const required = num(proc.props.requiredThroughput, 0);
+    if (!(required > 0)) {
+      // 有柜位、没有"上游要求多少" → 判不了够不够。诚实缺，不拿产能自比、也不拿别的量顶上。
+      lastReason = `${str(proc.props.processId)}：缺 Process.requiredThroughput（无比较基准，判不了柜位够不够）`;
+      continue;
+    }
+    const capacityPerDay = reading.capacityPerDay;
+    const shortfall = Math.max(0, required - capacityPerDay);
+    const tightness = clamp(Math.round((shortfall / required) * k), 0, 100);
+    const headroom = capacityPerDay / required; // 余量比：<1 即夹定
+    const row: Extract<BottleneckHardCapacity, { status: "OK" }> = {
+      status: "OK",
+      processId: str(proc.props.processId),
+      processName: str(proc.props.name, str(proc.props.processId)),
+      unitKind: reading.unitKind,
+      units: reading.units,
+      unitDailyThroughput: round(reading.unitDailyThroughput, 6),
+      capacityPerDay: round(capacityPerDay, 2),
+      requiredPerDay: round(required, 2),
+      shortfallPerDay: round(shortfall, 2),
+      binding: capacityPerDay < required,
+      tightness,
+    };
+    // 最紧者胜 = **余量比最小者**（capacity/required 升序）。用余量比而非张力排序，是为了在**一个都没夹定**时
+    // 仍能诚实回答「离夹定最近的是哪道工序、还剩多少余量」（张力此时全 0，排不出先后）。
+    // 夹定区内两者等价（tightness = (1−余量比)×k 单调），故不是两套口径。同余量比按 processId 升序定死（R6·不靠数组序）。
+    if (best === null || headroom < bestHeadroom || (headroom === bestHeadroom && row.processId < best.processId)) {
+      best = row;
+      bestHeadroom = headroom;
+    }
+  }
+  if (best) return best;
+  if (declared === 0) {
+    return { status: "EMPTY", reason: `基地 ${baseId} 无工序声明 capacityUnitKind（本体尚无柜位类硬容量承载物）` };
+  }
+  return { status: "EMPTY", reason: lastReason || `基地 ${baseId} 的硬容量工序数据不完整` };
+}
+
 /** LIVE 口径: normalize real snapshot metrics (falls back to MOCK per factor when absent). */
 export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number; live: boolean } {
   const lp = c.params.bottleneck.live;
@@ -53,11 +146,20 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
     }
   }
   if (factor === "瓶颈工序") {
+    // WO-SANDBOX-D3：「瓶颈工序」= 该基地最紧的工序约束。此前只有**产线利用率**这个软代理，
+    // 硬容量（柜位数）读不进来 → 把柜位砍掉一半，判定纹丝不动。现在两个读数取**最紧者**：
+    //   · 产线利用率张力（既有口径，不动）
+    //   · 硬容量缺口张力（柜位夹定时才 > 0；未夹定恒 0 ⇒ 基线逐字节不回归 R6）
+    const hc = baseHardCapacity(c, baseId);
+    const hcTension = hc.status === "OK" ? hc.tightness : -1;
     const lines = c.lines.filter((l) => l.props.baseId === baseId && typeof l.props.utilization === "number");
     if (lines.length > 0) {
       const avg = lines.reduce((a, l) => a + num(l.props.utilization), 0) / lines.length;
-      return { value: clamp(Math.round(avg * lp.utilK + lp.utilBase), 0, 100), live: true };
+      const utilTension = clamp(Math.round(avg * lp.utilK + lp.utilBase), 0, 100);
+      return { value: Math.max(utilTension, hcTension), live: true };
     }
+    // 没有产线利用率实测，但有真柜位读数 → 仍是 LIVE（真读硬约束），不退回 MOCK。
+    if (hcTension >= 0) return { value: hcTension, live: true };
   }
   if (factor === "良率波动") {
     const procs = c.processes.filter((pr) => pr.props.baseId === baseId && typeof pr.props.yield_baseline === "number");
@@ -97,7 +199,11 @@ export function utilTension(c: SolverContext, utilValue: number): number {
 export function bottleneckMatrix(
   c: SolverContext,
   args: { dataMode?: string; baseIds?: string[] },
-): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number>; primary: string; provenanceSynthetic: boolean }[] } {
+): {
+  dataMode: "LIVE" | "MOCK";
+  factors: string[];
+  rows: { base: string; tightness: Record<string, number>; primary: string; provenanceSynthetic: boolean; hardCapacity: BottleneckHardCapacity }[];
+} {
   const factors = c.params.bottleneck.factors;
   const wantLive = args.dataMode === "LIVE";
   let anyLive = false;
@@ -126,7 +232,16 @@ export function bottleneckMatrix(
       }
       // #13 provenance 维（守 KILL-MOCK-RED/铁律0.4·加性正交·不改 dataMode）：底层对象是否合成物化 → true →
       // 前端诚实标"合成·未接实测"，不因 dataMode=LIVE（读到真 OEE/util/良率）就把 demo 合成种子谎报"实测"。镜像 riskTimeline 每卡。
-      return { base: baseName(c, baseId), tightness, primary: primaryFactor(c, baseId), provenanceSynthetic: baseProvenanceSynthetic(c, baseId) };
+      // WO-SANDBOX-D3（加性）：柜位类硬容量约束的显式判定随行下发 —— `binding` 回答「这个基地是不是被柜位夹住了」，
+      // 无数据一律 EMPTY + reason（物理拓扑视图据此标「数据薄」并说得出为什么，而不是给个默认柜位数）。
+      // 与 dataMode 正交：它是对本体的客观读数，MOCK 模式下同样如实给（MOCK 只关乎张力的取值来源）。
+      return {
+        base: baseName(c, baseId),
+        tightness,
+        primary: primaryFactor(c, baseId),
+        provenanceSynthetic: baseProvenanceSynthetic(c, baseId),
+        hardCapacity: baseHardCapacity(c, baseId),
+      };
     });
   return { dataMode: wantLive && anyLive ? "LIVE" : "MOCK", factors, rows };
 }

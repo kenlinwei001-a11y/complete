@@ -62,5 +62,6 @@ export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod sc
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
 export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
 export * from "./capacity-factors.js"; // WO-CAPLIVE-1-ATOM · 产能 20 原子因子 → object.property 绑定单源（治 G-CAPACITY-FACTOR-SHALLOW·R14）
+export * from "./process-capacity.js"; // WO-SANDBOX-D3 · 工序硬容量单元声明单源（化成柜位/老化库位 → Process 属性落点·零数值重复·诚实缺不兜底）
 export * from "./solver-run-diagnostics.js"; // WO-D2/D3 · 同步求解超时诊断 + incumbent（可行非最优解）诚实标注契约（全可选加性·老前端仍可解析）
 export * from "./chain-sim.js"; // WO-SANDBOX-S0 · 推演沙盘全链契约冻结（ChainNode/ChainStep 五段 · Cadence 一等公民「等待期望=everyDays/2」· ChainImpediment 三类派生对象 · LossAttribution 分母排除增值段「Σ==100%」· ChainScope 闭业务线口子）
