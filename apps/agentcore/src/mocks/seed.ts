@@ -346,6 +346,9 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           name: "base",
           type: "objectRef",
           required: true,
+          // WO-SLOT-ENTITY-RESOLVE：声明 refType（契约早有此字段·CatalogPage 也校验它）——
+          // 槽位填充据此把「常州」只在 Base 里解析，歧义更少、更快；不声明也能解析（全类型扫）。
+          refType: "Base",
           defaultFrom: "$.selectedObjects[0]",
           clarifyPrompt: "请提供基地",
           description: "受影响的基地（Base 对象引用）",
@@ -374,7 +377,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
       examples: ["4680-NCM 加 20% 六周能不能接？", "M3P 增加 10% 产能够吗", "需求上调后能不能交付"],
       enabledViews: "*",
       slots: [
-        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "型号（Model 对象引用）" },
+        { name: "model", type: "objectRef", required: true, refType: "Model", defaultFrom: "$.selectedObjects[0]", description: "型号（Model 对象引用）" },
         { name: "demandDelta", type: "number", required: true, description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
         // WO-BASE-ID-FIDELITY 症①：base 作用域槽（问句「XX基地/常州基地」→ baseId·sim-planner parseCapacityFeasibilityVariant 抽·
@@ -403,6 +406,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           name: "base",
           type: "objectRef",
           required: true,
+          refType: "Base",
           defaultFrom: "$.selectedObjects[0]",
           description: "基地对象引用",
         },
@@ -429,6 +433,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           name: "base",
           type: "objectRef",
           required: true,
+          refType: "Base",
           defaultFrom: "$.selectedObjects[0]",
           description: "基地对象引用",
         },
@@ -471,6 +476,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           name: "base",
           type: "objectRef",
           required: true,
+          refType: "Base",
           defaultFrom: "$.selectedObjects[0]",
           description: "基地对象引用（作为跨域切片根节点）",
         },

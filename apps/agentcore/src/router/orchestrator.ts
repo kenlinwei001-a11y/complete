@@ -8,6 +8,7 @@ import type {
   Decision,
   CoordinatorPlan,
   IntentDefinition,
+  PendingClarification,
   ProvenanceRef,
   QueryTask,
   ResolvedRef,
@@ -338,7 +339,8 @@ export class HttpError extends Error {
   }
 }
 
-interface PendingClarification {
+/** 进程内澄清等待态（含 auth/timer，非契约）；落在 task 上的契约形态是 contracts `PendingClarification`。 */
+interface PendingClarificationState {
   kind: "INTENT_CHOICE" | "SLOT_FILLING";
   auth: RequestAuth;
   candidates?: IntentDefinition[];
@@ -397,7 +399,7 @@ export function computeResidualBudget(config: {
 }
 
 export class Orchestrator {
-  private readonly pending = new Map<string, PendingClarification>();
+  private readonly pending = new Map<string, PendingClarificationState>();
   private readonly cancelled = new Set<string>();
   /** WO-DRIL-P4 · Path-B 组包用 ResourceRouter（懒建·仅 qos.dril-routing 开时首次触达才构造·消费 P2/P3 registry）。 */
   private drilRouter?: ResourceRouter;
@@ -791,18 +793,13 @@ export class Orchestrator {
         .map((c) => candidates.find((x) => x.key === c.intentKey))
         .filter((x): x is IntentDefinition => Boolean(x))
         .slice(0, 3);
+      // WO-SLOT-ENTITY-RESOLVE §6：不再在调用点手搓 SSE payload —— 澄清内容由 requestClarification
+      // 构造**一次**（写 task.pendingClarification）再派生出 SSE 载荷，杜绝"task 一套、SSE 另一套"。
       await this.requestClarification(taskId, auth, {
         kind: "INTENT_CHOICE",
         candidates: options,
         slots: {},
         missing: [],
-        payload: {
-          kind: "INTENT_CHOICE",
-          options: [
-            ...options.map((o) => ({ intentKey: o.key, name: o.name, description: o.description })),
-            { intentKey: null, name: "都不是", description: "以上都不是我想问的" },
-          ],
-        },
       });
       return;
     }
@@ -1243,13 +1240,38 @@ export class Orchestrator {
       intent?: IntentDefinition;
       slots: Record<string, unknown>;
       missing: SlotDef[];
-      payload: Record<string, unknown>;
+      /** WO-SLOT-ENTITY-RESOLVE：按槽名的解析候选（域外/歧义时"您是不是指…"），进 task + SSE 同一份。 */
+      slotCandidates?: Record<string, { objectType: string; objectId: string; label: string }[]>;
     },
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
     const round = task.clarificationRounds + 1;
-    await this.deps.repos.tasks.patch(taskId, { status: "AWAITING_CLARIFICATION", clarificationRounds: round });
+    /**
+     * WO-SLOT-ENTITY-RESOLVE §6 · 待澄清内容**构造一次，两处同源**：写进 task.pendingClarification
+     * ＋ 原样进 SSE `clarification.required`。此前只发 SSE ⇒ 轮询型客户端（CLI/批量脚本）不知道要补什么，
+     * 只能干等到 10 分钟超时（实测批量测试卡死 150s）—— 那是 API 契约的洞，不是前端问题。
+     */
+    const pendingClarification: PendingClarification = {
+      kind: opts.kind,
+      round,
+      askedAt: new Date().toISOString(),
+      ...(opts.kind === "SLOT_FILLING"
+        ? {
+            slots: opts.missing.map((s) => ({
+              name: s.name,
+              type: s.type,
+              prompt: clarifyPromptFor(s),
+              // 解析失败/歧义时把候选一并给出（"您是不是指…"）——同源自槽位填充的解析诊断。
+              ...(opts.slotCandidates?.[s.name]?.length ? { candidates: opts.slotCandidates[s.name]! } : {}),
+            })),
+          }
+        : {}),
+      ...(opts.kind === "INTENT_CHOICE" && opts.candidates
+        ? { intents: opts.candidates.map((c) => ({ intentKey: c.key, name: c.name, description: c.description })) }
+        : {}),
+    };
+    await this.deps.repos.tasks.patch(taskId, { status: "AWAITING_CLARIFICATION", clarificationRounds: round, pendingClarification });
     this.deps.metrics.clarificationRounds.inc({ kind: opts.kind });
 
     const timer = setTimeout(() => {
@@ -1267,7 +1289,16 @@ export class Orchestrator {
       timer,
     });
 
-    await this.deps.events.emit(taskId, "clarification.required", { ...opts.payload, round });
+    // SSE 载荷**派生自**上面那一份 pendingClarification（同源·不重算）；线上形状保持向后兼容
+    // （SLOT_FILLING → slots[] · INTENT_CHOICE → options[] 且末尾追加"都不是"这个纯 UI 选项）。
+    await this.deps.events.emit(taskId, "clarification.required", {
+      kind: pendingClarification.kind,
+      round,
+      ...(pendingClarification.slots ? { slots: pendingClarification.slots } : {}),
+      ...(pendingClarification.intents
+        ? { options: [...pendingClarification.intents, { intentKey: null, name: "都不是", description: "以上都不是我想问的" }] }
+        : {}),
+    });
   }
 
   private async cancelForTimeout(taskId: string): Promise<void> {
@@ -1326,7 +1357,7 @@ export class Orchestrator {
     taskId: string,
     auth: RequestAuth,
     intent: IntentDefinition,
-    pending: PendingClarification,
+    pending: PendingClarificationState,
     slotValues: Record<string, unknown>,
   ): Promise<void> {
     const merged = { ...pending.slots };
@@ -1345,7 +1376,7 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
-    const { slots, missing, outOfDomain } = await fillSlots(
+    const { slots, missing, outOfDomain, resolutions } = await fillSlots(
       intent,
       extracted,
       task.context,
@@ -1382,10 +1413,14 @@ export class Orchestrator {
         intent,
         slots: finalSlots,
         missing: stillMissing,
-        payload: {
-          kind: "SLOT_FILLING",
-          slots: stillMissing.map((s) => ({ name: s.name, type: s.type, prompt: clarifyPromptFor(s) })),
-        },
+        // WO-SLOT-ENTITY-RESOLVE：域外/歧义候选随澄清一起落到 task + SSE（"您是不是指…"，同一份）。
+        slotCandidates: Object.fromEntries(
+          outOfDomain.map((o) => [
+            o.slotName,
+            (o.resolution?.candidates?.map((c) => ({ objectType: c.objectType, objectId: c.objectId, label: c.label })) ??
+              o.candidates.map((c) => ({ objectType: c.objectType, objectId: c.objectId, label: c.label }))).slice(0, 5),
+          ]),
+        ),
       });
       return;
     }
@@ -1393,6 +1428,10 @@ export class Orchestrator {
     await this.deps.repos.tasks.patch(taskId, {
       matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
       slots: finalSlots,
+      // WO-SLOT-ENTITY-RESOLVE：objectRef 槽解析留痕（"常州"→Base/changzhou·matchedBy=name），R13 可溯源；
+      // 同时清空 pendingClarification —— 已经不问了，task 上就不该再挂着"在问什么"。
+      ...(resolutions.length ? { slotResolutions: resolutions } : {}),
+      pendingClarification: null,
     });
     await this.runPathA(taskId, auth, intent, finalSlots);
   }

@@ -1,5 +1,7 @@
-import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, ObjectRefAttempt, ObjectRefHit, ObjectRefResolution, ObjectRefResolveRequest, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
+// WO-SLOT-ENTITY-RESOLVE：匹配规则唯一出处（mock 与 DataCore 调同一个纯核心，勿自写第二套）。
+import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：mock DataCore 的 C08 阈值必须与真 DataCore 同源，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
@@ -48,16 +50,23 @@ const MOCK_OBJECT_TYPE_DEFS: ObjectTypeDefSummary[] = [
     ],
   },
   {
+    // WO-SLOT-ENTITY-RESOLVE · mock 保真：主键改 `so`（= 生产 Order 的真主键，且 mock 行本来就带 so；
+    // 旧值 `orderId` 是**行里根本不存在的属性**，元数据与数据对不上 → 解析核心按元数据一查即空）。
     key: "Order", displayName: "销售订单", domain: "sales", description: "客户销售订单", status: "ACTIVE",
     properties: [
-      { propKey: "orderId", dataType: "string", isPrimaryKey: true, description: "订单编号" },
+      { propKey: "so", dataType: "string", isPrimaryKey: true, searchable: true, description: "订单编号" },
       { propKey: "qty", dataType: "number", unit: "套", description: "订单数量" },
       { propKey: "dueDate", dataType: "date", description: "交期" },
     ],
   },
   {
+    // WO-SLOT-ENTITY-RESOLVE · mock 保真：补 `name`（生产 Model 的 name 就是 searchable 的；
+    // mock 行一直有 name 却没在元数据里声明 → 型号名解析不到）。
     key: "Model", displayName: "产品型号", domain: "product", description: "产品型号主数据", status: "ACTIVE",
-    properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, description: "型号编号" }],
+    properties: [
+      { propKey: "modelId", dataType: "string", isPrimaryKey: true, description: "型号编号" },
+      { propKey: "name", dataType: "string", searchable: true, description: "型号名称" },
+    ],
   },
   {
     key: "Process", displayName: "工序", domain: "factory", description: "制造工序定义", status: "ACTIVE",
@@ -250,15 +259,51 @@ export class MockOntologyClient implements OntologyClient {
     return { data: { items: rows, total: rows.length }, snapshotVersion: SNAPSHOT };
   }
 
-  async getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 取一个类型下的「可匹配行」（内部 id + props），供解析核心比对。
+   * mock 的行本身带 `objectId` 作为内部 id（生产是 `obj_<type>_<key>`），归一规则同源，无需 mock 专属剥前缀表。
+   */
+  private async refRows(ctx: ToolAuthCtx, objectType: string): Promise<{ id: string; props: Record<string, unknown> }[]> {
     const result = await this.queryObjects(ctx, objectType, {});
     const items = (result.data as { items: Record<string, unknown>[] }).items;
-    // 也匹配生产风格主键（场景目录用 baseId/modelId 如 "changzhou"/"4680-NCM"；本 mock 历史用前缀 id
-    // 如 "base_changzhou"）——剥前缀对齐，使 mock 解析与生产一致（否则场景 objectRef 槽解析不到→假阴）。
-    const strip = (v: unknown) => String(v ?? "").replace(/^(base_|model_|order_|line_|process_|equipment_)/, "");
-    const found = items.find((i) => i.objectId === objectId || i.name === objectId || i.so === objectId || strip(i.objectId) === objectId);
+    return items.map((i) => ({ id: String(i.objectId ?? i.so ?? ""), props: i }));
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · **mock 保真（关键）**：与生产 `datacore/src/ontology.ts getObject` 同语义
+   * —— 只按**内部 id / 主键**取（`accept:["id"]`），中文名解析不到就是解析不到。
+   *
+   * ⚠ 改前这里是 `i.name === objectId` 也认名字 —— 比生产宽松，正是它把「槽位填充按 id 查、中文名必 404」
+   * 这个真病**盖了整整一轮**（agentcore 全绿、真绑 Kimi 一跑 10/35 反问）。假绿温床，勿回潮。
+   * 按名解析请走 `resolveObjectRef`（与生产同一条正门）。
+   */
+  async getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+    const typeDef = this.objectTypeDefs.find((t) => t.key === objectType);
+    const { hits } = matchObjectRefInType({ ref: objectId, objectType, typeDef, rows: await this.refRows(ctx, objectType), accept: ["id"] });
+    const found = hits[0];
     if (!found) throw new Error(`object not found: ${objectType}/${objectId}`);
-    return { data: found, snapshotVersion: SNAPSHOT };
+    const row = (await this.refRows(ctx, objectType)).find((r) => r.id === found.internalId);
+    return { data: row?.props ?? {}, snapshotVersion: SNAPSHOT };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 「实体文本 → 对象引用」解析 mock —— **规则不自写**，
+   * 与 DataCore 调用 contracts 里**同一个** `matchObjectRefInType` / `pickObjectRefResolution`。
+   * mock 只负责「取哪些行」（角色可见性 = 它的行级过滤），匹配语义单一出处。
+   */
+  async resolveObjectRef(ctx: ToolAuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    const accept = req.accept ?? ["id", "name", "alias"];
+    const declared = objectRefDeclaredType(req.ref);
+    const typeKeys = req.types?.length ? [...new Set(req.types)] : declared ? [declared] : await this.listObjectTypeKeys();
+    const hits: ObjectRefHit[] = [];
+    const attempts: ObjectRefAttempt[] = [];
+    for (const objectType of [...typeKeys].sort()) {
+      const typeDef = this.objectTypeDefs.find((t) => t.key === objectType);
+      const r = matchObjectRefInType({ ref: req.ref, objectType, typeDef, rows: await this.refRows(ctx, objectType), accept });
+      hits.push(...r.hits);
+      attempts.push(r.attempt);
+    }
+    return pickObjectRefResolution(req.ref, hits, attempts, { maxCandidates: req.maxCandidates });
   }
 
   /** 治理增量 §3.6：聚合下推 mock —— 返回分组行集（绝不返回全量原始行），供 G8 审计断言。 */

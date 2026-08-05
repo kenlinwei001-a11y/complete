@@ -113,7 +113,10 @@ export function createMemoryRepos(): Repos {
       async patch(id, patch: TaskPatch) {
         const t = tasks.get(id);
         if (!t) return;
-        tasks.set(id, { ...t, ...clone(patch) } as QueryTask);
+        const next = { ...t, ...clone(patch) } as QueryTask & { pendingClarification?: unknown };
+        // WO-SLOT-ENTITY-RESOLVE §6：`null` = 显式清除（契约字段是 optional，不能留 null）。
+        if (patch.pendingClarification === null) delete next.pendingClarification;
+        tasks.set(id, next as QueryTask);
       },
       async get(id) {
         return clone(tasks.get(id));
