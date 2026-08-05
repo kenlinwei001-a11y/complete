@@ -32,6 +32,7 @@ export * from "./operation-intent.js";
 export * from "./prototype-intake.js";
 export * from "./spine.js";
 export * from "./bootstrap.js";
+export * from "./object-ref-resolve.js"; // WO-SLOT-ENTITY-RESOLVE · 「实体文本→对象引用」解析单一出处（纯规则·R14 零业务常数·R6）
 
 export * from "./base-registry.js";
 export * from "./interbase-transfer.js"; // WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯数据·R13·R14·R6）

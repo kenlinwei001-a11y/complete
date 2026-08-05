@@ -137,6 +137,13 @@ export interface TaskPatch {
   resolvedRefs?: QueryTask["resolvedRefs"];
   /** WO-DETERMINISTIC-CROSS-DOMAIN：确定性多域分路计划留痕（additive·memory 直存·pg 见下 patch 列映射）。 */
   multiIntentPlan?: QueryTask["multiIntentPlan"];
+  /**
+   * WO-SLOT-ENTITY-RESOLVE §6：待澄清内容落库（轮询型客户端据此知道"系统在问什么"）。
+   * `null` = 显式清除（澄清已应答 / 已进推演），与 `undefined`（本次不改该字段）区别开。
+   */
+  pendingClarification?: QueryTask["pendingClarification"] | null;
+  /** WO-SLOT-ENTITY-RESOLVE：objectRef 槽解析留痕（matchedBy 可诊断·R13）。 */
+  slotResolutions?: QueryTask["slotResolutions"];
 }
 
 export interface Repos {

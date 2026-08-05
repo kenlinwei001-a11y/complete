@@ -1,4 +1,4 @@
-import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
+import type { AggregateRequest, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, ObjectRefResolution, ObjectRefResolveRequest, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreRequestCancelledError,
@@ -146,6 +146,13 @@ class HttpOntologyClient implements OntologyClient {
       "GET",
       `/a/v1/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`,
     );
+  }
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 走 A 侧解析正门（**一次调用解析全类型**）——
+   * 此前 slots.ts 逐个已发布类型打 `GET /objects/:type/:id`（demo 租户 92 个类型 = 92 次 HTTP 且全 404）。
+   */
+  resolveObjectRef(ctx: ToolAuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    return call<ObjectRefResolution>(this.baseUrl, ctx, "POST", `/a/v1/ontology/resolve-ref`, req);
   }
   async aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload> {
     const data = await call<unknown>(this.baseUrl, ctx, "POST", `/a/v1/objects/aggregate`, req);

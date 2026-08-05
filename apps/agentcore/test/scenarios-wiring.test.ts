@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 import { seedIntentsAndPlans } from "../src/mocks/seed.js";
+import { createMockDataCore } from "../src/mocks/clients.js";
 import { fillSlots } from "../src/router/slots.js";
 
 /**
@@ -61,10 +62,10 @@ describe("G-1 · 20 场景全部接通意图与执行计划（场景→意图→
    * slotPreset / 去掉 objectRef 的 defaultFrom）即变红。
    */
   it("R11 零反问：每张场景卡 presetContext 注入后必填槽位全满足（fillSlots 无 missing）", async () => {
-    // objectRef 校验只需能解析；用确定性桩，避免依赖真实本体/网络（R6 测试不依赖网络）。
-    const ontology = {
-      getObject: async (_ctx: unknown, objectType: string, objectId: string) => ({ data: { objectType, objectId, name: objectId } }),
-    } as unknown as Parameters<typeof fillSlots>[3];
+    // WO-SLOT-ENTITY-RESOLVE：改用 **mock DataCore 真本体客户端**（确定性、无网络，R6），
+    // 不再用"给什么都说解析得到"的宽容桩 —— 那种桩只能证"预置接到了槽名"，
+    // 证不了**预置的值真解析得出对象**（S01 的 model:"4680-NCM"、S03 的 base:"changzhou" 都得真解析）。
+    const ontology = createMockDataCore().ontology as unknown as Parameters<typeof fillSlots>[3];
     const ctx = { tenantId: "demo", userId: "u", roles: [], token: "t" } as unknown as Parameters<typeof fillSlots>[4];
     for (const card of SCENARIO_CATALOG) {
       const intent = intentByKey.get(card.intentKey)!;

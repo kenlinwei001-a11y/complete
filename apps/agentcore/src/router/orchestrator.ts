@@ -8,6 +8,7 @@ import type {
   Decision,
   CoordinatorPlan,
   IntentDefinition,
+  PendingClarification,
   ProvenanceRef,
   QueryTask,
   ResolvedRef,
@@ -72,7 +73,7 @@ import { domainResolve, domainResolveMulti, preferDeterministicSolver, DETERMINI
 import { selectDeterministicMultiRoute, detectCoupledPairs, runParallelRoutes, selectMultiIntent, type MultiIntentCandidate, type MultiIntentSelection } from "./multi-route.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · ②确定性多域 + ⑤LLM 多意图 **共享后半** runParallelRoutes（并行 solver + 零 LLM 块装配）
 import { planCoordination, planStalledCoordination, buildDispatchSteps, synthesize, detectSingleRole, ROLE_LABELS, type RoleAnswerInput } from "./coordinator.js"; // WO-FIVE-ROLE-AI-EMPLOYEE P1 · 跨域多角色 Coordinator 编排 + WO-LOOP-CONTROL-P2.5 rung② 反应式停滞兜底拆解 + WO-ROUTE-1 旁白角色标识
 import { resolveOptWhatifRoute, extractOptWhatifData, assembleOptWhatifAnswer, type OptWhatifRoute } from "./opt-whatif-route.js"; // WO-OPTWHATIF-NL-WIRING · 结构化优化 what-if 会话路由抽取 + 决策切换答案装配（R6·leaf 模块）
-import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）
+import { buildL2Prompt, parseSolverPlan, buildSlotBag, validateSolverPlan, deterministicSlotFloor, mergeSlotFloor } from "./l2-decompose.js"; // WO-L2-DECOMPOSE · L2 真分解（LLM 产 solver 计划 → 纯校验层验真 → 接同一后半 runParallelRoutes·复用不新造）；WO-SLOT-HARVEST · 主链路确定性槽位底座（同一份确定性抽取器·单源）
 import { isCombinationAsk, runL3CoupledPath } from "./l3-coupled.js"; // PRD-multi-intent-L2L3 P2 · L3 耦合联合求解（一次 portfolio 守恒解·真传导·真残差外协·升格判挂 runMultiRoute）
 import { roleProfile } from "../mocks/seed.js"; // WO-FIVE-ROLE P1 · 角色画像（path-B 按 role 选 agent）
 import { roleSystemFragment } from "../agent/prompts.js";
@@ -338,7 +339,8 @@ export class HttpError extends Error {
   }
 }
 
-interface PendingClarification {
+/** 进程内澄清等待态（含 auth/timer，非契约）；落在 task 上的契约形态是 contracts `PendingClarification`。 */
+interface PendingClarificationState {
   kind: "INTENT_CHOICE" | "SLOT_FILLING";
   auth: RequestAuth;
   candidates?: IntentDefinition[];
@@ -397,7 +399,7 @@ export function computeResidualBudget(config: {
 }
 
 export class Orchestrator {
-  private readonly pending = new Map<string, PendingClarification>();
+  private readonly pending = new Map<string, PendingClarificationState>();
   private readonly cancelled = new Set<string>();
   /** WO-DRIL-P4 · Path-B 组包用 ResourceRouter（懒建·仅 qos.dril-routing 开时首次触达才构造·消费 P2/P3 registry）。 */
   private drilRouter?: ResourceRouter;
@@ -791,18 +793,13 @@ export class Orchestrator {
         .map((c) => candidates.find((x) => x.key === c.intentKey))
         .filter((x): x is IntentDefinition => Boolean(x))
         .slice(0, 3);
+      // WO-SLOT-ENTITY-RESOLVE §6：不再在调用点手搓 SSE payload —— 澄清内容由 requestClarification
+      // 构造**一次**（写 task.pendingClarification）再派生出 SSE 载荷，杜绝"task 一套、SSE 另一套"。
       await this.requestClarification(taskId, auth, {
         kind: "INTENT_CHOICE",
         candidates: options,
         slots: {},
         missing: [],
-        payload: {
-          kind: "INTENT_CHOICE",
-          options: [
-            ...options.map((o) => ({ intentKey: o.key, name: o.name, description: o.description })),
-            { intentKey: null, name: "都不是", description: "以上都不是我想问的" },
-          ],
-        },
       });
       return;
     }
@@ -1044,9 +1041,11 @@ export class Orchestrator {
       const intent = candidates.find((c) => c.key === cand.intentKey);
       if (!intent) continue;
       const solverKey = await this.solverKeyForIntent(intent);
+      // ★ WO-SLOT-HARVEST · 确定性槽位底座（**接线点之二 · ⑤ LLM 多意图**）。这条路自己调 fillSlots 判
+      //   "槽可填"，不经 proceedWithIntent —— 只接主路 = 又一次「接错地方」（多意图题照样被 LLM 抖动打掉）。
       const { slots, missing } = await fillSlots(
         intent,
-        classification.extractedSlots,
+        mergeSlotFloor(deterministicSlotFloor(task.query, intent), classification.extractedSlots),
         task.context,
         this.deps.engine.deps.dataCore.ontology,
         auth,
@@ -1243,13 +1242,38 @@ export class Orchestrator {
       intent?: IntentDefinition;
       slots: Record<string, unknown>;
       missing: SlotDef[];
-      payload: Record<string, unknown>;
+      /** WO-SLOT-ENTITY-RESOLVE：按槽名的解析候选（域外/歧义时"您是不是指…"），进 task + SSE 同一份。 */
+      slotCandidates?: Record<string, { objectType: string; objectId: string; label: string }[]>;
     },
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
     const round = task.clarificationRounds + 1;
-    await this.deps.repos.tasks.patch(taskId, { status: "AWAITING_CLARIFICATION", clarificationRounds: round });
+    /**
+     * WO-SLOT-ENTITY-RESOLVE §6 · 待澄清内容**构造一次，两处同源**：写进 task.pendingClarification
+     * ＋ 原样进 SSE `clarification.required`。此前只发 SSE ⇒ 轮询型客户端（CLI/批量脚本）不知道要补什么，
+     * 只能干等到 10 分钟超时（实测批量测试卡死 150s）—— 那是 API 契约的洞，不是前端问题。
+     */
+    const pendingClarification: PendingClarification = {
+      kind: opts.kind,
+      round,
+      askedAt: new Date().toISOString(),
+      ...(opts.kind === "SLOT_FILLING"
+        ? {
+            slots: opts.missing.map((s) => ({
+              name: s.name,
+              type: s.type,
+              prompt: clarifyPromptFor(s),
+              // 解析失败/歧义时把候选一并给出（"您是不是指…"）——同源自槽位填充的解析诊断。
+              ...(opts.slotCandidates?.[s.name]?.length ? { candidates: opts.slotCandidates[s.name]! } : {}),
+            })),
+          }
+        : {}),
+      ...(opts.kind === "INTENT_CHOICE" && opts.candidates
+        ? { intents: opts.candidates.map((c) => ({ intentKey: c.key, name: c.name, description: c.description })) }
+        : {}),
+    };
+    await this.deps.repos.tasks.patch(taskId, { status: "AWAITING_CLARIFICATION", clarificationRounds: round, pendingClarification });
     this.deps.metrics.clarificationRounds.inc({ kind: opts.kind });
 
     const timer = setTimeout(() => {
@@ -1267,7 +1291,16 @@ export class Orchestrator {
       timer,
     });
 
-    await this.deps.events.emit(taskId, "clarification.required", { ...opts.payload, round });
+    // SSE 载荷**派生自**上面那一份 pendingClarification（同源·不重算）；线上形状保持向后兼容
+    // （SLOT_FILLING → slots[] · INTENT_CHOICE → options[] 且末尾追加"都不是"这个纯 UI 选项）。
+    await this.deps.events.emit(taskId, "clarification.required", {
+      kind: pendingClarification.kind,
+      round,
+      ...(pendingClarification.slots ? { slots: pendingClarification.slots } : {}),
+      ...(pendingClarification.intents
+        ? { options: [...pendingClarification.intents, { intentKey: null, name: "都不是", description: "以上都不是我想问的" }] }
+        : {}),
+    });
   }
 
   private async cancelForTimeout(taskId: string): Promise<void> {
@@ -1326,7 +1359,7 @@ export class Orchestrator {
     taskId: string,
     auth: RequestAuth,
     intent: IntentDefinition,
-    pending: PendingClarification,
+    pending: PendingClarificationState,
     slotValues: Record<string, unknown>,
   ): Promise<void> {
     const merged = { ...pending.slots };
@@ -1345,16 +1378,23 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
-    const { slots, missing, outOfDomain } = await fillSlots(
+    // ★ WO-SLOT-HARVEST · 确定性槽位底座（**接线点之一 · 主路**）——插在 fillSlots 之前、LLM 之下。
+    //   病根是铁律 0.5 第三形态「接了线接错地方」：确定性抽取器早就有（buildSlotBag），但只接在 L2 分解，
+    //   主链路 classify→fillSlots **没有任何东西在看问句文本** → 一次 LLM 格式抖动就决定用户拿不拿得到答案。
+    //   底座只填空白（冲突时 LLM 赢）、只抽问句里真有的（R6 纯函数）。本方法是**所有** path-A 绑定的必经之路
+    //   （主路高置信 / 确定性 block-route·ceo-route / 场景绑定·继承 / 澄清回填），一处接线全路径覆盖。
+    const effectiveExtracted = mergeSlotFloor(deterministicSlotFloor(task.query, intent), extracted);
+
+    const { slots, missing, outOfDomain, resolutions } = await fillSlots(
       intent,
-      extracted,
+      effectiveExtracted,
       task.context,
       this.deps.engine.deps.dataCore.ontology,
       auth,
     );
     // A5 感知层埋点：objectRef 解析尝试（分母）+ 域外实体（分子）→ 发独立事件 + 记误触发率。
     const objectRefAttempts = intent.slots.filter(
-      (s) => s.type === "objectRef" && extracted[s.name] !== undefined && extracted[s.name] !== null && extracted[s.name] !== "",
+      (s) => s.type === "objectRef" && effectiveExtracted[s.name] !== undefined && effectiveExtracted[s.name] !== null && effectiveExtracted[s.name] !== "",
     ).length;
     recordResolutionAttempts(auth.tenantId, objectRefAttempts, outOfDomain.length);
     for (const ood of outOfDomain) {
@@ -1382,10 +1422,14 @@ export class Orchestrator {
         intent,
         slots: finalSlots,
         missing: stillMissing,
-        payload: {
-          kind: "SLOT_FILLING",
-          slots: stillMissing.map((s) => ({ name: s.name, type: s.type, prompt: clarifyPromptFor(s) })),
-        },
+        // WO-SLOT-ENTITY-RESOLVE：域外/歧义候选随澄清一起落到 task + SSE（"您是不是指…"，同一份）。
+        slotCandidates: Object.fromEntries(
+          outOfDomain.map((o) => [
+            o.slotName,
+            (o.resolution?.candidates?.map((c) => ({ objectType: c.objectType, objectId: c.objectId, label: c.label })) ??
+              o.candidates.map((c) => ({ objectType: c.objectType, objectId: c.objectId, label: c.label }))).slice(0, 5),
+          ]),
+        ),
       });
       return;
     }
@@ -1393,6 +1437,10 @@ export class Orchestrator {
     await this.deps.repos.tasks.patch(taskId, {
       matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
       slots: finalSlots,
+      // WO-SLOT-ENTITY-RESOLVE：objectRef 槽解析留痕（"常州"→Base/changzhou·matchedBy=name），R13 可溯源；
+      // 同时清空 pendingClarification —— 已经不问了，task 上就不该再挂着"在问什么"。
+      ...(resolutions.length ? { slotResolutions: resolutions } : {}),
+      pendingClarification: null,
     });
     await this.runPathA(taskId, auth, intent, finalSlots);
   }

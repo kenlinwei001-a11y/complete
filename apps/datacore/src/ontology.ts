@@ -1,4 +1,14 @@
-import type { ClaimVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
+import type {
+  ClaimVerdict,
+  ObjectRefAttempt,
+  ObjectRefHit,
+  ObjectRefResolution,
+  ObjectRefResolveRequest,
+  RefMatchKind,
+  ToolPayload,
+  TypeSemanticsResponse,
+} from "@platform/contracts";
+import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
 import type {
   AuthCtx,
   DerivationRun,
@@ -390,19 +400,84 @@ export class OntologyService {
     };
   }
 
-  /** GET /a/v1/objects/:type/:id */
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 单类型引用匹配（**A 侧唯一入口**·规则走 contracts 纯核心）。
+   * 只负责「取哪些行」（租户隔离 R2 + A6 行级过滤），匹配语义一律 `matchObjectRefInType`。
+   */
+  private async matchRefInType(
+    ctx: AuthCtx,
+    objectType: string,
+    ref: unknown,
+    accept: RefMatchKind[],
+    rowFilters: Awaited<ReturnType<AuthzService["require"]>>,
+  ): Promise<{ hits: ObjectRefHit[]; attempt: ObjectRefAttempt; byInternalId: Map<string, ObjectInstance> }> {
+    const typeDef = await this.getType(ctx, objectType);
+    if (!typeDef) {
+      return {
+        hits: [],
+        attempt: { objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "TYPE_NOT_FOUND" },
+        byInternalId: new Map(),
+      };
+    }
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all.filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props));
+    const byInternalId = new Map(visible.map((o) => [o.id, o]));
+    const { hits, attempt } = matchObjectRefInType({
+      ref,
+      objectType,
+      typeDef,
+      rows: visible.map((o) => ({ id: o.id, props: o.props })),
+      accept,
+    });
+    return { hits, attempt, byInternalId };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · **「实体文本 → 对象引用」解析正门**（POST /a/v1/ontology/resolve-ref）。
+   *
+   * 病根：AgentCore 槽位填充逐类型调 `getObject(type, 常州)`——那是按 id/主键查，中文名必 404 ⇒ 反问。
+   * 本方法按 **id / 名称 / 别名** 三层解析，规则由 contracts `matchObjectRefInType` 单一出处提供
+   * （零业务常数 R14：可识别属性完全从 ObjectTypeDef 元数据派生，**不存在任何中文名→id 词表**）。
+   *
+   * 诚实纪律：无权读的类型记 `FORBIDDEN` 留痕（不静默跳过）；同层级多命中判 `ambiguous`
+   * （**不取第一个**）；解析不到就返回 `resolved:false` + 全部 attempts（试了哪些类型/什么键/为什么不匹）。
+   */
+  async resolveObjectRef(ctx: AuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    const accept = (req.accept ?? ["id", "name", "alias"]) as RefMatchKind[];
+    const declared = objectRefDeclaredType(req.ref);
+    let typeKeys: string[];
+    if (req.types && req.types.length) typeKeys = [...new Set(req.types)];
+    else if (declared) typeKeys = [declared];
+    else typeKeys = (await this.listTypes(ctx)).map((t) => t.key);
+    typeKeys = [...typeKeys].sort(); // R6 确定性：类型遍历序固定
+
+    const hits: ObjectRefHit[] = [];
+    const attempts: ObjectRefAttempt[] = [];
+    for (const objectType of typeKeys) {
+      let rowFilters: Awaited<ReturnType<AuthzService["require"]>>;
+      try {
+        rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+      } catch {
+        attempts.push({ objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "FORBIDDEN" });
+        continue;
+      }
+      const r = await this.matchRefInType(ctx, objectType, req.ref, accept, rowFilters);
+      hits.push(...r.hits);
+      attempts.push(r.attempt);
+    }
+    return pickObjectRefResolution(req.ref, hits, attempts, { maxCandidates: req.maxCandidates });
+  }
+
+  /**
+   * GET /a/v1/objects/:type/:id — 按**内部 id / 主键**取对象（语义不变）。
+   * WO-SLOT-ENTITY-RESOLVE：匹配走与 `resolveObjectRef` **同一个**核心（`accept:["id"]`），
+   * 不再自带一套 pk 回退查找——「按名解析」与「按 id 取数」是同一规则的两个接受层级，不是两套实现。
+   */
   async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
-    const obj = await this.repos.objects.get(ctx.tenantId, objectId);
-    let found: ObjectInstance | undefined = obj && obj.type === objectType ? obj : undefined;
-    if (!found) {
-      // Allow lookup by primary-key value too (e.g. baseId "changzhou").
-      const type = await this.getType(ctx, objectType);
-      const pk = type ? primaryKeyProp(type) : "id";
-      const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
-      found = all.find((o) => o.props[pk] === objectId);
-    }
-    if (!found || !this.authz.rowAllowed(ctx, rowFilters, found.props)) throw notFound("object");
+    const { hits, byInternalId } = await this.matchRefInType(ctx, objectType, objectId, ["id"], rowFilters);
+    const found = hits.length ? byInternalId.get(hits[0]!.internalId) : undefined;
+    if (!found) throw notFound("object");
     return {
       data: { id: found.id, type: found.type, props: found.props },
       snapshotVersion: await this.snapshotVersion(ctx.tenantId),

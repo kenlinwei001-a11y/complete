@@ -1,6 +1,7 @@
-import type { PageContext } from "@platform/contracts";
+import type { IntentDefinition, PageContext, SlotDef } from "@platform/contracts";
 import { BASE_REGISTRY } from "@platform/contracts"; // 基地册单一来源（问句/focus.base → 规范 baseId·喂 slotBag.base）。
 import type { DomainRoute } from "./domain-resolver.js";
+import { extractRelativeDateToken } from "./slots.js"; // 相对时间词表单源（底座只取字面词，归结仍由 resolveRelativeDate 做）。
 
 /**
  * WO-L2-DECOMPOSE · L2 多意图**真分解**门的**纯校验层 + LLM 计划 prompt/解析**（PRD-multi-intent-L2-L3-coupled-solving §3）。
@@ -95,41 +96,137 @@ function chineseNumberToInt(s: string): number | undefined {
   return undefined;
 }
 
+// --- 单条抽取器（**单一出处**：`buildSlotBag`(L2) 与 `deterministicSlotFloor`(主链路) 共用同一份正则/册） ---
+
+/** 型号 token（`4680-NCM` → 大写规范化）；无 → undefined。 */
+export function matchModelToken(query: string): string | undefined {
+  const m = (query ?? "").match(RE_MODEL_TOKEN);
+  return m ? m[1]!.toUpperCase() : undefined;
+}
+
+/** 问句里的基地（`BASE_REGISTRY` 中文名或 baseId 命中 → 规范 baseId）；册序即优先级。**零映射表**（R14）。 */
+export function matchBaseInQuery(query: string): string | undefined {
+  const q = query ?? "";
+  for (const b of BASE_REGISTRY) {
+    if (q.includes(b.name) || q.includes(b.baseId)) return b.baseId;
+  }
+  return undefined;
+}
+
+/** 需求增量（"加 20%" → 0.2）；无 → undefined。 */
+export function matchDemandDelta(query: string): number | undefined {
+  const m = (query ?? "").match(RE_DEMAND_DELTA);
+  return m ? Number(m[1]) / 100 : undefined;
+}
+
+/** 周数（"六周"/"6 周" → 6）；中文数字不可识别 → undefined。 */
+export function matchWeeks(query: string): number | undefined {
+  const m = (query ?? "").match(RE_WEEKS);
+  return m ? chineseNumberToInt(m[1]!) : undefined;
+}
+
 /**
  * 从问句/焦点确定性抽取共享 slotBag（R6·无 LLM）。抽取：`modelId`（型号 token）·`base`（focus.base 或问句基地名→id）·
  * `metricKey`/`factorId`/`orderRef`（focus 派生）·`demandDelta`/`weeks`（additive）。**只抽取·不推理·不算数**。
+ *
+ * ⚠ 本函数行为/返回形状**字节兼容**（L2 有自己的门）：WO-SLOT-HARVEST 只把内部正则提成上面的公共抽取器
+ * 供主链路底座复用（单源·不许 copy-paste），未改任何一条判定。
  */
 export function buildSlotBag(query: string, pageContext?: PageContext): Record<string, unknown> {
   const q = query ?? "";
   const bag: Record<string, unknown> = {};
   const focus = pageContext?.focus;
 
-  const m = q.match(RE_MODEL_TOKEN);
-  if (m) bag.modelId = m[1]!.toUpperCase();
+  const modelId = matchModelToken(q);
+  if (modelId) bag.modelId = modelId;
 
-  let base = focus?.base;
-  if (!base) {
-    for (const b of BASE_REGISTRY) {
-      if (q.includes(b.name) || q.includes(b.baseId)) {
-        base = b.baseId;
-        break;
-      }
-    }
-  }
+  const base = focus?.base ?? matchBaseInQuery(q);
   if (base) bag.base = base;
 
   if (focus?.metric) bag.metricKey = focus.metric;
   if (focus?.factorId) bag.factorId = focus.factorId;
   if (focus?.order) bag.orderRef = focus.order;
 
-  const dm = q.match(RE_DEMAND_DELTA);
-  if (dm) bag.demandDelta = Number(dm[1]) / 100;
-  const wm = q.match(RE_WEEKS);
-  if (wm) {
-    const w = chineseNumberToInt(wm[1]!);
-    if (w !== undefined) bag.weeks = w;
-  }
+  const demandDelta = matchDemandDelta(q);
+  if (demandDelta !== undefined) bag.demandDelta = demandDelta;
+  const weeks = matchWeeks(q);
+  if (weeks !== undefined) bag.weeks = weeks;
   return bag;
+}
+
+// ---------------------------------------------------------------------------
+// WO-SLOT-HARVEST · 主链路**确定性槽位底座**（LLM 之下，不是之上）。
+//
+// 病根（铁律 0.5 第三形态「接了线接错地方」）：上面这个确定性抽取器**一直存在**，但唯一 src 调用方是
+// `orchestrator.tryL2Decompose`。主链路 `classify → fillSlots` **从头到尾没有任何东西在看问句文本** ——
+// 于是一次 LLM 格式抖动（槽位写进 candidate / 干脆漏写）就能决定用户拿不拿得到答案，而那句话里
+// 明明白白写着「常州」，`risk_root_cause` 的必填槽也只有 `base` 一个。
+//
+// 形态：`effectiveSlots = { ...deterministicSlotFloor(query, intent), ...llmExtractedSlots }`
+//        ^ 只填空白                                                   ^ 冲突时 LLM 赢（它有语义）
+// 硬约束：
+//  · **由意图声明的槽位驱动**（逐 intent.slots[] 试），不是固定键袋；
+//  · **只抽问句里真有的东西** —— 不推断、不默认、不调 LLM、不读时钟/随机（R6 纯函数）；
+//    上下文兜底（选中对象 / presetSlots / defaultFrom）本来就有各自的路，底座不重复也不越权；
+//  · 正则/基地册**复用上面的公共抽取器**（单源·不许 copy-paste）；相对时间词复用 slots.ts 词表。
+// ---------------------------------------------------------------------------
+
+/** `D+5` / `D-3` / 全角 `D＋5` 的**字面**日期形态（问句里最常见的相对日）；只取字面，不做归结。 */
+const RE_DAY_OFFSET = /\bD\s*([+＋\-－])\s*(\d{1,3})\b/i;
+
+/** 问句里的字面日期形态：先 `D±N`，再相对时间词（今天/明天/本周/下周/本月…·词表单源在 slots.ts）。 */
+export function matchDateLiteral(query: string): string | undefined {
+  const q = query ?? "";
+  const m = q.match(RE_DAY_OFFSET);
+  if (m) return `D${m[1] === "-" || m[1] === "－" ? "-" : "+"}${Number(m[2])}`;
+  return extractRelativeDateToken(q);
+}
+
+/**
+ * 槽位 → 确定性抽取器的映射表（**按表序取首个命中**，确定性）。判据只用「槽位类型 + 槽名」两样，
+ * 都来自意图声明本身（`IntentDefinition.slots`），不含任何业务常数映射（R14）。
+ */
+const FLOOR_RULES: { when: (slot: SlotDef) => boolean; pick: (query: string) => unknown }[] = [
+  // 基地：objectRef 且槽名点名 base/基地 → BASE_REGISTRY 中文名/baseId 命中（→ 规范 baseId，交 A 侧解析正门）
+  { when: (s) => s.type === "objectRef" && /base|基地/i.test(s.name), pick: matchBaseInQuery },
+  // 型号：objectRef/string 且槽名点名 model/型号 → 型号 token
+  { when: (s) => (s.type === "objectRef" || s.type === "string") && /model|型号/i.test(s.name), pick: matchModelToken },
+  // 日期：date 槽 → 问句里的字面日期形态（D±N / 相对时间词）；归结仍由 fillSlots 的 resolveRelativeDate 做
+  { when: (s) => s.type === "date", pick: matchDateLiteral },
+  // 需求增量：number 且槽名点名 delta/增量/百分比
+  { when: (s) => s.type === "number" && /delta|增量|percent|百分/i.test(s.name), pick: matchDemandDelta },
+  // 周数：number 且槽名点名 week/周
+  { when: (s) => s.type === "number" && /week|周/i.test(s.name), pick: matchWeeks },
+];
+
+/**
+ * 确定性槽位底座（R6 纯函数·零 LLM/时钟/随机）：逐**意图声明的槽位**尝试从问句文本抽取。
+ * 抽不到的槽位**不出现在结果里**（不是填 null —— 底座只说"我在问句里看见了什么"，不替谁表态）。
+ */
+export function deterministicSlotFloor(query: string, intent: Pick<IntentDefinition, "slots">): Record<string, unknown> {
+  const floor: Record<string, unknown> = {};
+  if (!query) return floor;
+  for (const slot of intent.slots ?? []) {
+    const rule = FLOOR_RULES.find((r) => r.when(slot));
+    if (!rule) continue;
+    const v = rule.pick(query);
+    if (v !== undefined && v !== null && v !== "") floor[slot.name] = v;
+  }
+  return floor;
+}
+
+/**
+ * 底座 ⊕ LLM 抽取结果：**底座只填空白，冲突时 LLM 赢**（它有语义）。
+ * LLM 给的空值（undefined/null/空串）不算"给了" —— 否则一句 `"base":null` 就能把底座顶掉，
+ * 病又回到「没有第二个东西在看那句话」。LLM 独有的键原样透传（含 `_` 开头的诊断元数据）。
+ */
+export function mergeSlotFloor(floor: Record<string, unknown>, extracted: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...floor };
+  for (const [k, v] of Object.entries(extracted ?? {})) {
+    if (v !== undefined && v !== null && v !== "") out[k] = v;
+    else if (!(k in out)) out[k] = v; // 原样透传（不改变"这个键存在过"的事实）
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

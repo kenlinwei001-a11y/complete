@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, ObjectRefResolution, ObjectRefResolveRequest, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -33,6 +33,15 @@ export interface OntologyClient {
     asOfEpoch?: number,
   ): Promise<ToolPayload>;
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload>;
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 「实体文本 → 对象引用」解析（**槽位填充唯一入口**，A 侧 `POST /a/v1/ontology/resolve-ref`）。
+   *
+   * 为什么必须有它、且必须是**必填**接口：`getObject` 是**按 id/主键**查——用户说的「常州」是 `Base.name`、
+   * 「整车厂A」是 `Customer.custName`，逐类型 `getObject` 全 404 ⇒ objectRef 槽恒判 missing ⇒ 系统明明抽到了槽还反问
+   * （真实故障：35 道场景题 10 道停在 AWAITING_CLARIFICATION）。声明为必填 = 任何 OntologyClient 实现
+   * 都不许再退回「只按 id 查」的老路（假绿第 9 形态防线：mock 比生产宽松曾把这个病盖了整整一轮）。
+   */
+  resolveObjectRef(ctx: ToolAuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution>;
   /** 治理增量 §3.6：聚合下推（避免 agent 拉全量行）。 */
   aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload>;
   /** B→A 存在性探针（引用闭合）：本租户已发布对象类型 key 全集（agent scope / intent slot 校验）。 */

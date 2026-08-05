@@ -1,4 +1,4 @@
-import type { IntentDefinition, ObjectRef, SessionContext, SlotDef } from "@platform/contracts";
+import type { IntentDefinition, ObjectRef, ObjectRefResolution, SessionContext, SlotDef } from "@platform/contracts";
 import type { OntologyClient, ToolAuthCtx } from "../tools/clients.js";
 import { resolvePath } from "../util/jsonpath.js";
 
@@ -8,6 +8,24 @@ export interface OutOfDomainSignal {
   value: string;
   /** 最近邻候选（跨已发布类型按字符串相似度排序），供澄清"您是不是指…"。 */
   candidates: { objectType: string; objectId: string; label: string; score: number }[];
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 解析失败的**可诊断留痕**：试了哪些类型、归一后用什么键去查、
+   * 各类型比对了哪些属性、扫了几行、为什么不匹（歧义时带 `ambiguous` + `candidates`）。
+   * 没有它，下一个人只能像这次一样从一个 404 一路反推回槽位填充。
+   */
+  resolution?: ObjectRefResolution;
+}
+
+/** WO-SLOT-ENTITY-RESOLVE · 成功解析留痕（**可诊断**：下游/前端能看出"常州"是怎么匹上 Base 的）。 */
+export interface SlotResolutionRecord {
+  slotName: string;
+  ref: string;
+  objectType: string;
+  objectId: string;
+  label: string;
+  /** id = 主键/内部 id · name = 名称类属性 · alias = 本体声明 searchable 的属性。 */
+  matchedBy: NonNullable<ObjectRefResolution["matchedBy"]>;
+  matchedProp: string;
 }
 
 export interface SlotFillResult {
@@ -15,6 +33,8 @@ export interface SlotFillResult {
   missing: SlotDef[];
   /** A5：被判域外的用户实体（→ orchestrator 发 entity.out_of_domain + 埋点）。 */
   outOfDomain: OutOfDomainSignal[];
+  /** WO-SLOT-ENTITY-RESOLVE：本次成功解析的 objectRef 槽（带 matchedBy，供 SSE/task 留痕）。 */
+  resolutions: SlotResolutionRecord[];
 }
 
 /** 归一化编辑距离相似度（含子串包含加权）；CJK/拉丁通用，确定性纯函数。 */
@@ -104,17 +124,44 @@ export async function nearestEntities(
  *   下周/next week → D 所在周 +7 的周一；本周 → D 所在周周一；上周 → -7 周一
  *   本月/this month → D 所在月 1 号；下月 → 次月 1 号；上月 → 上月 1 号
  */
-const REL_TIME_PATTERNS: { re: RegExp; kind: "day" | "tomorrow" | "yesterday" | "thisWeek" | "nextWeek" | "lastWeek" | "thisMonth" | "nextMonth" | "lastMonth" }[] = [
-  { re: /^(这天|今天|当天|本日|today|这一天|此日)$/i, kind: "day" },
-  { re: /^(明天|次日|tomorrow)$/i, kind: "tomorrow" },
-  { re: /^(昨天|前一天|yesterday)$/i, kind: "yesterday" },
-  { re: /^(本周|这周|这一周|this\s*week)$/i, kind: "thisWeek" },
-  { re: /^(下周|下一周|next\s*week)$/i, kind: "nextWeek" },
-  { re: /^(上周|上一周|last\s*week)$/i, kind: "lastWeek" },
-  { re: /^(本月|这个月|当月|this\s*month)$/i, kind: "thisMonth" },
-  { re: /^(下月|下个月|next\s*month)$/i, kind: "nextMonth" },
-  { re: /^(上月|上个月|last\s*month)$/i, kind: "lastMonth" },
+type RelTimeKind = "day" | "tomorrow" | "yesterday" | "thisWeek" | "nextWeek" | "lastWeek" | "thisMonth" | "nextMonth" | "lastMonth";
+
+/**
+ * 相对时间词表 —— **单一出处**（正则由本表派生，不许在别处再抄一份）。
+ * WO-SLOT-HARVEST：确定性槽位底座要从**问句里**取字面相对时间词（`extractRelativeDateToken`），
+ * 归结成具体日期仍由下面的 `resolveRelativeDate` 负责；两者共用本表 —— 词表改一处两边同步。
+ */
+const REL_TIME_ALTERNATIVES: { body: string; kind: RelTimeKind }[] = [
+  { body: "这天|今天|当天|本日|today|这一天|此日", kind: "day" },
+  { body: "明天|次日|tomorrow", kind: "tomorrow" },
+  { body: "昨天|前一天|yesterday", kind: "yesterday" },
+  { body: "本周|这周|这一周|this\\s*week", kind: "thisWeek" },
+  { body: "下周|下一周|next\\s*week", kind: "nextWeek" },
+  { body: "上周|上一周|last\\s*week", kind: "lastWeek" },
+  { body: "本月|这个月|当月|this\\s*month", kind: "thisMonth" },
+  { body: "下月|下个月|next\\s*month", kind: "nextMonth" },
+  { body: "上月|上个月|last\\s*month", kind: "lastMonth" },
 ];
+
+/** 整值匹配（槽值本身就是一个相对时间词）——`resolveRelativeDate` 用。 */
+const REL_TIME_PATTERNS: { re: RegExp; kind: RelTimeKind }[] = REL_TIME_ALTERNATIVES.map(({ body, kind }) => ({
+  re: new RegExp(`^(${body})$`, "i"),
+  kind,
+}));
+
+/**
+ * WO-SLOT-HARVEST · 从**问句文本**里取字面相对时间词（"下周产能够不够" → "下周"）。
+ * 只回答"这句话里出现了哪个相对时间词"，**不做归结**（归结交 `resolveRelativeDate`，不另造第二套）。
+ * 确定性（R6 纯函数）：按 `REL_TIME_ALTERNATIVES` **表序**取首个命中，表序即优先级；无命中 → undefined。
+ */
+export function extractRelativeDateToken(query: string): string | undefined {
+  if (!query) return undefined;
+  for (const { body } of REL_TIME_ALTERNATIVES) {
+    const m = query.match(new RegExp(`(${body})`, "i"));
+    if (m?.[1]) return m[1];
+  }
+  return undefined;
+}
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 
@@ -196,7 +243,7 @@ export async function validateSlotValue(
   value: unknown,
   ontology: OntologyClient,
   ctx: ToolAuthCtx,
-): Promise<{ ok: boolean; value?: unknown; outOfDomain?: boolean }> {
+): Promise<{ ok: boolean; value?: unknown; outOfDomain?: boolean; resolution?: ObjectRefResolution; resolveError?: string }> {
   if (value === undefined || value === null || value === "") return { ok: false };
   switch (slot.type) {
     case "string":
@@ -238,53 +285,53 @@ export async function validateSlotValue(
       return { ok: false };
     }
     case "objectRef": {
-      // Must be resolvable in the ontology (OntologyClient.getObject).
-      if (typeof value === "object" && value !== null && "objectId" in (value as Record<string, unknown>)) {
-        const ref = value as ObjectRef;
-        try {
-          const payload = await ontology.getObject(ctx, ref.objectType, ref.objectId);
-          const data = payload.data as Record<string, unknown>;
-          return {
-            ok: true,
-            value: {
-              objectType: ref.objectType,
-              objectId: (data.objectId as string) ?? ref.objectId,
-              label: (data.name as string) ?? ref.label,
-            } satisfies ObjectRef,
-          };
-        } catch {
-          return { ok: false };
-        }
-      }
-      // Bare string (e.g. "常州" / "4680-NCM" / "供应商A") — resolve across the tenant's
-      // published object types, fetched DYNAMICALLY from the ontology (R14: no hardcoded type list；
-      // 裸串实体不再仅限 Base/Model/Order，任意已建模类型均可解析)。
-      const key = String(value);
-      let objectTypes: string[];
+      /**
+       * WO-SLOT-ENTITY-RESOLVE（根治）· objectRef 槽一律走 A 侧解析正门 `resolveObjectRef`。
+       *
+       * 病根（此处旧代码）：裸串逐个已发布类型调 `ontology.getObject(objectType, key)` ——
+       * 那是**按 objectId / 主键**查。用户说的「常州」是 `Base.name`、「整车厂A」是 `Customer.custName`，
+       * 实测 `getObject(Base,常州)`→404 / `getObject(Base,changzhou)`→200 ⇒ 全类型试完必 404
+       * ⇒ `{ok:false,outOfDomain:true}` ⇒ 判 missing ⇒ **三个槽全抽到了系统还在反问**。
+       *
+       * 现在：解析规则的**单一出处**在 `@platform/contracts` 的 `matchObjectRefInType`（A 侧 REST 调它、
+       * mock 也调它），本文件**一行匹配逻辑都不写**——尤其**没有也不许有**任何「中文名 → id」映射表（R14）。
+       * 槽位声明了 `refType` 就据此收窄候选类型（歧义更少、更快）；没声明则全类型解析。
+       */
+      const declaredType =
+        typeof value === "object" && value !== null && typeof (value as Record<string, unknown>).objectType === "string"
+          ? String((value as Record<string, unknown>).objectType)
+          : slot.refType;
+      let res: ObjectRefResolution;
       try {
-        objectTypes = await ontology.listObjectTypeKeys(ctx);
-      } catch {
-        objectTypes = [];
+        res = await ontology.resolveObjectRef(ctx, { ref: value as string | Record<string, unknown>, ...(declaredType ? { types: [declaredType] } : {}) });
+      } catch (err) {
+        // 解析服务不可达 ≠ 域外：诚实回不可用（不静默兜底成"解析不到"，也不吞成 ok）。
+        return {
+          ok: false,
+          outOfDomain: false,
+          resolution: {
+            ref: typeof value === "string" ? value : JSON.stringify(value),
+            normalizedRef: "",
+            resolved: false,
+            attempts: [{ objectType: declaredType ?? "*", keysTried: [], propsTried: [], rowsScanned: 0, reason: "TYPE_NOT_FOUND" }],
+          },
+          resolveError: err instanceof Error ? err.message : String(err),
+        };
       }
-      for (const objectType of objectTypes) {
-        try {
-          const payload = await ontology.getObject(ctx, objectType, key);
-          const data = payload.data as Record<string, unknown>;
-          return {
-            ok: true,
-            value: {
-              objectType,
-              objectId: (data.objectId as string) ?? key,
-              label: (data.name as string) ?? key,
-            } satisfies ObjectRef,
-          };
-        } catch {
-          /* try next type */
-        }
+      if (res.resolved) {
+        return {
+          ok: true,
+          value: {
+            objectType: res.objectType as string,
+            objectId: res.objectId as string,
+            label: res.label ?? res.objectId,
+          } satisfies ObjectRef,
+          resolution: res,
+        };
       }
-      // 域外：裸串实体在本租户任何已发布对象类型中都解析不到 → 不命中（→ 澄清/降级，感知层显式信号）。
-      //   A5：标记 outOfDomain，让 fillSlots 取最近邻候选 + orchestrator 发独立事件/埋点。
-      return { ok: false, outOfDomain: typeof value === "string" };
+      // 域外/歧义：解析不到就是解析不到（诚实）。resolution 带着「试了哪些类型、用什么键、各自为何不匹 /
+      // 歧义候选」一路上浮到 SSE 与 task，下一个人不必再从 404 一路追回来。
+      return { ok: false, outOfDomain: typeof value === "string" || typeof value === "object", resolution: res };
     }
   }
 }
@@ -303,12 +350,28 @@ export async function fillSlots(
   const slots: Record<string, unknown> = {};
   const missing: SlotDef[] = [];
   const outOfDomain: OutOfDomainSignal[] = [];
+  const resolutions: SlotResolutionRecord[] = [];
+  /** WO-SLOT-ENTITY-RESOLVE：解析成功即留痕（matchedBy 让"怎么匹上的"当场可见·R13 可溯源）。 */
+  const noteResolution = (slotName: string, r: { resolution?: ObjectRefResolution }): void => {
+    const res = r.resolution;
+    if (!res?.resolved || !res.objectType || !res.objectId || !res.matchedBy) return;
+    resolutions.push({
+      slotName,
+      ref: res.ref,
+      objectType: res.objectType,
+      objectId: res.objectId,
+      label: res.label ?? res.objectId,
+      matchedBy: res.matchedBy,
+      matchedProp: res.matchedProp ?? "",
+    });
+  };
 
   for (const slot of intent.slots) {
     // ① classifier-extracted value (validated)
     const fromExtraction = await validateSlotValue(slot, extracted[slot.name], ontology, ctx);
     if (fromExtraction.ok) {
       slots[slot.name] = fromExtraction.value;
+      noteResolution(slot.name, fromExtraction);
       continue;
     }
     // ①.b BP-6 相对时间归结兜底：LLM 把"这天/今天/下周/本月"抽进 date 槽但不可解析 →
@@ -323,10 +386,16 @@ export async function fillSlots(
         }
       }
     }
-    // A5：用户给的实体被判域外（objectRef 裸串解析不到）→ 取最近邻候选，记信号。
+    // A5：用户给的实体被判域外（objectRef 解析不到）→ 取最近邻候选，记信号。
+    // WO-SLOT-ENTITY-RESOLVE：把解析器的 attempts/ambiguous 一并带上（可诊断，见 OutOfDomainSignal.resolution）。
     if (fromExtraction.outOfDomain && slot.type === "objectRef") {
       const value = String(extracted[slot.name]);
-      outOfDomain.push({ slotName: slot.name, value, candidates: await nearestEntities(value, ontology, ctx) });
+      outOfDomain.push({
+        slotName: slot.name,
+        value,
+        candidates: await nearestEntities(value, ontology, ctx),
+        ...(fromExtraction.resolution ? { resolution: fromExtraction.resolution } : {}),
+      });
     }
     // ①.5 场景启动器 presetSlots（PRD-scenario-launcher §3.1）：按槽位名预置，
     // 优先级低于用户自由文本抽取、高于 defaultFrom —— 让"点场景启动"零反问直达推演。
@@ -335,6 +404,7 @@ export async function fillSlots(
       const fromPreset = await validateSlotValue(slot, preset, ontology, ctx);
       if (fromPreset.ok) {
         slots[slot.name] = fromPreset.value;
+        noteResolution(slot.name, fromPreset);
         continue;
       }
       // BP-6：场景卡/预置也可能带相对时间引用（如 day:"这天"）→ 同样确定性归结后再校验。
@@ -355,6 +425,7 @@ export async function fillSlots(
       const fromDefault = await validateSlotValue(slot, candidate, ontology, ctx);
       if (fromDefault.ok) {
         slots[slot.name] = fromDefault.value;
+        noteResolution(slot.name, fromDefault);
         continue;
       }
     }
@@ -367,7 +438,7 @@ export async function fillSlots(
   for (const [k, v] of Object.entries(context.presetSlots ?? {})) {
     if (k.startsWith("_")) slots[k] = v;
   }
-  return { slots, missing, outOfDomain };
+  return { slots, missing, outOfDomain, resolutions };
 }
 
 export function clarifyPromptFor(slot: SlotDef): string {

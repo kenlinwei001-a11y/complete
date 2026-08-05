@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { AggregateRequestSchema, ObjectRefResolveRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -2308,6 +2308,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/objects/query", async (req) => {
     const body = parseBody(ObjectsQuerySchema, req.body);
     return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit, body.asOfEpoch);
+  });
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 「实体文本 → 对象引用」解析正门（A 侧单一出处，B 侧槽位填充经此调用）。
+   * 用户说「常州」/「整车厂A」/「容百科技」是**名称**，`GET /objects/:type/:id` 只认 id/主键必 404；
+   * 本端点按 id / name / alias 三层解析并回 `matchedBy`（可诊断），解析不到回 attempts（试了哪些类型/键/为何不匹）。
+   */
+  app.post("/a/v1/ontology/resolve-ref", async (req) => {
+    const body = parseBody(ObjectRefResolveRequestSchema, req.body);
+    return ontology.resolveObjectRef(ctx(req), body);
   });
   // 前端 PRD §6.4 / §7.3：对象查询（objectRef 槽位选择器 + 台账分页 + 列筛选 f_*）。
   // 响应 { items, total }（台账/选择器消费）；同时保留 { data, snapshotVersion } 兼容旧调用。

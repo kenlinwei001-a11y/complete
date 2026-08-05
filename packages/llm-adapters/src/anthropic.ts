@@ -18,6 +18,7 @@ import type {
 } from "./types.js";
 import { requireUsage } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
 export const COMPACTION_BETA = "compact-2026-01-12";
@@ -131,7 +132,17 @@ export class AnthropicLlmClient implements FullLlmClient {
     this.track(req.model, "input", resp.usage.input_tokens);
     this.track(req.model, "output", resp.usage.output_tokens);
     if (resp.parsed_output == null) throw new ClassifierParseError();
-    return resp.parsed_output;
+    // WO-SLOT-HARVEST · 槽位一律经**单源收割器**（与 openai/degrade 同一份合并规则，见 slot-harvest.ts）。
+    // 本条路由是服务端 schema 强约束（output_config.format），正常形态槽位就在顶层 extractedSlots，
+    // 收割结果与旧的"直接返回 parsed_output"等价；价值在于形态一旦漂（槽跑进 candidate / 字段改名），
+    // `unconsumed` 会**报出来**，而不是像 openai 那条路一样静默丢答案（那正是本单的病根）。
+    const harvest = harvestClassificationSlots(resp.parsed_output);
+    reportUnconsumedSlots("anthropic.classify", harvest);
+    return {
+      candidates: resp.parsed_output.candidates,
+      outOfCatalog: resp.parsed_output.outOfCatalog,
+      extractedSlots: harvest.slots,
+    };
   }
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {

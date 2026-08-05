@@ -439,6 +439,43 @@ export const AnswerSchema = z.object({
 });
 export type Answer = z.infer<typeof AnswerSchema>;
 
+/**
+ * WO-SLOT-ENTITY-RESOLVE §6 · 待澄清内容（**落在 task 上**，与 SSE `clarification.required` 同源）。
+ * 轮询型客户端拿 `GET /api/v1/queries/:id` 就能知道"系统在问什么"，不必吃 SSE、不必干等超时。
+ */
+export const PendingClarificationSchema = z.object({
+  kind: z.enum(["INTENT_CHOICE", "SLOT_FILLING"]),
+  round: z.number().int().min(1),
+  askedAt: IsoTime,
+  /** SLOT_FILLING：缺哪些槽 + 问题文案 + （解析失败时）候选。 */
+  slots: z
+    .array(
+      z.object({
+        name: z.string(),
+        type: z.string(),
+        prompt: z.string(),
+        /** 解析失败/歧义时的候选（"您是不是指…"）。 */
+        candidates: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string() })).optional(),
+      }),
+    )
+    .optional(),
+  /** INTENT_CHOICE：候选意图。 */
+  intents: z.array(z.object({ intentKey: z.string(), name: z.string(), description: z.string() })).optional(),
+});
+export type PendingClarification = z.infer<typeof PendingClarificationSchema>;
+
+/** WO-SLOT-ENTITY-RESOLVE · objectRef 槽解析留痕（可诊断：ref 经哪个属性、以哪一层匹上哪个对象）。 */
+export const SlotResolutionSchema = z.object({
+  slotName: z.string(),
+  ref: z.string(),
+  objectType: z.string(),
+  objectId: z.string(),
+  label: z.string(),
+  matchedBy: z.enum(["id", "name", "alias"]),
+  matchedProp: z.string(),
+});
+export type SlotResolution = z.infer<typeof SlotResolutionSchema>;
+
 export const QueryTaskSchema = z.object({
   id: z.string(), // task_
   tenantId: z.string(),
@@ -463,6 +500,20 @@ export const QueryTaskSchema = z.object({
   resolvedRefs: z.array(ResolvedRefSchema).optional(),
   /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路（domainResolveMulti→并行 solver→零 LLM 块装配）留痕。 */
   multiIntentPlan: MultiIntentPlanSchema.optional(),
+  /**
+   * WO-SLOT-ENTITY-RESOLVE §6（additive·可选）：**task 上落"在问什么"**。
+   *
+   * 旧洞：`requestClarification` 只把 `missing` 发进 SSE `clarification.required` 事件，
+   * task 对象上只有 `status=AWAITING_CLARIFICATION` + `clarificationRounds` —— 轮询型客户端
+   * （CLI / 批量脚本 / 任何不吃 SSE 的调用方）**永远不知道要补什么，只能干等到超时**（实测卡死 150s）。
+   * 现在澄清载荷**构造一次**：写进本字段 + 原样发 SSE（同源，不许两套）；澄清被应答/任务终态即清空。
+   */
+  pendingClarification: PendingClarificationSchema.optional(),
+  /**
+   * WO-SLOT-ENTITY-RESOLVE（additive·可选）：objectRef 槽解析留痕（"常州"是怎么匹上 Base 的·R13）。
+   * matchedBy: id(主键/内部id) · name(名称类属性) · alias(本体声明 searchable 的属性)。
+   */
+  slotResolutions: z.array(SlotResolutionSchema).optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });
