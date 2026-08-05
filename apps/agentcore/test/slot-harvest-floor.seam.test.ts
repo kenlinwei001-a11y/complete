@@ -207,6 +207,46 @@ describe("WO-SLOT-HARVEST §3.2④ · 底座只抽问句里真有的：抽不到
   }, 120_000);
 });
 
+/**
+ * ⑥ **第二个接线点**（⑤ LLM 多意图 `trySelectMultiIntent`）：它自己调 fillSlots 判「槽可填」，
+ * 不经 proceedWithIntent —— 只接主路 = 又一次「接错地方」，多意图题照样被 LLM 抖动打掉。
+ * 判据：两个意图的必填槽（affected_orders.base / capacity_feasibility.model+demandDelta）
+ * **只能从问句文本来**（extractedSlots={} · selectedObjects=[]）→ 底座在，⑤ 才选得出 ≥2 条并行路。
+ */
+describe("WO-SLOT-HARVEST §3.2⑥ · 接线点之二：⑤ LLM 多意图也吃到底座（只接主路 = 又一次接错地方）", () => {
+  it("classify 交白卷但问句自带槽 → routeSource=llm-multi-intent 并行 2 条（底座缺席则退化成反问）", async () => {
+    const t = await createTestApp();
+    t.deps.features.mock.set(TENANT, [...DEMO_PROD_FEATURES, "qos.multi-intent-orchestration"]);
+    t.llm.queueClassification({
+      candidates: [
+        { intentKey: "affected_orders", confidence: 0.9 },
+        { intentKey: "capacity_feasibility", confidence: 0.88 },
+      ],
+      outOfCatalog: false,
+      extractedSlots: {}, // 坏骰子：路由给了两个候选，槽位一个没给
+    });
+    queueAnswers(t.llm);
+
+    const r = await submitQuery(t, ADMIN, "常州 4680-NCM 加 20% 六周会影响哪些订单？", { view: "risk", selectedObjects: [] });
+    let task: QueryTask | undefined;
+    try {
+      task = await waitForTask(t, r.taskId, (x) => ["COMPLETED", "FAILED", "AWAITING_CLARIFICATION", "CANCELLED"].includes(x.status), 25000);
+    } catch {
+      /* 超时 → 下面断言会红并打出来 */
+    }
+    await t.app.close();
+
+    console.log(
+      `\n  ── §3.2⑥ 第二接线点（⑤ 多意图）──\n  status=${task?.status} rounds=${task?.clarificationRounds} ` +
+        `routeSource=${task?.multiIntentPlan?.routeSource} solvers=${JSON.stringify(task?.multiIntentPlan?.selectedIntents.map((s) => s.solverKey))}`,
+    );
+
+    expect(`${task?.status}/rounds=${task?.clarificationRounds}`).toBe("COMPLETED/rounds=0");
+    expect(task?.multiIntentPlan?.routeSource, "⑤ 必须真选出多意图（槽可填靠底座）").toBe("llm-multi-intent");
+    expect((task?.multiIntentPlan?.selectedIntents ?? []).length).toBeGreaterThanOrEqual(2);
+  }, 120_000);
+});
+
 /** ⑤ 底座本体的纯函数直测（R6：确定性·由意图声明的槽位驱动·不读时钟/随机/LLM）。 */
 describe("WO-SLOT-HARVEST §3.2⑤ · 确定性底座纯函数直测（零数据依赖·不许靠数据巧合变绿）", () => {
   const riskIntent = {
