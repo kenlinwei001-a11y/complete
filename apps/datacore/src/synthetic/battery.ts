@@ -987,6 +987,27 @@ const segmentProps: PropertyDef[] = [
 ];
 
 // cockpit P1 绿地：经营驾驶舱富 KPI 数据闭环（数字从本体关系算出，前后端零写死 R14）。
+/**
+ * WO-SANDBOX-D1×E1 接缝 · 节拍对象属性表。
+ *
+ * 行来自 `synthetic/cadence.ts` 的 `cadenceObjectRows()`（种子自身发生序列推导，非拍脑袋）。
+ * `nodeId` 取值受 `CHAIN_NODE_REGISTRY` 约束（契约 §2.5 单源），**不是自由串**。
+ * `dataMode === "EMPTY"` 的行**照样落库**：诚实缺席必须可查询，
+ * 否则「本仓没有这个节拍」与「本仓压根没登记这个环节」在下游长得一模一样。
+ */
+const cadenceProps: PropertyDef[] = [
+  { propKey: "nodeId", dataType: "string", isPrimaryKey: true, description: "全链节点 id（取值受契约 CHAIN_NODE_REGISTRY 约束，不是自由串）" },
+  { propKey: "label", dataType: "string", isPrimaryKey: false, description: "节点人读名（由注册表派生，不在本表另存一份）" },
+  { propKey: "stage", dataType: "enum", isPrimaryKey: false, description: "所属链路阶段：DEMAND 需求 | ORDER 订单 | CAPACITY 产能 | MATERIAL 物料" },
+  { propKey: "dataMode", dataType: "enum", isPrimaryKey: false, description: "诚实位：SYNTHETIC=从种子发生序列真推出了周期 | EMPTY=推不出（此时不给默认值，见 emptyReason）" },
+  { propKey: "everyDays", dataType: "number", isPrimaryKey: false, unit: "天", description: "节拍周期长度：这个环节多久处理一次。EMPTY 行不带此属性（缺席即缺席，不补 0）" },
+  { propKey: "offsetDays", dataType: "number", isPrimaryKey: false, unit: "天", description: "周期内相位（第几天开闸），∈[0, everyDays)。⚠ 不进等待期望公式——相位移动的是每一次具体等待，不改变期望" },
+  { propKey: "cadenceKind", dataType: "enum", isPrimaryKey: false, description: "节拍性质：meeting 会议 | batch 攒批 | settlement 结算 | shipping 发运" },
+  { propKey: "flowGate", dataType: "boolean", isPrimaryKey: false, description: "是否产品流要等的闸门。false=周期性停机（如检修窗）——是真周期但产品不是在等它开始，故不摊进全链前置期，否则会凭空多出一段假等待" },
+  { propKey: "intervalCount", dataType: "number", isPrimaryKey: false, unit: "个", description: "证据强度：推导该周期时采到的间隔样本数（前端可据此标『证据薄』）" },
+  { propKey: "emptyReason", dataType: "string", isPrimaryKey: false, description: "推不出周期的机器可读原因：NO_CARRIER 连可查的集合都没有（要加字段）| NO_INTERVAL 发生次数不足两次 | NON_UNIFORM 间隔不等长（那是一串事件，不是一个节拍）。前者要加字段、后两者要补数据，修法不同不可混标" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, description: "口径说明与取证记录（该节拍从哪个集合的哪个时刻字段推出，或为什么查不到）" },
+];
 const demandSegmentProps: PropertyDef[] = [
   { propKey: "segId", dataType: "string", isPrimaryKey: true },
   { propKey: "segment", dataType: "string", isPrimaryKey: false }, // 乘用车/储能/商用车
@@ -1634,6 +1655,7 @@ export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMa
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
+  Cadence: "capacity",
   Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
   // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
@@ -2163,6 +2185,7 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
     plain("PlanTarget", "计划目标", planTargetProps),
     // cockpit P1 绿地：经营驾驶舱富 KPI（数字经派生/聚合算出，R14 零写死）。
+    plainD("Cadence", "节拍", "全链各环节的**节拍**——「这个环节多久处理一次」。等待期望 = everyDays / 2（均匀到达假设），是推演沙盘里最值钱的一维：实测全链损失里等节拍占比最高的一类。值全部由种子自身的发生序列推导，推不出的诚实标 EMPTY 并给机器可读原因，绝不补 0（0 的语义是「随到随办」，等于把节拍当不存在）。⚠ 与设备节拍 CT（秒/只，单件加工时间）是两个口径，勿混用。", cadenceProps),
     { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
     plain("FinancePlan", "财务预算", financePlanProps),
     plain("MaterialBalance", "物料平衡", materialBalanceProps),

@@ -112,11 +112,11 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 38 求解器（22 业务场景 + WO-TIER2 语义发现扩面 + portfolio·WO-PORTFOLIO-OPTIMAL + base_capacity_outlook·WO-B·双占 reconcile 至 38）", async () => {
+  it("catalog discover 列出全部 39 求解器（22 业务场景 + WO-TIER2 语义发现扩面 + portfolio·WO-PORTFOLIO-OPTIMAL + base_capacity_outlook·WO-B·双占 reconcile + chain_loss_attribution·WO-SANDBOX-E1）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(38); // 36 base + portfolio(WO-PORTFOLIO) + base_capacity_outlook(WO-B)·双占 reconcile
+    expect(items.length).toBe(39); // 36 base + portfolio(WO-PORTFOLIO) + base_capacity_outlook(WO-B)·双占 reconcile + chain_loss_attribution(WO-SANDBOX-E1·当时漏更金值，本批补)
     expect(items.map((i) => i.key)).toContain("base_capacity_outlook");
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
     expect(items.map((i) => i.key)).toContain("portfolio");

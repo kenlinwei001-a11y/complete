@@ -6,7 +6,7 @@ import { notFound, validationError } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
-import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
+import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
@@ -29,7 +29,7 @@ import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
-import { portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
+import { businessTypeOfOrder, portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
 import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
@@ -3046,8 +3046,10 @@ export class SolverService {
   private async chainLossAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const load = async (typeKey: string): Promise<ChainLossObject[]> =>
       (await this.repos.objects.listByType(ctx.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
-    const [orders, customers, models, routings, operations, materials, suppliers, processes] = await Promise.all([
+    const [orders, customers, models, routings, operations, materials, suppliers, processes, cadences] = await Promise.all([
       load("Order"), load("Customer"), load("Model"), load("Routing"), load("Operation"), load("Material"), load("Supplier"), load("Process"),
+      // D1×E1 接缝：节拍对象。此前本求解器不读它，于是 D1 推出来的节拍谁也拿不到（模块绿·链路断）。
+      load("Cadence"),
     ]);
     if (orders.length === 0) throw validationError("chain_loss_attribution 需先合成 Order（全链锚点）");
     const links = (await this.repos.links.list(ctx.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
@@ -3055,7 +3057,7 @@ export class SolverService {
     if (so && !orders.some((o) => str(o.props.so) === so)) throw notFound(`Order ${so}`);
     return runChainLossAttribution({
       ...(so ? { so } : {}),
-      orders, customers, models, routings, operations, materials, suppliers, processes, links,
+      orders, customers, models, routings, operations, materials, suppliers, processes, cadences, links,
     }) as unknown as Record<string, unknown>;
   }
 
@@ -3174,8 +3176,15 @@ export class SolverService {
     const models = await this.repos.objects.listByType(ctx.tenantId, "Model");
     const model = models.find((m) => str(m.props.modelId) === modelId);
     const bases = Array.isArray(model?.props.bases) ? (model!.props.bases as string[]) : [];
-    // 细分映射（确定性化学体系）：S192→储能 · L148→商用车 · 其余→乘用车。
-    const seg = modelId.includes("S192") ? "储能" : modelId.includes("L148") ? "商用车" : "乘用车";
+    // 细分映射（WO-SANDBOX-E2 查出的死映射修·欠账 #98）：
+    // 原写死 `modelId.includes("S192")→储能 / includes("L148")→商用车 / 其余→乘用车`，
+    // 而 seed 42 的 Model 全集是 2170-NCM/4680-LFP/4680-NCM/圆柱-LFP/方形-LFP/方形-NCM ——
+    // **一个都不含 S192/L148** ⇒ 恒走兜底，每张单都被标成乘用车（储能/商用拿到错的 13/11、15/11 底线）。
+    // 三分法 = 「接了线没数据」：分支在、接了线，输入恒不命中。属**静默错答**（界面看不出来），
+    // 污染 kpis.segment / marginPct / floorPct / C15 财务判 / verdict，并打到沙盘节点检视面板的数据前提。
+    // 改取真值：businessTypeOfOrder = 种子 Order.businessType 优先 · 客户名兜底（既有单源，未新造）；
+    // BUSINESS_TYPE_LABEL 三值与 DemandSegment.segment 逐值一致（乘用车/商用车/储能），可直接映射。
+    const seg = BUSINESS_TYPE_LABEL[businessTypeOfOrder(op)];
     const dsegs = await this.repos.objects.listByType(ctx.tenantId, "DemandSegment");
     const dseg = dsegs.find((d) => str(d.props.segment) === seg);
     const marginPct = num(dseg?.props.marginPct);

@@ -38,7 +38,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     //   + WO-TIER3 毛利桥 1 类（GrossMarginBridge·gross_profit 专属反向归因域 drill）→ 90。
     //   + WO-ADOPT-MITIGATION 1 类（AdoptedMitigation·已采纳处置方案台账·adopt_mitigation 执行器落点）→ 91。
     //     该类型**出厂零实例**（运行期由 Action 审批写入），故 objs 计数不变、下面的 provenance 校验也不覆盖它。
-    expect(types.length).toBe(91);
+    expect(types.length).toBe(92); // +WO-SANDBOX D1×E1 接缝：Cadence（节拍落库·61 battery + 31 extended）
     // R13 provenance 因果真实：凡在 demo 中物化了实例的类型，其 sourceBindings 非空且指向同名真 rawDataset
     //（非硬编码模板）。Phase3 MES 类型（WorkOrder/WIP*/Equipment*E/Operator* 等）为轻量 demo 的
     // 本体模型定义、不落 demo 实例（否则单次 seed 逾万对象拖垮用例），无实例 provenance，故按物化类型校验。
@@ -83,7 +83,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(91); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）
-    expect(a.objs.length).toBe(11087); // WO-GSIM-1-DATA：+5 对象（电芯→电池包就近供芯 InterBaseTransfer·5 纯 PACK 基地各 1 条·T5 SEAM 物料·类型集不变）。 WO-TIER3：+8 对象（GrossMarginBridge 毛利桥 gmb-total/volume/price/cost·chainMode 物化·real 跑实测） // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-EXCEPTION-EVENT：+734 对象（首次物化 DefectRecord/EquipmentDowntime/EquipmentAlarm 三源[R13 下钻]+ 四源归一 ExceptionEvent；类型集 81→82）；integ-wave-11：+7065 对象（narrowed-P0 首次物化 5 类决策 MES[WorkOrder/WIPLot/QualityLot/InspectionResult/EquipmentOEE 高量] + WO-ATP-PROMISE/ORDERLINE/INVENTORY-3TIER/WAREHOUSE-CUSTLOC[OrderLine/OrderPromise/FinishedGoodsInventory/InventoryTxn/Warehouse/CustomerLocation] + WO-INTERBASE-TRANSFER[InterBaseTransfer]；类型集 82→89）
+    expect(a.types.length).toBe(92); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）；+WO-SANDBOX Cadence（节拍·8 实例）
+    expect(a.objs.length).toBe(11095); // WO-SANDBOX D1×E1 接缝：+8 对象（Cadence 全链节拍·4 SYNTHETIC 真推出周期 + 4 EMPTY 诚实缺席照样落库，使「查过没有」与「压根没登记」在下游分得开）。// WO-GSIM-1-DATA：+5 对象（电芯→电池包就近供芯 InterBaseTransfer·5 纯 PACK 基地各 1 条·T5 SEAM 物料·类型集不变）。 WO-TIER3：+8 对象（GrossMarginBridge 毛利桥 gmb-total/volume/price/cost·chainMode 物化·real 跑实测） // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-EXCEPTION-EVENT：+734 对象（首次物化 DefectRecord/EquipmentDowntime/EquipmentAlarm 三源[R13 下钻]+ 四源归一 ExceptionEvent；类型集 81→82）；integ-wave-11：+7065 对象（narrowed-P0 首次物化 5 类决策 MES[WorkOrder/WIPLot/QualityLot/InspectionResult/EquipmentOEE 高量] + WO-ATP-PROMISE/ORDERLINE/INVENTORY-3TIER/WAREHOUSE-CUSTLOC[OrderLine/OrderPromise/FinishedGoodsInventory/InventoryTxn/Warehouse/CustomerLocation] + WO-INTERBASE-TRANSFER[InterBaseTransfer]；类型集 82→89）
   });
 });

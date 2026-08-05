@@ -187,7 +187,13 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     await seedBattery(t);
     const r = await run(t);
 
-    const MUST_BE_EMPTY = ["material.customs", "material.iqc", "chain.rework", "demand.sop_cadence", "order.review_cadence", "material.in_transit"];
+    // ⚠ 本清单**随数据落地而缩短**，这是它该有的样子（源文件表头写着「一旦有了承载物必须从本表删掉并接真数据」）。
+    // D1 的节拍落库后，`demand.consensus` 已有真值 ⇒ 它从本清单**移出**，改由下面的正向断言咬住；
+    // 留在这里的是仍然连承载物都没有的那几段。
+    const MUST_BE_EMPTY = [
+      "material.customs", "material.iqc", "chain.rework", "material.in_transit",
+      "order.review__cadence", "material.mrp__cadence", "order.settlement__cadence",
+    ];
     for (const stepId of MUST_BE_EMPTY) {
       const e = emptyOf(r, stepId);
       expect(e, `${stepId} 必须诚实标 EMPTY（今天本体里没有承载物）`).toBeDefined();
@@ -200,6 +206,25 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     const chainStepIds = new Set(r.nodes.flatMap((n) => n.steps.map((s) => s.stepId)));
     for (const stepId of MUST_BE_EMPTY) expect(chainStepIds.has(stepId), `${stepId} 既标了 EMPTY 又出现在链上 = 自相矛盾`).toBe(false);
     for (const stepId of MUST_BE_EMPTY) expect(r.attribution.some((a) => a.stepId === stepId), `${stepId} 不该出现在归因表里`).toBe(false);
+
+    // ── D1×E1 接缝正向断言：有承载物的节拍**必须真的出现在链上**，不许还标 EMPTY ──
+    // 这一条是本次接缝修复的守门人：D1 把节拍落成 Cadence 对象、E1 按对象查表出环节。
+    // 若谁把落库那行删了（或 E1 退回写死 EMPTY），下面三条会一起红。
+    const sopStep = r.nodes.flatMap((n) => n.steps).find((x) => x.stepId === "demand.consensus__cadence");
+    expect(sopStep, "S&OP 节拍已有承载物（Cadence.demand.consensus），必须出现在链上而不是标 EMPTY").toBeDefined();
+    expect(emptyOf(r, "demand.consensus__cadence"), "既有真值又标 EMPTY = 自相矛盾").toBeUndefined();
+    // 天数必须 == 种子推出的 everyDays/2（不是 everyDays、不是 0）——公式走契约唯一实现。
+    const sopCad = (await t.repos.objects.listByType(ADMIN.tenantId, "Cadence")).find(
+      (o) => String(o.props.nodeId) === "demand.consensus",
+    );
+    expect(sopCad, "前置：Cadence 对象必须已落库（种子→对象这一步就是此前断掉的那根线）").toBeDefined();
+    expect(sopStep!.days).toBe(Number(sopCad!.props.everyDays) / 2);
+
+    // NON_UNIFORM 这类「承载物在、只是凑不出等长周期」必须标 NO_INSTANCE 而**不是** NO_CARRIER：
+    // 前者要补数据、后者要加字段，修法不同，混标就是把两件事说成一件。
+    const shipEmpty = emptyOf(r, "material.shipping__cadence");
+    expect(shipEmpty, "发运节拍推不出，但必须诚实登记").toBeDefined();
+    expect(shipEmpty!.emptyKind).toBe("NO_INSTANCE");
 
     // 全链**没有** 0 天环节：本仓「静默兜底」的典型长相就是缺数据时塞一个 0 进去装作算过。
     const zeros = r.nodes.flatMap((n) => n.steps).filter((s) => s.days === 0).map((s) => s.stepId);
@@ -233,7 +258,10 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     // 且损失结构真的重排（账期本来占 85%，删掉后老化/供应商交期升到 Top）。
     const top = [...after.attribution].sort((a, b) => b.pctOfChainLoss - a.pctOfChainLoss)[0]!;
     expect(top.stepId).not.toBe("order.settlement_terms");
-    expect(top.pctOfChainLoss).toBeGreaterThan(40);
+    // 阈值从 40 降到 30：节拍段落库后全链非增值分母多了 8 天（7 + 0.5 + 0.5），
+    // 同一个「老化/供应商交期升到 Top」的现象对应的占比自然被稀释（实测 38.47%）。
+    // 断言的意图是「删掉账期后结构真的重排、新 Top 仍占大头」，不是那个具体数字。
+    expect(top.pctOfChainLoss).toBeGreaterThan(30);
   });
 
   // ════════════════════════════════════════════════════════════════════════

@@ -56,7 +56,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
 
   it("D1-1 工单点名的 7 个限流环节全部在册（查不到证据的也必须在册并标 EMPTY）", () => {
     const ids = CADENCE_NODES.map((n) => n.nodeId);
-    for (const id of ["sop_consensus", "order_review", "master_schedule", "mrp_run", "qc_batch", "shipping_dispatch", "settlement"]) {
+    for (const id of ["demand.consensus", "order.review", "capacity.schedule", "material.mrp", "capacity.qc_batch", "material.shipping", "order.settlement"]) {
       expect(ids).toContain(id);
     }
     // 每个节点都必须留下取证痕迹：要么指向种子集合，要么写清查过什么。
@@ -74,7 +74,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
     expect(new Set(deltas).size).toBe(1);
     expect(deltas.length).toBeGreaterThanOrEqual(2);
 
-    const row = rowOf(deriveChainCadences(g), "sop_consensus");
+    const row = rowOf(deriveChainCadences(g), "demand.consensus");
     expect(row.dataMode).toBe("SYNTHETIC");
     expect(row.cadence?.everyDays).toBe(deltas[0]);
     expect(row.cadence?.kind).toBe("meeting");
@@ -95,7 +95,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
     }
     const schedDeltas = [...bySched.values()].flatMap(independentDeltas);
     expect(new Set(schedDeltas).size).toBe(1);
-    expect(rowOf(rows, "master_schedule").cadence?.everyDays).toBe(schedDeltas[0]);
+    expect(rowOf(rows, "capacity.schedule").cadence?.everyDays).toBe(schedDeltas[0]);
 
     // 过程质检攒批：同一在制批相邻质检点的间隔。
     const byLot = new Map<string, string[]>();
@@ -106,22 +106,22 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
     }
     const chkDeltas = [...byLot.values()].flatMap(independentDeltas);
     expect(new Set(chkDeltas).size).toBe(1);
-    expect(rowOf(rows, "qc_batch").cadence?.everyDays).toBe(chkDeltas[0]);
+    expect(rowOf(rows, "capacity.qc_batch").cadence?.everyDays).toBe(chkDeltas[0]);
 
     // 计划检修窗：历史窗 → 预测窗，13 基地各贡献 1 个间隔且全等。
-    const maint = rowOf(rows, "maint_window");
+    const maint = rowOf(rows, "capacity.maint");
     expect(maint.dataMode).toBe("SYNTHETIC");
     expect(maint.cadence?.everyDays).toBe(77);
     if (maint.dataMode === "SYNTHETIC") expect(maint.intervalCount).toBe(g.maintPlans.length);
 
     // 实测基线（同 D1-2：改种子即须变）。
-    expect(rowOf(rows, "master_schedule").cadence?.everyDays).toBe(1);
-    expect(rowOf(rows, "qc_batch").cadence?.everyDays).toBe(1);
+    expect(rowOf(rows, "capacity.schedule").cadence?.everyDays).toBe(1);
+    expect(rowOf(rows, "capacity.qc_batch").cadence?.everyDays).toBe(1);
   });
 
   it("D1-4 反写死门：换一种铺法的种子 ⇒ everyDays 必须跟着变（排除『值写死在代码里』）", () => {
     const g = gen();
-    const before = rowOf(deriveChainCadences(g), "sop_consensus").cadence?.everyDays;
+    const before = rowOf(deriveChainCadences(g), "demand.consensus").cadence?.everyDays;
     expect(before).toBeDefined();
 
     // 克隆一份种子，把 S&OP 版本改成另一种等距铺法（间隔 × 3），其余一字不动。
@@ -133,7 +133,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
         date: new Date(t0 + i * before! * 3 * DAY).toISOString().slice(0, 10),
       })) as GeneratedBattery["sopVersionRows"],
     };
-    const after = rowOf(deriveChainCadences(respaced), "sop_consensus").cadence?.everyDays;
+    const after = rowOf(deriveChainCadences(respaced), "demand.consensus").cadence?.everyDays;
     expect(after).toBe(before! * 3);
     expect(after).not.toBe(before);
   });
@@ -188,14 +188,14 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
     }
 
     // 组装成 ChainNode 也过 parse（节点内 stepId 唯一 + nodeId 一致由 S0 校验）。
-    const sop = steps.find((s) => s.nodeId === "sop_consensus")!;
-    const node = ChainNodeSchema.parse({ nodeId: "sop_consensus", label: "S&OP 共识会", stage: "DEMAND", steps: [sop] });
+    const sop = steps.find((s) => s.nodeId === "demand.consensus")!;
+    const node = ChainNodeSchema.parse({ nodeId: "demand.consensus", label: "S&OP 共识会", stage: "DEMAND", steps: [sop] });
     expect(nodeLeadTimeDays(node)).toBe(sop.days);
   });
 
   it("SEAM-3 值驱动引擎：种子推出的等待期望塞进 propagateTick 的 delayTicks ⇒ 贡献恰在该 tick 到达", () => {
     const rows = deriveChainCadences(gen());
-    const wait = cadenceWaitDaysOfNode(rows, "sop_consensus");
+    const wait = cadenceWaitDaysOfNode(rows, "demand.consensus");
     expect(wait).not.toBeNull();
     expect(Number.isInteger(wait)).toBe(true); // 14/2 = 7，可整表示为 tick
 
@@ -242,7 +242,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
 
   it("SEAM-4 诚实边界：日节拍的等待期望 0.5 天在 tick=天 的引擎上不可整表示（留给 E4，不在此偷偷取整）", () => {
     const rows = deriveChainCadences(gen());
-    const wait = cadenceWaitDaysOfNode(rows, "master_schedule");
+    const wait = cadenceWaitDaysOfNode(rows, "capacity.schedule");
     expect(wait).toBe(0.5);
     // PropagationRule.delayTicks 是 int ⇒ 直接塞会抛。这是真实缺口，不是本单偷偷 round 掉的地方。
     expect(() =>
@@ -260,7 +260,7 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
   it("D1-6 查不到证据的节点标 EMPTY + 机器可读 reason，消费口返回 null 而**不是 0**", () => {
     const rows = deriveChainCadences(gen());
 
-    for (const id of ["order_review", "mrp_run", "settlement"]) {
+    for (const id of ["order.review", "material.mrp", "order.settlement"]) {
       const r = rowOf(rows, id);
       expect(r.dataMode).toBe("EMPTY");
       expect(r.cadence).toBeUndefined();
@@ -272,28 +272,28 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
     }
 
     // 发运：有集合但哈希散布 ⇒ 不是 NO_CARRIER 而是 NON_UNIFORM（两种空因不同，修法不同）。
-    const ship = rowOf(rows, "shipping_dispatch");
+    const ship = rowOf(rows, "material.shipping");
     expect(ship.dataMode).toBe("EMPTY");
     if (ship.dataMode === "EMPTY") expect(ship.reason).toBe("NON_UNIFORM");
-    expect(cadenceWaitDaysOfNode(rows, "shipping_dispatch")).toBeNull();
+    expect(cadenceWaitDaysOfNode(rows, "material.shipping")).toBeNull();
 
     // EMPTY 节点不产占位环节（产一个 days:0 的段 = 下游会当成"这段不耗时"的真值）。
     const stepNodeIds = cadenceChainSteps(rows).map((s) => s.nodeId);
-    for (const id of ["order_review", "mrp_run", "settlement", "shipping_dispatch"]) expect(stepNodeIds).not.toContain(id);
+    for (const id of ["order.review", "material.mrp", "order.settlement", "material.shipping"]) expect(stepNodeIds).not.toContain(id);
   });
 
   it("D1-8 防假前置期：周期性停机是真周期但**不是**流闸门 ⇒ 推得出、留证据、不摊进链路", () => {
     const rows = deriveChainCadences(gen());
-    const maint = rowOf(rows, "maint_window");
+    const maint = rowOf(rows, "capacity.maint");
 
     // 它是真周期，必须被看见（不是偷偷丢掉）。
     expect(maint.dataMode).toBe("SYNTHETIC");
     expect(maint.cadence?.everyDays).toBe(77);
-    expect(cadenceWaitDaysOfNode(rows, "maint_window")).toBe(38.5);
+    expect(cadenceWaitDaysOfNode(rows, "capacity.maint")).toBe(38.5);
 
     // 但它不进 ChainStep —— 否则全链凭空多一段 38.5 天非增值，E1 会把它归因成 Top1 损失（假数字）。
     expect(maint.flowGate).toBe(false);
-    expect(cadenceChainSteps(rows).map((s) => s.nodeId)).not.toContain("maint_window");
+    expect(cadenceChainSteps(rows).map((s) => s.nodeId)).not.toContain("capacity.maint");
     // 反过来：所有真闸门都必须进链路，别把这个开关当成随手关掉节点的后门。
     for (const r of rows) {
       if (r.cadence !== undefined && r.flowGate) expect(cadenceChainSteps(rows).map((s) => s.nodeId)).toContain(r.nodeId);
@@ -302,25 +302,25 @@ describe("WO-SANDBOX-D1 · 节拍承载", () => {
 
   it("D1-7 变异反证（自动化版）：删掉某节点的 Cadence 证据 ⇒ 消费方拿到 EMPTY，绝不回落默认值", () => {
     const g = gen();
-    const before = rowOf(deriveChainCadences(g), "sop_consensus");
+    const before = rowOf(deriveChainCadences(g), "demand.consensus");
     expect(before.dataMode).toBe("SYNTHETIC");
-    const beforeWait = cadenceWaitDaysOfNode(deriveChainCadences(g), "sop_consensus");
+    const beforeWait = cadenceWaitDaysOfNode(deriveChainCadences(g), "demand.consensus");
     expect(beforeWait).toBe(7);
 
     // 把该节点的证据整个删掉（模拟"这个节点今天没有节拍"）。
     const stripped: GeneratedBattery = { ...g, sopVersionRows: [] };
     const rows = deriveChainCadences(stripped);
-    const after = rowOf(rows, "sop_consensus");
+    const after = rowOf(rows, "demand.consensus");
 
     expect(after.dataMode).toBe("EMPTY");
     expect(after.cadence).toBeUndefined();
     if (after.dataMode === "EMPTY") expect(after.reason).toBe("NO_INTERVAL");
     // 关键三条：不是默认值、不是 0、不是上一次的值。
-    expect(cadenceWaitDaysOfNode(rows, "sop_consensus")).toBeNull();
-    expect(cadenceWaitDaysOfNode(rows, "sop_consensus")).not.toBe(0);
-    expect(cadenceWaitDaysOfNode(rows, "sop_consensus")).not.toBe(beforeWait);
+    expect(cadenceWaitDaysOfNode(rows, "demand.consensus")).toBeNull();
+    expect(cadenceWaitDaysOfNode(rows, "demand.consensus")).not.toBe(0);
+    expect(cadenceWaitDaysOfNode(rows, "demand.consensus")).not.toBe(beforeWait);
     // 其余节点不受牵连（删一个节点的证据不该把别人也弄空）。
-    expect(rowOf(rows, "maint_window").dataMode).toBe("SYNTHETIC");
+    expect(rowOf(rows, "capacity.maint").dataMode).toBe("SYNTHETIC");
   });
 
   // ────────────────────────────────────────────────────────────────────────

@@ -110,6 +110,75 @@ export function expectedCadenceWaitDays(cadence: Pick<Cadence, "everyDays">): nu
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// § 2.5 · 全链节点注册表 —— **nodeId 的单一来源**
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 全链节点登记表。**本表是 `nodeId` 取值的唯一出处**，数据半 / 引擎半 / 前端一律从这里派生。
+ *
+ * ⚠ 本表是补一个**真实炸过的契约漏洞**，不是锦上添花：
+ * S0 首版把 `ChainStepSchema.nodeId` / `ChainNodeSchema.nodeId` 冻成了 `z.string().min(1)` 自由串，
+ * 没有注册表。结果 D1（数据半·节拍）与 E1（引擎半·损失归因）两个 dev **各自发明了一套全链节点词表**：
+ *   · D1：`sop_consensus` / `order_review` / `master_schedule` / `mrp_run` / `settlement` …（snake_case 无前缀）
+ *   · E1：`demand.consensus` / `order.cash` / `material.replenish` / `capacity.aging` …（`<stage>.<name>` 点分）
+ * **交集为 0**。两边各自单测全绿，链路却整条断开：D1 推出来的节拍没有任何消费方能按 id 找到它。
+ * 这正是本仓「绿测试 ≠ 能用 · 断在接缝」的教科书形态，也是「跨两半的特性必须一个 dev 整单做」的由来。
+ *
+ * 派生纪律与 `CANONICAL_BASE_IDS = BASE_REGISTRY.map(...)` 同族：**改册即改枚举**，
+ * 任何一侧写字面量 nodeId 都是回退到出事前的状态。
+ *
+ * 字段：
+ *  · `nodeId` —— canonical id，`<stage 小写>.<名>`，全仓唯一；
+ *  · `label`  —— 人读名（前端**不另维护中文映射表**，一律取这里）；
+ *  · `stage`  —— 所属阶段，必须与 `CHAIN_STAGES` 一致。
+ */
+export const CHAIN_NODE_REGISTRY = [
+  { nodeId: "demand.consensus", label: "S&OP 共识会", stage: "DEMAND" },
+  { nodeId: "order.review", label: "订单评审", stage: "ORDER" },
+  { nodeId: "order.cash", label: "订单回款", stage: "ORDER" },
+  { nodeId: "order.settlement", label: "开票对账 / 月结", stage: "ORDER" },
+  { nodeId: "capacity.schedule", label: "主计划排产", stage: "CAPACITY" },
+  { nodeId: "capacity.qc_batch", label: "过程质检攒批", stage: "CAPACITY" },
+  { nodeId: "capacity.quality", label: "质量与返工", stage: "CAPACITY" },
+  { nodeId: "capacity.aging", label: "老化静置", stage: "CAPACITY" },
+  { nodeId: "capacity.maint", label: "计划检修窗", stage: "CAPACITY" },
+  { nodeId: "material.mrp", label: "MRP 运行", stage: "MATERIAL" },
+  { nodeId: "material.replenish", label: "关键物料补货", stage: "MATERIAL" },
+  { nodeId: "material.shipping", label: "发运节拍", stage: "MATERIAL" },
+] as const satisfies readonly { nodeId: string; label: string; stage: ChainStage }[];
+
+export type ChainNodeDef = (typeof CHAIN_NODE_REGISTRY)[number];
+export const CHAIN_NODE_IDS: readonly string[] = CHAIN_NODE_REGISTRY.map((n) => n.nodeId);
+
+/**
+ * **逐工序节点的动态命名空间**（`capacity.op.<opId>`）。
+ *
+ * 工序节点数量随 Routing/Operation 实例变化（seed 42 下是 OP-001…OP-010），**不可能进静态注册表**。
+ * 但前缀仍须单源 —— 否则「注册表管固定节点、工序节点各写各的」等于漏了一半。
+ * 生成侧与消费侧都必须走本函数 / `CHAIN_OP_NODE_PREFIX`，不许手拼字符串。
+ */
+export const CHAIN_OP_NODE_PREFIX = "capacity.op." as const;
+export function chainOpNodeId(opId: string): string {
+  return `${CHAIN_OP_NODE_PREFIX}${opId}`;
+}
+export function isChainOpNodeId(nodeId: string): boolean {
+  return nodeId.startsWith(CHAIN_OP_NODE_PREFIX);
+}
+
+/** 取注册表节点定义；不在册返回 `undefined`（调用方自己决定是报错还是当动态工序节点）。 */
+export function chainNodeDef(nodeId: string): ChainNodeDef | undefined {
+  return CHAIN_NODE_REGISTRY.find((n) => n.nodeId === nodeId);
+}
+
+/**
+ * `nodeId` 合法性判据：**在册** 或 **属工序动态命名空间**。
+ * 两者都不是 ⇒ 有人又在写自由串了，调用方应当红。
+ */
+export function isKnownChainNodeId(nodeId: string): boolean {
+  return chainNodeDef(nodeId) !== undefined || isChainOpNodeId(nodeId);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // § 3 · ChainScope（范围）—— 闭「业务线维度带不下去」的口子
 // ══════════════════════════════════════════════════════════════════════════
 

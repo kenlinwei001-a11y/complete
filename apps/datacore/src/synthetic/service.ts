@@ -36,6 +36,7 @@ import {
   BINDINGS,
   outputLineScaleForBase,
 } from "./battery.js";
+import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
@@ -704,6 +705,11 @@ export class SyntheticService {
       }
     };
     await putAll("Base", g.bases, "baseId");
+    // WO-SANDBOX-D1×E1 接缝 · 节拍落库。**此前缺的就是这一行**：
+    // `synthetic/cadence.ts` 早已能从种子自身的发生序列推出全链节拍，但没有任何路径把它写出去，
+    // 运行态 `Cadence` 恒 0 条，于是 E1 归因 / E4 推演 / F1 线路图全都取不到 —— 模块绿、链路断。
+    // 值全部由种子推导（本文件不带任何节拍天数字面量）；推不出的行带 `emptyReason` 照样落库（诚实缺席可查询）。
+    await putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId");
     await putAll("ProductPlatform", g.productPlatforms, "platformId");
     await putAll("ProductSeries", g.productSeries, "seriesId");
     await putAll("Model", g.models, "modelId");

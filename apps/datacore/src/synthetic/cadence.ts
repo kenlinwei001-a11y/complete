@@ -45,6 +45,7 @@ import {
   CadenceSchema,
   DerivedDataModeSchema,
   cadenceWaitStep,
+  chainNodeDef,
   expectedCadenceWaitDays,
   type Cadence,
   type CadenceKind,
@@ -154,9 +155,8 @@ export type CadenceEvidence =
     };
 
 export interface CadenceNodeDef {
+  /** **必须是 `CHAIN_NODE_REGISTRY` 在册 id**；`label`/`stage` 由它经注册表派生，本表不再各存一份。 */
   readonly nodeId: string;
-  readonly label: string;
-  readonly stage: ChainStage;
   readonly kind: CadenceKind;
   readonly evidence: CadenceEvidence;
   /** 从种子取该节点的发生时刻分组序列；`evidence.kind === "NONE"` 时为 `null`。 */
@@ -204,9 +204,7 @@ function seriesOf(rows: readonly Record<string, unknown>[], instantField: string
  */
 export const CADENCE_NODES: readonly CadenceNodeDef[] = [
   {
-    nodeId: "sop_consensus",
-    label: "S&OP 共识会",
-    stage: "DEMAND",
+    nodeId: "demand.consensus",
     kind: "meeting",
     evidence: {
       kind: "SERIES",
@@ -230,9 +228,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       "该由契约补（如 `everyMonths` 或 `anchor: monthly`），不该由我在种子侧糊一个平均值绕过去。",
   },
   {
-    nodeId: "order_review",
-    label: "订单评审",
-    stage: "ORDER",
+    nodeId: "order.review",
     kind: "meeting",
     evidence: {
       kind: "NONE",
@@ -246,9 +242,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     note: "无承载 ⇒ EMPTY。补法不是在这里编一个周期，是先有订单评审事件对象（谁在哪天评了哪批单）。",
   },
   {
-    nodeId: "master_schedule",
-    label: "主计划排产",
-    stage: "CAPACITY",
+    nodeId: "capacity.schedule",
     kind: "batch",
     evidence: {
       kind: "SERIES",
@@ -264,9 +258,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       "诚实边界：ProductionSchedule 属 `service.ts` 明列的『高量低值执行类保持模型态不物化』 ⇒ **生成器里有、对象库里没有**，下游按对象查不到源。",
   },
   {
-    nodeId: "mrp_run",
-    label: "MRP 运行",
-    stage: "MATERIAL",
+    nodeId: "material.mrp",
     kind: "batch",
     evidence: {
       kind: "NONE",
@@ -280,9 +272,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     note: "无承载 ⇒ EMPTY。注意 etaDate 看着像个日期序列，但口径是到货不是跑批，拿它当 MRP 节拍就是口径错标。",
   },
   {
-    nodeId: "qc_batch",
-    label: "过程质检攒批",
-    stage: "CAPACITY",
+    nodeId: "capacity.qc_batch",
     kind: "batch",
     evidence: {
       kind: "SERIES",
@@ -299,9 +289,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       "故这是**有间隔的那部分批次**的一致节拍，不是全体批次的。",
   },
   {
-    nodeId: "shipping_dispatch",
-    label: "发运节拍",
-    stage: "MATERIAL",
+    nodeId: "material.shipping",
     kind: "shipping",
     evidence: {
       kind: "SERIES",
@@ -317,9 +305,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       "另查 Shipment：只有 `etaDay = randInt(2,16)`（**在途时长**）与 `coverageDays`（在途覆盖天数），两者都不是『多久发一次』，口径不同不可挪用。",
   },
   {
-    nodeId: "settlement",
-    label: "开票对账 / 月结",
-    stage: "ORDER",
+    nodeId: "order.settlement",
     kind: "settlement",
     evidence: {
       kind: "NONE",
@@ -335,9 +321,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     note: "无承载 ⇒ EMPTY。特别记一笔：termDays 是本节点最容易被误用的诱饵——账期 ≠ 结算节拍，挪用即口径错标（本仓刚修过差 1e4 的同族错标）。",
   },
   {
-    nodeId: "maint_window",
-    label: "计划检修窗",
-    stage: "CAPACITY",
+    nodeId: "capacity.maint",
     kind: "batch",
     evidence: {
       kind: "SERIES",
@@ -409,8 +393,14 @@ export type CadenceSeedRow =
 export function deriveChainCadences(g: GeneratedBattery): CadenceSeedRow[] {
   const out: CadenceSeedRow[] = [];
   for (const def of CADENCE_NODES) {
+    // label/stage **一律经注册表派生**（单源）。不在册即抛：宁可炸，也不给一个自造的节点名——
+    // 「两个 dev 各发明一套 nodeId」正是本模块此前零消费方的真因（见契约 §2.5）。
+    const reg = chainNodeDef(def.nodeId);
+    if (reg === undefined) {
+      throw new Error(`CADENCE_NODES: nodeId "${def.nodeId}" 不在 CHAIN_NODE_REGISTRY 在册（禁止自由串 nodeId）`);
+    }
     const base = {
-      nodeId: def.nodeId, label: def.label, stage: def.stage,
+      nodeId: reg.nodeId, label: reg.label, stage: reg.stage as ChainStage,
       flowGate: def.flowGate, evidence: def.evidence, note: def.note,
     } as const;
     if (def.extract === null) {
@@ -474,4 +464,57 @@ export function cadenceChainSteps(rows: readonly CadenceSeedRow[]): ChainStep[] 
     steps.push(cadenceWaitStep({ stepId: `${r.nodeId}__cadence`, nodeId: r.nodeId, cadence: r.cadence, label: r.label }));
   }
   return steps;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 5 · 落库口 —— 让节拍**离开本模块**（此前缺的就是这一段）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 把推导结果摊平成可落库的对象行（`synthetic/service.ts` 经 `putAll("Cadence", …, "nodeId")` 物化）。
+ *
+ * ⚠ 本函数是**这个模块此前唯一缺的东西**，也是它此前零生产调用方的直接原因：
+ * `deriveChainCadences` / `cadenceOfNode` / `cadenceChainSteps` 全都实现了、单测也全绿，
+ * 但没有任何一条路径把结果**写出去**，于是运行态 `GET /a/v1/objects?type=Cadence` 恒为 0 条，
+ * 而下游（E1 归因 / E4 推演 / F1 线路图）只能从对象库取数 ⇒ 整条节拍链断开。
+ * 这是「实现有、测试有、且是绿的，零生产调用方」的教科书形态：**测试咬的是函数，不是链路**。
+ *
+ * 摊平而非存嵌套对象：与本仓其余种子对象一致（全是扁平 record），使 `Cadence` 可被
+ * 对象查询/规则 DSL/派生按字段取用。消费侧重建 `Cadence` 走 `cadenceFromProps()`，不各自拼。
+ *
+ * **EMPTY 行照样输出**：诚实缺席要能被查询到（带 `emptyReason`），
+ * 否则「查过没有」和「压根没登记」在下游分不开 —— 那正是本仓反复栽跟头的地方。
+ */
+export function cadenceObjectRows(rows: readonly CadenceSeedRow[]): Record<string, unknown>[] {
+  return rows.map((r) => ({
+    nodeId: r.nodeId,
+    label: r.label,
+    stage: r.stage,
+    dataMode: r.dataMode,
+    flowGate: r.flowGate,
+    note: r.note,
+    ...(r.cadence === undefined
+      ? { emptyReason: r.reason }
+      : {
+          everyDays: r.cadence.everyDays,
+          ...(r.cadence.offsetDays === undefined ? {} : { offsetDays: r.cadence.offsetDays }),
+          cadenceKind: r.cadence.kind,
+          intervalCount: r.intervalCount,
+        }),
+  }));
+}
+
+/**
+ * 从落库后的扁平 props 重建 `Cadence`。**消费侧唯一入口**（禁止各自 `{everyDays: p.everyDays}` 拼）。
+ * 走真 `CadenceSchema.parse`：库里的行若形状坏了，在读侧就红，不带着坏值往下游跑。
+ * `dataMode !== "SYNTHETIC"`（诚实缺席）⇒ `undefined`，**不是 0**。
+ */
+export function cadenceFromProps(props: Record<string, unknown>): Cadence | undefined {
+  if (props.dataMode !== DerivedDataModeSchema.enum.SYNTHETIC) return undefined;
+  if (typeof props.everyDays !== "number") return undefined;
+  return CadenceSchema.parse({
+    everyDays: props.everyDays,
+    ...(typeof props.offsetDays === "number" ? { offsetDays: props.offsetDays } : {}),
+    kind: props.cadenceKind,
+  });
 }

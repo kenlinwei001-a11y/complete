@@ -45,7 +45,10 @@
  * 同 (seed=42, 场景, 参数版本) 两跑字节一致（`chain-loss-attribution.test.ts` 锁）。
  */
 import {
+  CADENCE_STEP_KIND,
   CHAIN_STEP_KINDS,
+  cadenceWaitStep,
+  expectedCadenceWaitDays,
   chainNonValueDays,
   chainValueAddDays,
   computeLossAttribution,
@@ -68,8 +71,18 @@ import {
 /** 一天多少分钟。`Operation.standardTime`/`setupTime` 的种子单位是**分钟**（`battery.ts:3222-3231`）。 */
 export const MINUTES_PER_DAY = 1440;
 
-/** `drillValue` 自身的单位。**只有两个**——多一个就得同时改 `daysFromDrill` 与对拍测，故意不做成开放集。 */
-export type DrillUnit = "day" | "min";
+/**
+ * `drillValue` 自身的单位。**故意不做成开放集**——多一个就得同时改 `daysFromDrill`、
+ * `conversionText` 与对拍测三处（原作者定的纪律，本次加 `cadence_day` 时照办了）。
+ *
+ * · `day`         —— 字段本身就是天数，1:1。
+ * · `min`         —— 分钟（`Operation.standardTime`/`setupTime` 的种子单位）。
+ * · `cadence_day` —— **周期长度**（天），链上耗的是**等待期望 = 周期/2**，不是周期本身。
+ *   为什么不直接把 `drillValue` 存成 3.5 天了事：那样 `drillValue` 就不再是「字段真值」，
+ *   回仓储捞 `Cadence.everyDays` 得到 7 却与证据里的 3.5 对不上 —— 正是 `gap_attribution`
+ *   差 1e4 那次的形状（标签说的字段 ≠ 回的值）。故保留真值 + 显式声明换算。
+ */
+export type DrillUnit = "day" | "min" | "cadence_day";
 
 /**
  * `drillValue`（字段真值·原单位）→ `days`（链上天数）的**唯一换算**。
@@ -81,12 +94,19 @@ export type DrillUnit = "day" | "min";
  * 这正是 `gap_attribution` 差 1e4 那次**缺**的那一环（当时只有值，没有单位与换算的显式声明）。
  */
 export function daysFromDrill(drillValue: number, unit: DrillUnit): number {
-  return unit === "min" ? drillValue / MINUTES_PER_DAY : drillValue;
+  if (unit === "min") return drillValue / MINUTES_PER_DAY;
+  // 节拍：走契约的**唯一等待期望公式**（`everyDays/2`），本文件不复写这个除法。
+  if (unit === "cadence_day") return expectedCadenceWaitDays({ everyDays: drillValue });
+  return drillValue;
 }
 
 /** 换算式的人读文案（与 `daysFromDrill` 同源，别各写各的）。 */
 function conversionText(field: string, unit: DrillUnit): string {
-  return unit === "min" ? `days = ${field} / ${MINUTES_PER_DAY}（分钟 → 天）` : `days = ${field}（本就是天，1:1）`;
+  if (unit === "min") return `days = ${field} / ${MINUTES_PER_DAY}（分钟 → 天）`;
+  if (unit === "cadence_day") {
+    return `days = ${field} / 2（等待期望；均匀到达假设。offsetDays 是相位，不进公式）`;
+  }
+  return `days = ${field}（本就是天，1:1）`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -209,6 +229,13 @@ export interface ChainLossInput {
   materials: ChainLossObject[];
   suppliers: ChainLossObject[];
   processes: ChainLossObject[];
+  /**
+   * 节拍对象（`Cadence`，D1 种子推导 → `synthetic/service.ts` 落库）。
+   * **本字段就是 D1×E1 那条断了的接缝**：此前本求解器把「等节拍」两段写死成 EMPTY，
+   * 而 D1 早已推出了真节拍——只是没人把它读进来。现在改为**运行时按对象查表**：
+   * 查得到就出真环节，查不到才 EMPTY（且原因取自数据行，不是文案常量）。
+   */
+  cadences: ChainLossObject[];
   links: ChainLossLink[];
 }
 
@@ -260,26 +287,6 @@ interface StructuralGap {
 
 const STRUCTURAL_GAPS: readonly StructuralGap[] = [
   {
-    stepId: "demand.sop_cadence",
-    nodeId: "demand.consensus",
-    stage: "DEMAND",
-    label: "等 S&OP 共识会节拍",
-    kind: "cadence",
-    reason:
-      "「多久开一次会」在数据层无承载：全仓没有任何对象带 Cadence（everyDays/offsetDays）。等待期望公式 everyDays/2 有了（S0 契约），但没有值可以喂给它 —— 属「新契约已冻结、数据半未交付」（D1 单）。",
-    probe:
-      "grep -rn 'everyDays' apps packages --include=*.ts → 仅命中 packages/contracts/src/chain-sim.ts（S0 契约自身声明）；另有 apps/datacore/src/opsteam/defaults.ts:64 的 `cadence`，追一层确认是虚拟运营团队 playbook 的 daily/weekly/monthly 动作槽（replay.ts:91-95 按星期几/几号触发 persona 动作），与「环节多久处理一次」是两个口径，不可挪用。",
-  },
-  {
-    stepId: "order.review_cadence",
-    nodeId: "order.cash",
-    stage: "ORDER",
-    label: "等订单评审节拍",
-    kind: "cadence",
-    reason: "同上：订单评审的节拍周期无承载物（D1 单）。",
-    probe: "同 demand.sop_cadence（Cadence 全仓零数据承载）。",
-  },
-  {
     stepId: "material.in_transit",
     nodeId: "material.replenish",
     stage: "MATERIAL",
@@ -312,7 +319,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
   },
   {
     stepId: "chain.rework",
-    nodeId: "chain.quality",
+    nodeId: "capacity.quality",
     stage: "CAPACITY",
     label: "返工",
     kind: "rework",
@@ -557,6 +564,73 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       nodeMeta.set(d.nodeId, { label: d.nodeLabel, stage: d.stage, ...(d.scope ? { scope: d.scope } : {}), steps: [] });
     }
     nodeMeta.get(d.nodeId)!.steps.push(step);
+  }
+
+  // ── 等节拍段：**按 `Cadence` 对象查表**，不是写死 ────────────────────────
+  // 这里是 D1（数据半推节拍）× E1（引擎半算损失）的接缝。此前两半各自单测全绿而链路断开：
+  // D1 推得出节拍却没落库，E1 则把这两段写死成「全仓没有任何对象带 Cadence」的常量文案——
+  // 即便 D1 后来落了库，那句话也照印不误（过期诊断）。故改为运行时查表：
+  //   · 查到 SYNTHETIC 行 ⇒ 出真环节，天数走契约唯一公式 `cadenceWaitStep`（= everyDays/2），本文件不写除法；
+  //   · 查到 EMPTY 行     ⇒ 出诚实缺席，`reason` 取自**数据行的 emptyReason**（NO_CARRIER/NO_INTERVAL/NON_UNIFORM），不是文案常量；
+  //   · `flowGate === false`（周期性停机，如检修窗）⇒ **不产环节**，否则会凭空给全链加一段假等待。
+  const cadenceRows = [...input.cadences].sort((a, b) => str(a.props.nodeId).localeCompare(str(b.props.nodeId)));
+  for (const c of cadenceRows) {
+    const nodeId = str(c.props.nodeId);
+    const nodeLabel = str(c.props.label, nodeId);
+    const stage = str(c.props.stage) as ChainStage;
+    const stepId = `${nodeId}__cadence`;
+    if (c.props.flowGate !== true) continue; // 停机 ≠ 闸门（见 D1 `CadenceNodeDef.flowGate`）
+    const everyDays = num(c.props.everyDays);
+    if (c.props.dataMode !== "SYNTHETIC" || everyDays === null) {
+      // D1 的三种推不出，**映到本文件的两种诚实缺席时不许一锅端**（三分法纪律）：
+      //  · NO_CARRIER            → 连可查的集合都没有        ⇒ NO_CARRIER（要新增对象/字段才能补）
+      //  · NO_INTERVAL/NON_UNIFORM → 集合在、发生记录也在，
+      //                              只是凑不出/凑不齐一个等长周期 ⇒ NO_INSTANCE（数据缺，不是模型缺）
+      // 混标会把「该加字段」和「该补数据」两种完全不同的修法说成一回事。
+      const reason = str(c.props.emptyReason, "NO_CARRIER");
+      const emptyKind = reason === "NO_CARRIER" ? "NO_CARRIER" : "NO_INSTANCE";
+      empty.push({
+        stepId,
+        nodeId,
+        stage,
+        label: `等${nodeLabel}节拍`,
+        kind: CADENCE_STEP_KIND,
+        dataMode: "EMPTY",
+        emptyKind,
+        reason: `节拍在数据层无值可用（Cadence.${nodeId} 标 ${reason}）——等待期望公式 everyDays/2 有了（S0 契约），但没有值可以喂给它。不补 0：0 的语义是「随到随办」。`,
+        probe: `读对象 Cadence(nodeId=${nodeId})：dataMode=${str(c.props.dataMode, "?")} · emptyReason=${str(c.props.emptyReason, "-")} · 由 synthetic/cadence.ts 从种子自身发生序列推导，推不出即诚实标空。`,
+      });
+      continue;
+    }
+    const step = cadenceWaitStep({
+      stepId,
+      nodeId,
+      cadence: { everyDays, kind: str(c.props.cadenceKind, "batch") as never },
+      label: `等${nodeLabel}节拍`,
+    });
+    steps.push(step);
+    evidence.push({
+      stepId,
+      nodeId,
+      stage,
+      label: step.label ?? stepId,
+      kind: step.kind,
+      days: step.days,
+      valueAdd: step.valueAdd,
+      solverKey: SOLVER_KEY,
+      drillType: "Cadence",
+      drillId: nodeId,
+      drillField: "everyDays",
+      drillValue: everyDays, // ← 字段真值（周期长度），**不是**换算后的等待天数（那正是 1e4 错标的形状）
+      drillUnit: "cadence_day",
+      conversion: conversionText("Cadence.everyDays", "cadence_day"),
+      derivationEdge: "Cadence.everyDays → expectedCadenceWaitDays",
+    });
+    if (!nodeMeta.has(nodeId)) {
+      nodeOrder.push(nodeId);
+      nodeMeta.set(nodeId, { label: nodeLabel, stage, steps: [] });
+    }
+    nodeMeta.get(nodeId)!.steps.push(step);
   }
 
   // 结构性缺席（NO_CARRIER）：本体里根本没有承载物的那几段，逐条登记。

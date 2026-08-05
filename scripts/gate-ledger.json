@@ -702,6 +702,23 @@
       },
       "notes": "",
       "disposition": "WIRE"
+    },
+    "check-chain-node-singlesource.mjs": {
+      "alias": "chain-node-singlesource:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "packages/contracts/src/chain-sim.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/datacore/src/solvers/chain-loss.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:848",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行848",
+        "note": "亲手跑过两组变异：① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。门自身另带防截断三判据（锚 `] as const satisfies` + MIN_NODES 下限 + 四哨兵 id），防 G-GATE-PARSER-TRUNCATED-VIEW 同族。"
+      },
+      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。"
     }
   }
 }
