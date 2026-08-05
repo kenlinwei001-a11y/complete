@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IntentDefinition, SessionContext } from "@platform/contracts";
+import { matchObjectRefInType, pickObjectRefResolution } from "@platform/contracts";
 import { fillSlots, resolveAnchorDate, resolveRelativeDate } from "../src/router/slots.js";
 import { summarizeSolverOutput } from "../src/workflow/executor.js";
 
@@ -9,10 +10,18 @@ import { summarizeSolverOutput } from "../src/workflow/executor.js";
  */
 
 // ---- 测试桩：fillSlots 的 OntologyClient / ctx（date 槽不触本体，objectRef 才需要）----
+// WO-SLOT-ENTITY-RESOLVE：objectRef 槽改走 `resolveObjectRef` 正门，本桩据此补齐；
+// 匹配规则**不自写**，与生产/mock 一样调 contracts 同一个纯核心（单一出处）。
+const STUB_BASE_TYPE = { key: "Base", properties: [{ propKey: "baseId", isPrimaryKey: true }, { propKey: "name" }] };
+const STUB_BASE_ROWS = [{ id: "obj_base_changzhou", props: { baseId: "changzhou", name: "常州" } }];
 const ontology = {
   getObject: async (_ctx: unknown, objectType: string, objectId: string) => ({ data: { objectType, objectId, name: objectId } }),
   listObjectTypeKeys: async () => ["Base"],
   queryObjects: async () => ({ data: { rows: [] } }),
+  resolveObjectRef: async (_ctx: unknown, req: { ref: unknown }) => {
+    const { hits, attempt } = matchObjectRefInType({ ref: req.ref, objectType: "Base", typeDef: STUB_BASE_TYPE, rows: STUB_BASE_ROWS });
+    return pickObjectRefResolution(req.ref, hits, [attempt]);
+  },
 } as unknown as Parameters<typeof fillSlots>[3];
 const ctx = { tenantId: "demo", userId: "u", roles: [], token: "t" } as unknown as Parameters<typeof fillSlots>[4];
 
