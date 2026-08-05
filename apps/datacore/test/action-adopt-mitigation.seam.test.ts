@@ -184,14 +184,28 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //          → 2c7ba020(C08 红线 0.3→0.2)=bb5dd844… → aa28eda1(G-10 规则一等化)=c7ec8b29…
     //   C08 是真推演变化（红线收紧，本就该变）；G-10 **只动了 ruleSetVersion**，推演数值逐字节未变
     //   （`diff` 全文只有一行不同）—— 这也正是本条改口径的直接由来。
+    //
+    // ── 金值重定 #2（WO-DECISION-INFO·2026-08-05）：26434/9d8d4050… → 89262/c8ca2a72… ────────────
+    // **归属取证（按上面那段的要求做过，不是直接改数）**：
+    //   ① 形状增量（加性·占大头 ~62.4KB）：`cards[].exposure`（影响面）·`cards[].doNothing`（不作为后果）
+    //      ·`planRows[].options`（A/B/C 多方案 + 代价）·顶层 `exposureOrder`·`steps[].leadTime`。
+    //      全是新键，一个既有键都没动。
+    //   ② **推演数值口径变更（有意·WO-DECISION-INFO ③.2 去魔数）**：处置步骤里「跨基地调剂」「外协补足」
+    //      两步的 `day`/`date` 此前由写死的 `trigDay + 7` / `trigDay + 14` 决定，现改为由**真对象**派生
+    //      —— `InterBaseTransfer.transitDays` / 合格 `Supplier.leadTime`。
+    //      实测（常州·horizon 30）：跨基地 d8→**d4**（XFER-changzhou-chengdu-4680-NCM.transitDays=3）、
+    //      外协 d15→**d8**（SUP-002.leadTime=7）；`rationale` 随之带上前置期出处（R13）。
+    //   ③ 验算：把 ①的新键全剥掉后长度 26882（vs 旧 26434），剩下的 448 字节差**全部**落在
+    //      那两步的 day/date/rationale 上 —— 没有任何第三处数字被挪动。
+    //   下次本条转红时照旧按上面那段流程做归属取证，别直接改数。
     const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
     const numericJson = JSON.stringify(numeric);
-    expect(numericJson.length, "输出长度已变 —— 无采纳时不该有任何形状变化").toBe(26434);
+    expect(numericJson.length, "输出长度已变 —— 无采纳时不该有任何形状变化").toBe(89262);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("9d8d4050f9ca9f34524d4497aa09e29d14e8c8ad3f60e740cbe879eff2bd1c8b");
+    ).toBe("c8ca2a725e5a27a4fdb9091d021cd87f1d56c439d9f9d2afc1b6c62b52b45d04");
     expect(typeof ruleSetVersion, "规则集指纹必须仍在（它变是正常的，缺了才是问题）").toBe("string");
     expect(String(ruleSetVersion)).toMatch(/^rsv_[0-9a-f]+$/);
     // 新字段绝不在无采纳时露头（避免"多了个 key"这种静默形状漂移）。

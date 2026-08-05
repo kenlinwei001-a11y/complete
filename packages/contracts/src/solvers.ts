@@ -318,6 +318,13 @@ export const RiskTimelineOutputSchema = z.object({
   cards: z.array(RiskCardSchema).max(8),
   // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
   planRows: z.array(RiskPlanRowSchema).optional(),
+  /**
+   * WO-DECISION-INFO ①（加性·optional）：**按影响面排序**的 baseId 序列（零敞口基地一律沉底）。
+   * `cards[]` 的数组序仍是既有的「越线日↑ → 实测当前张力↓」契约（不动·由 preferRiskCard 咬死）；
+   * 看板要"别让零敞口的卡占榜首"，按本序渲即可。它与 `cards[].exposure.rank` 是**同一次计算的两个投影**
+   * （不是第二套排序算法 → 不会漂移）。
+   */
+  exposureOrder: z.array(z.string()).optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 

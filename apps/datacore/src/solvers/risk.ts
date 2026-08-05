@@ -1,5 +1,15 @@
 import { round, hashString } from "../prng.js";
-import { SEG_REGISTRY, deriveDisposition } from "@platform/contracts";
+import { SEG_REGISTRY, deriveDisposition, deriveDispositionOptions, type DispositionOptions, type Exposure } from "@platform/contracts";
+// WO-DECISION-INFO：决策三块（影响面 / 不作为后果 / 方案代价证据）的派生半。
+import {
+  assignExposureRanks,
+  attachOptionEvidence,
+  buildDoNothing,
+  buildExposure,
+  crossBaseLeadOf,
+  disclosedCoefficients,
+  outsourceLeadOf,
+} from "./decision-info.js";
 // WO-SANDBOX-D3 · 工序硬容量单元声明单源（哪个属性承载柜位数/单元速率·零数值重复·诚实缺不兜底）。
 import { HARD_CAPACITY_UNIT_SPECS, readProcessHardCapacity, type BottleneckHardCapacity, type HardCapacityUnitSpec } from "@platform/contracts";
 import { validationError } from "../errors.js";
@@ -616,6 +626,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         peak: Math.max(...series),
       }).affected,
     };
+    // WO-DECISION-INFO ①：影响面从**卡片自己那份** affectedOrders 装配（同一出处·不重算·R-一致）。
+    // rank 在全部卡片定下来之后统一回填（见下方 assignExposureRanks），这里先算无 rank 的半成品。
+    card.__exposureDraft = buildExposure(c, pair.baseId, card.affectedOrders as Record<string, unknown>[], { fromDay: 0, toDay: horizon });
     // WO-ADOPT-MITIGATION · 加性披露（R13）：本卡真曲线已吃掉哪条采纳。**仅在真有采纳时置键** →
     // 无采纳时输出与上线前逐字节一致。前端据此显「已采纳 XX（T+n 起 −eff）」，而不是让用户对着一条
     // 悄悄降下去的曲线猜为什么降。
@@ -682,13 +695,45 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
   // 顶层 dataMode：全 LIVE→LIVE，全 MOCK→MOCK，混合→PARTIAL（前端据此提示"部分估算"）。
   const modes = new Set(shown.map((c2) => c2.dataMode as string));
   const dataMode = modes.size === 0 ? "MOCK" : modes.size === 1 ? [...modes][0] : "PARTIAL";
+  const { rows: planRows, gapByBase } = buildRiskPlanRows(c, shown, p.threshold, horizon, c0, overlay);
+
+  // ---- WO-DECISION-INFO ①② · 影响面排序 + 不作为后果（逐卡回填）----------------------------
+  // ⚠ **cards[] 的数组顺序刻意不动**（既有排序契约「越线日↑ → 实测当前张力↓ → peak↓ → 基地名」
+  //   由 `preferRiskCard` + `capacity-page-100pct.test.ts ①R1b/①R1c` 双向咬死，改它要连着改那两条断言，
+  //   而那个文件不在本单的范围边界内）。本单给出的是**显式的影响面排序键** `exposure.rank`
+  //   + 顶层 `exposureOrder`（= 按 rank 升序的 baseId 序列）：零敞口卡一律排到全部有敞口卡之后。
+  //   实测（seed 42·horizon 30）：数组序前三张是江门/邯郸/自贡，敞口**各 0 张**；
+  //   按 exposureOrder 则常州（5 单 6.2 万套）居首、江门/邯郸/自贡沉底 —— 前端按 exposureOrder 渲即可。
+  const ranked: Exposure[] = assignExposureRanks(shown.map((c2) => c2.__exposureDraft as Omit<Exposure, "rank">));
+  const rankByBase = new Map(ranked.map((e) => [e.baseId, e]));
+  for (const c2 of shown) {
+    const baseId = str(c2.baseId);
+    const exposure = rankByBase.get(baseId);
+    delete c2.__exposureDraft;
+    if (!exposure) continue;
+    c2.exposure = exposure;
+    const gap = gapByBase.get(baseId);
+    c2.doNothing = buildDoNothing(
+      c,
+      baseId,
+      exposure,
+      gap?.shortfall ?? 0,
+      gap?.freeDaily ?? 0,
+      c2.affectedOrders as Record<string, unknown>[],
+    );
+  }
+  const exposureOrder = [...ranked].sort((a, b) => a.rank - b.rank).map((e) => e.baseId);
+
   return {
     horizon,
     threshold: p.threshold,
     dataMode,
     cards: shown,
     mitigationLibrary: p.mitigations,
-    planRows: buildRiskPlanRows(c, shown, p.threshold, horizon, c0, overlay),
+    planRows,
+    // WO-DECISION-INFO ①：**按影响面排序**的基地序（零敞口者沉底）。与 cards[].exposure.rank 同一次计算的投影
+    // （不是第二套排序算法 → 不会漂移）；前端渲看板按此序即可，不必自己再排一遍。
+    exposureOrder,
   };
 }
 
@@ -733,6 +778,17 @@ function mmdd(startIso: string, day: number): string {
  * 触发日 trigDay = 该卡 crossDay（越线日·由 crossDayOf(series, threshold) 判定 → threshold 真参与）。
  * shortfall=0 → 无步骤（诚实：det 说明窗内无缺口，方案回落配置库参照名·不臆造动作）。
  */
+/** 每基地的真缺口读数（planRows 与卡片 doNothing **同一出处**·不各算一套·R-一致）。 */
+export interface BaseGap {
+  freeDaily: number;
+  available: number;
+  futureQty: number;
+  inProdTotal: number;
+  demand: number;
+  shortfall: number;
+  capRatio: number;
+}
+
 function buildRiskPlanRows(
   c: SolverContext,
   cards: Record<string, unknown>[],
@@ -740,7 +796,7 @@ function buildRiskPlanRows(
   horizon: number,
   cBase: SolverContext,
   overlay: { objectType: string; objectId: string; prop: string; value: unknown }[],
-): Record<string, unknown>[] {
+): { rows: Record<string, unknown>[]; gapByBase: Map<string, BaseGap> } {
   const fs = c.params.forecastStart;
   const mits = c.params.risk.mitigations;
   const rows: Record<string, unknown>[] = [];
@@ -768,6 +824,15 @@ function buildRiskPlanRows(
 
   const linesProps = c.lines.map((l) => l.props);
   const basesProps = c.bases.map((b) => b.props);
+  const gapByBase = new Map<string, BaseGap>();
+
+  // WO-DECISION-INFO ③.2 · 前置期从**真对象**读（不再 `+7`/`+14`）：跨基地在途 = InterBaseTransfer.transitDays
+  // （本基地相关通道里最慢的一条·保守不 over-promise）；外协 = 合格 Supplier 里最长的 leadTime。
+  // 取不到 → DispositionLead.status="EMPTY"（日期不叠加偏移·绝不回落魔数）。
+  const transferProps = (c.interBaseTransfers ?? []).map((o) => o.props);
+  const supplierProps = (c.suppliers ?? []).map((o) => o.props);
+  const outsourceLead = outsourceLeadOf(supplierProps);
+  const coefficients = disclosedCoefficients(c, { overtimeUpliftPct, crossBaseAbsorbPct });
 
   for (const card of cards) {
     const base = str(card.base);
@@ -803,7 +868,9 @@ function buildRiskPlanRows(
     const inProdTotal = 0;
     const demand = round(inProdTotal + futureQty, 2);
     const shortfall = round(Math.max(0, demand - available), 2);
-    const d = deriveDisposition({
+    gapByBase.set(baseId, { freeDaily, available, futureQty, inProdTotal, demand, shortfall, capRatio });
+    const crossBaseLead = crossBaseLeadOf(transferProps, baseId, base);
+    const dispositionInput = {
       baseId,
       forecastStart: fs,
       horizon,
@@ -815,7 +882,16 @@ function buildRiskPlanRows(
       futureQty,
       overtimeUpliftPct,
       crossBaseAbsorbPct,
-    });
+      crossBaseLead,
+      outsourceLead,
+    };
+    const d = deriveDisposition(dispositionInput);
+    // WO-DECISION-INFO ③ · 可比较的多方案（A 本地优先 = 上面那条贪心的同解，可对拍）+ 真代价装配。
+    const options: DispositionOptions = attachOptionEvidence(
+      c,
+      deriveDispositionOptions({ ...dispositionInput, coefficients }),
+      { baseId, demandInWindow: demand, window: { fromDay: 0, toDay: win } },
+    );
     const head = d.steps[0];
     const shortBase = base.replace("基地", "").replace("·总部", "");
     rows.push({
@@ -835,6 +911,8 @@ function buildRiskPlanRows(
       residual: d.residual,
       steps: d.steps,
       plan: s0.name,
+      // WO-DECISION-INFO ③：多方案只挂**主行**（备份行不重复挂同一份大对象）。
+      options,
       ...(overlay.length > 0 ? { overlay: { count: overlay.length, capRatio } } : {}),
     });
     if (peak >= 90 && sols[1]) {
@@ -871,7 +949,7 @@ function buildRiskPlanRows(
   // 而 crossDay 就是本表的缺口窗（win）+ 触发日（trigDay）；此处保留形参以显式记录该依赖来源。
   void threshold;
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
-  return rows;
+  return { rows, gapByBase };
 }
 
 /**
