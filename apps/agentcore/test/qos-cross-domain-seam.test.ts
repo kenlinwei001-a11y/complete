@@ -152,17 +152,41 @@ describe("WO-QOS-CROSS-DOMAIN-UNIFIED · 活系统 SEAM（真跑 orchestrator）
     await t.app.close();
   });
 
-  it("SEAM-Q2 对照（根治证）：Q2 flag 关 + Coordinator 开 → **进 Coordinator**（model=coordinator·agentRequests≥1）——证明修的就是这条", async () => {
+  /**
+   * ★ 本用例的断言在 WO-COORD-YIELD-AND-TERMINAL（D1·闭 `G-COORD-PHRASE-HIJACK`）里**被有意改写**，理由逐条如下：
+   *
+   * 原断言：`model === "coordinator"` ∧ `agentRequests >= 1` —— 即「② 关掉，Q2 就该掉进 Coordinator 烧 agent」。
+   * 它当年是**对照组**：用来证「② 那道门才是把 Q2 从 300s 慢路上拉回来的那一手」。
+   *
+   * 为什么必须改：这条断言**正在固化本单要治的病** —— 它把「关键词共现即被 Coordinator 抢走」写成了
+   * 系统的正确行为。D1 把 Coordinator 从 classify **之前**移到之后并降级为兜底之后，Q2（带 PageContext·
+   * 有对口确定性路由）在**任何** flag 组合下都不会再被 Coordinator 抢走 —— 这正是本单的预期效果，不是回归。
+   *
+   * 改成什么：**对照的目的一字不变**（② 开 vs ② 关 → 路由必须不同），只是把"关"这一侧的期望从
+   * 「掉进 Coordinator」换成「拿不到 ② 的确定性多域待遇」，并**顺手把 D1 的收益钉住**：
+   * 明明 3 个角色 agent 的 mock 回合就摆在那儿，也**一次都没被烧掉**。
+   * 这比原断言更有牙：原断言只要 Coordinator 抢跑就绿，现在必须"既没走 ②、也没烧 agent"才绿。
+   */
+  it("SEAM-Q2 对照（根治证·门序随 D1 更新）：Q2 flag 关 → 拿不到 ② 的确定性多域待遇；且**不再**掉进 Coordinator 烧 agent", async () => {
     const t: TestApp = await createTestApp();
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]); // 多域门关·Coordinator 开
     await seedAgents(t);
+    // 三个角色 agent 的回合**备好摆在这儿**——若 Coordinator 再抢跑，它们会被消费掉，下面 agentRequests=0 立刻转红。
     for (const ans of ["长协覆盖 70%，缺口需补。", "涂布产出下降，产能受限。", "良率下降 2%，需诊断。"]) {
       t.llm.queueAgentTurn(() => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: ans }], provenance: [] })] }));
     }
     const { taskId } = await submitQuery(t, ADMIN, Q2, { view: "risk", pageContext: riskPc() });
     const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
-    expect(task.classification?.model).toBe("coordinator"); // 进 Coordinator（现状病根路径）
-    expect(t.llm.agentRequests.length).toBeGreaterThanOrEqual(1); // 烧 agent（Q2 300s 来源）
+
+    // ① 对照成立：② 关 → 拿不到确定性多域待遇（与上一条 flag 开的用例形成真对照）。
+    expect(task.classification?.model).not.toBe("deterministic:multi-domain");
+    expect(task.multiIntentPlan).toBeFalsy();
+
+    // ② D1 收益钉死：不再被 Coordinator 抢走·一个 agent 回合都没烧（Q2 那 300s 的来源就此断根）。
+    expect(task.classification?.model).not.toBe("coordinator");
+    const events = await t.repos.events.listAfter(taskId, 0);
+    expect(events.find((e) => e.event === "coordinator.planned")).toBeFalsy();
+    expect(t.llm.agentRequests.length).toBe(0);
     await t.app.close();
   });
 
