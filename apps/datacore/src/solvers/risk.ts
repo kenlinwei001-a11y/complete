@@ -9,6 +9,8 @@ import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normali
 import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
 // WO-LIVE-DISPOSITION T1：空闲日产能口径与 base_capacity_outlook 四线同一出处（跨视图不漂移·R-一致）。
 import { baseFreeDaily } from "./base-outlook.js";
+// WO-SANDBOX-E2：推演作用域（业务线/基地/型号）归一**单一出处**（勿在本文件另写一套解析/过滤）。
+import { echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -980,6 +982,14 @@ export interface AffectedOrdersArgs {
   fromDay?: number;
   toDay?: number;
   condition?: { prop: string; op: "<" | ">" | "<=" | ">=" | "=="; value: number };
+  /**
+   * WO-SANDBOX-E2 · 推演作用域三维（业务线 / 基地 / 型号），与既有 `baseId` 同级但正交：
+   * `baseId` 说"看哪个基地这张表"，作用域说"这次推演的世界里有哪些订单"。
+   * 解析一律走 `scope.ts normalizeChainScope`（松散透传 `unknown`，非法值在归一处诚实抛）。
+   */
+  businessTypes?: unknown;
+  baseIds?: unknown;
+  modelIds?: unknown;
 }
 
 export interface OrderProblemGroupOut {
@@ -991,16 +1001,34 @@ export interface OrderProblemGroupOut {
   rootChains: { orderId: string; layers: { kind: "order" | "judgement" | "rootCause" | "remedy"; label: string }[] }[];
 }
 
+/**
+ * WO-SANDBOX-E2 · 把归一后的 `ChainScope` 落到**本 ctx 的真基地**上：
+ * 返回 `{ resolvedBaseIds, inScope }` —— 前者供回带 canonical scope，后者是「这张订单在不在本次推演里」的谓词。
+ * 未知基地在 `resolveScopeBaseIds` 里抛（不静默当未限定）；作用域未限定 → 谓词恒 true（零成本·与上线前逐字节一致）。
+ */
+export function chainScopeOrderFilter(
+  c: SolverContext,
+  scope: ChainScope,
+): { resolvedBaseIds: Set<string> | null; inScope: (props: Record<string, unknown>) => boolean } {
+  const resolvedBaseIds = resolveScopeBaseIds(scope, c.bases.map((b) => b.props));
+  return { resolvedBaseIds, inScope: (props) => orderInChainScope(scope, props, resolvedBaseIds) };
+}
+
 export function affectedOrders(
   c: SolverContext,
   args: AffectedOrdersArgs,
   orders?: { id: string; props: Record<string, unknown> }[],
-): { baseId: string; affected: Record<string, unknown>[]; total: number; count: number; columns: string[]; rows: unknown[][]; fallback: boolean; problems: OrderProblemGroupOut[] } {
+  presetScope?: ChainScope,
+): { baseId: string; affected: Record<string, unknown>[]; total: number; count: number; columns: string[]; rows: unknown[][]; fallback: boolean; problems: OrderProblemGroupOut[]; scope?: ChainScope } {
   const p = c.params;
   const baseId = resolveBaseId(c, args.baseId); // 归一（认 obj_base_<id>/中文名/baseId·症②）·未知 throw
+  // WO-SANDBOX-E2：作用域在**取订单池**这一步就生效（效果层·非"参数传到了"）。
+  // presetScope 由聚合分支传入（已归一一次·避免重复解析），直调时从 args 归一。
+  const scope = presetScope ?? normalizeChainScope(args as unknown as Record<string, unknown>);
+  const { resolvedBaseIds, inScope } = chainScopeOrderFilter(c, scope);
   const pool = (orders ?? c.orders).filter((o) => {
     const bases = Array.isArray(o.props.bases) ? (o.props.bases as string[]) : [];
-    return bases.includes(baseId);
+    return bases.includes(baseId) && inScope(o.props);
   });
   const day = args.day;
   const from = day !== undefined ? day - p.affected.windowBefore : num(args.fromDay, 0);
@@ -1064,6 +1092,10 @@ export function affectedOrders(
     rows: affected.map((o) => [o.so, o.cust, o.model, o.qty, o.due]),
     fallback,
     problems,
+    // R-ARG-FIDELITY：限定了就回带作用域（前端/下游看得见「筛过」·base 维回 canonical baseId）；
+    // **未限定则整个字段不出现**——既避免「未指定」被读成「限定了个空的」，
+    // 也让不传作用域的既有调用方逐字节不变（R6）。
+    ...(isChainScopeUnscoped(scope) ? {} : { scope: echoChainScope(scope, resolvedBaseIds) }),
   };
 }
 
@@ -1088,11 +1120,12 @@ const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s
 
 export function affectedOrdersAggregate(
   c: SolverContext,
-  args: { base?: string; horizon?: number; fromDay?: number; toDay?: number },
+  args: { base?: string; horizon?: number; fromDay?: number; toDay?: number; businessTypes?: unknown; baseIds?: unknown; modelIds?: unknown },
 ): {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: { so: string; cust: string; seg: string; model: string; qty: number; due: string; delay: number; risks: AggRiskRef[] }[];
   problems: OrderProblemGroupOut[];
+  scope?: ChainScope;
 } {
   const threshold = c.params.risk.threshold;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
@@ -1109,9 +1142,16 @@ export function affectedOrdersAggregate(
   const winFrom = num(args.fromDay, 0);
   const winTo = args.toDay !== undefined ? num(args.toDay, 180) : args.horizon !== undefined ? horizon : 180;
   const filterBase = args.base ? resolveBaseId(c, args.base) : null;
+  // WO-SANDBOX-E2 · 作用域三维在**两层**同时生效，缺任一层都会漏：
+  //  ① 基地维收窄**遍历的基地集**（否则一个非作用域基地照样进 risks[]/problems[]，订单也从那条支路混回来）；
+  //  ② 业务线/型号维收窄**每个基地的订单池**（下传 scope 给单基地分支，见 affectedOrders）。
+  // `args.base`（单基地视图参）与 `scope.baseIds`（推演作用域）是**交集**而非覆盖——两个都给就两个都生效。
+  const scope = normalizeChainScope(args as Record<string, unknown>);
+  const scopeBaseIds = resolveScopeBaseIds(scope, c.bases.map((b) => b.props)); // 未知基地抛·不静默当未限定
   const baseIds = c.bases
     .map((b) => str(b.props.baseId))
-    .filter((id) => (filterBase ? id === filterBase : true));
+    .filter((id) => (filterBase ? id === filterBase : true))
+    .filter((id) => (scopeBaseIds ? scopeBaseIds.has(id) : true));
 
   const byOrder = new Map<
     string,
@@ -1120,7 +1160,7 @@ export function affectedOrdersAggregate(
   const probByCat = new Map<string, OrderProblemGroupOut>();
 
   for (const baseId of baseIds) {
-    const single = affectedOrders(c, { baseId, fromDay: winFrom, toDay: winTo });
+    const single = affectedOrders(c, { baseId, fromDay: winFrom, toDay: winTo }, undefined, scope);
     const factor = primaryFactor(c, baseId);
     const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon));
     const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold };
@@ -1151,7 +1191,11 @@ export function affectedOrdersAggregate(
   // WO-UNIT-NORMALIZE §3：亿 = Σ qty(套)×priceWan(万元/套) / 1e4（与 financeImpact 同价基同公式）。
   const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0) / 1e4, 4);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };
-  return { summary, rows, problems: [...probByCat.values()] };
+  // R-ARG-FIDELITY：限定了才回带（未限定 → 字段不出现 → 既有调用方逐字节不变·R6）。
+  return {
+    summary, rows, problems: [...probByCat.values()],
+    ...(isChainScopeUnscoped(scope) ? {} : { scope: echoChainScope(scope, scopeBaseIds) }),
+  };
 }
 
 // ---------------------------------------------------------------------------
