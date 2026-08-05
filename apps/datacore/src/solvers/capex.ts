@@ -1,6 +1,10 @@
 import { round } from "../prng.js";
 import { AppError } from "../errors.js";
 import { num, type SolverContext } from "./types.js";
+// WO-SANDBOX-D4 ③ · 全链经营现金流聚合层：本文件的 cashflow[] 是**项目级投资现金流**，
+// 与 credit_exposure 的**敞口存量快照**不同源不可相加 —— 聚合层把这条登记成机器可读的 notSummable，
+// 并诚实标 EMPTY（收现腿在数据上不存在），杜绝下游把两个数硬凑成"经营现金流"。
+import { chainOperatingCashflow } from "./aggregates.js";
 
 // ---------------------------------------------------------------------------
 // C1 · capex_scenario — 年度情景测算（产能建设 CAPEX 求解器，Part C 公式级）。
@@ -274,5 +278,11 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
     windows,
     projects: projectResults,
     c23: { irrMin, util24Min },
+    // WO-SANDBOX-D4 ③（加性）：全链经营现金流 —— **恒 EMPTY**，并逐条列出 projects[].cashflow（投资/流量/亿/季）
+    // 与 credit_exposure.exposure（敞口/存量/万元/无时间轴）之间的口径冲突，让"相加"在契约层就不成立。
+    chainCashflow: chainOperatingCashflow({
+      capex: { available: projectResults.length > 0 && Q > 0 }, // 本次调用真算出了项目现金流
+      credit: { available: false }, // 敞口分量本次没取（credit_exposure 是另一个求解器）——不取到 ≠ 不存在
+    }),
   };
 }

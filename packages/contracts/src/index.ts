@@ -65,3 +65,4 @@ export * from "./capacity-factors.js"; // WO-CAPLIVE-1-ATOM · 产能 20 原子�
 export * from "./process-capacity.js"; // WO-SANDBOX-D3 · 工序硬容量单元声明单源（化成柜位/老化库位 → Process 属性落点·零数值重复·诚实缺不兜底）
 export * from "./solver-run-diagnostics.js"; // WO-D2/D3 · 同步求解超时诊断 + incumbent（可行非最优解）诚实标注契约（全可选加性·老前端仍可解析）
 export * from "./chain-sim.js"; // WO-SANDBOX-S0 · 推演沙盘全链契约冻结（ChainNode/ChainStep 五段 · Cadence 一等公民「等待期望=everyDays/2」· ChainImpediment 三类派生对象 · LossAttribution 分母排除增值段「Σ==100%」· ChainScope 闭业务线口子）
+export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层三项（OTD 批次准时率口径定死 CUSTOMER_REQUEST · 库存地点×时间序列 · 全链经营现金流 EMPTY 取证）

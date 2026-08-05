@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { DispositionStepSchema } from "./disposition.js";
+// WO-SANDBOX-D4 · OTD 批次准时率聚合层（判定口径 CUSTOMER_REQUEST 的论证在 solver-aggregates.ts）。
+import { OtdBatchRateSchema } from "./solver-aggregates.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -237,6 +239,12 @@ export const RiskCardSchema = z.object({
   factorSeries: z.record(z.string(), z.array(z.number())).optional(),
   events: z.array(RiskEventSchema),
   affectedOrders: z.array(AffectedOrderSchema).optional(),
+  /**
+   * WO-SANDBOX-D4 ①（加性·optional·向后兼容）：本卡这批单的 OTD 准时率（判定口径 CUSTOMER_REQUEST）。
+   * 与 `affectedOrders` **同一批单**（分母 = 本卡窗口内订单数），窗口内无单 → dataMode=EMPTY 且 rate=null。
+   * ⚠ 加性字段必须同时在契约里声明，否则 zod 默认 strip 未声明键 = 服务端写了、契约吞了、前端永远拿不到。
+   */
+  otd: OtdBatchRateSchema.optional(),
   mitigated: z
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),
@@ -295,6 +303,11 @@ export const RiskTimelineOutputSchema = z.object({
   // 轨M 增量1：顶层 dataMode（LIVE/MOCK/PARTIAL）——前端据此提示"部分估算"，红/黄状态不再裸渲染当真值。
   dataMode: z.enum(["LIVE", "MOCK", "PARTIAL"]).optional(),
   cards: z.array(RiskCardSchema).max(8),
+  /**
+   * WO-SANDBOX-D4 ①（加性·optional）：全平台这批单的 OTD 准时率 —— 跨卡按 `so` **去重**（一单可挂多产地
+   * `Order.bases[]`，各卡相加会重复计数）取最差余量那一次；`total` = 去重后订单数（守恒，不是各卡之和）。
+   */
+  otdBatch: OtdBatchRateSchema.optional(),
   // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
   planRows: z.array(RiskPlanRowSchema).optional(),
 });

@@ -264,18 +264,21 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary + 决策比对方案结构透传）。
   optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
-  capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
+  // WO-SANDBOX-D4 ③：+ chainCashflow（聚合层·全链经营现金流恒 EMPTY + 不可相加登记）。
+  capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23", "chainCashflow"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
   cert_schedule: ["schedule", "engineerGroups", "ruleRefs"],
   kit_readiness: ["rows", "shortageCount", "ruleRefs"],
   lta_gap: ["material", "month", "netDemand", "coverage", "gap", "po", "ruleRefs"],
-  inventory_optimize: ["over", "under", "idle", "releasableCash", "ruleRefs"],
+  // WO-SANDBOX-D4 ②：+ locationSeries（聚合层·时间轴 OK / 地点轴 EMPTY 各自诚实标）。
+  inventory_optimize: ["over", "under", "idle", "releasableCash", "locationSeries", "ruleRefs"],
   changeover_sequence: ["lineId", "sequence", "totalChangeoverMin", "savedVsDueMin", "infeasible", "ruleRefs"],
   yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
   quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
-  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "ruleRefs"],
+  // WO-SANDBOX-D4 ③：+ chainCashflow（与 capex_scenario 端同一份「不可相加」登记）。
+  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "chainCashflow", "ruleRefs"],
   quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
