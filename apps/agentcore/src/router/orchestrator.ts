@@ -738,12 +738,17 @@ export class Orchestrator {
         await this.completeNoLlmDegradation(task);
         return;
       }
+      // ⛔ 此前这里记的是 `pkg.classifierModel ?? config.QOS_CLASSIFIER_MODEL` —— **配置默认值**，
+      //    而不是刚才真正尝试并失败的那个模型。于是审计里出现一个从没被调用过的模型名
+      //    （实测：租户绑了 kimi，classify 因模型名不存在而失败，字段却显示 `claude-haiku-4-5`），
+      //    排查的人照它去查一个根本没参与的模型。改为记**真实解析结果**（与 classify() 内同一支 roleModel）。
+      const attemptedModel = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
       await this.runPathB(taskId, auth, {
         candidates: [],
         outOfCatalog: true,
         extractedSlots: {},
         latencyMs: 0,
-        model: pkg.classifierModel ?? this.deps.config.QOS_CLASSIFIER_MODEL,
+        model: attemptedModel,
       });
       return;
     }
@@ -1925,11 +1930,15 @@ export class Orchestrator {
     model: string,
   ): Promise<void> {
     void auth; // executor 已挟带 OBO ctx（makeExecutor(taskId, auth, budget)）→ 无需二次透传
+    // 综合失败时要能把「真没绑 provider」与「绑了但打不通」分开报（见 execute-plan classifySynthFailure）——
+    // 故把真实可用性判定传下去，而不是让下游猜。从不抛（providerAvailable 内部已兜住）。
+    const hasLlmProvider = await this.deps.llmSettings.providerAvailable(task.tenantId, "agent", model);
     const result = await executePlan(plan, {
       executor,
       llm: this.deps.engine.deps.llm,
       model,
       tenantId: task.tenantId,
+      hasLlmProvider,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
     });
 
