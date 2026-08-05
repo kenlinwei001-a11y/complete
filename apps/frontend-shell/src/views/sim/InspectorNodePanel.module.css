@@ -1,0 +1,500 @@
+/* WO-SANDBOX-F4 · 节点检视面板样式。
+   三色系纪律：**零硬编码颜色**——本文件不许出现 hex / rgb() / hsl() / 具名色，
+   一律 var(--token)，且每个 token 都必须定义在 tokens.css 的 :root 首块
+   （只在某个 [data-theme] 分支里定义的 token 在其它主题下会取不到值 → 测试直接咬这一条）。
+   语义档位（增值/缺席/what-if/承载状态）只写 data-* 属性，配色交给 token ⇒ dark / light / warm 自动跟随。 */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  max-width: 480px;
+  overflow-x: auto;
+}
+
+/* ── 头 ─────────────────────────────────────────────────────────────────── */
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line2);
+  padding-bottom: 10px;
+}
+.headMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--txt);
+}
+.nodeId {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted2);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-all;
+}
+.stage {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.resetBtn {
+  flex: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--txt);
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.resetBtn:hover:not(:disabled) {
+  background: var(--hover-tint-strong);
+}
+.resetBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ── 横幅 ───────────────────────────────────────────────────────────────── */
+.runningBanner,
+.placeholderBanner,
+.hint,
+.warnNote {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.runningBanner {
+  background: var(--panel2);
+  border: 1px solid var(--accent);
+  color: var(--txt);
+}
+.placeholderBanner {
+  background: var(--panel2);
+  border: 1px dashed var(--warn);
+  color: var(--muted);
+}
+.hint {
+  background: var(--hover-tint-strong);
+  border: 1px solid var(--line2);
+  color: var(--muted);
+}
+.warnNote {
+  background: var(--panel2);
+  border: 1px solid var(--warn);
+  color: var(--muted);
+}
+
+/* ── 分区 ───────────────────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sectionTitle {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--txt);
+}
+.sectionSub {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+
+/* ── ① 五段瀑布 ─────────────────────────────────────────────────────────── */
+.wfList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wfRow {
+  display: grid;
+  grid-template-columns: 74px 1fr auto;
+  grid-template-areas:
+    "label track num"
+    "prov  prov  prov"
+    "reason reason reason";
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.wfRow[data-provenance="EMPTY"] {
+  border-style: dashed;
+  border-color: var(--danger);
+}
+.wfLabel {
+  grid-area: label;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--txt);
+}
+.vaBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.wfTrack {
+  grid-area: track;
+  display: block;
+  height: 12px;
+  background: var(--bg2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.wfBar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--muted2);
+}
+/* 五段各自的语义色（theme-invariant：三套皮下同键，配色由 token 决定） */
+.wfBar[data-kind="queue"] {
+  background: var(--c-capacity);
+}
+.wfBar[data-kind="cadence"] {
+  background: var(--warn);
+}
+.wfBar[data-kind="work"] {
+  background: var(--ok);
+}
+.wfBar[data-kind="rework"] {
+  background: var(--danger);
+}
+.wfBar[data-kind="handoff"] {
+  background: var(--c-process);
+}
+.wfEmptyTrack {
+  display: block;
+  height: 100%;
+  border-left: 2px dashed var(--danger);
+  opacity: 0.7;
+}
+.wfNum {
+  grid-area: num;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  white-space: nowrap;
+}
+.wfDays {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt);
+}
+.wfPct,
+.wfLoss {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.wfReason {
+  grid-area: reason;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.provTag {
+  grid-area: prov;
+  justify-self: start;
+  font-style: normal;
+  font-size: 10px;
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--muted2);
+}
+.provTag[data-prov="LIVE"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.provTag[data-prov="WHATIF"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.provTag[data-prov="EMPTY"] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ── ② 流动效率 ─────────────────────────────────────────────────────────── */
+.flowBox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+}
+.flowValue {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.flowFormula {
+  font-size: 12px;
+  color: var(--muted);
+}
+.flowFormula b {
+  font-family: var(--font-mono);
+  color: var(--txt);
+}
+
+/* ── ③ 七类变量 ─────────────────────────────────────────────────────────── */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+.groupHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.groupTitle {
+  font-size: 12px;
+  color: var(--txt);
+}
+.groupMech {
+  font-size: 11px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+.varList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.varRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.varRow[data-drives="0"] {
+  border-style: dashed;
+}
+.varRow[data-disabled="1"] {
+  opacity: 0.55;
+}
+.varHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.varLabel {
+  font-size: 12px;
+  color: var(--txt);
+  font-weight: 600;
+}
+.varValue {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+.emptyValue {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--danger);
+}
+.carrierTag {
+  font-style: normal;
+  font-size: 10px;
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: var(--muted2);
+}
+.carrierTag[data-carrier="有"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.carrierTag[data-carrier="薄"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.carrierTag[data-carrier="缺"] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 滑杆（T / K / B / C / P 共用；P 的值域 [0,1] 由数据给，显示按 % 走 TSX） */
+.sliderRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.sliderScale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+
+/* R 类规则引用 —— 改的是 rule.params 的某个命名阈值，不是自由数字 */
+.ruleRef {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel2);
+}
+.ruleKey {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+.ruleParam {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ruleParam b {
+  font-family: var(--font-mono);
+  color: var(--txt);
+}
+.rulePath {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+  word-break: break-all;
+}
+.ruleNote {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+
+/* S 类离散选项 —— **不是滑杆**：radiogroup + 按钮，选中即换拓扑 */
+.optionSet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.optionBtn {
+  flex: 1 1 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  font: inherit;
+  padding: 6px 8px;
+  color: var(--txt);
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.optionBtn:hover:not(:disabled) {
+  background: var(--hover-tint-strong);
+}
+.optionBtn[data-selected="1"] {
+  border-color: var(--accent);
+  background: var(--nav-active-bg);
+  color: var(--nav-active-txt);
+}
+.optionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.optionLabel {
+  font-size: 12px;
+  font-weight: 600;
+}
+.optionNote {
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+
+/* 诚实位说明 */
+.emptyNote,
+.inertNote,
+.evidence {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.emptyNote {
+  color: var(--danger);
+}
+.inertNote {
+  color: var(--warn);
+}
+.evidence {
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  word-break: break-word;
+}
