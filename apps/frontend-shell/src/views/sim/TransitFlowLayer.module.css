@@ -1,0 +1,406 @@
+/*
+ * WO-SANDBOX-F2 · 在途 / 在制层样式。
+ *
+ * 三色系纪律：**零硬编码颜色**，全部走 `src/styles/tokens.css` 的 `:root` 变量
+ * （dark 默认 / light / warm 三档由 `<html data-theme>` 翻转，本文件一个字节都不用改）。
+ * 用到的每个 token 都必须定义在 `:root` 首块 —— 只在某个 data-theme 分支里定义的 token
+ * 会在其它主题下取不到值，`transit-flow.seam.test.tsx` 有一条门咬这个。
+ *
+ * 动效纪律：所有过渡/动画都放在 `prefers-reduced-motion` 的反面
+ * （`@media (prefers-reduced-motion: reduce)` 与 `[data-reduced-motion="1"]` 双保险：
+ *  前者管系统偏好，后者管组件已探测到偏好后的确定性关停）。
+ */
+
+.layer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+/* ── 播控 ──────────────────────────────────────────────────────────────── */
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+
+.btn,
+.speedBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--txt);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled),
+.speedBtn:hover {
+  background: var(--hover-tint-strong);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn[data-state="playing"] {
+  border-color: var(--nav-active-border);
+  color: var(--accent);
+}
+
+.speedGroup {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.speedBtn[data-active="1"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.dayReadout {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt);
+}
+
+.counts {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reducedNote {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--c-capacity);
+  background: var(--bg2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ── 数据源诚实条 ──────────────────────────────────────────────────────── */
+.branches {
+  display: grid;
+  gap: 8px;
+}
+
+.branchHead {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+
+.branchHead[data-status="EMPTY"] {
+  border-left: 3px solid var(--warn);
+}
+
+.branchHead[data-status="LIVE"] {
+  border-left: 3px solid var(--ok);
+}
+
+.branchTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.branchTitle {
+  font-size: 13px;
+  color: var(--txt);
+}
+
+.objType {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.badge[data-tone="empty"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.badge[data-tone="live"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.modeReason {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.emptyReason {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--warn);
+}
+
+.reasonList {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* ── 诚实缺席块（采购支线 / 节拍）───────────────────────────────────────── */
+.absence {
+  padding: 8px;
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+
+.absenceTitle {
+  display: block;
+  font-size: 13px;
+  color: var(--warn);
+}
+
+.unblock {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+/* ── 节拍 chip ─────────────────────────────────────────────────────────── */
+.cadences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cadenceChip {
+  padding: 3px 8px;
+  border: 1px solid var(--c-forecast);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--c-forecast);
+}
+
+/* ── 区间与车 ──────────────────────────────────────────────────────────── */
+.segments {
+  display: grid;
+  gap: 10px;
+}
+
+.segment {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+
+.segEnds {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.station {
+  padding: 2px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  color: var(--txt);
+}
+
+.station[data-cadence="1"] {
+  border-color: var(--c-forecast);
+  color: var(--c-forecast);
+}
+
+.station[data-pulse="1"] {
+  animation: transitPulse 600ms ease-out 2;
+}
+
+.segArrow {
+  flex: 1;
+  color: var(--muted2);
+  letter-spacing: 2px;
+  overflow: hidden;
+}
+
+.track {
+  position: relative;
+  height: 26px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+}
+
+.car {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  transform: translateX(-50%);
+  transition: left 220ms linear;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.carDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c-capacity);
+}
+
+.car[data-state="queued"] .carDot {
+  background: var(--warn);
+}
+
+.car[data-state="released"] .carDot {
+  background: var(--ok);
+}
+
+.car[data-state="pending"] .carDot {
+  background: var(--muted2);
+}
+
+.carAnnot {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--txt);
+}
+
+/* ── 排队 / 到货 / 站驻留 ──────────────────────────────────────────────── */
+.queues,
+.arrivals,
+.residents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.queue {
+  padding: 3px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  color: var(--txt);
+}
+
+.arrival,
+.resident {
+  padding: 3px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  color: var(--txt);
+}
+
+/* ── 事件流 ────────────────────────────────────────────────────────────── */
+.events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+  font-size: 11px;
+}
+
+.event {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--muted);
+}
+
+.eventDay {
+  font-family: var(--font-mono);
+  color: var(--muted2);
+}
+
+.eventKind {
+  color: var(--c-capacity);
+}
+
+.eventKind[data-kind="release"] {
+  color: var(--c-forecast);
+}
+
+.eventKind[data-kind="arrive"] {
+  color: var(--ok);
+}
+
+.eventText {
+  color: var(--txt);
+}
+
+.events::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+@keyframes transitPulse {
+  from {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 减少动态效果：过渡/动画一律停（系统偏好 + 组件已探测到的确定性关停，双保险） */
+@media (prefers-reduced-motion: reduce) {
+  .car {
+    transition: none;
+  }
+
+  .station[data-pulse="1"] {
+    animation: none;
+  }
+}
+
+.layer[data-reduced-motion="1"] .car {
+  transition: none;
+}
+
+.layer[data-reduced-motion="1"] .station[data-pulse="1"] {
+  animation: none;
+}
