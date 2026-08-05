@@ -1669,6 +1669,9 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   OrderPromise: "commercial",
   // WO-ORDERLINE 订单明细行（SO→型号行·与 Order 同域 product·DOMAIN_MAP）
   OrderLine: "product",
+  // WO-SANDBOX-D2 采购段两段新承载：清关归 supply（责任方=清关行，采购组织协调面）；
+  // 到货检验归 quality（责任方=自家质量部 IQC）——两段分属两个责任方，故分属两个域。
+  CustomsClearance: "supply", IncomingInspection: "quality",
 };
 
 // ---------------------------------------------------------------------------
@@ -1971,11 +1974,27 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Supplier.region": "所在区域", "Supplier.leadTime": "到货周期", "Supplier.minOrderQty": "最小起订量",
   "Supplier.onTimeRate": "准时交付率", "Supplier.status": "合作状态",
   "Supplier.contractedSupplyTon": "合同供货量", "Supplier.actualSupplyTon": "实际供货量",
+  // WO-SANDBOX-D2 采购段责任方维度（清关是否存在 / 在途归谁）
+  "Supplier.sourceMode": "供货模式", "Supplier.originCountry": "原产国",
+  "Supplier.transitDays": "在途运输天数", "Supplier.carrierName": "承运方",
   "Supplier.deliveryDate": "最近交货日期", "Supplier.poNumber": "最近采购单号",
   "MaterialBatch.batchId": "批次号", "MaterialBatch.matId": "物料", "MaterialBatch.qty": "批次数量",
   "MaterialBatch.ageDays": "库龄天数", "MaterialBatch.idleDays": "呆滞天数",
   "PurchaseOrder.poId": "采购单号", "PurchaseOrder.matId": "物料", "PurchaseOrder.qty": "采购数量",
   "PurchaseOrder.etaDay": "到货天", "PurchaseOrder.delayed": "是否延迟",
+  // WO-SANDBOX-D2 采购段四段日戳 + 责任方
+  "PurchaseOrder.supplierId": "供应商", "PurchaseOrder.sourceMode": "供货模式",
+  "PurchaseOrder.orderDay": "下单天", "PurchaseOrder.shipDay": "发货天", "PurchaseOrder.arriveDay": "到厂天",
+  "CustomsClearance.clearanceId": "清关单号", "CustomsClearance.poId": "采购单",
+  "CustomsClearance.supplierId": "供应商", "CustomsClearance.portName": "口岸",
+  "CustomsClearance.brokerName": "清关行", "CustomsClearance.declaredDay": "申报天",
+  "CustomsClearance.clearedDay": "放行天", "CustomsClearance.holdDays": "查验滞留天数",
+  "CustomsClearance.status": "清关状态",
+  "IncomingInspection.inspectionId": "检验单号", "IncomingInspection.poId": "采购单",
+  "IncomingInspection.matId": "物料", "IncomingInspection.inspectorTeam": "检验班组",
+  "IncomingInspection.arrivedDay": "到货待检天", "IncomingInspection.releasedDay": "检验放行天",
+  "IncomingInspection.sampleQty": "抽检数", "IncomingInspection.defectQty": "不合格数",
+  "IncomingInspection.result": "检验结论",
   "LongTermAgreement.ltaId": "长协编号", "LongTermAgreement.supplierId": "供应商",
   "LongTermAgreement.materialType": "物料类型", "LongTermAgreement.contractedQtyTon": "合同量",
   "LongTermAgreement.actualDeliveredTon": "实际交付量", "LongTermAgreement.priceLinked": "是否价格联动",
@@ -2256,6 +2275,10 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice", cardinality: "N:N" }, // commercial（应收）
     { key: "material_has_batch", fromTypeKey: "Material", toTypeKey: "MaterialBatch", cardinality: "N:N" }, // supply（批次）
     { key: "material_supplied_by_po", fromTypeKey: "Material", toTypeKey: "PurchaseOrder", cardinality: "N:N" }, // supply（采购）
+    // WO-SANDBOX-D2：采购段按责任方可分解的三条链路（这一单谁供的 / 谁清的关 / 谁检的货）。
+    { key: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier", cardinality: "N:1" }, // supply（采购责任方）
+    { key: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance", cardinality: "N:1" }, // supply（清关，仅进口单）
+    { key: "po_inspected_by", fromTypeKey: "PurchaseOrder", toTypeKey: "IncomingInspection", cardinality: "N:1" }, // quality（到货检验）
     { key: "material_carbon", fromTypeKey: "Material", toTypeKey: "CarbonFactor", cardinality: "N:N" }, // supply（碳因子）
     { key: "base_energy_meter", fromTypeKey: "Base", toTypeKey: "EnergyMeter", cardinality: "N:N" }, // factory（能耗）
     { key: "base_has_shipment", fromTypeKey: "Base", toTypeKey: "Shipment", cardinality: "N:N" }, // capacity（在途）

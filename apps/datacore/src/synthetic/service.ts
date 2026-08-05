@@ -765,6 +765,9 @@ export class SyntheticService {
     await putAll("ChangeoverMatrix", ext.changeoverMatrix, "pairId");
     await putAll("CapexProject", ext.capexProjects, "projectId");
     await putAll("PurchaseOrder", ext.purchaseOrders, "poId");
+    // WO-SANDBOX-D2：采购段两段新承载（清关仅进口单有 → 条数 < PO 数；到货检验每单必检 → 条数 == PO 数）。
+    await putAll("CustomsClearance", ext.customsClearances, "clearanceId");
+    await putAll("IncomingInspection", ext.incomingInspections, "inspectionId");
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
@@ -968,6 +971,13 @@ export class SyntheticService {
     for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
     // supply（采购）: Material → PurchaseOrder（po.matId）
     for (const po of ext.purchaseOrders) await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+    // WO-SANDBOX-D2 · supply（采购责任方）: PurchaseOrder → Supplier（po.supplierId）——
+    // 「这一单是谁供的」此前只能经 Material 主供间接猜，多供物料一猜就错。
+    for (const po of ext.purchaseOrders) await putLink(`lnk_pos_${P(po).poId}`, "po_from_supplier", oid("PurchaseOrder", P(po).poId), oid("Supplier", P(po).supplierId));
+    // WO-SANDBOX-D2 · supply（清关）: PurchaseOrder → CustomsClearance（仅进口单有）
+    for (const cc of ext.customsClearances) await putLink(`lnk_pocc_${P(cc).clearanceId}`, "po_customs_cleared_by", oid("PurchaseOrder", P(cc).poId), oid("CustomsClearance", P(cc).clearanceId));
+    // WO-SANDBOX-D2 · quality（到货检验）: PurchaseOrder → IncomingInspection（每单必检）
+    for (const ii of ext.incomingInspections) await putLink(`lnk_poii_${P(ii).inspectionId}`, "po_inspected_by", oid("PurchaseOrder", P(ii).poId), oid("IncomingInspection", P(ii).inspectionId));
     // supply（碳因子）: Material → CarbonFactor（kind=material 时 key=matId）
     for (const cf of ext.carbonFactors) if (P(cf).kind === "material") await putLink(`lnk_mcf_${P(cf).factorId}`, "material_carbon", oid("Material", P(cf).key), oid("CarbonFactor", P(cf).factorId));
     // factory（能耗）: Base → EnergyMeter（em.baseId）
