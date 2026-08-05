@@ -221,6 +221,47 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     console.log(`② 零敞口：江门 rank ${jm.rank}(EMPTY·窗外最近 ${jm.nextOutsideWindow!.so} D+${jm.nextOutsideWindow!.dueDay}) → 交期进窗后 rank ${jm2.rank}(OK·${jm2.orderCount}单/${jm2.revenueYi}亿)`);
   }, 300000);
 
+  it("②b 排序契约本身（零敞口降级是**主序**）——直接测纯函数，不靠种子巧合", async () => {
+    // ⚠ 为什么要有这条：只测种子数据是**测不出**这个判据的 —— demo 里零敞口基地的
+    //   revenueYi/orderCount 恰好都是 0，光靠"金额↓ → 单数↓"这两个次序键就已经把它们压到底了。
+    //   （实测：把 `hasExposure` 主序键删掉，②的断言照样全绿 = 靠数据巧合对齐。）
+    //   本仓在 `preferRiskCard` 上栽过同一个跟头（peak 主序靠 cap=98 打平才"看着对"），
+    //   故这里照它的处方：**直接对排序契约下断言**，喂一组次序键会把零敞口顶到榜首的输入。
+    const { assignExposureRanks } = await import("../src/solvers/decision-info.js");
+    const mk = (baseId: string, hasExposure: boolean, revenueYi: number, orderCount: number, dueDay: number | null) =>
+      ({
+        status: hasExposure ? "OK" : "EMPTY",
+        baseId,
+        baseName: baseId,
+        window: { fromDay: 0, toDay: 30, forecastStart: "2026-06-10" },
+        orderCount,
+        totalQty: 0,
+        revenueYi,
+        customerCount: 0,
+        customers: [],
+        orders: [],
+        earliest: dueDay === null ? null : { so: "X", cust: "C", due: "2026-06-11", dueDay },
+        hasExposure,
+        units: { qty: "套", revenue: "亿元" },
+        provenance: [],
+      }) as unknown as Parameters<typeof assignExposureRanks>[0][number];
+
+    // 零敞口卡的次序键被人为做成"全场最优"（金额最大 / 单数最多 / 交期最早）——
+    // 只要 hasExposure 是主序，它就**必须**仍然沉底。
+    const ranked = assignExposureRanks([
+      mk("zero_but_looks_best", false, 999, 99, 1),
+      mk("real_small", true, 0.1, 1, 30),
+    ]);
+    const zero = ranked.find((e) => e.baseId === "zero_but_looks_best")!;
+    const real = ranked.find((e) => e.baseId === "real_small")!;
+    expect(real.rank, "有敞口者必须排在零敞口者之前（哪怕后者次序键更漂亮）").toBeLessThan(zero.rank);
+    expect(real.rank).toBe(1);
+    expect(zero.rank).toBe(2);
+    // 有敞口者内部仍按 金额↓ 排（次序键没被主序键吃掉）。
+    const two = assignExposureRanks([mk("small", true, 1, 1, 5), mk("big", true, 9, 1, 20)]);
+    expect(two.find((e) => e.baseId === "big")!.rank).toBe(1);
+  });
+
   it("③ 不作为后果：catchUp 真派生（随 Order.qty 变）· 逐单延误标 ESTIMATED · 违约金**恒 EMPTY**（规则库无承载）", async () => {
     const out = await risk(t);
     const dn = cardOf(out, "changzhou").doNothing;

@@ -241,8 +241,8 @@ export function buildDoNothing(
   freeDaily: number,
   affected: Record<string, unknown>[],
 ): DoNothing {
-  const fs = str(c.params.forecastStart);
   const bName = baseName(c, baseId);
+  // 窗口取影响面那一份（同一出处·同一屏不出两个窗·R-一致）。
   const window = exposure.window;
 
   // ── 缺口自然消化天数（真派生：缺口 ÷ 空闲日产能）──────────────────────────────
