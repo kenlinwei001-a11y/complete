@@ -131,7 +131,6 @@ describe("WO-SLOT-ENTITY-RESOLVE · ① SEAM 头号：中文名实体填得进 o
     for (const c of SEAM_CASES) results.push(await runOne(c));
 
     const bad = results.filter((r) => r.status !== "COMPLETED" || r.rounds !== 0);
-    // eslint-disable-next-line no-console
     console.log(
       "\n  ── 槽位实体解析基线（断在填充结果+status，不在 routedIntent）──\n" +
         results
