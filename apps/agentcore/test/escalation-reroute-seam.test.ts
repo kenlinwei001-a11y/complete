@@ -162,7 +162,11 @@ describe("WO-LOOP-CONTROL-P2.5 · Escalation Ladder rung②（反应式重路由
     t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator", "agent.escalation"]);
     await seedAgents(t);
     const spy = spyInvokedAgents(t);
-    // proactive Coordinator 先于 classify → 不 queueClassification；扇出 3 角色各 final_answer。
+    // ★ WO-COORD-YIELD-AND-TERMINAL D1（门序变更）：proactive Coordinator 已移到 classify **之后**，
+    //   只在「分类器答不出」时兜底 → 本用例改喂一份**域外**分类结果来合法进入。
+    //   本用例真正咬的是「**防双** Coordinator：proactive 接手后不再 rung② 反应式重入」——那条判据一字未动。
+    t.llm.queueClassification(OUT_OF_CATALOG);
+    // 扇出 3 角色各 final_answer。
     queueRoleFinals(t);
 
     const { taskId } = await submitQuery(t, ADMIN, "常州这批订单的交付风险怎么解", { view: "risk" });

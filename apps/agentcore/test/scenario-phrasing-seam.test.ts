@@ -160,7 +160,11 @@ describe("场景启动器 · 过程可见接缝门（旁白须在每条 agent �
   }, 60_000);
 
   it("② 多角色 Coordinator 扇出：旁白**同样**必须到达（E9·今天红）", async () => {
-    const r = await narrationOn("常州这批订单的交付风险怎么解", "risk", { outOfCatalog: false });
+    // ★ WO-COORD-YIELD-AND-TERMINAL D1（门序变更）：Coordinator 已从 classify **之前**移到之后，
+    //   只在「分类器答不出」时兜底 → 此处由 `outOfCatalog:false`（不喂分类响应）改为 `true`（喂一份域外分类），
+    //   让本用例仍能合法走到多角色路径。本用例咬的是「旁白在多角色路径上到不到得了」（E9），
+    //   与"Coordinator 何时被叫来"无关 —— 下面三条断言一字未动。
+    const r = await narrationOn("常州这批订单的交付风险怎么解", "risk", { outOfCatalog: true });
     expect(r.model).toBe("coordinator"); // 证真的走了多角色路径
     expect(r.agentRoundTrips, "实验组角色 agent 没跑起来 → 「0 条旁白」是没跑不是没接线，用例无效").toBeGreaterThan(0);
     expect(r.narrations, "多角色路径上旁白一条都没发（E9）").toBeGreaterThan(0);

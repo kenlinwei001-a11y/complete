@@ -100,6 +100,10 @@ describe("WO-ROUTE-1 · 多角色路径旁白**带角色标识**（E9 的第二�
     const t: TestApp = await createTestApp();
     t.deps.features.mock.set(TENANT, DEMO_PROD_FEATURES);
     for (const ag of seedRegistry().agents) if (!(await t.repos.agents.get(ag.id))) await t.repos.agents.insert(ag);
+    // ★ WO-COORD-YIELD-AND-TERMINAL D1（门序变更）：Coordinator 已移到 classify **之后**（兜底）→
+    //   本用例改喂一份**域外**分类结果来合法进入多角色路径。本用例咬的是「旁白带角色标识」（E9），
+    //   与"Coordinator 何时被叫来"无关 —— 那些断言一字未动。
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     for (let i = 0; i < 12; i++) {
       t.llm.queueAgentTurn({ content: [text(`第${i + 1}轮：先查一下再说。`), toolUse("discover", { kind: "solvers" })] });
       t.llm.queueAgentTurn({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "结论。" }], provenance: [] })] });

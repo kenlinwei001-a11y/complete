@@ -90,6 +90,14 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
     await seedAgents(t);
     const spy = spyInvokedAgents(t);
 
+    // ★ WO-COORD-YIELD-AND-TERMINAL D1（门序变更·**断言本体不动，只改进入方式**）：
+    //   Coordinator 已从 classify **之前**移到之后，降级为「分类器答不出」时的兜底。故本用例改为
+    //   显式喂一份**域外**分类结果（= 分类器确实答不出这题）来合法进入 Coordinator——
+    //   下面那些"真调 ≥2 角色 / scope 真隔离 / 汇总合并"的判据一个字没改，仍是本文件的头号判据。
+    //   为什么不是删掉它：这些断言咬的是**扇出与隔离机制本身**（Coordinator 该做什么），
+    //   不是"关键词命中即扇出"（Coordinator 何时该被叫来）——前者依然是对的，被改掉的只有后者。
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+
     // routed mock：三角顺序 supply-chain → production → quality（AGENT_ROLE_ORDER 固定序）。
     // 供应链 agent：query Material（其 scope 内·OK）→ query Line（越界·被拒）→ final_answer。
     t.llm.queueAgentTurn(
@@ -154,6 +162,8 @@ describe("WO-FIVE-ROLE P1 · SEAM 跨域真拆→invoke_agent 真调 ≥2 角色
         : ag;
       if (!(await t.repos.agents.get(copy.id))) await t.repos.agents.insert(copy);
     }
+    // WO-COORD-YIELD-AND-TERMINAL D1：同上——经「分类器域外」合法进入 Coordinator（scope 断言本体不动）。
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn(
       () => ({ content: [text("查物料。"), toolUse("query_objects", { objectType: "Material", filter: {} })] }),
       () => ({ content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "无法取物料，scope 受限。" }], provenance: [] })] }),
