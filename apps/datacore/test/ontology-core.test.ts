@@ -488,7 +488,8 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
     // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 48（WO-CEO-2 gap_attribution + WO-CEO-3 decision_play）。
     // 双占 reconcile：WO-PORTFOLIO-OPTIMAL portfolio + WO-B base_capacity_outlook 两条 handoff 各自 54→55·合两条 → 56。
-    expect(SOLVER_KEYS.length).toBe(57); // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）
+    // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）= 57
+    expect(SOLVER_KEYS.length).toBe(58); // …+ WO-SANDBOX-E1 chain_loss_attribution（推演沙盘·环节级损失归因·口径走 S0 冻结契约·Σ非增值 pct==100%）
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 

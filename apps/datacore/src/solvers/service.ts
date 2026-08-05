@@ -31,6 +31,7 @@ import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING 
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
+import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
 import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
@@ -150,6 +151,12 @@ export const SOLVER_KEYS = [
   // + executeSlice(沿路读对象/链路) + 引擎内简单聚合(sum/count/avg/max)。只做遍历+聚合，复杂业务公式留专用 solver。
   // 减少 path-B Agent 多次 query_objects 往返（一次 query 顶多次·discover 露出后直 invoke）。R6 确定性·R13 逐行可溯。
   "ontology_query",
+  // WO-SANDBOX-E1 推演沙盘·环节级损失归因：把「全链 N 天」拆成逐环节的**损失占比**。
+  // 口径由 S0 冻结契约定死（chain-sim.ts §5）：pctOfChainLoss = 该环节非增值天数 ÷ 全链非增值总量，
+  // 分母**排除增值段** ⇒ 全链非增值环节 Σ == 100%（守恒测锁）。每个数字带 R13 三元组下钻
+  // （drillType.drillId.drillField；drillValue = 该字段在仓储里的真值本身，单位与 days 分列不混），
+  // 算不出来的环节诚实标 EMPTY + 原因，**不补 0**。
+  "chain_loss_attribution",
 ] as const;
 
 /** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
@@ -301,6 +308,10 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
   // WO-Phase3-B ontology_query 输出形状（= OntologyQueryOutput 顶层 key·遍历行 + 溯源 + queryPlan·what-if 时附 deltas）。
   ontology_query: ["rows", "columns", "provenance", "queryPlan", "deltas", "summary"],
+  // WO-SANDBOX-E1 chain_loss_attribution 输出形状（= ChainLossResult 顶层 key）。
+  // `attribution` 是 S0 `LossAttribution[]` 原形；`evidence` 是与 steps 一一对应的 R13 下钻行；
+  // `empty` 是诚实缺席清单（前端必须显式渲染 EMPTY，不许当成 0 隐掉）。
+  chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -3016,6 +3027,33 @@ export class SolverService {
   }
 
   /**
+   * WO-SANDBOX-E1 · 环节级损失归因 `chain_loss_attribution`（推演沙盘 W2 引擎层）。
+   *
+   * 照 `sop_reschedule` / `order_fullchain` 兄弟模式：invoke 的 if 链拦截 → 私有方法 inline `listByType`
+   * 读所需对象类型 + 一次 `links.list` 读全量链路 → 委派**纯函数** `chainLossAttribution`（无时钟无随机·R6）。
+   *
+   * 为什么读 `links` 而不是让纯函数自己查：纯函数不碰 IO 才能被单测直喂 fixture，
+   * 也才敢承诺「同 (seed, 场景, 参数版本) 两跑字节一致」。
+   *
+   * 口径与诚实缺席的全部说明在 `solvers/chain-loss.ts` 文件头，本处不复述（避免两份注释漂移）。
+   */
+  private async chainLossAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const load = async (typeKey: string): Promise<ChainLossObject[]> =>
+      (await this.repos.objects.listByType(ctx.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
+    const [orders, customers, models, routings, operations, materials, suppliers, processes] = await Promise.all([
+      load("Order"), load("Customer"), load("Model"), load("Routing"), load("Operation"), load("Material"), load("Supplier"), load("Process"),
+    ]);
+    if (orders.length === 0) throw validationError("chain_loss_attribution 需先合成 Order（全链锚点）");
+    const links = (await this.repos.links.list(ctx.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    const so = str(args.so);
+    if (so && !orders.some((o) => str(o.props.so) === so)) throw notFound(`Order ${so}`);
+    return runChainLossAttribution({
+      ...(so ? { so } : {}),
+      orders, customers, models, routings, operations, materials, suppliers, processes, links,
+    }) as unknown as Record<string, unknown>;
+  }
+
+  /**
    * sop 视图 ③物料线 MRP 净需求（净室读对象图,确定性 R6）：读 MaterialBalance → 净需求/长协覆盖/现货缺口/
    * 最早齐套 表（C06 齐套 / C16 安全库存口径）。前端零写死（HTML SOP_MAT 精确值=合成种子）。
    */
@@ -4091,6 +4129,9 @@ export class SolverService {
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
+    // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
+    // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。
+    if (solverKey === "chain_loss_attribution") return this.chainLossAttribution(ctx, args);
     // WO-Phase3-B 薄层遍历（读任意对象图 + executeSlice，非电池 context），先于 loadContext 拦截。
     if (solverKey === "ontology_query") return this.ontologyQuery(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
