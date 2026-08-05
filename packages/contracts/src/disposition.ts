@@ -401,8 +401,8 @@ function solveByOrder(
     const lead = leads[key];
     const day = Math.min(H, trigDay + (key === "overtime" ? 0 : leadOffset(lead)));
     const date = isoAtDay(forecastStart, day);
-    let closes = 0;
-    let rationale = "";
+    let closes: number;
+    let rationale: string;
     let provenance: DispositionProvenance;
     if (key === "overtime") {
       closes = r2(Math.min(remaining, available * input.overtimeUpliftPct));
