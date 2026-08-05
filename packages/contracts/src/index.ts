@@ -8,6 +8,8 @@ export * from "./features.js";
 export * from "./timeseries.js";
 export * from "./actions.js";
 export * from "./disposition.js";
+// WO-DECISION-INFO：影响面（Exposure）/ 不作为后果（DoNothing）契约。
+export * from "./decision-info.js";
 export * from "./solvers.js";
 export * from "./workspace.js";
 export * from "./planviews.js";
