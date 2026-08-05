@@ -1,5 +1,5 @@
 import type { IndustryTemplate, BusinessType } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
@@ -2810,18 +2810,7 @@ const SERIAL_STEPS = [
 ];
 
 // SA-3：10 车间定义（制浆→PACK），Workshop 为 Base 与 Line 之间新增层
-const WORKSHOP_DEFS = [
-  { type: "制浆", suffix: "slurry" },
-  { type: "涂布", suffix: "coating" },
-  { type: "辊压", suffix: "calendering" },
-  { type: "分切", suffix: "slitting" },
-  { type: "卷绕", suffix: "winding" },
-  { type: "装配", suffix: "assembly" },
-  { type: "注液", suffix: "filling" },
-  { type: "化成", suffix: "formation" },
-  { type: "分容", suffix: "grading" },
-  { type: "PACK", suffix: "pack" },
-];
+const WORKSHOP_DEFS = WORKSHOP_REGISTRY.map((w) => ({ type: w.type, suffix: w.suffix })); // 单源见 contracts/base-registry.ts
 
 function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
@@ -3553,7 +3542,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         for (let e = 1; e <= 2; e++) {
           const equipId = `${processId}-E${e}`;
           const equipHash = hashString(equipId);
-          const typeMap: Record<string, string> = { coating: "涂布机", calendering: "辊压机", slitting: "分切机", winding: "卷绕机", assembly: "装配线", filling: "注液机", formation: "化成柜", aging: "老化库", pack: "PACK线" };
+          const typeMap: Record<string, string> = EQUIPMENT_TYPE_BY_PROCESS; // 单源见 contracts/base-registry.ts
           const processSuffix = processId.split("-").pop() ?? "";
           const manufacturerPool = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
           void rngTopo(); // WO-SCALE-COHERENCE R6：占 ctSeconds 原 rng 位（保持后续 avail/oee 字节一致），ct 改 gwhᵢ 派生

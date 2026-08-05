@@ -421,3 +421,57 @@ export function boundaryVersion(): BoundaryVersion {
     registries,
   };
 }
+
+/**
+ * 工序车间单一来源（WO-SANDBOX-F3 并线时上提·R14 去业务锁死）。
+ *
+ * 由来：F3 交付时把这十道工序**内联在前端视图里**，理由是「跨 app 不许 import 源码
+ * （contracts-only-shared），所以只能镜像 + 加一道 source-parity 比对门」。
+ * `debattery:check` 当场判红——**镜像加比对门治的是"漂了能发现"，治不了"两处各写一份"本身**。
+ * 正确解是把它上提到 contracts：`battery.ts` 与前端都从这里派生，从根上没有第二份。
+ *
+ * ⚠ 与「设备节拍 CT」是两个口径，勿混：本表是**工序序列**；
+ *   `Equipment.ctSeconds` / `ProductLineCapability.cycleTime` 是单件加工时长。
+ * ⚠ 「模组」不是工序：它只出现在 battery.ts 的 BOTTLENECKS 瓶颈标签表，属另一套词表。
+ */
+export interface CanonicalWorkshop {
+  /** 工序中文名（对象/视图展示用） */
+  readonly type: string;
+  /** 工序英文后缀（产线/工序 id 拼装用） */
+  readonly suffix: string;
+  /** 所属链段 */
+  readonly segment: "前道·电极" | "中道·装配" | "后道·电化学" | "后道·成组";
+}
+
+export const WORKSHOP_REGISTRY: readonly CanonicalWorkshop[] = [
+  { type: "制浆", suffix: "slurry", segment: "前道·电极" },
+  { type: "涂布", suffix: "coating", segment: "前道·电极" },
+  { type: "辊压", suffix: "calendering", segment: "前道·电极" },
+  { type: "分切", suffix: "slitting", segment: "前道·电极" },
+  { type: "卷绕", suffix: "winding", segment: "中道·装配" },
+  { type: "装配", suffix: "assembly", segment: "中道·装配" },
+  { type: "注液", suffix: "filling", segment: "中道·装配" },
+  { type: "化成", suffix: "formation", segment: "后道·电化学" },
+  { type: "分容", suffix: "grading", segment: "后道·电化学" },
+  { type: "PACK", suffix: "pack", segment: "后道·成组" },
+] as const;
+
+/**
+ * 工序 → 设备型 单一来源（同 `WORKSHOP_REGISTRY` 一并上提·R14）。
+ *
+ * ⚠ 它与 `WORKSHOP_REGISTRY` **不是同一层建模**，键集刻意不同，勿"对齐"：
+ *   本表有 `aging`（老化）而十车间链里没有；本表无 `slurry`/`grading`。
+ *   这是 Workshop 层与 Process 层两套口径的真实差异——后果是「老化库」这个瓶颈
+ *   在工序矩阵里定位不到列，正确处置是标 EMPTY，**不是硬塞一列点亮**。
+ */
+export const EQUIPMENT_TYPE_BY_PROCESS: Readonly<Record<string, string>> = {
+  coating: "涂布机",
+  calendering: "辊压机",
+  slitting: "分切机",
+  winding: "卷绕机",
+  assembly: "装配线",
+  filling: "注液机",
+  formation: "化成柜",
+  aging: "老化库",
+  pack: "PACK线",
+} as const;

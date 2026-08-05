@@ -1,4 +1,4 @@
-import { BASE_REGISTRY, type CanonicalBase } from "@platform/contracts";
+import { BASE_REGISTRY, type CanonicalBase, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 
 /**
  * WO-SANDBOX-F3 · 物理拓扑（基地 × 产线 × 工序）矩阵的**纯派生层**。
@@ -46,39 +46,25 @@ export const EQUIPMENT_TYPE_SOURCE = {
 } as const;
 
 /**
- * `WORKSHOP_DEFS` 镜像（顺序 = 工艺先后，逐字节对齐源文件的 `{ type, suffix }`）。
- * 改动源文件必须同步改这里，否则 source-parity 用例红。
+ * 工序表**从 contracts 单源派生**，不再镜像。
+ *
+ * 并线记录（审核方）：F3 交付时这里是一份内联镜像 + 一道 source-parity 比对门，理由是
+ * 「跨 app 不许 import 源码（contracts-only-shared）」。`debattery:check` 判红：
+ * **镜像加比对门治的是"漂了能发现"，治不了"两处各写一份"本身**（R14 去业务锁死）。
+ * 已把 `WORKSHOP_REGISTRY` 上提到 `packages/contracts`，datacore 与本文件同源派生。
  */
-const WORKSHOP_DEFS_MIRROR: { type: string; suffix: string }[] = [
-  { type: "制浆", suffix: "slurry" },
-  { type: "涂布", suffix: "coating" },
-  { type: "辊压", suffix: "calendering" },
-  { type: "分切", suffix: "slitting" },
-  { type: "卷绕", suffix: "winding" },
-  { type: "装配", suffix: "assembly" },
-  { type: "注液", suffix: "filling" },
-  { type: "化成", suffix: "formation" },
-  { type: "分容", suffix: "grading" },
-  { type: "PACK", suffix: "pack" },
-];
+const WORKSHOP_DEFS_MIRROR: { type: string; suffix: string }[] = WORKSHOP_REGISTRY.map((w) => ({
+  type: w.type,
+  suffix: w.suffix,
+}));
 
 /**
- * battery.ts:3539 `typeMap` 镜像（工序 suffix → 设备型）。
- * 注意它**只有 9 条**：没有 `slurry`、没有 `grading`，却有 `aging`（老化）——
- * 而 `aging` 根本不在十车间链里。这不是笔误，是两层建模口径不同（Workshop 层 vs Process 层），
- * 后果就是"老化库"这个瓶颈在本矩阵里定位不到列 → 只能标 EMPTY（见 `resolveBottleneck`）。
+ * 工序 → 设备型，**从 contracts 单源派生**（并线时与工序表一并上提，见 base-registry.ts）。
+ * 注意它与十车间链**键集刻意不同**：有 `aging` 无 `slurry`/`grading` —— Workshop 层与
+ * Process 层两套口径的真实差异。后果是「老化库」瓶颈在本矩阵定位不到列 → 标 EMPTY
+ * （见 `resolveBottleneck`），**不硬塞一列点亮**。
  */
-const EQUIPMENT_TYPE_BY_PROCESS_MIRROR: Record<string, string> = {
-  coating: "涂布机",
-  calendering: "辊压机",
-  slitting: "分切机",
-  winding: "卷绕机",
-  assembly: "装配线",
-  filling: "注液机",
-  formation: "化成柜",
-  aging: "老化库",
-  pack: "PACK线",
-};
+const EQUIPMENT_TYPE_BY_PROCESS_MIRROR: Record<string, string> = { ...EQUIPMENT_TYPE_BY_PROCESS };
 
 /** 供测试做 source-parity 比对（只读导出，不供业务使用）。 */
 export const __mirrors = {
@@ -391,7 +377,7 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     field: "util",
     source: "capacity_rollup",
     shapeToday: "bases[].processes[]{capacityPerDay, formula, inputs}（逐基地逐工序日产能）",
-    gap: "Process 对象只有 涂布/卷绕/装配/化成/老化 五类 → 十列约五列可填，其余保持 EMPTY",
+    gap: "Process 对象只有 涂布/卷绕/装配/化成/老化 五类 → 十列约五列可填，其余保持 EMPTY",  // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常数。把工序名从这句里删掉，诊断就没用了（「只有五类」等于没说）。工序表本身已单源化到 contracts。
   },
   {
     field: "wip",
