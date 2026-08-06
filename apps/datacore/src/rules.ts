@@ -1,10 +1,12 @@
-import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin } from "@platform/contracts";
+import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin, RuleParamChange } from "@platform/contracts";
+import { RULE_PARAM_BINDINGS, applyRuleParamBindings } from "@platform/contracts";
 import type { AuthCtx, Rule } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { newId } from "./ids.js";
 import { DslError, evaluateExpression, parseExpression } from "./ruledsl.js";
 import { AppError, notFound, validationError } from "./errors.js";
 import type { OutboxService } from "./outbox.js";
+import { SolverService } from "./solvers/service.js";
 
 /** 管理平台增量 §5：DSL 解析校验，错误定位到字符位（消息含「位置 N」，前端内联标注）。 */
 export function assertValidExpression(expression: string): void {
@@ -69,9 +71,45 @@ export class RulesService {
     };
     await this.repos.rules.put(rule);
     if (rule.status === "PUBLISHED") {
+      await this.projectRuleParams(ctx, rule.key);
       await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version });
     }
     return rule;
+  }
+
+  /**
+   * 规则即引用 **P4 · 数值维**（G-10）：规则发布后，把它声明的**命名阈值**投影进本租户 `solver_params`
+   * —— 令 `rule.params` 成为该阈值的**唯一上游真源**，`solver_params` 只是派生副本。
+   *
+   * 为什么必须有这一步（P1/P2 之后仍缺的那一半）：P2 让求解器**评估**规则（`evaluatedRules`），但求解器
+   * **算数**用的系数仍读 `solver_params` 里自己那份同值字面量（C04 `certFactors.认证中` / C09 `health.*` /
+   * C18 `sop.cashFloor` / C21 `sop.dvThreshold`）。于是「改规则种子」只改了个没人读的诱饵，推演分毫不动。
+   * 投影之后：**改规则定义（经 /a/v1/rules 编辑路径）、不改任何代码 → 求解器输出真的变**。
+   *
+   * 边界（写在这里，别靠猜）：
+   *  · 只在**被绑定的规则**（`RULE_PARAM_BINDINGS`）发布时触发，其余规则零开销；
+   *  · 经 `SolverService.mutateParams`（solver_params 唯一写入通道）→ 版本 +1 + 双份历史快照，可回溯；
+   *  · 值未变则**不写**（种子期规则与 solver_params 本就同源同值 → 零写入，R6 字节一致不破）；
+   *  · **写回整个顶层键**（如整个 `health` 对象）—— `getParams` 对存储层是**浅合并**，只写子键会把同层
+   *    其它子键（`health.normal`）冲掉；
+   *  · `retire` **不回滚**已投影的值（参数保留最后一次已知口径），需要改回请发布新版本规则。
+   */
+  private async projectRuleParams(ctx: AuthCtx, ruleKey: string): Promise<RuleParamChange[]> {
+    if (!RULE_PARAM_BINDINGS.some((b) => b.ruleKey === ruleKey)) return [];
+    const published = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const solvers = new SolverService(this.repos);
+    const effective = (await solvers.getParams(ctx.tenantId)) as unknown as Record<string, unknown>;
+    const { params: next, changes } = applyRuleParamBindings(effective, published);
+    if (changes.length === 0) return [];
+    const topKeys = [...new Set(changes.map((c) => c.path.split(".")[0] as string))];
+    await solvers.mutateParams(
+      ctx.tenantId,
+      (stored) => {
+        for (const k of topKeys) stored[k] = structuredClone(next[k]);
+      },
+      `rule-params: ${changes.map((c) => `${c.ruleKey}.${c.param}→${c.path}=${String(c.to)}`).join(" · ")}`,
+    );
+    return changes;
   }
 
   async list(ctx: AuthCtx, status?: string): Promise<Rule[]> {
@@ -153,6 +191,8 @@ export class RulesService {
     for (const old of siblings) await this.repos.rules.put({ ...old, status: "RETIRED" });
     const updated: Rule = { ...rule, status: "PUBLISHED" };
     await this.repos.rules.put(updated);
+    // G-10 P4：发布即让该规则的命名阈值成为推演参数的真源（改规则即改推演，无需改代码）。
+    await this.projectRuleParams(ctx, rule.key);
     await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version: rule.version });
     const impact = await this.impact(ctx, rule.key);
     return { ...updated, impact, warnings };

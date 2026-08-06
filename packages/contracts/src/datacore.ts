@@ -147,6 +147,110 @@ export const SOLVER_RULE_REFS: Record<string, string[]> = {
 };
 
 /**
+ * 规则即引用 **P4 · 数值维**（G-10 §8 残口）：`rule.params` → `solver_params` **路径绑定**。
+ *
+ * 病根（P1/P2 未闭的那一半）：P2 让求解器**评估**规则（`evaluatedRules` 真 PASS/WARN/BLOCK），但求解器
+ * **算数用的系数/阈值**仍读 `solver_params` 里自己那份**同值字面量**——同一业务阈值在「规则种子」与
+ * 「SolverParam 种子」各存一份（如 C04 `pendingCertFactor:0.6` ↔ `certFactors.认证中:0.6`；
+ * C09 `staleHours:2/degradedFactor:0.9` ↔ `health.staleHours:2/health.degraded:0.9`）。
+ * 门守的是 SolverParam 那份、规则那份**没人读** = **诱饵**：下一个人去改规则种子，以为改了推演。
+ *
+ * 本表把二者接成 **单源(rule.params) → 派生(solver_params)**：规则发布时按本表投影（`RulesService`），
+ * 于是「改规则定义、不改任何代码 → 求解器输出真的变」。**不许并存**：场景包侧的 solver_params 种子值
+ * 必须从同一条规则派生（见 `apps/datacore/src/synthetic/battery.ts` `ruleParamOf()`），不再各写一份。
+ *
+ * 与 `SOLVER_RULE_REFS` 的分工：那张表管**哪些规则被哪个求解器评估**（布尔闸），本表管**规则的命名阈值
+ * 喂到哪个数值参数**（连续量）。两张表都在 contracts = 引用关系的单一来源。
+ */
+export interface RuleParamBinding {
+  /** 规则码（如 C09）。 */
+  ruleKey: string;
+  /** `rule.params` 内的命名阈值键。 */
+  param: string;
+  /** `solver_params` 内的点分路径（段可含中文枚举键，如 `certFactors.认证中`）。 */
+  path: string;
+  /** 人读补注：这个阈值在推演里怎么用。 */
+  note: string;
+}
+
+export const RULE_PARAM_BINDINGS: readonly RuleParamBinding[] = [
+  { ruleKey: "C04", param: "productionFactor", path: "certFactors.量产", note: "量产认证产线产能计入系数（capacity_forecast/capex/sop/planviews 逐基地乘）" },
+  { ruleKey: "C04", param: "pendingCertFactor", path: "certFactors.认证中", note: "认证中产线降额系数——C04「仅认证产线计入产能」的数值面" },
+  { ruleKey: "C09", param: "staleHours", path: "health.staleHours", note: "关键数据源新鲜度延迟阈值（h）：超过即触发 P90 临时降级" },
+  { ruleKey: "C09", param: "degradedFactor", path: "health.degraded", note: "降级后的 P90 系数（正常系数 health.normal 归 M11 校准 p90_health，不由规则声明）" },
+  { ruleKey: "C18", param: "cashFloor", path: "sop.cashFloor", note: "现金垫底线（亿）：S&OP 版本校验 s4 的 cashOk 判据" },
+  { ruleKey: "C18", param: "cashFloor", path: "planGenerate.targets.cashFloor", note: "同一条 C18 的另一个消费口径（plan_generate 硬约束 hardViol='C18'）——两处必须同源，否则同一条规则的两个消费方各说各话" },
+  { ruleKey: "C21", param: "balanceDeviationPct", path: "sop.dvThreshold", note: "产销平衡偏差阈值（比率）：S&OP 偏差判定" },
+] as const;
+
+/** 一次投影里被规则改写的一个数值参数。 */
+export interface RuleParamChange {
+  ruleKey: string;
+  param: string;
+  path: string;
+  from: unknown;
+  to: number;
+}
+
+function ruleParamPathParent(params: Record<string, unknown>, path: string): Record<string, unknown> | undefined {
+  const segs = path.split(".");
+  let cur: unknown = params;
+  for (let i = 0; i < segs.length - 1; i++) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[segs[i] as string];
+  }
+  return cur != null && typeof cur === "object" ? (cur as Record<string, unknown>) : undefined;
+}
+
+/**
+ * 纯函数（R6 确定性·无时钟/随机）：把已发布规则的命名阈值按 `RULE_PARAM_BINDINGS` 投影到一份
+ * solver_params 上，返回**新对象**（不改入参）+ 变更清单。
+ *
+ * 诚实边界（三条守则，缺一即会写坏别的租户/别的参数）：
+ *  1. **只写声明过的路径**——不在本表的 solver_params 一律不碰。
+ *  2. **父容器不存在则跳过**（R14 行业无关）：非本场景包租户的 solver_params 没有 `certFactors`/`health`
+ *     这些容器时，投影是 no-op，绝不凭空造参数结构。
+ *  3. **非有限数跳过**（`params` 契约允许 string/string[]，那些不是数值阈值）——不把非数写进推演参数。
+ */
+export function applyRuleParamBindings(
+  solverParams: Record<string, unknown>,
+  rules: readonly { key: string; status?: string; params?: Record<string, number | string | string[]> | undefined }[],
+  bindings: readonly RuleParamBinding[] = RULE_PARAM_BINDINGS,
+): { params: Record<string, unknown>; changes: RuleParamChange[] } {
+  // 路径写时复制（不 structuredClone：contracts 只挂 lib ES2022，且深克隆会把非 JSON 值弄坏）——
+  // 只沿被改写的路径复制容器，其余子树与入参共享引用，入参本身一字不动。
+  const next: Record<string, unknown> = { ...solverParams };
+  const copied = new Set<Record<string, unknown>>([next]);
+  const byKey = new Map(rules.map((r) => [r.key, r]));
+  const changes: RuleParamChange[] = [];
+  for (const b of bindings) {
+    const rule = byKey.get(b.ruleKey);
+    const raw = rule?.params?.[b.param];
+    if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+    const parent = ruleParamPathParent(next, b.path);
+    if (!parent) continue;
+    const segs = b.path.split(".");
+    const leaf = segs[segs.length - 1] as string;
+    const from = parent[leaf];
+    if (from === raw) continue;
+    let cur = next;
+    for (let i = 0; i < segs.length - 1; i++) {
+      const seg = segs[i] as string;
+      let child = cur[seg] as Record<string, unknown>;
+      if (!copied.has(child)) {
+        child = { ...child };
+        copied.add(child);
+        cur[seg] = child;
+      }
+      cur = child;
+    }
+    cur[leaf] = raw;
+    changes.push({ ruleKey: b.ruleKey, param: b.param, path: b.path, from, to: raw });
+  }
+  return { params: next, changes };
+}
+
+/**
  * 规则即引用（PRD-rules-as-references §4）：求解器透出**真评估结果**（关联规则面板显 PASS/WARN/BLOCK，
  * 非装饰标签）。NOT_APPLICABLE = 该规则字段不在本求解器可见 payload（诚实标，不冒充通过）。
  */

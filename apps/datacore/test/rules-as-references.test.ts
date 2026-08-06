@@ -14,15 +14,20 @@ describe("规则即引用 P1 · 13 条规则一等化 + 引用闭合", () => {
     await seedBattery(t);
     const res = await t.app.inject({ method: "GET", url: "/a/v1/rules", headers: ADMIN });
     expect(res.statusCode).toBe(200);
-    const rules = res.json() as { key: string; status: string; params?: Record<string, number> }[];
+    const rules = res.json() as { key: string; status: string; expression: string; params?: Record<string, number> }[];
     const byKey = new Map(rules.filter((r) => r.status === "PUBLISHED").map((r) => [r.key, r]));
     for (const k of THIRTEEN) {
       expect(byKey.has(k), `规则 ${k} 应已定义并发布`).toBe(true);
     }
-    // 写死阈值显式化落 params（改 param 即改推演——P2 求解器接入）。
+    // 写死阈值显式化落 params（改 param 即改推演——P4 投影进 solver_params，见 rules-param-binding.test.ts）。
     expect(byKey.get("C09")?.params?.staleHours).toBe(2);
-    expect(byKey.get("C11")?.params?.minBufferDays).toBe(3);
-    expect(byKey.get("C22")?.params?.maxChangeoverMin).toBe(120);
+    expect(byKey.get("C04")?.params?.pendingCertFactor).toBe(0.6);
+    // P4 纪律修正：C11/C22 的 params 曾各存一份与自身 expression 同值的副本（minBufferDays:3 / maxChangeoverMin:120），
+    // 全代码库无人读 = 诱饵（改它不改任何行为）→ 已删；这两条规则的阈值单源 = expression 本身，由规则引擎真求值。
+    expect(byKey.get("C11")?.expression).toContain("< 3");
+    expect(byKey.get("C22")?.expression).toContain("> 120");
+    expect(byKey.get("C11")?.params).toEqual({});
+    expect(byKey.get("C22")?.params).toEqual({});
   });
 
   it("引用闭合：SOLVER_RULE_REFS 全部 ⊆ 已发布规则（无悬空引用 → 不再'未找到定义'）", async () => {
