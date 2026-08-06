@@ -184,14 +184,36 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //          → 2c7ba020(C08 红线 0.3→0.2)=bb5dd844… → aa28eda1(G-10 规则一等化)=c7ec8b29…
     //   C08 是真推演变化（红线收紧，本就该变）；G-10 **只动了 ruleSetVersion**，推演数值逐字节未变
     //   （`diff` 全文只有一行不同）—— 这也正是本条改口径的直接由来。
+    // ⚠️ 口径二次收窄（WO-SANDBOX-D4 并线时·2026-08-06）：本条曾把**整个 payload**锁死，
+    //   于是任何**加性**新字段都会把它打红，逼人去改数字 —— 而"改数字"恰恰是本条注释警惕的橡皮图章。
+    //   D4 给 risk_timeline 加了 `otdBatch`（顶层）与逐卡 `otd`（OTD 批次准时率聚合层）。
+    //   归属取证（照上面的协议做的）：`otdFromRiskCard`（solvers/aggregates.ts）只**读** c.orders /
+    //   affected 建映射并 `return otdBatchRate(...)`，对任何入参零写入 —— 不改 series/peak/crossDay/
+    //   affectedOrders。长度 26434→30213（+3779）正是这两个新键的体积。
+    //
+    //   所以本条真正要守的是「**老字段一个数都不许变**」，不是「输出体积永远不许长」。
+    //   改法：把已知的加性新键**剥掉**再锁金值 —— 老哈希原封不动继续生效（它是实证：
+    //   剥完若仍等于上线前那个哈希，就证明 D4 确实纯加性；不等 = 真回归，照旧转红）。
+    //   将来再有加性字段，按同样方式登记进 ADDITIVE_KEYS，并在此写清是哪一笔、为什么该加。
+    const ADDITIVE_KEYS = { top: ["otdBatch"], perCard: ["otd"] }; // WO-SANDBOX-D4
     const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
-    const numericJson = JSON.stringify(numeric);
-    expect(numericJson.length, "输出长度已变 —— 无采纳时不该有任何形状变化").toBe(26434);
+    const stripped = JSON.parse(JSON.stringify(numeric)) as Record<string, unknown>;
+    for (const k of ADDITIVE_KEYS.top) delete stripped[k];
+    for (const v of Object.values(stripped)) {
+      if (!Array.isArray(v)) continue;
+      for (const row of v) {
+        if (row && typeof row === "object") for (const k of ADDITIVE_KEYS.perCard) delete (row as Record<string, unknown>)[k];
+      }
+    }
+    const numericJson = JSON.stringify(stripped);
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26434);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
     ).toBe("9d8d4050f9ca9f34524d4497aa09e29d14e8c8ad3f60e740cbe879eff2bd1c8b");
+    // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
+    expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(typeof ruleSetVersion, "规则集指纹必须仍在（它变是正常的，缺了才是问题）").toBe("string");
     expect(String(ruleSetVersion)).toMatch(/^rsv_[0-9a-f]+$/);
     // 新字段绝不在无采纳时露头（避免"多了个 key"这种静默形状漂移）。
