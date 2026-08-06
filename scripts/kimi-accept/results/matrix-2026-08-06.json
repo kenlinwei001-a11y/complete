@@ -1,0 +1,2388 @@
+[
+ {
+  "no": 1,
+  "run": 1,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州物料齐套 D+5 为什么越线？",
+  "why": "原题·objectRef 基地+日期+因素",
+  "taskId": "task_01KZBC6EW4D0T4EMGPRRG7719F",
+  "ms": 29328,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "day": "D+5"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.92,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": "D+5"
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 1,
+  "run": 2,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州物料齐套 D+5 为什么越线？",
+  "why": "原题·objectRef 基地+日期+因素",
+  "taskId": "task_01KZBC7BT7BWM63RJ13G6GF9VT",
+  "ms": 12588,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "day": "D+5"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": "D+5"
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 1,
+  "run": 3,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州物料齐套 D+5 为什么越线？",
+  "why": "原题·objectRef 基地+日期+因素",
+  "taskId": "task_01KZBC7R9SSJS3JH25Q58KS6GW",
+  "ms": 20790,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "day": "D+5"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": "D+5"
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 1,
+  "run": 4,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州物料齐套 D+5 为什么越线？",
+  "why": "原题·objectRef 基地+日期+因素",
+  "taskId": "task_01KZBC8C278ZE5FASX13CV92RT",
+  "ms": 13193,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "day": "D+5"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": "D+5"
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 1,
+  "run": 5,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州物料齐套 D+5 为什么越线？",
+  "why": "原题·objectRef 基地+日期+因素",
+  "taskId": "task_01KZBC8S0SEW2SBGYGNDEJ7CWP",
+  "ms": 10258,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "day": "D+5"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": "D+5"
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 2,
+  "run": 1,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州工厂的齐套张力为啥突然冲高",
+  "why": "V2 实体变形（常州工厂）+ 换动词",
+  "taskId": "task_01KZBC930RZ898Q2WCZHS2SQVM",
+  "ms": 22288,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 2,
+  "run": 2,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州工厂的齐套张力为啥突然冲高",
+  "why": "V2 实体变形（常州工厂）+ 换动词",
+  "taskId": "task_01KZBC9RTQFPFDSN7S5MH08MJE",
+  "ms": 21350,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 2,
+  "run": 3,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州工厂的齐套张力为啥突然冲高",
+  "why": "V2 实体变形（常州工厂）+ 换动词",
+  "taskId": "task_01KZBCADRGNP7P161ZKRG3CPDG",
+  "ms": 16415,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 2,
+  "run": 4,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州工厂的齐套张力为啥突然冲高",
+  "why": "V2 实体变形（常州工厂）+ 换动词",
+  "taskId": "task_01KZBCAXQ1BY3VVGV0E8VT11V9",
+  "ms": 11304,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "factor": "物料齐套"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 2,
+  "run": 5,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "常州工厂的齐套张力为啥突然冲高",
+  "why": "V2 实体变形（常州工厂）+ 换动词",
+  "taskId": "task_01KZBCB8R5VNDK9PPMM5KKC058",
+  "ms": 22335,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {},
+  "routed": "risk_root_cause",
+  "routedConf": 0.92,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "changzhou",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 3,
+  "run": 1,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "是什么把常州物料齐套顶过阈值的",
+  "why": "V3 句式变形",
+  "taskId": "task_01KZBCBYDKKGM8CD0BPHQAHKSD",
+  "ms": 11133,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 3,
+  "run": 2,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "是什么把常州物料齐套顶过阈值的",
+  "why": "V3 句式变形",
+  "taskId": "task_01KZBCC9CMN6ZB25K5QCE9T73E",
+  "ms": 11252,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 3,
+  "run": 3,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "是什么把常州物料齐套顶过阈值的",
+  "why": "V3 句式变形",
+  "taskId": "task_01KZBCCMDKJ6GTYK5AMAGEF72D",
+  "ms": 8285,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "factor": "物料齐套"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.9,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 3,
+  "run": 4,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "是什么把常州物料齐套顶过阈值的",
+  "why": "V3 句式变形",
+  "taskId": "task_01KZBCCWH5HKY82MG9Z0V49PZD",
+  "ms": 11320,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.92,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 3,
+  "run": 5,
+  "intent": "risk_root_cause",
+  "view": "risk",
+  "query": "是什么把常州物料齐套顶过阈值的",
+  "why": "V3 句式变形",
+  "taskId": "task_01KZBCD7GR7JS82J8KXB1CPAW9",
+  "ms": 12275,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "risk_root_cause",
+  "routedConf": 0.95,
+  "matched": "risk_root_cause",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "day": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": "基地风险画像（base_risk_profile 切片）： ",
+  "pass": true
+ },
+ {
+  "no": 4,
+  "run": 1,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州基地影响哪些订单？",
+  "why": "原题",
+  "taskId": "task_01KZBCDKHYP2945KHDY471NHVR",
+  "ms": 9372,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州基地"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.95,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 4,
+  "run": 2,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州基地影响哪些订单？",
+  "why": "原题",
+  "taskId": "task_01KZBCDWQJC4498HQ2M6NX4SG6",
+  "ms": 14322,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 4,
+  "run": 3,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州基地影响哪些订单？",
+  "why": "原题",
+  "taskId": "task_01KZBCEAMFFM97XR4ABR7XN4J0",
+  "ms": 9214,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州基地"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.95,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 4,
+  "run": 4,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州基地影响哪些订单？",
+  "why": "原题",
+  "taskId": "task_01KZBCEM3RX2QV2Z35RPYBNT07",
+  "ms": 15733,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州基地"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.95,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 4,
+  "run": 5,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州基地影响哪些订单？",
+  "why": "原题",
+  "taskId": "task_01KZBCF37VSPJX9PANAKFZVV95",
+  "ms": 9457,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州基地"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.92,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 5,
+  "run": 1,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州工厂 交期风险波及哪些在手单",
+  "why": "V2 实体变形 + 换词",
+  "taskId": "task_01KZBCFCF4PMP60D6N4G5MVSKN",
+  "ms": 9453,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.95,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 5,
+  "run": 2,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州工厂 交期风险波及哪些在手单",
+  "why": "V2 实体变形 + 换词",
+  "taskId": "task_01KZBCFNG6G0Q48RN95Q6ZGF09",
+  "ms": 14257,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.92,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 5,
+  "run": 3,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州工厂 交期风险波及哪些在手单",
+  "why": "V2 实体变形 + 换词",
+  "taskId": "task_01KZBCG3EKVHKQ3C83K7122XK4",
+  "ms": 11272,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 5,
+  "run": 4,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州工厂 交期风险波及哪些在手单",
+  "why": "V2 实体变形 + 换词",
+  "taskId": "task_01KZBCGEATRTGGVJ8A2VGTXNN5",
+  "ms": 17184,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 5,
+  "run": 5,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州工厂 交期风险波及哪些在手单",
+  "why": "V2 实体变形 + 换词",
+  "taskId": "task_01KZBCGZ7Z6Q3NBJ88J0B1J43P",
+  "ms": 9267,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州工厂"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.92,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 6,
+  "run": 1,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州这边有哪些单要被拖累",
+  "why": "V3 口语化",
+  "taskId": "task_01KZBCH857VBZGZ3WTTXM36P1A",
+  "ms": 10131,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.92,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 6,
+  "run": 2,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州这边有哪些单要被拖累",
+  "why": "V3 口语化",
+  "taskId": "task_01KZBCHJ3D3T54SQK13BMGJMY7",
+  "ms": 12202,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 6,
+  "run": 3,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州这边有哪些单要被拖累",
+  "why": "V3 口语化",
+  "taskId": "task_01KZBCHY1EK1XS7H7CS1D9YR7B",
+  "ms": 9200,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 6,
+  "run": 4,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州这边有哪些单要被拖累",
+  "why": "V3 口语化",
+  "taskId": "task_01KZBCJ724DKJTNNCGKY6W8K4W",
+  "ms": 12247,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.9,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 6,
+  "run": 5,
+  "intent": "affected_orders",
+  "view": "risk",
+  "query": "常州这边有哪些单要被拖累",
+  "why": "V3 口语化",
+  "taskId": "task_01KZBCJJZMDBP4V7YQ5YYTME9V",
+  "ms": 13234,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州"
+  },
+  "routed": "affected_orders",
+  "routedConf": 0.92,
+  "matched": "affected_orders",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "timeWindow": null
+  },
+  "slotResolutions": [
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " 受影响订单共 8 张，明细见上表 ⟦ref:0⟧。",
+  "pass": true
+ },
+ {
+  "no": 7,
+  "run": 1,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "why": "仓主原始那道题",
+  "taskId": "task_01KZBCJZZ5851JGYYR4KX2XRW5",
+  "ms": 11274,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州基地"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 7,
+  "run": 2,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "why": "仓主原始那道题",
+  "taskId": "task_01KZBCKB88A0P11MD3JMYJ5ANJ",
+  "ms": 13558,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州基地"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 7,
+  "run": 3,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "why": "仓主原始那道题",
+  "taskId": "task_01KZBCKR7K4S5XKJW1W2QPEFVP",
+  "ms": 17302,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州基地"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 7,
+  "run": 4,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "why": "仓主原始那道题",
+  "taskId": "task_01KZBCM94AQZ2S7B87932BQ01N",
+  "ms": 11280,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州基地"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 7,
+  "run": 5,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "why": "仓主原始那道题",
+  "taskId": "task_01KZBCMM3JQCMWWKJ26VTHTS8C",
+  "ms": 11248,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州基地"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州基地",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 8,
+  "run": 1,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680 三元圆柱 常州工厂 增产两成 六周交得出来吗",
+  "why": "型号+基地双实体变形",
+  "taskId": "task_01KZBCMZ0W28ZW0Y12D0N4JRK5",
+  "ms": 12174,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680 三元圆柱",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州工厂"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680 三元圆柱",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 8,
+  "run": 2,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680 三元圆柱 常州工厂 增产两成 六周交得出来吗",
+  "why": "型号+基地双实体变形",
+  "taskId": "task_01KZBCNAWH4RWEZFX7NJSNTEB4",
+  "ms": 13155,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州工厂"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州工厂",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "partial",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 8,
+  "run": 3,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680 三元圆柱 常州工厂 增产两成 六周交得出来吗",
+  "why": "型号+基地双实体变形",
+  "taskId": "task_01KZBCNQWBB359X4BG3H5BZ6CX",
+  "ms": 12313,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 8,
+  "run": 4,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680 三元圆柱 常州工厂 增产两成 六周交得出来吗",
+  "why": "型号+基地双实体变形",
+  "taskId": "task_01KZBCP3W817HC00177K26JWHN",
+  "ms": 11278,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 8,
+  "run": 5,
+  "intent": "capacity_feasibility",
+  "view": "dash",
+  "query": "4680 三元圆柱 常州工厂 增产两成 六周交得出来吗",
+  "why": "型号+基地双实体变形",
+  "taskId": "task_01KZBCPEWWN66C9Z07H345D3SP",
+  "ms": 11289,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "model": "4680-NCM",
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": "常州"
+  },
+  "routed": "capacity_feasibility",
+  "routedConf": 0.95,
+  "matched": "capacity_feasibility",
+  "path": "WORKFLOW",
+  "taskSlots": {
+   "model": {
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱"
+   },
+   "demandDelta": 0.2,
+   "weeks": 6,
+   "base": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   }
+  },
+  "slotResolutions": [
+   {
+    "slotName": "model",
+    "ref": "4680-NCM",
+    "objectType": "Model",
+    "objectId": "4680-NCM",
+    "label": "4680 三元圆柱",
+    "matchedBy": "id",
+    "matchedProp": "__id"
+   },
+   {
+    "slotName": "base",
+    "ref": "常州",
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州",
+    "matchedBy": "name",
+    "matchedProp": "name"
+   }
+  ],
+  "pending": null,
+  "error": null,
+  "answerHead": " P50/P90 与缺口比例见上方指标；主要瓶颈为空时表明当前产能数据缺口（dataMode=EMPTY）。",
+  "pass": true
+ },
+ {
+  "no": 9,
+  "run": 1,
+  "intent": "kit_analysis",
+  "view": "dash",
+  "query": "下周常州哪些订单缺料开不了工？",
+  "why": "对照组·现在就过，防回归",
+  "taskId": "task_01KZBCPSZA4DFP93C20CEE3JBC",
+  "ms": 26393,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "timeWindow": "下周"
+  },
+  "routed": "kit_analysis",
+  "routedConf": 0.95,
+  "matched": "kit_analysis",
+  "path": "WORKFLOW",
+  "taskSlots": {},
+  "slotResolutions": null,
+  "pending": null,
+  "error": null,
+  "answerHead": "物料齐套分析（求解器 kit_readiness）推演结果： 依据规则：C06、C16 ⟦ref:0⟧ 另有明细：evaluatedRules（2 项）（详见步骤溯源）。",
+  "pass": true
+ },
+ {
+  "no": 9,
+  "run": 2,
+  "intent": "kit_analysis",
+  "view": "dash",
+  "query": "下周常州哪些订单缺料开不了工？",
+  "why": "对照组·现在就过，防回归",
+  "taskId": "task_01KZBCQKJAMYC9ZYHF0TNW0G0C",
+  "ms": 60299,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {},
+  "routed": "kit_analysis",
+  "routedConf": 0.95,
+  "matched": "kit_analysis",
+  "path": "WORKFLOW",
+  "taskSlots": {},
+  "slotResolutions": null,
+  "pending": null,
+  "error": null,
+  "answerHead": "物料齐套分析（求解器 kit_readiness）推演结果： 依据规则：C06、C16 ⟦ref:0⟧ 另有明细：evaluatedRules（2 项）（详见步骤溯源）。",
+  "pass": true
+ },
+ {
+  "no": 9,
+  "run": 3,
+  "intent": "kit_analysis",
+  "view": "dash",
+  "query": "下周常州哪些订单缺料开不了工？",
+  "why": "对照组·现在就过，防回归",
+  "taskId": "task_01KZBCSEHHF6W1HXD8HX5EAE4S",
+  "ms": 33333,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {},
+  "routed": "kit_analysis",
+  "routedConf": 0.95,
+  "matched": "kit_analysis",
+  "path": "WORKFLOW",
+  "taskSlots": {},
+  "slotResolutions": null,
+  "pending": null,
+  "error": null,
+  "answerHead": "物料齐套分析（求解器 kit_readiness）推演结果： 依据规则：C06、C16 ⟦ref:0⟧ 另有明细：evaluatedRules（2 项）（详见步骤溯源）。",
+  "pass": true
+ },
+ {
+  "no": 9,
+  "run": 4,
+  "intent": "kit_analysis",
+  "view": "dash",
+  "query": "下周常州哪些订单缺料开不了工？",
+  "why": "对照组·现在就过，防回归",
+  "taskId": "task_01KZBCTFEKYY82NNHYTDCC4EWZ",
+  "ms": 31688,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {},
+  "routed": "kit_analysis",
+  "routedConf": 0.95,
+  "matched": "kit_analysis",
+  "path": "WORKFLOW",
+  "taskSlots": {},
+  "slotResolutions": null,
+  "pending": null,
+  "error": null,
+  "answerHead": "物料齐套分析（求解器 kit_readiness）推演结果： 依据规则：C06、C16 ⟦ref:0⟧ 另有明细：evaluatedRules（2 项）（详见步骤溯源）。",
+  "pass": true
+ },
+ {
+  "no": 9,
+  "run": 5,
+  "intent": "kit_analysis",
+  "view": "dash",
+  "query": "下周常州哪些订单缺料开不了工？",
+  "why": "对照组·现在就过，防回归",
+  "taskId": "task_01KZBCVE48ZFYBW24AW55174YG",
+  "ms": 21362,
+  "status": "COMPLETED",
+  "rounds": 0,
+  "slots": {
+   "base": "常州",
+   "timeWindow": "下周"
+  },
+  "routed": "kit_analysis",
+  "routedConf": 0.95,
+  "matched": "kit_analysis",
+  "path": "WORKFLOW",
+  "taskSlots": {},
+  "slotResolutions": null,
+  "pending": null,
+  "error": null,
+  "answerHead": "物料齐套分析（求解器 kit_readiness）推演结果： 依据规则：C06、C16 ⟦ref:0⟧ 另有明细：evaluatedRules（2 项）（详见步骤溯源）。",
+  "pass": true
+ },
+ {
+  "no": 10,
+  "run": 1,
+  "intent": "adopt_mitigation",
+  "view": "risk",
+  "query": "采纳常州的三班制方案",
+  "why": "写操作类·也带实体",
+  "taskId": "task_01KZBCW3JBPRZH9GSZP4E658C7",
+  "ms": 10925,
+  "status": "AWAITING_CLARIFICATION",
+  "rounds": 1,
+  "slots": {
+   "base": "常州",
+   "solutionName": "三班制"
+  },
+  "routed": "adopt_mitigation",
+  "routedConf": 0.98,
+  "matched": null,
+  "path": null,
+  "taskSlots": null,
+  "slotResolutions": null,
+  "pending": {
+   "kind": "SLOT_FILLING",
+   "round": 1,
+   "askedAt": "2026-08-06T11:21:05.742Z",
+   "slots": [
+    {
+     "name": "factor",
+     "type": "string",
+     "prompt": "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）"
+    }
+   ]
+  },
+  "error": null,
+  "answerHead": "",
+  "replySent": {
+   "kind": "SLOT_FILLING",
+   "slotValues": {
+    "factor": "物料齐套"
+   }
+  },
+  "afterReply": {
+   "ms": 11937,
+   "status": "COMPLETED",
+   "rounds": 1,
+   "slots": {
+    "base": "常州",
+    "solutionName": "三班制"
+   },
+   "routed": "adopt_mitigation",
+   "routedConf": 0.98,
+   "matched": "adopt_mitigation",
+   "path": "WORKFLOW",
+   "taskSlots": {
+    "base": {
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州"
+    },
+    "factor": "物料齐套",
+    "solutionName": "三班制"
+   },
+   "slotResolutions": [
+    {
+     "slotName": "base",
+     "ref": "changzhou",
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州",
+     "matchedBy": "id",
+     "matchedProp": "__id"
+    }
+   ],
+   "pending": null,
+   "error": null,
+   "answerHead": " 草稿已提交审批流程，本系统不会直接执行写操作。"
+  },
+  "exemptOutcome": "COMPLETED_AFTER_1_CLARIFY",
+  "pass": true
+ },
+ {
+  "no": 10,
+  "run": 2,
+  "intent": "adopt_mitigation",
+  "view": "risk",
+  "query": "采纳常州的三班制方案",
+  "why": "写操作类·也带实体",
+  "taskId": "task_01KZBCWEKF79JDH2K1QSRRRC1S",
+  "ms": 16305,
+  "status": "AWAITING_CLARIFICATION",
+  "rounds": 1,
+  "slots": {
+   "base": "常州",
+   "solutionName": "三班制"
+  },
+  "routed": "adopt_mitigation",
+  "routedConf": 0.95,
+  "matched": null,
+  "path": null,
+  "taskSlots": null,
+  "slotResolutions": null,
+  "pending": {
+   "kind": "SLOT_FILLING",
+   "round": 1,
+   "askedAt": "2026-08-06T11:21:22.986Z",
+   "slots": [
+    {
+     "name": "factor",
+     "type": "string",
+     "prompt": "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）"
+    }
+   ]
+  },
+  "error": null,
+  "answerHead": "",
+  "replySent": {
+   "kind": "SLOT_FILLING",
+   "slotValues": {
+    "factor": "物料齐套"
+   }
+  },
+  "afterReply": {
+   "ms": 17314,
+   "status": "COMPLETED",
+   "rounds": 1,
+   "slots": {
+    "base": "常州",
+    "solutionName": "三班制"
+   },
+   "routed": "adopt_mitigation",
+   "routedConf": 0.95,
+   "matched": "adopt_mitigation",
+   "path": "WORKFLOW",
+   "taskSlots": {
+    "base": {
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州"
+    },
+    "factor": "物料齐套",
+    "solutionName": "三班制"
+   },
+   "slotResolutions": [
+    {
+     "slotName": "base",
+     "ref": "changzhou",
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州",
+     "matchedBy": "id",
+     "matchedProp": "__id"
+    }
+   ],
+   "pending": null,
+   "error": null,
+   "answerHead": " 草稿已提交审批流程，本系统不会直接执行写操作。"
+  },
+  "exemptOutcome": "COMPLETED_AFTER_1_CLARIFY",
+  "pass": true
+ },
+ {
+  "no": 10,
+  "run": 3,
+  "intent": "adopt_mitigation",
+  "view": "risk",
+  "query": "采纳常州的三班制方案",
+  "why": "写操作类·也带实体",
+  "taskId": "task_01KZBCWZHPNCGYAGSCXFQMGXAE",
+  "ms": 17327,
+  "status": "AWAITING_CLARIFICATION",
+  "rounds": 1,
+  "slots": {
+   "base": "常州",
+   "solutionName": "三班制"
+  },
+  "routed": "adopt_mitigation",
+  "routedConf": 1,
+  "matched": null,
+  "path": null,
+  "taskSlots": null,
+  "slotResolutions": null,
+  "pending": {
+   "kind": "SLOT_FILLING",
+   "round": 1,
+   "askedAt": "2026-08-06T11:21:41.679Z",
+   "slots": [
+    {
+     "name": "factor",
+     "type": "string",
+     "prompt": "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）"
+    }
+   ]
+  },
+  "error": null,
+  "answerHead": "",
+  "replySent": {
+   "kind": "SLOT_FILLING",
+   "slotValues": {
+    "factor": "物料齐套"
+   }
+  },
+  "afterReply": {
+   "ms": 18354,
+   "status": "COMPLETED",
+   "rounds": 1,
+   "slots": {
+    "base": "常州",
+    "solutionName": "三班制"
+   },
+   "routed": "adopt_mitigation",
+   "routedConf": 1,
+   "matched": "adopt_mitigation",
+   "path": "WORKFLOW",
+   "taskSlots": {
+    "base": {
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州"
+    },
+    "factor": "物料齐套",
+    "solutionName": "三班制"
+   },
+   "slotResolutions": [
+    {
+     "slotName": "base",
+     "ref": "changzhou",
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州",
+     "matchedBy": "id",
+     "matchedProp": "__id"
+    }
+   ],
+   "pending": null,
+   "error": null,
+   "answerHead": " 草稿已提交审批流程，本系统不会直接执行写操作。"
+  },
+  "exemptOutcome": "COMPLETED_AFTER_1_CLARIFY",
+  "pass": true
+ },
+ {
+  "no": 10,
+  "run": 4,
+  "intent": "adopt_mitigation",
+  "view": "risk",
+  "query": "采纳常州的三班制方案",
+  "why": "写操作类·也带实体",
+  "taskId": "task_01KZBCXHDJ0GD1ZBJXTMMW5A31",
+  "ms": 11259,
+  "status": "AWAITING_CLARIFICATION",
+  "rounds": 1,
+  "slots": {
+   "base": "常州",
+   "solutionName": "三班制"
+  },
+  "routed": "adopt_mitigation",
+  "routedConf": 0.95,
+  "matched": null,
+  "path": null,
+  "taskSlots": null,
+  "slotResolutions": null,
+  "pending": {
+   "kind": "SLOT_FILLING",
+   "round": 1,
+   "askedAt": "2026-08-06T11:21:53.288Z",
+   "slots": [
+    {
+     "name": "factor",
+     "type": "string",
+     "prompt": "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）"
+    }
+   ]
+  },
+  "error": null,
+  "answerHead": "",
+  "replySent": {
+   "kind": "SLOT_FILLING",
+   "slotValues": {
+    "factor": "物料齐套"
+   }
+  },
+  "afterReply": {
+   "ms": 12284,
+   "status": "COMPLETED",
+   "rounds": 1,
+   "slots": {
+    "base": "常州",
+    "solutionName": "三班制"
+   },
+   "routed": "adopt_mitigation",
+   "routedConf": 0.95,
+   "matched": "adopt_mitigation",
+   "path": "WORKFLOW",
+   "taskSlots": {
+    "base": {
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州"
+    },
+    "factor": "物料齐套",
+    "solutionName": "三班制"
+   },
+   "slotResolutions": [
+    {
+     "slotName": "base",
+     "ref": "changzhou",
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州",
+     "matchedBy": "id",
+     "matchedProp": "__id"
+    }
+   ],
+   "pending": null,
+   "error": null,
+   "answerHead": " 草稿已提交审批流程，本系统不会直接执行写操作。"
+  },
+  "exemptOutcome": "COMPLETED_AFTER_1_CLARIFY",
+  "pass": true
+ },
+ {
+  "no": 10,
+  "run": 5,
+  "intent": "adopt_mitigation",
+  "view": "risk",
+  "query": "采纳常州的三班制方案",
+  "why": "写操作类·也带实体",
+  "taskId": "task_01KZBCXXGA0F4WS7RFGM8V5ZWP",
+  "ms": 15398,
+  "status": "AWAITING_CLARIFICATION",
+  "rounds": 1,
+  "slots": {
+   "base": "常州",
+   "solutionName": "三班制"
+  },
+  "routed": "adopt_mitigation",
+  "routedConf": 0.95,
+  "matched": null,
+  "path": null,
+  "taskSlots": null,
+  "slotResolutions": null,
+  "pending": {
+   "kind": "SLOT_FILLING",
+   "round": 1,
+   "askedAt": "2026-08-06T11:22:10.101Z",
+   "slots": [
+    {
+     "name": "factor",
+     "type": "string",
+     "prompt": "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）"
+    }
+   ]
+  },
+  "error": null,
+  "answerHead": "",
+  "replySent": {
+   "kind": "SLOT_FILLING",
+   "slotValues": {
+    "factor": "物料齐套"
+   }
+  },
+  "afterReply": {
+   "ms": 16437,
+   "status": "COMPLETED",
+   "rounds": 1,
+   "slots": {
+    "base": "常州",
+    "solutionName": "三班制"
+   },
+   "routed": "adopt_mitigation",
+   "routedConf": 0.95,
+   "matched": "adopt_mitigation",
+   "path": "WORKFLOW",
+   "taskSlots": {
+    "base": {
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州"
+    },
+    "factor": "物料齐套",
+    "solutionName": "三班制"
+   },
+   "slotResolutions": [
+    {
+     "slotName": "base",
+     "ref": "changzhou",
+     "objectType": "Base",
+     "objectId": "changzhou",
+     "label": "常州",
+     "matchedBy": "id",
+     "matchedProp": "__id"
+    }
+   ],
+   "pending": null,
+   "error": null,
+   "answerHead": " 草稿已提交审批流程，本系统不会直接执行写操作。"
+  },
+  "exemptOutcome": "COMPLETED_AFTER_1_CLARIFY",
+  "pass": true
+ }
+]
