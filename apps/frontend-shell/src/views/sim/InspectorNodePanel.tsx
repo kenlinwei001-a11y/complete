@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CHAIN_NODE_REGISTRY } from "@platform/contracts";
+import type { ViewRendererProps } from "../registry";
 import {
   PROVENANCE_LABEL,
   VAR_CLASSES,
   VAR_CLASS_META,
   VAR_CONTROL_BY_CLASS,
+  buildPlaceholderInspectorInput,
   computeInspectorReadout,
   drivesReadout,
   effectiveNumber,
@@ -18,7 +21,14 @@ import {
 import styles from "./InspectorNodePanel.module.css";
 
 /**
- * WO-SANDBOX-F4 · 节点检视面板（主视图右侧侧栏；**不是**独立 view，故不进 `registry.ts`）。
+ * WO-SANDBOX-F4 · 节点检视面板 + 其**宿主视图**（`NodeInspectorView`，本文件默认导出）。
+ *
+ * ⚠ 接线纪律（收口时补·F3 同款教训）：面板本身是侧栏组件，但 `views/registry.ts` 是**手工登记**
+ *    的字符串键表、无自动扫描 —— 只交付面板 = **零生产调用方** = 假绿第 9 形态
+ *    `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`（实现有、38 例测试全绿、却没有任何路由渲染得到它）。
+ *    故本文件同时给出宿主视图 `NodeInspectorView`（签名 = `Partial<ViewRendererProps>`，
+ *    可赋给 `ComponentType<ViewRendererProps>`，注册即不打红构建），并由 `registry.ts`
+ *    以键 `node-inspector` 登记。可达门见 `test/node-inspector-reachable.test.tsx`。
  *
  * 三块内容：① 五段耗时瀑布 ② 流动效率读数 ③ 七类变量分组输入。
  *
