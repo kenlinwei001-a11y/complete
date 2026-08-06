@@ -136,9 +136,7 @@ else if (typeof v === "string") { if (v) { kpis.push({ type: "kpi", label: k, va
 
 **计分：真重算 3 卡（S01/S02/S16）+ 1 条附条件（S03 须双键）｜只回显 6 卡｜完全忽略 10 卡（其中 3 卡有诚实兜底）。**
 
-### 2.1 分档展开
-
-### A 档 · 只回显（假个性化 · 7 处）
+### 2.1 A 档 · 只回显（假个性化 · 7 处）
 
 | # | 卡 | 求解器 | 作用域维 | 声明入参 | 实读入参 | 三态 | 数据层有无该维 | 修法量级 |
 |---|---|---|---|---|---|---|---|---|
@@ -454,7 +452,27 @@ POST kit_readiness {"args":{"fromDay":1,"toDay":14,"base":"枣庄"}}
 差分 fromDay 1 → 30       -> IGNORED   ← 卡片注释说这两个键「用户改窗口能生效」，实测不生效
 ```
 
-### 6.10 诚实兜底的三处（同样实测，列出以示区别）
+### 6.10 补测：一度被我误判的三个键（自纠原文）
+
+```
+第一轮（对照组没跨过阈值 → 误判 IGNORED）：
+  capex_scenario.gapMinQuarters 2 vs 6，demand=[60..74] s0=[45×8] -> IGNORED
+    （8 季全缺口，8>=2 与 8>=6 都成立 → 同一个 window，输出当然一样）
+第二轮（把对照组拉到阈值两侧）：
+  capex_scenario.gapMinQuarters 2 vs 99 -> REAL
+    $.windows[0]  {"kind":"gap","fromQ":0,"toQ":7} → （不存在）
+  capex_scenario.surplusPct 0.05 vs 0.99，demand=[10×4] s0=[45×4] -> REAL
+    $.windows[0..3] 四个 surplus 窗口 → 全部消失
+
+plan_generate.targets {"gmFloor":10} vs {"gmFloor":30} -> REAL
+  $.schemes[0].problems[2].title  "毛利 0.174 低于底线 10" → "…低于底线 30"
+plan_generate.hard {"gm":true} vs {"gm":false} -> REAL
+  $.recommend  D → B
+  $.paths[1].scores.total  60 → 75
+  $.paths[1].hardViol[0]   "C15" → （消失）
+```
+
+### 6.11 诚实兜底的三处（同样实测，列出以示区别）
 
 ```
 yield_diagnosis {"processKey":"涂布","baseName":"枣庄"}
@@ -477,7 +495,7 @@ inventory_optimize {}
 A 档那 7 处的危险正在于**没有这一层**：`carbon_footprint` 照样出 `verdict:"超标"`，
 `changeover_sequence` 照样出一张排序表，`quote_margin` 照样出 `verdict:"过线"`。
 
-### 6.11 客户维在数据层是断的（这条决定 S15 的量级）
+### 6.12 客户维在数据层是断的（这条决定 S15 的量级）
 
 ```
 Customer（8 行）：整车厂A / 整车厂B / 整车厂C / 海外车企E / 商用车集团G / 储能集成商D / 储能集成商H / 电网公司F
@@ -521,6 +539,7 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
    （现在用的 `Material.bomUnit` 是**全局常数**，与型号无关）。
 8. `capex_scenario`：把 `AnnualScenario`(3) / `CapexProject`(3) 接进入参派生，`scenarioKey` 从「只回显」变成真选情景；
    同时把 `catalog.ts` argHints 的 `scenario` 改成 `scenarioKey`（键名今天就是错的）。
+   注意**别顺手改** `gapMinQuarters`/`surplusPct` —— 这两个键实测是真算的（§6.10），argHints 没写而已。
 9. `cert_schedule` / `kit_readiness` 的**订单/产线侧**过滤（`Certification.lineId→Line.baseId`、`Order.bases[]`）。
 
 **第三梯队 · 数据层级（真缺维，工作量最大）**
@@ -568,14 +587,14 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
    不是实测；本单实测的是「引擎收到 `base=枣庄` 会算什么」。
 2. **§1.1 的三条路径边界（S01 `model` 键 / S03 不调 risk_timeline / S06 不调 mitigation_select）是读代码得出的**
    （`seed.ts:271/331/353` + `seededKeys` 跳过逻辑），**没有真跑一次路径 A 端到端确认**。
-3. **没跑前端**。「答案上印着枣庄」是从求解器 JSON 的回显位推出的；`solver_summary` 投影到底把哪几个字段渲染给用户，
-   本单**没有实测**。若某个回显位恰好没被渲染，该条的「假个性化」危害会降一档（但求解器层的判定不变）。
+3. **没跑前端**。§1.2 的「回显位真会渲染给用户」是**读投影实现**（`executor.ts:419/473/492/508`）得出的，
+   **没有真起前端看一眼**。若前端对 `kpi` 块另有裁剪，该条的「假个性化」危害会降一档（求解器层的判定不变）。
 4. **没跑 pg 模式**，只跑内存态 `SEED_DEMO=1`。数据层维度存在性结论基于该种子；
    真实导入的租户可能不同（例如 `ChangeoverMatrix.lineId` 在真数据里可能非 null）。
-5. **`capex_scenario.gapMinQuarters` 判为「接了线没数据」而非「真重算」**，是因为本组入参（`demand=[50,48,49,51]`,
-   `s0=[45,45,45,45]`）下没有满足任一阈值的缺口窗口 → 输出无差。**没有**构造出能让该键翻转的入参组合。
-6. **`plan_generate` 只测了 `objective`/`baseName` 两键**（都 IGNORED），**没测** `targets`/`hard`
-   （代码上明确被读，未实跑对照组）。
+5. **`capex_scenario` 的 `gapMinQuarters`/`surplusPct` 已补测为「真重算」**（第一轮误判见 §1 的自纠框）。
+   但 `scenarioKey` 仍是**纯回显**（`capex.ts:272` 只写进输出，不参与任何计算），这一条实测确定。
+6. **`plan_generate` 的 `targets`/`hard` 已补测为「真重算」**（`targets.gmFloor 10→30` 改写 `problems[].title`；
+   `hard.gm true→false` 改写 `recommend D→B`、`paths[1].scores.total 60→75`）。故该求解器唯一的死键是 argHints 的 `objective`。
 7. **20 张卡里 `sop_balance` 不是 datacore 求解器**：`POST /a/v1/solvers/sop_balance/invoke` → 404
    `solver sop_balance not found`（实测）。它是工作流（`wf_seed_sop_balance`），
    且 `seed.ts:631` 在派生意图时把它改绑成 `mrp_netting`。本表按 `mrp_netting` 取证。
