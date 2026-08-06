@@ -620,8 +620,9 @@ export function buildProcurementEvidence(c: SolverContext): (mat: Record<string,
     if (sup === undefined) {
       legs.push(emptyLeg("customs", `无供应商 ⇒ 判定不了是否进口，清关段既不能算 0 也不能算数`));
     } else if (str(sup.p.sourceMode) !== SOURCE_MODE_IMPORT) {
-      // 结构上没有这个环节 —— 这是**真值 0**，有据可依，不是"不知道"。
-      legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: null, days: 0, status: "NOT_APPLICABLE", reason: `供应商 ${str(sup.p.name) || supplierId} 为境内直供（Supplier.sourceMode=${str(sup.p.sourceMode) || "未标注"}），无清关环节`, source: null });
+      // ⚠️⚠️ MUTATION-M3（变异反证·临时·验完必删）：把三态压回两态 —— 境内直供的"结构上没有这个环节"
+      // 报成"实测 0 天"（假默认值的典型形态：界面上看不出 0 是真值还是没查到）。
+      legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: null, days: 0, status: "MEASURED", source: { objectType: "CustomsClearance", objectIds: [supplierId || "?"], field: "clearedDay-declaredDay" } });
     } else {
       const rows = (customsBySupplier.get(supplierId) ?? []).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
       const days = meanDays(rows, "declaredDay", "clearedDay");

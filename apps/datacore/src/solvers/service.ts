@@ -4091,9 +4091,7 @@ export class SolverService {
       capexProjects: sortById(capexProjects),
       purchaseOrders: sortById(purchaseOrders),
       // WO-SANDBOX-D2 采购段真源三类（sortById → R6 确定性）
-      // ⚠️⚠️ MUTATION-M2（变异反证·临时·验完必删）：把 Supplier 从 SolverContext 撤掉
-      //（= D2 之前的结构：引擎拿不到这张表 ⇒ minOrderQty/onTimeRate 在 solvers/ 零消费方）。
-      suppliers: [],
+      suppliers: sortById(suppliers),
       customsClearances: sortById(customsClearances),
       incomingInspections: sortById(incomingInspections),
       carbonFactors: sortById(carbonFactors),
