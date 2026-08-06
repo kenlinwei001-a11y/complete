@@ -292,7 +292,9 @@ export class MockOntologyClient implements OntologyClient {
    * mock 只负责「取哪些行」（角色可见性 = 它的行级过滤），匹配语义单一出处。
    */
   async resolveObjectRef(ctx: ToolAuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
-    const accept = req.accept ?? ["id", "name", "alias"];
+    // #108 · 单源默认：**不许**在这里再抄一份层级清单（原来写死 ["id","name","alias"]，
+    // 把 partial 挡在门外 —— 与 datacore/src/ontology.ts 那处同病）。undefined = 用解析器自己的默认。
+    const accept = req.accept;
     const declared = objectRefDeclaredType(req.ref);
     const typeKeys = req.types?.length ? [...new Set(req.types)] : declared ? [declared] : await this.listObjectTypeKeys();
     const hits: ObjectRefHit[] = [];
