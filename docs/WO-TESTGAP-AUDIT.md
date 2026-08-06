@@ -19,8 +19,10 @@
    其余 19 个是**另外两种病**—— **16 个**是「实现也不在正线」（整单未并，补测试必红），
    **3 个**是「实现在、测试也在，只是换了文件名或更强的版本」。
    三者修法完全不同，**混着做必然做错**（这正是 CLAUDE.md 铁律 0.5 的判据①）。
-3. **真正符合病名的东西，大部分不在这 22 个文件里。** 我沿链路追的时候另挖出 **2 处**「实现在正线、生产路径真走、零断言」的缺口——
-   其中 **P0 那处是部署态 demo 每次启动都会走的代码**，而所有咬它的测试走的是同一个 `if` 的**另一条分支**。
+3. **真正的缺口比清单**窄**，但比清单**深**。** 那 3 个都在 22 个里（不是清单外的新文件），
+   但它们**指向的实现缺口比原测试文件覆盖的范围更大**——例如 R7 partial 诚实分支，
+   本轮追出**第二个同病现场** `l3-coupled.ts:170`，那是缺失的 `multi-intent-seam.test.ts` 从来没咬过的。
+   其中 **P0 是部署态 demo 每次启动都会走的代码**，而所有看似咬它的测试走的是同一个 `if` 的**另一条分支**。
    删掉那段实现，四包 gate 全绿，部署出来的东西坏掉。
    **根因还更早**：`082186ef`(2026-07-14) 把生产从 B 路切到 A 路，**测试没跟着切** ——
    套件三周来验证的是一条生产已经不走的路。这是本轮唯一一个我认为**值得单独设门**的形态（见附录断点）。
@@ -332,8 +334,27 @@ CEO 路由语义区（`tier2-semantic-route.test.ts:29` 把"毛利为什么下�
 
 取代者 `apps/agentcore/test/qos-cross-domain-seam.test.ts`（更强）。**残 1 条**：
 `domainResolveMulti(q, undefined)` → `perDomainScore` 全 0 → 判 null。
-实现分支在 `apps/agentcore/src/router/domain-resolver.ts` 的 `contextRich` 计算；
-canonical 的 9 处 `domainResolveMulti(` 调用**全部传了 pageContext**，`undefined` 分支零覆盖。
+实现分支在 `apps/agentcore/src/router/domain-resolver.ts` 的 `contextRich` 计算。
+
+**零覆盖（实测逐个列出，非估计）**：canonical 里 `domainResolveMulti(` 在 `apps/agentcore/test` 共 **9 处**
+（`qos-cross-domain-seam.test.ts:37,38,48,61,65,71,82,86,90`），**9 处全部传 `riskPc()`**，
+**没有任何一处传 `undefined`**。
+
+**而这条分支在生产上真可达**（追了一层，这是它值得排 P3 而非更靠后的理由）：
+
+```
+apps/agentcore/src/router/coordinator.ts:109-110
+  export function planCoordination(question: string,
+                                   pageContext: PageContext | undefined,   ← 显式可为 undefined
+                                   ...)
+apps/agentcore/src/router/coordinator.ts:121
+  if (deterministicMultiEnabled && selectDeterministicMultiRoute(domainResolveMulti(q, pageContext))) return undefined;
+```
+
+即**用户不带页面上下文提问**（API 直调、或前端未带 `view`）时走的就是这条 —— 不是理论分支。
+**失效场景**：该 fail-safe 一旦失灵，无上下文的开放题会被**误降级给窄 solver**，
+产出一个自信的错答（本仓最忌的形态），而不是诚实落 path-B。
+
 **修法**：给取代者的纯函数 describe 加 4 行。**工作量：S**。
 
 #### 【P4】`metric-aware-composition.test.ts` 残条 — R6 + HTTP 面
