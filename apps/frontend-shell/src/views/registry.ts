@@ -52,6 +52,12 @@ export function getRenderer(key: string | undefined): LazyExoticComponent<Compon
 registerRenderer("dashboard", () => import("./DashboardView"));
 registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));
+// WO-DECISION-INFO 前端半 · 决策三块（影响面 / 不作为后果 / A-B-C 方案代价）的**可达性登记在此说明**：
+// `views/DecisionInfoPanel.tsx` 是 risk-board 的**子面板**（同 `DispositionDetailPanel` / `BaseOutlookPanel` 形态），
+// 刻意**不**单独 registerRenderer —— 它需要一张 RiskCard / PlanRow 才有意义，注册成顶层键等于造一条没人走的路
+// （那正是 F3/F4/F2 三次踩的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR 的镜像形态：假接线也是没接线）。
+// 它的生产调用方 = 上面这一行渲染出的 `RiskBoardView`（卡面 + 详情面板）与其内的 `DispositionDetailPanel`；
+// 可达门测试 `test/decision-info-reachable.test.tsx` 从**字符串键 risk-board / 短键 risk** 出发真渲染，咬的是这条链。
 // 决策推演页（decision_play 求解器 5 区决策产物落地·CEO-3）：既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。
 registerRenderer("decision-play", () => import("./DecisionPlayView"));
 // 断供影响半径投影页（supplier_disruption_radius 反向多跳逐层扇出·净室通用）：既作 renderer 供 ViewPage 分发，也有专用 route（见 App.tsx）。

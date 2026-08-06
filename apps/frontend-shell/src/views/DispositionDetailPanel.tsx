@@ -1,6 +1,8 @@
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
+// WO-DECISION-INFO ③/③.2 前端半：多方案对比（`row.options`）+ 逐步前置期出处（`steps[].leadTime`）。
+import { DispositionOptionsPanel, LeadTimeTag } from "./DecisionInfoPanel";
 
 type PlanRow = NonNullable<RiskTimelineOutput["planRows"]>[number];
 
@@ -82,6 +84,11 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
                     inputs={[`${s.provenance.drillType}#${s.provenance.drillId}`]}>
                     <span className="mono">{s.provenance.drillType}.{s.provenance.drillField}={s.provenance.drillValue}</span>
                   </Provenance>
+                  {/* WO-DECISION-INFO ③.2 · 「这一步为什么落在第 N 天」当场亮出。
+                      修前 day 由 `trigDay + 7` / `trigDay + 14` 两个**魔数**决定，读者无从判断 7/14 哪来的；
+                      现在 OK 能一路溯到 `InterBaseTransfer.transitDays` / `Supplier.leadTime` 的具体那条记录，
+                      EMPTY 则明写「前置期取不到」——**绝不渲染成 0 天**（0 天是一个没有对象支持的断言）。 */}
+                  {s.leadTime && <LeadTimeTag lead={s.leadTime} testId={`disposition-step-lead-${i}`} />}
                 </div>
               </li>
             ))}
@@ -92,6 +99,12 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
           </div>
         </>
       )}
+
+      {/* WO-DECISION-INFO ③ · A/B/C 多方案对比与代价。
+          `steps` 是**一条**固定顺序（加班→跨基地→外协）的路径 —— 决策者看到的是"系统认为该这么办"，
+          而不是"有哪几种办法、各要付什么代价"；没有对比就没有拍板依据。引擎已回传 `row.options`
+          （只挂每基地主行·备份行不重复挂），此前零消费方。缺省（备份行/旧后端）→ 诚实不渲染。 */}
+      {row.options && <DispositionOptionsPanel options={row.options} testId="disposition-options" />}
     </div>
   );
 }

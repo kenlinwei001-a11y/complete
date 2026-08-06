@@ -23,6 +23,9 @@ import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
 import { DispositionDetailPanel } from "./DispositionDetailPanel";
+// WO-DECISION-INFO 前端半：决策三块（影响面 / 不作为后果 / 方案对比）的消费方。
+// 引擎已把这些字段发出来（SEAM 9 例绿），此前**零前端消费方** ⇒ 用户看不见（假绿第 9 形态同族）。
+import { DoNothingPanel, ExposureCardLine, ExposurePanel, orderCardsByExposure } from "./DecisionInfoPanel";
 import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
 import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
 import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
@@ -166,7 +169,14 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   // ⚠️ 审核方复并注记：本行在 WO-CAPACITY-PAGE-100PCT 并线时**整块丢失**（cherry-pick 冲突取错版本，
   //    退回了 maxPeak 写法），测试半却完整并入 → 带红并线。别再退回 `Math.max(peak)`：
   //    `saturateTension` 让 peak 互不相同后徽章会"看着只挂一个"，那是巧合不是契约（本仓反复出事的病根）。
+  // ⚠ `primaryBase` 必须取**原数组序**首张（= 既有排序契约「越线日↑ → 实测当前张力↓ → peak↓」的第一名），
+  //   不能取下面按影响面重排后的首张 —— 那是两个不同的问题（"最紧急"vs"影响面最大"），混了就把徽章语义弄丢。
   const primaryBase = cards[0]?.base;
+  // WO-DECISION-INFO ①：**按引擎给的 exposureOrder 渲染**（零敞口卡沉底），不在前端另排一遍。
+  //   病：数组序前三张（实测 seed42·horizon30 = 江门/邯郸/自贡）窗内受影响订单**各 0 张**，
+  //   而真正压着 5 张单 6.2 万套的常州排第 5 → 用户"看到某基地全线飘红、却不知道落在谁身上"。
+  //   引擎刻意没动 cards[] 数组序（既有契约被两条测试咬死），改给显式排序键 —— 前端照它查表即可。
+  const displayCards = orderCardsByExposure(cards, data.exposureOrder);
 
   // rk-kpi 5 指标（全聚合自真 risk_timeline / bottleneck·非硬编）。
   const riskFactorPoints = cards.reduce((s, c) => s + Math.max(1, factorsOver(c.base).length), 0);
@@ -232,8 +242,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       {riskTab === "risk" && (
         <>
           {/* rk-grid：每基地一卡（整卡点击展开·无独立 CTA）。因素 chip 来自 bottleneck 真值。 */}
-          <div className={styles.rkGrid}>
-            {cards.map((card) => {
+          <div className={styles.rkGrid} data-testid="risk-grid" data-order={data.exposureOrder ? "exposure" : "array"}>
+            {displayCards.map((card) => {
               const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
               const synth = card.provenanceSynthetic === true;
               const peakColor = tierColor(card.peak, threshold);
@@ -310,6 +320,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                       })}
                     </div>
                   )}
+                  {/* WO-DECISION-INFO ①：「这事有多大」必须**不点开就看得见** —— 否则用户还是
+                      "看到某基地全线飘红、却不知道落在谁身上"（该单症状取证的第一句）。 */}
+                  <div style={{ marginTop: 4 }}>
+                    <ExposureCardLine exposure={card.exposure} testId={`risk-exposure-line-${card.base}`} />
+                  </div>
                   <div className={styles.rkCF}>
                     <span style={{ color: peakColor }}>{factorCount} 个风险因素</span>
                     <span>{orderCount} 批订单受影响</span>
@@ -769,6 +784,14 @@ function RiskDetailPanel({
           {synth ? " · 合成种子（未接实测）" : ""}
         </span>
       </div>
+
+      {/* WO-DECISION-INFO ①③ · 决策者真正在问的四件事里此前**只答了第二件**（为什么·根因链）。
+          ① 这事有多大（影响哪些订单/客户/多少钱）→ ExposurePanel
+          ③ 不管会怎样（晚交几天/赔多少/丢哪个客户）→ DoNothingPanel
+          引擎已回传（`cards[].exposure` / `cards[].doNothing`），此前零消费方 ⇒ 界面上看不见。
+          缺省（旧后端未回传）→ 诚实不渲染该块，不编一个空壳出来。 */}
+      {card.exposure && <ExposurePanel exposure={card.exposure} testId={`risk-exposure-${card.base}`} />}
+      {card.doNothing && <DoNothingPanel doNothing={card.doNothing} testId={`risk-donothing-${card.base}`} />}
 
       {/* 逐因素时间轴。 */}
       {card.series.length > 0 ? (
