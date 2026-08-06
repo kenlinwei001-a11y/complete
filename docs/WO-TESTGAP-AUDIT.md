@@ -186,7 +186,7 @@ apps/datacore/test/ontology-governance.test.ts:327  // 未知单位 → 400
 **生产路径真走（这是本条的命门，追了两层）**：
 
 ```
-apps/datacore/src/seed.ts:92
+apps/datacore/src/seed.ts:92（函数 seedDemoSynthetic）
   await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn,
                                 viaModelingChain: false });     ← A 路
 apps/datacore/src/synthetic/service.ts:201
@@ -205,10 +205,27 @@ apps/datacore/src/synthetic/service.ts:1142
 | `setSourceBindings` | **0** |
 | `materializedBindings` | **0** |
 
-而**唯一**断言"物化类型的 `sourceBindings` 非空"的测试是 `apps/datacore/test/demo-chain-provenance.test.ts:52`
-（`expect(ty.sourceBindings.length).toBeGreaterThan(0)`）—— 它的两个用例
-（`:19` 和 `:79`）**都传 `viaModelingChain: true`**，即 `chainMode === true`，
-**正好被 `if (!chainMode)` 跳过**。
+**排除了全部三个看起来像取代者的现有测试**（逐个追到判据，非只看文件名）：
+
+| 现有测试 | 断言什么 | 为什么**不**覆盖本条 |
+|---|---|---|
+| `demo-chain-provenance.test.ts:52`<br>`expect(ty.sourceBindings.length).toBeGreaterThan(0)` | 物化类型 sourceBindings 非空 | 它**只有 2 个用例**（`:12` `:72`），**都传 `viaModelingChain: true`** → `chainMode===true` → **正好被 `if (!chainMode)` 跳过**。它测的是回填**没跑**的那条路 |
+| `planviews.test.ts:230-233`<br>`order.lineage.dataset === "erp_sales_orders"` | Order 的血缘数据集 | `Order` **在 BINDINGS 表里**（`synthetic/battery.ts:1623`）→ 它的 `sourceBindings` 出厂即非空 → 被回填的 `if ((ty.sourceBindings?.length ?? 0) === 0)` 守卫**跳过**。回填真正要填的是 BINDINGS **没覆盖**的类型（`Material` / `AnnualScenario` / 全部 `extendedObjectTypes`） |
+| `modeling.test.ts:102 OM1` | publish 后 sourceBindings | 走的是**交互建模链**（`uploadCsv` → `/a/v1/modeling/suggest` → publish），与合成 A 路完全不同的代码路径 |
+
+**而且这条缺口不是"新写的代码还没来得及配测试"，是"测试守着一条生产已经不走的路"**（实测）：
+
+```
+commit 082186ef  2026-07-14  「恢复工作区修改（vite proxy / seed fix / Phase2 扩展 / 本体同步）」
+- viaModelingChain: true
++ viaModelingChain: false          ← 生产从 B 路切到 A 路
+```
+
+该 commit **只改了这一行，没动上面那两行注释** —— 于是 `seed.ts:90-91` 至今仍写着
+「demo 本体经真建模链产出…类型 sourceBindings 真由 publish 读真 rawDataset 算出，非短路直注」，
+**描述的是生产 2026-07-14 起就不再走的 B 路**。
+`demo-chain-provenance.test.ts` 也停在 B 路 —— **三周来它一直在验证一条已经废弃的路径**。
+`WO-MODELING-INTERACTIVE` 那个 A 路回填之所以需要存在，正是这次切换的后果；而它落地时零测试。
 
 > **这就是本欠账病名的教科书形态**：实现在正线、生产走它、测试也有一条长得很像的 ——
 > 但那条测试咬的是**同一个 `if` 的另一条分支**。
@@ -442,6 +459,13 @@ P3–P6 都是补丁到现有取代者，风险面依次递减，运输层排最
    `未知域` 在 `apps/*/test` **0 命中** —— 与被剔除的 `UNIT_DICTIONARY` 是同一个路由（`POST /a/v1/ontology/object-types`）
    上紧挨着的两道校验，一道有测试、一道没有。我**没有**进一步追它是否被别的断言间接咬到，
    所以这是**线索不是结论**（铁律 0.5）。
+6. **`seed.ts:90-91` 的注释与代码矛盾，我只做了定性、没做处置建议。**
+   实测 `082186ef`（2026-07-14）把 `viaModelingChain` 从 `true` 翻成 `false` 却没动注释（证据见 §4 P0）。
+   **我不知道这次翻转是有意的还是回滚事故** —— commit message 是"恢复工作区修改"这种含糊措辞，
+   且一次动了 vite proxy / seed / Phase2 / 本体四件事，从中读不出意图。
+   这直接决定 P0 之外的一个问题：**demo 到底应该走 A 路还是 B 路**？
+   若本该走 B 路，那 P0 补的测试就锁错了行为。**执行 P0 前建议先向仓主确认这一条**，
+   这是我在本轮唯一觉得"不问清楚可能会把测试写反"的地方。
 
 ---
 
