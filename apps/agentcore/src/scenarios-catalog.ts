@@ -102,7 +102,14 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   //   实体维（`credit_exposure`：匹配不到抛 `AMBIGUOUS_SCOPE`、未指定则 `scope:ALL` 全域合计，
   //   `extended.ts:498-527`），故也是本单差分门**输出层**断言的落点。
   card("S16", "客户信用风险", "dash", "credit_check", "商用车集团 G 还能接新单吗？", "credit_exposure", ["C13", "C32"], "COMPUTE", "解读客户信用判定", [], { custName: "商用车集团G" }),
-  card("S17", "产能投资评审", "generate", "capex_review", "枣庄储能线值得投吗？", "capex_scenario", ["C18", "C23"], "COMPUTE", "解读产能投资评审", [], { scenario: "基准" }),
+  // ★ WO-DERIVED-INTENT-SLOT-DEAF（本单顺手清一个同族死键·被 `scenario-slot-keys:check` 当场照出来）：
+  //   原 `slotPresets: { scenario: "基准" }` 是**三重死键**——① `capex_scenario` 真读的是 `args.scenarioKey`
+  //   （`apps/datacore/src/solvers/capex.ts:272`），没有 `scenario` 这个入参；② 本卡的求解器入参走
+  //   `ARG_OVERRIDE.capex_scenario`（demand/s0/projects），整份 slotPresets 根本不参与 args；
+  //   ③ `catalog.ts` argHints 却写着 `{scenario:"情景 key"}`（argHints 第三处漂移实例，见工单 §6.1）。
+  //   删之：留着只会让人以为「情景=基准」这件事被系统知道了。真要支持选情景，需引擎半把 `scenarioKey`
+  //   接进 ARG_OVERRIDE 并确认取值域 —— 越界，不在本单猜。
+  card("S17", "产能投资评审", "generate", "capex_review", "枣庄储能线值得投吗？", "capex_scenario", ["C18", "C23"], "COMPUTE", "解读产能投资评审", [], {}),
   card("S18", "S&OP 月度平衡", "sop", "sop_status", "本月产销平衡到哪一步了？", "sop_balance", ["C18", "C21", "C22"], "COMPUTE", "解读 S&OP 进度与平衡状态", [], {}),
   card("S19", "季度缺口对策", "quarter", "quarterly_gap_q", "Q2 缺口用什么组合补？", "quarterly_gap", ["C08", "C29"], "COMPUTE", "解读季度缺口对策组合", [], { quarter: "2026Q2" }),
   // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S20·`modelId` ① 合理默认 / `baseName` ② 改中性默认）：
