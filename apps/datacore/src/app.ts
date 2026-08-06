@@ -1247,7 +1247,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   };
   app.get("/a/v1/sim/sessions", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    return { items: await repos.sim.listSessions(c.tenantId) };
+    // WO-LIVE-ENDPOINTS：活方案快照复用 SimSession 承载（scope.snapshotKind 标记），非沙盘会话——从沙盘列表滤除（不污染沙盘 UI）。
+    return { items: (await repos.sim.listSessions(c.tenantId)).filter((s) => !(s.scope as { snapshotKind?: string })?.snapshotKind) };
   });
   app.get("/a/v1/sim/sessions/:id/world", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
@@ -1501,6 +1502,126 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
     return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // WO-LIVE-ENDPOINTS · 活③④ 方案存/分支/横比（前端「方案存比」直连真后端·替 MSW 桩）。
+  //   复用 SimSession 状态机（R9 双实现·R2 tenant 隔离）承载方案快照——scope 载快照 JSON（snapshotKind
+  //   判别·baseSnapshot 留空·不污染沙盘 session 列表）。语义镜像上方 sim checkpoint/branch/compare。
+  //   门禁 view.global-sim.live（前端暗发同门·R3 先于 authz·关=404 FEATURE_NOT_FOUND）。
+  // ─────────────────────────────────────────────────────────────────────────────
+  const requireLive = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "view.global-sim.live"))) throw featureNotFound();
+  };
+  type GsliveKpi7 = { ontime: number; cost: number; changeoverHours: number; freight: number; fgInv: number; transitInv: number; margin: number };
+  const asKpi7 = (v: unknown): GsliveKpi7 => {
+    const k = (v ?? {}) as Partial<GsliveKpi7>;
+    return {
+      ontime: Number(k.ontime ?? 0), cost: Number(k.cost ?? 0), changeoverHours: Number(k.changeoverHours ?? 0),
+      freight: Number(k.freight ?? 0), fgInv: Number(k.fgInv ?? 0), transitInv: Number(k.transitInv ?? 0), margin: Number(k.margin ?? 0),
+    };
+  };
+  interface GsliveScope { snapshotKind: "gslive"; label: string; page: string; primary: string; parentId: string | null; kpi: GsliveKpi7; servedCount: number; displacedCount: number; ontimeRate: number }
+  const snapKind = (s: SimSession): string | undefined => (s.scope as { snapshotKind?: string })?.snapshotKind;
+  const gsliveSnap = (s: SimSession) => {
+    const sc = s.scope as unknown as GsliveScope;
+    return { id: s.id, label: sc.label, parentId: sc.parentId ?? null, page: sc.page, primary: sc.primary, createdAt: s.createdAt, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate };
+  };
+  const putSnapshotSession = async (c: AuthCtx, idPrefix: string, scope: Record<string, unknown>): Promise<SimSession> => {
+    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: new Date().toISOString() };
+    await repos.sim.createSession(s);
+    return s;
+  };
+
+  // 活③ 全局推演方案（decision_play 范式·七维 KPI 快照）。
+  app.post("/a/v1/sim/scenarios", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const b = (req.body ?? {}) as { page?: string; label?: string; primary?: string; kpi?: unknown; servedCount?: number; displacedCount?: number; ontimeRate?: number; parentId?: string | null };
+    const scope: GsliveScope = {
+      snapshotKind: "gslive", label: String(b.label ?? "方案"), page: String(b.page ?? "global-sim"), primary: String(b.primary ?? ""),
+      parentId: b.parentId ?? null, kpi: asKpi7(b.kpi), servedCount: Number(b.servedCount ?? 0), displacedCount: Number(b.displacedCount ?? 0), ontimeRate: Number(b.ontimeRate ?? 0),
+    };
+    const s = await putSnapshotSession(c, "scen", scope as unknown as Record<string, unknown>);
+    await outbox.emit(c.tenantId, "sim.scenario_saved", { scenarioId: s.id, page: scope.page });
+    return reply.status(201).send(gsliveSnap(s));
+  });
+  app.get("/a/v1/sim/scenarios", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const page = (req.query as { page?: string })?.page;
+    const all = (await repos.sim.listSessions(c.tenantId)).filter((s) => snapKind(s) === "gslive");
+    const scoped = page ? all.filter((s) => (s.scope as unknown as GsliveScope).page === page) : all;
+    return { scenarios: scoped.map(gsliveSnap) };
+  });
+  app.get("/a/v1/sim/scenarios/compare", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const ids = String((req.query as { ids?: string })?.ids ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const scenarios: unknown[] = [];
+    for (const id of ids) {
+      const s = await repos.sim.getSession(c.tenantId, id);
+      if (!s || snapKind(s) !== "gslive") continue;
+      const sc = s.scope as unknown as GsliveScope;
+      scenarios.push({ id: s.id, label: sc.label, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate });
+    }
+    return { scenarios };
+  });
+  app.post("/a/v1/sim/scenarios/:id/branch", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const parent = await repos.sim.getSession(c.tenantId, (req.params as { id: string }).id);
+    if (!parent || snapKind(parent) !== "gslive") throw notFound("scenario not found");
+    const psc = parent.scope as unknown as GsliveScope;
+    const b = (req.body ?? {}) as { label?: string; kpi?: unknown };
+    const scope: GsliveScope = {
+      snapshotKind: "gslive", label: String(b.label ?? `${psc.label}·分支`), page: psc.page, primary: psc.primary, parentId: parent.id,
+      kpi: b.kpi !== undefined ? asKpi7(b.kpi) : psc.kpi, servedCount: psc.servedCount, displacedCount: psc.displacedCount, ontimeRate: psc.ontimeRate,
+    };
+    const s = await putSnapshotSession(c, "scen", scope as unknown as Record<string, unknown>);
+    return reply.status(201).send(gsliveSnap(s));
+  });
+
+  // 活④ 产能页方案（apply/kpis·横比矩阵各格经 generic_inference 同款前向重算公式真算·改 apply→矩阵变·KILL-MOCK）。
+  interface LiveApply { objectType: string; objectId: string; prop: string; value: number }
+  interface LiveScope { snapshotKind: "live"; baseId: string; name: string; parentId: string | null; apply: LiveApply[]; kpis: { capGain: number; affected: number } }
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  // 下游派生 after = 0.8*0.5 + value*0.5（generic_inference 前向重算同款公式·R6 确定）；capGain = Σ max(0, after − 0.8)。
+  const scenarioCapGain = (apply: { value: number }[]): number =>
+    round6(apply.reduce((acc, a) => { const v = Number.isFinite(Number(a.value)) ? Number(a.value) : 1; return acc + Math.max(0, (0.8 * 0.5 + v * 0.5) - 0.8); }, 0));
+  const liveSnap = (s: SimSession) => {
+    const sc = s.scope as unknown as LiveScope;
+    return { id: s.id, baseId: sc.baseId, name: sc.name, parentId: sc.parentId ?? undefined, apply: sc.apply, kpis: sc.kpis, createdAt: s.createdAt };
+  };
+  app.post("/a/v1/sim/live-scenarios", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const b = (req.body ?? {}) as { baseId?: string; name?: string; parentId?: string; apply?: LiveApply[] };
+    const apply = Array.isArray(b.apply) ? b.apply : [];
+    const scope: LiveScope = {
+      snapshotKind: "live", baseId: String(b.baseId ?? ""), name: String(b.name ?? "方案"), parentId: b.parentId ?? null, apply,
+      kpis: { capGain: scenarioCapGain(apply), affected: new Set(apply.map((a) => a.objectId)).size },
+    };
+    const s = await putSnapshotSession(c, "lsc", scope as unknown as Record<string, unknown>);
+    await outbox.emit(c.tenantId, "sim.scenario_saved", { scenarioId: s.id, baseId: scope.baseId });
+    return reply.status(201).send(liveSnap(s));
+  });
+  app.get("/a/v1/sim/live-scenarios", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const baseId = (req.query as { baseId?: string })?.baseId;
+    const all = (await repos.sim.listSessions(c.tenantId)).filter((s) => snapKind(s) === "live");
+    const scoped = baseId ? all.filter((s) => (s.scope as unknown as LiveScope).baseId === baseId) : all;
+    return { scenarios: scoped.map(liveSnap) };
+  });
+  app.post("/a/v1/sim/live-scenarios/compare", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const ids = Array.isArray((req.body as { ids?: unknown })?.ids) ? (req.body as { ids: unknown[] }).ids.map(String) : [];
+    const rows: { scenarioId: string; name: string; cells: Record<string, number>; ruleFlag: boolean }[] = [];
+    for (const id of ids) {
+      const s = await repos.sim.getSession(c.tenantId, id);
+      if (!s || snapKind(s) !== "live") continue;
+      const sc = s.scope as unknown as LiveScope;
+      const capGain = scenarioCapGain(sc.apply);
+      const cost = Math.round(sc.apply.reduce((a, x) => a + (/outsource/i.test(String(x.prop)) ? Number(x.value) * 50 : 0), 0) * 100) / 100;
+      const ruleFlag = sc.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= 0.2);
+      rows.push({ scenarioId: s.id, name: sc.name, cells: { capGain, cost }, ruleFlag });
+    }
+    return { dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows };
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------
