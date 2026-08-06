@@ -20,8 +20,16 @@ export default function GrowthCockpitPage() {
   const [query, setQuery] = useState("常州影响哪些订单？"); // debattery-allow（输入框示例占位，非业务常数）
   const [maxRounds, setMaxRounds] = useState(4);
   const [report, setReport] = useState<GrowthRunReport | null>(null);
-  const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
-  const { data: tickets } = useQuery({ queryKey: ["b", "growth-tickets"], queryFn: fetchGrowthTickets });
+  const ledgerQ = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
+  const ticketsQ = useQuery({ queryKey: ["b", "growth-tickets"], queryFn: fetchGrowthTickets });
+  const ledger = ledgerQ.data;
+  const tickets = ticketsQ.data;
+  // 账本 / 工单是两条**互相独立**的查询：任一未落地时，下面的派生指标（可答率/开放工单/累计运行）
+  // 都还没有真值。此前无条件渲染 `0%` / `0` —— 加载态被画成"测得的零"，属静默错数（诚实 > 好看）；
+  // 同时也让"元素恒存在"的 findBy 只能等到出现、等不到数据，测试随 CPU 负载随机读到占位值。
+  // ready 由两条查询的真实 status 派生（单一真源），既修正显示又给出确定性终态信号 data-ready。
+  const ready = ledgerQ.isSuccess && ticketsQ.isSuccess;
+  const DASH = "—";
 
   const run = useMutation({
     mutationFn: () => runGrowth(query, maxRounds),
@@ -45,7 +53,7 @@ export default function GrowthCockpitPage() {
   const answerRate = runs.length ? Math.round((answerable / runs.length) * 100) : 0;
 
   return (
-    <div data-testid="growth-cockpit-page">
+    <div data-testid="growth-cockpit-page" data-ready={ready ? "1" : "0"}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>自成长发动机驾驶舱</h2>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补(数据真人正门) → 缺功能出工单 → 循环重跑直到收敛。
@@ -63,9 +71,9 @@ export default function GrowthCockpitPage() {
         {/* WO-UNIT-MEANING：三个指标此前都是裸数——「开放工单 4」是 4 张还是 4 类？「累计运行 12」是 12 次还是 12 轮？
             契约 growth.ts 里 tickets/runs 都是数组（无 unit 字段可消费），故就近点明计数单位；
             可答率括号内补「可答/总运行」说明这是**次数比**而非百分数第二遍。 */}
-        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{answerRate}%</b> <span className="muted">(可答 {answerable} 次 / 共 {runs.length} 次)</span></span>
-        <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{tks.filter((t) => t.status === "OPEN").length}</b> 张</span>
-        <span>累计运行 <b>{runs.length}</b> 次</span>
+        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{ledgerQ.isSuccess ? `${answerRate}%` : DASH}</b> <span className="muted">(可答 {ledgerQ.isSuccess ? answerable : DASH} 次 / 共 {ledgerQ.isSuccess ? runs.length : DASH} 次)</span></span>
+        <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{ticketsQ.isSuccess ? tks.filter((t) => t.status === "OPEN").length : DASH}</b> 张</span>
+        <span>累计运行 <b>{ledgerQ.isSuccess ? runs.length : DASH}</b> 次</span>
       </div>
 
       {/* 本次运行结果 */}
@@ -101,7 +109,7 @@ export default function GrowthCockpitPage() {
           ))}
         </tbody>
       </table>
-      {tks.length === 0 && <div className="empty-state">暂无工单</div>}
+      {ticketsQ.isSuccess && tks.length === 0 && <div className="empty-state">暂无工单</div>}
 
       {/* 成长账本 */}
       <div className="section-title">成长账本（demand-indexed）</div>
@@ -119,7 +127,7 @@ export default function GrowthCockpitPage() {
           ))}
         </tbody>
       </table>
-      {runs.length === 0 && <div className="empty-state">暂无运行记录——输入一个客户问题点「运行」。</div>}
+      {ledgerQ.isSuccess && runs.length === 0 && <div className="empty-state">暂无运行记录——输入一个客户问题点「运行」。</div>}
     </div>
   );
 }
