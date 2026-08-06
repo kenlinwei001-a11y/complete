@@ -50,7 +50,8 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
-import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
+import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
@@ -1407,6 +1408,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const propagate = propRules.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };
     const ruleParams: RuleParamLookup = {};
+    // WO-SANDBOX-E4 节拍闸门：从**对象库**读 D1 落的 `Cadence` 行（`synthetic/service.ts` putAll("Cadence", …)），
+    // 经 D1 声明的唯一读回口 `cadenceFromProps` 还原成契约 `Cadence`，再由引擎换算成整 tick 闸门。
+    // 这里不做任何补默认：EMPTY 行读回 `undefined`、周期不可整 tick 的进 skipped —— 两者都不会变成闸门，
+    // 声明了它们的规则会在 `unresolvedGates` 里显式报缺（而不是悄悄按"随到随办"跑）。
+    let cadenceGates: CadenceGateLookup = {};
+    let gateSkipped: { nodeId: string; reason: string }[] = [];
+    let unresolvedGates: UnresolvedCadenceGate[] = [];
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
       // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
@@ -1420,13 +1428,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
         if (r.params) ruleParams[r.key] = r.params;
       }
+      // 节拍闸门表（E4）：改 Cadence.everyDays 即改推演——闸门每次 tick 从对象库现读，不缓存不写死。
+      const built = buildCadenceGates(
+        (await repos.objects.listByType(c.tenantId, "Cadence"))
+          .filter((o) => !o.mergedInto)
+          .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
+      );
+      cadenceGates = built.gates; gateSkipped = built.skipped;
     }
     let trace: PropagationTrace[] | null = null;
     for (let i = 0; i < n; i++) {
       const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (propagate) {
-        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams);
-        state = out.next; pending = out.pending; trace = out.trace; s.curTick += 1;
+        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates);
+        state = out.next; pending = out.pending; trace = out.trace; unresolvedGates = out.unresolvedGates; s.curTick += 1;
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
         state = simState(state); pending = []; trace = null; s.curTick += 1;
@@ -1435,7 +1450,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
-    return { curTick: s.curTick, state, ...(propagate ? { trace } : {}) };
+    // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
+    // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
+    // 而不是看到一条安静的零。
+    return {
+      curTick: s.curTick,
+      state,
+      ...(propagate
+        ? { trace, cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates } }
+        : {}),
+    };
   });
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
