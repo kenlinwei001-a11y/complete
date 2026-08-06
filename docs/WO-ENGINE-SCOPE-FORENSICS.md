@@ -85,9 +85,58 @@ PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
 
 ---
 
-## 2. 主表 · 20 卡 × 求解器 · 作用域维三态判定
+### 1.2 「只回显」真的会被用户看见（读实现确认 · 未真跑前端）
+
+判「只回显 = 假个性化」的前提是**那个回显位真的渲染到答案里**。追一层确认：
+派生意图的渲染步是 `{ type: "solver_summary", output: "{{steps.s1.output}}" }`（`seed.ts:650`），
+落到 `apps/agentcore/src/workflow/executor.ts:419` → `summarizeSolverOutput`（`:473`）。
+其投影规则第 `:492` 行：
+
+```ts
+else if (typeof v === "string") { if (v) { kpis.push({ type: "kpi", label: k, value: v, provId }); scalarCount++; } }
+```
+
+**求解器输出的每一个非空顶层字符串字段，都会变成一个带标签的 KPI 块**（取前 8 个，`:508`）。
+于是 `carbon_footprint` 的 `baseName:"成都"` 会以 `baseName │ 成都` 的形式，**和 `total │ 349.6151`、
+`verdict │ 超标` 并排显示给用户** —— 数字算的是常州。`changeover_sequence` 的 `lineId`、
+`mitigation_select` 的 `baseName`、`lta_gap` 的 `material`/`month`、`quarterly_gap` 的 `quarter`、
+`capex_scenario` 的 `scenarioKey` 同理。
+
+> 这一条是**读投影实现**得出的，**没有真跑前端**（见 §9.3）。
+
+---
+
+## 2. 主表 · 20 卡逐卡判定（一卡一行）
 
 **按「假个性化」严重度排序** —— 只回显那一档排最前，因为它是**唯一会让用户误以为答案是针对他问的那个对象**的形态。
+「代表维」取该卡问句真正在意的那个作用域维；同卡其余维见 §2.2/§2.3 展开表。
+
+| 序 | 卡 | 求解器 | 声明入参（argHints） | 实读入参 | 代表作用域维 → 三态 | 数据层有无该维 | 修法量级 |
+|---|---|---|---|---|---|---|---|
+| 1 | S11 换型排序 | `changeover_sequence` | `lineId, orders` | `lineId`(仅回显)`orders``matrix``current` | `lineId` → **只回显** | 半有（`ChangeoverMatrix.lineId` 30/30 恒 null；`WorkOrder` 有真 lineId+baseId） | **中**（数据层灌值/改源 + 引擎过滤） |
+| 2 | S20 碳足迹 | `carbon_footprint` | `modelId, baseName` | `modelId``baseName`(均仅回显)`materials``processes``euThreshold` | `baseName` → **只回显** | **有且已在 ctx**（`EnergyMeter` 13 行每基地一行） | **极小（一行）** |
+| 3 | S06 处置采纳 | `mitigation_select` | `baseName, factor` | `factor``baseName`(仅回显)`tightness``mitigations` | `baseName` → **只回显**；卡传的 `base` → **完全忽略**（键名不对） | 有 | **极小（键名）+ 小～中**（tightness 按基地派生） |
+| 4 | S09 长协补缺 | `lta_gap` | `material, month` | `material``month`(均仅回显)`monthDemand``bomUnit``inventory``inTransit``ltaAnnualLock``monthQuota``executedThisMonth``leadDays` | `material` → **只回显**（传中文名时）/ **真重算**（传 matId 时） | 有（`Material` 同时有 `matId` 与 `name`） | **极小（一行）** |
+| 5 | S17 产能投资 | `capex_scenario` | `scenario`（**键名就错**） | `demand``s0``projects``gapMinQuarters``surplusPct``scenarioKey`(仅回显) | `scenarioKey` → **只回显** | 有（`AnnualScenario` 3 行 + `CapexProject` 3 行含 `capex_zaozhuang`） | **中**（数据齐，纯接线） |
+| 6 | S19 季度缺口 | `quarterly_gap` | `quarter, gap` | `quarter`(仅回显)`gap``options` | `quarter` → **只回显**（本就是口径标签非过滤维） | — | 小 |
+| 7 | S03 风险根因 | `risk_timeline` | `baseId, days`（**两个键名都不对**） | `base``factor``horizon``mitigation``apply` | `base` → **单给时完全忽略**（问枣庄返 8 张别的基地的卡）；与 `factor` 同给 → **真重算** | 有（`Base` 13） | **极小**（拆 `risk.ts:556` 双键守卫 或 卡片补回 `factor`） |
+| 8 | S15 接单毛利 | `quote_margin` | `price, bom` | `price``bom``mfgRate``logistics``segmentFloor` | `custName` → **完全忽略**（任何客户同一份毛利） | **断的**（`Customer.custName` ⟂ `Order.cust` 两套命名；边按订单序轮转） | **大**（先修数据层） |
+| 9 | S08 物料齐套 | `kit_readiness` | `orders` | 仅 `orders`（`fromDay`/`toDay` 塞了没人读） | `base`/`baseId`/`fromDay`/`toDay` → **全部完全忽略** | 半有（`Order.bases[]` 有；`Material`/`MaterialBatch` 无地点维） | **混合**（订单侧小 / 库存侧大） |
+| 10 | S07 认证排期 | `cert_schedule` | `items, engineerGroups` | `items``engineerGroups` | `base`/`baseId`/`baseName` → **完全忽略**（任何基地问都返厦门产线） | 有但稀疏（18 行只覆盖 changzhou+xiamen；6 条待认证全在 xiamen） | **小** |
+| 11 | S12 良率诊断 | `yield_diagnosis` | `processKey, series` | 仅 `series``events`（`processKey` **不读**） | `processKey`/`baseName`/`base` → **全部完全忽略** | **有但没被加载**（`QualityLot` 260 / `DefectRecord` 85 / `EquipmentOEE` 1000 / `Process` 650 均不在 `withExtended` 十类） | **中（接线，非造数据）** · ✅ 已标 `dataMode:EMPTY` |
+| 12 | S18 S&OP | `sop_balance`→`mrp_netting` | （`sop_balance` 不在目录；invoke → 404） | **完全不收 args**（`service.ts:3092` `mrpNetting(ctx)`） | 全部 → **完全忽略** | `MaterialBalance` 9 行**无基地维** | **大**（补维 / 或改绑真 `sop_balance` 工作流） |
+| 13 | S10 库存优化 | `inventory_optimize` | `materials` | `materials``safetyDays``horizonDays``inbound``locations` | `base` → **完全忽略** | **无**（`Material`/`MaterialBatch` 无 `warehouseId`/`baseId`） | **大**（数据层补维） · ✅ 已标 `locationAxis.EMPTY`+`missingInputs` |
+| 14 | S13 检修错峰 | `maintenance_stagger` | `bases` | `bases``peakWeeks``provenanceSynthetic` | `base`/`baseName` → **完全忽略** | 半有（`MaintPlan.baseId+week` 有；逐周负荷/交付高峰无对象类型） | **中** · ✅ 已标 `dataMode:MOCK` |
+| 15 | S05 方案比选 | `plan_generate` | `objective`（**不读**） | `targets``base`(财务基线对象)`hard` | `objective`/`baseName` → **完全忽略** | 本卡无基地语义 | 小（argHints 删 `objective`） |
+| 16 | S14 外协决策 | `outsourcing_split` | `gap, weeks`（`weeks` **不读**） | `gap``totalDemand` | `base` → **完全忽略** | 本卡无基地语义 | 小（argHints 删 `weeks`） |
+| 17 | S04 月度体检 | `plan_audit` | `versionId`（**不读**） | 10 个必填数值 `dem/seg_pas/seg_ess/seg_com/sup/ltaCov/kitGap/gmTarget/cashCushion/capex` | `base` → **完全忽略** | 本卡无基地语义 | 小（argHints 改成真必填 10 项） |
+| 18 | **S01** 订单可承接性 | `capacity_forecast` | `modelId, qty, weeks` | `modelId``qty``weeks``base``demandDelta``batches``whatIf``granularity``mode` | `modelId` → **真重算**；`base` → **真重算**（认 baseId 与中文名） | 有 | ✅ 无需修 |
+| 19 | **S02** 受影响订单 | `affected_orders` | `baseId` | `baseId``base``horizon``day``peak``fromDay``toDay``condition``businessTypes``scope` | `baseId`（单基地枝）与 `base`（聚合枝）→ **均真重算** | 有 | ✅ 无需修 |
+| 20 | **S16** 客户信用 | `credit_exposure` | `custName, creditLimit` | `creditLimit``receivables``wipUnbilled``overdue``newOrderAmount``scope` + derive 读 `custName` | `custName` → **真重算**；未命中报 `AMBIGUOUS_SCOPE`；未指定标 `scope:ALL` | 有 | ✅ **20 卡里唯一四步齐全的样板** |
+
+**计分：真重算 3 卡（S01/S02/S16）+ 1 条附条件（S03 须双键）｜只回显 6 卡｜完全忽略 10 卡（其中 3 卡有诚实兜底）。**
+
+### 2.1 分档展开
 
 ### A 档 · 只回显（假个性化 · 7 处）
 
@@ -104,7 +153,7 @@ PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
 
 > 上表 #6 的 `month` 与 #8 的 `quarter` 属「时间标签只回显」，危害低于实体维回显，但仍列出以免读者以为它们在过滤。
 
-### B 档 · 完全忽略（16 处，其中 3 处有诚实兜底）
+### 2.2 B 档 · 完全忽略（16 处，其中 3 处有诚实兜底）
 
 | # | 卡 | 求解器 | 作用域维（实测忽略） | 实读入参 | 数据层有无该维 | 引擎是否诚实标注 | 修法量级 |
 |---|---|---|---|---|---|---|---|
@@ -124,7 +173,7 @@ PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
 | 22 | **S05** 方案比选 | `plan_generate` | `baseName` / `objective` | `targets`/`base`(**财务基线对象，非工厂**)/`hard` | 本卡无基地语义 | — | 小（`objective` 应从 argHints 删） |
 | 23 | **S18** S&OP | `sop_balance`→`mrp_netting` | 全部 | **`mrpNetting(ctx)` 完全不收 args**（`service.ts:3092`） | `MaterialBalance`(9 行) **无基地维** | — | **大**（数据层补维）或改绑真 `sop_balance` 工作流 |
 
-### C 档 · 真重算（4 处，全部实测确认）
+### 2.3 C 档 · 真重算（4 处，全部实测确认）
 
 | # | 卡 | 求解器 | 作用域维 | 实测证据（§6） |
 |---|---|---|---|---|
@@ -195,7 +244,7 @@ B 的真消费方（追一层确认，**不是只有 test**）：`apps/agentcore
 | 形态 | 判据 | 本单命中 |
 |---|---|---|
 | **没接线** | 求解器函数体压根不读该键 | `yield_diagnosis.processKey/baseName`、`quote_margin.custName/modelId/qty`、`kit_readiness.base/fromDay/toDay`、`plan_generate.objective`、`outsourcing_split.weeks`、`credit_exposure.custId`、`cert_schedule.base` |
-| **接了线没数据** | 有读取点，但输入恒空/恒零 → 分支从不进入 | `quarterly_gap.gap`（默认 `options` 五项 `release` 全 `0` → `combo` 恒空 · 喂 `release>0` 后**实测真算**：`combo[1].release 20→100`、`residualGap 0→370`）；`maintenance_stagger`（`loadByWeek/peakWeeks` 恒空 → `adjustments` 恒 `[]`）；`inventory_optimize.locations`（`materialLocationRefs(c)` 恒 `[]`）；`changeover_sequence.lineId`（`ChangeoverMatrix.lineId` 30/30 恒 `null`）；`capex_scenario.gapMinQuarters`（真读 `capex.ts:187`，但本组入参下无缺口窗口 → 输出无差） |
+| **接了线没数据** | 有读取点，但输入恒空/恒零 → 分支从不进入 | `quarterly_gap.gap`（默认 `options` 五项 `release` 全 `0` → `combo` 恒空 · 喂 `release>0` 后**实测真算**：`combo[1].release 20→100`、`residualGap 0→370`）；`maintenance_stagger`（`loadByWeek/peakWeeks` 恒空 → `adjustments` 恒 `[]`）；`inventory_optimize.locations`（`materialLocationRefs(c)` 恒 `[]`）；`changeover_sequence.lineId`（`ChangeoverMatrix.lineId` 30/30 恒 `null`）；`cert_schedule` 的基地维（`Certification` 18 行只覆盖 changzhou+xiamen，6 条待认证全在 xiamen） |
 | **接了线接错地方** | 有读取点，但挂错键 / 挂错顺序 / 守卫过严 | `lta_gap.material`（只匹 `matId` 不匹 `name`）；`carbon_footprint.baseName`（取 `energyMeters[0]` 不按 baseId 匹）；`risk_timeline.base`（`if (args.base && args.factor)` 双键守卫，单给 base 静默失效）；`changeover_sequence.current`（`deriveExtendedArgs:488` 把 `current:` 写在 `...args` **之后** → 调用方给的 `current` 被覆盖，实测 `IGNORED_BUT_ECHOED_SAME`）；`mitigation_select`（卡传 `base`，求解器读 `baseName`） |
 
 ---
@@ -214,6 +263,10 @@ B 的真消费方（追一层确认，**不是只有 test**）：`apps/agentcore
   今天任何基地问都拿常州的电网因子 —— 而输出上**印着用户问的那个基地名**。这是 A 档假个性化里**最容易修**的一条。
 - ⑤ **`cert_schedule` 恒返厦门产线排期**。问「枣庄的认证怎么排」，答案里逐行写着 `LINE-WS-xiamen-*`。
   不回显用户的基地，但列出的是**别的基地的产线名**，用户不细看会当成自己那条线。
+  追一层看清了成因（**不是纯过滤 bug**）：`Certification` 全库 18 行只覆盖两个基地
+  （changzhou 10 行全 `量产` + xiamen 8 行含 6 条 `认证中/待认证`），求解器先 `filter(status ∈ 认证中|待认证)`
+  → 只剩 xiamen 那 6 条。所以**即使补上基地过滤，问枣庄的诚实答案也应是「枣庄无认证记录」而不是一张排期表** ——
+  这属「接了线没数据」而非「没接线」，修法是**过滤 + 空结果显性化**两件一起做。
 
 ---
 
