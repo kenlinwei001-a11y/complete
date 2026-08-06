@@ -123,6 +123,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     decay: null,
     clamp: null,
     coefficientRef: null,
+    // 节拍闸门未绑定（WO-SANDBOX-E4）。**这是诚实缺席，不是忘了填**：
+    // demo 世界里「这条需求流要过哪个节拍闸门」是一个**建模判断**，不是能从种子推出来的事实——
+    // 绑上 `demand.consensus` 等于替租户断言「需求压力必须等 S&OP 共识会才下传」。
+    // E4 只把这条线接通（引擎认闸门 + tick 端点从对象库读 Cadence 建闸 + REST 可声明），
+    // 具体哪条流绑哪个节拍留给建模/运营去配（`POST /a/v1/sim/propagation-rules` 带 cadenceNodeId）。
+    cadenceNodeId: null,
     status: "PUBLISHED",
   },
   // ② 型号需求负载 → 沿"型号可产于基地"边推到基地负载指数（即时）。
@@ -140,6 +146,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     decay: null,
     clamp: null,
     coefficientRef: null,
+    cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
   },
   // ③ 产线利用率压力 → 沿"产线归属基地"边推到基地负载指数（延迟 1 tick，演示时序传导）。
@@ -157,6 +164,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     decay: null,
     clamp: null,
     coefficientRef: null,
+    cadenceNodeId: null, // 同上
     status: "PUBLISHED",
   },
 ];

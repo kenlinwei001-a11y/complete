@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isKnownChainNodeId } from "./chain-sim.js";
 
 /**
  * 推演沙盘契约（增量 1/3 · 行业无关 · 零业务常数 R14）。
@@ -51,6 +52,31 @@ export const PropagationRuleSchema = z.object({
   clamp: z.object({ min: z.number(), max: z.number() }).nullable().default(null),
   // 系数引用一条可编辑规则的 rule.params[paramKey]（G-10 P1 已落，"改规则即改推演"）；空=用内联 coefficient。
   coefficientRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().default(null),
+  /**
+   * **节拍闸门绑定（WO-SANDBOX-E4）**：这条流要过哪个全链节点的节拍闸门（`Cadence.nodeId`）。
+   *
+   * 为什么必须有这个字段：D1 把 `Cadence` 落成了对象（`nodeId` 主键），E4 要让 `propagateTick`
+   * 「到节拍点才放行」——但**「哪条流在等哪个节拍」在全仓没有任何承载物**（三分法 = 没接线）。
+   * 没有它，闸门只能靠猜（按 typeKey？按 stage？）——猜出来的绑定就是第二套真相源。
+   * 故绑定做成规则上的一个**显式声明**：改这条声明 = 改推演，且可被审计看见。
+   *
+   * 取值受 `CHAIN_NODE_REGISTRY`（`chain-sim.ts` §2.5 单源）约束 —— 这正是 D1×E1
+   * 「两个 dev 各发明一套 nodeId、交集为 0」那次事故立下的纪律，**不许自由串**。
+   *
+   * `null`（缺省）= 这条流不过节拍闸门 ⇒ 行为与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+   *
+   * ⚠ 声明了却取不到该节点的可用 `Cadence`（EMPTY / 未物化）时，引擎**既不当作随到随办、也不偷偷补一个周期**：
+   * 该条流不参与本 tick 传导，并进 `propagateTick(...).unresolvedGates[]` 显式报缺（照 E3
+   * 「读不回来一律 unresolved + 原因，没有『给个默认值』的分支」）。
+   */
+  cadenceNodeId: z
+    .string()
+    .min(1)
+    .refine(isKnownChainNodeId, {
+      message: "cadenceNodeId 必须是 CHAIN_NODE_REGISTRY 在册节点或 capacity.op.<opId> 动态工序节点（禁自由串·契约 §2.5）",
+    })
+    .nullable()
+    .default(null),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).default("DRAFT"),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
