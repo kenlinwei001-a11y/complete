@@ -42,6 +42,12 @@ export interface ExecutePlanCtx {
   tenantId: string;
   /** 逐步/诊断事件（复用既有事件名·不新增 PRD §8.2）。 */
   emit?: (event: string, payload: unknown) => Promise<void>;
+  /**
+   * 本租户该用途**是否真有可用 provider**（`llmSettings.providerAvailable` 的结果）。
+   * 只用于综合失败时把「真没绑」与「绑了但打不通」分开——这两种病的修法完全不同。
+   * 不传 ⇒ 保守当作「有」（既有调用方零回归；此时失败会归入 MODEL_MISSING/RATE_LIMITED/CALL_FAILED 而非诬告没绑）。
+   */
+  hasLlmProvider?: boolean;
 }
 
 export interface ExecutePlanResult {
@@ -111,8 +117,45 @@ export function coreScalars(data: unknown): { key: string; value: string }[] {
  * （thresholdQty/p90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
  * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。
  */
-function deterministicSynthesis(products: StepProduct[], blocks: string[]): string {
-  const head = `【组合路径·确定性汇总（无 LLM provider → 未作综合叙述，逐步产物+核心数字如下）】`;
+/**
+ * 综合失败的**真实原因**（诚实分档）。此前一律说「无 LLM provider」，
+ * 而实际有四种完全不同的失败，处置方式各不相同 —— 说错了会把人指去错的地方修：
+ *  · NO_PROVIDER   —— 真没绑        ⇒ 去「设置 → LLM」绑一个
+ *  · MODEL_MISSING —— 绑了但模型名不存在/无权限（如 404 model not found） ⇒ 去改模型名
+ *  · RATE_LIMITED  —— 限流/配额     ⇒ 等或换模型
+ *  · CALL_FAILED   —— 其余调用失败（超时/网络/5xx）⇒ 看原文
+ * 仓主实测踩过：绑了 kimi 但模型名写成不存在的 `kimi-k2-0905-preview`（Kimi 返 404），
+ * 系统却报「当前未接入可用的 LLM 提供商」——**明明接了**，于是人跑去设置页反复检查绑定，白费工夫。
+ */
+export type SynthFailKind = "NO_PROVIDER" | "MODEL_MISSING" | "RATE_LIMITED" | "CALL_FAILED";
+
+export function classifySynthFailure(err: unknown, hasProvider: boolean): { kind: SynthFailKind; detail: string } {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  if (!hasProvider) return { kind: "NO_PROVIDER", detail: msg };
+  if (/not found the model|model_not_found|resource_not_found|\b404\b|permission denied/i.test(msg)) {
+    return { kind: "MODEL_MISSING", detail: msg };
+  }
+  if (/rate.?limit|too many requests|\b429\b|quota/i.test(msg)) return { kind: "RATE_LIMITED", detail: msg };
+  return { kind: "CALL_FAILED", detail: msg };
+}
+
+/** 失败原因 → 人读抬头（**含可执行的下一步**，不只是"失败了"）。 */
+function synthFailHead(f: { kind: SynthFailKind; detail: string }): string {
+  const d = f.detail ? `：${f.detail.slice(0, 160)}` : "";
+  switch (f.kind) {
+    case "NO_PROVIDER":
+      return "未接入 LLM 提供商 → 未作综合叙述。请在「设置 → LLM」绑定一个提供商";
+    case "MODEL_MISSING":
+      return `LLM 已绑定，但**模型不存在或无权限**${d} → 未作综合叙述。请在「设置 → LLM」改用该 provider 真实支持的模型名`;
+    case "RATE_LIMITED":
+      return `LLM 已绑定，但**被限流/超配额**${d} → 未作综合叙述。请稍后重试或更换模型`;
+    default:
+      return `LLM 已绑定，但**调用失败**${d} → 未作综合叙述`;
+  }
+}
+
+function deterministicSynthesis(products: StepProduct[], blocks: string[], fail?: { kind: SynthFailKind; detail: string }): string {
+  const head = `【组合路径·确定性汇总（${fail ? synthFailHead(fail) : "未作综合叙述"}，逐步产物+核心数字如下）】`;
   const want = blocks.length ? `（拟综合：${blocks.join("/")}）` : "";
   const lines = products.map((p, i) => {
     const scalars = coreScalars(p.data);
@@ -187,6 +230,7 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
   let synthText: string;
   let usedLlm = false;
   let synthCount = 0;
+  let synthFail: { kind: SynthFailKind; detail: string } | undefined;
   try {
     synthText = await ctx.llm.compose({
       model: ctx.model,
@@ -198,8 +242,13 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
     });
     usedLlm = true;
     synthCount = 1;
-  } catch {
-    synthText = deterministicSynthesis(ordered, plan.synthesizeBlocks);
+  } catch (err) {
+    // ⛔ 此处**曾是裸 catch**：任何失败（模型名不存在 / 限流 / 超时 / 真没绑）都被吞掉，
+    //    然后统一打印「无 LLM provider」。四种病一个诊断 —— 人照着它去修，多半修错地方。
+    //    现改为：拿真实错误 + 是否真有 provider，派生出**能指导下一步**的原因。
+    const hasProvider = ctx.hasLlmProvider !== false; // 未传 ⇒ 保守认为有（不倒扣既有调用方）
+    synthFail = classifySynthFailure(err, hasProvider);
+    synthText = deterministicSynthesis(ordered, plan.synthesizeBlocks, synthFail);
   }
 
   const blocks: AnswerBlock[] = [{ type: "text", markdown: synthText }];
