@@ -87,9 +87,15 @@ for f in "${SUSPECT[@]}"; do
   name=$(basename "$f")
   silent=$(( $(date +%s) - ${MT1[$f]} ))
 
-  # 该文件对应的进程还在不在？（按文件名里的任务 id / 日志名粗匹配，匹不到就报「无法定位」——不猜）
+  # 该文件对应的进程还在不在？
+  # ⚠️ 首版拿日志文件名去 grep 进程命令行，然后据此断言「进程已不在」——**那是句无法检查却照样断言的话**：
+  #    `gate-wave4f.log` 这个串压根不会出现在 `bash scripts/gate.sh` 的 args 里，于是每一次长跑 gate
+  #    都被报成「已结束/被杀」。2026-08-06 实测：gate 已跑 33 分钟、vitest 在 90–100% CPU，探针却报它死了。
+  #    （与本仓 execute-plan 裸 catch 报「未接入 provider」同族：断言性的句子，从不检查它所断言的条件。）
+  # 修法：匹不到就诚实说**匹不到**，并用「系统里有没有高 CPU 的 node」做旁证，绝不硬判生死。
   key=$(basename "$f" | sed -e 's/\.output$//' -e 's/\.log$//')
   alive=$(ps -eo pid,args --no-headers | grep -F "$key" | grep -v grep | wc -l)
+  busy=$(ps -eo pcpu,comm --no-headers | awk '$2=="node" && $1>20' | wc -l)
 
   if [ "$sz2" -gt "${SZ1[$f]}" ]; then
     printf "🟢 %-46s 仍在写入（%s→%s bytes）—— **慢，不是卡死**，继续等\n" "$name" "${SZ1[$f]}" "$sz2"
@@ -100,8 +106,12 @@ for f in "${SUSPECT[@]}"; do
     echo "     → 别直接 pkill -f '<含本命令字串的模式>'：会把探针自己也匹进去（本会话已自杀 3 次，exit 144）。"
     echo "       用 ps -eo pid,args --no-headers | grep -F '<key>' | grep -v grep 取到确切 pid 再 kill。"
     RC=2
+  elif [ "$busy" -gt 0 ]; then
+    printf "🟡 %-46s 静默 %ss，进程名匹不到（**无法定位**，不硬判生死）；但系统里有 %s 个高 CPU node 在跑\n" "$name" "$silent" "$busy"
+    echo "     → 长跑 gate 的正常形态就是这样（日志到阶段末才写、命令行不含日志名）。"
+    echo "       要定性请直接看：ps -eo pid,etime,args --no-headers | awk '/gate\\.sh/ && !/awk/'"
   else
-    printf "⚫ %-46s 静默 %ss 且进程已不在 —— 已结束/被杀，查产物与远端分支定性\n" "$name" "$silent"
+    printf "⚫ %-46s 静默 %ss · 进程名匹不到 · 系统无高 CPU node —— 大概率已结束/被杀，查产物与远端分支定性\n" "$name" "$silent"
   fi
 done
 exit $RC
