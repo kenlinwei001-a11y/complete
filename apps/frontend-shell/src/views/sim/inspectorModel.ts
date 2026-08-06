@@ -26,8 +26,12 @@ import {
  *     `nodeId` 是**不透明键**：本文件从不解析它（**零 `split(".")`**、零前缀匹配），
  *     `stage` 一律读契约字段 `ChainNode.stage`。节点与变量集**全部由调用方传入**
  *     （`InspectorInput`），本文件只提供「怎么算」，不提供「有哪些节点」。
- *     背景：S0 把 `nodeId` 冻成自由串且**无 ID 单源注册表**，D1 与 E1 两个 dev 因此各自
+ *     背景：S0 首版把 `nodeId` 冻成自由串且**无 ID 单源注册表**，D1 与 E1 两个 dev 因此各自
  *     发明了一套全链节点 ID、互相看不见。前端再写第三套，就是把这个洞焊死。
+ *     ⚠ **状态已变（收口时复核）**：合并 `wave4-integration` 后契约层已补上单源册
+ *     `CHAIN_NODE_REGISTRY`（`packages/contracts/src/chain-sim.ts:135`）+ `chainNodeDef` /
+ *     `isKnownChainNodeId`。本条纪律**依然成立且更有据**：清单由**调用方**（宿主视图
+ *     `NodeInspectorView`）从那张册派生，本文件仍然一个节点 id 都不持有。
  *  ② **五段分桶不自己算**：`kind` 五值是 S0 冻结的（`CHAIN_STEP_KINDS`），直接按 `kind` 分组；
  *     「哪种算增值」一律走契约导出的 `isValueAddKind`，**前端不复写判据**。
  *  ③ **流动效率 / 前置期 / 增值量不写第二份公式**：全走 `nodeFlowEfficiency` /

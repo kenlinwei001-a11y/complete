@@ -454,3 +454,75 @@ export function InspectorNodePanel({ input, running = false, onValuesChange }: I
 /** 供主视图判定"这一类该画什么控件"，避免消费方各写一份 switch。 */
 export const inspectorControlOf = (cls: VarClass): string => VAR_CONTROL_BY_CLASS[cls];
 export { VAR_CLASSES };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 宿主视图 —— 这是本面板**唯一的生产调用方**（经 registry.ts 的 `node-inspector` 键）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 节点检视视图：选一个全链节点 → 渲染它的五段瀑布 / 流动效率 / 七类变量。
+ *
+ * **节点清单派生自 `CHAIN_NODE_REGISTRY`（contracts 单源），不内联**——这是本视图的 SEAM 咬点：
+ * 改注册表 → 下拉选项跟着变（证明是派生不是手抄）。
+ *
+ * ⚠ 该注册表是 **S0 之后补的**：F4 施工时它还不存在（`inspectorModel.ts` 顶注当时写的
+ *    "无 ID 单源注册表" 是那一刻的实情），合并 `wave4-integration` 后已由
+ *    `packages/contracts/src/chain-sim.ts:135` 提供。面板本身仍**不持有**任何节点清单
+ *    （`InspectorInput` 由调用方给），持有清单的是本宿主视图 —— 这正是当初的设计意图。
+ *
+ * ⚠ 诚实边界：段耗时今天是 `buildPlaceholderInspectorInput` 的 seed 派生**占位值**（可复现·非实测），
+ *    面板已挂常驻 `PLACEHOLDER` 横幅。接引擎真值是 W4·G1 的活，本视图**不冒充 LIVE**。
+ */
+export function NodeInspectorView({ view }: Partial<ViewRendererProps>) {
+  const nodes = CHAIN_NODE_REGISTRY;
+  // 初始节点：`view.options.nodeId` 指定即用它（且必须在册），否则取册首。**不在前端编一个自由串。**
+  const requested = (view?.options as { nodeId?: unknown } | undefined)?.nodeId;
+  const initial = typeof requested === "string" && nodes.some((n) => n.nodeId === requested) ? requested : (nodes[0]?.nodeId ?? "");
+  const [nodeId, setNodeId] = useState(initial);
+
+  const def = useMemo(() => nodes.find((n) => n.nodeId === nodeId) ?? nodes[0], [nodes, nodeId]);
+  const input = useMemo(
+    () => (def === undefined ? null : buildPlaceholderInspectorInput({ nodeId: def.nodeId, label: def.label, stage: def.stage })),
+    [def],
+  );
+
+  if (input === null) {
+    // 注册表空 ⇒ 没有节点可检视。**不造一个占位节点**（那正是"看着合理的默认值"式静默兜底）。
+    return (
+      <div className={styles.hostRoot} data-testid="node-inspector-root">
+        <p className={styles.emptyNote} data-testid="node-inspector-empty">
+          <b>EMPTY</b>：`CHAIN_NODE_REGISTRY` 为空 —— 今天没有任何在册全链节点可检视，<b>不造占位节点</b>。
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.hostRoot} data-testid="node-inspector-root">
+      <header className={styles.hostBar}>
+        <label className={styles.hostPick} htmlFor="node-inspector-pick">
+          检视节点
+        </label>
+        <select
+          id="node-inspector-pick"
+          className={styles.hostSelect}
+          data-testid="node-inspector-select"
+          value={def!.nodeId}
+          onChange={(e) => setNodeId(e.target.value)}
+        >
+          {nodes.map((n) => (
+            <option key={n.nodeId} value={n.nodeId} data-testid={`node-inspector-opt-${n.nodeId}`}>
+              {n.label}
+            </option>
+          ))}
+        </select>
+        <small className={styles.hostNote} data-testid="node-inspector-source">
+          节点清单派生自 <code>CHAIN_NODE_REGISTRY</code>（contracts 单源 · 共 {nodes.length} 个在册节点），前端不另维护一份
+        </small>
+      </header>
+      <InspectorNodePanel input={input} />
+    </div>
+  );
+}
+
+export default NodeInspectorView;

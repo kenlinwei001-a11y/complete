@@ -498,3 +498,41 @@
   font-size: 10px;
   word-break: break-word;
 }
+
+/* ── 宿主视图（registry 键 `node-inspector`）───────────────────────────────
+   零硬编码颜色同上：只用 tokens.css :root 首块里的 token。 */
+.hostRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  overflow-x: auto;
+}
+.hostBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line2);
+}
+.hostPick {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.hostSelect {
+  background: var(--panel2);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+.hostNote {
+  color: var(--muted2);
+  font-size: 11px;
+}

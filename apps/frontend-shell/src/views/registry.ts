@@ -78,6 +78,11 @@ registerRenderer("physical-topology", () => import("./sim/PhysicalTopologyView")
 // 本行 = 这张图唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
 // 缺它就是 F3 踩过的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
 registerRenderer("chain-line-map", () => import("./sim/ChainLineMapView"));
+// WO-SANDBOX-F4 节点检视 + 变量输入（五段耗时瀑布 · 流动效率 · 七类变量 T/K/B/C/P/R/S 分组输入）。
+// 收口时补线：F4 交付的 `InspectorNodePanel` 是侧栏组件，38 例 SEAM 全绿但**零生产调用方**
+// —— 与 F3 同一个坑（registry 是手工登记表、无自动扫描）。宿主视图 `NodeInspectorView`
+// 的节点清单派生自 contracts 的 `CHAIN_NODE_REGISTRY`，本行是它唯一的生产调用方。
+registerRenderer("node-inspector", () => import("./sim/InspectorNodePanel"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
