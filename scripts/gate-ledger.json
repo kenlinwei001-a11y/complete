@@ -322,6 +322,25 @@
       },
       "notes": ""
     },
+    "check-migration-numbering.mjs": {
+      "alias": "migration-numbering:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/migrations/**",
+        "apps/agentcore/migrations/**",
+        "apps/datacore/src/repo/pg.ts",
+        "apps/agentcore/src/persistence/pg.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "五组变异反证，逐条实测退出码（out=$(cmd 2>&1); rc=$? 显式捕获，非管道尾 $?）",
+        "note": "M1 把三条挂起分支上真实的 028 文件（wo-66 solver_rule_bindings / wo-69 object_interfaces / sandbox sim_action_propagation_rule）同时落进 apps/datacore/migrations → RC=1 且逐个点名，并打印真实字典序执行顺序 object_interfaces → sim_action_propagation_rule → solver_rule_bindings；M1b 改成 028/029/030 → RC=0（证明修法有效，门不是卡死在红）；M2 落 agentcore 真实 010_plan_builder_canvases（与现役 010_multi_intent_plan 撞号）→ RC=1；M3 造第三个 013 → RC=1 且显式对比豁免集合 vs 实际集合（证明 KNOWN_DUPLICATES 是精确集合匹配，不是给编号 013 开的口子）；M4 无编号前缀文件名 add_index_hotfix.sql → RC=1；M5 把已豁免的 013_pipeline.sql 改名成 013_pipelines.sql → RC=1（豁免钉死到文件名，改名即失配）。另有一次非人为真红：清理 M5 时 git checkout 只还原了跟踪文件、漏删未跟踪的 013_pipelines.sql，门当场把这个残留抓了出来。",
+        "note2": "本门刻意先证会红再上链——同批次的 check-view-reachable.mjs 第一版是哑门（裸文本匹配，注释掉的登记行照样算数，变异后仍绿），门本身成了它要治的那种东西。本门的防哑根据：真值源 = readdirSync 真实文件系统，与被守的迁移器 runMigrations 同源同法（它也是 readdir + .sort()），不读任何清单/文档/git，故不存在「门看到的与迁移器看到的不一致」这种哑法。"
+      },
+      "notes": "闭 G-MIGRATION-NUMBER-COLLISION（欠账 #74）：迁移号是执行顺序的唯一表达，而撞号时文件名互不相同 ⇒ git 合并零冲突、零信号。追一层读迁移器坐实真实后果：schema_migrations 的键是**完整文件名**，故同号文件**全都会跑**（非覆盖），顺序由裸 .sort() 的字典序偶然决定；且老库跳过已跑的（按并线时间）、新库全量重跑（按字典序），两者顺序可相反。跨文件顺序依赖在本仓真实存在（ts_points 由 002_addendum.sql 建表、由 007_lived_in.sql ALTER），且 pg 模式启动即自动迁移、无人工确认环节。存量双 013 入 KNOWN_DUPLICATES 显式基线（两文件纯 CREATE TABLE IF NOT EXISTS 且表集合不相交 ⇒ 顺序等价，属碰巧无害那类；无法靠改名清理，因改名会让新名字在所有已部署库上重跑）。"
+    },
     "check-modeling-wire.mjs": {
       "alias": "modeling-wire:check",
       "binding": "MANUAL",
