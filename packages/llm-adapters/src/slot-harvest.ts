@@ -18,6 +18,11 @@
  *  2. **`unconsumed` 是诚实闸**：raw 里出现了槽位形状的数据而本收割器没吃掉 → 必须能被看见（调用方落日志），
  *     不许再出现"我没找到 = 它没有"。下次模型再变个形态，是**报出来**而不是静默丢答案。
  *
+ * ★ WO-BASE-SLOT-UNIFY §B（`G-SLOT-VALUE-SHAPE`）· 本模块同时管**值**的形态，不只管袋子的位置：
+ *   位置层（上面 #106）治的是「槽位写在响应的哪个键里」，值层治的是「那个键里装的是不是裸值」。
+ *   真 Kimi 第 5 跑每个槽值都包了一层 `{type,value}` → 袋子收对了、值是包装对象 → 下游校验必挂 → 反问。
+ *   归一见下方 `normalizeSlotValue`（**只拆单层、只拆这一种签名**，拆包进 `unwrapped` 留痕）。
+ *
  * R6：纯函数（无 IO / 无时钟 / 无随机 / 无 LLM），同 raw 同输出。
  */
 
@@ -30,6 +35,12 @@ export interface HarvestedClassificationSlots {
   sources: Record<string, SlotSource>;
   /** 出现了槽位形状的数据（键名匹配 /slot/i 的对象/字符串）但本收割器**没消费** → 必须能被看见，不许静默。 */
   unconsumed: string[];
+  /**
+   * `G-SLOT-VALUE-SHAPE` 留痕：被拆掉 `{type,value}` 包装的槽 → `槽名:声明的type`。
+   * 拆包 = 改写用户数据，**必须留痕**（工单 §B 硬要求 2）：下游看得见「这个值原来包着一层」，
+   * 不是静默替换。空数组 = 一层都没拆。
+   */
+  unwrapped: string[];
 }
 
 /** 键名匹配即视为"槽位形状"（收割器认得的四种合法形态之外的一律进 unconsumed）。 */
@@ -58,6 +69,56 @@ function isProvided(v: unknown): boolean {
   return v !== undefined && v !== null && v !== "";
 }
 
+// ---------------------------------------------------------------------------
+// G-SLOT-VALUE-SHAPE · 槽**值**形态归一（位置层收对了袋子，值层还是只认一种形态）
+//
+// 病根（2026-08-05 真 Kimi k2.5 第 5 跑抓包原文）：
+//   {"model":{"type":"objectRef","value":"4680"},"demandDelta":{"type":"number","value":0.2},
+//    "weeks":{"type":"number","value":6},"base":{"type":"string","value":"常州"}}
+// 每个槽值被模型包了一层「类型标注信封」。收割器把袋子收对了（位置层 #106 已治），
+// 但交出去的值是包装对象 → 下游 `validateSlotValue` 必挂 → 反问。
+//
+// 这是 #106 的**值层版本**：位置层已经容忍四种形态，值层还只认一种。
+//
+// ⛔ 拆包边界（工单 §B 硬要求 1·**只拆一层、只拆这一种签名**）：
+//   合法的 object ref `{objectType:"Base", objectId:"changzhou"}` 是**下游真要的值**，
+//   乱拆（如「有 value 键就拆」/ 递归拆）会把它拆坏 —— 那是把一个病换成另一个病。
+//   故三条判据全中才拆：① 有 `type` 键且值是字符串；② 有 `value` 键；③ 键数 ≤3。
+//   不认得的形态**原样透出**（诚实边界：不猜，交下游校验去判）。R6 纯函数。
+// ---------------------------------------------------------------------------
+
+/** 类型标注信封的最大键数（`{type,value}` 2 个 + 模型偶尔多带一个 `confidence`/`raw` 之类）。 */
+const MAX_WRAPPER_KEYS = 3;
+
+/**
+ * 是不是「单层类型标注信封」`{type: string, value: any}`。
+ * **三条全中才算**，任一不中即不是（下面这些都不该被判为信封，各有理由）：
+ *   · `{objectType:"Base", objectId:"changzhou"}` —— 没有 `value` 键 ⇒ 不拆（这条必须有测试咬住）
+ *   · `{type:"Base", objectId:"x"}`               —— 没有 `value` 键 ⇒ 不拆
+ *   · `{type:1, value:"x"}`                       —— `type` 不是字符串 ⇒ 不拆（不是类型标注）
+ *   · `{type:"a", value:"b", c:1, d:2}`           —— 键数 >3 ⇒ 不拆（是业务对象，不是信封）
+ */
+function slotValueWrapper(v: unknown): { type: string } | undefined {
+  if (!isPlainObject(v)) return undefined;
+  const keys = Object.keys(v);
+  if (keys.length > MAX_WRAPPER_KEYS) return undefined;
+  if (typeof v.type !== "string") return undefined;
+  if (!Object.prototype.hasOwnProperty.call(v, "value")) return undefined;
+  return { type: v.type };
+}
+
+/**
+ * 槽值归一（**只拆单层**·导出以便直接测）：形如 `{type:string, value:X}` → `X`；其余形态原样返回。
+ *
+ * 「只拆一层」是硬约束，不是省事：`{type:"objectRef", value:{type:"x", value:"y"}}` 拆一层后
+ * 里层原样透出交给下游判 —— 递归拆会让「拆到哪一层才算数」变成猜，而猜正是本单要消灭的东西。
+ */
+export function normalizeSlotValue(v: unknown): { value: unknown; unwrappedType?: string } {
+  const w = slotValueWrapper(v);
+  if (!w) return { value: v };
+  return { value: (v as Record<string, unknown>).value, unwrappedType: w.type };
+}
+
 interface SlotLayer {
   /** raw 里的位置（JSON path，如 `candidates[0].extractedSlots`）—— 同时是 consumed 标记键。 */
   path: string;
@@ -83,7 +144,7 @@ export function harvestClassificationSlots(raw: unknown): HarvestedClassificatio
   const slots: Record<string, unknown> = {};
   const sources: Record<string, SlotSource> = {};
   const consumed = new Set<string>();
-  if (!isPlainObject(raw)) return { slots, sources, unconsumed: [] };
+  if (!isPlainObject(raw)) return { slots, sources, unconsumed: [], unwrapped: [] };
 
   const layers: SlotLayer[] = [];
   /** 收一层：对象直收；JSON 字符串解析后收；**解析不了就不标 consumed** → 由 unconsumed 兜住（诚实）。 */
@@ -121,16 +182,22 @@ export function harvestClassificationSlots(raw: unknown): HarvestedClassificatio
   }
 
   // ③ 合并：层序即优先级，先写者胜（空值不算写过）
+  //    ★ 值归一在 isProvided 之**前**（G-SLOT-VALUE-SHAPE）：`{"base":{"type":"string","value":""}}`
+  //      说的是「base 是空的」——先拆再判，才判得出它是空的；否则一个空信封（对象·非空）
+  //      就能把更低优先层的真值挡住，病与「一句 base:null 挡住 candidate 真值」同源。
+  const unwrapped: string[] = [];
   for (const layer of layers) {
-    for (const [k, v] of Object.entries(layer.bag)) {
-      if (!isProvided(v)) continue;
+    for (const [k, raw0] of Object.entries(layer.bag)) {
+      const norm = normalizeSlotValue(raw0);
+      if (!isProvided(norm.value)) continue;
       if (Object.prototype.hasOwnProperty.call(slots, k)) continue;
-      slots[k] = v;
+      slots[k] = norm.value;
       sources[k] = layer.source;
+      if (norm.unwrappedType !== undefined) unwrapped.push(`${k}:${norm.unwrappedType}`);
     }
   }
 
-  return { slots, sources, unconsumed: collectUnconsumed(raw, consumed) };
+  return { slots, sources, unconsumed: collectUnconsumed(raw, consumed), unwrapped };
 }
 
 /**
@@ -179,17 +246,29 @@ function defaultSink(): UnconsumedSink | undefined {
 }
 
 /**
- * `unconsumed` 的**真消费方**（三条适配器路都调它）：出现了槽位形状却没被收割 → 打日志。
+ * `unconsumed` / `unwrapped` 的**真消费方**（三条适配器路都调它）：
+ *  · `unconsumed` —— 出现了槽位形状却没被收割 → 打日志（模型又变形了）；
+ *  · `unwrapped`  —— 拆掉了 `{type,value}` 信封 → 打日志（**改写过用户数据就必须说**·工单 §B 要求 2）。
  * 「只定义不调用」= 假绿第 9 形态（测试咬的是函数不是链路），本函数存在的意义就是让那条路真的有人走。
+ *
+ * `unwrapped` 声明成可选：老调用点（只构造 `{unconsumed}` 的）不必同步改，仍旧编译通过。
  */
 export function reportUnconsumedSlots(
   where: string,
-  harvest: Pick<HarvestedClassificationSlots, "unconsumed">,
+  harvest: Pick<HarvestedClassificationSlots, "unconsumed"> & Partial<Pick<HarvestedClassificationSlots, "unwrapped">>,
   sink: UnconsumedSink | undefined = defaultSink(),
 ): void {
-  if (harvest.unconsumed.length === 0 || !sink) return;
-  sink.warn(
-    `[llm-adapters/${where}] 分类响应里出现了槽位形状的数据但未被收割：${harvest.unconsumed.join(", ")}` +
-      `（模型换了形态 → 请扩收割器 harvestClassificationSlots，别让槽位再静默丢失）`,
-  );
+  if (!sink) return;
+  if (harvest.unconsumed.length > 0) {
+    sink.warn(
+      `[llm-adapters/${where}] 分类响应里出现了槽位形状的数据但未被收割：${harvest.unconsumed.join(", ")}` +
+        `（模型换了形态 → 请扩收割器 harvestClassificationSlots，别让槽位再静默丢失）`,
+    );
+  }
+  if (harvest.unwrapped && harvest.unwrapped.length > 0) {
+    sink.warn(
+      `[llm-adapters/${where}] 槽值带类型标注信封 {type,value}，已拆单层取 value：${harvest.unwrapped.join(", ")}` +
+        `（G-SLOT-VALUE-SHAPE·留痕而非静默改写；合法 object ref {objectType,objectId} 不在此列）`,
+    );
+  }
 }
