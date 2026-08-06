@@ -49,8 +49,20 @@ import { solverArgsSchema } from "@platform/contracts";
 //     立源方案（交审核方裁）见工单 §6。
 // ---------------------------------------------------------------------------
 
-/** 派生槽位（无外部依赖·R6 纯函数）。仅在派生意图上使用；4 个原生意图的既有槽位一字不动。 */
+/**
+ * 「基地语义的单值槽」判据 —— **复用仓内已有的那条规则，不新造词表**：
+ * `l2-decompose.ts FLOOR_RULES`（基地档 `/base|基地/i`）与 `base-slot-unify.seam.test.ts §A`
+ * （`G-BASE-SLOT-TYPE-SPLIT` 回潮门）用的就是这一条；复数名（`...s`/`scopeObjectIds`）是数组维、走 json。
+ */
+function isSingleBaseSlot(key: string): boolean {
+  return /base|基地/i.test(key) && !key.endsWith("s") && key !== "scopeObjectIds";
+}
+
+/** 派生槽位类型（无外部依赖·R6 纯函数）。仅在派生意图上使用；4 个原生意图的既有槽位一字不动。 */
 function deriveSlotType(key: string, presetValue: unknown, solverKey: string): IntentDefinition["slots"][number]["type"] {
+  // ⓪ **既有不变量优先**：单值 base 语义槽一律 objectRef（`G-BASE-SLOT-TYPE-SPLIT`——同一概念两种槽类型
+  //    的代价已经付过一次：string 槽谁都不解析，用户原话「常州工厂」原样直甩下游）。
+  if (isSingleBaseSlot(key)) return "objectRef";
   // ① 已登记 args schema → 以**机器可读规格**为准（不看写死值猜类型）。
   const schema = solverArgsSchema(solverKey);
   const shape = (schema as { shape?: Record<string, unknown> } | undefined)?.shape;
@@ -69,12 +81,13 @@ function deriveSlotType(key: string, presetValue: unknown, solverKey: string): I
 /**
  * 从「卡已声明的求解器入参」派生意图槽位。
  *
- * **刻意不派生 `objectRef`**（诚实边界，不是省事）：objectRef 要求下游收得住
- * `{objectType,objectId,label}` 对象，而这 16 个求解器一律用 `str(args.xxx)` 读**名字串**
+ * **objectRef 只对既有不变量已经判过的那一类派生**（单值 base 语义槽 → `refType:"Base"`，
+ * 见 `isSingleBaseSlot`）。**其余一律不猜实体类型**：这 16 个求解器一律用 `str(args.xxx)` 读**名字串**
  * （`apps/datacore/src/solvers/types.ts:292` —— `str` 对非串返回 fallback `""`），
- * 声明成 objectRef 会把用户说的实体**静默清空**成 ""，等于把一个病换成另一个病。
- * 「哪个入参是对象引用、指向哪个类型」**没有任何单源在声明**——在 agentcore 侧硬编一张
- * 「键名→对象类型」表就是欠账 #99 的复发（D1/E1 各造一套词表），故不做，如实登记为缺口。
+ * 把 `custName`/`lineId`/`material` 声明成 objectRef 会把用户说的实体**静默清空**成 ""，
+ * 等于把一个病换成另一个病；而「哪个入参是对象引用、指向哪个类型」**没有任何单源在声明**——
+ * 在 agentcore 侧硬编一张「键名→对象类型」表就是欠账 #99 的复发（D1/E1 各造一套词表）。
+ * 故不做，缺口如实登记在工单 §6 / 本体 §8。
  *
  * 必填：一律 `required:false` + 字面默认值。理由——目录写着的那个值就是本卡的默认作用域，
  * 「零反问直达推演」（G-3 门）不能退；用户说了就用用户的（`fillSlots` ①/①.c 优先级本来就在默认值之上）。
@@ -82,15 +95,19 @@ function deriveSlotType(key: string, presetValue: unknown, solverKey: string): I
 function deriveIntentSlots(solverKey: string, declaredArgs: Record<string, unknown>): IntentDefinition["slots"] {
   return Object.entries(declaredArgs)
     .filter(([k]) => !k.startsWith("_")) // `_` 开头是诊断元数据（slots.ts:461），不是求解器入参
-    .map(([k, v]) => ({
-      name: k,
-      type: deriveSlotType(k, v, solverKey),
-      required: false,
-      // ★ §3.2 的 "...slotPresets" 那一半：用户没说 → 恰好落回今天写死的那个值（§4.3 加性按构造成立）；
-      //   用户说了但用不了 → `slots.ts` 的 §3.3 守卫**不回落**（诚实缺席，不拿写死实体冒充答案）。
-      defaultFrom: encodeConstDefault(v),
-      description: `求解器 ${solverKey} 入参 ${k}（默认取场景目录声明值；用户在问句里指定则以用户为准）`,
-    }));
+    .map(([k, v]) => {
+      const type = deriveSlotType(k, v, solverKey);
+      return {
+        name: k,
+        type,
+        required: false,
+        ...(type === "objectRef" ? { refType: "Base" as const } : {}),
+        // ★ §3.2 的 "...slotPresets" 那一半：用户没说 → 恰好落回今天写死的那个值（§4.3 加性按构造成立）；
+        //   用户说了但用不了 → `slots.ts` 的 §3.3 守卫**不回落**（诚实缺席，不拿写死实体冒充答案）。
+        defaultFrom: encodeConstDefault(v),
+        description: `求解器 ${solverKey} 入参 ${k}（默认取场景目录声明值；用户在问句里指定则以用户为准）`,
+      };
+    });
 }
 
 // 真连部署批次：与 DataCore 演示租户对齐（admin/planner/base_manager@demo, 密码 demo1234）

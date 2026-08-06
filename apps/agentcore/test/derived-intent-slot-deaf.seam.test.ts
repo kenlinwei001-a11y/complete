@@ -229,6 +229,10 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实�
    *   ② 两跑的实参**不同**（这正是改前恒相同的那一格）；
    *   ③ 终态仍是 COMPLETED + 零反问（加性没把好路径打坏）。
    */
+  /** 实参里那一格的可读形态：objectRef 槽解析后是 `{objectType,objectId,label}`，取 label 比对。 */
+  const seen = (v: unknown): string =>
+    v !== null && typeof v === "object" ? String((v as { label?: string; objectId?: string }).label ?? (v as { objectId?: string }).objectId) : String(v);
+
   const CASES: { name: string; intentKey: string; solverKey: string; view: string; slot: string; a: { q: string; v: string }; b: { q: string; v: string } }[] = [
     {
       name: "S16 credit_check · 客户维（本仓唯一一个求解器真按它过滤的实体维）",
@@ -237,10 +241,10 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实�
       b: { q: "商用车集团G 还能接新单吗？", v: "商用车集团G" },
     },
     {
-      name: "S12 yield_diag · 基地维（写死的「常州」不该再顶掉用户说的枣庄）",
+      name: "S12 yield_diag · 基地维（写死的「常州」不该再顶掉用户说的另一个基地）",
       intentKey: "yield_diag", solverKey: "yield_diagnosis", view: "risk", slot: "base",
       a: { q: "常州涂布良率为什么掉了？", v: "常州" },
-      b: { q: "枣庄涂布良率为什么掉了？", v: "枣庄" },
+      b: { q: "合肥涂布良率为什么掉了？", v: "合肥" },
     },
     {
       name: "S11 changeover_opt · 产线维（写死的「常州·动力线-A」）",
@@ -277,8 +281,8 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实�
       expect(B.args, `B 跑没到达 ${c.solverKey}（routed=${B.routed} status=${B.status}）`).toBeTruthy();
 
       // ① 用户说的实体真的到了求解器（改前这里永远是写死值）
-      expect(String(A.args?.[c.slot])).toBe(c.a.v);
-      expect(String(B.args?.[c.slot])).toBe(c.b.v);
+      expect(seen(A.args?.[c.slot]), `A 跑实参: ${JSON.stringify(A.args)}`).toBe(c.a.v);
+      expect(seen(B.args?.[c.slot]), `B 跑实参: ${JSON.stringify(B.args)}`).toBe(c.b.v);
       // ② 差分：换实体 → 实参必须不同（这就是「答案逐字节相同」的病根那一格）
       expect(JSON.stringify(A.args)).not.toBe(JSON.stringify(B.args));
       // ③ 好路径没被打坏
@@ -327,11 +331,26 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §E · 用户给了但用不了 → 诚实
     expect(args.gap).toBe(80000); // 用户没提 gap → 字面默认值照旧生效（加性）
   });
 
+  /**
+   * 工单 §3.3 的**原文情形**：「若某槽位用户给了、但解析不出对应对象（如基地名不认识），
+   * 走已有的澄清/诚实缺席路径，不得静默回落到 preset 那个写死的实体 —— 回落就是把
+   * 「我没听懂你说的枣庄」渲染成「枣庄的答案就是常州这份」。」
+   */
+  it("objectRef 槽：用户说了本租户不认识的基地 → 落 null（诚实缺席），**不是**回落到目录默认值", async () => {
+    const { intents, plans } = seeded();
+    const intent = intents.find((i) => i.key === "yield_diag")!;
+    const plan = plans.find((p) => p.key === "yield_diag")!;
+    // 桩里只有「常州」一个 Base；「火星基地」必然解析不到。
+    const args = await resolvedArgs(intent, plan, { base: "火星基地" });
+    expect(args.base, "解析不到却拿写死默认值冒充 = 本单要治的病换个地方犯").toBeNull();
+  });
+
   it("用户没提这个槽 → 字面默认值生效（守卫只针对「给了但用不了」，不误伤零反问门）", async () => {
     const { intents, plans } = seeded();
     const intent = intents.find((i) => i.key === "yield_diag")!;
     const plan = plans.find((p) => p.key === "yield_diag")!;
     const args = await resolvedArgs(intent, plan, {});
-    expect(args).toEqual({ processKey: "涂布", base: "常州" });
+    // §3.4 裁决后 base 已改中性默认（""=未指定）；字面默认值仍原样生效 —— 这条测的是**机制**，不是那个值。
+    expect(args).toEqual({ processKey: "涂布", base: "" });
   });
 });
