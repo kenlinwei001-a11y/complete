@@ -1,3 +1,9 @@
+import {
+  matchObjectRefInType,
+  pickObjectRefResolution,
+  type ObjectRefResolution,
+  type RefTypeDefLike,
+} from "@platform/contracts";
 import type { ObjectInstance } from "../domain.js";
 
 /** Typed view over the per-tenant solverParams JSONB (battery defaults in synthetic/battery.ts). */
@@ -299,6 +305,61 @@ export function normalizeBaseRef(ref: unknown): string {
   s = s.trim();
   if (s.startsWith("obj_base_")) s = s.slice("obj_base_".length);
   return s;
+}
+
+// ---------------------------------------------------------------------------
+// WO-BASE-SLOT-UNIFY §A 引擎半 · base **解析**改走共享解析器（`G-BASE-SLOT-TYPE-SPLIT` 引擎侧）
+//
+// 病根（真 Kimi 实测）：`capacity_forecast` 收到用户原话「常州工厂」→ 老 `resolveBaseId` 只做
+// `props.baseId === key || props.name === key` **精确**比对（`BASE_REGISTRY` 规范名是裸「常州」）
+// → 400 `unknown base: 常州工厂` → 任务 FAILED。agent 工具直调（`sim_*` / DRIL）**不经槽位层**，
+// 所以光把 AgentCore 的槽改成 objectRef 治不了这条路 —— 两半必须一起改。
+//
+// ⛔ 单一出处纪律（工单：「现在已经有两套了，这单是来收口不是来加的」）：
+//   本函数**一行匹配逻辑都不写**，规则全部来自 contracts `matchObjectRefInType`
+//   （AgentCore 槽位层 / DataCore `ontology.resolveObjectRef` / mock 调的是**同一个**函数）。
+//   DataCore 侧**没有也不许有**第三套中文名匹配 / 任何「中文名 → id」词表（R14 应用层零业务常数）。
+//
+// 接受层级 id / name / alias / **partial**：`partial`（人话近指·「常州工厂」「常州基地」→ `Base.name=常州`）
+// 是这条路真正缺的那一档，且**只在精确层零命中时才兜底**（见 object-ref-resolve.ts ③），
+// 故所有既有精确入参逐字节不回归（R6）。歧义仍走既有机制（`ambiguous` + 候选·绝不静默取第一个）。
+// ---------------------------------------------------------------------------
+
+/**
+ * 从**行数据本身**结构化派生 `RefTypeDefLike`（求解器上下文没有 ObjectTypeDef，只有对象行）。
+ *
+ * 零业务常数（R14）：属性表 = 行里真出现过的键；主键按平台**命名约定** `<typeKey 首字母小写>Id`
+ * 派生（`Base→baseId`、`Model→modelId`，与 `synthetic/battery.ts baseProps isPrimaryKey:true` 一致）。
+ * 名称类属性由 contracts `identifyingProps` 自己按「去分隔符后以 name 结尾」结构判定，本函数不参与。
+ * `searchable` 无从得知 → 不声明（alias 档在求解器侧自然不可用·诚实退化，不臆造）。
+ * 排序确定（属性名字典序）→ R6 同输入同输出。
+ */
+export function refTypeDefFromRows(typeKey: string, rows: readonly ObjectInstance[]): RefTypeDefLike {
+  const pk = `${typeKey.charAt(0).toLowerCase()}${typeKey.slice(1)}Id`;
+  const keys = new Set<string>();
+  for (const r of rows) for (const k of Object.keys(r.props)) keys.add(k);
+  return {
+    key: typeKey,
+    properties: [...keys].sort().map((propKey) => (propKey === pk ? { propKey, isPrimaryKey: true } : { propKey })),
+  };
+}
+
+/**
+ * base 引用 → 解析结果（**归一 + 匹配的单一出处**·纯函数 R6）。
+ * 调用方只负责「取哪些行」（`c.bases` 已带租户隔离 + A6 行级过滤），匹配语义一律走共享解析器。
+ * 解析失败/歧义时带回 `attempts`/`candidates`（试了什么键、扫了几行、为什么不匹）——
+ * 让下一个人不必从 400 一路追回来（R13 可诊断）。
+ */
+export function resolveBaseRef(bases: readonly ObjectInstance[], ref: unknown): ObjectRefResolution {
+  const rows = bases.map((b) => ({ id: b.id, props: b.props }));
+  const { hits, attempt } = matchObjectRefInType({
+    ref,
+    objectType: "Base",
+    typeDef: refTypeDefFromRows("Base", bases),
+    rows,
+    accept: ["id", "name", "alias", "partial"],
+  });
+  return pickObjectRefResolution(ref, hits, [attempt]);
 }
 
 export function clamp(v: number, lo: number, hi: number): number {

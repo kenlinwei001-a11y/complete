@@ -3,7 +3,7 @@ import { SEG_REGISTRY, deriveDisposition } from "@platform/contracts";
 // WO-SANDBOX-D3 · 工序硬容量单元声明单源（哪个属性承载柜位数/单元速率·零数值重复·诚实缺不兜底）。
 import { HARD_CAPACITY_UNIT_SPECS, readProcessHardCapacity, type BottleneckHardCapacity, type HardCapacityUnitSpec } from "@platform/contracts";
 import { validationError } from "../errors.js";
-import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, resolveBaseRef, str, type SolverContext } from "./types.js";
 // WO-LIVE-DISPOSITION T2：克隆-覆写 + 逐工序×型号产能链**复用 capacity.ts 单源**（= service.ts capacityInferenceApply
 // 用的同两个函数），杜绝处置表另写一套 override / 另算一套产能 → 与产能活台口径漂移。
 import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
@@ -448,15 +448,25 @@ export function baseChainCapacityDaily(c: SolverContext): Map<string, number> {
 }
 
 /**
- * base 引用 → 规范 baseId（**唯一严格解析出处**·WO-BASE-ID-FIDELITY 症②）。
- * 经 normalizeBaseRef 归一（认 `obj_base_<id>`〔synthetic 图节点 id〕/ `<id>` / 中文名 / object ref），
- * 再按 Base.baseId|name 匹配；未知基地 throw（错误信封·诚实报错·不静默）。capacity.ts 复用本函数（勿另起规范化）。
+ * base 引用 → 规范 baseId（**唯一严格解析出处**·WO-BASE-ID-FIDELITY 症② / WO-BASE-SLOT-UNIFY §A 引擎半）。
+ *
+ * ⚠ 本函数**自己不再做任何匹配**：规则一律委托 `types.resolveBaseRef` → contracts `matchObjectRefInType`
+ * （AgentCore 槽位层 / DataCore `ontology.resolveObjectRef` / mock 用的是同一份实现）。
+ * 认 `obj_base_<id>`〔synthetic 图节点 id〕/ `<id>` / 中文名 / object ref `{objectId}`，
+ * 外加**最弱一档 `partial`**（「常州工厂」「常州基地」→ `Base.name=常州`）—— 治的就是真 Kimi 实测那条
+ * `unknown base: 常州工厂`。`partial` 只在精确层零命中时兜底，故既有精确入参逐字节不回归（R6）。
+ *
+ * 诚实边界：解析不到 / **歧义**一律 throw（错误信封·不静默取第一个）；错误文案带上解析器的候选/尝试留痕，
+ * 让「为什么不匹」当场可见，而不是从 400 一路追回来。capacity.ts 等复用本函数（勿另起第三套规范化）。
  */
 export function resolveBaseId(c: SolverContext, ref: unknown): string {
-  const key = normalizeBaseRef(ref);
-  const b = c.bases.find((x) => x.props.baseId === key || x.props.name === key);
-  if (!b) throw validationError(`unknown base: ${typeof ref === "string" ? ref : key || String(ref)}`);
-  return str(b.props.baseId);
+  const r = resolveBaseRef(c.bases, ref);
+  if (r.resolved && r.objectId) return r.objectId;
+  const shown = typeof ref === "string" ? ref : r.normalizedRef || String(ref);
+  const why = r.ambiguous
+    ? `（歧义·候选 ${(r.candidates ?? []).map((c2) => `${c2.objectId}[${c2.matchedBy}:${c2.matchedProp}]`).join("、")}）`
+    : `（试过键 ${(r.attempts?.[0]?.keysTried ?? []).join("/") || "-"}·扫 ${r.attempts?.[0]?.rowsScanned ?? 0} 行）`;
+  throw validationError(`unknown base: ${shown}${why}`);
 }
 
 /**
