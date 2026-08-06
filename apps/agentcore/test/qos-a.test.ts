@@ -85,10 +85,15 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
   });
 
   it("A4: adopt_mitigation → action_draft block, ActionClient called, no direct write", async () => {
+    // #109：`factor` 从 required:false 改成 true —— 本条测试原来**不给 factor 也绿**，
+    // 因为 mock ActionClient 不校验；真 DataCore 的 create_action_draft paramsSchema
+    // 必填 base/factor/planKey，实测直接 400 `payload.factor is required`，用户看到一片空白。
+    // 那次「绿」是典型的 mock 没有失败模式。本条测的是**给全参数时**的正常落草稿链路，
+    // 故补上 factor；「不给 factor 应当反问」另有一条测试（见下条 A4.b）咬住。
     t.llm.queueClassification({
       candidates: [{ intentKey: "adopt_mitigation", confidence: 0.93 }],
       outOfCatalog: false,
-      extractedSlots: { solutionName: "三班制" },
+      extractedSlots: { solutionName: "三班制", factor: "物料齐套" },
     });
     const { taskId } = await submitQuery(t, PLANNER, "采纳常州的三班制方案", {
       view: "risk",
@@ -107,6 +112,35 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     const events = await t.repos.events.listAfter(taskId, 0);
     expect(events.some((e) => e.event === "action_draft.created")).toBe(true);
     expect(task.answer?.unverifiedNumerics).toBe(false); // A6
+  });
+
+  /**
+   * #109 · 必填口径对齐的**反面**：不给 factor 必须**反问**，不许硬着头皮往下走。
+   *
+   * 由来（真 Kimi 实测·2026-08-05）：「采纳常州的三班制方案」没点名风险因子，
+   * 而 `create_action_draft` 的 paramsSchema 必填 factor →
+   * `DataCore POST /a/v1/action-drafts -> 400 {"message":"payload.factor is required"}`
+   * → 任务 FAILED、answer 为 undefined → 用户端一片空白。
+   *
+   * 旧 seed 注释白纸黑字写着「可选——由**真后端**按契约判」：明知下游必填仍声明可选，
+   * 把校验推给后端，代价由用户承担。改 required:true 后系统**问一句**——
+   * 用户确实没说是哪个因子，问才是对的。
+   *
+   * 若有人把 factor 改回 required:false，本条即红。
+   */
+  it("A4.b: adopt_mitigation 缺 factor → 反问（不许带缺参跑到接缝上炸成空白页）", async () => {
+    t.llm.queueClassification({
+      candidates: [{ intentKey: "adopt_mitigation", confidence: 0.93 }],
+      outOfCatalog: false,
+      extractedSlots: { solutionName: "三班制" }, // 故意不给 factor
+    });
+    const { taskId } = await submitQuery(t, PLANNER, "采纳常州的三班制方案", {
+      view: "risk",
+      selectedObjects: [CZ],
+    });
+    const task = await waitForTask(t, taskId);
+    expect(task.status, "缺必填槽必须落待澄清，不许 COMPLETED 也不许 FAILED").toBe("AWAITING_CLARIFICATION");
+    expect(t.dataCore.action.drafts.length, "反问期间不得已经去建草稿").toBe(0);
   });
 
   it("A5: SLOT_FILLING clarification; two failed rounds → path B", async () => {

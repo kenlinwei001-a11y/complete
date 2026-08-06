@@ -277,7 +277,12 @@ describe("WO-SLOT-ENTITY-RESOLVE · ⑤ 解析规则纯函数直测（零数据�
     const a = (r.attempts ?? [])[0]!;
     expect(a.objectType).toBe("Base");
     expect(a.keysTried).toEqual(["火星"]);
-    expect(a.propsTried).toEqual(["__id:id", "baseId:id", "name:name", "factory_code:alias"]);
+    // #108：近指档（partial）也进留痕 —— 失败时下一个人才知道「近指也试过了」，
+    // 而不是看见 propsTried 只有精确档、以为近指根本没跑。
+    expect(a.propsTried).toEqual([
+      "__id:id", "baseId:id", "name:name", "factory_code:alias",
+      "baseId:partial", "name:partial", "factory_code:partial",
+    ]);
     expect(a.rowsScanned).toBe(2);
     expect(a.reason).toBe("NO_MATCH");
   });
