@@ -83,6 +83,12 @@ registerRenderer("chain-line-map", () => import("./sim/ChainLineMapView"));
 // —— 与 F3 同一个坑（registry 是手工登记表、无自动扫描）。宿主视图 `NodeInspectorView`
 // 的节点清单派生自 contracts 的 `CHAIN_NODE_REGISTRY`，本行是它唯一的生产调用方。
 registerRenderer("node-inspector", () => import("./sim/InspectorNodePanel"));
+// WO-SANDBOX-F2 在途 / 在制层（区间跑批 · 限流站排队 · 节拍批量放行 · 仿真时钟 + 播控倍速 + 事件流）。
+// 收口时补线：F2 交付的 `TransitFlowLayer` 自述"是线路图的图层、不是独立 view 故不进本表"，但设想中的
+// 宿主 F1 线路图**从未挂载过它**（实测除自身外零 src 引用）—— 与 F3/F4 同一个坑，即
+// G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、SEAM 全绿、却没有任何路由渲染得到。宿主视图
+// `TransitFlowView`（同文件默认导出）不造 nodes/sources，批次真值由图层自取 /a/v1/objects；本行是其唯一生产调用方。
+registerRenderer("transit-flow", () => import("./sim/TransitFlowLayer"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
