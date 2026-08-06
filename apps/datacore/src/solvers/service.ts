@@ -1623,7 +1623,7 @@ export class SolverService {
         // 订单叶携业态（WO-SEG-ATTR-SCOPE·R13 出处透明·前端可显示/二次过滤）；仅订单叶带，设备/物料叶无业态语义。
         childDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
           // driver 走万元权重；drillValue 回 `Order.value` 元真值（标签所指字段 == 回的值·R13）。
-          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
+          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "valueWan", drillValue: orderVal(o) }, businessType: str(o.businessType) });
       }
       // 设备瓶颈叶：`1 - oeeDeficit` = 该基地设备 `oee_current` 的**均值**（oeeDeficit = mean(1−oee)），是聚合不是单台，
       // 故 drillId 走 `"*"`（同上·旧写法填基地键 → `Equipment.hefei.oee_current`，而 Equipment 主键是 `equipId`
@@ -1692,7 +1692,7 @@ export class SolverService {
         for (const o of exposureOrders) {
           expDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
             // 同全局路：driver 万元权重 ⊥ drillValue 回 `Order.value` 元真值（R13）。
-            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
+            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "valueWan", drillValue: orderVal(o) }, businessType: str(o.businessType) });
         }
         // 同全局路：均值即聚合 → drillId `"*"`（旧写法填基地键即悬空下钻路径·#96 同族）。
         if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
