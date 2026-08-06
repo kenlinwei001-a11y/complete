@@ -387,7 +387,7 @@ function OptionCard({ opt, unit, testId }: { opt: DispositionOptionVM; unit: str
         ) : (
           <span style={{ color: muted }}>
             合计成本{opt.cost.status === "PARTIAL" && opt.cost.totalYuan != null
-              ? <> <b className="mono">{n(opt.cost.totalYuan, 2)}</b> {opt.cost.unit}（**不完整**，下列杠杆未计入）</>
+              ? <> <b className="mono">{n(opt.cost.totalYuan, 2)}</b> {opt.cost.unit}（不完整 · 下列杠杆未计入，不拿 0 凑合计）</>
               : "：算不出（无一杠杆可计价）"}
           </span>
         )}
