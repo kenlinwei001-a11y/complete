@@ -237,6 +237,9 @@ export const zh = {
     ledgerAll: "全部",
     ledgerGm: "综合毛利率",
     ledgerDrill: "点击下钻该单的订单全链与逐单根因 DAG",
+    // 假5 修：综合毛利率为估算口径（SEG_REGISTRY 参考单价/毛利率派生·非 metric_rollup 财务实测）。
+    ledgerGmNote:
+      "综合毛利率为估算：Σ(数量 × SEG 参考单价 × SEG 参考毛利率) ÷ Σ营收（SEG_REGISTRY 单一来源 · 缺数诚实 0 · 非 metric_rollup 财务实测值）。",
     drillLevels: { op: "运营", month: "月度", quarter: "季度", year: "年度" } as Record<string, string>,
     drillEmpty: (lvl: string) => `${lvl}层暂无经营指标（需合成该层 Metric）`,
     drillToGenerate: "去建议",
@@ -304,6 +307,10 @@ export const zh = {
     problemOrders: (n: number) => `${n} 单受影响`,
     problemFinance: (v: number) => `财务贡献 ${v.toFixed(1)} 亿`,
     dagTitle: "逐单根因链（订单 → 判定 → 根因 → 对策）",
+    // 假3 修：库存列平台无真源 → 诚实"—"（抄 OrderAggView）；营收/毛利经 SEG_REGISTRY 参考价勾稽（可溯·非逐单实际成交价）。
+    econNoSource: "平台暂无该维度库存真数据源",
+    econFootnote:
+      "未结营收/毛利/毛利率经 affected_orders 真订单 × SEG_REGISTRY 参考单价/毛利率聚合派生（R13 可溯 · R6 单一真相源 · SEG 参考价非逐单实际成交价，属估算口径）；成品/在制/原料库存平台暂无该维度真数据源 → 诚实“—”（不伪造 · G-DM-1）。",
   },
   /** §7.17 地理视图 */
   geo: {
@@ -395,6 +402,15 @@ export const zh = {
     planRule: "规则",
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // 假NL 修：诚实标"预设快答·非智能问答"——答案确定性派生自本卡真求解器输出（客户/订单/越线/峰值），但入口是关键词匹配非自然语言理解/LLM。
+    qa: {
+      title: "💬 预设快答（关键词匹配 · 非智能问答）· 同源求解器",
+      intro:
+        "点击下方预设问题，或输入含关键词的追问（客户 / 订单 / 越线 / 后果）。本框按关键词匹配预设问题，非自然语言理解或 LLM；答案由本卡真求解器输出（受影响订单 / 越线日 / 峰值）确定性派生。",
+      placeholder: "按关键词匹配预设问题，如：影响哪些客户？",
+      ask: "匹配",
+      disclosure: "说明：此为关键词匹配的预设快答，非智能问答；答案数字均来自本卡真求解器输出（非另起 LLM · 非伪造）。",
+    },
   },
   ledger: {
     expand: "展开",

@@ -783,7 +783,7 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
  * （affectedOrders / crossDay / peak / factor），非另起 LLM、非伪造——与嵌入态同一批真数据同源。
  */
 function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
-  const [ans, setAns] = useState<string>("点击下方问题，或输入追问。答案由本卡真求解器输出（受影响订单/越线日/峰值）确定性派生。");
+  const [ans, setAns] = useState<string>(zh.risk.qa.intro);
   const [input, setInput] = useState("");
   const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
   const custs = [...new Set(orders.map((o) => String(o.cust ?? "")).filter(Boolean))];
@@ -800,7 +800,8 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
 
   return (
     <div>
-      <div className={styles.wfT} style={{ color: "var(--c-capacity)" }}>💬 人机对话 · 同源求解器</div>
+      {/* 假NL 修：诚实标"预设快答·非智能问答"——入口是关键词匹配非自然语言理解/LLM；答案数字仍派生自本卡真求解器输出。 */}
+      <div className={styles.wfT} style={{ color: "var(--c-capacity)" }}>{zh.risk.qa.title}</div>
       <div className={styles.qaChips}>
         {presets.map((q) => (
           <button key={q} className={styles.qaChip} data-testid={`qa-chip-${q}`} onClick={() => setAns(answer(q))}>{q}</button>
@@ -811,12 +812,13 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
         <input
           value={input}
           data-testid="risk-qa-input"
-          placeholder="输入追问，如：影响哪些客户？"
+          placeholder={zh.risk.qa.placeholder}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && input.trim()) { setAns(answer(input)); setInput(""); } }}
         />
-        <button data-testid="risk-qa-ask" onClick={() => { if (input.trim()) { setAns(answer(input)); setInput(""); } }}>问</button>
+        <button data-testid="risk-qa-ask" onClick={() => { if (input.trim()) { setAns(answer(input)); setInput(""); } }}>{zh.risk.qa.ask}</button>
       </div>
+      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 10, color: "var(--muted2)", lineHeight: 1.5 }}>{zh.risk.qa.disclosure}</div>
     </div>
   );
 }

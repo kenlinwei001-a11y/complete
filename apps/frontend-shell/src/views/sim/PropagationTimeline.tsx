@@ -26,7 +26,15 @@ export interface PropagationStage {
   window: string;
   meta: string;
   sev: 0 | 1 | 2;
+  /** 假4：估算口径披露（如财务敞口按假设单价派生·非求解器真值）——有值则渲染诚实徽标，不裸渲染当真值。 */
+  estimate?: string;
 }
+
+/**
+ * 假4 修：延误敞口为**估算**——单位假设价（万元/套），非求解器真值 / 逐单实际成交价。
+ * 后端暂无真敞口端点（受影响订单×真单价），前端诚实披露此假设并加"估算"徽标（不把写死系数派生的敞口裸渲染当真值）。
+ */
+const ASSUMED_UNIT_PRICE_WAN = 0.6;
 
 export interface PropagationVM {
   base: string;
@@ -56,8 +64,8 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
     due: String(o.due ?? "—"),
     delay: Number(o.delay ?? 0),
   }));
-  // 财务击穿（确定性估算）：Σ订单量(套) × 0.6 万/套 → 亿
-  const financeYi = Math.round((orders.reduce((a, o) => a + o.qty, 0) * 0.6) / 10000 * 100) / 100;
+  // 财务击穿（确定性估算·假设单价·非求解器真值）：Σ订单量(套) × ASSUMED_UNIT_PRICE_WAN 万/套 → 亿
+  const financeYi = Math.round((orders.reduce((a, o) => a + o.qty, 0) * ASSUMED_UNIT_PRICE_WAN) / 10000 * 100) / 100;
   const stages: PropagationStage[] = [
     {
       key: "event",
@@ -92,8 +100,11 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
       key: "finance",
       title: "财务击穿",
       window: "月度滚动",
-      meta: orders.length > 0 ? `延误敞口约 ${fmt(financeYi, 2)} 亿（收入口径）` : "无财务击穿",
-      sev: financeYi >= 1 ? 2 : orders.length > 0 ? 1 : 0,
+      meta: orders.length > 0 ? `延误敞口约 ${fmt(financeYi, 2)} 亿（收入口径 · 估算）` : "无财务击穿",
+      // 估算徽标：假设单价·非求解器真值——避免把写死系数派生的敞口裸渲染当真值（假4 修）。
+      estimate: orders.length > 0 ? `估算 · 假设 ${ASSUMED_UNIT_PRICE_WAN} 万元/套 · 非求解器真值` : undefined,
+      // 严重度绑真实受影响订单存在（估算敞口≥1亿才升红）；口径已由估算徽标披露。
+      sev: orders.length > 0 ? (financeYi >= 1 ? 2 : 1) : 0,
     },
   ];
   return { base: card.base, factor: card.factor, stages, orders };
@@ -113,6 +124,17 @@ export function PropagationTimeline({ vm, testId = "ptl" }: { vm: PropagationVM;
             <i className={styles.ptlDot} />
             <b className={styles.ptlT}>{st.title}</b>
             <div className={styles.ptlM}>{st.meta}</div>
+            {/* 假4：估算口径诚实徽标（如财务敞口按假设单价派生·非求解器真值）——不裸渲染当真值。 */}
+            {st.estimate && (
+              <div
+                className={styles.ptlM}
+                data-testid={`${testId}-est-${st.key}`}
+                title="前端估算 · 非求解器真值"
+                style={{ color: "var(--amber, #E8B54A)", fontSize: 10, marginTop: 2 }}
+              >
+                ⚠ {st.estimate}
+              </div>
+            )}
             {st.key === "orders" && vm.orders.length > 0 && (
               <div className={styles.ptlOs}>
                 {vm.orders.slice(0, 4).map((o) => (

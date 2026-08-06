@@ -22,27 +22,37 @@ import styles from "./PlanViews.module.css";
 const SEG_COLOR: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.color]));
 const CHIP_LIMIT = 4;
 
-// PRD-IND-order-aggregate §4.5-A/C：经营数据看板 econTable 口径（SEG 价/利 + 在制/库存系数）。
+// PRD-IND-order-aggregate §4.5-A/C：经营数据看板 econTable 口径。
+// 假3 修（KILL-MOCK）：删 hashN + 写死 coef 现编库存。产能=真订单量；营收/毛利=量×SEG_REGISTRY 参考单价/毛利率
+// （可溯·R6 单一真相源·估算口径·缺数诚实 0）；成品/在制/原料库存平台暂无该维度真源 → 诚实"—"（抄 OrderAggView·G-DM-1）。
 // view.layout 优先下发，常量仅兜底（R14）；ordEcon 逐订单派生、按应用细分聚合。
 const ECON_DEFAULT = {
   segPrice: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.priceWan])) as Record<string, number>, // DF.3 单一来源（万元/套）
   segMargin: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.marginPct / 100])) as Record<string, number>, // DF.3 单一来源（%→分数）
-  coef: { fg: [0.22, 0.12], wip: [0.3, 0.15], rm: [0.18, 0.1] }, // debattery-allow：成品/在制/原料占营收系数 [base, hash幅度]
 };
 const SEG_ORDER = ["乘用车", "商用车", "储能"]; // debattery-allow：econ 看板细分行展示顺序（非业务数值）
 
-/** 确定性哈希（与原型 hashN 同式：x=(x*31+code)%997）→ 逐订单 econ 微扰，R6 字节一致。 */
-function hashN(s: string, mod: number): number {
-  let x = 0;
-  for (const c of s) x = (x * 31 + c.charCodeAt(0)) % 997;
-  return x % mod;
+/** 假3：econ 逐格 Provenance 作者标注（抄 LedgerView）——产能=真值；营收/毛利/毛利率=SEG 参考价估算口径，据实披露。 */
+const ECON_PROV: Record<"cap" | "sales" | "gp" | "gmRate", { src: string; formula: string; inputs: string[]; note: string }> = {
+  cap: { src: "affected_orders 求解器（订单域）", formula: "未结产能 = Σ 受影响订单.数量（套）", inputs: ["受影响订单数量"], note: "真值 · affected_orders 逐单数量聚合" },
+  sales: { src: "affected_orders × SEG_REGISTRY", formula: "营收(亿) = Σ 数量 × SEG 参考单价(万元/套) ÷ 1e4", inputs: ["受影响订单数量", "SEG_REGISTRY 参考单价"], note: "估算口径 · SEG 参考单价（合约域单一来源）非逐单实际成交价" },
+  gp: { src: "affected_orders × SEG_REGISTRY", formula: "毛利(亿) = 营收 × SEG 参考毛利率", inputs: ["营收", "SEG_REGISTRY 参考毛利率"], note: "估算口径 · SEG 参考毛利率非财务实测值" },
+  gmRate: { src: "派生", formula: "毛利率 = 毛利 ÷ 营收 × 100%", inputs: ["毛利", "营收"], note: "估算口径 · 随 SEG 参考单价/毛利率派生" },
+};
+/** 逐格：把 econ 数字包 Provenance（缺真源的库存列另走诚实"—"，不进此列）。 */
+function econCell(kind: keyof typeof ECON_PROV, value: number, tid: string, pct = false) {
+  const p = ECON_PROV[kind];
+  return (
+    <td className="mono">
+      <Provenance testId={tid} src={p.src} formula={p.formula} inputs={p.inputs} note={p.note}>
+        <span>{fmt(value, 1)}{pct ? "%" : ""}</span>
+      </Provenance>
+    </td>
+  );
 }
 
 interface EconAgg {
   cap: number;
-  fg: number;
-  wip: number;
-  rm: number;
   sales: number;
   gp: number;
 }
@@ -102,22 +112,19 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;
 
-  // 经营数据看板：逐订单 econ 派生 → 按应用细分 / 风险基地聚合（前端纯派生，零写死值来自 econCfg）。
-  const empty = (): EconAgg => ({ cap: 0, fg: 0, wip: 0, rm: 0, sales: 0, gp: 0 });
+  // 经营数据看板：逐订单 econ 派生 → 按应用细分 / 风险基地聚合。
+  // 产能=真订单量；营收/毛利=量×SEG_REGISTRY 参考单价/毛利率（可溯·估算口径·缺 SEG 数诚实 0）；库存无真源→下方诚实"—"。
+  const empty = (): EconAgg => ({ cap: 0, sales: 0, gp: 0 });
   const econGroups = new Map<string, { color: string; agg: EconAgg }>();
   const econTotal = empty();
   for (const r of out.rows) {
-    const price = econCfg.segPrice[r.seg] ?? 0.6;
-    const h = hashN(r.so, 10) / 10;
-    // WO-UNIT-NORMALIZE §3：sales(亿) = qty(套) × priceWan(万元/套) / 1e4（fg/wip/rm/gp/合计/summary 全部下游自动归一）。
+    const price = econCfg.segPrice[r.seg] ?? 0; // 缺 SEG 参考单价 → 诚实 0（不臆造 0.6）
+    // WO-UNIT-NORMALIZE §3：sales(亿) = qty(套) × priceWan(万元/套) / 1e4。
     const sales = (r.qty * price) / 1e4;
     const e: EconAgg = {
       cap: r.qty,
       sales,
-      gp: sales * (econCfg.segMargin[r.seg] ?? 0.13),
-      fg: sales * (econCfg.coef.fg[0]! + h * econCfg.coef.fg[1]!),
-      wip: sales * (econCfg.coef.wip[0]! + h * econCfg.coef.wip[1]!),
-      rm: sales * (econCfg.coef.rm[0]! + h * econCfg.coef.rm[1]!),
+      gp: sales * (econCfg.segMargin[r.seg] ?? 0), // 缺 SEG 参考毛利率 → 诚实 0（不臆造 0.13）
     };
     // app 模式按应用细分；base 模式按首个关联风险基地（跨基地订单计入首基地）。
     const key = segMode === "app" ? r.seg : (r.risks[0]?.base?.replace("基地", "").replace("·总部", "") ?? "其他");
@@ -127,7 +134,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       g = { color, agg: empty() };
       econGroups.set(key, g);
     }
-    for (const k of ["cap", "fg", "wip", "rm", "sales", "gp"] as const) {
+    for (const k of ["cap", "sales", "gp"] as const) {
       g.agg[k] += e[k];
       econTotal[k] += e[k];
     }
@@ -259,27 +266,30 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                     {r.key}
                   </span>
                 </td>
-                <td>{fmt(r.cap, 1)}</td>
-                <td>{fmt(r.fg, 1)}</td>
-                <td>{fmt(r.wip, 1)}</td>
-                <td>{fmt(r.rm, 1)}</td>
-                <td>{fmt(r.sales, 1)}</td>
-                <td>{fmt(r.gp, 1)}</td>
-                <td>{fmt(r.gmRate, 1)}%</td>
+                {econCell("cap", r.cap, `cap-${r.key}`)}
+                {/* 库存三列平台无该维度真源 → 诚实"—"（抄 OrderAggView·不伪造） */}
+                <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+                <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+                <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+                {econCell("sales", r.sales, `sales-${r.key}`)}
+                {econCell("gp", r.gp, `gp-${r.key}`)}
+                {econCell("gmRate", r.gmRate, `gm-${r.key}`, true)}
               </tr>
             ))}
             <tr data-testid="oc-econ-total" style={{ fontWeight: 700 }}>
               <td>{zh.orderChain.econTotal}</td>
-              <td>{fmt(econTotal.cap, 1)}</td>
-              <td>{fmt(econTotal.fg, 1)}</td>
-              <td>{fmt(econTotal.wip, 1)}</td>
-              <td>{fmt(econTotal.rm, 1)}</td>
-              <td>{fmt(econTotal.sales, 1)}</td>
-              <td>{fmt(econTotal.gp, 1)}</td>
-              <td>{fmt(econGmRate, 1)}%</td>
+              {econCell("cap", econTotal.cap, "cap-total")}
+              <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+              <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+              <td className="mono" style={{ color: "var(--muted2)" }} title={zh.orderChain.econNoSource}>—</td>
+              {econCell("sales", econTotal.sales, "sales-total")}
+              {econCell("gp", econTotal.gp, "gp-total")}
+              {econCell("gmRate", econGmRate, "gm-total", true)}
             </tr>
           </tbody>
         </table>
+        {/* 假3 披露脚注（抄 OrderAggView）：营收/毛利经 SEG 参考价勾稽（估算口径·可溯）；库存诚实"—"。 */}
+        <div className={simStyles.noteInfo} data-testid="oc-econ-footnote">{zh.orderChain.econFootnote}</div>
       </div>
 
       {/* 受影响订单明细 */}

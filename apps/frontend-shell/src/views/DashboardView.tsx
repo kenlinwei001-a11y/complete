@@ -408,7 +408,7 @@ function OrderLedgerWidget() {
   let sales = 0;
   let gp = 0;
   for (const r of filtered) {
-    const e = SEG_ECON[r.seg] ?? { price: 0.6, margin: 13 };
+    const e = SEG_ECON[r.seg] ?? { price: 0, margin: 0 }; // 假5 修：缺 SEG 参考价 → 诚实 0（不臆造 {price:0.6,margin:13}）
     const s = r.qty * e.price;
     sales += s;
     gp += (s * e.margin) / 100;
@@ -421,7 +421,14 @@ function OrderLedgerWidget() {
         {segs.map((s) => (
           <button key={s} className="badge" data-testid={`ledger-seg-${s}`} style={{ cursor: "pointer", opacity: seg === s ? 1 : 0.55 }} onClick={() => setSeg(s)}>{s}</button>
         ))}
-        <span style={{ marginLeft: "auto", fontSize: 12 }}>{zh.dash.ledgerGm} <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b> · {filtered.length} 单</span>
+        <span style={{ marginLeft: "auto", fontSize: 12 }}>
+          {zh.dash.ledgerGm}{" "}
+          {/* 假5 修：毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 实测）——逐格 Provenance + 脚注披露。 */}
+          <Provenance testId="dash-gm" src="affected_orders × SEG_REGISTRY" formula="综合毛利率 = Σ(数量×SEG 参考单价×SEG 参考毛利率) ÷ Σ营收" inputs={["受影响订单数量", "SEG_REGISTRY 参考单价/毛利率"]} note="估算口径 · SEG 参考值非 metric_rollup 财务实测">
+            <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b>
+          </Provenance>{" "}
+          · {filtered.length} 单
+        </span>
       </div>
       <table className="cmp" data-testid="ledger-table" style={{ fontSize: 12, width: "100%" }}>
         <thead><tr><th>订单</th><th>客户</th><th>细分</th><th>型号</th><th>数量</th><th>交期</th><th>延期</th><th>风险</th></tr></thead>
@@ -436,6 +443,8 @@ function OrderLedgerWidget() {
           ))}
         </tbody>
       </table>
+      {/* 假5 披露脚注：综合毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 财务实测）。 */}
+      <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }} data-testid="dash-ledger-gmnote">{zh.dash.ledgerGmNote}</div>
     </div>
   );
 }
