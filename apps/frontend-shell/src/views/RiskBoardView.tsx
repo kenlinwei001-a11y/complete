@@ -242,7 +242,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       {riskTab === "risk" && (
         <>
           {/* rk-grid：每基地一卡（整卡点击展开·无独立 CTA）。因素 chip 来自 bottleneck 真值。 */}
-          <div className={styles.rkGrid} data-testid="risk-grid" data-order={data.exposureOrder ? "exposure" : "array"}>
+          {/* `data-order` 是一句**关于本次用了哪个序**的断言 —— 判据必须与 orderCardsByExposure 的
+              实际分支一致（空数组也走原序），否则这个属性自己就成了假信号。 */}
+          <div className={styles.rkGrid} data-testid="risk-grid" data-order={data.exposureOrder?.length ? "exposure" : "array"}>
             {displayCards.map((card) => {
               const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
               const synth = card.provenanceSynthetic === true;
