@@ -61,6 +61,12 @@ sweep() {
     esac
   done
   echo "[$now] autosave 扫描完成：落盘 $saved · 跳过(detached) $skipped"
+  # ★ 存活心跳写**文件**而不是只写 stdout：nohup 重定向下 stdout 是**块缓冲**，
+  #   日志要攒满一块才落盘 —— 于是「日志最后一行的时间」跟守护死活没有关系。
+  #   2026-08-06 实测栽过：心跳读 `tail -1 日志` 报「autosave 活」，实际进程早已不在
+  #   （守护死了日志最后一行原地不动，看起来一切正常）。这与本仓一整天在指认的病同族：
+  #   **拿一个不能证明该结论的信号去断言该结论**。文件写是立即的，可放心用 mtime 判活。
+  printf '%s pid=%s saved=%s\n' "$now" "$$" "$saved" > /tmp/wo-autosave.alive
 }
 
 echo "wo-autosave 启动（每 ${INTERVAL}s 扫一次 $ROOT/.claude/worktrees/*）"
