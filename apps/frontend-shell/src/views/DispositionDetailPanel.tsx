@@ -104,7 +104,7 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
           `steps` 是**一条**固定顺序（加班→跨基地→外协）的路径 —— 决策者看到的是"系统认为该这么办"，
           而不是"有哪几种办法、各要付什么代价"；没有对比就没有拍板依据。引擎已回传 `row.options`
           （只挂每基地主行·备份行不重复挂），此前零消费方。缺省（备份行/旧后端）→ 诚实不渲染。 */}
-      {row.options && <DispositionOptionsPanel options={row.options} testId="disposition-options" />}
+      {row.options && <DispositionOptionsPanel options={row.options} />}
     </div>
   );
 }
