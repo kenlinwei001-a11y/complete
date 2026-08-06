@@ -408,7 +408,8 @@ export class OntologyService {
     ctx: AuthCtx,
     objectType: string,
     ref: unknown,
-    accept: RefMatchKind[],
+    /** undefined = 用 `matchObjectRefInType` 的单源默认（含 partial）；#108 不许在调用点抄第二份。 */
+    accept: RefMatchKind[] | undefined,
     rowFilters: Awaited<ReturnType<AuthzService["require"]>>,
   ): Promise<{ hits: ObjectRefHit[]; attempt: ObjectRefAttempt; byInternalId: Map<string, ObjectInstance> }> {
     const typeDef = await this.getType(ctx, objectType);
@@ -427,7 +428,7 @@ export class OntologyService {
       objectType,
       typeDef,
       rows: visible.map((o) => ({ id: o.id, props: o.props })),
-      accept,
+      ...(accept ? { accept } : {}),
     });
     return { hits, attempt, byInternalId };
   }
@@ -443,7 +444,12 @@ export class OntologyService {
    * （**不取第一个**）；解析不到就返回 `resolved:false` + 全部 attempts（试了哪些类型/什么键/为什么不匹）。
    */
   async resolveObjectRef(ctx: AuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
-    const accept = (req.accept ?? ["id", "name", "alias"]) as RefMatchKind[];
+    // #108 · 单源默认：**不许**在这里再抄一份层级清单。原来这行写死
+    // `["id","name","alias"]`，于是 `partial`（人话近指·治「常州基地/常州工厂」）
+    // 虽然进了 `matchObjectRefInType` 的默认 accept，却**永远到不了这条正门**——
+    // 铁律 0.5 第三形态「接了线接错地方」：线接在共享默认值上，调用点各自把它挡掉了。
+    // 传 undefined 让解析器用自己的单源默认；显式 `accept:["id"]`（老 getObject 语义）照旧生效。
+    const accept = req.accept as RefMatchKind[] | undefined;
     const declared = objectRefDeclaredType(req.ref);
     let typeKeys: string[];
     if (req.types && req.types.length) typeKeys = [...new Set(req.types)];

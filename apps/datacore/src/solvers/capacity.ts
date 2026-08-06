@@ -1,7 +1,7 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
-import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
 import { liveTightness, oeeTension, primaryFactor, resolveBaseId, yieldTension } from "./risk.js";
 import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：拒绝文案里的百分数由 outsourceRedlineRejectReason 生成，禁手写百分数。
@@ -414,7 +414,14 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   // WO-BASE-ID-FIDELITY 症① · 可选 base 作用域（治「常州基地 4680-NCM 加20%」与「4680-NCM 加20%」答案相同的静默丢 base）。
   // 给 base → 规范化（resolveBaseId 单一出处·认 obj_base_<id>/中文名/baseId）→ 只保留该基地认证条目 → p50/perBaseRows/
   // 缺口全部收窄到该基地该型号；该型号未在该基地认证 → 诚实 throw（非静默空/冒充）。不给 → 全网合计·scope:"ALL" 诚实标。
-  const hasBase = args.base !== undefined && args.base !== null && str(args.base) !== "";
+  //
+  // WO-BASE-SLOT-UNIFY §A 引擎半 · 「给没给 base」的判据必须与「怎么解析 base」同源。
+  // 旧写法 `str(args.base) !== ""` 只认**字符串**：AgentCore 把 base 槽统一成 objectRef 后，
+  // 计划模板整槽透传的是 `{objectType:"Base",objectId:"changzhou",label:"常州"}`（对象）
+  // → `str()` 返 "" → `hasBase=false` → **base 被静默丢掉、答案退回全网合计**（症① 原样复发，
+  // 而且这次连 400 都不报，比报错更坏）。改走单一出处 `normalizeBaseRef`（认对象 ref / obj_base_ 前缀 /
+  // 裸 id / 中文名），与下一行 `resolveBaseId` 的入口归一同一份规则。
+  const hasBase = args.base !== undefined && args.base !== null && normalizeBaseRef(args.base) !== "";
   const scopeBaseId = hasBase ? resolveBaseId(c, args.base) : undefined;
   const scopeBaseName = scopeBaseId ? baseName(c, scopeBaseId) : undefined;
   let cert = certAll;

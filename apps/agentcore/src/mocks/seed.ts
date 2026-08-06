@@ -187,6 +187,17 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
               // WO-BASE-ID-FIDELITY 症①：base 透传（专门映射·whole-slot·同 ceo_bottleneck baseIds 范式）——有基地→
               // capacity_forecast 只算该基地该型号产能（scope:BASE）；无基地→槽 null→整值 null→solver scope:ALL 全网合计诚实标。
               // 此前 slotNames 无 base → solverArgs 丢 base → capacity_forecast 恒全网 → 「常州基地 4680 加20%」与「4680 加20%」答案相同。
+              //
+              // ★ WO-BASE-SLOT-UNIFY §A · base 槽已统一为 objectRef，但这里**刻意保持 whole-slot
+              //   `{{slots.base}}`，不写成 `{{slots.base.objectId}}`**（工单原文建议对齐 risk_root_cause 的写法，
+              //   实测不能照搬 —— 理由是 required 不同）：
+              //     · risk_root_cause.base 是 `required:true` → `slots.base` 恒为对象 → `.objectId` 安全；
+              //     · 本槽 `required:false` → 无基地时 fillSlots 填 **null**（slots.ts:457），而多段路径
+              //       `{{slots.base.objectId}}` 走 `resolvePath`（jsonpath.ts:12 遇 null 返 undefined）
+              //       → template.ts:46 抛 `TemplateResolutionError` → executor.ts:119 直接把任务判 FAILED。
+              //   即：照搬会把「4680-NCM 加20% 六周能不能接（不指定基地·全网合计）」这条**本来能跑通**的问句打成硬失败。
+              //   单段 `{{slots.base}}` 有 null 直通语义（template.ts:24-27），故整槽透传；
+              //   DataCore 侧 `capacity.ts hasBase/resolveBaseId` 经 `normalizeBaseRef` 认对象 ref，两边口径闭合。
               base: "{{slots.base}}",
             },
           },
@@ -382,8 +393,19 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
         // WO-BASE-ID-FIDELITY 症①：base 作用域槽（问句「XX基地/常州基地」→ baseId·sim-planner parseCapacityFeasibilityVariant 抽·
         // 或场景 presetSlots/选中基地填）。可选——缺省 null → capacity_forecast 全网合计（scope:ALL 诚实标·非冒充某基地）。
-        // 认 obj_base_<id>/中文名/baseId（datacore resolveBaseId 单一出处归一）。补此槽后「常州基地 4680 加20%」≠「4680 加20%（全网）」。
-        { name: "base", type: "string", required: false, description: "基地 ID 或中文名（限定单基地产能作用域·缺省全网合计）" },
+        //
+        // ★ WO-BASE-SLOT-UNIFY §A（`G-BASE-SLOT-TYPE-SPLIT`）· **口径统一**：本槽此前是 `type:"string"`，
+        //   而同一个「基地」概念在 risk_root_cause / adopt_mitigation / affected_orders / order_deep_360 里
+        //   一律是 `objectRef`+`refType:"Base"`。**同一概念两种槽类型**的代价：string 槽谁都不解析，
+        //   用户原话「常州工厂」原文直甩 DataCore → 400 `unknown base: 常州工厂` → 任务 FAILED
+        //   （真 Kimi 实测同题连跑 5 次得 4 种结果，两次死在这里）。槽位描述自己写着「基地 ID 或中文名」——
+        //   作者知道用户会说中文名，却把解析推给了不知道谁。现改 objectRef → 走 A 侧解析正门
+        //   （`ontology.resolveObjectRef` → contracts `matchObjectRefInType`·零中文名词表 R14），
+        //   且 l2-decompose `FLOOR_RULES` 的基地档（`s.type==="objectRef" && /base|基地/`）随之对本槽生效
+        //   → 确定性底座也开始兜这个槽（此前 string 槽压根不进底座）。
+        //   ⚠ 刻意**不加** `defaultFrom:"$.selectedObjects[0]"`（其余 base 槽都有）：本槽可选，
+        //   加了会让「选中某基地时的全网问句」悄悄变成单基地作用域 —— 那是产品语义变更，不在本单内。
+        { name: "base", type: "objectRef", required: false, refType: "Base", description: "基地（Base 对象引用·限定单基地产能作用域·缺省全网合计）" },
       ],
       planId: `plan_capacity_feasibility_v1${sfx}`,
       riskLevel: "COMPUTE",
@@ -626,7 +648,19 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
                 { name: "modelId", type: "string", required: false, description: "型号 ID（问句解析·如 4680-NCM）" },
                 { name: "weeks", type: "number", required: false, description: "周数窗口（问句解析·如 六周→6）" },
               ] as IntentDefinition["slots"])
-            : cap.slotNames.map((n) => ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "baseId" ? "基地 ID 或中文名（问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : n === "custName" ? "客户名（问句 XX客户/XX公司 解析·creditArgsFrom 注入·credit_exposure 客户维过滤·WO-SEAM-ARG-DROP）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }));
+            : cap.slotNames.map((n) =>
+                // ★ WO-BASE-SLOT-UNIFY §A（`G-BASE-SLOT-TYPE-SPLIT`）· 全意图扫描的第二处命中：
+                //   `ceo_base_outlook.baseId` 也是「语义是基地的单值槽」，此前同样声明成 string（谁都不解析）。
+                //   确定性路由 `ceo-route.ts baseOutlookArgsFrom:104` 给的值已是规范 baseId，看似没事；
+                //   但分类器（LLM）同样能往这个槽里塞用户原话「常州工厂」→ string 槽原文直甩 →
+                //   `service.ts:2744 bases.find(baseId|name)` 精确比对失配 → 404 `Base 常州工厂`。
+                //   与 capacity_feasibility.base 同一个病，故一并统一为 objectRef+refType:"Base"：
+                //   走 A 侧解析正门；计划模板是整槽透传 `{{slots.baseId}}`，DataCore 侧
+                //   `baseCapacityOutlook` 入口早已 `normalizeBaseRef(args.baseId)`（认对象 ref）→ 两边闭合。
+                n === "baseId"
+                  ? ({ name: n, type: "objectRef" as const, required: false, refType: "Base", description: "基地（Base 对象引用·问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" })
+                  : ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : n === "custName" ? "客户名（问句 XX客户/XX公司 解析·creditArgsFrom 注入·credit_exposure 客户维过滤·WO-SEAM-ARG-DROP）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }),
+              );
     intents.push({
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",
       name: cap.name, description: `CEO 决策页自然语言深问 → 注入 PageContext → 路由 ${cap.solver} → 答案+溯源（闭 G-3 深问侧）。`,

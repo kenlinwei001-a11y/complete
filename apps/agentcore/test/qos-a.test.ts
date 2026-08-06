@@ -84,12 +84,11 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     expect(task.answer?.unverifiedNumerics).toBe(false); // A6
   });
 
-  it("A4: adopt_mitigation → action_draft block, ActionClient called, no direct write", async () => {
-    // #109：`factor` 从 required:false 改成 true —— 本条测试原来**不给 factor 也绿**，
-    // 因为 mock ActionClient 不校验；真 DataCore 的 create_action_draft paramsSchema
-    // 必填 base/factor/planKey，实测直接 400 `payload.factor is required`，用户看到一片空白。
-    // 那次「绿」是典型的 mock 没有失败模式。本条测的是**给全参数时**的正常落草稿链路，
-    // 故补上 factor；「不给 factor 应当反问」另有一条测试（见下条 A4.b）咬住。
+  // #109：`factor` 从 required:false 改成 true —— 本条原来**不给 factor 也绿**，因为 mock
+  // ActionClient 不校验；真 DataCore 的 create_action_draft paramsSchema 必填 base/factor/planKey，
+  // 实测直接 400 `payload.factor is required`，用户看到一片空白。那次「绿」是典型的**mock 没有失败模式**。
+  // 本条现在走完整的「问 → 答 → 完成」链（判据见下方长注释）；「缺 factor 必须反问」另由 A4.b 咬住。
+  it("A4: adopt_mitigation → 先问 factor（#109 必填口径）→ 用户答后 action_draft block, ActionClient called, no direct write", async () => {
     t.llm.queueClassification({
       candidates: [{ intentKey: "adopt_mitigation", confidence: 0.93 }],
       outOfCatalog: false,
@@ -99,8 +98,25 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
       view: "risk",
       selectedObjects: [CZ],
     });
-    const task = await waitForTask(t, taskId);
+    // ★ 判据更新（WO-BASE-SLOT-UNIFY §D·审核方已裁定）：本题用户**没说**针对哪个风险因子，
+    //   而 #109 把 `adopt_mitigation.factor` 定为 `required:true`（此前 required:false 把校验推给后端 →
+    //   DataCore 400 `payload.factor is required` → 任务 FAILED、答案一片空白）。
+    //   所以**系统问一句本来就是对的**，「零反问直达 COMPLETED」是设错的判据，不是产品缺陷。
+    //   达标判据改为：**一次澄清 + 用户回答后能完成**，断言落在**回答之后的终态**。
+    //   （本仓 baseline 1ba3772a 此条即为红 —— #109 改了必填口径但没同步本条金值。）
+    const asked = await waitForTask(t, taskId, (x) => ["AWAITING_CLARIFICATION", "COMPLETED", "FAILED"].includes(x.status));
+    expect(asked.status).toBe("AWAITING_CLARIFICATION");
+    expect(asked.pendingClarification?.slots?.map((s) => s.name)).toEqual(["factor"]);
+    const reply = await t.app.inject({
+      method: "POST",
+      url: `/api/v1/queries/${taskId}/clarification`,
+      headers: { "x-debug-user": encodeURIComponent(PLANNER), "content-type": "application/json" },
+      payload: { kind: "SLOT_FILLING", slotValues: { factor: "物料齐套" } },
+    });
+    expect(reply.statusCode).toBe(202);
+    const task = await waitForTask(t, taskId, (x) => ["COMPLETED", "FAILED"].includes(x.status));
     expect(task.status).toBe("COMPLETED");
+    expect(task.slots?.factor).toBe("物料齐套");
     const draftBlock = task.answer?.blocks.find((b) => b.type === "action_draft");
     expect(draftBlock).toBeDefined();
     expect(t.dataCore.action.drafts.length).toBe(1);
