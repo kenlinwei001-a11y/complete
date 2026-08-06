@@ -56,9 +56,12 @@ describe("PROV CENSUS PROBE", () => {
 
     const tally: Record<string, number> = {};
     const samples: Record<string, string[]> = {};
+    const byKey: Record<string, true> = {};
+    let cur = "?";
     const note = (cls: string, msg: string) => {
       tally[cls] = (tally[cls] ?? 0) + 1;
-      (samples[cls] ??= []).length < 6 && samples[cls].push(msg);
+      byKey[`${cls.padEnd(24)} ${cur}`] = true;
+      (samples[cls] ??= []).length < 8 && samples[cls].push(msg);
     };
 
     for (const r of runs) {
@@ -67,13 +70,15 @@ describe("PROV CENSUS PROBE", () => {
       for (const { pv } of found) {
         const { drillType: dt, drillId: di, drillField: df } = pv;
         const label = `${r.tag} ${dt}.${di}.${df}=${JSON.stringify(pv.drillValue)}`;
+        cur = `${dt}.${df}`;
         if (!dt) { note("A_NO_TYPE", label); continue; }
         const ty = typeByKey.get(dt);
         if (!ty) { note("B_PHANTOM_TYPE", label); continue; }
-        const declared = new Set(ty.properties.map((p) => p.propKey));
-        const derived = ty.properties.filter((p) => p.propKey === df);
-        if (df && !declared.has(df)) { note("C_PHANTOM_FIELD", `${label}  [类型 ${dt} 声明字段: ${[...declared].slice(0, 12).join(",")}]`); continue; }
-        void derived;
+        const declared = new Set([
+          ...ty.properties.map((p) => p.propKey),
+          ...((ty as { derivedProperties?: { propKey: string }[] }).derivedProperties ?? []).map((p) => p.propKey),
+        ]);
+        if (df && !declared.has(df)) { note("C_PHANTOM_FIELD", `${label}  [类型 ${dt} 声明字段: ${[...declared].slice(0, 14).join(",")}]`); continue; }
         const pk = ty.properties.find((p) => p.isPrimaryKey)?.propKey;
         if (!pk) { note("D_NO_PK", label); continue; }
         if (di === "*") { note("E_AGGREGATE_STAR", label); continue; }
@@ -89,6 +94,8 @@ describe("PROV CENSUS PROBE", () => {
     }
     console.log("\n===== 分类统计 =====");
     for (const k of Object.keys(tally).sort()) console.log(`${k}: ${tally[k]}`);
+    console.log("\n===== 按 类型.字段 × 分类 =====");
+    for (const k of Object.keys(byKey).sort()) console.log(`${k}`);
     console.log("\n===== 样例 =====");
     for (const k of Object.keys(samples).sort()) {
       if (k === "Z_OK") continue;
