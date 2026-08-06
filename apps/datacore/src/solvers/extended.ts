@@ -1,7 +1,10 @@
 import type { ObjectInstance } from "../domain.js";
 import { AppError } from "../errors.js";
 import { round } from "../prng.js";
-import { maintWeekOf, num, str, type SolverContext } from "./types.js";
+// WO-ENGINE-SCOPE-FIX（#116/#117 引擎层作用域维）：base 解析走 `resolveBaseRef` **单一出处**
+// （= risk.resolveBaseId / capacity 用的同一份·认 baseId/中文名/obj_base_ 前缀/近指），
+// 本文件**不许**再写第二套「中文名 → baseId」匹配（R14·types.ts 已把这条纪律写死）。
+import { baseName as baseNameOf, maintWeekOf, num, resolveBaseRef, str, type SolverContext } from "./types.js";
 // DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
 // WO-SANDBOX-D2：采购段四段（按责任方）契约 + 唯一合计实现，见 packages/contracts/src/procurement.ts。
 import {
@@ -686,8 +689,33 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "lta_gap": {
       if (has("monthDemand")) return args;
-      const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
-      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
+      // ── WO-ENGINE-SCOPE-FIX #116 · A 组②「物料维只回显」（G-SOLVER-SCOPE-ECHO）────────────────
+      // 修前：`mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0]`
+      //   —— 只匹**英文键** `matId`，而场景卡 S09 的 slotPreset 传的是**中文名**「三元正极」
+      //   （`Material` 同时有 `matId:"pos_ncm"` 与 `name:"三元正极"` 两列，只匹了前者）
+      //   → 恒落 `mats[0]`（按 id 排序首行 = 铝箔 al_foil），而输出把用户说的「三元正极」原样回显。
+      //   实测（seed 42）：`{material:"三元正极"}` 与 `{material:"铝箔"}` 逐字节相同（netDemand 21637.68）。
+      // 修后两件一起做：
+      //   ① 补匹 `Material.name`（matId 精确 → name 精确，两层皆精确·无近指，R6 确定性）；
+      //   ② **删掉 `?? mats[0]` 这个静默兜底** —— 它本身就是病，与已闭的 `G-ARG-DROP-SEAM` 同形：
+      //      指定了物料却匹不到，诚实答案是**缺席（400）**，不是把首行的数字冠上用户说的名字。
+      // 加性：不指定 `material` 时仍取 `mats[0]`（与改前逐字节一致）。
+      const wantedMat = str(args.material);
+      let m: Record<string, unknown> | undefined;
+      if (wantedMat) {
+        m = mats.find((x) => str(x.matId) === wantedMat) ?? mats.find((x) => str(x.name) === wantedMat);
+        if (!m)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `lta_gap：问句指定物料「${wantedMat}」在物料库中无匹配（试过 Material.matId / Material.name·扫 ${mats.length} 行）` +
+              `——拒绝静默落首个物料（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+      } else {
+        m = mats[0];
+      }
+      const mm = m ?? {};
+      return { material: str(args.material, str(mm.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(mm.dailyUse, 100) * 30, 2), bomUnit: num(mm.bomUnit, 1), inventory: num(mm.onHand), inTransit: num(mm.inTransit), ltaAnnualLock: round(num(mm.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(mm.leadTime, 30), ...args };
     }
     case "inventory_optimize": {
       // WO-SANDBOX-D4 ②：inbound（真 PurchaseOrder 到货）与 locations（物料侧地点维·今日恒空）与 materials 是否
@@ -751,8 +779,50 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "carbon_footprint": {
       if (has("materials")) return args;
-      const em = (c.energyMeters ?? []).map(props)[0];
-      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+      // ── WO-ENGINE-SCOPE-FIX #116 · A 组①「基地维只回显」（G-SOLVER-SCOPE-ECHO·最危险也最便宜的一条）──
+      // 修前：`const em = (c.energyMeters ?? []).map(props)[0];`
+      //   —— **任何基地**问都拿 `EnergyMeter` 排序首行（常州 em_changzhou）的电网因子，
+      //   而 `baseName` 被原样回显进输出（`carbonFootprint()` 第 :522 行）→ 用户看见「成都」，
+      //   `energyCarbon` 算的却是常州：实测 seed 42 成都/枣庄/江门三问，`total` 全是 349.6151、
+      //   `energyCarbon` 全是 1.3041（= 常州 2.371 × 0.55）。真值应各不相同
+      //   （成都 1.549×0.78=1.2082 / 枣庄 2.573×0.70=1.8011 / 江门 1.849×0.50=0.9245）——
+      //   13 行 EnergyMeter **每基地一行**且早已在 `SolverContext` 里（`withExtended` 十类含 EnergyMeter），
+      //   数据一直都在，只是求解器取了 `[0]`。这是「接了线接错地方」，不是「没数据」（铁律 0.5 三态）。
+      // 修后：
+      //   ① 认 `baseName`（卡片/argHints 用）**与** `base`（路由 baseArgsFrom 用）两个键 —— 键名漂移不该让作用域失效；
+      //   ② 解析走 `resolveBaseRef` 单一出处；解析不到 → **AMBIGUOUS_SCOPE 400**（抄 `credit_exposure` 的样板，
+      //      拒绝静默落首行）；解析到但该基地无 EnergyMeter → 同样 400，绝不拿别的基地的电表冒充；
+      //   ③ 回显位改成**真正被算的那个基地的规范名**（用 baseId 问也回显中文名）—— 印在答案上的名字
+      //      与数字出自同一个基地，这正是本单要治的「假个性化」。
+      // 加性：不给 `baseName`/`base`（S20 卡片今天正是 `baseName:""` 中性默认）→ 仍取 `[0]`，与改前逐字节一致。
+      const meters = (c.energyMeters ?? []).map(props);
+      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
+      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
+      let em = meters[0];
+      let scopedBaseName = "";
+      if (baseRef !== undefined) {
+        const r = resolveBaseRef(c.bases, baseRef);
+        if (!r.resolved || !r.objectId)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+              `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+              `——拒绝静默落首块电表（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+        const scopedBaseId = r.objectId;
+        scopedBaseName = baseNameOf(c, scopedBaseId);
+        const hit = meters.find((x) => str(x.baseId) === scopedBaseId);
+        if (!hit)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：基地「${scopedBaseName}」无 EnergyMeter（单位能耗/电网因子）真源——` +
+              `拒绝拿其它基地的电表冒充该基地的能耗碳（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        em = hit;
+      }
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, ...(scopedBaseName ? { baseName: scopedBaseName } : {}), materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
     }
     case "maintenance_stagger": {
       if (has("bases")) return args;

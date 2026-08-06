@@ -553,10 +553,31 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
   const p = c.params.risk;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
   const pairs: { baseId: string; factor: string; forced: boolean }[] = [];
-  if (args.base && args.factor) {
-    pairs.push({ baseId: resolveBaseId(c, args.base), factor: args.factor, forced: true });
+  // ── WO-ENGINE-SCOPE-FIX #117 · 双键守卫拆开（G-SOLVER-SCOPE-DEAF）────────────────────────────
+  // 修前：`if (args.base && args.factor)` —— **两个键都给**才进强制单卡分支，**只给 base 静默扩到全网**。
+  //   实测（seed 42·horizon 默认 30）：`{base:"zaozhuang"}` 返回 8 张卡
+  //   `[jiangmen,handan,zigong,xinyang,changzhou,chengdu,jinhua,hefei]` —— **枣庄一张都不在里面**，
+  //   且与 `{base:"changzhou"}`、与不传任何 base 的输出**逐字节相同**（回显位都没有，用户无从察觉）。
+  //   而 WO-112 把 S03 场景卡从 `{baseId,factor}` 改成 `{base}`：键名修对了、`factor` 一起删了，
+  //   于是「换了一种方式继续失效」—— 这是 demo 路径上用户直接可见的**静默错答**。
+  // 修法（工单二选一里选「按 base 过滤后返回该基地的全部因子卡」，理由三条）：
+  //   ① 「诚实要求补 factor」会把一个**能答**的问题变成反问 —— 数据齐（Base 13 行）、算法齐
+  //      （逐因素 tensionSeries 本来就逐 base×factor 跑），没有任何理由要用户先说清因素；
+  //   ② 场景卡 S03 的问句就是「常州**为什么**越线」，因素恰恰是**答案**不是**前提**，
+  //      要求用户先给 factor 等于要求他先知道答案；
+  //   ③ 全因子卡走的是与全网路**同一套** pairs/去重/allFactors 机制（不是第二套算法），
+  //      故「某基地 × 全因素」与「全网 × 全因素」口径天然一致，不会漂移。
+  //   另：显式点名基地时 `forced=true` —— 该基地的卡**恒出**，不因「本 horizon 内一个因素都没越线」
+  //      而整张消失（那会退化成另一种静默：问了枣庄，答了空）。
+  // 加性：不给 `base` → `scopeBaseId=null` → 与改前**同一条**全网路径、逐字节一致。
+  // 诚实：`base` 给了但解析不到 → `resolveBaseId` **抛 400**（与 base+factor 路同一口径），
+  //      不再像修前那样把「火星基地」静默当成"没给基地"返回全网 8 张卡。
+  const scopeBaseId = args.base ? resolveBaseId(c, args.base) : null;
+  if (scopeBaseId && args.factor) {
+    pairs.push({ baseId: scopeBaseId, factor: args.factor, forced: true });
   } else {
-    for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
+    const allBaseIds = c.bases.map((x) => str(x.props.baseId)).sort();
+    for (const b of scopeBaseId === null ? allBaseIds : allBaseIds.filter((x) => x === scopeBaseId)) {
       const primary = primaryFactor(c, b);
       for (const f of c.params.bottleneck.factors) {
         // WO-CAPACITY-PAGE-100PCT ④（R1 用户亲报「所有基地瓶颈都一样」的根）：修前**本基地的主瓶颈因素被
@@ -565,7 +586,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         // `瓶颈工序`（8/8 卡全同），而卡面 chip 却诚实显 `信阳 物流时长 92 > 瓶颈工序 91`——同一张卡自相矛盾。
         // 修后：主瓶颈因素恒为候选（它本就是该基地最该被看见的那个），非主因素维持原「mock 张力已越线则不重复计入」筛。
         if (f !== primary && mockTightness(c, b, f) >= p.threshold) continue;
-        pairs.push({ baseId: b, factor: f, forced: false });
+        // WO-ENGINE-SCOPE-FIX #117：显式点名基地 → forced（该基地恒出卡·见上方分支注释）；
+        // 未点名（全网路）→ false，与改前逐字节一致。
+        pairs.push({ baseId: b, factor: f, forced: scopeBaseId !== null });
       }
     }
   }
