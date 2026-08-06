@@ -156,7 +156,7 @@ yield_diag ：「常州涂布良率」vs「枣庄涂布良率」→ 同上
 
 | 候选 | 位置 | 有没有类型/必填 | 真消费方（追到调用点·非 grep 直接命中） | 覆盖本单 16 个求解器 |
 |---|---|---|---|---|
-| `SOLVER_ARGS_SCHEMAS` | `packages/contracts/src/solver-args.ts:111` | **有**（zod·`requiredArgKeys` 从 schema 派生） | `apps/agentcore/src/router/compile-plan.ts:64,88` ← `apps/agentcore/src/router/orchestrator.ts:1931`（compose 路径·`qos.compose-path` 开时触发）；`apps/datacore/src/solvers/args-schemas.ts:18` 薄 re-export。**不是只有 test** | **2/16**（`credit_exposure`·`mrp_netting`） |
+| `SOLVER_ARGS_SCHEMAS` | `packages/contracts/src/solver-args.ts:111 (SOLVER_ARGS_SCHEMAS)` | **有**（zod·`requiredArgKeys` 从 schema 派生） | `apps/agentcore/src/router/compile-plan.ts:61 (compileSolverPlan)`（`:64` 过滤已登记 solver·`:88` 取 `requiredArgKeys`）← `apps/agentcore/src/router/orchestrator.ts:1931 (compileSolverPlan)`（compose 路径·`qos.compose-path` 开时触发）；`apps/datacore/src/solvers/args-schemas.ts:18` 薄 re-export。**不是只有 test** | **2/16**（`credit_exposure`·`mrp_netting`） |
 | `SOLVER_CATALOG[].argHints` | `apps/datacore/src/catalog.ts:18` | **没有**（`Record<string,string>` 人读提示） | REST `/a/v1/catalog/solvers` → agentcore `discover`/DRIL 检索 | 16/16 键名，但**已与求解器真实读取漂移** |
 | 求解器实现本身 | `apps/datacore/src/solvers/extended.ts` | 是代码不是规格 | — | — |
 
@@ -174,7 +174,7 @@ yield_diag ：「常州涂布良率」vs「枣庄涂布良率」→ 同上
 `packages/contracts/src/solver-args.ts`（约 60 行，形态与现有 11 条一致），并给字段加一个
 **「这是不是对象引用、指向哪个对象类型」**的声明位。没有后者，"哪个入参是实体"就只能靠猜 ——
 本单因此**只对既有不变量已经判过的那一类**（单值 base 语义槽 → `objectRef`+`refType:"Base"`，
-判据复用 `l2-decompose.ts:191 FLOOR_RULES` 的 `/base|基地/i`）派生 objectRef，其余一律不猜（见 §6.5 没做到的部分）。
+判据复用 `apps/agentcore/src/router/l2-decompose.ts:189 (FLOOR_RULES)` 的 `/base|基地/i`）派生 objectRef，其余一律不猜（见 §6.6 没做到的部分 3）。
 
 ### 6.2 §2.1 逐张裁决（三选一·逐张·证据在 `apps/datacore/src/solvers/extended.ts`）
 
@@ -291,12 +291,32 @@ yield_diag ：「常州涂布良率」vs「枣庄涂布良率」→ 同上
    原因是**没有任何单源声明「哪个入参是对象引用、指向哪个类型」**，硬编一张键名→类型表就是欠账 #99 复发。
    立源方案见 §6.1 末段。
 4. **未跑四包 gate / 全量 datacore vitest**（工单 §5 明令禁止·审核方正在跑 gate）。
-   本单实跑范围：`agentcore typecheck`（EXIT=0）+ `agentcore build`（EXIT=0）+ agentcore 全量 vitest（见交付报告）。
-   **datacore / frontend / contracts 未跑**。
-5. **越出工单文件清单一处（必要且已说明）**：`apps/agentcore/test/base-slot-unify.seam.test.ts` §A 的
-   **金值列表**加了 2 条（`yield_diag.base` / `carbon_q.baseName`）。该门的**判据一字未改**，
-   只是被它罩住的槽多了两个；按 CLAUDE.md「金值/注册即更，漏金值即退」这是必须同步的。
-6. **`SlotDef` 契约未动**：字面默认值借 `defaultFrom` 的 `const:<JSON>` 形态承载
+   本单实跑范围：
+   - `apps/agentcore` typecheck `EXIT=0`、build `EXIT=0`
+   - `apps/agentcore` **全量 vitest**（seed.ts 消费面广，必须整跑）：`Test Files 149 passed | 1 skipped (150)`·`Tests 866 passed | 1 skipped (867)`·`EXIT=0`
+   - 门脚本：`scenario-slot-keys` / `arg-drop-seam` / `system-ontology` / `ontology-anchors` /
+     `ontology-descriptions` / `chain-closure` / `gate-ledger` / `boundary-singlesource` 全 `EXIT=0`
+   - `apps/agentcore` lint：全仓 `33 problems (29 errors)`，**与基线逐字相同**（`git stash` 后复跑同数），
+     **本单改动的 5 个文件单独 lint `EXIT=0`** —— 存量债，非本单引入。
+   - **`apps/datacore` / `apps/frontend-shell` / `packages/contracts` 一行未改，也一次都没跑。**
+5. **越出工单文件清单三处（都必要，逐条说明）**：
+   - `apps/agentcore/test/base-slot-unify.seam.test.ts` §A 的**金值列表** 8→10 条
+     （`yield_diag.base` / `carbon_q.baseName`）。门的**判据一字未改**，只是被它罩住的槽多了两个；
+     按 CLAUDE.md「金值/注册即更，漏金值即退」这是必须同步的。
+   - `scripts/check-scenario-slot-keys.mjs`：`ALIASES` 由**无条件改写**改成**精确命中优先的回落**。
+     该表成文时会声明槽位的只有 4 个原生意图（槽名 `model`/`base`、preset 写 `modelId`/`baseId`），
+     所以「见到 `modelId` 就当 `model`」当时恒对；本单把派生槽名对齐求解器入参名后
+     （`carbon_q` 的槽**就叫** `modelId`/`baseName`，因为 `carbon_footprint` 读的就是这两个键），
+     无条件改写会把**精确命中**改成一个不存在的槽名 → 门反过来误杀正确接线。**判据更严、不是放宽**；
+     该门覆盖面从 4 张卡涨到 16 张。
+   - `apps/agentcore/src/scenarios-catalog.ts` S17 删死键 `scenario:"基准"`（见下 7）。
+6. **顺手清掉的一个同族死键（S17·被门当场照出来，不是我去翻的）**：
+   `capex_review` 的 `slotPresets: { scenario: "基准" }` 是**三重死键** ——
+   ① `capex_scenario` 真读的是 `args.scenarioKey`（`apps/datacore/src/solvers/capex.ts:272`），没有 `scenario` 这个入参；
+   ② 本卡入参走 `ARG_OVERRIDE.capex_scenario`，整份 `slotPresets` 根本不参与 `args`；
+   ③ `catalog.ts` argHints 却写着 `{scenario:"情景 key"}`（**argHints 第三处漂移实例**）。
+   已删。要真支持选情景，需引擎半把 `scenarioKey` 接进来并确认取值域 —— 越界，不在本单猜。
+7. **`SlotDef` 契约未动**：字面默认值借 `defaultFrom` 的 `const:<JSON>` 形态承载
    （与 `$.` JSONPath 正交，`resolvePath` 对该形态本就返 undefined）。
    更干净的做法是给 `SlotDefSchema` 加一个 `defaultValue?: unknown`，但那要动 `packages/contracts`，
    在工单范围边界之外 —— **交审核方裁**。
