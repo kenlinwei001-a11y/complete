@@ -46,7 +46,10 @@ if [ ${#TARGETS[@]} -eq 0 ]; then
   SESS="${CLAUDE_SESSION_DIR:-}"
   for d in "$SESS" /tmp/claude-*/*/*/tasks /tmp/claude-*/*/*/scratchpad; do
     [ -d "$d" ] || continue
-    while IFS= read -r f; do TARGETS+=("$f"); done < <(find "$d" -maxdepth 1 -type f \( -name '*.output' -o -name '*.log' \) -mmin -1440 2>/dev/null)
+    # 只收**本次 boot 之后**动过的产物：更早的一律是上个容器生命周期的残骸，不是活任务。
+    # 首版用 `-mmin -1440`（24h），结果把 21 小时前的陈年日志全报成「💀 阵亡」，
+    # 刷了一屏噪音、真实状态反而被淹掉 —— 探针自己变成了假警报源（2026-08-06 实测）。
+    while IFS= read -r f; do TARGETS+=("$f"); done < <(find "$d" -maxdepth 1 -type f \( -name '*.output' -o -name '*.log' \) -newermt "@$(( $(date +%s) - UP_SEC ))" 2>/dev/null)
   done
 fi
 [ ${#TARGETS[@]} -eq 0 ] && { echo "（没找到可探的产物文件；用 bash scripts/task-probe.sh <file> 指定）"; exit 0; }
