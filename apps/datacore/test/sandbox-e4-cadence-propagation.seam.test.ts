@@ -346,6 +346,45 @@ describe("WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝�
     }
   });
 
+  it("E4-8 向后兼容：E4 之前落库的老规则（doc 里根本没有 cadenceNodeId 键）必须照旧传导，不许被当成'声明了闸门'", async () => {
+    // ── 这条门咬的是一个**只在 pg 模式才暴露**的接缝 ──────────────────────────
+    // `repo/pg.ts:113` 读回是 `row.doc as PropagationRule` —— **裸 cast，不过 zod parse**，
+    // 所以 `.default(null)` 在读回路上**不生效**：E4 之前写进 `sim_propagation_rule.doc`
+    // 的老规则读回来 `cadenceNodeId === undefined`（不是 null）。
+    // 若引擎用 `!== null` 判「有没有声明闸门」，`undefined !== null` 为真 ⇒ 老规则会被当成
+    // 「声明了闸门但拿不到」⇒ **整条流停止传导**。契约 §cadenceNodeId 明写「缺省 ⇒ 行为与本字段
+    // 引入前逐字节相同（additive·可回退 RL9）」，那就必须对 undefined 也成立。
+    // 内存仓与 pg 仓一样是**原样存取**（`repo/memory.ts:70` `this.rules.set(r.id, clone(r))`），
+    // 故这里直接经仓储放一条「没有该键」的规则 = 忠实复现 pg 读回老 doc 的那一刻。
+    const t = await makeApp();
+    const TEN = "e4legacy";
+    const H = debugUser(TEN, "admin", "admin");
+    await lightWorld(t, TEN, D1_CADENCE_ROWS);
+    await enableSim(t, TEN, H);
+    const legacy = {
+      id: "rule_legacy", tenantId: TEN, key: "e4_legacy",
+      sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS",
+      targetTypeKey: "TypeB", targetStateVar: "received",
+      coefficient: 1, delayTicks: 0, combine: "sum", decay: null, clamp: null, coefficientRef: null,
+      status: "PUBLISHED",
+    };
+    expect("cadenceNodeId" in legacy, "本例的前提就是这个键不存在").toBe(false);
+    await t.repos.sim.putPropagationRule(legacy as unknown as Parameters<typeof t.repos.sim.putPropagationRule>[0]);
+
+    const sid = (await (await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: H,
+      payload: { baseSnapshot: { src: { flow: 5 }, dst: { received: 0 } } },
+    })).json()).id as string;
+    const body = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: H, payload: { n: 3 } })).json() as {
+      state: Record<string, Record<string, number>>;
+      cadence: { unresolved: { ruleKey: string; cadenceNodeId: string }[] };
+    };
+    // 老规则 = 不过闸门 ⇒ 逐 tick 即时传导，3 tick 后 = 5×1×3。
+    expect(body.state.dst?.received ?? 0).toBe(15);
+    // 且**绝不**出现在 unresolved 里 —— 它从来没声明过闸门，报它缺闸门是污蔑。
+    expect(body.cadence.unresolved.map((u) => u.ruleKey)).not.toContain("e4_legacy");
+  });
+
   it("E4-7 不可整 tick 表示的周期诚实拒绝（D1 SEAM-4 留给 E4 的那条边界，不偷偷取整）", () => {
     expect(cadenceGate({ everyDays: 2.5 })).toBeNull(); // 半天周期在日 tick 引擎上造不出闸门
     expect(cadenceGate({ everyDays: 0.5 })).toBeNull();

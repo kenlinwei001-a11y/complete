@@ -275,7 +275,14 @@ export function propagateTick(
     // 反面做法（本仓要根治的病）：查不到就当没闸门 ⇒ 悄悄宣称「随到随办」，
     // 把「不知道等多久」渲染成「不用等」——契约 §2 已把 `0` 这个错法显式排除。
     let gate: CadenceGate | null = null;
-    if (rule.cadenceNodeId !== null) {
+    // `!= null` 而**不是** `!== null`：这里必须把 `undefined` 也算作"没声明闸门"。
+    // 理由是接缝上的真实行为，不是洁癖：`repo/pg.ts:113` 读回是 `row.doc as PropagationRule`
+    // ——**裸 cast、不过 zod parse**，所以契约上的 `.default(null)` 在读回路上不生效，
+    // E4 之前落库的老规则读回来是 `undefined` 而非 `null`。用 `!== null` 会把这些老规则
+    // 判成"声明了闸门却拿不到"⇒ 整条流停止传导（实测：老规则 15 → 0，见 E4-8）。
+    // 契约 §cadenceNodeId 承诺"缺省 ⇒ 行为与本字段引入前逐字节相同（additive·可回退 RL9）"，
+    // 那这条承诺就必须对 `undefined` 同样成立。
+    if (rule.cadenceNodeId != null) {
       const g = gates[rule.cadenceNodeId];
       if (g === undefined) {
         unresolvedGates.push({
