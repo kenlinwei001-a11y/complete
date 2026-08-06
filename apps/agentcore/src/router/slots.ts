@@ -346,6 +346,17 @@ export async function fillSlots(
   context: SessionContext,
   ontology: OntologyClient,
   ctx: ToolAuthCtx,
+  /**
+   * ★ #108 · 确定性底座的**原值**（`deterministicSlotFloor` 的输出），与 `extracted` **分开**传。
+   *
+   * 为什么不能只靠 `mergeSlotFloor` 预合并：那条规则是「冲突时 LLM 赢」，于是**只要 LLM 吐出了
+   * 任何东西，兜底网就自动失效**。真 Kimi 实测（2026-08-05）：问「常州工厂的齐套张力为啥突然冲高」，
+   * 底座 `matchBaseInQuery` 抽对了 `changzhou`，LLM 抽的是「常州工厂」——后者把前者顶掉，
+   * 而「常州工厂」在 `BASE_REGISTRY`（规范名裸「常州」）里解析不到 → 反问用户它明明认识的基地。
+   *
+   * 修法：**LLM 仍然优先，但它的值必须先能用**；用不了才回落底座。这样兜底网才真是网。
+   */
+  floor?: Record<string, unknown>,
 ): Promise<SlotFillResult> {
   const slots: Record<string, unknown> = {};
   const missing: SlotDef[] = [];
@@ -384,6 +395,18 @@ export async function fillSlots(
           slots[slot.name] = revalidated.value;
           continue;
         }
+      }
+    }
+    // ①.c ★ #108 · 底座回落：LLM 给了值但**用不了**（解析不到/不合法）→ 改用确定性底座从问句抽的值。
+    //     只在 ① 失败后才跑，所以 LLM 的优先级一点没降；变的只是「LLM 说错话时，网还在」。
+    //     底座值与 LLM 值相同则跳过（不做无谓的第二次解析）。
+    const floorValue = floor?.[slot.name];
+    if (floorValue !== undefined && floorValue !== null && floorValue !== "" && floorValue !== extracted[slot.name]) {
+      const fromFloor = await validateSlotValue(slot, floorValue, ontology, ctx);
+      if (fromFloor.ok) {
+        slots[slot.name] = fromFloor.value;
+        noteResolution(slot.name, fromFloor);
+        continue;
       }
     }
     // A5：用户给的实体被判域外（objectRef 解析不到）→ 取最近邻候选，记信号。

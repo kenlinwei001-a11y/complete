@@ -1088,12 +1088,15 @@ export class Orchestrator {
       const solverKey = await this.solverKeyForIntent(intent);
       // ★ WO-SLOT-HARVEST · 确定性槽位底座（**接线点之二 · ⑤ LLM 多意图**）。这条路自己调 fillSlots 判
       //   "槽可填"，不经 proceedWithIntent —— 只接主路 = 又一次「接错地方」（多意图题照样被 LLM 抖动打掉）。
+      // #108：底座**原值**另传一份 —— 预合并只能填空白，填不了「LLM 给了但用不了」那一格。
+      const floor5 = deterministicSlotFloor(task.query, intent);
       const { slots, missing } = await fillSlots(
         intent,
-        mergeSlotFloor(deterministicSlotFloor(task.query, intent), classification.extractedSlots),
+        mergeSlotFloor(floor5, classification.extractedSlots),
         task.context,
         this.deps.engine.deps.dataCore.ontology,
         auth,
+        floor5,
       );
       resolved.push({ intentKey: intent.key, confidence: cand.confidence, solverKey, args: slots, slotsFillable: missing.length === 0 });
     }
@@ -1589,7 +1592,10 @@ export class Orchestrator {
     //   主链路 classify→fillSlots **没有任何东西在看问句文本** → 一次 LLM 格式抖动就决定用户拿不拿得到答案。
     //   底座只填空白（冲突时 LLM 赢）、只抽问句里真有的（R6 纯函数）。本方法是**所有** path-A 绑定的必经之路
     //   （主路高置信 / 确定性 block-route·ceo-route / 场景绑定·继承 / 澄清回填），一处接线全路径覆盖。
-    const effectiveExtracted = mergeSlotFloor(deterministicSlotFloor(task.query, intent), extracted);
+    //   #108 增补：底座**原值**另传一份给 fillSlots —— 预合并只填空白，填不了「LLM 给了但用不了」
+    //   那一格（真 Kimi 实测：LLM 的「常州工厂」顶掉底座的 changzhou，而前者解析不到 → 反问）。
+    const floor = deterministicSlotFloor(task.query, intent);
+    const effectiveExtracted = mergeSlotFloor(floor, extracted);
 
     const { slots, missing, outOfDomain, resolutions } = await fillSlots(
       intent,
@@ -1597,6 +1603,7 @@ export class Orchestrator {
       task.context,
       this.deps.engine.deps.dataCore.ontology,
       auth,
+      floor,
     );
     // A5 感知层埋点：objectRef 解析尝试（分母）+ 域外实体（分子）→ 发独立事件 + 记误触发率。
     const objectRefAttempts = intent.slots.filter(
@@ -2755,6 +2762,24 @@ export class Orchestrator {
       };
       await this.deps.repos.tasks.patch(taskId, { answer: gapAnswer });
       await this.deps.events.emit(taskId, "answer.final", gapAnswer);
+    } else if (!task.answer) {
+      // ★ #109 · 诚实终态：**任何**失败都必须留下一句用户看得懂的话。
+      //   病灶是上面那个 `task.path === "AGENT"` 条件 —— 诚实答案的分支**只挂在 agent 路上**，
+      //   于是 path-A（工作流）失败时 `answer` 恒 undefined，前端拿到 FAILED + 空答案 = 一片空白。
+      //   实测（真 Kimi·2026-08-05）：「采纳常州的三班制方案」→ DataCore 400
+      //   `payload.factor is required` —— 精确成因就在 task.error 里躺着，用户一个字都看不到。
+      //   与 execute-plan 那个裸 catch 同族：**系统知道真因，却不说**。
+      const failAnswer: Answer = {
+        trustLevel: "VERIFIED_WORKFLOW",
+        unverifiedNumerics: false,
+        provenance: [],
+        blocks: [{
+          type: "text",
+          markdown: `**这一步没能完成。**\n\n失败在：${message}\n\n（错误码 \`${code}\`）这不是"没算出来"，是执行链上某一步被拒绝了 —— 上面这句是系统拿到的原始成因，不是概括。`,
+        }],
+      };
+      await this.deps.repos.tasks.patch(taskId, { answer: failAnswer });
+      await this.deps.events.emit(taskId, "answer.final", failAnswer);
     }
     await this.deps.repos.tasks.patch(taskId, {
       status: "FAILED",

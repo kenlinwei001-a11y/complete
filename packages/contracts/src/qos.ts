@@ -3,6 +3,7 @@ import { IsoTime } from "./common.js";
 import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
 import { GapReportSchema } from "./growth.js";
 import { PageContextSchema } from "./ceo-agent.js"; // WO-CEO-6 · PageContext 注入（闭 G-3）
+import { RefMatchKindSchema } from "./object-ref-resolve.js"; // #108 · 匹配层级词表单源（曾在此被抄了第二份）
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -471,7 +472,11 @@ export const SlotResolutionSchema = z.object({
   objectType: z.string(),
   objectId: z.string(),
   label: z.string(),
-  matchedBy: z.enum(["id", "name", "alias"]),
+  // #108 单源：**必须**引用 `RefMatchKindSchema`，不许在这里再抄一份字面量。
+  // 原来这里写的是 `z.enum(["id","name","alias"])` —— 同一个包里的第二份词表。
+  // 后果不是抽象的：解析器加一档 `partial`（治「常州基地」解析不到）时，两份词表当场对不上，
+  // agentcore 编译红在一处完全不相干的 `tasks.patch()` 调用上，真因要追三层才看得见。
+  matchedBy: RefMatchKindSchema,
   matchedProp: z.string(),
 });
 export type SlotResolution = z.infer<typeof SlotResolutionSchema>;

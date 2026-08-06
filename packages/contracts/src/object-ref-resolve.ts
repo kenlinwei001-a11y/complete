@@ -28,12 +28,40 @@ import { z } from "zod";
  * - `id`    主键 / 内部对象 id（`baseId=changzhou`、`obj_base_changzhou`）
  * - `name`  名称类属性（`name` / `displayName` / `custName` … 由属性名形态派生，非词表）
  * - `alias` 本体显式声明 `searchable` 的其它属性（`factory_code` / `productCode` …）
+ * - `partial` 人话近指：用户给的串**以**某个标识值**开头或结尾**，且多出来的尾巴很短
+ *   （「常州基地」/「常州工厂」→ `Base.name="常州"`）。见 `partialRefMatch`。
  */
-export const RefMatchKindSchema = z.enum(["id", "name", "alias"]);
+export const RefMatchKindSchema = z.enum(["id", "name", "alias", "partial"]);
 export type RefMatchKind = z.infer<typeof RefMatchKindSchema>;
 
 /** 层级强弱序（越小越强）；择优与并列判定唯一依据。 */
-export const REF_MATCH_RANK: Record<RefMatchKind, number> = { id: 0, name: 1, alias: 2 };
+export const REF_MATCH_RANK: Record<RefMatchKind, number> = { id: 0, name: 1, alias: 2, partial: 3 };
+
+/**
+ * 「人话近指」的两个结构判据（**不是业务词表** —— 本模块的立身之本是「只认建模者声明过的东西，
+ * 换租户换行业无需改代码」，所以这里绝不能出现 基地/工厂/厂区 这类中文后缀表）。
+ *
+ * 由来（2026-08-05 真 Kimi 实测）：`BASE_REGISTRY` 里规范名是**裸「常州」**，而用户嘴里说的、
+ * 以及平台**自己的**示例问答（`livedin.ts`「2026-07 常州基地 4680-NCM 计划达成率…」）写的
+ * 全是「常州基地」「常州工厂」—— 精确匹配一个都对不上，于是系统反问用户它明明认识的基地。
+ */
+const MIN_PARTIAL_ANCHOR_LEN = 2; // 锚太短会乱咬（单字「A」能匹一切）
+const MAX_PARTIAL_REMAINDER = 3; // 多出来的尾巴上限（「基地」2 /「厂区」2 /「事业部」3）
+
+/**
+ * 近指匹配：`key` 以 `propValue` **开头或结尾**，且残余 ≤ `MAX_PARTIAL_REMAINDER`。
+ *
+ * 只认**前缀/后缀**、不认「嵌在中间」—— 否则「下周常州哪些订单缺料开不了工」这种整句
+ * 也会被判成命中「常州」（那是确定性底座 `matchBaseInQuery` 该干的活，不是解析器该猜的）。
+ * 歧义仍走既有机制（同层级多命中 → `ambiguous` + 候选，绝不静默取第一个）。R6 纯函数。
+ */
+export function partialRefMatch(propValue: unknown, key: string): boolean {
+  if (propValue === null || propValue === undefined || typeof propValue === "object") return false;
+  const v = String(propValue).trim();
+  if (v.length < MIN_PARTIAL_ANCHOR_LEN || key.length <= v.length) return false; // 等长=精确，已由上层处理
+  if (!key.startsWith(v) && !key.endsWith(v)) return false;
+  return key.length - v.length <= MAX_PARTIAL_REMAINDER;
+}
 
 /** 命中：一个对象在某类型上被某属性以某层级匹中。 */
 export const ObjectRefHitSchema = z.object({
@@ -196,7 +224,9 @@ export function matchObjectRefInType(input: {
   accept?: RefMatchKind[];
 }): { hits: ObjectRefHit[]; attempt: ObjectRefAttempt } {
   const { ref, objectType, typeDef, rows } = input;
-  const accept = new Set<RefMatchKind>(input.accept ?? ["id", "name", "alias"]);
+  // `partial` 进默认集：只实现不接线 = 假绿第 9 形态（实现有、测试有、零生产调用方）。
+  // 传 `accept:["id"]` 的调用方（老 getObject 语义）不受影响。
+  const accept = new Set<RefMatchKind>(input.accept ?? ["id", "name", "alias", "partial"]);
   const raw = normalizeObjectRefKey(ref);
   const key = normalizeObjectRefKey(ref, objectType);
   const keysTried = raw === key ? [key] : [raw, key];
@@ -204,6 +234,8 @@ export function matchObjectRefInType(input: {
   const propsTried = [
     ...(accept.has("id") ? [`${REF_INTERNAL_ID_PROP}:id`] : []),
     ...ident.map((p) => `${p.propKey}:${p.matchedBy}`),
+    // 近指兜底也要进留痕：失败时下一个人才知道「近指也试过了」，而不是从 404 一路追回来。
+    ...(accept.has("partial") ? ident.map((p) => `${p.propKey}:partial`) : []),
   ];
   const pkProp = identifyingProps(typeDef).find((p) => p.matchedBy === "id")?.propKey;
 
@@ -230,6 +262,17 @@ export function matchObjectRefInType(input: {
         }
       }
       if (matched) hits.push({ objectType, objectId: businessId, internalId: row.id, label, matchedBy: matched.matchedBy, matchedProp: matched.propKey });
+    }
+  }
+
+  // ③ 近指兜底（**只在精确层一个都没命中时才跑**·最弱层级 partial）：治「常州基地/常州工厂 → Base.name=常州」。
+  //    不改精确层任何行为；命中多个仍走既有歧义机制（ambiguous + 候选），不静默取第一个。
+  if (hits.length === 0 && key !== "" && accept.has("partial")) {
+    for (const row of rows) {
+      const businessId = String((pkProp ? row.props[pkProp] : undefined) ?? row.id);
+      const label = pickLabel(row, typeDef) ?? businessId;
+      const near = ident.find((p) => partialRefMatch(row.props[p.propKey], key) || partialRefMatch(row.props[p.propKey], raw));
+      if (near) hits.push({ objectType, objectId: businessId, internalId: row.id, label, matchedBy: "partial", matchedProp: near.propKey });
     }
   }
 

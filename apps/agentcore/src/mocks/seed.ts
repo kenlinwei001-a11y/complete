@@ -445,12 +445,21 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           description: "处置方案名",
         },
         {
-          // 补 factor 槽：create_action_draft 的 adopt_mitigation paramsSchema 必填 base/factor/planKey；
-          // factor 由场景 presetSlots 填（"物料齐套" 等），不写死。可选——自由问句未指明时填 null
-          // （由真后端按契约判，不阻断场景预置路径；presetSlots 有值即真后端接受）。
+          // ★ #109 · 必填口径对齐（真 Kimi 实测坐实的接缝病）。
+          //
+          // 旧注释原文是：「可选——自由问句未指明时填 null（**由真后端按契约判**，不阻断场景预置路径）」。
+          // 这句话把病写得明明白白：**明知**下游 `create_action_draft` 的 adopt_mitigation
+          // paramsSchema 必填 base/factor/planKey，上游仍声明 `required:false`，把校验推给后端。
+          // 于是「采纳常州的三班制方案」这类没点名因子的自由问句 → DataCore 400
+          // `payload.factor is required` → 任务 FAILED、答案空 → 用户看到一片空白。
+          //
+          // 这不是「没接线」也不是「没数据」，是**两侧对"必填"的认定不一致**，而不一致的代价
+          // 由用户承担。改成 required:true 后，系统会**问一句**（这本来就是对的：用户确实没说
+          // 是哪个因子），而不是走到接缝上炸。场景卡路径由 presetSlots 填，零反问不受影响。
           name: "factor",
           type: "string",
-          required: false,
+          required: true,
+          clarifyPrompt: "这个方案是针对哪个风险因子的？（如 物料齐套 / 产能瓶颈 / 质量返工）",
           description: "风险因子（如 物料齐套）",
         },
       ],
