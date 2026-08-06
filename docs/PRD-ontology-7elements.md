@@ -341,13 +341,14 @@ A 侧算好了 ──► 端点返回了 ──► ✗ B 侧 HTTP 客户端 map 
 |---|---|
 | A 侧权威 | `apps/datacore/src/solvers/service.ts:258 SOLVER_OUTPUT_SHAPES` |
 | A 侧端点 | `apps/datacore/src/app.ts:2685`：`return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) }` ← **已经返回了** |
-| **B 侧丢弃点** | `apps/agentcore/src/tools/datacore-http.ts:360 solverRegistry`，`:373-382` 的 map **逐字段列举 7 个字段，没有 `outputShape`**；返回类型（`:363`）也没声明它 |
-| 契约接口 | `apps/agentcore/src/tools/clients.ts:196-199 CatalogClient.solverRegistry` 返回类型同样无 `outputShape` |
+| **B 侧丢弃点** | `apps/agentcore/src/tools/datacore-http.ts:360 solverRegistry`，`:373-381` 的 map **逐字段列举 7 个字段，没有 `outputShape`**；返回类型（`:363`）也没声明它 |
+| 契约接口 | `apps/agentcore/src/tools/clients.ts:195-198 CatalogClient.solverRegistry` 返回类型同样无 `outputShape` |
 | 投影 | `apps/agentcore/src/dril/resource-projector.ts:52 projectSolvers`（`:53-66`）不填 `outputSpec`（它也拿不到） |
 
-> **反讽实证**：`datacore-http.ts:371` 的注释原文是
-> 「WO-DRIL-PRECISION：透传 answersQuestions/tags（DataCore 目录已产出），供 DRIL 语义检索 —— **勿在接缝丢弃**」。
-> **`outputShape` 正在同一个 map 里、被同一种方式丢弃。** 上一次修的是那两个字段，这一个漏了。
+> **反讽实证**：**紧邻该 map 上方**的 `datacore-http.ts:371` 注释原文是
+> 「WO-DRIL-PRECISION：透传 answersQuestions/tags（DataCore 目录已产出），供 DRIL 语义检索 —— **勿在接缝丢弃**」，
+> 而 `:379-380` 正是那两个字段的透传行。
+> **`outputShape` 就在同一个 map 里、被同一种方式丢弃。** 上一次修的是那两个字段，这一个漏了。
 
 **消费方（两个，今天在 demo 上真跑）** [实测]：
 
@@ -394,9 +395,9 @@ A 侧算好了 ──► 端点返回了 ──► ✗ B 侧 HTTP 客户端 map 
 
 | # | 文件 | 改什么 |
 |---|---|---|
-| 1 | `apps/agentcore/src/tools/clients.ts:196-199` | `CatalogClient.solverRegistry` 返回类型补 `outputShape?: string[]` |
-| 2 | `apps/agentcore/src/tools/datacore-http.ts:373-382` | map 里补透传 `...(s.outputShape?.length ? { outputShape: s.outputShape } : {})`（与同处 `answersQuestions/tags` 同款写法）；`:363` 返回类型同步 |
-| 3 | `apps/agentcore/src/dril/resource-projector.ts:32 CatalogItem` + `:52 projectSolvers` | 目录项形状补 `outputShape?`；投影填 `outputSpec: { shape: s.outputShape }` |
+| 1 | `apps/agentcore/src/tools/clients.ts:195-198` | `CatalogClient.solverRegistry` 返回类型补 `outputShape?: string[]` |
+| 2 | `apps/agentcore/src/tools/datacore-http.ts:373-381` | map 里补透传 `...(s.outputShape?.length ? { outputShape: s.outputShape } : {})`（与同处 `:379-380` `answersQuestions/tags` 同款写法）；`:363-366` 返回类型同步 |
+| 3 | `apps/agentcore/src/dril/resource-projector.ts:33 CatalogItem` + `:52 projectSolvers` | 目录项形状补 `outputShape?`；投影填 `outputSpec: { shape: s.outputShape }` |
 
 > ⚠️ 同时须核对 **mock/in-memory 的 `solverRegistry` 实现**是否也需补（`clients.ts` 是接口，HTTP 是一种实现）——见 §9 U-2。
 
