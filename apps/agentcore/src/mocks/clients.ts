@@ -1,7 +1,7 @@
 import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, ObjectRefAttempt, ObjectRefHit, ObjectRefResolution, ObjectRefResolveRequest, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
 import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
 // WO-SLOT-ENTITY-RESOLVE：匹配规则唯一出处（mock 与 DataCore 调同一个纯核心，勿自写第二套）。
-import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
+import { matchObjectRefInType, normalizeObjectRefKey, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：mock DataCore 的 C08 阈值必须与真 DataCore 同源，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
@@ -473,7 +473,14 @@ export class MockSolverClient implements SolverClient {
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);
       // WO-SCENARIO-FORCED-EXTRACT：mock 尊重 base 作用域（与真 solver scope:BASE/ALL 同语义）——此前无视 base 恒全网，
       // 导致单测环境断言不了「常州基地 ≠ 全网」语义差（参数到达了、结果却没变=假绿温床）。
-      const baseArg = typeof args.base === "string" && args.base ? args.base.toLowerCase().replace(/^obj_base_/, "").replace(/^base_/, "") : undefined;
+      // ★ WO-BASE-SLOT-UNIFY §A · **mock 必须与真 DataCore 同口径**（datacore `capacity.ts hasBase` /
+      //   `types.normalizeBaseRef` 认 object ref）。旧写法 `typeof args.base === "string"` 只认裸串：
+      //   base 槽统一成 objectRef 后计划模板整槽透传的是 `{objectType,objectId,label}` 对象
+      //   → baseArg=undefined → mock **无视 base 恒全网**，而真 DataCore 正常收窄。
+      //   这正是「参数到达了、结果却没变 = 假绿温床」（本函数上一版注释自己写着的那句），
+      //   会让 scenario-forced-extract.seam「两问句 P50 必须不同」这条真接缝悄悄失守。
+      //   归一走 contracts `normalizeObjectRefKey`（与 A 侧同一份规则·不自写第三套剥前缀）。
+      const baseArg = normalizeObjectRefKey(args.base, "Base").toLowerCase() || undefined;
       const baseGwh = model
         ? SEED_BASES.filter(
             (b) =>
