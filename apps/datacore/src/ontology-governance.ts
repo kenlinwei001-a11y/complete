@@ -36,6 +36,28 @@ const GRACE_DAYS = 90;
 const SIGNOFF_BEHALF_HOURS = 72;
 const SIGNOFF_EXPIRE_DAYS = 7;
 
+// §7.2b 推进为契约（S-1）：自动派生 baseline fixture 的固定名（幂等去重 + 前端识别）。
+export const AUTO_BASELINE_FIXTURE = "auto_baseline_v1";
+type SliceFixture = NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number];
+/** 已推进的契约摘要（回传前端可观测·诚实披露派生了什么）。 */
+export interface FixturePromotion {
+  sliceKey: string;
+  rootType: string;
+  fixtureName: string;
+  minNodes: number;
+  mustIncludeTypes: string[];
+  mustIncludeLinkKeys: string[];
+}
+/** 被跳过的切片 + 诚实原因（empty_resolution=空 resolve 需先补数据/修链路；already_promoted=已有 baseline）。 */
+export interface FixtureSkip {
+  sliceKey: string;
+  reason: "empty_resolution" | "already_promoted";
+}
+export interface DeriveFixtureResult {
+  promoted: FixturePromotion[];
+  skipped: FixtureSkip[];
+}
+
 /** 治理增量 §1 单位字典（场景包级；电池模板内置）。 */
 export const UNIT_DICTIONARY = ["万套", "GWh", "%", "吨", "天", "元", "万元", "件", "秒"];
 
@@ -456,6 +478,99 @@ export class OntologyGovernanceService {
       }
     }
     return results;
+  }
+
+  // ===========================================================================
+  // §7.2b 推进为契约（S-1）：从切片当前真实 resolve 子图确定性派生 golden fixture 写回。
+  //   契约 = spec.contractFixtures（golden resolve 断言）。"推进" = 把一张「无契约」切片
+  //   （fixtures===0）的当前真实 resolve 结果派生成一条 baseline fixture，使它进入被
+  //   §7.2 slice-contracts 门禁守护的态（无契约 amber → 有契约 green）。
+  //   诚实（R6·KILL-MOCK）：resolve 空（0 节点）→ skip 不伪造，绝不给空切片盖 minNodes:0 假契约。
+  //   派生与 runSliceContracts 用同一 sysCtx（全量可见）+ 同一 executeSlice → 派生的 fixture
+  //   天然通过它自身的 golden（mustIncludeTypes/LinkKeys 均取真实子图，非切片声明 → 不会自我打脸）。
+  // ===========================================================================
+
+  private sliceSysCtx(tenantId: string): AuthCtx {
+    // 与 runSliceContracts 同款系统校验账号：全量可见 + 本租户隔离（R2）。
+    return { tenantId, userId: "system:slice-derive", roles: ["admin"], attributes: {} };
+  }
+
+  /** 从一个切片 spec 的真实 resolve 子图派生 baseline fixture；空 resolve → null（诚实 skip）。 */
+  private async deriveBaselineFixture(
+    sysCtx: AuthCtx,
+    spec: SliceSpecRecord["spec"],
+  ): Promise<SliceFixture | null> {
+    const out = await this.ontologyCore.executeSlice(sysCtx, spec, {});
+    if (out.nodes.length === 0) return null; // 诚实：空 resolve 不伪造契约（KILL-MOCK-RED）
+    // 类型/链路均取"真实子图"（非切片声明）——保证派生 fixture 通过它自身 golden 且 R6 确定。
+    // 链路只收实际产生边的 linkKey（声明但未产边的 hop 不进，否则 linksOk 恒 false 自打脸）。
+    const mustIncludeTypes = [...new Set(out.nodes.map((n) => n.typeKey))].sort();
+    const mustIncludeLinkKeys = [...new Set(out.edges.map((e) => e.linkKey))].sort();
+    return {
+      name: AUTO_BASELINE_FIXTURE,
+      args: {},
+      expect: {
+        rootType: spec.root.typeKey,
+        minNodes: Math.max(1, Math.floor(out.nodes.length)),
+        mustIncludeTypes,
+        mustIncludeLinkKeys,
+      },
+    };
+  }
+
+  /** 对一条切片记录尝试推进：已有 baseline → skip；空 resolve → skip；否则 append fixture + 保存。 */
+  private async promoteSlice(
+    sysCtx: AuthCtx,
+    rec: SliceSpecRecord,
+  ): Promise<{ promoted?: FixturePromotion; skipped?: FixtureSkip }> {
+    const existing = rec.spec.contractFixtures ?? [];
+    if (existing.some((f) => f.name === AUTO_BASELINE_FIXTURE)) {
+      return { skipped: { sliceKey: rec.sliceKey, reason: "already_promoted" } }; // 幂等（重复点不重复盖）
+    }
+    const fixture = await this.deriveBaselineFixture(sysCtx, rec.spec);
+    if (!fixture) return { skipped: { sliceKey: rec.sliceKey, reason: "empty_resolution" } };
+    const newSpec: SliceSpecRecord["spec"] = { ...rec.spec, contractFixtures: [...existing, fixture] };
+    await this.ontologyCore.putSliceSpec(sysCtx, rec.sliceKey, rec.version, newSpec); // 复用既有持久化（R9 无新表）
+    return {
+      promoted: {
+        sliceKey: rec.sliceKey,
+        rootType: fixture.expect.rootType,
+        fixtureName: fixture.name,
+        minNodes: fixture.expect.minNodes,
+        mustIncludeTypes: fixture.expect.mustIncludeTypes ?? [],
+        mustIncludeLinkKeys: fixture.expect.mustIncludeLinkKeys ?? [],
+      },
+    };
+  }
+
+  /** S-1 单切片推进：从当前真实 resolve 派生一条 baseline fixture 写回。跨租户/未知 sliceKey → 404（R2）。 */
+  async deriveSliceFixture(tenantId: string, sliceKey: string): Promise<DeriveFixtureResult> {
+    const sysCtx = this.sliceSysCtx(tenantId);
+    const rec = await this.ontologyCore.getSliceSpec(sysCtx, sliceKey);
+    if (!rec) throw notFound(`slice ${sliceKey}`); // 跨租户 sliceKey 不在本租户切片集 → 诚实 404
+    const r = await this.promoteSlice(sysCtx, rec);
+    return { promoted: r.promoted ? [r.promoted] : [], skipped: r.skipped ? [r.skipped] : [] };
+  }
+
+  /** S-1 批量推进：遍历所有「无契约」（fixtures===0）切片各推进一条 baseline fixture。 */
+  async deriveMissingSliceFixtures(tenantId: string): Promise<DeriveFixtureResult> {
+    const sysCtx = this.sliceSysCtx(tenantId);
+    const all = await this.repos.sliceSpecs.list(tenantId);
+    const latest = new Map<string, SliceSpecRecord>();
+    for (const s of all) {
+      const cur = latest.get(s.sliceKey);
+      if (!cur || s.version > cur.version) latest.set(s.sliceKey, s);
+    }
+    const promoted: FixturePromotion[] = [];
+    const skipped: FixtureSkip[] = [];
+    // sliceKey 排序保证批量结果确定（R6）。
+    for (const rec of [...latest.values()].sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1))) {
+      if ((rec.spec.contractFixtures?.length ?? 0) !== 0) continue; // 只推进无契约切片
+      const r = await this.promoteSlice(sysCtx, rec);
+      if (r.promoted) promoted.push(r.promoted);
+      if (r.skipped) skipped.push(r.skipped);
+    }
+    return { promoted, skipped };
   }
 
   // ===========================================================================

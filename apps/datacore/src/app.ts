@@ -2719,6 +2719,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!spec) throw notFound(`slice ${sliceKey}`);
     return ontologyCore.executeSlice(c, spec.spec, body.args);
   });
+  // S-4 单切片完整 spec（编辑器预填源：root/paths/maxNodes/contractFixtures）。R2：跨租户 sliceKey → 404。
+  app.get("/a/v1/ontology/slices/:sliceKey", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const rec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!rec) throw notFound(`slice ${sliceKey}`);
+    return { sliceKey: rec.sliceKey, version: rec.version, spec: rec.spec };
+  });
+  // S-1 推进为契约（批）：遍历所有无契约（fixtures===0）切片，从各自真实 resolve 子图确定性
+  // 派生 baseline fixture 写回（诚实：空 resolve → skip 不伪造）。admin/catalog_admin 治理动作。
+  app.post("/a/v1/ontology/slices/derive-fixtures", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const res = await governance.deriveMissingSliceFixtures(c.tenantId);
+    for (const p of res.promoted) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: p.sliceKey, rootType: p.rootType, reused: false });
+    return res;
+  });
+  // S-1 推进为契约（单）：把某张无契约切片从当前真实 resolve 结果派生一条 baseline fixture 写回。
+  app.post("/a/v1/ontology/slices/:sliceKey/derive-fixture", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const res = await governance.deriveSliceFixture(c.tenantId, sliceKey);
+    for (const p of res.promoted) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: p.sliceKey, rootType: p.rootType, reused: false });
+    return reply.status(res.promoted.length > 0 ? 201 : 200).send(res);
+  });
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {
