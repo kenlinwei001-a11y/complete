@@ -190,15 +190,24 @@ describe("WO-BASE-SLOT-UNIFY §A · 全意图 base 槽口径统一（数据半·
     console.log("\n  ── §A 全意图 base 槽扫描 ──\n  " + found.join("\n  "));
     expect(bad).toEqual([]);
     // 扫描面锁死：少了任何一个都说明种子被改瘦了（或槽名换了形态没被这条规则罩住）。
+    //
+    // ★ 金值更新（WO-DERIVED-INTENT-SLOT-DEAF·`G-DERIVED-INTENT-SLOT-DEAF`）：`SCENARIO_CATALOG`
+    //   派生的 16 个意图此前一律 `slots: []`（= 用户实体无处可落·静默错答），本单从卡已声明的求解器
+    //   入参派生槽位后，其中两个基地语义键进入本门扫描面 —— 且**按本门的规则**声明成 objectRef+Base：
+    //     · `yield_diag.base`（S12·原写死 `"常州"`）
+    //     · `carbon_q.baseName`（S20·原写死 `"成都"`）
+    //   新增而非放宽：本门的判据一字未改，只是被罩住的槽多了两个（漏更金值即退，见 CLAUDE.md「金值即更」）。
     expect(found.sort()).toEqual([
       "adopt_mitigation.base:objectRef(Base)",
       "affected_orders.base:objectRef(Base)",
       "capacity_feasibility.base:objectRef(Base)",
+      "carbon_q.baseName:objectRef(Base)",
       "ceo_base_outlook.baseId:objectRef(Base)",
       "ceo_bottleneck.baseIds:json",
       "ceo_whatif.scopeObjectIds:json",
       "order_deep_360.base:objectRef(Base)",
       "risk_root_cause.base:objectRef(Base)",
+      "yield_diag.base:objectRef(Base)",
     ]);
   });
 

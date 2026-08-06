@@ -17,8 +17,98 @@ import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
+// WO-DERIVED-INTENT-SLOT-DEAF：意图级字面默认值的**唯一编码出口**（语义与解码在 router/slots.ts，勿手拼串）。
+import { encodeConstDefault } from "../router/slots.js";
+// WO-DERIVED-INTENT-SLOT-DEAF：求解器 args **机器可读单一来源**（已登记者按它派生 type/required，不臆断）。
+import { solverArgsSchema } from "@platform/contracts";
 
 /** QOS-PRD §7.6 seed data: battery-manufacturing scenario package. */
+
+// ---------------------------------------------------------------------------
+// ★ WO-DERIVED-INTENT-SLOT-DEAF（`G-DERIVED-INTENT-SLOT-DEAF`·欠账 #112）
+//   —— 派生意图的槽位**从求解器已声明的入参规格派生**，不许再手抄 16 份清单。
+//
+// 病（本体 §8）：`SCENARIO_CATALOG` 派生的 16 个意图声明 `slots: []`，于是
+//   `fillSlots(intent.slots=[])` 的循环体**一次都不进** → `taskSlots={}` 整袋丢掉 →
+//   `invoke_solver(args = 写死的 slotPresets)`。用户说的「金华」从来到不了求解器，
+//   换基地答案逐字节相同，而终态是 `COMPLETED + rounds=0`（#105 判据看不见"答的是不是这个问题"）。
+//
+// 取证（工单 §3.1 要求·结论写在 docs/WO-DERIVED-INTENT-SLOT-DEAF.md §6）：
+//   ① **机器可读的求解器入参单源确实存在**：`packages/contracts/src/solver-args.ts`
+//      `SOLVER_ARGS_SCHEMAS`（带字段名/类型/required），真消费方 = `router/compile-plan.ts:64,88`
+//      ←`router/orchestrator.ts:1931`（compose 路径·`qos.compose-path` 开启时触发），**不是只有 test**。
+//      但它只登记 11 个求解器，**本单 16 张卡里只覆盖 2 个**（`credit_exposure`/`mrp_netting`）。
+//   ② 覆盖面大的那份（datacore `catalog.ts` 的 `argHints`）**不能当单源**：只有键名没有类型/required，
+//      且**已与求解器真实读取漂移**（`yield_diagnosis` argHints 写 `series`，真读的是 `baseName`；
+//      `kit_readiness` argHints 写 `orders`，真实入参维里压根没有基地）。`solver-args.ts:13-14` 自己就写着
+//      「非照抄 argHints 那份人读提示」。
+//   ⇒ **对这 16 个求解器不存在可用的入参单源**。按工单 §3.1「不要自己在 agentcore 侧造第二套」，
+//     本单**不新建词表**，而是从「今天已经在声明这些入参的那一处」派生 —— 即 `ARG_OVERRIDE[solver]
+//     ?? card.presetContext.slotPresets`（**就是今天直接当 args 用的那份对象**）。同一处、不是第二处：
+//     键集不多不少（**不凭空发明求解器不认的入参维**），类型/必填在已登记者上以 zod schema 为准。
+//     立源方案（交审核方裁）见工单 §6。
+// ---------------------------------------------------------------------------
+
+/**
+ * 「基地语义的单值槽」判据 —— **复用仓内已有的那条规则，不新造词表**：
+ * `l2-decompose.ts FLOOR_RULES`（基地档 `/base|基地/i`）与 `base-slot-unify.seam.test.ts §A`
+ * （`G-BASE-SLOT-TYPE-SPLIT` 回潮门）用的就是这一条；复数名（`...s`/`scopeObjectIds`）是数组维、走 json。
+ */
+function isSingleBaseSlot(key: string): boolean {
+  return /base|基地/i.test(key) && !key.endsWith("s") && key !== "scopeObjectIds";
+}
+
+/** 派生槽位类型（无外部依赖·R6 纯函数）。仅在派生意图上使用；4 个原生意图的既有槽位一字不动。 */
+function deriveSlotType(key: string, presetValue: unknown, solverKey: string): IntentDefinition["slots"][number]["type"] {
+  // ⓪ **既有不变量优先**：单值 base 语义槽一律 objectRef（`G-BASE-SLOT-TYPE-SPLIT`——同一概念两种槽类型
+  //    的代价已经付过一次：string 槽谁都不解析，用户原话「常州工厂」原样直甩下游）。
+  if (isSingleBaseSlot(key)) return "objectRef";
+  // ① 已登记 args schema → 以**机器可读规格**为准（不看写死值猜类型）。
+  const schema = solverArgsSchema(solverKey);
+  const shape = (schema as { shape?: Record<string, unknown> } | undefined)?.shape;
+  const field = shape?.[key] as { safeParse?: (v: unknown) => { success: boolean } } | undefined;
+  if (field?.safeParse) {
+    if (field.safeParse("probe").success) return "string";
+    if (field.safeParse(1).success) return "number";
+    if (field.safeParse([]).success || field.safeParse({}).success) return "json";
+  }
+  // ② 未登记 → 由**目录里已写着的那个入参值**的形态定（不推断语义、不猜实体类型）。
+  if (typeof presetValue === "number") return "number";
+  if (presetValue !== null && typeof presetValue === "object") return "json";
+  return "string";
+}
+
+/**
+ * 从「卡已声明的求解器入参」派生意图槽位。
+ *
+ * **objectRef 只对既有不变量已经判过的那一类派生**（单值 base 语义槽 → `refType:"Base"`，
+ * 见 `isSingleBaseSlot`）。**其余一律不猜实体类型**：这 16 个求解器一律用 `str(args.xxx)` 读**名字串**
+ * （`apps/datacore/src/solvers/types.ts:292` —— `str` 对非串返回 fallback `""`），
+ * 把 `custName`/`lineId`/`material` 声明成 objectRef 会把用户说的实体**静默清空**成 ""，
+ * 等于把一个病换成另一个病；而「哪个入参是对象引用、指向哪个类型」**没有任何单源在声明**——
+ * 在 agentcore 侧硬编一张「键名→对象类型」表就是欠账 #99 的复发（D1/E1 各造一套词表）。
+ * 故不做，缺口如实登记在工单 §6 / 本体 §8。
+ *
+ * 必填：一律 `required:false` + 字面默认值。理由——目录写着的那个值就是本卡的默认作用域，
+ * 「零反问直达推演」（G-3 门）不能退；用户说了就用用户的（`fillSlots` ①/①.c 优先级本来就在默认值之上）。
+ */
+function deriveIntentSlots(solverKey: string, declaredArgs: Record<string, unknown>): IntentDefinition["slots"] {
+  return Object.entries(declaredArgs)
+    .filter(([k]) => !k.startsWith("_")) // `_` 开头是诊断元数据（slots.ts:461），不是求解器入参
+    .map(([k, v]) => {
+      const type = deriveSlotType(k, v, solverKey);
+      return {
+        name: k,
+        type,
+        required: false,
+        ...(type === "objectRef" ? { refType: "Base" as const } : {}),
+        // ★ §3.2 的 "...slotPresets" 那一半：用户没说 → 恰好落回今天写死的那个值（§4.3 加性按构造成立）；
+        //   用户说了但用不了 → `slots.ts` 的 §3.3 守卫**不回落**（诚实缺席，不拿写死实体冒充答案）。
+        defaultFrom: encodeConstDefault(v),
+        description: `求解器 ${solverKey} 入参 ${k}（默认取场景目录声明值；用户在问句里指定则以用户为准）`,
+      };
+    });
+}
 
 // 真连部署批次：与 DataCore 演示租户对齐（admin/planner/base_manager@demo, 密码 demo1234）
 export const SEED_TENANT = "demo";
@@ -539,7 +629,18 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     // 无入参、读 MaterialBalance 出 materials/shortageCount/summary 真表，见 datacore SOLVER_OUTPUT_SHAPES）
     // → solver_summary 投影出本月平衡/缺口真数据，grow S18 → GOVERNED（不再纯跳转）。其余卡走目录声明 solver。
     const effectiveSolver = card.solver === "sop_balance" ? "mrp_netting" : card.solver;
-    const solverArgs = (ARG_OVERRIDE[effectiveSolver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
+    const declaredArgs = (ARG_OVERRIDE[effectiveSolver] ?? card.presetContext.slotPresets) as Record<string, unknown>;
+    // ★ WO-DERIVED-INTENT-SLOT-DEAF · 槽位从上面这份**已声明的入参**派生（不手抄第二份清单）。
+    const derivedSlots = deriveIntentSlots(effectiveSolver, declaredArgs);
+    // ★ §3.2 merge 语义：`args = { ...slotPresets, ...filledUserSlots }` —— **用户赢**。
+    //   静态计划里写不出运行期的 merge，所以把它拆成两半：
+    //     · 这里逐键改成 `{{slots.<k>}}`（运行期由 fillSlots 决定这一格是谁的值）；
+    //     · `fillSlots` 用槽上的字面默认值（`const:<JSON>`）在**用户没说时**填回目录声明值。
+    //   合起来严格等价于 `{...presets, ...filled}`：用户不说 → 逐字节还是那份 preset（§4.3 加性）；
+    //   用户说了 → 用户的值真的进求解器（这就是本单要治的病）。
+    const solverArgs = Object.fromEntries(
+      derivedSlots.map((s) => [s.name, `{{slots.${s.name}}}`]),
+    ) as Record<string, TemplateValue>;
     const steps: ExecutionPlan["steps"] = [
       { id: "s1", type: "invoke_solver", params: { solverKey: effectiveSolver, args: solverArgs } },
       // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
@@ -560,7 +661,9 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
       description: card.summary,
       examples: [card.triggerQuestion],
       enabledViews: "*",
-      slots: [],
+      // ★ WO-DERIVED-INTENT-SLOT-DEAF：`slots: []` 是本病的病灶（声明无槽 ⇒ 用户实体无处可落）。
+      //   现在从卡已声明的求解器入参派生（见 deriveIntentSlots）。
+      slots: derivedSlots,
       planId,
       riskLevel: card.riskLevel === "ACTION_DRAFT" ? "ACTION_DRAFT" : "COMPUTE",
       owner: "seed",

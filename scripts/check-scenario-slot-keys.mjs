@@ -36,8 +36,20 @@ for (const intent of intents) {
   intentSlotNames.set(intent.key, new Set((intent.slots ?? []).map((s) => s.name)));
 }
 
-/** 场景 preset 常见旧键名 → 意图槽正式名。 */
+/**
+ * 场景 preset 常见旧键名 → 意图槽正式名。
+ *
+ * ★ WO-DERIVED-INTENT-SLOT-DEAF：这张表是**回落**，不是**改写** —— 见下方 `resolveKey`。
+ *   本表成文时，会声明槽位的只有 4 个原生意图（槽名 `model`/`base`，preset 却写 `modelId`/`baseId`），
+ *   所以「见到 modelId 就当 model」当时恒对。本单把 16 个派生意图的槽位从**求解器已声明的入参**派生后，
+ *   槽名就**等于**求解器入参名（`carbon_q` 的槽确实叫 `modelId`/`baseName`——因为 `carbon_footprint`
+ *   读的就是 `args.modelId`/`args.baseName`）。此时无条件改写会把**精确命中**的键改成一个不存在的槽名，
+ *   门反过来误杀正确接线。规则改为：**精确命中优先，别名只在精确不命中时兜底**（判据更严，不是放宽）。
+ */
 const ALIASES = { modelId: "model", baseId: "base", baseName: "base" };
+
+/** 精确命中优先；否则走旧键名别名（两边都不命中时原样返回，交下面报失败）。 */
+const resolveKey = (rawKey, slotNames) => (slotNames.has(rawKey) ? rawKey : (ALIASES[rawKey] ?? rawKey));
 
 let checked = 0;
 for (const card of SCENARIO_CATALOG) {
@@ -55,7 +67,7 @@ for (const card of SCENARIO_CATALOG) {
   checked++;
   const presets = card.presetContext?.slotPresets ?? {};
   for (const rawKey of Object.keys(presets)) {
-    const key = ALIASES[rawKey] ?? rawKey;
+    const key = resolveKey(rawKey, slotNames);
     if (!slotNames.has(key)) {
       fails.push(`${card.sNo}（${card.intentKey}）slotPresets 含未声明键「${rawKey}」→ 不在意图槽 [${[...slotNames].join(", ")}] 中`);
     }
