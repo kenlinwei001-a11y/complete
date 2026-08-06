@@ -1,0 +1,90 @@
+[
+ {
+  "intent": "kit_analysis",
+  "a": "下周常州哪些订单缺料开不了工？",
+  "b": "下周金华哪些订单缺料开不了工？",
+  "a_result": {
+   "status": "COMPLETED",
+   "baseSlot": null,
+   "fingerprint": "{\"kpi\":[\"shortageCount=8\",\"ruleSetVersion=rsv_f8216478\"],\"rows\":8,\"first\":\"SO-3391\"}"
+  },
+  "b_result": {
+   "status": "COMPLETED",
+   "baseSlot": null,
+   "fingerprint": "{\"kpi\":[\"shortageCount=8\",\"ruleSetVersion=rsv_f8216478\"],\"rows\":8,\"first\":\"SO-3391\"}"
+  },
+  "scopeDropped": true
+ },
+ {
+  "intent": "affected_orders",
+  "a": "常州基地影响哪些订单？",
+  "b": "金华基地影响哪些订单？",
+  "a_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "fingerprint": "{\"kpi\":[],\"rows\":8,\"first\":\"SO-3402\"}"
+  },
+  "b_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "jinhua",
+    "label": "金华"
+   },
+   "fingerprint": "{\"kpi\":[],\"rows\":7,\"first\":\"SO-3391\"}"
+  },
+  "scopeDropped": false
+ },
+ {
+  "intent": "capacity_feasibility",
+  "a": "4680-NCM 加 20% 常州基地六周能不能交付？",
+  "b": "4680-NCM 加 20% 金华基地六周能不能交付？",
+  "a_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "fingerprint": "{\"kpi\":[\"P50 产能=5.5176\",\"P90 产能=5.1314\",\"有效需求=5.42\",\"缺口比例=0.0532\",\"主要瓶颈=瓶颈工序\"],\"rows\":0,\"first\":null}"
+  },
+  "b_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "jinhua",
+    "label": "金华"
+   },
+   "fingerprint": "{\"kpi\":[\"P50 产能=1.2004\",\"P90 产能=1.1164\",\"有效需求=5.6136\",\"缺口比例=0.8011\",\"主要瓶颈=设备OEE\"],\"rows\":0,\"first\":null}"
+  },
+  "scopeDropped": false
+ },
+ {
+  "intent": "risk_root_cause",
+  "a": "常州物料齐套 D+5 为什么越线？",
+  "b": "金华物料齐套 D+5 为什么越线？",
+  "a_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "changzhou",
+    "label": "常州"
+   },
+   "fingerprint": "{\"kpi\":[\"base.id=obj_base_changzhou\",\"base.type=Base\",\"risk.level=HIGH\",\"risk.utilization=88\",\"risk.bottleneck=化成柜\"],\"rows\":8,\"first\":\"obj_order_SO-3402\"}"
+  },
+  "b_result": {
+   "status": "COMPLETED",
+   "baseSlot": {
+    "objectType": "Base",
+    "objectId": "jinhua",
+    "label": "金华"
+   },
+   "fingerprint": "{\"kpi\":[\"base.id=obj_base_jinhua\",\"base.type=Base\",\"risk.level=HIGH\",\"risk.utilization=76\",\"risk.bottleneck=化成柜\"],\"rows\":7,\"first\":\"obj_order_SO-3391\"}"
+  },
+  "scopeDropped": false
+ }
+]
