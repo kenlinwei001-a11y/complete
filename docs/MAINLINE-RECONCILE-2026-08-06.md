@@ -129,7 +129,7 @@
 | 2 | 同上 `:93` 对象数 | 11095 → **11127** | `faa92d9c` | +32 = 进口供应商 SUP-015 宇部兴产 ×1 + CustomsClearance ×1（仅进口 PO）+ IncomingInspection ×30（每张 PO 必检） | `[实测]` 文件里确为 `toBe(11127)`；分解 1+1+30=32 与 11095+32=11127 **算术自洽** |
 | 3 | `apps/datacore/test/action-adopt-mitigation.seam.test.ts:264` R6 长度 | 26434 → 26882 → **26898** | ①`f18d5a4a`（D4 引入 ADDITIVE_KEYS 剥离机制）②`c6590614`（DECISION-INFO rebase）③`7340fdec`（D2×DECISION-INFO 接缝） | 见下方专条 | `[实测]` 文件里确为 `toBe(26898)` |
 | 4 | 同上 `:269` R6 sha256 | `9d8d4050…` → `84509cbe…` → **`f677f796…`** | 同上 | 同上 | `[实测]` 文件里确为 `f677f7965f7a58b376ed95cc87cc6c604e5686a1b61882da5340db3d7f8983fa` |
-| 5 | `apps/agentcore/test/base-slot-unify.seam.test.ts:200-211` §A 扫描面 | 8 项 → **10 项** | ①`b4304954`/`1eb04a70`（base 槽口径统一，建门）②`8ddbd390`（WO-112 派生意图补槽） | WO-112 让 16 个派生意图从 `slots: []` 变成「从求解器已声明入参派生」，其中 `yield_diag.base`（S12·原写死"常州"）与 `carbon_q.baseName`（S20·原写死"成都"）进入本门扫描面 | `[实测]` 数组现为 10 项：`adopt_mitigation.base` / `affected_orders.base` / `capacity_feasibility.base` / **`carbon_q.baseName`** / `ceo_base_outlook.baseId` / `ceo_bottleneck.baseIds:json` / `ceo_whatif.scopeObjectIds:json` / `order_deep_360.base` / `risk_root_cause.base` / **`yield_diag.base`** |
+| 5 | `apps/agentcore/test/base-slot-unify.seam.test.ts:200-211` §A 扫描面 | 8 项 → **10 项** | ①`b4304954`/`1eb04a70`（base 槽口径统一，建门）②`8ddbd390`（WO-112 派生意图补槽） | WO-112 让 16 个派生意图从 `slots: []` 变成「从求解器已声明入参派生」，其中 `yield_diag.base`（S12·原写死"常州"）与 `carbon_q.baseName`（S20·原写死"成都"）进入本门扫描面 | **`[实测·两点对拍]`** 该文件是 wave4 内新增（正线没有），故金值变化在 wave4 自己的历史里：`git show 0b319979:<file>` = **8 项**，wave4 tip = **10 项**，差集恰好 = `carbon_q.baseName` + `yield_diag.base`，与注释声称**逐字吻合**。现值 10 项：`adopt_mitigation.base` / `affected_orders.base` / `capacity_feasibility.base` / **`carbon_q.baseName`** / `ceo_base_outlook.baseId` / `ceo_bottleneck.baseIds:json` / `ceo_whatif.scopeObjectIds:json` / `order_deep_360.base` / `risk_root_cause.base` / **`yield_diag.base`** |
 | 6 | `apps/datacore/test/ontology-core.test.ts:497` `SOLVER_KEYS.length` | 58 → **59** | `7bcd68c2`（E3 并线） | E1 与 E3 **各自**把 57 提到 58，两条 handoff 一起并 → 59 | **`[实测·亲手数过]`** 静态解析 `apps/datacore/src/solvers/service.ts` 的 `SOLVER_KEYS` 数组：**59 个键、零重复**，末两个正是 `chain_loss_attribution`（E1）与 `chain_impediments`（E3）。金值与源码**一致** |
 | 7 | `apps/datacore/src/catalog.ts` 求解器目录 | +1（`chain_impediments`） | `4c2a7a42` | E3 新求解器必须进目录否则 `catalog.test` parity 红 | **`[实测·亲手数过]`** `catalog.ts` 共 61 处 `key: "`，其中 `BUILTIN_SLICE_CATALOG` 占 2 → `ALL_SOLVER_CATALOG` = **59**，与 `SOLVER_KEYS` **相等**。`catalog.test.ts:61-63` 是 parity 断言（键集 == `SOLVER_KEYS`、长度 == `SOLVER_KEYS.length` == `ALL_SOLVER_CATALOG.length`，**无魔数**），故**不需要改金值** |
 | 8 | `docs/ONTOLOGY-SLICE-GAPS.md:7-10` 门禁产物计数 | 类型 92→**94** · 链路 79→**82** · 切片库 41→**42**（跨域 34→35）· 连通边 370→**372**（bridge-link 255→257） | `7460317b`（"切片连通门重跑刷新 94/82/42/372"） | D2 新增 2 类型 + 新切片 `biz.x.purchaseorder_to_incominginspection` | `[实测]` 文件头四行确为 94/82/42/372；表体确新增两行 `…_to_purchaseorder_to_incominginspection`。**`[实测]` 该文件是生成态**：`scripts/check-slice-connectivity.mjs:109` `writeFileSync(…ONTOLOGY-SLICE-GAPS.md)`，文件里也写着「请勿手改——重跑门禁即刷新」。类型 94 与 #1 的 94 **交叉一致** |
@@ -421,7 +421,7 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 
 ### R5 · 锚点门与 dev worktree 的耦合（**中**）
 `914ed9b1` 已把 `.claude/worktrees` 排除出锚点索引。
-`[推理]` 但排除逻辑是「目录名等于 `worktrees` 就跳过」（`check-ontology-anchors.mjs:60`），
+`[推理]` 但排除逻辑是「目录名等于 `worktrees` 就跳过」（`check-ontology-anchors.mjs:65`），
 若将来 worktree 换了挂载位置或改名，这道门会**再次红在自造歧义上**。备案，不建议现在改。
 
 ### R6 · `ADDITIVE_KEYS` 剥离机制的长期滑坡（**中**）
