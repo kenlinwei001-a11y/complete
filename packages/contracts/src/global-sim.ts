@@ -26,6 +26,10 @@ export const GlobalSimDecisionItemSchema = z.object({
   orderId: z.string(),
   model: z.string().optional(),
   qty: z.number().optional(),
+  /** G-VAR-1 分批交付 per-order 开关（该单允许 x∈{0,1}→y∈ℤ≥0 拆批·全局 allowSplit 的 per-order 扩展）。 */
+  allowSplit: z.boolean().optional(),
+  /** G-VAR-2 最终交付日期（该单目标交期 due 之外的最终交期·放松交期方案用）。 */
+  finalDueDate: z.string().optional(),
 });
 export type GlobalSimDecisionItem = z.infer<typeof GlobalSimDecisionItemSchema>;
 
@@ -97,6 +101,28 @@ export const GlobalSimRequestSchema = z.object({
   frozenCapacityMode: z.enum(["reserve", "release"]).optional(),
   /** 求解种子（R6·缺省 42）。 */
   seed: z.number().optional(),
+
+  // ── 全局推演「活系统」升级（活变量·additive 向后兼容） ──
+  /**
+   * G-UI-1 业务细分范围（`pas|ess|com`·仅供溯源/展示·真过滤经 decisionSet/orderIds 缩范围·切细分→参与订单集真变）。
+   */
+  segmentScope: z.string().optional(),
+  /**
+   * G-VAR-1 分批交付 per-order：仅这些订单允许拆批（全局 `allowSplit` 的 per-order 扩展·两者取并集·SEAM：开某单分批→该单可跨窗/跨基地拆分获排）。
+   */
+  splitOrderIds: z.array(z.string()).optional(),
+  /**
+   * G-VAR-2 最终交付日期 per-order（orderId→最终交期 ISO·引擎按目标交期 `due` 与最终交期各解一次出「目标 vs 最终」对比·放松交期→少延误/少被挤）。
+   */
+  finalDueDates: z.record(z.string(), z.string()).optional(),
+  /**
+   * G-VAR-3 方法旋钮（加权）：各目标权重（ontime/delay/changeover/cost/fgInventory·主方案按加权和重解·改权重→最优真漂移·被挤单变）。
+   */
+  objectiveWeights: z.record(z.string(), z.number()).optional(),
+  /** G-VAR-3 方法旋钮（ε约束）：次目标上界（主目标最优下约束次目标≤bound）。 */
+  epsilon: z.array(z.object({ key: z.string(), bound: z.number() })).optional(),
+  /** G-VAR-3 方法旋钮（字典序）：目标优先级排序（按序逐目标锁定）。 */
+  priority: z.array(z.string()).optional(),
 });
 export type GlobalSimRequest = z.infer<typeof GlobalSimRequestSchema>;
 
@@ -265,6 +291,23 @@ export const GlobalSimCostSchema = z.object({
 });
 export type GlobalSimCost = z.infer<typeof GlobalSimCostSchema>;
 
+/**
+ * G-VAR-2 目标交期 vs 最终交期方案对比（放松交期 → 少延误/少被挤）。engine 按 `due`（目标）与 `finalDueDate`
+ * （最终）各解主目标一次·同一联合数学·仅 dueDay 锚不同·SEAM：设某单最终交期更晚→final 方案该单延误/被挤减少。
+ */
+export const GlobalSimDueScenarioSchema = z.object({
+  mode: z.enum(["target", "final"]),
+  label: z.string(),
+  ontime: z.number(),
+  displacedCount: z.number(),
+  delayUnits: z.number(),
+  servedQty: z.number(),
+  /** 该方案下按最终交期口径仍延误/被挤的订单 id（可溯逐单）。 */
+  lateOrderIds: z.array(z.string()),
+  provenance: GlobalSimProvenanceSchema,
+});
+export type GlobalSimDueScenario = z.infer<typeof GlobalSimDueScenarioSchema>;
+
 export const GlobalSimResponseSchema = z.object({
   scenarios: z.array(GlobalSimScenarioSchema),
   schedule: z.array(GlobalSimScheduleRowSchema),
@@ -287,5 +330,7 @@ export const GlobalSimResponseSchema = z.object({
   cost: GlobalSimCostSchema.optional(),
   feasible: z.boolean().optional(),
   objectiveValues: z.record(z.string(), z.number()).optional(),
+  /** G-VAR-2 目标交期 vs 最终交期方案对比（`finalDueDates` 有项且异于 due 时出·否则诚实省略）。 */
+  dueComparison: z.array(GlobalSimDueScenarioSchema).optional(),
 });
 export type GlobalSimResponse = z.infer<typeof GlobalSimResponseSchema>;
