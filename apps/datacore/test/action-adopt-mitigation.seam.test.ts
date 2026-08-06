@@ -195,25 +195,60 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //   改法：把已知的加性新键**剥掉**再锁金值 —— 老哈希原封不动继续生效（它是实证：
     //   剥完若仍等于上线前那个哈希，就证明 D4 确实纯加性；不等 = 真回归，照旧转红）。
     //   将来再有加性字段，按同样方式登记进 ADDITIVE_KEYS，并在此写清是哪一笔、为什么该加。
-    const ADDITIVE_KEYS = { top: ["otdBatch"], perCard: ["otd"] }; // WO-SANDBOX-D4
-    const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
-    const stripped = JSON.parse(JSON.stringify(numeric)) as Record<string, unknown>;
-    for (const k of ADDITIVE_KEYS.top) delete stripped[k];
-    for (const v of Object.values(stripped)) {
-      if (!Array.isArray(v)) continue;
-      for (const row of v) {
-        if (row && typeof row === "object") for (const k of ADDITIVE_KEYS.perCard) delete (row as Record<string, unknown>)[k];
+    //
+    // ── 登记 #2（WO-DECISION-INFO 并线时·2026-08-06·rebase 到 wave4） ─────────────────────────
+    //   决策信息单加的键：`cards[].exposure`（影响面）·`cards[].doNothing`（不作为后果）·
+    //   `planRows[].options`（A/B/C 多方案 + 代价）·顶层 `exposureOrder`·`steps[].leadTime`。
+    //   其中 `steps[].leadTime` 埋在 planRows 行**内部**（非顶层数组行），故剥离改为**按键名递归**
+    //   —— 登记的键名在任意深度都剥掉（键名均为本单新造·不与既有字段重名）。
+    //
+    //   ⚠️ 本单**不是**纯加性（与 D4 不同，这点必须写明，不许含糊过去）：WO-DECISION-INFO ③.2「去魔数」
+    //   有意改了**推演数值口径** —— 处置步骤里「跨基地调剂」「外协补足」两步的 `day`/`date`，
+    //   此前由写死的 `trigDay + 7` / `trigDay + 14` 决定，现改为由**真对象**派生
+    //   （`InterBaseTransfer.transitDays` / 合格 `Supplier.leadTime`），`rationale` 随之带上前置期出处（R13）。
+    //   所以剥完加性键后**老哈希 9d8d4050… 不再成立**，这是有意的口径变更、不是回归。
+    //
+    //   ✅ 归属取证（rebase 时**亲手重做过一遍**，不是抄上一手的结论）：
+    //      在 wave4 基线（582f3e9f）与本分支上各跑一次同一个 risk_timeline，用**同一个**递归剥离器
+    //      落盘 stripped payload 再 diff（工具：临时 zz-dump-risk.test.ts·未进正线）。实测：
+    //        · 基线 stripped：len 26434 · sha 9d8d4050f9ca9f34524d4497aa09e29d14e8c8ad3f60e740cbe879eff2bd1c8b
+    //          —— 与本条**原有**金值逐字节相同 ⇒ 证明递归剥离器与 D4 那版剥离器在基线数据上等价（口径没被我改松）。
+    //        · 本分支 stripped：len 26882 · sha 84509cbe…（即下方金值），差 **+448 字节**。
+    //        · `diff old.json new.json` 的**全部**变化行按键名归类：`day`×16 · `date`×16 · `rationale`×16，
+    //          **没有第四个键**、没有任何 series/peak/crossDay/affectedOrders 被挪动 ⇒ 与 ③.2 去魔数的
+    //          声称完全吻合（跨基地 d8→d4·transitDays=3；外协 d15→d8·leadTime=7）。
+    //   剥离后的金值据此重定一次；老字段除上述两步外仍逐字节不变（上面两条「逐字节不变」用例亦独立守着 series）。
+    const ADDITIVE_KEYS = [
+      "otdBatch", // WO-SANDBOX-D4（顶层）
+      "otd", // WO-SANDBOX-D4（逐卡）
+      "exposure", // WO-DECISION-INFO（逐卡·影响面）
+      "doNothing", // WO-DECISION-INFO（逐卡·不作为后果）
+      "exposureOrder", // WO-DECISION-INFO（顶层·影响面排序）
+      "options", // WO-DECISION-INFO（planRows 行·A/B/C 多方案）
+      "leadTime", // WO-DECISION-INFO（steps 行·前置期出处）
+    ];
+    const stripAdditive = (node: unknown): unknown => {
+      if (Array.isArray(node)) return node.map(stripAdditive);
+      if (!node || typeof node !== "object") return node;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (ADDITIVE_KEYS.includes(k)) continue;
+        out[k] = stripAdditive(v);
       }
-    }
+      return out;
+    };
+    const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
+    const stripped = stripAdditive(JSON.parse(JSON.stringify(numeric))) as Record<string, unknown>;
     const numericJson = JSON.stringify(stripped);
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26434);
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26882);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("9d8d4050f9ca9f34524d4497aa09e29d14e8c8ad3f60e740cbe879eff2bd1c8b");
+    ).toBe("84509cbe007526f56fa4043c9b08cf0af1f210d11d941eb63cb316f3b89e7632");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
+    expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");
     expect(typeof ruleSetVersion, "规则集指纹必须仍在（它变是正常的，缺了才是问题）").toBe("string");
     expect(String(ruleSetVersion)).toMatch(/^rsv_[0-9a-f]+$/);
     // 新字段绝不在无采纳时露头（避免"多了个 key"这种静默形状漂移）。
