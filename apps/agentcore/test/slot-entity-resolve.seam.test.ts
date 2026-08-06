@@ -277,7 +277,13 @@ describe("WO-SLOT-ENTITY-RESOLVE · ⑤ 解析规则纯函数直测（零数据�
     const a = (r.attempts ?? [])[0]!;
     expect(a.objectType).toBe("Base");
     expect(a.keysTried).toEqual(["火星"]);
-    expect(a.propsTried).toEqual(["__id:id", "baseId:id", "name:name", "factory_code:alias"]);
+    // WO-BASE-SLOT-UNIFY 复验记账：`partial`（人话近指）在 `matchObjectRefInType` 的默认 accept 里，
+    // 其**近指兜底也进留痕**（object-ref-resolve.ts:238）—— 失败时下一个人才知道「近指也试过了」。
+    // 这条金值在 partial 上线时漏更（本仓 baseline 1ba3772a 即为红），本单一并补齐。
+    expect(a.propsTried).toEqual([
+      "__id:id", "baseId:id", "name:name", "factory_code:alias",
+      "baseId:partial", "name:partial", "factory_code:partial",
+    ]);
     expect(a.rowsScanned).toBe(2);
     expect(a.reason).toBe("NO_MATCH");
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PageContext } from "@platform/contracts";
+import { normalizeObjectRefKey } from "@platform/contracts";
 import { resolveCeoRoute, ceoIntentKeyForRoute, isCeoQuestion, isCeoIntentKey } from "../src/router/ceo-route.js";
 import { domainResolve, preferDeterministicSolver, DETERMINISTIC_PREFERENCE_THRESHOLD } from "../src/router/domain-resolver.js";
 import { createTestApp, submitQuery, waitForTask, ADMIN } from "./helpers.js";
@@ -125,7 +126,13 @@ describe("WO-QOS-ROUTE-COVER SEAM · 真 orchestrator 端到端绑对口意图�
     expect(task.status).toBe("COMPLETED");
     expect(task.classification?.model).toMatch(/^deterministic:ceo-route/);
     expect(task.matchedIntent?.intentKey).toBe("ceo_base_outlook");
-    expect(task.slots?.baseId).toBe("changzhou"); // args 从问句/PageContext 真派生并达求解器
+    // args 从问句/PageContext 真派生并达求解器。
+    // WO-BASE-SLOT-UNIFY §A：`ceo_base_outlook.baseId` 是「语义是基地的单值槽」，已由 `type:"string"`
+    // 统一为 `objectRef`+`refType:"Base"`（`G-BASE-SLOT-TYPE-SPLIT` 全意图扫描第二处命中），
+    // 故槽里是**解析后的对象引用**而非裸串 —— 这是更强的形态：它证明 `changzhou` 真在本体里解析到了对象。
+    // 归一走 contracts 单一出处（DataCore `service.baseCapacityOutlook` 入口 `normalizeBaseRef` 同款）。
+    expect(task.slots?.baseId).toMatchObject({ objectType: "Base", objectId: "base_changzhou" });
+    expect(normalizeObjectRefKey(task.slots?.baseId, "Base")).toBe("changzhou");
     expect((task.answer?.blocks?.length ?? 0)).toBeGreaterThan(0);
     await t.app.close();
   });
