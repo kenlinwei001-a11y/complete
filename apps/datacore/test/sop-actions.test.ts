@@ -324,27 +324,31 @@ describe("S2 action approval (V9)", () => {
     expect(step1.approvalSteps[0]).toMatchObject({ decision: "APPROVE", approverId: "planner2" });
 
     // step 2: admin approves → APPROVED → outbox → 执行器。
-    // ⚠️ G-ACTION-NOOP-EXEC 收口后**断言由 EXECUTED 改为 EXECUTION_FAILED**，这不是回归而是去伪：
-    // 本用例用的 `adopt_mitigation` **至今没有真执行器**（app.ts domainExecutor 无该分支）。
-    // 修前它落 MockActionExecutor → 返回 `MO-2026-xxxx` 假工单号 → 判 EXECUTED，
-    // 于是这条测试（连同它原本的注释「EXECUTED with MO-2026-xxxx」）**在为空执行背书**：
-    // 审批链走完、审计留痕齐全、targetRef 看着像真的，而真值一个字节没动。
-    // 现在未接线动作诚实失败，欠账在测试里可见。**接上真执行器后请把本段断言改回 EXECUTED**
-    // （届时 action-wiring:check 也会要求把 ACTION_WIRING 里的 NOT_IMPLEMENTED 改成 WIRED）。
-    // 本用例的主体覆盖（自审拒绝 / 两步审批 / 拒绝路径 / 事件 / 审计）不受影响，均在下方继续断言。
+    // ⚠️ 断言史（勿再往回改）：原本是 EXECUTED —— 但那时靠的是 MockActionExecutor 返回的
+    // `MO-2026-xxxx` **假工单号**，审批链走完、审计留痕齐全、targetRef 看着像真的而真值一个字节没动
+    // （G-ACTION-NOOP-EXEC）。收口时改成 EXECUTION_FAILED 让欠账在测试里可见，并留话
+    // 「接上真执行器后请把本段断言改回 EXECUTED」。
+    // WO-ADOPT-MITIGATION 已接上真执行器（写 AdoptedMitigation 台账 → risk_timeline 真曲线自第 tn 天起扣 eff），
+    // 故此处按那句留话改回 EXECUTED —— 且**加咬 targetRef 必须是 MIT-ADOPT 形态**：
+    // 「EXECUTED」这次是因为真写了东西，不是因为又有人给了个好看的假号。
+    // 「真的让曲线降了」由 test/action-adopt-mitigation.seam.test.ts 的效果层断言把守（本用例只管审批链）。
     const done = (await t.app.inject({ method: "POST", url: `/a/v1/action-drafts/${draftId}/approve`, headers: ADMIN, payload: {} })).json() as ActionDraft;
-    expect(done.status).toBe("EXECUTION_FAILED");
-    expect(done.executionResult!.ok).toBe(false);
-    expect(done.executionResult!.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.status, `执行失败：${done.executionResult?.error ?? ""}`).toBe("EXECUTED");
+    expect(done.executionResult!.ok).toBe(true);
+    expect(String(done.executionResult!.targetRef ?? "")).toContain("MIT-ADOPT:");
     // 头号红咬：绝不允许再出现 MO 形态的假单号（真假不可分辨正是本断点的病灶）。
     expect(String(done.executionResult!.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
+    // 真值层旁证：审批通过后仓储里确实多了那条采纳台账（不是只改了个状态字段）。
+    const adopted = await t.repos.objects.listByType("demo", "AdoptedMitigation");
+    expect(adopted.map((o) => [o.props.baseId, o.props.factor, o.props.planKey, o.props.status])).toEqual([
+      ["changzhou", "物料齐套", "early_stock", "ACTIVE"],
+    ]);
+    expect(adopted[0]!.props.eff, "eff 必须来自方案库（早备料 eff=12），不是猜的").toBe(12);
 
     // events through the C-2 outbox
     const events = (await t.repos.outboxEvents.list("demo")).filter((e) => e.payload.draftId === draftId).map((e) => e.event);
     expect(events).toEqual(
-      // 同上（G-ACTION-NOOP-EXEC）：未接线动作走 action.execution_failed，不再发 action.executed。
-      // 接上真执行器后改回 "action.executed"。
-      expect.arrayContaining(["action.pending_approval", "action.approved", "action.execution_failed"]),
+      expect.arrayContaining(["action.pending_approval", "action.approved", "action.executed"]),
     );
     expect(events.filter((e) => e === "action.pending_approval")).toHaveLength(2); // one per step
 
@@ -355,7 +359,8 @@ describe("S2 action approval (V9)", () => {
       events: { event: string }[];
     };
     expect(audit.steps).toHaveLength(2);
-    // 同上：审计里也不该再出现假 MO 号；未接线时 targetRef 缺省，错误码才是真相。
+    // 审计里的 targetRef 自证采纳了什么，且绝不是 MO 形态假单号。
+    expect(String(audit.executionResult.targetRef ?? "")).toContain("MIT-ADOPT:");
     expect(String(audit.executionResult.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
     expect(audit.events.length).toBeGreaterThanOrEqual(3);
 

@@ -342,12 +342,48 @@ export function resolveBaseId(c: SolverContext, ref: unknown): string {
   return str(b.props.baseId);
 }
 
+/**
+ * WO-ADOPT-MITIGATION · 已采纳处置方案索引：`AdoptedMitigation`(ACTIVE) → `${baseId}|${factor}` → {eff,tn}。
+ *
+ * 这是「点了采纳，曲线纹丝不动」的**缺失半**：引擎半（`tensionSeries` 的 `{eff,tn}` 参数、
+ * `params.risk.mitigations` 的量化效果）早就在了，缺的只是"哪个方案被真采纳了"这条记录。
+ *
+ * 诚实边界（③ 拒绝 > 静默错数）：ACTIVE 记录若缺 baseId/factor/eff/tn（人工改坏对象 / 外部导入残缺），
+ * **抛错**而不是按 0 或跳过——跳过会让用户以为"采纳了"而曲线不动（正是本单要治的病），
+ * 按缺省值算则是拿假数往下推。执行器写入时已校验齐全，故此路只可能由**数据被改坏**触发。
+ * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前 REVOKED 旧条）；若仍多条 → 按 objectId 升序末条胜（全序确定 R6）。
+ */
+export function adoptedMitigationIndex(c: SolverContext): Map<string, { eff: number; tn: number; planKey: string }> {
+  const idx = new Map<string, { eff: number; tn: number; planKey: string }>();
+  const list = c.adoptedMitigations;
+  if (!Array.isArray(list) || list.length === 0) return idx; // 无采纳 → 空 Map → 零成本 → 与上线前逐字节一致
+  for (const o of [...list].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    const p = o.props;
+    if (str(p.status) !== "ACTIVE") continue; // REVOKED（改采别的方案 / 撤销）不参与真曲线
+    const baseId = str(p.baseId);
+    const factor = str(p.factor);
+    const eff = typeof p.eff === "number" && Number.isFinite(p.eff) ? p.eff : NaN;
+    const tn = typeof p.tn === "number" && Number.isFinite(p.tn) ? p.tn : NaN;
+    if (!baseId || !factor || !Number.isFinite(eff) || !Number.isFinite(tn)) {
+      throw validationError(
+        `AdoptedMitigation ${o.id} 残缺（baseId=${JSON.stringify(p.baseId)} factor=${JSON.stringify(p.factor)} ` +
+          `eff=${JSON.stringify(p.eff)} tn=${JSON.stringify(p.tn)}）——拒绝按缺省值消解张力，也拒绝静默跳过` +
+          `（跳过=用户以为已采纳而曲线不动，正是 adopt_mitigation 空执行的病灶）。`,
+      );
+    }
+    idx.set(`${baseId}|${factor}`, { eff, tn, planKey: str(p.planKey) });
+  }
+  return idx;
+}
+
 export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
   // WO-LIVE-DISPOSITION T2：先套杠杆 overlay（克隆-覆写单源），之后**整条 riskTimeline 都在覆写后的世界里跑**——
   // cards（liveTightness 读覆写后 Line.utilization/Equipment.oee_current/Process.yield_baseline）+ planRows（产能链缺口）
   // 一并真变。无 overlay → c === c0（同引用）→ 与现状逐字节一致（向后兼容）。
   const overlay = Array.isArray(args.apply) ? args.apply : [];
   const c = applyLeverOverlay(c0, overlay);
+  // WO-ADOPT-MITIGATION：已采纳方案（真发生的事）→ 进**真曲线**；空 Map（无人采纳）→ 逐字节等于上线前。
+  const adopted = adoptedMitigationIndex(c);
   const p = c.params.risk;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
   const pairs: { baseId: string; factor: string; forced: boolean }[] = [];
@@ -381,7 +417,11 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     // 无真源（人力工时/物料齐套/物流时长/换型损失）→ undefined 回落 mock，card.dataMode=MOCK 诚实披露。
     // 改真 Equipment.oee_current → lt.value 变 → cur 变 → series/peak 真变（curl 前后可验）。
     const baseline = lt.live ? lt.value : undefined;
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
+    // WO-ADOPT-MITIGATION（本单核心一行）：此前恒传 `undefined` —— 采纳与否，真曲线一模一样，
+    // 这就是「点了采纳什么都不变」的引擎侧表现。现按 (baseId,factor) 取 ACTIVE 采纳的 {eff,tn}，
+    // 由 tensionSeries 从第 tn 天起扣 eff（既有能力·非新算法）。无采纳 → undefined → 与上线前逐字节一致。
+    const adopt = adopted.get(`${pair.baseId}|${pair.factor}`);
+    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, adopt, baseline);
     // 治 #1/#3「时序推演全灰/无梯度」· 逐因素真逐日序列（per-factor tensionSeries）：此前仅瓶颈因素（card.series）
     // 有真逐日 series，其余因素（物流时长/设备OEE/人力工时/物料齐套/换型损失/良率波动）前端只拿到单点当前张力 →
     // 持平线呈现。现在**每个**因素都走与瓶颈**同一** tensionSeries 机制：由该因素自身「实测当前张力」liveTightness
@@ -397,7 +437,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         continue;
       }
       const ltf = liveTightness(c, pair.baseId, f);
-      factorSeries[f] = tensionSeries(c, pair.baseId, f, horizon, events, undefined, ltf.live ? ltf.value : undefined);
+      // 逐因素同样吃自己那条 (baseId,f) 的 ACTIVE 采纳——否则详情面板「其余因素」会与卡面自相矛盾
+      // （卡面已消解、面板还是老曲线）。factorSeries[pair.factor]===series 的恒等锚照旧成立（同 adopt 同参）。
+      factorSeries[f] = tensionSeries(c, pair.baseId, f, horizon, events, adopted.get(`${pair.baseId}|${f}`), ltf.live ? ltf.value : undefined);
     }
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
@@ -431,7 +473,15 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         peak: Math.max(...series),
       }).affected,
     };
+    // WO-ADOPT-MITIGATION · 加性披露（R13）：本卡真曲线已吃掉哪条采纳。**仅在真有采纳时置键** →
+    // 无采纳时输出与上线前逐字节一致。前端据此显「已采纳 XX（T+n 起 −eff）」，而不是让用户对着一条
+    // 悄悄降下去的曲线猜为什么降。
+    if (adopt) card.adoptedMitigation = { planKey: adopt.planKey, eff: adopt.eff, tn: adopt.tn };
     // 处置方案消解: tension − eff from T+n, both curves returned side by side.
+    // ⚠ WO-ADOPT-MITIGATION 语义边界（**刻意不叠加**）：`card.mitigated` 是「如果（只）采纳 args.mitigation
+    // 会怎样」的对照曲线，**从 baseline 起算、不含已采纳的那条**。同一因素下的方案是互斥备选
+    // （提前备料 / 备选供应商切换 / 空运补料），叠加会虚报收益；若已采纳的正是同一方案，
+    // mitigated 自然与真曲线重合（peakCut=0 = "已经采纳过了，再采纳没有额外收益"，诚实）。
     const mit = args.mitigation;
     if (mit && (!mit.base || resolveBaseId(c, mit.base) === pair.baseId) && (!mit.factor || mit.factor === pair.factor)) {
       const plans = p.mitigations[pair.factor] ?? [];

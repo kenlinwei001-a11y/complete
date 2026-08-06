@@ -186,6 +186,15 @@ export type CoreSolverObjectType =
  */
 const CHAIN_MATERIAL_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
 
+/**
+ * WO-ADOPT-MITIGATION · 需要「已采纳处置方案台账」（`AdoptedMitigation`）的求解器（**按需加载**·不全表扫）。
+ * 只有真曲线要扣 eff 的两个求解器读它（counterfactual_timeline 内部编排 risk_timeline，同依赖）。
+ * ⚠ 与核心 10 类的 `SOLVER_REQUIRED_TYPES` 裁剪机制**正交**：那套仅在 `dc.lazy-solver-context` 暗发门开时
+ * 才透传 solverKey；本集合照 `CHAIN_MATERIAL_SOLVERS` 的既有写法**恒按 solverKey 判**，
+ * 否则暗发门关（默认）时采纳记录压根不会被加载 → 采纳又变成"什么都不会发生"（本单要治的病回潮）。
+ */
+const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
+
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
@@ -3773,7 +3782,7 @@ export class SolverService {
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean; solverKey?: string },
+    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean },
   ): Promise<SolverContext> {
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
     // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
@@ -3841,10 +3850,14 @@ export class SolverService {
     // 加性标 provenanceSynthetic——合成种子物化对象（demo viaModelingChain 全 MATERIALIZED-from-synthetic）
     // 不再被误报 LIVE/实测。谓词内部对连接/数据集集单遍解析（R6 确定性·无时钟/随机）。
     const isSynthProvenance = await this.buildSynthProvenancePredicate(tenantId);
+    // WO-ADOPT-MITIGATION：已采纳处置方案台账**按需加载**（仅 ADOPTION_AWARE_SOLVERS·其余求解器一次 listByType 都不做）。
+    // 不加载 → 字段为 `[]` → riskTimeline 的 adoptedMitigationIndex 走零成本空 Map → 与上线前逐字节一致（R6）。
+    const adoptedMitigations = opts?.withAdoptions ? await this.repos.objects.listByType(tenantId, "AdoptedMitigation") : empty;
     return {
       tenantId,
       params,
       isSynthProvenance,
+      adoptedMitigations: sortById(adoptedMitigations),
       bases: sortById(bases),
       lines: sortById(lines),
       processes: sortById(processes),
@@ -3964,6 +3977,8 @@ export class SolverService {
     const lazy = await this.lazyContextEnabled(tenantId);
     const c = await this.loadContext(tenantId, undefined, {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
+      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
+      withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -4026,6 +4041,8 @@ export class SolverService {
     const lazy = await this.lazyContextEnabled(ctx.tenantId);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
+      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
+      withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const out = this.compute(c, solverKey, args);

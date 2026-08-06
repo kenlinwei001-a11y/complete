@@ -67,10 +67,18 @@ describe("G-ACTION-NOOP-EXEC · 未接线动作不得冒充已执行", () => {
         `「${key}」在 mapping.ts/decision-kernel 里有明确写回意图，标成 NO_WRITE（=设计上无副作用）会掩盖欠账`,
       ).not.toBe("NO_WRITE");
     }
-    // 尚未实现的两个必须显式停在 NOT_IMPLEMENTED（不许悄悄标 WIRED 而 domainExecutor 无分支——
+    // 尚未实现的必须显式停在 NOT_IMPLEMENTED（不许悄悄标 WIRED 而 domainExecutor 无分支——
     // 那种情况 action-wiring:check 断言② 也会红，此处双保险）。
-    for (const key of ["adopt_mitigation", "采纳经营方案"]) {
+    // `adopt_mitigation` 已于 WO-ADOPT-MITIGATION 接上真执行器（写 AdoptedMitigation 台账 →
+    // risk_timeline 真曲线自第 tn 天起扣 eff），合法地由 NOT_IMPLEMENTED 变 WIRED，故从本清单移出；
+    // 其「真的写了」由 test/action-adopt-mitigation.seam.test.ts 的**效果层**断言（曲线真降）把守，
+    // 不是靠这里的一句 WIRED 自证——同上条注释的道理：断言要咬红线，别把"当下状态"当"应然状态"。
+    for (const key of ["采纳经营方案"]) {
       expect(ACTION_WIRING[key], `「${key}」尚无真执行器`).toBe("NOT_IMPLEMENTED");
+    }
+    // 反向守：标了 WIRED 的两条「采纳」必须真有效果层测试护着（防止"改标签"冒充"接了线"）。
+    for (const key of ["adopt_mitigation", "采纳产能保障方案"]) {
+      expect(ACTION_WIRING[key], `「${key}」应为 WIRED（已接真执行器）`).toBe("WIRED");
     }
   });
 

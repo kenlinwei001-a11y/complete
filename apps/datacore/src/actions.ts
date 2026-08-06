@@ -42,10 +42,12 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   流水线发布物化: "WIRED",
   // plan_change 仅 source==="global-sim" 有真回灌；其余 source 落未实现（执行期按 payload 二次判定）。
   plan_change: "WIRED",
+  // ← 已接：审批通过后写 AdoptedMitigation 台账（app.ts）→ risk_timeline 真曲线自第 tn 天起扣 eff。
+  //   「采纳」的实质不是开一张工单，而是让**风险曲线真的降下去**；效果层断言见 test/action-adopt-mitigation.seam.test.ts。
+  adopt_mitigation: "WIRED",
   // —— 尚未接执行器：审批通过后不写任何真值 ——
-  // ⚠️ 这三条**不是**「设计上无副作用」。`采纳产能保障方案` 在 mapping.ts 里明确声明要写回生产工单MO；
-  // `adopt_mitigation` 是决策内核 commit 的落点。它们是**欠账**，标 NOT_IMPLEMENTED 让欠账可见、可门禁。
-  adopt_mitigation: "NOT_IMPLEMENTED",
+  // ⚠️ 这条**不是**「设计上无副作用」，而是**欠账**（增量 §0-4「采纳方案」本该回写目标面板），
+  // 标 NOT_IMPLEMENTED 让欠账可见、可门禁，不可伪装成 NO_WRITE。
   采纳经营方案: "NOT_IMPLEMENTED",
   采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations
 };
