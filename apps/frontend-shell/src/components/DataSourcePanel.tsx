@@ -69,7 +69,7 @@ function groupKeyOf(ds: RawDatasetVM, connById: Map<string, ConnectionInstance>)
   return "未关联来源";
 }
 
-export function DataSourcePanel({ drafts }: { drafts?: ModelingDraftVM[] }) {
+export function DataSourcePanel({ drafts, onModel }: { drafts?: ModelingDraftVM[]; onModel?: (datasetId: string) => void }) {
   const { data: datasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const { data: connections } = useQuery({ queryKey: ["a", "connections"], queryFn: fetchConnections });
   // 轨L 增量3：已发布类型为 coverage 权威来源（provenance 真实后 sourceBindings 指向真 rawDataset）。
@@ -136,15 +136,38 @@ export function DataSourcePanel({ drafts }: { drafts?: ModelingDraftVM[] }) {
                       {typeof ds.rowCount === "number" && (
                         <span style={{ fontSize: 10, color: "var(--muted2)" }}>{ds.rowCount} 行</span>
                       )}
-                      {/* 覆盖度：被多少对象类型消费（0 = 尚未建模，提示可建模为新类型） */}
-                      <span
-                        className={`badge ${consumers > 0 ? "green" : "amber"}`}
-                        data-testid={`ds-coverage-${ds.id}`}
-                        style={{ marginLeft: "auto", fontSize: 10 }}
-                        title={consumers > 0 ? `被 ${consumers} 个对象类型消费` : "尚未被任何对象类型消费"}
-                      >
-                        {consumers > 0 ? `${consumers} 个对象类型` : "未建模"}
-                      </span>
+                      {/* 覆盖度：被多少对象类型消费（0 = 尚未建模）。未建模且可建模 → 可点击按钮，
+                          点击进 A3 半自动建模 flow（该数据集 schema → 对象类型草案 → 发布为本体）。 */}
+                      {consumers > 0 ? (
+                        <span
+                          className="badge green"
+                          data-testid={`ds-coverage-${ds.id}`}
+                          style={{ marginLeft: "auto", fontSize: 10 }}
+                          title={`被 ${consumers} 个对象类型消费`}
+                        >
+                          {consumers} 个对象类型
+                        </span>
+                      ) : onModel ? (
+                        <button
+                          type="button"
+                          className="badge amber"
+                          data-testid={`ds-coverage-${ds.id}`}
+                          onClick={() => onModel(ds.id)}
+                          title="点击完成建模：从该数据集 schema 出对象类型草案 → 一键发布为本体（A3 半自动建模）"
+                          style={{ marginLeft: "auto", fontSize: 10, cursor: "pointer", border: "none", fontFamily: "inherit" }}
+                        >
+                          未建模 · 点击建模
+                        </button>
+                      ) : (
+                        <span
+                          className="badge amber"
+                          data-testid={`ds-coverage-${ds.id}`}
+                          style={{ marginLeft: "auto", fontSize: 10 }}
+                          title="尚未被任何对象类型消费"
+                        >
+                          未建模
+                        </span>
+                      )}
                     </div>
                     {/* 新鲜度（provenance 第二要素）：陈旧标降级 */}
                     {fresh && (

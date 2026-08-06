@@ -34,7 +34,10 @@ export default function ModelingPage() {
   // 原型 intake「建模为新类型」深链：?datasets=id1,id2 → 自动开新建草案弹窗并预选这些数据集。
   const [params, setParams] = useSearchParams();
   const preselect = (params.get("datasets") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // 建模弹窗预选数据集：URL 深链初值 / 新建草案(空) / 点击左栏"未建模"数据集([该集])。
+  const [suggestSeed, setSuggestSeed] = useState<string[]>(preselect);
   const [suggestOpen, setSuggestOpen] = useState(preselect.length > 0);
+  const openSuggest = (datasets: string[] = []) => { setSuggestSeed(datasets); setSuggestOpen(true); };
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
 
   return (
@@ -48,14 +51,15 @@ export default function ModelingPage() {
             </option>
           ))}
         </select>
-        <button className="btn primary sm" style={{ marginLeft: "auto" }} data-testid="modeling-new-draft" onClick={() => setSuggestOpen(true)}>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} data-testid="modeling-new-draft" onClick={() => openSuggest()}>
           {t.newDraft}
         </button>
       </div>
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
         <div style={{ width: 248, flexShrink: 0 }}>
-          <DataSourcePanel drafts={drafts} />
+          {/* 点击左栏"未建模"数据集 → 打开建模弹窗并预选该数据集（接 A3 半自动建模 flow）。 */}
+          <DataSourcePanel drafts={drafts} onModel={(id) => openSuggest([id])} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {draft ? (
@@ -66,7 +70,7 @@ export default function ModelingPage() {
           ) : (
             // 管理平台增量 §6：真无本体（无草案且无已发布类型）→ 「从数据建模」或「一键合成」
             <EmptyState message={zh.admin.empty.ontology}>
-              <button className="btn primary sm" onClick={() => setSuggestOpen(true)} data-testid="cta-modeling">
+              <button className="btn primary sm" onClick={() => openSuggest()} data-testid="cta-modeling">
                 {zh.admin.empty.modelingCta}
               </button>
               <Link className="btn sm" to="/admin/synthetic" data-testid="cta-synthetic">
@@ -78,7 +82,7 @@ export default function ModelingPage() {
       </div>
       {suggestOpen && (
         <SuggestModal
-          initialSelected={preselect}
+          initialSelected={suggestSeed}
           onClose={() => { setSuggestOpen(false); if (params.has("datasets")) { params.delete("datasets"); setParams(params, { replace: true }); } }}
           onCreated={async (newDraftId) => {
             setSuggestOpen(false);
