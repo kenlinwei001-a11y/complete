@@ -237,6 +237,48 @@ export function resolveRelativeDate(raw: unknown, context: SessionContext): stri
   }
 }
 
+/**
+ * ★ WO-DERIVED-INTENT-SLOT-DEAF（`G-DERIVED-INTENT-SLOT-DEAF`·欠账 #112）· **意图级字面默认值**。
+ *
+ * 病根（本体 §8）：`SCENARIO_CATALOG` 派生的 16 个意图声明 `slots: []`，求解器入参**只**来自
+ * `card.presetContext.slotPresets`（写死值独占）。用户说的「金华」从来到不了求解器 —— 换基地答案逐字节不变。
+ * 治法（工单 §3.2）：`args = { ...slotPresets, ...filledUserSlots }` —— **preset 是默认值，不是覆盖值**。
+ *
+ * 要让这条公式成立，`{{slots.X}}` 在用户没说时必须**恰好等于那个 preset**（工单 §4.3 加性：
+ * 用户不给实体 → 求解器实参与改前逐字节一致）。`SlotDef` 今天没有"字面默认值"字段，而 `defaultFrom`
+ * 一直只被 `resolvePath(context, …)` 解释（JSONPath，`$.` 开头）。本单在**同一个字段**上加一条
+ * 正交的字面量形态，不改契约、不新增第二个默认值通道：
+ *
+ *   `defaultFrom: "const:<JSON>"`   → 其后是 JSON 字面量（`const:"常州"` / `const:1` / `const:[1,2]`）
+ *   `defaultFrom: "$.…"`            → 老语义不变（对 SessionContext 求 JSONPath）
+ *
+ * 两者不可能相撞：`resolvePath` 对不以 `$`/`.`/`[` 开头的串一律返 undefined（`jsonpath.ts` else 分支）。
+ *
+ * **刻意不过 `validateSlotValue`**：字面默认值是**作者写在目录里的数据**（今天就是直接当 args 用的那份），
+ * 不是用户输入；原样落 = 加性按构造成立（不依赖"校验恰好是恒等"这种脆弱前提）。
+ */
+const CONST_DEFAULT_PREFIX = "const:";
+
+/** 解析 `defaultFrom` 的字面量形态；不是字面量形态（或 JSON 坏）→ undefined（调用方照走 JSONPath 老路）。 */
+export function parseConstDefault(defaultFrom: string | undefined): { value: unknown } | undefined {
+  if (typeof defaultFrom !== "string" || !defaultFrom.startsWith(CONST_DEFAULT_PREFIX)) return undefined;
+  try {
+    return { value: JSON.parse(defaultFrom.slice(CONST_DEFAULT_PREFIX.length)) };
+  } catch {
+    return undefined; // 坏 JSON = 没有默认值（诚实缺席，不猜）
+  }
+}
+
+/** 把一个值编码成 `defaultFrom` 的字面量形态（种子侧唯一编码出口，勿在别处手拼字符串）。 */
+export function encodeConstDefault(value: unknown): string {
+  return `${CONST_DEFAULT_PREFIX}${JSON.stringify(value)}`;
+}
+
+/** 「用户真的给了这个槽一个值」的判据（与 `mergeSlotFloor` 同口径：空值不算"给了"）。 */
+function isNonEmpty(v: unknown): boolean {
+  return v !== undefined && v !== null && v !== "";
+}
+
 /** Validate + normalize a single slot value per its SlotDef (QOS-PRD §5.2.1 ①). */
 export async function validateSlotValue(
   slot: SlotDef,
@@ -444,12 +486,29 @@ export async function fillSlots(
     }
     // ② defaultFrom evaluated against the session context
     if (slot.defaultFrom) {
-      const candidate = resolvePath(context, slot.defaultFrom);
-      const fromDefault = await validateSlotValue(slot, candidate, ontology, ctx);
-      if (fromDefault.ok) {
-        slots[slot.name] = fromDefault.value;
-        noteResolution(slot.name, fromDefault);
-        continue;
+      // ★ WO-DERIVED-INTENT-SLOT-DEAF · ②.a 意图级**字面默认值**（`const:<JSON>`，见 parseConstDefault）。
+      //   这是 `args = { ...slotPresets, ...filledUserSlots }` 的"...slotPresets"那一半：用户没说 → 落目录
+      //   写着的那个值（与改前逐字节一致）；用户说了 → 上面 ①/①.b/①.c 早就 continue 了，根本走不到这里。
+      const constDefault = parseConstDefault(slot.defaultFrom);
+      if (constDefault) {
+        // 工单 §3.3 **取不到就诚实缺，不许兜底**：用户**给了**这个槽一个值、但它用不了（解析不到 /
+        // 不合法），此时回落到写死的默认值 = 把「我没听懂你说的枣庄」渲染成「枣庄的答案就是常州这份」。
+        // 只在"用户压根没提这个槽"时才用字面默认值。
+        //（作用域刻意只限本单新增的 `const:` 通道 —— 既有 presetSlots/JSONPath 两条路语义一字不动，加性。）
+        const userSaidSomething =
+          isNonEmpty(extracted[slot.name]) || isNonEmpty(floor?.[slot.name]);
+        if (!userSaidSomething) {
+          slots[slot.name] = constDefault.value;
+          continue;
+        }
+      } else {
+        const candidate = resolvePath(context, slot.defaultFrom);
+        const fromDefault = await validateSlotValue(slot, candidate, ontology, ctx);
+        if (fromDefault.ok) {
+          slots[slot.name] = fromDefault.value;
+          noteResolution(slot.name, fromDefault);
+          continue;
+        }
       }
     }
     // ③ required & still missing → clarification; optional → null
