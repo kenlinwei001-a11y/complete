@@ -79,7 +79,11 @@
 `b5b96396`（铁律 1 + `scripts/task-probe.sh`）· `728c6a6d`（`wo-autosave.sh`）· `582f3e9f`（`session-resume.sh`）·
 `979fe446`/`4fc16ef0`（探针自身两处误报修复）· `25cf9a99`（脚本注释与实情不符）·
 `914ed9b1`（**锚点门被 dev worktree 副本自造歧义** → `check-ontology-anchors.mjs` 排除 `worktrees`）。
-`[实测]` `CLAUDE.md` +35 行 = 铁律 1 全文。
+`[实测]` `CLAUDE.md` +35 行 = **铁律 1 全文**（长任务主动探针 · 四态处置表 · 「杀进程别用会自匹的模式」）
+**＋ 一条新约定「派 dev 必须 worktree 隔离」**（不传 `isolation:"worktree"` → dev 在主工作目录改文件，
+而 gate 正在同一目录跑；实测 WO-112 的 dev 与 gate 的 TEST 阶段重叠 7 分钟，那次 gate 报的绿
+**证明的是某个中间态通过了，不是要并线的那个 commit 通过了**）。
+`[推理]` 这条新约定直接影响审核方**本次**怎么跑 gate —— 见 ⑥ R10。
 
 ### 组 G · 并线收口（3 提交，最后一天）
 
@@ -316,43 +320,45 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 > **`[查不动]`**：这 9 条各自「那点改动到底还值不值」，必须真读 diff 并与 wave4 对拍才能定死，
 > 超出「纯文档对账」的范围，本单不做；上表给的是**冲突面**（可机器算），不是**价值判断**。
 
-**C-3 · 沙盘 S0/D1/D3/E1/E2/F3（6 条，08-05）——全部 `ABSENT=0`，已等价并入**
-
-`[实测]` `handoff-wo-sandbox-{s0,d1,d3,e1,e2,f3}` 各自新增的文件
-（`contracts/src/chain-sim.ts` · `synthetic/cadence.ts` · `contracts/src/process-capacity.ts` ·
-`solvers/chain-loss.ts` · `solvers/scope.ts` · `views/sim/PhysicalTopologyView.tsx` …）
-**wave4 全部已有同路径文件**。`[推理]` 定性 **「已被更进化的实现取代（可弃）」**
-—— 它们是 wave4 更早批次已经并过的沙盘系列，分支只是没删。
-
-**C-4 · 7-30/7-31 一批（`wo-66-*` / `wo-69-*` / `wo-63-schema-readability`）**
+**C-3 · 7-30/7-31 一批（`wo-66-*` / `wo-69-*` / `wo-63-schema-readability`）**
 
 `[实测]` 这几条各自带 wave4 缺失的实现文件（见 ③.3 表 + `synthetic/ontology-readability.ts` /
 `solvers/ontology-signature.ts` / `solvers/rule-params.ts` / `check-schema-readability.mjs` …）。
 `[推理]` 定性 **「未并且仍有价值」**，但**都占着 028 迁移号**，是并线后最先要排队的一批。
 
-**C-5 · 大件历史恢复分支（可弃）**
+**C-4 · 大件历史恢复分支（7 条·可弃·且绝不能合）**
 
-`[实测]` `claude/complete-app-recovery`(825 缺失) · `claude/complete-repo-recovery`(1102) ·
-`claude/vigilant-knuth-july-recovery`(1119) · `claude/sandbox-reconstruction-dev3-duun6o`(955) ·
-`claude/session-artifacts`(343) · `claude/july-pipeline-backup-*`(72) · `claude/wizardly-gauss-7enbzy`(40)。
+`[实测]` `claude/complete-repo-recovery`(ABSENT=1102) · `claude/vigilant-knuth-july-recovery`(1119) ·
+`claude/sandbox-reconstruction-dev3-duun6o`(955) · `claude/complete-app-recovery`(825) ·
+`claude/session-artifacts`(343) · `claude/july-pipeline-backup-ac1c37af`(72) · `claude/wizardly-gauss-7enbzy`(40) ·
+`claude/parallel-agent-tasks-d3xmzn`(20)。
 `[实测]` 它们「缺失」的文件里含 `apps/agentcore/migrations/009_growth_worklist.sql` /
-`010_materialized_intents.sql` / `011_handoffs.sql` / `012_scenario_ontogenesis_runs.sql`
-—— 与 wave4 现役 009/010/011 **同号完全不同内容**，属于**另一条已废弃的历史线**。
-`[推理]` 定性 **「已被更进化的实现取代（可弃）」**，且**绝不能合**（合了会撞 agentcore 三个迁移号）。
+`010_materialized_intents.sql` / `011_handoffs.sql` / `012_scenario_ontogenesis_runs.sql` /
+`013_pre_analyses.sql` —— 与 wave4 现役 009/010/011 **同号完全不同内容**，属于**另一条已废弃的历史线**。
+`[推理]` 定性 **「已被更进化的实现取代（可弃）」**，且**绝不能合**（合了直接撞 agentcore 三个迁移号）。
 
-**C-6 · 其余零散（7-17 ~ 7-26，约 16 条）**
+**C-5 · 其余零散（7-17 ~ 7-26，21 条）**
 
-`[实测]` 多为单个测试文件缺失（`geo-real-signal.test.ts` / `causal-deepchain.test.ts` /
-`metric-aware-composition.test.ts` / `e2e-dialogue-acceptance.test.ts` / `multi-intent.ts` …）。
-`[推理]` 定性偏 **「已被更进化的实现取代」**：同名能力在 wave4 里普遍以别的文件名存在；
+`[实测]` 多为单个缺失文件：`geo-real-signal.test.ts` / `causal-deepchain.test.ts` /
+`metric-aware-composition.test.ts` / `e2e-dialogue-acceptance.test.ts` / `gray-node-autofill-seam.test.tsx` /
+`router/multi-intent.ts` / `agent/ceo.ts` / `docs/DIAG-100Q-RESULTS.md` / `docs/acceptance-log-qos-live-10q.md` 等。
+`[推理]` 定性偏 **「已被更进化的实现取代」**：同名能力在 wave4 里普遍以别的文件名存在
+（如多意图编排已进 `router/l2-decompose.ts` + `execute-plan.ts`）。
 但**逐条确认需要读 diff，本单未做**，明确标 `[查不动·未逐条验]`。
 
-### 5.4 类别 B 的证据样例（说明 114 条不是拍脑袋）
+### 5.4 类别 B / D 的证据样例（说明这 154 条不是拍脑袋）
 
-`[实测]` 例如 `claude/fix-llm-honesty`（`f8c26ec6`，非祖先）：它 ahead=1，那条 subject
-`fix(agentcore): LLM 失败诊断说真话 —— 裸 catch 四病一诊 + 失败路径报没调用过的模型名`
-在 wave4 里能**逐字**找到（`1acb542a`，来自 `claude/fix-llm-honesty-rebased`，且 `1acb542a` 是 wave4 的真祖先）。
-→ 这就是「rebase 后 sha 变、内容已并」的标准形态。定性 **可弃**。
+- **B 桶样例** `[实测]`：`claude/fix-llm-honesty`（`f8c26ec6`，非祖先，ahead=1）——那条 subject
+  `fix(agentcore): LLM 失败诊断说真话 —— 裸 catch 四病一诊 + 失败路径报没调用过的模型名`
+  在 wave4 里能**逐字**找到（`1acb542a`，来自 `claude/fix-llm-honesty-rebased`，而该 sha 是 wave4 真祖先）。
+  → 「rebase 后 sha 变、内容已并」的标准形态。定性 **可弃**。
+- **B 桶样例** `[实测]`：沙盘 `handoff-wo-sandbox-{s0,d1,d3,e1,e2,f3}` 六条 —— `ABSENT=0`
+  且 `subjUnmatched=0`（每条的 subject 都在 wave4 里逐字命中）。它们各自的实现文件
+  （`contracts/src/chain-sim.ts` · `synthetic/cadence.ts` · `contracts/src/process-capacity.ts` ·
+  `solvers/chain-loss.ts` · `solvers/scope.ts` · `views/sim/PhysicalTopologyView.tsx`）
+  **wave4 全部已有**。定性 **可弃**（wave4 更早批次已并过，分支只是没删）。
+- **D 桶**的 41 条不新增任何 wave4 缺失路径，差异只在已存在文件的内容上；
+  上面 C-2 表里那 7 条 D 桶分支是其中最新的一批，其余多为 7 月旧基线残留。
 
 ---
 
