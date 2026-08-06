@@ -249,6 +249,14 @@ export interface SolverContext {
   changeoverMatrix?: ObjectInstance[];
   capexProjects?: ObjectInstance[];
   purchaseOrders?: ObjectInstance[];
+  /**
+   * WO-SANDBOX-D2 · 采购段按责任方分解所需的三类真源（随 `withExtended` 一起加载）。
+   * 此前 `Supplier` 压根不在 SolverContext 里 —— 这就是 `minOrderQty`/`onTimeRate`
+   * 在 `solvers/` 零消费方的**结构性原因**（不是"没人想用"，是引擎根本拿不到这张表）。
+   */
+  suppliers?: ObjectInstance[];
+  customsClearances?: ObjectInstance[];
+  incomingInspections?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
   /**
    * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action

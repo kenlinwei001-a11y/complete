@@ -20,13 +20,33 @@ const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrim
 type TypeDef = Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">;
 // WO-SCHEMA-ZH：属性中文业务名走 battery.ts 的 PROP_DISPLAY_NAMES 同一张表（单源 > 并存，
 // 本文件不另存一份中文映射）；未登记的属性保持缺省 → 下游诚实回落 propKey。
-const def = (key: string, displayName: string, domain: string, props: PropertyDef[]): TypeDef => ({
+const def = (key: string, displayName: string, domain: string, props: PropertyDef[], description?: string): TypeDef => ({
   key,
   displayName,
   domain,
+  ...(description === undefined ? {} : { description }),
   properties: withPropDisplayNames(key, props),
   derivedProperties: [],
   sourceBindings: [],
+});
+
+/**
+ * WO-SANDBOX-D2 · 带 description 的属性（`ontology-descriptions:check` 棘轮门要求新增属性必须有描述 ——
+ * 描述是能力语义，Agent 拿到的地图腐化 = 判断腐化）。`p()` 保持原签名不动（存量属性不受影响）。
+ */
+const pd = (propKey: string, description: string, dataType: PropertyDef["dataType"] = "number", isPrimaryKey = false): PropertyDef => ({
+  propKey,
+  dataType,
+  isPrimaryKey,
+  description,
+});
+/** 同上，ref 型属性带描述。 */
+const rd = (propKey: string, refToTypeKey: string, description: string): PropertyDef => ({
+  propKey,
+  dataType: "ref",
+  isPrimaryKey: false,
+  refToTypeKey,
+  description,
 });
 
 export function extendedObjectTypes(): TypeDef[] {
@@ -45,6 +65,13 @@ export function extendedObjectTypes(): TypeDef[] {
       p("contractedSupplyTon"), p("actualSupplyTon"),
       // WO-CEO-DATA-2 §2b：真源字段（最近一批 PO 交期/单号，接 ERP/SRM）。
       p("deliveryDate", "string"), p("poNumber", "string"),
+      // WO-SANDBOX-D2 采购段按责任方可分解：
+      //  · sourceMode/originCountry —— 决定**清关段是否存在**（境内直供 ⇒ NOT_APPLICABLE，不是 EMPTY 也不是假的 0）。
+      //  · transitDays/carrierName  —— 在途段的真值与**责任方**（承运商）。此前全仓无任何"在途耗时归谁"的承载。
+      pd("sourceMode", "供货模式：境内直供 / 进口。采购段清关环节**是否存在**的唯一判据（进口才有清关段）。", "enum"),
+      pd("originCountry", "原产国。进口供应商据此确定报关口岸与清关行。", "string"),
+      pd("transitDays", "在途运输前置期（天）：从供应商发运到基地的干线运输时长，不含清关与到货检验。采购段「在途」腿的真值。"),
+      pd("carrierName", "承运方。采购段「在途」腿的责任方——在途超期该找谁。", "string"),
     ]),
     // WO-CEO-2 供应链/地缘/决策域（gap_attribution 深度反向归因·因果链实体·§0 案例落成真对象）：
     def("LongTermAgreement", "长期协议", "supply", [
@@ -124,7 +151,45 @@ export function extendedObjectTypes(): TypeDef[] {
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
     def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes"), p("hours"), p("lineId", "string")]),
     def("CapexProject", "产能投资项目", "plan", [p("projectId", "string", true), p("name", "string"), p("irr"), p("util24"), p("c23pass", "boolean")]),
-    def("PurchaseOrder", "采购订单", "supply", [p("poId", "string", true), p("matId", "string"), p("qty"), p("etaDay"), p("delayed", "boolean")]),
+    // WO-SANDBOX-D2：PurchaseOrder 追加**责任方 + 四段日戳**。此前只有 `etaDay` 一个合成标量，
+    // 所以缺料时只能说"晚了"、说不出"晚在哪一段/该找谁"。日戳一律**由 etaDay 倒推**（见 generateExtended），
+    // 故既有 etaDay/delayed 逐字节不动（R6 基线不破），新增的是**可分解性**而非新数字。
+    def("PurchaseOrder", "采购订单", "supply", [
+      p("poId", "string", true), p("matId", "string"), p("qty"), p("etaDay"), p("delayed", "boolean"),
+      rd("supplierId", "Supplier", "承接本单的供应商。采购段「供应商生产」腿的责任方——多供物料下不能再靠物料主供去猜。"),
+      pd("sourceMode", "本单供货模式：境内直供 / 进口（随供应商）。决定本单是否有清关环节。", "enum"),
+      // 四段日戳（相对天，可为负 = 窗口起点之前就下的单；**不夹到 0**，夹了就是编数）
+      pd("orderDay", "下单天（相对天，可为负 = 分析窗起点之前就已下单）。到 shipDay 之间即「供应商生产」腿。"),
+      pd("shipDay", "供应商发货天（相对天）。到 arriveDay 之间即「在途」腿。"),
+      pd("arriveDay", "货物抵达（到港/到厂）天（相对天）。之后进入清关（仅进口）与到货检验，直到 etaDay 才可投产。"),
+    ]),
+    // WO-SANDBOX-D2 · 清关记录（此前全仓 `grep -rni "customs|清关" apps/*/src packages/*/src` = 0 条，实测确认无任何承载）。
+    // 只有**进口**供应商的采购单才有此记录 —— 境内直供压根没有这个环节（引擎据"有无记录 + Supplier.sourceMode"
+    // 区分 NOT_APPLICABLE 与 EMPTY，绝不给 0 天的假默认值）。责任方 = 清关行 brokerName。
+    def("CustomsClearance", "清关记录", "supply", [
+      pd("clearanceId", "清关单号（主键）。", "string", true),
+      rd("poId", "PurchaseOrder", "对应的采购订单。"),
+      rd("supplierId", "Supplier", "货物来源供应商（只有进口供应商的单才有清关记录）。"),
+      pd("portName", "报关口岸。", "string"),
+      pd("brokerName", "清关行。采购段「清关」腿的责任方——卡关该找谁。", "string"),
+      pd("declaredDay", "申报天（相对天）。到 clearedDay 之间即「清关」腿的实测耗时。"),
+      pd("clearedDay", "海关放行天（相对天）。放行后才进入到货检验。"),
+      pd("holdDays", "查验滞留天数：清关总耗时超出基准申报周期的部分，>0 即被查验压住。"),
+      pd("status", "清关状态。", "enum"),
+    ], "进口采购单的清关凭证。承载采购段「清关」这一腿的实测耗时（clearedDay − declaredDay）与责任方（清关行）。只有进口供应商的采购单才有此记录——境内直供**结构上没有这个环节**，因此判定为 NOT_APPLICABLE（真值 0 天）而非 EMPTY（未知）。"),
+    // WO-SANDBOX-D2 · 到货检验（IQC）记录（此前全仓 `grep -rn "IQC|到货检验|来料检"` = 0 条）。
+    // 到厂 ≠ 可投产：压在待检区的那几天**是自家质量部的锅**，责任方 = inspectorTeam。
+    def("IncomingInspection", "到货检验", "quality", [
+      pd("inspectionId", "检验单号（主键）。", "string", true),
+      rd("poId", "PurchaseOrder", "对应的采购订单。"),
+      rd("matId", "Material", "受检物料。检验耗时按物料聚合（检验项集是物料的属性）。"),
+      pd("inspectorTeam", "检验班组。采购段「到货检验」腿的责任方——货到了却压在待检区，这段是自家的锅。", "string"),
+      pd("arrivedDay", "到货待检天（相对天）：货已进厂但未放行。到 releasedDay 之间即「到货检验」腿。"),
+      pd("releasedDay", "检验放行天（相对天）：此刻物料才真正可投产（到厂 ≠ 可投产）。"),
+      pd("sampleQty", "抽检数量。"),
+      pd("defectQty", "不合格数量。"),
+      pd("result", "检验结论（合格 / 让步接收 / 拒收）。", "enum"),
+    ], "来料/到货检验（IQC）凭证。承载采购段「到货检验」这一腿的实测耗时（releasedDay − arrivedDay）与责任方（质量部检验班组）。每张到货的采购单都有此记录——「到厂」与「可投产」之间的这段等待此前全仓无任何承载，导致缺料只能答「晚了」、答不出「压在待检区」。"),
     def("CarbonFactor", "碳因子", "supply", [p("factorId", "string", true), p("kind", "string"), p("key", "string"), p("factor")]),
     // Phase5A 财务域：基地现金账户 + 情景级财务指标（让 finance 进切片，凑满 9 域）。
     def("FinanceAccount", "基地财务账户", "finance", [p("accId", "string", true), p("baseId", "string"), p("cashOnHand"), p("receivable"), p("payable"), p("workingCapital")]),
@@ -142,7 +207,10 @@ const MATERIALS = [
   { matId: "pos_lfp", name: "磷酸铁锂正极", base: 95, materialCode: "MAT-002", category: "正极材料", spec: "LFP-100", unit: "kg", isKey: true, supplierIds: ["SUP-001", "SUP-003"] },
   { matId: "neg_graphite", name: "石墨负极", base: 60, materialCode: "MAT-003", category: "负极材料", spec: "人造石墨", unit: "kg", isKey: true, supplierIds: ["SUP-004", "SUP-005"] },
   { matId: "sep_film", name: "隔膜", base: 28, materialCode: "MAT-004", category: "隔膜", spec: "湿法隔膜", unit: "㎡", isKey: true, supplierIds: ["SUP-006", "SUP-007"] },
-  { matId: "elyte", name: "电解液", base: 45, materialCode: "MAT-005", category: "电解液", spec: "高电压电解液", unit: "L", isKey: true, supplierIds: ["SUP-008", "SUP-009"] },
+  // WO-SANDBOX-D2：高电压电解液的主供改为进口（SUP-015·日本）——**这是为了让清关段有真数据可测**，
+  // 而不是为了好看：全 14 家原供应商都是境内（region 华东/华北/…），清关段永远 NOT_APPLICABLE 就等于没接线。
+  // 国内电池厂高端电解液/添加剂从日本进口是行业实况，非臆造。境内二供 SUP-008/009 保留（备份路径不变）。
+  { matId: "elyte", name: "电解液", base: 45, materialCode: "MAT-005", category: "电解液", spec: "高电压电解液", unit: "L", isKey: true, supplierIds: ["SUP-015", "SUP-008", "SUP-009"] },
   { matId: "cu_foil", name: "铜箔", base: 70, materialCode: "MAT-006", category: "其他", spec: "6μm铜箔", unit: "kg", isKey: false, supplierIds: ["SUP-010"] },
   { matId: "al_foil", name: "铝箔", base: 32, materialCode: "MAT-007", category: "其他", spec: "12μm铝箔", unit: "kg", isKey: false, supplierIds: ["SUP-011"] },
   { matId: "cell_case", name: "电芯壳体", base: 18, materialCode: "MAT-008", category: "结构件", spec: "4680壳体", unit: "个", isKey: true, supplierIds: ["SUP-012", "SUP-013"] },
@@ -163,7 +231,49 @@ const SUPPLIERS = [
   { supplierId: "SUP-012", supplierCode: "KDL", name: "科达利", category: "原材料", materialType: "结构件", rating: "S", region: "华南", leadTime: 3, minOrderQty: 2000, onTimeRate: 0.99, status: "合格" },
   { supplierId: "SUP-013", supplierCode: "ZYZY", name: "震裕科技", category: "原材料", materialType: "结构件", rating: "A", region: "华东", leadTime: 5, minOrderQty: 1000, onTimeRate: 0.96, status: "合格" },
   { supplierId: "SUP-014", supplierCode: "LYGF", name: "凌云股份", category: "原材料", materialType: "结构件", rating: "B", region: "华北", leadTime: 8, minOrderQty: 500, onTimeRate: 0.91, status: "观察" },
+  // WO-SANDBOX-D2：唯一一家**进口**供应商（region="海外" 即 sourceMode 判据的单一依据，见 supplierSourceMode）。
+  // 加它的理由是可验证的：原 14 家 region 全为境内 → 清关段恒 NOT_APPLICABLE ⇒ 该段永远走不到实测分支，
+  // 「接了线没数据」和「没接线」在验收上就分不开了（铁律 0.5 三形态之二）。
+  { supplierId: "SUP-015", supplierCode: "UBE", name: "宇部兴产", category: "原材料", materialType: "电解液", rating: "A", region: "海外", originCountry: "日本", leadTime: 12, minOrderQty: 2500, onTimeRate: 0.9, status: "合格" },
 ];
+
+/**
+ * WO-SANDBOX-D2 · 区域 → 在途运输前置期 + 承运方（**在途段的真值与责任方**）。
+ * 口径：从供应商所在区域发运到基地的**干线运输天数**（含中转，不含清关与检验）。
+ * 这是运输组织维度的常数表，随行业/租户可变 → 放在数据侧（合成种子）而非应用层，守 R14。
+ * 海外走远洋班轮，故与境内干线差一个量级 —— 这正是"晚了该找谁"能分辨出承运方的原因。
+ */
+const REGION_LOGISTICS: Record<string, { transitDays: number; carrierName: string }> = {
+  华东: { transitDays: 2, carrierName: "华东干线-陆运" },
+  华北: { transitDays: 4, carrierName: "华北干线-陆运" },
+  华中: { transitDays: 3, carrierName: "华中干线-陆运" },
+  华南: { transitDays: 4, carrierName: "华南干线-陆运" },
+  西南: { transitDays: 5, carrierName: "西南干线-陆运" },
+  海外: { transitDays: 18, carrierName: "远洋班轮-海运" },
+};
+
+/** 进口判据的**单一实现**：`region === "海外"`。各处禁止再写第二份判据。 */
+function supplierIsImport(region: string): boolean {
+  return region === "海外";
+}
+
+/**
+ * WO-SANDBOX-D2 · 清关口岸/清关行（**清关段的责任方**）。按进口来源国确定性取，无随机。
+ * 只对进口供应商生效；境内直供根本不进这张表（"没有这个环节" ≠ "这个环节 0 天"）。
+ */
+const IMPORT_CUSTOMS: Record<string, { portName: string; brokerName: string }> = {
+  日本: { portName: "上海洋山港", brokerName: "洋山报关行" },
+};
+
+/** WO-SANDBOX-D2 · 到货检验（IQC）班组（**检验段的责任方**）。按物料类别确定性取，无随机。 */
+const IQC_TEAM_BY_CATEGORY: Record<string, string> = {
+  正极材料: "IQC-理化组",
+  负极材料: "IQC-理化组",
+  隔膜: "IQC-薄膜组",
+  电解液: "IQC-化学组",
+  结构件: "IQC-尺寸组",
+  其他: "IQC-通用组",
+};
 
 // WO-CEO-2 供货量约定（正极 3 家植入减供：actual<contracted → 上游减供因果一环·常数不消耗 rng·R6）。
 const CATHODE_CONTRACT: Record<string, number> = { "SUP-001": 8000, "SUP-002": 6000, "SUP-003": 4000 };
@@ -345,6 +455,9 @@ export interface ExtendedData {
   changeoverMatrix: Record<string, unknown>[];
   capexProjects: Record<string, unknown>[];
   purchaseOrders: Record<string, unknown>[];
+  // WO-SANDBOX-D2 采购段两段新承载（此前全仓 0 条）：清关记录（仅进口单）+ 到货检验记录（每单必检）。
+  customsClearances: Record<string, unknown>[];
+  incomingInspections: Record<string, unknown>[];
   carbonFactors: Record<string, unknown>[];
   financeAccounts: Record<string, unknown>[];
   financeMetrics: Record<string, unknown>[];
@@ -564,15 +677,77 @@ export function generateExtended(
   ];
 
   // PurchaseOrder：poCount 单，2 单延迟（XL=工业级 3000 单）
+  //
+  // WO-SANDBOX-D2 · 采购段四段日戳 + 清关/检验凭证。**两条硬纪律**：
+  //  ① `qty`/`etaDay`/`delayed` 三个既有字段的 rng 取用顺序与取值**逐字节不动**（R6 基线不破）——
+  //     新增段全部由 `hashString(poId+盐)` 的**独立确定性子流**产出，一次都不碰 `rng()`。
+  //  ② 日戳**由 etaDay 倒推**（etaDay = 检验放行 = 可投产日），不是另外编一条时间线：
+  //       orderDay ──供应商生产(Supplier.leadTime)──▶ shipDay ──在途(REGION_LOGISTICS)──▶ arriveDay
+  //       arriveDay ──清关(仅进口)──▶ declaredDay/clearedDay ──检验(IQC)──▶ etaDay
+  //     倒推的结果可能是**负数天**（窗口起点之前就下的单）——不夹到 0，夹了就是编数。
   const purchaseOrders: Record<string, unknown>[] = [];
+  const customsClearances: Record<string, unknown>[] = [];
+  const incomingInspections: Record<string, unknown>[] = [];
+  const supplierById = new Map(SUPPLIERS.map((s) => [s.supplierId, s]));
   for (let i = 0; i < poCount; i++) {
     const m = MATERIALS[i % MATERIALS.length]!;
+    const poId = `po_${i}`;
+    const qty = round((300 + rng() * 1200) * WAVE1_SCALE_FACTOR, 0);
+    const etaDay = 1 + Math.floor(rng() * 20);
+    // 该单实际由哪家供应商承接：物料的供应商列表内按单序轮转（确定性·多供物料能覆盖到二/三供）。
+    const supplierId = m.supplierIds[i % m.supplierIds.length]!;
+    const sup = supplierById.get(supplierId)!;
+    const isImport = supplierIsImport(sup.region);
+    const logistics = REGION_LOGISTICS[sup.region]!;
+    // 检验耗时 1–4 天（独立子流；关键物料检验项多、耗时上浮 1 天 —— 有据可依的结构性差异，非随机噪声）
+    const iqcDays = 1 + (hashString(`d2_iqc_${poId}`) % 3) + (m.isKey ? 1 : 0);
+    // 清关耗时 3–7 天（仅进口）
+    const customsDays = isImport ? 3 + (hashString(`d2_customs_${poId}`) % 5) : 0;
+    const arriveDay = etaDay - iqcDays - customsDays;
+    const shipDay = arriveDay - logistics.transitDays;
+    const orderDay = shipDay - sup.leadTime;
     purchaseOrders.push({
-      poId: `po_${i}`,
+      poId,
       matId: m.matId,
-      qty: round((300 + rng() * 1200) * WAVE1_SCALE_FACTOR, 0),
-      etaDay: 1 + Math.floor(rng() * 20),
+      qty,
+      etaDay,
       delayed: i === 5 || i === 17, // 植入 2 单延迟
+      supplierId,
+      sourceMode: isImport ? "进口" : "境内",
+      orderDay,
+      shipDay,
+      arriveDay,
+    });
+    // 清关记录：**只有进口单才有**。境内单在这里连一条都不落 —— 引擎因此能把
+    //「结构上没有这个环节(NOT_APPLICABLE)」和「有环节但没记录(EMPTY)」分开，而不是都摊成 0 天。
+    if (isImport) {
+      const customs = IMPORT_CUSTOMS[sup.originCountry ?? ""] ?? IMPORT_CUSTOMS["日本"]!;
+      customsClearances.push({
+        clearanceId: `cc_${poId}`,
+        poId,
+        supplierId,
+        portName: customs.portName,
+        brokerName: customs.brokerName,
+        declaredDay: arriveDay,
+        clearedDay: arriveDay + customsDays,
+        // 查验滞留天数：总清关天数超出 3 天基准申报周期的部分（>0 即被查验压住了）。
+        holdDays: Math.max(0, customsDays - 3),
+        status: "已放行",
+      });
+    }
+    // 到货检验：**每一单到货都要检**（到厂 ≠ 可投产）。缺陷数由物料确定性派生，隔膜（外协良率最低那一档）偏高。
+    const sampleQty = 10 + (hashString(`d2_iqc_sample_${poId}`) % 21);
+    const defectQty = hashString(`d2_iqc_def_${poId}`) % (m.matId === "sep_film" ? 4 : 2);
+    incomingInspections.push({
+      inspectionId: `iqc_${poId}`,
+      poId,
+      matId: m.matId,
+      inspectorTeam: IQC_TEAM_BY_CATEGORY[m.category] ?? IQC_TEAM_BY_CATEGORY["其他"]!,
+      arrivedDay: arriveDay + customsDays,
+      releasedDay: etaDay,
+      sampleQty,
+      defectQty,
+      result: defectQty === 0 ? "合格" : defectQty >= 3 ? "让步接收" : "合格",
     });
   }
 
@@ -605,6 +780,13 @@ export function generateExtended(
       // §2b 真源字段：最近 PO 交期/单号（合成种子用确定性派生值，真源上传后覆盖）。
       deliveryDate: "2026-06-28",
       poNumber: `PO-${s.supplierId.replace("SUP-", "")}-2026Q2`,
+      // WO-SANDBOX-D2 采购段责任方维度（全派生·不消耗 rng·R6 字节一致）：
+      //  · sourceMode 判据单源 = `supplierIsImport(region)`；originCountry 境内即中国（由 region 语义确定，非兜底）。
+      //  · transitDays/carrierName 从 REGION_LOGISTICS 派生 —— 在途段的真值与责任方。
+      sourceMode: supplierIsImport(s.region) ? "进口" : "境内",
+      originCountry: (s as { originCountry?: string }).originCountry ?? "中国",
+      transitDays: (REGION_LOGISTICS[s.region] ?? REGION_LOGISTICS["华东"]!).transitDays,
+      carrierName: (REGION_LOGISTICS[s.region] ?? REGION_LOGISTICS["华东"]!).carrierName,
     };
   });
 
@@ -689,7 +871,7 @@ export function generateExtended(
 
   return {
     materials, materialBatches, customers, customerLocations, arInvoices, certifications, energyMeters, changeoverMatrix,
-    capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, suppliers,
+    capexProjects, purchaseOrders, customsClearances, incomingInspections, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
     commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
     triggerRules: TRIGGER_RULES,

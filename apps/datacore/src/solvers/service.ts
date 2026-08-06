@@ -4052,7 +4052,8 @@ export class SolverService {
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors] =
+    // WO-SANDBOX-D2：+Supplier/CustomsClearance/IncomingInspection 三类（采购段按责任方分解的真源）。
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliers, customsClearances, incomingInspections] =
       opts?.withExtended
         ? await Promise.all([
             this.repos.objects.listByType(tenantId, "Material"),
@@ -4065,8 +4066,11 @@ export class SolverService {
             this.repos.objects.listByType(tenantId, "CapexProject"),
             this.repos.objects.listByType(tenantId, "PurchaseOrder"),
             this.repos.objects.listByType(tenantId, "CarbonFactor"),
+            this.repos.objects.listByType(tenantId, "Supplier"),
+            this.repos.objects.listByType(tenantId, "CustomsClearance"),
+            this.repos.objects.listByType(tenantId, "IncomingInspection"),
           ])
-        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
+        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
     // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实
     // 加性标 provenanceSynthetic——合成种子物化对象（demo viaModelingChain 全 MATERIALIZED-from-synthetic）
     // 不再被误报 LIVE/实测。谓词内部对连接/数据集集单遍解析（R6 确定性·无时钟/随机）。
@@ -4108,6 +4112,10 @@ export class SolverService {
       changeoverMatrix: sortById(changeoverMatrix),
       capexProjects: sortById(capexProjects),
       purchaseOrders: sortById(purchaseOrders),
+      // WO-SANDBOX-D2 采购段真源三类（sortById → R6 确定性）
+      suppliers: sortById(suppliers),
+      customsClearances: sortById(customsClearances),
+      incomingInspections: sortById(incomingInspections),
       carbonFactors: sortById(carbonFactors),
       rules,
       ruleSetVersion,

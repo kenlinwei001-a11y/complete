@@ -3,7 +3,16 @@ import { AppError } from "../errors.js";
 import { round } from "../prng.js";
 import { maintWeekOf, num, str, type SolverContext } from "./types.js";
 // DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
-import { outsourceRedlineCap } from "@platform/contracts";
+// WO-SANDBOX-D2：采购段四段（按责任方）契约 + 唯一合计实现，见 packages/contracts/src/procurement.ts。
+import {
+  outsourceRedlineCap,
+  PROCUREMENT_LEG_OWNER,
+  criticalProcurementLeg,
+  makeProcurementLeadTime,
+  procurementDaysByOwner,
+  type ProcurementLeg,
+  type ProcurementPlan,
+} from "@platform/contracts";
 // WO-SANDBOX-D4 ② · 库存「地点 × 时间序列」聚合层 + 水位带常数单一来源（超储/欠储倍数与本文件共用一份）。
 // WO-SANDBOX-D4 ③ · 全链经营现金流「不可相加」登记（credit_exposure 端与 capex_scenario 端共用同一实现）。
 import { INVENTORY_BAND, chainOperatingCashflow, inventoryLocationSeries, materialLocationRefs, purchaseOrderInbound, type InventoryInboundInput, type InventoryLocationRef } from "./aggregates.js";
@@ -103,22 +112,121 @@ export function certSchedule(args: Record<string, unknown>) {
   return { schedule, engineerGroups: groups, ruleRefs: ["C26"] };
 }
 
+/**
+ * WO-SANDBOX-D2 · 采购段四段凭证（每个物料一份，由 `deriveExtendedArgs` 从真对象装配后随 args 下发）。
+ * 引擎侧**只做算术不猜数据**：这里的每一段要么带 `days`+出处，要么带 `status:"EMPTY"`+缺什么。
+ */
+export interface ProcurementEvidence {
+  supplierId: string | null;
+  supplierName: string | null;
+  minOrderQty: number | null;
+  onTimeRate: number | null;
+  legs: ProcurementLeg[];
+}
+
+/**
+ * WO-SANDBOX-D2 · 由四段凭证 + 净缺口 → `ProcurementPlan`（"补这一票要多久、买多少、找谁"）。
+ * 纯函数（R6）。总耗时/最早齐套日/补货量一律经 contracts 的唯一实现派生，本函数不另算一份。
+ */
+export function buildProcurementPlan(ev: ProcurementEvidence, shortage: number, orderPlacedDay: number): ProcurementPlan {
+  const leadTime = makeProcurementLeadTime(ev.legs);
+  const earliestKitDay = leadTime.totalDays === null ? null : orderPlacedDay + leadTime.totalDays;
+  // 期望滑期 = 供应商段天数 × (1 − 准时率)。任一输入缺 → null（**不拿 0 冒充"不会晚"**）。
+  const supplierLeg = ev.legs.find((l) => l.leg === "supplier_production");
+  const expectedSlipDays =
+    ev.onTimeRate === null || supplierLeg === undefined || supplierLeg.days === null
+      ? null
+      : round(supplierLeg.days * (1 - ev.onTimeRate), 4);
+  return {
+    supplierId: ev.supplierId,
+    supplierName: ev.supplierName,
+    leadTime,
+    minOrderQty: ev.minOrderQty,
+    shortage: round(shortage, 4),
+    // MOQ 接线（此前 `minOrderQty` 在 solvers/ 零消费方）：缺 3 但起订 1000 → 就得买 1000。
+    replenishQty: ev.minOrderQty === null ? null : round(Math.max(round(shortage, 4), ev.minOrderQty), 4),
+    moqApplied: ev.minOrderQty !== null && ev.minOrderQty > round(shortage, 4),
+    onTimeRate: ev.onTimeRate,
+    expectedSlipDays,
+    orderPlacedDay,
+    earliestKitDay,
+    expectedKitDay: earliestKitDay === null || expectedSlipDays === null ? null : round(earliestKitDay + expectedSlipDays, 4),
+  };
+}
+
 // S08 kit_readiness：齐套率 = min_物料((现库+ETA≤开工的在途)/(BOM单耗×qty))。
+//
+// WO-SANDBOX-D2：缺料行不再只给「一个最早补齐日」，而是给**按责任方分解的采购段**——
+// 供应商生产 / 在途 / 清关 / 到货检验四段各自的天数、责任方与出处（`procurement`）。
+// 之前只能答"晚了"，现在能答"晚在哪一段、该找谁"。四段不全 → `earliestKitDay: null` +
+// `earliestKitDayStatus: "EMPTY"`（**绝不用已知几段之和冒充一个日期**）。
 export function kitReadiness(args: Record<string, unknown>) {
-  const orders = (args.orders as { orderId: string; qty: number; startDay: number; materials: { material: string; onHand: number; inTransit: { qty: number; etaDay: number }[]; bomUnit: number }[] }[]) ?? [];
+  const orders =
+    (args.orders as {
+      orderId: string;
+      qty: number;
+      startDay: number;
+      materials: { material: string; onHand: number; inTransit: { qty: number; etaDay: number }[]; bomUnit: number; procurement?: ProcurementEvidence }[];
+    }[]) ?? [];
+  // 起采日 = 分析窗起点（缺省 1）。`procurement` 缺席时不参与任何计算。
+  const orderPlacedDay = num(args.fromDay, 1);
   const rows = orders.map((o) => {
     const items = o.materials.map((m) => {
       const avail = m.onHand + m.inTransit.filter((t) => t.etaDay <= o.startDay).reduce((s, t) => s + t.qty, 0);
       const need = m.bomUnit * o.qty;
       const ratio = need <= 0 ? 1 : round(avail / need, 4);
+      const shortage = round(Math.max(0, need - avail), 4);
       // 缺料时最早补齐日 = 开工日之后最早到货的在途批次 ETA
       const earliest = avail < need ? m.inTransit.filter((it) => it.etaDay > o.startDay).sort((a, b) => a.etaDay - b.etaDay)[0]?.etaDay : undefined;
-      return { material: m.material, ratio, shortage: round(Math.max(0, need - avail), 4), earliestDay: earliest };
+      // WO-SANDBOX-D2：**在途"最早到一批"≠"够了"**。原 `earliestDay` 只取最早那一批的 ETA，不看它能不能补上缺口
+      //（在途 1169 对缺口 68267 也算"顺延到那天"）。这里按 ETA 升序累加，真够了的那一批的 ETA 才是
+      // "靠在途就能齐套"的日子；一直不够 → `null`（那就只能重新采购，走下面四段）。`earliestDay` 保留不动（向后兼容）。
+      const coveringEtaDay = (() => {
+        if (shortage <= 0) return null;
+        let cum = 0;
+        for (const t of m.inTransit.filter((x) => x.etaDay > o.startDay).sort((a, b) => a.etaDay - b.etaDay)) {
+          cum += t.qty;
+          if (cum >= shortage) return t.etaDay;
+        }
+        return null;
+      })();
+      const base = { material: m.material, ratio, shortage, earliestDay: earliest, coveringEtaDay };
+      if (shortage <= 0 || m.procurement === undefined) return base;
+      const plan = buildProcurementPlan(m.procurement, shortage, orderPlacedDay);
+      const critical = criticalProcurementLeg(plan.leadTime.legs);
+      return {
+        ...base,
+        procurement: plan,
+        /** 责任方汇总（"这些天里谁占了多少"）；EMPTY 段计入 unknownOwners，**不摊到任何人头上**。 */
+        ownerDays: procurementDaysByOwner(plan.leadTime.legs),
+        /** 最该找的那一个（实测段里天数最大的）。四段无一实测 → null。 */
+        criticalLeg: critical === null ? null : { leg: critical.leg, owner: critical.owner, ownerRef: critical.ownerRef, days: critical.days },
+      };
     });
     const kitRatio = items.length ? Math.min(...items.map((i) => i.ratio)) : 1;
     const shortItems = items.filter((i) => i.ratio < 1).sort((a, b) => (a.earliestDay ?? 1e9) - (b.earliestDay ?? 1e9));
     const advice = kitRatio >= 1 ? "齐套" : shortItems.some((i) => i.earliestDay === undefined) ? "加急采购" : "顺延";
-    return { orderId: o.orderId, kitRatio: round(kitRatio, 4), shortItems, advice };
+    // 整单最早齐套日 = 各缺料项补齐日取最晚（木桶）。任一项算不出 → 整单 EMPTY（诚实缺席）。
+    // 单项补齐日 = 两条路取早者：① 在途真能补上缺口的那一批 ETA ② 现在下单重采（四段合计）。
+    const perItemDay = shortItems.map((i) => {
+      const p = (i as { procurement?: ProcurementPlan }).procurement;
+      const routes: number[] = [];
+      if (i.coveringEtaDay !== null && i.coveringEtaDay !== undefined) routes.push(i.coveringEtaDay);
+      if (p !== undefined && p.earliestKitDay !== null) routes.push(p.earliestKitDay);
+      if (routes.length === 0) return null; // 两条路都算不出 → 不知道就是不知道
+      return Math.min(...routes);
+    });
+    const unresolved = shortItems.filter((_, idx) => perItemDay[idx] === null).map((i) => i.material);
+    const earliestKitDay = shortItems.length === 0 ? o.startDay : unresolved.length > 0 ? null : Math.max(...(perItemDay as number[]));
+    return {
+      orderId: o.orderId,
+      kitRatio: round(kitRatio, 4),
+      shortItems,
+      advice,
+      earliestKitDay,
+      earliestKitDayStatus: earliestKitDay === null ? "EMPTY" : "MEASURED",
+      ...(earliestKitDay === null ? { earliestKitDayReason: `以下物料的采购段四段不全，无法结算最早齐套日（拒绝用已知几段之和冒充日期）：${unresolved.join("、")}` } : {}),
+    };
   });
   return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, ruleRefs: ["C06", "C16"] };
 }
@@ -439,6 +547,112 @@ export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) =>
   countermeasure_combo: countermeasureCombo,
 };
 
+/** 进口判据（与合成种子 `battery-extended.ts supplierIsImport` 同口径：`Supplier.sourceMode === "进口"`）。 */
+const SOURCE_MODE_IMPORT = "进口";
+
+/**
+ * WO-SANDBOX-D2 · **数据半 → 引擎半的接缝**：把真对象装配成采购段四段凭证。
+ *
+ * 每一段只有两种下场：**读到了**（`MEASURED` + `days` + `source` 指得出是哪个对象哪个字段），
+ * 或者**没读到**（`NOT_APPLICABLE` 有据可依的 0 / `EMPTY` 诚实 null）。
+ * 一个都不许"看着合理地填个默认值"——那正是本仓「静默错答比跑不通更糟」要堵的形态。
+ *
+ * 四段的真源：
+ *  ① 供应商生产 ← `Supplier.leadTime`（承诺前置期）
+ *  ② 在途       ← `Supplier.transitDays` / 责任方 `Supplier.carrierName`
+ *  ③ 清关       ← `CustomsClearance.clearedDay − declaredDay` 的历史实测（**仅进口**；
+ *                  境内直供 = 结构上没有这个环节 → `NOT_APPLICABLE`，不是 EMPTY 也不是假的 0）
+ *  ④ 到货检验   ← `IncomingInspection.releasedDay − arrivedDay` 的历史实测（按物料聚合）
+ *
+ * 聚合口径：多条记录取**均值并四舍五入到 2 位**（确定性 · R6）。取用到的对象 id 全列进 `source.objectIds`，
+ * 便于当场下钻核对（R13）。
+ */
+export function buildProcurementEvidence(c: SolverContext): (mat: Record<string, unknown>) => ProcurementEvidence {
+  const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
+  const supplierByIdEntries = (c.suppliers ?? []).map((o) => [str(props(o).supplierId), { id: o.id, p: props(o) }] as const);
+  const supplierById = new Map(supplierByIdEntries);
+  // 清关记录按供应商归集（清关耗时是"这家供应商这条进口通道"的属性）。
+  const customsBySupplier = new Map<string, { id: string; p: Record<string, unknown> }[]>();
+  for (const o of c.customsClearances ?? []) {
+    const sid = str(props(o).supplierId);
+    if (!sid) continue;
+    (customsBySupplier.get(sid) ?? customsBySupplier.set(sid, []).get(sid)!).push({ id: o.id, p: props(o) });
+  }
+  // 检验记录按物料归集（检验耗时是"这个物料的检验项集"的属性）。
+  const iqcByMat = new Map<string, { id: string; p: Record<string, unknown> }[]>();
+  for (const o of c.incomingInspections ?? []) {
+    const mid = str(props(o).matId);
+    if (!mid) continue;
+    (iqcByMat.get(mid) ?? iqcByMat.set(mid, []).get(mid)!).push({ id: o.id, p: props(o) });
+  }
+  const meanDays = (rows: { id: string; p: Record<string, unknown> }[], from: string, to: string): number | null => {
+    const spans = rows.map((r) => num(r.p[to]) - num(r.p[from])).filter((d) => Number.isFinite(d) && d >= 0);
+    if (spans.length === 0) return null;
+    return round(spans.reduce((s, d) => s + d, 0) / spans.length, 2);
+  };
+  const emptyLeg = (leg: ProcurementLeg["leg"], reason: string): ProcurementLeg => ({ leg, owner: PROCUREMENT_LEG_OWNER[leg], ownerRef: null, days: null, status: "EMPTY", reason, source: null });
+
+  return (mat: Record<string, unknown>): ProcurementEvidence => {
+    const matId = str(mat.matId);
+    const supplierId = str(mat.supplierId);
+    const sup = supplierId ? supplierById.get(supplierId) : undefined;
+
+    // ── ① 供应商生产段 ──────────────────────────────────────────────
+    const legs: ProcurementLeg[] = [];
+    if (sup === undefined) {
+      legs.push(emptyLeg("supplier_production", supplierId ? `物料 ${matId} 的主供应商 ${supplierId} 在 Supplier 对象库中查无此人` : `物料 ${matId} 未绑定主供应商（Material.supplierId 缺失）`));
+    } else if (typeof sup.p.leadTime !== "number") {
+      legs.push(emptyLeg("supplier_production", `供应商 ${supplierId} 无 leadTime（承诺前置期）字段`));
+    } else {
+      legs.push({ leg: "supplier_production", owner: PROCUREMENT_LEG_OWNER.supplier_production, ownerRef: str(sup.p.name) || supplierId, days: sup.p.leadTime, status: "MEASURED", source: { objectType: "Supplier", objectIds: [sup.id], field: "leadTime" } });
+    }
+
+    // ── ② 在途段 ────────────────────────────────────────────────────
+    if (sup === undefined) {
+      legs.push(emptyLeg("in_transit", `无供应商 ⇒ 取不到在途运输前置期（Supplier.transitDays）`));
+    } else if (typeof sup.p.transitDays !== "number") {
+      legs.push(emptyLeg("in_transit", `供应商 ${supplierId} 无 transitDays（在途运输天数）字段`));
+    } else {
+      legs.push({ leg: "in_transit", owner: PROCUREMENT_LEG_OWNER.in_transit, ownerRef: str(sup.p.carrierName) || null, days: sup.p.transitDays, status: "MEASURED", source: { objectType: "Supplier", objectIds: [sup.id], field: "transitDays" } });
+    }
+
+    // ── ③ 清关段（三态在这里最关键）──────────────────────────────────
+    if (sup === undefined) {
+      legs.push(emptyLeg("customs", `无供应商 ⇒ 判定不了是否进口，清关段既不能算 0 也不能算数`));
+    } else if (str(sup.p.sourceMode) !== SOURCE_MODE_IMPORT) {
+      // 结构上没有这个环节 —— 这是**真值 0**，有据可依，不是"不知道"。
+      legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: null, days: 0, status: "NOT_APPLICABLE", reason: `供应商 ${str(sup.p.name) || supplierId} 为境内直供（Supplier.sourceMode=${str(sup.p.sourceMode) || "未标注"}），无清关环节`, source: null });
+    } else {
+      const rows = (customsBySupplier.get(supplierId) ?? []).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+      const days = meanDays(rows, "declaredDay", "clearedDay");
+      if (days === null) {
+        legs.push(emptyLeg("customs", `供应商 ${supplierId} 为进口来源但无清关记录（CustomsClearance 0 条）——不拿 0 天冒充`));
+      } else {
+        const brokers = [...new Set(rows.map((r) => str(r.p.brokerName)).filter(Boolean))];
+        legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: brokers.length === 1 ? brokers[0]! : null, days, status: "MEASURED", ...(brokers.length === 1 ? {} : { reason: `${rows.length} 条清关记录涉及 ${brokers.length} 家清关行，责任方不唯一` }), source: { objectType: "CustomsClearance", objectIds: rows.map((r) => r.id), field: "clearedDay-declaredDay" } });
+      }
+    }
+
+    // ── ④ 到货检验段 ────────────────────────────────────────────────
+    const iqcRows = (iqcByMat.get(matId) ?? []).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+    const iqcDays = meanDays(iqcRows, "arrivedDay", "releasedDay");
+    if (iqcDays === null) {
+      legs.push(emptyLeg("incoming_inspection", `物料 ${matId} 无到货检验记录（IncomingInspection 0 条）——到厂≠可投产，这段不许当 0`));
+    } else {
+      const teams = [...new Set(iqcRows.map((r) => str(r.p.inspectorTeam)).filter(Boolean))];
+      legs.push({ leg: "incoming_inspection", owner: PROCUREMENT_LEG_OWNER.incoming_inspection, ownerRef: teams.length === 1 ? teams[0]! : null, days: iqcDays, status: "MEASURED", ...(teams.length === 1 ? {} : { reason: `${iqcRows.length} 条检验记录涉及 ${teams.length} 个检验班组，责任方不唯一` }), source: { objectType: "IncomingInspection", objectIds: iqcRows.map((r) => r.id), field: "releasedDay-arrivedDay" } });
+    }
+
+    return {
+      supplierId: sup === undefined ? null : supplierId,
+      supplierName: sup === undefined ? null : str(sup.p.name) || null,
+      minOrderQty: sup !== undefined && typeof sup.p.minOrderQty === "number" ? sup.p.minOrderQty : null,
+      onTimeRate: sup !== undefined && typeof sup.p.onTimeRate === "number" ? sup.p.onTimeRate : null,
+      legs,
+    };
+  };
+}
+
 /**
  * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
  * 推导各求解器的输入 args（已传的 args 优先保留）。让 20 场景从 presetContext 端到端出结果。
@@ -453,11 +667,20 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
     case "kit_readiness": {
       if (has("orders")) return args;
+      // WO-SANDBOX-D2：每个物料带上**采购段四段凭证**（供应商生产/在途/清关/到货检验），
+      // 让齐套判定能按责任方分解，而不是只给 `Material.leadTime` 这一个合成标量。
+      const evidenceOf = buildProcurementEvidence(c);
       const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
         orderId: str(props(o).so, `O${i}`),
         qty: num(props(o).qty, 100),
         startDay: 7,
-        materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), onHand: num(m.onHand), inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }], bomUnit: num(m.bomUnit, 1) })),
+        materials: mats.slice(0, 4).map((m) => ({
+          material: str(m.matId),
+          onHand: num(m.onHand),
+          inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }],
+          bomUnit: num(m.bomUnit, 1),
+          procurement: evidenceOf(m),
+        })),
       }));
       return { fromDay: 1, toDay: 14, ...args, orders };
     }

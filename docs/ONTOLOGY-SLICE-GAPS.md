@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **92**，链路 **79**
-- 切片库：**41**（域内 7 · 跨域 34）
-- 连通边：**370**（shared-type 115 · bridge-link 255）
+- 本体：类型 **94**，链路 **82**
+- 切片库：**42**（域内 7 · 跨域 35）
+- 连通边：**372**（shared-type 115 · bridge-link 257）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -123,6 +123,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_certification` | model_uses_material: Model→Material |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_changeovermatrix` | model_uses_material: Model→Material |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_line` | model_uses_material: Model→Material |
+| `biz.x.bomdetail_to_material` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
 | `biz.x.bomdetail_to_material` | `biz.x.qualitystandard_to_model` | model_uses_material: Model→Material |
 | `biz.x.bomdetail_to_material` | `biz.x.routing_to_model` | model_uses_material: Model→Material |
 | `biz.x.bomdetail_to_material` | `biz.x.workorder_to_model` | model_uses_material: Model→Material |
@@ -239,6 +240,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_material` | `biz.x.order_to_customer` | order_for_model: Order→Model |
 | `biz.x.model_to_material` | `biz.x.order_to_plantarget` | order_for_model: Order→Model |
 | `biz.x.model_to_material` | `biz.x.orderpromise_to_order` | order_for_model: Order→Model |
+| `biz.x.model_to_material` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
 | `biz.x.model_to_material` | `biz.x.qualitylot_to_workorder` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_material` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_material` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
