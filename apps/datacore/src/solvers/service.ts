@@ -7,7 +7,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
-import { num, str, dayFrom, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -2605,15 +2605,20 @@ export class SolverService {
    * WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演求解器（跨半·数据×引擎×渲染）。
    * inline listByType（照 sop_reschedule 模式）读真对象四源（Line/WorkOrder/Order/DemandSegment/Base）+ forecastStart
    * 时间锚（禁 Date.now·R6），系数走 PUBLISHED RuleEntry `base_outlook_coeffs`.params（R14 可校准·缺省诚实兜底），
-   * 委派纯算法 runBaseCapacityOutlook。args{baseId（id 或中文名归一到 baseId）, horizon?（默认全 30/60/90）}。
+   * 委派纯算法 runBaseCapacityOutlook。args{baseId（`obj_base_<id>` 图节点 id / `<id>` / 中文名 / object ref
+   * 经 normalizeBaseRef 单一出处归一到 baseId）, horizon?（默认全 30/60/90）}。
    */
   private async baseCapacityOutlook(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const baseArg = str(args.baseId);
+    // WO-BASE-ID-FIDELITY 症②b：归一走**单一出处** types.normalizeBaseRef（勿在此另起一套词表——
+    // 同一概念多套归一各自维护正是本仓吃过大亏的根）。它认 `obj_base_<id>`（synthetic 图节点 id·
+    // synthetic/service.ts `id: obj_${type}_${pk}` ＝ 前端地理地图选中态写入的真对象 id）/ `<id>` /
+    // 中文名 / object ref，strip 前缀后由本处按 Base.baseId|name 匹配（口径同 risk.resolveBaseId /
+    // bottleneckMatrix.resolveRef）。缺参（undefined/null/空串/纯空白）归一后为空 → 仍抛 validationError。
+    const baseArg = normalizeBaseRef(args.baseId);
     if (!baseArg) throw validationError("base_capacity_outlook 需 baseId（基地 ID 或名称）");
     const bases = (await this.repos.objects.listByType(ctx.tenantId, "Base")).map((o) => o.props);
-    // 归一：接受基地 id（hefei）或中文名（合肥），内部收敛到 baseId。
     const baseObj = bases.find((b) => str(b.baseId) === baseArg || str(b.name) === baseArg);
-    if (!baseObj) throw notFound(`Base ${baseArg}`);
+    if (!baseObj) throw notFound(`Base ${typeof args.baseId === "string" ? args.baseId : baseArg}`);
     const baseId = str(baseObj.baseId);
     const orders = (await this.repos.objects.listByType(ctx.tenantId, "Order")).map((o) => o.props);
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);

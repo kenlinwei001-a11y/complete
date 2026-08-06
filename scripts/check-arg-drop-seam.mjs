@@ -10,7 +10,8 @@
  *   ① 数据半（动态·读 agentcore dist 真种子）：每 CEO intent 的「路由可解析过滤实体集」⊆ slotNames ∪ 显式豁免表（EXEMPT）。
  *      并：plan 的 solverArgs 里每个 `{{slots.X}}` 引用的 X 必 ∈ 声明槽（无孤儿模板引用 → 无运行期 TemplateResolutionError）。
  *   ② 引擎半（静态哨兵·读 datacore solver 源）：吃过滤维的求解器缺该维时**报错或显式标 scope**（无静默全部/首个）——
- *      credit_exposure 有 AMBIGUOUS_SCOPE + scope:CUSTOMER/ALL 且**无**首客户静默默认；base_capacity_outlook 缺 baseId throw。
+ *      credit_exposure 有 AMBIGUOUS_SCOPE + scope:CUSTOMER/ALL 且**无**首客户静默默认；base_capacity_outlook 缺 baseId throw
+ *      **且经 normalizeBaseRef 归一**（症②b·此前只断言 throw 不断言归一 → 门恒绿而 obj_base_<id> 硬 404 的盲区）。
  *
  * green→red 有牙：把某 CEO intent 的 slot 删掉（如 ceo_credit_exposure 去 custName）→ 断言① 红；把 credit_exposure 还原成
  *   `?? customers[0]` 首客户静默默认 → 断言② 红。ROUTER_EMITS 表的单一来源 = `apps/agentcore/src/router/ceo-route.ts`
@@ -186,6 +187,28 @@ if (!creditBlock) {
 if (!serviceSrc.includes("base_capacity_outlook 需 baseId"))
   fails.push('断言② 引擎半：base_capacity_outlook 缺「缺 baseId 即 throw」的诚实报错（诚实典范丢失）');
 
+// 症②b（门盲区补·WO-BASE-ID-FIDELITY）：base_capacity_outlook 此前只断言「缺 baseId 会 throw」，对「是否归一」零断言 →
+//   门恒绿而 bug 活着：它是唯一自写一套「只认 baseId|中文名」归一的 base 族求解器，不认 `obj_base_<id>`（synthetic 图节点 id
+//   ＝ 前端地理地图选中态写入的真对象 id）→ 同页同选中对象，问「未来 90 天产能够不够」硬 404、问「瓶颈卡哪道工序」
+//   （bottleneck_matrix 已归一）却正常。哨兵：该求解器体内必须出现 normalizeBaseRef（复用单一出处·勿另起词表）。
+{
+  const outlookStart = serviceSrc.indexOf("private async baseCapacityOutlook");
+  if (outlookStart < 0) {
+    fails.push("断言②·base族 引擎半：service.ts 缺 baseCapacityOutlook 方法（base_capacity_outlook 引擎半消失）");
+  } else {
+    // 方法体 = 声明起至下一个 `private async ` / `async ` 方法声明（足够覆盖该求解器且不误吞邻居）。
+    const rest = serviceSrc.slice(outlookStart + 1);
+    const nextDecl = rest.search(/\n {2}(private |protected |public )?(async )?[A-Za-z_$][\w$]*\(/);
+    const outlookBlock = nextDecl < 0 ? rest : rest.slice(0, nextDecl);
+    if (!/normalizeBaseRef\s*\(\s*args\.baseId\s*\)/.test(outlookBlock))
+      fails.push(
+        '断言②·base族 引擎半：base_capacity_outlook 未经 normalizeBaseRef 归一 baseId（症②b：回潮成 str(args.baseId) 裸匹配' +
+          ' → 前端选中态 `obj_base_<id>` 硬 404 `Base obj_base_changzhou`，而同页 bottleneck_matrix 正常 → 一通一炸）。' +
+          '修：service.ts baseCapacityOutlook 复用单一出处 types.normalizeBaseRef（勿另起一套 baseId|中文名 词表）。',
+      );
+  }
+}
+
 // ── 断言②·base 族引擎半（静态哨兵·WO-BASE-ID-FIDELITY 三症·删则红）──
 // 症① capacity_forecast：给 base → 收窄该基地 scope:"BASE"；无 base → scope:"ALL" 诚实标（无静默全网冒充某基地）。
 if (!/scope:\s*"BASE"/.test(capacitySrc) || !/scope:\s*"ALL"/.test(capacitySrc))
@@ -213,5 +236,5 @@ console.log(
   `\n✓ arg-drop-seam:check 通过：${Object.keys(ROUTER_EMITS).length} 个 CEO intent · ${emitCount} 条路由解析实体` +
     ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。` +
     `\n  base 族（WO-BASE-ID-FIDELITY）：${Object.keys(PROJECT_BASE_EMITS).length} 个吃 base 维 project intent · ${baseEmitCount} 条 base 声明⊕透传齐（${okBase} 达标）；` +
-    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
+    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 与 base_capacity_outlook 均经 normalizeBaseRef 归一（obj_base_<id> strip·单一出处）。`,
 );

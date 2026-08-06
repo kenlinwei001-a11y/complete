@@ -51,6 +51,62 @@ describe("WO-BASE-ID-FIDELITY · 症② affected_orders 跨 synthetic 图 id × 
   });
 });
 
+describe("WO-BASE-ID-FIDELITY · 症②b base_capacity_outlook 三形态归一（地理地图选中 obj_base_<id> → 前瞻不再 404·与 baseId/中文名同一答案）", () => {
+  /**
+   * 用户可感知症状（同页同选中对象·相邻两能力一通一炸）：
+   *   地理地图页点中基地（前端写入的是**真对象 id** `obj_base_<id>`·synthetic/service.ts `id: obj_${type}_${pk}`）→
+   *   对话坞问「这个基地未来 90 天产能够不够」（base_capacity_outlook）→ 硬 404 `Base obj_base_changzhou`；
+   *   紧接着问「瓶颈卡在哪道工序」（bottleneck_matrix·已经 normalizeBaseRef 归一）→ 正常出答案。
+   * 根因：base 族求解器里只有 base_capacity_outlook 自写一套「只认 baseId|中文名」的归一，未走单一出处 types.normalizeBaseRef。
+   */
+  it("SEAM 头号：base_capacity_outlook 传 baseId:'obj_base_<id>' → 200 且与 '<id>'/中文名**整份前瞻结果字节级同一**（效果断言·非到达断言）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const bases = await t.repos.objects.listByType("demo", "Base");
+    const b0 = bases.find((b) => String(b.props.baseId) === "changzhou") ?? bases[0]!;
+    const baseId = String(b0.props.baseId); // changzhou
+    const cnName = String(b0.props.name); // 常州
+    const objId = `obj_base_${baseId}`; // synthetic 图节点 id ＝ 前端选中态写入的真对象 id（硬 404 的祸首）
+    // 前端选中的确实是这个真对象 id（数据半锚点：图节点真存在·非测试臆造的字符串）。
+    expect(bases.some((b) => b.id === objId), `synthetic 图节点 id ${objId} 应真实存在`).toBe(true);
+
+    const bodies: Record<string, string> = {};
+    for (const form of [baseId, cnName, objId]) {
+      const res = await invokeSolver(t, "base_capacity_outlook", { baseId: form }, ADMIN);
+      // ★ 命门：obj_base_<id> 此前 404 `Base obj_base_changzhou`；经 normalizeBaseRef strip 前缀 → 200 真推演。
+      expect(res.statusCode, `base_capacity_outlook baseId=${form} 应 200（症②b：obj_base_ 不再硬 404）`).toBe(200);
+      const data = JSON.parse(res.body).data as { baseId: string; baseName: string; horizons: unknown[] };
+      expect(data.baseId).toBe(baseId); // 归一回真 baseId（非原样 obj_base_）
+      expect(data.baseName).toBe(cnName);
+      bodies[form] = JSON.stringify(data);
+    }
+    // ★ 效果断言（非"参数到达了"的运输断言）：三形态指同一基地 → **整份前瞻结果**（四线/缺口/crossDay/dayPlan/byModel）字节级一致。
+    expect(bodies[objId], "obj_base_<id> 与 <id> 必须得到同一份前瞻结果").toBe(bodies[baseId]);
+    expect(bodies[cnName], "中文名与 <id> 必须得到同一份前瞻结果").toBe(bodies[baseId]);
+
+    // 真算了（非空壳同一）：四线齐 + 三档 horizon + 可用产能 > 0，否则"都返空"也会字节一致而假绿。
+    const one = JSON.parse(bodies[baseId]!) as { horizons: { horizon: number; available: number; lines: { key: string }[] }[] };
+    expect(one.horizons.map((h) => h.horizon)).toEqual([30, 60, 90]);
+    expect(one.horizons[0]!.available).toBeGreaterThan(0);
+    for (const key of ["available", "inProduction", "futureOrders", "salesForecast"]) {
+      expect(one.horizons[0]!.lines.map((l) => l.key)).toContain(key);
+    }
+  });
+
+  it("归一不吞未知、不回退既有诚实报错：未知基地仍 404 · 缺 baseId 仍 400 VALIDATION_ERROR", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 反证①：真未知基地不因归一被静默兜底成首基地。
+    const bad = await invokeSolver(t, "base_capacity_outlook", { baseId: "obj_base_不存在的基地" }, ADMIN);
+    expect(bad.statusCode).toBe(404);
+    expect(JSON.parse(bad.body).error.code).toBe("NOT_FOUND");
+    // 反证②：缺参仍抛 validationError（既有"诚实典范"不回退·arg-drop-seam 断言② 守的那条）。
+    const missing = await invokeSolver(t, "base_capacity_outlook", {}, ADMIN);
+    expect(missing.statusCode).toBe(400);
+    expect(JSON.parse(missing.body).error.code).toBe("VALIDATION_ERROR");
+  });
+});
+
 describe("WO-BASE-ID-FIDELITY · 症① capacity_forecast 带基地 vs 全网真区分（数据种 certByModel × 引擎 base 作用域·相同即红）", () => {
   it("SEAM 头号：base=常州 只算常州产能（scope:BASE·perBaseRows=1）·与全网（scope:ALL·多基地）数值不同；三形态同 p50；无 base 诚实标全网", async () => {
     const t = await makeApp();
