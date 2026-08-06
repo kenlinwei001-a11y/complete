@@ -167,7 +167,6 @@ a {
   border: 1px solid var(--line2);
   border-radius: 12px;
   box-shadow: var(--popover-shadow);
-  backdrop-filter: blur(16px) saturate(1.2);
 }
 
 .section-title {
