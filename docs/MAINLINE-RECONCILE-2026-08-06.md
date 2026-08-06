@@ -291,7 +291,7 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 | `claude/handoff-wo-engine-scope-forensics` | `def58937` (12:51) | `docs/WO-ENGINE-SCOPE-FORENSICS.md`（602 行） | **未并且仍有价值**。`[实测]` merge-base = `e20acb89`（wave4 倒数第 4 个提交）→ 它是**从 wave4 当前头附近切出去的活分支**，纯取证文档、不改实现。`[推理]` 极可能就是「另一个正在跑的 dev」。并线时**不要动它**，等它自己收口 |
 | `claude/kimi-accept-run` | `e2c7f7c8` (11:33) | `scripts/kimi-accept/` 7 个文件（含 2388 行真 Kimi 10×5 矩阵原始结果） | **未并且仍有价值**（验收取证资产）。`[实测]` 全部落在新目录 `scripts/kimi-accept/`，与 wave4 零路径重叠 → **并线零冲突**，可随时收编 |
 
-**C-2 · 08-06 05:43 那次容器重启的 autosave 遗留（9 条）**
+**C-2 · 08-06 05:43 那次容器重启的 autosave 遗留（9 条·其中 2 条落 C 桶、7 条落 D 桶，一起列）**
 
 `[实测]` 这 9 条的 tip 都是**同一分钟**（05:43:43）的 `autosave(claude/handoff-*)` 快照
 —— 就是 `scripts/wo-autosave.sh` 在那次重启时抢救下来的东西。其中 2 条落 C 桶、7 条落 D 桶。
@@ -320,13 +320,16 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 > **`[查不动]`**：这 9 条各自「那点改动到底还值不值」，必须真读 diff 并与 wave4 对拍才能定死，
 > 超出「纯文档对账」的范围，本单不做；上表给的是**冲突面**（可机器算），不是**价值判断**。
 
-**C-3 · 7-30/7-31 一批（`wo-66-*` / `wo-69-*` / `wo-63-schema-readability`）**
+**C-3 · 7-29 ~ 7-31 一批（`wo-66-*`×2 / `wo-69-*`×3 / `wo-63-schema-readability` / `wo-aip-cap0`，7 条）**
 
-`[实测]` 这几条各自带 wave4 缺失的实现文件（见 ③.3 表 + `synthetic/ontology-readability.ts` /
-`solvers/ontology-signature.ts` / `solvers/rule-params.ts` / `check-schema-readability.mjs` …）。
-`[推理]` 定性 **「未并且仍有价值」**，但**都占着 028 迁移号**，是并线后最先要排队的一批。
+`[实测]` 这几条各自带 wave4 缺失的实现文件：
+`solvers/rule-params.ts`（wo-66-rules-p1p2）· `synthetic/ontology-readability.ts` + `check-schema-readability.mjs`
+（wo-63）· `solvers/ontology-signature.ts` + `check-function-signature.mjs`（wo-69-p2/p3）·
+`plan-builder/{compiler,service}.ts`（wo-aip-cap0）。
+`[推理]` 定性 **「未并且仍有价值」**，但**每条都带一个已被占用的迁移号**（见 ③.3），
+是并线后最先要排队、也最先要改号的一批。
 
-**C-4 · 大件历史恢复分支（7 条·可弃·且绝不能合）**
+**C-4 · 大件历史恢复分支（8 条·可弃·且绝不能合）**
 
 `[实测]` `claude/complete-repo-recovery`(ABSENT=1102) · `claude/vigilant-knuth-july-recovery`(1119) ·
 `claude/sandbox-reconstruction-dev3-duun6o`(955) · `claude/complete-app-recovery`(825) ·
@@ -337,7 +340,9 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 `013_pre_analyses.sql` —— 与 wave4 现役 009/010/011 **同号完全不同内容**，属于**另一条已废弃的历史线**。
 `[推理]` 定性 **「已被更进化的实现取代（可弃）」**，且**绝不能合**（合了直接撞 agentcore 三个迁移号）。
 
-**C-5 · 其余零散（7-17 ~ 7-26，21 条）**
+**C-5 · 其余零散（6-18 ~ 7-26，21 条）**
+
+> `[实测]` C 桶分组自洽：C-1(2) + C-2 落 C 桶(2) + C-3(7) + C-4(8) + C-5(21) = **40**。
 
 `[实测]` 多为单个缺失文件：`geo-real-signal.test.ts` / `causal-deepchain.test.ts` /
 `metric-aware-composition.test.ts` / `e2e-dialogue-acceptance.test.ts` / `gray-node-autofill-seam.test.tsx` /
@@ -367,10 +372,13 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 ### R1 · 三条挂起分支各占一个 `datacore/migrations/028`（**最高**）
 并 wave4 本身安全（它一个迁移都没加到 datacore）。但**并完之后**排队的
 `wo-66-rules-p1p2` / `wo-69-p3-interface` / `sandbox-action-propagation` 三条各带一个 028，
-名字不同 → **git 不会报冲突，会安静产生三个 028**，执行顺序变成字典序。
-**处置**：并线时就把号定死（谁先并谁拿 028，其余改 029/030），并在工单里写明。
+文件名互不相同 → **git 不会报冲突，会安静产生三个 028**，执行顺序变成字典序
+（`028_object_interfaces` → `028_sim_action_propagation_rule` → `028_solver_rule_bindings`），与任何人的意图无关。
+**处置**：并线时就把号定死（谁先并谁拿 028，其余改 029/030），并在工单 🚦范围边界里写明。
 另 `handoff-wo-aip-cap0` 的 `agentcore/migrations/010_plan_builder_canvases.sql` 与现役
 `010_multi_intent_plan.sql` 同号 —— 那条必须改号才谈得上并。
+`[实测]` C-4 那 8 条历史恢复分支还各带 agentcore `009/010/011/012/013` 一整套异构迁移，
+**是这个仓里迁移号冲突的最大存量池**，但它们已定性可弃，只要不合就没事。
 
 ### R2 · 本体 §8 悬空引用 `G-RISK-NO-DECISION-INFO`（**高**）
 `SYSTEM-ONTOLOGY.md:466` 写「闭 G-RISK-NO-DECISION-INFO」，§8 表里无此编号。
@@ -419,13 +427,23 @@ R6 字节锚现在靠一张人工登记的 `ADDITIVE_KEYS` 表（7 个键）。
 ### R8 · 「各半绿 ≠ 合并态绿」在本批已真实发生两次（**已修·仅作复发提醒**）
 `[实测]` ① `7340fdec`：D2 与 DECISION-INFO 各自往 `SolverContext` 加 `suppliers` → git 无文本冲突、TS2451 才炸；
 ② `ontology-core.test.ts`：E1 与 E3 各自把 `SOLVER_KEYS` 金值 57→58，合并即须 59。
-`[推理]` 这两笔都已在 wave4 内修好。提醒：**并线后若再排队并入 C-4 那批（wo-66/wo-69），
+`[推理]` 这两笔都已在 wave4 内修好。提醒：**并线后若再排队并入 C-3 那批（wo-66/wo-69），
 同一形态大概率复发**（它们也动 `solvers/` 与迁移）。SEAM-GATE 的头号判据仍是「合并态跑」，不是「各半绿」。
 
 ### R9 · 前端 typecheck 曾长期红而测试全绿（**已修·仅作纪律提醒**）
 `[实测]` `e24f20ec` 记录：`physical-topology-reachable.test.tsx:24` 让 `tsc --noEmit` 长期 exit 2，
 而 `pnpm -r test` 一直是绿的（vitest 不做类型检查）。
 `[推理]` 并线复验时 **`typecheck` 必须单列一格显式捕获退出码**，不能被 `pnpm -r test` 的绿覆盖过去。
+
+### R10 · **正在跑的 gate 可能证明的不是要并的那个 commit**（**本次直接相关**）
+`[实测]` wave4 自己往 `CLAUDE.md` 里加了这条约定（组 F）：不传 `isolation:"worktree"` 的 dev
+会在**主工作目录**改文件，而 gate 正在同一目录跑；实测 WO-112 的 dev 在 12:08–12:22 改
+`apps/agentcore/src/mocks/seed.ts`，gate 的 TEST 阶段跑到 12:15:47 —— 重叠 7 分钟。
+`[实测]` 本对账单产出时（12:51）`claude/handoff-wo-engine-scope-forensics` 的 tip 时间戳是 **12:51:08**，
+说明**至少还有一个 dev 在活动**。
+`[推理]` 判据（就是 `CLAUDE.md` 自己写的）：起 gate 前 `git rev-parse HEAD` 记下来，
+gate 完确认 `git status --porcelain` 为空且 HEAD 未变；两者任一不成立 → **结果作废重跑**。
+这条不是新风险，是本批刚写进宪法的纪律 —— 但它恰好适用于**正在跑的这次 gate**。
 
 ---
 
@@ -436,9 +454,11 @@ R6 字节锚现在靠一张人工登记的 `ADDITIVE_KEYS` 表（7 个键）。
     没核「真跑 seed 出来是不是这个数」。标 `[未跑·靠注释]`。
   - `ONTOLOGY-SLICE-GAPS.md` 的 42/372 同理。
   - 金值 #6/#7（`SOLVER_KEYS`=59、`ALL_SOLVER_CATALOG`=59）**是亲手静态解析源码数出来的**，属实测。
-- **类别 C-2 那 9 条 autosave 分支的「真价值」未逐条定死**——需读 diff 与 wave4 对拍，超出纯文档范围。
-- **类别 C-6 约 16 条零散分支未逐条验**，只给了倾向性判断，明确标注。
+- **C-2 那 9 条 autosave 分支的「真价值」未逐条定死**——给的是**冲突面**（机器可算），不是价值判断。
+- **C-5 那 21 条零散分支未逐条验**，只给了倾向性判断，明确标注 `[查不动·未逐条验]`。
 - **§8 存量 45 个跨文档悬空编号未逐条追**（绝大多数在 PRD/审计文档里，与本次并线无关）。
+- **本单只读 git 与文件，未起任何服务、未连数据库**，所以迁移的**语义**正确性（028 三条之间有无依赖）
+  没有验，只验了**编号与执行器行为**。
 
 ## 附录 B · 复现本单结论的命令
 
