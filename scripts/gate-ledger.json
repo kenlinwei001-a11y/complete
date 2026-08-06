@@ -709,16 +709,18 @@
       "guardedPaths": [
         "packages/contracts/src/chain-sim.ts",
         "apps/datacore/src/synthetic/cadence.ts",
-        "apps/datacore/src/solvers/chain-loss.ts"
+        "apps/datacore/src/solvers/chain-loss.ts",
+        "apps/frontend-shell/src/**"
       ],
       "escalation": "审核方",
-      "ontologyRef": "§7:848",
+      "ontologyRef": "§7:890",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "本体 §7 行848",
-        "note": "亲手跑过两组变异：① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。门自身另带防截断三判据（锚 `] as const satisfies` + MIN_NODES 下限 + 四哨兵 id），防 G-GATE-PARSER-TRUNCATED-VIEW 同族。"
+        "evidence": "本体 §7 行890",
+        "note": "【首版·datacore 面】① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。【欠账 #110 扩到前端后·2026-08-06 亲手跑过 8 组，全部贴过真实输出】① 前端数组字面量植入不在册 capacity.rework_loop/order.credit_hold → 判据 N 真红并点名到 InspectorNodePanel.tsx 的植入行，**同一棵树上旧门 EXIT=0 全绿**（证明是真扩了覆盖面，不是复述已有能力）；② nodeId:\"sop_consensus\"（旧 D1 方言无点号，N 按形状看不见）→ 判据 K 真红；③ id 全部在册的手抄词表 [\"demand.consensus\",\"order.review\",\"capacity.schedule\",\"material.mrp\"] → 判据 C 真红、旧门全绿 —— 这正是工单指的「门对前端手抄词表视而不见」；④ 只抄 label 不抄 id → 判据 L 真红；⑤ 负对照：同样的不在册 id 放进 // 与 /* */ 注释 → RC=0 绿（证明不是 check-view-reachable v1 那种裸文本匹配）；⑥ 角色对照：stepId:\"order.settlement_terms\" → 绿，同一个串改成数组元素 → 红（证明排的是角色不是取值，不是豁免名单）；⑦ 前端扫描树指向不存在路径 → 三条「门自己瞎了」同时红；⑧ 把提取器改瞎（看不见数组字面量 / 退化成裸文本匹配）→ 词法自检真红，后者当场暴露 6 条 stepId 误报，反证角色排除承重。全部撤销后 RC=0。门自身防瞎四判据：契约解析锚 `] as const satisfies` + MIN_NODES + 四哨兵 id · 阶段/工序前缀从契约现解不手抄 · 扫描面下限 100 文件 + 哨兵文件必在 · 每次运行跑词法自检。防 G-GATE-PARSER-TRUNCATED-VIEW 同族。",
+        "coverageWidened": "2026-08-06 欠账 #110：扫描面从 datacore 2 个文件扩到 + apps/frontend-shell/src/** 整树（185 ts/tsx，共 187 文件）；判据从 1 条（nodeId: 键位）扩到 4 条（K 键位 / N 命名空间 / C 抄表 / L 抄标签）。病根 = 门名承诺的范围比门实覆盖的范围大。"
       },
-      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。"
+      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。"
     },
     "check-view-reachable.mjs": {
       "alias": "view-reachable:check",

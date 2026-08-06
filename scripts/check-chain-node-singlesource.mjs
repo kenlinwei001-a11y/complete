@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 门：全链节点 ID 单源（`CHAIN_NODE_REGISTRY`）。
+ * 门：全链节点 ID 单源（`CHAIN_NODE_REGISTRY`）· **数据半 + 引擎半 + 前端**三侧同扫。
  *
  * ⛔ 存在理由 = 一次真实事故（不是预防性洁癖）：
  *   S0 首版把 `ChainStepSchema.nodeId` / `ChainNodeSchema.nodeId` 冻成 `z.string().min(1)` 自由串，
@@ -10,33 +10,111 @@
  *   **交集为 0**。两边单测各自全绿，链路却整条断开：D1 推出来的节拍，没有任何消费方能按 id 找到。
  *   这是「绿测试 ≠ 能用 · 断在接缝」的教科书形态。本门就是防它复发。
  *
- * 判据：`synthetic/cadence.ts` 与 `solvers/chain-loss.ts` 里出现的 `nodeId: "字面量"`，
- *      必须要么**在册**，要么属工序动态命名空间 `capacity.op.`。
+ * ── 2026-08-06 · 欠账 #110：把门扩到前端 ──────────────────────────────────
+ * 首版只扫 datacore 两个文件，**不扫前端**——而前端同样消费 `CHAIN_NODE_REGISTRY`
+ * （`views/sim/InspectorNodePanel.tsx` 的节点清单）。「节点 ID 单源」这个名字承诺的范围，
+ * 比它实际覆盖的范围大：前端手抄一份词表，门完全看不见。**门名承诺 > 门实覆盖** 本身
+ * 就是本仓在治的那类假绿，故本次把 `apps/frontend-shell/src/**` 整个纳入扫描面。
  *
- * ⚠ 本门自己防「解析被截断」（假绿第 10 形态 G-GATE-PARSER-TRUNCATED-VIEW 的教训：
- *   曾有门的正则被数据内容里的 `]` 截断，于是它在一个残缺视野里正确地报了「一致」）：
- *   故 ① 正则锚到 `] as const satisfies`；② 断言解析出的条目数 ≥ MIN_NODES；
- *   ③ 断言几个必现 id 都在解析结果里。任一不满足 ⇒ 判定为「门自己瞎了」并红。
+ * ── 四条判据（互补，各抓一种不同的错法；混为一谈会漏）──────────────────
+ *   K 键位   `nodeId:`/`cadenceNodeId:` 属性值、以及 `x.nodeId === "…"` 比较值，必须在册。
+ *            ← 抓**任何方言**，含无点号的旧 D1 词表（`sop_consensus` 这种 N 抓不到）。
+ *   N 命名空间  **任何**形如 `<stage 小写>.<名>` 的字符串字面量都必须在册（或属 `capacity.op.`）。
+ *            ← 抓 K 看不见的形状：数组字面量 `["demand.x", …]`、Record 键 `{ "order.y": … }`、
+ *              switch case。**手抄词表恰恰长这样，键名根本不叫 nodeId** —— 只有 K 等于没扩。
+ *   C 抄表   单个前端 src 文件里**materialize ≥ COPY_THRESHOLD 个在册 nodeId 字面量** ⇒ 判为
+ *            第二份注册表。← 抓「id 全对但仍是手抄」：K/N 只查合法性，**合法的抄写照样是抄写**，
+ *              而工单要治的正是「前端手抄的词表」。前端只渲染、不产出新信息，列表必然是副本。
+ *   L 抄标签 单个前端 src 文件里出现 ≥ COPY_THRESHOLD 个在册 `label` 字面量 ⇒ 中文映射表副本。
+ *            ← 契约 §2.5 白纸黑字：「`label` —— 人读名（前端**不另维护中文映射表**，一律取这里）」。
+ *
+ *   C/L 只对前端生效：`synthetic/cadence.ts` 的 `CADENCE_NODES` 是**数据侧的原创声明**
+ *   （哪些节点有节拍、周期多长 = 新信息，且 cadence.ts:400 运行时对注册表验真），不是副本。
+ *
+ * ── 角色排除：`stepId` 是**另一个命名空间**，不是豁免名单 ────────────────
+ *   `stepId` 与 `nodeId` 共用 `<stage>.<名>` 形状，但语义不同。实测两侧都有真实存量：
+ *     · `solvers/chain-loss.ts:417` `stepId:"order.settlement_terms"` / `nodeId:"order.cash"`（在册）
+ *     · `solvers/chain-loss.ts:494` `stepId:"material.supplier_leadtime"` / `nodeId:"material.replenish"`（在册）
+ *     · 另有 `material.in_transit` / `material.customs` / `material.iqc` / `capacity.aging#dwell`
+ *   故 N 排除「处于 `stepId` 属性位」的字面量。**这排除的是角色，不是取值**——
+ *   写死一张「这几个串允许」的豁免表，会把将来真正写歪的 nodeId 一起放过；排角色不会。
+ *
+ * ── 诚实边界：本门**抓不到**什么（写清楚，免得门名再一次承诺过头）────────
+ *   本单要治的病，恰恰是「门名承诺的范围 > 门实覆盖的范围」。所以已知的洞必须当面列出来，
+ *   而不是让下一个人从绿灯里推断「这些都被守住了」：
+ *   ① **stepId 自身无单源**：`stepId` 今天没有注册表，本门只把它当作「另一个命名空间」放行，
+ *      不校验其取值。要治得先给 stepId 建册 —— 另一笔欠账。
+ *   ② **C 判据按单文件计数**：把一份词表拆成「每文件只写 2 个 id」散布到 6 个文件，可绕过
+ *      `COPY_THRESHOLD`。不上「全前端聚合计数」是因为它会把「6 个视图各自合法地引用 1 个默认节点」
+ *      一起判红 —— 宁可漏掉这种刻意规避，也不制造会被加豁免名单的噪声（豁免名单一旦开口，
+ *      将来的真问题会跟着一起被放过）。
+ *   ③ **只整串匹配**：散文/文案里提到 id（如 `"节点 demand.consensus 的前置期"`）不算词表，
+ *      因此把 id 拼进长字符串可绕过 N。
+ *   ④ **只扫 `src/**` 的 ts/tsx**：`test/` 与 `.json` fixture 不在扫描面内。这是**刻意**的——
+ *      `test/fixtures/chain-loss-real.json` 是后端真实响应的抓取物，里面的
+ *      `order.settlement_terms`/`material.supplier_leadtime` 是 **stepId**；JSON 没有 AST 角色，
+ *      扫它必然把这些误报成不在册 nodeId。误报会逼出豁免名单，那就把门蛀空了。
+ *
+ * ── 门自己不许瞎（G-GATE-PARSER-TRUNCATED-VIEW 同族）────────────────────
+ *  ① 契约解析：正则锚到 `] as const satisfies`；条目数 ≥ MIN_NODES；四个哨兵 id 必在。
+ *  ② 阶段前缀 / 工序前缀**从契约现解**（`CHAIN_STAGES` / `CHAIN_OP_NODE_PREFIX`），
+ *     门自己绝不手抄一份——否则治手抄的门自己就是手抄。
+ *  ③ 扫描面非空：前端文件数 ≥ MIN_FE_FILES，且哨兵文件必须在扫描集里（walker 断了要红，不是「没发现」）。
+ *  ④ **词法自检（每次运行都跑）**：拿一段内嵌样本喂给提取器，断言
+ *     「注释里的 id 提不出来 / 数组字面量与 Record 键提得出来 / 正则里的引号不会带偏后续扫描」。
+ *     ← 直接对治 `check-view-reachable.mjs` 第一版那个病：裸文本匹配、注释掉的行照样算数、
+ *       变异后仍绿。本门用 **TypeScript 官方 scanner** 取字面量（注释/正则/JSX 由编译器天然处理），
+ *       自检是为了证明它**确实**如此，而不是宣称如此。TS 装不上 ⇒ 红（fail-closed，不静默降级）。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACT = join(ROOT, "packages/contracts/src/chain-sim.ts");
-const SCANNED = [
+
+/** 逐文件点名的扫描面（数据半 / 引擎半）。 */
+const SCANNED_FILES = [
   join(ROOT, "apps/datacore/src/synthetic/cadence.ts"),
   join(ROOT, "apps/datacore/src/solvers/chain-loss.ts"),
 ];
+/** 整树扫描面（前端）。欠账 #110：门名承诺「全链节点 ID 单源」，就得覆盖所有消费方。 */
+const SCANNED_TREES = [join(ROOT, "apps/frontend-shell/src")];
 
 /** 注册表条目数下限。改册时同步上调 —— 「解析出 0 条也算过」正是被截断的门的样子。 */
 const MIN_NODES = 12;
 /** 必现哨兵：解析结果里少了任何一个 ⇒ 视野被截断，不是「真的没有」。 */
 const SENTINELS = ["demand.consensus", "order.settlement", "material.replenish", "capacity.aging"];
+/** 前端扫描面文件数下限：walker 挂了/路径改了会掉到 0，那时门会「在空视野里报一致」。 */
+const MIN_FE_FILES = 100;
+/** 前端哨兵文件（`CHAIN_NODE_REGISTRY` 的已知前端消费方）。不在扫描集 ⇒ 扫描面塌了。 */
+const FE_SENTINEL_FILE = "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx";
+/** 「一份词表」的门槛：1 个是引用，2 个可能是一对比较，≥3 个就是在列表了。 */
+const COPY_THRESHOLD = 3;
+/** `stepId` 属于另一个命名空间（见文件头「角色排除」）。这里排的是**属性名**，不是取值。 */
+const STEP_ID_KEYS = new Set(["stepId", "step_id"]);
+/** K 判据认的键位。 */
+const NODE_ID_KEYS = new Set(["nodeId", "cadenceNodeId"]);
 
 const errs = [];
+const blind = []; // 「门自己瞎了」类，与业务违规分开报——修法完全不同
 
+/* ═══════════════ 0 · 取 TS scanner（fail-closed） ═══════════════ */
+let ts;
+try {
+  ts = (await import("typescript")).default;
+} catch (e) {
+  console.error(
+    "❌ chain-node-singlesource: 载入 typescript 失败 —— 本门用官方 scanner 取字符串字面量" +
+      "（注释/正则/JSX 才不会被裸正则带偏）。装不上就红，不静默降级成哑匹配。\n  " +
+      String(e && e.message ? e.message : e),
+  );
+  process.exit(1);
+}
+
+/* ═══════════════ 1 · 从契约现解单源（门自己不手抄） ═══════════════ */
 const src = readFileSync(CONTRACT, "utf8");
+
 // 锚到结尾的 `] as const satisfies`，不用惰性 `]`：数组内部注释/字符串里一旦出现 `]` 就会被截断。
 const m = src.match(/export const CHAIN_NODE_REGISTRY = \[([\s\S]*?)\n\] as const satisfies/);
 if (!m) {
@@ -44,34 +122,216 @@ if (!m) {
   process.exit(1);
 }
 const registry = [...m[1].matchAll(/nodeId:\s*"([^"]+)"/g)].map((x) => x[1]);
+const labels = [...m[1].matchAll(/label:\s*"([^"]+)"/g)].map((x) => x[1]);
 
 if (registry.length < MIN_NODES) {
-  errs.push(`注册表只解析出 ${registry.length} 条（下限 ${MIN_NODES}）——极可能是正则被截断，门在残缺视野里做判断`);
+  blind.push(`注册表只解析出 ${registry.length} 条（下限 ${MIN_NODES}）——极可能是正则被截断，门在残缺视野里做判断`);
 }
 for (const s of SENTINELS) {
-  if (!registry.includes(s)) errs.push(`哨兵 ${s} 不在解析结果里 —— 视野被截断（不是「真的没有」）`);
+  if (!registry.includes(s)) blind.push(`哨兵 ${s} 不在解析结果里 —— 视野被截断（不是「真的没有」）`);
+}
+if (labels.length !== registry.length) {
+  blind.push(`label 解析出 ${labels.length} 条、nodeId ${registry.length} 条，不等长 —— 契约形状变了或正则截断`);
 }
 
+// 阶段前缀：从 CHAIN_STAGES 现解，**不在门里手抄一份 demand|order|capacity|material**。
+const sm = src.match(/export const CHAIN_STAGES = \[([\s\S]*?)\] as const;/);
+if (!sm) {
+  console.error("❌ chain-node-singlesource: 解析不到 CHAIN_STAGES（N 判据的命名空间前缀来自它，解析不到即红）");
+  process.exit(1);
+}
+const stages = [...sm[1].matchAll(/"([A-Z_]+)"/g)].map((x) => x[1]);
+if (stages.length < 4 || !stages.includes("DEMAND") || !stages.includes("MATERIAL")) {
+  blind.push(`CHAIN_STAGES 只解析出 [${stages.join(",")}] —— 视野被截断，N 判据会在残缺前缀集上放行`);
+}
+
+// 工序动态命名空间前缀：同样现解。
+const om = src.match(/export const CHAIN_OP_NODE_PREFIX = "([^"]+)"/);
+if (!om || !om[1].includes(".")) {
+  console.error("❌ chain-node-singlesource: 解析不到 CHAIN_OP_NODE_PREFIX（动态工序前缀必须单源，解析不到即红）");
+  process.exit(1);
+}
+const OP_PREFIX = om[1];
+
 const known = new Set(registry);
-const OP_PREFIX = "capacity.op.";
-for (const file of SCANNED) {
-  const text = readFileSync(file, "utf8");
-  const rel = file.slice(ROOT.length + 1);
-  for (const mm of text.matchAll(/nodeId:\s*"([^"]+)"/g)) {
-    const id = mm[1];
-    if (known.has(id) || id.startsWith(OP_PREFIX)) continue;
-    const line = text.slice(0, mm.index).split("\n").length;
+const knownLabels = new Set(labels);
+const stagePrefixes = stages.map((s) => s.toLowerCase());
+/** N 判据的形状：整串等于 `<stage 小写>.<名>`（**整串匹配**，散文里提到 id 不算词表）。 */
+const NODE_SHAPE = new RegExp(`^(?:${stagePrefixes.join("|")})\\.[A-Za-z0-9_][A-Za-z0-9_.#-]*$`);
+const isAllowed = (id) => known.has(id) || id.startsWith(OP_PREFIX);
+
+/* ═══════════════ 2 · 字面量提取（TS AST；注释/正则/JSX 由编译器处理） ═══════════════ */
+/**
+ * 取一份源码里所有**静态**字符串字面量。
+ * - 含 `"…"` / `'…'` / 无插值的模板串 / Record 的字符串键；
+ * - **不含**注释里的内容（AST 里根本没有注释节点）、不含带 `${}` 的模板串（那是派生值，不是抄写）。
+ * 返回 `{ text, line, role }`，`role` ∈ {"nodeId","stepId","other"}，供 K 判据与角色排除用。
+ */
+function extractLiterals(code, fileNameHint) {
+  const sf = ts.createSourceFile(
+    fileNameHint,
+    code,
+    ts.ScriptTarget.Latest,
+    /*setParentNodes*/ true,
+    fileNameHint.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const out = [];
+  const roleOf = (node) => {
+    const p = node.parent;
+    if (!p) return "other";
+    // `{ nodeId: "…" }` / `{ stepId: "…" }` —— 属性值位
+    if (ts.isPropertyAssignment(p) && p.initializer === node) {
+      const key = ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) ? p.name.text : "";
+      if (NODE_ID_KEYS.has(key)) return "nodeId";
+      if (STEP_ID_KEYS.has(key)) return "stepId";
+      return "other";
+    }
+    // `x.nodeId === "…"` —— 比较位（手写常量与 id 比对，也是一种「持有词表」）
+    if (ts.isBinaryExpression(p) && [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(p.operatorToken.kind)) {
+      const other = p.left === node ? p.right : p.left;
+      const name = ts.isPropertyAccessExpression(other) ? other.name.text : ts.isIdentifier(other) ? other.text : "";
+      if (NODE_ID_KEYS.has(name)) return "nodeId";
+      if (STEP_ID_KEYS.has(name)) return "stepId";
+    }
+    return "other";
+  };
+  const visit = (node) => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      out.push({
+        text: node.text,
+        line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
+        role: roleOf(node),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sf, visit);
+  return out;
+}
+
+/* ═══════════════ 3 · 词法自检：证明提取器不是哑的（每次运行都跑） ═══════════════ */
+{
+  const probe = [
+    'const A = ["demand.selftest_arr"];',
+    'const B: Record<string, number> = { "capacity.selftest_key": 1 };',
+    '// const C = ["order.selftest_line_comment"];',
+    '/* const D = ["order.selftest_block_comment"]; */',
+    'const RE = /["\']/; const E = "material.selftest_after_regex";',
+    'const F = { stepId: "order.selftest_step" };',
+    'const G = { nodeId: "demand.selftest_key_role" };',
+  ].join("\n");
+  const got = extractLiterals(probe, "selftest.ts");
+  const texts = new Set(got.map((g) => g.text));
+  const must = ["demand.selftest_arr", "capacity.selftest_key", "material.selftest_after_regex"];
+  const mustNot = ["order.selftest_line_comment", "order.selftest_block_comment"];
+  for (const t of must) {
+    if (!texts.has(t)) blind.push(`词法自检失败：提取器取不到 ${t} —— 数组/Record 键/正则之后的字面量都提不出来，扩到前端等于没扩`);
+  }
+  for (const t of mustNot) {
+    if (texts.has(t)) blind.push(`词法自检失败：提取器把注释里的 ${t} 也算数了 —— 这正是 check-view-reachable 第一版那个哑匹配的病`);
+  }
+  const step = got.find((g) => g.text === "order.selftest_step");
+  if (!step || step.role !== "stepId") blind.push("词法自检失败：`stepId:` 角色识别不出来 —— 角色排除会退化成「全放」或「全咬」");
+  const nid = got.find((g) => g.text === "demand.selftest_key_role");
+  if (!nid || nid.role !== "nodeId") blind.push("词法自检失败：`nodeId:` 角色识别不出来 —— K 判据失效");
+}
+
+/* ═══════════════ 4 · 组装扫描面 ═══════════════ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "__snapshots__", "coverage"]);
+function walk(dir, acc) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (SKIP_DIRS.has(e.name)) continue;
+    const p = join(dir, e.name);
+    if (e.isDirectory()) walk(p, acc);
+    else if (/\.(ts|tsx|mts|cts)$/.test(e.name) && !/\.d\.ts$/.test(e.name)) acc.push(p);
+  }
+  return acc;
+}
+
+const targets = [];
+for (const f of SCANNED_FILES) {
+  if (!existsSync(f)) blind.push(`点名扫描的文件不存在：${relative(ROOT, f)} —— 文件被挪走了，门却会「没发现问题」`);
+  else targets.push(f);
+}
+const feFiles = [];
+for (const t of SCANNED_TREES) {
+  if (!existsSync(t) || !statSync(t).isDirectory()) blind.push(`扫描树不存在：${relative(ROOT, t)} —— 前端覆盖面塌成 0`);
+  else walk(t, feFiles);
+}
+if (feFiles.length < MIN_FE_FILES) {
+  blind.push(`前端只扫到 ${feFiles.length} 个 ts/tsx（下限 ${MIN_FE_FILES}）—— walker 断了，不是「前端真的没文件」`);
+}
+const feRel = new Set(feFiles.map((f) => relative(ROOT, f).split(sep).join("/")));
+if (!feRel.has(FE_SENTINEL_FILE)) {
+  blind.push(`哨兵文件 ${FE_SENTINEL_FILE} 不在前端扫描集里 —— 它是 CHAIN_NODE_REGISTRY 的已知前端消费方，扫不到说明扫描面不对`);
+}
+targets.push(...feFiles);
+
+/* ═══════════════ 5 · 逐文件判据 K / N / C / L ═══════════════ */
+for (const file of targets) {
+  const rel = relative(ROOT, file).split(sep).join("/");
+  const isFrontend = feRel.has(rel);
+  const lits = extractLiterals(readFileSync(file, "utf8"), file);
+
+  const seenKnownIds = new Map(); // 在册 id -> 首次出现行（C 判据）
+  const seenLabels = new Map(); // 在册 label -> 首次出现行（L 判据）
+
+  for (const { text, line, role } of lits) {
+    // ── K：键位判据。任何方言都咬（含无点号的旧 D1 词表 `sop_consensus`）。
+    if (role === "nodeId" && !isAllowed(text)) {
+      errs.push(
+        `${rel}:${line} [K·键位] \`nodeId\` 位上用了不在册的 "${text}" —— ` +
+          `全链节点 ID 必须出自 CHAIN_NODE_REGISTRY（契约 §2.5），或属动态工序命名空间 ${OP_PREFIX}*。` +
+          `自由串正是 D1/E1 各造一套词表、节拍链整条断开的直接原因。`,
+      );
+      continue;
+    }
+    // ── N：命名空间判据。抓 K 看不见的形状（数组字面量 / Record 键 / case）。
+    if (role !== "stepId" && NODE_SHAPE.test(text) && !isAllowed(text)) {
+      errs.push(
+        `${rel}:${line} [N·命名空间] 字面量 "${text}" 占用了全链节点命名空间 <${stagePrefixes.join("|")}>.* ` +
+          `却不在 CHAIN_NODE_REGISTRY 在册（也不属 ${OP_PREFIX}*）。` +
+          `该命名空间由契约 §2.5 独占；要新增节点请改注册表，不要在消费方就地造串。` +
+          `（若这本是 stepId，请写在 \`stepId:\` 属性位上——那是另一个命名空间。）`,
+      );
+      continue;
+    }
+    if (known.has(text) && !seenKnownIds.has(text)) seenKnownIds.set(text, line);
+    if (knownLabels.has(text) && !seenLabels.has(text)) seenLabels.set(text, line);
+  }
+
+  // ── C / L：抄表判据。只对前端 —— 数据侧 cadence.ts 的 CADENCE_NODES 是原创声明不是副本。
+  if (!isFrontend) continue;
+  if (seenKnownIds.size >= COPY_THRESHOLD) {
+    const sample = [...seenKnownIds.entries()].slice(0, 5).map(([id, l]) => `${id}@${l}`).join(", ");
     errs.push(
-      `${rel}:${line} 用了不在册的 nodeId "${id}" —— ` +
-        `全链节点 ID 必须出自 CHAIN_NODE_REGISTRY（契约 §2.5），或属动态工序命名空间 ${OP_PREFIX}*。` +
-        `自由串正是 D1/E1 各造一套词表、节拍链整条断开的直接原因。`,
+      `${rel}:${[...seenKnownIds.values()][0]} [C·抄表] 本文件把 ${seenKnownIds.size} 个在册 nodeId 写成了字面量（${sample}…）——` +
+        `id 全对也仍然是**第二份注册表**：改册时这里不会跟着变，就退回 D1/E1 各持一套的状态。` +
+        `请改成从 \`CHAIN_NODE_REGISTRY\` 派生（见 views/sim/InspectorNodePanel.tsx 的写法）。`,
+    );
+  }
+  if (seenLabels.size >= COPY_THRESHOLD) {
+    const sample = [...seenLabels.entries()].slice(0, 5).map(([id, l]) => `${id}@${l}`).join(", ");
+    errs.push(
+      `${rel}:${[...seenLabels.values()][0]} [L·抄标签] 本文件把 ${seenLabels.size} 个在册 label 写成了字面量（${sample}…）——` +
+        `契约 §2.5 明写「label 人读名，前端**不另维护中文映射表**，一律取这里」。请从 \`chainNodeDef(nodeId).label\` 取。`,
     );
   }
 }
 
+/* ═══════════════ 6 · 报告 ═══════════════ */
+if (blind.length > 0) {
+  console.error("❌ chain-node-singlesource:check 失败 —— **门自己瞎了**（不是「被扫代码有问题」，修法完全不同）：");
+  for (const e of blind) console.error("  · " + e);
+}
 if (errs.length > 0) {
   console.error("❌ chain-node-singlesource:check 失败：");
   for (const e of errs) console.error("  · " + e);
-  process.exit(1);
 }
-console.log(`✅ chain-node-singlesource:check 通过（注册表 ${registry.length} 个节点 · 扫描 ${SCANNED.length} 个文件，无自由串 nodeId）`);
+if (blind.length > 0 || errs.length > 0) process.exit(1);
+
+console.log(
+  `✅ chain-node-singlesource:check 通过（注册表 ${registry.length} 节点 / ${stages.length} 阶段前缀 · ` +
+    `扫描 ${targets.length} 个文件：datacore ${SCANNED_FILES.length} + frontend ${feFiles.length} · ` +
+    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · 词法自检通过）`,
+);
