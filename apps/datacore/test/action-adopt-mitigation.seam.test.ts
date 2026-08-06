@@ -207,7 +207,17 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //   此前由写死的 `trigDay + 7` / `trigDay + 14` 决定，现改为由**真对象**派生
     //   （`InterBaseTransfer.transitDays` / 合格 `Supplier.leadTime`），`rationale` 随之带上前置期出处（R13）。
     //   所以剥完加性键后**老哈希 9d8d4050… 不再成立**，这是有意的口径变更、不是回归。
-    //   剥离后的金值在此重定一次；老字段除上述两步外仍须逐字节不变（见下方 STEP_DELTA_KEYS 断言）。
+    //
+    //   ✅ 归属取证（rebase 时**亲手重做过一遍**，不是抄上一手的结论）：
+    //      在 wave4 基线（582f3e9f）与本分支上各跑一次同一个 risk_timeline，用**同一个**递归剥离器
+    //      落盘 stripped payload 再 diff（工具：临时 zz-dump-risk.test.ts·未进正线）。实测：
+    //        · 基线 stripped：len 26434 · sha 9d8d4050f9ca9f34524d4497aa09e29d14e8c8ad3f60e740cbe879eff2bd1c8b
+    //          —— 与本条**原有**金值逐字节相同 ⇒ 证明递归剥离器与 D4 那版剥离器在基线数据上等价（口径没被我改松）。
+    //        · 本分支 stripped：len 26882 · sha 84509cbe…（即下方金值），差 **+448 字节**。
+    //        · `diff old.json new.json` 的**全部**变化行按键名归类：`day`×16 · `date`×16 · `rationale`×16，
+    //          **没有第四个键**、没有任何 series/peak/crossDay/affectedOrders 被挪动 ⇒ 与 ③.2 去魔数的
+    //          声称完全吻合（跨基地 d8→d4·transitDays=3；外协 d15→d8·leadTime=7）。
+    //   剥离后的金值据此重定一次；老字段除上述两步外仍逐字节不变（上面两条「逐字节不变」用例亦独立守着 series）。
     const ADDITIVE_KEYS = [
       "otdBatch", // WO-SANDBOX-D4（顶层）
       "otd", // WO-SANDBOX-D4（逐卡）
@@ -235,7 +245,7 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("__STRIPPED_SHA_TBD__");
+    ).toBe("84509cbe007526f56fa4043c9b08cf0af1f210d11d941eb63cb316f3b89e7632");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");
