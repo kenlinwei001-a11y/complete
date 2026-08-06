@@ -92,6 +92,13 @@ describe("PROV CENSUS PROBE", () => {
         note("Z_OK", label);
       }
     }
+    console.log("\n===== 聚合包络（min / max / Σ）=====");
+    for (const [tk, fk] of [["Order", "value"], ["Equipment", "oee_current"], ["MaterialBalance", "gapTon"]] as const) {
+      const vals = (await rowsOf(tk)).map((r) => r[fk]).filter((v): v is number => typeof v === "number");
+      if (!vals.length) { console.log(`${tk}.${fk}: 无数值`); continue; }
+      const sum = vals.reduce((a, b) => a + b, 0);
+      console.log(`${tk}.${fk}: n=${vals.length} min=${Math.min(...vals)} max=${Math.max(...vals)} Σ=${sum}  [Σ/1e4=${sum / 1e4}]`);
+    }
     console.log("\n===== 分类统计 =====");
     for (const k of Object.keys(tally).sort()) console.log(`${k}: ${tally[k]}`);
     console.log("\n===== 按 类型.字段 × 分类 =====");
