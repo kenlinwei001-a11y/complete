@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -405,6 +405,47 @@ describe("#104 ②常量对比 · 主文字对浮层表面达 WCAG AA，且三�
 // 3. 接缝 —— 真渲染出来的浮层节点，真戴着①②校过的那张表面
 //    （少这一层，上面全是在证明一条没人用的 CSS 规则 = 本仓已知假绿形态）
 // ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * 抽出每个 `role="tooltip"` 所在的那个 JSX **开标签**原文。
+ * 为什么不整文件 grep：同一个文件里既有浮层（该换表面）也有普通卡（该继续吃 .panel），
+ * 整文件 grep 会把两者混为一谈 —— 那正是"改错地方"的入口。
+ */
+function tooltipOpeningTags(src: string): string[] {
+  const out: string[] = [];
+  const MARK = 'role="tooltip"';
+  let idx = src.indexOf(MARK);
+  while (idx >= 0) {
+    let start = idx;
+    while (start > 0 && src[start] !== "<") start--;
+    let depth = 0;
+    let end = src.length - 1;
+    for (let i = start; i < src.length; i++) {
+      const ch = src[i]!;
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      else if (ch === ">" && depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    out.push(src.slice(start, end + 1));
+    idx = src.indexOf(MARK, end + 1);
+  }
+  return out;
+}
+
+/** 递归列出目录下所有 .tsx（不进 node_modules）。 */
+function listTsx(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+    const abs = join(dir, e.name);
+    if (e.isDirectory()) out.push(...listTsx(abs));
+    else if (e.name.endsWith(".tsx")) out.push(abs);
+  }
+  return out;
+}
+
 function expectWearsSurface(el: HTMLElement, who: string) {
   expect(el.classList.contains(SURFACE_CLASS), `${who} 没戴 .${SURFACE_CLASS} —— 上面的遮蔽性/对比度结论对它不成立。实际 class="${el.className}"`).toBe(true);
   expect(el.classList.contains("panel"), `${who} 仍戴着磨砂玻璃 .panel（半透 + backdrop-blur）—— 正是 #104 的病`).toBe(false);
@@ -498,7 +539,9 @@ describe("#104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表�
     expect(line!, `dec-prov-pop 的挂载点没戴 ${SURFACE_CLASS}：${line}`).toContain(SURFACE_CLASS);
   });
 
-  it("全仓不再有任何 role=\"tooltip\" 的溯源浮层挂在磨砂玻璃 .panel 上", () => {
+  it("五处溯源浮层的 JSX 开标签都戴 popover-surface，且没有任何 role=\"tooltip\" 还挂在 .panel 上", () => {
+    // 只咬 role="tooltip" 的那个开标签本身 —— 不能整文件 grep：
+    // ProvenanceDag 里 `dag-node-*` 卡片用的就是 .panel，那是**贴在页面上的卡**，不是浮层，本来就该继续吃玻璃。
     const suspects = [
       "apps/frontend-shell/src/components/Provenance.tsx",
       "apps/frontend-shell/src/components/RuleRef.tsx",
@@ -507,10 +550,25 @@ describe("#104 ③接缝 · 五处溯源浮层的 DOM 节点真戴着这张表�
       "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
     ];
     for (const f of suspects) {
-      const src = readRepo(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-      expect(/className="panel"/.test(src), `${f} 里仍有 className="panel" 的浮层`).toBe(false);
-      expect(src).toContain(SURFACE_CLASS);
+      const tags = tooltipOpeningTags(readRepo(f));
+      expect(tags.length, `${f} 里找不到 role="tooltip" 的浮层开标签`).toBeGreaterThan(0);
+      for (const tag of tags) {
+        expect(tag.includes(SURFACE_CLASS), `${f} 的浮层开标签没戴 ${SURFACE_CLASS}：\n${tag}`).toBe(true);
+        expect(/className="panel"/.test(tag), `${f} 的浮层开标签仍是磨砂玻璃 .panel：\n${tag}`).toBe(false);
+      }
     }
+  });
+
+  it("全仓（frontend src）没有任何 role=\"tooltip\" 还直接挂 className=\"panel\"", () => {
+    const files = listTsx(join(REPO_ROOT, "apps/frontend-shell/src"));
+    let scanned = 0;
+    for (const abs of files) {
+      for (const tag of tooltipOpeningTags(readFileSync(abs, "utf8"))) {
+        scanned++;
+        expect(/className="panel"/.test(tag), `${abs} 的 role="tooltip" 浮层挂在磨砂玻璃 .panel 上：\n${tag}`).toBe(false);
+      }
+    }
+    expect(scanned, "一个 role=\"tooltip\" 都没扫到 → 扫描器坏了，这条断言是哑的").toBeGreaterThanOrEqual(5);
   });
 });
 
