@@ -57,7 +57,12 @@ function walk(dir) {
     return;
   }
   for (const e of ents) {
-    if (e.name === "node_modules" || e.name === "dist" || e.name === ".git" || e.name === "coverage") continue;
+    // `worktrees`：`.claude/worktrees/agent-*/` 是**整个仓库的副本**（派 dev 用的隔离工作区）。
+    // 不排除的话，有 N 个在跑的 dev，每个源文件就在索引里出现 N+1 次 → 裸文件名锚点
+    // （如 `l2-decompose.ts:102`）全部判 PATH_AMBIGUOUS，门红在一个纯属自造的歧义上。
+    // 2026-08-06 实测：23 个 worktree 一次性把锚点门打红。**worktree 里的路径就是同一个文件**，
+    // 把它算成"另一个候选"本身就是错的 —— 这是门的缺陷，不是本体漂移。
+    if (e.name === "node_modules" || e.name === "dist" || e.name === ".git" || e.name === "coverage" || e.name === "worktrees") continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) walk(p);
     else {

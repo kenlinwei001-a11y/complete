@@ -92,7 +92,10 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     t.llm.queueClassification({
       candidates: [{ intentKey: "adopt_mitigation", confidence: 0.93 }],
       outOfCatalog: false,
-      extractedSlots: { solutionName: "三班制", factor: "物料齐套" },
+      // **刻意不给 factor**：本条测的就是「先问后答」这条链。审核方并线时曾把这行错误地
+      // 补成 `factor:"物料齐套"`（那是另一版 A4 的写法），与下方断言自相矛盾 → gate 红在
+      // `expected 'COMPLETED' to be 'AWAITING_CLARIFICATION'`。合并解冲突时把两版拼一起的典型事故。
+      extractedSlots: { solutionName: "三班制" },
     });
     const { taskId } = await submitQuery(t, PLANNER, "采纳常州的三班制方案", {
       view: "risk",
