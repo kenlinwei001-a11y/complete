@@ -171,7 +171,7 @@ apps/datacore/test/ontology-governance.test.ts:327  // 未知单位 → 400
 | 22 | `agentcore/test/qos-nl-wiring-seam.test.ts` | **E** | `classifier-failsafe` 全仓 0 |
 | 23 | `agentcore/test/qos-nl-robust.test.ts` | **E** | `nl-solver-route` 全仓 0（**新增文件**） |
 
-（行数 23 是因为 `multi-intent-seam.test.ts` 一个文件跨 A 与 C/D 两类，拆两行记。文件仍是 22 个。）
+（表 23 行是因为 `multi-intent-seam.test.ts` 一个文件跨类拆两行记。**文件仍是 22 个** —— 对账见 §3 类表下方。）
 
 ---
 
@@ -388,7 +388,7 @@ canonical      apps/agentcore/test/tier2-semantic-route.test.ts:29-35 断言的�
 
 ---
 
-### E 类 · ⛔ 实现也不在正线（14 个）—— **不属本 WO**
+### E 类 · ⛔ 实现也不在正线（16 个文件 / 14 张单）—— **不属本 WO**
 
 **共同判据**：测试依赖的符号/模块/迁移在 canonical `apps/{agentcore,datacore,frontend-shell}/src`、
 `packages/*/src`、`apps/*/migrations` 命中数为 0（本轮用**显式目录** pathspec 重测，非沿用前一轮）。
@@ -413,7 +413,10 @@ canonical      apps/agentcore/test/tier2-semantic-route.test.ts:29-35 断言的�
 | `qos-nl-wiring-seam.test.ts` | `classifier-failsafe` | src 0 / test 0 |
 | `qos-nl-robust.test.ts` ★新 | `nl-solver-route` | src 0 / test 0 |
 
-（表 16 行 / 14 个文件：`schema-readability` 与 `plan-builder` 各占前后端两个文件，合为两单。）
+（表 **16 行 = 16 个文件**；但只对应 **14 张待裁决的单** ——
+`schema-readability`（datacore + frontend 两个文件）与 `wo-aip-cap0`/plan-builder（同样两个文件）
+各是一张整单的前后端两半，**必须整单一起裁决**，不许只并一半
+——「跨数据/引擎两半的特性拆两半做」正是 CLAUDE.md 点名的 metric-aware 反复炸的根。）
 
 > **对 `qos-nl-robust.test.ts`（新增）的额外说明**：它 import 的 `ScriptedLlmClient`
 > **确实在 canonical**（`apps/agentcore/src/llm/mock.ts:39` —— 这正是 §2 坑 1 差点让我判错的那个）。
