@@ -643,12 +643,17 @@ export function buildProcurementEvidence(c: SolverContext): (mat: Record<string,
       legs.push({ leg: "incoming_inspection", owner: PROCUREMENT_LEG_OWNER.incoming_inspection, ownerRef: teams.length === 1 ? teams[0]! : null, days: iqcDays, status: "MEASURED", ...(teams.length === 1 ? {} : { reason: `${iqcRows.length} 条检验记录涉及 ${teams.length} 个检验班组，责任方不唯一` }), source: { objectType: "IncomingInspection", objectIds: iqcRows.map((r) => r.id), field: "releasedDay-arrivedDay" } });
     }
 
+    // ⚠️⚠️ MUTATION-M1（变异反证·临时·验完必删）：把四段耗时**合成一个数**（= D2 之前的行为）。
+    const m1Total = legs.reduce((s, l) => s + (l.days ?? 0), 0);
+    const m1Legs: ProcurementLeg[] = [
+      { leg: "supplier_production", owner: PROCUREMENT_LEG_OWNER.supplier_production, ownerRef: null, days: m1Total, status: "MEASURED", source: { objectType: "Material", objectIds: [matId || "?"], field: "leadTime" } },
+    ];
     return {
       supplierId: sup === undefined ? null : supplierId,
       supplierName: sup === undefined ? null : str(sup.p.name) || null,
       minOrderQty: sup !== undefined && typeof sup.p.minOrderQty === "number" ? sup.p.minOrderQty : null,
       onTimeRate: sup !== undefined && typeof sup.p.onTimeRate === "number" ? sup.p.onTimeRate : null,
-      legs,
+      legs: m1Legs,
     };
   };
 }
