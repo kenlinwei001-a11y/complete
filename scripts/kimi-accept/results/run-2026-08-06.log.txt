@@ -1,0 +1,65 @@
+✅ # 1 run1  29328ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","day":"D+5"}
+✅ # 1 run2  12588ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","day":"D+5"}
+✅ # 1 run3  20790ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","day":"D+5"}
+✅ # 1 run4  13193ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","day":"D+5"}
+✅ # 1 run5  10258ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","day":"D+5"}
+✅ # 2 run1  22288ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州"}
+✅ # 2 run2  21350ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州工厂"}
+✅ # 2 run3  16415ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州工厂"}
+✅ # 2 run4  11304ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","factor":"物料齐套"}
+✅ # 2 run5  22335ms COMPLETED                rounds=0 routed=risk_root_cause slots={}
+✅ # 3 run1  11133ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州"}
+✅ # 3 run2  11252ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州"}
+✅ # 3 run3   8285ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州","factor":"物料齐套"}
+✅ # 3 run4  11320ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州"}
+✅ # 3 run5  12275ms COMPLETED                rounds=0 routed=risk_root_cause slots={"base":"常州"}
+✅ # 4 run1   9372ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州基地"}
+✅ # 4 run2  14322ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 4 run3   9214ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州基地"}
+✅ # 4 run4  15733ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州基地"}
+✅ # 4 run5   9457ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州基地"}
+✅ # 5 run1   9453ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州工厂"}
+✅ # 5 run2  14257ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州工厂"}
+✅ # 5 run3  11272ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州工厂"}
+✅ # 5 run4  17184ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州工厂"}
+✅ # 5 run5   9267ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州工厂"}
+✅ # 6 run1  10131ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 6 run2  12202ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 6 run3   9200ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 6 run4  12247ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 6 run5  13234ms COMPLETED                rounds=0 routed=affected_orders slots={"base":"常州"}
+✅ # 7 run1  11274ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州基地"}
+✅ # 7 run2  13558ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州基地"}
+✅ # 7 run3  17302ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州基地"}
+✅ # 7 run4  11280ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州基地"}
+✅ # 7 run5  11248ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州基地"}
+✅ # 8 run1  12174ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680 三元圆柱","demandDelta":0.2,"weeks":6,"base":"常州工厂"}
+✅ # 8 run2  13155ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州工厂"}
+✅ # 8 run3  12313ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州"}
+✅ # 8 run4  11278ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州"}
+✅ # 8 run5  11289ms COMPLETED                rounds=0 routed=capacity_feasibility slots={"model":"4680-NCM","demandDelta":0.2,"weeks":6,"base":"常州"}
+✅ # 9 run1  26393ms COMPLETED                rounds=0 routed=kit_analysis slots={"base":"常州","timeWindow":"下周"}
+✅ # 9 run2  60299ms COMPLETED                rounds=0 routed=kit_analysis slots={}
+✅ # 9 run3  33333ms COMPLETED                rounds=0 routed=kit_analysis slots={}
+✅ # 9 run4  31688ms COMPLETED                rounds=0 routed=kit_analysis slots={}
+✅ # 9 run5  21362ms COMPLETED                rounds=0 routed=kit_analysis slots={"base":"常州","timeWindow":"下周"}
+✅ #10 run1  10925ms AWAITING_CLARIFICATION   rounds=1 routed=adopt_mitigation slots={"base":"常州","solutionName":"三班制"} exempt=COMPLETED_AFTER_1_CLARIFY
+✅ #10 run2  16305ms AWAITING_CLARIFICATION   rounds=1 routed=adopt_mitigation slots={"base":"常州","solutionName":"三班制"} exempt=COMPLETED_AFTER_1_CLARIFY
+✅ #10 run3  17327ms AWAITING_CLARIFICATION   rounds=1 routed=adopt_mitigation slots={"base":"常州","solutionName":"三班制"} exempt=COMPLETED_AFTER_1_CLARIFY
+✅ #10 run4  11259ms AWAITING_CLARIFICATION   rounds=1 routed=adopt_mitigation slots={"base":"常州","solutionName":"三班制"} exempt=COMPLETED_AFTER_1_CLARIFY
+✅ #10 run5  15398ms AWAITING_CLARIFICATION   rounds=1 routed=adopt_mitigation slots={"base":"常州","solutionName":"三班制"} exempt=COMPLETED_AFTER_1_CLARIFY
+
+═══ 10×5 矩阵汇总 ═══
+✅ 5/5 稳定 # 1 5/5  {"COMPLETED/r0":5}  「常州物料齐套 D+5 为什么越线？」
+✅ 5/5 稳定 # 2 5/5  {"COMPLETED/r0":5}  「常州工厂的齐套张力为啥突然冲高」
+✅ 5/5 稳定 # 3 5/5  {"COMPLETED/r0":5}  「是什么把常州物料齐套顶过阈值的」
+✅ 5/5 稳定 # 4 5/5  {"COMPLETED/r0":5}  「常州基地影响哪些订单？」
+✅ 5/5 稳定 # 5 5/5  {"COMPLETED/r0":5}  「常州工厂 交期风险波及哪些在手单」
+✅ 5/5 稳定 # 6 5/5  {"COMPLETED/r0":5}  「常州这边有哪些单要被拖累」
+✅ 5/5 稳定 # 7 5/5  {"COMPLETED/r0":5}  「4680-NCM 加 20% 常州基地六周能不能」
+✅ 5/5 稳定 # 8 5/5  {"COMPLETED/r0":5}  「4680 三元圆柱 常州工厂 增产两成 六周交得」
+✅ 5/5 稳定 # 9 5/5  {"COMPLETED/r0":5}  「下周常州哪些订单缺料开不了工？」
+✅ 5/5 稳定 #10 5/5  {"COMPLETED_AFTER_1_CLARIFY":5}  「采纳常州的三班制方案」
+
+═══ 总分 10/10 达标（5/5 稳定）═══
+结果落盘：/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad/kimi-accept-matrix.json
