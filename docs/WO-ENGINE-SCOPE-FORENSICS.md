@@ -255,6 +255,24 @@ B 的真消费方（追一层确认，**不是只有 test**）：`apps/agentcore
 | ② `yield_diagnosis` 全链**没有基地维** / 无良率时序源 | `QualityLot` 260 行（`lineId`/`modelId`/`inspectDate`/`passQty`/`failQty`）、`DefectRecord` 85 行（`processName`/`foundAt`）、`Process` 650 行（`baseId`/`lineId`/`yield_baseline`）、`EquipmentOEE` 1000 行（`baseId`/`lineId`/`date`）**全在库**；但 `loadContext` 的 `withExtended` 十类是 `Material/MaterialBatch/Customer/ARInvoice/Certification/EnergyMeter/ChangeoverMatrix/CapexProject/PurchaseOrder/CarbonFactor`，**不含它们** | **不成立**。这是**没接线**（求解器读不到已有对象类型），不是没数据。量级从「造数据」降为「接线」 |
 | ③ `quote_margin` 缺客户维（任何客户同一份 BOM 毛利） | 实测确认（`custName` 换任意值输出逐字节相同）。并进一步查实：客户维在数据层**是断的**（两套命名 + 轮转边） | **成立，且比工单说的更严重**。修引擎无用，须先修数据层 |
 
+> ⚠ **更正框②b（由实施单 WO-ENGINE-SCOPE-FIX 回填 · 本表上面那一行「不成立 / 量级从造数据降为接线」作废）**
+> 上面这条判「`yield_diagnosis` 是**没接线**、把 `QualityLot`/`DefectRecord` 加进 `withExtended` 即可」
+> —— **我拿的是行数，没追到时间跨度**（正是铁律 0.5 要防的那一层）。实施单实测（同 seed 42）：
+> - `QualityLot.inspectDate` 全库只有 **20 个不同日期**（2026-06-17…2026-07-06），**逐基地只有 8–14 天**
+>   （常州 12 / 成都 14 / 信阳 8 …），因为 `QualityLot` 是**每工单一行**（`inspectDate = 该工单 endDate`），不是逐日流水；
+> - 而消费方 `extended.ts yieldDiagnosis` 的突变检测是 `for (let i = 30; i + 7 <= sorted.length; i++)`
+>   —— **序列 < 37 天时循环体一次都不进**；
+> - `DefectRecord.processName` 85/85 **单值 `涂布`**，`processKey` 维过滤等于全通或全空。
+>
+> ⇒ 照本表原方案接线的**真实后果**：把今天诚实的 `dataMode:"EMPTY"` 换成
+> `dataMode:"LIVE"` + `breakpoint:undefined` + `candidates:[]`（"我查过了，没发现异常"）——**比现状更危险**。
+> 正确形态是「**接了线也没数据**（对象层这份源结构上喂不动这个算法）」，不是「没接线」。
+> **真源在另一个子系统**：A8 时序 `yield:process`（`synthetic/battery.ts` tsGenerators·`Process` 实体·grain=day·
+> `HISTORY_DAYS` 默认 **90** 天·由 `synthetic/service.ts generateHistory` 落 `repos.tsPoints`），
+> 聚合规格 `yield_daily` → `Process.yield_baseline`。接它要么给 `solvers/types.ts` 加字段 + `loadContext` 预聚合，
+> 要么在 `invoke/runWithParams`（async·可达 `this.repos.tsPoints`）按 solverKey 预注入 `args.series` ——
+> 属**新数据通道**，非"加两行加载清单"。已登记本体断点 `G-YIELD-SERIES-SOURCE-MISMATCH`。
+
 另新增两条 WO-112 未报的：
 
 - ④ **`carbon_footprint` 的基地维数据齐、已加载、只差一行**（`EnergyMeter` 每基地一行，gridFactor 0.50–0.79 差 58%）。
@@ -532,9 +550,13 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
 
 **第二梯队 · 接线级（数据在库、但没被 `loadContext` 载 / 载了没用）**
 
-6. `yield_diagnosis`：把 `QualityLot` + `DefectRecord` 加进 `service.ts:4056` 的 `withExtended` 十类，
+6. ~~`yield_diagnosis`：把 `QualityLot` + `DefectRecord` 加进 `service.ts:4056` 的 `withExtended` 十类，
    按 `(baseId via Line, processName, inspectDate)` 聚合成逐日良率 `series` + `events`。
-   **这是把 §5② 从「造数据」降为「接线」的那一步。**
+   **这是把 §5② 从「造数据」降为「接线」的那一步。**~~
+   ⚠ **本条作废**（实施单 WO-ENGINE-SCOPE-FIX 实测更正，见 §5 更正框②b）：`QualityLot` 逐基地只有 8–14 个
+   不同检验日，而 `yieldDiagnosis` 的突变检测需要 **≥37 天**的逐日序列 → 照此接线只会把诚实的 `EMPTY`
+   换成 `LIVE` + 空结论。真源是 A8 时序 `yield:process`（90 天），接它需要**新数据通道**（`SolverContext` 无时序、
+   `deriveExtendedArgs` 同步）。断点已登记为 `G-YIELD-SERIES-SOURCE-MISMATCH`。
 7. `quote_margin.modelId` / `carbon_footprint.modelId`：加载 `BOMHeader`+`BOMDetail`，按 `modelId` 取真 BOM
    （现在用的 `Material.bomUnit` 是**全局常数**，与型号无关）。
 8. `capex_scenario`：把 `AnnualScenario`(3) / `CapexProject`(3) 接进入参派生，`scenarioKey` 从「只回显」变成真选情景；
@@ -575,6 +597,10 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
 - **建议登记的断点（交审核方裁，本单未回写本体）**：
   `G-SOLVER-SCOPE-ECHO`（作用域实参只回显不重算 · 7 处 · 静默错答）与
   `G-SOLVER-SCOPE-DEAF`（作用域实参完全忽略 · 16 处 · 其中 3 处有诚实兜底）。
+  → **✅ 已由实施单 WO-ENGINE-SCOPE-FIX 回写 `docs/SYSTEM-ONTOLOGY.md` §8 断点表**（三条**表行**，非仅正文描述）：
+  `G-SOLVER-SCOPE-ECHO`（◐ 2/7 已闭）· `G-SOLVER-SCOPE-DEAF`（◐ 1/16 已闭）·
+  `G-YIELD-SERIES-SOURCE-MISMATCH`（❌ 未修·本表 §5② 判定作废的那条）。
+  同时把 `G-DERIVED-INTENT-SLOT-DEAF` 行尾的「引擎层作用域维**未闭**」改成「**部分闭**」并指向上述两条。
 
 ---
 
@@ -600,3 +626,88 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
    且 `seed.ts:631` 在派生意图时把它改绑成 `mrp_netting`。本表按 `mrp_netting` 取证。
    **`sop_balance` 工作流本体没跑。**
 8. **没跑 gate、没跑全量 datacore vitest**（工单硬约束）。本单只跑了三个包的 `build`（全部 RC=0）。
+
+---
+
+## 10. 收口 · WO-ENGINE-SCOPE-FIX 修了哪些 / 剩哪些（分支 `claude/handoff-wo-engine-scope-fix`）
+
+> 本节由**实施单**回填。取证在前（§1–§9 一字未改，除 §5②/§7-6 两处**加了更正框**），实施在后。
+> 所有数字**实跑**（内存态 `makeApp + seedBattery(seed 42)` + 真 HTTP inject `/a/v1/solvers/:key/invoke`）。
+> 硬约束遵守：未跑 `scripts/gate.sh`、未跑全量 datacore vitest；只跑相关文件，退出码显式捕获（`cmd > log 2>&1; echo RC=$?`）。
+
+### 10.1 已修 3 处（全部 = §7 第一梯队「一行级」）
+
+| # | 求解器 · 维 | 病灶（file:symbol） | 修法 | 实测差分（seed 42） |
+|---|---|---|---|---|
+| 1 | `carbon_footprint` · **基地** | `apps/datacore/src/solvers/extended.ts` `deriveExtendedArgs` `case "carbon_footprint"`：`(c.energyMeters ?? []).map(props)[0]` | 认 `baseName` **与** `base` 两键 → `resolveBaseRef`（**单一出处**·认 baseId/中文名/`obj_base_` 前缀/近指）→ 匹 `EnergyMeter.baseId`；解析不到 / 该基地无电表 → `AMBIGUOUS_SCOPE` 400；回显位归一成**真正被算的那个基地**的规范名 | `energyCarbon`：成都 1.3041→**1.2082**、枣庄 1.3041→**1.8011**、江门 1.3041→**0.9245**（修前三者恒等）；`total` 349.6151 → 349.5192 / 350.1121 / 349.2355 |
+| 2 | `lta_gap` · **物料** | 同文件 `case "lta_gap"`：`mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0]` | ① 补匹 `Material.name`（matId 精确 → name 精确·两层皆精确无近指·R6）；② **删 `?? mats[0]` 静默兜底**（与已闭 `G-ARG-DROP-SEAM` 同形）→ 匹不到即 400 | 「三元正极」：`netDemand` 21637.68→**24255.28**、`coverage` 0.5184→**0.6029**、`gap` 10420.0133→**9630.9467**、`po[].latestOrderLeadDays` 14→**26**；且「三元正极」与 `pos_ncm` 抹掉回显位后**逐字节相同** |
+| 3 | `risk_timeline` · **基地**（#117） | `apps/datacore/src/solvers/risk.ts` `riskTimeline`：`if (args.base && args.factor)` 双键守卫 | 拆成「先解析 base（`resolveBaseId`·解析不到即 400）→ 有 base 无 factor 则**按 base 过滤后跑该基地全部因子**（复用**同一套** pairs/去重/allFactors 机制·不另起算法）→ 且该基地 `forced=true`（不因无因素越线而整张卡消失）」 | `{base:"zaozhuang"}`：修前 8 张卡 `[jiangmen,handan,zigong,xinyang,changzhou,chengdu,jinhua,hefei]`（枣庄不在其中）→ 修后 **1 张·`baseId=zaozhuang`**；枣庄 `peak 97.7758`/受影响 1 单 vs 常州 `peak 97.9849`/5 单；`{base:"火星基地"}` 200→**400 `unknown base`** |
+
+**为什么 #3 选「过滤后返回全部因子卡」而不是「诚实要求补 factor」**（工单要求写清理由）：
+① 数据齐（`Base` 13 行）、算法齐（逐 `base×factor` 的 `tensionSeries` 本来就在跑），没有理由把一个**能答**的问题变成反问；
+② S03 的问句就是「常州**为什么**越线」——因素恰恰是**答案**不是前提，要求先给 factor 等于要求用户先知道答案；
+③ 全因子路走的是与全网路**同一套** pairs/去重/`allFactors` 机制（不是第二套算法），故「某基地 × 全因素」与「全网 × 全因素」口径天然一致、不会漂移。
+
+### 10.2 门：差分门 + 变异反证（`apps/datacore/test/engine-scope-fidelity.seam.test.ts`·14 例）
+
+**不是状态门（"断言实参传对了"），是差分门**：同一次调用**只换作用域实参的值** → 断言**输出真的不同**，
+且不同的那部分**等于该实体自己的真数据**（期望值一律从对象库真读，**不写死金值**）——
+数据半（`Base`/`EnergyMeter`/`Material` 真值）或引擎半（作用域路由）**任一半掉即红**（SEAM-GATE）。
+
+**变异反证：三处修法逐个改回原样，对应断言全部真红（原文）**
+
+```
+① carbon 退回 energyMeters[0] → 4 failed | 10 passed
+   AssertionError: 成都 的 energyCarbon 应取该基地电表（1.549×0.78）: expected 1.3041 to be close to 1.2082
+   AssertionError: expected '{"modelId":"4680-NCM","total":349.615…' not to be '{"modelId":"4680-NCM","total":349.615…'
+   AssertionError: expected '' to be '成都'            （回显位归一）
+   AssertionError: expected 200 to be 400              （诚实缺席）
+   —— A②/B 两组 10 例仍绿（隔离度正确：只咬自己那处）
+
+② lta_gap 退回「只匹 matId + ?? mats[0]」 → 3 failed | 11 passed
+   AssertionError: expected '{"month":"2026-07","netDemand":21637.…' to be '{"month":"2026-07","netDemand":24255.…'
+   AssertionError: expected 21637.68 not to be 21637.68
+   AssertionError: expected 200 to be 400
+
+③ risk.ts 退回双键守卫 → 4 failed | 10 passed
+   AssertionError: 问 zaozhuang 却返回了别的基地的卡：["jiangmen","handan","zigong","xinyang","changzhou","chengdu","jinhua","hefei"]:
+     expected [ Array(8) ] to deeply equal [ 'zaozhuang' ]
+   AssertionError: expected '{"horizon":30,"threshold":85,"dataMod…' not to be '{"horizon":30,"threshold":85,"dataMod…'  ×2
+   AssertionError: expected 200 to be 400
+```
+
+**加性证明（不给作用域实参 → 与改前逐字节一致）**：改前/改后各跑同一组 21 次真调用落盘 `diff -rq`，
+**11 份逐字节相同、10 份差异全部落在本单该变的那 10 次**：
+
+```
+逐字节相同（加性未破）：carbon_noargs · carbon_S20card({modelId:"4680-NCM",baseName:""}=S20 卡今天的真 preset)
+                        lta_noargs · lta_id_posncm · lta_name_lvbo(「铝箔」≡al_foil·顺带证明新旧路同解)
+                        risk_noargs · risk_h30 · risk_basefactor · yield_noargs · yield_base_zaozhuang
+差异（本单目标）：carbon_{chengdu,zaozhuang,jiangmen,baseid,nosuchbase} · lta_{name_zhengji,nosuchmat}
+                  risk_{base_zaozhuang,base_changzhou,base_cn_changzhou,nosuchbase}
+```
+
+**未改任何金值**（R6 字节锚 `risk_timeline({})` 走的是与改前**同一条**代码路径，`scopeBaseId=null` 时逐行等价）：
+`adversary-r6-golden-probe` / `action-adopt-mitigation.seam`（R6 向后兼容硬锚）实跑绿，未动一个数。
+
+**回归（只跑相关文件·32 个·RC 全 0）**：`adversary-r6-golden-probe` `action-adopt-mitigation.seam` `solvers`
+`genspec-extended` `solvers-extended` `rules-p3-payload` `rules-p3-payload-11solvers` `arg-drop-seam`
+`capacity-page-100pct` `decision-info-seam` `risk-perfactor-series` `datamode-provenance` `risk-tension-clamp`
+`adopt-mitigation-dispatch.seam` `decision-kernel-c1` `live-disposition-seam` `adversary-adopt-mitigation`
+`solver-context-lazy-loading.seam` `cockpit-counterfactual` `simclock` `features` `sandbox-d4-aggregates.seam`
+`case-severity-closure` `sop-actions` `base-slot-unify-engine.seam` `base-id-fidelity-seam` `pull-target`
+`ontology-core` `catalog` `databuilder` `demo-chain-provenance` `generic-solvers-http-e2e` → **241 例全绿**。
+本体门 `check-system-ontology` / `check-ontology-anchors` / `check-ontology-descriptions` /
+`check-ontology-writeback` 四门 RC=0。
+
+### 10.3 没做的（逐条说明，不含"应该差不多"）
+
+| 项 | 状态 | 理由 |
+|---|---|---|
+| **C 组 `yield_diagnosis` 接线** | **做不动（且不该照工单那样接）** | 见 §5 更正框②b：照工单接 `QualityLot`+`DefectRecord` 会把今天诚实的 `EMPTY` **降级成 `LIVE` + 空结论**。真源在 A8 时序（`yield:process`·90 天），接它需要**新数据通道**（`SolverContext` 今天无时序，`deriveExtendedArgs` 是同步纯函数），超出本单范围边界。已登记为 `G-YIELD-SERIES-SOURCE-MISMATCH`。 |
+| `quote_margin` 客户维 | 不在本单 | 数据层断（欠账 #118），工单明确排除 |
+| `kit_readiness` 库存侧基地维 | 不在本单 | 数据层工作量，工单明确排除 |
+| A 档剩余 5 处只回显 | 未修 | `changeover_sequence.lineId`（数据层 30/30 恒 null）· `carbon_footprint.modelId`（需接 BOM 两类）· `mitigation_select.baseName`（tightness 需按基地派生）· `capex_scenario.scenarioKey`（需接 AnnualScenario/CapexProject）· `quarterly_gap.quarter`（时间标签·危害低）。均属§7 第二梯队及以下，本单只做第一梯队 |
+| §7-14 横切「给所有带作用域维的求解器加 `scope` 字段」 | 未做 | `risk_timeline` 的输出形状由 `packages/contracts` 的 `RiskTimelineOutputSchema` 定义（**契约包越界**）；`carbon_footprint`/`lta_gap` 加 `scope` 会破坏本单要证的「不给实参时逐字节一致」。建议单开一单统一做，届时同步 `SOLVER_OUTPUT_SHAPES` 与契约 |
+| 端到端（QOS `/b/v1/queries` → SSE）未跑 | 未跑 | 与 §9.1 同一边界：本单实测的仍是「引擎收到 `base=枣庄` 会算什么」，不是「用户在对话里问枣庄会看到什么」。agentcore 在本单范围边界之外（未改一行） |
+| pg 模式 | 未跑 | 同 §9.4，只跑内存态 `seed 42` |
