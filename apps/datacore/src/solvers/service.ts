@@ -34,6 +34,8 @@ import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } fr
 import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
+import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
+import { ChainScopeSchema } from "@platform/contracts";
 import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
 import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
@@ -159,6 +161,9 @@ export const SOLVER_KEYS = [
   // （drillType.drillId.drillField；drillValue = 该字段在仓储里的真值本身，单位与 days 分列不混），
   // 算不出来的环节诚实标 EMPTY + 原因，**不补 0**。
   "chain_loss_attribution",
+  // WO-SANDBOX-E3 全链阻滞点判定（卡点/堵点/断点三类机器可判 → ChainImpediment[]·contracts chain-sim §6）：
+  // 阈值**一律从规则表达式读回**（params.<名>/字面量/对象字段），引擎零阈值；读不回来诚实 UNKNOWN 不兜底。
+  "chain_impediments",
 ] as const;
 
 /** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
@@ -317,6 +322,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // `attribution` 是 S0 `LossAttribution[]` 原形；`evidence` 是与 steps 一一对应的 R13 下钻行；
   // `empty` 是诚实缺席清单（前端必须显式渲染 EMPTY，不许当成 0 隐掉）。
   chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
+  // WO-SANDBOX-E3 阻滞点扫描：impediments 是主表；unresolved/caveats/thresholds 是**诚实位**——
+  // 前端必须能渲染"哪条判据判不出来、为什么"与"这条结论的旋钮在哪"，故一并进形状契约（漏了就成盲区）。
+  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds"],
 };
 
 const DAY_MS = 86400000;
@@ -3085,6 +3093,30 @@ export class SolverService {
   }
 
   /**
+   * WO-SANDBOX-E3 · 全链阻滞点扫描（卡点/堵点/断点 → `ChainImpediment[]`，contracts `chain-sim.ts` §6）。
+   *
+   * 本方法只做 IO（载上下文 + 载 MaterialBalance + 解析 scope），判定全在纯函数 `detectChainImpediments`
+   * 里（R6：同输入同输出，无时钟/随机）。
+   *
+   * R-ARG-FIDELITY：`businessTypes` / `modelIds` 两维本判定器**不支持** —— 显式拒绝而不是静默返全域
+   * （"信阳→全 12 基地"那族 plausible-but-WRONG 正是这么来的）。业务线 scope 入口属 WO-SANDBOX-E2。
+   */
+  private async chainImpediments(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const rawScope = (args.scope ?? {}) as Record<string, unknown>;
+    if (rawScope.businessTypes !== undefined || rawScope.modelIds !== undefined) {
+      throw validationError(
+        "chain_impediments 暂不支持 scope.businessTypes / scope.modelIds 维度过滤 —— " +
+          "拒绝静默返全域（R-ARG-FIDELITY）；业务线 scope 入口见 WO-SANDBOX-E2",
+      );
+    }
+    const parsed = ChainScopeSchema.safeParse(rawScope);
+    if (!parsed.success) throw validationError(`scope 不合法：${parsed.error.issues.map((i) => i.message).join("；")}`);
+    const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
+    const materialBalances = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
+    return detectChainImpediments({ c, materialBalances, scope: parsed.data });
+  }
+
+  /**
    * sop 视图 ④ / cockpit P5 量·价·本·利科目表（净室读对象图,确定性 R6）：读 FinancePlan（收入/成本/毛利 预算vs滚动）
    * + DemandSegment（结构归因）→ 科目表 + 毛利率行（预算/滚动/差pp，C15）+ 归因文案（储能占比拉低）。
    */
@@ -4197,6 +4229,9 @@ export class SolverService {
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
+    // WO-SANDBOX-E3：需 SolverContext（规则快照/工序/产线/批次）**且**需 MaterialBalance
+    //（后者不在核心 10 类也不在扩展 10 类里 —— mrp_netting 同样自行读取），故先于通用 loadContext 拦截。
+    if (solverKey === "chain_impediments") return this.chainImpediments(ctx, args);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），

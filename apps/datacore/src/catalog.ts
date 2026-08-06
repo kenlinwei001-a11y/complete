@@ -143,6 +143,23 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
     tags: ["本体", "遍历", "查询", "关联", "聚合", "graph", "traversal", "join"],
     domain: "generic",
   },
+  // WO-SANDBOX-E3 全链阻滞点判定器（卡点/堵点/断点三类机器可判 → ChainImpediment[]）。
+  {
+    key: "chain_impediments",
+    name: "全链阻滞点扫描",
+    description:
+      "全链扫描产出卡点/堵点/断点三类阻滞点（ChainImpediment[]）：卡点=资源受限·通过率低于需求（硬容量夹定）· 堵点=排队积压/在制在途堆积 · 断点=链路中断（缺料/提前期/算不出来）。三类互斥，同 locus 同时命中时按规则声明的利用率红线裁决（达线=卡点）。每条阻滞点带 evidence{ruleKey, ruleParamKey, metricValue, threshold, unit} 可溯源到具体哪条规则的哪个旋钮（R13）；阈值一律从规则表达式读回（params.<名>/字面量/对象字段），引擎内零阈值 —— 改规则即改判定。判不出来的判据诚实落 unresolved[] 并说明原因，绝不给默认阈值凑一个像样的判定。",
+    argHints: { scope: "范围 {baseIds?:[]}（businessTypes/modelIds 暂不支持·显式拒绝不静默返全域）" },
+    answersQuestions: [
+      "全链哪里有卡点堵点断点",
+      "产能被什么夹住了",
+      "哪些环节在堆积",
+      "链路在哪里断了",
+      "系统替我找出该推演什么",
+    ],
+    tags: ["阻滞点", "卡点", "堵点", "断点", "全链扫描", "impediment", "bottleneck", "congestion", "break"],
+    domain: "generic",
+  },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */

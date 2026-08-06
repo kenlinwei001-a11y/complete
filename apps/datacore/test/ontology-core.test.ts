@@ -488,8 +488,13 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
     // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 48（WO-CEO-2 gap_attribution + WO-CEO-3 decision_play）。
     // 双占 reconcile：WO-PORTFOLIO-OPTIMAL portfolio + WO-B base_capacity_outlook 两条 handoff 各自 54→55·合两条 → 56。
-    // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）= 57
-    expect(SOLVER_KEYS.length).toBe(58); // …+ WO-SANDBOX-E1 chain_loss_attribution（推演沙盘·环节级损失归因·口径走 S0 冻结契约·Σ非增值 pct==100%）
+    // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）→ 57
+    // ★ 并线对账（#101 预判即中）：E1 与 E3 **各自**把金值从 57 提到 58，两条 handoff 一起并 → **59**。
+    //   两边分开跑都绿、合起来必红 —— 这正是「绿测试≠能用·断在接缝」的教科书形态，也是本仓
+    //   要求「金值/注册即更」的由来：漏对账就会把 59 写成 58，然后一路绿到部署才炸。
+    //   +58 = WO-SANDBOX-E1 chain_loss_attribution（环节级损失归因·Σ非增值 pct==100%）
+    //   +59 = WO-SANDBOX-E3 chain_impediments（全链阻滞点判定·卡点/堵点/断点三类）
+    expect(SOLVER_KEYS.length).toBe(59);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
