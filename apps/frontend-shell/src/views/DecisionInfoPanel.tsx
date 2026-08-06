@@ -11,7 +11,8 @@ import { Provenance } from "@/components/Provenance";
  * 实测（本单 dev 在基线 704da3d7 上 `grep -rn "\.exposure\|exposureOrder\|doNothing" apps/frontend-shell/src`）：
  * 命中的只有 `DecisionPlayView.tsx:187` 的 `o.exposure`（那是 decision-engine 的 `DecisionOption.exposure`，
  * 同名不同物），以及各处 `view.options`（ViewConfig 的渲染器配置，同名不同物）。真消费方 **0 个**。
- * 于是本体 §8 `G-RISK-NO-DECISION-INFO` 只能诚实标 ◐。
+ * 于是本体 §8 `G-RISK-NO-DECISION-INFO` 此前只能诚实标 ◐（引擎半闭、前端半未接）；
+ * 本文件 + `test/decision-info-reachable.test.tsx` 是它推向 ✅ 所缺的那一段。
  *
  * ## 本文件的纪律（逐条对应契约里那些"诚实缺席"的设计）
  * 1. **EMPTY 不许渲染成 0 或空白** —— 那是把「不知道」说成「不用等 / 不用赔」，是本仓一直在治的病。
