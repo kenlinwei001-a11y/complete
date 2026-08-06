@@ -17,7 +17,7 @@ import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-g
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
-import { capacityForecast, computeByProcessModel, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
+import { capacityForecast, computeByProcessModel, computeRollup, curveMult, patchCapacityContext, type ForecastArgs } from "./capacity.js";
 import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
@@ -476,6 +476,11 @@ export class SolverService {
     // WO-Phase3-B §3.3：apply 空但给了本体遍历查询（rootType/select 或 nl）→ fallback 到 Query Engine
     //（本体遍历 + 假设注入 overrides + 派生重算），输出必带 before/after(deltas) + provenance。
     const apply = Array.isArray(args.apply) ? (args.apply as { objectType: string; objectId: string; prop: string; value: unknown }[]) : [];
+    // WO-CAPLIVE-TRUECHAIN（数据+引擎接缝·治 G-CAPACITY-YIELD-DERIVATION 前端半）：grain + apply → 走真产能链
+    //（capacity_forecast.byProcessModel Σp50 before/after·克隆 ctx 扰动重算），而非 ontology-core recompute——
+    // demo 电池本体产能/良率原子因子（Process.yield_baseline 等）无下游派生边·recompute 恒空 → 前端拨杆空壳。
+    // 无 grain → 原 recompute 路径不变（ProjectSim 动态杠杆零回归）。
+    if (str(args.grain) && apply.length > 0) return this.capacityInferenceApply(ctx, args, apply);
     if (apply.length === 0 && (args.rootType !== undefined || args.select !== undefined || typeof args.nl === "string")) {
       return this.ontologyQuery(ctx, args);
     }
@@ -615,12 +620,13 @@ export class SolverService {
    * 候选原子因子 = `CapacityFactorBinding` 里 writable 且 grain 匹配的落点（作用域随 grain/modelId/processKey/factors 收窄）；
    * 每候选取作用域内真对象实例，±ε 扰动**克隆 ctx**（无副作用·不落库·不 mutate 原对象）重算 byProcessModel Σp50 →
    * 敏感度 = Δ(Σp50)/ε（R6 确定·无 Date/random），按 |敏感度| 排序 top-K。不改 recompute/capacity 数学（薄反推层）。
-   * args: { mode:"levers", grain, modelId(必填·定位型号), processKey?, factors?, topK?, epsilon? }。
+   * args: { mode:"levers", grain, modelId?(合法→单型号·缺省/非法 base 名→多型号聚合), processKey?, factors?, topK?, epsilon? }。
    */
   private async discoverCapacityLevers(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const grain = str(args.grain) as FactorGrain | "process-model";
     const modelId = str(args.modelId);
-    if (!modelId) throw validationError("discoverLevers grain 作用域需 modelId 定位型号（capacity 反推）");
+    // WO-CAPLIVE-TRUECHAIN：modelId 缺省或非法（base 级活台传 base 名·非型号）→ 多型号聚合（Σ over 全部认证型号）；
+    // 传合法 modelId → 单型号（现有 capacity-atom-factor 调用字节不变）。不再对缺 modelId 抛错（base 级需聚合）。
     const processKey = args.processKey ? str(args.processKey) : undefined;
     const epsilon = num(args.epsilon, 0.02) || 0.02;
     const topK = Math.max(1, Math.floor(num(args.topK, 6)));
@@ -633,12 +639,16 @@ export class SolverService {
     );
 
     const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
-    const cert = c.certByModel.get(modelId);
+    // 单型号（合法 modelId）vs 多型号聚合（缺省/非法 modelId·base 级活台）：目标 = Σ over models 的 byProcessModel p50。
+    const models = modelId && c.certByModel.has(modelId) ? [modelId] : [...c.certByModel.keys()];
     const empty = { levers: [] as unknown[], deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes: [] as string[] };
-    if (!cert || cert.size === 0) return empty;
-    const certBases = new Set([...cert.keys()]);
-    const total = (rows: { p50: number }[]): number => round(rows.reduce((s, r) => s + r.p50, 0), 6);
-    const baseline = total(computeByProcessModel(c, modelId));
+    if (models.length === 0) return empty;
+    const certBases = new Set(models.flatMap((m) => [...(c.certByModel.get(m)?.keys() ?? [])]));
+    if (certBases.size === 0) return empty;
+    const modelLabel = models.join(",");
+    const total = (ctx2: SolverContext): number =>
+      round(models.reduce((s, m) => s + computeByProcessModel(ctx2, m).reduce((a, r) => a + r.p50, 0), 0), 6);
+    const baseline = total(c);
 
     // typeKey → ctx 对象数组（仅 capacity 链相关类型；ctx 无该类型 → 空，诚实不臆造）。
     const arrayOf = (typeKey: string): ObjectInstance[] => {
@@ -663,18 +673,6 @@ export class SolverService {
       if (typeKey === "Material") return o.props.isKeyMaterial === true || (c.materials ?? []).every((m) => m.props.isKeyMaterial !== true);
       return true;
     };
-    // 克隆 ctx 并 patch 单对象单属性（浅克隆相关数组·不 mutate 原对象·R6 无副作用）。
-    const patch = (typeKey: string, objId: string, prop: string, value: number): SolverContext => {
-      const bump = (arr: ObjectInstance[]): ObjectInstance[] => arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o));
-      switch (typeKey) {
-        case "Process": return { ...c, processes: bump(c.processes) };
-        case "Equipment": return { ...c, equipment: bump(c.equipment) };
-        case "Line": return { ...c, lines: bump(c.lines) };
-        case "Material": return { ...c, materials: bump(c.materials ?? []) };
-        default: return { ...c, [`__${typeKey}`]: undefined } as unknown as SolverContext;
-      }
-    };
-
     const levers: Record<string, unknown>[] = [];
     for (const b of cands) {
       const objs = arrayOf(b.objectType)
@@ -684,8 +682,8 @@ export class SolverService {
       let best: { objectId: string; currentValue: number; sensitivity: number } | null = null;
       for (const o of objs) {
         const cur = num(o.props[b.prop]);
-        const c2 = patch(b.objectType, o.id, b.prop, cur + epsilon);
-        const sensitivity = round((total(computeByProcessModel(c2, modelId)) - baseline) / epsilon, 6);
+        const c2 = patchCapacityContext(c, b.objectType, o.id, b.prop, cur + epsilon);
+        const sensitivity = round((total(c2) - baseline) / epsilon, 6);
         if (!best || Math.abs(sensitivity) > Math.abs(best.sensitivity)) best = { objectId: o.id, currentValue: cur, sensitivity };
       }
       if (!best || best.sensitivity === 0) continue; // 无下游影响 → 非有效杠杆（诚实空·不臆造）
@@ -700,7 +698,7 @@ export class SolverService {
         sensitivity: best.sensitivity,
         provenance: {
           src: "capacity_forecast · byProcessModel(±ε)",
-          formula: `∂(Σ byProcessModel.p50 · model=${modelId}) / ∂(${b.objectType}.${b.prop})（ε=${epsilon}）`,
+          formula: `∂(Σ byProcessModel.p50 · model=${modelLabel}) / ∂(${b.objectType}.${b.prop})（ε=${epsilon}）`,
           factorBinding: `${b.mark} ${b.factorName}`,
         },
       });
@@ -713,6 +711,63 @@ export class SolverService {
     );
     const top = levers.slice(0, topK);
     return { levers: top, deltas: [], rows: [], affectedObjects: 0, count: top.length, rootTypes: [...new Set(top.map((l) => String(l.objectType)))] };
+  }
+
+  /**
+   * WO-CAPLIVE-TRUECHAIN · 产能活台真重算（generic_inference · grain + apply·治 G-CAPACITY-YIELD-DERIVATION 前端半）。
+   * 前端产能活台拨杆（DynamicLeverPanel grain='process-model'）拖动原子因子（Process.yield_baseline / Equipment.oee_current /
+   * Material.onHand …）时，不走 ontology-core recompute（demo 本体这些因子无下游派生边·恒空 → dataMode:EMPTY 空壳），
+   * 改走**产能金字塔代码链**：克隆 ctx（patchCapacityContext·不 mutate·R6）套假设值，重算 capacity_forecast.byProcessModel
+   * 逐工序×型号 Σp50，按 `${baseId}|${process}|${model}` 配对 before/after → p50 真变的格出 delta（真产能增益）。
+   * modelId 缺省/非法（base 级活台传 base 名·非型号）→ 多型号聚合（Σ over 全部认证型号）；合法 modelId → 单型号。
+   * deltas 全来自 computeByProcessModel 真值（KILL-MOCK-RED·缺型号/空 cert → dataMode:EMPTY 不臆造·绝不写死数字）。
+   * DynamicLeverPanel 现有渲染读 deltas/rows/affectedObjects/count/capGain → 直接可用（契约 additive·shapeKeys 允许额外键）。
+   */
+  private async capacityInferenceApply(
+    ctx: AuthCtx,
+    args: Record<string, unknown>,
+    apply: { objectType: string; objectId: string; prop: string; value: unknown }[],
+  ): Promise<Record<string, unknown>> {
+    const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
+    const modelId = str(args.modelId);
+    const models = modelId && c.certByModel.has(modelId) ? [modelId] : [...c.certByModel.keys()];
+    const rootTypes = [...new Set(apply.map((a) => a.objectType))];
+    if (models.length === 0) {
+      return { deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes, dataMode: "EMPTY", note: "型号无认证基地·无产能链" };
+    }
+    // 逐工序×型号 p50 索引（key=`${baseId}|${process}|${model}`·Σ over models）。
+    const rowsOf = (ctx2: SolverContext): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const model of models)
+        for (const r of computeByProcessModel(ctx2, model)) m.set(`${r.baseId}|${r.process}|${r.model}`, r.p50);
+      return m;
+    };
+    const before = rowsOf(c);
+    // 链式套假设值（多 override 逐个 patch·每步浅克隆·不 mutate 原 ctx·R6）。
+    let c2 = c;
+    for (const ov of apply) c2 = patchCapacityContext(c2, ov.objectType, ov.objectId, ov.prop, ov.value);
+    const after = rowsOf(c2);
+
+    const deltas: { objId: string; type: string; prop: string; before: number; after: number }[] = [];
+    for (const key of [...before.keys()].sort()) {
+      const b = before.get(key)!;
+      const a = after.get(key);
+      if (a === undefined || a === b) continue; // p50 未变 → 非 delta（apply 落点不在该格产能链上·诚实）
+      deltas.push({ objId: key, type: "ProcessModel", prop: "p50", before: b, after: a });
+    }
+    const sum = (m: Map<string, number>): number => [...m.values()].reduce((s, v) => s + v, 0);
+    return {
+      deltas,
+      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after })),
+      affectedObjects: deltas.length,
+      count: deltas.length,
+      rootTypes,
+      dataMode: deltas.length > 0 ? "LIVE" : "EMPTY",
+      capGain: round(sum(after) - sum(before), 4),
+      baselineTotal: round(sum(before), 4),
+      appliedTotal: round(sum(after), 4),
+      ...(deltas.length === 0 ? { note: "覆盖未改变任何工序×型号产能（apply 落点不在产能链上）" } : {}),
+    };
   }
 
   /**

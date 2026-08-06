@@ -630,6 +630,7 @@ function RiskDetailPanel({
           factors={[card.factor, ...bnFactors].filter((v, i, a) => !!v && a.indexOf(v) === i)}
           scopeObjectIds={[`base-${baseIdForScope}`]}
           modelId={card.base}
+          grain="process-model"
           targetType="Base"
           targetProp="weeklyCap"
           beforeLabel={zh.risk.live.leverBefore}

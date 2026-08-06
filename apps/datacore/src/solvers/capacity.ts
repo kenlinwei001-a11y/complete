@@ -300,6 +300,36 @@ export function computeByProcessModel(
 }
 
 // ---------------------------------------------------------------------------
+// WO-CAPLIVE-TRUECHAIN · patchCapacityContext —— 纯函数克隆 ctx 并 patch 单对象单属性
+// （浅克隆相关数组·不 mutate 原对象·R6 无副作用）。供 discoverCapacityLevers（±ε 敏感度探针）与
+// service.ts capacityInferenceApply（活台拨杆 before/after 真重算）共用同一克隆语义（单源·避免两处漂移）。
+// 仅 patch 产能链相关类型（Process/Equipment/Line/Material）；其余类型返回无变更浅克隆——apply 落点不在
+// 产能链上 → computeByProcessModel 读不到 → 无 delta → 上层诚实标 EMPTY（不臆造·KILL-MOCK-RED）。
+// ---------------------------------------------------------------------------
+export function patchCapacityContext(
+  c: SolverContext,
+  typeKey: string,
+  objId: string,
+  prop: string,
+  value: unknown,
+): SolverContext {
+  const bump = (arr: SolverContext["processes"]): SolverContext["processes"] =>
+    arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o));
+  switch (typeKey) {
+    case "Process":
+      return { ...c, processes: bump(c.processes) };
+    case "Equipment":
+      return { ...c, equipment: bump(c.equipment) };
+    case "Line":
+      return { ...c, lines: bump(c.lines) };
+    case "Material":
+      return { ...c, materials: bump(c.materials ?? []) };
+    default:
+      return { ...c };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // S1.2 capacity_forecast
 // ---------------------------------------------------------------------------
 

@@ -77,6 +77,7 @@ export function DynamicLeverPanel({
   targetType = "Base",
   targetProp = "oeeIndex",
   topK = 6,
+  grain,
   beforeLabel,
   adoptActionTypeKey = "采纳产能保障方案",
   onLiveState,
@@ -92,6 +93,9 @@ export function DynamicLeverPanel({
   targetType?: string;
   targetProp?: string;
   topK?: number;
+  /** WO-CAPLIVE-TRUECHAIN：产能活台 grain 作用域（'process-model'）→ 杠杆发现/重算走真产能链（capacity_forecast.byProcessModel
+   *  Σp50·后端 discoverCapacityLevers/capacityInferenceApply）。缺省（如 ProjectSimView）→ 通用 generic_inference recompute（零回归）。 */
+  grain?: string;
   /** "调整前" 参照量的标签（项目推演=P50·产能页=可用产能，R14 下发）。 */
   beforeLabel?: string;
   /** 采纳杠杆组合的 ActionType（默认产能保障方案·C5 门经审批草稿）。 */
@@ -104,8 +108,8 @@ export function DynamicLeverPanel({
 
   // ① 杠杆发现（generic_inference mode:levers·服务端算敏感度，随⑤瓶颈变·目标参数化）。
   const leversQ = useQuery({
-    queryKey: ["a", "levers", { factors, scope: scopeObjectIds, targetType, targetProp, topK }],
-    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType, targetProp, topK })).data.levers,
+    queryKey: ["a", "levers", { factors, scope: scopeObjectIds, targetType, targetProp, topK, grain, modelId }],
+    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType, targetProp, topK, ...(grain ? { grain, modelId } : {}) })).data.levers,
     retry: false,
   });
   const levers = useMemo(() => leversQ.data ?? [], [leversQ.data]);
@@ -134,7 +138,7 @@ export function DynamicLeverPanel({
   );
   const live = useLiveSolver<GenericInferenceOut>(
     "generic_inference",
-    activeApply.length > 0 ? { apply: activeApply } : null,
+    activeApply.length > 0 ? { apply: activeApply, ...(grain ? { grain, modelId } : {}) } : null,
     (raw) => raw as GenericInferenceOut,
   );
   const out = live.data;
@@ -171,13 +175,13 @@ export function DynamicLeverPanel({
   }, [levers, bounds]);
 
   const schemesQ = useQuery({
-    queryKey: ["a", "lever-schemes", schemes.map((s) => s.apply)],
+    queryKey: ["a", "lever-schemes", schemes.map((s) => s.apply), grain, modelId],
     enabled: schemes.length > 0,
     retry: false,
     queryFn: async () => {
       const results = await Promise.all(
         schemes.map(async (s) => {
-          const res = await runSolver("generic_inference", { apply: s.apply });
+          const res = await runSolver("generic_inference", { apply: s.apply, ...(grain ? { grain, modelId } : {}) });
           const d = res.data as GenericInferenceOut;
           const capGain = (d.deltas ?? []).reduce((acc, x) => acc + Math.max(0, Number(x.after) - Number(x.before)), 0);
           const ruleFlag = s.apply.some((a) => isOutsource(a.prop) && a.value >= c08Ratio);
