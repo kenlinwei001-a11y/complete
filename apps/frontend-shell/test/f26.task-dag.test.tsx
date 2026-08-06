@@ -8,7 +8,9 @@ import { db } from "@/mocks/db";
 
 const ctx = (view: string, withBase: boolean) => ({
   view,
-  selectedObjects: withBase ? [{ objectType: "Base", objectId: "base-常州", label: "常州" }] : [],
+  // WO-OBJID-REALFORM：用**后端真实对象 id** 形态（`obj_${type}_${pk}`）造上下文，别再拿只存在于
+  // 前端 mock 的 `base-常州` 当样板——这类"示例形态"正是错误形态扩散的源头。
+  selectedObjects: withBase ? [{ objectType: "Base", objectId: "obj_base_changzhou", label: "常州" }] : [],
   filters: {},
 });
 

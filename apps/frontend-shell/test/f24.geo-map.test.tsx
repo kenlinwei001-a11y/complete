@@ -3,6 +3,8 @@ import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
+import { baseObjectId } from "@/views/RiskBoardView";
+import { BASES } from "@/mocks/fixtures";
 
 describe("F24 · 地理视图（geo-map）", () => {
   it("离线断言：渲染期间无任何外部主机请求（仅打包资产 + mock 后端）", async () => {
@@ -53,9 +55,18 @@ describe("F24 · 地理视图（geo-map）", () => {
     const { router } = renderApp("/v/geo-map");
 
     await user.click(await screen.findByTestId("geo-bubble-常州"));
-    expect(useSessionStore.getState().selectedObjects).toEqual([
-      expect.objectContaining({ objectType: "Base", objectId: "base-常州", label: "常州" }),
-    ]);
+    // WO-OBJID-REALFORM：本视图一直传的是 `/a/v1/objects?type=Base` 回来的真 `b.id`（没自己拼串），
+    // 所以修的是 mock 那一头——fixtures 的 Base id 从 `base-常州`（只存在于前端）对齐成后端真形态
+    // `obj_base_changzhou`（datacore `obj_${type}_${pk}`，Base pk=`baseId`）。断言随之咬住真形态。
+    const sel = useSessionStore.getState().selectedObjects[0]!;
+    expect(useSessionStore.getState().selectedObjects).toHaveLength(1);
+    expect(sel.objectType).toBe("Base");
+    expect(sel.label).toBe("常州");
+    expect(sel.objectId).toBe("obj_base_changzhou");
+    expect(sel.objectId).not.toMatch(/^base-/);
+    expect(sel.objectId).toBe(baseObjectId("changzhou"));
+    // 接缝咬合：选中的 id 必须真在对象源里存在（mock 对象源 = fixtures.BASES，与真后端同形态）。
+    expect(BASES.map((b) => b.id)).toContain(sel.objectId);
     const card = screen.getByTestId("geo-base-card");
     expect(card).toHaveTextContent("产线数");
     expect(card).toHaveTextContent("8");

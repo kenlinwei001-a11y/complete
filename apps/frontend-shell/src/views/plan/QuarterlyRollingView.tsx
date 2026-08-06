@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchQuarterly, fetchRules } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
+import { baseObjectId } from "@/views/RiskBoardView";
 import type { ViewRendererProps } from "../registry";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
@@ -36,8 +37,14 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
   const maxV = Math.max(...data.rows.flatMap((r) => [r.dem, r.sup])) * 1.06;
 
   const gotoRisk = (baseId: string) => {
-    // 行尾链接 → risk-board 对应基地（写入 selectedObjects 作为对话上下文）
-    useSessionStore.getState().setSelectedObjects([{ objectType: "Base", objectId: `base-${baseId}`, label: baseId }]);
+    // 行尾链接 → risk-board 对应基地（写入 selectedObjects 作为对话上下文）。
+    // WO-OBJID-REALFORM：objectId 必须是**后端真实对象 id**（`obj_base_<baseId>`），走 `baseObjectId`
+    // 单一出处（RiskBoardView 已导出·勿另起一套规范化）。修前拼的是 `base-${baseId}` —— 只存在于前端
+    // mock 的形态，真部署下 agentcore objectRef 槽解析不到（`ontology.getObject` 只认对象 id / 主键值）
+    // → 槽位填不上 → 对话坞反问「请提供基地」，而用户视觉上明明已经选中。
+    // 注：`ltaDeviation[].baseId` 由后端 `planviews.ts ltaDeviation()` 取 `Shipment.props.baseId`（规范
+    // baseId，如 `hefei`），故此处 `baseObjectId(baseId)` 直出真形态；缺 baseId 的行根本不渲染本按钮。
+    useSessionStore.getState().setSelectedObjects([{ objectType: "Base", objectId: baseObjectId(baseId), label: baseId }]);
     navigate(`/v/risk?focus=${encodeURIComponent(baseId)}`);
   };
 

@@ -5,6 +5,7 @@ import { loginAs, renderApp } from "./utils";
 import { radarPolygonPoints, type RadarScores } from "@/views/sim/RadarChart";
 import { mockPlanGenerate } from "@/mocks/simSolvers";
 import { db } from "@/mocks/db";
+import { useSessionStore } from "@/store/sessionStore";
 
 /**
  * F16 · plan-generate（PRD-IND 1:1）：5 路径 → 壹/贰/叁（稳健·守盈利 / 均衡 / 进取·冲规模，§4.4 动态选择）；
@@ -69,5 +70,30 @@ describe("F16 · 规划建议（plan-generate）目标面板与三方案卡（1:
     expect(payload.targets.capexCap).toBe(20);
     expect(payload.targets.turnsFloor).toBe(6.0); // 新增库存周转目标透传
     expect(payload.targets.hard.gm).toBe(true);
+  });
+
+  it("WO-OBJID-REALFORM：采纳方案不得往 selectedObjects 塞不存在的 PlanScheme 假引用（且不得清掉真选中态）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    // 用户先在别处选了一个**真**基地对象（真形态 id）。
+    useSessionStore.getState().setSelectedObjects([{ objectType: "Base", objectId: "obj_base_changzhou", label: "常州" }]);
+    renderApp("/v/plan-generate");
+
+    const recScheme = EXP.schemes.find((s) => s.pathKey === EXP.recommend && s.hardViol.length === 0)!;
+    await screen.findByTestId(`scheme-${recScheme.no}`);
+    await user.click(await screen.findByTestId(`adopt-scheme-${recScheme.no}`));
+    expect(await screen.findByText(/草稿已创建，待审批/)).toBeInTheDocument();
+
+    const sel = useSessionStore.getState().selectedObjects;
+    // ① `PlanScheme` 不是本体对象类型（datacore synthetic/service.ts 的 putAll 注册表里没有它）——
+    //    任何 objectId 都解析不到，写进去就是伪造。
+    expect(sel.some((o) => o.objectType === "PlanScheme")).toBe(false);
+    expect(sel.some((o) => /^scheme-/.test(o.objectId))).toBe(false);
+    // ② 更要命的是修前用 setSelectedObjects **清空并独占**选中态 → 假引用变成 `$.selectedObjects[0]`，
+    //    而 agentcore 各意图槽位默认值正是 `defaultFrom: "$.selectedObjects[0]"`（seed.ts affected_orders 等）
+    //    → 采纳方案后再问任何问题都被反问「请提供基地」。真选中态必须原封不动。
+    expect(sel).toEqual([{ objectType: "Base", objectId: "obj_base_changzhou", label: "常州" }]);
+    // ③ 采纳这件事没有丢：方案快照仍落在 ActionDraft（真实可审计的落点）。
+    expect((db.actionDrafts[0]!.payload as { schemeNo: string }).schemeNo).toBe(recScheme.no);
   });
 });

@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { TIGHTNESS_METRIC } from "@platform/contracts";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
+import { orderObjectId } from "@/views/plan/OrderChainView";
+import { ORDERS } from "@/mocks/fixtures";
 
 describe("F23 · 订单全链聚合（order-chain）", () => {
   it("基地筛选联动明细与财务汇总条；行点击写入 selectedObjects；风险点 chips ≤4+折叠", async () => {
@@ -27,11 +29,20 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     await user.click(screen.getByTestId("oc-clear-filter"));
     await waitFor(() => expect(screen.getByTestId("oc-sum-orders")).toHaveTextContent("8"));
 
-    // 行点击 → 订单写入 selectedObjects
+    // 行点击 → 订单写入 selectedObjects。WO-OBJID-REALFORM：必须是**后端真实对象 id**
+    // （datacore `obj_${type}_${pk}`，Order pk=`so`），不是修前的 `ord-SO-10006`（哪儿都不存在的形态·
+    // agentcore objectRef 槽 `ontology.getObject` 必 notFound，且它占住 `$.selectedObjects[0]` 拖垮后续所有槽）。
     await user.click(screen.getByTestId("oc-row-SO-10006"));
-    expect(useSessionStore.getState().selectedObjects).toEqual([
-      expect.objectContaining({ objectType: "Order", objectId: "ord-SO-10006", label: "SO-10006" }),
-    ]);
+    const selOrder = useSessionStore.getState().selectedObjects[0]!;
+    expect(useSessionStore.getState().selectedObjects).toHaveLength(1);
+    expect(selOrder.objectType).toBe("Order");
+    expect(selOrder.label).toBe("SO-10006");
+    expect(selOrder.objectId).toBe("obj_order_SO-10006");
+    expect(selOrder.objectId).not.toMatch(/^ord-/);
+    // 单一出处（订单类唯一出处 = OrderChainView.orderObjectId）
+    expect(selOrder.objectId).toBe(orderObjectId("SO-10006"));
+    // 接缝咬合：这个 id 必须真能在**对象库**里找到同 id 的 Order（mock 对象源 = fixtures.ORDERS，与真后端同形态）。
+    expect(ORDERS.map((o) => o.id)).toContain(selOrder.objectId);
 
     // 聚合口径脚注原样保留
     expect(screen.getByTestId("oc-caliber")).toHaveTextContent("[T−7, T+14]");

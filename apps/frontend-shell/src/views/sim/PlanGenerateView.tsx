@@ -6,7 +6,6 @@ import { runSolver } from "@/api/endpoints";
 import type { Workspace } from "@/api/types";
 import { workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useFeature } from "@/workspace/featureGate";
-import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
@@ -114,9 +113,17 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   }, [gen.data, openKey]);
 
   const adoptScheme = (s: Scheme) => {
-    useSessionStore.getState().setSelectedObjects([
-      { objectType: "PlanScheme", objectId: `scheme-${s.no}`, label: `方案${s.no}·${s.name}（路径 ${s.pathKey}）` },
-    ]);
+    // WO-OBJID-REALFORM · 这里**不再写 selectedObjects**（修前写 `{objectType:"PlanScheme", objectId:`scheme-${s.no}`}`）。
+    // 诚实 > 好看 · 拒绝 > 静默错数：
+    //   ① `PlanScheme` **不是本体对象类型**——全仓只有这一行提到它；datacore `synthetic/service.ts` 的
+    //      `putAll(...)` 注册表里没有 PlanScheme，`ontology.getObject` 走 `listByType` 必空 → 永远 notFound。
+    //      方案是 `plan_generate` 求解器的**即时输出**（每次调参重算），根本没有可持久化的对象 id 可传，
+    //      换成 `obj_planscheme_壹` 之类只是把一个查不到的 id 换成另一个查不到的 id，仍是伪造。
+    //   ② 它不止是"没用"，而是**主动致害**：`setSelectedObjects` 会清空并独占选中态，让这条假引用变成
+    //      `selectedObjects[0]`——而 agentcore 各意图的槽位默认值正是 `defaultFrom: "$.selectedObjects[0]"`
+    //      （见 seed.ts 的 affected_orders / risk_root_cause / adopt_mitigation）。采纳方案后再问任何问题，
+    //      objectRef 解析 notFound → 必被反问「请提供基地」。删掉这条假引用即恢复真选中态。
+    // 采纳这件事本身没有丢：方案快照已经进了下面 ActionDraft 的 payload（真实可审计的落点）。
     action.mutate({
       actionTypeKey: "采纳经营方案",
       payload: {

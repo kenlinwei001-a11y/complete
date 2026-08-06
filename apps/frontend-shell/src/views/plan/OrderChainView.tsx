@@ -22,6 +22,22 @@ import styles from "./PlanViews.module.css";
 const SEG_COLOR: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.color]));
 const CHIP_LIMIT = 4;
 
+/**
+ * 订单对象的**真 objectId**（对齐后端 `synthetic/service.ts` 的 `obj_${type.toLowerCase()}_${pk}`；
+ * Order 的 pk = `so`，见 `putAll("Order", g.orders, "so")`）→ `obj_order_SO-10006`。
+ *
+ * 修前本视图传 `ord-${r.so}`——该形态**哪儿都不存在**（连 mock 自己的 `ord-001` 序号都对不上），
+ * 真部署下 agentcore objectRef 槽解析必 notFound（`ontology.getObject` 只认①对象 id ②主键属性值），
+ * 而它还会占住 `defaultFrom: "$.selectedObjects[0]"` → 后续任何意图都被反问「请提供…」。
+ *
+ * **为什么此处没有现成单源**：`affected_orders` 求解器的行只回 `so`（业务单号），不回对象 id
+ * （见 `apps/datacore/src/solvers/risk.ts affectedOrdersAggregate` 的 rows 形状与 `AffectedOrderRowVM`），
+ * 所以前端必须自己按 pk 规则拼。基地类已有 `RiskBoardView.baseObjectId` 作单一出处，订单类尚无——
+ * 本函数即订单类的唯一出处，**新增订单引用一律走这里，勿再就地拼串**。
+ * 已是 `obj_order_` 前缀则原样返回（幂等，兼容直接拿对象 id 的调用方，如 `ProjectSimView` 用 `o.id`）。
+ */
+export const orderObjectId = (so: string): string => (so.startsWith("obj_order_") ? so : `obj_order_${so}`);
+
 // PRD-IND-order-aggregate §4.5-A/C：经营数据看板 econTable 口径。
 // 假3 修（KILL-MOCK）：删 hashN + 写死 coef 现编库存。产能=真订单量；营收/毛利=量×SEG_REGISTRY 参考单价/毛利率
 // （可溯·R6 单一真相源·估算口径·缺数诚实 0）；成品/在制/原料库存平台暂无该维度真源 → 诚实"—"（抄 OrderAggView·G-DM-1）。
@@ -320,8 +336,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                   data-testid={`oc-row-${r.so}`}
                   style={{ cursor: "pointer" }}
                   onClick={() =>
-                    // 行点击 → 订单写入 selectedObjects（对话上下文）
-                    useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: `ord-${r.so}`, label: r.so })
+                    // 行点击 → 订单写入 selectedObjects（对话上下文）。objectId 走 orderObjectId 真形态单一出处。
+                    useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: orderObjectId(r.so), label: r.so })
                   }
                 >
                   <td>

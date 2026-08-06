@@ -54,9 +54,19 @@ export const ACCOUNTS: MockAccount[] = [
 // ---------------------------------------------------------------------------
 
 // DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（与 datacore 同源，灭漂移 G-5/R14）。
-// 前端表示 = {id=base-${name}, name, util, bottleneck, gwh, position, lines, prodYear, mainProduct, lon, lat}（值字节复现，R6）。
+//
+// WO-OBJID-REALFORM · `id` 必须与**后端真实对象 id 同形**：datacore `synthetic/service.ts` 物化对象时统一用
+// `obj_${type.toLowerCase()}_${pk}`（Base 的 pk = `baseId`）→ `obj_base_changzhou`。
+// 修前这里写的是 `base-${b.name}`（`base-常州`）—— 这个形态**只存在于前端 mock**，后端对象库里没有。
+// 危害不在 mock 本身，而在它给错误形态发了通行证：视图照着 mock 的形态往 selectedObjects 里写、
+// 测试又照着同一个 mock 形态断言 → **测试在为错误形态背书**，真部署下选中即失效
+// （agentcore `slots.ts` objectRef 槽 → `ontology.getObject` 只认①对象 id ②主键属性值 → notFound
+// → 槽位填不上 → 对话坞反问「请提供基地」，而用户视觉上明明已经选中）。
+// props 同步补 `baseId`：后端 Base 对象的主键属性就是它（`getObject` 的主键回落分支认它），
+// 缺了它前端就只能拿中文名去凑 id —— 正是 `base-常州` 的成因。
 export const BASES = BASE_REGISTRY.map((b) => ({
-  id: `base-${b.name}`,
+  id: `obj_base_${b.baseId}`,
+  baseId: b.baseId,
   name: b.name,
   util: b.util,
   bottleneck: b.bottleneck,
@@ -102,9 +112,13 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
   const qty = businessType === "commercial" ? Math.max(1, Math.round(rawQty * volFactors[i % volFactors.length]!)) : rawQty;
   // 乘用车部分客户提前交付（确定性·i%3）。
   const early = businessType === "passenger" && i % 3 === 0;
+  const so = `SO-${String(10001 + i)}`;
   return {
-    id: `ord-${String(i + 1).padStart(3, "0")}`,
-    so: `SO-${String(10001 + i)}`,
+    // WO-OBJID-REALFORM：同 BASES —— 真后端 Order 对象 id = `obj_order_${so}`（pk=`so`，见 datacore
+    // synthetic/service.ts `putAll("Order", g.orders, "so")`）。修前 `ord-001` 是 mock 自造序号，
+    // 与 `so` 毫无关系，任何拿它当 objectId 的视图在真部署下都解析不到对象。
+    id: `obj_order_${so}`,
+    so,
     cust,
     model,
     qty,
