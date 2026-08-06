@@ -248,8 +248,10 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 
 ## ⑤ 挂起分支定性
 
-`[实测]` `git ls-remote --heads origin` 共 **247** 条，其中 `claude/*` **230** 条。
-本地已有全部 248 个 remote-tracking ref，故下述定性全部是**本地实测**，不靠猜。
+`[实测]` `git ls-remote --heads origin` 共 **247** 条（`claude/*` **230** 条 + 17 条非 claude：
+`main` / `integ-wave-10` / `verify-skill3` / 14 条 `worktree-agent-*`）。
+本地 remote-tracking ref 与远端**逐条相同**（`comm -23` 差集为空，无陈旧引用），故下述定性全部是**本地实测**。
+下表统计**排除本单自己的分支** `claude/handoff-wo-mainline-reconcile`，基数 = 230。
 
 ### 5.1 定性方法（三层判据，不靠分支名）
 
@@ -264,16 +266,19 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 
 ### 5.2 定性结果
 
-| 类别 | 条数 | 判据 |
-|---|---|---|
-| **A · 已并入 wave4（真祖先）** | **37** | `--is-ancestor` = true |
-| **B · 已被等价并入（可弃）** | **114** | 非祖先，但 `wave4..branch` 的**每一条 subject** 都能在 wave4 全量历史里逐字找到 |
-| **C · 有 wave4 没有的文件（需逐条看）** | **41** | 文件存在判据命中 `ABSENT>0` |
-| **D · 非祖先、subject 有未匹配、但不新增任何 wave4 缺失文件** | 38 | 差异只在**已存在文件的内容**上（多为旧基线上的小改，已被后续重写覆盖） |
+`[实测]` 四类**互斥**（判据按 A → C → D → B 顺序落桶），逐条实跑得出：
 
-> 37 + 114 + 41 + 38 = 230。`[实测]` 各桶计数由脚本产出，和为 230 自洽。
+| 类别 | 条数 | 判据 | 处置 |
+|---|---|---|---|
+| **A · 已并入 wave4（真祖先）** | **36** | `--is-ancestor` = true | 可删 |
+| **B · 已被等价并入（可弃）** | **113** | 非祖先，`ABSENT=0` 且 `wave4..branch` 的**每条 subject** 都能在 wave4 全量历史里逐字找到 | 可删 |
+| **C · 带 wave4 没有的文件路径** | **40** | `ABSENT>0` | 逐条看，见 5.3 |
+| **D · 只有内容差异，无新路径** | **41** | `ABSENT=0` 但有未匹配 subject | 多为旧基线上的小改；见 5.4 |
 
-### 5.3 类别 C 逐条（**只有这 41 条里有可能藏着真价值**）
+> `[实测]` 36 + 113 + 40 + 41 = **230**，与 `claude/*` 总数（排除本单分支）**完全相等**，无重复无遗漏。
+> A 桶里包含 `claude/wave4-integration` 与 `claude/inspiring-gates-aqczjg` 自身（自洽性检查通过）。
+
+### 5.3 类别 C 逐条（40 条，**只有这里可能藏着真价值**）
 
 **C-1 · 现役 / 可能正在跑（2026-08-06，最高优先）**
 
@@ -282,25 +287,34 @@ const files = (await readdir(migrationsDir)).filter(f => f.endsWith(".sql")).sor
 | `claude/handoff-wo-engine-scope-forensics` | `def58937` (12:51) | `docs/WO-ENGINE-SCOPE-FORENSICS.md`（602 行） | **未并且仍有价值**。`[实测]` merge-base = `e20acb89`（wave4 倒数第 4 个提交）→ 它是**从 wave4 当前头附近切出去的活分支**，纯取证文档、不改实现。`[推理]` 极可能就是「另一个正在跑的 dev」。并线时**不要动它**，等它自己收口 |
 | `claude/kimi-accept-run` | `e2c7f7c8` (11:33) | `scripts/kimi-accept/` 7 个文件（含 2388 行真 Kimi 10×5 矩阵原始结果） | **未并且仍有价值**（验收取证资产）。`[实测]` 全部落在新目录 `scripts/kimi-accept/`，与 wave4 零路径重叠 → **并线零冲突**，可随时收编 |
 
-**C-2 · 08-06 05:43 那次容器重启的 autosave 遗留（9 条，全部 ahead=1~2）**
+**C-2 · 08-06 05:43 那次容器重启的 autosave 遗留（9 条）**
 
-`[实测]` 这 9 条的 tip 都是同一分钟（05:43:43）的 `autosave(...)` 快照，且它们的 merge-base 都在 wave4 历史的**较早处**。
-`[实测]` 三层判据结果：
+`[实测]` 这 9 条的 tip 都是**同一分钟**（05:43:43）的 `autosave(claude/handoff-*)` 快照
+—— 就是 `scripts/wo-autosave.sh` 在那次重启时抢救下来的东西。其中 2 条落 C 桶、7 条落 D 桶。
 
-| 分支 | wave4 缺的文件 | 定性 |
-|---|---|---|
-| `claude/handoff-wo-nl-robust` | `apps/agentcore/test/qos-nl-robust.test.ts` | **未并且仍有价值**（WO-NL-ROBUST 的门），`docs/SYSTEM-ONTOLOGY.md` 也有 11 行未并回写 |
-| `claude/handoff-wo-modeling-interactive` | `apps/datacore/test/modeling-provenance.test.ts` | **未并且仍有价值** |
-| `claude/handoff-wo-caplive-truechain` | 无新文件；改的是 `capacity.ts`/`service.ts`/`endpoints.ts` + 新测 `caplive-truechain.test.ts`（`[实测]` 该测试文件路径 wave4 **也没有**，但它在三点判据里落在 D 桶是因为 merge-base 更早——见下方注） | **未并·价值待判**：需人工看它改的 `service.ts` 是否已被 wave4 的 D2/DECISION-INFO 重写覆盖 |
-| `claude/handoff-fix-datacore-fake` / `claude/handoff-fix-frontend-fabricate` | 无 wave4 缺失路径 | **未并·价值待判**（改的都是 wave4 也在改的文件 → 冲突概率高） |
-| `claude/handoff-wo-live-endpoints` | 无 wave4 缺失路径（新增 `live-endpoints.ts` 等落在 D 桶） | **未并·价值待判** |
-| `claude/handoff-wo-slice-governance` / `-full` | 无 wave4 缺失路径 | **未并·价值待判** |
-| `claude/handoff-wo-gslive-live` | 无 wave4 缺失路径 | **未并·价值待判**（只改 `contracts/src/global-sim.ts`） |
+为了让审核方能直接排队，我另外实测了**每条分支改的文件与 wave4 那 86 个提交改的 105 个文件的交集**
+（交集 = 并的时候真会冲突的地方）：
 
-> **注（诚实标注）**：C-2 里几条我标了「新增文件 wave4 也没有」却没进 ABSENT 名单，
-> 是因为文件存在判据只统计**相对 merge-base 是 `A`（新增）**的路径；若该文件在 merge-base 时已存在（后被改），
-> 就不进这一列。**`[查不动]`：要把这 9 条逐条定死「有没有真价值」，必须真读它们改的 diff 并与 wave4 对拍，
-> 那已超出「纯文档对账」的范围，本单不做，明确交回审核方。**
+| 分支 | 改文件数 | 与 wave4 撞车 | 撞在哪 | 定性 |
+|---|---|---|---|---|
+| `claude/handoff-wo-nl-robust` | 2 | **1** | `docs/SYSTEM-ONTOLOGY.md` | **C 桶·未并且仍有价值**：`apps/agentcore/test/qos-nl-robust.test.ts` wave4 **确实没有**（实测 ABSENT）；本体 11 行回写也没并 |
+| `claude/handoff-wo-modeling-interactive` | 6 | **2** | `datacore/src/ontology.ts` · `synthetic/service.ts` | **C 桶·未并且仍有价值**：`apps/datacore/test/modeling-provenance.test.ts` wave4 **确实没有** |
+| `claude/handoff-fix-frontend-fabricate` | 7 | **0** | — | **D 桶·可低成本收编**：7 个文件 wave4 一个都没碰，纯前端「不许编数据」修复，撞车概率 0 |
+| `claude/handoff-wo-gslive-live` | 1 | **0** | — | **D 桶·可低成本收编**：只改 `packages/contracts/src/global-sim.ts`（wave4 未碰） |
+| `claude/handoff-wo-live-endpoints` | 5 | 1 | `datacore/src/app.ts` | **D 桶·价值待判**：4/5 干净 |
+| `claude/handoff-wo-slice-governance` | 2 | 1 | `datacore/src/app.ts` | **D 桶·价值待判** |
+| `claude/handoff-wo-slice-governance-full` | 9 | 1 | `datacore/src/app.ts` | **D 桶·价值待判**（是上一条的超集，二选一即可） |
+| `claude/handoff-wo-caplive-truechain` | 7 | 3 | `solvers/capacity.ts` · `solvers/service.ts` · `SYSTEM-ONTOLOGY.md` | **D 桶·冲突面中等**：撞在 wave4 改得最狠的 `solvers/service.ts` 上 |
+| `claude/handoff-fix-datacore-fake` | 6 | **5** | `solvers/extended.ts` · `solvers/risk.ts` · `solvers/service.ts` · `SYSTEM-ONTOLOGY.md` · `contracts/src/solvers.ts` | **D 桶·冲突面最大**：6 个文件里 5 个和 wave4 撞。**并线后最后再碰这条** |
+
+> **`[实测]` 纠正一处我自己差点写错的判断**：`apps/datacore/test/caplive-truechain.test.ts` /
+> `apps/agentcore/src/router/live-endpoints.ts` / `apps/datacore/src/ontology-governance.ts` /
+> `apps/frontend-shell/src/pages/admin/SliceInspector.tsx` / `packages/contracts/src/global-sim.ts`
+> —— 这几个看着像「分支新造的文件」，实际 **wave4 里全都已经有了**（`git rev-parse --verify -q 7340fdec:<path>` 全部命中）。
+> 分支带的是对它们的**后续修改**，不是新文件。**没追这一层就会把「改了一版」误报成「wave4 缺一个模块」。**
+>
+> **`[查不动]`**：这 9 条各自「那点改动到底还值不值」，必须真读 diff 并与 wave4 对拍才能定死，
+> 超出「纯文档对账」的范围，本单不做；上表给的是**冲突面**（可机器算），不是**价值判断**。
 
 **C-3 · 沙盘 S0/D1/D3/E1/E2/F3（6 条，08-05）——全部 `ABSENT=0`，已等价并入**
 
