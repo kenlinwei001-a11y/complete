@@ -73,10 +73,52 @@ if (hook) {
   console.log(`· 钩子：${hardcoded.length === 0 ? "断点动态抽取（不漂）" : "发现硬编码断点"}`);
 }
 
+// --- 5) 断点编号闭合：正文声称「闭了 G-XXX」→ §8 表里必须真有该编号 -----------
+//
+// 由来（2026-08-06 一天抓到两处，**都是人工对账翻出来的，没有任何门拦得住**）：
+//   · `G-PROCUREMENT-OPAQUE`：§2.H 白纸黑字写「闭 §8 G-PROCUREMENT-OPAQUE」，§8 表里 grep 不到。
+//   · `G-RISK-NO-DECISION-INFO`：§3 写「闭 G-RISK-NO-DECISION-INFO」，全仓仅此一处命中。
+//
+// 病的形态：**回写了描述、没回写登记 = 悬空引用**。后果不是笔误级的 ——
+//   本体自称「系统接线的单一来源」，照 §8 查断点的人会得出「不存在这道断点」，
+//   于是一道**已经被声明关掉**的坑，在唯一的权威清单里查无此项。
+//
+// 为什么此前没有门：锚点门只验 `file:line` 漂移（第 3 节验文件存在、check-ontology-anchors 验行号），
+//   没有任何一条验**编号本身的登记闭合**。两次都靠人肉发现 ⇒ 这不是偶发笔误，是判据缺失。
+//   —— 本仓一贯做法：同一个病出现第二次，就把它交给机器判，不再靠人记得。
+{
+  const H8 = onto.indexOf("## 8.");
+  if (H8 < 0) fail.push("本体缺 §8 断点登记章节（无法校核断点编号闭合）");
+  else {
+    // §8 表行形如 `| G-XXX | 描述 | 链路 | 状态 |` —— 只认**行首**的表格单元格，
+    // 正文里顺带提到的编号不算「已登记」（这正是要抓的那种情况）。
+    const sec8 = onto.slice(H8);
+    const registered = new Set([...sec8.matchAll(/^\|\s*(G-[A-Z0-9-]+)\s*\|/gm)].map((m) => m[1]));
+    // 正文里的「闭 G-XXX」「闭合 G-XXX」「关闭 G-XXX」声明（§8 之外的部分）。
+    // ⚠️ 一处「闭」后面可能挂**多个**编号，如 §7:877「闭 §8 G-DEAD-GATE-BY-POLICY 整类 + G-WRITEBACK-ONE-WAY」。
+    //    第一版正则只取紧跟其后的那一个 ⇒ 后面的编号漏检 —— 那正是本门要治的病本身
+    //    （拿一个覆盖不全的信号去断言「全查过了」）。故改为：命中「闭」后，在其后 120 字符窗口内**全取**。
+    const claimed = new Set();
+    for (const m of onto.slice(0, H8).matchAll(/(?:闭合?|关闭)\s*(?:§\s*8\s*)?(?=G-)/g)) {
+      const win = onto.slice(m.index, m.index + 120);
+      for (const g of win.matchAll(/\b(G-[A-Z0-9-]+)/g)) claimed.add(g[1]);
+    }
+    const dangling = [...claimed].filter((g) => !registered.has(g)).sort();
+    if (dangling.length) {
+      fail.push(
+        `正文声称已闭、§8 表里却查无此号（**悬空引用**：回写了描述没回写登记）：${dangling.join(", ")}` +
+          ` —— 修法：在 §8 补一行 \`| ${dangling[0]} | 病是什么 | 链路 | 状态 |\`，` +
+          `不要改正文把「闭」字删掉了事（那是把证据擦掉，不是把账记上）。`,
+      );
+    }
+    console.log(`· 断点编号：§8 已登记 ${registered.size} 个 · 正文声称已闭 ${claimed.size} 个 · 悬空 ${dangling.length} 个`);
+  }
+}
+
 // --- 结论 ------------------------------------------------------------------
 if (fail.length) {
   console.error("\n✗ 系统本体漂移门禁未通过（改了接线必须回写 docs/SYSTEM-ONTOLOGY.md）：");
   for (const f of fail) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log("\n✓ 系统本体与代码一致（事件 / 求解器 / 文件锚点）。");
+console.log("\n✓ 系统本体与代码一致（事件 / 求解器 / 文件锚点 / 断点编号闭合）。");
