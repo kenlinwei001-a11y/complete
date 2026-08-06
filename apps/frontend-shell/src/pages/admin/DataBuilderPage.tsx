@@ -25,7 +25,8 @@ function InPlaceApprovalPanel() {
   if (drafts.length === 0) return null;
   return (
     <div className="panel" data-testid="db-approvals" style={{ marginBottom: 14, borderColor: "var(--amber,#DD9551)" }}>
-      <div className="section-title">待审批补齐（就地批复，无需跳转） <span className="badge amber" data-testid="db-approval-count">{drafts.length}</span></div>
+      {/* WO-UNIT-MEANING：徽章此前只有裸数「3」——数的是**待批 Action 草稿条数**。草稿契约（actions.ts ActionDraft）无计数 unit，就近点明。 */}
+      <div className="section-title">待审批补齐（就地批复，无需跳转） <span className="badge amber" data-testid="db-approval-count">{drafts.length} 条待批</span></div>
       {drafts.map((d) => (
         <div key={d.id} data-testid={`db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
           <span className="badge">{d.actionTypeKey}</span>
@@ -124,7 +125,9 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
       {shown.map((g) => (
         <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px" }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>
-            {g.label} <span className="badge">{g.items.length}</span>
+            {/* WO-UNIT-MEANING：徽章此前是裸数——「规则 5」既可读成 5 条规则也可读成规则编号 5。
+                这里 g.label 是**品类名**（数据源/对象类型/规则…）而非被数之物的量词，故必须显式带"项"。 */}
+            {g.label} <span className="badge" data-testid={`comprehend-count-${g.key}`}>{g.items.length} 项</span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {g.items.map((it, i) => (
@@ -774,7 +777,8 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
     <div className="panel" style={{ marginBottom: 14 }} data-testid="wf-timeline">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         工作流运行时（持久化 · 可重入 · 可重试 · 可观测）{" "}
-        <span className="badge" data-testid="wf-count">{runs.length}</span>
+        {/* WO-UNIT-MEANING：徽章此前只有裸数——数的是**工作流运行实例条数**（下方每行一条 run），非步骤数。 */}
+        <span className="badge" data-testid="wf-count">{runs.length} 次运行</span>
         <label className="muted" style={{ fontSize: 11, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
           实时刷新
           <select data-testid="wf-live" value={liveMs} onChange={(e) => setLiveMs(Number(e.target.value))} style={{ fontSize: 11 }}>

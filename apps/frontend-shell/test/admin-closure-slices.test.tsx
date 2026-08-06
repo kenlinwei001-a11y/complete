@@ -40,5 +40,7 @@ describe("C7 · 切片编辑器（建切片→试切→入库）", () => {
     await user.click(screen.getByTestId("slice-preview"));
     const preview = await screen.findByTestId("slice-preview-result");
     expect(within(preview).getByTestId("slice-preview-nodes").textContent).toBe("2");
+    // WO-UNIT-MEANING：此前只有「节点 2 · 边 1」的裸数（2 是节点数还是层数/跳数？）→ 补计数单位并锁死
+    expect(within(preview).getByText(/节点/).textContent).toMatch(/节点\s*2\s*个 · 边\s*\d+\s*条/);
   });
 });

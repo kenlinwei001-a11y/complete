@@ -15,7 +15,9 @@ describe("F48 · 系统自我（meta）页", () => {
 
     // 摘要（八类元对象计数）
     const summary = await screen.findByTestId("meta-summary");
-    expect(within(summary).getByText(/Breakpoint: 8/)).toBeTruthy();
+    // WO-UNIT-MEANING：徽章此前是裸数「Breakpoint: 8」/「共 128」——补计数单位，点明数的是**本体节点个数**。
+    expect(within(summary).getByText(/Breakpoint: 8 个/)).toBeTruthy();
+    expect(within(summary).getByTestId("meta-total").textContent).toMatch(/^共 \d+ 个本体节点$/);
 
     // 影响分析：R14 → BFS 受影响节点
     const impact = screen.getByTestId("meta-impact");

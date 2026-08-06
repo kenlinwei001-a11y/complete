@@ -98,6 +98,10 @@ describe("F21 · 年度规划（annual-scenario）", () => {
     const curve = screen.getByTestId("aop-window-curve");
     expect(within(curve).getByTestId("aop-window-surplus-2027-Q1")).toHaveTextContent("过剩窗口 2027-Q1");
     expect(within(curve).getByTestId("aop-window-chart")).toBeTruthy();
+    // WO-UNIT-MEANING：纵轴此前是裸刻度（「1150」是万套？亿元？GWh？）→ 现落 caption + 轴名，
+    // 量纲单源沿用页面唯一单位常量 zh.aop.demandUnit（"万套/年"）取数量部分，粒度换成本曲线真实的季。
+    expect(within(curve).getByTestId("aop-window-axis-caption").textContent)
+      .toBe("纵轴：万套/季（需求 / 供给 / 缺口三序列同尺 · 年需求按季节权重卷积到季）");
   });
 
   it("拍板情景（catalog_admin + act.aop-finalize）→ actionType=AOP情景拍板 草稿", async () => {

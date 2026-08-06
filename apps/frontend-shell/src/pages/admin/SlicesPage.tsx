@@ -307,7 +307,8 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
         <div className="panel" data-testid="slice-preview-result" style={{ padding: 8 }}>
           <div className="section-title">试切子图（snapshot {preview.snapshotVersion}）</div>
           <div style={{ fontSize: 12 }}>
-            节点 <b data-testid="slice-preview-nodes">{preview.data.nodes.length}</b> · 边 <b>{preview.data.edges.length}</b>
+            {/* WO-UNIT-MEANING：与 SliceInspector 同口径——节点计"个"、边计"条"，避免裸数被读成层数/跳数。 */}
+            节点 <b data-testid="slice-preview-nodes">{preview.data.nodes.length}</b> 个 · 边 <b>{preview.data.edges.length}</b> 条
             {preview.data.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
           </div>
           <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>

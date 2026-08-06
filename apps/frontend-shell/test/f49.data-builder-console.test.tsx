@@ -23,6 +23,8 @@ describe("F49 · 数据构建发动机控制台 P1+P2（区2 理解 + 区4 快�
     // 全栈分组齐全：A 栈（对象/切片/规则/求解器/数据源）+ B 栈（意图/计划/工作流/技能/Agent/MCP/场景）+ KB
     for (const g of ["dataSources", "objectTypes", "sliceNeeds", "rules", "solverNeeds", "intentNeeds", "planNeeds", "workflowNeeds", "skillNeeds", "agentNeeds", "mcpNeeds", "sceneNeeds", "kbDocs"]) {
       expect(within(comprehension).getByTestId(`comprehend-${g}`)).toBeTruthy();
+      // WO-UNIT-MEANING：分组徽章此前是裸数（「规则 5」可读成规则编号 5）——label 是品类名不是量词 → 必须带"项"
+      expect(within(comprehension).getByTestId(`comprehend-count-${g}`).textContent).toMatch(/^\d+ 项$/);
     }
     // 条目内容可见（非 JSON dump）：工作流/Agent/场景读出的具体制品名
     expect(within(comprehension).getByText("risk_workflow")).toBeTruthy();

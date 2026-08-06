@@ -81,6 +81,17 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     expect(ledger).toHaveTextContent("delayDays");
     // #5 三线偏差复合图 + 问题聚合摘要 widget 渲染
     expect(screen.getByTestId("widget-demand-supply-gap")).toBeInTheDocument();
+
+    // WO-UNIT-MEANING · 图表纵轴口径：改前所有 chart widget 的 y 轴都是纯裸刻度（38000 是套数？OEE%？代价分？）。
+    // 现在每张图上方落一行可核验的口径 caption（jsdom 无 canvas，EChart 静默降级，故轴名同文案另落 DOM）。
+    // 单源：优先 `DashboardWidgetDef.unit`（后端补 unit 当天自动生效），无 unit 时退到 WidgetQueryDef 的真口径。
+    expect(screen.getByTestId("chart-axis-caption-trend-12m").textContent)
+      .toBe("纵轴口径：历史回放 history/bundle.trend（量纲见 widget 标题·接口未回传 unit，故只标口径不臆造单位）");
+    expect(screen.getByTestId("chart-axis-caption-demand-supply-gap").textContent)
+      .toBe("纵轴口径：历史回放 history/bundle.deviation（量纲见 widget 标题·接口未回传 unit，故只标口径不臆造单位）");
+    // timeseries 查询的图走"序列 · 粒度 · 聚合"口径（不是臆造的单位）
+    expect(screen.getByTestId("chart-axis-caption-oee-trend").textContent)
+      .toMatch(/^纵轴口径：序列 oee_daily · 按日均值/);
     const summary = await screen.findByTestId("widget-problem-summary");
     await waitFor(() => expect(within(summary).getByTestId("widget-summary-problems")).toBeInTheDocument());
     expect(within(summary).getByTestId("summary-problem-DELIVERY")).toHaveTextContent("交期");

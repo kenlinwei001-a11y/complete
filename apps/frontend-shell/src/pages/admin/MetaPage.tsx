@@ -50,8 +50,10 @@ export default function MetaPage() {
         <div className="section-title">本体落库摘要</div>
         {ontologyQ.data ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
-            <span className="badge">共 {ontologyQ.data.total}</span>
-            {Object.entries(ontologyQ.data.byKind).map(([k, n]) => <span key={k} className="badge">{k.replace("System", "")}: {n}</span>)}
+            {/* WO-UNIT-MEANING：徽章此前是「共 128」「Solver: 42」的裸数——数的是**已落库的本体节点条数**。
+                契约 meta-ontology.ts 的 total/byKind 是纯计数（无 unit 字段），故就近点明"个节点"。 */}
+            <span className="badge" data-testid="meta-total">共 {ontologyQ.data.total} 个本体节点</span>
+            {Object.entries(ontologyQ.data.byKind).map(([k, n]) => <span key={k} className="badge">{k.replace("System", "")}: {n} 个</span>)}
           </div>
         ) : <div className="empty-state" style={{ fontSize: 12 }}>未落库或无访问权 —— 点上方"重新落库"。</div>}
       </div>

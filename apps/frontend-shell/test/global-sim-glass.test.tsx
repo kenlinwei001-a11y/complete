@@ -25,7 +25,12 @@ describe("global-sim · 磨砂重设计 + 全局在先 + 双向下钻", () => {
     // 诚实徽标（绝不「数据库事实」）。
     expect(screen.getByTestId("global-sim-badge")).toHaveTextContent("推演结果");
     // Hero 产能占用矩阵热力（基地×窗口·从 capacityLedger 派生）。
-    await screen.findByTestId("global-sim-heatmatrix");
+    const heat = await screen.findByTestId("global-sim-heatmatrix");
+    // WO-UNIT-MEANING：热力格此前是裸数「87」——同一个量（产能占用率）在本页「业务类型」表里是带 % 的，
+    // 热力格漏 % 即歧义（87 套？87%？）。锁死带单位渲染。
+    const filled = within(heat).getAllByTestId(/^global-sim-heat-/).filter((td) => td.textContent!.trim() !== "");
+    expect(filled.length).toBeGreaterThanOrEqual(1);
+    for (const td of filled) expect(td.textContent).toMatch(/\d+%/);
     // 守恒台账通过。
     expect(screen.getByTestId("global-sim-verdict").textContent).toContain("守恒通过");
 

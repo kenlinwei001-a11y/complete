@@ -35,8 +35,9 @@ export default function ScenarioLauncherPage() {
       {data && data.items.length === 0 && <div className="empty-state">{zh.common.none}</div>}
       {byDomain.map(([domain, cards]) => (
         <div key={domain} style={{ marginBottom: 18 }}>
+          {/* WO-UNIT-MEANING：「供应链 · 6」此前完全裸奔——6 是场景卡数还是编号。场景列表契约无计数 unit，就近点明"个场景"。 */}
           <div className="section-title" data-testid={`launcher-domain-${domain}`}>
-            {domain} · {cards.length}
+            {domain} · {cards.length} 个场景
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
             {cards.map((c) => (

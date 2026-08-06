@@ -567,7 +567,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                           <td key={w} className={styles.heatCell} style={{ background: heatColor(util) }}
                             title={drillTip}
                             data-testid={`global-sim-heat-${b}-${w}`} data-util={Math.round(util * 100)}>
-                            {c && c.allocated > 0 ? (util * 100).toFixed(0) : ""}
+                            {/* WO-UNIT-MEANING：格内此前是裸数「87」——同一个量（allocated/cap 产能占用率）在本页
+                                「业务类型」表里是带 % 渲染的（上方 global-sim-bt-util），热力格漏了 % 就成了歧义数。
+                                量纲同源：占用率 = 已分配/净产能（无 contracts unit 字段，是本页内既有渲染口径）。 */}
+                            {c && c.allocated > 0 ? `${(util * 100).toFixed(0)}%` : ""}
                             {full && <span className={styles.pin} title="满载 · 挤压点（联合求解在此产生被挤单）">满</span>}
                           </td>
                         );

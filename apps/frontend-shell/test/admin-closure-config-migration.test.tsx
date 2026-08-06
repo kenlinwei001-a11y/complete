@@ -32,6 +32,12 @@ describe("C12 · 配置迁移工作台（导出→干跑 diff→应用 Saga）",
     expect(screen.getByTestId("cfg-diff")).toBeTruthy();
     // bundle 含 view.plan-audit（目标无）→ added ≥1
     expect(Number(screen.getByTestId("cfg-diff-added").textContent)).toBeGreaterThanOrEqual(1);
+    // WO-UNIT-MEANING：三个 diff 数此前裸奔（新增/变更/不变 各一个光秃秃的数）——
+    // 现在带口径「新增功能开关 N 项」，锁进断言防回退
+    const diffRow = screen.getByTestId("cfg-diff-added").parentElement!.parentElement!;
+    expect(diffRow.textContent).toMatch(/新增功能开关\s*\d+\s*项/);
+    expect(diffRow.textContent).toMatch(/变更\/冲突\s*\d+\s*项/);
+    expect(diffRow.textContent).toMatch(/不变\s*\d+\s*项/);
 
     await user.click(screen.getByTestId("cfg-apply"));
     await waitFor(() => expect(screen.getByTestId("cfg-job-state").textContent).toBe("COMMITTED"));

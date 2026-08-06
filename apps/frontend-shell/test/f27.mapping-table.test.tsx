@@ -90,6 +90,11 @@ describe("F27 · 业务建模映射表（§7.20 图谱内功能）", () => {
     expect(within(regs).getByTestId("mapping-reg-event-row-到货间隙")).toHaveTextContent("WMS/ERP");
     // 关系类型（model_producible_at N:N）
     expect(within(regs).getByTestId("mapping-reg-link-row-model_producible_at")).toHaveTextContent("N:N");
+    // WO-UNIT-MEANING：段标题括号内此前是裸数「（12）」，看不出数的是什么 → 现为「（N 条）」（= 本段表格行数）
+    expect(within(regs).getByTestId("mapping-reg-link").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-rule").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-action").textContent).toMatch(/（\d+ 条）/);
+    expect(within(regs).getByTestId("mapping-reg-event").textContent).toMatch(/（\d+ 条）/);
   });
 
   it("导出 CSV 与自包含 HTML（标题/导出时间/同源脚注）内容抽查", async () => {

@@ -681,7 +681,7 @@ function Widget({ def, decor, drillMetric, onDrillMetric }: { def: DashboardWidg
       ) : def.type === "kpi" ? (
         <KpiWidget value={data} unit={def.unit} decor={decor} />
       ) : def.type === "chart" ? (
-        <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} />
+        <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} def={def} />
       ) : def.type === "summary" ? (
         <SummaryWidget data={data} />
       ) : def.type === "dag" ? (
@@ -1070,7 +1070,55 @@ function KpiWidget({ value, unit, decor }: { value: unknown; unit?: string; deco
   );
 }
 
-function ChartWidget({ data, kind, series }: { data: unknown; kind: "line" | "bar" | "trideviation"; series?: { key: string; name: string; color?: string }[] }) {
+/**
+ * WO-UNIT-MEANING · 驾驶舱图表纵轴口径（含"12 个月产出趋势"「历史回放」widget）。
+ *
+ * 改前：所有 chart widget 的 y 轴都是纯裸刻度——`38000` 究竟是套数、OEE 百分比还是代价分，读者无从判断。
+ * 单源顺序（**只消费、不臆造**）：
+ *  ① `DashboardWidgetDef.unit`（api/types.ts:111，ViewConfig.layout.widgets 声明式字段，已被 KpiWidget 消费）——
+ *     后端 datacore/synthetic/service.ts 目前只给 kpi widget 填了 unit，chart widget 尚未填；此处先接上，
+ *     后端补 `unit` 当天前端即自动生效，**不需要再改前端**（治本收敛点）。
+ *  ② 退而求其次取 `WidgetQueryDef` 里可核验的真口径（不是单位，但能说清"这条线到底在数什么"）：
+ *     timeseries → `序列 · 按{粒度}{聚合}`；history → history/bundle 的字段名；objects-aggregate → `{agg}({prop})`。
+ * 未落到 ①/② 任何一条时**不编单位**，只提示口径缺失（同 RiskBoardView 案例回放先例）。
+ */
+function chartAxisCaption(def: Pick<DashboardWidgetDef, "unit" | "query">): string {
+  if (def.unit) return `纵轴单位：${def.unit}（widget 声明 unit）`;
+  const q = def.query;
+  const GRAIN: Record<string, string> = { shift: "班", day: "日", week: "周" };
+  const AGG: Record<string, string> = { sum: "合计", avg: "均值", max: "最大值", min: "最小值", count: "计数" };
+  if (q.kind === "timeseries") {
+    return `纵轴口径：序列 ${q.seriesKey} · 按${GRAIN[q.grain] ?? q.grain}${AGG[q.agg] ?? q.agg}（量纲随该序列定义·接口未回传 unit，故只标口径不臆造单位）`;
+  }
+  if (q.kind === "history") {
+    return `纵轴口径：历史回放 history/bundle.${q.field}（量纲见 widget 标题·接口未回传 unit，故只标口径不臆造单位）`;
+  }
+  if (q.kind === "objects-aggregate") {
+    return `纵轴口径：${AGG[q.agg] ?? q.agg}(${q.prop ?? q.objectType})·对象 ${q.objectType}`;
+  }
+  if (q.kind === "solver") return `纵轴口径：求解器 ${q.solverKey} 输出${q.valuePath ? ` ${q.valuePath}` : ""}`;
+  return "纵轴口径：未声明（widget 未给 unit，查询定义也无可核验口径）";
+}
+/** 轴名（贴在 y 轴顶端）：有 unit 用 unit，否则用口径短名——与 caption 同源，避免图注与轴名漂移。 */
+function chartAxisName(def: Pick<DashboardWidgetDef, "unit" | "query">): string {
+  if (def.unit) return def.unit;
+  const q = def.query;
+  if (q.kind === "timeseries") return q.seriesKey;
+  if (q.kind === "history") return q.field;
+  if (q.kind === "objects-aggregate") return `${q.agg}(${q.prop ?? q.objectType})`;
+  if (q.kind === "solver") return q.solverKey;
+  return "";
+}
+
+function ChartWidget({ data, kind, series, def }: { data: unknown; kind: "line" | "bar" | "trideviation"; series?: { key: string; name: string; color?: string }[]; def: DashboardWidgetDef }) {
+  // jsdom 无 canvas（EChart 静默降级），故轴名同文案另以 caption 落 DOM——可测 + 浏览器里也是有用的图注。
+  const caption = chartAxisCaption(def);
+  const axisName = chartAxisName(def);
+  const Caption = (
+    <div data-testid={`chart-axis-caption-${def.key}`} style={{ fontSize: 10, color: "var(--muted2)", marginBottom: 2 }}>
+      {caption}
+    </div>
+  );
   // 三线偏差复合图（#5）：多系列折线 + 偏差柱（首两系列之差，如 需求−供给=缺口）。
   if (kind === "trideviation") {
     const rows = (data as Record<string, unknown>[] | undefined) ?? [];
@@ -1086,30 +1134,36 @@ function ChartWidget({ data, kind, series }: { data: unknown; kind: "line" | "ba
     // 偏差柱：首系列 − 次系列（无 gap 字段时由复合图自算偏差，凸显"绿测试≠能用"的缺口）
     const dev = rows.map((r) => Math.round((Number(r[cols[0]!.key] ?? 0) - Number(r[cols[1]!.key] ?? 0)) * 100) / 100);
     return (
-      <EChart
-        height={200}
-        option={{
-          grid: { top: 28, bottom: 24, left: 40, right: 12 },
-          legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 } },
-          tooltip: { trigger: "axis" },
-          xAxis: { type: "category", data: buckets },
-          yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
-          series: [...lineSeries, { name: "偏差", type: "bar", data: dev, itemStyle: { color: "rgba(221,126,158,.35)" }, barWidth: "40%" }],
-        }}
-      />
+      <>
+        {Caption}
+        <EChart
+          height={200}
+          option={{
+            grid: { top: 28, bottom: 24, left: 40, right: 12 },
+            legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 } },
+            tooltip: { trigger: "axis" },
+            xAxis: { type: "category", data: buckets },
+            yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+            series: [...lineSeries, { name: "偏差", type: "bar", data: dev, itemStyle: { color: "rgba(221,126,158,.35)" }, barWidth: "40%" }],
+          }}
+        />
+      </>
     );
   }
   const points = (data as { bucket: string; value: number }[] | undefined) ?? [];
   return (
-    <EChart
-      height={180}
-      option={{
-        grid: { top: 16, bottom: 24, left: 40, right: 12 },
-        xAxis: { type: "category", data: points.map((p) => p.bucket) },
-        yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
-        series: [{ type: kind, data: points.map((p) => p.value), itemStyle: { color: "#4C90F0" }, smooth: true }],
-      }}
-    />
+    <>
+      {Caption}
+      <EChart
+        height={180}
+        option={{
+          grid: { top: 16, bottom: 24, left: 40, right: 12 },
+          xAxis: { type: "category", data: points.map((p) => p.bucket) },
+          yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+          series: [{ type: kind, data: points.map((p) => p.value), itemStyle: { color: "#4C90F0" }, smooth: true }],
+        }}
+      />
+    </>
   );
 }
 

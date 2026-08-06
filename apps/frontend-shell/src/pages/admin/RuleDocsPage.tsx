@@ -114,8 +114,10 @@ function DocReview({ doc }: { doc: RuleDocVM }) {
           {groups
             ? Object.entries(groups).map(([label, items]) => (
                 <div key={label}>
+                  {/* WO-UNIT-MEANING：diff 分组标题括号内此前是裸数——label 是**差异类别**（新增/变更/疑似删除）
+                      而非被数之物，故点明数的是"条规则候选"。 */}
                   <div className="section-title">
-                    {label} ({items.length})
+                    {label}（{items.length} 条规则候选）
                   </div>
                   {items.map((c) => (
                     <CandidateCard key={c.id} cand={c} active={activeId === c.id} onActivate={() => setActiveId(c.id)} onDone={() => void queryClient.invalidateQueries({ queryKey: ["a", "rule-candidates"] })} />

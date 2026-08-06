@@ -169,10 +169,12 @@ export default function ConfigMigrationPage() {
           {diff && (
             <div data-testid="cfg-diff">
               <div className="section-title">配置 diff（vs 目标环境当前）</div>
+              {/* WO-UNIT-MEANING：三个 diff 数此前裸奔——数的是 **featureOverrides 的功能开关条目数**（同页上方
+                  「N 项功能开通」同口径）。契约 config-bundle.ts 的 added/changed/same 是 key 数组（无 unit），故就近点明"项功能开关"。 */}
               <div style={{ display: "flex", gap: 16, fontSize: 12, marginBottom: 6 }}>
-                <span>新增 <b data-testid="cfg-diff-added">{diff.featureOverrides.added.length}</b></span>
-                <span>变更/冲突 <b data-testid="cfg-diff-changed" style={{ color: diff.conflicts.length > 0 ? "var(--amber)" : undefined }}>{diff.featureOverrides.changed.length}</b></span>
-                <span>不变 <b>{diff.featureOverrides.same.length}</b></span>
+                <span>新增功能开关 <b data-testid="cfg-diff-added">{diff.featureOverrides.added.length}</b> 项</span>
+                <span>变更/冲突 <b data-testid="cfg-diff-changed" style={{ color: diff.conflicts.length > 0 ? "var(--amber)" : undefined }}>{diff.featureOverrides.changed.length}</b> 项</span>
+                <span>不变 <b>{diff.featureOverrides.same.length}</b> 项</span>
               </div>
               {diff.featureOverrides.added.length > 0 && (
                 <div style={{ fontSize: 11, marginBottom: 4 }}>

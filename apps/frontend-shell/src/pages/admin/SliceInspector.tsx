@@ -120,9 +120,11 @@ function InlineGraph({ sliceKey, q }: { sliceKey: string; q: ReturnType<typeof u
         </div>
       ) : (
         <>
+          {/* WO-UNIT-MEANING：「节点 12 · 边 18」此前裸数——12 是节点数还是层数？契约 SliceGraph 只有数组无 unit 字段，
+              故就近点明计数单位（个/条），与下方「仅示前 N/M 节点」同口径。 */}
           <div className="muted" style={{ fontSize: 11.5, marginBottom: 4 }}>
-            节点 <b data-testid={`slice-graph-nodes-${sliceKey}`}>{q.data!.nodes.length}</b> · 边{" "}
-            <b>{q.data!.edges.length}</b>
+            节点 <b data-testid={`slice-graph-nodes-${sliceKey}`}>{q.data!.nodes.length}</b> 个 · 边{" "}
+            <b>{q.data!.edges.length}</b> 条
             {q.data!.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
             {dag.shown < dag.total && (
               <span className="badge" style={{ marginLeft: 6 }}>仅示前 {dag.shown}/{dag.total} 节点</span>
@@ -145,9 +147,10 @@ function ReadOnlySpec({ spec }: { spec: SliceSpecFull }) {
     <div data-testid={`slice-readonly-${spec.sliceKey}`}>
       <div className="section-title">切片规格（只读 · 需 admin 角色可编辑）</div>
       <div className="muted" style={{ fontSize: 12 }}>
-        root <span className="mono">{spec.spec.root.typeKey}</span> · maxNodes{" "}
-        <span className="mono">{spec.spec.maxNodes ?? "—"}</span> · 契约 fixtures{" "}
-        <b data-testid={`slice-fixtures-count-${spec.sliceKey}`}>{fixtures.length}</b>
+        {/* WO-UNIT-MEANING：maxNodes / fixtures 此前皆裸数。maxNodes 是**节点数上限**（个），fixtures 是**契约夹具条数**（条）。 */}
+        root <span className="mono">{spec.spec.root.typeKey}</span> · maxNodes（节点数上限）{" "}
+        <span className="mono">{spec.spec.maxNodes ?? "—"}</span> 个 · 契约 fixtures{" "}
+        <b data-testid={`slice-fixtures-count-${spec.sliceKey}`}>{fixtures.length}</b> 条
       </div>
       <pre className="mono" style={{ fontSize: 11, maxHeight: 160, overflow: "auto", marginTop: 6 }}>
         {JSON.stringify(spec.spec.paths, null, 2)}
@@ -238,7 +241,8 @@ function SliceEditor({ spec, onSaved }: { spec: SliceSpecFull; onSaved: () => vo
         <span className="muted" style={{ fontSize: 12 }}>
           契约 fixtures{" "}
           {fixtures.length > 0 ? (
-            <span className="badge green" data-testid={`slice-fixtures-count-${spec.sliceKey}`}>{fixtures.length} ✓</span>
+            // WO-UNIT-MEANING：徽章此前只有裸数「3 ✓」——补"条"点明是契约夹具条数（与上方只读态同口径）。
+            <span className="badge green" data-testid={`slice-fixtures-count-${spec.sliceKey}`}>{fixtures.length} 条 ✓</span>
           ) : (
             <span className="badge amber" data-testid={`slice-fixtures-count-${spec.sliceKey}`}>无契约</span>
           )}
