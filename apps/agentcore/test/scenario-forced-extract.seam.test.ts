@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeObjectRefKey } from "@platform/contracts";
 import { createTestApp, debugHeaders, waitForTask, PLANNER, type TestApp } from "./helpers.js";
 
 /**
@@ -58,7 +59,12 @@ describe("WO-SCENARIO-FORCED-EXTRACT · forced 分支自由文本解析 seam", (
     const plain = await submitFrontendPayload(t, "4680-NCM 加 20% 六周能不能接？");
 
     // ① 自由文本里的基地被解析进 solver 入参（单基地口径）。
-    expect(withBase.cfArgs.base).toBe("changzhou");
+    //    WO-BASE-SLOT-UNIFY §A：base 槽已由 `type:"string"` 统一为 `objectRef`+`refType:"Base"`
+    //    （同一概念此前两种槽类型 = `G-BASE-SLOT-TYPE-SPLIT`），故这里到达 solver 的是**解析后的
+    //    对象引用**而不再是裸串 —— 这是**更强**的形态：它证明 `changzhou` 真在本体里解析到了对象，
+    //    而不只是把一个字符串搬了过去。归一走 contracts 单一出处（DataCore `normalizeBaseRef` 同款）。
+    expect(withBase.cfArgs.base).toMatchObject({ objectType: "Base", objectId: "base_changzhou" });
+    expect(normalizeObjectRefKey(withBase.cfArgs.base, "Base")).toBe("changzhou");
     // ② 原问句无基地 → 槽为空 → scope:ALL 全网合计（不回归·诚实标）。
     expect(plain.cfArgs.base === undefined || plain.cfArgs.base === null).toBe(true);
     // 共有入参一致（同型号/同增量/同周数），唯一变量是 base——排除他因致差。
