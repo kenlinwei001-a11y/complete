@@ -4053,7 +4053,11 @@ export class SolverService {
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
     // WO-SANDBOX-D2：+Supplier/CustomsClearance/IncomingInspection 三类（采购段按责任方分解的真源）。
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliers, customsClearances, incomingInspections] =
+    // ⚠ `suppliersExt` 而非 `suppliers`：WO-DECISION-INFO 也要这张表，但**加载条件不同**
+    //   （D2 走 withExtended，决策信息走 withDecisionInfo）。并线时两处同名 → `TS2451 Cannot redeclare`。
+    //   解法是**取并集**（见下方 `suppliers`），不是删掉一处 —— 删哪一处都会让对应那半在它自己的
+    //   加载条件下拿到空表，而空表在这两个消费方那里都是「诚实缺席」的合法形态，**不会报错、只会静默少算**。
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections] =
       opts?.withExtended
         ? await Promise.all([
             this.repos.objects.listByType(tenantId, "Material"),
@@ -4078,13 +4082,17 @@ export class SolverService {
     // WO-ADOPT-MITIGATION：已采纳处置方案台账**按需加载**（仅 ADOPTION_AWARE_SOLVERS·其余求解器一次 listByType 都不做）。
     // 不加载 → 字段为 `[]` → riskTimeline 的 adoptedMitigationIndex 走零成本空 Map → 与上线前逐字节一致（R6）。
     const adoptedMitigations = opts?.withAdoptions ? await this.repos.objects.listByType(tenantId, "AdoptedMitigation") : empty;
-    // WO-DECISION-INFO ③.2：跨基地调拨 + 供应商台账（前置期/运费真值来源）**按需加载**。
-    const [interBaseTransfers, suppliers] = opts?.withDecisionInfo
-      ? await Promise.all([
-          this.repos.objects.listByType(tenantId, "InterBaseTransfer"),
-          this.repos.objects.listByType(tenantId, "Supplier"),
-        ])
-      : [empty, empty];
+    // WO-DECISION-INFO ③.2：跨基地调拨**按需加载**（前置期/运费真值来源）。
+    const interBaseTransfers = opts?.withDecisionInfo
+      ? await this.repos.objects.listByType(tenantId, "InterBaseTransfer")
+      : empty;
+    // Supplier 的**并集加载**（并线收口·见上方 suppliersExt 注释）：D2 与 WO-DECISION-INFO 各自要它，
+    // 条件不同。这里按「谁开着就载谁」求并，且 withExtended 已载过时**不重复打仓储**（保住两单各自的按需加载意图）。
+    const suppliers = opts?.withExtended
+      ? suppliersExt
+      : opts?.withDecisionInfo
+        ? await this.repos.objects.listByType(tenantId, "Supplier")
+        : empty;
     return {
       tenantId,
       params,
@@ -4112,8 +4120,9 @@ export class SolverService {
       changeoverMatrix: sortById(changeoverMatrix),
       capexProjects: sortById(capexProjects),
       purchaseOrders: sortById(purchaseOrders),
-      // WO-SANDBOX-D2 采购段真源三类（sortById → R6 确定性）
-      suppliers: sortById(suppliers),
+      // WO-SANDBOX-D2 采购段真源三类（sortById → R6 确定性）。
+      // `suppliers` 已在上方随 WO-DECISION-INFO 一并输出（同一个并集变量·见其加载处注释）——
+      // 此处不再重复置键，否则 `TS1117 多个同名属性`：后者静默覆盖前者，两单谁生效取决于书写顺序。
       customsClearances: sortById(customsClearances),
       incomingInspections: sortById(incomingInspections),
       carbonFactors: sortById(carbonFactors),

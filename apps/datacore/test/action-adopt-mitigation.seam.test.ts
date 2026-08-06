@@ -218,6 +218,27 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //          **没有第四个键**、没有任何 series/peak/crossDay/affectedOrders 被挪动 ⇒ 与 ③.2 去魔数的
     //          声称完全吻合（跨基地 d8→d4·transitDays=3；外协 d15→d8·leadTime=7）。
     //   剥离后的金值据此重定一次；老字段除上述两步外仍逐字节不变（上面两条「逐字节不变」用例亦独立守着 series）。
+    // ── 登记 #3（WO-SANDBOX-D2 并线时·2026-08-06·审核方合并态取证）─────────────────────────
+    //   本次**没有新增加性键**，变的是**老字段的值**：26882 → 26898（+16 字节）· 84509cbe… → f677f796…。
+    //
+    //   ⚠️ 这不是回归，是 D2 的**数据半**碰上 WO-DECISION-INFO 的**引擎半** —— 典型接缝效应，
+    //      两个单各自绿、合并态才显形（各半绿 ≠ 合并态绿）。
+    //
+    //   ✅ 归属取证（实跑探针·非推断）：
+    //      `outsourceLeadOf`（solvers/decision-info.ts:400）取的是**全部 status==='合格' 供应商里
+    //      leadTime 最大的那家**（设计即如此：外协前置期保守取上界，不 over-promise）。
+    //      D2 为了让清关段有据可依，新增了唯一一家**进口**供应商 SUP-015（宇部兴产）。实测分布：
+    //        SUP-015 leadTime=12 (进口) ← 新的最大值
+    //        SUP-002 leadTime=7  (境内) ← D2 之前的最大值
+    //        SUP-007 leadTime=7 · SUP-005 6 · SUP-009 6 …（合格 13 家 / 共 15 家）
+    //      ⇒ 外协前置期 7 → 12 天。该值以两种形态各出现在 16 行里（rationale 的「前置期 N 天」
+    //        与 leadTime.source.value），一位数变两位数 ⇒ **每行 +1 字节 × 16 行 = +16**，与实测完全吻合。
+    //      探针另核对：全部 planRows 的 leadTime 取值集合**只有一个**
+    //        {status:"OK", days:12, source:{Supplier, SUP-015, leadTime, 12}} —— 无第二个来源在漂。
+    //
+    //   📌 由此暴露一个真实的口径粗糙处（已另记欠账，非本次修）：外协前置期是**全局最大**，
+    //      不区分要外协的是什么物料 —— 一家电解液进口商的 12 天，会被用作电芯外协的前置期。
+    //      「保守」与「答非所问」只隔一层，将来要按物料/供应关系收窄。
     const ADDITIVE_KEYS = [
       "otdBatch", // WO-SANDBOX-D4（顶层）
       "otd", // WO-SANDBOX-D4（逐卡）
@@ -240,12 +261,12 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
     const stripped = stripAdditive(JSON.parse(JSON.stringify(numeric))) as Record<string, unknown>;
     const numericJson = JSON.stringify(stripped);
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26882);
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26898);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("84509cbe007526f56fa4043c9b08cf0af1f210d11d941eb63cb316f3b89e7632");
+    ).toBe("f677f7965f7a58b376ed95cc87cc6c604e5686a1b61882da5340db3d7f8983fa");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");

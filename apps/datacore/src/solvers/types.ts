@@ -250,9 +250,15 @@ export interface SolverContext {
   capexProjects?: ObjectInstance[];
   purchaseOrders?: ObjectInstance[];
   /**
-   * WO-SANDBOX-D2 · 采购段按责任方分解所需的三类真源（随 `withExtended` 一起加载）。
-   * 此前 `Supplier` 压根不在 SolverContext 里 —— 这就是 `minOrderQty`/`onTimeRate`
-   * 在 `solvers/` 零消费方的**结构性原因**（不是"没人想用"，是引擎根本拿不到这张表）。
+   * 供应商台账（`Supplier`）。**两个单同时要了这张表，此处是合并后的唯一声明**（并线时 D2 与
+   * WO-DECISION-INFO 各自加过一次 → `error TS2300: Duplicate identifier 'suppliers'`；
+   * 两侧语义相同，故合并注释而非并存两个字段）。
+   *
+   * · WO-SANDBOX-D2 · 采购段按责任方分解所需的三类真源之一（随 `withExtended` 一起加载）。
+   *   此前 `Supplier` 压根不在 SolverContext 里 —— 这就是 `minOrderQty`/`onTimeRate`
+   *   在 `solvers/` 零消费方的**结构性原因**（不是"没人想用"，是引擎根本拿不到这张表）。
+   * · WO-DECISION-INFO ③.2 · 外协补足的**提前期**真值来源（`leadTime`，只认 `status==='合格'`：
+   *   观察/淘汰的供应商不能当作可依赖的外协前置期）。缺省 `[]` → 诚实 EMPTY（不回落 `+14` 魔数）。
    */
   suppliers?: ObjectInstance[];
   customsClearances?: ObjectInstance[];
@@ -275,11 +281,6 @@ export interface SolverContext {
    * 前置期诚实 EMPTY（不回落 `+7` 魔数），与本单上线前逐字节一致（向后兼容 R6）。
    */
   interBaseTransfers?: ObjectInstance[];
-  /**
-   * WO-DECISION-INFO ③.2 · 供应商台账（`Supplier`）—— 外协补足的**提前期**真值来源（`leadTime`，
-   * 只认 `status==='合格'`：观察/淘汰的供应商不能当作可依赖的外协前置期）。缺省 `[]` → 诚实 EMPTY（不回落 `+14`）。
-   */
-  suppliers?: ObjectInstance[];
   // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
   // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
