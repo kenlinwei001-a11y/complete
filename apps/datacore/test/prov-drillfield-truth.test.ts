@@ -271,12 +271,22 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
 
     let single = 0;
     let aggregate = 0;
+    let pathsWithProv = 0;
     const typeFieldSeen = new Set<string>();
 
     for (const [tag, args] of paths) {
-      const out = await run(t, args);
+      const out = (await run(t, args)) as GA & { noGap?: boolean; noBaseData?: boolean };
       const found = collectProvenance(out);
-      expect(found.length, `${tag}：这条路一个 provenance 都没有 = 门在这条路上空转`).toBeGreaterThan(0);
+      // 诚实空树（目标已达成 noGap / 该基地无可承接订单 noBaseData）本就无数可溯 —— 不是空转。
+      // 但**只有**引擎自己诚实声明了空，才准空；没声明却空 = 这条路把出处丢了，红。
+      if (found.length === 0) {
+        expect(
+          Boolean(out.noGap ?? out.noBaseData),
+          `${tag}：这条路一个 provenance 都没有，引擎也没声明 noGap/noBaseData = 出处在这条路上被丢了（R13）`,
+        ).toBe(true);
+        continue;
+      }
+      pathsWithProv++;
 
       for (const { at, pv } of found) {
         const where = `${tag} ${at}`;
@@ -342,6 +352,7 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
     }
 
     // ── 非空洞：两类都必须真有货（否则"没有第三类"是靠没有节点凑出来的）──
+    expect(pathsWithProv, "出 provenance 的路径条数（太少 = 门只在一两条路上跑过）").toBeGreaterThanOrEqual(5);
     expect(single, "SINGLE 类必须真被断言过（0 = 门空转）").toBeGreaterThanOrEqual(40);
     expect(aggregate, "AGGREGATE 类必须真被断言过（0 = 聚合分支从没跑到）").toBeGreaterThanOrEqual(8);
     expect(typeFieldSeen.size, "覆盖的 类型.字段 组合数（太少 = 只咬了一两个字段·不是通用判据）").toBeGreaterThanOrEqual(12);
