@@ -5,6 +5,10 @@
 >
 > - canonical 口径：`origin/claude/wave4-integration` @ `c0b7ee0d`（本文全部探测均对**已提交 ref**，不读工作区）
 > - 取证日期：2026-08-06
+> - **取证期间 canonical 前进了 1 个 commit**（`c0b7ee0d` → `863be1c8` `feat(gate-resumable)`）。
+>   实测该 commit **只新增 `scripts/gate-resumable.sh` 一个文件**，
+>   未触碰任何 `apps/*/src` 或 `apps/*/test` → **本文全部结论不受影响**，不重跑。
+>   （写在这里是因为"我的口径是不是已经过期"这个问题，读者无法从文档自己判断。）
 > - 前一轮定性产物：`docs/TESTGAP-TRIAGE.md`（2026-08-04，canonical 为 `origin/claude/inspiring-gates-aqczjg` @ `d4be4224`）。
 >   本文**不是**它的复制：canonical 已前进 86 个 commit，清单变了，且本文用的是**另一套分类口径**（按"实现今天的覆盖态"分，而非按"这个测试文件怎么处置"分）。
 
@@ -104,6 +108,15 @@ apps/datacore/src/synthetic/service.ts:1143 for (const [typeKey, b] of materiali
 
 **判据**：要断言"canonical 有没有 X"，必须**直接探 canonical**（`git grep <sym> <canonical-ref> -- <显式目录>`），
 永远不要从 diff 的方向反推。这一条正是把本轮 P0 从"整单未并"翻成"真无覆盖"的那一下。
+
+> **同一个坑在本轮咬了第二次**（不同形态，值得一并记）：交单前自查
+> `git diff --name-status origin/claude/wave4-integration..HEAD`，赫然出现
+> `D scripts/gate-resumable.sh` —— 看着像我这条分支**删了一个门脚本**（那会是硬约束违规）。
+> 实际是：取证期间 canonical 从 `c0b7ee0d` 前进到 `863be1c8` **新增**了该文件，
+> 而我的分支基于更早的 `c0b7ee0d` ——**两点 diff 拿"更新的一侧有、我这侧没有"渲染成了 `D`**。
+> 对着自己的真实基线 `git diff c0b7ee0d..HEAD` 才是干净的 `A docs/WO-TESTGAP-AUDIT.md` 一行。
+> **两次的共同教训**：diff 是**两个 ref 的相对关系**，不是"谁做了什么"的记录；
+> 要判断"谁改了什么"，得对**自己的 merge-base** 做 diff，或直接探目标 ref。
 
 ### 坑 3 · 符号级 grep 会漏掉「行为被测了、只是没 import 这个符号」
 
