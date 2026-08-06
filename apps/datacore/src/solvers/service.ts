@@ -1597,7 +1597,7 @@ export class SolverService {
         // `Order.hefei.value`，而 `Order` 主键是 `so`（SO-3391…），仓储里根本没有 id=hefei 的订单 ⇒ 悬空下钻路径，
         // 与 #96 同族（标签指向一个不存在的出处 · WO-R13-DRILLFIELD 取证：全局路 6 个基地节点全中）。
         // 基地上下文不丢：本节点自带 `baseId`/`displayName`，前端照旧能显示是哪个基地。
-        provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: e.driver },
+        provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: e.valueYuan },
       };
     });
     const l1sum = round(l1nodes.reduce((a, n) => a + n.contribution, 0), 4);
