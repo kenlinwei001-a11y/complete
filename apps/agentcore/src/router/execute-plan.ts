@@ -112,7 +112,10 @@ export function coreScalars(data: unknown): { key: string; value: string }[] {
 }
 
 /**
- * 无 LLM provider 时的确定性兜底（诚实：明说未经 LLM 综合叙述·不假装）。每步以 ⟦ref:N⟧ 指向其产物。
+ * LLM 综合**失败时**的确定性兜底（诚实：明说未经 LLM 综合叙述·不假装）。每步以 ⟦ref:N⟧ 指向其产物。
+ * ⚠️ 这句原文是「无 LLM provider 时的确定性兜底」——**与函数实际触发条件不符**：它由 executePlan 的
+ *    `catch` 触发，四种失败（真没绑 / 模型名不存在 / 限流 / 调用失败）都会走到这里。留着这句注释，
+ *    等于让下一个读代码的人继续相信「走到这儿 = 没绑 provider」，而那正是 classifySynthFailure 刚治好的病。
  * WO-DIALOGUE-Q1Q2（治「未溯源空壳」类·reviewer flag）：**为所有 solver 步**内嵌其核心标量字段
  * （thresholdQty/p90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
  * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。

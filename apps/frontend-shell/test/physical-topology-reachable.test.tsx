@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { getRenderer } from "@/views/registry";
+import { ViewConfigVMSchema, type ViewConfigVM } from "@/api/types";
 
 /**
  * WO-SANDBOX-F3 · 渲染器可达门（审核方并线时补）。
@@ -13,7 +14,19 @@ import { getRenderer } from "@/views/registry";
  *
  * 本门咬链路：从注册表的**字符串键**出发（用户点进来走的就是这条路），
  * 经 lazy 真加载并渲染出矩阵。变异反证：注释掉 registry.ts 那行 → 本测试红。
+ *
+ * ⚠️ `view` 必须用 `ViewConfigVMSchema.parse` 造，**不能裸渲染 `<Lazy />`**：
+ *    registry 把渲染器类型定为 `ComponentType<ViewRendererProps>`，其中 `view` 是**必填**的。
+ *    裸渲染在 vitest 里跑得过（vitest 不做类型检查），但 `tsc --noEmit` 会报 TS2322 ——
+ *    本文件第 24 行**曾长期红在这一条上**，而它红的时候 `pnpm -r test` 是绿的：
+ *    「测试绿 ≠ 类型对」，这道缝正是四包全绿底线里 typecheck 那一格存在的理由。
+ *    （F4 同族门 `node-inspector-reachable.test.tsx` 交付时就已避开此坑并明写「另单，本单不碰」；
+ *      此处即那张「另单」。）
+ *    顺带这也更接近真生产形态：ViewPage 传下来的就是 parse 过的 `ViewConfigVM`。
  */
+const mkView = (): ViewConfigVM =>
+  ViewConfigVMSchema.parse({ viewKey: "physical-topology", name: "物理拓扑", renderer: "physical-topology" });
+
 describe("WO-SANDBOX-F3 · 物理拓扑渲染器可达（咬链路不咬组件）", () => {
   it("registry 按 key 取得到 renderer，且真渲染出画布", async () => {
     const View = getRenderer("physical-topology");
@@ -21,7 +34,7 @@ describe("WO-SANDBOX-F3 · 物理拓扑渲染器可达（咬链路不咬组件�
     const Lazy = View!;
     render(
       <Suspense fallback={<div data-testid="loading" />}>
-        <Lazy />
+        <Lazy view={mkView()} />
       </Suspense>,
     );
     expect(await screen.findByTestId("phys-topo-canvas")).toBeInTheDocument();

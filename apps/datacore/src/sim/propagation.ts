@@ -234,8 +234,8 @@ export function propagateTick(
   // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
   const typeOf = new Map<string, string>();
   for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
-  // navOut: "linkKey fromId" -> 该边的 toId 列表（source 视角下游 target）。用   分隔避免 key 撞车。
-  const navKey = (linkKey: string, fromId: string) => `${linkKey} ${fromId}`;
+  // navOut: "linkKey\u0000fromId" -> 该边的 toId 列表（source 视角下游 target）。用 \u0000 分隔避免 key 撞车。
+  const navKey = (linkKey: string, fromId: string) => `${linkKey}\u0000${fromId}`;
   const navOut = new Map<string, string[]>();
   for (const l of graph.links) {
     const ko = navKey(l.linkKey, l.fromId);
