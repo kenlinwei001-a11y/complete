@@ -11,6 +11,9 @@ import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
 import { baseFreeDaily } from "./base-outlook.js";
 // WO-SANDBOX-E2：推演作用域（业务线/基地/型号）归一**单一出处**（勿在本文件另写一套解析/过滤）。
 import { echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
+// WO-SANDBOX-D4 · OTD 批次准时率**聚合层**（口径 CUSTOMER_REQUEST 定死在 contracts）：底层风险算法一行不动，
+// 只把已算好的 affectedOrders（逐单 dueDay/delay）+ crossDay 上卷成「这批单准时率 %」。
+import { mergeOtdBatches, otdFromRiskCard } from "./aggregates.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -616,6 +619,10 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
         peak: Math.max(...series),
       }).affected,
     };
+    // WO-SANDBOX-D4 ① · OTD 批次准时率（加性·聚合层，不改上面任何一个字段）：
+    // 逐单基准日回 Order 对象取「客户要求交期」（early→earlyDue，否则 due），预计交付日 = dueDay + 越线后才吃的 delay。
+    // 窗口内无单 → dataMode=EMPTY 且 rate=null（绝不回落 0%）。
+    card.otd = otdFromRiskCard(c, card.affectedOrders as Record<string, unknown>[], crossDay);
     // WO-ADOPT-MITIGATION · 加性披露（R13）：本卡真曲线已吃掉哪条采纳。**仅在真有采纳时置键** →
     // 无采纳时输出与上线前逐字节一致。前端据此显「已采纳 XX（T+n 起 −eff）」，而不是让用户对着一条
     // 悄悄降下去的曲线猜为什么降。
@@ -687,6 +694,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     threshold: p.threshold,
     dataMode,
     cards: shown,
+    // WO-SANDBOX-D4 ① · 全平台这批单的准时率（加性）：跨卡按 so **去重**取最差余量那一次——
+    // 一张订单可挂多个产地（Order.bases[]），各卡相加会把同一单算两遍（守恒：合并后 total = 去重订单数）。
+    otdBatch: mergeOtdBatches(shown.map((c2) => c2.otd).filter((x): x is ReturnType<typeof otdFromRiskCard> => x != null)),
     mitigationLibrary: p.mitigations,
     planRows: buildRiskPlanRows(c, shown, p.threshold, horizon, c0, overlay),
   };

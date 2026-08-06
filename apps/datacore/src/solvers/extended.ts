@@ -4,6 +4,9 @@ import { round } from "../prng.js";
 import { maintWeekOf, num, str, type SolverContext } from "./types.js";
 // DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
 import { outsourceRedlineCap } from "@platform/contracts";
+// WO-SANDBOX-D4 ② · 库存「地点 × 时间序列」聚合层 + 水位带常数单一来源（超储/欠储倍数与本文件共用一份）。
+// WO-SANDBOX-D4 ③ · 全链经营现金流「不可相加」登记（credit_exposure 端与 capex_scenario 端共用同一实现）。
+import { INVENTORY_BAND, chainOperatingCashflow, inventoryLocationSeries, materialLocationRefs, purchaseOrderInbound, type InventoryInboundInput, type InventoryLocationRef } from "./aggregates.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -139,6 +142,9 @@ export function ltaGap(args: Record<string, unknown>) {
 }
 
 // S10 inventory_optimize：目标水位 = 日均耗用×(交期+安全天5)；超储/欠储/呆滞/释放资金。
+// WO-SANDBOX-D4 ②（加性）：+ locationSeries —— 快照之外补「地点 × 时间」两根轴，各自诚实标 dataMode
+//   （时间轴由真 dailyUse/onHand/PurchaseOrder.etaDay 逐日投影 = OK；地点轴今日无真源 = EMPTY，见契约）。
+//   水位带倍数（1.5/0.8）改走 INVENTORY_BAND 单一来源 —— 值逐字节不变，只是不再两处各写一份。
 export function inventoryOptimize(args: Record<string, unknown>) {
   const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number }[]) ?? [];
   const safety = num(args.safetyDays, 5);
@@ -148,8 +154,8 @@ export function inventoryOptimize(args: Record<string, unknown>) {
   let releasable = 0;
   for (const m of materials) {
     const target = m.dailyUse * (m.leadTime + safety);
-    const overQty = Math.max(0, m.onHand - 1.5 * target);
-    const underQty = Math.max(0, 0.8 * target - m.onHand);
+    const overQty = Math.max(0, m.onHand - INVENTORY_BAND.overMult * target);
+    const underQty = Math.max(0, INVENTORY_BAND.underMult * target - m.onHand);
     if (overQty > 0) {
       over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2) });
       releasable += overQty * m.unitPrice;
@@ -157,7 +163,14 @@ export function inventoryOptimize(args: Record<string, unknown>) {
     if (underQty > 0) under.push({ matId: m.matId, underQty: round(underQty, 4) });
     if (m.idleDays > 90) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
   }
-  return { over, under, idle, releasableCash: round(releasable, 2), ruleRefs: ["C16", "C28"] };
+  const locationSeries = inventoryLocationSeries({
+    materials: materials.map((m) => ({ matId: m.matId, dailyUse: num(m.dailyUse), leadTime: num(m.leadTime), onHand: num(m.onHand) })),
+    safetyDays: safety,
+    horizonDays: Math.max(0, Math.floor(num(args.horizonDays, 30))),
+    inbound: (args.inbound as InventoryInboundInput[] | undefined) ?? [],
+    locations: (args.locations as InventoryLocationRef[] | undefined) ?? [],
+  });
+  return { over, under, idle, releasableCash: round(releasable, 2), locationSeries, ruleRefs: ["C16", "C28"] };
 }
 
 // S11 changeover_sequence：最近邻贪心，从当前在产型号起每步选换型时长最小的未排单。
@@ -319,7 +332,13 @@ export function creditExposure(args: Record<string, unknown>) {
   const newOrder = num(args.newOrderAmount, 0);
   const verdict = hasOverdue ? "冻结（存在逾期>30天）" : newOrder <= available ? "可接" : "超出可用额度";
   const scope = (args.scope as Record<string, unknown> | undefined) ?? { mode: "EXPLICIT" };
-  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, scope, ruleRefs: ["C13", "C32"] };
+  // WO-SANDBOX-D4 ③（加性）：敞口这一端也挂同一份「不可相加」登记 —— 与 capex_scenario 端**共用同一实现**
+  // （`chainOperatingCashflow`），两侧结论逐字节一致，杜绝「投资侧说不能加、敞口侧没说」的半边真相。
+  const chainCashflow = chainOperatingCashflow({
+    capex: { available: false }, // 投资分量本次没取（capex_scenario 是另一个求解器）——不取到 ≠ 不存在
+    credit: { available: true }, // 本次真算出了敞口存量
+  });
+  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, scope, chainCashflow, ruleRefs: ["C13", "C32"] };
 }
 
 // S19 quarterly_gap：对策按成本升序贪心覆盖季度缺口；残余缺口明示。
@@ -448,10 +467,16 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
     }
     case "inventory_optimize": {
-      if (has("materials")) return args;
+      // WO-SANDBOX-D4 ②：inbound（真 PurchaseOrder 到货）与 locations（物料侧地点维·今日恒空）与 materials 是否
+      // 由调用方直传**无关**，故在 early-return 之前先补 —— 否则 rules/测试直传 materials 的路会静默丢掉时间轴。
+      const d4 = {
+        inbound: purchaseOrderInbound(c),
+        locations: materialLocationRefs(c), // 恒 [] 直到 Material 补上 warehouseId（EMPTY 自愈）
+      };
+      if (has("materials")) return { ...d4, ...args };
       const idleByMat = new Map<string, number>();
       for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
-      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+      return { ...d4, ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
     }
     case "changeover_sequence": {
       if (has("orders")) return args;
