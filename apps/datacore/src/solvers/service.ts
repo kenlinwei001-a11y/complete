@@ -1621,7 +1621,7 @@ export class SolverService {
         // 订单叶携业态（WO-SEG-ATTR-SCOPE·R13 出处透明·前端可显示/二次过滤）；仅订单叶带，设备/物料叶无业态语义。
         childDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
           // driver 走万元权重；drillValue 回 `Order.value` 元真值（标签所指字段 == 回的值·R13）。
-          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
+          prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
       }
       if (oeeDeficit > 0) childDrivers.push({ id: `equip:${e.base}`, factor: `${e.base} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * e.driver, 2),
         prov: { kind: "实测", drillType: "Equipment", drillId: e.base, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
@@ -1686,7 +1686,7 @@ export class SolverService {
         for (const o of exposureOrders) {
           expDrivers.push({ id: `order:${str(o.so)}`, factor: `订单 ${str(o.so)}（${str(o.cust)}）`, driver: orderVal(o),
             // 同全局路：driver 万元权重 ⊥ drillValue 回 `Order.value` 元真值（R13）。
-            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
+            prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderVal(o) }, businessType: str(o.businessType) });
         }
         if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
           prov: { kind: "实测", drillType: "Equipment", drillId: scopedBaseId, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
