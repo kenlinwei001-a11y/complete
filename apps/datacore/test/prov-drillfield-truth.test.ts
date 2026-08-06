@@ -198,3 +198,152 @@ describe("WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
   });
 });
+
+/**
+ * ═══ WO-R13-DRILLFIELD（欠账 #96 复验加固）· 溯源口径**通用**判据 ═══
+ *
+ * ── 为什么上面那套还不够（本单实测出来的洞，不是推测）──
+ *   上面的 `assertProvenanceTellsTruth` 遇到解析不出真值的节点就 `continue` **静默跳过**，
+ *   于是它只咬得住「**取值**取错了」，咬不住「**字段名/对象 id** 标错了」——而这两者恰是同一族病的两半，
+ *   且 WO 明写「这两者修法相反」。实测变异反证（本单亲手跑）：
+ *     把 `drillField:"value"` 改成本体里根本不存在的 `"valueWan"`（同时保留错的万元取值）→
+ *     通用断言 `expect(pv.drillValue).toBe(truth)` **一次都没触发**（truthOf 返回 undefined → continue），
+ *     整套测之所以还是红，只是因为上面几处**硬编码了字面量 `"value"`** 当非空洞计数器
+ *     （`orderValue >= 5` / `orderLeaves.length >= 5`）。换成任何**没被硬编码**的字段，同样的错标就是全绿。
+ *   普查坐实（8 条 gap_attribution 路径·84 个 provenance 节点）：**24 个（29%）**落在这条缝里被跳过——
+ *     `Order.hefei.value`（Order 主键是 `so`）· `Equipment.hefei.oee_current`（主键是 `equipId`）。
+ *
+ * ── 本门的判据：**没有第三类** ──
+ *   每个 provenance 三元组必须落入且仅落入两类，**两类都断言**：
+ *     ① SINGLE（drillId ≠ "*"）：该对象必须真存在 → drillValue **恒等**该字段真值（布尔真值按 0/1 对齐）。
+ *     ② AGGREGATE（drillId === "*"·契约 GapProvenanceSchema 的「按类型聚合」约定）：
+ *        drillValue 必须落在该字段全类真值的**量纲带** [min, Σ] 内 —— #96 那种差 1e4 的口径错标必出带。
+ *   落不进这两类的一律**红**（类型不在本体 / 字段不在类型声明 / 对象 id 查无此物）。
+ *   「跳过」这个动作被删掉了，所以它没法再空转 —— 这正是上面那套的病。
+ *
+ * ── 通用在哪 ──
+ *   ① 不认任何字面字段名：类型/字段/主键全部现查**已发布本体**（properties ∪ derivedProperties）；
+ *   ② 深走整个输出收 provenance（不只 levels/atomicLeaves），新长出来的挂点自动进门；
+ *   ③ 扫**全部 8 条** gap_attribution 路径（全局 / scoped / exposure / 5 个专属因果域），
+ *      新增指标域只要产 provenance 就自动被咬。
+ */
+type AnyProv = { kind?: string; drillType?: string; drillId?: string; drillField?: string; drillValue?: number };
+const AGG = "*"; // 契约约定的「按类型聚合」标记
+
+/** 深走任意求解器输出，收全部 provenance（新挂点自动进门·不靠枚举字段名）。 */
+function collectProvenance(root: unknown, at = "$", out: { at: string; pv: AnyProv }[] = []): { at: string; pv: AnyProv }[] {
+  if (root === null || typeof root !== "object") return out;
+  if (Array.isArray(root)) {
+    root.forEach((v, i) => collectProvenance(v, `${at}[${i}]`, out));
+    return out;
+  }
+  for (const [k, v] of Object.entries(root as Record<string, unknown>)) {
+    if (k === "provenance" && v && typeof v === "object" && !Array.isArray(v)) out.push({ at: `${at}.${k}`, pv: v as AnyProv });
+    collectProvenance(v, `${at}.${k}`, out);
+  }
+  return out;
+}
+
+describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过）", () => {
+  it("全部 8 条 gap_attribution 路径：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 已发布本体 = 类型/字段/主键的单一出处（不硬编码任何映射表）。
+    const types = await t.services.ontology.listTypes(ADMIN);
+    const typeByKey = new Map(types.map((x) => [x.key, x]));
+    const objCache = new Map<string, Record<string, unknown>[]>();
+    const rowsOf = async (tk: string): Promise<Record<string, unknown>[]> => {
+      if (!objCache.has(tk)) objCache.set(tk, (await t.repos.objects.listByType(ADMIN.tenantId, tk)).map((o) => o.props));
+      return objCache.get(tk)!;
+    };
+
+    const paths: [string, Record<string, unknown>][] = [
+      ["global(seg_attain_ess)", {}],
+      ["scope:hefei(复用全局子树)", { scope: { baseId: "hefei" } }],
+      ["scope:xiamen(敞口支路)", { scope: { baseId: "xiamen" } }],
+      ["market_share(专属因果域)", { metricKey: "market_share" }],
+      ["cash(专属因果域)", { metricKey: "cash" }],
+      ["revenue(专属因果域)", { metricKey: "revenue" }],
+      ["gross_profit(通用结构分摊)", { metricKey: "gross_profit" }],
+      ["demand_attain(专属因果域)", { metricKey: "demand_attain" }],
+    ];
+
+    let single = 0;
+    let aggregate = 0;
+    const typeFieldSeen = new Set<string>();
+
+    for (const [tag, args] of paths) {
+      const out = await run(t, args);
+      const found = collectProvenance(out);
+      expect(found.length, `${tag}：这条路一个 provenance 都没有 = 门在这条路上空转`).toBeGreaterThan(0);
+
+      for (const { at, pv } of found) {
+        const where = `${tag} ${at}`;
+        const dt = pv.drillType;
+        const df = pv.drillField;
+        // ── 落不进两类的一律红 ──────────────────────────────────────────
+        expect(dt, `${where}：provenance 无 drillType，出处无从谈起（R13）`).toBeTruthy();
+        const ty = typeByKey.get(dt!);
+        expect(ty, `${where}：drillType「${dt}」不是已发布本体里的对象类型（幽灵类型·下钻必点不开）`).toBeTruthy();
+        expect(df, `${where}：${dt} 有 drillType 却无 drillField，说不出这个数来自哪个字段（R13）`).toBeTruthy();
+        const declared = new Set<string>([
+          ...ty!.properties.map((p) => p.propKey),
+          ...((ty as unknown as { derivedProperties?: { propKey: string }[] }).derivedProperties ?? []).map((p) => p.propKey),
+        ]);
+        expect(
+          declared.has(df!),
+          `${where}：标签写着 ${dt}.${df}，但「${df}」不在 ${dt} 的本体声明里（properties ∪ derivedProperties = ${[...declared].join(",")}）` +
+            ` —— 这是「把谎话从值搬到字段名」那种修法，本门专治`,
+        ).toBe(true);
+        typeFieldSeen.add(`${dt}.${df}`);
+
+        const vals = (await rowsOf(dt!)).map((r) => r[df!]).filter((v): v is number => typeof v === "number");
+
+        if (pv.drillId === AGG) {
+          // ── ② AGGREGATE：量纲带 [min, Σ] —— #96 那种差 1e4 的口径错标必出带 ──
+          aggregate++;
+          expect(vals.length, `${where}：聚合标 ${dt}.*.${df}，但全类没有一条该字段的数值真值可作包络`).toBeGreaterThan(0);
+          const lo = Math.min(...vals);
+          const hi = vals.reduce((a, b) => a + b, 0);
+          expect(typeof pv.drillValue, `${where}：聚合 drillValue 必须是数`).toBe("number");
+          expect(
+            pv.drillValue! >= lo && pv.drillValue! <= hi,
+            `${where}：聚合标 ${dt}.*.${df} 回了 ${pv.drillValue}，而该字段全类真值带是 [${lo}, Σ=${hi}]` +
+              ` —— 出带 = 回的根本不是这个字段的口径（#96 就是差 1e4 掉出带）`,
+          ).toBe(true);
+          continue;
+        }
+
+        // ── ① SINGLE：对象必须真存在，drillValue 恒等该字段真值 ──
+        single++;
+        const pk = ty!.properties.find((p) => p.isPrimaryKey)?.propKey;
+        expect(pk, `${where}：${dt} 本体未声明主键，下钻路径无从解析`).toBeTruthy();
+        const rows = await rowsOf(dt!);
+        const row = rows.find((r) => String(r[pk!]) === String(pv.drillId));
+        expect(
+          row,
+          `${where}：标签写着 ${dt}.${pv.drillId}.${df}，但 ${dt} 主键 ${pk} 里查无「${pv.drillId}」` +
+            `（现有样例 ${rows.slice(0, 3).map((r) => String(r[pk!])).join("/")}）—— 悬空下钻路径；` +
+            `若这本来就是聚合，请按契约标 drillId:"*"，不要拿别的键冒充对象主键`,
+        ).toBeTruthy();
+        const truth = row![df!];
+        // 布尔真值（如 BidRecord.win）允许按 0/1 编码回，但必须**对得上**，不许静默放行。
+        const expected = typeof truth === "boolean" ? (truth ? 1 : 0) : truth;
+        expect(
+          typeof expected,
+          `${where}：${dt}.${pv.drillId}.${df} 的真值是 ${JSON.stringify(truth)}（非数非布尔），无法与 drillValue 对拍`,
+        ).toBe("number");
+        expect(
+          pv.drillValue,
+          `${where}：标签写着 ${dt}.${pv.drillId}.${df}，那个字段的真值是 ${JSON.stringify(truth)}，溯源却回了 ${pv.drillValue}`,
+        ).toBe(expected);
+      }
+    }
+
+    // ── 非空洞：两类都必须真有货（否则"没有第三类"是靠没有节点凑出来的）──
+    expect(single, "SINGLE 类必须真被断言过（0 = 门空转）").toBeGreaterThanOrEqual(40);
+    expect(aggregate, "AGGREGATE 类必须真被断言过（0 = 聚合分支从没跑到）").toBeGreaterThanOrEqual(8);
+    expect(typeFieldSeen.size, "覆盖的 类型.字段 组合数（太少 = 只咬了一两个字段·不是通用判据）").toBeGreaterThanOrEqual(12);
+  }, 300_000);
+});

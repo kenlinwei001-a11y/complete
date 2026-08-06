@@ -92,6 +92,7 @@ describe("PROV CENSUS PROBE", () => {
         note("Z_OK", label);
       }
     }
+    for (const r of runs) if (/revenue|gross_profit/.test(r.tag)) console.log(`\n@@@ ${r.tag} =>`, JSON.stringify(r.out).slice(0, 1200));
     console.log("\n===== 聚合包络（min / max / Σ）=====");
     for (const [tk, fk] of [["Order", "value"], ["Equipment", "oee_current"], ["MaterialBalance", "gapTon"]] as const) {
       const vals = (await rowsOf(tk)).map((r) => r[fk]).filter((v): v is number => typeof v === "number");
