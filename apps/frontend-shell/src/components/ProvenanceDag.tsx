@@ -275,10 +275,11 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
       {children}
       {open && (
         <span
-          className="panel"
+          /* 欠账 #104：因果树浮层盖在密排节点文字上 → 不透明 .popover-surface，非磨砂 .panel。 */
+          className="popover-surface"
           role="tooltip"
           data-testid={`prov-tip-${node.id}`}
-          style={{ position: "absolute", zIndex: 60, top: "130%", left: 0, minWidth: 260, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal", boxShadow: "0 8px 28px rgba(0,0,0,.45)" }}
+          style={{ position: "absolute", zIndex: 60, top: "130%", left: 0, minWidth: 260, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal" }}
         >
           {/* 三态徽章（诚实标注：实测/派生/合成/明细） */}
           <div style={{ marginBottom: 5 }}>

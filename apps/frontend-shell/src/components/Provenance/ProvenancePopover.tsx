@@ -117,7 +117,7 @@ function PopoverPanel({ state, onClose }: { state: OpenState; onClose: () => voi
   const left = Math.min(state.rect.left, window.innerWidth - 380);
 
   return createPortal(
-    <div className={styles.pop} style={{ top, left }} role="tooltip" data-testid="prov-popover">
+    <div className={`popover-surface ${styles.pop}`} style={{ top, left }} role="tooltip" data-testid="prov-popover">
       <div className={styles.head}>
         <span className="badge blue">{state.provId}</span>
         {state.pinned && (
