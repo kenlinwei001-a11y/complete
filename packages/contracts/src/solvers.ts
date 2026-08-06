@@ -192,6 +192,32 @@ export const RiskTimelineOutputSchema = z.object({
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 
+/**
+ * audit_timeline 输出（PRD-plan-audit-1to1 §2②）——每审计项按 kind 出 90 天逐日 series。
+ * 诚实边界（轨M 增量2·真推演 not 假推演·KILL-MOCK-RED）：series/peak/crossDay 是按 kind 名 `hashString` 确定性派生的
+ * **形状投影**（SolverContext 无逐日审计口径实测时序源）→ `dataMode` 恒 MOCK + `provenanceSynthetic:true` + `note` 披露，
+ * 绝不裸渲染当实测真值（前端据此显"估算/合成"）。接入真时序/真求解器后可升 LIVE（→ audit_timeline 数据半待补）。
+ */
+export const AuditTimelineOutputSchema = z
+  .object({
+    kind: z.string(),
+    series: z.array(z.number()),
+    stages: z.array(z.object({ d: z.number().int(), label: z.string() })),
+    peak: z.number(),
+    crossDay: z.number().int().nullable(),
+    threshold: z.number(),
+    // 轨M 增量2（去哈希诚实标）：无真时序源 → 恒 MOCK（红/黄不裸渲染当真值）。
+    dataMode: z.enum(["LIVE", "MOCK"]),
+    // provenance 维（与 measurement 维正交）：series 为 hash 形状投影（非实测）→ true。
+    provenanceSynthetic: z.boolean(),
+    // 人读披露：为何是估算而非实测。
+    note: z.string().optional(),
+    events: z.array(RiskEventSchema),
+    affectedOrders: z.array(AffectedOrderSchema).optional(),
+  })
+  .catchall(z.unknown());
+export type AuditTimelineOutput = z.infer<typeof AuditTimelineOutputSchema>;
+
 /** S1.6 plan_audit */
 export const PlanAuditInputSchema = z.object({
   dem: z.number(),

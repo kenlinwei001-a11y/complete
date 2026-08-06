@@ -200,7 +200,12 @@ export function riskEvents(c: SolverContext, baseId: string, horizon: number): R
   return events.sort((a, b) => a.day - b.day || (a.type < b.type ? -1 : 1));
 }
 
-/** Mock 口径 target位 (riskTarget hash analogue, coefficients from solverParams). */
+/**
+ * 爬坡目标位（riskTimeline forward 推演的 climb 上限）。`cur` 是曲线起锚：
+ * - lt.live 时由调用方传入实测当前张力（真 OEE/利用率/良率）→ target = 实测锚 + lift（真锚上的确定性前瞻增量），card.dataMode=LIVE；
+ * - 无真源时 cur=mockTightness → 全 MOCK（card.dataMode=MOCK 诚实披露"估算"）。
+ * `lift` 是确定性前瞻增量（"未来 N 天会恶化多少"的投影斜率·R6 无随机/时钟）；本身非实测量，其诚实性由 card.dataMode 披露（LIVE=锚实测/MOCK=估算）。
+ */
 export function riskTarget(c: SolverContext, baseId: string, factor: string, cur: number): number {
   const t = c.params.risk.targetLift;
   const lift = (((baseName(c, baseId).charCodeAt(0) || 0) + (factor.charCodeAt(0) || 0)) % t.mod) + t.base;
@@ -283,7 +288,12 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
     // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
     const lt = liveTightness(c, pair.baseId, pair.factor);
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events);
+    // 轨M 增量1（假1 红曲线锚实测·KILL-MOCK-RED·治 tensionSeries baseline 死代码）：有真数据（lt.live：设备OEE/瓶颈工序/
+    // 良率波动 读真 OEE/利用率/良率）时把「实测当前张力」lt.value 作 baseline 传入 → 红曲线锚实测而非 charCode 哈希 mockTightness；
+    // 无真源（人力工时/物料齐套/物流时长/换型损失）→ undefined 回落 mock，card.dataMode=MOCK 诚实披露。
+    // 改真 Equipment.oee_current → lt.value 变 → cur 变 → series/peak 真变（curl 前后可验）。
+    const baseline = lt.live ? lt.value : undefined;
+    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
     const card: Record<string, unknown> = {
@@ -312,7 +322,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       const plans = p.mitigations[pair.factor] ?? [];
       const plan = plans.find((pl) => pl.key === mit.planKey || pl.name === mit.planKey);
       if (!plan) throw validationError(`unknown mitigation plan '${mit.planKey}' for factor ${pair.factor}`);
-      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn });
+      // 处置曲线与基线同锚（baseline·lt.live 时为实测当前张力）→ 削减量作用在真实锚点上，不回落哈希。
+      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
       card.mitigated = {
         series: mitSeries,
         appliedPlan: plan.name,
@@ -478,6 +489,12 @@ export function auditTimeline(c: SolverContext, args: Record<string, unknown>): 
   const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
   return {
     kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
+    // 轨M 增量2（audit_timeline 去哈希诚实标·KILL-MOCK-RED）：series/peak/crossDay 是按 kind 名 hashString 确定性派生的
+    // **形状投影**（SolverContext 无逐日审计口径实测时序源）→ dataMode 恒 MOCK + provenanceSynthetic 披露，绝不裸渲染当
+    // 实测真值（前端据此显"估算/合成"，不把恒越线红当真）。真时序/真求解器接入后可升 LIVE（audit_timeline 数据半待补）。
+    dataMode: "MOCK",
+    provenanceSynthetic: true,
+    note: "逐日 series/峰值/越线日为按审计口径名确定性派生的形状投影（无逐日实测时序源）·估算非实测——不裸渲染当真值",
     events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
   };

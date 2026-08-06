@@ -1,6 +1,6 @@
 import type { ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
-import { num, str, type SolverContext } from "./types.js";
+import { maintWeekOf, num, str, type SolverContext } from "./types.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -194,6 +194,11 @@ export function changeoverSequence(args: Record<string, unknown>) {
 export function yieldDiagnosis(args: Record<string, unknown>) {
   const series = (args.series as { day: number; yield: number }[]) ?? [];
   const events = (args.events as { day: number; kind: string; source: string }[]) ?? [];
+  // 诚实边界（假6·KILL-MOCK-RED·抄 capex 缺数不造假）：无逐日良率时序输入 → 不以写死序列冒充"找到 day33 突变"，
+  // 返 dataMode:EMPTY + provenanceSynthetic 披露（SolverContext 无良率时序源）。接入真时序后喂真 series 才诊断。
+  if (series.length === 0) {
+    return { breakpoint: undefined, candidates: [], dataMode: "EMPTY", provenanceSynthetic: true, note: "无逐日良率时序输入（series 空）·无法诊断突变——不以写死序列冒充真算", ruleRefs: ["C30"] };
+  }
   const sorted = [...series].sort((a, b) => a.day - b.day);
   let breakpoint: { day: number; drop: number } | undefined;
   for (let i = 30; i + 7 <= sorted.length; i++) {
@@ -215,7 +220,7 @@ export function yieldDiagnosis(args: Record<string, unknown>) {
         .map((e) => ({ ...e, distance: Math.abs(e.day - breakpoint!.day) }))
         .sort((a, b) => a.distance - b.distance)
     : [];
-  return { breakpoint, candidates, ruleRefs: ["C30"] };
+  return { breakpoint, candidates, dataMode: "LIVE", ruleRefs: ["C30"] };
 }
 
 // S13 maintenance_stagger：冲突=检修周∈交付高峰top3；±4 周内选负荷最低周；间隔≥26、同组同周≤3。
@@ -246,7 +251,9 @@ export function maintenanceStagger(args: Record<string, unknown>) {
       adjustments.push({ base: b.base, fromWeek: b.maintWeek, toWeek: best, loadDrop: round((b.loadByWeek[String(b.maintWeek)] ?? 0) - bestLoad, 4) });
     }
   }
-  return { adjustments, unresolved, ruleRefs: ["C11"] };
+  // 诚实边界（假6·KILL-MOCK-RED）：自动派生输入（无真实逐周负荷/交付高峰时序源）时标 provenanceSynthetic —— 错峰建议为占位估算，不冒充真排程。
+  const synthetic = args.provenanceSynthetic === true;
+  return { adjustments, unresolved, ...(synthetic ? { dataMode: "MOCK", provenanceSynthetic: true, note: "无真实逐周负荷/交付高峰源（loadByWeek/peakWeeks 缺真时序）·错峰建议为占位估算" } : {}), ruleRefs: ["C11"] };
 }
 
 // S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×20% C08)/延期c3=2.5。
@@ -469,13 +476,18 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "maintenance_stagger": {
       if (has("bases")) return args;
-      const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
-      return { peakWeeks: [10, 11, 12], ...args, bases };
+      // 诚实边界（假6·KILL-MOCK-RED）：删写死 loadByWeek/maintWeek/peakWeeks——SolverContext 无逐周负荷/交付高峰时序源。
+      // 真派生可得：真实基地 + 真实检修周（maintWeekOf 读 MaintenancePlan.week）；逐周负荷/高峰周缺真源 → 空 + 标合成（provenanceSynthetic）。
+      const bases = (c.bases ?? [])
+        .map((b, i) => ({ base: str(props(b).name, `B${i}`), group: str(props(b).group, "g1"), maintWeek: maintWeekOf(c, str(props(b).baseId)) ?? 0, loadByWeek: {} as Record<string, number> }))
+        .filter((x) => x.maintWeek > 0);
+      return { peakWeeks: [], provenanceSynthetic: true, ...args, bases };
     }
     case "yield_diagnosis": {
       if (has("series")) return args;
-      const series = Array.from({ length: 40 }, (_, d) => ({ day: d + 1, yield: d < 33 ? 0.95 : 0.85 }));
-      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, events: [{ day: 33, kind: "换批", source: "MES" }] };
+      // 诚实边界（假6·KILL-MOCK-RED）：删写死 40 天 day-33 突变 series——SolverContext 无逐日良率时序源，
+      // 不伪造序列冒充"恒找到 day33"。无 series → yieldDiagnosis 返 EMPTY + 披露（标合成）。真时序接入后再喂真 series。
+      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), provenanceSynthetic: true, ...args };
     }
     case "quarterly_gap":
       return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
