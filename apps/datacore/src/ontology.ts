@@ -163,6 +163,8 @@ export class OntologyService {
         .sort((a, b) => byKey(a.propKey, b.propKey))
         .map((p) => ({
           propKey: p.propKey,
+          // WO-SCHEMA-ZH：中文业务名与 unit 同级透出（缺则整键不下发 = 诚实留白，B 侧不臆造）。
+          ...(p.displayName ? { displayName: p.displayName } : {}),
           ...(p.description ? { description: p.description } : {}),
           ...(p.unit ? { unit: p.unit } : {}),
           dataType: p.dataType,
