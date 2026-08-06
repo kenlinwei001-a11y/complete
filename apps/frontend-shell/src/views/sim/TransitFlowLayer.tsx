@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { searchObjects } from "@/api/endpoints";
+import type { ViewRendererProps } from "../registry";
 import {
   CADENCE_ABSENCE,
   PROCUREMENT_BRANCH,
@@ -26,10 +27,22 @@ import {
 import styles from "./TransitFlowLayer.module.css";
 
 /**
- * WO-SANDBOX-F2 · **在途 / 在制层**（线路图的图层，不是独立 view —— 故不进 `views/registry.ts`）。
+ * WO-SANDBOX-F2 · **在途 / 在制层** `TransitFlowLayer` ＋ 其**宿主视图** `TransitFlowView`（本文件默认导出）。
  *
  * 区间上跑在途/在制批次 · 到限流站排队堆积 · 到节拍点批量放行 · 仿真时钟 + 播控倍速 + 事件流。
  * 所有机理在 `./transitFlow.ts`（纯函数），本文件只负责**画**与**播**。
+ *
+ * ⚠ 接线纪律（收口时补·F3/F4 同款教训 —— 本注释此前写的是"是图层不是独立 view，故不进
+ *    `views/registry.ts`"，那句话在实测面前不成立）：`views/registry.ts` 是**手工登记**的字符串键表、
+ *    无自动扫描；而设想中的宿主 F1 线路图 `ChainLineMapView.tsx` **从未挂载过本层**
+ *    （实测：在 `apps/<app>/src` 与 `packages/<pkg>/src` 下 grep `TransitFlowLayer`，除本文件自身外 0 命中，
+ *    无 barrel 再导出、无 `import.meta.glob`、无字符串键分发）。于是本层是**零生产调用方**——
+ *    假绿第 9 形态 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：实现有、`transit-flow.seam.test.tsx` 全绿、
+ *    却没有任何路由渲染得到它（测试咬的是**组件**，不是**链路**）。
+ *    故本文件同时给出宿主视图 `TransitFlowView`（签名 = `Partial<ViewRendererProps>`，
+ *    可赋给 `ComponentType<ViewRendererProps>`，注册即不打红构建），并由 `registry.ts`
+ *    以键 `transit-flow` 登记。可达门见 `test/transit-flow-reachable.test.tsx`。
+ *    图层身份不变：F1 线路图日后挂载本层时照旧传 `nodes`/`sources`，宿主与图层互不妨碍。
  *
  * ── 三条红线（写在最上面，因为它们比功能更重要）─────────────────────────────
  * ① **看不见的东西不许画出来**。三个数据源的位置精度天生不同：
@@ -570,4 +583,49 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
   );
 }
 
-export default TransitFlowLayer;
+/**
+ * 宿主视图（`registry.ts` 以键 `transit-flow` 登记的**就是它** —— 本层唯一的生产调用方）。
+ *
+ * 职责只有两件，多一件都不干：
+ *  ① 把 `ViewRendererProps.view.options` 里的**播控初值**收进来（`initialDay` / `initialSpeed`），
+ *     且只认在册倍速档（`TRANSIT_SPEEDS`）——不在前端编一个自由值。
+ *  ② 把「独立视图形态下站点从哪来」当面说清楚（见下）。
+ *
+ * ── 宿主**不做**的事（这三条正是本单不许踩的坑）────────────────────────────────
+ *  · **不造 `nodes`**：站点（及"哪个站是限流站"的唯一判据 `node.cadence`）只能由引擎下发；
+ *    独立视图形态下引擎不下发 ⇒ 传 `undefined`，让图层退回"从批次数据行自身字段现场发现站点"，
+ *    并由图层的 `transit-cadence-absence` 块逐条给出节拍缺席的取证。**前端零清单**这条红线在宿主这里也守。
+ *  · **不造 `sources`**：不传 ⇒ 图层走自取真值（`GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot`，
+ *    三者均为在册对象类型 —— 见 `apps/datacore/src/synthetic/data-categories.ts:41`(WIPLot)
+ *    与 `:64`(Shipment/InterBaseTransfer)）。**绝不喂一份 fixture 让页面看起来有货**：
+ *    那会造出比空页面更坏的东西 —— 打得开、内容却是编的。
+ *  · **不冒充 LIVE**：某条支线取不到真值，图层原样显示「空 + 一行原因」，宿主不兜底、不吞。
+ */
+export function TransitFlowView({ view }: Partial<ViewRendererProps>) {
+  const opts = view?.options as { initialDay?: unknown; initialSpeed?: unknown } | undefined;
+
+  const rawDay = opts?.initialDay;
+  const initialDay = typeof rawDay === "number" && Number.isFinite(rawDay) && rawDay >= 0 ? Math.floor(rawDay) : 0;
+
+  const rawSpeed = opts?.initialSpeed;
+  const initialSpeed: TransitSpeed = typeof rawSpeed === "number" ? (TRANSIT_SPEEDS.find((s) => s === rawSpeed) ?? 1) : 1;
+
+  return (
+    <div className={styles.hostRoot} data-testid="transit-flow-root">
+      <header className={styles.hostBar}>
+        <b className={styles.hostTitle}>在途 / 在制</b>
+        <small className={styles.hostNote} data-testid="transit-flow-host-source">
+          批次数据由本层自取 <code className={styles.objType}>GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
+          （三个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
+        </small>
+        <small className={styles.hostNote} data-testid="transit-flow-host-nodes">
+          独立视图形态下<b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
+          站点从批次数据行自身字段现场发现、节拍一律缺席；挂到全链线路图作图层时由线路图传入引擎站点
+        </small>
+      </header>
+      <TransitFlowLayer initialDay={initialDay} initialSpeed={initialSpeed} />
+    </div>
+  );
+}
+
+export default TransitFlowView;

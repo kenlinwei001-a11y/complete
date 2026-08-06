@@ -11,6 +11,36 @@
  *  前者管系统偏好，后者管组件已探测到偏好后的确定性关停）。
  */
 
+/* ── 宿主视图外壳（`TransitFlowView` · registry 键 transit-flow）────────────── */
+.hostRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  overflow-x: auto;
+}
+
+.hostBar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line2);
+}
+
+.hostTitle {
+  font-size: 14px;
+  color: var(--txt);
+}
+
+.hostNote {
+  color: var(--muted2);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .layer {
   display: flex;
   flex-direction: column;
