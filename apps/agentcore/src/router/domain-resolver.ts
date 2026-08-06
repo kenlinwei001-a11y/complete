@@ -1,5 +1,4 @@
-import type { PageContext, CeoQueryRoute } from "@platform/contracts";
-import { BASE_REGISTRY } from "@platform/contracts"; // WO-NL-ROBUST：基地册单一来源（问句基地名 → base 槽·喂 risk_root_cause 等 seed 计划意图）。
+import type { PageContext } from "@platform/contracts";
 import { resolveCeoRoute, resolveBlockRoute, isCeoQuestion, hasBlockContext, ceoIntentKeyForRoute } from "./ceo-route.js";
 
 /**
@@ -169,91 +168,4 @@ export function preferDeterministicSolver(res: DomainResolution): DeterministicP
     route: res.route,
     intentKey: res.intentKey,
   };
-}
-
-// ---------------------------------------------------------------------------
-// WO-NL-ROBUST · ② 自由问句（无 PageContext）确定性 solver 绑定（"查询对话"在 LLM 通不通都能答）
-// ---------------------------------------------------------------------------
-//
-// 病根（真后端无 LLM 实测）：产能/风险等**有对口求解器**的自由问句/场景卡问句都被判给 path-B agent，
-// 无 LLM → INTERNAL_ERROR·FAILED，对话不通。WO-QOS-1 的确定性优先门（preferDeterministicSolver）
-// 只在 contextRich（有 PageContext）时给置信（scoreFor 无上下文返 0·镜像 orchestrator hasPageContext 门）——
-// 自由问句进不了门，只能落 classifier→path-B，无 LLM 即炸。
-//
-// 本函数复用 domainResolve（同一 ceo-route 意图模式·单一路由来源），但**置信基于问句形态强度**（不要求 contextRich），
-// 并把命中路由**桥接到实际候选目录里的意图**（CEO 意图缺席时落 seed 计划意图 capacity_feasibility/risk_root_cause），
-// 让这些问句**不依赖 LLM 也能真答**（path-A 求解器真值 + 溯源·KILL-MOCK 非写死答案）。
-//
-// fail-safe 铁律：编排/开放信号（多 solver 综合/假设推演/跨 ≥2 硬域族）→ 置信 0（照落 path-B·绝不给窄 solver 出自信错答）；
-// 仅当有对口候选意图 + 置信≥THRESHOLD 才返回。最终能否绑定仍由编排层 fillSlots 兜底（必填槽位填不上 → 照落 path-B）。
-
-/**
- * route → 候选意图 key 的桥接映射：主用 ceoIntentKeyForRoute（CEO 意图），缺席时落 seed 计划意图（语义对齐·非乱套）。
- * 仅列**语义确凿对齐**的 seed 意图：产能可行性/风险根因——其余 route 无 seed 兜底（CEO 意图缺席即不绑·照落 path-B）。
- */
-const SEED_INTENT_FALLBACK: Record<string, readonly string[]> = {
-  // 产能可行性：capacity_forecast 路由 ceoIntentKeyForRoute 已直接给 "capacity_feasibility"（seed 意图），此处冗余保险。
-  capacity_forecast: ["capacity_feasibility"],
-  // 风险根因：gap_attribution 路由主意图 ceo_root_cause 缺席时 → seed 的 risk_root_cause（同为「根因」语义·对口 base_risk_profile）。
-  gap_attribution: ["risk_root_cause"],
-};
-
-/** 命中 route → 落在候选目录内的意图 key（主 CEO 意图 → seed 兜底·首个在候选内者胜）；无则 undefined。 */
-function bridgeIntentKey(route: string, candidateKeys: readonly string[]): string | undefined {
-  const ordered = [ceoIntentKeyForRoute(route as CeoQueryRoute["route"]), ...(SEED_INTENT_FALLBACK[route] ?? [])];
-  return ordered.find((k) => candidateKeys.includes(k));
-}
-
-/** 自由问句形态置信（R6·不依赖 contextRich）：结构化产能可行性=极高；单一对口 solver 定式=达标；开放/编排/跨域=0。 */
-function nlConfidence(res: DomainResolution): number {
-  if (!res.route || !res.solverKey) return 0;
-  if (res.signals.orchestration || res.signals.open) return 0; // 开放/编排 → path-B（fail-safe）
-  if (res.signals.domainFamilies >= 2) return 0; // 跨 ≥2 硬域族 → 天然需编排 → path-B
-  // 结构化产能可行性（型号+需求增量+周期已被明确杠杆捕获·open 已清）不确定性最低 → 极高；其余单一对口 solver 定式 → 达标。
-  return res.route === "capacity_forecast" ? 0.9 : 0.7;
-}
-
-/** 从问句解析基地名（BASE_REGISTRY 单一来源·中文名或拼音 id → 规范中文名·喂 base 槽 objectRef 解析）；无匹配 undefined。 */
-export function parseBaseNameFromQuery(query: string): string | undefined {
-  const s = query ?? "";
-  for (const b of BASE_REGISTRY) {
-    if (s.includes(b.name) || s.includes(b.baseId)) return b.name;
-  }
-  return undefined;
-}
-
-export interface DeterministicNlBinding {
-  /** 落在候选目录内的意图 key（capacity_feasibility / risk_root_cause / ceo_* …）。 */
-  intentKey: string;
-  /** 从问句派生的 solver args（喂 fillSlots·model/demandDelta/weeks/base…）。 */
-  args: Record<string, unknown>;
-  /** 问句形态置信（≥THRESHOLD）。 */
-  confidence: number;
-  route: string;
-  solverKey: string;
-}
-
-/**
- * 自由问句 → 确定性 solver 绑定（候选目录感知·R6 纯函数）。命中返回 {intentKey(在候选内), args, confidence≥THRESHOLD}；
- * 否则 undefined（照落 path-B·不劫持开放题）。供编排层在 classify 不可用/未命中时、进 path-B 前拉回 path-A。
- */
-export function resolveDeterministicNlBinding(
-  query: string,
-  pageContext: PageContext | undefined,
-  candidateKeys: readonly string[],
-): DeterministicNlBinding | undefined {
-  const res = domainResolve(query, pageContext);
-  if (!res.route || !res.solverKey) return undefined;
-  const confidence = nlConfidence(res);
-  if (confidence < DETERMINISTIC_PREFERENCE_THRESHOLD) return undefined;
-  const intentKey = bridgeIntentKey(res.route, candidateKeys);
-  if (!intentKey) return undefined;
-  const args: Record<string, unknown> = { ...res.args };
-  // seed 计划意图 risk_root_cause 需 base 槽（gap_attribution 路由 args 只带 metric/factor）：问句基地名 → base（objectRef·
-  // fillSlots 解析中文名→对象），无则留空（编排层再从 selectedObjects/PageContext defaultFrom 兜底；仍无 → fillSlots missing → 照落 path-B）。
-  if (intentKey === "risk_root_cause" && args.base === undefined) {
-    const base = parseBaseNameFromQuery(query) ?? pageContext?.focus?.base;
-    if (base) args.base = base;
-  }
-  return { intentKey, args, confidence, route: res.route, solverKey: res.solverKey };
 }
