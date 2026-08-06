@@ -583,6 +583,40 @@ function scenarioCapGain(apply: { value: number }[]): number {
   return Math.round(g * 1e6) / 1e6;
 }
 
+// WO-SLICE-GOVERNANCE-FULL：切片治理 mock 状态（stateful → promote 后徽标翻转、编辑器预填一致）。
+const mockSliceGov: Record<string, { rootType: string; fixtures: number }> = {
+  model_capacity_network: { rootType: "Model", fixtures: 1 },
+  base_risk_profile: { rootType: "Base", fixtures: 0 },
+};
+function mockSliceFixture(rootType: string) {
+  return {
+    name: "auto_baseline_v1",
+    args: {} as Record<string, string | number>,
+    expect: { rootType, minNodes: 3, mustIncludeTypes: [rootType, "Base"], mustIncludeLinkKeys: ["model_producible_at"] },
+  };
+}
+function mockSliceGraph(sliceKey: string) {
+  const rootType = mockSliceGov[sliceKey]?.rootType ?? "Model";
+  return {
+    nodes: [
+      { id: `${sliceKey}:r1`, typeKey: rootType, objectKey: "R1", props: {} },
+      { id: `${sliceKey}:c1`, typeKey: "Base", objectKey: "常州", props: {} },
+      { id: `${sliceKey}:c2`, typeKey: "Base", objectKey: "宜宾", props: {} },
+    ],
+    edges: [
+      { linkKey: "model_producible_at", from: `${sliceKey}:r1`, to: `${sliceKey}:c1` },
+      { linkKey: "model_producible_at", from: `${sliceKey}:r1`, to: `${sliceKey}:c2` },
+    ],
+    truncated: false,
+    snapshotVersion: "ov-12",
+  };
+}
+/** 测试用：复位切片治理 mock 状态（模块级状态跨用例复用，beforeEach 调用避免顺序耦合）。 */
+export function __resetSliceGovMock(): void {
+  mockSliceGov.model_capacity_network = { rootType: "Model", fixtures: 1 };
+  mockSliceGov.base_risk_profile = { rootType: "Base", fixtures: 0 };
+}
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -1010,11 +1044,43 @@ export const handlers = [
   http.post("*/b/v1/growth/tickets/:id/claim", () => HttpResponse.json({ id: "gtk_1", status: "IN_PROGRESS", assignee: "cli-agent" })),
 
   http.get("*/a/v1/ontology/slices", () =>
-    HttpResponse.json([
-      { sliceKey: "model_capacity_network", version: 1, rootType: "Model", hops: 2, linkKeys: ["PRODUCIBLE_AT"], maxNodes: 100, fixtures: 1 },
-      { sliceKey: "base_risk_profile", version: 1, rootType: "Base", hops: 1, linkKeys: ["HAS_ORDER"], maxNodes: 200, fixtures: 0 },
-    ]),
+    HttpResponse.json(
+      Object.entries(mockSliceGov).map(([sliceKey, v]) => ({
+        sliceKey, version: 1, rootType: v.rootType, hops: 1, linkKeys: ["model_producible_at"], maxNodes: 200, fixtures: v.fixtures,
+      })),
+    ),
   ),
+  // WO-SLICE-GOVERNANCE-FULL：完整 spec（编辑器预填）/ 内联子图 / 推进为契约（单+批）。
+  http.get("*/a/v1/ontology/slices/:sliceKey", ({ params }) => {
+    const key = String(params.sliceKey);
+    const st = mockSliceGov[key];
+    if (!st) return err(404, "NOT_FOUND", `slice ${key}`);
+    return HttpResponse.json({
+      sliceKey: key,
+      version: 1,
+      spec: {
+        root: { typeKey: st.rootType, selector: { filter: {} } },
+        paths: [[{ linkKey: "model_producible_at", direction: "out" }]],
+        maxNodes: 200,
+        contractFixtures: st.fixtures > 0 ? [mockSliceFixture(st.rootType)] : [],
+      },
+    });
+  }),
+  http.post("*/a/v1/ontology/slices/derive-fixtures", () => {
+    const promoted: { sliceKey: string; fixture: ReturnType<typeof mockSliceFixture> }[] = [];
+    for (const [k, v] of Object.entries(mockSliceGov)) {
+      if (v.fixtures === 0) { v.fixtures = 1; promoted.push({ sliceKey: k, fixture: mockSliceFixture(v.rootType) }); }
+    }
+    return HttpResponse.json({ promoted, skipped: [] }, { status: 201 });
+  }),
+  http.post("*/a/v1/ontology/slices/:sliceKey/derive-fixture", ({ params }) => {
+    const key = String(params.sliceKey);
+    const st = mockSliceGov[key];
+    if (!st) return err(404, "NOT_FOUND", `slice ${key}`);
+    st.fixtures = 1;
+    return HttpResponse.json({ sliceKey: key, promoted: true, fixture: mockSliceFixture(st.rootType) }, { status: 201 });
+  }),
+  http.post("*/a/v1/ontology/slices/:sliceKey/resolve", ({ params }) => HttpResponse.json(mockSliceGraph(String(params.sliceKey)))),
   // C7 切片编辑器：规划器求路径 + 入库 + 试切预览。真后端 planSlice/PUT slices/resolveSlice；mock 给确定性结果。
   http.post("*/a/v1/slices/plan", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { rootType?: string; targets?: string[] };

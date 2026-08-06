@@ -4084,6 +4084,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     throw forbidden("虚拟提问仅经模拟时钟回放在 SYNTHETIC 租户产生，无直调入口");
   });
 
+  // ============================================================================
+  // WO-SLICE-GOVERNANCE-FULL · 切片治理（无契约→推进为契约 · 单/批 · 取完整 spec 供编辑器预填）
+  // 独立段置于文件末尾，避免与其它改动抢行；契约 additive，既有切片端点行为不变。
+  // ============================================================================
+  // 批：为所有"无契约"切片确定性派生 baseline fixture（空 resolve 诚实 skip·requireAdmin）。
+  app.post("/a/v1/ontology/slices/derive-fixtures", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const out = await governance.deriveMissingSliceFixtures(c.tenantId);
+    return reply.status(201).send(out);
+  });
+  // 单：为一个无契约切片派生 baseline fixture 并写回 spec.contractFixtures（requireAdmin）。
+  app.post("/a/v1/ontology/slices/:sliceKey/derive-fixture", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const out = await governance.deriveSliceFixture(c.tenantId, sliceKey);
+    return reply.status(out.promoted ? 201 : 200).send(out);
+  });
+  // 取单个切片完整 spec（供前端编辑器预填 root/paths/maxNodes/contractFixtures）。tenant 隔离。
+  app.get("/a/v1/ontology/slices/:sliceKey", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    return { sliceKey: spec.sliceKey, version: spec.version, spec: spec.spec };
+  });
+
   return {
     app,
     services: {

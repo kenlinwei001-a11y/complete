@@ -971,6 +971,55 @@ export interface SliceResolveResult {
 export const resolveSlice = (sliceKey: string, args: Record<string, unknown>) =>
   api.a<SliceResolveResult>(`/a/v1/slices/${encodeURIComponent(sliceKey)}/resolve`, { body: { args } });
 
+// ---- WO-SLICE-GOVERNANCE-FULL：可编辑 / 推进为契约 / 就地内联图谱 ----------------------
+/** 单个切片完整 spec（供 admin 编辑器预填 root/paths/maxNodes/contractFixtures）。 */
+export interface SliceContractFixture {
+  name: string;
+  args: Record<string, string | number>;
+  expect: { rootType: string; minNodes: number; mustIncludeTypes?: string[]; mustIncludeLinkKeys?: string[]; maxNodes?: number };
+}
+export interface SliceSpecFull {
+  sliceKey: string;
+  version: number;
+  spec: {
+    root: { typeKey: string; selector: { byKey?: unknown; filter?: Record<string, unknown> } };
+    paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+    maxNodes?: number;
+    description?: string;
+    contractFixtures?: SliceContractFixture[];
+  };
+}
+export const fetchSliceSpec = (sliceKey: string) =>
+  api.a<SliceSpecFull>(`/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}`);
+
+/** 就地内联图谱：通用切片引擎（executeSlice）返真子图 nodes/edges（不跳转图谱模块）。 */
+export interface SliceGraph {
+  nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }[];
+  edges: { linkKey: string; from: string; to: string }[];
+  truncated: boolean;
+  snapshotVersion: string;
+}
+export const resolveSliceGraph = (sliceKey: string, args: Record<string, unknown> = {}) =>
+  api.a<SliceGraph>(`/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}/resolve`, { body: { args } });
+
+/** 无契约 → 推进为契约（单）：从真实子图确定性派生 baseline fixture 写回 spec。 */
+export interface DeriveFixtureResult {
+  sliceKey: string;
+  promoted: boolean;
+  reason?: string;
+  fixture?: SliceContractFixture;
+}
+export const deriveSliceFixture = (sliceKey: string) =>
+  api.a<DeriveFixtureResult>(`/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}/derive-fixture`, { method: "POST", body: {} });
+
+/** 批：为所有无契约切片推进为契约（空 resolve 诚实 skip）。 */
+export interface DeriveAllResult {
+  promoted: { sliceKey: string; fixture: SliceContractFixture }[];
+  skipped: { sliceKey: string; reason: string }[];
+}
+export const deriveAllSliceFixtures = () =>
+  api.a<DeriveAllResult>("/a/v1/ontology/slices/derive-fixtures", { method: "POST", body: {} });
+
 /** 实体解析与黄金记录（OC1）：扫描候选 / 合并 / 拒绝 / 合并历史 / unmerge。 */
 import type { MergeCandidateView, ObjectMerge } from "@platform/contracts";
 export const scanMerge = (typeKey: string) => api.a<{ candidates: unknown[] }>("/a/v1/objects/merge-scan", { method: "POST", body: { typeKey } });

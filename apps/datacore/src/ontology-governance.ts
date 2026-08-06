@@ -459,6 +459,87 @@ export class OntologyGovernanceService {
   }
 
   // ===========================================================================
+  // WO-SLICE-GOVERNANCE-FULL §7.2b 无契约 → 推进为契约（确定性派生 baseline fixture）
+  // ===========================================================================
+
+  /**
+   * 从一个切片"当前真实 executeSlice resolve 子图"确定性派生一条 baseline 契约 fixture
+   * （auto_baseline_v1）并写回 spec.contractFixtures：类型/链路取真实子图（**非声明**）。
+   *  - 以系统校验账号（全量可见，与 runSliceContracts 同视角）跑 executeSlice({})，
+   *    使派生的 fixture 与后续契约校验自洽（同视角同数据 → 断言必过·SEAM 自驱）。
+   *  - **空 resolve（0 节点）→ 诚实 skip 不伪造**（KILL-MOCK）：返回 promoted=false + reason。
+   *  - R6 确定性：同租户同数据同切片重跑字节级一致；R2：切片不存在/跨租户 → 404。
+   *  - 与 PUT /ontology/slices 一致：写回后重建 element_refs 引用索引（§7.4）。
+   */
+  async deriveSliceFixture(
+    tenantId: string,
+    sliceKey: string,
+  ): Promise<{
+    sliceKey: string;
+    promoted: boolean;
+    reason?: string;
+    fixture?: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number];
+  }> {
+    const sysCtx: AuthCtx = { tenantId, userId: "system:slice-derive", roles: ["admin"], attributes: {} };
+    const spec = await this.ontologyCore.getSliceSpec(sysCtx, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    const out = await this.ontologyCore.executeSlice(sysCtx, spec.spec, {});
+    if (out.nodes.length === 0) {
+      // 空子图 → 无真实数据可断言，诚实 skip（绝不伪造类型/链路制造假绿）。
+      return { sliceKey, promoted: false, reason: "empty_resolve" };
+    }
+    const mustIncludeTypes = [...new Set(out.nodes.map((n) => n.typeKey))].sort();
+    const mustIncludeLinkKeys = [...new Set(out.edges.map((e) => e.linkKey))].sort();
+    const fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] = {
+      name: "auto_baseline_v1",
+      args: {},
+      expect: {
+        rootType: spec.spec.root.typeKey,
+        minNodes: out.nodes.length,
+        mustIncludeTypes,
+        mustIncludeLinkKeys,
+      },
+    };
+    // 写回：additive（同名替换），保留其它 fixtures 与 spec 结构不变。
+    const existing = spec.spec.contractFixtures ?? [];
+    const contractFixtures = [...existing.filter((f) => f.name !== fixture.name), fixture];
+    const nextSpec = { ...spec.spec, contractFixtures };
+    const rec = await this.ontologyCore.putSliceSpec(sysCtx, sliceKey, spec.version, nextSpec);
+    await this.indexSliceRefs(sysCtx, rec); // §7.4 引用索引随之保持一致
+    return { sliceKey, promoted: true, fixture };
+  }
+
+  /**
+   * 批：为所有"无契约"切片（contractFixtures 为空）确定性派生 baseline fixture。
+   * 空 resolve 的切片进 skipped（诚实），非空的进 promoted。确定性排序（sliceKey 升序）。
+   */
+  async deriveMissingSliceFixtures(
+    tenantId: string,
+  ): Promise<{
+    promoted: { sliceKey: string; fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] }[];
+    skipped: { sliceKey: string; reason: string }[];
+  }> {
+    const allSpecs = await this.repos.sliceSpecs.list(tenantId);
+    // latest version per sliceKey
+    const latest = new Map<string, SliceSpecRecord>();
+    for (const s of allSpecs) {
+      const cur = latest.get(s.sliceKey);
+      if (!cur || s.version > cur.version) latest.set(s.sliceKey, s);
+    }
+    const missing = [...latest.values()]
+      .filter((s) => (s.spec.contractFixtures?.length ?? 0) === 0)
+      .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
+    const promoted: { sliceKey: string; fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] }[] = [];
+    const skipped: { sliceKey: string; reason: string }[] = [];
+    for (const s of missing) {
+      const r = await this.deriveSliceFixture(tenantId, s.sliceKey);
+      if (r.promoted && r.fixture) promoted.push({ sliceKey: r.sliceKey, fixture: r.fixture });
+      else skipped.push({ sliceKey: r.sliceKey, reason: r.reason ?? "unknown" });
+    }
+    return { promoted, skipped };
+  }
+
+  // ===========================================================================
   // §3.3 关键词搜索（#3）
   // ===========================================================================
 
