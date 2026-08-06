@@ -51,7 +51,10 @@ sweep() {
     # 自动生成的 worktree-agent-* 一律只在本地 commit，不推 —— 理由是实测出来的：
     # 本会话四次重启，**磁盘每次都完整存活**（scratchpad/worktree/node_modules 全在），
     # 所以「本地已提交」就已经足够防重启丢失；push 只为防更罕见的掉盘。
-    # 无差别推会往远端灌一堆 worktree-agent-* 垃圾分支（我第一版就灌了 14 条，已清）。
+    # 无差别推会往远端灌一堆 worktree-agent-* 垃圾分支（我第一版就灌了 14 条）。
+    # ⚠️ 那 14 条**至今没删掉**：本环境的 git 代理拒绝分支删除
+    #    （`send-pack: unexpected disconnect while reading sideband packet`）。
+    #    原注释写的是「已清」——那是句没有检查所断言条件的假话，改此。留作已知债。
     case "$br" in
       claude/*) git -C "$wt" push -q -u origin "HEAD:$br" 2>/dev/null || true ;;
       *) : ;;
