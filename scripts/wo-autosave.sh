@@ -67,6 +67,10 @@ sweep() {
   #   （守护死了日志最后一行原地不动，看起来一切正常）。这与本仓一整天在指认的病同族：
   #   **拿一个不能证明该结论的信号去断言该结论**。文件写是立即的，可放心用 mtime 判活。
   printf '%s pid=%s saved=%s\n' "$now" "$$" "$saved" > /tmp/wo-autosave.alive
+  # 顺手记一笔容器纪元台账（每 60s 一次 = 密集采样，让「存活时长」是**测出来的**不是猜的）。
+  # 挂在这里而不是单独起个守护：本守护已经每 60s 醒一次，多跑一个 node 是白得的样本，
+  # 而多一个守护就多一个「它自己死了没人知道」的东西。
+  node "$ROOT/scripts/boot-log.mjs" --quiet 2>/dev/null || true
 }
 
 echo "wo-autosave 启动（每 ${INTERVAL}s 扫一次 $ROOT/.claude/worktrees/*）"
