@@ -262,3 +262,196 @@
 - **最小 WO 建议**：`WO-ADT-1`（极轻）：`operation-intent.ts` 补一条
   `{ op: "fill-data", endpoint: "/a/v1/growth/fill-data", cliCommand: "fill-data", … }` 并跑 `check-cli-parity.mjs`。
   🚦范围边界：`packages/contracts/src/operation-intent.ts` + `scripts/check-cli-parity.mjs` 回归。
+
+---
+
+### docs/PRD-agent-execution-governance-loop-control.md
+- **它要做什么**：给 path-B `runAgentLoop` 装一层确定性执行治理（Loop Control）——
+  有界轮次×有界时长×有界工具预算内必停、停得诚实（唯一降级出口 `degrade()`）；
+  并把用户提的 9 个机制逐条对照代码，标清已建/路线图。
+- **PRD 自称的 AS-IS**（§2，**最完整的一张 AS-IS 表**：9 机制 × file:line × ✅/◐ 判读）：
+  自陈 `loop.ts`（937 行）"已是一副成熟的治理骨架，不是绿地"；3 个 ✅（State Monitor / Budget Controller /
+  Reflection Checkpoint）、6 个 ◐；并在 §8 明确分期 P0 ✅已落 / P1 待派 / P2 待派 / P3 排后。
+  **这份 PRD 的 AS-IS 自陈经我复核，逐条属实。**
+- **实测现状**（对着 §8 分期表逐期核）：
+  - **P0 ✅（PRD 自称已落 → 属实）**：守卫序列与唯一出口在 `apps/agentcore/src/agent/loop.ts`；
+    静态门 `scripts/check-loop-control.mjs` 真守宪法——`:26` 断言"`degraded:{reason}` 产出点恰为 1"、
+    `:38-40` 断言 reason ∈ {TIMEOUT,BUDGET_EXHAUSTED,STALL_LOOP}、`:45` 断言"环检测触顶必经 degrade"。
+    **该门已并入 `pnpm gates`**（`package.json:32` 含 `check-loop-control.mjs`）——与 VLE 的门形成鲜明对比。
+  - **P1 ✅（PRD 标"待派 1 dev" → 实际已落）**：`callSignature` 环检测在
+    `apps/agentcore/src/agent/loop.ts:126-130`（`loopRepeatCap`，opt-in），
+    新降级理由 `STALL_LOOP` 进枚举 `loop.ts:164`，生产注入 `apps/agentcore/src/engine.ts:360`
+    ← config `apps/agentcore/src/config.ts:46 QOS_AGENT_LOOP_REPEAT_CAP`。
+  - **P2 ✅（PRD 标"待派" → 实际已落）**：
+    per-tool cap `apps/agentcore/src/tools/budget.ts:26,94-102`（`markExhausted("perToolCallCap:"+name)`）；
+    RetryPolicy 的 `retryable` 回执 `apps/agentcore/src/tools/executor.ts:27,603,622`；
+    Escalation Ladder + 暗发 feature `apps/agentcore/src/features/registry.ts:108`
+    （`agent.escalation`，`defaultOn:false`），生产判定 `apps/agentcore/src/router/orchestrator.ts:223,2048,2113`；
+    metric `apps/agentcore/src/metrics.ts:118`。
+  - **出货态是真开着的**（这一点很关键，避免"opt-in 等于没开"的误判）：
+    `docker-compose.yml:125-128` 显式给了 `QOS_AGENT_MAX_ROUND_TRIPS/MAX_DISCOVER_CALLS/LOOP_REPEAT_CAP/PER_TOOL_CALL_CAP`
+    默认值，且注释自陈"这五个开关在代码里是 opt-in（缺省不设=不限）……由
+    `scripts/check-deploy-governance.mjs` 守门防回潮"——该门也在 `pnpm gates`（`package.json:32`）。
+- **结论**：◐ 部分（**P0/P1/P2 全落且真接线真配置，只剩 P3；PRD 分期表自身已过期**）
+- **缺的那半（P3，三项，均为 ❶ 没接线/未实现）**：
+  mid-loop Goal Monitor / 周期性 reflect checkpoint / 跨 agent Deadlock（Coordinator 扇出层）/
+  State Monitor per-iteration 可观测 trace —— 关键词
+  `goalCheck|midLoop|mid-loop|goal-check|deadlock|Deadlock|dispatchId` 在 `apps/agentcore/src` 全域**零命中**。
+  PRD 自己把 P3 标为"排后·低优先"，与实测一致。
+- **⚠ PRD 自身陈述与现状不符（1 处，方向是"PRD 落后于代码"）**：
+  §8 分期表把 **P1 标为"待派 1 dev"、P2 标为"待派"**，实测两期**都已在 canonical**（证据见上）。
+  照这张表排期会重复派单。这正是「拿待办状态判断实现与否」会踩的坑的镜像——PRD 里的状态栏同样会过期。
+- **另记**：`agent.escalation` 是 `defaultOn:false` 的暗发门（`features/registry.ts:108`），
+  出货容器未显式开启 ⇒ §3.4 的"升级阶梯"今天在部署态**不触发**（关=直接 degrade，PRD §3.4 明说这是设计意图，
+  属"接了线按设计没开"，不是缺陷；但读 PRD 的人若以为升级已在生效，会误判）。
+- **最小 WO 建议**：`WO-LC-0`（极轻·纯文档）：把 §8 分期表的 P1/P2 状态改为「✅ 已在 canonical」并补 commit/file:line。
+  🚦范围边界：`docs/PRD-agent-execution-governance-loop-control.md` 单文件。
+  P3 三项建议**继续排后**（PRD 自己的优先级判断正确）。
+
+---
+
+### docs/PRD-agent-navigation-slice-latency.md
+- **它要做什么**：治 path-B agent「99% 时延在 LLM 盲目 ReAct 选型」的病——
+  A 确定性优先门（高置信题拉回 path-A）、B 导航切片注入、C 规划式执行、D 模型分层。
+- **PRD 自称的 AS-IS**：§1 是**活系统真跑的定量观测**（Q5 137.7s / 17 步 / LLM 占 99.1%），
+  §2 是带 file:line 的根因表（R1–R4）；**§7「实现状态与审核精炼」是 PRD 自己写的落地自述**，
+  §7.4 明确留了唯一未闭环项。
+- **实测现状**（逐条核 §7.2 的落地自述）：
+  - **WO-QOS-1 确定性优先门 ✅ 属实**：`apps/agentcore/src/router/domain-resolver.ts` 存在；
+    生产接线 `apps/agentcore/src/router/orchestrator.ts:72`（import `preferDeterministicSolver`、
+    `DETERMINISTIC_PREFERENCE_THRESHOLD`）→ `:703-708` 真判定并拉回 path-A；
+    金标 fixture `apps/agentcore/test/fixtures/qos-20q-goldset.ts` + SEAM `apps/agentcore/test/qos-det-gate-seam.test.ts`。
+  - **WO-QOS-2 导航切片 + 规划式 ✅ 属实**：`apps/agentcore/src/agent/navigation-slice.ts` 存在且
+    **生产接线在 `apps/agentcore/src/engine.ts:325-326`**（`projectNavigationSlice` → `renderNavigationSlice` 进首轮 prompt）；
+    下游还长出了三个复用方（非孤岛）：`router/compile-plan.ts:61,181`、`agent/sim-planner.ts:84,184`、
+    `router/l2-decompose.ts:32`；SEAM `apps/agentcore/test/qos-agent-slice-seam.test.ts`。
+- **结论**：✅ 已实现（A/B/C 三杠杆落地并接线；**PRD 自己声明的唯一未闭环项经我复核仍未闭环**）
+- **未闭环项（PRD §7.4 自陈，我复核后确认仍在）**：
+  「真 Kimi 20 题 live 重测（137s → path-A <5s / path-B <10s）」——**只读代码无法验证墙钟**，
+  我没有实跑，诚实记为**未查清**：卡在需要真 LLM provider 凭据 + 起双服务做 live 计时。
+- **⚠ 一条可核实的连带欠账（我实测，PRD 未标为已还）**：
+  §7.2 的"过渡创可贴：free-LLM 预算 90s→600s（`0a054641`），**QOS-1/2 提速经 live 测确认后应回调此预算**
+  （勿长期以 600s 掩盖'agent 慢'）"——实测**创可贴仍在**：
+  `packages/contracts/src/qos.ts:676 maxDurationMs: 600_000`。
+  这与 §7.4 未闭环是一致的（live 未测所以没回调），但它意味着**今天出货的默认 agent 预算是 10 分钟**。
+- **最小 WO 建议**：`WO-NSL-1`（中）：起真 provider 跑 20 题金标 live 计时，据结果回调
+  `packages/contracts/src/qos.ts:676` 至 90–120s，并把结果写回 §7.4。
+  🚦范围边界：live 测脚本 + `packages/contracts/src/qos.ts` 一个常量 + PRD §7.4。
+
+---
+
+### docs/PRD-agent-react-harness.md
+- **它要做什么**：把 agent loop 从「计划→执行→收尾」升级为「理解→计划→分解→执行→**反思**」，
+  补显式 Reflect/重规划步；系统提示词补齐七要素（③推理循环/⑥错误恢复/⑦结果规范）；
+  Solver-first 硬纪律（排产/优化题禁 LLM 自算）。
+- **PRD 自称的 AS-IS**（§0.2，**一张七要素诚实体检表**）：
+  ①角色 ✅ / ②目标 ◑ / ③推理循环 ❌ / ④工具协议 ✅ / ⑤状态管理 ✅ / ⑥错误恢复 ❌ / ⑦结果规范 ◑；
+  自陈"③⑥⑦三项欠账，合起来就是缺一个反思/重规划闭环"。
+- **实测现状**（对着 §9 的三张 WO 逐张核）：
+  - **WO-REFLECT-LOOP ✅**：`apps/agentcore/src/agent/reflect.ts` 存在（PRD 标为"(新)"）；
+    loop 侧 `apps/agentcore/src/agent/loop.ts:21`（import `reflectAnswer`）、
+    `:304-312 reflectWithCritic`（确定性主判 + 可选 LLM critic）、`:882` 收尾前挂钩、
+    `:372 replanBudget`（默认 1，硬有界）、`:886` 重规划条件、
+    `:906` 预算耗尽时诚实标「反思发现的残余缺口（已尽重规划预算 N）」。
+    观测字段 `AgentRunRecord.reflected/replanReason` 落在 `loop.ts:182,928-929`。
+    **生产接线**：`apps/agentcore/src/router/orchestrator.ts:2024 reflect: true`（不是只在 test 里开）。
+  - **WO-SOLVER-FIRST-GATE ✅**（PRD 要求与 REFLECT-LOOP 同 dev 整单，实测确实同文件）：
+    `apps/agentcore/src/agent/reflect.ts:31` 排产/优化类问句正则、
+    `:41` "至少一次成功 invoke_solver" 判据、`:92-94` 打回理由
+    「排产/优化/可行性类问题未调用对口 solver（求解纪律：禁自算·须走 invoke_solver）」。
+  - **WO-HARNESS-PROMPT ✅**：`apps/agentcore/test/harness-elements.test.ts` 存在（PRD §11-1 点名的断言文件）。
+  - SEAM 测试齐：`apps/agentcore/test/reflect-loop-seam.test.ts` / `reflect-wiring-seam.test.ts` /
+    `seed-agent-harness.test.ts`。
+- **结论**：◐ 部分（**三张 WO 全落且真接线，两处"回写承诺"未兑现**）
+- **缺的那半（两条，都在 §10 回写承诺里，都是 ❶）**：
+  1. **§10.3 声明"新增 `agent.reflected` 事件" —— 事件名不存在**。
+     `rg "agent.reflected"` 在 `apps/agentcore/src` 零命中；实测只有 `AgentLoopResult.reflected` 这个**布尔字段**
+     （`loop.ts:182,928`），不是 §4 事件表里的事件。⇒ 观测/审计侧拿不到"何时触发了重规划"的事件流。
+  2. **§10.6 声明"§7 新增门 `harness-elements:check`" —— 门不存在**。
+     `scripts/check-harness*.mjs` 无此文件；`package.json` 的 `gates` 串（`:32`）里也没有。
+     实测只有**测试** `apps/agentcore/test/harness-elements.test.ts`。
+     ⚠ 这是 CLAUDE.md「只有 test 引用 = 已排练，不是已实现」的**温和版**：断言是真的、也跑在 gate.sh 的 TEST 阶段，
+     只是它不是 PRD 承诺的那种"静态门"，防回潮强度低一档（改坏 prompts.ts 若同时改了测试就过）。
+- **最小 WO 建议**：
+  - `WO-RH-1`（极轻）：二选一——要么补 `agent.reflected` 事件 + `harness-elements:check` 门，
+    要么把 §10.3/§10.6 的回写承诺改成"以 `AgentLoopResult.reflected` 字段 + `harness-elements.test.ts` 承担"。
+    **建议后者**（成本低、实质已覆盖）。🚦范围边界：`docs/PRD-agent-react-harness.md` 单文件（若选前者则加两个文件）。
+
+---
+
+### docs/PRD-aop-annual-scenario-1to1.md
+- **它要做什么**：年度情景规划台与参考原型 HTML 的 1:1 复刻——补 note 行/三情景对比 chip/分解 header 数字/
+  行内规则链接/缺口窗口曲线，修 2027-vs-2026 年份接线 bug，同时**保留系统超集**（活求解器/真规则/Action 拍板）。
+- **PRD 自称的 AS-IS**（§2，**15 行 HTML-vs-系统逐项差异表**，含 ✅/◐/❌/➕/🔴 五档）：
+  自陈"系统已实现且多处强于 HTML"，只 3 项 ❌（三情景对比 chip / note 字段 / —）、1 项 🔴（年份接线）。
+  **这份 AS-IS 是本批最诚实的一份**——它主动列出 ➕（系统独有超集）两项，避免读者把超集当欠账。
+- **实测现状**：
+  - **§3.1 契约 `note` ✅**：`packages/contracts/src/planviews.ts:14`
+    `note: z.string().optional(), // 情景前提注解（乘用车放缓/储能放量/海外大单——电池域种子文案，非前端写死）`，
+    生成器填值 `apps/datacore/src/synthetic/battery.ts:4495-4497`（三情景各一句）。
+  - **§3.2 前端五项补齐 ✅**（逐项在 `apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx`）：
+    三情景对比 chip `:47`（`data-testid="aop-compare-chip"`，文案 `apps/frontend-shell/src/locales/zh.ts:224`）；
+    note 行 `:162-164`（用既有 `.scenNote`）；分解 header 取真实数据 `:35`（注释明写"非写死"）；
+    行内规则链接 `:8,:44`（`<RuleRef code="C23"/>` / `C18`）；
+    **缺口/过剩窗口曲线 `:65-103`**（消费 `capexScenario.demand/supply/gap/windows`，含 `markAreas`）。
+  - **§3.3 年份接线 ✅ 已修**：`AnnualScenarioView.tsx:15-17` 注释
+    「合成生成器与端点默认均种 2026（battery generatePlanDomain / PlanService.aop 默认年）」+ `const YEAR = 2026`。
+- **结论**：◐ 部分（**§3 设计三节全部落地；§9 自己加码的"100% 1:1 精确值"未执行**）
+- **⚠ PRD 自身陈述与现状不符（本批最典型的一例 · §9 断言了可核实的事、事实相反）**：
+  §9「1:1 尺度（已定·全局标准）」逐项点名要还原的精确值，**实测三项全部没还原**：
+  | §9 点名要 1:1 的项 | PRD 说 | 实测 | 证据 |
+  |---|---|---|---|
+  | 三情景需求 | dem **1420/1580/1760** | 由 `annualBase × 0.88 / 1.0 / 1.18` 算出 | `apps/datacore/src/synthetic/battery.ts:4475,4495-4497` + 因子 `:499-500`。HTML 的真实比值是 **0.8987 / 1.1139**，与 0.88/1.18 不等 ⇒ 数值必不相同 |
+  | 产能决策文案 | **枣庄/江门** | 仍是 **合肥四期 / 盐城二期** | `battery.ts:4496`「合肥四期 8GWh 扩产，2027-Q2 投产」`:4497`「合肥四期 + 盐城二期合计 20GWh 扩产」 |
+  | 触发条件 | **海外大单≥80万套**（HTML 2 条） | 系统 **4 条完全不同的条件** | `battery.ts:4531-4561`：季度产销缺口>4万套 / 储能增速>25% / 长协偏差>12% / 锂价涨幅>20%；无"海外大单" |
+  注意这**不是 §2 没说**——§2 的差异表第 5/6/11 行把这三项如实标为 ◐ 并写明"值不必等于演示值"。
+  **是 §9 后来加码到"100% 1:1（用户裁决）"，而 §9 的加码从未执行，§2 的旧口径反而是现状。**
+  同一份 PRD 内两节自相矛盾，且 §9 那节是后写的、更权威的那节 —— 这会让读者以为 1:1 已完成。
+  （旁证：`battery.ts:461` 有一处**确实**按 HTML 改过名的记录「命名以 HTML 参考原型为准（用户裁决 2026-06-23）：枣庄储能线」，
+  但那是 **capex 项目名**，不是 §9 点名的 `AnnualScenario.capacityDecision` 文案——**同名不同物，别混判**。）
+- **最小 WO 建议**：
+  - `WO-AOP-1`（轻·先做）：**先定夺 §2 与 §9 哪个口径算数**再动手。若维持系统口径 → 改 §9 为"结构 1:1、
+    数值由生成器种子产出（不追演示值）"；若真要 100% → 改
+    `apps/datacore/src/synthetic/battery.ts:4495-4497`（三情景 dem/产能决策）与 `:4531-4561`（触发条件）为 HTML 种子值。
+    🚦范围边界：二选一，别同时改（这是真互斥的架构决策，须人裁）。
+
+---
+
+### docs/PRD-attainment-base-daily-timeseries.md
+- **它要做什么**：补一条**基地级日达成率时序** `attainment:base`（现状只有产线级日序 + 周聚合），
+  使"本月逐日为何未达成"的时间维度归因成立；并把日达成率口径接到 Metric（spine）。
+- **PRD 自称的 AS-IS**（§2，带 file:line 的 5 行表）：
+  `attainment:line`（battery.ts:780，日）✅ / `schedule_attainment`（battery.ts:802，**周**）✅ /
+  基地级日序 ❌ / 与 Metric 对齐 ◐ / seed 产出 ✅（产 line 时序）。**经复核属实**
+  （现行号：`apps/datacore/src/synthetic/battery.ts:2605` `attainment:line`、`:2631` `schedule_attainment` 周聚合）。
+- **实测现状**：
+  - **TS.1 序列本体 ✅，但走的是 §1-(a) 而非 PRD 建议的 (b)**：
+    `apps/datacore/src/synthetic/battery.ts:2610`
+    `{ seriesKey: "attainment:base", entityType: "Base", grain: "day", base: { mean: 0.918, noise: 0.018 },
+       effects: ["maint_window_dip","weekend_dip","ramp_curve"], measureField: "attainment" }`
+    —— 这是 §1-(a)「新剧本」的逐字实现（含三个 effects），**不是** §3.1 建议的 (b)「日上卷 TsAgg」。
+    上一行 `:2607` 的注释直接引用本 PRD（"CL.5（PRD-attainment-base-daily-timeseries）"）。
+  - 可查性 ✅：经通用 `POST /a/v1/timeseries/agg-query` 按 seriesKey 取，测试实证
+    `apps/datacore/test/attainment-base-daily.test.ts:32`（6 月逐日 day grain）+ R6 同 seed 字节一致 `:42-49`。
+  - 原 `attainment:line` / `schedule_attainment` 未破（`:2605`/`:2631` 均在）——§1 非目标守住。
+- **结论**：◐ 部分（**TS.1 落地，TS.2 整期未做；且序列今天零生产消费方**）
+- **缺的那半（三条）**：
+  1. **`Base.attainment_daily` 属性不存在（❶）**：§4 契约节点名要给 `Base` 加此属性。
+     `rg "attainment_daily"` 在 `apps/**/src` + `packages/**/src` **零命中**（只在测试文件名/注释里出现）；
+     `battery.ts` 的属性表里只有 `Line.schedule_attainment`（`:903`、中文名 `:1725`）。
+  2. **接 Metric（TS.2 核心）= ❶ 完全未做**：§4「接 spine：`Metric(achievement, day)` actual ← attainment:base」。
+     `apps/datacore/src/metrics.ts` 里 `attainment|achievement|达成` **零命中**。
+  3. **零生产消费方（这条最值得记）**：`rg "attainment:base"` 在全仓非 test 代码里**只有 1 处**——
+     就是 `battery.ts:2610` 的**生产端**本身。`apps/agentcore/src` 与 `apps/frontend-shell/src` 全域零命中
+     （AgentCore 的种子提示词 `apps/agentcore/src/mocks/seed.ts:1673` 与 mock `mocks/clients.ts:950`
+     仍写的是 `attainment:line`）。
+     ⇒ **数据产出来了，没有任何一条链路会去问它。** 这不是"死代码"（通用 agg-query 端点能读，
+     agent 若显式给出 seriesKey 也能读回），而是**「有数据没消费方」**——
+     PRD §5 关键流程的后半段（`→ Metric.actual(day) → plan_audit/逐日时间维度归因`）**整段没接**。
+- **最小 WO 建议**：
+  - `WO-TSB-1`（轻）：把 `attainment:base` 接进 `Metric(achievement, level=day)` 的 actual 来源，
+    并给 `Base` 补 `attainment_daily` 属性 + TsAgg 物化。
+    🚦范围边界：`apps/datacore/src/synthetic/battery.ts`（属性表 + TsAgg spec）+ `apps/datacore/src/metrics.ts`
+    + 一条 seam 测试（断言 Metric.actual 与 attainment:base 日序同值）。
+  - `WO-TSB-2`（轻）：把 AgentCore 侧的达成率提示词/mock 从 `attainment:line` 改指 `attainment:base`
+    （`apps/agentcore/src/mocks/seed.ts:1673`、`mocks/clients.ts:950`），让 agent 真会去问这条序列。
