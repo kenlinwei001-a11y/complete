@@ -847,7 +847,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * WO-65 · `G-METRICS-CROSS-TENANT-AND-OPEN`：需要鉴权、但**不在 `/a/` 前缀下**的路径。
    *
    * ⚠️ 只把 `/metrics` 从 `PUBLIC_PATHS` 删掉是**假修**——下面第二行 `if (!path.startsWith("/a/")) return;`
-   * 会让它照样从鉴权钩子里逃出去（`/metrics` 不以 `/a/` 开头）。两处必须一起改，否则端点仍是 200 裸奔。
+   * 会让它照样从鉴权钩子里逃出去（`/metrics` 不以 `/a/` 开头）。两处必须一起改。
+   *
+   * 变异实测（别当推理看）：把本集合去掉、handler 退回基线的「不查凭据」一行式
+   * ⇒ 匿名 `GET /metrics` **仍是 200 且带完整指标体**（= PRD-skill-governance-learning §2.2
+   * 第 1 条照字面做出来的东西）。若只去掉本集合而**保留**下面 handler 里的 `ctx(req)`，
+   * 则变成对**所有人** 401（含 admin 与抓取侧）—— 不是漏，是端点整个不可用。两种坏法都不可接受。
    */
   const PROTECTED_NON_A_PATHS = new Set(["/metrics"]);
   /** 全局抓取端点：服务令牌即凭据，**不要求** X-Tenant-Id（Prometheus 抓的是全量，没有"某个租户"可言）。 */
