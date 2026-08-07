@@ -3074,10 +3074,15 @@ export class SolverService {
   private async chainLossAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const load = async (typeKey: string): Promise<ChainLossObject[]> =>
       (await this.repos.objects.listByType(ctx.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
-    const [orders, customers, models, routings, operations, materials, suppliers, processes, cadences] = await Promise.all([
+    const [orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections] = await Promise.all([
       load("Order"), load("Customer"), load("Model"), load("Routing"), load("Operation"), load("Material"), load("Supplier"), load("Process"),
       // D1×E1 接缝：节拍对象。此前本求解器不读它，于是 D1 推出来的节拍谁也拿不到（模块绿·链路断）。
       load("Cadence"),
+      // WO-CHAIN-24 · D2×E1 接缝：采购段三个凭证类。D2 早已把 CustomsClearance / IncomingInspection
+      // 与 PurchaseOrder 四段日戳落了库，但本求解器不读它们 ⇒ 清关/到货检验/入厂在途三段一直硬标 EMPTY，
+      // 而 chain-loss.ts 的 STRUCTURAL_GAPS 里还印着「grep 0 命中」这句 2026-08-05 的过期取证。
+      // 与上面那行 `load("Cadence")` 是**同一个形态**：承载物有了、就是没人读进来。
+      load("PurchaseOrder"), load("CustomsClearance"), load("IncomingInspection"),
     ]);
     if (orders.length === 0) throw validationError("chain_loss_attribution 需先合成 Order（全链锚点）");
     const links = (await this.repos.links.list(ctx.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
@@ -3085,7 +3090,8 @@ export class SolverService {
     if (so && !orders.some((o) => str(o.props.so) === so)) throw notFound(`Order ${so}`);
     return runChainLossAttribution({
       ...(so ? { so } : {}),
-      orders, customers, models, routings, operations, materials, suppliers, processes, cadences, links,
+      orders, customers, models, routings, operations, materials, suppliers, processes, cadences,
+      purchaseOrders, customsClearances, incomingInspections, links,
     }) as unknown as Record<string, unknown>;
   }
 

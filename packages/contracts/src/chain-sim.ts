@@ -38,11 +38,27 @@ import { BUSINESS_TYPE_LABEL, BusinessTypeSchema, type BusinessType } from "./gl
 import { DerivedDataModeSchema } from "./derive-fields.js";
 
 // ══════════════════════════════════════════════════════════════════════════
-// § 1 · 链段（PRD §3.2 的四段：需求 → 订单 → 产能 → 物料）
+// § 1 · 链段（需求 → 订单 → 产能 → 物料 → 交付）
 // ══════════════════════════════════════════════════════════════════════════
 
-/** 全链四段（销售预测 → 物料采购）。顺序即链路顺序，`ChainStage` 的取值集在此单一登记。 */
-export const CHAIN_STAGES = ["DEMAND", "ORDER", "CAPACITY", "MATERIAL"] as const;
+/**
+ * 全链五段（销售预测 → 物料采购 → 交付回款）。顺序即链路顺序，`ChainStage` 的取值集在此单一登记。
+ *
+ * ── WO-CHAIN-24：第 5 段 `DELIVERY` 是**末位追加**（R6：前序不动）────────────
+ * 前四段（DEMAND/ORDER/CAPACITY/MATERIAL）**逐字不动** —— 动它们等于把 D1×E1 那次
+ * 「两套词表交集为 0」的事故换个位置复现（§2.5 记着那笔账）。
+ *
+ * 主线序（`chainLineMap.ts` 的 `TRUNK_STAGES` = 本表除支线段 `MATERIAL` 外的全部）因此是
+ * 需求 → 订单 → 产能 → **交付**，物料作为支线喂进产能段 —— 追加落在末位，主线序恰好仍然成立。
+ *
+ * **枚举变宽的连带责任**（加第 6 段时照此清点，别再靠 TS 报错碰运气）：
+ *  · `Record<ChainStage, X>` 型的表会 TS 当场红（`chainLineMap.ts` / `chainImpediment.ts` 的 `STAGE_LABEL`）；
+ *  · 但 `Partial<Record<…>>`、索引签名、`switch` 的 `default` 分支**不会红** —— 这几处必须人工走一遍。
+ *    本单实测走过：`sandboxConsole.ts` 的 `buildStageBoard`（`CHAIN_STAGES.map`，自动多一条 lane）、
+ *    `chainLineMap.ts` 的 `TRUNK_STAGES`（`filter`，自动多一段）、`sim/propagation.ts` 的
+ *    `CadenceGateLookup`（`Record<string, …>`，键是 nodeId 不是 stage，不受影响）。
+ */
+export const CHAIN_STAGES = ["DEMAND", "ORDER", "CAPACITY", "MATERIAL", "DELIVERY"] as const;
 export const ChainStageSchema = z.enum(CHAIN_STAGES);
 export type ChainStage = z.infer<typeof ChainStageSchema>;
 
@@ -131,8 +147,41 @@ export function expectedCadenceWaitDays(cadence: Pick<Cadence, "everyDays">): nu
  *  · `nodeId` —— canonical id，`<stage 小写>.<名>`，全仓唯一；
  *  · `label`  —— 人读名（前端**不另维护中文映射表**，一律取这里）；
  *  · `stage`  —— 所属阶段，必须与 `CHAIN_STAGES` 一致。
+ *
+ * ══ WO-CHAIN-24 · 12 → 24 条（**只在末位追加，前 12 条逐字不动**）══════════
+ *
+ * 前 12 条（`demand.consensus` … `material.shipping`）是 S0 冻结的原表，**一个 id 都没动**：
+ * 改任何一个已在册 id = 把上面那次「交集为 0」的事故复现一遍（消费方按 id 查表，改 id 就是断链）。
+ * 新增 12 条一律追加在末位 —— 因此 `CHAIN_NODE_REGISTRY[i]` 的下标语义对前 12 条保持稳定
+ *（`apps/frontend-shell/test/node-inspector-reachable.test.tsx` 就按 `[4] === capacity.schedule` 取样）。
+ *
+ * ── 与设计稿的对照（**照实写，不圆场**）────────────────────────────────────
+ * 设计稿 `sandbox-console-DESIGN-v2-with-zoom.html` 顶栏写「5 段 24 节点」，
+ * 但它自己的 `N[]` 数组**实际是 27 张卡**（D1–D4 / P1–P5 / S1–S5 / M1–M7 / C1–C6）——
+ * 标题与内容对不上，这是设计稿自身的不一致。本表取 **24**（= 顶栏数 = `CHAIN_STAGE_DESIGN_TARGET.nodeCount`），
+ * 差出来的 3 张卡按下述**明确归属**处置，而不是硬塞成 27 条：
+ *  · `M2 前道（涂布→卷绕）` / `M4 后道 PACK 组装` → **动态工序命名空间** `capacity.op.<opId>`
+ *    （数量随 Routing/Operation 实例变，seed 42 下是 OP-001…OP-010，**不可能进静态表**，见 `CHAIN_OP_NODE_PREFIX`）；
+ *  · `M5 工序间 WIP` → 同上：工序间纯等待今天由每道工序的 `capacity.op.<id>#setup`（`queue` 段）承载，
+ *    另立静态节点会与它**重复计**同一段时间；
+ *  · `M7 终检 FQC` → 并入既有 `capacity.quality`（质量与返工）—— 设计稿 M6 一张卡在本表本就拆成
+ *    `capacity.qc_batch`（攒批节拍）+ `capacity.quality`（判定与返工）两条，放行闸属后者；
+ *  · `P4 详细排产 APS` → 并入既有 `capacity.schedule`：今天全仓**只有一个排产承载物** `ProductionSchedule`
+ *    （MPS 与 APS 共用），拆成两个节点会造出一个没有自己承载物的节点 —— 那是空壳不是建模。
+ * 反向的一条：`capacity.maint`（计划检修窗）**在本表但设计稿没有这张卡** ——
+ * 它是种子里证据最硬的真周期（13 基地各一个间隔且全等），`flowGate:false` 故不摊进链路，
+ * 但它是真节点，不因为设计稿没画就删。
+ *
+ * ── 新增 12 条的段归属（为什么不按设计稿的 5 个 phase 一一对应）────────────
+ * 设计稿的 phase 是**看板分组**（需求与承诺 / 计划与齐套 / 采购与到料 / 制造与质量 / 交付与回款），
+ * 本表的 `stage` 是**契约枚举**，前 12 条已经把 C5/C6（开票 / 回款）钉在 `ORDER`、把 C2（发运节拍）钉在
+ * `MATERIAL`。既然「前序不动」，就不能为了对齐看板把它们挪段。故：新段 `DELIVERY` 只收设计稿
+ * 交付与回款 phase 里**尚无在册节点**的三张卡（C1 成品入库 / C3 运输在途 / C4 客户验收）。
+ * 「同一个 phase 的节点散在两个 stage 上」是**今天的真实形态**，看板要按 phase 分组是前端的事，
+ * 不是往契约里塞第二套分段。
  */
 export const CHAIN_NODE_REGISTRY = [
+  // ── 原表 12 条（S0 冻结·逐字不动）────────────────────────────────────────
   { nodeId: "demand.consensus", label: "S&OP 共识会", stage: "DEMAND" },
   { nodeId: "order.review", label: "订单评审", stage: "ORDER" },
   { nodeId: "order.cash", label: "订单回款", stage: "ORDER" },
@@ -145,6 +194,23 @@ export const CHAIN_NODE_REGISTRY = [
   { nodeId: "material.mrp", label: "MRP 运行", stage: "MATERIAL" },
   { nodeId: "material.replenish", label: "关键物料补货", stage: "MATERIAL" },
   { nodeId: "material.shipping", label: "发运节拍", stage: "MATERIAL" },
+  // ── WO-CHAIN-24 追加 12 条 ───────────────────────────────────────────────
+  // DEMAND：设计稿 D1 / D3（D2→demand.consensus、D4→order.review 已在册）
+  { nodeId: "demand.forecast", label: "客户预告接收", stage: "DEMAND" },
+  { nodeId: "demand.quote", label: "询报价", stage: "DEMAND" },
+  // CAPACITY：设计稿 P3 / M1（P1→capacity.schedule、M3→capacity.aging、M6→qc_batch+quality 已在册）
+  { nodeId: "capacity.rccp", label: "产能与瓶颈复核", stage: "CAPACITY" },
+  { nodeId: "capacity.wo_release", label: "工单下达", stage: "CAPACITY" },
+  // MATERIAL：设计稿 P5 / S1 / S2 / S4 / S5（P2→material.mrp、S3→material.replenish、C2→material.shipping 已在册）
+  { nodeId: "material.kitting", label: "齐套发料", stage: "MATERIAL" },
+  { nodeId: "material.purchase_req", label: "请购", stage: "MATERIAL" },
+  { nodeId: "material.purchase_order", label: "采购下单", stage: "MATERIAL" },
+  { nodeId: "material.inbound_transit", label: "入厂在途与清关", stage: "MATERIAL" },
+  { nodeId: "material.iqc", label: "到货检验", stage: "MATERIAL" },
+  // DELIVERY（新段）：设计稿 C1 / C3 / C4（C5→order.settlement、C6→order.cash 已在册·见上「段归属」）
+  { nodeId: "delivery.fg_stock", label: "成品入库", stage: "DELIVERY" },
+  { nodeId: "delivery.transit", label: "干线运输在途", stage: "DELIVERY" },
+  { nodeId: "delivery.acceptance", label: "客户验收", stage: "DELIVERY" },
 ] as const satisfies readonly { nodeId: string; label: string; stage: ChainStage }[];
 
 export type ChainNodeDef = (typeof CHAIN_NODE_REGISTRY)[number];
