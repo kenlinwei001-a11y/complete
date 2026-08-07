@@ -835,6 +835,17 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
             ? `型号「${modelId || "（未定位）"}」在 BOMHeader/BOMDetail 中无生效 BOM——不拿 Material 前 4 行冒充型号 BOM`
             : `型号「${modelId}」取不到单价（该客户名下无此型号在手单，且 Model.unitPrice 缺失）`;
 
+      // ── 点了名的客户却算不出真值 → **报错，不回落**（与 `lta_gap` 删掉 `?? mats[0]` 同一条纪律）──
+      // 否则会走到下面的 `mats.slice(0,4)` 兜底：那正是本单要治的那份假数（313.7452），
+      // 只不过这次答案上还印着提问者的客户名 —— 比修前更像真的，也更危险。
+      // 仅约束 CUSTOMER 分支；未指定客户的 ALL 分支保留兜底（空租户仍出数·与上线前一致·R6）。
+      if (cust && dataMode === "EMPTY")
+        throw new AppError(
+          "EMPTY_SCOPE",
+          `quote_margin：客户「${custName}」算不出接单毛利。原因：${reason}。拒绝回落到 Material 前 4 行的通用 BOM 冒充该客户的报价成本（R-ARG-FIDELITY）`,
+          400,
+        );
+
       // ── 口径自证（**本单不发明换算常数**）─────────────────────────────────────
       // 价来自 `Order.unitPrice`（propUnits 声明「元」·WO-SCALE-COHERENCE 后为 **元/套**≈2 万），
       // BOM 来自 `BOMDetail.quantity`（属性中文名「**单台用量**」）× `Material.unitPrice`。

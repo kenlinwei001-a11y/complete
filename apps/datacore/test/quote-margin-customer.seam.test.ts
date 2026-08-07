@@ -128,6 +128,19 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     expect((res.json() as { error: { code: string } }).error.code).toBe("AMBIGUOUS_SCOPE");
   });
 
+  it("点名的客户算不出真 BOM → 400 EMPTY_SCOPE（不回落 Material 前 4 行冒充该客户的成本）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 造一个「客户在库、但名下拿不到真 BOM」的形态：指定一个库里没有 BOM 的型号。
+    // 修前该形态会静默回落到 `mats.slice(0,4)` 的 313.7452，并把客户名印在答案上——比修前更像真的。
+    const res = await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "不存在的型号Z" });
+    expect(res.statusCode, res.body).toBe(400);
+    const err = (res.json() as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("EMPTY_SCOPE");
+    expect(err.message).toContain("电网公司F");
+    expect(err.message).toContain("Material 前 4 行");
+  });
+
   it("未指定客户 → scope.mode=ALL（显式全域，非首客户）；直传 bom → scope.mode=EXPLICIT（R6 向后兼容）", async () => {
     const t = await makeApp();
     await seedBattery(t);
