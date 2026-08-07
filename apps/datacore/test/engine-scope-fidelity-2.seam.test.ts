@@ -139,6 +139,17 @@ describe("差分门 C① · mitigation_select 基地维：换基地 → 紧张�
     expect(out.urgency, "(92−70)/30 = 0.7333").toBe(0.7333);
     expect(Object.keys(out), "调用方的数字不许被冠上 LIVE/MOCK 的名义").not.toContain("dataMode");
   });
+
+  it("防伪：调用方自称 `tightnessDataMode:\"LIVE\"` 不得被透出（同形假个性化·只是换了个字段）", async () => {
+    const t = await boot();
+    const out = await okData(t, "mitigation_select", {
+      factor: "瓶颈工序",
+      baseName: "常州",
+      tightness: 92,
+      tightnessDataMode: "LIVE",
+    });
+    expect(Object.keys(out), "`dataMode` 是引擎派生出来的凭证，不是调用方能声明的入参").not.toContain("dataMode");
+  });
 });
 
 // ---------------------------------------------------------------------------
