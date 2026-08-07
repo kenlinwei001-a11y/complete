@@ -5,7 +5,14 @@ import { AppProviders } from "@/App";
 import { AnswerCard } from "@/components/Answer/AnswerCard";
 import { ANSWER_KIT, KIT_TABLE_COLUMNS, KIT_TABLE_ROWS } from "@/mocks/kitFixtures";
 import { scriptForQuery } from "@/mocks/sseScripts";
-import { buildKitOrderVMs, isKitReadinessTable, LEG_LABEL, OWNER_LABEL, scanJsonObjects } from "@/components/Answer/kitProcurement";
+import {
+  buildKitOrderVMs,
+  isKitReadinessTable,
+  LEG_LABEL,
+  legDaysText,
+  OWNER_LABEL,
+  scanJsonObjects,
+} from "@/components/Answer/kitProcurement";
 import {
   PROCUREMENT_LEGS,
   PROCUREMENT_OWNERS,
@@ -256,7 +263,18 @@ describe("S08 采购四段 · 口径同源", () => {
     expect(screen.getByTestId("kit-earliest-reason-SO-3402").textContent).toContain("后端未随表下发原因");
   });
 
-  it("⑲ 首行就是 EMPTY 时该列在场 —— 原样透出引擎给的原因，不换成自己那句", () => {
+  it("⑳ 即使上游递来一个（契约非法的）EMPTY+天数，渲染层也拒绝把它印成数字", () => {
+    // 变异反证时发现：`days === null` 这一层守卫已经挡住了契约合法的 EMPTY，
+    // 于是 `known: false` 这一层看起来"删了也不红"。这条把第二层守卫单独钉住 ——
+    // 它防的是"上游哪天回归成 EMPTY 还带个 0"（正是本仓要堵的假默认值形态）。
+    expect(legDaysText("EMPTY", 0)).toBe("—");
+    expect(legDaysText("EMPTY", 7)).toBe("—");
+    // 对照：NOT_APPLICABLE 的 0 是真值，必须印出来
+    expect(legDaysText("NOT_APPLICABLE", 0)).toBe("0.00 天");
+    expect(legDaysText("MEASURED", 18)).toBe("18.00 天");
+  });
+
+  it("㉑ 首行就是 EMPTY 时该列在场 —— 原样透出引擎给的原因，不换成自己那句", () => {
     // 把两行掉个个儿：首行带 earliestKitDayReason ⇒ 列名里就有这一列（与真链路同规则）
     const idxStatus = KIT_TABLE_COLUMNS.indexOf("earliestKitDayStatus");
     const columns = [...KIT_TABLE_COLUMNS, "earliestKitDayReason"];
