@@ -634,3 +634,304 @@
 - **最小 WO 建议**：`WO-CLC-1`（极轻）：删/改 `RiskBoardView.tsx:1066` 的过期注释；
   并决定 `QaPanel`（`:899/:1421`）是下线还是明确标注为"快捷问答"以区别于真 NL 框。
   🚦范围边界：`apps/frontend-shell/src/views/RiskBoardView.tsx` 单文件。
+
+---
+
+### docs/PRD-catalog-battery-20-scenarios.md
+- **它要做什么**：电池场景包的**完整内容目录**——20 个场景（§1 总表是所有派生物的单一来源），
+  新增 13 个求解器（§2 公式级）、新增 C26–C33 共 8 条规则（§3），每场景按 §0 五步流水
+  （求解器→规则→workflow→skill→agent）上架。
+- **PRD 自称的 AS-IS**：无独立现状节；有**复用声明**——"8 个求解器已有公式级规格…本文新增 13 个；
+  规则在 C01–C25 基础上新增 8 条"。
+- **实测现状**：
+  - **§1 20 场景卡 ✅ 全在**：`apps/agentcore/src/scenarios-catalog.ts` 内 `card("S01")…card("S20")`
+    共 **20 条**（`:61`–`:121`，逐条核过编号连续无缺）。
+  - **§2 新增 13 求解器 ✅ 全部注册**（在 `apps/datacore/src/solvers/service.ts` 逐个命中）：
+    `mitigation_select` `cert_schedule` `kit_readiness` `lta_gap` `inventory_optimize`
+    `changeover_sequence` `yield_diagnosis` `maintenance_stagger` `outsourcing_split`
+    `quote_margin` `credit_exposure` `quarterly_gap` `carbon_footprint` —— **13/13**。
+  - **§3 C26–C33 ✅ 8/8 全在**（分布在 `apps/datacore/src/synthetic/battery.ts` 与
+    `packages/contracts/src/datacore.ts`）。
+  - 场景卡本身带 `rules[]`/`solver`/`intentKey`/`presetContext.slotPresets`，
+    与 §1 总表的列一一对应（如 S07 `["C04","C26"]` + `cert_schedule`，`scenarios-catalog.ts:67`）。
+- **结论**：◐ 部分（**§1/§2/§3 三张表 100% 落地；§0 五步流水的第 ④⑤ 步（每场景一 skill + 一 agent）未按 20 个做**）
+- **缺的那半**：
+  **skill / agent / workflow 的数量远少于 20，不是"每场景一套"**：
+  `apps/agentcore/src/mocks/seed.ts` 实测 **7 个 Skill**（`skl_seed_capacity` / `sop_meeting` / `risk_analysis` /
+  `supply_chain` / `quality_control` / `mcp_guide` / `capacity_action`，`:1018–:1289`）、
+  **11 个 Agent**（`agt_seed_analyst` … `agt_coordinator`，`:1339–:1567`）、**6 个 Workflow**。
+  ⇒ §0「每场景固定五步，禁止跳步」的 ④⑤ 两步实际是**按域收敛**（一个 skill/agent 覆盖多场景）而非逐场景。
+  另：§0 的完成判据「§8 自动生成的 3 条评测用例 + 1 条端到端用例全绿」——
+  **`seed.ts` 里 EvalCase 零条**（`suite:` / `skillKey` 均零命中，与前述 skill-authoring 条同一发现），
+  ⇒ 这条完成判据对 20 场景**没有一条真跑过**。
+- **最小 WO 建议**：`WO-CAT-1`（中）：为 20 场景各补 3 条评测用例（§8 规则可自动派生，不必手写）。
+  🚦范围边界：`apps/agentcore/src/mocks/seed.ts`（EvalCase 数组）+ 一条"20 场景评测全绿"回归。
+  skill/agent 数量建议**维持收敛**并改 §0 措辞（一 skill 覆盖多场景比 20 个碎 skill 更符合本 PRD 自己的
+  skill-authoring 规范：summary 是触发器、不适用句要互相让渡）。
+
+---
+
+### docs/PRD-cli-full-coverage.md
+- **它要做什么**：把 `OPERATION_CATALOG` 从**手维护数组**改为**从能力注册表自动派生**（`deriveOperationCatalog`），
+  并加一道 `cli-coverage:check`（注册表↔目录）与既有 `cli-parity:check`（目录↔CLI）合成"每个功能 CLI 可达"闭环。
+- **PRD 自称的 AS-IS**（§0，grounded audit 带 file:line）：
+  CLI 18 命令已在；`OPERATION_CATALOG`（`contracts/operation-intent.ts:44`）**≈18 op、手维护**；
+  `cli-parity:check` 现绿；**缺口 = ~10 能力区无 op（时序/聚合 A8·模拟时钟 tick·LLM provider/binding·
+  config-bundle·evals·meta-ontology·slices·lineage·OC 平台配置·replay/ops-schedule）+ 目录手维护会 rot**。
+- **实测现状**：
+  - **§1.1 `deriveOperationCatalog` ❌ 不存在**：`packages/contracts/src/operation-intent.ts` 内
+    `deriveOperationCatalog` / `OPERATION_REGISTRY` / `source: "DERIVED"` **全部零命中**，
+    目录仍是**显式手写数组**。
+  - **§2 新契约文件 `packages/contracts/src/operation-registry.ts` ❌ 不存在**。
+  - **§1.2 新门 `scripts/check-cli-coverage.mjs` + `scripts/cli-coverage-baseline.json` ❌ 均不存在**。
+  - **⚠ 连 PRD 引以为基础的既有门也没接线**：`scripts/check-cli-parity.mjs` 文件在（3,658 字节），
+    但**零生产调用方** —— `package.json:32` 的 23 条 gates 里没有它、`scripts/gate.sh` 没有它、
+    `.github/workflows/gates.yml` 没有它、任何 test 也没跑它（`packages/*/test` + `apps/*/test` 零命中）。
+    全仓只有 **docs/** 里 10 篇 PRD 提到 `cli-parity`。
+    ⇒ §0 写的"`cli-parity:check` 现绿"—— **它不是"绿"，它是"没跑"**。这正是本次审计要防的形态：
+    **文件存在 ≠ 门在守**（同 VLE 的 `check-validation.mjs`，本批第二例）。
+  - **缺口本身被"手动补目录"部分填上了（❸ 型：目标达成、机制没建）**：
+    `operation-intent.ts` 现有 **39 条 op**（PRD 写的是 ~18），
+    §0 点名的 10 个缺区里 **8 个已有条目**：`llm`(`:70`) `config-bundle`(`:83`) `eval`(`:69`)
+    `meta`(`:75`) `slice`(`:76`) `platform-config`(`:79`) `ops`(replay/scheduler/tick，`:71`) `validate`(`:80`)。
+    **仍缺 2 个**：**时序/聚合（A8 timeseries）** 与 **lineage 溯源** —— 两者在该文件零命中。
+- **结论**：❌ 未实现（PRD 的**机制**——自动派生 + 覆盖门——一件没建；
+  目录条数虽从 ~18 涨到 39，是**手工补**的，正是 PRD 要消灭的那种做法，rot 风险原样存在）
+- **最小 WO 建议**（按投入产出排，第一条极便宜且价值最高）：
+  - `WO-CLI-0`（**极轻·最高性价比**）：把已存在的 `scripts/check-cli-parity.mjs` 并入 `package.json:32` 的 `gates`。
+    这是一条线不是一道门，且能立刻让"目录↔CLI"真守起来。
+    🚦范围边界：`package.json` + `scripts/gate-ledger.json` + 本体 §7 登记。
+  - `WO-CLI-1`（轻）：补 `timeseries` 与 `lineage` 两条 op（含 `cliCommand`）。
+    🚦范围边界：`packages/contracts/src/operation-intent.ts`。
+  - `WO-CLI-2`（中）：实现 `deriveOperationCatalog` + `check-cli-coverage.mjs` 棘轮门（治 rot 的根）。
+    🚦范围边界：`packages/contracts/src/operation-{intent,registry}.ts` + `scripts/check-cli-coverage.mjs` + `package.json`。
+
+---
+
+### docs/PRD-cockpit-capacity-1to1-parity.md
+- **它要做什么**：把参考原型的「经营驾驶舱」与「产能推演」两模块 1:1 复刻进真系统，
+  数字全部经数据管线产生（合成→物化→派生→求解→声明式 widget），前后端零写死；
+  另含 §A「原型 intake → 数据构建发动机正门」通用前置能力。
+- **PRD 自称的 AS-IS**（§2，**三张分表 + 一节"唯一非真闭环接缝"**）：
+  2.1 驾驶舱缺 8 富 KPI / 问题卡 / 根因 DAG / V5-V7 版本态；
+  2.2 产能推演引擎已高度对齐、缺 UI 层若干；
+  2.3 **自陈唯一非真闭环 = `riskCases` 来自 `livedin/engine.ts:62 CASE_SPECS` 种子骨架、非求解器实时算**。
+  版本行标 **状态 APPROVED（已评审通过 2026-06-21）**。
+- **实测现状**（§0 承诺的新对象/新求解器/新事件逐个核）：
+  - **新增 3 求解器 ✅ 全部注册**：`order_fullchain` / `plan_rootcause` / `counterfactual_timeline`
+    均在 `apps/datacore/src/solvers/service.ts` 命中。
+  - **新增 6 对象类型 ◐ 5 个在、1 个改名**：
+    `DemandSegment` ✅ / `SopVersionRow` ✅ / `MaterialBalance` ✅ / `FinancePlan` ✅ / `RootCauseChain` ✅
+    （均在 `apps/datacore/src/synthetic/battery.ts` 的生成器返回值 `:4450` 里）；
+    **`PlanKpi` 在代码里不叫 PlanKpi** —— 已归一为 **`Metric`（SPINE）**：
+    `packages/contracts/src/spine.ts:34`「cockpit PlanKpi = Metric 的 plan 域投影」、
+    `apps/datacore/src/synthetic/battery.ts:1044`「Metric = 指标库一等对象…= cockpit PlanKpi 归一」、
+    `:3942`「SPINE：指标库 Metric（= cockpit PlanKpi 归一）」。
+    ⚠ **只 grep `PlanKpi` 会报"未实现"，实际是同物异名且做得更好（归一到跨视图单一出处 R-一致）。**
+  - **§A 原型 intake 正门 ✅ 落地**：契约 `packages/contracts/src/prototype-intake.ts`
+    （含 `SchemaReconcileCandidateSchema:46`）+ 实现 `apps/datacore/src/databuilder/prototype-intake.ts`
+    + 端点三段 `apps/datacore/src/app.ts:3838`（解析预览）`:3857`（经连接器落 RawDataset）`:3870`（物化）
+    + 事件 `prototype.intake_recorded` / `prototype.materialized` / `prototype.objectified` / `schema_reconcile.resolved`（真在 outbox 事件名集里）。
+  - **§0 承诺的新事件 `forecast.snapshot_recorded` ❌ 不存在**：
+    跨命名搜过（`snapshot_recorded` / `forecast_snapshot` / `forecastSnapshot`），
+    datacore 的 outbox 事件名全集里有 `metric.snapshot_recorded`（`app.ts:2743`，SPINE 的）
+    但**没有 forecast 版**；`forecastSnapshots` 仓储在（`repo/repo.ts:284`）、
+    `capacity_forecast` invoke 确实会落快照（`opsteam/replay.ts:152` 注释可证），**但落完不发事件**
+    ⇒ §0 声明的"失效 risk/dashboard 预测 widget"这条失效通道**没建**。
+  - **§2.3 自陈的唯一非真闭环（P4）◐ 半修**：`apps/datacore/src/livedin/engine.ts:67 CASE_SPECS` **仍在**，
+    `:277 return CASE_SPECS.map(...)` 仍是骨架驱动；**但 severity 已改为真数据派生** ——
+    `:283-284`「P4 真闭环：severity 由基地真实利用率 + 是否主瓶颈因子 + 危机派生（替代写死，R13 可溯源 R6 确定）」
+    → `caseSeverityFromData(baseUtil, isPrimary, crisis)`。
+    ⇒ 「由 `risk_timeline` 在历史快照上回算」这个 P4 目标**没做到**，做到的是"严重度不再写死"。
+- **结论**：◐ 部分（三求解器 + 六对象（一个改名）+ §A intake 全落；**缺一个事件通道 + P4 只半修**）
+- **最小 WO 建议**：
+  - `WO-CKP-1`（轻）：`capacity_forecast` invoke 落 ForecastSnapshot 后 `outbox.emit("forecast.snapshot_recorded", …)`，
+    前端 risk/dashboard 预测 widget 订阅失效。🚦范围边界：`apps/datacore/src/solvers/service.ts` + 订阅侧一处。
+  - `WO-CKP-2`（中）：P4 收尾——`riskCases` 改由 `risk_timeline` 在历史快照上回算，删 `CASE_SPECS` 骨架。
+    🚦范围边界：`apps/datacore/src/livedin/engine.ts` + 金值同步。
+  - `WO-CKP-3`（极轻·文档）：把 §0 的 `PlanKpi` 改标为「已归一为 `Metric`（SPINE），见 contracts/spine.ts:34」，
+    免得下一个读者去找一个不存在的类型。
+
+---
+
+### docs/PRD-data-backfill.md
+- **它要做什么**：沙盘 20 例反查出的数据地基缺口——补 4 个真缺字段 + 修 1 个既有缺陷 + 1 个时序粒度空档。
+- **PRD 自称的 AS-IS**：**它自己就把交付形态写成「本文只是 PRD。零代码改动」**，
+  并在 §0 断点节里**新登记** `G-LEVER-PROP-PHANTOM`，状态标 **🔴 未修（本单治）**。
+  §3.1 另有一条**仓主裁决记录**（2026-08-04 选方案 A · 补数据）。
+- **实测现状**（D1–D6 逐条核，**PRD 的自陈全部属实**）：
+  - **D1 `MaterialBalance.coverage` ❌ 仍是幻影属性**（`G-LEVER-PROP-PHANTOM` 未修，实测复现）：
+    声明侧三处齐全 —— `apps/datacore/src/solvers/service.ts:359`
+    `物料齐套: ["MaterialBalance.coverage", ...]`、`:381` `"MaterialBalance.coverage": { label: "物料齐套·覆盖率", unit: "%", kind: "ratio" }`；
+    **产出侧零** —— `apps/datacore/src/synthetic/battery.ts:1033-1041` 的 `materialBalanceProps` 只有
+    `matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate`，**无 `coverage`**；
+    `apps/datacore/src/synthetic/battery-extended.ts` 内全部下钻/规则/聚合一律用 `gapTon`（`:320,:357,:360,:841,:858`）。
+    ⇒ 教科书级形态②「接了线没数据」：`service.ts:368` 注释「缺项 → 下游诚实兜底不臆造」使它**静默降级**，
+    于是「物料齐套」这个杠杆候选**永不出现且不报错**。
+  - **D2 `Customer.tier` ❌** / **D3 `MaintPlan.start`+`end` ❌**：
+    `maintPlanProps`（`battery.ts:975-980`）只有 `planId/baseId/week/lastMaintStart` —— **无窗口起止**，
+    所以「交付高峰撞检修窗」今天确实算不出（PRD §3.3 说法属实）。
+  - **D4 `Base.capexWan` ❌**：全仓 `capexWan` 零命中。
+  - **D6 shift 档时序 ❌**：`grain: "shift"` 作为**类型**是支持的
+    （`apps/datacore/src/synthetic/tsgen.ts:7`、`battery.ts:2623`），
+    但**没有任何一条 series 声明为 shift 粒度**（`grain: "shift"` 在生成器/契约里零实例）。
+- **结论**：❌ 未实现（**与 PRD 自称一致**——它本来就声明"零代码改动"，是一份待施工的规格）
+- **注**：这一条**不应算作"PRD 与现状不符"**。相反，本批里它是**自陈最准确的一份**：
+  声明的每一个缺口我都独立复现了，连 `G-LEVER-PROP-PHANTOM` 的三处声明锚点都逐字对上。
+- **最小 WO 建议**（按投入产出，D1 第一）：
+  - `WO-DB-1`（轻·价值最高）：`MaterialBalance` 加 `coverage`（派生自 `1 - gapTon/netDemandTon`，
+    按 §3.1 裁决与硬约束：不得独立随机、须带 displayName+description、须配同向断言）。
+    🚦范围边界：`apps/datacore/src/synthetic/battery.ts`（props + 生成）+ 金值同批更新 + R6 双跑证明。
+  - `WO-DB-2`（轻）：`MaintPlan` 加 `start`/`end`（两个一起加，只加 start 表达不了窗口）。
+  - `WO-DB-3`（中·风险最高）：shift 档时序 —— **必须同批声明班次剧本与聚合算子**
+    （`output:line`→`sum`；`util/yield/attainment`→`weighted_avg`+`weightField`），
+    否则按 PRD §3.5 的警告会出「产能凭空少 3×」或「利用率 276%」且不报错。
+
+---
+
+### docs/PRD-data-closure-spec.md
+- **它要做什么**：横切**宪法级**规范——把"接入→模版→生成→物化→派生→切片→求解→渲染→溯源→闭包→审批→指标→责任→CLI"
+  定为 21 维强制基线（§2），给逐模块 checklist（§6）+ 门禁补强（§7）。
+- **PRD 自称的 AS-IS**（§3，**18 阶段逐维审计表**，自评"系统数据闭环约 60–70% 落地"）：
+  点名最严重五缺口：①模版↔种子解耦（battery 写死、无上传建模版入口）②新对象类型无自动 onboarding
+  ③渲染非声明式 ④CLI 缺位 ⑤PRD 普遍漏 C/D/R/B/N/O/Q 维。
+  §3 表首行即自标 `T2 模版生命周期 ❌`，锚点 `battery.ts:716 BATTERY_TEMPLATE 代码常数`、
+  `service.ts:116 resolveTemplate 从不读库`、"无上传建/改模版入口（仅 GET，无 POST）"。
+- **实测现状**：
+  - **T2 ❌ 自陈属实**：`apps/datacore/src/app.ts:3493` 只有 `app.get("/a/v1/industry-templates", ...)`，
+    **全仓没有对应的 POST/PUT** ⇒ 模版仍不可上传/编辑/fork。
+  - **V1 声明式渲染 `ViewDef` 契约 ❌**：`packages/contracts/src` 内 `ViewDefSchema` 零命中
+    （唯一 `ViewDef` 字样在 `packages/contracts/src/qos.ts:530` 的一句注释里，不是契约）。
+  - **§7 提出的四道新门 ❌ 一道都不存在**：
+    `scripts/check-template-lifecycle.mjs` / `check-auto-onboard.mjs` / `check-shape.mjs` / `check-closure.mjs` 均无此文件。
+  - **§7 提到的既有门里，两道真在 `pnpm gates`**（`package.json:32`）：
+    `chain:check` = `check-chain-closure.mjs` ✅、`prd:check` = `check-prd-ontology.mjs` + `check-prd-coverage.mjs` ✅。
+    `cli-parity:check` **文件在但未接线**（见上条 cli-full-coverage）。
+- **结论**：◐ 部分（**规范文本与 21 维清单本身即交付物、已完成**；
+  它提出的**执行装置**——四道新门 + ViewDef 契约 + 模版库化——一件未落）
+- **诚实说明**：本文是"规范 + 审计"型 PRD，它的 §3 AS-IS 自评（60–70%）与我的实测方向一致，
+  我没有独立重算那个百分比（21 维 × 逐维核证超出本批预算），**未查清：60–70% 这个数字本身**。
+- **最小 WO 建议**：`WO-DCS-1`（轻）：先把 `closure`/`shape` 两道**已有实现散在代码里**的检查抽成脚本门
+  （`validateClosure` 已在 `apps/datacore/src/databuilder/closure.ts:20`；
+  SHAPE 校验散在 `SOLVER_OUTPUT_SHAPES` 消费处），并入 `pnpm gates`。
+  🚦范围边界：`scripts/check-closure.mjs`（新）+ `package.json` + 本体 §7 登记。
+  T2（模版库化）与 V1（ViewDef）建议各自独立成单，不与门禁混做。
+
+---
+
+### docs/PRD-data-gap-self-healing-loop.md
+- **它要做什么**：把"发现缺数据 → 分析 → 生成 → 验证 → 发布"做成通用自愈闭环（R16 通用化），
+  核心护栏是 **HARD/SOFT 分流**（涉真实业务实体的缺口**绝不静默合成**，出工单走真人正门）。
+- **PRD 自称的 AS-IS**（§0，**一张"你要的闭环 80% 已存在"对照表**）：
+  发现 `probe.ts classifyGap` ✅（但只被 QOS 问句触发）· 分析 `data-boundary.ts` ✅ ·
+  生成 `scaffold.ts`+A7 ✅ · 验证 ✅（散落）· 发布 ◐ · 闭环 `loop.ts runGrowthLoop` ✅；
+  **真正缺的三条**：①发现相位只被动、②UI 缺口没接进 runGrowthLoop、③闭环不可观测。
+  §6 分三级交付：Level-1（进行中）/ Level-2 / Level-3。
+- **实测现状**：
+  - **§0 表里的六个"已有" ✅ 属实**：`apps/agentcore/src/growth/` 下 `probe.ts` / `data-boundary.ts` /
+    `scaffold.ts` / `loop.ts` 均在（`data-boundary.ts:25,:37,:40,:66` 可见 DF.9 时序维度接地与措辞词表）。
+  - **Level-1 ✅ 已落**：per-factor 真序列在 `apps/datacore/src/solvers/risk.ts`——
+    `:383 tensionSeries`、`:613` 逐 base×factor 跑、`:614-616` 注释
+    「治 #1/#3『时序推演全灰/无梯度』· 逐因素真逐日序列…现在**每个**因素都走与瓶颈**同一** tensionSeries 机制」，
+    诚实标 `provenanceSynthetic`（`:220,:257`）而非谎称实测。
+  - **Level-2 ❌ 未做**：`DataGapDetector` / `GapSignal` / `SelfHealing` 在
+    `apps/**/src` + `packages/**/src` **全部零命中**（跨命名也搜了 `datagap.detected` / `datagap.healed`）。
+  - **Level-3 ❌ 未做**：无主动 sweep；§4 承诺的两个新事件
+    `datagap.detected` / `datagap.healed` **不在 datacore 的 outbox 事件名集里**
+    （该集实测为：connection.created / derivation.completed / materialize.completed / metric.breached /
+    metric.snapshot_recorded / prototype.* / schema_reconcile.resolved / sim.* / slice.planned / writeback.divergence）。
+  - **§5 SEAM-GATE 头号判据的那条组合测 ❌ 不存在**（依赖 Level-2 的 Detector）。
+- **结论**：◐ 部分（**Level-1 已落、护栏（HARD/SOFT）真在，Level-2/3 未开工** —— 与 §6 分级交付的自陈一致）
+- **最小 WO 建议**：`WO-DGS-1`（中）：实现 Level-2 `DataGapDetector`——
+  只聚合**已存在**的四个信号源（`dataMode==="EMPTY"` / `provenanceSynthetic===true` /
+  因子无 series / `unverifiedNumerics===true`），复用 `growth/probe.ts classifyGap` +
+  `growth/data-boundary.ts` 分流，产 `growth-ledger` 一条台账。**不新造探针/分流逻辑**（§2 单源纪律）。
+  🚦范围边界：新 `apps/agentcore/src/growth/detector.ts` + `growth/loop.ts` 一个接入点 +
+  两个事件名注册 + §5 那条 SEAM 组合测。
+
+---
+
+## 2. 汇总表（22 份）
+
+| # | PRD | 结论 | ⚠ 自身陈述与现状不符 | 缺口形态 |
+|---|---|---|---|---|
+| 1 | addendum-replay-orchestrator | ◐ | — | ❷×2（`listFallbackClusters` 恒空 / 部署未配 `AGENTCORE_BASE_URL`） |
+| 2 | addendum-skill-authoring | ◐ | 出厂范例同物异名 | ❶×1（summary 重叠检查）+ ❷×1（出厂技能零 EvalCase） |
+| 3 | addendum-solvers-and-gaps | ✅ | **⚠×3**（P50 公式 / 非整数窗口 / 三方案映射） | — |
+| 4 | addendum-validation-loop | ◐ | — | ❶×1（`check-validation.mjs` 未接线）+ ❷×1（profile 三档零分支） |
+| 5 | admin-self-approval | ✅ | **⚠×1**（PRD 说建租户配置列，实为 env+demo 零迁移） | — |
+| 6 | agent-data-generation-tools | ◐ | — | ❶×1（`fill_data` 未登记 OPERATION_CATALOG） |
+| 7 | agent-execution-governance-loop-control | ◐ | **⚠×1**（§8 把已落的 P1/P2 标"待派"） | ❶×3（P3 三项，PRD 自己也排后） |
+| 8 | agent-navigation-slice-latency | ✅ | — | 未查清×1（live 20 题墙钟）+ 连带欠账（600s 创可贴仍在） |
+| 9 | agent-react-harness | ◐ | — | ❶×2（`agent.reflected` 事件 / `harness-elements:check` 门） |
+| 10 | aop-annual-scenario-1to1 | ◐ | **⚠×1（本批最典型）**：§9「100% 1:1」点名三项全未还原，且与 §2 自相矛盾 | ❶×3（dem 值 / 产能决策文案 / 触发条件） |
+| 11 | attainment-base-daily-timeseries | ◐ | — | ❶×2（`Base.attainment_daily` / 接 Metric）+ **有数据零消费方** |
+| 12 | attribution-routing-plan-audit | ◐ | — | ❶×2（关键词路由 / discover 暴露）**但等价能力经 `gap_attribution` 已通** |
+| 13 | build-workflow-runtime | ✅ | — | 未查清×1（AC 的运行时行为未实跑） |
+| 14 | capacity-feasibility-demanddelta-fix | ✅ | **⚠×1**（文首仍写「草案·仅文档不改源码」，实际早已落地） | — |
+| 15 | capacity-inference-completion | ✅ | — | 未查清×1（SEAM 活系统 curl） |
+| 16 | capacity-live-cockpit | ✅ | 代码注释过期（`RiskBoardView.tsx:1066`） | — |
+| 17 | catalog-battery-20-scenarios | ◐ | — | ❷×1（20 场景零 EvalCase，§0 完成判据从未真跑） |
+| 18 | cli-full-coverage | ❌ | **⚠×1**（§0 称 `cli-parity:check` 现绿，实测**零调用方=没跑**） | ❶×3（派生器 / 新契约 / 覆盖门）+ 仍缺 2 个 op |
+| 19 | cockpit-capacity-1to1-parity | ◐ | `PlanKpi` 同物异名（已归一为 `Metric`） | ❶×1（`forecast.snapshot_recorded` 事件）+ P4 半修 |
+| 20 | data-backfill | ❌ | — **（自陈"零代码改动"，属实，本批自陈最准的一份）** | ❶×4 + ❷×1（`MaterialBalance.coverage` 幻影属性） |
+| 21 | data-closure-spec | ◐ | — | ❶×6（四道新门 + ViewDef + 模版库化）；未查清×1（60–70% 自评） |
+| 22 | data-gap-self-healing-loop | ◐ | — | ❶（Level-2/3 全部）—— 与 §6 分级自陈一致 |
+
+**计数**：✅ **7** · ◐ **13** · ❌ **2** · ⚠（自身陈述与现状不符）**9 处**，分布在 8 份 PRD。
+**未查清 5 处**（均因只读审计无法验墙钟/实跑，逐条已在正文写明卡在哪）。
+
+### 缺口形态分布（22 份合计）
+| 形态 | 条数 | 说明 |
+|---|---|---|
+| ❶ 没接线（调用方只有 test / 符号根本不存在） | ~28 | 多为"承诺的事件名/门/字段没建" |
+| ❷ 接了线没数据（输入恒空、配置恒缺、分支 never 进） | 6 | **最难发现、最容易误判**，见下 |
+| ❸ 接了线接错地方 | 2 | 部署未配 env；目录手工补而非自动派生 |
+
+**❷ 型六条全表（这类只 grep 符号一定看不出来）**：
+1. `apps/datacore/src/app.ts:697` `listFallbackClusters: async () => []` → `promote_intent` 恒跳过
+2. `docker-compose.yml` datacore 段无 `AGENTCORE_BASE_URL` → `ask`/`promote_intent` 出货态恒跳过
+3. `apps/agentcore/src/mocks/seed.ts` 零 EvalCase → skill 发布门 + 20 场景完成判据对出厂内容均未生效
+4. `apps/datacore/src/vle.ts:68` profile 收下不分支 → SMOKE/FULL/SOAK 是同一段代码
+5. `apps/datacore/src/solvers/service.ts:359` `MaterialBalance.coverage` 幻影属性（产出侧零，静默降级）
+6. `attainment:base` 有生产端无消费端（`battery.ts:2610` 是全仓唯一非 test 命中）
+
+---
+
+## 3. 按投入产出排序的补做建议
+
+> 排序依据：**（消除的误导 / 关掉的假绿）÷ 改动面**。前 4 条都是"接一条线"而非"造一道门"。
+
+| 序 | WO | 类型 | 改动面 | 为什么排这里 |
+|---|---|---|---|---|
+| **1** | `WO-CLI-0` 把 `scripts/check-cli-parity.mjs` 并入 `package.json:32` gates | 接线 | 1 行 | 门已造好、零调用方；PRD §0 还在称它"现绿"。**一行消掉一个假绿断言** |
+| **2** | `WO-VLE-1` 把 `scripts/check-validation.mjs` 并入 gates（本体 §7 已记 `disposition=WIRE`） | 接线 | 1 行 + 门账 | 同上。VLE 全套引擎已建，只差 CI 拦截；本体自己都写了"待接线 WO" |
+| **3** | `WO-RO-2` `docker-compose.yml` datacore 段补 `AGENTCORE_BASE_URL` | 接线 | 1 行 | 让回放编排器的任务史/孵化在**出货形态**真产出（R2 验收当前恒为零） |
+| **4** | `WO-RO-1` `app.ts:697` `listFallbackClusters` 接真兜底簇（`ops/fallback.ts:21` 已有聚类） | 接线 | 1 个 lambda | 消掉一条"测试验的路生产不走"的假绿 |
+| **5** | 四份 PRD 的**状态/口径回写**（纯文档，合并成一单跑） | 文档 | 4 文件 | `capacity-feasibility-demanddelta`（草案→LANDED）· `loop-control §8`（P1/P2 待派→已落）· `aop §9`（1:1 尺度二选一，**需人裁**）· `attribution-routing`（改指 `gap_attribution`）。**这四处正在实时误导读者** |
+| **6** | `WO-DB-1` `MaterialBalance.coverage` 补数据（仓主已裁决方案 A） | 数据 | 生成器 + 金值 | 关掉 `G-LEVER-PROP-PHANTOM`；「物料齐套」杠杆从此真能出现 |
+| **7** | `WO-SA-1` / `WO-CAT-1` 补 EvalCase（出厂 7 技能 + 20 场景） | 数据 | seed.ts | 让**已建好的两道发布门**对出厂内容真生效（现在门在、料没有） |
+| **8** | `WO-TSB-1` `attainment:base` 接 Metric + 补 `Base.attainment_daily` | 接线 | 生成器 + metrics.ts | 让已产出的日序真有人问（现零消费方） |
+| **9** | `WO-CKP-1` `forecast.snapshot_recorded` 事件 + 订阅 | 接线 | 2 处 | 补一条 §0 承诺但没建的失效通道 |
+| **10** | `WO-CLI-2` `deriveOperationCatalog` + `cli-coverage:check` | 造门 | 契约 + 新脚本 | 治目录 rot 的**根**；但成本高于前九条，且第 1 条先把眼前的洞堵上 |
+| **11** | `WO-DGS-1` Level-2 `DataGapDetector` | 新建 | growth/ + SEAM | 价值高但工作量大；PRD 自己也排在 Level-2 |
+| **12** | `WO-VLE-2` VLE profile 真分档（FULL 走 365 tick + 混沌 + 三角色） | 重 | vle.ts | 重活；在第 2 条接线之后做才有意义（先让门拦得住，再让门更严） |
+| — | **建议继续排后**：loop-control P3 三项、data-closure-spec 的 T2/V1、react-harness 的两个回写承诺（建议改文档而非补代码） | — | — | PRD 自己的优先级判断经复核是对的 |
+
+---
+
+## 4. 给下一位审计者的三条经验（本批实测踩出来的）
+
+1. **PRD 的状态行会骗人，和待办状态一样不可信。**
+   本批有 3 份 PRD 的状态与代码相反：`capacity-feasibility-demanddelta` 写"草案·仅文档"实际早已落地；
+   `loop-control §8` 把已落的 P1/P2 标"待派"；`build-workflow-runtime` 写 LANDED（这份是真的）。
+   **三种情况都存在 ⇒ 状态行只能当线索，必须去代码里核。**
+2. **"同物异名"在本批出现 3 次，每次都足以让人误报 ❌。**
+   `production-capacity-interpretation` → 实为 `capacity_analysis`；
+   `PlanKpi` → 已归一为 `Metric`（SPINE）；
+   PRD 要求路由到 `plan_audit` → 实际由 `gap_attribution`/`plan_rootcause` 承担。
+   **判 ❌ 之前先问：这件事会不会已经在系统里换了个名字做了？**
+3. **"脚本存在"和"门在守"是两回事，本批抓到 2 例。**
+   `scripts/check-validation.mjs` 与 `scripts/check-cli-parity.mjs` 都实现完整、都零生产调用方。
+   判据：**去 `package.json` 的 `gates` 串、`scripts/gate.sh`、`.github/workflows/*.yml` 里逐个数**，
+   三处都没有 = 这道门今天拦不住任何东西，无论它写得多好。
