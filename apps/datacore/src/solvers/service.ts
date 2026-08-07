@@ -9,6 +9,8 @@ import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
+// WO-OUTPUT-UNITS（#63）：求解器输出数值字段的量纲单一真值（后端发 unit/kind·前端只格式化不猜）。
+import { solverUnitsFor } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
@@ -4237,7 +4239,31 @@ export class SolverService {
     return this.compute({ ...c, params }, solverKey, args);
   }
 
+  /**
+   * WO-OUTPUT-UNITS（欠账 #63）· 输出量纲**唯一挂载点**。
+   *
+   * 为什么必须包一层而不是逐处 `return` 前挂：`invokeInner` 有 **20+ 个提前 return**
+   * （generic_inference / atp_check / base_capacity_outlook / 各 *_optimize …），
+   * 逐处挂 = 新加一个求解器就漏一处，而「漏了」的表征恰恰是**静默的**（少个 units 键没人报错）。
+   * 包一层 ⇒ 走哪条路都必经此处；覆盖与否由 contracts `SOLVER_FIELD_UNITS` 一张表决定。
+   *
+   * 加性（R6）：未覆盖的求解器**不挂** `units` 键（不是挂空对象冒充已治）；
+   * 已覆盖的只**多**一个根级 `units` 键，既有字段逐字节不变。
+   */
   async invoke(
+    ctx: AuthCtx,
+    solverKey: string,
+    args: Record<string, unknown>,
+    visibleOrders?: ObjectInstance[],
+  ): Promise<Record<string, unknown>> {
+    const out = await this.invokeInner(ctx, solverKey, args, visibleOrders);
+    const units = solverUnitsFor(solverKey);
+    // 已有 units 键（求解器自己发了更细的）→ 不覆盖（尊重更近的真值·避免两处打架）。
+    if (units && out && typeof out === "object" && out.units === undefined) out.units = units;
+    return out;
+  }
+
+  private async invokeInner(
     ctx: AuthCtx,
     solverKey: string,
     args: Record<string, unknown>,
