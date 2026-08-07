@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { harvestLeakedTimers } from "./leakGuard";
 import { loginAs, renderWithClient as render } from "./utils";
@@ -574,28 +574,38 @@ describe("播控 · 仿真时钟 · 定时器纪律", () => {
   };
   const dayNow = () => Number(screen.getByTestId("transit-flow-layer").getAttribute("data-day"));
 
+  /**
+   * ⚠ 本组两例原用 `vi.useFakeTimers({ shouldAdvanceTime: true })`，与欠账 #120 同族同病 —— 一并去挂钟化。
+   * `shouldAdvanceTime: true` 会在测试之外挂一条**真实 20ms `setInterval`** 同步 tick 假时钟
+   * （实测：真实等 2500ms，假时钟自走 2420ms）。本组时钟 8× 档一格只要 `900/8 = 112.5ms`，
+   * 于是**语句之间随便卡一下，仿真日就会自己往前跳**，`toBe(6)` 这种精确断言随机变成 7 ——
+   * 而这正是本组最核心的判据（"同样墙钟 1× 走不掉一天、4× 走掉一天"）：
+   * 它要求假时钟**只由本用例推**，多一条真实时钟就把 A/B 对照污染掉了。
+   * 交互改用 `fireEvent`（同步 + RTL 自带 act 包装）：`userEvent` 的 `wait()` 走 `globalThis.setTimeout`，
+   * 纯假时钟下推不动（实测会挂到 20s 超时），用它就必须把 `shouldAdvanceTime` 请回来。
+   * `tick()` 保持 `act` 包裹不变 —— 那条纪律（一格一个 act）本来就是对的。
+   */
   it("播放推进仿真时钟；倍速真的改变推进速率（同样墙钟 1× 走不掉一天、4× 走掉一天）", async () => {
     stubMatchMedia(false);
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       render(<TransitFlowLayer sources={{ interBaseTransfer: rows }} />);
       expect(dayNow()).toBe(0);
 
-      await user.click(screen.getByTestId("transit-playpause"));
+      fireEvent.click(screen.getByTestId("transit-playpause"));
       expect(screen.getByTestId("transit-playpause")).toHaveAttribute("data-state", "playing");
       for (let i = 0; i < 3; i++) await tick(TRANSIT_TICK_BASE_MS + 5);
       expect(dayNow(), "1× 档三格墙钟应推进三天").toBe(3);
 
       // ── 倍速 A/B：给同样一小段墙钟（1× 一天的 1/4），看两档结果 ──────────
-      await user.click(screen.getByTestId("transit-reset"));
-      await user.click(screen.getByTestId("transit-playpause"));
+      fireEvent.click(screen.getByTestId("transit-reset"));
+      fireEvent.click(screen.getByTestId("transit-playpause"));
       await tick(TRANSIT_TICK_BASE_MS / 4 + 5);
       expect(dayNow(), "1× 档下这点墙钟不够走一天").toBe(0);
 
-      await user.click(screen.getByTestId("transit-playpause")); // 暂停
-      await user.click(screen.getByTestId("transit-speed-4"));
-      await user.click(screen.getByTestId("transit-playpause"));
+      fireEvent.click(screen.getByTestId("transit-playpause")); // 暂停
+      fireEvent.click(screen.getByTestId("transit-speed-4"));
+      fireEvent.click(screen.getByTestId("transit-playpause"));
       await tick(TRANSIT_TICK_BASE_MS / 4 + 5);
       expect(dayNow(), "4× 档下同样墙钟真的走掉一天").toBe(1);
     } finally {
@@ -605,11 +615,10 @@ describe("播控 · 仿真时钟 · 定时器纪律", () => {
 
   it("走到窗口右端自动停，不空转", async () => {
     stubMatchMedia(false);
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       render(<TransitFlowLayer sources={{ interBaseTransfer: rows }} initialSpeed={8} />);
-      await user.click(screen.getByTestId("transit-playpause"));
+      fireEvent.click(screen.getByTestId("transit-playpause"));
       for (let i = 0; i < 8; i++) await tick(TRANSIT_TICK_BASE_MS / 8 + 5);
       expect(dayNow()).toBe(6); // horizon = etaDay 6
       expect(screen.getByTestId("transit-playpause")).toHaveAttribute("data-state", "paused");
