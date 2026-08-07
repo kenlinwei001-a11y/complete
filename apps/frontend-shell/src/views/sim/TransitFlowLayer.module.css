@@ -238,102 +238,150 @@
   color: var(--c-forecast);
 }
 
-/* ── 区间与车 ──────────────────────────────────────────────────────────── */
-.segments {
+/* ── 环上几何（WO-TRANSIT-GEOMETRY）─────────────────────────────────────────
+ * 坐标全部由 `chainLineMap.ts` 算好后落进 SVG 属性，本文件只管**画法**：
+ * 三类批次的图元靠**形状**分家（三角 / 菱形 / 横条），颜色只是次要区分 ——
+ * 只靠颜色深浅会被读成"同一种东西弱一点"，而它们是三种**位置精度**，不是三档强弱。
+ */
+.ringWrap {
   display: grid;
-  gap: 10px;
-}
-
-.segment {
+  gap: 8px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg2);
 }
 
-.segEnds {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
+.geomNote {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.ringSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 460px;
+  overflow: visible;
+}
+
+.ringGuide {
+  fill: none;
+  stroke: var(--line2);
+  stroke-width: 1;
+  stroke-dasharray: 3 6;
+}
+
+.arc {
+  fill: none;
+  stroke: var(--c-capacity);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.75;
 }
 
 .station {
-  padding: 2px 8px;
-  border: 1px solid var(--line2);
-  border-radius: 999px;
   color: var(--txt);
 }
 
-.station[data-cadence="1"] {
-  border-color: var(--c-forecast);
-  color: var(--c-forecast);
+.stationDot {
+  fill: var(--panel2);
+  stroke: var(--muted2);
+  stroke-width: 2;
+}
+
+.station[data-cadence="1"] .stationDot {
+  stroke: var(--c-forecast);
+}
+
+.station[data-queue="0"] .stationDot {
+  stroke-dasharray: none;
 }
 
 .station[data-pulse="1"] {
   animation: transitPulse 600ms ease-out 2;
 }
 
-.segArrow {
-  flex: 1;
-  color: var(--muted2);
-  letter-spacing: 2px;
-  overflow: hidden;
+.stationName {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-sans);
 }
 
-.track {
-  position: relative;
-  height: 26px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+/* ① 三角形车头（唯一落在弧上的图元） */
+.carBody {
+  fill: var(--c-capacity);
+  stroke: var(--panel);
+  stroke-width: 1;
 }
 
 .car {
-  position: absolute;
-  top: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 100%;
-  transform: translateX(-50%);
-  transition: left 220ms linear;
-  font-size: 10px;
-  color: var(--muted);
-  white-space: nowrap;
+  transition: transform 220ms linear;
 }
 
-.carDot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--c-capacity);
+.car[data-state="queued"] .carBody {
+  fill: var(--warn);
 }
 
-.car[data-state="queued"] .carDot {
-  background: var(--warn);
+.car[data-state="released"] .carBody {
+  fill: var(--ok);
 }
 
-.car[data-state="released"] .carDot {
-  background: var(--ok);
-}
-
-.car[data-state="pending"] .carDot {
-  background: var(--muted2);
+.car[data-state="pending"] .carBody {
+  fill: var(--muted2);
 }
 
 .carAnnot {
-  font-style: normal;
+  fill: var(--txt);
   font-family: var(--font-mono);
-  color: var(--txt);
+  font-size: 10px;
 }
 
-/* ── 排队 / 到货 / 站驻留 ──────────────────────────────────────────────── */
-.queues,
-.arrivals,
-.residents {
+/* ② 菱形到站徽标（挂在站上·环外） */
+.arrivalBadge {
+  fill: none;
+  stroke: var(--c-forecast);
+  stroke-width: 2;
+}
+
+.glyphText {
+  fill: var(--c-forecast);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+/* ③ 横条堆叠（挂在站上·环内） */
+.residentBar {
+  fill: var(--c-product);
+  opacity: 0.85;
+}
+
+.resident[data-state="queued"] .residentBar {
+  fill: var(--warn);
+}
+
+/* 图元图例 */
+.glyphLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.glyphChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+}
+
+/* ── 排队 ──────────────────────────────────────────────────────────────── */
+.queues {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -344,14 +392,6 @@
 .queue {
   padding: 3px 8px;
   border: 1px solid var(--warn);
-  border-radius: 6px;
-  color: var(--txt);
-}
-
-.arrival,
-.resident {
-  padding: 3px 8px;
-  border: 1px solid var(--line2);
   border-radius: 6px;
   color: var(--txt);
 }

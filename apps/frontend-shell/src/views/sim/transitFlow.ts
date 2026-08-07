@@ -194,36 +194,43 @@ function resolveLabel(nodeId: string, engineLabel?: string): { label: string; la
 
 /**
  * 站点集合的**唯一出口**。
- *  · 引擎给了 `nodes[]` ⇒ 站点集合 = 引擎的，顺序保持引擎顺序（前端不重排语义）。
- *  · 引擎没给 ⇒ 从批次数据行自带的 node key 现场发现，按 key 字典序（R6 全序，不靠遍历顺序）。
+ *  · 引擎给了 `nodes[]` ⇒ 这些站**排在前面**，顺序保持引擎顺序（前端不重排语义）。
+ *  · 批次数据行里出现、而引擎没列的 node key ⇒ **补在后面**，按 key 字典序（R6 全序）。
  * 两条路都不产生"前端维护的清单"。
+ *
+ * ⚠ WO-TRANSIT-GEOMETRY 改动（补并集这一半）：此前引擎给了 `nodes[]` 就**只**取引擎的，
+ *   于是一条 `A→B` 的调拨里若引擎没列 A，A 就从站点集合里消失了 —— 屏上那条区间"从哪来"没有站，
+ *   落到环上就变成"车从一个不存在的点出发"。**数据行里真实存在的起运地不许被抹掉**，
+ *   它只是没被引擎登记（`origin` 标 `data-row`，与引擎站分得开）。
+ *   并集不影响任何既有语义：`cadence` 依旧**只**可能来自引擎站（补出来的站永远没有 cadence），
+ *   「哪个站是限流站只认引擎」这条红线原样成立。
  */
 export function resolveStations(
   engineNodes: readonly TransitNodeInput[] | undefined,
   batches: readonly TransitBatch[],
 ): TransitStation[] {
-  if (engineNodes !== undefined && engineNodes.length > 0) {
-    return engineNodes.map((n) => {
-      const { label, labelSource } = resolveLabel(n.nodeId, n.label);
-      return {
-        nodeId: n.nodeId,
-        label,
-        labelSource,
-        origin: "engine" as const,
-        ...(n.stage === undefined ? {} : { stage: n.stage }),
-        ...(n.cadence === undefined ? {} : { cadence: n.cadence }),
-      };
-    });
-  }
+  const fromEngine: TransitStation[] = (engineNodes ?? []).map((n) => {
+    const { label, labelSource } = resolveLabel(n.nodeId, n.label);
+    return {
+      nodeId: n.nodeId,
+      label,
+      labelSource,
+      origin: "engine" as const,
+      ...(n.stage === undefined ? {} : { stage: n.stage }),
+      ...(n.cadence === undefined ? {} : { cadence: n.cadence }),
+    };
+  });
+  const seen = new Set(fromEngine.map((s) => s.nodeId));
   const keys = new Set<string>();
   for (const b of batches) {
-    if (b.originNodeId !== null) keys.add(b.originNodeId);
-    keys.add(b.destNodeId);
+    if (b.originNodeId !== null && !seen.has(b.originNodeId)) keys.add(b.originNodeId);
+    if (!seen.has(b.destNodeId)) keys.add(b.destNodeId);
   }
-  return [...keys].sort().map((nodeId) => {
+  const fromRows: TransitStation[] = [...keys].sort().map((nodeId) => {
     const { label, labelSource } = resolveLabel(nodeId);
     return { nodeId, label, labelSource, origin: "data-row" as const };
   });
+  return [...fromEngine, ...fromRows];
 }
 
 /** 区间 = 批次自己走的那一段（起点/终点都来自数据行），不是前端画的一张地图。 */

@@ -8,6 +8,7 @@ import {
   formatDays,
   formatPct,
   LAYOUT,
+  radialOffsetFrom,
   RING_LAYOUT,
   SHARED_BASIS_LABEL,
   STAGE_LABEL,
@@ -166,10 +167,11 @@ function AndGate({ x, y, testId }: { x: number; y: number; testId: string }) {
 function labelAnchor(angle: number, r: number, x: number, y: number) {
   const co = Math.cos(angle);
   const si = Math.sin(angle);
-  const out = r + 15;
+  // 「离开环」只有一处实现（`chainLineMap.radialOffsetFrom`）——在途图层的站上徽标走的是同一个函数。
+  const out = radialOffsetFrom(x, y, angle, r + 15);
   return {
-    lx: x + co * out,
-    ly: y + si * out,
+    lx: out.x,
+    ly: out.y,
     /** 上下两极用 middle，左右两侧朝外对齐 */
     anchor: Math.abs(co) < 0.34 ? ("middle" as const) : co > 0 ? ("start" as const) : ("end" as const),
     /** 名称行的基线微调（正下方要多让一点，正上方要少让一点） */
