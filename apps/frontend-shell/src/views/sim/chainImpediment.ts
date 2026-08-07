@@ -40,6 +40,7 @@ import {
   type ChainImpediment,
   type ChainImpedimentKind,
   type ChainScope,
+  type ChainStage,
   type DerivedDataMode,
 } from "@platform/contracts";
 import { z } from "zod";
@@ -129,6 +130,30 @@ export const IMPEDIMENT_KIND_MEANING: Record<ChainImpedimentKind, string> = {
   BREAK: "链条接不上 · 上游给不了下游要的（缺料 / 提前期兜不住 / 算不出来）",
 };
 
+/**
+ * 链段（`ChainStage` 契约枚举）的中文显示名。
+ *
+ * `satisfies Record<ChainStage, string>` ⇒ 契约枚举加一段、这里没跟上 ⇒ **TS 当场红**，不会静默漏渲染。
+ *
+ * ⚠ 为什么不 import F1 `chainLineMap.ts` 里那张同名表（它先有）：
+ *  · import 会把 F1 整个派生层（zod schema + 几何 + 归因）拖进本页的 lazy chunk —— 为一张 4 行的
+ *    显示名表付整包代价，且两个本无依赖的视图从此耦合；
+ *  · 真正该做的单一来源是**把它上提进 contracts**（那才是 `ChainStage` 的家），但 contracts 不在本单边界内。
+ * 折中：这里独立一份 + **一条门**断言两张表逐字相同
+ *（`chain-impediment.seam.test.tsx` §8「两张 STAGE_LABEL 不许漂移」），漂移即红，不靠自觉。
+ */
+export const STAGE_LABEL = {
+  DEMAND: "需求",
+  ORDER: "订单",
+  CAPACITY: "产能",
+  MATERIAL: "物料",
+} as const satisfies Record<ChainStage, string>;
+
+/** 段名显示：认识的枚举给中文，不认识的**原样回显**（不猜、不显示成空白）。 */
+export function stageLabelOf(stage: string): string {
+  return (STAGE_LABEL as Record<string, string>)[stage] ?? stage;
+}
+
 /** 断点三亚型的中文名（`kind === "BREAK"` 时必有，contracts 硬约束）。 */
 export const BREAK_SUBTYPE_LABEL: Record<ChainBreakSubtype, string> = {
   MATERIAL: "物理断 · 缺料",
@@ -186,12 +211,18 @@ export const DATA_MODE_LABEL: Record<DerivedDataMode, string> = {
  *                **只比对了快照与规则红线、未校验持续天数**（`chain-impediment.ts:586-594`）。
  *  · `SYNTHETIC` locus 对象来自合成种子（`c.isSynthProvenance` 为真，`chain-impediment.ts:620`）。
  *  · `LIVE`      整条规则表达式在真对象快照上求值命中（`chain-impediment.ts:597`）。
+ *
+ * ⚠ 这些串是**直接当纯文本渲染**的，所以一个 Markdown 记号都不许写：
+ *   `**部分**判定` 在页面上就是字面的两个星号（实测确认过 —— 这不是设想，是把页面文本 dump 出来看见的）。
+ *   强调靠样式（`.honestyClaim[data-degraded="1"]`），不靠星号。
+ *   引擎 `caveats[].note` 里的 `**未校验持续天数**` 是**引擎原文**，本层原样透传、不代它改写
+ *   （改写就是本单明令禁止的"前端重写后端文案"）。
  */
 export const DATA_MODE_CLAIM: Record<DerivedDataMode, string> = {
   LIVE: "实测判定：整条规则表达式在对象快照上求值命中。",
-  PARTIAL: "**部分**判定：结论被削弱过，不可当全量判定用（削弱原因见下，为引擎原文）。",
+  PARTIAL: "部分判定：结论被削弱过，不可当全量判定用（削弱原因见下，为引擎原文）。",
   SYNTHETIC: "判定成立，但 locus 对象来自合成种子数据，不是生产实测值。",
-  EMPTY: "**算不出来**：该环节读数不可信，本条不是一个「0」，也不是「没问题」——是量不到。",
+  EMPTY: "算不出来：该环节读数不可信 —— 本条不是一个「0」，也不是「没问题」，是量不到。",
 };
 
 /**
@@ -354,7 +385,7 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
   const notes: string[] = [];
   if (sorted.length === 0) {
     notes.push(
-      "本次扫描**未检出任何阻滞点**（引擎返回 0 条）。这不等于「全链健康」——" +
+      "本次扫描未检出任何阻滞点（引擎返回 0 条）。这不等于「全链健康」——" +
         `本次还有 ${payload.unresolved.length} 条判据判不出来（逐条原因见下「判不出来的判据」）。`,
     );
   }
@@ -368,7 +399,7 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
   }
   if (honestyCounts.PARTIAL > 0) {
     notes.push(
-      `${honestyCounts.PARTIAL} 条结论是 PARTIAL（部分判定）—— 引擎已说明削弱原因，**不可当实测读数用**。`,
+      `${honestyCounts.PARTIAL} 条结论是 PARTIAL（部分判定）—— 引擎已说明削弱原因，不可当实测读数用。`,
     );
   }
   if (honestyCounts.EMPTY > 0) {
@@ -381,7 +412,7 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
     notes.push("引擎未回带任何阈值出处行（thresholds[] 为空）⇒ 本次结论指不出「旋钮在哪」。");
   }
   if (payload.scopeUnscoped === true || isChainScopeUnscoped(payload.scope)) {
-    notes.push("本次扫描**范围未限定** ⇒ 结果是全域的，不是某个基地的（scope 由引擎回带，前端不编默认范围）。");
+    notes.push("本次扫描范围未限定 ⇒ 结果是全域的，不是某个基地的（scope 由引擎回带，前端不编默认范围）。");
   }
 
   const itemTotal = sorted.length;

@@ -58,6 +58,7 @@ import {
   DATA_MODE_CLAIM,
   DATA_MODE_LABEL,
   honestyOf,
+  stageLabelOf,
   type ChainImpedimentPayload,
 } from "@/views/sim/chainImpediment";
 
@@ -217,6 +218,9 @@ describe("判定依据（R13：每个数都能回答「凭什么」）", () => {
       expect(locus).toHaveTextContent(im.locus.label);
       expect(locus).toHaveTextContent(im.locus.objectId);
       expect(locus).toHaveTextContent(im.locus.objectType);
+      // 段名走中文显示名，不把契约枚举裸英文甩给用户。
+      expect(locus).toHaveTextContent(`${stageLabelOf(im.stage)} 段`);
+      expect(locus.textContent).not.toContain(`${im.stage} 段`);
     }
   });
 
@@ -359,6 +363,18 @@ describe("dataMode 如实渲染（本单头号判据）", () => {
     const h = honestyOf({ ...PARTIAL_ONE, dataMode: "PARTIAL" }, null);
     expect(h.detail).toContain("未给出削弱说明");
     expect(h.degraded).toBe(true);
+  });
+
+  it("本层自己写的文案里没有 Markdown 记号（纯文本渲染 → `**x**` 在页上就是两个星号）", async () => {
+    // 由来：把页面文本 dump 出来看，`**部分**判定` 真的带着字面星号上屏。绿测试看不见这个，肉眼看得见。
+    for (const s of [...Object.values(DATA_MODE_CLAIM), ...Object.values(DATA_MODE_LABEL)]) {
+      expect(s, `文案里出现 Markdown 星号：${s}`).not.toMatch(/\*\*/);
+    }
+    const model = buildChainImpedimentModel(BASE);
+    for (const n of model.notes) expect(n, `诚实边界文案里出现 Markdown 星号：${n}`).not.toMatch(/\*\*/);
+    // ⚠ 引擎 `caveats[].note` 里的 `**未校验持续天数**` 是**引擎原文**，本层原样透传 ——
+    //    前端替它改写才是本单禁止的事。故此处刻意不对 caveat 施加同一条规则。
+    expect(C05_CAVEAT.note).toMatch(/\*\*/);
   });
 
   it("顶栏诚实位统计与逐条 dataMode 完全一致（统计口径不许自成一套）", async () => {
@@ -564,6 +580,15 @@ describe("与 F1 全链线路图的边界（不重复劳动）", () => {
   it("本页把「与线路图的分工」写在界面上，用户不会以为是同一张图的两种画法", async () => {
     await mount();
     expect(screen.getByTestId("ci-root")).toHaveTextContent("不重复展示");
+  });
+
+  it("两张 STAGE_LABEL 不许漂移（本页独立一份是为了不把 F1 派生层拖进本页 chunk）", async () => {
+    const mine = (await import("@/views/sim/chainImpediment")).STAGE_LABEL;
+    const f1 = (await import("@/views/sim/chainLineMap")).STAGE_LABEL;
+    expect(mine).toEqual(f1);
+    // 且两张都必须覆盖契约枚举的全部取值（少一段就会在界面上回显裸英文）。
+    const { CHAIN_STAGES } = await import("@platform/contracts");
+    expect(Object.keys(mine).sort()).toEqual([...CHAIN_STAGES].sort());
   });
 });
 
