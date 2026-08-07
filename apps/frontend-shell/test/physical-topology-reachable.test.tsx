@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getRenderer } from "@/views/registry";
 import { ViewConfigVMSchema, type ViewConfigVM } from "@/api/types";
 
@@ -32,10 +33,14 @@ describe("WO-SANDBOX-F3 · 物理拓扑渲染器可达（咬链路不咬组件�
     const View = getRenderer("physical-topology");
     expect(View, "registry 里没有 physical-topology —— 组件再绿也没有任何路由渲染得到它").toBeDefined();
     const Lazy = View!;
+    // WO-TOPO-REALDATA：组件改用 useQuery 读真值（无 token → 门关闭 → 不发请求，仍渲染占位矩阵），
+    // 故这条链路要带上 Provider —— 生产里 ViewPage 外层本来就有。
     render(
-      <Suspense fallback={<div data-testid="loading" />}>
-        <Lazy view={mkView()} />
-      </Suspense>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Suspense fallback={<div data-testid="loading" />}>
+          <Lazy view={mkView()} />
+        </Suspense>
+      </QueryClientProvider>,
     );
     expect(await screen.findByTestId("phys-topo-canvas")).toBeInTheDocument();
   });
