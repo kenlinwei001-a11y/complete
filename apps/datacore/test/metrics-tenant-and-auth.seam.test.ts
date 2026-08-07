@@ -52,8 +52,25 @@ function series(body: string, name: string, tenant: string, outcome: string): nu
   return m ? Number(m[1]) : 0;
 }
 
+/**
+ * 提交段有职责分离前置：`submitInner` 要求该租户下**存在**一个持链上角色、且 ≠ 发起人的用户，
+ * 否则 `NO_ELIGIBLE_APPROVER`。合成租户不经 seed，故这里显式补一个审批人。
+ */
+async function seedApprover(t: TestApp, tenantId: string): Promise<void> {
+  await t.repos.users.put({
+    id: `${tenantId}-approver`,
+    tenantId,
+    username: `${tenantId}-approver`,
+    passwordHash: "x",
+    roles: ["admin"],
+    attributes: {},
+  });
+}
+
 async function setupTwoTenants(t: TestApp): Promise<void> {
   const actions = t.services.actions;
+  await seedApprover(t, "t-alpha");
+  await seedApprover(t, "t-beta");
   await actions.registerType(ctxOf("t-alpha", "t-alpha-admin", ["admin"]), probeType());
   await actions.registerType(ctxOf("t-beta", "t-beta-admin", ["admin"]), probeType());
   // 执行器按 payload.mode 分流：本测要的是**同一个 action_type 在两个租户里成败分布不同**。
@@ -113,12 +130,13 @@ describe("SEAM · Action 稳定率按租户分维（A 的失败不得污染 B �
     expect(
       body,
       "出现了无 tenant 标签的 dc_action_* 序列 —— 存在一条把所有租户合成一条的曲线",
-    ).not.toMatch(/^dc_action_\w+\{(?![^}]*\btenant=)[^}]*\}/m);
+    ).not.toMatch(/^dc_action_\w+(?:\{(?![^}]*\btenant=)[^}]*\})? /m);
   });
 
   it("admin 只看得到自己租户那条曲线（补了租户维不等于可以互相看）", async () => {
     const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     await setupTwoTenants(t);
+    t.services.actions.metrics.inc("dc_wo65_probe_total", {}, 1); // 一条无 tenant 标签的进程级序列
 
     const asAlpha = await t.app.inject({
       method: "GET",
@@ -131,8 +149,9 @@ describe("SEAM · Action 稳定率按租户分维（A 的失败不得污染 B �
       asAlpha.body,
       "t-alpha 的 admin 读到了 t-beta 的序列 —— 把 R2 从『合成一条』恶化成『明码列出别家』",
     ).not.toContain('tenant="t-beta"');
-    // 进程级指标（无 tenant 标签）不许被过滤误伤
-    expect(asAlpha.body).toContain("# TYPE dc_");
+    // 进程级指标（无 tenant 标签）不许被过滤误伤 —— 断的是**那条具体序列**，
+    // 不是"存在某条 dc_ 行"（后者被租户序列自己满足，等于没断）。
+    expect(asAlpha.body, "进程级序列（无 tenant 标签）被租户过滤误伤了").toContain("dc_wo65_probe_total 1");
 
     // 服务令牌视图则两个租户都在（否则抓取侧会漏掉大半数据）
     const asService = await t.app.inject({ method: "GET", url: "/metrics", headers: { "x-service-token": SVC } });
@@ -144,6 +163,11 @@ describe("SEAM · Action 稳定率按租户分维（A 的失败不得污染 B �
 describe("SEAM · /metrics 鉴权（无凭证 / 错凭证 / 对凭证）", () => {
   it("无凭证 → 401；错的 service token → 401；非 admin 已认证角色 → 403；admin / 正确 service token → 200", async () => {
     const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
+    // 先往 app 级注册表放一条**无 tenant 标签**的进程级序列（`t.services.actions.metrics`
+    // 就是 `/metrics` 渲染的那一份，见 action-metrics-endpoint.seam.test.ts）。两个作用：
+    // ① 让 200 的响应体有确定内容可断言（空注册表 render() 只返回 "\n"，断言就没鉴别力）；
+    // ② 顺带守住「按租户过滤不许误伤进程级指标」—— 它必须在 admin 的租户视图里照常可见。
+    t.services.actions.metrics.inc("dc_wo65_probe_total", {}, 1);
 
     // ① 无凭证 —— 这正是基线上的病：基线此处是 200，且响应体带全租户业务活动画像
     const anon = await t.app.inject({ method: "GET", url: "/metrics" });
@@ -165,13 +189,13 @@ describe("SEAM · /metrics 鉴权（无凭证 / 错凭证 / 对凭证）", () =>
     // ④ 对凭证 A：admin 角色 → 200
     const admin = await t.app.inject({ method: "GET", url: "/metrics", headers: ADMIN });
     expect(admin.statusCode, admin.body).toBe(200);
-    expect(admin.body).toContain("# TYPE dc_");
+    expect(admin.body, "进程级序列（无 tenant 标签）被租户过滤误伤了").toContain("dc_wo65_probe_total 1");
 
     // ⑤ 对凭证 B：service token → 200，且**不需要** X-Tenant-Id
     //    （抓取侧要的是全量；若这里强制租户头，加鉴权就等于打断 Prometheus 抓取）
     const svc = await t.app.inject({ method: "GET", url: "/metrics", headers: { "x-service-token": SVC } });
     expect(svc.statusCode, svc.body).toBe(200);
-    expect(svc.body).toContain("# TYPE dc_");
+    expect(svc.body).toContain("dc_wo65_probe_total 1");
   });
 
   it("未配置 SERVICE_TOKEN 时 service 分支恒不命中（不得因为env缺省而退化成公开）", async () => {
