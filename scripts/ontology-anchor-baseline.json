@@ -37,7 +37,7 @@
     "apps/agentcore/src/workflow/executor.ts::TemplateResolutionError",
     "apps/agentcore/src/workflow/executor.ts::runWorkflow",
     "apps/datacore/src/decision/record-materialize.ts::RECORD_MATERIALIZE_TEMPLATES",
-    "apps/datacore/src/solvers/capacity.ts::hasBase",
+    "apps/datacore/src/solvers/capacity.ts::basePick",
     "apps/datacore/src/solvers/extended.ts::mats",
     "apps/datacore/src/solvers/risk.ts::resolveBaseId",
     "apps/datacore/src/solvers/types.ts::refTypeDefFromRows",
