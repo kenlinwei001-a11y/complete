@@ -313,3 +313,91 @@ $ git grep -ln "createIntent" -- "apps/**/src/**"      → 3 文件（正确写�
   ⚠ **先做决策再动手**：代码册（现状，`base-registry.ts` + 零容忍门守着）与可发布对象（PRD 原意，R4 审批）是**两条互斥路线**——代码册的强项恰是"门能零容忍"，改成运行时可发布会把这道门的牙拔掉。建议先由仓主裁决走哪条，**别默认按 PRD 补**。
 
 ---
+
+### PRD-generic-inference.md
+
+- **它要做什么**：加一个行业无关的 what-if 求解器 `generic_inference` —— 给定「假设某对象属性变 Δ」，用本体自己的派生规格（A4）前向重算受影响派生属性，返回 before/after，**不落真值**。关闭 G-5 8e。
+- **PRD 自称的 AS-IS**：§2「现状与缺口（对照代码）」三行——C-1 `22 个 SOLVER_KEYS 全电池域（solvers/service.ts:14）`；C-2 派生引擎 `recompute` 做拓扑重算但**写真值 + 历史 + run**，无 dry-run，直接复用会污染对象库；C-3 `evaluate(ast,…)` 是纯函数可复用做 dry-run。
+- **实测现状**：**P1 + P2 全落**（P3 前端入口也落了）。
+  - **P1 `recompute` dryRun ✅**（PRD §3.1 的三条要求逐条对上）：`apps/datacore/src/ontology-core.ts:344 opts?: {epoch?, dryRun?, apply?}`；`:347-348` 注释「dryRun 时在克隆图上前向重算，**绝不持久化、绝不 mutate 原对象**」；`:365 objectIndex.set(o.id, dryRun ? structuredClone(o) : o)` = PRD 要的克隆；`:350 epoch = dryRun ? 0 : …` = 不开 epoch；`:496-497` dryRun 分支只 push `dryRunDeltas` 不写库；返回结构 `:56-57 dryRunDeltas?: {objId,type,prop,before,after}[]`。**持久化路径与 dry-run 共用同一内层**（PRD §3.1 末句要求的"杜绝两套漂移"），因为是同一函数的分支而非复制。
+  - **P2 求解器注册 ✅**：`apps/datacore/src/solvers/service.ts:100 "generic_inference"` 入 `SOLVER_KEYS`（`:49` 定义处）；`:268` 输出形状 `["deltas","rows","affectedObjects","count","rootTypes"]`；`:4264-4265` 分派（注释「generic_inference 走本体派生引擎（非纯 compute；需对象图 + recompute），先于 loadContext 拦截」）；`app.ts:333 solvers.setOntologyCore(ontologyCore)` 完成注入。
+  - **P3 前端入口 ✅**（PRD 标"可选，后续"）：`views/sim/DynamicLeverPanel.tsx:164,209 runSolver("generic_inference", …)` + `:340 src="generic_inference · recompute(dryRun)"` 的 Provenance 联动 —— 正是 PRD §3.3 说的「与 `<Provenance>` 溯源联动（inputs 即来源）」。
+  - **门 ✅ 亲手跑**：`out=$(node scripts/check-system-ontology.mjs 2>&1); rc=$?` → `RC=0`，输出「求解器：SOLVER_KEYS **59 个**，本体覆盖 **59 个**」+「事件：代码 51 / 本体 51」+「断点编号：§8 已登记 90 · 悬空 0」。
+- **⚠ 数字漂移（不影响结论，但会误导人）**：PRD §2 写「22 个」、§3.2 写「+1=23」、验收写「SOLVER_KEYS 23」；实测已 **59**。本体 §2.E 正文里还并存着「38 个」（`SYSTEM-ONTOLOGY.md:113,115`）与「54→55」「49→50」几种散文口径。**机器门核的是枚举列表本身（59==59 绿），散文数字全是过期文案** —— 谁按 PRD 或本体散文去核对数字都会得出"对不上"的错误结论。
+- **结论**：✅已实现
+- **最小 WO 建议**：无功能 WO。可顺手在本体 §2.E 把"N 个"改成「以 `SOLVER_KEYS` 枚举为准（`ontology:check` 机器核）」，一次性根治这类漂移。
+
+---
+
+### PRD-global-sim-live-upgrade.md
+
+- **它要做什么**：全局推演驾驶舱「能算但不活」——补三件：① 页内嵌 NL 框（接 compose 路径）② 契约已有的自由 `levers[]` 在 UI 暴露成交互杠杆盘 ③ 方案存/分支/横比（首次让 `SimSession` 被业务页复用）。
+- **PRD 自称的 AS-IS**：§2「现状与缺口（对照代码 · file:line）」五行表 G1–G5，锚点精确到 `GlobalSimView.tsx:132`（无 submitQuery）/ `GlobalSimLevers.tsx:14,:39-66`（仅 preset）/ `GlobalSimView.tsx:357-369`（仅 preset 目标）/ `sim-planner.ts:14-17`（自陈 §3.2/§3.3 未完全）/ `app.ts:1228-1496`（SimSession 仅 SandboxView 用、PAUSED/ENDED 无 set）。
+- **实测现状**：三个目标全落。
+  - **目标① NL 框 ✅**：`views/sim/GlobalSimView.tsx:76-77 function GlobalSimNlDock({ sessionId })`；`:86 composeGlobalSimNarrative({query, sessionId, context:{view:"global-sim"}})`；`:254-255` 页级 sessionId 锚；`:537-538 <Feature flag="view.global-sim.live"><GlobalSimNlDock/></Feature>` —— 暗发门控，注释写明「真后端 `/b/v1/sim/compose` 未落时不渲染(R3·避 404·mock 态 on)」。**G1 已闭。**
+  - **目标② 自由杠杆 ✅**：`views/sim/GlobalSimLevers.tsx:18-21` 注释「WO-GSLIVE-1-COCKPIT · 活②：在 preset 区之上加「自由杠杆」区……**血脉 = portfolio levers[]·非 generic_inference**」；`:26` 自由杠杆类型、`:55` 父级传入、`:177` 自由杠杆区、`:217` 生效杠杆入参。preset 区保留（符合 PRD「保 preset 区」）。**G2 已闭。**
+  - **目标③ 方案存分比 ✅**：新文件 `views/sim/GlobalSimScenarioBar.tsx` 存在（PRD 指定的新文件名逐字一致），其 `:79 createActionDraft(...)` 完成"一键采纳走 Action"。**G3 已闭。**
+  - G4（WO-GSIM-4-AGENT §3.2/§3.3）：`apps/agentcore/src/agent/sim-planner.ts` 被三处生产消费——`router/orchestrator.ts:55`、`router/coordinator.ts:7,48,57`、`server.ts:61`。**非死代码。**
+  - 后端 live 端点 + entitlement：`apps/datacore/src/app.ts:1691-1694`「门禁 `view.global-sim.live`（前端暗发同门·R3 先于 authz·关=404 FEATURE_NOT_FOUND）」+ `:1721 snapshotKind: "gslive"`。前后端同一 flag，符合 PRD §0 的 R3 暗发要求。
+- **缺的一半（G5 的残口，PRD 明确点名的那条）**：**`SimSession` 的 PAUSED/ENDED 迁移仍未补全**。`grep -n "PAUSED\|ENDED" apps/datacore/src/app.ts` 只命中 **1 处**（`:4015 scheduler.setStatus(..., "PAUSED")`），且那是**调度器（OpsSchedule）的状态**，不是 `SimSession` 的。PRD §2-G5 与 §8 `WO-LIVE-SCENARIO` 的 SEAM-GATE ③「PAUSED/ENDED 迁移真置位（闭残口）」**未见落地证据**。
+  - 另：PRD §7 DoD 列的 `sim:check` 门 —— `grep -n "sim:check" package.json` = **0 命中**（仓里有 `scripts/check-sim.mjs` 与 `check-genuine-sim.mjs`，但 `sim:check` 这个 alias 不在 `package.json`；且据 gate-ledger 普查 `check-sim.mjs` 属 `NONE` 零调用方）。
+- **结论**：◐部分（三大目标 ①②③ 全落、G1–G4 闭；**G5 的 `SimSession` PAUSED/ENDED 迁移未补全**；`sim:check` 门 alias 不存在、脚本零调用方）
+- **最小 WO 建议**：`WO-SIMSESSION-STATE-CLOSE`：🚦只碰 `apps/datacore/src/app.ts`（`/a/v1/sim` 路由段补 PAUSED/ENDED 迁移）+ `packages/contracts/src/sim.ts`（状态枚举若缺）+ `apps/datacore/test/sim-solve-scenario.test.ts`（补 SEAM ③）。**顺带**把 `check-sim.mjs` 按 gate-ledger 的 `disposition` 处置（接 gates 或签 MANUAL），否则它就是第 13 个死门。
+
+---
+
+### PRD-global-sim.md
+
+- **它要做什么**：在既有 portfolio 联合守恒求解器之上加**七维联合数学** + **洞察→行动写回闭决策环**，让「全订单 × 全基地 × 时间共享产能不重复占用」一次联合最优，且采纳后基线真变、下一轮读到真变。
+- **PRD 自称的 AS-IS**：**这份的 AS-IS 极其具体** —— §2「5-WO 分解与集成状态」表逐行给 handoff/canonical commit SHA 与 SEAM 测文件名（GSIM-1-DATA `3b14e321` / GSIM-2-SOLVER `d292765f` / cell-pack 收口 `2819e99d` / GSIM-3-FRONTEND `7731d7c7` / GSIM-5-ACTION `76e6db8e` / **GSIM-4-AGENT ⏳在途**）；§6「已知诚实边界（不假装闭）」明写「前端 `GlobalSimView` 当前驱动经典 `portfolio` 解，**SOLVER 的七维 `GlobalSimResponse` 尚未上屏**……上屏为独立 follow-up WO（surface-7dim）」。
+- **实测现状**：
+  - §1 冻结契约 ✅：`packages/contracts/src/global-sim.ts` 存在且七维齐（`:11-14` 注释逐条列七维；`:118 committedBatches`、`:122 levers`、`:78 priorityLocks`）；两条红线也写进契约头（`:18` 诚实红线 mockNotes、换型小时）。
+  - §3 WO-GSIM-5-ACTION ✅：`apps/datacore/src/actions.ts:154 export class GlobalSimPlanExecutor`；幂等指纹 `:131 planFingerprint`（`:129` 注释「生成的 WorkOrder/InterBaseTransfer id 也以此指纹为锚 → 二次执行 put 覆盖同 id 不产重复」）；`:227` 物化 `InterBaseTransfer`；装配 `app.ts:414 new GlobalSimPlanExecutor(...)` + `:426-429`（**注释还特别写了「仅 global-sim 来源有真回灌；其余来源不得借 plan_change 的 WIRED 之名假装写了 → 诚实失败」**——这是防假绿的正确写法）。
+  - SEAM 测齐：`apps/datacore/test/{gsim-action-loop,gsim-integrate,gsim-solver,global-sim-data,global-sim-var-seam,global-sim-business-type-seam}.test.ts` 六个 + 前端 8 个 `global-sim-*.test.tsx` + agentcore `compose-sim-seam.test.ts`。
+- **⚠ PRD 自身陈述与现状不符（两条，都是 PRD 低估了现状）**：
+  1. §6 写「七维 `GlobalSimResponse` **尚未上屏**」→ **已上屏**：`views/sim/GlobalSimView.tsx:276-277` 注释「**WO-SURFACE-7DIM** · `twoStage:true` → 后端编排路由 `globalSimOptimize`（返 `GlobalSimResponse`·7 维 `schedule[]`/`kpi`/`mockNotes` **additively 叠加**经典 portfolio 字段·驾驶舱既有绑定不掉线）」。follow-up WO 已完成，§6 的诚实边界已过期。
+  2. §2 表写 `GSIM-4-AGENT | NL 大脑 | ⏳在途` → **已在正线**：`sim-planner.ts` 有三处生产消费（`orchestrator.ts:55` / `coordinator.ts:7` / `server.ts:61`），且 `compose-sim-seam.test.ts` 在 `apps/agentcore/test/`。
+  → 两条都属**「PRD 说没做、其实做了」**，正是本次审计要防的误判方向（与沙盘事故同型）。**任何按此 PRD 排期的人都会重复造已存在的东西。**
+- **结论**：✅已实现 · **⚠PRD 自身陈述与现状不符**（§6 诚实边界与 §2 的 GSIM-4 状态均已过期）
+- **最小 WO 建议**：`WO-DOC-GSIM-WRITEBACK`：🚦只碰 `docs/PRD-global-sim.md`（§2 表 GSIM-4-AGENT 改为已并线 + 补 canonical SHA；§6 删/改「七维尚未上屏」，改记 WO-SURFACE-7DIM 已闭）。**这类文档回写单看着最不值钱，实则是本批投入产出比最高的一类**——它直接防的是"重复造轮子 + 排期歪掉"。
+
+---
+
+### PRD-goal-metric-owner-spine.md
+
+- **它要做什么**：把「目标→KSF→子目标→指标(目标vs实际)→数据源&责任人」串成一等对象绑定脊柱，被所有现有视图复用，强制 R-一致（一个事实一个出处）；`Metric` 是派生投影而非新真值源。
+- **PRD 自称的 AS-IS**：§2「现状盘点与缺口」七行表，逐行标 ✅/◐/❌：目标树 ✅ `PlanTarget`；数据源 ✅ `Connector`；KSF ◐「仅 HTML 决策域 + 临时 KsfGraph」→ 提升为持久对象；**指标库 ❌「散落……新建 `Metric` 一等对象（最大缺口）」**；责任人 ◐ 字符串 owner → 结构化 `Principal`；数据 Pipeline ✅；推演逻辑 ✅。
+- **实测现状**：**三个新对象 + 链路 + 求解器 + 两事件 + 前端绑定，全落**。
+  - 三个一等对象 ✅：`apps/datacore/src/synthetic/battery.ts:2212 { key: "Metric", displayName: "经营指标", domain: "decision", … derivedProperties: metricDerived, sourceBindings: BINDINGS.Metric }`、`:2213 plain("KSF","关键成功要素",…)`、`:2214 plain("Principal","责任主体",…)`。
+  - 链路 ✅（PRD §0 要的 `Goal→KSF→…→Owner` 骨架链）：`battery.ts:2324 { key:"metric_affects_ksf", from:"Metric", to:"KSF" }`、`:2325 { key:"metric_ownedby", from:"Metric", to:"Principal" }`；属性侧 `:1058 ksfRef → KSF`、`:1059 ownerRef → Principal`、`:1080 parentRef → Principal`（Principal 自引用树，对应 PRD 的 `parentRef`）。
+  - 求解器 ✅：`solvers/service.ts:79 "metric_rollup"` 入 SOLVER_KEYS，`:313` 输出形状 `["metrics","missCount","byLevel","summary"]`，`:3016` 实现（注释「净室读对象图,确定性 R6,**派生投影非新真值 R13**」= PRD §3.0 铁律逐字落地）；配套 `:76 "plan_rootcause"` + `:1275` 明确「需先合成 Metric（经营指标）对象」——**两个求解器共用同一 Metric 出处，没有第二套口径**。
+  - 两个新事件 ✅（对比 DRIL 的 0 实现，这批是完整的）：`apps/datacore/src/app.ts:2734-2744` 发 `metric.snapshot_recorded`（每指标）+ 越线发 `metric.breached`；登记 `apps/agentcore/src/event-subscriptions.ts:103,104`（含 tier 与 invalidates）；测试 `apps/datacore/test/spine.test.ts:118`。
+  - 前端绑定（§1 目标 7「视图绑定矩阵」）◐→✅ 抽样为真：`views/DashboardView.tsx:92 invokeSolver("metric_rollup", { level: "op" })` + `:711` 注释「SPINE.4 经营指标条：`metric_rollup` 产出的 Metric（目标 vs 实际 + delta + 越线红），**各视图 KPI 单一出处 R-一致**」。
+  - **诚实度加分**：`DashboardView.tsx:482-483,509` 主动披露「综合毛利率为**估算口径**（SEG_REGISTRY 参考价派生·**非 `metric_rollup` 财务实测**）」并挂 Provenance —— 没有把估算冒充成脊柱实测。
+- **未查清**：PRD 附录 B 的「7+ 视图逐一改为读 Metric/KSF/Principal」是否**全部**改完（我只抽验了 DashboardView）。卡在：附录 B 在 PRD 后半，且逐视图核对需要 7 次交叉比对，本批时间预算内只做了抽样。建议复验方按附录 B 名单逐个 grep `metric_rollup`。
+- **结论**：✅已实现（对象/链路/求解器/事件/前端主路全落）；附录 B 全量视图覆盖率未查清。
+- **最小 WO 建议**：无功能 WO。若要补，只需一条盘点：`grep -rL "metric_rollup" $(附录B 视图清单)` 找出仍在自拼 KPI 的视图。
+
+---
+
+### PRD-implementation-handbook.md
+
+- **它要做什么**：给「低能力开发代理」的实施手册 —— 工单流水 W01–W32、三层样板代码、默认裁决表 D-01–D-20、升级通道（查不到就停下写 OPEN_QUESTIONS，禁止发明）。
+- **PRD 自称的 AS-IS**：**无现状节**（这是交接期的流程纲领，§1 自称「工程基线（**固定，不可变更**）」）。
+- **实测现状**：**工单 W01–W32 所描述的功能实质上都已建成**（本批其余 21 份 PRD 的实测结果即其旁证：A0–A8/B1–B7/QOS/前端/管理台全在）。但**手册 §1「固定，不可变更」的工程基线本身已被现实推翻，且没人回写**：
+
+  | 手册 §1 规定 | 实测 | 判定 |
+  |---|---|---|
+  | 依赖白名单含 **`zod@3`** | `packages/contracts/package.json:21` + 三个 app 全是 `"zod": "^4.0.0"`（CLAUDE.md 亦写 zod 4） | ⚠ 相反 |
+  | 每模块固定四件套 `routes.ts / service.ts / repo.ts / types.ts` | `find apps -name "routes.ts" -not -path "*/node_modules/*"` = **0 命中**。datacore 是扁平模块 + `app.ts` 单体路由；agentcore 是 `server.ts` | ⚠ 相反 |
+  | 通用辅助 `shared/http.ts`（auth/err/mapErr/zMsg/paginate） | `apps/datacore/src/shared/` **目录不存在** | ⚠ 相反 |
+  | 迁移用 **node-pg-migrate**，每工单一个迁移文件 | `grep node-pg-migrate` 全仓 **0 命中**；实为自研 `apps/datacore/src/repo/pg.ts:643 runMigrations` + `schema_migrations` 表 + 目录扫描 `.sql` 排序执行（`:645-649`），CLI `src/migrate-cli.ts` | ⚠ 相反（机制更简单，但手册写的那套不存在） |
+  | 铁律 4 / §5 启动提示词均指向 `docs/OPEN_QUESTIONS.md` | **文件不存在** | ⚠ 相反（升级通道的落点是空的） |
+  | 日志用 pino，禁 console.log | pino ✅ 在两个 app 的依赖里；`console.log` 在 `apps/*/src` 里 **7 处**残留 | ◐ 基本遵守 |
+  | §1 错误码全集 26 个 | 抽查 6 个全部真实在用：`FEATURE_NOT_FOUND`(`agentcore/src/features/gate.ts`) `PLAN_LOCKED`(`agentcore/src/server.ts`) `CYCLIC_DERIVATION`(`datacore/src/ontology-core.ts`) `AGENT_SCOPE_VIOLATION`(`agentcore/src/agent/loop.ts`) `IRR_DIVERGED`(`datacore/src/solvers/capex.ts`) `INTERRUPTED_BY_RESTART`(`agentcore/src/ops/sweep.ts`) | ✅ 遵守 |
+  | 依赖白名单（13 个包） | datacore 实际 17 个：多出 `@fastify/cookie` `@fastify/multipart` `argon2` `jose` `node-xlsx` `openai` `@platform/llm-adapters`；白名单里的 `@modelcontextprotocol/sdk` 不在 datacore（在 agentcore，合理） | ◐ 已扩，未回写白名单 |
+- **⚠ PRD 自身陈述与现状不符（本批危害最大的一份）**：这不是"没实现"，而是**一份仍然自称「固定，不可变更」、并被 §5 写成可直接粘贴给新 agent 的启动提示词的文档，其工程基线有 5 条与现实相反**。危害是**主动**的：一个照它执行的新 dev 会去 pin zod@3、去建 `routes.ts/service.ts/repo.ts` 四件套、去装 node-pg-migrate、去写一个不存在的 `OPEN_QUESTIONS.md` —— 每一条都会制造真实返工。**其余 PRD 过期只是"少知道点"，这份过期是"被带错路"。**
+- **结论**：⚠PRD 自身陈述与现状不符（W01–W32 的**功能**都已建成，但 §1「固定不可变更」的**工程基线**有 5 条与现实相反，且 §5 还在把它当启动提示词分发）
+- **最小 WO 建议**：`WO-DOC-HANDBOOK-DEPRECATE`（**本批第二优先，仅次于 cli-parity**）：🚦只碰 `docs/PRD-implementation-handbook.md`。两条路二选一——(a) 顶部加显著「**⚠ 历史文档：§1 工程基线已被现实取代，以根 `CLAUDE.md` 为准；§3 工单 W01–W32 已全部完成**」并逐条勘误 §1 那 5 项；(b) 若确认无人再用，整份归档到 `docs/archive/`。**⚠ 动它之前先跑 `grep -rl "PRD-implementation-handbook" .`**：CLAUDE.md 铁律 2 第 4 条明写「要动非代码文件，先证明它不被任何测试/门读取（`grep -rl` 到的可能只是注释里提了一嘴，**提及 ≠ 读取**，必须点开看）」——本仓有 `prd:check`/`check-prd-coverage.mjs` 会解析 `docs/PRD-*.md`，改动前须确认不破门。
+
+---
