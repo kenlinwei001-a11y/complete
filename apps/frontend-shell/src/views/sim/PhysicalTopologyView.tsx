@@ -69,9 +69,9 @@ function fmt(m: Measure): string {
  */
 export async function fetchTopologyFacts(): Promise<TopologyFacts> {
   const [oee, equipment, wip, workshops] = await Promise.all([
-    aggregateObjects(TOPOLOGY_FACT_QUERIES.oee as unknown as Parameters<typeof aggregateObjects>[0]),
-    aggregateObjects(TOPOLOGY_FACT_QUERIES.equipment as unknown as Parameters<typeof aggregateObjects>[0]),
-    aggregateObjects(TOPOLOGY_FACT_QUERIES.wip as unknown as Parameters<typeof aggregateObjects>[0]),
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.oee),
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.equipment),
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.wip),
     searchObjects("Workshop", "", { pageSize: WORKSHOP_PAGE_SIZE }),
   ]);
   return {

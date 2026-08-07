@@ -308,7 +308,18 @@ export interface TopologyFacts {
  * ⚠ `metrics` 契约上限 **5 条**（`AggregateRequestSchema`），`groupBy` 上限 2 维 —— 下面的取值是贴着上限排的，
  *   加字段前先想清楚挤掉谁。样本量不占额度：`min_planned === max_planned` 时可由 `sum/min` 反解。
  */
-export const TOPOLOGY_FACT_QUERIES = {
+export interface FactQuerySpec {
+  typeKey: string;
+  groupBy: string[];
+  metrics: { prop: string; fn: "count" | "sum" | "avg" | "min" | "max" }[];
+}
+
+/**
+ * 显式标注类型（而不是 `as const` + 调用处 `as unknown as …` 双重断言）：
+ * 双重断言会把**这条穿过网络边界的载荷**从类型检查里摘出去 —— 请求体写错字段名时编译器不再吭声，
+ * 只能等运行时 400。标注类型后，写错 `fn` 或漏字段当场编译红。
+ */
+export const TOPOLOGY_FACT_QUERIES: Record<"oee" | "equipment" | "wip", FactQuerySpec> = {
   oee: {
     typeKey: "EquipmentOEE",
     groupBy: ["baseId", "lineId"],
@@ -339,7 +350,7 @@ export const TOPOLOGY_FACT_QUERIES = {
       { prop: "lotId", fn: "count" },
     ],
   },
-} as const;
+};
 
 /** 车间 → 产线（datacore `synthetic/service.ts:928` 的正向；**全仓只此一处**）。 */
 export const lineIdOfWorkshop = (workshopId: string): string => `LINE-${workshopId}`;
