@@ -58,6 +58,7 @@ import {
 } from "@platform/contracts";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { cadenceFromProps } from "../src/synthetic/cadence.js";
+import { IMPEDIMENT_RULE_BINDINGS } from "../src/solvers/chain-impediment.js";
 import { cadenceGate, nextGateTick } from "../src/sim/propagation.js";
 
 const TENANT = "demo";
@@ -425,6 +426,9 @@ describe("G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则
     }
 
     // 三类互斥（裁决在 arbitrateByLocus 一处，不靠 if 顺序的巧合）
+    // ⚠ 诚实登记：这一条**今天是空断言**（变异反证实测：把 `arbitrateByLocus` 的裁决整个摘掉、
+    //   同一 locus 的候选全留，本例仍绿）。原因是结构性的，见下一例 —— 不是这行写错了，
+    //   是生产上根本没有"同一 locus 出两条候选"的情形可裁。留着它是为了裁决一旦真的可达就立刻生效。
     const loci = out.impediments.map((i) => `${i.locus.objectType}|${i.locus.objectId}`);
     expect(new Set(loci).size, "同一个 locus 出了两条阻滞点 —— 三类不互斥").toBe(loci.length);
 
@@ -433,6 +437,28 @@ describe("G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则
       expect(u.status).toBe("UNKNOWN");
       expect(u.reason.length, `${u.bindingId} 判不出来却没给原因`).toBeGreaterThan(10);
     }
+  });
+
+  /**
+   * **诚实登记 + 棘轮**：PRD §5.1 要求「三类互斥可判，同一 locus 同时命中时按利用率红线裁决」。
+   * 实现有（`arbitrateByLocus`），单测有（`chain-impediment-seam.test.ts` 用手搭候选直测纯函数），
+   * 但**生产上恒不可达** —— 六条判据的 `locusObjectType` 两两不同
+   * （Process / Line / Order / MaterialBatch / MaterialBalance / DataSourceHealth），
+   * 于是 `byLocus` 的每个桶恒只有 1 个候选，裁决分支一次都进不去。
+   *
+   * 三分法定性 = **接了线没数据**（且是结构性的：不是"这批种子恰好没有"，是判据表决定了不可能有）。
+   * 变异反证实测：把裁决整个摘掉 → 上一例仍绿（`RC=0`）⇒ 那条「同一 locus 不出两条」是空断言。
+   * 本例把这个事实**钉成断言**：哪天有人加了一条落在已有 locus 类型上的判据，本例当场红，
+   * 逼着把上一例升级成真裁决断言（而不是让一条空断言继续在那里冒充覆盖）。
+   */
+  it("诚实登记：六条判据的 locus 类型两两不同 ⇒ 互斥裁决在生产上**结构性不可达**（棘轮）", () => {
+    const types = IMPEDIMENT_RULE_BINDINGS.map((b) => b.locusObjectType);
+    expect(
+      new Set(types).size,
+      `有两条判据落在同一 locus 对象类型上（${types.join(", ")}）⇒ 裁决**真的可达了**。\n` +
+        `  → 请把上一例那条「同一 locus 不出两条」升级成真裁决断言（造一个双候选 locus 并断言按红线取卡点），\n` +
+        `    然后再把本例改成断言"可达"。别让空断言继续冒充覆盖。`,
+    ).toBe(types.length);
   });
 
   it("裁决线是**规则里的红线**：改 C05 的红线 ⇒ 卡点条数真的跟着翻（改规则即改推演）", async () => {
