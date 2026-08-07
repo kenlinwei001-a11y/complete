@@ -499,6 +499,231 @@
   word-break: break-word;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   WO-NODE-SEMANTICS · ⓪ 节点定位 / ③ 节点级流指标 / ④ R13 下钻证据 / ⑤ 跨节点冲突
+   同一条纪律：零硬编码颜色，全走 tokens.css :root 首块的 token。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ⓪ 节点定位（pos）—— 编辑口径，用虚线左边框与"引擎给的"块视觉上分开 */
+.posNote {
+  margin: 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--txt);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-left: 3px dashed var(--muted2);
+  border-radius: 6px;
+}
+.posTag {
+  align-self: flex-start;
+  font-size: 10px;
+  color: var(--muted2);
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.posOrigin {
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.55;
+}
+
+/* ③ 节点级流指标 */
+.kpiList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kpiRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label value"
+    "source source";
+  gap: 2px 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.kpiLabel {
+  grid-area: label;
+  font-size: 12px;
+  color: var(--txt);
+}
+.kpiValue {
+  grid-area: value;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.kpiSource {
+  grid-area: source;
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.55;
+}
+
+/* ④ R13 下钻证据 */
+.evList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.evRow,
+.evEmptyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.evRow {
+  border-left: 3px solid var(--ok);
+}
+.evEmptyRow {
+  border-style: dashed;
+  border-left: 3px dashed var(--danger);
+}
+.evHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.evLabel {
+  font-size: 12px;
+  color: var(--txt);
+}
+.evKind,
+.evEmptyKind {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted2);
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.evEmptyKind {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.evDays {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt);
+  white-space: nowrap;
+}
+.evTriple {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  word-break: break-all;
+}
+.evValueRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.evValueLabel {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.evValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--txt);
+}
+.evUnit {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.evConversion {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 6px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.evEdge,
+.evSolver,
+.evReason,
+.evProbe {
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.55;
+  word-break: break-word;
+}
+.evReason {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ⑤ 跨节点冲突 */
+.cfList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cfRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+}
+.cfText {
+  font-size: 12px;
+  color: var(--txt);
+  line-height: 1.6;
+}
+.cfBasis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cfBasisCode {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+  word-break: break-all;
+}
+
 /* ── 宿主视图（registry 键 `node-inspector`）───────────────────────────────
    零硬编码颜色同上：只用 tokens.css :root 首块里的 token。 */
 .hostRoot {
