@@ -50,6 +50,21 @@ const CERT_LOCAL: SimCertification = {
 vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
+  // WO-SANDBOX-CONSOLE：主屏改成一页控制台后，它内嵌的 F1 线路图与阻滞点统计条都走 runSolver。
+  // 本文件测的是**会话/推演三件**，不是链路求解器，故给一份形状合法的空扫描（阻滞点四卡显 0）+
+  // 让 chain_loss_attribution 走 reject → 线路图显示"引擎未取到数"（诚实空态，正是它该有的行为）。
+  runSolver: vi.fn(async (key: string) =>
+    key === "chain_impediments"
+      ? {
+          data: {
+            scanId: "scan_test", scope: {}, impediments: [],
+            counts: { total: 0, BOTTLENECK: 0, CONGESTION: 0, BREAK: 0 },
+            unresolved: [], caveats: [], thresholds: [],
+          },
+          snapshotVersion: "ov-test",
+        }
+      : Promise.reject({ error: { code: "NOT_STUBBED", message: "本用例不桩 chain_loss_attribution", requestId: "req_test" } }),
+  ),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_main", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",

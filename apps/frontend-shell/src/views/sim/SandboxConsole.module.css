@@ -1,0 +1,678 @@
+/* WO-SANDBOX-CONSOLE · 推演沙盘一页控制台的布局。
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark(黑曜石) / light(冷蓝) / warm(亮橙)
+ * 三套自动跟随。设计稿 :root 里那批 --g0/--g1/--ink/--acc… 逐值等于仓里 token
+ * （--g0=--bg #223251 · --g1=--panel #2c3d5e · --g2=--panel2 #1c2942 · --ink=--txt ·
+ *  --dim=--muted · --faint=--muted2 · --acc=--accent · --red=--danger · --amb=--amber ·
+ *  --grn=--ok），故此处直接用仓里的 token 名，不再另建一套色值。
+ * 设计稿的 --vio 取 --c-equip（#9d8bf0，仓里最近的紫），--cyn 取 --c-capacity（#43b7d7）。
+ */
+
+.root {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  /* 顶栏 + 面包屑之下的可用高度；min-height 保证三栏区不塌 */
+  min-height: 76vh;
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────────────────── */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.logo {
+  font: 800 12px var(--font-sans);
+  letter-spacing: 0.2em;
+}
+.logo i {
+  color: var(--accent);
+  font-style: normal;
+}
+.tag {
+  font: 600 10px/1.4 var(--font-mono);
+  padding: 4px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.tagOn {
+  color: var(--c-capacity);
+  border-color: var(--c-capacity);
+}
+.tagHot {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.spacer {
+  flex: 1;
+}
+.seg {
+  display: flex;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.seg button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.seg button + button {
+  border-left: 1px solid var(--line2);
+}
+.seg button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── 阻滞点统计条 ─────────────────────────────────────────────────────────── */
+.impBar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 900px) {
+  .impBar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.impCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.impCard:hover {
+  background: var(--panel2);
+}
+.impCard[aria-pressed="true"] {
+  background: var(--panel2);
+  border-color: var(--line2);
+}
+.impCard[data-static="1"] {
+  cursor: default;
+}
+.impNum {
+  font: 800 21px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.impMeta {
+  flex: 1;
+  min-width: 0;
+}
+.impMeta b {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.impMeta span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.impCard[data-kind="BOTTLENECK"] {
+  border-left-color: var(--amber);
+}
+.impCard[data-kind="BOTTLENECK"] .impNum {
+  color: var(--amber);
+}
+.impCard[data-kind="CONGESTION"] {
+  border-left-color: var(--danger);
+}
+.impCard[data-kind="CONGESTION"] .impNum {
+  color: var(--danger);
+}
+.impCard[data-kind="BREAK"] {
+  border-left-color: var(--c-equip);
+}
+.impCard[data-kind="BREAK"] .impNum {
+  color: var(--c-equip);
+}
+.impCard[data-kind="FLOW"] {
+  border-left-color: var(--c-capacity);
+}
+.impCard[data-kind="FLOW"] .impNum {
+  color: var(--c-capacity);
+}
+
+/* ── 三栏主体 ─────────────────────────────────────────────────────────────── */
+.mid {
+  display: grid;
+  grid-template-columns: 172px minmax(0, 1fr) 300px;
+  gap: 6px;
+  min-height: 0;
+}
+@media (max-width: 1240px) {
+  .mid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pane {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.paneHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  flex-wrap: wrap;
+}
+.paneHead h2 {
+  margin: 0;
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--muted2);
+  text-transform: uppercase;
+}
+.paneBody {
+  padding: 7px 9px;
+  overflow: auto;
+  min-height: 0;
+}
+.paneBodyFlush {
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ── 左栏：范围 ───────────────────────────────────────────────────────────── */
+.dimGroup {
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--line);
+}
+.dimGroup:last-child {
+  border-bottom: 0;
+}
+.dimHead {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.dimHead b {
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.14em;
+  color: var(--muted2);
+}
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+  cursor: pointer;
+}
+.opt[data-disabled="1"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.opt input {
+  accent-color: var(--accent);
+  width: 11px;
+  height: 11px;
+  margin: 0;
+}
+.optName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.optSub {
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+}
+.badge {
+  font: 700 8px/1.5 var(--font-mono);
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.badgeOk {
+  background: color-mix(in srgb, var(--c-capacity) 16%, transparent);
+  color: var(--c-capacity);
+}
+.badgeThin {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber);
+}
+.badgeGap {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
+}
+.legendList {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.note {
+  font-size: 10px;
+  color: var(--muted2);
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+.noteWarn {
+  font-size: 10.5px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 2px;
+  background: var(--panel2);
+  border-left: 3px solid var(--amber);
+  color: var(--muted);
+}
+.noteWarn b {
+  color: var(--txt);
+}
+
+/* ── 中栏：画布 ───────────────────────────────────────────────────────────── */
+.canvasWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.canvasSlot {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.canvasSlot[hidden] {
+  display: none;
+}
+.canvasSlot > * {
+  min-height: 0;
+}
+.layerToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.layerToggle input {
+  accent-color: var(--accent);
+}
+.layerPanel {
+  border-top: 1px dashed var(--line2);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+/* ── 链路阶段画布（HTML 网格·自动换行 ⇒ 结构上不横滚）────────────────────── */
+/* 卡片瘦身后的宽度常数（交付报告要报的那两个数）：
+ *   NW（卡片最小宽） = 132px · GAP = 10px ⇒ GX = 142px。
+ * 定列布局下 maxC=7 时画布宽 = 84(段名列) + 7*142 + 24(内边距) = 1102px。
+ * 但本实现**不用定列**：每条 lane 是 repeat(auto-fill, minmax(132px,1fr)) 的网格，
+ * 放不下就换行 —— 于是 100% 缩放下横向滚动条**结构上不可能出现**，与屏宽无关。 */
+.stageBoard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 9px;
+  transform-origin: top left;
+}
+.lane {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel2);
+  padding: 6px 8px;
+}
+.laneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.laneName {
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--muted2);
+}
+.laneStat {
+  font: 10px var(--font-mono);
+  color: var(--muted2);
+}
+.laneGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+.nodeCard {
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nodeCard:hover {
+  border-color: var(--accent);
+}
+.nodeCard[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.nodeCardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.nodeCardName {
+  flex: 1;
+  min-width: 0;
+  font: 600 11px var(--font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nodeCardPct {
+  font: 800 12px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--amber);
+}
+.nodeCardPct[data-zero="1"] {
+  color: var(--muted2);
+}
+.nodeCardTopStep {
+  font: 9.5px var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nodeCardFoot {
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.nodeCardMore {
+  font: 9px var(--font-mono);
+  color: var(--accent);
+}
+.nodeCardEmpty {
+  font: 9px var(--font-mono);
+  color: var(--danger);
+}
+.laneEmptyRow {
+  font: 9.5px var(--font-mono);
+  color: var(--danger);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+.dimmed {
+  opacity: 0.22;
+}
+
+/* ── 右栏：检视 ───────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.tabs button {
+  flex: 1;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted2);
+  font: 600 10px var(--font-mono);
+  letter-spacing: 0.06em;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--txt);
+  border-bottom-color: var(--accent);
+}
+.sec {
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.15em;
+  color: var(--muted2);
+  margin: 11px 0 5px;
+  text-transform: uppercase;
+}
+.sec:first-child {
+  margin-top: 0;
+}
+.stepTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.stepTable td,
+.stepTable th {
+  padding: 2px 3px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.stepTable th {
+  font: 700 9px var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+}
+.stepTable tr[data-value-add="1"] {
+  opacity: 0.55;
+}
+.stepKind {
+  font: 9px var(--font-mono);
+  white-space: nowrap;
+  color: var(--muted);
+}
+.stepNum {
+  font: 10px var(--font-mono);
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stepBarCell {
+  width: 46px;
+}
+.stepBar {
+  display: block;
+  height: 6px;
+  border-radius: 1px;
+  min-width: 1px;
+  background: var(--amber);
+}
+.stepPct {
+  font: 700 10px var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 42px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin: 0;
+}
+.kv dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.kv dd {
+  margin: 0;
+  font: 11px var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.railSection {
+  border-top: 1px solid var(--line);
+}
+.railSection > summary {
+  cursor: pointer;
+  padding: 6px 9px;
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--muted2);
+  list-style: none;
+}
+.railSection > summary::-webkit-details-marker {
+  display: none;
+}
+.railSection > summary::before {
+  content: "▸ ";
+  color: var(--accent);
+}
+.railSection[open] > summary::before {
+  content: "▾ ";
+}
+.railBody {
+  padding: 0 9px 9px;
+}
+
+/* ── 底部 Pareto ──────────────────────────────────────────────────────────── */
+.pareto {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 104px;
+  min-width: 0;
+}
+.paretoBar {
+  flex: 1 1 0;
+  min-width: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.paretoBar:hover .paretoFill {
+  filter: brightness(1.3);
+}
+.paretoPct {
+  font: 700 9px var(--font-mono);
+  text-align: center;
+  margin-bottom: 2px;
+  color: var(--amber);
+}
+.paretoFill {
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  background: var(--amber);
+}
+.paretoLabel {
+  font: 8px var(--font-mono);
+  color: var(--muted2);
+  margin-top: 3px;
+  line-height: 1.2;
+  height: 24px;
+  overflow: hidden;
+}
+
+/* ── 底部指标卡片行 ───────────────────────────────────────────────────────── */
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 6px;
+}
+.metricCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 10px;
+  min-width: 0;
+}
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--muted2);
+  flex-wrap: wrap;
+}
+.metricValue {
+  font: 800 20px/1.15 var(--font-mono);
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.metricCard[data-empty="1"] .metricValue {
+  color: var(--muted2);
+  font-size: 14px;
+}
+.metricSub {
+  font: 10px var(--font-mono);
+  color: var(--muted2);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* ── 状态行 ───────────────────────────────────────────────────────────────── */
+.stateLine {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+  padding: 7px 9px;
+}
+.errBox {
+  padding: 7px 9px;
+  border-left: 3px solid var(--danger);
+  background: var(--panel2);
+  border-radius: 2px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+.errBox b {
+  color: var(--danger);
+}

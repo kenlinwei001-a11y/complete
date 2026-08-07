@@ -473,12 +473,37 @@ export { VAR_CLASSES };
  * ⚠ 诚实边界：段耗时今天是 `buildPlaceholderInspectorInput` 的 seed 派生**占位值**（可复现·非实测），
  *    面板已挂常驻 `PLACEHOLDER` 横幅。接引擎真值是 W4·G1 的活，本视图**不冒充 LIVE**。
  */
-export function NodeInspectorView({ view }: Partial<ViewRendererProps>) {
+/**
+ * WO-SANDBOX-CONSOLE 追加的**可选** prop（默认值 = 今天的行为，独立页 `/v/node-inspector` 零回归）：
+ *  · `selectedNodeId` —— 受控节点（控制台点画布卡片 / 点 Pareto 柱 → 右栏跟着切）。
+ *    传了就以它为准；**不在册的 id 一律忽略**（保持"不在前端编一个自由串"这条）。
+ *  · `onNodeIdChange` —— 下拉切换时回抛，宿主可与画布选中态同步。
+ *  · `chrome="embedded"` —— 300px 侧栏里渲染时折掉那句长来源说明（下拉与面板本体不动）。
+ */
+export interface NodeInspectorExtraProps {
+  selectedNodeId?: string;
+  onNodeIdChange?: (nodeId: string) => void;
+  chrome?: "full" | "embedded";
+}
+
+export function NodeInspectorView({
+  view,
+  selectedNodeId,
+  onNodeIdChange,
+  chrome = "full",
+}: Partial<ViewRendererProps> & NodeInspectorExtraProps) {
   const nodes = CHAIN_NODE_REGISTRY;
   // 初始节点：`view.options.nodeId` 指定即用它（且必须在册），否则取册首。**不在前端编一个自由串。**
   const requested = (view?.options as { nodeId?: unknown } | undefined)?.nodeId;
   const initial = typeof requested === "string" && nodes.some((n) => n.nodeId === requested) ? requested : (nodes[0]?.nodeId ?? "");
-  const [nodeId, setNodeId] = useState(initial);
+  const [uncontrolled, setUncontrolled] = useState(initial);
+  // 受控优先，但**必须在册**：宿主传了个不在册的 id ⇒ 忽略并退回内部态（不造占位节点）。
+  const controlled = typeof selectedNodeId === "string" && nodes.some((n) => n.nodeId === selectedNodeId) ? selectedNodeId : null;
+  const nodeId = controlled ?? uncontrolled;
+  const setNodeId = (next: string) => {
+    setUncontrolled(next);
+    onNodeIdChange?.(next);
+  };
 
   const def = useMemo(() => nodes.find((n) => n.nodeId === nodeId) ?? nodes[0], [nodes, nodeId]);
   const input = useMemo(
@@ -498,7 +523,7 @@ export function NodeInspectorView({ view }: Partial<ViewRendererProps>) {
   }
 
   return (
-    <div className={styles.hostRoot} data-testid="node-inspector-root">
+    <div className={styles.hostRoot} data-testid="node-inspector-root" data-chrome={chrome}>
       <header className={styles.hostBar}>
         <label className={styles.hostPick} htmlFor="node-inspector-pick">
           检视节点
@@ -517,7 +542,11 @@ export function NodeInspectorView({ view }: Partial<ViewRendererProps>) {
           ))}
         </select>
         <small className={styles.hostNote} data-testid="node-inspector-source">
-          节点清单派生自 <code>CHAIN_NODE_REGISTRY</code>（contracts 单源 · 共 {nodes.length} 个在册节点），前端不另维护一份
+          {chrome === "embedded" ? (
+            <>清单源 <code>CHAIN_NODE_REGISTRY</code> · {nodes.length} 节点</>
+          ) : (
+            <>节点清单派生自 <code>CHAIN_NODE_REGISTRY</code>（contracts 单源 · 共 {nodes.length} 个在册节点），前端不另维护一份</>
+          )}
         </small>
       </header>
       <InspectorNodePanel input={input} />

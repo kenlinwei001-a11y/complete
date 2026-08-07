@@ -13,6 +13,7 @@ import {
   STATION_RADIUS,
   STEP_KIND_LABEL,
   type ChainLineMap,
+  type ChainLossPayload,
   type StationVM,
   type SuspendedVM,
 } from "./chainLineMap";
@@ -192,6 +193,21 @@ function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () =>
   );
 }
 
+/**
+ * WO-SANDBOX-CONSOLE · 「嵌进控制台时把常驻块折起来」的**纯包装**。
+ * `collapsed=false`（= 独立页默认）时渲染 `<>{children}</>` —— DOM 与包装前**逐节点相同**，零回归。
+ * 折起来 ≠ 删掉：图例与 AND≠OR 警示仍在 DOM 里、仍可展开（诚实标记不许在重组时弄丢）。
+ */
+function MaybeCollapsed({ collapsed, label, testId, children }: { collapsed: boolean; label: string; testId: string; children: React.ReactNode }) {
+  if (!collapsed) return <>{children}</>;
+  return (
+    <details data-testid={testId}>
+      <summary style={{ cursor: "pointer", fontSize: 11, color: "var(--muted2)" }}>{label}</summary>
+      {children}
+    </details>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // 视图
 // ══════════════════════════════════════════════════════════════════════════════
@@ -199,8 +215,30 @@ function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () =>
 // `ViewRendererProps` = `{ view: ViewConfigVM }`。声明为 Partial 是为了让本组件在
 // 「registry 注册（必须可赋给 ComponentType<ViewRendererProps>）」与「可达门里裸渲染」两处都成立
 // —— F3 那次正是签名不符 `ViewRendererProps` 导致 29 例 vitest 全绿而 build TS2322 红。
-export function ChainLineMapView({ view }: Partial<ViewRendererProps>) {
+/**
+ * WO-SANDBOX-CONSOLE 追加的**两个可选** prop（默认值 = 今天的行为，独立页 `/v/chain-line-map` 零回归）：
+ *
+ *  · `chrome="embedded"` —— 嵌进沙盘控制台的画布槽时，标题块折掉、图例收进 `<details>`。
+ *    缩放条、守恒条、AND≠OR 警示原样保留（诚实标记不许在重组时弄丢）。
+ *
+ *  · `onPayload` —— 把**本组件已经取回并校验过的**那一份载荷原样回抛给宿主。
+ *    存在的理由只有一条：控制台的底部 Pareto 与顶栏前置期/流动效率必须与本图**同一份响应**
+ *    （口径单源是本仓铁律：`pctOfChainLoss` 的分母排除增值段，宿主不许自己再发一次请求、
+ *    更不许自己重算百分比）。本 prop **不改变取数逻辑** —— 请求还是本组件发的那一次，
+ *    时机还是那个时机；只是解析成功后多喊一声。
+ */
+export type ChainLineMapChrome = "full" | "embedded";
+
+export interface ChainLineMapExtraProps {
+  chrome?: ChainLineMapChrome;
+  onPayload?: (payload: ChainLossPayload) => void;
+}
+
+export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<ViewRendererProps> & ChainLineMapExtraProps) {
   const args = useMemo(() => argsFromView(view), [view]);
+  /** 回调放 ref：宿主传匿名函数不该把取数 effect 的依赖搅动成每渲染一次就重取。 */
+  const onPayloadRef = useRef(onPayload);
+  onPayloadRef.current = onPayload;
   const argsKey = useMemo(() => JSON.stringify(args), [args]);
   const [reloadKey, setReloadKey] = useState(0);
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -263,6 +301,8 @@ export function ChainLineMapView({ view }: Partial<ViewRendererProps>) {
           summary: payload.summary ?? null,
           anchorSo: payload.anchor?.so ?? null,
         });
+        // 同一份响应回抛宿主（控制台的 Pareto / 顶栏与本图**共用这一份**，不发第二次请求）。
+        onPayloadRef.current?.(payload);
       },
       (e: unknown) => {
         if (cancelled) return;
@@ -345,10 +385,10 @@ export function ChainLineMapView({ view }: Partial<ViewRendererProps>) {
   const hoveredEmpty = map?.suspended.find((s) => s.stepId === hoverId) ?? null;
 
   return (
-    <div className={styles.root} data-testid="clm-root">
+    <div className={styles.root} data-testid="clm-root" data-chrome={chrome}>
       <header className={styles.head}>
         <div>
-          <h3>全链线路图 · 环节损失归因</h3>
+          {chrome === "full" ? <h3>全链线路图 · 环节损失归因</h3> : null}
           <p className={styles.sub}>
             站 = 环节 · 站圈大小 ∝ 该环节吃掉的<b>全链损失占比</b>（引擎 <code>{CHAIN_LOSS_SOLVER_KEY}</code> 的{" "}
             <code>LossAttribution</code>）。范围：
@@ -374,7 +414,8 @@ export function ChainLineMapView({ view }: Partial<ViewRendererProps>) {
         </div>
       </header>
 
-      {/* ── 图例：AND ≠ OR 的说明常驻，不折叠 ─────────────────────────────────── */}
+      {/* ── 图例：AND ≠ OR 的说明常驻（嵌入控制台时收进 details，仍在 DOM 里）──── */}
+      <MaybeCollapsed collapsed={chrome === "embedded"} label="图例 · 图元说明（含 AND ≠ OR 警示）" testId="clm-legend-collapsed">
       <section className={styles.legend} data-testid="clm-legend" role="note">
         <div className={styles.legendRow}>
           <i className={styles.legendChip} data-testid="clm-legend-stop">
@@ -422,6 +463,7 @@ export function ChainLineMapView({ view }: Partial<ViewRendererProps>) {
           <b>「AND 闸门 + 汇流母线」</b>，不与换乘站（双环圆）共用图元，也不画成普通合并。
         </p>
       </section>
+      </MaybeCollapsed>
 
       {state.status === "loading" ? (
         <p className={styles.stateLine} data-testid="clm-loading">

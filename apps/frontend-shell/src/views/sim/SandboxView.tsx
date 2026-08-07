@@ -20,16 +20,32 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
+import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
 import styles from "./SimViews.module.css";
 
 /**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
  *
- * 全部节点 / 边 / 状态变量 / 雷达维 / KPI 来自 `GET /a/v1/sim/view-config`（= 租户本体 + 传导规则派生），
- * 代码里**零行业实体名**——换租户 / 换行业 = 换本体内容，本组件一行不改（两配置证见 test/sandbox-view.test.tsx）。
+ * ══ WO-SANDBOX-CONSOLE 改造：本页从「PmDag 单层拓扑 + 就绪雷达 + tick 控制条」变成**一页控制台** ══
  *
- * 交互：init 会话（baseSnapshot 由 view-config 派生）→「推进 tick」simTick → 节点色 / KPI 随 world 态变。
- * 复用：PmDag（拓扑）· HeatStrip（KPI heat）· 自绘就绪雷达（维 = certification.dims）。
+ * 上一单（WO-SANDBOX-VIEW-MOUNT）把 F1–F4 四个已完工组件登记进后端 `BUILTIN_VIEWS` 让它们可达，
+ * 代价是它们成了**四个平级导航页**，而本主屏一行没动。设计稿的 IA 是**一页**，不是五个页。
+ * 现在本文件的职责拆成两半：
+ *  · **布局与两个链路求解器** → `SandboxConsole`（新组件）：顶栏 / 阻滞点统计条 / 三栏 / Pareto / 指标行；
+ *  · **会话与推演逻辑** → 仍在本文件：init / tick / checkpoint / branch / compare / adopt / certification /
+ *    AI 指挥台。这些是**已接线的真功能，一个都没删**，只是换了摆放位置：
+ *
+ *    | 旧主屏的东西      | 现在在哪                                                    |
+ *    |------------------|------------------------------------------------------------|
+ *    | KPI 行            | 顶栏标签（`topTags`）：全局态 + 各 stateVar 均值             |
+ *    | tick 控制条       | 控制台的 `controlBar` 槽（三栏之下、Pareto 之上）             |
+ *    | 就绪认证 + 雷达   | 右栏可折叠区「就绪认证」（默认展开）                          |
+ *    | 多场景对比        | 右栏可折叠区「多场景对比」（分支后出现）                      |
+ *    | AI 指挥台         | 右栏可折叠区「AI 指挥台」                                     |
+ *    | 本体 PmDag 拓扑   | 画布**第四模式**「本体拓扑」（`ontologyCanvas` 槽）           |
+ *
+ * 全部节点 / 边 / 状态变量 / 雷达维 / KPI 仍来自 `GET /a/v1/sim/view-config`（= 租户本体 + 传导规则派生），
+ * 代码里**零行业实体名**——换租户 / 换行业 = 换本体内容，本组件一行不改（两配置证见 test/sandbox-view.test.tsx）。
  */
 
 // ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
@@ -363,88 +379,34 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
 
-  return (
-    <div data-testid="sandbox-view" className={styles.head}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-        <h3>推演沙盘 · 一页看全（数据 → 推演 → 溯源 → 动作 → AI）</h3>
-        <div className={styles.sub} data-testid="sandbox-config-summary">
-          本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则
-        </div>
-      </div>
-
-      {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染）
-          WO-UNIT-MEANING：这些读数此前是裸数「62.5」。量纲＝**0–100 状态指数**——由本文件 deriveBaseSnapshot
-          （`hash01()*100`）与 aggregate（"所有 stateVar 均值，0-100"）共同界定，是**前端沙盘自有口径**，
-          后端/契约无对应 unit 字段可消费（tick 引擎只回 Record<string,number>），故就近在标签上标量程。 */}
-      <div className={styles.threeKpiRow} data-testid="sandbox-kpis">
-        <div className={styles.kpi} data-testid="sandbox-kpi-global">
-          <span>全局态（0–100 指数 · tick {curTick}）</span>
-          <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
-        </div>
-        {cfg.stateVars.map((v) => {
-          const objs = Object.keys(world);
-          const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
-          return (
-            <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
-              <span>{v}（0–100 指数·全对象均值）</span>
-              <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 控制条：推进 tick / 存档 / tick 时间轴 heat */}
-      <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12 }}>
-        <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
-          {ticking ? "推进中…" : "推进 tick"}
-        </button>
-        <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
-          存档检查点
-        </button>
-        <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
-          {branching ? "分支中…" : "分支（多场景对比）"}
-        </button>
-        <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
-          {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
-        </button>
-        <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
-          <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
-          <HeatStrip series={history} threshold={70} />
-        </div>
-      </div>
-
-      <div className={styles.twoCol} style={{ marginTop: 12 }}>
-        {/* 就绪面板（左）：6 项砌齐 —— L0-L4 stepper / L4 三元组 / Trial Tick / scope 切换 / 完整度 gauge / entering 清单 */}
-        <div className="panel" data-testid="sandbox-readiness" style={{ padding: 12 }}>
+  // ── 右栏可折叠区：旧主屏的就绪认证 / 多场景对比 / AI 指挥台，一个都不许掉 ─────────
+  const rail: SandboxConsoleRailSection[] = [
+    {
+      id: "readiness",
+      title: "就绪认证",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-readiness">
           {cert ? (
             <SimReadinessPanel
               cert={cert}
               scope={certScope}
               onScopeChange={(s) => void reloadCert(s)}
-              radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} />}
+              radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} size={132} />}
             />
           ) : (
-            <>
-              <div className={styles.secHead}>就绪认证</div>
-              <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
-            </>
+            <div className={styles.sub} data-testid="sandbox-cert-na">
+              就绪认证未开通（sim.certification 关）
+            </div>
           )}
         </div>
-
-        {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态 */}
-        <div className="panel" data-testid="sandbox-topology" style={{ padding: 12 }}>
-          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色）</div>
-          {nodes.length > 0 ? (
-            <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" />
-          ) : (
-            <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
-          )}
-        </div>
-      </div>
-
-      {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
-      {compare && (
-        <div className="panel" data-testid="sandbox-compare" style={{ padding: 12, marginTop: 12 }}>
+      ),
+    },
+    {
+      id: "compare",
+      title: "多场景对比",
+      node: compare ? (
+        <div data-testid="sandbox-compare">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
             <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
@@ -453,10 +415,92 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
           <SimComparePanel a={compare.a} b={compare.b} />
         </div>
-      )}
+      ) : (
+        <div className={styles.sub} data-testid="sandbox-compare-idle">
+          还没有分支。点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B 逐 tick 差异。
+        </div>
+      ),
+    },
+    {
+      id: "commander",
+      title: "AI 指挥台",
+      node: <SimCommanderDock sessionId={sessionId} curTick={curTick} />,
+    },
+  ];
 
-      {/* AI 指挥台 NL 入口（R17「…→AI」·WO-REAL-LLM-FREE-QUERY）：sim.commander 关则不存在（R3 暗发）。 */}
-      <SimCommanderDock sessionId={sessionId} curTick={curTick} />
+  return (
+    <div data-testid="sandbox-view" className={styles.head}>
+      <SandboxConsole
+        // 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值，量纲仍是 0–100 状态指数）
+        topTags={
+          <>
+            <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
+              本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
+              {cfg.propagationCount} 传导规则
+            </span>
+            <span
+              data-testid="sandbox-kpis"
+              style={{ display: "flex", gap: 8, alignItems: "center", font: "600 10px var(--font-mono)" }}
+            >
+              <span data-testid="sandbox-kpi-global">
+                全局态（0–100 指数 · tick {curTick}）{" "}
+                <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
+                  {globalKpi.toFixed(1)}
+                </b>
+              </span>
+              {cfg.stateVars.map((v) => {
+                const objs = Object.keys(world);
+                const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
+                return (
+                  <span key={v} data-testid={`sandbox-kpi-${v}`}>
+                    {v}（0–100 指数·全对象均值） <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                  </span>
+                );
+              })}
+            </span>
+          </>
+        }
+        // 旧主屏 tick 控制条：推进 / 存档 / 分支 / 采纳 / tick 时间轴 heat（整块搬来，行为不变）
+        controlBar={
+          <div
+            className="panel"
+            data-testid="sandbox-controls"
+            style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 10 }}
+          >
+            <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
+              {ticking ? "推进中…" : "推进 tick"}
+            </button>
+            <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
+              存档检查点
+            </button>
+            <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
+              {branching ? "分支中…" : "分支（多场景对比）"}
+            </button>
+            <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
+              {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
+            </button>
+            <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
+              <div className={styles.sub} style={{ marginBottom: 2 }}>
+                tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）
+              </div>
+              <HeatStrip series={history} threshold={70} />
+            </div>
+          </div>
+        }
+        // 旧主屏本体 PmDag 拓扑 → 画布第四模式
+        ontologyCanvas={
+          <div data-testid="sandbox-topology" style={{ padding: 10, overflow: "auto" }}>
+            {nodes.length > 0 ? (
+              <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" />
+            ) : (
+              <div className={styles.sub} data-testid="sandbox-topology-empty">
+                本体暂无已发布对象类型——先在建模页发布对象。
+              </div>
+            )}
+          </div>
+        }
+        rail={rail}
+      />
     </div>
   );
 }
