@@ -288,21 +288,25 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（聚合层·全链经营现金流恒 EMPTY + 不可相加登记）。
-  capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23", "chainCashflow"],
-  mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
+  // WO-ENGINE-SCOPE-FIX2：+ scope（情景维·SCENARIO 真选情景 / EXPLICIT 调用方直传项目集 —— 只在给了 scenarioKey 时出现）。
+  capex_scenario: ["scenarioKey", "scope", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23", "chainCashflow"],
+  // WO-ENGINE-SCOPE-FIX2：+ tightness/dataMode（基地维·紧张度按 (基地,因素) 真派生时透出 LIVE/MOCK 出处）。
+  mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "tightness", "dataMode", "options", "factors", "error"],
   cert_schedule: ["schedule", "engineerGroups", "ruleRefs"],
   kit_readiness: ["rows", "shortageCount", "ruleRefs"],
   lta_gap: ["material", "month", "netDemand", "coverage", "gap", "po", "ruleRefs"],
   // WO-SANDBOX-D4 ②：+ locationSeries（聚合层·时间轴 OK / 地点轴 EMPTY 各自诚实标）。
   inventory_optimize: ["over", "under", "idle", "releasableCash", "locationSeries", "ruleRefs"],
-  changeover_sequence: ["lineId", "sequence", "totalChangeoverMin", "savedVsDueMin", "infeasible", "ruleRefs"],
+  // WO-ENGINE-SCOPE-FIX2：+ lineScope（产线维恒 EMPTY + missingInputs —— 数据层无线级换型/订单产线归属，诚实标注不假装）。
+  changeover_sequence: ["lineId", "sequence", "totalChangeoverMin", "savedVsDueMin", "infeasible", "lineScope", "ruleRefs"],
   yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
   quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（与 capex_scenario 端同一份「不可相加」登记）。
   credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "chainCashflow", "ruleRefs"],
-  quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
+  // WO-ENGINE-SCOPE-FIX2：+ quarterScope（季度维·给了季度却没给缺口时标 EMPTY，写明那个数是占位不是该季真缺口）。
+  quarterly_gap: ["quarter", "combo", "residualGap", "quarterScope", "ruleRefs"],
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
@@ -4057,7 +4061,8 @@ export class SolverService {
     //   （D2 走 withExtended，决策信息走 withDecisionInfo）。并线时两处同名 → `TS2451 Cannot redeclare`。
     //   解法是**取并集**（见下方 `suppliers`），不是删掉一处 —— 删哪一处都会让对应那半在它自己的
     //   加载条件下拿到空表，而空表在这两个消费方那里都是「诚实缺席」的合法形态，**不会报错、只会静默少算**。
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections] =
+    // WO-ENGINE-SCOPE-FIX2：+BOMHeader/BOMDetail 两类（`carbon_footprint` 型号维的真源·见 types.ts 字段注释）。
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeaders, bomDetails] =
       opts?.withExtended
         ? await Promise.all([
             this.repos.objects.listByType(tenantId, "Material"),
@@ -4073,8 +4078,10 @@ export class SolverService {
             this.repos.objects.listByType(tenantId, "Supplier"),
             this.repos.objects.listByType(tenantId, "CustomsClearance"),
             this.repos.objects.listByType(tenantId, "IncomingInspection"),
+            this.repos.objects.listByType(tenantId, "BOMHeader"),
+            this.repos.objects.listByType(tenantId, "BOMDetail"),
           ])
-        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
+        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
     // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实
     // 加性标 provenanceSynthetic——合成种子物化对象（demo viaModelingChain 全 MATERIALIZED-from-synthetic）
     // 不再被误报 LIVE/实测。谓词内部对连接/数据集集单遍解析（R6 确定性·无时钟/随机）。
@@ -4126,6 +4133,9 @@ export class SolverService {
       customsClearances: sortById(customsClearances),
       incomingInspections: sortById(incomingInspections),
       carbonFactors: sortById(carbonFactors),
+      // WO-ENGINE-SCOPE-FIX2 逐型号 BOM（sortById → R6 确定性·同型号多版本时取排序首个 BOM，见 extended.ts）。
+      bomHeaders: sortById(bomHeaders),
+      bomDetails: sortById(bomDetails),
       rules,
       ruleSetVersion,
     };

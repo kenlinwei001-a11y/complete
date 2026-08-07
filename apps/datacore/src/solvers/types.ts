@@ -265,6 +265,18 @@ export interface SolverContext {
   incomingInspections?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
   /**
+   * WO-ENGINE-SCOPE-FIX2 · **逐型号 BOM**（`BOMHeader` 主表 + `BOMDetail` 明细·随 `withExtended` 加载）。
+   *
+   * 为什么必须加这两类：`carbon_footprint` 的物料段此前取 `mats.slice(0,4)`（`Material` 按 id 排序的
+   * **前 4 行**·与型号无关）—— 于是「4680-NCM 的碳足迹」与「方形-LFP 的碳足迹」逐字节相同，而输出上
+   * 印着用户问的那个型号（`G-SOLVER-SCOPE-ECHO` A 档②）。真 BOM 一直在库里
+   * （`BOMHeader.modelId` 15 行 / `BOMDetail.quantity+lossRate` 105 行·`synthetic/battery.ts:3365/3382`），
+   * 只是**从没进过 `SolverContext`** —— 这是三态里的「没接线」，故本单加两个字段 + 两次 `listByType`。
+   * optional：缺省 `[]`（测试直构 ctx / 未播种）→ 型号维诚实缺席（400），不回落全局前 4 行冒充该型号的 BOM。
+   */
+  bomHeaders?: ObjectInstance[];
+  bomDetails?: ObjectInstance[];
+  /**
    * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action
    * 审批执行写入）。**按需加载**（见 service.ts `ADOPTION_AWARE_SOLVERS`：仅 risk_timeline /
    * counterfactual_timeline 载·其余求解器不扫此类型），故与核心 10 类的 solverKey 裁剪机制正交。
