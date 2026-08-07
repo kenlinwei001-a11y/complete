@@ -312,17 +312,18 @@ export function PhysicalTopologyView({
           {factsQ.isLoading ? <span data-testid="phys-topo-facts-loading"> 真值加载中…（先显示占位，到货后整体替换）</span> : null}
           {diag ? (
             <span data-testid="phys-topo-facts-diagnostics">
-              {" "}接线诊断：命中 {diag.cellsWithFacts} 格 · 车间册映射不到列 {diag.unmappedWorkshops} 行 · 孤儿事实行（
-              OEE {diag.orphanRows.oee} / 设备 {diag.orphanRows.equipment} / 在制 {diag.orphanRows.wip}）已丢弃**不摊到任何一格** ·
-              OEE 因计划工时不等权判 EMPTY {diag.oeeUnweighted} 格。
+              {` 接线诊断：命中 ${diag.cellsWithFacts} 格 · 车间册映射不到列 ${diag.unmappedWorkshops} 行 · ` +
+                `孤儿事实行 OEE ${diag.orphanRows.oee} / 设备 ${diag.orphanRows.equipment} / 在制 ${diag.orphanRows.wip}` +
+                `（已整行丢弃，不摊到任何一格）· OEE 因计划工时不等权判 EMPTY ${diag.oeeUnweighted} 格。`}
             </span>
           ) : null}
         </p>
         <details className={styles.entrypoints} data-testid="phys-topo-entrypoints">
           <summary>真值接线台账（哪几条通了 / 哪几条仍是缺口）</summary>
           <ul>
+            {/* testid 用「有字段名就用字段名，没有（=该源没喂任何格）就用源名」——两边都唯一 */}
             {REAL_DATA_ENTRYPOINTS.map((ep) => (
-              <li key={`${ep.field}-${ep.source}`} data-testid={`phys-topo-entry-${ep.source}`} data-status={ep.status}>
+              <li key={`${ep.field}-${ep.source}`} data-testid={`phys-topo-entry-${ep.field === "—" ? ep.source : ep.field}`} data-status={ep.status}>
                 <code>{ep.field}</code> ← <b>{ep.source}</b>
                 <span className={styles.entryStatus} data-status={ep.status}>
                   {ep.status === "connected" ? "已接线" : "仍是缺口"}

@@ -653,7 +653,7 @@ export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT, facts?: T
           gap ?? NO_FACT_REASON.wip,
         );
       // 节拍不回落占位：一个假节拍会被当作排产输入，比空白危险。
-      const takt = real?.takt ?? empty("s/电芯", gap ?? NO_FACT_REASON.takt);
+      const takt = real?.takt ?? empty("s/电芯", gap === null ? NO_FACT_REASON.takt : `${gap}；节拍例外——**不回落占位**，标 EMPTY（假节拍会被当成排产输入，比空白危险）`);
 
       return {
         key,
