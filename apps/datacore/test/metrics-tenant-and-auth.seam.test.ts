@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, PLANNER, type TestApp } from "./helpers.js";
 import { ACTION_METRIC_NAMES } from "../src/metrics.js";
-import type { AuthCtx } from "../src/domain.js";
-import type { ActionTypeRecord } from "../src/domain.js";
+import type { ActionTypeRecord, AuthCtx } from "../src/domain.js";
 
 /**
  * 欠账 #65 · `G-METRICS-CROSS-TENANT-AND-OPEN` 的验收门（两半各一）。
