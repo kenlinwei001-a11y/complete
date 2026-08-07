@@ -295,7 +295,15 @@ describe("§3 · 阻滞点统计条 = 引擎 counts（不是前端自己数 item
 
 // ══════════════════════════════════════════════════════════════════════════════
 describe("§4 · 诚实位（本页新增的四条）", () => {
-  it("链路阶段：设计目标 5 段 24 节点 vs 后端 4 段 12 节点，差额明写 —— 不冒充也不手抄词表", async () => {
+  /**
+   * 金值变更（WO-CHAIN-24）：本用例原本断言「后端 4 段 12 节点、**差额 > 0**」，
+   * 并在 `expectMissingNodes` 那行留了一句「设计目标与后端注册表若真的齐了，本用例应当被删掉而不是放行」。
+   * 现在真的齐了（契约 5 段 24 节点），故按那句话把它**改写成齐了之后该断的东西**，而不是把 `> 0` 松成 `>= 0`：
+   *  · 差额恒 0（且仍从契约常数独立算，不拿 `chainStageCoverage` 比对它自己）；
+   *  · 新增的第 5 段 `DELIVERY` 必须真的有 lane、且 lane 里真有内容（节点或诚实缺席行）——
+   *    只加枚举不落节点 = 屏上多一条永远空的泳道，那是「加了个名字」不是「建了一段模」。
+   */
+  it("链路阶段：设计目标 5 段 24 节点 == 后端在册 5 段 24 节点（差额归零），且第 5 段真的有内容", async () => {
     const user = userEvent.setup();
     mount();
     await ready();
@@ -308,7 +316,8 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     //   实测：把 missingNodeCount 直接改成 0 也不会红）。这里从**契约常数**独立算一遍。
     const expectMissingStages = CHAIN_STAGE_DESIGN_TARGET.stageCount - CHAIN_STAGES.length;
     const expectMissingNodes = CHAIN_STAGE_DESIGN_TARGET.nodeCount - CHAIN_NODE_REGISTRY.length;
-    expect(expectMissingNodes, "设计目标与后端注册表若真的齐了，本用例应当被删掉而不是放行").toBeGreaterThan(0);
+    expect(expectMissingStages, "段数已补齐 ⇒ 差额必须恰为 0（不是 >=0，负数意味着注册表反超设计稿、同样要复核）").toBe(0);
+    expect(expectMissingNodes, "节点数已补齐 ⇒ 差额必须恰为 0").toBe(0);
     expect(txt).toContain(`差 ${expectMissingStages} 段 ${expectMissingNodes} 个节点尚未建模`);
     // 派生函数本身也咬一道（它是屏上那句话的唯一出处）
     const cov = chainStageCoverage(buildStageBoard(loadLoss()));
@@ -316,6 +325,15 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     expect(cov.missingNodeCount).toBe(expectMissingNodes);
     // 段名取 CHAIN_STAGES 派生的显示名（不是前端另抄一份 24 节点词表）
     for (const s of CHAIN_STAGES) expect(screen.getByTestId(`sc-lane-${s}`)).toBeTruthy();
+    // 第 5 段：lane 在，且**有内容**（本次载荷里 delivery.* 三个节点都算不出来 ⇒ 走 orphanEmpty 行）。
+    const delivery = screen.getByTestId("sc-lane-DELIVERY");
+    expect(delivery.textContent ?? "").toContain("交付");
+    const deliveryLane = buildStageBoard(loadLoss()).lanes.find((l) => l.stage === "DELIVERY");
+    expect(deliveryLane, "buildStageBoard 必须为第 5 段铺一条 lane（段序派生自 CHAIN_STAGES）").toBeTruthy();
+    expect(
+      deliveryLane!.nodes.length + deliveryLane!.orphanEmpty.length,
+      "DELIVERY 段既没有节点也没有诚实缺席行 = 空泳道（加了枚举没建模）",
+    ).toBeGreaterThan(0);
   });
 
   it("时窗 30/60/90D 无 ARGS → 控件禁用 + 徽标（不给用户一个假旋钮）", async () => {
@@ -506,5 +524,102 @@ describe("§7 · 四个独立页零回归（新 prop 默认值 = 今天的行为
     );
     await screen.findByTestId("clm-summary");
     expect(net.calls.filter((c) => c.key === "chain_loss_attribution")).toHaveLength(1);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * §8 · WO-CHAIN-24 **SEAM 门**：新增节点必须**三处同时在场**。
+ *
+ * ── 为什么是这三处（而不是各测各的）────────────────────────────────────────────
+ * 「12 → 24 节点」是一个**跨三层**的改动：契约注册表（单源）× 引擎求解器（产不产这个节点）×
+ * 前端两处消费（检视下拉 / 链路阶段画布）。三层各自单测全绿而链路断开，正是 S0 那次
+ * 「D1 与 E1 各发明一套词表、交集为 0」的形态 —— 那次两边也都是绿的。
+ * 故本门只认**同一个 nodeId 在三处同时出现**：
+ *   ① 引擎载荷 `chain_loss_attribution`（`fixtures/chain-loss-real.json` = 真实响应抓取物）里
+ *      要么有节点卡（算得出）、要么有诚实缺席行（算不出）—— **两者都没有 = 幽灵节点**：
+ *      注册表里有、屏上永远不出现，等于「加了个 id」而不是「建了一段模」。
+ *   ② `InspectorNodePanel` 的节点下拉（它的清单派生自 `CHAIN_NODE_REGISTRY`）。
+ *   ③ 链路阶段画布对应 `stage` 的那条 lane 内（节点卡 / 段内 EMPTY 行 / 节点卡上的 EMPTY 计数）。
+ *
+ * 只测各半不算：单独断言「注册表有 24 条」是同义反复；单独断言「引擎返回 18 个节点」
+ * 也证明不了那 18 个就是注册表里的那些。
+ */
+describe("§8 · WO-CHAIN-24 SEAM：新增节点三处同时在场", () => {
+  /** 新增的 12 条 = 注册表末尾 12 条（前 12 条是 S0 冻结原表，「只许末位追加」由 contracts 侧金值咬死）。 */
+  const NEW_NODES = CHAIN_NODE_REGISTRY.slice(12);
+
+  it("SEAM：12 个新增节点逐个在 ①引擎载荷 ②检视下拉 ③链路阶段段内 —— 三处任一漏掉即红", async () => {
+    expect(NEW_NODES, "新增节点不是 12 条 ⇒ 本门的取样口径已经不对了，先改口径再谈通过").toHaveLength(12);
+    const payload = loadLoss();
+
+    // ── ① 引擎载荷（真实响应）：每个新节点必须有节点卡或诚实缺席行 ──────────────
+    const inNodes = new Set(payload.nodes.map((n) => n.nodeId));
+    const inEmpty = new Set((payload.empty ?? []).map((e) => e.nodeId));
+    const ghosts = NEW_NODES.filter((d) => !inNodes.has(d.nodeId) && !inEmpty.has(d.nodeId)).map((d) => d.nodeId);
+    expect(ghosts, "这些节点在册但引擎既不产环节也不产 EMPTY 行 = 幽灵节点（注册表加了、没建模）").toEqual([]);
+
+    // 单源自证：引擎给的 label 必须**逐字等于**注册表的 label（漂了就是第二份中文映射表）。
+    for (const n of payload.nodes) {
+      const def = CHAIN_NODE_REGISTRY.find((d) => d.nodeId === n.nodeId);
+      if (def === undefined) continue; // 动态工序节点 `capacity.op.*` 不在静态册内，跳过
+      expect(n.label, `节点 ${n.nodeId} 的 label 与注册表漂了：引擎「${n.label}」vs 注册表「${def.label}」`).toBe(def.label);
+    }
+
+    // ── ③ 段内（派生层）：lane 由 CHAIN_STAGES 派生，新节点必须落进它自己那段 ────
+    const board = buildStageBoard(payload);
+    const laneOf = new Map(board.lanes.map((l) => [l.stage, l]));
+    for (const def of NEW_NODES) {
+      const lane = laneOf.get(def.stage);
+      expect(lane, `段 ${def.stage} 没有 lane（buildStageBoard 的段序应派生自 CHAIN_STAGES）`).toBeTruthy();
+      const shown =
+        lane!.nodes.some((n) => n.nodeId === def.nodeId) ||
+        lane!.orphanEmpty.some((e) => e.nodeId === def.nodeId) ||
+        lane!.nodes.some((n) => n.emptySteps.some((e) => e.nodeId === def.nodeId));
+      expect(shown, `${def.nodeId} 不在 ${def.stage} 段内（既无节点卡、也无段内 EMPTY 行）`).toBe(true);
+    }
+
+    // ── 真挂载：②检视下拉 + ③屏上文字（派生层通过 ≠ 屏上看得到）──────────────
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+    const boardText = screen.getByTestId("sc-stage-board").textContent ?? "";
+    for (const def of NEW_NODES) {
+      expect(boardText, `链路阶段画布上找不到「${def.label}」（${def.nodeId}）`).toContain(def.label);
+    }
+
+    await user.click(screen.getByTestId("sc-tab-vars"));
+    const select = (await screen.findByTestId("node-inspector-select")) as HTMLSelectElement;
+    const optionValues = [...select.options].map((o) => o.value);
+    expect(optionValues, "检视下拉的清单必须逐条派生自 CHAIN_NODE_REGISTRY（含新增 12 条）").toEqual(
+      CHAIN_NODE_REGISTRY.map((n) => n.nodeId),
+    );
+  });
+
+  it("第 5 段 DELIVERY 端到端在场：契约有段 → 引擎产出带该 stage 的行 → 画布有 lane 且有内容", async () => {
+    // ① 契约
+    expect(CHAIN_STAGES).toContain("DELIVERY");
+    const deliveryDefs = CHAIN_NODE_REGISTRY.filter((n) => n.stage === "DELIVERY");
+    expect(deliveryDefs.length, "第 5 段在册 0 个节点 = 只加了个枚举名").toBeGreaterThan(0);
+
+    // ② 引擎：载荷里真有 stage === "DELIVERY" 的行（本次全部是诚实缺席行 —— 算不出来也是一种发现）
+    const payload = loadLoss();
+    const deliveryRows = [
+      ...payload.nodes.filter((n) => n.stage === "DELIVERY").map((n) => n.nodeId),
+      ...(payload.empty ?? []).filter((e) => e.stage === "DELIVERY").map((e) => e.nodeId),
+    ];
+    expect(new Set(deliveryRows), "引擎没有为第 5 段产出全部在册节点的行 ⇒ 段是空的或漏了").toEqual(
+      new Set(deliveryDefs.map((d) => d.nodeId)),
+    );
+
+    // ③ 画布：lane 在、有内容、且诚实标 EMPTY（不是补 0）
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+    const laneText = screen.getByTestId("sc-lane-DELIVERY").textContent ?? "";
+    for (const d of deliveryDefs) expect(laneText, `DELIVERY 段没画出「${d.label}」`).toContain(d.label);
+    expect(laneText, "算不出来的段必须写明 EMPTY 与未补 0").toContain("未补 0");
   });
 });
