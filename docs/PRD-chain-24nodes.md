@@ -234,3 +234,31 @@ Top-5 归因（改后）：`order.settlement_terms` 71.26% · `demand.consensus_
 6. **`capacity.maint` 仍然不出现在 `chain_loss_attribution` 的任何输出里**（`flowGate:false` ⇒
    不产环节；也没有 `empty[]` 行）。它是在册 24 条里**唯一一个屏上完全看不见**的节点。
    这是既有行为，本单没有改动，但值得记一笔：严格说它也是一种「在册但不在场」。
+7. **`pnpm gates` 有一条红，是机械行号漂移，且修法要动禁改文件。**
+   `check-ontology-anchors` 报 `[LINE_DRIFT] docs/SYSTEM-ONTOLOGY.md L890 的锚点
+   apps/datacore/src/solvers/chain-loss.ts:288 (STRUCTURAL_GAPS) → 实际在 :344`
+   —— 本单在该表上方加了文件头补记与 `day_stamp_span` 的注释，把它压下去了 56 行。
+   一键修：`node scripts/check-ontology-anchors.mjs --update`（diff 只有那个行号），
+   但 `docs/SYSTEM-ONTOLOGY.md` 在本单 🚦「绝对不碰」清单里（有别的 dev 同时在改），
+   故**留给并线方在 cherry-pick 时跑一次**。
+   其余 22 个静态门逐个单跑全绿（`pnpm gates` 是 `&&` 串联，第 2 个门红就不会跑到后面的，
+   故本单是**逐个单跑**取的证，不是只看那一条红就收工）。
+
+---
+
+## 7 · 变异反证（逐条实测·撤回后 `git status --porcelain` 为空）
+
+| # | 变异 | 打哪条断言 | 实测结果（原文） |
+|---|---|---|---|
+| A | `CHAIN_NODE_REGISTRY` 删掉 `delivery.transit` | contracts 金值门 | `× WO-CHAIN-24 · 5 段 24 节点… → expected [...] to have a length of 24 but got 23` |
+| B | `delivery.transit` 的 `stage` 从 `DELIVERY` 改成 `MATERIAL` | 前端 SEAM ③ 段内 + 第 5 段端到端 | `× SEAM：12 个新增节点… → delivery.transit 不在 MATERIAL 段内（既无节点卡、也无段内 EMPTY 行）` ＋ `× 第 5 段 DELIVERY 端到端在场… → expected Set{ 'delivery.fg_stock', …(2) } to deeply equal Set{ 'delivery.fg_stock', …(1) }` |
+| C | `daysFromDrill` 对 `day_stamp_span` 直接返回起点日戳（丢掉减法） | R13 两端对拍 | `× 溯源对拍… → material.in_transit：日戳跨度必须 == 终点 − 起点: expected 13 to be 3` |
+| D | 删掉 `STRUCTURAL_GAPS` 里 `delivery.acceptance#inspect` 那条 | 幽灵节点检测 + MUST_BE_EMPTY | `× SEAM（后端半）… → 在册但引擎既不产环节也不产 EMPTY 行 = 幽灵节点: expected [ 'delivery.acceptance' ] to deeply equal []` ＋ `× 诚实缺席… → delivery.acceptance#inspect 必须诚实标 EMPTY: expected undefined to be defined` |
+| E | 篡改 `fixtures/chain-loss-real.json` 里 `nodes[0].nodeId` | fixture parity | `× SEAM（后端半）… → 前端 fixture 的节点集合与活跑求解器对不上 ⇒ fixture 过期` |
+
+五条全部 `git checkout -- <file>` 撤回；撤回后 `git status --porcelain` 为空、`pnpm -r build` RC=0 重跑过。
+
+⚠ 过程中的一次自伤，如实记：做变异 A/B 时我重建了 `@platform/contracts` 的 `dist`，
+而当时**同一个 worktree 里正跑着 datacore 全量套件**（datacore 经 `dist` 解析 contracts）。
+那次运行的结果因此不可信，已 `kill` 后重跑 —— 这正是「gate 跑着时别动被测物」那条纪律的同族，
+只是这次被动的是 `dist` 不是源码目录。
