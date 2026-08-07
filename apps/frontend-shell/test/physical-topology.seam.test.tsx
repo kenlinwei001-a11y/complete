@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -31,7 +31,7 @@ vi.mock("@platform/contracts", async (importOriginal) => {
 });
 
 // 被测模块在 mock 之后 import（vitest 会保证 mock 先生效）。
-import { PhysicalTopologyView } from "@/views/sim/PhysicalTopologyView";
+import { HINT_MS, PhysicalTopologyView } from "@/views/sim/PhysicalTopologyView";
 import {
   buildTopology,
   fitTransform,
@@ -484,20 +484,69 @@ describe("定时器纪律 · 提示条", () => {
     // 若 flashHint 覆盖 ref 前漏了 clearTimeout，这里就会红。
   });
 
-  it("提示条到点自动消隐，且卸载后不再有句柄存活", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  /**
+   * ⚠ 本例是欠账 #120 的原发处：同一 commit、零代码改动，gate 首跑红、随后 4 次全绿。
+   *   已在本机复现原红（负载 ~25 下 40 次连跑中 1 次红，报错原文与 gate 完全一致：
+   *   `physical-topology.seam.test.tsx:495 · expected <div class="_hint_b31b9a" …> to be null`）。
+   *
+   * ── 旧写法为什么是不确定判据（两条独立的病，实测取证，非推理）───────────────────
+   * 旧：`vi.useFakeTimers({ shouldAdvanceTime: true })` + `await vi.advanceTimersByTimeAsync(2000)`。
+   *  ① **`shouldAdvanceTime: true` = 在测试之外挂了一条真实时钟。**
+   *     读 vitest 内联的 `@sinonjs/fake-timers`：该选项在 hijack **之前**用**真** `setInterval`
+   *     注册一条 20ms 的定时器，回调是同步的 `clock.tick(20)`。
+   *     实测：装上假时钟后只等真实 2500ms（测试一次 advance 都不调），假时钟自己走了 2420ms，
+   *     `phys-topo-hint` 自己就消隐了、`getTimerCount()` 归零。
+   *     ⇒ 「谁烧掉 app 那个句柄」不由本用例决定，由机器忙不忙决定。
+   *  ② **`advanceTimersByTimeAsync` 不在 `act()` 里。**
+   *     定时器回调里的 `setHint(null)` 何时落到 DOM，靠的是 React 异步刷新与 sinon 内部
+   *     「烧完一个定时器就让出一个宏任务」之间的**顺风车**，本用例从未显式驱动它。
+   *     实测：同步 tick 之后**同一个同步块内** DOM 仍是旧的（`getTimerCount()` 已 1→0，
+   *     但 `phys-topo-hint` 还在），要跨一个任务边界才刷新。
+   *  ①×② 合起来：只要那条真实 interval 在「`advanceTimersByTimeAsync` 已排好自己的宏任务、
+   *  但还没跑」这个窗口里替测试烧掉句柄，`doTick` 就发现区间内无定时器可烧 → 不再让出宏任务
+   *  → 直接 resolve，断言便落在 DOM 尚未刷新的那一瞬 ⇒ 「该消隐的提示条还在」。
+   *  这也解释了为什么它**不跟负载单调相关**（红那次负载反而更低）：它咬的是一个窗口的相位，
+   *  不是一个时长的阈值 —— 所以"加大超时"这类改法一点用都没有。
+   *
+   * ── 新写法为什么消除了不确定性（逐条对上）─────────────────────────────────────
+   *  ① `vi.useFakeTimers()` **不带 `shouldAdvanceTime`** ⇒ 进程里不存在那条真实 interval，
+   *     假时钟**只可能**被本用例的 `advanceTimersByTime` 推动。没有第二个推动者 = 没有窗口可抢。
+   *  ② 交互改 `fireEvent`（同步派发 + RTL 自带 `act` 包装），**不用 `userEvent`**：
+   *     `userEvent` 的 `wait()` 走 `globalThis.setTimeout`，纯假时钟下推不动
+   *     （实测：`await user.click(...)` 直接挂到 20s 超时）—— 用它就必须把 `shouldAdvanceTime`
+   *     请回来，等于把病根请回来。这不是洁癖，是二选一。
+   *  ③ 推进一律裹 `act()`：`act` 退出时 React **同步** flush 掉这次推进产生的全部更新，
+   *     断言点看到的 DOM 必然是已刷新的 —— 不再依赖任何宏任务/微任务的先后。
+   *  ⇒ 三条合起来，本例从头到尾**没有一个判据落在真实时钟上**：同一输入必然同一结果。
+   *
+   * ── 顺带把判据咬紧（旧写法证不到的）──────────────────────────────────────────
+   *  旧的「推 2000ms 然后断言消隐」只证明「推得够久就消」，证不了「**到点**才消」——
+   *  把 HINT_MS 改成 10ms 或 1500ms 它都照绿。新写法按 `HINT_MS-1` / `+1` 两步推，
+   *  并咬死句柄计数 0→1→0→1→0：挂载不排、点一次恰好排一个、到点自注销、卸载带走。
+   */
+  it("提示条到点自动消隐，且卸载后不再有句柄存活", () => {
+    vi.useFakeTimers();
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const { unmount } = render(<PhysicalTopologyView />);
-      await user.click(screen.getByTestId("phys-topo-fit"));
+      expect(vi.getTimerCount(), "挂载本身不该排定时器").toBe(0);
+
+      fireEvent.click(screen.getByTestId("phys-topo-fit"));
       expect(screen.getByTestId("phys-topo-hint")).toBeInTheDocument();
-      await vi.advanceTimersByTimeAsync(2000);
+      expect(vi.getTimerCount(), "点一次 = 恰好一个句柄").toBe(1);
+
+      // 差 1ms 不消隐 —— 咬的是「到点」，不是「推进过就消」
+      act(() => void vi.advanceTimersByTime(HINT_MS - 1));
+      expect(screen.getByTestId("phys-topo-hint")).toBeInTheDocument();
+      act(() => void vi.advanceTimersByTime(1));
       expect(screen.queryByTestId("phys-topo-hint")).toBeNull();
+      expect(vi.getTimerCount(), "到点后句柄自注销").toBe(0);
+
       // 提示条还亮着就卸载 → 卸载清理必须把句柄带走
-      await user.click(screen.getByTestId("phys-topo-fit"));
+      fireEvent.click(screen.getByTestId("phys-topo-fit"));
       expect(screen.getByTestId("phys-topo-hint")).toBeInTheDocument();
+      expect(vi.getTimerCount(), "卸载前确有一个活句柄（否则下面那条 0 是空过）").toBe(1);
       unmount();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.getTimerCount(), "卸载清理必须把句柄带走").toBe(0);
     } finally {
       vi.useRealTimers();
     }
