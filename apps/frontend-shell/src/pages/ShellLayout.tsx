@@ -35,7 +35,29 @@ type NavItemRef = { kind: "view" | "admin"; key: string };
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "推演", items: ["project-sim", "global-sim", "risk", "order-chain", "decision-play"].map((key) => ({ kind: "view" as const, key })) },
+  // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
+  //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
+  //   · 四个子视图落「其它」兜底组（`:～102`），而那个组里**不多不少正好只有它们四个**
+  //     ——一个专为「没人登记的东西」而生的桶，用户当然找不到。
+  // 实拍坐实：仓主部署后连问三轮「四个新入口在哪」，截图里「其它」还是折叠态（▸）。
+  // 我上一轮拿 `allInnerTexts()` 文本命中报了四个 ✅ —— 那证明的是「DOM 里有」，不是「用户找得到」。
+  // 这是同族病的第四层：组件写了 ✅ → renderer 注册 ✅ → 后端派单 ✅ → **归组归进兜底桶 ❌**。
+  //
+  // ⚠ 四个子视图在此登记是**过渡态**：按设计稿（推演沙盘·端到端产销控制台）它们不该是平级入口，
+  //    而应是沙盘控制台里的画布模式/图层/常驻侧栏。WO-SANDBOX-CONSOLE 落地后，这四行应当**删掉**
+  //    （届时它们不再进 workspace.navigation，本组也就不需要它们）。留着是为了在控制台落地前，
+  //    用户至少能在「推演」组里找到它们，而不是在一个折叠的「其它」桶底下。
+  //
+  // ⚠ `sim-sandbox` / `sim-init` **不在本表**：它们不走 `workspace.navigation`，而是本文件底部两个
+  //    写死的 `<NavLink>`（entitlement `sim.sandbox` 守门）。往本表加这两个键是**幽灵条目**——
+  //    `UnifiedNav` 拿 `viewByKey.get(ref.key)` 查后端 nav，查不中就静默 return null，永远不渲染，
+  //    还看不出错。改法见下面那两个 NavLink 的位置调整（挪到 UnifiedNav **之前**）。
+  {
+    title: "推演",
+    items: ["project-sim", "global-sim", "risk", "order-chain", "decision-play",
+      "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
+    ].map((key) => ({ kind: "view" as const, key })),
+  },
   { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
   { title: "数据接入", items: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"].map((key) => ({ kind: "admin" as const, key })) },
   {
@@ -291,10 +313,12 @@ export default function ShellLayout() {
         </NavLink>
         {/* N1 统一域分组：视图 + 管理页合一套域分组（配置驱动 R14）；逐项按角色/entitlement 过滤；空组隐藏；折叠记忆。 */}
         <nav className={styles.group} data-testid="nav-business">
-          <UnifiedNav
-            views={workspace.navigation.filter((item) => item.group !== "admin")}
-            adminPages={adminPages}
-          />
+          {/* WO-NAV-SANDBOX-GROUP：这两个入口此前挂在 `<UnifiedNav>` **之后** ——
+              而 UnifiedNav 要渲染 13 个分组、60+ 条叶项，于是「推演沙盘」实际落在整条侧栏的**最底部**，
+              一屏根本看不见。仓主连问四轮「推演沙盘/四个新入口在哪」，实拍侧栏全图后才看清是这个位置问题。
+              它们不走 workspace.navigation（是写死 NavLink + entitlement 守门），进不了 NAV_GROUPS 分组表，
+              所以最小且正确的修法是**把位置挪到分组之前**，紧跟场景启动器 —— 沙盘是入口，不是附录。
+              entitlement 语义一字未动：sim.sandbox 关 → 两个入口仍然消失（R3 暗发）。 */}
           {/* 推演沙盘入口（增量 4 · 暗发）：仅 sim.sandbox entitlement 开通时出现；关 → 入口消失（瞬时回退）。 */}
           {featureOn(workspace, "sim.sandbox") && (
             <NavLink
@@ -317,6 +341,10 @@ export default function ShellLayout() {
               推演初始化向导
             </NavLink>
           )}
+          <UnifiedNav
+            views={workspace.navigation.filter((item) => item.group !== "admin")}
+            adminPages={adminPages}
+          />
         </nav>
       </aside>
 
