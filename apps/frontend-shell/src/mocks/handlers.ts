@@ -58,6 +58,7 @@ import {
   mockSopAdvance,
   mockSopReschedule,
   mockBaseOutlook,
+  mockChainImpediments,
   PLAN_VERSION_CURRENT,
   SOP_SUPPLY_BASELINE,
   SopMockError,
@@ -2752,6 +2753,14 @@ export const handlers = [
     }
     if (key === "base_capacity_outlook")
       return HttpResponse.json({ data: mockBaseOutlook(args), snapshotVersion: "ov-12" });
+    // WO-IMPEDIMENT-FE · 全链阻滞点扫描（卡点/堵点/断点）。载荷口径 = 真后端在 demo 合成种子上的基线
+    //（无 LIVE、C02/C09 各 0 条、C22 与 LEADTIME 诚实缺席）—— mock 不比生产漂亮。
+    if (key === "chain_impediments") {
+      const ci = mockChainImpediments(args);
+      // R-ARG-FIDELITY：businessTypes / modelIds 真后端 400，mock 同口径（不静默返全域）。
+      if ("__err" in ci) return err(400, "VALIDATION_ERROR", String(ci.__err));
+      return HttpResponse.json({ data: ci, snapshotVersion: "ov-12" });
+    }
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";

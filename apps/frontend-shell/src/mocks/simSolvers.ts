@@ -1578,3 +1578,158 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
 
   return { baseId, baseName, forecastStart: SOP_FORECAST_START, horizons, dayPlan: primary.dayPlan, summary, byModel };
 }
+
+// ---------------------------------------------------------------------------
+// WO-IMPEDIMENT-FE · chain_impediments（全链阻滞点：卡点 / 堵点 / 断点）
+// ---------------------------------------------------------------------------
+
+/** C09 命名阈值键 —— 走 contracts 的 `ruleParamRef` 同一机制取名，不手写字符串（与真后端同字面）。 */
+const IMPEDIMENT_STALE_PARAM = ruleParamRef("staleHours").replace(/^params\./, "");
+/** 扫描 id：真后端由输入哈希派生（R6 同输入同 id）；mock 固定一串，同样满足「同输入同输出」。 */
+const IMPEDIMENT_SCAN_ID = "scan_1f4a9c3b";
+
+/**
+ * mock 载荷 = **与测试 fixture 同一份口径**（`test/fixtures/chain-impediment-baseline.json`），
+ * 不是另编一套好看的：mock 模式若比生产漂亮，mock 就在骗人（`KILL-MOCK-RED` 同族纪律）。
+ *
+ * 因此这里逐条保留后端在 demo 合成种子上的**真实基线形态**：
+ *  · `dataMode` **一条 LIVE 都没有** —— demo 全部对象 `origin.type==="SYNTHETIC"` ⇒ 落 SYNTHETIC；
+ *    C05（SUSTAIN 规则）落 PARTIAL，并带引擎原文 caveat（「未校验持续天数」）。
+ *  · 卡点·硬容量夹定（C02）与断点·数据（C09）基线各 **0 条** —— 阈值行照给，条数就是 0，不补一条凑数。
+ *  · 换型堵点（C22）与时间断（LEADTIME）落 `unresolved[]`，**诚实缺席**。
+ */
+export function mockChainImpediments(args: Record<string, unknown>): Record<string, unknown> {
+  const rawScope = (args.scope ?? {}) as Record<string, unknown>;
+  // R-ARG-FIDELITY：真后端对这两维显式 400 而非静默返全域（datacore service.ts:3124）——
+  // mock 必须同口径，否则 mock 下"看着能用"、真后端一调就 400（mock 骗人的经典形态）。
+  if (rawScope.businessTypes !== undefined || rawScope.modelIds !== undefined) {
+    return {
+      __err:
+        "chain_impediments 暂不支持 scope.businessTypes / scope.modelIds 维度过滤 —— 拒绝静默返全域（R-ARG-FIDELITY）",
+    };
+  }
+  const wantBases = Array.isArray(rawScope.baseIds) ? (rawScope.baseIds as string[]) : null;
+  const scope = wantBases === null ? {} : { baseIds: wantBases };
+
+  const mk = (
+    bindingId: string,
+    kind: "BOTTLENECK" | "CONGESTION" | "BREAK",
+    stage: string,
+    objectType: string,
+    objectId: string,
+    label: string,
+    ruleKey: string,
+    metricValue: number,
+    threshold: number,
+    unit: string,
+    dataMode: "LIVE" | "PARTIAL" | "SYNTHETIC" | "EMPTY",
+    extra?: { breakSubtype?: "MATERIAL" | "LEADTIME" | "DATA"; ruleParamKey?: string; magnitude?: number },
+  ): Record<string, unknown> => {
+    // severity 走引擎同一公式：round(超阈幅度 / 分母 × 100)；分母 = |阈值|，阈值为 0 时用规模基准
+    // （chain-impediment.ts:606-618 —— C06 的 `gapTon > 0` 不能拿 0 当分母）。
+    const breach = Math.max(0, Math.abs(metricValue - threshold));
+    const denom = Math.abs(threshold) > 0 ? Math.abs(threshold) : (extra?.magnitude ?? 0);
+    const severity = denom > 0 ? clamp(Math.round((breach / denom) * 100), 0, 100) : 0;
+    return {
+      impedimentId: `imp_${bindingId}_${objectId}`,
+      tenantId: "demo",
+      scanId: IMPEDIMENT_SCAN_ID,
+      kind,
+      ...(extra?.breakSubtype === undefined ? {} : { breakSubtype: extra.breakSubtype }),
+      stage,
+      scope,
+      locus: { objectType, objectId, label },
+      severity,
+      evidence: {
+        solverKey: "chain_impediments",
+        ruleKey,
+        ...(extra?.ruleParamKey === undefined ? {} : { ruleParamKey: extra.ruleParamKey }),
+        metricValue,
+        threshold,
+        unit,
+      },
+      dataMode,
+    };
+  };
+
+  const all = [
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "pos_ncm_b2", "pos_ncm_b2", "C28", 112, 90, "天", "SYNTHETIC"),
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "neg_graphite_b2", "neg_graphite_b2", "C28", 108, 90, "天", "SYNTHETIC"),
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "elyte_b2", "elyte_b2", "C28", 101, 90, "天", "SYNTHETIC"),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-6", "铜箔", "C06", 398, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 4425 }),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-1", "三元正极", "C06", 1858, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 23231 }),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-3", "石墨负极", "C06", 698, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 9975 }),
+    mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-changzhou-formation", "常州化成线", "C05", 97.2, 95, "%", "PARTIAL"),
+    mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-xiamen-coating", "厦门涂布线", "C05", 96.4, 95, "%", "PARTIAL"),
+  ];
+  // scope.baseIds 真过滤（只对带基地维的 locus 生效 —— 物料/批次不是基地维实体，同真后端 loci() 口径）。
+  const impediments =
+    wantBases === null
+      ? all
+      : all.filter((i) => {
+          const locus = i.locus as { objectId: string; objectType: string };
+          if (locus.objectType !== "Line") return true;
+          return wantBases.some((b) => locus.objectId.includes(b));
+        });
+  // 全序排序：severity 降序 → locus.objectId → impedimentId（contracts compareChainImpediment 同口径）。
+  impediments.sort((a, b) => {
+    const sa = a.severity as number;
+    const sb = b.severity as number;
+    if (sa !== sb) return sb - sa;
+    const oa = (a.locus as { objectId: string }).objectId;
+    const ob = (b.locus as { objectId: string }).objectId;
+    if (oa !== ob) return oa < ob ? -1 : 1;
+    return String(a.impedimentId) < String(b.impedimentId) ? -1 : 1;
+  });
+  const count = (k: string) => impediments.filter((i) => i.kind === k).length;
+
+  return {
+    scanId: IMPEDIMENT_SCAN_ID,
+    scope,
+    scopeUnscoped: wantBases === null,
+    ruleSetVersion: "rs-7c21e0",
+    impediments,
+    counts: {
+      total: impediments.length,
+      BOTTLENECK: count("BOTTLENECK"),
+      CONGESTION: count("CONGESTION"),
+      BREAK: count("BREAK"),
+    },
+    unresolved: [
+      {
+        bindingId: "CONGESTION.CAPACITY.order-changeover",
+        kind: "CONGESTION",
+        stage: "CAPACITY",
+        ruleKey: "C22",
+        status: "UNKNOWN",
+        reason:
+          '指标 Order.changeoverMin 在 Order 上无对象承载（扫了 6 个对象，无一含 changeoverMin）—— 属"接了线没数据"，不是"没接线"：补数据即可判',
+      },
+      {
+        bindingId: "UNBOUND.BREAK.LEADTIME",
+        kind: "BREAK",
+        breakSubtype: "LEADTIME",
+        status: "UNKNOWN",
+        reason:
+          "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C33 中无任何承载阈值的规则（逐条核过）；" +
+          "本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）",
+      },
+    ],
+    caveats: [
+      {
+        bindingId: "BOTTLENECK.CAPACITY.line-utilization-redline",
+        ruleKey: "C05",
+        note:
+          "规则 C05 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— " +
+          "本次只比对快照与规则红线 95%，**未校验持续天数**；结论 dataMode 标 PARTIAL",
+      },
+    ],
+    thresholds: [
+      { bindingId: "BOTTLENECK.CAPACITY.process-hard-capacity", ruleKey: "C02", source: "field", fieldPath: "Process.requiredThroughput", value: 41667, unit: "电芯/天" },
+      { bindingId: "BOTTLENECK.CAPACITY.line-utilization-redline", ruleKey: "C05", source: "literal", value: 95, unit: "%" },
+      { bindingId: "CONGESTION.MATERIAL.batch-idle", ruleKey: "C28", source: "literal", value: 90, unit: "天" },
+      { bindingId: "BREAK.MATERIAL.material-gap", ruleKey: "C06", source: "literal", value: 0, unit: "吨" },
+      { bindingId: "BREAK.DATA.datasource-stale", ruleKey: "C09", source: "param", ruleParamKey: IMPEDIMENT_STALE_PARAM, value: 2, unit: "小时" },
+    ],
+  };
+}
