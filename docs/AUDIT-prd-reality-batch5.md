@@ -527,3 +527,173 @@ PRD 头部 `:9` 写「零代码改动」，但配套工单文件 `docs/WO-SANDBO
   | WO-B5-17 · 12 层全量 DSL | 全契约重写 | —— | ⭐ 建议先做 14/15/16，把「有字段没消费方」的账先还掉 |
 
 ---
+
+## 11. PRD-skill-crossreview.md
+
+- **它要做什么**：**不是 PRD，是审查记录** —— 五份 Skill PRD 并线前的跨文档对照审查，
+  只记冲突/重复/传播性错误/口径分歧（C1–C6），不复述任何单份内容。
+
+- **PRD 自称的 AS-IS**：本文件**整体就是 AS-IS**，且带 **§9 收口记录**（自报哪几条已落地）。
+  这一节我逐条复验了。
+
+- **实测现状（逐条核 §9 收口记录 —— 它自称的，我一条都不放过）**
+
+  | 条 | §9 自称 | 实测复验 | 判定 |
+  |---|---|---|---|
+  | **C1** 命名裁决（采纳 `requires` 结构，旧名降解析期别名） | ✅ 已裁决，写入 `SPEC-industrial-skill.md` §9.1 | ✅ **属实**：`docs/SPEC-industrial-skill.md:421`「**`references[]` / `dependsOn[]` 保留为「解析期输入别名」**：读入即归一折进 `requires`」。⚠ 但**只落在 SPEC 文档里** —— `packages/contracts/src/agentcore.ts:216` 的 `SKILL_REFERENCE_KINDS` 与 `SkillDefinitionSchema` **代码零变更**（见 §10），裁决尚未进代码 | ✅ 文档层属实 |
+  | **C2** 两道重名门合并为 `skill-refs:check` | ✅ 随 C1 收口 | **无法复验**（两道门都还不存在，`grep skill-refs` = 0）——**合并的是纸面承诺，不是代码** | ◐ 纸面 |
+  | **C3** 门总数 16→33 无人认领的合并门账 | 🟡 **仍无人认领** | ⚠ **这一条已经过期了 —— 账已经立了**：`docs/PRD-gate-ledger.md`（v1.0·2026-08-03·上游明写「`docs/PRD-skill-crossreview.md` §3（C3）与 §9 · 任务 #95」），且**已落地成机器可核的账**：`scripts/gate-ledger.json`（**44 条**登记）+ `scripts/check-gate-ledger.mjs` + 已进 `package.json:32` 的 `"gates"` 串。门账里还带着 crossreview 要的那件东西——**「曾经真红过」的证据**（如 `gate-ledger.json:37`「en→red 有牙…**已亲测退 1**」） | ✅ **已解决，§9 状态过期** |
+  | **C4** 传播性错误「引用可校验门今天做不了」 | ✅ 三处已掐掉 | ✅ 属实（SPEC 两处 + migration §5.2）。且 **C4 的技术判断今天仍然正确**：`probeMissingRefs` 仍只接 workflow（`server.ts:1008`）与 agent（`server.ts:690`），skill 发布路仍没接（见 §9） | ✅ |
+  | **C5** 「Phase 2」三义 → M/R/T 前缀 | ✅ 已改名，残留裸「Phase N」= 0 | ✅ **属实且机械可核**：`grep -c "Phase 1\|Phase 2" docs/PRD-skill-migration.md docs/PRD-skill-runtime-orchestrator.md` = **0 / 0**；两份文里 `M0 M1 M2 M3` / `R1 R2 R3 R4` / `T1` 前缀真在用 | ✅ |
+  | **C6** 决策点计数两口径未并列写进本体 | 🟡 部分 | **未查清** —— 需读本体 §8 `G-ROUTE-REGEX-PREEMPTS-RETRIEVAL` 全文逐字核对两个数是否并列。**卡在：该条目文本极长，且「有没有并列写」是措辞判断，静态 grep 判不了。** | 未查清 |
+  | 末尾附记：crossreview 自身被 `check-prd-ontology.mjs` 索引为 `hasOntologyRef:false` | — | ✅ 属实：`docs/prd-ontology-index.json:1833` 有 `"PRD-skill-crossreview.md"` 条目；`:2315` 亦在列 | ✅ |
+
+- **结论**：**✅ 已实现（作为审查记录，它的产出已被消费）**，但 ⚠ **§9 收口记录本身有一条过期**：
+  C3 标 🟡「仍无人认领」，实际已由 `docs/PRD-gate-ledger.md` + `scripts/gate-ledger.json`(44 条) 兑现。
+
+- **最小 WO 建议**：只需把 §9 的 C3 行从 🟡 改为 ✅ 并指向 `PRD-gate-ledger.md`（只改 `docs/PRD-skill-crossreview.md`）。
+
+---
+
+## 12. PRD-skill-governance-learning.md
+
+- **它要做什么**：把 Skill 的「治理」与「学习」落成可校验机制 —— per-Skill 的 **data/tool/action 三面权限**
+  （与 entitlement 一处判定）· 可复盘的 **Execution Trace（含 Prompt 版本）** · 建在正确且不裸奔的指标上的
+  **学习闭环** · 生长回路的**人在回路审批位**。
+
+- **PRD 自称的 AS-IS**：§1「问题陈述 · AS-IS 实证」五小节（1.1 权限三面 / 1.2 Trace / 1.3 Learning Loop 两个硬前置 /
+  1.4 生长回路「**订正 SPEC**：不是只报不写，是写了 DRAFT 但审批位不在 R4 上」/ 1.5 已有正面资产），
+  外加 §9「未核实」清单。**§1.4 是一次自我订正，值得记账。**
+
+- **实测现状**
+
+  | PRD 交付物 | 实测 | 证据 |
+  |---|---|---|
+  | `SkillExecutionTrace` 对象 | **❌ 0 命中** | `grep -rn "SkillExecutionTrace" packages/contracts/src apps/agentcore/src scripts package.json` = 空 |
+  | Prompt 版本化（`promptVersion`） | **❌ 0 命中** | 同上 |
+  | 六道新门（`skill-permission` / `skill-trace` / `skill-eval` / `skill-lint` / `growth-hitl` / `metrics-tenant`） | **❌ 0 命中**；`scripts/gate-ledger.json` 的 44 条登记里无一条 skill 门 | 同上 |
+  | §2.1 **P0 前置 A · 指标补租户维** | **❌ 仍缺，且形态是「机制在、实参没传」** —— `apps/agentcore/src/metrics.ts:5-17` 的 `Counter.inc(labels)` **支持任意标签**，但全部 ~20 处调用点**没有一处传 tenantId**：`deps.ts:64 .inc({reason})` · `agent/loop.ts:476 .inc({path:"AGENT"})` · `:567/:603/:640 .inc({tool,outcome})` · `llm/providers.ts:281 .inc({from,to})` · `agent/context.ts:358 .inc({op})` | 上列 file:line |
+  | §2.2 **P0 前置 B · `/metrics` 鉴权** | **❌ 仍裸奔** —— `apps/agentcore/src/server.ts:203` `app.get("/metrics", async (_req, reply) => {…})`，**参数名就是 `_req`**（下划线 = 声明「我不看请求」），路由体内零 `auth(req)` | `server.ts:203-206` |
+
+- **结论**：**❌ 未实现（零代码落地）**；⚠ 其 AS-IS 中的两个 P0 前置**今天仍逐字成立**。
+
+  ⚠ 一条需要点名的**跨 PRD 依赖风险**：`PRD-skill-contract-dsl.md §4.9` 明写「砍掉 learning 层」的
+  **唯一理由**就是「采纳率埋点跨租户混算 · `/metrics` 两服务 200 无鉴权」这个前提；
+  而该前提在它自己的 §11.2 里标着「**未核实**」。**本审计实测：该前提为真**（见上两行 file:line）
+  ⇒ contract PRD 砍 learning 层的决策**依据成立**。这条以前没人核过。
+
+- **最小 WO 建议**（按投入产出排序）
+
+  | WO | 🚦 范围边界 | 出口判据 | 性价比 |
+  |---|---|---|---|
+  | **WO-B5-18 · `/metrics` 鉴权**（十分钟的活·安全面） | 只改 `apps/agentcore/src/server.ts:203`（+ datacore 对侧同款，若同形态）加 `SERVICE_TOKEN` 或 admin 门。**不碰** `metrics.ts` | 无凭据 GET `/metrics` → 401/403；带 `SERVICE_TOKEN` → 200 | ⭐⭐⭐ |
+  | **WO-B5-19 · 指标补租户维** | 只改 `apps/agentcore/src/metrics.ts` 的**调用点**（~20 处 `.inc()` 补 `tenantId`）+ 一条断言「所有 counter 至少带 tenant 标签」的门。**不碰** `Counter` 实现（labels 已支持） | 渲染出的 prom 文本每行带 `tenant="…"`；变异反证：去掉一处 → 门红 | ⭐⭐ |
+  | WO-B5-20 · 权限三面 + Trace + Prompt 版本 | 大工程 | —— | ⭐ 建议等 §9/§10 的 skill 基础线（`requires` 结构）先落 |
+
+---
+
+## 13. PRD-skill-migration.md
+
+- **它要做什么**：把 **32 份 `ExecutionPlan` 升格进 Skill** 的可执行迁移路线（Track E 落地）。
+  分期 **M0 影子声明 → M1 一致性门 → M2 权威翻转 → M3 独有能力**。
+  自称交付形态 = **「本文只写路线与验收判据。零代码改动」**。
+  核心主张：「这次迁移最容易失败的方式不是做不完，而是**做完了但门是恒真的**」。
+
+- **PRD 自称的 AS-IS**：§1「AS-IS 事实基线（本会话静态读码核实 · 每条带 file:line）」五小节，
+  含 §1.4「已实测的**三个零消费方**（迁移必须一并了结，否则是搬运既有的债）」。
+
+- **实测现状**
+
+  | PRD 交付物 | 实测 | 证据 |
+  |---|---|---|
+  | `Skill.execution.plan` 字段 | **❌ 0 命中** | `SkillDefinitionSchema`（`packages/contracts/src/agentcore.ts:236-262`）无 `execution` |
+  | M0 导出器 / `skill-export:check` | **❌ 0 命中** | grep = 空 |
+  | M1 一致性门 `skill-plan-parity:check` | **❌ 0 命中** | grep = 空 |
+  | M2 双源红门 `skill-single-source:check` | **❌ 0 命中** | grep = 空 |
+  | `skill-ref-closure:check` / `skill-refs:check` | **❌ 0 命中** | grep = 空 |
+  | M2 权威翻转（执行改读 `Skill.execution.plan`） | **❌** 执行仍读 `ExecutionPlan` | `apps/agentcore/src/workflow/executor.ts:104 for (const step of input.steps)` |
+  | §1.4 三个零消费方「一并了结」 | **❌ 至少 `maxBudgetRounds` 仍零消费方**（见 §10 复验） | `packages/contracts/src/agentcore.ts:260` 是唯一命中 |
+
+  **AS-IS 基线复验（PRD §1.1「32 Plan / 7 Skill」）**：`apps/agentcore/src/mocks/seed.ts` 的
+  `seedIntentsAndPlans` 仍在（2 处引用），7 个种子 Skill 的 `resources: []` 仍是 7 处 —— **基线未变**。
+
+- **结论**：**❌ 未实现（PRD 自称零代码改动，至今确实零代码改动）**
+
+- **最小 WO 建议**：按 PRD 自己的分期，**M0 是唯一低风险起手**（不改一行执行代码）。
+
+  | WO | 🚦 范围边界 | 出口判据 | 性价比 |
+  |---|---|---|---|
+  | **WO-B5-21 · M0 影子声明导出器** | 新增 `scripts/export-plans-to-skills.mjs` + `apps/agentcore/src/mocks/seed.ts`（只加影子字段，**不改任何读取点**） | 32 份 Plan 全部导出成影子 Skill 声明；执行路径逐字节不变（现有测试零回归） | ⭐⭐ |
+  | ⚠ **前置**：M1 一致性门是「整条路径的命门」（PRD §6），而 PRD §6.1 自己指出「**Skill 里有 plan 字段且内容相同」是恒真断言** —— 立单时**必须**把 §6.2 的四条同时成立与 §6.4 的两条变异反证抄进 WO，否则做出来的是一道恒真门 | | | |
+
+---
+
+## 14. PRD-skill-runtime-orchestrator.md
+
+- **它要做什么**：Skill Runtime 与 **Reasoning Graph 编排器** —— 把「执行是线性串行 / 预算是全局常数 /
+  取消只到一半 / 过程可见半数路径为 0 / Runtime 第一站被 13 道前置门抢答」五条从目标形态翻译成
+  可施工、可门控、**效果层可验收**的运行时设计。立场：**不造新执行器**，Reasoning Graph 是既有
+  `PlanStep` 派发的**调度层超集**。
+
+- **PRD 自称的 AS-IS**：§1「问题陈述：五个必须正面回应的既有病灶」A–E，每条带 file:line。
+
+- **实测现状**
+
+  | PRD 交付物 | 实测 | 证据 |
+  |---|---|---|
+  | `ReasoningGraph` 契约 | **❌ 0 命中** | grep 遍 `packages/contracts/src` + `apps/agentcore/src` + `scripts` + `package.json` = 空 |
+  | 门 `graph-runtime:check` / `progress-reachability:check` | **❌ 0 命中** | 同上；`scripts/gate-ledger.json` 44 条无此二门 |
+  | §3.6 `human` 节点 | **❌ 0 命中** | 同上 |
+  | §4 预算按题型声明 | **❌** 仍是全局常数 | `packages/contracts/src/qos.ts:668 maxRoundTrips: z.number().int().default(24)` · `:672-680 DEFAULT_AGENT_BUDGET` 里 `maxRoundTrips: 24` |
+
+  **§1 五条病灶复验（全部仍在）**
+
+  | 病灶 | PRD 断言 | 今天复验 |
+  |---|---|---|
+  | **A · 执行是串行** | `apps/agentcore/src/workflow/executor.ts:104` | ✅ 仍是 `for (const step of input.steps) { … await … }`（`executor.ts:104`），逐步串行 |
+  | **B · 预算是全局常数，字段早在、零消费方** | `maxBudgetRounds` 零消费方 | ✅ 仍零消费方（`packages/contracts/src/agentcore.ts:260` 唯一命中）；全局默认 24（`qos.ts:668/680`） |
+  | **C · 取消只做了一半** | — | ◐ 部分改善：`executor.ts:108-110` 每步前有 `input.nesting.isCancelled?.()` 检查（注释标 `WO-SCENARIO-INPUT-PHASE0`）。**PRD 说的另一半（同步求解通道）未查清** |
+  | **D · 过程可见半数路径结构性为 0** | — | **未查清**（需实跑观测 SSE，本审计只读代码） |
+  | **E · Runtime 第一站排在第 14 位** | 13 道前置门 | **未查清**（决策点计数正是 §11 C6 悬着的那个口径分歧，静态数不准） |
+
+- **结论**：**❌ 未实现**；病灶 A/B 仍逐字成立，C 部分改善，D/E 未查清（卡在需要实跑）。
+
+- **最小 WO 建议**：与 §10 的 WO-B5-15 是**同一件事**（`maxBudgetRounds` 接消费方 = 病灶 B 的最小闭合），
+  **两份 PRD 指向同一条线，不要开两张单**。其余（Reasoning Graph / 并行调度 / human 节点）是大工程，
+  建议先做完 §10/§12 那批「小而真」的接消费方，把「有字段没消费方」的账还掉再谈图化。
+
+---
+
+## 15. PRD-sop-balance-1to1.md
+
+- **它要做什么**：月度 S&OP 平衡台（sop）对参考原型 **1:1 复刻（=100%，色调/字体可调）**。
+  自称系统 `SopBalanceView` 骨架已是原型超集，1:1 缺口是**四张原型有、系统缺的明细表**。
+
+- **PRD 自称的 AS-IS**：§2「现状与缺口（HTML vs 系统，带 file:line）」12 行表，
+  ✅/◐/❌ 逐行标注（六卡 ✅ · 五步状态机 ✅ 超集 · ① 可产矩阵 ◐ · **② P90 列 ❌** ·
+  **③ 物料线 MRP 表 ❌ 全缺** · **④ 量价本利科目表 ❌** · **⑤ 版本演进对比表 ❌**）。
+
+- **实测现状（四张缺表逐张核）**
+
+  | 分期 | 缺表 | 实测 | 证据 |
+  |---|---|---|---|
+  | **SOP.1** | ② 滚动 P90 列 | **✅ 已补** | `apps/frontend-shell/src/views/sim/SopBalanceView.tsx:438-441`（`p90ByName` 取自 `DemandSegment.p90`，注释标 `SOP.1`，`R-一致`）· `:489 <th>滚动 P90</th>` · `:503 data-testid="sop-p90-{key}"` · `:531 data-testid="sop-p90-total"` |
+  | **SOP.2** | ③ 物料线 MRP 净需求表 | **✅ 已补，数据+引擎两半都在** | 求解器注册 `apps/datacore/src/solvers/service.ts:90 "mrp_netting"` · 派发 `:4282`；前端 `SopBalanceView.tsx:763` `runSolver("mrp_netting", {})` → `{materials:[{material,netDemand,ltaCoverPct,gap,earliestComplete}], shortageCount}` · `:765 const mats = data?.materials ?? []` |
+  | **SOP.3** | ④ 量·价·本·利科目表 | **✅ 已补** | 求解器 `service.ts:92 "finance_pnl"` · 派发 `:4286`；前端 `SopBalanceView.tsx:788-812`（`data-testid="sop-pnl"` / `sop-pnl-table` / `sop-pnl-row-{subject}` / `sop-pnl-gm`，含 `gmRow.budgetPct/rollPct/diffPp` 与 `attribution`） |
+  | **SOP.4** | ⑤ 版本演进对比表 | **✅ 已补** | `SopBalanceView.tsx:700`「SOP.4 ⑤ 版本演进对比表（V1→V7）」· `:822-832`「版本演进对比（V1 → V7，缺口 = 需求 − 供给）」，数据源 `fetchSopVersions`（`:3` import · `:45` useQuery） |
+  | §3.5 | 前端零写死（R14） | **✅** | `SopBalanceView.tsx:757` 注释：「sop 前端 1:1 增量（SOP.2/.3/.4）：物料线 MRP / 量价本利科目 / 版本演进对比，**读新求解器/对象，前端零写死**」 |
+
+  **`MaterialBalance` 对象类型**：✅ 真在本体里且被别的求解器当**下钻靶**用 ——
+  `apps/datacore/src/synthetic/battery-extended.ts:320`（`cf-cathode-shortage → drillType:"MaterialBalance", drillId:"mbal-2", drillField:"gapTon"`）·
+  `:357/:360`（`cf-demand-attain-gap` / `cf-material-short`）· `:851`（毛利桥由 `DemandSegment × MaterialBalance` 派生）。
+  即它不只是 sop 的一张表，已经是跨求解器的一等对象。
+
+- **结论**：**✅ 已实现（SOP.1–SOP.4 四期全落地）**
+
+  ⚠ **两项本审计未查清**（诚实标出，不猜）：
+  1. **§7 DoD 的「=100% 1:1」**：能核到「四张表都在、数据走求解器」，
+     **核不到「渲染出来的数字与参考原型逐格相同」** —— 那需要对照 `docs/reference-prototype-decision-platform.html`
+     的 `SOP_*` 种子逐值比对并实跑前端。**卡在：静态读码判不了像素/数值级的 1:1。**
+  2. **§1 目标 1「收入预算口径统一（240 vs 248）」**：未核。
+
+---
