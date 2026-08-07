@@ -485,6 +485,202 @@ export function minStationGap(total: number, k: number): number {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// § 5.2 · **环几何的对外单源**（WO-TRANSIT-GEOMETRY）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 本节存在的唯一理由：**别的图层（今天是在途 / 在制层）要把东西落到同一个环上，
+ * 而它不许自己再算一遍站点位置**。
+ *
+ * ── 为什么必须是「导出纯数据」而不是「把渲染搬过去」──────────────────────────
+ * 在途图层此前自绘一套**直线**几何（一条 26px 高的横轨 + `left: p%` 的绝对定位方块），
+ * 与线路图的环**没有任何共同坐标系**：同一个基地在两张图上不是同一个点，
+ * 用户没法把「这批货在哪」与「这条链堵在哪」对起来看。修法只有一个 ——
+ * 坐标**只能有一处实现**。故本节把 §5.1 的极坐标原语（`ringAngle` / `ringPoint` /
+ * `ringArcPath`）包装成「给一组不透明 key，回一组锚点/弧」的纯数据出口，
+ * 由 `buildChainLineMap` 与在途图层**共用**。本节不产出任何 JSX、不引任何 React。
+ *
+ * ── `nodeId` 仍是不透明 key ────────────────────────────────────────────────────
+ * 本节对 key 只做两件事：**排在第几个**、**当 Map 的键**。零 `split`、零前缀判断。
+ *
+ * ── 诚实边界（必须随代码一起被读到）────────────────────────────────────────────
+ * 「同一个环、同一套均分规则」**不等于**「同一个 key 在两张图上落到同一个角度」：
+ * 线路图的站位来自引擎 `chain_loss_attribution` 的**链路节点**（`ChainStep`），
+ * 在途图层的站来自批次数据行自带的**基地 / 工序 key**——两套 key 今天**没有共同的 id 维度**
+ * （同族缺口已记在 `docs/PRD-sandbox-metro-semantics.md` §5：两个求解器的 locus 对不上）。
+ * 所以本节保证的是**几何单源**（同一个椭圆、同一个 `ringAngle` 均分、同一个 `ringArcPath`），
+ * 不是**实体对齐**。要做到后者，需引擎给在途层下发 `nodes[]`（图层的 `nodes` prop 已就位）。
+ * 消费方必须把这句话原样显示给用户，不许让「看起来对齐了」盖过去。
+ */
+
+/** 一个站在环上的锚点（纯数据；`x/y` 已是画布坐标）。 */
+export interface RingStationAnchor {
+  /** 不透明 key（本模块只拿它当 Map 键与顺序标识）。 */
+  nodeId: string;
+  index: number;
+  total: number;
+  /** 极角（弧度）。 */
+  angle: number;
+  /** 半径系数（同心环偏移 / 支线内圈）。 */
+  k: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * 一组站点 key → 环上锚点。**均分整圈**，与 `buildChainLineMap` 的主干站位同一条规则
+ * （`ringAngle(index, total)` + `ringPoint`）—— 这就是「坐标只有一处实现」的落点。
+ */
+export function ringStationAnchors(nodeIds: readonly string[], k = 1): RingStationAnchor[] {
+  const total = Math.max(1, nodeIds.length);
+  return nodeIds.map((nodeId, index) => {
+    const angle = ringAngle(index, total);
+    const p = ringPoint(angle, k);
+    return { nodeId, index, total, angle, k, x: p.x, y: p.y };
+  });
+}
+
+/**
+ * 顺行（顺时针）规范化：把 `a1` 抬进 `(a0, a0 + 2π]`，与 `ringArcPath` 的 `sweep=1` 同向。
+ * 起终点重合（自环）⇒ 整整一圈，而不是长度 0 —— 那样才画得出来，也才算得出弧长。
+ */
+export function forwardAngle(a0: number, a1: number): number {
+  const TWO_PI = Math.PI * 2;
+  const d = (((a1 - a0) % TWO_PI) + TWO_PI) % TWO_PI;
+  return a0 + (d === 0 ? TWO_PI : d);
+}
+
+/** 一个区间在环上的弧（纯数据）。`a1` 已顺行规范化，可能 > 2π。 */
+export interface RingSegmentArc {
+  segmentId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  a0: number;
+  a1: number;
+  k: number;
+  /** SVG path（`ringArcPath` 生成，与线路图区间同一个生成器）。 */
+  path: string;
+  /** 弧长（px）—— 弧长参数化的分母。 */
+  lengthPx: number;
+}
+
+/** 两个锚点之间的顺行弧。两端半径系数必须一致（同一圈上才谈得上区间）。 */
+export function ringSegmentArc(from: RingStationAnchor, to: RingStationAnchor, segmentId?: string): RingSegmentArc {
+  const a0 = from.angle;
+  const a1 = forwardAngle(a0, to.angle);
+  const k = from.k;
+  return {
+    segmentId: segmentId ?? `${from.nodeId}→${to.nodeId}`,
+    fromNodeId: from.nodeId,
+    toNodeId: to.nodeId,
+    a0,
+    a1,
+    k,
+    path: ringArcPath(a0, a1, k),
+    lengthPx: ringArcLength(a0, a1, k),
+  };
+}
+
+/**
+ * 弧长积分的采样格数（复合 Simpson，必须偶数）。
+ * 128 格在整圈上的截断误差 ~1e-4 px（被积函数光滑周期），远小于 `RING_ARC_TOLERANCE_PX`。
+ */
+export const RING_ARC_SAMPLES = 128;
+/** 弧长反解的二分次数。40 次 ⇒ 角度分辨率 ~2π/2⁴⁰，位置误差远在浮点噪声内。 */
+export const RING_ARC_BISECTIONS = 40;
+/**
+ * 弧长参数化的**公开容差**（px）：`|实际弧长(a0→解出的角) − t·总弧长| ≤ 此值`。
+ * 实测残差 ~1e-10 px（见 `transit-geometry.seam.test.tsx`），此处留三个数量级余量；
+ * 门直接引用本常数，不在测试里另写一个数（两处写数 = 迟早对不上）。
+ */
+export const RING_ARC_TOLERANCE_PX = 0.01;
+
+/** 椭圆参数曲线的速度 `|dP/dθ|`（弧长微分）。 */
+function ringArcSpeed(angle: number, k: number): number {
+  return Math.hypot(RING_LAYOUT.rx * k * Math.sin(angle), RING_LAYOUT.ry * k * Math.cos(angle));
+}
+
+/**
+ * 椭圆弧 `[a0, a1]` 的**弧长**（px）。复合 Simpson，纯函数、无随机（R6）。
+ *
+ * ⚠ 椭圆弧长没有初等闭式（第二类椭圆积分），所以这里是数值积分而不是 `r·Δθ`：
+ *   本环 `rx=372 / ry=252`，用 `r·Δθ` 会在长短轴之间差出 ~47%。
+ */
+export function ringArcLength(a0: number, a1: number, k: number, samples: number = RING_ARC_SAMPLES): number {
+  const n = samples % 2 === 0 ? samples : samples + 1;
+  const h = (a1 - a0) / n;
+  if (h === 0) return 0;
+  let sum = ringArcSpeed(a0, k) + ringArcSpeed(a1, k);
+  for (let i = 1; i < n; i++) sum += ringArcSpeed(a0 + i * h, k) * (i % 2 === 0 ? 2 : 4);
+  return Math.abs((h / 3) * sum);
+}
+
+/**
+ * ★ **弧长参数化**：`t ∈ [0,1]` 是**走完的弧长比例**，返回环上那一点。
+ *
+ * ── 为什么不是「弦的线性插值」（本单被点名的那条）────────────────────────────
+ * 弦是两站之间的**直线**，它离开曲线往环内塌。实测（本环、整圈均分）：
+ *   · 4 站时 t=0.5 的弦中点离弧上真点 **85.3px**，且椭圆残差 0.707（= 明显在环内）；
+ *   · **2 站时弦中点恰好是环心** —— 车会从环心穿过去，这不是"略偏"，是画错了。
+ *   · 即使 26 站，弦中点也偏 1.8px 且不在环上。
+ * ── 为什么也不是「角度的线性插值」──────────────────────────────────────────
+ * 角度均匀 ≠ 弧长均匀（椭圆上短轴附近走得慢）。实测 4 站时 t=0.5 两法相距 **29.8px**，
+ * 表现为"车在长轴段窜、在短轴段磨" —— 而在途批次的 `progress` 是**时间比例**，
+ * 时间均匀就该走得路程均匀，所以必须按弧长解。
+ *
+ * 实现：弧长关于 θ 严格单调（速度恒正）⇒ 二分反解，`RING_ARC_BISECTIONS` 次。
+ */
+export function ringArcPointAt(a0: number, a1: number, k: number, t: number): { angle: number; x: number; y: number } {
+  const clamped = Math.max(0, Math.min(1, t));
+  const total = ringArcLength(a0, a1, k);
+  if (total === 0 || a1 === a0) {
+    const p = ringPoint(a0, k);
+    return { angle: a0, x: p.x, y: p.y };
+  }
+  const target = total * clamped;
+  let lo = a0;
+  let hi = a1;
+  for (let i = 0; i < RING_ARC_BISECTIONS; i++) {
+    const mid = (lo + hi) / 2;
+    if (ringArcLength(a0, mid, k) < target) lo = mid;
+    else hi = mid;
+  }
+  const angle = (lo + hi) / 2;
+  const p = ringPoint(angle, k);
+  return { angle, x: p.x, y: p.y };
+}
+
+/**
+ * 沿半径把点推离环（正数 = 朝环外，负数 = 朝环内）。
+ * 站上挂徽标 / 堆叠时用它 —— **它不产生"在区间上"的位置**，正是为了让
+ * 「只能定位到站」的批次在几何上就不可能被读成「在路上跑」。
+ * 与线路图站名摆位（`ChainLineMapView.labelAnchor`）同一个实现。
+ */
+export function ringRadialOffsetPoint(angle: number, k: number, outwardPx: number): { x: number; y: number } {
+  const p = ringPoint(angle, k);
+  return radialOffsetFrom(p.x, p.y, angle, outwardPx);
+}
+
+/**
+ * 环在该角度处的**单位切向**（顺行方向）。图元要"车头朝着走的方向"时用它，
+ * 免得消费方自己去写一遍 `dP/dθ`（写第二遍就会与环的半径系数脱钩）。
+ */
+export function ringTangent(angle: number, k: number): { dx: number; dy: number } {
+  const dx = -RING_LAYOUT.rx * k * Math.sin(angle);
+  const dy = RING_LAYOUT.ry * k * Math.cos(angle);
+  const m = Math.hypot(dx, dy);
+  return m === 0 ? { dx: 1, dy: 0 } : { dx: dx / m, dy: dy / m };
+}
+
+/**
+ * 从环上任一点沿半径方向推开 —— 「离开环」的**唯一实现**。
+ * 线路图的站名摆位（`labelAnchor`）与在途层的站上徽标共用它，两处不许各写一遍。
+ */
+export function radialOffsetFrom(x: number, y: number, angle: number, outwardPx: number): { x: number; y: number } {
+  return { x: x + Math.cos(angle) * outwardPx, y: y + Math.sin(angle) * outwardPx };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // § 6 · 构建
 // ══════════════════════════════════════════════════════════════════════════════
 

@@ -479,8 +479,16 @@ describe("§6 · 一块画布多模式（不是多个页）", () => {
     await user.click(within(screen.getByTestId("sc-transit-toggle")).getByRole("checkbox"));
     const layer = await screen.findByTestId("sc-transit-layer");
     expect(within(layer).getByTestId("transit-flow-root")).toBeTruthy();
-    // 诚实位：本图层未与线路图站点坐标对齐，屏上明写
-    expect(within(layer).getByTestId("transit-flow-host-nodes").textContent ?? "").toContain("未与线路图站点坐标对齐");
+    /**
+     * 诚实位（WO-TRANSIT-GEOMETRY 后**改口径不改强度**）：
+     * 旧断言咬的是「本图层未与线路图站点坐标对齐」这句欠账原文；该欠账已还
+     * （几何单源 = `chainLineMap.ts`，见 `transit-geometry.seam.test.tsx`），
+     * 于是这里改咬**还账后剩下的那半句真话**：几何同源了，但两图的站点 key 宇宙仍不同
+     * ⇒ 同角度不代表同一个实体。**不许**因为"看起来对齐了"就把这句删掉。
+     */
+    const note = within(layer).getByTestId("transit-flow-host-nodes").textContent ?? "";
+    expect(note, "几何已与线路图同源这件事必须写在屏上").toContain("与线路图同源");
+    expect(note, "剩下的缺口（两图站点 key 不是同一套）不许被抹掉").toContain("同角度不代表同一个实体");
   });
 });
 
