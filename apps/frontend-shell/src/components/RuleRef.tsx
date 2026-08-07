@@ -23,10 +23,11 @@ export function RuleRef({ code }: { code: string }) {
       <b>{code}</b>
       {open && (
         <span
-          className="panel"
+          /* 欠账 #104：两跳的第二跳同样是浮层（且常盖在第一跳浮层上）→ 不透明 .popover-surface，非磨砂 .panel。 */
+          className="popover-surface"
           role="tooltip"
           data-testid="ruleref-pop"
-          style={{ position: "absolute", zIndex: 70, top: "130%", left: 0, minWidth: 300, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal", boxShadow: "0 8px 28px rgba(0,0,0,.45)" }}
+          style={{ position: "absolute", zIndex: 70, top: "130%", left: 0, minWidth: 300, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal" }}
         >
           {!data ? (
             <span style={{ color: "var(--muted2)" }}>加载中…</span>

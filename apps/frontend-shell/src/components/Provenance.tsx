@@ -85,7 +85,10 @@ export function Provenance({
       {children}
       {open && (
         <span
-          className="panel"
+          /* 欠账 #104：这层浮在密集正文之上，必须走**不透明**的 .popover-surface，
+             不能复用磨砂玻璃 .panel（底下的字会透上来与本层文字叠印）。投影随主题走 --popover-shadow，
+             不再内联硬编码 rgba。 */
+          className="popover-surface"
           role="tooltip"
           data-testid="prov-tip"
           style={{
@@ -98,7 +101,6 @@ export function Provenance({
             fontSize: 11,
             textAlign: "left",
             whiteSpace: "normal",
-            boxShadow: "0 8px 28px rgba(0,0,0,.45)",
           }}
         >
           {loading ? (

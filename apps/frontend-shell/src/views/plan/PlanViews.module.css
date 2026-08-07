@@ -112,12 +112,11 @@
   padding: 1px 7px;
   color: var(--muted);
 }
+/* 欠账 #104：决策依据浮层的表面交给全局 .popover-surface（不透明·主题感知），本类只留几何与字色。
+   原写死 rgba(...,0.97/0.96) 渐变：底层正文透上来，且浅色/暖砂主题下仍是暗底（浅底上一块黑）。 */
 .decProv {
   position: fixed;
   z-index: 60;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(14, 19, 26, 0.96));
-  border: 1px solid var(--line2);
-  border-radius: 9px;
   padding: 8px 12px;
   font-size: 11px;
   color: var(--muted);

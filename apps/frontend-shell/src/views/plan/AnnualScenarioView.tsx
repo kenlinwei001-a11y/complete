@@ -330,7 +330,7 @@ function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: A
         {zh.aop.decompFootnote}
       </div>
       {prov && (
-        <div className={styles.decProv} style={{ top: prov.top, left: prov.left }} role="tooltip" data-testid="dec-prov-pop">
+        <div className={`popover-surface ${styles.decProv}`} style={{ top: prov.top, left: prov.left }} role="tooltip" data-testid="dec-prov-pop">
           <span className="mono">{prov.ref}</span>
           <div>{zh.aop.decompProv(prov.ref)}</div>
         </div>

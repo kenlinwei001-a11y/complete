@@ -152,6 +152,23 @@ a {
     0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
+/* 悬浮层表面（WO-PROV-POPOVER-LEGIBILITY · 欠账 #104）——溯源/规则/决策依据等**浮在密集正文之上**的层。
+ * 与 .panel 刻意分家，**不是**换个名字的同一张卡：
+ *   · .panel 是磨砂玻璃（--panel-glass 半透 veil + backdrop-blur；warm 下更被 theme-warm.css 覆写成
+ *     rgba(255,255,255,.55)）。贴在页面上当卡片没问题——它下面是页面底色，合成结果稳定。
+ *   · 同一张玻璃**浮起来**盖在正文上就废了：浮层文字看到的背景 = f(浮层色, 底下恰好是哪几个像素)。
+ *     暗色实测：--txt 压在页面空白处 9.19:1，压在底层字形上 1.01:1（白压白）。
+ *     "把 --txt 调亮点"救不了——底下是什么由用户滚到哪儿决定，不由设计决定。
+ * 因此本表面：不透明背景（var(--popover-surface)，三套主题皆实色）+ **不设 backdrop-filter**。
+ * 浮层区域的渲染像素只由本表面决定 → 对比度重新变成一个可校核的常量（AA 数值见 tokens.css）。
+ * .panel 一字不改：模块卡 / 编辑器 / 导航等 40+ 个非浮层消费者继续吃玻璃质感。 */
+.popover-surface {
+  background: var(--popover-surface);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  box-shadow: var(--popover-shadow);
+}
+
 .section-title {
   /* nav-reorg N3：区头字号上调（10.5→12px），与组头/叶项层级更协调（不再过小到难读）。 */
   font-size: 12px;

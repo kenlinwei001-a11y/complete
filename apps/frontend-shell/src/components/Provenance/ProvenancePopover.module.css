@@ -1,13 +1,11 @@
+/* 欠账 #104：表面（背景/边/圆角/投影）整体交给全局 .popover-surface —— 不透明、主题感知、单一来源。
+   本类只留几何（定位/宽度/内距/字号）。原先这里是 rgba(...,0.98) 渐变 + backdrop-filter：
+   0.98 看着"几乎不透明"，但 2% 的底层正文照样透上来，且三套主题下这两个写死的暗色值根本不跟着翻。 */
 .pop {
   position: fixed;
   z-index: 300;
   width: 360px;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.98), rgba(14, 19, 26, 0.98));
-  border: 1px solid var(--line2);
-  border-radius: 12px;
   padding: 12px 14px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(16px);
   font-size: 12px;
 }
 
