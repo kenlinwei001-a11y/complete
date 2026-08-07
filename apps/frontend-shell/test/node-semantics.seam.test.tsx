@@ -64,9 +64,10 @@ const RAW = JSON.parse(readRepo("apps/frontend-shell/test/fixtures/chain-loss-li
   empty: { stepId: string; nodeId: string; label: string; reason: string; emptyKind: string }[];
   anchor: { so: string };
 };
-/** 去掉取证头，剩下的就是求解器原样返回的那个 `data` 对象。 */
+/** 去掉取证头，剩下的就是求解器原样返回的那个 `data` 对象（与既有 metro-semantics 门同族做法）。 */
 const PAYLOAD = (() => {
-  const { __fixture_provenance: _p, ...rest } = RAW;
+  const rest: Record<string, unknown> = { ...RAW };
+  delete rest.__fixture_provenance;
   return rest;
 })();
 
