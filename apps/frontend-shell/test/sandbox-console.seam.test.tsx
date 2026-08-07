@@ -304,8 +304,16 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     expect(txt).toContain(`${CHAIN_STAGE_DESIGN_TARGET.stageCount} 段 ${CHAIN_STAGE_DESIGN_TARGET.nodeCount} 节点`);
     expect(txt).toContain(`${CHAIN_STAGES.length} 段`);
     expect(txt).toContain(`${CHAIN_NODE_REGISTRY.length} 个静态在册节点`);
+    // ⚠ 差额**不许**从 `chainStageCoverage` 自己算出来再拿去比对自己（那是同义反复，
+    //   实测：把 missingNodeCount 直接改成 0 也不会红）。这里从**契约常数**独立算一遍。
+    const expectMissingStages = CHAIN_STAGE_DESIGN_TARGET.stageCount - CHAIN_STAGES.length;
+    const expectMissingNodes = CHAIN_STAGE_DESIGN_TARGET.nodeCount - CHAIN_NODE_REGISTRY.length;
+    expect(expectMissingNodes, "设计目标与后端注册表若真的齐了，本用例应当被删掉而不是放行").toBeGreaterThan(0);
+    expect(txt).toContain(`差 ${expectMissingStages} 段 ${expectMissingNodes} 个节点尚未建模`);
+    // 派生函数本身也咬一道（它是屏上那句话的唯一出处）
     const cov = chainStageCoverage(buildStageBoard(loadLoss()));
-    expect(txt).toContain(`差 ${cov.missingStageCount} 段 ${cov.missingNodeCount} 个节点尚未建模`);
+    expect(cov.missingStageCount).toBe(expectMissingStages);
+    expect(cov.missingNodeCount).toBe(expectMissingNodes);
     // 段名取 CHAIN_STAGES 派生的显示名（不是前端另抄一份 24 节点词表）
     for (const s of CHAIN_STAGES) expect(screen.getByTestId(`sc-lane-${s}`)).toBeTruthy();
   });
