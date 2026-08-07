@@ -4235,7 +4235,8 @@ export class SolverService {
     const lazy = await this.lazyContextEnabled(tenantId);
     const c = await this.loadContext(tenantId, undefined, {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
-      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
+      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的求解器才载该台账（按需·不全表扫）。
+      // #82 起 affected_orders 也在内（其 risks[] 走 riskFactorProjection 同一投影）→ 集合已非"两个"，勿写死数量。
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
@@ -4310,7 +4311,8 @@ export class SolverService {
     const lazy = await this.lazyContextEnabled(ctx.tenantId);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, {
       withExtended: !!EXTENDED_SOLVERS[solverKey] || solverKey === "capacity_forecast" || CHAIN_MATERIAL_SOLVERS.has(solverKey),
-      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的两个求解器才载该台账（按需·不全表扫）。
+      // WO-ADOPT-MITIGATION：真曲线要吃「已采纳处置方案」的求解器才载该台账（按需·不全表扫）。
+      // #82 起 affected_orders 也在内（其 risks[] 走 riskFactorProjection 同一投影）→ 集合已非"两个"，勿写死数量。
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
