@@ -756,6 +756,26 @@
         "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
       },
       "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
+    },
+    "check-output-units.mjs": {
+      "alias": "output-units:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "packages/contracts/src/solver-units.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/base-outlook.ts",
+        "apps/datacore/src/solvers/risk.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 output-units:check",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-07 亲跑三处变异各 RC=1，还原后 RC=0",
+        "note": "① 删登记表 p50 一行 → 断言① 红「裸数字字段 p50」；② 注释掉 service.ts invoke 的 out.units = units → 断言② 红（4 个求解器同时报「输出根没有 units 键」）；③ 把登记表 p50 改名 p50x → 断言①③ 同时红（裸字段 + 登记表过期）。"
+      },
+      "notes": "MANUAL 签字：本门要起内存态 DataCore + 跑合成种子 seed 42 + 真 invoke 求解器（~40s），与 gates 链里清一色的静态门画像不同；CI gates 已约 28 分钟，是否值得并链需单独评估时长成本（同 check-bstack-derive 先例）。触发时机：改动 guardedPaths 覆盖的求解器输出字段或量纲登记表时，由该 WO 的 dev 手动跑。本体 §7 已登记本门（含四条断言与变异反证原文）。",
+      "disposition": "MANUAL"
     }
   }
 }
