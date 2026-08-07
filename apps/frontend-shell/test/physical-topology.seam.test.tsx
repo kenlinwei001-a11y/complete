@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render as rtlRender, screen, within, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
  * WO-SANDBOX-F3 · 物理拓扑视图 —— SEAM + 诚实性 + 三色系 + 缩放数学 + 定时器纪律。
@@ -44,6 +45,20 @@ import {
   ZOOM_LIMITS,
   __mirrors,
 } from "@/views/sim/physicalTopology";
+
+/**
+ * WO-TOPO-REALDATA 起本组件用 `useQuery` 读真值（取不到就回落占位），故渲染需要 Provider。
+ * 本文件全部用例都**不设 token** → `enabled` 门关闭 → 一个请求都不发 → 断言的仍是"接不上真值时的占位行为"，
+ * 与接线前逐字节一致。真值路径的断言在 `physical-topology-realdata.seam.test.tsx`（那边显式 set token）。
+ */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  // gcTime: Infinity —— react-query 在观察者归零（= 卸载）时会 `setTimeout(gcTime)` 回收缓存。
+  // 那是**库自己的**句柄（leakGuard 按 node_modules 归属把它过滤掉了），但本文件「定时器纪律」组
+  // 用的是 `vi.getTimerCount()`，它不认归属、一律计数 → 会把库的 gc 句柄误报成组件漏清。
+  // Infinity 让 `isValidTimeout` 判否 → 压根不排这个定时器，断言重新只咬组件自己的 hint 句柄。
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>, options);
+}
 
 /** 把注入的基地册换成任意集合（in-place，保持 mock 的引用同一性）。 */
 function injectBases(rows: Record<string, unknown>[]): void {
@@ -225,16 +240,22 @@ describe("SEAM · 工序轴与设备型表**从 contracts 单源派生**（再�
 // 3. 诚实性：占位显式标注 / EMPTY 不补 0 / 真值与占位分层
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("诚实性 · 占位值不冒充实测，算不出来标 EMPTY", () => {
-  it("常驻横幅明说占位 + 列出接真值入口（三个已存在的对象/求解器）", () => {
+  it("常驻横幅明说占位 + 列出真值接线台账（已接线的与仍是缺口的都在）", () => {
     render(<PhysicalTopologyView />);
     const banner = screen.getByTestId("phys-topo-placeholder-banner");
+    // 本文件不设 token → 真值门关闭 → 全格占位，标题即接线前那句
     expect(banner).toHaveTextContent("格内数值为占位值（未接真实数据）");
     expect(banner).toHaveTextContent("不是实测");
     expect(banner).toHaveTextContent("EMPTY");
     const entries = screen.getByTestId("phys-topo-entrypoints");
+    // WO-TOPO-REALDATA：EquipmentOEE 同时喂 util 与 oee 两条 → 台账里出现两次，getAllByText 才对
+    expect(within(entries).getAllByText("EquipmentOEE").length).toBe(2);
+    expect(within(entries).getByText("Equipment.ctSeconds")).toBeInTheDocument();
+    expect(within(entries).getByText("WIPLot")).toBeInTheDocument();
+    // 仍是缺口的两条照实登记（接上了的不许把没接上的从台账里抹掉）
     expect(within(entries).getByText("capacity_rollup")).toBeInTheDocument();
     expect(within(entries).getByText("bottleneck_matrix")).toBeInTheDocument();
-    expect(within(entries).getByText("EquipmentOEE")).toBeInTheDocument();
+    expect(screen.getByTestId("phys-topo-entry-capacity_rollup")).toHaveAttribute("data-status", "gap");
   });
 
   it("每一格都带「占位」角标（不存在没标注的格）", () => {
@@ -248,7 +269,7 @@ describe("诚实性 · 占位值不冒充实测，算不出来标 EMPTY", () => 
     }
   });
 
-  it("节拍无数据源 → 详情面板显 EMPTY 且 value===null（不补 0、不给假默认）", async () => {
+  it("节拍取不到真值 → 详情面板显 EMPTY 且 value===null（不补 0、也不回落占位）", async () => {
     const user = userEvent.setup();
     injectBases([fakeBase({ baseId: "b1", name: "甲" })]);
     render(<PhysicalTopologyView />);
@@ -258,10 +279,12 @@ describe("诚实性 · 占位值不冒充实测，算不出来标 EMPTY", () => 
     expect(takt).toHaveAttribute("data-provenance", "empty");
     expect(takt).toHaveTextContent("EMPTY");
     expect(takt).not.toHaveTextContent(/\b0\s*s\/电芯/);
-    expect(takt).toHaveTextContent(/无 Equipment\.ctSeconds 接口/);
+    // WO-TOPO-REALDATA：真值源已存在（Equipment.ctSeconds），所以缺口文案改成"这一次没取到"，
+    // **不再说"前端无此接口"** —— 那句话今天已经是假的，留着就是过期的诚实位（比没有更危险）。
+    expect(takt).toHaveTextContent(/不回落占位/);
 
-    // 派生层同口径：takt.value 必须是 null，不是 0
-    const m = buildTopology(42);
+    // 派生层同口径：取不到真值时 takt.value 必须是 null，不是 0，也不是 seed 占位数
+    const m = buildTopology(42, null);
     for (const row of m.rows) for (const c of row.cells) expect(c.takt.value).toBeNull();
   });
 
