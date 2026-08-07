@@ -1,23 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CHAIN_NODE_REGISTRY } from "@platform/contracts";
+import { runSolver } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import {
   PROVENANCE_LABEL,
   VAR_CLASSES,
   VAR_CLASS_META,
   VAR_CONTROL_BY_CLASS,
+  NodeSemanticPayloadSchema,
+  buildNodeLiveView,
   buildPlaceholderInspectorInput,
   computeInspectorReadout,
+  drillValueText,
   drivesReadout,
   effectiveNumber,
   effectiveOption,
   groupByClass,
+  type ChainLossEvidenceRow,
   type InspectorInput,
   type InspectorVariable,
+  type NodeLiveView,
+  type NodeSemanticPayload,
   type VarClass,
   type VarValues,
   type WaterfallBucket,
 } from "./inspectorModel";
+// 求解器 key 取既有单源（`chainLineMap.ts` 已为前端登记过一次）——本文件不再写第二遍那个字符串。
+import { CHAIN_LOSS_SOLVER_KEY } from "./chainLineMap";
+import { SEMANTICS_ORIGIN_NOTE, chainNodeSemantics, chainNodeSemanticsCoverage } from "./chainNodeSemantics";
 import styles from "./InspectorNodePanel.module.css";
 
 /**
@@ -121,7 +131,207 @@ function WaterfallRow({ b, leadDays }: { b: WaterfallBucket; leadDays: number })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ③ 七类变量输入 —— 每类一种控件（S 类**绝不**渲染 input[type=range]）
+// WO-NODE-SEMANTICS · ③ 节点级流指标 / ④ R13 下钻证据 / ⑤ 跨节点冲突 / ⓪ 节点定位
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 取数状态（宿主给）。**用来当面回答"为什么这里是空的"**，不是拿来兜底填数的。 */
+export type LiveLoadState =
+  /** 宿主没打算接引擎载荷（独立页默认态）。 */
+  | { readonly status: "off" }
+  | { readonly status: "loading" }
+  | { readonly status: "ready" }
+  | { readonly status: "error"; readonly message: string };
+
+/**
+ * ⓪ 节点定位（`pos`）。
+ *
+ * ⚠ **本节点没写语义 ⇒ `return null`**，不渲染标题、不渲染"暂无"占位。
+ *   （注册表正在从 12 扩到 24，扩表后新节点没有语义是常态；渲染一排空壳会让人以为"系统认为它没有冲突"，
+ *    而真相是"还没人写"。两件事必须分得开 —— 变异反证 ② 咬的就是这一条。）
+ */
+function NodePosNote({ nodeId }: { nodeId: string }) {
+  const sem = chainNodeSemantics(nodeId);
+  if (sem === undefined) return null;
+  return (
+    <p className={styles.posNote} data-testid="insp-pos" data-origin="editorial">
+      <b className={styles.posTag}>节点定位</b>
+      {sem.pos}
+      <small className={styles.posOrigin}>{SEMANTICS_ORIGIN_NOTE}</small>
+    </p>
+  );
+}
+
+/** ⑤ 跨节点冲突（`cf`）。没写语义 / 写了语义但没有能指出依据的冲突 ⇒ 整块不出现（同上，不留空壳）。 */
+function NodeConflictSection({ nodeId }: { nodeId: string }) {
+  const sem = chainNodeSemantics(nodeId);
+  const cf = sem?.cf ?? [];
+  if (cf.length === 0) return null;
+  return (
+    <section className={styles.section} data-testid="insp-cf" aria-labelledby="insp-cf-h" data-cf-count={String(cf.length)}>
+      <h4 className={styles.sectionTitle} id="insp-cf-h">
+        ⑤ 跨节点冲突 · 改这里会连累谁
+        <small className={styles.sectionSub}>
+          编辑口径（人写的，非引擎下发）；**每条逐项附代码依据 file:line**，指不出依据的一条都没写
+        </small>
+      </h4>
+      <ul className={styles.cfList}>
+        {cf.map((c) => (
+          <li key={c.conflictId} className={styles.cfRow} data-testid={`insp-cf-${c.conflictId}`} data-basis-count={String(c.basis.length)}>
+            <span className={styles.cfText}>{c.text}</span>
+            <ul className={styles.cfBasis} data-testid={`insp-cf-basis-${c.conflictId}`}>
+              {c.basis.map((b) => (
+                <li key={b}>
+                  <code className={styles.cfBasisCode}>{b}</code>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** ③ 节点级流指标 —— 只出引擎接得到的行；接不到就**不显示**（绝不填设计稿里那些编的数）。 */
+function NodeKpiSection({ live, state }: { live: NodeLiveView; state: LiveLoadState }) {
+  return (
+    <section className={styles.section} data-testid="insp-kpi" aria-labelledby="insp-kpi-h" data-kpi-count={String(live.kpis.length)}>
+      <h4 className={styles.sectionTitle} id="insp-kpi-h">
+        ③ 节点级流指标 · 引擎真值
+        <small className={styles.sectionSub}>
+          全部来自 <code>chain_loss_attribution</code> 载荷 + S0 契约函数；接不到的指标**这一行根本不出现**，不填占位数字
+        </small>
+      </h4>
+      {live.kpis.length === 0 ? (
+        <p className={styles.emptyNote} data-testid="insp-kpi-empty">
+          <b>接不到真值 ⇒ 不显示</b>：{liveGapReason(live, state)}
+        </p>
+      ) : (
+        <ul className={styles.kpiList}>
+          {live.kpis.map((k) => (
+            <li key={k.kpiId} className={styles.kpiRow} data-testid={`insp-kpi-${k.kpiId}`} data-value={k.value}>
+              <span className={styles.kpiLabel}>{k.label}</span>
+              <b className={styles.kpiValue}>{k.value}</b>
+              <small className={styles.kpiSource}>{k.source}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** "为什么这里是空的"——四种成因分开说，混成一句「暂无数据」正是本仓要根治的东西。 */
+function liveGapReason(live: NodeLiveView, state: LiveLoadState): string {
+  if (state.status === "off") {
+    return "宿主没有接引擎载荷（本视图当前只渲染占位输入）。接上 chain_loss_attribution 后本区块自动有值。";
+  }
+  if (state.status === "loading") return "正在取 chain_loss_attribution 载荷…";
+  if (state.status === "error") return `取 chain_loss_attribution 失败：${state.message}`;
+  if (!live.present) {
+    return "载荷取回来了，但**本节点不在这一次的载荷里**（锚点订单那条链没有经过它）—— 这不是 0，是没有这个节点。";
+  }
+  return "本节点在载荷里只有诚实缺席行、没有可算的环节 ⇒ 节点级流指标无从谈起（不补 0）。";
+}
+
+/**
+ * ④ R13 下钻证据 —— **本单最值钱的一块**。
+ *
+ * 逐条显示 `drillType.drillId.drillField` + `drillValue`（原单位真值）+ 单位 + 换算式。
+ * `drillValue` 与 `conversion` **逐字符透传引擎原文**：前端零加法、零换算、零改写。
+ * 没有证据的环节显示引擎给的缺载原因原文（`empty[].reason` / `probe`），不空着。
+ */
+function DrillEvidenceSection({ live, state }: { live: NodeLiveView; state: LiveLoadState }) {
+  const rows: readonly ChainLossEvidenceRow[] = live.evidence;
+  return (
+    <section
+      className={styles.section}
+      data-testid="insp-drill-evidence"
+      aria-labelledby="insp-ev-h"
+      data-evidence-count={String(rows.length)}
+      data-empty-count={String(live.empty.length)}
+    >
+      <h4 className={styles.sectionTitle} id="insp-ev-h">
+        ④ R13 下钻证据 · 每个天数指回一个真对象的真字段
+        <small className={styles.sectionSub}>
+          `drillValue` 是**该字段在仓储里的真值本身**（原单位·未换算）；换算成天数由引擎下发的换算式说清，
+          前端**原样透出、一个字不改**（改一个字这道门当场红）
+          {live.anchorSo === null ? null : <> · 本次锚点单 <code>{live.anchorSo}</code></>}
+        </small>
+      </h4>
+
+      {rows.length === 0 && live.empty.length === 0 ? (
+        <p className={styles.emptyNote} data-testid="insp-drill-none">
+          <b>本节点没有下钻证据</b>：{liveGapReason(live, state)}
+        </p>
+      ) : null}
+
+      {rows.length === 0 ? null : (
+        <ul className={styles.evList}>
+          {rows.map((e) => (
+            <li
+              key={e.stepId}
+              className={styles.evRow}
+              data-testid={`insp-drill-${e.stepId}`}
+              data-drill-value={drillValueText(e)}
+              data-drill-unit={e.drillUnit}
+              data-days={String(e.days)}
+              data-value-add={e.valueAdd ? "1" : "0"}
+            >
+              <span className={styles.evHead}>
+                <b className={styles.evLabel}>{e.label}</b>
+                <em className={styles.evKind}>{e.kind}</em>
+                {e.valueAdd ? <b className={styles.vaBadge}>增值</b> : null}
+                <span className={styles.evDays}>{fmtDays(e.days)}</span>
+              </span>
+              <code className={styles.evTriple} data-testid={`insp-drill-triple-${e.stepId}`}>
+                {e.drillType}.{e.drillId}.{e.drillField}
+              </code>
+              <span className={styles.evValueRow}>
+                <span className={styles.evValueLabel}>字段真值</span>
+                <b className={styles.evValue} data-testid={`insp-drill-value-${e.stepId}`}>
+                  {drillValueText(e)}
+                </b>
+                <em className={styles.evUnit} data-testid={`insp-drill-unit-${e.stepId}`} title="引擎侧的单位枚举，原样透出（前端不复写词表、不据它换算）">
+                  {e.drillUnit}
+                </em>
+              </span>
+              <code className={styles.evConversion} data-testid={`insp-drill-conversion-${e.stepId}`}>
+                {e.conversion}
+              </code>
+              {e.derivationEdge === "" ? null : (
+                <small className={styles.evEdge} data-testid={`insp-drill-edge-${e.stepId}`}>
+                  派生边：{e.derivationEdge}
+                </small>
+              )}
+              <small className={styles.evSolver}>算出它的求解器：{e.solverKey}</small>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {live.empty.length === 0 ? null : (
+        <ul className={styles.evList} data-testid="insp-drill-empty-list">
+          {live.empty.map((e) => (
+            <li key={e.stepId} className={styles.evEmptyRow} data-testid={`insp-drill-empty-${e.stepId}`} data-empty-kind={e.emptyKind}>
+              <span className={styles.evHead}>
+                <b className={styles.evLabel}>{e.label}</b>
+                <em className={styles.evKind}>{e.kind}</em>
+                <b className={styles.emptyValue}>EMPTY</b>
+                <em className={styles.evEmptyKind}>{e.emptyKind}</em>
+              </span>
+              <small className={styles.evReason}>{e.reason}</small>
+              {e.probe === undefined ? null : <small className={styles.evProbe}>取证：{e.probe}</small>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ⑥ 七类变量输入 —— 每类一种控件（S 类**绝不**渲染 input[type=range]）
 // ══════════════════════════════════════════════════════════════════════════════
 interface VarRowProps {
   v: InspectorVariable;
@@ -257,9 +467,18 @@ export interface InspectorNodePanelProps {
   running?: boolean;
   /** 值变化回调（面板自持状态；此回调只用于把值透出去给主视图/引擎）。 */
   onValuesChange?: (values: VarValues) => void;
+  /**
+   * WO-NODE-SEMANTICS：引擎载荷在本节点上的投影（R13 证据 / 诚实缺席 / 节点级流指标）。
+   * 缺省 = 宿主没接载荷 ⇒ 这两块显式说明"为什么是空的"，**不填占位数字**。
+   */
+  live?: NodeLiveView | null;
+  /** 载荷取数状态（用来当面回答"为什么这里是空的"）。 */
+  liveState?: LiveLoadState;
 }
 
-export function InspectorNodePanel({ input, running = false, onValuesChange }: InspectorNodePanelProps) {
+const LIVE_OFF: LiveLoadState = { status: "off" };
+
+export function InspectorNodePanel({ input, running = false, onValuesChange, live, liveState = LIVE_OFF }: InspectorNodePanelProps) {
   const [values, setValues] = useState<VarValues>({});
   const [hint, setHint] = useState<string | null>(null);
 
@@ -325,6 +544,8 @@ export function InspectorNodePanel({ input, running = false, onValuesChange }: I
   const readout = useMemo(() => computeInspectorReadout(input, values), [input, values]);
   const groups = useMemo(() => groupByClass(input.variables), [input.variables]);
   const inapplicable = useMemo(() => new Set(readout.inapplicableVarIds), [readout.inapplicableVarIds]);
+  // 宿主没给投影 ⇒ 造一份"全空"的（`present:false`），让下游一律走同一条渲染路径，不再各处 if。
+  const liveView = useMemo(() => live ?? buildNodeLiveView(input.node.nodeId, null), [live, input.node.nodeId]);
 
   const flowPct = readout.flowEfficiency === null ? null : readout.flowEfficiency * 100;
 
@@ -366,6 +587,9 @@ export function InspectorNodePanel({ input, running = false, onValuesChange }: I
           {hint}
         </p>
       ) : null}
+
+      {/* ── ⓪ 节点定位（pos）· 编辑口径，非引擎下发；没写语义的节点整块不出现 ─── */}
+      <NodePosNote nodeId={input.node.nodeId} />
 
       {/* ── ① 五段耗时瀑布 ───────────────────────────────────────────────── */}
       <section className={styles.section} data-testid="insp-waterfall" aria-labelledby="insp-wf-h">
@@ -413,10 +637,19 @@ export function InspectorNodePanel({ input, running = false, onValuesChange }: I
         ) : null}
       </section>
 
-      {/* ── ③ 七类变量分组输入 ───────────────────────────────────────────── */}
+      {/* ── ③ 节点级流指标（引擎真值；接不到就不显示）───────────────────── */}
+      <NodeKpiSection live={liveView} state={liveState} />
+
+      {/* ── ④ R13 下钻证据（drillValue / conversion 逐字符透传）─────────── */}
+      <DrillEvidenceSection live={liveView} state={liveState} />
+
+      {/* ── ⑤ 跨节点冲突（编辑口径 + file:line 依据；没依据的不写）───────── */}
+      <NodeConflictSection nodeId={input.node.nodeId} />
+
+      {/* ── ⑥ 七类变量分组输入 ───────────────────────────────────────────── */}
       <section className={styles.section} data-testid="insp-variables" aria-labelledby="insp-var-h">
         <h4 className={styles.sectionTitle} id="insp-var-h">
-          ③ 变量输入 · 七类
+          ⑥ 变量输入 · 七类
           <small className={styles.sectionSub}>七类推演机理不同 ⇒ 控件不同。S 类是离散分支换拓扑，不是滑杆</small>
         </h4>
         {groups.map(({ cls, vars }) => (
@@ -480,10 +713,66 @@ export { VAR_CLASSES };
  *  · `onNodeIdChange` —— 下拉切换时回抛，宿主可与画布选中态同步。
  *  · `chrome="embedded"` —— 300px 侧栏里渲染时折掉那句长来源说明（下拉与面板本体不动）。
  */
+/**
+ * WO-NODE-SEMANTICS 追加：
+ *  · `lossPayload` —— 宿主**已经取回**的 `chain_loss_attribution` 载荷。
+ *    传了就直接用，本视图**不再自取**（"同一个问题不问两遍"）。
+ *  · 没传时本视图自取一次（`{}` 无参 = 引擎按 `so` 字典序选锚点，R6 确定性）。
+ *    这条自取路径是为了让 R13 下钻证据在**今天**就能上屏 —— 控制台右栏这一格今天拿不到宿主的载荷
+ *    （`SandboxConsole` 把载荷留在自己 state 里，本单不碰那个文件）。代价明写在屏上，
+ *    宿主一旦接上 `lossPayload`，这一次请求当场消失。
+ */
 export interface NodeInspectorExtraProps {
   selectedNodeId?: string;
   onNodeIdChange?: (nodeId: string) => void;
   chrome?: "full" | "embedded";
+  lossPayload?: unknown;
+}
+
+/** 载荷取数（宿主没给才自取）。**无 debounce、无定时器**——一次性拉，卸载即 abort。 */
+function useChainLossPayload(injected: unknown): { payload: NodeSemanticPayload | null; state: LiveLoadState } {
+  const hasInjected = injected !== undefined && injected !== null;
+  const [state, setState] = useState<LiveLoadState>(hasInjected ? { status: "ready" } : { status: "loading" });
+  const [fetched, setFetched] = useState<NodeSemanticPayload | null>(null);
+
+  useEffect(() => {
+    if (hasInjected) return;
+    let cancelled = false;
+    const ac = new AbortController();
+    setState({ status: "loading" });
+    runSolver(CHAIN_LOSS_SOLVER_KEY, {}, ac.signal).then(
+      (raw) => {
+        if (cancelled) return;
+        const parsed = NodeSemanticPayloadSchema.safeParse((raw as { data?: unknown })?.data ?? raw);
+        if (!parsed.success) {
+          // 形状不合契约 ⇒ 报出来，**不猜、不补字段**（S0 冻结的意义就在这）。
+          setState({ status: "error", message: `载荷形状不合契约：${parsed.error.issues.map((i) => i.message).join(" · ")}` });
+          return;
+        }
+        setFetched(parsed.data);
+        setState({ status: "ready" });
+      },
+      (e: unknown) => {
+        if (cancelled) return;
+        // 刻意**不弹 toast**：本区块只是右栏的一格，取不到就当面把原因写在这一格里，
+        // 不去打扰整页（也避免在测试里制造全局 toast 状态污染）。
+        const msg = e instanceof Error ? e.message : JSON.stringify(e);
+        setState({ status: "error", message: msg });
+      },
+    );
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [hasInjected]);
+
+  const injectedParsed = useMemo(() => {
+    if (!hasInjected) return null;
+    const parsed = NodeSemanticPayloadSchema.safeParse(injected);
+    return parsed.success ? parsed.data : null;
+  }, [hasInjected, injected]);
+
+  return { payload: hasInjected ? injectedParsed : fetched, state };
 }
 
 export function NodeInspectorView({
@@ -491,8 +780,10 @@ export function NodeInspectorView({
   selectedNodeId,
   onNodeIdChange,
   chrome = "full",
+  lossPayload,
 }: Partial<ViewRendererProps> & NodeInspectorExtraProps) {
   const nodes = CHAIN_NODE_REGISTRY;
+  const { payload, state: liveState } = useChainLossPayload(lossPayload);
   // 初始节点：`view.options.nodeId` 指定即用它（且必须在册），否则取册首。**不在前端编一个自由串。**
   const requested = (view?.options as { nodeId?: unknown } | undefined)?.nodeId;
   const initial = typeof requested === "string" && nodes.some((n) => n.nodeId === requested) ? requested : (nodes[0]?.nodeId ?? "");
@@ -510,6 +801,9 @@ export function NodeInspectorView({
     () => (def === undefined ? null : buildPlaceholderInspectorInput({ nodeId: def.nodeId, label: def.label, stage: def.stage })),
     [def],
   );
+  // 引擎载荷在**当前这个节点**上的投影（R13 证据 / 诚实缺席 / 节点级流指标）。
+  const live = useMemo(() => (def === undefined ? null : buildNodeLiveView(def.nodeId, payload)), [def, payload]);
+  const coverage = useMemo(() => chainNodeSemanticsCoverage(), []);
 
   if (input === null) {
     // 注册表空 ⇒ 没有节点可检视。**不造一个占位节点**（那正是"看着合理的默认值"式静默兜底）。
@@ -548,8 +842,24 @@ export function NodeInspectorView({
             <>节点清单派生自 <code>CHAIN_NODE_REGISTRY</code>（contracts 单源 · 共 {nodes.length} 个在册节点），前端不另维护一份</>
           )}
         </small>
+        <small
+          className={styles.hostNote}
+          data-testid="node-inspector-semantics-coverage"
+          data-with-semantics={String(coverage.withSemantics)}
+          data-registered={String(coverage.registered)}
+        >
+          节点语义（定位 / 跨节点冲突）覆盖 {coverage.withSemantics}/{coverage.registered} 个在册节点；
+          {coverage.missing.length === 0
+            ? "已全覆盖"
+            : `尚未写语义的 ${coverage.missing.length} 个（${coverage.missing.join(" / ")}）在屏上**整块不出现**，不留空壳`}
+        </small>
+        <small className={styles.hostNote} data-testid="node-inspector-live-cost">
+          {lossPayload === undefined
+            ? "本区块的 R13 证据由本视图自取一次 chain_loss_attribution（宿主接上 lossPayload 后这次请求即消失）"
+            : "R13 证据复用宿主已取回的那一份 chain_loss_attribution —— 未发第二次请求"}
+        </small>
       </header>
-      <InspectorNodePanel input={input} />
+      <InspectorNodePanel input={input} live={live} liveState={liveState} />
     </div>
   );
 }
