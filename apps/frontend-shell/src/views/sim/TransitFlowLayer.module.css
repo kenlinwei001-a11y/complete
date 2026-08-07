@@ -259,11 +259,12 @@
   color: var(--muted);
 }
 
+/* 不设 max-height：viewBox 是 980×680，压高度会让 SVG 盒子小于实际画幅（overflow:visible 下
+   内容会溢出盒子，元素截图与滚动容器都会把下半个环切掉——真浏览器实拍抓到过）。 */
 .ringSvg {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 460px;
   overflow: visible;
 }
 

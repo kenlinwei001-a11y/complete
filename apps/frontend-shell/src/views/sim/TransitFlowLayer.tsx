@@ -95,14 +95,27 @@ import styles from "./TransitFlowLayer.module.css";
  * ⚠ 曾经最容易犯的错：为了让三类都能"漂亮地在环上滑"，给后两类补一个起点。
  *   那是纯发明。`Shipment` 没有起运地、`WIPLot` 没有 eta —— 补出来的进度条是编的。
  */
-/** 到站徽标沿半径**朝环外**推开的距离（px）。必须显著大于站圈半径，否则会压在弧上被误读成"在区间里"。 */
-const ARRIVAL_BADGE_OFFSET_PX = 26;
+/**
+ * 到站徽标沿半径**朝环外**推开的距离（px）。必须显著大于站圈半径，否则会压在弧上被误读成"在区间里"；
+ * 也必须大于站名标签的外推距离（`RING_STATION_R + 12`），否则徽标压在站名上 —— 真浏览器实拍抓到过。
+ */
+const ARRIVAL_BADGE_OFFSET_PX = 36;
 /** 同一站上多个到站徽标的叠放步距（px）。 */
 const ARRIVAL_BADGE_STEP_PX = 15;
 /** 站驻留堆叠沿半径**朝环内**的起始距离（px，取负 = 朝内）。 */
-const RESIDENT_STACK_OFFSET_PX = -22;
-/** 堆叠里每一批再朝内让开的步距（px）。 */
-const RESIDENT_STACK_STEP_PX = -9;
+const RESIDENT_STACK_OFFSET_PX = -20;
+/**
+ * 堆叠排成**网格**而不是一长条。
+ * 由来（真浏览器实拍抓到的）：demo seed 下 `WIPLot` 有 50 批且高度集中在少数几道工序，
+ * 单列堆叠会顺着半径一路穿过环心扎到对面 —— 那不是"堆积"，那是一根刺穿全图的柱子。
+ * 网格化只改**排布**，不改条数：**一批仍是一条**（`transit-resident-{batchId}` 一个不少），
+ * 不做"只画前 N 个 + 省略号"那种把批次藏起来的减量。
+ */
+const RESIDENT_COLS = 5;
+/** 网格沿**切向**的列距（px）。 */
+const RESIDENT_COL_STEP_PX = 13;
+/** 网格沿**半径朝内**的行距（px，取负 = 朝内）。 */
+const RESIDENT_ROW_STEP_PX = -7;
 /** 在途层站圈半径（px）。它只是个位置标记，不编码任何量（编码量的是线路图的站圈）。 */
 const RING_STATION_R = 6;
 /** 车（三角形）的长与半宽（px）。 */
@@ -111,8 +124,8 @@ const CAR_HALF_W = 6;
 /** 到站徽标（菱形）的半对角（px）。 */
 const BADGE_R = 9;
 /** 驻留横条的半长与高（px）。 */
-const RESIDENT_HALF_W = 11;
-const RESIDENT_H = 5;
+const RESIDENT_HALF_W = 5;
+const RESIDENT_H = 4;
 
 /** 三类图元的形状标识 —— DOM 上的 `data-glyph` / `data-glyph-shape`，门直接咬它。 */
 export const TRANSIT_GLYPHS = {
@@ -427,7 +440,10 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
     });
   }, [arrivalVehicles, anchorByNode]);
 
-  /** 只知道在哪一站的：**站上**横条堆叠（沿半径朝环内）。同样不产生任何区间位置。 */
+  /**
+   * 只知道在哪一站的：**站上**横条堆叠（沿半径朝环内，排成网格）。同样不产生任何区间位置。
+   * 网格 = 半径方向分行 + 切向分列；切向也走单源的 `ringTangent`，本层不自己求导。
+   */
   const residentGlyphs = useMemo(() => {
     const used = new Map<string, number>();
     return residentVehicles.flatMap((v) => {
@@ -435,8 +451,12 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
       if (a === undefined) return [];
       const i = used.get(v.destNodeId) ?? 0;
       used.set(v.destNodeId, i + 1);
-      const p = ringRadialOffsetPoint(a.angle, a.k, RESIDENT_STACK_OFFSET_PX + i * RESIDENT_STACK_STEP_PX);
-      return [{ v, anchor: a, p }];
+      const row = Math.floor(i / RESIDENT_COLS);
+      const col = i % RESIDENT_COLS;
+      const base = ringRadialOffsetPoint(a.angle, a.k, RESIDENT_STACK_OFFSET_PX + row * RESIDENT_ROW_STEP_PX);
+      const tan = ringTangent(a.angle, a.k);
+      const off = (col - (RESIDENT_COLS - 1) / 2) * RESIDENT_COL_STEP_PX;
+      return [{ v, anchor: a, p: { x: base.x + tan.dx * off, y: base.y + tan.dy * off } }];
     });
   }, [residentVehicles, anchorByNode]);
 
@@ -796,7 +816,7 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
       {arrivalVehicles.length + residentVehicles.length > 0 ? (
         <p
           className={styles.modeReason}
-          data-testid="transit-station-only-note"
+          data-testid="transit-off-ring-note"
           data-arrivals={arrivalVehicles.length}
           data-residents={residentVehicles.length}
         >

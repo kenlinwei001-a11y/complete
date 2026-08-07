@@ -134,6 +134,37 @@ WO-SANDBOX-METRO-SEMANTICS 交付时写下：
 
 ---
 
+## 5.1 · 真浏览器实拍（绿测试 ≠ 能用）
+
+内存态 datacore(4321·`SEED_DEMO=1`·seed 42) + agentcore(4322) + vite(5321)，
+Chromium 登录 `demo/admin/demo1234` → **点左侧导航「推演沙盘」**（不 `page.goto` 跳视图）
+→ 线路图模式 → 勾「在途批次图层」。
+
+实测：三条支线全 **LIVE**（`InterBaseTransfer` 17 批 / `Shipment` 13 批 / `WIPLot` 50 批，
+拒收 0），环上 14 站 16 区间 17 辆车；**页面错误 0**（唯一的 console 404 是 dev server 的
+`/favicon.ico`，与本层无关）。
+
+**几何自证（在浏览器里现算，不是只看测试）** —— 椭圆残差 1.0 = 恰在环上：
+
+| 图元 | 实测残差 |
+|---|---|
+| 在途车（moving） | `1, 0.999995, 1, 0.99998` ⇒ **在环上** |
+| 到站徽标 | `1.14, 1.13, 1.11, 1.10` ⇒ **环外** |
+| 驻留堆叠 | `0.929, 0.927, 0.926, 0.926` ⇒ **环内** |
+
+**实拍抓到、jsdom 抓不到的两处**（已修）：
+
+1. **驻留堆叠单列排会扎穿环心** —— 50 批集中在少数工序，单列 ×9px 一路穿过圆心到对面。
+   改成**网格**（5 列 × 若干行）；**一批仍是一条**，不做"只画前 N 个"的减量。
+2. **到站徽标压在站名上** —— 徽标外推 26px 与站名外推 18px 撞了。徽标改到 36px。
+   顺带 `.ringSvg` 的 `max-height` 去掉：viewBox 是 980×680，压高度会让盒子小于画幅、下半个环被切。
+
+（另修一处潜在地雷：站上说明块的 testid 从 `transit-station-only-note` 改为
+`transit-off-ring-note` —— 前者与 `transit-station-*` 前缀撞车，
+任何 `getAllByTestId(/^transit-station-/)` 都会多数出一个。）
+
+---
+
 ## 6 · 本体引用与影响
 
 - **对象类型**：`InterBaseTransfer` / `Shipment` / `WIPLot`（在途三源，只读，字段口径未动）；
