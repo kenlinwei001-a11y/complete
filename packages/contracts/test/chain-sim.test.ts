@@ -8,6 +8,7 @@ import {
   CANONICAL_BASE_IDS,
   CHAIN_BREAK_SUBTYPES,
   CHAIN_IMPEDIMENT_KINDS,
+  CHAIN_NODE_REGISTRY,
   CHAIN_STAGES,
   CHAIN_STEP_KINDS,
   CadenceSchema,
@@ -26,6 +27,7 @@ import {
   computeLossAttribution,
   expectedCadenceWaitDays,
   isChainScopeUnscoped,
+  isKnownChainNodeId,
   isValueAddKind,
   lossConservationResidual,
   nodeFlowEfficiency,
@@ -321,9 +323,43 @@ describe("S0 · 单源派生与节点口径", () => {
     expect(CHAIN_STEP_KINDS.filter((k) => isValueAddKind(k))).toEqual([VALUE_ADD_STEP_KIND]);
     expect(CHAIN_STEP_KINDS).toHaveLength(5);
     expect(CADENCE_KINDS).toHaveLength(4);
-    expect(CHAIN_STAGES).toHaveLength(4);
+    // 金值 4 → 5：WO-CHAIN-24 末位追加第 5 段 `DELIVERY`（交付与回款）。
+    // 前 4 段逐字不动，所以这里改的只是长度，`CHAIN_STAGES[0..3]` 的取值由下面那条用例咬死。
+    expect(CHAIN_STAGES).toHaveLength(5);
     expect(CHAIN_IMPEDIMENT_KINDS).toHaveLength(3);
     expect(CHAIN_BREAK_SUBTYPES).toHaveLength(3);
+  });
+
+  /**
+   * WO-CHAIN-24 金值门：**5 段 24 节点**，且「只许追加」这条纪律本身可被证伪。
+   *
+   * 为什么不只断长度：长度对了照样可能是「改了一个已在册 id」凑出来的 —— 而改 id
+   * 正是 S0 那次「两套词表交集为 0、链路整条断」的复现形态（`chain-sim.ts` §2.5 记着那笔账）。
+   * 故本用例把**前 12 条的 id 与顺序**写死：谁动了其中任何一条，这里当场红。
+   */
+  it("WO-CHAIN-24 · 5 段 24 节点，且前 12 条注册表条目**逐字未动**（只许末位追加）", () => {
+    expect(CHAIN_STAGES).toEqual(["DEMAND", "ORDER", "CAPACITY", "MATERIAL", "DELIVERY"]);
+    expect(CHAIN_NODE_REGISTRY).toHaveLength(24);
+    // S0 冻结的原 12 条：id 与**顺序**都不许变（下标语义被前端测试按 [4] 取样依赖）。
+    expect(CHAIN_NODE_REGISTRY.slice(0, 12).map((n) => n.nodeId)).toEqual([
+      "demand.consensus", "order.review", "order.cash", "order.settlement",
+      "capacity.schedule", "capacity.qc_batch", "capacity.quality", "capacity.aging", "capacity.maint",
+      "material.mrp", "material.replenish", "material.shipping",
+    ]);
+    // nodeId 全仓唯一，且形如 `<stage 小写>.<名>`（新段 DELIVERY ⇒ 前缀 delivery.）。
+    expect(new Set(CHAIN_NODE_REGISTRY.map((n) => n.nodeId)).size).toBe(24);
+    for (const n of CHAIN_NODE_REGISTRY) {
+      expect(n.nodeId.startsWith(`${n.stage.toLowerCase()}.`), `${n.nodeId} 的前缀与 stage=${n.stage} 不一致`).toBe(true);
+      expect(isKnownChainNodeId(n.nodeId), `${n.nodeId} 自己都不被 isKnownChainNodeId 认`).toBe(true);
+    }
+    // 第 5 段真的有节点（追加了枚举却没有任何节点 = 空段，那是「加了个名字」不是「建了一段模」）。
+    expect(CHAIN_NODE_REGISTRY.filter((n) => n.stage === "DELIVERY").map((n) => n.nodeId)).toEqual([
+      "delivery.fg_stock", "delivery.transit", "delivery.acceptance",
+    ]);
+    // 每一段都非空（`CHAIN_STAGES` 里出现的段必须真有在册节点）。
+    for (const s of CHAIN_STAGES) {
+      expect(CHAIN_NODE_REGISTRY.some((n) => n.stage === s), `段 ${s} 在册 0 个节点`).toBe(true);
+    }
   });
 
   it("节点前置期 = 五段之和；流动效率 = 增值/前置期；前置期 0 → null（诚实缺席）", () => {
