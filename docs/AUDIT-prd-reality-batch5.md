@@ -697,3 +697,251 @@ PRD 头部 `:9` 写「零代码改动」，但配套工单文件 `docs/WO-SANDBO
   2. **§1 目标 1「收入预算口径统一（240 vs 248）」**：未核。
 
 ---
+
+## 16. PRD-system-ontogenesis-spec.md
+
+- **它要做什么**：**宪法级总纲** —— 立 **R16 发育闭环**不变量（倒序发育 ⊕ 正序运作是同一有机体两相），
+  统摄十余份 PRD；三环自动闭合（数据/本体/能力）+ 产物二分处置（AUTO-DERIVE / NEEDS-HUMAN）
+  + 发育透明 + 成熟分相位。分期 ONT.1–ONT.4。
+
+- **PRD 自称的 AS-IS**：§2「两轴与双面（系统已具雏形）」四行表 + **§3 三环表的「现状」列**（这一列就是 AS-IS）：
+  ① 数据环 **◐**「A10+inferenceProbe 已有；模版/单一上传口缺口」·
+  ② 本体环 **❌**「本体是文档 + `ontology:check` 防漂，**靠人回写**」·
+  ③ 能力环 **❌**「`OPERATION_CATALOG`/`REGISTRY` **手维护**」。
+
+- **实测现状（逐 ONT 核）**
+
+  | 分期 | 要求 | 实测 | 证据 |
+  |---|---|---|---|
+  | **ONT.1** 立 R16 | **✅ 已立** | `docs/SYSTEM-ONTOLOGY.md:795` **R16 · 发育闭环**（完整定义：三环 + 二分处置 + 透明 + 分相位 + `GapReport` 生长信号），状态列自标 **◐** |
+  | ONT.1 `sys.meta.ontogenesis_loop` 切片 | ◐ **只在 R16 条目内提及，未见独立切片登记** | `grep "sys.meta.ontogenesis_loop"` 唯一命中就是 `:795` R16 那一行本身；`apps/**` 无实现 |
+  | ONT.1 `ontogenesis.organ_matured` 事件 | ❌ 同上，仅 `:795` 内提及，零 emit / 零订阅 | 同上 |
+  | **ONT.1 `ontogenesis:check` 并入 `pnpm gates`** | ⚠⚠ **本体自称已并入，实测没有** | 见下方专条 |
+  | **ONT.2** 能力环自动派生 `deriveOperationCatalog` | **❌ 没接线** | `grep -rn "deriveOperationCatalog"` 全仓（排除 dist/worktree）= **0 命中**。`OPERATION_CATALOG` 今天仍是 `packages/contracts/src/operation-intent.ts:53` 的一个**手写数组**（`export const OPERATION_CATALOG: OperationCatalogEntry[] = [`）⇒ **PRD §3 环③ 的 AS-IS「手维护」今天逐字仍成立** |
+  | ONT.2 二分处置统一收件箱（GrowthTicket 泛化） | ◐ `GrowthTicket` 机制在（§4 已验，`server.ts:2511-2523`），但**未泛化到所有制品类型** —— 未查清 | — |
+  | **ONT.3** 透明一等视图（活过程 DAG + 模块同步矩阵） | **✅ 两半都在** | 前端 `apps/frontend-shell/src/components/InferenceProcessDag.tsx` + `InferenceProcessPanel.tsx` + `QueryDock/TaskRun.tsx`；后端 `apps/datacore/src/databuilder/artifacts.ts`（`deriveProducedArtifacts`）+ `databuilder/service.ts` |
+  | **ONT.4** 本体环活体化（dogfooding 落库） | ◐ **防漂门在，落库未查清** | `package.json:15` `"meta:sync": "node scripts/check-meta-sync.mjs"`；`scripts/check-meta-sync.mjs:3`「meta:sync 漂移门（Dogfooding PRD §7 / R6）：保证系统本体 markdown 始终可被 `meta/parse.ts` 解析」⇒ **这仍是"文档 + 防漂门"，正是 PRD §3 环② 判为 ❌ 的那个形态**。是否已有 ObjectType 落库版本 —— **未查清** |
+
+  **⚠⚠ 最值得单独标出的一条：本体自己的陈述与现状不符（且门账已经知道）**
+
+  `docs/SYSTEM-ONTOLOGY.md:795`（R16 条目状态列）写着：
+  > `ontogenesis:check` 门（三环+二分声明性校验，**已并入 `pnpm gates`**）
+
+  **实测：没有并入。**
+  ```
+  $ node -e 'const p=require("./package.json"); console.log(p.scripts.gates.includes("ontogenesis"))'
+  false                      # gates 串 23 个门，无 check-ontogenesis.mjs
+  $ node -e '...Object.keys(p.scripts).filter(k=>k.includes("ontogenesis"))'
+  []                         # 也没有 pnpm 别名
+  ```
+  而 `scripts/gate-ledger.json` 的对应条目**早就把它标出来了**（这正是门账该干的事）：
+  ```json
+  "check-ontogenesis.mjs": {
+    "alias": null, "binding": "NONE",
+    "ontologyRef": "§7:838",
+    "provenRed": { "kind": "NEVER", "note": "本体 §7 行838 未记录已执行的反证" },
+    "disposition": "WIRE"
+  }
+  ```
+  即：**脚本在（`scripts/check-ontogenesis.mjs`）· 无 pnpm 别名 · 未绑任何 gate runner · 从未红过 · 门账判定应当接线。**
+  这与本仓 #76（`boundary-singlesource` 红着零接线活了 24 个 commit）**完全同族**。
+  ⇒ **本体 `:795` 那句「已并入 `pnpm gates`」必须回改。**
+
+- **结论**：**◐ 部分实现（ONT.1 立了不变量、ONT.3 透明层落地；ONT.2 能力环自动派生 ❌；ONT.4 本体活体化 ◐；
+  且 ⚠⚠ ONT.1 的门"声称并入实则未并入"）**
+
+- **最小 WO 建议**
+
+  | WO | 🚦 范围边界 | 出口判据 | 性价比 |
+  |---|---|---|---|
+  | **WO-B5-22 · `ontogenesis:check` 真接线**（门账已判 `disposition:"WIRE"`，照办即可） | `package.json`（加别名 + 进 `"gates"` 串）· `scripts/gate-ledger.json`（更新 `binding`/`alias`）· `docs/SYSTEM-ONTOLOGY.md:795`（把"已并入"改成真话或等接线后成真）。**不碰** `apps/**` | 门在 CI 里真跑；**变异反证**（`provenRed` 从 `NEVER` 变成有证据）：故意破一条三环声明 → 门红并打印原文 | ⭐⭐⭐ |
+  | WO-B5-23 · 能力环自动派生 | `packages/contracts/src/operation-intent.ts`（`OPERATION_CATALOG` 改从注册表派生）+ `cli-parity:check` 同步 | 新增一个模块 → 目录**自动**出现该 op，无需手改数组 | ⭐⭐ |
+
+---
+
+## 17 & 18. PRD-traceability-and-baseline.md ＋ PRD-traceability-and-baseline-v2.md
+
+> **这两份必须合并审 —— 它们是同一份文档的两个版本，且第一处发现就是：两份的标题、版本号、地位声明完全一样。**
+
+- **它们要做什么**：需求追踪矩阵（R1–R28 需求→文档落点）+ 跨文档修订裁决清单 + 补全最后几个算法缺口（Part C）
+  + 决策确认记录。自称**「文档集的阅读入口与裁决权威：与任何单篇冲突时，以本文 Part B 的裁决为准」**。
+
+- **PRD 自称的 AS-IS**：无传统 AS-IS 节。最接近的是 **Part E 覆盖承诺**：
+  > 全部需求（R1–R28）**100% 具有文档落点且逐条可追踪**…**本承诺的边界：覆盖的是"需求→规格"，
+  > **不含"规格→实现"的验证**。
+
+  ⇒ 这两份 PRD **自己就声明了不管实现**。所以对它们的「实现状态」审计，只能核**文档层**的三件事：
+  ① 两份的关系 ② 内部计数是否自洽 ③ Part C 的算法缺口是否真被实现。
+
+- **实测现状**
+
+  **发现 1 · 两份文件是父子关系，v2 是超集，差异只有 8 行**
+
+  ```
+  $ diff PRD-traceability-and-baseline.md PRD-traceability-and-baseline-v2.md
+  17c17   （§0 范畴一行加了"v2"两个字）
+  74a75,81  （Part B 追加 7 行：#20–#26）
+  ```
+  **除此之外逐字节相同** —— 包括 `| 版本 | v1.0 |`、`| 地位 | 文档集的阅读入口与裁决权威 |`
+  和标题 `# PRD · 需求追踪矩阵与文档基线（**v2.0 收口文档**）`。
+
+  ⚠ **两份都自称是"裁决权威"，而它们的 Part B 不一样** —— 读到旧那份的人会拿到一份少 7 条裁决的权威表。
+  且**旧文件的标题里也写着"v2.0"**，光看标题分不出哪份新。
+
+  **发现 2 · ⚠ 内部计数与实际不符（两份都错，且错法不同）**
+
+  | 文件 | Part B 标题自称 | 实际行数 | 差 |
+  |---|---|---|---|
+  | `PRD-traceability-and-baseline.md` | 「跨文档修订裁决清单（最终状态，**共 17 条**）」 | **19** | +2 |
+  | `PRD-traceability-and-baseline-v2.md` | 「跨文档修订裁决清单（最终状态，**共 17 条**）」 | **26** | +9 |
+
+  （行数由 `awk '/^## Part B/,/^## Part C/' | grep -c "^| [0-9]"` 得出。）
+  即：v2 追加了 7 条却**没改标题里的数**，而 v1 的数**本来就已经不对**。
+
+  **发现 3 · Part C 的三个算法缺口 —— C1 全实现，C2/C3 部分**
+
+  | 缺口 | PRD 给的公式级规格 | 实测 |
+  |---|---|---|
+  | **C1 `capex_scenario`** | 供给曲线 `S[q]` / 缺口 `G[q]` / `util24` / IRR 牛顿迭代（初值 0.1、`\|NPV\|<0.01`、20 次不收敛报 `IRR_DIVERGED`）/ C23 判定 `(IRR≥15%) ∧ (util24≥75%)` | **✅ 逐条落地** —— `apps/datacore/src/solvers/capex.ts:10`「C1 · `capex_scenario` — 年度情景测算（**Part C 公式级**）」· `:14` 出参含 `S[q]/G[q]/窗口/项目级 IRR·util24·c23pass` · `:60-63` `ramp/irr/util24/c23pass` · `:104 rampAt`（k 超长维持达产 1.0）· `:125-126`「IRR 牛顿迭代：初值 0.1，收敛 \|NPV\|<0.01 亿，20 次不收敛报 **IRR_DIVERGED**；病态输入…**不死循环**」。注册 `solvers/service.ts:57` · 派发 `:4217` |
+  | **C2 季度滚动供给口径** | `supply[q] = 月聚合上卷 + Σ已批准产能项目增量×ramp + Σ该季 S&OP 决议增量` | **◐ 求解器在，口径未闭** —— `quarterly_gap` 在（`apps/datacore/src/solvers/extended.ts:473/573/950`），但本体 `:1017` 记载它的 `quarter` 维**已被判为 `dataMode:"EMPTY"`**：「季度需求真源 `PlanTarget(level=quarter)` 在库，但缺口=需求−供给的**供给侧**要走 `capex.deriveS0`（仅 planviews 路可达 + 季度索引相对预测窗口起点、未与日历季对齐）⇒ 新通道，本轮不接，只标 `quarterScope.dataMode:"EMPTY"`」。**⇒ C2 那条公式的"供给侧"至今没接通** |
+  | **C3 S&OP ④ 财务整合口径** | `毛利率_roll` 加权公式 + `现金垫 = min_{w∈1..13}(...)` 13 周滚动 | **◐ 已实现但未逐格核** —— `finance_pnl` 求解器在（§15 已验，含 `gmRow.budgetPct/rollPct/diffPp`）；`cashCushion` 在 `apps/datacore/src/solvers/plan.ts:17/:127`。**「是不是 13 周 min」这一条本审计未逐行核 —— 未查清** |
+
+- **结论（两份合并）**：
+  - `PRD-traceability-and-baseline-v2.md`：**✅ 已实现（就其自定范围「需求→规格」而言）**；Part C 的 C1 更是**代码级逐条兑现**。
+  - `PRD-traceability-and-baseline.md`：**⚠ 应废弃** —— 它是 v2 的**真子集**，却与 v2 同标题、同版本号、同自称"裁决权威"。
+  - **两份都 ⚠ 内部计数不符**（Part B 自称 17 条，实为 19 / 26）。
+
+- **最小 WO 建议**（纯文档·零风险·⭐⭐⭐ 性价比最高的一类）
+
+  | WO | 🚦 范围边界 | 出口判据 |
+  |---|---|---|
+  | **WO-B5-24 · 消除双权威** | 只改 `docs/PRD-traceability-and-baseline.md`（改为一行指针「本文已被 `-v2` 取代，见该文件」并保留归档说明）+ `docs/PRD-traceability-and-baseline-v2.md`（Part B 标题的「共 17 条」改为 26；正文标题的版本号与 `\| 版本 \| v1.0 \|` 对齐）+ `docs/prd-ontology-index.json` 随 gate 重写 | 全仓只有一处自称"裁决权威"；Part B 的数与行数一致；`prd:check` 绿 |
+  | WO-B5-25 · C2 供给侧接通（可选） | `apps/datacore/src/solvers/extended.ts`（`quarterly_gap` 供给侧接 `capex.deriveS0`）+ 季度索引与日历季对齐。**注意**：本体 `:1017` 已把「今天为什么标 EMPTY」的三条理由写死进门，**接通时那道门会变红，是设计如此**（逼人回来把 EMPTY 换成真算） | `quarterScope.dataMode` 从 `EMPTY` 变 `LIVE`，且供给数与 `capex_scenario` 的 `S[q]` 同源对拍 |
+
+---
+
+## 19. PRD-unified-build-engine.md
+
+- **它要做什么**：把 A7 数据构建发动机从「故事→DataCore 栈」**扩成「故事→可运行场景」全栈编译器** ——
+  三入口统一（数据先行/图谱先行/故事先行）+ **全链闭包门** + 场景为主实体 + rawin 三路 +
+  scaffold 去电池锁死 + `generic-inference`。自称是 **G-1…G-8 全部八个断点的系统级解**。
+
+- **PRD 自称的 AS-IS**：§2「现状与缺口（对照代码）」两段 ——
+  「已存在（复用，勿重造）」列 A7 七阶段 / `validateClosure` / publish 经 Action 等；
+  「缺口」列 G-8→G-1 / G-2 跨服务输出形状 / G-3 场景模型倒置 / G-4 无前端入口 /
+  G-5 电池锁死且 `generic-inference` 不存在 / G-6 Excel 解析 TODO / G-7 LLM 用途枚举写死。
+
+- **实测现状（逐期核 P1–P6）**
+
+  | 期 | 要求 | 实测 | 证据 |
+  |---|---|---|---|
+  | **P1** BuildPlan 扩 AgentCore 栈 | **✅** 八类 B 栈需求全在 | `packages/contracts/src/databuilder.ts:214-221`：`sliceNeeds` / `intentNeeds` / `planNeeds` / `workflowNeeds` / `skillNeeds` / `agentNeeds` / `mcpNeeds` / `sceneNeeds`（命名是 `*Needs` 而非 PRD 字面的 `intents[]/skills[]/…`，**实质等价**） |
+  | **P1** ClosureReport 扩 `CHAIN` / `SHAPE` | **✅ 逐字落地** | `packages/contracts/src/databuilder.ts:235` `kind: z.enum(["OBJECT","DATA","FORWARD","CHAIN","SHAPE"])`；`:234` 注释「CHAIN（R11 全链闭包）：求解器需求是否在 DataCore 注册（**跨系统接缝，焊进闭包报告**）」；`:236` ref 语义含 `solver:key`(CHAIN) / `solver.output.path`(SHAPE) |
+  | **P2** 跨系统生成（B catalog seed） | **✅ 已实现，落点与 PRD 不同** | PRD 说 `POST /a/v1/build/scaffold` + `POST /api/v1/catalog/…`；实际是 `apps/datacore/src/app.ts:622-628`「g8-P3 跨系统 scaffold（A→B）：closure 后把 B 栈需求下发 AgentCore」→ `POST {agentBase}/b/v1/internal/scaffold`（`SERVICE_TOKEN` 守闸）。`/a/v1/build/preview\|scaffold` 两个 PRD 字面端点 **0 命中** |
+  | **P2** 场景为主实体（G-3） | **✅** | 见 §3（`Scenario` 已升一等对象） |
+  | **P3** rawin 三路 · `parseXlsx` | **✅** | `apps/datacore/src/connectors/parsers.ts:1-8`「CSV / JSON / **XLSX** tabular parsing（**G-6：xlsx 经 node-xlsx 解析**）」`export function parseXlsx(buf)` |
+  | **P3** 数据模版 | **✅** | `apps/datacore/src/synthetic/data-template.ts:41 buildDataTemplates` · 端点 `apps/datacore/src/app.ts:1997 GET /a/v1/data-templates` |
+  | **P4** `generic-inference` 通用 what-if | **✅ 注册为求解器 + 进目录** | `apps/datacore/src/solvers/service.ts:98-100`「通用 what-if 求解器（generic-inference P2，**G-5**）：包装本体派生引擎 `recompute(dryRun+apply)`」`"generic_inference"`；目录 `apps/datacore/src/catalog.ts:104`（带 `answersQuestions`，QOS 可路由） |
+  | **P5** LLM 用途可扩展 | **◐ 枚举被扩了，但仍是枚举** | `packages/contracts/src/llm.ts:216-224` 今天 7 个用途（`classifier`/`agent`/`extraction`/`modeling`/`template_gen`/`compose`/**`comprehend`**）。PRD 要的 `registerPurpose` 或配置驱动 **❌ 0 命中**；PRD 举例的 `build_decompose` 也不在。本体 G-7 状态 = **◐** |
+  | 新事件 `buildplan.closure_evaluated` / `scaffold.completed` | **❌ 两个都没有**，但**有一个语义相近的替代** | `apps/datacore/src/databuilder/service.ts:393` emit 的是 `"scaffold.manifest_recorded"`（载荷 `{runId, items, pendingBstack}`）。PRD 命名的两个事件 grep = 0 |
+  | **§7 DoD「G-1…G-8 全部关闭」** | **◐ 6 闭 2 未全闭** | 本体 §8 逐条：**G-1 已闭** · **G-2 ✅ 已修** · **G-3 ◐ 大部修**（见 §3）· **G-4 ✅ 已修** · **G-5 ✅** · **G-6 ✅** · **G-7 ◐** · **G-8 ◐ 大部闭合**（`:` 条目原文列了四条已做：`chain:check` 跨系统门 / ClosureReport CHAIN 维 / SHAPE 维 / 跨系统 scaffold g8-P3） |
+
+- **结论**：**◐ 大部实现（P1–P4 全落地，P5 部分，P6 联调未查清）**
+  这份 PRD 的实施完成度在本批里仅次于已 ✅ 的几份 —— 它自称要关的 8 个断点，**6 个已闭 / 2 个 ◐**。
+
+  ⚠ 两处**落点与 PRD 字面不同**（不是缺陷，是实现选了更好的路，但照字面找会扑空）：
+  1. 端点：`/a/v1/build/preview|scaffold` → 实际 `POST /b/v1/internal/scaffold`（A→B 服务间，`SERVICE_TOKEN` 守闸）。
+  2. 事件：`buildplan.closure_evaluated`/`scaffold.completed` → 实际 `scaffold.manifest_recorded`。
+
+- **最小 WO 建议**
+
+  | WO | 🚦 范围边界 | 出口判据 | 性价比 |
+  |---|---|---|---|
+  | **WO-B5-26 · PRD §4 落点回写**（零风险） | 只改 `docs/PRD-unified-build-engine.md` §4/§0（端点名与事件名改成实测值） | 照 PRD 字面 grep 能找到东西 | ⭐⭐⭐ |
+  | WO-B5-27 · G-7 收口（LLM 用途配置驱动） | `packages/contracts/src/llm.ts` + `LlmProvidersPage.tsx`。**保留枚举校验**（PRD §4 原话），加注册通道 | 新增一个构建用途无需改 contracts 枚举即可绑定；本体 G-7 由 ◐ 转 ✅ | ⭐ |
+
+---
+
+# 汇总
+
+## A · 19 份逐份结论
+
+| # | PRD | 结论 | 一句话 |
+|---|---|---|---|
+| 1 | `PRD-sandbox-redesign.md` | **◐ + ⚠⚠⚠** | 后端做了大半（`chain-impediment.ts` 741 行判定引擎已接线 + `aggregates.ts` 两项聚合），**前端零入口**；⚠ 三处 PRD 断言与事实相反（`sim.sandbox` 不是暗发 / 规模数字全过期 / 「零代码改动」不成立）；R19 撞号 |
+| 2 | `PRD-sandbox-ontogenesis-buildplan.md` | **❌ + ⚠** | 底座全在，**沙盘与倒序发育管道之间根本没有那根线**；三个新 need 全仓 0 命中；⚠ AS-IS 说 comprehend 是关键词目录，实测 LLM 优先已实现 |
+| 3 | `PRD-scenario-launcher.md` | **✅** | 6/6，C-6 以更强的运行时门形态兑现（位置与 PRD 字面不同）；⚠ 本体 `:923`「待前端启动器」已过期 |
+| 4 | `PRD-scenario-ontogenesis.md` | **✅** | P1/P2/P3 全落地（`growScenario` / A10 验证门 / 三事件 / 相位三态 / 切片自动规划） |
+| 5 | `PRD-seam-arg-drop-audit.md` | **✅** | 本批完成度最高：台账 + 修复 + 门（有牙·已亲测退 1）+ 本体三处回写 + 两侧 SEAM |
+| 6 | `PRD-segment-scoped-gap-attribution.md` | **✅** | 方案 A 全采；另多一处 PRD 未记载的 `G-SEG-ATTR-BASE-SCOPE` 正交修 |
+| 7 | `PRD-self-driving-qos-data-foundation.md` | **✅ + ⚠** | DF.1–DF.13 全落地（含核心论点 DF.8 生成接地，实参真传）；⚠ DF.1 落点不是 `synthetic/boundary.ts` 而是 `contracts/base-registry.ts`；DF.14/15 未查清 |
+| 8 | `PRD-simulation-sandbox.md` | **◐** | P1/P2 约 80%；缺 5/7 事件（SSE 链只通 1/3）+ goals 端点 + WebSocket + 三个 sim 门未进 gates + **第二行业证明（自称核心验收）** |
+| 9 | `PRD-skill-compiler-registry.md` | **❌** | 零落地；但其 AS-IS 今天 **100% 仍准确**（`probeMissingRefs` 仍差 skill 挂载点 · `extractRelations` 仍零生产调用方） |
+| 10 | `PRD-skill-contract-dsl.md` | **❌** | 契约零变更；`maxBudgetRounds` 仍零消费方、7/7 skill `resources` 仍全空、lint 200/3000 vs 契约 400/50000 仍不一致 |
+| 11 | `PRD-skill-crossreview.md` | **✅ + ⚠** | 审查产出已被消费（C1/C4/C5 全兑现）；⚠ **§9 自己的 C3 状态过期**（门账已由 `PRD-gate-ledger.md` + 44 条 `gate-ledger.json` 兑现） |
+| 12 | `PRD-skill-governance-learning.md` | **❌** | 零落地；两个 P0 前置今天仍逐字成立（`/metrics` 裸奔 `server.ts:203` · 指标零租户维） |
+| 13 | `PRD-skill-migration.md` | **❌** | 自称零代码改动，至今确实零改动 |
+| 14 | `PRD-skill-runtime-orchestrator.md` | **❌** | 病灶 A/B 仍逐字成立；C 部分改善；D/E 未查清（卡在需实跑） |
+| 15 | `PRD-sop-balance-1to1.md` | **✅** | SOP.1–SOP.4 四期全落地（P90 列 / `mrp_netting` / `finance_pnl` / 版本演进表）；「逐格 1:1」未查清 |
+| 16 | `PRD-system-ontogenesis-spec.md` | **◐ + ⚠⚠** | R16 已立、ONT.3 透明层已落；ONT.2 能力环 ❌（`OPERATION_CATALOG` 仍手写数组）；⚠⚠ **本体 `:795` 自称 `ontogenesis:check` 已并入 `pnpm gates`，实测没有**（门账已标 `binding:"NONE"` / `provenRed:"NEVER"`） |
+| 17 | `PRD-traceability-and-baseline.md` | **⚠ 应废弃** | 是 v2 的真子集（差 8 行），却同标题同版本号同自称"裁决权威" |
+| 18 | `PRD-traceability-and-baseline-v2.md` | **✅ + ⚠** | 就其自定范围（需求→规格）已实现；Part C 的 C1 `capex_scenario` 代码级逐条兑现；⚠ Part B 自称「共 17 条」实为 26 条 |
+| 19 | `PRD-unified-build-engine.md` | **◐ 大部** | P1–P4 全落地（CHAIN/SHAPE 维 · 跨系统 scaffold · parseXlsx · 数据模版 · `generic_inference`）；自称要关的 8 个断点 **6 闭 2 ◐**；两处落点与 PRD 字面不同 |
+
+**计**：✅ 8 份 · ◐ 4 份 · ❌ 6 份 · ⚠应废弃 1 份。
+
+## B · ⚠「PRD/本体断言了一件可核实的事、而事实相反」清单（最有价值的发现类）
+
+| # | 位置 | 断言 | 事实 | 危害 |
+|---|---|---|---|---|
+| **1** | `PRD-sandbox-redesign.md:80` 与 `:385`（§10.1 整节的前提） | `sim.sandbox` 是**暗发**（关 → 404） | **是开的** —— L1 `features.ts:81 defaultOn:false` 属实，但 L2 模板 `features.ts:283` 减去的两个暗发集合里 `sim.*` **一个都没有**；`features.ts:158` / `seed.ts:74` 源码明写「sim.* 照常随模板开」 | **已误导至少三个读者**；§10.1「何时点亮」整节前提错 |
+| **2** | `PRD-sandbox-redesign.md:9` | 「本文只是 PRD。**零代码改动**」 | §5 核心设计已实施过半（契约 + 741 行判定引擎 + 求解器接线 + SEAM 测 + 两项聚合） | 让人以为沙盘"没开工"→ **正是本次事故的错误结论** |
+| **3** | `PRD-sandbox-redesign.md:86/:85/:89` | 7,019 行 / 20 组件 · 17 端点 · 57 求解器 | **15,261 行 / 36 文件 · 21 端点 · 59 求解器** | 规模判断偏小一倍 |
+| **4** | `PRD-sandbox-redesign.md:276` | 建议立 **R19 · 时间自洽** | **R19 已被占用**（`SYSTEM-ONTOLOGY.md:798` = 终态责任人） | 照做即撞号 |
+| **5** | **`docs/SYSTEM-ONTOLOGY.md:795`（R16 状态列）** | `ontogenesis:check` 门**已并入 `pnpm gates`** | **没并入** —— gates 串 23 个门无它、无 pnpm 别名；`gate-ledger.json` 自己标 `binding:"NONE"` / `provenRed:{kind:"NEVER"}` / `disposition:"WIRE"` | 与 #76（红着零接线活 24 个 commit）同族；**本体是"接线单一来源"，它说错了传播面最大** |
+| **6** | `docs/SYSTEM-ONTOLOGY.md:923`（G-3） | 「**待**：前端 ⌘K/目录/首页启动器」 | 都在：`ScenarioLauncherPage.tsx` + `CommandPalette.tsx` | 低估已完成度 |
+| **7** | `PRD-skill-crossreview.md §9`（C3 行） | 🟡「仍无人认领」 | 已认领并落地：`docs/PRD-gate-ledger.md` + `scripts/gate-ledger.json`(44 条) + 已进 `pnpm gates` | 会导致重复立单 |
+| **8** | `PRD-sandbox-ontogenesis-buildplan.md:12` | comprehend「**不是 LLM 听懂**，而是确定性关键词目录匹配」，称为**头号前置缺口** | 已是 LLM 优先（`databuilder/service.ts:84-99`），关键词已降为地板 | 把已解决的当头号缺口，真缺口（三个 need）被埋 |
+| **9** | `PRD-self-driving-qos-data-foundation.md §4`（DF.1） | 落点「建 `synthetic/boundary.ts` 单一来源」 | 实际 `packages/contracts/src/base-registry.ts`（**更对**，跨包单源合 R1） | 照字面找文件会扑空 |
+| **10** | `PRD-traceability-and-baseline{,-v2}.md` Part B 标题 | 「最终状态，**共 17 条**」 | 实为 **19 条 / 26 条** | 两份都自称"裁决权威"却各带一份不同的表 |
+| **11** | `PRD-unified-build-engine.md §4/§0` | 端点 `/a/v1/build/preview\|scaffold`；事件 `buildplan.closure_evaluated`/`scaffold.completed` | 实际 `POST /b/v1/internal/scaffold`；事件 `scaffold.manifest_recorded` | 照字面 grep 全 0，易误判"没做" |
+| **12** | `PRD-segment-scoped-gap-attribution.md §4.1` | 过滤是无条件的 | 实际带 `scopedBaseId` 逃生门（`service.ts:1570`，治后续回归 `G-SEG-ATTR-BASE-SCOPE`） | 读 PRD 的人会以为 base 视图也被裁 |
+
+## C · 补做建议（按投入产出排序）
+
+> 排序依据 = **(闭合的真实缺口大小) ÷ (触碰的文件数)**。前六条全部是「改几行 / 接一条线」，不是造模块。
+
+| 序 | WO | 类型 | 范围（文件数） | 为什么排这里 |
+|---|---|---|---|---|
+| **1** | **WO-B5-22 · `ontogenesis:check` 真接线** | 接线 | 3 个非代码文件（`package.json` / `gate-ledger.json` / 本体 `:795`） | **门账已经替你判好了**（`disposition:"WIRE"`）；且它闭的是「本体说错话」这个传播面最大的问题 |
+| **2** | **WO-B5-11 · skill 发布接引用探针** | 接线（非造门） | 2 个源文件 + 1 条 SEAM | `probeMissingRefs` 已在、已接两处，**只差 skill 这一个挂载点**。这条曾被三份文档错报成「造一道门」，把排期整体歪掉 |
+| **3** | **WO-B5-9 · 三个 sim 门并入 `pnpm gates`** | 接线 | 2 个非代码文件 | 门脚本都在（`check-sim.mjs` / `check-sim-readiness.mjs` / `check-genuine-sim.mjs`），**只是没人跑** |
+| **4** | **WO-B5-18 · `/metrics` 鉴权** | 补一行 | 1–2 个源文件 | 安全面裸奔；且它是 contract PRD 砍 learning 层的**依据**，本审计已实证前提为真 |
+| **5** | **WO-B5-14 · lint 与契约上限归一** | 单源化 | 2 个源文件 | 半小时的活；`SUMMARY_MAX=200` vs `.max(400)` 是活的双源 |
+| **6** | **WO-B5-2 / 24 / 26 · 三处 PRD 口径回写**（可合成一单） | 纯文档 | 只改 `docs/**` | 零风险；**直接防止本次事故重演**（沙盘"暗发"那条已误导三人） |
+| **7** | **WO-B5-15 · `maxBudgetRounds` 接消费方** | 接线（效果层） | 1 个源文件 + 1 条效果层 SEAM | 本批唯一确凿的死字段；判据必须是**实际轮次真变**，不是"字段被读出来" |
+| **8** | **WO-B5-1 · 沙盘扫描入口接线**（整单） | 接线（前端半） | `views/sim/` + endpoints + mock | 后端 741 行判定引擎已就绪且有 SEAM 测，**只差 UI 入口**；闭的是仓主原始需求「让用户发现卡点/堵点/断点」 |
+| **9** | **WO-B5-8 · 补 5 个 sim 事件 + SSE 联动**（整单） | 接线 | `app.ts` + `event-subscriptions.ts` + 本体 §4 | SSE 实时刷新今天只通 1/3；D-29 要求每个新事件有订阅方 |
+| **10** | **WO-B5-12 · `extractRelations` 接生产投影** | 接线 | 1 个源文件 + 1 条 SEAM | 闭 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`（假绿第 9 形态）；⚠ 注意 `present` 集合会静默吞悬挂边 |
+| **11** | **WO-B5-4 · 三个新 need + provisioner**（整单） | 造机制 | contracts + provisioners + comprehend | 沙盘接入倒序发育的前置 |
+| **12** | **WO-B5-19 · 指标补租户维** | 补实参 | ~20 处调用点 + 1 道门 | 机制（labels）已支持，只差传参 |
+| **13** | **WO-B5-23 · 能力环自动派生** | 造机制 | `operation-intent.ts` + `cli-parity:check` | R16 环③，PRD AS-IS 判 ❌ 至今成立 |
+| **14** | **WO-B5-21 · M0 影子声明导出器** | 新脚本 | 1 个脚本 + seed | ⚠ 立单时必须把 M1 的四条同时成立 + 两条变异反证抄进 WO，否则做出恒真门 |
+| **15** | **WO-B5-10 · 第二行业模板（R14 硬证明）** | 大工程 | `builtin-templates.ts` + SEAM | `PRD-simulation-sandbox` 自称的核心验收，至今未做 |
+| — | Skill 编译器 / Reasoning Graph / 12 层 DSL | 大工程 | 全新模块 | **建议全部后置**：先把上面 1–7 那批「有字段没消费方 / 有门没人跑 / 有线没接完」的账还掉 |
+
+## D · 本审计自身的诚实边界
+
+1. **未起过任何后端服务、未跑过任何测试**。全部结论来自静态读码 + 交叉引用本体/门账。
+   凡涉及「实际跑起来是什么样」的判据（沙盘逐格 1:1 · SSE 旁白 · Runtime 决策点计数 · scenario grow 实跑），
+   一律标了**未查清 + 卡在哪**，没有猜。
+2. **明确写「未查清」的共 8 处**：§4（§6.1/§6.5 运行时门实跑）· §7（DF.14/DF.15）· §8（第二行业模板 `builtin-templates.ts` 内容）·
+   §11（C6 本体口径措辞）· §14（病灶 D 过程可见 / 病灶 E 决策点计数）· §15（逐格 1:1 · 收入预算 240 vs 248）· §16（ONT.2 收件箱泛化 / ONT.4 落库）· §17-18（C3 现金垫 13 周）。
+3. **本审计踩过并当场纠正的两个坑**（写下来给下一个人）：
+   - **§3 C-6**：按 PRD 字面 grep 门脚本 = 0，差点判 ❌；是**本体的一句话**逼我再追一层，
+     找到门在测试文件里且判据更强 ⇒ **改判 ◐，整份 PRD 由 ◐ 改判 ✅**。
+   - **§7 DF.8**：`grep "vocab:"` 只有定义行，差点判「接了线没数据」；
+     真调用点是**对象字面量简写** `{ ...spec, vocab }` ⇒ **简写属性 grep 一个都看不见**。
+     建议把这一形态补进 `CLAUDE.md` 铁律 0.5 第 3 条的间接调用清单
+     （现有清单是 re-export / 高阶函数 / 依赖注入 / 字符串键分发 / 事件订阅，**没有"对象简写"这一条**）。
+4. **本审计全程未使用** mtime / 待办状态 / 「最近有没有人改过」作为判据。
