@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-06",
+  "generatedAt": "2026-08-07",
   "ontology": {
     "invariants": [
       "R1",
@@ -1355,6 +1355,39 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-ontology-7elements.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-2"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/databuilder/solver-args.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/ontology.ts",
+        "apps/datacore/src/repo/pg.ts",
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/pages/admin/ActionsPage.tsx",
+        "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
+        "packages/contracts/src/actions.ts",
+        "scripts/check-action-wiring.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-ontology-browser-field-coverage.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2190,6 +2223,7 @@
     "G-2": [
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-ontology-7elements.md",
       "PRD-plan-audit-1to1.md",
       "PRD-query-orchestration-service.md",
       "PRD-skill-runtime-orchestrator.md",
@@ -2262,6 +2296,7 @@
       "PRD-cli-full-coverage.md",
       "PRD-global-sim-live-upgrade.md",
       "PRD-ontoflow-data-builder.md",
+      "PRD-ontology-7elements.md",
       "PRD-skill-compiler-registry.md",
       "PRD-skill-governance-learning.md"
     ],
@@ -2288,6 +2323,7 @@
       "PRD-capacity-live-cockpit.md",
       "PRD-cli-full-coverage.md",
       "PRD-inference-line.md",
+      "PRD-ontology-7elements.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-compiler-registry.md"
@@ -2431,7 +2467,8 @@
     ],
     "apps/datacore/src/catalog.ts": [
       "PRD-attribution-routing-plan-audit.md",
-      "PRD-decision-resource-intelligence-layer.md"
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/solvers/plan.ts": [
       "PRD-attribution-routing-plan-audit.md",
@@ -2548,6 +2585,7 @@
     ],
     "apps/agentcore/src/agent/navigation-slice.ts": [
       "PRD-decision-resource-intelligence-layer.md",
+      "PRD-ontology-7elements.md",
       "PRD-optimize-whatif-conversational-wiring.md"
     ],
     "apps/agentcore/src/agent/skill-router.ts": [
@@ -2598,7 +2636,8 @@
       "PRD-empty-tenant-bootstrap.md"
     ],
     "apps/datacore/src/seed.ts": [
-      "PRD-empty-tenant-bootstrap.md"
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/sop.ts": [
       "PRD-empty-tenant-bootstrap.md"
@@ -2636,7 +2675,8 @@
     ],
     "apps/datacore/src/domain.ts": [
       "PRD-generation-boundary-grounding.md",
-      "PRD-ontoflow-v2-unified-modeling.md"
+      "PRD-ontoflow-v2-unified-modeling.md",
+      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/growth/loop.ts": [
       "PRD-generation-boundary-grounding.md"
@@ -2739,7 +2779,8 @@
       "PRD-prototype-intake-databuilder.md"
     ],
     "apps/datacore/src/ontology.ts": [
-      "PRD-ontoflow-data-builder.md"
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/pipeline/processing.ts": [
       "PRD-ontoflow-data-builder.md"
@@ -2759,6 +2800,25 @@
     "packages/contracts/src/pipeline.ts": [
       "PRD-ontoflow-data-builder.md",
       "PRD-ontoflow-v2-unified-modeling.md"
+    ],
+    "apps/datacore/src/databuilder/solver-args.ts": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/repo/pg.ts": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": [
+      "PRD-ontology-7elements.md"
+    ],
+    "packages/contracts/src/actions.ts": [
+      "PRD-ontology-7elements.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "scripts/check-action-wiring.mjs": [
+      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
@@ -2912,9 +2972,6 @@
       "PRD-skill-governance-learning.md"
     ],
     "apps/frontend-shell/src/pages/admin/GrowthCockpitPage.tsx": [
-      "PRD-skill-governance-learning.md"
-    ],
-    "packages/contracts/src/actions.ts": [
       "PRD-skill-governance-learning.md"
     ],
     "packages/contracts/src/prompt-template.ts": [

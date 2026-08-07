@@ -24,7 +24,9 @@
 #   （当天已犯过同族错误：dev 在主工作目录改文件，gate 报的全绿指向一个中间态。）
 #
 # ## 与 gate.sh 的关系
-# 治理门那 21 条只要 ~1 分钟，不值得记账，每次都重跑（也顺便保证门账是新的）。
+# 治理门那批只要 ~1 分钟，不值得记账，每次都重跑（也顺便保证门账是新的）。
+# ⚠ 别在这里写死门的条数：本脚本第一版写了「21 条」，迁移号门并进来后就成了 22，
+#   标签与现实脱节 —— 正是本仓一直在罚的那类问题（一个断言性的说法，没人去核对它所断言的东西）。
 # 本脚本**不替代** gate.sh 的其余段落；判据完全相同 —— 五包全绿 + 治理门全绿，少一包即红。
 #
 # 用法：
@@ -65,7 +67,7 @@ fi
 if [ "${1:-}" = "--reset" ]; then rm -f "$CKPT"; echo "已清 $CKPT"; exit 0; fi
 
 # ── 治理门（快·每次重跑）──────────────────────────────────────────────
-echo "───── 治理门（21 条·每次重跑，不记账）─────"
+echo "───── 治理门（每次重跑，不记账）─────"
 out=$(pnpm gates 2>&1); rc=$?
 if [ $rc -ne 0 ]; then
   echo "❌ 治理门 RC=$rc"
@@ -110,8 +112,16 @@ if [ "$DONE" -lt "${#PKGS[@]}" ]; then
   exit 2
 fi
 # 收尾复核：跑完了，但工作树/HEAD 若已变，这份绿就不指向它了
-if [ "$(git rev-parse --short HEAD)" != "$SHA" ] || [ -n "$(git status --porcelain)" ]; then
-  echo "⛔ 跑完期间 HEAD 或工作树变了 —— 本次结果作废（它证明的不是当前这个 commit）。"
+# ⚠ 治理门**自己会写产物**（check-prd-coverage / check-prd-ontology 重算索引、
+#   check-ontology-anchors --update 校准行号、门禁产物文档）。第一版把这些也算作"工作树被污染"
+#   ⇒ **每次跑完都会把自己判作废**，一次都过不了。判据必须区分
+#   「门自己的输出」与「别人在我跑的时候改了源码」——后者才是要拦的。
+#   故收尾只看**非门产物**的改动。门产物照常提交，它们本来就是 gate 的产出物之一。
+GATE_ARTIFACTS='^(docs/prd-coverage-index\.json|docs/prd-ontology-index\.json|docs/ONTOLOGY-SLICE-GAPS\.md|scripts/ontology-anchor-baseline\.json)$'
+FOREIGN="$(git status --porcelain | awk '{print $2}' | grep -Ev "$GATE_ARTIFACTS" || true)"
+if [ "$(git rev-parse --short HEAD)" != "$SHA" ] || [ -n "$FOREIGN" ]; then
+  echo "⛔ 跑完期间 HEAD 变了、或有**非门产物**的改动 —— 本次结果作废（它证明的不是当前这个 commit）。"
+  [ -n "$FOREIGN" ] && { echo "   非门产物改动："; printf '   %s\n' $FOREIGN; }
   exit 1
 fi
 echo "✅ 五包全绿 + 治理门全绿 @ $SHA —— 可并线。"
