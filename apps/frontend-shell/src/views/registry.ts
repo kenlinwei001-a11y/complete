@@ -78,6 +78,13 @@ registerRenderer("physical-topology", () => import("./sim/PhysicalTopologyView")
 // 本行 = 这张图唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
 // 缺它就是 F3 踩过的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
 registerRenderer("chain-line-map", () => import("./sim/ChainLineMapView"));
+// WO-IMPEDIMENT-FE 全链阻滞点（卡点/堵点/断点三类互斥可判 + 规则红线判定依据 + dataMode 四态诚实位）。
+// 数据源 = 引擎 chain_impediments（WO-SANDBOX-E3），与上一行 chain-line-map 的 chain_loss_attribution
+// 是**两个不同求解器、两个不同问题**：线路图问「前置期的时间去哪了」，本页问「哪里被卡住了、
+// 凭哪条规则说它被卡住」。故不复用线路图组件、不重画停运站位（对照表见交付说明）。
+// 本行 = 这张页面唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
+// 缺它就是 F2/F3/F4 连踩三次的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
+registerRenderer("chain-impediments", () => import("./sim/ChainImpedimentView"));
 // WO-SANDBOX-F4 节点检视 + 变量输入（五段耗时瀑布 · 流动效率 · 七类变量 T/K/B/C/P/R/S 分组输入）。
 // 收口时补线：F4 交付的 `InspectorNodePanel` 是侧栏组件，38 例 SEAM 全绿但**零生产调用方**
 // —— 与 F3 同一个坑（registry 是手工登记表、无自动扫描）。宿主视图 `NodeInspectorView`
