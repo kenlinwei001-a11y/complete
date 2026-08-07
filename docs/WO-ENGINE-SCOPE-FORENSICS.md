@@ -866,3 +866,26 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
 | `quarterly_gap` 真算季度缺口 | **未做** | 见 11.1 ⑤。需 `PlanTarget` 进 `SolverContext` + 季度供给上卷 + 日历季对齐 —— 属新数据通道 |
 | 端到端（QOS `/b/v1/queries` → SSE）/ 前端 | **未跑** | 与 §9.1/§9.3 同一边界：本轮实测的仍是「引擎收到 `base=江门` 会算什么」，不是「用户在对话里问江门会看到什么」。agentcore/frontend 在本单范围边界之外（**未改一行**） |
 | pg 模式 | **未跑** | 同 §9.4，只跑内存态 seed 42 |
+
+### 11.6 复验中发现、但**不是本轮引入**的两条（如实记下，交审核方裁）
+
+**① `SEAM-PERF` 在高负载下会假红（不是回归·三条证据）**
+`test/solver-context-lazy-loading.seam.test.ts` 的 `SEAM-PERF` 断言 `冷启（内存模式）≤80ms`，
+在 `load average ≈ 40`（本机 4 核·同时有别的 vitest 在跑）时实测 **604ms → 红**。定性为**竞争假红**：
+① **结构证据**：该断言走 `loadContext(..., {solverKey:"capacity_rollup"})`，`opts.withExtended` 为 undefined
+   ⇒ 走 `[empty × 15]` 那一支 ⇒ 本轮新增的两次 `listByType`（BOMHeader/BOMDetail）**在 `withExtended` 分支内、
+   根本不在这条路上**，不可能增加它的加载量；
+② **同 it 内的计数断言先过**：`loaded.length === 4`（核心类型数）通过，只有**墙钟**超预算 ⇒ 加载条数未变；
+③ **隔离复跑通过**：同一 HEAD 单独跑该文件该用例 → **RC=0**（整文件 26s）。
+⇒ 建议：该断言对负载敏感，`≤80ms` 这个绝对阈值在共享 4 核机上不稳；本单**不改它**（改门槛属另一件事，
+   且擅自放宽阈值正是"为变绿改门"）。审核方跑 gate 时若再见此条红，可用上面三条证据快速定性。
+
+**② `{baseId:"<id>"}` 这一 ref 形态解析不到（共享解析器的既有性质·非本轮引入）**
+实测（真服务 seed 42）`mitigation_select` 的 base 六种写法：裸中文名 / 裸 baseId / `{objectId:"obj_base_*"}` /
+`obj_base_*` 裸串 / 人话近指「江门工厂」**五种都 200 且同解**（`baseName:"江门"`·`tightness 96`），
+唯独 `{baseId:"jiangmen"}` → 400。**对照证明这不是本轮引入的**：拿第一轮就已上线的两个求解器打同一形态，
+`carbon_footprint({base:{baseId:"jiangmen"}})` → 400 `AMBIGUOUS_SCOPE`、
+`risk_timeline({base:{baseId:"jiangmen"}})` → 400 `VALIDATION_ERROR unknown base: [object Object]` ——
+三者同源于共享解析器 `types.resolveBaseRef`（→ contracts `matchObjectRefInType`）。
+且它**诚实地 400**（不是静默错答），故不构成本单要治的病。真要收，属 contracts 层解析器的单，不在本单边界内。
+（注：槽位层实际产出的是 `{objectId}` 形态，这一形态**已通过** —— 路径 A 不受影响。）
