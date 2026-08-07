@@ -63,7 +63,11 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan", answersQuestions: ["良率为什么突然下降", "良率突变点在哪道工序", "良率异常怎么诊断定位"], tags: ["良率诊断", "yield", "突变"] },
   { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", argHints: { bases: "基地检修+负荷" }, domain: "plan", answersQuestions: ["设备检修和交付高峰怎么错峰", "检修排在哪周负荷最低", "检修和交付冲突怎么避开"], tags: ["检修错峰", "maintenance", "错峰"] },
   { key: "outsourcing_split", name: "外协分配", description: "加班/外协/延期三渠道按单位成本升序贪心分配。", argHints: { gap: "缺口", weeks: "周数" }, domain: "plan", answersQuestions: ["缺口怎么在加班外协延期间分配", "外协分配怎么最省成本", "加班外协延期三渠道各分多少"], tags: ["外协分配", "outsourcing", "加班"] },
-  { key: "quote_margin", name: "接单毛利", description: "BOM 成本四项分解 + 毛利率对比细分底线。", argHints: { price: "报价", bom: "BOM" }, domain: "plan", answersQuestions: ["这个报价毛利多少", "BOM 成本四项怎么分解", "报价毛利率对比细分底线如何"], tags: ["接单毛利", "quote", "毛利率"] },
+  // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：argHints 补 custName/modelId —— 取证单 §4 记过一笔
+  // 「卡片与 ARG_OVERRIDE 都在传 custName/modelId/qty 三个求解器不认的键」；本单起这两个键是**真读**的
+  // （客户 → order_of_customer 归属边 → 在手单 → 型号 → 真 BOM），argHints 若不补就反过来对不上了。
+  // `qty` 不列：毛利率是**比率**，报价数量不改变比率（`Order.qty` 只用于同型号多单的加权均价）。
+  { key: "quote_margin", name: "接单毛利", description: "按客户与型号取真 BOM（BOMHeader/BOMDetail）与真单价，四项分解毛利率并对比细分底线；输出带 scope 说明算的是谁。", argHints: { custName: "客户（客户名或下单品牌名）", modelId: "型号（缺省取该客户主力型号）", price: "报价（缺省取该客户该型号在手单加权均价）", bom: "BOM（直传则按 EXPLICIT 口径算，不查库）" }, domain: "plan", answersQuestions: ["这个报价毛利多少", "BOM 成本四项怎么分解", "报价毛利率对比细分底线如何", "某客户这单毛利过线吗"], tags: ["接单毛利", "quote", "毛利率", "客户"] },
   { key: "credit_exposure", name: "信用敞口", description: "敞口=应收+在产；可用额与逾期判定（C32）。", argHints: { custName: "客户", creditLimit: "额度" }, domain: "plan", answersQuestions: ["客户信用逾期多少", "信用敞口多大", "客户可用额还剩多少", "应收加在产敞口多大"], tags: ["credit", "exposure", "信用", "逾期", "敞口"] },
   { key: "quarterly_gap", name: "季度缺口对策", description: "对策按成本升序贪心覆盖季度缺口，残余明示。", argHints: { quarter: "季度", gap: "缺口" }, domain: "plan", answersQuestions: ["季度缺口怎么用对策覆盖", "对策按成本怎么排优先", "覆盖后残余还剩多少"], tags: ["季度缺口", "对策", "quarterly"] },
   { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan", answersQuestions: ["产品碳足迹怎么核算", "物料和能耗碳排各多少", "对比欧盟阈值差多少"], tags: ["碳足迹", "carbon", "能耗"] },

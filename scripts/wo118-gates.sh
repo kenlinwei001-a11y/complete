@@ -27,6 +27,9 @@ esac
 case "$what" in
   ontology|all)
     run "ontology:check" pnpm run -s ontology:check
+    run "dril-retrieval:check" node scripts/check-dril-retrieval.mjs
+    run "scenario-slot-keys:check" node scripts/check-scenario-slot-keys.mjs
+    run "arg-drop-seam:check" node scripts/check-arg-drop-seam.mjs
     ;;
 esac
 case "$what" in
