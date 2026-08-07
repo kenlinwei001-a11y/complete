@@ -84,11 +84,14 @@ echo "BUILD_RC=$?"
 | **agentcore**（含 D2+D3） | 144 (143 passed / 1 skipped) | 814 (813 passed / 1 skipped) | 0 | dev 自述·**待复验** |
 | **frontend-shell** | 158 passed | 457 passed | 0 | canonical 基线 |
 | **frontend-shell**（含 D5+D4） | 159 passed | 462 passed | 0 | 审核方已复验 |
-| **datacore** | 1199 passed / 16 skipped | — | 0 | 含 1 条 `it.skip`（#82 已知缺陷挂档） |
+| **datacore** | 1199 passed / 16 skipped | — | 0 | 含 1 条 `it.skip`（#82 已知缺陷挂档）·**已作废，见下** |
 | **pnpm gates** | 17 道门 | — | 0 | WO-76 接线后由 16 → 17 |
 
-> `1 skipped` 是**有意挂档**（`adversary-adopt-mitigation.test.ts` 的 #82），不是漏跑。
-> 跑出 `0 skipped` 反而要查是不是被谁删了。
+> ~~`1 skipped` 是**有意挂档**（`adversary-adopt-mitigation.test.ts` 的 #82），不是漏跑。~~
+> **已作废（#82 已修·本体 §8 `G-RISK-PEAK-TWO-SOURCES`）**：`adversary-adopt-mitigation.test.ts` B 条
+> **已去 `it.skip`** 并升级为效果层常驻回归门（逐格断言订单全链聚合 ≡ 风险看板卡面的 peak/crossDay）。
+> 该文件现**不应再有任何 skip**；若又出现 `1 skipped`，**先查是不是有人把 B 条重新挂档**——
+> 「声称修好却回归的一律不许 skip」（那是洗白）。datacore 的 16 skipped 因此降为 15。
 
 ---
 
