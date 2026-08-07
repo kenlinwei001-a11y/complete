@@ -464,14 +464,20 @@ export function buildCellFacts(facts: TopologyFacts): CellFactsResult {
     const minPlan = numOrNull(row.metrics["min_plannedProductionTime"]);
     const maxPlan = numOrNull(row.metrics["max_plannedProductionTime"]);
     const avgOee = numOrNull(row.metrics["avg_oee"]);
-    const samples = minPlan !== null && minPlan > 0 && sumPlan !== null ? Math.round(sumPlan / minPlan) : null;
+    /**
+     * 样本条数由 `Σ计划 ÷ min(计划)` 反解（`metrics` 上限 5 条，count 挤不进去）。
+     * ⚠ 这个反解**只在各条计划工时全等时成立**；不等权时商数不是行数。
+     *   所以不等权就**不报条数**——宁可少说一句，也不在一句"讲口径"的话里编一个数
+     *   （这条串的存在意义就是可核对，掺一个编的数就全废了）。
+     */
+    const samples = minPlan !== null && maxPlan !== null && minPlan === maxPlan && minPlan > 0 && sumPlan !== null ? Math.round(sumPlan / minPlan) : null;
 
     const patch: CellFacts = {};
     if (sumAct !== null && sumPlan !== null && sumPlan > 0) {
       patch.util = aggregate(
         round1((sumAct / sumPlan) * 100),
         "%",
-        `计划工时利用率 = Σ实际生产时间 ${sumAct} ÷ Σ计划生产时间 ${sumPlan}（EquipmentOEE 逐设备逐日${samples === null ? "" : ` ${samples} 条`}·和比和=按计划工时加权，非比率平均）`,
+        `计划工时利用率 = Σ实际生产时间 ${sumAct} ÷ Σ计划生产时间 ${sumPlan}（EquipmentOEE 逐设备逐日${samples === null ? "，条数不可反解故不报" : ` ${samples} 条`}·和比和=按计划工时加权，非比率平均）`,
       );
     } else {
       patch.util = empty("%", "EquipmentOEE 该格 Σ计划生产时间为 0 或缺失 —— 除不出利用率，不补 0");

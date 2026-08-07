@@ -141,6 +141,15 @@ describe("SEAM · 对象聚合 → 格（口径单源，期望值手算硬编码
     expect(byCell.get(B)!.util!.basis).toMatch(/加权/);
   });
 
+  it("②b 算式里不许出现反解不出来的样本条数（讲口径的话掺一个编的数 = 全废）", () => {
+    const { byCell } = buildCellFacts(facts());
+    // A 格等权（min===max===480）：Σ2400 ÷ 480 = 5，可反解 → 照实报
+    expect(byCell.get(A)!.util!.basis).toMatch(/逐设备逐日 5 条/);
+    // B 格不等权（400 ≠ 480）：Σ1920 ÷ 400 = 4.8 **不是行数** → 必须不报，且明说为什么不报
+    expect(byCell.get(B)!.util!.basis).not.toMatch(/\d+ 条/);
+    expect(byCell.get(B)!.util!.basis).toMatch(/条数不可反解故不报/);
+  });
+
   it("③ takt 取最慢工位（max），不取平均 —— 平均值 1.7 出现即错", () => {
     const { byCell } = buildCellFacts(facts());
     expect(byCell.get(A)!.takt!.value).toBe(2.5);
