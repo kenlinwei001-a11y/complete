@@ -25,8 +25,11 @@ describe("A7 synthetic data", () => {
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
     // global-sim 升为核心内置视图（seed:true·view-manifest.BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE）→ 进 scenarioSeed.views
     // → 进 report.views 验收快照（此前经 extraViews 分桶不在快照·现收敛回核心，是"缺失视图现身"的诚实体现）。
+    // 推演沙盘四子视图入册 BUILTIN_VIEWS（WO-SANDBOX-VIEW-MOUNT）→ seed:true → 进 SEEDED_VIEW_KEYS
+    // → 进 scenarioSeed.views → 进本快照。金值随注册即更（CLAUDE.md「漏金值即退」），末位追加不动前序序（R6）。
     expect(report.views).toEqual([
       "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
+      "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 
