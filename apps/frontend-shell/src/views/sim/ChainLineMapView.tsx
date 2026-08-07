@@ -59,6 +59,33 @@ import styles from "./ChainLineMapView.module.css";
 /** 提示条自动消隐时长（ms）。 */
 const HINT_MS = 1600;
 
+/**
+ * 一圈上最多标几个站名。
+ *
+ * 实测（demo seed 42）主干 26 个站位、每个站名是 4–8 个汉字；三圈叠起来是 78 组标签，
+ * 在 ~600px 宽的画布槽里必然糊成一团（真浏览器实拍确认）。
+ * 处置纪律：**减的是标签，不是站** —— 站一个不少、悬浮/右栏仍给全量读数；
+ * 只把「先看哪几个」标出来。选取判据 = `pctOfChainLoss` 降序（引擎给的损失占比，前端不另定优先级），
+ * 并列按 stepId 字典序（R6 全序）。停运站位**不参与减标**：断点必须一直看得见。
+ */
+export const MAX_LABELS_PER_RING = 9;
+
+/**
+ * 该圈上要标名字的 `stepId` 集合。
+ * 多圈时**只有最外那一圈标名字**（三圈站在同一角度上，标三遍是纯重复）。
+ */
+export function labelledStepIds(map: ChainLineMap, isLabelRing: boolean): Set<string> {
+  if (!isLabelRing) return new Set();
+  const ranked = [...map.stations]
+    .sort((a, b) => {
+      const av = a.pctOfChainLoss ?? -1;
+      const bv = b.pctOfChainLoss ?? -1;
+      return av !== bv ? bv - av : a.stepId < b.stepId ? -1 : 1;
+    })
+    .slice(0, MAX_LABELS_PER_RING);
+  return new Set(ranked.map((s) => s.stepId));
+}
+
 type LoadState =
   | { status: "loading" }
   | { status: "ready"; map: ChainLineMap; summary: string | null; anchorSo: string | null }
@@ -162,11 +189,14 @@ function labelAnchor(angle: number, r: number, x: number, y: number) {
 function Station({
   s,
   sharedAcrossFamilies = false,
+  labelled = true,
   onEnter,
   onLeave,
 }: {
   s: StationVM;
   sharedAcrossFamilies?: boolean;
+  /** 是否在图上标出站名 —— 见 `labelledStepIds` 的密度纪律。false 时站仍在，只是名字改为悬浮出。 */
+  labelled?: boolean;
   onEnter: () => void;
   onLeave: () => void;
 }) {
@@ -203,18 +233,38 @@ function Station({
       ) : (
         <circle className={s.glyph === "value-add" ? styles.stationValueAdd : styles.stationStop} cx={s.x} cy={s.y} r={s.r} />
       )}
-      <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
-        {s.label}
-      </text>
-      <text className={styles.stationPct} data-testid={`clm-pct-${s.stepId}`} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
-        {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
-      </text>
+      {/* 站名与读数：密度过高时只标"值得先看的那些"，其余悬浮出（站本身一个不少，见 labelledStepIds） */}
+      {labelled ? (
+        <>
+          <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
+            {s.label}
+          </text>
+          <text className={styles.stationPct} data-testid={`clm-pct-${s.stepId}`} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
+            {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
+          </text>
+        </>
+      ) : (
+        /* 无名站也要能被测试与读屏找到读数（悬浮面板给全量），故保留一个隐藏读数节点 */
+        <title data-testid={`clm-pct-${s.stepId}`}>
+          {s.label} · {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
+        </title>
+      )}
     </g>
   );
 }
 
 /** 停运站位 = 断点。空心方框 + 叉，与任何"有值的站"在形状上就分得开。 */
-function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () => void; onLeave: () => void }) {
+function SuspendedStop({
+  s,
+  labelled = true,
+  onEnter,
+  onLeave,
+}: {
+  s: SuspendedVM;
+  labelled?: boolean;
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
   const a = 11;
   const L = labelAnchor(s.angle, a, s.x, s.y);
   return (
@@ -234,12 +284,20 @@ function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () =>
     >
       <rect className={styles.suspendedBox} x={s.x - a} y={s.y - a} width={a * 2} height={a * 2} rx={3} />
       <path className={styles.suspendedCross} d={`M ${s.x - 5} ${s.y - 5} L ${s.x + 5} ${s.y + 5} M ${s.x + 5} ${s.y - 5} L ${s.x - 5} ${s.y + 5}`} />
-      <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
-        {s.label}
-      </text>
-      <text className={styles.suspendedTag} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
-        停运
-      </text>
+      {labelled ? (
+        <>
+          <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
+            {s.label}
+          </text>
+          <text className={styles.suspendedTag} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
+            停运
+          </text>
+        </>
+      ) : (
+        <title>
+          {s.label} · 停运（断点）
+        </title>
+      )}
     </g>
   );
 }
@@ -621,6 +679,14 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
               站 {map.stats.stationCount} · 停运 {map.stats.suspendedCount} · 换乘 {map.stats.interchangeCount} · 增值{" "}
               {map.stats.valueAddCount} · 返工 {map.stats.reworkCount}
             </span>
+            {/* 标签密度：减的是标签不是站，必须说清楚（否则用户会以为站少了） */}
+            {map.stats.stationCount > MAX_LABELS_PER_RING ? (
+              <span data-testid="clm-label-thinning">
+                图上按损失占比标了前 {MAX_LABELS_PER_RING} 个站名（共 {map.stats.stationCount} 站，其余悬浮出）——
+                <b>减的是标签不是站</b>；停运站位不参与减标
+                {ringMaps.length > 1 ? "；多圈时只有最外圈标名（三圈同角度，标三遍是重复）" : ""}
+              </span>
+            ) : null}
             {/* 族线状态：**代价明写**（多发了几次请求），失败也明写（主链照常画） */}
             {famState.status !== "off" ? (
               <span data-testid="clm-family-status" data-family-state={famState.status}>
@@ -665,10 +731,10 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
                   </marker>
                 </defs>
 
-                {ringMaps.map((rm) => (
+                {ringMaps.map((rm, ri) => (
                 <g key={rm.family?.key ?? "base"} data-testid={`clm-ring-layer-${rm.family?.key ?? "base"}`} data-ring-index={rm.family?.ringIndex ?? 0}>
                 {/* 环名（族线标识贴在环的正上方；单链形态贴主线名） */}
-                {(() => { const map = rm; return (<>
+                {(() => { const map = rm; const labels = labelledStepIds(rm, ri === ringMaps.length - 1); return (<>
                 {map.family !== null ? (
                   <text
                     className={styles.lineLabel}
@@ -756,14 +822,22 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
                   />
                 ))}
 
+                {/* 停运站位（断点）**不参与减标**：算不出来这件事必须一直看得见 */}
                 {map.suspended.map((s) => (
-                  <SuspendedStop key={s.stepId} s={s} onEnter={() => setHoverId(s.stepId)} onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))} />
+                  <SuspendedStop
+                    key={s.stepId}
+                    s={s}
+                    labelled={ri === ringMaps.length - 1}
+                    onEnter={() => setHoverId(s.stepId)}
+                    onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))}
+                  />
                 ))}
                 {map.stations.map((s) => (
                   <Station
                     key={s.stepId}
                     s={s}
                     sharedAcrossFamilies={sharedStepIds.has(s.stepId)}
+                    labelled={labels.has(s.stepId)}
                     onEnter={() => setHoverId(s.stepId)}
                     onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))}
                   />

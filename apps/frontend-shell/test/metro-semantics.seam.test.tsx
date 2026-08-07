@@ -54,7 +54,7 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
 });
 
 import SandboxView from "@/views/sim/SandboxView";
-import { ChainLineMapView } from "@/views/sim/ChainLineMapView";
+import { ChainLineMapView, labelledStepIds, MAX_LABELS_PER_RING } from "@/views/sim/ChainLineMapView";
 import {
   buildChainLineMap,
   ChainLossPayloadSchema,
@@ -174,6 +174,47 @@ describe("§1 · 形：站真的落在环上（几何自证，不是「看着像
     expect(map.closureBasis).toBeTruthy();
     expect(map.closureBasis!).toContain("结构推定");
     expect(map.closureBasis!, "必须说清引擎给的是有序链、载荷里没有这条边").toContain("有序链");
+  });
+
+  it("标签减密：**减的是标签不是站** —— 站与读数一个不少，只是名字改为悬浮出", async () => {
+    const map = buildChainLineMap(loadLoss());
+    expect(map.stats.stationCount, "fixture 站数应超过标签上限，否则本用例咬不到东西").toBeGreaterThan(MAX_LABELS_PER_RING);
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChainLineMapView />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("clm-summary");
+
+    // ① 站一个不少
+    expect(document.querySelectorAll('[data-testid^="clm-station-"]')).toHaveLength(map.stats.stationCount);
+    // ② 每个站的读数节点都在（有名的画成 text，无名的画成 title —— 读屏与测试都取得到）
+    for (const s of map.stations) expect(screen.getByTestId(`clm-pct-${s.stepId}`), `站 ${s.stepId} 的读数丢了`).toBeTruthy();
+    // ③ 真正被标名字的只有前 N 个（按引擎 pct 降序），不是随手截断
+    const labelled = labelledStepIds(map, true);
+    expect(labelled.size).toBe(MAX_LABELS_PER_RING);
+    const topByPct = [...map.stations]
+      .sort((a, b) => (b.pctOfChainLoss ?? -1) - (a.pctOfChainLoss ?? -1) || (a.stepId < b.stepId ? -1 : 1))
+      .slice(0, MAX_LABELS_PER_RING)
+      .map((s) => s.stepId);
+    expect([...labelled].sort()).toEqual(topByPct.sort());
+    // ④ 屏上必须说清楚"减的是标签不是站"
+    expect(screen.getByTestId("clm-label-thinning").textContent ?? "").toContain("减的是标签不是站");
+  });
+
+  it("停运站位（断点）**不参与减标**：算不出来这件事必须一直看得见", async () => {
+    const map = buildChainLineMap(loadLoss());
+    expect(map.suspended.length).toBeGreaterThan(0);
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ChainLineMapView />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("clm-summary");
+    // 单圈 = 标签圈，故每个停运站位都应带可见的「停运」文案
+    const txt = screen.getByTestId("clm-stage").textContent ?? "";
+    for (const s of map.suspended) expect(txt, `停运站位 ${s.stepId} 的名字被减掉了`).toContain(s.label);
   });
 
   it("环形化后 AND ≠ OR 那条诚实位一个字没丢（重组不许弄丢既有诚实标记）", () => {
