@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { ViewRendererProps } from "../registry";
+import { aggregateObjects, searchObjects } from "@/api/endpoints";
+import { tokenStore } from "@/api/tokenStore";
 import {
   buildTopology,
   clampZoom,
@@ -10,14 +13,18 @@ import {
   IDENTITY_TRANSFORM,
   PLACEHOLDER_SEED_DEFAULT,
   PROCESS_CHAIN_SOURCE,
+  PROVENANCE_BADGE,
   PROVENANCE_LABEL,
   REAL_DATA_ENTRYPOINTS,
+  TOPOLOGY_FACT_QUERIES,
   zoomAt,
   zoomCenter,
   ZOOM_STEP,
+  type AggRow,
   type HeatBand,
   type Measure,
   type TopologyCell,
+  type TopologyFacts,
   type ViewTransform,
 } from "./physicalTopology";
 import styles from "./PhysicalTopologyView.module.css";
@@ -29,10 +36,15 @@ import styles from "./PhysicalTopologyView.module.css";
  * 悬停任一格出该工序详情。派生细节与"哪些数是真的"见 `physicalTopology.ts` 顶注。
  *
  * 诚实红线（本视图的存在意义之一）：
- *  · 格内 利用率/OEE/在制 **全是 seed 派生的占位值**，页面顶部常驻横幅 + 每格角标 + 详情面板逐项标注，
- *    绝不冒充实测；节拍无数据源 → 显示 `EMPTY`，不补 0。
- *  · 基地级 利用率/产能/产线数/瓶颈 是 `BASE_REGISTRY` 真值，标 `真值·基地册`，与占位分开呈现。
+ *  · 格内每条度量**逐条标来源**：`真值·对象聚合` / `占位·未接真值` / `EMPTY·无数据源`。
+ *    页面顶部常驻横幅 + 每格角标 + 详情面板逐项标注，占位绝不冒充实测；算不出来标 `EMPTY`，不补 0。
+ *  · 真值格的详情面板同时给出 **`basis` 算式**（Σ/Σ 加权、max 取最慢工位…）—— 口径不许藏在代码里。
+ *  · 基地级 利用率/产能/产线数/瓶颈 是 `BASE_REGISTRY` 真值，标 `真值·基地册`，与格内分开呈现。
  *  · 瓶颈设备型定位不到工序列（如「老化库」不在十车间链上）→ 明说定位不到，不挑一列点亮。
+ *
+ * WO-TOPO-REALDATA 接线：四条格内度量改读 DataCore 对象聚合（口径全在 `physicalTopology.ts` §5.5，
+ * 本文件只做传输与呈现，**一行口径都不许写在这里**）。取不到（未登录 / 请求失败 / 后端无该对象）
+ * → `buildTopology(seed, null)` 回到接线前的占位行为，并把原因写进每条度量的 `reason`。
  *
  * 交互：滚轮以光标为锚缩放 · 拖拽平移 · 适应画布；快捷键 `+` / `-` / `0`（画布获焦后生效）。
  * 主题：零硬编码颜色，全部走 `styles/tokens.css` 的 CSS 变量 → dark / light / warm 三套自动跟随。
@@ -43,13 +55,34 @@ const HINT_MS = 1600;
 /** 矩阵几何（CSS 像素，供 grid 模板与 fit 计算共用）。 */
 const ROW_HEAD_W = 168;
 const CELL_W = 92;
+/** 车间册一次取满（实测 130 行；`pageSize` 上限 500，够用且留余量）。 */
+const WORKSHOP_PAGE_SIZE = "500";
 
 function fmt(m: Measure): string {
   if (m.value === null) return "EMPTY";
   return `${m.value}${m.unit ? ` ${m.unit}` : ""}`;
 }
 
-/** 一条度量的诚实呈现：值 + 来源标签（占位/EMPTY 一眼可辨）。 */
+/**
+ * 真值载荷拉取：**四个只读请求并发**，请求体全部引自 `TOPOLOGY_FACT_QUERIES`（口径单源）。
+ * 本函数只负责搬运，不做任何合并/换算 —— 合并口径在 `buildCellFacts`，一处。
+ */
+export async function fetchTopologyFacts(): Promise<TopologyFacts> {
+  const [oee, equipment, wip, workshops] = await Promise.all([
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.oee as unknown as Parameters<typeof aggregateObjects>[0]),
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.equipment as unknown as Parameters<typeof aggregateObjects>[0]),
+    aggregateObjects(TOPOLOGY_FACT_QUERIES.wip as unknown as Parameters<typeof aggregateObjects>[0]),
+    searchObjects("Workshop", "", { pageSize: WORKSHOP_PAGE_SIZE }),
+  ]);
+  return {
+    oee: oee.rows as AggRow[],
+    equipment: equipment.rows as AggRow[],
+    wip: wip.rows as AggRow[],
+    workshops: workshops.items.map((i) => i.props),
+  };
+}
+
+/** 一条度量的诚实呈现：值 + 来源标签 + 口径算式（占位/EMPTY 一眼可辨）。 */
 function MeasureLine({ label, m, testId }: { label: string; m: Measure; testId: string }) {
   return (
     <div className={styles.measureLine} data-testid={testId} data-provenance={m.provenance}>
@@ -58,6 +91,11 @@ function MeasureLine({ label, m, testId }: { label: string; m: Measure; testId: 
       <em className={styles.provTag} data-prov-tag={m.provenance}>
         {PROVENANCE_LABEL[m.provenance]}
       </em>
+      {m.basis ? (
+        <small className={styles.basis} data-testid={`${testId}-basis`}>
+          口径：{m.basis}
+        </small>
+      ) : null}
       {m.reason ? <small className={styles.reason}>{m.reason}</small> : null}
     </div>
   );
@@ -79,7 +117,24 @@ export function PhysicalTopologyView({
   seed = PLACEHOLDER_SEED_DEFAULT,
   chrome = "full",
 }: Partial<ViewRendererProps> & { seed?: number; chrome?: PhysicalTopologyChrome }) {
-  const matrix = useMemo(() => buildTopology(seed), [seed]);
+  /**
+   * 有会话才去读租户数据（对象读取一律 tenant-scoped，无 token 必 401）。
+   * `useSyncExternalStore` 而不是读一次快照：登录后要**自动**补拉，不能让用户手动刷新。
+   */
+  const hasToken = useSyncExternalStore(
+    tokenStore.subscribe,
+    () => tokenStore.get() !== null,
+    () => false,
+  );
+  const factsQ = useQuery({
+    queryKey: ["a", "physical-topology-facts"],
+    queryFn: fetchTopologyFacts,
+    enabled: hasToken,
+    // retry 会排退避定时器；本视图失败即回落占位（有诚实文案），不值得为它留孤儿句柄。
+    retry: false,
+    staleTime: 60_000,
+  });
+  const matrix = useMemo(() => buildTopology(seed, factsQ.data ?? null), [seed, factsQ.data]);
   const [t, setT] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
@@ -196,6 +251,7 @@ export function PhysicalTopologyView({
   const hoveredRow = hovered ? matrix.rows.find((r) => r.base.baseId === hovered.baseId) ?? null : null;
   const gridTemplate = `${ROW_HEAD_W}px repeat(${matrix.processes.length}, ${CELL_W}px)`;
   const { stats } = matrix;
+  const diag = matrix.factsDiagnostics;
 
   return (
     <div className={styles.root} data-testid="phys-topo" data-chrome={chrome}>
@@ -224,24 +280,55 @@ export function PhysicalTopologyView({
         </div>
       </header>
 
-      {/* ── 占位数据横幅：常驻、不可折叠。占位值绝不冒充实测。 ───────────────────── */}
+      {/* ── 数据来源横幅：常驻、不可折叠。真值与占位值逐格分层，占位绝不冒充实测。 ─────
+          ⚠ testid `phys-topo-placeholder-banner` 与正文里的「占位值」三字是**跨视图契约**：
+             沙盘控制台的 SEAM 门（test/sandbox-console.seam.test.tsx:360）靠它证明"重组时诚实位没丢"。
+             改名或让这句话在某个分支下消失 = 那道门失守。故第一段的口径说明**恒定出现**，不随数据变。 */}
       <section className={styles.placeholderBanner} data-testid="phys-topo-placeholder-banner" role="note">
-        <b className={styles.bannerTitle}>⚠ 格内数值为占位值（未接真实数据）</b>
-        <p>
-          每格的 <b>利用率 / OEE / 在制</b> 均由 <code>seed={matrix.seed}</code> 确定性派生（同 seed 同输入字节一致），
-          <b> 不是实测</b>；<b>节拍</b> 无数据源 → 标 <code>EMPTY</code>，不补 0。
-          仅基地行首的 利用率 / 产能 / 产线数 / 瓶颈 是 <code>BASE_REGISTRY</code> 真值。
-          当前：占位度量 {stats.placeholderMeasures} 项 · EMPTY 度量 {stats.emptyMeasures} 项 ·
-          瓶颈定位不到列 {stats.unlocatedBottlenecks} 个基地。
+        <b className={styles.bannerTitle} data-testid="phys-topo-banner-title">
+          {stats.realMeasures > 0
+            ? `⚑ 格内 ${stats.realCells}/${stats.cellCount} 格已接真值；其余仍为占位值（未接真实数据）`
+            : "⚠ 格内数值为占位值（未接真实数据）"}
+        </b>
+        <p data-testid="phys-topo-banner-legend">
+          逐格标注来源，三档不许混同：<b>真值·对象聚合</b>（DataCore <code>EquipmentOEE</code> /{" "}
+          <code>Equipment</code> / <code>WIPLot</code> 服务端聚合，详情面板附算式）·<b>占位值</b>
+          （<code>seed={matrix.seed}</code> 确定性派生，<b>不是实测</b>）·<code>EMPTY</code>（算不出来就标空，
+          <b>不补 0</b>）。仅基地行首的 利用率 / 产能 / 产线数 / 瓶颈 是 <code>BASE_REGISTRY</code> 真值。
+        </p>
+        <p data-testid="phys-topo-banner-stats">
+          当前：真值度量 {stats.realMeasures} 项 · 占位度量 {stats.placeholderMeasures} 项 · EMPTY 度量{" "}
+          {stats.emptyMeasures} 项 · 瓶颈定位不到列 {stats.unlocatedBottlenecks} 个基地。
+          {factsQ.isError ? (
+            <span className={styles.entryGap} data-testid="phys-topo-facts-error">
+              {" "}真值读取失败（{(factsQ.error as Error).message}）→ 全格回落占位，不拿旧值/假值顶替。
+            </span>
+          ) : null}
+          {!hasToken ? (
+            <span className={styles.entryGap} data-testid="phys-topo-facts-anonymous">
+              {" "}未登录 → 不读租户对象，全格回落占位。
+            </span>
+          ) : null}
+          {factsQ.isLoading ? <span data-testid="phys-topo-facts-loading"> 真值加载中…（先显示占位，到货后整体替换）</span> : null}
+          {diag ? (
+            <span data-testid="phys-topo-facts-diagnostics">
+              {" "}接线诊断：命中 {diag.cellsWithFacts} 格 · 车间册映射不到列 {diag.unmappedWorkshops} 行 · 孤儿事实行（
+              OEE {diag.orphanRows.oee} / 设备 {diag.orphanRows.equipment} / 在制 {diag.orphanRows.wip}）已丢弃**不摊到任何一格** ·
+              OEE 因计划工时不等权判 EMPTY {diag.oeeUnweighted} 格。
+            </span>
+          ) : null}
         </p>
         <details className={styles.entrypoints} data-testid="phys-topo-entrypoints">
-          <summary>接真值的入口（三个对象/求解器已存在，只是没接进这张图）</summary>
+          <summary>真值接线台账（哪几条通了 / 哪几条仍是缺口）</summary>
           <ul>
             {REAL_DATA_ENTRYPOINTS.map((ep) => (
-              <li key={`${ep.field}-${ep.source}`} data-testid={`phys-topo-entry-${ep.field}`}>
+              <li key={`${ep.field}-${ep.source}`} data-testid={`phys-topo-entry-${ep.source}`} data-status={ep.status}>
                 <code>{ep.field}</code> ← <b>{ep.source}</b>
+                <span className={styles.entryStatus} data-status={ep.status}>
+                  {ep.status === "connected" ? "已接线" : "仍是缺口"}
+                </span>
                 <div className={styles.entryShape}>今日产出：{ep.shapeToday}</div>
-                <div className={styles.entryGap}>缺口：{ep.gap}</div>
+                <div className={styles.entryGap}>{ep.status === "connected" ? "口径：" : "缺口："}{ep.gap}</div>
               </li>
             ))}
           </ul>
@@ -251,7 +338,7 @@ export function PhysicalTopologyView({
       {/* ── 图例 ────────────────────────────────────────────────────────────────── */}
       <div className={styles.legend} data-testid="phys-topo-legend">
         <span className={styles.legendGroup}>
-          热力（占位利用率）：
+          热力（计划工时利用率）：
           {(["idle", "normal", "tight", "over", "empty"] as HeatBand[]).map((b) => (
             <i key={b} className={styles.legendChip} data-band={b} data-testid={`phys-topo-legend-${b}`}>
               <u className={styles.legendSwatch} data-band={b} />
@@ -261,7 +348,7 @@ export function PhysicalTopologyView({
         </span>
         <span className={styles.legendGroup}>
           来源：
-          {(["registry", "placeholder", "empty"] as const).map((p) => (
+          {(["registry", "aggregate", "placeholder", "empty"] as const).map((p) => (
             <i key={p} className={styles.legendChip} data-prov-tag={p} data-testid={`phys-topo-legend-prov-${p}`}>
               {PROVENANCE_LABEL[p]}
             </i>
@@ -359,16 +446,16 @@ export function PhysicalTopologyView({
                       data-band={c.band}
                       data-provenance={c.util.provenance}
                       data-bottleneck={c.isBottleneck ? "1" : "0"}
-                      aria-label={`${c.baseName} ${c.process.name}：占位利用率 ${c.util.value}%`}
+                      aria-label={`${c.baseName} ${c.process.name}：${PROVENANCE_LABEL[c.util.provenance]} 计划工时利用率 ${c.util.value ?? "EMPTY"}%`}
                       onMouseEnter={() => setHoverKey(c.key)}
                       onFocus={() => setHoverKey(c.key)}
                       onMouseLeave={() => setHoverKey((k) => (k === c.key ? null : k))}
                     >
                       <u className={styles.fill} data-band={c.band} style={{ opacity: heatAlpha(c.util) }} />
-                      <span className={styles.cellVal}>{c.util.value}</span>
-                      {/* 占位角标：每一格自带，杜绝"看久了以为是实测" */}
-                      <em className={styles.cellProv} data-prov-tag={c.util.provenance}>
-                        占位
+                      <span className={styles.cellVal}>{c.util.value ?? "—"}</span>
+                      {/* 来源角标：每一格自带，杜绝"看久了以为是实测"；真值格也标，免得两种数看起来一样 */}
+                      <em className={styles.cellProv} data-prov-tag={c.util.provenance} title={PROVENANCE_LABEL[c.util.provenance]}>
+                        {PROVENANCE_BADGE[c.util.provenance]}
                       </em>
                       {c.isBottleneck ? <s className={styles.bnFlag} aria-hidden="true" /> : null}
                     </div>
@@ -402,13 +489,15 @@ export function PhysicalTopologyView({
                   ⚑ 该基地登记瓶颈落在本工序（<code>BASE_REGISTRY.bottleneck = {hoveredRow.bottleneck.equipmentType}</code>）
                 </p>
               ) : null}
-              <MeasureLine label="利用率" m={hovered.util} testId="phys-topo-detail-util" />
+              {/* ⚠ 「计划工时利用率」≠ 行首「产能利用率」：前者 = Σ实际生产时间÷Σ计划生产时间（设备侧），
+                     后者 = BASE_REGISTRY.util（基地产能侧）。两个口径**刻意不共用中文名**，共用即事故。 */}
+              <MeasureLine label="计划工时利用率" m={hovered.util} testId="phys-topo-detail-util" />
               <MeasureLine label="OEE" m={hovered.oee} testId="phys-topo-detail-oee" />
               <MeasureLine label="在制" m={hovered.wip} testId="phys-topo-detail-wip" />
               <MeasureLine label="节拍" m={hovered.takt} testId="phys-topo-detail-takt" />
               <hr className={styles.hr} />
               <div className={styles.detailSection}>基地级真值（BASE_REGISTRY）</div>
-              <MeasureLine label="基地利用率" m={hoveredRow.util} testId="phys-topo-detail-base-util" />
+              <MeasureLine label="基地产能利用率" m={hoveredRow.util} testId="phys-topo-detail-base-util" />
               <MeasureLine label="名义产能" m={hoveredRow.gwh} testId="phys-topo-detail-base-gwh" />
               <MeasureLine label="产线数" m={hoveredRow.lines} testId="phys-topo-detail-base-lines" />
               {hoveredRow.bottleneck.processSuffix === null ? (
