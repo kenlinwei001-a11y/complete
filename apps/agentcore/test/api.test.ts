@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTestApp, debugHeaders, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import { createTestApp, debugHeaders, PLANNER, TENANT, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 
 let t: TestApp;
 beforeEach(async () => {
@@ -25,7 +25,13 @@ describe("ops endpoints & error envelope", () => {
     });
     await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
 
-    const metrics = await t.app.inject({ method: "GET", url: "/metrics" });
+    // WO-65：/metrics 不再公开（需 service token 或 admin 角色）。helpers 的 ADMIN 是
+    // catalog_admin|planner（**不含** admin），故这里显式给一个 admin 角色的调试身份。
+    const metrics = await t.app.inject({
+      method: "GET",
+      url: "/metrics",
+      headers: { "x-debug-user": `${TENANT}:user-admin:admin` },
+    });
     expect(metrics.statusCode).toBe(200);
     const text = metrics.body;
     expect(text).toContain('qos_tasks_total{path="WORKFLOW",status="COMPLETED"} 1');

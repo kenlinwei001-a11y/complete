@@ -20,7 +20,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
     await seedBattery(t);
 
     // 端点在跑 Action **之前**不得已有该 Action 类型的计数（否则 >0 可能来自别处，断言就没鉴别力）
-    const before = await t.app.inject({ method: "GET", url: "/metrics" });
+    const before = await t.app.inject({ method: "GET", url: "/metrics", headers: ADMIN });
     expect(before.statusCode).toBe(200);
     expect(before.body).not.toContain('dc_action_submit_total{action_type="对象数据变更"');
 
@@ -43,13 +43,15 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
     expect((await t.repos.objects.get("demo", objectId))!.props.qty).toBe(4242); // 执行段真发生过
 
     // ---- 头号判据：外部监控真的看得见 -------------------------------------------------
-    const res = await t.app.inject({ method: "GET", url: "/metrics" });
+    const res = await t.app.inject({ method: "GET", url: "/metrics", headers: ADMIN });
     expect(res.statusCode).toBe(200);
     const body = res.body;
 
     // 三段各自的具体序列 + 数值，逐条从响应文本里读出来（不是读 services.actions.metrics）
+    // WO-65：标签按字母序渲染 → action_type, outcome, tenant。tenant 段写死在正则里，
+    // 去掉租户维（不落 tenant 标签）时这条正则一个都匹不到 → 全部 >0 断言当场红。
     const seriesValue = (name: string, outcome: string): number => {
-      const re = new RegExp(`^${name}\\{action_type="对象数据变更",outcome="${outcome}"\\} (\\d+)$`, "m");
+      const re = new RegExp(`^${name}\\{action_type="对象数据变更",outcome="${outcome}",tenant="demo"\\} (\\d+)$`, "m");
       const m = re.exec(body);
       return m ? Number(m[1]) : 0;
     };
@@ -63,7 +65,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
 
     // 单源：服务侧读到的数与端点文本里的数必须一致（分叉成两份注册表时这里就会对不上）
     expect(seriesValue(ACTION_METRIC_NAMES.submit, "success")).toBe(
-      t.services.actions.metrics.get(ACTION_METRIC_NAMES.submit, { action_type: "对象数据变更", outcome: "success" }),
+      t.services.actions.metrics.get(ACTION_METRIC_NAMES.submit, { tenant: "demo", action_type: "对象数据变更", outcome: "success" }),
     );
 
     // 端点未把别的域挤掉（同一注册表共存）
@@ -105,10 +107,10 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
       "EXECUTION_FAILED",
     );
 
-    const res = await t.app.inject({ method: "GET", url: "/metrics" });
+    const res = await t.app.inject({ method: "GET", url: "/metrics", headers: ADMIN });
     const body = res.body;
     const failed = new RegExp(
-      `^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="failed"\\} (\\d+)$`,
+      `^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="failed",tenant="demo"\\} (\\d+)$`,
       "m",
     ).exec(body);
     expect(
@@ -121,6 +123,6 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
     expect(
       body,
       "未接线动作却记成 execute success —— 把失败洗成成功，稳定率将永远好看",
-    ).not.toMatch(new RegExp(`^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="success"\\}`, "m"));
+    ).not.toMatch(new RegExp(`^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="success",tenant="demo"\\}`, "m"));
   });
 });

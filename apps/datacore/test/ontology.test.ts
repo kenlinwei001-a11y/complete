@@ -167,7 +167,10 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
       url: `/a/v1/connections/${(conn.json() as { id: string }).id}/sync`,
       headers: ADMIN,
     });
-    const metrics = await t.app.inject({ method: "GET", url: "/metrics" });
+    // WO-65：/metrics 不再公开（需 service token 或 admin 角色）。进程级序列（无 tenant 标签）
+    // 在 admin 的租户视图里照常可见 —— 这条断言正好守住"过滤不许误伤无租户维的指标"。
+    const metrics = await t.app.inject({ method: "GET", url: "/metrics", headers: ADMIN });
+    expect(metrics.statusCode).toBe(200);
     expect(metrics.body).toContain('dc_connector_sync_total{outcome="success",type="mock_erp"} 1');
   });
 });

@@ -281,14 +281,17 @@ describe("Action 三段埋点 · 提交/审批/执行 × 成功与分型失败",
     }));
 
     const m = actions.metrics;
+    // WO-65：三段埋点一律带 tenant 标签（稳定率不再跨租户混算）。这里显式写死 admin.tenantId，
+    // 少了它取不到任何序列 —— 即"标签真的落上去了"的运输层自证。
+    const tenant = admin.tenantId;
     const submit = (action_type: string, outcome: string) =>
-      m.get(ACTION_METRIC_NAMES.submit, { action_type, outcome });
+      m.get(ACTION_METRIC_NAMES.submit, { tenant, action_type, outcome });
     const approval = (action_type: string, outcome: string) =>
-      m.get(ACTION_METRIC_NAMES.approval, { action_type, outcome });
+      m.get(ACTION_METRIC_NAMES.approval, { tenant, action_type, outcome });
     const exec = (action_type: string, outcome: string) =>
-      m.get(ACTION_METRIC_NAMES.execute, { action_type, outcome });
+      m.get(ACTION_METRIC_NAMES.execute, { tenant, action_type, outcome });
     const attempt = (action_type: string, outcome: string) =>
-      m.get(ACTION_METRIC_NAMES.executeAttempts, { action_type, outcome });
+      m.get(ACTION_METRIC_NAMES.executeAttempts, { tenant, action_type, outcome });
 
     // ---- 提交段：5 成功 + 4 类失败各 1 ---------------------------------------
     const ok: ActionDraft[] = [];
@@ -360,7 +363,7 @@ describe("Action 三段埋点 · 提交/审批/执行 × 成功与分型失败",
     // 埋点确实进了 Prometheus 文本输出
     const rendered = m.render();
     expect(rendered).toContain(`# TYPE ${ACTION_METRIC_NAMES.submit} counter`);
-    expect(rendered).toContain(`${ACTION_METRIC_NAMES.submit}{action_type="mx_ok",outcome="success"} 5`);
+    expect(rendered).toContain(`${ACTION_METRIC_NAMES.submit}{action_type="mx_ok",outcome="success",tenant="${tenant}"} 5`);
   });
 
   it("提交即快照 ActionType 版本：标了版本记该版，没标版本记缺省 1", async () => {
