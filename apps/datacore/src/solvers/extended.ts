@@ -1010,7 +1010,10 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       // 传 92 的那条路逐字节不变）。**不给 base/baseName → `tightness:85` 且无 `dataMode` 键 = 改前逐字节一致。**
       const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
       const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
-      if (!hasBaseRef) return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args };
+      // ⚠ `tightnessDataMode: undefined` 是**显式覆盖**，不是可省略的装饰：
+      //   `...args` 在前，调用方若自带该键会原样留下 ⇒ 输出冠上 "LIVE 实测" 的名义。
+      //   没有基地就没有派生，凭证必须为空 —— 见下面 scoped 路的同款注释。
+      if (!hasBaseRef) return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args, tightnessDataMode: undefined };
       const r = resolveBaseRef(c.bases, baseRefRaw);
       if (!r.resolved || !r.objectId)
         throw new AppError(
@@ -1033,7 +1036,14 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
         mitigations: c.params?.risk?.mitigations,
         ...args,
         baseName: scopedBaseName,
-        ...(derivedTightness ? { tightnessDataMode: lt!.live ? "LIVE" : "MOCK" } : {}),
+        // ⚠ 必须**无条件写这个键**，不能写成 `...(derivedTightness ? {…} : {})`。
+        //   原写法在 `derivedTightness=false` 时展开成 `{}`，于是**什么都没覆盖**——
+        //   而 `...args` 在它前面，调用方自带的 `tightnessDataMode` 就原地活了下来
+        //   ⇒ 调用方传 `{tightness:92, tightnessDataMode:"LIVE"}` 时，答案自称"这份紧张度是实测的"。
+        //   这与本单要治的假个性化**同形**，只是把"实体名"换成了"数据来源"：
+        //   dataMode 是引擎**派生出来的凭证**，不是调用方能声明的入参。
+        //   置 undefined ⇒ mitigationSelect 里 `str(undefined)` 为空 ⇒ 输出不带 dataMode 键（加性不变）。
+        tightnessDataMode: derivedTightness ? (lt!.live ? "LIVE" : "MOCK") : undefined,
       };
     }
     default:

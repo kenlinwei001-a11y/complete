@@ -150,6 +150,15 @@ describe("差分门 C① · mitigation_select 基地维：换基地 → 紧张�
     });
     expect(Object.keys(out), "`dataMode` 是引擎派生出来的凭证，不是调用方能声明的入参").not.toContain("dataMode");
   });
+
+  // 上一条只覆盖了「给了基地」那条返回路。`deriveExtendedArgs` 的 mitigation_select 有**两条**返回路，
+  // `!hasBaseRef` 那条同样是 `...args` 在前 —— 不补这一条，等于修了两处却只验了一处
+  // （本仓记在案的形态：实现有、测试只咬到其中一半，另一半是「排练过」而非「验过」）。
+  it("防伪·无基地路：不给 base/baseName 时调用方自称 `tightnessDataMode` 同样不得透出", async () => {
+    const t = await boot();
+    const out = await okData(t, "mitigation_select", { factor: "瓶颈工序", tightnessDataMode: "LIVE" });
+    expect(Object.keys(out), "没有基地就没有派生，凭证必须为空").not.toContain("dataMode");
+  });
 });
 
 // ---------------------------------------------------------------------------
