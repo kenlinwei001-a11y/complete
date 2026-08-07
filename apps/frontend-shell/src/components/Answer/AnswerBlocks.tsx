@@ -4,6 +4,8 @@ import type { AnswerBlock } from "@platform/contracts";
 import { Markdown, renderInline } from "@/components/ui/markdown";
 import { ProvHoverArea, ProvMark } from "@/components/Provenance/ProvTrigger";
 import { GapCard } from "./GapCard";
+import { KitProcurementLegs } from "./KitProcurementLegs";
+import { buildKitOrderVMs, kitReadableRows } from "./kitProcurement";
 import zh from "@/locales/zh";
 import styles from "./AnswerBlocks.module.css";
 
@@ -25,7 +27,7 @@ export function AnswerBlockView({
     case "text":
       return <TextBlock markdown={block.markdown} taskId={taskId} provIndex={provIndex} />;
     case "table":
-      return <TableBlock columns={block.columns} rows={block.rows} provId={block.provId} taskId={taskId} provIndex={provIndex} />;
+      return <TableBlockOrKit columns={block.columns} rows={block.rows} provId={block.provId} taskId={taskId} provIndex={provIndex} />;
     case "kpi":
       return <KpiBlock label={block.label} value={block.value} unit={block.unit} provId={block.provId} taskId={taskId} />;
     case "rule_violation":
@@ -46,6 +48,34 @@ export function AnswerBlockView({
     default:
       return null;
   }
+}
+
+/**
+ * WO-S08-KIT-PROCUREMENT-FE：`kit_readiness` 的行投影是一张**普通 table 块**
+ * （QOS 的 `AnswerBlockSchema` 没有结构化的齐套块），而 `shortItems` 这一列被 agentcore 的
+ * `cellOf()` 兜底成**整项 JSON 字符串** —— 采购四段就躺在那坨转义 JSON 里，用户读不出来。
+ *
+ * 这里在 table 分支上加一道识别：认出来 ⇒ ① 表格里那一列换成可读摘要 ② 下方接四段面板；
+ * 认不出来（列名不符 / 解析不过）⇒ **原样渲染普通表格**，回落到今天的行为，绝不因为接了新渲染把信息弄丢。
+ */
+function TableBlockOrKit(props: {
+  columns: string[];
+  rows: (string | number | null)[][];
+  provId: string;
+  taskId: string;
+  provIndex: (provId: string) => number;
+}) {
+  const { columns, rows, provId, taskId, provIndex } = props;
+  const kitOrders = buildKitOrderVMs(columns, rows);
+  if (kitOrders === null) {
+    return <TableBlock columns={columns} rows={rows} provId={provId} taskId={taskId} provIndex={provIndex} />;
+  }
+  return (
+    <>
+      <TableBlock columns={columns} rows={kitReadableRows(columns, rows, kitOrders)} provId={provId} taskId={taskId} provIndex={provIndex} />
+      <KitProcurementLegs orders={kitOrders} provId={provId} taskId={taskId} provIndex={provIndex} />
+    </>
+  );
 }
 
 const REF_RE = /⟦ref:([^⟧]+)⟧/g;
