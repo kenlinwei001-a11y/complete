@@ -26,13 +26,12 @@ import styles from "./KitProcurementLegs.module.css";
 export function KitProcurementLegs({
   orders,
   provId,
-  taskId,
   provIndex,
 }: {
   /** 已由 `buildKitOrderVMs` 解析好的订单（调用方解析一次，表格与本面板共用同一份，不二次解析）。 */
   orders: KitOrderVM[];
+  /** 只用于在页眉声明"与上表同源"；溯源角标本身挂在上方表格上（同一 provId 不挂两处）。 */
   provId: string;
-  taskId: string;
   provIndex: (provId: string) => number;
 }) {
   // 宁可什么都不画，也不画空壳。

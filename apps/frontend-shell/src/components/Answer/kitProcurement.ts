@@ -37,7 +37,6 @@
 import {
   criticalProcurementLeg,
   isValueAddKind,
-  PROCUREMENT_LEG_OWNER,
   PROCUREMENT_LEG_STEP_KIND,
   PROCUREMENT_LEGS,
   PROCUREMENT_OWNERS,

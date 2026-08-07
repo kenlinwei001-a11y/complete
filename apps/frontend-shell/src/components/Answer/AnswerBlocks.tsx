@@ -73,7 +73,7 @@ function TableBlockOrKit(props: {
   return (
     <>
       <TableBlock columns={columns} rows={kitReadableRows(columns, rows, kitOrders)} provId={provId} taskId={taskId} provIndex={provIndex} />
-      <KitProcurementLegs orders={kitOrders} provId={provId} taskId={taskId} provIndex={provIndex} />
+      <KitProcurementLegs orders={kitOrders} provId={provId} provIndex={provIndex} />
     </>
   );
 }
