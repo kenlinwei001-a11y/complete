@@ -1,7 +1,7 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
-import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
+import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, num, pickBaseScopeArg, str, type SolverContext } from "./types.js";
 import { liveTightness, oeeTension, primaryFactor, resolveBaseId, yieldTension } from "./risk.js";
 import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：拒绝文案里的百分数由 outsourceRedlineRejectReason 生成，禁手写百分数。
@@ -402,6 +402,12 @@ export interface ForecastArgs {
   // WO-BASE-ID-FIDELITY 症①（additive·可选 base 作用域）：给 base → 只算该基地该型号产能（认 obj_base_<id>/中文名/baseId·
   // 归一走 resolveBaseId 单一出处）；不给 → 全网合计·结果显式带 scope:"ALL"（诚实标·不冒充某基地）。
   base?: unknown;
+  // WO-ARGNAME-SCOPE（#103·additive）：作用域**键名**也统一——四别名等价（单一出处 `pickBaseScopeArg`）。
+  // 兄弟求解器各用各的键（affected_orders/base_capacity_outlook 读 `baseId`、carbon_footprint 读 `baseName`），
+  // agent 猜哪个都不该换来「静默答全网」。多键冲突 / 形似而不受认的键 → AMBIGUOUS_SCOPE 400。
+  baseId?: unknown;
+  baseName?: unknown;
+  baseRef?: unknown;
 }
 
 export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<string, unknown> {
@@ -421,8 +427,16 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   // → `str()` 返 "" → `hasBase=false` → **base 被静默丢掉、答案退回全网合计**（症① 原样复发，
   // 而且这次连 400 都不报，比报错更坏）。改走单一出处 `normalizeBaseRef`（认对象 ref / obj_base_ 前缀 /
   // 裸 id / 中文名），与下一行 `resolveBaseId` 的入口归一同一份规则。
-  const hasBase = args.base !== undefined && args.base !== null && normalizeBaseRef(args.base) !== "";
-  const scopeBaseId = hasBase ? resolveBaseId(c, args.base) : undefined;
+  //
+  // WO-ARGNAME-SCOPE（#103·2026-08-07）续：上一轮把「**怎么解析**」收敛成了单一出处，
+  // 却漏了「**认哪个键**」—— 只认 `base` 一个键名。实测 `baseId:"changzhou"` 与 `baseId:"chengdu"`
+  // 返回**逐字节相同**的全网 p50=12.3016（连 `baseId:"火星基地"` 都不报错），而 `argHints` 只写
+  // `{modelId,qty,weeks}`，agent 无从知道该传 `base` → 照猜兄弟求解器通用的 `baseId` → 静默错答。
+  // 改走键名单一出处 `pickBaseScopeArg`：四别名全认；形似而不受认的键（`baseIds`…）与多键冲突
+  // 一律 `AMBIGUOUS_SCOPE` 400 —— **要么认、要么报错，绝不静默忽略**。
+  // 「键认识但值解析不到」仍走既有 `resolveBaseId`（`VALIDATION_ERROR unknown base`·口径不动·R6）。
+  const basePick = pickBaseScopeArg("capacity_forecast", args as unknown as Record<string, unknown>);
+  const scopeBaseId = basePick ? resolveBaseId(c, basePick.raw) : undefined;
   const scopeBaseName = scopeBaseId ? baseName(c, scopeBaseId) : undefined;
   let cert = certAll;
   if (scopeBaseId) {

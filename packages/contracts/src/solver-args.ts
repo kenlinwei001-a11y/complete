@@ -28,11 +28,18 @@ export const SopRescheduleArgs = z.object({
   objective: z.enum(["min_delay", "min_changeover", "min_cost"]).optional(),
 });
 
-/** capacity_forecast（产能推演·service.ts:3299·argHints modelId/qty/weeks）：型号需求增量产能可行性。 */
+/** capacity_forecast（产能推演·service.ts:3299·argHints modelId/qty/weeks/base）：型号需求增量产能可行性。 */
 export const CapacityForecastArgs = z.object({
   modelId: z.string().min(1), // 必填：str(args.modelId)
   qty: z.number().optional(),
   weeks: z.number().optional(),
+  // WO-ARGNAME-SCOPE（#103·additive）：base 作用域维此前**在本注册表里缺席**——而 solver 从 WO-BASE-ID-FIDELITY 起
+  // 就真读它（capacity.ts:424）。组合器据本表派生输入模式，表里没有 = 组合出来的 args 永远不带基地 → 恒全网。
+  // 四别名等价（引擎侧 `types.pickBaseScopeArg` 单一出处）；类型 unknown 因为认字符串 **与** objectRef 对象两形态。
+  base: z.unknown().optional(),
+  baseId: z.unknown().optional(),
+  baseName: z.unknown().optional(),
+  baseRef: z.unknown().optional(),
   // WO-CAPLIVE-1-ATOM（additive·治 G-CAPACITY-FACTOR-SHALLOW）：'process-model' → 输出 byProcessModel per-工序×型号-物料 颗粒（缺省 'base' 不变）。
   granularity: z.enum(["base", "process-model"]).optional(),
   // WO-DIALOGUE-Q1Q2（additive·向后兼容）：'threshold' → 反向阈值分支（还能加多少 = P90 天花板 − 已占基线需求）；缺省 'forecast' 前向不变。

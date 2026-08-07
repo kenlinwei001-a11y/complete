@@ -4,7 +4,7 @@ import { round } from "../prng.js";
 // WO-ENGINE-SCOPE-FIX（#116/#117 引擎层作用域维）：base 解析走 `resolveBaseRef` **单一出处**
 // （= risk.resolveBaseId / capacity 用的同一份·认 baseId/中文名/obj_base_ 前缀/近指），
 // 本文件**不许**再写第二套「中文名 → baseId」匹配（R14·types.ts 已把这条纪律写死）。
-import { baseName as baseNameOf, maintWeekOf, num, resolveBaseRef, str, type SolverContext } from "./types.js";
+import { baseName as baseNameOf, maintWeekOf, num, pickBaseScopeArg, resolveBaseRef, str, type SolverContext } from "./types.js";
 // DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
 // WO-SANDBOX-D2：采购段四段（按责任方）契约 + 唯一合计实现，见 packages/contracts/src/procurement.ts。
 import {
@@ -795,9 +795,13 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //   ③ 回显位改成**真正被算的那个基地的规范名**（用 baseId 问也回显中文名）—— 印在答案上的名字
       //      与数字出自同一个基地，这正是本单要治的「假个性化」。
       // 加性：不给 `baseName`/`base`（S20 卡片今天正是 `baseName:""` 中性默认）→ 仍取 `[0]`，与改前逐字节一致。
+      // WO-ARGNAME-SCOPE（#103）：原地手写的「`baseName` ?? `base` 二选一」是**第二套键名规则**——
+      // 收敛到 `types.pickBaseScopeArg` 单一出处（顺带把 `baseId`/`baseRef` 也认上，与 capacity_forecast 同集）。
+      // 逐字节兼容：`baseName:""`（S20 卡片的中性默认）normalize 后为空 → 仍 undefined → 仍取 meters[0]。
       const meters = (c.energyMeters ?? []).map(props);
-      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
-      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
+      const pick = pickBaseScopeArg("carbon_footprint", args);
+      const baseRefRaw = pick?.raw;
+      const baseRef = pick ? pick.raw : undefined;
       let em = meters[0];
       let scopedBaseName = "";
       if (baseRef !== undefined) {

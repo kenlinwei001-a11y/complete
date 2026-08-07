@@ -214,11 +214,49 @@ if (!outlookBlock) {
 if (!/scope:\s*"BASE"/.test(capacitySrc) || !/scope:\s*"ALL"/.test(capacitySrc))
   fails.push('断言②·base族 引擎半：capacity.ts 缺 base 作用域诚实标（scope:"BASE"|"ALL"）——症①：删则「常州基地 X 加20%」静默冒充「X 加20%（全网）」');
 // 症① base 归一复用单一出处（capacity.ts 不另起规范化·复用 risk.resolveBaseId）。
-if (!/resolveBaseId\(c,\s*args\.base\)/.test(capacitySrc))
+if (!/resolveBaseId\(c,\s*basePick\.raw\)/.test(capacitySrc))
   fails.push('断言②·base族 引擎半：capacity.ts 未经 resolveBaseId 归一 base（症①/②同源单一规范化出处·勿散落）');
 // 症② resolveBaseId 经 normalizeBaseRef 归一（认 obj_base_<id> 图节点 id）——回潮成裸 find(baseId===ref) 即 obj_base_ 硬 400。
 if (!/normalizeBaseRef/.test(riskSrc))
   fails.push('断言②·base族 引擎半：risk.ts resolveBaseId 未经 normalizeBaseRef 归一（症②：obj_base_<id> 不 strip → unknown base 硬 400）');
+
+// ── 断言③ 作用域**键名**一致（WO-ARGNAME-SCOPE·欠账 #103·静态哨兵·删则红）──
+// bug 类（与断言① 丢参同源·但断在**另一层**）：路由/agent 把基地作用域**传到了**求解器，键名却对不上
+//   → 求解器读不到 → 静默退全网。实测（seed 42·4680-NCM）：`baseId:"changzhou"` 与 `baseId:"chengdu"`
+//   返回逐字节相同的 p50=12.3016（= 全网），而 `base:"changzhou"` 才是 5.5176。
+// 三处必须同时对齐，缺一处就是「agent 照说明永远猜不到该传哪个键」：
+//   ⓐ 引擎读取：capacity.ts / extended.ts 走 `pickBaseScopeArg` 单一出处（认全别名 + 不认识就报错）；
+//   ⓑ 机器可读入参（组合器派生输入模式的来源）：contracts `CapacityForecastArgs` 登记 base；
+//   ⓒ 人/LLM 可读入参（→ MCP tool 定义 / DRIL 检索 / 目录列举）：catalog.ts argHints 登记 base。
+const typesSrc = readFileSync(abs("apps/datacore/src/solvers/types.ts"), "utf8");
+const catalogSrc = readFileSync(abs("apps/datacore/src/catalog.ts"), "utf8");
+const solverArgsSrc = readFileSync(abs("packages/contracts/src/solver-args.ts"), "utf8");
+
+if (!/export const BASE_SCOPE_ARG_KEYS/.test(typesSrc) || !/export function pickBaseScopeArg/.test(typesSrc))
+  fails.push(
+    "断言③ 键名单一出处：types.ts 缺 BASE_SCOPE_ARG_KEYS / pickBaseScopeArg（#103 治本件）——" +
+      "删则各求解器又各认各的键，agent 猜错一个键就静默答全网。",
+  );
+if (!/AMBIGUOUS_SCOPE/.test(typesSrc))
+  fails.push('断言③ 诚实化：pickBaseScopeArg 缺 AMBIGUOUS_SCOPE 报错（不认识的作用域键必须 400·不许静默忽略后照答全网）');
+for (const [label, src] of [["capacity.ts", capacitySrc], ["extended.ts(carbon_footprint)", extendedSrc]]) {
+  if (!/pickBaseScopeArg\(/.test(src))
+    fails.push(`断言③ 键名单一出处：${label} 未经 pickBaseScopeArg 取 base 作用域键（回潮成 args.base 裸读 = #103 原样复发）`);
+}
+// ⓑ+ⓒ：capacity_forecast 的两处入参声明都必须带 base（否则 agent/组合器无从知道这一维存在）。
+const capArgsBlock = solverArgsSrc.slice(solverArgsSrc.indexOf("export const CapacityForecastArgs"), solverArgsSrc.indexOf("export const PortfolioArgs"));
+if (!/\bbase:\s*z\./.test(capArgsBlock))
+  fails.push(
+    "断言③ 契约漂移：contracts CapacityForecastArgs 未登记 `base` —— 组合器据本表派生输入模式，" +
+      "表里没有 = 组合出的 args 永远不带基地 → 恒全网（#103）。",
+  );
+const capCatalogLine = (catalogSrc.split("\n").find((l) => l.includes('key: "capacity_forecast"')) ?? "");
+if (!/argHints:\s*\{[^}]*\bbase:/.test(capCatalogLine))
+  fails.push(
+    "断言③ argHints 漂移：catalog.ts capacity_forecast 的 argHints 未登记 `base` —— " +
+      "argHints 正是 agent 唯一读得到的入参说明（→ MCP tool 定义 / DRIL 检索 / 目录列举），" +
+      "不登记 = agent 照它永远猜不到该传哪个键（#103 病根）。",
+  );
 
 // ── 汇总 ──
 if (notes.length) {
@@ -236,5 +274,7 @@ console.log(
   `\n✓ arg-drop-seam:check 通过：${Object.keys(ROUTER_EMITS).length} 个 CEO intent · ${emitCount} 条路由解析实体` +
     ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。` +
     `\n  base 族（WO-BASE-ID-FIDELITY）：${Object.keys(PROJECT_BASE_EMITS).length} 个吃 base 维 project intent · ${baseEmitCount} 条 base 声明⊕透传齐（${okBase} 达标）；` +
-    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 与 service.baseCapacityOutlook 均经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
+    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 与 service.baseCapacityOutlook 均经 normalizeBaseRef 归一（obj_base_<id> strip）。` +
+    `\n  作用域键名族（WO-ARGNAME-SCOPE·#103）：pickBaseScopeArg 单一出处在位（认 base/baseId/baseName/baseRef·不受认键 AMBIGUOUS_SCOPE 400）；` +
+    `capacity.ts + extended.ts 均已接；contracts CapacityForecastArgs 与 catalog.ts argHints 均已登记 base（三处不漂移）。`,
 );

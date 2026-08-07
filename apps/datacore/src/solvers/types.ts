@@ -5,6 +5,8 @@ import {
   type RefTypeDefLike,
 } from "@platform/contracts";
 import type { ObjectInstance } from "../domain.js";
+// WO-ARGNAME-SCOPE（#103）：作用域键不受认 → AMBIGUOUS_SCOPE 400（errors.ts 零依赖·不成环）。
+import { AppError } from "../errors.js";
 
 /** Typed view over the per-tenant solverParams JSONB (battery defaults in synthetic/battery.ts). */
 export interface SolverParamsShape {
@@ -381,6 +383,86 @@ export function resolveBaseRef(bases: readonly ObjectInstance[], ref: unknown): 
     accept: ["id", "name", "alias", "partial"],
   });
   return pickObjectRefResolution(ref, hits, [attempt]);
+}
+
+// ---------------------------------------------------------------------------
+// WO-ARGNAME-SCOPE（欠账 #103）· base 作用域**参数键**的单一出处
+//
+// 病根（2026-08-07 实测复现·非推理）：`capacity_forecast` 只读 `args.base` 一个键。
+//   modelId=4680-NCM / seed 42 / 13 基地：
+//     base   = "changzhou" → scope=BASE p50=5.5176   ← 认
+//     baseId = "changzhou" → scope=ALL  p50=12.3016  ← **静默答全网**
+//     baseId = "chengdu"   → scope=ALL  p50=12.3016  ← 与上一行**逐字节相同**
+//     baseName="常州"      → scope=ALL  p50=12.3016  ← 静默答全网
+//     baseId = "火星基地"   → scope=ALL  p50=12.3016  ← 连不存在的基地都不报错
+//   而 `catalog.ts argHints` 只写 `{modelId,qty,weeks}`、contracts `CapacityForecastArgs`
+//   也没登记 `base` —— agent 看见的两处「机器可读入参说明」里**都没有基地这一维**，
+//   于是照猜 `baseId`（兄弟求解器 affected_orders/bottleneck_matrix/base_capacity_outlook 确实读这个键）
+//   → 用户以为问的是某个基地，拿到的是全网。这是**静默错答**，比 400 坏得多。
+//
+// 三态定性（铁律 0.5）：**「接了线接错地方」** —— base 作用域这条线是通的（scope:BASE 真能收窄），
+//   只是入口只开了 `base` 一个键名；不是「没接线」也不是「没数据」。
+//
+// 口径（照 `credit_exposure`/`carbon_footprint` 既有样板·不造第二种）：
+//   ① **要么认**：`base`/`baseId`/`baseName`/`baseRef` 四别名归一到同一条解析路（本函数）；
+//   ② **要么报错**：键名形似基地作用域但不在受认集（`baseIds`/`base_id`/`basename`…）
+//      → `AMBIGUOUS_SCOPE` 400；两个受认键给了**互相冲突**的值 → 同样 400；
+//   ③ **绝不静默忽略**：任何情况下都不许「收到一个我不读的作用域键，然后照样答全网」。
+//
+// ⚠ 边界（刻意不动的部分·避免造第二种错误码）：**「键认识但值解析不到」** 仍走各求解器既有的
+//   解析器与既有错误码（capacity → `risk.resolveBaseId` 的 `VALIDATION_ERROR unknown base`；
+//   carbon_footprint → `resolveBaseRef` + `AMBIGUOUS_SCOPE`）。本函数只回答「用哪个键」，
+//   不回答「这个值指向谁」—— 后者早有单一出处（`resolveBaseRef`），重复实现才是造第二套。
+// ---------------------------------------------------------------------------
+
+/** base 作用域参数的**受认别名集**（单一出处·新增别名只在这里加）。 */
+export const BASE_SCOPE_ARG_KEYS = ["base", "baseId", "baseName", "baseRef"] as const;
+
+/** 形似 base 作用域但**不在受认集**的键 → 报错而非静默忽略（`baseIds`/`base_id`/`basename`/`baseKey`…）。 */
+const BASE_SCOPE_LOOKALIKE = /^base[s_A-Z]/;
+
+/** 命中的 base 作用域参数：`argKey` 留痕「你传的是哪个键」（R13 可诊断）。 */
+export interface BaseScopeArgPick {
+  argKey: string;
+  raw: unknown;
+}
+
+/**
+ * 从 args 里取 base 作用域引用（**键名的单一出处**·纯函数 R6·无 IO）。
+ *
+ * @returns `undefined` = 真的没给基地（调用方走全域并**显式**标 `scope:"ALL"`，这是合法的诚实全网）。
+ * @throws `AppError(AMBIGUOUS_SCOPE, 400)` 当 ① 形似作用域键但不受认，或 ② 多个受认键互相冲突。
+ */
+export function pickBaseScopeArg(solverKey: string, args: Record<string, unknown>): BaseScopeArgPick | undefined {
+  const accepted = new Set<string>(BASE_SCOPE_ARG_KEYS);
+  // ② 不认识的作用域键 → 报错（这一条正是 #103 的治本：静默忽略 = 冒充全网答案）。
+  const strays = Object.keys(args)
+    .filter((k) => !accepted.has(k) && BASE_SCOPE_LOOKALIKE.test(k))
+    .filter((k) => normalizeBaseRef(args[k]) !== "" || Array.isArray(args[k]));
+  if (strays.length > 0)
+    throw new AppError(
+      "AMBIGUOUS_SCOPE",
+      `${solverKey}：收到无法消费的基地作用域参数 ${strays.map((k) => `「${k}」`).join("、")}` +
+        `——本求解器只认 ${BASE_SCOPE_ARG_KEYS.map((k) => `\`${k}\``).join("/")}。` +
+        `拒绝把它静默忽略后照答全网合计（那样用户会以为问的是某个基地·R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+      400,
+    );
+
+  const present = BASE_SCOPE_ARG_KEYS.filter((k) => k in args)
+    .map((k) => ({ argKey: k as string, raw: args[k], norm: normalizeBaseRef(args[k]) }))
+    .filter((p) => p.norm !== "");
+  if (present.length === 0) return undefined;
+
+  // ①b 多键冲突 → 报错（绝不在两个基地里挑一个冒充答案·同 credit_exposure 拒绝落首个客户的理由）。
+  const distinct = [...new Set(present.map((p) => p.norm))];
+  if (distinct.length > 1)
+    throw new AppError(
+      "AMBIGUOUS_SCOPE",
+      `${solverKey}：同时收到互相冲突的基地作用域参数（${present.map((p) => `${p.argKey}="${p.norm}"`).join("、")}）` +
+        `——拒绝在多个基地里挑一个冒充答案（R-ARG-FIDELITY）`,
+      400,
+    );
+  return { argKey: present[0]!.argKey, raw: present[0]!.raw };
 }
 
 export function clamp(v: number, lo: number, hi: number): number {

@@ -46,7 +46,10 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
 /** 求解器目录（与 SOLVER_KEYS 对齐；描述供 LLM 选型）。 */
 export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan", answersQuestions: ["各基地产能怎么上卷汇总", "型号维度的总产能是多少", "工序产能怎么卷到基地"], tags: ["产能上卷", "capacity", "rollup"] },
-  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
+  // WO-ARGNAME-SCOPE（#103）：argHints 是 agent 唯一能读到的入参说明（→ MCP tool 定义 mcp/solvers-catalog.ts:20 /
+  // DRIL 检索 resource-registry.ts:34 / 目录列举 server.ts:817）。此前只列 modelId/qty/weeks，**基地作用域这一维根本没登记**，
+  // agent 照它永远猜不到该传 `base`，猜了 `baseId` 又被静默忽略 → 答全网。补登记 = 治本（键与求解器真实读取一致）。
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。可选限定单基地。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数", base: "（可选）限定基地：基地 ID/中文名/对象引用；等价键 baseId/baseName/baseRef。不给 = 全网合计（scope:ALL）；给了解析不到 → 400 不静默退全网" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序", "某个基地的产能够不够"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
   { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["瓶颈在哪个基地哪道工序", "约束工序是哪些", "瓶颈强度矩阵怎么看"], tags: ["瓶颈", "bottleneck", "约束工序"] },
   { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
   { key: "affected_orders", name: "受影响订单", description: "给定扰动，返回受影响订单清单（problems/rootChain）。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["扰动会影响哪些订单", "受影响订单清单有哪些", "哪些单会被波及"], tags: ["受影响订单", "affected", "扰动"] },
