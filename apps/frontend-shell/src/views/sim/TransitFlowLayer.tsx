@@ -33,7 +33,6 @@ import {
   type TransitSourceKey,
   type TransitSourceSpec,
   type TransitStation,
-  type TransitVehicle,
 } from "./transitFlow";
 import styles from "./TransitFlowLayer.module.css";
 
@@ -65,6 +64,9 @@ import styles from "./TransitFlowLayer.module.css";
  *    今天引擎发不出节拍（`Cadence` 全仓无承载物），所以界面上**不画任何"这里有节拍"的假象**。
  * ③ **定时器纪律**：本组件全是定时器。每个句柄 ref **覆盖前先清**、卸载再清一遍。
  *    本仓刚修过 4 处「ref 只存得下最后一个 handle → 前一个成孤儿 → 整包随机红」。
+ * ④ **坐标不许有第二处实现**（WO-TRANSIT-GEOMETRY 追加）：站点锚点 / 区间弧 / 弧长参数
+ *    全部取自线路图的几何单源 `chainLineMap.ts` §5.2。本层此前自绘一套直线几何，
+ *    与线路图的环没有共同坐标系 —— 那不是"样式不统一"，是**同一个实体在两张图上不是同一个点**。
  *
  * ── `prefers-reduced-motion` ───────────────────────────────────────────────────
  * 开启时：不跑动画（CSS 过渡关、rAF 脉冲不排）、**自动播放停用**，改为**静态标注**
