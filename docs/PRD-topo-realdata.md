@@ -51,7 +51,7 @@ processId 末段 distinct（全 780 行）= ["assembly","coating","winding"]    
 lineId    末段 distinct（全 780 行）= 十车间 suffix 全集（slurry…pack）        ← 10 值
 ```
 
-根因是种子的层级结构（`apps/datacore/src/synthetic/battery.ts:3546-3600`）：
+根因是种子的层级结构（`apps/datacore/src/synthetic/battery.ts:3547`(workshopId) / `:3554`(lineId) / `:3570-3600`(process+equipment)）：
 
 ```
 Base(13) → Workshop(10/基地) → Line(1/车间) → Process(SERIAL_STEPS 3 + 化成 + 老化) → Equipment(2/串行工序)
@@ -118,7 +118,7 @@ const workshopId = (l.lineId as string).replace("LINE-", "");
 | **计划工时利用率** | `Σ actualProductionTime ÷ Σ plannedProductionTime` | **和比和 = 天然按计划工时加权**，不是"各设备利用率的平均"。比率类聚合的正确形态。 |
 | **OEE** | `avg(oee)`，**带等权门** | OEE 是比率，正确合并是 `Σ(oeeᵢ×plannedᵢ)÷Σplannedᵢ`。聚合端点只有 count/sum/avg/min/max，**算不出乘积和**。故只在 `min(planned) === max(planned)`（等权 ⇒ 算术均 **恒等于** 加权均）时承认 `avg`；不等权即标 `EMPTY` 并写明原因。 |
 | **节拍** | `max(ctSeconds)` | 一格 = 一条车间线上 6 台设备，线速由**最慢工位**决定。把各工位节拍平均没有物理含义（平均后的数既不是任何一台的能力，也不是线的能力）。`basis` 同时带出 `min`，快慢差一眼可见。 |
-| **在制** | `Σ qty`，按 `lineId` 归车间列 | **刻意不用 `WIPLot.currentProcess`**：实测 260/260 行该字段恒为 `"涂布"`（`battery.ts:4099` 是字面量常数）。拿它定列会把全仓在制一股脑塞进"涂布"一列 = 硬凑。 |
+| **在制** | `Σ qty`，按 `lineId` 归车间列 | **刻意不用 `WIPLot.currentProcess`**：实测 260/260 行该字段恒为 `"涂布"`（`battery.ts:4101` 是字面量常数）。拿它定列会把全仓在制一股脑塞进"涂布"一列 = 硬凑。 |
 
 ### 4.1 命名红线：两个"利用率"不许共用一个中文名
 
