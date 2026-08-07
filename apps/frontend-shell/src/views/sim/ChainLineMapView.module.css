@@ -189,6 +189,21 @@
   stroke-dasharray: 3 9;
   fill: none;
 }
+/* 闭环段 = **结构推定**（引擎没给这条边）：细虚线 + 绿色，与实测区间在粗细/颜色/线型三处都不同。
+   刻意不做成"淡一点的 trackLive"——那会读成"一条弱一点的真边"。 */
+.trackClosure {
+  stroke: var(--ok);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+  opacity: 0.75;
+  fill: none;
+}
+.closureLabel {
+  fill: var(--ok);
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.9;
+}
 
 /* ── 站图元 ───────────────────────────────────────────────────────────────── */
 .stationStop {
