@@ -131,6 +131,73 @@ export function businessTypeOfCustomer(cust: string): BusinessType {
   if (/客车|商用/.test(cust)) return "commercial";
   return "passenger";
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· **客户归属册**（单一来源 R14）
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * `Order.cust`（订单侧品牌名）→ `Customer.custName`（客户主数据侧**匿名化名册**）的**声明式**归属。
+ * `order_of_customer` 边由本册派生 —— 这是「客户维」在数据层的唯一真相。
+ *
+ * **修前的病（实测·seed 42·scale S）**：`synthetic/service.ts` 用 `custIds[oi % custIds.length]`
+ * **按订单序轮转**绑边，与订单上写的客户名毫无关系：
+ * ```
+ * cust_4 商用车集团G: SO-3431(广汽集团/2170-NCM), SO-3481(广汽集团/4680-NCM), SO-3523(广汽集团/4680-NCM)
+ * cust_7 电网公司F:   SO-3452(国家电网/方形-LFP), SO-3495(南方电网/方形-LFP), SO-3540(宇通客车/2170-NCM)
+ * ```
+ * 「商用车集团」名下三张全是乘用车整车厂的单，「电网公司」名下挂着客车厂的单 ——
+ * 任何沿这条边做客户维的求解（S15 `quote_margin`）拿到的都是**张冠李戴**的订单集。
+ *
+ * **修后的可校验不变量（R-CUST-ATTRIB）**：每条 `order_of_customer` 边两端业态必须一致 ——
+ * `businessTypeOfCustomer(Order.cust)` ≡ `customerSegKeyOf(Customer.custName)`
+ * （passenger↔pas / commercial↔com / storage↔ess）。轮转绑定必然违反此式，因此它同时是**变异反证门**。
+ *
+ * 名册侧的字母后缀（A/B/C/E/G/D/H/F）是**匿名化标签**，不承载业务含义；本册把它们钉到订单侧的品牌名上。
+ * 1:N（一个客户集团对应多个下单品牌）是刻意的：客户主数据 8 行 vs 订单品牌 14 个，1:1 不可能且不必要。
+ */
+export const ORDER_CUST_TO_CUSTOMER: Record<string, string> = {
+  // 乘用车（pas）——「整车厂A/B/C」+「海外车企E」（E ← 东风：合资/海外品牌体系归口）
+  广汽集团: "整车厂A",
+  长安汽车: "整车厂B",
+  吉利汽车: "整车厂C",
+  小鹏汽车: "整车厂C",
+  东风汽车: "海外车企E",
+  // 商用车（com）——统一归「商用车集团G」（含唯一境外品牌 Ashok Leyland）
+  宇通客车: "商用车集团G",
+  金龙客车: "商用车集团G",
+  奇瑞: "商用车集团G",
+  瑞驰新能源: "商用车集团G",
+  "Ashok Leyland": "商用车集团G",
+  // 储能（ess）——发电集团归「储能集成商D」、南网系归「储能集成商H」、国网系归「电网公司F」
+  国家电投: "储能集成商D",
+  龙源电力: "储能集成商D",
+  南方电网: "储能集成商H",
+  国家电网: "电网公司F",
+};
+
+/**
+ * `Customer.custName`（匿名化名册）→ 细分键（pas|com|ess）。
+ * 与 `synthetic/ceo-dataset.ts segOfCust` **同口径**（那里已按同样的名字前缀判细分，是既有单一来源）；
+ * 此处显式化以便当作**不变量断言**用，不再靠散落的 `includes` 各判各的。
+ */
+export function customerSegKeyOf(custName: string): "pas" | "com" | "ess" {
+  if (custName.includes("商用车")) return "com";
+  if (custName.includes("储能") || custName.includes("电网")) return "ess";
+  return "pas";
+}
+
+/** 业务类型（订单侧口径）→ 细分键（客户名册侧口径）。两套词表的唯一换算处。 */
+export function segKeyOfBusinessType(bt: BusinessType): "pas" | "com" | "ess" {
+  return bt === "commercial" ? "com" : bt === "storage" ? "ess" : "pas";
+}
+
+/**
+ * 订单客户名 → 客户主数据名（无归属登记时返回 `undefined` —— **不兜底、不轮转**）。
+ * 返回 undefined 时调用方必须**不建边**（诚实缺席），而不是随手落一个客户。
+ */
+export function customerNameOfOrderCust(cust: string): string | undefined {
+  return ORDER_CUST_TO_CUSTOMER[cust];
+}
+
 /** 细分名（乘用车/储能/商用车）→ 业务类型枚举（DemandSegment.segment 口径）。 */
 export function businessTypeOfSegment(segment: string): BusinessType {
   if (/储能/.test(segment)) return "storage";
@@ -2047,6 +2114,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
 
   // ---- 商务 / 财务 / 外部信号（CEO 反向归因域·对象类型定义在 battery-extended.ts） ----
   "Customer.custId": "客户编号", "Customer.custName": "客户名称", "Customer.creditLimit": "信用额度",
+  "Customer.orderCustNames": "下单品牌名", // WO-QUOTE-MARGIN-CUSTOMER：订单侧 `Order.cust` 的归属名集合
   "Customer.termDays": "账期天数", "Customer.receivables": "应收余额",
   "Customer.wipUnbilled": "未开票在制金额", "Customer.maxOverdueDays": "最长逾期天数",
   "CustomerLocation.locId": "客户地点编号", "CustomerLocation.customerRef": "所属客户",

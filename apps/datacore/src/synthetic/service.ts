@@ -35,6 +35,7 @@ import {
   projectExceptionEvents,
   BINDINGS,
   outputLineScaleForBase,
+  customerNameOfOrderCust,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -949,14 +950,24 @@ export class SyntheticService {
         await putLink(`lnk_mum_${m.modelId}_${matId}`, "model_uses_material", oid("Model", m.modelId), oid("Material", matId));
       }
     }
-    // commercial: Order → Customer（按订单序轮转绑定，覆盖全部客户）
-    const custIds = ext.customers.map((c) => String((c as { custId: string }).custId));
-    if (custIds.length > 0) {
-      for (let oi = 0; oi < g.orders.length; oi++) {
-        const o = g.orders[oi] as { so: string };
-        const custId = custIds[oi % custIds.length] as string;
-        await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId });
-      }
+    // ── commercial: Order → Customer ────────────────────────────────────────
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：**按真实归属绑定**，不再按订单序轮转。
+    //
+    // 修前：`custIds[oi % custIds.length]` —— 与 `Order.cust` 上写的客户名毫无关系。实测（seed 42·S）
+    //   「商用车集团G」名下 3 张全是广汽集团（乘用车）的单，「电网公司F」名下挂着宇通客车（商用车）的单。
+    //   于是任何沿这条边做的客户维求解（S15 `quote_margin`）都在算别人的订单，却把提问者的客户名印在答案上。
+    // 修后：`Order.cust` → `ORDER_CUST_TO_CUSTOMER` 归属册 → `Customer.custName` → `custId`。
+    //   · 边上加带 `custName`/`orderCust`，让「这条边凭什么这么连」在边自身可自证（不必回查册）。
+    //   · 归属册里没有的订单客户名 → **不建边**（诚实缺席）。此前的轮转会给它随手落一个客户 ——
+    //     那正是「张冠李戴的数比没有更危险」（`solvers/decision-info.ts:304` 早已独立登记过同一事实）。
+    const custIdByName = new Map(ext.customers.map((c) => [String((c as { custName: string }).custName), String((c as { custId: string }).custId)]));
+    for (const ord of g.orders) {
+      const o = ord as { so: string; cust?: string };
+      const orderCust = String(o.cust ?? "");
+      const custName = orderCust ? customerNameOfOrderCust(orderCust) : undefined;
+      const custId = custName ? custIdByName.get(custName) : undefined;
+      if (!custId || !custName) continue; // 无归属登记 → 不建边（不轮转、不落首客户）
+      await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId, custName, orderCust });
     }
 
     // ---- 8 域切片增量：13 条跨域边中的 11 条（由 ext/g 的对象 FK 确定性派生）----
