@@ -147,6 +147,9 @@ export const STAGE_LABEL = {
   ORDER: "订单",
   CAPACITY: "产能",
   MATERIAL: "物料",
+  // WO-CHAIN-24：契约追加第 5 段 `DELIVERY` ⇒ 本表 TS1360 当场红（这正是上面那句注释承诺的效果，
+  // 本次是它第一次真的被触发）。与 `chainLineMap.ts` 的同名表**逐字相同**，漂移即被本页 §8 那道门咬红。
+  DELIVERY: "交付",
 } as const satisfies Record<ChainStage, string>;
 
 /** 段名显示：认识的枚举给中文，不认识的**原样回显**（不猜、不显示成空白）。 */
