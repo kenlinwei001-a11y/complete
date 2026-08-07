@@ -68,7 +68,17 @@ function MeasureLine({ label, m, testId }: { label: string; m: Measure; testId: 
 //    vitest 不做类型检查，所以 29 例组件测试全绿、构建却是红的——「绿测试 ≠ 能用」的教科书形态。
 //    今天本组件尚未消费 `view`（渲染的是占位数据），故声明为 Partial 并显式忽略；
 //    接真值时（W4·G1）从 `view` 取 scope/viewKey 即可，届时改为必填。
-export function PhysicalTopologyView({ seed = PLACEHOLDER_SEED_DEFAULT }: Partial<ViewRendererProps> & { seed?: number }) {
+/**
+ * WO-SANDBOX-CONSOLE 追加的**可选** prop（默认值 = 今天的行为，独立页 `/v/physical-topology` 零回归）：
+ *  · `chrome="embedded"` —— 嵌进沙盘控制台的画布槽时，标题块（h3 + 一段来源说明）折进
+ *    一行紧凑说明，缩放条原样保留。**占位数据横幅与图例一个字都不动** —— 诚实标记不许在重组时弄丢。
+ */
+export type PhysicalTopologyChrome = "full" | "embedded";
+
+export function PhysicalTopologyView({
+  seed = PLACEHOLDER_SEED_DEFAULT,
+  chrome = "full",
+}: Partial<ViewRendererProps> & { seed?: number; chrome?: PhysicalTopologyChrome }) {
   const matrix = useMemo(() => buildTopology(seed), [seed]);
   const [t, setT] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
@@ -188,10 +198,10 @@ export function PhysicalTopologyView({ seed = PLACEHOLDER_SEED_DEFAULT }: Partia
   const { stats } = matrix;
 
   return (
-    <div className={styles.root} data-testid="phys-topo">
+    <div className={styles.root} data-testid="phys-topo" data-chrome={chrome}>
       <header className={styles.head}>
         <div>
-          <h3>物理拓扑 · 基地 × 产线 × 工序</h3>
+          {chrome === "full" ? <h3>物理拓扑 · 基地 × 产线 × 工序</h3> : null}
           <p className={styles.sub}>
             {stats.baseCount} 个基地 × {stats.processCount} 道工序 = {stats.cellCount} 格热力流水图。
             基地轴派生自 <code>BASE_REGISTRY</code>（跨端单一来源），工序轴镜像自{" "}

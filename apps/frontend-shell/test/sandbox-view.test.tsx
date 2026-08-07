@@ -17,6 +17,20 @@ const tickFn = vi.fn();
 vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
+  // WO-SANDBOX-CONSOLE：主屏改成一页控制台后内嵌 F1 线路图 + 阻滞点统计条，两者都走 runSolver。
+  // 本文件测的是 R14 两配置证（本体派生），故给形状合法的空扫描；链路损失归因不桩 → 线路图诚实空态。
+  runSolver: vi.fn(async (key: string) =>
+    key === "chain_impediments"
+      ? {
+          data: {
+            scanId: "scan_test", scope: {}, impediments: [],
+            counts: { total: 0, BOTTLENECK: 0, CONGESTION: 0, BREAK: 0 },
+            unresolved: [], caveats: [], thresholds: [],
+          },
+          snapshotVersion: "ov-test",
+        }
+      : Promise.reject({ error: { code: "NOT_STUBBED", message: "本用例不桩 chain_loss_attribution", requestId: "req_test" } }),
+  ),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",

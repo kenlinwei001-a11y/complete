@@ -601,7 +601,12 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
  *    那会造出比空页面更坏的东西 —— 打得开、内容却是编的。
  *  · **不冒充 LIVE**：某条支线取不到真值，图层原样显示「空 + 一行原因」，宿主不兜底、不吞。
  */
-export function TransitFlowView({ view }: Partial<ViewRendererProps>) {
+/**
+ * WO-SANDBOX-CONSOLE 追加的**可选** prop（默认 = 今天的行为，独立页 `/v/transit-flow` 零回归）：
+ * `chrome="embedded"` —— 作为线路图模式下的**图层**挂进控制台画布槽时，把宿主那两句长说明收成一行。
+ * 说明**不删**（"批次由本层自取 / 引擎未下发站点" 是诚实位），只是压缩措辞。
+ */
+export function TransitFlowView({ view, chrome = "full" }: Partial<ViewRendererProps> & { chrome?: "full" | "embedded" }) {
   const opts = view?.options as { initialDay?: unknown; initialSpeed?: unknown } | undefined;
 
   const rawDay = opts?.initialDay;
@@ -611,16 +616,34 @@ export function TransitFlowView({ view }: Partial<ViewRendererProps>) {
   const initialSpeed: TransitSpeed = typeof rawSpeed === "number" ? (TRANSIT_SPEEDS.find((s) => s === rawSpeed) ?? 1) : 1;
 
   return (
-    <div className={styles.hostRoot} data-testid="transit-flow-root">
+    <div className={styles.hostRoot} data-testid="transit-flow-root" data-chrome={chrome}>
       <header className={styles.hostBar}>
         <b className={styles.hostTitle}>在途 / 在制</b>
         <small className={styles.hostNote} data-testid="transit-flow-host-source">
-          批次数据由本层自取 <code className={styles.objType}>GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
-          （三个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
+          {chrome === "embedded" ? (
+            <>
+              批次自取 <code className={styles.objType}>/a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
+              （取不到显示空态 + 原因，<b>不补示意数据</b>）
+            </>
+          ) : (
+            <>
+              批次数据由本层自取 <code className={styles.objType}>GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
+              （三个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
+            </>
+          )}
         </small>
         <small className={styles.hostNote} data-testid="transit-flow-host-nodes">
-          独立视图形态下<b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
-          站点从批次数据行自身字段现场发现、节拍一律缺席；挂到全链线路图作图层时由线路图传入引擎站点
+          {chrome === "embedded" ? (
+            <>
+              <b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒ 站点现场发现、节拍缺席；
+              本图层<b>未与线路图站点坐标对齐</b>（对齐要改图层几何，不在本单边界）
+            </>
+          ) : (
+            <>
+              独立视图形态下<b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
+              站点从批次数据行自身字段现场发现、节拍一律缺席；挂到全链线路图作图层时由线路图传入引擎站点
+            </>
+          )}
         </small>
       </header>
       <TransitFlowLayer initialDay={initialDay} initialSpeed={initialSpeed} />

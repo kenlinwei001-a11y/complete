@@ -1,0 +1,423 @@
+/**
+ * WO-SANDBOX-CONSOLE · 推演沙盘控制台的**纯派生层**。
+ *
+ * ── 这个文件是什么 ────────────────────────────────────────────────────────────
+ * 把两个引擎求解器的载荷翻译成控制台三处（画布卡片 / 右侧检视 / 底部 Pareto）要用的视图模型。
+ * **它不产生任何数字**：天数、占比、计数、阈值全部是引擎返回值的纯函数。
+ *
+ * ── 头号纪律：口径单源（本仓 #99/#110 的病根就在这里）────────────────────────
+ * ① 影响率（`pctOfChainLoss`）**只能来自** `chain_loss_attribution` 的 `attribution[]`。
+ *    前端**不定义分母、不算百分比**。引擎口径：分母 = 全链**非增值**天数之和（增值段不进分母，
+ *    故全链非增值环节 pct 之和恒 100%，`conservation.sumPct` 就是这个守恒的自证）。
+ *    节点级 `pctOfChainLoss` = 该节点各环节 pct 的**加和**（同一个分母下的求和，不是新口径）。
+ * ② 节点/环节清单**只能来自**引擎载荷（`payload.nodes[]`）或 contracts 注册表
+ *    （`CHAIN_NODE_REGISTRY`）。前端**不手抄词表** —— D1 与 E1 各发明一套词表、交集为 0、
+ *    整条链断掉，就是这么来的（`chain-sim.ts:120` 注释里记着这笔账）。
+ * ③ 三类阻滞点的中文名与含义**只能来自** `chainImpediment.ts` 的
+ *    `IMPEDIMENT_KIND_LABEL` / `IMPEDIMENT_KIND_MEANING`（那两张表又抄自 PRD §5.1 / contracts）。
+ *    本文件**不重写**一句判定含义 —— 设计稿的副标题与引擎判据不一致处见 §3 `IMPEDIMENT_DESIGN_GAP`。
+ *
+ * ── 同一份数据三处投影，三处各答一问（不重叠）─────────────────────────────
+ * 设计稿把逐环节明细画了三遍（画布卡片 / 右侧检视 / 底部 Pareto，排序数值完全相同）。
+ * 本层按「一处一问」拆开，**数据仍是全的，只是卡片不全画**：
+ *  · 画布卡片 → 「哪个节点最该动」：节点级一个数 + 最大那条环节名 + 页脚（其余折叠为计数）；
+ *  · 右侧检视 → 「这个节点为什么慢」：完整逐环节表（唯一出全表的地方）；
+ *  · 底部 Pareto → 「全链哪十几个环节吃掉大部分损失」：跨节点拉平 Top-N（别处给不了的视角）。
+ * 三者是**同一份响应的三种投影**，不是三次取数。
+ *
+ * R6 确定性：纯函数，无 `Date.now`、无随机。
+ */
+import {
+  CHAIN_NODE_REGISTRY,
+  CHAIN_STAGES,
+  CHAIN_OP_NODE_PREFIX,
+  isValueAddKind,
+  type ChainNode,
+  type ChainStage,
+  type ChainStep,
+  type ChainStepKind,
+} from "@platform/contracts";
+import { STAGE_LABEL, STEP_KIND_LABEL, type ChainLossEmptyRow, type ChainLossPayload } from "./chainLineMap";
+import { IMPEDIMENT_KIND_LABEL, IMPEDIMENT_KIND_MEANING } from "./chainImpediment";
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 1 · 画布模式（一块画布多模式，不是多个页）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 中央画布的模式。设计稿是三个（线路图 / 物理拓扑 / 链路阶段）；
+ * 第四个 `ontology` 是**旧沙盘主屏的本体 PmDag 拓扑**——它是已接线的真功能，
+ * 重组时不许丢，故降为画布的第四模式而不是删掉（去处见交付报告）。
+ */
+export const CANVAS_MODES = ["metro", "topo", "chain", "ontology"] as const;
+export type CanvasMode = (typeof CANVAS_MODES)[number];
+
+export const CANVAS_MODE_LABEL: Record<CanvasMode, string> = {
+  metro: "线路图",
+  topo: "物理拓扑",
+  chain: "链路阶段",
+  ontology: "本体拓扑",
+};
+
+/** 画布标题（设计稿 `cvT` 那一行）。 */
+export const CANVAS_MODE_TITLE: Record<CanvasMode, string> = {
+  metro: "产销线路图 · 站 = 环节 · 站圈 ∝ 该环节吃掉的全链损失占比",
+  topo: "物理拓扑 · 基地 × 工序热力矩阵",
+  chain: "链路阶段 · 按引擎返回的节点分段铺开（段数/节点数以后端注册表为准）",
+  ontology: "本体拓扑 · 节点 = 已发布对象类型，着色随 tick 变（推演沙盘原主屏）",
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 2 · 范围筛选（左栏）—— 真实性照实标，不把三个都做成能用的样子
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 一个筛选维度今天到底能不能带下去。**这不是修饰语，是三种不同的事实。** */
+export type ScopeWiring = "wired" | "no-args";
+
+export const SCOPE_WIRING_BADGE: Record<ScopeWiring, string> = {
+  wired: "已接线",
+  "no-args": "无 ARGS",
+};
+
+export interface ScopeDimensionSpec {
+  /** `ChainScope` 上的维度名（也是求解器 args 的键）。 */
+  readonly key: "baseIds" | "businessTypes" | "modelIds";
+  readonly label: string;
+  readonly wiring: ScopeWiring;
+  /** `no-args` 时：为什么带不下去（取证原文，不是我自己的猜测）。 */
+  readonly note: string;
+}
+
+/**
+ * 三个范围维度的接线事实。
+ *
+ * ⚠ `businessTypes` / `modelIds` 的真相：`chain_impediments` 在
+ * `apps/datacore/src/solvers/../service.ts:3125` 明写「暂不支持 scope.businessTypes / scope.modelIds
+ * 维度过滤」，并且**显式报 400**（`ChainImpedimentView.argsFromView` 的注释记着：前端照样原样透传，
+ * 引擎该报 400 就让它报 400 —— 前端悄悄吞掉一个维度才是 plausible-but-WRONG 的病根）。
+ * 故本控制台的左栏：`baseIds` 可勾选并真带下去；另两维**只读展示 + 无 ARGS 徽标**，
+ * 勾了也不会变成 args（不给用户一个假旋钮）。
+ */
+export const SCOPE_DIMENSIONS: readonly ScopeDimensionSpec[] = [
+  {
+    key: "businessTypes",
+    label: "业务线",
+    wiring: "no-args",
+    note: "chain_impediments 显式拒绝 scope.businessTypes（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。",
+  },
+  {
+    key: "baseIds",
+    label: "基地",
+    wiring: "wired",
+    note: "ChainScope.baseIds 取值集派生自 contracts BASE_REGISTRY（CANONICAL_BASE_IDS），勾选即进求解器 args.scope。",
+  },
+  {
+    key: "modelIds",
+    label: "产品",
+    wiring: "no-args",
+    note: "chain_impediments 显式拒绝 scope.modelIds（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。",
+  },
+];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 3 · 阻滞点统计条（顶部四卡）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 三张阻滞点卡的定义。**标题与含义直接取 `chainImpediment.ts` 的两张表**，
+ * 本文件不重写一句（那两张表抄自 PRD §5.1 / contracts `chain-sim.ts` §6）。
+ */
+export const IMPEDIMENT_CARDS = (["BOTTLENECK", "CONGESTION", "BREAK"] as const).map((kind) => ({
+  kind,
+  label: IMPEDIMENT_KIND_LABEL[kind],
+  meaning: IMPEDIMENT_KIND_MEANING[kind],
+}));
+
+/**
+ * **设计稿副标题与引擎判据的语义差**（实测 `chain_impediments` 在 demo 合成种子上的判据得出，
+ * 不是照抄工单里的那句话）。
+ *
+ * 设计稿把「卡点」副标题写作「规则/审批挡着 —— 等待是规则性的（闸）」。
+ * 而引擎 `BOTTLENECK` 的两条判据是：
+ *   · `BOTTLENECK.CAPACITY.process-hard-capacity`（C02 · 阈值 source=field `Process.requiredThroughput`）
+ *   · `BOTTLENECK.CAPACITY.line-utilization-redline`（C05 · 阈值 literal 95%，且带 SUSTAIN caveat）
+ * 两条都是**产能/利用率打满**，没有一条是「等审批 / 等会议 / 等节拍」。
+ * 「等规则性节拍」这件事今天由 `chain_loss_attribution` 的 `kind:"cadence"` 环节承载
+ *（实测锚点单上 demand.consensus__cadence 占全链损失 8.95%），**不在阻滞点扫描里**。
+ * 故控制台按引擎口径渲染，并把这条差异当成诚实位显示出来 —— 不拿设计稿的词去盖引擎的判据。
+ */
+export const IMPEDIMENT_DESIGN_GAP =
+  "设计稿把「卡点」注为「规则/审批挡着（闸）」，但引擎 chain_impediments 的 BOTTLENECK 两条判据都是产能/利用率打满" +
+  "（C02 硬容量 · C05 利用率红线 95%），没有一条判「等审批 / 等会议」。「等节拍」那类等待今天由 chain_loss_attribution 的 " +
+  "cadence 环节承载，不在本扫描内。本条按引擎口径显示，不按设计稿措辞。";
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 4 · 链路阶段画布 —— 节点卡（瘦身版）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 一条环节在检视表里的完整形态。每个字段都能指回引擎载荷。 */
+export interface StepVM {
+  stepId: string;
+  /** 引擎给了 label 就用引擎的；没给按 kind 显示（`STEP_KIND_LABEL`），**不在前端编一个名字**。 */
+  label: string;
+  kind: ChainStepKind;
+  kindLabel: string;
+  days: number;
+  valueAdd: boolean;
+  /** 非增值天数（引擎 `attribution[].nonValueDays`）。增值段无归因行 → null。 */
+  nonValueDays: number | null;
+  /** 占全链损失（引擎 `attribution[].pctOfChainLoss`）。增值段无归因行 → null。 */
+  pctOfChainLoss: number | null;
+  /** 等的是哪个节拍（`kind==="cadence"` 时引擎必给）。 */
+  cadenceLabel: string | null;
+}
+
+/** 一个节点在画布上的形态。**卡片只画其中三样**，其余留给右侧检视。 */
+export interface NodeCardVM {
+  nodeId: string;
+  label: string;
+  stage: ChainStage;
+  /** 是否属动态工序命名空间 `capacity.op.*`（不在静态注册表里，数量随 Routing 实例变）。 */
+  dynamicOp: boolean;
+  /** 前置期 = 该节点各环节 days 之和（契约 `nodeLeadTimeDays` 的口径：派生量不落字段）。 */
+  leadTimeDays: number;
+  /** 增值天数 = `isValueAddKind` 的环节之和（判据走 contracts 单源，不写 `kind==="work"`）。 */
+  valueAddDays: number;
+  /** 流动效率 = 增值 / 前置期，**0–1 的分数**（与引擎 `totals.flowEfficiency` 同量纲）。前置期 0 → null。 */
+  flowEfficiency: number | null;
+  /** 节点级占全链损失 = 该节点各环节 `pctOfChainLoss` 之和（同一分母下求和，不是新口径）。 */
+  pctOfChainLoss: number;
+  /** 卡片上唯一展开的那条：非增值天数最大的环节（并列取 stepId 字典序小者 · R6 全序）。 */
+  topStep: StepVM | null;
+  /** 卡片折叠掉的环节数（= steps.length - (topStep ? 1 : 0)）。 */
+  collapsedCount: number;
+  /** 完整逐环节表（右侧检视用；卡片不画）。按非增值天数降序、并列按 stepId 字典序。 */
+  steps: StepVM[];
+  /** 该节点上诚实缺席的环节（引擎 `empty[]` 里 nodeId 命中的行）。 */
+  emptySteps: ChainLossEmptyRow[];
+}
+
+/** 一段（lane）。**空段也保留** ——「这一段本次没有节点」必须说出来，不是消失。 */
+export interface StageLaneVM {
+  stage: ChainStage;
+  label: string;
+  nodes: NodeCardVM[];
+  /** 该段上诚实缺席的环节（`empty[]` 里 stage 命中、但 nodeId 不在本段任何节点上的行）。 */
+  orphanEmpty: ChainLossEmptyRow[];
+}
+
+export interface StageBoardVM {
+  lanes: StageLaneVM[];
+  /** 任一段里最多有几个节点（画布宽度的决定因素）。 */
+  maxNodesInLane: number;
+  nodeCount: number;
+  stepCount: number;
+  emptyCount: number;
+}
+
+/** 环节排序的**唯一**实现：非增值天数降序 → stepId 字典序（R6 全序，前端别处不许再排一套）。 */
+function compareStepDesc(a: StepVM, b: StepVM): number {
+  const av = a.nonValueDays ?? -1;
+  const bv = b.nonValueDays ?? -1;
+  if (av !== bv) return bv - av;
+  return a.stepId < b.stepId ? -1 : a.stepId > b.stepId ? 1 : 0;
+}
+
+function toStepVM(s: ChainStep, attr: Map<string, { nonValueDays: number; pctOfChainLoss: number }>): StepVM {
+  const a = attr.get(s.stepId);
+  return {
+    stepId: s.stepId,
+    label: s.label ?? STEP_KIND_LABEL[s.kind],
+    kind: s.kind,
+    kindLabel: STEP_KIND_LABEL[s.kind],
+    days: s.days,
+    valueAdd: s.valueAdd,
+    nonValueDays: a?.nonValueDays ?? null,
+    pctOfChainLoss: a?.pctOfChainLoss ?? null,
+    cadenceLabel: s.cadence === undefined ? null : `${s.cadence.kind} · 每 ${s.cadence.everyDays} 天`,
+  };
+}
+
+function toNodeCard(n: ChainNode, attr: Map<string, { nonValueDays: number; pctOfChainLoss: number }>, empty: ChainLossEmptyRow[]): NodeCardVM {
+  const steps = n.steps.map((s) => toStepVM(s, attr)).sort(compareStepDesc);
+  const leadTimeDays = n.steps.reduce((a, s) => a + s.days, 0);
+  const valueAddDays = n.steps.filter((s) => isValueAddKind(s.kind)).reduce((a, s) => a + s.days, 0);
+  const pctOfChainLoss = steps.reduce((a, s) => a + (s.pctOfChainLoss ?? 0), 0);
+  // 卡片上展开的那条 = 排序后第一条**非增值**环节（增值段不进损失，展开它没有意义）。
+  const topStep = steps.find((s) => s.pctOfChainLoss !== null) ?? null;
+  return {
+    nodeId: n.nodeId,
+    label: n.label,
+    stage: n.stage,
+    dynamicOp: n.nodeId.startsWith(CHAIN_OP_NODE_PREFIX),
+    leadTimeDays,
+    valueAddDays,
+    flowEfficiency: leadTimeDays > 0 ? valueAddDays / leadTimeDays : null,
+    pctOfChainLoss,
+    topStep,
+    collapsedCount: steps.length - (topStep === null ? 0 : 1),
+    steps,
+    emptySteps: empty.filter((e) => e.nodeId === n.nodeId),
+  };
+}
+
+/**
+ * 载荷 → 分段板。段序 = `CHAIN_STAGES`（契约里那个顺序即链路顺序），
+ * 段内节点按 `pctOfChainLoss` 降序 → nodeId 字典序（R6 全序）。
+ */
+export function buildStageBoard(payload: ChainLossPayload): StageBoardVM {
+  const attr = new Map(payload.attribution.map((a) => [a.stepId, { nonValueDays: a.nonValueDays, pctOfChainLoss: a.pctOfChainLoss }]));
+  const empty = payload.empty ?? [];
+  const cards = payload.nodes.map((n) => toNodeCard(n, attr, empty));
+  const claimedNodeIds = new Set(cards.map((c) => c.nodeId));
+  const lanes: StageLaneVM[] = CHAIN_STAGES.map((stage) => ({
+    stage,
+    label: STAGE_LABEL[stage],
+    nodes: cards
+      .filter((c) => c.stage === stage)
+      .sort((a, b) => (b.pctOfChainLoss !== a.pctOfChainLoss ? b.pctOfChainLoss - a.pctOfChainLoss : a.nodeId < b.nodeId ? -1 : 1)),
+    orphanEmpty: empty.filter((e) => e.stage === stage && !claimedNodeIds.has(e.nodeId)),
+  }));
+  return {
+    lanes,
+    maxNodesInLane: lanes.reduce((m, l) => Math.max(m, l.nodes.length), 0),
+    nodeCount: cards.length,
+    stepCount: cards.reduce((a, c) => a + c.steps.length, 0),
+    emptyCount: empty.length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5 · 链路阶段的**诚实边界**：设计目标 5 段 24 节点 vs 后端注册表今天有的
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 设计稿第三模式的目标形态是 **5 段 24 节点**；后端单源今天是 **4 段 12 个静态在册节点**
+ * （`packages/contracts/src/chain-sim.ts` 的 `CHAIN_STAGES` 与 `CHAIN_NODE_REGISTRY`）
+ * ＋ 一个**动态工序命名空间** `capacity.op.*`（数量随 Routing/Operation 实例变，不可能进静态注册表）。
+ *
+ * 本控制台**按后端真有的渲染**，并把差额显式说出来：
+ *  · 不拿 12 个节点冒充 24 个；
+ *  · 不在前端手抄一份 24 节点词表（那正是 D1/E1 各造一套词表、交集为 0、整条链断掉的复现）。
+ *
+ * 扩注册表不在本单边界（它是 D1 节拍链 × E1 损失归因的共享单源，扩它要连引擎一起改）。
+ */
+export const CHAIN_STAGE_DESIGN_TARGET = {
+  stageCount: 5,
+  nodeCount: 24,
+  /** 设计稿的五段名（只用于「差在哪」的对照说明，**不作为渲染清单**）。 */
+  stageNames: ["需求与承诺", "计划与齐套", "采购与到料", "制造与质量", "交付与回款"] as const,
+} as const;
+
+export interface ChainStageCoverage {
+  designStageCount: number;
+  designNodeCount: number;
+  designStageNames: readonly string[];
+  backendStageCount: number;
+  /** 静态在册节点数（`CHAIN_NODE_REGISTRY.length`）。 */
+  backendRegistryNodeCount: number;
+  backendStageLabels: string[];
+  /** 差额（设计目标 − 后端在册），> 0 表示尚未建模。 */
+  missingNodeCount: number;
+  missingStageCount: number;
+  /** 本次载荷实际渲染了几个节点 / 其中几个是动态工序节点。 */
+  renderedNodeCount: number;
+  renderedDynamicOpCount: number;
+}
+
+export function chainStageCoverage(board: StageBoardVM | null): ChainStageCoverage {
+  const rendered = board === null ? [] : board.lanes.flatMap((l) => l.nodes);
+  return {
+    designStageCount: CHAIN_STAGE_DESIGN_TARGET.stageCount,
+    designNodeCount: CHAIN_STAGE_DESIGN_TARGET.nodeCount,
+    designStageNames: CHAIN_STAGE_DESIGN_TARGET.stageNames,
+    backendStageCount: CHAIN_STAGES.length,
+    backendRegistryNodeCount: CHAIN_NODE_REGISTRY.length,
+    backendStageLabels: CHAIN_STAGES.map((s) => STAGE_LABEL[s]),
+    missingNodeCount: CHAIN_STAGE_DESIGN_TARGET.nodeCount - CHAIN_NODE_REGISTRY.length,
+    missingStageCount: CHAIN_STAGE_DESIGN_TARGET.stageCount - CHAIN_STAGES.length,
+    renderedNodeCount: rendered.length,
+    renderedDynamicOpCount: rendered.filter((n) => n.dynamicOp).length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 6 · 底部 Pareto（跨节点拉平 Top-N）—— 别处给不了的视角
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface ParetoRowVM {
+  stepId: string;
+  nodeId: string;
+  nodeLabel: string;
+  stepLabel: string;
+  kind: ChainStepKind;
+  kindLabel: string;
+  nonValueDays: number;
+  pctOfChainLoss: number;
+}
+
+export interface ParetoVM {
+  rows: ParetoRowVM[];
+  /** 展示的这 N 条一共吃掉多少（= Σ pct，引擎值加和，非重算）。 */
+  topPct: number;
+  /** 全链非增值总天数（引擎 `totals.nonValueDays`；载荷没给 → null，**不自己加一遍冒充**）。 */
+  nonValueDays: number | null;
+  /** 归因表一共几行（Top-N 之外还有多少条）。 */
+  totalRows: number;
+}
+
+export const PARETO_TOP_N = 16;
+
+/**
+ * 载荷 → Pareto。行序 = `pctOfChainLoss` 降序 → stepId 字典序（R6 全序）。
+ * 环节名/节点名由 `payload.nodes[]` 反查；查不到就诚实用 stepId（不编名字）。
+ */
+export function buildPareto(payload: ChainLossPayload, topN: number = PARETO_TOP_N): ParetoVM {
+  const stepIndex = new Map<string, { node: ChainNode; step: ChainStep }>();
+  for (const n of payload.nodes) for (const s of n.steps) stepIndex.set(s.stepId, { node: n, step: s });
+  const rows: ParetoRowVM[] = payload.attribution
+    .map((a) => {
+      const hit = stepIndex.get(a.stepId);
+      const kind: ChainStepKind = hit?.step.kind ?? "queue";
+      return {
+        stepId: a.stepId,
+        nodeId: hit?.node.nodeId ?? a.stepId,
+        nodeLabel: hit?.node.label ?? a.stepId,
+        stepLabel: hit?.step.label ?? (hit === undefined ? a.stepId : STEP_KIND_LABEL[kind]),
+        kind,
+        kindLabel: STEP_KIND_LABEL[kind],
+        nonValueDays: a.nonValueDays,
+        pctOfChainLoss: a.pctOfChainLoss,
+      };
+    })
+    .sort((a, b) => (b.pctOfChainLoss !== a.pctOfChainLoss ? b.pctOfChainLoss - a.pctOfChainLoss : a.stepId < b.stepId ? -1 : 1));
+  const top = rows.slice(0, topN);
+  return {
+    rows: top,
+    topPct: top.reduce((a, r) => a + r.pctOfChainLoss, 0),
+    nonValueDays: payload.totals?.nonValueDays ?? null,
+    totalRows: rows.length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 7 · 格式化（显示层唯一出口，别处不许再写 toFixed）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 天数。`null` → 「—」（**不显示 0**：0 天与算不出来是两回事）。 */
+export function fmtDays(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return v >= 10 ? v.toFixed(1) : v.toFixed(2);
+}
+
+/** 百分比（入参已经是百分数，如 76.73）。 */
+export function fmtPct(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return `${v < 1 && v > 0 ? v.toFixed(3) : v.toFixed(1)}%`;
+}
+
+/** 流动效率（入参是 **0–1 的分数**，与引擎 `totals.flowEfficiency` 同量纲）→ 百分数串。 */
+export function fmtFlowEff(frac: number | null | undefined): string {
+  if (frac === null || frac === undefined || !Number.isFinite(frac)) return "—";
+  return fmtPct(frac * 100);
+}
