@@ -505,7 +505,7 @@ function CardExposureLine({ card }: { card: RiskCard }) {
   const exp = card.exposure;
   if (!exp) {
     return (
-      <div className={styles.rkCF} data-testid={`risk-card-exposure-${card.base}`} data-exposure="ABSENT" style={{ color: "var(--muted2)" }}>
+      <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="ABSENT" style={{ color: "var(--muted2)" }}>
         <span>影响面：本次未返回（cards[].exposure 缺席）</span>
       </div>
     );
@@ -513,14 +513,14 @@ function CardExposureLine({ card }: { card: RiskCard }) {
   if (!exp.hasExposure) {
     const nx = exp.nextOutsideWindow;
     return (
-      <div className={styles.rkCF} data-testid={`risk-card-exposure-${card.base}`} data-exposure="EMPTY" style={{ color: "var(--muted2)" }}>
+      <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="EMPTY" style={{ color: "var(--muted2)" }}>
         <span>本窗无订单敞口 · 已沉底（#{exp.rank}）</span>
         <span>{nx ? `窗外最近 ${nx.qty}${exp.units.qty}（超窗 ${nx.daysBeyondWindow} 天）` : "窗外亦无单"}</span>
       </div>
     );
   }
   return (
-    <div className={styles.rkCF} data-testid={`risk-card-exposure-${card.base}`} data-exposure="OK">
+    <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="OK">
       <span style={{ color: "var(--c-forecast)" }}>影响面 #{exp.rank} · {exp.orderCount} 张单 · {exp.customerCount} 家客户</span>
       <span style={{ color: "var(--ok)" }}>{exp.revenueYi} {exp.units.revenue}</span>
     </div>
