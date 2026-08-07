@@ -49,4 +49,48 @@ describe("WO-LIGHTUP · demo 点亮暗发功能（seed→resolve 真驱动·含 
     const v2 = (await new FeatureService(repos).resolve(DEMO_TENANT)).configVersion;
     expect(v2).toBe(v1);
   });
+
+  // ── 存量环境补键（原实现「已有配置 → 直接 return」的隐蔽后果）────────────────
+  //
+  // 病灶：老实现第一行是 `if (已有 fcfg_demo) return;`。**凡是数据卷没删的 redeploy**
+  // （docker compose 默认保留 volume）库里都已有这一行 ⇒ 此后往 DEMO_LIGHTUP 加的任何键
+  // **永远落不了地**，且完全无声。等于"点亮机制对所有存量环境整体失效"。
+  //
+  // 这两条测试咬的是**行为**不是函数：第一条模拟"部署过的老库缺一个新键"，
+  // 第二条守住"运维显式关掉的不许被种子重新打开"——两者方向相反，缺任一条修法就会走偏
+  // （只要前者会退化成无脑覆盖，只要后者就是今天这个 bug）。
+  it("存量环境 SEAM：老库已有 override 但缺新点亮键 → 应补上（防「早退 return 让新键永不落地」回归）", async () => {
+    const repos = createMemoryRepos();
+    await seedDemo(repos);
+    // 模拟"上一版部署留下的配置"：只有一部分点亮键，缺了其余的
+    await repos.featureConfigs.put({
+      id: `fcfg_${DEMO_TENANT}`,
+      tenantId: DEMO_TENANT,
+      overrides: { "qos.dril-routing": true },
+      configVersion: 1,
+      updatedBy: "system:seed-lightup",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await seedDemoEntitlements(repos);
+    const feats = new Set((await new FeatureService(repos).resolve(DEMO_TENANT)).features);
+    for (const k of LIT) expect(feats.has(k), `存量库应补上 ${k}`).toBe(true);
+  });
+
+  it("尊重人的决定 SEAM：运维把某键显式设为 false → 种子不得翻回 true（缺席≠被关掉）", async () => {
+    const repos = createMemoryRepos();
+    await seedDemo(repos);
+    await repos.featureConfigs.put({
+      id: `fcfg_${DEMO_TENANT}`,
+      tenantId: DEMO_TENANT,
+      overrides: { "ceo.free-llm": false }, // 运维显式关（例如没绑真 provider，不想空转）
+      configVersion: 3,
+      updatedBy: "ops",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await seedDemoEntitlements(repos);
+    const feats = new Set((await new FeatureService(repos).resolve(DEMO_TENANT)).features);
+    expect(feats.has("ceo.free-llm"), "显式关掉的键不许被种子重新打开").toBe(false);
+    // 其余缺席的键仍应补上——「不覆盖已有」不等于「什么都不做」
+    expect(feats.has("agent.critic"), "缺席的键仍应补上").toBe(true);
+  });
 });

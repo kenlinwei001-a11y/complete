@@ -55,29 +55,65 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
  * 等回归门据此）。生产才点亮 → 两不冲突。幂等（固定 id + 仅缺失时写）；确定性 updatedAt（R6·不引时钟）。
  * 真 provider 未绑时 path-B 诚实降级（不崩·硬预算 Phase4 + WO-0③ 已消「空转超时」隐患）。
  */
+const DEMO_LIGHTUP: Record<string, boolean> = {
+  "qos.dril-routing": true,
+  "agent.critic": true,
+  "ceo.free-llm": true,
+  "agent.coordinator": true,
+  "qos.compose-path": true,
+  "qos.reasoning-trace": true,
+  "agent.escalation": true,
+  // WO-DEMO-L3-LIGHTUP：demo 开箱体验 L3 耦合联合求解——② 确定性多域分路（LLM-free·无超时风险·Q2 治本）
+  // 把耦合型问句接进 runMultiRoute，L3 门在其入口升格成一次 portfolio 守恒解（转拨→产能→延误→外协真传导）。
+  // 两门缺一不可：det-multi 产耦合路由 × l3-coupled 升格（见 l3-coupled-seam「det+l3 同开 → 一次 portfolio」）。
+  "qos.deterministic-multi-domain": true,
+  "qos.multi-intent-l3-coupled": true,
+  // ⚠ 这里**刻意不列 sim.***（推演沙盘）。留此注记是因为我差点加错：
+  //   `features.ts` 里 `sim.sandbox` 写着 `defaultOn: false`，看上去像"暗发没开"，
+  //   而 demo 的 override 里确实没有它 —— 两条线索都指向"门没开"。**但那是错的**：
+  //   L2 行业模板（`templateFeatures`，battery = ALL_FEATURE_KEYS 减去
+  //   QOS_DARK_LAUNCH_FEATURES 与 PERF_DARK_LAUNCH_FEATURES）**已经把 sim.\* 全开了**，
+  //   而 sim.\* 不在那两个排除集合里。实测坐实（非读码推断）：把 override 里的
+  //   sim.\* 三键全删，`GET /a/v1/me/workspace` 仍返回全部 7 个 sim.\* 键。
+  //   ⇒ 在这里加 `"sim.sandbox": true` 是**纯 no-op**，只会让人以为它起了作用。
+  //   （registry 的 defaultOn 是 L1；L2 模板可以把它抬上来。只看 L1 就下结论 = 少追一层。）
+};
+
 export async function seedDemoEntitlements(repos: Repos): Promise<void> {
   const fcfgId = `fcfg_${DEMO_TENANT}`;
-  if (await repos.featureConfigs.get(DEMO_TENANT, fcfgId)) return; // 幂等：已有 override 不覆盖
+  const existing = await repos.featureConfigs.get(DEMO_TENANT, fcfgId);
+
+  // ⚠ 原实现是「已有配置 → 直接 return」。那条早退有个隐蔽后果：
+  //   **已经部署过的环境永远拿不到后来新增的点亮项** —— 库里已有 fcfg_demo 行，
+  //   于是本函数每次启动都在第一行掉头就走，新加的 key 一个都不会落地。
+  //   凡是「数据卷没删的 redeploy」都属于这种（docker compose 默认保留 volume）。
+  //   这不是"少开一个功能"，是**这个点亮机制对存量环境整体失效**，
+  //   而且完全无声（日志里连一句都没有）。
+  //   本条是**独立于任何具体功能**的缺陷：只要将来往 DEMO_LIGHTUP 加东西就会中招。
+  //   （发现它纯属意外——我原本在追一个后来证明判错了的方向，见上面 sim.* 的注记。）
+  //
+  // 改为**只补缺失的键**：
+  //   · 仍然不覆盖任何已存在的键 —— 运维显式关掉的东西不许被种子重新打开
+  //     （这才是原注释「已有 override 不覆盖」真正要守的东西）；
+  //   · 但缺席的键要补上 —— 缺席不等于"运维决定关"，只等于"那会儿还没这个功能"。
+  // 两者的区别就是这个函数有没有用：前者是尊重人的决定，后者是把没做的事当成决定。
+  const merged = { ...(existing?.overrides ?? {}) };
+  const added: string[] = [];
+  for (const [k, v] of Object.entries(DEMO_LIGHTUP)) {
+    if (k in merged) continue; // 已有（无论开关）→ 尊重现状，不动
+    merged[k] = v;
+    added.push(k);
+  }
+  if (existing && added.length === 0) return; // 无事可做，保持幂等
+
   await repos.featureConfigs.put({
     id: fcfgId,
     tenantId: DEMO_TENANT,
-    overrides: {
-      "qos.dril-routing": true,
-      "agent.critic": true,
-      "ceo.free-llm": true,
-      "agent.coordinator": true,
-      "qos.compose-path": true,
-      "qos.reasoning-trace": true,
-      "agent.escalation": true,
-      // WO-DEMO-L3-LIGHTUP：demo 开箱体验 L3 耦合联合求解——② 确定性多域分路（LLM-free·无超时风险·Q2 治本）
-      // 把耦合型问句接进 runMultiRoute，L3 门在其入口升格成一次 portfolio 守恒解（转拨→产能→延误→外协真传导）。
-      // 两门缺一不可：det-multi 产耦合路由 × l3-coupled 升格（见 l3-coupled-seam「det+l3 同开 → 一次 portfolio」）。
-      "qos.deterministic-multi-domain": true,
-      "qos.multi-intent-l3-coupled": true,
-    },
-    configVersion: 1,
+    overrides: merged,
+    // 补写过就推进版本号，让下游缓存/审计看得见这次变更（新建时仍是 1，与原行为一致）
+    configVersion: existing ? (existing.configVersion ?? 1) + 1 : 1,
     updatedBy: "system:seed-lightup",
-    updatedAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z", // 确定性（R6·不引时钟）
   });
 }
 
