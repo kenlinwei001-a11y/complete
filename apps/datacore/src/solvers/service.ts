@@ -219,6 +219,13 @@ const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timelin
  */
 const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
 
+/**
+ * WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· 需要「真 BOM + 订单客户归属边」的求解器（**按需加载**·不全表扫）。
+ * 只有 `quote_margin` 要沿 `order_of_customer` 走到客户的订单、再按型号取 `BOMHeader`+`BOMDetail` 的真 BOM。
+ * 其余 13 个扩展求解器不载这三样 → 与本单上线前逐字节一致（R6 向后兼容）。
+ */
+const COMMERCE_GRAPH_SOLVERS = new Set(["quote_margin"]);
+
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
@@ -299,7 +306,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
-  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
+  // WO-QUOTE-MARGIN-CUSTOMER：+ scope（客户维作用域·CUSTOMER/ALL/EXPLICIT + 可溯的 orders/bomId）。
+  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "scope", "ruleRefs"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（与 capex_scenario 端同一份「不可相加」登记）。
   credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "chainCashflow", "ruleRefs"],
   quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
@@ -4003,7 +4011,7 @@ export class SolverService {
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean; withDecisionInfo?: boolean },
+    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean; withDecisionInfo?: boolean; withCommerceGraph?: boolean },
   ): Promise<SolverContext> {
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
     // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
@@ -4093,7 +4101,29 @@ export class SolverService {
       : opts?.withDecisionInfo
         ? await this.repos.objects.listByType(tenantId, "Supplier")
         : empty;
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：真 BOM 两类 + 订单客户归属边（**按需**·仅 COMMERCE_GRAPH_SOLVERS）。
+    // 三样一起载：BOM 少了取不到型号真成本、边少了定位不到「这个客户的订单」，任一半缺都会退回假个性化。
+    const [bomHeaders, bomDetails, orderCustLinkRows] = opts?.withCommerceGraph
+      ? await Promise.all([
+          this.repos.objects.listByType(tenantId, "BOMHeader"),
+          this.repos.objects.listByType(tenantId, "BOMDetail"),
+          this.repos.links.list(tenantId, (l) => l.type === "order_of_customer"),
+        ])
+      : [empty, empty, [] as Awaited<ReturnType<typeof this.repos.links.list>>];
+    const orderCustomerLinks = orderCustLinkRows
+      .slice()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) // R6 确定性
+      .map((l) => ({
+        orderId: l.fromId,
+        customerId: l.toId,
+        custId: str(l.props?.custId),
+        custName: str(l.props?.custName),
+        orderCust: str(l.props?.orderCust),
+      }));
     return {
+      bomHeaders: sortById(bomHeaders),
+      bomDetails: sortById(bomDetails),
+      orderCustomerLinks,
       tenantId,
       params,
       isSynthProvenance,
@@ -4230,6 +4260,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -4305,6 +4337,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。

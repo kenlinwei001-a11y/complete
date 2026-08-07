@@ -265,6 +265,22 @@ export interface SolverContext {
   incomingInspections?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
   /**
+   * WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· **真 BOM 主表/明细**（`BOMHeader` / `BOMDetail`）。
+   * 此前 `quote_margin` 的 `bomCost` 取 `Material` 按 id 排序的**前 4 行**（al_foil/cell_case/cu_foil/elyte，
+   * **不含正极** —— 成本最高的一项）：实测恒为 313.7452，与问的是哪个型号无关。而每个型号的真 BOM 一直在库里
+   * （`BOM-4680-NCM-V1.0` 7 行 → 632.835；`BOM-方形-LFP-V1.0` 7 行 → 540.2012）。
+   * 这是「有数据、取错表」，不是「没数据」（铁律 0.5 三态）。**按需加载**（`COMMERCE_GRAPH_SOLVERS`）。
+   */
+  bomHeaders?: ObjectInstance[];
+  bomDetails?: ObjectInstance[];
+  /**
+   * WO-QUOTE-MARGIN-CUSTOMER · `order_of_customer` 边的投影（订单 → 客户的**真实归属**）。
+   * 数据半把这条边从「按订单序轮转」改成「按 `Order.cust` 归属册绑定」；引擎半必须**沿这条边**取客户的订单，
+   * 两半才在同一个接缝上（SEAM-GATE）——engine 若改读别的路径，数据半的修就验不到。
+   * **按需加载**（`COMMERCE_GRAPH_SOLVERS`）；缺省 `[]` → 求解器诚实 EMPTY（不回落全域冒充某客户）。
+   */
+  orderCustomerLinks?: { orderId: string; customerId: string; custId: string; custName: string; orderCust: string }[];
+  /**
    * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action
    * 审批执行写入）。**按需加载**（见 service.ts `ADOPTION_AWARE_SOLVERS`：仅 risk_timeline /
    * counterfactual_timeline 载·其余求解器不扫此类型），故与核心 10 类的 solverKey 裁剪机制正交。
