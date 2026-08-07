@@ -5,6 +5,11 @@ import { round } from "../prng.js";
 // （= risk.resolveBaseId / capacity 用的同一份·认 baseId/中文名/obj_base_ 前缀/近指），
 // 本文件**不许**再写第二套「中文名 → baseId」匹配（R14·types.ts 已把这条纪律写死）。
 import { baseName as baseNameOf, maintWeekOf, num, resolveBaseRef, str, type SolverContext } from "./types.js";
+// WO-ENGINE-SCOPE-FIX2（#116 A 档③ mitigation_select 基地维）：紧张度**不另算一份** ——
+// 复用 `risk.ts` 里 `bottleneck_matrix` 今天就在用的那一个 `liveTightness`（LIVE 三分支 + 自带 MOCK 回落），
+// 保证「处置选型看到的紧张度」与「瓶颈矩阵/风险时间线看到的」**同基地同因素同值**（R14 单一出处·口径不漂移）。
+// 无环：risk.ts 不 import 本文件（本文件的唯一 src 消费方是 service.ts）。
+import { liveTightness } from "./risk.js";
 // DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
 // WO-SANDBOX-D2：采购段四段（按责任方）契约 + 唯一合计实现，见 packages/contracts/src/procurement.ts。
 import {
@@ -72,6 +77,9 @@ export function mitigationSelect(args: Record<string, unknown>) {
   const factor = str(args.factor);
   const baseName = str(args.baseName);
   const tightness = num(args.tightness, 85);
+  // WO-ENGINE-SCOPE-FIX2：张力来源披露（LIVE=读到该基地真 OEE/利用率/良率；MOCK=按 (基地,因素) 确定性估算）。
+  // 由 `deriveExtendedArgs` 在解析出基地后注入；调用方直传 tightness / 未给基地 → 键不出现（加性）。
+  const dataMode = str(args.tightnessDataMode);
   // 优先用注入的 canonical 方案库（params.risk.mitigations，全因子名 + risk 字段，R14 单一来源）；
   // 直接单测无 context 时回落内置 MITIGATION_LIB（消除"风险卡全因子名 vs 方案库短名"接缝 G）。
   const injected = args.mitigations as Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk?: string }[]> | undefined;
@@ -92,6 +100,7 @@ export function mitigationSelect(args: Record<string, unknown>) {
     plans: scored,
     recommended: top.key,
     draftPayload: { base: baseName, factor, planKey: top.key },
+    ...(dataMode ? { tightness, dataMode } : {}),
   };
 }
 
@@ -314,7 +323,16 @@ export function changeoverSequence(args: Record<string, unknown>) {
     const o = orders.find((x) => x.orderId === s.orderId);
     return o?.dueDay !== undefined && o.dueDay < 0;
   });
-  return { lineId, sequence: seq, totalChangeoverMin: total, savedVsDueMin: round(dueTotal - total, 4), infeasible, ruleRefs: ["C22", "C29"] };
+  return {
+    lineId,
+    sequence: seq,
+    totalChangeoverMin: total,
+    savedVsDueMin: round(dueTotal - total, 4),
+    infeasible,
+    // WO-ENGINE-SCOPE-FIX2：产线维诚实标注（由 `deriveExtendedArgs` 在用户真给了 `lineId` 时注入·见那里的理由）。
+    ...(args.lineScope !== undefined ? { lineScope: args.lineScope } : {}),
+    ruleRefs: ["C22", "C29"],
+  };
 }
 
 // S12 yield_diagnosis：滑窗突变 = 首个 |后7日均 − 前7日均| > 2σ(前30日) 的日。
@@ -472,7 +490,14 @@ export function quarterlyGap(args: Record<string, unknown>) {
       gap = round(gap - use, 4);
     }
   }
-  return { quarter, combo, residualGap: round(Math.max(0, gap), 4), ruleRefs: ["C08", "C29"] };
+  return {
+    quarter,
+    combo,
+    residualGap: round(Math.max(0, gap), 4),
+    // WO-ENGINE-SCOPE-FIX2：季度维诚实标注（由 `deriveExtendedArgs` 在"给了季度但没给缺口"时注入·见那里的理由）。
+    ...(args.quarterScope !== undefined ? { quarterScope: args.quarterScope } : {}),
+    ruleRefs: ["C08", "C29"],
+  };
 }
 
 /**
@@ -736,7 +761,51 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
         (matrix[str(e.fromModel)] ??= {})[str(e.toModel)] = num(e.minutes);
       }
       const orders = (c.orders ?? []).slice(0, 6).map((o, i) => ({ orderId: str(props(o).so, `o${i}`), modelId: str(props(o).model), dueDay: num(props(o).dueDay, i) }));
-      return { lineId: str(args.lineId, "L1"), ...args, orders, matrix, current: orders[0]?.modelId };
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档①「产线维只回显」→ **裁决 ③：不造假个性化，显性标缺席** ────
+      // 为什么这一条不能像 carbon/lta/mitigation 那样"补一行过滤就好"（追一层后三条硬证据）：
+      //   ① **换型矩阵没有产线维，而且是生成器写死的**：`synthetic/battery-extended.ts:667`
+      //      `lineId: null,  // 无线级实测 → 全局值（诚实回退）` —— 30/30 行恒 null，不是漏灌，是设计如此。
+      //      ⇒ 就算把订单按产线筛出来，`minutes` 仍是全局值，"这条线的换型时长"无从谈起。
+      //   ② **订单侧没有产线归属**：`Order` 只有 `bases[]`（基地数组），全链没有 `Order→Line` 的边。
+      //   ③ 唯一带真 `lineId` 的是 `WorkOrder`（每线 2 单·`battery.ts:4051`），但它的型号取自
+      //      `WO_MODELS = [4680-NCM, 4680-LFP, 方形-LFP, 储能-280Ah, 储能-314Ah]`，其中
+      //      **`储能-280Ah` / `储能-314Ah` 不在 `MODELS` 六型号里**（`battery.ts:54-60`）⇒ 不在换型矩阵里
+      //      ⇒ `matrix[from]?.[to] ?? 0` 会把「不知道换型多久」算成「换型 0 分钟」。
+      //      接上去 = 把今天的"回显别人的队列"换成"编造的 0 分钟换型"，**比现状更坏**
+      //      （同 `G-YIELD-SERIES-SOURCE-MISMATCH` 那一课：喂不动算法的源，接了比不接更危险）。
+      // 故本单只做两件**不撒谎**的事：
+      //   ① 用户给的 `lineId` 必须**真存在**（对 `Line.lineId` 精确校验）—— 不存在即 400，
+      //      绝不把一个不存在的产线名印在一张排序表上（今天 `LINE-WS-火星-x` 照样回显）；
+      //   ② 输出加 `lineScope.dataMode:"EMPTY"` + `missingInputs`（抄 `inventory_optimize.locationAxis`
+      //      这个本仓公认的模范），把「这张表不是这条产线的队列」写进答案本身。
+      // 加性：**不给 `lineId` → `lineScope` 键不出现**，逐字节同改前（含 `lineId:"L1"` 这个既有缺省）。
+      const wantedLine = str(args.lineId);
+      let lineScope: Record<string, unknown> | undefined;
+      if (wantedLine) {
+        const line = (c.lines ?? []).map(props).find((l) => str(l.lineId) === wantedLine);
+        if (!line)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `changeover_sequence：问句指定产线「${wantedLine}」在产线台账中无匹配（扫 Line ${(c.lines ?? []).length} 行）` +
+              `——拒绝把不存在的产线名印在一张排序表上（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        lineScope = {
+          dataMode: "EMPTY",
+          lineId: wantedLine,
+          baseId: str(line.baseId),
+          reason:
+            "本次排序用的是**全局换型矩阵 + 全网前 6 张订单**，不是这条产线自己的队列：" +
+            "ChangeoverMatrix 的 lineId 全库恒 null（合成器写死全局值·无线级实测），Order 也没有产线归属字段。" +
+            "拒绝把全网排序冠上这条产线的名字冒充线级排产。",
+          missingInputs: [
+            { objectType: "ChangeoverMatrix", property: "lineId", need: "线级换型分钟（今日 30/30 恒 null → 只有全局矩阵）" },
+            { objectType: "Order", property: "lineId", need: "订单→产线归属（今日只有 bases[]，无 Order→Line 边）" },
+            { objectType: "WorkOrder", property: "modelId", need: "工单型号需落在 Model 六型号内（今日 5 个取值里 储能-280Ah/储能-314Ah 不在换型矩阵中 → 换型时长无从查）" },
+          ],
+        };
+      }
+      return { lineId: str(args.lineId, "L1"), ...args, ...(lineScope ? { lineScope } : {}), orders, matrix, current: orders[0]?.modelId };
     }
     case "outsourcing_split": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
@@ -822,7 +891,46 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
           );
         em = hit;
       }
-      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, ...(scopedBaseName ? { baseName: scopedBaseName } : {}), materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档②「型号维只回显」（同一个求解器的第二处假个性化）────────
+      // 修前：物料段恒取 `mats.slice(0,4)` = `Material` 按 id 排序的**前 4 行**（al_foil/cell_case/cu_foil/elyte
+      //   —— 连正极都不在里面），与 `modelId` **毫无关系**；实测 `4680-NCM` 与 `方形-LFP` 抹掉 `$.modelId`
+      //   后逐字节相同（`materialCarbon` 恒 348.311）。而输出把用户问的型号原样印在 `$.modelId` 上。
+      // 三态定性 = **没接线**（不是没数据）：真 BOM 一直在库
+      //   （`BOMHeader.modelId` + `BOMDetail.materialId/quantity/lossRate`·`synthetic/battery.ts:3365/3382`），
+      //   只是 `BOMHeader`/`BOMDetail` **从没进过 `SolverContext`**（本单已加·见 types.ts 字段注释）。
+      // 修后：给了 `modelId` → 取该型号的 BOM（多版本时取 `sortById` 排序首个 BOM —— 同型号各版本
+      //   共用同一份 `BOM_ITEM_TEMPLATES`，量值本就相同，选哪版不改数字，只改 `bomId`），
+      //   逐行 `unit = quantity × (1 + lossRate)`（损耗率是真列，不吞），`factor` 取该物料 `Material.carbonFactor`。
+      //   该型号无 BOM / BOM 明细全部对不上 `Material` → **`AMBIGUOUS_SCOPE` 400**，绝不回落全局前 4 行
+      //   （回落正是本单要治的病：把「铝箔+壳体+铜箔+电解液」的碳排印上用户问的型号名）。
+      // ⚠ 实事求是：本 seed 里各型号 BOM 只在正极那一行分叉（NCM 用 `pos_ncm` 1.05kg / LFP 用 `pos_lfp` 1.0kg，
+      //   其余 6 行完全相同）⇒ **两个 NCM 型号之间碳足迹本就应当相同**，那不是没重算，那是真值如此。
+      //   差分门据此只断言「跨化学体系必须不同」，不假装同体系也会不同。
+      // 加性：不给 `modelId`（S20 卡片今天给的是 `modelId:"4680-NCM"`，但 `{}` 与规则 payload 路都不给）
+      //   → 仍取 `mats.slice(0,4)`，与改前逐字节一致。
+      const wantedModel = str(args.modelId);
+      let bomMaterials: { material: string; unit: number; factor: number }[] | undefined;
+      if (wantedModel) {
+        const heads = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === wantedModel);
+        const bomId = heads.length > 0 ? str(heads[0]!.bomId) : "";
+        const details = bomId ? (c.bomDetails ?? []).map(props).filter((d) => str(d.bomId) === bomId) : [];
+        const byMatId = new Map(mats.map((m) => [str(m.matId), m]));
+        const rows = details
+          .map((d) => {
+            const m = byMatId.get(str(d.materialId));
+            return m === undefined ? null : { material: str(d.materialId), unit: round(num(d.quantity, 0) * (1 + num(d.lossRate, 0)), 6), factor: num(m.carbonFactor, 10) };
+          })
+          .filter((x): x is { material: string; unit: number; factor: number } => x !== null);
+        if (rows.length === 0)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：问句指定型号「${wantedModel}」无可用 BOM（BOMHeader 命中 ${heads.length} 份 / BOMDetail 明细 ${details.length} 行 / 能对上 Material 的 ${rows.length} 行）` +
+              `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的物料碳（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        bomMaterials = rows;
+      }
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, ...(scopedBaseName ? { baseName: scopedBaseName } : {}), materials: bomMaterials ?? mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
     }
     case "maintenance_stagger": {
       if (has("bases")) return args;
@@ -839,15 +947,95 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       // 不伪造序列冒充"恒找到 day33"。无 series → yieldDiagnosis 返 EMPTY + 披露（标合成）。真时序接入后再喂真 series。
       return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), provenanceSynthetic: true, ...args };
     }
-    case "quarterly_gap":
-      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
+    case "quarterly_gap": {
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档⑤「季度维只回显」→ **裁决 ③：显性标缺席** ────────────────
+      // 危害比取证单 §2.1#8 判的「时间标签·危害低」要高一档，追一层才看得见：S19 卡片的 preset 只有
+      // `{quarter:"2026Q2"}`（`scenarios-catalog.ts:114`）—— **不带 `gap`**。于是"Q2 缺口用什么组合补？"
+      // 这一问，答案里的缺口数是本行写死的 **50**（一个与任何季度都无关的字面量），却与 `quarter:"2026Q2"`
+      // 并排渲染成 KPI。不是"标签不过滤"，是**把一个凭空的数字挂在用户说的那个季度名下**。
+      // 为什么不真算（追一层的结论，不是没查）：
+      //   · 季度**需求**真源在库 —— `PlanTarget` level="quarter"（`PT-2026-Q1..Q4`·`battery.ts:4510-4527`）；
+      //   · 但**缺口 = 需求 − 供给**，季度供给要走 `capex.deriveS0`（周产能×认证系数×周曲线 ×13 周上卷），
+      //     它今天只在 `planviews.ts` 那条路上跑，`compute()` 这条路既没有 `PlanTarget`（不在 `SolverContext`）
+      //     也没有 `computeRollup/curveMult` 的注入；且 `deriveS0` 的季度索引是**相对预测窗口起点**的，
+      //     要映射到日历季 `2026Q2` 还得先解 `forecastStart` —— 属**新数据通道**，非"加个过滤"。
+      //   · 硬接的后果与 `G-YIELD-SERIES-SOURCE-MISMATCH` 同形：把"这个数是占位"换成一个**看起来算过的**
+      //     错数，更难被发现。故本单不接，只把"这个 50 不是 Q2 的缺口"写进答案。
+      // 加性：**调用方给了 `gap` → `quarterScope` 键不出现**（那时数字归调用方所有，不是本行编的），
+      //   `{}` 也不出现（没有用户说的季度可冒充）—— 两条路都逐字节同改前。
+      const quarterGiven = str(args.quarter) !== "";
+      const gapGiven = has("gap");
+      const quarterScope =
+        quarterGiven && !gapGiven
+          ? {
+              dataMode: "EMPTY",
+              quarter: str(args.quarter),
+              reason:
+                "未给 gap ⇒ 本次缺口取的是求解器占位缺省值（50 万套），**不是该季度的真实产销缺口**：" +
+                "季度需求真源 PlanTarget(level=quarter) 在库，但季度供给需走 capex.deriveS0 的周产能上卷（仅 planviews 路可达，" +
+                "且其季度索引相对预测窗口起点、未与日历季对齐）—— 拒绝拿占位数冒充该季度的缺口读数。",
+              missingInputs: [
+                { objectType: "PlanTarget", property: "value@level=quarter", need: "季度需求（在库·但 PlanTarget 不在 SolverContext）" },
+                { objectType: "Line", property: "capacityDaily→季度供给", need: "季度供给上卷（deriveS0 需 computeRollup/curveMult 注入 + 日历季对齐）" },
+              ],
+            }
+          : undefined;
+      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args, ...(quarterScope ? { quarterScope } : {}) };
+    }
     case "countermeasure_combo": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
     }
-    case "mitigation_select":
+    case "mitigation_select": {
       // 注入 canonical 方案库（params.risk.mitigations）→ mitigation_select 对全部 7 个风险因子可用。
-      return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args };
+      //
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档③「基地维只回显」+ #117「卡片键名不对」（一处两病）────────
+      // 修前两条并存：
+      //   ① 求解器读 `args.baseName`，而 **S06 卡片传的是 `base`**（`scenarios-catalog.ts:66`
+      //      `{ base:"常州", factor:"物料齐套", solutionName:"三班制" }`）⇒ 实测 `baseName:""`、
+      //      **`draftPayload.base` 是空串** —— 这份草稿是要变成 Action 审批件的，基地字段空着就走完了全程；
+      //   ② 就算把 `baseName` 传对，`tightness` 也是这里写死的 **85**（与哪个基地无关）⇒ 常州问、枣庄问，
+      //      `urgency`/`plans[].score`/`recommended` 逐字节相同，而输出上印着用户说的那个基地名。
+      // 数据一直都在（铁律 0.5 三态 = **接了线接错地方**，不是没数据）：`Base` 13 行齐，
+      // 且 `risk.ts liveTightness/mockTightness` **早就**按 (baseId, factor) 算张力、早就被 `bottleneck_matrix`
+      // 消费（`risk.ts:241/245`）—— 病是「只挂了 bottleneck_matrix 一个挂载点，处置选型这条路没挂」。
+      // 修后：
+      //   ① `baseName` **与** `base` 两键都认（键名漂移不该让作用域失效），解析走 `resolveBaseRef` 单一出处；
+      //      解析不到 → `AMBIGUOUS_SCOPE` 400（抄 `credit_exposure` 样板·拒绝静默按"没给基地"处理）；
+      //   ② `tightness` 缺省改为 **该基地 × 该因素的真张力**（`liveTightness`·读不到真源时它自己回落
+      //      `mockTightness`，仍是逐 (基地,因素) 确定性值 —— 两条路都随基地变，R6 无随机/无时钟）；
+      //   ③ 回显位（含 `draftPayload.base`）归一成**真正被算的那个基地**的规范名。
+      //   ④ 加性透出 `dataMode`（LIVE/MOCK）—— 让"这份紧张度是实测还是估算"在答案里可见。
+      // 调用方**直传 `tightness`** 时仍以调用方为准（`...args` 在后·`rules-p3-payload-11solvers.test.ts:159`
+      // 传 92 的那条路逐字节不变）。**不给 base/baseName → `tightness:85` 且无 `dataMode` 键 = 改前逐字节一致。**
+      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
+      const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
+      if (!hasBaseRef) return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args };
+      const r = resolveBaseRef(c.bases, baseRefRaw);
+      if (!r.resolved || !r.objectId)
+        throw new AppError(
+          "AMBIGUOUS_SCOPE",
+          `mitigation_select：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+            `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+            `——拒绝拿一份与该基地无关的紧张度选处置方案（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+          400,
+        );
+      const scopedBaseId = r.objectId;
+      const scopedBaseName = baseNameOf(c, scopedBaseId);
+      const factor = str(args.factor);
+      // 因素缺省时不派生张力（求解器本就会以 `unknown factor` 收场，派生一个没人用的数只会误导）。
+      const lt = factor ? liveTightness(c, scopedBaseId, factor) : null;
+      // `dataMode` 只描述**本函数派生的那个 tightness**；调用方直传 tightness 时不出现
+      // （否则会把调用方的数字冠上"LIVE 实测"的名义 —— 那是另一种假个性化）。
+      const derivedTightness = lt !== null && !has("tightness");
+      return {
+        tightness: lt ? lt.value : 85,
+        mitigations: c.params?.risk?.mitigations,
+        ...args,
+        baseName: scopedBaseName,
+        ...(derivedTightness ? { tightnessDataMode: lt!.live ? "LIVE" : "MOCK" } : {}),
+      };
+    }
     default:
       return args;
   }

@@ -153,12 +153,87 @@ function c23Thresholds(c: SolverContext): { irrMin: number; util24Min: number } 
   return { irrMin: cfg?.irrThreshold ?? 0.15, util24Min: cfg?.util24Threshold ?? 0.75 };
 }
 
+/**
+ * WO-ENGINE-SCOPE-FIX2 #116 · A 档④「`scenarioKey` 只回显」（`G-SOLVER-SCOPE-ECHO`）—— 情景维解析。
+ *
+ * ── 三态定性（铁律 0.5·追一层后改口径）──
+ * 取证单 §2.1#7 判「中·数据齐纯接线」，说要把 `AnnualScenario`(3) / `CapexProject`(3) 接进入参。
+ * **再追一层后这条要改**：`CapexProject` 行只有 `{projectId,name,irr,util24,c23pass}`
+ * （`synthetic/battery-extended.ts` 673-677）—— 那是**算完的结果**，不是本求解器要的**输入**
+ * （`q0/cap/capex[]/m` 一个都没有）；而 `scenario_to_capex` 边对 baseline/aggressive **各连全部 3 个项目**
+ * （`synthetic/service.ts` 1070-1073），根本不区分情景。**照取证单接 CapexProject 只会拿不到入参、或拿错。**
+ *
+ * 真源在**已经在 ctx 里**的另一处：`params.capexScenario.scenarios`
+ * （`synthetic/battery.ts` 454-475：`conservative:[]` / `baseline:[ZZ]` / `aggressive:[ZZ,JM]`，
+ * 逐项目带 `q0/cap/capex[]/m/salvageRate/lifeQuarters`）。`params` 是 `loadContext` **永远加载、
+ * 从不裁剪**的那一份 —— 所以这一条**不需要任何新数据通道**，是纯粹的「接了线接错地方」。
+ *
+ * ── 单一出处（不新造第二套派生）──
+ * `planviews.ts:135-158`（AOP 视图）**今天已经**照这条路取 `cfg.scenarios[scenarioKey].projects`。
+ * 病是「只挂了 planviews 一个点」：求解器自己的 invoke 路（MCP `solvers` 工具 / 路径 B Agent / 直接 REST）
+ * 没挂 —— 于是同一个 `scenarioKey` 走 AOP 有用、走求解器只回显。本函数补的正是这第二个挂载点，
+ * 取的是**同一个** `cfg.scenarios`，不另写一份情景→项目映射。
+ *
+ * ── 三条互斥分支（为什么不是"一律 400"）──
+ * ① 调用方**直传 `projects`** → 项目集归调用方所有（规则 payload / 测试 / S17 卡片今天走的就是这条）。
+ *    此时 `scenarioKey` 确实只是标签 —— 但**必须在输出里说清楚**（`scope.mode="EXPLICIT"`），
+ *    否则就是本单要治的假个性化。`rules-p3-payload-11solvers.test.ts:35` 传的 `scenarioKey:"x"`
+ *    压根不是登记情景，正是这一档；对它抛 400 会把一条合法用法误杀。
+ * ② 未传 `projects` + `scenarioKey` **是登记情景** → 真取该情景的项目集（`scope.mode="SCENARIO"`）= 真重算。
+ * ③ 未传 `projects` + `scenarioKey` **不是登记情景** → `AMBIGUOUS_SCOPE` 400（抄 `credit_exposure` 样板）。
+ *    绝不静默按"没有项目"算一份空测算再把用户说的情景名印上去。
+ *
+ * 加性：**不给 `scenarioKey` → 一个字节都不变**（`scope` 键不出现，`projects` 仍取 `args.projects ?? []`）。
+ */
+function resolveScenarioProjects(
+  c: SolverContext,
+  args: CapexScenarioArgs,
+): { projects?: CapexProjectInput[]; scope?: Record<string, unknown> } {
+  const wanted = typeof args.scenarioKey === "string" ? args.scenarioKey.trim() : "";
+  if (!wanted) return {}; // 加性：未指定情景 → 逐字节现行为
+  const registry = c.params.capexScenario?.scenarios ?? {};
+  const known = Object.keys(registry).sort();
+  if (args.projects !== undefined) {
+    return {
+      scope: {
+        mode: "EXPLICIT",
+        scenarioKey: wanted,
+        note:
+          "projects 由调用方直传 ⇒ 本次测算的是**调用方给的项目集**，scenarioKey 仅为回显标签、未参与选型" +
+          `（登记情景：${known.join("、") || "（空）"}）`,
+      },
+    };
+  }
+  const scen = registry[wanted];
+  if (!scen) {
+    throw new AppError(
+      "AMBIGUOUS_SCOPE",
+      `capex_scenario：问句指定情景「${wanted}」在情景库中无匹配（已登记 ${known.length} 个：${known.join("、") || "（空）"}）` +
+        `——拒绝把情景名印在一份与它无关的测算上（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+      400,
+    );
+  }
+  // 单位边际毛利缺省回落情景配置的 unitMargin（R14：不内联第二个魔数）。
+  const unitMargin = c.params.capexScenario?.unitMargin;
+  const projects = scen.projects.map((p) => ({ ...p, m: num(p.m, num(unitMargin, 0)) }));
+  return {
+    projects,
+    scope: {
+      mode: "SCENARIO",
+      scenarioKey: wanted,
+      projectIds: projects.map((p) => p.id).sort(),
+      source: "solverParams.capexScenario.scenarios",
+    },
+  };
+}
+
 export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record<string, unknown> {
   const demand = (args.demand ?? []).map((x) => num(x));
   const Q = demand.length;
   if (Q === 0) throw new AppError("VALIDATION_ERROR", "capex_scenario: demand[] 不能为空", 400);
   const s0 = (args.s0 ?? []).map((x) => num(x));
-  const projects = (args.projects ?? []).map((p, i) => ({
+  const scoped = resolveScenarioProjects(c, args);
+  const projects = (args.projects ?? scoped.projects ?? []).map((p, i) => ({
     id: p.id ?? `P${i + 1}`,
     name: p.name ?? p.id ?? `项目${i + 1}`,
     q0: Math.max(0, Math.floor(num(p.q0))),
@@ -270,6 +345,8 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
 
   return {
     scenarioKey: args.scenarioKey ?? "",
+    // WO-ENGINE-SCOPE-FIX2：情景维**只在用户真给了 scenarioKey 时**出现（加性：不给 → 键不存在 → 逐字节现行为）。
+    ...(scoped.scope ? { scope: scoped.scope } : {}),
     quarters: Q,
     demand,
     s0,
