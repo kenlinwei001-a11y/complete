@@ -1,0 +1,257 @@
+{
+  "__fixture_provenance": [
+    "WO-IMPEDIMENT-FE · chain_impediments（WO-SANDBOX-E3）在 demo 租户合成种子（battery-manufacturing / S / seed 42）上的**基线**载荷。",
+    "",
+    "诚实声明（怎么来的 —— 不许把它读成一次 live capture）：",
+    "  本文件**不是**一次真调 HTTP 的抓包。本单范围边界禁止改 apps/datacore/**，因此没有在 datacore 里加",
+    "  dump 钩子去抓真返回体。它是**逐字段对齐后端两处单一来源**构造出来的：",
+    "   ① 判定行为与阈值：apps/datacore/test/chain-impediment-seam.test.ts 的断言（那些断言跑在真合成种子上，",
+    "      是 CI 门，写错就红）——",
+    "        · BASE:98   BREAK.DATA.datasource-stale   → C09 / source=param / ruleParamKey=staleHours / value=2",
+    "        · BASE:99   BOTTLENECK...line-utilization-redline → C05 / source=literal / value=95",
+    "        · BASE:100  CONGESTION.MATERIAL.batch-idle → C28 / source=literal / value=90",
+    "        · BASE:101  BOTTLENECK...process-hard-capacity   → C02 / source=field / fieldPath=Process.requiredThroughput",
+    "        · SEAM-1:115 基线数据断 **0 条**（关键源最大延迟 1.8h ≤ 阈值 2h）",
+    "        · SEAM-4:249 基线硬容量夹定 **0 条**（柜位数按目标反解，恰好够用）",
+    "        · SEAM-3:245 C05 命中项 dataMode **必须** PARTIAL + caveat 含「未校验持续天数」",
+    "        · HONEST-2   C22 换型判据恒 UNKNOWN（Order.changeoverMin 无对象承载）· UNBOUND.BREAK.LEADTIME 诚实缺席",
+    "   ② 对象 id / 数值：apps/datacore/src/synthetic/battery.ts 与 battery-extended.ts 的真发生器 —",
+    "        · MaterialBalance `mbal-${i+1}`，gapTon = round(netDemandTon × (1 − ltaPct/100))（battery.ts:3910-3913）",
+    "        · MaterialBatch  `${matId}_b${i}`，每料第 3 批 idleDays 95–125（battery-extended.ts:549-557）",
+    "        · Line `LINE-WS-<baseId>-<workshopSuffix>`（battery.ts:3548-3554 × contracts WORKSHOP_REGISTRY）",
+    "        · DataSourceHealth `erp` critical lagHours 1.8（battery.ts:3860）",
+    "   ③ 形状：全部字段过 contracts `ChainImpedimentSchema`（test 里真 parse 一遍，不是抄形状）。",
+    "  severity 逐条按引擎公式 round(breach / denom × 100) 复算过（denom = |threshold|，threshold==0 时取",
+    "  binding.magnitudePath 即 MaterialBalance.netDemandTon —— chain-impediment.ts:606-618）。",
+    "",
+    "  ⇒ 若哪天后端行为变了而本文件没跟，chain-impediment.seam.test.tsx 的『fixture 对齐后端单一来源』组会红：",
+    "     它把本文件的 bindingId / caveat 文案回查 apps/datacore/src/solvers/chain-impediment.ts 原文。",
+    "     故本文件**无法**靠手写漂移过门。",
+    "",
+    "  ⚠ 本基线上 dataMode **没有一条 LIVE**，这不是我漏造：demo 租户全部对象由合成种子直注",
+    "     （origin.type === \"SYNTHETIC\"）⇒ buildSynthProvenancePredicate 恒真（service.ts:4165-4169）",
+    "     ⇒ 非 SUSTAIN、非数据断的判定一律落 SYNTHETIC（chain-impediment.ts:620-622）。",
+    "     LIVE 要等真连接器接入生产数据才可能出现。见交付说明「今天给不出的那几类」。"
+  ],
+  "scanId": "scan_1f4a9c3b",
+  "scope": {},
+  "scopeUnscoped": true,
+  "ruleSetVersion": "rs-7c21e0",
+  "counts": { "total": 8, "BOTTLENECK": 2, "CONGESTION": 3, "BREAK": 3 },
+  "impediments": [
+    {
+      "impedimentId": "imp_CONGESTION.MATERIAL.batch-idle_pos_ncm_b2",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "CONGESTION",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBatch", "objectId": "pos_ncm_b2", "label": "pos_ncm_b2" },
+      "severity": 24,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C28",
+        "metricValue": 112,
+        "threshold": 90,
+        "unit": "天"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_CONGESTION.MATERIAL.batch-idle_neg_graphite_b2",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "CONGESTION",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBatch", "objectId": "neg_graphite_b2", "label": "neg_graphite_b2" },
+      "severity": 20,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C28",
+        "metricValue": 108,
+        "threshold": 90,
+        "unit": "天"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_CONGESTION.MATERIAL.batch-idle_elyte_b2",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "CONGESTION",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBatch", "objectId": "elyte_b2", "label": "elyte_b2" },
+      "severity": 12,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C28",
+        "metricValue": 101,
+        "threshold": 90,
+        "unit": "天"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_BREAK.MATERIAL.material-gap_mbal-6",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "BREAK",
+      "breakSubtype": "MATERIAL",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBalance", "objectId": "mbal-6", "label": "铜箔" },
+      "severity": 9,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C06",
+        "metricValue": 398,
+        "threshold": 0,
+        "unit": "吨"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_BREAK.MATERIAL.material-gap_mbal-1",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "BREAK",
+      "breakSubtype": "MATERIAL",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBalance", "objectId": "mbal-1", "label": "三元正极" },
+      "severity": 8,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C06",
+        "metricValue": 1858,
+        "threshold": 0,
+        "unit": "吨"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_BREAK.MATERIAL.material-gap_mbal-3",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "BREAK",
+      "breakSubtype": "MATERIAL",
+      "stage": "MATERIAL",
+      "scope": {},
+      "locus": { "objectType": "MaterialBalance", "objectId": "mbal-3", "label": "石墨负极" },
+      "severity": 7,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C06",
+        "metricValue": 698,
+        "threshold": 0,
+        "unit": "吨"
+      },
+      "dataMode": "SYNTHETIC"
+    },
+    {
+      "impedimentId": "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-changzhou-formation",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "BOTTLENECK",
+      "stage": "CAPACITY",
+      "scope": {},
+      "locus": {
+        "objectType": "Line",
+        "objectId": "LINE-WS-changzhou-formation",
+        "label": "常州化成线"
+      },
+      "severity": 2,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C05",
+        "metricValue": 97.2,
+        "threshold": 95,
+        "unit": "%"
+      },
+      "dataMode": "PARTIAL"
+    },
+    {
+      "impedimentId": "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-xiamen-coating",
+      "tenantId": "demo",
+      "scanId": "scan_1f4a9c3b",
+      "kind": "BOTTLENECK",
+      "stage": "CAPACITY",
+      "scope": {},
+      "locus": { "objectType": "Line", "objectId": "LINE-WS-xiamen-coating", "label": "厦门涂布线" },
+      "severity": 1,
+      "evidence": {
+        "solverKey": "chain_impediments",
+        "ruleKey": "C05",
+        "metricValue": 96.4,
+        "threshold": 95,
+        "unit": "%"
+      },
+      "dataMode": "PARTIAL"
+    }
+  ],
+  "unresolved": [
+    {
+      "bindingId": "CONGESTION.CAPACITY.order-changeover",
+      "kind": "CONGESTION",
+      "stage": "CAPACITY",
+      "ruleKey": "C22",
+      "status": "UNKNOWN",
+      "reason": "指标 Order.changeoverMin 在 Order 上无对象承载（扫了 6 个对象，无一含 changeoverMin）—— 属\"接了线没数据\"，不是\"没接线\"：补数据即可判"
+    },
+    {
+      "bindingId": "UNBOUND.BREAK.LEADTIME",
+      "kind": "BREAK",
+      "breakSubtype": "LEADTIME",
+      "status": "UNKNOWN",
+      "reason": "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C33 中无任何承载阈值的规则（逐条核过）；本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）"
+    }
+  ],
+  "caveats": [
+    {
+      "bindingId": "BOTTLENECK.CAPACITY.line-utilization-redline",
+      "ruleKey": "C05",
+      "note": "规则 C05 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— 本次只比对快照与规则红线 95%，**未校验持续天数**；结论 dataMode 标 PARTIAL"
+    }
+  ],
+  "thresholds": [
+    {
+      "bindingId": "BOTTLENECK.CAPACITY.process-hard-capacity",
+      "ruleKey": "C02",
+      "source": "field",
+      "fieldPath": "Process.requiredThroughput",
+      "value": 41667,
+      "unit": "电芯/天"
+    },
+    {
+      "bindingId": "BOTTLENECK.CAPACITY.line-utilization-redline",
+      "ruleKey": "C05",
+      "source": "literal",
+      "value": 95,
+      "unit": "%"
+    },
+    {
+      "bindingId": "CONGESTION.MATERIAL.batch-idle",
+      "ruleKey": "C28",
+      "source": "literal",
+      "value": 90,
+      "unit": "天"
+    },
+    {
+      "bindingId": "BREAK.MATERIAL.material-gap",
+      "ruleKey": "C06",
+      "source": "literal",
+      "value": 0,
+      "unit": "吨"
+    },
+    {
+      "bindingId": "BREAK.DATA.datasource-stale",
+      "ruleKey": "C09",
+      "source": "param",
+      "ruleParamKey": "staleHours",
+      "value": 2,
+      "unit": "小时"
+    }
+  ]
+}
