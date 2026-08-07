@@ -200,7 +200,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { status: "ok", dataCoreReachable };
   });
 
-  app.get("/metrics", async (_req, reply) => {
+  /**
+   * WO-65 · `G-METRICS-CROSS-TENANT-AND-OPEN`（B 侧同款）。凭据复用本仓既有两套，不造第三套：
+   * - `X-Service-Token` === env SERVICE_TOKEN → 放行（Prometheus 抓取正门，与 `:2202` 的 scaffold 判定同形）；
+   * - 否则走既有 `auth(req)`（Bearer JWT / X-Debug-User）并要求 admin 角色。
+   * 无凭据 → `AuthError` → 401；有凭据但非 admin → 403 FORBIDDEN。
+   *
+   * 注：B 侧 `qos_*` / `ac_*` 计数器**今天尚无 tenant 标签**（那是 PRD-skill-governance-learning §2.1
+   * 的 B 侧半，不在本单范围），故此处只有"全量"一种视图 —— 残口已登记进本体 §8，别当成已闭合。
+   */
+  app.get("/metrics", async (req, reply) => {
+    const svcToken = req.headers["x-service-token"];
+    const isService =
+      !!deps.config.SERVICE_TOKEN && typeof svcToken === "string" && svcToken === deps.config.SERVICE_TOKEN;
+    if (!isService) {
+      const a = await auth(req);
+      if (!a.roles.some((r) => r === "admin" || r.split(":")[0] === "admin")) {
+        throw new HttpError(403, "FORBIDDEN", "/metrics requires service token or admin role");
+      }
+    }
     reply.header("content-type", "text/plain; version=0.0.4");
     return deps.metrics.render();
   });

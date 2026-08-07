@@ -518,7 +518,7 @@ export class ActionService {
       outcome = "success";
       return result;
     } finally {
-      this.am.submit(typeKey, outcome);
+      this.am.submit(ctx.tenantId, typeKey, outcome);
     }
   }
 
@@ -664,7 +664,7 @@ export class ActionService {
       }
       step = pending;
     } catch (err) {
-      this.am.approval(draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
+      this.am.approval(ctx.tenantId, draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
       throw err;
     }
     step.decision = "APPROVE";
@@ -673,7 +673,7 @@ export class ActionService {
     step.decidedAt = new Date().toISOString();
     const next = draft.approvalSteps.find((s) => !s.decision);
     if (next) {
-      this.am.approval(draft.actionTypeKey, "step_advanced");
+      this.am.approval(ctx.tenantId, draft.actionTypeKey, "step_advanced");
       draft.updatedAt = step.decidedAt;
       await this.repos.actionDrafts.put(draft);
       await this.outbox.emit(ctx.tenantId, "action.pending_approval", {
@@ -691,7 +691,7 @@ export class ActionService {
       });
       return draft;
     }
-    this.am.approval(draft.actionTypeKey, "approved");
+    this.am.approval(ctx.tenantId, draft.actionTypeKey, "approved");
     draft.status = "APPROVED";
     draft.updatedAt = step.decidedAt;
     await this.repos.actionDrafts.put(draft);
@@ -712,7 +712,7 @@ export class ActionService {
   async reject(ctx: AuthCtx, id: string, comment: string): Promise<ActionDraft> {
     if (!comment || !comment.trim()) {
       // 请求本身不合法，且此刻还没取到草稿 → action_type 只能诚实记 "unknown"（不猜）。
-      this.am.approval("unknown", "invalid_request");
+      this.am.approval(ctx.tenantId, "unknown", "invalid_request");
       throw validationError("reject comment is required");
     }
     const draft = await this.get(ctx, id);
@@ -726,10 +726,10 @@ export class ActionService {
       }
       step = pending;
     } catch (err) {
-      this.am.approval(draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
+      this.am.approval(ctx.tenantId, draft.actionTypeKey, err instanceof AppError ? "denied" : "unexpected");
       throw err;
     }
-    this.am.approval(draft.actionTypeKey, "rejected");
+    this.am.approval(ctx.tenantId, draft.actionTypeKey, "rejected");
     step.decision = "REJECT";
     step.approverId = ctx.userId;
     step.comment = comment;
@@ -773,7 +773,7 @@ export class ActionService {
   async execute(tenantId: string, draftId: string): Promise<ActionDraft> {
     const draft = await this.repos.actionDrafts.get(tenantId, draftId);
     if (!draft || draft.status !== "APPROVED") {
-      this.am.execute(draft?.actionTypeKey ?? "unknown", "invalid_state");
+      this.am.execute(tenantId, draft?.actionTypeKey ?? "unknown", "invalid_state");
       throw invalidStep("draft not in APPROVED state");
     }
     const typeKey = draft.actionTypeKey;
@@ -787,8 +787,8 @@ export class ActionService {
       try {
         const result = await this.executor.execute(draft);
         if (result.ok) {
-          this.am.executeAttempt(typeKey, "success");
-          this.am.execute(typeKey, "success");
+          this.am.executeAttempt(tenantId, typeKey, "success");
+          this.am.execute(tenantId, typeKey, "success");
           draft.status = "EXECUTED";
           draft.executionResult = { ok: true, targetRef: result.targetRef, attempts };
           draft.updatedAt = new Date().toISOString();
@@ -801,15 +801,15 @@ export class ActionService {
           return draft;
         }
         // 执行器"有序拒绝"（ok:false）与"抛异常"分开计：前者查业务前提，后者查平台/依赖故障。
-        this.am.executeAttempt(typeKey, "executor_rejected");
+        this.am.executeAttempt(tenantId, typeKey, "executor_rejected");
         lastError = result.error ?? "executor returned ok=false";
       } catch (err) {
-        this.am.executeAttempt(typeKey, "executor_error");
+        this.am.executeAttempt(tenantId, typeKey, "executor_error");
         lastError = err instanceof Error ? err.message : String(err);
       }
       if (attempts < this.retryDelaysMs.length) await this.sleep(this.retryDelaysMs[attempts - 1] as number);
     }
-    this.am.execute(typeKey, "failed");
+    this.am.execute(tenantId, typeKey, "failed");
     draft.status = "EXECUTION_FAILED";
     draft.executionResult = { ok: false, error: lastError, attempts };
     draft.updatedAt = new Date().toISOString();

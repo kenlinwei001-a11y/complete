@@ -836,7 +836,6 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const PUBLIC_PATHS = new Set([
     "/healthz",
     "/readyz",
-    "/metrics",
     "/a/v1/auth/login",
     "/a/v1/auth/refresh",
     "/a/v1/auth/logout",
@@ -844,18 +843,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/a/v1/readyz",
     "/a/v1/.well-known/jwks.json",
   ]);
+  /**
+   * WO-65 · `G-METRICS-CROSS-TENANT-AND-OPEN`：需要鉴权、但**不在 `/a/` 前缀下**的路径。
+   *
+   * ⚠️ 只把 `/metrics` 从 `PUBLIC_PATHS` 删掉是**假修**——下面第二行 `if (!path.startsWith("/a/")) return;`
+   * 会让它照样从鉴权钩子里逃出去（`/metrics` 不以 `/a/` 开头）。两处必须一起改，否则端点仍是 200 裸奔。
+   */
+  const PROTECTED_NON_A_PATHS = new Set(["/metrics"]);
+  /** 全局抓取端点：服务令牌即凭据，**不要求** X-Tenant-Id（Prometheus 抓的是全量，没有"某个租户"可言）。 */
+  const GLOBAL_SERVICE_PATHS = new Set(["/metrics"]);
 
   app.addHook("onRequest", async (req: FastifyRequest, _reply: FastifyReply) => {
     if (req.method === "OPTIONS") return; // CORS preflight
     const path = req.url.split("?")[0] as string;
     if (PUBLIC_PATHS.has(path)) return;
-    if (!path.startsWith("/a/")) return;
+    if (!path.startsWith("/a/") && !PROTECTED_NON_A_PATHS.has(path)) return;
     // LLM Provider 增量 §1.1 服务间凭证：X-Service-Token === env SERVICE_TOKEN →
     // roles=["service"]（仅服务间路由消费该角色；未配置 SERVICE_TOKEN 则恒不命中）。
     const svcToken = req.headers["x-service-token"];
     if (config.SERVICE_TOKEN && typeof svcToken === "string" && svcToken === config.SERVICE_TOKEN) {
       const tid = req.headers["x-tenant-id"];
-      if (typeof tid !== "string" || tid.length === 0) throw validationError("X-Tenant-Id header required for service calls");
+      if (typeof tid !== "string" || tid.length === 0) {
+        if (!GLOBAL_SERVICE_PATHS.has(path)) throw validationError("X-Tenant-Id header required for service calls");
+        // 全局抓取：tenantId 留空且**只有** GLOBAL_SERVICE_PATHS 能走到这里，
+        // 该 ctx 不会流到任何按 tenantId 读写仓储的路由上（R2 不被削弱）。
+        req.authCtx = { tenantId: "", userId: "svc:" + String(req.headers["x-service-caller"] ?? "unknown"), roles: ["service"], attributes: {} };
+        return;
+      }
       req.authCtx = { tenantId: tid, userId: "svc:" + String(req.headers["x-service-caller"] ?? "unknown"), roles: ["service"], attributes: {} };
       return;
     }
@@ -909,7 +923,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { status: "ready" };
   };
   app.get("/readyz", readyz);
-  app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
+  /**
+   * WO-65 · `G-METRICS-CROSS-TENANT-AND-OPEN` 的鉴权半。凭据一律复用既有三套（不造第四套）：
+   * - `X-Service-Token`（= env SERVICE_TOKEN）→ roles=["service"] → **全量**视图。这是 Prometheus 抓取的正门；
+   *   抓取侧不需要 JWT、不需要 X-Tenant-Id，故加鉴权不会打断抓取（见上 GLOBAL_SERVICE_PATHS）。
+   * - admin 角色（Bearer JWT / 非生产的 X-Debug-User）→ **只看自己租户**那条曲线。
+   * - 其余已认证角色 → 403；无凭据 → 401（钩子里 `unauthorized()` 抛出）。
+   *
+   * 不挂 entitlement：`/metrics` 是运维基础设施端点、且 service 视图是跨租户的，
+   * 没有"某个租户的功能开关"可依（entitlement 是 per-tenant 的 404 语义，套在这里没有对象）。
+   */
+  app.get("/metrics", async (req, reply) => {
+    const a = ctx(req);
+    const isService = a.roles.includes("service");
+    const isAdmin = a.roles.some((r) => r === "admin" || r.split(":")[0] === "admin");
+    if (!isService && !isAdmin) throw forbidden("/metrics requires service token or admin role");
+    // service = 全量；admin = 按自己 tenantId 收窄（跨租户曲线不外泄，R2 覆盖到可观测面）。
+    return reply.type("text/plain").send(metrics.render(isService ? {} : { tenantId: a.tenantId }));
+  });
   // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
   app.get("/a/v1/healthz", async () => ({ status: "ok" }));
   app.get("/a/v1/readyz", readyz);
