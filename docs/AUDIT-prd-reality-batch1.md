@@ -121,3 +121,135 @@
 - **结论**：✅已实现（T1/T2/T3 三件齐；且守住了 §1.4 "复用不新造" 的红线）
 - **⚠ 读者陷阱（不是 PRD 错，是时序）**：§1 的 AS-IS 描述的是**写单当时**的状态，现已全部被推翻。只读 §1 会得出"处置表是写死的"这个已经过期的结论 —— 与本次事故同型。**建议在 §1 顶部加一行「本节为 WO 开工前快照，已于 <commit> 全部落地」**，让后来的读者不必重犯。
 
+
+---
+
+### docs/PRD-addendum-a8-timeseries.md
+- **它要做什么**：新增 **A8 时序数据层**——原始时序（MES 实绩/OEE，数十万行）严禁进本体对象存储与 LLM 上下文；显式规格化「原始时序 → 聚合 → 本体快照属性（结论数据）」的加工链；合成数据支持**模拟时钟一键推进**让全链路（聚合→派生→规则→看板）活起来。
+- **PRD 自称的 AS-IS**：无独立 AS-IS 节（它是"新增模块"型增量）。§0「数据分层总图（规范性）」是它的规范锚：`ts_points`（hypertable）→ A8 聚合作业 → 快照属性 → A4 派生 → 消费层；红线「`objects` 表禁止出现逐条时序记录型对象；任何返回给 LLM 的工具禁止返回 `ts_points` 原始行」。
+- **实测现状**（逐节全落地）：
+  - **§1 接入通道 ✅**：`kind: "ENTITY"|"TIMESERIES"` 契约 `packages/contracts/src/timeseries.ts:7` + `packages/contracts/src/datacore.ts:56`；自动画像建议 `apps/datacore/src/connectors/profiler.ts:45`（时间列+实体键+数值测量 → 建议 TIMESERIES）；分流写入 `apps/datacore/src/connectors/service.ts:207`（`kind==="TIMESERIES" && this.ts` → 走独立时序写入器，不落 raw_datasets）。
+  - **表全建 ✅**：`apps/datacore/migrations/002_addendum.sql:53 ts_series` · `:61 ts_points` · `:71` 索引 `(series_id, entity_id, ts DESC)`（与 PRD §1 逐字一致）· `:79` `create_hypertable('ts_points','ts',…)` 且 `:81` timescaledb 不可用时**优雅降级为普通表**并 RAISE NOTICE（诚实，不静默）· `:85 ts_late_arrivals`（迟到数据）· `:93 ts_agg_specs` · `:116 simulation_clocks`。
+  - **§2 聚合 ✅**：`apps/datacore/src/timeseries.ts` `TimeseriesService`（`app.ts:88` import，`:344` 实例化，`:394` 注入 deps）；端点 `app.ts:4259 POST /a/v1/timeseries/agg-query` · `:4263 GET /a/v1/timeseries/agg-specs` · `:4264 POST /a/v1/timeseries/aggregate`。
+  - **§6.1 tsGenerators ✅**：`apps/datacore/src/synthetic/battery.ts:2601 tsGenerators` · `:2612 scenarioScript`；消费方 `synthetic/service.ts:496`（③b 确定性历史生成）· `simclock.ts:183` · `livedin/bundle.ts:310`（三处 src 调用方，非死配置）。
+  - **§6.2 模拟时钟 ✅**：`apps/datacore/src/simclock.ts`（`app.ts:381` `new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox)` —— 依赖注入进的正是 §6.2 tick 流水第 4 步要求的聚合/规则/求解器）；端点 `app.ts:4282 GET /a/v1/synthetic/clock` · `:4283 /clock/ticks` · `:4305 POST /clock/tick` · `:4310 POST /clock/reset`；事件 `simclock.ts:149` 发 `synthetic.tick_completed`。
+  - **§6.3 前端控制台 ✅**：`apps/frontend-shell/src/pages/admin/SimClockConsole.tsx`；事件消费 `apps/frontend-shell/src/store/eventInvalidation.ts:49` `"synthetic.tick_completed": ["dashboard","object-queries","scenario-data"]`（**四段全通：发→订阅→前端失效→重拉**）。
+  - **跨系统订阅方 ✅**：`apps/agentcore/src/event-subscriptions.ts:59` 同一事件登记 `tier: "IN_SESSION"`，`dl: "DL7"`。
+- **结论**：✅已实现
+- **未查清**：§0 那条红线（"任何返回给 LLM 的工具禁止返回 `ts_points` 原始行"）我**没有做穷举核验**——只见到 `query_timeseries_agg` 这类聚合工具。卡在：需枚举 agentcore 全部工具的返回体做静态判定，工作量超出本次。建议补一条 `check-*` 门做静态断言（这是"红线写在文档里但没有门看着"的典型风险位）。
+
+---
+
+### docs/PRD-addendum-admin-console-closure.md
+- **它要做什么**：管理面**引用闭合性**（任何引用型控件必须"选择/＋新建/查看"三态，禁裸下拉 = D-27）+ **DSL 输入辅助**（自动补全/实时校验/试运行，禁裸文本框 = D-28）+ 补 7 个"被引用却无创作页"的整页缺失。总判据 AC8：客户管理员**不碰代码、不遇死路、不被反问**能从零搭出可推演的新场景。
+- **PRD 自称的 AS-IS**：§5「逐页缺陷审计」逐页列已发现的具体缺陷（12 类页面）；§6「整页缺失清单（审计发现 7 个被引用却无创作页的资源）」；§10「验收基线声明」自陈"在此之前，系统是**开发者可用、客户不可自助**的状态"。
+- **实测现状**（§6 七页逐条核）：
+  1. 工作流/执行计划编辑器 → **✅** `apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx`（`App.tsx:40` 已注册路由）
+  2. 评测用例编辑器 `/admin/evals` → **✅** `EvalsPage.tsx`（`App.tsx:53`）
+  3. 本体切片编辑器 `/admin/slices` → **✅** `SlicesPage.tsx`（`App.tsx:54`）+ `SliceLibraryPage.tsx`（`App.tsx:55`）+ `SliceInspector.tsx`
+  4. 域管理页 `/admin/domains` → **✅** `DomainsPage.tsx`（`App.tsx:52`）
+  5. 运营自动化页 `/admin/ops-schedule` → **✅** `OpsSchedulePage.tsx`（`App.tsx:45`）
+  6. **数据工坊页 `/admin/data-forge` → ❌ 未实现**：`grep -rn "data-forge|DataForge|数据工坊|直方图|histogram|提示词框|forge"` 在 `apps/frontend-shell/src` **0 命中**（工具已自证）。**已按"跨命名再搜一轮"复核**：相近页 `SyntheticPage.tsx`（合成数据向导）/ `DataBuilderPage.tsx`（FDE 建域）/ `PrototypeIntakePage.tsx`（原型接入）都在，但都不是 PRD §6-6 要的"三栏配置器 + 提示词框 + 直方图预览"。判为**没接线**（不是接了线没数据）。
+  7. 运营页组（合并队列/隔离区/配置迁移/通知中心）→ **✅ 四页全在** `MergePage.tsx`(`App.tsx:56`) · `QuarantinePage.tsx`(`:50`) · `ConfigMigrationPage.tsx`(`:60`) · `NotificationsPage.tsx`(`:51`)
+  - **D-28 DSL 输入辅助 ◐**：组件 `apps/frontend-shell/src/pages/admin/DslTextarea.tsx:53` 存在且有真消费方 —— `RulesPage.tsx:9/479`（规则表达式）与 `PermissionsPage.tsx:6/117`（rowFilter）。**但 §7 点名的四类输入只覆盖了两类**：`ModelingPage.tsx` **0 命中 DslTextarea**（派生公式无补全）；模板值走的是另一套 `templateSuggest.ts:7 templateSuggestions`（`WorkflowsPage.tsx:18/303` 消费）—— 这是**同一需求两个实现**，不是缺失，但 §7 要求的统一规范未统一。
+- **结论**：◐部分 —— 7 页缺 1（数据工坊）；D-28 四类输入覆盖 2 类 + 1 类走并行实现 + 1 类（派生公式）缺。
+- **未查清**：§5 逐页缺陷表共 40+ 条具体缺陷（如"objectRef 槽位缺 refType 下拉""MCP toolFilter 鸡生蛋须强制先连接测试""视图配置缺 widget 编辑器"），我**只核到页面存在，没有逐控件核**。卡在：需真开浏览器逐控件点（AC9 明写是人工巡检项）。**故本条结论只覆盖 §6 整页存在性与 §7 DSL 辅助，不覆盖 §5**——这是本次审计最大的一块未覆盖面，诚实标出。
+- **最小 WO 建议**：
+  - **WO-ADMIN-DATAFORGE**：🚦范围边界 = 新建 `apps/frontend-shell/src/pages/admin/DataForgePage.tsx` + `App.tsx` 注册 + nav 分组（`ShellLayout`）；后端复用既有 `/a/v1/synthetic/*`，不新建端点。
+  - **WO-ADMIN-DSL-UNIFY**（小、见效快）：🚦范围边界 = 只碰 `ModelingPage.tsx` 与 `DslTextarea.tsx`，把派生公式输入框换成 `DslTextarea`（数据源=本体元模型，已有）。
+  - **WO-ADMIN-§5-AUDIT**（先取证再修）：🚦范围边界 = 只写一份逐控件巡检清单文档，把 §5 的 40+ 条逐条标 ✅/❌ + file:line —— **不要凭"页面在"就宣布 §5 通过**（那正是本次事故的同型错误）。
+
+---
+
+### docs/PRD-addendum-admin-platform.md
+- **它要做什么**：管理平台补全 —— 平台引导 Bootstrap（空库首启建 `platform_admin`）/ 租户与用户管理（A0 扩展）/ 场景包与视图配置管理 / AgentCore 五类资源统一 CRUD 模式 / 规则库手工管理 / 空态引导规范。
+- **PRD 自称的 AS-IS**：无独立 AS-IS 节，但 §5 自称「前端 `/admin/rules`（**原 PRD 已列路由但未给规格**）」——即承认路由在、规格缺。
+- **实测现状**（六节逐条核）：
+  - **§1 Bootstrap ✅**：`apps/datacore/src/bootstrap.ts:17-18`（`BOOTSTRAP_ADMIN_EMAIL/PASSWORD` → `default` 租户建 `platform_admin`，`:18` 明写幂等）· `:39` 未配置且表空 → 明示原因 · `:80` `/readyz` 返 `BOOTSTRAP_REQUIRED`；配置项 `apps/datacore/src/config.ts:41-42`。
+  - **§1-2「管别人房子不看别人抽屉」✅ 且是真强制不是注释**：`apps/datacore/src/authz.ts:32-39` —— `platform_admin` 命中即 deny 业务对象读取，`reason` 逐字复述 PRD 措辞。
+  - **§2 IAM ✅**：全部端点在 `apps/datacore/src/adminplatform.ts`（`app.ts:34` 注册）—— `:138 GET /a/v1/tenants` · `:145 POST /a/v1/tenants` · `:169 GET /a/v1/tenants/:id/users` · `:177 POST` · `:204 PATCH .../users/:userId` · `:249 POST /a/v1/users/:id/reset-password` · `:265 GET /a/v1/roles`。安全规则 ②`LAST_ADMIN` **真落**：`adminplatform.ts:218` 注释 + `:229` `throw new AppError("LAST_ADMIN", …, 409)`。
+    > ⚠ 取证注记：我第一轮只 grep `apps/datacore/src/app.ts` 得 0 命中（只有 `/tenants/:id/features`），差点判"租户 CRUD 未实现"。改 grep 整个 `apps/datacore/src` 才找到 `adminplatform.ts` —— **搜索范围选窄了会骗你**，与铁律 0.5 #5 同型。
+  - **§3 场景包与视图配置 ✅**：`adminplatform.ts:284/289/334`（scenario-packages GET/POST/PATCH）· `:413/420/452/509`（view-configs GET/POST/PUT/DELETE）；**§3 的强制联动（建 ViewConfig → 自动注册 `view.{viewKey}` feature）也真接了**：`adminplatform.ts:367/501/518` 三处 `VIEW_FEATURE_MAP[…] ?? (dyn.has(\`view.${…}\`) …)`。前端 `ViewsPage.tsx`（`App.tsx:71`）。
+  - **§4 AgentCore 五类资源统一模式 ✅**：`IMMUTABLE_VERSION` 409 —— agents `apps/agentcore/src/server.ts:642` · workflows `:972` · skills `:1228` · mcp-configs `:1501`；`new-version` —— `:732/:1073/:1312/:1575`；`references` —— `:744/:1093/:1324/:1595` + scene-entries `:2801`；`mcp-configs/:id/test` —— `:1475`。**五类全覆盖，无洼地。**
+  - **§5 规则手工管理 ✅**：`apps/datacore/src/app.ts:3191 POST /a/v1/rules/dry-run`；前端 `RulesPage.tsx` + DSL 补全（见上条）。
+- **结论**：✅已实现
+- **未查清**：§6「空态与引导规范（全管理页统一）」与 §7 M1–M7 验收用例我未逐页核（同 admin-console-closure，属 UI 巡检）。
+
+---
+
+### docs/PRD-addendum-agent-runtime.md
+- **它要做什么**：Agent 运行时强化 —— ①上下文管理（Token 预算器 / tool_result 8KB 截断 / 三刀清理 / 多轮前情摘要）②Workflow 执行语义（有界同步 ≤5min + 崩溃扫描 `INTERRUPTED_BY_RESTART` + checkpoint 接口预留）③Skill 资源可消费（`read_skill_resource`）④MCP 运行时（连接生命周期 / `mcp__{server}__{tool}` 命名空间 / **stdio 安全红线**）⑤工具并行执行。
+- **PRD 自称的 AS-IS**：无独立 AS-IS 节（"修订"型增量，逐节写"修订 QOS-PRD §X"）。§2-3 有一处**显式边界声明**：「本期**不做持久化恢复**——这是显式边界而非疏漏」。
+- **实测现状**（五节逐条核，注释多处逐字回引 PRD 节号 = 可对账）：
+  - **§1.1 预算器 ✅**：`apps/agentcore/src/agent/context.ts:8`（注释逐字引 §1.1）· `:17 SOFT_THRESHOLD_RATIO = 0.7`（= PRD 的 70%）· `:314/:333 softLimit` · `:337` count_tokens 每 2 轮实测一次（= PRD 节奏）· `:358 metrics.contextOps.inc({op})`（= PRD 要求的 `ac_context_ops_total{op}`）。
+  - **§1.2 截断 ✅ 且豁免名单对得上**：`agent/loop.ts:225 TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg","read_skill_resource"])` —— PRD §1.2-3 点名 `query_timeseries_agg` 豁免，§3 给 `read_skill_resource` 自带 64KB 上限，**两条豁免理由都在 PRD 里，实现一条不多一条不少**。
+  - **§1.3 三刀 ✅**：`context.ts:11` 注释列三刀；第 1 刀 `:157-172`（折叠最旧迭代，`:158` "最近 2 轮永不折叠" = PRD 原文）；第 2 刀 compaction `:313 caps.compaction`；`:270-291` 另有 provider 可用时的滚动摘要增强。
+  - **§1.4 多轮连续性 ✅**：`context.ts:270` 前情摘要 ≤1600 字 + `agent/loop.ts:332` 注入 system。
+  - **§2-2 崩溃语义 ✅**：`apps/agentcore/src/ops/sweep.ts:6/12/22`（启动扫描 → `{code:"INTERRUPTED_BY_RESTART", message:"系统重启中断，请重试"}`）· 挂载点 `apps/agentcore/src/main.ts:70-73` · **前端也接了** `apps/frontend-shell/src/components/QueryDock/TaskRun.tsx:20` 对该错误码特判。**后端发→前端识，接缝通。**
+  - **§2-3 checkpoint 预留 ✅（是"故意的空实现"不是漏）**：`apps/agentcore/src/workflow/checkpoint.ts:4` 注释自证「崩溃语义由启动扫描（INTERRUPTED_BY_RESTART）覆盖」。
+  - **§3 read_skill_resource ✅ 全链**：注册 `tools/registry.ts:258` → 分发 `tools/executor.ts:467` → 实现 `:527`（文本 ≤64KB 截断 / 二进制返元信息，与 PRD 逐字一致）→ 端口 `tools/skill-resources.ts:8` + `deps.ts:49` + `engine.ts:91`（依赖注入 —— **这类端口 grep 一次看不见调用方，属铁律 0.5 #3 点名的形态，已追到注入点**）。
+  - **§4.2 命名空间 ✅**：`engine.ts:214` + `tools/executor.ts:250` 逐字引 §4.2；`agent/navigation-slice.ts:272` 用正则 `/^mcp__[a-z0-9_]+__/` 识别，说明全名格式在多处被真消费。
+  - **§4.3 stdio 安全红线 ✅**：`apps/agentcore/src/config.ts:60 MCP_STDIO_ENABLED` · `:62 MCP_STDIO_COMMAND_ALLOWLIST` · `:88-89` 解析为 `{enabled, commandAllowlist}`。
+  - **§5 并行执行 ✅**：`agent/loop.ts:537-543 sideEffectOf` · `:1010 const allRead = toolUses.every(b => sideEffectOf(b.name)==="READ")`（READ 全并行/混合全串行，与 PRD 逐字一致）· `:298 await Promise.all(workers)`。
+- **结论**：✅已实现
+- **备注**：本份 PRD 是本批**实现与文本对账度最高**的一份 —— 实现注释大量逐字回引 PRD 节号（`§1.1`/`§1.2`/`§4.2`/`增量 §3`），使对账可机械完成。**这是值得推广的纪律**：注释里写清"我实现的是哪条 PRD 的哪一节"，就把未来的对账成本从"重读两份文档"降到"grep 一次节号"。
+- **未查清**：§4.1 连接生命周期的具体数值（连接池 ≤4 / 空闲 30s / 超时 20s / 退避 1-2-4s / 连续 5 次置 ERROR）我未逐个核到常量。卡在：需读 MCP client 实现细节，优先级低于结构性缺口。
+
+---
+
+### docs/PRD-addendum-capability-routing.md
+- **它要做什么**：能力发现与路由三件 —— §1 统一 `discover` 工具（slices/solvers/mcp_tools 目录发现）· §2 MCP 工具集规模管理（>24 个工具时启用**按需加载**：占位摘要 + `discover`/`load_tools` 两个管理工具）· §3 等价能力组 `capabilityGroup` 与故障转移。§4 显式声明 Skill 路由**本期不做**（≤20 技能 + summary 常驻 + `load_skill` 即最优）。
+- **PRD 自称的 AS-IS**：无独立 AS-IS 节。§4 是一段**显式边界声明**（"不引入额外路由层，复杂度不偿失"），并写明 v2 触发条件（单 agent 技能 >20 或跨 agent 共享技能库）。
+- **实测现状**（三件：一件超额完成、两件未做）：
+  - **§1 discover ✅（且超出 PRD）**：注册 `apps/agentcore/src/tools/registry.ts:8`；分发 `apps/agentcore/src/tools/executor.ts:258`；PRD 只要 `slices|solvers|mcp_tools` 三种 kind，实现多了 `object_types`（`executor.ts:264-269`，用途是"agent 照真名查不再猜"）。`description`/`argHints` 供给侧也在：`tools/datacore-http.ts:356/363/365` 的返回类型含 `argHints`，`server.ts:798` 注释直引「复用能力路由增量 §1 的 DataCore 目录（含 description/argHints）」。排序另接了 DRIL Resource Registry（`executor.ts:277-296`，混合检索 + entitlement 前置过滤，失败 fail-open 回落 catalog）。
+  - **§2 MCP 按需加载 ❌ 未实现（形态 = 没接线，但代码是诚实的）**：`apps/agentcore/src/tools/executor.ts:270-272` ——
+    ```
+    if (kind === "mcp_tools") {
+      // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
+      return { items: [] };
+    }
+    ```
+    即 `discover(kind=mcp_tools)` 恒返回空数组。配套的 `load_tools` 工具 **`grep -rn "load_tools\|loadedTools" apps/*/src packages/*/src` = 0 命中**（工具、契约、审计字段 `AgentRunRecord.loadedTools` 三者皆无）。**注意区分**：`load_skill`（技能渐进披露）是**另一件事**且**真在**（`agent/loop.ts:402/539/551/559/567`）—— 两者名字像，功能不同，别混。
+  - **§3 等价能力组 ❌ 未实现**：`capabilityGroup` / `groupPriority` 在 `apps/*/src` 与 `packages/contracts/src` **均 0 命中**（`memory.ts:237` 的 "SKIP-LOCKED-equivalent" 是英文单词误命中，已排除）。契约 `McpServerConfig` 里也没有这两个字段 → **连数据模型都没有**，属彻底没接线。
+  - **§4 Skill 路由边界 ✅（PRD 要求的就是"维持现状"）**：`load_skill` 全链在（见上）；`apps/agentcore/src/agent/skill-router.ts:9` 注释「其余降级为『id+名』经 load_skill 按需加载（保留渐进式披露）」—— 与 §4 描述一致。
+- **结论**：◐部分 —— **§1 ✅（超额）· §4 ✅（边界声明成立）· §2 ❌ · §3 ❌**。三件实质工作做了一件。
+- **⚠ 半真半假的信号（值得单独记）**：`discover` 工具本身是**已接线、已被 agent 用**的；但它的 `mcp_tools` 分支是**硬编码空返回**。若只 grep `discover` 会得出"能力路由已实现"的结论 —— **工具存在 ≠ 该工具的每个 kind 都工作**。这是"接了线没数据"的一个变种：不是数据恰好为空，是**代码里写死了返回空**。
+- **最小 WO 建议**（按 ROI 排序）：
+  - **WO-CAP-2-LAZYLOAD**（中）：🚦范围边界 = `apps/agentcore/src/tools/registry.ts`（加 `load_tools` 定义）+ `tools/executor.ts`（`mcp_tools` 目录真返回 + `load_tools` 执行）+ `agent/loop.ts`（任务级工具列表追加，**追加不替换**以保 prompt cache 前缀）+ 契约加 `AgentRunRecord.loadedTools`。**触发条件先自查**：若当前任何 agent 的解析后工具数都 ≤24，这件事今天**没有真实收益**，应先量测再排期（别做"没数据的接线"）。
+  - **WO-CAP-3-FAILOVER**（低优先）：🚦范围边界 = `packages/contracts`（`McpServerConfig` 加 `capabilityGroup?`/`groupPriority?`）+ agentcore MCP 路由 + `McpPage.tsx` 录入位。**同样先自查**：单实例部署下无收益，PRD §3 自己就标了"可选配置"。
+
+---
+
+### docs/PRD-addendum-dataflow-loop-closure.md
+- **它要做什么**：数据流闭环验收 —— §1 每个上传入口的前向链 + 强制"下一步"直达（UP-1）· §2 **12 条主数据环 L1–L12** 逐跳接线（WIRE-1：产出方与消费方读写同一持久层键）· §3 联动刷新三档 + **传播 SLO ≤60s，PROP-1「不允许必须重新登录才看到」**· §4 **断链审计 DL1–DL10**（已识别的"产出了但没接到/没刷新"风险点）。
+- **PRD 自称的 AS-IS**：§4 断链审计表本身就是一份 AS-IS —— 它逐条列出了当时已识别的 10 个断链风险点及修复要求。
+- **实测现状**（后端 ✅ 全登记；前端 ◐ 只兑现 5/14）：
+  - **后端事件登记表 ✅ 完整**：`apps/agentcore/src/event-subscriptions.ts` 共 **51 条**事件登记，其中 **14 条带 `dl:` 标**，与 PRD §4 的 DL 编号一一对应（`:30 DL1 raw_dataset.uploaded` · `:31 DL2 ontology.published` · `:37 DL3 rules.updated` · `:49/:50 DL4` · `:55 DL5 calibration.applied` · `:57 DL6 intent.promoted` · `:59 DL7 synthetic.tick_completed` · `:68 DL8 objects.merged` · `:61/:62 DL9` · `:66 DL10 kb.indexed` · `:78 DL11 policy.updated` · `:80 DL12 features.updated`）。**PRD 只列到 DL10，实现自行补齐到 DL12（权限环/功能开通环）——超额。**
+  - **前端全局通道 ✅ 存在**：`apps/frontend-shell/src/store/useDomainEventStream.ts:36` `invalidateForEvent(e.event)`；`:10` 注释自证「此前 `invalidateForEvent` 仅由发起方自己的 mutation 本地触发，跨用户/被动页不更新；本通道补上跨会话传播」—— 即 PROP-1 的传播机制真在。
+  - **⚠ 但前端映射表没跟上，9/14 条 DL 事件到前端是静默 no-op**：`apps/frontend-shell/src/store/eventInvalidation.ts:38 EVENT_INVALIDATES` 只有 **19 个键**，逐条比对结果：
+
+    | DL | 事件 | 前端 |
+    |---|---|---|
+    | DL1 | `raw_dataset.uploaded` | ❌ 无键 |
+    | DL2 | `ontology.published` | ✅ `:45` |
+    | DL3 | `rules.updated` | ✅ `:39` |
+    | DL4 | `action.executed` | ✅ `:50` |
+    | DL4 | `writeback.divergence` | ❌ 无键 |
+    | DL5 | `calibration.applied` | ❌ 无键（前端只有 `calibration.proposed`/`.rolled_back`，**恰恰漏了"已应用"这条**） |
+    | DL6 | `intent.promoted` | ❌ 无键 |
+    | DL7 | `synthetic.tick_completed` | ✅ `:49` |
+    | DL8 | `objects.merged` | ✅ `:53` |
+    | DL9 | `connection.sync_completed` | ❌ 无键 |
+    | DL9 | `connector.sync_failed` | ❌ 无键 |
+    | DL10 | `kb.indexed` | ❌ 无键 |
+    | DL11 | `policy.updated` | ❌ 无键 |
+    | DL12 | `features.updated` | ❌ 无键 |
+
+    机制原因在 `eventInvalidation.ts:62-67`：`for (const label of EVENT_INVALIDATES[event] ?? [])` —— 键不存在 → `?? []` → **循环零次、不抛错、无日志**。这是**静默 no-op**，不是崩溃，所以不会有任何测试变红。
+  - **语义标签映射同样缺口**：后端 `invalidates` 用到 **54 个**语义标签，前端 `LABEL_TO_KEYS`（`:12-32`）只映射 **18 个**，未映射 36 个，含 `raw-datasets` / `modeling.dataset-picker`（DL1 要的）· `calibration-report`（DL5）· `fallback-stats`（DL6）· `connectors`/`quarantine`（DL9）· `kb-search`/`search-test`（DL10）· `workspace`/`navigation`（DL12）等。**即便补上事件键，标签不映射仍然失效不了。**
+  - **单一来源纪律写在码上但没门看着**：`eventInvalidation.ts:8-10` 明写「后端 event-subscriptions 是事件→语义标签的**单一来源**；前端只负责把语义标签映射到实际 TanStack queryKey 前缀。**改了后端 invalidates 语义标签时，同步增补 `LABEL_TO_KEYS` 即可**」—— 纪律是对的，但**靠自觉**，于是漂了 36 个标签。
+- **结论**：◐部分 —— **后端半 ✅（甚至超额到 DL12）；前端半 ◐（14 条 DL 事件只有 5 条真会刷新页面）**。这正是 CLAUDE.md 「SEAM-GATE / 绿测试≠能用 · 断在接缝」的教科书样本：两半各自都能跑绿，接缝上掉了 9 条。
+- **⚠ PRD 自身陈述与现状的关系**：PRD §3-3 的 PROP-1 「上游变更到下游可见 ≤60s，**不允许"必须重新登录才看到"**（重登才更新 = 验收不通过）」—— 对 DL12 `features.updated`（功能开通）而言，前端既不失效 `workspace` 也不失效 `navigation`，**实测就是"要重新登录/刷新才看到"**，即 PROP-1 当前不成立。
+- **最小 WO 建议**：
+  - **WO-DATAFLOW-FE-SYNC**（**本批 ROI 最高的一件**：改动集中在 1 个文件、缺口精确已知、修完 9 条 DL 环一起活）：🚦范围边界 = 只碰 `apps/frontend-shell/src/store/eventInvalidation.ts`。① `EVENT_INVALIDATES` 补齐 9 个缺失事件键；② `LABEL_TO_KEYS` 补齐这 9 条用到的语义标签 → TanStack queryKey 前缀。
+  - **WO-DATAFLOW-SYNC-GATE**（配套，防再漂）：🚦范围边界 = 新建 `scripts/check-event-invalidation-sync.mjs` + 接进 `package.json` 门列表。断言：后端 `event-subscriptions.ts` 的每个 `event` 都在前端 `EVENT_INVALIDATES` 有键、每个 `invalidates` 标签都在 `LABEL_TO_KEYS` 有映射；缺口走棘轮基线（当前 9 事件 + 36 标签）只减不增。**⚠ 写这个门时务必吸取 A15 的教训：别写成"只要文件里出现过某符号就算通过"的存在性检查**（那样又是一道永不红的门）——断言必须是**集合差为空/不增**，且**先故意删一条验证它真会红**（tooth 测试）。
