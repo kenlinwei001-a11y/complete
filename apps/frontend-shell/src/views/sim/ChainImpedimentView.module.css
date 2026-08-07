@@ -1,0 +1,360 @@
+/* WO-IMPEDIMENT-FE · 全链阻滞点（卡点/堵点/断点）样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   （门：chain-impediment.seam.test.tsx「三色系」组 —— 出现 hex 或任何颜色函数字面量即红；
+     用到的每个 var(--x) 必须定义在 tokens.css 的 :root，只在某个 data-theme 分支里定义的会在别的皮下失效。） */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 88ch;
+}
+.sub code,
+.engineError code,
+.stateLine code,
+.summaryBar code,
+.card code,
+.unresolved code,
+.thresholds code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.stateLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 引擎取不到数 ──────────────────────────────────────────────────────────── */
+.engineError {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.engineError b {
+  color: var(--danger);
+  font-size: 13px;
+}
+.engineError p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.errorHint {
+  color: var(--muted2);
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────────────────── */
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.honestyCounts {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mismatch {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--danger);
+  background: var(--panel2);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--txt);
+}
+
+/* ── 三类分组 ─────────────────────────────────────────────────────────────── */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.group {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.groupHead h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.groupCount {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.groupMeaning {
+  margin: 4px 0 0;
+  color: var(--muted2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 三类的色带：卡点=不够（暖红警示）· 堵点=流不动（琥珀）· 断点=接不上（青） */
+.kindTag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--line2);
+  color: var(--txt);
+}
+.kindTag[data-kind="BOTTLENECK"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.kindTag[data-kind="CONGESTION"] {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.kindTag[data-kind="BREAK"] {
+  border-color: var(--c-capacity);
+  color: var(--c-capacity);
+}
+
+.emptyGroup {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--bg2);
+  border: 1px dashed var(--line2);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* ── 单条阻滞点 ───────────────────────────────────────────────────────────── */
+.cards {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+/* 诚实位为降级态（PARTIAL / SYNTHETIC / EMPTY）的卡片整体带斜纹左边，肉眼一扫即分 */
+.card[data-data-mode="PARTIAL"],
+.card[data-data-mode="SYNTHETIC"] {
+  border-left: 3px solid var(--amber);
+}
+.card[data-data-mode="EMPTY"] {
+  border-left: 3px solid var(--muted2);
+}
+.card[data-data-mode="LIVE"] {
+  border-left: 3px solid var(--ok);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.severity {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 诚实位徽标：四态四样，绝不共用一个样式（共用即视觉上把 PARTIAL 冒充 LIVE） */
+.honestyTag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  border: 1px solid var(--line2);
+  color: var(--muted);
+}
+.honestyTag[data-mode="LIVE"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.honestyTag[data-mode="PARTIAL"] {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.honestyTag[data-mode="SYNTHETIC"] {
+  border-color: var(--c-solver);
+  color: var(--c-solver);
+}
+.honestyTag[data-mode="EMPTY"] {
+  border-color: var(--muted2);
+  color: var(--muted2);
+  text-decoration: underline dotted;
+}
+
+.locus {
+  margin: 7px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.locus small {
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+.kv {
+  margin: 7px 0 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  font-size: 12px;
+}
+.kv dt {
+  color: var(--muted2);
+}
+.kv dd {
+  margin: 0;
+  color: var(--txt);
+}
+.vs {
+  color: var(--muted2);
+  padding: 0 2px;
+}
+.breach {
+  color: var(--muted2);
+  font-size: 11px;
+  padding-left: 6px;
+}
+
+.honestyClaim {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.honestyClaim[data-degraded="1"] {
+  color: var(--txt);
+  font-weight: 600;
+}
+.honestyDetail {
+  margin: 4px 0 0;
+  padding: 6px 9px;
+  background: var(--panel2);
+  border-left: 2px solid var(--amber);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+/* ── 判不出来的判据 / 阈值出处 / 诚实边界 ─────────────────────────────────── */
+.unresolved,
+.thresholds,
+.notes {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.unresolved b,
+.thresholds b,
+.notes b {
+  color: var(--txt);
+  font-size: 12px;
+}
+.unresolved ul,
+.notes ul {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notes ul {
+  gap: 5px;
+  padding-left: 18px;
+  list-style: disc;
+}
+.unresolved p,
+.thresholds p,
+.notes p {
+  margin: 6px 0 0;
+}
+.unresolvedReason {
+  margin: 4px 0 0;
+  color: var(--muted2);
+}
+.unknownTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+}
+
+.table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.table th {
+  color: var(--muted2);
+  font-weight: 600;
+}
+.table td {
+  color: var(--txt);
+}
