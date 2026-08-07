@@ -9,41 +9,41 @@
  *   · 本体锚点漂 196 行（D2 给 extended.ts 加了 259 行，把别人写的锚点推走了）
  * ⇒ 本门的判据是**一个世界跑到底**：同一次 `seedBattery` 种出的租户，
  *   依次驱动 D1→E4（节拍进推演）、E1（损失守恒）、E2（作用域收窄）、E3（三类阻滞点），
- *   并在**同一个 `Cadence` 对象**上验「三个消费方读的是同一个数」。
- *   任一半漏、或两半口径漂了，本门当场红。
+ *   并在**同一个 `Cadence` 对象**上验「多个消费方读的是同一个数」。
  *
- * ── 与既有单门的分工（避免"复述已有能力"）──────────────────────────────────
- *  · `sandbox-d1-cadence.test.ts`  —— 数据半自证（种子推导对不对）
- *  · `sandbox-e4-cadence-propagation.seam.test.ts` —— D1×E4 两半接缝，但②③④例用的是
- *    **手搭的抽象两点图 + 手喂的 D1 行**（`lightWorld` / `D1_CADENCE_ROWS`）
- *  · `chain-loss-attribution.test.ts` / `chain-impediment-seam.test.ts` / `sandbox-chain-scope.seam.test.ts`
- *    —— 各自一条缝
- * **本门新增的是这些都没有的三条**：
- *  ① **改的是种出来的那个对象**（不是规则、不是手喂的行）：直接改 `Cadence.everyDays` 落库值
+ * ── 与既有单门的分工（不复述已有能力）──────────────────────────────────────
+ *  · `sandbox-d1-cadence.test.ts` 数据半自证 · `sandbox-e4-cadence-propagation.seam.test.ts`
+ *    D1×E4 两半接缝（但②③④例用的是**手搭抽象两点图 + 手喂的 D1 行** `lightWorld`/`D1_CADENCE_ROWS`）
+ *  · `chain-loss-attribution.test.ts` / `chain-impediment-seam.test.ts` / `sandbox-chain-scope.seam.test.ts` 各一条缝
+ * **本门新增这四条，既有门一条都没有**：
+ *  ① **改的是种出来的那个对象**（不是规则、不是手喂的行）：直接改对象库里 `Cadence.everyDays`
  *     → 传导形状真跟着变。这才叫"数据半种下的东西真的在驱动引擎"。
- *  ② **一个数三个消费方对得上**（G1-3）：同一条 `Cadence.everyDays`，
- *     E1 归因摊成的环节天数（`everyDays/2`）与 E4 闸门周期（`everyDays` tick）必须同源；
- *     此前两边各读各的，没有任何断言把它们焊在一起。
- *  ③ **同一个世界连跑四段**：D1→E4 / E1 / E2 / E3 用**同一个租户同一次 seed**，
- *     串起来跑。各单各起 app 时，谁把谁的种子顶掉是看不见的。
+ *  ② **一个数两个消费方对得上**（G1-3）：同一条 `Cadence.everyDays`，
+ *     E1 归因摊的环节天数（everyDays/2）与 E4 闸门周期（everyDays tick）必须同源、且同时跟着变。
+ *  ③ **同一个世界连跑四段**（G1-1..7）：各单各起 app 时，谁把谁的种子顶掉是看不见的。
+ *  ④ **诚实缺席的理由必须在合并态下仍然为真**（G1-8）：E1 声称「本体里完全不存在」的段，
+ *     若别的单已经把承载物种进来了，那句话就变成了**假的诚实**——比不写更危险。
+ *     本门为此立**双向棘轮**（见 G1-8 注释），并在首次运行时就抓出了两条真实存量（清关 / IQC）。
  *
  * ── 变异反证的注入点（改哪一处会红，写明白免得下一个人猜）────────────────────
- *  · `synthetic/service.ts:712` `putAll("Cadence", …)` 注释掉  ⇒ G1-1 / G1-3 红（数据半断供）
- *  · `app.ts` tick 路径里 `buildCadenceGates(...)` 换成 `{}`   ⇒ G1-2 红（引擎半不读数据）
- *  · `chain-sim.ts` `computeLossAttribution` 分母改成含增值段 ⇒ G1-4 红（守恒破）
- *  · `scope.ts` `orderInChainScope` 恒 `true`                 ⇒ G1-5 红（作用域形同虚设）
- *  · `chain-impediment.ts` `arbitrateByLocus` 的红线裁决拆掉   ⇒ G1-6 红（卡点/堵点混成一类）
+ *  · `synthetic/service.ts` `putAll("Cadence", …)` 注释掉         ⇒ G1-1 / G1-2 / G1-3 红
+ *  · `app.ts` tick 路径 `buildCadenceGates(...)` 换成 `{}`        ⇒ G1-2 红（引擎半不读数据）
+ *  · `chain-sim.ts` `computeLossAttribution` 分母改成含增值段      ⇒ G1-4 红（守恒破）
+ *  · `scope.ts` `orderInChainScope` 恒 `true`                     ⇒ G1-5 红（作用域形同虚设）
+ *  · `chain-impediment.ts` `readRuleThreshold` 写死回字面量        ⇒ G1-6 红（阈值不来自规则）
+ *  · 给 `STRUCTURAL_GAPS` 新增一条「本体里没有」但其实已有承载的段 ⇒ G1-8 红
  *
  * ── 诚实边界（本门**不**断言什么，以及为什么）────────────────────────────────
- *  · **不**断言「基线上能演出真瓶颈」：柜位数是从目标反解出来的
+ *  · **不**断言「基线上能演出真瓶颈」：柜位数从目标反解
  *    （`channels = ceil(lineTargetCells / (channelOutputDaily×0.97))`，`battery.ts:3582`），
- *    常州 formation 余量仅 +1.7% ⇒ 沙盘基线天然"刚好够"。要真瓶颈须把柜位改成独立种子量，
- *    **会动 R6 金值 → 另立单**。本门凡需要瓶颈的地方一律**注入/override 造场景**并当场写明是人造的。
+ *    常州 formation 余量仅 +1.7% ⇒ 基线天然"刚好够"。凡需要瓶颈的地方一律**注入/override 造场景**
+ *    并当场标注是人造的；要真瓶颈须把柜位改成独立种子量，**会动 R6 金值 → 另立单**。
  *  · **不**断言「换个基地答案就变」：引擎层作用域维只修了 3 处（欠账 #116，另有 dev 在修剩余的）。
- *    本门只断言**已接线的那几处**真收窄，未接线的在 `docs/WO-SANDBOX-G1-ACCEPTANCE.md` 里如实登记。
- *  · 前端半（四个视图从 registry 字符串键真渲染）在 `apps/frontend-shell/test/sandbox-g1-views.seam.test.tsx`：
- *    跨包不能同文件（`contracts-only-shared` + jsdom/node 两套环境）。两文件由
- *    `bash scripts/gate-sandbox-g1.sh` 串成一条门（显式捕获退出码）。
+ *    本门只断言**已接线的那几处**真收窄。
+ *  · 前端半（四张视图从 registry 字符串键真渲染）在
+ *    `apps/frontend-shell/test/sandbox-g1-views.seam.test.tsx` ——
+ *    跨包不能同文件（`contracts-only-shared` + jsdom/node 两套环境）。
+ *    两文件由 `bash scripts/gate-sandbox-g1.sh` 串成一条门（显式捕获退出码）。
  */
 import { beforeAll, describe, expect, it } from "vitest";
 import {
@@ -53,6 +53,7 @@ import {
   isValueAddKind,
   type ChainImpediment,
   type ChainNode,
+  type ChainStep,
   type LossAttribution,
 } from "@platform/contracts";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
@@ -60,17 +61,15 @@ import { cadenceFromProps } from "../src/synthetic/cadence.js";
 import { cadenceGate, nextGateTick } from "../src/sim/propagation.js";
 
 const TENANT = "demo";
-
 /** 收口态唯一的世界：一次 `makeApp` + 一次 `seedBattery`，四段全在它上面跑（合并态判据）。 */
 let t: TestApp;
 
-const enableSim = () =>
-  t.app.inject({
-    method: "PUT",
-    url: `/a/v1/tenants/${TENANT}/features`,
-    headers: ADMIN,
-    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
-  });
+/** 求解器返回体是 `{ data, snapshotVersion }` —— 取 `data` 的唯一出口。 */
+async function solve<T>(key: string, args: Record<string, unknown> = {}): Promise<T> {
+  const res = await invokeSolver(t, key, args);
+  expect(res.statusCode, `${key} 应 200，实收 ${res.body}`).toBe(200);
+  return JSON.parse(res.body).data as T;
+}
 
 /** 取种出来的那一行 `Cadence` 对象（**对象库里的真行**，不是测试自己算的）。 */
 async function seededCadence(nodeId: string) {
@@ -80,38 +79,40 @@ async function seededCadence(nodeId: string) {
   return hit;
 }
 
-/** 就地改落库的 `everyDays`（**改数据**，不改规则、不改代码）—— G1 的驱动手法。 */
-async function overrideEveryDays(nodeId: string, everyDays: number): Promise<void> {
+/** 就地改落库的节拍字段（**改数据**，不改规则、不改代码）—— G1 的驱动手法。 */
+async function patchCadence(nodeId: string, patch: Record<string, unknown>): Promise<void> {
   const o = await seededCadence(nodeId);
-  await t.repos.objects.put({ ...o, props: { ...o.props, everyDays } });
+  await t.repos.objects.put({ ...o, props: { ...o.props, ...patch } });
 }
 
 beforeAll(async () => {
   t = await makeApp();
   await seedBattery(t); // 真合成：objects + links + 时序 + 规则 + params（四段共用这一个世界）
-  const r = await enableSim();
-  expect(r.statusCode, "开 sim.* entitlement 失败，后面 tick 会 404").toBeLessThan(300);
-}, 120_000);
+  const r = await t.app.inject({
+    method: "PUT",
+    url: `/a/v1/tenants/${TENANT}/features`,
+    headers: ADMIN,
+    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+  });
+  expect(r.statusCode, `开 sim.* entitlement 失败：${r.body}`).toBeLessThan(300);
+}, 180_000);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // G1-1 · 数据半真的种下了 Cadence（不是"契约里有这个类型"）
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe("G1-1 · 数据半：seedBattery 真落 Cadence 对象，且 nodeId 全在 CHAIN_NODE_REGISTRY 在册", () => {
-  it("Cadence 行数 > 0，SYNTHETIC 与 EMPTY 都在册（诚实缺席要查得到）", async () => {
+describe("G1-1 · 数据半：seedBattery 真落 Cadence 对象，nodeId 全在 CHAIN_NODE_REGISTRY 在册", () => {
+  it("行数 > 0；SYNTHETIC 与 EMPTY 都在册，且 EMPTY 必带机器可读原因", async () => {
     const rows = await t.repos.objects.listByType(TENANT, "Cadence");
     expect(rows.length, "seedBattery 没落任何 Cadence —— D1 数据半没接进合成主流程").toBeGreaterThan(0);
-    // 每一行的 nodeId 必须在契约单源里（防"数据半自造方言 id"，那会让 E1/E4/前端三边对不上）
     for (const r of rows) {
-      expect(CHAIN_NODE_IDS, `Cadence.nodeId=${String(r.props.nodeId)} 不在 CHAIN_NODE_REGISTRY 在册`).toContain(
-        String(r.props.nodeId),
-      );
+      expect(CHAIN_NODE_IDS, `Cadence.nodeId=${String(r.props.nodeId)} 不在 CHAIN_NODE_REGISTRY 在册`).toContain(String(r.props.nodeId));
     }
     const synthetic = rows.filter((r) => r.props.dataMode === "SYNTHETIC");
-    const empty = rows.filter((r) => r.props.dataMode !== "SYNTHETIC");
     expect(synthetic.length, "一条 SYNTHETIC 节拍都没有 ⇒ 引擎永远拿不到闸门").toBeGreaterThan(0);
-    // EMPTY 行必须带机器可读原因（"查过没有" ≠ "压根没登记"）
-    for (const e of empty) expect(String(e.props.emptyReason ?? ""), `${String(e.props.nodeId)} 标空却没给原因`).not.toBe("");
+    for (const e of rows.filter((r) => r.props.dataMode !== "SYNTHETIC")) {
+      expect(String(e.props.emptyReason ?? ""), `${String(e.props.nodeId)} 标空却没给原因（"查过没有" ≠ "压根没登记"）`).not.toBe("");
+    }
   });
 });
 
@@ -119,116 +120,123 @@ describe("G1-1 · 数据半：seedBattery 真落 Cadence 对象，且 nodeId 全
 // G1-2 · 数据半 Cadence → 引擎半 propagateTick：**改落库的那个数**，传导形状真跟着变
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe("G1-2 · SEAM 命门：改种出来的 Cadence.everyDays ⇒ propagateTick 的放行形状真的因它而变", () => {
-  /** 沿 demo 真链路挂一条声明了节拍闸门的传导规则，跑 N tick，回逐 tick 读数。 */
-  async function runFlow(cadenceNodeId: string, ticks: number): Promise<{ seen: number[]; orderId: string; modelId: string }> {
-    const links = await t.repos.links.list(TENANT, (l) => l.type === "order_for_model");
-    const first = links[0];
-    expect(first, "demo 世界没有 order_for_model 链路 —— 合成种子结构变了").toBeDefined();
-    const { fromId: orderId, toId: modelId } = first!;
-    // 规则每次重建（幂等 key），只改数据不改规则 —— 规则在两次测量之间**一个字都不动**
-    await t.app.inject({
-      method: "POST",
-      url: "/a/v1/sim/propagation-rules",
-      headers: ADMIN,
-      payload: {
-        key: "g1_gated",
-        sourceTypeKey: "Order",
-        sourceStateVar: "demandPressure",
-        viaLinkKey: "order_for_model",
-        targetTypeKey: "Model",
-        targetStateVar: "demandLoad",
-        coefficient: 1,
-        delayTicks: 0,
-        cadenceNodeId,
-        status: "PUBLISHED",
-      },
-    });
-    const sid = (
-      await (
-        await t.app.inject({
-          method: "POST",
-          url: "/a/v1/sim/sessions",
-          headers: ADMIN,
-          payload: { baseSnapshot: { [orderId]: { demandPressure: 1 }, [modelId]: { demandLoad: 0 } } },
-        })
-      ).json()
-    ).id as string;
-    const seen: number[] = [];
-    for (let i = 0; i < ticks; i++) {
-      const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
-      expect(r.statusCode, `tick 失败：${r.body}`).toBe(200);
-      seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]?.demandLoad ?? 0);
-    }
-    return { seen, orderId, modelId };
+const GATE_NODE = "demand.consensus";
+/** 传导规则**只建一次**（同 key 重复 POST 会各自新建 id ⇒ 同一条流被算两遍，守恒当场破）。 */
+let ruleId: string | null = null;
+let flowIds: { orderId: string; modelId: string } | null = null;
+
+async function ensureRule(): Promise<{ orderId: string; modelId: string }> {
+  if (flowIds && ruleId) return flowIds;
+  const links = await t.repos.links.list(TENANT, (l) => l.type === "order_for_model");
+  expect(links[0], "demo 世界没有 order_for_model 链路 —— 合成种子结构变了").toBeDefined();
+  const ids = { orderId: links[0]!.fromId, modelId: links[0]!.toId };
+  const res = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/sim/propagation-rules",
+    headers: ADMIN,
+    payload: {
+      key: "g1_gated",
+      sourceTypeKey: "Order",
+      sourceStateVar: "demandPressure",
+      viaLinkKey: "order_for_model",
+      targetTypeKey: "Model",
+      targetStateVar: "demandLoad",
+      coefficient: 1,
+      delayTicks: 0,
+      cadenceNodeId: GATE_NODE,
+      status: "PUBLISHED",
+    },
+  });
+  expect(res.statusCode, `建传导规则失败：${res.body}`).toBe(201);
+  ruleId = res.json().id as string;
+  // 单条纪律：本租户只应有这一条 PUBLISHED 传导规则，否则下面的守恒判据会被别的流污染。
+  expect((await t.repos.sim.listPropagationRules(TENANT, true)).length, "本租户不止一条 PUBLISHED 传导规则").toBe(1);
+  flowIds = ids;
+  return ids;
+}
+
+/** 跑一条「恒定来料 → 过闸」的流，回逐 tick 累计到达（走真 REST tick 端点，不直调纯函数）。 */
+async function runFlow(ticks: number): Promise<number[]> {
+  const { orderId, modelId } = await ensureRule();
+  const sid = (
+    await (
+      await t.app.inject({
+        method: "POST",
+        url: "/a/v1/sim/sessions",
+        headers: ADMIN,
+        payload: { baseSnapshot: { [orderId]: { demandPressure: 1 }, [modelId]: { demandLoad: 0 } } },
+      })
+    ).json()
+  ).id as string;
+  const seen: number[] = [];
+  for (let i = 0; i < ticks; i++) {
+    const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    expect(r.statusCode, `tick 失败：${r.body}`).toBe(200);
+    seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]?.demandLoad ?? 0);
   }
+  return seen;
+}
 
-  /** 首个非零读数的下标 = 第一次开闸的 tick（形状指纹：闸门前**恒 0**，不是"变小了"）。 */
-  const firstRelease = (seen: readonly number[]): number => seen.findIndex((v) => v > 0);
-
-  it("闸门相位/周期来自**对象库那一行**：第一次放行的 tick == nextGateTick(0, gate(该行))", async () => {
-    const nodeId = "demand.consensus";
-    const row = await seededCadence(nodeId);
+describe("G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放行形状真的因它而变", () => {
+  it("闸门相位来自**对象库那一行**：第一次放行的 tick == nextGateTick(0, gate(该行))，之前恒 0", async () => {
+    const row = await seededCadence(GATE_NODE);
     const cad = cadenceFromProps(row.props);
-    expect(cad, "种出来的 demand.consensus 不是 SYNTHETIC ⇒ 本例的前提不成立").toBeDefined();
+    expect(cad, `种出来的 ${GATE_NODE} 不是 SYNTHETIC ⇒ 本例前提不成立`).toBeDefined();
     const gate = cadenceGate(cad!);
     expect(gate, "该节拍不可整 tick 表示 ⇒ 引擎诚实拒绝（本例前提不成立）").not.toBeNull();
 
     const expectFirst = nextGateTick(0, gate!);
-    const { seen } = await runFlow(nodeId, expectFirst + 2);
-    // 闸门前恒 0（真的一点都没放），到点当 tick 把攒下的一次性放完
-    expect(seen.slice(0, expectFirst)).toEqual(new Array(expectFirst).fill(0));
-    expect(firstRelease(seen), "第一次放行的 tick 与对象库那行算出的闸门对不上").toBe(expectFirst);
+    expect(expectFirst, "相位为 0 时「闸门前恒 0」退化成空断言 —— 换一个有相位的节点").toBeGreaterThan(0);
+    const seen = await runFlow(expectFirst + 2);
+    expect(seen.slice(0, expectFirst), "闸门前不是恒 0 ⇒ 到点放行退化成了固定时长").toEqual(new Array(expectFirst).fill(0));
+    expect(seen[expectFirst], "到点没有把攒下的一次性放完（批量释放现象消失）").toBe(expectFirst + 1);
   });
 
-  it("**只改数据**（Cadence.everyDays 6→3，规则一字不动）⇒ 放行周期真的减半，且总量守恒", async () => {
-    const nodeId = "demand.consensus";
-    const original = await seededCadence(nodeId);
-    const originalEvery = Number(original.props.everyDays);
+  it("**只改数据**（everyDays 6→3、规则一字不动）⇒ 放行次数真的变多，且公倍数点上总量守恒", async () => {
+    const original = await seededCadence(GATE_NODE);
+    const restore = { everyDays: original.props.everyDays, offsetDays: original.props.offsetDays };
     try {
-      // 人造场景（写明）：把周期钉到 6 与 3 两档，让"周期减半"这件事有确定的期望形状。
-      // 用种子真实值直接对比不行 —— 它是一个具体数，无法同时给出"改前/改后"两组。
-      await overrideEveryDays(nodeId, 6);
-      const slow = (await runFlow(nodeId, 14)).seen;
-      await overrideEveryDays(nodeId, 3);
-      const fast = (await runFlow(nodeId, 14)).seen;
+      // 人造场景（写明）：把周期钉到 6 / 3、相位钉到 0，让"周期减半"有确定的期望形状。
+      // 用种子真值直接比不行 —— 它是一个具体数，给不出"改前/改后"两组。
+      const TICKS = 13; // 索引 0..12；12 是 6 与 3 的公倍数点 ⇒ 两边都刚放完，总量可直接比
+      await patchCadence(GATE_NODE, { everyDays: 6, offsetDays: 0 });
+      const slow = await runFlow(TICKS);
+      await patchCadence(GATE_NODE, { everyDays: 3, offsetDays: 0 });
+      const fast = await runFlow(TICKS);
 
-      // 放行次数：周期 6 → 14 tick 内放行 ~2 次；周期 3 → ~4 次。用"读数跳变次数"数。
-      const jumps = (seen: readonly number[]) => seen.filter((v, i) => i > 0 && v > (seen[i - 1] ?? 0)).length + (seen[0]! > 0 ? 1 : 0);
-      const slowJumps = jumps(slow);
-      const fastJumps = jumps(fast);
-      expect(fastJumps, `周期减半后放行次数没变多（slow=${slowJumps} fast=${fastJumps}）—— 引擎根本没读那一行`).toBeGreaterThan(
-        slowJumps,
+      const jumps = (s: readonly number[]) => s.filter((v, i) => i > 0 && v > (s[i - 1] ?? 0)).length + (s[0]! > 0 ? 1 : 0);
+      expect(jumps(fast), `周期减半后放行次数没变多（slow=${jumps(slow)} fast=${jumps(fast)}）—— 引擎根本没读那一行`).toBeGreaterThan(
+        jumps(slow),
       );
-      // 守恒：闸门只改**什么时候**到，不改**到多少**（同 14 tick 的总投放量相同）
-      expect(fast[fast.length - 1], "总量被闸门改掉了 —— 那不是节拍，是漏水").toBe(slow[slow.length - 1]);
+      // 守恒：闸门只改**什么时候**到，不改**到多少**（在两个周期的公倍数点上比较）
+      expect(fast[TICKS - 1], "公倍数点上的总量被闸门改掉了 —— 那不是节拍，是漏水").toBe(slow[TICKS - 1]);
+      expect(slow[TICKS - 1], "总量为 0 ⇒ 守恒判据退化").toBe(TICKS);
     } finally {
-      await overrideEveryDays(nodeId, originalEvery); // 还原，后面的例子照旧读种子真值
+      await patchCadence(GATE_NODE, restore);
     }
   });
 
-  it("把该行改成诚实缺席（dataMode≠SYNTHETIC）⇒ 声明它的规则进 unresolved 且**不传导**，绝不按'随到随办'跑", async () => {
-    const nodeId = "demand.consensus";
-    const original = await seededCadence(nodeId);
+  it("把该行改成诚实缺席（dataMode≠SYNTHETIC）⇒ 声明它的规则**不传导**且响应显式报缺，绝不按'随到随办'跑", async () => {
+    const original = await seededCadence(GATE_NODE);
     try {
-      await t.repos.objects.put({ ...original, props: { ...original.props, dataMode: "EMPTY", emptyReason: "G1 人造：验诚实缺席" } });
-      const { seen } = await runFlow(nodeId, 4);
+      await patchCadence(GATE_NODE, { dataMode: "EMPTY", emptyReason: "G1 人造场景：验诚实缺席" });
+      const seen = await runFlow(4);
       expect(seen, "节拍标空却照样传导 ⇒ 把'不知道要等多久'渲染成了'不用等'").toEqual([0, 0, 0, 0]);
-      // 响应必须显式报缺（不是安静的零）
-      const links = await t.repos.links.list(TENANT, (l) => l.type === "order_for_model");
+
+      const { orderId, modelId } = await ensureRule();
       const sid = (
         await (
           await t.app.inject({
             method: "POST",
             url: "/a/v1/sim/sessions",
             headers: ADMIN,
-            payload: { baseSnapshot: { [links[0]!.fromId]: { demandPressure: 1 }, [links[0]!.toId]: { demandLoad: 0 } } },
+            payload: { baseSnapshot: { [orderId]: { demandPressure: 1 }, [modelId]: { demandLoad: 0 } } },
           })
         ).json()
       ).id as string;
       const body = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json();
       const unresolved = (body.cadence?.unresolved ?? []) as { cadenceNodeId: string }[];
-      expect(unresolved.map((u) => u.cadenceNodeId), "响应里没有报缺 —— 那就是静默兜底").toContain(nodeId);
+      expect(unresolved.map((u) => u.cadenceNodeId), "响应里没有报缺 —— 那就是静默兜底（安静的零）").toContain(GATE_NODE);
     } finally {
       await t.repos.objects.put(original);
     }
@@ -236,31 +244,31 @@ describe("G1-2 · SEAM 命门：改种出来的 Cadence.everyDays ⇒ propagateT
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// G1-3 · **一个数三个消费方对得上**：E1 归因摊的天数 与 E4 闸门周期 同源
+// G1-3 · 一个数多个消费方对得上：E1 归因摊的天数 与 E4 闸门周期 同源
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe("G1-3 · 跨消费方口径自洽：同一条 Cadence.everyDays，E1 摊成的环节天数 == 契约唯一公式 everyDays/2", () => {
-  it("E1 的每一个 cadence 段都能在对象库找到同 nodeId 的行，且 days 逐值 == expectedCadenceWaitDays(该行)", async () => {
-    const res = await invokeSolver(t, "chain_loss_attribution", {});
-    expect(res.statusCode, `chain_loss_attribution 失败：${res.body}`).toBe(200);
-    const out = res.json() as { nodes: ChainNode[] };
-    const cadRows = await t.repos.objects.listByType(TENANT, "Cadence");
-    const byNode = new Map(cadRows.map((r) => [String(r.props.nodeId), r.props]));
+interface ChainLossOut {
+  nodes: ChainNode[];
+  attribution: LossAttribution[];
+  empty: { stepId: string; nodeId: string; kind: string; dataMode: string; emptyKind: string; reason: string; probe: string }[];
+  totals: { leadTimeDays: number; valueAddDays: number; nonValueDays: number; flowEfficiency: number | null; stepCount: number; emptyCount: number };
+  conservation: { sumPct: number; residual: number | null; tolerancePct: number; ok: boolean };
+}
 
-    const cadenceSteps = out.nodes.flatMap((n) => n.steps.filter((s) => s.kind === "cadence").map((s) => ({ node: n, step: s })));
-    expect(cadenceSteps.length, "E1 一个 cadence 段都没有 ⇒ D1×E1 那条缝又断了").toBeGreaterThan(0);
+describe("G1-3 · 跨消费方口径自洽：E1 摊成的环节天数 == 契约唯一公式 expectedCadenceWaitDays(库里那一行)", () => {
+  it("E1 每个 cadence 段都能在对象库找到同 nodeId 的行，days 逐值 == everyDays/2", async () => {
+    const out = await solve<ChainLossOut>("chain_loss_attribution");
+    const byNode = new Map((await t.repos.objects.listByType(TENANT, "Cadence")).map((r) => [String(r.props.nodeId), r.props]));
+
+    const steps = out.nodes.flatMap((n) => n.steps).filter((s) => s.kind === "cadence");
+    expect(steps.length, "E1 一个 cadence 段都没有 ⇒ D1×E1 那条缝又断了").toBeGreaterThan(0);
     let checked = 0;
-    for (const { step } of cadenceSteps) {
-      // 段 id 约定 `${nodeId}__cadence`（chain-loss.ts:581）—— 反解回 nodeId 去对账
-      const nodeId = step.stepId.replace(/__cadence$/, "");
+    for (const step of steps) {
+      const nodeId = step.stepId.replace(/__cadence$/, ""); // 段 id 约定见 chain-loss.ts
       const props = byNode.get(nodeId);
       expect(props, `E1 产出了 cadence 段 ${step.stepId}，但对象库里没有这条 Cadence —— 两半各造各的`).toBeDefined();
-      if (props!.dataMode !== "SYNTHETIC") {
-        // 诚实缺席的行不该摊出天数
-        expect(step.days, `${nodeId} 在库里标空，E1 却摊了 ${step.days} 天 —— 静默兜底`).toBe(0);
-        continue;
-      }
-      expect(step.days, `${nodeId}：E1 摊 ${step.days} 天，而库里 everyDays=${String(props!.everyDays)} ⇒ 应为其一半`).toBeCloseTo(
+      expect(props!.dataMode, `${nodeId} 在库里标空，E1 却摊出了段 —— 静默兜底`).toBe("SYNTHETIC");
+      expect(step.days, `${nodeId}：E1 摊 ${step.days} 天，库里 everyDays=${String(props!.everyDays)} ⇒ 应为其一半`).toBeCloseTo(
         expectedCadenceWaitDays({ everyDays: Number(props!.everyDays) }),
         9,
       );
@@ -270,21 +278,16 @@ describe("G1-3 · 跨消费方口径自洽：同一条 Cadence.everyDays，E1 �
   });
 
   it("改落库的 everyDays ⇒ E1 摊的天数**跟着变**（证明 E1 是运行时读对象，不是种子期烤死的常数）", async () => {
-    const nodeId = "demand.consensus";
-    const original = await seededCadence(nodeId);
-    const originalEvery = Number(original.props.everyDays);
-    const daysOf = async (): Promise<number | undefined> => {
-      const out = (await invokeSolver(t, "chain_loss_attribution", {})).json() as { nodes: ChainNode[] };
-      for (const n of out.nodes) for (const s of n.steps) if (s.stepId === `${nodeId}__cadence`) return s.days;
-      return undefined;
-    };
+    const original = await seededCadence(GATE_NODE);
+    const daysOf = async (): Promise<number | undefined> =>
+      (await solve<ChainLossOut>("chain_loss_attribution")).nodes.flatMap((n) => n.steps).find((s) => s.stepId === `${GATE_NODE}__cadence`)?.days;
     try {
-      await overrideEveryDays(nodeId, 20);
+      await patchCadence(GATE_NODE, { everyDays: 20 });
       expect(await daysOf(), "everyDays=20 ⇒ 该段应摊 10 天").toBeCloseTo(10, 9);
-      await overrideEveryDays(nodeId, 40);
+      await patchCadence(GATE_NODE, { everyDays: 40 });
       expect(await daysOf(), "把 everyDays 翻倍，E1 摊的天数没跟着翻 ⇒ E1 读的不是这个对象").toBeCloseTo(20, 9);
     } finally {
-      await overrideEveryDays(nodeId, originalEvery);
+      await t.repos.objects.put(original);
     }
   });
 });
@@ -294,13 +297,8 @@ describe("G1-3 · 跨消费方口径自洽：同一条 Cadence.everyDays，E1 �
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口径）", () => {
-  it("Σ 非增值段 pctOfChainLoss == 100 ±容差，且**增值段一条都不在归因表里**", async () => {
-    const out = (await invokeSolver(t, "chain_loss_attribution", {})).json() as {
-      nodes: ChainNode[];
-      attribution: LossAttribution[];
-      totals: { valueAddDays: number; nonValueDays: number };
-      conservation: { sumPct: number; residual: number | null; tolerancePct: number; ok: boolean };
-    };
+  it("Σ 非增值段 pct == 100 ±容差；增值段一条都不在归因表里；逐行 pct == 天数/分母", async () => {
+    const out = await solve<ChainLossOut>("chain_loss_attribution");
     expect(out.attribution.length, "归因表空 ⇒ 守恒在空表上是假绿").toBeGreaterThan(0);
 
     // ① 引擎自报的守恒读数
@@ -309,8 +307,8 @@ describe("G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口
     expect(out.conservation.tolerancePct).toBe(LOSS_CONSERVATION_TOLERANCE_PCT);
     expect(out.conservation.ok).toBe(true);
 
-    // ② 本门**自己再算一遍**（不信引擎自报）：从 nodes.steps 独立重算，两边必须一致
-    const allSteps = out.nodes.flatMap((n) => n.steps);
+    // ② 本门**自己再算一遍**（不信引擎自报）：从 nodes.steps 独立重算
+    const allSteps: ChainStep[] = out.nodes.flatMap((n) => n.steps);
     const nonValue = allSteps.filter((s) => !isValueAddKind(s.kind));
     const valueAdd = allSteps.filter((s) => isValueAddKind(s.kind));
     const denom = nonValue.reduce((a, s) => a + s.days, 0);
@@ -318,13 +316,13 @@ describe("G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口
     const sum = out.attribution.reduce((a, r) => a + r.pctOfChainLoss, 0);
     expect(Math.abs(sum - 100), `逐行相加得 ${sum}，不是 100`).toBeLessThanOrEqual(LOSS_CONSERVATION_TOLERANCE_PCT);
 
-    // ③ 分母确实排除了增值段：归因表里的 stepId 与增值段 stepId **交集为空**
+    // ③ 分母确实排除了增值段
     const vaIds = new Set(valueAdd.map((s) => s.stepId));
-    const leaked = out.attribution.filter((r) => vaIds.has(r.stepId));
-    expect(leaked.map((r) => r.stepId), "增值段进了归因分母 —— S0 口径破了").toEqual([]);
-    expect(out.totals.valueAddDays, "增值总量为 0 ⇒ 本判据退化成'全都是非增值'，证不了排除").toBeGreaterThan(0);
+    expect(out.attribution.filter((r) => vaIds.has(r.stepId)).map((r) => r.stepId), "增值段进了归因分母 —— S0 口径破了").toEqual([]);
+    expect(valueAdd.length, "全链一个增值段都没有 ⇒ 本判据退化成'全是非增值'，证不了排除").toBeGreaterThan(0);
+    expect(out.totals.valueAddDays, "增值总量为 0 ⇒ 同上退化").toBeGreaterThan(0);
 
-    // ④ 逐行口径：每行 pct == 该段天数 / 全链非增值总量 × 100（不是"看着像"）
+    // ④ 逐行口径：pct == 该段天数 / 全链非增值总量 × 100（不是"看着像"）
     const byStep = new Map(nonValue.map((s) => [s.stepId, s.days]));
     for (const r of out.attribution) {
       const d = byStep.get(r.stepId);
@@ -339,49 +337,51 @@ describe("G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口
 // G1-5 · ChainScope 真收窄（不是原样返回）
 // ══════════════════════════════════════════════════════════════════════════════
 
+interface AggOut {
+  summary: { orderCount: number };
+  rows: { so: string; seg: string }[];
+  scope?: { businessTypes?: string[]; baseIds?: string[] };
+}
+
 describe("G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真变小且是子集", () => {
-  it("affected_orders：给 businessTypes ⇒ 严格变小 + 是全量的子集 + 结果回带 scope", async () => {
-    const all = (await invokeSolver(t, "affected_orders", {})).json() as { affected: Record<string, unknown>[]; scope?: unknown };
-    expect(all.affected.length, "全量 affected 为 0 ⇒ 收窄判据退化，证不了任何事").toBeGreaterThan(0);
-    expect(all.scope, "未限定却回带了 scope").toBeUndefined();
+  it("affected_orders：给 businessTypes ⇒ 严格变小 + 是全量子集 + 零跨细分泄漏 + 回带 scope", async () => {
+    const all = await solve<AggOut>("affected_orders");
+    expect(all.rows.length, "全量订单集为 0 ⇒ 收窄判据退化，证不了任何事").toBeGreaterThan(0);
+    expect(all.scope, "未限定却回带了 scope（R-ARG-FIDELITY：未限定 → 字段不出现）").toBeUndefined();
 
-    const bts = [...new Set(all.affected.map((o) => String(o.businessType ?? "")))].filter((s) => s !== "");
-    expect(bts.length, `全量结果里只有 ${bts.length} 种业务线 ⇒ 无法证明"没泄漏其他细分"`).toBeGreaterThan(1);
-    const pick = [...bts].sort()[0]!;
+    // 效果层对拍的真值源 = 仓储里的 Order.businessType（不采信求解器自述的 seg 标签）
+    const btBySo = new Map((await t.repos.objects.listByType(TENANT, "Order")).map((o) => [String(o.props.so), String(o.props.businessType)]));
+    const present = [...new Set(all.rows.map((r) => btBySo.get(r.so) ?? ""))].filter((s) => s !== "").sort();
+    expect(present.length, `全量结果只有 ${present.length} 种业务线 ⇒ 无法证明"没泄漏其他细分"`).toBeGreaterThan(1);
+    const pick = present[0]!;
 
-    const one = (await invokeSolver(t, "affected_orders", { businessTypes: [pick] })).json() as {
-      affected: Record<string, unknown>[];
-      scope?: { businessTypes?: string[] };
-    };
-    expect(one.affected.length, `选 ${pick} 后结果没变小 ⇒ 作用域形同虚设`).toBeLessThan(all.affected.length);
-    expect(one.affected.length, "收窄到 0 ⇒ 本例证不了'只含该细分'").toBeGreaterThan(0);
-    // 子集：不是"另算了一批"，是"从全量里筛出来的"
-    const allKeys = new Set(all.affected.map((o) => String(o.so)));
-    for (const o of one.affected) expect(allKeys, `${String(o.so)} 不在全量结果里 —— 收窄变成了另算一份`).toContain(String(o.so));
-    // 零泄漏：一条别的细分都不许混进来
-    for (const o of one.affected) expect(String(o.businessType), "跨细分泄漏（G-SEG-ATTR-CROSS-SEGMENT 同类事故）").toBe(pick);
-    expect(one.scope?.businessTypes, "结果没回带 scope ⇒ 前端看不见'筛没筛'（R-ARG-FIDELITY）").toEqual([pick]);
+    const one = await solve<AggOut>("affected_orders", { businessTypes: [pick] });
+    expect(one.rows.length, `选 ${pick} 后结果没变小 ⇒ 作用域形同虚设`).toBeLessThan(all.rows.length);
+    expect(one.rows.length, "收窄到 0 ⇒ 本例证不了'只含该细分'").toBeGreaterThan(0);
+    const allSos = new Set(all.rows.map((r) => r.so));
+    for (const r of one.rows) {
+      expect(allSos, `${r.so} 不在全量结果里 —— 收窄变成了另算一份`).toContain(r.so);
+      expect(btBySo.get(r.so), "跨细分泄漏（G-SEG-ATTR-CROSS-SEGMENT 同类事故）").toBe(pick);
+    }
+    expect(one.scope?.businessTypes, "结果没回带 scope ⇒ 前端看不见'筛没筛'").toEqual([pick]);
   });
 
-  it("chain_impediments：给 baseIds ⇒ 结果真收窄；给 businessTypes ⇒ **显式拒绝**而不是静默返全域", async () => {
-    const all = (await invokeSolver(t, "chain_impediments", {})).json() as {
-      impediments: ChainImpediment[];
-      scopeUnscoped: boolean;
-    };
+  it("chain_impediments：给 baseIds ⇒ 真收窄；给 businessTypes ⇒ **显式拒绝**而不是静默返全域", async () => {
+    const all = await solve<{ impediments: ChainImpediment[]; scopeUnscoped: boolean }>("chain_impediments");
     expect(all.scopeUnscoped).toBe(true);
-    const bases = [...new Set(all.impediments.map((i) => String((i.locus.objectId.match(/常州|信阳|武汉|眉山|厦门/) ?? [""])[0])))];
-    void bases; // 仅为可读性保留；真正的收窄判据用下面的 baseIds 维
+    expect(all.impediments.length, "全域一条阻滞点都没有 ⇒ 收窄判据退化").toBeGreaterThan(0);
 
-    const baseObjs = await t.repos.objects.listByType(TENANT, "Base");
-    const oneBase = String(baseObjs[0]!.props.baseId ?? baseObjs[0]!.props.name);
-    const scoped = (await invokeSolver(t, "chain_impediments", { scope: { baseIds: [oneBase] } })).json() as {
-      impediments: ChainImpediment[];
-      scope: { baseIds?: string[] };
-      scopeUnscoped: boolean;
-    };
+    const bases = await t.repos.objects.listByType(TENANT, "Base");
+    const oneBase = String(bases[0]!.props.baseId);
+    const scoped = await solve<{ impediments: ChainImpediment[]; scope: { baseIds?: string[] }; scopeUnscoped: boolean }>("chain_impediments", {
+      scope: { baseIds: [oneBase] },
+    });
     expect(scoped.scopeUnscoped).toBe(false);
     expect(scoped.scope.baseIds).toEqual([oneBase]);
     expect(scoped.impediments.length, `限定单基地 ${oneBase} 后条数没减少 ⇒ scope 没生效`).toBeLessThan(all.impediments.length);
+    // 子集：不是"另算了一批"
+    const allIds = new Set(all.impediments.map((i) => i.impedimentId));
+    for (const i of scoped.impediments) expect(allIds, `${i.impedimentId} 不在全域结果里 —— 收窄变成了另算一份`).toContain(i.impedimentId);
 
     // 未支持的维必须**当面拒绝**（静默返全域 = 用户以为筛了、其实没筛）
     const rejected = await invokeSolver(t, "chain_impediments", { scope: { businessTypes: ["储能"] } });
@@ -394,83 +394,76 @@ describe("G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真
 // G1-6 · 阻滞点三类按 PRD §5.1 判据**分开判**（不是一个笼统标签）
 // ══════════════════════════════════════════════════════════════════════════════
 
+interface ScanOut {
+  impediments: ChainImpediment[];
+  counts: { total: number; BOTTLENECK: number; CONGESTION: number; BREAK: number };
+  thresholds: { bindingId: string; ruleKey: string; source: string; ruleParamKey?: string; value: number }[];
+  unresolved: { bindingId: string; status: string; reason: string }[];
+}
+
 describe("G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则而非代码常数", () => {
-  it("三类各有自己的判据出处：BREAK 必带 breakSubtype；每条 evidence 指得出 ruleKey 与阈值出处", async () => {
-    const out = (await invokeSolver(t, "chain_impediments", {})).json() as {
-      impediments: ChainImpediment[];
-      counts: Record<string, number>;
-      thresholds: { bindingId: string; ruleKey: string; source: string; value: number }[];
-      unresolved: { bindingId: string; status: string; reason: string }[];
-    };
+  it("三类都判得出来；每条 evidence 指得出 ruleKey + 阈值出处；同一 locus 不出两类", async () => {
+    const out = await solve<ScanOut>("chain_impediments");
     expect(out.impediments.length, "一条阻滞点都判不出来 ⇒ 后面的互斥判据全退化").toBeGreaterThan(0);
+    // 三类都在（"一个笼统标签"的反面判据）
+    expect(out.counts.BOTTLENECK, "卡点 0 条 ⇒ 三类没分开").toBeGreaterThan(0);
+    expect(out.counts.CONGESTION, "堵点 0 条 ⇒ 三类没分开").toBeGreaterThan(0);
+    expect(out.counts.BREAK, "断点 0 条 ⇒ 三类没分开").toBeGreaterThan(0);
+    expect(out.counts.total).toBe(out.impediments.length);
 
     for (const im of out.impediments) {
-      // R13：每个数字可溯源 —— 规则码 + 阈值 + 单位，一个都不许缺
-      expect(im.evidence.ruleKey, `${im.impedimentId} 没有 ruleKey ⇒ 阈值来路不明`).toBeTruthy();
+      expect(im.evidence.ruleKey, `${im.impedimentId} 没有 ruleKey ⇒ 阈值来路不明（R13）`).toBeTruthy();
       expect(im.evidence.unit).toBeTruthy();
       expect(Number.isFinite(im.evidence.metricValue)).toBe(true);
       expect(Number.isFinite(im.evidence.threshold)).toBe(true);
-      // 阈值必须在 thresholds 表里有出处行（source ∈ param/literal/field）
       const th = out.thresholds.find((x) => x.ruleKey === im.evidence.ruleKey);
       expect(th, `${im.evidence.ruleKey} 的阈值没有出处行 ⇒ 引擎自带了一个数`).toBeDefined();
-      expect(["param", "literal", "field"]).toContain(th!.source);
+      expect(["param", "literal", "field"], `阈值来源 ${th!.source} 不在三类里`).toContain(th!.source);
       if (im.kind === "BREAK") expect(im.breakSubtype, "BREAK 未带 breakSubtype").toBeTruthy();
       else expect(im.breakSubtype, "非 BREAK 却带了 breakSubtype").toBeUndefined();
+      expect(im.tenantId, "R2 tenant_id everywhere").toBe(TENANT);
     }
 
-    // 互斥：同一个 locus 不许既是卡点又是堵点
-    const byLocus = new Map<string, Set<string>>();
-    for (const im of out.impediments) {
-      const k = `${im.locus.objectType}:${im.locus.objectId}`;
-      (byLocus.get(k) ?? byLocus.set(k, new Set()).get(k)!).add(im.kind);
-    }
-    for (const [k, kinds] of byLocus) {
-      expect(kinds.has("BOTTLENECK") && kinds.has("CONGESTION"), `${k} 同时被判成卡点与堵点 —— 三类不互斥`).toBe(false);
-    }
+    // 三类互斥（裁决在 arbitrateByLocus 一处，不靠 if 顺序的巧合）
+    const loci = out.impediments.map((i) => `${i.locus.objectType}|${i.locus.objectId}`);
+    expect(new Set(loci).size, "同一个 locus 出了两条阻滞点 —— 三类不互斥").toBe(loci.length);
 
-    // 判不出来的判据必须在 unresolved 里说清"为什么"（诚实缺席，不是不提）
+    // 判不出来的必须说清"为什么"（诚实缺席，不是不提）
     for (const u of out.unresolved) {
       expect(u.status).toBe("UNKNOWN");
       expect(u.reason.length, `${u.bindingId} 判不出来却没给原因`).toBeGreaterThan(10);
     }
   });
 
-  it("裁决线是**规则里的红线**：改 C05 的红线 ⇒ 卡点/堵点的划分真的跟着翻（改规则即改推演）", async () => {
-    const before = (await invokeSolver(t, "chain_impediments", {})).json() as {
-      counts: Record<string, number>;
-      thresholds: { ruleKey: string; value: number }[];
-    };
-    // 规则按 `key` 找（`rules` 仓储的主键是 `id`，`C05` 是 key —— 拿 key 当 id 查会恒 undefined）
-    const c05 = (await t.repos.rules.list(TENANT, (r) => r.key === "C05" && r.status === "PUBLISHED"))[0];
-    expect(c05, "规则库里没有已发布的 C05 ⇒ 本例前提不成立").toBeDefined();
-    const originalExpr = c05!.expression;
-    const originalParams = c05!.params;
+  it("裁决线是**规则里的红线**：改 C05 的红线 ⇒ 卡点条数真的跟着翻（改规则即改推演）", async () => {
+    const c05s = await t.repos.rules.list(TENANT, (r) => r.key === "C05" && r.status === "PUBLISHED");
+    expect(c05s.length, "已发布的 C05 不是恰好一条 —— 下面的 put 会被另一条顶掉，判据失真").toBe(1);
+    const c05 = c05s[0]!;
+    const before = await solve<ScanOut>("chain_impediments");
     try {
-      // 人造场景（写明）：把产线利用率红线压到 1%，让"达红线"这件事在基线上必然成立
-      // —— 基线天然不夹定（柜位从目标反解，余量 +1.7%），不造场景就没有可翻转的分界。
-      await t.repos.rules.put({ ...c05!, expression: "Line.utilization >= params.redline", params: { redline: 1 } });
-      const low = (await invokeSolver(t, "chain_impediments", {})).json() as { counts: Record<string, number>; thresholds: { ruleKey: string; source: string; value: number }[] };
-      expect(low.counts.BOTTLENECK, "把红线压到 1% 后卡点数没涨 ⇒ 引擎读的不是规则里的红线").toBeGreaterThan(
-        before.counts.BOTTLENECK ?? 0,
-      );
+      // 人造场景（写明）：基线天然不夹定（柜位从目标反解、余量 +1.7%），不造场景就没有可翻转的分界。
+      // 只改**规则**（表达式里的阈值搬进 params 再改它），引擎源码一个字不动。
+      await t.repos.rules.put({ ...c05, expression: "Line.utilization >= params.redline", params: { redline: 1 } });
+      const low = await solve<ScanOut>("chain_impediments");
+      expect(low.counts.BOTTLENECK, "把红线压到 1% 后卡点数没涨 ⇒ 引擎读的不是规则里的红线").toBeGreaterThan(before.counts.BOTTLENECK);
       const th = low.thresholds.find((x) => x.ruleKey === "C05");
       expect(th?.value, "阈值读回的不是刚改的那个数").toBe(1);
       expect(th?.source, "阈值来源不是 params ⇒ 没走命名阈值面").toBe("param");
+      expect(th?.ruleParamKey).toBe("redline");
 
-      // 反向：红线抬到 999% ⇒ 一条利用率卡点都判不出来（同一批对象、只改红线，结论翻转）
-      await t.repos.rules.put({ ...c05!, expression: "Line.utilization >= params.redline", params: { redline: 999 } });
-      const high = (await invokeSolver(t, "chain_impediments", {})).json() as { counts: Record<string, number> };
-      expect(high.counts.BOTTLENECK, "红线抬到 999% 还判得出卡点 ⇒ 那个数不是从规则来的").toBeLessThan(
-        low.counts.BOTTLENECK ?? 0,
-      );
+      await t.repos.rules.put({ ...c05, expression: "Line.utilization >= params.redline", params: { redline: 999 } });
+      const high = await solve<ScanOut>("chain_impediments");
+      expect(high.counts.BOTTLENECK, "红线抬到 999% 还判得出同样多的卡点 ⇒ 那个数不是从规则来的").toBeLessThan(low.counts.BOTTLENECK);
     } finally {
-      await t.repos.rules.put({ ...c05!, expression: originalExpr, ...(originalParams === undefined ? {} : { params: originalParams }) });
+      await t.repos.rules.put(c05); // 原样还原（含原 expression / params / version）
     }
+    const after = await solve<ScanOut>("chain_impediments");
+    expect(after.counts, "还原后结论与基线不一致 ⇒ 本例污染了共享世界").toEqual(before.counts);
   });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// G1-7 · R6：合并态下同输入两跑字节一致（三个求解器一起验，不是各验各的）
+// G1-7 · R6：合并态下同输入两跑字节一致（三个求解器一起验）
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("G1-7 · R6 确定性（合并态）", () => {
@@ -480,5 +473,67 @@ describe("G1-7 · R6 确定性（合并态）", () => {
       const b = (await invokeSolver(t, key, {})).body;
       expect(a, `${key} 两跑不一致 ⇒ R6 破（合并态引入了时钟/随机/遍历序依赖）`).toBe(b);
     }
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G1-8 · 诚实缺席的**理由**必须在合并态下仍然为真（双向棘轮）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * E1 的 `STRUCTURAL_GAPS`（`solvers/chain-loss.ts`）是一张**静态表**：每条写死了
+ * 「本体里完全不存在」+ 一段取证 probe。这些 probe 是在**各自单的基线上**跑出来的。
+ * 合并之后，别的单可能已经把承载物种进来了 —— 于是那句"完全不存在"变成了**假的诚实**：
+ * 页面上还挂着"该段无承载"，而库里已经有真数据。这比不写更危险（用户以为查过了）。
+ *
+ * 判据是**双向棘轮**，两边都得钉住，只钉一边都会烂：
+ *  · 不在已知清单里的段：其候选承载对象类型必须**真的 0 行**（新出现的过期声明 → 红）
+ *  · 在已知清单里的段：必须**仍然有行**（有人修好了却没更新清单 → 红，逼着把欠账划掉）
+ * 另加覆盖判据：`STRUCTURAL_GAP_CARRIERS` 必须覆盖 E1 报出的每一条结构性缺口，
+ * E1 新增一条而这里没登记 → 红（逼着人分类，而不是让它悄悄溜过）。
+ */
+const STRUCTURAL_GAP_CARRIERS: Record<string, readonly string[]> = {
+  // reason 说的是"没有这个**字段**"（三个看着像的对象都在，但口径不同）⇒ 无"该段专属对象类型"可查
+  "material.in_transit": [],
+  // D2 新增：`CustomsClearance`（`synthetic/service.ts` putAll + `po_customs_cleared_by` 链路）
+  "material.customs": ["CustomsClearance"],
+  // D2 新增：`IncomingInspection`（同上 + `po_inspected_by` 链路）
+  "material.iqc": ["IncomingInspection"],
+  // reason 说的是"返工**天数**无承载"（不良记录对象在，缺的是时长字段）⇒ 同 in_transit
+  "chain.rework": [],
+};
+
+/**
+ * **已知过期声明**（欠账，本单不修 —— 修它要动 E1 的链路天数 ⇒ 动 `chain_loss` 全部 pct
+ * 与前端 `chain-line-map.seam` 的真载荷快照，越出收口单边界，且会与在跑的 dev 撞车）。
+ * 本体 §8 `G-CHAIN-LOSS-STALE-GAP`。修好后**必须**把对应项从此清单删掉，否则本门红。
+ */
+const KNOWN_STALE_GAPS = ["material.customs", "material.iqc"] as const;
+
+describe("G1-8 · 合并态下「诚实缺席」的理由仍为真（双向棘轮 · 本门首跑即抓出两条真实存量）", () => {
+  it("E1 声称无承载的结构性缺口，其承载物在对象库里的实况必须与清单逐条对上", async () => {
+    const out = await solve<ChainLossOut>("chain_loss_attribution");
+    const structural = out.empty.filter((e) => !e.stepId.endsWith("__cadence"));
+    expect(structural.length, "E1 一条结构性缺口都没报 ⇒ 本棘轮无对象，判据退化").toBeGreaterThan(0);
+
+    // 覆盖判据：E1 新增一条结构性缺口而本表没登记 → 红（逼着分类，不许悄悄溜过）
+    const unclassified = structural.map((e) => e.stepId).filter((id) => !(id in STRUCTURAL_GAP_CARRIERS));
+    expect(unclassified, `E1 报了本门未登记的结构性缺口：${unclassified.join(", ")} —— 请在 STRUCTURAL_GAP_CARRIERS 里登记其候选承载对象类型`).toEqual([]);
+
+    const stale: string[] = [];
+    for (const e of structural) {
+      const carriers = STRUCTURAL_GAP_CARRIERS[e.stepId] ?? [];
+      let rows = 0;
+      for (const type of carriers) rows += (await t.repos.objects.listByType(TENANT, type)).length;
+      if (carriers.length > 0 && rows > 0) stale.push(e.stepId);
+    }
+    expect(
+      [...stale].sort(),
+      `E1 「本体里完全不存在」的声明与合并态实况对不上。\n` +
+        `  实测过期：${stale.join(", ") || "（无）"}\n` +
+        `  已登记欠账：${[...KNOWN_STALE_GAPS].join(", ")}\n` +
+        `  → 新增的：E1 该段的承载物已被别的单种进来了，那句"完全不存在"现在是假的（本体 §8 G-CHAIN-LOSS-STALE-GAP）。\n` +
+        `  → 少掉的：有人把它修好了 ⇒ 请把它从 KNOWN_STALE_GAPS 里划掉（棘轮只降不升）。`,
+    ).toEqual([...KNOWN_STALE_GAPS].sort());
   });
 });
