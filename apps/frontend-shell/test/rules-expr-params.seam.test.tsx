@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
-import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlineViolationExprPublished, ruleParamRef } from "@platform/contracts";
+import { OUTSOURCE_REDLINE, PARITY_RULE_SEEDS, outsourceRedlineConstraintExpr, outsourceRedlineViolationExprPublished, parityRuleExpression, parityRuleParams, ruleParamRef } from "@platform/contracts";
 import { RULES, RULE_CANDIDATES } from "@/mocks/fixtures";
 import { mockCapacityForecast } from "@/mocks/simSolvers";
 
@@ -80,7 +80,25 @@ describe("WO-RULE-EXPR-PARAMS · 前端 mock 规则库与后端同口径（#78�
         expect(/^[A-Za-z][A-Za-z0-9_]*$/.test(prefix), `${r.key} 的对象类型前缀 \`${prefix}\` 不是合法类型 key`).toBe(true);
       }
     }
-    expect(RULES.find((r) => r.key === "C05")?.expression).toBe("SUSTAIN(Line.utilization > 95, 3)");
+    // 主体断言走契约（不再手抄字面量：那是第三份副本，改契约会让本行假红/漏红）。
+    expect(RULES.find((r) => r.key === "C05")?.expression).toBe(parityRuleExpression("C05"));
+    expect(objectTypePrefixes(parityRuleExpression("C05"))).toContain("Line");
+  });
+
+  /**
+   * DF.14 · **前后端同口径的机制面**（欠账 #78 的根治，不是又一次手工对齐）。
+   * 前端不得 import datacore 源码（contracts-only-shared），所以接缝锚点是**两端共用的契约出口**：
+   * mock 侧逐字节等于 `PARITY_RULE_SEEDS`，datacore 侧由 `rules-expr-params.seam.test.ts` 同样断言，
+   * 两条断言夹住同一个出处 ⇒ 传递性地保证两端一字不差。谁把任一端换回裸字面量，对应那条立刻红。
+   */
+  it("多处物化的规则，其 expression/params 逐字节来自契约单一来源（不是手抄副本）", () => {
+    expect(PARITY_RULE_SEEDS.length, "登记表不能空，否则本用例空跑").toBeGreaterThan(0);
+    for (const seed of PARITY_RULE_SEEDS) {
+      const mock = RULES.find((r) => r.key === seed.key);
+      expect(mock, `mock 规则库缺 ${seed.key}（登记为多处物化却没物化）`).toBeTruthy();
+      expect(mock?.expression, `${seed.key} 的 mock 表达式与契约不同源`).toBe(seed.expression);
+      if (seed.params) expect(mock?.params).toEqual(parityRuleParams(seed.key));
+    }
   });
 
   it("命名阈值只存 params 一处：expression 引用 `params.<名>`，不复写字面量", () => {

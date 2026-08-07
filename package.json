@@ -29,7 +29,7 @@
     "boundary-singlesource:check": "node scripts/check-boundary-singlesource.mjs",
     "ontology-anchors:check": "node scripts/check-ontology-anchors.mjs",
     "migration-numbering:check": "node scripts/check-migration-numbering.mjs",
-    "gates": "node scripts/check-system-ontology.mjs && node scripts/check-ontology-anchors.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-resource-descriptor.mjs && node scripts/check-ontology-slice-coverage.mjs && node scripts/check-slice-connectivity.mjs && node scripts/check-loop-control.mjs && node scripts/check-arg-drop-seam.mjs && node scripts/check-scenario-slot-keys.mjs && node scripts/check-action-wiring.mjs && node scripts/check-outsource-redline.mjs && node scripts/check-boundary-singlesource.mjs && node scripts/check-chain-node-singlesource.mjs && node scripts/check-view-reachable.mjs && node scripts/check-ontology-descriptions.mjs && node scripts/check-deploy-governance.mjs && node scripts/check-migration-numbering.mjs && node scripts/check-gate-ledger.mjs",
+    "gates": "node scripts/check-system-ontology.mjs && node scripts/check-ontology-anchors.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-resource-descriptor.mjs && node scripts/check-ontology-slice-coverage.mjs && node scripts/check-slice-connectivity.mjs && node scripts/check-loop-control.mjs && node scripts/check-arg-drop-seam.mjs && node scripts/check-scenario-slot-keys.mjs && node scripts/check-action-wiring.mjs && node scripts/check-outsource-redline.mjs && node scripts/check-rule-parity.mjs && node scripts/check-boundary-singlesource.mjs && node scripts/check-chain-node-singlesource.mjs && node scripts/check-view-reachable.mjs && node scripts/check-ontology-descriptions.mjs && node scripts/check-deploy-governance.mjs && node scripts/check-migration-numbering.mjs && node scripts/check-gate-ledger.mjs",
     "gate-ledger:check": "node scripts/check-gate-ledger.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs && node scripts/check-ontology-anchors.mjs && node scripts/check-ontology-descriptions.mjs",
@@ -40,6 +40,7 @@
     "typecheck": "pnpm -r typecheck",
     "action-wiring:check": "node scripts/check-action-wiring.mjs",
     "outsource-redline:check": "node scripts/check-outsource-redline.mjs",
+    "rule-parity:check": "node scripts/check-rule-parity.mjs",
     "chain-node-singlesource:check": "node scripts/check-chain-node-singlesource.mjs"
   },
   "devDependencies": {

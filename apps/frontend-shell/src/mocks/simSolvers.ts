@@ -3,7 +3,9 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：mock 求解器的上限与拒绝文案必须与真求解器同源，禁内联裸阈值/手写百分数。
 import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则命名阈值引用（`params.<名>`）——mock 的规则表达式与真后端同机制、同字面。
-import { ruleParamRef } from "@platform/contracts";
+// DF.14：求解器留痕里的规则表达式全部经 `PARITY_RULE_SEEDS` 派生 —— 与规则库 mock、datacore 场景包
+// 同一个出处。此前这里各写一份字面量，前端**自己内部**都能与 `fixtures.ts RULES` 漂开（#78 病灶原型）。
+import { parityRuleExpression } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
 
@@ -609,12 +611,12 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     // 规则即引用 P2：求解器真评估的规则闸门（mock 与真后端同步；C09 由 degraded 决定，
     // C01/C02/C03 mock 无对应输入 → 诚实 NOT_APPLICABLE，与真后端 NOT_APPLICABLE 语义一致）。
     evaluatedRules: [
-      { key: "C01", name: "产线设计产能上限", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", evidence: "该求解器输出未含此规则字段" },
-      { key: "C02", name: "化成/老化串并产能口径", severity: "WARN", outcome: "NOT_APPLICABLE", expression: "Process.parallelThroughput < Process.requiredThroughput", evidence: "该求解器输出未含此规则字段" },
-      { key: "C03", name: "产能上限约束", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Order.demandDelta > 0.5", evidence: "该求解器输出未含此规则字段" },
+      { key: "C01", name: "产线设计产能上限", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: parityRuleExpression("C01"), evidence: "该求解器输出未含此规则字段" },
+      { key: "C02", name: "化成/老化串并产能口径", severity: "WARN", outcome: "NOT_APPLICABLE", expression: parityRuleExpression("C02"), evidence: "该求解器输出未含此规则字段" },
+      { key: "C03", name: "产能上限约束", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: parityRuleExpression("C03"), evidence: "该求解器输出未含此规则字段" },
       // WO-RULE-EXPR-PARAMS：阈值改由 `params.staleHours` 承载（与真后端 battery.ts C09 一字不差）；
       // 此前这里写死 `> 2`，真后端改了命名阈值这句话也不会动 —— 又是一个"两个可各自编辑的数"。
-      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
+      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: parityRuleExpression("C09"), evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
     ],
     ruleSetVersion: "rsv_mock",
   };
