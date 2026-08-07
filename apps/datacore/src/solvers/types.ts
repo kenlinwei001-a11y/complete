@@ -418,8 +418,24 @@ export function resolveBaseRef(bases: readonly ObjectInstance[], ref: unknown): 
 /** base 作用域参数的**受认别名集**（单一出处·新增别名只在这里加）。 */
 export const BASE_SCOPE_ARG_KEYS = ["base", "baseId", "baseName", "baseRef"] as const;
 
-/** 形似 base 作用域但**不在受认集**的键 → 报错而非静默忽略（`baseIds`/`base_id`/`basename`/`baseKey`…）。 */
-const BASE_SCOPE_LOOKALIKE = /^base[s_A-Z]/;
+/**
+ * 键名归一（大小写 + `_`/`-` 分隔无关）：`baseName` / `basename` / `base_name` / `BASE_NAME` 同指一件事。
+ * agent 猜键名时大小写与下划线是最常见的偏差，为此报 400 是在为一件毫无歧义的事情惩罚调用方。
+ */
+const normArgKey = (k: string) => k.toLowerCase().replace(/[_-]/g, "");
+/** 归一键 → 规范别名（受认集的机器可查形态）。 */
+const ACCEPTED_BY_NORM = new Map<string, string>(BASE_SCOPE_ARG_KEYS.map((k) => [normArgKey(k), k as string]));
+
+/**
+ * 「形似 base 作用域引用」的判据 —— **刻意收紧到「就是一个基地引用名词」**，不用 `/^base/` 那种宽匹配。
+ *
+ * ⚠ 为什么不能宽匹配（这条差点踩进去）：`capacity_forecast` 的输出里有 `baselineDemand`，
+ * 而组合器有把上游输出接成下游 args 的路（`compile-plan.ts SOLVER_INPUT_FROM_OUTPUT`）——
+ * `/^base/` 会把 `baselineDemand` 当成"形似基地作用域的未知键"直接 400，
+ * 那就从「静默答错」翻车成「无辜报错」，一样是 bug 只是方向相反。
+ * 归一后必须整体是 `base` + 可选的 id/name/ref/key/code/object(+复数)，`baselinedemand` 因此不匹配。
+ */
+const BASE_SCOPE_LOOKALIKE = /^base(s|ids?|names?|refs?|keys?|codes?|objects?|objectids?)?$/;
 
 /** 命中的 base 作用域参数：`argKey` 留痕「你传的是哪个键」（R13 可诊断）。 */
 export interface BaseScopeArgPick {
@@ -434,11 +450,20 @@ export interface BaseScopeArgPick {
  * @throws `AppError(AMBIGUOUS_SCOPE, 400)` 当 ① 形似作用域键但不受认，或 ② 多个受认键互相冲突。
  */
 export function pickBaseScopeArg(solverKey: string, args: Record<string, unknown>): BaseScopeArgPick | undefined {
-  const accepted = new Set<string>(BASE_SCOPE_ARG_KEYS);
+  const present: { argKey: string; raw: unknown; norm: string }[] = [];
+  const strays: string[] = [];
+  for (const k of Object.keys(args)) {
+    const nk = normArgKey(k);
+    if (ACCEPTED_BY_NORM.has(nk)) {
+      // ① 要么认：大小写/分隔符变体一律归到同一条解析路。
+      const norm = normalizeBaseRef(args[k]);
+      if (norm !== "") present.push({ argKey: k, raw: args[k], norm });
+      continue;
+    }
+    // ② 要么报错：是基地引用名词、但本求解器消费不了（`bases`/`baseIds` 是数组维，单值槽塞不下）。
+    if (BASE_SCOPE_LOOKALIKE.test(nk) && (normalizeBaseRef(args[k]) !== "" || (Array.isArray(args[k]) && args[k].length > 0))) strays.push(k);
+  }
   // ② 不认识的作用域键 → 报错（这一条正是 #103 的治本：静默忽略 = 冒充全网答案）。
-  const strays = Object.keys(args)
-    .filter((k) => !accepted.has(k) && BASE_SCOPE_LOOKALIKE.test(k))
-    .filter((k) => normalizeBaseRef(args[k]) !== "" || Array.isArray(args[k]));
   if (strays.length > 0)
     throw new AppError(
       "AMBIGUOUS_SCOPE",
@@ -448,9 +473,6 @@ export function pickBaseScopeArg(solverKey: string, args: Record<string, unknown
       400,
     );
 
-  const present = BASE_SCOPE_ARG_KEYS.filter((k) => k in args)
-    .map((k) => ({ argKey: k as string, raw: args[k], norm: normalizeBaseRef(args[k]) }))
-    .filter((p) => p.norm !== "");
   if (present.length === 0) return undefined;
 
   // ①b 多键冲突 → 报错（绝不在两个基地里挑一个冒充答案·同 credit_exposure 拒绝落首个客户的理由）。

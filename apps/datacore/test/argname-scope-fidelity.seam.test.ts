@@ -120,14 +120,40 @@ describe("WO-ARGNAME-SCOPE #103 · capacity_forecast 作用域键名（差分门
     }
   }, 180_000);
 
+  it("★ 大小写/下划线变体属于「要么认」那一档（basename / base_id 是 agent 最常见的偏差，为它报错是无谓惩罚）", async () => {
+    // ⚠ 这条是本文件**自己抓出来的**：第一版实现的形似判据写成 `/^base[s_A-Z]/`，
+    //   `basename`（全小写）从缝里漏过去 → 静默忽略 → 200 + 全网。测试红了才发现。
+    const byCanon = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, baseName: nameA })) as Cap;
+    for (const variant of [{ basename: nameA }, { base_name: nameA }, { BASE_ID: baseA }, { base_id: baseA }]) {
+      const out = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, ...variant })) as Cap;
+      console.log(`  ${JSON.stringify(variant)} → scope=${out.scope} scopeBaseId=${out.scopeBaseId} p50=${out.p50}`);
+      expect(out.scope, `键名变体 ${JSON.stringify(variant)} 应被认（大小写/下划线无关）`).toBe("BASE");
+      expect(out.scopeBaseId).toBe(baseA);
+      expect(out.p50).toBe(byCanon.p50);
+    }
+  }, 180_000);
+
   it("★ 不认识的作用域键 → AMBIGUOUS_SCOPE 400（要么认要么报错·不许静默忽略后照答全网）", async () => {
-    // `baseIds` 是 bottleneck_matrix 的真键（复数数组）——传给 capacity_forecast 就是「我不消费的作用域键」。
-    for (const stray of [{ baseIds: [baseA] }, { base_id: baseA }, { basename: nameA }]) {
+    // `baseIds` 是 bottleneck_matrix 的真键（**复数数组**维）——单值槽塞不下，传给 capacity_forecast
+    // 就是「我消费不了的作用域键」：修前它被静默忽略 → 用户以为限定了基地，拿到的是全网。
+    for (const stray of [{ baseIds: [baseA] }, { bases: [baseA] }, { baseKey: baseA }, { baseCode: baseA }]) {
       const res = await invokeSolver(t, "capacity_forecast", { modelId, ...stray }, ADMIN);
       const body = JSON.parse(res.body) as { error?: { code?: string; message?: string } };
       console.log(`  args+${JSON.stringify(stray)} → ${res.statusCode} ${body.error?.code} ${String(body.error?.message).slice(0, 120)}`);
       expect(res.statusCode, `不受认作用域键 ${JSON.stringify(stray)} 应 400（修前静默忽略→答全网）`).toBe(400);
       expect(body.error?.code).toBe("AMBIGUOUS_SCOPE");
+    }
+  }, 180_000);
+
+  it("★ 反向护栏：形似判据**不许过宽** —— `baselineDemand` 这类 base 开头的正常字段绝不能被误判成作用域键", async () => {
+    // 为什么必须锚住：`capacity_forecast` 自己的输出里就有 `baselineDemand`，而组合器有「上游输出接下游 args」
+    // 的路（compile-plan SOLVER_INPUT_FROM_OUTPUT）。宽匹配 `/^base/` 会把它当未知作用域键 400 ——
+    // 那是从「静默答错」翻车成「无辜报错」，方向相反但一样是 bug。
+    const plain = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId })) as Cap;
+    for (const benign of [{ baselineDemand: 7.5 }, { baseline: 1 }, { batches: undefined }]) {
+      const out = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, ...benign })) as Cap;
+      expect(out.scope, `${JSON.stringify(benign)} 不是作用域键，应照常全网（既不 400 也不收窄）`).toBe("ALL");
+      expect(out.p50).toBe(plain.p50);
     }
   }, 180_000);
 
@@ -183,7 +209,15 @@ describe("WO-ARGNAME-SCOPE #103 · 入参声明与引擎真实读取**不许漂�
     expect(pickBaseScopeArg("x", { baseId: "changzhou" })).toEqual({ argKey: "baseId", raw: "changzhou" });
     // objectRef 形态（AgentCore 计划整槽透传的那种）也走同一条归一。
     expect(pickBaseScopeArg("x", { baseRef: { objectType: "Base", objectId: "changzhou" } })?.argKey).toBe("baseRef");
+    // 大小写/下划线变体归到同一条解析路（原键名原样留痕，供 R13 诊断"你传的是哪个键"）。
+    expect(pickBaseScopeArg("x", { basename: "常州" })?.argKey).toBe("basename");
+    expect(pickBaseScopeArg("x", { base_id: "changzhou" })?.argKey).toBe("base_id");
     expect(() => pickBaseScopeArg("x", { baseIds: ["changzhou"] })).toThrow(/AMBIGUOUS|无法消费/);
     expect(() => pickBaseScopeArg("x", { base: "changzhou", baseId: "chengdu" })).toThrow(/AMBIGUOUS|冲突/);
+    // 反向：空数组 / 空值不算"给了作用域"（别把没给当成给错）。
+    expect(pickBaseScopeArg("x", { baseIds: [] })).toBeUndefined();
+    // 反向：形似判据不许过宽（`baselineDemand` 是正常输出字段名，不是作用域键）。
+    expect(pickBaseScopeArg("x", { baselineDemand: 7.5 })).toBeUndefined();
+    expect(pickBaseScopeArg("x", { baseline: 1 })).toBeUndefined();
   });
 });
