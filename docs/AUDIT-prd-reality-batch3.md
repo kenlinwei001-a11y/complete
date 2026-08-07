@@ -401,3 +401,135 @@ $ git grep -ln "createIntent" -- "apps/**/src/**"      → 3 文件（正确写�
 - **最小 WO 建议**：`WO-DOC-HANDBOOK-DEPRECATE`（**本批第二优先，仅次于 cli-parity**）：🚦只碰 `docs/PRD-implementation-handbook.md`。两条路二选一——(a) 顶部加显著「**⚠ 历史文档：§1 工程基线已被现实取代，以根 `CLAUDE.md` 为准；§3 工单 W01–W32 已全部完成**」并逐条勘误 §1 那 5 项；(b) 若确认无人再用，整份归档到 `docs/archive/`。**⚠ 动它之前先跑 `grep -rl "PRD-implementation-handbook" .`**：CLAUDE.md 铁律 2 第 4 条明写「要动非代码文件，先证明它不被任何测试/门读取（`grep -rl` 到的可能只是注释里提了一嘴，**提及 ≠ 读取**，必须点开看）」——本仓有 `prd:check`/`check-prd-coverage.mjs` 会解析 `docs/PRD-*.md`，改动前须确认不破门。
 
 ---
+
+### PRD-in-dialog-gap-fill-loop.md
+
+- **它要做什么**：把已建的自成长发动机后端暴露为**对话坞内 HITL 闭环**——答案命中缺口 → 对话框内出可点「触发生成缺失数据」卡 → SSE 进度回灌 → 就地 R4 审批 → 「继续推演」重跑原问句。
+- **PRD 自称的 AS-IS**：§2「现状与缺口（带 file:line）」六行表：缺口分类 ✅ `classifyGap`；触发产数据 ✅ 端点在但「仅端点 + `/admin/growth`，**未进对话坞**」；**答案流带缺口 ❌「probe 是单独调用」**；**对话坞缺口卡 ❌「QueryDock 仅 suggestedQuestions（QueryDock.tsx:29/58）」**；就地审批 ◐「DataBuilderPage 有页内审批」；现象「agent 干叙述『让我检索知识库…』」。
+- **实测现状**：
+  - **GF.1 答案流并入 GapReport ✅**：契约 `packages/contracts/src/qos.ts:315-316` —— `AnswerBlock` 新增 `{ type: z.literal("gap"), report: GapReportSchema }`；后端产出点 `apps/agentcore/src/router/orchestrator.ts:2761 type: "gap"`。**PRD 的 ❌ 已闭。**
+  - **GF.1 对话坞缺口卡 ✅**：`apps/frontend-shell/src/components/Answer/GapCard.tsx`（103 行），`:11-13` 头注释直引「CL.7（PRD-in-dialog-gap-fill-loop）」并逐条复述 PRD 三段流程；分发点 `components/Answer/AnswerBlocks.tsx:6,45 <GapCard report={block.report} onRetry={onRetry} />`。**PRD 的 ❌ 已闭。**
+  - **GF.1 按码触发 ✅**：`GapCard.tsx:12` 注释「「▶ 触发生成缺失数据」（复用自成长 LOOP `/b/v1/growth/run`，**按码内部分派 fill-data/合成/建域**）」+ `:66 onClick={() => trigger.mutate()}`。注意：**分派逻辑放在后端 `growth/run`，不是前端按码 switch** —— 与 PRD §3.2 的"前端按码映射端点"设计不同，但更守 R14（前端零写死映射表），属**实现选了更好的做法**。
+  - **GF.2「继续推演」✅**：`components/Answer/AnswerCard.tsx:29` 注释「CL.7：gap 块"继续推演"重跑原问句（QueryDock 注入）」；文案单一来源 `locales/zh.ts:130,135 gapContinue: "继续推演 →"`（未内联，守 debattery）。
+  - **GF.3 诚实断点 + 工单 ✅**：`GapCard.tsx:13`「补不出（需开发/边界）→ 诚实"不可达：断在 <码>" + 工单深链」+ `:46 stuckCode = done?.openTickets?.[0]?.gapCode ?? …` 真取工单/末轮缺口码。
+- **缺的一半（一项）**：**GF.2 的「对话框内就地 R4 审批面板」未实现**。跨命名复搜 `ApprovalPanel|action-drafts|approve` 于 `components/Answer/*.tsx` + `components/QueryDock/*.tsx` = **0 命中**。就地审批目前只存在于 `pages/admin/DataBuilderPage.tsx:29-34`（数据构建发动机页内），对话坞里没有 —— 即 PRD §1 目标 4 与 §7 DoD「写真值经**就地 R4 审批**」这一条**在对话坞路径上没有落点**。
+  - 另：GF.2 的「SSE 进度流式回灌对话气泡」在 GapCard 里未见 `useTaskStream` 接线（`grep SSE|useTaskStream` 于该文件 = 0），触发后是 mutation 等待而非流式。**属"接了线但只有终态、没有过程流"**，不是完全没做。
+- **结论**：◐部分（GF.1 + GF.3 全落、GF.2 的「继续推演」落了；**GF.2 的对话坞内就地 R4 审批面板未实现、SSE 进度回灌未接**）
+- **最小 WO 建议**：`WO-GAPCARD-INLINE-APPROVAL`：🚦只碰 `apps/frontend-shell/src/components/Answer/GapCard.tsx`（触发后若返回 `pendingDraftId` → 内联渲染审批面板）+ `apps/frontend-shell/src/components/Answer/AnswerBlocks.tsx`（透传）+ `apps/frontend-shell/src/api/endpoints.ts`（复用既有 `/a/v1/action-drafts/:id/approve`）+ `locales/zh.ts`。**复用 `DataBuilderPage:29-34` 的面板，别造第二套**（PRD §3.3 原话就是"复用 §6.4"）。
+
+---
+
+### PRD-inference-line.md
+
+- **它要做什么**：把「未达成指标根因下钻（`gap_attribution`）→ 决策推演（`decision_play`）→ 统一决策内核（`Decision`）→ CEO 深问前门」这条**至今零 PRD**的线，从散落的 8 张 WO 收拢成一份文档。PRD 自述「只文档化，不新增引擎/端点/字段，**不改任何行为**」。
+- **PRD 自称的 AS-IS**：§5「现状矩阵：已建 vs 待接」是本批**最规范**的 AS-IS 节 —— 16 行逐条标 ✅已建 / ◐ / ⛔待接，每行带 file:line 锚点，开头还写「『绿测试 ≠ 能用』：以下『已建』均有测试佐证，但**接缝/前端**仍有缺口——诚实登记为后续 WO 入口」。
+- **实测现状 · ✅已建部分（抽验全部为真）**：
+  - `gap_attribution` `apps/datacore/src/solvers/service.ts:135`（SOLVER_KEYS）+ `:314` 输出形状（`rootMetric/totalGap/levels/atomicLeaves/causalEdges/reconChecks/reconciled/residualPct/severityKind/hypotheses/…`）；metric-aware 域路由 `:814`。
+  - `decision_play` 已注册（`views/registry.ts:56` 前端 renderer + `App.tsx:138` 专用 route）。
+  - `supply_demand_gap_attribution` `service.ts:139` + `:316` 输出形状。
+  - 统一决策内核 `Decision`：`apps/datacore/src/decision/kernel.ts` + `apps/datacore/migrations/027_decisions.sql`（**迁移号 027 与 PRD 锚点一致**）。
+  - `Metric` 骨架：见上一份 SPINE 条目，已核实。
+- **⚠ PRD 自身陈述与现状不符 —— 本批最重的一条：§5 的 4 行 ⛔「待接」，**实测 3 行已接**，只有 1 行属实。逐行核：**
+
+  | §5 行 | PRD 断言 | 实测 | 判定 |
+  |---|---|---|---|
+  | **CEO-6 前端 PageContext 注入** | ⛔ 待接 ·「前端各视图 `apps/frontend-shell/src/` **零 `pageContext` 命中**」·「**门恒关**：前端从不发 pageContext → `hasPageContext` 恒 false → 确定性 CEO 路由从不触发」 | **20 处非 mock 命中**。核心实现 `apps/frontend-shell/src/store/sessionStore.ts:52-89 derivePageContext()`（`:52-55` 注释直写「**WO-CEO-6-FE（闭 G-3）**：从现有 SessionContext 状态诚实派生 PageContext……注入后 orchestrator `hasPageContext` 门打开 → CEO 深问意图进候选」）+ `:139-141 pageContext: derivePageContext(s)` **随查询搭车注入**。门的另一端 `apps/agentcore/src/router/orchestrator.ts:583-584 const hasPageContext = Boolean(task.context.pageContext)` 确实在读。 | ⚠ **相反** |
+  | metric-domain 6 drill 证据前端 | ⛔ 待接 · 前端零调用 6 类证据对象 | 逐个核：`CompetitorPrice`/`ARAging`/`PipelineOpportunity`/`BidRecord`/`WinLossRecord`/`PriceRealization`（另加 `CompetitorShare`/`DSO`/`OverdueRecord`）**前端非 mock 命中全部 = 0** | ✅ PRD 正确 |
+  | **`Line.capacityDaily` 种子** | ⛔ 待接 ·「`battery.ts`（**未种 capacityDaily**）」·「供给端产能缺口诚实退 0」 | **已种**：`apps/datacore/src/synthetic/battery.ts:909 { propKey: "capacityDaily", dataType: "number" }`（属性定义）+ `:1726` 中文标签「日运营产能」+ `:3566 capacityDaily: perLineDailyPacks`（注释「套/日 · gwhᵢ 派生 · **确定性(R6·无 rng)**」= 真种值，非占位） | ⚠ **相反** |
+  | **决策页前端（一页看全·R17）** | ⛔ 待接 · 锚点栏空「—」 | **已建**：`apps/frontend-shell/src/views/DecisionPlayView.tsx`，`:11-21` 头注释「把 `decision_play` 求解器（G-DECISION·CEO-3）天然的 5 区决策产物落地为**一张页**：①根因区 ②方案卡区 ③比对矩阵 ④触发规则 ⑤推荐组合 + 差距收窄试算」+「**KILL-MOCK 铁律**：5 区全部从真 `invokeSolver('decision_play')` 输出渲染，零写死数字」。已注册 renderer（`views/registry.ts:56`）+ 短键别名（`:33 decision: "decision-play"`）+ 专用路由（`App.tsx:138`） | ⚠ **相反** |
+
+  → **这正是"沙盘事故"的原型再现，只是主角换成了 PRD 自己**：一份**特意写了"诚实登记"节**的 PRD，四条待办里三条已经被别人做完了而没人回写。任何按此 §5 排期的人会重复造 PageContext 注入、重复种 capacityDaily、重复建决策页。
+- **结论**：✅已实现（引擎/契约/内核/CEO 路由/决策页全在） · **⚠PRD 自身陈述与现状不符**（§5 的 4 条 ⛔ 待接里 3 条已闭，仅「6 drill 证据前端」属实）
+- **最小 WO 建议**：
+  - `WO-DOC-INFERENCE-LINE-WRITEBACK`（**优先**）：🚦只碰 `docs/PRD-inference-line.md` §5 —— 三行 ⛔ 改 ✅ 并补真实锚点（`sessionStore.ts:52-89,139-141` / `battery.ts:909,3566` / `views/DecisionPlayView.tsx`），只留「metric-domain 6 drill 证据前端」一条 ⛔。
+  - `WO-METRIC-DRILL-EVIDENCE-FE`（**唯一真缺口**）：🚦只碰 `apps/frontend-shell/src/views/`（归因面板消费 6 类证据对象）+ `apps/frontend-shell/src/api/endpoints.ts`。引擎已产、契约已定 —— PRD 原话「**6 闲置资产**」，此判定经复核成立。
+
+---
+
+## 二、汇总表
+
+| # | PRD | 结论 | 缺的那半（一句话） |
+|---|---|---|---|
+| 1 | PRD-de-battery-multitenant-config | ◐ | `deriveDag`（DAG 从 plan 派生）与 `termAlias`（行业别名）两项 0 命中 |
+| 2 | PRD-decision-resource-intelligence-layer | ◐ | 四个 DRIL 事件零实现、本体 §4 未登记 |
+| 3 | PRD-demand-pulled-growth-engine | ◐ | `feature.growth-engine` 未注册，8 个 growth 路由无 entitlement 门 |
+| 4 | PRD-deterministic-cross-domain | ✅ | （暗发默认关，"开"侧 SEAM 覆盖未查清） |
+| 5 | PRD-discover-real-type-names | ✅ | — |
+| 6 | PRD-dogfooding-self-ontology | ✅ | — |
+| 7 | PRD-empty-tenant-bootstrap | ◐ | CLI `platform bootstrap` 未实现、GUI 向导零接线、agent 无直达工具 |
+| 8 | PRD-external-signal-domain | ✅ | —（反而**超出** PRD：P2 时序+敏感性已提前落地） |
+| 9 | PRD-fde-fullstack-build-workflow | ◐ | `capability.indexed` 事件零实现（体验级 DoD 未查清） |
+| 10 | PRD-frontend-addendum-remaining-views | ✅ | （`view.geo-map` 双注册一处未查清） |
+| 11 | PRD-frontend-addendum-sim-views | ✅ ⚠ | §7.13 三滑杆规格 + F19 已被 DynamicLeverPanel 取代，PRD 未回写 |
+| 12 | PRD-frontend | ✅ | （F1–F13 逐条测试对号未查清） |
+| 13 | PRD-fullstack-story-build-g8 | ✅ | — |
+| 14 | PRD-gate-ledger | ✅ | —（顺带查出 `cli-parity` 门 fail-open，见下） |
+| 15 | PRD-generation-boundary-grounding | ◐ | 边界"可发布对象化"整条支线未做（无 boundary 契约/表/R4/两事件） |
+| 16 | PRD-generic-inference | ✅ | —（PRD 与本体的求解器数字散文全过期） |
+| 17 | PRD-global-sim-live-upgrade | ◐ | `SimSession` PAUSED/ENDED 迁移未补；`sim:check` alias 不存在 |
+| 18 | PRD-global-sim | ✅ ⚠ | §6「七维尚未上屏」+ §2「GSIM-4 在途」两条均已过期 |
+| 19 | PRD-goal-metric-owner-spine | ✅ | （附录 B 全量视图覆盖率未查清） |
+| 20 | PRD-implementation-handbook | ⚠ | §1「固定不可变更」工程基线 5 条与现实相反，且仍作启动提示词分发 |
+| 21 | PRD-in-dialog-gap-fill-loop | ◐ | 对话坞内就地 R4 审批面板未实现、SSE 进度回灌未接 |
+| 22 | PRD-inference-line | ✅ ⚠ | §5 的 4 条 ⛔ 待接里 **3 条已闭**，仅 1 条属实 |
+
+**计数**：✅ 12 · ◐ 8 · ❌ 0 · 其中带 ⚠（PRD 自身陈述与现状不符）**4 份**（#11 / #18 / #20 / #22）。
+
+### 2.1 ⚠ 专章：PRD 断言了一件可核实的事、而事实相反
+
+> 这一类是本次审计最有价值的产出 —— 它们不会让人"少做事"，而会让人**做错事**（重复造已有的东西 / 按废弃规范开工 / 按失效用例判失败）。
+
+| PRD | 原文断言 | 实测反证（file:line） | 危害 |
+|---|---|---|---|
+| **PRD-inference-line §5** | 「CEO-6 前端 PageContext 注入 ⛔ 待接 · 前端 **零 `pageContext` 命中** · **门恒关**」 | `apps/frontend-shell/src/store/sessionStore.ts:52-89 derivePageContext()` + `:139-141` 随查询搭车注入；20 处非 mock 命中；门另一端 `agentcore/src/router/orchestrator.ts:583-584` 在读 | 重复造 CEO-6-FE |
+| **PRD-inference-line §5** | 「`Line.capacityDaily` ⛔ 未种」 | `apps/datacore/src/synthetic/battery.ts:909`（属性）+ `:3566 capacityDaily: perLineDailyPacks`（确定性派生真值） | 重复种子 + 误判供给端归因退 0 |
+| **PRD-inference-line §5** | 「决策页前端（一页看全·R17）⛔ 待接」 | `apps/frontend-shell/src/views/DecisionPlayView.tsx:11-21`（5 区一页 + KILL-MOCK 铁律）+ `views/registry.ts:56` + `App.tsx:138` | 重复造决策页 |
+| **PRD-global-sim §6** | 「SOLVER 的七维 `GlobalSimResponse` **尚未上屏**」 | `views/sim/GlobalSimView.tsx:276-277`（WO-SURFACE-7DIM · `twoStage:true` → `globalSimOptimize` 返 `GlobalSimResponse` additively 叠加） | 重复做上屏 WO |
+| **PRD-global-sim §2** | 「GSIM-4-AGENT · NL 大脑 · ⏳在途」 | `apps/agentcore/src/agent/sim-planner.ts` 三处生产消费（`orchestrator.ts:55`/`coordinator.ts:7`/`server.ts:61`）+ `compose-sim-seam.test.ts` 在 agentcore/test | 排期歪掉 |
+| **PRD-frontend-addendum-sim-views §7.13 + F19** | 「what-if 三滑杆：加夜班 0–3 / 扩化成通道 0–6 / 外协 0–20%」「外协滑到 20% 截止并提示 C08」 | `views/sim/ProjectSimView.tsx:160`「已从『焊死 whatIf 三系数』**迁到动态杠杆走 generic_inference**」+ `:873-886` 挂 `DynamicLeverPanel`（G-WHATIF-HARDCODED-LEVERS 已收） | 按失效用例验收 → 误判"未实现" |
+| **PRD-implementation-handbook §1**（自称「固定，不可变更」） | zod@3 / 每模块四件套 `routes.ts,service.ts,repo.ts,types.ts` / `shared/http.ts` / node-pg-migrate / `docs/OPEN_QUESTIONS.md` | 实测：zod `^4.0.0`（4 处 package.json）· `find -name routes.ts` **0 命中** · `apps/datacore/src/shared/` 不存在 · `grep node-pg-migrate` **0 命中**（实为 `repo/pg.ts:643 runMigrations` 自研）· `docs/OPEN_QUESTIONS.md` 不存在 | **危害最大**：§5 仍是可直接粘贴给新 agent 的启动提示词，照做必返工 |
+
+### 2.2 顺带查实的门禁反例（不在 22 份范围内，但由 gate-ledger 复验中带出）
+
+**`scripts/check-cli-parity.mjs` 是一道 fail-open 的绿门。**
+
+- 病根：`:38 const doRouted = /cmdDo|operations\/classify/.test(cli);` —— **文件级布尔**。只要 `platform-cli.mjs` 里存在 `cmdDo`，循环里 `const reachable = cliCmds.has(e.cliCommand) || doRouted` 对**每一条**都恒真。
+- 实测：`OPERATION_CATALOG` 35 条 cliCommand 中，**24 条**在 `platform-cli.mjs:507` 的 run 表里不存在（`agent workflow skill mcp eval llm ops tenant catalog connection meta slice sop validate metric notify boundary calib policy signals quarantine features kb bootstrap`），门仍打印「缺实现（基线 0 · 当前 0 · 回潮 0）✓」。
+- 加重：`cmdDo`（`:442-462`）**只分类并打印**、不执行 —— 它打印「CLI 等价命令：bootstrap」，而 `bootstrap` 命令不存在，用户照提示敲会撞 unknown command。
+- 再加重：据 `scripts/gate-ledger.json`，该门自身 `binding: "NONE"`（零调用方）+ `disposition: "WIRE"`（该接未接）+ `provenRed: "NEVER"`。**门是假绿的、门本身还没接线、门从没红过——三重。**
+- 讽刺的是 `PRD-gate-ledger.md §6.3` 恰好点名要小心这一条（「不要看见零调用就判 DELETE」），定性也定对了（`WIRE`），只是 §2.2 明确把"判据是否正确"排除在外——**属该 PRD 声明过的诚实边界内，不是它的失职**。
+
+---
+
+## 三、按投入产出排序的补做建议
+
+> 排序依据：**危害 ÷ 工作量**。前 3 条都是"改文档/改判据"级别的小工作量，但堵的是"让人做错事"的洞；真功能缺口排在其后。
+
+| 序 | WO | 类型 | 工作量 | 为什么排这里 |
+|---|---|---|---|---|
+| **1** | `WO-CLI-PARITY-TEETH` —— `check-cli-parity.mjs:38` 的 `doRouted` 从文件级布尔改逐条判定；24 条缺实现入 `cli-parity-baseline.json`（只降不升）；ledger 里 `binding` 接进 gates | 门禁 | XS（改 1 个函数 + 1 个 json） | 一道**永远绿、守的东西 68% 是空的**门，是"假绿产能"的源头。改完立刻暴露真实洼地，且棘轮保证不阻塞现状。**唯一需要注意**：改判据后门当场红 24 条，必须同批把基线设为 24 |
+| **2** | `WO-DOC-HANDBOOK-DEPRECATE` —— `PRD-implementation-handbook.md` 顶部加「历史文档 + §1 已被现实取代」并逐条勘误 5 项，或整份归档 | 文档 | XS | 它是**唯一一份会主动把新 dev 带沟里**的文档（§5 是可直接粘贴的启动提示词）。⚠ 动前先跑 `grep -rl` 并**点开确认**是否被 `prd:check`/`check-prd-coverage.mjs` 读取（提及 ≠ 读取） |
+| **3** | `WO-DOC-STALE-WRITEBACK` —— 合并三份回写：`PRD-inference-line.md §5`（3 行 ⛔→✅）+ `PRD-global-sim.md §2/§6`（两条过期）+ `PRD-frontend-addendum-sim-views.md §7.13/F19`（三滑杆→动态杠杆） | 文档 | S | 直接防"重复造已有的东西 + 排期歪掉"。**这三处合起来是本批 4 个 ⚠ 里的 3 个** |
+| **4** | `WO-GROWTH-FEATURE-GATE` —— 注册 `feature.growth-engine` + 8 个 growth 路由加门 + 一条「关→404」测试 | 功能 | S | 违反 CLAUDE.md 铁约定「Entitlement 先于 authz」；8 个端点当前完全无开关。改动面小、判据清晰 |
+| **5** | `WO-EVENTS-BUNDLE` —— 合并 `capability.indexed`（FDE）与 4 个 DRIL 事件（`resource.indexed`/`quality_updated`/`tags.updated`/`dril.registry_invalidated`） | 功能 | M | 两单都动 `event-subscriptions.ts` + 本体 §4 + `store/eventInvalidation.ts`，**分开做必冲突**。⚠ `ontology:check` 强制「代码事件数 == 本体覆盖数」（今日 51==51），两边必须同 commit 改 |
+| **6** | `WO-BOOTSTRAP-GUI` + `WO-BOOTSTRAP-CLI` —— 前端「一键引导」按钮接 `/a/v1/bootstrap`；CLI 补 `cmdBootstrap` | 功能 | M | 后端 7 步编排 + 幂等 + 测试都建好了，**只差两个消费方**。典型"接线"活，性价比高。CLI 半与序 1 天然同批（都动 `platform-cli.mjs` 与 parity 门） |
+| **7** | `WO-METRIC-DRILL-EVIDENCE-FE` —— 归因面板消费 6 类 metric-domain 证据对象 | 功能 | M | `PRD-inference-line §5` 唯一属实的 ⛔。引擎已产、契约已定，是真正的"6 闲置资产" |
+| **8** | `WO-GAPCARD-INLINE-APPROVAL` —— GapCard 内联 R4 审批面板（复用 DataBuilderPage 那套，别造第二套） | 功能 | S–M | 对话坞 HITL 闭环缺的最后一环；不做则"写真值走审批"在对话路径上无落点 |
+| **9** | `WO-SIMSESSION-STATE-CLOSE` —— `SimSession` PAUSED/ENDED 迁移；顺带把 `check-sim.mjs` 按 ledger 定性处置 | 功能 | S | PRD 自己点名的残口；顺带消灭一个死门 |
+| **10** | `WO-DEBATTERY-TERMALIAS` —— 行业别名映射层 | 功能 | M | 8c 唯一未做项。**但**：只有在真要接第二个行业时才有价值，否则是纯预投资 |
+| **11** | `WO-DEBATTERY-DERIVEDAG` —— `buildDag` → `deriveDag(plan, ontology, out)` | 功能 | L | ⚠ **先解冲突再动手**：`PRD-de-battery §3.1` 要「DAG 从 ExecutionPlan 派生」，而 `PRD-frontend-addendum-sim-views §7.13` 要「六层固定」——**两份 PRD 互相矛盾且都还挂着**，先裁决再排期 |
+| **12** | `WO-BOUNDARY-PUBLISHABLE` —— GenerationBoundary 一等对象化 + 迁移 + R4 审批 + 两事件 | 功能 | L | ⚠ **建议先由仓主裁决**：代码册（现状，`base-registry.ts` + 零容忍门）与可发布对象（PRD 原意）是**互斥路线**——代码册的强项恰是"门能零容忍"，改成运行时可发布会把这道门的牙拔掉。**别默认按 PRD 补** |
+
+### 3.1 明确"不建议做"的
+
+- **不建议**把 `PRD-generic-inference` / 本体 §2.E 里的"求解器 N 个"散文数字逐处订正 —— 机器门（`ontology:check`）核的是枚举列表本身（今日 59==59 绿），散文数字改一次还会再漂。**正确做法是把散文改成「以 `SOLVER_KEYS` 枚举为准」一句话，一次性根治。**
+- **不建议**为 `PRD-external-signal-domain` 补任何功能 —— 它已超额完成（P2 的时序 + 敏感性都提前落了）。只需回写 §1 非目标那两条，否则会让人以为还有活。
+
+---
+
+## 四、诚实交底：这份对账没做到的
+
+1. **没跑任何 vitest 套件。** 本批全部结论基于代码静态追踪 + 单跑门脚本。凡涉及"测试是否绿""某分支是否被生产实参覆盖"的判断，一律标了「未查清」。具体三处：#4 的暗发"开"侧 SEAM 覆盖、#12 的 F1–F13 逐条对号、#9 的体验级 DoD。
+2. **门脚本只跑了 4 个**（`check-debattery` / `check-cli-parity` / `check-boundary-singlesource` / `check-system-ontology` / `check-gate-ledger`），且 `check-gate-ledger` 因未 build 而红 28 条 dist 路径 —— 已在正文说明这是构建序依赖、真实门流（`gate.sh:42` 先 build）中为绿，**但我没有亲自 build 后复跑确认**。
+3. **附录级内容抽样而非全量**：#19 SPINE 的附录 B「7+ 视图逐一改读 Metric」只抽验了 `DashboardView`；#10 的 `view.geo-map` 双注册只查了 agentcore 侧。
+4. **本次自己踩过一次坑并当场纠正**（记下来供后人避）：核 `rootChains` 时用了 `grep ... | head -10`，前 10 行恰好全是 mock/test 文件，差点得出「四层根因链只有 mock 有」的错误结论。去掉 `head` 后 23 处命中里 `apps/datacore/src/solvers/risk.ts:1122,1467` 与 `packages/contracts/src/planviews.ts` 赫然在列。**`head -N` 与 `git grep` 的单星 pathspec 是同一类陷阱：工具本身在骗你。报"只有 X 有"之前，先去掉截断跑一遍全量。**
