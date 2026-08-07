@@ -455,3 +455,182 @@
     + 一条 seam 测试（断言 Metric.actual 与 attainment:base 日序同值）。
   - `WO-TSB-2`（轻）：把 AgentCore 侧的达成率提示词/mock 从 `attainment:line` 改指 `attainment:base`
     （`apps/agentcore/src/mocks/seed.ts:1673`、`mocks/clients.ts:950`），让 agent 真会去问这条序列。
+
+---
+
+### docs/PRD-attribution-routing-plan-audit.md
+- **它要做什么**：修「归因能力存在却路由不到」的接缝——把"未达成原因/达成率归因"问句**路由到 `plan_audit`**、
+  `discover` 暴露它、并给 `plan_audit` 补入参三级兜底（`plan_version_id ?? currentPlanVersion ?? PlanTarget 基线`）。
+- **PRD 自称的 AS-IS**（§2，带 file:line 的 6 行表）：
+  归因能力 ✅ 在 `plan_audit`（plan.ts:5）但**路由不到**；关键词路由 ❌ 无 plan_audit 归因词；
+  discover ❌ 未暴露；入参兜底"solvers.ts:170 已支持但调用/agent 路径没用上"。
+- **实测现状**（三条设计分别是三种结果，必须分开说）：
+  - **§3.3 入参三级兜底 ✅ 已实现，且注释直接引用本 PRD**：
+    `apps/datacore/src/app.ts:2799-2807`
+    「CL.6（PRD-attribution-routing-plan-audit）：plan_audit 入参三级兜底——缺数值入参时自动取
+    currentPlanVersion（其本身再 ?? PlanTarget/场景包基线确定性派生，sop.ts:419）」，
+    真实逻辑：10 个必填数值字段任一缺 → `args = { ...cur.input, ...args }`（基线兜底 + 显式覆盖）。
+  - **§3.1 关键词路由到 plan_audit ❌ 未实现（❶）**：
+    PRD 说改 `apps/agentcore/src/databuilder/comprehend.ts` —— **该文件不在 agentcore，在 datacore**
+    （`apps/datacore/src/databuilder/comprehend.ts`；PRD 的路径写错了，别据此判"文件不存在=没做"）。
+    真文件里：`SOLVER_TARGET_VIEW`（`:524-532`）只有 6 个键（affected_orders / capacity_forecast /
+    shared_bottleneck / concentration_risk / supplier_disruption_radius / margin_attribution / selection_optimize），
+    **无 `plan_audit`**；`SOLVERS` 表里 solverKey 只有 4 条（`:512-516`），也无 `plan_audit`。
+    PRD 点名的符号 `KEYWORD_SOLVER` 全仓零命中。
+  - **§3.2 discover 暴露 plan_audit 为"归因"入口 ❌ 未实现（❶）**：
+    `apps/datacore/src/catalog.ts:53` 的 `plan_audit` 条目
+    `answersQuestions: ["这个计划版本达成率多少","计划体检评分是多少","计划的风险敞口多大"]`、
+    `tags: ["计划体检","达成率","audit"]` —— **没有**"未达成原因/偏差根因/为何没达标"。
+- **⚠ 但用户诉求实际上被另一条链满足了（跨命名复核·差点误判为❌）**：
+  「为什么没达标 / 未达成原因」这类问句今天由**另外两个求解器**接住：
+  - `apps/datacore/src/catalog.ts:87` `gap_attribution`，`answersQuestions` 含
+    「为什么这个指标没达标」「储能份额为什么下降逐层拆根因」「总缺口一路归到哪些最终根因、各占多少」；
+  - `apps/datacore/src/catalog.ts:78` `plan_rootcause`，`answersQuestions` 含「KPI 为什么没达标」「根因在哪个因子」；
+  - 意图侧：`apps/agentcore/src/mocks/seed.ts:678`
+    `{ key: "ceo_root_cause", solver: "gap_attribution", examples: ["为什么没达标","根因是什么","缺口拆解到最终根因"] }`。
+  ⇒ **"路由不到归因能力"这个病已经好了，只是治法与 PRD 开的方子不同**（走 `gap_attribution` 而非 `plan_audit`）。
+  如果只 grep `plan_audit` 就下"未实现"的结论，会把一条已通的链报成断的 —— 这正是「同一件事不同名」的坑。
+- **结论**：◐ 部分（**§3.3 已实现；§3.1/§3.2 未按 PRD 实现，但等价能力经 `gap_attribution` 已通**）
+- **§3.4 时间维度归因**：未接（见上一条 `attainment:base` 零消费方）。
+- **最小 WO 建议**：`WO-AR-1`（极轻·**先改 PRD**）：把 §2/§3 的"路由到 plan_audit"改为
+  "已由 `gap_attribution`/`plan_rootcause` 承担（catalog.ts:87/:78）"，只保留仍真缺的
+  §3.2（给 `plan_audit` 的 `answersQuestions` 补"计划偏差/未达成"若确需）与 §3.4。
+  🚦范围边界：`docs/PRD-attribution-routing-plan-audit.md` +（可选）`apps/datacore/src/catalog.ts:53` 一行。
+
+---
+
+### docs/PRD-build-workflow-runtime.md
+- **它要做什么**：把数据构建发动机的"故事→建域"从**一段内存 try-块**升级为**持久化 6 步工作流状态机**
+  （落库检查点 / 崩溃可 resume / 有界退避重试 / 逐步可观测 / gap_analysis 一等步 / 异步 submit-and-detach）。
+- **PRD 自称的 AS-IS**：**版本行直接写 `状态 LANDED`**，§3 的 AC1–AC11 **每条都打了 ✓**。
+  这是本批唯一一份自称"已落地并逐条自验"的 PRD —— 所以我把它当**待复核的断言**逐条核，而不是照抄。
+- **实测现状**（§2「实现锚点」7 个锚点逐个核，全部存在）：
+  - `apps/datacore/src/databuilder/workflow-engine.ts` ✅
+  - `apps/datacore/src/databuilder/provisioners.ts` ✅（AC10 的 13 provisioner 覆盖门）
+  - `apps/datacore/migrations/023_build_workflow_runs.sql` ✅（R9 四处之一）
+  - `apps/datacore/test/build-workflow-engine.test.ts` ✅ / `apps/datacore/test/provisioners.test.ts` ✅
+  - `apps/frontend-shell/test/f55.workflow-timeline.test.tsx` ✅
+  - 端点**比 PRD 写的还多**：`apps/datacore/src/app.ts:3797`（POST）`:3808`（**recover**，AC11）
+    `:3901`（GET 列表）`:3906`（GET 单条）`:3912`（**fde-graph**，PRD 未提）`:3917`（resume）。
+- **结论**：✅ 已实现（自称 LANDED 属实；且端点集是 PRD 的超集）
+- **未查清**：AC8「datacore 全套（449）绿」与 AC3/AC5 的**运行时行为**（重试计数/自愈）我**没有实跑测试套件**
+  （只读审计，且 CLAUDE.md 铁律 2 禁并发 datacore vitest）。诚实记为未查清；
+  卡在：需独占跑 `pnpm --filter datacore test` 才能断言。锚点与断言文件的**存在性**已逐条核实。
+
+---
+
+### docs/PRD-capacity-feasibility-demanddelta-fix.md
+- **它要做什么**：修 S01「订单可承接性评审」的四个缺陷——`demandDelta` 是死参数（"+20%"从不参与计算，
+  `gapPct` 结构性恒 0）、无 p50===0 全零诚实门、P50/P90 单位错标 GWh（真口径万套）、compute 步溯源弹窗"薄"。
+- **PRD 自称的 AS-IS**：§1.2 **A–G 七条根因，每条带 file:line + 可复现的 curl 对照**
+  （`{modelId,demandDelta:0.2,weeks:6}` → `gapPct=0,qty=0` vs `{modelId,qty:40,weeks:6}` → `gapPct=0.714`）。
+  **且版本行自称「状态：草案（待「待定决策」§5 签署后进入实现）」「本 PRD 仅文档；不改源码」。**
+- **实测现状**（G1–G4 逐条核）：
+  - **G1 `demandDelta` 真驱动缺口 ✅**：`apps/datacore/src/solvers/capacity.ts:396-397`
+    注释已从"legacy alias"改为「PRD-CAP-DEMANDDELTA：相对增量，驱动 effectiveDemand = 基线 × (1 + demandDelta)」；
+    `:528-532` `const effectiveDemand = round((qty > 0 ? qty : baselineDemand) * (1 + demandDelta), 4);`
+    —— 即 §5 推荐的 **(b) 订单簿基线**口径被采纳。输出回显 `:708`，公式溯源 `:714`
+    `effectiveDemand: { formula: "(qty > 0 ? qty : baselineDemand) × (1 + demandDelta)", valueLabel: "有效需求（万套/窗口）" }`。
+    契约同步 `packages/contracts/src/solvers.ts:132-135`；AgentCore mock 同步
+    `apps/agentcore/src/mocks/clients.ts:493-520`（**两侧口径一致，不是只改一半**）。
+  - **G2 全零诚实门 ✅**：`apps/datacore/src/solvers/capacity.ts:657 if (p50 === 0)` →
+    `:674 dataMode: "EMPTY"` + `:675 feasibilityNote: "该型号认证基地当前产能数据为零，无法评估可承接性
+    （数据缺口，见断点 G-CAPACITY-BASE-DATA）"`（与 §4.2 设计逐字一致）。
+  - **G3 单位口径 ✅**：`apps/agentcore/src/mocks/seed.ts:305-308` 注释
+    「PRD-CAP-DEMANDDELTA：capacity_forecast 输出单位统一为「万套/窗口」，不再沿用 GWh」，
+    三个 KPI（P50/P90/**有效需求**）`unit: "万套"`。
+  - **G4 溯源带公式/口径 ✅**（部分证据）：`capacity.ts:711-714` 给 p50/p90/effectiveDemand 各挂
+    `{ formula, valueLabel }`；`:564` 另有 p90 的口径说明。
+  - 回归测试：`apps/datacore/test/capacity-demanddelta.test.ts` 存在。
+- **结论**：✅ 已实现（G1–G4 全落，且实现遵循了 §5 推荐的 (b) 口径）
+- **⚠ PRD 自身陈述与现状不符（1 处，且是最容易误导人的一种）**：
+  文首版本行仍写 **「状态：草案（待「待定决策」§5 签署后进入实现）」** 与 **「本 PRD 仅文档；不改源码」**，
+  §5 更明确写「**在签署前，实现方不得默认落地任一口径**」。
+  **实测口径 (b) 早已落地在生产代码里**（`capacity.ts:532`）。
+  ⇒ 任何按文首状态行判断的人都会得出"这个 bug 还没修"的错误结论，
+  而这正是本次审计要防的那类错误的**文档侧变体**：不是待办状态骗人，是 PRD 自己的状态行骗人。
+- **最小 WO 建议**：`WO-CDD-1`（极轻·纯文档）：把状态行改为 `LANDED`，
+  在 §5 下补一行「已签署口径 = (b) 订单簿，落点 `apps/datacore/src/solvers/capacity.ts:528-532`」。
+  🚦范围边界：`docs/PRD-capacity-feasibility-demanddelta-fix.md` 单文件。
+
+---
+
+### docs/PRD-capacity-inference-completion.md
+- **它要做什么**：补产能推演域四类缺口——D1 Equipment/EquipmentOEE 只给常州生成（12 基地全 0）、
+  D2 基地键 id/中文无归一、E1 `gap_attribution` 无 base×factor 作用域、F1 每基地 +30/60/90 天前瞻、P1 逐日行动过程。
+- **PRD 自称的 AS-IS**（§1，**活系统真跑的纠偏表**——本批质量最高的一份 AS-IS）：
+  它**推翻了前端自诊断**（"合肥无结构节点/订单不在"两条判为 ❌ 前端错），
+  并指出真根因是"Equipment 50 + EquipmentOEE 50 = 100% changzhou，其余 12 基地全 0"。
+  **这份 AS-IS 本身就是"别信间接证据、去真跑"的正面教材。**
+- **实测现状**（D1/D2/E1/F1/P1 逐条核）：
+  - **D1 ✅ Equipment 已全基地生成**：`apps/datacore/src/synthetic/battery.ts:3533 for (const b of bases)`
+    → 基地 → 产线 → `SERIAL_STEPS` 工序 → `:3587 for (let e = 1; e <= 2; e++)` → `:3595 equipment.push({... baseId: b.baseId ...})`。
+    EquipmentOEE 随之全覆盖：`:4188-4189 for (const eq of equipment)`（按设备逐台产 7 天快照）。
+    ⇒ PRD 描述的"只对常州产 50 台"已不成立。
+  - **E1 ✅ `gap_attribution` 已接 `scope`**：`apps/datacore/src/solvers/service.ts:1418 gapAttribution`、
+    `:1424 const scope = (args.scope ?? {}) as { baseId?: unknown; factorId?: unknown };`、
+    `:1493` 回填 `res.scope = { baseId, displayName, factorId, factorApplied }`。
+    代码里还留了一条**自我纠错注释**（`:1482-1485`）：曾把已解析的 `scope.baseId` 整个丢掉 →
+    前端匹配不到基地节点 → 整棵树消失成"诚实灰"，已修。
+  - **D2 ✅ 基地键归一**：`:1493` 与 `:1672,:1710,:1744` 的 `displayNameOf(scopedBaseId)` / `dName`。
+  - **F1 ✅ 新求解器 `base_capacity_outlook` 已落且已注册**：
+    实现 `apps/datacore/src/solvers/base-outlook.ts`、注册 `apps/datacore/src/solvers/service.ts:153`、
+    目录 `apps/datacore/src/catalog.ts:95`（四线口径、crossDay、dayPlan 逐日行动全在 description 里）。
+  - **P1 ✅ 逐日 rationale**：`apps/datacore/src/solvers/base-outlook.ts:17,:62`
+    （dayPlan 每条日行动带 `day/date/action/rationale/triggerValue/closesGap/provenance`），
+    并与 `apps/datacore/src/solvers/risk.ts:811-812` 的处置表**同一份实现**（单一出处，不分叉）。
+- **结论**：✅ 已实现（D1/D2/E1/F1/P1 五项全落，且 F1 是新增求解器而非 `horizonDays` 扩展——
+  PRD §3-F1 给的正是这两个选项之一）
+- **未查清**：§4 SEAM-1 要求的「**活系统 curl 亲验** `gap_attribution({scope:{baseId:"hefei"}})` 出合肥非空设备叶」
+  我没有实跑（只读审计）。诚实记为未查清；卡在：需起 datacore + SEED_DEMO=1 才能验墙钟结果。
+  静态证据（全基地 equipment 循环 + scope 解析 + displayName 归一）三条链都在。
+- **另记**：§3-D1 的对象预算护栏（"每基地 8–15 台、13 基地 ≈ 130–180 台"）与实测生成规则
+  （每产线每工序 2 台）口径不同，实际台数取决于 `WORKSHOP_DEFS.length × SERIAL_STEPS.length × 2`；
+  **金值断言在 `apps/datacore/test/` 的 demo-chain 测里**（PRD 提到基线 11082→+~250），我未实跑核对具体数。
+
+---
+
+### docs/PRD-capacity-live-cockpit.md
+- **它要做什么**：把产能推演页（view key **`risk`**）从"死 BI"升级为"活台"——
+  ①拨动原子因子就地 `generic_inference` 真重算 ②真 NL 人机对话（替正则假 NL）③方案存/分支/横比。
+- **PRD 自称的 AS-IS**（§2，**6 行 C1–C6 表 + 一行范式对照，每行带 file:line**）：
+  C1 八个块全只读；C2 前端调 `gap_attribution` 不传作用域（**引擎已支持、前端未接**）；
+  C3 派生与 modelId 无关、用代表工序均值；C4 20 因素无 object.property 绑定；
+  C5 `QaPanel` 是正则假 NL；C6 无方案存/分支/比对。
+  **这份 AS-IS 特别注明了"引擎全已建（57 solver 全在），本 PRD 主要是接线 + 一处原子因子深化，非绿地重造"**
+  —— 与我实测一致，是防"重造轮子"的好范例。
+- **实测现状**（三个"活能力"逐条核）：
+  - **§4.1 冻结契约 ✅**：`packages/contracts/src/capacity-factors.ts` 存在（`CAPACITY_FACTOR_BINDINGS`），
+    消费方三处非 test：`apps/datacore/src/solvers/capacity.ts`、`apps/datacore/src/solvers/service.ts`、
+    `apps/frontend-shell/src/views/sim/inspectorModel.ts`。
+  - **§4 `byProcessModel` + `granularity` ✅（治 C3/C4）**：
+    `apps/datacore/src/solvers/capacity.ts:185`（`computeByProcessModel`）、`:398-399`（`granularity?: "base"|"process-model"`）、
+    `:683`（`granularity==="process-model"` 才算，缺省不输出 → 向后兼容）、`:695`（additive 挂输出）；
+    契约冻结 `packages/contracts/src/solvers.ts:61-62`（注明"字段名冻结"）。
+  - **活能力① ✅（治 C1）**：`DynamicLeverPanel` 已参数化并挂进产能页 ——
+    `apps/frontend-shell/src/views/RiskBoardView.tsx:21`（import）、`:868-880`（挂载，
+    注释写明 `targetType/targetProp` 传 `Base.weeklyCap`、`scopeObjectIds` 传本基地×型号真对象、
+    并提醒"杠杆发现按 `scope.includes(o.id)` 逐对象过滤 → 必须是真 objectId"）。
+    原先只有 `apps/frontend-shell/src/views/sim/ProjectSimView.tsx:20` 用它，现两页共用（单一出处）。
+  - **活能力②（治 C2/C5）◐**：
+    · C2 **已接** —— `RiskBoardView.tsx:718-728` 真传作用域：`const scope = { baseId: baseIdForScope }`，
+      有因子时再 `scope.factorId = rcFactor`，然后 `invokeSolver("gap_attribution", { scope })`。
+    · C5 **真 NL 已加，但假 NL 仍在** —— `:902` 有"活能力② · 人机对话（真 NL·经 orchestrator·替 QaPanel 正则假 NL）"，
+      **而 `:899` 仍在渲染 `<QaPanel .../>`，`:1421` 的 `QaPanel` 函数体也还在**。
+      两者并存（PRD §3.2 原文允许"替 QaPanel 假 NL **或并存**"，所以这是**按设计并存**、不算缺口，
+      但页面上同时有两个问答入口，用户会困惑走哪个）。
+  - **活能力③ ✅（治 C6）**：前端 `RiskBoardView.tsx:1063-1170`（存/分支/横比/采纳走 `plan_change` Action）；
+    **后端真端点存在**：`apps/datacore/src/app.ts:1772`（POST 存，发 `sim.scenario_saved` 事件）、
+    `:1784`（GET 按 baseId 列）、`:1791`（POST compare 横比矩阵）；分支经 POST 的 `parentId` 字段（`:1774`）。
+    MSW 桩同步在 `apps/frontend-shell/src/mocks/handlers.ts:2537,2557,2566`。
+- **结论**：✅ 已实现（三个活能力 + 原子因子深化全落地，前后端都真接）
+- **⚠ 一条会误导人的过期注释（不是 PRD 的问题，是代码里的）**：
+  `apps/frontend-shell/src/views/RiskBoardView.tsx:1066` 仍写
+  「方案存/横比**依赖 WO-LIVE-SCENARIO（未合并则 MSW 桩**·集成接真点见 endpoints）」——
+  实测 `WO-LIVE-SCENARIO` 的后端**已合并**（`app.ts:1772/1784/1791`），这行注释已过期。
+  同页 `:933-936` 另有一条**正面记录**：前端曾内联"引擎不接受 base×factor"的结论并渲染成诚实灰，
+  而"该结论早已过期（本体 §8 `G-GAP-SCOPE` 已闭）"——已改为按错误码分支给下一步。
+  ⇒ 这两条一反一正，说明本页历史上被"过期结论"坑过一次，值得把 `:1066` 一并清掉。
+- **最小 WO 建议**：`WO-CLC-1`（极轻）：删/改 `RiskBoardView.tsx:1066` 的过期注释；
+  并决定 `QaPanel`（`:899/:1421`）是下线还是明确标注为"快捷问答"以区别于真 NL 框。
+  🚦范围边界：`apps/frontend-shell/src/views/RiskBoardView.tsx` 单文件。
