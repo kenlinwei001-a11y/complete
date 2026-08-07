@@ -178,9 +178,6 @@ export const PROVENANCE_BADGE: Record<Provenance, string> = {
   empty: "空",
 };
 
-/** 是否为真值档（≠ 占位/EMPTY）。UI 与统计共用，免得两处各判一次判歪。 */
-export const isRealProvenance = (p: Provenance): boolean => p === "registry" || p === "aggregate";
-
 // ───────────────────────────────────────────────────────────────────────────────
 // 4. 确定性占位值（同 (seed, baseId, suffix, metric) 恒同值 · R6）
 // ───────────────────────────────────────────────────────────────────────────────
@@ -233,10 +230,23 @@ export function heatBand(m: Measure): HeatBand {
   return "normal";
 }
 
+/**
+ * 热力强度的归一化区间。
+ *
+ * WO-TOPO-REALDATA 语义修正：接线前它借用的是 `PLACEHOLDER_RANGES.utilPct` —— 那时格里只有占位值，
+ * 借得通；接了真值之后，**拿一个名叫"占位值域"的常数去缩放实测值**是语义错位（数值恰好一样，
+ * 但下一个人会以为热力强度是占位artefact）。故拆出独立常数，取值与原先逐位相同 → 零行为变化。
+ *
+ * ⚠ 实测发现（写在这里免得被当成 bug 反复查）：真值口径下 130 格的计划工时利用率落在 **89.7–94.0%**，
+ *   全部落进「偏紧(≥80)」与「过载(≥92)」两档，屏上只有两种颜色。这是**数据的真相**（各线可用率本来就高），
+ *   不是阈值坏了；`HEAT_THRESHOLDS` 是业务刻度，改它属于业务裁决，不在本单范围内。
+ */
+export const UTIL_HEAT_RANGE = { lo: 52, hi: 98 } as const;
+
 /** 热力填充强度 0–1（EMPTY 恒 0：空就是空，不许靠颜色暗示"低"）。 */
 export function heatAlpha(m: Measure): number {
   if (m.value === null) return 0;
-  const { lo, hi } = PLACEHOLDER_RANGES.utilPct;
+  const { lo, hi } = UTIL_HEAT_RANGE;
   const t = (m.value - lo) / (hi - lo);
   return Math.max(0.12, Math.min(1, t));
 }
@@ -462,7 +472,7 @@ export function buildCellFacts(facts: TopologyFacts): CellFactsResult {
       patch.oee = empty(
         "%",
         `该格各条计划工时不等权（min=${minPlan ?? "∅"} / max=${maxPlan ?? "∅"}），OEE 正确合并需 Σ(oee×计划工时)÷Σ计划工时；` +
-          `聚合端点无乘积和能力 → 标 EMPTY，**不拿简单平均冒充加权平均**`,
+          `聚合端点无乘积和能力 → 标 EMPTY，不拿简单平均冒充加权平均`,
       );
     } else {
       patch.oee = aggregate(
@@ -514,7 +524,8 @@ export function buildCellFacts(facts: TopologyFacts): CellFactsResult {
           : aggregate(
               sumQty,
               "电芯",
-              `在制 = Σ WIPLot.qty${nLots === null ? "" : ` over ${nLots} 批`}（按 lineId 归到车间列；**不用** WIPLot.currentProcess —— 该字段在种子里是常量"涂布"，拿它定列会把全部在制塞进一列）`,
+              // ⚠ 上屏文案里不许写 Markdown 记号：这些串直接进 DOM，`**x**` 会原样显示成星号（实拍抓到过）。
+              `在制 = Σ WIPLot.qty${nLots === null ? "" : ` over ${nLots} 批`}（按 lineId 归到车间列；不用 WIPLot.currentProcess —— 该字段在种子里是常量「涂布」，拿它定列会把全部在制塞进一列）`,
             ),
     });
   }
@@ -653,7 +664,7 @@ export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT, facts?: T
           gap ?? NO_FACT_REASON.wip,
         );
       // 节拍不回落占位：一个假节拍会被当作排产输入，比空白危险。
-      const takt = real?.takt ?? empty("s/电芯", gap === null ? NO_FACT_REASON.takt : `${gap}；节拍例外——**不回落占位**，标 EMPTY（假节拍会被当成排产输入，比空白危险）`);
+      const takt = real?.takt ?? empty("s/电芯", gap === null ? NO_FACT_REASON.takt : `${gap}；节拍例外——不回落占位，标 EMPTY（假节拍会被当成排产输入，比空白危险）`);
 
       return {
         key,
@@ -764,7 +775,7 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     status: "connected",
     source: "WIPLot",
     shapeToday: "逐批次 {lotId, woId, modelId, lineId, currentProcess, qty, status}（实测 260 行，每格 2 批；**无 baseId 属性**）",
-    gap: "已接：Σqty，按 lineId 归车间列。**刻意不用 currentProcess** —— 实测 260/260 行恒为「涂布」，拿它定列等于把全部在制塞进一列",
+    gap: "已接：Σqty，按 lineId 归车间列。刻意不用 currentProcess —— 实测 260/260 行恒为「涂布」，拿它定列等于把全部在制塞进一列",
   },
   {
     field: "—",
