@@ -34,11 +34,11 @@
       "acceptanceIds": [
         "A9"
       ],
-      "covered": [],
-      "uncovered": [
+      "covered": [
         "A9"
       ],
-      "coverage": 0
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-addendum-admin-console-closure.md": {
       "acceptanceIds": [
@@ -47,13 +47,12 @@
         "OC2"
       ],
       "covered": [
+        "A9",
         "B2",
         "OC2"
       ],
-      "uncovered": [
-        "A9"
-      ],
-      "coverage": 0.67
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-addendum-capability-routing.md": {
       "acceptanceIds": [
@@ -211,12 +210,11 @@
         "OC2"
       ],
       "covered": [
+        "A9",
         "OC2"
       ],
-      "uncovered": [
-        "A9"
-      ],
-      "coverage": 0.5
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-cli-full-coverage.md": {
       "acceptanceIds": [
@@ -260,14 +258,13 @@
         "A6",
         "A7",
         "A8",
+        "A9",
         "D1",
         "D3",
         "D6"
       ],
-      "uncovered": [
-        "A9"
-      ],
-      "coverage": 0.92
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-demand-pulled-growth-engine.md": {
       "acceptanceIds": [
@@ -405,12 +402,11 @@
         "A5",
         "A6",
         "A7",
-        "A8"
-      ],
-      "uncovered": [
+        "A8",
         "A9"
       ],
-      "coverage": 0.89
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-generation-boundary-grounding.md": {
       "acceptanceIds": [
@@ -579,11 +575,13 @@
         "A6",
         "A7",
         "A8",
+        "A9",
         "B1",
         "B2",
         "B3",
         "B4",
         "B5",
+        "B9",
         "D1",
         "D2",
         "D3",
@@ -591,13 +589,11 @@
         "D6"
       ],
       "uncovered": [
-        "A9",
         "B6",
         "B7",
-        "B8",
-        "B9"
+        "B8"
       ],
-      "coverage": 0.78
+      "coverage": 0.87
     },
     "PRD-skill-runtime-orchestrator.md": {
       "acceptanceIds": [

@@ -689,6 +689,23 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-chain-24nodes.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-cli-full-coverage.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1597,6 +1614,21 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-metro-semantics.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sandbox-ontogenesis-buildplan.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2321,6 +2353,7 @@
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-capacity-feasibility-demanddelta-fix.md",
       "PRD-capacity-live-cockpit.md",
+      "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
       "PRD-inference-line.md",
       "PRD-ontology-7elements.md",
@@ -2380,6 +2413,7 @@
       "PRD-goal-metric-owner-spine.md",
       "PRD-inference-line.md",
       "PRD-quarter-rolling-1to1.md",
+      "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-migration.md"
     ],
@@ -2871,6 +2905,9 @@
     ],
     "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
       "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
+      "PRD-sandbox-metro-semantics.md"
     ],
     "apps/datacore/src/sim/propagation.ts": [
       "PRD-sandbox-redesign.md"
