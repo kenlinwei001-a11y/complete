@@ -158,7 +158,6 @@ describe("ADVERSARY · WO-ADOPT-MITIGATION 证伪", () => {
         lines.push(line);
         if (ref.peak !== card.peak || ref.crossDay !== card.crossDay) diffs.push(line);
       }
-      // eslint-disable-next-line no-console
       console.log(`ADV_B ${tag} 逐格对账（card=risk_timeline 卡面 · agg=订单全链聚合 · peak/crossDay）:\n${lines.join("\n")}`);
       expect(
         diffs,
@@ -180,7 +179,6 @@ describe("ADVERSARY · WO-ADOPT-MITIGATION 证伪", () => {
       .sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0];
     expect(target, "前提：聚合里至少一格的因素有对症处置方案").toBeTruthy();
     const strong = [...lib.data.mitigationLibrary[target!.factor]!].sort((a, b) => b.eff - a.eff)[0]!;
-    // eslint-disable-next-line no-console
     console.log(`ADV_B target=${target!.base}|${target!.factor} plan=${strong.key}(eff=${strong.eff},tn=${strong.tn})`);
     expect((await adopt(t, { base: target!.base, factor: target!.factor, planKey: strong.key })).status).toBe("EXECUTED");
 

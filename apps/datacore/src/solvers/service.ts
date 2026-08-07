@@ -203,12 +203,17 @@ const CHAIN_MATERIAL_SOLVERS = new Set(["risk_timeline", "counterfactual_timelin
 
 /**
  * WO-ADOPT-MITIGATION · 需要「已采纳处置方案台账」（`AdoptedMitigation`）的求解器（**按需加载**·不全表扫）。
- * 只有真曲线要扣 eff 的两个求解器读它（counterfactual_timeline 内部编排 risk_timeline，同依赖）。
+ * 只有真曲线要扣 eff 的求解器读它（counterfactual_timeline 内部编排 risk_timeline，同依赖）。
  * ⚠ 与核心 10 类的 `SOLVER_REQUIRED_TYPES` 裁剪机制**正交**：那套仅在 `dc.lazy-solver-context` 暗发门开时
  * 才透传 solverKey；本集合照 `CHAIN_MATERIAL_SOLVERS` 的既有写法**恒按 solverKey 判**，
  * 否则暗发门关（默认）时采纳记录压根不会被加载 → 采纳又变成"什么都不会发生"（本单要治的病回潮）。
+ *
+ * #82：`affected_orders`（无 baseId → `affectedOrdersAggregate` 订单全链）的 `risks[]` 现走
+ * `risk.ts riskFactorProjection`（= risk_timeline 卡面 peak/crossDay 的**同一函数**）。该投影要吃 ACTIVE 采纳，
+ * 故本集合必须含它——否则 `c.adoptedMitigations` 恒空 → 聚合侧看不见采纳 → "风险看板已降、订单全链还是老数"回潮。
+ * 变异反证：把 `affected_orders` 从本集合摘掉 → `adversary-adopt-mitigation.test.ts` B 条 AFTER 段当场红。
  */
-const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
+const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline", "affected_orders"]);
 
 /**
  * WO-DECISION-INFO ③.2 · 需要「跨基地调拨台账 + 供应商台账」的求解器（**按需加载**·照 ADOPTION_AWARE_SOLVERS 写法）。
@@ -239,8 +244,12 @@ export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType
   //   不读 Line/Process/Equipment/Model/DataSourceHealth/certByModel。
   audit_timeline: ["Base", "MaintPlan", "Order", "Shipment", "Segment"],
   // affected_orders：有 baseId 走单基地 affectedOrders(Base/Order/Shipment/Segment)·无 baseId 走 aggregate
-  //   (+riskEvents ⟹ MaintPlan)。取**两路径并集**覆盖。无 Line/Process/Equipment/Model/DataSourceHealth/certByModel。
-  affected_orders: ["Base", "MaintPlan", "Order", "Shipment", "Segment"],
+  //   (+riskEvents ⟹ MaintPlan)。取**两路径并集**覆盖。
+  //   #82：aggregate 的 risks[] 改走 `riskFactorProjection`（= risk_timeline 卡面同一函数）→ 连带需
+  //   `liveTightness` 的三个真数据源 Line/Process/Equipment（实测张力锚）。**漏声明 = 暗发门开时聚合悄悄
+  //   回落 mock 锚 → 与卡面重新劈裂**（solver-context-lazy-loading.seam SEAM-EQ 会立刻抓红）。
+  //   仍无 Model/DataSourceHealth/certByModel。
+  affected_orders: ["Base", "Line", "Process", "Equipment", "MaintPlan", "Order", "Shipment", "Segment"],
   // plan_audit：仅读 Segment(segMargins) + params·其余全取 args 数值（dem/seg_*/sup/...）。
   plan_audit: ["Segment"],
   // plan_generate：纯读 params.planGenerate + args·**不读任何核心对象类型**（→ 空声明·全部裁掉）。
