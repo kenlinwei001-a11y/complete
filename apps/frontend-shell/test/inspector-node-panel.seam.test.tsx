@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   BASE_REGISTRY,
@@ -15,7 +15,7 @@ import {
   nodeValueAddDays,
 } from "@platform/contracts";
 
-import { InspectorNodePanel } from "@/views/sim/InspectorNodePanel";
+import { HINT_MS, InspectorNodePanel } from "@/views/sim/InspectorNodePanel";
 import {
   VAR_CLASSES,
   VAR_CONTROL_BY_CLASS,
@@ -638,20 +638,43 @@ describe("定时器纪律 · 提示条", () => {
     expect(screen.getByTestId("insp-hint")).toBeInTheDocument();
   });
 
-  it("提示条到点自动消隐，且卸载后不再有句柄存活", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  /**
+   * ⚠ 本例与 `physical-topology.seam.test.tsx` 的同名用例**同族同病**（欠账 #120），一并按同一判据重写。
+   * 旧写法：`vi.useFakeTimers({ shouldAdvanceTime: true })` + `await vi.advanceTimersByTimeAsync(2000)`。
+   * 病在两处，缺一不成灾：
+   *  ① `shouldAdvanceTime: true` 会在测试之外**挂一条真实 20ms `setInterval` 替你 tick 假时钟**
+   *     （实测：真实等 2500ms，假时钟自己走了 2420ms，提示条不用测试推就自己消隐了）。
+   *     于是「谁烧掉这个句柄」取决于机器忙不忙 —— 判据被挂钟绑架。
+   *  ② `advanceTimersByTimeAsync` **不在 `act()` 里**：定时器回调里的 `setState` 何时落到 DOM，
+   *     靠的是 React 异步刷新与 sinon 内部让出宏任务的**顺风车**，测试从未显式驱动它。
+   * 新写法把两条不确定性都拆掉：纯假时钟（无真实 interval）+ `fireEvent`（同步、RTL 自带 act）
+   * + 推进一律裹 `act()`（退出时 React 同步 flush ⇒ 断言点看到的 DOM 必然是已刷新的）。
+   * 另外把「差 1ms 不消 / 到点才消」与句柄计数 0→1→0→1→0 一并咬死：
+   * 旧写法推 2000ms 只能证明「推得够久就消」，证不了「到点消」。
+   */
+  it("提示条到点自动消隐，且卸载后不再有句柄存活", () => {
+    vi.useFakeTimers();
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const { unmount } = render(<InspectorNodePanel input={mkInput()} />);
-      await user.click(screen.getByTestId("insp-reset"));
+      expect(vi.getTimerCount(), "挂载本身不该排定时器").toBe(0);
+
+      fireEvent.click(screen.getByTestId("insp-reset"));
       expect(screen.getByTestId("insp-hint")).toBeInTheDocument();
-      await vi.advanceTimersByTimeAsync(2000);
+      expect(vi.getTimerCount(), "点一次 = 恰好一个句柄").toBe(1);
+
+      // 差 1ms 不消隐 —— 咬的是「到点」，不是「推进过就消」
+      act(() => void vi.advanceTimersByTime(HINT_MS - 1));
+      expect(screen.getByTestId("insp-hint")).toBeInTheDocument();
+      act(() => void vi.advanceTimersByTime(1));
       expect(screen.queryByTestId("insp-hint")).toBeNull();
+      expect(vi.getTimerCount(), "到点后句柄自注销").toBe(0);
+
       // 提示条还亮着就卸载 → 卸载清理必须把句柄带走
-      await user.click(screen.getByTestId("insp-reset"));
+      fireEvent.click(screen.getByTestId("insp-reset"));
       expect(screen.getByTestId("insp-hint")).toBeInTheDocument();
+      expect(vi.getTimerCount()).toBe(1);
       unmount();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.getTimerCount(), "卸载清理必须把句柄带走").toBe(0);
     } finally {
       vi.useRealTimers();
     }

@@ -49,8 +49,13 @@ import styles from "./InspectorNodePanel.module.css";
  *  零硬编码颜色，全部走 `styles/tokens.css` 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
  */
 
-/** 提示条自动消隐（ms）。 */
-const HINT_MS = 1500;
+/**
+ * 提示条自动消隐（ms）。
+ * **导出是给测试用的，且是刻意的**：定时器纪律用例必须按「差 1ms 不消、到点才消」推进假时钟，
+ * 若测试自己抄一份 1500，改了这里而忘了改那里 → 用例悄悄退化成「推得够久就消」，
+ * 门就不再咬「到点」这件事了（欠账 #120 的同族约束）。
+ */
+export const HINT_MS = 1500;
 
 const fmtDays = (d: number): string => `${Math.round(d * 100) / 100} 天`;
 const fmtPct = (p: number): string => `${Math.round(p * 10) / 10}%`;
