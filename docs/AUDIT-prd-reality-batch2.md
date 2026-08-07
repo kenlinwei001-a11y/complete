@@ -136,7 +136,7 @@
   - **S3 调度器**：`apps/datacore/src/scheduler.ts:33`（30s tick）、多副本安全 `FOR UPDATE SKIP LOCKED`
     （`apps/datacore/src/repo/pg.ts:386`）、`MISSED` 不补跑（`scheduler.ts:16,103`）、
     API `/a/v1/scheduler/jobs[/:id/pause|resume|runs]`（`app.ts:4009-4021`）。
-  - **S4.1 知识库语义检索**：`apps/datacore/src/kb.ts` + `appsls/embeddings.ts`（`apps/datacore/src/embeddings.ts`）
+  - **S4.1 知识库语义检索**：`apps/datacore/src/kb.ts` + `apps/datacore/src/embeddings.ts`
     + 迁移 `apps/datacore/migrations/002_addendum.sql`；工具 `search_knowledge` 在
     `apps/agentcore/src/tools/registry.ts` 与 `tools/executor.ts` 均有；测试 `apps/datacore/test/kb.test.ts`。
   - **S4.2 两个次级消费方都真做了**（这类"顺带实现"最常被砍，实测在）：
