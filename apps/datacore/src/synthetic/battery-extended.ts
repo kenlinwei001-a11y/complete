@@ -140,7 +140,24 @@ export function extendedObjectTypes(): TypeDef[] {
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
     // WO-QUOTE-MARGIN-CUSTOMER：+`orderCustNames`（本客户在订单上使用的下单品牌名集合·`Order.cust` 口径）——
     // 客户主数据与订单两套命名之间的**唯一桥**。缺这一列时 `order_of_customer` 只能轮转瞎绑（欠账 #118）。
-    def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("orderCustNames", "json"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
+    def("Customer", "客户", "commercial", [
+      p("custId", "string", true),
+      p("custName", "string"),
+      {
+        propKey: "orderCustNames",
+        dataType: "json",
+        isPrimaryKey: false,
+        description:
+          "本客户在订单上使用的下单品牌名集合（`Order.cust` 口径）——客户主数据的匿名化名册与订单侧品牌名之间的唯一桥。" +
+          "由归属册 `ORDER_CUST_TO_CUSTOMER` 反查派生（排序确定性 R6）；`order_of_customer` 边据此绑定，" +
+          "空集 = 该客户不在归属册内（不认领任何订单，诚实缺席，不参与轮转）。",
+      },
+      p("creditLimit"),
+      p("termDays"),
+      p("receivables"),
+      p("wipUnbilled"),
+      p("maxOverdueDays"),
+    ]),
     // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付/物流/在途/跨基地调拨的地理基础）。省市/经纬度 R14 确定性配置表派生。
     def("CustomerLocation", "客户地点", "commercial", [
       p("locId", "string", true),
