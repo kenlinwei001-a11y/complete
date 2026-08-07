@@ -48,7 +48,7 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
             <div style={{ marginTop: 5 }} data-testid={`exposure-next-outside-${baseName}`}>
               窗外最近一张：<b className="mono">{nx.so}</b> · {nx.cust} · <b className="mono">{nx.qty}</b> {u.qty} ·
               交期 <span className="mono">{nx.due}</span>（D+{nx.dueDay}）· <b>超出本窗 {nx.daysBeyondWindow} 天</b>
-              <span style={{ color: "var(--muted2)" }}>　—— 风险不是不存在，只是不在这个窗里。</span>
+              <span style={{ color: "var(--muted2)" }}> —— 风险不是不存在，只是不在这个窗里。</span>
             </div>
           ) : (
             <div style={{ marginTop: 5, color: "var(--muted2)" }} data-testid={`exposure-next-outside-${baseName}`}>
