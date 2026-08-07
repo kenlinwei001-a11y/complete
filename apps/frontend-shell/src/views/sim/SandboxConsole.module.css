@@ -338,6 +338,60 @@
   margin-top: 6px;
 }
 
+/* ── 在途/在制 时序可算性分级（替代设计稿那个假时钟）───────────────────────── */
+.tierBox {
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--c-capacity);
+  border-radius: 3px;
+  padding: 7px 9px;
+  margin: 0 0 8px;
+  background: var(--panel2);
+}
+.tierList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tierList li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line2);
+}
+.tierList li[data-mode="interpolated"] {
+  border-left-color: var(--ok);
+}
+.tierList li[data-mode="arrival-only"] {
+  border-left-color: var(--amber);
+}
+.tierList li[data-mode="station-resident"] {
+  border-left-color: var(--c-equip);
+}
+.tierList li[data-mode="empty"] {
+  border-left-color: var(--danger);
+}
+.tierList b {
+  font-size: 11px;
+}
+.tierList em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.tierList code {
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+}
+.tierGlyph {
+  font: 700 10px var(--font-mono);
+  color: var(--txt);
+}
+
 /* ── 链路阶段画布（HTML 网格·自动换行 ⇒ 结构上不横滚）────────────────────── */
 /* 卡片瘦身后的宽度常数（交付报告要报的那两个数）：
  *   NW（卡片最小宽） = 132px · GAP = 10px ⇒ GX = 142px。

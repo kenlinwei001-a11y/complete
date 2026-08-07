@@ -18,6 +18,7 @@ import {
   type StationVM,
   type SuspendedVM,
 } from "./chainLineMap";
+import { familyIdentityOf, type FamilyAnchor } from "./chainFamilyLines";
 import {
   fitTransform,
   IDENTITY_TRANSFORM,
@@ -62,6 +63,17 @@ type LoadState =
   | { status: "loading" }
   | { status: "ready"; map: ChainLineMap; summary: string | null; anchorSo: string | null }
   | { status: "error"; code: string; message: string; requestId: string | null };
+
+/**
+ * 多产品族同心环的加载态。**与主链的 `state` 分开** —— 族线是**加性叠加**：
+ * 它取不到数时主链照常画，只是少了另外两圈 + 屏上说明为什么少。
+ * 绝不因为族线失败就把整张图打成空态。
+ */
+type FamilyState =
+  | { status: "off" }
+  | { status: "loading"; count: number }
+  | { status: "ready"; maps: ChainLineMap[] }
+  | { status: "error"; message: string };
 
 interface EnvelopeError {
   code?: string;
@@ -140,8 +152,24 @@ function labelAnchor(angle: number, r: number, x: number, y: number) {
   };
 }
 
-/** 站圈。`r` 是引擎 `pctOfChainLoss` 的纯函数（SEAM 的被观测量），配色全走 token。 */
-function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; onLeave: () => void }) {
+/**
+ * 站圈。`r` 是引擎 `pctOfChainLoss` 的纯函数（SEAM 的被观测量），配色全走 token。
+ *
+ * `sharedAcrossFamilies` = 该 `stepId` 在**每一圈族线上都出现** ⇒ 共线区段的换乘站
+ * （= 共享瓶颈）。这是环形布局相对直线的**信息增益**：三个半径上同角度对齐的双环，
+ * 一眼看出"这道工序被三条产品族线共用"。单圈时恒 false（一条线谈不上共线）。
+ */
+function Station({
+  s,
+  sharedAcrossFamilies = false,
+  onEnter,
+  onLeave,
+}: {
+  s: StationVM;
+  sharedAcrossFamilies?: boolean;
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
   const L = labelAnchor(s.angle, s.r, s.x, s.y);
   return (
     <g
@@ -153,6 +181,8 @@ function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; o
       data-pct={s.pctOfChainLoss === null ? "" : String(s.pctOfChainLoss)}
       data-radius={String(s.r)}
       data-shared-basis={s.sharedBasis === null ? "" : s.sharedBasis.kind}
+      data-shared-families={sharedAcrossFamilies ? "1" : "0"}
+      data-ring-index={s.ringIndex}
       tabIndex={0}
       role="img"
       aria-label={`${s.label}：占全链损失 ${formatPct(s.pctOfChainLoss)}`}
@@ -161,6 +191,10 @@ function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; o
       onMouseLeave={onLeave}
       onBlur={onLeave}
     >
+      {/* 共线换乘：多圈同角度对齐时额外加一圈外环，让"三条族线共用"在图上直接可读 */}
+      {sharedAcrossFamilies ? (
+        <circle className={styles.sharedFamilyHalo} data-testid={`clm-shared-halo-${s.stepId}`} cx={s.x} cy={s.y} r={s.r + 5} />
+      ) : null}
       {s.glyph === "interchange" ? (
         <>
           <circle className={styles.interchangeOuter} cx={s.x} cy={s.y} r={s.r} />
@@ -249,9 +283,17 @@ export type ChainLineMapChrome = "full" | "embedded";
 export interface ChainLineMapExtraProps {
   chrome?: ChainLineMapChrome;
   onPayload?: (payload: ChainLossPayload) => void;
+  /**
+   * WO-SANDBOX-METRO-SEMANTICS · **产品族同心环**（默认不传 = 单圈，独立页零回归）。
+   *
+   * 传入 N 个族锚点 ⇒ 本组件**额外**发 N 次 `chain_loss_attribution`（每族一张真实锚点订单），
+   * 画成 N 圈同心环。三条线之所以不同，是因为**锚点不同**（实测 totals/归因排序/scope 都不同），
+   * 不是给同一份数据上三个颜色。代价（多 N 次请求）在界面上明写。
+   */
+  familyAnchors?: readonly FamilyAnchor[];
 }
 
-export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<ViewRendererProps> & ChainLineMapExtraProps) {
+export function ChainLineMapView({ view, chrome = "full", onPayload, familyAnchors }: Partial<ViewRendererProps> & ChainLineMapExtraProps) {
   const args = useMemo(() => argsFromView(view), [view]);
   /** 回调放 ref：宿主传匿名函数不该把取数 effect 的依赖搅动成每渲染一次就重取。 */
   const onPayloadRef = useRef(onPayload);
@@ -262,6 +304,8 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
   const [t, setT] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [famState, setFamState] = useState<FamilyState>({ status: "off" });
+  const famKey = useMemo(() => JSON.stringify(familyAnchors ?? []), [familyAnchors]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
@@ -332,6 +376,50 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
     };
   }, [argsKey, reloadKey]);
 
+  /**
+   * ── 产品族同心环：每族一次求解器（锚点 = 该族 `so` 字典序最小的真实订单）─────────
+   * 加性叠加：本 effect 失败不影响主链那一圈（`state` 独立）。
+   * 全部请求共用一个 AbortController：切换/卸载时一起取消，不留孤儿请求。
+   */
+  useEffect(() => {
+    const anchors = JSON.parse(famKey) as FamilyAnchor[];
+    if (anchors.length === 0) {
+      setFamState({ status: "off" });
+      return;
+    }
+    let cancelled = false;
+    const ac = new AbortController();
+    setFamState({ status: "loading", count: anchors.length });
+    Promise.all(
+      anchors.map((a) =>
+        runSolver(CHAIN_LOSS_SOLVER_KEY, { so: a.so }, ac.signal).then((raw) => {
+          const parsed = ChainLossPayloadSchema.safeParse((raw as { data?: unknown })?.data ?? raw);
+          if (!parsed.success) throw new Error(`族线 ${a.label}（${a.so}）载荷形状不合契约`);
+          return { anchor: a, payload: parsed.data };
+        }),
+      ),
+    ).then(
+      (rows) => {
+        if (cancelled) return;
+        setFamState({
+          status: "ready",
+          maps: rows.map((r, i) =>
+            buildChainLineMap(r.payload, { family: familyIdentityOf(r.anchor, i, rows.length, r.payload.anchor) }),
+          ),
+        });
+      },
+      (e: unknown) => {
+        if (cancelled) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setFamState({ status: "error", message: readError(e).message });
+      },
+    );
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [famKey, reloadKey]);
+
   const viewportSize = useCallback(() => {
     const el = canvasRef.current;
     return { w: el?.clientWidth ?? 0, h: el?.clientHeight ?? 0 };
@@ -398,8 +486,25 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
   };
 
   const map = state.status === "ready" ? state.map : null;
-  const hovered = map?.stations.find((s) => s.stepId === hoverId) ?? null;
-  const hoveredEmpty = map?.suspended.find((s) => s.stepId === hoverId) ?? null;
+  /**
+   * 要画的圈：族线就绪 ⇒ 画 N 圈族线（每圈一个真实锚点）；否则画主链那一圈。
+   * **不叠加** —— 族线里第一条与主链默认锚点是同一张单，叠上去等于同一条链画两遍。
+   */
+  const ringMaps: ChainLineMap[] = famState.status === "ready" ? famState.maps : map !== null ? [map] : [];
+  /**
+   * 共线区段的**真判据**（环形相对直线的信息增益，必须可算不可装饰）：
+   * 一个 `stepId` 在**每一圈**上都出现 ⇒ 三条族线共用这一环节 ⇒ 它是共享瓶颈。
+   * 只有一圈时该集合恒空（一条线谈不上"共线"），界面据此不画共线标记。
+   */
+  const sharedStepIds = useMemo(() => {
+    if (ringMaps.length < 2) return new Set<string>();
+    const counts = new Map<string, number>();
+    for (const m of ringMaps) for (const s of m.stations) counts.set(s.stepId, (counts.get(s.stepId) ?? 0) + 1);
+    return new Set([...counts.entries()].filter(([, n]) => n === ringMaps.length).map(([id]) => id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ringMaps.map((m) => m.family?.key ?? "base").join("|"), ringMaps.length]);
+  const hovered = ringMaps.flatMap((m) => m.stations).find((s) => s.stepId === hoverId) ?? null;
+  const hoveredEmpty = ringMaps.flatMap((m) => m.suspended).find((s) => s.stepId === hoverId) ?? null;
 
   return (
     <div className={styles.root} data-testid="clm-root" data-chrome={chrome}>
@@ -516,6 +621,17 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
               站 {map.stats.stationCount} · 停运 {map.stats.suspendedCount} · 换乘 {map.stats.interchangeCount} · 增值{" "}
               {map.stats.valueAddCount} · 返工 {map.stats.reworkCount}
             </span>
+            {/* 族线状态：**代价明写**（多发了几次请求），失败也明写（主链照常画） */}
+            {famState.status !== "off" ? (
+              <span data-testid="clm-family-status" data-family-state={famState.status}>
+                {famState.status === "loading"
+                  ? `产品族同心环：取数中（额外 ${famState.count} 次 chain_loss_attribution，每族一张真实锚点单）`
+                  : famState.status === "ready"
+                    ? `产品族同心环 ${famState.maps.length} 圈 · 额外 ${famState.maps.length} 次求解器调用 · 共线换乘 ${sharedStepIds.size} 处` +
+                      `（${famState.maps.map((m) => `${m.family?.label}=${m.family?.anchorSo}`).join(" / ")}）`
+                    : `产品族同心环取数失败：${famState.message} —— 主链那一圈照常画，不因族线失败打成空态`}
+              </span>
+            ) : null}
           </section>
 
           <div className={styles.body}>
@@ -549,7 +665,10 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
                   </marker>
                 </defs>
 
+                {ringMaps.map((rm) => (
+                <g key={rm.family?.key ?? "base"} data-testid={`clm-ring-layer-${rm.family?.key ?? "base"}`} data-ring-index={rm.family?.ringIndex ?? 0}>
                 {/* 环名（族线标识贴在环的正上方；单链形态贴主线名） */}
+                {(() => { const map = rm; return (<>
                 {map.family !== null ? (
                   <text
                     className={styles.lineLabel}
@@ -641,7 +760,16 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
                   <SuspendedStop key={s.stepId} s={s} onEnter={() => setHoverId(s.stepId)} onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))} />
                 ))}
                 {map.stations.map((s) => (
-                  <Station key={s.stepId} s={s} onEnter={() => setHoverId(s.stepId)} onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))} />
+                  <Station
+                    key={s.stepId}
+                    s={s}
+                    sharedAcrossFamilies={sharedStepIds.has(s.stepId)}
+                    onEnter={() => setHoverId(s.stepId)}
+                    onLeave={() => setHoverId((k) => (k === s.stepId ? null : k))}
+                  />
+                ))}
+                </>); })()}
+                </g>
                 ))}
               </svg>
               {hint ? (
