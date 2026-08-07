@@ -8,6 +8,7 @@ import {
   formatDays,
   formatPct,
   LAYOUT,
+  RING_LAYOUT,
   SHARED_BASIS_LABEL,
   STAGE_LABEL,
   STATION_RADIUS,
@@ -119,8 +120,29 @@ function AndGate({ x, y, testId }: { x: number; y: number; testId: string }) {
   );
 }
 
+/**
+ * 环形布局下的**标签摆位**（设计稿 `:788` 同法）：沿半径朝**环外**推开，按象限定文字锚点。
+ * 直线布局那种"一律摆正上方"在环上会让左右两侧的站名压到线上。
+ */
+function labelAnchor(angle: number, r: number, x: number, y: number) {
+  const co = Math.cos(angle);
+  const si = Math.sin(angle);
+  const out = r + 15;
+  return {
+    lx: x + co * out,
+    ly: y + si * out,
+    /** 上下两极用 middle，左右两侧朝外对齐 */
+    anchor: Math.abs(co) < 0.34 ? ("middle" as const) : co > 0 ? ("start" as const) : ("end" as const),
+    /** 名称行的基线微调（正下方要多让一点，正上方要少让一点） */
+    dyName: si > 0.6 ? 10 : si < -0.6 ? -3 : 4,
+    /** 百分比行 */
+    dyPct: si > 0.6 ? 21 : si < -0.6 ? 8 : 15,
+  };
+}
+
 /** 站圈。`r` 是引擎 `pctOfChainLoss` 的纯函数（SEAM 的被观测量），配色全走 token。 */
 function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; onLeave: () => void }) {
+  const L = labelAnchor(s.angle, s.r, s.x, s.y);
   return (
     <g
       data-testid={`clm-station-${s.stepId}`}
@@ -147,16 +169,10 @@ function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; o
       ) : (
         <circle className={s.glyph === "value-add" ? styles.stationValueAdd : styles.stationStop} cx={s.x} cy={s.y} r={s.r} />
       )}
-      <text className={styles.stationName} x={s.x} y={s.y - s.r - 10} textAnchor="middle">
+      <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
         {s.label}
       </text>
-      <text
-        className={styles.stationPct}
-        data-testid={`clm-pct-${s.stepId}`}
-        x={s.x}
-        y={s.y + s.r + 17}
-        textAnchor="middle"
-      >
+      <text className={styles.stationPct} data-testid={`clm-pct-${s.stepId}`} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
         {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
       </text>
     </g>
@@ -166,6 +182,7 @@ function Station({ s, onEnter, onLeave }: { s: StationVM; onEnter: () => void; o
 /** 停运站位 = 断点。空心方框 + 叉，与任何"有值的站"在形状上就分得开。 */
 function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () => void; onLeave: () => void }) {
   const a = 11;
+  const L = labelAnchor(s.angle, a, s.x, s.y);
   return (
     <g
       data-testid={`clm-suspended-${s.stepId}`}
@@ -183,10 +200,10 @@ function SuspendedStop({ s, onEnter, onLeave }: { s: SuspendedVM; onEnter: () =>
     >
       <rect className={styles.suspendedBox} x={s.x - a} y={s.y - a} width={a * 2} height={a * 2} rx={3} />
       <path className={styles.suspendedCross} d={`M ${s.x - 5} ${s.y - 5} L ${s.x + 5} ${s.y + 5} M ${s.x + 5} ${s.y - 5} L ${s.x - 5} ${s.y + 5}`} />
-      <text className={styles.stationName} x={s.x} y={s.y - a - 10} textAnchor="middle">
+      <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
         {s.label}
       </text>
-      <text className={styles.suspendedTag} x={s.x} y={s.y + a + 17} textAnchor="middle">
+      <text className={styles.suspendedTag} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
         停运
       </text>
     </g>
@@ -532,42 +549,74 @@ export function ChainLineMapView({ view, chrome = "full", onPayload }: Partial<V
                   </marker>
                 </defs>
 
-                {/* 线名 */}
-                {map.lines
-                  .filter((l) => l.slotCount > 0)
-                  .map((l) => (
-                    <text key={l.lineId} className={styles.lineLabel} data-testid={`clm-line-${l.lineId}`} x={8} y={l.y - 34}>
-                      {l.label}
-                    </text>
-                  ))}
+                {/* 环名（族线标识贴在环的正上方；单链形态贴主线名） */}
+                {map.family !== null ? (
+                  <text
+                    className={styles.lineLabel}
+                    data-testid={`clm-ring-${map.family.key}`}
+                    data-ring-index={map.family.ringIndex}
+                    data-anchor-so={map.family.anchorSo ?? ""}
+                    x={RING_LAYOUT.cx}
+                    y={RING_LAYOUT.cy - RING_LAYOUT.ry * map.family.ringOffset - 12 - map.family.ringIndex * 13}
+                    textAnchor="middle"
+                  >
+                    ━ {map.family.label} · 锚点 {map.family.anchorSo ?? "—"}
+                  </text>
+                ) : (
+                  map.lines
+                    .filter((l) => l.slotCount > 0)
+                    .map((l, i) => (
+                      <text key={l.lineId} className={styles.lineLabel} data-testid={`clm-line-${l.lineId}`} x={8} y={18 + i * 14}>
+                        {l.label}
+                      </text>
+                    ))
+                )}
 
-                {/* 区间（含停运） */}
+                {/* 区间（弧）：live / suspended / closure 三态三图元。closure 是结构推定，刻意与实边不同。 */}
                 {map.segments.map((seg) => (
-                  <line
+                  <path
                     key={seg.segmentId}
                     data-testid={`clm-seg-${seg.segmentId}`}
                     data-segment-state={seg.state}
-                    className={seg.state === "suspended" ? styles.trackSuspended : styles.trackLive}
-                    x1={seg.x1}
-                    y1={seg.y1}
-                    x2={seg.x2}
-                    y2={seg.y2}
+                    className={
+                      seg.state === "suspended" ? styles.trackSuspended : seg.state === "closure" ? styles.trackClosure : styles.trackLive
+                    }
+                    d={seg.path ?? `M ${seg.x1} ${seg.y1} L ${seg.x2} ${seg.y2}`}
+                    fill="none"
                   />
                 ))}
+
+                {/* 闭环标注（只在最外圈画一次，避免三环叠三行字） */}
+                {map.closureBasis !== null && (map.family?.ringIndex ?? 0) === 0 ? (
+                  <text
+                    className={styles.closureLabel}
+                    data-testid="clm-closure-label"
+                    x={RING_LAYOUT.cx}
+                    y={RING_LAYOUT.cy}
+                    textAnchor="middle"
+                  >
+                    ↻ 闭环（结构推定）：回款 → 再投入需求
+                  </text>
+                ) : null}
 
                 {/* 合流站（齐套 AND）：汇流母线 + AND 闸门。图元与换乘站刻意不同。 */}
                 {map.andJoin !== null ? (
                   <g data-testid="clm-and-join" data-join-semantics={map.andJoin.semantics} data-target={map.andJoin.targetStepId}>
+                    {/* 环形下母线 = 支线出口 → 合流站的直连（穿环内，一眼看出"喂进来"） */}
                     <path
                       className={styles.andBus}
                       data-testid="clm-and-bus"
-                      d={`M ${map.andJoin.sourceX} ${map.andJoin.sourceY} H ${map.andJoin.targetX - LAYOUT.gapX * 0.5} V ${map.andJoin.targetY}`}
+                      d={`M ${map.andJoin.sourceX} ${map.andJoin.sourceY} L ${(map.andJoin.sourceX + map.andJoin.targetX) / 2} ${(map.andJoin.sourceY + map.andJoin.targetY) / 2} L ${map.andJoin.targetX} ${map.andJoin.targetY}`}
                     />
-                    <AndGate x={map.andJoin.targetX - LAYOUT.gapX * 0.5 + 18} y={map.andJoin.targetY} testId="clm-and-gate" />
+                    <AndGate
+                      x={(map.andJoin.sourceX + map.andJoin.targetX) / 2}
+                      y={(map.andJoin.sourceY + map.andJoin.targetY) / 2}
+                      testId="clm-and-gate"
+                    />
                     <text
                       className={styles.andLabel}
-                      x={map.andJoin.targetX - LAYOUT.gapX * 0.5}
-                      y={map.andJoin.targetY - 30}
+                      x={(map.andJoin.sourceX + map.andJoin.targetX) / 2}
+                      y={(map.andJoin.sourceY + map.andJoin.targetY) / 2 - 26}
                       textAnchor="middle"
                     >
                       齐套 AND · 全到齐才放行

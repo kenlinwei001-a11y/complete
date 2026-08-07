@@ -247,6 +247,10 @@ export interface StationVM {
   index: number;
   x: number;
   y: number;
+  /** 站在环上的角度（弧度）。视图用它把站名往环外摆（按象限定锚点）。 */
+  angle: number;
+  /** 本站所在的同心环序号（0 = 最内圈）。单族链恒 0。 */
+  ringIndex: number;
 }
 
 /** 停运站位 = 断点（引擎 `empty[]` 的一行）。**它不是一个 0% 的站，是一个算不出来的站。** */
@@ -263,6 +267,8 @@ export interface SuspendedVM {
   index: number;
   x: number;
   y: number;
+  angle: number;
+  ringIndex: number;
 }
 
 export interface SegmentVM {
@@ -274,8 +280,13 @@ export interface SegmentVM {
   y1: number;
   x2: number;
   y2: number;
-  /** `suspended` = 任一端点是停运站位（断点） ⇒ 该区间停运。 */
-  state: "live" | "suspended";
+  /**
+   * `suspended` = 任一端点是停运站位（断点） ⇒ 该区间停运。
+   * `closure`   = **闭环段**（链尾回指链头）——**结构推定**，不是引擎给的边，见 `ChainLineMap.closureBasis`。
+   */
+  state: "live" | "suspended" | "closure";
+  /** 环线弧 path（环形布局下区间是弧不是弦）。视图优先用它，退化时才用 x1..y2 连直线。 */
+  path?: string;
 }
 
 /** 红弧 = 返工逆行：从本站**回指**本线上一站。 */
@@ -320,6 +331,24 @@ export interface LineVM {
   slotCount: number;
 }
 
+/**
+ * 一条**产品族线**的身份（多族同心环时用）。
+ * `anchorSo` 是这条线真实的锚点订单号 —— 三条线之所以不同，是因为**锚点不同**，
+ * 不是因为前端给同一份数据画了三个颜色。
+ */
+export interface FamilyIdentity {
+  /** 族键（= `BusinessType` 契约枚举值）。 */
+  key: string;
+  label: string;
+  /** 该族这条链的锚点订单（引擎 `anchor.so`）。 */
+  anchorSo: string | null;
+  /** 该链落在哪个基地 / 哪条工艺路线（引擎 `anchor`）。 */
+  anchorBaseId: string | null;
+  anchorRoutingId: string | null;
+  ringIndex: number;
+  ringOffset: number;
+}
+
 export interface ChainLineMap {
   lines: LineVM[];
   stations: StationVM[];
@@ -327,6 +356,13 @@ export interface ChainLineMap {
   segments: SegmentVM[];
   reworkArcs: ReworkArcVM[];
   andJoin: AndJoinVM | null;
+  /** 本图这一圈是哪条族线（单链形态 = `null`）。 */
+  family: FamilyIdentity | null;
+  /**
+   * 闭环段的判据。**必须原样显示**：引擎给的是有序列表不是环，
+   * 「链尾回款 → 链头需求」这条边是本层的**结构推定**，与 `andJoin.basis` 同族纪律。
+   */
+  closureBasis: string | null;
   bounds: { width: number; height: number };
   conservation: { sumPct: number | null; residual: number | null; tolerancePct: number; ok: boolean };
   stats: {
@@ -360,6 +396,93 @@ export const LAYOUT = {
   minWidth: 720,
   height: 400,
 } as const;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5.1 · **环线几何**（WO-SANDBOX-METRO-SEMANTICS）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 环线几何常量。数值取自设计稿 `sandbox-console-DESIGN-v2-with-zoom.html:737`
+ * （`CX=470 CY=330 RX=372 RY=252 W3=980 H3=640`），同心环偏移取 `:748` 的 `OFF=[.972,1,1.028]`。
+ *
+ * ── 为什么从「两根直线」改成「环」（这不是审美，是三条真信息）───────────────
+ * ① **闭环是真的**：链尾那一站（回款）与链头那一站（需求共识）之间
+ *    存在现金周转循环（cash-to-cash）。直线画法把它画成"走到头就没了"，环把它闭上。
+ *    ⚠ 这里**刻意不写具体 nodeId** —— 本文件对 nodeId 一律当不透明 key，
+ *    连注释里都不留字面量（`chain-line-map.seam` 有一道门扫源码，写了当场红）。
+ *    ⚠ 但引擎给的是**有序列表不是环**，所以闭合段是**结构推定**，
+ *    图元与 `state:"closure"` 分开、旁边挂 `closureBasis` 原文，不冒充成引擎给的边。
+ * ② **同心环 = 多产品族并行**：三条产品族链在同一张图上按半径分层，
+ *    "同一道工序被几条族线共用"变成**看得见的径向对齐**（直线画法要么叠三张图、要么看不出来）。
+ * ③ **换乘站的信息增益**：共线区段上，换乘站（双环）在三个半径上**同角度对齐** ⇒
+ *    一眼看出"这是共享瓶颈"。这是环相对直线**唯一的**信息增益，不是装饰。
+ */
+export const RING_LAYOUT = {
+  cx: 470,
+  cy: 330,
+  rx: 372,
+  ry: 252,
+  viewW: 980,
+  viewH: 680,
+  /** 采购支线的内圈半径系数（设计稿 `bK=.58`）。 */
+  branchK: 0.58,
+  /** 起始角：正上方（12 点钟），顺时针。 */
+  startAngle: -Math.PI / 2,
+  /**
+   * 同心环偏移系数（设计稿 `OFF`）。**长度即最多能并置几条族线**；
+   * 少于 3 条时取前 N 个并居中（`ringOffsets()`），不留空环。
+   */
+  offsets: [0.972, 1, 1.028] as readonly number[],
+  /** 返工逆行弦的内缩系数（设计稿 `.93`）。 */
+  reworkK: 0.93,
+} as const;
+
+/** 本图最多能并置几条族线（= 同心环个数上限）。超出即拒绝，不悄悄丢线。 */
+export const MAX_FAMILY_RINGS = RING_LAYOUT.offsets.length;
+
+/**
+ * N 条族线各自的半径系数。N=1 → `[1]`（正中那一圈，与单链形态完全一致）；
+ * N=2 → 取首尾；N=3 → 全取。**不会出现"画了三圈但只有一条有数据"**。
+ */
+export function ringOffsets(count: number): number[] {
+  if (count <= 1) return [1];
+  if (count >= MAX_FAMILY_RINGS) return [...RING_LAYOUT.offsets];
+  // N=2：取最内与最外，避免两条线贴在一起看不出分层
+  return [RING_LAYOUT.offsets[0]!, RING_LAYOUT.offsets[MAX_FAMILY_RINGS - 1]!];
+}
+
+/** 第 i 个站位在环上的角度（i/total 均分一整圈，从正上方顺时针）。 */
+export function ringAngle(index: number, total: number): number {
+  return RING_LAYOUT.startAngle + (index / Math.max(1, total)) * Math.PI * 2;
+}
+
+/** 极坐标 → 画布坐标。`k` = 半径系数（同心环偏移 / 支线内圈 / 返工弦内缩）。 */
+export function ringPoint(angle: number, k: number): { x: number; y: number } {
+  return {
+    x: RING_LAYOUT.cx + RING_LAYOUT.rx * k * Math.cos(angle),
+    y: RING_LAYOUT.cy + RING_LAYOUT.ry * k * Math.sin(angle),
+  };
+}
+
+/**
+ * 相邻两站间的**椭圆弧** path（区间画成弧，不是弦——弦会从环内穿过去，把图搅乱）。
+ * `sweep=1` = 顺时针，与 `ringAngle` 的方向一致。
+ */
+export function ringArcPath(a0: number, a1: number, k: number): string {
+  const p0 = ringPoint(a0, k);
+  const p1 = ringPoint(a1, k);
+  const large = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
+  return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${(RING_LAYOUT.rx * k).toFixed(2)} ${(RING_LAYOUT.ry * k).toFixed(2)} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+}
+
+/**
+ * 环上相邻两站的**最小欧氏间距**（用于「站圈不许叠在一起」的几何自证）。
+ * 椭圆上最密的是短轴附近，故取 `2·ry·k·sin(π/total)` 作下界。
+ */
+export function minStationGap(total: number, k: number): number {
+  if (total <= 1) return Number.POSITIVE_INFINITY;
+  return 2 * RING_LAYOUT.ry * k * Math.sin(Math.PI / total);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 6 · 构建
@@ -414,25 +537,55 @@ function orderedSlots(payload: ChainLossPayload, stages: readonly ChainStage[]):
   return out;
 }
 
+/** 构图参数（多族同心环用；不传 = 单链，行为与环形化之前的单链形态一致）。 */
+export interface ChainLineMapOptions {
+  family?: FamilyIdentity;
+}
+
 /**
- * 把引擎载荷翻成线路图。**纯函数**（无 `Date.now`、无随机）——同载荷同输出，R6。
+ * 把引擎载荷翻成**环形**线路图。**纯函数**（无 `Date.now`、无随机）——同载荷同输出，R6。
+ *
+ * 几何：主干站按 `ringAngle` 均分一整圈（半径系数 = `family.ringOffset`，单链 = 1）；
+ * 采购支线走内圈弧（`RING_LAYOUT.branchK`）；返工逆行走环内弦。
  */
-export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
+export function buildChainLineMap(payload: ChainLossPayload, opts: ChainLineMapOptions = {}): ChainLineMap {
   const pctByStep = new Map<string, LossAttribution>();
   for (const row of payload.attribution) pctByStep.set(row.stepId, row);
 
   const trunkSlots = orderedSlots(payload, TRUNK_STAGES);
   const branchSlots = orderedSlots(payload, [BRANCH_STAGE]);
 
+  const family = opts.family ?? null;
+  const ringIndex = family?.ringIndex ?? 0;
+  const trunkK = family?.ringOffset ?? 1;
+  const trunkTotal = Math.max(1, trunkSlots.length);
+
   const stations: StationVM[] = [];
   const suspended: SuspendedVM[] = [];
   const segments: SegmentVM[] = [];
-  /** 每条线上「上一站的 id + 坐标」，用于连区间与画返工逆行弧。 */
-  const lineCursor = new Map<LineId, { id: string; x: number; y: number; suspendedEnd: boolean }>();
+  /** 每条线上「上一站的 id + 坐标 + 角度」，用于连区间（弧）与画返工逆行弦。 */
+  const lineCursor = new Map<LineId, { id: string; x: number; y: number; angle: number; suspendedEnd: boolean }>();
 
-  const place = (slots: Slot[], lineId: LineId, y: number): void => {
+  /**
+   * 站位定位。
+   *  · 主线：整圈均分（同心环按 `trunkK` 分层）；
+   *  · 支线：内圈一段弧（不占满整圈——它是"喂进来的"，不是主链上顺次经过的站）。
+   */
+  const locate = (lineId: LineId, index: number, total: number): { x: number; y: number; angle: number; k: number } => {
+    if (lineId === TRUNK_LINE_ID) {
+      const angle = ringAngle(index, trunkTotal);
+      return { ...ringPoint(angle, trunkK), angle, k: trunkK };
+    }
+    // 支线：从 8 点钟方向起，占约 1/3 圈（设计稿把采购支线画在环内的一段弧上）
+    const span = (Math.PI * 2) / 3;
+    const angle = RING_LAYOUT.startAngle + Math.PI * 0.9 + (total <= 1 ? 0 : (index / (total - 1)) * span);
+    const k = RING_LAYOUT.branchK;
+    return { ...ringPoint(angle, k), angle, k };
+  };
+
+  const place = (slots: Slot[], lineId: LineId): void => {
     slots.forEach((slot, index) => {
-      const x = LAYOUT.padX + index * LAYOUT.gapX;
+      const { x, y, angle, k } = locate(lineId, index, slots.length);
       const id = slot.kind === "station" ? slot.step.stepId : slot.row.stepId;
       if (slot.kind === "station") {
         const { step, node } = slot;
@@ -458,6 +611,8 @@ export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
           index,
           x,
           y,
+          angle,
+          ringIndex,
         });
       } else {
         const { row } = slot;
@@ -474,6 +629,8 @@ export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
           index,
           x,
           y,
+          angle,
+          ringIndex,
         });
       }
       const prev = lineCursor.get(lineId);
@@ -489,28 +646,54 @@ export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
           x2: x,
           y2: y,
           state: isSuspended ? "suspended" : "live",
+          path: ringArcPath(prev.angle, angle, k),
         });
       }
-      lineCursor.set(lineId, { id, x, y, suspendedEnd: slot.kind === "suspended" });
+      lineCursor.set(lineId, { id, x, y, angle, suspendedEnd: slot.kind === "suspended" });
     });
   };
 
-  place(trunkSlots, TRUNK_LINE_ID, LAYOUT.trunkY);
-  place(branchSlots, BRANCH_LINE_ID, LAYOUT.branchY);
+  place(trunkSlots, TRUNK_LINE_ID);
+  place(branchSlots, BRANCH_LINE_ID);
 
-  // ── 红弧 = 返工逆行：向本线上一站回指 ────────────────────────────────────────
+  // ── 闭环段：链尾 → 链头（现金周转循环）。**结构推定**，图元与实边分开 ──────────
+  let closureBasis: string | null = null;
+  const trunkStations = [...stations, ...suspended].filter((s) => s.lineId === TRUNK_LINE_ID).sort((a, b) => a.index - b.index);
+  const head = trunkStations[0];
+  const tail = trunkStations.at(-1);
+  if (head !== undefined && tail !== undefined && head !== tail) {
+    segments.push({
+      segmentId: `${TRUNK_LINE_ID}:closure`,
+      lineId: TRUNK_LINE_ID,
+      fromId: tail.stepId,
+      toId: head.stepId,
+      x1: tail.x,
+      y1: tail.y,
+      x2: head.x,
+      y2: head.y,
+      state: "closure",
+      path: ringArcPath(tail.angle, RING_LAYOUT.startAngle + Math.PI * 2, trunkK),
+    });
+    closureBasis =
+      `闭环段「${tail.label} → ${head.label}」是**结构推定**，不是引擎给的边：` +
+      `引擎 chain_loss_attribution 返回的是一条**有序链**（nodes[] 按 stage 顺序），载荷里没有任何字段说"链尾回指链头"。` +
+      `画成闭环的依据是现金周转循环（回款释放的资金再投入下一轮需求承接），` +
+      `故本段用虚线 + 独立图元，与实测区间分开，读图时不要把它当成一条被测量过的边。`;
+  }
+
+  // ── 红弧 = 返工逆行：向本线上一站回指（环形下走**环内弦**，不绕外圈）────────────
   const reworkArcs: ReworkArcVM[] = [];
   for (const st of stations) {
     if (st.kind !== "rework") continue;
     const prev = stations.filter((s) => s.lineId === st.lineId && s.index < st.index).at(-1);
     if (prev === undefined) continue; // 本线第一站就是返工 → 无处可退，不编一条弧出来
-    const lift = 44;
-    const midX = (st.x + prev.x) / 2;
+    // 控制点拉向圆心：弦从环内穿过，视觉上就是"逆行抄近路抢产能"
+    const ctrl = ringPoint((st.angle + prev.angle) / 2, RING_LAYOUT.reworkK * 0.45);
     reworkArcs.push({
       arcId: `rework:${st.stepId}`,
       fromStepId: st.stepId,
       toStepId: prev.stepId,
-      path: `M ${st.x} ${st.y - st.r} Q ${midX} ${st.y - st.r - lift} ${prev.x} ${prev.y - prev.r}`,
+      path: `M ${st.x.toFixed(2)} ${st.y.toFixed(2)} Q ${ctrl.x.toFixed(2)} ${ctrl.y.toFixed(2)} ${prev.x.toFixed(2)} ${prev.y.toFixed(2)}`,
     });
   }
 
@@ -545,7 +728,6 @@ export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
   const tolerancePct = payload.conservation?.tolerancePct ?? LOSS_CONSERVATION_TOLERANCE_PCT;
 
   const pcts = stations.map((s) => s.pctOfChainLoss).filter((p): p is number => p !== null);
-  const slotMax = Math.max(trunkSlots.length, branchSlots.length, 1);
 
   const notes: string[] = [];
   const reworkStations = stations.filter((s) => s.kind === "rework").length;
@@ -561,20 +743,28 @@ export function buildChainLineMap(payload: ChainLossPayload): ChainLineMap {
     notes.push("引擎归因表为空（全链无非增值环节，或分母为 0）⇒ 所有站圈退到最小半径，不是「都占 0%」。");
   }
 
+  // 环形几何自证：环上最密的相邻两站间距必须容得下两个最大站圈，否则站会叠在一起。
+  const gap = minStationGap(trunkSlots.length, trunkK);
+  if (trunkSlots.length > 1 && gap < STATION_RADIUS.max * 2) {
+    notes.push(
+      `本次主干 ${trunkSlots.length} 个站位，环上最密处间距 ${gap.toFixed(1)}px < 两倍最大站圈 ` +
+        `${STATION_RADIUS.max * 2}px ⇒ 最大的几个站圈会相切/重叠。站数由引擎决定，本层不删站、不缩圈冒充不挤。`,
+    );
+  }
+
   return {
     lines: [
-      { lineId: TRUNK_LINE_ID, label: "主线 · 需求→订单→产能", stages: TRUNK_STAGES, y: LAYOUT.trunkY, slotCount: trunkSlots.length },
-      { lineId: BRANCH_LINE_ID, label: `支线 · ${STAGE_LABEL[BRANCH_STAGE]}`, stages: [BRANCH_STAGE], y: LAYOUT.branchY, slotCount: branchSlots.length },
+      { lineId: TRUNK_LINE_ID, label: "主线 · 需求→订单→产能（闭环回需求）", stages: TRUNK_STAGES, y: RING_LAYOUT.cy, slotCount: trunkSlots.length },
+      { lineId: BRANCH_LINE_ID, label: `支线 · ${STAGE_LABEL[BRANCH_STAGE]}（环内）`, stages: [BRANCH_STAGE], y: RING_LAYOUT.cy, slotCount: branchSlots.length },
     ],
     stations,
     suspended,
     segments,
     reworkArcs,
     andJoin,
-    bounds: {
-      width: Math.max(LAYOUT.minWidth, LAYOUT.padX * 2 + (slotMax - 1) * LAYOUT.gapX),
-      height: LAYOUT.height,
-    },
+    family,
+    closureBasis,
+    bounds: { width: RING_LAYOUT.viewW, height: RING_LAYOUT.viewH },
     conservation: {
       sumPct,
       residual,
