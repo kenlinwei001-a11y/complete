@@ -209,3 +209,107 @@ $ git grep -ln "createIntent" -- "apps/**/src/**"      → 3 文件（正确写�
 - **最小 WO 建议**：无功能 WO。建议核一下 `view.geo-map` 是否两侧双注册（关它时导航应消失，对应 F25 末句语义）。
 
 ---
+
+### PRD-frontend-addendum-sim-views.md
+
+- **它要做什么**：补 PRD-frontend §7.10–7.13 四种推演视图渲染器（plan-audit / plan-generate / sop-balance / project-sim），加同步求解端点 `POST /b/v1/solvers/{key}/run`、300ms debounce + AbortController 竞态、采纳类按钮统一走 action-drafts。
+- **PRD 自称的 AS-IS**：**无独立现状节**（增量型 PRD，从「§0 契约补充」直接进逐节规格 + F14–F20 验收）。
+- **实测现状**：
+  - 四个 renderer 全注册：`apps/frontend-shell/src/views/registry.ts:65-70`（plan-audit / plan-generate / project-sim / sop-balance）。
+  - §0-2 同步求解端点 ✅：`apps/agentcore/src/server.ts:1851 POST /b/v1/solvers/:key/run`。
+  - §0-3 节流与竞态 ✅：`views/sim/useLiveSolver.ts:37` 注释逐字对齐 PRD、`:67 debounceMs = opts?.debounceMs ?? 300`。
+  - §0-4 采纳按钮统一 ✅：`views/sim/shared.tsx:48,60-67`（注释直引「增量 §0-4」）+ `SopBalanceView.tsx:147-151 actionTypeKey: "定稿月度计划版本"`。
+  - §7.10/7.11 共用组件 ✅：`views/sim/PropagationTimeline.tsx`（PRD 要的「全局唯一实现」）+ `views/sim/RadarChart.tsx`（五维雷达自绘 SVG）。
+  - §7.12 S&OP：`views/sim/SopBalanceView.tsx:38` 六卡 KPI + 五步法 + 定稿走 Action + C22 锁定；`:134 locked = v.status === "FINAL"`、`:137/:177` 409 `PLAN_LOCKED` 前端兜底 —— PRD「后端 409 时前端兜底展示同横幅」逐条对上。
+- **⚠ PRD 自身陈述与现状不符（本份的关键发现）**：§7.13 规定「what-if 调参区**三滑杆**——加夜班 0–3 班、扩化成通道 0–6、外协 0–20%」，F19 验收用例也钉死这三根。**实测已被整体替换**：`views/sim/ProjectSimView.tsx:160` 明写「⑥ what-if 已从『焊死 capacity_forecast whatIf 三系数』迁到动态杠杆走 generic_inference（见 DynamicLeverPanel）」；`:873-886` 改挂 `<DynamicLeverPanel>`，注释写「G-WHATIF-HARDCODED-LEVERS 收（本体 §8e）· 杠杆集随瓶颈变、拖动真重算、每值 provenance、tornado 排序、边界自 C08 规则闸」。
+  → 也就是说：**PRD 写的那三根滑杆本身在后来被认定为断点（写死杠杆）并被拆掉了**。这不是"没做"，是"做了更好的、PRD 没回写"。按现行 PRD 去验收 F19（"外协滑到 20% 截止"）会得出"未实现"的错误结论——正是本次审计要防的那类误判，只是方向相反。
+  - 同类（较轻）：§7.13 DAG「六层固定」这句现在仍成立（`ProjectSimView.tsx:891`），但与 `PRD-de-battery` §3.1 要求的「DAG 从 ExecutionPlan 派生」直接冲突——**两份 PRD 互相矛盾，且都还挂着**。
+- **结论**：✅已实现（四视图 + 三条通用约定全落）；**⚠PRD 自身陈述与现状不符**：§7.13 三滑杆规格 + F19 验收用例已失效，需回写。
+- **最小 WO 建议**：无功能 WO。`WO-DOC-SIMVIEWS-WRITEBACK`：🚦只碰 `docs/PRD-frontend-addendum-sim-views.md`（§7.13 what-if 段 + F19 改写为动态杠杆口径，并注明取代原因 = G-WHATIF-HARDCODED-LEVERS）+ 顺手在 `PRD-de-battery-multitenant-config.md` §3.1 标注与本节的关系。
+
+---
+
+### PRD-frontend.md
+
+- **它要做什么**：前端唯一需求来源 —— 单一 SPA（Workspace Shell + 决策工作台）+ Mock 模式 + 测试；定死技术栈、路由表 §3、启动序列 §4.1、SSE 客户端 §4.3、设计 token §5、查询 Dock §6、renderer 分发 §7、验收 F1–F13。
+- **PRD 自称的 AS-IS**：**无现状节**（这是**从零起草**的基线 PRD，v1.0 与平台 PRD v2.0/QOS-PRD v1.0 配套交付，§0 是「给开发 Agent 的执行说明」而非现状盘点）。
+- **实测现状**：**全面落地且已远超原规格**。
+  - §3 路由表：`apps/frontend-shell/src/App.tsx:151-184` —— PRD 列的 12 个 admin 路由**全在**（connections / rule-docs / modeling / rules / permissions / synthetic / actions / catalog / agents / workflows / skills / mcp / scenes / ops/fallback），另**多出 20 个**（object-types / data-builder / ops-schedule / features / llm-providers / calibration / external-signals / validation / quarantine / notifications / domains / evals / slices / slice-library / merge / growth / meta / resources / boundary …）。
+  - §4.3 SSE 客户端「全局唯一实现」：`apps/frontend-shell/src/sse/useTaskStream.ts:38-40` —— 文件头注释直引「PRD §4.3」，指数退避 1s/2s/4s 上限 30s + `Last-Event-ID`；`sse/taskStreamReducer.ts:48,60,86` 维护 `lastEventId` 去重。唯一消费点 `components/QueryDock/TaskRun.tsx:2,11`（真是唯一实现）。
+  - §5 设计 token：`apps/frontend-shell/src/styles/tokens.css:19` 起，PRD 给的领域色变量（`--c-factory:#5e8fe8` 等）逐条落地并被 `LoginPage.module.css:41`/`ShellLayout.module.css:35` 消费。
+  - §6 查询 Dock：`components/QueryDock/QueryDock.tsx:15` 注释「提交：组装 SessionContext → POST /b/v1/queries（Idempotency-Key）→ useTaskStream」——与 PRD §6.2 逐字对应。
+  - §9 Mock 模式：`apps/frontend-shell/src/mocks/` 九个文件（handlers / fixtures / db / browser / mockEventSource / sseScripts / planFixtures / simSolvers / livedInFixtures），SSE 也有 mock 通道。
+  - §11 验收：`apps/frontend-shell/test/` **160 个 `.test.tsx`**（PRD 只要求 F1–F13 十三条）。
+- **未查清**：F1–F13 是否**逐条**有对应测试且当前全绿。卡在：我未跑 `pnpm --filter frontend-shell test`（属"中画像"，但本次任务限定只读 + 不与并行 gate 抢 CPU）。建议复验方按 `F1`…`F13` 文件名前缀点名核对（仓里测试确实按 `f14.`/`f27.`/`f57.`/`f58.` 这类前缀命名，可直接对号）。
+- **结论**：✅已实现
+- **最小 WO 建议**：无。建议在 PRD §3 路由表加一句「实际路由以 `App.tsx` 为准，本表为最小集」，避免后来者按此表判定「多出来的都是野生页面」。
+
+---
+
+### PRD-fullstack-story-build-g8.md
+
+- **它要做什么**：把数据构建发动机从「故事→DataCore 栈」升级为「故事→全栈（A 栈数据/本体/切片/规则/求解器 ⊕ B 栈意图/计划/工作流/技能/Agent/MCP/场景）」的跨系统倒推编译器，收口 G-8；加 InputManifest 自描述补录、rawin 去模板化、StoryBuildRun 历史推演记录。
+- **PRD 自称的 AS-IS**：§0 有明确的「**已存在（复用，勿重造）**」7 条（A7 七阶段 `service.ts:160-317` / BuildPlan 契约 `databuilder.ts:138-151` / `validateClosure` CHAIN+SHAPE / SyntheticService 物化链 / A→B `internal/invalidate` 接缝 / `scenarioClosure`+`probeMissingRefs` / `classifyGap` 7 码）与「**缺口**」5 条（BuildPlan 不含 B 栈 / rawin 用独立 `genCsv` 未统一 G-6 / **无 InputManifest** / **无 StoryBuildRun 持久记录** / 合成模块模板绑定无法为新类型造数）。
+- **实测现状**：**PRD 自列 5 个缺口全部闭合**。
+  - 缺口1「BuildPlan 不含 B 栈」→ ✅ `packages/contracts/src/databuilder.ts:214-221` 八个 need 数组全在（`sliceNeeds`/`intentNeeds`/`planNeeds`/`workflowNeeds`/`skillNeeds`/`agentNeeds`/`mcpNeeds`/`sceneNeeds`），且如 PRD §3.1 要求的 `.default([])` 向后兼容。
+  - 缺口2「rawin 用独立 genCsv」→ ✅ 已统一：`apps/datacore/src/synthetic/schema-gen.ts:6` 注释「**收编原 databuilder 私有 genCsv/genCell —— 消灭"两个数据生成器并存"（G-6）**」；`databuilder/service.ts:39` import + `:1157` 调 `generateFromSchema`。`grep genCsv` 在 src 里**只剩这句注释**，无残留实现。
+  - 缺口3「无 InputManifest」→ ✅ `packages/contracts/src/storybuildrun.ts:50 InputManifestSchema`。
+  - 缺口4「无 StoryBuildRun 持久记录 + 历史时间线」→ ✅ 契约 `storybuildrun.ts:24`；后端 `apps/datacore/src/databuilder/service.ts:467,504`（record 步落库 + `outbox.emit("storybuild.run_recorded")`）；事件登记 `apps/agentcore/src/event-subscriptions.ts:82`；前端 `api/endpoints.ts:873` + `pages/admin/DataBuilderPage.tsx:891-895,993,1003-1004`（「建域并记入历史」按钮 + 与「运行构建」的区别说明）。
+  - 缺口5「合成模块模板绑定」→ ✅ `synthetic/schema-gen.ts:47 generateFromSchema` + `:136`（多表 FK 一致版，注释「同 (specs, seed) 字节级一致（R6）；无 ref 的单表退化为 generateFromSchema 同输出（向后兼容）」= PRD §3.3 要求的「battery 字节级不变」回归锁）。
+  - §3.4 跨系统 scaffold（G-8 收口的正主）→ ✅ `apps/agentcore/src/server.ts:2201 POST /b/v1/internal/scaffold`；回执契约 `storybuildrun.ts:71 ScaffoldReceiptSchema`；A 侧持久记录 `storybuildrun.ts:78-80`（注释「A7 把倒推的 B 栈需求**无条件**落 DataCore（挂 StoryBuildRun，doc store 无 migration）」）。
+  - §0 承诺的「仅新增 1 个构建期事件」也守住了：只有 `storybuild.run_recorded` 一个，其余走 StoryBuildRun 字段。
+- **结论**：✅已实现
+- **最小 WO 建议**：无。
+
+---
+
+### PRD-gate-ledger.md
+
+- **它要做什么**：治「仓里 39 个 `check-*.mjs` 门脚本只跑 21 个，其余 18 个里 10 个零调用方却都在本体 §7 登记在册」。交付一张机器可核的门账 + 一道会红的新门 + 一次性存量定性。明确「**不接受"写一份文档"作为交付**」。
+- **PRD 自称的 AS-IS**：§1「AS-IS 普查结果（本会话机械统计 · 判据与命令随附，复验方可复算）」六行表（进 gates 18 / gate.sh 直调 3 / 仅 npm 入口 6 / 仅被别的脚本引用 2 / **零调用方 10**），并追了一层给出三条关键事实（CI 不是第二条路 / 10 个零调用方全在 §7 有登记 / **回写门是单向的**，`check-ontology-writeback.mjs:34` 只查正向）。§7 还自设「诚实边界」三条。
+- **实测现状**：**G1–G5 五个目标全部落地，且四次变异反证真跑过**。
+  - G1 门账：`scripts/gate-ledger.json`（34,522 字节，44 条），字段与 §4.1 一致（实测 `check-cli-parity.mjs` 条目含 `binding`/`disposition`/`guardedPaths`/`escalation`/`ontologyRef`/`provenRed`/`notes` 七字段齐全）。
+  - G2 新门：`scripts/check-gate-ledger.mjs` + `scripts/gate-census.mjs`（普查器已固化，非一次性脚本），已进 `package.json:32 gates` 串。
+  - G3 回写门补反向：`scripts/check-ontology-writeback.mjs:49-54` —— 明写「G3 · 反向断言（WO-GATE-LEDGER 追加，不改上方正向逻辑）……**首次普查坐实：12 个零调用方门全部在 §7 宣称「已并入 pnpm gates」**」。
+  - G4 存量逐个定性：ledger 里非 GATES_CHAIN 条目均带 `disposition`（如 cli-parity = `WIRE`）。
+  - G5 `provenRed`：实测输出「provenRed 从未红过：35（基线 35）」——棘轮已建、可见、只降不升（符合 §4.3「本单不要求清零，要求可见且可棘轮」）。
+  - 本体回写 ✅：`docs/SYSTEM-ONTOLOGY.md:877` §7 登记新门（长条目，含四条判据与「责任边界是路径不是人名」的理由）；`:920` §8 登记 `G-WRITEBACK-ONE-WAY` 并标「✅ 已修」；`:1012` `G-DEAD-GATE-BY-POLICY` 标「✅ 已闭」。§877 还记着「**变异反证 4/4 已跑**（摘门→③红 · 幽灵门→①红 · 假路径→④红 · §7 挂未接线门→G3 红）」= PRD A6/A7/A8 的核心验收有留痕。
+  - **亲手真跑**（不敢只信文档）：
+    ```
+    $ out=$(node scripts/check-gate-ledger.mjs 2>&1); rc=$?   # 显式捕获，不用 | tail
+    REAL_RC=1
+    · 门脚本普查（现算）：GATES_CHAIN 23 · GATE_SH 3 · CI_ONLY 0 · MANUAL 6 · NONE 12 · 合计 44
+    · 门账条目：44 · provenRed 从未红过：35（基线 35）
+    ✗ gate-ledger:check 未通过（28 条）：…④ 责任边界：…guardedPaths 含不存在的路径「apps/*/dist/**」
+    ```
+    **28 条全部是 `dist/**` 路径**，而 `apps/agentcore/dist` / `apps/datacore/dist` 在未构建的检出里不存在。查 `scripts/gate.sh:42` 先跑 `BUILD (pnpm -r build)`、`:58` 才跑 `pnpm gates` —— **真实门流里 dist 已存在，此门是绿的**。故：**不是缺陷，但存在构建序依赖**——单独跑 `pnpm gates`（不先 build）必红 28 条。
+  - **数字已漂**（PRD §7 自己预告过会漂）：PRD 写 39 脚本 / 18 进 gates / 10 零调用；今日现算 **44 脚本 / 23 进 gates / 12 零调用（NONE）**。普查器固化正是为此。
+- **⚠ 顺带查实的一条（本批最有价值的门禁反例）**：账里 `check-cli-parity.mjs` 是 `binding: "NONE"`（零调用方）+ `disposition: "WIRE"`（该接未接）+ `provenRed: NEVER`。**而它自身的判据还是 fail-open 的**：`scripts/check-cli-parity.mjs:38` `const doRouted = /cmdDo|operations\/classify/.test(cli);` 是一个**文件级布尔**——只要 CLI 里存在 `cmdDo`，**每一条** cliCommand 都被判为"可达"。实测：`OPERATION_CATALOG` 35 条里 **24 条的 cliCommand 在 `platform-cli.mjs:507` 的 run 表里根本不存在**（`agent/workflow/skill/mcp/eval/llm/ops/tenant/catalog/connection/meta/slice/sop/validate/metric/notify/boundary/calib/policy/signals/quarantine/features/kb/bootstrap`），门却打印「缺实现（基线 0 · 当前 0 · 回潮 0）✓」。而 `cmdDo`（`:442-462`）**只分类并打印**、不执行。
+  → 这是「**门存在 + 门绿 + 门守的东西 68% 是空的**」的教科书样本，且**恰好在 gate-ledger PRD §6.3 点名要小心的那一条上**。PRD 定性对了（`WIRE`），但没人查它的判据（PRD §2.2 明确把"判据是否正确"排除在外，属诚实边界内）。
+- **结论**：✅已实现（G1–G5 全落 + 变异反证 4/4 + 本体双向回写）
+- **最小 WO 建议**：`WO-CLI-PARITY-TEETH`（**新单，本批最高优先**）：🚦只碰 `scripts/check-cli-parity.mjs`（把 `doRouted` 从文件级布尔改成逐条判定：cliCommand ∈ run 表键 或 显式深链豁免）+ `scripts/cli-parity-baseline.json`（把当前 24 条缺实现入基线，只降不升）+ `scripts/gate-ledger.json`（cli-parity 条目接进 gates 链后 `binding` 改 `GATES_CHAIN`）。⚠ 改判据后门会立刻红 24 条，故必须同批把基线设为 24 —— 这正是棘轮的用法。
+
+---
+
+### PRD-generation-boundary-grounding.md
+
+- **它要做什么**：R16 发育闭环的「生成」机制已落但**无业务接地**（prompt 只注入类型级 schema，能引真类型却可编造基地名/型号/数值）。本 PRD 装 GenerationBoundary 接地层：业务词表（硬/软）+ 语义目录 + 拉取靶，把生成框成「只引用边界内实体、不造业务事实」，同一份边界作单一来源根治 `battery.ts` 硬编码。
+- **PRD 自称的 AS-IS**：这份很特别 —— 它**开头就是一整节「勘误注（grep-verified，3 处同类锚点错）」**，逐条列出上游 v1.0 稿里 file:line 写错的地方（🔴1 migration 号撞车应改 026 / 🔴2 `apps/datacore/src/growth/` 不存在，分流其实是跨服务接缝 / 🟠3 BP-4 已建应删 / 🟠4 `PropertyDef` 是 interface 不是 zod schema），并另列「v1.0 grep-verified 站得住的核心（可直接信）」四条。**这一节本身就是本次审计要推广的方法学范本。**
+- **实测现状**：
+  - **P0 单一来源 keystone（DF.1–DF.4）✅**：落在 `packages/contracts/src/base-registry.ts`（`:2 BASE_REGISTRY` 13 基地 / `:32 SEG_REGISTRY` / `:98 PLAN_GOAL_TARGETS` / `:117 OUTSOURCE_REDLINE`）。消费端已派生：`apps/datacore/src/synthetic/battery.ts:2` import、`:16` 注释「DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生」、`:48` 不在册即抛错、`:74-88` 经纬度/距离也从册派生。
+  - **门 `boundary-singlesource:check` ✅ 亲手跑绿**：`out=$(node scripts/check-boundary-singlesource.mjs 2>&1); rc=$?` → `RC=0`，输出「BASE_REGISTRY(13 基地) + SEG_REGISTRY + PLAN_GOAL_TARGETS 单一来源，3 BASE / 4 SEG / 3 PLAN_GOAL 消费端均派生、**内联基地字面量 0（零容忍）**」。
+  - **DF.5 语义目录 ✅**：`apps/datacore/src/solvers/llm-gen.ts:12-13 propDocs?: Record<string,string>` + `:50-52` 渲染成 `propKey(描述)` 注入 prompt。
+  - **DF.6 拉取靶 outputFields ✅**：`apps/datacore/src/databuilder/pull-target.ts:11,17,20-26,49`（从 ViewConfig.layout 的 `{solverKey, outputFields}` 派生登记表，确定性排序）。
+  - **DF.7 影响图 ✅**：`packages/contracts/src/base-registry.ts:308`（「改某条边界册会波及谁」显式登记）+ 前端 `apps/frontend-shell/src/pages/admin/BoundaryPage.tsx:7`。
+  - **DF.8 生成接地 hook ✅ 且追到了生产实参**（铁律 0.5：不止看有没有函数）：`llm-gen.ts:14 vocab?: string[]` 注入 prompt（`:56-58` 明文「业务词表（实体只能引用以下，禁止编造基地/型号/细分名，越界将被拒）」）+ `:23 checkGrounding()` 越界校验。**调用链追到底**：`solvers/service.ts:474 const vocab = await this.deriveGroundingVocab(ctx)` → `:475 generateDraftWithSchema({...spec, vocab})` → `:476 registerProvisionalSolver(..., { vocab })` → `:544 checkGrounding(draft.computeSource, opts.vocab)`。**vocab 由运行时派生而非硬编空**，不是「接了线没数据」形态。
+  - **DF.9 HARD/SOFT 分流 ✅ 且落点与勘误一致**：勘误 🔴2 说「分流是跨服务接缝：HARD→agentcore、SOFT→datacore fill-data」——实测正是：`apps/agentcore/src/growth/data-boundary.ts:1-40`（HARD 出 DataRequest 走真人正门 / SOFT 走确定性合成）+ `apps/datacore/src/app.ts:1292 POST /a/v1/growth/fill-data`。**勘误被执行了**。
+  - **DF.10 边界册版本化 ✅**：`base-registry.ts:382`（改值留痕 + 跨服务缓存失效锚）。
+- **缺的一半（三项，都属 §4 契约层）**：
+  1. **`GenerationBoundary` / `BoundaryItem` / `ImportPort` 未成为一等契约对象**：`packages/contracts/src/boundary.ts` **不存在**，`apps/datacore/src/synthetic/boundary.ts` 也**不存在**。实现改用「contracts 里的代码级册（`base-registry.ts`）」承载。→ 后果：**PRD §0 承诺的「boundary DRAFT→PUBLISH 经审批（R4）」没有落点**——边界册改值只能改代码 + 过门，不能在运行时经 Action 审批发布。
+  2. **勘误 🔴1 指定的 `026_boundary.sql` 未建**：`ls apps/datacore/migrations/` → `024_solver_artifacts` / `025_reconcile_candidates` / **`026_sim_sessions`** / `027_decisions` —— 026 号被 `sim_sessions` 占了，boundary 表压根没建（与上一条同源：走了代码册路线，不落表）。
+  3. **`boundary.published` / `data_request.*` 两个新事件零实现**：`grep -rn "boundary.published\|data_request\." apps/ packages/ docs/SYSTEM-ONTOLOGY.md` = **0 命中**。`DataRequest` 只作为 `GrowthFillResult` 的内嵌字段存在（`packages/contracts/src/growth.ts:67,79`），不是独立可追踪的 `DataRequestTicket`。
+- **结论**：◐部分（接地脊柱 DF.1–DF.10 全落且门绿、勘误被执行；**边界的"可发布对象化"整条支线未做**：无 boundary 契约文件、无迁移表、无 R4 审批通路、两个事件零实现）
+- **最小 WO 建议**：`WO-BOUNDARY-PUBLISHABLE`：🚦只碰 `packages/contracts/src/boundary.ts`（新建 GenerationBoundary/BoundaryItem/ImportPort/DataRequestTicket）+ `apps/datacore/migrations/0NN_boundary.sql`（**注意 026 已被 sim_sessions 占，须取当前空号**）+ `apps/datacore/src/repo/{repo.ts,pg.ts,memory.ts}`（R9 四处）+ `apps/datacore/src/app.ts`（boundary CRUD + publish 走 Action）+ `event-subscriptions.ts` + 本体 §2/§4。
+  ⚠ **先做决策再动手**：代码册（现状，`base-registry.ts` + 零容忍门守着）与可发布对象（PRD 原意，R4 审批）是**两条互斥路线**——代码册的强项恰是"门能零容忍"，改成运行时可发布会把这道门的牙拔掉。建议先由仓主裁决走哪条，**别默认按 PRD 补**。
+
+---
