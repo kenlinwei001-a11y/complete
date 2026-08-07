@@ -262,7 +262,7 @@ function stableStringify(v: unknown): string {
  * 0x01000193 参数一致（Math.imul 保 32 位溢出语义）。
  */
 function callSignature(name: string, input: unknown): string {
-  const s = `${name} ${stableStringify(input)}`;
+  const s = `${name}\u0000${stableStringify(input)}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

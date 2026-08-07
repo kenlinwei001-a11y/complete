@@ -283,6 +283,26 @@ export class TimeseriesService {
       const runAt = new Date().toISOString();
       let maxIngested = spec.lastRunAt ?? "";
 
+      // ── 批量落盘 ts_agg_runs ────────────────────────────────────────────────
+      // 原来是循环里一行一个 `put()`。demo 播种实测：这一张表 **153920 行 = 153920 次
+      // round-trip**，占 pg 模式启动 173430 个事务的大头，直接决定 /readyz 要 503 多久
+      // （详见 repo/repo.ts `Store.putMany` 注释：这不是"慢一点"，是部署失败的成因）。
+      //
+      // 为什么可以安全地推迟到批末写：本循环内**没有任何一处回读 tsAggRuns**——
+      // 快照回写只把 `run.id` 当字符串塞进 __prov，不做 read-after-write。
+      // （这一条是逐行读过循环体确认的，不是"看起来没有"。）
+      //
+      // FLUSH 上限存在的理由是内存：全攒着 = 单 spec 15 万条驻留（~40MB）。
+      // 攒批的收益在前几百条就基本吃满（round-trip 数降两个数量级），
+      // 再往上只是拿内存换一个已经不明显的收益。
+      const FLUSH = 2000;
+      let pending: TsAggRunRecord[] = [];
+      const flushRuns = async (): Promise<void> => {
+        if (pending.length === 0) return;
+        await this.repos.tsAggRuns.putMany(pending);
+        pending = [];
+      };
+
       for (const [entityId, windowEnds] of [...affected.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
         const entityPoints = allPointsByEntity.get(entityId) ?? [];
         for (const windowEnd of [...windowEnds].sort()) {
@@ -319,7 +339,8 @@ export class TimeseriesService {
             value,
             runAt,
           };
-          await this.repos.tsAggRuns.put(run);
+          pending.push(run);
+          if (pending.length >= FLUSH) await flushRuns();
           windowsComputed++;
 
           // snapshot write-back: only the window ending at the entity's latest bucket.
@@ -351,6 +372,10 @@ export class TimeseriesService {
           }
         }
       }
+      // ⚠ 必须在推进 spec.lastRunAt **之前**冲刷：lastRunAt 一旦前移，下次增量聚合就
+      //   不会再看这批点了。若此处先写 spec 后写 runs 而中途崩，那批 run 会永久丢失且
+      //   没人再算它 —— 顺序不是风格问题，是"崩了能不能自愈"的问题。
+      await flushRuns();
       for (const p of touched) if (p.ingestedAt > maxIngested) maxIngested = p.ingestedAt;
       spec.lastRunAt = maxIngested || runAt;
       await this.repos.tsAggSpecs.put(spec);

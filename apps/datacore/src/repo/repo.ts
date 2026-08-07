@@ -76,6 +76,26 @@ import type {
 export interface Store<T extends { id: string; tenantId: string }> {
   get(tenantId: string, id: string): Promise<T | undefined>;
   put(item: T): Promise<void>;
+  /**
+   * 批量落盘（语义 ≡ 对 items 依次 put，**后写覆盖先写**）。
+   *
+   * 为什么它必须进接口而不是留给调用方循环 put：**round-trip 数就是启动时长**。
+   * 2026-08-07 实测 demo 播种（pg 模式）：`xact_commit=173430`，其中 `ts_agg_runs`
+   * 一张表就贡献 153920 行 —— 全是 `timeseries.ts` 循环里一行一个 `put()` 打出去的。
+   * 单机 fsync=off 下 104s；生产实测 487s；Codespaces 慢盘再乘几倍就撞穿
+   * healthcheck 预算（start_period 600s + retries 30×10s = 900s）→ 容器判 unhealthy →
+   * `depends_on: service_healthy` 永不触发 → 整套编排报「dependency failed to start」。
+   *
+   * 即：**这不是"慢一点"，是部署失败的直接成因**。所以批量写是接口级能力，
+   * 不是某个调用点的局部优化 —— 留给调用方各自循环，下一个热点还会再犯一次。
+   *
+   * 实现约束（两个实现都必须守）：
+   *  - 幂等 + 后写覆盖：同一批内 id 重复时以**最后一条**为准（与依次 put 等价）。
+   *  - 空数组是合法输入，必须 no-op（不得发出空 INSERT）。
+   *  - 全部或全不（pg 端一次 INSERT 即一个事务）；跨 chunk 不保证原子性，
+   *    与依次 put 的语义一致，故调用方不得依赖跨 chunk 原子性。
+   */
+  putMany(items: T[]): Promise<void>;
   remove(tenantId: string, id: string): Promise<void>;
   list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]>;
 }

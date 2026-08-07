@@ -25,7 +25,8 @@ async function main(): Promise<void> {
 
   const bootstrapEnv = { email: config.BOOTSTRAP_ADMIN_EMAIL, password: config.BOOTSTRAP_ADMIN_PASSWORD };
   // #5 首启预热闸（Codespaces 健康检查耗尽定位）：先 listen 再后台播种；播种期间 /readyz 503(reason:"seeding")。
-  const readiness = { seeding: config.SEED_DEMO === "1" };
+  // phase/startedAt：让 503 能回答「在动吗」而不只是「没好」（见 app.ts seedingPhase 注释）。
+  const readiness = { seeding: config.SEED_DEMO === "1", phase: "starting", startedAt: Date.now() };
   const { app, services } = await buildApp({
     config,
     repos,
@@ -35,6 +36,10 @@ async function main(): Promise<void> {
     // 管理平台增量 §1：users 表为空且无 BOOTSTRAP 变量 → /readyz 503（原因见日志/响应）。
     bootstrapRequired: bootstrapReadiness(repos, bootstrapEnv),
     seeding: () => readiness.seeding,
+    seedingPhase: () => ({
+      phase: readiness.phase,
+      elapsedSec: Math.round((Date.now() - readiness.startedAt) / 1000),
+    }),
   });
 
   // #5 定位/修：原先「先播种（pg 演示数据 ~487s）再 listen」→ 端口全程 down，Codespaces 慢盘下超 start_period →
@@ -44,27 +49,46 @@ async function main(): Promise<void> {
   await app.listen({ port: config.PORT, host: config.HOST });
   logger.info({ port: config.PORT }, "datacore listening (预热中 · /readyz 待播种完成)");
 
+  // 预热阶段计时器。**存在的理由是一次真实的部署事故**：Codespaces 上 datacore 起不来，
+  // `docker compose logs datacore` 打出来的却只有几十行一模一样的 `/readyz 503`，
+  // 没有任何一行说"播到哪儿了"——于是运维、仓主、我三方都无法判断它是
+  // 「还在播」还是「已经卡死」，只能干等或干猜。
+  // 判据（本仓铁律 1 的同一条）：**判活看的是"还在不在动"，而"在动"必须有可观测的信号**。
+  // 一个 8 分钟不出声的预热过程，等于把这个判据从外部观察者手里拿走了。
+  const t0 = readiness.startedAt;
+  const el = (): string => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+  const phase = (name: string): void => {
+    readiness.phase = name;
+    logger.info({ phase: name, elapsed: el() }, `预热 · ${name}`);
+  };
+
   try {
     // 管理平台增量 §1 优先级（见 bootstrap.ts 注释 + DEPLOY.md）：
     // ① bootstrap 检查先于 SEED_DEMO 播种决策（空表 + 环境变量 → 创建 default 租户 platform_admin，幂等）；
     // ② SEED_DEMO=1 才播种 demo 租户与演示账号（两者可叠加）；
     // ③ 空表 + 无变量 + 未播种 → /readyz 持续 503（BOOTSTRAP_REQUIRED）。
+    phase("bootstrap");
     await bootstrapPlatformAdmin(repos, bootstrapEnv, logger);
     if (config.SEED_DEMO === "1") {
+      phase("seed:tenant");
       const adminCtx = await seedDemo(repos);
+      phase("seed:synthetic");
       logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
       await seedDemoSynthetic(services.synthetic, adminCtx);
       // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
+      phase("seed:propagation-rules");
       await seedDemoPropagationRules(repos);
       logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
       // WO-LIGHTUP：生产 demo 点亮 5 个 QOS 暗发功能（DRIL/反思/free-llm/coordinator/compose-path）——仅生产播种路径，不入基座 seedDemo。
+      phase("seed:entitlements");
       await seedDemoEntitlements(repos);
       logger.info("SEED_DEMO=1: lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）
+    readiness.phase = "ready";
   }
-  logger.info("datacore 预热完成 · /readyz ready");
+  logger.info({ elapsed: el() }, "datacore 预热完成 · /readyz ready");
 
   services.scheduler.start();
 

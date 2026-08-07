@@ -756,6 +756,28 @@
         "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
       },
       "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
+    },
+    "check-no-raw-nul.mjs": {
+      "alias": "no-raw-nul:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/**",
+        "apps/agentcore/src/**",
+        "apps/frontend-shell/src/**",
+        "packages/contracts/src/**",
+        "packages/llm-adapters/src/**",
+        "scripts/**",
+        "docs/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "变异反证实测，显式捕获退出码（out=$(cmd 2>&1); rc=$?，非管道尾 $?）",
+        "note": "M1 向已清理的 apps/datacore/src/repo/pg.ts 注入 1 个裸 NUL 字节 → 命中文件数由 2 升到 3，且精确点名该文件与行号、给出该文件内 NUL 总数，RC=1；移除后回绿 RC=0（证明修法有效、门不是卡死在红）。另有一次非人为真红：门上链当次即扫出两处此前人工排查漏掉的存量污染 —— apps/agentcore/src/agent/loop.ts（工具签名哈希键）与 apps/datacore/src/decision/outcome-stats.ts（分组键 ×2）。即：门的第一次运行就抓到了人没抓到的东西，这本身就是它有牙的证据。",
+        "note2": "防哑根据：真值源 = git ls-files -z 的实际文件内容 + Buffer.indexOf(0)，不读任何清单/文档/白名单（除扩展名过滤），故不存在「门看到的与 git 看到的不一致」这种哑法 —— 被守的正是 git 对该文件是否判定为 binary，而判据同源。同批 check-view-reachable.mjs 第一版曾是哑门（裸文本匹配，注释掉的登记行照样算数），故本门先证会红再上链。"
+      },
+      "notes": "守「源码可复审」：NUL 在本仓是合法且有用的复合键分隔符（memKey(tenantId,id)、ts point 四元组键），门不禁止用它，只规定写法 —— 裸字节让 git 判定整个文件为 binary（git diff 只回 Binary files differ），转义写法运行期逐字节等价但 diff 可读。二者唯一差别是可复审性。病灶实测：apps/datacore/src/repo/memory.ts（473 行仓储实现）与 apps/datacore/src/sim/propagation.ts 长期被 git 当二进制，整个生命周期没有一次可读 diff，复审只能靠信任提交者；上链时又扫出 2 处存量，合计 4 个文件。本门存在的直接理由：2026-08-07 修完 memory.ts 后十分钟，同一人在 pg.ts 的新代码里又写了三个裸 NUL —— 人对不可见字符没有感知力，「下次更小心」不是可执行的对策，这类问题只能由机器挡。诚实边界：只扫文本类扩展名白名单（真正的二进制资产本就该是 binary，不在管辖内）；只断言不含裸字节，不断言 NUL 的用法是否合理（该不该拿它当分隔符是设计判断，门不越界）。"
     }
   }
 }

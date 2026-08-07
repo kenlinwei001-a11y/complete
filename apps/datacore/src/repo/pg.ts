@@ -146,6 +146,64 @@ class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
     );
   }
 
+  /**
+   * 批量 upsert：**一次 INSERT 打多行**，把 N 次 round-trip 压成 ⌈N/CHUNK⌉ 次。
+   *
+   * 三个必须处理的坑（每一个都会让"看起来对"的实现在生产上炸）：
+   *
+   * ① **同批内 id 重复 → postgres 直接报错**，不是静默取其一：
+   *    `ON CONFLICT DO UPDATE command cannot affect row a second time`。
+   *    所以必须先按 id 去重、保留**最后一条**（这才等价于依次 put 的后写覆盖语义）。
+   *    去重要按 (tenant_id, id)? —— 不：本表主键就是 id 单列（见各 migration 的
+   *    `ON CONFLICT (id)`），跨租户共用 id 本就会互相覆盖，这是既有语义，此处不改。
+   *
+   * ② **绑定参数上限 65535**（pg 线协议 int16）。超了报 `bind message has N parameter
+   *    formats but M parameters`。列数随 extraColumns 变（3~5 列），故 chunk 必须**按实际
+   *    列数算**而不是写死行数 —— 写死 1000 行在 5 列表上是 5000 个参数（安全），
+   *    但这类"当时够用"的常数正是以后加一列就悄悄炸的东西。
+   *
+   * ③ **extraColumns 逐行求值**：同一张表不同行的 extras 键集合理论上可不同
+   *    （extraColumns 是任意函数）。列集合必须对整批取**并集**并对缺失键补 null，
+   *    否则少数行会把整批的列布局带偏。实际实现里各 extraColumns 都返回定长键集，
+   *    但依赖"实际上都一样"就是在赌一个没人守的约定。
+   */
+  async putMany(items: T[]): Promise<void> {
+    if (items.length === 0) return; // 空批 no-op：绝不发 `VALUES ()` 这种语法错
+
+    // ① 去重：后写覆盖（Map 保留最后一次 set）
+    const byId = new Map<string, T>();
+    for (const it of items) byId.set(it.id, it);
+    const rows = [...byId.values()];
+
+    // ③ 列集合取并集（顺序稳定：先出现的键在前，保证 SQL 文本对同一批可复现）
+    const extrasPerRow = rows.map((r) => this.extraColumns(r));
+    const extraKeys: string[] = [];
+    for (const e of extrasPerRow) for (const k of Object.keys(e)) if (!extraKeys.includes(k)) extraKeys.push(k);
+    const cols = ["id", "tenant_id", "doc", ...extraKeys];
+    const updates = ["doc = EXCLUDED.doc", "updated_at = now()"].concat(
+      extraKeys.map((k) => `${k} = EXCLUDED.${k}`),
+    );
+
+    // ② chunk 按列数反算，留出余量（65535 是硬上限，取 60000 免得贴边）
+    const chunkRows = Math.max(1, Math.floor(60000 / cols.length));
+
+    for (let off = 0; off < rows.length; off += chunkRows) {
+      const slice = rows.slice(off, off + chunkRows);
+      const vals: unknown[] = [];
+      const tuples = slice.map((item, i) => {
+        const extras = extrasPerRow[off + i]!;
+        vals.push(item.id, item.tenantId, JSON.stringify(item), ...extraKeys.map((k) => extras[k] ?? null));
+        const base = i * cols.length;
+        return `(${cols.map((_, c) => `$${base + c + 1}`).join(",")})`;
+      });
+      await this.pool.query(
+        `INSERT INTO ${this.table} (${cols.join(",")}) VALUES ${tuples.join(",")}
+         ON CONFLICT (id) DO UPDATE SET ${updates.join(", ")}`,
+        vals,
+      );
+    }
+  }
+
   async remove(tenantId: string, id: string): Promise<void> {
     await this.pool.query(`DELETE FROM ${this.table} WHERE id = $1 AND tenant_id = $2`, [
       id,
@@ -359,18 +417,41 @@ class PgScheduledJobStore extends PgStore<ScheduledJobRecord> implements Schedul
 class PgTsPointStore implements TsPointStore {
   constructor(private pool: pg.Pool) {}
 
+  /**
+   * 批量 upsert：一次 INSERT 打多行。原实现是 BEGIN → 逐行 INSERT → COMMIT，
+   * 事务只有一个但 **round-trip 有 N 个** —— demo 播种 164970 个点全走这条路。
+   * 「包在事务里」省的是 fsync，不是网络往返；慢的是后者（详见 repo.ts Store.putMany 注释）。
+   *
+   * 冲突键是 (tenant_id, series_id, entity_id, ts) 四元组（非单列 id），故同批去重
+   * 必须按这个四元组，否则同样触发 `ON CONFLICT DO UPDATE command cannot affect
+   * row a second time`。tenantId 对整批是常量，键里仍带上以防将来跨租户批量写。
+   */
   async upsert(tenantId: string, points: TsPointRecord[]): Promise<number> {
     if (points.length === 0) return 0;
+    // 同批去重（后写覆盖，等价于原来的逐行顺序 upsert）
+    const byKey = new Map<string, TsPointRecord>();
+    for (const p of points) byKey.set(`${tenantId}\u0000${p.seriesId}\u0000${p.entityId}\u0000${p.ts}`, p);
+    const rows = [...byKey.values()];
+
+    const COLS = 8;
+    const chunkRows = Math.floor(60000 / COLS); // 绑定参数上限 65535，留余量
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      for (const p of points) {
+      for (let off = 0; off < rows.length; off += chunkRows) {
+        const slice = rows.slice(off, off + chunkRows);
+        const vals: unknown[] = [];
+        const tuples = slice.map((p, i) => {
+          vals.push(tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0, p.origin ?? null);
+          const base = i * COLS;
+          return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
+        });
         await client.query(
           `INSERT INTO ts_points (tenant_id, series_id, entity_id, ts, vals, ingested_at, tick, origin)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           VALUES ${tuples.join(",")}
            ON CONFLICT (tenant_id, series_id, entity_id, ts)
            DO UPDATE SET vals = EXCLUDED.vals, ingested_at = EXCLUDED.ingested_at, tick = EXCLUDED.tick, origin = EXCLUDED.origin`,
-          [tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0, p.origin ?? null],
+          vals,
         );
       }
       await client.query("COMMIT");
@@ -380,6 +461,10 @@ class PgTsPointStore implements TsPointStore {
     } finally {
       client.release();
     }
+    // ⚠ 返回 points.length 而非 rows.length（去重后）—— **刻意与 memory 实现保持一致**。
+    // MemTsPointStore.upsert 逐点计数、不去重，返回的就是入参长度。此处若改成"实际落盘行数"，
+    // pg 与 memory 在有重复输入时会返回不同的数 ⇒ 违反「仓储双实现行为等价」。
+    // 哪个口径更"对"是另一个问题，要改必须两边一起改（且过一遍调用方）；本次只治启动时长。
     return points.length;
   }
 

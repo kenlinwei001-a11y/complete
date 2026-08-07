@@ -138,6 +138,15 @@ export interface AppDeps {
    * server 先 listen 再后台播种，播种期间端口已起、healthz/readyz 可应答（不再"端口全程 down"耗尽重试）。
    */
   seeding?: () => boolean;
+  /**
+   * 预热子阶段（bootstrap / seed:tenant / seed:synthetic / …）+ 已耗秒数，仅在 seeding 为真时有意义。
+   *
+   * 为什么 503 的 body 里必须带这个：一次真实部署事故里，运维手上只有
+   * `docker compose logs datacore --tail=60` 打出的几十行**完全一样**的 503 ——
+   * 「还在播种」和「卡死在某一步」在那个输出里长得一模一样。
+   * 探活端点若只回一个恒定字符串，它就只能回答"没好"，回答不了"在动吗"。
+   */
+  seedingPhase?: () => { phase: string; elapsedSec: number };
 }
 
 export interface BuiltApp {
@@ -892,13 +901,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const readyz = async (_req: FastifyRequest, reply: FastifyReply) => {
     try {
       await repos.ping();
-    } catch {
-      return reply.status(503).send({ status: "not ready" });
+    } catch (err) {
+      // ⚠ 这里必须带 reason **且必须打日志**：三个 503 出口原先只有 bootstrap 那个会留痕，
+      // 于是「pg 连不上」与「还在播种」在 `docker compose logs` 里是同一副面孔（都只有一行 503 访问日志）。
+      // 一次真实部署事故就卡在这个二选一上——两种情况的处置完全相反（查数据库 vs 再等一会儿）。
+      logger.error({ err }, "readyz blocked: repos.ping() failed");
+      return reply.status(503).send({ status: "not ready", reason: "db_unreachable" });
     }
     // #5 首启预热闸：先 listen 再后台播种，播种期间 /readyz 503（reason:"seeding"）→ 端口已起、
     // 编排方（depends_on service_healthy）在预热窗内正确等待，不再因"端口全程 down"耗尽 healthcheck 重试。
     if (deps.seeding?.()) {
-      return reply.status(503).send({ status: "not ready", reason: "seeding" });
+      // phase + elapsedSec 让探活方能区分「在动」与「卡死」：连续两次采样 phase/elapsed 不变 = 卡住。
+      const p = deps.seedingPhase?.();
+      return reply.status(503).send({ status: "not ready", reason: "seeding", ...(p ?? {}) });
     }
     // 管理平台增量 §1：空库且未配置 BOOTSTRAP 变量 → 503 + 明示原因（日志同步报错）。
     const reason = deps.bootstrapRequired ? await deps.bootstrapRequired() : null;
