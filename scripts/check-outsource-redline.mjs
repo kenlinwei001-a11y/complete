@@ -23,14 +23,14 @@
  * 把测试也一刀切禁字面量会逼出假绿。接缝由 `rules-p3-payload-11solvers.test.ts` 的 C08 翻转用例守。
  *
  * ⚠ **本门盖不住的地方（诚实边界，别以为绿了就万事大吉）**：
- *   本门是**静态源码扫描**，只管"仓库里的字面量"。它**看不见运行时数据库里的规则记录**。
- *   规则 DSL 目前**不支持在 expression 里引用 params**（`> $C08.outsourceRatioMax` 这种写法不存在），
- *   所以一条已发布规则上，`params.outsourceRatioMax` 与 `expression` 字符串里的那个数是**两个可各自编辑的数**。
- *   种子期本门保证二者同源生成（见 `battery.ts` C08 那行：expression 与 params 同取一个常量）；
- *   但**管理员在界面上改了 expression 却没改 params（或反之），本门一无所知**。
- *   这是全仓系统性缺口（C04 的 `'量产'`、C09 的 `lagHours > 2` 同病），登记为 **G-C08-EXPR-PARAM-SPLIT**
- *   （`docs/SYSTEM-ONTOLOGY.md` §8）。修法两条：① 扩 DSL 支持 param 插值；② 发布时按模板从 params 重生成
- *   expression。二者都要改规则引擎/RulesService，非本单范围。
+ *   本门是**静态源码扫描**，只管"仓库里的字面量"，**看不见运行时数据库里的规则记录**。
+ *   ~~规则 DSL 不支持 expression 引用 params~~ **已过期，勿据此判断**：DSL 现支持命名阈值引用
+ *   `params.<名>`（`ruledsl.ts` 的 `param` 操作数），C08 发布态即 `Order.outsourceRatio > params.outsourceRatioMax`
+ *   —— 阈值只存 `rule.params` 一处，不再是"两个可各自编辑的数"。
+ *   运行期那一半现由**发布闸**守：`assertValidExpression` 正向查「引用的阈值都声明了吗」、
+ *   反向查「登记为 threshold 的 param 是否真被引用」（`missingBoundThresholdRefs`），
+ *   管理员把引用改回字面量再发布会被 400 拒。断点 `G-C08-EXPR-PARAM-SPLIT` 已闭（§8）。
+ *   本门与之互补：它守**仓库里**不回潮，发布闸守**运行期**不分叉，谁也替不了谁。
  *
  * 逃生舱：确属另一业务含义的数（库存周转 0.2、观测值、有意不同的待审批候选）在**本行或上一行**写
  * `redline-allow：<理由>`。理由必填是故意的——写不出理由的多半就是漂移。
@@ -233,7 +233,7 @@ console.log(
     `${CONSUMERS.length} 个消费端全部派生 · ${scanned.length} 个源文件无裸字面量回潮 · 合成耦合不变量成立。`,
 );
 console.log(
-  "⚠ 诚实边界：本门只扫源码。规则 DSL 尚不支持 expression 引用 params → 运行时改了 expression 而没改 " +
-    "params（或反之）本门看不见（断点 G-C08-EXPR-PARAM-SPLIT，见 SYSTEM-ONTOLOGY §8）。种子期二者同源生成。",
+  "⚠ 诚实边界：本门只扫源码，看不见运行时规则记录。运行期那半由发布闸正反双向校验守" +
+    "（引用的阈值须已声明 + 登记为 threshold 的 param 须真被引用）—— 断点 G-C08-EXPR-PARAM-SPLIT 已闭，见 SYSTEM-ONTOLOGY §8。",
 );
 console.log("✓ outsource-redline:check 通过。");
