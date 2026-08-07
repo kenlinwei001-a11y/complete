@@ -153,6 +153,27 @@
 
 ### 1.3 ⚠ Learning Loop 的两个硬前置（不修则学到的是错的）
 
+> **【2026-08-07 · 欠账 #65 · 分支 `claude/handoff-wo-65-metrics` 状态回写】**
+> 下述**前置 A 的 Action 三段埋点半**与**前置 B 两服务鉴权半**已实现并实测闭合，本体 §8
+> `G-METRICS-CROSS-TENANT-AND-OPEN` 已标 ✅。实测（真 HTTP，非 inject）：
+> `/metrics` 无凭证 **401** · 错 service token **401** · planner **403** · admin **200** ·
+> `X-Service-Token` **200**（且**不需要** `X-Tenant-Id` → 不打断抓取）；
+> 两租户各提交一次同 `action_type` → 渲染为**两条独立序列**
+> （`…,tenant="demo"} 1` 与 `…,tenant="acme"} 1`），不再是合成的 `2`。
+>
+> **仍未做（§5 开工前请照此判断，别把上面的 ✅ 读成全绿）**：
+> ① **B 侧 `qos_*` / `ac_*` 业务计数器仍无 tenant 标签**（§2.1 第 1 条的 AgentCore 半）；
+> ② **`ActionDraft.origin` 的 `skillKey`/`skillVersion` 未加**（§2.1 第 3 条）——
+>    没有它，per-Skill 人工采纳率仍是空中楼阁，§1.3-A「加重情节」那段依然成立；
+> ③ **未新建 `metrics-tenant:check` 门**（§2.1/§2.3）——今天靠的是测试而非静态门，
+>    新写的业务计数器漏 tenant 标签**不会**被自动拦下。
+>
+> **另订正 §2.2 第 1 条的落法（照字面做会得到一个假修）**：「把 `/metrics` 移出 `PUBLIC_PATHS`」
+> **单独做不生效** —— 鉴权钩子第二行 `if (!path.startsWith("/a/")) return;` 会让 `/metrics`
+> （不以 `/a/` 开头）照样逃出去，端点仍是 200，而且旧测试还会全绿（它们断言的正是"匿名 200"）。
+> 必须同时新增一个「需鉴权的非 `/a/` 路径」集合。已实现见 `apps/datacore/src/app.ts`
+> 的 `PROTECTED_NON_A_PATHS` / `GLOBAL_SERVICE_PATHS`。
+
 #### 前置 A · 人工采纳率跨租户混算
 
 - `ActionMetrics.submit(actionType, outcome)` 的标签只有 `{action_type, outcome}`：`apps/datacore/src/metrics.ts:99-101`。approval/execute/executeAttempt 同（`:103-113`）。
