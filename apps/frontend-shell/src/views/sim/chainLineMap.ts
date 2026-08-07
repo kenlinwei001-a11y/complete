@@ -186,6 +186,8 @@ export const STAGE_LABEL: Record<ChainStage, string> = {
   ORDER: "订单",
   CAPACITY: "产能",
   MATERIAL: "物料",
+  // WO-CHAIN-24：契约追加第 5 段 ⇒ 本表 TS 当场红（`Record<ChainStage, string>` 少键），照 §3 补齐。
+  DELIVERY: "交付",
 };
 
 /** 五段环节的人读名（`ChainStepKind` 是契约枚举，此处仅显示名）。 */

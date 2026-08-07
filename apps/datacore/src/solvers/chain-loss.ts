@@ -39,6 +39,15 @@
  *                                           改判会把 5 天移出损失分母 → 守恒测仍绿但归因结论变，须同步改本注释。）
  *   · `Supplier.leadTime`      → `handoff`：物料从供应商流转到我方（换人换系统换地点）。
  *   · `Customer.termDays`      → `queue`  ：账期回款等待（订单段的现金转换等待）。
+ *   · `PurchaseOrder.shipDay→arriveDay`            → `handoff`：货在承运商手上（换地点，责任方=承运商）。
+ *   · `CustomsClearance.declaredDay→clearedDay`    → `handoff`：货在海关/清关行手上（责任方=清关行）。
+ *   · `IncomingInspection.arrivedDay→releasedDay`  → `queue`  ：货已到厂、压在待检区等放行（**责任方=自家质量部**，
+ *                                                    不是交接 —— 东西没换手，只是在排队等我们自己检）。
+ *
+ * ── WO-CHAIN-24 补记：上面那张「不收什么」的清单**依然成立**，但采购段多了三腿真值 ──
+ * `PurchaseOrder.etaDay` 仍然不收（它是到货**日偏移**不是时长）；改变的是 D2 在 etaDay 之外
+ * 另落了 `orderDay/shipDay/arriveDay` 三个日戳 + 两张凭证对象，于是「在途 / 清关 / 到货检验」
+ * 这三段第一次**有了两端可减的真字段**。这不是把 etaDay 改判，是新增了别的承载物。
  *
  * ── R6 确定性 ────────────────────────────────────────────────────────────────
  * 纯函数：无 `Date.now`、无随机、无时钟。锚点选取全走**字典序**（不是"随便取第一条"），
@@ -81,8 +90,17 @@ export const MINUTES_PER_DAY = 1440;
  *   为什么不直接把 `drillValue` 存成 3.5 天了事：那样 `drillValue` 就不再是「字段真值」，
  *   回仓储捞 `Cadence.everyDays` 得到 7 却与证据里的 3.5 对不上 —— 正是 `gap_attribution`
  *   差 1e4 那次的形状（标签说的字段 ≠ 回的值）。故保留真值 + 显式声明换算。
+ * · `day_stamp_span` —— **两个日戳字段之差**（WO-CHAIN-24 新增）。
+ *   由来：WO-SANDBOX-D2 给采购段落了四段日戳（`PurchaseOrder.orderDay/shipDay/arriveDay`、
+ *   `CustomsClearance.declaredDay/clearedDay`、`IncomingInspection.arrivedDay/releasedDay`），
+ *   **每一段的时长都是两个日戳之差，没有任何单字段承载它**。
+ *   两条错法都被这个单位显式排除：
+ *     ✗ 把差值直接塞进 `drillValue` —— 那 `drillValue` 就不再是字段真值，回仓储对不上（1e4 那次的形状）；
+ *     ✗ 只标一端（如只标 `releasedDay`）—— 标签说的字段真值是 19，链上却用了 3，同样对不上。
+ *   故本单位**必须**同时给 `drillFieldEnd`/`drillValueEnd`，两端都是字段真值、两端都能回仓储逐位对拍，
+ *   `days = drillValueEnd − drillValue`。这是把 R13 从「一个字段可校」加强成「两个字段都可校」。
  */
-export type DrillUnit = "day" | "min" | "cadence_day";
+export type DrillUnit = "day" | "min" | "cadence_day" | "day_stamp_span";
 
 /**
  * `drillValue`（字段真值·原单位）→ `days`（链上天数）的**唯一换算**。
@@ -93,19 +111,24 @@ export type DrillUnit = "day" | "min" | "cadence_day";
  * 于是「标签说的字段」「回的值」「用的天数」三者被同一条链锁死——
  * 这正是 `gap_attribution` 差 1e4 那次**缺**的那一环（当时只有值，没有单位与换算的显式声明）。
  */
-export function daysFromDrill(drillValue: number, unit: DrillUnit): number {
+export function daysFromDrill(drillValue: number, unit: DrillUnit, drillValueEnd?: number): number {
   if (unit === "min") return drillValue / MINUTES_PER_DAY;
   // 节拍：走契约的**唯一等待期望公式**（`everyDays/2`），本文件不复写这个除法。
   if (unit === "cadence_day") return expectedCadenceWaitDays({ everyDays: drillValue });
+  // 日戳跨度：**缺了终点端就返回 NaN**，绝不悄悄退化成「只用起点那个数」——
+  // 那会把一个日历日戳（如 arrivedDay=16）当成 16 天时长，是本仓最爱犯的量纲错（R18）。
+  // NaN 会让对拍测与 `ChainStepSchema`（`days` 必须是有限非负数）双双当场红。
+  if (unit === "day_stamp_span") return drillValueEnd === undefined ? Number.NaN : drillValueEnd - drillValue;
   return drillValue;
 }
 
 /** 换算式的人读文案（与 `daysFromDrill` 同源，别各写各的）。 */
-function conversionText(field: string, unit: DrillUnit): string {
+function conversionText(field: string, unit: DrillUnit, fieldEnd?: string): string {
   if (unit === "min") return `days = ${field} / ${MINUTES_PER_DAY}（分钟 → 天）`;
   if (unit === "cadence_day") {
     return `days = ${field} / 2（等待期望；均匀到达假设。offsetDays 是相位，不进公式）`;
   }
+  if (unit === "day_stamp_span") return `days = ${fieldEnd ?? "(缺终点字段)"} − ${field}（两个日戳之差；两端都是字段真值）`;
   return `days = ${field}（本就是天，1:1）`;
 }
 
@@ -134,6 +157,14 @@ export interface ChainLossEvidence {
   drillValue: number;
   /** `drillValue` 的单位（≠ `days` 的单位，量纲不许混——R18 教训）。 */
   drillUnit: DrillUnit;
+  /**
+   * 日戳跨度的**终点字段名**（仅 `drillUnit === "day_stamp_span"` 时有；其余单位必缺）。
+   * 与 `drillField` 同属 `drillType.drillId` 那**一个**对象 —— 两端同源才叫一段时长，
+   * 跨两个对象相减是在编一条时间线（本文件头「口径」那节点名的错法同族）。
+   */
+  drillFieldEnd?: string;
+  /** 终点字段在仓储里的真值本身（同 `drillValue` 纪律：原单位·不换算·不 round）。 */
+  drillValueEnd?: number;
   /** `drillValue` → `days` 的换算式（人读；机器口径见 `daysFromDrill`）。 */
   conversion: string;
   /** 从锚点订单沿本体走到该对象的**派生边**（linkType 序列；空串 = 锚点自身对象）。 */
@@ -173,6 +204,19 @@ export interface ChainLossAnchor {
   supplierId: string | null;
   baseId: string | null;
   agingProcessId: string | null;
+  /**
+   * 采购段三腿（在途 / 清关 / 到货检验）所锚的那张采购单（WO-CHAIN-24）。
+   *
+   * ⚠ 诚实记一笔**种子里的真实不一致**：`Material.supplierId`（主供）与该物料实际采购单的
+   * `PurchaseOrder.supplierId`（承接方）**可以是两家**（多供物料按单序轮转下单）。
+   * 实测 seed 42：关键物料 `pos_lfp` 主供 `SUP-001`，而它的四张采购单全部由 `SUP-003` 承接。
+   * 本求解器**不把两者拉到同一家**：`material.supplier_leadtime` 照旧走主供（`material_supplied_by`），
+   * 采购三腿照旧走真实采购单（`material_supplied_by_po`），各自标各自的 `drillId`。
+   * 硬凑成一家会让溯源指向一个没参与这笔采购的供应商 —— 那才是假溯源。
+   */
+  purchaseOrderId: string | null;
+  customsClearanceId: string | null;
+  incomingInspectionId: string | null;
   /** 锚点是怎么选出来的（R6：全字典序，可复现）。 */
   selection: string;
 }
@@ -236,6 +280,18 @@ export interface ChainLossInput {
    * 查得到就出真环节，查不到才 EMPTY（且原因取自数据行，不是文案常量）。
    */
   cadences: ChainLossObject[];
+  /**
+   * 采购段三个凭证类（WO-SANDBOX-D2 落的对象，WO-CHAIN-24 才接进本求解器）。
+   *
+   * ⚠ 这三行是**一条过期诊断的修正**，不是新功能：本文件 §3 的 `STRUCTURAL_GAPS` 直到本单之前
+   * 还写着「清关段在本体里完全不存在：没有对象、没有字段、没有链路承载它 · grep 0 命中（2026-08-05 实测）」，
+   * 而 D2 在那之后落了 `CustomsClearance` / `IncomingInspection` / `PurchaseOrder` 四段日戳。
+   * **那句取证在写下的当天是真的，今天是假的** —— 表头自己写着「一旦有了承载物必须从本表删掉并接真数据，
+   * 否则就变成明明有数据却硬标 EMPTY」。本单执行的就是这句话。
+   */
+  purchaseOrders: ChainLossObject[];
+  customsClearances: ChainLossObject[];
+  incomingInspections: ChainLossObject[];
   links: ChainLossLink[];
 }
 
@@ -287,37 +343,6 @@ interface StructuralGap {
 
 const STRUCTURAL_GAPS: readonly StructuralGap[] = [
   {
-    stepId: "material.in_transit",
-    nodeId: "material.replenish",
-    stage: "MATERIAL",
-    label: "物料入厂在途",
-    kind: "handoff",
-    reason:
-      "没有「物料入厂在途天数」这个字段。三个看着像的都**不是**：Material.inTransit 是数量（吨）；PurchaseOrder.etaDay / Shipment.etaDay 是相对 forecastStart 的到货日偏移（日期锚，不是时长）；InterBaseTransfer.transitDays 是成品跨基地调拨在途，不是物料入厂在途 —— 挪用任何一个都是口径错标（本仓刚修过差 1e4 的同族病）。",
-    probe:
-      "读 apps/datacore/src/synthetic/battery.ts 属性定义：materialProps.inTransit（数量）/ shipmentProps.etaDay 注释 'relative to forecastStart' / interBaseTransferProps.transitDays 注释 '距离派生 = ceil(baseDistanceKm / dailyTruckKm)'（成品调拨）。三者语义逐个核过，均非本段。",
-  },
-  {
-    stepId: "material.customs",
-    nodeId: "material.replenish",
-    stage: "MATERIAL",
-    label: "清关",
-    kind: "handoff",
-    reason: "清关段在本体里完全不存在：没有对象、没有字段、没有链路承载它。（D2 单要新增的两段之一。）",
-    probe: "grep -rni 'customs|清关|报关' apps/*/src packages/*/src --include=*.ts → 0 命中（2026-08-05 在 origin/claude/inspiring-gates-aqczjg + S0 上实测）。",
-  },
-  {
-    stepId: "material.iqc",
-    nodeId: "material.replenish",
-    stage: "MATERIAL",
-    label: "到货检验（IQC）",
-    kind: "queue",
-    reason:
-      "到货检验段无承载。注意：仓里**有**质量域（QualityLot/InspectionResult/InspectionCharacteristic），但那是**在制/出货**检验（挂 WorkOrder/lotId），不是**来料**检验；拿它冒充 IQC 是换个对象继续说谎。（D2 单要新增的两段之二。）",
-    probe:
-      "grep -rni '\\bIQC\\b|到货检验|来料检验|incoming.*inspect' apps/*/src packages/*/src --include=*.ts → 0 命中；再追一层核 QualityLot.woId / InspectionResult.charId 的挂载点，确认全部挂在在制工单上，无来料侧。",
-  },
-  {
     stepId: "chain.rework",
     nodeId: "capacity.quality",
     stage: "CAPACITY",
@@ -327,6 +352,121 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
       "返工**天数**无承载。仓里有不良记录（DefectRecord.qty 85 条 / QualityLot.failQty 260 条 / InspectionResult 520 条），但全是**数量与判定**，没有返工工时或返工天数字段。要从不良数换算成天数得有「单件返工工时率」——那个数仓里不存在，编一个出来就是静默兜底。",
     probe:
       "grep -rni '返工|rework' apps/datacore/src packages/contracts/src --include=*.ts → 仅命中 battery.ts:574 的一段叙事文案（外协质量波动的因果链描述串）与 chain-sim.ts 的 kind 枚举声明本身，**零字段、零对象**；再逐个读 defectRecordProps / qualityLotProps / inspectionResultProps 的属性表，确认无任何时长字段。",
+  },
+
+  // ══ WO-CHAIN-24 · 新增 12 节点里**算不出来的那 10 个** ═══════════════════
+  // 每条都亲手跑过 `listByType` 看真行、逐字段核过（`probe` 写的是实测计数与字段名，不是读 schema 抄的）。
+  // 另外 2 个（`material.inbound_transit` / `material.iqc`）**能算**，走 §4 的 StepDraft，不在本表。
+
+  {
+    stepId: "demand.forecast#intake",
+    nodeId: "demand.forecast",
+    stage: "DEMAND",
+    label: "客户预告接收",
+    kind: "handoff",
+    reason:
+      "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里**有**两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/p50/p90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
+    probe:
+      "实测（seed 42·内存仓）：listByType('LongTermAgreement') n=3，首行字段 ltaId/supplierId/materialType/contractedQtyTon/actualDeliveredTon/priceLinked/breachPenaltyWan/priceFormula/effectiveDate/expiryDate 逐个核过；listByType('DemandSegment') n=3，字段 segId/segment/tgt/p50/p90/act/priceWan/marginPct/floorPct/businessType/revenueWan/marginWan。两者均无时刻序列、无时长字段。",
+  },
+  {
+    stepId: "demand.quote#approval",
+    nodeId: "demand.quote",
+    stage: "DEMAND",
+    label: "询报价",
+    kind: "queue",
+    reason:
+      "询报价段**连对象都没有**：全仓没有 Quote / 报价单对象类型。`Quote` 这个名字在仓里只作为**规则求值期注入的命名空间**存在（规则 C24 `Quote.marginPct < Quote.floorPct`），battery.ts:2777 明写「Quote 仅 eval 期注入命名空间非本体对象类型」。Order 只有 due/status、OrderLine 只有 lineStatus——都是单据状态，不是「询单→报出价」这件事发生的时刻。修法是先有报价单对象，不是在这里编一个审批周期。",
+    probe:
+      "grep -rn 'Quote|Quotation|报价' apps/datacore/src/synthetic --include=*.ts → 5 命中，逐条点开：battery.ts:290 是规则 C24 表达式、:2777 是它的 scope 归属注释（并明写 Quote 非本体对象类型）、:568/:571 是叙事文案。另核 synthetic/service.ts 的 putAll 清单（全部物化对象类型）无 Quote。",
+  },
+  {
+    stepId: "capacity.rccp#review",
+    nodeId: "capacity.rccp",
+    stage: "CAPACITY",
+    label: "产能与瓶颈复核",
+    kind: "queue",
+    reason:
+      "产能/瓶颈复核的**耗时**无承载。仓里有 Process / Equipment / ProcessCapabilityWindow（345 条），但它们是**能力参数**（minValue/maxValue/targetValue/ucl/lcl），回答的是「能跑多快」，不是「这次复核花了多久 / 多久复核一次」。唯一像样的候选 ProductionSchedule **未物化为对象**（synthetic/service.ts 明列为「高量低值执行类保持模型态不物化」），下游按对象根本查不到。",
+    probe:
+      "实测：listByType('ProcessCapabilityWindow') n=345，首行字段 capabilityId/operationId/parameterName/paramCode/unit/minValue/maxValue/targetValue/tolerance/ucl/lcl/status；listByType('ProductionSchedule') **n=0**（生成器里有、对象库里没有）。",
+  },
+  {
+    stepId: "capacity.wo_release#release",
+    nodeId: "capacity.wo_release",
+    stage: "CAPACITY",
+    label: "工单下达",
+    kind: "handoff",
+    reason:
+      "工单下达段无承载。WorkOrder **有** startDate/endDate（260 条），但那对日期是**生产窗口**（开工→完工），把它俩相减得到的是作业时长，不是「排产定了→工单真正下到车间」的这段等待。缺的是 releaseDate / plannedReleaseDate 这类**下达时刻**字段——「有对象、缺字段」，修法是加字段。",
+    probe:
+      "实测：listByType('WorkOrder') n=260，首行字段 woId/moNo/modelId/lineId/baseId/qtyPlanned/qtyActual/startDate/endDate/status 逐个核过，无任何下达/放行时刻。",
+  },
+  {
+    stepId: "material.kitting#pick",
+    nodeId: "material.kitting",
+    stage: "MATERIAL",
+    label: "齐套发料",
+    kind: "queue",
+    reason:
+      "齐套发料段无承载。InventoryTxn（128 条）**每行只有一个时刻** occurredAt + txnType/qty/fromWarehouse/toWarehouse，没有「齐套请求时刻」与「线边收到时刻」的**配对**；Warehouse（34 条）是仓位主数据（whType/capacityUnits/province/city），不带时长。拿单条 occurredAt 去减别的对象的日期，是在编一条本来不存在的时间线。",
+    probe:
+      "实测：listByType('InventoryTxn') n=128，首行字段 txnId/txnType/fgRef/woRef/qty/fromWarehouse/toWarehouse/refDoc/occurredAt；listByType('Warehouse') n=34，首行字段 warehouseId/baseId/name/whType/capacityUnits/province/city。",
+  },
+  {
+    stepId: "material.purchase_req#approval",
+    nodeId: "material.purchase_req",
+    stage: "MATERIAL",
+    label: "请购",
+    kind: "queue",
+    reason:
+      "请购段**连对象都没有**：全仓没有 PurchaseRequisition / 请购单对象类型。PurchaseOrder 有 orderDay（下单天）作为这一段的**终点**，但起点（请购提出天）不存在——一段时长只有一端等于没有。（设计稿 S1 自己也标 `V.G`「无 PurchaseReq 对象」，与实测一致。）",
+    probe:
+      "grep -rn 'PurchaseReq|请购|Requisition' apps/datacore/src/synthetic --include=*.ts → **0 命中**（先拿确定存在的 'PurchaseOrder' 跑同一条命令验证工具没坏：命中 20+ 行）。另核 synthetic/service.ts putAll 清单无请购类。",
+  },
+  {
+    stepId: "material.purchase_order#place",
+    nodeId: "material.purchase_order",
+    stage: "MATERIAL",
+    label: "采购下单",
+    kind: "queue",
+    reason:
+      "**这是「有对象、缺字段」，不是「没对象」——两者修法完全不同，不许混为一谈。** PurchaseOrder 对象存在且字段很全（D2 落的四段日戳 orderDay/shipDay/arriveDay + etaDay），但四段日戳的第一段 `orderDay → shipDay` 语义是**供应商生产前置期**（battery-extended.ts 生成处注释：`orderDay ──供应商生产(Supplier.leadTime)──▶ shipDay`），已由 material.supplier_leadtime 这一段计过；拿它冒充「下单作业」会**重复计**同一段时间。缺的是「请购批准→采购下单」或「下单作业时长」这一个字段。",
+    probe:
+      "实测：listByType('PurchaseOrder') n=30，首行 po_0 字段 poId/matId/qty/etaDay/delayed/supplierId/sourceMode/orderDay(-6)/shipDay(-1)/arriveDay(1) 逐个核过；再读 battery-extended.ts:685 的日戳倒推注释确认 orderDay→shipDay 的语义归属。",
+  },
+  {
+    stepId: "delivery.fg_stock#putaway",
+    nodeId: "delivery.fg_stock",
+    stage: "DELIVERY",
+    label: "成品入库",
+    kind: "queue",
+    reason:
+      "成品入库停留段无承载。FinishedGoodsInventory（57 条）只有 qtyOnHand/qtyReserved/qtyAvailable/asOf——前三个是**存量**（件），asOf 是**快照时刻**且全表同值，构不成序列。要算这一段得有「下线时刻 → 上架可发运时刻」，仓里没有。注意：安全库存天数 / 覆盖天数那类「库存够卖几天」也**不是**这一段——那是存量除以日耗，不是货在库里停了多久。",
+    probe:
+      "实测：listByType('FinishedGoodsInventory') n=57，首行字段 fgId/model/warehouseId/qtyOnHand/qtyReserved/asOf/qtyAvailable；asOf 全表同为快照日。",
+  },
+  {
+    stepId: "delivery.transit#linehaul",
+    nodeId: "delivery.transit",
+    stage: "DELIVERY",
+    label: "干线运输在途",
+    kind: "handoff",
+    reason:
+      "**成品发到客户**的在途时长无承载。三个看着像的逐个核过、全都不是：① Shipment（13 条）是 **SRM 来料在途**（连接器 conn-srm / 数据集 srm_shipments，挂 base_has_shipment），且 etaDay 是相对 forecastStart 的**到货日偏移**（日期锚）不是时长；② InterBaseTransfer.transitDays 是**成品跨基地调拨**在途，不是发到客户；③ Supplier.transitDays 是**入厂**在途（本单已用于 material.inbound_transit）。挪用任何一个都是口径错标。",
+    probe:
+      "实测：listByType('Shipment') n=13，首行 SHIP-changzhou 字段 shipId/baseId/etaDay/status/qtyTons/coverageDays；再读 battery.ts:1630 连接器映射 `Shipment: [{ connId:'conn-srm', dataset:'srm_shipments' … }]` 确认它是来料侧；再读 battery.ts:1157 interBaseTransferProps.transitDays 注释确认是基地间调拨。",
+  },
+  {
+    stepId: "delivery.acceptance#inspect",
+    nodeId: "delivery.acceptance",
+    stage: "DELIVERY",
+    label: "客户验收",
+    kind: "queue",
+    reason:
+      "客户验收段无承载。OrderPromise（24 条）只有 promiseDate（ATP 承诺日）与 asOf（快照时刻），**没有「客户收货时刻」也没有「验收通过时刻」**；CustomerLocation 是交付地点主数据（省市/地址），不带时刻。于是「到货 ≠ 交付」这句话今天在数据上根本不可分——这正是底部 OTD 口径说不清的根因之一。",
+    probe:
+      "实测：listByType('OrderPromise') n=24，首行 AP-SO-3391 字段 promiseId/orderRef/model/requestedQty/committableQty/promiseDate/atpStatus/shortfallQty/bottleneck/asOf 逐个核过，无收货/验收时刻。",
   },
 ] as const;
 
@@ -344,6 +484,8 @@ interface StepDraft {
   kind: ChainStepKind;
   drillType: string;
   drillField: string;
+  /** 日戳跨度的终点字段（仅 `drillUnit === "day_stamp_span"` 用；同对象上的另一个字段）。 */
+  drillFieldEnd?: string;
   drillUnit: DrillUnit;
   derivationEdge: string;
   /** 拿不到实例时的诚实说明（NO_INSTANCE）。 */
@@ -397,6 +539,14 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       .filter((m) => num(m.props.leadTime) !== null)
       .sort((a, b) => (num(b.props.leadTime) ?? 0) - (num(a.props.leadTime) ?? 0) || str(a.props.matId).localeCompare(str(b.props.matId)))[0] ?? null;
   const supplier = material ? hop(input.links, material.id, "material_supplied_by", input.suppliers) : null;
+
+  // 采购单：关键物料沿 `material_supplied_by_po` 的对端**按 id 字典序第一张**（R6 全序，`hop` 已保证）。
+  // 再沿 D2 落的两条链路取该单的清关凭证与到货检验凭证 —— 三腿全部锚在**同一张采购单**上，
+  // 跨单拼三腿会拼出一条谁也没走过的时间线。
+  const purchaseOrder = material ? hop(input.links, material.id, "material_supplied_by_po", input.purchaseOrders) : null;
+  const customsClearance = purchaseOrder ? hop(input.links, purchaseOrder.id, "po_customs_cleared_by", input.customsClearances) : null;
+  const incomingInspection = purchaseOrder ? hop(input.links, purchaseOrder.id, "po_inspected_by", input.incomingInspections) : null;
+  const poSourceMode = purchaseOrder ? str(purchaseOrder.props.sourceMode, "?") : "?";
 
   // 老化工序：锚点订单可产基地（Order.bases）字典序第一个基地上的 aging 工序，按 processId 字典序第一条。
   const orderBases = Array.isArray(order.props.bases) ? (order.props.bases as unknown[]).map((b) => String(b)).sort() : [];
@@ -508,6 +658,80 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
     ...(modelScope ? { scope: modelScope } : {}),
   });
 
+  // ══ WO-CHAIN-24 · 采购段三腿（D2 落了承载物，本单才接上）════════════════
+  // 三腿都用 `day_stamp_span`（两个日戳之差），因为 D2 落的就是日戳、没有单字段时长。
+  // 责任方各不相同 —— 这正是 D2 做这批数据的理由：晚了要能说出「晚在哪一段 / 该找谁」。
+
+  // MATERIAL：入厂在途（责任方 = 承运商）。PurchaseOrder.shipDay → arriveDay。
+  drafts.push({
+    stepId: "material.in_transit",
+    nodeId: "material.inbound_transit",
+    nodeLabel: "入厂在途与清关",
+    stage: "MATERIAL",
+    label: "入厂在途（供应商发货 → 到厂/到港）",
+    kind: "handoff",
+    drillType: "PurchaseOrder",
+    drillField: "shipDay",
+    drillFieldEnd: "arriveDay",
+    drillUnit: "day_stamp_span",
+    derivationEdge: "order_for_model → model_uses_material → material_supplied_by_po",
+    missReason:
+      "关键物料挂不到采购单，或该采购单缺 shipDay/arriveDay 日戳 —— 在途天数取不到。（不拿 Supplier.transitDays 顶：那是供应商侧的**标称**在途，与这张单实际走了几天是两个数。）",
+    missProbe: `沿 material_supplied_by_po 从物料 ${material ? str(material.props.matId) : "(空)"} 取对端 id 字典序第一张采购单，读其 shipDay / arriveDay。`,
+    obj: purchaseOrder && num(purchaseOrder.props.shipDay) !== null && num(purchaseOrder.props.arriveDay) !== null ? purchaseOrder : null,
+    drillId: purchaseOrder ? str(purchaseOrder.props.poId) : null,
+    ...(modelScope ? { scope: modelScope } : {}),
+  });
+
+  // MATERIAL：清关（责任方 = 清关行）。CustomsClearance.declaredDay → clearedDay。
+  // **只有进口单才有这条记录**：境内直供在结构上没有这个环节 —— 那不是「不知道」也不是「0 天等待」，
+  // 是这一腿不存在。今天只能用 NO_INSTANCE 表达（`ChainLossEmptyKind` 没有 NOT_APPLICABLE 这一档），
+  // 故 reason 里把「结构上不适用」写死，免得下一个人读成「数据没采到」。
+  drafts.push({
+    stepId: "material.customs",
+    nodeId: "material.inbound_transit",
+    nodeLabel: "入厂在途与清关",
+    stage: "MATERIAL",
+    label: "清关（申报 → 海关放行）",
+    kind: "handoff",
+    drillType: "CustomsClearance",
+    drillField: "declaredDay",
+    drillFieldEnd: "clearedDay",
+    drillUnit: "day_stamp_span",
+    derivationEdge: "order_for_model → model_uses_material → material_supplied_by_po → po_customs_cleared_by",
+    missReason:
+      `本锚点链上的采购单${purchaseOrder ? ` ${str(purchaseOrder.props.poId)}` : ""} 的供货模式是「${poSourceMode}」——` +
+      "境内直供**结构上没有清关环节**，因此这条链上不存在 CustomsClearance 实例（NOT_APPLICABLE，不是数据没采到，更不是 0 天）。" +
+      "承载物本身是有的（seed 42 全仓 30 张采购单里恰有 1 张进口单 po_12 带清关记录），所以这是 NO_INSTANCE 而非 NO_CARRIER：" +
+      "要看到这一腿的真值，换一张进口单当锚点即可，不需要加任何字段。",
+    missProbe: `沿 po_customs_cleared_by 从采购单 ${purchaseOrder ? str(purchaseOrder.props.poId) : "(空)"} 取清关凭证；读 PurchaseOrder.sourceMode 判断本单是否进口。`,
+    obj: customsClearance && num(customsClearance.props.declaredDay) !== null && num(customsClearance.props.clearedDay) !== null ? customsClearance : null,
+    drillId: customsClearance ? str(customsClearance.props.clearanceId) : null,
+    ...(modelScope ? { scope: modelScope } : {}),
+  });
+
+  // MATERIAL：到货检验（责任方 = 自家质量部 IQC 班组）。IncomingInspection.arrivedDay → releasedDay。
+  // 「到厂 ≠ 可投产」这段等待此前全仓无承载，D2 补上了，本单接进链路。
+  drafts.push({
+    stepId: "material.iqc",
+    nodeId: "material.iqc",
+    nodeLabel: "到货检验",
+    stage: "MATERIAL",
+    label: "到货检验（到货待检 → 检验放行）",
+    kind: "queue",
+    drillType: "IncomingInspection",
+    drillField: "arrivedDay",
+    drillFieldEnd: "releasedDay",
+    drillUnit: "day_stamp_span",
+    derivationEdge: "order_for_model → model_uses_material → material_supplied_by_po → po_inspected_by",
+    missReason:
+      "本锚点链上的采购单挂不到到货检验凭证，或该凭证缺 arrivedDay/releasedDay —— 检验停留天数取不到。（不拿在制侧的 QualityLot/InspectionResult 顶：那是**在制/出货**检验，挂 WorkOrder/lotId，不是来料检验。）",
+    missProbe: `沿 po_inspected_by 从采购单 ${purchaseOrder ? str(purchaseOrder.props.poId) : "(空)"} 取到货检验凭证，读其 arrivedDay / releasedDay。`,
+    obj: incomingInspection && num(incomingInspection.props.arrivedDay) !== null && num(incomingInspection.props.releasedDay) !== null ? incomingInspection : null,
+    drillId: incomingInspection ? str(incomingInspection.props.inspectionId) : null,
+    ...(modelScope ? { scope: modelScope } : {}),
+  });
+
   // ── 落成 steps / evidence / empty ────────────────────────────────────────
   const steps: ChainStep[] = [];
   const evidence: ChainLossEvidence[] = [];
@@ -517,7 +741,10 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
 
   for (const d of drafts) {
     const raw = d.obj && d.drillId ? num(d.obj.props[d.drillField]) : null;
-    if (raw === null || d.drillId === null) {
+    // 日戳跨度：终点端也必须真取到。少一端就是取不到这段时长（不许只拿起点当天数用）。
+    const rawEnd = d.obj && d.drillId && d.drillFieldEnd !== undefined ? num(d.obj.props[d.drillFieldEnd]) : null;
+    const spanMissing = d.drillUnit === "day_stamp_span" && rawEnd === null;
+    if (raw === null || d.drillId === null || spanMissing) {
       // 诚实缺席（NO_INSTANCE）：承载物在本体里有、这条链上取不到 → **不产环节**，不补 0。
       empty.push({
         stepId: d.stepId,
@@ -532,7 +759,7 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       });
       continue;
     }
-    const days = daysFromDrill(raw, d.drillUnit);
+    const days = daysFromDrill(raw, d.drillUnit, rawEnd ?? undefined);
     const step: ChainStep = {
       stepId: d.stepId,
       nodeId: d.nodeId,
@@ -556,7 +783,8 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       drillField: d.drillField,
       drillValue: raw, // ← 字段真值本身。绝不放换算后的天数（那正是 1e4 错标的形状）。
       drillUnit: d.drillUnit,
-      conversion: conversionText(`${d.drillType}.${d.drillField}`, d.drillUnit),
+      ...(d.drillFieldEnd === undefined || rawEnd === null ? {} : { drillFieldEnd: d.drillFieldEnd, drillValueEnd: rawEnd }),
+      conversion: conversionText(`${d.drillType}.${d.drillField}`, d.drillUnit, d.drillFieldEnd === undefined ? undefined : `${d.drillType}.${d.drillFieldEnd}`),
       derivationEdge: d.derivationEdge,
     });
     if (!nodeMeta.has(d.nodeId)) {
@@ -675,6 +903,9 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       supplierId: supplier ? str(supplier.props.supplierId) : null,
       baseId,
       agingProcessId: agingProcess ? str(agingProcess.props.processId) : null,
+      purchaseOrderId: purchaseOrder ? str(purchaseOrder.props.poId) : null,
+      customsClearanceId: customsClearance ? str(customsClearance.props.clearanceId) : null,
+      incomingInspectionId: incomingInspection ? str(incomingInspection.props.inspectionId) : null,
       selection,
     },
     nodes,
