@@ -106,7 +106,7 @@
         "evidence": null,
         "note": "本体 §7 行826 未记录已执行的反证"
       },
-      "notes": "",
+      "notes": "【处置=WIRE，但须先修哑：直接接线已试过并撤回，见下】【2026-08-07 撤回接线 —— 变异反证证明它是哑门】我当天先把它接进 gates 链（理由：单跑 RC=0），随后 PRD 审计指出 `scripts/check-cli-parity.mjs:38` 的 `const doRouted = /cmdDo|operations\\/classify/.test(cli)` 是**文件级布尔** —— 只要 CLI 文件里出现过 `cmdDo` 三个字，它就恒为 true，于是 `reachable = cliCmds.has(e.cliCommand) || doRouted` **对每一条恒真**，`missingImpl` 永远是空数组。**实测变异反证**：往 `packages/contracts/src/operation-intent.ts` 的 OPERATION_CATALOG 注入一条`cliCommand:\"definitelyNotARealCommand\"`，重建 contracts+datacore 后跑门 —— 仍报「缺实现（基线 0 · 当前 0 · 回潮 0）✓」RC=0。**这道门在它的主断言上不可能变红。** 审计另测出 35 条 cliCommand 里 **24 条**在 platform-cli.mjs 的 run 表中无实现，而门全判可达。⚠ **本次事故的教训（写给下一个人）**：我接它的唯一依据是「单跑 RC=0」—— 而 RC=0 对哑门毫无意义。**「跑出来绿」≠「门有牙」**，接一道门前必须先证明它**会红**。本仓的 provenRed 字段存在的理由就是这个，而我当时没看它已经标着 NEVER。修法（另单）：`doRouted` 须改为**逐命令**判定（查 cmdDo 的分类表里是否真有该命令），而非文件级存在性；改完预期会红（24/35），故须与「补齐或下架这 24 条命令」一并处置，不可单改门。",
       "disposition": "WIRE"
     },
     "check-cockpit-widgets.mjs": {
@@ -362,7 +362,7 @@
     },
     "check-no-hardcoded-rules.mjs": {
       "alias": null,
-      "binding": "NONE",
+      "binding": "GATES_CHAIN",
       "guardedPaths": [
         "apps/datacore/src/solvers/capacity.ts"
       ],
@@ -373,12 +373,12 @@
         "evidence": null,
         "note": "本体 §7 行830 未记录已执行的反证"
       },
-      "notes": "",
-      "disposition": "WIRE"
+      "notes": " 【2026-08-07 接线】同批第 3/4 例「门写了从没跑过」：脚本在、跑起来绿、门账自己标着 binding:NONE / provenRed:NEVER / disposition:WIRE，却不在任何流水线上。一道从没跑过的门，与一道跑过且绿的门，在门账与文档里长得一模一样——这正是本仓 #76「被制度指定的死门」的同族，只是那次是红门没人管、这次是绿门没人跑。 ⚠【2026-08-07 诚实标注】本次接线只做到「单跑 RC=0」，**变异反证未做实**：我尝试过三组变异但都没打中门自己的输入（悬空规则码注入未必匹配上 / 0.30 未必在哨兵钉死名单内 / 场景卡文件选错成 domain.ts），故三组「变异后仍绿」**不构成它是哑门的证据，也不构成它有牙的证据**。同批的 check-cli-parity 已被坐实为哑门并撤回接线 —— 在补上有效变异反证之前，这三道的绿**不得当作强信号**。补证另立单。",
+      "disposition": "WIRED"
     },
     "check-ontogenesis.mjs": {
       "alias": null,
-      "binding": "NONE",
+      "binding": "GATES_CHAIN",
       "guardedPaths": [
         "apps/agentcore/src/mocks/clients.ts",
         "apps/agentcore/src/mocks/seed.ts",
@@ -393,8 +393,8 @@
         "evidence": null,
         "note": "本体 §7 行838 未记录已执行的反证"
       },
-      "notes": "",
-      "disposition": "WIRE"
+      "notes": " 【2026-08-07 接线】此前 binding=NONE / disposition=WIRE —— 门脚本存在且**跑起来是绿的**（20 卡逐卡静态断言 + 运行期项诚实跳过），却既不在 `pnpm gates` 链上、也没有 pnpm 别名，于是**从来没有人跑过它**。而本体 §7 白纸黑字写着可以 `pnpm ontogenesis:check` —— 一句断言了「有这么个命令」的话，而那个命令不存在。与 #76「被制度指定的死门」同族，区别只在那次是红门没人管、这次是绿门没人跑。修法取「让现实追上文档」而非把文档改弱：补别名 + 并入 gates 链，本体那句话就此为真。 ⚠【2026-08-07 诚实标注】本次接线只做到「单跑 RC=0」，**变异反证未做实**：我尝试过三组变异但都没打中门自己的输入（悬空规则码注入未必匹配上 / 0.30 未必在哨兵钉死名单内 / 场景卡文件选错成 domain.ts），故三组「变异后仍绿」**不构成它是哑门的证据，也不构成它有牙的证据**。同批的 check-cli-parity 已被坐实为哑门并撤回接线 —— 在补上有效变异反证之前，这三道的绿**不得当作强信号**。补证另立单。",
+      "disposition": "WIRED"
     },
     "check-ontology-anchors.mjs": {
       "alias": "ontology-anchors:check",
@@ -587,7 +587,7 @@
     },
     "check-rule-closure.mjs": {
       "alias": null,
-      "binding": "NONE",
+      "binding": "GATES_CHAIN",
       "guardedPaths": [
         "apps/agentcore/src/scenarios-catalog.ts",
         "apps/datacore/src/synthetic/battery.ts",
@@ -600,8 +600,8 @@
         "evidence": null,
         "note": "本体 §7 行829 未记录已执行的反证"
       },
-      "notes": "",
-      "disposition": "WIRE"
+      "notes": " 【2026-08-07 接线】同批第 3/4 例「门写了从没跑过」：脚本在、跑起来绿、门账自己标着 binding:NONE / provenRed:NEVER / disposition:WIRE，却不在任何流水线上。一道从没跑过的门，与一道跑过且绿的门，在门账与文档里长得一模一样——这正是本仓 #76「被制度指定的死门」的同族，只是那次是红门没人管、这次是绿门没人跑。 ⚠【2026-08-07 诚实标注】本次接线只做到「单跑 RC=0」，**变异反证未做实**：我尝试过三组变异但都没打中门自己的输入（悬空规则码注入未必匹配上 / 0.30 未必在哨兵钉死名单内 / 场景卡文件选错成 domain.ts），故三组「变异后仍绿」**不构成它是哑门的证据，也不构成它有牙的证据**。同批的 check-cli-parity 已被坐实为哑门并撤回接线 —— 在补上有效变异反证之前，这三道的绿**不得当作强信号**。补证另立单。",
+      "disposition": "WIRED"
     },
     "check-scenario-slot-keys.mjs": {
       "alias": "scenario-slot-keys:check",
