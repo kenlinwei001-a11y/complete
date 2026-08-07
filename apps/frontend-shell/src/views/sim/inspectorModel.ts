@@ -916,3 +916,5 @@ export function buildPlaceholderInspectorInput(args: {
       "W3 按 S0 冻结契约先做、用 mock 数据；W4 收口换引擎真值。承载状态（有/薄/缺）逐条给了 file:line 取证，那部分是实测的。",
   };
 }
+
+export const probeCmp = (n: { nodeId: string }): boolean => n.nodeId === "sop_consensus";
