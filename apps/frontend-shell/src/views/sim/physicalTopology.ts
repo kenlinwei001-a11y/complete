@@ -18,9 +18,11 @@ import { BASE_REGISTRY, type CanonicalBase, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY
  *  · **瓶颈设备型→工序** = battery.ts:3539 的 `typeMap`（suffix→设备型）反查，同样镜像 + 比对门。
  *
  * ── 数值的诚实分层（严禁把占位伪装成实测）────────────────────────────────────
- *  `Measure.provenance` 三态，UI 逐格显式标注，不允许混同：
+ *  `Measure.provenance` 四态，UI 逐格显式标注，不允许混同：
  *   · `registry`   —— 真值，来自 BASE_REGISTRY（基地级 util/gwh/lines/bottleneck）。
- *   · `placeholder`—— **占位**，seed 派生确定性伪值（同 seed 同输入字节一致），今天没有真数据接口。
+ *   · `aggregate`  —— 真值，来自 DataCore 对象聚合（EquipmentOEE / Equipment / WIPLot），
+ *                     `Measure.basis` 逐条写明算式（口径不可隐身）。**WO-TOPO-REALDATA 新增**。
+ *   · `placeholder`—— **占位**，seed 派生确定性伪值（同 seed 同输入字节一致）。真值取不到时**仍然是它**。
  *   · `empty`      —— 算不出来就是算不出来：`value=null` + `reason`。**不补 0、不给假默认**。
  *
  * ── 接真值的入口（三个对象/求解器都已存在，只是"没接进这张图"）──────────────
@@ -137,27 +139,47 @@ export const PROCESS_BY_EQUIPMENT_TYPE: Record<string, string> = Object.fromEntr
 // 3. 数值分层
 // ───────────────────────────────────────────────────────────────────────────────
 
-export type Provenance = "registry" | "placeholder" | "empty";
+export type Provenance = "registry" | "aggregate" | "placeholder" | "empty";
 
 export interface Measure {
   /** EMPTY 时恒为 null —— 不补 0、不给假默认。 */
   value: number | null;
   provenance: Provenance;
   unit: string;
-  /** provenance=empty 时必填：为什么算不出来。 */
+  /** provenance=empty 必填 / placeholder 在"本该接真值却没接上"时必填：为什么是这个档。 */
   reason?: string;
+  /**
+   * provenance=aggregate 必填：**这个数是怎么算出来的**（算式 + 样本量）。
+   * 存在的理由：本仓出过 `avg` 冒充 `weighted_avg` 的真事故——口径藏在代码里，屏上只有一个数，
+   * 谁也发现不了它换了口径。把算式跟着值一起送到屏上，口径就无处隐身。
+   */
+  basis?: string;
 }
 
 const registry = (value: number, unit: string): Measure => ({ value, provenance: "registry", unit });
-const placeholder = (value: number, unit: string): Measure => ({ value, provenance: "placeholder", unit });
+const placeholder = (value: number, unit: string, reason?: string): Measure =>
+  reason === undefined ? { value, provenance: "placeholder", unit } : { value, provenance: "placeholder", unit, reason };
+const aggregate = (value: number, unit: string, basis: string): Measure => ({ value, provenance: "aggregate", unit, basis });
 const empty = (unit: string, reason: string): Measure => ({ value: null, provenance: "empty", unit, reason });
 
 /** 人读的来源标签（UI 逐格显示，占位绝不冒充实测）。 */
 export const PROVENANCE_LABEL: Record<Provenance, string> = {
   registry: "真值·基地册",
+  aggregate: "真值·对象聚合",
   placeholder: "占位·未接真值",
   empty: "EMPTY·无数据源",
 };
+
+/** 每格角标（比标签短；`placeholder` 仍显「占位」二字，诚实位在最小尺寸下也不许消失）。 */
+export const PROVENANCE_BADGE: Record<Provenance, string> = {
+  registry: "真值",
+  aggregate: "真值",
+  placeholder: "占位",
+  empty: "空",
+};
+
+/** 是否为真值档（≠ 占位/EMPTY）。UI 与统计共用，免得两处各判一次判歪。 */
+export const isRealProvenance = (p: Provenance): boolean => p === "registry" || p === "aggregate";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // 4. 确定性占位值（同 (seed, baseId, suffix, metric) 恒同值 · R6）
@@ -220,6 +242,290 @@ export function heatAlpha(m: Measure): number {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
+// 5.5 真值接线（WO-TOPO-REALDATA）：DataCore 对象聚合 → 格
+//
+// ── 病名先说清：不是「没数据」，是「有数据没接线」──────────────────────────────
+//  `EquipmentOEE` 实测 **5460 行**已物化（13 基地 × 10 车间 × 3 串行工序 × 2 台设备 × 7 天），
+//  只是这张图从来没去读。修法是接线，不是造数。
+//
+// ── join 键的裁决：**lineId，不是 processId**（工单初判在这里是错的，实测推翻）────
+//  工单原文提的链是 `EquipmentOEE.equipId → Equipment.processId`。实测 `/a/v1/objects?type=Equipment`：
+//    equipId   = "LINE-WS-changzhou-assembly-assembly-E1"
+//    processId = "LINE-WS-changzhou-assembly-assembly"   ← 末段 ∈ {coating, winding, assembly} **仅 3 值**
+//    lineId    = "LINE-WS-changzhou-assembly"            ← 末段 = 车间 suffix，**10 值**
+//  battery.ts 的生成结构是 Base → Workshop(10) → Line(1/车间) → Process(SERIAL_STEPS 3 + 化成 + 老化)
+//  → Equipment(2/串行工序)。也就是说 `Equipment.processId` 属于 **Process 层**（3 道串行工序），
+//  而本矩阵的列轴是 **Workshop 层**（10 车间 = `WORKSHOP_REGISTRY`）——**两层不同口径**。
+//  照工单那条链接，130 格会塌成 13×3=39 格，另外 91 格永远空。**故本单按 lineId 接。**
+//
+// ── lineId ↔ workshopId 的换算不是我发明的字符串戏法 ─────────────────────────────
+//  datacore 自己的物化代码 `apps/datacore/src/synthetic/service.ts:928` 就是这么反着算的：
+//    `const workshopId = (l.lineId as string).replace("LINE-", "");`
+//  本文件用它的正向：`lineId = "LINE-" + workshopId`。**只此一处**，别处不许再拼一次。
+// ───────────────────────────────────────────────────────────────────────────────
+
+/** `/a/v1/objects/aggregate` 的一行（契约见 packages/contracts `AggregateRowSchema`）。 */
+export interface AggRow {
+  group: Record<string, string | null>;
+  metrics: Record<string, number | null>;
+}
+
+/** `/a/v1/objects?type=Workshop` 的一行 props（只取本图用得到的三个字段）。 */
+export interface WorkshopRow {
+  workshopId?: unknown;
+  baseId?: unknown;
+  processType?: unknown;
+}
+
+/** 真值载荷（= 四个只读请求的原样响应，前端不做任何预处理，口径全在下面的 `buildCellFacts`）。 */
+export interface TopologyFacts {
+  workshops: WorkshopRow[];
+  oee: AggRow[];
+  equipment: AggRow[];
+  wip: AggRow[];
+}
+
+/**
+ * 四个只读请求的**请求体单一来源**（视图发请求、测试造载荷都引它，免得两处 metrics 拼不一样）。
+ *
+ * ⚠ 为什么必须走 `/objects/aggregate` 而不是前端自己 join：
+ *   `GET /a/v1/objects` 内部写死 `queryObjects(ctx, type, {}, 1000)`（`apps/datacore/src/app.ts:2369`），
+ *   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；
+ *   `POST /a/v1/objects/query` 的 `limit` 被契约夹在 ≤1000（实测传 6000 → 400 VALIDATION_ERROR）。
+ *   而 `/objects/aggregate` 在服务端**全量读**（`ontology-governance.ts:721` 明写"不受 ≤1000 截断影响"），
+ *   实测 130 组 / `truncated=false` / 29KB / 160ms。所以：不是"前端 join 慢"，是**前端 join 拿不全数据**。
+ *
+ * ⚠ `metrics` 契约上限 **5 条**（`AggregateRequestSchema`），`groupBy` 上限 2 维 —— 下面的取值是贴着上限排的，
+ *   加字段前先想清楚挤掉谁。样本量不占额度：`min_planned === max_planned` 时可由 `sum/min` 反解。
+ */
+export const TOPOLOGY_FACT_QUERIES = {
+  oee: {
+    typeKey: "EquipmentOEE",
+    groupBy: ["baseId", "lineId"],
+    metrics: [
+      { prop: "oee", fn: "avg" },
+      { prop: "actualProductionTime", fn: "sum" },
+      { prop: "plannedProductionTime", fn: "sum" },
+      { prop: "plannedProductionTime", fn: "min" },
+      { prop: "plannedProductionTime", fn: "max" },
+    ],
+  },
+  equipment: {
+    typeKey: "Equipment",
+    groupBy: ["baseId", "lineId"],
+    metrics: [
+      { prop: "ctSeconds", fn: "max" },
+      { prop: "ctSeconds", fn: "min" },
+      { prop: "equipId", fn: "count" },
+    ],
+  },
+  /** ⚠ `WIPLot` **没有 baseId 属性**（实测 props = lotId/woId/modelId/lineId/currentProcess/qty/status/…），
+   *  按 baseId 分组会得到 `group.baseId === null` —— 故只按 lineId 分组，基地维经车间册回填。 */
+  wip: {
+    typeKey: "WIPLot",
+    groupBy: ["lineId"],
+    metrics: [
+      { prop: "qty", fn: "sum" },
+      { prop: "lotId", fn: "count" },
+    ],
+  },
+} as const;
+
+/** 车间 → 产线（datacore `synthetic/service.ts:928` 的正向；**全仓只此一处**）。 */
+export const lineIdOfWorkshop = (workshopId: string): string => `LINE-${workshopId}`;
+
+/** 格键（与 `TopologyCell.key` 同式，别处不许再拼一次）。 */
+export const cellKeyOf = (baseId: string, suffix: string): string => `${baseId}::${suffix}`;
+
+/** 一格的四条真值度量（缺哪条就没哪条，不补）。 */
+export interface CellFacts {
+  util?: Measure;
+  oee?: Measure;
+  wip?: Measure;
+  takt?: Measure;
+}
+
+/** 接线诊断：**谁没接上、为什么**。UI 照实播报，不许悄悄吞掉。 */
+export interface FactsDiagnostics {
+  /** 车间册里 processType 不在 `WORKSHOP_REGISTRY` 的行数（映射不到列 → 整格放弃）。 */
+  unmappedWorkshops: number;
+  /** 聚合行的 lineId 落在车间册之外（孤儿事实）—— **必须丢弃，绝不摊到任意一格**。 */
+  orphanRows: { oee: number; equipment: number; wip: number };
+  /** OEE 因"计划工时不等权"被判 EMPTY 的格数（`avg` 不许冒充加权平均）。 */
+  oeeUnweighted: number;
+  /** 成功接上真值的格数（≥1 条真值度量）。 */
+  cellsWithFacts: number;
+}
+
+export interface CellFactsResult {
+  byCell: Map<string, CellFacts>;
+  diagnostics: FactsDiagnostics;
+}
+
+/** 单位统一到 1 位小数（百分比/节拍都按这个粒度呈现；别处不许各 round 一次）。 */
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * **多设备/多日 → 一格** 的聚合口径，全仓只写在这里（组件、测试都只调它，不得各写一份）。
+ *
+ * ── 逐指标口径与裁决理由 ───────────────────────────────────────────────────────
+ *
+ * ① `util` 计划工时利用率 = `Σ actualProductionTime / Σ plannedProductionTime`
+ *    · **和比和，天然按计划工时加权**——不是"各设备利用率的平均"。比率类聚合的正确形态。
+ *    · 名字**刻意不叫「产能利用率」**：行首 `BASE_REGISTRY.util` 才是产能利用率，两者口径不同，
+ *      用同一个中文名混过去 = 制造下一次事故。
+ *
+ * ② `oee` = `avg(oee)`，**但带等权门**：仅当该格 `min(planned) === max(planned)` 才承认。
+ *    · 理由：OEE 是比率，正确的合并是 `Σ(oeeᵢ×plannedᵢ)/Σ(plannedᵢ)`。聚合端点只有 5 种函数、
+ *      没有"乘积和"能力，算不出加权分子。
+ *    · 各行计划工时**全等**时（实测 130/130 格恒为 480min），等权算术平均 **恒等于** 加权平均——
+ *      此时用 `avg` 不是近似，是相等。不等权时算不出来就标 EMPTY，**不拿 `avg` 冒充加权**
+ *      （本仓已有 `avg` 冒充 `weighted_avg` 的真事故，这道门就是为它加的）。
+ *
+ * ③ `takt` 节拍 = `max(ctSeconds)`，**取最慢工位，不取平均**。
+ *    · 一格 = 一条车间线上的 6 台设备。线的节拍由**最慢的那台**决定（瓶颈决定节拍），
+ *      把各工位节拍平均没有物理含义（平均后的数既不是任何一台的能力，也不是线的能力）。
+ *    · `basis` 里同时带出 `min`，最快/最慢差多少一眼可见（实测同基地 6 台恒等 → 差 0）。
+ *
+ * ④ `wip` 在制 = `Σ qty`（该车间线上的在制批次数量合计）。
+ *    · **刻意不用 `WIPLot.currentProcess` 定列**：实测 260/260 行该字段恒为 `"涂布"`（种子里是字面量常数），
+ *      拿它定列会把全仓在制一股脑塞进"涂布"一列 = 硬凑。工序维改走 `lineId → 车间`（与 OEE 同一把尺）。
+ *
+ * ── 孤儿事实的处置 ─────────────────────────────────────────────────────────────
+ *  聚合行的 `lineId` 若不在车间册派生出的产线集合里（缺维 / 拼错 / null），**整行丢弃并计数**，
+ *  绝不"就近"摊到任意一格 —— 摊了就等于凭空造数。
+ */
+export function buildCellFacts(facts: TopologyFacts): CellFactsResult {
+  const suffixByProcessType = new Map(WORKSHOP_REGISTRY.map((w) => [w.type, w.suffix]));
+
+  // 产线 → 格（车间册是唯一的桥：Workshop 同时持有 baseId 与 processType）
+  const cellByLineId = new Map<string, { baseId: string; suffix: string }>();
+  let unmappedWorkshops = 0;
+  for (const w of facts.workshops) {
+    const workshopId = typeof w.workshopId === "string" ? w.workshopId : "";
+    const baseId = typeof w.baseId === "string" ? w.baseId : "";
+    const processType = typeof w.processType === "string" ? w.processType : "";
+    const suffix = suffixByProcessType.get(processType);
+    if (!workshopId || !baseId || suffix === undefined) {
+      unmappedWorkshops++;
+      continue;
+    }
+    cellByLineId.set(lineIdOfWorkshop(workshopId), { baseId, suffix });
+  }
+
+  const byCell = new Map<string, CellFacts>();
+  const orphanRows = { oee: 0, equipment: 0, wip: 0 };
+  let oeeUnweighted = 0;
+
+  /** 取该行所属格；孤儿行返回 null（调用方计数后丢弃，**不得**回落到任何一格）。 */
+  const resolve = (row: AggRow): { key: string } | null => {
+    const lineId = row.group["lineId"];
+    if (typeof lineId !== "string") return null;
+    const cell = cellByLineId.get(lineId);
+    if (!cell) return null;
+    return { key: cellKeyOf(cell.baseId, cell.suffix) };
+  };
+  const put = (key: string, patch: CellFacts): void => {
+    byCell.set(key, { ...(byCell.get(key) ?? {}), ...patch });
+  };
+
+  // ── ① util（Σ/Σ 加权） + ② oee（等权门） ────────────────────────────────────
+  for (const row of facts.oee) {
+    const at = resolve(row);
+    if (!at) {
+      orphanRows.oee++;
+      continue;
+    }
+    const sumAct = numOrNull(row.metrics["sum_actualProductionTime"]);
+    const sumPlan = numOrNull(row.metrics["sum_plannedProductionTime"]);
+    const minPlan = numOrNull(row.metrics["min_plannedProductionTime"]);
+    const maxPlan = numOrNull(row.metrics["max_plannedProductionTime"]);
+    const avgOee = numOrNull(row.metrics["avg_oee"]);
+    const samples = minPlan !== null && minPlan > 0 && sumPlan !== null ? Math.round(sumPlan / minPlan) : null;
+
+    const patch: CellFacts = {};
+    if (sumAct !== null && sumPlan !== null && sumPlan > 0) {
+      patch.util = aggregate(
+        round1((sumAct / sumPlan) * 100),
+        "%",
+        `计划工时利用率 = Σ实际生产时间 ${sumAct} ÷ Σ计划生产时间 ${sumPlan}（EquipmentOEE 逐设备逐日${samples === null ? "" : ` ${samples} 条`}·和比和=按计划工时加权，非比率平均）`,
+      );
+    } else {
+      patch.util = empty("%", "EquipmentOEE 该格 Σ计划生产时间为 0 或缺失 —— 除不出利用率，不补 0");
+    }
+    if (avgOee === null) {
+      patch.oee = empty("%", "EquipmentOEE 该格 oee 字段全空 —— 算不出来");
+    } else if (minPlan === null || maxPlan === null || minPlan !== maxPlan) {
+      oeeUnweighted++;
+      patch.oee = empty(
+        "%",
+        `该格各条计划工时不等权（min=${minPlan ?? "∅"} / max=${maxPlan ?? "∅"}），OEE 正确合并需 Σ(oee×计划工时)÷Σ计划工时；` +
+          `聚合端点无乘积和能力 → 标 EMPTY，**不拿简单平均冒充加权平均**`,
+      );
+    } else {
+      patch.oee = aggregate(
+        round1(avgOee * 100),
+        "%",
+        `OEE = avg(EquipmentOEE.oee)${samples === null ? "" : ` over ${samples} 条`}；该格各条计划生产时间全等（${minPlan}）⇒ 等权算术平均恒等于按计划工时加权平均`,
+      );
+    }
+    put(at.key, patch);
+  }
+
+  // ── ③ takt（最慢工位） ──────────────────────────────────────────────────────
+  for (const row of facts.equipment) {
+    const at = resolve(row);
+    if (!at) {
+      orphanRows.equipment++;
+      continue;
+    }
+    const maxCt = numOrNull(row.metrics["max_ctSeconds"]);
+    const minCt = numOrNull(row.metrics["min_ctSeconds"]);
+    const nEquip = numOrNull(row.metrics["count_equipId"]);
+    put(at.key, {
+      takt:
+        maxCt === null
+          ? empty("s/电芯", "该格 Equipment.ctSeconds 全空 —— 标 EMPTY，不补 0")
+          : aggregate(
+              maxCt,
+              "s/电芯",
+              `节拍 = max(Equipment.ctSeconds)${nEquip === null ? "" : ` over ${nEquip} 台`}（取最慢工位：线速由瓶颈工位定，节拍不许平均）${
+                minCt === null || minCt === maxCt ? "" : `；最快工位 ${minCt}`
+              }`,
+            ),
+    });
+  }
+
+  // ── ④ wip（数量求和） ───────────────────────────────────────────────────────
+  for (const row of facts.wip) {
+    const at = resolve(row);
+    if (!at) {
+      orphanRows.wip++;
+      continue;
+    }
+    const sumQty = numOrNull(row.metrics["sum_qty"]);
+    const nLots = numOrNull(row.metrics["count_lotId"]);
+    put(at.key, {
+      wip:
+        sumQty === null
+          ? empty("电芯", "该格 WIPLot.qty 全空 —— 标 EMPTY，不补 0")
+          : aggregate(
+              sumQty,
+              "电芯",
+              `在制 = Σ WIPLot.qty${nLots === null ? "" : ` over ${nLots} 批`}（按 lineId 归到车间列；**不用** WIPLot.currentProcess —— 该字段在种子里是常量"涂布"，拿它定列会把全部在制塞进一列）`,
+            ),
+    });
+  }
+
+  return {
+    byCell,
+    diagnostics: { unmappedWorkshops, orphanRows, oeeUnweighted, cellsWithFacts: byCell.size },
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 // 6. 矩阵派生
 // ───────────────────────────────────────────────────────────────────────────────
 
@@ -228,13 +534,13 @@ export interface TopologyCell {
   baseId: string;
   baseName: string;
   process: ProcessStep;
-  /** 占位：产能利用率 %。 */
+  /** 计划工时利用率 %（接上 EquipmentOEE → `aggregate`；接不上 → `placeholder`）。 */
   util: Measure;
-  /** 占位：OEE %。 */
+  /** OEE %（接上 → `aggregate`；等权门未过 → `empty`；没数据 → `placeholder`）。 */
   oee: Measure;
-  /** 占位：在制（电芯）。 */
+  /** 在制（电芯）（接上 WIPLot → `aggregate`；接不上 → `placeholder`）。 */
   wip: Measure;
-  /** EMPTY：节拍 s/电芯 —— 前端无 Equipment.ctSeconds 接口，标空不补 0。 */
+  /** 节拍 s/电芯（接上 Equipment.ctSeconds → `aggregate`；接不上 → `empty`，不补 0）。 */
   takt: Measure;
   /** 该格是否 = 基地册登记的瓶颈工序（registry 真值派生）。 */
   isBottleneck: boolean;
@@ -265,8 +571,25 @@ export interface TopologyMatrix {
   processes: ProcessStep[];
   segments: SegmentDef[];
   rows: TopologyRow[];
-  /** 统计：占位格数 / EMPTY 度量数 / 定位不到的瓶颈数（UI 横幅照实播报）。 */
-  stats: { baseCount: number; processCount: number; cellCount: number; placeholderMeasures: number; emptyMeasures: number; unlocatedBottlenecks: number };
+  /**
+   * 统计：**逐条数出来的**，不是 `cellCount × 常数` 算出来的。
+   * （真值/占位混排之后，"每格都是 3 占位 1 空"这个假设就不成立了；继续拿常数乘 = 屏上播报一个假数。）
+   */
+  stats: {
+    baseCount: number;
+    processCount: number;
+    cellCount: number;
+    /** 接上真值的格数（该格 4 条度量里至少 1 条是 `aggregate`）。 */
+    realCells: number;
+    /** 仍是占位的格数（4 条度量里还有 `placeholder`）。 */
+    placeholderCells: number;
+    realMeasures: number;
+    placeholderMeasures: number;
+    emptyMeasures: number;
+    unlocatedBottlenecks: number;
+  };
+  /** 真值接线诊断（没接上就照实说；`facts` 缺席时为 null）。 */
+  factsDiagnostics: FactsDiagnostics | null;
 }
 
 /** 瓶颈设备型 → 工序列。定位不到就说定位不到 —— 不许挑个"最像"的列点亮。 */
@@ -280,30 +603,60 @@ export function resolveBottleneck(equipmentType: string): BottleneckLocation {
   };
 }
 
+/** 真值缺席时的诚实缺口文案（**不是**"没有数据源"，是"这一格没取到"——两句话意思差很远）。 */
+const NO_FACT_REASON = {
+  util: "该格未取到 EquipmentOEE 聚合行（真值源存在，这一格没接上）→ 回落 seed 占位",
+  oee: "该格未取到 EquipmentOEE 聚合行（真值源存在，这一格没接上）→ 回落 seed 占位",
+  wip: "该格未取到 WIPLot 聚合行（真值源存在，这一格没接上）→ 回落 seed 占位",
+  takt: "该格未取到 Equipment 聚合行 —— 节拍标 EMPTY，不补 0、不回落占位（占位一个假节拍会被当成排产输入）",
+  offline: "未取到真值载荷（未登录 / 读取失败 / 后端无该对象）→ 全格回落 seed 占位",
+} as const;
+
 /**
  * 派生矩阵：行 = `BASE_REGISTRY` 全量（**不接受基地入参**），列 = `PROCESS_CHAIN`。
- * @param seed 占位值种子（同 seed 同输出，R6）。
+ *
+ * @param seed  占位值种子（同 seed 同输出，R6）。
+ * @param facts DataCore 对象聚合载荷。**缺席（null/undefined）时逐字节等于接线前的行为** ——
+ *              这不是可选功能开关，是"取不到真值就老老实实回到占位"的诚实回落路径。
  */
-export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT): TopologyMatrix {
+export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT, facts?: TopologyFacts | null): TopologyMatrix {
   const processes = PROCESS_CHAIN;
+  const factsResult = facts ? buildCellFacts(facts) : null;
+  const byCell = factsResult?.byCell ?? null;
+
   const rows: TopologyRow[] = BASE_REGISTRY.map((base) => {
     const bottleneck = resolveBottleneck(base.bottleneck);
     const cells: TopologyCell[] = processes.map((process) => {
-      const util = placeholder(
-        Math.round(spread(seed, base.baseId, process.suffix, "util", PLACEHOLDER_RANGES.utilPct.lo, PLACEHOLDER_RANGES.utilPct.hi) * 10) / 10,
-        "%",
-      );
-      const oee = placeholder(
-        Math.round(spread(seed, base.baseId, process.suffix, "oee", PLACEHOLDER_RANGES.oeePct.lo, PLACEHOLDER_RANGES.oeePct.hi) * 10) / 10,
-        "%",
-      );
-      const wip = placeholder(
-        Math.round(spread(seed, base.baseId, process.suffix, "wip", PLACEHOLDER_RANGES.wipCells.lo, PLACEHOLDER_RANGES.wipCells.hi)),
-        "电芯",
-      );
-      const takt = empty("s/电芯", "前端无 Equipment.ctSeconds 接口（节拍真值在 DataCore Equipment 对象上，未接进本图）");
+      const key = cellKeyOf(base.baseId, process.suffix);
+      const real = byCell?.get(key);
+      const gap = byCell === null ? NO_FACT_REASON.offline : null;
+
+      const util =
+        real?.util ??
+        placeholder(
+          Math.round(spread(seed, base.baseId, process.suffix, "util", PLACEHOLDER_RANGES.utilPct.lo, PLACEHOLDER_RANGES.utilPct.hi) * 10) / 10,
+          "%",
+          gap ?? NO_FACT_REASON.util,
+        );
+      const oee =
+        real?.oee ??
+        placeholder(
+          Math.round(spread(seed, base.baseId, process.suffix, "oee", PLACEHOLDER_RANGES.oeePct.lo, PLACEHOLDER_RANGES.oeePct.hi) * 10) / 10,
+          "%",
+          gap ?? NO_FACT_REASON.oee,
+        );
+      const wip =
+        real?.wip ??
+        placeholder(
+          Math.round(spread(seed, base.baseId, process.suffix, "wip", PLACEHOLDER_RANGES.wipCells.lo, PLACEHOLDER_RANGES.wipCells.hi)),
+          "电芯",
+          gap ?? NO_FACT_REASON.wip,
+        );
+      // 节拍不回落占位：一个假节拍会被当作排产输入，比空白危险。
+      const takt = real?.takt ?? empty("s/电芯", gap ?? NO_FACT_REASON.takt);
+
       return {
-        key: `${base.baseId}::${process.suffix}`,
+        key,
         baseId: base.baseId,
         baseName: base.name,
         process,
@@ -325,7 +678,10 @@ export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT): Topology
     };
   });
 
-  const cellCount = rows.reduce((n, r) => n + r.cells.length, 0);
+  const allCells = rows.flatMap((r) => r.cells);
+  const measuresOf = (c: TopologyCell): Measure[] => [c.util, c.oee, c.wip, c.takt];
+  const countProv = (p: Provenance): number => allCells.reduce((n, c) => n + measuresOf(c).filter((m) => m.provenance === p).length, 0);
+
   return {
     seed,
     processes,
@@ -334,11 +690,15 @@ export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT): Topology
     stats: {
       baseCount: rows.length,
       processCount: processes.length,
-      cellCount,
-      placeholderMeasures: cellCount * 3, // util / oee / wip
-      emptyMeasures: cellCount * 1, // takt
+      cellCount: allCells.length,
+      realCells: allCells.filter((c) => measuresOf(c).some((m) => m.provenance === "aggregate")).length,
+      placeholderCells: allCells.filter((c) => measuresOf(c).some((m) => m.provenance === "placeholder")).length,
+      realMeasures: countProv("aggregate"),
+      placeholderMeasures: countProv("placeholder"),
+      emptyMeasures: countProv("empty"),
       unlocatedBottlenecks: rows.filter((r) => r.bottleneck.processSuffix === null).length,
     },
+    factsDiagnostics: factsResult?.diagnostics ?? null,
   };
 }
 
@@ -347,55 +707,78 @@ export function buildTopology(seed: number = PLACEHOLDER_SEED_DEFAULT): Topology
 // ───────────────────────────────────────────────────────────────────────────────
 
 export interface RealDataEntrypoint {
-  /** 度量字段（本模块 Measure 的字段名）。 */
-  field: "util" | "oee" | "wip" | "takt";
+  /** 度量字段（本模块 Measure 的字段名）；`—` = 该源没喂任何格。 */
+  field: "util" | "oee" | "wip" | "takt" | "—";
+  /** 已接线 / 仍是缺口 —— 台账要能一眼看出"哪几条今天真的通了"。 */
+  status: "connected" | "gap";
   /** 真值来源对象 / 求解器 key。 */
   source: string;
   /** 该来源今天真实产出的形状（追过一层调用后的实情，不照 catalog 描述抄）。 */
   shapeToday: string;
-  /** 接线缺口：为什么今天还接不上 / 接上后能覆盖多少。 */
+  /** 已接线 → 口径与覆盖；仍是缺口 → 为什么接不上。 */
   gap: string;
 }
 
 /**
- * 三个"已存在但没接进这张图"的真值源。**每条都追过一层调用**，不是 grep 命中就下结论：
+ * 真值接线台账。**每条都追过一层调用 / 亲手 curl 过**，不是 grep 命中就下结论。
  *
+ * ── WO-TOPO-REALDATA 接上的四条（实测 130/130 格全覆盖）──────────────────────────
+ *  `EquipmentOEE`（5460 行）→ util + oee；`Equipment`（780 行）→ takt；`WIPLot`（260 行）→ wip。
+ *  走 `POST /a/v1/objects/aggregate`（服务端全量读，不受 ≤1000 截断）。
+ *  join 键 = `lineId → 车间`，**不是** `processId`（见 §5.5 顶注：processId 属 Process 层只有 3 值）。
+ *
+ * ── 仍未接的两条（照实登记，不吹）─────────────────────────────────────────────
  *  · `capacity_rollup`（`apps/datacore/src/solvers/capacity.ts:computeRollup`）——
  *    输出 `bases[].processes: RollupNode[]`，**确实是逐基地逐工序的日产能**。但它读的是
  *    `Process` 对象，而 battery.ts 每条产线只生成 `SERIAL_STEPS`（涂布/卷绕/装配）+ formation + aging
- *    五类 Process；也就是说接上之后**十列里只有 ~5 列有真值，其余列必须留 EMPTY**（不许补 0 凑满）。
+ *    五类 Process；接上之后**十列里只有 ~5 列有真值**，且与本图 Workshop 层列轴不同口径。
  *  · `bottleneck_matrix`（`apps/datacore/src/solvers/risk.ts`）——catalog.ts:50 的描述写的是
  *    "按基地×工序输出瓶颈强度矩阵"，**但看输出契约 `BottleneckMatrixOutputSchema`（contracts/solvers.ts:151）
  *    实际是 基地 × 7 因素**（`tightness: Record<factor, number>`），不是基地×工序。
  *    照描述接会接错维度 —— 它能喂的是"行级紧张度"，不是格级。
- *  · `EquipmentOEE`（对象类型，battery.ts:2182 注册 / synthetic/service.ts:803 物化）——
- *    含 availability/performance/quality/oee + `lineId`/`baseId`，逐设备逐日快照（近 7 天）。
- *    经 Equipment→Process→Line 三跳可聚到工序格，今天前端无该聚合接口。
  */
 export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
   {
     field: "util",
-    source: "capacity_rollup",
-    shapeToday: "bases[].processes[]{capacityPerDay, formula, inputs}（逐基地逐工序日产能）",
-    gap: "Process 对象只有 涂布/卷绕/装配/化成/老化 五类 → 十列约五列可填，其余保持 EMPTY",  // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常数。把工序名从这句里删掉，诊断就没用了（「只有五类」等于没说）。工序表本身已单源化到 contracts。
-  },
-  {
-    field: "wip",
-    source: "bottleneck_matrix",
-    shapeToday: "rows[]{base, tightness: 因素→0–100, primary}（基地 × 7 因素，**不是** 基地 × 工序）",
-    gap: "维度不匹配：只能喂行级紧张度；catalog 描述『基地×工序』与输出契约不符，照描述接会接错维度",
+    status: "connected",
+    source: "EquipmentOEE",
+    shapeToday: "逐设备逐日 {availability, performance, quality, oee, plannedProductionTime, actualProductionTime, equipId, lineId, baseId}（实测 5460 行）",
+    gap: "已接：Σ实际生产时间 ÷ Σ计划生产时间（和比和 = 按计划工时加权）。口径名「计划工时利用率」，与行首「产能利用率」不是一个数",
   },
   {
     field: "oee",
+    status: "connected",
     source: "EquipmentOEE",
-    shapeToday: "逐设备逐日 {availability, performance, quality, oee, equipId, lineId, baseId}",
-    gap: "需 Equipment→Process→Line 三跳聚合到工序格，前端今天无此聚合接口",
+    shapeToday: "同上；每格 42 条（6 台设备 × 7 天）",
+    gap: "已接：avg(oee)，**且带等权门** —— 仅当该格各条计划工时全等（实测恒 480min）才承认；不等权即标 EMPTY，不拿简单平均冒充加权",
   },
   {
     field: "takt",
+    status: "connected",
     source: "Equipment.ctSeconds",
-    shapeToday: "逐设备节拍 s/电芯（battery.ts 生成，gwhᵢ 派生）",
-    gap: "前端无逐设备读取接口 → 本图节拍恒 EMPTY",
+    shapeToday: "逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）",
+    gap: "已接：max(ctSeconds) 取最慢工位（线速由瓶颈工位定，节拍不许平均）",
+  },
+  {
+    field: "wip",
+    status: "connected",
+    source: "WIPLot",
+    shapeToday: "逐批次 {lotId, woId, modelId, lineId, currentProcess, qty, status}（实测 260 行，每格 2 批；**无 baseId 属性**）",
+    gap: "已接：Σqty，按 lineId 归车间列。**刻意不用 currentProcess** —— 实测 260/260 行恒为「涂布」，拿它定列等于把全部在制塞进一列",
+  },
+  {
+    field: "—",
+    status: "gap",
+    source: "capacity_rollup",
+    shapeToday: "bases[].processes[]{capacityPerDay, formula, inputs}（逐基地逐工序日产能）",
+    gap: "未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常数。把工序名从这句里删掉，诊断就没用了（「只有五类」等于没说）。工序表本身已单源化到 contracts。
+  },
+  {
+    field: "—",
+    status: "gap",
+    source: "bottleneck_matrix",
+    shapeToday: "rows[]{base, tightness: 因素→0–100, primary}（基地 × 7 因素，**不是** 基地 × 工序）",
+    gap: "未接：维度不匹配，只能喂行级紧张度；catalog 描述『基地×工序』与输出契约不符，照描述接会接错维度",
   },
 ];
 
