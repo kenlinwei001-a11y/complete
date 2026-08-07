@@ -71,7 +71,9 @@ const SITES = [
 
 // ── ① 契约锚点：解析 PARITY_RULE_SEEDS 的 key 清单 ───────────────────────────────
 const contract = read(SOURCE_OF_TRUTH);
-const seedBlock = contract.match(/export const PARITY_RULE_SEEDS[\s\S]*?\n\] as const;/);
+// `(?![A-Za-z0-9_])` 不可省：没有它，`PARITY_RULE_SEEDS` 会**前缀匹配** `PARITY_RULE_SEEDS_RENAMED`，
+// 于是"把锚点改名"这条变异照样绿 —— 本门第一次做变异反证时就是这么漏掉的（门自己犯了它要防的病）。
+const seedBlock = contract.match(/export const PARITY_RULE_SEEDS(?![A-Za-z0-9_])[\s\S]*?\n\] as const;/);
 if (!seedBlock) {
   console.error(`✗ 契约单源锚点失效：${SOURCE_OF_TRUTH} 里找不到 PARITY_RULE_SEEDS —— 门拒绝空跑通过。`);
   process.exit(1);
@@ -118,7 +120,7 @@ for (const key of KEYS) {
 
 // ── ⑤ 绑定表 role 必须显式声明（漏写 = 静默豁免运行期反向闸）───────────────────
 const datacoreContract = read("packages/contracts/src/datacore.ts");
-const bindingBlock = datacoreContract.match(/export const RULE_PARAM_BINDINGS[\s\S]*?\n\] as const;/);
+const bindingBlock = datacoreContract.match(/export const RULE_PARAM_BINDINGS(?![A-Za-z0-9_])[\s\S]*?\n\] as const;/);
 if (!bindingBlock) {
   fails.push("packages/contracts/src/datacore.ts 里找不到 RULE_PARAM_BINDINGS —— 锚点失效");
 } else {
