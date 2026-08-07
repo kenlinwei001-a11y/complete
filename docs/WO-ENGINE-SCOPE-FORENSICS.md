@@ -559,9 +559,14 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
    `deriveExtendedArgs` 同步）。断点已登记为 `G-YIELD-SERIES-SOURCE-MISMATCH`。
 7. `quote_margin.modelId` / `carbon_footprint.modelId`：加载 `BOMHeader`+`BOMDetail`，按 `modelId` 取真 BOM
    （现在用的 `Material.bomUnit` 是**全局常数**，与型号无关）。
-8. `capex_scenario`：把 `AnnualScenario`(3) / `CapexProject`(3) 接进入参派生，`scenarioKey` 从「只回显」变成真选情景；
+8. ~~`capex_scenario`：把 `AnnualScenario`(3) / `CapexProject`(3) 接进入参派生~~，`scenarioKey` 从「只回显」变成真选情景；
    同时把 `catalog.ts` argHints 的 `scenario` 改成 `scenarioKey`（键名今天就是错的）。
    注意**别顺手改** `gapMinQuarters`/`surplusPct` —— 这两个键实测是真算的（§6.10），argHints 没写而已。
+   > ⚠ **删除线部分作废**（第二轮实施单 WO-ENGINE-SCOPE-FIX2 实测更正，见 §11.1②）：`CapexProject` 行只有
+   > `{projectId,name,irr,util24,c23pass}` —— 是**算完的结果**不是求解器要的**入参**（`q0/cap/capex[]/m` 一个都没有）；
+   > `scenario_to_capex` 边对 baseline/aggressive **各连全部 3 个项目**，不区分情景。接它拿不到入参、或拿错。
+   > **真源是 `params.capexScenario.scenarios`**（已在 ctx 且从不裁剪·`planviews.ts capexScenarioFor` 今天就在读同一份）
+   > ⇒ 修法量级从「接两个对象类型」降为**零新数据通道的第二个挂载点**。已按此实施。
 9. `cert_schedule` / `kit_readiness` 的**订单/产线侧**过滤（`Certification.lineId→Line.baseId`、`Order.bases[]`）。
 
 **第三梯队 · 数据层级（真缺维，工作量最大）**
@@ -711,3 +716,153 @@ await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("C
 | §7-14 横切「给所有带作用域维的求解器加 `scope` 字段」 | 未做 | `risk_timeline` 的输出形状由 `packages/contracts` 的 `RiskTimelineOutputSchema` 定义（**契约包越界**）；`carbon_footprint`/`lta_gap` 加 `scope` 会破坏本单要证的「不给实参时逐字节一致」。建议单开一单统一做，届时同步 `SOLVER_OUTPUT_SHAPES` 与契约 |
 | 端到端（QOS `/b/v1/queries` → SSE）未跑 | 未跑 | 与 §9.1 同一边界：本单实测的仍是「引擎收到 `base=枣庄` 会算什么」，不是「用户在对话里问枣庄会看到什么」。agentcore 在本单范围边界之外（未改一行） |
 | pg 模式 | 未跑 | 同 §9.4，只跑内存态 `seed 42` |
+
+---
+
+## 11. 收口 · WO-ENGINE-SCOPE-FIX2 第二轮：「只回显」余 5 处逐张裁决（分支 `claude/handoff-wo-engine-scope-fix2`）
+
+> 本节由**第二轮实施单**回填。取证（§1–§9）与第一轮收口（§10）**一字未改**，除 §7-8 加了一个更正框。
+> 所有数字**实跑**：`pnpm --filter datacore build`（RC=0）→ 真服务 `node apps/datacore/dist/server.js`
+> （`SEED_DEMO=1`·seed 42·内存态）→ 真 HTTP `POST /a/v1/solvers/:key/invoke`
+> （`X-Debug-User: demo:admin:admin|planner|catalog_admin`），**不是**单测里的 inject。
+> 退出码一律显式捕获（`cmd > log 2>&1; echo RC=$?`），无管道吞码。
+
+### 11.1 五张卡逐张裁决（工单要求：每张写明理由）
+
+| # | 卡 · 维 | 裁决 | 理由（追一层后的实证，非"看起来"） |
+|---|---|---|---|
+| ① | **S06** `mitigation_select` · 基地 | **① 引擎能按实参重算 → 修** | 数据齐（`Base` 13 行）**且算法早就在跑**：`liveTightness/mockTightness` 逐 (baseId,factor) 算张力、且**今天就被 `bottleneck_matrix` 消费**（`risk.ts:241/245`）。三态 = **接了线接错地方**（只挂了瓶颈矩阵一个挂载点，处置选型这条路没挂）。 |
+| ② | **S17** `capex_scenario` · 情景 | **① 引擎能按实参重算 → 修** | ⚠ **本表 §2.1#7 的修法判定要更正**：`CapexProject` 行只有 `{projectId,name,irr,util24,c23pass}` —— 那是**算完的结果**不是求解器要的**入参**（`q0/cap/capex[]/m` 一个都没有）；`scenario_to_capex` 边对 baseline/aggressive **各连全部 3 个项目**、不区分情景。真源是 `params.capexScenario.scenarios`，**已经在 ctx 里且从不裁剪**，`planviews.ts` 今天就在读同一份。零新数据通道。 |
+| ③ | **S20** `carbon_footprint` · 型号 | **② 数据层有维但引擎没读 → 修引擎** | `BOMHeader.modelId`(15) + `BOMDetail.quantity/lossRate`(105) + `Material.carbonFactor` 全在库，但两类**从没进过 `SolverContext`**。三态 = **没接线**（加两个字段 + 两次 `listByType`）。 |
+| ④ | **S11** `changeover_sequence` · 产线 | **③ 数据层根本没这个维 → 不造假个性化，显性标 `lineScope.dataMode:"EMPTY"`** | 三条硬证据（全部机器可核，见 11.4 数据半门）：`ChangeoverMatrix.lineId` **30/30 恒 null 且是生成器写死的**；`Order` 无产线归属（只有 `bases[]`）；唯一带真 `lineId` 的 `WorkOrder` 其型号取值集含 **`储能-280Ah`/`储能-314Ah` 两个不在 `Model` 六型号内的孤儿** ⇒ 不在换型矩阵 ⇒ 接上去 `matrix[a]?.[b] ?? 0` 把「不知道」算成「换型 0 分钟」，**比现状更坏**。 |
+| ⑤ | **S19** `quarterly_gap` · 季度 | **③ 显性标 `quarterScope.dataMode:"EMPTY"`** | 危害比本表 §2.1#8 判的「时间标签·危害低」**高一档**：S19 卡片 preset 只有 `{quarter:"2026Q2"}`、**不带 `gap`** ⇒ 答案里的缺口是求解器写死的 **50**，与「2026Q2」并排渲染成 KPI。季度需求真源 `PlanTarget(level=quarter)` 在库（`PT-2026-Q1..Q4`），但缺口=需求−供给的**供给侧**要走 `capex.deriveS0`（仅 planviews 路可达 + 季度索引相对预测窗口起点、未与日历季对齐）⇒ 新通道，不接。 |
+
+### 11.2 三处「真重算」的实测差分（真服务真 HTTP · seed 42）
+
+```
+① mitigation_select（S06 卡片原样入参 {base, factor:"物料齐套", solutionName:"三班制"}）
+   修前（= 今天"不给 base"那条分支的原样，与 §6.7 逐字节一致）：
+     baseName:""  urgency:0.5  recommended:air_freight  draftPayload.base:""   ← 三地问，逐字节相同
+   修后：
+     常州     tightness 64  dataMode MOCK  urgency 0       recommended early_stock  draftPayload.base 常州
+     枣庄     tightness 63  dataMode MOCK  urgency 0       recommended early_stock  draftPayload.base 枣庄
+     江门     tightness 96  dataMode MOCK  urgency 0.8667  recommended air_freight  draftPayload.base 江门
+     changzhou ≡ 常州（回显位归一成规范中文名，两份输出逐字节相同）
+     {base:"火星基地"} → 400 AMBIGUOUS_SCOPE
+   ★ 业务可见：**推荐的处置方案本身随基地翻面**（江门推空运补料 / 常州推提前备料）；
+     且 draftPayload.base 不再是空串 —— 这份草稿是要变成 Action 审批件的。
+
+② capex_scenario（demand 8 季 [50,48,49,51,52,53,54,55]·s0 [45×8]·不传 projects）
+   修前：scenarioKey 只写进输出（capex.ts:272），三情景 S/G/windows/projects 逐字节相同（projects 恒 []）
+   修后：
+     baseline     scope.projectIds ["ZZ"]      S 末位 48.5   ZZ irr 18.88 util24 1        c23pass true
+     aggressive   scope.projectIds ["JM","ZZ"] S 末位 54.5   ZZ util24 0.478535 c23pass false / JM irr 9.31 c23pass false
+     conservative scope.projectIds []          S 末位 45     （= s0·该情景本就不新增产能）
+     {scenarioKey:"不存在的情景X"} 且不传 projects → 400 AMBIGUOUS_SCOPE（附已登记 3 个情景名）
+     {scenarioKey:"x", projects:[...]}（rules-p3 CAPEX_ARGS 那条路）→ 200 + scope.mode "EXPLICIT"
+        note:"projects 由调用方直传 ⇒ …scenarioKey 仅为回显标签、未参与选型"
+
+③ carbon_footprint（型号维·base 固定成都）
+   修前：materialCarbon 恒 348.311 · total 恒 349.6151 · maxLever 恒「物料:al_foil」（= Material 前 4 行）
+   修后：
+     4680-NCM  materialCarbon 321.4836  total 322.6918  maxLever 物料:sep_film
+     方形-LFP  materialCarbon 324.9812  total 326.1894  maxLever 物料:sep_film
+     2170-NCM  materialCarbon 321.4836  ← **与 4680-NCM 相同，且这是真值**（见下）
+     {modelId:"不存在的型号X"} → 400 AMBIGUOUS_SCOPE
+   ⚠ **实事求是（不吹）**：本 seed 的 `BOM_ITEM_TEMPLATES` 只在正极那一行按 NCM/LFP 分叉
+     （NCM 用 pos_ncm 1.05kg / LFP 用 pos_lfp 1.0kg），其余 6 行**完全相同** ⇒ 两个 NCM 型号之间
+     碳足迹**本就应当相同**。差分门据此只断言「跨化学体系必须不同」，**不假装同体系也会变**。
+```
+
+### 11.3 两处「显性标缺席」的实测原文
+
+```
+④ changeover_sequence {lineId:"LINE-WS-changzhou-assembly", week:1}
+   lineScope: { dataMode:"EMPTY", lineId:"LINE-WS-changzhou-assembly", baseId:"changzhou",
+     reason:"本次排序用的是**全局换型矩阵 + 全网前 6 张订单**，不是这条产线自己的队列：
+             ChangeoverMatrix 的 lineId 全库恒 null（合成器写死全局值·无线级实测），Order 也没有产线归属字段。
+             拒绝把全网排序冠上这条产线的名字冒充线级排产。",
+     missingInputs:[ ChangeoverMatrix.lineId / Order.lineId / WorkOrder.modelId 三条，逐条写明缺什么 ] }
+   {lineId:"LINE-WS-火星-assembly"} → 400 AMBIGUOUS_SCOPE（扫 Line 130 行）
+     ← 修前：不存在的产线名照样被回显在一张排序表上
+
+⑤ quarterly_gap {quarter:"2026Q2"}（S19 卡片原样·不带 gap）
+   quarterScope: { dataMode:"EMPTY", quarter:"2026Q2",
+     reason:"未给 gap ⇒ 本次缺口取的是求解器占位缺省值（50 万套），**不是该季度的真实产销缺口**：…",
+     missingInputs:[ PlanTarget.value@level=quarter / Line.capacityDaily→季度供给 ] }
+   {quarter:"Q3", gap:50, options:[…]} → **不标**（数字归调用方所有，不给别人的数扣占位的帽子）
+```
+
+### 11.4 门 · 差分门 + 两类第一批没有的判据（`apps/datacore/test/engine-scope-fidelity-2.seam.test.ts`·26 例）
+
+**仍是差分门不是状态门**：同一调用只换作用域实参 → 断言输出真的不同，且不同的那部分等于该实体自己的真数据；
+期望值一律从对象库/另一个挂载点真读，**不写死金值**。本批另加两类：
+
+1. **跨求解器 / 跨挂载点对账（R14 单一出处第一次有门）**
+   · `mitigation_select(base,factor).tightness` **必须逐值等于** `bottleneck_matrix` 对同一 (基地,因素) 的读数
+     ⇒ 谁再写第二套张力实现即红（实测常州×物料齐套 两处同为 **64**）。
+   · `capex_scenario.scope.projectIds` **必须逐 id 等于** `/a/v1/plan/aop?year=2026` 那条路取到的项目集
+     ⇒ 证明两个挂载点读的是**同一份** `params.capexScenario.scenarios`，不是又造了一份。
+2. **「做不动」也要有门**（这是本批与第一批最大的不同）
+   ④⑤ 判 EMPTY 的依据是**两条数据事实**，门里**直接咬那两条事实**：
+   `ChangeoverMatrix` 全库无线级 `lineId`（现 0/30 有值）· `WorkOrder` 型号存在 `Model` 之外的孤儿（现 2 个）。
+   **哪天数据补上了，这两条会变红**，逼下一个人回来把 EMPTY 换成真算 ——
+   而不是让一句「当时数据没有」的注释在仓库里永远正确下去。
+
+**变异反证 6 组，逐处退回原样，全部真红（原文）**
+
+```
+① carbon 退回 `mats.slice(0,4)`（无视 modelId）           → 2 failed | 24 passed
+   AssertionError: 4680-NCM 的物料碳应等于它自己那份 BOM: expected 348.311 to be close to 321.4836,
+     received difference is 26.827399999999955, but expected 0.0005
+   AssertionError: expected '{"baseName":"成都","total":349.5192,…' not to be '{"baseName":"成都","total":349.5192,…'
+     ← ECHO_ONLY 的机器判据被原样复现（抹掉 modelId 后逐字节相同）
+
+② mitigation 退回写死 85 + 只读 baseName                   → 5 failed | 21 passed
+   AssertionError: 常州×物料齐套：mitigation_select 的张力应与 bottleneck_matrix 同源同值: expected undefined to be 64
+   AssertionError: 邯郸 与 常州 的张力应不同: expected undefined not to be undefined
+   AssertionError: 修前恒 ''（求解器读 baseName，卡片传 base）: expected '' to be '常州'   ← 那个空的 draftPayload.base
+   AssertionError: expected { status: 200, code: '' } to deeply equal { Object (status, code) }
+
+③ capex 退回 scenarioKey 纯回显                            → 4 failed | 22 passed
+   AssertionError: expected '{"quarters":8,"demand":[50,48,49,51,5…' not to be '{"quarters":8,"demand":[50,48,49,51,5…'
+   AssertionError: expected { status: 200, code: '' } to deeply equal { Object (status, code) }
+
+④ changeover 退回「不校验产线 + 不标 lineScope」            → 2 failed | 24 passed
+   （只退标注不退校验时 → 1 failed，隔离度正确：两条断言各咬各的）
+
+⑤ quarterly 退回「不标 quarterScope」                      → 1 failed | 25 passed
+
+⑥ **数据半**变异：给 `ChangeoverMatrix.lineId` 灌值        → 1 failed | 25 passed
+   AssertionError: 换型矩阵已出现线级 lineId（30/30 行）⇒ 产线维不再是"数据层没有"，
+     lineScope 的 EMPTY 裁决作废，须回来把 changeover_sequence 改成真按产线过滤: expected 30 to be +0
+```
+
+**每组红都只咬自己那一处，其余组保持绿**（隔离度正确 —— 门不是一炸全炸的那种假门）。
+
+**加性证明**（不给作用域实参 → 与改前一致，逐条实测）：
+
+| 调用 | 判据 | 实测 |
+|---|---|---|
+| `carbon_footprint({})` | `materialCarbon` 仍取 Material 前 4 行 | **348.311** · `maxLever` 仍是「物料:al_foil」（= §6.6 修前原值） |
+| `mitigation_select({factor:"物料齐套"})` | 无 `dataMode`/`tightness` 键 · `tightness` 仍缺省 85 | `urgency` **0.5** · `recommended` **air_freight** · `draftPayload.base` `""`（= §6.7 修前原值） |
+| `mitigation_select({...,tightness:92})` | 调用方直传时以调用方为准、且**不冠** `dataMode` | `urgency` **0.7333** |
+| `capex_scenario`（不给 `scenarioKey`） | `scope` 键**根本不出现** | 顶层键集与改前一致 |
+| `changeover_sequence({})` | `lineScope` 键不出现 · `lineId` 仍是既有缺省 | `"L1"` |
+| `quarterly_gap({})` / `({quarter,gap})` | `quarterScope` 键不出现 | `residualGap` 50 / 30 |
+
+**未改任何金值。**
+
+### 11.5 本轮**没做**的（逐条说明，不含"应该差不多"）
+
+| 项 | 状态 | 理由 |
+|---|---|---|
+| `quote_margin` 客户维 | 不在本单 | 数据层断（`Customer.custName` ⟂ `Order.cust`·欠账 #118），工单明确排除 |
+| `kit_readiness` 库存侧基地维 | 不在本单 | 数据层工作量，工单明确排除 |
+| `yield_diagnosis` | **不碰**（工单明确要求） | §5 更正框②b 已证数据颗粒度喂不动算法（逐基地 8–14 天 vs 检测器需 ≥37 天）；接上去只会把诚实的 EMPTY 换成「我查过了没问题」 |
+| `capex_scenario` 的 `demand` 也从 `AnnualScenario` 派生 | **未做** | `AnnualScenario.demand` 是**年度标量**，拆到季需要窗口起点 + 季节权重卷积的口径约定（`planviews.ts capexScenarioFor` 有一份，但它带着 AOP 的窗口上下文）。本轮只闭 `scenarioKey → projects` 这一条真实差分；把年需求拆季属另一件事，硬塞进求解器 invoke 路会引入第二套拆分口径（R14 破口） |
+| §7-14 横切「给所有带作用域维的求解器加 `scope` 字段」 | **部分**（本轮 `capex_scenario` 加了 `scope`；`changeover_sequence`/`quarterly_gap` 加了 `lineScope`/`quarterScope`） | 仍未做成统一形状：`risk_timeline`/`carbon_footprint`/`lta_gap` 的输出形状受契约或加性约束（见 §10.3 同条）。建议单开一单统一 |
+| `changeover_sequence` 真按产线排 | **做不动（且今天不该做）** | 见 11.1 ④ 三条硬证据。数据层补齐（`ChangeoverMatrix.lineId` 灌真值 或 `WorkOrder` 型号收敛到 `Model`）后，11.4 的数据半门会**自动变红**逼人回来 |
+| `quarterly_gap` 真算季度缺口 | **未做** | 见 11.1 ⑤。需 `PlanTarget` 进 `SolverContext` + 季度供给上卷 + 日历季对齐 —— 属新数据通道 |
+| 端到端（QOS `/b/v1/queries` → SSE）/ 前端 | **未跑** | 与 §9.1/§9.3 同一边界：本轮实测的仍是「引擎收到 `base=江门` 会算什么」，不是「用户在对话里问江门会看到什么」。agentcore/frontend 在本单范围边界之外（**未改一行**） |
+| pg 模式 | **未跑** | 同 §9.4，只跑内存态 seed 42 |
