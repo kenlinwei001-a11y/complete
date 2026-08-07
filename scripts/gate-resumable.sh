@@ -47,6 +47,18 @@ LOGDIR="$SCRATCH/gate-logs-$SHA"
 mkdir -p "$LOGDIR"
 
 # 包按「跑得快的在前」排 —— 早拿到的绿更可能在下次重启前落账。
+#
+# ## 分片：包内也要有断点，否则最大的那一包就是最大的损失单元
+#
+# 实测（2026-08-07）：gate 跑到 4/5，contracts/llm-adapters/frontend/agentcore 都已记账，
+# **偏偏死在 datacore 上** —— 那一包约 12 分钟，包内无断点，重启落在中间就整包重来。
+# 于是「最大的包」＝「最可能被杀的包」＝「每次都白跑」，形成一个稳定的死循环：
+# 当天 datacore 连续 4 次没跑完。
+#
+# 判据不是「让它跑快点」，是**把损失单元切小到远小于容器寿命**。
+# 实测容器在场观测存活 13–77 分钟，故单片目标 ≤5 分钟：即使最差情况被杀，也只赔一片。
+# vitest 原生 --shard=i/N 按文件分片且**互不重叠、并集为全集**，天然适合当断点边界。
+declare -A SHARDS=( ["datacore"]=4 )   # 只切最大的那一包；小包切片的调度开销大于收益
 PKGS=("@platform/contracts" "@platform/llm-adapters" "frontend-shell" "agentcore" "datacore")
 
 echo "═══ gate-resumable · commit $SHA · $(date '+%F %H:%M:%S') · 机器已运行 $(awk '{print int($1/60)}' /proc/uptime) 分钟 ═══"
@@ -61,7 +73,7 @@ recorded() { [ -f "$CKPT" ] && grep -qx "$1=PASS" "$CKPT"; }
 
 if [ "${1:-}" = "--status" ]; then
   echo "检查点：$CKPT"
-  for p in "${PKGS[@]}"; do recorded "$p" && echo "  ✅ $p" || echo "  ⬜ $p"; done
+  for p in "${PKGS[@]}"; do n="${SHARDS[$p]:-1}"; if [ "$n" -le 1 ]; then recorded "$p" && echo "  ✅ $p" || echo "  ⬜ $p"; else for i in $(seq 1 "$n"); do recorded "$p#$i/$n" && echo "  ✅ $p#$i/$n" || echo "  ⬜ $p#$i/$n"; done; fi; done
   exit 0
 fi
 if [ "${1:-}" = "--reset" ]; then rm -f "$CKPT"; echo "已清 $CKPT"; exit 0; fi
@@ -83,20 +95,30 @@ echo "✅ ontology-writeback RC=0"
 # ── 五包逐个跑·逐个记账 ───────────────────────────────────────────────
 echo "───── TEST（五包·逐包记账·可续跑）─────"
 FAILED=0
+# 展开成「工作单元」列表：不分片的包 = 1 个单元；分片的包 = N 个单元，各自独立记账。
+UNITS=()
 for p in "${PKGS[@]}"; do
-  if recorded "$p"; then echo "⏭  $p —— 本 commit 已记 PASS，跳过"; continue; fi
-  echo "▶  $p …（$(date '+%H:%M:%S')）"
-  log="$LOGDIR/${p//[^a-zA-Z0-9]/_}.log"
-  out=$(pnpm --filter "$p" test 2>&1); rc=$?          # ★ 先捕获退出码，绝不经管道
+  n="${SHARDS[$p]:-1}"
+  if [ "$n" -le 1 ]; then UNITS+=("$p"); else for i in $(seq 1 "$n"); do UNITS+=("$p#$i/$n"); done; fi
+done
+
+for u in "${UNITS[@]}"; do
+  if recorded "$u"; then echo "⏭  $u —— 本 commit 已记 PASS，跳过"; continue; fi
+  p="${u%%#*}"; shard="${u#*#}"
+  SHARD_ARG=()
+  [ "$shard" != "$u" ] && SHARD_ARG=(--shard="$shard")
+  echo "▶  $u …（$(date '+%H:%M:%S')）"
+  log="$LOGDIR/${u//[^a-zA-Z0-9]/_}.log"
+  out=$(pnpm --filter "$p" test -- "${SHARD_ARG[@]}" 2>&1); rc=$?   # ★ 先捕获退出码，绝不经管道
   printf '%s\n' "$out" > "$log"
   # 剥 ANSI 后再取汇总行（CI 下 vitest 强开彩色，不剥会恒匹配 0 行 —— gate.sh 踩过）
   summary=$(printf '%s\n' "$out" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | grep -E "Tests[[:space:]]+[0-9]+[[:space:]]+(passed|failed)|Tests[[:space:]]+no tests" | tail -1)
   if [ $rc -eq 0 ]; then
-    echo "$p=PASS" >> "$CKPT"
-    echo "   ✅ $p RC=0 · ${summary:-（无汇总行）} · $(date '+%H:%M:%S')"
+    echo "$u=PASS" >> "$CKPT"
+    echo "   ✅ $u RC=0 · ${summary:-（无汇总行）} · $(date '+%H:%M:%S')"
   else
     FAILED=1
-    echo "   ❌ $p RC=$rc · ${summary:-（无汇总行）}"
+    echo "   ❌ $u RC=$rc · ${summary:-（无汇总行）}"
     printf '%s\n' "$out" | grep -E "error TS|FAIL|✗|AssertionError|ERR_|Unhandled|Errors +[0-9]+ error|^\s+at .*\.(ts|tsx):[0-9]+" | head -30
     echo "   完整日志：$log"
     break   # 红了就停，别浪费 CPU 跑后面的
@@ -104,10 +126,10 @@ for p in "${PKGS[@]}"; do
 done
 
 echo "═════════ 结果 ═════════"
-DONE=0; for p in "${PKGS[@]}"; do recorded "$p" && DONE=$((DONE+1)); done
-echo "· 已记 PASS：$DONE / ${#PKGS[@]}（检查点 $CKPT）"
+DONE=0; for u in "${UNITS[@]}"; do recorded "$u" && DONE=$((DONE+1)); done
+echo "· 已记 PASS：$DONE / ${#UNITS[@]} 个工作单元（检查点 $CKPT）"
 if [ "$FAILED" = "1" ]; then echo "❌ 有包未通过 —— 不得并线。修完重跑本脚本（已绿的包不会重跑）。"; exit 1; fi
-if [ "$DONE" -lt "${#PKGS[@]}" ]; then
+if [ "$DONE" -lt "${#UNITS[@]}" ]; then
   echo "⏸  尚未跑完（大概率被容器回收打断）。**直接重跑本脚本即可续**，已绿的包会跳过。"
   exit 2
 fi
@@ -124,4 +146,4 @@ if [ "$(git rev-parse --short HEAD)" != "$SHA" ] || [ -n "$FOREIGN" ]; then
   [ -n "$FOREIGN" ] && { echo "   非门产物改动："; printf '   %s\n' $FOREIGN; }
   exit 1
 fi
-echo "✅ 五包全绿 + 治理门全绿 @ $SHA —— 可并线。"
+echo "✅ 全部工作单元通过 + 治理门全绿 @ $SHA —— 可并线。"
