@@ -285,10 +285,13 @@ export function PhysicalTopologyView({
              沙盘控制台的 SEAM 门（test/sandbox-console.seam.test.tsx:360）靠它证明"重组时诚实位没丢"。
              改名或让这句话在某个分支下消失 = 那道门失守。故第一段的口径说明**恒定出现**，不随数据变。 */}
       <section className={styles.placeholderBanner} data-testid="phys-topo-placeholder-banner" role="note">
+        {/* 标题分三态：全真 / 混排 / 全占位。混排时才说"其余仍为占位"——全真却说"其余"是句假话。 */}
         <b className={styles.bannerTitle} data-testid="phys-topo-banner-title">
-          {stats.realMeasures > 0
-            ? `⚑ 格内 ${stats.realCells}/${stats.cellCount} 格已接真值；其余仍为占位值（未接真实数据）`
-            : "⚠ 格内数值为占位值（未接真实数据）"}
+          {stats.realMeasures === 0
+            ? "⚠ 格内数值为占位值（未接真实数据）"
+            : stats.placeholderCells === 0
+              ? `⚑ 格内 ${stats.cellCount}/${stats.cellCount} 格已接真值（DataCore 对象聚合，逐条附算式）`
+              : `⚑ 格内 ${stats.realCells}/${stats.cellCount} 格已接真值，${stats.placeholderCells} 格仍含占位值（未接真实数据）`}
         </b>
         <p data-testid="phys-topo-banner-legend">
           逐格标注来源，三档不许混同：<b>真值·对象聚合</b>（DataCore <code>EquipmentOEE</code> /{" "}
