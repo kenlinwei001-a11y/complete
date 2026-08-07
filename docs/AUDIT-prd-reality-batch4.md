@@ -255,3 +255,190 @@
 - **最小 WO 建议**：`WO-ADOPT-SCHEME-EXECUTOR`。🚦范围边界：`apps/datacore/src/actions.ts`（`采纳经营方案` 从 NOT_IMPLEMENTED 接执行器）+ `apps/datacore/src/mapping.ts` 或 `decision/kernel.ts`（派发写回）+ `apps/frontend-shell/src/views/sim/PlanGenerateView.tsx`（采纳后跳 AOP）。**⚠ 硬约束（已定·勿改）**：`actions.ts:57` 记录了业务裁定"采纳一个方案**不得覆盖全局经营目标基线**（PLAN_GOAL_TARGETS）——『目标不能改』"，写回范围必须绕开目标基线。**SEAM 判据**：采纳 → 审批 → 断言**真值确有字节变更**（今天为零），且 `PLAN_GOAL_TARGETS` 未被改动。
 
 ---
+
+### PRD-platform-foundry-aip.md
+- **它要做什么**：**平台总纲** —— 定义两系统边界、A0–A8 / B1–B7 全部模块契约、§12 的 20 条端到端验收用例。
+- **PRD 自称的 AS-IS**：无现状节（它是从零起草的规格，非增量）。§0.5 定"完成标准 = §12 验收用例全部通过 + docker compose 一键起 + lint/test 通过"。
+- **实测现状**（按 §12 的 20 条逐条找生产锚点；**只做"实现存在性"抽查，不等于跑通验收**）：
+  - 全部关键错误码/状态量在生产 src 中均有实现（`rg` 计数为**命中文件数**，已排除 test）：`DATACORE_UNAVAILABLE`(5) · `sourceQuote`(9) · `AGENT_SCOPE_VIOLATION`(4) · `NESTING_DEPTH_EXCEEDED`(2) · `WORKFLOW_ONLY`(6) · `load_skill`(11) · `MAP_TO_EXISTING`(5)。
+  - **RD2 防幻觉门实装**：`apps/datacore/src/ruledocs.ts:219` `if (!segment.text.includes(cand.sourceQuote) || cand.sourceQuote.trim() === "")` → 丢弃候选（:18/:90 注释说明服务端子串校验），正是 §12-RD2 要的行为。
+  - **SY3 新行业模板**：`apps/datacore/src/synthetic/service.ts:136/150` 按 `industryKey` 查模板、缺则 `industryTemplates.put` 落库。
+  - 对应测试文件齐：`datacore/test/{ruledocs,synthetic,modeling,authz,connectors,modeling-wire}.test.ts` · `agentcore/test/{runtime-workflow,workflow-mcp,skill-*}.test.ts`。
+  - 架构落位与 CLAUDE.md 架构地图一致（datacore 236 个测试文件 / agentcore 150 个）。
+- **结论**：**✅已实现（模块层面）**，但**§12 的 20 条验收我无法逐条判定通过与否** —— 判据是"跑起来的行为"（compose 起服务、停掉一侧、注入 Mock LLM），不在静态代码里。
+- **诚实标注（未查清 + 卡在哪）**：§12 的 P1/AU2/B3/B5/D1/D2 六条属**运行时行为断言**，需真起两服务 + 注入 Mock 才能验；本次为只读代码审计，**未跑**。要判绿必须 FDE 亲手跑一遍（CLAUDE.md「绿测试≠能用」）。本条不给 WO —— 先跑再说，跑出红点再立单。
+
+---
+
+### PRD-prototype-intake-databuilder.md
+- **它要做什么**：把"上传 HTML 原型 → 抽数据表/关系 → 喂数据构建发动机 → 字段不符弹人确认"做成可重复正门。两块绿地：`prototype-intake`（解析）+ `schema-reconcile`（对账 HITL，类比 `MergeCandidate`）。
+- **PRD 自称的 AS-IS**：§2 有"现状与缺口（file:line / 证据）"节；核心主张是"其余复用既有数据构建发动机（comprehend→BuildPlan→closure→publish R4 + GapReport），只补两块绿地"。
+- **实测现状**：
+  - **① intake 解析器 ✅**：`apps/datacore/src/databuilder/prototype-intake.ts`（153 行）；端点三个 —— `app.ts:3840 POST /a/v1/databuilder/intake` · `:3859 /intake/import` · `:3872 /intake/objectify`。
+  - **② schema-reconcile HITL ✅ 全链**：候选落库 `app.ts:3851 repos.reconcileCandidates.put` · 队列 `:3883 GET /a/v1/databuilder/reconcile-candidates` · 人确认 `:3890 POST …/:id/resolve`；**双仓储都改了**（`repo/memory.ts:472` + `repo/pg.ts:773 PgStore(pool,"reconcile_candidates")`），符合 CLAUDE.md「新增表四处同改」。
+  - **事件 ✅ 两条都登记进单一来源**：`app.ts:3854 outbox.emit(…, "prototype.intake_recorded", …)` → `apps/agentcore/src/event-subscriptions.ts:91`（IN_SESSION，invalidates intake-preview/reconcile-queue）；`app.ts:3898 "schema_reconcile.resolved"` → `event-subscriptions.ts:93`。
+    ⚠ **命名与 PRD 不符**：PRD §0 写的是 `schema_reconcile.candidate_created`（候选**创建**时发），实装是 `schema_reconcile.resolved`（候选**解决**时发）—— 语义不同（一个是"有活要干"通知，一个是"活干完了"失效）。PRD 承诺的"候选待人确认 → NOTIFY 通知"这个方向**没有事件**。
+  - **前端 ✅**：`apps/frontend-shell/src/pages/admin/PrototypeIntakePage.tsx`；已登记 `adminRegistry.ts:62`（roles admin/data_admin）且已归「建模与图谱」组（`ShellLayout.tsx:47`），f61 门覆盖。
+  - **⚠ CLI 对等（R15）❌ 未做**：PRD §0 门禁明写"`prototype-intake`/`schema-reconcile` **必有** CLI 命令（`import --prototype`/`reconcile`）"。实测 `rg -n "prototype|reconcile" scripts/platform-cli.mjs` = **0 命中**。
+- **结论**：**◐部分**（主体 ✅，两处小缺口：候选创建事件未发 + CLI 对等未做）。
+- **最小 WO 建议**：`WO-INTAKE-CLI-EVENT`（轻）。🚦范围边界：`scripts/platform-cli.mjs`（加 `import --prototype` / `reconcile` 两命令）+ `apps/datacore/src/app.ts:3851` 附近（候选创建时补发 `schema_reconcile.candidate_created`）+ `apps/agentcore/src/event-subscriptions.ts`（登记新事件，注意会改 `ontology:check` 的事件计数，需同步回写本体 §4）。
+
+---
+
+### PRD-qos-cross-domain-unified.md
+- **它要做什么**：统一版跨域编排 = **②确定性多路**（跨域题逐域映射 solver 并行秒答）+ **⑤LLM 多意图兜底** + **Coordinator 降级**（不再抢 solver 可解的题）。取代 `PRD-deterministic-cross-domain` + `PRD-multi-intent-orchestration` + 两份 WO。
+- **PRD 自称的 AS-IS**：§2 四条缺口（**已逐条真跑核对**）：①Coordinator 门在 `orchestrator.ts:478` 于 `domainResolve(:488)` **之前**开火，Q2 三关键词共现被它先抢 → 3 角色 agent 烧 300s 无结论 · ②确定性层只有单域 · ③两 handoff 分支各建一份后半 → 冲突 · ④`domain-resolver.ts:31-37 DOMAIN_FAMILIES` 只有 5 域，**根本不含 Q2 的域**（良率/有效产出/长协/订单延误/外协加班）。
+- **实测现状**（PRD 四条缺口逐条已闭）：
+  - **缺口① Coordinator 降级 ✅ 且照 PRD 指定的"同一机制"做**：`apps/agentcore/src/router/coordinator.ts:115-117` 注释原文"WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级（Q2 修复·关键）—— 与 S01 `isCapacityFeasibilityQuery` 同一机制…返 undefined **让位②确定性多路**"，判据用 `selectDeterministicMultiRoute` 本身（:8 从 `domain-resolver.js` import `domainResolveMulti`）。**没有 fork 第三张关键词表**，正是 PRD §2 末尾警告的那个坑被躲开了。
+  - **重排序 ✅**：`router/orchestrator.ts:660-664` 注释逐字复述 Q2 铁证并说明"**先试 ②**"，② 排在 Coordinator 之前。
+  - **缺口② 多域分解 ✅**：`router/multi-route.ts:65 selectDeterministicMultiRoute`（:9-10 抬头说明"排在 LLM classify 之前"）。
+  - **缺口③ 共享后半 ✅ 只建一次**：`multi-route.ts:190,198` —— `routeSource` 区分 ②(`deterministic-multi-domain`)/⑤(`llm-multi-intent`)，注释明写"**装配/并行逻辑完全一致**"，一份 `runParallelRoutes` 被 ②/⑤/L2/L3 四路共用。
+  - **缺口④ 扩域 ✅ 且是扩单一真值源、非 fork**：`router/domain-resolver.ts:314-316` 注释承认"ceo-route 的 5 硬域族根本不含 Q2 的域"，:338-340 说明素材复用 `coordinator.ts ROLE_KEYWORDS`、**但绑金库真名 solver**；实测新增域族 `:372 yield→yield_diagnosis` · `:376 lta→lta_gap` · `:378 affected→affected_orders` · `:379 外协/加班→outsourcing_split` —— 正是 Q2 那四个域。
+  - **⚠ 门态（本 PRD 是本批唯一"门真开了"的）**：`qos.deterministic-multi-domain`（`features.ts:128`/`agentcore registry.ts:128`，defaultOn:false，在 `QOS_DARK_LAUNCH_FEATURES` 内）**被 DEMO_LIGHTUP 显式点亮** —— `apps/datacore/src/seed.ts:68 "qos.deterministic-multi-domain": true`，且 :66-67 注释说明它与 L3 门"两门缺一不可"。⇒ **demo 租户上 ② 是真跑的**。
+- **结论**：**✅已实现**（四条缺口全闭，且门在 demo 上开着 —— 这是本批 22 份里少数"代码在 + 门开 + 有 SEAM"三者齐备的）。
+- **备注**：本条与本文 `PRD-multi-intent-orchestration` 条**必须合读**：那份 PRD 的 ⑤ 路（`qos.multi-intent-orchestration`）门仍关；开着的是这份 PRD 的 ② 路。把两者混为一谈就会把"多意图并行已上线"这句话说错一半。
+
+---
+
+### PRD-quarter-rolling-1to1.md
+- **它要做什么**：季度滚动看板 1:1 —— PRD 自评是"**全 19 视图里离 1:1 最近的一个**"，缺口不在结构而在**精确值与事件文案**：靠**调生成器种子**让管线实算出 HTML 的 6 季精确 dem/sup，并补 2 处小项（段头副标注、事件文案对齐）。
+- **PRD 自称的 AS-IS**：§2 表（L44-51）：需求/供给双条 + 缺口三档 ✅（`QuarterlyRollingView.tsx:62`）· 事件+规则深链 ✅ · 6 季精确 dem/sup ◐（管线实算但值未必=HTML）· **枣庄储能线 CAPEX 项目 ◐**（现种子为合肥四期/盐城二期）· C08 外协上限引用 ◐ · 长协偏差 ✅（`ltaDeviation:350`）· 行尾跳风险 ✅ 超集 · **段头副标注 ❌**。
+- **实测现状**：
+  - **段头副标注 ✅ 已补**：`apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx:61` 注释"PRD-quarter-rolling §3-①：段头副标注（产能增量项目同年度基准情景，溯源同源）"。
+  - **长协偏差表 ✅ 在**：`QuarterlyRollingView.tsx:121 data.ltaDeviation.map(...)`。
+  - **⚠ 主工作量（种子对齐）❌ 未做**：PRD §3.1 自称"生成器种子对齐（**主工作量**，R14/R6）"。实测 `rg -n "枣庄" apps packages` = **0 命中**（"枣庄"只出现在 `docs/PRD-quarter-rolling-1to1.md` 自己里，:9/:12/:18/:26 等）⇒ **"枣庄储能线"CAPEX 项目种子从未落进合成器**。既然该项目是 6 季供给曲线的组成项（PRD §0 链路：`Σ已批准项目爬坡(枣庄)`），**6 季精确值 1:1 也就无从谈起**。
+  - 视图本体 156 行，结构完整。
+- **结论**：**◐部分** —— 结构/交互早已 ✅（PRD 自己也这么说），两处小项做了一处（段头副标 ✅）；**PRD 自己点名的"主工作量"整块没动**（种子未对齐 → 精确值不 1:1）。属"没接线"（种子数据根本不存在）。
+- **最小 WO 建议**：`WO-QUARTER-SEED-ALIGN`。🚦范围边界：`apps/datacore/src/synthetic/battery.ts`（加"枣庄储能线"CapexProject 种子：2027-Q3 投产 +22 万套/季 · ramp 60→90 · CAPEX 14 亿）+ `apps/datacore/src/solvers/types.ts` 的 planview 参数（`weeklyWan`/`growthYoY`/`rollingCorrPct[6]` 整定）+ 该季事件挂 C08 深链。**SEAM 判据**：R6 —— 同 seed 重跑，6 季 `dem/sup` 逐字节等于 PRD §2 表列的 HTML 值（382/376…452/448），且**不是前端写死**（`debattery:check` 不超基线）。
+
+---
+
+### PRD-query-orchestration-service.md
+- **它要做什么**：QOS 详细规格 —— 查询编排（分类 → 路径A 工作流 / 路径B Agent → SSE 流式答案），含 §8.2 的 SSE 事件名（CLAUDE.md 要求"一字不差"）与 §12 的 19 条验收。
+- **PRD 自称的 AS-IS**：无现状节（原始规格文档）。
+- **实测现状**：
+  - **§8.2 九个事件名 100% 落在生产 src**（逐个 `rg -c` 于 `apps/agentcore/src`，均 ≥1 命中文件）：`task.accepted`(2) · `routing.completed`(1) · `clarification.required`(1) · `step.started`(3) · `step.completed`(6) · `answer.final`(3) · `action_draft.created`(2) · `task.failed`(4) · `task.cancelled`(3)。**且 CLI 也逐个消费**（`scripts/platform-cli.mjs:222-244` 的 switch 分支逐条对应）⇒ 事件契约是真跨端一致的，不是单侧声明。
+  - **§12 验收关键量全部实装**（命中文件数，已排除 test）：`unverifiedNumerics`(15) · `VERIFIED_WORKFLOW`(14) · `AGENT_EXPLORATORY`(14) · `FallbackTrace`(7) · `Last-Event-ID`(3, D1 断线重连) · `Idempotency-Key`(5, D2) · `PLAN_VALIDATION_ERROR`(5, E2) · `qos_classifier_errors_total`(1, C2) · `qos_agent_budget_exhausted_total`(1, B3)。
+  - **⚠ 跨命名一例**：`BudgetGuard` 这个 PRD 用词 `rg` = **0 命中**，差点判为未实现；再搜一轮才找到 —— 实装名是 `apps/agentcore/src/tools/budget.ts`（模块名而非类名），指标 `apps/agentcore/src/metrics.ts:89 qos_agent_budget_exhausted_total` 确在。**按 PRD 字面词搜就会误判。**
+  - **事件单一来源有门守**：`scripts/check-system-ontology.mjs:5` 注释"数据流事件失效图（§4）—— `event-subscriptions.ts` 的事件集 **必须 =** 本体 §4 记录的事件集"，:28/:38 做集合对拍 ⇒ 事件名漂移会被 `ontology:check` 拦。
+- **结论**：**✅已实现（契约与实现存在性层面）**。事件名一字不差、验收量全部有生产锚点、且有防漂移门。
+- **诚实标注（未查清）**：与平台总纲同理，§12 的 19 条里 B3/B4/B5/C1/C2/D1/D2 等**行为断言**需注入 Mock LLM / 真起服务才能判定"是否真通过"，本次未跑。存在实现 ≠ 行为正确（「绿测试≠能用」）。
+
+---
+
+### PRD-reference-views-1to1-roadmap.md
+- **它要做什么**：**索引/总纲**（非特性 PRD）—— 把 HTML 参考原型的 19 个视图盘清、定优先级、登记横切决定，并逐个引出子 PRD。它自己的交付物就是"子 PRD 队列齐全 + 横切决定固化"。
+- **PRD 自称的 AS-IS**：§4 状态节自称"✅ 已出子 PRD（**全 7 份齐**）… ⬜ 待写：无（业务视图 1:1 子 PRD 队列已全部产出）"。
+- **实测现状**：
+  - **7 份子 PRD 文件全部存在**（逐个 `test -f` 实测）：`PRD-aop-annual-scenario-1to1.md` ✅ · `PRD-sop-balance-1to1.md` ✅ · `PRD-quarter-rolling-1to1.md` ✅ · `PRD-plan-audit-1to1.md` ✅ · `PRD-plan-generate-1to1.md` ✅ · `PRD-order-project-sim-1to1.md` ✅ · `PRD-inference-process-enhancement.md` ✅。
+  - **§0 的横切决定已被下游实现遵守**（交叉验证，非仅看文档）：
+    - "story/model 不做独立导航，融入推演入口" → 实测 `ShellLayout.tsx:38`「推演」组只有 `project-sim/global-sim/risk/order-chain/decision-play`，**无 story/model 独立项**；model 以 `mode="model-network"` 子模式融入（`ProjectSimView.tsx:512`）。✅
+    - "generate = plan-generate 同一视图" → `views/sim/PlanGenerateView.tsx` 单一实现。✅
+    - "图谱族坍缩进 OntologyGraphView，不逐个复刻" → `ShellLayout.tsx:52-56` 八视角是同一页的 collapsed 子组。✅
+- **结论**：**✅已实现**（作为索引文档，其交付物齐全，且横切决定在代码里被真实遵守）。
+- **备注**：本条判绿只说明"索引与决定成立"，**不代表 7 个子视图都 1:1 了** —— 逐个子 PRD 的实况见本文各自条目（本批覆盖了 quarter/audit/generate/order/inference 五份，aop 与 sop 不在本批范围）。
+
+---
+
+### PRD-rules-as-references.md
+- **它要做什么**：**规则即引用** —— 所有推演入口的规则判定从"可编辑的一等规则库"按引用读取，改一条规则即所有入口行为随之变化；消灭"引用了但库里没定义"和"规则闸 fail-open 空过"。
+- **PRD 自称的 AS-IS**：§0（实测证据）：① 求解器不读规则（`SolverContext` 不带 `rules`）② 规则逻辑写死在代码（C09 在 `capacity.ts:189-197`）③ **28 个被引用 vs 15 个被定义 → 13 个引用无定义**（`C01 C02 C04 C06 C09 C10 C11 C15 C16 C21 C22 C24 C25`）④ 前端显示"（当前库中未找到定义）"、`evaluate_rules` 遇未定义 fail-open ⑤ 全入口汇到 `POST /a/v1/solvers/:key/invoke`。
+- **实测现状**（这份实现得很深，P1–P4 四期都有痕迹）：
+  - **①② 求解器读规则 ✅**：`apps/datacore/src/solvers/types.ts:296-300` —— `rules?: Record<string, {key,name,expression,severity,params}>` + `ruleSetVersion?: string`，注释逐字对应 PRD §2.2/§4；:225 说明"params/rules/ruleSetVersion 便宜且共享 → 永远加载（不裁）"。
+  - **ruleRefs 升为真引用 ✅**：`SOLVER_RULE_REFS` 在 contracts（`solvers/service.ts:11` import）；`service.ts:4342-4343` 每次 invoke 跑 `evaluateRuleRefs` → 有结果就挂 `out.evaluatedRules`；:4351 逐条按规则引擎评估。
+  - **③ 13 个未定义规则 ✅ 全部补齐**：逐个在 `apps/datacore/src/synthetic/battery.ts` 计数，13 个码**全部 ≥2 处命中**（C01/C02/C04/C06/C09/C10/C11/C15/C16/C21/C22/C24/C25）。
+  - **P4 数值维（最难的一半）✅**：`apps/datacore/src/rules.ts:100-125 projectRuleParams` —— 规则发布时把命名阈值**投影进** `solver_params`，注释 :104-107 精准指出"P1/P2 之后仍缺的那一半：求解器**算数**用的系数仍读 solver_params 里自己那份同值字面量…于是**改规则种子只改了个没人读的诱饵，推演分毫不动**"。投影后才真正做到"改规则→输出真的变"。
+  - **诚实边界 ✅ 没有假装**：`solvers/service.ts:4508-4517` 明确列出 **6 个求解器**（risk_timeline / affected_orders / maintenance_stagger / mitigation_select / quarterly_gap / yield_diagnosis）其声明的规则码所需字段在输出口径中不存在 → 整体 `NOT_APPLICABLE`，注释写"**不伪造尺度凑 PASS（红线 RL5）**"。这是正确处置（诚实缺口而非假绿），但也意味着**这几个求解器的 ruleRefs 今天不产生任何闸门效果**。
+  - **⚠ 两道门写了、但一道都没挂上（本条最重要的发现）**：PRD §2.5 要求两个门 —— `rule-closure:check`（引用⊆已定义）与 `no-hardcoded-rules:check`（阈值必须源自 rule.params）。
+    脚本**确实存在**：`scripts/check-rule-closure.mjs` + `scripts/check-no-hardcoded-rules.mjs`。
+    但**没有任何流水线调用它们**：不在 `package.json:32 "gates"` 的 23 条链里 · 无 npm alias · 不在 `scripts/gate.sh` · 不在 `.github/workflows/gates.yml`。
+    **不是我 grep 出来的推断 —— 仓库自己的台账就是这么记的**：`scripts/gate-ledger.json` 里两条各自写着
+    `"alias": null, "binding": "NONE", "provenRed": {"kind":"NEVER", ...}, "disposition": "WIRE"`
+    （对照 `check-action-wiring.mjs` 是 `"binding": "GATES_CHAIN"` + 有 alias + `provenRed.kind="MUTATION"`）。
+    ⇒ **典型"没接线"**：门造好了、从未跑过、从未红过，`disposition` 字段自己写着"该接线"。PRD §1.3 的北极星"零规则闸空过"因此**没有任何东西在守**，回潮零成本。
+- **结论**：**◐部分** —— 主体（P1–P4 四期 + 13 条规则补齐 + 诚实 NOT_APPLICABLE）**实现得相当扎实**，是本批质量最高的实现之一；**唯一但关键的缺口是两道门未接线**，等于北极星②③（零未定义引用 / 零规则闸空过）**没有守门人**。
+- **最小 WO 建议**：`WO-RULE-GATES-WIRE`（**极轻，投产比在本批最高** —— 门已写好，只差挂上）。🚦范围边界：只改 `package.json`（加 `rule-closure:check` / `no-hardcoded-rules:check` 两个 alias，并把两条脚本追加进 `"gates"` 链）+ `scripts/gate-ledger.json`（`binding` 从 `NONE` 改 `GATES_CHAIN`、补 alias）。**SEAM 判据**：接线后**先跑一遍看是不是红的** —— 若直接绿，须按 `provenRed` 纪律做一次故障注入（删一条规则定义 / 在求解器里硬编码一个阈值），确认门**真的会红**，否则接了个哑门（`provenRed.kind` 才能从 `NEVER` 改掉）。
+
+---
+
+## 2. 汇总表
+
+| # | PRD | 结论 | 一句话 |
+|---|---|---|---|
+| 1 | inference-process-enhancement | ◐ **⚠不符** | 组件+6 挂载点在，但 trace 端点无前端消费方、节点 IPO 写死、5/6 挂载点恒传 `solved` |
+| 2 | live-traceable-data | ◐ | P1 ✅ 生产真跑；`lineage/task` 端点不存在；`Provenance` 6 处挂载只 1 处真取活数据 |
+| 3 | llm-agent-empty-response-guard | ✅ | FIX.1+FIX.2+R7 信封三段齐，全在生产路径 |
+| 4 | maturity-master-plan | **⚠不符** | AS-IS 过期：求解器 8/21 → 实测 **59**；E6 已完成；VLE 无 8 轴成熟度报告 |
+| 5 | multi-intent-L2-L3-coupled | ◐ | L2/L3 代码全在且接线；**L3 门 demo 已开**，**L2 门恒关**（只有 test 开） |
+| 6 | multi-intent-orchestration | ◐ | ⑤ 路代码全在，门在生产恒关（勿与已开的 ② 路混淆） |
+| 7 | nav-ia-reorg | ✅ | N1/N2/N3 齐，NAV_GROUPS 覆盖 ADMIN_PAGES **40/40**，另有 f61 防漂移门 |
+| 8 | ontoflow-data-builder（v1） | ◐ | 已被 v2 取代；②③ 做了，①④（画布/准备度）没做 |
+| 9 | ontoflow-v2-unified-modeling | ◐ | 契约 100% + 后端 6/9 端点；**前端画布零实现**，8 个端点唯一消费方是 test |
+| 10 | ontology-7elements | ✅文档 / ⚠零执行 | 唯一 AS-IS 零偏差的文档；**P0/P1/P1/P2 四项建议至今零动工**（逐条复验仍成立） |
+| 11 | ontology-browser-field-coverage | ◐ | P1/P3/P4 ✅（换名实现）；**R12 HARD 门实为 opt-in fail-open**，事件与 CI 门零实现 |
+| 12 | optimize-whatif-conversational-wiring | ◐ | G1–G4 全落地且接线；会话门在 demo 恒关（底层 `opt.whatif` 反而是开的） |
+| 13 | order-project-sim-1to1 | ✅ | `order_fullchain` 三判+三色+DAG 全在；DAG 9 节点（PRD 标题写 11 = 自身笔误）；C18 用信用代理 |
+| 14 | plan-audit-1to1 | ✅ | PRD 标 ❌ 的 6 项全落地（DailyDotAxis / audit_timeline kind 路由 / KsfGraph） |
+| 15 | plan-generate-1to1 | ◐ | 渲染层全 ✅；**采纳按钮接到 `采纳经营方案`，而它是 `NOT_IMPLEMENTED`** —— 批准写零字节 |
+| 16 | platform-foundry-aip | ✅模块 / 未查清验收 | 模块与错误码全有生产锚点；§12 六条运行时断言**本次未跑** |
+| 17 | prototype-intake-databuilder | ◐ | 主体 ✅（含双仓储+前端页）；候选创建事件未发、CLI 对等（R15）未做 |
+| 18 | qos-cross-domain-unified | ✅ | 四条缺口全闭、无 fork 第三张表、**门在 demo 真开** —— 本批质量最高 |
+| 19 | quarter-rolling-1to1 | ◐ | 段头副标 ✅；**PRD 自称的"主工作量"种子对齐整块没动**（"枣庄"全仓 0 命中） |
+| 20 | query-orchestration-service | ✅契约 / 未查清行为 | 9 个事件名一字不差且 CLI 同步消费；验收行为断言未跑 |
+| 21 | reference-views-1to1-roadmap | ✅ | 7 份子 PRD 齐；§0 横切决定在代码里被真实遵守 |
+| 22 | rules-as-references | ◐ | P1–P4 实现扎实；**两道门写了从没挂上**（仓库自己的 gate-ledger 记 `binding:NONE`/`disposition:WIRE`） |
+
+**计**：✅ 8 · ◐ 12 · ❌ 0 · 其中带 ⚠「PRD 陈述与现状不符」2 份（#1 #4），另 #10 是"文档对、执行零"。
+
+### ⚠ 「PRD 自身断言了一件可核实的事、而事实相反」清单（最高价值）
+
+| PRD | PRD 断言 | 事实 | 证据 |
+|---|---|---|---|
+| inference-process-enhancement | §2 表：跨周期反馈边 ❌、横切挂载 ❌（仅 QueryDock） | **两者都已做** | `InferenceProcessDag.tsx:36` fb 边 ×2；6 处挂载 |
+| inference-process-enhancement | §7 DoD：「IPO 取真实 QOS 轨迹」「前端零写死步骤」 | **节点与 IPO 全是字面量；5/6 挂载点恒传 `solved`** | `InferenceProcessDag.tsx:18-29`、`:90`、`PlanAuditView.tsx:179` |
+| maturity-master-plan | §1「8/21 求解器实现」；§5 E6「13 求解器补全」列为未启动 | **实测 59 个**；代码注释自己标着「成熟度 E6a」 | `solvers/service.ts:49`（脚本计数 59）、`:58` |
+| maturity-master-plan | §4「478 测试 LLM 全 mock」 | 测试规模已翻倍（datacore **236** / agentcore **150** 个测试文件） | `ls apps/*/test/*.test.ts` |
+| order-project-sim-1to1 | §1.4「**11 节点**业务建模链 DAG」 | 实为 **9 节点**；PRD 自己列的节点清单也只有 9 个（自相矛盾） | `solvers/service.ts:3278-3290` |
+| prototype-intake-databuilder | §0 事件 `schema_reconcile.candidate_created` | 实装是 `schema_reconcile.resolved`（语义相反：完成 vs 待办） | `app.ts:3898`、`event-subscriptions.ts:93` |
+| ontology-browser-field-coverage | §3.2「HARD 门：存在 UNMAPPED → 拦发布」 | 门取自**请求体**，默认 false，不传即放行 | `app.ts:3420-3421`、`endpoints.ts:500` |
+| rules-as-references | §2.5 两道门 `rule-closure:check`/`no-hardcoded-rules:check` | 脚本在、**一道都没挂进任何流水线**（仓库台账自记 `binding:NONE`） | `scripts/gate-ledger.json`、`package.json:32` |
+
+---
+
+## 3. 补做建议（按投入产出排序）
+
+> 排序判据 = （有活消费方 / 今天就在退化）÷ 工作量。前 4 条都是**小时级**改动。
+
+| 序 | WO | 量级 | 为什么排这里 | 🚦范围边界 |
+|---|---|---|---|---|
+| 1 | `WO-RULE-GATES-WIRE` | **XS**（改 2 个文件） | 门**已经写好了**，只差挂上。不挂 = 北极星"零规则闸空过"无人守、回潮零成本。仓库自己的台账写着 `disposition: WIRE` | `package.json`（2 个 alias + 追加进 `gates` 链）· `scripts/gate-ledger.json`（binding 改 GATES_CHAIN）。**接线后必须先跑一遍看是否红**，直接绿则做故障注入证明不是哑门 |
+| 2 | `WO-SOLVER-OUTPUT-SHAPE` | **XS**（3 处小改） | **2 个活消费方今天在 demo 上跑**（agent 首轮 prompt + 治理台关系图），门 `qos.dril-routing` demo 已开 ⇒ **此刻正在退化**。A 侧已经返回了，只是 B 侧 map 漏抄一行 | `agentcore/src/tools/clients.ts` · `tools/datacore-http.ts:373-383` · `dril/resource-projector.ts:52`。建议与 ④-b（`reads`）**同一 dev 整单** |
+| 3 | `WO-L2-LIGHTUP` / `WO-OPTWHATIF-LIGHTUP` | **XS**（各改 seed 1 行） | 代码全在、SEAM 全绿、只差点亮。**但前置是亲手跑 SEAM**（L2 验不劫持既有路由；whatif 验 Δ 非空+决策真切换），确认了再开 | 各只改 `apps/datacore/src/seed.ts` DEMO_LIGHTUP + 一条 demo 租户断言 |
+| 4 | `WO-ACTION-IMPACT-READOUT` | **S** | 审批人今天**批准前看不到会写什么**（`ActionsPage.tsx` 只渲染 payload）。PRD 已论证"先接出口再补声明"，先补声明只会把死代码从 1 条扩到 9 条 | `datacore/src/app.ts`（`GET /a/v1/action-types/:key/impact` + POST body 补 `effects`）· `scripts/check-action-wiring.mjs`（加 effects 断言） |
+| 5 | `WO-ADOPT-SCHEME-EXECUTOR` | **S–M** | 用户点"采纳本方案"→ 审批链走完 → **真值零字节变更**（`G-ACTION-NOOP-EXEC` 活体，且是全仓最后 1 个 `NOT_IMPLEMENTED`）。UI 已在跑，欺骗性最强 | `datacore/src/actions.ts` · `mapping.ts`/`decision/kernel.ts` · `PlanGenerateView.tsx`。**硬约束**：`actions.ts:57` 已定"不得覆盖 `PLAN_GOAL_TARGETS`" |
+| 6 | `WO-IPE-TRACE-WIRING` | **M** | 5 个推演视图的"推演过程"面板**恒显示全绿 10 节点**，与实际运行无关 —— 这是会误导决策者的假绿，且后端投影端点已白造 | `frontend-shell/src/api/endpoints.ts` · `components/InferenceProcessDag.tsx`+`InferenceProcessPanel.tsx` · 5 个挂载视图传 `taskId` |
+| 7 | `WO-FIELD-COVERAGE-HARD` | **M**（破坏性） | R12 从 SOFT 升 HARD 是这份 PRD 的核心，今天等于没升。**但翻默认值是行为破坏性变更**，需先评估存量草稿被拦的规模 | `datacore/src/modeling.ts` · `app.ts:3418-3421` · `frontend-shell/src/api/endpoints.ts:500` · 新 `scripts/check-field-coverage.mjs` |
+| 8 | `WO-SOLVER-ROWLEVEL` | **M**（17 处调用方） | 补齐一个**已声明的不变量**（R2/A6）而非新造能力：`base_manager` REST 面受限、求解器面不受限，两面不一致 | `datacore/src/solvers/service.ts:4007` + 17 处调用方 + `ontology.ts` 正门 |
+| 9 | `WO-LINEAGE-TASK` + `WO-PROV-OBJECT-MODE` | **M** | "结果→入参对象→原始行"这条溯源链断在任务级；前端 6 个悬浮溯源里 5 个展示的是写死公式串 | `datacore/src/app.ts`（lineage/task）· `agentcore/src/router/orchestrator.ts`（Task 留入参 refs）· `views/BaseOutlookPanel.tsx`+`views/capacity/*.tsx` |
+| 10 | `WO-QUARTER-SEED-ALIGN` | **M** | PRD 自称的"主工作量"整块没动，1:1 无从谈起。纯种子整定，风险低但要反复对数 | `datacore/src/synthetic/battery.ts`（枣庄 CapexProject 种子）· `solvers/types.ts` planview 参数 |
+| 11 | `WO-ONTOFLOW-CANVAS` | **L** | 后端 6 个端点已白造（唯一消费方是 test）。价值高但工作量大，且**必须一个 dev 整单**（跨前后端两半） | `frontend-shell/src/pages/admin/`（新画布页）· `api/endpoints.ts` · `adminRegistry.ts`+`ShellLayout.tsx`（否则 f61 门红）· `mocks/handlers.ts` |
+| 12 | `WO-MATURITY-REFRESH` + PRD 订正 | **XS**（纯文档） | 不改代码但防止下一个人被过期数字误导（求解器 8/21 → 59；E6 已完成；order DAG 11 → 9 节点） | 只改 `docs/PRD-maturity-master-plan.md` §1/§4/§5 三表 + `docs/PRD-order-project-sim-1to1.md` 节点数 |
+
+**并行/串行提示**
+- 1/2/3/12 四条**文件边界互不重叠**，可四个 dev 全并行。
+- 4 与 5 都碰 `datacore/src/actions.ts` → **串行或同单**。
+- 7 与 9 都碰 `frontend-shell/src/api/endpoints.ts` → 注意冲突。
+- 2 的 ④-a 与 ④-b **必须同一 dev 整单**（同一条 DRIL 链路两半，拆开必然只接一半 —— CLAUDE.md 记录的老炸点）。
+- 11 跨前后端两半，**一个 dev 整单**，不得拆给两人。
+
+---
+
+## 4. 本次审计未查清的项（不猜，一律列出）
+
+| 项 | 卡在哪 |
+|---|---|
+| `PRD-platform-foundry-aip` §12 的 P1/AU2/B3/B5/D1/D2 | 属**运行时行为断言**（起两服务、停一侧、注入 Mock LLM），静态代码判不了。需 FDE 亲手跑 |
+| `PRD-query-orchestration-service` §12 的 B3/B4/B5/C1/C2/D1/D2 | 同上。实现存在性已确认，行为正确性未验 |
+| `PRD-nav-ia-reorg` §7 的"各角色亲手点一遍 + 截图留证" | 人工验收项，判据不在代码里（N1–N3 的代码实现已判绿） |
+| `PRD-plan-audit-1to1` §2 行 8「问题级传播链 因素→对象→指标/规则」 | PRD 该行原本只标 ◐ 且未给明确 DoD，无法判定"够不够" |
+| 各 1:1 PRD 的「数据值 100% 对齐 HTML」 | 除 quarter（已确认种子缺失）外，其余视图的精确数值是否 == HTML，需真跑比对，本次未跑 |
