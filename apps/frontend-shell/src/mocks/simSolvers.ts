@@ -4,6 +4,9 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则命名阈值引用（`params.<名>`）——mock 的规则表达式与真后端同机制、同字面。
 import { ruleParamRef } from "@platform/contracts";
+// WO-DECISION-INFO ③.2：处置推演单源——mock 的 dayPlan 与 datacore 的 base-outlook/risk 三处 import 同一份，
+// 不各写一套（手抄那套曾把已被删除的 `trigDay+7`/`+14` 魔数留在前端继续活着）。
+import { deriveDisposition } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
 
@@ -1513,33 +1516,31 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
     for (const o of baseOrders) if (o.dueDay >= 0 && o.dueDay <= H) orderByDay.set(o.dueDay, (orderByDay.get(o.dueDay) ?? 0) + o.qty);
     let crossDay: number | null = null, cumOrder = 0;
     for (let d = 1; d <= H; d++) { cumOrder += orderByDay.get(d) ?? 0; if (dailyInProd * d + cumOrder > freeDaily * d + 1e-6) { crossDay = d; break; } }
-    const dayPlan: Record<string, unknown>[] = [];
-    const shortfall = Math.max(0, round(-gap, 2));
-    if (shortfall > 0) {
-      const trigDay = crossDay ?? Math.max(1, Math.round(H / 2));
-      let remaining = shortfall;
-      const overtime = round(Math.min(remaining, available * overtimeUpliftPct), 2);
-      if (overtime > 0) {
-        dayPlan.push({ day: trigDay, date: isoAt(SOP_FORECAST_START, trigDay), action: "加班承接（本地空闲产能上浮）",
-          rationale: `第${trigDay}天累计需求越过可用产能（触发缺口 ${shortfall}套）→ 加班上浮 ${round(overtimeUpliftPct * 100, 0)}% 收窄 ${overtime}套（溯 Line.capacityDaily=${freeDaily}/日）`,
-          triggerValue: shortfall, closesGap: overtime, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } });
-        remaining = round(remaining - overtime, 2);
-      }
-      if (remaining > 1e-6) {
-        const crossBase = round(Math.min(remaining, remaining * crossBaseAbsorbPct), 2);
-        const crossDayAt = Math.min(H, trigDay + 7);
-        dayPlan.push({ day: crossDayAt, date: isoAt(SOP_FORECAST_START, crossDayAt), action: "跨基地调剂（挤占低优先在手单）",
-          rationale: `第${crossDayAt}天残余缺口 ${remaining}套 → 跨基地吸收 ${round(crossBaseAbsorbPct * 100, 0)}% 收窄 ${crossBase}套（溯 WorkOrder.qtyActual=${inProdTotal}）`,
-          triggerValue: remaining, closesGap: crossBase, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } });
-        remaining = round(remaining - crossBase, 2);
-      }
-      if (remaining > 1e-6) {
-        const outDayAt = Math.min(H, trigDay + 14);
-        dayPlan.push({ day: outDayAt, date: isoAt(SOP_FORECAST_START, outDayAt), action: "外协补足（残余缺口）",
-          rationale: `第${outDayAt}天仍余 ${remaining}套 → 外协补足 ${remaining}套（触发源：未来订单 Σqty=${futureQty}）`,
-          triggerValue: remaining, closesGap: remaining, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } });
-      }
-    }
+    // WO-DECISION-INFO ③.2（前端半·单源归位）：dayPlan 改调**契约里那一份** `deriveDisposition`。
+    //
+    // 修前这里是**手抄的第二套贪心**，而且抄的是修改前的版本 —— 里面原样留着
+    // `trigDay + 7` / `trigDay + 14` 两个魔数。引擎侧 WO-DECISION-INFO ③.2 已经把这两个字面量删干净
+    // （改由 `InterBaseTransfer.transitDays` / `Supplier.leadTime` 真对象派生，取不到就诚实 EMPTY），
+    // 前端 mock 却把它们**复活**了：于是「跨基地什么时候能到」在同一个系统里又有了两个互不知道的答案，
+    // 而 mock 那个是编的 —— 这正是本体 §3 声明「三处 import 同一份 deriveDisposition」时漏掉的第四处。
+    //
+    // 本 mock 无调拨台账 / 供应商台账 ⇒ **不传** crossBaseLead / outsourceLead ⇒ 契约按设计给
+    // `leadTime.status="EMPTY"` 且**日期不叠加任何偏移**（缺省不是 0 天，是「取不到」——
+    // 契约 `DispositionInput.crossBaseLead` 的注释点名的就是这个调用方）。
+    // 这个 EMPTY 态正是 `BaseOutlookPanel` 要如实渲染成「前置期取不到」的那个态。
+    const dayPlan = deriveDisposition({
+      baseId,
+      forecastStart: SOP_FORECAST_START,
+      horizon: H,
+      trigDay: crossDay ?? Math.max(1, Math.round(H / 2)),
+      shortfall: Math.max(0, round(-gap, 2)),
+      freeDaily,
+      available,
+      inProdTotal,
+      futureQty,
+      overtimeUpliftPct,
+      crossBaseAbsorbPct,
+    }).steps;
     return { horizon: H, windowStart: isoAt(SOP_FORECAST_START, 0), windowEnd: isoAt(SOP_FORECAST_START, H), lines, available, inProduction, futureOrders: futureQty, salesForecast, demand, gap, status, crossDay, dayPlan };
   };
 

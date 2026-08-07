@@ -1,7 +1,13 @@
 import { useState } from "react";
+import type { DispositionLead } from "@platform/contracts";
 import { useLiveSolver } from "./sim/useLiveSolver";
 import styles from "./RiskBoardView.module.css";
 import { Provenance } from "@/components/Provenance";
+// WO-DECISION-INFO ③.2 前端半：`steps[].leadTime` 的**第二个**消费面。
+// `base_capacity_outlook.dayPlan` 与 `risk_timeline.planRows[].steps` 是同一份 deriveDisposition 的两个出口
+// （datacore `base-outlook.ts:5` import 的就是 `decision-info.ts` 的 `crossBaseLeadOf/outsourceLeadOf`），
+// 只接处置表那一处 = 「接了线接错地方」的孪生形态：同一个字段在另一块屏上仍然看不见。
+import { LeadTimeTag } from "./DecisionInfoPanel";
 
 /**
  * WO-B / F1 · 每基地前瞻产能推演子面板（renderer 内嵌于产能推演看板基地卡详情）。
@@ -13,7 +19,11 @@ import { Provenance } from "@/components/Provenance";
 
 interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
 interface OutlookLine { key: string; label: string; value: number; provenance: Prov }
-interface DayAction { day: number; date: string; action: string; rationale: string; triggerValue: number; closesGap: number; provenance: Prov }
+/**
+ * `leadTime` 的类型直接取契约 `DispositionLead`（不在前端另定义一份·contracts-only-shared）。
+ * optional 只为向后兼容「旧后端不回传」——**缺席时不渲染，绝不补一个 0 天**。
+ */
+interface DayAction { day: number; date: string; action: string; rationale: string; triggerValue: number; closesGap: number; provenance: Prov; leadTime?: DispositionLead }
 interface Horizon {
   horizon: number; windowStart: string; windowEnd: string; lines: OutlookLine[];
   available: number; inProduction: number; futureOrders: number; salesForecast: number;
@@ -233,6 +243,15 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                       <div style={{ color: "var(--muted2)", fontSize: 10.5, marginTop: 3 }}>
                         溯源 {s.provenance.drillType}.{s.provenance.drillField} = {fmt(s.provenance.drillValue)}（触发缺口 {fmt(s.triggerValue)} 套）
                       </div>
+                      {/* WO-DECISION-INFO ③.2 ·「这一步为什么落在 D+{day}」当场亮出。
+                          此前这块屏只显 D+N，读者无从判断这个 N 是真在途天数还是编的偏移；
+                          OK 能溯到 InterBaseTransfer.transitDays / Supplier.leadTime 的具体那条记录，
+                          EMPTY 则明写「前置期取不到」——**绝不渲染成 0 天**。 */}
+                      {s.leadTime && (
+                        <div style={{ marginTop: 3 }}>
+                          <LeadTimeTag lead={s.leadTime} testId={`outlook-day-lead-${i}`} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

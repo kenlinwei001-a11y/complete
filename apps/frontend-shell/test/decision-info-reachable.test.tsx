@@ -425,6 +425,51 @@ describe("WO-DECISION-INFO 前端半 · 门A 可达（咬链路不咬组件）",
     expect(lead.textContent ?? "").not.toMatch(/前置期\s*0\s*天/);
     expect(lead).not.toHaveAttribute("data-lead-days");
   });
+
+  /**
+   * `steps[].leadTime` 的**第二个消费面**。
+   *
+   * 病（本单第二段·实测于 704da3d7 起的整条分支）：`base_capacity_outlook.dayPlan` 与
+   * `risk_timeline.planRows[].steps` 是同一份 `deriveDisposition` 的两个出口（datacore
+   * `solvers/base-outlook.ts:5` import 的正是 `decision-info.ts` 的 `crossBaseLeadOf/outsourceLeadOf`），
+   * 但前端只接了处置表那一处 ⇒ 基地前瞻那块屏上，同一个字段照样看不见。
+   * 更糟的是前端 mock `simSolvers.ts mockBaseOutlook` **手抄了第二套贪心**，里面原样留着引擎侧已经删掉的
+   * `trigDay+7` / `trigDay+14` 两个魔数 —— 引擎把编的前置期删了，前端 mock 让它继续活着。
+   *
+   * 本例咬的就是这条：从注册表字符串键真渲染 → 点开基地卡 → 前瞻面板逐日处置 → 前置期如实报「取不到」，
+   * 且**日期不带任何假设偏移**（跨基地/外协步不再落在 trigDay+7 / +14）。
+   */
+  it("③.2 第二消费面：基地前瞻 dayPlan 也报「前置期取不到」，且魔数 +7/+14 不再复活", async () => {
+    loginAs("planner");
+    renderApp("/v/risk");
+    // 走用户真路径：看板栅格 → 点开一张基地卡 → 详情面板里挂着 BaseOutlookPanel。
+    const grid = await screen.findByTestId("risk-grid");
+    const firstCard = Array.from(grid.children).find((el) => (el.getAttribute("data-testid") ?? "").startsWith("risk-card-"));
+    expect(firstCard, "看板一张卡都没有 ⇒ 后面全部无从谈起").toBeTruthy();
+    fireEvent.click(firstCard as HTMLElement);
+
+    // 逐日处置过程（缺口窗才有）——前瞻面板是 lazy 拉真 mock 求解器，故用 findBy。
+    await screen.findByTestId("outlook-dayplan");
+    const lead0 = await screen.findByTestId("outlook-day-lead-0");
+    expect(lead0, "base_capacity_outlook.dayPlan[].leadTime 仍无消费方 ⇒ 同一个字段在另一块屏上还是看不见").toBeInTheDocument();
+    expect(lead0).toHaveAttribute("data-lead-status", "EMPTY");
+    expect(lead0.textContent ?? "").toContain("前置期取不到");
+    expect(lead0).not.toHaveAttribute("data-lead-days");
+
+    // ⛔ 魔数反证：mock 若还在手抄那套，跨基地步会落在 trigDay+7、外协步落在 trigDay+14。
+    //   现在三步一律不叠加偏移（前置期 EMPTY ⇒ 偏移 0，语义由随行的 EMPTY 声明，不是"0 天到货"这个断言），
+    //   所以逐步的 D+N **必须全部相等**；一旦有人把 +7/+14 抄回来，这条当场红。
+    const days = screen
+      .getAllByTestId(/^outlook-day-\d+$/)
+      .map((el) => Number(/D\+(\d+)/.exec(el.textContent ?? "")?.[1] ?? NaN));
+    expect(days.length, "逐日处置至少要有一步").toBeGreaterThan(0);
+    expect(days.some((d) => Number.isNaN(d))).toBe(false);
+    expect(new Set(days).size, `dayPlan 各步日期出现偏移 ${JSON.stringify(days)} ⇒ 魔数前置期复活了`).toBe(1);
+    // 每一步都必须带前置期读数（不是只有第 0 步接了线）。
+    for (let i = 0; i < days.length; i++) {
+      expect(screen.getByTestId(`outlook-day-lead-${i}`)).toHaveAttribute("data-lead-status", "EMPTY");
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
