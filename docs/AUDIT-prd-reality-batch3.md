@@ -123,3 +123,89 @@ $ git grep -ln "createIntent" -- "apps/**/src/**"      → 3 文件（正确写�
 - **最小 WO 建议**：无。
 
 ---
+
+### PRD-dogfooding-self-ontology.md
+
+- **它要做什么**：把系统本体（`SYSTEM-ONTOLOGY.md` + `prd-ontology-index.json`）从「只能读散文 + grep 的文档」升级为元租户 `__platform__` 里可查询/可切片/可影响分析的对象，开 `/a/v1/meta/*` + MCP 工具，让人和 Agent 能问运行中的系统「改 R14 影响什么」。
+- **PRD 自称的 AS-IS**：§2「现状与缺口（对照代码）」分两栏——「已存在（复用）」列了 SYSTEM-ONTOLOGY.md、`check-system-ontology.mjs`/`check-prd-ontology.mjs` 解析器、ObjectType/Link/SliceSpec 引擎、R2 隔离基座；「缺口」写「本体只能读散文 + grep，不能图查询」「无 `/a/v1/meta/*`」「无 MCP 让 Agent 问系统自己」「治理三门是构建期红/绿，非运行时活查询」。
+- **实测现状**：**P1–P4 四期全部落地**（含 PRD 自己标为"保守·默认关·最后做"的 #14）。
+  - P1 落库：`apps/datacore/src/meta/parse.ts` + `meta/service.ts:10 META_TENANT = "__platform__"`；幂等重物化 `:50`，发 `:82 outbox.emit(META_TENANT, "meta.ontology_synced", …)` ✅（与 DRIL 事件的 0 命中形成对照）。漂移门 `package.json:15 "meta:sync"` 且已进 `:32 gates` 串。
+  - P2 查询面 + 鉴权：端点 `apps/datacore/src/app.ts:1815 POST /meta/sync`、`:1820 /meta/ontology`、`:1829 /meta/refbase`、`:1849 /meta/breakpoints/:id`、`:1858` 泛化段（invariants/events/domains/slices）、`:1866 /meta/impact`、`:1880/:1885 GET/PUT /meta/access-policy`。`MetaAccessPolicy` 契约 `packages/contracts/src/meta-ontology.ts:10,19`，仓储 `apps/datacore/src/repo/repo.ts:329 metaAccessPolicies`（R9 已入接口）。
+  - P3 MCP/Agent 工具：`apps/agentcore/src/tools/executor.ts` 三个 case —— `query_system_ontology` / `get_breakpoint` / `impact_of`（分派段 :385-391 区），走 `dataCore.ontology.queryMetaOntology/getMetaBreakpoint/metaImpact`，受 DataCore 侧 MetaAccessPolicy 白名单门控。
+  - P4 #14 自动派生：`apps/datacore/src/app.ts:1874 GET /a/v1/meta/derive` 存在（PRD §3.5「默认关、只产 diff」）。
+  - 前端（§8 P2 标为「可选」的那项也做了）：`apps/frontend-shell/src/pages/admin/MetaPage.tsx:7,40`「系统自我 · Dogfooding」+ 导航 `pages/adminRegistry.ts:60 { path: "meta", label: "系统自我", roles: ["admin"] }`。
+- **结论**：✅已实现
+- **最小 WO 建议**：无。
+
+---
+
+### PRD-empty-tenant-bootstrap.md
+
+- **它要做什么**：把「空租户 → 可用计划域」理成一份幂等、确定、可一键跑的 7 步冷启动清单（合成 seed → 核对物化 → 建 SopVersion → 五步法 → 定稿 FINAL 走 R4 → 核对 currentPlanVersion → plan_audit 有料），三面同源暴露：GUI 向导 / CLI `platform bootstrap` / agent 工具组合。
+- **PRD 自称的 AS-IS**：§2「现状与缺口」5 行表：`SEED_DEMO=1` 仅启动期 demo 租户、**运行时空租户无引导入口**；合成端点有但用户不知先跑；SopVersion 步骤散无编排；**空态提示「无」**；**一键引导「无」**。
+- **实测现状**：三面**只落了一面半**。
+  - **BS.1 后端编排端点 ✅**：`apps/datacore/src/app.ts:4078 POST /a/v1/bootstrap`（`:4079-4083` requireAdmin + `BootstrapRequestSchema` + `BootstrapReport`），7 步逐步落 `steps[]`，`:4088-4090` 幂等实现（已有 PlanTarget 则 `status:"SKIPPED"`）。契约 `packages/contracts/src/bootstrap.ts:9,30`。测试 `apps/datacore/test/empty-tenant-bootstrap.test.ts:10,36`（含幂等重跑断言）。
+  - **BS.1 CLI 半 ❌（且被一道 fail-open 的门掩盖）**：PRD §4 要 `platform bootstrap` 一条命令。实测 `scripts/platform-cli.mjs:507` 的 run 表 22 个键（`login do shell ask import model rule build solve opt ontology-query generate synth types resources scenarios approve whoami tickets claim grow sim`）**不含 `bootstrap`**。`packages/contracts/src/operation-intent.ts:92` 虽登记了 `cliCommand: "bootstrap"`，但 `cmdDo`（`platform-cli.mjs:442-462`）**只分类并打印** endpoint / "CLI 等价命令：bootstrap"，**不执行**（:458-461 全是 console.log）——用户照提示去敲 `platform bootstrap` 会撞 unknown command。⚠ 详见下文《门禁反例》。
+  - **BS.2 GUI 空态向导 ❌**：`grep -rn "bootstrap" apps/frontend-shell/src --include=*.tsx --include=*.ts` = **0 命中**（跨命名复搜「冷启动 / 空租户 / 一键引导 / currentPlanVersion」亦 0）。属「**没接线**」形态——后端端点建好了，前端没有任何调用方。
+  - **BS.3 agent 面 ◐**：`run_synthetic` 工具存在；PRD §3 步 7 要的空态提示，已由 `apps/agentcore/src/tools/executor.ts:382` 的 `EMPTY_DATA` hint 部分承接（文案里就写「请先 run_synthetic/bootstrap 合成计划域」），但那是**文字提示**，agent 并没有一个直达 `/a/v1/bootstrap` 的工具（未在 `BUILTIN_TOOLS` 找到 bootstrap 工具，**已查清 = 无**）。
+- **结论**：◐部分（BS.1 后端 ✅；**CLI 命令未实现、GUI 向导零接线、agent 无直达工具**）
+- **最小 WO 建议**：
+  - `WO-BOOTSTRAP-CLI`：🚦只碰 `scripts/platform-cli.mjs`（加 `cmdBootstrap` + run 表键）+ `scripts/check-cli-parity.mjs`（见下节，把 `doRouted` 从"全局真"改成"逐条真"）。
+  - `WO-BOOTSTRAP-GUI`：🚦只碰 `apps/frontend-shell/src/api/endpoints.ts`（加 `runBootstrap`）+ `views/DashboardView.tsx` / `views/sim/PlanAuditView.tsx`（`currentPlanVersion` 空 → 「一键引导」按钮）+ 一条 MSW 用例。
+
+---
+
+### PRD-external-signal-domain.md
+
+- **它要做什么**：把环境信号（锂价/镍价/汇率/需求指数/政策/电价）做成一等对象 `ExternalSignal`（domain=external），新 EXTERNAL 连接器同步为 RawDataset→对象，开 `GET /a/v1/external-signals`。
+- **PRD 自称的 AS-IS**：**无独立现状节**（全文 31 行，只有 §0 本体引用 / §1 目标 / §2 设计 / §3 验收）。§1 非目标明确写「本期**不做**：信号→规划体检/建议的敏感性重算（P2）；信号时序（接 A8 时序，P2）」。
+- **实测现状**：**本期目标全做完，且 P2 的两个非目标也提前做了**。
+  - 对象类型：`apps/datacore/src/synthetic/battery-extended.ts:198 def("ExternalSignal", "外部信号", "external", [...])`（10 个属性含 elasticity）；域登记 `apps/datacore/src/graphmeta.ts:14 ExternalSignal: "external"` + `:47 { key: "external", displayName: "外部信号", primaryTypes: ["ExternalSignal"] }`。
+  - 连接器：`apps/datacore/src/connectors/registry.ts:141 key: "mock_external", category: "EXTERNAL"` + `:288 external_signals` 6 条出厂样例（带 source/unit/asOf/trend/impact/elasticity）+ `:325 case "mock_external": return new StaticAdapter(MOCK_EXTERNAL_DATA)` —— adapter 真接。物化 `synthetic/service.ts:820 putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey")`。
+  - 端点：`apps/datacore/src/app.ts:2394 GET /a/v1/external-signals`（经 `ontology.queryObjects` → R2 + A6 行级过滤自动生效，符合 PRD §2）。
+  - **超出 PRD 的两项（P2 提前落地）**：`app.ts:2403 GET /a/v1/external-signals/:key/series`（近 12 月确定性时序，注释明写「A8 ts_points 管道服务高频传感器序列；稀疏市场信号走此轻量时序」= 有意识的架构取舍）+ `POST /a/v1/external-signals/sensitivity`（前端调用点 `apps/frontend-shell/src/api/endpoints.ts:528`）。
+  - 前端消费面：`apps/frontend-shell/src/pages/admin/ExternalSignalsPage.tsx:36` + 路由 `App.tsx:175` + 导航 `pages/adminRegistry.ts:41` + `ShellLayout.tsx:40`（归「数据接入」组）。
+  - 信号真被推演消费（非孤岛）：`apps/datacore/src/solvers/service.ts:2923 listByType(ctx.tenantId, "ExternalSignal")`；规则 `synthetic/battery.ts:291 C25 ExternalSignal.deviationPct > 0.05`；归因因子 `battery-extended.ts:324 { factorId: "cf-geopolitical", drillType: "ExternalSignal", drillField: "value" }`。
+- **结论**：✅已实现（且 P2 的时序 + 敏感性两项已提前落地，**实现超出 PRD 声明的范围**）
+- **最小 WO 建议**：无功能缺口。建议**回写 PRD**：§1 非目标里的两条已不成立，留着会误导后来者「这两件还没做」。
+
+---
+
+### PRD-fde-fullstack-build-workflow.md
+
+- **它要做什么**：把数据构建发动机做成模拟 FDE 专家的确定性编排 workflow —— 故事 → 消歧成具体实体 → Kimi-comprehend 倒推 schema + 场景拓扑 → 两层索引比对缺口 → 构造「被问现象真实存在」的数据 → 复用各模块 create（全 DRAFT 经 R4）→ 全链闭包 → publish 进启动器 → 重跑验证。
+- **PRD 自称的 AS-IS**：§2 分「已存在（复用，勿重造）」8 条（comprehend Kimi seam / selfCheckGaps / schema-gen / registerStorySlices / nearestEntities / 各模块 create 端点 / meta/parse.ts）与「缺口」6 条 🔴（**无实体与字段目录索引** / **comprehend 不产 scenarioTopology** / 数据生成不针对场景 / **切片库无前端创建 UI** / 终态闭环缺 / **发动机 workflow 化未成型**）。
+- **实测现状**：**PRD 自列的 6 个 🔴 缺口，5 个已闭合**。
+  - 🔴→✅ EntityFieldCatalog：`apps/datacore/src/databuilder/entity-catalog.ts`（`buildFieldCatalog` / `resolveEntity` / `searchCatalog`），端点 `app.ts:1930 GET /a/v1/entity-catalog`、`:1934 /entity-catalog/resolve`。**注意实现与 PRD §4 有意分歧**：PRD 要 `entity_field_catalog` 新表（R9 四处），实测**未建表**（`grep -rn "entity_field_catalog" --include=*.sql` = 0），改为**从 repos 现算的读模型**——更守「不复制真值 R9」（PRD §3.2 自己也写了「不复制真值：索引项指回 repos」，故属实现选了 PRD 内部两条要求中更正确的一条，不是漏做）。
+  - 🔴→✅ CapabilityInventory：`apps/datacore/src/databuilder/capability-inventory.ts:9,35 diffNeeds`，端点 `app.ts:1988 GET /a/v1/capability-inventory` + `:1989 POST /capability-inventory/diff`。
+  - 🔴→✅ scenarioTopology：`apps/datacore/src/databuilder/comprehend.ts:41` schema 里真有 `scenarioTopology.sharedResources`，`:96,102,201,221` 贯穿输出；消费端 `databuilder/service.ts:1149-1153`（`sharedResources` + `plantedValues` 都在用）。
+  - 🔴→✅ 切片库前端创建 UI：`apps/frontend-shell/src/pages/admin/SlicesPage.tsx:82,86 data-testid="slice-create" ＋新建切片`（:23 注释：root + targets → `planSlice` 最短路 → PUT 入库）；SliceIndex 读模型 `apps/datacore/src/ontology/slice-index.ts:38 buildSliceIndex` + `:48 lookupReusable`，契约 `packages/contracts/src/slice-planner.ts:55`。同样**未建 `slice_index` 表**，同上属有意读模型化。
+  - 🔴→✅ 发动机 workflow 化（P5）：`apps/datacore/src/databuilder/fde-graph.ts:74,168`（BuildWorkflowRun → 8 个 FDE 节点确定性投影）+ 前端 `pages/admin/DataBuilderPage.tsx:585,597`（节点状态色/图标 + 横向 DAG）+ 测试 `apps/frontend-shell/test/f58.fde-graph.test.tsx:18,22`。
+  - §3.8 五类杀手问题的推理件：`shared_bottleneck`（`solvers/service.ts:103` 注册 + `:1025` 实现 + `:269` 输出形状 `["bottlenecks","contention","downgraded","summary"]`）与 **③毛利倒挂归因**（PRD 标为「唯一须绿地新建」）`margin_attribution`（`:107` 注册 + `:1197` 实现 + `:271` 输出形状）**都已实现**——P4.5 已落。
+  - 终态闭环：`apps/agentcore/src/event-subscriptions.ts:88` 明写「L15 A10 终态闭环：建域→publish→自动/手动重跑主问句验证『真能答了』→ 回灌 FDE 节点图末节点 + 成长账本（runId 归一）」。
+- **缺的一半**：**§0/§4 声明的新事件 `capability.indexed` 未实现** —— `grep -rn "capability.indexed" apps/ packages/` = **0 命中**，`event-subscriptions.ts` 未登记，本体 §4 未顺延号。即索引重建后没有事件驱动的检索缓存失效。
+- **未查清**：§7 的「体验级 DoD（绑 Kimi 真 key 亲手走通那条故事）」无法从静态代码判定——需真起服务 + 真 Kimi key 跑一遍。卡在：我是只读审计员，无凭据也不应发起外部 LLM 调用。
+- **结论**：◐部分（P1–P5 + P4.5 骨干全落，PRD 自列 6 个 🔴 闭合 5 个；**唯 `capability.indexed` 事件零实现**；体验级 DoD 未查清）
+- **最小 WO 建议**：`WO-FDE-CAPABILITY-EVENT`：🚦只碰 `apps/datacore/src/databuilder/entity-catalog.ts`（emit）+ `apps/agentcore/src/event-subscriptions.ts` + `docs/SYSTEM-ONTOLOGY.md` §4（顺延号）+ 前端 `store/eventInvalidation.ts`。与前述 `WO-DRIL-EVENTS` 同类，可并一张单做（都动 `event-subscriptions.ts` + 本体 §4，分开做必冲突）。
+
+---
+
+### PRD-frontend-addendum-remaining-views.md
+
+- **它要做什么**：补齐 PRD-frontend §7.14–7.22 —— renderer 枚举扩至 12（annual-scenario / quarterly-rolling / order-chain / geo-map）、图谱七视角配置化、任务详情编排 DAG、业务建模映射表、校准报告页、数据健康度。
+- **PRD 自称的 AS-IS**：**无独立现状节**（是「增量/补全」型 PRD，直接给契约补充 + 逐节规格 + F21–F29 验收用例 + 「对既有文档的修订点」）。
+- **实测现状**：**九节几乎全落**。
+  - **renderer 枚举**：`apps/frontend-shell/src/views/registry.ts:92-95` 四个新 renderer 全注册（`annual-scenario`→`plan/AnnualScenarioView`、`quarterly-rolling`→`plan/QuarterlyRollingView`、`order-chain`→`plan/OrderChainView`、`geo-map`→`plan/GeoMapView`）。⚠ 实际注册了 **22 个** renderer（`:52-100`），远超 PRD 说的 12——PRD 写的「扩至 12」已被现实超越。
+  - **五个新端点全在 DataCore**：`app.ts:4172 /a/v1/plan/aop`、`:4177 /a/v1/plan/quarterly`、`:2601 /a/v1/ontology/mapping`、`:4191 /a/v1/calibration/report`、`:4225 /a/v1/data-health`。
+  - §7.16 订单全链：`views/plan/OrderChainView.tsx:9,68-70,491-504` 四层根因 DAG（订单→判定→根因→对策）用共享 `LayeredDag`。**溯源到真后端**：`packages/contracts/src/planviews.ts` 定义、`apps/datacore/src/solvers/risk.ts:1122 rootChains` + `:1467` 装配 + `:1323` 注释「§S1.5 修订 — problems[] 4 类归并（DELIVERY/MARGIN/KIT/CREDIT）+ 逐单 4 层根因链」——**不是只有 mock 有**（PRD「对既有文档的修订点 1」要求的 `problems[]`+`rootChain[]` 两项都真落了）。
+  - §7.17 地理视图：`views/plan/GeoMapView.tsx:72,123,128` —— 静态打包 SVG 轮廓，注释明写「离线/私有化可用，不依赖外部瓦片服务」（对齐 F24 离线断言）。
+  - §7.18 图谱视角配置化：契约 `GraphOptionsSchema`（前端 `views/OntologyGraphView.tsx:4` import 自 `@platform/contracts`），`:81-121` 真消费 `nodeFilter`/`colorBy`/`linkKinds`/`dimOthers`/`mvpOverlay`；**种子侧确有八份配置**：`apps/datacore/src/synthetic/service.ts:1508 graphView(title, graphOptions, layout)` + `:1598` 注释「§7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）」——PRD 要的「零新代码视角」范式真做到了。
+  - §7.19 任务 DAG：`pages/TaskDetailPage.tsx:73-78` `<Feature flag="view.task-dag">` + `LayeredDag` + `onNodeClick={(n) => focusRow(n.id)}`（PRD 要的 DAG↔事件回放表双向联动）。
+  - §7.20 映射表：`views/graph/MappingOverlay.tsx:11,35` 全屏弹层 + `<Feature flag="act.export">` 包住导出（对齐 F27）。
+  - §7.21 校准页：`pages/admin/CalibrationPage.tsx:40-42,121,137-153` —— MAPE 7d/30d 双口径折线 + C12 阈值线 + 触发标记 + 提案（方法徽章 + 回测证据）+ 校准历史；`:42` 注释「批准/回滚走 Action 审批（§S2），不直改参数」（对齐 F28 的「断言无直改 API」）。
+  - §7.22 数据健康度：`components/Health/HealthBadge.tsx:16-21` 全局顶栏徽章（60s 轮询同一 `/a/v1/data-health`）；推演侧同源文案 `views/sim/ProjectSimView.tsx:713,857-865`（P90 = P50 × 健康度系数）——F29 要的「三处同时出现且文案一致」有物理基础。
+  - feature key：`apps/agentcore/src/features/registry.ts:53,54,57` 有 `view.annual-scenario`/`view.quarterly-rolling`/`view.order-chain`；`view.geo-map` 在 registry.ts 未见（mock fixtures.ts:161 有）。**未查清**：`view.geo-map` 是否在 DataCore 侧 features.ts 注册（我只搜了 agentcore registry 与前端 mock），卡在没有逐个 grep DataCore 的 FEATURE 表。
+- **结论**：✅已实现（九节全落；`view.geo-map` 的双注册一处未查清）
+- **最小 WO 建议**：无功能 WO。建议核一下 `view.geo-map` 是否两侧双注册（关它时导航应消失，对应 F25 末句语义）。
+
+---
