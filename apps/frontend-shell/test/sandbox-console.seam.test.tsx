@@ -421,6 +421,24 @@ describe("§5 · 旧主屏 6 样一个都不许掉", () => {
     for (const t of CFG.nodeTypes) expect(screen.getByTestId(`sandbox-dag-node-${t}`)).toBeTruthy();
   });
 
+  it("本体拓扑节点框宽度**恒为正**（既有缺陷：本体 94 类对象时 g−14 变负 ⇒ 框静默消失）", async () => {
+    // demo 租户实测 94 个已发布对象类型；这里直接喂 94 个，复现 1280/95 − 14 = −0.526 那一档。
+    const many: SandboxViewConfig = { ...CFG, nodeTypes: Array.from({ length: 94 }, (_, i) => `T${i}`) };
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SandboxView injectedConfig={many} />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("sandbox-console");
+    await waitFor(() => expect(screen.getByTestId("sandbox-dag-node-T0")).toBeTruthy());
+    const rects = document.querySelectorAll('[data-testid="sandbox-dag"] rect');
+    expect(rects.length).toBeGreaterThan(0);
+    for (const r of rects) {
+      const w = Number(r.getAttribute("width"));
+      expect(w, `节点框宽度 ${w} ≤ 0 ⇒ 浏览器报 "A negative value is not valid" 并整块不画`).toBeGreaterThan(0);
+    }
+  });
+
   it("推进 tick 仍真调 simTick 且 KPI 变（控制台只是换了摆放，不是换了行为）", async () => {
     const user = userEvent.setup();
     mount();

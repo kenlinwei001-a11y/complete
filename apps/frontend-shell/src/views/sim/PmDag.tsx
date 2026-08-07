@@ -23,6 +23,8 @@ const W = 1280;
 const NH = 56;
 const LH = 104;
 const TOP = 34;
+/** 节点框的最小可见宽（px·用户坐标）。见下方 `pos` 计算处的注释：低于它宽度会变负 ⇒ 框静默消失。 */
+const MIN_NODE_W = 8;
 
 export function PmDag({
   layers,
@@ -42,8 +44,17 @@ export function PmDag({
   const meta = new Map<string, PmDagNode>();
   layers.forEach((arr, li) => {
     const g = W / (arr.length + 1);
+    // ⚠ WO-SANDBOX-CONSOLE 亲手真跑时抓到的**既有缺陷**（不是本单引入的）：
+    //   节点宽 `g - 14` 在 `arr.length ≥ 77` 时变**负数**（g = 1280/(n+1)，n=94 ⇒ g-14 = -0.526）。
+    //   demo 租户的本体正好有 94 个已发布对象类型，沙盘主屏把它们塞进**单层** PmDag ⇒
+    //   浏览器对每个 `<rect width="-0.526…">` 报一次 `A negative value is not valid` 并**整块不画**：
+    //   实测 94 条 console.error + 94 个节点框全部消失（只剩文字）。
+    //   旧主屏同样会中（同一份 nodeTypes、同一处调用），故这是暴露而非回归。
+    //   夹到最小可见宽：宽度不再撒谎，密集时会挤在一起 —— 挤在一起是可见的事实，
+    //   负宽是**静默消失**，后者严重得多。
+    const w = Math.max(MIN_NODE_W, Math.min(arr.length > 2 ? 210 : 320, g - 14));
     arr.forEach((n, i) => {
-      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w: Math.min(arr.length > 2 ? 210 : 320, g - 14) });
+      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w });
       meta.set(n.id, n);
     });
   });
