@@ -204,6 +204,15 @@
   font-weight: 700;
   opacity: 0.9;
 }
+/* 共线换乘（该环节在**每一圈族线**上都出现 ⇒ 共享瓶颈）。多圈时同角度对齐的三个光环
+   在径向连成一线，这就是环形相对直线的信息增益。单圈时不画（一条线谈不上共线）。 */
+.sharedFamilyHalo {
+  fill: none;
+  stroke: var(--c-capacity);
+  stroke-width: 1.4;
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
 
 /* ── 站图元 ───────────────────────────────────────────────────────────────── */
 .stationStop {

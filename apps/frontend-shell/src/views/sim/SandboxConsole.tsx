@@ -3,6 +3,8 @@ import { BASE_REGISTRY, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChainLineMapView } from "./ChainLineMapView";
+import { deriveFamilyAnchors, fetchOrdersForFamilies, type FamilyAnchor } from "./chainFamilyLines";
+import { TRANSIT_SOURCE_SPECS, CADENCE_ABSENCE, PROCUREMENT_BRANCH } from "./transitFlow";
 import { PhysicalTopologyView } from "./PhysicalTopologyView";
 import { NodeInspectorView } from "./InspectorNodePanel";
 import TransitFlowView from "./TransitFlowLayer";
@@ -142,6 +144,31 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
   const [railTab, setRailTab] = useState<"steps" | "vars">("steps");
   const [transitOn, setTransitOn] = useState(false);
   const [chainZoom, setChainZoom] = useState(1);
+  /** 产品族同心环：**默认关**（打开 = 每族多一次求解器调用，代价在界面上明写）。 */
+  const [familyOn, setFamilyOn] = useState(false);
+  const [famAnchors, setFamAnchors] = useState<FamilyAnchor[] | null>(null);
+  const [famDiscoverErr, setFamDiscoverErr] = useState<string | null>(null);
+
+  // 族锚点发现：只在开关打开时拉一次订单（关着 = 零额外请求）。
+  useEffect(() => {
+    if (!familyOn || famAnchors !== null) return;
+    let cancelled = false;
+    fetchOrdersForFamilies().then(
+      (rows) => {
+        if (cancelled) return;
+        const { anchors } = deriveFamilyAnchors(rows);
+        setFamAnchors(anchors);
+        setFamDiscoverErr(anchors.length === 0 ? "订单集合里没有任何合契约的 businessType ⇒ 分不出产品族，不画三个一样的环冒充" : null);
+      },
+      (e: unknown) => {
+        if (cancelled) return;
+        setFamDiscoverErr(readError(e).message);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [familyOn, famAnchors]);
 
   const switchMode = useCallback((next: CanvasMode) => {
     setMode(next);
@@ -411,10 +438,16 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
               ))}
             </div>
             {mode === "metro" ? (
-              <label className={styles.layerToggle} data-testid="sc-transit-toggle">
-                <input type="checkbox" checked={transitOn} onChange={() => setTransitOn((v) => !v)} />
-                在途批次图层
-              </label>
+              <>
+                <label className={styles.layerToggle} data-testid="sc-transit-toggle">
+                  <input type="checkbox" checked={transitOn} onChange={() => setTransitOn((v) => !v)} />
+                  在途批次图层
+                </label>
+                <label className={styles.layerToggle} data-testid="sc-family-toggle" title="每族一张真实锚点订单，各调一次求解器（代价见图上说明）">
+                  <input type="checkbox" checked={familyOn} onChange={() => setFamilyOn((v) => !v)} />
+                  产品族同心环
+                </label>
+              </>
             ) : null}
             {mode === "chain" ? (
               <>
@@ -443,9 +476,23 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           <div className={styles.canvasWrap}>
             {/* 线路图（+ 在途图层）*/}
             <div className={styles.canvasSlot} hidden={mode !== "metro"} data-testid="sc-slot-metro">
-              {mounted.has("metro") ? <ChainLineMapView view={lineMapView} chrome="embedded" onPayload={setLoss} /> : null}
+              {mounted.has("metro") ? (
+                <ChainLineMapView
+                  view={lineMapView}
+                  chrome="embedded"
+                  onPayload={setLoss}
+                  {...(familyOn && famAnchors !== null && famAnchors.length > 0 ? { familyAnchors: famAnchors } : {})}
+                />
+              ) : null}
+              {familyOn && famDiscoverErr !== null ? (
+                <p className={styles.errBox} data-testid="sc-family-error" role="alert">
+                  <b>产品族锚点发现失败</b>：{famDiscoverErr}
+                  。**不画三个一样的环冒充三条族线** —— 主链那一圈照常。
+                </p>
+              ) : null}
               {transitOn ? (
                 <div className={styles.layerPanel} data-testid="sc-transit-layer">
+                  {honesty ? <TransitComputabilityLegend /> : null}
                   <TransitFlowView chrome="embedded" />
                 </div>
               ) : null}
@@ -697,6 +744,70 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
 function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentKind): Set<string> {
   if (model === null) return new Set();
   return new Set(model.groups.find((g) => g.kind === kind)?.items.map((i) => i.stage) ?? []);
+}
+
+/** 位置口径 → 中文档名 + 「因此画成什么」。三档三种图元，**不许用同一个匀速滑块糊过去**。 */
+const TRANSIT_MODE_LABEL: Record<string, { tier: string; glyph: string }> = {
+  interpolated: { tier: "① 区间位置可算", glyph: "沿区间移动的方块（真滑）" },
+  "arrival-only": { tier: "② 只有到货日", glyph: "到站倒计时徽标（**不画车**）" },
+  "station-resident": { tier: "③ 只知在哪一站", glyph: "站上驻留 + 排队堆叠（不画工序间行进）" },
+};
+
+/**
+ * WO-SANDBOX-METRO-SEMANTICS · **在途/在制的时序可算性分级**上屏。
+ *
+ * ── 为什么这块必须在控制台里，而不是留在独立页的说明文字里 ────────────────────
+ * 设计稿画了一个 `D+0.0` 时钟 + `1×/4×/16×` + 区间上匀速滑动的批次方块。
+ * 那套东西**恰恰是本仓明确拒绝画的**：三个数据源的位置精度天然不同
+ * （`TRANSIT_SOURCE_SPECS`，字段逐条实测于 `synthetic/battery.ts`）——
+ * 只有 `InterBaseTransfer` 三件套齐全（发运日 + 到货日）能真滑；
+ * `Shipment` 没有发运日（那条 0→1 的进度条会是纯发明的）；
+ * `WIPLot` 连 eta 都没有。把三者画成同一个匀速滑块 = 用图元冒充数据。
+ * 折成图层后这套判据不能丢，故在这里原样呈现 —— `modeReason` **逐字透传**，前端不改写。
+ *
+ * 本组件**零自有文案**：档名/理由/必需字段全部取自 `transitFlow.ts` 的单一来源。
+ */
+function TransitComputabilityLegend() {
+  return (
+    <section className={styles.tierBox} data-testid="sc-transit-tiers" role="note">
+      <div className={styles.sec} style={{ marginTop: 0 }}>在途/在制 · 时序可算性分级（替代设计稿那个假时钟）</div>
+      <p className={styles.note} style={{ marginTop: 0 }} data-testid="sc-transit-tier-intro">
+        设计稿的 <code>D+0.0</code> 时钟 + <code>1×/4×/16×</code> + 区间上匀速滑动的方块，
+        在本仓是<b>被明确拒绝的画法</b>：三个数据源的位置精度天然不同，
+        <b>只有第 ① 档能真的在区间上移动</b>。控制台不另造时钟，播控由本图层提供。
+      </p>
+      <ul className={styles.tierList}>
+        {TRANSIT_SOURCE_SPECS.map((spec) => {
+          const m = TRANSIT_MODE_LABEL[spec.mode] ?? { tier: spec.mode, glyph: "—" };
+          return (
+            <li key={spec.key} data-testid={`sc-transit-tier-${spec.key}`} data-mode={spec.mode}>
+              <b>
+                {m.tier} · {spec.label}
+              </b>
+              <span className={styles.tierGlyph}>⇒ {m.glyph}</span>
+              {/* modeReason 逐字透传引擎侧/派生层原文，前端一个字都不改写 */}
+              <em data-testid={`sc-transit-reason-${spec.key}`}>{spec.modeReason}</em>
+              <code>必需字段：{spec.requiredFields.join(" · ")}</code>
+            </li>
+          );
+        })}
+        <li data-testid="sc-transit-tier-cadence" data-mode="empty">
+          <b>④ 节拍闸门 · {CADENCE_ABSENCE.status}</b>
+          <span className={styles.tierGlyph}>⇒ EMPTY（不画任何「这里有节拍」的假象）</span>
+          <em data-testid="sc-transit-reason-cadence">{CADENCE_ABSENCE.reason}</em>
+          <code>补齐路径：{CADENCE_ABSENCE.unblockedBy}</code>
+        </li>
+        <li data-testid="sc-transit-tier-procurement" data-mode="empty">
+          <b>
+            ⑤ 采购支线 · {PROCUREMENT_BRANCH.label} · {PROCUREMENT_BRANCH.status}
+          </b>
+          <span className={styles.tierGlyph}>⇒ 空 + 逐条取证（画不出来就说画不出来）</span>
+          <em data-testid="sc-transit-reason-procurement">{PROCUREMENT_BRANCH.reason}</em>
+          <code>补齐路径：{PROCUREMENT_BRANCH.unblockedBy}</code>
+        </li>
+      </ul>
+    </section>
+  );
 }
 
 /** 底部指标卡。`value === null` ⇒ 显示 `EMPTY`，**绝不显示 0**。 */
