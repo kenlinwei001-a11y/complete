@@ -3,7 +3,9 @@ import {
   CADENCE_STEP_KIND,
   CAPACITY_FACTOR_BINDINGS,
   CHAIN_STEP_KINDS,
+  ChainNodeSchema,
   HARD_CAPACITY_UNIT_SPECS,
+  LossAttributionSchema,
   RULE_PARAM_BINDINGS,
   computeLossAttribution,
   expectedCadenceWaitDays,
@@ -17,6 +19,7 @@ import {
   type ChainStep,
   type ChainStepKind,
 } from "@platform/contracts";
+import { z } from "zod";
 
 /**
  * WO-SANDBOX-F4 · 节点检视面板的**纯派生层**（零 JSX / 零颜色 / 零副作用 / 零时钟）。
@@ -914,5 +917,218 @@ export function buildPlaceholderInspectorInput(args: {
     placeholderNote:
       "本面板的段耗时为 seed 派生**占位值**（同 seed 字节一致·可复现），不是实测。" +
       "W3 按 S0 冻结契约先做、用 mock 数据；W4 收口换引擎真值。承载状态（有/薄/缺）逐条给了 file:line 取证，那部分是实测的。",
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 6 · 引擎载荷在**单个节点**上的投影（WO-NODE-SEMANTICS）
+//        —— R13 下钻证据 / 诚实缺席 / 节点级流指标。全部零加工透传，前端不换算。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 这一节解决的问题 ──────────────────────────────────────────────────────────
+ * 上面 §5 造的是**占位**输入（seed 派生，面板挂常驻 PLACEHOLDER 横幅）。
+ * 本节把 `chain_loss_attribution` 的**真载荷**投影到"当前这一个节点"上，让屏上每个天数
+ * 都能指回「哪个对象的哪个字段、原值多少、怎么换算成天」——这就是 R13 下钻三元组上屏。
+ *
+ * ── 三条红线（本节的全部纪律）────────────────────────────────────────────────
+ *  ① **零换算**：`drillValue` / `conversion` 一律**原样透出**。`conversion` 是引擎下发的字符串，
+ *     前端不重写一遍（引擎那边换算式文案与换算函数同源；前端再写一份就是第二个真相源，
+ *     `gap_attribution` 差 1e4 那次的病根正是"标签说的字段 ≠ 回的值"）。
+ *  ② **接不到就不显示**：节点不在本次载荷里 ⇒ 证据行空、KPI 空数组。**绝不填一个看着合理的数**。
+ *  ③ **形状宽松读取**：`evidence[]` / `empty[]` 今天在求解器里（`apps/datacore/src/solvers/chain-loss.ts`），
+ *     **没有**进 contracts。故此处只声明本面板真用到的字段，多余键放行（zod `object` 默认剥离未知键）。
+ *     `nodes[]` / `attribution[]` 直接用 S0 契约 schema —— 那两个是冻结过的，不另发明。
+ *     （同族做法见 `chainLineMap.ts` 的 `ChainLossEmptyRowSchema`；两处各自只读自己要的那几列，
+ *      等它进 contracts 那天两处一起换成契约 schema。）
+ */
+
+/** R13 证据行：引擎逐 `ChainStep` 给一条（含增值段），一一对应。 */
+export const ChainLossEvidenceRowSchema = z.object({
+  stepId: z.string().min(1),
+  nodeId: z.string().min(1),
+  label: z.string().min(1),
+  kind: z.string().min(1),
+  /** 该段天数（引擎算的；引擎侧对拍测锁死它 == 换算函数(drillValue, drillUnit)）。 */
+  days: z.number(),
+  valueAdd: z.boolean(),
+  /** 算出这个数的求解器（验收要能抓请求日志比对）。 */
+  solverKey: z.string().min(1),
+  /** ↓ 下钻三元组：`drillType.drillId.drillField` 必须能在仓储里点开。 */
+  drillType: z.string().min(1),
+  drillId: z.string().min(1),
+  drillField: z.string().min(1),
+  /** **该字段在仓储里的真值本身**（原单位·不换算·不 round）。 */
+  drillValue: z.number(),
+  /**
+   * `drillValue` 的单位。**当不透明串处理**：它是求解器侧的枚举（跨包不可 import·R1），
+   * 前端不复写一份中文词表、更不据它做任何换算 —— 换算式由 `conversion` 逐字说清。
+   */
+  drillUnit: z.string().min(1),
+  /** `drillValue` → `days` 的换算式（引擎下发的人读串，**原样透出**）。 */
+  conversion: z.string().min(1),
+  /** 从锚点订单沿本体走到该对象的派生边（空串 = 锚点自身对象）。 */
+  derivationEdge: z.string(),
+});
+export type ChainLossEvidenceRow = z.infer<typeof ChainLossEvidenceRowSchema>;
+
+/** 诚实缺席行（算不出来**也是一种发现**）。 */
+export const ChainLossEmptyRowSchema = z.object({
+  stepId: z.string().min(1),
+  nodeId: z.string().min(1),
+  label: z.string().min(1),
+  kind: z.string().min(1),
+  dataMode: z.literal("EMPTY"),
+  /** `NO_CARRIER`（本体无承载物）/ `NO_INSTANCE`（有承载但这条链上无实例）—— 修法完全不同，故分开标。 */
+  emptyKind: z.string().min(1),
+  reason: z.string().min(1),
+  /** 我是**怎么确认**它没有的（取证方式，下一个人可复核）。 */
+  probe: z.string().optional(),
+});
+export type ChainLossEmptyRow = z.infer<typeof ChainLossEmptyRowSchema>;
+
+/** 本面板要用的那几列载荷。`nodes`/`attribution` 走 S0 契约 schema，形状不合当场抛，不猜。 */
+export const NodeSemanticPayloadSchema = z.object({
+  nodes: z.array(ChainNodeSchema),
+  attribution: z.array(LossAttributionSchema),
+  evidence: z.array(ChainLossEvidenceRowSchema).optional(),
+  empty: z.array(ChainLossEmptyRowSchema).optional(),
+  anchor: z.object({ so: z.string().optional(), selection: z.string().optional() }).optional(),
+});
+export type NodeSemanticPayload = z.infer<typeof NodeSemanticPayloadSchema>;
+
+/**
+ * `drillValue` 的显示串 —— **唯一实现 = 原样透出**。
+ *
+ * 这一行就是"前端零加法"的机器判据：谁在这里写除法/乘法/`toFixed`，
+ * `node-semantics.seam.test.tsx` 的逐字符对拍当场红（变异反证 ① 的注入点）。
+ */
+export function drillValueText(row: Pick<ChainLossEvidenceRow, "drillValue">): string {
+  return String(row.drillValue);
+}
+
+/** 节点级流指标的一行。接不到的指标**根本不产出这一行**（不留空壳、不填默认值）。 */
+export interface NodeKpi {
+  readonly kpiId: string;
+  readonly label: string;
+  /** 显示串。 */
+  readonly value: string;
+  /** 出处：引擎哪个字段 / 契约哪个函数。**每一行都必须能回答"这个数凭什么"**。 */
+  readonly source: string;
+}
+
+/** 引擎载荷在一个节点上的投影。 */
+export interface NodeLiveView {
+  readonly nodeId: string;
+  /** 本节点是否出现在本次载荷（`nodes[]` 命中 或 有属于它的证据/缺席行）。 */
+  readonly present: boolean;
+  /** 引擎给的节点（含真段集）。不在载荷里 → `null`。 */
+  readonly node: ChainNode | null;
+  /** 属于本节点的 R13 证据行（**保持引擎给的顺序**，前端不排序 —— 排序即引入第二套全序）。 */
+  readonly evidence: readonly ChainLossEvidenceRow[];
+  /** 属于本节点的诚实缺席行。 */
+  readonly empty: readonly ChainLossEmptyRow[];
+  /** 节点级流指标（接得到的才有行）。 */
+  readonly kpis: readonly NodeKpi[];
+  /** 锚点订单号（这份载荷是沿哪张单算出来的）。 */
+  readonly anchorSo: string | null;
+}
+
+const round2 = (n: number): string => String(Math.round(n * 100) / 100);
+
+/**
+ * 节点级流指标 —— **全部来自引擎载荷 + S0 契约函数**，一个数都不是前端编的。
+ *
+ * ⚠ 设计稿在这一格给了「预告量 18,400」「毛利率 14.8%」「瓶颈 涂布」这类读数，
+ *   逐条查过：后端**没有**任何字段承载它们，那些数字是画稿时编的。**一个都没抄。**
+ *   今天真接得到的只有下面这几行（前置期 / 增值 / 流动效率 / 占损失 / 环节数 / 缺席数），
+ *   接不到的一律不出行 —— 空着比编一个数诚实。
+ */
+export function buildNodeKpis(args: {
+  node: ChainNode | null;
+  /** 引擎 `attribution[]`（本函数只挑属于该节点各段的行）。 */
+  attribution: readonly { stepId: string; pctOfChainLoss: number }[];
+  empty: readonly ChainLossEmptyRow[];
+}): NodeKpi[] {
+  const { node, attribution, empty } = args;
+  if (node === null) return [];
+  const rows: NodeKpi[] = [];
+
+  // ① / ② / ③ 一律走 S0 契约的唯一实现（本文件不写第二份除法，与 §4 同一条纪律）。
+  rows.push({
+    kpiId: "leadTime",
+    label: "本节点前置期",
+    value: `${round2(nodeLeadTimeDays(node))} 天`,
+    source: "契约 nodeLeadTimeDays(chain_loss_attribution.nodes[]) —— 该节点各段之和",
+  });
+  rows.push({
+    kpiId: "valueAdd",
+    label: "其中增值",
+    value: `${round2(nodeValueAddDays(node))} 天`,
+    source: "契约 nodeValueAddDays(…) —— 增值判据由契约 isValueAddKind 唯一定义",
+  });
+  const fe = nodeFlowEfficiency(node);
+  if (fe !== null) {
+    rows.push({
+      kpiId: "flowEfficiency",
+      label: "本节点流动效率",
+      value: `${round2(fe * 100)}%`,
+      source: "契约 nodeFlowEfficiency(…) = 增值 ÷ 前置期（前置期为 0 时契约返回 null ⇒ 本行不出现）",
+    });
+  }
+
+  // ④ 占全链损失：**百分比本身是引擎给的**，前端只做"同一个节点各段相加"，不定义分母。
+  const mine = attribution.filter((a) => node.steps.some((s) => s.stepId === a.stepId));
+  if (mine.length > 0) {
+    rows.push({
+      kpiId: "pctOfChainLoss",
+      label: "占全链损失",
+      value: `${round2(mine.reduce((sum, a) => sum + a.pctOfChainLoss, 0))}%`,
+      source:
+        "Σ chain_loss_attribution.attribution[].pctOfChainLoss（本节点各段）—— " +
+        "分母（全链非增值总量）由引擎定，前端既不重算也不改口径；" +
+        "⚠ 分母是**全链共享**的：任一其它环节的非增值天数一变，本读数跟着变（契约 chainNonValueDays）",
+    });
+  }
+
+  rows.push({
+    kpiId: "stepCount",
+    label: "本节点环节数",
+    value: `${node.steps.length}`,
+    source: "chain_loss_attribution.nodes[].steps.length（算得出来的段才进链）",
+  });
+  if (empty.length > 0) {
+    rows.push({
+      kpiId: "emptyCount",
+      label: "诚实缺席段",
+      value: `${empty.length}`,
+      source: "chain_loss_attribution.empty[]（算不出来的段不补 0 ⇒ 本节点前置期是被**低估**的）",
+    });
+  }
+  return rows;
+}
+
+/**
+ * 把一份载荷投影到一个节点上。**纯函数**（R6：无时钟、无随机、不排序、不改一个字）。
+ *
+ * `payload === null`（还没取到 / 取数失败）⇒ `present: false` + 全空。
+ * 调用方据此渲染"为什么这里是空的"，**不得**渲染一个填了默认值的区块。
+ */
+export function buildNodeLiveView(nodeId: string, payload: NodeSemanticPayload | null): NodeLiveView {
+  if (payload === null) {
+    return { nodeId, present: false, node: null, evidence: [], empty: [], kpis: [], anchorSo: null };
+  }
+  const node = payload.nodes.find((n) => n.nodeId === nodeId) ?? null;
+  const evidence = (payload.evidence ?? []).filter((e) => e.nodeId === nodeId);
+  const empty = (payload.empty ?? []).filter((e) => e.nodeId === nodeId);
+  const kpis = buildNodeKpis({ node, attribution: payload.attribution, empty });
+  return {
+    nodeId,
+    present: node !== null || evidence.length > 0 || empty.length > 0,
+    node,
+    evidence,
+    empty,
+    kpis,
+    anchorSo: payload.anchor?.so ?? null,
   };
 }
