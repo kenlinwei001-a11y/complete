@@ -93,9 +93,14 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S15·① 合理默认·保留）：`custName:"电网公司F"` 正是本卡
   //   问句的主语（「**电网公司 F** 这单毛利过线吗？」），作为**本卡**的默认作用域合理；病不在这个值，
   //   在于它此前**独占** args（用户问别的客户也顶不掉）——那一半由本单的槽位+merge 治。
-  //   ⚠ 如实更正工单 §2.1 的措辞：`quote_margin` **根本不读 custName**（`extended.ts:303-319` 只读
+  //   ⚠ 如实更正工单 §2.1 的措辞：`quote_margin` **根本不读 custName**（`extended.ts` 只读
   //   price/bom/mfgRate/logistics/segmentFloor），所以「问别的客户毛利 → 拿到电网公司F 的毛利」不成立；
   //   真实形态是**任何客户都拿到同一份 BOM 口径毛利**（假个性化）——引擎半缺客户维，见工单 §6 遗留缺口 ③。
+  //   ★★ 上面这段 ⚠ 已**过期**（WO-QUOTE-MARGIN-CUSTOMER·欠账 #118·2026-08-07 修）：`quote_margin`
+  //   现在真读 `custName` —— 沿 `order_of_customer`（已由同单从「按订单序轮转」改成「按归属册绑定」）
+  //   取该客户的在手单 → 主力型号 → `BOMHeader`/`BOMDetail` 真 BOM + `Order.unitPrice` 真单价，
+  //   并透出 `scope`（CUSTOMER/ALL/EXPLICIT + orders/bomId/priceSource）。实测 8 客户 8 份不同输出。
+  //   保留原文不删，是为了让「本体自述曾与现实相反」这件事本身留痕（G-WRITEBACK-ONE-WAY 同源教训）。
   card("S15", "接单毛利评审", "dash", "quote_margin_q", "电网公司 F 这单毛利过线吗？", "quote_margin", ["C15", "C24"], "COMPUTE", "解读接单毛利评审", [], { custName: "电网公司F" }),
   // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S16·① 合理默认·保留）：`custName:"商用车集团G"` 是本卡
   //   问句的主语（「**商用车集团 G** 还能接新单吗？」）。这是 16 张里**唯一**一个求解器真按该实参过滤的

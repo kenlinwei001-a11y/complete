@@ -619,7 +619,13 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
   const ARG_OVERRIDE: Record<string, Record<string, unknown>> = {
     plan_audit: { dem: 100, seg_pas: 50, seg_ess: 32, seg_com: 18, sup: 98, ltaCov: 60, kitGap: 100, gmTarget: 14, cashCushion: 45, capex: 8 },
     capex_scenario: { demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], projects: [{ id: "P", name: "P", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] },
-    quote_margin: { custName: "电网公司F", modelId: "4680-NCM", qty: 500 },
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：默认型号 `4680-NCM` → `方形-LFP`。
+    // 理由：客户维修好后，`quote_margin` 会沿 `order_of_customer` 真归属边取该客户的在手单——
+    // 而「电网公司F」（← 国家电网）名下**根本没有 4680-NCM 的单**，只有 方形-LFP / 4680-LFP。
+    // 旧默认值会让本卡命中 `scope.modelMatched:false`（诚实但别扭：答案在讲一个该客户不买的型号）。
+    // **槽位保留不动**（`modelId` 仍是可填槽）——删槽 = 收窄用户能说的话，正是 G-DERIVED-INTENT-SLOT-DEAF
+    // 那一单要治的病；这里只把**默认值**改成该客户真买的主力型号。
+    quote_margin: { custName: "电网公司F", modelId: "方形-LFP", qty: 500 },
   };
   for (const card of SCENARIO_CATALOG) {
     if (seededKeys.has(card.intentKey)) continue; // 已有的 4 个跳过
