@@ -9,6 +9,7 @@ import {
   formatMetric,
   formatScope,
   IMPEDIMENT_KIND_LABEL,
+  stageLabelOf,
   THRESHOLD_SOURCE_LABEL,
   type ChainImpedimentModel,
   type ImpedimentGroup,
@@ -126,7 +127,7 @@ function ImpedimentCard({ im }: { im: ImpedimentVM }) {
       <p className={styles.locus} data-testid={`ci-locus-${im.impedimentId}`}>
         <b>{im.locus.label}</b>
         <small>
-          {im.stage} 段 · {im.locus.objectType} · <code>{im.locus.objectId}</code>
+          {stageLabelOf(im.stage)} 段 · {im.locus.objectType} · <code>{im.locus.objectId}</code>
         </small>
       </p>
 
