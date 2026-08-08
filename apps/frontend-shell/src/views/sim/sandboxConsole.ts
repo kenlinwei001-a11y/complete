@@ -653,7 +653,10 @@ export function fmtFlowEff(frac: number | null | undefined): string {
  * 沙盘缺的那一跳：屏上点一条阻滞点（卡点 / 堵点 / 断点）→ 进决策推演页看方案对比。
  *
  * ── 两头都是真的，缺的只是中间那一跳 ──────────────────────────────────────────
- * **这头**：`chain_impediments` 真产出（demo 租户实测 15 条：BREAK 7 · CONGESTION 6 · BOTTLENECK 2）。
+ * **这头**：`chain_impediments` 真产出（demo 租户 **2026-08-08 实测** 15 条：BREAK 7 · CONGESTION 6 · BOTTLENECK 2；
+ *   复验：`POST /a/v1/solvers/chain_impediments/invoke`，body `{"scope":{}}`，
+ *   头 `X-Debug-User: demo:admin:admin`，数 `counts` 三键；同轮 `ruleSetVersion=rsv_f8216478`。
+ *   这三个数会随种子/规则版本变 —— 变了就该复验，别照抄这句）。
  * **那头**：`DecisionPlayView` 真取 `invokeSolver("decision_play")`，六维比对矩阵零写死。
  * **中间**：阻滞点锚在 `locus{objectType,objectId}`（真对象），决策推演锚在 `CausalFactor`
  *          —— 本体已登记的断点 `G-IMPEDIMENT-OPTION-NOJOIN`。
@@ -757,7 +760,8 @@ export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = {
     "本次未能把这个阻滞点对到具体因子。原因：阻滞点锚在真对象 locus{objectType,objectId} 上，" +
     "决策推演锚在 CausalFactor 上，而今天引擎回包里没有任何承载因果因子的字段" +
     "（contracts ChainImpedimentSchema 是 strictObject，15 个键逐个核过，无 factorId / factorRef，locus 里也没有）。" +
-    "前端手里唯一可能的对法是拿 locus{objectType,objectId} 去撞 CausalFactor{drillType,drillId}——实测撞不上：" +
+    "前端手里唯一可能的对法是拿 locus{objectType,objectId} 去撞 CausalFactor{drillType,drillId}——" +
+    "2026-08-08 实测撞不上（复验：调 chain_impediments 取 locus 三类，再调 gap_attribution 取因子的 drillType/drillId 求交集，交集为空）：" +
     "demo 的 locus 只有 MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有；" +
     '余下 MaterialBalance 也只有 mbal-2 有因子承载，且它同时挂在 metricKey="" 与 demand_attain 两条链上、定不下进哪条。' +
     "更要命的是 decision_play 拿到对不上的 factorId 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），" +
