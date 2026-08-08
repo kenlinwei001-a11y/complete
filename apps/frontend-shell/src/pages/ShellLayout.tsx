@@ -36,7 +36,7 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
-  //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
+  //   · `sim-sandbox`（当时还有个已退役的 `sim-init`）落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
   //   · 四个子视图落「其它」兜底组（`:～102`），而那个组里**不多不少正好只有它们四个**
   //     ——一个专为「没人登记的东西」而生的桶，用户当然找不到。
   // 实拍坐实：仓主部署后连问三轮「四个新入口在哪」，截图里「其它」还是折叠态（▸）。
@@ -48,8 +48,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    （届时它们不再进 workspace.navigation，本组也就不需要它们）。留着是为了在控制台落地前，
   //    用户至少能在「推演」组里找到它们，而不是在一个折叠的「其它」桶底下。
   //
-  // ⚠ `sim-sandbox` / `sim-init` **不在本表**：它们不走 `workspace.navigation`，而是本文件底部两个
-  //    写死的 `<NavLink>`（entitlement `sim.sandbox` 守门）。往本表加这两个键是**幽灵条目**——
+  // ⚠ `sim-sandbox` **不在本表**：它不走 `workspace.navigation`，而是本文件下方那个
+  //    写死的 `<NavLink>`（entitlement `sim.sandbox` 守门）。往本表加这个键是**幽灵条目**——
   //    `UnifiedNav` 拿 `viewByKey.get(ref.key)` 查后端 nav，查不中就静默 return null，永远不渲染，
   //    还看不出错。改法见下面那两个 NavLink 的位置调整（挪到 UnifiedNav **之前**）。
   {
@@ -162,7 +162,6 @@ const NAV_ICON_PATHS: Record<string, string> = {
   "order-chain": "M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   "decision-play": "M13 2 3 14h9l-1 8 10-12h-9z",
   "sim-sandbox": "M13 2 3 14h9l-1 8 10-12h-9z",
-  "sim-init": "M13 2 3 14h9l-1 8 10-12h-9z",
   // 台账与地图 —— list / map-pin
   order: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
   "geo-map": "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
@@ -330,17 +329,9 @@ export default function ShellLayout() {
               推演沙盘
             </NavLink>
           )}
-          {/* 推演初始化向导入口（增量 4 渐进项 · 暗发）：同 sim.sandbox entitlement 守门；关 → 入口消失。 */}
-          {featureOn(workspace, "sim.sandbox") && (
-            <NavLink
-              to="/v/sim-init"
-              data-testid="nav-sim-init"
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-            >
-              <NavIcon nav="sim-init" />
-              推演初始化向导
-            </NavLink>
-          )}
+          {/* WO-SIM-SCOPE-LOCAL ③：「推演初始化向导」入口已随向导退役删除 ——
+              它有价值的那一步（进沙盘前先选范围）已并入沙盘控制台右栏「就绪认证」，
+              不再需要第二个入口；而两个屏各自建会话恰恰是那个静默错答的成因。 */}
           <UnifiedNav
             views={workspace.navigation.filter((item) => item.group !== "admin")}
             adminPages={adminPages}

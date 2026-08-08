@@ -3471,8 +3471,12 @@ export const handlers = [
     return HttpResponse.json(run, { status: 201 });
   }),
 
-  // ---- 推演沙盘 · 初始化向导（增量 4 渐进项 · Agent G）：view-config / session / scope-precheck ----
-  // 最小 mock：让 mock 模式下 /v/sim-init 三步向导可走通；配置驱动·零行业实体名（演示用占位 key）。
+  // ---- 推演沙盘：view-config / session / scope-precheck ----
+  // 最小 mock：让 mock 模式下沙盘控制台可走通；配置驱动·零行业实体名（演示用占位 key）。
+  // WO-SIM-SCOPE-LOCAL ③：原本这三条是为 `/v/sim-init` 三步向导铺的，向导已退役 ——
+  // `view-config` / `sessions` 沙盘控制台照用；`scope-precheck` 现**无前端调用方**
+  // （`endpoints.ts fetchSimScopePrecheck` 随之只剩定义无消费），保留是因为后端端点仍在，
+  // 但它已是「实现有、无生产调用方」的形态，见 PRD-sim-scope-local §遗留。
   http.get("*/a/v1/sim/view-config", () =>
     HttpResponse.json({
       tenantId: "demo",

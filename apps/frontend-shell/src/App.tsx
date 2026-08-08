@@ -71,8 +71,11 @@ const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
 const ViewsPage = lazy(() => import("@/pages/admin/ViewsPage"));
 // 推演沙盘（增量 4 · 暗发）：dedicated route，entitlement sim.sandbox 关 → 404（入口同时隐藏）。
 const SandboxView = lazy(() => import("@/views/sim/SandboxView"));
-// 推演初始化向导（增量 4 渐进项 · 暗发）：沙盘主屏兄弟子屏，同 sim.sandbox 守门。
-const SimInitWizard = lazy(() => import("@/views/sim/SimInitWizard"));
+// WO-SIM-SCOPE-LOCAL ③：推演初始化向导（曾在 /v/sim-init）已**退役** —— 它有价值的那一步
+// （进沙盘前先选范围）已并入沙盘控制台右栏「就绪认证」，不再需要一个单独的向导页。
+// 退役的直接理由是它制造过一个静默错答：向导建了带范围的会话 A 就 navigate 走，
+// 会话 id 随组件 state 蒸发，沙盘主屏又建了个 `scope:{}` 的会话 B —— 用户以为按自己配的
+// 范围进来，跑的却是另一个空范围会话。一个屏只有一处建会话，这类错配才不可能再发生。
 // 决策推演页（decision_play 求解器 5 区决策产物·CEO-3）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配）。
 const DecisionPlayView = lazy(() => import("@/views/DecisionPlayView"));
 // 断供影响半径投影页（supplier_disruption_radius 反向多跳逐层扇出）：专用 route，直挂 renderer（静态段先于 :viewKey 匹配）。
@@ -112,15 +115,6 @@ function SimSandboxGuard() {
   return lazyWrap(<SandboxView />);
 }
 
-/** 推演初始化向导守卫（增量 4 渐进项）：复用沙盘主屏同款 sim.sandbox entitlement 先于权限机制（关 → 404）。 */
-function SimInitGuard() {
-  const { data: workspace } = useWorkspace();
-  if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
-  const features = workspace.features;
-  if (features && !features.includes("sim.sandbox")) return <NotFoundPage />;
-  return lazyWrap(<SimInitWizard />);
-}
-
 /** 路由表（PRD §3，对外不可变更） */
 export const routes: RouteObject[] = [
   { path: "/login", element: lazyWrap(<LoginPage />) },
@@ -132,8 +126,7 @@ export const routes: RouteObject[] = [
       { path: "scenarios", element: lazyWrap(<ScenarioLauncherPage />) },
       // 推演沙盘专用 route（静态段先于 :viewKey 匹配；entitlement 守卫内联，暗发）。
       { path: "v/sim-sandbox", element: <SimSandboxGuard /> },
-      // 推演初始化向导专用 route（沙盘兄弟子屏，同 sim.sandbox 守门）。
-      { path: "v/sim-init", element: <SimInitGuard /> },
+      // （`v/sim-init` 已随向导退役移除；落到下面的 `v/:viewKey` 通用守卫 → 无此 view ⇒ 404。）
       // 决策推演页专用 route（decision_play 5 区决策产物·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/decision-play", element: lazyWrap(<DecisionPlayView />) },
       // 断供影响半径投影页专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。

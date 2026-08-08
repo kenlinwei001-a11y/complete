@@ -168,10 +168,15 @@ export function SimReadinessPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
         {radar}
         <div>
-          {/* 诚实门（WO-RC-UX-DOOR-TEXT）：未认证 ≠ 硬挡。标准沙盘页 tick 未门控 canEnter
+          {/* 诚实门（WO-RC-UX-DOOR-TEXT）：未认证 ≠ 硬挡。沙盘页 tick 未门控 canEnter
               （推进按钮只认 !sessionId||ticking），本就可试跑 → 显「可试跑」提醒黄（复用 --warn，零新色），
-              而非「暂不可进入」错误红劝退（真硬挡在 SimInitWizard「进入推演」另一入口，那里按钮才 disabled）。
-              试跑结论与 S2 诚信位协同标 UNCALIBRATED/仅供参考。 */}
+              而非「暂不可进入」错误红劝退。试跑结论与 S2 诚信位协同标 UNCALIBRATED/仅供参考。
+
+              ⚠ 措辞更新（WO-SIM-SCOPE-LOCAL ③·2026-08-08）：本行原文曾写「真硬挡在 SimInitWizard
+              『进入推演』另一入口，那里按钮才 disabled」。该向导已**退役删除**，那句话若留着就成了
+              一条**过期的诚实缺席声明**（本仓已因这种"注释还在、实现早没了"的形态判错过多次）。
+              实测为真的现状：**全应用不存在任何按 `canEnterSimulation` 硬挡的入口** ——
+              沙盘是唯一入口，且它从不 disable「推进 tick」。未认证只降级为屏上提醒，不劝退。 */}
           <div
             data-testid="sim-cert-canenter"
             style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--warn)", fontWeight: 700 }}
