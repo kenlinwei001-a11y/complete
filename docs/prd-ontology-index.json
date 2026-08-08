@@ -1221,6 +1221,39 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-impediments-reachable.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/datacore/test/features.test.ts",
+        "apps/datacore/test/memory-mode-views.test.ts",
+        "apps/datacore/test/synthetic.test.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/views/registry.ts",
+        "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
+        "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx",
+        "apps/frontend-shell/test/chain-impediments-route.test.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/check-view-reachable.mjs",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-implementation-handbook.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2642,6 +2675,7 @@
       "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
       "PRD-demo-lightup-2.md",
+      "PRD-impediments-reachable.md",
       "PRD-inference-line.md",
       "PRD-lever-binding-drift.md",
       "PRD-ontology-7elements.md",
@@ -2713,6 +2747,7 @@
     ],
     "apps/frontend-shell/src/mocks/fixtures.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-impediments-reachable.md",
       "PRD-segment-scoped-gap-attribution.md"
     ],
     "apps/frontend-shell/src/mocks/simSolvers.ts": [
@@ -2795,6 +2830,7 @@
     "apps/datacore/src/catalog.ts": [
       "PRD-attribution-routing-plan-audit.md",
       "PRD-decision-resource-intelligence-layer.md",
+      "PRD-impediments-reachable.md",
       "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/solvers/plan.ts": [
@@ -3037,6 +3073,7 @@
     "scripts/gate.sh": [
       "PRD-gate-ledger.md",
       "PRD-hardcoded-absence.md",
+      "PRD-impediments-reachable.md",
       "PRD-nav-gate.md",
       "PRD-skill-compiler-registry.md",
       "PRD-stale-claims.md",
@@ -3090,6 +3127,66 @@
     ],
     "apps/frontend-shell/test/transit-flow.seam.test.tsx": [
       "PRD-hardcoded-absence.md"
+    ],
+    "apps/datacore/src/solvers/chain-impediment.ts": [
+      "PRD-impediments-reachable.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-impediments-reachable.md",
+      "PRD-stale-claims.md",
+      "PRD-topo-realdata.md"
+    ],
+    "apps/datacore/src/synthetic/view-manifest.ts": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/datacore/test/features.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/datacore/test/memory-mode-views.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/datacore/test/synthetic.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/src/App.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-route-nav-coverage.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/frontend-shell/src/pages/ShellLayout.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-nav-ia-reorg.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/frontend-shell/src/views/registry.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/test/chain-impediments-route.test.tsx": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "scripts/check-nav-group-coverage.mjs": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "scripts/check-view-reachable.mjs": [
+      "PRD-impediments-reachable.md"
     ],
     "apps/agentcore/src/growth/loop.ts": [
       "PRD-in-dialog-gap-fill-loop.md"
@@ -3157,23 +3254,6 @@
     ],
     "scripts/check-lever-binding-drift.mjs": [
       "PRD-lever-binding-drift.md"
-    ],
-    "apps/datacore/src/synthetic/view-manifest.ts": [
-      "PRD-nav-gate.md",
-      "PRD-route-nav-coverage.md"
-    ],
-    "apps/frontend-shell/src/pages/ShellLayout.tsx": [
-      "PRD-nav-gate.md",
-      "PRD-nav-ia-reorg.md",
-      "PRD-route-nav-coverage.md"
-    ],
-    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx": [
-      "PRD-nav-gate.md",
-      "PRD-route-nav-coverage.md"
-    ],
-    "scripts/check-nav-group-coverage.mjs": [
-      "PRD-nav-gate.md",
-      "PRD-route-nav-coverage.md"
     ],
     "apps/frontend-shell/src/pages/adminRegistry.ts": [
       "PRD-nav-ia-reorg.md"
@@ -3289,10 +3369,6 @@
     "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
       "PRD-quarter-rolling-1to1.md"
     ],
-    "apps/frontend-shell/src/App.tsx": [
-      "PRD-route-nav-coverage.md",
-      "PRD-skill-compiler-registry.md"
-    ],
     "scripts/ui-smoke-sim-init.mjs": [
       "PRD-route-nav-coverage.md"
     ],
@@ -3305,16 +3381,10 @@
       "PRD-skill-compiler-registry.md",
       "PRD-skill-governance-learning.md"
     ],
-    "apps/datacore/src/solvers/chain-impediment.ts": [
-      "PRD-sandbox-multiplan.md"
-    ],
     "apps/datacore/test/catalog.test.ts": [
       "PRD-sandbox-multiplan.md"
     ],
     "apps/frontend-shell/src/store/eventInvalidation.ts": [
-      "PRD-sandbox-multiplan.md"
-    ],
-    "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": [
       "PRD-sandbox-multiplan.md"
     ],
     "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": [
@@ -3495,10 +3565,6 @@
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
-    ],
-    "apps/datacore/src/synthetic/service.ts": [
-      "PRD-stale-claims.md",
-      "PRD-topo-realdata.md"
     ],
     "apps/frontend-shell/src/views/sim/inspectorModel.ts": [
       "PRD-stale-claims.md",
