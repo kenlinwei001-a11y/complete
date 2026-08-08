@@ -8,7 +8,7 @@
  * 用法：node scripts/check-system-ontology.mjs   （package.json: "ontology:check"）
  * 退出码非 0 即 CI 失败 —— "改了接线没回写本体" 不再是风险。
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 
 const ONTO = "docs/SYSTEM-ONTOLOGY.md";
 const EVENTS_SRC = "apps/agentcore/src/event-subscriptions.ts";
@@ -29,13 +29,87 @@ if (!evSrc) fail.push(`缺少 ${EVENTS_SRC}（事件单一来源）`);
 else {
   const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g)].map((m) => m[1]));
   // 本体 §4 表里事件以反引号包裹，形如 `raw_dataset.uploaded`
-  const docEvents = new Set([...onto.matchAll(/`([a-z0-9_]+\.[a-z0-9_]+)`/g)].map((m) => m[1]));
+  // ⛔ 必须**只截 §4 那一节**，不能扫全文（2026-08-08 实测，我自己当场踩出来的）：
+  //    全文扫时，只要事件名在本体任何地方被反引号提过一次就算「已登记」——
+  //    我在 §8 写一条断点、描述里点名了 4 个「**没登记**」的事件，
+  //    棘轮当场从 23 掉到 19：**一段说「这些没登记」的话，反而让门判它们登记了。**
+  //    形态（铁律 0.6）：「我用『全文出现过这个反引号串』当作『§4 登记了这个事件』的证据，
+  //    而前者并不度量后者。」订阅声明侧那条断言此前也吃着同一个宽口径。
+  const sec4 = onto.match(/\n## 4\. [\s\S]*?(?=\n## 5\. )/);
+  if (!sec4) fail.push("**门自己瞎了**：切不出本体 §4 章节（标题格式变了？）—— 此时的事件登记判定全部不可信。");
+  const sec4Text = sec4 ? sec4[0] : "";
+  // 金丝雀：§4 必须含一个已知必在的事件；不中说明切窗切歪了，不是「本体没登记事件」。
+  if (sec4 && !/`raw_dataset\.uploaded`/.test(sec4Text))
+    fail.push("**门自己瞎了**：§4 切窗里找不到金丝雀 `raw_dataset.uploaded` —— 切窗错位，登记判定不可信。");
+  const docEvents = new Set([...sec4Text.matchAll(/`([a-z0-9_]+\.[a-z0-9_]+)`/g)].map((m) => m[1]));
   const missingInDoc = [...codeEvents].filter((e) => !docEvents.has(e));
   if (missingInDoc.length) fail.push(`事件已在代码、未登记进本体 §4：${missingInDoc.join(", ")}`);
   // 反向：本体记了但代码已删（仅对"看起来像领域事件"的，宽松告警不致命可按需收紧）
   const staleInDoc = [...docEvents].filter((e) => !codeEvents.has(e) && /\.(uploaded|published|completed|updated|executed|applied|promoted|ingested|merged|created|added|regenerated|divergence)$/.test(e));
   if (staleInDoc.length) fail.push(`本体 §4 记了、代码已无此事件（疑似漂移）：${staleInDoc.join(", ")}`);
-  console.log(`· 事件：代码 ${codeEvents.size} 个，本体覆盖 ${[...codeEvents].filter((e) => docEvents.has(e)).length} 个`);
+  // ⚠ 用词要精确：这里量的是**订阅声明**，不是「代码里的事件」。
+  //   曾打印「代码 N 个」，于是所有人（包括写它的我）都以为发射端已被覆盖 —— 见下 §1b。
+  console.log(`· 事件（订阅声明侧）：event-subscriptions.ts ${codeEvents.size} 个，本体 §4 覆盖 ${[...codeEvents].filter((e) => docEvents.has(e)).length} 个`);
+
+  // --- 1b) 发射端 -----------------------------------------------------------
+  // ⛔ 存在理由 = 这道门自己的假绿（2026-08-08 实测，本文件第二次犯同一种病）：
+  //    上面那段只读 event-subscriptions.ts 的 `event: "..."`（**订阅声明**），
+  //    从没看过一眼 `outbox.emit` / `emitDomainEvent`（**发射端**，全仓 79 处调用点）。
+  //    于是「emit 了但 §4 没登记」这**一整类**结构性不可见 —— 实测存量 23 个。
+  //    形态（CLAUDE.md 铁律 0.6）：「我用『订阅声明数』当作『代码真发的事件数』的证据，
+  //    而前者并不度量后者。」同文件上一次是 SOLVER_KEYS 被注释里的方括号截断（见下方注释）。
+  //
+  // ★ 机制（不是「下次注意」）：**每条抽取器各有自己的金丝雀**。
+  //    上一版对账脚本栽的就是这个 —— 三个样例全走 outbox 那条抽取器，
+  //    第二条 emitDomainEvent 抽取器写成什么样都照样全绿，把 4 个事件误报成「零 emit」。
+  //    金丝雀与主逻辑**共用 harvestEmits 本尊**，改坏任一条正则，对应金丝雀立刻红。
+  const EMIT_SRC_DIRS = ["apps/datacore/src", "apps/agentcore/src"];
+  const EMITTERS = [
+    { key: "outbox.emit", re: /outbox\.emit\(\s*[^,]+,\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g, canary: 'await outbox.emit(c.tenantId, "sim.canary_emitted", {})', expect: "sim.canary_emitted" },
+    { key: "emitDomainEvent", re: /emitDomainEvent\(\s*[^,]+,\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g, canary: 'emitDomainEvent(tid, "sim.canary_domain", {})', expect: "sim.canary_domain" },
+  ];
+  const harvestEmits = (re, text) => new Set([...text.matchAll(new RegExp(re.source, "g"))].map((m) => m[1]));
+
+  for (const em of EMITTERS) {
+    if (!harvestEmits(em.re, em.canary).has(em.expect))
+      fail.push(`**门自己瞎了**：发射端抽取器 \`${em.key}\` 的金丝雀未命中 —— 此时的「emit 未登记 N 个」不可信（可能漏整条发射通道）。`);
+  }
+
+  const tsFiles = [];
+  const walkTs = (d) => {
+    if (!existsSync(d)) return;
+    for (const e of readdirSync(d)) {
+      const p = `${d}/${e}`;
+      if (statSync(p).isDirectory()) { if (e !== "node_modules" && e !== "dist") walkTs(p); }
+      else if (p.endsWith(".ts") && !p.includes(".test.")) tsFiles.push(p);
+    }
+  };
+  EMIT_SRC_DIRS.forEach(walkTs);
+  const emitted = new Set();
+  for (const f of tsFiles) {
+    const t = readFileSync(f, "utf8");
+    for (const em of EMITTERS) for (const ev of harvestEmits(em.re, t)) emitted.add(ev);
+  }
+  // 金丝雀③：全仓必有 emit（若为 0，是遍历/正则坏了，不是「代码里没有事件」）。
+  if (emitted.size === 0)
+    fail.push("**门自己瞎了**：全仓一个 emit 都没抽到 —— 报「emit 未登记 0 个」等于什么都没验。");
+
+  const emitUnregistered = [...emitted].filter((e) => !docEvents.has(e)).sort();
+  // 棘轮：存量记账、新增被挡（只降不升）。存量清零请回写 §4，不要抬基线。
+  // 基线 23 = 2026-08-08 在 canonical 实测；其中 sim.scenario_saved 的 §4 登记在待并批次里，
+  // 那批并线后应降到 22 —— 降了要顺手把这个数字改小，这就是棘轮的用法。
+  const MAX_EMIT_UNREGISTERED = 23;
+  if (emitUnregistered.length > MAX_EMIT_UNREGISTERED) {
+    fail.push(
+      `**emit 了但本体 §4 未登记**：${emitUnregistered.length} 个 > 棘轮基线 ${MAX_EMIT_UNREGISTERED}。` +
+        ` 新增的是：${emitUnregistered.slice(MAX_EMIT_UNREGISTERED).join(", ")}` +
+        ` —— 修法：在 §4 补登该事件（发了没人收也要登，登记的是「系统会发这个事」，不是「有人在收」）。` +
+        ` 不许抬基线了事。`,
+    );
+  }
+  console.log(
+    `· 事件（发射端）：真 emit ${emitted.size} 个 · §4 未登记 ${emitUnregistered.length} 个（棘轮基线 ${MAX_EMIT_UNREGISTERED}，只降不升）`,
+  );
 }
 
 // --- 2) 求解器注册表 -------------------------------------------------------
