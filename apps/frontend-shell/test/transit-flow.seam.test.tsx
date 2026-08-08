@@ -40,6 +40,9 @@ import { TransitFlowLayer, TRANSIT_TICK_BASE_MS } from "@/views/sim/TransitFlowL
 import {
   CADENCE_ABSENCE,
   PROCUREMENT_BRANCH,
+  deriveCadenceAbsence,
+  deriveProcurementBranch,
+  parseCadenceRows,
   isCadenceGateDay,
   meanReleaseWaitDays,
   nextGateDayOnOrAfter,
@@ -298,15 +301,21 @@ describe("SEAM ② · 节拍点批量放行（一批同时走，不是匀速流�
 // 3. 诚实缺席：看不见的东西不许画出来
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("诚实缺席 · 拿不到真值的区间显示为空 + 一行原因", () => {
-  it("采购支线恒空，且逐条给出可复验的取证（D2 前不许画假车）", () => {
+  it("采购支线今天仍为空，但**病因必须说准**：是本层没去取，不是本体没有（D2 已并线）", () => {
     render(<TransitFlowLayer sources={{}} />);
     const branch = screen.getByTestId("transit-branch-procurement");
     expect(branch).toHaveAttribute("data-status", "EMPTY");
-    expect(branch).toHaveTextContent("本体缺在途承载物");
+    // ── 生产实参就是这个（铁律 0.5 第 6 条：不许只测别的分支）──────────────
+    expect(PROCUREMENT_BRANCH.cause).toBe("NOT_FETCHED");
+    expect(PROCUREMENT_BRANCH.probe).toEqual({ fetched: null, usable: 0 });
+    // 病因说准：屏上必须写「本层没去取」，且必须点名那三个**已经存在**的承载对象
+    expect(branch).toHaveTextContent("本层没去取");
     expect(branch).toHaveTextContent("PurchaseOrder");
-    expect(branch).toHaveTextContent("ASN");
-    expect(branch).toHaveTextContent("customs");
-    expect(branch).toHaveTextContent("IQC");
+    expect(branch).toHaveTextContent("CustomsClearance");
+    expect(branch).toHaveTextContent("IncomingInspection");
+    // ⛔ 反向锁：D2 并线后这两句已成假话，任何人写回去当场红
+    expect(branch).not.toHaveTextContent("本体缺在途承载物");
+    expect(branch).not.toHaveTextContent("0 命中");
     expect(PROCUREMENT_BRANCH.evidence.length).toBeGreaterThanOrEqual(3);
     // 采购支线不产生任何车 / 任何站
     expect(screen.queryAllByTestId(/^transit-car-/)).toHaveLength(0);
@@ -376,12 +385,18 @@ describe("诚实缺席 · 拿不到真值的区间显示为空 + 一行原因", 
     expect(parseInterBaseTransferRows([xfer({ id: "X8", from: "a", to: "b", dispatchDay: 5, etaDay: 5 })]).accepted).toBe(0);
   });
 
-  it("节拍：引擎没下发 cadence ⇒ 界面明说 EMPTY，不画任何「这里有节拍」的假象", () => {
+  it("节拍：引擎没下发 cadence ⇒ 界面明说 EMPTY，且病因是「本层没去取」而非「数据层无承载」", () => {
     render(<TransitFlowLayer sources={{ interBaseTransfer: [xfer({ id: "X1", from: "a", to: "b", dispatchDay: 0, etaDay: 5 })] }} />);
     const absence = screen.getByTestId("transit-cadence-absence");
     expect(absence).toHaveAttribute("data-status", "EMPTY");
-    expect(absence).toHaveTextContent("节拍在数据层无承载");
     expect(absence).toHaveTextContent("Cadence");
+    // ── 生产实参（铁律 0.5 第 6 条）────────────────────────────────────────
+    expect(CADENCE_ABSENCE.cause).toBe("NOT_FETCHED");
+    expect(CADENCE_ABSENCE.probe).toEqual({ fetched: null, usable: 0 });
+    expect(absence).toHaveTextContent("本层没去取");
+    // ⛔ 反向锁：D1 并线后这句已成假话（cadence.ts 存在、service.ts:712 真落库）
+    expect(absence).not.toHaveTextContent("节拍在数据层无承载");
+    expect(absence).not.toHaveTextContent("0 命中");
     expect(screen.queryByTestId("transit-cadence-live")).toBeNull();
     expect(CADENCE_ABSENCE.evidence.length).toBeGreaterThanOrEqual(3);
     // 无节拍 ⇒ 不会凭空冒出一个限流站
@@ -405,6 +420,181 @@ describe("诚实缺席 · 拿不到真值的区间显示为空 + 一行原因", 
 
     expect(screen.queryAllByTestId(/^transit-car-/)).toHaveLength(0);
     expect(screen.getByTestId("transit-events-empty")).toBeInTheDocument();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3.5 · G-FRONTEND-HARDCODED-ABSENCE：缺席声明必须**由数据派生**，不许写死
+//
+// 本组咬的是那个真实事故：缺席文案写成 `const` 字面量 ⇒ 它记录的是**写下它那一刻**的
+// 仓库状态；上游（D1 节拍 / D2 采购段）并线之后，屏上那句"本体没有"就变成了假话，
+// 而没有任何测试会红 —— 旧断言咬的是 `evidence.length >= 3`，咬的是**借口数量**、不是借口真假。
+//
+// 判据分两层，缺一不可：
+//  ① 数据驱动：喂**含**数据的载荷 ⇒ 不出缺席行；喂**不含**的 ⇒ 出缺席行且**病因正确**。
+//  ② 事实锁：文案里引用的上游 file:line 事实必须**当场从仓库读出来复验**。
+//     上游哪天把承载删了/改了，这里当场红，逼着把文案改回去 —— 反过来也一样。
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病因分三档", () => {
+  /** `Cadence` 落库行的真实形状（`apps/datacore/src/synthetic/cadence.ts:489 cadenceObjectRows`）。 */
+  const cadenceRow = (o: { nodeId: string; everyDays?: number; kind?: string; offsetDays?: number; dataMode?: string; emptyReason?: string }) => ({
+    nodeId: o.nodeId,
+    label: `${o.nodeId} 站`,
+    stage: "DELIVERY",
+    dataMode: o.dataMode ?? "SYNTHETIC",
+    flowGate: true,
+    note: "",
+    ...(o.emptyReason === undefined ? {} : { emptyReason: o.emptyReason }),
+    ...(o.everyDays === undefined ? {} : { everyDays: o.everyDays, cadenceKind: o.kind ?? "batch", intervalCount: 6 }),
+    ...(o.offsetDays === undefined ? {} : { offsetDays: o.offsetDays }),
+  });
+
+  // ── ① 接缝：有数据 ⇒ 不出缺席行 ────────────────────────────────────────────
+  it("SEAM · 节拍：喂含 cadence 的载荷 ⇒ 缺席行消失、真闸门上屏（同一段代码，只换数据）", () => {
+    // (a) 引擎 nodes[] 这一路 —— 走 DOM，咬的是链路不是函数
+    const nodes: TransitNodeInput[] = [{ nodeId: "b", label: "闸", cadence: { everyDays: 5, kind: "shipping" } }];
+    render(<TransitFlowLayer nodes={nodes} sources={{ interBaseTransfer: [xfer({ id: "X1", from: "a", to: "b", dispatchDay: 0, etaDay: 5 })] }} />);
+    expect(screen.queryByTestId("transit-cadence-absence")).toBeNull(); // ← 缺席行**不再出现**
+    expect(screen.getByTestId("transit-cadence-live")).toBeInTheDocument();
+    expect(screen.getByTestId("transit-cadence-b")).toHaveTextContent("每 5 天开闸");
+
+    // (b) 对象库 Cadence 行这一路 —— 派生层判定
+    const present = deriveCadenceAbsence({ cadenceRows: [cadenceRow({ nodeId: "b", everyDays: 5, kind: "shipping" })] });
+    expect(present.status).toBe("PRESENT");
+    expect(present.cause).toBe("PRESENT");
+    expect(present.probe).toEqual({ fetched: 1, usable: 1 });
+    expect(present.reason).not.toMatch(/无承载|没有一条数据/);
+  });
+
+  it("SEAM · 采购段：喂含四段日戳的载荷 ⇒ 判为 PRESENT，且点名覆盖了哪几条腿", () => {
+    const present = deriveProcurementBranch({
+      purchaseOrderRows: [{ poId: "po_1", matId: "sep_film", qty: 100, etaDay: 30, orderDay: 2, shipDay: 9, arriveDay: 20 }],
+      customsRows: [{ clearanceId: "cc_po_1", poId: "po_1", declaredDay: 20, clearedDay: 24, holdDays: 1 }],
+      inspectionRows: [{ inspectionId: "iqc_po_1", poId: "po_1", arrivedDay: 24, releasedDay: 30 }],
+    });
+    expect(present.status).toBe("PRESENT");
+    expect(present.probe.usable).toBe(4); // 四条腿全部算得出来
+    for (const leg of ["supplier_production", "in_transit", "customs", "incoming_inspection"]) {
+      expect(present.reason).toContain(leg);
+    }
+    expect(present.reason).not.toMatch(/缺在途承载物/);
+  });
+
+  // ── ② 接缝：没数据 ⇒ 出缺席行，且**三档病因各自不同** ──────────────────────
+  it("SEAM · 三档病因必须分得开：没去取 / 取回来被契约剔掉 / 本租户真没有", () => {
+    // 没去取（= 今天生产的实参）
+    const notFetched = deriveCadenceAbsence();
+    expect(notFetched.cause).toBe("NOT_FETCHED");
+    expect(notFetched.probe.fetched).toBeNull();
+    expect(notFetched.reason).toContain("本层没去取");
+    expect(notFetched.unblockedBy).toContain("接线");
+
+    // 问了、回 0 条 —— 与"没问过"必须分得开（这正是此前混成一句"没有"的地方）
+    const tenantEmpty = deriveCadenceAbsence({ cadenceRows: [] });
+    expect(tenantEmpty.cause).toBe("TENANT_EMPTY");
+    expect(tenantEmpty.probe).toEqual({ fetched: 0, usable: 0 });
+    expect(tenantEmpty.unblockedBy).toContain("种数据");
+    expect(tenantEmpty.cause).not.toBe(notFetched.cause);
+
+    // 取回来了但读不成闸门（诚实缺席行：dataMode 非 SYNTHETIC ⇒ 无节拍，**不是 0**）
+    const rejected = deriveCadenceAbsence({
+      cadenceRows: [cadenceRow({ nodeId: "b", dataMode: "EMPTY", emptyReason: "该环节发生序列不足 2 次，推不出周期" })],
+    });
+    expect(rejected.cause).toBe("CONTRACT_REJECTED");
+    expect(rejected.probe).toEqual({ fetched: 1, usable: 0 });
+    expect(rejected.evidence.join("\n")).toContain("推不出周期"); // 原因来自数据本身，不是编的话术
+    expect(rejected.unblockedBy).toContain("修数据");
+
+    // 采购段同款三档
+    expect(deriveProcurementBranch().cause).toBe("NOT_FETCHED");
+    expect(deriveProcurementBranch({ customsRows: [] }).cause).toBe("TENANT_EMPTY");
+    const poBroken = deriveProcurementBranch({ purchaseOrderRows: [{ poId: "po_1", matId: "m", qty: 1, etaDay: 30 }] });
+    expect(poBroken.cause).toBe("CONTRACT_REJECTED");
+    expect(poBroken.evidence.join("\n")).toMatch(/shipDay|arriveDay|orderDay/);
+  });
+
+  it("Cadence 读回口逐字镜像 datacore：dataMode 非 SYNTHETIC ⇒ 无节拍（不是 0）；字段名是 cadenceKind", () => {
+    // 字段名写成 kind（而不是落库的 cadenceKind）⇒ 读不回来。拼错就恒 0 条，必须当场红。
+    const wrongName = parseCadenceRows([{ nodeId: "b", dataMode: "SYNTHETIC", everyDays: 5, kind: "batch" }]);
+    expect(wrongName.nodes).toHaveLength(0);
+    expect(wrongName.rejectReasons.join("\n")).toContain("CadenceSchema");
+
+    const ok = parseCadenceRows([cadenceRow({ nodeId: "b", everyDays: 5, offsetDays: 2, kind: "batch" })]);
+    expect(ok.nodes).toEqual([{ nodeId: "b", label: "b 站", stage: "DELIVERY", cadence: { everyDays: 5, offsetDays: 2, kind: "batch" } }]);
+
+    // 诚实缺席行照样落库、照样读得到，但**不许变成一个 0 节拍**（0 = 随到随办 = 把节拍当不存在）
+    const empty = parseCadenceRows([cadenceRow({ nodeId: "b", dataMode: "EMPTY", emptyReason: "样本不足" })]);
+    expect(empty.nodes).toHaveLength(0);
+    expect(empty.rejectReasons.join("\n")).toContain("样本不足");
+
+    // R6：输入顺序打乱 ⇒ 输出全序一致
+    const rows = ["z", "a", "m"].map((n) => cadenceRow({ nodeId: n, everyDays: 4 }));
+    expect(parseCadenceRows(rows).nodes.map((n) => n.nodeId)).toEqual(["a", "m", "z"]);
+  });
+
+  // ── ③ 事实锁：文案引用的上游事实，当场从仓库读出来复验 ──────────────────────
+  it("事实锁 · 节拍承载**确实已在**数据层（上游哪天删了，这里红 ⇒ 逼着把文案改回去）", () => {
+    expect(existsSync(join(REPO_ROOT, "apps/datacore/src/synthetic/cadence.ts")), "datacore 的 cadence.ts 不见了 —— CADENCE_ABSENCE 的取证文案必须同步改").toBe(true);
+    const service = readRepo("apps/datacore/src/synthetic/service.ts");
+    expect(service, 'service.ts 不再 putAll("Cadence") —— 节拍又回到"只有契约没有承载"，文案必须改回去').toContain('putAll("Cadence"');
+    const cadenceSrc = readRepo("apps/datacore/src/synthetic/cadence.ts");
+    // 读回口还在，且落库字段名没漂（前端这边是受控镜像，名字一漂就恒 0 条）
+    expect(cadenceSrc).toContain("export function cadenceFromProps");
+    expect(cadenceSrc).toContain("cadenceKind");
+    // ⇒ 因此"数据层无承载"这句话今天必须是假的
+    expect(CADENCE_ABSENCE.evidence.join("\n")).not.toMatch(/0 命中|不存在（D1 未并线）/);
+  });
+
+  it("事实锁 · 采购段四段承载**确实已在**（PurchaseOrder 有日戳 · 清关/到货检验是在册对象类型）", () => {
+    const ext = readRepo("apps/datacore/src/synthetic/battery-extended.ts");
+    for (const field of ["orderDay", "shipDay", "arriveDay"]) {
+      expect(ext, `PurchaseOrder 少了 ${field} —— 采购支线文案必须同步改`).toContain(field);
+    }
+    expect(ext).toContain('def("CustomsClearance"');
+    expect(ext).toContain('def("IncomingInspection"');
+    const service = readRepo("apps/datacore/src/synthetic/service.ts");
+    expect(service).toContain('putAll("CustomsClearance"');
+    expect(service).toContain('putAll("IncomingInspection"');
+    // 契约侧四段腿单源
+    const proc = readRepo("packages/contracts/src/procurement.ts");
+    for (const leg of ["supplier_production", "in_transit", "customs", "incoming_inspection"]) {
+      expect(proc).toContain(leg);
+    }
+    // ⇒ 因此"customs/IQC 0 命中"这句话今天必须是假的
+    expect(PROCUREMENT_BRANCH.evidence.join("\n")).not.toMatch(/0 命中/);
+  });
+
+  it("源码级门 · 缺席文案不许再退回 `const` 字面量（回归锁）", () => {
+    const model = readRepo("apps/frontend-shell/src/views/sim/transitFlow.ts");
+    // 两个名字必须是**派生调用**的结果，不是手写对象字面量
+    expect(model).toMatch(/export const CADENCE_ABSENCE[^\n]*=\s*deriveCadenceAbsence\(/);
+    expect(model).toMatch(/export const PROCUREMENT_BRANCH[^\n]*=\s*deriveProcurementBranch\(/);
+    // 注释不参与判定（与本文件既有源码级门同款做法）——
+    // 文档里**引用**旧写法是应该的（那是病历），真正要禁的是它重新变成可执行代码。
+    const code = model.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code, "缺席声明又被写回 `status: \"EMPTY\" as const` —— 那正是本门要治的病").not.toMatch(/status:\s*"EMPTY"\s+as\s+const/);
+  });
+
+  // ── ④ 已知剩余缺口（本单范围边界外）：视图侧还没接查询 ──────────────────────
+  it("⚠ 已知缺口锁 · 图层尚未查 Cadence/采购段；**接线那天本条当场红**，提醒改调派生函数", () => {
+    const view = readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx");
+    const stillUnwired =
+      !view.includes('searchObjects("Cadence"') &&
+      !view.includes('searchObjects("CustomsClearance"') &&
+      !view.includes("deriveCadenceAbsence(");
+    expect(
+      stillUnwired,
+      [
+        "本条红了 = 有人给图层接上了 Cadence / 采购段查询 —— 这是好事，但必须同时做两件事：",
+        "  ① 把 TransitFlowLayer 里的 CADENCE_ABSENCE / PROCUREMENT_BRANCH 换成",
+        "     deriveCadenceAbsence({ engineNodes: nodes, cadenceRows }) / deriveProcurementBranch({ … })；",
+        "  ② 删掉本条断言（它的唯一职责就是在这一刻红一次）。",
+        "否则面板会继续显示 NOT_FETCHED —— 又变回一句写死的假话。",
+      ].join("\n"),
+    ).toBe(true);
+    // 缺口存在期间，生产实参必须诚实地报 NOT_FETCHED
+    expect(CADENCE_ABSENCE.cause).toBe("NOT_FETCHED");
+    expect(PROCUREMENT_BRANCH.cause).toBe("NOT_FETCHED");
   });
 });
 
