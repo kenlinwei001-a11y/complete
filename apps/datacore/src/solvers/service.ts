@@ -3684,13 +3684,24 @@ export class SolverService {
    * 机制（**零 LLM·零业务常数·R6**）：
    *  ① role 推断复用 A13 `resolveFieldRoles`（结构信号 fanIn/fanOut）+ 配置词库 `lexiconHit`（成本/需求/客户/订单）——
    *     facility 承载类型 = **选中对象的统一类型**（whatever·**不硬编 Base→facility**），open_cost = 该类型上命中成本词库的数值字段，
-   *     client 类型 = 命中"客户/订单/leaf"词库的另一类型（tie-break：fanOut 高→字典序·resolveFieldRoles 结构信号）。
+   *     client 类型 = 命中"客户/订单/leaf"词库的另一类型（排序判据见 `rankRoleCandidates`）。
    *  ② 构造 OntologyBinding{tenantId:ctx.tenantId, templateKey:family, roleBindings, scope(选中子图 id), coeffSource:"property"}。
    *  ③ DF.8 接地 + 装配调既有 `bindToSolverArgs`（groundBinding 校验类型/属性存在于已发布本体·越界报错不造实体·按 id 稳定排序）。
    *  ④ **选中范围收窄**：facility 承载类型只读选中 id（其余需求点类型全量）。
    *
    * 诚实报缺（仿 bindCrossObjectOccupancy 范式）：role 支撑类型/属性不存在 → `{applicable:false, missingRoles}`
    *（**绝不伪造系数**·orchestrator 落回 path-B 或诚实缺口）。
+   *
+   * **WO-OPT-WHATIF-CLOSE（闭 §8 G-OPT-WHATIF-EMPTY-CANDIDATE·引擎半）**：词库命中只证明"名字像"，
+   * 不证明"这个类型担得起这个角色"。装配前必须过两道**结构判据**（`rankRoleCandidates`）——
+   *   **A1 有实例（硬过滤）**：零实例类型绑上去 ⇒ 该角色数组恒空 ⇒ 求解器抛「需 facilities[] + clients[]」，
+   *     用户侧表现与"没接线"一模一样。demo 实测赢家 `MaintenanceOrder`（fanOut=3·字典序先于 WorkOrder）
+   *     恰恰零实例 —— 装配"成功"了，链路照断，且错误信息与真实病因无关。
+   *   **A2 非决策类型的从属记录（软降权）**：候选若带 ref 指向决策承载类型（如 `WorkOrder.baseId→Base`），
+   *     它已被绑死在某个设施上，不是可自由指派的**需求点**；这类候选排到最后，有别的候选就不选它。
+   *     demo 上 A1 只把赢家从 `MaintenanceOrder`(0 实例) 推到 `WorkOrder`(260 实例·生产工单) ——
+   *     **仍是错的**（「每张生产工单一份干线履约成本」讲不通，属 plausible-but-WRONG 的自信错答）；
+   *     A2 才把赢家落到 `OrderLine`(38·客户订单行) 这个真需求点。两条缺一不可。
    */
   private async assembleBaselineFromSelection(
     ctx: AuthCtx,
@@ -3725,16 +3736,47 @@ export class SolverService {
         return objs;
       },
     };
+    /** 经**收窄后的视图**数实例数（= 装配真正会喂给求解器的那批行，不是全库计数）。 */
+    const rowCount = async (typeKey: string): Promise<number> => (await view.listByType(ctx.tenantId, typeKey)).length;
+
+    /**
+     * WO-OPT-WHATIF-CLOSE · 角色候选排序（A1 硬过滤 + A2 软降权 + 既有 fanOut/字典序 tie-break）。
+     * 返回 `{ picked, empty }`：`picked` = 选中的候选（无可用则 undefined）；`empty` = 被 A1 滤掉的候选 key
+     * （供诚实报缺原文点名"哪些类型名字像但一行都没有"，别让用户看见与病因无关的 `需 xxx[]` 抛错）。
+     * 纯结构判据 + 稳定序 ⇒ R6 同输入同输出；零类型名硬编 ⇒ R14 换租户不改代码。
+     */
+    const rankRoleCandidates = async (cands: ObjectTypeDef[]): Promise<{ picked?: ObjectTypeDef; empty: string[] }> => {
+      const counts = new Map<string, number>();
+      for (const c of cands) counts.set(c.key, await rowCount(c.key));
+      const empty = cands.filter((c) => (counts.get(c.key) ?? 0) === 0).map((c) => c.key).sort();
+      // A2：带 ref 指向决策承载类型 = 该设施自己的从属记录（已绑死在某设施上），不是可自由指派的需求点 → 排最后。
+      const subordinate = (t: ObjectTypeDef) => (t.properties.some((p) => p.refToTypeKey === decisionType) ? 1 : 0);
+      const picked = cands
+        .filter((c) => (counts.get(c.key) ?? 0) > 0) // A1
+        .sort((a, b) => subordinate(a) - subordinate(b) || fanOut(b) - fanOut(a) || a.key.localeCompare(b.key))[0];
+      return { picked, empty };
+    };
 
     if (family === "facility_location") {
       // open_cost = 决策类型上命中"成本"词库的数值字段（不硬编 openCost）。
       const openProp = numProps(decDef).map((p) => p.propKey).find((k) => lexiconHit(k, "cost"));
       if (!openProp) return { applicable: false, missingRoles: [`open_cost（${decisionType} 无命中成本词库的数值字段）`] };
-      // client 类型 = 命中"客户/订单/leaf"词库的另一类型（tie-break：fanOut 降序 → 字典序）。
-      const clientCands = types.filter((t) => t.key !== decisionType && lexiconHit(t.key, "leaf"))
-        .sort((a, b) => fanOut(b) - fanOut(a) || a.key.localeCompare(b.key));
-      const clientType = clientCands[0]?.key;
-      if (!clientType) return { applicable: false, missingRoles: ["client（无命中客户/订单词库的对象类型）"] };
+      // facility 侧同理：选中范围收窄后**一行都没有** ⇒ facilities[] 恒空，早报缺好过让求解器抛无关错误。
+      if ((await rowCount(decisionType)) === 0) {
+        return { applicable: false, missingRoles: [`facility（${decisionType} 在选中范围内无实例）`] };
+      }
+      // client 类型 = 命中"客户/订单/leaf"词库的另一类型（排序判据：A1 有实例 → A2 非从属 → fanOut 降序 → 字典序）。
+      const clientCands = types.filter((t) => t.key !== decisionType && lexiconHit(t.key, "leaf"));
+      const { picked: clientDef, empty: emptyClients } = await rankRoleCandidates(clientCands);
+      const clientType = clientDef?.key;
+      if (!clientType) {
+        return {
+          applicable: false,
+          missingRoles: [emptyClients.length
+            ? `client（命中客户/订单词库的类型均无实例：${emptyClients.join("、")}）`
+            : "client（无命中客户/订单词库的对象类型）"],
+        };
+      }
       // assign_cost 可选：决策类型上命中"成本"词库的**另一**数值字段（≠ open_cost）；无则 bindToSolverArgs 默认 1。
       const assignProp = numProps(decDef).map((p) => p.propKey).find((k) => k !== openProp && lexiconHit(k, "cost"));
       const binding: OntologyBinding = {
@@ -3755,9 +3797,24 @@ export class SolverService {
       // node = 决策承载类型；supply = node 上命中"需求/供给"词库的数值字段。
       const supplyProp = numProps(decDef).map((p) => p.propKey).find((k) => lexiconHit(k, "demand"));
       if (!supplyProp) return { applicable: false, missingRoles: [`supply（${decisionType} 无命中供需词库的数值字段）`] };
+      // node 侧同理（facility 半的镜像）：选中范围收窄后无实例 ⇒ nodes[] 恒空，早报缺。
+      if ((await rowCount(decisionType)) === 0) {
+        return { applicable: false, missingRoles: [`node（${decisionType} 在选中范围内无实例）`] };
+      }
       // arc 类型 = 有 ≥2 个 ref 属性（from/to）指向 node 的类型；cost = 其上命中"成本"词库的数值字段。
-      const arcDef = types.find((t) => t.key !== decisionType && t.properties.filter((p) => p.refToTypeKey === decisionType).length >= 2);
-      if (!arcDef) return { applicable: false, missingRoles: ["arc（无 ≥2 ref 指向决策类型的弧类型）"] };
+      // WO-OPT-WHATIF-CLOSE：原先 `types.find(...)` 取的是**本体列表顺序的第一个**——既不检查有无实例
+      //（零实例 ⇒ arcs[] 恒空 ⇒ 抛「需 nodes[] + arcs[]」，与 client 半同一个病），顺序也不稳定（违 R6）。
+      // 改走同一个 `rankRoleCandidates`：A1 硬过滤零实例 + 稳定序（A2 在此恒等——弧按定义必 ref node）。
+      const arcCands = types.filter((t) => t.key !== decisionType && t.properties.filter((p) => p.refToTypeKey === decisionType).length >= 2);
+      const { picked: arcDef, empty: emptyArcs } = await rankRoleCandidates(arcCands);
+      if (!arcDef) {
+        return {
+          applicable: false,
+          missingRoles: [emptyArcs.length
+            ? `arc（≥2 ref 指向决策类型的弧类型均无实例：${emptyArcs.join("、")}）`
+            : "arc（无 ≥2 ref 指向决策类型的弧类型）"],
+        };
+      }
       const refs = arcDef.properties.filter((p) => p.refToTypeKey === decisionType).map((p) => p.propKey).sort();
       const costProp = numProps(arcDef).map((p) => p.propKey).find((k) => lexiconHit(k, "cost"));
       if (!costProp) return { applicable: false, missingRoles: [`arc_cost（${arcDef.key} 无命中成本词库的数值字段）`] };

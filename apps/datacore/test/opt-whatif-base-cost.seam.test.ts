@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN } from "./helpers.js";
-import type { AuthCtx, ObjectInstance } from "../src/domain.js";
-import { generateBattery, baseOpenCostWan, baseServeCostWan } from "../src/synthetic/battery.js";
+import type { AuthCtx } from "../src/domain.js";
+import { baseOpenCostWan, baseServeCostWan } from "../src/synthetic/battery.js";
 import { lexiconHit } from "../src/solvers/field-role-lexicon.js";
 import type {
   OptimizerClient, OptimizationRequest, OptimizationResult,
@@ -53,30 +53,13 @@ class MockFL implements OptimizerClient {
 const ctxOf = (tenantId: string): AuthCtx => ({ tenantId, userId: "u", roles: ["admin"], attributes: {} });
 
 /**
- * 需求侧落库补位（**非造假数据**）：`generateBattery` 已确定性产出 `maintenanceOrders`
- * （`battery.ts:4303` 起·hashString 派生·不消耗 rng），但 `synthetic/service.ts` 的物化清单
- * （:802-812 那一段）**漏了这一类** —— 生成了没落库。而 `assembleBaselineFromSelection`
- * （`solvers/service.ts:3734`）的 client 角色赢家恰好就是它（leaf 词库命中 ∧ fanOut=3 ∧ 字典序先于
- * WorkOrder），且**不检查候选类型有没有实例** ⇒ clients=[] ⇒ `facility_location` 抛
- * 「需 facilities[] + clients[] + assignCosts[]」。
- *
- * 本函数把**生成器已产的那批真行**按 `putAll` 同款 id 规则落库（同 seed 同 scale 字节一致），
- * 使本单要证的「数据半 → 装配 → 重解」接缝可被完整驱动。**缺口本身另有 tripwire**：见 ④。
+ * **WO-OPT-WHATIF-CLOSE 已收编**：本文件此前有个 `materializeGeneratedMaintenanceOrders` 测试侧补位函数——
+ * 因为 `generateBattery` 确定性产的 193 行 `maintenanceOrders`（`battery.ts:4303` 起·hashString 派生·不消耗 rng）
+ * **从没被 `synthetic/service.ts` 物化**，而 `assembleBaselineFromSelection` 的 client 角色赢家恰好是它。
+ * 该缺口本单已在**生产路径**闭合（物化清单补 `MaintenanceOrder` + 装配器加"零实例不中选/从属降权"两道判据），
+ * 于是下面全部用例改为**只跑 `seedBattery` 的生产实况**，补位函数随之删除（留着就是死代码）。
+ * 闭合证据见 `test/opt-whatif-close.seam.test.ts`。
  */
-async function materializeGeneratedMaintenanceOrders(t: Awaited<ReturnType<typeof makeApp>>, seed = 42): Promise<number> {
-  const g = generateBattery(seed, "S");
-  const rows = g.maintenanceOrders as Record<string, unknown>[];
-  for (const row of rows) {
-    const obj: ObjectInstance = {
-      id: `obj_maintenanceorder_${String(row.moId)}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
-      tenantId: "demo",
-      type: "MaintenanceOrder",
-      props: row,
-    };
-    await t.repos.objects.put(obj);
-  }
-  return rows.length;
-}
 
 const OPT_ARGS = (baseIds: string[], target: string, value: number) => ({
   // 与 AgentCore 暗发门发出的实参**逐字段同形**（orchestrator.ts:1037
@@ -90,10 +73,7 @@ const OPT_ARGS = (baseIds: string[], target: string, value: number) => ({
 describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配真重解（SEAM）", () => {
   it("① 头号接缝：真 demo 数据 → 装配不报缺 open_cost → 扰动后**最优设施真切换**（handan→changzhou·Δ≠0）", async () => {
     const t = await makeApp();
-    await seedBattery(t);
-    const moCount = await materializeGeneratedMaintenanceOrders(t);
-    expect(moCount).toBeGreaterThan(0); // 生成器确实产了需求侧行（不是空跑）
-
+    await seedBattery(t); // 生产实况（WO-OPT-WHATIF-CLOSE 后无需任何测试侧补位）
     const mock = new MockFL();
     t.services.solvers.setOptimizer(mock);
     const bases = await t.repos.objects.listByType("demo", "Base");
@@ -135,7 +115,6 @@ describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配�
   it("② 变异反证的对偶（诚实报缺仍在）：同一租户抹掉 Base 的成本字段 → 立刻回到 open_cost 报缺", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    await materializeGeneratedMaintenanceOrders(t);
     t.services.solvers.setOptimizer(new MockFL());
     // 只从**类型声明**上摘掉两个成本属性（对象上的值留着）——证报缺判据咬的是"本体有没有这个字段"，
     // 也证 ① 的绿不是别处兜底给的。
@@ -156,7 +135,6 @@ describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配�
     const run = async () => {
       const t = await makeApp();
       await seedBattery(t);
-      await materializeGeneratedMaintenanceOrders(t);
       t.services.solvers.setOptimizer(new MockFL());
       const bases = await t.repos.objects.listByType("demo", "Base");
       return t.services.solvers.invoke(
@@ -189,29 +167,27 @@ describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配�
     expect(byId.get("meishan")!.serveCost!).toBeGreaterThan(byId.get("hefei")!.serveCost!);
   });
 
-  it("⑤ tripwire（本单之外的残留缺口·引擎半）：client 角色赢家 MaintenanceOrder 在 demo **零实例** → 链路仍断", async () => {
-    // 不做 materialize —— 这就是**生产实况**。断点已从「open_cost 报缺」右移到「clients 为空」：
-    //   · assembleBaselineFromSelection（solvers/service.ts:3734）取 clientCands[0] 时**不检查候选类型有无实例**；
-    //   · 赢家 MaintenanceOrder 由 generateBattery 产出却从未被 synthetic/service.ts 物化（生成了没落库）。
-    // **诚实话**：用户今天**仍拿不到结论**——invoke 抛错 ⇒ orchestrator 的 run.ok===false 分支
-    // （agentcore/router/orchestrator.ts:1047-1053）照样发 routing.degraded 落 path-B，只是 reason
-    // 从「装配报缺」变成「optimize_whatif 未接入/被门」。本单只修得动数据半这一格（工单范围边界）。
-    // 任一半被修好（引擎跳过空候选 / 合成把该类落库），本用例即转红 —— 那是好消息，届时删掉它。
-    // 修法见 docs/PRD-opt-whatif-data.md §5（两条最小路径，任选其一即闭）。
+  it("⑤ 原 tripwire 已转正（缺口闭合·WO-OPT-WHATIF-CLOSE 收编）：生产实况下 client 角色不再落到零实例类型", async () => {
+    // 本用例的**前身**是一条 tripwire：它断言 `MaintenanceOrder` 在 demo 零实例、且同链路必抛
+    // 「需 facilities[] + clients[]」——那是"数据半修好了、引擎半还没"的中间态诚实记账。
+    // WO-OPT-WHATIF-CLOSE 把两半都修了，于是它按设计转红并在此**转正为闭合断言**：
+    //   · 数据半：`MaintenanceOrder` 进物化清单 ⇒ 不再零实例；
+    //   · 引擎半：装配器「零实例不中选（A1）+ 从属降权（A2）」⇒ client 落到真需求点，且**不抛错**。
     const t = await makeApp();
     await seedBattery(t);
     t.services.solvers.setOptimizer(new MockFL());
-    expect((await t.repos.objects.listByType("demo", "MaintenanceOrder")).length).toBe(0);
+    expect((await t.repos.objects.listByType("demo", "MaintenanceOrder")).length).toBeGreaterThan(0);
     const bases = await t.repos.objects.listByType("demo", "Base");
-    await expect(
-      t.services.solvers.invoke(ctxOf("demo"), "optimize_whatif", OPT_ARGS(bases.map((b) => b.id), "facilities.changzhou.openCost", 150)),
-    ).rejects.toThrow(/需 facilities\[\] \+ clients\[\]/); // **不再**是 open_cost 报缺 = 本单这半已通
+    const out = await t.services.solvers.invoke(ctxOf("demo"), "optimize_whatif", OPT_ARGS(bases.map((b) => b.id), "facilities.changzhou.openCost", 150));
+    expect((out as { applicable?: boolean }).applicable).not.toBe(false);
+    const clientType = String((out.baselineSolution as { clientType?: string }).clientType ?? "");
+    const clientRows = await t.repos.objects.listByType("demo", clientType);
+    expect(clientRows.length).toBeGreaterThan(0); // 中选的 client 类型**有真实例**（原病灶：恒 0）
   });
 
   it("⑥ REST 入口同形（AgentCore OBO 实打的那条路）：/a/v1/solvers/optimize_whatif/invoke 装配不报缺", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    await materializeGeneratedMaintenanceOrders(t);
     t.services.solvers.setOptimizer(new MockFL());
     const bases = await t.repos.objects.listByType("demo", "Base");
     const res = await t.app.inject({
