@@ -810,6 +810,13 @@ export class SyntheticService {
     await putAll("QualityLot", g.qualityLots, "qlotId");
     await putAll("InspectionResult", g.inspectionResults, "resultId");
     await putAll("EquipmentOEE", g.equipmentOEEs, "oeeId");
+    //  ①c WO-OPT-WHATIF-CLOSE · 设备维修工单（同一批「生成器已产、物化清单漏」的欠账，本轮补最后一类）。
+    //     `MaintenanceOrder` 在 demo 是**完整声明却零实例**的类型：propDef(battery.ts:1581) + 展示名 + 连接器映射
+    //     (conn-eam/eam_maint_orders) + 数据类目(data-categories.ts:53) + 链路类型 maint_for_equip/spare_for_maint
+    //     全都在，唯独 193 行确定性行（battery.ts hashString 派生·**零 rng**）从没落库 ⇒ 上述接线全是死的。
+    //     它**不属于**上一行注释里那批「高量低值执行类」——193 行比已物化的 WorkOrder(260) 还少，
+    //     且设备维修直接影响产能，是决策相关执行层。纯投影 putAll（无随机/时钟）⇒ R6 同 seed 字节一致。
+    await putAll("MaintenanceOrder", g.maintenanceOrders, "moId");
     //  ② 统一异常流：generateBattery 已投 4 本地源（停机/告警/缺陷/缺料）；此处合并第 5 源 TriggerRule
     //     （→CUSTOMER，出自 generateExtended，同一 projectExceptionEvents·纯投影 R6），四源归一落一等对象。
     const t0Exc = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
