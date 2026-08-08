@@ -239,6 +239,31 @@ demo 是给人随便点、随便问的环境，点亮 = 用户用着用着突然
 
 ---
 
+## 4.5 · 门跑了什么（含一条**不是我造成**的红，附证明）
+
+| 门 | 结果 |
+|---|---|
+| `pnpm -r build` | **RC=0**（共 3 次，含变异撤回后重建） |
+| `pnpm --filter agentcore test` | **RC=0** · 150 files / **870 tests** 全绿（含本单新增门 4/4 与三份改过的生产镜像） |
+| `pnpm --filter datacore test` | **RC=1** · **1365 passed / 1 failed / 16 skipped**（唯一那条红见下） |
+| `test/solver-context-lazy-loading.seam.test.ts` | RC=0 · 6/6（`dc.lazy-solver-context` 的点亮前置） |
+| `test/demo-lightup-seam.test.ts`（干净树） | RC=0 · 7/7 |
+| `test/dark-feature-default-off.test.ts` + `features.test.ts` | RC=0 · 10/10 |
+| `prd:check` / `prd:coverage` | RC=0 |
+
+**唯一那条红：`empty-tenant-bootstrap.test.ts`——是负载超时，不是断言失败，且与本单无关。三条独立证据：**
+
+1. **失败原文是超时不是断言**：`Test timed out in 180000ms`，该用例实测耗时 **247345ms**。
+2. **结构上碰不到**：该测试用 `makeApp()`（**只调 `seedDemo`，从不调 `seedDemoEntitlements`**），
+   且全文对 `DEMO_LIGHTUP` / 本轮五个键 / `seedDemoEntitlements` 的引用数 = **0**。
+   本单在 datacore 的生产改动只有 `DEMO_LIGHTUP` 这一个常量，其唯一生产消费方就是 `seedDemoEntitlements`。
+3. **给足时间就绿**（真跑复验）：`vitest run test/empty-tenant-bootstrap.test.ts --testTimeout=900000`
+   → **RC=0 · 2/2 通过**（两用例各 85.8s / 94.2s）。
+
+> 超时的真因是机器争抢：跑这一轮时**另有两个 agent 的 datacore 套件同时在跑**（`wt-int` 与
+> `agent-a28b...`），4 核 load 12–17。它跑的是 **scale "M"** 合成建域，本就是全库最重的用例之一。
+> **我没有把这条红改弱、也没有调高套件里的 timeout 去让它变绿** —— 只在**复验时**单独放宽时限取证。
+
 ## 5 · 本体引用与影响
 
 **对象类型**：无新增/变更。
