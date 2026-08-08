@@ -35,6 +35,8 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject }
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
+// WO-SANDBOX-S3：杠杆标签/单位单源已下沉到叶模块（见下方 re-export 注释）；本文件内部用别名引用同一份对象。
+import { LEVER_PROP_META as LEVER_PROP_META_LOCAL, type LeverValueKind } from "./lever-meta.js";
 import { ChainScopeSchema } from "@platform/contracts";
 import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ontology/query-engine.js";
 import { nlToQuery } from "../ontology/nl-to-query.js";
@@ -337,7 +339,10 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
   // WO-SANDBOX-E3 阻滞点扫描：impediments 是主表；unresolved/caveats/thresholds 是**诚实位**——
   // 前端必须能渲染"哪条判据判不出来、为什么"与"这条结论的旋钮在哪"，故一并进形状契约（漏了就成盲区）。
-  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds"],
+  // WO-SANDBOX-S3 追加三键：candidateStats（每点探了几个杠杆/为什么没方案的逐点账）·
+  // candidatesTruncated（探针预算耗尽的显式截断标）· candidateProbes（试算次数）。
+  // 三者都是**诚实位**：漏进形状契约 = 前端看不见"为什么这个阻滞点没有方案"，那就是新一种盲区。
+  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes"],
 };
 
 const DAY_MS = 86400000;
@@ -363,29 +368,13 @@ const LEVER_FACTOR_PROPS: Record<string, string[]> = {
 };
 
 /**
- * WO-LEVER-FACTOR-I18N + WO-LEVER-UNIT · 杠杆属性 → {中文显示名·单位·值类}**单一真值**（治本单源：
- * `discoverLevers` 下发 `factor`/`unit`/`valueKind`·前端只格式化不内联·灭"前后端各存一份标签/单位"漂移·R14 非内联）。
- * 键 = `对象类型.属性`（与 LEVER_FACTOR_PROPS 值域对齐·缺项 → 下游诚实兜底不臆造）。
- * `kind` 决定前端格式化：ratio=比率（0–1 存储自动×100 显示 %）；days/hours/count/qty=整数+单位后缀。
- * 单位真值随电池合成口径核定（utilization/oee/yield/attendance/coverage/outsourceRatio 存 0–1 → %；
- * leadTime/etaDay 存天；shifts 存班；shiftHours 存小时；changeoverMin 存分钟；onHand 整数库存·单位随物料不臆造）。
+ * 杠杆属性 → {中文显示名·单位·值类} 单一真值。
+ * **实现已迁至 `./lever-meta.js`**（WO-SANDBOX-S3：候选枚举器也要用它，回头 import `service.ts` 会成环）。
+ * 此处 re-export 保持对外符号不变 —— 消费方（`test/schema-display-name.seam.test.ts`）一个字节不用改。
+ * ⚠ 单一真值仍在 `lever-meta.ts`，**不要在本文件另存一份**。
  */
-type LeverValueKind = "ratio" | "days" | "count" | "hours" | "minutes" | "qty";
-export const LEVER_PROP_META: Record<string, { label: string; unit: string; kind: LeverValueKind }> = {
-  "Equipment.oee_current": { label: "设备·OEE", unit: "%", kind: "ratio" }, // debattery-allow
-  "Line.utilization": { label: "产线·利用率", unit: "%", kind: "ratio" }, // debattery-allow
-  "Process.yield_baseline": { label: "工序·良率基线", unit: "%", kind: "ratio" }, // debattery-allow
-  "Process.attendance": { label: "工序·出勤率", unit: "%", kind: "ratio" }, // debattery-allow
-  "Process.shifts": { label: "工序·班次数", unit: "班", kind: "count" }, // debattery-allow
-  "Process.shiftHours": { label: "工序·班次工时", unit: "小时", kind: "hours" }, // debattery-allow
-  "MaterialBalance.coverage": { label: "物料齐套·覆盖率", unit: "%", kind: "ratio" }, // debattery-allow
-  "Material.onHand": { label: "物料·现货库存", unit: "", kind: "qty" }, // debattery-allow
-  "Material.leadTime": { label: "物料·到货周期", unit: "天", kind: "days" }, // debattery-allow
-  "Order.outsourceRatio": { label: "订单·外协比例", unit: "%", kind: "ratio" }, // debattery-allow
-  "ChangeoverMatrix.changeoverMin": { label: "换型·时长", unit: "分钟", kind: "minutes" }, // debattery-allow
-  "Shipment.etaDay": { label: "在途·到货天", unit: "天", kind: "days" }, // debattery-allow
-};
-const leverPropMeta = (typeKey: string, prop: string) => LEVER_PROP_META[`${typeKey}.${prop}`];
+export { LEVER_PROP_META, type LeverValueKind } from "./lever-meta.js";
+const leverPropMeta = (typeKey: string, prop: string) => LEVER_PROP_META_LOCAL[`${typeKey}.${prop}`];
 /** 杠杆中文显示名（单一真值·缺则 undefined → 下游诚实兜底·不臆造）。 */
 const leverPropLabel = (typeKey: string, prop: string): string | undefined => leverPropMeta(typeKey, prop)?.label;
 /** 杠杆值单位 + 值类下发字段（单一真值·缺则空对象 → 前端诚实回退旧显示·不臆造单位）。 */
@@ -3136,7 +3125,10 @@ export class SolverService {
     if (!parsed.success) throw validationError(`scope 不合法：${parsed.error.issues.map((i) => i.message).join("；")}`);
     const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
     const materialBalances = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
-    return detectChainImpediments({ c, materialBalances, scope: parsed.data });
+    // WO-SANDBOX-S3：一等关系行是候选枚举器 `LINK_HOP` join 的**唯一**可达面来源（改种子里的关系，
+    // 可达面自动跟着变；代码里没有第二张"类型对照表"）。判定逻辑不读它，故对 E3 的判定结果零影响。
+    const links = await this.repos.links.list(ctx.tenantId, () => true);
+    return detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
   }
 
   /**

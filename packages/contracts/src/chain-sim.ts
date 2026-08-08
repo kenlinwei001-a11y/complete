@@ -598,11 +598,16 @@ export type ChainManifestation = z.infer<typeof ChainManifestationSchema>;
  *                  且该实例上真有这个属性）。join 键 = 对象实例本身，最强。
  *  · `LINK_HOP`    沿**一等关系行**（`links` 表，如 `line_has_process` / `material_has_batch`）一跳可达的对象。
  *                  关系是数据，不是代码里写的类型对照表 —— 改种子里的关系，可达面自动跟着变。
+ *  · `KEY_JOIN`    **值键相等**：落点对象的某个字符串属性值 == 目标类型某个**唯一键**属性的值
+ *                  （唯一性由数据现算，不是代码里声明的外键表）。这是给「本体上是孤点、links 表里一行都没有」
+ *                  的对象类型留的真路径（实测 `MaterialBalance` 就是这样：零 link 行，但
+ *                  `MaterialBalance.material` 逐字等于 `Material.name`）。
+ *                  纪律：**只认字符串键**（数值巧合相等会造出假引用边）；匹配不到 / 匹配到多行一律丢弃。
  *  · `RULE_GATE`   判据的规则码 == 因子的拨动闸（`ChainImpediment.evidence.ruleKey === CapacityFactorBinding.ruleGate`）。
- *                  两侧都是**规则库里的同一个规则码**，是天然共有的维度。实例再由 `keyJoin`（值键相等）收窄，
+ *                  两侧都是**规则库里的同一个规则码**，是天然共有的维度。实例再由 `KEY_JOIN` 同一套值键相等收窄，
  *                  收窄不了就**诚实丢弃**，绝不广播到整个类型冒充"找到了"。
  */
-export const CANDIDATE_JOIN_KINDS = ["LOCUS_PROP", "LINK_HOP", "RULE_GATE"] as const;
+export const CANDIDATE_JOIN_KINDS = ["LOCUS_PROP", "LINK_HOP", "KEY_JOIN", "RULE_GATE"] as const;
 export const CandidateJoinKindSchema = z.enum(CANDIDATE_JOIN_KINDS);
 export type CandidateJoinKind = z.infer<typeof CandidateJoinKindSchema>;
 
@@ -610,7 +615,8 @@ export type CandidateJoinKind = z.infer<typeof CandidateJoinKindSchema>;
 export const CANDIDATE_JOIN_RANK: Readonly<Record<CandidateJoinKind, number>> = {
   LOCUS_PROP: 0,
   LINK_HOP: 1,
-  RULE_GATE: 2,
+  KEY_JOIN: 2,
+  RULE_GATE: 3,
 };
 
 /**
@@ -629,15 +635,22 @@ export const CandidateEffectKindSchema = z.enum(CANDIDATE_EFFECT_KINDS);
 export type CandidateEffectKind = z.infer<typeof CandidateEffectKindSchema>;
 
 /**
- * **目标档位从哪来**。两种都取**数据里真实存在的值**，本文件与引擎里**没有任何步长常数**
+ * **目标档位从哪来**。三种都取**数据里真实存在的值**，本文件与引擎里**没有任何步长常数**
  * （`0.05` / `±1 天` 这种"看着合理的一步"就是 RL5 禁的内联常数）。
  *
  *  · `THRESHOLD`  = 触发该判据的**规则阈值本身**（`evidence.threshold`，真值来自规则）——「恰好拨回线内」。
- *  · `PEER_BEST`  = **同侪对象上该属性的真实最优取值**（同类型、同基地优先）——「同类里已经有人做到这个数」。
+ *  · `PEER_NEXT`  = **同侪里紧邻当前值的下一个真实取值**（该方向上最近的一档）——「先迈一小步」。
+ *  · `PEER_BEST`  = **同侪对象上该属性的真实极值**（同类型、同基地优先）——「同类里已经有人做到这个数」。
  *
- * 两种档位都算不出来（阈值与当前值同 / 同侪全等）→ 该杠杆**不产候选**并记原因，不拍一个步长。
+ * 为什么必须有 `PEER_NEXT`（实测逼出来的，不是设计洁癖）：产能链的物料项是
+ * `clamp(onHand/(dailyUse×leadTime), 0, 1)` 且对全部关键物料取 **min** ——
+ * 任何把最紧那种物料抬过"次紧"的拨法都得到**逐字节相同**的产能，于是"多补库存"与"缩短到货"
+ * 两条本质不同的解法在效果层完全雷同、被去重规则合并成一条。加一档"先迈一小步"，
+ * 两条解法才真的分得开（这不是为了凑数：`PEER_NEXT` 与 `PEER_BEST` 的差别正是**投入力度**这一维决策）。
+ *
+ * 三种档位都算不出来（阈值与当前值同 / 同侪全等）→ 该杠杆**不产候选**并记原因，不拍一个步长。
  */
-export const CANDIDATE_RUNG_KINDS = ["THRESHOLD", "PEER_BEST"] as const;
+export const CANDIDATE_RUNG_KINDS = ["THRESHOLD", "PEER_NEXT", "PEER_BEST"] as const;
 export const CandidateRungKindSchema = z.enum(CANDIDATE_RUNG_KINDS);
 export type CandidateRungKind = z.infer<typeof CandidateRungKindSchema>;
 
@@ -705,6 +718,13 @@ export const SolutionCandidateSchema = z
       /** 因子颗粒（base / process / model-material）—— 三类阻滞点族别差异的**数据载体**之一。 */
       grain: z.string().min(1).optional(),
       unit: z.string(),
+      /**
+       * 值类（`LEVER_PROP_META.kind`：ratio/days/count/hours/minutes/qty）——**前端按它格式化**。
+       * `fromValue`/`toValue` 一律是**存储口径原值**，本文件与引擎都不替前端做换算
+       * （实测本仓 `Line.utilization` 存 0–100 而 `Process.attendance` 存 0–1，两者 kind 同为 ratio ——
+       * 谁在后端替前端 ×100，谁就会把其中一个变成 9589%。量纲换算归前端一处做，不在链上各做一遍）。
+       */
+      valueKind: z.string().min(1).optional(),
     }),
     fromValue: z.number(),
     toValue: z.number(),
