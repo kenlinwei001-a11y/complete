@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-07",
+  "generatedAt": "2026-08-08",
   "ontology": {
     "invariants": [
       "R1",
@@ -1326,6 +1326,27 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-nav-gate.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "packages/contracts/src/workspace.ts",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-nav-ia-reorg.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1338,6 +1359,25 @@
       "artifacts": [
         "apps/frontend-shell/src/pages/ShellLayout.tsx",
         "apps/frontend-shell/src/pages/adminRegistry.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-node-semantics.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/chain-loss.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+        "apps/frontend-shell/test/node-semantics.seam.test.tsx"
       ],
       "brokenArtifacts": []
     },
@@ -1626,6 +1666,39 @@
       "artifacts": [
         "apps/datacore/src/synthetic/battery.ts",
         "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-multiplan.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/catalog.test.ts",
+        "apps/datacore/test/ontology-core.test.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/store/eventInvalidation.ts",
+        "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "apps/frontend-shell/src/views/sim/SimComparePanel.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/chain-sim.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "scripts/gate-ledger.json"
       ],
       "brokenArtifacts": []
     },
@@ -2062,6 +2135,31 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-topo-realdata.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R2",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-12",
+        "G-4",
+        "G-5",
+        "G-6"
+      ],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/ontology-governance.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/sim/physicalTopology.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-traceability-and-baseline-v2.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2088,6 +2186,21 @@
         "G-8"
       ],
       "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-transit-geometry.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+        "apps/frontend-shell/test/transit-geometry.seam.test.tsx"
+      ],
       "brokenArtifacts": []
     },
     "PRD-unified-build-engine.md": {
@@ -2223,6 +2336,7 @@
       "PRD-skill-compiler-registry.md",
       "PRD-skill-governance-learning.md",
       "PRD-skill-migration.md",
+      "PRD-topo-realdata.md",
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
       "PRD-unified-build-engine.md"
@@ -2231,6 +2345,7 @@
       "PRD-addendum-admin-console-closure.md",
       "PRD-skill-compiler-registry.md",
       "PRD-skill-migration.md",
+      "PRD-topo-realdata.md",
       "PRD-unified-build-engine.md"
     ],
     "G-7": [
@@ -2250,6 +2365,7 @@
       "PRD-live-traceable-data.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md",
+      "PRD-topo-realdata.md",
       "PRD-unified-build-engine.md"
     ],
     "G-2": [
@@ -2286,12 +2402,14 @@
       "PRD-self-driving-qos-data-foundation.md",
       "PRD-sop-balance-1to1.md",
       "PRD-system-ontogenesis-spec.md",
+      "PRD-topo-realdata.md",
       "PRD-unified-build-engine.md"
     ],
     "G-12": [
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-redesign.md",
-      "PRD-skill-governance-learning.md"
+      "PRD-skill-governance-learning.md",
+      "PRD-topo-realdata.md"
     ],
     "G-11": [
       "PRD-sandbox-ontogenesis-buildplan.md",
@@ -2327,10 +2445,13 @@
       "PRD-build-workflow-runtime.md",
       "PRD-cli-full-coverage.md",
       "PRD-global-sim-live-upgrade.md",
+      "PRD-nav-gate.md",
       "PRD-ontoflow-data-builder.md",
       "PRD-ontology-7elements.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-skill-compiler-registry.md",
-      "PRD-skill-governance-learning.md"
+      "PRD-skill-governance-learning.md",
+      "PRD-topo-realdata.md"
     ],
     "scripts/check-cli-parity.mjs": [
       "PRD-A15-cli-universal-operation-shell.md",
@@ -2358,6 +2479,7 @@
       "PRD-inference-line.md",
       "PRD-ontology-7elements.md",
       "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-compiler-registry.md"
     ],
@@ -2415,7 +2537,8 @@
       "PRD-quarter-rolling-1to1.md",
       "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
-      "PRD-skill-migration.md"
+      "PRD-skill-migration.md",
+      "PRD-topo-realdata.md"
     ],
     "apps/datacore/src/synthetic/seed.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md"
@@ -2434,6 +2557,7 @@
     "packages/contracts/src/base-registry.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-inference-line.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md",
       "PRD-skill-governance-learning.md",
       "PRD-skill-migration.md"
@@ -2449,6 +2573,7 @@
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-skill-governance-learning.md"
     ],
     "apps/agentcore/src/tools/clients.ts": [
@@ -2506,6 +2631,7 @@
     ],
     "apps/datacore/src/solvers/plan.ts": [
       "PRD-attribution-routing-plan-audit.md",
+      "PRD-node-semantics.md",
       "PRD-plan-audit-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
@@ -2567,13 +2693,15 @@
     ],
     "apps/frontend-shell/src/api/endpoints.ts": [
       "PRD-capacity-live-cockpit.md",
-      "PRD-global-sim-live-upgrade.md"
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-sandbox-multiplan.md"
     ],
     "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": [
       "PRD-capacity-live-cockpit.md"
     ],
     "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": [
-      "PRD-capacity-live-cockpit.md"
+      "PRD-capacity-live-cockpit.md",
+      "PRD-sandbox-multiplan.md"
     ],
     "packages/contracts/src/capacity-factors.ts": [
       "PRD-capacity-live-cockpit.md"
@@ -2612,7 +2740,8 @@
       "PRD-cli-full-coverage.md"
     ],
     "packages/contracts/src/workspace.ts": [
-      "PRD-de-battery-multitenant-config.md"
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-nav-gate.md"
     ],
     "apps/agentcore/src/agent/mcp-router.ts": [
       "PRD-decision-resource-intelligence-layer.md"
@@ -2674,7 +2803,8 @@
       "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/sop.ts": [
-      "PRD-empty-tenant-bootstrap.md"
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-node-semantics.md"
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
@@ -2701,10 +2831,13 @@
     ],
     "scripts/gate-ledger.json": [
       "PRD-gate-ledger.md",
+      "PRD-nav-gate.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md"
     ],
     "scripts/gate.sh": [
       "PRD-gate-ledger.md",
+      "PRD-nav-gate.md",
       "PRD-skill-compiler-registry.md"
     ],
     "apps/datacore/src/domain.ts": [
@@ -2737,7 +2870,8 @@
       "PRD-global-sim.md"
     ],
     "apps/datacore/src/ontology-governance.ts": [
-      "PRD-goal-metric-owner-spine.md"
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-topo-realdata.md"
     ],
     "apps/datacore/src/synthetic/data-categories.ts": [
       "PRD-goal-metric-owner-spine.md"
@@ -2786,6 +2920,7 @@
     ],
     "packages/contracts/src/decision-kernel.ts": [
       "PRD-inference-line.md",
+      "PRD-sandbox-multiplan.md",
       "PRD-skill-governance-learning.md"
     ],
     "packages/contracts/src/gap-attribution.ts": [
@@ -2798,11 +2933,38 @@
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
     ],
+    "apps/datacore/src/features.ts": [
+      "PRD-nav-gate.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/datacore/src/synthetic/view-manifest.ts": [
+      "PRD-nav-gate.md"
+    ],
     "apps/frontend-shell/src/pages/ShellLayout.tsx": [
+      "PRD-nav-gate.md",
       "PRD-nav-ia-reorg.md"
+    ],
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx": [
+      "PRD-nav-gate.md"
+    ],
+    "scripts/check-nav-group-coverage.mjs": [
+      "PRD-nav-gate.md"
     ],
     "apps/frontend-shell/src/pages/adminRegistry.ts": [
       "PRD-nav-ia-reorg.md"
+    ],
+    "apps/datacore/src/solvers/chain-loss.ts": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/datacore/src/solvers/extended.ts": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx": [
+      "PRD-node-semantics.md"
     ],
     "apps/datacore/src/connectors/parsers.ts": [
       "PRD-ontoflow-data-builder.md"
@@ -2863,10 +3025,6 @@
     "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts": [
       "PRD-optimize-whatif-conversational-wiring.md"
     ],
-    "apps/datacore/src/features.ts": [
-      "PRD-optimize-whatif-conversational-wiring.md",
-      "PRD-skill-compiler-registry.md"
-    ],
     "apps/datacore/src/solvers/opt-binding.ts": [
       "PRD-optimize-whatif-conversational-wiring.md"
     ],
@@ -2907,7 +3065,34 @@
       "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
-      "PRD-sandbox-metro-semantics.md"
+      "PRD-sandbox-metro-semantics.md",
+      "PRD-transit-geometry.md"
+    ],
+    "apps/agentcore/src/event-subscriptions.ts": [
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/datacore/src/solvers/chain-impediment.ts": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/datacore/test/catalog.test.ts": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/datacore/test/ontology-core.test.ts": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/src/store/eventInvalidation.ts": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "packages/contracts/src/chain-sim.ts": [
+      "PRD-sandbox-multiplan.md"
     ],
     "apps/datacore/src/sim/propagation.ts": [
       "PRD-sandbox-redesign.md"
@@ -2941,10 +3126,6 @@
     ],
     "apps/agentcore/src/dril/resource-registry.ts": [
       "PRD-skill-compiler-registry.md"
-    ],
-    "apps/agentcore/src/event-subscriptions.ts": [
-      "PRD-skill-compiler-registry.md",
-      "PRD-skill-governance-learning.md"
     ],
     "apps/agentcore/src/metrics.ts": [
       "PRD-skill-compiler-registry.md",
@@ -3077,6 +3258,15 @@
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
+    ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-topo-realdata.md"
+    ],
+    "apps/frontend-shell/src/views/sim/physicalTopology.ts": [
+      "PRD-topo-realdata.md"
+    ],
+    "apps/frontend-shell/test/transit-geometry.seam.test.tsx": [
+      "PRD-transit-geometry.md"
     ]
   }
 }
