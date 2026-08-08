@@ -1839,6 +1839,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-semantics-singlesource.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+        "apps/frontend-shell/test/chain-node-semantics-typebinding.seam.test.ts",
+        "scripts/check-chain-node-singlesource.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-simulation-sandbox.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2816,7 +2834,8 @@
     ],
     "apps/datacore/src/sop.ts": [
       "PRD-empty-tenant-bootstrap.md",
-      "PRD-node-semantics.md"
+      "PRD-node-semantics.md",
+      "PRD-semantics-singlesource.md"
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
@@ -2973,7 +2992,8 @@
       "PRD-node-semantics.md"
     ],
     "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": [
-      "PRD-node-semantics.md"
+      "PRD-node-semantics.md",
+      "PRD-semantics-singlesource.md"
     ],
     "apps/frontend-shell/test/node-semantics.seam.test.tsx": [
       "PRD-node-semantics.md"
@@ -3126,6 +3146,15 @@
     ],
     "apps/datacore/test/gap-attribution-segment-scope.test.ts": [
       "PRD-segment-scoped-gap-attribution.md"
+    ],
+    "apps/datacore/src/synthetic/cadence.ts": [
+      "PRD-semantics-singlesource.md"
+    ],
+    "apps/frontend-shell/test/chain-node-semantics-typebinding.seam.test.ts": [
+      "PRD-semantics-singlesource.md"
+    ],
+    "scripts/check-chain-node-singlesource.mjs": [
+      "PRD-semantics-singlesource.md"
     ],
     "apps/agentcore/src/auth.ts": [
       "PRD-skill-compiler-registry.md"
