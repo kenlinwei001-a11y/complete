@@ -41,6 +41,13 @@ run() {
 
 run "BUILD (pnpm -r build)" pnpm -r build
 run "genuine-sim:check" node scripts/check-genuine-sim.mjs
+# WO-NAV-GATE · 导航归组覆盖门（本体 §8 G-NAV-FALLBACK-BUCKET 的机械门那一半）。
+#
+# 接 gate.sh 而**不**接 `pnpm gates` 是刻意的、且不是偷懒：`check-ontology-writeback.mjs` 正向断言
+# 「每个并入 `pnpm gates` 的门都必须在本体 §7 登记」。本门由 dev 单产出、§7 回写归审核方，
+# 上 gates 链却没同批写 §7 → `ontology-writeback:check` 当场红。故先接 gate.sh（GATE_SH，
+# 每次交付门真跑，不是死门），门账 disposition=WIRE 记着「§7 登记后升 GATES_CHAIN」这笔待办。
+run "nav-group-coverage:check" node scripts/check-nav-group-coverage.mjs
 # `pnpm gates` = 一批治理门（debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 / 描述覆盖 …）。
 #
 # ⛔ 为何补进来（第三层假绿·本地与 CI 覆盖面不一致）：本脚本自称"防假绿的单一入口"，
