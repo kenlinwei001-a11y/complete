@@ -193,7 +193,11 @@ describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配�
     // 不做 materialize —— 这就是**生产实况**。断点已从「open_cost 报缺」右移到「clients 为空」：
     //   · assembleBaselineFromSelection（solvers/service.ts:3734）取 clientCands[0] 时**不检查候选类型有无实例**；
     //   · 赢家 MaintenanceOrder 由 generateBattery 产出却从未被 synthetic/service.ts 物化（生成了没落库）。
+    // **诚实话**：用户今天**仍拿不到结论**——invoke 抛错 ⇒ orchestrator 的 run.ok===false 分支
+    // （agentcore/router/orchestrator.ts:1047-1053）照样发 routing.degraded 落 path-B，只是 reason
+    // 从「装配报缺」变成「optimize_whatif 未接入/被门」。本单只修得动数据半这一格（工单范围边界）。
     // 任一半被修好（引擎跳过空候选 / 合成把该类落库），本用例即转红 —— 那是好消息，届时删掉它。
+    // 修法见 docs/PRD-opt-whatif-data.md §5（两条最小路径，任选其一即闭）。
     const t = await makeApp();
     await seedBattery(t);
     t.services.solvers.setOptimizer(new MockFL());
