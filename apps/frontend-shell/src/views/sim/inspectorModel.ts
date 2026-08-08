@@ -555,9 +555,22 @@ const jitter = (seed: number, key: string, lo: number, hi: number): number => {
 /** 段 id 一律从**调用方给的 `nodeId`** 派生（`${nodeId}::${kind}`），本文件不持有任何节点 id 清单。 */
 export const stepIdOf = (nodeId: string, suffix: string): string => `${nodeId}::${suffix}`;
 
+/**
+ * ⚠ 本串于 2026-08-08（WO-TRANSIT-WIRE）**整句改写**：旧文案是
+ * 「缺承载：`Cadence` 对象全仓 0 条（**运行态实测** `GET /a/v1/objects?type=Cadence` → total 0，对象类型尚不存在）」。
+ * 那句话写下的当天是真的，**今天是假的** —— D1 并线后 `apps/datacore/src/synthetic/service.ts:712`
+ * `putAll("Cadence", …)` 真落库，`apps/datacore/src/app.ts:1447` 的推演 tick 已在从对象库读它。
+ * 它比同族病灶更能骗人，因为它自称"运行态实测" —— 而**实测的保质期等于做实测的那一天**。
+ * 现文案说的是今天真正的缺口：不是"没有"，是**本面板没去要**（三分法里的「没接线」，修法完全不同）。
+ */
 const CADENCE_ABSENCE_REASON =
-  "缺承载：`Cadence` 对象全仓 0 条（运行态实测 `GET /a/v1/objects?type=Cadence` → total 0，对象类型尚不存在）。" +
-  "等待期望公式已由 S0 冻结（`expectedCadenceWaitDays`），但**没有值可以喂给它**——滑杆留着供 what-if，当前值不给假默认。";
+  "没接线（不是没承载）：`Cadence` 承载**已经在**——`apps/datacore/src/synthetic/service.ts:712` " +
+  "`putAll(\"Cadence\", …)` 真落库，`apps/datacore/src/app.ts:1447` 的推演 tick 已在读它。" +
+  "缺口在本面板这一侧：这里的输入来自占位构造器 `buildPlaceholderInspectorInput`，它**不发任何查询、也不接收任何 `Cadence` 行**，" +
+  "所以拿不到实测周期。等待期望公式已由 S0 冻结（`expectedCadenceWaitDays`），**缺的是那个值的来路，不是那个值不存在**。" +
+  "修法 = 把该节点的 `Cadence` 行按 `cadenceFromProps` 口径喂进来；接线后仍要分得开两种结果：" +
+  "推得出周期的节点给真值，`dataMode` 非 SYNTHETIC 的节点给带 `emptyReason` 的诚实缺席（**无节拍，不是 0**——0 的语义是随到随办）。" +
+  "在那之前：滑杆留着供 what-if，当前值不给假默认。";
 
 const REWORK_ABSENCE_REASON =
   "缺承载：仓里有不良数量与判定（DefectRecord / QualityLot / InspectionResult），但**没有返工工时或天数字段**；" +

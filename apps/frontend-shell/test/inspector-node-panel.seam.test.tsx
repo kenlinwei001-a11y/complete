@@ -95,7 +95,8 @@ describe("SEAM · K 类节拍：等待期望 = everyDays ÷ 2", () => {
   it("节拍 30d → 7d：等节拍段与前置期的缩短量**恰好** = Δ(everyDays)/2 = 11.5 天", () => {
     render(<InspectorNodePanel input={mkInput()} />);
 
-    // 基线：Cadence 对象全仓 0 条 ⇒ 等节拍段 EMPTY（不补 0）
+    // 基线：本面板的输入是占位构造器（不发查询、拿不到 Cadence 行）⇒ 等节拍段 EMPTY（不补 0）
+    // ⚠ 此处原写「Cadence 对象全仓 0 条」，D1 并线后已是假话（service.ts:712 真落库）。
     expect(daysOf("cadence")).toBeNull();
     const leadNoCadence = leadDays();
 
@@ -143,7 +144,18 @@ describe("SEAM · K 类节拍：等待期望 = everyDays ÷ 2", () => {
     // 滑块只能停在 min 上，但辅助技术读到的必须是「没有值」而不是「值 = 最小值」
     expect(screen.getByTestId("insp-input-K1")).toHaveAttribute("aria-valuetext", expect.stringContaining("EMPTY"));
     expect(screen.getByTestId("insp-wf-cadence")).toHaveAttribute("data-provenance", "EMPTY");
-    expect(screen.getByTestId("insp-wf-reason-cadence")).toHaveTextContent(/Cadence.*0 条/);
+    /**
+     * 病因必须说准（WO-TRANSIT-WIRE 改口径不改强度）：旧断言咬的是「`Cadence` 对象全仓 0 条」，
+     * 而 D1 并线后那句话已经是假的（`synthetic/service.ts:712` `putAll("Cadence", …)` 真落库）。
+     * 现在咬的是今天真正的缺口 —— **本面板没去要**（占位构造器不发查询），
+     * 并加反向锁：那句自称"运行态实测"的旧文案一旦被写回来，本条当场红。
+     */
+    const cadenceReason = screen.getByTestId("insp-wf-reason-cadence");
+    expect(cadenceReason).toHaveTextContent("没接线");
+    expect(cadenceReason).toHaveTextContent("buildPlaceholderInspectorInput");
+    expect(cadenceReason.textContent ?? "", "「Cadence 全仓 0 条 / 对象类型尚不存在」今天是假话，不许写回来").not.toMatch(
+      /0 条|对象类型尚不存在/,
+    );
 
     setRange("K1", 30);
     expect(screen.getByTestId("insp-wf-cadence")).toHaveAttribute("data-provenance", "WHATIF");

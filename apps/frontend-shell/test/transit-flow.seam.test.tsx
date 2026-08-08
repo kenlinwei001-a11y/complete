@@ -305,9 +305,11 @@ describe("诚实缺席 · 拿不到真值的区间显示为空 + 一行原因", 
     render(<TransitFlowLayer sources={{}} />);
     const branch = screen.getByTestId("transit-branch-procurement");
     expect(branch).toHaveAttribute("data-status", "EMPTY");
-    // ── 生产实参就是这个（铁律 0.5 第 6 条：不许只测别的分支）──────────────
-    expect(PROCUREMENT_BRANCH.cause).toBe("NOT_FETCHED");
-    expect(PROCUREMENT_BRANCH.probe).toEqual({ fetched: null, usable: 0 });
+    // ── 咬的是**屏上那一份**（WO-TRANSIT-WIRE 后图层现算，不再读模块级常量）────
+    //    `sources` 给了但没给采购段三类 ⇒ 上层接管取数却一份都没喂 ⇒ 确实是"没拿到"。
+    expect(branch).toHaveAttribute("data-cause", "NOT_FETCHED");
+    expect(branch).toHaveAttribute("data-fetched", "");
+    expect(branch).toHaveAttribute("data-usable", "0");
     // 病因说准：屏上必须写「本层没去取」，且必须点名那三个**已经存在**的承载对象
     expect(branch).toHaveTextContent("本层没去取");
     expect(branch).toHaveTextContent("PurchaseOrder");
@@ -390,9 +392,9 @@ describe("诚实缺席 · 拿不到真值的区间显示为空 + 一行原因", 
     const absence = screen.getByTestId("transit-cadence-absence");
     expect(absence).toHaveAttribute("data-status", "EMPTY");
     expect(absence).toHaveTextContent("Cadence");
-    // ── 生产实参（铁律 0.5 第 6 条）────────────────────────────────────────
-    expect(CADENCE_ABSENCE.cause).toBe("NOT_FETCHED");
-    expect(CADENCE_ABSENCE.probe).toEqual({ fetched: null, usable: 0 });
+    // ── 咬的是**屏上那一份**（WO-TRANSIT-WIRE 后图层现算，不再读模块级常量）────
+    expect(absence).toHaveAttribute("data-cause", "NOT_FETCHED");
+    expect(absence).toHaveAttribute("data-fetched", "");
     expect(absence).toHaveTextContent("本层没去取");
     // ⛔ 反向锁：D1 并线后这句已成假话（cadence.ts 存在、service.ts:712 真落库）
     expect(absence).not.toHaveTextContent("节拍在数据层无承载");
@@ -575,26 +577,227 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
     expect(code, "缺席声明又被写回 `status: \"EMPTY\" as const` —— 那正是本门要治的病").not.toMatch(/status:\s*"EMPTY"\s+as\s+const/);
   });
 
-  // ── ④ 已知剩余缺口（本单范围边界外）：视图侧还没接查询 ──────────────────────
-  it("⚠ 已知缺口锁 · 图层尚未查 Cadence/采购段；**接线那天本条当场红**，提醒改调派生函数", () => {
-    const view = readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx");
-    const stillUnwired =
-      !view.includes('searchObjects("Cadence"') &&
-      !view.includes('searchObjects("CustomsClearance"') &&
-      !view.includes("deriveCadenceAbsence(");
-    expect(
-      stillUnwired,
-      [
-        "本条红了 = 有人给图层接上了 Cadence / 采购段查询 —— 这是好事，但必须同时做两件事：",
-        "  ① 把 TransitFlowLayer 里的 CADENCE_ABSENCE / PROCUREMENT_BRANCH 换成",
-        "     deriveCadenceAbsence({ engineNodes: nodes, cadenceRows }) / deriveProcurementBranch({ … })；",
-        "  ② 删掉本条断言（它的唯一职责就是在这一刻红一次）。",
-        "否则面板会继续显示 NOT_FETCHED —— 又变回一句写死的假话。",
-      ].join("\n"),
-    ).toBe(true);
-    // 缺口存在期间，生产实参必须诚实地报 NOT_FETCHED
+  /**
+   * ── ④ 零输入基线（`CADENCE_ABSENCE` / `PROCUREMENT_BRANCH` 两个模块级常量）────────
+   *
+   * ⚠ WO-TRANSIT-WIRE 之后**图层已经不读这两个值了**（它每次渲染现算）。
+   *   它们今天唯一的生产消费方是 `SandboxConsole.tsx` 的可算性图例 —— 那个图例自己不取数，
+   *   所以"零输入"这一档对它确实成立。此处保留断言 = 守住那条消费路的实参（铁律 0.5 第 6 条），
+   *   **不是**在替图层背书（图层那半由下面 ⑤ 的 DOM 接缝咬）。
+   */
+  it("零输入基线：不喂任何输入 ⇒ NOT_FETCHED（SandboxConsole 图例读的就是这一档）", () => {
     expect(CADENCE_ABSENCE.cause).toBe("NOT_FETCHED");
+    expect(CADENCE_ABSENCE.probe).toEqual({ fetched: null, usable: 0 });
     expect(PROCUREMENT_BRANCH.cause).toBe("NOT_FETCHED");
+    expect(PROCUREMENT_BRANCH.probe).toEqual({ fetched: null, usable: 0 });
+    // 消费方确实还在（这两个导出不是没人要的死符号 —— 删了会打红构建）
+    const console_ = readRepo("apps/frontend-shell/src/views/sim/SandboxConsole.tsx");
+    expect(console_).toContain("CADENCE_ABSENCE");
+    expect(console_).toContain("PROCUREMENT_BRANCH");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3.6 · WO-TRANSIT-WIRE：图层**真的去取**那些已经存在的数据（接线的接缝）
+//
+// 上一单把病因说准了，但视图侧那条线还没接：图层只发三条 searchObjects、宿主也不传 nodes，
+// 于是「缺席」这个判定**根本没有输入可判**，屏上那块面板永远在。本组咬的是接线本身：
+//  ① 喂真数据 ⇒ 缺席块从 DOM 消失、实况块上屏（**同一段代码，只换数据**）；
+//  ② 喂空数据 ⇒ 仍出缺席块，且**三档病因在 DOM 上就分得开**（此前只在派生层分得开）；
+//  ③ 真取数路（MSW）⇒ 屏上的病因**由响应决定**，证明查询真发出去了、不是 props 里自说自话；
+//  ④ 源码级回归锁 ⇒ 四条查询与两处派生调用不许被摘掉，也不许退回去读那两个模块级常量。
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("WO-TRANSIT-WIRE · 图层自取 Cadence / 采购段，缺席由取回来的东西决定", () => {
+  /** `Cadence` 落库行（`apps/datacore/src/synthetic/cadence.ts:488 cadenceObjectRows` 的真实形状）。 */
+  const cadenceRow = (o: { nodeId: string; everyDays?: number; kind?: string; dataMode?: string; emptyReason?: string }) => ({
+    nodeId: o.nodeId,
+    label: `${o.nodeId} 站`,
+    stage: "DELIVERY",
+    dataMode: o.dataMode ?? "SYNTHETIC",
+    flowGate: true,
+    note: "",
+    ...(o.emptyReason === undefined ? {} : { emptyReason: o.emptyReason }),
+    ...(o.everyDays === undefined ? {} : { everyDays: o.everyDays, cadenceKind: o.kind ?? "batch", intervalCount: 6 }),
+  });
+  /** 采购段三类的真实行（`battery-extended.ts:157-192` 字段集）。 */
+  const poRow = { poId: "po_1", matId: "sep_film", qty: 100, etaDay: 30, orderDay: 2, shipDay: 9, arriveDay: 20 };
+  const customsRow = { clearanceId: "cc_po_1", poId: "po_1", declaredDay: 20, clearedDay: 24, holdDays: 1 };
+  const iqcRow = { inspectionId: "iqc_po_1", poId: "po_1", arrivedDay: 24, releasedDay: 30 };
+
+  const oneTransfer = [xfer({ id: "X1", from: "a", to: "b", dispatchDay: 0, etaDay: 5 })];
+
+  // ── ① 有数据 ⇒ 缺席块消失、实况块上屏 ──────────────────────────────────────
+  it("SEAM · 对象库 Cadence 行经图层自己的读回口点亮闸门（缺席块从 DOM 消失）", () => {
+    render(
+      <TransitFlowLayer
+        sources={{ interBaseTransfer: oneTransfer, cadence: [cadenceRow({ nodeId: "b", everyDays: 5, kind: "shipping" })] }}
+        initialDay={5}
+      />,
+    );
+    // 缺席块**不再出现**（这一条就是「接线即自愈」：同一段 JSX，只换了输入）
+    expect(screen.queryByTestId("transit-cadence-absence")).toBeNull();
+    const live = screen.getByTestId("transit-cadence-live");
+    expect(live).toHaveAttribute("data-count", "1");
+    expect(screen.getByTestId("transit-cadence-b")).toHaveTextContent("每 5 天开闸");
+    // 而且这个站是**引擎侧**的（Cadence 行 = 引擎侧承载），不是从批次数据行推出来的
+    expect(screen.getByTestId("transit-station-b")).toHaveAttribute("data-cadence", "1");
+    expect(screen.getByTestId("transit-station-b")).toHaveAttribute("data-origin", "engine");
+    expect(screen.getByTestId("transit-flow-layer")).toHaveAttribute("data-station-origin", "engine");
+    // 闸门真的在管事：第 5 天到站的批次被扣到第 5 天（everyDays=5 ⇒ 闸门日）——不是只印了个 chip
+    expect(screen.getByTestId("transit-queues")).toBeInTheDocument();
+  });
+
+  it("SEAM · 采购段三类日戳齐全 ⇒ 缺席块消失、实况块上屏且点名四条腿", () => {
+    render(
+      <TransitFlowLayer
+        sources={{
+          interBaseTransfer: oneTransfer,
+          purchaseOrder: [poRow],
+          customsClearance: [customsRow],
+          incomingInspection: [iqcRow],
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("transit-branch-procurement")).toBeNull();
+    const live = screen.getByTestId("transit-branch-procurement-live");
+    expect(live).toHaveAttribute("data-status", "PRESENT");
+    expect(live).toHaveAttribute("data-cause", "PRESENT");
+    expect(live).toHaveAttribute("data-usable", "4");
+    for (const leg of ["supplier_production", "in_transit", "customs", "incoming_inspection"]) {
+      expect(live).toHaveTextContent(leg);
+    }
+    // ⛔ 反向锁：D2 并线后这些说法一律不许再上屏
+    expect(live).not.toHaveTextContent("本体缺在途承载物");
+    expect(live).not.toHaveTextContent("0 命中");
+    expect(live).not.toHaveTextContent("本层没去取");
+    // 诚实边界必须同时在屏上：日戳齐全 ≠ 已经画成车（说"能画"却不画，与说"没有"一样骗人）
+    expect(screen.getByTestId("transit-branch-procurement-scope")).toHaveTextContent("屏上不会出现采购段的车");
+    expect(screen.queryAllByTestId(/^transit-car-/).length).toBe(1); // 只有那条 InterBaseTransfer 的车
+  });
+
+  // ── ② 没数据 ⇒ 仍缺席，且三档病因**在 DOM 上**分得开 ────────────────────────
+  it("SEAM · 三档病因在 DOM 上分得开：没去取(fetched 空) / 读不成(fetched>0) / 本租户真没有(fetched=0)", () => {
+    // (a) 没去取 —— 上层接管了取数但一条 Cadence 都没喂
+    const a = render(<TransitFlowLayer sources={{ interBaseTransfer: oneTransfer }} />);
+    const notFetched = screen.getByTestId("transit-cadence-absence");
+    expect(notFetched).toHaveAttribute("data-cause", "NOT_FETCHED");
+    expect(notFetched).toHaveAttribute("data-fetched", ""); // null ⇒ 空串，与 "0" 一眼分得开
+    expect(notFetched).toHaveTextContent("本层没去取");
+    a.unmount();
+
+    // (b) 本租户真没有 —— 问了，回 0 条
+    const b = render(<TransitFlowLayer sources={{ interBaseTransfer: oneTransfer, cadence: [] }} />);
+    const tenantEmpty = screen.getByTestId("transit-cadence-absence");
+    expect(tenantEmpty).toHaveAttribute("data-cause", "TENANT_EMPTY");
+    expect(tenantEmpty).toHaveAttribute("data-fetched", "0");
+    expect(tenantEmpty).toHaveTextContent("已经查过了");
+    expect(tenantEmpty).toHaveTextContent("种数据");
+    expect(tenantEmpty).not.toHaveTextContent("本层没去取"); // 三档不许说同一句话
+    b.unmount();
+
+    // (c) 取回来读不成 —— 诚实缺席行（dataMode 非 SYNTHETIC），原因来自数据本身
+    const c = render(
+      <TransitFlowLayer
+        sources={{
+          interBaseTransfer: oneTransfer,
+          cadence: [cadenceRow({ nodeId: "b", dataMode: "EMPTY", emptyReason: "该环节发生序列不足 2 次，推不出周期" })],
+        }}
+      />,
+    );
+    const rejected = screen.getByTestId("transit-cadence-absence");
+    expect(rejected).toHaveAttribute("data-cause", "CONTRACT_REJECTED");
+    expect(rejected).toHaveAttribute("data-fetched", "1");
+    expect(rejected).toHaveAttribute("data-usable", "0");
+    expect(rejected).toHaveTextContent("推不出周期"); // 原因来自数据行，不是编的话术
+    expect(rejected).toHaveTextContent("修数据");
+    c.unmount();
+  });
+
+  it("SEAM · 采购段同款三档（且「读不成」时逐条点名缺了哪个日戳）", () => {
+    const a = render(<TransitFlowLayer sources={{ customsClearance: [] }} />);
+    expect(screen.getByTestId("transit-branch-procurement")).toHaveAttribute("data-cause", "TENANT_EMPTY");
+    expect(screen.getByTestId("transit-branch-procurement")).toHaveAttribute("data-fetched", "0");
+    a.unmount();
+
+    // 旧形状的 PurchaseOrder（只有 poId/matId/qty/etaDay）⇒ 两条腿都算不出来
+    const b = render(<TransitFlowLayer sources={{ purchaseOrder: [{ poId: "po_1", matId: "m", qty: 1, etaDay: 30 }] }} />);
+    const rejected = screen.getByTestId("transit-branch-procurement");
+    expect(rejected).toHaveAttribute("data-cause", "CONTRACT_REJECTED");
+    expect(rejected.textContent ?? "").toMatch(/orderDay|shipDay|arriveDay/);
+    b.unmount();
+  });
+
+  it("DOM 与派生记录不许打架：缺席块在 ⟺ 没有一个闸门站（usable === 0）", () => {
+    const withGate = render(
+      <TransitFlowLayer sources={{ interBaseTransfer: oneTransfer, cadence: [cadenceRow({ nodeId: "b", everyDays: 4 })] }} />,
+    );
+    expect(screen.queryByTestId("transit-cadence-absence")).toBeNull();
+    expect(screen.getByTestId("transit-cadence-live")).toHaveAttribute("data-count", "1");
+    withGate.unmount();
+
+    const without = render(<TransitFlowLayer sources={{ interBaseTransfer: oneTransfer, cadence: [] }} />);
+    expect(screen.getByTestId("transit-cadence-absence")).toHaveAttribute("data-usable", "0");
+    expect(screen.queryByTestId("transit-cadence-live")).toBeNull();
+    without.unmount();
+  });
+
+  // ── ③ 真取数路：病因由**响应**决定（证明查询真的发出去了）──────────────────
+  it("接线的活证据 · 真取数（mock 态）：屏上的病因由响应决定，不再是恒为真的 NOT_FETCHED", async () => {
+    loginAs("planner");
+    render(<TransitFlowLayer />);
+
+    // 查询还在飞的那一刻，屏上说的是「取数中」——**不许**在这一刻宣告"本层没去取"（那是这一刻的假话）
+    expect(screen.getByTestId("transit-cadence-fetching")).toBeInTheDocument();
+    expect(screen.getByTestId("transit-cadence-absence")).toHaveAttribute("data-loading", "1");
+
+    // 回来之后：MSW 的 /a/v1/objects 对 Cadence 没有分支 ⇒ 落 else 返回订单行 ⇒ 一条都读不成闸门。
+    // 于是病因必须是 CONTRACT_REJECTED（问了、拿回来了、用不了），**不是** NOT_FETCHED。
+    // ⇒ 这就是「那条查询真的发出去了」的活证据：props 里没喂任何东西，病因却变了。
+    await waitFor(() =>
+      expect(screen.getByTestId("transit-cadence-absence")).toHaveAttribute("data-cause", "CONTRACT_REJECTED"),
+    );
+    const absence = screen.getByTestId("transit-cadence-absence");
+    expect(absence).toHaveAttribute("data-loading", "0");
+    expect(Number(absence.getAttribute("data-fetched"))).toBeGreaterThan(0);
+    expect(absence).not.toHaveTextContent("本层没去取");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("transit-branch-procurement")).toHaveAttribute("data-cause", "CONTRACT_REJECTED"),
+    );
+    expect(screen.getByTestId("transit-branch-procurement")).not.toHaveTextContent("本层没去取");
+  });
+
+  // ── ④ 源码级回归锁：接上的线不许再被摘掉 ────────────────────────────────────
+  it("源码级门 · 四条查询 + 两处现算必须都在，且图层不许退回去读那两个模块级常量", () => {
+    const view = readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx");
+    const code = view.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+    for (const type of ["Cadence", "PurchaseOrder", "CustomsClearance", "IncomingInspection"]) {
+      expect(code, `图层不再查 ${type} —— 那块面板又变回一句永远为真的话`).toContain(`searchObjects("${type}"`);
+    }
+    // 现算，而不是读常量
+    expect(code, "节拍缺席不是现算的了").toMatch(/deriveCadenceAbsence\(\s*\{/);
+    expect(code, "采购缺席不是现算的了").toMatch(/deriveProcurementBranch\(\s*\{/);
+    // Cadence 行必须真的并进站点集合（只查不用 = 白查）
+    expect(code, "查回来的 Cadence 行没有并进 resolveStations 的引擎侧站点 —— 闸门永远点不亮").toContain("parseCadenceRows(");
+    expect(code).toMatch(/resolveStations\(\s*engineNodes/);
+    // ⛔ 图层不许再读零输入基线（那是 SandboxConsole 图例的东西）
+    expect(code, "图层又去读 CADENCE_ABSENCE 常量了 —— 那个值恒为 NOT_FETCHED，等于把诚实位重新冻住").not.toContain("CADENCE_ABSENCE");
+    expect(code, "图层又去读 PROCUREMENT_BRANCH 常量了 —— 同上").not.toContain("PROCUREMENT_BRANCH");
+    // 采购面板必须是**有条件**渲染（此前是无条件 <div>，无论有多少数据都在屏上）
+    expect(code, "采购面板又变回无条件渲染了").toMatch(/procurementBranch\.status === "EMPTY"\s*\?/);
+  });
+
+  // ── ⑤ 事实锁：宿主注释/屏上文案引用的上游事实当场复验 ────────────────────────
+  it("事实锁 · 宿主不许再说「节拍一律缺席」（它已经不成立了）", () => {
+    const view = readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx");
+    render(<TransitFlowLayer sources={{ interBaseTransfer: oneTransfer }} />);
+    const hostNote = view.slice(view.indexOf("transit-flow-host-nodes"));
+    expect(hostNote, "宿主还在说「节拍一律缺席」—— 图层现在自己去取 Cadence 了，这句话已经是假的").not.toMatch(
+      /节拍一律缺席|节拍缺席；/,
+    );
+    // 上游承载还在（删了就该把上面这条改回去）
+    expect(readRepo("apps/datacore/src/synthetic/service.ts")).toContain('putAll("Cadence"');
   });
 });
 
