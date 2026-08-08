@@ -1821,6 +1821,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-a2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/chain-scan-honesty.test.ts",
+        "scripts/chain-scan-honesty-baseline.json",
+        "scripts/check-chain-scan-honesty.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sandbox-metro-semantics.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -3113,6 +3131,7 @@
       "PRD-lever-binding-drift.md",
       "PRD-nav-gate.md",
       "PRD-route-nav-coverage.md",
+      "PRD-sandbox-a2.md",
       "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md",
       "PRD-stale-claims.md"
@@ -3123,6 +3142,7 @@
       "PRD-impediments-reachable.md",
       "PRD-nav-gate.md",
       "PRD-opt-whatif-close.md",
+      "PRD-sandbox-a2.md",
       "PRD-skill-compiler-registry.md",
       "PRD-stale-claims.md",
       "PRD-transit-wire.md"
@@ -3428,6 +3448,15 @@
     ],
     "scripts/ui-smoke-sim-init.mjs": [
       "PRD-route-nav-coverage.md"
+    ],
+    "apps/datacore/test/chain-scan-honesty.test.ts": [
+      "PRD-sandbox-a2.md"
+    ],
+    "scripts/chain-scan-honesty-baseline.json": [
+      "PRD-sandbox-a2.md"
+    ],
+    "scripts/check-chain-scan-honesty.mjs": [
+      "PRD-sandbox-a2.md"
     ],
     "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
       "PRD-sandbox-metro-semantics.md",

@@ -540,6 +540,20 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-sandbox-a2.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A5"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A5"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-sandbox-multiplan.md": {
       "acceptanceIds": [
         "A1",
