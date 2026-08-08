@@ -1710,6 +1710,26 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-route-nav-coverage.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "packages/contracts/src/workspace.ts",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/ui-smoke-sim-init.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-rules-as-references.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2867,7 +2887,8 @@
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md",
-      "PRD-nav-gate.md"
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
     ],
     "apps/agentcore/src/agent/mcp-router.ts": [
       "PRD-decision-resource-intelligence-layer.md"
@@ -2985,6 +3006,7 @@
       "PRD-gate-ledger.md",
       "PRD-lever-binding-drift.md",
       "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md",
       "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md"
     ],
@@ -3110,17 +3132,21 @@
       "PRD-lever-binding-drift.md"
     ],
     "apps/datacore/src/synthetic/view-manifest.ts": [
-      "PRD-nav-gate.md"
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
     ],
     "apps/frontend-shell/src/pages/ShellLayout.tsx": [
       "PRD-nav-gate.md",
-      "PRD-nav-ia-reorg.md"
+      "PRD-nav-ia-reorg.md",
+      "PRD-route-nav-coverage.md"
     ],
     "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx": [
-      "PRD-nav-gate.md"
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
     ],
     "scripts/check-nav-group-coverage.mjs": [
-      "PRD-nav-gate.md"
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
     ],
     "apps/frontend-shell/src/pages/adminRegistry.ts": [
       "PRD-nav-ia-reorg.md"
@@ -3236,6 +3262,13 @@
     "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
       "PRD-quarter-rolling-1to1.md"
     ],
+    "apps/frontend-shell/src/App.tsx": [
+      "PRD-route-nav-coverage.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "scripts/ui-smoke-sim-init.mjs": [
+      "PRD-route-nav-coverage.md"
+    ],
     "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
       "PRD-sandbox-metro-semantics.md",
       "PRD-transit-geometry.md"
@@ -3318,9 +3351,6 @@
       "PRD-skill-governance-learning.md"
     ],
     "apps/datacore/src/auth.ts": [
-      "PRD-skill-compiler-registry.md"
-    ],
-    "apps/frontend-shell/src/App.tsx": [
       "PRD-skill-compiler-registry.md"
     ],
     "packages/contracts/src/common.ts": [
