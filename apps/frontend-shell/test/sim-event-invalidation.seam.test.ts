@@ -29,7 +29,9 @@ const readRepoFile = (relFromTestDir: string): string =>
 function emittedSimEvents(): string[] {
   const src = readRepoFile("../../datacore/src/app.ts");
   expect(src.length, "datacore/src/app.ts 读到了空内容——路径漂了，先修路径再看结论").toBeGreaterThan(1000);
-  return [...src.matchAll(/outbox\.emit\([^,]+,\s*"(sim\.[a-z_]+)"/g)].map((m) => m[1]);
+  return [...src.matchAll(/outbox\.emit\([^,]+,\s*"(sim\.[a-z_]+)"/g)]
+    .map((m) => m[1])
+    .filter((e): e is string => typeof e === "string");
 }
 
 describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
