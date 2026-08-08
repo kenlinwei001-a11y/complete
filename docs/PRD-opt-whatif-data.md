@@ -264,7 +264,7 @@ AppError: facility_location 需 facilities[] + clients[] + assignCosts[]
 | # | 修在哪 | 改法 | 评价 |
 |---|---|---|---|
 | **A（推荐·引擎半）** | `apps/datacore/src/solvers/service.ts:3734-3737` | `clientCands` 里**跳过零实例类型**（需要在 `assembleBaselineFromSelection` 里对候选做一次 `listByType(...).length > 0` 过滤，或与既有 DF.8 诚实报缺同风格报 `client（候选类型均无实例）`） | 治本：换任何租户/行业都不会再挑到空类型；与该函数既有"诚实报缺不伪造"风格一致 |
-| **B（数据半）** | `apps/datacore/src/synthetic/service.ts:802-812` 那段物化清单 | 补 `await putAll("MaintenanceOrder", g.maintenanceOrders, "moId");`（行已由 `battery.ts:4302` 起确定性产出、`BINDINGS.MaintenanceOrder` 也早就配好 `eam_maint_orders`，属"生成了没落库"） | 只修 demo；A 不做的话别的租户照样踩 |
+| **B（数据半）** | `apps/datacore/src/synthetic/service.ts:802-812` 那段物化清单 | 补 `await putAll("MaintenanceOrder", g.maintenanceOrders, "moId");`（行已由 `battery.ts:4303` 起确定性产出、`BINDINGS.MaintenanceOrder` 也早就配好 `eam_maint_orders`，属"生成了没落库"） | 只修 demo；A 不做的话别的租户照样踩 |
 
 > 语义提醒（给做 A 的人）：即使跳过空类型，赢家会变成 `WorkOrder`（生产工单）——
 > 对 `facility_location` 而言「需求点」更该是 `CustomerLocation` / `Order` / `Customer`。
