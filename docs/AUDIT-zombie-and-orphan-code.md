@@ -13,8 +13,11 @@
 |---|---|---|
 | ③ **幽灵引用**（引用了不存在的东西 → 静默失效） | **4** | 危害最高：静默错答，无报错 |
 | ④ **诚实缺席声明过期**（写着「不存在」而今天已存在） | **3**（另 1 条已修·作范本） | 会让下一个人去造已经有的东西 |
-| ① **僵尸代码**（有实现、零生产调用方） | **43 条真死** + 234 条 test-only 候选 | 已逐条追实 12 条，其余标为候选 |
-| ② **孤立代码**（文件级无人 import） | **3** | 逐个追过 barrel / lazy / glob 三条隐路 |
+| ① **僵尸代码**（有实现、零生产调用方） | **43 条真死**（**追实 14 条**）+ 234 条 test-only 候选 | 逐条列出调用方集合与形态判定 |
+| ② **孤立代码**（文件级无人 import） | 12 个候选 → **真孤立 2 · 有害 1 · 其余 9 条为正常形态** | 12 个**全部**逐个追实并分类 |
+
+**追实率**：本报告下结论的每一条都追到了「真正被谁调用、在什么条件下触发」。
+**5 条一开始判错、追一层后被推翻**（见 §7）——这是本单最值钱的部分。
 
 ### 最狠的三条
 
@@ -42,6 +45,13 @@
 | 全批 pathspec 自证 | `git grep -c "createIntent" -- "apps/**/src/**"` | 5 文件命中 ⇒ 正确写法 |
 | 符号扫描（scan2/scan3） | 脚本内置 `createIntent` 断言，命中 0 即 `exit 2` 中止 | 每次运行都打印 `CANARY OK: createIntent in 5 src files` |
 | 扫描面非空自证 | 脚本打印 `src=519 test=573 scripts=71` | 与 `find` 独立计数（597 含 .sh/.mjs）一致，未静默扫空 |
+| import 图·金丝雀 1（相对/别名路径） | `endpoints.ts` 必须有 ≥1 importer | 107 个 ⇒ 该路径通 |
+| import 图·金丝雀 2（barrel/`.js` 说明符） | `contracts/src/solvers.ts` 必须有 ≥1 importer | **首版为 0 ⇒ 解析器坏了**（`.js` 说明符没回映射到 `.ts`）。修好后边数 696→1761，孤立数 317→12 |
+
+> **金丝雀的正确用法（本单实测教训）**：**一个金丝雀只为它走过的那条路径作证。**
+> import 图有「相对路径 / `@/` 别名 / barrel `.js` 说明符 / 动态 import」四条解析路径，
+> 我只给了第一条金丝雀，它绿了，于是我差点发布一份说「contracts 整包是死代码」的报告。
+> **多路径的工具必须每条路径一个金丝雀。**
 
 **额外避开的坑**：
 - `rg -r` 是 `--replace` 不是 recursive —— 全程未用 `-r`。
@@ -251,6 +261,8 @@ D. 传入全部 7 因子（bnFactors 携 bottleneck_matrix 七因子枚举时的
 | **Z-10** | `ceoDatasetReport` | `apps/datacore/src/synthetic/ceo-dataset.ts:279` | src 0 · test 0 · 脚本 0 | ① 没接线 | 候选删 |
 | **Z-11** | `scenarioByIntent` | `apps/agentcore/src/scenarios-catalog.ts:124` | src 0 · test 0 · 脚本 0 | ① 没接线 | 候选删 |
 | **Z-12** | `summarizeSteps` | `apps/datacore/src/databuilder/workflow-engine.ts:195` | src 0 · test 0 · 脚本 0 | ① 没接线 | 候选删 |
+| **Z-13** 🔴 | `checkProvisionalHonesty` | `apps/datacore/src/databuilder/provisional-honesty.ts:12` | src **0** · 门脚本 **0** · test **5 处**（`a18-provisional-closure.test.ts:5/45/47/55/75`） | **① 没接线 = 假绿第 9 形态** | **接线**（红线守门函数，详见 §5.2） |
+| **Z-14** | `NoopWorkflowCheckpointStore` 及整模块 | `apps/agentcore/src/workflow/checkpoint.ts:22` | src **0**（`executor.ts` 的 `WorkflowRunDeps` 无 checkpoint 字段）· test 1 | **① 没接线**，且唯一实现是空体 Noop | 删或真实现，别留形状（§5.1） |
 
 ### 4.1 Z-03 详解（最狠的一条僵尸）
 
@@ -326,21 +338,90 @@ export function chainOpNodeId(opId: string): string { return `${CHAIN_OP_NODE_PR
 
 ## 5 · 清单② · 孤立代码（文件级无人 import）
 
-**追证方法**：对每个候选文件，追了四条隐路——① `index.ts` barrel re-export；② `React.lazy(() => import("..."))` 字符串路径；
-③ `registerRenderer("key", () => import("./X"))` 字符串键分发；④ vite `import.meta.glob`。
+**方法**：建**真 import 图**（518 个 src 文件，解析 1761 条边），处理静态 `import`、`export … from`、
+动态 `import("…")`、`@/` 别名、以及 **ESM `.js` 说明符回映射到 `.ts`**（见下方⚠）。排除入口文件
+（`server.ts`/`main.ts`/`index.ts`/`migrate.ts` 等天然无人 import）。
 
-| # | 文件 | 追证 | 判定 |
-|---|---|---|---|
-| **O-01** | `apps/frontend-shell/src/components/ui/VirtualList.tsx` | 符号 `VirtualList` 全仓仅定义行；文件名在全仓无 `import` 命中；不在 `registry.ts` 的 renderer 表内；非路由组件 | **真孤立**（整文件零消费）。建议删或接线 |
+> ### ⚠ 本节差点整节报废 —— 第三次「工具骗人」
+> 首版 import 图报出 **317 个孤立文件**，`packages/contracts/src/` 几乎全表在列。
+> 这个数字本身就是警报：`solvers.ts` 不可能没人用。
+> **病根**：contracts 的 barrel 用的是 ESM NodeNext 写法 `export * from "./solvers.js"`，
+> 而我的解析器只试了 `./solvers` + `.ts/.tsx`，**从没把 `.js` 说明符映射回 `.ts` 源文件** ⇒ 整个 barrel 的边全丢。
+> **我的第一个金丝雀（`endpoints.ts` 有 107 个 importer）是绿的**，但它只证明了
+> **相对路径 + `@/` 别名**这条路通，**没覆盖 barrel/`.js` 这条路**。
+> 补第二个金丝雀（`packages/contracts/src/solvers.ts` 必须有 ≥1 importer，否则 `exit 2`）后修好解析器：
+> **边数 696 → 1761，孤立文件 317 → 12（缩水 26 倍）**。
+> **教训：一个金丝雀只为它走过的那条路径作证。** 多路径解析器就得有多个金丝雀。
+> 若照首版发布，本报告会得出「contracts 整包是死代码」这个恰好相反的结论。
 
-> **本节只给 1 条真结论**。我在候选阶段还有 2 个文件疑似孤立，但**追 barrel/lazy 两条隐路时未能追干净**
-> （前端存在 `registerRenderer(key, () => import("./X"))` 这种**字符串键 + 动态 import** 的分发，
-> 静态 token 索引对它是盲的），故**按纪律不写进结论**。见 §6「未扫/未追实」。
+**12 个文件级孤立候选，逐个追实后分成四类**：
 
-**方法学备注（给下一个人）**：前端 `apps/frontend-shell/src/views/registry.ts:56` 形如
-`registerRenderer("decision-play", () => import("./DecisionPlayView"))` —— 这一行让 `DecisionPlayView.tsx`
-**看起来零 import**。任何「前端孤立文件」清单如果没有先把 `registry.ts` 的 renderer 表展开，
-产出的一定是一份**假清单**。本单的 O-01 已排除这条路径（`VirtualList` 不在该表内）。
+| 类 | 文件 | 追证结论 |
+|---|---|---|
+| **真孤立**（建议处置） | `apps/frontend-shell/src/components/ui/VirtualList.tsx` | 符号 `VirtualList` 全仓仅定义行；无 src importer、**无 test importer**、不在 `registry.ts` renderer 表、非路由组件。**真·零消费**。建议删或接线 |
+| **真孤立**（建议处置） | `apps/agentcore/src/workflow/checkpoint.ts` | 见 §5.1，工作流检查点整模块从未接线 |
+| **假绿第 9 形态**（有害） | `apps/datacore/src/databuilder/provisional-honesty.ts` | 见 §5.2，红线守门函数只在测试里跑 |
+| **有意保留的兼容垫片**（无害·**我推翻了自己**） | `apps/datacore/src/solvers/args-schemas.ts` | 文件头自述「注册表本体已迁到 `packages/contracts/src/solver-args.ts`；**本文件保留为薄 re-export**，datacore 侧既有测试路径与 API 语义逐字节不变」。零 src importer 是**迁址的预期结果**，不是遗漏。**不建议删**（删了要同步改测试导入路径，收益为负） |
+| **入口/CLI**（正常） | `datacore/src/migrate-cli.ts` · `datacore/src/seed-cli.ts` · `agentcore/src/migrate-cli.ts` · `agentcore/src/scripts/smoke-llm.ts` | 由 `package.json` script 调用，无人 import 是正常形态 |
+| **测试/门脚本夹具**（正常） | `agentcore/src/llm/mock.ts` · `agentcore/src/mcp/mock.ts` | 见 §5.3 —— **`mcp/mock.ts` 我一开始判成孤立，追一层后推翻** |
+| **就地单测**（正常） | `llm-adapters/src/slot-value-shape.test.ts` · `llm-adapters/src/openai.test.ts` | 测试文件与源码同目录（该包无 `vitest.config.ts`，走 vitest 默认 include `**/*.test.ts` ⇒ 能被采集）。**存疑·未追实：我没实跑该包测试确认这两个文件真的被执行**，故不下「它们没跑」的结论 |
+
+### 5.1 `workflow/checkpoint.ts` —— 工作流检查点：接口 + 一个 Noop，没有别的
+
+`apps/agentcore/src/workflow/checkpoint.ts` 全模块引用面：
+
+- `WorkflowCheckpoint`（`:6`）· `WorkflowCheckpointStore`（`:15`）· `NoopWorkflowCheckpointStore`（`:22`）
+- **全仓 `rg "checkpointStore|CheckpointStore|WorkflowCheckpoint"` 的命中全部落在 `checkpoint.ts` 自身**，
+  外加一个测试导入（`apps/agentcore/test/runtime-workflow.test.ts:6`）。
+- **`workflow/executor.ts` 从不引用检查点**：`WorkflowRunDeps`（`executor.ts:44`）里没有 checkpoint 字段。
+
+**形态判定**：**① 没接线**。且唯一的实现是 `Noop`（`save`/`load` 都是空体）——
+即便接上去也**什么都不做**。所以这不是「有能力没接」，是「连能力都还没有，只有形状」。
+**危害**：工作流长跑中断后无法续跑；但因为从没接过，不存在「以为有检查点其实没有」的运行时错答。
+**建议处置**：要么删（诚实承认没这个能力），要么实现——**但不要留着让人误以为已具备**。
+
+### 5.2 `provisional-honesty.ts` —— 红线守门函数只在测试里跑 🔴
+
+`apps/datacore/src/databuilder/provisional-honesty.ts:12` `checkProvisionalHonesty(run)`：
+
+文件头自述其职责（PRD §3.5 / R13 红线）：
+> 守"未审核态绝不谎报"的纯函数校验。① 整域 `domainTrustLevel=UNVERIFIED`；
+> ② 终态验证恒 `PROVISIONAL_ANSWER`（**绝不 VERIFIED/answerable**）；③ 闭包缺口全降 ADVISORY。
+
+**调用方集合（全仓 `rg` 逐条列出）**：
+- `apps/datacore/test/a18-provisional-closure.test.ts:5`（import）· `:45`·`:47`·`:55`·`:75`（4 处断言）—— **全部是 test**
+- src：**0** · 门脚本：**0**
+
+**形态判定**：**① 没接线 = 假绿第 9 形态**（实现有、测试有、且是绿的，零生产调用方；
+测试咬的是**函数**不是**链路**）。
+
+**为什么这条危害高**：它不是普通工具函数，是一道**诚实红线闸**。今天没有任何生产路径
+在 PROVISIONAL 域产出时调用它 ⇒ **没有任何东西阻止一个 PROVISIONAL 构建标成 `VERIFIED` / `answerable=true`**。
+测试证明的是「这个函数能识别谎报」，不是「系统不会谎报」。
+**建议处置**：**接线**（在 StoryBuildRun 落库/发布路径上挂一次），不是删。
+
+### 5.3 ⚠ `mcp/mock.ts` —— 我判成孤立，追一层后推翻（第 5 次）
+
+我的 import 图把 `apps/agentcore/src/mcp/mock.ts` 报成**零 importer**，且 `rg "mcp/mock"` 在 `apps/agentcore/src` 下确实 0 命中。
+按符号名再追一层 `MockMcpClient`，真相翻面：
+
+```
+scripts/check-dril-registry.mjs:41   const { MockMcpClient } = await import(abs("apps/agentcore/dist/mcp/mock.js").href);
+scripts/check-dril-quality.mjs:109   （同上）
+scripts/check-dril-retrieval.mjs:122 （同上）
+```
+
+**三个门脚本经「动态 import + 字符串路径 + 指向 `dist/` 编译产物」消费它** ——
+这条路对任何 src 层面的 import 图**都是不可见的**（既不是相对路径，也不在 src 树里）。
+外加 `apps/agentcore/test/helpers.ts:8` 与 `runtime-mcp.test.ts:6` 两个测试消费方。
+
+**结论：不是孤立文件，是门脚本夹具。** 若照 import 图直接发布，我会建议删掉一个**三道门都在用**的文件。
+
+**方法学备注（给下一个人）**：本仓至少有**三条 import 图看不见的消费路径**，做孤立文件清单前必须先展开：
+① `scripts/*.mjs` 里 `await import("apps/*/dist/**")`（**指向编译产物，不在 src 树**）；
+② 前端 `registerRenderer("key", () => import("./X"))`（`views/registry.ts:56` 形态，字符串键 + 动态 import）；
+③ `package.json` scripts 直接 `node dist/xxx-cli.js`。
+漏掉任一条，产出的都是一份**假清单**。
 
 ---
 
@@ -364,15 +445,21 @@ export function chainOpNodeId(opId: string): string { return `${CHAIN_OP_NODE_PR
   `docs/` 有 80+ 份 PRD，过期声明的存量**几乎可以肯定远不止 3 条**。
 
 **追到一半、按纪律不写进结论的**：
-- 2 个疑似孤立的前端文件（未追干净 `registerRenderer` 字符串键分发）。
 - 234 条 test-only 导出（未逐条区分「正当的结构化类型使用」与「真·假绿第 9 形态」）。
 - 31 条真死候选（§4.13，尤其错误码常量需按**取值**而非**符号名**复搜）。
+- `llm-adapters` 那两个就地 `.test.ts` 是否真被 vitest 采集执行——**未实跑确认**，
+  故未下「它们没在跑」的结论（该包无 `vitest.config.ts`，理论上走默认 include 能采到）。
+
+**本单结论的适用边界（一句话）**：所有结论都是**静态追链**的结论。
+「代码里这条路走不通」我有把握；「用户点开那个页面看到的到底是什么」**我没有亲手看过**。
+按本仓「绿测试 ≠ 能用」的同款逻辑，**读代码 ≠ 亲手真跑** —— §2.1 与 §3.1 若要进本体作为已坐实的断点，
+建议由有完整依赖的环境 curl 一次坐实（两条都给了可直接验证的最小路径）。
 
 ---
 
-## 7 · 一开始判成僵尸、追一层后被推翻的（本单最有价值的部分）
+## 7 · 一开始判错、追一层后被推翻的（本单最有价值的部分）
 
-**三条，全部是「grep 直接命中数」骗了我。**
+**五条。前三条是「grep 直接命中数」骗了我，后两条是「我自己的工具」骗了我。**
 
 ### 7.1 `matchesGrain` —— 差点连坐进僵尸清单
 
@@ -404,6 +491,30 @@ export function chainOpNodeId(opId: string): string { return `${CHAIN_OP_NODE_PR
 
 **正确处置从「删」翻转成「接线」**——删掉它等于把契约的单源约束一起删掉，
 给 `G-CHAIN-NODEID-FREESTRING` 复发扫清最后障碍。**同一个 grep 结果，两种相反的处置。**
+
+### 7.4 `packages/contracts/src/` 整包 —— 差点报成「全是死代码」🔴 最险的一次
+
+首版 import 图报出 **317 个孤立文件**，contracts 几乎全表在列。
+病根是我自己的解析器不认 ESM `.js` 说明符（`export * from "./solvers.js"`），barrel 的边全丢。
+**而我的金丝雀是绿的**——它只覆盖了相对路径那条路。
+
+**推翻后**：边数 696→**1761**，孤立文件 317→**12**。
+这与 CLAUDE.md 记载的 `git grep -- "apps/*/src"` 恒 0 是**同一种病的不同外衣**：
+**工具坏了，会让每个符号都读作「零命中」，从而得出「全是死代码」这个恰好相反的结论。**
+判据也一样：**先拿一个你确定存在的东西跑一遍**——`solvers.ts` 不可能没人用，它报 0 就是工具坏了。
+
+### 7.5 `mcp/mock.ts` —— import 图说孤立，门脚本正在用
+
+详见 §5.3。三个门脚本经 `await import("apps/agentcore/dist/mcp/mock.js")` 消费它——
+**动态 import + 字符串路径 + 指向编译产物**，src 层面的 import 图对这条路径**结构性地看不见**。
+若照图发布，我会建议删掉一个三道门都在用的文件。
+
+**附带推翻**：`apps/datacore/src/solvers/args-schemas.ts` 我一度按「零 src importer」记进僵尸，
+读文件头后推翻——它是**迁址后有意保留的薄 re-export 垫片**，零 importer 是预期结果而非遗漏，
+**处置从「删」翻转成「不动」**。
+
+> **五条的共同点**：`grep`/工具给出的**数字本身都是真的**，错的是我**把数字当成了结论**。
+> 三条靠「再追一层调用」翻案，两条靠「换一个我确定存在的东西验工具」翻案。
 
 ---
 
