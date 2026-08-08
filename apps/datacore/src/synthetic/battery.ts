@@ -107,7 +107,8 @@ export function cellSourceMap(bases: { baseId: string; factory_type?: string }[]
 }
 
 /**
- * WO-OPT-WHATIF-DATA · 基地**选址成本**派生（闭 §8 G-OPT-WHATIF-NO-COST-DATA 数据半）。
+ * WO-OPT-WHATIF-DATA · 基地**选址成本**派生（补 §8 `G-WHATIF-NL-UNREACHABLE` 的**数据半**——
+ * 该断点此前标「✅ 已闭」，实况是只闭了**路由半**：路由通了、求解器在，但 demo 本体没有成本字段 ⇒ 100% 降级）。
  *
  * 病根（「接了线没数据」形态②）：`optimize_whatif` 的 `facility_location` 自动装配
  * （`solvers/service.ts assembleBaselineFromSelection`）要求决策承载类型上存在**命中成本词库
