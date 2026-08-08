@@ -369,9 +369,22 @@ describe("§3 · 在途/在制 时序可算性分级（替代设计稿那个假�
       expect(el.textContent, `${spec.key} 的 modeReason 被前端改写了`).toBe(spec.modeReason);
       expect(screen.getByTestId(`sc-transit-tier-${spec.key}`).getAttribute("data-mode")).toBe(spec.mode);
     }
-    // 节拍与采购两条 EMPTY 也要在
+    // 节拍与采购两条也要在（它们是分级表的第 ④⑤ 档，读者得知道这两档存在且**不画**）
     expect(screen.getByTestId("sc-transit-tier-cadence")).toBeTruthy();
     expect(screen.getByTestId("sc-transit-tier-procurement")).toBeTruthy();
+    // ⚠ WO-STALE-CLAIMS：但这两档**不许复述状态**。
+    //   它们此前渲染的是 `CADENCE_ABSENCE.reason` —— `deriveXxx()` **零输入**那一档的原话
+    //   （恒 `NOT_FETCHED`：「本层没去取 / 没人问」）。而紧挨着本图例渲染的 `<TransitFlowView>`
+    //   自己发四条 `searchObjects` 真去取了。于是同一屏两句话互相打脸：图例说没人去取，
+    //   它下面的图层正在取。本体 §8 `G-STALE-MEASURED-CLAIM` 的又一形态 ——
+    //   这次过期的不是上游事实，是**同一屏里的邻居**。
+    for (const key of ["cadence", "procurement"]) {
+      const t = screen.getByTestId(`sc-transit-reason-${key}`).textContent ?? "";
+      for (const stale of ["没去取", "没人问", "一条都没查过", "一份都没给"]) {
+        expect(t, `图例 ④⑤ 又在复述零输入基线的原话「${stale}」—— 而它下面的图层正在真取数`).not.toContain(stale);
+      }
+      expect(t, "图例得指明现时状态归谁说").toMatch(/图层/);
+    }
     // 明说"设计稿那个时钟被拒绝"，别让下一个人再照着画一遍
     expect(screen.getByTestId("sc-transit-tier-intro").textContent ?? "").toContain("被明确拒绝的画法");
   });

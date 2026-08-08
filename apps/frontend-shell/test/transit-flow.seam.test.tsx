@@ -581,19 +581,43 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
    * ── ④ 零输入基线（`CADENCE_ABSENCE` / `PROCUREMENT_BRANCH` 两个模块级常量）────────
    *
    * ⚠ WO-TRANSIT-WIRE 之后**图层已经不读这两个值了**（它每次渲染现算）。
-   *   它们今天唯一的生产消费方是 `SandboxConsole.tsx` 的可算性图例 —— 那个图例自己不取数，
-   *   所以"零输入"这一档对它确实成立。此处保留断言 = 守住那条消费路的实参（铁律 0.5 第 6 条），
-   *   **不是**在替图层背书（图层那半由下面 ⑤ 的 DOM 接缝咬）。
+   *   它们今天唯一的生产消费方是 `SandboxConsole.tsx` 的可算性图例。
+   *
+   * ⚠⚠ WO-STALE-CLAIMS 收紧了这条断言（原断言只查了两个名字**出现过**，那不够）：
+   *   图例当时渲染的是 `.reason` —— 也就是这一档「本层没去取」的原话；
+   *   而它**下一行**就渲染会真发四条 `searchObjects` 的 `<TransitFlowView>`。
+   *   于是同一屏里两句话互相打脸：图例说没人去取，它下面的图层正在取。
+   *   这正是本体 §8 `G-STALE-MEASURED-CLAIM`「过期声明」的又一形态 ——
+   *   **这次不是上游变了，是同一屏里的邻居变了**。
+   *   故现在咬的是：图例只许读**输入无关**的 `.label`，`.reason` / `.status` / `.unblockedBy`
+   *   这三个"随输入变"的字段一个都不许上屏。
    */
-  it("零输入基线：不喂任何输入 ⇒ NOT_FETCHED（SandboxConsole 图例读的就是这一档）", () => {
+  it("零输入基线：不喂任何输入 ⇒ NOT_FETCHED（这一档只对「自己不取数的调用方」成立）", () => {
     expect(CADENCE_ABSENCE.cause).toBe("NOT_FETCHED");
     expect(CADENCE_ABSENCE.probe).toEqual({ fetched: null, usable: 0 });
     expect(PROCUREMENT_BRANCH.cause).toBe("NOT_FETCHED");
     expect(PROCUREMENT_BRANCH.probe).toEqual({ fetched: null, usable: 0 });
-    // 消费方确实还在（这两个导出不是没人要的死符号 —— 删了会打红构建）
+  });
+
+  it("控制台图例只读 `.label`（输入无关），**不许**复述零输入那一档的 reason/status/unblockedBy", () => {
     const console_ = readRepo("apps/frontend-shell/src/views/sim/SandboxConsole.tsx");
-    expect(console_).toContain("CADENCE_ABSENCE");
-    expect(console_).toContain("PROCUREMENT_BRANCH");
+    // 注释不参与判定（同本文件既有源码级门做法）：注释里讲清病因是应该的，禁的是它是可执行代码。
+    const code = console_.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    // 消费方确实还在（这两个导出不是没人要的死符号 —— 删了会打红构建）
+    expect(code).toContain("CADENCE_ABSENCE.label");
+    expect(code).toContain("PROCUREMENT_BRANCH.label");
+    for (const rec of ["CADENCE_ABSENCE", "PROCUREMENT_BRANCH"]) {
+      for (const perishable of ["reason", "status", "unblockedBy"]) {
+        expect(code, `${rec}.${perishable} 又上屏了 —— 那是"零输入"那一档，与屏上正在发生的事无关`).not.toContain(`${rec}.${perishable}`);
+      }
+    }
+    // `.label` 之所以能读，是因为它在 deriveXxx 的**四个分支里恒等**（不带保质期）
+    const labels = new Set([
+      deriveCadenceAbsence().label,
+      deriveCadenceAbsence({ cadenceRows: [] }).label,
+      deriveCadenceAbsence({ cadenceRows: [cadenceRow({ nodeId: "x", everyDays: 5 })] }).label,
+    ]);
+    expect(labels.size, "label 随输入变了 —— 那图例就不能只读它").toBe(1);
   });
 });
 
