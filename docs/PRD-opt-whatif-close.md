@@ -281,12 +281,25 @@ Tests  1 failed | 7 passed (8)
 Tests  7 failed | 1 passed (8)
 ```
 
+### M6 · 把 `NL_QUERY` 改成中文基地名（证「问句 ↔ 实参」漂移守护**真会红**，不是装饰）
+
+```
+× ① 头号接缝：问句 → 抽取实参 → REST invoke → …
+  AssertionError: expected '如果常州基地的开设成本涨到 150，最优选址方案怎么变？' to contain 'changzhou'
+Tests  1 failed | 7 passed (8)
+```
+
+> 这条红字**恰好就是 §7.1 登记的那个遗留**：`extractTargetId` 要求 objectId 原文出现在问句里，
+> 中文基地名抽不到 ⇒ 落 `applicable:false` 走 path-B。守护把这条边界钉死在测试里，
+> 将来 AgentCore 半修好（objectId 归一 / 中文名解析）时，这里会以"红"提醒同步放宽。
+
 ### 复原后回归
 
 ```
 git checkout -- apps/datacore/src/solvers/service.ts apps/datacore/src/synthetic/service.ts
 git status --porcelain → （空）· HEAD=3e26a437
 4 文件 27 用例：Test Files 4 passed (4) · Tests 27 passed (27) · RC=0
+（M6 复原后单文件复跑：Tests 8 passed (8) · RC=0）
 ```
 
 ---
@@ -315,6 +328,7 @@ git status --porcelain → （空）· HEAD=3e26a437
 | `meta-ontology`（干净 HEAD 单独复验） | `npx vitest run test/meta-ontology.test.ts` | **0** | 7/7；理由见 §6.3 |
 | PRD 本体门 | `node scripts/check-prd-ontology.mjs` | **0** | 12/12 断点仍全覆盖；本 PRD 已入索引 |
 | 本体锚点门 | `node scripts/check-ontology-anchors.mjs --update` | **0** | 机械校准 4 条行号；**基线零 diff**（未校准存量仍 46/46） |
+| datacore lint | `pnpm --filter datacore lint` | **1** | **基线本来就红**：错误全在 `battery.ts`(bomSeq/opSeq/capSeq/qi/rngMES)·`ceo-dataset.ts`(MODELS)·6 个我没碰过的既有测试；逐条在 `988db557` 上 grep 得证已存在。本单**唯一自产**的一条（`opt-whatif-close.seam.test.ts:44 'NL_QUERY' 未使用`）已修：把它做成真断言（§5 M6 证其会红），错误数 33→32 = 基线值，**净引入 0** |
 
 **墙钟伪影核对**：`empty-tenant-bootstrap` 本轮 **151.3s** 通过（180s 界内）；SEAM-PERF 未报红。
 本轮无速度伪影可登记。
