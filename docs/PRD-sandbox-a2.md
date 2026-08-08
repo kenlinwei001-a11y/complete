@@ -120,8 +120,8 @@ pathspec 通配符不跨 `/` 恒 0 命中 / import 图解析器不认 ESM `./x.j
 | `scripts/gate-ledger.json` 登账 | ✅ disposition=WIRE · provenRed=MUTATION |
 | `scripts/chain-scan-honesty-baseline.json` 棘轮 | ✅ H5 豁免 4 条（3 key，每条理由 ≥10 字）· H8 literal 基线 4 |
 | 变异反证 ×2 | ✅ 见 §6 |
-| **本体 §7 登记** | ❌ **未做**（截止时间到）—— 审核方需补，`ontologyRef` 字段现为 `"§7"` 占位 |
-| **运行态溯源抽验测试** | ❌ **未做** —— `apps/datacore/test/chain-scan-honesty.test.ts` 未建；A2 后半句"抽 5 个数字逐个溯源"目前仍靠人核 |
+| 本体 §7 登记 | ✅ 行 896（`ontology-writeback:check` RC=0） |
+| 运行态溯源抽验测试 | ✅ `apps/datacore/test/chain-scan-honesty.test.ts` |
 | **§9 A1 判据本身需重写** | ⚠ 见 §3.2：现文本恒真，无法失败 |
 
 ## 8. 本体引用与影响

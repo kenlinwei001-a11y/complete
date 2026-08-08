@@ -122,7 +122,7 @@
         "packages/contracts/src/base-registry.ts"
       ],
       "escalation": "审核方",
-      "ontologyRef": "§7",
+      "ontologyRef": "§7:896",
       "provenRed": {
         "kind": "MUTATION",
         "evidence": "docs/PRD-sandbox-a2.md §6（2026-08-08 实跑）",
