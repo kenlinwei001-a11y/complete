@@ -144,11 +144,15 @@ POST /a/v1/sim/live-scenarios          app.ts:1772  门 requireLive → view.glo
 | ① emit | `solvers/service.ts:3131` 的 `return` 前加一行 `await this.outbox?.emit(ctx.tenantId, "chain.scan_completed", {scanId, impedimentCount, bySeverity, grain, window})`。**注入已现成**：`setOutbox` 定义在 `service.ts:432`，**生产调用点 `app.ts:335` 真实存在**（不是只有 test —— 这点我专门查过，否则 `?.` 会静默 no-op）。**直接先例**：同文件 `gap.attributed` 就是这么发的（`service.ts:1453/1667/1716/1748/1912/2168/2429`） | **~1 行**，0.5h |
 | ② 登记 §4 | `docs/SYSTEM-ONTOLOGY.md` 在 L-sim 段（行 762-766）后加一行 `L-sim \| chain.scan_completed \| …` | 10 min |
 | ③ 订阅 | `apps/agentcore/src/event-subscriptions.ts` L18 段（`:105-111`）加一条 | 10 min |
-| ④ **真消费方** | 前端需要一个**真 useQuery** 承载扫描结果。`ChainImpedimentView.tsx` 今天怎么取数需先核（本单未验，见 §7）；若它已用 TanStack Query，则加 `LABEL_TO_KEYS` 一条即可；**若是 `useState`/props，则必须先改造成 Query，否则又造一个「发了没人收」** | 0.5–3h，**取决于 ④** |
+| ④ **真消费方** | ⚠ **已实测：今天没有承载它的缓存。** `ChainImpedimentView.tsx:238-260` 用的是 `useState` + `useEffect` 直调 `runSolver(...)`（`:246`），**完全不经 TanStack Query** ⇒ 没有 queryKey 可失效。必须**先把它改造成 `useQuery`**（给它一个稳定 key，如 `["a","chain-impediments",argsKey]`），再把该 key 挂进 `LABEL_TO_KEYS`。不做这步而只加订阅 = 假接线 | **2–3h**（改造为主，接线只占几分钟） |
 
 > ⚠ **④ 是这一条真正的风险点，不是 ①**。①只要 1 行；A10 的字面要求是「有**真消费方**」，
 > 硬塞一条订阅而前端没有缓存承载 = 假接线（与 `SIM_EVENT_GAPS` 里那四个刻意不接的理由同源，
 > `eventInvalidation.ts:52-63` 已把这个判据写死）。
+>
+> **且 `ChainImpedimentView` 今天正好就是那种"没有缓存承载"的形态**（`useState`+`useEffect`，`:239/243-260`）——
+> 与 `SIM_EVENT_GAPS` 里四个 `sim.*` 不接线的理由**一模一样**。
+> ⇒ 若只做 ①②③ 而不做 ④，产出的将是**第 5 个「发了没人收」**，A10 依然不过。
 
 ### 4.2 🔴 `chain.impediment_resolved` —— 既没 emit 也没登记，且**载荷今天凑不齐**
 
@@ -289,13 +293,13 @@ const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([a-z0-9_]+\.[a-z0-9_]+
 | 项 | 内容 | 估时 |
 |---|---|---|
 | 1 | `chain.scan_completed` emit（`solvers/service.ts:3131`，仿 `gap.attributed`） | **0.5h** |
-| 2 | 该事件的**真消费方**（取决于 `ChainImpedimentView` 是否已走 Query，见 §7 未验项） | 0.5–3h |
+| 2 | 该事件的**真消费方**：`ChainImpedimentView.tsx:239/243-260` 由 `useState`+`useEffect` 改造为 `useQuery`（**已实测确认必须做**） | **2–3h** |
 | 3 | `impedimentId` 穿线：契约 → `DecisionPlayView.tsx:616/625` → Decision 落库 | 2h |
 | 4 | `chain.impediment_resolved` emit（`decision/kernel.ts:187` 旁） | 1h |
 | 5 | **「发现→处置转化率」驾驶舱消费方**（今天完全不存在） | **2–5h** |
 | 6 | §4 回写 ×2 + `event-subscriptions.ts` ×2 | 0.5h |
 | 7 | 接缝测试（仿 `sim-event-invalidation.seam.test.ts`，把 emit 侧扫描扩到 `chain.` 前缀 + 全 datacore src） | 1.5h |
-| | **合计** | **8–13.5h** |
+| | **合计** | **9.5–13.5h** |
 
 **建议拆单**：①②⑥⑦（scan 侧，可独立交付）与 ③④⑤（resolved 侧，跨 3 包）拆两张 WO；
 但 ③④⑤ 三步**必须一个 dev 整单做**（跨数据/引擎两半，拆开做正是 metric-aware 反复炸的根）。
@@ -328,6 +332,7 @@ const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([a-z0-9_]+\.[a-z0-9_]+
    以及 `kernel.ts:185-192`（`actionDraftIds` 在此可得）。
 9. seam 测试 `sim-event-invalidation.seam.test.ts` **确实从源码派生**而非硬编码列表（读了 `:29-33`），
    自带金丝雀（`:86`）与棘轮（`:105-107`）；其盲区（只扫 `sim.` / 只读 `app.ts`）也是读出来的。
+10. `ChainImpedimentView` **不经 Query 缓存** —— 读了 `:238-260` 全段（`useState` + `useEffect` + `runSolver`）。
 
 ### 🟡 B. 我**只 grep 到符号/只做了集合运算**，未逐个追调用链
 
@@ -345,8 +350,10 @@ const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([a-z0-9_]+\.[a-z0-9_]+
    所以「seam 测试是绿的」我**没有实测**，只读了源码判断它逻辑上会绿。
 2. **没有起服务实跑**。§3.1 的 entitlement 结论是**逐层读码 + 引用 `seed.ts:123-131` 里前人记录的实测**，
    **不是我亲手 `GET /a/v1/me/workspace` 验的**。若要作为交付判据，建议实跑一次坐实。
-3. **`ChainImpedimentView.tsx` 的取数方式我没看**（是 `useQuery` 还是 props/`useState`）。
-   这直接决定 §4.1 步④ 是 0.5h 还是 3h ⇒ **§6 的估时区间下沿有此不确定性**。
+3. ~~`ChainImpedimentView.tsx` 的取数方式我没看~~ → **已补验，移入 A 类**：
+   `ChainImpedimentView.tsx:239` 是 `useState<LoadState>`、`:243-260` 是 `useEffect` 直调
+   `runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, …)`（`:246`），**不经 TanStack Query** ⇒
+   §4.1 步④ 取区间上沿（2–3h），且这一步**不可省**（省了就是造第 5 个「发了没人收」）。
 4. **`chain.impediment_resolved` 的"驾驶舱转化率消费方不存在"**：我用 `grep "转化率|conversion"` 判的，
    命中全是**单位换算**语义（`chain-loss.ts` / `inspectorModel.ts`），与"发现→处置"无关；
    金丝雀（`ChainImpedimentView.tsx` 中"阻滞点" 7 处命中）证明 grep 工具本身是好的。
