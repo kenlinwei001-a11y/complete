@@ -2240,6 +2240,28 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-stale-claims.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/sim/propagation.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "apps/frontend-shell/test/stale-claims.seam.test.ts",
+        "packages/contracts/src/chain-sim.ts",
+        "scripts/check-stale-claims.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh",
+        "scripts/stale-claim-baseline.json"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-system-ontogenesis-spec.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2593,6 +2615,7 @@
       "PRD-sandbox-multiplan.md",
       "PRD-skill-compiler-registry.md",
       "PRD-skill-governance-learning.md",
+      "PRD-stale-claims.md",
       "PRD-topo-realdata.md"
     ],
     "scripts/check-cli-parity.mjs": [
@@ -3008,13 +3031,15 @@
       "PRD-nav-gate.md",
       "PRD-route-nav-coverage.md",
       "PRD-sandbox-multiplan.md",
-      "PRD-sandbox-redesign.md"
+      "PRD-sandbox-redesign.md",
+      "PRD-stale-claims.md"
     ],
     "scripts/gate.sh": [
       "PRD-gate-ledger.md",
       "PRD-hardcoded-absence.md",
       "PRD-nav-gate.md",
       "PRD-skill-compiler-registry.md",
+      "PRD-stale-claims.md",
       "PRD-transit-wire.md"
     ],
     "apps/datacore/src/domain.ts": [
@@ -3055,10 +3080,12 @@
     ],
     "apps/datacore/src/synthetic/cadence.ts": [
       "PRD-hardcoded-absence.md",
-      "PRD-semantics-singlesource.md"
+      "PRD-semantics-singlesource.md",
+      "PRD-stale-claims.md"
     ],
     "apps/frontend-shell/src/views/sim/transitFlow.ts": [
       "PRD-hardcoded-absence.md",
+      "PRD-stale-claims.md",
       "PRD-transit-wire.md"
     ],
     "apps/frontend-shell/test/transit-flow.seam.test.tsx": [
@@ -3294,10 +3321,12 @@
       "PRD-sandbox-multiplan.md"
     ],
     "packages/contracts/src/chain-sim.ts": [
-      "PRD-sandbox-multiplan.md"
+      "PRD-sandbox-multiplan.md",
+      "PRD-stale-claims.md"
     ],
     "apps/datacore/src/sim/propagation.ts": [
-      "PRD-sandbox-redesign.md"
+      "PRD-sandbox-redesign.md",
+      "PRD-stale-claims.md"
     ],
     "apps/frontend-shell/src/views/sim/SandboxView.tsx": [
       "PRD-sandbox-redesign.md"
@@ -3468,7 +3497,21 @@
       "PRD-sop-balance-1to1.md"
     ],
     "apps/datacore/src/synthetic/service.ts": [
+      "PRD-stale-claims.md",
       "PRD-topo-realdata.md"
+    ],
+    "apps/frontend-shell/src/views/sim/inspectorModel.ts": [
+      "PRD-stale-claims.md",
+      "PRD-transit-wire.md"
+    ],
+    "apps/frontend-shell/test/stale-claims.seam.test.ts": [
+      "PRD-stale-claims.md"
+    ],
+    "scripts/check-stale-claims.mjs": [
+      "PRD-stale-claims.md"
+    ],
+    "scripts/stale-claim-baseline.json": [
+      "PRD-stale-claims.md"
     ],
     "apps/frontend-shell/src/views/sim/physicalTopology.ts": [
       "PRD-topo-realdata.md"
@@ -3477,9 +3520,6 @@
       "PRD-transit-geometry.md"
     ],
     "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": [
-      "PRD-transit-wire.md"
-    ],
-    "apps/frontend-shell/src/views/sim/inspectorModel.ts": [
       "PRD-transit-wire.md"
     ]
   }
