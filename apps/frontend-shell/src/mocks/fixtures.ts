@@ -162,6 +162,23 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
+  // ── 推演沙盘四子视图（WO-NAV-GATE · mock 对齐后端真实下发）─────────────────────
+  //
+  // 为什么此前 mock 里一条都没有 —— 而这正是 G-NAV-FALLBACK-BUCKET 的机械门写不出来的原因：
+  // 后端 `apps/datacore/src/synthetic/view-manifest.ts` 的 `BUILTIN_VIEWS` 早已把这四项入册
+  // （seed:true → scenarioSeed.views → GET /a/v1/me/workspace 真实下发 26 视图 / 44 nav），
+  // 而 mock 停在 22 项。差集恰好就是「落进『其它』兜底桶的那四个」——
+  // 于是在 mock 上写「业务视图不得落『其它』」的断言**恒真**，是哑门（本仓 `provenRed` 字段存在的理由）。
+  //
+  // `sim.sandbox` 在后端 `features.ts` 写着 `defaultOn: false`，看上去像"暗发没开"，
+  // **但那是 L1**：demo 租户的 L2 行业模板（battery = ALL_FEATURE_KEYS − QOS/PERF 暗发集）把 sim.* 全开了
+  // （见 `apps/datacore/src/seed.ts:71-79` 的实测注记）。mock 若照抄 L1 的 false，
+  // 四个视图会被级联过滤掉 —— 那是「接了线没数据」，跟没接线一样测不出东西。故此处 defaultOn: true。
+  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: true },
+  { key: "view.chain-line-map", name: "全链线路图", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_loss_attribution"] } },
+  { key: "view.transit-flow", name: "在途与在制", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.physical-topology", name: "物理拓扑", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.node-inspector", name: "节点检视", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -498,6 +515,15 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
     // 运营态出厂配置增量 §4.2：运营复盘（只读历史证据链页面）
     { key: "review", title: "运营复盘", renderer: "review", layout: {} },
+    // ── 推演沙盘四子视图（WO-NAV-GATE · mock 对齐后端真实下发）───────────────────
+    // key/title/renderer 逐字对齐后端单一来源 `apps/datacore/src/synthetic/view-manifest.ts`
+    // 的 `BUILTIN_VIEWS`（seed:true 那批）。⚠ 这不是"手抄一份清单"——
+    // `scripts/check-nav-group-coverage.mjs` 机械读那份清单与本数组比对，任一侧漂移即红
+    // （#99/#110 的病根正是两侧各手维护一套词表、没有任何东西对账）。
+    { key: "chain-line-map", title: "全链线路图", renderer: "chain-line-map", layout: {} },
+    { key: "transit-flow", title: "在途与在制", renderer: "transit-flow", layout: {} },
+    { key: "physical-topology", title: "物理拓扑", renderer: "physical-topology", layout: {} },
+    { key: "node-inspector", title: "节点检视", renderer: "node-inspector", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
