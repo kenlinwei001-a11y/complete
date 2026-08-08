@@ -13,9 +13,27 @@ import { FeatureService } from "../src/features.js";
 
 const LIT = [
   "qos.dril-routing", "agent.critic", "ceo.free-llm", "agent.coordinator", "qos.compose-path",
+  "qos.reasoning-trace", "agent.escalation",
   // WO-DEMO-L3-LIGHTUP：L3 体验双门（det-multi 产耦合路由 × l3-coupled 升格一次 portfolio）。
   "qos.deterministic-multi-domain", "qos.multi-intent-l3-coupled",
+  // WO-DEMO-LIGHTUP-2：本轮追加 5 条（逐条理由见 seed.ts DEMO_LIGHTUP 注释）。
+  "agent.skill-on-free-qa",
+  "qos.multi-intent-l2-decompose",
+  "qos.multi-intent-orchestration",
+  "qos.opt-whatif-route",
+  "dc.lazy-solver-context",
 ] as const;
+
+/**
+ * WO-DEMO-LIGHTUP-2 · **刻意不点**的暗发键（金值·防"下一个人以为是漏了就顺手加上"）。
+ *
+ * `qos.llm-budget-enforce` 是**硬线**：配额耗尽 → 新任务 429 `LLM_BUDGET_EXCEEDED` 直接拒。
+ * demo 是给人随便点随便问的环境，点亮 = 用着用着撞墙。记账侧不受此门控（账本照记），
+ * 关掉的只是"拿账本拦人"这一个动作。要演示配额请运维显式 PUT override（合并语义会尊重它）。
+ *
+ * 这条断言的作用不是"锁死永不点亮"，而是**逼人先读一遍理由**：真要改，连同 seed.ts 的注释一起改。
+ */
+const DELIBERATELY_NOT_LIT = ["qos.llm-budget-enforce"] as const;
 
 describe("WO-LIGHTUP · demo 点亮暗发功能（seed→resolve 真驱动·含 L3 体验双门）", () => {
   it("seedDemo + seedDemoEntitlements 后 resolve(demo) 含全部（生产点亮路径·battery 模板排除→显式 override 开）", async () => {
@@ -24,6 +42,16 @@ describe("WO-LIGHTUP · demo 点亮暗发功能（seed→resolve 真驱动·含 
     await seedDemoEntitlements(repos); // 生产 SEED_DEMO 路径才调（基座 seedDemo 保持干净·见函数注释）
     const feats = new Set((await new FeatureService(repos).resolve(DEMO_TENANT)).features);
     for (const k of LIT) expect(feats.has(k), `demo 应点亮 ${k}`).toBe(true);
+  });
+
+  it("刻意不点 SEAM：qos.llm-budget-enforce 点亮后**仍必须关**（硬线拒新任务·不该出现在 demo 上）", async () => {
+    const repos = createMemoryRepos();
+    await seedDemo(repos);
+    await seedDemoEntitlements(repos);
+    const feats = new Set((await new FeatureService(repos).resolve(DEMO_TENANT)).features);
+    for (const k of DELIBERATELY_NOT_LIT) {
+      expect(feats.has(k), `${k} 是刻意不点的（见 seed.ts DEMO_LIGHTUP 旁注），不该被种子打开`).toBe(false);
+    }
   });
 
   it("基座隔离 SEAM：只 seedDemo（未点亮）→ resolve(demo) 这 5 个仍关（单测 makeApp 基线干净·防污染 features/dark-feature 门）", async () => {

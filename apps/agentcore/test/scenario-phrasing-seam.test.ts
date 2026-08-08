@@ -19,7 +19,12 @@ import { exploratoryGoldset, phrasingGoldset, scenariosMissingVariants, type Phr
  * **确定性前置路由有没有在语义层开口之前就把题抢走并抢错**。这正是仓主那句话的病灶。
  */
 
-/** 生产 demo 租户真实功能集 = 模板默认开 ∪ datacore seed.ts `seedDemoEntitlements` 的 9 条显式点亮。 */
+/**
+ * 生产 demo 租户真实功能集 = 模板默认开 ∪ datacore seed.ts `DEMO_LIGHTUP` 的 14 条显式点亮
+ * （WO-DEMO-LIGHTUP-2 从 9 → 14；`dc.lazy-solver-context` 是 DataCore 侧性能门·AgentCore 不注册，
+ * 故此镜像只列 13 条 QOS 侧的键）。**镜像一改，本门就换了考卷** —— 这正是它的用途：
+ * 新点亮的路由门若会抢答，必须在这里当场露出来，而不是等部署态。
+ */
 const DEMO_PROD_FEATURES = [
   ...defaultOnKeys(),
   "qos.dril-routing",
@@ -31,6 +36,11 @@ const DEMO_PROD_FEATURES = [
   "agent.escalation",
   "qos.deterministic-multi-domain",
   "qos.multi-intent-l3-coupled",
+  // WO-DEMO-LIGHTUP-2 新点亮（qos.llm-budget-enforce 刻意不列·见 seed.ts 旁注）
+  "agent.skill-on-free-qa",
+  "qos.multi-intent-l2-decompose",
+  "qos.multi-intent-orchestration",
+  "qos.opt-whatif-route",
 ];
 
 interface Outcome {

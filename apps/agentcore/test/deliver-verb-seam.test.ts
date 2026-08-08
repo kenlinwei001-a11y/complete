@@ -18,7 +18,10 @@ import { isCapacityFeasibilityQuery } from "../src/agent/sim-planner.js";
  * 且效果层（真 HTTP 路由落到哪条路）随之改变。
  */
 
-/** 生产 demo 租户真实功能集 = 模板默认开 ∪ datacore seed.ts `seedDemoEntitlements` 的 9 条显式点亮。 */
+/**
+ * 生产 demo 租户真实功能集 = 模板默认开 ∪ datacore seed.ts `DEMO_LIGHTUP` 的 14 条显式点亮
+ * （WO-DEMO-LIGHTUP-2 从 9 → 14；`dc.lazy-solver-context` 是 DataCore 侧性能门·AgentCore 不注册）。
+ */
 const DEMO_PROD_FEATURES = [
   ...defaultOnKeys(),
   "qos.dril-routing",
@@ -30,6 +33,11 @@ const DEMO_PROD_FEATURES = [
   "agent.escalation",
   "qos.deterministic-multi-domain",
   "qos.multi-intent-l3-coupled",
+  // WO-DEMO-LIGHTUP-2 新点亮（qos.llm-budget-enforce 刻意不列·见 seed.ts 旁注）
+  "agent.skill-on-free-qa",
+  "qos.multi-intent-l2-decompose",
+  "qos.multi-intent-orchestration",
+  "qos.opt-whatif-route",
 ];
 
 /** 用户在基地页选中常州（门③ contextRich 成立 → free-LLM/Coordinator 分路都具备触发条件）。 */
