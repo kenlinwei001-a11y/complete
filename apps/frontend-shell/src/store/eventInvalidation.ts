@@ -29,6 +29,50 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   "story-runs": [["a", "story-runs"], ["a", "build-jobs"]],
   "growth-ledger": [["b", "growth-ledger"]],
   "growth-tickets": [["b", "growth-tickets"]],
+  // 沙盘方案快照环（A10）：存方案/存分支（POST /a/v1/sim/live-scenarios、POST /a/v1/sim/scenarios）
+  // → 方案列表 + 横比矩阵失效。两个 key 都取自 RiskBoardView 的真实 useQuery（见 SIM_CONSUMER_KEYS）：
+  //   ["a","live-scenarios", baseId]                 RiskBoardView.tsx:1073
+  //   ["a","live-scenario-compare", baseId, ids]     RiskBoardView.tsx:1086
+  // 前缀失效（TanStack 前缀匹配）故此处只写到 baseId 之前那一段。
+  "sim-scenarios": [["a", "live-scenarios"], ["a", "live-scenario-compare"]],
+};
+
+/**
+ * 沙盘方案环的**真实消费方查询键前缀**（A10 接缝的另一端）。
+ * 这不是给运行时用的——它是给接缝测试用的锚：测试同时咬住"表里写了什么"与
+ * "视图真的用什么 key 注册 useQuery"，视图改名而表没跟 → 测试红（防表漂移）。
+ */
+export const SIM_CONSUMER_KEYS = {
+  /** RiskBoardView · CapacityScenarioPanel 方案列表。 */
+  liveScenarioList: ["a", "live-scenarios"],
+  /** RiskBoardView · CapacityScenarioPanel decision_play 横比矩阵。 */
+  liveScenarioCompare: ["a", "live-scenario-compare"],
+} as const;
+
+/**
+ * `sim.*` 缺口台账（A10 诚实报缺）——**故意不接线**的事件及其理由。
+ *
+ * 判据不是"懒得接"，是**今天前端根本没有承载它的缓存**：沙盘会话/世界态/检查点/分支
+ * 全部落在 `SandboxView.tsx` 的 `useState`（sessionId / world / curTick / branchId），
+ * 不经 TanStack Query；且 tick 只写 `repos.sim.putTickState`（模拟态，R4 不写真值），
+ * 不动任何 `["a","objects"]` 缓存的真对象。给它们硬塞一个订阅 = 假接线（#90/#92 同族），
+ * 比不接更坏——所以在此登记，并由 `sim-event-invalidation.seam` 测试逐条守住：
+ * 新增 `sim.*` emit 而两边都没登记 → 红。
+ *
+ * 解法（不在 A10 范围内）：这四个事件要有真消费方，得先让沙盘态走 Query 缓存
+ * （会话列表 / world 快照改 useQuery），那是 SandboxView 的改造，另开工单。
+ */
+export const SIM_EVENT_GAPS: Record<string, string> = {
+  "sim.session_created":
+    "无缓存消费方：前端没有任何 useQuery 读 GET /a/v1/sim/sessions（endpoints.ts 只有 POST createSimSession），" +
+    "会话 id 存在 SandboxView 的 useState 里。",
+  "sim.tick_completed":
+    "无缓存消费方：tick 只写 sim tick_state（R4 模拟态不写真值，不影响 ['a','objects']），" +
+    "SandboxView 的 world/curTick 由 tick 响应直接 setState，不经 Query 缓存。",
+  "sim.checkpoint_saved":
+    "无缓存消费方：前端只有 POST simCheckpoint，没有检查点列表 useQuery。",
+  "sim.branched":
+    "无缓存消费方：前端只有 POST simBranch，子会话 id 落 SandboxView 的 useState(branchId)，无列表缓存。",
 };
 
 /**
@@ -56,6 +100,11 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "growth.fill_proposed": ["growth-ledger"],
   "growth.ticket_opened": ["growth-tickets", "growth-ledger"],
   "growth.converged": ["growth-ledger", "growth-tickets"],
+  // A10 沙盘方案环：datacore app.ts:1725（/a/v1/sim/scenarios）与 app.ts:1781（/a/v1/sim/live-scenarios）
+  // 两处 emit 同名事件。补这条修的是**真陈旧**：RiskBoardView 存方案后只本地失效了 live-scenarios，
+  // 横比矩阵 ["a","live-scenario-compare",…] 从来没人失效过（连发起方那一页都陈旧）；
+  // 且经 F1 全局轮询，别的标签页/别的用户现在也能收到。
+  "sim.scenario_saved": ["sim-scenarios"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */
