@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BASE_REGISTRY, type ChainImpedimentKind } from "@platform/contracts";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChainLineMapView } from "./ChainLineMapView";
@@ -23,6 +23,7 @@ import {
   CANVAS_MODES,
   CANVAS_MODE_LABEL,
   CANVAS_MODE_TITLE,
+  chainNodePresence,
   chainStageCoverage,
   fmtDays,
   fmtFlowEff,
@@ -30,10 +31,15 @@ import {
   IMPEDIMENT_CARDS,
   IMPEDIMENT_DESIGN_GAP,
   PARETO_TOP_N,
+  sameOverlayBox,
   SCOPE_DIMENSIONS,
+  transitOverlayBox,
   type CanvasMode,
+  type EmptyNodeCardVM,
   type NodeCardVM,
+  type OverlayRect,
   type StepVM,
+  type TransitOverlayBox,
 } from "./sandboxConsole";
 import styles from "./SandboxConsole.module.css";
 
@@ -175,6 +181,76 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
     setMounted((s) => (s.has(next) ? s : new Set([...s, next])));
   }, []);
 
+  // ── 在途图层 ⇄ 线路图：叠加盒测量（WO-CONSOLE-CLEANUP ④）─────────────────────
+  /**
+   * 上一单交付语原文：「今天做到的是两张图坐标系相同、viewBox 相同 —— 叠加时坐标即刻对得上，
+   * 无需再改几何」，**没做的是挂载点**（控制台把两者渲染成上下两个兄弟节点）。这里补的就是挂载点。
+   *
+   * 做法：把在途层那张环 SVG 用 CSS 钉到线路图**舞台 SVG 的同一个屏上矩形**。
+   * 两张图 `viewBox` 相同 ⇒ 盒子重合即坐标重合，本文件**不碰任何几何**（`transitOverlayBox`
+   * 只做矩形相减与裁切，不算角度/半径/缩放）。舞台自带 translate/scale，而
+   * `getBoundingClientRect()` 给的是变换后的矩形，所以缩放平移天然跟随。
+   *
+   * 测量口径**只认线路图自己发布的 DOM**（`clm-stage` / `clm-canvas` 两个 testid，
+   * 外加它已经挂在画布上的 `data-zoom` / `data-pan-x` / `data-pan-y`）——
+   * 不 import 它的内部、不改它一行；重新测量的触发源就是那三个属性的变化 + 容器尺寸变化。
+   */
+  const metroStackRef = useRef<HTMLDivElement | null>(null);
+  const [overlay, setOverlay] = useState<TransitOverlayBox | null>(null);
+  const overlayActive = transitOn && mode === "metro";
+  useEffect(() => {
+    const stack = metroStackRef.current;
+    if (stack === null || !overlayActive) {
+      setOverlay(null);
+      return;
+    }
+    const rectOf = (el: Element): OverlayRect => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    };
+    const measure = () => {
+      const stageEl = stack.querySelector('[data-testid="clm-stage"]');
+      const canvasEl = stack.querySelector('[data-testid="clm-canvas"]');
+      if (stageEl === null || canvasEl === null) {
+        setOverlay((prev) => (prev === null ? prev : null));
+        return;
+      }
+      const next = transitOverlayBox(rectOf(stack), rectOf(stageEl), rectOf(canvasEl));
+      setOverlay((prev) => (sameOverlayBox(prev, next) ? prev : next));
+    };
+    measure();
+    // 画布尺寸变化（分栏/窗口）——jsdom 没有 ResizeObserver，缺了就只测一次，不 polyfill、不假装。
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => measure());
+    ro?.observe(stack);
+    // 缩放/平移：线路图把 transform 发布成画布上的三个 data-* 属性，盯着它们即可，无需读它的 state。
+    const mo = new MutationObserver(() => measure());
+    mo.observe(stack, {
+      attributes: true,
+      subtree: true,
+      childList: true,
+      attributeFilter: ["data-zoom", "data-pan-x", "data-pan-y"],
+    });
+    return () => {
+      ro?.disconnect();
+      mo.disconnect();
+    };
+  }, [overlayActive, loss, familyOn]);
+
+  /** 叠加盒 → CSS 自定义属性（几何全在这一处落地，样式表只负责「钉」这个动作）。 */
+  const overlayVars = useMemo(() => {
+    if (overlay === null || !overlay.measured) return undefined;
+    return {
+      "--sc-ov-left": `${overlay.left}px`,
+      "--sc-ov-top": `${overlay.top}px`,
+      "--sc-ov-w": `${overlay.width}px`,
+      "--sc-ov-h": `${overlay.height}px`,
+      "--sc-ov-ct": `${overlay.clipTop}px`,
+      "--sc-ov-cr": `${overlay.clipRight}px`,
+      "--sc-ov-cb": `${overlay.clipBottom}px`,
+      "--sc-ov-cl": `${overlay.clipLeft}px`,
+    } as CSSProperties;
+  }, [overlay]);
+
   // ── 阻滞点扫描（本组件唯一自发的请求）───────────────────────────────────────
   const impArgs = useMemo(() => ({ scope: baseIds.length > 0 ? { baseIds } : {} }), [baseIds]);
   const impArgsKey = useMemo(() => JSON.stringify(impArgs), [impArgs]);
@@ -217,6 +293,8 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
   const board = useMemo(() => (loss === null ? null : buildStageBoard(loss)), [loss]);
   const pareto = useMemo(() => (loss === null ? null : buildPareto(loss)), [loss]);
   const coverage = useMemo(() => chainStageCoverage(board), [board]);
+  /** 「在册 / 有数据 / 在册不在场」三态 —— 差额归零之后，屏上真正该说的那句话的唯一出处。 */
+  const presence = useMemo(() => chainNodePresence(loss), [loss]);
 
   const nodeById = useMemo(() => {
     const m = new Map<string, NodeCardVM>();
@@ -248,6 +326,16 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
     },
     [],
   );
+
+  /**
+   * 点灰卡片（诚实缺席节点）：右栏切到「变量输入」页签。
+   * 因为这类节点**没有逐环节表可看**（它就是没有环节），能看的是引擎给的缺席原因与探针 ——
+   * 那些在 `NodeInspectorView` 的下钻区块里。切「逐环节」会给一张空表，那是把"没有"画成"空"。
+   */
+  const pickEmptyNode = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setRailTab("vars");
+  }, []);
 
   const toggleBase = (id: string) =>
     setBaseIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].sort()));
@@ -351,6 +439,28 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
               ；判不出来 {model.unresolved.length} 条。
             </>
           ) : null}
+        </p>
+      ) : null}
+
+      {/*
+        联动口径差 —— 这条此前只写在 `stagesOfKind` 的注释里（源码看得见、屏上看不见）。
+        它是**真实的接缝缺口**（本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`），不是实现偷懒：
+        两个求解器没有共同的 id 维度，硬映射会是一个"看着合理"的编造。段数取 `CHAIN_STAGES.length`
+        派生（12→24 那一单把段从 4 加到 5，写死的数当天就会过期）。
+      */}
+      {honesty ? (
+        <p className={styles.noteWarn} data-testid="sc-imp-join-gap">
+          <b>联动口径（真实的接缝缺口，不拿一个看着合理的映射盖过去）：</b>
+          <code>chain_impediments</code> 的 locus 是<b>对象</b>（<code>MaterialBatch</code> / <code>Line</code> /{" "}
+          <code>Process</code>…），而 <code>chain_loss_attribution</code> 的节点是<b>链路节点</b>
+          （<code>order.cash</code> 那一族 id）—— 两者今天<b>没有共同的 id 维度</b>，能对上的只有{" "}
+          <code>stage</code>。故点统计条只能<b>按 stage 联动高亮</b>（本链路共 {CHAIN_STAGES.length} 段），
+          <b>不能按节点精确点亮</b>；同一段里算得出与算不出的节点会被一起点亮，那是段级精度，不是节点级。
+          {dimKind === null ? null : (
+            <>
+              {" "}本次选中的这一类落在 {dimStages.size}/{CHAIN_STAGES.length} 段上。
+            </>
+          )}
         </p>
       ) : null}
 
@@ -474,28 +584,38 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           </div>
 
           <div className={styles.canvasWrap}>
-            {/* 线路图（+ 在途图层）*/}
+            {/* 线路图（+ 在途图层 —— **叠在同一块画布上**，不是上下两个兄弟节点）*/}
             <div className={styles.canvasSlot} hidden={mode !== "metro"} data-testid="sc-slot-metro">
-              {mounted.has("metro") ? (
-                <ChainLineMapView
-                  view={lineMapView}
-                  chrome="embedded"
-                  onPayload={setLoss}
-                  {...(familyOn && famAnchors !== null && famAnchors.length > 0 ? { familyAnchors: famAnchors } : {})}
-                />
-              ) : null}
-              {familyOn && famDiscoverErr !== null ? (
-                <p className={styles.errBox} data-testid="sc-family-error" role="alert">
-                  <b>产品族锚点发现失败</b>：{famDiscoverErr}
-                  。**不画三个一样的环冒充三条族线** —— 主链那一圈照常。
-                </p>
-              ) : null}
-              {transitOn ? (
-                <div className={styles.layerPanel} data-testid="sc-transit-layer">
-                  {honesty ? <TransitComputabilityLegend /> : null}
-                  <TransitFlowView chrome="embedded" />
-                </div>
-              ) : null}
+              <div
+                ref={metroStackRef}
+                className={styles.metroStack}
+                data-testid="sc-metro-stack"
+                data-transit-overlay={overlayActive ? "on" : "off"}
+                data-overlay-measured={overlay?.measured === true ? "1" : "0"}
+                style={overlayVars}
+              >
+                {mounted.has("metro") ? (
+                  <ChainLineMapView
+                    view={lineMapView}
+                    chrome="embedded"
+                    onPayload={setLoss}
+                    {...(familyOn && famAnchors !== null && famAnchors.length > 0 ? { familyAnchors: famAnchors } : {})}
+                  />
+                ) : null}
+                {familyOn && famDiscoverErr !== null ? (
+                  <p className={styles.errBox} data-testid="sc-family-error" role="alert">
+                    <b>产品族锚点发现失败</b>：{famDiscoverErr}
+                    。**不画三个一样的环冒充三条族线** —— 主链那一圈照常。
+                  </p>
+                ) : null}
+                {transitOn ? (
+                  <div className={styles.layerPanel} data-testid="sc-transit-layer">
+                    {honesty ? <OverlayNote box={overlay} /> : null}
+                    {honesty ? <TransitComputabilityLegend /> : null}
+                    <TransitFlowView chrome="embedded" />
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {/* 物理拓扑 */}
@@ -507,18 +627,25 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
             <div className={styles.canvasSlot} hidden={mode !== "chain"} data-testid="sc-slot-chain">
               {honesty ? (
                 <p className={styles.noteWarn} data-testid="sc-chain-coverage">
-                  <b>诚实边界：</b>设计目标 {coverage.designStageCount} 段 {coverage.designNodeCount} 节点
-                  （{coverage.designStageNames.join(" / ")}）；
-                  后端单源 <code>CHAIN_STAGES</code> 今天只有 {coverage.backendStageCount} 段
-                  （{coverage.backendStageLabels.join(" / ")}）、<code>CHAIN_NODE_REGISTRY</code> 只有{" "}
-                  {coverage.backendRegistryNodeCount} 个静态在册节点 ——
+                  <b>诚实边界 · 在册 ≠ 有数据：</b>设计目标 {coverage.designStageCount} 段 {coverage.designNodeCount} 节点
+                  （{coverage.designStageNames.join(" / ")}）；后端单源 <code>CHAIN_STAGES</code> 今天是{" "}
+                  {coverage.backendStageCount} 段（{coverage.backendStageLabels.join(" / ")}）、
+                  <code>CHAIN_NODE_REGISTRY</code> 是 {coverage.backendRegistryNodeCount} 个静态在册节点 ——
                   <b>
                     差 {coverage.missingStageCount} 段 {coverage.missingNodeCount} 个节点尚未建模
                   </b>
-                  。本画布按后端真有的渲染（本次载荷 {coverage.renderedNodeCount} 个节点，其中{" "}
+                  。<b>但补齐注册表补不出数据</b>：本次载荷里在册节点只有 {presence.withSteps.length} 个算得出天数，
+                  {presence.emptyOnly.length} 个只有诚实缺席行（引擎 <code>empty[]</code> 共 {presence.emptyRowCount} 行：
+                  {presence.emptyRowsByKind.map((k) => `${k.kind} ${k.count}`).join(" · ") || "（空）"}），
+                  另有 {presence.absent.length} 个<b>在册不在场</b>
+                  {presence.absent.length === 0 ? null : (
+                    <>（{presence.absent.map((a) => `${a.label}（${a.nodeId}）`).join("、")}）</>
+                  )}
+                  —— 引擎既不产环节也不产 <code>EMPTY</code> 行，屏上本来完全看不见，本画布把它单列出来。
+                  三态在画布上<b>形状分家</b>：实心卡 = 有数据 · 灰卡 = 诚实缺席（缺什么按引擎 <code>reason</code> 原文写在卡上）·
+                  单列一行 = 在册不在场。本画布按后端真有的渲染（本次载荷 {coverage.renderedNodeCount} 个节点，其中{" "}
                   {coverage.renderedDynamicOpCount} 个来自动态工序命名空间 <code>capacity.op.*</code>），
-                  <b>不拿 {coverage.backendRegistryNodeCount} 个冒充 {coverage.designNodeCount} 个</b>，
-                  也不在前端手抄一份 24 节点词表。扩注册表要连引擎一起改，不在本单边界。
+                  <b>不拿「在册数」冒充「有数据数」</b>，也不在前端手抄一份 24 节点词表。
                 </p>
               ) : null}
               {board === null ? (
@@ -536,7 +663,7 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                           {fmtPct(lane.nodes.reduce((a, n) => a + n.pctOfChainLoss, 0))}
                         </span>
                       </div>
-                      {lane.nodes.length === 0 ? (
+                      {lane.nodes.length === 0 && lane.emptyNodes.length === 0 ? (
                         <p className={styles.laneEmptyRow} data-testid={`sc-lane-${lane.stage}-empty`}>
                           本次载荷这一段没有节点（不是 0 天，是没有节点）。
                         </p>
@@ -549,6 +676,9 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                                 key={n.nodeId}
                                 type="button"
                                 className={`${styles.nodeCard}${hit ? "" : ` ${styles.dimmed}`}`}
+                                /* 形状标识：有数据 = 实心卡；诚实缺席 = 缺角灰卡（`EmptyNodeCard`）。
+                                   两者**不许**只差颜色深浅 —— 判据见 sandbox-console.seam §9。 */
+                                data-card-shape="solid-block"
                                 aria-pressed={selectedNodeId === n.nodeId}
                                 data-testid={`sc-node-${n.nodeId}`}
                                 onClick={() => pickNode(n.nodeId)}
@@ -581,12 +711,24 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                               </button>
                             );
                           })}
+                          {/* 诚实缺席节点 = 灰卡片。**与有数据的节点在形状上分家**（见 EmptyNodeCard 注） */}
+                          {lane.emptyNodes.map((e) => (
+                            <EmptyNodeCard
+                              key={e.nodeId}
+                              n={e}
+                              dimmed={dimKind !== null && !dimStages.has(lane.stage)}
+                              pressed={selectedNodeId === e.nodeId}
+                              onPick={() => pickEmptyNode(e.nodeId)}
+                            />
+                          ))}
                         </div>
                       )}
-                      {lane.orphanEmpty.length > 0 ? (
-                        <p className={styles.laneEmptyRow} data-testid={`sc-lane-${lane.stage}-orphan`}>
-                          本段另有 {lane.orphanEmpty.length} 个环节诚实标 EMPTY（算不出来，**未补 0**）：
-                          {lane.orphanEmpty.map((e) => `${e.label}（${e.emptyKind}）`).join("、")}
+                      {lane.absentNodes.length > 0 ? (
+                        <p className={styles.laneAbsentRow} data-testid={`sc-lane-${lane.stage}-absent`}>
+                          <b>在册不在场</b>：本段另有 {lane.absentNodes.length} 个节点在 <code>CHAIN_NODE_REGISTRY</code> 里，
+                          但本次载荷<b>既没有环节、也没有 EMPTY 行</b>（引擎一个字都没提它）——
+                          {lane.absentNodes.map((a) => `${a.label}（${a.nodeId}）`).join("、")}
+                          。屏上单列一行，<b>不当它不存在</b>；它既不是「0 天」也不是「算不出来」，是<b>没进这次输出</b>。
                         </p>
                       ) : null}
                     </section>
@@ -628,7 +770,24 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
             {railTab === "steps" ? (
               <StepDetail node={selected} honesty={honesty} />
             ) : (
-              <NodeInspectorView chrome="embedded" selectedNodeId={selectedNodeId ?? undefined} onNodeIdChange={setSelectedNodeId} />
+              /*
+               * `lossPayload` —— **口径单源那条线补齐的最后一格**（WO-CONSOLE-CLEANUP ①）。
+               * 上一单（WO-NODE-SEMANTICS）为了让 R13 下钻证据当天就能上屏，给本面板留了一条
+               * **自取一次 `chain_loss_attribution`**（`{}` 无参）的退路，并在屏上明写代价，
+               * 因为那个 dev 不许碰本文件、拿不到宿主 state 里的载荷。现在把那一份传下去：
+               * 本页的 `chain_loss_attribution` 回到**全页一次**，面板那句文案自动从「本视图自取一次」
+               * 翻成「未发第二次请求」（判据在 `node-semantics.seam` §1 与本页 SEAM 门里各咬一次）。
+               *
+               * `loss ?? undefined` 而不是 `loss`：载荷还没回来（或线路图取数失败）时**必须**退回自取，
+               * 否则面板会拿着 `null` 当"宿主已给"，屏上说着"复用宿主那一份"却一格证据都没有 ——
+               * 那是把"还没有"画成"已经有"。
+               */
+              <NodeInspectorView
+                chrome="embedded"
+                selectedNodeId={selectedNodeId ?? undefined}
+                onNodeIdChange={setSelectedNodeId}
+                lossPayload={loss ?? undefined}
+              />
             )}
           </div>
           {rail.map((s) => (
@@ -744,6 +903,95 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
 function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentKind): Set<string> {
   if (model === null) return new Set();
   return new Set(model.groups.find((g) => g.kind === kind)?.items.map((i) => i.stage) ?? []);
+}
+
+/**
+ * WO-CONSOLE-CLEANUP ② · **诚实缺席节点 = 灰卡片**（不是段尾一行小字）。
+ *
+ * ── 为什么必须是卡，且必须与有数据的卡**形状不同** ──────────────────────────────
+ * 注册表 12→24 之后新增的 12 个里 10 个是 `NO_CARRIER`（`PRD-chain-24nodes.md` §3 逐个取证）。
+ * 在此之前它们在画布上被折成段尾一行文字，于是「这一段有几个节点」读起来就是「有几个能算的」——
+ * **「在册」与「有数据」被画成了同一件事**。卡形让"这里有一个节点"与有数据的节点同级可见。
+ *
+ * 而形状必须分家、**不许只靠颜色深浅**：深浅会被读成"同一种东西弱一点"，
+ * 但这两者是「有承载物 / 没有承载物」两种**事实**，不是强弱两档。
+ * 判据落在两处，一处漂了另一处会当场红：
+ *   · `data-card-shape` —— 实心卡 `solid-block` vs 缺角卡 `notched-tag`（DOM 层，测试直接咬）；
+ *   · `.emptyCard` 的 `clip-path`（几何层：真把右上角切掉，`.nodeCard` 没有这条声明）。
+ * 缺什么，按引擎 `empty[].reason` **原文透传**（前端一个字都不改写、不总结、不补 0）。
+ */
+function EmptyNodeCard({
+  n,
+  dimmed,
+  pressed,
+  onPick,
+}: {
+  n: EmptyNodeCardVM;
+  dimmed: boolean;
+  pressed: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.emptyCard}${dimmed ? ` ${styles.dimmed}` : ""}`}
+      data-card-shape="notched-tag"
+      data-testid={`sc-empty-node-${n.nodeId}`}
+      data-empty-kinds={n.kinds.join(",")}
+      data-row-count={n.rows.length}
+      aria-pressed={pressed}
+      onClick={onPick}
+    >
+      <span className={styles.emptyCardTop}>
+        <span className={styles.emptyCardName} title={`${n.label}（${n.nodeId}）`}>
+          {n.label}
+        </span>
+        <span className={styles.emptyCardKind}>EMPTY</span>
+      </span>
+      <span className={styles.emptyCardFoot}>
+        算不出来 · <b>未补 0</b> · {n.rows.length} 条缺席行 · {n.kinds.join(" / ")}
+      </span>
+      {n.rows.map((r) => (
+        <span key={r.stepId} className={styles.emptyCardRow} data-testid={`sc-empty-row-${r.stepId}`} data-empty-kind={r.emptyKind}>
+          <b>
+            {r.label} · {r.emptyKind}
+          </b>
+          {/* reason / probe 逐字透传引擎原文 —— 前端不改写、不截断、不概括 */}
+          <em>{r.reason}</em>
+          {r.probe === undefined ? null : <code>探针：{r.probe}</code>}
+        </span>
+      ))}
+    </button>
+  );
+}
+
+/**
+ * WO-CONSOLE-CLEANUP ④ · 叠加的**当面说明**。
+ *
+ * 只说本单新变成真的那一件事（图层钉在了线路图舞台的同一个盒子上），
+ * 以及测量不到时照实标出来。**不复述**在途层自己那两句常驻诚实位
+ * （「几何与线路图同源」/「同角度不代表同一个实体」）—— 那两句的单一出处在 `TransitFlowLayer`，
+ * 在这里抄第二遍就是给它开一条会漂的分身。
+ */
+function OverlayNote({ box }: { box: TransitOverlayBox | null }) {
+  const measured = box !== null && box.measured;
+  return (
+    <p className={styles.note} data-testid="sc-transit-overlay-note" data-measured={measured ? "1" : "0"}>
+      <b>在途批次图层已叠在线路图这块画布上</b>（不再是上下两张图）：图层那张环 SVG 被钉到线路图舞台
+      <b>同一个屏上矩形</b>，两图 <code>viewBox</code> 相同 ⇒ 同一坐标即同一屏点，
+      本页<b>不重算任何几何</b>（缩放/平移跟着线路图走）。
+      {measured ? (
+        <>
+          {" "}实测叠加盒 {Math.round(box.width)}×{Math.round(box.height)}px。
+        </>
+      ) : (
+        <>
+          {" "}⚠ <b>画布尺寸不可测</b>（未布局 / 隐藏 / 非浏览器环境）⇒ 本次<b>没有叠加</b>，图层按常规块排在下方 ——
+          不假装"已对齐"。
+        </>
+      )}
+    </p>
+  );
 }
 
 /** 位置口径 → 中文档名 + 「因此画成什么」。三档三种图元，**不许用同一个匀速滑块糊过去**。 */

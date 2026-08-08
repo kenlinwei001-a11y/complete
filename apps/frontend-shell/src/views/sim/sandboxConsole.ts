@@ -197,6 +197,32 @@ export interface NodeCardVM {
   emptySteps: ChainLossEmptyRow[];
 }
 
+/**
+ * 一个**只有诚实缺席行、没有任何环节**的在册节点（WO-CONSOLE-CLEANUP 新增）。
+ *
+ * ── 为什么它必须是一张卡，而不是段尾一行小字 ──────────────────────────────────
+ * 注册表 12→24 之后，新增 12 个里 10 个是 `NO_CARRIER`（`PRD-chain-24nodes.md` §3）。
+ * 在这之前它们在画布上只被折成 `lane.orphanEmpty` 的**一行文字**，于是屏上读起来是
+ * 「这一段有 3 个节点」而不是「这一段有 3 个能算的 + 5 个算不出来的」——
+ * **「在册」与「有数据」被画成了同一件事**，正是本仓最贵的那个错觉。
+ *
+ * 卡形而不是行文，是为了让「这里有一个节点」这件事与有数据的节点**同级可见**；
+ * 而形状（不是颜色深浅）必须分家：深浅会被读成「同一种东西弱一点」，
+ * 但这两者是**有数据 / 没有承载物**两种事实（与线路图闭环段、在途三档图元同一条纪律）。
+ */
+export interface EmptyNodeCardVM {
+  nodeId: string;
+  /** 节点名取 `CHAIN_NODE_REGISTRY`（contracts 单源）；不在册则用 nodeId 原样，**不编名字**。 */
+  label: string;
+  /** 在不在静态注册表里（`false` = 动态工序命名空间那类，只可能来自载荷）。 */
+  registered: boolean;
+  stage: ChainStage;
+  /** 本节点的诚实缺席行，引擎 `empty[]` 原样（`reason` / `probe` **逐字透传**，前端不改写）。 */
+  rows: ChainLossEmptyRow[];
+  /** 本节点上出现过的 `emptyKind`（去重 · 字典序 · R6 全序）。 */
+  kinds: string[];
+}
+
 /** 一段（lane）。**空段也保留** ——「这一段本次没有节点」必须说出来，不是消失。 */
 export interface StageLaneVM {
   stage: ChainStage;
@@ -204,6 +230,17 @@ export interface StageLaneVM {
   nodes: NodeCardVM[];
   /** 该段上诚实缺席的环节（`empty[]` 里 stage 命中、但 nodeId 不在本段任何节点上的行）。 */
   orphanEmpty: ChainLossEmptyRow[];
+  /**
+   * `orphanEmpty` 按 nodeId 归拢成的**灰卡片**（同一批行的另一种投影，不是第二份数据）。
+   * 排序：nodeId 字典序（R6 全序）。
+   */
+  emptyNodes: EmptyNodeCardVM[];
+  /**
+   * 该段上**在册但本次载荷里既无环节也无 EMPTY 行**的节点（「在册不在场」）。
+   * 实测今天恰有一个：`capacity.maint`（`flowGate:false` ⇒ 不产环节也不产 EMPTY 行，
+   * `PRD-chain-24nodes.md` §6.6 记着这笔账）。屏上照实说，不当它不存在。
+   */
+  absentNodes: { nodeId: string; label: string }[];
 }
 
 export interface StageBoardVM {
@@ -265,19 +302,54 @@ function toNodeCard(n: ChainNode, attr: Map<string, { nonValueDays: number; pctO
  * 载荷 → 分段板。段序 = `CHAIN_STAGES`（契约里那个顺序即链路顺序），
  * 段内节点按 `pctOfChainLoss` 降序 → nodeId 字典序（R6 全序）。
  */
+/**
+ * `orphanEmpty` → 灰卡片（同一批行按 nodeId 归拢，**不是第二次取数、不产生任何新数字**）。
+ * 节点名走 `CHAIN_NODE_REGISTRY` 单源；不在册的用 nodeId 原样。行内一切原文透传。
+ */
+function toEmptyNodeCards(rows: ChainLossEmptyRow[]): EmptyNodeCardVM[] {
+  const byNode = new Map<string, ChainLossEmptyRow[]>();
+  for (const r of rows) {
+    const bucket = byNode.get(r.nodeId);
+    if (bucket === undefined) byNode.set(r.nodeId, [r]);
+    else bucket.push(r);
+  }
+  return [...byNode.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([nodeId, list]) => {
+      const def = CHAIN_NODE_REGISTRY.find((d) => d.nodeId === nodeId);
+      return {
+        nodeId,
+        label: def?.label ?? nodeId,
+        registered: def !== undefined,
+        stage: list[0]!.stage,
+        rows: [...list].sort((x, y) => (x.stepId < y.stepId ? -1 : x.stepId > y.stepId ? 1 : 0)),
+        kinds: [...new Set(list.map((r) => r.emptyKind))].sort(),
+      };
+    });
+}
+
 export function buildStageBoard(payload: ChainLossPayload): StageBoardVM {
   const attr = new Map(payload.attribution.map((a) => [a.stepId, { nonValueDays: a.nonValueDays, pctOfChainLoss: a.pctOfChainLoss }]));
   const empty = payload.empty ?? [];
   const cards = payload.nodes.map((n) => toNodeCard(n, attr, empty));
   const claimedNodeIds = new Set(cards.map((c) => c.nodeId));
-  const lanes: StageLaneVM[] = CHAIN_STAGES.map((stage) => ({
-    stage,
-    label: STAGE_LABEL[stage],
-    nodes: cards
-      .filter((c) => c.stage === stage)
-      .sort((a, b) => (b.pctOfChainLoss !== a.pctOfChainLoss ? b.pctOfChainLoss - a.pctOfChainLoss : a.nodeId < b.nodeId ? -1 : 1)),
-    orphanEmpty: empty.filter((e) => e.stage === stage && !claimedNodeIds.has(e.nodeId)),
-  }));
+  const emptyNodeIds = new Set(empty.map((e) => e.nodeId));
+  const lanes: StageLaneVM[] = CHAIN_STAGES.map((stage) => {
+    const orphanEmpty = empty.filter((e) => e.stage === stage && !claimedNodeIds.has(e.nodeId));
+    return {
+      stage,
+      label: STAGE_LABEL[stage],
+      nodes: cards
+        .filter((c) => c.stage === stage)
+        .sort((a, b) => (b.pctOfChainLoss !== a.pctOfChainLoss ? b.pctOfChainLoss - a.pctOfChainLoss : a.nodeId < b.nodeId ? -1 : 1)),
+      orphanEmpty,
+      emptyNodes: toEmptyNodeCards(orphanEmpty),
+      // 在册但两处都不在场：注册表顺序（R6 全序，与注册表同序）。
+      absentNodes: CHAIN_NODE_REGISTRY.filter(
+        (d) => d.stage === stage && !claimedNodeIds.has(d.nodeId) && !emptyNodeIds.has(d.nodeId),
+      ).map((d) => ({ nodeId: d.nodeId, label: d.label })),
+    };
+  });
   return {
     lanes,
     maxNodesInLane: lanes.reduce((m, l) => Math.max(m, l.nodes.length), 0),
@@ -354,6 +426,136 @@ export function chainStageCoverage(board: StageBoardVM | null): ChainStageCovera
     renderedNodeCount: rendered.length,
     renderedDynamicOpCount: rendered.filter((n) => n.dynamicOp).length,
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5.2 · 「在册」与「有数据」是两件事 —— 三种在场形态（WO-CONSOLE-CLEANUP）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 在册节点在**本次载荷**里的三种在场形态。差额归零之后，屏上该说的话从
+ * 「差几段几个没建模」变成这个 —— **注册表补齐 ≠ 这些节点有数据**。
+ *
+ * 三态互斥且穷尽（判据只看载荷，前端不推断）：
+ *  · `withSteps`  —— 载荷 `nodes[]` 里有它 ⇒ 有环节、能算天数；
+ *  · `emptyOnly`  —— 只出现在 `empty[]` ⇒ 诚实缺席（`emptyKind` + `reason` 由引擎给）；
+ *  · `absent`     —— 两处都没有 ⇒ **在册不在场**（今天恰有 `capacity.maint` 一个：
+ *    `flowGate:false` ⇒ 引擎既不产环节也不产 EMPTY 行，见 `PRD-chain-24nodes.md` §6.6）。
+ *
+ * `emptyRowsByKind` 是 `empty[]` **行数**按 `emptyKind` 的分组计数 —— 分组计数，
+ * 不是对引擎数值做加法/换算（口径单源那条红线管的是「数值」，行数是载荷自身的规模）。
+ */
+export interface ChainNodePresenceVM {
+  /** 静态在册节点总数（`CHAIN_NODE_REGISTRY.length`）。 */
+  registered: number;
+  withSteps: string[];
+  emptyOnly: string[];
+  absent: { nodeId: string; label: string; stage: ChainStage }[];
+  /** `empty[]` 行按 emptyKind 分组计数（计数降序 → kind 字典序 · R6 全序）。 */
+  emptyRowsByKind: { kind: string; count: number }[];
+  /** `empty[]` 总行数（= 引擎 `totals.emptyCount` 的同一批行）。 */
+  emptyRowCount: number;
+  /** 载荷里不在静态册内的节点数（动态工序命名空间 `capacity.op.*` 那类）。 */
+  unregisteredInPayload: number;
+}
+
+export function chainNodePresence(payload: ChainLossPayload | null): ChainNodePresenceVM {
+  const nodeIds = new Set((payload?.nodes ?? []).map((n) => n.nodeId));
+  const empty = payload?.empty ?? [];
+  const emptyIds = new Set(empty.map((e) => e.nodeId));
+  const kindCount = new Map<string, number>();
+  for (const e of empty) kindCount.set(e.emptyKind, (kindCount.get(e.emptyKind) ?? 0) + 1);
+  return {
+    registered: CHAIN_NODE_REGISTRY.length,
+    withSteps: CHAIN_NODE_REGISTRY.filter((d) => nodeIds.has(d.nodeId)).map((d) => d.nodeId),
+    emptyOnly: CHAIN_NODE_REGISTRY.filter((d) => !nodeIds.has(d.nodeId) && emptyIds.has(d.nodeId)).map((d) => d.nodeId),
+    absent: CHAIN_NODE_REGISTRY.filter((d) => !nodeIds.has(d.nodeId) && !emptyIds.has(d.nodeId)).map((d) => ({
+      nodeId: d.nodeId,
+      label: d.label,
+      stage: d.stage,
+    })),
+    emptyRowsByKind: [...kindCount.entries()]
+      .map(([kind, count]) => ({ kind, count }))
+      .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.kind < b.kind ? -1 : 1)),
+    emptyRowCount: empty.length,
+    unregisteredInPayload: [...nodeIds].filter((id) => !CHAIN_NODE_REGISTRY.some((d) => d.nodeId === id)).length,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5.3 · 在途图层叠加到线路图画布上的**几何**（WO-CONSOLE-CLEANUP · 纯函数）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 一个矩形（`getBoundingClientRect` 的四个数，视口坐标）。 */
+export interface OverlayRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 叠加盒：把在途图层那张环 SVG 钉到线路图**舞台 SVG 的同一个盒子**上。
+ *
+ * ── 为什么钉舞台而不是钉画布 ───────────────────────────────────────────────────
+ * 两张图的 `viewBox` 都是 `0 0 RING_LAYOUT.viewW RING_LAYOUT.viewH`
+ * （`chainLineMap.ts` §5.1 单源，`transit-geometry` 那一单已经把坐标做成同源）。
+ * SVG 把 viewBox 等比映到自己的边框盒 ⇒ **只要两个盒子逐像素重合，同一坐标就是同一屏点**，
+ * 不需要在这里重算任何角度、半径或缩放 —— 这正是上一单交付语里那句
+ * 「叠加时坐标即刻对得上，无需再改几何」的兑现方式。
+ * 线路图舞台自己带 `translate/scale`（缩放平移），而 `getBoundingClientRect()` 返回的是
+ * **变换之后**的屏上矩形，所以跟着舞台走即可，本函数不必知道 k/x/y 是多少。
+ *
+ * ── 裁切 ──────────────────────────────────────────────────────────────────────
+ * 舞台盒子（980×680 起步）通常比画布可视区大，画布 `overflow:hidden` 只裁得住它自己的子树；
+ * 叠加层是画布的**兄弟**，故必须自己按画布可视区裁（`clip-path: inset(...)`），
+ * 否则放大/平移时环会溢出到整页。四个 inset 都相对叠加层自身的边框盒。
+ *
+ * `measured=false`（任一边为 0：jsdom / 未布局 / `display:none`）时界面**不假装已对齐**，
+ * 照实标出来 —— 与线路图 `doFit` 那句「画布尺寸不可测 → 已复位」同一条纪律。
+ */
+export interface TransitOverlayBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  clipTop: number;
+  clipRight: number;
+  clipBottom: number;
+  clipLeft: number;
+  measured: boolean;
+}
+
+export function transitOverlayBox(stack: OverlayRect, stage: OverlayRect, canvas: OverlayRect): TransitOverlayBox {
+  const left = stage.left - stack.left;
+  const top = stage.top - stack.top;
+  return {
+    left,
+    top,
+    width: stage.width,
+    height: stage.height,
+    clipLeft: Math.max(0, canvas.left - stage.left),
+    clipTop: Math.max(0, canvas.top - stage.top),
+    clipRight: Math.max(0, stage.left + stage.width - (canvas.left + canvas.width)),
+    clipBottom: Math.max(0, stage.top + stage.height - (canvas.top + canvas.height)),
+    measured: stage.width > 0 && stage.height > 0 && canvas.width > 0 && canvas.height > 0,
+  };
+}
+
+/** 两个叠加盒是否逐值相等（避免测量回调把同一个盒子反复写进 state 触发重渲）。 */
+export function sameOverlayBox(a: TransitOverlayBox | null, b: TransitOverlayBox | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.clipTop === b.clipTop &&
+    a.clipRight === b.clipRight &&
+    a.clipBottom === b.clipBottom &&
+    a.clipLeft === b.clipLeft &&
+    a.measured === b.measured
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
