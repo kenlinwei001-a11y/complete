@@ -1,8 +1,12 @@
 import {
   BASE_REGISTRY,
+  CadenceSchema,
+  DerivedDataModeSchema,
   InterBaseTransferSchema,
+  PROCUREMENT_LEGS,
   expectedCadenceWaitDays,
   type Cadence,
+  type ProcurementLegKind,
 } from "@platform/contracts";
 
 /**
@@ -44,15 +48,31 @@ import {
  *  · `InterBaseTransfer`—— (:1130) `transferId/fromBase/toBase/model/qty/transitDays/freightCost/status/
  *                          dispatchDate/dispatchDay/etaDay/etaDate/reason`；`etaDay` 是派生属性
  *                          `dispatchDay + transitDays` (:1146)。**唯一三件套齐全**的在途源。
- *  · 采购在途           —— `PurchaseOrder` 只有 `poId/matId/qty/etaDay/delayed`
- *                          (`synthetic/battery-extended.ts:127/:566`)：无发运日、无起点终点；
- *                          `ASN` 全仓仅出现在 `chain-sim.ts` 的"本单不冻结"注释里，`customs`/`IQC` **0 命中**。
- *                          ⇒ 采购支线**画不出来**，见 `PROCUREMENT_BRANCH`。
- *  · `Cadence`          —— 本分支基线**只有契约没有承载物**：`CadenceSchema` 在
- *                          `packages/contracts/src/chain-sim.ts:70`，而 `"Cadence"` 作为对象类型在
- *                          `apps/datacore/src` 与 `packages/contracts/src` **0 命中**，
- *                          `apps/datacore/src/synthetic/cadence.ts` 在本基线**不存在**（D1 未并线）。
- *                          ⇒ 节拍**机制**在本文件已具备，**数据**待 D1 接线；界面走诚实缺席，见 `CADENCE_ABSENCE`。
+ *
+ * ── ⚠ 上面那段实测记录已在 2026-08-08 被**推翻两条**（WO-FRONTEND-HARDCODED-ABSENCE 复核）──
+ * 基线 `640acb74` 重新逐条追到定义处，结论与 `3b86e3cf` 时**相反**：
+ *  · 采购在途           —— D2 已并线。`PurchaseOrder` 现有 `orderDay/shipDay/arriveDay/supplierId/sourceMode`
+ *                          （类型声明 `synthetic/battery-extended.ts:157-164`，行生成 `:708-720`）——
+ *                          **发运日 `shipDay` 与到货日 `arriveDay` 都在**，不再是"只有 etaDay"。
+ *                          `CustomsClearance`（`:168` 声明 · `declaredDay`/`clearedDay`）与
+ *                          `IncomingInspection`（`:181` 声明 · `arrivedDay`/`releasedDay`）**都已是在册对象类型**，
+ *                          并经 `synthetic/service.ts:773/775/776` `putAll` 落库、
+ *                          在 `synthetic/data-categories.ts:64/70` 登记类目。
+ *                          契约侧 `packages/contracts/src/procurement.ts` 冻结了四段腿
+ *                          `supplier_production/in_transit/customs/incoming_inspection`（index.ts:72 导出）。
+ *                          ⇒ 「customs/IQC 0 命中」这句话**今天是假的**。仍然为空的真实原因见 `PROCUREMENT_BRANCH`：
+ *                          **本层从来没去取过它们**。
+ *  · `Cadence`          —— D1 已并线。`apps/datacore/src/synthetic/cadence.ts` **存在**，
+ *                          `synthetic/service.ts:712` `putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId")`
+ *                          真落库；`app.ts:1448` 的推演 tick 已在从对象库读它。
+ *                          ⇒ 「Cadence 只有契约没有承载物」这句话**今天也是假的**。
+ *                          仍然为空的真实原因见 `CADENCE_ABSENCE`：**本层不查 `Cadence`，宿主也不传 `nodes`**。
+ *
+ * ── 教训（本文件的诚实位为什么会说谎）──────────────────────────────────────
+ * 缺席声明写成了 `const` 字面量：它记录的是**写下它那一刻**的仓库状态，之后上游补齐了也不会变。
+ * 「诚实」不是一次性写对文案，而是**每次渲染都重新判一次**。故本文件自本单起改为
+ * **由输入派生**（`deriveCadenceAbsence` / `deriveProcurementBranch`），并把病因分成三档
+ * （没去取 / 取回来被契约剔掉 / 本租户真没有）—— 三档修法完全不同，混成一句"没有"必修错地方。
  */
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -116,40 +136,348 @@ export const TRANSIT_SOURCE_SPEC_BY_KEY: Readonly<Record<TransitSourceKey, Trans
   TRANSIT_SOURCE_SPECS.map((s) => [s.key, s]),
 ) as Record<TransitSourceKey, TransitSourceSpec>;
 
-/**
- * 采购支线的诚实缺席（WO §4 核心判据 · D2 交付前**不许画假车**）。
- * 这里写的每一条都是本分支基线亲手核过的，不是照抄工单。
- */
-export const PROCUREMENT_BRANCH = {
-  key: "procurement" as const,
-  label: "采购在途支线",
-  status: "EMPTY" as const,
-  /** 一行原因（UI 主显）。 */
-  reason: "本体缺在途承载物：无 ASN、无清关段、无到货检验段，PurchaseOrder 也没有发运日与起终点。",
-  /** 逐条取证（UI 展开显示；每条都能被复验方按 file:line 追到）。 */
-  evidence: [
-    "PurchaseOrder 实测字段仅 poId/matId/qty/etaDay/delayed（apps/datacore/src/synthetic/battery-extended.ts:127 定义 · :566 生成）——无发运日、无起运地、无目的地。",
-    "ASN 全仓仅出现在 packages/contracts/src/chain-sim.ts 的「本单不冻结、留给 D2」注释里，无对象、无 schema、无数据。",
-    "清关（customs）与到货检验（IQC）在 apps/datacore/src 与 packages/contracts/src 均 0 命中 —— 两段完全无承载。",
-  ],
-  /** 补齐后本层不用改就能点亮（等 D2）。 */
-  unblockedBy: "WO-SANDBOX-D2（采购段凭证链：接线 minOrderQty/onTimeRate + 补清关/到货检验两段）",
-} as const;
+// ═══════════════════════════════════════════════════════════════════════════════
+// § 1.5 · 缺席声明 —— **由输入派生**，不是 `const` 字面量
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * 节拍数据的诚实缺席（审核方 2026-08-05 追加要求 + 本单实测复核）。
- * **机制在本文件已具备**（`releaseDayOf`），只是今天没有任何数据能驱动它。
+ * 缺席的**病因**。三档修法完全不同，混成一句"没有"必定修错地方
+ * （CLAUDE.md 铁律 0.5 的"三种不工作"在 UI 侧的同构）：
+ *  · `PRESENT`           —— 有可用数据，压根不是缺席。
+ *  · `NOT_FETCHED`       —— **本层从没去取过**（宿主没传 prop / 没发这个查询）。
+ *                           这是今天两块面板的真实病因：数据在库里，只是没人问。修法 = **接线**。
+ *  · `CONTRACT_REJECTED` —— 取回来了，但每一行都被契约 schema 判掉（形状坏 / 诚实缺席行）。
+ *                           修法 = 修数据或修 schema，**不是**再接一条线。
+ *  · `TENANT_EMPTY`      —— 真去取了、契约也没剔，本租户就是 0 条。修法 = 种数据，代码没毛病。
  */
-export const CADENCE_ABSENCE = {
-  status: "EMPTY" as const,
-  reason: "节拍在数据层无承载：Cadence 只有契约、没有对象、没有一条数据。",
-  evidence: [
-    "契约在：CadenceSchema / expectedCadenceWaitDays 见 packages/contracts/src/chain-sim.ts:70/:108（S0 已冻结）。",
-    '承载物不在：`"Cadence"` 作为对象类型在 apps/datacore/src 与 packages/contracts/src 0 命中；apps/datacore/src/synthetic/cadence.ts 在本分支基线不存在（D1 未并线）。',
-    "本层因此不自造限流站名单：哪个站有节拍，只认引擎下发的 node.cadence 字段。",
-  ],
-  unblockedBy: "WO-SANDBOX-D1（节拍承载：种子落 Cadence 对象）＋ 节点 ID 单源注册表",
-} as const;
+export const ABSENCE_CAUSES = ["PRESENT", "NOT_FETCHED", "CONTRACT_REJECTED", "TENANT_EMPTY"] as const;
+export type AbsenceCause = (typeof ABSENCE_CAUSES)[number];
+
+/** 缺席声明。字段集与此前的 `const` 逐字兼容（视图侧零改动），多出 `cause` / `probe` 两个可判据。 */
+export interface AbsenceRecord {
+  key: string;
+  label: string;
+  /** `"EMPTY"` = 这块面板今天没东西可画；`"PRESENT"` = 有数据了，面板该让位给真内容。 */
+  status: "PRESENT" | "EMPTY";
+  cause: AbsenceCause;
+  /** 一行原因（UI 主显）。**随 `cause` 变**，不是写死的一句话。 */
+  reason: string;
+  /** 逐条取证（UI 展开显示；每条都能被复验方按 file:line 追到）。 */
+  evidence: readonly string[];
+  /** 补齐路径 —— 指向**这一档病因**该做的事，不是万能的一句"等某某单"。 */
+  unblockedBy: string;
+  /** 派生依据：这次判定看了几条候选、几条可用。`fetched: null` = 根本没发查询。 */
+  probe: { fetched: number | null; usable: number };
+}
+
+/**
+ * 病因判定表（唯一一处）。`fetched === null` 的语义是「**没问过**」，
+ * 与「问了、回 0 条」（`fetched === 0`）是两回事 —— 这正是本单要治的那个混淆。
+ */
+function classifyAbsence(fetched: number | null, usable: number): AbsenceCause {
+  if (usable > 0) return "PRESENT";
+  if (fetched === null) return "NOT_FETCHED";
+  if (fetched > 0) return "CONTRACT_REJECTED";
+  return "TENANT_EMPTY";
+}
+
+// ── 节拍 ──────────────────────────────────────────────────────────────────────
+
+/**
+ * `GET /a/v1/objects?type=Cadence` 的扁平行 → 契约 `Cadence`。
+ *
+ * **逐字镜像 `apps/datacore/src/synthetic/cadence.ts:512 cadenceFromProps`**（D1 声明的唯一读回口）：
+ *  · `dataMode !== "SYNTHETIC"` ⇒ 无节拍（诚实缺席行，带 `emptyReason`）——**不是 0**，0 的语义是"随到随办"。
+ *  · 落库字段名是 `cadenceKind` 不是 `kind`（摊平时改过名），拼错就恒 0 条。
+ *  · 校验走契约 `CadenceSchema`，不在前端另写一套判据。
+ * 那边是 datacore 内部模块（前端不可 import，contracts-only-shared），故此处是**受控镜像**：
+ * 配套测试有一条门盯着那个函数还在、且字段名没漂。
+ */
+export function parseCadenceRows(rows: readonly TransitRawRow[]): {
+  nodes: TransitNodeInput[];
+  rejected: number;
+  rejectReasons: string[];
+} {
+  const nodes: TransitNodeInput[] = [];
+  const reasons = new Set<string>();
+  let rejected = 0;
+
+  for (const row of rows) {
+    const p = propsOf(row);
+    const key = str(p.nodeId);
+    if (key === null) {
+      rejected += 1;
+      reasons.add("Cadence 行缺 nodeId —— 挂不到任何站上，不画。");
+      continue;
+    }
+    if (p.dataMode !== DerivedDataModeSchema.enum.SYNTHETIC) {
+      rejected += 1;
+      const why = str(p.emptyReason);
+      reasons.add(
+        `Cadence 行 dataMode=${String(p.dataMode)}（非 SYNTHETIC）⇒ 该环节的节拍推不出来，读回 undefined 而不是 0` +
+          `${why === null ? "" : `：${why}`}。`,
+      );
+      continue;
+    }
+    const parsed = CadenceSchema.safeParse({
+      everyDays: p.everyDays,
+      ...(typeof p.offsetDays === "number" ? { offsetDays: p.offsetDays } : {}),
+      kind: p.cadenceKind,
+    });
+    if (!parsed.success) {
+      rejected += 1;
+      const bad = [...new Set(parsed.error.issues.map((i) => String(i.path[0] ?? "<root>")))].sort();
+      reasons.add(`Cadence 行不满足 contracts CadenceSchema：字段 ${bad.join(" / ")} 缺失或不合法 —— 不当闸门用。`);
+      continue;
+    }
+    const label = str(p.label);
+    const stage = str(p.stage);
+    nodes.push({
+      nodeId: key,
+      ...(label === null ? {} : { label }),
+      ...(stage === null ? {} : { stage }),
+      cadence: parsed.data,
+    });
+  }
+  // R6：全序输出（字典序），不依赖入参/网络顺序。
+  nodes.sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
+  return { nodes, rejected, rejectReasons: [...reasons].sort() };
+}
+
+export interface CadenceAbsenceInput {
+  /** 引擎下发的站点（图层 `nodes` prop 原样透传）。`undefined` = 宿主**根本没传这个 prop**。 */
+  engineNodes?: readonly TransitNodeInput[];
+  /** `GET /a/v1/objects?type=Cadence` 的 `items[]`。`undefined` = 本层**从没发过这个查询**。 */
+  cadenceRows?: readonly TransitRawRow[];
+}
+
+/** 数据层确实已经有节拍承载了 —— 这几条是可按 file:line 复验的事实，不是猜测。 */
+const CADENCE_UPSTREAM_EVIDENCE = [
+  "契约在：CadenceSchema / expectedCadenceWaitDays 见 packages/contracts/src/chain-sim.ts:84/:108（S0 已冻结）。",
+  "承载**也在**（D1 已并线，与本文件旧注释相反）：apps/datacore/src/synthetic/cadence.ts 存在，且 apps/datacore/src/synthetic/service.ts:712 以 putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\") 真落库。",
+  "下游已在读：apps/datacore/src/app.ts:1448 的推演 tick 从对象库 listByType(\"Cadence\") 取行、经 cadenceFromProps 还原成闸门。",
+] as const;
+
+/**
+ * 节拍缺席声明 —— **每次渲染重判**，不是写死的一句话。
+ * 有闸门（引擎 `nodes[]` 带 `cadence`，或 `Cadence` 行读得回来）⇒ `PRESENT`，面板该让位。
+ *
+ * ⚠ 红线不变：「哪个站是限流站」仍然**只认引擎侧数据** —— `nodes[]` 或对象库里的 `Cadence` 行。
+ *   本函数不从批次数据行推断任何限流站，也不维护名单。
+ */
+export function deriveCadenceAbsence(input: CadenceAbsenceInput = {}): AbsenceRecord {
+  const { engineNodes, cadenceRows } = input;
+  const fromNodes = engineNodes === undefined ? null : engineNodes.filter((n) => n.cadence !== undefined).length;
+  const fromRows = cadenceRows === undefined ? null : parseCadenceRows(cadenceRows);
+
+  const fetched =
+    engineNodes === undefined && cadenceRows === undefined
+      ? null
+      : (engineNodes?.length ?? 0) + (cadenceRows?.length ?? 0);
+  const usable = (fromNodes ?? 0) + (fromRows?.nodes.length ?? 0);
+  const cause = classifyAbsence(fetched, usable);
+
+  const base = { key: "cadence", label: "节拍闸门", probe: { fetched, usable } };
+  if (cause === "PRESENT") {
+    return {
+      ...base,
+      status: "PRESENT",
+      cause,
+      reason: `节拍已就位：${usable} 个限流站有闸门（引擎 nodes ${fromNodes ?? 0} · 对象库 Cadence 行 ${fromRows?.nodes.length ?? 0}）。`,
+      evidence: CADENCE_UPSTREAM_EVIDENCE,
+      unblockedBy: "（无需补齐）",
+    };
+  }
+  if (cause === "NOT_FETCHED") {
+    return {
+      ...base,
+      status: "EMPTY",
+      cause,
+      reason:
+        "节拍**在数据层是有的**，是本层没去取：既没收到引擎下发的 nodes[]，也没查过对象库的 Cadence 行 —— 所以屏上是空的，" +
+        "但这不等于「没有节拍」，而是「没人问」。",
+      evidence: [
+        ...CADENCE_UPSTREAM_EVIDENCE,
+        "缺口在前端这一侧：TransitFlowLayer 只发了 InterBaseTransfer / Shipment / WIPLot 三条 searchObjects，没有 Cadence 那条；唯一宿主 TransitFlowView 渲染 <TransitFlowLayer> 时也不传 nodes ⇒ 站点全部来自批次数据行，而数据行天然不带 cadence。",
+      ],
+      unblockedBy:
+        "接线（不是补数据）：图层加一条 searchObjects(\"Cadence\") 并把 parseCadenceRows(rows).nodes 并进 resolveStations 的 engineNodes，" +
+        "同时把本记录改由 deriveCadenceAbsence({ engineNodes, cadenceRows }) 现算。",
+    };
+  }
+  if (cause === "CONTRACT_REJECTED") {
+    return {
+      ...base,
+      status: "EMPTY",
+      cause,
+      reason: `取回了 ${fetched ?? 0} 条候选，但没有一条能读成闸门 —— 不是没查，是查回来的行用不了。`,
+      evidence: [
+        ...(fromRows?.rejectReasons ?? []),
+        "读回口逐字镜像 apps/datacore/src/synthetic/cadence.ts:512 cadenceFromProps：dataMode 非 SYNTHETIC ⇒ 无节拍（不是 0），字段名是 cadenceKind 不是 kind。",
+      ],
+      unblockedBy: "修数据或修 schema（**不要**再接一条线）：按上面每条 reject 原因回到种子侧，让该环节真的推得出节拍。",
+    };
+  }
+  return {
+    ...base,
+    status: "EMPTY",
+    cause,
+    reason: "已经查过了，本租户一条 Cadence 都没有 —— 代码链路是通的，缺的是数据。",
+    evidence: [
+      ...CADENCE_UPSTREAM_EVIDENCE,
+      "本次判定：查询已发出且返回 0 条（probe.fetched === 0）—— 与「没查过」是两回事，不要按接线去修。",
+    ],
+    unblockedBy: "种数据：对本租户跑一次合成种子（synthetic/service.ts:712 那条 putAll 会把 Cadence 行落进来）。",
+  };
+}
+
+// ── 采购在途支线 ──────────────────────────────────────────────────────────────
+
+/**
+ * 采购段四条腿 → 各自的**承载对象与两个日戳**。
+ * 段名取自契约单源 `PROCUREMENT_LEGS`（packages/contracts/src/procurement.ts:44），前端不另立名字。
+ * 两个日戳齐全 = 这条腿的区间位置**算得出来**（与 `InterBaseTransfer` 同一个判据）。
+ */
+const PROCUREMENT_LEG_PROBES: readonly {
+  leg: ProcurementLegKind;
+  objectType: string;
+  fromField: string;
+  toField: string;
+}[] = [
+  { leg: "supplier_production", objectType: "PurchaseOrder", fromField: "orderDay", toField: "shipDay" },
+  { leg: "in_transit", objectType: "PurchaseOrder", fromField: "shipDay", toField: "arriveDay" },
+  { leg: "customs", objectType: "CustomsClearance", fromField: "declaredDay", toField: "clearedDay" },
+  { leg: "incoming_inspection", objectType: "IncomingInspection", fromField: "arrivedDay", toField: "releasedDay" },
+];
+
+export interface ProcurementAbsenceInput {
+  /** `GET /a/v1/objects?type=PurchaseOrder` 的 `items[]`。`undefined` = 没查过。 */
+  purchaseOrderRows?: readonly TransitRawRow[];
+  /** `GET /a/v1/objects?type=CustomsClearance` 的 `items[]`。`undefined` = 没查过。 */
+  customsRows?: readonly TransitRawRow[];
+  /** `GET /a/v1/objects?type=IncomingInspection` 的 `items[]`。`undefined` = 没查过。 */
+  inspectionRows?: readonly TransitRawRow[];
+}
+
+/** D2 已并线的可复验事实（与本文件旧注释相反 —— 旧注释写于 D2 之前）。 */
+const PROCUREMENT_UPSTREAM_EVIDENCE = [
+  "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode），类型声明 apps/datacore/src/synthetic/battery-extended.ts:157-164、行生成 :708-720 —— **发运日与到货日都在**，不再是「只有 etaDay」。",
+  "CustomsClearance（清关，declaredDay→clearedDay）声明于 apps/datacore/src/synthetic/battery-extended.ts:168，IncomingInspection（到货检验，arrivedDay→releasedDay）声明于 :181；两者经 apps/datacore/src/synthetic/service.ts:775/:776 putAll 落库，并在 synthetic/data-categories.ts:64/:70 登记类目。",
+  "契约侧 packages/contracts/src/procurement.ts 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection（packages/contracts/src/index.ts:72 导出），前端可直接依赖。",
+] as const;
+
+/**
+ * 采购支线缺席声明 —— **每次渲染重判**。
+ * 此前这里是 `status: "EMPTY" as const` + 三条写死取证，其中两条在 D2 并线后已经变成假话
+ * （"customs/IQC 0 命中"、"PurchaseOrder 没有发运日"）。**写死的诚实位反而在说谎**，本单就是治这个。
+ */
+export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): AbsenceRecord {
+  const rowsByType: Record<string, readonly TransitRawRow[] | undefined> = {
+    PurchaseOrder: input.purchaseOrderRows,
+    CustomsClearance: input.customsRows,
+    IncomingInspection: input.inspectionRows,
+  };
+  const asked = PROCUREMENT_LEG_PROBES.filter((probe) => rowsByType[probe.objectType] !== undefined);
+
+  let fetched: number | null = asked.length === 0 ? null : 0;
+  let usable = 0;
+  const missing = new Set<string>();
+  const usableLegs: ProcurementLegKind[] = [];
+
+  for (const probe of asked) {
+    const rows = rowsByType[probe.objectType] ?? [];
+    let legUsable = 0;
+    for (const row of rows) {
+      const p = propsOf(row);
+      const from = num(p[probe.fromField]);
+      const to = num(p[probe.toField]);
+      if (from === null || to === null) {
+        missing.add(
+          `${probe.objectType} 行缺 ${[from === null ? probe.fromField : null, to === null ? probe.toField : null]
+            .filter((x): x is string => x !== null)
+            .join(" / ")} ⇒ 「${probe.leg}」这条腿的区间位置算不出来，不画。`,
+        );
+        continue;
+      }
+      if (to < from) {
+        missing.add(`${probe.objectType} 行 ${probe.toField} < ${probe.fromField}（腿长为负）⇒ 「${probe.leg}」算不出来，不画。`);
+        continue;
+      }
+      legUsable += 1;
+    }
+    fetched = (fetched ?? 0) + rows.length;
+    usable += legUsable;
+    if (legUsable > 0) usableLegs.push(probe.leg);
+  }
+
+  const cause = classifyAbsence(fetched, usable);
+  const base = { key: "procurement", label: "采购在途支线", probe: { fetched, usable } };
+
+  if (cause === "PRESENT") {
+    return {
+      ...base,
+      status: "PRESENT",
+      cause,
+      reason: `采购段已可画：${usable} 条腿有齐全日戳，覆盖 ${[...new Set(usableLegs)].join(" / ")}（四段口径见 contracts PROCUREMENT_LEGS）。`,
+      evidence: PROCUREMENT_UPSTREAM_EVIDENCE,
+      unblockedBy: "（无需补齐）",
+    };
+  }
+  if (cause === "NOT_FETCHED") {
+    return {
+      ...base,
+      status: "EMPTY",
+      cause,
+      reason:
+        "采购段的承载**已经在数据层了**（D2 已并线），是本层没去取：PurchaseOrder / CustomsClearance / IncomingInspection " +
+        "一条都没查过 —— 屏上为空是「没人问」，不是「本体没有」。",
+      evidence: [
+        ...PROCUREMENT_UPSTREAM_EVIDENCE,
+        `缺口在前端这一侧：本层只查了 ${TRANSIT_SOURCE_SPECS.map((s) => s.objectType).join(" / ")} 三个类型，采购段四条腿（契约单源 PROCUREMENT_LEGS：${PROCUREMENT_LEGS.join(" → ")}）的承载对象一个都没进查询清单。`,
+        "唯一仍然成立的旧结论：ASN 至今只在 packages/contracts/src/chain-sim.ts 与 procurement.ts 的注释里出现，无对象、无 schema、无数据 —— 但采购段并不依赖它，四段腿靠日戳就能画。",
+      ],
+      unblockedBy:
+        "接线（不是等 D2，D2 已经交了）：图层补三条 searchObjects(PurchaseOrder / CustomsClearance / IncomingInspection)，" +
+        "并把本记录改由 deriveProcurementBranch({ purchaseOrderRows, customsRows, inspectionRows }) 现算。",
+    };
+  }
+  if (cause === "CONTRACT_REJECTED") {
+    return {
+      ...base,
+      status: "EMPTY",
+      cause,
+      reason: `取回了 ${fetched ?? 0} 条采购段行，但没有一条日戳齐全 —— 不是没查，是查回来的行画不出腿。`,
+      evidence: [...missing].sort(),
+      unblockedBy: "修数据：按上面每条缺字段原因回到种子侧补齐日戳（**不要**再接一条线，线已经通了）。",
+    };
+  }
+  return {
+    ...base,
+    status: "EMPTY",
+    cause,
+    reason: "已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。",
+    evidence: [
+      ...PROCUREMENT_UPSTREAM_EVIDENCE,
+      "本次判定：查询已发出且返回 0 条（probe.fetched === 0）—— 与「没查过」是两回事，不要按接线去修。",
+    ],
+    unblockedBy: "种数据：对本租户跑一次合成种子（service.ts:773/:775/:776 那三条 putAll 会把采购段行落进来）。",
+  };
+}
+
+/**
+ * ⚠ **今天生产实际渲染的就是这两个值** —— 视图侧 `TransitFlowLayer.tsx` / `SandboxConsole.tsx`
+ * 仍然 import 这两个名字（本单范围边界不许改那两个文件）。它们**不再是手写字面量**，
+ * 而是「本层今天什么都没查」这份**真实输入**的派生结果 ⇒ `cause === "NOT_FETCHED"`。
+ *
+ * 也就是说：屏上那句话今天依旧是"空"，但**说的病因从假变真了**（旧文案说"本体没有"，
+ * 实际是"本层没问"）。等图层补上查询、改调 `deriveCadenceAbsence(...)` / `deriveProcurementBranch(...)`，
+ * 面板即自动让位给真数据 —— 本文件不用再改一个字。
+ *
+ * 铁律 0.5 第 6 条（生产实参必须被测试覆盖）：配套测试**显式**用这两个常量断言 `NOT_FETCHED`，
+ * 不是只测那两个函数的其它分支。
+ */
+export const CADENCE_ABSENCE: AbsenceRecord = deriveCadenceAbsence();
+export const PROCUREMENT_BRANCH: AbsenceRecord = deriveProcurementBranch();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // § 2 · 站点（全部来自引擎或数据行，**前端零清单**）
