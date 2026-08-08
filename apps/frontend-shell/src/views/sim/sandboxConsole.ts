@@ -32,13 +32,19 @@ import {
   CHAIN_STAGES,
   CHAIN_OP_NODE_PREFIX,
   isValueAddKind,
+  type ChainImpedimentKind,
   type ChainNode,
   type ChainStage,
   type ChainStep,
   type ChainStepKind,
 } from "@platform/contracts";
 import { STAGE_LABEL, STEP_KIND_LABEL, type ChainLossEmptyRow, type ChainLossPayload } from "./chainLineMap";
-import { IMPEDIMENT_KIND_LABEL, IMPEDIMENT_KIND_MEANING } from "./chainImpediment";
+import {
+  IMPEDIMENT_KIND_LABEL,
+  IMPEDIMENT_KIND_MEANING,
+  type ChainImpedimentModel,
+  type ImpedimentVM,
+} from "./chainImpediment";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 1 · 画布模式（一块画布多模式，不是多个页）
@@ -637,4 +643,190 @@ export function fmtPct(v: number | null | undefined): string {
 export function fmtFlowEff(frac: number | null | undefined): string {
   if (frac === null || frac === undefined || !Number.isFinite(frac)) return "—";
   return fmtPct(frac * 100);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 8 · 阻滞点 → 决策推演的**那一跳**（WO-SANDBOX-IMP2PLAN）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 沙盘缺的那一跳：屏上点一条阻滞点（卡点 / 堵点 / 断点）→ 进决策推演页看方案对比。
+ *
+ * ── 两头都是真的，缺的只是中间那一跳 ──────────────────────────────────────────
+ * **这头**：`chain_impediments` 真产出（demo 租户实测 15 条：BREAK 7 · CONGESTION 6 · BOTTLENECK 2）。
+ * **那头**：`DecisionPlayView` 真取 `invokeSolver("decision_play")`，六维比对矩阵零写死。
+ * **中间**：阻滞点锚在 `locus{objectType,objectId}`（真对象），决策推演锚在 `CausalFactor`
+ *          —— 本体已登记的断点 `G-IMPEDIMENT-OPTION-NOJOIN`。
+ *
+ * ── 今天到底能不能对上：逐条追过，结论是**对不上**（不是"没去查"）──────────────
+ * 三条可能的 join key 逐个查到取数处：
+ *
+ * ① **`evidence.ruleKey`（如 `C05` / `C06` / `C28`）** —— 规则库里的规则**对不到** `CausalFactor`。
+ *    `RuleEntry` 与 `CausalFactor` 之间没有任何引用字段（阻滞点判据是「指标 vs 阈值」，
+ *    因果因子是「下钻对象 vs 字段」，两套坐标系不共享键）。
+ *
+ * ② **`locus.{objectType,objectId}` ↔ `CausalFactor.{drillType,drillId}`** ——
+ *    这一维**理论上共键**（都是「真对象类型 + 真对象 id」），但**实测撞不上**：
+ *      · demo 15 条阻滞点的 locus 只有三类：`MaterialBalance`(7) · `MaterialBatch`(6) · `Line`(2)；
+ *      · 合成种子 `battery-extended.ts` 的 `CAUSAL_FACTORS`（→ `synthetic/service.ts:785`
+ *        `putAll("CausalFactor", ext.causalFactors, "factorId")` 落库，是**唯一**的 CausalFactor 写入口）
+ *        共 18 种 `drillType`，其中 **`MaterialBatch` 与 `Line` 一条都没有** ⇒ 13/15 条当场出局；
+ *      · 余下 `MaterialBalance` 只有 3 个因子承载（`cf-cathode-shortage`→mbal-2、
+ *        `cf-demand-attain-gap`→mbal-2、`cf-material-short`→`DYNAMIC-MBAL` 运行期解析为
+ *        `worstMbal.matBalId`），且 mbal-2 同时挂在**两个不同的 metricKey 链**上
+ *        （`""` 与 `demand_attain`）—— 撞上了也定不下该进哪条链。
+ *
+ * ③ **`stage`** —— 粗，但**真能带**（本体 `G-IMPEDIMENT-LOSS-NOJOIN` 记的也是这一维）。
+ *    故本层把 stage 带过去做粗筛，并当面说清它是段级精度、不是因子级。
+ *
+ * ── 为什么**不**猜一个 factorId 传过去（这一条是本单的要害）──────────────────
+ * `decision_play` 拿到对不上的 `factorId` **不报错，而是静默回落**到贡献最大的默认根因
+ * （`apps/datacore/src/solvers/service.ts:2882`：
+ *  `(wantFactor ? [...].find(...) : undefined) ?? [...pool].sort(...)[0]`）。
+ * 于是「猜一个」的代价不是"猜错了会报错"，而是**屏上出现一个看着确凿、实则与这条阻滞点无关的根因**
+ * ——正是本仓明令禁止的那种"看着合理的编造"。故 `status !== "JOINED"` 时**一个 factorId 都不传**。
+ *
+ * ── 会红的断言（逼着把诚实位换成真跳转）────────────────────────────────────────
+ * 本函数**不写死** "今天对不上"：它照常去载荷里探因子维（`factorRefOf`）。
+ * 等引擎侧（WO-SANDBOX-S3）在 `ChainImpedimentSchema` 上补出因子维那天，
+ * `factorRefOf` 当场返回真 id、`status` 翻成 `JOINED`，而门里那条
+ * 「今天 demo 全量 15 条 status 恒为 NO_FACTOR_DIMENSION」的断言**当场红**。
+ */
+export const IMPEDIMENT_JOIN_STATUSES = ["JOINED", "NO_FACTOR_DIMENSION"] as const;
+export type ImpedimentJoinStatus = (typeof IMPEDIMENT_JOIN_STATUSES)[number];
+
+/** 决策推演页的目标路由（单一出处；测试与视图都从这里取，不许各写一遍字符串）。 */
+export const DECISION_PLAY_PATH = "/v/decision-play";
+
+/**
+ * 从一条阻滞点载荷里探"因果因子维"。
+ *
+ * **今天恒为 `null`** —— 但这不是写死的 `return null`，是真去载荷里找：
+ * contracts `ChainImpedimentSchema` 是 `z.strictObject`，15 个键逐个核过
+ * （impedimentId / tenantId / scanId / kind / breakSubtype / stage / scope / nodeId / stepId /
+ *  locus / severity / evidence / dataMode / manifestations / rootCauseImpedimentId）
+ * **无一是 CausalFactor 维度**，且 strictObject 语义下引擎多给一个键会**当场抛**（不是被 strip 掉）
+ * ⇒ 因子维只能等契约先开口子。开了口子之后本函数**一行都不用改**，值自动流出来。
+ */
+export function factorRefOf(im: ImpedimentVM): string | null {
+  const probe = im as unknown as {
+    factorId?: unknown;
+    causalFactorId?: unknown;
+    factorRef?: unknown;
+    locus?: { factorId?: unknown };
+    evidence?: { factorId?: unknown; causalFactorRef?: unknown };
+  };
+  const cands = [
+    probe.factorId,
+    probe.causalFactorId,
+    probe.factorRef,
+    probe.locus?.factorId,
+    probe.evidence?.factorId,
+    probe.evidence?.causalFactorRef,
+  ];
+  for (const c of cands) if (typeof c === "string" && c.length > 0) return c;
+  return null;
+}
+
+/** 一条阻滞点跳去决策推演所携带的全部东西（**含带不过去的那一维的病因**）。 */
+export interface ImpedimentHandoff {
+  /** 目标 URL（`DECISION_PLAY_PATH` + query）。视图 `navigate(href)`，门断言 `href`。 */
+  href: string;
+  /** 逐键可断言的 query（门咬的是这个，不是任意字符串）。 */
+  params: Record<string, string>;
+  join: {
+    status: ImpedimentJoinStatus;
+    /** 真带过去的维（今天只有 stage；接通后加 factorId）。 */
+    carried: string[];
+    /** 带不过去的那一维（接通后为 `null`）。 */
+    missing: string | null;
+    /** 病因**原文**：屏上原样显示，不许概括成"暂不支持"。 */
+    reason: string;
+  };
+  /**
+   * 诚实位随行（③）：`dataMode !== "LIVE"` 的阻滞点跳过去时把限定**带上**。
+   * PARTIAL 的 detail 是引擎 `caveats[]` 原文（`honestyOf`），前端一个字不改写。
+   */
+  caveat: { mode: string; claim: string; detail: string | null } | null;
+}
+
+/** 病因文案（单一出处；视图与门都读这里，两处各写一遍必漂）。 */
+export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = {
+  JOINED: "引擎载荷已带因果因子维，本次按因子精确跳转。",
+  NO_FACTOR_DIMENSION:
+    "本次未能把这个阻滞点对到具体因子。原因：阻滞点锚在真对象 locus{objectType,objectId} 上，" +
+    "决策推演锚在 CausalFactor 上，而今天引擎回包里没有任何承载因果因子的字段" +
+    "（contracts ChainImpedimentSchema 是 strictObject，15 个键逐个核过，无 factorId / factorRef，locus 里也没有）。" +
+    "前端手里唯一可能的对法是拿 locus{objectType,objectId} 去撞 CausalFactor{drillType,drillId}——实测撞不上：" +
+    "demo 的 locus 只有 MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有；" +
+    '余下 MaterialBalance 也只有 mbal-2 有因子承载，且它同时挂在 metricKey="" 与 demand_attain 两条链上、定不下进哪条。' +
+    "更要命的是 decision_play 拿到对不上的 factorId 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），" +
+    "屏上会出现一个看着确凿、实则与这条阻滞点无关的根因。故本次不猜 factorId，只把 stage 带过去做粗筛（段级精度，不是因子级）。",
+};
+
+/** query 参数键（单一出处；视图写、决策推演页读、门断言，三处同源）。 */
+export const IMP_PARAM = {
+  from: "fromImpediment",
+  stage: "impStage",
+  kind: "impKind",
+  rule: "impRule",
+  locusType: "impLocusType",
+  locusId: "impLocusId",
+  locusLabel: "impLocusLabel",
+  mode: "impMode",
+  join: "impJoin",
+  factor: "factorId",
+} as const;
+
+/**
+ * 把一条阻滞点翻成「跳去决策推演」的全部入参。**纯函数**（无 `Date.now`、无随机），R6。
+ *
+ * 关键判据（门咬这两条）：
+ *  · `status === "JOINED"` ⟺ `params.factorId` 存在。**没对上就一个 factorId 都不传** ——
+ *    传了 = 让 `decision_play` 静默回落成"看着合理的编造"（见 §8 抬头）。
+ *  · `dataMode !== "LIVE"` ⇒ `caveat` 非空且随 query 带走（诚实位不许在跳转时掉）。
+ */
+export function deriveImpedimentHandoff(im: ImpedimentVM): ImpedimentHandoff {
+  const factorRef = factorRefOf(im);
+  const status: ImpedimentJoinStatus = factorRef === null ? "NO_FACTOR_DIMENSION" : "JOINED";
+
+  const params: Record<string, string> = {
+    [IMP_PARAM.from]: im.impedimentId,
+    [IMP_PARAM.kind]: im.kind,
+    [IMP_PARAM.stage]: im.stage,
+    [IMP_PARAM.locusType]: im.locus.objectType,
+    [IMP_PARAM.locusId]: im.locus.objectId,
+    [IMP_PARAM.locusLabel]: im.locus.label,
+    [IMP_PARAM.mode]: im.honesty.mode,
+    [IMP_PARAM.join]: status,
+  };
+  if (im.evidence.ruleKey !== null) params[IMP_PARAM.rule] = im.evidence.ruleKey;
+  // ⚠ 只有真对上了才传 factorId。对不上就不传 —— 猜一个会被引擎静默回落。
+  if (factorRef !== null) params[IMP_PARAM.factor] = factorRef;
+
+  const qs = new URLSearchParams(params).toString();
+  return {
+    href: `${DECISION_PLAY_PATH}?${qs}`,
+    params,
+    join: {
+      status,
+      carried: factorRef === null ? ["stage"] : ["stage", "factorId"],
+      missing: factorRef === null ? "factorId（CausalFactor 维）" : null,
+      reason: IMPEDIMENT_JOIN_REASON[status],
+    },
+    caveat:
+      im.honesty.mode === "LIVE"
+        ? null
+        : { mode: im.honesty.mode, claim: im.honesty.claim, detail: im.honesty.detail },
+  };
+}
+
+/** 全量阻滞点的跳转清单（视图渲染阻滞点条用；顺序 = 引擎冻结全序，本层不重排）。 */
+export function impedimentHandoffs(
+  model: ChainImpedimentModel | null,
+  kind: ChainImpedimentKind | null,
+): { im: ImpedimentVM; handoff: ImpedimentHandoff }[] {
+  if (model === null) return [];
+  const groups = kind === null ? model.groups : model.groups.filter((g) => g.kind === kind);
+  return groups.flatMap((g) => g.items).map((im) => ({ im, handoff: deriveImpedimentHandoff(im) }));
 }

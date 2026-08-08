@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useInRouterContext, useNavigate } from "react-router-dom";
 import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -30,6 +31,7 @@ import {
   fmtPct,
   IMPEDIMENT_CARDS,
   IMPEDIMENT_DESIGN_GAP,
+  impedimentHandoffs,
   PARETO_TOP_N,
   sameOverlayBox,
   SCOPE_DIMENSIONS,
@@ -424,6 +426,9 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           </span>
         </div>
       </div>
+
+      {/* ══ 阻滞点逐条 · 点了进决策推演（WO-SANDBOX-IMP2PLAN）══════════════════ */}
+      <ImpedimentJumpBar model={model} kind={dimKind} />
 
       {honesty ? (
         <p className={styles.noteWarn} data-testid="sc-imp-gap">
@@ -890,6 +895,109 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           。四张卡显示「—」而<b>不是 0</b>：0 条阻滞点与扫不出来是两回事。
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * WO-SANDBOX-IMP2PLAN · **沙盘缺的那一跳**：屏上每条阻滞点可点 → 进 `/v/decision-play` 看方案对比。
+ *
+ * 在此之前四张卡只出**计数**（`sc-imp-BREAK-count` 之流）——「7 条断点」看得见，
+ * 「是哪 7 条、点进去能干什么」看不见。本条把 `model.groups[].items` 逐条摊到屏上，
+ * 每条是一个真跳转（`deriveImpedimentHandoff` 出 href，派生层单一出处，本组件零自造 query）。
+ *
+ * ── 为什么分 Router / 非 Router 两个壳（而不是直接 `useNavigate()`）──────────────
+ * `useNavigate()` 在 `<Router>` 之外**会抛**（v6 invariant）。而本控制台今天被
+ * `sandbox-console.seam` / `sandbox-p0` / `sandbox-view` / `metro-semantics.seam` /
+ * `transit-flow.seam` / `sim-scope-local.seam` 六个门**不带 Router** 直接挂载 ——
+ * 直接调就是把六个门一起打红（生产链路 App.tsx 里恒有 Router，那是"我这儿没事"的假绿）。
+ * 故按 `useInRouterContext()` 分壳：**两壳渲染同一份清单**（同 href、同 testid、同诚实位），
+ * 只在"点了之后走不走 SPA 路由"上分家 —— 非 Router 壳退化为普通 `<a href>`（浏览器整页跳，
+ * 仍到得了目的地），**不是把这条功能藏起来**（藏起来才是silent hole）。
+ */
+function ImpedimentJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
+  const inRouter = useInRouterContext();
+  return inRouter ? <RoutedJumpBar model={model} kind={kind} /> : <PlainJumpBar model={model} kind={kind} />;
+}
+
+function RoutedJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
+  const navigate = useNavigate();
+  return <JumpList model={model} kind={kind} onOpen={(href) => navigate(href)} />;
+}
+
+function PlainJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
+  return <JumpList model={model} kind={kind} onOpen={null} />;
+}
+
+function JumpList({
+  model,
+  kind,
+  onOpen,
+}: {
+  model: ChainImpedimentModel | null;
+  kind: ChainImpedimentKind | null;
+  onOpen: ((href: string) => void) | null;
+}) {
+  const rows = useMemo(() => impedimentHandoffs(model, kind), [model, kind]);
+  if (model === null) {
+    return (
+      <p className={styles.stateLine} data-testid="sc-imp-jump-waiting">
+        等 <code>chain_impediments</code> 取回后，这里逐条列出可点的阻滞点。
+      </p>
+    );
+  }
+  return (
+    <div className={styles.impJump} data-testid="sc-imp-jump" data-count={rows.length} data-kind={kind ?? "ALL"}>
+      <p className={styles.note} data-testid="sc-imp-jump-head">
+        <b>逐条阻滞点 · 点一条进决策推演看方案对比</b>
+        {kind === null ? "（当前：全部 " : `（当前只看「${rows[0]?.im.kindLabel ?? kind}」 `}
+        {rows.length} 条{kind === null ? "，点上面的卡可筛某一类" : "，再点一次那张卡取消筛选"}）。
+      </p>
+      {rows.length === 0 ? (
+        <p className={styles.note} data-testid="sc-imp-jump-empty">
+          本次扫描该类 0 条 —— <b>是「扫到了，没有」</b>，不是「没扫」（扫不出来会在上面报错框里出现）。
+        </p>
+      ) : null}
+      {rows.map(({ im, handoff }) => (
+        <a
+          key={im.impedimentId}
+          className={styles.impJumpRow}
+          data-testid={`sc-imp-jump-${im.impedimentId}`}
+          data-join={handoff.join.status}
+          data-degraded={im.honesty.degraded ? "1" : "0"}
+          href={handoff.href}
+          title={handoff.join.reason}
+          onClick={
+            onOpen === null
+              ? undefined
+              : (e) => {
+                  e.preventDefault();
+                  onOpen(handoff.href);
+                }
+          }
+        >
+          <b>{im.kindLabel}</b>
+          <span className={styles.impJumpLocus}>
+            {im.locus.objectType}「{im.locus.label}」
+          </span>
+          <span className={styles.impJumpMeta}>
+            {im.stage} · {im.evidence.ruleKey ?? "规则未知"} · 实测 {im.evidence.metricValue}
+            {im.evidence.unit} vs 阈值 {im.evidence.threshold}
+            {im.evidence.unit}
+          </span>
+          {/* ③ 诚实位随行：非 LIVE 的当面标出来，别让用户以为跳过去看到的是确凿结论 */}
+          <span
+            className={styles.impJumpBadge}
+            data-testid={`sc-imp-jump-mode-${im.impedimentId}`}
+            data-mode={im.honesty.mode}
+          >
+            {DATA_MODE_LABEL[im.honesty.mode]}
+          </span>
+          <span className={styles.impJumpJoin} data-testid={`sc-imp-jump-join-${im.impedimentId}`}>
+            {handoff.join.status === "JOINED" ? "已对到因子" : `未对到因子 · 只带 ${handoff.join.carried.join(" / ")}`}
+          </span>
+        </a>
+      ))}
     </div>
   );
 }
