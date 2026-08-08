@@ -99,7 +99,7 @@ S1 交付时必须能在 UI 上**两步之内**找回来，且门里咬住（§5
 | 中栏画布 4 模式 `sc-mode-*` | `:544` | **保留，但改默认与主次**：`metro` 为主，`topo`/`chain`/`ontology` 降为「切换视角」下拉 | 仓主说的是「中央位置需要保留地铁路线大屏」——那是**一个主视图**，不是四个并列 tab |
 | 在途图层 / 产品族同心环 两开关 | `:552,:556` | **保留**（移入画布右上角图层控件） | 都是叠加在主图上的图层，属于图的控件 |
 | 链路阶段缩放三键 + 读数 | `:564–577` | **保留**（仅 `chain` 视角出现，行为不变） | |
-| `sc-chain-coverage` 覆盖度长横幅 | `:629` | **降级到开关** | 「设计目标 5 段 24 节点 vs 后端 4 段 12 节点」是工程真相 |
+| `sc-chain-coverage` 覆盖度长横幅 | `:629` | **降级到开关，且文案须改** | 它今天算出的 `missingStageCount`/`missingNodeCount` **都是 0**（§2.2 注）⇒ 「还差几段几个没建模」这半句已过期，该说的是「在册 24 个里 N 个有数据 / M 个诚实缺席 / K 个在册不在场」。**降级时顺手改文案，不许把一句过期的话折进抽屉继续正确**（`G-STALE-MEASURED-CLAIM` 同族） |
 | 右栏「节点检视」两页签 | `:761–768` | **降级到抽屉**（点站才出，从右侧滑入） | 这正是仓主要的「点节点 → 看扰动与影响」的载体，但它不该在没选节点时就占 300px |
 | 宿主 `rail` 三折叠区（就绪认证 / 多场景对比 / AI 指挥台） | `SandboxView.tsx:469,566,585` | **就绪认证降级到第 0 层一枚徽标**（`✓可进入推演` / `L1_CONFIGURED · N 个缺口`，点开出全表）；**多场景对比 / AI 指挥台降级到抽屉页签** | 就绪认证的**结论**是一个字（能不能推演），它的**明细**才是一张表 |
 | 控制条（tick / 存档 / 分支 / 采纳） | `:806` | **保留**，压成一行贴底 | 这是会话状态机的操作面，COO 会用 |
@@ -124,7 +124,7 @@ S1 交付时必须能在 UI 上**两步之内**找回来，且门里咬住（§5
 | 图元 | 需要的数据 | 今天的状态 | 三分法归类 | 出处 |
 |---|---|---|---|---|
 | **站（node）** | `nodeId` + `label` + `stage` | ✅ **真有** | — | `packages/contracts/src/chain-sim.ts:185–213` `CHAIN_NODE_REGISTRY`（**nodeId 的单一来源**，24 条静态节点 + `capacity.op.*` 动态工序命名空间） |
-| **线（line）** | 站归属哪条业务链 | ◐ **部分有** | 接了线没数据 | 契约只有 `stage`（`CHAIN_STAGES`，今天 **4 段**：DEMAND/ORDER/CAPACITY/MATERIAL/DELIVERY——注册表里出现 5 个 stage 值，但控制台 `:457` 取 `CHAIN_STAGES.length` 派生，段数以后端为准）。**「五条线」是 stage 的一一投影，不是新数据**（§2.2） |
+| **线（line）** | 站归属哪条业务链 | ✅ **真有** | — | `packages/contracts/src/chain-sim.ts:61` `CHAIN_STAGES = ["DEMAND","ORDER","CAPACITY","MATERIAL","DELIVERY"]` ⇒ **正好 5 段**。**「五条线」是 stage 的一一投影，不是新数据**（§2.2） |
 | **站的半径** | 该节点吃掉的全链损失占比 | ✅ **真有** | — | `chain_loss_attribution` → `attribution[].pctOfChainLoss`；前端派生层 `sandboxConsole.ts buildStageBoard` 已算好 `NodeCardVM.pctOfChainLoss`（控制台 `:690` 已在用） |
 | **站的异常态**（卡点/堵点/断点） | 该节点上有没有阻滞点 | 🔴 **接不上** | **接了线接错地方** | `chain_impediments` 的 `locus` 是**对象**（`chain-sim.ts:544 ChainLocusSchema {objectType,objectId,label}`，实测取值 `MaterialBatch`/`Line`/`Process`），**不是 nodeId**。详见 §2.4 |
 | **换乘站** | 两条链在此交汇 | 🔴 **没有** | **没接线** | 全仓无「节点↔节点」的邻接表。`CHAIN_NODE_REGISTRY` 只有 `(nodeId,label,stage)` 三元组，**没有 `next`/`prev`/`edges`**。换乘站要么由 stage 边界推出（弱），要么新增一张边表（§2.5） |
@@ -148,11 +148,21 @@ S1 交付时必须能在 UI 上**两步之内**找回来，且门里咬住（§5
 
 | 线 | 取自 | 站数（本次载荷口径） |
 |---|---|---|
-| 需求线 | `stage === "DEMAND"` | 注册表 3 条（`demand.consensus` / `demand.forecast` / `demand.quote`） |
-| 订单线 | `stage === "ORDER"` | 3 条（`order.review` / `order.cash` / `order.settlement`） |
-| 制造线 | `stage === "CAPACITY"` | 6 条静态 + `capacity.op.*` 动态 |
-| 物料线 | `stage === "MATERIAL"` | 9 条 |
-| 交付线 | `stage === "DELIVERY"` | 3 条 |
+| 需求线 | `stage === "DEMAND"` | 3（`demand.consensus` / `demand.forecast` / `demand.quote`） |
+| 订单线 | `stage === "ORDER"` | 3（`order.review` / `order.cash` / `order.settlement`） |
+| 制造线 | `stage === "CAPACITY"` | 7 静态（`schedule`/`qc_batch`/`quality`/`aging`/`maint`/`rccp`/`wo_release`）+ `capacity.op.*` 动态工序 |
+| 物料线 | `stage === "MATERIAL"` | 8（`mrp`/`replenish`/`shipping`/`kitting`/`purchase_req`/`purchase_order`/`inbound_transit`/`iqc`） |
+| 交付线 | `stage === "DELIVERY"` | 3（`fg_stock`/`transit`/`acceptance`） |
+| — | **合计** | **3+3+7+8+3 = 24 = `CHAIN_NODE_REGISTRY.length`**（逐行数，`chain-sim.ts:185–213`） |
+
+> ✅ **「注册表还差多少」这个老口径今天已经归零，别照旧文案立单。**
+> `sandboxConsole.ts:392` 的设计目标是 `{stageCount:5, nodeCount:24}`，而后端
+> `CHAIN_STAGES.length === 5`（`chain-sim.ts:61`）、`CHAIN_NODE_REGISTRY.length === 24` ⇒
+> `chainStageCoverage()`（`sandboxConsole.ts:424–425`）算出的 `missingStageCount = 0`、`missingNodeCount = 0`。
+> 控制台 `:630` 那段横幅是**带变量的模板**，读源码时容易把模板里的例子当成实测值——我自己第一遍就读错了（见 §8.4 第 7 条）。
+> **今天真正的缺口不是「注册表没建模完」，而是「在册 ≠ 有数据」的三态**
+> （`withSteps` / `emptyOnly` / `absent`，`sandboxConsole.ts:439–443`；实测 `capacity.maint` 恰是那个「在册不在场」）。
+> 中央图必须把这三态**画成三种形状**，而不是拿「24 个站」冒充「24 个算得出来的站」。
 
 > ⚠ **与原型的差异必须当面说**：原型手绘的是「需求 / 物料 / 制造 / 交付 / 资金」五条，
 > 其中**「资金线」在后端没有对应 stage** ——`inv`(开票)/`term`(账期)/`cash`(回款) 三站在契约里归 `ORDER`
@@ -552,7 +562,9 @@ ks.forEach((k,i)=>{const t=(vals[i]-k[2])/Math.max(1,(k[4]-k[3]))*100/10;
 10. **M2=62、M3=1711** —— 脚本计数，金丝雀 `sc-topbar` 命中后才取数。
 11. **`.mid` 三栏宽度 `172px / 1fr / 300px`** —— `SandboxConsole.module.css:166`。
 12. **宿主 `SandboxView.tsx` 的三个 rail 区** —— `:469 readiness` / `:566 compare` / `:585 commander`，`<SandboxConsole` 在 `:593`。
-13. **`CHAIN_NODE_REGISTRY` 24 条静态节点** —— `chain-sim.ts:185–213`，逐行数。
+13. **`CHAIN_NODE_REGISTRY` 24 条静态节点** —— `chain-sim.ts:185–213`，逐行数（按 stage：3/3/7/8/3）。
+14. **`CHAIN_STAGES` 正好 5 段** —— `chain-sim.ts:61`，实读枚举。
+15. **「设计目标 vs 后端注册表」的差额今天是 0** —— `sandboxConsole.ts:392` 设计目标 `{stageCount:5,nodeCount:24}`，与 `CHAIN_STAGES.length===5`、`CHAIN_NODE_REGISTRY.length===24` 相减，`chainStageCoverage()` `:424–425` ⇒ `missingStageCount=0`、`missingNodeCount=0`。**这条推翻了我自己初稿里「后端 4 段 12 节点」的写法**（见 §8.4 第 7 条）。
 
 ### 8.2 我**从原型推的**（不是代码事实，是设计意图）
 
@@ -564,22 +576,27 @@ ks.forEach((k,i)=>{const t=(vals[i]-k[2])/Math.max(1,(k[4]-k[3]))*100/10;
 
 ### 8.3 **未验证的假设**（复验方请重点打这里）
 
-1. **「五条线 = 5 个 stage」这个投影是否够用**。我没验证 `CHAIN_STAGES` 今天到底是 4 个还是 5 个值：控制台 `:457` 用 `CHAIN_STAGES.length` 派生并在屏上写「本链路共 N 段」，`:630` 又同时提到「设计目标 5 段 / 后端 4 段」——**两处口径我没有跑起来对过**。S1 立单前须实测 `CHAIN_STAGES` 的真实长度。
-2. **`generic_inference mode:"levers"` 用 `locus.objectType/objectId` 当 `scopeObjectIds` 到底返不返回杠杆**。我只读了 props 形状匹配，**没有真调过**。若返回空集，§4.4 的整个扰动面板要退回「本站无杠杆」诚实态——M8 断言 2 就是为了当场逼出这个事实。
-3. **§3.2 那条 join 在 seed 42 上的实际覆盖率**。`Line ←lineId— WorkOrder` 到底能覆盖多少条产线？孤儿型号有几个？我只知道**孤儿存在**（引自本体 §8 已有实测），**没有自己数过**。S2 立单前须实测并把 `unjoinable[]` 的预期规模写进工单。
-4. **M3 「真浏览器画布宽 ≥ 75%」这个阈值**。0.75 是我拍的，没有依据。S1 应先量一次实际值再定阈，否则这条门要么恒绿要么恒红。
-5. **原型的异常态标记与引擎实测数对不上**。我数了原型 `ST` 表：**24 站**（不是工单说的 25），其中标了异常的 12 站 = 卡点 2 + 堵点 5 + 断点 5；但原型顶栏徽标写的是 **2 / 6 / 7 = 15**。⇒ **原型的徽标数与它自己的站表不一致**。15 这个数与控制台实测的「本次扫描 15 条」吻合，说明徽标取的是真扫描数、站上的标记是手绘的。**我没有验证哪 15 条阻滞点分别落在哪些站上**——事实上 §2.4 已经证明今天**根本落不到站上**（locus↔nodeId 无 join）。
-6. **「现金周期」是否在别处另有实现**。我只查了 `solvers/` 目录下的 `aggregates.ts`。若某个我没读到的求解器内部含 CCC 逻辑，§4.3 那一行要按事实修正。**我的 grep 覆盖的是 `apps/datacore/src/solvers/*.ts`，不是全仓。**
-7. **本 PRD 没有真跑过沙盘页**（`sim.sandbox` 是暗发，默认关，`App.tsx:111` entitlement 关 → 404）。所有关于「屏上长什么样」的判断都是**读 JSX 推的**。这与既有 `docs/PRD-sandbox-redesign.md:429` 的诚实边界同款——S1 立单前应先真开一次、亲手点一遍，与本文不符**以真跑为准并回改本文**。
+1. ~~「五条线 = 5 个 stage」是否够用 / `CHAIN_STAGES` 到底几段~~ —— **已在本单内自查掉，见 §8.1 第 14–15 条**（5 段 / 24 节点 / 差额 0）。**留下的真问题换成了**：24 个在册节点里，本次载荷实际**有数据**的是几个？我只知道形态三分（`withSteps`/`emptyOnly`/`absent`）与 `capacity.maint` 是那个 `absent`，**没有真跑取到计数**。中央图的「站」到底画几个，取决于这个数——S1 立单前须真跑一次 `chain_loss_attribution` 数出来。
+2. **原型的 24 站与注册表的 24 节点是不是同一批**。两个 24 相等（§2.2），且 `sandboxConsole.ts:392` 的设计目标就写着 `nodeCount: 24` —— 但**我没有逐个比对过集合**。原型站名是「分切 / 涂布 / 辊压」这类**工序**，在契约里属于 `capacity.op.*` **动态**命名空间，不是那 24 个静态节点。⇒ **数目相等很可能是巧合或同源设计稿，不代表可以一一对应**。谁按「反正都是 24」去做映射，就是 `G-CHAIN-NODEID-FREESTRING` 的原样复发。
+3. **`generic_inference mode:"levers"` 用 `locus.objectType/objectId` 当 `scopeObjectIds` 到底返不返回杠杆**。我只读了 props 形状匹配，**没有真调过**。若返回空集，§4.4 的整个扰动面板要退回「本站无杠杆」诚实态——M8 断言 2 就是为了当场逼出这个事实。
+4. **§3.2 那条 join 在 seed 42 上的实际覆盖率**。`Line ←lineId— WorkOrder` 到底能覆盖多少条产线？孤儿型号有几个？我只知道**孤儿存在**（引自本体 §8 已有实测），**没有自己数过**。S2 立单前须实测并把 `unjoinable[]` 的预期规模写进工单。
+5. **M3 「真浏览器画布宽 ≥ 75%」这个阈值**。0.75 是我拍的，没有依据。S1 应先量一次实际值再定阈，否则这条门要么恒绿要么恒红。
+6. **原型的异常态标记与引擎实测数对不上**。我数了原型 `ST` 表：**24 站**（不是工单说的 25），其中标了异常的 12 站 = 卡点 2 + 堵点 5 + 断点 5；但原型顶栏徽标写的是 **2 / 6 / 7 = 15**。⇒ **原型的徽标数与它自己的站表不一致**。15 这个数与控制台实测的「本次扫描 15 条」吻合，说明徽标取的是真扫描数、站上的标记是手绘的。**我没有验证哪 15 条阻滞点分别落在哪些站上**——事实上 §2.4 已经证明今天**根本落不到站上**（locus↔nodeId 无 join）。
+7. **「现金周期」是否在别处另有实现**。我只查了 `solvers/` 目录下的 `aggregates.ts`。若某个我没读到的求解器内部含 CCC 逻辑，§4.3 那一行要按事实修正。**我的 grep 覆盖的是 `apps/datacore/src/solvers/*.ts`，不是全仓。**
+8. **本 PRD 没有真跑过沙盘页**（`sim.sandbox` 是暗发，默认关，`App.tsx:111` entitlement 关 → 404）。所有关于「屏上长什么样」的判断都是**读 JSX 推的**。这与既有 `docs/PRD-sandbox-redesign.md:429` 的诚实边界同款——S1 立单前应先真开一次、亲手点一遍，与本文不符**以真跑为准并回改本文**。
 
 ### 8.4 我在过程中发现的「与工单描述不符」之处
 
 1. **工单说锚点是 `service.ts:3125`，实际 `if` 在 `:3129`**（`:3124–3125` 是那段注释的两行）。结论不变。
 2. **工单说原型是「5 条线 25 站」，实测 24 站**（脚本解析 `ST` 表：L1=4 / L2=7 / L3=8 / L4=2 / L5=3）。换乘站 4 个（`rev`/`kit`/`pack`/`acc`），与工单一致。
-3. **原型顶栏徽标 2/6/7=15 与它自己站表的 2/5/5=12 不一致**（见 §8.3 第 5 条）。
+3. **原型顶栏徽标 2/6/7=15 与它自己站表的 2/5/5=12 不一致**（见 §8.3 第 6 条）。
 4. **我的 worktree 初始 HEAD 是 `778cc589`（OntoFlow P3），该 commit 上 `docs/SYSTEM-ONTOLOGY.md`、`docs/PRD-sandbox-redesign.md`、`apps/frontend-shell/src/views/sim/SandboxConsole.tsx` 三个文件全部不存在。** 我按金丝雀纪律先用 `git rev-parse --verify -q HEAD:CLAUDE.md` 自证工具没坏（命中），再确认三个目标路径确实 ABSENT，然后从 canonical `claude/inspiring-gates-aqczjg`（`904c7b96`）重开分支。**若不做这一步，本单会得出「这些文件都不存在」的相反结论** —— 正是 `铁律 0.6` 表里第 3 行那个形态（「扫的是停在旧分支的工作目录」）。
 5. **工单把「产品线筛选」称作「拦路石」，措辞会让人低估也会让人高估。** 精确说法是：那道 400 **是对的、不许拆**；真缺口是一条 `Line→WorkOrder→Model` 的 join 边（型号维 1 跳可做，产品线维 2 跳 M:N 要先定语义）。**既不是「加个下拉」，也不是「造引擎」。**
-6. **工单说「§4 换算必须可溯源，不许写死系数」——方向完全正确，但它低估了已有资产。** `DynamicLeverPanel` 已经把「本体派生旋钮 + 真重算 + Provenance」整条做完了（闭 `G-WHATIF-HARDCODED-LEVERS`）。真正的缺口不在「换算」，在**目标指标**：五个财务指标里只有前置期/流动效率有真值源，现金周期已被引擎显式判 EMPTY。
+6. **我自己犯了一次，当场记账（`铁律 0.6` 第 1 次 = 修 + 记账）。** 初稿 §2.1/§2.2 我写「`CHAIN_STAGES` 今天 4 段、后端 12 节点」——**错的**。真值是 **5 段 / 24 节点，且与设计目标的差额已归零**（`chain-sim.ts:61`、`sandboxConsole.ts:392,424–425`）。
+   **错因写成标准句式**：**「我把 `SandboxConsole.tsx:630` 那段横幅**模板文本里的示例数字**当作**该横幅运行时的实测值**，而模板并不度量运行值。」**
+   —— 与 `铁律 0.6` 表里那 5 次**同构**（拿一个看起来相关的数字当判据，没验证它度量的是不是我要度量的东西）。
+   **这也正是本 PRD §1.1 把该横幅列为「降级时必须改文案」的原因**：一句会骗人的话，折进抽屉里照样骗人。
+7. **工单说「§4 换算必须可溯源，不许写死系数」——方向完全正确，但它低估了已有资产。** `DynamicLeverPanel` 已经把「本体派生旋钮 + 真重算 + Provenance」整条做完了（闭 `G-WHATIF-HARDCODED-LEVERS`）。真正的缺口不在「换算」，在**目标指标**：五个财务指标里只有前置期/流动效率有真值源，现金周期已被引擎显式判 EMPTY。
 
 ---
 
