@@ -1080,19 +1080,44 @@ function TransitComputabilityLegend() {
             </li>
           );
         })}
-        <li data-testid="sc-transit-tier-cadence" data-mode="empty">
-          <b>④ 节拍闸门 · {CADENCE_ABSENCE.status}</b>
-          <span className={styles.tierGlyph}>⇒ EMPTY（不画任何「这里有节拍」的假象）</span>
-          <em data-testid="sc-transit-reason-cadence">{CADENCE_ABSENCE.reason}</em>
-          <code>补齐路径：{CADENCE_ABSENCE.unblockedBy}</code>
+        {/*
+          * ④⑤ 两档**只报档名，不复述状态**（WO-STALE-CLAIMS）。
+          *
+          * 病灶原文：这两行渲染的是 `CADENCE_ABSENCE.reason` / `PROCUREMENT_BRANCH.reason` ——
+          * 也就是 `deriveXxx()` **不带任何入参**那一档（`transitFlow.ts:495-496` 的零输入基线，
+          * 恒为 `NOT_FETCHED`，文案「本层没去取」）。WO-TRANSIT-WIRE 之后这句话已经不成立：
+          * 紧挨着本图例渲染的 `<TransitFlowView>`（下一行）**自己发四条 `searchObjects`**
+          * （`Cadence` / `PurchaseOrder` / `CustomsClearance` / `IncomingInspection`）并每次渲染现调
+          * `deriveCadenceAbsence({ engineNodes, cadenceRows })`。于是屏上同框出现两句互相打脸的话：
+          * 图例说"没人去取"，它下面的图层正在取。**自称实测的过期声明**（本体 §8 `G-STALE-MEASURED-CLAIM`）
+          * 的又一形态 —— 这次不是上游变了，是**同一屏里的邻居**变了。
+          *
+          * 为什么是"删状态"而不是"改成现算"：本图例**自己不取数**，改调 `deriveXxx()` 拿到的
+          * 依然是同一个零输入基线 —— 换个写法说同一句假话。真正有资格说"现在有没有"的只有取数的那一方。
+          * 而这块的职责本来就只是**静态可算性分级**（①②③ 全部派生自 `TRANSIT_SOURCE_SPECS` 的字段规格），
+          * "这一刻取回了什么"是运行态状态，根本不属于这里 —— 混进来才是当初出错的根。
+          *
+          * 为什么不整块删掉这两个 `<li>`：④⑤ 是分级表的一部分（读者需要知道这两档存在且**不画**），
+          * 且 `transitFlow.ts:486-490` 明写着这两个导出保留的理由就是本图例还在引用它们
+          * （本单范围边界不许改那个文件）—— 全删会让那段注释当场变成新的过期声明，
+          * 等于用一个同族病灶去换另一个。故只读 `.label`：它在 `deriveXxx()` 的**四个分支里恒等**
+          * （`base = { key, label, probe }`），与"这次取回了什么"无关，**不带保质期**。
+          */}
+        <li data-testid="sc-transit-tier-cadence" data-mode="deferred">
+          <b>④ {CADENCE_ABSENCE.label}</b>
+          <span className={styles.tierGlyph}>⇒ 不画任何「这里有节拍」的假象；有闸门时由图层出实况块</span>
+          <em data-testid="sc-transit-reason-cadence">
+            本档**现时状态由下方图层现算并自陈**（`transit-cadence-absence` / `transit-cadence-live`），本图例不复述 ——
+            图例自己不取数，复述出来的只会是"零输入"那一档，与屏上正在发生的事无关。
+          </em>
         </li>
-        <li data-testid="sc-transit-tier-procurement" data-mode="empty">
-          <b>
-            ⑤ 采购支线 · {PROCUREMENT_BRANCH.label} · {PROCUREMENT_BRANCH.status}
-          </b>
-          <span className={styles.tierGlyph}>⇒ 空 + 逐条取证（画不出来就说画不出来）</span>
-          <em data-testid="sc-transit-reason-procurement">{PROCUREMENT_BRANCH.reason}</em>
-          <code>补齐路径：{PROCUREMENT_BRANCH.unblockedBy}</code>
+        <li data-testid="sc-transit-tier-procurement" data-mode="deferred">
+          <b>⑤ {PROCUREMENT_BRANCH.label}</b>
+          <span className={styles.tierGlyph}>⇒ 画不出来就说画不出来（空 + 逐条取证）</span>
+          <em data-testid="sc-transit-reason-procurement">
+            同上：四段腿（契约单源 `PROCUREMENT_LEGS`）的现时可画性由下方图层现算并自陈
+            （`transit-procurement-absence` 等），本图例只给档名与画法。
+          </em>
         </li>
       </ul>
     </section>

@@ -612,10 +612,12 @@ export function buildPlaceholderInspectorInput(args: {
     mkStep("handoff", "handoff", handoffDays, "交接流转"),
   ];
 
-  // 诚实缺席两段：等节拍（Cadence 对象 0 条）与返工（无返工工时率）。**不进 steps。**
+  // 诚实缺席两段：等节拍（本面板拿不到 Cadence 行）与返工（无返工工时率）。**不进 steps。**
   const absences: StepAbsence[] = [
     // `whatIfCadenceKind` 由本构造器（= 调用方）显式给出：本节点的等节拍属于**会议型**（到点开会才过）。
-    // 真接引擎后这个值应来自 `Cadence.kind` 实例；今天 `Cadence` 对象 0 条，所以它是 what-if 的一部分。
+    // 真接引擎后这个值应来自 `Cadence.kind` 实例；**本构造器不发查询、拿不到任何 `Cadence` 行**
+    // （不是「全仓没有」—— 2026-08-08 实测复核：`apps/datacore/src/synthetic/service.ts:712` 真落库），
+    // 所以它今天是 what-if 的一部分。
     { stepId: sid("cadence"), kind: "cadence", label: "等节拍", reason: CADENCE_ABSENCE_REASON, whatIfCadenceKind: "meeting" },
     { stepId: sid("rework"), kind: "rework", label: "返工", reason: REWORK_ABSENCE_REASON },
   ];
@@ -696,9 +698,13 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "缺",
       evidence:
-        "公式**有**（`expectedCadenceWaitDays` · chain-sim.ts:108）但**值缺**：`Cadence` 对象全仓 0 条" +
-        "（运行态实测 `GET /a/v1/objects?type=Cadence` → total 0）；D1 写了推导模块但零生产调用方，从没落库。" +
-        "⇒ 当前值 EMPTY，滑杆仅供 what-if",
+        "公式**有**（`expectedCadenceWaitDays` · packages/contracts/src/chain-sim.ts:108）；" +
+        "承载**今天也有**（2026-08-08 实测复核，复验方式：读 `apps/datacore/src/synthetic/service.ts:712` 那条 " +
+        "`putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")`，再读 " +
+        "`apps/datacore/src/app.ts:1447` 推演 tick 里的 `listByType(\"Cadence\")` → `buildCadenceGates`）。" +
+        "⇒ 本条标「缺」= **本面板缺这个值的来路**，不是「全仓没有 Cadence」：输入来自占位构造器 " +
+        "`buildPlaceholderInspectorInput`，它不发任何查询、也收不到任何 `Cadence` 行 —— 三分法里的「没接线」，" +
+        "修法是接线不是种数据。当前值 EMPTY，滑杆仅供 what-if",
       baseline: null,
       domain: { min: 1, max: 60, step: 1 },
       effect: { op: "setCadenceEveryDays", stepId: sid("cadence") },
@@ -710,8 +716,13 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "缺",
       evidence:
-        "`Cadence.offsetDays` · chain-sim.ts:73（契约字段在），但同上无 `Cadence` 实例；" +
-        "且全仓**零运行时消费方**（只有契约与其单测引用）",
+        "`Cadence.offsetDays` 契约字段在（packages/contracts/src/chain-sim.ts:89）。" +
+        "旧文案那句「全仓零运行时消费方（只有契约与其单测引用）」**今天为假**（2026-08-08 实测复核，" +
+        "复验方式：`grep -rn offsetDays apps/datacore/src apps/frontend-shell/src`）：" +
+        "引擎侧 `apps/datacore/src/sim/propagation.ts:73` 在 `cadenceGate()` 里用它算闸门相位，" +
+        "前端侧 `apps/frontend-shell/src/views/sim/transitFlow.ts:800` `nextGateDayOnOrAfter` 用它算下一次开闸日。" +
+        "⇒ 本条仍标「缺」的真实理由与 K1 同：**本面板没去要 `Cadence` 行**（没接线），" +
+        "不是这个字段没人消费",
       baseline: null,
       domain: { min: 0, max: 30, step: 1 },
       effect: { op: "setCadencePhase", stepId: sid("cadence") },
