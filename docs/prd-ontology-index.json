@@ -1534,6 +1534,34 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-opt-whatif-data.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R13",
+        "R14",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/field-role-lexicon.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/opt-whatif-base-cost.seam.test.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-optimize-whatif-conversational-wiring.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2548,6 +2576,7 @@
       "PRD-unified-build-engine.md"
     ],
     "G-12": [
+      "PRD-opt-whatif-data.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-redesign.md",
       "PRD-skill-governance-learning.md",
@@ -2622,6 +2651,7 @@
       "PRD-inference-line.md",
       "PRD-lever-binding-drift.md",
       "PRD-ontology-7elements.md",
+      "PRD-opt-whatif-data.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-multiplan.md",
       "PRD-segment-scoped-gap-attribution.md",
@@ -2679,6 +2709,7 @@
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
       "PRD-inference-line.md",
+      "PRD-opt-whatif-data.md",
       "PRD-quarter-rolling-1to1.md",
       "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
@@ -3216,6 +3247,12 @@
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
+    ],
+    "apps/datacore/src/solvers/field-role-lexicon.ts": [
+      "PRD-opt-whatif-data.md"
+    ],
+    "apps/datacore/test/opt-whatif-base-cost.seam.test.ts": [
+      "PRD-opt-whatif-data.md"
     ],
     "apps/agentcore/src/router/opt-whatif-route.ts": [
       "PRD-optimize-whatif-conversational-wiring.md"
