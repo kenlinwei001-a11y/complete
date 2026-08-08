@@ -84,6 +84,62 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
+
+/* WO-SANDBOX-IMP2PLAN · 逐条阻滞点 → 决策推演 */
+.impJump {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.impJumpRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+.impJumpRow:hover {
+  border-left-color: var(--ok);
+  background: var(--panel2);
+}
+.impJumpRow[data-degraded="1"] {
+  border-left-color: var(--amber, #d89b28);
+}
+.impJumpLocus {
+  font-family: var(--font-mono);
+}
+.impJumpMeta {
+  color: var(--muted);
+  font-size: 11px;
+}
+.impJumpBadge {
+  margin-left: auto;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.impJumpRow[data-degraded="1"] .impJumpBadge {
+  color: var(--amber, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.impJumpJoin {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.impJumpRow[data-join="NO_FACTOR_DIMENSION"] .impJumpJoin {
+  color: var(--amber, #d89b28);
+}
 @media (max-width: 900px) {
   .impBar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
