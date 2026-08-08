@@ -39,3 +39,45 @@
 「声明了的字面量」与「藏在源码里的字面量」是两种东西：前者可审计，后者不可。
 ⇒ A2 的门应断言「**无未声明字面量** + literal 条数棘轮只降不升 + ruleKey/fieldPath 在规则库/本体里真存在」，
 而不是「源码里不许有数字」。已把这条实测发给建 A2 门的 dev。
+
+---
+
+# A5 加验 · 真浏览器实拍（同日 11:25，chromium headless + CDP，无 playwright）
+
+## 怎么跑的
+`/opt/pw-browsers/chromium-1194` + Node 22 内置 `WebSocket` 直连 CDP（本仓未装 playwright，
+此前有 agent 报「无 chromium」是它 worktree 缺依赖，不是环境没有）。
+零依赖 http 代理把 SPA 与 API 拼同源；**但生产构建把 baseURL 烤死成 `http://127.0.0.1:4001/4002`**，
+代理被绕过 ⇒ 改为直接在这两个端口起 datacore + agentcore。
+另一个坑：`Page.navigate` 是整页刷新，而本 app 的 JWT 存**内存**，刷新即丢 → 弹回登录页；
+改为**点导航链接走 SPA 内导航**才进得去。（这两条都值得写进将来的 UI 冒烟脚本。）
+
+## 结果
+| 探针 | 值 |
+|---|---|
+| url | `/v/sim-sandbox` |
+| bodyText | 6609 字符（非空壳） |
+| `[data-testid^="sc-"]` | **155 个** |
+| 四区 | `sc-impbar` 1 · `sc-slot-metro` 1 · `sc-inspect-pane` 1 · `sc-pareto` 1 |
+| **负几何**（SVG width/height/r/rx/ry < 0） | **0** ← `G-PMDAG-NEGATIVE-WIDTH` 那类「浏览器静默不画」的 bug 不存在 |
+| console 错误/警告 | **0** |
+| 失败请求（非 favicon） | **0** |
+
+## 接缝验证（这才是 SEAM-GATE 要的）
+屏上三张卡「**2 卡点 · 6 堵点 · 7 断点**」与我直接打 `POST /a/v1/solvers/chain_impediments/invoke`
+拿到的 `BOTTLENECK 2 / CONGESTION 6 / BREAK 7` **逐个对上** —— 引擎与屏是同一份数据，不是各半绿。
+另见屏上强不变量：`损失守恒 Σ = 100.000%（残差 2.8e-14 · 容差 ±0.001）`。
+
+## 实拍读出的三条缺口（前两条本体已登记，第三条本次新增）
+1. **口径差（设计稿 vs 引擎）**：屏上原文 —— 设计稿把「卡点」注为「规则/审批挡着（闸）」，
+   而引擎 BOTTLENECK 的两条判据都是产能/利用率打满（C02 硬容量 · C05 利用率红线 95%），
+   **没有一条判「等审批/等会议」**。⇒ 设计稿的三类定义与引擎实现不是同一套，屏上已当面写明。
+2. **联动口径**（= `G-IMPEDIMENT-LOSS-NOJOIN`）：屏上原文 ——「locus 是对象 vs 节点是链路节点，
+   两者今天没有共同的 id 维度，能对上的只有 stage…不能按节点精确点亮」。**未拿合理映射盖过去，正确。**
+3. **A6 三业务这条验收，引擎层就不支持**（新证据）：屏上「业务线 **无 ARGS**」原文 ——
+   `chain_impediments` **显式拒绝** `scope.businessTypes`（后端 `service.ts:3125`「暂不支持」并报 **400**），
+   故该维只读不可勾。⇒ A6 不是「前端没接」，是**引擎侧未实现**，立单要立在引擎侧。
+
+## 附带印证
+右栏就绪认证显示 **`L4 已认证`** —— 印证了先前 dev 对我的反证：demo 租户 `canEnterSimulation === true`。
+我早先那句「demo 准备度 47 / 进不去推演」是错的，此处再次坐实。
