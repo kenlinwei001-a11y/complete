@@ -17,6 +17,7 @@ import { GlobalSearch } from "@/components/GlobalSearch/GlobalSearch";
 import { HealthBadge } from "@/components/Health/HealthBadge";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import type { Workspace } from "@/api/types";
 import zh from "@/locales/zh";
 import styles from "./ShellLayout.module.css";
 
@@ -29,7 +30,27 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
 // nav-ia-reorg N1：统一按业务域分组（替代"业务/管理"双堆 + admin flat）。配置驱动 R14——
 // 每项 kind=view（查 workspace.navigation，/v/:key）或 admin（查 visibleAdminPages，/admin/:path）；
 // 逐项可见性仍按角色 + entitlement 过滤；空组自动隐藏；折叠记忆复用 NavGroup。图谱(view)并入「建模与图谱」与本体/建模同组（闭"图谱与本体拆两区"）；meta 补回「平台与系统」。
-type NavItemRef = { kind: "view" | "admin"; key: string };
+//
+// WO-ROUTE-NAV-COVERAGE：第三种 kind=**route**（App.tsx 专用静态路由 `{ path: "v/<静态段>" }`）。
+// 为什么必须是第三种、不能复用 view：
+//   · `kind:"view"` 的可见性绑在 `workspace.navigation` 下发上（`UnifiedNav` 拿 `viewByKey.get(ref.key)`，
+//     查不中 `return null` —— **静默消失，不报错、不留痕**）；
+//   · 而专用 route 的设计意图**恰恰是不依赖下发**（App.tsx 静态段先于 `:viewKey` 匹配，免 workspace.views 即可达）。
+//   两件事对不上，于是 `decision-play` 挂成 `kind:"view"` 后成了**幽灵条目**：表里写着、屏幕上永远没有。
+// 故 route 项**自带 label、无条件渲染**（不查任何下发集合）；`feature` 可选，仅用于本就"暗发"的入口
+//   （sim-sandbox：entitlement 关 → 入口消失 + 进去 404，R3「功能关闭 = 不存在」不泄露存在性，语义一字未动）。
+//   不带 feature 的路由页没有页面侧 Guard，本就人人可进，无可泄露。
+type NavItemRef =
+  | { kind: "view" | "admin"; key: string }
+  | {
+      kind: "route";
+      /** App.tsx 里 `{ path: "v/<key>" }` 的静态段（= 链接 `/v/<key>`·门按此对账）。 */
+      key: string;
+      /** 侧栏文案（route 项不走 workspace.navigation，故 label 在本表内联，同 adminRegistry.ADMIN_PAGES 的既有做法）。 */
+      label: string;
+      /** 暗发 entitlement 键（可选）：仅当页面侧本就有 Guard 时填，关 → 入口消失（R3 不泄露存在性）。 */
+      feature?: string;
+    };
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
 // 防管理页漏登记后再漂到「其它」兜底组（此前 boundary/prototype-intake 即因漏配落「其它」）。
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
@@ -48,15 +69,35 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    （届时它们不再进 workspace.navigation，本组也就不需要它们）。留着是为了在控制台落地前，
   //    用户至少能在「推演」组里找到它们，而不是在一个折叠的「其它」桶底下。
   //
-  // ⚠ `sim-sandbox` / `sim-init` **不在本表**：它们不走 `workspace.navigation`，而是本文件底部两个
-  //    写死的 `<NavLink>`（entitlement `sim.sandbox` 守门）。往本表加这两个键是**幽灵条目**——
-  //    `UnifiedNav` 拿 `viewByKey.get(ref.key)` 查后端 nav，查不中就静默 return null，永远不渲染，
-  //    还看不出错。改法见下面那两个 NavLink 的位置调整（挪到 UnifiedNav **之前**）。
+  // WO-ROUTE-NAV-COVERAGE：`sim-sandbox` / `sim-init` 从「本文件底部两个写死 `<NavLink>`」收编成 `kind:"route"`
+  //   —— 上一版把它们挪到 `<UnifiedNav>` **之前**只治了"排在最底部"，没治"两套机制"：写死 NavLink 既不在
+  //   任何分组里（永远游离于 IA 之外），也不在任何门的射程里（`nav-group-coverage:check` 只对账 NAV_GROUPS）。
+  //   收编后二者与其余专用 route 同一种登记、同一道门；`feature: "sim.sandbox"` 保住暗发语义（关 → 入口消失）。
   {
     title: "推演",
-    items: ["project-sim", "global-sim", "risk", "order-chain", "decision-play",
-      "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
-    ].map((key) => ({ kind: "view" as const, key })),
+    items: [
+      // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
+      { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
+      { kind: "route" as const, key: "sim-init", label: "推演初始化向导", feature: "sim.sandbox" },
+      ...["project-sim", "global-sim", "risk", "order-chain",
+        "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
+      ].map((key) => ({ kind: "view" as const, key })),
+      // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
+      // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56
+      // 明写"诚实排除"），于是 `viewByKey.get("decision-play")` 恒空、`return null` 恒静默 ⇒ 幽灵条目。
+      { kind: "route" as const, key: "decision-play", label: "决策推演" },
+      { kind: "route" as const, key: "what-if", label: "假设推演" },
+      { kind: "route" as const, key: "optimize-whatif", label: "优化推演" },
+    ],
+  },
+  // WO-ROUTE-NAV-COVERAGE：归因/影响面两页此前**零导航提及**——只能手敲 URL 才进得去。
+  // 不并进「推演」组：它们回答的不是"改一个假设会怎样"（推演），而是"现状为什么这样 / 波及多大"（归因）。
+  {
+    title: "归因与风险",
+    items: [
+      { kind: "route" as const, key: "cleanroom-attr", label: "净室归因" },
+      { kind: "route" as const, key: "disruption-radius", label: "断供影响半径" },
+    ],
   },
   { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
   { title: "数据接入", items: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"].map((key) => ({ kind: "admin" as const, key })) },
@@ -89,10 +130,22 @@ type NavItemVM = { key: string; label: string; viewKey?: string; group?: string 
 type AdminPage = { path: string; label: string };
 
 /**
- * 统一域分组导航（N1）：视图项 + 管理页合一套域分组渲染。view 项查 workspace.navigation（命中且可见）、
- * admin 项查 visibleAdminPages（角色命中）；空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
+ * 统一域分组导航（N1）：视图项 + 管理页 + 专用路由页合一套域分组渲染。
+ * · view  项查 workspace.navigation（命中且可见）——后端下发驱动；
+ * · admin 项查 visibleAdminPages（角色命中）；
+ * · route 项（WO-ROUTE-NAV-COVERAGE）**不查任何集合，无条件渲染**——这正是专用 route 的设计意图
+ *   （静态段先于 `:viewKey` 匹配，免下发即可达）；仅当声明了 `feature`（暗发页）才按 entitlement 显隐。
+ * 空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
  */
-function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: AdminPage[] }) {
+function UnifiedNav({
+  views,
+  adminPages,
+  workspace,
+}: {
+  views: NavItemVM[];
+  adminPages: AdminPage[];
+  workspace: Workspace | undefined;
+}) {
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
@@ -101,6 +154,11 @@ function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: Adm
   const resolved = NAV_GROUPS.map((g) => {
     const links = g.items
       .map((ref) => {
+        if (ref.kind === "route") {
+          // 无条件渲染（无下发依赖）；`feature` 只服务于暗发页：关 → 入口消失（R3 不泄露存在性）。
+          if (ref.feature && !featureOn(workspace, ref.feature)) return null;
+          return <RouteItemLink key={`r:${ref.key}`} routeKey={ref.key} label={ref.label} />;
+        }
         if (ref.kind === "view") {
           const it = viewByKey.get(ref.key);
           if (!it) return null;
@@ -163,6 +221,11 @@ const NAV_ICON_PATHS: Record<string, string> = {
   "decision-play": "M13 2 3 14h9l-1 8 10-12h-9z",
   "sim-sandbox": "M13 2 3 14h9l-1 8 10-12h-9z",
   "sim-init": "M13 2 3 14h9l-1 8 10-12h-9z",
+  // WO-ROUTE-NAV-COVERAGE 专用 route 页 —— 假设推演(sliders) / 优化推演(target) / 净室归因(pie) / 断供半径(alert)
+  "what-if": "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  "optimize-whatif": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2",
+  "cleanroom-attr": "M21.2 15.9A10 10 0 1 1 8.1 2.8M22 12A10 10 0 0 0 12 2v10z",
+  "disruption-radius": "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
   // 台账与地图 —— list / map-pin
   order: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
   "geo-map": "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
@@ -194,6 +257,23 @@ function NavItemLink({ item }: { item: NavItemVM }) {
     >
       <NavIcon nav={item.viewKey ?? item.key} />
       {item.label}
+    </NavLink>
+  );
+}
+
+/**
+ * 专用路由页链接（WO-ROUTE-NAV-COVERAGE）：`to` 与 App.tsx 的 `{ path: "v/<key>" }` 同一个静态段，
+ * `data-testid` 便于测试/门按 key 定位（写死 `<NavLink>` 时代 sim-sandbox 就是靠这个 testid 被测到的，保留同款口径）。
+ */
+function RouteItemLink({ routeKey, label }: { routeKey: string; label: string }) {
+  return (
+    <NavLink
+      to={`/v/${routeKey}`}
+      data-testid={`nav-${routeKey}`}
+      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+    >
+      <NavIcon nav={routeKey} />
+      {label}
     </NavLink>
   );
 }
@@ -313,37 +393,16 @@ export default function ShellLayout() {
         </NavLink>
         {/* N1 统一域分组：视图 + 管理页合一套域分组（配置驱动 R14）；逐项按角色/entitlement 过滤；空组隐藏；折叠记忆。 */}
         <nav className={styles.group} data-testid="nav-business">
-          {/* WO-NAV-SANDBOX-GROUP：这两个入口此前挂在 `<UnifiedNav>` **之后** ——
-              而 UnifiedNav 要渲染 13 个分组、60+ 条叶项，于是「推演沙盘」实际落在整条侧栏的**最底部**，
-              一屏根本看不见。仓主连问四轮「推演沙盘/四个新入口在哪」，实拍侧栏全图后才看清是这个位置问题。
-              它们不走 workspace.navigation（是写死 NavLink + entitlement 守门），进不了 NAV_GROUPS 分组表，
-              所以最小且正确的修法是**把位置挪到分组之前**，紧跟场景启动器 —— 沙盘是入口，不是附录。
-              entitlement 语义一字未动：sim.sandbox 关 → 两个入口仍然消失（R3 暗发）。 */}
-          {/* 推演沙盘入口（增量 4 · 暗发）：仅 sim.sandbox entitlement 开通时出现；关 → 入口消失（瞬时回退）。 */}
-          {featureOn(workspace, "sim.sandbox") && (
-            <NavLink
-              to="/v/sim-sandbox"
-              data-testid="nav-sim-sandbox"
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-            >
-              <NavIcon nav="sim-sandbox" />
-              推演沙盘
-            </NavLink>
-          )}
-          {/* 推演初始化向导入口（增量 4 渐进项 · 暗发）：同 sim.sandbox entitlement 守门；关 → 入口消失。 */}
-          {featureOn(workspace, "sim.sandbox") && (
-            <NavLink
-              to="/v/sim-init"
-              data-testid="nav-sim-init"
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-            >
-              <NavIcon nav="sim-init" />
-              推演初始化向导
-            </NavLink>
-          )}
+          {/* WO-ROUTE-NAV-COVERAGE：此处此前写死两个 `<NavLink>`（sim-sandbox / sim-init）。
+              上一版把它们从 `<UnifiedNav>` 之后挪到之前，治的是"排在 13 个分组 60+ 条叶项的最底部"；
+              但**两套机制**这个根因没治：写死 NavLink 游离于 NAV_GROUPS 之外 ⇒ ① 永远进不了 IA 分组，
+              ② 永远在 `nav-group-coverage:check` 的射程之外（那道门只对账 NAV_GROUPS）。
+              现已收编为 `kind:"route"` 条目（见 NAV_GROUPS「推演」组之首），
+              entitlement 语义一字未动：`feature: "sim.sandbox"` 关 → 两个入口照样消失（R3 暗发）。 */}
           <UnifiedNav
             views={workspace.navigation.filter((item) => item.group !== "admin")}
             adminPages={adminPages}
+            workspace={workspace}
           />
         </nav>
       </aside>
