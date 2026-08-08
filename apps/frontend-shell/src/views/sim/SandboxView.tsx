@@ -241,10 +241,32 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
   const [cert, setCert] = useState<SimCertification | null>(null);
   const [certScope, setCertScope] = useState<"GLOBAL" | "LOCAL">("GLOBAL"); // ④ 就绪范围（现可切，不再写死 GLOBAL）
+  /**
+   * WO-SIM-SCOPE-LOCAL · 局部范围的**目标对象类型**（= `GET …/certification?scope=LOCAL&target=<typeKey>` 的 target）。
+   *
+   * 病灶（本单修的就是它）：`certScope` 这个枚举开关当初从向导屏搬到主屏时**只搬了枚举、没搬它的参数**——
+   * 调用点只传 2 个实参（`fetchSimCertification(sid, scope)`），`endpoints.ts` 的 URL 模板遇 `target===undefined`
+   * 就整段不拼 `&target=`；后端 `app.ts:1589` 的裁子图条件是 `scopeKind === "LOCAL" && target`，target 为 null ⇒
+   * 恒 false ⇒ **types = allTypes（全本体）**，而 `app.ts:1640` 仍照 `scopeKind` 回 `scope:"LOCAL"`。
+   * 净效果：用户点「局部」，屏上写「局部」，**算的是全局** —— 静默错答（同族 R-ARG-FIDELITY / G-ARG-DROP-SEAM，
+   * 危害不在崩溃而在没人知道它算的不是你问的那个范围）。
+   *
+   * 修法（(A) 补齐参数）：本 state 承载 target，LOCAL 档必带它下发；候选**全部来自 view-config 的 nodeTypes**
+   * （= 租户本体派生），代码里零行业实体名（R14）。本体无已发布对象类型 ⇒ target 无从取值 ⇒ 走 (B) 诚实降级：
+   * **不提供** LOCAL 档（拒绝进入「说 LOCAL 算 GLOBAL」那个状态），屏上写明原因。
+   */
+  const [certTarget, setCertTarget] = useState<string>("");
   const [branching, setBranching] = useState(false);
   const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
+
+  // ── WO-SIM-SCOPE-LOCAL：局部范围候选与生效 target ──────────────────────────────
+  // 候选 = 本体派生的 nodeTypes（零业务常数 R14）。未显式选过时取首个（语义抄向导屏 step①，但**不 import 它**）。
+  // 刻意**不用 useEffect 初始化 state**：那会让 `init` 的依赖在会话建立途中变身 → 重跑 init → 重复建会话。
+  const localTargets = cfg?.nodeTypes ?? [];
+  const effectiveTarget = certTarget || localTargets[0] || "";
+  const canLocal = localTargets.length > 0; // 本体无对象类型 ⇒ LOCAL 无 target 可带 ⇒ 该档不提供（诚实降级）
 
   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
   const globalKpi = useMemo(() => {
@@ -264,32 +286,47 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const g0 = Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length);
       setHistory([g0]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
+      // WO-SIM-SCOPE-LOCAL：LOCAL 档必带 target —— 这里也补齐，杜绝再留一个「传 2 个实参」的调用点回潮。
       try {
-        setCert(await fetchSimCertification(s.id, certScope));
+        setCert(await fetchSimCertification(s.id, certScope, certScope === "LOCAL" ? effectiveTarget : undefined));
       } catch {
         /* certification entitlement 关时容错：仅不显认证面板 */
       }
     } catch (e) {
       toastError(e);
     }
-  }, [certScope]);
+  }, [certScope, effectiveTarget]);
 
   useEffect(() => {
     if (cfg && !sessionId) void init(cfg);
   }, [cfg, sessionId, init]);
 
   // ④ scope 切换 → 重取就绪认证（GLOBAL↔LOCAL），不重建会话。
+  // LOCAL 必带 target；**先拿到与该范围对应的数字、再切屏上的档**，杜绝「档位说 LOCAL、数字还是上一次 GLOBAL」。
   const reloadCert = useCallback(
-    async (scope: "GLOBAL" | "LOCAL") => {
-      setCertScope(scope);
-      if (!sessionId) return;
+    async (scope: "GLOBAL" | "LOCAL", target?: string) => {
+      const t = target ?? effectiveTarget;
+      if (scope === "LOCAL" && !t) {
+        // 诚实降级（(B)）：没有 target 的 LOCAL 在后端等同 GLOBAL（app.ts:1589 条件恒 false），
+        // 只是回包上仍印着 "LOCAL"。宁可不提供该档，也不把全局数字挂上局部的名字。
+        toast("局部范围需先选对象类型；本体暂无已发布对象类型，故不提供局部范围（不以全局结果冒充局部）", "info");
+        return;
+      }
+      if (!sessionId) {
+        setCertScope(scope);
+        if (scope === "LOCAL") setCertTarget(t);
+        return;
+      }
       try {
-        setCert(await fetchSimCertification(sessionId, scope));
+        const next = await fetchSimCertification(sessionId, scope, scope === "LOCAL" ? t : undefined);
+        setCert(next);
+        setCertScope(scope);
+        if (scope === "LOCAL") setCertTarget(t);
       } catch {
-        /* 容错 */
+        /* 容错：失败时**不切档**——屏上范围与屏上数字必须始终同源 */
       }
     },
-    [sessionId],
+    [sessionId, effectiveTarget],
   );
 
   const onTick = useCallback(async () => {
@@ -354,7 +391,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       payload: {
         // plan_change 必填 versionId + reason（走 S2 审批正门）；沙盘以会话@tick 作版本锚。
         versionId: `sim:${sessionId}@tick${curTick}`,
-        reason: `采纳推演沙盘结论（${certScope} · 全局态 ${globalKpi.toFixed(1)}${cert ? ` · ${cert.level}` : ""}）`,
+        // 范围随结论走：LOCAL 必带目标对象类型（否则留痕里的「LOCAL」说不清算的是哪一块 —— 本单病灶的下游）。
+        reason: `采纳推演沙盘结论（${certScope}${certScope === "LOCAL" ? `:${cert?.targetRef ?? effectiveTarget}` : ""} · 全局态 ${globalKpi.toFixed(1)}${cert ? ` · ${cert.level}` : ""}）`,
         patch: {
           source: "sim_sandbox",
           simulated: true, // 诚实标：此为模拟态结论，采纳才经 Action 正门写真值（RL4）
@@ -363,10 +401,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           globalKpi: Number(globalKpi.toFixed(2)),
           certLevel: cert?.level ?? null,
           scope: certScope,
+          // 溯源位（R13）：优先用**后端真回来的** targetRef（= 真正参与裁子图的那个），而非前端 state 的一厢情愿。
+          scopeTarget: certScope === "LOCAL" ? (cert?.targetRef ?? effectiveTarget) : null,
         },
       },
     });
-  }, [sessionId, curTick, globalKpi, cert, certScope, adopt]);
+  }, [sessionId, curTick, globalKpi, cert, certScope, effectiveTarget, adopt]);
 
   if (!cfg) {
     if (cfgQuery.isError) return <div className="empty-state" data-testid="sandbox-config-error">沙盘配置不可用（沙盘功能未开通或本体为空）</div>;
@@ -387,6 +427,44 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       defaultOpen: true,
       node: (
         <div data-testid="sandbox-readiness">
+          {/* WO-SIM-SCOPE-LOCAL：局部范围的目标对象类型选择器（候选来自本体派生 cfg.nodeTypes·R14 零行业实体名）。
+              LOCAL 档从此**真带 target** 下发；本体空 ⇒ 该档不提供并当面写明原因（诚实降级，不冒充局部）。 */}
+          <div
+            data-testid="sandbox-cert-target-row"
+            style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}
+          >
+            <span className={styles.sub}>局部范围目标</span>
+            {canLocal ? (
+              <>
+                <select
+                  data-testid="sandbox-cert-target-select"
+                  value={effectiveTarget}
+                  aria-label="局部范围目标对象类型"
+                  onChange={(e) => {
+                    const t = e.target.value;
+                    setCertTarget(t);
+                    // 已在局部档 → 换目标即换范围，必须重算；全局档下只记住选择，不发无意义请求。
+                    if (certScope === "LOCAL") void reloadCert("LOCAL", t);
+                  }}
+                >
+                  {localTargets.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <span className={styles.sub} data-testid="sandbox-cert-target-hint">
+                  {certScope === "LOCAL"
+                    ? `当前按对象类型 ${effectiveTarget} 裁子图计算`
+                    : "切到「局部」后按此对象类型裁子图计算"}
+                </span>
+              </>
+            ) : (
+              <span className={styles.sub} data-testid="sandbox-cert-local-unavailable">
+                本体暂无已发布对象类型 → 局部范围不提供（无目标的「局部」在后端等同全局，不以全局结果冒充局部）
+              </span>
+            )}
+          </div>
           {cert ? (
             <SimReadinessPanel
               cert={cert}
