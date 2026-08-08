@@ -110,6 +110,26 @@
       },
       "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。"
     },
+    "check-chain-scan-honesty.mjs": {
+      "alias": "chain-scan-honesty:check",
+      "binding": "GATE_SH",
+      "disposition": "WIRE",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "packages/contracts/src/process-capacity.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "packages/contracts/src/base-registry.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "docs/PRD-sandbox-a2.md §6（2026-08-08 实跑）",
+        "note": "变异①在 ChainImpedimentSchema.parse 构造区塞 severity: 87 → H2 区域层+文件层双红 RC=1；变异②把 detectRegionLiterals 的正则改坏 → 金丝雀报「⛔ 门自己瞎了：必咬样例没咬住」RC=1，而非安静报绿。另开发期金丝雀两次抓到本门自伤（0 条 binding / 阈值读成 \"95,\"）。"
+      },
+      "notes": "PRD-sandbox-redesign §9 验收 A2 点名却不存在的门（G-DEAD-GATE-BY-POLICY 同族）。刻意不接 pnpm gates：本单不得动 package.json（会顶 ontology-writeback 棘轮），§7 登记落地后由审核方裁是否升 GATES_CHAIN。"
+    },
     "check-cli-parity.mjs": {
       "alias": null,
       "binding": "NONE",

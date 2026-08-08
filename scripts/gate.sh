@@ -58,6 +58,16 @@ run "nav-group-coverage:check" node scripts/check-nav-group-coverage.mjs
 # 最狠的一层是 STALE-3/4：把声明里引用的事实（某对象类型在不在 putAll 册上 / 某符号有没有消费方）
 # **当场读回来核** —— 上游一补齐，声明当场红，不靠人记性。
 run "stale-claims:check" node scripts/check-stale-claims.mjs
+# WO-SANDBOX-A2 · 全链扫描「零写死」门（PRD-sandbox-redesign §9 验收 A2 / §10.1 点亮判据 A2）。
+#
+# 建它的直接理由：§9 A2 白纸黑字写「`chain-scan-honesty:check` 绿」，而这道门**根本不存在**——
+# 制度点名、实际没有的门 = 那条验收今天无法机械核（同族前例：boundary-singlesource 曾红着且零接线
+# 24 个 commit，欠账 #76）。**验收判据点名一道不存在的门，比没有判据更危险**：它让人以为核过了。
+#
+# 同上两条接 gate.sh 而不接 `pnpm gates`：`check-ontology-writeback.mjs` 正向断言要求进 gates 链的门
+# 必须在本体 §7 登记，而本单不得动 package.json（会连带顶 ontology-writeback 的棘轮）。
+# 门账 disposition=WIRE 记着「§7 登记落地后升 GATES_CHAIN」这笔待办。
+run "chain-scan-honesty:check" node scripts/check-chain-scan-honesty.mjs
 # `pnpm gates` = 一批治理门（debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 / 描述覆盖 …）。
 #
 # ⛔ 为何补进来（第三层假绿·本地与 CI 覆盖面不一致）：本脚本自称"防假绿的单一入口"，
