@@ -6,6 +6,44 @@
 
 ---
 
+## 0 · ⚠️ 先纠正 A10 的射程（复核时发现，影响验收怎么判）
+
+派单把 A10 指向「datacore 六处 `sim.*` emit 零消费方」。**但 PRD §9 A10 的字面射程不是这个。**
+读 `PRD-sandbox-redesign.md` §2「触及事件」原文，A10 说的「**两个新事件**」有名有姓：
+
+| PRD 声明的 A10 两个事件 | 代码里的实况（实测） |
+|---|---|
+| `chain.scan_completed` | **从未被 emit**。全仓唯一命中是 `packages/contracts/src/chain-sim.ts:540` 的**一句注释**（"事件载荷同键"） |
+| `chain.impediment_resolved` | **全仓零命中**（`grep` rc=1） |
+
+排除间接发射后仍成立（铁律 0.5 #3「先自问会不会被间接调用」）：
+
+- `outbox.emit(…, "chain.*")` 字面量：**0 处**；
+- 动态事件名的 emit 只有三处，事件名都是闭集或与 chain 无关 ——
+  `scheduler.ts:255`（`"calibration.required"` / `"rule.alert"` 二选一）、
+  `adminplatform.ts:132` 的 `audit()` helper（其调用方含 `chain.` 的：**0**）、`decision/kernel.ts`（decision.*）；
+- 全链扫描求解器本体（`solvers/service.ts:3113-3133` → `detectChainImpediments`）**整段不发事件**。
+
+> **`ChainImpediment` 对象本身是实现了的**（WO-SANDBOX-E3：`solvers/chain-impediment.ts` +
+> `catalog.ts:146` + contracts `chain-sim.ts`）—— 所以这不是「没做」，是**做了判定没发事件**。
+
+**⇒ 结论：PRD 字面意义的 A10 今天「不可验」，因为生产者一侧根本不存在** —— 它被 §10 分期挂在 **S5**
+（"采纳链接 R4 + 两个事件接消费方"），而 S5 未做。**这不是本单能关掉的门**：
+补 `chain.*` 两个事件的 emit 属 `apps/datacore/`，本单 🚦范围边界明确禁改。
+
+**本单实际交付的是派单描述的那个缺陷** —— 既有 `sim.*` 事件零消费方（本体已登记 `G-SIM-EVENT-NOSUB`），
+它真实存在、已独立复核、且与 A10 同族（都是 #92「发了没人收」）。
+**但请勿据本单判 A10 通过**，两者射程不同，判据见下表：
+
+| | PRD 字面 A10 | 本单交付 |
+|---|---|---|
+| 事件 | `chain.scan_completed` · `chain.impediment_resolved` | 5 个 `sim.*`（6 处 emit） |
+| 生产者 | ❌ 不存在（S5 未做） | ✅ 已存在且在发 |
+| 消费者 | ❌ 无从谈起 | ✅ 1 接线 + 4 有台账缺口 |
+| 本单可否关此门 | **否**（须先补 emit，属 datacore） | — |
+
+---
+
 ## 1 · 缺陷复核（自测，非转述）
 
 派单描述与实测有两处出入，先纠正后再谈修法：
@@ -156,6 +194,11 @@ B 的资源缓存只有 `type-semantics`（ontology/rules 事件失效）与 `pr
 ---
 
 ## 6 · 残留欠账
+
+0. **PRD 字面 A10 仍未关**（见 §0）：`chain.scan_completed` / `chain.impediment_resolved`
+   **两个事件的 emit 都不存在**，而 `ChainImpediment` 判定器已实现。
+   最小修路径：`solvers/service.ts:3113` 的 `runChainScan` 返回前 `outbox.emit(tenantId, "chain.scan_completed", {scanId, impedimentCount, bySeverity, grain, window})`；
+   `chain.impediment_resolved` 挂在 Action 执行回写处。**属 `apps/datacore/`，本单禁改，须另开工单。**
 
 1. **4/5 `sim.*` 事件仍无消费方**（session_created / tick_completed / checkpoint_saved / branched）。
    前置改造：`SandboxView` 的会话/世界态/检查点改走 `useQuery`。
