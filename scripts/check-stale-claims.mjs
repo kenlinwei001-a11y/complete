@@ -493,9 +493,20 @@ function main() {
     console.error(`\n❌ 棘轮回弹：${stale.length} 条豁免已经匹配不到任何声明（文案改过了？）—— 请从 ${BASELINE_PATH} 删掉，让上限跟着降：`);
     for (const e of stale) console.error(`   ${e.key}  —— ${e.why}`);
   }
-  if (baseline.exemptions.length > baseline.maxExemptions) {
+  // ── 棘轮三条（都写在 baseline 的 note 里）───────────────────────────────────
+  if (baseline.exemptions.length !== baseline.maxExemptions) {
     bad = true;
-    console.error(`\n❌ 豁免数 ${baseline.exemptions.length} 超过上限 ${baseline.maxExemptions} —— 棘轮只许往下走。`);
+    console.error(
+      `\n❌ 棘轮失守：maxExemptions=${baseline.maxExemptions} 与实际豁免数 ${baseline.exemptions.length} 不等。` +
+        `\n   这个数必须**恒等于**豁免条数 —— 加一条豁免就得同时改这个数，让它在 diff 里躲不掉。`,
+    );
+  }
+  if (baseline.exemptions.length > baseline.ratchetHigh) {
+    bad = true;
+    console.error(
+      `\n❌ 棘轮回升：豁免数 ${baseline.exemptions.length} 超过历史最高水位 ratchetHigh=${baseline.ratchetHigh}。` +
+        `\n   ratchetHigh **只降不升**。评审唯一必须拒绝的一行，就是把它调大。`,
+    );
   }
   const noReason = baseline.exemptions.filter((e) => typeof e.why !== "string" || e.why.trim().length < 10);
   if (noReason.length > 0) {

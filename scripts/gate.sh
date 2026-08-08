@@ -48,6 +48,16 @@ run "genuine-sim:check" node scripts/check-genuine-sim.mjs
 # 上 gates 链却没同批写 §7 → `ontology-writeback:check` 当场红。故先接 gate.sh（GATE_SH，
 # 每次交付门真跑，不是死门），门账 disposition=WIRE 记着「§7 登记后升 GATES_CHAIN」这笔待办。
 run "nav-group-coverage:check" node scripts/check-nav-group-coverage.mjs
+# WO-STALE-CLAIMS · 过期「自称实测」声明门（本体 §8 G-STALE-MEASURED-CLAIM 的机械那一半）。
+#
+# 同上不接 `pnpm gates` 而接本脚本，理由一模一样：`check-ontology-writeback.mjs` 正向断言
+# 「每个并入 `pnpm gates` 的门都必须在本体 §7 登记」，而 §7 回写归审核方。故先接 GATE_SH。
+#
+# 它咬的是「实测的保质期等于做实测的那一天」：一句没日期、没复验方式的"运行态实测 X 是 0"，
+# 上游一补齐就变成屏上说谎，而**自称实测**恰恰让复审不再追那一层。
+# 最狠的一层是 STALE-3/4：把声明里引用的事实（某对象类型在不在 putAll 册上 / 某符号有没有消费方）
+# **当场读回来核** —— 上游一补齐，声明当场红，不靠人记性。
+run "stale-claims:check" node scripts/check-stale-claims.mjs
 # `pnpm gates` = 一批治理门（debattery / arg-drop-seam / action-wiring / 本体一致 / 全链闭包 / 描述覆盖 …）。
 #
 # ⛔ 为何补进来（第三层假绿·本地与 CI 覆盖面不一致）：本脚本自称"防假绿的单一入口"，
