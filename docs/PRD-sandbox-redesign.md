@@ -357,7 +357,7 @@
 | # | 判据 | 怎么核 |
 |---|---|---|
 | **A1** ⚠️**已修正（2026-08-08 A5 实测）** | ~~`evidence.solverKey` 指向的求解器真被调用过~~ —— **这条原措辞是空转判据**：实测 15 条阻滞点的 `evidence.solverKey` **全部等于 `chain_impediments` 自己**（扫描器直读对象属性 + 比规则阈值，上游根本没有别的求解器）⇒ 「指向自己」永远为真，该断言**无法失败**。照原文建门 = 又一道恒绿哑门（前例：`boundary-singlesource`·欠账 #76）。**改为**：每个阻滞点的 `evidence` 必须带 `ruleKey` + `metricValue` + `threshold` + `unit`，且 `ruleKey` 在规则库里**真存在**；`thresholds[]` 里 `source:"field"` 的 `fieldPath` 必须在本体里**真是该类型的属性**。 | 逐条回读规则库与本体，不看代码 |
-| **A2** ⚠️**已修正（2026-08-08 A5 实测）** | **零写死**的口径要精确到「**未声明**的写死」：实测 `thresholds[]` 5 条里 3 条 `source:"literal"`（C05=95% · C28=90天 · C06=0吨），但它们**主动声明了自己是 literal**，另有 C02 `source:"field"`（`Process.requiredThroughput`）与 C09 `source:"param"`。「声明了的字面量」可审计，「藏在源码里的」不可 —— 按字面判「不许有数字」会红得没道理，且逼人把声明藏起来。**改为**：① 进入 `evidence.metricValue`/`threshold` 的数必须在 `thresholds[]` 有对应条目且带 `source`，漏声明⇒红；② `source:"literal"` 条数**棘轮只降不升**（2026-08-08 基线 **3**）；③ 声称的 `ruleKey`/`fieldPath` 必须真存在。 | `chain-scan-honesty:check` |
+| **A2** ⚠️**已修正（2026-08-08 A5 实测）** | **零写死**的口径要精确到「**未声明**的写死」：实测 `thresholds[]` 5 条里 3 条 `source:"literal"`（C05=95% · C28=90天 · C06=0吨），但它们**主动声明了自己是 literal**，另有 C02 `source:"field"`（`Process.requiredThroughput`）与 C09 `source:"param"`。「声明了的字面量」可审计，「藏在源码里的」不可 —— 按字面判「不许有数字」会红得没道理，且逼人把声明藏起来。**改为**：① 进入 `evidence.metricValue`/`threshold` 的数必须在 `thresholds[]` 有对应条目且带 `source`，漏声明⇒红；② `source:"literal"` 条数**棘轮只降不升**（2026-08-08 基线 **4**，见下「基线为何是 4 不是 3」）；③ 声称的 `ruleKey`/`fieldPath` 必须真存在。 | `chain-scan-honesty:check` |
 | **A3** | **R6 确定性**：同 (seed, 场景, 参数) 连跑两次，结果**字节一致** | `diff` 两次输出 |
 | **A4** | **候选真不同**（效果层）：同一阻滞点的 N 个候选，KPI 至少一项互不相同；**把某个杠杆接线掐掉 → 对应候选必须变得与基线相同 → 门红** | 变异反证，贴红的原文 |
 | **A5** | **亲手真跑**：在真数据上跑一次全链扫描，人工核对 ≥3 个阻滞点是真问题、非误报 | 截图 + 逐条说明 |
@@ -367,6 +367,21 @@
 | **A9** | **R4**：采纳方案只产 `ActionDraft`，沙盘不写真值 | 查数据库无直写 |
 | **A10** | 两个新事件有**真消费方**（不是发了没人收，#92 那族） | 追消费端 |
 | **A11** | 两道新门登记进本体 §7 **且**进 `scripts/gate-ledger.json` | `ontology-writeback:check` + `gate-ledger:check` |
+
+### 基线为何是 4 不是 3（2026-08-08 修正·铁律 0.6 形态）
+
+我在 A5 实测后把 literal 棘轮基线写成 **3**，依据是那一次扫描输出的 `thresholds[]` 里有 3 条
+`source:"literal"`（C05=95% · C28=90天 · C06=0吨）。门建好之后自报基线 **4**，多出的一条是
+`CONGESTION.CAPACITY.order-changeover` → **C22** `Order.changeoverMin`=120。
+
+差别的原因：**门是静态扫全部绑定，我数的是一次运行实际命中的绑定。**
+那次数据里没有换型堵点，C22 这条绑定压根没进输出 —— 于是它在我的计数里隐身。
+
+形态归位（`铁律 0.6` 判据）：**「我用『一次运行输出里的 literal 条数』当作『全部绑定的 literal 条数』
+的证据，而前者并不度量后者。」** 与今天另外 5 次同构。
+
+**结论：门的 4 是对的，PRD 的 3 是漏计**，已按 4 收口。棘轮方向不变（只降不升），
+C22 迁往 `params` 后基线可收窄到 3。**这次是门先说的话，不是人先想起来** —— 机制生效的样子就该是这样。
 
 ---
 
