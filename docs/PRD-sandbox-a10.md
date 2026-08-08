@@ -74,7 +74,7 @@ datacore outbox.emit("sim.*")
 
 `sim.scenario_saved` 接上后修掉两个实际 bug：
 
-1. **横比矩阵从来没人失效过。** `RiskBoardView.tsx:1078` 的 `save.onSuccess` 只本地失效了
+1. **横比矩阵从来没人失效过。** `RiskBoardView.tsx:1077-1080` 的 `save.onSuccess` 只本地失效了
    `["a","live-scenarios", baseId]`，**没有失效** `["a","live-scenario-compare", baseId, ids]`。
    ⇒ 存了新方案 / 存了分支之后，decision_play 横比矩阵**连发起方自己那一页**都停在旧矩阵。
 2. **跨标签页 / 跨用户零传播。** 本地 `invalidateQueries` 只在发起方那一个 tab 生效；
@@ -161,5 +161,7 @@ B 的资源缓存只有 `type-semantics`（ontology/rules 事件失效）与 `pr
    前置改造：`SandboxView` 的会话/世界态/检查点改走 `useQuery`。
 2. **`GlobalSimScenarioBar` 不受益** —— 它用本地 `setMatrix` 而非 `useQuery`，gslive 方案存盘后
    同页横比矩阵仍需手动重取。改造点在 `GlobalSimScenarioBar.tsx`（本单禁改）。
-3. **`POST /a/v1/sim/scenarios/:id/branch`（gslive 分支）不发事件** —— 与 live 侧
-   （`saveLiveScenario` 带 `parentId` 即分支，会发）不对称。emit 侧属 `apps/datacore/`，本单禁改，登记待办。
+3. **`POST /a/v1/sim/scenarios/:id/branch`（gslive 分支）不发事件** —— 实测 `app.ts:1747-1758`
+   整个 handler 无 `outbox.emit`；而 live 侧（`saveLiveScenario` 带 `parentId` 即分支，走同一
+   `POST /a/v1/sim/live-scenarios`）会发。⇒ 存 gslive 分支后连接了线的那条失效也不会触发。
+   emit 侧属 `apps/datacore/`，本单 🚦禁改，登记待办。
