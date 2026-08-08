@@ -271,6 +271,24 @@
       "notes": "已在自动路径内（GATE_SH，由 scripts/gate.sh / .github/workflows / scripts/gate.sh 调用），非手动门。",
       "disposition": "WIRE"
     },
+    "check-lever-binding-drift.mjs": {
+      "alias": "lever-binding-drift:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "packages/contracts/src/capacity-factors.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/solvers/capacity.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "三组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）",
+        "note": "M-A1 把 LEVER_FACTOR_PROPS['设备OEE'] 改指 Equipment.oeeA（= 已登记但 writable:false 的非可拨动落点，正是本门所治缺陷的原始形态）→ RC=1，点名「该层拨杆面板恒空且不报错（后端 200 + levers:[]）」并给出两条修法；M-A2 在 LEVER_FACTOR_PROPS['物流时长'] 里塞一个不存在的 Equipment.__no_such_prop__ → RC=1，A2 孤儿分支点名该键；M-GATES 把本门从 package.json 的 gates 串里摘掉 → ontology-writeback:check G3-b 红（本体 §7 宣称已并入 gates 而现算 binding=NONE）。金丝雀防哑：门先拿「良率波动→Process.yield_baseline」（绑定 ⑥·确定存在）自证解析与查表都通，任一环报 0 即判定「门坏了不是代码坏了」并直接退出，故不会退化成恒绿的哑门。",
+        "note2": "本门刻意不抄一份落点定义进脚本，而是 import 契约包构建产物复用 factorPropKeys()/matchesGrain() 真实现——门与被守对象各存一份定义正是它要治的那种漂移。同时显式声明诚实边界：只证「落点在表里且标可拨动」，不证「拨了真有用」（敏感度恒 0 的死杠杆看不见），那一维由 apps/datacore/test/lever-binding-drift.test.ts 的逐层普查棘轮咬。"
+      },
+      "notes": "闭 G-LEVER-BINDING-DRIFT：产能拨杆候选由两包各自维护的两张表 join 得出（service.ts LEVER_FACTOR_PROPS × contracts CAPACITY_FACTOR_BINDINGS），交集空则该瓶颈层永远拨不出候选且**全程无报错**（后端 200 + levers:[]，前端只渲染空面板）。实测交付前「设备OEE」层候选恒 0——它指向 Equipment.oee_current，而绑定表把 OEE 建模成 oeeA/oeeP/oeeQ 三原子、无 oee_current。交叉校验函数 factorPropKeys() 早已存在于契约包却零调用方（假绿第 9 形态：实现有、零生产消费方），本门是它的第一个真消费方。"
+    },
     "check-link-stabilize.mjs": {
       "alias": "link-stabilize:check",
       "binding": "MANUAL",
