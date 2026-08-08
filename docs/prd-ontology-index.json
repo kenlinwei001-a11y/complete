@@ -887,6 +887,27 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-demo-lightup-2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/test/deliver-verb-seam.test.ts",
+        "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts",
+        "apps/agentcore/test/route1-structural-qualifier-seam.test.ts",
+        "apps/agentcore/test/scenario-phrasing-seam.test.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/demo-lightup-seam.test.ts",
+        "apps/datacore/test/solver-context-lazy-loading.seam.test.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-deterministic-cross-domain.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1178,6 +1199,25 @@
         "apps/datacore/src/ontology-governance.ts",
         "apps/datacore/src/synthetic/battery.ts",
         "apps/datacore/src/synthetic/data-categories.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-hardcoded-absence.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "apps/frontend-shell/test/transit-flow.seam.test.tsx",
+        "scripts/gate.sh"
       ],
       "brokenArtifacts": []
     },
@@ -1875,6 +1915,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sim-scope-local.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/sim-certification.test.ts",
+        "apps/frontend-shell/test/sim-scope-local.seam.test.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-simulation-sandbox.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2251,6 +2307,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-transit-wire.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
+        "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-unified-build-engine.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2445,6 +2518,7 @@
       "PRD-generation-boundary-grounding.md",
       "PRD-generic-inference.md",
       "PRD-goal-metric-owner-spine.md",
+      "PRD-hardcoded-absence.md",
       "PRD-order-project-sim-1to1.md",
       "PRD-quarter-rolling-1to1.md",
       "PRD-self-driving-qos-data-foundation.md",
@@ -2524,6 +2598,7 @@
       "PRD-capacity-live-cockpit.md",
       "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
+      "PRD-demo-lightup-2.md",
       "PRD-inference-line.md",
       "PRD-lever-binding-drift.md",
       "PRD-ontology-7elements.md",
@@ -2580,6 +2655,7 @@
     "apps/datacore/src/synthetic/battery.ts": [
       "PRD-addendum-excel-seed-700B-expansion.md",
       "PRD-aop-annual-scenario-1to1.md",
+      "PRD-demo-lightup-2.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
       "PRD-inference-line.md",
@@ -2836,6 +2912,31 @@
     "scripts/check-resource-descriptor.mjs": [
       "PRD-decision-resource-intelligence-layer.md"
     ],
+    "apps/agentcore/test/deliver-verb-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/route1-structural-qualifier-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/scenario-phrasing-seam.test.ts": [
+      "PRD-demo-lightup-2.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/datacore/src/features.ts": [
+      "PRD-demo-lightup-2.md",
+      "PRD-nav-gate.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/datacore/test/demo-lightup-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/datacore/test/solver-context-lazy-loading.seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"
     ],
@@ -2889,8 +2990,10 @@
     ],
     "scripts/gate.sh": [
       "PRD-gate-ledger.md",
+      "PRD-hardcoded-absence.md",
       "PRD-nav-gate.md",
-      "PRD-skill-compiler-registry.md"
+      "PRD-skill-compiler-registry.md",
+      "PRD-transit-wire.md"
     ],
     "apps/datacore/src/domain.ts": [
       "PRD-generation-boundary-grounding.md",
@@ -2927,6 +3030,17 @@
     ],
     "apps/datacore/src/synthetic/data-categories.ts": [
       "PRD-goal-metric-owner-spine.md"
+    ],
+    "apps/datacore/src/synthetic/cadence.ts": [
+      "PRD-hardcoded-absence.md",
+      "PRD-semantics-singlesource.md"
+    ],
+    "apps/frontend-shell/src/views/sim/transitFlow.ts": [
+      "PRD-hardcoded-absence.md",
+      "PRD-transit-wire.md"
+    ],
+    "apps/frontend-shell/test/transit-flow.seam.test.tsx": [
+      "PRD-hardcoded-absence.md"
     ],
     "apps/agentcore/src/growth/loop.ts": [
       "PRD-in-dialog-gap-fill-loop.md"
@@ -2994,11 +3108,6 @@
     ],
     "scripts/check-lever-binding-drift.mjs": [
       "PRD-lever-binding-drift.md"
-    ],
-    "apps/datacore/src/features.ts": [
-      "PRD-nav-gate.md",
-      "PRD-optimize-whatif-conversational-wiring.md",
-      "PRD-skill-compiler-registry.md"
     ],
     "apps/datacore/src/synthetic/view-manifest.ts": [
       "PRD-nav-gate.md"
@@ -3175,14 +3284,17 @@
     "apps/datacore/test/gap-attribution-segment-scope.test.ts": [
       "PRD-segment-scoped-gap-attribution.md"
     ],
-    "apps/datacore/src/synthetic/cadence.ts": [
-      "PRD-semantics-singlesource.md"
-    ],
     "apps/frontend-shell/test/chain-node-semantics-typebinding.seam.test.ts": [
       "PRD-semantics-singlesource.md"
     ],
     "scripts/check-chain-node-singlesource.mjs": [
       "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/test/sim-certification.test.ts": [
+      "PRD-sim-scope-local.md"
+    ],
+    "apps/frontend-shell/test/sim-scope-local.seam.test.tsx": [
+      "PRD-sim-scope-local.md"
     ],
     "apps/agentcore/src/auth.ts": [
       "PRD-skill-compiler-registry.md"
@@ -3289,9 +3401,6 @@
     "apps/agentcore/test/helpers.ts": [
       "PRD-skill-migration.md"
     ],
-    "apps/agentcore/test/scenario-phrasing-seam.test.ts": [
-      "PRD-skill-migration.md"
-    ],
     "apps/agentcore/test/scenario-seed-multitenant.test.ts": [
       "PRD-skill-migration.md"
     ],
@@ -3336,6 +3445,12 @@
     ],
     "apps/frontend-shell/test/transit-geometry.seam.test.tsx": [
       "PRD-transit-geometry.md"
+    ],
+    "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": [
+      "PRD-transit-wire.md"
+    ],
+    "apps/frontend-shell/src/views/sim/inspectorModel.ts": [
+      "PRD-transit-wire.md"
     ]
   }
 }
