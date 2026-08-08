@@ -43,13 +43,38 @@ import type {
  */
 const NL_QUERY = "如果 changzhou 基地的开设成本涨到 150，最优选址方案怎么变？";
 
+/** 由 `NL_QUERY` 抽取所得的三要素（改问句就必须同改这里，否则下面的漂移守护当场红）。 */
+const EXTRACTED = { targetId: "changzhou", field: "openCost", value: 150 } as const;
+
 /** 由 `NL_QUERY` 抽取所得，再由 orchestrator `runOptWhatifRoute`（`orchestrator.ts:1037`）逐字段组装的 invoke 实参。 */
 const argsFromQuery = (selectionIds: string[]) => ({
   family: "facility_location",
   selection: selectionIds.map((id) => ({ objectType: "Base", objectId: id })),
   autoBind: true,
-  perturbations: [{ kind: "data_override", target: "facilities.changzhou.openCost", value: 150 }],
+  perturbations: [{ kind: "data_override", target: `facilities.${EXTRACTED.targetId}.${EXTRACTED.field}`, value: EXTRACTED.value }],
 });
+
+/**
+ * **问句 ↔ 实参 漂移守护**：把 `NL_QUERY` 钉成本用例的输入之源，而不是一句装饰性注释。
+ * 逐条复核 AgentCore `resolveOptWhatifRoute`（`opt-whatif-route.ts:107`·R6 纯正则）对该问句的判定前提——
+ * 任何一条不再成立（改了问句 / 改了实参 / 抽取器规则变了）本用例即红，杜绝"注释说是从问句来的、其实对不上"。
+ */
+function assertArgsDerivableFrom(query: string): void {
+  // ① 双命中门 isOptWhatifSignal（:26）：决策族词 ∧ 参数改动词。
+  expect(/(选址|设施|开设|布点|指派|覆盖|集合覆盖|独立集|竞价|调拨网络|运输网络|流量)/.test(query)).toBe(true);
+  expect(/(涨到|降到|设为|改到|提高到|下调到|=\s*\d|到\s*\d)/.test(query)).toBe(true);
+  // ② family（:118）：RE_FACILITY 命中 → facility_location。
+  expect(/(选址|设施|开设|布点|指派|集合覆盖|覆盖|独立集|竞价)/.test(query)).toBe(true);
+  // ③ value（:43 extractValue）：取首个「…到 <数>」。
+  expect(Number(query.match(/(?:涨到|降到|设为|改到|提高到|下调到|限到|限制到|到|=)\s*(\d+(?:\.\d+)?)/)![1])).toBe(EXTRACTED.value);
+  // ④ targetId（:69 extractTargetId）：选中对象的 objectId 原文须出现在问句里。
+  expect(query).toContain(EXTRACTED.targetId);
+  // ⑤ field（:49 fieldFor）：非容量词 → openCost。
+  expect(/(容量|产能|上限)/.test(query)).toBe(false);
+  expect(EXTRACTED.field).toBe("openCost");
+  // ⑥ kind（:36 perturbKind）：「涨到」既非收紧也非放松 → data_override。
+  expect(/(收紧|压缩|限到|限制到|放松|降到|下调到|放宽)/.test(query)).toBe(false);
+}
 
 /**
  * orchestrator 降级判据的**字面镜像**（`orchestrator.ts:1047`）：
@@ -108,7 +133,8 @@ const typeDef = (tenantId: string, key: string, props: ObjectTypeDef["properties
 });
 
 describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）", () => {
-  it("① 头号接缝：问句实参 → REST invoke → **orchestrator 降级判据为假** → 拿到含最优设施切换的结论", async () => {
+  it("① 头号接缝：问句 → 抽取实参 → REST invoke → **orchestrator 降级判据为假** → 拿到含最优设施切换的结论", async () => {
+    assertArgsDerivableFrom(NL_QUERY); // 先钉死"这批实参真是这句问句抽出来的"（漂移守护）
     const t = await makeApp();
     await seedBattery(t); // ← 生产实况：只跑合成种子，测试侧**不做任何补位落库**
     const mock = new MockFL();
