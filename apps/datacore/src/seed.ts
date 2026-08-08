@@ -68,6 +68,51 @@ const DEMO_LIGHTUP: Record<string, boolean> = {
   // 两门缺一不可：det-multi 产耦合路由 × l3-coupled 升格（见 l3-coupled-seam「det+l3 同开 → 一次 portfolio」）。
   "qos.deterministic-multi-domain": true,
   "qos.multi-intent-l3-coupled": true,
+
+  // ── WO-DEMO-LIGHTUP-2（本轮追加 5 条·逐条写明「为什么点」）────────────────────
+  //
+  // ⚠ 先说清 L2/L3 的关系，免得下一个人照着名字推错依赖：**L3 不 requires L2**。
+  //   `features.ts` 两键都没有 `requires` 字段，运行期也不是层叠关系——
+  //   L2（`orchestrator.ts:731`）是**进入多路并行的三个触发器之一**（另两个是 ② det-multi
+  //   与 ⑤ multi-intent），而 L3（`orchestrator.ts:946`，在 `runMultiRoute` 内部）是
+  //   **进去之后的升格**。所以「L3 已亮而 L2 未亮」并不矛盾：L3 此前靠已点亮的
+  //   `qos.deterministic-multi-domain` 供给耦合路由即可生效。本轮点 L2 是**新增第三个
+  //   触发器**（治 novel 措辞被 free-LLM 长度门劫持），不是补 L3 的前置。
+  //
+  // ① 自由问答挂载租户技能：demo 已有 7 条 PUBLISHED 出厂 Skill（agentcore `mocks/seed.ts`
+  //    `seedRegistry().skills`，main.ts 启动即幂等播种），但此前它们**只对注册 agent 路径可达**
+  //    （skill 绑在 `agent.skills` 上）；用户在对话坞随便问一句走的是泛化 path-B，一个技能都看不见。
+  //    点亮 = 那 7 条技能对默认自由问答可见并可 `load_skill` 取全文。**有数据才点**——
+  //    池空时代码本就不挂钩子（挂一个永远返 undefined 的工具只会诱导模型盲试）。
+  "agent.skill-on-free-qa": true,
+  // ② L2 真分解：复合/长问句（novel 措辞、不含域关键词）此前被 free-LLM 的**纯长度门**
+  //    （q.length≥24）接走进慢路 ReAct——"说得越具体越被判为开放深问"，因果是反的。
+  //    点亮后先试 LLM 产 solver 计划 → 确定性校验 → 命中即走并行确定性求解；一条都映射不到
+  //    才落 free-LLM（不劫持真开放题）。demo 上正是最常见的问法形态。
+  "qos.multi-intent-l2-decompose": true,
+  // ③ LLM 多意图兜底：② 确定性分路按域关键词枚举，覆盖不到的跨域题（分类器能给出 ≥2 个够格候选）
+  //    此前只会取 top1 单意图作答——**用户问了两件事只答一件，且答得理直气壮**。点亮后并行跑多路
+  //    + 零 LLM 块装配。与 ② 互补（② 确定性主路、⑤ LLM 兜底），demo 已点 ② 故此处补齐另一半。
+  "qos.multi-intent-orchestration": true,
+  // ④ 结构化优化 what-if 会话路由：`optimize_whatif` 求解器与前端「优化推演」页早就有，
+  //    但**自然语言问不到它**（G-WHATIF-NL-UNREACHABLE：能力存在 ≠ 能力可达）。demo 的
+  //    依赖链底座 `opt.solver-pool` / `opt.whatif` 已随 battery 模板开着（二者不在暗发排除集），
+  //    只差这一把路由钥匙 → 点亮后「f1 开设成本涨到 150，最优选址怎么变」直落 path-A CP-SAT 重解。
+  "qos.opt-whatif-route": true,
+  // ⑤ 求解器上下文按需加载（纯性能收窄·PERF_DARK_LAUNCH_FEATURES）：invoke 时按 solverKey 只加载
+  //    该求解器真读的核心对象类型。**点它的前提是等价性有门守着**——`test/solver-context-lazy-loading.seam.test.ts`
+  //    的 SEAM-EQ 逐求解器深比「裁剪 ctx 输出 ≡ 全量 ctx 输出」逐字节一致，且有 invoke 端到端
+  //    flag-on/off 对照。本单**先真跑该门通过**才点（跑不通就不点：纯性能优化不值一次静默错答）。
+  "dc.lazy-solver-context": true,
+  //
+  // ⚠ **刻意不点 `qos.llm-budget-enforce`**（别当成漏了——这是本轮明确裁决的一条）。
+  //   它的行为是**硬线**：租户 token 配额耗尽 → 新 QOS 任务直接 429 `LLM_BUDGET_EXCEEDED` 拒掉。
+  //   demo 是给人随便点、随便问的环境，点亮它 = 用户用着用着突然被拒，而拒的理由（"配额用完了"）
+  //   在演示语境里既没人管也没人能改 —— 这不是"体验到一个功能"，是"撞上一堵墙"。
+  //   记账侧**本来就无条件在记**（不受此门控·见 orchestrator `llmBudgetEnforceEnabled` 注释），
+  //   所以关着它并不让账本变空；关的只是"拿账本拦人"这一个动作。
+  //   要在 demo 上演示配额，正确做法是运维显式 PUT 一次 override（合并语义会尊重它·见下），
+  //   而不是让种子替所有人做这个决定。
   // ⚠ 这里**刻意不列 sim.***（推演沙盘）。留此注记是因为我差点加错：
   //   `features.ts` 里 `sim.sandbox` 写着 `defaultOn: false`，看上去像"暗发没开"，
   //   而 demo 的 override 里确实没有它 —— 两条线索都指向"门没开"。**但那是错的**：
