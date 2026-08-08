@@ -25,10 +25,10 @@
 
 ## 0 · 一句话结论
 
-后端在这一页上**能给 240 个字段**（叶子级，含可选字段），**今天屏上有 79 个**。
-剩下 161 个里，**117 个是「取到了但没显示」**（纯前端渲染缺口，后端一行不用改），
-**44 个是「根本没取」**（其中 **43 个断在前端自己的 zod schema 上** —— 响应里有，
-被 `z.object` 的 strip 语义当场剥掉，补齐平均每个 1 行）。
+后端在这一页上**能给 237 个字段**（叶子级，含可选字段），**今天屏上有 88 个**。
+剩下 149 个里，**113 个是「取到了但没显示」**（纯前端渲染缺口，后端一行不用改），
+**36 个是「根本没取」**——**36/36 全部断在前端自己的 zod schema 上**：响应里有，
+被 `z.object` 的 strip 语义当场剥掉，补齐平均每个 1 行。
 
 **没有一个字段是「后端没有」。** 这与仓主的判断一致：后端无需变。
 
@@ -38,8 +38,8 @@
 | B · `chain_impediments`（E3 求解器） | 96 | 12 | 76 | 8 |
 | C · `GET /a/v1/sim/view-config` | 9 | 5 | 4 | 0 |
 | D · `GET /a/v1/sim/sessions/{id}/certification` | 31 | 28 | 3 | 0 |
-| E · `POST /a/v1/sim/sessions` + tick/checkpoint/branch/compare | 36 | 0 | 28 | 8 |
-| **合计** | **240** | **79** | **117** | **44** |
+| E · 会话族（建会话 / tick / checkpoint / branch / compare） | 33 | 9 | 24 | 0 |
+| **合计** | **237** | **88** | **113** | **36** |
 
 > 三态的定义（**修法完全不同，不许混为一谈** · CLAUDE.md 铁律 0.5 同源）：
 > - **已显示** —— 屏上有可读的呈现（文本 / 图元 / 徽标）。
@@ -384,18 +384,60 @@ zod `z.object` 按 strip 语义在 `ChainLineMapView.tsx:407` 解析时当场剥
 
 ### E · 会话族（建会话 / tick / checkpoint / branch / compare）
 
-这一族的响应**几乎全部只被当作控制流用**，字段本身零展示。
+契约：`packages/contracts/src/sim.ts:88`（`SimSession`）/ `:101`（`SimTickState`）/ `:112`（`SimCheckpoint`）；
+端点签名：`apps/frontend-shell/src/api/endpoints.ts:545-578`。
 
-| 能力 | 响应字段 | 屏上显示了吗 | 说明 |
-|---|---|---|---|
-| `createSimSession` | `SimSession.{id, tenantId, scope.kind, scope.target, baseSnapshot, curTick, createdAt, …}` | `scope.kind`/`scope.target` **已显示**（`SandboxView.tsx:521`）；`id` 取到了但没显示；其余取到了但没显示 | 会话范围对账那一块是本页少见的诚实位样板 |
-| `simTick` | `{state, curTick}` | `curTick` **已显示**（`:606`）；`state` **已显示**（聚合成全局态 + 逐变量均值 + 节点着色） | 但 `state` 的**逐对象逐变量原值**从不上屏，只有均值 |
-| `simCheckpoint` | `{id, label, tick, …}` | `label`/`tick` 只进 toast（`:396`），**不在屏上留存**；`id` 仅作分支入参 | 存了哪些检查点、在哪个 tick —— **屏上没有任何清单** |
-| `simBranch` | `{id, …}` | `id` 只进 toast（`:412`） | — |
-| `fetchSimCompare` | `{a: SimCompareSeries, b: SimCompareSeries}` | **已显示**（`SimComparePanel`） | — |
+#### E.1 `createSimSession` → `SimSession`（8 字段，**0 已显示**）
 
-> **点名一处**：检查点**没有列表**。用户可以反复「存档检查点」，但屏上永远只有一句转瞬即逝的 toast，
-> 既看不到存了几个、也无法回到任何一个。后端 `SimSession` 的 checkpoint 集合是有的，前端没取也没画。
+| 字段路径 | 屏上显示了吗 | 说明 |
+|---|---|---|
+| `id` | 取到了但没显示 | `SandboxView.tsx:309` `setSessionId(s.id)`，仅作后续入参 |
+| `tenantId` | 取到了但没显示 | 从未被读 |
+| `baseSnapshot` | 取到了但没显示 | `:311` 用的是**前端本地的 `base`**，不是 `s.baseSnapshot` |
+| `scope` | 取到了但没显示 | 见下方「必须点名的一处」 |
+| `status` | 取到了但没显示 | 会话状态（DRAFT/…）从不上屏 |
+| `curTick` | 取到了但没显示 | `:312` **硬写 `setCurTick(0)`**，不读 `s.curTick` |
+| `parentCheckpointId` | 取到了但没显示 | 「本会话是某检查点的分支」这件事，屏上无出口 |
+| `createdAt` | 取到了但没显示 | — |
+
+> **必须点名的一处（本单新发现）**：屏上那句「本会话建立于范围 `GLOBAL`/`LOCAL:x`」
+> （`SandboxView.tsx:517-523`）读的是 `sessionScope` 这个**前端本地 state**，
+> 而它在 `:310` 被赋成 `:307` 构造的**前端自己那份 `scope`** —— **不是** `s.scope`（后端回带的那一份）。
+> ⇒ 屏上显示的是「**我发过去什么**」，不是「**后端记下了什么**」。
+> 两者若不一致（后端忽略/改写了 scope），屏上**看不出来**。
+> 这与 §2D 的 `cert.scope` 未上屏是**同一族**问题：R-ARG-FIDELITY 的回带值**全都没被用来对账**。
+> `init` 全函数只从响应里读了 `s.id` 一个字段。
+
+#### E.2 `simTick` → `{curTick, state, trace?}`（7 字段，2 已显示）
+
+| 字段路径 | 屏上显示了吗 | 说明 |
+|---|---|---|
+| `curTick` | **已显示** | `SandboxView.tsx:606` |
+| `state` | **已显示** | 聚合成全局态 + 逐 stateVar 均值 + PmDag 节点着色（`:611-619`、`:96-104`）。**逐对象逐变量原值从不上屏**，只有均值 |
+| `trace[].ruleKey` | 取到了但没显示 | `PropagationTrace`（`sim.ts:29-35`）契约注释原文：「喂前端**三级风险轨迹**可视化」 |
+| `trace[].fromObjectId` | 取到了但没显示 | 同上 |
+| `trace[].toObjectId` | 取到了但没显示 | 同上 |
+| `trace[].amount` | 取到了但没显示 | 同上 |
+| `trace[].viaLinkKey` | 取到了但没显示 | 同上 |
+
+> **传导轨迹整块未上屏**：`onTick`（`SandboxView.tsx:376-390`）只读 `res.state` 与 `res.curTick`。
+> 「哪条规则把多少量从哪个对象传到哪个对象、经哪条链路」—— 这正是沙盘**推演**的核心可解释性，
+> 后端算好并下发了，屏上一个字都没有。tick 之后用户只看到一个数变了，**看不到为什么变**。
+
+#### E.3 `simCheckpoint` → `SimCheckpoint`（6 字段，2 已显示·仅 toast）
+
+`label` / `tick` 进 toast（`:396`，转瞬即逝）；`id`/`sessionId`/`tenantId`/`createdAt` 取到了但没显示。
+
+> **点名**：检查点**没有列表**。用户可反复「存档检查点」，但屏上只有一句会消失的 toast ——
+> 既看不到存了几个、在哪些 tick，也**无法回到任何一个**（没有 restore 入口）。
+
+#### E.4 `simBranch` → `SimSession`（8 字段，1 已显示·仅 toast）
+
+`child.id` 进 toast（`:412`）；其余 7 个同 E.1 全部未显示。
+
+#### E.5 `fetchSimCompare` → `{a, b}`（4 字段，全部已显示）
+
+`a[].tick` / `a[].state` / `b[].tick` / `b[].state` 经 `SimComparePanel` 上屏。
 
 ---
 
@@ -655,10 +697,11 @@ zod `z.object` 按 strip 语义在 `ChainLineMapView.tsx:407` 解析时当场剥
   **没有**逐字段展开。本文件 §1.2 已明说这是有意的边界，但它确实意味着
   **「在途图层 7 类对象 + 物理拓扑 Workshop」的字段遗漏情况本台账没有覆盖**。
   若重设计要动这两块，需要补一张同规格的表。
-- 会话族 E 的字段数（36）是**按契约成员数估的**，未像 A/B 那样逐叶子核对到 JSX；
-  其中「已显示 0」是就**响应字段本身**而言（`curTick`/`state` 经聚合后上屏，我把聚合结果计在 §2E 的说明里而非计数里）。
-  ⇒ **E 行的三个数字精度低于 A–D，请勿单独引用。**
 - `apps/agentcore` 侧的 QOS（AI 指挥台）响应字段完全未展开 —— 它经 `TaskRun` 流式渲染，是另一套契约。
+- `SimSession.scope` 与 `SimTickState` 的 `pending`（`DelayedContribution`，5 字段）未计入总数：
+  前者是 `z.record(z.string(), z.unknown())` 不可展开叶子，后者不在 `simTick` 的响应类型里
+  （`endpoints.ts:549` 只声明 `{curTick, state, trace?}`）。若后端实际回带 `pending`，
+  那是**又一族「根本没取」**，本台账未覆盖。
 
 ### 6.3 从文档抄的（并注明该文档可能已过期）
 
@@ -681,9 +724,12 @@ zod `z.object` 按 strip 语义在 `ChainLineMapView.tsx:407` 解析时当场剥
   条件渲染（`honesty` 开关关掉时 `sc-imp-gap` 等大量诚实位整块消失）意味着
   **「已显示」的准确含义是「在 `honesty=true` 的默认态下有 JSX 出口」**。
   `honesty` 默认 `true`（`SandboxConsole.tsx:150`），故默认态成立。
-- **240 这个总数依赖「叶子」的切法**：我把 `scope.{businessTypes,baseIds,modelIds}` 算 3 个、
-  `manifestations[]` 的 6 个子字段各算 1 个。换一种切法总数会变。
+- **237 这个总数依赖「叶子」的切法**：我把 `scope.{businessTypes,baseIds,modelIds}` 算 3 个、
+  `manifestations[]` 的 6 个子字段各算 1 个、`trace[]` 的 5 个子字段各算 1 个。换一种切法总数会变。
   **结构性结论（哪些字段没上屏、断在哪）不受切法影响，比例数字受影响。**
+- **toast 算不算「屏上显示」**：E.3/E.4 的 3 个字段我计入「已显示」，但它们是**转瞬即逝的 toast**，
+  不是持久呈现。若按「持久可读」口径，E 的已显示应为 6 而非 9，总计应为 85 而非 88。
+  这条口径分歧我**明写在此**而不是悄悄选一个。
 
 ### 6.5 发现的与工单描述不符之处（本仓要纠正不要附和）
 
@@ -713,5 +759,9 @@ zod `z.object` 按 strip 语义在 `ChainLineMapView.tsx:407` 解析时当场剥
   - `G-IMPEDIMENT-VM-DROP` —— `toVM` 不搬运 `candidates`/`manifestations`/`nodeId`/`stepId`/`noCandidateReason`，
     76 个已解析字段无屏上出口
   - `G-CERT-GAPS-SILENT-TRUNCATE` —— `gaps.slice(0, 8)` 无「还有 N 条」提示
+  - `G-SIM-TRACE-UNRENDERED` —— `simTick` 回带的 `trace[]`（传导轨迹 5 字段）零渲染，
+    tick 之后「数变了」看得见、「为什么变」看不见
+  - `G-SIM-ARGFIDELITY-UNCHECKED` —— 后端回带的 `SimSession.scope` 与 `SimCertification.scope`
+    **都没被用来对账**，屏上显示的是前端自己发出去的那一份 ⇒ R-ARG-FIDELITY 的回带值形同虚设
 
 > **本单不改代码，故不回写本体**；上列四条留给承接重设计的那张单，改动落地时一并回写。
