@@ -9,6 +9,11 @@ import { FeatureService } from "../src/features.js";
  * 接缝：seed.ts 写 tenant override（数据半）× features.ts layeredSet/cascade 解析（引擎半）——任一半漏即红。
  * 头号判据：resolve(demo) 真含这些门；且**新 battery 租户仍默认关**（QOS_DARK_LAUNCH 诚实锁死·不随模板 all-on 顺带开）。
  * WO-DEMO-L3-LIGHTUP：追加 det-multi + l3-coupled（demo 开箱体验 L3 耦合联合求解·两门缺一不升格）。
+ * WO-DEMO-LIGHTUP-2：LIT 增至 **14** 条 + 新增「刻意不点」金值（`qos.llm-budget-enforce`）。
+ *
+ * ⚠ 本门只证**登记**（seed → resolve 里有这个键）。「点亮≠能用」的另一半在
+ * `apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts`：拿生产集去跑真编排器，
+ * 断言自由问答真挂上技能且 `load_skill` 真取到全文。两半缺一不可。
  */
 
 const LIT = [
@@ -54,14 +59,14 @@ describe("WO-LIGHTUP · demo 点亮暗发功能（seed→resolve 真驱动·含 
     }
   });
 
-  it("基座隔离 SEAM：只 seedDemo（未点亮）→ resolve(demo) 这 5 个仍关（单测 makeApp 基线干净·防污染 features/dark-feature 门）", async () => {
+  it("基座隔离 SEAM：只 seedDemo（未点亮）→ resolve(demo) 这 14 个仍关（单测 makeApp 基线干净·防污染 features/dark-feature 门）", async () => {
     const repos = createMemoryRepos();
     await seedDemo(repos);
     const feats = new Set((await new FeatureService(repos).resolve(DEMO_TENANT)).features);
     for (const k of LIT) expect(feats.has(k), `未点亮时 ${k} 应关`).toBe(false);
   });
 
-  it("对照 SEAM：新 battery 租户无 override → 这 5 个默认关（不随 all-on 模板顺带开·断在接缝会露）", async () => {
+  it("对照 SEAM：新 battery 租户无 override → 这 14 个默认关（不随 all-on 模板顺带开·断在接缝会露）", async () => {
     const repos = createMemoryRepos();
     await repos.tenants.put({ id: "t2", tenantId: "t2", name: "t2", industry: "battery-manufacturing" });
     const feats = new Set((await new FeatureService(repos).resolve("t2")).features);
