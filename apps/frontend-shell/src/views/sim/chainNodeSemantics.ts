@@ -23,6 +23,19 @@ import { CHAIN_NODE_REGISTRY, type ChainNodeDef } from "@platform/contracts";
  * ④ **注释里不裸写 nodeId**：既有门会扫源码里的节点 id 字面量，连注释都算。
  *    要指某个节点时一律说它的人读名（`label`，也来自同一张册）。
  *
+ * ── 为什么这 12 个键**写成字面量**不算「第二份注册表」（WO-SEMANTICS-SINGLESOURCE）────
+ * `chain-node-singlesource` 门的 `C·抄表` 判据一度把本文件判红，理由是「改册时这里不会跟着变」。
+ * **对本文件该理由不成立**：键类型是注册表 `as const` 派生出来的字面量联合，
+ * 写一个不在册的键、或册里改掉一个 id ⇒ `tsc` 当场 **TS2353**，构建都过不去。
+ * 这比门明文豁免的数据侧同族（`synthetic/cadence.ts` 的**运行时**验真）还强一档。
+ * 故门已改为**按机制豁免**：键位 + 键类型锚在 `@platform/contracts` ⇒ 不计入抄表数。
+ * ⚠ 因此**不许**把下面这行声明改成 `Record<string, …>`、`Partial<Record<Rid | string, …>>`
+ *   或 `{…} as Partial<Record<Rid, …>>` —— 实测这三种写法 `tsc` 都不再咬，
+ *   编译期包含关系当场失效、豁免的前提消失（门也不认它们，会重新判红）。
+ *   这条不变式由 `test/chain-node-semantics-typebinding.seam.test.ts` 真跑 `tsc` 咬住。
+ * ⚠ 内容（`pos`/`cf`/`basis`）是**人写的原创**，派生不出来 —— 这也是本表键必须逐个写出来的原因：
+ *   派生得了的是键，派生不了的是内容，而没有键就挂不住内容。
+ *
  * ── `cf` 的准入线（比 `pos` 严得多）─────────────────────────────────────────────
  * 每条 `cf` 必须能在代码里**指出依据**（`basis` 逐条给 `file:line`，复验方可直接翻到）。
  * 指不出依据的一条都不许写 —— 设计稿里有几条听着很对的跨节点冲突，实测查下去没有承载，
