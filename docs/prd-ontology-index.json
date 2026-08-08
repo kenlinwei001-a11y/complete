@@ -1534,6 +1534,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-opt-whatif-close.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/opt-whatif-close.seam.test.ts",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-opt-whatif-data.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -3069,6 +3085,7 @@
       "PRD-gate-ledger.md",
       "PRD-hardcoded-absence.md",
       "PRD-nav-gate.md",
+      "PRD-opt-whatif-close.md",
       "PRD-skill-compiler-registry.md",
       "PRD-stale-claims.md",
       "PRD-transit-wire.md"
@@ -3274,6 +3291,9 @@
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
+    ],
+    "apps/datacore/test/opt-whatif-close.seam.test.ts": [
+      "PRD-opt-whatif-close.md"
     ],
     "apps/datacore/src/solvers/field-role-lexicon.ts": [
       "PRD-opt-whatif-data.md"
