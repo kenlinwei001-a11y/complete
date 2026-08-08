@@ -80,8 +80,11 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
     items: [
       // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
       { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
+      // WO-IMPEDIMENTS-REACHABLE：`chain-impediments`（全链阻滞点）是沙盘第五子视图 ——
+      // renderer 早已注册（registry.ts:87），但后端不派单 + 无专用 route ⇒ 此前零路径渲染得到。
+      // 现随后端 BUILTIN_VIEWS 入册一并归组，与四个姐妹同组同级（不进「其它」兜底桶）。
       ...["project-sim", "global-sim", "risk", "order-chain",
-        "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
+        "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments",
       ].map((key) => ({ kind: "view" as const, key })),
       // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
       // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56

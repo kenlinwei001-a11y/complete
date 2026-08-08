@@ -27,9 +27,12 @@ describe("A7 synthetic data", () => {
     // → 进 report.views 验收快照（此前经 extraViews 分桶不在快照·现收敛回核心，是"缺失视图现身"的诚实体现）。
     // 推演沙盘四子视图入册 BUILTIN_VIEWS（WO-SANDBOX-VIEW-MOUNT）→ seed:true → 进 SEEDED_VIEW_KEYS
     // → 进 scenarioSeed.views → 进本快照。金值随注册即更（CLAUDE.md「漏金值即退」），末位追加不动前序序（R6）。
+    // WO-IMPEDIMENTS-REACHABLE：沙盘**第五**子视图 chain-impediments 同批入册（renderer 早已注册但零路径
+    // 渲染得到 → 现由后端派单打通）。金值 13 → 14 项，仍是**末位追加**，前 13 项顺序一字未动（R6 确定性种子
+    // 的字节级一致只约束"同输入同输出"，不约束"清单不许增长"；增长处必须在末位，否则前序 diff 会淹掉真回归）。
     expect(report.views).toEqual([
       "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
-      "chain-line-map", "transit-flow", "physical-topology", "node-inspector",
+      "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 

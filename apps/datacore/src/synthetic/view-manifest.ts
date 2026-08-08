@@ -88,6 +88,27 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   { key: "transit-flow", title: "在途与在制", renderer: "transit-flow", featureKey: "view.transit-flow", featureName: "在途与在制", seed: true, requires: ["sim.sandbox"] },
   { key: "physical-topology", title: "物理拓扑", renderer: "physical-topology", featureKey: "view.physical-topology", featureName: "物理拓扑", seed: true, requires: ["sim.sandbox"] },
   { key: "node-inspector", title: "节点检视", renderer: "node-inspector", featureKey: "view.node-inspector", featureName: "节点检视", seed: true, requires: ["sim.sandbox"] },
+  // ── 沙盘第五子视图 · 全链阻滞点（WO-IMPEDIMENTS-REACHABLE · 同族病第五层）─────────
+  //
+  // 病灶（实测坐实）：`registry.ts:87` 早已 `registerRenderer("chain-impediments", …)`，组件
+  // `views/sim/ChainImpedimentView.tsx` 有 440 行真实现 + 两条测试全绿，**却零路径渲染得到**：
+  //   · 本表（后端派单的唯一真相源）无此 key ⇒ `workspace.views` 永远没有它 ⇒ ViewPage 双闸全关；
+  //   · `App.tsx` 也没有专用静态 route ⇒ 手敲 URL 也只落 `v/:viewKey` 通用守卫 → 404。
+  // 它同时躲开了既有两道门：`view-reachable:check` 问「模块有没有人 import」——registry 那行满足了，绿；
+  // `nav-group-coverage:check` 对账的是「本表 seed:true」与「专用 route」两侧——它两侧都不在，不在射程。
+  // 现补第三条判据（判据⑦ 渲染器可达）咬这一层，见 `scripts/check-nav-group-coverage.mjs`。
+  //
+  // 为什么走本表（BUILTIN_VIEWS）而不是专用 route —— 判据是**语义归属**，不是哪个好写：
+  //   ① 它是沙盘家族的第五个成员（引擎 `chain_impediments` 出自 WO-SANDBOX-E3，组件自述与 F1
+  //      `chain-line-map` 是"两个不同求解器、两个不同问题"的**姐妹页**），四个姐妹全在本表，
+  //      第五个另起一套机制 = 「拆两半用不同机制不对接」，本仓栽过的老坑；
+  //   ② 它**必须与沙盘同生共死**（`requires: ["sim.sandbox"]`）。专用 route 给不了这条：route 条目
+  //      可按 feature 隐藏入口，但页面侧没有 Guard ⇒ 手敲 URL 照样进得去，违反 R3「功能关闭 = 不存在」；
+  //   ③ 它的求解器入参是**租户范围**（`argsFromView` 读 `view.options.baseIds/businessTypes/modelIds`），
+  //      而 `options` 只有 ViewConfig 这条路送得到；专用 route 直挂组件、`view` 恒 undefined ⇒
+  //      该维度结构性失效。反观真正走专用 route 的那批（what-if / cleanroom-attr / disruption-radius /
+  //      optimize-whatif）全是**净室通用**页：与租户本体无关、无需按行业裁剪，语义类别本就不同。
+  { key: "chain-impediments", title: "全链阻滞点", renderer: "chain-impediments", featureKey: "view.chain-impediments", featureName: "全链阻滞点", seed: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_impediments"] } },
 ];
 
 /** scenarioSeed.views 单一来源：seed:true 的内置视图键（battery.ts 引用·防第 4 处漂移）。 */
