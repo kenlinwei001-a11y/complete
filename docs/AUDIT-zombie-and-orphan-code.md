@@ -196,10 +196,11 @@ D. 传入全部 7 因子（bnFactors 携 bottleneck_matrix 七因子枚举时的
 
 | # | `transitFlow.ts` 原文声明 | 今天的事实 | 判定 |
 |---|---|---|---|
-| a | `:131` 「清关（customs）与到货检验（IQC）在 `apps/datacore/src` 与 `packages/contracts/src` **均 0 命中** —— 两段完全无承载。」 | `CustomsClearance` 命中 **8 个文件**（`solvers/extended.ts`·`solvers/service.ts`·`solvers/chain-loss.ts`·`synthetic/battery-extended.ts`·`synthetic/data-categories.ts`·`synthetic/service.ts`·`synthetic/battery.ts`·`contracts/procurement.ts`）；`IncomingInspection` 同样 8 个文件 | **过期·为假** |
-| b | `:126` `reason`（UI 主显那一行）「本体缺在途承载物：无 ASN、无清关段、无到货检验段」 | 同上，清关段与到货检验段都已存在 | **过期·为假**（`无 ASN` 这半句**仍为真**，未核出 ASN 对象） |
-| c | `:135` `unblockedBy`「等 **WO-SANDBOX-D2**（补清关/到货检验两段）」 | D2 已落地——`chain-loss.ts:286-290` 的注释明写「D2 在那之后落了 `CustomsClearance`/`IncomingInspection`/`PurchaseOrder` 四段日戳」 | **过期** |
-| d | `:146` 「`"Cadence"` 作为对象类型在 `apps/datacore/src` 与 `packages/contracts/src` **0 命中**；`apps/datacore/src/synthetic/cadence.ts` 在本分支基线**不存在**（D1 未并线）」 | `cadence.ts` **存在**；`synthetic/service.ts:712` `await putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId")` **真落库**；`Cadence` 在 contracts 命中 4 个文件；`app.ts:1426` 有真消费方 | **过期·为假** |
+| a | `:133` 「清关（customs）与到货检验（IQC）在 `apps/datacore/src` 与 `packages/contracts/src` **均 0 命中** —— 两段完全无承载。」 | `CustomsClearance` 命中 **8 个文件**（`solvers/extended.ts`·`solvers/service.ts`·`solvers/chain-loss.ts`·`synthetic/battery-extended.ts`·`synthetic/data-categories.ts`·`synthetic/service.ts`·`synthetic/battery.ts`·`contracts/procurement.ts`）；`IncomingInspection` 同样 8 个文件 | **过期·为假** |
+| b | `:128` `reason`（UI 主显那一行）「本体缺在途承载物：无 ASN、无清关段、无到货检验段」 | 同上，清关段与到货检验段都已存在 | **过期·为假**（`无 ASN` 这半句**仍为真**，未核出 ASN 对象） |
+| c | `:136` `unblockedBy`「等 **WO-SANDBOX-D2**（补清关/到货检验两段）」 | D2 已落地——`chain-loss.ts:286-290` 的注释明写「D2 在那之后落了 `CustomsClearance`/`IncomingInspection`/`PurchaseOrder` 四段日戳」 | **过期** |
+| d | `:148` 「`"Cadence"` 作为对象类型在 `apps/datacore/src` 与 `packages/contracts/src` **0 命中**；`apps/datacore/src/synthetic/cadence.ts` 在本分支基线**不存在**（D1 未并线）」 | `cadence.ts` **存在**；`synthetic/service.ts:712` `await putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId")` **真落库**；`Cadence` 在 contracts 命中 4 个文件；`app.ts:1426` 有真消费方 | **过期·为假** |
+| e | **文件头注释 `:49` 与 `:51-55`** 把 a/d 两条又复述了一遍：「`customs`/`IQC` **0 命中**」「`Cadence` … **0 命中**，`synthetic/cadence.ts` 在本基线**不存在**」 | 同 a、d | **过期·为假**（**危害独立**：dev 打开文件先读到的就是这段，会在读到常量前就被误导） |
 
 **为什么这条最危险**：它不是注释，是**渲染给用户看的产品文案**。用户在推演沙盘上读到的是「采购在途支线 · EMPTY · 本体缺在途承载物」，而后端此刻真有这些对象。同时它会让下一个 dev 去「补清关段」——**造一个已经有的东西**。
 
