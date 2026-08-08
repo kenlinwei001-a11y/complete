@@ -374,7 +374,7 @@
       "provenRed": {
         "kind": "MUTATION",
         "evidence": "WO-NAV-GATE 三条变异实跑（2026-08-08，docs/PRD-nav-gate.md §6）",
-        "note": "A: NAV_GROUPS 删 order → 判据① 红 RC=1 打印 [order]，前端结构守卫同红打印 [planner:order, base_manager:order, padmin:order]；C: mock allViews 删 node-inspector → 判据② 红 RC=1 打印 [node-inspector]；B（mock 加 NAV_GROUPS 没有的新视图）本门按设计不咬，由 f61 前端守卫红。每条 git checkout 撤回、撤后 git status 干净、门复绿 RC=0。"
+        "note": "A: NAV_GROUPS 删 order → 判据① 红 RC=1 打印 [order]，前端结构守卫同红打印 [planner:order, base_manager:order, padmin:order]；C: mock allViews 删 node-inspector → 判据② 红 RC=1 打印 [node-inspector]；D: BUILTIN_VIEWS 改名 → 判据③（门自身没坏）红 RC=1，且此变异抖出本门第一版声明正则的假绿（[^=]* 吞掉后缀改名仍绿），已收紧为整词锚定后复测红；B（mock 加 NAV_GROUPS 没有的新视图）本门按设计不咬，由 f61 前端守卫红。每条 git checkout 撤回、撤后 git status 干净、门复绿 RC=0。"
       },
       "notes": "接 scripts/gate.sh 而非 pnpm gates：check-ontology-writeback.mjs 正向断言要求进 gates 链的门必须在本体 §7 登记，而 §7 回写归审核方（本单工单明禁改本体文件）。审核方在 §7 登记本门后可升 GATES_CHAIN 并把 binding 改为 GATES_CHAIN。⚠ 若届时用 build-gate-ledger.mjs 重建门账，provenRed 会因 §7 无反证记录而被降级回 NEVER —— 请把上面 evidence/note 同批写进 §7 该门条目。"
     },

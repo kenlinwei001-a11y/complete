@@ -76,6 +76,19 @@ function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
+/**
+ * 声明匹配正则：名字**整词**锚定 + 吃掉可选类型标注直到 `=`。
+ *
+ * 两个坑都踩过才写成这样（变异实测）：
+ *   · 名字若用 `NAME[^=]*=` 松匹配，`BUILTIN_VIEWS_RENAMED: BuiltInView[] =` 也会命中 ——
+ *     万一将来有个同前缀的**别的**数组排在前面，门会去读错的那个还照样绿。
+ *   · 但名字若只锚到 `NAME\s*:` 就收尾，后面 `indexOf("[")` 会先撞上类型标注 `BuiltInView[]`
+ *     里那对**空**方括号 → 解析出 0 项 → 判据③ 误红。
+ * 故必须「整词锚定名字」且「一路吃到 `=`」两件事同时做到。
+ */
+const declOf = (name) => new RegExp(String.raw`export\s+const\s+${name}\s*(?::[^=]*)?=\s*`);
+const localDeclOf = (name) => new RegExp(String.raw`const\s+${name}\s*(?::[^=]*)?=\s*`);
+
 /** 从 `<decl>` 之后的第一个 `[` 起做括号配对，返回数组字面量内容（含首尾 `[]` 之内的部分）。 */
 function arrayBlock(src, declRe, label) {
   const m = declRe.exec(src);
@@ -120,7 +133,7 @@ function topLevelKeys(body) {
 const manifestSrc = read(MANIFEST);
 let seeded = [];
 if (manifestSrc) {
-  const body = arrayBlock(stripComments(manifestSrc), /export\s+const\s+BUILTIN_VIEWS[^=]*=\s*/, `${MANIFEST} BUILTIN_VIEWS`);
+  const body = arrayBlock(stripComments(manifestSrc), declOf("BUILTIN_VIEWS"), `${MANIFEST} BUILTIN_VIEWS`);
   if (body !== null) {
     // 逐个顶层 `{ … }` 拆开，只留 seed: true 的
     let depth = 0;
@@ -146,7 +159,7 @@ if (manifestSrc) {
 const fixturesSrc = read(FIXTURES);
 let mockKeys = [];
 if (fixturesSrc) {
-  const body = arrayBlock(stripComments(fixturesSrc), /const\s+allViews\s*=\s*/, `${FIXTURES} allViews`);
+  const body = arrayBlock(stripComments(fixturesSrc), localDeclOf("allViews"), `${FIXTURES} allViews`);
   if (body !== null) mockKeys = topLevelKeys(body);
 }
 
@@ -154,7 +167,7 @@ if (fixturesSrc) {
 const shellSrc = read(SHELL);
 let navViewKeys = [];
 if (shellSrc) {
-  const body = arrayBlock(stripComments(shellSrc), /export\s+const\s+NAV_GROUPS[^=]*=\s*/, `${SHELL} NAV_GROUPS`);
+  const body = arrayBlock(stripComments(shellSrc), declOf("NAV_GROUPS"), `${SHELL} NAV_GROUPS`);
   if (body !== null) {
     // 形态 A：{ kind: "view", key: "dash" }
     for (const m of body.matchAll(/\{\s*kind:\s*"view"[^}]*?key:\s*"([^"]+)"\s*\}/g)) navViewKeys.push(m[1]);
