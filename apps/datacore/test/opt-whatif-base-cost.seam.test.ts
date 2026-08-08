@@ -104,8 +104,10 @@ describe("WO-OPT-WHATIF-DATA · Base 选址成本 → optimize_whatif 真装配�
     );
 
     // 头号判据 A：**装配不再报缺**（本单之前这里恒 applicable:false·missingRoles=["open_cost（Base …）"]）。
+    // 断言写成 missingRoles 优先，使**变异反证**（把成本字段摘掉）的红字直接打出报缺原文，而非裸 false。
+    expect((out as { missingRoles?: string[] }).missingRoles ?? []).toEqual([]);
     expect((out as { applicable?: boolean }).applicable).not.toBe(false);
-    expect(JSON.stringify(out)).not.toContain("装配报缺");
+    expect(String(out.summary ?? "")).not.toContain("装配报缺");
     expect(JSON.stringify(out)).not.toContain("无命中成本词库");
 
     // 头号判据 B：**最优决策方案真切换**（数据 × 引擎驱动接缝；只测"字段存在"验不到这一条）。
