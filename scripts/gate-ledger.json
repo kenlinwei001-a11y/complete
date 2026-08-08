@@ -91,6 +91,25 @@
       },
       "notes": ""
     },
+    "check-chain-node-singlesource.mjs": {
+      "alias": "chain-node-singlesource:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "packages/contracts/src/chain-sim.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/datacore/src/solvers/chain-loss.ts",
+        "apps/frontend-shell/src/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:890",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行890",
+        "note": "【首版·datacore 面】① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。【欠账 #110 扩到前端后·2026-08-06 亲手跑过 8 组，全部贴过真实输出】① 前端数组字面量植入不在册 capacity.rework_loop/order.credit_hold → 判据 N 真红并点名到 InspectorNodePanel.tsx 的植入行，**同一棵树上旧门 EXIT=0 全绿**（证明是真扩了覆盖面，不是复述已有能力）；② nodeId:\"sop_consensus\"（旧 D1 方言无点号，N 按形状看不见）→ 判据 K 真红；③ id 全部在册的手抄词表 [\"demand.consensus\",\"order.review\",\"capacity.schedule\",\"material.mrp\"] → 判据 C 真红、旧门全绿 —— 这正是工单指的「门对前端手抄词表视而不见」；④ 只抄 label 不抄 id → 判据 L 真红；⑤ 负对照：同样的不在册 id 放进 // 与 /* */ 注释 → RC=0 绿（证明不是 check-view-reachable v1 那种裸文本匹配）；⑥ 角色对照：stepId:\"order.settlement_terms\" → 绿，同一个串改成数组元素 → 红（证明排的是角色不是取值，不是豁免名单）；⑦ 前端扫描树指向不存在路径 → 三条「门自己瞎了」同时红；⑧ 把提取器改瞎（看不见数组字面量 / 退化成裸文本匹配）→ 词法自检真红，后者当场暴露 6 条 stepId 误报，反证角色排除承重。全部撤销后 RC=0。门自身防瞎四判据：契约解析锚 `] as const satisfies` + MIN_NODES + 四哨兵 id · 阶段/工序前缀从契约现解不手抄 · 扫描面下限 100 文件 + 哨兵文件必在 · 每次运行跑词法自检。防 G-GATE-PARSER-TRUNCATED-VIEW 同族。",
+        "coverageWidened": "2026-08-06 欠账 #110：扫描面从 datacore 2 个文件扩到 + apps/frontend-shell/src/** 整树（185 ts/tsx，共 187 文件）；判据从 1 条（nodeId: 键位）扩到 4 条（K 键位 / N 命名空间 / C 抄表 / L 抄标签）。病根 = 门名承诺的范围比门实覆盖的范围大。"
+      },
+      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。"
+    },
     "check-cli-parity.mjs": {
       "alias": null,
       "binding": "NONE",
@@ -412,6 +431,28 @@
       "notes": "",
       "disposition": "WIRE"
     },
+    "check-no-raw-nul.mjs": {
+      "alias": "no-raw-nul:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/**",
+        "apps/agentcore/src/**",
+        "apps/frontend-shell/src/**",
+        "packages/contracts/src/**",
+        "packages/llm-adapters/src/**",
+        "scripts/**",
+        "docs/**"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "变异反证实测，显式捕获退出码（out=$(cmd 2>&1); rc=$?，非管道尾 $?）",
+        "note": "M1 向已清理的 apps/datacore/src/repo/pg.ts 注入 1 个裸 NUL 字节 → 命中文件数由 2 升到 3，且精确点名该文件与行号、给出该文件内 NUL 总数，RC=1；移除后回绿 RC=0（证明修法有效、门不是卡死在红）。另有一次非人为真红：门上链当次即扫出两处此前人工排查漏掉的存量污染 —— apps/agentcore/src/agent/loop.ts（工具签名哈希键）与 apps/datacore/src/decision/outcome-stats.ts（分组键 ×2）。即：门的第一次运行就抓到了人没抓到的东西，这本身就是它有牙的证据。",
+        "note2": "防哑根据：真值源 = git ls-files -z 的实际文件内容 + Buffer.indexOf(0)，不读任何清单/文档/白名单（除扩展名过滤），故不存在「门看到的与 git 看到的不一致」这种哑法 —— 被守的正是 git 对该文件是否判定为 binary，而判据同源。同批 check-view-reachable.mjs 第一版曾是哑门（裸文本匹配，注释掉的登记行照样算数），故本门先证会红再上链。"
+      },
+      "notes": "守「源码可复审」：NUL 在本仓是合法且有用的复合键分隔符（memKey(tenantId,id)、ts point 四元组键），门不禁止用它，只规定写法 —— 裸字节让 git 判定整个文件为 binary（git diff 只回 Binary files differ），转义写法运行期逐字节等价但 diff 可读。二者唯一差别是可复审性。病灶实测：apps/datacore/src/repo/memory.ts（473 行仓储实现）与 apps/datacore/src/sim/propagation.ts 长期被 git 当二进制，整个生命周期没有一次可读 diff，复审只能靠信任提交者；上链时又扫出 2 处存量，合计 4 个文件。本门存在的直接理由：2026-08-07 修完 memory.ts 后十分钟，同一人在 pg.ts 的新代码里又写了三个裸 NUL —— 人对不可见字符没有感知力，「下次更小心」不是可执行的对策，这类问题只能由机器挡。诚实边界：只扫文本类扩展名白名单（真正的二进制资产本就该是 binary，不在管辖内）；只断言不含裸字节，不断言 NUL 的用法是否合理（该不该拿它当分隔符是设计判断，门不越界）。"
+    },
     "check-ontogenesis.mjs": {
       "alias": null,
       "binding": "NONE",
@@ -725,6 +766,26 @@
       "notes": "",
       "disposition": "WIRE"
     },
+    "check-stale-claims.mjs": {
+      "alias": "stale-claims:check",
+      "binding": "GATE_SH",
+      "guardedPaths": [
+        "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+        "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+        "scripts/stale-claim-baseline.json"
+      ],
+      "escalation": "审核方",
+      "disposition": "WIRE",
+      "ontologyRef": "§7:895",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-STALE-CLAIMS 四条变异实跑（2026-08-08，docs/PRD-stale-claims.md §5）",
+        "note": "① 注入「运行态实测…共 0 条」但无日期 → STALE-1 红 RC=1；② 注入「PurchaseOrder 对象全仓 0 条」（带日期+端点，故 STALE-1/2 都不咬）→ **STALE-3 事实层**红 RC=1，证明治本那层真在把事实读回来核；③a 把 CLAIM_KEYWORDS 改成繁体 → 金丝雀报「⛔ 门自己瞎了：只扫到 0 处关键词」RC=1，**不是**报代码干净；③b 把 SCAN_ROOT 改成 apps/*/src（复现 pathspec 通配符不跨 / 的真实陷阱）→ 报「扫描根不存在」RC=1；④ 把 putAll 事实源正则改坏 → 报「putAll 事实源读不出（读到 0 个类型）—— STALE-3 这一层等于没开」RC=1。每条 git checkout 撤回、撤后 git status 干净、HEAD 未变（747ae2e5）、门复绿 RC=0。"
+      },
+      "notes": "接 scripts/gate.sh 而非 pnpm gates，理由同 check-nav-group-coverage.mjs：check-ontology-writeback.mjs 正向断言要求进 gates 链的门必须先在本体 §7 登记，而 §7 回写归审核方（本单工单只授权改 §7，且若同批登 §7 会把 G3 的 pendingWireCount 从 12 顶到 13、撞上只降不升的棘轮基线）。审核方在 §7 登记本门并同批调基线后可升 GATES_CHAIN。守的是本体 §8 G-STALE-MEASURED-CLAIM：过期声明自称「运行态实测」。"
+    },
     "check-system-ontology.mjs": {
       "alias": "ontology:check",
       "binding": "GATES_CHAIN",
@@ -758,25 +819,6 @@
       "notes": "",
       "disposition": "WIRE"
     },
-    "check-chain-node-singlesource.mjs": {
-      "alias": "chain-node-singlesource:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        "packages/contracts/src/chain-sim.ts",
-        "apps/datacore/src/synthetic/cadence.ts",
-        "apps/datacore/src/solvers/chain-loss.ts",
-        "apps/frontend-shell/src/**"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": "§7:890",
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "本体 §7 行890",
-        "note": "【首版·datacore 面】① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。【欠账 #110 扩到前端后·2026-08-06 亲手跑过 8 组，全部贴过真实输出】① 前端数组字面量植入不在册 capacity.rework_loop/order.credit_hold → 判据 N 真红并点名到 InspectorNodePanel.tsx 的植入行，**同一棵树上旧门 EXIT=0 全绿**（证明是真扩了覆盖面，不是复述已有能力）；② nodeId:\"sop_consensus\"（旧 D1 方言无点号，N 按形状看不见）→ 判据 K 真红；③ id 全部在册的手抄词表 [\"demand.consensus\",\"order.review\",\"capacity.schedule\",\"material.mrp\"] → 判据 C 真红、旧门全绿 —— 这正是工单指的「门对前端手抄词表视而不见」；④ 只抄 label 不抄 id → 判据 L 真红；⑤ 负对照：同样的不在册 id 放进 // 与 /* */ 注释 → RC=0 绿（证明不是 check-view-reachable v1 那种裸文本匹配）；⑥ 角色对照：stepId:\"order.settlement_terms\" → 绿，同一个串改成数组元素 → 红（证明排的是角色不是取值，不是豁免名单）；⑦ 前端扫描树指向不存在路径 → 三条「门自己瞎了」同时红；⑧ 把提取器改瞎（看不见数组字面量 / 退化成裸文本匹配）→ 词法自检真红，后者当场暴露 6 条 stepId 误报，反证角色排除承重。全部撤销后 RC=0。门自身防瞎四判据：契约解析锚 `] as const satisfies` + MIN_NODES + 四哨兵 id · 阶段/工序前缀从契约现解不手抄 · 扫描面下限 100 文件 + 哨兵文件必在 · 每次运行跑词法自检。防 G-GATE-PARSER-TRUNCATED-VIEW 同族。",
-        "coverageWidened": "2026-08-06 欠账 #110：扫描面从 datacore 2 个文件扩到 + apps/frontend-shell/src/** 整树（185 ts/tsx，共 187 文件）；判据从 1 条（nodeId: 键位）扩到 4 条（K 键位 / N 命名空间 / C 抄表 / L 抄标签）。病根 = 门名承诺的范围比门实覆盖的范围大。"
-      },
-      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。"
-    },
     "check-view-reachable.mjs": {
       "alias": "view-reachable:check",
       "binding": "GATES_CHAIN",
@@ -792,28 +834,6 @@
         "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
       },
       "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
-    },
-    "check-no-raw-nul.mjs": {
-      "alias": "no-raw-nul:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        "apps/datacore/src/**",
-        "apps/agentcore/src/**",
-        "apps/frontend-shell/src/**",
-        "packages/contracts/src/**",
-        "packages/llm-adapters/src/**",
-        "scripts/**",
-        "docs/**"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": "§7",
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "变异反证实测，显式捕获退出码（out=$(cmd 2>&1); rc=$?，非管道尾 $?）",
-        "note": "M1 向已清理的 apps/datacore/src/repo/pg.ts 注入 1 个裸 NUL 字节 → 命中文件数由 2 升到 3，且精确点名该文件与行号、给出该文件内 NUL 总数，RC=1；移除后回绿 RC=0（证明修法有效、门不是卡死在红）。另有一次非人为真红：门上链当次即扫出两处此前人工排查漏掉的存量污染 —— apps/agentcore/src/agent/loop.ts（工具签名哈希键）与 apps/datacore/src/decision/outcome-stats.ts（分组键 ×2）。即：门的第一次运行就抓到了人没抓到的东西，这本身就是它有牙的证据。",
-        "note2": "防哑根据：真值源 = git ls-files -z 的实际文件内容 + Buffer.indexOf(0)，不读任何清单/文档/白名单（除扩展名过滤），故不存在「门看到的与 git 看到的不一致」这种哑法 —— 被守的正是 git 对该文件是否判定为 binary，而判据同源。同批 check-view-reachable.mjs 第一版曾是哑门（裸文本匹配，注释掉的登记行照样算数），故本门先证会红再上链。"
-      },
-      "notes": "守「源码可复审」：NUL 在本仓是合法且有用的复合键分隔符（memKey(tenantId,id)、ts point 四元组键），门不禁止用它，只规定写法 —— 裸字节让 git 判定整个文件为 binary（git diff 只回 Binary files differ），转义写法运行期逐字节等价但 diff 可读。二者唯一差别是可复审性。病灶实测：apps/datacore/src/repo/memory.ts（473 行仓储实现）与 apps/datacore/src/sim/propagation.ts 长期被 git 当二进制，整个生命周期没有一次可读 diff，复审只能靠信任提交者；上链时又扫出 2 处存量，合计 4 个文件。本门存在的直接理由：2026-08-07 修完 memory.ts 后十分钟，同一人在 pg.ts 的新代码里又写了三个裸 NUL —— 人对不可见字符没有感知力，「下次更小心」不是可执行的对策，这类问题只能由机器挡。诚实边界：只扫文本类扩展名白名单（真正的二进制资产本就该是 binary，不在管辖内）；只断言不含裸字节，不断言 NUL 的用法是否合理（该不该拿它当分隔符是设计判断，门不越界）。"
     }
   }
 }
