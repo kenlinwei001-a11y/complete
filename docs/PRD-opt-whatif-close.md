@@ -204,15 +204,131 @@ function orchestratorWouldDegrade(statusCode, payload) {   // ← orchestrator.t
 
 ---
 
-## 5. 变异反证（先 commit 于 `e6063737`，再逐条撤销实测）
+## 5. 变异反证（**先 commit 再变异**：代码于 `e6063737`、金值于 `3e26a437`，逐条撤销后 `git checkout --` 复原）
 
-见 §5.1–§5.4 的失败原文。四条变异，每条只撤一处、其余不动。
+五条变异，每条只撤一处、其余不动。全部**贴失败原文**。
+
+### M0 · 上一单留的 tripwire 按其设计转红（本单动手前就先看到）
+
+```
+FAIL test/opt-whatif-base-cost.seam.test.ts > ⑤ tripwire（本单之外的残留缺口·引擎半）：
+     client 角色赢家 MaintenanceOrder 在 demo **零实例** → 链路仍断
+AssertionError: expected 193 to be +0 // Object.is equality
+- Expected  0
++ Received  193
+ ❯ test/opt-whatif-base-cost.seam.test.ts:204
+```
+
+### M1 · 撤掉 **A1**（零实例硬过滤），A2/A3/B 全留 → **3 红**
+
+```
+× ② A1 隔离：排位更高的候选零实例 → 让位给有实例的候选
+  AppError: facility_location 需 facilities[] + clients[] + assignCosts[]
+× ③ A1 诚实报缺：候选全部零实例 → applicable:false 且点名空候选
+  AppError: facility_location 需 facilities[] + clients[] + assignCosts[]
+× ⑦ 同族（min_cost_flow）：弧候选零实例 → 诚实报缺点名空候选
+  AppError: optimize_whatif 接地失败：target 'arcs.a1.cost' 指向的对象 'a1' 不在 args.arcs 内（DF.8 接地失败）
+Tests  3 failed | 5 passed (8)
+```
+
+> 注意红字**正是本单要治的那句原文**（`需 facilities[] + clients[]`）——它经 `orchestrator.ts:1047`
+> 的 `!run.ok` 那一半变成 `routing.degraded`。
+
+### M2 · 撤掉 **A2**（从属降权），A1/A3/B 全留 → **2 红**（含头号 ①）
+
+```
+× ① 头号接缝：… → 拿到含最优设施切换的结论
+  AssertionError: expected 'MaintenanceOrder' to be 'OrderLine' // Object.is equality
+× ④ A2 隔离：从属候选排位更高且有实例 → 仍让位给非从属的真需求点
+  AssertionError: expected 'InternalOrder' to be 'Customer' // Object.is equality
+Tests  2 failed | 6 passed (8)
+```
+
+> **这条最能说明为什么 (A) 不能只做一半**：只有 A1 时链路"能跑通"，但 client 落到
+> `MaintenanceOrder`（维修工单）——出得来一个数、而且看着像模像样，正是自信错答。
+
+### M3 · 撤掉 **B**（物化清单那一行），A1/A2/A3 全留 → **3 红 · 跨 3 个文件**
+
+```
+× test/demo-chain-provenance.test.ts > R6 确定性：viaModelingChain 同 seed 重跑
+  AssertionError: expected 11127 to be 11320 // Object.is equality
+× test/opt-whatif-base-cost.seam.test.ts > ⑤ 原 tripwire 已转正
+  AssertionError: expected 0 to be greater than 0
+× test/opt-whatif-close.seam.test.ts > ⑤ 数据半 B：MaintenanceOrder 193 行真落库
+  AssertionError: expected +0 to be 193 // Object.is equality
+Test Files  3 failed (3) · Tests  3 failed | 13 passed (16)
+```
+
+### M4 · 撤掉 **A3**（承载类型自身非空检查）→ **1 红**
+
+```
+× ⑧ 决策承载类型自身零实例 → 诚实报缺 facility，不抛无关错误
+  AppError: optimize_whatif 接地失败：target 'facilities.s1.openCost' 指向的对象 's1'
+            不在 args.facilities 内（DF.8 接地失败）
+Tests  1 failed | 7 passed (8)
+```
+
+### M5 · 撤掉 **A1 + A2 + B**（= 回到本单起点）→ **7/8 红**，头号 ① 红在**降级判据**上
+
+```
+× ① 头号接缝：问句实参 → REST invoke → **orchestrator 降级判据为假** → 拿到含最优设施切换的结论
+  AssertionError: expected true to be false // Object.is equality
+        ↑ orchestratorWouldDegrade() === true ⇒ 发 routing.degraded{fallback:"path-B"} ⇒ 用户拿不到结论
+× ② / ③ / ⑥  AppError: facility_location 需 facilities[] + clients[] + assignCosts[]
+× ④  AssertionError: expected 'InternalOrder' to be 'Customer'
+× ⑤  AssertionError: expected +0 to be 193
+× ⑦  AppError: optimize_whatif 接地失败：target 'arcs.a1.cost' …
+Tests  7 failed | 1 passed (8)
+```
+
+### 复原后回归
+
+```
+git checkout -- apps/datacore/src/solvers/service.ts apps/datacore/src/synthetic/service.ts
+git status --porcelain → （空）· HEAD=3e26a437
+4 文件 27 用例：Test Files 4 passed (4) · Tests 27 passed (27) · RC=0
+```
 
 ---
 
 ## 6. 金值与门
 
-见 §6.1。
+### 6.1 动的金值（逐条：旧值 → 新值 → 为什么对）
+
+| 金值 | 位置 | 旧 → 新 | 为什么对 |
+|---|---|---|---|
+| demo 对象总数 | `test/demo-chain-provenance.test.ts` `a.objs.length` | **11127 → 11320（+193）** | 首次物化 `MaintenanceOrder`。193 = 780 台设备中 `hashString(equipId_mo)%4===0` 的那批（sparse ~25%），S/M/L/XL 同值、零 rng 消耗。数值可逐台反查，非估计 |
+| demo 类型集大小 | 同文件 `a.types.length` | **94 → 94（不动）** | 该类型早就在册（`plain("MaintenanceOrder", …)` battery.ts:2300），本次只补实例、不新增类型 |
+
+**路径开关核对（铁律 0.5 #6）**：这条金值走 `viaModelingChain: true`，而**生产 `seed.ts` 传 `false`**。
+`putAll` 两模式都会落它（chainMode 只产 rawDataset 交建模链物化，非 chainMode 直物化），
+生产实参那条由 `opt-whatif-close.seam.test.ts ⑤`（经 REST `/a/v1/synthetic/jobs`，**不带**该内部参数）
+断言同为 193 —— 两条分支都有测试咬着，不存在"测的是生产已放弃的那条路"。
+
+### 6.2 跑过的门（逐条 RC）
+
+| 门 | 命令 | RC | 备注 |
+|---|---|---|---|
+| datacore typecheck | `pnpm --filter datacore typecheck` | **0** | |
+| datacore 全套（改金值前） | `pnpm --filter datacore test` | **1** | 唯一红 = 本单该动的金值（§6.1）；`239 文件 / 1400 用例`，`1 failed \| 1383 passed \| 16 skipped`，1894s |
+| 金值修正后复跑（相关 4 文件） | `npx vitest run <4 files>` | **0** | `Tests 27 passed (27)` |
+| `meta-ontology`（干净 HEAD 单独复验） | `npx vitest run test/meta-ontology.test.ts` | **0** | 7/7；理由见 §6.3 |
+| PRD 本体门 | `node scripts/check-prd-ontology.mjs` | **0** | 12/12 断点仍全覆盖；本 PRD 已入索引 |
+| 本体锚点门 | `node scripts/check-ontology-anchors.mjs --update` | **0** | 机械校准 4 条行号；**基线零 diff**（未校准存量仍 46/46） |
+
+**墙钟伪影核对**：`empty-tenant-bootstrap` 本轮 **151.3s** 通过（180s 界内）；SEAM-PERF 未报红。
+本轮无速度伪影可登记。
+
+### 6.3 一处必须交代的自查（不拿"应该没事"充数）
+
+全套开跑于 `e6063737`，跑到一半我提交了 `d99e7d5f`（**纯 docs**：新 PRD + `prd-ontology-index.json`
++ `SYSTEM-ONTOLOGY.md` 锚点行号）。`git diff --stat e6063737 d99e7d5f -- apps packages` **为空**
+⇒ 被测源码逐字节未变，全套结论对 236 个文件成立。但 `test/meta-ontology.test.ts`
+**运行时真读**那两个 docs（`meta-ontology.test.ts:10-11`），理论上可能撞上撕裂读 ⇒ 已在干净
+HEAD（`git status --porcelain` 为空）单独复跑 7/7 绿。
+
+**未跑**：`scripts/gate.sh` 与 `pnpm -r test`（工单明令禁止，彼时另有 agent 在跑前端）；
+agentcore / frontend 套件未跑（本单未改这两个包一个字节）。
 
 ---
 
