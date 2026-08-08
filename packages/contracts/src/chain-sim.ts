@@ -28,7 +28,7 @@
  *  · **R6 确定性**：本文件全是纯函数与常量，无 `Date.now`、无随机、无时钟。
  *
  * ── 本单**不**冻结（留给后续单，additive 追加即可）────────────────────
- *  · `SolutionCandidate`（PRD §5.3 多方案候选）→ S3 单；本单不臆造其形状。
+ *  · `SolutionCandidate`（PRD §5.3 多方案候选）→ **S3 单已冻结，见 §7**（本注释保留为沿革）。
  *  · 采购段凭证对象（`SupplierLeadTime`/`MOQ`/`ASN`…）→ D2 单。
  *  · 阈值取值本身（利用率红线等）→ E3 单经规则 `params` 引用，**不落本文件**。
  */
@@ -584,6 +584,217 @@ export const ChainManifestationSchema = z.strictObject({
 });
 export type ChainManifestation = z.infer<typeof ChainManifestationSchema>;
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 7 · SolutionCandidate（阻滞点 → 方案候选）—— WO-SANDBOX-S3
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * **候选从哪条 join 路径来的**（`G-IMPEDIMENT-OPTION-NOJOIN` 要闭的就是这条缝）。
+ *
+ * 三条路**全部是数据自己有的维度**，没有任何一张「阻滞点→方案」的人工映射表 ——
+ * 编一张「看着合理」的映射比诚实报缺更坏（本仓已坐实过一次：一条死映射让 24 张单里 12 张被静默标错）。
+ *
+ *  · `LOCUS_PROP`  阻滞点**落点对象自己**就承载可拨动因子（`CapacityFactorBinding.objectType === locus.objectType`
+ *                  且该实例上真有这个属性）。join 键 = 对象实例本身，最强。
+ *  · `LINK_HOP`    沿**一等关系行**（`links` 表，如 `line_has_process` / `material_has_batch`）一跳可达的对象。
+ *                  关系是数据，不是代码里写的类型对照表 —— 改种子里的关系，可达面自动跟着变。
+ *  · `RULE_GATE`   判据的规则码 == 因子的拨动闸（`ChainImpediment.evidence.ruleKey === CapacityFactorBinding.ruleGate`）。
+ *                  两侧都是**规则库里的同一个规则码**，是天然共有的维度。实例再由 `keyJoin`（值键相等）收窄，
+ *                  收窄不了就**诚实丢弃**，绝不广播到整个类型冒充"找到了"。
+ */
+export const CANDIDATE_JOIN_KINDS = ["LOCUS_PROP", "LINK_HOP", "RULE_GATE"] as const;
+export const CandidateJoinKindSchema = z.enum(CANDIDATE_JOIN_KINDS);
+export type CandidateJoinKind = z.infer<typeof CandidateJoinKindSchema>;
+
+/** join 路径的确定性优先序（小者优先）——同一个 (对象,属性) 被多条路命中时取最强那条，保 R6 全序。 */
+export const CANDIDATE_JOIN_RANK: Readonly<Record<CandidateJoinKind, number>> = {
+  LOCUS_PROP: 0,
+  LINK_HOP: 1,
+  RULE_GATE: 2,
+};
+
+/**
+ * **候选对这个阻滞点的作用方式**。⚠ 这三态**不是写死的分类**，是**实测出来的**：
+ * 把杠杆拨到目标档位后重算，看动了什么就是什么（判定实现见 `solvers/impediment-options.ts`）。
+ *
+ *  · `METRIC_SELF`      杠杆就是判据的量测属性本身 → 直接把读数拨回规则线以内。
+ *  · `METRIC_DERIVED`   杠杆经**真派生**把判据读数带动了（如 `Process.channels → 硬容量 → parallelThroughput`）。
+ *  · `DOWNSTREAM_ONLY`  判据读数纹丝不动，但下游产能真的变了 = **旁路补偿**（"加产能没用"的堵点上，这一族才是解）。
+ *
+ * 一个候选若三态都不成立（拨了什么都没动）→ **丢弃**，不进候选集（照抄 `discoverLevers` 的
+ * 「`sensitivity===0` → 无下游影响 → 非有效杠杆（诚实空，不臆造）」）。
+ */
+export const CANDIDATE_EFFECT_KINDS = ["METRIC_SELF", "METRIC_DERIVED", "DOWNSTREAM_ONLY"] as const;
+export const CandidateEffectKindSchema = z.enum(CANDIDATE_EFFECT_KINDS);
+export type CandidateEffectKind = z.infer<typeof CandidateEffectKindSchema>;
+
+/**
+ * **目标档位从哪来**。两种都取**数据里真实存在的值**，本文件与引擎里**没有任何步长常数**
+ * （`0.05` / `±1 天` 这种"看着合理的一步"就是 RL5 禁的内联常数）。
+ *
+ *  · `THRESHOLD`  = 触发该判据的**规则阈值本身**（`evidence.threshold`，真值来自规则）——「恰好拨回线内」。
+ *  · `PEER_BEST`  = **同侪对象上该属性的真实最优取值**（同类型、同基地优先）——「同类里已经有人做到这个数」。
+ *
+ * 两种档位都算不出来（阈值与当前值同 / 同侪全等）→ 该杠杆**不产候选**并记原因，不拍一个步长。
+ */
+export const CANDIDATE_RUNG_KINDS = ["THRESHOLD", "PEER_BEST"] as const;
+export const CandidateRungKindSchema = z.enum(CANDIDATE_RUNG_KINDS);
+export type CandidateRungKind = z.infer<typeof CandidateRungKindSchema>;
+
+/**
+ * 候选的一个 KPI 维。**`value` 与 `baseline` 必须同单位同口径**（不同单位就是量纲错，R18 教训）。
+ * 算不出来一律 `value: null` + `dataMode` + `reason`，**绝不补 0**（0 会被读成"没影响"，那是错答不是缺答）。
+ */
+export const CandidateDimSchema = z.strictObject({
+  /** 维键（同一批候选里维序必须一致，`compareSolutionCandidate` 逐维比较依赖这一点）。 */
+  key: z.string().min(1),
+  /** 人读名（前端只格式化，不另维护一份映射表·R14）。 */
+  label: z.string().min(1),
+  /** 施策后的值。 */
+  value: z.number().nullable(),
+  /** 不施策（基线）的值 —— A4 判据「候选必须与基线不同」比的就是这两个数。 */
+  baseline: z.number().nullable(),
+  /** 单位（`""` = 无量纲指数，仍须显式给出，不允许省略字段冒充"不知道"）。 */
+  unit: z.string(),
+  /** 越小越好还是越大越好（改善方向的**唯一声明处**，前端不许自己猜）。 */
+  betterWhen: z.enum(["lower", "higher"]),
+  dataMode: DerivedDataModeSchema,
+  reason: z.string().min(1).optional(),
+});
+export type CandidateDim = z.infer<typeof CandidateDimSchema>;
+
+/** 单维改善量（>0 = 比基线好）。算不出来记 0（**不是**"没改善"，是"不参与排序"，故排序还有 id 兜底）。 */
+export function candidateDimImprovement(d: Pick<CandidateDim, "value" | "baseline" | "betterWhen">): number {
+  if (d.value === null || d.baseline === null) return 0;
+  return d.betterWhen === "lower" ? d.baseline - d.value : d.value - d.baseline;
+}
+
+/** 该维相对基线**真的动了**吗（A4 的原子判据）。 */
+export function candidateDimMoved(d: Pick<CandidateDim, "value" | "baseline">): boolean {
+  if (d.value === null || d.baseline === null) return false;
+  return d.value !== d.baseline;
+}
+
+/**
+ * **SolutionCandidate**：一个阻滞点的一条解法 = 「把哪个对象的哪个属性，从多少拨到多少，各维 KPI 变成什么」。
+ *
+ * 它是**值对象**（求解器输出的一部分），不落表、无 migration、不进 R4 审批面 ——
+ * 采纳时另起 `ActionDraft` 走既有审批链（沙盘只推演不写真值 · RL4）。
+ *
+ * 硬约束（schema 层锁死，不靠各处自觉）：
+ *  ① `fromValue !== toValue` —— 拨到原处不是方案。
+ *  ② `dims` 至少一维 **动了**（`candidateDimMoved`）—— 「候选与基线逐维相同」按定义不是候选，
+ *     这正是 A4 变异反证的注入点：掐掉某根杠杆的接线 → 该候选各维退化成基线 → **schema 当场抛**。
+ */
+export const SolutionCandidateSchema = z
+  .strictObject({
+    candidateId: z.string().min(1),
+    /** 所属阻滞点（`ChainImpediment.impedimentId`；`ChainImpedimentSchema` 会校验一致性）。 */
+    impedimentId: z.string().min(1),
+    /** 人读标签（由 `LEVER_PROP_META.label` + 方向 + 目标值派生，**禁止内联业务名词**·R14）。 */
+    label: z.string().min(1),
+    /** 杠杆落点（本体上的真对象真属性）。 */
+    lever: z.strictObject({
+      objectType: z.string().min(1),
+      objectId: z.string().min(1),
+      prop: z.string().min(1),
+      /** 该落点属于哪个产能原子因子（`CapacityFactorBinding.factorName`，注册表单源）。 */
+      factorName: z.string().min(1).optional(),
+      /** 圈号（`CapacityFactorBinding.mark`）。 */
+      factorMark: z.string().min(1).optional(),
+      /** 因子颗粒（base / process / model-material）—— 三类阻滞点族别差异的**数据载体**之一。 */
+      grain: z.string().min(1).optional(),
+      unit: z.string(),
+    }),
+    fromValue: z.number(),
+    toValue: z.number(),
+    /** 这条候选是**怎么被 join 出来的**（R13：连"凭什么把这根杠杆算作它的解法"都要可溯源）。 */
+    join: z.strictObject({
+      kind: CandidateJoinKindSchema,
+      /** join 走的那条真路径原文（如 `material_has_batch: MaterialBatch→Material`）。 */
+      path: z.string().min(1),
+    }),
+    rungKind: CandidateRungKindSchema,
+    /** 档位取值的出处原文（如 `规则 C05 阈值 95` / `同侪 Line.utilization 最优 62.3（同基地 10 个对象）`）。 */
+    rungSource: z.string().min(1),
+    effectKind: CandidateEffectKindSchema,
+    dims: z.array(CandidateDimSchema).min(1),
+    provenance: z.strictObject({
+      solverKey: z.string().min(1),
+      formula: z.string().min(1),
+      inputs: z.array(z.string().min(1)),
+    }),
+    dataMode: DerivedDataModeSchema,
+  })
+  .superRefine((c, ctx) => {
+    if (c.fromValue === c.toValue) {
+      ctx.addIssue({ code: "custom", path: ["toValue"], message: `拨到原值不是方案（fromValue === toValue === ${c.fromValue}）` });
+    }
+    if (!c.dims.some((d) => candidateDimMoved(d))) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["dims"],
+        message:
+          "候选各维与基线逐维相同 ⇒ 它不是一个方案（要么杠杆没接线，要么候选重复）。" +
+          "PRD-sandbox-redesign §9 A4 的变异反证咬的就是这一条：掐掉杠杆接线 → 此处必抛。",
+      });
+    }
+  });
+export type SolutionCandidate = z.infer<typeof SolutionCandidateSchema>;
+
+/**
+ * 候选排序的**唯一实现**（全序）：**逐维改善量降序** → 维数多者优先 → `candidateId` 字典序兜底。
+ *
+ * 为什么逐维而不是先合成一个总分：合成总分要一张权重表，而「固定权重表拍脑袋」正是
+ * `G-MULTIOBJ-TOY-ORDERBOOK` 的老路。逐维字典序不需要任何权重，且 `candidateId` 唯一 ⇒ 全序，
+ * 不依赖 `Array#sort` 稳定性（`wo-capacity-100pct` R7–R9 轮修的正是"排序契约靠巧合"）。
+ */
+export function compareSolutionCandidate(a: SolutionCandidate, b: SolutionCandidate): number {
+  const n = Math.min(a.dims.length, b.dims.length);
+  for (let i = 0; i < n; i++) {
+    const da = a.dims[i]!;
+    const db = b.dims[i]!;
+    if (da.key !== db.key) break; // 维序不一致 → 逐维比较无意义，直接落 id 兜底（仍是全序）
+    const ia = candidateDimImprovement(da);
+    const ib = candidateDimImprovement(db);
+    if (ia !== ib) return ib - ia;
+  }
+  if (a.dims.length !== b.dims.length) return b.dims.length - a.dims.length;
+  if (a.candidateId !== b.candidateId) return a.candidateId < b.candidateId ? -1 : 1;
+  return 0;
+}
+
+/**
+ * **A4 效果层判据的唯一实现**：两个候选是否**真的不同**（KPI 至少一维数值不同）。
+ * 两个候选算出完全一样的 KPI ⇒ 要么杠杆没接线，要么候选重复 —— 都必须被咬住
+ * （`PRD-sandbox-redesign.md` §5.3-3 原文）。维键不对齐时按"不同"处理**不成立**：
+ * 维键不对齐说明生成方自己就不自洽，返回 `false`（当作重复）比放行安全。
+ */
+export function candidatesEffectDistinct(a: SolutionCandidate, b: SolutionCandidate): boolean {
+  if (a.dims.length !== b.dims.length) return false;
+  let moved = false;
+  for (let i = 0; i < a.dims.length; i++) {
+    const da = a.dims[i]!;
+    const db = b.dims[i]!;
+    if (da.key !== db.key) return false;
+    if (da.value !== db.value) moved = true;
+  }
+  return moved;
+}
+
+/**
+ * **A4 门判据**：同一阻滞点的候选集是否两两效果互异。返回第一对雷同的 `[i, j]`，全互异则返回 `null`。
+ * 门与引擎与测试共用这一份（RL3 单一来源），避免"三处各写一遍、口径各漂一点"。
+ */
+export function firstDuplicateCandidatePair(cands: readonly SolutionCandidate[]): [number, number] | null {
+  for (let i = 0; i < cands.length; i++) {
+    for (let j = i + 1; j < cands.length; j++) {
+      if (!candidatesEffectDistinct(cands[i]!, cands[j]!)) return [i, j];
+    }
+  }
+  return null;
+}
+
 /**
  * **ChainImpediment**：全链扫描产出的阻滞点。
  *
@@ -627,6 +838,13 @@ export const ChainImpedimentSchema = z
     manifestations: z.array(ChainManifestationSchema).optional(),
     /** 本条是被归并到哪个根因下的（仅在保留 manifestation 明细行时使用）。 */
     rootCauseImpedimentId: z.string().min(1).optional(),
+    /**
+     * WO-SANDBOX-S3 · 该阻滞点的方案候选（§7）。**空数组 ⟺ 必须给 `noCandidateReason`** —— 见下 superRefine ③。
+     * 字段缺省 = 本次扫描**没有跑候选枚举**（与"跑了但一个都枚举不出来"是两回事，不许混为一谈）。
+     */
+    candidates: z.array(SolutionCandidateSchema).optional(),
+    /** 枚举跑了但产不出候选时的**诚实缺席**原因（缺哪根杠杆 / 缺哪类数据）。 */
+    noCandidateReason: z.string().min(1).optional(),
   })
   .superRefine((im, ctx) => {
     const isBreak = im.kind === "BREAK";
@@ -642,6 +860,30 @@ export const ChainImpedimentSchema = z
         path: ["dataMode"],
         message: `数据断（breakSubtype="DATA"）的定义就是算不出来 ⇒ dataMode 必须为 "EMPTY"，收到 "${im.dataMode}"`,
       });
+    }
+    // ③ 候选空 ⟺ 必须说清为什么空（诚实缺席不许静默）；候选非空则不许再挂"没有候选"的理由（自相矛盾）。
+    if (im.candidates !== undefined && im.candidates.length === 0 && im.noCandidateReason === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["noCandidateReason"],
+        message: "candidates 为空数组时必须给 noCandidateReason（缺哪根杠杆/缺哪类数据）—— 空白比错答更容易被当成「没问题」",
+      });
+    }
+    if (im.candidates !== undefined && im.candidates.length > 0 && im.noCandidateReason !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["noCandidateReason"],
+        message: `已有 ${im.candidates.length} 个候选，不得同时声明 noCandidateReason（自相矛盾）`,
+      });
+    }
+    for (const [i, cand] of (im.candidates ?? []).entries()) {
+      if (cand.impedimentId !== im.impedimentId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["candidates", i, "impedimentId"],
+          message: `候选 impedimentId="${cand.impedimentId}" 与所属阻滞点 "${im.impedimentId}" 不一致`,
+        });
+      }
     }
   });
 export type ChainImpediment = z.infer<typeof ChainImpedimentSchema>;
