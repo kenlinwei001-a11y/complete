@@ -17,7 +17,7 @@
  *
  * `chain-impediments` 实拍坐实（2026-08-08）：`views/registry.ts:87` 逐字写着
  * `registerRenderer("chain-impediments", () => import("./sim/ChainImpedimentView"))`，
- * 组件 440 行真实现、两条测试全绿 —— 而它**没有任何路径渲染得到**：
+ * 组件 442 行真实现、两条测试全绿 —— 而它**没有任何路径渲染得到**：
  *   · 后端 `BUILTIN_VIEWS` 无此 key ⇒ `workspace.views` 永远没有它 ⇒ `ViewPage` 双闸（feature/views）全关；
  *   · `App.tsx` 无专用静态 route ⇒ 手敲 `/v/chain-impediments` 也只落 `v/:viewKey` 通用守卫 → 404。
  * 它的狡猾之处是**同时躲开既有两道门**：
