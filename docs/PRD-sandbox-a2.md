@@ -109,7 +109,30 @@ pathspec 通配符不跨 `/` 恒 0 命中 / import 图解析器不认 ESM `./x.j
   修法：修门（锚点/正则/事实源解析），不是修被扫代码。
 ```
 
-两条变异均 `git checkout -- <file>` 撤回后门复绿 **RC=0**。
+**③ 把 `severity` 拍成常数**（`const severity = Math.max(0, Math.min(100, …))` → `const severity = 42;`）
+→ **静态门与运行态测试从两个角度同时红**，这是本单最有价值的一条证据：
+
+静态门（`chain-scan-honesty:check` RC=1）——它看见的是**源码里的字面量**：
+
+```
+  - H2 输出构造位（文件层）：apps/datacore/src/solvers/chain-impediment.ts:618
+    数值输出键被赋字面量 `severity = 42`
+        const severity = 42;
+```
+
+运行态测试（`chain-scan-honesty.test.ts` SCAN-3 失败）——它看见的是**那个数算不回来**：
+
+```
+AssertionError: imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-jinhua-slitting
+的 severity=42 无法由 metricValue=95.8912 / threshold=95 重算（重算得 1）—— 这个数不是算出来的，是拍上去的
+    expected 42 to be 1
+ ❯ test/chain-scan-honesty.test.ts:196:9
+```
+
+两者**不是同一条判据的重复**：静态那条只认字面量形态（`Number("42")` 就绕过去了），
+运行态那条不管数从哪来、只问"算不算得回来"。**任一半单独存在都有确定的绕法，合起来才封死。**
+
+三条变异均 `git checkout -- <file>` 撤回后门复绿 **RC=0**、测试复绿 **4/4 passed**。
 
 ## 7. 交付状态与未完成项（诚实）
 
