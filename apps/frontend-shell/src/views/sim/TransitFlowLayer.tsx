@@ -13,11 +13,12 @@ import {
   type RingStationAnchor,
 } from "./chainLineMap";
 import {
-  CADENCE_ABSENCE,
-  PROCUREMENT_BRANCH,
   TRANSIT_SOURCE_SPECS,
   cadenceExpectedWaitDays,
+  deriveCadenceAbsence,
+  deriveProcurementBranch,
   meanReleaseWaitDays,
+  parseCadenceRows,
   parseInterBaseTransferRows,
   parseShipmentRows,
   parseWipLotRows,
@@ -25,6 +26,7 @@ import {
   resolveStations,
   simulateTransit,
   transitHorizonDays,
+  type AbsenceRecord,
   type TransitBatch,
   type TransitNodeInput,
   type TransitParseResult,
@@ -57,11 +59,19 @@ import styles from "./TransitFlowLayer.module.css";
  * ── 三条红线（写在最上面，因为它们比功能更重要）─────────────────────────────
  * ① **看不见的东西不许画出来**。三个数据源的位置精度天生不同：
  *    `InterBaseTransfer` 有发运日+到货日 → 真跑；`Shipment` 只有到货日 → 只给倒计时，**不画车**；
- *    `WIPLot` 只知道在哪台工序 → 站上驻留。采购支线**画不出来** → 显示为空并逐条给出取证。
+ *    `WIPLot` 只知道在哪台工序 → 站上驻留。
  *    任何一条支线取不到真值，就是「空 + 一行原因」，绝不给一个看起来合理的假动画。
- * ② **前端零清单**：站点/区间只能来自引擎下发的 `nodes[]` 或批次数据行自带的字段值；
- *    `nodeId` 当不透明 key 用，不 split、不看前缀。**「哪个站是限流站」只认引擎下发的 `node.cadence`**。
- *    今天引擎发不出节拍（`Cadence` 全仓无承载物），所以界面上**不画任何"这里有节拍"的假象**。
+ *    ⚠ 本条此前写的是"采购支线**画不出来** → 显示为空"，**那句话在 D2 并线后已不成立**：
+ *    `PurchaseOrder` 现带 `orderDay/shipDay/arriveDay`，`CustomsClearance`/`IncomingInspection`
+ *    各带两个日戳 ⇒ 四条腿的区间位置**算得出来**。今天仍不画的真实原因换成了一句更小的实话：
+ *    本层的画车支线只有 `TRANSIT_SOURCE_SPECS` 那三条，采购段还没接成第四条（另一单）。
+ *    这句实话**写在屏上**（`transit-branch-procurement-scope`），不许用旧的"画不出来"糊过去。
+ * ② **前端零清单**：站点/区间只能来自引擎侧（宿主下发的 `nodes[]` **或对象库里的 `Cadence` 行**）
+ *    或批次数据行自带的字段值；`nodeId` 当不透明 key 用，不 split、不看前缀。
+ *    **「哪个站是限流站」只认引擎侧的 `cadence`**——前端不从批次行推断限流站、不维护名单。
+ *    ⚠ 本条此前写的是"今天引擎发不出节拍（`Cadence` 全仓无承载物）"，**那句话在 D1 并线后已成假话**
+ *    （`apps/datacore/src/synthetic/service.ts:712` `putAll("Cadence", …)` 真落库）。
+ *    真实缺口是**本层从来没去问过**——WO-TRANSIT-WIRE 补上了那条查询（见下 `qCadence`）。
  * ③ **定时器纪律**：本组件全是定时器。每个句柄 ref **覆盖前先清**、卸载再清一遍。
  *    本仓刚修过 4 处「ref 只存得下最后一个 handle → 前一个成孤儿 → 整包随机红」。
  * ④ **坐标不许有第二处实现**（WO-TRANSIT-GEOMETRY 追加）：站点锚点 / 区间弧 / 弧长参数
@@ -147,13 +157,26 @@ export interface TransitSourceRows {
   interBaseTransfer?: readonly TransitRawRow[];
   shipment?: readonly TransitRawRow[];
   wipLot?: readonly TransitRawRow[];
+  /**
+   * 对象库 `Cadence` 行（`GET /a/v1/objects?type=Cadence` 的 `items[]`）。
+   * **`undefined` 的语义严格是「没拿到」**（判 `NOT_FETCHED`），与 `[]`（拿到了、就是 0 条 ⇒ `TENANT_EMPTY`）
+   * 是两回事——混成一句"没有"就是本单在治的那个病（修法一个是接线、一个是种数据）。
+   */
+  cadence?: readonly TransitRawRow[];
+  /** `GET /a/v1/objects?type=PurchaseOrder`（承载采购段「供应商生产」「在途」两条腿的日戳）。 */
+  purchaseOrder?: readonly TransitRawRow[];
+  /** `GET /a/v1/objects?type=CustomsClearance`（「清关」腿）。 */
+  customsClearance?: readonly TransitRawRow[];
+  /** `GET /a/v1/objects?type=IncomingInspection`（「到货检验」腿）。 */
+  incomingInspection?: readonly TransitRawRow[];
 }
 
 export interface TransitFlowLayerProps {
   /**
    * 引擎下发的站点（F1 线路图挂载时由它传入）。
-   * **不传 = 引擎没给**：站点退回"从批次数据行自身字段现场发现"，且节拍一律缺席。
-   * 前端在任何情况下都不自造节点清单。
+   * **不传 = 宿主没给**：站点退回"从批次数据行自身字段现场发现"。
+   * ⚠ 不传**不再等于"节拍一律缺席"**：本层自己会去对象库读 `Cadence` 行（同为引擎侧承载），
+   *   读得回来照样点亮闸门。前端在任何情况下都不自造节点清单。
    */
   nodes?: readonly TransitNodeInput[];
   /** 上层已取好的数据行；不传则本层自己取（`GET /a/v1/objects?type=…`）。 */
@@ -171,6 +194,39 @@ interface SourceBranch {
   fetchError: string | null;
   /** 是否还在取数。 */
   loading: boolean;
+}
+
+/**
+ * 一份「缺席判定输入」的**真实来路**（WO-TRANSIT-WIRE）。
+ *
+ * `rows === undefined` 的语义**严格**是「没拿到这批行」：上层没喂、或本层这条查询还没回来 / 失败了。
+ * 派生层据此判 `NOT_FETCHED`；`rows === []` 才是「问过了、就是 0 条」（`TENANT_EMPTY`）。
+ * 这两者此前被混成同一句"没有"，而它们的修法一个是接线、一个是种数据。
+ */
+interface RowsProbe {
+  rows: readonly TransitRawRow[] | undefined;
+  /** 查询还在飞 —— 屏上必须显示"取数中"，不许在这一刻宣告"本层没去取"（那是这一刻的假话）。 */
+  loading: boolean;
+  /** 取数失败的人读原因；成功 / 未发起则 null。 */
+  fetchError: string | null;
+}
+
+/**
+ * 把「上层喂的一份行」与「本层自取的那条查询」收敛成同一个 `RowsProbe`。
+ * `sources !== undefined` ⇒ 上层接管取数，本层的查询被 `enabled:false` 关掉，probe 只认上层喂的那份。
+ */
+function rowsProbe(
+  sources: TransitSourceRows | undefined,
+  given: readonly TransitRawRow[] | undefined,
+  q: { items: unknown; error: unknown; loading: boolean },
+): RowsProbe {
+  if (sources !== undefined) return { rows: given, loading: false, fetchError: null };
+  return {
+    // 非数组一律读作"没拿到"，绝不把一个形状不对的响应当成"查了回 0 条"。
+    rows: Array.isArray(q.items) ? (q.items as readonly TransitRawRow[]) : undefined,
+    loading: q.loading,
+    fetchError: errMsg(q.error),
+  };
 }
 
 function pct(v: number): string {
@@ -269,6 +325,47 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
     retry: false,
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-TRANSIT-WIRE · 本单补的四条查询 —— **本层此前从来没问过这四个对象**
+  // ══════════════════════════════════════════════════════════════════════════
+  /**
+   * 上面三条查询之外，屏上还有两块"诚实缺席"面板（节拍闸门 / 采购在途支线）。
+   * 它们此前恒空，而面板给的理由是「本体没有」—— **那句话在 D1/D2 并线之后就是假的**：
+   *  · `Cadence`            —— `apps/datacore/src/synthetic/service.ts:712` `putAll("Cadence", …)` 真落库
+   *                            （`apps/datacore/src/app.ts:1447` 的推演 tick 已在读它）；
+   *  · `CustomsClearance`   —— 声明 `apps/datacore/src/synthetic/battery-extended.ts:169`，落库 `service.ts:775`；
+   *  · `IncomingInspection` —— 声明 `battery-extended.ts:182`，落库 `service.ts:776`；
+   *  · `PurchaseOrder`      —— `battery-extended.ts:157-164` 现带 `orderDay/shipDay/arriveDay` 三日戳，落库 `service.ts:773`。
+   *
+   * 真实病因是**接了线接错地方 / 压根没问**：判据挂在"宿主传没传 `nodes`"上，
+   * 而承载在对象库的行里。本单把这四条线接上 —— 从此「缺席」是每次渲染现判的**结论**，
+   * 不再是一句写死的话。取不到照样诚实缺席，但**病因分档**（没去取 / 取回来读不成 / 本租户真没有）。
+   */
+  const qCadence = useQuery({
+    queryKey: ["a", "objects", { type: "Cadence", layer: "transit-flow" }],
+    queryFn: () => searchObjects("Cadence", ""),
+    enabled: wantFetch,
+    retry: false,
+  });
+  const qPurchaseOrder = useQuery({
+    queryKey: ["a", "objects", { type: "PurchaseOrder", layer: "transit-flow" }],
+    queryFn: () => searchObjects("PurchaseOrder", ""),
+    enabled: wantFetch,
+    retry: false,
+  });
+  const qCustoms = useQuery({
+    queryKey: ["a", "objects", { type: "CustomsClearance", layer: "transit-flow" }],
+    queryFn: () => searchObjects("CustomsClearance", ""),
+    enabled: wantFetch,
+    retry: false,
+  });
+  const qInspection = useQuery({
+    queryKey: ["a", "objects", { type: "IncomingInspection", layer: "transit-flow" }],
+    queryFn: () => searchObjects("IncomingInspection", ""),
+    enabled: wantFetch,
+    retry: false,
+  });
+
   // ⚠ 依赖只挂 useQuery 的**值**（data/error/isLoading），不挂 query 对象本身：
   //   后者每次渲染都是新引用，会让下面整条 memo 链（batches→stations→frame）每帧重算，
   //   进而让 rAF 那条 effect 每帧重排一次句柄 —— 正是"孤儿句柄"的温床。
@@ -311,8 +408,87 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
     qWip.isLoading,
   ]);
 
+  /** 四条新查询各自的真实来路（同款"只挂值不挂 query 对象"纪律）。 */
+  const probes = useMemo(
+    () => ({
+      cadence: rowsProbe(sources, sources?.cadence, {
+        items: qCadence.data?.items,
+        error: qCadence.error,
+        loading: qCadence.isLoading,
+      }),
+      purchaseOrder: rowsProbe(sources, sources?.purchaseOrder, {
+        items: qPurchaseOrder.data?.items,
+        error: qPurchaseOrder.error,
+        loading: qPurchaseOrder.isLoading,
+      }),
+      customs: rowsProbe(sources, sources?.customsClearance, {
+        items: qCustoms.data?.items,
+        error: qCustoms.error,
+        loading: qCustoms.isLoading,
+      }),
+      inspection: rowsProbe(sources, sources?.incomingInspection, {
+        items: qInspection.data?.items,
+        error: qInspection.error,
+        loading: qInspection.isLoading,
+      }),
+    }),
+    [
+      sources,
+      qCadence.data,
+      qCadence.error,
+      qCadence.isLoading,
+      qPurchaseOrder.data,
+      qPurchaseOrder.error,
+      qPurchaseOrder.isLoading,
+      qCustoms.data,
+      qCustoms.error,
+      qCustoms.isLoading,
+      qInspection.data,
+      qInspection.error,
+      qInspection.isLoading,
+    ],
+  );
+
   const batches = useMemo<TransitBatch[]>(() => branches.flatMap((b) => b.parsed.batches), [branches]);
-  const stations = useMemo<TransitStation[]>(() => resolveStations(nodes, batches), [nodes, batches]);
+
+  /** 对象库 `Cadence` 行 → 契约 `Cadence`（读回口是 `transitFlow.ts` 的受控镜像，本文件不另写判据）。 */
+  const cadenceParse = useMemo(
+    () => (probes.cadence.rows === undefined ? null : parseCadenceRows(probes.cadence.rows)),
+    [probes.cadence.rows],
+  );
+
+  /**
+   * **引擎侧站点** = 宿主下发的 `nodes[]` ⊕ 对象库读回的 `Cadence` 行。
+   *
+   * 红线②原样成立：这两路**都是引擎侧**承载（`nodes[]` 由 F1 线路图下发、`Cadence` 行由种子推导后落库），
+   * 本层依旧**不从批次数据行推断限流站**、不维护任何名单。
+   * 两路都空 ⇒ 保持 `undefined`（＝"引擎侧什么都没给"），不退化成 `[]`——
+   * 后者会让下游把"没问过"读成"问了没有"。
+   */
+  const engineNodes = useMemo<readonly TransitNodeInput[] | undefined>(() => {
+    const fromStore = cadenceParse?.nodes ?? [];
+    if (nodes === undefined && fromStore.length === 0) return nodes;
+    const merged: TransitNodeInput[] = [];
+    const at = new Map<string, number>();
+    for (const n of nodes ?? []) {
+      at.set(n.nodeId, merged.length);
+      merged.push(n);
+    }
+    for (const n of fromStore) {
+      const i = at.get(n.nodeId);
+      if (i === undefined) {
+        at.set(n.nodeId, merged.length);
+        merged.push(n);
+        continue;
+      }
+      // 同一个站两路都给：保住宿主给的站序与 label，只把它缺的那个 cadence 补上。
+      const cur = merged[i]!;
+      if (cur.cadence === undefined) merged[i] = { ...cur, cadence: n.cadence };
+    }
+    return merged;
+  }, [nodes, cadenceParse]);
+
+  const stations = useMemo<TransitStation[]>(() => resolveStations(engineNodes, batches), [engineNodes, batches]);
   const segments = useMemo(() => resolveSegments(batches), [batches]);
   const simInput = useMemo(() => ({ stations, batches }), [stations, batches]);
   const horizon = useMemo(() => transitHorizonDays(simInput), [simInput]);
@@ -388,6 +564,31 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
   const labelOf = useCallback((nodeId: string) => stationById.get(nodeId)?.label ?? nodeId, [stationById]);
   const cadenceStations = useMemo(() => stations.filter((s) => s.cadence !== undefined), [stations]);
   const meanWait = useMemo(() => meanReleaseWaitDays(frame.releases), [frame]);
+
+  // ── 两块诚实缺席面板：**每次渲染现判**，不再读那两个模块级常量 ────────────────
+  /**
+   * ⚠ 这里传的是**原始** `nodes` prop（不是上面合并过的 `engineNodes`）——
+   *   合并后的那份把两路加在一起，`probe.fetched` 会重复计数。probe 是给人复验用的计数，
+   *   必须对应"我分别问了什么、各回了几条"，不能是一个被加工过的数。
+   */
+  const cadenceAbsence = useMemo<AbsenceRecord>(
+    () => deriveCadenceAbsence({ engineNodes: nodes, cadenceRows: probes.cadence.rows }),
+    [nodes, probes.cadence.rows],
+  );
+  const procurementBranch = useMemo<AbsenceRecord>(
+    () =>
+      deriveProcurementBranch({
+        purchaseOrderRows: probes.purchaseOrder.rows,
+        customsRows: probes.customs.rows,
+        inspectionRows: probes.inspection.rows,
+      }),
+    [probes.purchaseOrder.rows, probes.customs.rows, probes.inspection.rows],
+  );
+  /** 采购段三条查询里只要还有一条在飞，就还没到"可以下结论"的时刻。 */
+  const procurementLoading =
+    probes.purchaseOrder.loading || probes.customs.loading || probes.inspection.loading;
+  const procurementFetchError =
+    probes.purchaseOrder.fetchError ?? probes.customs.fetchError ?? probes.inspection.fetchError;
 
   const arrivalVehicles = useMemo(() => frame.vehicles.filter((v) => v.mode === "arrival-only"), [frame]);
   const residentVehicles = useMemo(() => frame.vehicles.filter((v) => v.mode === "station-resident"), [frame]);
@@ -547,17 +748,36 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
         ))}
       </div>
 
-      {/* ── 节拍（限流站）：只认引擎下发的 node.cadence ────────────────────── */}
+      {/* ── 节拍（限流站）：只认引擎侧的 cadence（宿主 nodes[] ⊕ 对象库 Cadence 行）────── */}
       {cadenceStations.length === 0 ? (
-        <div className={styles.absence} data-testid="transit-cadence-absence" data-status={CADENCE_ABSENCE.status}>
+        <div
+          className={styles.absence}
+          data-testid="transit-cadence-absence"
+          data-status={cadenceAbsence.status}
+          data-cause={cadenceAbsence.cause}
+          data-fetched={cadenceAbsence.probe.fetched === null ? "" : cadenceAbsence.probe.fetched}
+          data-usable={cadenceAbsence.probe.usable}
+          data-loading={probes.cadence.loading ? "1" : "0"}
+        >
           <b className={styles.absenceTitle}>节拍闸门 · EMPTY</b>
-          <p className={styles.emptyReason}>{CADENCE_ABSENCE.reason}</p>
+          {probes.cadence.loading ? (
+            <p className={styles.emptyReason} data-testid="transit-cadence-fetching">
+              正在取 <code className={styles.objType}>GET /a/v1/objects?type=Cadence</code> —— 还没回来，此刻不下任何结论。
+            </p>
+          ) : (
+            <p className={styles.emptyReason}>{cadenceAbsence.reason}</p>
+          )}
+          {probes.cadence.fetchError !== null ? (
+            <p className={styles.emptyReason} data-testid="transit-cadence-fetch-error">
+              取数失败：{probes.cadence.fetchError} —— 判为**没拿到**（不是"本租户没有"），不画。
+            </p>
+          ) : null}
           <ul className={styles.reasonList}>
-            {CADENCE_ABSENCE.evidence.map((e) => (
+            {cadenceAbsence.evidence.map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>
-          <p className={styles.unblock}>补齐路径：{CADENCE_ABSENCE.unblockedBy}（本层机制已具备，接线后不改代码即点亮）</p>
+          <p className={styles.unblock}>补齐路径：{cadenceAbsence.unblockedBy}</p>
         </div>
       ) : (
         <div className={styles.cadences} data-testid="transit-cadence-live" data-count={cadenceStations.length}>
@@ -826,17 +1046,67 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
         </p>
       ) : null}
 
-      {/* ── 采购支线：D2 交付前一律为空（本单核心诚实判据）──────────────────── */}
-      <div className={styles.absence} data-testid="transit-branch-procurement" data-status={PROCUREMENT_BRANCH.status}>
-        <b className={styles.absenceTitle}>{PROCUREMENT_BRANCH.label} · EMPTY</b>
-        <p className={styles.emptyReason}>{PROCUREMENT_BRANCH.reason}</p>
-        <ul className={styles.reasonList}>
-          {PROCUREMENT_BRANCH.evidence.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-        <p className={styles.unblock}>补齐路径：{PROCUREMENT_BRANCH.unblockedBy}</p>
-      </div>
+      {/* ── 采购支线：**每次渲染现判**（此前是一个无条件渲染的 <div> + 写死取证）────────
+          有齐全日戳 ⇒ 缺席块消失、实况块上屏；取不到 ⇒ 照样缺席，但病因分档说清。 */}
+      {procurementBranch.status === "EMPTY" ? (
+        <div
+          className={styles.absence}
+          data-testid="transit-branch-procurement"
+          data-status={procurementBranch.status}
+          data-cause={procurementBranch.cause}
+          data-fetched={procurementBranch.probe.fetched === null ? "" : procurementBranch.probe.fetched}
+          data-usable={procurementBranch.probe.usable}
+          data-loading={procurementLoading ? "1" : "0"}
+        >
+          <b className={styles.absenceTitle}>{procurementBranch.label} · EMPTY</b>
+          {procurementLoading ? (
+            <p className={styles.emptyReason} data-testid="transit-procurement-fetching">
+              正在取{" "}
+              <code className={styles.objType}>
+                GET /a/v1/objects?type=PurchaseOrder|CustomsClearance|IncomingInspection
+              </code>{" "}
+              —— 还没回来，此刻不下任何结论。
+            </p>
+          ) : (
+            <p className={styles.emptyReason}>{procurementBranch.reason}</p>
+          )}
+          {procurementFetchError !== null ? (
+            <p className={styles.emptyReason} data-testid="transit-procurement-fetch-error">
+              取数失败：{procurementFetchError} —— 判为**没拿到**（不是"本租户没有"），不画。
+            </p>
+          ) : null}
+          <ul className={styles.reasonList}>
+            {procurementBranch.evidence.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+          <p className={styles.unblock}>补齐路径：{procurementBranch.unblockedBy}</p>
+        </div>
+      ) : (
+        <div
+          className={styles.absence}
+          data-testid="transit-branch-procurement-live"
+          data-status={procurementBranch.status}
+          data-cause={procurementBranch.cause}
+          data-fetched={procurementBranch.probe.fetched ?? ""}
+          data-usable={procurementBranch.probe.usable}
+        >
+          <b className={styles.absenceTitle}>{procurementBranch.label} · PRESENT</b>
+          <p className={styles.emptyReason}>{procurementBranch.reason}</p>
+          <ul className={styles.reasonList}>
+            {procurementBranch.evidence.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+          {/* 诚实边界：日戳齐全 ≠ 已经画成车。四段腿今天只判定到"算得出来"，
+              接成第四条 `TRANSIT_SOURCE_SPECS` 真画车是另一单（会动几何遍历面）。 */}
+          <p className={styles.unblock} data-testid="transit-branch-procurement-scope">
+            仅判定到「区间位置算得出来」：本层的 <b>三条画车支线</b>（
+            {TRANSIT_SOURCE_SPECS.map((s) => s.objectType).join(" / ")}）里还没有采购段，
+            所以<b>屏上不会出现采购段的车</b> —— 说"能画"却不画，与说"没有"一样是骗人，故在此写明。
+          </p>
+        </div>
+      )}
 
       {/* ── 事件流 ───────────────────────────────────────────────────────── */}
       <ol className={styles.events} data-testid="transit-events" data-count={frame.events.length}>
@@ -870,19 +1140,21 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
  *  ② 把「独立视图形态下站点从哪来」当面说清楚（见下）。
  *
  * ── 宿主**不做**的事（这三条正是本单不许踩的坑）────────────────────────────────
- *  · **不造 `nodes`**：站点（及"哪个站是限流站"的唯一判据 `node.cadence`）只能由引擎下发；
- *    独立视图形态下引擎不下发 ⇒ 传 `undefined`，让图层退回"从批次数据行自身字段现场发现站点"，
- *    并由图层的 `transit-cadence-absence` 块逐条给出节拍缺席的取证。**前端零清单**这条红线在宿主这里也守。
- *  · **不造 `sources`**：不传 ⇒ 图层走自取真值（`GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot`，
- *    三者均为在册对象类型 —— 见 `apps/datacore/src/synthetic/data-categories.ts:41`(WIPLot)
- *    与 `:64`(Shipment/InterBaseTransfer)）。**绝不喂一份 fixture 让页面看起来有货**：
- *    那会造出比空页面更坏的东西 —— 打得开、内容却是编的。
+ *  · **不造 `nodes`**：链路节点清单只能由引擎下发；独立视图形态下没有下发方 ⇒ 传 `undefined`，
+ *    让图层退回"从批次数据行自身字段现场发现站点"。**前端零清单**这条红线在宿主这里也守。
+ *    ⚠ WO-TRANSIT-WIRE 修正：宿主不传 `nodes` **不再等于"节拍一律缺席"** ——
+ *    图层自己会去对象库读 `Cadence` 行（同为引擎侧承载，`synthetic/service.ts:712` 落库），
+ *    读得回来照样点亮闸门。此前宿主这段注释写的"节拍一律缺席"是把**当时的缺口**当成了设计。
+ *  · **不造 `sources`**：不传 ⇒ 图层走自取真值（批次三类 `InterBaseTransfer|Shipment|WIPLot`
+ *    ＋ 判据四类 `Cadence|PurchaseOrder|CustomsClearance|IncomingInspection`，均为在册对象类型
+ *    —— 见 `apps/datacore/src/synthetic/data-categories.ts:41`(WIPLot) 与 `:64`(Shipment/InterBaseTransfer)）。
+ *    **绝不喂一份 fixture 让页面看起来有货**：那会造出比空页面更坏的东西 —— 打得开、内容却是编的。
  *  · **不冒充 LIVE**：某条支线取不到真值，图层原样显示「空 + 一行原因」，宿主不兜底、不吞。
  */
 /**
  * WO-SANDBOX-CONSOLE 追加的**可选** prop（默认 = 今天的行为，独立页 `/v/transit-flow` 零回归）：
  * `chrome="embedded"` —— 作为线路图模式下的**图层**挂进控制台画布槽时，把宿主那两句长说明收成一行。
- * 说明**不删**（"批次由本层自取 / 引擎未下发站点" 是诚实位），只是压缩措辞。
+ * 说明**不删**（"批次由本层自取 / 宿主不下发站点" 是诚实位），只是压缩措辞。
  */
 export function TransitFlowView({ view, chrome = "full" }: Partial<ViewRendererProps> & { chrome?: "full" | "embedded" }) {
   const opts = view?.options as { initialDay?: unknown; initialSpeed?: unknown } | undefined;
@@ -900,27 +1172,35 @@ export function TransitFlowView({ view, chrome = "full" }: Partial<ViewRendererP
         <small className={styles.hostNote} data-testid="transit-flow-host-source">
           {chrome === "embedded" ? (
             <>
-              批次自取 <code className={styles.objType}>/a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
+              批次自取 <code className={styles.objType}>/a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>；
+              判据自取 <code className={styles.objType}>Cadence|PurchaseOrder|CustomsClearance|IncomingInspection</code>
               （取不到显示空态 + 原因，<b>不补示意数据</b>）
             </>
           ) : (
             <>
               批次数据由本层自取 <code className={styles.objType}>GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
-              （三个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
+              ；节拍与采购段判据同样由本层自取{" "}
+              <code className={styles.objType}>Cadence|PurchaseOrder|CustomsClearance|IncomingInspection</code>
+              （七个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
             </>
           )}
         </small>
         <small className={styles.hostNote} data-testid="transit-flow-host-nodes">
           {chrome === "embedded" ? (
             <>
-              <b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒ 站点现场发现、节拍缺席；
+              <b>宿主不下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒ 站点现场发现；
+              <b>节拍改由图层自取对象库 </b>
+              <code className={styles.objType}>Cadence</code> 行（同为引擎侧，取到即点亮闸门、取不到按病因分档说明）；
               几何已<b>与线路图同源</b>（<code className={styles.objType}>chainLineMap.ts</code> 的环 / 弧 / 弧长参数），
               但两图<b>站点 key 宇宙不同</b>（链路节点 vs 基地·工序）⇒ <b>同角度不代表同一个实体</b>
             </>
           ) : (
             <>
-              独立视图形态下<b>引擎未下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
-              站点从批次数据行自身字段现场发现、节拍一律缺席；几何取自线路图单源{" "}
+              独立视图形态下<b>宿主不下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
+              站点从批次数据行自身字段现场发现；<b>但节拍不再"一律缺席"</b> ——
+              图层自取对象库 <code className={styles.objType}>Cadence</code> 行（
+              <code className={styles.objType}>synthetic/service.ts:712</code> 落库的那批，同为引擎侧承载），
+              取到即点亮闸门、取不到按病因分档说清是「没去取 / 读不成 / 本租户真没有」；几何取自线路图单源{" "}
               <code className={styles.objType}>chainLineMap.ts</code>（同一个环、同一条均分规则、同一个弧生成器），
               <b>但两图站点 key 今天没有共同的 id 维度</b>，同角度不代表同一个实体
             </>
