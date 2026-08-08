@@ -98,46 +98,38 @@ if (hook) {
     // ⚠️ 一处「闭」后面可能挂**多个**编号，如 §7:877「闭 §8 G-DEAD-GATE-BY-POLICY 整类 + G-WRITEBACK-ONE-WAY」。
     //    第一版正则只取紧跟其后的那一个 ⇒ 后面的编号漏检 —— 那正是本门要治的病本身
     //    （拿一个覆盖不全的信号去断言「全查过了」）。故改为：命中「闭」后，在其后 120 字符窗口内**全取**。
-    const claimed = new Set();
-    // ⚠️ 2026-08-08：本正则第二次栽在同一个地方 —— 先行断言 `(?=G-)` 要求「闭」之后紧接 `G-`，
-//    而本仓的书写惯例是把断点名放进**反引号**（`闭 §8 \`G-XXX\``）⇒ 反引号顶在断言前面，整句不匹配。
-//    实测代价：门抓到 26 个「已闭」声明并报「悬空 0」，放宽后抓到 31 个、其中 **1 个真悬空**
-//    （`G-LEVER-BINDING-DRIFT`，当天 §7 门登记里写的）。也就是说这个检测器长期**只看得见不合惯例的那一小半**。
-//    形态与它自己头注里记的第一版病同源：拿一个覆盖不全的信号去断言「全查过了」。
-//    故字符类放宽为 [\s`§8]，并在下方加金丝雀：一条**已知的反引号写法**必须被抽出来，否则门自己瞎了。
-const head8 = onto.slice(0, H8);
-    for (const m of head8.matchAll(/(?:闭合?|关闭)[\s`§8]{0,8}(?=G-)/g)) {
-      // ⚠️ 窗口尾若正切在编号中间，必须向后延到该编号结束。
-      //    实测病灶（2026-08-08）：`闭 \`G-NO-FREIGHT-COST\`` 的 COST 跨在 120 字界上 ⇒ 抽成
-      //    `G-NO-FREIGHT-CO` ⇒ §8 查无此号 ⇒ **误报一条悬空**。方向与「反引号失明」相反
-      //    （那条是漏报、这条是误报），但同样让「悬空 N」这个数字不可信。
-      let end = m.index + 120;
-      while (end < head8.length && /[A-Z0-9-]/.test(head8[end]) && end < m.index + 200) end++;
-      for (const g of head8.slice(m.index, end).matchAll(/\b(G-[A-Z0-9-]+)/g)) claimed.add(g[1]);
-    }
-    const dangling = [...claimed].filter((g) => !registered.has(g)).sort();
-    // 金丝雀（门自身没坏）：反引号写法必须被抽到。若本仓某天不再用反引号写断点名，这条会红——那时该改的是这条样例，不是把放宽撤回去。
-    {
-      const probe = "…（确定性）闭 §8 `G-CANARY-BACKTICK` 完毕";
-      const got = new Set();
-      for (const m of probe.matchAll(/(?:闭合?|关闭)[\s`§8]{0,8}(?=G-)/g))
-        for (const g of probe.slice(m.index, m.index + 120).matchAll(/\b(G-[A-Z0-9-]+)/g)) got.add(g[1]);
-      {
-      // 金丝雀二（窗口不截断）：把一个长编号故意摆到 120 字界上，抽出来必须是全名。
-      const pad = "x".repeat(100);
-      const probe2 = "闭 `G-CANARY-TRUNCATION-SENTINEL` " + pad + " 尾巴";
-      const got2 = new Set();
-      for (const m of probe2.matchAll(/(?:闭合?|关闭)[\s`§8]{0,8}(?=G-)/g)) {
-        let e = m.index + 120;
-        while (e < probe2.length && /[A-Z0-9-]/.test(probe2[e]) && e < m.index + 200) e++;
-        for (const g of probe2.slice(m.index, e).matchAll(/\b(G-[A-Z0-9-]+)/g)) got2.add(g[1]);
+    // ── 「闭 G-XXX」声明的**单一抽取实现** ────────────────────────────────────────
+    //    主逻辑与两条金丝雀共用同一份。⚠️ 别把正则再抄一份给金丝雀 —— 抄了就成装饰品：
+    //    改主正则时金丝雀拿旧的去测、照样绿，正是本仓在治的「门自己的假绿」。
+    //    （2026-08-08 我第一版就写成抄一份，变异反证当场抖出来：改主正则时两条金丝雀一起响，
+    //      说明它们测的是被改过的那份 —— 换成只改主正则就测不出了。）
+    //
+    //    这段历史上栽过三次，三种病各不相同，修法也不同：
+    //      ① 只取「闭」后紧跟的那一个编号 ⇒ 一处挂多个编号时后面的漏检（已修：窗口内全取）。
+    //      ② 先行断言要求「闭」后紧接 `G-`，而本仓惯例把编号写进**反引号** ⇒ 整句不匹配。
+    //         实测代价：抓到 26 条声明并报「悬空 0」，放宽后抓到 31 条、其中 1 条真悬空。
+    //         也就是说这个检测器长期**只看得见不合书写惯例的那一小半**。（已修：字符类含反引号）
+    //      ③ 120 字窗口把编号切断（`G-NO-FREIGHT-COST` → `G-NO-FREIGHT-CO`）⇒ **凭空多报**一条悬空。
+    //         ②修好后③才暴露 —— 此前根本匹配不上，截断无从发生。（已修：切在编号中间就往后延）
+    //    ②是漏报、③是误报，方向相反，但都让「悬空 N」这个数字不可信。
+    const CLOSE_RE = /(?:闭合?|关闭)[\s`§8]{0,8}(?=G-)/g;
+    const harvestClosed = (text) => {
+      const out = new Set();
+      for (const m of text.matchAll(CLOSE_RE)) {
+        let end = m.index + 120;
+        while (end < text.length && /[A-Z0-9-]/.test(text[end]) && end < m.index + 200) end++;
+        for (const g of text.slice(m.index, end).matchAll(/\b(G-[A-Z0-9-]+)/g)) out.add(g[1]);
       }
-      if (!got2.has("G-CANARY-TRUNCATION-SENTINEL"))
-        fail.push("**门自己瞎了**：窗口把编号截断了 —— 「悬空 N」会多报（2026-08-08 实测：G-NO-FREIGHT-COST → G-NO-FREIGHT-CO）。");
-    }
-    if (!got.has("G-CANARY-BACKTICK"))
-        fail.push("**门自己瞎了**：反引号写法的「闭 `G-XXX`」抽不出来 —— 悬空检测覆盖不全，此时的「悬空 0」不可信（2026-08-08 实测病灶）。");
-    }
+      return out;
+    };
+    const claimed = harvestClosed(onto.slice(0, H8));
+    const dangling = [...claimed].filter((g) => !registered.has(g)).sort();
+
+    // 金丝雀（门自身没坏）：两条样例都走 harvestClosed 本尊，改坏它两条一起红。
+    if (!harvestClosed("…（确定性）闭 §8 `G-CANARY-BACKTICK` 完毕").has("G-CANARY-BACKTICK"))
+      fail.push("**门自己瞎了**：反引号写法的「闭 `G-XXX`」抽不出来 —— 悬空检测覆盖不全，此时的「悬空 0」不可信（2026-08-08 实测病灶）。");
+    if (!harvestClosed("闭 `G-CANARY-TRUNCATION-SENTINEL` " + "x".repeat(100) + " 尾巴").has("G-CANARY-TRUNCATION-SENTINEL"))
+      fail.push("**门自己瞎了**：窗口把编号截断了 —— 「悬空 N」会多报（2026-08-08 实测：G-NO-FREIGHT-COST → G-NO-FREIGHT-CO）。");
     if (dangling.length) {
       fail.push(
         `正文声称已闭、§8 表里却查无此号（**悬空引用**：回写了描述没回写登记）：${dangling.join(", ")}` +
