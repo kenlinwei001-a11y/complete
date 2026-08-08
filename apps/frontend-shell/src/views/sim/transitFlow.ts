@@ -166,7 +166,11 @@ export interface AbsenceRecord {
   evidence: readonly string[];
   /** 补齐路径 —— 指向**这一档病因**该做的事，不是万能的一句"等某某单"。 */
   unblockedBy: string;
-  /** 派生依据：这次判定看了几条候选、几条可用。`fetched: null` = 根本没发查询。 */
+  /**
+   * 派生依据：这次判定看了几条候选、几条可用。
+   * `fetched: null` = **根本没发查询**（≠ `0` = 查了回 0 条 —— 这两者混一起正是本单要治的病）。
+   * 采购段按「行 × 腿」计数（一行 `PurchaseOrder` 同时承载 supplier_production 与 in_transit 两条腿）。
+   */
   probe: { fetched: number | null; usable: number };
 }
 
