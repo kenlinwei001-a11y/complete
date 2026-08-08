@@ -17,6 +17,14 @@ import {
   ChainNodeSchema,
   ChainScopeSchema,
   ChainStepSchema,
+  CANDIDATE_JOIN_RANK,
+  SolutionCandidateSchema,
+  candidateDimImprovement,
+  candidateDimMoved,
+  candidatesEffectDistinct,
+  compareSolutionCandidate,
+  firstDuplicateCandidatePair,
+  type SolutionCandidate,
   LOSS_CONSERVATION_TOLERANCE_PCT,
   LossAttributionSchema,
   VALUE_ADD_STEP_KIND,
@@ -242,7 +250,13 @@ describe("S0-① 契约往返 · zod 4 strict", () => {
     expect(() => ChainStepSchema.parse({ ...nodeA.steps[0], owner: "计划部" })).toThrow();
     expect(() => ChainNodeSchema.parse({ ...nodeA, leadTimeDays: LEAD_TOTAL })).toThrow(); // 派生量不许落字段
     expect(() => ChainScopeSchema.parse({ businessTypes: ["storage"], segment: SEG_REGISTRY[0]!.seg })).toThrow(); // 旧的 segment 维（值取自册，不内联名字）
-    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [] })).toThrow(); // S3 才追加
+    // 金值更新（WO-SANDBOX-S3）：`candidates` 已由 S3 追加进契约，故它不再是"多写字段"。
+    // 旧断言（`candidates: []` → 抛，理由「S3 才追加」）今天仍然抛，但**理由变了**：
+    // 空候选集必须同时给 `noCandidateReason`（诚实缺席不许静默空）。理由变了就得改断言，
+    // 否则它会变成一条"碰巧还绿"的测试——绿着但证的已不是它自称在证的那件事。
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [], noCandidateReason: undefined })).toThrow();
+    expect(ChainImpedimentSchema.safeParse({ ...impediment, candidates: [], noCandidateReason: "杠杆集为空" }).success).toBe(true);
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, solutions: [] })).toThrow(); // 真·多写字段仍抛
     expect(() => LossAttributionSchema.parse({ stepId: "s", nonValueDays: 1, pctOfChainLoss: 1, rank: 1 })).toThrow();
   });
 
@@ -384,6 +398,91 @@ describe("S0 · 单源派生与节点口径", () => {
     const tie = mk("imp-z", 50, "obj-1");
     expect(compareChainImpediment(b, tie)).toBeLessThan(0); // 同 severity 同 objectId → 落到 impedimentId
     expect(compareChainImpediment(b, b)).toBe(0);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// S3 · SolutionCandidate（阻滞点 → 方案候选）契约
+// ══════════════════════════════════════════════════════════════════════════
+describe("S3 · SolutionCandidate 契约（A4 效果层判据的单一来源）", () => {
+  const dim = (key: string, value: number | null, baseline: number | null, betterWhen: "lower" | "higher" = "lower") => ({
+    key,
+    label: key,
+    value,
+    baseline,
+    unit: "",
+    betterWhen,
+    dataMode: value === null ? ("EMPTY" as const) : ("SYNTHETIC" as const),
+    ...(value === null ? { reason: "算不出来" } : {}),
+  });
+  const cand = (id: string, dims: ReturnType<typeof dim>[], from = 1, to = 2): SolutionCandidate =>
+    SolutionCandidateSchema.parse({
+      candidateId: id,
+      impedimentId: impediment.impedimentId,
+      label: `杠杆 ${id}`,
+      lever: { objectType: "Line", objectId: "L-1", prop: "utilization", unit: "%" },
+      fromValue: from,
+      toValue: to,
+      join: { kind: "LOCUS_PROP", path: "Line(locus) 自身承载 Line.utilization" },
+      rungKind: "THRESHOLD",
+      rungSource: "规则 C05 阈值 95",
+      effectKind: "METRIC_SELF",
+      dims,
+      provenance: { solverKey: "chain_impediments", formula: "f", inputs: ["Line.utilization"] },
+      dataMode: "SYNTHETIC",
+    });
+
+  it("硬约束：拨到原值抛 · 各维与基线逐维相同抛（A4 变异反证的注入点）", () => {
+    expect(() => cand("c-same-value", [dim("breach", 1, 2)], 3, 3)).toThrow();
+    // ⇐ 这一条就是 A4：掐掉杠杆接线 → 候选各维退化成基线 → schema 当场抛。
+    expect(() => cand("c-flat", [dim("breach", 2, 2), dim("cap", 7, 7, "higher")])).toThrow();
+    expect(cand("c-ok", [dim("breach", 1, 2)]).candidateId).toBe("c-ok");
+    // 全维算不出来（null）也算"没动" → 抛（null 不许冒充改善）
+    expect(() => cand("c-null", [dim("breach", null, null)])).toThrow();
+  });
+
+  it("改善量口径：betterWhen 决定符号 · 算不出来记 0 不参与排序", () => {
+    expect(candidateDimImprovement(dim("d", 1, 3))).toBe(2); // lower better
+    expect(candidateDimImprovement(dim("d", 3, 1, "higher"))).toBe(2);
+    expect(candidateDimImprovement(dim("d", 3, 1))).toBe(-2); // 变差如实为负
+    expect(candidateDimImprovement(dim("d", null, 1))).toBe(0);
+    expect(candidateDimMoved(dim("d", 1, 1))).toBe(false);
+    expect(candidateDimMoved(dim("d", 1, 2))).toBe(true);
+  });
+
+  it("排序是**全序**：逐维改善量降序 → 维数 → candidateId，与输入顺序无关", () => {
+    const a = cand("c-a", [dim("breach", 1, 3)]); // 改善 2
+    const b = cand("c-b", [dim("breach", 2, 3)]); // 改善 1
+    const z = cand("c-z", [dim("breach", 1, 3)]); // 与 a 同改善 → 落 id
+    expect([b, z, a].slice().sort(compareSolutionCandidate).map((x) => x.candidateId)).toEqual(["c-a", "c-z", "c-b"]);
+    expect([a, b, z].slice().sort(compareSolutionCandidate).map((x) => x.candidateId)).toEqual(["c-a", "c-z", "c-b"]);
+    expect(compareSolutionCandidate(a, a)).toBe(0);
+  });
+
+  it("A4 效果层判据：KPI 至少一维数值不同才算真不同；雷同对被 firstDuplicateCandidatePair 揪出", () => {
+    const a = cand("c-a", [dim("breach", 1, 3), dim("cap", 9, 7, "higher")]);
+    const b = cand("c-b", [dim("breach", 2, 3), dim("cap", 9, 7, "higher")]);
+    const dup = cand("c-dup", [dim("breach", 1, 3), dim("cap", 9, 7, "higher")]);
+    expect(candidatesEffectDistinct(a, b)).toBe(true);
+    expect(candidatesEffectDistinct(a, dup)).toBe(false); // 杠杆不同但效果一模一样 = 重复
+    expect(firstDuplicateCandidatePair([a, b])).toBeNull();
+    expect(firstDuplicateCandidatePair([a, b, dup])).toEqual([0, 2]);
+    // 维键不对齐 → 一律按"重复"处理（生成方自己不自洽时放行更危险）
+    const odd = cand("c-odd", [dim("other", 1, 3), dim("cap", 9, 7, "higher")]);
+    expect(candidatesEffectDistinct(a, odd)).toBe(false);
+  });
+
+  it("阻滞点侧硬约束：候选 impedimentId 必须与宿主一致 · 空候选必须说明原因", () => {
+    const c = cand("c-a", [dim("breach", 1, 3)]);
+    expect(ChainImpedimentSchema.safeParse({ ...impediment, candidates: [c] }).success).toBe(true);
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [c], noCandidateReason: "空" })).toThrow();
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [{ ...c, impedimentId: "imp-other" }] })).toThrow();
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [] })).toThrow();
+  });
+
+  it("join 优先序是显式全序常量（同一 (对象,属性) 被多路命中时取最强那条）", () => {
+    expect(CANDIDATE_JOIN_RANK.LOCUS_PROP).toBeLessThan(CANDIDATE_JOIN_RANK.LINK_HOP);
+    expect(CANDIDATE_JOIN_RANK.LINK_HOP).toBeLessThan(CANDIDATE_JOIN_RANK.RULE_GATE);
   });
 });
 
