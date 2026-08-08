@@ -48,8 +48,9 @@ import {
   type ChainStage,
   type DerivedDataMode,
 } from "@platform/contracts";
-import type { ObjectInstance } from "../domain.js";
+import type { LinkInstance, ObjectInstance } from "../domain.js";
 import { canonicalJson, hashString, round } from "../prng.js";
+import { enumerateImpedimentOptions } from "./impediment-options.js"; // WO-SANDBOX-S3 · 阻滞点 → 候选方案枚举器
 import {
   DslError,
   evaluateExpression,
@@ -344,6 +345,13 @@ export interface ImpedimentCandidate {
   bindingId: string;
   /** 该 locus 的利用率读数（有就给）——裁决线比对用。 */
   utilization?: number;
+  /**
+   * WO-SANDBOX-S3：该阻滞点是**哪条判据**在**哪个真对象实例**上判出来的。
+   * 方案枚举器要沿这两样往下走（jo in 的起点），而 `ChainImpediment` 本身只带业务 id（`locus.objectId`），
+   * 不带实例 `o.id` —— 让枚举器拿业务 id 反查实例等于再造一张"类型→id 属性"的映射表，
+   * 那正是本仓禁的东西。故判定时**顺手把来源带下去**，不重新猜。
+   */
+  origin?: { binding: ImpedimentRuleBinding; obj: ObjectInstance };
 }
 
 /**
@@ -448,6 +456,22 @@ export interface ChainScanResult extends Record<string, unknown> {
   caveats: { bindingId: string; ruleKey: string; note: string }[];
   /** 每条判据的阈值出处逐条亮出（R13：这条结论的旋钮在哪）。 */
   thresholds: ChainScanThresholdRow[];
+  /**
+   * WO-SANDBOX-S3 · 候选枚举的逐点账（探了几个杠杆锚点 / 几次试算 / 有效几个 / 下发几个 / 缺口原文）。
+   * 它是「为什么这个阻滞点没有方案」的唯一可查处 —— 空白比错答更容易被当成「没问题」。
+   */
+  candidateStats: {
+    impedimentId: string;
+    anchors: number;
+    probes: number;
+    effective: number;
+    emitted: number;
+    gaps: string[];
+  }[];
+  /** 探针预算耗尽 → **显式**标注截断（`PRD-sandbox-redesign.md` §7.2③：不静默截断）。 */
+  candidatesTruncated: boolean;
+  /** 本次扫描一共跑了几次产能试算探针（性能与 R6 可复现性的账）。 */
+  candidateProbes: number;
 }
 
 export interface ChainScanInput {
@@ -456,6 +480,12 @@ export interface ChainScanInput {
   materialBalances?: ObjectInstance[];
   scope: ChainScope;
   bindings?: readonly ImpedimentRuleBinding[];
+  /**
+   * WO-SANDBOX-S3 · **一等关系行**（`links` 表），候选枚举器的 `LINK_HOP` join 面。
+   * 缺省 `[]` → 一跳可达面为空，枚举器诚实记「本体上它是孤点」，**不会**回落成"按类型广播"
+   * （那正是编映射的开始）。由调用方（`SolverService.chainImpediments`）注入，判定本身不受影响。
+   */
+  links?: readonly LinkInstance[];
 }
 
 /** 该 binding 要扫的对象集合（+ 每个对象的**派生补充字段**，如 D3 硬容量算出的 parallelThroughput）。 */
@@ -647,6 +677,7 @@ function judgeOne(
       impediment,
       bindingId: b.bindingId,
       ...(Number.isFinite(util) ? { utilization: util } : {}),
+      origin: { binding: b, obj: l.obj },
     });
   }
 
@@ -720,7 +751,31 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
     });
   }
 
-  const impediments = arbitrateByLocus(candidates, utilizationRedlineOf(c, bindings));
+  const arbitrated = arbitrateByLocus(candidates, utilizationRedlineOf(c, bindings));
+
+  // ── WO-SANDBOX-S3 · 每个存活下来的阻滞点长出方案候选（G-IMPEDIMENT-OPTION-NOJOIN 的枚举那一半）──
+  // 判定与枚举**同一次请求内完成**：候选是阻滞点的一部分（`ChainImpediment.candidates`），
+  // 不是另一个 solver key —— 否则用户点开卡片要等第二次 round-trip（`PRD-sandbox-multiplan.md` §6.7）。
+  const originById = new Map<string, { binding: ImpedimentRuleBinding; obj: ObjectInstance }>();
+  for (const cand of candidates) if (cand.origin) originById.set(cand.impediment.impedimentId, cand.origin);
+  const options = enumerateImpedimentOptions(arbitrated, {
+    c,
+    materialBalances: input.materialBalances ?? [],
+    links: input.links ?? [],
+    originOf: (im) => originById.get(im.impedimentId),
+    ...(c.rules === undefined ? {} : { rules: c.rules }),
+  });
+  const impediments = arbitrated.map((im) => {
+    const o = options.byImpediment.get(im.impedimentId);
+    if (!o) return im;
+    // 经 schema 再 parse 一次：候选与宿主的一致性约束（impedimentId 对齐 / 空候选必带原因）由契约把关。
+    return ChainImpedimentSchema.parse({
+      ...im,
+      candidates: o.candidates,
+      ...(o.noCandidateReason === undefined ? {} : { noCandidateReason: o.noCandidateReason }),
+    });
+  });
+
   const count = (k: ChainImpedimentKind) => impediments.filter((i) => i.kind === k).length;
   return {
     scanId,
@@ -736,6 +791,9 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
     unresolved,
     caveats,
     thresholds,
+    candidateStats: options.stats,
+    candidatesTruncated: options.truncated,
+    candidateProbes: options.probesUsed,
     scopeUnscoped: isChainScopeUnscoped(input.scope),
   };
 }
