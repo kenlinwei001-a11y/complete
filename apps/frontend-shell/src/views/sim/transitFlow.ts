@@ -60,13 +60,18 @@ import {
  *                          在 `synthetic/data-categories.ts:64/70` 登记类目。
  *                          契约侧 `packages/contracts/src/procurement.ts` 冻结了四段腿
  *                          `supplier_production/in_transit/customs/incoming_inspection`（index.ts:72 导出）。
- *                          ⇒ 「customs/IQC 0 命中」这句话**今天是假的**。仍然为空的真实原因见 `PROCUREMENT_BRANCH`：
- *                          **本层从来没去取过它们**。
+ *                          ⇒ 「customs/IQC 0 命中」这句话**今天是假的**。
+ *                          ⚠ 二次修正（WO-TRANSIT-WIRE，2026-08-08）：「本层从来没去取过它们」这句
+ *                          **也已经过期** —— `TransitFlowLayer` 现在真的发了那三条 `searchObjects`
+ *                          并把结果喂给 `deriveProcurementBranch(...)` 现算。今天屏上是什么，取决于**取回了什么**。
  *  · `Cadence`          —— D1 已并线。`apps/datacore/src/synthetic/cadence.ts` **存在**，
  *                          `synthetic/service.ts:712` `putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId")`
  *                          真落库；`app.ts:1448` 的推演 tick 已在从对象库读它。
  *                          ⇒ 「Cadence 只有契约没有承载物」这句话**今天也是假的**。
- *                          仍然为空的真实原因见 `CADENCE_ABSENCE`：**本层不查 `Cadence`，宿主也不传 `nodes`**。
+ *                          ⚠ 二次修正（WO-TRANSIT-WIRE，2026-08-08）：「本层不查 `Cadence`」这句
+ *                          **也已经过期** —— `TransitFlowLayer` 现在真的发了 `searchObjects("Cadence")`，
+ *                          并把 `parseCadenceRows(rows).nodes` 并进 `resolveStations` 的引擎侧站点。
+ *                          宿主仍然不传 `nodes`（它没有下发方），但那**不再等于"节拍一律缺席"**。
  *
  * ── 教训（本文件的诚实位为什么会说谎）──────────────────────────────────────
  * 缺席声明写成了 `const` 字面量：它记录的是**写下它那一刻**的仓库状态，之后上游补齐了也不会变。
@@ -302,11 +307,12 @@ export function deriveCadenceAbsence(input: CadenceAbsenceInput = {}): AbsenceRe
         "但这不等于「没有节拍」，而是「没人问」。",
       evidence: [
         ...CADENCE_UPSTREAM_EVIDENCE,
-        "缺口在前端这一侧：TransitFlowLayer 只发了 InterBaseTransfer / Shipment / WIPLot 三条 searchObjects，没有 Cadence 那条；唯一宿主 TransitFlowView 渲染 <TransitFlowLayer> 时也不传 nodes ⇒ 站点全部来自批次数据行，而数据行天然不带 cadence。",
+        "本次判定拿到的输入是空的：engineNodes 与 cadenceRows **两个都没给**（不是给了空数组）—— 所以这里说的是「没人喂我」，不是「查过没有」。",
+        "图层这条路已经接通（WO-TRANSIT-WIRE）：TransitFlowLayer 自取 searchObjects(\"Cadence\") 并把 parseCadenceRows(rows).nodes 并进 resolveStations 的引擎侧站点；因此屏上还落到本档，只可能是这次渲染确实一条输入都没拿到。",
       ],
       unblockedBy:
-        "接线（不是补数据）：图层加一条 searchObjects(\"Cadence\") 并把 parseCadenceRows(rows).nodes 并进 resolveStations 的 engineNodes，" +
-        "同时把本记录改由 deriveCadenceAbsence({ engineNodes, cadenceRows }) 现算。",
+        "接线（不是补数据）：把引擎侧的闸门喂进来 —— 宿主下发的 nodes[] 或对象库的 Cadence 行，任一路即可。" +
+        "图层已经自己去取了；仍拿到本档的调用方 = 自己没喂输入，改调 deriveCadenceAbsence({ engineNodes, cadenceRows }) 现算。",
     };
   }
   if (cause === "CONTRACT_REJECTED") {
@@ -437,12 +443,13 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
         "一条都没查过 —— 屏上为空是「没人问」，不是「本体没有」。",
       evidence: [
         ...PROCUREMENT_UPSTREAM_EVIDENCE,
-        `缺口在前端这一侧：本层只查了 ${TRANSIT_SOURCE_SPECS.map((s) => s.objectType).join(" / ")} 三个类型，采购段四条腿（契约单源 PROCUREMENT_LEGS：${PROCUREMENT_LEGS.join(" → ")}）的承载对象一个都没进查询清单。`,
+        `本次判定拿到的输入是空的：PurchaseOrder / CustomsClearance / IncomingInspection 三份行**一份都没给**（不是给了空数组）——四条腿（契约单源 PROCUREMENT_LEGS：${PROCUREMENT_LEGS.join(" → ")}）因此一条都判不了。`,
+        `图层这条路已经接通（WO-TRANSIT-WIRE）：TransitFlowLayer 在原有 ${TRANSIT_SOURCE_SPECS.map((s) => s.objectType).join(" / ")} 三条查询之外，另发了采购段那三条 searchObjects；因此屏上还落到本档，只可能是这次渲染确实一条输入都没拿到。`,
         "唯一仍然成立的旧结论：ASN 至今只在 packages/contracts/src/chain-sim.ts 与 procurement.ts 的注释里出现，无对象、无 schema、无数据 —— 但采购段并不依赖它，四段腿靠日戳就能画。",
       ],
       unblockedBy:
-        "接线（不是等 D2，D2 已经交了）：图层补三条 searchObjects(PurchaseOrder / CustomsClearance / IncomingInspection)，" +
-        "并把本记录改由 deriveProcurementBranch({ purchaseOrderRows, customsRows, inspectionRows }) 现算。",
+        "接线（不是等 D2，D2 已经交了）：把 PurchaseOrder / CustomsClearance / IncomingInspection 三份行喂进来。" +
+        "图层已经自己去取了；仍拿到本档的调用方 = 自己没喂输入，改调 deriveProcurementBranch({ purchaseOrderRows, customsRows, inspectionRows }) 现算。",
     };
   }
   if (cause === "CONTRACT_REJECTED") {
@@ -469,16 +476,21 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
 }
 
 /**
- * ⚠ **今天生产实际渲染的就是这两个值** —— 视图侧 `TransitFlowLayer.tsx` / `SandboxConsole.tsx`
- * 仍然 import 这两个名字（本单范围边界不许改那两个文件）。它们**不再是手写字面量**，
- * 而是「本层今天什么都没查」这份**真实输入**的派生结果 ⇒ `cause === "NOT_FETCHED"`。
+ * **零输入基线**（`deriveXxx()` 不带任何参数的那一档）—— 「一条都没拿到」时的判定结果。
  *
- * 也就是说：屏上那句话今天依旧是"空"，但**说的病因从假变真了**（旧文案说"本体没有"，
- * 实际是"本层没问"）。等图层补上查询、改调 `deriveCadenceAbsence(...)` / `deriveProcurementBranch(...)`，
- * 面板即自动让位给真数据 —— 本文件不用再改一个字。
+ * ⚠ WO-TRANSIT-WIRE 起，**图层不再渲染这两个值**：`TransitFlowLayer` 自己发四条 `searchObjects`
+ * （`Cadence` / `PurchaseOrder` / `CustomsClearance` / `IncomingInspection`），
+ * 每次渲染现调 `deriveCadenceAbsence({ engineNodes, cadenceRows })` /
+ * `deriveProcurementBranch({ … })`。屏上是什么，取决于**那一刻取回了什么**。
  *
- * 铁律 0.5 第 6 条（生产实参必须被测试覆盖）：配套测试**显式**用这两个常量断言 `NOT_FETCHED`，
- * 不是只测那两个函数的其它分支。
+ * 保留这两个导出的唯一理由：`SandboxConsole.tsx` 的可算性图例仍在引用它们
+ * （本单范围边界不许改那个文件）。**它们对那个图例仍然成立**——控制台图例自己不取数，
+ * 它拿到的确实就是"零输入"这一档。但也正因如此：
+ * **谁读它，谁就必须承认自己没喂输入**；任何"想显示真实状态"的调用方都应改调派生函数，
+ * 而不是读这两个常量 —— 常量的保质期等于"没有输入"这个前提本身。
+ *
+ * 铁律 0.5 第 6 条（生产实参必须被测试覆盖）：配套测试对**两条路**分别断言 ——
+ * 图层走 DOM（现算值），控制台图例走这两个常量（零输入基线）。
  */
 export const CADENCE_ABSENCE: AbsenceRecord = deriveCadenceAbsence();
 export const PROCUREMENT_BRANCH: AbsenceRecord = deriveProcurementBranch();
