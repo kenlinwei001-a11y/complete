@@ -338,6 +338,35 @@
   margin-top: 6px;
 }
 
+/* ── 线路图 + 在途图层：**同一块画布**（WO-CONSOLE-CLEANUP ④）────────────────────
+ * 上一单把两图的几何做成了同源（坐标全取自 `chainLineMap.ts`、`viewBox` 相同），
+ * 但控制台把它们渲染成**上下两个兄弟节点**，于是"叠加"这件事一直没发生。
+ * 这里补的就是挂载点：把在途层那张环 SVG 钉到线路图舞台 SVG 的**同一个屏上矩形**上。
+ * 两图 viewBox 相同 ⇒ 盒子重合即坐标重合，**本文件不写一行几何**（矩形由
+ * `sandboxConsole.ts` 的 `transitOverlayBox` 纯函数算好，经 CSS 变量落下来）。
+ *
+ * 选择器咬的是在途层**已发布的 testid**（`transit-ring`，它本来就是那一层的测试契约），
+ * 因为不许改那个文件；testid 一旦改名，`sandbox-console.seam §9` 的"叠加层必须存在"当场红。
+ * 未测量到尺寸（jsdom / 未布局 / display:none）时 `data-overlay-measured="0"`，
+ * 选择器不命中 ⇒ 图层按常规块排在下方，**不假装已对齐**。
+ */
+.metroStack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.metroStack[data-transit-overlay="on"][data-overlay-measured="1"] svg[data-testid="transit-ring"] {
+  position: absolute;
+  left: var(--sc-ov-left);
+  top: var(--sc-ov-top);
+  width: var(--sc-ov-w);
+  height: var(--sc-ov-h);
+  clip-path: inset(var(--sc-ov-ct) var(--sc-ov-cr) var(--sc-ov-cb) var(--sc-ov-cl));
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── 在途/在制 时序可算性分级（替代设计稿那个假时钟）───────────────────────── */
 .tierBox {
   border: 1px solid var(--line2);
@@ -501,6 +530,105 @@
   color: var(--danger);
   margin-top: 5px;
   line-height: 1.5;
+}
+
+/* ── 「在册不在场」行（引擎既不产环节也不产 EMPTY 行的在册节点）──────────────── */
+.laneAbsentRow {
+  font: 9.5px var(--font-mono);
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.6;
+  border-left: 2px dotted var(--muted2);
+  padding-left: 6px;
+}
+.laneAbsentRow b {
+  color: var(--txt);
+}
+.laneAbsentRow code {
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+}
+
+/* ── 诚实缺席节点 = **灰卡片**（WO-CONSOLE-CLEANUP ②）─────────────────────────
+ * 与 `.nodeCard` 的差别**必须是形状**，不是颜色深浅：
+ *  · `clip-path` 真把右上角切掉（缺角标签形），`.nodeCard` 没有这条声明 —— 这是几何层的判据；
+ *  · 边框虚线 + 无填充（`.nodeCard` 是实底实线）。
+ * 只调深浅会被读成"同一种东西弱一点"，而这两者是「有承载物 / 没有承载物」两种事实。
+ * 门 `sandbox-console.seam §9` 同时咬 `data-card-shape` 与本文件里的 `clip-path` 声明。
+ */
+.emptyCard {
+  background: transparent;
+  border: 1px dashed var(--muted2);
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  padding: 6px 9px 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+  font: inherit;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.emptyCard:hover {
+  border-color: var(--danger);
+}
+.emptyCard[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.emptyCardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.emptyCardName {
+  flex: 1;
+  min-width: 0;
+  font: 600 11px var(--font-sans);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.emptyCardKind {
+  font: 800 9px var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 2px;
+  padding: 0 3px;
+}
+.emptyCardFoot {
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+}
+.emptyCardFoot b {
+  color: var(--danger);
+}
+.emptyCardRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px dotted var(--line2);
+  padding-top: 3px;
+}
+.emptyCardRow b {
+  font: 700 9.5px var(--font-mono);
+  color: var(--muted);
+}
+.emptyCardRow em {
+  font: 9px/1.55 var(--font-sans);
+  font-style: normal;
+  color: var(--muted2);
+  white-space: normal;
+}
+.emptyCardRow code {
+  font: 8.5px/1.5 var(--font-mono);
+  color: var(--muted2);
+  white-space: normal;
+  word-break: break-all;
 }
 .dimmed {
   opacity: 0.22;
