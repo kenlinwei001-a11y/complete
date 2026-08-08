@@ -31,6 +31,38 @@
  *   C/L 只对前端生效：`synthetic/cadence.ts` 的 `CADENCE_NODES` 是**数据侧的原创声明**
  *   （哪些节点有节拍、周期多长 = 新信息，且 cadence.ts:400 运行时对注册表验真），不是副本。
  *
+ * ── C 的**按机制豁免**：编译期就绑死在契约上的键，不是第二份注册表 ──────────
+ *   `WO-SEMANTICS-SINGLESOURCE`：`views/sim/chainNodeSemantics.ts` 被 C 判红，而它长这样——
+ *     ```ts
+ *     import { type ChainNodeDef } from "@platform/contracts";
+ *     type RegisteredChainNodeId = ChainNodeDef["nodeId"];          // 派生自 CHAIN_NODE_REGISTRY
+ *     const T: Partial<Record<RegisteredChainNodeId, Sem>> = { "…": {…}, … };
+ *     ```
+ *   C 的立论是「改册时这里不会跟着变」。**对这种写法，该立论是假的**：键类型是注册表 `as const`
+ *   派生出来的字面量联合，写一个不在册的键 / 册里改掉一个 id ⇒ `tsc` 当场 **TS2353**
+ *   （实测原文见 `docs/PRD-semantics-singlesource.md` §4）。这比门明文豁免的 `cadence.ts:400`
+ *   （**运行时**对注册表验真）还强一档：运行时验真要跑到才红，编译期包含关系连构建都过不去。
+ *   ⇒ 判据 C **跳过**「处于**键位**、且该对象字面量的**声明类型**的键类型锚在契约上」的字面量。
+ *
+ *   ⚠ 这是「按机制豁免」，不是「按文件豁免」——豁免名单一开口，将来的真问题会跟着被放过。
+ *      故豁免必须**反伪造**，实测过的三条洗白路子逐条堵死（`--strict` 下亲手跑的，不是推理）：
+ *      ① `type RegisteredChainNodeId = string`（本地伪造一个同名别名白嫖）⇒ 键类型解析不到
+ *         `@platform/contracts` 的导入名 ⇒ **不豁免**。豁免的是「锚在契约上」，不是「名字长得像」。
+ *      ② `Record<Id | string, …>`（掺一个 `string` 把联合泡宽）⇒ 实测 `tsc` **不再报错**
+ *         （编译期包含关系当场失效）⇒ 键类型里出现 `string`/`any` 一律**不豁免**。
+ *      ③ `{…} as Partial<Record<Id, …>>`（强制断言）⇒ 实测 `tsc` **不报错**，`as` 会把不在册的键
+ *         静默洗白 ⇒ 只认 `const X: T = {…}` 与 `{…} satisfies T`（后者实测照样报 TS2353），
+ *         **`as` 一律不认**。
+ *      ④ 只豁免**键位**。同一张锚定表里的**值**（`{ "demand.consensus": ["order.review", …] }`）
+ *         照常计入 C —— 值不受键类型约束，那才是真词表。
+ *      ⑤ 锚点必须是 `@platform/contracts` **本尊**（contracts-only-shared）。从别的前端文件
+ *         re-export 一个 `RegisteredChainNodeId` 再 import 来用 ⇒ **不豁免**（fail-closed）。
+ *         这条严得刻意：合法的修法只是多写一行 `import { type ChainNodeDef } from "@platform/contracts"`，
+ *         成本近零；而放开跨文件追溯，就等于给伪造者开了一条门看不见的路。
+ *
+ *   **L 判据不受本豁免影响**（刻意）：键绑死了不代表值干净——「中文映射表副本」的形态是
+ *   在**值**位抄 `label`，L 照常计数。豁免只回答「键会不会漂」，不回答「值是不是副本」。
+ *
  * ── 角色排除：`stepId` 是**另一个命名空间**，不是豁免名单 ────────────────
  *   `stepId` 与 `nodeId` 共用 `<stage>.<名>` 形状，但语义不同。实测两侧都有真实存量：
  *     · `solvers/chain-loss.ts:417` `stepId:"order.settlement_terms"` / `nodeId:"order.cash"`（在册）
@@ -54,6 +86,12 @@
  *      `test/fixtures/chain-loss-real.json` 是后端真实响应的抓取物，里面的
  *      `order.settlement_terms`/`material.supplier_leadtime` 是 **stepId**；JSON 没有 AST 角色，
  *      扫它必然把这些误报成不在册 nodeId。误报会逼出豁免名单，那就把门蛀空了。
+ *   ⑤ **类型锚豁免让出的那一块**（WO-SEMANTICS-SINGLESOURCE 新增，照实写不圆场）：
+ *      在一张锚定表里**另造一套中文名**（`Partial<Record<RegisteredChainNodeId, string>>`，
+ *      值是**新编的**、不等于在册 `label`）—— 键不会漂（编译期绑死）、值也不是 `label` 副本，
+ *      于是 C 与 L 都咬不到。这块**在本豁免之前是被 C 顺手挡住的**，现在让出来了。
+ *      不为它加判据的理由：C 数的是 **id**，「值是不是该由前端定义」是另一个问题
+ *      （真要治得给「前端可原创字段」建册，另一笔欠账）；而抄在册 `label` 这条主路 L 仍然咬得住。
  *
  * ── 门自己不许瞎（G-GATE-PARSER-TRUNCATED-VIEW 同族）────────────────────
  *  ① 契约解析：正则锚到 `] as const satisfies`；条目数 ≥ MIN_NODES；四个哨兵 id 必在。
@@ -65,6 +103,11 @@
  *     ← 直接对治 `check-view-reachable.mjs` 第一版那个病：裸文本匹配、注释掉的行照样算数、
  *       变异后仍绿。本门用 **TypeScript 官方 scanner** 取字面量（注释/正则/JSX 由编译器天然处理），
  *       自检是为了证明它**确实**如此，而不是宣称如此。TS 装不上 ⇒ 红（fail-closed，不静默降级）。
+ *  ⑤ **类型锚自检（每次运行都跑）**：新判据也得配金丝雀 —— 豁免逻辑本身是新代码，
+ *     「它不红」既可能是「代码干净」也可能是「豁免写瞎了把谁都放过」。故拿 9 段内嵌样本
+ *     正反对拍：4 段该豁免（`Partial<Record<…>>` / 裸 `Record<…>` / `satisfies` / 别名链），
+ *     5 段**必须不豁免**（本地伪造 `= string` / 掺 `string` 泡宽 / `as` 断言 / 值位 / 无注解裸表）。
+ *     任一条对不上 ⇒ 判「门自己瞎了」而不是「代码干净」。
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -95,6 +138,13 @@ const COPY_THRESHOLD = 3;
 const STEP_ID_KEYS = new Set(["stepId", "step_id"]);
 /** K 判据认的键位。 */
 const NODE_ID_KEYS = new Set(["nodeId", "cadenceNodeId"]);
+/**
+ * C 的类型锚豁免，锚点**只认这一个模块**（contracts-only-shared）。
+ * 从别的前端文件 re-export 再 import ⇒ 不认（fail-closed，见文件头反伪造 ⑤）。
+ */
+const CONTRACTS_MODULE = "@platform/contracts";
+/** 键类型解析时可以**透穿**的标准工具类型（只认标准的，自定义包装一律不认）。 */
+const TRANSPARENT_TYPE_WRAPPERS = new Set(["Partial", "Readonly", "Required"]);
 
 const errs = [];
 const blind = []; // 「门自己瞎了」类，与业务违规分开报——修法完全不同
@@ -111,6 +161,9 @@ try {
   );
   process.exit(1);
 }
+
+/** 键类型里出现这些 ⇒ 联合被泡宽、编译期包含关系失效（实测）⇒ 一律不豁免。 */
+const WIDE_TYPE_KINDS = new Set([ts.SyntaxKind.StringKeyword, ts.SyntaxKind.AnyKeyword]);
 
 /* ═══════════════ 1 · 从契约现解单源（门自己不手抄） ═══════════════ */
 const src = readFileSync(CONTRACT, "utf8");
@@ -161,11 +214,94 @@ const NODE_SHAPE = new RegExp(`^(?:${stagePrefixes.join("|")})\\.[A-Za-z0-9_][A-
 const isAllowed = (id) => known.has(id) || id.startsWith(OP_PREFIX);
 
 /* ═══════════════ 2 · 字面量提取（TS AST；注释/正则/JSX 由编译器处理） ═══════════════ */
+/** 取一个实体名/限定名的**最左**标识符（`C.ChainNodeDef` → `C`；命名空间导入靠这个抓）。 */
+function leftmostName(node) {
+  let cur = node;
+  while (cur !== undefined && (ts.isQualifiedName(cur) || ts.isPropertyAccessExpression(cur))) {
+    cur = ts.isQualifiedName(cur) ? cur.left : cur.expression;
+  }
+  return cur !== undefined && ts.isIdentifier(cur) ? cur.text : "";
+}
+
+/**
+ * 从一个**声明类型**里剥出「键类型」：
+ * `Partial<Record<K,V>>` / `Readonly<Record<K,V>>` / `Record<K,V>` / `{ [P in K]?: V }` → `K`。
+ * 别的形状一律返回 `undefined`（不豁免）—— 认不出来就不放行，是 fail-closed 不是漏。
+ */
+function recordKeyType(typeNode, depth = 0) {
+  if (typeNode === undefined || depth > 6) return undefined;
+  if (ts.isParenthesizedTypeNode(typeNode)) return recordKeyType(typeNode.type, depth + 1);
+  if (ts.isMappedTypeNode(typeNode)) return typeNode.typeParameter?.constraint;
+  if (ts.isTypeReferenceNode(typeNode)) {
+    const name = leftmostName(typeNode.typeName);
+    const args = typeNode.typeArguments ?? [];
+    if (name === "Record" && args.length === 2) return args[0];
+    if (TRANSPARENT_TYPE_WRAPPERS.has(name) && args.length === 1) return recordKeyType(args[0], depth + 1);
+  }
+  return undefined;
+}
+
+/**
+ * 键类型是否**锚在契约上** = ①解析得到 `@platform/contracts` 的某个导入名，
+ * 且 ②整棵类型里不出现 `string`/`any`（实测：掺一个 `string` 后 `tsc` 当场不再咬，
+ * 编译期包含关系失效 —— 那正是最省事的伪造法，必须堵）。
+ * 本地 `type X = …` 别名会**在本文件内**递归展开；跨文件不追（fail-closed，见文件头反伪造 ⑤）。
+ */
+function keyTypeAnchored(typeNode, contractsNames, localAliases) {
+  let sawContracts = false;
+  let sawWide = false;
+  const seen = new Set();
+  const walk = (node, depth) => {
+    if (node === undefined || depth > 12) return;
+    if (WIDE_TYPE_KINDS.has(node.kind)) {
+      sawWide = true;
+      return;
+    }
+    if (ts.isTypeReferenceNode(node)) {
+      const name = leftmostName(node.typeName);
+      if (contractsNames.has(name)) sawContracts = true;
+      else if (localAliases.has(name) && !seen.has(name)) {
+        seen.add(name);
+        walk(localAliases.get(name), depth + 1);
+      }
+      for (const a of node.typeArguments ?? []) walk(a, depth + 1);
+      return;
+    }
+    if (ts.isTypeQueryNode(node)) {
+      // `typeof CHAIN_NODE_REGISTRY[number]["nodeId"]` —— 值侧导入同样算锚
+      if (contractsNames.has(leftmostName(node.exprName))) sawContracts = true;
+      return;
+    }
+    ts.forEachChild(node, (c) => walk(c, depth + 1));
+  };
+  walk(typeNode, 0);
+  return sawContracts && !sawWide;
+}
+
+/**
+ * 取管着这个对象字面量的**声明类型**。
+ * 只认两种：`const X: T = {…}` 与 `{…} satisfies T`（实测两者都做多余属性检查、都会报 TS2353）。
+ * **刻意不认 `as T`** —— 实测强制断言会把不在册的键静默洗白，认它就等于给伪造者留门。
+ */
+function declaredTypeOfObjectLiteral(objLit) {
+  let cur = objLit;
+  let p = cur.parent;
+  while (p !== undefined && ts.isParenthesizedExpression(p)) {
+    cur = p;
+    p = p.parent;
+  }
+  if (p === undefined) return undefined;
+  if (ts.isSatisfiesExpression(p) && p.expression === cur) return p.type;
+  if (ts.isVariableDeclaration(p) && p.initializer === cur) return p.type;
+  return undefined;
+}
+
 /**
  * 取一份源码里所有**静态**字符串字面量。
  * - 含 `"…"` / `'…'` / 无插值的模板串 / Record 的字符串键；
  * - **不含**注释里的内容（AST 里根本没有注释节点）、不含带 `${}` 的模板串（那是派生值，不是抄写）。
- * 返回 `{ text, line, role }`，`role` ∈ {"nodeId","stepId","other"}，供 K 判据与角色排除用。
+ * 返回 `{ text, line, role, anchoredKey }`：`role` ∈ {"nodeId","stepId","other"} 供 K 判据与角色排除用；
+ * `anchoredKey` = 「处于键位 **且** 该表的声明类型的键类型锚在契约上」，供 C 判据按机制豁免用。
  */
 function extractLiterals(code, fileNameHint) {
   const sf = ts.createSourceFile(
@@ -176,6 +312,39 @@ function extractLiterals(code, fileNameHint) {
     fileNameHint.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const out = [];
+
+  // ── 本文件从 `@platform/contracts` 导入的**局部绑定名** + 本文件的顶层 type 别名 ──────
+  //    （`import { ChainNodeDef as X }` 取 `X`；`import * as C` 取 `C`；类型位上出现的就是它们）
+  const contractsNames = new Set();
+  const localAliases = new Map();
+  for (const st of sf.statements) {
+    if (ts.isTypeAliasDeclaration(st)) localAliases.set(st.name.text, st.type);
+    if (!ts.isImportDeclaration(st)) continue;
+    if (!ts.isStringLiteral(st.moduleSpecifier) || st.moduleSpecifier.text !== CONTRACTS_MODULE) continue;
+    const clause = st.importClause;
+    if (clause === undefined) continue;
+    if (clause.name !== undefined) contractsNames.add(clause.name.text);
+    const nb = clause.namedBindings;
+    if (nb === undefined) continue;
+    if (ts.isNamespaceImport(nb)) contractsNames.add(nb.name.text);
+    else for (const sp of nb.elements) contractsNames.add(sp.name.text);
+  }
+
+  /** 该字面量是否处于「锚定表的键位」⇒ C 按机制豁免（只豁免键，**值照常计入**）。 */
+  const anchoredKeyOf = (node) => {
+    let p = node.parent;
+    if (p !== undefined && ts.isComputedPropertyName(p) && p.expression === node) p = p.parent;
+    if (p === undefined || !ts.isPropertyAssignment(p)) return false;
+    const isKeyPosition =
+      p.name === node || (ts.isComputedPropertyName(p.name) && p.name.expression === node);
+    if (!isKeyPosition) return false;
+    const objLit = p.parent;
+    if (objLit === undefined || !ts.isObjectLiteralExpression(objLit)) return false;
+    const keyType = recordKeyType(declaredTypeOfObjectLiteral(objLit));
+    if (keyType === undefined) return false;
+    return keyTypeAnchored(keyType, contractsNames, localAliases);
+  };
+
   const roleOf = (node) => {
     const p = node.parent;
     if (!p) return "other";
@@ -201,6 +370,7 @@ function extractLiterals(code, fileNameHint) {
         text: node.text,
         line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
         role: roleOf(node),
+        anchoredKey: anchoredKeyOf(node),
       });
     }
     ts.forEachChild(node, visit);
@@ -236,6 +406,90 @@ function extractLiterals(code, fileNameHint) {
   if (!nid || nid.role !== "nodeId") blind.push("词法自检失败：`nodeId:` 角色识别不出来 —— K 判据失效");
 }
 
+/* ═══════════════ 3b · 类型锚自检：新判据的金丝雀（每次运行都跑） ═══════════════
+ *
+ * 「C 的类型锚豁免」是新代码，而**豁免逻辑写瞎了的样子和代码干净的样子一模一样**（都是绿的）。
+ * 故正反对拍：4 段该豁免 + 5 段**必须不豁免**（每一段都对应一条实测过的洗白路子）。
+ * 任一条对不上 ⇒ 判「门自己瞎了」，不是「代码干净」。
+ */
+{
+  const IMP = `import { type ChainNodeDef } from "${CONTRACTS_MODULE}";`;
+  const ALIAS = 'type Rid = ChainNodeDef["nodeId"];';
+  const cases = [
+    // ── 该豁免：键位 + 键类型锚在契约上（编译期 TS2353 兜着，改册这里会红）────────
+    {
+      name: "Partial<Record<锚定联合, …>> 的键",
+      lit: "demand.anchor_partial",
+      want: true,
+      code: `${IMP}\n${ALIAS}\nconst T: Partial<Record<Rid, number>> = { "demand.anchor_partial": 1 };`,
+    },
+    {
+      name: "裸 Record<锚定联合, …> 的键（没套 Partial 也算）",
+      lit: "demand.anchor_bare",
+      want: true,
+      code: `${IMP}\n${ALIAS}\nconst T: Record<Rid, number> = { "demand.anchor_bare": 1 };`,
+    },
+    {
+      name: "`satisfies` 形态（实测同样报 TS2353）",
+      lit: "demand.anchor_satisfies",
+      want: true,
+      code: `${IMP}\n${ALIAS}\nconst T = { "demand.anchor_satisfies": 1 } satisfies Partial<Record<Rid, number>>;`,
+    },
+    {
+      name: "别名链多跳（Rid → Mid → 契约导入）",
+      lit: "demand.anchor_chain",
+      want: true,
+      code: `${IMP}\ntype Mid = ChainNodeDef["nodeId"];\ntype Rid2 = Mid;\nconst T: Partial<Record<Rid2, number>> = { "demand.anchor_chain": 1 };`,
+    },
+    // ── 必须不豁免：五条洗白路子 ─────────────────────────────────────────────
+    {
+      name: "**本地伪造** `type Rid = string` 白嫖豁免",
+      lit: "demand.forge_string_alias",
+      want: false,
+      code: `${IMP}\ntype Rid = string;\nconst T: Partial<Record<Rid, number>> = { "demand.forge_string_alias": 1 };`,
+    },
+    {
+      name: "掺 `string` 把联合泡宽（实测 tsc 当场不再咬）",
+      lit: "demand.forge_widened",
+      want: false,
+      code: `${IMP}\n${ALIAS}\nconst T: Partial<Record<Rid | string, number>> = { "demand.forge_widened": 1 };`,
+    },
+    {
+      name: "`as` 强制断言（实测会把不在册的键静默洗白）",
+      lit: "demand.forge_as_cast",
+      want: false,
+      code: `${IMP}\n${ALIAS}\nconst T = { "demand.forge_as_cast": 1 } as Partial<Record<Rid, number>>;`,
+    },
+    {
+      name: "锚定表里的**值**位（值不受键类型约束，那才是真词表）",
+      lit: "demand.forge_value_slot",
+      want: false,
+      code: `${IMP}\n${ALIAS}\nconst T: Partial<Record<Rid, string>> = { "demand.anchor_partial": "demand.forge_value_slot" };`,
+    },
+    {
+      name: "锚点不是 @platform/contracts（从别的文件 re-export 再 import）",
+      lit: "demand.forge_local_module",
+      want: false,
+      code: `import { type ChainNodeDef } from "./chainNodeSemantics";\n${ALIAS}\nconst T: Partial<Record<Rid, number>> = { "demand.forge_local_module": 1 };`,
+    },
+  ];
+  for (const c of cases) {
+    const hit = extractLiterals(c.code, "selftest-anchor.ts").find((x) => x.text === c.lit);
+    if (hit === undefined) {
+      blind.push(`类型锚自检失败：样例「${c.name}」里的字面量 ${c.lit} 根本没被提取器取到 —— 自检本身空转`);
+      continue;
+    }
+    if (hit.anchoredKey !== c.want) {
+      blind.push(
+        `类型锚自检失败：样例「${c.name}」期望 anchoredKey=${String(c.want)}，实得 ${String(hit.anchoredKey)}` +
+          (c.want
+            ? " —— 豁免没生效，合法写法会被 C 误判成手抄词表（逼出豁免名单 = 把门蛀空）"
+            : " —— **豁免被白嫖**：这条路子实测能骗过 tsc，门放过它就等于把 C 拆了"),
+      );
+    }
+  }
+}
+
 /* ═══════════════ 4 · 组装扫描面 ═══════════════ */
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "__snapshots__", "coverage"]);
 function walk(dir, acc) {
@@ -268,6 +522,14 @@ if (!feRel.has(FE_SENTINEL_FILE)) {
 targets.push(...feFiles);
 
 /* ═══════════════ 5 · 逐文件判据 K / N / C / L ═══════════════ */
+/**
+ * 类型锚豁免的实际命中数 —— **打进通过行**，让「豁免有没有真在用」可核对。
+ * 不打出来的话，将来某天豁免逻辑坏成恒 false，门照样绿（因为该文件也会被改成别的写法），
+ * 没人看得见判据其实已经死了。（同源戒律：绿测试 ≠ 能用。）
+ */
+let anchoredKeyHits = 0;
+const anchoredKeyFiles = new Set();
+
 for (const file of targets) {
   const rel = relative(ROOT, file).split(sep).join("/");
   const isFrontend = feRel.has(rel);
@@ -276,7 +538,7 @@ for (const file of targets) {
   const seenKnownIds = new Map(); // 在册 id -> 首次出现行（C 判据）
   const seenLabels = new Map(); // 在册 label -> 首次出现行（L 判据）
 
-  for (const { text, line, role } of lits) {
+  for (const { text, line, role, anchoredKey } of lits) {
     // ── K：键位判据。任何方言都咬（含无点号的旧 D1 词表 `sop_consensus`）。
     if (role === "nodeId" && !isAllowed(text)) {
       errs.push(
@@ -296,7 +558,24 @@ for (const file of targets) {
       );
       continue;
     }
-    if (known.has(text) && !seenKnownIds.has(text)) seenKnownIds.set(text, line);
+    // ── C 的**按机制豁免**：处于「键类型锚在契约上」的表的键位 ⇒ **只**从 C 的抄表数里扣掉。
+    //    这类键改册即 TS2353（编译期包含关系），C 的立论「改册时这里不会跟着变」对它不成立。
+    //    三条边界，一条都不许含糊：
+    //     · K/N 在上面**已经走过**了 —— 不在册的键照样被 N 咬。豁免的是「合法键的计数」，
+    //       不是「这张表怎么写都行」；
+    //     · **值**不在豁免范围（`anchoredKey` 只在键位为真）——值不受键类型约束，那才是真词表；
+    //     · **L 照常计数**（下一行不加条件）：键绑死了不代表值干净，「中文映射表副本」的形态
+    //       恰恰是在值位抄 `label`。豁免只回答「键会不会漂」，不回答「值是不是副本」。
+    if (known.has(text)) {
+      // 只在**豁免真的起了作用**时计数（该字面量确是在册 nodeId、本会被 C 数进去）。
+      // 数「所有锚定键」会把 `Record<Verdict, string>` 这种与本门无关的表也算进来 ⇒ 通过行说谎。
+      if (anchoredKey === true) {
+        anchoredKeyHits += 1;
+        anchoredKeyFiles.add(rel);
+      } else if (!seenKnownIds.has(text)) {
+        seenKnownIds.set(text, line);
+      }
+    }
     if (knownLabels.has(text) && !seenLabels.has(text)) seenLabels.set(text, line);
   }
 
@@ -307,7 +586,11 @@ for (const file of targets) {
     errs.push(
       `${rel}:${[...seenKnownIds.values()][0]} [C·抄表] 本文件把 ${seenKnownIds.size} 个在册 nodeId 写成了字面量（${sample}…）——` +
         `id 全对也仍然是**第二份注册表**：改册时这里不会跟着变，就退回 D1/E1 各持一套的状态。` +
-        `请改成从 \`CHAIN_NODE_REGISTRY\` 派生（见 views/sim/InspectorNodePanel.tsx 的写法）。`,
+        `请改成从 \`CHAIN_NODE_REGISTRY\` 派生（见 views/sim/InspectorNodePanel.tsx 的写法）。` +
+        `若这本就是一张「按节点写的原创内容表」（键必须逐个写出来、内容派生不出来），` +
+        `把它声明成 \`const T: Partial<Record<Rid, …>> = {…}\`（\`Rid\` 由 \`@platform/contracts\` 的 ` +
+        `\`ChainNodeDef["nodeId"]\` 派生）—— 键就绑在编译期了，本判据按机制放行。` +
+        `⚠ 别用 \`as\` 断言、也别把键类型掺成 \`Rid | string\`：这两条实测都会让 \`tsc\` 不再咬，门也照样不认。`,
     );
   }
   if (seenLabels.size >= COPY_THRESHOLD) {
@@ -333,5 +616,8 @@ if (blind.length > 0 || errs.length > 0) process.exit(1);
 console.log(
   `✅ chain-node-singlesource:check 通过（注册表 ${registry.length} 节点 / ${stages.length} 阶段前缀 · ` +
     `扫描 ${targets.length} 个文件：datacore ${SCANNED_FILES.length} + frontend ${feFiles.length} · ` +
-    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · 词法自检通过）`,
+    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · 词法自检 + 类型锚自检(4 正/5 反)通过 · ` +
+    `C 类型锚豁免命中 ${anchoredKeyHits} 处 / ${anchoredKeyFiles.size} 文件` +
+    (anchoredKeyFiles.size > 0 ? `：${[...anchoredKeyFiles].join(", ")}` : "（今天没有任何文件用到该豁免）") +
+    `）`,
 );
