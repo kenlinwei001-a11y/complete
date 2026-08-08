@@ -47,8 +47,13 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
 }
 
 /**
- * WO-LIGHTUP：demo 租户显式点亮 5 个 QOS 暗发功能（battery「all on」模板诚实排除它们·须显式 override 开·见 features.ts
- * QOS_DARK_LAUNCH_FEATURES）。让 demo 开箱即体验：DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径。
+ * WO-LIGHTUP → WO-DEMO-LIGHTUP-2：demo 租户显式点亮 **14 条**暗发功能（13 条 QOS 路由门 + 1 条 DataCore 性能门）。
+ * 这些键被 battery「all on」模板诚实排除（`QOS_DARK_LAUNCH_FEATURES` / `PERF_DARK_LAUNCH_FEATURES`·见 features.ts），
+ * 只能经**显式** override 开 —— 本表就是那份显式 override。让 demo 开箱即体验：
+ * DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径 / 推理旁白 / 停滞升级 /
+ * 确定性跨域 + L3 耦合联合求解 / 自由问答挂技能 / L2 真分解 / LLM 多意图兜底 / 优化 what-if 会话路由 / 求解器上下文按需加载。
+ *
+ * ⚠ 暗发集合共 15 条，本表 14 条 —— 差的那一条（`qos.llm-budget-enforce`）是**刻意不点**，理由写在下方。
  *
  * **只在生产 SEED_DEMO=1 播种路径调用**（server.ts / seed-cli.ts·在 seedDemo 之后）——**不放进基座 seedDemo**：
  * 单测 makeApp 只调 seedDemo 需要「干净 demo·configVersion=0·暗发默认关」的基线（features.test / dark-feature-default-off
