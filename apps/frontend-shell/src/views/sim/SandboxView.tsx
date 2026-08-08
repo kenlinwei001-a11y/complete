@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
@@ -256,6 +256,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * **不提供** LOCAL 档（拒绝进入「说 LOCAL 算 GLOBAL」那个状态），屏上写明原因。
    */
   const [certTarget, setCertTarget] = useState<string>("");
+  /**
+   * WO-SIM-SCOPE-LOCAL ② · 本会话**建立时用的范围**（= 真正写进 `SimSession.scope` 的那一份）。
+   * 与 `certScope`/`certTarget`（就绪认证口径）分开记：两者可以不一致，不一致时屏上必须看得见，
+   * 并给一个显式的「按当前范围重建会话」动作 —— 而不是让用户以为自己选的范围已经作用到会话上。
+   */
+  const [sessionScope, setSessionScope] = useState<{ kind: "GLOBAL" | "LOCAL"; target: string | null } | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
   const [branching, setBranching] = useState(false);
   const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
@@ -268,6 +275,17 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const effectiveTarget = certTarget || localTargets[0] || "";
   const canLocal = localTargets.length > 0; // 本体无对象类型 ⇒ LOCAL 无 target 可带 ⇒ 该档不提供（诚实降级）
 
+  // 首次建会话要用「当前选中的范围」，但**不能**让它进那个 effect 的依赖（依赖一变就是第二次 createSimSession）。
+  // ref 只读不订阅：既拿得到当前值，又不把 effect 变成"选范围就重建会话"。
+  const certScopeRef = useRef<{ kind: "GLOBAL" | "LOCAL"; target: string | null }>({ kind: "GLOBAL", target: null });
+  certScopeRef.current = { kind: certScope, target: certScope === "LOCAL" ? effectiveTarget : null };
+
+  // 选中的范围 vs 会话建立时的范围是否已经不是一回事（不一致就必须让用户看见，并给一条显式的收敛路径）。
+  const scopeDrifted =
+    sessionScope !== null &&
+    (sessionScope.kind !== certScope ||
+      (certScope === "LOCAL" && sessionScope.target !== effectiveTarget));
+
   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
   const globalKpi = useMemo(() => {
     const objs = Object.keys(world);
@@ -275,31 +293,57 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
   }, [world]);
 
-  // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
-  const init = useCallback(async (c: SandboxViewConfig) => {
+  /**
+   * 建会话：baseSnapshot 由配置派生（无业务常数）。
+   *
+   * WO-SIM-SCOPE-LOCAL ②：`scope` 从前是硬写的 **`{}`**（空范围）——向导屏里用户逐步选好的
+   * `{kind,target}` 被它当场作废（向导 `:112` 建会话 A → `:133` navigate → A 的 id 随组件 state 蒸发 →
+   * 本屏 `!sessionId` 又建了个范围为空的会话 B）。现在把**用户当前选的范围真的写进会话**，
+   * 会话再也不是"空范围"的了；并记下 `sessionScope` 以便屏上随时对得上账。
+   */
+  const init = useCallback(async (c: SandboxViewConfig, kind: "GLOBAL" | "LOCAL", target: string | null) => {
     try {
       const base = deriveBaseSnapshot(c);
-      const s = await createSimSession({ baseSnapshot: base, scope: {} });
+      const scope = { kind, target: kind === "LOCAL" ? target : null };
+      const s = await createSimSession({ baseSnapshot: base, scope });
       setSessionId(s.id);
+      setSessionScope(scope);
       setWorld(base);
       setCurTick(0);
-      const g0 = Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length);
-      setHistory([g0]);
+      setHistory([Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length)]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
       // WO-SIM-SCOPE-LOCAL：LOCAL 档必带 target —— 这里也补齐，杜绝再留一个「传 2 个实参」的调用点回潮。
       try {
-        setCert(await fetchSimCertification(s.id, certScope, certScope === "LOCAL" ? effectiveTarget : undefined));
+        setCert(await fetchSimCertification(s.id, kind, kind === "LOCAL" ? (target ?? undefined) : undefined));
       } catch {
         /* certification entitlement 关时容错：仅不显认证面板 */
       }
     } catch (e) {
       toastError(e);
     }
-  }, [certScope, effectiveTarget]);
+  }, []);
 
+  // 首个会话按**当前选中的范围**建（默认 GLOBAL = 整本体，是个真范围，不是空对象）。
+  // 依赖里刻意不放 certScope/effectiveTarget：它们变了要走「重建会话」那条显式路径，
+  // 不许在会话建立途中把这个 effect 顶成第二次 createSimSession（重复建会话正是本单要根治的病）。
   useEffect(() => {
-    if (cfg && !sessionId) void init(cfg);
+    if (cfg && !sessionId) void init(cfg, certScopeRef.current.kind, certScopeRef.current.target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg, sessionId, init]);
+
+  /** 显式「按当前范围重建会话」：把当前选中的 scope 真的落到一个新会话上（推演从 tick0 重开）。 */
+  const rebuildSession = useCallback(async () => {
+    if (!cfg || rebuilding) return;
+    setRebuilding(true);
+    try {
+      setBranchId(null);
+      setCompare(null);
+      await init(cfg, certScope, certScope === "LOCAL" ? effectiveTarget : null);
+      toast(`已按范围 ${certScope}${certScope === "LOCAL" ? `:${effectiveTarget}` : ""} 重建会话（推演从 tick 0 重开）`, "success");
+    } finally {
+      setRebuilding(false);
+    }
+  }, [cfg, rebuilding, init, certScope, effectiveTarget]);
 
   // ④ scope 切换 → 重取就绪认证（GLOBAL↔LOCAL），不重建会话。
   // LOCAL 必带 target；**先拿到与该范围对应的数字、再切屏上的档**，杜绝「档位说 LOCAL、数字还是上一次 GLOBAL」。
@@ -465,6 +509,44 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               </span>
             )}
           </div>
+
+          {/* ── WO-SIM-SCOPE-LOCAL ②：会话范围对账 + 诚实位 ────────────────────────────
+              退役掉的向导屏，唯一有价值的一步是「进沙盘前先把范围选定」；但它选完就丢
+              （建了会话 A 就 navigate 走，本屏又建了个 `scope:{}` 的会话 B）。现在范围**真的**
+              写进会话，且屏上随时能看到「本会话建立于哪个范围」与「你现在选的是哪个范围」。 */}
+          <div data-testid="sandbox-session-scope" className={styles.sub} style={{ marginBottom: 8, lineHeight: 1.6 }}>
+            <div data-testid="sandbox-session-scope-of-record">
+              本会话建立于范围{" "}
+              <b className="mono">
+                {sessionScope ? `${sessionScope.kind}${sessionScope.target ? `:${sessionScope.target}` : ""}` : "（建立中…）"}
+              </b>
+            </div>
+            {/* 诚实位（不许暗示范围已生效）：`SimSession.scope` 今天在引擎侧**有写端无读端** ——
+                落库在 datacore `app.ts:1391`，此后只被读 `snapshotKind` 一个键（`:1408`/`:1705` 过滤方案快照·
+                `:1512` 分支整体继承）；tick 路（`app.ts:1415` 起）遍历的是 `ontologyTypes.list(tenantId)` 全本体，
+                从不看 `session.scope`。所以范围选择当前**只作用于就绪认证口径，尚未裁剪推演本身**。
+                这笔账另记（G-SIM-SCOPE-UNREAD），本屏只负责不撒谎。 */}
+            <div data-testid="sandbox-scope-reach-note">
+              ⚠ 范围选择当前<b>只作用于就绪认证口径</b>，<b>尚未裁剪推演本身</b>——推演引擎按整租户本体传导，不读会话范围。
+            </div>
+            {scopeDrifted && (
+              <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span data-testid="sandbox-scope-drift" style={{ color: "var(--warn)" }}>
+                  你当前选的范围（{certScope}
+                  {certScope === "LOCAL" ? `:${effectiveTarget}` : ""}）与本会话建立时的范围不一致。
+                </span>
+                <button
+                  className="btn sm ghost"
+                  data-testid="sandbox-scope-rebuild-btn"
+                  disabled={rebuilding}
+                  onClick={() => void rebuildSession()}
+                >
+                  {rebuilding ? "重建中…" : "按当前范围重建会话"}
+                </button>
+              </div>
+            )}
+          </div>
+
           {cert ? (
             <SimReadinessPanel
               cert={cert}

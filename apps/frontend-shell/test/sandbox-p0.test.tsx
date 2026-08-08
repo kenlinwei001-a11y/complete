@@ -195,8 +195,12 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     expect(within(screen.getByTestId("sim-cert-entering-0")).getByText(/deriv:risk_calc/)).toBeTruthy();
 
     // scope 切换：点 LOCAL → 重取 cert（pct 45 + targetRef）。
+    // WO-SIM-SCOPE-LOCAL：本行原断言 `("sims_main","LOCAL")` **恰好把缺陷钉成了期望** ——
+    // 少的第 3 个实参 target 正是病灶：不带 target 的 LOCAL 在后端 `app.ts:1589`
+    // (`scopeKind==="LOCAL" && target`) 恒 false ⇒ 算全本体，回包却仍自称 LOCAL（静默错答）。
+    // 现改成断言 target **必须**随行（CFG.nodeTypes[0]="Supplier" = 未显式选择时的默认目标）。
     await user.click(screen.getByTestId("sim-cert-scope-LOCAL"));
-    await waitFor(() => expect(fetchCertFn).toHaveBeenCalledWith("sims_main", "LOCAL"));
+    await waitFor(() => expect(fetchCertFn).toHaveBeenCalledWith("sims_main", "LOCAL", "Supplier"));
     await waitFor(() => expect(screen.getByTestId("sim-cert-gauge-pct").textContent).toContain("45"));
     expect(screen.getByTestId("sim-cert-target").textContent).toContain("Factory#0");
   });
