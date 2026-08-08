@@ -106,6 +106,42 @@ export function cellSourceMap(bases: { baseId: string; factory_type?: string }[]
   return map;
 }
 
+/**
+ * WO-OPT-WHATIF-DATA · 基地**选址成本**派生（闭 §8 G-OPT-WHATIF-NO-COST-DATA 数据半）。
+ *
+ * 病根（「接了线没数据」形态②）：`optimize_whatif` 的 `facility_location` 自动装配
+ * （`solvers/service.ts assembleBaselineFromSelection`）要求决策承载类型上存在**命中成本词库
+ * （`solvers/field-role-lexicon.ts ROLE_LEXICON.cost`）的数值字段**才能绑 `open_cost`/`assign_cost` 角色；
+ * 而 demo 的 `Base` 数值属性只有 util/gwh/formationCapDaily/agingCapDaily/lon/lat —— 一个成本字段都没有
+ * ⇒ 装配恒报缺 `open_cost` ⇒ 会话路由虽真命中、真 invoke，仍 100% 降级 path-B，用户拿不到优化结论。
+ *
+ * **R6 命门（本单最大的坑）**：两个成本值**全部由已有量派生、零 rng 消耗**——照 WO-CEO-DATA-2
+ * （`Equipment.oee_current` 由 A×P×Q 派生）同一路子。不抽新随机数 ⇒ `rngTopo`/`rng` 消耗序列一字不动
+ * ⇒ 下游全部合成值零位移、同 (industry,scale,seed) 仍字节一致。
+ *
+ *  - `openCost`（万元/年·年固定开办成本）= 铭牌产能 × 单位产能固定成本 + 产线数 × 单线固定成本。
+ *    两个入参 gwh/lines 都取自 BASE_REGISTRY 单一来源（DF.1·R14·不内联基地字面量）。
+ *  - `serveCost`（万元/需求点·年·单位需求点干线履约成本）= **产能加权全网平均干线距离** × 每公里费率。
+ *    距离走既有 `baseDistanceKm`（haversine on BASE_REGISTRY·单一来源）——西部基地（成都/眉山/自贡）
+ *    网络可达性差 ⇒ 履约成本高，东部基地低，是真地理信号而非随机噪声。
+ */
+export function baseOpenCostWan(gwh: number, lines: number): number {
+  const c = BATTERY_SOLVER_PARAMS.facilityCost as { gwhFixedWan: number; lineFixedWan: number; servePerKmWan: number };
+  return round(gwh * c.gwhFixedWan + lines * c.lineFixedWan, 2);
+}
+
+/** 产能加权全网平均干线距离(km)·haversine 于 BASE_REGISTRY（纯派生·无 rng·同基地距 0 计入权重）。 */
+export function baseNetworkMeanDistanceKm(baseId: string): number {
+  const totalGwh = BASE_REGISTRY.reduce((s, b) => s + b.gwh, 0);
+  const weighted = BASE_REGISTRY.reduce((s, b) => s + b.gwh * baseDistanceKm(baseId, b.baseId), 0);
+  return totalGwh > 0 ? weighted / totalGwh : 0;
+}
+
+export function baseServeCostWan(baseId: string): number {
+  const c = BATTERY_SOLVER_PARAMS.facilityCost as { gwhFixedWan: number; lineFixedWan: number; servePerKmWan: number };
+  return round(baseNetworkMeanDistanceKm(baseId) * c.servePerKmWan, 2);
+}
+
 // PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
 const CUSTOMERS = [
   // 乘用车
@@ -335,6 +371,11 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
   // freightCost = baseDistanceKm × tonKmRate × (qty × qtyToTon)（确定性·同基地=0 距=0 费=0）。
   interbase: { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 },
+  // WO-OPT-WHATIF-DATA · 设施选址成本费率册（R14：业务常数入册·禁生成环内联魔数）。
+  // Base.openCost = gwh × gwhFixedWan + lines × lineFixedWan（规模派生·万元/年）；
+  // Base.serveCost = 产能加权全网平均干线距离km × servePerKmWan（地理派生·万元/需求点·年）。
+  // 三个费率**只在此一处**；两个派生量都不消耗 rng（R6 字节一致，见 baseOpenCostWan/baseServeCostWan）。
+  facilityCost: { gwhFixedWan: 120, lineFixedWan: 260, servePerKmWan: 0.05 },
   // WO-W5 · 业务类型（乘/商/储）经营场景 regime（R14·入册·禁求解器内联魔数）。三类差异化经营场景的确定性种子参数：
   //   dedicationWeight：该业务线在共享工厂中的**专线产能配比**——求解器据此按类可产基地年产能 × 权重算类占用率
   //     （util = 类年需求 / 类年产能×权重）。默认令三类占用率落到产品负责人 spec 的三档：乘用车产能不足(>1)、
@@ -642,6 +683,13 @@ const baseProps: PropertyDef[] = [
   { propKey: "factory_type", dataType: "enum", isPrimaryKey: false }, // CELL | PACK | CELL+PACK
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运营中 | 在建 | 停产
   { propKey: "start_date", dataType: "date", isPrimaryKey: false },
+  // WO-OPT-WHATIF-DATA · 选址决策成本（**末位追加·不动前序序**·守 R6）。
+  // 这两个字段是 optimize_whatif/facility_location 自动装配唯一缺的那半：`assembleBaselineFromSelection`
+  // 按 ROLE_LEXICON.cost 词库在决策承载类型上找数值字段绑 open_cost / assign_cost，Base 此前一个都没有
+  // ⇒ 装配恒报缺 ⇒ 会话真命中也只能降级 path-B。声明序即角色序：**第一个**命中成本词库的数值字段绑
+  // open_cost（openCost），**第二个**绑 assign_cost（serveCost）——故两者不可换位。
+  { propKey: "openCost", dataType: "number", isPrimaryKey: false, description: "基地年固定开办成本（万元/年）= 铭牌年产能 × 单位产能固定成本 + 产线数 × 单线固定成本；facility_location 的 open_cost 系数源。" },
+  { propKey: "serveCost", dataType: "number", isPrimaryKey: false, description: "单位需求点年均干线履约成本（万元/需求点·年）= 产能加权全网平均干线距离 × 每公里费率；facility_location 的 assign_cost 系数源。" },
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
@@ -1720,6 +1768,8 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Base.agingCapDaily": "老化日产能", "Base.lon": "经度", "Base.lat": "纬度",
   "Base.factory_code": "工厂编码", "Base.province": "省份", "Base.city": "城市",
   "Base.factory_type": "工厂类型", "Base.status": "运营状态", "Base.start_date": "投产日期",
+  // WO-OPT-WHATIF-DATA · 选址决策成本（optimize_whatif/facility_location 的 open_cost / assign_cost 系数源）
+  "Base.openCost": "年固定开办成本", "Base.serveCost": "单位需求点履约成本",
   "Line.lineId": "产线编号", "Line.baseId": "所属基地", "Line.name": "产线名称",
   "Line.utilization": "利用率", // ← 与 LEVER_PROP_META["Line.utilization"].label「产线·利用率」同一串
   "Line.actual_output_daily": "日实际产出", "Line.schedule_attainment": "排产达成率",
@@ -2128,7 +2178,9 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
 function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
   const units: Record<string, Record<string, string>> = {
-    Base: { gwh: "GWh", util: "%" },
+    // WO-OPT-WHATIF-DATA：openCost/serveCost 显式标口径（R18）——「万元」是 facility_location 目标值的单位，
+    // 不标则 Δ目标值在答案里是个没量纲的裸数（同 WO-UNITPRICE-SCALE 的病）。
+    Base: { gwh: "GWh", util: "%", openCost: "万元", serveCost: "万元" },
     Model: { unitPrice: "元" },
     // WO-UNITPRICE-SCALE（R18 口径显式标注）：Order.unitPrice 此前**未声明单位**，而同源的
     // Model.unitPrice / OrderLine.unitPrice 都已标 "元" —— 缺声明正是「两处单价看着冲突」的温床。
@@ -3166,6 +3218,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
       status: "运营中",
       start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
+      // WO-OPT-WHATIF-DATA · 选址决策成本：**纯派生·零 rng 消耗**（照 WO-CEO-DATA-2 Equipment.oee_current 路子）。
+      // 入参 gwh/lines 取自 BASE_REGISTRY（DF.1 单一来源）、距离走 baseDistanceKm（haversine 同一册）——
+      // 不抽新随机数 ⇒ rng 消耗序列一字不动 ⇒ 下游订单/拓扑合成值零位移（R6 字节一致）。
+      // 末位追加，故 props 键序（→ RawDataset.fields 序）前序不动。
+      openCost: baseOpenCostWan(b.gwh, b.lines),
+      serveCost: baseServeCostWan(b.baseId),
     };
   });
 
