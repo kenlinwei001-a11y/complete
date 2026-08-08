@@ -179,6 +179,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.transit-flow", name: "在途与在制", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "view.physical-topology", name: "物理拓扑", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "view.node-inspector", name: "节点检视", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  // WO-IMPEDIMENTS-REACHABLE：沙盘第五子视图（后端 BUILTIN_VIEWS 同批入册）。mock 缺它 ⇒
+  // `nav-group-coverage:check` 判据② 红，且 f61 的归组断言对它恒真（哑门）——同 #99/#110 的病根。
+  { key: "view.chain-impediments", name: "全链阻滞点", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_impediments"] } },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -524,6 +527,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "transit-flow", title: "在途与在制", renderer: "transit-flow", layout: {} },
     { key: "physical-topology", title: "物理拓扑", renderer: "physical-topology", layout: {} },
     { key: "node-inspector", title: "节点检视", renderer: "node-inspector", layout: {} },
+    { key: "chain-impediments", title: "全链阻滞点", renderer: "chain-impediments", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
