@@ -45,7 +45,7 @@
  *   ⇒ 判据 C **跳过**「处于**键位**、且该对象字面量的**声明类型**的键类型锚在契约上」的字面量。
  *
  *   ⚠ 这是「按机制豁免」，不是「按文件豁免」——豁免名单一开口，将来的真问题会跟着被放过。
- *      故豁免必须**反伪造**，实测过的三条洗白路子逐条堵死（`--strict` 下亲手跑的，不是推理）：
+ *      故豁免必须**反伪造**，六条口子逐条堵死（①②③ 是 `tsc --strict` 下亲手跑出来的，不是推理）：
  *      ① `type RegisteredChainNodeId = string`（本地伪造一个同名别名白嫖）⇒ 键类型解析不到
  *         `@platform/contracts` 的导入名 ⇒ **不豁免**。豁免的是「锚在契约上」，不是「名字长得像」。
  *      ② `Record<Id | string, …>`（掺一个 `string` 把联合泡宽）⇒ 实测 `tsc` **不再报错**
@@ -59,6 +59,11 @@
  *         re-export 一个 `RegisteredChainNodeId` 再 import 来用 ⇒ **不豁免**（fail-closed）。
  *         这条严得刻意：合法的修法只是多写一行 `import { type ChainNodeDef } from "@platform/contracts"`，
  *         成本近零；而放开跨文件追溯，就等于给伪造者开了一条门看不见的路。
+ *      ⑥ 键类型里**每一个**类型引用都必须解析得动（契约导入名，或本文件里能展开的 `type` 别名），
+ *         解析不动即**不豁免**。这条是 ② 的补漏，不补就留了个 ② 看不见的洞：
+ *         `Record<Rid | Loose, …>` 里 `Loose` 从别处 import 进来、其定义很可能就是 `string`，
+ *         而本文件的 AST 里根本不出现 `string` 这个关键字 ⇒ 只查 ② 会把一张已经被泡宽的表
+ *         当成锚定的放行。（配了金丝雀，见「门自己不许瞎 ⑤」的第 6 条反例样本。）
  *
  *   **L 判据不受本豁免影响**（刻意）：键绑死了不代表值干净——「中文映射表副本」的形态是
  *   在**值**位抄 `label`，L 照常计数。豁免只回答「键会不会漂」，不回答「值是不是副本」。
@@ -104,9 +109,11 @@
  *       变异后仍绿。本门用 **TypeScript 官方 scanner** 取字面量（注释/正则/JSX 由编译器天然处理），
  *       自检是为了证明它**确实**如此，而不是宣称如此。TS 装不上 ⇒ 红（fail-closed，不静默降级）。
  *  ⑤ **类型锚自检（每次运行都跑）**：新判据也得配金丝雀 —— 豁免逻辑本身是新代码，
- *     「它不红」既可能是「代码干净」也可能是「豁免写瞎了把谁都放过」。故拿 9 段内嵌样本
- *     正反对拍：4 段该豁免（`Partial<Record<…>>` / 裸 `Record<…>` / `satisfies` / 别名链），
- *     5 段**必须不豁免**（本地伪造 `= string` / 掺 `string` 泡宽 / `as` 断言 / 值位 / 无注解裸表）。
+ *     「它不红」既可能是「代码干净」也可能是「豁免写瞎了把谁都放过」。故拿 10 段内嵌样本
+ *     正反对拍：4 段该豁免（`Partial<Record<…>>` / 裸 `Record<…>` / `satisfies` / 别名链多跳），
+ *     6 段**必须不豁免**（本地伪造 `= string` / 掺 `string` 泡宽 / `as` 断言 / 值位 /
+ *     非契约模块锚点 / 联合里掺解析不动的外来类型）。正反两侧的条数**从样例表现算**，
+ *     不在通过行里手抄 —— 治手抄的门自己手抄一个数是同一种病。
  *     任一条对不上 ⇒ 判「门自己瞎了」而不是「代码干净」。
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
@@ -242,17 +249,26 @@ function recordKeyType(typeNode, depth = 0) {
 }
 
 /**
- * 键类型是否**锚在契约上** = ①解析得到 `@platform/contracts` 的某个导入名，
- * 且 ②整棵类型里不出现 `string`/`any`（实测：掺一个 `string` 后 `tsc` 当场不再咬，
- * 编译期包含关系失效 —— 那正是最省事的伪造法，必须堵）。
- * 本地 `type X = …` 别名会**在本文件内**递归展开；跨文件不追（fail-closed，见文件头反伪造 ⑤）。
+ * 键类型是否**锚在契约上**。三个条件同时成立才算：
+ *  ① 解析得到 `@platform/contracts` 的某个导入名（`sawContracts`）；
+ *  ② 整棵类型里不出现 `string`/`any`（`sawWide`）—— 实测掺一个 `string` 后 `tsc` 当场不再咬，
+ *     编译期包含关系失效，那正是最省事的伪造法；
+ *  ③ 类型里**每一个**类型引用都解析得动（`sawUnresolvable`）—— 要么是契约导入名，
+ *     要么是本文件里能展开的 `type` 别名。**解析不动就不豁免**（fail-closed）。
+ *     ③ 是 ② 的补漏：`Record<Rid | Loose, …>` 里 `Loose` 从别处 import 进来、其定义是 `string`，
+ *     本文件 AST 里根本看不见那个 `string` 关键字 ⇒ 只查 ② 会把这张已经被泡宽的表当成锚定的放过。
+ * 本地 `type X = …` 别名会**在本文件内**递归展开；跨文件不追（见文件头反伪造 ⑤）。
  */
 function keyTypeAnchored(typeNode, contractsNames, localAliases) {
   let sawContracts = false;
   let sawWide = false;
+  let sawUnresolvable = false;
   const seen = new Set();
   const walk = (node, depth) => {
-    if (node === undefined || depth > 12) return;
+    if (node === undefined || depth > 12) {
+      sawUnresolvable = true; // 深度兜底也算「看不清」，同样 fail-closed
+      return;
+    }
     if (WIDE_TYPE_KINDS.has(node.kind)) {
       sawWide = true;
       return;
@@ -260,22 +276,26 @@ function keyTypeAnchored(typeNode, contractsNames, localAliases) {
     if (ts.isTypeReferenceNode(node)) {
       const name = leftmostName(node.typeName);
       if (contractsNames.has(name)) sawContracts = true;
-      else if (localAliases.has(name) && !seen.has(name)) {
-        seen.add(name);
-        walk(localAliases.get(name), depth + 1);
-      }
+      else if (localAliases.has(name)) {
+        // 别名已展开过就不重复走（循环别名保护）；首次必须真展开，展不开即不可解析
+        if (!seen.has(name)) {
+          seen.add(name);
+          walk(localAliases.get(name), depth + 1);
+        }
+      } else sawUnresolvable = true;
       for (const a of node.typeArguments ?? []) walk(a, depth + 1);
       return;
     }
     if (ts.isTypeQueryNode(node)) {
       // `typeof CHAIN_NODE_REGISTRY[number]["nodeId"]` —— 值侧导入同样算锚
       if (contractsNames.has(leftmostName(node.exprName))) sawContracts = true;
+      else sawUnresolvable = true;
       return;
     }
     ts.forEachChild(node, (c) => walk(c, depth + 1));
   };
   walk(typeNode, 0);
-  return sawContracts && !sawWide;
+  return sawContracts && !sawWide && !sawUnresolvable;
 }
 
 /**
@@ -409,9 +429,11 @@ function extractLiterals(code, fileNameHint) {
 /* ═══════════════ 3b · 类型锚自检：新判据的金丝雀（每次运行都跑） ═══════════════
  *
  * 「C 的类型锚豁免」是新代码，而**豁免逻辑写瞎了的样子和代码干净的样子一模一样**（都是绿的）。
- * 故正反对拍：4 段该豁免 + 5 段**必须不豁免**（每一段都对应一条实测过的洗白路子）。
+ * 故正反对拍：该豁免的 ⊕ **必须不豁免**的（后者每一段都对应一条实测过的洗白路子）。
  * 任一条对不上 ⇒ 判「门自己瞎了」，不是「代码干净」。
  */
+let anchorSelftestPos = 0;
+let anchorSelftestNeg = 0;
 {
   const IMP = `import { type ChainNodeDef } from "${CONTRACTS_MODULE}";`;
   const ALIAS = 'type Rid = ChainNodeDef["nodeId"];';
@@ -472,6 +494,14 @@ function extractLiterals(code, fileNameHint) {
       want: false,
       code: `import { type ChainNodeDef } from "./chainNodeSemantics";\n${ALIAS}\nconst T: Partial<Record<Rid, number>> = { "demand.forge_local_module": 1 };`,
     },
+    {
+      // 这条堵的是「② 只查 string 关键字」的漏：`Loose` 的定义在别的文件里（很可能就是 string），
+      // 本文件 AST 里看不见任何 `string` 关键字，光靠 ② 会把这张已经泡宽的表当成锚定的放过。
+      name: "联合里掺一个**解析不动**的外来类型（string 关键字不在本文件，② 看不见）",
+      lit: "demand.forge_unresolvable_union",
+      want: false,
+      code: `${IMP}\nimport { type Loose } from "./elsewhere";\n${ALIAS}\nconst T: Partial<Record<Rid | Loose, number>> = { "demand.forge_unresolvable_union": 1 };`,
+    },
   ];
   for (const c of cases) {
     const hit = extractLiterals(c.code, "selftest-anchor.ts").find((x) => x.text === c.lit);
@@ -488,6 +518,9 @@ function extractLiterals(code, fileNameHint) {
       );
     }
   }
+  // 计数**从样例表现算**，不在通过行里手抄一个数 —— 治手抄的门自己手抄一个数是同一种病。
+  anchorSelftestPos = cases.filter((c) => c.want).length;
+  anchorSelftestNeg = cases.length - anchorSelftestPos;
 }
 
 /* ═══════════════ 4 · 组装扫描面 ═══════════════ */
@@ -616,7 +649,8 @@ if (blind.length > 0 || errs.length > 0) process.exit(1);
 console.log(
   `✅ chain-node-singlesource:check 通过（注册表 ${registry.length} 节点 / ${stages.length} 阶段前缀 · ` +
     `扫描 ${targets.length} 个文件：datacore ${SCANNED_FILES.length} + frontend ${feFiles.length} · ` +
-    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · 词法自检 + 类型锚自检(4 正/5 反)通过 · ` +
+    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · ` +
+    `词法自检 + 类型锚自检(${anchorSelftestPos} 正/${anchorSelftestNeg} 反)通过 · ` +
     `C 类型锚豁免命中 ${anchoredKeyHits} 处 / ${anchoredKeyFiles.size} 文件` +
     (anchoredKeyFiles.size > 0 ? `：${[...anchoredKeyFiles].join(", ")}` : "（今天没有任何文件用到该豁免）") +
     `）`,
