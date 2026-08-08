@@ -187,8 +187,19 @@ B 的资源缓存只有 `type-semantics`（ontology/rules 事件失效）与 `pr
   完全收口需 `SandboxView` 沙盘态改走 Query 缓存，另开工单。
 - **门禁**：新增接缝门 `sim-event-invalidation.seam`（emit 侧 ↔ 消费侧对账 + 基线计数锁）。
 
-> ⚠️ **需回写本体**：`docs/SYSTEM-ONTOLOGY.md` 的链路章（新增 L18 推演沙盘环）、事件表
-> （5 个 `sim.*` 的消费方列）、断点表（`G-SIM-EVENT-NOSUB` 改为「部分收口」并附残留 4 条）。
+> ⚠️ **需回写本体（且是「新建」不是「更新」）**：
+>
+> 派单称「本体已登记 `G-SIM-EVENT-NOSUB`」—— **实测不成立**。
+> `grep 'G-SIM-EVENT-NOSUB' docs/SYSTEM-ONTOLOGY.md` → **rc=1 零命中**；
+> 本体里全部 `G-SIM*` 断点只有一个：`G-SIMSESSION-NO-BIZ-REUSE`。
+> （工具自证：同文件 `G-DECISION` 命中 5 处，故不是 grep 坏了 —— 铁律 0.5 #5。）
+>
+> 故回写内容是**三处新增**：
+> 1. 链路章：新增 **L18 推演沙盘环**；
+> 2. 事件表：5 个 `sim.*` 的消费方列（1 接线 + 4 缺口）+ **`chain.*` 两个事件标注「已声明未实现」**（§0）；
+> 3. 断点表：**新建** `G-SIM-EVENT-NOSUB`（状态「部分收口」，残留 4 条），
+>    并新建/登记 A10 生产者缺失一条（`chain.scan_completed` / `chain.impediment_resolved` 无 emit）。
+>
 > 本单 🚦范围边界**禁改** `SYSTEM-ONTOLOGY.md`，故由审核方并线时回写 —— **本体不回写即过期失效**。
 
 ---
