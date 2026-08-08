@@ -245,13 +245,17 @@ demo 是给人随便点、随便问的环境，点亮 = 用户用着用着突然
 |---|---|
 | `pnpm -r build` | **RC=0**（共 3 次，含变异撤回后重建） |
 | `pnpm --filter agentcore test` | **RC=0** · 150 files / **870 tests** 全绿（含本单新增门 4/4 与三份改过的生产镜像） |
-| `pnpm --filter datacore test` | **RC=1** · **1365 passed / 1 failed / 16 skipped**（唯一那条红见下） |
+| `pnpm --filter datacore test` | **RC=0** · **234 files / 1366 tests 全绿**（16 skipped）—— 安静车道复跑，见下 |
 | `test/solver-context-lazy-loading.seam.test.ts` | RC=0 · 6/6（`dc.lazy-solver-context` 的点亮前置） |
 | `test/demo-lightup-seam.test.ts`（干净树） | RC=0 · 7/7 |
 | `test/dark-feature-default-off.test.ts` + `features.test.ts` | RC=0 · 10/10 |
 | `prd:check` / `prd:coverage` | RC=0 |
 
-**唯一那条红：`empty-tenant-bootstrap.test.ts`——是负载超时，不是断言失败，且与本单无关。三条独立证据：**
+**最终态：安静车道（load 4.4–5.0·无其它 agent 的 datacore 套件在跑）复跑 `pnpm --filter datacore test`
+→ `DATACORE_TEST_RC=0` · `Test Files 234 passed | 2 skipped` · `Tests 1366 passed | 16 skipped`。**
+下面两小节记的是**此前两轮在拥挤车道上的红**及其定性过程 —— 留档是因为审核方大概率会再撞上同样的假红。
+
+**第一轮那条红：`empty-tenant-bootstrap.test.ts`——是负载超时，不是断言失败，且与本单无关。三条独立证据：**
 
 1. **失败原文是超时不是断言**：`Test timed out in 180000ms`，该用例实测耗时 **247345ms**。
 2. **结构上碰不到**：该测试用 `makeApp()`（**只调 `seedDemo`，从不调 `seedDemoEntitlements`**），
