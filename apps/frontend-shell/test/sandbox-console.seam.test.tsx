@@ -81,7 +81,14 @@ import SandboxView from "@/views/sim/SandboxView";
 import { ChainLineMapView } from "@/views/sim/ChainLineMapView";
 import { ChainLossPayloadSchema, type ChainLossPayload } from "@/views/sim/chainLineMap";
 import { ChainImpedimentPayloadSchema, type ChainImpedimentPayload } from "@/views/sim/chainImpediment";
-import { buildPareto, buildStageBoard, chainStageCoverage, CHAIN_STAGE_DESIGN_TARGET } from "@/views/sim/sandboxConsole";
+import {
+  buildPareto,
+  buildStageBoard,
+  chainNodePresence,
+  chainStageCoverage,
+  transitOverlayBox,
+  CHAIN_STAGE_DESIGN_TARGET,
+} from "@/views/sim/sandboxConsole";
 
 // ── 仓根 / fixture ────────────────────────────────────────────────────────────
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -629,5 +636,299 @@ describe("§8 · WO-CHAIN-24 SEAM：新增节点三处同时在场", () => {
     const laneText = screen.getByTestId("sc-lane-DELIVERY").textContent ?? "";
     for (const d of deliveryDefs) expect(laneText, `DELIVERY 段没画出「${d.label}」`).toContain(d.label);
     expect(laneText, "算不出来的段必须写明 EMPTY 与未补 0").toContain("未补 0");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * §9 · WO-CONSOLE-CLEANUP —— 控制台五笔欠账收口的 SEAM 门。
+ *
+ * 五条各咬一处**接缝**（不是各半 unit）：
+ *  ① 宿主把已取回的载荷传下去 ⇒ 右栏那次自取**当场消失**（数请求次数，不是读代码）。
+ *     同时把「传下去会丢什么」钉死：`ChainLossPayloadSchema` 今天 strip 掉 `evidence[]` ——
+ *     哪天有人把它补进 schema，这条断言当场红，逼着一起改屏上那段说明（而不是留一句过期的话）。
+ *  ② 诚实缺席节点在画布上是**灰卡片**且与有数据卡**形状不同**：
+ *     `data-card-shape` 两值互异 + 两者不共用任何 class + CSS 里 `.emptyCard` 真有 `clip-path`
+ *     而 `.nodeCard` 没有。只调颜色深浅过不了这道门。
+ *  ③ 「在册 ≠ 有数据」三态（算得出 / 只有 EMPTY 行 / 在册不在场）逐个上屏，数字全部派生自载荷；
+ *     且**已过期的那句**（扩注册表不在本单边界）必须真的没了。
+ *  ④ 在途图层与线路图**在同一块画布容器里**，两张 SVG 的 `viewBox` 逐字符相同（= 同一坐标系），
+ *     叠加盒纯函数用**真浏览器量到的数**驱动、逐值对拍；两句常驻诚实位一个字不许少。
+ *  ⑤ 阻滞点只能按 stage 联动这条口径差**在屏上**（此前只在源码注释里），段数派生自 `CHAIN_STAGES`。
+ */
+describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
+  // ── ① 口径单源最后一格：右栏不再自取 ────────────────────────────────────────
+  it("① 切到「变量输入」页签后 chain_loss_attribution **仍然只有一次**（右栏那次自取已消失）", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    expect(net.calls.filter((c) => c.key === "chain_loss_attribution")).toHaveLength(1);
+
+    await user.click(screen.getByTestId("sc-tab-vars"));
+    await screen.findByTestId("node-inspector-root");
+    // 面板拿到宿主载荷 ⇒ 一次都不许再发（不传 lossPayload 时这里会变成 2 次）
+    expect(
+      net.calls.filter((c) => c.key === "chain_loss_attribution"),
+      "右栏又自取了一次 chain_loss_attribution ⇒ 同一个问题问了两遍（宿主没把 lossPayload 传下去）",
+    ).toHaveLength(1);
+    // 面板那句文案必须跟着从「本视图自取一次」翻到「未发第二次请求」
+    expect(screen.getByTestId("node-inspector-live-cost").textContent ?? "").toContain("未发第二次请求");
+  });
+
+  it("① 代价钉死：宿主那一份被 ChainLossPayloadSchema **剥掉 evidence[]**，且屏上当面说明这件事", () => {
+    // 拿**真抓下来的**带证据载荷过一遍前端读取层，证明 strip 是真的发生（不是我猜的）
+    const raw = JSON.parse(readFileSync(join(FIX, "chain-loss-live-evidence.json"), "utf8")) as Record<string, unknown>;
+    delete raw.__fixture_provenance;
+    expect((raw.evidence as unknown[]).length, "取证 fixture 必须真带 evidence，否则本条恒真").toBeGreaterThan(20);
+    const parsed = ChainLossPayloadSchema.parse(raw) as Record<string, unknown>;
+    expect(
+      "evidence" in parsed,
+      "ChainLossPayloadSchema 已经声明 evidence[] ⇒ 宿主传下去不再丢证据 ⇒ SandboxConsole 里那段" +
+        "「R13 证据在控制台里是空的」说明已经过期，必须一起改（这条断言就是为了逼你改它）",
+    ).toBe(false);
+    expect("empty" in parsed, "empty[] 是声明过的，必须活着").toBe(true);
+  });
+
+  it("① 屏上把这笔代价说清楚（不是悄悄丢一块功能）", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-tab-vars"));
+    const note = (await screen.findByTestId("sc-inspect-evidence-gap")).textContent ?? "";
+    expect(note, "必须点名是宿主这一份缺字段").toContain("evidence");
+    expect(note, "必须把「不是引擎没给」说出来 —— 两件事修法完全不同").toContain("不是引擎没给");
+    expect(note, "必须给补齐路径").toContain("ChainLossPayloadSchema");
+  });
+
+  // ── ② 诚实缺席节点 = 灰卡片，且形状与有数据卡分家 ───────────────────────────
+  it("② 每个「只有 EMPTY 行」的在册节点都有一张灰卡片，reason 逐字透传（不是段尾一行小字）", async () => {
+    const payload = loadLoss();
+    const board = buildStageBoard(payload);
+    const emptyCards = board.lanes.flatMap((l) => l.emptyNodes);
+    expect(emptyCards.length, "fixture 里应有只带诚实缺席行的节点，否则本条咬不到东西").toBeGreaterThan(5);
+
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+
+    for (const c of emptyCards) {
+      const card = screen.getByTestId(`sc-empty-node-${c.nodeId}`);
+      expect(card.getAttribute("data-card-shape"), `${c.nodeId} 的灰卡片没有形状标识`).toBe("notched-tag");
+      const text = card.textContent ?? "";
+      expect(text, `灰卡片上没写节点名：${c.nodeId}`).toContain(c.label);
+      expect(text, "算不出来这件事必须写在卡上").toContain("EMPTY");
+      expect(text, "「未补 0」不许丢").toContain("未补 0");
+      for (const r of c.rows) {
+        // 缺什么 —— 引擎 reason **原文**，前端一个字都不许改写/概括/截断
+        expect(text, `缺席原因原文被改写或吞了：${r.stepId}`).toContain(r.reason);
+        expect(text, `emptyKind 没上屏：${r.stepId}`).toContain(r.emptyKind);
+      }
+    }
+    // 三分法在卡上分得开：NO_CARRIER 与 NO_INSTANCE 不许被抹成同一个词
+    const kinds = new Set(emptyCards.flatMap((c) => c.kinds));
+    expect(kinds.size, "fixture 里应至少有两种 emptyKind").toBeGreaterThan(1);
+  });
+
+  it("② 形状分家（不是颜色深浅）：data-card-shape 两值互异 + 不共用 class + CSS 里只有灰卡有 clip-path", async () => {
+    const board = buildStageBoard(loadLoss());
+    const dataNode = board.lanes.flatMap((l) => l.nodes)[0]!;
+    const emptyNode = board.lanes.flatMap((l) => l.emptyNodes)[0]!;
+
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+
+    const solid = screen.getByTestId(`sc-node-${dataNode.nodeId}`);
+    const notched = screen.getByTestId(`sc-empty-node-${emptyNode.nodeId}`);
+    // ① DOM 层：形状标识必须不同
+    expect(solid.getAttribute("data-card-shape")).toBe("solid-block");
+    expect(
+      notched.getAttribute("data-card-shape"),
+      "灰卡片与有数据卡用了同一个形状标识 ⇒ 屏上只剩颜色深浅的差别，而深浅会被读成「同一种东西弱一点」",
+    ).not.toBe(solid.getAttribute("data-card-shape"));
+    // ② class 层：两者不许共用同一个卡片基类（否则形状必然一样，只能靠改色）
+    const shared = [...solid.classList].filter((c) => notched.classList.contains(c));
+    expect(shared, `两种卡共用了 class ${shared.join(",")} ⇒ 形状同源`).toEqual([]);
+    // ③ 几何层：CSS 里灰卡真的切了角，有数据卡没有这条声明（源码级判据，jsdom 不跑 CSS 也咬得住）
+    const css = readFileSync(join(REPO_ROOT, "apps/frontend-shell/src/views/sim/SandboxConsole.module.css"), "utf8");
+    const block = (sel: string) => {
+      const i = css.indexOf(`${sel} {`);
+      expect(i, `CSS 里找不到 ${sel}`).toBeGreaterThan(-1);
+      return css.slice(i, css.indexOf("}", i));
+    };
+    expect(block(".emptyCard"), "灰卡片没有 clip-path ⇒ 它跟实心卡是同一个矩形，形状没分家").toContain("clip-path");
+    expect(block(".nodeCard"), "有数据卡也被切了角 ⇒ 两者形状又一样了").not.toContain("clip-path");
+  });
+
+  it("② 灰卡片可点：点了右栏切到「变量输入」（那里才有缺席证据，逐环节表对它是空表）", async () => {
+    const board = buildStageBoard(loadLoss());
+    const target = board.lanes.flatMap((l) => l.emptyNodes).find((n) => n.registered)!;
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+    await user.click(screen.getByTestId(`sc-empty-node-${target.nodeId}`));
+    const select = (await screen.findByTestId("node-inspector-select")) as HTMLSelectElement;
+    expect(select.value, "点灰卡片没把右栏切到这个节点").toBe(target.nodeId);
+  });
+
+  // ── ③ 在册 ≠ 有数据 ─────────────────────────────────────────────────────────
+  it("③ 诚实位改口径不删：差额那句留着，「在册 ≠ 有数据」三态全部上屏且数字派生自载荷", async () => {
+    const payload = loadLoss();
+    const presence = chainNodePresence(payload);
+    // 派生层自证：三态互斥且穷尽（加起来 = 在册总数）
+    expect(presence.withSteps.length + presence.emptyOnly.length + presence.absent.length).toBe(presence.registered);
+    expect(presence.registered).toBe(CHAIN_NODE_REGISTRY.length);
+    expect(presence.emptyOnly.length, "没有只带缺席行的在册节点 ⇒ 本条咬不到东西").toBeGreaterThan(5);
+    expect(
+      presence.absent.length,
+      "没有「在册不在场」的节点 ⇒ 本条咬不到东西（fixture 实测应有 capacity.maint）",
+    ).toBeGreaterThan(0);
+
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+    const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
+
+    // 头号判据：这句话必须在（变异反证 ② 删掉它 ⇒ 本条红）
+    expect(txt, "「在册 ≠ 有数据」这个区别不许从屏上消失").toContain("在册 ≠ 有数据");
+    // 三态的数字全部是载荷的投影（前端零加法：这里从派生函数独立算一遍再比对屏上）
+    expect(txt).toContain(`${presence.withSteps.length} 个算得出天数`);
+    expect(txt).toContain(`${presence.emptyOnly.length} 个只有诚实缺席行`);
+    expect(txt).toContain(`共 ${presence.emptyRowCount} 行`);
+    for (const k of presence.emptyRowsByKind) {
+      expect(txt, `emptyKind 分布里少了 ${k.kind}`).toContain(`${k.kind} ${k.count}`);
+    }
+    // 在册不在场：逐个点名（不是只报个数）
+    expect(txt).toContain("在册不在场");
+    for (const a of presence.absent) expect(txt, `「在册不在场」没点名 ${a.nodeId}`).toContain(a.nodeId);
+    // 已过期的那句必须真的没了（差额归零之后它是废话）
+    expect(txt, "扩注册表那句已过期，应当改成还账后剩下的真话而不是留着").not.toContain("不在本单边界");
+  });
+
+  it("③ 「在册不在场」在它自己那条泳道里单列一行（不是只在诚实位里提一句）", async () => {
+    const board = buildStageBoard(loadLoss());
+    const lanesWithAbsent = board.lanes.filter((l) => l.absentNodes.length > 0);
+    expect(lanesWithAbsent.length, "fixture 里应有带「在册不在场」节点的段").toBeGreaterThan(0);
+
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("sc-mode-chain"));
+    for (const lane of lanesWithAbsent) {
+      const row = screen.getByTestId(`sc-lane-${lane.stage}-absent`);
+      const text = row.textContent ?? "";
+      for (const a of lane.absentNodes) {
+        expect(text, `${a.nodeId} 在册却没在段里单列出来`).toContain(a.label);
+        expect(text).toContain(a.nodeId);
+      }
+      expect(text, "必须把「既没有环节也没有 EMPTY 行」这件事说出来").toContain("EMPTY");
+    }
+  });
+
+  // ── ④ 在途图层叠在线路图同一块画布上 ────────────────────────────────────────
+  it("④ 两张图在**同一个画布容器**里，且两个 SVG 的 viewBox 逐字符相同（= 同一套坐标）", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(within(screen.getByTestId("sc-transit-toggle")).getByRole("checkbox"));
+    await screen.findByTestId("sc-transit-layer");
+
+    const stack = screen.getByTestId("sc-metro-stack");
+    expect(stack.getAttribute("data-transit-overlay"), "图层开着时叠加没有启用").toBe("on");
+
+    // 线路图舞台与在途环**都在这一个容器里**（此前是画布槽下的两个兄弟块）
+    const stage = within(stack).getByTestId("clm-stage");
+    const rings = stack.querySelectorAll('[data-testid="transit-ring"]');
+    expect(rings.length, "叠加层钉的是 transit-ring 这个 testid；它不在同一个容器里 ⇒ CSS 选择器已经落空").toBe(1);
+    expect(stage.getAttribute("viewBox")).toBeTruthy();
+    expect(
+      rings[0]!.getAttribute("viewBox"),
+      "两图 viewBox 不同 ⇒ 盒子对齐了坐标也对不上，叠加就是把两张图摞在一起而已",
+    ).toBe(stage.getAttribute("viewBox"));
+
+    // 关掉图层 ⇒ 叠加也关掉（不留一层看不见的东西压在画布上）
+    await user.click(within(screen.getByTestId("sc-transit-toggle")).getByRole("checkbox"));
+    await waitFor(() => expect(screen.queryByTestId("sc-transit-layer")).toBeNull());
+    expect(screen.getByTestId("sc-metro-stack").getAttribute("data-transit-overlay")).toBe("off");
+  });
+
+  it("④ 叠加盒纯函数：用真浏览器量到的矩形驱动 —— 环 SVG 落在舞台**同一个屏上矩形**并按画布裁切", () => {
+    /**
+     * 下面几个矩形取自**真浏览器实拍**量到的形态（线路图 1.00× 未平移）：
+     * 舞台 SVG 980×680（`clm-stage` = `RING_LAYOUT.viewW/viewH`），画布可视区 703×498（`clm-canvas`），
+     * 舞台左上角比画布内缩 1px（画布那圈边框）。于是右侧溢出 (309+980)−(308+703)=278px、
+     * 下方溢出 (397+680)−(396+498)=183px，必须裁掉，否则放大时环会糊到画布外面去。
+     */
+    const stack = { left: 300, top: 200, width: 720, height: 620 };
+    const canvas = { left: 308, top: 396, width: 703, height: 498 };
+    const stage = { left: 309, top: 397, width: 980, height: 680 };
+    const box = transitOverlayBox(stack, stage, canvas);
+    expect(box.measured).toBe(true);
+    // 逐值：叠加层与舞台**同一个矩形**（差一个像素，环上的站就指不到同一个点）
+    expect(box.left).toBe(9);
+    expect(box.top).toBe(197);
+    expect(box.width).toBe(980);
+    expect(box.height).toBe(680);
+    // 裁切：只裁画布外面那部分，画布里的一律不裁
+    expect(box.clipLeft).toBe(0);
+    expect(box.clipTop).toBe(0);
+    expect(box.clipRight).toBe(278);
+    expect(box.clipBottom).toBe(183);
+
+    // 放大平移后（舞台矩形被浏览器算成变换后的值）依然跟得上：本函数不认识 k/x/y，只认矩形
+    const zoomed = { left: 209, top: 297, width: 1470, height: 1020 };
+    const z = transitOverlayBox(stack, zoomed, canvas);
+    expect(z.left).toBe(-91);
+    expect(z.width).toBe(1470);
+    expect(z.clipLeft).toBe(99);
+    expect(z.clipTop).toBe(99);
+    expect(z.clipRight).toBe(668);
+    expect(z.clipBottom).toBe(423);
+
+    // 量不到（jsdom / display:none）⇒ 明说没量到，界面据此**不假装已对齐**
+    const zero = { left: 0, top: 0, width: 0, height: 0 };
+    expect(transitOverlayBox(zero, zero, zero).measured).toBe(false);
+  });
+
+  it("④ CSS 里真有那条「钉」的声明，且只在测量到尺寸时生效", () => {
+    const css = readFileSync(join(REPO_ROOT, "apps/frontend-shell/src/views/sim/SandboxConsole.module.css"), "utf8");
+    const i = css.indexOf('.metroStack[data-transit-overlay="on"][data-overlay-measured="1"] svg[data-testid="transit-ring"]');
+    expect(i, "叠加的 CSS 钉钉子没了 ⇒ 两张图又变回上下两块").toBeGreaterThan(-1);
+    const rule = css.slice(i, css.indexOf("}", i));
+    expect(rule).toContain("position: absolute");
+    expect(rule, "叠加盒的四个数必须来自 transitOverlayBox 落下来的 CSS 变量，不许在样式表里写死几何").toContain(
+      "var(--sc-ov-left)",
+    );
+    expect(rule, "溢出必须按画布裁，否则放大时环会糊到整页").toContain("clip-path");
+  });
+
+  it("④ 叠上去之后，图层那两句常驻诚实位一个字都没少", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(within(screen.getByTestId("sc-transit-toggle")).getByRole("checkbox"));
+    const layer = await screen.findByTestId("sc-transit-layer");
+    const note = within(layer).getByTestId("transit-flow-host-nodes").textContent ?? "";
+    expect(note, "几何与线路图同源这件事必须写在屏上").toContain("与线路图同源");
+    expect(note, "剩下的缺口（两图站点 key 不是同一套）不许因为「看起来叠上了」被抹掉").toContain("同角度不代表同一个实体");
+    // 叠加本身也要当面说清楚（含"量不到就不假装"这条）
+    const overlayNote = within(layer).getByTestId("sc-transit-overlay-note").textContent ?? "";
+    expect(overlayNote).toContain("同一个屏上矩形");
+  });
+
+  // ── ⑤ 阻滞点只能按 stage 联动：口径差上屏 ───────────────────────────────────
+  it("⑤ 「只能按 stage 联动、不能按节点点亮」这条接缝缺口在屏上，且段数派生自 CHAIN_STAGES", async () => {
+    mount();
+    await ready();
+    const txt = screen.getByTestId("sc-imp-join-gap").textContent ?? "";
+    expect(txt, "两个求解器没有共同 id 维度这件事必须说出来").toContain("没有共同的 id 维度");
+    expect(txt, "「不能按节点精确点亮」是这条缺口的后果，不许省").toContain("不能按节点精确点亮");
+    // 段数是派生的：注册表从 4 段变 5 段那天，这句话跟着变（写死的数当天就过期）
+    expect(txt).toContain(`共 ${CHAIN_STAGES.length} 段`);
+    expect(CHAIN_STAGES.length, "段数已经是 5，若这里仍是 4 说明 fixture/契约漂了").toBe(5);
   });
 });
