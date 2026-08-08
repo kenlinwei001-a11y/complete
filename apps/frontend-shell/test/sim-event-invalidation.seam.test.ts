@@ -10,7 +10,8 @@ import {
 } from "@/store/eventInvalidation";
 
 /**
- * A10 接缝门 · `sim.*` 领域事件 → 前端缓存失效（本体断点 G-SIM-EVENT-NOSUB）。
+ * A10 接缝门 · `sim.*` 领域事件 → 前端缓存失效（拟登记断点 G-SIM-EVENT-NOSUB ——
+ * 该编号本体里尚未登记，见 docs/PRD-sandbox-a10.md §5「需回写本体」）。
  *
  * 这条测试**咬的是链路不是函数**（假绿第 9 形态的对策）：
  *   ① 用真 queryClient（不是 spy）注册真 key → 发事件 → 断言那条 query 真的被标 invalidated；
