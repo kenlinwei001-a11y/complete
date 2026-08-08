@@ -323,15 +323,17 @@ git status --porcelain → （空）· HEAD=3e26a437
 | 门 | 命令 | RC | 备注 |
 |---|---|---|---|
 | datacore typecheck | `pnpm --filter datacore typecheck` | **0** | |
-| datacore 全套（改金值前） | `pnpm --filter datacore test` | **1** | 唯一红 = 本单该动的金值（§6.1）；`239 文件 / 1400 用例`，`1 failed \| 1383 passed \| 16 skipped`，1894s |
+| datacore 全套（第 1 轮·改金值前） | `pnpm --filter datacore test` | **1** | 唯一红 = 本单该动的金值（§6.1）；`239 文件 / 1400 用例`，`1 failed \| 1383 passed \| 16 skipped`，1894s |
 | 金值修正后复跑（相关 4 文件） | `npx vitest run <4 files>` | **0** | `Tests 27 passed (27)` |
 | `meta-ontology`（干净 HEAD 单独复验） | `npx vitest run test/meta-ontology.test.ts` | **0** | 7/7；理由见 §6.3 |
+| **datacore 全套（第 2 轮·终局权威）** | `npx vitest run` @ `e597d03e` | **0** | **`Test Files 237 passed \| 2 skipped (239)` · `Tests 1384 passed \| 16 skipped (1400)`**，1470s。起门前 `HEAD=e597d03e` + `git status --porcelain` 空；跑完两者不变 ⇒ 结果指向的就是这个 commit（守「派 dev 必须 worktree 隔离」那条的复验判据） |
+| contracts | `pnpm --filter @platform/contracts test` | **0** | `Test Files 4 passed (4)` · `Tests 36 passed (36)` |
 | PRD 本体门 | `node scripts/check-prd-ontology.mjs` | **0** | 12/12 断点仍全覆盖；本 PRD 已入索引 |
 | 本体锚点门 | `node scripts/check-ontology-anchors.mjs --update` | **0** | 机械校准 4 条行号；**基线零 diff**（未校准存量仍 46/46） |
 | datacore lint | `pnpm --filter datacore lint` | **1** | **基线本来就红**：错误全在 `battery.ts`(bomSeq/opSeq/capSeq/qi/rngMES)·`ceo-dataset.ts`(MODELS)·6 个我没碰过的既有测试；逐条在 `988db557` 上 grep 得证已存在。本单**唯一自产**的一条（`opt-whatif-close.seam.test.ts:44 'NL_QUERY' 未使用`）已修：把它做成真断言（§5 M6 证其会红），错误数 33→32 = 基线值，**净引入 0** |
 
-**墙钟伪影核对**：`empty-tenant-bootstrap` 本轮 **151.3s** 通过（180s 界内）；SEAM-PERF 未报红。
-本轮无速度伪影可登记。
+**墙钟伪影核对**：`empty-tenant-bootstrap` 第 1 轮 **151.3s** 通过（180s 界内），第 2 轮亦通过；
+SEAM-PERF 两轮均未报红。本单**无速度伪影可登记**（也就没有"调阈值"的必要与借口）。
 
 ### 6.3 一处必须交代的自查（不拿"应该没事"充数）
 
@@ -342,7 +344,8 @@ git status --porcelain → （空）· HEAD=3e26a437
 HEAD（`git status --porcelain` 为空）单独复跑 7/7 绿。
 
 **未跑**：`scripts/gate.sh` 与 `pnpm -r test`（工单明令禁止，彼时另有 agent 在跑前端）；
-agentcore / frontend 套件未跑（本单未改这两个包一个字节）。
+agentcore / frontend 套件未跑（本单未改这两个包一个字节 —— `git diff` 对
+`apps/agentcore` / `apps/frontend-shell` 零命中）。四包组合 gate 留给并线方。
 
 ---
 
