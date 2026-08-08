@@ -49,13 +49,13 @@ export const CAPACITY_FACTOR_BINDINGS: CapacityFactorBinding[] = [
   // 层1 设备（节拍×OEE×通道×班次 → 单机日产出）
   { mark: "①", num: 1, factorName: "节拍 CT", objectType: "Equipment", prop: "ctSeconds", grain: "process", writable: true },
   { mark: "②", num: 2, factorName: "通道数", objectType: "Process", prop: "channels", grain: "process", writable: true, ruleGate: "C03" },
-  { mark: "③", num: 3, factorName: "可用率 OEE-A", objectType: "Equipment", prop: "oeeA", grain: "process", writable: true },
-  { mark: "④", num: 4, factorName: "性能 OEE-P", objectType: "Equipment", prop: "oeeP", grain: "process", writable: true },
+  { mark: "③", num: 3, factorName: "设备OEE", objectType: "Equipment", prop: "oee_current", grain: "process", writable: true }, // WO-LEVER-BINDING-DRIFT：落点=**有效 OEE**（见下 OEE 三原子说明）
+  { mark: "④", num: 4, factorName: "性能 OEE-P", objectType: "Equipment", prop: "oeeP", grain: "process", writable: false }, // 被 ③ 快照掩蔽 → 拨不动（sensitivity 恒 0）
   { mark: "⑧", num: 8, factorName: "利用率", objectType: "Process", prop: "utilization", grain: "process", writable: true },
   { mark: "⑯", num: 16, factorName: "班次时长×班次", objectType: "Process", prop: "shifts", grain: "process", writable: true },
   // 层2 工序（×良率×在岗 → 工序日吞吐）
   { mark: "⑥", num: 6, factorName: "工序良率", objectType: "Process", prop: "yield_baseline", grain: "process", writable: true },
-  { mark: "⑦", num: 7, factorName: "质量 OEE-Q", objectType: "Equipment", prop: "oeeQ", grain: "process", writable: true },
+  { mark: "⑦", num: 7, factorName: "质量 OEE-Q", objectType: "Equipment", prop: "oeeQ", grain: "process", writable: false }, // 同 ④：被 ③ 快照掩蔽
   { mark: "⑨", num: 9, factorName: "良率爬坡", objectType: "Line", prop: "target_yield", grain: "process", writable: false },
   { mark: "⑰", num: 17, factorName: "在岗出勤/熟练", objectType: "Process", prop: "attendance", grain: "process", writable: true },
   // 层3 产线（min 瓶颈工序·WIP·平衡）
@@ -73,6 +73,31 @@ export const CAPACITY_FACTOR_BINDINGS: CapacityFactorBinding[] = [
   // 层6 缺口（− 需求 → 缺口/富余）
   { mark: "⑲", num: 19, factorName: "需求", objectType: "Order", prop: "qty", grain: "base", writable: false },
 ];
+
+/**
+ * WO-LEVER-BINDING-DRIFT · OEE 三原子 vs 有效 OEE：为什么 ③ 的落点是 `oee_current` 而 ④⑦ 标 `writable:false`
+ * （治 `G-LEVER-BINDING-DRIFT`——「设备层拨杆永远反推不出候选」）。
+ *
+ * **不是两条互相打架的可写路径，是一条**：产能链读 OEE 只经 `capacity.ts equipmentOee(props)` 一个出入口，
+ * 而它的语义是 **快照优先、原子兜底**：
+ *
+ *     oee_current 存在且 >0  →  取 oee_current              （= 有效 OEE·**唯一真被消费的值**）
+ *     否则                   →  取 oeeA × oeeP × oeeQ        （兜底分解·仅当快照缺失）
+ *
+ * 而 `synthetic/battery.ts` 给**每台**设备都回填了 `oee_current = round(oeeA×oeeP×oeeQ, 3)`，
+ * 时序 `oee_daily_7d` 也持续把它物化 ⇒ 生产数据下**兜底分支恒不进入**，三原子被快照完全掩蔽。
+ * 后果（实测·见 `docs/PRD-lever-binding-drift.md` §2）：`patchCapacityContext` 改 `oeeA/oeeP/oeeQ` 后
+ * `equipmentOee` 返回值不变 → Σp50 不变 → 敏感度恒 0 → `service.ts discoverCapacityLevers`
+ * 在「无下游影响 → 非有效杠杆」处把它们整批丢弃。**登记三原子为可写落点等于登记三个永远拨不动的杠杆。**
+ *
+ * 故：
+ *  - ③ = 设备层**唯一可拨的 OEE 落点**，prop = `oee_current`（与 `capacity.ts` 逐格瓶颈 ③ 的
+ *    provenance `{objectType:"Equipment", prop:"oee_current"}` 对齐——修前二者相左，正是本次漂移的另一半）；
+ *  - ④⑦ 保留为**分解原子**（本体属性真实存在、连接器有字段映射），但 `writable:false` 表「今天拨不动」；
+ *    可用率 OEE-A 可由 `oee_current /(oeeP × oeeQ)` 反解，不因 ③ 改指而丢失可解释性。
+ *  - 若将来去掉快照回填（让 `equipmentOee` 真走乘积分支），届时应把 ④⑦ 连同 OEE-A 一并改回 `writable:true`
+ *    并把 ③ 拆开——但那是**改产能链语义**，不属本单；`check-lever-binding-drift.mjs` 会一直盯着这条不变量。
+ */
 
 /** 圈号 → 绑定（byProcessModel 逐格瓶颈判定读属性时用·单源查表·非写死）。 */
 export function factorBindingByMark(mark: string): CapacityFactorBinding | undefined {
