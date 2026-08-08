@@ -1273,6 +1273,24 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-lever-binding-drift.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/lever-binding-drift.test.ts",
+        "apps/datacore/test/ontology-core.test.ts",
+        "packages/contracts/src/capacity-factors.ts",
+        "scripts/check-lever-binding-drift.mjs",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-live-traceable-data.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2507,6 +2525,7 @@
       "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
       "PRD-inference-line.md",
+      "PRD-lever-binding-drift.md",
       "PRD-ontology-7elements.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-multiplan.md",
@@ -2734,7 +2753,8 @@
       "PRD-sandbox-multiplan.md"
     ],
     "packages/contracts/src/capacity-factors.ts": [
-      "PRD-capacity-live-cockpit.md"
+      "PRD-capacity-live-cockpit.md",
+      "PRD-lever-binding-drift.md"
     ],
     "apps/agentcore/src/features/registry.ts": [
       "PRD-cli-full-coverage.md",
@@ -2862,6 +2882,7 @@
     ],
     "scripts/gate-ledger.json": [
       "PRD-gate-ledger.md",
+      "PRD-lever-binding-drift.md",
       "PRD-nav-gate.md",
       "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md"
@@ -2963,6 +2984,16 @@
     "apps/frontend-shell/src/views/sim/PmDag.tsx": [
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/datacore/test/lever-binding-drift.test.ts": [
+      "PRD-lever-binding-drift.md"
+    ],
+    "apps/datacore/test/ontology-core.test.ts": [
+      "PRD-lever-binding-drift.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "scripts/check-lever-binding-drift.mjs": [
+      "PRD-lever-binding-drift.md"
     ],
     "apps/datacore/src/features.ts": [
       "PRD-nav-gate.md",
@@ -3109,9 +3140,6 @@
       "PRD-sandbox-multiplan.md"
     ],
     "apps/datacore/test/catalog.test.ts": [
-      "PRD-sandbox-multiplan.md"
-    ],
-    "apps/datacore/test/ontology-core.test.ts": [
       "PRD-sandbox-multiplan.md"
     ],
     "apps/frontend-shell/src/store/eventInvalidation.ts": [
