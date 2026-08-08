@@ -91,7 +91,7 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   // ── 沙盘第五子视图 · 全链阻滞点（WO-IMPEDIMENTS-REACHABLE · 同族病第五层）─────────
   //
   // 病灶（实测坐实）：`registry.ts:87` 早已 `registerRenderer("chain-impediments", …)`，组件
-  // `views/sim/ChainImpedimentView.tsx` 有 440 行真实现 + 两条测试全绿，**却零路径渲染得到**：
+  // `views/sim/ChainImpedimentView.tsx` 有 442 行真实现 + 两条测试全绿，**却零路径渲染得到**：
   //   · 本表（后端派单的唯一真相源）无此 key ⇒ `workspace.views` 永远没有它 ⇒ ViewPage 双闸全关；
   //   · `App.tsx` 也没有专用静态 route ⇒ 手敲 URL 也只落 `v/:viewKey` 通用守卫 → 404。
   // 它同时躲开了既有两道门：`view-reachable:check` 问「模块有没有人 import」——registry 那行满足了，绿；

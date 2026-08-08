@@ -38,7 +38,7 @@ registerRenderer("chain-impediments", () => import("./sim/ChainImpedimentView"))
 
 | 判据 | 实测 |
 |---|---|
-| 有真实现，不是占位 | `apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx` 共 443 行：三类分组（卡点/堵点/断点）、逐条判定依据（触发规则 / 实测值 vs 阈值 / 阈值出处旋钮 / 派生边）、`dataMode` 四态诚实位、判不出来的判据清单、阈值出处全表 |
+| 有真实现，不是占位 | `apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx` 共 442 行：三类分组（卡点/堵点/断点）、逐条判定依据（触发规则 / 实测值 vs 阈值 / 阈值出处旋钮 / 派生边）、`dataMode` 四态诚实位、判不出来的判据清单、阈值出处全表 |
 | 有真数据源，不是内置假数据 | 唯一取数 `runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, …)`；求解器 `chain_impediments` 在 DataCore **已注册且已实现**：`apps/datacore/src/solvers/service.ts:166`（注册表）· `:340`（输出形状）· `:4291`（分发）· 实现 `apps/datacore/src/solvers/chain-impediment.ts` · 目录 `apps/datacore/src/catalog.ts:148` |
 | mock 模式也通 | MSW handler 有 `chain_impediments` 分发，`apps/frontend-shell/test/chain-impediment-mockwire.test.tsx` 真跑不打桩链路并断言载荷过契约 |
 | **不是被 SandboxConsole 取代的废弃物** | `SandboxConsole.tsx` 确实消费同一个求解器，但它只 import **派生层** `chainImpediment.ts`（`buildChainImpedimentModel` 等），**从不 import `ChainImpedimentView`**；它渲染的是 `IMPEDIMENT_CARDS` 三张**计数卡** + 一条设计差异说明。逐条证据（规则码、实测值 vs 阈值、阈值旋钮出处、逐条诚实位、判不出来的判据、阈值全表）**只在本视图里有**。控制台自述的 IA 是「阻滞点**统计条**」，与详情页是"同一份数据两处投影、各答一问"，非重复 |
@@ -241,7 +241,7 @@ registerRenderer("chain-impediments", () => import("./sim/ChainImpedimentView"))
 > **G-RENDERER-NO-PATH ｜ renderer 注册了，但零路径能渲染到它（同族病第六层·已闭）**
 > 组件写了 ✅ → renderer 注册 ✅ → **没有任何东西能让你拿到这个 renderer ❌**。
 > 实拍坐实（2026-08-08，`chain-impediments`）：`apps/frontend-shell/src/views/registry.ts:87` 逐字注册、
-> 组件 443 行真实现、两条测试 40+ 例全绿，而后端 `BUILTIN_VIEWS` 无此 key（⇒ `workspace.views` 永远没有它
+> 组件 442 行真实现、两条测试 40+ 例全绿，而后端 `BUILTIN_VIEWS` 无此 key（⇒ `workspace.views` 永远没有它
 > ⇒ `ViewPage` feature/views 双闸全关）、`App.tsx` 无专用 route（⇒ 手敲 URL 落 `v/:viewKey` → 404）。
 > **它的狡猾之处是同时躲开既有两道门**：`view-reachable:check` 问的是「模块有没有人 import」——
 > registry 那一行天然满足，绿；`nav-group-coverage:check` 原六条判据对账的是「后端 seeded 视图」与
