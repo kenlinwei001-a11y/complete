@@ -6,6 +6,27 @@
 
 ---
 
+## TL;DR（复验方先读这 8 行）
+
+1. **拒绝点在 `service.ts:3118`**（不是 3125；3125 是下一条 zod 判断）→ `VALIDATION_ERROR` / **HTTP 400**。
+   引入于 `4c2a7a42`（E3 求解器诞生那单），动机写在 commit message 里：**显式拒绝 > 静默返全域**。
+2. **它不是唯一断点，而且是三个里最外层的**。断点② = `chain-impediment.ts` 里 `businessTypes` **零读取**（没接线）；
+   断点③ = 6 个 locus 里 5 个**本体上不承载业务线**，唯一承载的那条判据恒 UNKNOWN。
+   ⇒ **只删那 6 行 400，会把「诚实报错」换成「静默错答」，比现在更糟。**
+3. **今天 15 条阻滞点里，可按业务线裁的是 0 条**（Line 2 / MaterialBalance 7 / MaterialBatch 6 / **Order 0**）。
+   甲（单 seg 过滤）单独交付**什么都看不见** —— 派单时必须写明，否则 dev 以为自己没做完。
+4. **A6 现状 0 分**：PRD §5.4 指定的判据出口 `segOfBusinessType`（`chain-sim.ts:273`）**生产调用方 = 0**，
+   只有 `packages/contracts/test` 五处引用 = 假绿第 9 形态（只有 test 引用 = 已排练，不是已实现）。
+5. ✅ **已实测坐实**：seed 42 上**真有**跨 seg 争用 —— `changzhou`(乘用车×7 + 储能 SO-3476) / `wuhan` / `xiamen`。
+   （静态复算，金丝雀 = E2 接缝门实测的 `12/3/9` 分布，逐值对上。）
+6. ⚠ **但争用面与阻滞点面交集为空**：卡点在 `jinhua`(纯乘用车) 与 `zigong`(纯商用车)。
+   ⇒ **争用必须做成「新判据（produce）」，不能做成「在既有阻滞点上打标注（annotate）」** —— annotate 今天恒空，门当场红。
+7. ⚠ `model_certified_on` 只连每基地的 `slurry`(制浆) 线，而卡点在 `slitting`(分切) 线 ⇒ **`LINK_HOP` 会空手**，
+   得走 `Line.baseId` 值键相等，**争用粒度因此是基地级不是线级**，文案不许写成「这条线被三个 seg 争」。
+8. **这份代码不在 `origin/main` 上**（见 §0）。修复要落在 `b2e99b2e` 那条线。
+
+---
+
 ## 0. 先纠正一件事：这份代码不在 canonical 上
 
 派单时给的线索是「`apps/datacore/src/solvers/service.ts` 约 `:3125`」。我在默认树（= `origin/main` = `778cc589`）上
@@ -177,6 +198,22 @@ $ grep -n "businessTypes" apps/datacore/src/solvers/chain-impediment.ts → （�
 **所以今天的真实处境是**：即便把 400 删掉、把过滤按 baseIds 那个形态照抄一遍，
 6 条判据里 5 条的 locus 不承载业务线、剩下 1 条恒 UNKNOWN ⇒ **筛出来的结果与不筛逐字节相同**。
 这就是「筛了个寂寞」。**这一段是本审计最要紧的一条，修复方案必须从这里起步，而不是从那 6 行 400 起步。**
+
+### 2.4 用真跑数据坐实：今天 15 条阻滞点里，**可按业务线裁的是 0 条**
+
+审核方 2026-08-08 的真跑记录（`docs/VERIFY-sandbox-A5-2026-08-08.md:9–20`）给出了 locus 分布：
+
+| locus 类型 | 条数 | 承载 `businessType`？ |
+|---|---|---|
+| `Line`（`LINE-WS-jinhua-slitting` 金华分切 · 自贡分容） | 2（BOTTLENECK） | ❌ |
+| `MaterialBalance`（如 `mbal-6` 铜箔，缺口 398 吨） | 7（BREAK） | ❌ |
+| `MaterialBatch`（如 `elyte_b2` 电解液，呆滞 121 天） | 6（CONGESTION） | ❌ |
+| `Order` | **0**（C22 恒 UNKNOWN） | ✅ 但一条都没产出 |
+| `Process` / `DataSourceHealth` | 0 | ❌ |
+
+⇒ **`businessTypes` 过滤今天的作用面是 0/15。**
+甲（单 seg 过滤）**单独交付什么都看不见** —— 它的价值是「把门开对、把不能筛的诚实说出来」，
+不是「用户能筛了」。**派单时必须把这句写进工单，否则 dev 做完会以为自己没做完。**
 
 ---
 
@@ -410,14 +447,84 @@ PRD §5.4（`:194–206`）与 §附录 A B6（`:477–479`）把它说得更死
 | ② **争用的判定** | `IMPEDIMENT_RULE_BINDINGS` 六条**全是单主体**（「某对象某属性越阈」），没有任何一条是「多个 seg 的需求同时打到同一个 locus」 | `chain-impediment.ts:107–194` 逐条读过 |
 | ③ **保谁的判据出口** | `segOfBusinessType` 生产调用方 **0**（§3.2c） | grep 全仓，含金丝雀 |
 
+#### 5.2.0 ✅ 已实测坐实：seed 42 里**真有**跨 seg 争用，但**不在今天出阻滞点的那两条线上**
+
+这一条原本是本审计最大的未验证假设，现已用**静态复算**（不跑 vitest，只按种子代码逐字重放）坐实。
+
+**关系拓扑**（`apps/datacore/src/synthetic/service.ts:828–861`，三种一等关系边）：
+
+```
+order_for_model      : Order  → Model     （:841-849，每张单一条）
+model_producible_at  : Model  → Base      （:830-840，按 MODEL_BASE_MAP）
+model_certified_on   : Model  → Line      （:851-861，props {status, modelId, baseId}）
+```
+
+⇒ **`Order → Model → Line` 是 2 跳可达**（`links` 已由 `service.ts:3130` 全量载进判定器）。
+
+**复算方法**：逐字重放 `battery.ts:3510–3520` 的 `orderBases` 派生（`hashString(so) % 可产基地数` 取起点，
+≥3 基地取相邻 2 个）+ `businessTypeOfCustomer`（`battery.ts:164`）。
+**金丝雀**：复算出的业务线分布 = `passenger 12 / commercial 3 / storage 9`，与 E2 接缝门文件头
+（`sandbox-chain-scope.seam.test.ts:24`）**实测抄下来的基线逐值相同** ⇒ 复算是对的。
+
+**结果：13 个落单基地里 3 个存在跨 seg 争用**
+
+| 基地 | 落单数 | 业务线 | 争用？ |
+|---|---|---|---|
+| **changzhou 常州** | 8 | `passenger` + `storage` | ✅ **最厚的争用面**（SO-3476 储能 4680-LFP vs 7 张乘用车单） |
+| **wuhan 武汉** | 3 | `passenger` + `commercial` | ✅ |
+| **xiamen 厦门** | 4 | `passenger` + `commercial` | ✅ |
+| chengdu / hefei / **jinhua 金华** | 4 / 4 / **7** | `passenger` only | ❌ |
+| handan / jiangmen / meishan / xinyang / yangzhou / zaozhuang | 2/4/2/1/1/4 | `storage` only | ❌ |
+| **zigong 自贡** | **1** | `commercial` only | ❌ |
+
+#### 5.2.1 ⚠ **最要命的一条：争用面与今天的阻滞点面，交集为空**
+
+今天产出 BOTTLENECK 的两条线是 **`LINE-WS-jinhua-slitting`（金华分切）** 与 **自贡分容**
+（`docs/VERIFY-sandbox-A5-2026-08-08.md:18` 真跑实拍）。
+对照上表：**jinhua = 纯 passenger，zigong = 纯 commercial —— 两条都没有跨 seg 争用。**
+而有争用的 changzhou / wuhan / xiamen，今天**一条阻滞点都没产出**。
+
+**后果（派单时必须写进工单，否则 dev 会做出一个恒空的功能）**：
+
+> 若把「争用」做成**在既有阻滞点上打标注**（annotate），今天会得到 **0 个 contention 实例** ——
+> A6 的门当场红，而且红的原因**不是代码错，是设计选错了形态**。
+
+**正确形态是把争用做成一条新判据（produce），不是标注（annotate）**。
+依据是 A6 判据的原文措辞：「跨 seg 争用场景**能产出阻滞点**」（`PRD-sandbox-redesign.md:364`）——
+**产出**，不是「给已有的加个字段」。落到 `changzhou` 那 8 张单，就是 A6 想要的那个场景：
+**同一条线上，1 张储能单（marginPct 13）与 7 张乘用车单（marginPct 19）争，保谁。**
+
+#### 5.2.2 ⚠ 第二条陷阱：`model_certified_on` 只连到**第 1 个车间**的线
+
+`certLinks` 的构造（`battery.ts:3892`）：
+
+```ts
+certLinks.push({ modelId: m.modelId, lineId: `LINE-WS-${baseId}-${WORKSHOP_DEFS[0]!.suffix}`, baseId, status });
+```
+
+`WORKSHOP_DEFS[0]` = `WORKSHOP_REGISTRY[0]` = **制浆 `slurry`**（`packages/contracts/src/base-registry.ts:447`）。
+而每个基地有 **10 条线**（`battery.ts:3591` `nLinesPerBase = WORKSHOP_DEFS.length`，
+制浆/涂布/辊压/分切/卷绕/装配/注液/化成/分容/PACK）。
+
+⇒ **`model_certified_on` 边只存在于每基地的 `slurry` 线上**；
+今天出卡点的 `LINE-WS-jinhua-slitting`（**分切**）**一条 `model_certified_on` 边都没有**。
+
+**所以 `LINK_HOP`（沿一等关系一跳/两跳）在卡点线上会空手而归。**
+可行路径是 **`Line.baseId` 值键相等 → 该基地的订单集**（`impediment-options.ts:244–258`
+`narrowByKeyJoin` 有现成实现，且该文件 `:245–247` 的注释正是为这种情形写的：
+「有真关系且真能撬动时以关系为准，撬不动才退到值键相等」）。
+**争用的粒度因此是「基地级」而不是「线级」**——这一点必须在 PRD 里说清楚，
+否则输出会声称「这条线被三个 seg 争」，而实际判据是「这个基地」。**说得比做的准 = 又一个静默错答。**
+
 **最小可信落法（不造假判定）**：
 
 | # | 层 | 改法 |
 |---|---|---|
-| 乙-1 | **先取证，不许跳过** | 实测 `links` 表里到底有没有 `Line` ↔ `Order`（或 `Line` ↔ `Model`）的一等关系行。`service.ts:3130` 已经把 `links` 全量载进 `detectChainImpediments` 了（S3 的 `LINK_HOP` 正用它），**但本审计未验证具体边类型**。取不到 ⇒ 走 `Order.bases` / `Model.bases` 的值键相等（`impediment-options.ts:244–258` `narrowByKeyJoin` 有现成实现） |
-| 乙-2 | **规则** | 照 `UNBOUND_IMPEDIMENT_JUDGEMENTS`（`chain-impediment.ts:196+`）的既有纪律：先确认规则库 C01–C33 里**有没有**能担「跨 seg 争用」的规则。**没有就先立规则，不许在引擎里编一条 `contention > 阈值`** —— 那正是该文件明令禁止的「看起来合理的假判定」 |
+| 乙-0 | **形态定案（最要紧）** | 争用必须做成**一条新的产出判据（produce）**，**不是**在既有阻滞点上打标注（annotate）。依据 §5.2.1：annotate 形态今天产出 **0** 个实例（争用面 changzhou/wuhan/xiamen 与阻滞点面 jinhua/zigong **交集为空**） |
+| 乙-1 | **关系来源** | 走 **`Line.baseId` 值键相等 → 该基地订单集**（`impediment-options.ts:244–258` `narrowByKeyJoin` 现成）。**不要走 `LINK_HOP`** —— `model_certified_on` 只连每基地的 `slurry` 线，卡点所在的 `slitting`/`grading` 线上零边（§5.2.2）。<br>⚠ 因此争用粒度是**基地级**，PRD 与输出文案必须照实说，不许写成「这条线被三个 seg 争」 |
+| 乙-2 | **规则** | 照 `UNBOUND_IMPEDIMENT_JUDGEMENTS`（`chain-impediment.ts:196+`）的既有纪律：先确认规则库 C01–C33 里**有没有**能担「跨 seg 争用」的规则。**没有就先立规则，不许在引擎里编一条 `contention > 阈值`** —— 那正是该文件明令禁止的「看起来合理的假判定」。<br>（候选：C15「经营毛利底线」`Order.marginPct < Order.floorPct` 已是 `SEG_REGISTRY` 口径的规则，可能可担「保谁」那一半的阈值来源；**本审计未逐条核对 C01–C33，不下结论**） |
 | 乙-3 | **契约** `packages/contracts/src/chain-sim.ts`（`ChainImpedimentSchema`） | 加 **optional** 字段：<br>`contention?: { businessTypes: BusinessType[]; keep: BusinessType; basis: { marginPct: number; floorPct: number; source: "SEG_REGISTRY" } }`<br>**必须 optional** ⇒ 既有 15 条阻滞点逐字节不变（R6），既有调用方零影响 |
-| 乙-4 | **引擎** `chain-impediment.ts` | 在 `arbitrateByLocus`（`:391` 附近）之后加一个「争用标注」阶段：同一 `locus.objectId` 上有 ≥2 个 seg 的需求在争 ⇒ 标 `contention`。**「保谁」一律经 `segOfBusinessType(bt)` 取 `marginPct`/`floorPct`，零字面量**（PRD §5.4 的「禁内联」＋ A7 `boundary-singlesource:check`） |
+| 乙-4 | **引擎** `chain-impediment.ts` | 新增一条 binding（进 `IMPEDIMENT_RULE_BINDINGS`，locus = `Line` 或 `Base`）：同一基地上有 ≥2 个业务线的 OPEN 订单在争同一产能面 ⇒ 产出阻滞点并带 `contention`。**「保谁」一律经 `segOfBusinessType(bt)` 取 `marginPct`/`floorPct`，零字面量**（PRD §5.4「禁内联」＋ A7 `boundary-singlesource:check`） |
 | 乙-5 | **注入口（为了变异反证，见 §6）** | `detectChainImpediments` 已有现成的 DI 形态：`chain-impediment.ts:720` `const bindings = input.bindings ?? IMPEDIMENT_RULE_BINDINGS`。**照它加一个 `input.segRegistry ?? SEG_REGISTRY`**。<br>⚠ **但要防铁律 0.5 判据 #6 的坑**：`input.bindings` 这个注入口今天**生产与测试都没人传**（实测：`service.ts:3131` 不传；`apps/datacore/test/*.ts` 里也搜不到）。若 `segRegistry` 也走成「只有测试传」，就会得到「测试验的那条路生产不走」——**必须补一条守护断言**（§6 用例 5） |
 
 ---
@@ -470,11 +577,19 @@ it("Line/MaterialBalance 等不承载业务线的 locus，必须进 caveats 并�
 ```
 
 **用例 3 · SEAM 驱动：跨 seg 争用（数据半 × 引擎半，A6 前半句）**
+> **实例已实测锁定**（§5.2.0）：seed 42 上 `changzhou` 是 `passenger`(7 单) + `storage`(SO-3476) 争用，
+> `wuhan` / `xiamen` 是 `passenger` + `commercial`。**用例可以直接钉这三个基地的名字**，
+> 不必写成「至少有一条」这种可以被空实现骗过去的软断言。
 ```ts
 it("A6 · 跨 seg 争用场景能产出阻滞点，且 contention.keep 的判据来自 SEG_REGISTRY", async () => {
   const out = await scan(t, {});                         // 全域扫描，争用是客观事实不需要筛
-  const con = out.impediments.find((x) => x.contention);
-  expect(con, "跨 seg 争用场景一条都产不出来 —— A6 前半句不成立").toBeDefined();
+  const cons = out.impediments.filter((x) => x.contention);
+  // 钉死实测的三个争用基地（复算自种子·金丝雀 = E2 门的 12/9/3 分布）
+  const bases = [...new Set(cons.map((x) => x.contention!.baseId))].sort();
+  expect(bases, "seed 42 上真实存在的跨 seg 争用基地是 changzhou/wuhan/xiamen —— 少一个是漏判，多一个是误判")
+    .toEqual(["changzhou", "wuhan", "xiamen"]);
+  const con = cons.find((x) => x.contention!.baseId === "changzhou");
+  expect(con, "常州 8 张单（7 乘用车 + 1 储能 SO-3476）是最厚的争用面，产不出来 = A6 前半句不成立").toBeDefined();
   expect(con!.contention!.businessTypes.length,
     "争用至少要有两个 seg，否则不叫争用").toBeGreaterThanOrEqual(2);
   expect(con!.contention!.basis.source,
@@ -491,13 +606,16 @@ it("A6 · 跨 seg 争用场景能产出阻滞点，且 contention.keep 的判据
 ```
 
 **用例 4 · 变异反证 M1（A6 的验收方式原文：改册一个值 → 结论真跟着变）**
+> **变异值是算好的**：常州争的是 `passenger`(marginPct **19**) vs `storage`(**13**) ⇒ 基线 keep = `passenger`。
+> 把乘用车 19 → **5**（低于储能 13）⇒ keep 必须翻成 `storage`。武汉/厦门是 19 vs `commercial` **15**，同向翻。
 ```ts
-it("变异反证 M1：SEG_REGISTRY 乘用车 marginPct 19→5（低于储能 13）→ contention.keep 必须从 passenger 翻成 storage", async () => {
+it("变异反证 M1：SEG_REGISTRY 乘用车 marginPct 19→5（低于储能 13）→ 常州的 contention.keep 必须从 passenger 翻成 storage", async () => {
+  const pick = (r) => r.impediments.find((x) => x.contention?.baseId === "changzhou")!.contention!.keep;
   const before = await scanWithRegistry(t, {}, SEG_REGISTRY);
   const mutated = SEG_REGISTRY.map((s) => (s.key === "pas" ? { ...s, marginPct: 5 } : s));
   const after  = await scanWithRegistry(t, {}, mutated);
-  const kBefore = before.impediments.find((x) => x.contention)!.contention!.keep;
-  const kAfter  = after.impediments.find((x) => x.contention)!.contention!.keep;
+  const kBefore = pick(before);
+  const kAfter  = pick(after);
   expect(kBefore).toBe("passenger");
   expect(kAfter,
     `改了 SEG_REGISTRY 里一个数，"保谁"的结论没变（仍是 ${kBefore}）⇒ 判据不是真从册里读的，` +
@@ -575,7 +693,7 @@ A6 是**跨「数据半 + 引擎半」**的特性：
 
 | 步 | 内容 | 碰的文件 | 出口判据 |
 |---|---|---|---|
-| **1** | **取证与定案（不做完不许开工步 5）**：① `links` 表里有没有 `Line`↔`Order` 边；② 规则库 C01–C33 里哪条能担「跨 seg 争用」，没有就立规则 | 只读 + 回写 `docs/PRD-sandbox-redesign.md` | 取证贴 file:line；无规则则显式立单，**不许编判定** |
+| **1** | **取证与定案（不做完不许开工步 5）**：① ~~links 表有没有 Line↔Order 边~~ **本审计已做完，见 §5.2.0/§5.2.2**（有 3 种边，但卡点线上无边 ⇒ 走值键相等、粒度为基地级）；② ~~seed 里有没有真争用~~ **已做完，changzhou/wuhan/xiamen 三处**；**③ 仍需做**：规则库 C01–C33 里哪条能担「跨 seg 争用」，没有就立规则 | 只读 + 回写 `docs/PRD-sandbox-redesign.md` §5.4 | 逐条核过 C01–C33 并贴结论；无规则则显式立单，**不许编判定** |
 | **2** | 甲·引擎过滤 + 诚实降级 | `solvers/chain-impediment.ts`(`loci`/`judgeOne`) · `solvers/service.ts:3118` | 用例 1 + 用例 2 绿 |
 | **3** | 甲·前端解禁 + 三处行号订正 | `views/sim/sandboxConsole.ts` · `views/sim/SandboxConsole.tsx` | frontend vitest 绿 |
 | **4** | 乙·契约加 optional `contention` | `packages/contracts/src/chain-sim.ts` + `packages/contracts/test/chain-sim.test.ts` | 既有 15 条阻滞点逐字节不变 |
@@ -619,6 +737,21 @@ A6 是**跨「数据半 + 引擎半」**的特性：
 | 12 | REST 路由在 `apps/datacore/src/app.ts:2793` | grep 命中后确认是 `app.post(...)` 定义行 |
 | 13 | `detectChainImpediments` 已有 DI 形态（`:720` `input.bindings ?? ...`） | 读 `:719–740` |
 | 14 | 沙盘代码不在 `origin/main`，在 `b2e99b2e` | `git log --all -S` + `git branch -a --contains` + `git log -1 origin/main`，全部带金丝雀 |
+| 15 | 种子里三种一等关系边（`order_for_model` / `model_producible_at` / `model_certified_on`），`Order→Model→Line` 2 跳可达 | 读 `apps/datacore/src/synthetic/service.ts:828–861` 全段 |
+| 16 | `model_certified_on` **只连每基地的 `slurry`（制浆）线**；每基地 10 条线 | 读 `battery.ts:3892`（`WORKSHOP_DEFS[0]!.suffix`）+ `battery.ts:3591`（`nLinesPerBase`）+ `packages/contracts/src/base-registry.ts:446–457`（`WORKSHOP_REGISTRY` 十条，`[0]` = 制浆 `slurry`） |
+| 17 | 今天 15 条阻滞点的 locus 分布：Line 2 / MaterialBalance 7 / MaterialBatch 6 / **Order 0** | 读 `docs/VERIFY-sandbox-A5-2026-08-08.md:9–20`（审核方真跑实拍记录） |
+| 18 | 卡点线是 `LINE-WS-jinhua-slitting`（金华**分切**） | 读 `docs/VERIFY-sandbox-A5-2026-08-08.md:18` 原文 |
+
+### 8.1b 静态复算验过的（**不跑 vitest**，只按种子代码逐字重放；脚本可复现）
+
+| # | 结论 | 方法 | 金丝雀 |
+|---|---|---|---|
+| 19 | seed 42 的 24 张单落到 13 个基地，其中 **changzhou / wuhan / xiamen 三处存在跨 seg 争用**；changzhou 是 `passenger`×7 + `storage`×1(SO-3476) | 逐字重放 `battery.ts:3510–3520` 的 `orderBases` 派生（`hashString(so) % 可产基地数`，≥3 基地取相邻 2）+ `businessTypeOfCustomer`（`battery.ts:164`）+ `MODEL_BASE_MAP`（`battery.ts:64–71`）+ `HTML_ORDERS` 24 行（`battery.ts:194–218`） | **复算出的业务线分布 = `passenger 12 / commercial 3 / storage 9`，与 E2 接缝门文件头 `sandbox-chain-scope.seam.test.ts:24` 实测抄下的基线逐值相同** |
+| 20 | **争用面与阻滞点面交集为空**：jinhua = 纯 passenger、zigong = 纯 commercial | 上表 × #17/#18 对照 | 同上 |
+
+> ⚠ 这两条是**静态复算**不是真跑：它重放的是 `generateBattery` 里那一段派生逻辑，
+> **没有**经过仓储落库、`loadContext`、以及任何可能在中途改写 `Order.bases` 的代码。
+> 置信度高（金丝雀对上了一个独立来源的实测基线），但**实施单仍应在真跑上复核一次**。
 
 ### 8.2 只 grep 到（**带金丝雀**，但**没有再追一层**，请复验方注意）
 
@@ -634,9 +767,10 @@ A6 是**跨「数据半 + 引擎半」**的特性：
 
 | # | 假设 | 风险 |
 |---|---|---|
-| ⅰ | `links` 表里存在能把 `Line`（或 `Process`）连到 `Order`/`Model` 的一等关系行 | **高**。若没有，§5.2 乙-1 要退到值键相等（`narrowByKeyJoin`），或干脆做不了 ⇒ 步 5 工作量翻倍。**本审计完全没有验证 links 表的实际边类型**（只读到 `impediment-options.ts` 的消费代码，没读种子的产出代码） |
-| ⅱ | 规则库 C01–C33 里有一条能担「跨 seg 争用」的规则 | **高**。`chain-impediment.ts:196+` 的 `UNBOUND_IMPEDIMENT_JUDGEMENTS` 已经为「断点·时间」逐条核过 C01–C33 并判定「无」；**我没有为「跨 seg 争用」做同样的逐条核对** |
-| ⅲ | seed 42 真的存在「同一条 Line 被 ≥2 个 seg 争用」的事实 | **中**。若种子里三个 seg 的订单恰好各走各的基地/产线，用例 3 会因为**数据里没有争用**而红，而不是因为代码没接。**必须先在真种子上核出一个真争用实例**，否则会做出一个恒 UNKNOWN 的判据 |
+| ~~ⅰ~~ | ~~`links` 表里存在能把 `Line` 连到 `Order`/`Model` 的一等关系行~~ | ✅ **已关闭**（§5.2.0/§5.2.2、诚实边界 #15/#16）：**有**三种边、2 跳可达，**但卡点所在的线上无边** ⇒ 结论改为「走值键相等，粒度降为基地级」 |
+| ~~ⅲ~~ | ~~seed 42 真的存在跨 seg 争用~~ | ✅ **已关闭**（诚实边界 #19）：**存在**，changzhou / wuhan / xiamen 三处。**但同时查出一个更糟的事实**（§5.2.1）：争用面与今天的阻滞点面**交集为空** ⇒ annotate 形态会恒空 |
+| ⅱ | 规则库 C01–C33 里有一条能担「跨 seg 争用」的规则 | **高（仍未关闭）**。`chain-impediment.ts:196+` 的 `UNBOUND_IMPEDIMENT_JUDGEMENTS` 已经为「断点·时间」逐条核过 C01–C33 并判定「无」；**我没有为「跨 seg 争用」做同样的逐条核对**。这是步 1 剩下的唯一取证项 |
+| ⅲ' | 争用做成「新判据」后，那条判据的**阈值**能从某条规则读回来 | **高**。`chain-impediment.ts:5` 的铁律是「引擎里一个业务阈值都没有，阈值全从规则读回，读不回来就 UNKNOWN」。若 ⅱ 落空，新判据会**结构性地恒 UNKNOWN** —— 那等于 A6 依旧不过，只是报错文案更诚实了 |
 | ⅳ | 甲-2 改完后既有 15 条阻滞点（未限定时）逐字节不变 | **低**。设计上未限定 ⇒ `wantBts === undefined` ⇒ 走原路径。但**没跑过测试**（本单禁止跑 vitest） |
 | ⅴ | §6 的用例 1–6 全部可执行、断言语法在本仓 helpers 下成立 | **中**。`scan()` / `scanWithRegistry()` / `btBySo()` 三个 helper 中，只有 `btBySo` 在 `sandbox-chain-scope.seam.test.ts:56–59` 有现成实现可抄；另两个是我按 `invokeSolver` 的形状拟的，**未编译验证** |
 | ⅵ | 保留 `modelIds` 的 400（甲-4）是对的 | **低–中**。依据是 `chain-sim.ts:287–289`「型号今天没有 contracts 级单源册」。但这是**产品决策不是技术决策**，需要仓主拍板 |
@@ -647,9 +781,14 @@ A6 是**跨「数据半 + 引擎半」**的特性：
 以及最要紧的一条——**它不是唯一断点，而且是三个断点里最外层、最好修的那一个**：
 
 ```
-断点① service.ts:3118        显式 400        ← 派单指到的
+断点① service.ts:3118        显式 400（诚实的 fail-closed）        ← 派单指到的
 断点② chain-impediment.ts    businessTypes 零读取（没接线）
-断点③ 本体层                  5/6 的 locus 类型不承载 businessType；唯一承载的那条判据恒 UNKNOWN
+断点③ 本体层                  5/6 的 locus 不承载 businessType；唯一承载的那条判据恒 UNKNOWN
+                            ⇒ 实测：今天 15 条阻滞点里可按业务线裁的是 0 条
+断点④ 数据面（本审计新查出）    争用面(changzhou/wuhan/xiamen) 与 阻滞点面(jinhua/zigong) 交集为空
+                            ⇒ 「在既有阻滞点上打标注」这个形态今天恒空，A6 门会红在设计上而不是代码上
 ```
 
-**只修①会把「诚实报错」换成「静默错答」**，比现在更糟。这一点是本审计最想让复验方带走的结论。
+**只修①会把「诚实报错」换成「静默错答」**，比现在更糟。
+**而只做①②③、把争用做成 annotate，会得到一个恒空的功能 —— 全绿、零产出、A6 依旧不过。**
+这两条是本审计最想让复验方带走的结论。
