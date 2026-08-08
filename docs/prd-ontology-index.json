@@ -759,6 +759,18 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-console-cleanup.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-data-backfill.md": {
       "hasOntologyRef": true,
       "invariants": [
