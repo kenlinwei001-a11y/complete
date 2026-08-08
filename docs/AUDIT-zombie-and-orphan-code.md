@@ -17,7 +17,9 @@
 | ② **孤立代码**（文件级无人 import） | 12 个候选 → **真孤立 2 · 有害 1 · 其余 9 条为正常形态** | 12 个**全部**逐个追实并分类 |
 
 **追实率**：本报告下结论的每一条都追到了「真正被谁调用、在什么条件下触发」。
-**5 条一开始判错、追一层后被推翻**（见 §7）——这是本单最值钱的部分。
+**6 条一开始判错、追一层后被推翻**（见 §7 与 §5.5）——这是本单最值钱的部分。
+另有**负结果 2 组**（§5.5：6 个 feature flag 全在册 · 10 个疑似幽灵导航项全有真种入），
+**已排除，别再查一遍**。
 
 ### 最狠的三条
 
@@ -131,11 +133,16 @@ D. 传入全部 7 因子（bnFactors 携 bottleneck_matrix 七因子枚举时的
 
 ### 2.2 【③-2】`decision-play` 在导航里是幽灵条目
 
-**已在 `docs/PRD-nav-gate.md:168-171` 记录，本单复核为真，不重复劳动。**
+**已在 `docs/PRD-nav-gate.md:168-171` 记录，本单复核为真并补强了证据。**
 
 - `apps/frontend-shell/src/pages/ShellLayout.tsx:57`：`decision-play` 登记在「推演」组，`kind:"view"`。
 - `UnifiedNav`（`ShellLayout.tsx:~100`）：`const it = viewByKey.get(ref.key); if (!it) return null;` —— 查不中**静默 return null**，永远不渲染，也不报错。
-- 后端 `BUILTIN_VIEWS` 明确**不种入**它：`apps/datacore/src/synthetic/view-manifest.ts:54-56` 写明「只有前端 renderer + 专用静态路由，**没有** VIEW_DEF / VIEW_FEATURE_MAP / view.decision-play 功能——配置不完整。诚实排除」。
+- **本单补强的判据（两种模式都查了）**：
+  - `rg '"decision-play"' apps/datacore/src` → **0 命中**（既不在 `BUILTIN_VIEWS`，也不在 `synthetic/service.ts` 的 `EXTRA_VIEW_KEYS`/`VIEW_DEFS` 那条**第二种种入路径**）
+  - `rg '"decision-play"' apps/frontend-shell/src/mocks` → **0 命中**（mock 模式的 `allViews` 也没有）
+  ⇒ **真实模式与 mock 模式下 `viewByKey.get("decision-play")` 都恒 `undefined`。**
+- 后端 `view-manifest.ts:54-56` 写明是**知情的诚实排除**：「只有前端 renderer + 专用静态路由，**没有** VIEW_DEF / VIEW_FEATURE_MAP / view.decision-play 功能——配置不完整。种一个会 404 的破视图不如不种」。
+- **第三张表还以为它存在**：`packages/contracts/src/admin.ts:92` 的视图键清单里有 `decision-play`。
 
 **形态判定**：**幽灵引用**，但**不是不可达**——`App.tsx:138` 有静态路由 `/v/decision-play`，`DashboardView.tsx:159` 有按钮直达。
 **危害等级：中**（不是「用户到不了」，是「导航里那一条恒不显示」）。门 `scripts/check-nav-group-coverage.mjs:45` 已显式豁免这个键（「走 App.tsx 静态路由**不报**」）——**豁免是知情的，不是遗漏**。
@@ -425,6 +432,23 @@ scripts/check-dril-retrieval.mjs:122 （同上）
 
 ---
 
+## 5.5 · 已排除的假线索（负结果·**别再查一遍**）
+
+负结果和正结果一样值钱——下面这些我查过了，**是干净的**，不要重复劳动：
+
+| 线索 | 查法 | 结论 |
+|---|---|---|
+| **前端 6 个 feature flag 是否有幽灵** | 抽出 `flag="…"` 全集（`act.adopt-to-draft`·`act.export`·`opt.multiobj`·`view.global-sim.live`·`view.project-sim.whatif`·`view.task-dag`），逐个比对 `datacore/src/features.ts` 与 `agentcore/src/features/registry.ts` | **6/6 全部在册，无幽灵**。（`opt.multiobj` 与 `view.global-sim.live` 是 `defaultOn:false`，那是**有意的 entitlement 默认关**，不是 bug） |
+| **`NAV_GROUPS` 里另外 10 个不在 `BUILTIN_VIEWS` 的视图键** | `order-chain`·`geo-map`·`graph-all/backbone/flow/source/solver/mvp/agent/loop` | **全部有真种入，不是幽灵**。它们走的是**第二条种入路径**——`synthetic/service.ts:60-69`（`EXTRA_VIEW_KEYS`）+ `:1586-1607`（`VIEW_DEFS`），并在 `features.ts:195-206` 有 feature 映射、mock `fixtures.ts:439-515` 也有。**`BUILTIN_VIEWS` 不是视图的唯一来源**——只比对它会误报 10 条 |
+
+> ⚠ **这条差点成为本单第 6 次误判**：我按「`NAV_GROUPS` 视图键 − `BUILTIN_VIEWS`」做差集，
+> 得到 11 个候选，几乎就要报「11 条幽灵导航项」。追一层（去 `synthetic/service.ts` 看第二条种入路径）后，
+> **10 条被推翻，只剩 `decision-play` 一条是真的**。
+> `view-manifest.ts` 自称「内置视图**唯一真相源**」，但那句话的作用域只到「内置」——
+> `EXTRA_VIEW_KEYS` 是它管不着的另一批。**「唯一真相源」这五个字要读作用域，不能读字面。**
+
+---
+
 ## 6 · 我没扫 / 没追实的部分（明说）
 
 **没起服务**：本 worktree 无 `node_modules`、无 `dist`，起内存态服务需先 install+build，本单纪律禁止。
@@ -513,8 +537,16 @@ scripts/check-dril-retrieval.mjs:122 （同上）
 读文件头后推翻——它是**迁址后有意保留的薄 re-export 垫片**，零 importer 是预期结果而非遗漏，
 **处置从「删」翻转成「不动」**。
 
-> **五条的共同点**：`grep`/工具给出的**数字本身都是真的**，错的是我**把数字当成了结论**。
-> 三条靠「再追一层调用」翻案，两条靠「换一个我确定存在的东西验工具」翻案。
+### 7.6 「11 条幽灵导航项」→ 只剩 1 条
+
+详见 §5.5。按「`NAV_GROUPS` − `BUILTIN_VIEWS`」做差集得 11 个候选，
+追一层发现 10 条走的是 `synthetic/service.ts` 的**第二条种入路径**（`EXTRA_VIEW_KEYS` + `VIEW_DEFS`）。
+病根是我信了 `view-manifest.ts` 头注释里「内置视图**唯一真相源**」那句话的**字面**，
+没读它的**作用域**（"内置"之外还有一批）。
+
+> **六条的共同点**：`grep`/工具给出的**数字本身都是真的**，错的是我**把数字当成了结论**。
+> 四条靠「再追一层调用/再找一条种入路径」翻案，两条靠「换一个我确定存在的东西验工具」翻案。
+> **没有一条是靠多 grep 一次翻案的** —— 「我 grep 了」从来不是复验。
 
 ---
 
