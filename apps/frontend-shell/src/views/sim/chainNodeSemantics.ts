@@ -156,12 +156,18 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
         conflictId: "cf-agingdays-two-consumers",
         text:
           "静置天数（Process.agingDays）是**同一个数的两个消费方**：一边是本节点这一段的天数（1:1 直接就是天），" +
-          "另一边是老化库位的单元速率（占用天数口径 ⇒ 单元日通过量 = 1/静置天数 ⇒ 老化工序硬容量），" +
-          "再被规则 C02 当作卡点判定的实测值。把静置期从 5 天压到 3 天，本节点少 2 天，" +
-          "老化工序硬容量同时被抬高 5/3 倍；反过来延长静置期会**同时**制造损失与制造卡点。" +
+          // R14（去业务锁死 · debattery 门）：本条原文两处踩线，都已治本而非豁免——
+          //   ① 举例写「从 5 天压到 3 天 ⇒ 抬高 5/3 倍」：机制（1:1 减天数 × 取倒数抬容量）是通用的，
+          //      **举例用的具体天数是本行业的数** ⇒ 改成只讲机制不编例子数字，说服力一点没少。
+          //   ② 用中文工序名指代这段：**改成指契约字段**（`agingSlots`/`agingDays`/`occupancyDays`）。
+          //      字段名是 schema 不是行业常数，而且它本来就是单一来源 —— 读者反而拿到更硬的指向。
+          //      （门的词表是电池工序名；全仓虽有 35 处 `debattery-allow` 先例，但这里能治本就不该豁免。）
+          "另一边是该工序库位的单元速率（`rateKind=occupancyDays` ⇒ 单元日通过量 = 1/静置天数 ⇒ 该工序硬容量），" +
+          "再被规则 C02 当作卡点判定的实测值。压缩静置期，本节点的天数按 1:1 减少，" +
+          "而该工序硬容量按**倒数**关系同时被抬高；反过来延长静置期会**同时**制造损失与制造卡点。" +
           "这两件事今天在屏上是分开显示的，改一个数会同时动。",
         basis: [
-          "packages/contracts/src/process-capacity.ts:60（老化库位规格：unitsProp=agingSlots · rateProp=agingDays · rateKind=occupancyDays）",
+          "packages/contracts/src/process-capacity.ts:60（库位规格：unitsProp=agingSlots · rateProp=agingDays · rateKind=occupancyDays）",
           "packages/contracts/src/process-capacity.ts:106（`spec.rateKind === \"occupancyDays\" ? 1 / rate : rate` —— 占用天数取倒数）",
           "packages/contracts/src/process-capacity.ts:115（`capacityPerDay: units * unitDailyThroughput * yieldFactor`）",
           "apps/datacore/src/solvers/chain-impediment.ts:107-120（C02 卡点判据的实测值 = readProcessHardCapacity().capacityPerDay）",

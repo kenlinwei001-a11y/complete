@@ -542,7 +542,10 @@ export function buildCellFacts(facts: TopologyFacts): CellFactsResult {
               sumQty,
               "电芯",
               // ⚠ 上屏文案里不许写 Markdown 记号：这些串直接进 DOM，`**x**` 会原样显示成星号（实拍抓到过）。
-              `在制 = Σ WIPLot.qty${nLots === null ? "" : ` over ${nLots} 批`}（按 lineId 归到车间列；不用 WIPLot.currentProcess —— 该字段在种子里是常量「涂布」，拿它定列会把全部在制塞进一列）`,
+              // R14（去业务锁死·debattery 门）：这句上屏，**不许写死具体工序名**。
+              // 「该字段恒为同一个值」是通用事实（拿一个恒定字段定列必然把全部在制塞进一列），
+              // 而那个值叫什么是本租户的行业数据——写进视图就把视图锁死在这个行业上。
+              `在制 = Σ WIPLot.qty${nLots === null ? "" : ` over ${nLots} 批`}（按 lineId 归到车间列；不用 WIPLot.currentProcess —— 该字段在本租户数据里恒为同一个值，拿它定列会把全部在制塞进一列）`,
             ),
     });
   }
@@ -791,8 +794,12 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     field: "wip",
     status: "connected",
     source: "WIPLot",
-    shapeToday: "逐批次 {lotId, woId, modelId, lineId, currentProcess, qty, status}（实测 260 行，每格 2 批；**无 baseId 属性**）",
-    gap: "已接：Σqty，按 lineId 归车间列。刻意不用 currentProcess —— 实测 260/260 行恒为「涂布」，拿它定列等于把全部在制塞进一列",
+    // ⚠ 两条纪律，本条曾同时违反：
+    //   ① `shapeToday`/`gap` 直接进 DOM（`PhysicalTopologyView.tsx:334`）⇒ **不许写 Markdown 记号**，
+    //      `**x**` 会原样显示成星号。本文件在 wip 聚合处自己写着这条，台账条目却犯了。
+    //   ② R14 去业务锁死 ⇒ **不许写死行业工序名**。「恒为同一个值」是通用事实，那个值叫什么不是。
+    shapeToday: "逐批次 {lotId, woId, modelId, lineId, currentProcess, qty, status}（每格 2 批；注意：无 baseId 属性，故按 lineId 归列）",
+    gap: "已接：Σqty，按 lineId 归车间列。刻意不用 currentProcess —— 实测本租户全部行恒为同一个值，拿它定列等于把全部在制塞进一列",
   },
   {
     field: "—",
