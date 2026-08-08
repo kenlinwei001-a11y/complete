@@ -54,7 +54,7 @@ const ctxOf = (tenantId: string): AuthCtx => ({ tenantId, userId: "u", roles: ["
 
 /**
  * 需求侧落库补位（**非造假数据**）：`generateBattery` 已确定性产出 `maintenanceOrders`
- * （`battery.ts:4302` 起·hashString 派生·不消耗 rng），但 `synthetic/service.ts` 的物化清单
+ * （`battery.ts:4303` 起·hashString 派生·不消耗 rng），但 `synthetic/service.ts` 的物化清单
  * （:802-812 那一段）**漏了这一类** —— 生成了没落库。而 `assembleBaselineFromSelection`
  * （`solvers/service.ts:3734`）的 client 角色赢家恰好就是它（leaf 词库命中 ∧ fanOut=3 ∧ 字典序先于
  * WorkOrder），且**不检查候选类型有没有实例** ⇒ clients=[] ⇒ `facility_location` 抛
