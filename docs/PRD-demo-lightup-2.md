@@ -11,7 +11,7 @@
 
 | 键 | 裁决 | 关态实测 | 开态实测 | 结论 |
 |---|---|---|---|---|
-| `agent.skill-on-free-qa` | **点亮** | 自由问答 path-B 工具集 **27 个·无 `load_skill`**；system prompt 1905 B·无技能段 | 工具集 **28 个·含 `load_skill`**；system prompt **2431 B**·含技能段与 5 个 `skl_*` id；`load_skill` **真被调**且技能全文（566 B）真进对话 | ✅ 真接通·端到端可用 |
+| `agent.skill-on-free-qa` | **点亮** | 自由问答 path-B 工具集 **27 个·无 `load_skill`**；system prompt 1905 B·无技能段 | 工具集 **28 个·含 `load_skill`**；system prompt **2431 B**·含技能段与 5 个 `skl_*` id（= 该租户全部 5 条 PUBLISHED，2 条 DRAFT 未进）；`load_skill` **真被调**且技能全文（566 B）真进对话 | ✅ 真接通·端到端可用 |
 | `qos.multi-intent-l2-decompose` | **点亮** | 同一复合问句落 `agent:role:supply-chain`（单角色 agent·一段自由文本） | 落 `llm-l2-decompose`·`path=WORKFLOW`·**3 路并行确定性求解**（kit_readiness / lta_gap / bottleneck_matrix·各自 ⟦ref:N⟧） | ✅ 真接通·产出形态整体改变 |
 | `qos.multi-intent-orchestration` | **点亮** | 「推荐哪个经营方案？另外下周哪些订单缺料开不了工？」**只答第一问**（单意图 plan_recommend） | 落 `llm-multi-intent`·**2 路并行**（plan_generate + kit_readiness）·**两问都答** | ✅ 真接通·治「问了两件事只答一件」 |
 | `qos.opt-whatif-route` | **点亮** | 该问句从不触碰 `optimize_whatif`，直接落 path-B agent | 路由**真命中**（`facility_location`·selection 3·扰动 `facilities.f1.openCost=150`）→ **真 invoke `optimize_whatif`** → DataCore 装配**诚实报缺** → `routing.degraded` → 落 path-B | ◐ 路由真接通，**但 demo 数据不足以完成**（见 §3 残口） |
@@ -24,10 +24,15 @@
 
 ### 2.1 `agent.skill-on-free-qa` —— 有数据、有挂点，只差一把钥匙
 
-**为什么点**：demo 租户在 AgentCore `mocks/seed.ts seedRegistry().skills` 里有 **7 条出厂 Skill**，
-`main.ts` 启动即幂等播种。但它们此前**只对注册 agent 路径可达**（skill 绑在 `agent.skills` 上）；
+**为什么点**：demo 租户在 AgentCore `mocks/seed.ts seedRegistry().skills` 里有 **7 条出厂 Skill，
+其中 5 条 PUBLISHED**（`sop_meeting` / `quality_control` 是 DRAFT），`main.ts` 启动即幂等播种。
+但它们此前**只对注册 agent 路径可达**（skill 绑在 `agent.skills` 上）；
 用户在对话坞随便问一句走的是泛化 path-B（裸 `AGENT_SYSTEM_CORE`），一个技能都看不见
 （本体 §8 `G-SKILL-UNREACHABLE-FREE-QA`）。
+
+> ⚠ **我在这里差点报错一个数**：按 `seed.ts` 里的条目数我先写成"7 条 PUBLISHED"，
+> 真打 `GET /b/v1/skills` 才发现是 **5**（`total skills: 7 / PUBLISHED: 5`）。
+> 数条目 ≠ 数状态 —— 顺带实测坐实了 `selectTenantSkills` 的 DRAFT 过滤在**生产链路**上真生效。
 
 **关态原文**（真起双服务 + 本地 mock provider·真发问句）：
 
@@ -58,9 +63,10 @@ system prompt 里真出现的技能段：
 - [skl_seed_supply_chain] 供应链管理技能: …
 ```
 
-**⚠ 诚实边界**：注入的是 **5 条**而非 7 条 —— `buildSkillSection` 的语义路由做了收窄
-（top-k 全文 + 其余降级为 id/名），这是设计如此，不是漏。全文不常驻 system（渐进披露），
-模型需要时 `load_skill` 取——上面第二轮报文里全文真的进来了，这才是"技能被用上"的效果层证据。
+注入的 5 个 id **恰好等于**该租户的 5 条 PUBLISHED（`skl_seed_capacity` / `risk_analysis` /
+`supply_chain` / `mcp_guide` / `capacity_action`），两条 DRAFT 一条都没进 —— 池子的口径是对的。
+全文不常驻 system（渐进披露），模型需要时 `load_skill` 取；上面第二轮报文里全文真的进来了，
+**这才是"技能被用上"的效果层证据，而不是"工具挂上了"**。
 
 ### 2.2 `qos.multi-intent-l2-decompose` —— 顺带澄清一个**看起来像缺陷其实不是**的依赖
 

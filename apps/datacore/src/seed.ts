@@ -79,11 +79,13 @@ const DEMO_LIGHTUP: Record<string, boolean> = {
   //   `qos.deterministic-multi-domain` 供给耦合路由即可生效。本轮点 L2 是**新增第三个
   //   触发器**（治 novel 措辞被 free-LLM 长度门劫持），不是补 L3 的前置。
   //
-  // ① 自由问答挂载租户技能：demo 已有 7 条 PUBLISHED 出厂 Skill（agentcore `mocks/seed.ts`
-  //    `seedRegistry().skills`，main.ts 启动即幂等播种），但此前它们**只对注册 agent 路径可达**
-  //    （skill 绑在 `agent.skills` 上）；用户在对话坞随便问一句走的是泛化 path-B，一个技能都看不见。
-  //    点亮 = 那 7 条技能对默认自由问答可见并可 `load_skill` 取全文。**有数据才点**——
-  //    池空时代码本就不挂钩子（挂一个永远返 undefined 的工具只会诱导模型盲试）。
+  // ① 自由问答挂载租户技能：demo 出厂 Skill 共 7 条（agentcore `mocks/seed.ts` `seedRegistry().skills`，
+  //    main.ts 启动即幂等播种），其中 **5 条 PUBLISHED**（sop_meeting / quality_control 是 DRAFT）。
+  //    此前它们**只对注册 agent 路径可达**（skill 绑在 `agent.skills` 上）；用户在对话坞随便问一句
+  //    走的是泛化 path-B，一个技能都看不见。点亮 = 那 5 条对默认自由问答可见并可 `load_skill` 取全文。
+  //    **有数据才点**——池空时代码本就不挂钩子（挂一个永远返 undefined 的工具只会诱导模型盲试）。
+  //    ⚠ 这个「7 还是 5」我一开始按 seed 文件里的条目数推成了 7，真打 `GET /b/v1/skills` 才发现是 5 ——
+  //    顺带实测坐实了 `selectTenantSkills` 的 DRAFT 过滤在生产链路上真的生效（不是只有单测里生效）。
   "agent.skill-on-free-qa": true,
   // ② L2 真分解：复合/长问句（novel 措辞、不含域关键词）此前被 free-LLM 的**纯长度门**
   //    （q.length≥24）接走进慢路 ReAct——"说得越具体越被判为开放深问"，因果是反的。
