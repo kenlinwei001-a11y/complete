@@ -782,12 +782,15 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                * 否则面板会拿着 `null` 当"宿主已给"，屏上说着"复用宿主那一份"却一格证据都没有 ——
                * 那是把"还没有"画成"已经有"。
                */
-              <NodeInspectorView
-                chrome="embedded"
-                selectedNodeId={selectedNodeId ?? undefined}
-                onNodeIdChange={setSelectedNodeId}
-                lossPayload={loss ?? undefined}
-              />
+              <>
+                {honesty ? <InspectorEvidenceGapNote /> : null}
+                <NodeInspectorView
+                  chrome="embedded"
+                  selectedNodeId={selectedNodeId ?? undefined}
+                  onNodeIdChange={setSelectedNodeId}
+                  lossPayload={loss ?? undefined}
+                />
+              </>
             )}
           </div>
           {rail.map((s) => (
@@ -903,6 +906,44 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
 function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentKind): Set<string> {
   if (model === null) return new Set();
   return new Set(model.groups.find((g) => g.kind === kind)?.items.map((i) => i.stage) ?? []);
+}
+
+/**
+ * WO-CONSOLE-CLEANUP ① 的**代价当面说**。
+ *
+ * ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────
+ * 把宿主已取回的载荷传给右栏（`lossPayload`）确实把第二次 `chain_loss_attribution` 消掉了，
+ * 但**同时消掉了 R13 下钻三元组**：宿主手里那一份是经 `chainLineMap.ts` 的
+ * `ChainLossPayloadSchema` 解析过的，而那个 schema **没有声明 `evidence[]`** ——
+ * zod 的 `object` 是 strip 语义，未声明的键**当场被剥掉**。
+ * 实测（`fixtures/chain-loss-live-evidence.json` 过一遍该 schema）：`evidence` 26 条 → 解析后**键都不在了**；
+ * `empty[]` 因为在 schema 里声明了，原样活着。
+ *
+ * 于是面板里那句「本节点没有下钻证据」在控制台里说的是**宿主这一份缺这个字段**，
+ * 不是引擎没给 —— 两件事修法完全不同，不许混为一谈（"接了线没数据" ≠ "没接线"）。
+ * 那句话由 `InspectorNodePanel` 出，本单不许碰那个文件，所以把真相**贴在它旁边**。
+ *
+ * 补齐路径是**一行**：`ChainLossPayloadSchema` 里加上 `evidence`。该文件在本单
+ * 🚦「绝对不碰」清单里，故留给下一张单；加上之后本文件**一行都不用改**，证据自动回来。
+ * 独立页 `/v/node-inspector` 仍走自取（拿的是原始响应），证据照常，零回归。
+ *
+ * 门：`sandbox-console.seam §9` 咬死「该 schema 今天确实剥掉 evidence」+「屏上这句话在」——
+ * 哪天有人把 schema 补上了，那条断言当场红，逼着把这段文案一起改掉（而不是留一句过期的话）。
+ */
+function InspectorEvidenceGapNote() {
+  return (
+    <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap">
+      <b>本栏复用宿主已取回的那一份 <code>chain_loss_attribution</code>（不再自取第二次）。代价照实说：</b>
+      宿主这一份经前端宽松读取层 <code>ChainLossPayloadSchema</code> 解析，而该 schema
+      <b>没有声明 <code>evidence[]</code></b> ⇒ zod 按 strip 语义把它剥掉了。
+      所以下面「R13 下钻证据」在<b>控制台里</b>是空的 ——
+      面板那句「本节点没有下钻证据」说的是<b>宿主这一份缺这个字段</b>，<b>不是引擎没给</b>。
+      <code>empty[]</code> 在 schema 里声明过，诚实缺席行原样都在。
+      补齐 = 在 <code>chainLineMap.ts</code> 的 <code>ChainLossPayloadSchema</code> 里加一行 <code>evidence</code>
+      （该文件在本单边界外）；加上后本页一行不改、证据自动回来。独立页{" "}
+      <code>/v/node-inspector</code> 走自取原始响应，证据照常。
+    </p>
+  );
 }
 
 /**
