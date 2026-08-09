@@ -367,11 +367,17 @@ $ git ls-remote origin claude/handoff-wo-l7a-solver-taxonomy
 f9b3d8ea6ef11da53856014578c4a22ffd0dfba8	refs/heads/claude/handoff-wo-l7a-solver-taxonomy
 ```
 
+⚠ 上面这个 sha 是**本文件写下那一刻**的实测值；此后每追加一次文档提交它都会前进
+（写死在文档里的 sha 天然会过期——**以 `git ls-remote` 当场实跑为准**，别信文档里的这一行）。
+
 提交（每完成一个可命名单元即 commit + push，不等门 —— push 与"过 gate"是两回事）：
 
-1. `6c928b3d feat(solvers): WO-L7A 内置求解器 10 类决策问题分类维（59/59 全覆盖·类型层强制）`
+1. `6c928b3d feat(solvers): WO-L7A 内置求解器 10 类决策问题分类维（59/59 全覆盖·类型层强制）` —— 定义 + 消费方接线
 2. `421fe8ea test(solvers): WO-L7A 两条效果层判据（类目集合恰好相等 + 59/59 无漏网）·纯函数层⊥HTTP 层各一遍`
 3. `f9b3d8ea docs: WO-L7A 交付说明`（本文件）
+4. `4989b76a docs: 补 §8 落盘 sha + 'diffstat 的减号 ≠ 删除' 复验提醒`
+
+**代码/测试只在提交 1–2**（提交 3–4 是纯文档），复验时只需看前两个提交的 8 个文件里的 6 个非文档文件。
 
 工作树 `git status --porcelain` 为空（无未提交残留；临时脚本已删，未入库）。
 
