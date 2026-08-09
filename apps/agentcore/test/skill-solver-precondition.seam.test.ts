@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestApp, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, debugHeaders, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
@@ -256,6 +256,35 @@ describe("WO-S05 · 防复发：不可执行的引用声明必须被 lint 报出
       ],
     });
     expect(unenforceable(v)).toEqual([]);
+  });
+
+  it("🔗 门真的挂在发布路上：带不可执行声明的技能 publish → 422 SKILL_LINT_FAILED", async () => {
+    // 上面几条咬的是 lintSkill **函数**；这条咬的是**链路**——「实现有、测试有、且是绿的，
+    // 零生产调用方」正是假绿第 9 形态。只有打到 POST /b/v1/skills/:id/publish 才证明门接上了。
+    const t = await createTestApp();
+    const created = await t.app.inject({
+      method: "POST",
+      url: "/b/v1/skills",
+      headers: debugHeaders(ADMIN),
+      payload: {
+        key: "k_unenforceable",
+        name: "技能",
+        ...BASE,
+        references: [{ kind: "constraint", key: "C_X", role: "precondition", required: true }],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = (created.json() as { id: string }).id;
+
+    const blocked = await t.app.inject({
+      method: "POST",
+      url: `/b/v1/skills/${id}/publish`,
+      headers: debugHeaders(ADMIN),
+    });
+    expect(blocked.statusCode).toBe(422);
+    const err = blocked.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("SKILL_LINT_FAILED");
+    expect(err.error.message).toContain("unenforceable");
   });
 
   it("出厂 7 个技能全部通过这道门（登记表与出厂声明一致，收窄登记表即红）", () => {
