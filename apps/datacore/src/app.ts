@@ -1524,13 +1524,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const p = PerturbationSchema.parse({
+    // `safeParse` 而非裸 `parse`：ZodError 身上没有 `statusCode`，会被兜底错误处理器（app.ts:833）
+    // 判成 **500 INTERNAL_ERROR** —— 把「用户填错了」报成「服务器坏了」，且进 error 日志。
+    // 统一错误信封要求这里是 400 VALIDATION_ERROR。
+    const parsed = PerturbationSchema.safeParse({
       ...body,
       id: newId("simpert"), tenantId: c.tenantId, sessionId: s.id,
       // 不填 startTick = 「现在就发生」（当前 tick）——与 `/act` 的隐含语义一致。
       startTick: body.startTick ?? s.curTick,
       createdAt: new Date().toISOString(),
     });
+    if (!parsed.success) throw validationError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const p = parsed.data;
     await repos.sim.createPerturbation(p);
     // 已在当前 tick 生效的扰动立刻落到世界态（active 判据由契约单源 isPerturbationActiveAt 给，
     // 引擎与路由共用同一份，不许各写一份）。未生效的只入库。

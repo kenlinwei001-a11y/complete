@@ -125,10 +125,13 @@ class PgSimRepo implements SimRepo {
     return r.rows[0] ? (r.rows[0].doc as Perturbation) : null;
   }
   async listPerturbations(tenantId: string, sessionId: string) {
-    // 排序与 memory 侧逐字同构：startTick 升序 → id 升序（确定性 R6）。
-    // `(doc->>'startTick')::int` 走 028 建的 sim_perturbation_start 索引；不用 created_at（同毫秒不可分辨）。
+    // 与 memory 侧**语义同构**：startTick 升序 → 建单先后（memory 用插入序号，这里用 created_at）。
+    // `created_at` 是 TIMESTAMPTZ（微秒精度，各 INSERT 各自事务）⇒ 顺序建的两条不会撞。
+    // **末位 id 只是兜底的全序保证**，不许把它提到 created_at 前面：id 是 randomBytes，
+    // 跨运行不稳定 —— 那正是本单实测踩到的坑（见 repo.ts listPerturbations 注释①）。
+    // `(doc->>'startTick')::int` 走 028 建的 sim_perturbation_start 索引。
     const r = await this.pool.query(
-      `SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 ORDER BY (doc->>'startTick')::int, id`,
+      `SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 ORDER BY (doc->>'startTick')::int, created_at, id`,
       [tenantId, sessionId],
     );
     return r.rows.map((row) => row.doc as Perturbation);
