@@ -252,13 +252,17 @@ if (pl?.type === "agent_narration" && current) {
 
 ```
 $ git ls-remote origin claude/handoff-wo-fe-agent-trace
-8d743ba6…   refs/heads/claude/handoff-wo-fe-agent-trace
+6579e82f54039130638e9ff98d06af9bbaf5d801	refs/heads/claude/handoff-wo-fe-agent-trace
 ```
 
 提交（每个可命名单元一次 commit + 立即 push）：
 
 ```
-386e40ee fix(fe/sse):        reducer 不再丢弃后端已在发的 agent 结构化字段
+386e40ee fix(fe/sse):          reducer 不再丢弃后端已在发的 agent 结构化字段
 95dcb64f feat(fe/timeline+dag): agent 执行结构化字段真正渲染出来（分栏/角色/轮次）
-8d743ba6 test(fe):           WO-FE-AGENT-TRACE 变异反证 —— 字段扩展一回退必红
+8d743ba6 test(fe):             WO-FE-AGENT-TRACE 变异反证 —— 字段扩展一回退必红
+6579e82f docs(wo):             本交付说明
 ```
+
+> 上面这个 sha 是**本文件写完之后**的那次 push（`6579e82f` 即本文件的提交本身之后的状态）。
+> 复验命令原样可跑。
