@@ -147,9 +147,7 @@
         "scripts/check-debattery.mjs",
         "scripts/check-req-coverage.mjs"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/test/skill-orchestrator.seam.test.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-WO-LIVE-DISPOSITION.md": {
       "hasOntologyRef": true,
