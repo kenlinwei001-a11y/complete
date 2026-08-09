@@ -199,7 +199,23 @@ function validateRefResolution(
   if (!refs || !allSkills) return v;
   for (let i = 0; i < refs.length; i++) {
     const ref = refs[i]!;
-    if (ref.kind !== "skill") continue; // 非 skill 引用由发布时的跨系统探针或各自注册表保证
+    // 非 skill 引用不归本地 lint 管：kind=solver/rule/ontologyType 由**发布时**的跨系统存在性探针
+    // `probeMissingRefs`（`apps/agentcore/src/resources.ts`）校验。
+    //
+    // ⚠️ 这句话在 2026-08-09 之前是**谎报**：那个探针当时只接了 agent 发布与 workflow 发布两路，
+    // **skill 发布路根本没接**——所以"由发布时的跨系统探针保证"保证了个寂寞，一个技能引用
+    // 根本不存在的求解器照样能发布成功。2026-08-09（WO-SKILL-REFCLOSURE-A）把探针接上了
+    // `POST /b/v1/skills/:id/publish`，这句话**从这天起才成立**。
+    //
+    // 复验方式（别信这段注释，亲手跑）：
+    //   · `node scripts/check-ref-closure.mjs`（RC=0；摘掉 skill 发布路那行探针调用 → 该门红）
+    //   · `pnpm --filter agentcore test skill-ref-closure`
+    //     （从 HTTP 发布端点打进去：死路求解器 → 422 SKILL_REF_UNRESOLVED 且未落库）
+    //
+    // 诚实边界：探针只覆盖 solver / rule / ontologyType 三种 kind。
+    // kind=constraint / slice / workflow / agent **今天仍无人校验**（既不在本地 lint，也不在探针里）——
+    // 别把这段注释再读成"所有非 skill 引用都有人管"。
+    if (ref.kind !== "skill") continue;
     const target = findSkillByRef(allSkills, ref);
     if (!target) {
       if (ref.required !== false) {
