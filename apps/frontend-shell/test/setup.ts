@@ -7,7 +7,7 @@ import { cleanup, configure } from "@testing-library/react";
 // 全套跑因数据加载+渲染 >1s 而 "Unable to find element"。抬高异步断言超时以消除负载诱发的偶发失败。
 configure({ asyncUtilTimeout: 15000 });
 import { setupServer } from "msw/node";
-import { clearMockTimers, handlers } from "@/mocks/handlers";
+import { clearMockTimers, handlers, resetMockSim } from "@/mocks/handlers";
 import { resetMockDb } from "@/mocks/db";
 import { clearTaskScripts, installMockEventSource, MockEventSource } from "@/mocks/mockEventSource";
 import { queryClient } from "@/store/queryClient";
@@ -98,6 +98,7 @@ afterEach(async () => {
   cleanup();
   server.resetHandlers();
   resetMockDb();
+  resetMockSim(); // WO-L4B：沙盘会话/世界态 store 是模块态，不清会跨用例串味
   clearMockTimers();
   clearTaskScripts();
   useToastStore.getState().reset();

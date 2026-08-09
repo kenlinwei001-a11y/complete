@@ -70,7 +70,9 @@ vi.mock("@/api/endpoints", () => ({
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
   } satisfies SimSession)),
   simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: { x: { v: 50 } } })),
-  simWorld: vi.fn(),
+  // WO-L4B：见 sandbox-view.test.tsx 同处注释（全量替换式 vi.mock，新导出必须桩进来）。
+  simWorld: vi.fn(async () => ({ tick: 0, state: {} })),
+  fetchSimSessions: vi.fn(async () => ({ items: [] })),
   simCheckpoint: vi.fn(async () => ({ id: "cp_branch", sessionId: "sims_main", tenantId: "t", tick: 1, label: "branch@tick1", createdAt: "x" })),
   simBranch: simBranchFn,
   fetchSimCompare: fetchSimCompareFn,

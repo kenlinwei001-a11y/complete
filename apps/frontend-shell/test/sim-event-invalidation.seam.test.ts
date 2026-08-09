@@ -99,11 +99,103 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
       expect(reason.length, `${event} 的缺口理由是空的`).toBeGreaterThan(10);
       expect(EVENT_INVALIDATES[event], `${event} 既接了线又记在缺口台账，自相矛盾`).toBeUndefined();
     }
-    // 今天的实测基线：6 处 emit / 5 个不同事件名（1 接线 + 4 缺口）。
+    // 今天的实测基线：6 处 emit / 5 个不同事件名（WO-L4B 后：4 接线 + 1 缺口）。
     // 数变了说明 emit 侧动过 —— 停下来重新判断消费方，别让它悄悄漂过去。
     const emitted = emittedSimEvents();
     expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(6);
     expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(5);
-    expect(Object.keys(SIM_EVENT_GAPS).length).toBe(4);
+    expect(Object.keys(SIM_EVENT_GAPS).length).toBe(1);
+    // 唯一剩下的缺口是 checkpoint（成因是**后端没开列表路由**，不是前端没接）——写死它，
+    // 免得哪天有人把别的事件悄悄塞回台账当挡箭牌。
+    expect(Object.keys(SIM_EVENT_GAPS)).toEqual(["sim.checkpoint_saved"]);
+  });
+
+  /**
+   * ══ WO-L4B（欠账 #145）· 补订阅方：三条此前"发了没人收"的事件 ══
+   *
+   * 这几条咬的是**副作用**不是"订阅函数被调过"：注册真 key → 发事件 → 断言那条 query 真被标脏。
+   * 反证（③ 同款）：事件名拼错一个字母 → 什么都不该失效。
+   */
+  it("⑥ sim.branched → 世界列表 query 真失效（修「分叉子世界刷新即丢」）", () => {
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(listKey, { items: [] });
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
+
+    invalidateForEvent("sim.branched");
+
+    expect(
+      queryClient.getQueryState(listKey)?.isInvalidated,
+      "分支后世界列表没失效——子世界只活在 SandboxView 的 useState(branchId) 里，刷新即丢（本单要修的就是这个）",
+    ).toBe(true);
+  });
+
+  it("⑦ sim.tick_completed → 世界态 + 世界列表两条 query 都真失效（前缀失效要盖住尾带 sessionId 的真 key）", () => {
+    // 真 key 尾带 sessionId（SandboxView 的 worldQuery），前缀失效必须能盖住。
+    const worldKey = [...SIM_CONSUMER_KEYS.simWorld, "sims_abc"];
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(worldKey, { tick: 3, state: {} });
+    queryClient.setQueryData(listKey, { items: [] });
+
+    invalidateForEvent("sim.tick_completed");
+
+    expect(
+      queryClient.getQueryState(worldKey)?.isInvalidated,
+      "tick 后当前世界态没失效——别的标签页会一直停在旧 tick",
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(listKey)?.isInvalidated,
+      "tick 后世界列表没失效——datacore app.ts:1465 在 emit 前写了 status=RUNNING + curTick，列表显示的正是这两个字段",
+    ).toBe(true);
+  });
+
+  it("⑧ sim.session_created → 世界列表真失效", () => {
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(listKey, { items: [] });
+    invalidateForEvent("sim.session_created");
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+  });
+
+  it("⑨ 反证：三条新接线的事件名各拼错一个字母 → 什么都不失效（证咬的是真事件名）", () => {
+    const worldKey = [...SIM_CONSUMER_KEYS.simWorld, "sims_abc"];
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(worldKey, { tick: 0, state: {} });
+    queryClient.setQueryData(listKey, { items: [] });
+    for (const bad of ["sim.branchedd", "sim.branch", "sim.tick_complete", "sim.session_create", "sim_branched"]) {
+      invalidateForEvent(bad);
+    }
+    expect(queryClient.getQueryState(worldKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
+  });
+
+  it("⑩ 失效表里的 key 与 SandboxView 源码里真实的 queryKey 字面量对得上（防表漂移）", () => {
+    const view = readRepoFile("../src/views/sim/SandboxView.tsx");
+    expect(view.length, "SandboxView.tsx 读到了空内容——路径漂了").toBeGreaterThan(1000);
+    // 视图侧真实字面量（改了这两行而不改失效表 → 本条红）。
+    expect(view).toContain(`queryKey: ["a", "sim-sessions"]`);
+    expect(view).toContain(`queryKey: ["a", "sim-world", sessionId ?? ""]`);
+    // 表侧锚点必须与之同源。
+    expect(SIM_CONSUMER_KEYS.simSessionList).toEqual(["a", "sim-sessions"]);
+    expect(SIM_CONSUMER_KEYS.simWorld).toEqual(["a", "sim-world"]);
+    // 且这两个前缀确实是那三个事件走的标签映射出来的。
+    expect(EVENT_INVALIDATES["sim.branched"]).toContain("sim-sessions");
+    expect(EVENT_INVALIDATES["sim.session_created"]).toContain("sim-sessions");
+    expect(EVENT_INVALIDATES["sim.tick_completed"]).toContain("sim-world");
+  });
+
+  /**
+   * ⑪ 与 **agentcore 侧订阅表**对账（事件→语义标签的单一来源在后端）。
+   * 前端接了线而后端没登记 → 两边对不上，下一个人照后端表判断"这事件没人收"就又错一轮。
+   */
+  it("⑪ 前端失效表与 agentcore event-subscriptions 的 sim.* 登记逐条一致", () => {
+    const src = readRepoFile("../../agentcore/src/event-subscriptions.ts");
+    expect(src.length, "agentcore/src/event-subscriptions.ts 读到了空内容——路径漂了").toBeGreaterThan(1000);
+    // 抽出后端登记的 sim.* 事件名（金丝雀：一个都抓不到 = 正则/路径坏了）。
+    const registered = [...src.matchAll(/\{\s*event:\s*"(sim\.[a-z_]+)"/g)].map((m) => m[1]);
+    expect(registered.length, "一个后端 sim.* 订阅登记都没抓到——正则或路径坏了，先修工具").toBeGreaterThan(0);
+    const wiredInFrontend = Object.keys(EVENT_INVALIDATES).filter((e) => e.startsWith("sim."));
+    expect(
+      [...registered].sort(),
+      "前端接线的 sim.* 与 agentcore 登记的对不上——事件→标签的单一来源在后端，必须同步",
+    ).toEqual([...wiredInFrontend].sort());
   });
 });

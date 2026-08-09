@@ -544,6 +544,14 @@ export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view
 /** 创建会话（init）：baseSnapshot=tick0 世界态（对象→状态变量→数值），scope=范围裁剪。 */
 export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }) =>
   api.a<SimSession>("/a/v1/sim/sessions", { body });
+/**
+ * 沙盘「世界列表」= 本租户全部推演会话（主线 + 各分支子会话；后端 `app.ts:1405` 已滤除方案快照）。
+ *
+ * WO-L4B（欠账 #145）：这个后端路由**一直都在**，缺的是前端这一跳 —— 于是 `sim.session_created` /
+ * `sim.branched` 两个事件发出来没有任何缓存承载，只能记在 `SIM_EVENT_GAPS` 里当缺口。
+ * 补上它，分叉出的子会话才不再"刷新即丢"（此前 `branchId` 只活在 SandboxView 的 useState）。
+ */
+export const fetchSimSessions = () => api.a<{ items: SimSession[] }>("/a/v1/sim/sessions");
 /** 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。 */
 export const simTick = (sessionId: string, n = 1) =>
   api.a<{ curTick: number; state: TickState; trace?: unknown[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { body: { n } });
