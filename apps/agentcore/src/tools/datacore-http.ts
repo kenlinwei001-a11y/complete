@@ -225,20 +225,36 @@ class HttpSolverClient implements SolverClient {
   }
 }
 
+/**
+ * WO-REFGATE-ENT · N-01 · **可引用性的单一判据落成一个常量**。
+ *
+ * 「谁能被引用」= 已发布。这条 URL 是该判据在 B→A 方向上唯一的物理表达；
+ * `HttpRuleEngineClient` 的两个读取方法都经它出去，任何一方想"少带个 status"都得改到这一行，
+ * 而这一行的注释就是这句戒律本身。
+ */
+const PUBLISHED_RULES_PATH = "/a/v1/rules?status=PUBLISHED";
+
 class HttpRuleEngineClient implements RuleEngineClient {
   constructor(private readonly baseUrl: string) {}
   evaluate(ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/rules/evaluate`, { ruleIds, payload });
   }
-  async listRuleKeys(ctx: ToolAuthCtx): Promise<string[]> {
-    const rules = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/rules`);
-    return (rules ?? []).map((r) => r.key);
+  /**
+   * WO-REFGATE-ENT · N-01：keys 版**从 `listPublishedRules` 派生**，不再自带一条 URL。
+   *
+   * 此前这里打的是裸 `GET /a/v1/rules`（无 status 过滤），而下面那个方法打的是 `?status=PUBLISHED`——
+   * 同一个类里两条 URL、两种过滤语义、名字看不出差别。发布期引用探针用的是这一个，
+   * 于是 **Skill 引用 DRAFT 规则可以正常发布**。派生 = 过滤判据只剩一处（`PUBLISHED_RULES_PATH`），
+   * 抄不出第二份，也就漂移不了。
+   */
+  async listPublishedRuleKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    return (await this.listPublishedRules(ctx)).map((r) => r.key);
   }
-  async listRules(ctx: ToolAuthCtx): Promise<import("./clients.js").RuleSummary[]> {
+  async listPublishedRules(ctx: ToolAuthCtx): Promise<import("./clients.js").RuleSummary[]> {
     // WO-DRIL-P1：只投影已发布规则（可发现纪律）；R1 经 REST 读 A 不 import 源。
     const rules = await call<
       { key: string; name?: string; description?: string; scopeObjectTypes?: string[]; severity?: string; expression?: string }[]
-    >(this.baseUrl, ctx, "GET", `/a/v1/rules?status=PUBLISHED`);
+    >(this.baseUrl, ctx, "GET", PUBLISHED_RULES_PATH);
     return (rules ?? []).map((r) => ({
       key: r.key,
       name: r.name,

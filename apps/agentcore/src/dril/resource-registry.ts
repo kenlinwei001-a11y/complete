@@ -111,9 +111,9 @@ export class ResourceRegistryService {
       /* fail-open */
     }
     try {
-      ruleSummaries = this.deps.dataCore.rules.listRules
-        ? await this.deps.dataCore.rules.listRules(ctx)
-        : (await this.deps.dataCore.rules.listRuleKeys(ctx)).map((key) => ({ key }));
+      ruleSummaries = this.deps.dataCore.rules.listPublishedRules
+        ? await this.deps.dataCore.rules.listPublishedRules(ctx)
+        : (await this.deps.dataCore.rules.listPublishedRuleKeys(ctx)).map((key) => ({ key }));
     } catch {
       /* fail-open */
     }

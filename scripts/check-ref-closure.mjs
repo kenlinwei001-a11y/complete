@@ -242,13 +242,26 @@ function selftest(real) {
     },
     {
       // 反向坑：不剥注释的话，被注释掉的调用依然 `includes()` 为真 ⇒ 门给已摘的线判绿。
+      //
+      // ⚠️ 变异点必须**从抽取器现算**，不许写死语句字面量（WO-REFGATE-ENT · F14 实测踩到）：
+      // 原实现锚在 `const deadRefs = await probeMissingRefs(` 这一句上。F14 把发布门判据抽进
+      // `skill-publish-gate.ts` 后，调用形态变成 `probe: (want) => probeMissingRefs(...)`，
+      // 那句字面量随之消失 ⇒ 金丝雀**构造不出变异**、本门自报「门瞎了」。
+      // 这次报得对（它确实不该在锚点失效时判绿），但根因是**金丝雀自带了一份会过期的副本**——
+      // 正是铁律 0.6 点名的「抄一份就是装饰品」。改成按行现找：只要那条线还接着，就一定找得到。
       name: "M1b 把 skill 发布路的探针调用**注释掉**（注释 ≠ 接线）",
       mutate: (s) => {
-        const body = sliceHandler(stripComments(s.server), '"/b/v1/skills/:id/publish"');
-        if (body === null) return null;
-        const line = "const deadRefs = await probeMissingRefs(";
-        if (!s.server.includes(line)) return null;
-        return { ...s, server: s.server.replace(line, "// " + line) };
+        const rawBody = sliceHandler(s.server, '"/b/v1/skills/:id/publish"');
+        if (rawBody === null) return null;
+        const lines = rawBody.split("\n");
+        // 只挑**真代码行**：注释行里提及探针名不算接线（本门自己就是靠这条区分的）。
+        const idx = lines.findIndex((l) => {
+          const t = l.trimStart();
+          return l.includes("probeMissingRefs(") && !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
+        });
+        if (idx === -1) return null;
+        const mutatedBody = [...lines.slice(0, idx), `// ${lines[idx]}`, ...lines.slice(idx + 1)].join("\n");
+        return { ...s, server: s.server.replace(rawBody, mutatedBody) };
       },
       expect: /D1 摘门：skill 发布/,
     },

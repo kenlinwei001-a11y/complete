@@ -690,18 +690,27 @@ export class MockRuleEngineClient implements RuleEngineClient {
       .filter((id) => all[id])
       .map((id) => ({ ...(all[id] as () => RuleVerdict)(), ruleVersion: this.versions[id] ?? 1 }));
   }
+  /**
+   * WO-REFGATE-ENT · N-01 · mock 侧同样只暴露「**可被引用**」的那一集 = 已发布。
+   *
+   * `draftRuleKeys` 是 mock 专用旋钮：测试可把某个 key 挪进草稿集，模拟 A 侧 DRAFT 规则——
+   * 它**不**出现在下面两个 `listPublished*` 的返回里，从而让「引用 DRAFT 规则 → 发布被拒」
+   * 这条判据在纯 mock 链路上也能被驱动（真 HTTP 链路另有 seam 测试直咬 URL 上的 status 过滤）。
+   */
+  readonly draftRuleKeys = new Set<string>();
+  private readonly allRuleKeys = ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
   // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
-  async listRuleKeys(): Promise<string[]> {
-    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
+  async listPublishedRuleKeys(): Promise<string[]> {
+    return this.allRuleKeys.filter((k) => !this.draftRuleKeys.has(k));
   }
   // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
-  async listRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
+  async listPublishedRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
     const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
       C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
       C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
       C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
     };
-    const keys = await this.listRuleKeys();
+    const keys = await this.listPublishedRuleKeys();
     return keys.map((key) => {
       const k = known[key];
       return k
@@ -919,9 +928,21 @@ class MockCatalogClient implements CatalogClient {
       { key: "model_capacity_network", name: "型号可产基地网络", description: "型号→可产基地子图", argHints: { modelId: "型号 ID" }, domain: "product" },
       { key: "base_risk_profile", name: "基地风险画像", description: "基地风险画像子图", argHints: { baseId: "基地 ID" }, domain: "plan" },
     ];
+    // WO-REFGATE-ENT · F14 实测抓出的 mock 保真缺口（由新加的启动期种子审计**第一次跑就报出来**）：
+    // 出厂 Skill 种子引用 risk_timeline / kit_readiness / yield_diagnosis，三者在**真** DataCore 目录里
+    // 都在（`apps/datacore/src/catalog.ts:51/59/63`），但 mock 的 discover 只列了 2 个 ⇒
+    // 无 DATACORE_BASE_URL 的内存模式下，出厂技能会被判成"引用未注册求解器"。
+    //
+    // 这是「我用 mock 目录当作 DataCore 注册表的证据，而 mock 目录并不度量它」——照铁律 0.6 记账。
+    // 判据（新增 mock 求解器时照此自检）：**mock 的 discover 必须覆盖出厂种子引用到的每一个 solver key，
+    // 且每个 key 必须在 `apps/datacore/src/catalog.ts` 里确有其人**（否则就是拿 mock 掩盖真死路引用，
+    // 恰好把这道门变成装饰品）。三条已逐条核对过真目录再加入。
     const solvers: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
       { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
       { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
+      { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan" },
+      { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据" }, domain: "plan" },
+      { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan" },
     ];
     const items = (kind === "slices" ? slices : solvers).filter(
       (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),

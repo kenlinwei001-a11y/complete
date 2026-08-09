@@ -11,6 +11,7 @@ import { seedScenarios } from "./scenarios-catalog.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
+import { auditSeededSkills } from "./skill-publish-gate.js";
 import { createHttpDataCore } from "./tools/datacore-http.js";
 import { LocalFsSkillResourceReader } from "./tools/skill-resources.js";
 
@@ -66,6 +67,16 @@ async function main(): Promise<void> {
   const skillResources = config.BLOB_DIR ? new LocalFsSkillResourceReader(config.BLOB_DIR) : undefined;
   const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics, skillResources, providerDirectory });
   const app = await buildServer(deps);
+
+  // WO-REFGATE-ENT · F14：出厂技能一次也没过发布门 —— 上面那几行 `repos.skills.insert(sk)` 就是旁门，
+  // 种子以 `status:"PUBLISHED"` 直插仓储，`POST /b/v1/skills/:id/publish` 一次都没被调用。
+  // 「门装上了」于是被读成「库里的东西都过了门」，而这是两个不同的命题。
+  //
+  // 补法不是让启动期去打 HTTP（启动期没有 HTTP），而是让种子与发布路**共用同一份判据**
+  // （`skill-publish-gate.ts`），启动时对已落库的 PUBLISHED 种子补问一遍。
+  // 不阻断启动：出厂数据有问题是运维要看见的事实，不是让服务起不来的理由——
+  // 事实经 **日志** + **`GET /b/v1/ops/skill-seed-gate` 诚实位** 两处外透，谁都能查。
+  await auditSeededSkills({ repos, dataCore, tenantId: SEED_TENANT, logger: app.log });
 
   // 增量 §2-2 崩溃语义：启动扫描 EXECUTING_* 滞留 >10min 的任务 → INTERRUPTED_BY_RESTART，
   // 之后周期检查兜底（事件落库 → SSE 回放可见）。

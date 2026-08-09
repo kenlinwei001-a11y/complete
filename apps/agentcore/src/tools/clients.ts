@@ -125,13 +125,25 @@ export interface ObjectTypeDefSummary {
 
 export interface RuleEngineClient {
   evaluate(ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]>;
-  /** B→A 存在性探针（引用闭合）：本租户已发布规则 key 全集（workflow evaluate_rules 校验）。 */
-  listRuleKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /**
-   * WO-DRIL-P1 · 规则元数据全量（key/name/description/scopeObjectTypes/severity）——DRIL rule 投影供给侧。
-   * 可选：mock/精简客户端不实现 → 投影层降级到 listRuleKeys（description 合成）。
+   * **可引用性单一判据**（WO-REFGATE-ENT · N-01）：谁能被引用 = **已发布（PUBLISHED）**的规则。
+   *
+   * 病灶（2026-08-09 实测）：旧名 `listRuleKeys` 打的是 `GET /a/v1/rules`（**不带 status 过滤**），
+   * 而同一个类里的 `listRules` 打的是 `GET /a/v1/rules?status=PUBLISHED`——**两个方法过滤语义不同，
+   * 名字看不出差别**。发布期引用探针（`resources.ts probeMissingRefs`）用的恰是前者，于是
+   * 「引用一条 DRAFT 规则的 Skill」在门面前一路绿灯：门确实执行了，只是它问错了问题
+   * （问「这个 key 在库里有没有」，而该问「这个 key 可不可以被引用」）。
+   *
+   * 修法不是在调用点补一个 filter（那只是把判据又抄了一份），而是**把判据收敛到名字里**：
+   * 两个读取方法都叫 `listPublished*`，且 HTTP 实现里由 `listPublishedRules` 单点持有过滤 URL，
+   * keys 版从它派生——**过滤语义无处可漂移**。
    */
-  listRules?(ctx: ToolAuthCtx): Promise<RuleSummary[]>;
+  listPublishedRuleKeys(ctx: ToolAuthCtx): Promise<string[]>;
+  /**
+   * WO-DRIL-P1 · 已发布规则的元数据全量（key/name/description/scopeObjectTypes/severity）——DRIL rule 投影供给侧。
+   * 可选：mock/精简客户端不实现 → 投影层降级到 listPublishedRuleKeys（description 合成）。
+   */
+  listPublishedRules?(ctx: ToolAuthCtx): Promise<RuleSummary[]>;
 }
 
 export interface ActionClient {

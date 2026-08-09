@@ -74,9 +74,21 @@ if (cards.length === 0) fail.push(`§6 静态断言：未能从 ${CATALOG} 解�
 const shapeBlock = (svcText.match(/SOLVER_OUTPUT_SHAPES[^=]*=\s*\{([\s\S]*?)\n\};/) ?? [])[1] ?? "";
 const shapeKeys = new Set([...shapeBlock.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]));
 
-// 已发布规则集（B→A 探针 listRuleKeys 返回的出厂规则库 key 全集）。
-const ruleBlock = (ruleText.match(/listRuleKeys\(\)[\s\S]*?return\s*\[([^\]]+)\]/) ?? [])[1] ?? "";
+// 已发布规则集（B→A 探针 listPublishedRuleKeys 的供给侧 = mock 的 allRuleKeys 字面）。
+// WO-REFGATE-ENT · N-01 改名后同步：旧正则锚在 `listRuleKeys()[\s\S]*?return [` 上，而 mock 现在
+// `return this.allRuleKeys.filter(...)`——旧正则会**越过**该方法去咬文件里下一个 `return [`，
+// 抽出一堆无关字面。锚点改到数组声明本身（唯一字面来源），并补金丝雀（见下）。
+const ruleBlock = (ruleText.match(/allRuleKeys\s*=\s*\[([^\]]+)\]/) ?? [])[1] ?? "";
 const definedRules = new Set([...ruleBlock.matchAll(/"([A-Z]\d+)"/g)].map((m) => m[1]));
+// 金丝雀（铁律 0.6）：C03 是出厂规则库里必然存在的一条（seed workflow evaluate_rules 就在用它）。
+// 抽不到它 ⇒ **解析器坏了**，不许把「抽出 0 条」读成「规则集为空所以这道检查跳过」——
+// 旧代码正是靠 `if (definedRules.size > 0)` 静默 fail-open 的。
+if (!definedRules.has("C03")) {
+  fail.push(
+    `§6.C 金丝雀失败：从 ${RULE_SRC} 抽已发布规则集时未抽到必中样例「C03」（抽到 ${definedRules.size} 条）——` +
+      `**解析器与 mock 客户端格式漂移**，本轮「卡 rules ⊆ 已发布规则集」检查无效，按工具坏了处理（不是规则集为空）`,
+  );
+}
 
 // seed 中显式声明的计划/意图键（内置 4 卡）。其余 16 卡的意图/计划由派生循环按 card.intentKey 动态产出
 // （plans.push({ key: card.intentKey, ... })），静态无字面 key → 由「派生器在位」+「卡在目录」共同保证覆盖。
