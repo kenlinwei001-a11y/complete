@@ -1,4 +1,16 @@
-# 对账 · Enterprise Decision Twin 八页 UI PRD × 平台实测
+# 借鉴清单 · Enterprise Decision Twin 八页 UI PRD × 平台实测
+
+> ## ⛔ 先说结论：**这八个页面不做。**
+> 仓主 2026-08-09 原文：「**我不需要你做8个功能和页面，这些都是用于借鉴的**」
+> 以及：「**"决策推演沙盘"要完整复用系统已有的数据、已有的功能模块的能力，不要重复造轮子**」
+>
+> ⇒ 本文的用途**从「实施规格」降为「借鉴清单」**：
+> 它只回答一个问题 —— **八页 PRD 里哪些能力，沙盘可以直接拿来用（而不是重做一遍）**。
+> 下面每一行的 ✅ 就是「已有、可复用」，那些才是本文的产出；
+> ➕ 那几行**本次一律不做**，只作为将来若有需要时的存档。
+>
+> **本次真正要交付的只有两件**：① 沙盘接真数据（`docs/WO-PACK-twin-data.md` 六单）
+> ② 沙盘复用既有引擎（下面 §1.5 复用台账）。**没有第三件，更没有八个新页面。**
 
 > 2026-08-09 · 审核方 · 上游：仓主转来的《Enterprise Decision Twin 8个核心页面 UI/UX PRD V1.0》
 > 仓主指示原文：「**你可以借鉴，不是盲目执行，里面部分功能，比如本体切片，目前已经有了，可以引用已有的本体切片**」
@@ -111,6 +123,43 @@
 | 「What we knew then」 | ◐ `ruleSetVersion` FNV-1a 指纹已记（R6 推演记录所用版本） | 小改 |
 
 **⇒ Page 08 的开发优先级建议从 P2 提到 P1** —— 它的后端基本是现成的，前端一页就能点亮一条闭环，性价比高于 PRD 的排序。
+
+---
+
+## 1.5 ⭐ 沙盘复用台账（本文唯一要执行的部分）
+
+「决策推演沙盘」要用到的能力，**全部已在平台里**。逐条给出该调什么，**一个都不许重写**：
+
+| 沙盘要做的事 | 直接复用 | 位置 | 状态 |
+|---|---|---|---|
+| 端到端链路图（节点/阶段） | `CHAIN_NODE_REGISTRY` 24 节点 5 阶段 | `chain-sim.ts:183` | ✅ 有数据 |
+| 阻滞点扫描（卡点/堵点/断点） | `chain_impediments` 求解器 | `catalog.ts:148` | ✅ 有数据 |
+| 全链损失归因 | `chain_loss_attribution` | 同上 | ✅ |
+| 本体切片（这次决策涉及哪些对象） | `slice_specs` 表 + `executeSlice` + `planSlice` | `ontology-core.ts:552` · `app.ts:2622` | ✅ **4 条种子** |
+| 因果链（果→因） | `CausalFactor` + `caused_by` N:N + `gap_attribution` BFS | `battery.ts:2380` · `solvers/service.ts:1780` | ✅ 全链贯通 |
+| 独立世界 + 分叉 | `SimSession` + `SimCheckpoint` + `/branch` | `app.ts:1506` | ✅ |
+| 逐 tick 世界态 | `SimTickState` | `026_sim_sessions.sql` | ✅ |
+| 传导（改 A 影响 B） | `PropagationRule` + `propagateTick` | `sim/propagation.ts:221` | ⚠️ **只有 3 条种子边** |
+| 暂停 / 单步 | `SimSessionStatus.PAUSED` + 按 `n` tick 推进 | `app.ts:1418` | ✅ |
+| 两世界对比 | `GET /sim/compare?a=&b=` + `SimComparePanel` | `app.ts:1519` | ✅（缺基线语义标记） |
+| 排产联合求解 | **「全局推演」`portfolio`/`globalSimOptimize`** | `service.ts:2741` | ✅ 直接调，别重写 |
+| 产能重算 | **「产能推演」`capacity_forecast`** | `catalog.ts:49` | ✅ 直接调 |
+| 多目标权重 / ε / 字典序 + 敏感性 | `GlobalSimMethod` + `methodWeights` | `global-sim.ts:96` | ✅ 已实现 |
+| 财务重算 | `finance_pnl` / `quote_margin` / `margin_attribution` | `catalog.ts:84` | ✅ |
+| 候选方案六维打分 | `DecisionOption`（closesGap/cost/cycleDays/risk/exposure/reversibility） | `decision-engine.ts:19` | ✅ |
+| 决策记录 + 四步溯源 + 结果回评 | `Decision.trace` + `DecisionOutcome` | `decision-kernel.ts:99` | ✅ |
+| 采纳 → 落地 | ActionDraft 走 R4 正门 | `actions.ts` | ✅ |
+| 回放 / 预测 vs 实际 / 模型校准 | `010_replay_ops.sql` + `calibration/{replay,methods,metrics,pairing}.ts` | — | ✅ |
+| 引用闭包校验 | `probeMissingRefs` | `resources.ts:11` | ✅ |
+| 模拟时钟 | `SimClock` | `simclock.ts:28` | ✅ |
+
+**这张表就是「不要重复造轮子」的可执行形式。** 派单时，凡 WO 里出现「实现 X」而 X 在上表里，一律退回改成「调用 X」。
+
+**表里只有两处不是绿的，也是沙盘今天真正的短板：**
+1. **传导边只有 3 条 demo 种子**（`seed.ts:198-256`，且 `cadenceNodeId` 全 null）。
+   引擎是好的，**边不够** —— 图画得出来但传不动。这是补数据，不是补引擎。
+2. **`SimSession.scope` 有写端无读端**（欠账 #130）→ 选 LOCAL 也照跑全本体。
+   切片已经是现成实体，把它接成 scope 的读端即可，同样不用新造。
 
 ---
 
