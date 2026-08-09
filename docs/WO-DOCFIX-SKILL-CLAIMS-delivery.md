@@ -8,6 +8,7 @@
 | 性质 | **纯文档单**，未改一行 `apps/` `packages/` `scripts/` 下的代码 |
 | 触碰的文件 | `docs/SPEC-industrial-skill.md` · `docs/PRD-addendum-skill-authoring.md` · `docs/PRD-skill-contract-dsl.md` · `docs/PRD-skill-compiler-registry.md` · `docs/PRD-skill-runtime-orchestrator.md` · `docs/PRD-skill-governance-learning.md` · `docs/PRD-skill-migration.md` · `docs/PRD-skill-crossreview.md` · `docs/prd-ontology-index.json`（门重生成） |
 | 未碰 | `docs/SYSTEM-ONTOLOGY.md` · `docs/PRD-UPGRADE-decision-sandbox-v2.md` · 四份 `docs/CHECK-*.md` · 任何代码 |
+| ⚠️ 并线提示 | **本单开工后 canonical 又前进了 2 个提交**（`69804185 → 431d9249`：`684f78f1` 进度实测账 · `431d9249` 新门 `worktree-canonical:check`）。本分支**不含**这两个提交，`git diff origin/canonical..HEAD` 会把它们显示成"删除"——**那是基线差不是本单改动**。判准：`git diff 69804185..HEAD --stat` = **10 个文件，全在 `docs/` 下**，零代码改动。并线请 cherry-pick 或 rebase 到最新 canonical。 |
 | 订正形式 | **一律保留原文**（删除线 / 就地 ⚠️🔁🔴 标注块），**不抹历史** —— 抹掉就看不出「这里曾经骗过人」 |
 
 ---
