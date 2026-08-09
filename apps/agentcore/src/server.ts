@@ -1247,6 +1247,34 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!lint.ok && force !== "true") {
       throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
     }
+    // ⚠️ 门禁一·补 · B→A 存在性探针（引用闭合「无死路」）——WO-SKILL-REFCLOSURE-A，2026-08-09 接线。
+    //
+    // 病：`probeMissingRefs` 早已存在、且早已接在 **agent 发布**与 **workflow 发布**两路上，
+    // **唯独 skill 发布路没接**——于是一个技能可以 `references:[{kind:"solver",key:"根本不存在"}]`
+    // 照样发布成功（`lintSkill` 只校验 kind=skill 的本地引用，跨系统那半它管不着）。
+    // 这不是"没造门"，是"门造好了没挂在这个门框上"（三种不工作形态里的**接了线接错地方**）。
+    //
+    // 位置：紧跟 lint 之后、评测门之前——死路引用是事实错误，没必要先烧一轮评测再拒；
+    // 且远在 `repos.skills.update` 之前，故拒发布 = **未落库**。
+    // force：**不豁免**。force 豁免的是**质量门**（lint 写得不够好 / 评测用例还没补齐），
+    // 而死路引用是**事实错误**——审计签字不能让一个不存在的求解器变成存在。
+    // 与 workflow 发布同口径（那里 force 只豁免破坏性 schema 变更，探针缺失一律拦）。
+    const skillCrossRefs = [...(skill.references ?? []), ...(skill.dependsOn ?? [])].filter((r) => r.required !== false);
+    const refSolverKeys = skillCrossRefs.filter((r) => r.kind === "solver").map((r) => r.key);
+    const refRuleKeys = skillCrossRefs.filter((r) => r.kind === "rule").map((r) => r.key);
+    const refObjectTypes = skillCrossRefs.filter((r) => r.kind === "ontologyType").map((r) => r.key);
+    if (refSolverKeys.length + refRuleKeys.length + refObjectTypes.length > 0) {
+      // 注册表不可用（读不出 / 空集）→ probeMissingRefs 抛 503 REF_PROBE_UNAVAILABLE（fail-closed）。
+      const deadRefs = await probeMissingRefs(deps.dataCore, a, { solverKeys: refSolverKeys, ruleKeys: refRuleKeys, objectTypes: refObjectTypes });
+      const dead = [
+        ...deadRefs.solvers.map((k) => `求解器「${k}」在 DataCore 未注册`),
+        ...deadRefs.rules.map((k) => `规则「${k}」在 DataCore 规则库不存在`),
+        ...deadRefs.objectTypes.map((k) => `对象类型「${k}」在 DataCore 本体不存在`),
+      ];
+      if (dead.length > 0) {
+        throw new HttpError(422, "SKILL_REF_UNRESOLVED", `技能引用存在死路（${dead.length} 项，发布被拒且未落库）：${dead.join("；")}`);
+      }
+    }
     // Skill 编写规范 §4 门禁二：评测门禁——发布必附 ≥3 个 skill_quality 评测用例（关联本技能，
     // 应触发/不应触发/行为增益三类）+ 评测套件全过（force=true 审计豁免）。此前仅 lint，无评测门。
     const skillCases = (await deps.repos.evalCases.listByTenant(a.tenantId, "skill_quality")).filter((c) => c.skillKey === skill.key);

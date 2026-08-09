@@ -3,10 +3,63 @@ import type { RequestAuth } from "./auth.js";
 import type { Repos } from "./persistence/repos.js";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 
+/** 探针查询的注册表切面（错误信息里要指名道姓说清是哪一步失败，不许笼统"探针失败"）。 */
+type ProbeScope = "solvers" | "rules" | "objectTypes";
+
+const PROBE_SOURCE: Record<ProbeScope, string> = {
+  solvers: "求解器目录（DataCore catalog.discover(\"solvers\")）",
+  rules: "规则库（DataCore rules.listRuleKeys）",
+  objectTypes: "本体对象类型（DataCore ontology.listObjectTypeKeys）",
+};
+
+/**
+ * 门不可用 → **红**（503），而不是"无法判定 → 放行"。
+ *
+ * 这正是本仓一直在猎的形态：**「我没找到」和「它不存在」是两个不同的命题。**
+ * 注册表读不出来（抛错）或读回空集时，探针**没有任何证据**说这些引用是合法的；
+ * 旧实现在这两种情形下都静默放行，于是门整体失效**且没有任何信号**。
+ */
+function probeUnavailable(scope: ProbeScope, reason: "REGISTRY_ERROR" | "REGISTRY_EMPTY", detail: string): HttpError {
+  const what = reason === "REGISTRY_ERROR" ? `读取失败（${detail}）` : `返回空集（${detail}）`;
+  return new HttpError(
+    503,
+    "REF_PROBE_UNAVAILABLE",
+    `引用可校验门不可用：${PROBE_SOURCE[scope]} ${what}——门在此状态下无法判定引用是否存在，` +
+      `按「我没找到 ≠ 它不存在」一律拒绝发布（旧实现在此静默放行，门整体失效且无信号）。` +
+      `请恢复 DataCore 该注册表后重试发布。`,
+  );
+}
+
+/**
+ * 读一个注册表的已知 key 全集。**两层 fail-open 在此一并关死**：
+ *  ① `catch` 不再静默吞——抛错即 503，并说清是哪一步（scope）失败、原始错误是什么；
+ *  ② 空集不再当作"没有已知项所以都合法"——空集 = 门不可用 = 红。
+ */
+async function knownKeys(scope: ProbeScope, load: () => Promise<string[]>): Promise<Set<string>> {
+  let keys: string[];
+  try {
+    keys = await load();
+  } catch (e) {
+    throw probeUnavailable(scope, "REGISTRY_ERROR", e instanceof Error ? e.message : String(e));
+  }
+  const known = new Set(keys);
+  if (known.size === 0) throw probeUnavailable(scope, "REGISTRY_EMPTY", "0 条已知 key");
+  return known;
+}
+
 /**
  * B→A 存在性探针（引用闭合「无死路」跨系统校验）：发布前确认 AgentCore 资源引用的
- * DataCore 制品（求解器/规则/对象类型）真实存在。**fail-open**：A 不可达或返回空集时
- * 视为"无法判定 → 放行"（不因 A 临时不可用而挡配置发布），仅在确凿"不存在"时报缺失。
+ * DataCore 制品（求解器/规则/对象类型）真实存在。
+ *
+ * **fail-closed（2026-08-09 起，WO-SKILL-REFCLOSURE-A）**：注册表读不出来 / 读回空集 → 抛
+ * `HttpError(503, "REF_PROBE_UNAVAILABLE")`，调用方无需（也无法）自行判别可用性——
+ * 抛出是刻意的 API 设计：返回一个"不可用"字段可以被下一个 dev 忽略，抛出不能。
+ *
+ * 旧口径（已废）：「A 不可达或返回空集时视为『无法判定 → 放行』」。那句话把两层 fail-open
+ * 写成了特性，实测后果 = 注册表一读不出东西门就整体失效、且无任何信号。
+ *
+ * 返回形状**不变**（`{solvers, rules, objectTypes}` = 确凿不存在的 key），故三个发布路调用点
+ * （agent `server.ts` / workflow `server.ts` / skill `server.ts`）的既有判缺分支一字不用改。
  */
 export async function probeMissingRefs(
   dataCore: DataCoreClient,
@@ -20,29 +73,16 @@ export async function probeMissingRefs(
     objectTypes: [...new Set(refs.objectTypes ?? [])],
   };
   if (want.solverKeys.length > 0) {
-    try {
-      const { items } = await dataCore.catalog.discover(ctx, "solvers");
-      const known = new Set(items.map((i) => i.key));
-      if (known.size > 0) missing.solvers = want.solverKeys.filter((k) => !known.has(k));
-    } catch {
-      /* fail-open */
-    }
+    const known = await knownKeys("solvers", async () => (await dataCore.catalog.discover(ctx, "solvers")).items.map((i) => i.key));
+    missing.solvers = want.solverKeys.filter((k) => !known.has(k));
   }
   if (want.ruleKeys.length > 0) {
-    try {
-      const known = new Set(await dataCore.rules.listRuleKeys(ctx));
-      if (known.size > 0) missing.rules = want.ruleKeys.filter((k) => !known.has(k));
-    } catch {
-      /* fail-open */
-    }
+    const known = await knownKeys("rules", () => dataCore.rules.listRuleKeys(ctx));
+    missing.rules = want.ruleKeys.filter((k) => !known.has(k));
   }
   if (want.objectTypes.length > 0) {
-    try {
-      const known = new Set(await dataCore.ontology.listObjectTypeKeys(ctx));
-      if (known.size > 0) missing.objectTypes = want.objectTypes.filter((k) => !known.has(k));
-    } catch {
-      /* fail-open */
-    }
+    const known = await knownKeys("objectTypes", () => dataCore.ontology.listObjectTypeKeys(ctx));
+    missing.objectTypes = want.objectTypes.filter((k) => !known.has(k));
   }
   return missing;
 }
