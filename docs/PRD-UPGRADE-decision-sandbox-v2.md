@@ -408,14 +408,24 @@ S5 的 P01–P65 是**业务流程**，测的是「企业里有哪些业务活�
 
 #### 3.3.1 🔴 真正的发现：Skill 升级项目**不是没做，是做完了没并线**
 
-实测四条 handoff 分支，**一条都不在 canonical 上**：
+远端实测 **12 条 skill 分支，一条都不在 canonical 上**（`git merge-base --is-ancestor` 逐条验，
+🐤 自反测 `is-ancestor HEAD HEAD` 通过 ⇒ 判据可信）。其中 **5 条带真实现**：
 
-| 分支 | 提交 | 内容 |
-|---|---|---|
-| `handoff-skill-orchestrator-s1` | `1cffce83` `55bf21d1` | Skill Graph 契约 + 拓扑分层/环检测编译器 + **`GraphScheduler` + `POST /b/v1/skill-graphs/run`** |
-| `handoff-skill-compiler-s1` | `6390d06b` `a7209951` | Parser + 推理图派生 + Validator + **`POST /b/v1/skills/:id/compile`** |
-| `handoff-skill-refclosure-a` | `b320f223` `d5429acc` | **引用可校验门接上 skill 发布路 + 关死两层 fail-open** + `ref-closure:check` 防退化门 |
-| `handoff-skill-partial-a` | `0b49b75a` `29e2b6dd` | **`maxBudgetRounds` 接线** + `dependsOn` 补种子 + 接缝驱动测 |
+| 分支 | 未并提交 | 代码文件 | 插入行 | 内容 |
+|---|---:|---:|---:|---|
+| `handoff-skill-orchestrator-s1` | 4 | 6 | **1673** | Skill Graph 契约 + 拓扑分层/环检测 + **`GraphScheduler`** + `POST /b/v1/skill-graphs/run` + **`Skill.execution` 对名裁决**（§3.3.3） |
+| `handoff-skill-compiler-s1` | 4 | 6 | **1513** | Parser + 推理图派生（纯函数 R6）+ Validator + `POST /b/v1/skills/:id/compile` |
+| `handoff-skill-refclosure-a` | 2 | 6 | **710** | **引用可校验门接上 skill 发布路 + 关死两层 fail-open** + `ref-closure:check` 防退化门 |
+| `handoff-skill-partial-a` | 3 | 5 | **381** | **`maxBudgetRounds` 接线** + `dependsOn` 补种子 + lint 干跑补挂载点 + 接缝驱动测 |
+| `handoff-skill-partial-b` | 3 | 1 | **387** | 反思闭环/升级阶梯 × 生产 demo 集 SEAM 测 + SPEC 12 层缺口台账 |
+| 合计 | **16** | **24** | **4664** | —— |
+
+另 7 条：5 条 `handoff-prd-skill-*`（写 PRD 的分支，各 1 提交、落后 343–344）·
+`handoff-skill-agent-reconcile`（689 行纯文档对账）· `handoff-skill-migration-scope`（507 行 WO 拆分）·
+`verify-skill3`（5 提交，落后 381）。
+
+> ⚠️ 五条实现分支**只落后 canonical 30–31 个提交**（不是几百）——
+> 说明它们是近期产出，复验成本低。这与那 5 条落后 344 提交的 PRD 分支是两回事，别混为一谈。
 
 > **这解释了今天所有的「零消费方」**：`maxBudgetRounds` 仍是形态②（只有 test 引用 ——
 > `skill-contract.test.ts:77` 断的是 `toBe(12)`，只验存取不验行为）、引用可校验门仍不存在、
@@ -468,30 +478,84 @@ references?, dependsOn?, approvalGate?, provenancePolicy?, maxBudgetRounds?
 postcheck 只有 `["C03"]` 一条是真跑起来的。
 **声明在、消费方在、两者对不上** —— 列入 §6 WO-S0。
 
-#### 3.3.3 本次升级只做**一件**：给 Skill 一个可执行的落点
+#### 3.3.3 🔻 **撤回我上一稿的 `execution` 设计 —— 它已经存在，且比我的好**
 
-**不做**：8 份 Skill PRD 里的编译器 / Reasoning Graph 编排器 / 治理学习闭环 / 32 份 ExecutionPlan 迁移
-—— 那是独立项目，本次不铺。
+> **我在这份 PRD 的初稿里提议给 `SkillDefinition` 加一个
+> `execution: discriminatedUnion("kind", [prompt|solver|slice|sim])`。**
+> **这个提议作废。** 亲手 `git show` 到 `handoff-skill-orchestrator-s1`
+> （`55bf21d1` 提交标题就写着「**对名裁决 `Skill.execution`**」）：
+> **`SkillExecutionSchema` 已经设计好、实现好、且带 SEAM 测试**
+> （`apps/agentcore/test/skill-orchestrator.seam.test.ts:735`
+> 「SEAM · `Skill.execution` 对名裁决：执行来源在响应里可见」）。
 
-**做**：`SkillDefinition` 增一个 **additive 可选**字段：
+**已存在的真实契约**（`packages/contracts/src/skill-graph.ts:373-398`，该分支上）：
 
 ```ts
-execution: z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("prompt") }),                                    // 今天的行为（缺省）
-  z.object({ kind: z.literal("solver"),  solverKey: z.string() }),            // 复用 59 个求解器
-  z.object({ kind: z.literal("slice"),   sliceKey: z.string() }),             // 复用本体切片
-  z.object({ kind: z.literal("sim"),     perturbationTemplate: PerturbationSchema.partial() }), // 🆕 接沙盘
-]).optional(),
+export const SkillExecutionStepSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),                    // ← 开放字符串，不是闭合枚举
+  params: z.record(z.string(), z.unknown()).default({}),
+  onError: OnErrorSchema.optional(),
+  timeoutMs: z.number().int().positive().optional(),
+}).passthrough();
+
+export const SkillExecutionSchema = z.object({
+  steps: z.array(SkillExecutionStepSchema).min(1).max(MAX_GRAPH_NODES).optional(), // 线性形态
+  graph: SkillGraphSchema.optional(),                                              // 图形态
+  mode: z.enum(["DETERMINISTIC", "AGENTIC"]).optional(),
+}).strict();
 ```
 
-**四条判据**
+**它为什么比我的好（三条，都是我的设计做不到的）**
 
-1. **缺省 = `prompt`** ⇒ 现有 7 条种子逐字节不变（additive 可回退）。
-2. **`solver` 分支复用已有 59 个求解器** —— §2.4 实测求解器是**超配**的，
-   缺的不是求解能力，是「让 Skill 指得到它」的一根指针。
-3. **`sim` 分支是本次的接缝**：一个 Skill 可以声明「我这个技能 = 往沙盘里打一个这样的扰动」。
-   ⇒ 主动脉一与主动脉三在这里合流，**这就是本次升级的 SEAM-GATE 头号断言**（§7.1）。
-4. **不碰 `body`** —— 提示词与执行体并存，不是二选一。
+1. **可组合** —— 我的是「一个 Skill 只能是一种东西」的扁平 one-of；
+   它是 `steps[]` / `graph`，一个 Skill 可以「先切片 → 再求解 → 再打扰动」。
+2. **`type` 是开放字符串 + `.passthrough()`**，契约里写明理由：
+   「元素**不钉死** `PlanStepSchema`——闭合联合会挡掉 `ExtraToolStep` 三类；
+   结构地板在此，语义校验必须走 `validatePlanSteps`」。
+   ⇒ **加一个沙盘步骤类型根本不需要改契约。**我的闭合 union 每加一种能力都要动契约。
+3. **`mode: DETERMINISTIC | AGENTIC`** —— 我完全没想到这一维，
+   而它是 R6 确定性的抓手（`DETERMINISTIC` 图内不得出现 LLM 节点）。
+
+**⇒ 修正后的本次工作量（大幅缩小）**
+
+| 原计划 | 修正后 |
+|---|---|
+| 设计 + 实现 `Skill.execution` | ❌ 删除 —— 复验并入 `handoff-skill-orchestrator-s1` 即可 |
+| 四个 `kind` 分支 | ❌ 删除 —— `steps[].type` 是开放串，无需分支 |
+| —— | ✅ **唯一真增量**：加一个 `sim_perturb` 步骤类型（`validatePlanSteps` 一个 case + 执行器一个 case），让 Skill 能往沙盘打扰动 |
+
+**⇒ 主动脉三的真实内容 = 「复验并入 5 条实现分支」+「加一个步骤类型」。**
+不是造一套执行体系 —— 那套已经造好了。
+
+#### 3.3.3.1 ⚠️ 这是同一个错的第 4 次（照铁律 0.6 记账并立机制）
+
+把四次各写成一句，形态完全相同：
+
+> **「我用『我没在主线上看到它』当作『它不存在』的证据，而前者不度量后者。」**
+
+| # | 我说过 | 实际 |
+|---|---|---|
+| 1 | `OntologySlice` 不是一等实体 | 是 —— `slice_specs` 表 + `SliceSpecRecord` + `executeSlice` + 4 条种子 |
+| 2 | D3 单：给 BOM/Routing/Supplier/Material 建表 | 全都已存在且有数据 |
+| 3 | D1 单：新造一个 `Person` 类型 | `Principal` 已有 `kind:"person"` |
+| 4 | **本条**：给 Skill 设计 `execution` 字段 | **已设计好、实现好、带 SEAM 测试，躺在未并分支上** |
+
+前三次的共同点是「**没在当前主线搜到 ⇒ 判定不存在**」，
+第 4 次多了一层：**东西在分支上，主线 grep 必然 0 命中**。
+
+**机制（第 3 次就该建，现在补）**——写进派单模板与我自己的复验清单：
+
+> **凡要新建一个对象类型 / 契约字段 / 表，落笔前必须先跑：**
+> ```bash
+> git ls-remote --heads origin | sed 's|.*refs/heads/||' > /tmp/br.txt
+> for b in $(cat /tmp/br.txt); do
+>   git grep -l "<待建符号名>" "origin/$b" -- packages apps 2>/dev/null | sed "s|^|$b: |"
+> done
+> ```
+> **命中任何一条 ⇒ 不许新建，改为「复验并入」。**
+> 判据：**主线 0 命中 ≠ 全仓 0 命中** —— 本仓当前有 12 条 skill 分支、
+> 未并实现 4658 行，只搜主线必然把它们全判成「不存在」。
 
 #### 3.3.4 与 8 份 Skill 文档的关系
 
@@ -751,18 +815,25 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
 
 | WO | 内容 | 画像 | 前置 |
 |---|---|---|---|
-| **S0** | 🔴 **复验并入四条 Skill handoff 分支**（不是开发，是收编 —— 见 §3.3.1）：`handoff-skill-compiler-s1` · `handoff-skill-orchestrator-s1` · `handoff-skill-refclosure-a` · `handoff-skill-partial-a` | **重**（审核方自己做，不派 dev） | 无 |
-| **S0.5** | 修 `seed.ts:1332` 的 `kind:"solver"` precondition 被静默丢弃（§3.3.3 形态④） | 轻 | 无 |
-| **S1** | `SkillDefinition.execution` 四分支（`prompt`/`solver`/`slice`/`sim`） | 中 | S0 |
-| **S2** | SEAM：一个 `sim` 类 Skill 端到端打进沙盘（§7.1 头号断言） | **重** | S1 + P2 |
+| **S0** | 🔴 **复验并入五条 Skill 实现分支**（不是开发，是收编 —— §3.3.1，共 16 提交 / 24 代码文件 / 4664 行） | **重**（审核方自己做，不派 dev） | 无 |
+| **S0.5** | 修 `seed.ts:1332` 的 `kind:"solver"` precondition 被静默丢弃（§3.3.2 形态④·欠账 #154） | 轻 | 无 |
+| **S1** | ~~`SkillDefinition.execution` 四分支~~ → **改为：加一个 `sim_perturb` 步骤类型**（`validatePlanSteps` 一个 case + 执行器一个 case） | **轻**（原估中，撤回后缩小·§3.3.3） | S0 + P0 |
+| **S2** | SEAM：一个带 `sim_perturb` 步骤的 Skill 端到端打进沙盘（§7.1 头号断言） | **重** | S1 + P2 |
 
-> **S0 是本次 Skill 主动脉里性价比最高的一单，且不需要派 dev。**
-> 四条分支上躺着 Skill Graph 契约 + `GraphScheduler` + `POST /b/v1/skill-graphs/run` +
-> Parser/Validator + `POST /b/v1/skills/:id/compile` + 引用可校验门 + `maxBudgetRounds` 接线。
+> **S0 是本次全部工作里性价比最高的一单，且不需要派 dev。**
+> 五条分支上躺着：Skill Graph 契约 + **`Skill.execution`（已对名裁决，见 §3.3.3）** +
+> `GraphScheduler` + `POST /b/v1/skill-graphs/run` + Parser/Validator +
+> `POST /b/v1/skills/:id/compile` + 引用可校验门（含关死两层 fail-open）+ `ref-closure:check` 门 +
+> `maxBudgetRounds` 接线 + `dependsOn` 种子 + 三组接缝驱动测。
 > **复验并入即可，一行新代码都不用写。**
+>
 > 复验口径照 LOOP 纪律：worktree 隔离 checkout → 组合四包 gate → cherry-pick 上 canonical → push。
-> ⚠️ 四条分支很可能都落后 canonical 很多提交 —— 复验前先按 §6.1 第 1 条做**祖先关系**判定，
-> 不要用「某文件在不在」当判据（那个错一天骗到 4 个 dev）。
+> ⚠️ 五条分支各落后 canonical **30–31 提交**（实测，不是几百）—— 复验前仍须按 §6.1 第 1 条做
+> **祖先关系**判定，不要用「某文件在不在」当判据（那个错一天骗到 4 个 dev）。
+> ⚠️ 五条之间**很可能互相冲突**（`orchestrator-s1` 与 `compiler-s1` 都改
+> `agentcore/src/server.ts` 与 `contracts/src/index.ts`）——按
+> `orchestrator-s1 → compiler-s1 → refclosure-a → partial-a → partial-b` **串行**并，
+> 每并一条跑一次四包 gate，**不许攒着一起并**。
 
 ### 6.3 数据补齐六单（`WO-PACK-twin-data.md` · **仓主要求转发，仍待派**）
 
