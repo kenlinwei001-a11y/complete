@@ -102,6 +102,37 @@ rebase 过 canonical 之后该数字彻底失去意义，换成「它新增的�
 **这两句话的区别，就是本仓一整天的教训**：
 > **「我没找到」和「它不存在」是两个不同的命题。**
 
+### 第 2 条已达第 3 次的机制 —— **派单里判断「分支对不对」，判据是祖先关系不是文件存在性**
+
+**2026-08-09 一天之内，同一个错骗到 4 个 dev**（全部由 dev 自己发现并顶回来，不是我发现的）：
+我在六张工单里写「先 `git rev-parse --verify -q HEAD:<某文件>`，ABSENT 就从 canonical 重开分支」。
+四次全部误判：
+
+| dev | 我给的探针文件 | 实际 |
+|---|---|---|
+| skill-compiler | `apps/agentcore/src/skill-lint.ts` | 两版都在（blob 不同），落后 canonical **1310 提交** |
+| skill-orchestrator | `apps/agentcore/src/workflow/executor.ts` | 两版都在，同样落后 1310 |
+| skill-partial-a | `apps/agentcore/src/skill-lint.ts` | PRESENT，但 worktree 是 canonical 的**祖先** |
+| skill-partial-b | `apps/agentcore/src/features/registry.ts` | 两版都在，而三份**目标文档**全 ABSENT |
+
+**形态**（照 0.6 的句式）：**「我用『某文件存在』当作『分支是新的』的证据，而前者并不度量后者。」**
+文件在老支线上恰好也存在时，探针恒真 —— 于是 dev 在一个落后 1310 个提交的树上开工，
+把已实现的读成「不存在」，得出**与事实相反**的结论。
+
+**机制（写进每张派单模板，不许再用文件存在性）**：
+```bash
+CANON=origin/claude/inspiring-gates-aqczjg
+git fetch origin && git merge-base --is-ancestor HEAD $CANON \
+  && { echo "HEAD 是 canonical 的祖先 ⇒ 落后，必须重开"; git checkout -B <wo-branch> $CANON; } \
+  || echo "HEAD 不落后于 canonical，可原地开工"
+```
+判据是**祖先关系**：`HEAD` 若是 canonical 的祖先，就是落后，无论哪个文件在不在。
+派单模板同时必须写明两条环境前置（同样被 dev 顶回来过）：
+**worktree 可能没有 `node_modules`**（先 `pnpm install --prefer-offline`）、
+**`@platform/contracts` 可能未 build**（先 `pnpm --filter @platform/contracts build`）——
+不装就会报 `Failed to resolve entry for package "@platform/contracts"` 这种**与本单无关的假红**，
+极易被误判成契约包坏了。
+
 ## ⛔ 铁律 1 · 长任务必须**主动探针**，不许干等也不许凭时长猜（违反即事故·已真实发生 5 次）
 
 **任何后台任务（gate / 派出去的 dev / 长跑脚本）静默超过 30 分钟，必须跑 `bash scripts/task-probe.sh` 实测健康态，
