@@ -1136,7 +1136,9 @@ export const WORKFLOWS: WorkflowDefinition[] = [
 /**
  * B4 Skill 库 mock —— **口径对齐真后端种子** `apps/agentcore/src/mocks/seed.ts`（WO-FE-SKILL-STUDIO）。
  *
- * 病灶（改前实测）：本 fixture 只有 `SkillDefinition` 九个「改造之前就有的」字段
+ * 病灶（2026-08-09 改前实测 · 复验命令：`grep -c 'capability\|sideEffect\|approvalGate' apps/frontend-shell/src/mocks/fixtures.ts`
+ * 改前为 0，金丝雀 `grep -c 'status:'` 同文件 >0 证明工具有效）：
+ * 本 fixture 只有 `SkillDefinition` 九个「改造之前就有的」字段
  * （id/tenantId/key/version/name/summary/body/resources/status），而契约
  * `SkillDefinitionSchema`（`packages/contracts/src/agentcore.ts:236`）早已带上
  * capability / sideEffect / approvalGate / provenancePolicy / inputSchema / outputSchema /
