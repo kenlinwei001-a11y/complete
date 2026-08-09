@@ -30,6 +30,21 @@ import {
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
+/**
+ * C5 求解器目录（`GET /a/v1/solvers/registry` 的 mock 数据源）——**提升为模块级单一来源**。
+ *
+ * 为何不再内联在那一个 handler 里：`POST /b/v1/skills/:id/publish` 的引用存在性探针
+ * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts`）要拿"哪些求解器真的注册了"
+ * 来判死路。若在探针那边另抄一份 key 清单，就是本仓治过的老病——**同一事实两份词表**，
+ * 谁改一边另一边照绿（`sideEffect` 三套词表 → 判定永不触发，假绿第 6 例）。故两处共用本常量。
+ */
+const MOCK_SOLVER_REGISTRY = [
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", outputShape: ["p50", "p90", "gap", "ok"] },
+  { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["matrix"] },
+  { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。", argHints: { items: "候选项", budget: "预算上限" }, domain: "generic", outputShape: ["selected", "totalValue"] },
+  { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价X%接/不建议接）。", argHints: { so: "订单号" }, domain: "decision", outputShape: ["verdict", "chain"] },
+] as const;
+
 /** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
 function ruleReferences(ruleKey: string): { kind: string; key: string; name?: string; via: string }[] {
   const out: { kind: string; key: string; name?: string; via: string }[] = [];
@@ -1477,16 +1492,8 @@ export const handlers = [
 
   // ---- solver ----
   // C5 求解器目录（只读发现页数据源）：真后端来自 /a/v1/solvers/registry（注册表 feature 过滤）。mock 给代表性子集。
-  http.get("*/a/v1/solvers/registry", () =>
-    HttpResponse.json({
-      solvers: [
-        { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", outputShape: ["p50", "p90", "gap", "ok"] },
-        { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["matrix"] },
-        { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。", argHints: { items: "候选项", budget: "预算上限" }, domain: "generic", outputShape: ["selected", "totalValue"] },
-        { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价X%接/不建议接）。", argHints: { so: "订单号" }, domain: "decision", outputShape: ["verdict", "chain"] },
-      ],
-    }),
-  ),
+  // 数据源见模块顶部 MOCK_SOLVER_REGISTRY（与 skill 发布引用探针共用同一份，勿在此内联另一份）。
+  http.get("*/a/v1/solvers/registry", () => HttpResponse.json({ solvers: MOCK_SOLVER_REGISTRY })),
   http.post("*/a/v1/solvers/:key/invoke", async ({ params, request }) => {
     const key = String(params.key);
     // WO-CAPSIM-REPLICA 缺口②修（355b8502 同口径）：此前只解构 params 不读 body → 订单聚合基地筛选 base 参恒被忽略、
@@ -3217,9 +3224,38 @@ export const handlers = [
     Object.assign(s, body);
     return HttpResponse.json(s);
   }),
+  /**
+   * Skill 发布 —— **含引用存在性门**，口径照真后端 `server.ts` 的 `/b/v1/skills/:id/publish`
+   * （2026-08-09 WO-SKILL-REFCLOSURE-A 把 `probeMissingRefs` 接上了这条路）。
+   *
+   * 为何 mock 也必须带这道门：本单要在界面上暴露「发布被拒时到底哪条引用死了」。
+   * 若 mock 无脑 `status = "PUBLISHED"`，那段 UI 在 mock 模式下**永远走不到**，
+   * 就成了"只在真后端才存在的分支"——测试与手跑都验不到它，典型的「接了线没数据」。
+   *
+   * 与真后端一字对齐的三件事（改动其一即口径分家）：
+   *   ① HTTP 422 + code `SKILL_REF_UNRESOLVED`
+   *   ② message：`技能引用存在死路（N 项，发布被拒且未落库）：…；…`，每项形如 `求解器「k」在 DataCore 未注册`
+   *   ③ **未落库**：被拒时 status 保持原值，不得改成 PUBLISHED
+   * 覆盖范围同真后端：只探 solver / rule / ontologyType 三种 kind，且只探 `required !== false` 的；
+   * references 与 dependsOn 一起探。constraint/slice/workflow/agent 今天两侧都无人校验，别在此补——
+   * mock 比真后端严会造出"本地红、线上绿"的反向假信号。
+   */
   http.post("*/b/v1/skills/:id/publish", ({ params }) => {
     const s = db.skills.find((x) => x.id === params.id);
     if (!s) return err(404, "NOT_FOUND", "Skill 不存在");
+    const crossRefs = [...(s.references ?? []), ...(s.dependsOn ?? [])].filter((r) => r.required !== false);
+    const solverKeys = new Set(MOCK_SOLVER_REGISTRY.map((x) => x.key as string));
+    const ruleKeys = new Set(db.rules.map((r) => r.key));
+    const objectTypes = new Set(GRAPH.nodes.map((n) => n.key));
+    const dead = [
+      ...crossRefs.filter((r) => r.kind === "solver" && !solverKeys.has(r.key)).map((r) => `求解器「${r.key}」在 DataCore 未注册`),
+      ...crossRefs.filter((r) => r.kind === "rule" && !ruleKeys.has(r.key)).map((r) => `规则「${r.key}」在 DataCore 规则库不存在`),
+      ...crossRefs.filter((r) => r.kind === "ontologyType" && !objectTypes.has(r.key)).map((r) => `对象类型「${r.key}」在 DataCore 本体不存在`),
+    ];
+    if (dead.length > 0) {
+      // 未落库：故意不动 s.status。
+      return err(422, "SKILL_REF_UNRESOLVED", `技能引用存在死路（${dead.length} 项，发布被拒且未落库）：${dead.join("；")}`);
+    }
     s.status = "PUBLISHED";
     return HttpResponse.json(s);
   }),
