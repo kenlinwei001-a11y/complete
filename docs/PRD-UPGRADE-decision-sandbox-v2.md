@@ -1035,9 +1035,28 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
      && { echo "HEAD 是 canonical 的祖先 ⇒ 落后，必须重开"; git checkout -B <wo-branch> $CANON; } \
      || echo "HEAD 不落后，可原地开工"
    ```
-2. **环境前置**：worktree 可能没有 `node_modules`（先 `pnpm install --prefer-offline`）；
-   `@platform/contracts` 可能未 build（先 `pnpm --filter @platform/contracts build`）。
-   不装就会报 `Failed to resolve entry for package "@platform/contracts"` 这种**与本单无关的假红**。
+2. **环境前置**（2026-08-09 扩充 —— 三条都被实测顶回来过）：
+   ```bash
+   pnpm install --prefer-offline
+   pnpm --filter @platform/contracts build
+   pnpm --filter @platform/llm-adapters build   # ← 漏它 → 210 个套件报「与本单无关」的假红
+   ```
+   - **两个包都要 build，不止 contracts。** 只 build contracts 会撞
+     `Failed to resolve entry for package "@platform/llm-adapters"`，**210 个套件全红**，
+     极易被误判成本单打坏了什么。
+   - 🔴 **`pnpm --filter <pkg> test -- <关键字>` 不会过滤**（实测：它照样跑全部 240 个测试文件，
+     我自己复验时因此超时）。要跑单个测试文件，进包目录用
+     `npx vitest run test/<文件名>.test.ts`。
+     写错这条 = 让 dev 以为自己只跑了一个文件，实际跑了全量，既慢又会撞上不相干的红。
+
+2.5. 🔴 **`dist` 过期是本仓最会骗人的一种假红**（2026-08-09 我自己栽在这上面，
+   还据此派了一张 WO 出去）：好几道门读的是**构建产物**不是源码
+   （如 `check-lever-binding-drift.mjs:53` 读 `packages/contracts/dist/`）。
+   **源码是对的 + dist 是旧的 ⇒ 门会报「源码缺 XX」并给出精确到 `file:line` 的修法 ——
+   那份修法是对着一份并不存在的缺陷开的药。**
+   判据：**门报红时，先 build 再看，不要先改代码。**
+   （该门现已加 dist 新鲜度金丝雀，不一致直接 exit 2 报「门自己坏了」；
+   但别的门未必有，所以这条纪律照旧。）
 3. **每张 WO = 一条 handoff 分支**，dev 建 → push `claude/handoff-<wo>`，**不碰正线**。
 4. **每完成一个可命名单元立刻 commit + push**（铁律 1 判据 #5 · 已丢过一次工作）。
    「gate 跑着」不是「工作已落盘」。
