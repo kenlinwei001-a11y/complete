@@ -71,7 +71,7 @@ import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
-import { lintSkill, classifySkillEvalCases } from "./skill-lint.js";
+import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
 import { compileSkill } from "./skill-compiler.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
@@ -1329,16 +1329,39 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/skills/lint", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
-    const body = req.body as { id?: string; summary?: string; body?: string; resources?: { name: string }[] };
-    let target: { summary: string; body: string; resources: { name: string }[] };
+    const body = req.body as Partial<SkillLintTarget> & { id?: string };
+    let target: SkillLintTarget;
     if (body.id) {
       const skill = await deps.repos.skills.get(body.id);
       if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
-      target = { summary: skill.summary, body: skill.body, resources: skill.resources };
+      // ⚠️ 此前这里只摘 `{summary, body, resources}` 三项 → WO-SKILL-3 的工业级契约规则
+      //   （inputSchema/outputSchema 形状 · references/dependsOn 合法性与可解析性 · 依赖图环）
+      //   在**编辑器干跑**这条路上从不参评：编辑器报「lint 通过」，同一个 skill 到发布门（:1246 传了全量 + ctx）
+      //   却 422。同一份 lint 两条路两套输入 = 「接了线接错地方」，且两侧测试都能是绿的
+      //   （单测直接调 lintSkill 并手传全量 → 覆盖不到这条窄化路径）。现在干跑与发布**同一份输入**。
+      target = {
+        summary: skill.summary,
+        body: skill.body,
+        resources: skill.resources,
+        ...(skill.inputSchema ? { inputSchema: skill.inputSchema } : {}),
+        ...(skill.outputSchema ? { outputSchema: skill.outputSchema } : {}),
+        ...(skill.references ? { references: skill.references } : {}),
+        ...(skill.dependsOn ? { dependsOn: skill.dependsOn } : {}),
+      };
     } else {
-      target = { summary: body.summary ?? "", body: body.body ?? "", resources: body.resources ?? [] };
+      target = {
+        summary: body.summary ?? "",
+        body: body.body ?? "",
+        resources: body.resources ?? [],
+        ...(body.inputSchema ? { inputSchema: body.inputSchema } : {}),
+        ...(body.outputSchema ? { outputSchema: body.outputSchema } : {}),
+        ...(body.references ? { references: body.references } : {}),
+        ...(body.dependsOn ? { dependsOn: body.dependsOn } : {}),
+      };
     }
-    return lintSkill(target);
+    // 干跑同样需要 ctx.allSkills（跨资源规则缺 ctx 时 `return []` = 恒过）；但**不**传 requirePublishedDeps
+    //   —— 草稿态预览不该因依赖还没发布就报错（skill-lint.ts:32-33 的既定语义），发布门那半才收紧。
+    return lintSkill(target, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId) });
   });
 
   // ---- WO-SKILL-ORCHESTRATOR-S1 · Skill Graph 编排（PRD-skill-runtime-orchestrator §3.4）----

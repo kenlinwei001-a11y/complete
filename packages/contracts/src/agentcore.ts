@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentBudgetSchema, ObjectRefSchema, PlanStepSchema } from "./qos.js";
+import { AgentBudgetSchema, DEFAULT_AGENT_BUDGET, ObjectRefSchema, PlanStepSchema, type AgentBudget } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
@@ -204,6 +204,36 @@ export function isWriteModeSkill(skill: { sideEffect?: string | null; approvalGa
   return typeof gate === "string" && gate !== "none";
 }
 
+/**
+ * **Skill 声明的探索预算 → `AgentBudget` 覆盖**（PRD-skill-contract-dsl §4.6 · Track E 约束 4）。
+ *
+ * 为何单列成契约里的一个纯函数（而不是在某个运行时文件里就地 `?? 8`）：
+ * `maxBudgetRounds` 从 WO-SKILL-1 落契约起就是**零生产消费方**——全仓命中只有契约声明 1 处
+ * + `apps/agentcore/test/skill-contract.test.ts:65,77` 两条「存了能读出来」的断言。
+ * 「只有 test 引用 = 已排练，不是已实现」：测试咬的是**字段**不是**链路**，字段填了不改变任何行为。
+ * 这里给它**唯一读点**，谁要用预算就调这一处，杜绝第二份口径（`sideEffect` 词表分裂的老病）。
+ *
+ * 红线 · **只收紧不放宽**：取 `min(声明值, 平台上界)`。否则一个 Skill 就能把全局预算护栏顶开
+ * （G-9 / G-WORKFLOW-BUDGET-LEAK 同族）。多个 Skill 同时在场 → 取最小（最保守者说了算）。
+ *
+ * 未声明（缺省）→ 返回 `undefined` ⇒ 调用方逐字节维持今日行为（R6）。
+ *
+ * @param skills 本轮在场的 skill（0..n）
+ * @param ceiling 平台硬上界；缺省 `DEFAULT_AGENT_BUDGET`
+ */
+export function skillBudgetOverride(
+  skills: readonly { maxBudgetRounds?: number | null }[],
+  ceiling: Pick<AgentBudget, "maxRoundTrips"> = DEFAULT_AGENT_BUDGET,
+): { maxRoundTrips: number } | undefined {
+  const declared: number[] = [];
+  for (const s of skills) {
+    const n = s?.maxBudgetRounds;
+    if (typeof n === "number" && Number.isInteger(n) && n > 0) declared.push(n);
+  }
+  if (declared.length === 0) return undefined;
+  return { maxRoundTrips: Math.min(...declared, ceiling.maxRoundTrips) };
+}
+
 /** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
 /**
  * 引用 kind / role 词表**单一来源**（导出成具名数组，供 skill-lint 等消费方 import）。
@@ -257,6 +287,10 @@ export const SkillDefinitionSchema = z.object({
   dependsOn: z.array(SkillReferenceSchema).optional(),
   approvalGate: z.enum(["none", "human", "workflow"]).optional(),
   provenancePolicy: z.enum(["required", "best_effort", "none"]).optional(),
+  /**
+   * 本 Skill 的探索轮次上界（题型预算）。**唯一读点 = `skillBudgetOverride()`**（见上方注释），
+   * 归一后注入 `AgentBudget.maxRoundTrips`；只收紧不放宽。缺省 = 平台预算，行为逐字节不变。
+   */
   maxBudgetRounds: z.number().int().positive().optional(),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
