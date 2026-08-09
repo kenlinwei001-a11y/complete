@@ -680,6 +680,25 @@ function applyGslivePortfolioLevers(resp: Record<string, unknown>, args: Record<
 }
 /** 活③方案存/分支 store（模块态·横比 compare 读回·R6 无随机数值）。 */
 const gsliveScenarios = new Map<string, { id: string; label: string; parentId: string | null; page: string; primary: string; createdAt: string; kpi: GsliveKpi7; servedCount: number; displacedCount: number; ontimeRate: number }>();
+
+/**
+ * WO-L4B · 沙盘会话 store（模块态）。
+ *
+ * 原先 sim 这几条 mock 是**无状态桩**：POST /sessions 恒回 `sims_mock`，没有 GET /sessions 与 GET …/world
+ * （后端 app.ts:1405/:1410 两条路由一直都在，是 mock 这边没镜像）。世界列表与世界态现在是
+ * `sim.session_created` / `sim.branched` / `sim.tick_completed` 三个事件的真消费方，mock 必须
+ * **有状态**才能证明"事件到达 → 重取 → 屏上真的变了"，否则重取回来的还是同一个死值，等于没测。
+ * R6 确定性：id 走计数器、时间戳固定，无随机数、无真实时钟。
+ */
+type MockSimSession = { id: string; tenantId: string; baseSnapshot: Record<string, unknown>; scope: Record<string, unknown>; status: string; curTick: number; parentCheckpointId: string | null; createdAt: string };
+const mockSimSessions = new Map<string, MockSimSession>();
+const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unknown> }>();
+let mockSimSeq = 0;
+export function resetMockSim(): void {
+  mockSimSessions.clear();
+  mockSimWorlds.clear();
+  mockSimSeq = 0;
+}
 /**
  * WO-CAPLIVE-2 · 方案横比矩阵产能增益（KILL-MOCK）：各方案 apply 经 generic_inference 同款前向重算公式真算——
  * 下游派生 after = 0.8*0.5 + value*0.5，capGain = Σ max(0, after − 0.8)。改方案 apply → capGain 变（非写死）。
@@ -3490,10 +3509,20 @@ export const handlers = [
   ),
   http.post("*/a/v1/sim/sessions", async ({ request }) => {
     const body = (await request.json()) as { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> };
-    return HttpResponse.json(
-      { id: "sims_mock", tenantId: "demo", baseSnapshot: body.baseSnapshot ?? {}, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: new Date().toISOString() },
-      { status: 201 },
-    );
+    const base = body.baseSnapshot ?? {};
+    // WO-L4B：id 保留首个 `sims_mock`（既有用例按此断言），其后递增；会话与世界态双双落 store。
+    const id = mockSimSessions.size === 0 ? "sims_mock" : `sims_mock_${++mockSimSeq}`;
+    const s: MockSimSession = { id, tenantId: "demo", baseSnapshot: base, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-09T00:00:00.000Z" };
+    mockSimSessions.set(id, s);
+    mockSimWorlds.set(id, { tick: 0, state: base });
+    return HttpResponse.json(s, { status: 201 });
+  }),
+  // WO-L4B · 世界列表（= 前端 sessionsQuery 的真数据源；后端对应 app.ts:1405）。
+  http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [...mockSimSessions.values()] })),
+  // WO-L4B · 当前世界态（= worldQuery 的真数据源；后端对应 app.ts:1410）。
+  http.get("*/a/v1/sim/sessions/:id/world", ({ params }) => {
+    const id = String((params as { id: string }).id);
+    return HttpResponse.json(mockSimWorlds.get(id) ?? { tick: 0, state: {} });
   }),
   http.get("*/a/v1/sim/sessions/:id/scope-precheck", ({ request }) => {
     const url = new URL(request.url);
@@ -3517,22 +3546,34 @@ export const handlers = [
     });
   }),
   // ---- 推演沙盘 P0（增量 4 · Agent I）：tick / checkpoint / branch / compare / certification 最小 mock ----
-  http.post("*/a/v1/sim/sessions/:id/tick", async ({ request }) => {
+  http.post("*/a/v1/sim/sessions/:id/tick", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { n?: number };
     const n = body.n ?? 1;
     // 占位递增态（mock 模式仅证交互；真后端走传导核）。
-    return HttpResponse.json({ curTick: n, state: { "TypeA#0": { s1: 50 + n * 5, s2: 40 } } });
+    const state = { "TypeA#0": { s1: 50 + n * 5, s2: 40 } };
+    // WO-L4B：真后端 tick 在 emit 前写了 status=RUNNING + curTick（app.ts:1465），mock 镜像之，
+    // 否则「世界列表随 tick 更新」这条断言在 mock 上永远看不出差别。
+    const id = String((params as { id: string }).id);
+    const s = mockSimSessions.get(id);
+    if (s) { s.curTick = n; s.status = "RUNNING"; }
+    mockSimWorlds.set(id, { tick: n, state });
+    return HttpResponse.json({ curTick: n, state });
   }),
   http.post("*/a/v1/sim/sessions/:id/checkpoint", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { label?: string };
     return HttpResponse.json({ id: "cp_mock", sessionId: String((params as { id: string }).id), tenantId: "demo", tick: 1, label: body.label ?? "cp", createdAt: new Date().toISOString() });
   }),
-  http.post("*/a/v1/sim/sessions/:id/branch", async ({ request }) => {
+  http.post("*/a/v1/sim/sessions/:id/branch", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };
-    return HttpResponse.json(
-      { id: "sims_child_mock", tenantId: "demo", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: body.checkpointId ?? "cp_mock", createdAt: new Date().toISOString() },
-      { status: 201 },
-    );
+    // WO-L4B：子会话真的落 store —— 这正是「分叉出的子世界刷新即丢」的修复点（后端 app.ts:1512 本来就落库了）。
+    const parentId = String((params as { id: string }).id);
+    const child: MockSimSession = {
+      id: "sims_child_mock", tenantId: "demo", baseSnapshot: mockSimWorlds.get(parentId)?.state ?? {}, scope: {},
+      status: "READY", curTick: 0, parentCheckpointId: body.checkpointId ?? "cp_mock", createdAt: "2026-08-09T00:00:00.000Z",
+    };
+    mockSimSessions.set(child.id, child);
+    mockSimWorlds.set(child.id, { tick: 0, state: child.baseSnapshot });
+    return HttpResponse.json(child, { status: 201 });
   }),
   http.get("*/a/v1/sim/compare", () =>
     HttpResponse.json({

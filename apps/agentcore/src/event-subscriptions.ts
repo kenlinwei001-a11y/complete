@@ -102,13 +102,18 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // L17 SPINE 经营目标-指标-责任骨架：指标快照回采（actual 更新）/ 指标越线（触发推演）→ 失效驾驶舱/各视图 KPI/风险页
   { event: "metric.snapshot_recorded", producer: "SPINE·指标快照回采（metric_rollup 实算 actual → 执行回采更新口径，SPINE.2）", tier: "IN_SESSION", invalidates: ["metrics", "dashboard", "scenario-data"] },
   { event: "metric.breached", producer: "SPINE·指标越线（actual<floor → 触发 plan_rootcause/risk_timeline 推演，SPINE.2）", tier: "NOTIFY", invalidates: ["metrics", "dashboard", "risk", "notifications"] },
-  // L18 推演沙盘环（A10 · 断点 G-SIM-EVENT-NOSUB）：datacore 六处 outbox.emit("sim.*") 此前零消费方。
-  // 只登记**真有缓存消费方**的那一个 —— sim.scenario_saved（方案快照存/存分支）→ 方案列表 + decision_play 横比矩阵。
-  // 另四个（sim.session_created / sim.tick_completed / sim.checkpoint_saved / sim.branched）**故意不登记**：
-  // 沙盘会话/世界态/检查点/分支今天全落在前端 SandboxView 的 useState，不经任何缓存，
-  // 且 tick 只写 sim tick_state（R4 模拟态不写真值，不动 object-queries）——硬塞订阅 = 假接线，比不接更坏。
-  // 理由逐条登记在 frontend-shell/src/store/eventInvalidation.ts 的 SIM_EVENT_GAPS，并由接缝测试守住。
+  // L18 推演沙盘环（A10 · 断点 G-SIM-EVENT-NOSUB）：datacore 六处 outbox.emit("sim.*")。
   { event: "sim.scenario_saved", producer: "推演沙盘·方案快照存盘/存分支（POST /a/v1/sim/scenarios · /a/v1/sim/live-scenarios）", tier: "IN_SESSION", invalidates: ["sim-scenarios"] },
+  // ── WO-L4B（欠账 #145）：补订阅方 —— 上面那条注释原先写「另四个故意不登记，因为沙盘态全在 useState」。
+  // 复核后那个理由只对了一半：后端 GET /a/v1/sim/sessions（app.ts:1405）与 …/:id/world（app.ts:1410）
+  // 一直都在，缺的是**前端那一跳**（endpoints.ts 当时只有 POST createSimSession；simWorld 有定义，但 src 下没有任何调用点，只有测试桩）。
+  // 现已接成 SandboxView 的 sessionsQuery / worldQuery 两条真 useQuery，故三条转正式登记。
+  { event: "sim.session_created", producer: "推演沙盘·建会话（POST /a/v1/sim/sessions · app.ts:1397）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
+  { event: "sim.branched", producer: "推演沙盘·从检查点分支出子世界（POST /a/v1/sim/sessions/:id/branch · app.ts:1516）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
+  // tick 同一处理器在 emit 前写了 status=RUNNING + curTick（app.ts:1465），世界列表显示的正是这两个字段 → 两个标签都失效。
+  { event: "sim.tick_completed", producer: "推演沙盘·推进 tick（POST /a/v1/sim/sessions/:id/tick · app.ts:1467）", tier: "IN_SESSION", invalidates: ["sim-world", "sim-sessions"] },
+  // sim.checkpoint_saved **仍不登记**：datacore 没有列出检查点的路由（listCheckpoints 仓储层写好了，但 route 层从不调用），
+  // 前端无列表可缓存。理由与解法逐条记在 frontend-shell/src/store/eventInvalidation.ts 的 SIM_EVENT_GAPS。
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

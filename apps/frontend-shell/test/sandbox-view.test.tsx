@@ -40,7 +40,11 @@ vi.mock("@/api/endpoints", () => ({
     // 读不到 base 这里直接造一个递增态：由测试通过断言「值变化」验证，不依赖具体数。
     return { curTick: n, state: { __mut: { v: 999 } } };
   }),
-  simWorld: vi.fn(),
+  // WO-L4B：SandboxView 现有两条真 useQuery（世界列表 / 世界态）。本文件是全量替换式 vi.mock，
+  // 新导出不桩进来就是 undefined → 组件崩。世界态桩回空态：设计上 init 已用 setQueryData 就地写入
+  // 且 staleTime:Infinity，正常不该发生重取；万一重取了，KPI 断言会当场变红——这正是我们想要的信号。
+  simWorld: vi.fn(async () => ({ tick: 0, state: {} })),
+  fetchSimSessions: vi.fn(async () => ({ items: [] })),
   simCheckpoint: vi.fn(async () => ({ id: "cp1", sessionId: "sims_test", tenantId: "t", tick: 1, label: "tick1", createdAt: "x" })),
   simBranch: vi.fn(async () => ({ id: "sims_child", tenantId: "t", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: "cp1", createdAt: "x" })),
   fetchSimCompare: vi.fn(async () => ({ a: [], b: [] })),

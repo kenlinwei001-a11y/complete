@@ -35,6 +35,11 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","live-scenario-compare", baseId, ids]     RiskBoardView.tsx:1086
   // 前缀失效（TanStack 前缀匹配）故此处只写到 baseId 之前那一段。
   "sim-scenarios": [["a", "live-scenarios"], ["a", "live-scenario-compare"]],
+  // WO-L4B 沙盘会话环（欠账 #145）：世界列表 / 当前世界态两条真 useQuery（SandboxView）。
+  //   ["a","sim-sessions"]            SandboxView.tsx sessionsQuery（世界列表 rail）
+  //   ["a","sim-world", sessionId]    SandboxView.tsx worldQuery（当前世界态·前缀失效盖住所有会话）
+  "sim-sessions": [["a", "sim-sessions"]],
+  "sim-world": [["a", "sim-world"]],
 };
 
 /**
@@ -47,32 +52,40 @@ export const SIM_CONSUMER_KEYS = {
   liveScenarioList: ["a", "live-scenarios"],
   /** RiskBoardView · CapacityScenarioPanel decision_play 横比矩阵。 */
   liveScenarioCompare: ["a", "live-scenario-compare"],
+  /** SandboxView · 世界列表（主线 + 各分支子会话）。 */
+  simSessionList: ["a", "sim-sessions"],
+  /** SandboxView · 当前世界态（tick + state）；真 key 尾带 sessionId，靠前缀失效盖住。 */
+  simWorld: ["a", "sim-world"],
 } as const;
 
 /**
  * `sim.*` 缺口台账（A10 诚实报缺）——**故意不接线**的事件及其理由。
  *
- * 判据不是"懒得接"，是**今天前端根本没有承载它的缓存**：沙盘会话/世界态/检查点/分支
- * 全部落在 `SandboxView.tsx` 的 `useState`（sessionId / world / curTick / branchId），
- * 不经 TanStack Query；且 tick 只写 `repos.sim.putTickState`（模拟态，R4 不写真值），
- * 不动任何 `["a","objects"]` 缓存的真对象。给它们硬塞一个订阅 = 假接线（#90/#92 同族），
- * 比不接更坏——所以在此登记，并由 `sim-event-invalidation.seam` 测试逐条守住：
- * 新增 `sim.*` emit 而两边都没登记 → 红。
+ * 判据不是"懒得接"，是**今天前端根本没有承载它的缓存**。给它们硬塞一个订阅 = 假接线
+ * （#90/#92 同族），比不接更坏——所以在此登记，并由 `sim-event-invalidation.seam` 测试
+ * 逐条守住：新增 `sim.*` emit 而两边都没登记 → 红。
  *
- * 解法（不在 A10 范围内）：这四个事件要有真消费方，得先让沙盘态走 Query 缓存
- * （会话列表 / world 快照改 useQuery），那是 SandboxView 的改造，另开工单。
+ * ── WO-L4B（欠账 #145）：本台账从 4 条缩到 1 条 ────────────────────────────────
+ * 原先 4 条共用一个理由「沙盘态全落在 SandboxView 的 useState，不经 Query 缓存」。
+ * 那不是"改不了"，那是**缺前端这一跳**——后端 `GET /a/v1/sim/sessions`（app.ts:1405）
+ * 与 `GET /a/v1/sim/sessions/:id/world`（app.ts:1410）一直都在。本单把这两条接成真
+ * useQuery（SandboxView 的 sessionsQuery / worldQuery），于是
+ * `sim.session_created` / `sim.branched` / `sim.tick_completed` **三条转为真接线**，
+ * 见 EVENT_INVALIDATES。
+ *
+ * 只剩 `sim.checkpoint_saved` 仍是缺口，且它的成因与那三条**不同类**：
+ * 不是"前端没接"，是**后端根本没有可读的列表路由**（详见下方理由）。
  */
 export const SIM_EVENT_GAPS: Record<string, string> = {
-  "sim.session_created":
-    "无缓存消费方：前端没有任何 useQuery 读 GET /a/v1/sim/sessions（endpoints.ts 只有 POST createSimSession），" +
-    "会话 id 存在 SandboxView 的 useState 里。",
-  "sim.tick_completed":
-    "无缓存消费方：tick 只写 sim tick_state（R4 模拟态不写真值，不影响 ['a','objects']），" +
-    "SandboxView 的 world/curTick 由 tick 响应直接 setState，不经 Query 缓存。",
   "sim.checkpoint_saved":
-    "无缓存消费方：前端只有 POST simCheckpoint，没有检查点列表 useQuery。",
-  "sim.branched":
-    "无缓存消费方：前端只有 POST simBranch，子会话 id 落 SandboxView 的 useState(branchId)，无列表缓存。",
+    "缺的是**后端读端**不是前端订阅（2026-08-09 复核）：datacore 只有 POST /a/v1/sim/sessions/:id/checkpoint" +
+    "（app.ts:1488），**没有任何列出检查点的路由**。仓储层三处都写好了（接口 repo/repo.ts:352 · " +
+    "repo/memory.ts:67 · repo/pg.ts:103），但 route 层从不调用它。" +
+    "复验命令：`grep -rn listCheckpoints apps/datacore/src | grep -v '/repo/'` —— 期望只剩 repo.ts 接口那一行，" +
+    "app.ts 一行都没有；对照组（证明该检索不是工具坏了）：把符号换成 createCheckpoint 跑同一条命令，" +
+    "会命中 app.ts:1493。即「实现有、没开路由」。前端因此无列表可缓存，硬接 = 假接线。" +
+    "解法（需动 datacore，超出 WO-L4B 范围边界）：开 GET /a/v1/sim/sessions/:id/checkpoints → " +
+    "前端加 checkpoints useQuery（存档列表 / 从任意检查点回滚·分支）→ 本事件即可接 ['sim-checkpoints']。",
 };
 
 /**
@@ -105,6 +118,16 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   // 横比矩阵 ["a","live-scenario-compare",…] 从来没人失效过（连发起方那一页都陈旧）；
   // 且经 F1 全局轮询，别的标签页/别的用户现在也能收到。
   "sim.scenario_saved": ["sim-scenarios"],
+  // ── WO-L4B 沙盘会话环（欠账 #145）：三条此前"发了没人收"的事件转真接线 ──────────────
+  // 建会话（datacore app.ts:1397）→ 世界列表多一行。
+  "sim.session_created": ["sim-sessions"],
+  // 分支（app.ts:1516）→ 世界列表多一个子世界。这条修的是**真丢**：此前子会话 id 只落
+  // SandboxView 的 useState(branchId)，刷新即丢、别的标签页根本看不见分叉出来的世界。
+  "sim.branched": ["sim-sessions"],
+  // 推进 tick（app.ts:1467）→ ① 当前世界态变了；② 会话行本身也变了——同一处理器在 emit 前
+  // 写了 `s.status = "RUNNING"` + `curTick`（app.ts:1465 putSession），世界列表显示的就是这两个字段。
+  // 所以两个标签都失效，不是凑数。
+  "sim.tick_completed": ["sim-world", "sim-sessions"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

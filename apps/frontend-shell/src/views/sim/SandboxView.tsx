@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
   fetchSimCertification,
   fetchSimCompare,
+  fetchSimSessions,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
   simTick,
+  simWorld,
   submitQuery,
   type SimCompareSeries,
 } from "@/api/endpoints";
@@ -233,10 +235,55 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     retry: false,
   });
   const cfg = injectedConfig ?? cfgQuery.data;
+  const qc = useQueryClient();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [world, setWorld] = useState<TickState>({});
   const [curTick, setCurTick] = useState(0);
+
+  /**
+   * ══ WO-L4B（欠账 #145）· `sim.*` 事件的**真消费方**就是下面这两条 useQuery ══
+   *
+   * 病灶：`sim.session_created` / `sim.branched` / `sim.tick_completed` 三个事件 datacore 一直在发
+   * （app.ts:1397 / :1516 / :1467），但前端**没有任何缓存承载它们** —— 会话 id、world、curTick、branchId
+   * 全落在本组件的 useState。于是事件发出来没人收，只能记在 SIM_EVENT_GAPS 当缺口（= 欠账 #92 那族：
+   * "发了没人收"）。最刺眼的一处：**分支出来的子世界刷新即丢** —— `branchId` 只活在组件 state 里，
+   * 后端明明已经把子会话落了库（app.ts:1512 createSession），前端刷一下页面就再也找不到它。
+   *
+   * 修法不是"给事件塞个空回调让计数好看"，是**把承载它们的缓存真的建出来**：
+   *  · `["a","sim-sessions"]`        世界列表 = GET /a/v1/sim/sessions（后端 app.ts:1405 一直都在，
+   *                                   缺的只是前端这一跳）→ 分支/建会话后列表真的多一行，刷新也还在；
+   *  · `["a","sim-world", sessionId]` 当前世界态 = GET …/:id/world（app.ts:1410；`simWorld` 此前
+   *                                   endpoints.ts 有定义，但改造前 src 下没有任何调用点，只有测试桩 ——
+   *                                   典型"实现有、没接线"）。
+   *
+   * 失效→重取的链路：datacore outbox → useDomainEventStream 轮询 → invalidateForEvent →
+   * EVENT_INVALIDATES → LABEL_TO_KEYS → 这两个 key。跨标签页/跨用户都能收到。
+   *
+   * `staleTime: Infinity` 是**刻意**的：世界态的权威副本由本地 mutation（init/tick）用 setQueryData
+   * 就地写入，平时不该有背景重取；只有**事件失效**才把它标脏 → 触发真重取。这样"重取"这件事本身
+   * 就成了事件到达的证据（测试据此断言副作用真的发生，而不是断言"我调了 invalidateQueries"）。
+   */
+  const sessionsQuery = useQuery({
+    queryKey: ["a", "sim-sessions"],
+    queryFn: fetchSimSessions,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const worldQuery = useQuery({
+    queryKey: ["a", "sim-world", sessionId ?? ""],
+    queryFn: () => simWorld(sessionId as string),
+    enabled: !!sessionId,
+    staleTime: Infinity,
+    retry: false,
+  });
+  // 事件驱动重取回来的世界态 → 落到屏上（这一步就是 `sim.tick_completed` 的可观测副作用）。
+  useEffect(() => {
+    const d = worldQuery.data;
+    if (!d) return;
+    setWorld(d.state);
+    setCurTick(d.tick);
+  }, [worldQuery.data]);
   const [ticking, setTicking] = useState(false);
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
   const [cert, setCert] = useState<SimCertification | null>(null);
@@ -310,6 +357,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       setSessionScope(scope);
       setWorld(base);
       setCurTick(0);
+      // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
+      qc.setQueryData(["a", "sim-world", s.id], { tick: 0, state: base });
+      // 建会话 = 世界列表多一行。发起方这一页立刻可见；别的标签页走 sim.session_created 事件。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       setHistory([Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length)]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
       // WO-SIM-SCOPE-LOCAL：LOCAL 档必带 target —— 这里也补齐，杜绝再留一个「传 2 个实参」的调用点回潮。
@@ -321,7 +372,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } catch (e) {
       toastError(e);
     }
-  }, []);
+  }, [qc]);
 
   // 首个会话按**当前选中的范围**建（默认 GLOBAL = 整本体，是个真范围，不是空对象）。
   // 依赖里刻意不放 certScope/effectiveTarget：它们变了要走「重建会话」那条显式路径，
@@ -380,6 +431,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const res = await simTick(sessionId, 1);
       setWorld(res.state);
       setCurTick(res.curTick);
+      // 权威副本同步就地更新：本地推进无需再 GET；跨页由 sim.tick_completed 失效后重取。
+      qc.setQueryData(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state });
+      // tick 同时改了会话行本身（datacore app.ts:1465 写 status=RUNNING + curTick）→ 世界列表也该更新。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
       setHistory((h) => [...h, g]);
     } catch (e) {
@@ -387,7 +442,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } finally {
       setTicking(false);
     }
-  }, [sessionId]);
+  }, [sessionId, qc]);
 
   const onCheckpoint = useCallback(async () => {
     if (!sessionId) return;
@@ -407,6 +462,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const cp = await simCheckpoint(sessionId, `branch@tick${curTick}`);
       const child = await simBranch(sessionId, cp.id);
       setBranchId(child.id);
+      // 分支 = 世界列表多一个子世界。这一行是「刷新即丢」的正解：子会话此后由**列表缓存**承载，
+      // 不再只活在 branchId 这个 useState 里（别的标签页走 sim.branched 事件拿到同样的失效）。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       const cmp = await fetchSimCompare(sessionId, child.id);
       setCompare(cmp);
       toast(`已从检查点分支（子会话 ${child.id}），可逐 tick 对比`, "success");
@@ -415,7 +473,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } finally {
       setBranching(false);
     }
-  }, [sessionId, curTick]);
+  }, [sessionId, curTick, qc]);
 
   // 对比刷新（分支会话各自推进后重新拉序列；A 主线 + B 分支）。
   const onRefreshCompare = useCallback(async () => {
@@ -558,6 +616,75 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             <div className={styles.sub} data-testid="sandbox-cert-na">
               就绪认证未开通（sim.certification 关）
             </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      /**
+       * WO-L4B · 世界列表（`sim.session_created` / `sim.branched` / `sim.tick_completed` 的**可观测落点**）。
+       *
+       * 这不是为了让订阅计数好看而摆的空壳：它修的是一个真缺陷 —— 分支出来的子世界此前只活在
+       * `branchId` 这个 useState 里，**刷新即丢**（后端 app.ts:1512 明明已经把子会话落库了）。
+       * 现在它由 `["a","sim-sessions"]` 缓存承载：分支后列表真的多一行、刷新还在、别的标签页
+       * 经 sim.branched 事件也会看到。每行还显示 status/curTick —— 那正是 tick 处理器在 emit 前
+       * 写进会话的两个字段（app.ts:1465），所以 `sim.tick_completed` 失效这张表不是凑数。
+       */
+      id: "worlds",
+      title: "世界列表",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-worlds">
+          {sessionsQuery.isError ? (
+            <div className={styles.sub} data-testid="sandbox-worlds-error">
+              世界列表不可用（沙盘功能未开通或后端不可达）
+            </div>
+          ) : (sessionsQuery.data?.items?.length ?? 0) === 0 ? (
+            <div className={styles.sub} data-testid="sandbox-worlds-empty">
+              {sessionsQuery.isLoading ? "加载世界列表…" : "还没有推演会话。"}
+            </div>
+          ) : (
+            <ul data-testid="sandbox-worlds-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+              {sessionsQuery.data?.items.map((s) => {
+                const isCurrent = s.id === sessionId;
+                const isBranch = s.parentCheckpointId != null;
+                return (
+                  <li
+                    key={s.id}
+                    data-testid={`sandbox-world-${s.id}`}
+                    data-current={isCurrent ? "1" : "0"}
+                    data-branch={isBranch ? "1" : "0"}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 10px var(--font-mono)" }}
+                  >
+                    <span className="mono" style={{ color: isCurrent ? "var(--accent)" : "var(--muted2)" }}>
+                      {isBranch ? "↳ " : ""}
+                      {s.id}
+                    </span>
+                    <span className={styles.sub}>
+                      {s.status} · tick {s.curTick}
+                      {isBranch ? " · 分支" : " · 主线"}
+                    </span>
+                    {isCurrent ? (
+                      <span className={styles.sub} data-testid={`sandbox-world-current-${s.id}`}>（当前）</span>
+                    ) : (
+                      <button
+                        className="btn sm ghost"
+                        data-testid={`sandbox-world-switch-${s.id}`}
+                        onClick={() => {
+                          // 切世界：只换 sessionId —— worldQuery 的 key 随之变，自动取该世界的真实态。
+                          setSessionId(s.id);
+                          setBranchId(null);
+                          setCompare(null);
+                          setHistory([]);
+                        }}
+                      >
+                        切到此世界
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       ),
