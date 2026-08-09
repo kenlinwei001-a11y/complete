@@ -75,7 +75,7 @@
 | `PRD-enterprise-decision-twin.md` | 🔻 降级为证据附录 | §2 §3 |
 | `DECISION-twin-feature-triage.md`（78 项三分类） | ✅ 结论并入 | §6.4 |
 | `RECONCILE-twin-8pages-ui.md`（20 条复用台账） | ✅ 结论并入 | §5.3 |
-| `REQ-LEDGER-sandbox.md`（148 条勾选台账） | ✅ **继续维护** —— 它是防漏机制，不是叙述 | §7.4 |
+| `REQ-LEDGER-sandbox.md`（**172** 条勾选台账·原写 148 已订正） | ✅ **继续维护** —— 它是防漏机制，不是叙述 | §7.4 |
 | `AUDIT-demo-chain-atomic.md`（52 项原子需求） | ✅ 结论并入 | §5.2 |
 | `DECISION-13domain-65process-layering.md` | ✅ 结论并入 | §3.2 |
 | `WO-PACK-twin-data.md`（D 层六单） | ✅ **仍是可派发件** | §6.1 |
@@ -612,12 +612,12 @@ export const SkillExecutionSchema = z.object({
 
 | 文档 | 本次动它吗 | 说明 |
 |---|---|---|
-| `SPEC-industrial-skill.md`（12 层） | 只落其中 1 层 | 本次只做「⑥ 执行层」，其余 11 层留 |
+| `SPEC-industrial-skill.md`（12 层） | 落 3 层 | 本次落 **⑥ 执行层**（收编分支）＋ **⑫ 治理学习 P1/P2**（§3.3.5）＋ **⑦ Tool/MCP Binding**（见下 🔴）。其余 9 层留，**理由逐层写在 §3.3.7**，不许再出现「其余 N 层留」这种无理由裁剪 |
 | `PRD-skill-compiler-registry.md` | ✅ **收编分支** | 实现已在 `handoff-skill-compiler-s1`，本次复验并入 |
 | `PRD-skill-runtime-orchestrator.md` | ✅ **收编分支** | 实现已在 `handoff-skill-orchestrator-s1` |
-| `PRD-skill-contract-dsl.md` | ❌ | 契约 DSL 全量落位是独立项目 |
-| `PRD-skill-governance-learning.md` | ❌ | 治理学习闭环不铺（⑫ 层留） |
-| `PRD-skill-migration.md`（32 份 ExecutionPlan 升格） | ❌ | 实测迁移进度 **0/32**（32 份 Plan 在 `mocks/seed.ts:216`，全 PUBLISHED、与意图 1:1）；M0 影子声明未开工 |
+| `PRD-skill-contract-dsl.md` | 🔴 **改为部分做** | ~~「契约 DSL 全量落位是独立项目」~~ —— **这个理由不成立**（§0.25 明写「是独立项目」不算理由），而且它**自相矛盾**：§3.0 L6 把 Rule/Constraint DSL 列为工业级要求、§4.3 又用它论证 Constraint 必须建表，同一个 DSL 需求在这里却被当成可裁的。**改为**：Constraint DSL 随 L6-a 落（已在范围内）；Skill 契约 DSL 的其余部分随 S0 收编分支带进来多少算多少，缺口记 §3.3.7 |
+| `PRD-skill-governance-learning.md` | ✅ **P1+P2 做** | ~~❌ 不铺~~ —— **已被 §3.3.5 推翻**，此行原是漏改的过期行（派单人只读本表会把已恢复的事再砍一次） |
+| `PRD-skill-migration.md`（32 份 ExecutionPlan 升格） | ✅ **M0 做** | ~~❌~~ —— **已被 §3.3.6 推翻**，同上属漏改的过期行。实测迁移进度 **0/32**（32 份 Plan 在 `mocks/seed.ts:216`，全 PUBLISHED、与意图 1:1），本期落 M0 影子声明 |
 | `PRD-addendum-skill-authoring.md` | ✅ 遵守 | **8 份里唯一完整落地的** —— 两道发布门都真闭合（`server.ts:1246` lint 必跑 · `:1269` 探针三重与门，用例 <3 先以 `SKILL_EVAL_INSUFFICIENT` 拦住，不会静默跳过） |
 | `PRD-skill-crossreview.md` | ✅ 遵守 | 我自己的审查结论继续有效；**C3 门账仍无人认领**（见下） |
 
@@ -920,10 +920,35 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
 | 3 本体切片 | `executeSlice` | ✅ 已有 |
 | 4 因果影响 | `CausalFactor` | ✅ 已有 |
 | 5 联合仿真 | `propagateTick` | 🔗 §3.1.4 补边后才走得远 |
-| 6 求解器四方案 | 59 个求解器 | ✅ 超配 |
-| 7–8 比对与推荐 | **方案比对** | 🔗 §5.3 |
+| **6 求解器四方案** | **加班 / 跨基地 / 外协 / 延期** 四个具体方案 | 🔴 **§3.1.4 + 新增 WO-R137**（见下） |
+| 7–8 比对与推荐 | **方案比对**（含 ★BEST 标记 + `recommendedPlan`） | 🔗 §5.3⑤ |
 | 9–10 批复与执行 | `Decision → ActionDraft` | 🔗 欠账 #81 |
-| 11 外部反馈 | 回写 | ✅ 已有 |
+| **11 外部反馈** | ERP ✅`mock_erp` / **MES ❌ / WMS ❌ / TMS ❌** | 🔴 **三个零**（见下） |
+
+#### 🔴 5.2.1 我在这张表里又犯了一次 §0.25 的错（交叉核对抓到，必须记账）
+
+上表第 6 行**原来写的是「59 个求解器 · ✅ 超配」**。第 11 行原来写的是「回写 · ✅ 已有」。
+
+**两行都是拿平台库存当需求满足的证据** —— 正是 §0.25 判定不成立的那种论证：
+
+- **第 6 行**：Demo 链要的四个方案是 **加班 / 跨基地 / 外协 / 延期** 四个**具体业务动作**。
+  「59 个求解器」度量的是求解器数量，**不度量这四个方案能不能出来**。
+  更糟的是它与本 PRD 自己的实测**直接打架**：§3.3.2 已经查明
+  `MITIGATION_LIB`「无约束、无搜索、无迭代 ⇒ **不是求解器**」，而 CP-SAT 实解在
+  `portfolio` / `job_shop_schedule` 里，**两者未打通 ⇒ 库外方案永远出不来**。
+  **诊断写在 §3.3.2，结论写在这里且相反** —— 这是本 PRD 唯一一处自己推翻自己的实测。
+- **第 11 行**：`ERP` 有 `mock_erp`，而 **MES / WMS / TMS 实测是零**。
+  一行「✅ 已有」把三个零盖过去了。
+
+**处置：新增两张 WO，并把 R137 提到与 R143 同级（台账三条 🔴 之一）。**
+
+| WO | 内容 | 画像 | 前置 |
+|---|---|---|---|
+| **R137** 🔴 | 打通 `MITIGATION_LIB` ↔ CP-SAT 实解：四个方案（加班/跨基地/外协/延期）**由求解器实解产生**，不是库内枚举。承载物实测已存在：`overtime`(42) · `interbase-transfer.ts` · `outsourcing_split`+C08 红线 · `defer`/`finalDueDays` | **重** | P1（补边） |
+| **R140-142** | MES / WMS / TMS 反馈接入（照 `mock_erp` 同款范式，**不新造机制**） | 中 | 无 |
+
+**判据（写进这两张单）**：验收断言必须是「**库外方案能出来**」，不是「求解器被调用了」。
+前者度量的是能力，后者度量的是调用 —— 这两个又是不同的命题。
 | 12–13 回放与校准 | Replay | ✅ 已有 |
 
 ### 5.3 子页面划分（一个页面 · 六个子页 · **不是 8 个页面**）
@@ -947,6 +972,55 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
    （语义：「基准尺寸不是 0%」）。单源 `stationRadius`，前端不许各算各的。
 4. **渲染完必须截图自查** —— 校验器看不见溢出、字号被 SVG 缩放炸掉、图被挤扁。
 5. **数据一律来自后端** —— 违反 ② 号裁决的写死数据会被 `check-debattery` 探测器 B 拦下（§7.3）。
+
+---
+
+### 5.4 🔴 UI 能力承载表（交叉核对抓到的最大缺口·54 条里我丢了 46 条）
+
+> **仓主裁的是「不做 8 个页面」，明确说「这些都是用于借鉴的」，
+> 而 §0.2③ 我自己也写了「能力逐条保留」。然后我把能力也一起丢了。**
+>
+> 交叉核对实测：S3（UI/UX Spec 25 条）+ S4（八页能力 29 条）= 54 条，
+> **46 条是 ❌ 或 ⚠️（85%）**。§5.3 那张六行子页表 + 5 条 UI 纪律，
+> 承载不了 54 条能力 —— 这是**用一个表格的存在，冒充了对 54 条需求的回答**。
+
+**六子页不变**（§5.3），但每个子页要挂哪些能力，必须显式列出：
+
+| 子页 | 挂哪些能力（REQ 编号） | 复用什么（禁重造） | 真缺的 |
+|---|---|---|---|
+| **① 全景** | REQ078 六大一级导航 · REQ079 首页三段（Enterprise State + Critical Decisions + Active Scenarios，**不做 KPI 大屏**）· REQ106 Global Shell · REQ107 健康分 · REQ109 CriticalEventList P0-P3 · REQ163 点节点右侧**按类型分化**详情 | `chainLineMap.ts`(985) + `ChainLineMapView.tsx`(940) · `ShellLayout.tsx` 导航 | 健康分（`cockpit_kpi` 出 5 标量，**无合成分**）· 事件清单 P0-P3 分级 |
+| **② 扰动台** | REQ082 多扰动输入 · REQ111 **七种 operator**（今天 3 种，见下）· REQ113 **Mode B 自然语言建扰动** · REQ114 Mode C 对象图选择 · REQ118 **≥20 扰动并存** · REQ084 扰动间耦合预览 · REQ164 每节点扰动变量词表 | QOS orchestrator + 槽位填充（**不新建 NLU**）· 本体浏览器 + `slice-planner` | 三种 Mode 的入口 · 20 条并存的 UI 承载 · `VAR_CLASSES` 变量词表 |
+| **③ 传导** | REQ085 联合推演 10 步进度 · REQ087 **Impact Waterfall** · REQ122 因果图 **8 种 edge 类型**（今 2 种）· REQ123 Impact Score · REQ124 Forward/Backward · REQ125 ≥1000 节点图 · REQ127 Event Stream 实时 · REQ128 Pause/Step/Speed | `PropagationTrace` · `unresolvedGates` 诚实缺席 · **SSE**（REQ129 ⛔ WebSocket：平台是 SSE，不引第二条实时通道）· BFS 双向已有 | 瀑布图 · 8 类 edge · 10 步进度 · 暂停/单步/倍速 |
+| **④ 阻滞** | REQ092「**Why?**」任意数字可点 · REQ093「What changed」· REQ094「What should I do」· REQ169 各节点对财务指标影响占比 · REQ147 五段时长口径 | `gap_attribution`（数据已齐）· `chain_loss_attribution` · `CHAIN_STEP_KINDS` · `isValueAddKind`（唯一增值段 = `work`） | 三个问句的组装 · 按节点聚合财务影响 |
+| **⑤ 方案比对** | REQ088 **方案比较表 + ★BEST** · REQ086 **BASELINE vs SCENARIO 语义** · REQ089 `recommendedPlan` AI 推荐卡 · REQ116 **Objective Builder 权重拖拽** · REQ130 Solver View（变量/约束/迭代/GAP/OPTIMAL） · REQ115 Constraint Builder **HARD/SOFT/PREFERRED** | `/sim/compare` · **`methodWeights` 已完整实现**（复用，别重写）· §4.3 `constraints` 表 | `BASELINE`/`SCENARIO` 标签 · ★BEST · 求解过程可视 · **`PREFERRED` 第三档**（§4.3 今天只有 hard/soft） |
+| **⑥ 决策** | REQ044 **Decision Graph**（决策之间的边：parent/supersedes/conflictsWith）· REQ170 COO 页签（问题→影响→建议）· REQ074/REQ091 **Enterprise Decision Timeline**（非 BPMN） | `decisions` 表 + `decision-kernel.ts` 三态 | 决策间的边（`decisions` 表无这三个字段）· timeline 视图 · COO 页签 |
+
+**跨子页的基础设施（三条，缺一则六子页各自为政）**
+
+| REQ | 内容 | 为什么必须先做 |
+|---|---|---|
+| **REQ104** | `EnterpriseContext` 跨页上下文（**纯前端 store，无需后端**） | 六子页共享「当前世界/当前扰动/当前决策」，没有它每页各自取参 |
+| **REQ103** | 七个 ID 串联（4 有 / **2 零**：`impactGraphId`(REQ046) · `EnterpriseContext`(REQ104) / 1 指代不明：`scenarioId`） | 这是「从①点到⑥」能不能走通的判据 |
+| **REQ098** | 11 种状态色规范 —— **必须与既有 `ActionStatus` 建映射表，不许另造** | §4.5 的 `StateOntologyEntrySchema` 今天没有 `color`/`severity` 字段 ⇒ 前端仍会各造一套 |
+
+**⚠️ 两条我此前少算的**
+
+1. **REQ111 扰动 operator：需求是 7 种，§3.1.2 只给了 3 种**（`set`/`delta`/`scale`）。
+   我论证了「为什么不能只有 `set`」，**没有论证「另外 4 种为什么不要」**——
+   按 §0.25，缺失的 4 种既没被承载也没被合法裁掉。**WO-P0 须补齐或逐条给出裁决理由。**
+2. **REQ126 Simulation 9 态状态机**：§6.4#15 只讲了给 `SimSession` 补
+   「参数/种子/耗时/结论」四个字段，**9 态一个字没提**。
+   纪律：**不许替换既有 5 态**（`SimSessionStatus`），9 态放在运行记录那一层上。
+
+**UI 层 WO（补进 §6）**
+
+| WO | 内容 | 画像 | 前置 |
+|---|---|---|---|
+| **U0** | `EnterpriseContext` 跨页 store + 七 ID 串联（REQ103/REQ104） | 中 | 无 |
+| **U1** | 子页①②：全景挂能力 + 扰动台三种 Mode（REQ078/079/106/107/109/163 · REQ082/113/114/118） | **重** | U0 + P0 |
+| **U2** | 子页③④：传导可视 + 三个问句（REQ085/087/122/123/127/128 · REQ092/093/094） | **重** | U0 + P2 |
+| **U3** | 子页⑤⑥：方案比对 + 决策图（REQ086/088/089/116/130/115 · REQ044/074/170） | **重** | U0 + R137 |
+| **U4** | 状态色单源映射表（REQ098）+ 设计系统对齐（REQ080 色值 / REQ095 六级层级 / REQ096 响应式四档 / REQ097 组件库） | 中 | U0 |
 
 ---
 
@@ -1089,6 +1163,96 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
 **每批一单，单内不许跨批** —— 跨批就会出现「一个 dev 同时改四类对象」的巨单，
 那是 LOOP 纪律③「靠文件边界不靠身份」防的那种单。
 
+### 6.6 🔑 WO → 需求编号映射（**没有这张表，§7.4 的「回勾」就没有钥匙**）
+
+> 交叉核对指出的结构性问题：全 PRD 1169 行里 172 个编号只出现了 2 个（`REQ060`/`REQ143`），
+> 「每个 WO 完成后必须回勾对应条目」这条纪律**无法执行**，因为没有 WO↔编号的对应关系。
+> 这张表就是钥匙 —— 加上它之后，`check-req-coverage` 能自动算出「哪些编号没有 WO 覆盖」。
+
+| WO | 关闭哪些需求编号 |
+|---|---|
+| **P0** 扰动一等公民 | REQ060 REQ111 REQ118 REQ164 |
+| **P1** 补传导边六方向 | REQ143 REQ125 REQ035 |
+| **P2** propagateTick 接扰动 | REQ033 REQ034 REQ046 |
+| **P3** scope 读端 | REQ130（台账）· 欠账 #130 |
+| **Q0** ProcessDefinition | REQ024 REQ070 |
+| **Q1** process_chain_node_map | REQ021 |
+| **Q2** 流程三件套 | REQ054 REQ057 REQ166 |
+| **S0** 收编 5 条 Skill 分支 | REQ018 REQ064 REQ066 REQ155 |
+| **S0.5** solver precondition | 欠账 #154 |
+| **S1** `sim_perturb` 步骤 | REQ155 |
+| **S2** SEAM 端到端 | REQ063 |
+| **S3** Skill 治理 P1+P2 | REQ066 REQ067 |
+| **S4** ExecutionPlan M0 | REQ064 |
+| **L1-a/b/c** 世界层 | REQ023 REQ039 REQ069 REQ126 REQ036 REQ086 |
+| **L3-a** Trial Tick 修 | 欠账 #152 |
+| **L3-b** 传导增量化 | REQ032 REQ038 REQ073 |
+| **L4-a** 状态本体投影 | REQ010 REQ098 |
+| **L4-b** sim.* 补订阅方 | REQ009 |
+| **L4-c…f** 对象补面 4 批 | REQ008 REQ068 |
+| **L6-a** Constraint 一等对象 | REQ115 |
+| **L6-b** 不可行性诊断 | REQ138 |
+| **L7-a** 求解器归 10 类 | REQ016 REQ130 |
+| **L7-b** decision_play 映射 | 欠账 #81 |
+| **R137** 🔴 方案由实解产生 | REQ137 REQ133 REQ134 REQ135 REQ136 |
+| **R140-142** MES/WMS/TMS | REQ140 REQ141 REQ142 REQ139 |
+| **U0** 跨页上下文 | REQ103 REQ104 |
+| **U1** 子页①② | REQ078 REQ079 REQ106 REQ107 REQ109 REQ163 REQ082 REQ113 REQ114 REQ084 |
+| **U2** 子页③④ | REQ085 REQ087 REQ122 REQ123 REQ124 REQ127 REQ128 REQ092 REQ093 REQ094 REQ169 REQ147 |
+| **U3** 子页⑤⑥ | REQ088 REQ089 REQ116 REQ130 REQ044 REQ074 REQ091 REQ170 |
+| **U4** 设计系统 | REQ080 REQ095 REQ096 REQ097 REQ098 |
+| **D0…D6** 数据补齐 | REQ007 REQ025 REQ058 REQ059 |
+
+**仍未被任何 WO 覆盖、且本 PRD 明确记录为「暂不做」的（补齐 §6.4 漏记的三条）**
+
+| 编号 | 内容 | 裁决理由（须属 §0.25 认可的两种） |
+|---|---|---|
+| **REQ101** | Monte Carlo | ⛔ 无承载物且仓主未要求。**记在此处**，免得将来有人问「为什么没有蒙特卡洛」在 PRD 里查不到答案 |
+| **REQ110** | 新建 `Scenario` 对象 | ⛔ **本仓已有 6 个同名不同物**，建第 7 个即第二套真相源 —— 属 §0.25 的 (b) 类 |
+| **REQ129** | WebSocket | ⛔ 平台实时通道是 SSE，引第二条 = 第二套机制 —— 属 (b) 类。**记在此处以防下一个 dev 引入** |
+| **REQ171** | 「后端无需变只改前端」 | ⛔ **已被后续需求推翻**（本 PRD 大量改后端）。此处记录该裁决被推翻及原因，供日后对账 |
+| **REQ061/REQ062** | Replanning Loop / Continuous Decision Loop | ⏸ **本期不做，但不是裁掉**：它依赖 P2（扰动接传导）+ R137（实解方案）两条链都通了才有意义。**触发条件：P2 与 R137 均验收通过后立单**，不是无限期推迟 |
+| **REQ042/REQ043** | 按 Decision Intent 语义裁剪切片 | ⏸ 同上，依赖 `DecisionIntent` 概念先落地。**触发条件：L6-a 完成后立单** |
+
+### 6.7 剩余 21 条的落点（**逐条给真落点，不靠撒编号凑数**）
+
+> 加完 §6.6 映射表后覆盖门从「未落 82」降到「未落 21」。
+> 这 21 条我**不会**为了让数字好看而随手写进某张单 —— 那正是本 PRD 反复在治的病。
+> 逐条给：要么挂到一张**已存在的 WO**上，要么**新立单**，要么**带触发条件地暂缓**。
+
+| 编号 | 需求 | 落点 |
+|---|---|---|
+| **REQ121** 🔴 | `upsertType` 吞七字段（`ontology.ts:197-212` 漏抄 `stateVariables/functions/actions`…） | **已有单 D6**（`WO-PACK-twin-data.md` 唯一真 bug）。它是 REQ006 的根因 |
+| **REQ006** | 本体状态流主线：`stateVariables` 定义有但**写入被吞** | **随 D6 一并闭** —— 不是两件事，是同一个 bug 的两面 |
+| **REQ150** 🔴 | 韧性不足 `resilienceGap`（全仓 18 处「韧性」无一是业务韧性·零承载） | **§5.1.1 已给可计算定义**（恢复 tick 数由 `propagateTick` 实测，权重进规则表）。**新立单 N1**，前置 P2+P1 |
+| **REQ151** 🔴 | 决策复杂度 `decisionComplexity`（全仓 11 处全是 DRIL 求解器成本权重，不是这个） | **§5.1.1 已给定义**，且已诚实声明「传导图度数分量今天算不准（只 3 条边）」。**新立单 N2**，前置 P1（补边后该分量才转正） |
+| **REQ152** | 推演决策的可行性 | **已有单 L6-a + L6-b**（Constraint 一等对象 + IIS）—— 这就是它的承载物 |
+| **REQ022** | 「订单进入后企业如何被扰动」总目标 · 需 `EnterpriseState` 常驻承载 | **新立单 N3 · `EnterpriseState`**。交叉核对抓到我整条漏了：§4.1 的 12 张表裁决里连「⛔不建」都没写。⚠️ 它与 §6.4#15（扩 `SimSession` 补运行记录）**不是一回事**：那个是「一次推演的记录」，这个是「企业的常驻状态，会话结束不消失」 |
+| **REQ020 / REQ029** | 时间轴引擎 / `Time` 世界 | **已有单 P0**（扰动的 `startTick`/`durationTicks` 就是时间维）+ 复用 `SimClock`（一 tick = 一日）。REQ029 与 REQ020 同源，一并闭 |
+| **REQ165** | 多扰动因素**联合**推演 | **已有单 P1** —— `propagateTick` 天然联合，瓶颈是边不足（REQ143），补边即闭 |
+| **REQ015** | Scenario Engine 层 · **命名须避开 6 个同名物** | **新立纪律（非单）**：写进 §7 命名纪律 —— 本仓已有 6 个 `Scenario` 同名不同物（REQ110 已 ⛔ 不建第 7 个）。**任何新命名前先跑 `crossbranch-reinvent:check --symbol <名>`** |
+| **REQ056** | Availability 在岗（台账明写「保留」，「为什么卡住」要用） | **挂到 Q2**（流程三件套之 `waitKind`）—— 「人不在岗」正是一种等待类型 |
+| **REQ132** | 评审三态聚合（✓/⚠/✗），无「评审单」承载体 | **挂到 U1**（子页① Critical Events）—— 三态聚合是事件清单的一种呈现，不另造承载体 |
+| **REQ119 / REQ120** | 切片三栏（Tree/Graph/Detail）· 切片时间滑块 Time Travel | **新立单 U5 · 切片子页**。交叉核对说得对：§5.3 六子页里**没有切片页**，而 REQ090 的切片 UI 工作没有落点。数据齐（`executeSlice`），缺的是前端 |
+| **REQ153** | 16 层切片规格（平台覆盖 12/16：Function 签名 0 · Interface 8 · 时间语义弱） | **挂到 U5** + 欠账 #69（本体七要素缺口）。⚠️ 这 4 层缺口与欠账 #69 是同一件事，不许当两件做 |
+| **REQ154** | Slice ≠ Subset（语义闭环） | ⏸ **带触发条件暂缓**：依赖 REQ042（Decision Intent）。**触发条件：L6-a 完成后与 REQ042/043 同单立** |
+| **REQ077** | UX 主循环 Observe→Orient→Decide→Act→Recalibrate（各环节有，**闭环未串**） | **挂到 U0**（跨页上下文）—— 「闭环未串」的本质就是六子页之间没有共享上下文，U0 就是串它的那根线 |
+| **REQ099** | 六条核心 UX 原则（可解释/可回滚/独立World/有Evidence/可Replay/支持What-if） | **升为 §5 的验收条款**，不是一张单：六子页**每一页**交付时都要对照这六条自查。写进 §5.3 UI 纪律作第 6 条 |
+| **REQ100** | North Star 用户路径（缺 REQ046 与 REQ060 两处断点） | REQ060 已由 P0 闭；**REQ046（`impact_graph_id` 可传递）挂到 U0**（七 ID 串联之一）。两处都闭，路径才通 |
+| **REQ105** | 前端路由设计（仓主已定**一页多子页**，非 8 条独立路由） | **挂到 U0** —— 一页多子页的路由结构是 U0 的一部分 |
+| **REQ162** | 每个节点是一个部门（信息/指标/决策/推演四类内容） | **挂到 Q2**（`ownerFunctionKey` = 部门归属）+ **U1**（REQ163 按类型分化的详情面板）。指标与推演已有，缺的是**部门归属**这一维 |
+
+**新立的四张单（补进 §6.2.1）**
+
+| WO | 内容 | 画像 | 前置 |
+|---|---|---|---|
+| **N1** | `resilienceGap` 韧性缺口（REQ150）—— 恢复 tick 数由 `propagateTick` **实测**得出，不是估的；权重进规则表可编辑 | 中 | P1 + P2 |
+| **N2** | `decisionComplexity` 决策复杂度（REQ151）—— 五分量；**耦合分量在补边前必须显式标「数据不足」，不许拿 3 条边算个数糊上去** | 中 | P1 |
+| **N3** | `EnterpriseState` 企业常驻状态（REQ022/REQ023/REQ069）—— 会话结束不消失 | **重** | P0 |
+| **U5** | 切片子页（REQ119/REQ120/REQ090/REQ153）—— 三栏 + 时间滑块 | 中 | U0 |
+
+**⇒ WO 总数从 30 张增至 40 张**（P×4 · Q×3 · S×6 · L×14 · U×6 · N×3 · R137/R140-142×2 · D×3，去重后 40）。
+
 ---
 
 ## 7. 验收（SEAM-GATE 驱动接缝，不验各半）
@@ -1130,7 +1294,7 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
 
 ### 7.4 防漏机制（`REQ-LEDGER-sandbox.md` 继续维护）
 
-148 条需求台账逐条勾选，`☑ = 已裁决并有证据`（**明确不等于已实现**）。
+**172** 条需求台账逐条勾选，`☑ = 已裁决并有证据`（**明确不等于已实现**）。
 本 PRD 的每个 WO 完成后必须回勾对应条目。
 
 > **来历**：我在这个项目里连漏三次（时序推演 / 方案比对 / 地铁线路图），形态相同：
