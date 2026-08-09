@@ -160,9 +160,14 @@ export interface StepRow {
   /** WO-REASONING-TRACE：type==="agent_narration" 时携带本轮"思考旁白"文本（建人机信任·非工具步·💭 展示）。 */
   text?: string;
   // ── WO-FE-AGENT-TRACE：后端**已在发**、此前被本函数整片丢弃的结构化字段。
-  //    字段并集是**实测**的（见 docs/WO-FE-AGENT-TRACE-delivery.md「后端字段并集实测」），不是照抄 PRD：
-  //    PRD-RT:503 点名 `role/roleLabel/nodeId/phase/iteration/budgetLeft`，实测 `nodeId/phase/budgetLeft`
-  //    后端一处都不发（全仓 0 命中），而 PRD 未列的 `agentId` 后端在发 —— 以实测为准。
+  //    字段并集是**实测**的（2026-08-09 测；见 docs/WO-FE-AGENT-TRACE-delivery.md「后端字段并集实测」），不是照抄 PRD：
+  //    PRD-RT:503 点名 `role/roleLabel/nodeId/phase/iteration/budgetLeft`，而 `nodeId/phase/budgetLeft`
+  //    **不在任何 `step.*` 事件负载里**，PRD 未列的 `agentId` 后端反而在发 —— 以实测为准。
+  //    复验命令（2026-08-09 审核方亲手跑过）：
+  //      grep -rn 'budgetLeft' apps/agentcore/src            → 0（金丝雀 `grep -c 'stepId:'` = 28，证明工具有效）
+  //      grep -rn 'nodeId'     apps/agentcore/src            → 19，逐处核对全在 skill-orchestrator.ts / project-trace.ts，非 step 事件
+  //      grep -rn 'phase'      apps/agentcore/src            → 14，全在看门狗超时文案 / SolverPhase / mock，非 step 事件
+  //      role/roleLabel/agentId 由 `orchestrator.ts:2522-2543` 的 emitWithRole **包装器**注入（grep emit 点看不见这一层）
   /** 角色机器键（如 `supply_chain`）。仅 Coordinator 扇出路径有。 */
   role?: string;
   /** 角色中文名（`orchestrator.ts:2536` 的 ROLE_LABELS 查表结果）。分栏表头用的就是它。 */
