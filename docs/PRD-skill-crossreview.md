@@ -199,7 +199,7 @@ runtime PRD 自己标注了两处与 WO 的口径差异，处理是对的（显�
 
 | 条 | 状态 | 落地方式 |
 |---|---|---|
-| **C1 命名** | ✅ **已裁决（仓主 2026-08-03「ok」= 采纳）** | 采纳 `requires` 结构；`references[]`/`dependsOn[]` 降为**解析期输入别名**（读入即归一，不作为运行时字段）。写入 `docs/SPEC-industrial-skill.md` §9.1；`PRD-skill-migration` §10.3 的偏离行已改为「裁决结果 + 原提案存档」 |
+| **C1 命名** | 🟡 **已裁决（仓主 2026-08-03「ok」= 采纳）** | 采纳 `requires` 结构；`references[]`/`dependsOn[]` 降为**解析期输入别名**（读入即归一，不作为运行时字段）。写入 `docs/SPEC-industrial-skill.md` §9.1；`PRD-skill-migration` §10.3 的偏离行已改为「裁决结果 + 原提案存档」 | 🔴 **2026-08-09 订正：这个 ✅ 是错的。** 收口表记的是「文档改完了」，被当成了「事情做完了」。实测（`agentcore.ts:236-261` 18 字段逐个点名）：`SkillDefinition` 无 `requires`，也无任何变体；全仓 `requires` 命中全是 `FeatureDef.requires`/`requiresSidecar`，**无一在 skill 语境**。再追一层：SPEC §9.1 的落地口径是「旧名降为解析期归一别名，读入即折进 `requires`」——**归一层同样不存在**，消费方 `skill-lint.ts:343/347` 与 `resource-projector.ts:333/334` **直读** `s.references`/`s.dependsOn`。三分法定性：**这条线根本没画**（不是「接了线没数据」也不是「接错地方」）。且 `WO-SKILL-MIG-G3` 在 13 条 skill 分支里不存在 —— **裁决 2026-08-03 下达，6 天零派单**。
 | **C2 门重名** | ✅ 随 C1 收口 | `skill-refs:check` 与 `skill-ref-closure:check` 合并为一道 `skill-refs:check` |
 | **C3 门总数 16→33** | 🟡 **仍无人认领** | 合并门账（谁跑 / 何时跑 / 红了谁修 / **每道门"曾真红过"的证据**）尚未立单。**任一份 PRD 落地前必须先有这张账** |
 | **C4 传播性错误** | ✅ 三处已掐掉 | `SPEC-industrial-skill.md` 两处（§2-⑫ 表格 + §4「三条最该先做」）· `PRD-skill-migration` §5.2 已改为「接一条已有的线 + 关掉 fail-open，不是造门」 |
