@@ -133,6 +133,12 @@
 | 沙盘要做的事 | 直接复用 | 位置 | 状态 |
 |---|---|---|---|
 | 端到端链路图（节点/阶段） | `CHAIN_NODE_REGISTRY` 24 节点 5 阶段 | `chain-sim.ts:183` | ✅ 有数据 |
+| **地铁线路图（本条我原稿漏了）** | **`chainLineMap.ts`(985 行) + `ChainLineMapView.tsx`(940 行)** | — | ✅ **完整存在** |
+| ↳ 干线 + 物料支线 + 汇流 | `TRUNK_STAGES` / `BRANCH_STAGE=MATERIAL` / `JOIN_TARGET_STAGE=CAPACITY` | `chainLineMap.ts:173-177` | ✅ |
+| ↳ 站圈 ∝ 损失占比 | `stationRadius`（面积∝占比 ⇒ 半径∝√占比 + 夹取） | `:124-152` | ✅ |
+| ↳ 三种站图元 | `stop` / `interchange`（换乘=共享瓶颈·双环） / `value-add`（不进损失分母） | `:218` | ✅ |
+| ↳ 换乘站证据强度 | `SharedBasis`：`explicit` 册面明写 vs `unscoped` 未限定读作全域 | `:207-216` | ✅ |
+| ↳ 环形布局 | `RING_LAYOUT`（同心环·换乘站径向对齐=共享瓶颈） | `:421` | ✅ |
 | 阻滞点扫描（卡点/堵点/断点） | `chain_impediments` 求解器 | `catalog.ts:148` | ✅ 有数据 |
 | 全链损失归因 | `chain_loss_attribution` | 同上 | ✅ |
 | 本体切片（这次决策涉及哪些对象） | `slice_specs` 表 + `executeSlice` + `planSlice` | `ontology-core.ts:552` · `app.ts:2622` | ✅ **4 条种子** |
