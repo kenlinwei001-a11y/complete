@@ -119,6 +119,88 @@ export const SimCheckpointSchema = z.object({
 });
 export type SimCheckpoint = z.infer<typeof SimCheckpointSchema>;
 
+// ── Perturbation 扰动一等公民（WO-P0 · PRD-UPGRADE-decision-sandbox-v2 §3.1.2 · 关闭 #150/#151/REQ060） ──
+/**
+ * 扰动语义类型：决定前端怎么分类展示、以及默认落在哪个 stateVar 上。
+ *
+ * ⚠ 设计判据 3（PRD §3.1.2）：**`kind` 不进传导规则**。它只管展示分类与默认落点，
+ * 传导仍由 `PropagationRule` 决定。两者混起来 = 把「发生了什么」和「它怎么扩散」焊死，
+ * 换行业就要改代码（破 R14 零业务常数）。
+ */
+export const PerturbationKindSchema = z.enum([
+  "demand_shift", // 需求突变（追加订单 / 砍单）
+  "supply_disruption", // 供应中断（供应商断供 / 到货延迟）
+  "capacity_loss", // 产能损失（设备停机 / 人员缺勤）
+  "cost_shock", // 成本冲击（原料涨价 / 汇率）
+  "quality_event", // 质量事件（批次不良 / 召回）
+]);
+export type PerturbationKind = z.infer<typeof PerturbationKindSchema>;
+
+/**
+ * 一次「事情发生了」——沙盘此前只有 `/act` 一个裸标量写入（`{objectId, stateVar, value}`），
+ * 扰动不是实体、无 id、无时序、无法列举「这个世界受过哪些扰动」（欠账 #150 · PRD §2.2①②）。
+ *
+ * 四条设计判据（PRD §3.1.2，逐条有来历）：
+ * 1. **`durationTicks` 可空**：`null` = 永久，等价于今天 `/act` 的行为 ⇒ additive 可回退
+ *    （不填时间维的老调用逐字节同旧行为）。
+ * 2. **`mode` 三选一而非只有 `set`**：「涨价 15%」是 `scale`，「加 200 台」是 `delta`，
+ *    「停机」是 `set 0`。只给 `set` 会逼前端自己算，那就是第二套真相源。
+ * 3. **`kind` 不进传导规则**（见上）。
+ * 4. **不新建行业列**：走 `sim_perturbation` 的 doc-jsonb（`migrations/028_perturbations.sql`），
+ *    换行业不改表（R14）。
+ *
+ * 生效判据（PRD §3.1.3，由调用方算以保 `propagateTick` 纯函数 R6）：
+ *   `active(p, t) ⇔ t >= p.startTick 且 (p.durationTicks === null 或 t < p.startTick + p.durationTicks)`
+ */
+export const PerturbationSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(), // R2
+  sessionId: z.string(), // 属于哪个世界
+  kind: PerturbationKindSchema,
+  targetObjectId: z.string(),
+  targetStateVar: z.string(),
+
+  // ── REQ060 的三个时序字段（此前全缺）──
+  startTick: z.number().int().min(0), // 何时开始
+  durationTicks: z.number().int().min(1).nullable().default(null), // 持续多久；null = 永久
+  magnitude: z.number(), // 幅度
+  mode: z.enum(["set", "delta", "scale"]).default("set"), // 设为 / 增减 / 乘以
+
+  label: z.string().max(200), // 人话（「常州 A 线停机 72h」）
+  createdAt: z.string(),
+});
+export type Perturbation = z.infer<typeof PerturbationSchema>;
+
+/**
+ * 扰动在某个 tick 是否生效（PRD §3.1.3 的 `active(p, t)`，纯函数 R6）。
+ * 放契约里是因为**引擎（WO-P2 的 propagateTick 调用方）与路由（WO-P0）必须用同一份判据** ——
+ * 各写一份就是第二套真相源，正是「两个 dev 各发明一套」那类事故的形态。
+ */
+export function isPerturbationActiveAt(p: Pick<Perturbation, "startTick" | "durationTicks">, tick: number): boolean {
+  if (tick < p.startTick) return false;
+  return p.durationTicks === null || tick < p.startTick + p.durationTicks;
+}
+
+/**
+ * 把一条扰动施加到一份 `TickState` 上（**纯函数**：不改入参，返回新对象；R6 确定性）。
+ *
+ * ⚠ 这是 `/act` 与 `POST /perturbations` 的**唯一施加实现** —— `/act` 已改为
+ * 「构造 `mode:"set"` / `durationTicks:null` 的等价扰动再走本函数」，
+ * 故 PRD §7.2「`durationTicks: null` 与今天 `/act` 逐字节同结果」是**结构上成立**的，
+ * 不是靠两处代码碰巧写得一样（那种「同结果」下一次改动就会漂移）。
+ */
+export function applyPerturbationToState(
+  state: TickState,
+  p: Pick<Perturbation, "targetObjectId" | "targetStateVar" | "magnitude" | "mode">,
+): TickState {
+  const next: TickState = JSON.parse(JSON.stringify(state)) as TickState;
+  const bucket = (next[p.targetObjectId] ??= {});
+  const cur = Number(bucket[p.targetStateVar] ?? 0);
+  const m = Number(p.magnitude);
+  bucket[p.targetStateVar] = p.mode === "delta" ? cur + m : p.mode === "scale" ? cur * m : m;
+  return next;
+}
+
 // ── SimCertification 就绪认证（增量 2 · 派生投影对象·RL3 投影既有 closure 零新校验） ──
 // schema 见 docs/SPEC-sandbox-readiness-certification.md §1。每个数字可溯回具体 closure finding（R13）。
 export const SimCertLevelSchema = z.enum([

@@ -49,7 +49,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -1476,14 +1476,81 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         : {}),
     };
   });
+  /**
+   * 把一条扰动施加到**当前 tick**，并把结果落回 `sim_tick_state`（`/act` 与 `POST /perturbations` 共用）。
+   *
+   * 🔴 **欠账 #151 的修复点**：此前这里无条件写 `pending: [], trace: null`
+   * （原 `app.ts:1485`），而 tick 路由正是从同一行读回在途延迟贡献（`app.ts:1433`
+   * `getTickState(...).pending`）。`seed.ts` 的 `demo_line_util_to_base_load` 带 `delayTicks: 1`
+   * ⇒ demo 租户跑一次 tick 后 `pending` 必然非空 ⇒ `tick → act → tick` **静默丢掉全部在途传导**。
+   * 今天不炸只因 `/act` 零调用方（欠账 #150）——本单接上前端入口，它立刻会变成线上静默错答，
+   * 故两条账必须同单修（PRD §2.2③）。
+   * 改法：**读回并保留当前 tick 已有的 `pending`/`trace`，只改 `state`**。
+   * 扰动是模拟态、不写真值（R4；采纳才出 ActionDraft），也不该动传导队列。
+   */
+  const simApplyAtCurrentTick = async (
+    c: AuthCtx, s: SimSession,
+    p: Pick<Perturbation, "targetObjectId" | "targetStateVar" | "magnitude" | "mode">,
+  ): Promise<TickState> => {
+    const cur = await repos.sim.getTickState(c.tenantId, s.id, s.curTick);
+    const state = applyPerturbationToState(cur?.state ?? simState(s.baseSnapshot), p);
+    await repos.sim.putTickState({
+      sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state,
+      pending: cur?.pending ?? [], // ← #151：保留在途延迟贡献，不再硬写空
+      trace: cur?.trace ?? null, // ← 同理：本 tick 的传导轨迹不是扰动造成的，不该被抹掉
+    });
+    return state;
+  };
+
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const b = req.body as { objectId: string; stateVar: string; value: number };
-    const state = await simCurrent(c, s);
-    (state[b.objectId] ??= {})[b.stateVar] = Number(b.value); // 模拟态，不写真值（R4；采纳才出 ActionDraft）
-    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending: [], trace: null });
+    // `/act` = 一条 `mode:"set"` / `durationTicks:null` 的扰动（PRD §3.1.2 判据 1：null = 永久 = 今天 /act 的行为）。
+    // 走与 `POST /perturbations` **同一个施加实现**，故「逐字节同结果」是结构上成立的，不靠两处代码碰巧一样。
+    const state = await simApplyAtCurrentTick(c, s, {
+      targetObjectId: String(b.objectId), targetStateVar: String(b.stateVar), magnitude: Number(b.value), mode: "set",
+    });
     return { curTick: s.curTick, state };
+  });
+
+  // ---- 扰动一等公民（WO-P0 · PRD-UPGRADE-decision-sandbox-v2 §3.1 · 关闭 #150/#151/REQ060）----
+  // 此前沙盘唯一的扰动入口是 `/act` 的裸标量写入：无 id、无持久化、无 kind、无时序 ⇒
+  // 「这个世界受过哪些扰动」问不出来，「第 5 天开始停机 72h」排不了（PRD §2.2②）。
+  // 本组路由把扰动升为实体：可建、可列、可删。全部过 sim.sandbox entitlement（R3 先于 authz）。
+  // ⚠ 本单**不做** propagateTick 接扰动（WO-P2）：建扰动只在「本 tick 已生效」时立即施加
+  // （= 与 `/act` 等价的那条路），未来 tick 的扰动只入库、等 WO-P2 在传导里按 startTick/duration 施加与回退。
+  app.post("/a/v1/sim/sessions/:id/perturbations", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const p = PerturbationSchema.parse({
+      ...body,
+      id: newId("simpert"), tenantId: c.tenantId, sessionId: s.id,
+      // 不填 startTick = 「现在就发生」（当前 tick）——与 `/act` 的隐含语义一致。
+      startTick: body.startTick ?? s.curTick,
+      createdAt: new Date().toISOString(),
+    });
+    await repos.sim.createPerturbation(p);
+    // 已在当前 tick 生效的扰动立刻落到世界态（active 判据由契约单源 isPerturbationActiveAt 给，
+    // 引擎与路由共用同一份，不许各写一份）。未生效的只入库。
+    const state = isPerturbationActiveAt(p, s.curTick) ? await simApplyAtCurrentTick(c, s, p) : await simCurrent(c, s);
+    await outbox.emit(c.tenantId, "sim.perturbation_created", { sessionId: s.id, perturbationId: p.id, kind: p.kind, startTick: p.startTick });
+    return reply.status(201).send({ perturbation: p, curTick: s.curTick, state });
+  });
+  app.get("/a/v1/sim/sessions/:id/perturbations", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    return { items: await repos.sim.listPerturbations(c.tenantId, s.id) };
+  });
+  app.delete("/a/v1/sim/sessions/:id/perturbations/:pid", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    // 删的是**扰动记录**，不回滚世界态（回滚走 checkpoint/rollback —— 那是既有的、有语义的回退口，
+    // 在这里再造一个"撤销"就是第二套真相源）。
+    const ok = await repos.sim.deletePerturbation(c.tenantId, s.id, (req.params as { pid: string }).pid);
+    if (!ok) throw notFound("perturbation not found");
+    return { deleted: true };
   });
   app.post("/a/v1/sim/sessions/:id/checkpoint", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");

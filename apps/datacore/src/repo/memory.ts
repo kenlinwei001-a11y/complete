@@ -26,7 +26,7 @@ import type {
   VectorHit,
   VectorIndex,
 } from "./repo.js";
-import type { PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
 /** 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。 */
 class MemSimRepo implements SimRepo {
@@ -34,6 +34,7 @@ class MemSimRepo implements SimRepo {
   private ticks = new Map<string, SimTickState>(); // key = `${sessionId}|${tick}`
   private checkpoints = new Map<string, SimCheckpoint>();
   private rules = new Map<string, PropagationRule>();
+  private perturbations = new Map<string, Perturbation>(); // key = perturbation id（WO-P0）
   async createSession(s: SimSession) { this.sessions.set(s.id, clone(s)); }
   async putSession(s: SimSession) { this.sessions.set(s.id, clone(s)); }
   async getSession(tenantId: string, id: string) {
@@ -73,6 +74,25 @@ class MemSimRepo implements SimRepo {
       .filter((r) => r.tenantId === tenantId && (!publishedOnly || r.status === "PUBLISHED"))
       .sort((a, b) => (a.key < b.key ? -1 : 1))
       .map(clone);
+  }
+  // ── 扰动一等公民（WO-P0 · R9 与 pg.ts PgSimRepo 语义须逐条对齐）──
+  async createPerturbation(p: Perturbation) { this.perturbations.set(p.id, clone(p)); }
+  async getPerturbation(tenantId: string, id: string) {
+    const p = this.perturbations.get(id);
+    return p && p.tenantId === tenantId ? clone(p) : null;
+  }
+  async listPerturbations(tenantId: string, sessionId: string) {
+    // 排序与 pg 侧逐字同构：startTick 升序 → id 升序（确定性 R6；不用 createdAt，同毫秒不可分辨）。
+    return [...this.perturbations.values()]
+      .filter((p) => p.tenantId === tenantId && p.sessionId === sessionId)
+      .sort((a, b) => (a.startTick !== b.startTick ? a.startTick - b.startTick : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(clone);
+  }
+  async deletePerturbation(tenantId: string, sessionId: string, id: string) {
+    const p = this.perturbations.get(id);
+    if (!p || p.tenantId !== tenantId || p.sessionId !== sessionId) return false;
+    this.perturbations.delete(id);
+    return true;
   }
 }
 

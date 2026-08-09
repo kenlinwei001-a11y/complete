@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -352,4 +352,17 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · PRD-UPGRADE-decision-sandbox-v2 §3.1）──
+  // R9 三处同改：本接口 + memory.ts MemSimRepo + pg.ts PgSimRepo，语义须无漂移。
+  /** 建一条扰动（幂等 upsert：同 id 覆盖，便于 pg/memory 语义一致）。 */
+  createPerturbation(p: Perturbation): Promise<void>;
+  /** 读一条扰动（跨租户一律 null·R2）。 */
+  getPerturbation(tenantId: string, id: string): Promise<Perturbation | null>;
+  /**
+   * 列出某世界受过的全部扰动。**排序必须确定**（R6）：按 `startTick` 升序，同 tick 按 `id`
+   * —— 不许按 `created_at` 排：同一毫秒内建的两条在 pg 上顺序不定，会让「同扰动同种子重跑」失去字节级一致。
+   */
+  listPerturbations(tenantId: string, sessionId: string): Promise<Perturbation[]>;
+  /** 删一条扰动（不存在/跨租户 = false，由路由翻成 404）。 */
+  deletePerturbation(tenantId: string, sessionId: string, id: string): Promise<boolean>;
 }
