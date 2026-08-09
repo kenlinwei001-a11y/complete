@@ -383,9 +383,28 @@ export function propagateTick(
 active(p, t)  ⇔  t >= p.startTick  且  (p.durationTicks === null  或  t < p.startTick + p.durationTicks)
 ```
 
-**回退（`durationTicks` 到期）**：在 `startTick + durationTicks` 那一 tick 把该 stateVar
-**还原为「若无此扰动本应有的值」** —— 实现上记 `preValue` 于扰动生效当 tick 的 trace，
-到期时反向施加。⚠️ 这是本次唯一一处需要状态记忆的地方，必须有独立测试。
+**回退（`durationTicks` 到期）**：在 `startTick + durationTicks` 那一 tick 还原该 stateVar。
+
+> ### 🔴 2026-08-09 订正 · 本节原写的实现处方**在最常走的那条路上不可实现**
+> 原文写「记 `preValue` 于扰动生效当 tick 的 **trace**，到期时反向施加」。
+> WO-P2 的 dev 追了一层调用后顶回来，我复验认可：
+> `POST /perturbations`（`app.ts:1542`）对**建单时已生效**的扰动是在 `simApplyAtCurrentTick` 里
+> 直接施加的，**那条路原样保留旧 trace、不写新 trace** —— 而 `startTick` 缺省 = 当前 tick，
+> **正是最常走的一条路**。⇒ 按原处方取 preValue，在这条路上恒缺。
+>
+> **已落地的正确做法**（WO-P2 已并入）：
+> - `delta` / `scale(≠0)` 走**解析求逆**（减 / 除），**不需要记忆**，且不会把中间几 tick 的演化一并抹掉；
+> - 只有 `set` 与 `scale(0)` 需要 `preValue`，改从 **世界线快照 `state@(startTick-1)`** 取
+>   （`startTick===0` 取 `baseSnapshot`）——两条施加路径都成立，且与引擎自己施加时读到的是同一个数；
+> - 两者都拿不到时**诚实报缺**（trace 落 `perturbation-revert-unresolved:` 行），
+>   **不静默留成永久生效**。
+>
+> **口径边界（写进代码注释）**：`set` 的回退语义是「还原到落地前值」，
+> **不是**「重算无扰动世界线的反事实值」——后者要跑一条 counterfactual 世界线，本 PRD 也是按前者写的。
+>
+> 另一处偏离也已认可：时基取 `producedTick = tick + 1` 而非 `tick`。
+> 我 WO 里写的「`startTick` 一律跳过」会让**未来才起效**的扰动在自己的 `startTick` 被跳掉、
+> 此后每 tick 反复施加 ⇒ `delta` 无限累积。变异反证：改回 `tick` 一次红 10 条（含 WO-P0 的断言③）。
 
 #### 3.1.4 补齐传导边（关闭 REQ143 —— **这条决定升级成不成**）
 

@@ -70,7 +70,23 @@
 
 | 模型层 | 你的 V1 目标 | 平台实测 | 差距性质 |
 |---|---:|---:|---|
-| 一级业务域 | 13 | **0**（无域概念，只有 `DataCategory` 归类） | 🆕 新建（轻·纯分类） |
+| 一级业务域 | 13 | 🔴 **14**（`graphmeta.ts:34` `BUSINESS_DOMAINS`，真接线） | 🔗 **锚到既有，不新建** |
+
+> ### 🔴 2026-08-09 订正 · 本表「一级业务域 = 0」是错的
+> WO-Q0 的 dev 顶回来，我亲手复验坐实：`apps/datacore/src/graphmeta.ts:34` 的 `BUSINESS_DOMAINS`
+> 是一份 **14 域注册表且真接线** —— 三处生产消费方：`app.ts:1912` · `app.ts:2691`
+> (`GET /a/v1/business-domains`) · `ontology/refbase-coverage.ts:7`，并被 `test/a3-business-domains.test.ts`
+> 锁死在 14 条。
+>
+> **若照原文凭空造 `D01…D13`，就是第二套业务域词表** —— 与本文 §5 红线 4 极力要防的那次事故
+> （「两个 dev 各发明一套词表、交集为 0」）**同形态，只是升了一层**。
+>
+> 形态（铁律 0.6 句式）：**「我用『我没在主线上看到域概念』当作『平台没有域』的证据，而前者不度量后者。」**
+> 这是同一家族的第 5 次（前四次：OntologySlice / D3 建已存在的表 / D1 造 Person / 自造 Skill.execution）。
+>
+> **已落地的正确做法**（WO-Q0 已并入）：`D##` 编号保留（PRD DDL 写死了这个形状），
+> 但**每个 `D##` 必须锚到 `BUSINESS_DOMAIN_KEYS`**，由测试校验。14 域里唯一没有流程域的是
+> `external`（数据来源域，不是业务活动域），测试把这一条也断言死，防它被当成遗漏而「顺手补齐」。
 | 核心业务流程 | 65 | **0**（`ProcessDefinition/Instance/Task`/`BusinessProcess` **全仓 0 命中**） | 🆕 新建（这是 REQ024/G1） |
 | 一级本体对象 | 300+ | **86 已物化**（`putAll` 计数）· 33 处 `def()` 声明 | 🔗 补面（已有骨架） |
 | 动态状态 | 500+ | 已有多套状态机（`ActionStatus` 8 · `SimSessionStatus` 5 · `QueryTaskStatus` 7 …），**无统一状态本体** | 🔗 统一 + 补 |
