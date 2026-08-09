@@ -264,6 +264,14 @@ $ git ls-remote origin claude/handoff-wo-d6-upserttype
 ```
 见交付末尾实测输出（分支已存在且有 sha）。
 
+> ⚠️ **复验方注意 · 两点差 vs 三点差**：本分支开出后 canonical 又前进了
+> （`69804185` → `684f78f1`）。此时 `git diff $CANON..HEAD`（两点）会把
+> **canonical 后来新增的** `docs/STATUS-2026-08-09-loop-ledger.md` 与
+> `scripts/check-verdict-rollup.mjs` 显示成"被本分支删除"——**本单一个字都没碰过这两个文件**。
+> 判据用**三点差**（对 merge-base）：`git diff $CANON...HEAD` → 干净的 5 个文件。
+> 形态照铁律 0.6：「我用两点差当作『本分支改了什么』的证据，而两点差度量的是
+> 『两个 ref 的内容差』，canonical 一动它就掺进别人的提交。」
+
 **改动文件**（严守 🚦 范围边界，未碰 `apps/agentcore/**`、`apps/frontend-shell/**`、
 `docs/SYSTEM-ONTOLOGY.md`、`scripts/**`）：
 
