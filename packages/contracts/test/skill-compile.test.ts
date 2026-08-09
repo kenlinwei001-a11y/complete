@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   SKILL_COMPILE_STAGES,
+  SKILL_EXECUTION_STEPS_PATH,
+  readSkillExecutionSteps,
   SKILL_GRAPH_ENTRY_NODE_ID,
   SKILL_GRAPH_ERROR_EXIT_NODE_ID,
   SKILL_GRAPH_NORMAL_EXIT_NODE_ID,
@@ -214,6 +216,52 @@ describe("WO-SKILL-COMPILER-S1 · ③ 推理图派生", () => {
     expect(g1.nodes.map((n) => `${n.id}|${n.type}|${n.onError}`)).toEqual(g2.nodes.map((n) => `${n.id}|${n.type}|${n.onError}`));
     expect(g1.edges).toEqual(g2.edges);
     expect(parseSkillToAst(a).tools).toEqual(parseSkillToAst(b).tools);
+  });
+});
+
+describe("WO-SKILL-COMPILER-S1 · 对名裁决 · Skill.execution.steps 是三条线共用字段", () => {
+  it("唯一名字常量就是 execution.steps（三条线靠它对齐；改了这里等于改三条链）", () => {
+    expect(SKILL_EXECUTION_STEPS_PATH).toBe("execution.steps");
+  });
+
+  it("契约上还没有该字段 → declared:false + steps 空，且 note 明说是「接了线没数据」不是「已实现」", () => {
+    const ast = parseSkillToAst(skill());
+    expect(ast.execution.declared).toBe(false);
+    expect(ast.execution.steps).toEqual([]);
+    expect(ast.execution.stepTypes).toEqual([]);
+    expect(ast.execution.note).toContain("接了线没数据");
+  });
+
+  it("字段落地当天自动生效：给对了名字就读得到，并抽出 stepTypes", () => {
+    const withSteps = {
+      ...skill(),
+      execution: { steps: [{ id: "s1", type: "invoke_solver" }, { id: "s2", type: "render_answer" }] },
+    } as unknown as SkillDefinition;
+    const ast = parseSkillToAst(withSteps);
+    expect(ast.execution.declared).toBe(true);
+    expect(ast.execution.steps).toHaveLength(2);
+    expect(ast.execution.stepTypes).toEqual(["invoke_solver", "render_answer"]);
+  });
+
+  it("**不做别名回退**：写成 execution.plan / plan.steps / 顶层 steps 一律读不到（分裂必须刺眼，不许静默兼容）", () => {
+    const aliases: Record<string, unknown>[] = [
+      { execution: { plan: [{ id: "s1", type: "invoke_solver" }] } },
+      { plan: { steps: [{ id: "s1", type: "invoke_solver" }] } },
+      { steps: [{ id: "s1", type: "invoke_solver" }] },
+    ];
+    for (const alias of aliases) {
+      const ast = parseSkillToAst({ ...skill(), ...alias } as unknown as SkillDefinition);
+      expect(ast.execution.declared, `别名 ${JSON.stringify(alias)} 不该被认作 execution.steps`).toBe(false);
+      expect(ast.execution.steps).toEqual([]);
+    }
+  });
+
+  it("readSkillExecutionSteps 对畸形输入不崩：null / 非数组 steps / 非对象 execution", () => {
+    expect(readSkillExecutionSteps(null)).toEqual({ steps: [], declared: false });
+    expect(readSkillExecutionSteps({ execution: null })).toEqual({ steps: [], declared: false });
+    expect(readSkillExecutionSteps({ execution: "x" })).toEqual({ steps: [], declared: false });
+    expect(readSkillExecutionSteps({ execution: { steps: "x" } })).toEqual({ steps: [], declared: false });
+    expect(readSkillExecutionSteps({ execution: { steps: [] } })).toEqual({ steps: [], declared: true });
   });
 });
 

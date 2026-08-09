@@ -120,6 +120,51 @@ export const SkillAstToolSchema = z.object({
 });
 export type SkillAstTool = z.infer<typeof SkillAstToolSchema>;
 
+/**
+ * ⛔ **三条线共用字段 · 改名会同时断三条链（审核方 2026-08-09 对名裁决）** ⛔
+ *
+ * 「这个 skill 怎么执行」的步骤集合，**唯一合法名字 = `Skill.execution.steps`**。
+ * 定这条规矩是因为同一个字段一度在三份 PRD 里有三个名字：
+ *   - `docs/PRD-skill-migration.md:165`            → `execution.plan[]`
+ *   - `docs/PRD-skill-compiler-registry.md:176`    → `skill.execution.steps`  ← 裁决取此名
+ *   - `docs/PRD-skill-runtime-orchestrator.md:41`  → `compileGraph(Skill.execution ⊕ legacy plan.steps)`
+ * 三条线各按各的名字落地 ⇒ 互相读到 `undefined` ⇒ 静默回落 legacy ⇒ **功能等于没做，而四包全绿**。
+ * 这是 `G-SIDEEFFECT-VOCAB-SPLIT` 同族（同一概念多套词表 → 判定分支永不触发 → 两边测试都绿）。
+ *
+ * **改这个名字会断的链**：
+ *   ① 迁移线（WO-SKILL-MIGRATION-SCOPE）写入 → ② 本编译线读取产 AST/推理图 → ③ 运行时编排线消费执行。
+ * 任一端改名，另两端读到 `undefined` 并**静默回落 legacy plan**——不会报错，只会功能消失。
+ * 要改名必须三条线同一个 diff 一起改，并回写 `docs/SYSTEM-ONTOLOGY.md`。
+ */
+export const SKILL_EXECUTION_STEPS_PATH = "execution.steps" as const;
+
+/**
+ * AST 的执行步骤段。
+ *
+ * ⚠️ **诚实边界（"接了线没数据"，不是"已实现"）**：`SkillDefinitionSchema`（`agentcore.ts:236`）
+ * 今天**还没有** `execution` 字段（实测：该文件 grep `execution` 零命中，而金丝雀 `references:` 命中 :256
+ * ⇒ 工具是好的，确实不存在），字段由迁移线在建。故本切片：
+ *   - 只按裁决的名字 `execution.steps` 读，绝不兼容任何别名（兼容别名 = 把词表分裂固化下来）；
+ *   - 今天恒读到 `undefined` → `declared:false` + `steps:[]`，并**显式说出来**，
+ *     不让调用方把"空数组"误读成"这个技能没有步骤"。
+ * 三分法定性（铁律 0.5）：这是**接了线没数据**，不是没接线，也不是接错地方。
+ */
+export const SkillAstExecutionSchema = z.object({
+  /**
+   * 读自 `Skill.execution.steps`。元素**不在本切片做形状校验**——元素类型该用哪个判别联合
+   * 尚有未决问题（`PlanStep` 是闭合联合，而生产校验器 `validatePlanSteps` 收的是
+   * `ExtendedPlanStep = PlanStep | ExtraToolStep`，见 `apps/agentcore/src/workflow/executor.ts:27`），
+   * 已上报审核方。在裁决前把任一侧写死进契约都会制造下一次分裂，故此处保持透传。
+   */
+  steps: z.array(z.unknown()),
+  /** `false` = 契约上还没有这个字段（今天恒 false）。 */
+  declared: z.boolean(),
+  /** 提取出的步骤 type 序列，供诊断与后续图接线；`declared:false` 时为空。 */
+  stepTypes: z.array(z.string()),
+  note: z.string(),
+});
+export type SkillAstExecution = z.infer<typeof SkillAstExecutionSchema>;
+
 export const SkillAstSchema = z.object({
   astVersion: z.literal(1),
   /** PRD §6.2/§6.1 点名的身份段。 */
@@ -164,6 +209,8 @@ export const SkillAstSchema = z.object({
     inputSchema: JsonSchemaObject.nullable(),
     outputSchema: JsonSchemaObject.nullable(),
   }),
+  /** `Skill.execution.steps`（对名裁决唯一名字）；今天恒 `declared:false`，见 `SkillAstExecutionSchema`。 */
+  execution: SkillAstExecutionSchema,
   /**
    * `.skill` 包格式 / 签名 / manifest 的字段位（PRD §6）。
    * **本切片不做**（归 WO-SKILL-PACKAGE），故恒为下面这个显式标记——**不是空对象**。
@@ -307,6 +354,25 @@ export const SKILL_REF_KIND_BINDING: Record<
 /** 写模式技能必须能产 action_draft（R4 真值经 Action · GR-APPROVAL）。 */
 export const WRITE_MODE_REQUIRED_TOOL = "create_action_draft";
 
+/**
+ * 读 `Skill.execution.steps` —— **只认这一个名字**（对名裁决 2026-08-09）。
+ *
+ * 刻意**不做**任何别名回退（不读 `execution.plan`、不读 `plan.steps`、不读 `steps`）：
+ * 别名回退看着"更健壮"，实则把词表分裂固化成永久兼容层，
+ * 让"三条线名字不一致"这个事故**永远不会红**——正是本仓最痛的那种静默。
+ * 名字对不上就该是空 + 显式说明，让人一眼看见，而不是悄悄跑通一半。
+ *
+ * 入参故意收成结构类型而非 `SkillDefinition`：契约上该字段还不存在（迁移线在建），
+ * 本函数在它落地的当天自动开始有数据，无需再改一行。
+ */
+export function readSkillExecutionSteps(skill: unknown): { steps: unknown[]; declared: boolean } {
+  const execution = (skill as { execution?: unknown } | null)?.execution;
+  if (execution === null || typeof execution !== "object") return { steps: [], declared: false };
+  const steps = (execution as { steps?: unknown }).steps;
+  if (!Array.isArray(steps)) return { steps: [], declared: false };
+  return { steps, declared: true };
+}
+
 /** 稳定排序键：kind → key → version(latest 排在具体版本前) → origin。 */
 function refSortKey(r: SkillAstRef): string {
   return `${r.kind} ${r.key} ${r.version === null ? "" : String(r.version).padStart(10, "0")} ${r.origin}`;
@@ -351,6 +417,7 @@ export function parseSkillToAst(skill: SkillDefinition): SkillAst {
   }
 
   const writeMode = isWriteModeSkill(skill);
+  const execution = readSkillExecutionSteps(skill);
 
   // 派生工具集：kind → 必需工具，外加写模式的 create_action_draft。impliedBy 与工具名均字典序（R6）。
   const toolImplications = new Map<string, Set<string>>();
@@ -398,6 +465,17 @@ export function parseSkillToAst(skill: SkillDefinition): SkillAst {
     io: {
       inputSchema: skill.inputSchema ?? null,
       outputSchema: skill.outputSchema ?? null,
+    },
+    execution: {
+      steps: execution.steps,
+      declared: execution.declared,
+      stepTypes: execution.steps
+        .map((s) => (s !== null && typeof s === "object" ? (s as { type?: unknown }).type : undefined))
+        .filter((t): t is string => typeof t === "string"),
+      note: execution.declared
+        ? `读自 ${SKILL_EXECUTION_STEPS_PATH}（三条线共用字段·对名裁决唯一名字）；本切片不校验元素形状，也未接入推理图（GR-STEPS 未实现）。`
+        : `${SKILL_EXECUTION_STEPS_PATH} 在 SkillDefinitionSchema 上尚不存在（迁移线在建）——恒空属「接了线没数据」，` +
+          "不是「这个技能没有步骤」，更不是「已实现」。本切片不做任何别名回退。",
     },
     runtimePackage: {
       status: "NOT_IMPLEMENTED",
