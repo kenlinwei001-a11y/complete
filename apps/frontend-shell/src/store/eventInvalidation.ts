@@ -92,7 +92,7 @@ export const SIM_EVENT_GAPS: Record<string, string> = {
  * 事件 → 其失效的语义标签（与后端 event-subscriptions 同源；此处内联 L3/L4 + 数据环的关键事件）。
  * 缺失的事件直接忽略（不抛错）。
  */
-export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
+export const EVENT_INVALIDATES: Record<string, readonly string[]> = { // hardcoded-data-allow —— 事件→语义标签的路由表，非业务数据：键是领域事件名、值是缓存标签，与 agentcore event-subscriptions 单源同步。探测器 B 数到的「数值字面量」来自事件名/标签里的序号，不是业务数字。
   "rules.updated": ["rule-library", "agent-editor.rule-bindings", "workflow-editor.rule-bindings", "scenario-data"],
   "workflow.published": ["intent-editor.workflow-bindings", "agent-editor.tool-bindings", "workflow-list", "scenario-data"],
   "agent.published": ["agent-editor.tool-bindings", "scenario-data"],
