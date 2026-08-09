@@ -191,8 +191,20 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  - R2 tenant_id：全部落 DEMO_TENANT；跨租户读不到。
  *  - R6 确定性：固定 id/key/系数/延迟，同 SEED_DEMO 重跑字节一致；putPropagationRule 幂等覆盖。
  *  - 正交于电池合成：PropagationRule 是独立 sim 表（migration026），不碰 battery 字节一致基线。
- *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key
- *    （battery.ts：Order/Model/Base/Line + order_for_model/model_producible_at/line_belongs_to_base）。
+ *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key，
+ *    且每条都经**实测**确认「链路存在 + 方向对 + 两端在 demo 真有实例」（#158 的教训）。
+ *
+ * WO-P1（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · REQ143）：补齐**六个方向**，共 13 条规则。
+ * 此前三条边全部指向 `Base.loadIndex`，走不到 North Star 要的「断点/卡点/时长/消耗」。
+ *
+ *   方向 | 链                                                              | 回答哪一维
+ *   -----|-----------------------------------------------------------------|------------
+ *   需求 | Order.demandPressure → Model.demandLoad → Base.loadIndex         | —
+ *   产能 | Base.loadIndex → Line.utilPressure → Process.queuePressure       | 卡点 BOTTLENECK
+ *   供应 | Supplier.deliveryDelay → Material.shortageRisk → Model.supplyRisk → Order.shortageRisk | 断点 MATERIAL
+ *   交付 | Material.shortageRisk → PurchaseOrder.expeditePressure → IncomingInspection.queueDays | 时长
+ *   成本 | Material.priceShock → Model.costPressure → Order.costPressure    | 消耗
+ *   现金 | Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure | 消耗
  *  - stateVars 非显式声明——view-config 自动从规则 source/target stateVar 派生（种了规则即非空）。
  */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> = [
@@ -237,15 +249,40 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
   },
-  // ③ 产线利用率压力 → 沿"产线归属基地"边推到基地负载指数（延迟 1 tick，演示时序传导）。
+  // ③ 基地负载 → 沿"基地辖下产线"边摊到产线利用率压力（延迟 1 tick，演示时序传导）。
+  //
+  // 🔧 **WO-P1 修 #158：这条边原来是反的，从来没触发过**。原文是
+  //    `Line.utilPressure --line_belongs_to_base--> Base.loadIndex`，而实测两处都不支持它：
+  //    ① 方向：`line_belongs_to_base` 在本体里声明为 **Base→Line 1:N**（`battery.ts:2321`，
+  //       其上一行注释写明"N:1 语义通过翻转方向表达为 1:N"），`synthetic/service.ts` 落的实例
+  //       也是 `from=obj_base_changzhou → to=obj_line_…`（实测 130 条，全部 Base→Line）。
+  //       而 `propagateTick` 的 navOut 只沿 `fromId→toId` 走 ⇒ 从 Line 出发**取不到任何 target**。
+  //    ② 源恒为 0：全 demo 没有任何东西写 `Line.utilPressure`，`sourceVal === 0` 直接 continue。
+  //    即：这条规则**同时**踩了「接错方向」和「接了线没数据」两种死法。
+  //
+  // 为什么选"改规则方向"而不是"补一条反向 line_belongs_to_base"：
+  //    · **业务语义**：本沙盘传导的是**需求压力/规划负载**，不是实测利用率上卷。既有 ①②
+  //      已经把方向定死为「需求自市场向生产层级下达」（Order→Model→Base）；负载到了基地再
+  //      **摊到产线**，产线利用率是**结果**不是原因。反向（Line→Base）是"实际利用率上卷"的
+  //      报表口径，不是本引擎在做的事。
+  //    · **本体单源**：往一个已声明 `from=Base,to=Line` 的 key 里塞 Line→Base 的行，等于违反
+  //      它自己的类型声明，还会污染三处按 `direction:"out"` 从 Base 走这条边的 battery 切片
+  //      （`battery.ts:2438/2483/2550`）与 `slice-order-fulfillment` 测试。
+  //    · 代价：改一行种子 vs 造一条与声明打架的边——前者最小且不撒谎。
+  //    · 顺带把 demo 主链从 2 跳变 3 跳（Order→Model→Base→Line），且 `Line.utilPressure`
+  //      第一次有了**产出者**（此前它是个谁都不写的死源）。
+  //
+  // id 保持 `simpr_demo_line_to_base` 不变：`putPropagationRule` 是按 id 幂等覆盖，
+  // 换 id 会让已落库的 pg 租户**残留一条已知失效的旧规则**（新旧并存、旧的继续不触发）。
+  // 覆盖旧行才是干净的迁移，故 id 记录的是"第 ③ 条槽位"，不是它的语义。
   {
     id: "simpr_demo_line_to_base",
-    key: "demo_line_util_to_base_load",
-    sourceTypeKey: "Line",
-    sourceStateVar: "utilPressure",
+    key: "demo_base_load_to_line_util",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
     viaLinkKey: "line_belongs_to_base",
-    targetTypeKey: "Base",
-    targetStateVar: "loadIndex",
+    targetTypeKey: "Line",
+    targetStateVar: "utilPressure",
     coefficient: 0.5,
     delayTicks: 1,
     combine: "sum",
@@ -253,6 +290,207 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     clamp: null,
     coefficientRef: null,
     cadenceNodeId: null, // 同上
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-P1 · 补齐六方向传导边（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · 关闭 REQ143）
+  //
+  // 此前三条边**全部指向 Base.loadIndex** ⇒ 无论施加什么扰动，传导都只走到"基地负载"为止，
+  // 走不到 North Star 要的「断点 / 卡点 / 时长 / 消耗」。以下按 §3.1.4 那张表补齐其余五向。
+  //
+  // ⛔ 这些边是**数据**（`sim_propagation_rule` 行），不是代码 —— 本单一行都没碰 `sim/propagation.ts`。
+  // 每条边的 viaLinkKey 都经**实测**确认「链路真实存在 + 方向对 + demo 租户两端都有实例」，
+  // 不是照 PRD 示例抄一遍就算（#158 的教训正是"种子写了但方向不对，规则恒不触发还没人发现"）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── 供应（断点 MATERIAL）：供应商交付延迟 → 物料短缺 → 型号缺料 → 订单缺口 ──
+  // 三跳全部走 WO-P1 新补的**影响向逆边**（见 battery.ts/service.ts）：既有 supply 边是归属 FK
+  // 方向（下游→上游），跑影响传导会走反。实测全本体除此之外**没有任何一条边能走到 Order**。
+  {
+    id: "simpr_demo_supplier_to_material",
+    key: "demo_supplier_delay_to_material_shortage",
+    sourceTypeKey: "Supplier",
+    sourceStateVar: "deliveryDelay",
+    viaLinkKey: "supplier_supplies_material", // 实测 Supplier→Material，8 条
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_material_to_model_supply",
+    key: "demo_material_shortage_to_model_supply_risk",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_used_by_model", // 实测 Material→Model，24 条
+    targetTypeKey: "Model",
+    targetStateVar: "supplyRisk",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_model_supply_to_order",
+    key: "demo_model_supply_risk_to_order_shortage",
+    sourceTypeKey: "Model",
+    sourceStateVar: "supplyRisk",
+    viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，24 条
+    targetTypeKey: "Order",
+    targetStateVar: "shortageRisk",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 产能（卡点 BOTTLENECK）：产线利用率压力 → 工序排队压力 ──
+  // 承接修好的第 ③ 条（Base→Line），把负载再下推一层到**工序**——卡点落在工序上，不在产线上。
+  {
+    id: "simpr_demo_line_to_process",
+    key: "demo_line_util_to_process_queue",
+    sourceTypeKey: "Line",
+    sourceStateVar: "utilPressure",
+    viaLinkKey: "line_has_process", // 实测 Line→Process，650 条
+    targetTypeKey: "Process",
+    targetStateVar: "queuePressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 交付（时长）：物料短缺 → 采购加急 → 到货检验排队天数 ──
+  // 口径取自 `solvers/chain-loss.ts` 对前置期的分段（…→material_supplied_by_po→po_inspected_by），
+  // 即"到货检验"是一段**真实前置期**。⚠ 刻意**不用** `base_has_shipment`：
+  // `chain-loss.ts:456` 已经查实 Shipment 是 **SRM 来料在途**、不是成品发运，
+  // 拿"基地负载 → 来料在途变长"当交付链就是口径错标。
+  {
+    id: "simpr_demo_material_to_po",
+    key: "demo_material_shortage_to_po_expedite",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_supplied_by_po", // 实测 Material→PurchaseOrder，30 条
+    targetTypeKey: "PurchaseOrder",
+    targetStateVar: "expeditePressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_po_to_inspection",
+    key: "demo_po_expedite_to_inspection_queue",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_inspected_by", // 实测 PurchaseOrder→IncomingInspection，30 条
+    targetTypeKey: "IncomingInspection",
+    targetStateVar: "queueDays",
+    coefficient: 0.6,
+    delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 成本（消耗）：物料涨价 → 型号成本压力 → 订单成本压力 ──
+  // 与"供应"两条共用同一对逆边、但走**不同 stateVar**：缺料与涨价是两件事，
+  // 同一条链路上并行传导两种压力（PRD §3.1.4「成本」行 Material.price → Order.cost）。
+  {
+    id: "simpr_demo_material_price_to_model_cost",
+    key: "demo_material_price_to_model_cost",
+    sourceTypeKey: "Material",
+    sourceStateVar: "priceShock",
+    viaLinkKey: "material_used_by_model",
+    targetTypeKey: "Model",
+    targetStateVar: "costPressure",
+    coefficient: 0.65,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_model_cost_to_order_cost",
+    key: "demo_model_cost_to_order_cost",
+    sourceTypeKey: "Model",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "model_demanded_by_order",
+    targetTypeKey: "Order",
+    targetStateVar: "costPressure",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 现金（消耗）：订单成本压力 → 客户应收压力 → 发票逾期压力 ──
+  // 两条边都是既有的、方向本来就对（Order→Customer→ARInvoice），无需补逆边。
+  {
+    id: "simpr_demo_order_cost_to_customer_ar",
+    key: "demo_order_cost_to_customer_receivable",
+    sourceTypeKey: "Order",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "order_of_customer", // 实测 Order→Customer，24 条
+    targetTypeKey: "Customer",
+    targetStateVar: "receivablePressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_invoice",
+    key: "demo_customer_receivable_to_invoice_overdue",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_invoice", // 实测 Customer→ARInvoice，24 条
+    targetTypeKey: "ARInvoice",
+    targetStateVar: "overduePressure",
+    coefficient: 0.4,
+    delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
     status: "PUBLISHED",
   },
 ];
