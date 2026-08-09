@@ -192,6 +192,25 @@ export function splitTopLevel(src, openIdx) {
 }
 
 /**
+ * 抹掉注释（保留原长度，用空格填充），供"键名识别"这类**必须只看代码**的场合用。
+ *
+ * ⚠️ 为什么有这个函数：本门第一次做变异反证时，我给后端 emit payload 加了一个字段，
+ * 并在它上一行写了行注释（本仓真实写法，payload 里注释满地都是）。**门没红。**
+ * 病因：`splitTopLevel` 按顶层逗号切出来的那一段长这样——
+ *     `\n  // 结构化字段，供前端分栏\n  escalationRationaleLabel: "x"`
+ * `trim()` 之后首字符是 `/`，`^ident\s*:` 一条都匹配不上 ⇒ **有注释的字段一律读作不存在**。
+ * 13 条金丝雀全中、门照样绿——因为没有一条金丝雀喂过"带注释的 payload"。
+ * 这正是变异反证存在的理由：**金丝雀证明工具在我想到的输入上没坏，变异反证才检验它在我没想到的输入上坏没坏。**
+ * 现补金丝雀 C3b 钉死此形态。
+ */
+export function stripComments(text) {
+  const { mask } = lex(text);
+  let out = "";
+  for (let i = 0; i < text.length; i++) out += mask[i] === M_COMMENT ? (text[i] === "\n" ? "\n" : " ") : text[i];
+  return out;
+}
+
+/**
  * 对象字面量的顶层键名。展开 `...(cond ? { a } : {})` 里嵌套的对象字面量键
  * （这类条件展开在本仓 emit payload 里是常见写法，不展开会把真字段读成不存在）。
  */
@@ -202,7 +221,7 @@ export function objectTopLevelKeys(objText) {
   const keys = [];
   let spreads = 0, dynamic = 0;
   for (const raw of parts) {
-    const p = raw.trim();
+    const p = stripComments(raw).trim();   // 注释不抹掉 ⇒ 带注释的字段全部读作不存在（见 stripComments 顶注）
     if (!p) continue;
     if (p.startsWith("...")) {
       spreads++;
@@ -478,6 +497,15 @@ function canaries(ctx) {
     const { fields } = extractEmitFields(s);
     const got = fields.map((f) => `${f.event}.${f.field}`).sort();
     return { ok: got.join(",") === "sim.tick_advanced.sessionId,sim.tick_advanced.tick", got, want: ["sim.tick_advanced.sessionId", "sim.tick_advanced.tick"] };
+  });
+
+  // C3b payload 里带注释的字段照样要抽到
+  //     —— 这条是**变异反证抓出来的真洞**（第一版门对"加了带注释的新字段"毫无反应，13 条金丝雀全中）。
+  //        本仓 emit payload 里注释满地都是，漏掉它等于门对最常见的写法瞎。
+  add("emit/payload 内含注释", "注释挡住键名 ⇒ 带注释的新字段一律读作不存在 ⇒ 门对真实新增字段无反应（已实测发生）", () => {
+    const s = `emit("x.y", {\n  a: 1,\n  // 结构化字段，供前端分栏\n  bLabel: "z",\n});`;
+    const got = extractEmitFields(s).fields.map((f) => f.field).sort();
+    return { ok: got.join(",") === "a,bLabel", got, want: ["a", "bLabel"] };
   });
 
   // C4 抽取 R2 + 真文件：orchestrator 的 roleLabel（本门的头号实例，必须抓得到）
