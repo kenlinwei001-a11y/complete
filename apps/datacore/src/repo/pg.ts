@@ -30,7 +30,7 @@ import type {
   VectorIndex,
 } from "./repo.js";
 import { cosineSimilarity } from "./memory.js";
-import type { PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
 const { Pool } = pg;
 
@@ -112,6 +112,33 @@ class PgSimRepo implements SimRepo {
     const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
     const all = r.rows.map((row) => row.doc as PropagationRule);
     return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
+  }
+  // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · R9 与 memory.ts MemSimRepo 语义须逐条对齐）──
+  async createPerturbation(p: Perturbation) {
+    await this.pool.query(
+      `INSERT INTO sim_perturbation (id, tenant_id, session_id, doc) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET doc=$4`,
+      [p.id, p.tenantId, p.sessionId, JSON.stringify(p)],
+    );
+  }
+  async getPerturbation(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? (r.rows[0].doc as Perturbation) : null;
+  }
+  async listPerturbations(tenantId: string, sessionId: string) {
+    // 与 memory 侧**语义同构**：startTick 升序 → 建单先后（memory 用插入序号，这里用 created_at）。
+    // `created_at` 是 TIMESTAMPTZ（微秒精度，各 INSERT 各自事务）⇒ 顺序建的两条不会撞。
+    // **末位 id 只是兜底的全序保证**，不许把它提到 created_at 前面：id 是 randomBytes，
+    // 跨运行不稳定 —— 那正是本单实测踩到的坑（见 repo.ts listPerturbations 注释①）。
+    // `(doc->>'startTick')::int` 走 028 建的 sim_perturbation_start 索引。
+    const r = await this.pool.query(
+      `SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 ORDER BY (doc->>'startTick')::int, created_at, id`,
+      [tenantId, sessionId],
+    );
+    return r.rows.map((row) => row.doc as Perturbation);
+  }
+  async deletePerturbation(tenantId: string, sessionId: string, id: string) {
+    const r = await this.pool.query(`DELETE FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 AND id=$3`, [tenantId, sessionId, id]);
+    return (r.rowCount ?? 0) > 0;
   }
 }
 

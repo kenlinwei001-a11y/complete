@@ -42,6 +42,8 @@ import type {
   OpsSchedule,
   OpsScheduleRecord,
   SandboxViewConfig,
+  Perturbation,
+  PerturbationKind,
   SimSession,
   SimCertification,
   SimCheckpoint,
@@ -573,6 +575,41 @@ export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCA
 export type SimScopePrecheck = Pick<SimCertification, "scope" | "targetRef" | "worldCompleteness" | "canEnterSimulation" | "gaps">;
 export const fetchSimScopePrecheck = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimScopePrecheck>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/scope-precheck?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
+
+// ---- 扰动一等公民（WO-P0 · PRD-UPGRADE-decision-sandbox-v2 §3.1 · 关闭 #150）----
+// 此前沙盘唯一的扰动入口 `POST /a/v1/sim/sessions/:id/act` **在本文件里没有封装** ⇒ 零调用方：
+// 用户能推进时间、能存档、能分叉、能比对，唯独不能施加任何扰动（PRD §2.2①）。
+// 下面三个封装就是那个入口。UI 页面是另一张单，这里只到 API 层。
+/** 施加/排期一条扰动。不传 `startTick` = 当前 tick 立刻生效（等价于旧 `/act`）。 */
+export const createSimPerturbation = (
+  sessionId: string,
+  body: {
+    kind: PerturbationKind;
+    targetObjectId: string;
+    targetStateVar: string;
+    magnitude: number;
+    label: string;
+    /** 省略 = 当前 tick。 */
+    startTick?: number;
+    /** `null`/省略 = 永久（等价于旧 `/act` 的行为）。 */
+    durationTicks?: number | null;
+    /** 省略 = `set`。「涨价 15%」用 `scale`，「加 200 台」用 `delta`，「停机」用 `set 0`。 */
+    mode?: Perturbation["mode"];
+  },
+) =>
+  api.a<{ perturbation: Perturbation; curTick: number; state: TickState }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/perturbations`,
+    { body },
+  );
+/** 列出「这个世界受过哪些扰动」（按 startTick→id 稳定排序·确定性 R6）。 */
+export const fetchSimPerturbations = (sessionId: string) =>
+  api.a<{ items: Perturbation[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/perturbations`);
+/** 删一条扰动记录（**不回滚世界态** —— 回滚走 checkpoint/rollback，那是既有的有语义的回退口）。 */
+export const deleteSimPerturbation = (sessionId: string, perturbationId: string) =>
+  api.a<{ deleted: boolean }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/perturbations/${encodeURIComponent(perturbationId)}`,
+    { method: "DELETE" },
+  );
 
 /** 分支（北极星）：从某检查点派生子会话（READY，curTick 0，parentCheckpointId 指向源 cp）。 */
 export const simBranch = (sessionId: string, checkpointId: string) =>

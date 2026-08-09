@@ -86,6 +86,12 @@ export const SIM_EVENT_GAPS: Record<string, string> = {
     "会命中 app.ts:1493。即「实现有、没开路由」。前端因此无列表可缓存，硬接 = 假接线。" +
     "解法（需动 datacore，超出 WO-L4B 范围边界）：开 GET /a/v1/sim/sessions/:id/checkpoints → " +
     "前端加 checkpoints useQuery（存档列表 / 从任意检查点回滚·分支）→ 本事件即可接 ['sim-checkpoints']。",
+  // WO-P0 合入：sim.branched 已被 WO-L4B 真接线（见 EVENT_INVALIDATES），故不再是缺口，此处不重列。
+  "sim.perturbation_created":
+    "无缓存消费方（WO-P0 · 2026-08-09 新增）：本单只到 API 封装层——endpoints.ts 有 " +
+    "createSimPerturbation/fetchSimPerturbations/deleteSimPerturbation，但**没有任何 useQuery 用它们**" +
+    "（扰动时间轴 UI 是另一张单）。此刻接线就是给一个不存在的缓存发失效 = 假接线（#90/#92 同族）。" +
+    "解法与上面同源：等扰动清单真进 TanStack Query 后，把本条从台账挪进 EVENT_INVALIDATES。",
 };
 
 /**

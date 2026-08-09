@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -352,4 +352,26 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · PRD-UPGRADE-decision-sandbox-v2 §3.1）──
+  // R9 三处同改：本接口 + memory.ts MemSimRepo + pg.ts PgSimRepo，语义须无漂移。
+  /** 建一条扰动（幂等 upsert：同 id 覆盖，便于 pg/memory 语义一致）。 */
+  createPerturbation(p: Perturbation): Promise<void>;
+  /** 读一条扰动（跨租户一律 null·R2）。 */
+  getPerturbation(tenantId: string, id: string): Promise<Perturbation | null>;
+  /**
+   * 列出某世界受过的全部扰动。**排序必须确定**（R6）：`startTick` 升序 → **建单先后**。
+   *
+   * ⚠ 两条来历，都不是洁癖：
+   * ① **不许拿 `id` 当二级键**（本单实测栽过）：`newId` 是 `randomBytes`（`ids.ts:7`），
+   *    同 `startTick` 的两条扰动在两次重跑里顺序会翻 ⇒ PRD §7.2「同扰动同种子重跑字节级一致」当场红。
+   *    「id 是稳定的」这句话度量的是**同一次运行内**，不度量**跨运行**。
+   * ② **二级键必须是建单先后，而不是内容**：`delta`/`scale` 两种幅度模式**不可交换**
+   *    （`(10+2)×1.5 = 18` ≠ `10×1.5+2 = 17`）。WO-P2 的 `propagateTick` 要按本清单顺序施加，
+   *    顺序换了推演结果就换了 —— 所以这里排的不是"好看"，是**语义**。
+   *
+   * R9 两实现的机制不同但**语义同一**：memory 用插入序号，pg 用 `created_at`（微秒精度）。
+   */
+  listPerturbations(tenantId: string, sessionId: string): Promise<Perturbation[]>;
+  /** 删一条扰动（不存在/跨租户 = false，由路由翻成 404）。 */
+  deletePerturbation(tenantId: string, sessionId: string, id: string): Promise<boolean>;
 }

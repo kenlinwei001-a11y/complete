@@ -99,15 +99,18 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
       expect(reason.length, `${event} 的缺口理由是空的`).toBeGreaterThan(10);
       expect(EVENT_INVALIDATES[event], `${event} 既接了线又记在缺口台账，自相矛盾`).toBeUndefined();
     }
-    // 今天的实测基线：6 处 emit / 5 个不同事件名（WO-L4B 后：4 接线 + 1 缺口）。
+    // 今天的实测基线：7 处 emit / 6 个不同事件名（WO-L4B 接 3 条 + WO-P0 新增 1 条 emit）
+    //   ⇒ 4 接线（scenario_saved / session_created / branched / tick_completed）+ 2 缺口。
     // 数变了说明 emit 侧动过 —— 停下来重新判断消费方，别让它悄悄漂过去。
+    // 变更史：6/5/4 → 7/6/5（WO-P0 · 2026-08-09 新增 `sim.perturbation_created`，
+    // 已按本门要求登记进 SIM_EVENT_GAPS 并写清"为什么今天不接线"——这正是本门设计要逼出来的动作）。
     const emitted = emittedSimEvents();
-    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(6);
-    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(5);
-    expect(Object.keys(SIM_EVENT_GAPS).length).toBe(1);
+    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(7);
+    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(6);
+    expect(Object.keys(SIM_EVENT_GAPS).length).toBe(2);
     // 唯一剩下的缺口是 checkpoint（成因是**后端没开列表路由**，不是前端没接）——写死它，
     // 免得哪天有人把别的事件悄悄塞回台账当挡箭牌。
-    expect(Object.keys(SIM_EVENT_GAPS)).toEqual(["sim.checkpoint_saved"]);
+    expect(Object.keys(SIM_EVENT_GAPS).sort()).toEqual(["sim.checkpoint_saved", "sim.perturbation_created"]);
   });
 
   /**

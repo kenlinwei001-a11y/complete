@@ -26,7 +26,7 @@ import type {
   VectorHit,
   VectorIndex,
 } from "./repo.js";
-import type { PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
 /** 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。 */
 class MemSimRepo implements SimRepo {
@@ -34,6 +34,9 @@ class MemSimRepo implements SimRepo {
   private ticks = new Map<string, SimTickState>(); // key = `${sessionId}|${tick}`
   private checkpoints = new Map<string, SimCheckpoint>();
   private rules = new Map<string, PropagationRule>();
+  // key = perturbation id；`seq` = 插入序号（= pg 侧 created_at 的语义对应物，见 listPerturbations 注释）
+  private perturbations = new Map<string, { seq: number; p: Perturbation }>();
+  private perturbationSeq = 0;
   async createSession(s: SimSession) { this.sessions.set(s.id, clone(s)); }
   async putSession(s: SimSession) { this.sessions.set(s.id, clone(s)); }
   async getSession(tenantId: string, id: string) {
@@ -73,6 +76,30 @@ class MemSimRepo implements SimRepo {
       .filter((r) => r.tenantId === tenantId && (!publishedOnly || r.status === "PUBLISHED"))
       .sort((a, b) => (a.key < b.key ? -1 : 1))
       .map(clone);
+  }
+  // ── 扰动一等公民（WO-P0 · R9 与 pg.ts PgSimRepo 语义须逐条对齐：startTick → 建单先后）──
+  async createPerturbation(p: Perturbation) {
+    // 重建（同 id upsert）保留原插入序号，避免"改一下就跳到队尾"这种隐形语义漂移。
+    const seq = this.perturbations.get(p.id)?.seq ?? this.perturbationSeq++;
+    this.perturbations.set(p.id, { seq, p: clone(p) });
+  }
+  async getPerturbation(tenantId: string, id: string) {
+    const e = this.perturbations.get(id);
+    return e && e.p.tenantId === tenantId ? clone(e.p) : null;
+  }
+  async listPerturbations(tenantId: string, sessionId: string) {
+    // 与 pg 侧**语义同构**（不是实现同构）：startTick 升序 → 建单先后。
+    // 这里用插入序号，pg 用 created_at（微秒）—— 两者表达的是同一件事，且都不依赖随机 id。
+    return [...this.perturbations.values()]
+      .filter((e) => e.p.tenantId === tenantId && e.p.sessionId === sessionId)
+      .sort((a, b) => (a.p.startTick !== b.p.startTick ? a.p.startTick - b.p.startTick : a.seq - b.seq))
+      .map((e) => clone(e.p));
+  }
+  async deletePerturbation(tenantId: string, sessionId: string, id: string) {
+    const e = this.perturbations.get(id);
+    if (!e || e.p.tenantId !== tenantId || e.p.sessionId !== sessionId) return false;
+    this.perturbations.delete(id);
+    return true;
   }
 }
 
