@@ -1,6 +1,9 @@
 # WO-SIM-SCOPE-TRIAL 交付说明（沙盘 P3 + L3-a 合单）
 
-> 分支 `claude/handoff-wo-sim-scope-trial`，基线 canonical `69804185`（祖先关系判定：原 HEAD 是 canonical 的祖先 ⇒ 落后 ⇒ 已从 canonical 重开）。
+> 分支 `claude/handoff-wo-sim-scope-trial`。开工时按**祖先关系**判定（不是文件存在性）：
+> 原 HEAD 是 canonical 的祖先 ⇒ 落后 ⇒ 从 canonical `69804185` 重开。
+> 交付前 canonical 已前移到 `431d9249`（新增 2 提交，**与本单 6 个文件零重叠**），
+> 已 rebase 其上并**重跑 build + 门 + 测试**（rebase 会作废之前的绿，故重验）。
 > 关闭欠账 **#129 / #130（`G-SIM-SCOPE-UNREAD`）** 与 **#152**。
 
 ---
@@ -270,6 +273,7 @@ DataCore 侧**恒填**，故服务端答复里它们总在。若审核方希望�
 | 4 | `apps/datacore` 全包 `lint` 有 **32 个既有 error**（如 `synthetic.test.ts` 的 `BASE_REGISTRY` 未使用） | `pnpm --filter datacore lint` | 我改的文件单独跑 eslint 是 RC=0；其余是既有账 |
 | 5 | `/a/v1/objects/:id/neighbors` 的响应是 `{groups:[{linkKey,direction,items}]}`，**不是** `{items}` | 我的第一版探针读 `nb["items"]` 恒空，差点把「链路不存在」当结论 | 非缺陷，是我探针写错。记在此提醒下一个人：**报否定结论前先拿已知必中的样例自证工具** |
 | 6 | `worldCompleteness.pct` 在 demo/GLOBAL 下实测 **47** | 真服务实测 | 与 `PRD-sim-scope-local.md §4.5` 里「复现不出 47」那条存疑记录对上了，可销账 |
+| 7 | **`git diff canonical..HEAD` 不度量「我改了什么」** —— canonical 会在我干活期间前移 | 交付前该命令报我删了 `scripts/check-verdict-rollup.mjs`、改了 `docs/SYSTEM-ONTOLOGY.md` 等 6 个我从没碰过的文件；实为 canonical 从 `69804185` 前移到 `431d9249`（新增 2 提交），那 6 个文件是**它加的、我没有** | 非缺陷，是判据选错。正确判据 = `git diff <我的基点>..HEAD`。已按铁律 0.6 句式记账：**「我用 `diff canonical..HEAD` 当作『我的改动集』的证据，而前者并不度量后者。」** 差点据此以为自己违反了「不许碰 SYSTEM-ONTOLOGY.md」的边界 |
 
 ---
 
