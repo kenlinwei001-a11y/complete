@@ -2268,6 +2268,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             searchable: z.boolean().optional(),
             unit: z.string().optional(),
             displayFormat: z.string().optional(),
+            // WO-D6：属性级中文业务名/语义描述 —— 契约里早有（PropertyDef），
+            // 此处漏声明 ⇒ zod strip 掉 ⇒ getTypeSemantics 下发给 B 的口径恒缺 displayName/description。
+            displayName: z.string().optional(),
+            description: z.string().optional(),
           }),
         ),
         derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
@@ -2280,6 +2284,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             }),
           )
           .default([]),
+        // WO-D6 第二个吞点（与 upsertType 那个各自独立，只修一个另一个照吞）：
+        // zod 默认 **strip** 未声明键 —— 这七个 OntoFlow 扩展字段此前在**进 service 之前**就没了，
+        // 于是 REST 是"填了也存不进去"，而 grep 只能看到 upsertType 那一处，容易误判已修完。
+        storageMode: z.enum(["STATIC", "ONTOLOGY"]).optional(),
+        stateVariables: z
+          .array(z.object({ propKey: z.string(), fromField: z.string(), fn: z.string(), dataType: z.string() }))
+          .optional(),
+        functions: z
+          .array(z.object({ name: z.string(), returns: z.string(), builtin: z.string().optional(), expr: z.string().optional() }))
+          .optional(),
+        actions: z.array(z.object({ actionTypeKey: z.string() })).optional(),
+        security: z
+          .array(
+            z.object({
+              prop: z.string(),
+              strategy: z.enum(["HASH", "REDACT", "PARTIAL"]),
+              scopeRoles: z.array(z.string()).optional(),
+            }),
+          )
+          .optional(),
+        entityCategory: z.string().optional(),
+        description: z.string().optional(),
       }),
       req.body,
     );

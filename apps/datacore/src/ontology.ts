@@ -196,13 +196,21 @@ export class OntologyService {
     input: Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> & { status?: "ACTIVE" },
   ): Promise<ObjectTypeDef> {
     const existing = await this.getType(ctx, input.key);
+    // WO-D6：**先摊开 input，再覆写服务端自管字段** —— 不再逐字段列举。
+    // 老写法手抄白名单，`ObjectTypeDef` 后加的 7 个 OntoFlow 扩展字段
+    // （storageMode/stateVariables/functions/actions/security/entityCategory/description）
+    // 一个都没抄进去 ⇒ 调用方（如 OntoFlow 发布 `pipeline/subgraph.ts buildTypeDefs` 真的填了）
+    // 写进来就被静默丢弃，读出侧恒空 —— 这正是欠账 #69「本体七要素：Interface 恒零 /
+    // Security 列级恒零 / Action 无回写声明 / Function 无本体签名」的根因。
+    // 摊开写法让契约新增字段**默认过得去**，把"漏抄"这个病根去掉，而不是再补 7 行下次再漏第 8 行。
+    // 下面这几个必须显式覆写，它们是服务端真值、不许调用方指定：
+    //   id/tenantId/version/status —— 身份与版本机；
+    //   published/deprecation —— 治理增量 §2.1 API 名不可变的锚点，只能由 publishVersion/deprecate 迁移。
     const def: ObjectTypeDef = {
+      ...input,
       id: existing?.id ?? newId("otype"),
       tenantId: ctx.tenantId,
-      key: input.key,
-      displayName: input.displayName,
       domain: input.domain ?? existing?.domain,
-      properties: input.properties,
       derivedProperties: input.derivedProperties ?? [],
       sourceBindings: input.sourceBindings ?? [],
       version: (existing?.version ?? 0) + 1,
