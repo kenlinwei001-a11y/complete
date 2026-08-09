@@ -72,6 +72,7 @@ import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill, classifySkillEvalCases } from "./skill-lint.js";
+import { compileSkill } from "./skill-compiler.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -1385,6 +1386,30 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
       throw e;
     }
+  });
+
+  /**
+   * WO-SKILL-COMPILER-S1 · 技能编译（PRD-skill-compiler-registry §8.1「真新增端点」）。
+   *
+   * 七段管线的 S1 最小垂直切片：① Parser → ② Validator（**复用既有 `lintSkill`**）→ ③ 推理图派生。
+   * Optimizer 与运行时包两段**未实现**，在 `stages[]` 里显式标 `NOT_IMPLEMENTED`——
+   * 不返回空对象让调用方以为跑过了。
+   *
+   * 鉴权 / 租户 / 错误信封照抄同文件既有 skill 路由：`auth` → `requireCatalogAdmin`
+   * → 跨租户一律 404 `SKILL_NOT_FOUND`（不泄漏存在性，R2 + PRD §4.2 GV-TENANT）。
+   * 只读操作：不落库、不改状态、不发领域事件（`?dryRun` 语义即默认且唯一行为）。
+   */
+  app.post("/b/v1/skills/:id/compile", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    // ⚠️ 必须传 ctx.allSkills：`lintSkill` 的跨资源规则（dependsOn 可解析 / 依赖图无环）在缺省时直接
+    //    `return []`——不传等于「接了线没通」（同 server.ts:1243 publish 路已踩过的坑）。
+    const allSkills = (await deps.repos.skills.listByTenant(a.tenantId)).filter((s) => s.tenantId === a.tenantId);
+    // 发布态口径（requirePublishedDeps）只在技能已发布时套用；草稿编译不该因依赖还没发布就报错。
+    return compileSkill(skill, { allSkills, requirePublishedDeps: skill.status === "PUBLISHED" });
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----
