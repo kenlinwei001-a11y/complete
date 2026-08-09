@@ -5,7 +5,12 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（`ontology-core recompute`，传导 `propagateTick` 待增量3）。
+ * 一次 Trial Tick（**两栈**：派生栈 `ontology-core recompute` + 传导栈 沙盘传导核）。
+ *
+ * ⚠ 上面这行原文停在「传导 `propagateTick` 待增量3」—— 而传导栈早已实装并有生产调用方
+ *   （tick 路由 `app.ts`），于是注释比实现落后了整整一个增量，认证屏上的「规则触发 N 条」
+ *   一直只在数派生栈、传导栈恒记 0（欠账 #152）。**本仓把注释说谎算作缺陷**，
+ *   随 WO-SIM-SCOPE-TRIAL 一并改正，别再让它漂回去。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *
@@ -88,9 +93,21 @@ export const DEFAULT_CERT_CONFIG: CertConfig = {
   weights: { s: 0.4, k: 0.3, b: 0.3 },
 };
 
+/**
+ * 一次 Trial Tick 的结果（**由调用方跑完再传进来** —— 本文件是纯投影，不许自己跑重算器，
+ * 门 `scripts/check-sim-readiness.mjs` 静态咬死这一点）。
+ *
+ * `rulesFired` 是**两栈合计**。WO-SIM-SCOPE-TRIAL 之前它只装了派生栈的数
+ * （`recompute` 的 topo 长度），传导栈恒记 0（欠账 #152）——
+ * 屏上写「规则触发 N 条」，度量的却是另一套栈。两个分栈明细就是为了让"哪一栈在动"不再靠猜。
+ */
 export interface TrialTickInput {
   passed: boolean;
   rulesFired: number;
+  /** 派生栈（ontology-core 重算）触发数。缺省 = 调用方没分栈（老调用点，合计仍成立）。 */
+  derivationRulesFired?: number;
+  /** 传导栈（沙盘传导核）真正产出贡献的规则数。 */
+  propagationRulesFired?: number;
   at: string | null;
   error: string | null;
 }
@@ -215,7 +232,13 @@ export function deriveCertification(
     level,
     dims: { structure, knowledge, behavior, composite },
     l4Checks,
-    trialTick: { passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error },
+    trialTick: {
+      passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error,
+      // 分栈明细原样透传（投影，不新算）。调用方没分栈时不下发 —— 不替它编一个 0
+      // （编 0 就等于宣称"传导栈没触发"，而事实是"没人告诉我"，这正是 #152 的形态）。
+      ...(trial.derivationRulesFired !== undefined ? { derivationRulesFired: trial.derivationRulesFired } : {}),
+      ...(trial.propagationRulesFired !== undefined ? { propagationRulesFired: trial.propagationRulesFired } : {}),
+    },
     worldCompleteness: { pct: wcPct, ...wc, entering },
     canEnterSimulation,
     gaps: out,

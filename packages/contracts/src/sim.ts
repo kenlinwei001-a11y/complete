@@ -89,13 +89,85 @@ export const SimSessionSchema = z.object({
   id: z.string(),
   tenantId: z.string(), // R2
   baseSnapshot: TickStateSchema, // tick0 世界态（合成/连接器/切片物化而来，走正门）
-  scope: z.record(z.string(), z.unknown()), // 范围裁剪（复用 slice-planner 子图）
+  /**
+   * 范围裁剪（§2.1 原文「复用 slice-planner 子图」）。**故意保持 `record`**：
+   * 本列同时被 `WO-LIVE-ENDPOINTS` 的活方案快照借用（`snapshotKind`/`label`/`page`/`baseId` …），
+   * 收窄成强类型对象会当场打断那条链。推演范围语义走 `resolveSimScope()` 这一支解释器（见下），
+   * 不认识的键一律读作 GLOBAL —— 于是快照那批 bag 逐字节维持旧行为（RL9 additive 可回退）。
+   */
+  scope: z.record(z.string(), z.unknown()),
   status: SimSessionStatusSchema.default("DRAFT"),
   curTick: z.number().int().default(0),
   parentCheckpointId: z.string().nullable().default(null), // 非空 = 本会话是某检查点的分支
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
+
+// ── 推演范围 SimScope（WO-SIM-SCOPE-TRIAL · 关闭欠账 #129/#130 `G-SIM-SCOPE-UNREAD`） ──
+/**
+ * 全局整本体 / 局部子图。前端 `SandboxView` 建会话时写 `{kind, target}`（`target` = 对象类型 key）。
+ *
+ * 为什么判据放契约里：`SimSession.scope` 的**写端在前端、读端在引擎**，中间隔着一个
+ * `record<string, unknown>` 的松口袋。两边各写一套 `if (scope.kind === "LOCAL")` 就是第二套真相源
+ * —— 正是 `isPerturbationActiveAt` 当初被提到契约里的同一个理由。
+ */
+export const SimScopeKindSchema = z.enum(["GLOBAL", "LOCAL"]);
+export type SimScopeKind = z.infer<typeof SimScopeKindSchema>;
+
+/**
+ * LOCAL 默认展开跳数 = **1**，不是 0。
+ *
+ * 这不是随手拍的：`target` 是**单个对象类型**，而一条 `PropagationRule` 是
+ * `sourceTypeKey ─viaLinkKey→ targetTypeKey` 的**跨类型**边（demo 三条全是跨类型：
+ * Order→Model / Model→Base / Line→Base）。0 跳的子图里只有一种类型的对象
+ * ⇒ 一条跨类型边都成立不了 ⇒ LOCAL 恒等于「什么都不动」。
+ * 那是把「局部推演」实现成「不推演」，属于另一种静默错答。
+ * 1 跳 = `docs/PRD-enterprise-decision-twin.md §4.3` Slice Expansion Engine 策略表的第一档
+ * （`1-hop → 2-hop → 决策相关 → …`），有出处、非发明。
+ */
+export const SIM_SCOPE_DEFAULT_HOPS = 1;
+
+/** `SimSession.scope` 解释后的推演范围（引擎与认证共用一份）。 */
+export interface ResolvedSimScope {
+  kind: SimScopeKind;
+  /** LOCAL 的根对象类型 key；GLOBAL 恒 `null`。 */
+  target: string | null;
+  /** 从根沿链路（无向）展开的跳数。 */
+  hops: number;
+  /**
+   * **诚实缺席**：自称 LOCAL 却给不出根（`target` 缺/空）时，这里写明原因，且**绝不退回 GLOBAL**
+   * —— 拿全域数字冒充局部正是本单要根治的病（`G-SIM-SCOPE-LOCAL-DEGRADE` 同族）。
+   * `null` = 范围可用。
+   */
+  unresolved: string | null;
+}
+
+/**
+ * 把 `SimSession.scope` 这个松口袋解释成推演范围。**唯一实现**（引擎 tick 路与就绪认证共用）。
+ *
+ * 判据（逐条有来历，别改成"看着更合理"的写法）：
+ *  · `kind` 不是字面量 `"LOCAL"` ⇒ GLOBAL。空对象 `{}`、活方案快照 bag（`{snapshotKind:…}`）、
+ *    历史遗留会话**全部**落在这里 ⇒ 与本函数引入前逐字节同行为（RL9）。
+ *  · LOCAL 且 `target` 是非空串 ⇒ 可用范围。
+ *  · LOCAL 但 `target` 缺/空 ⇒ `unresolved` 非空。调用方必须把它当"范围拿不到"处理，
+ *    **不许**当 GLOBAL 跑（那正是 `#129` 的病样：屏上写「局部」、数字是「全局」）。
+ */
+export function resolveSimScope(raw: Record<string, unknown> | null | undefined): ResolvedSimScope {
+  const bag = raw ?? {};
+  const hopsRaw = bag.hops;
+  const hops = typeof hopsRaw === "number" && Number.isInteger(hopsRaw) && hopsRaw >= 0 ? hopsRaw : SIM_SCOPE_DEFAULT_HOPS;
+  if (bag.kind !== "LOCAL") return { kind: "GLOBAL", target: null, hops, unresolved: null };
+  const t = typeof bag.target === "string" && bag.target.length > 0 ? bag.target : null;
+  return {
+    kind: "LOCAL",
+    target: t,
+    hops,
+    unresolved: t === null
+      ? "会话范围自称 LOCAL 却没有根对象类型（scope.target 缺失或为空）⇒ 无法裁出子图。" +
+        "本次推演不按全域跑——拿全域结果冒充局部正是本项要根治的静默错答。"
+      : null,
+  };
+}
 
 // ── SimTickState 逐 tick 态快照（§2.1 sim_tick_state · 复合主键 session+tick） ──
 export const SimTickStateSchema = z.object({
@@ -229,7 +301,23 @@ export const SimCertificationSchema = z.object({
   }),
   trialTick: z.object({
     passed: z.boolean(),
+    /**
+     * 两栈合计触发规则数。**WO-SIM-SCOPE-TRIAL 之前这个数只度量派生栈**
+     * （`recompute` 的 topo 长度），传导栈恒记 0（欠账 #152）——
+     * 「信号是真的，只是它不指向我要断言的那个对象」。现在 = 派生 + 传导。
+     */
     rulesFired: z.number().int(),
+    /**
+     * 分栈明细：派生栈（ontology-core 重算）触发数。
+     *
+     * ⚠ 两个明细字段**刻意是 optional 而非 required**：`SimCertification` 在前端被当**字面量**构造
+     * （`apps/frontend-shell/test/sandbox-p0.test.tsx` 的 `const CERT_GLOBAL: SimCertification = {…}` 等 6 处），
+     * 置为必填会把整包前端测试打成编译红——而那是本单边界外的包。
+     * DataCore 侧**恒填**（`app.ts assembleCertification`），故服务端答复里它们总在。
+     */
+    derivationRulesFired: z.number().int().optional(),
+    /** 分栈明细：传导栈（沙盘传导核）本次 Trial Tick 真正产出贡献的规则数。同上 optional 之由。 */
+    propagationRulesFired: z.number().int().optional(),
     at: z.string().nullable(),
     error: z.string().nullable(),
   }),
