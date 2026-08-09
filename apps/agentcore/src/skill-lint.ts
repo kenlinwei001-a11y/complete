@@ -1,5 +1,6 @@
 import { SKILL_REFERENCE_KINDS, SKILL_REFERENCE_ROLES, type SkillDefinition, type SkillReference } from "@platform/contracts";
 import { BUILTIN_TOOLS, FINAL_ANSWER_TOOL, LOAD_SKILL_TOOL } from "./tools/registry.js";
+import { ENFORCED_SKILL_REF_SLOTS, isEnforcedSkillRefSlot } from "./engine.js";
 
 /**
  * Skill 编写规范与质量门禁（PRD-addendum-skill-authoring，裁决 #25）。
@@ -143,6 +144,31 @@ function validateReferenceList(
     if (ref.version !== undefined && (!Number.isInteger(ref.version) || ref.version < 1)) {
       v.push({ rule: `${path}[${i}].version`, message: `${path}[${i}] version 必须是正整数`, location: "metadata" });
     }
+    // WO-S05（欠账 #154）· **声明了运行时不会执行的前置/后验 → 当场报出来**。
+    //
+    // 这条门治的不是「配错了一个字段」，是**配错了没人吭声**：`precondition`/`postcheck` 带强制语义，
+    // 但契约词表放行 kind×role 的全部组合，运行时只对 ENFORCED_SKILL_REF_SLOTS 里的组合真的做事。
+    // 出厂唯一的 precondition 声明（solver+precondition）就落在差集里，被 engine 一行 `kind==="rule"`
+    // 静默滤掉，三周无人知晓。判据与 engine 取值用的是**同一份表**（import 而非手抄）——
+    // 抄一份就是装饰品：engine 改了、lint 拿旧的去测、照样绿（CLAUDE.md 铁律 0.6）。
+    //
+    // `context` / `fallback` 是告知性 role（投影进资源图供检索），不承诺执行，故不在此判据内。
+    // 只判 `references`：engine 的强制路径读的就是 `s.references`；`dependsOn` 是依赖图/发布序语义
+    // （由 validateRefResolution + 环检测把关），engine 不按 role 执行它，不该套同一张表。
+    if (path === "references" && VALID_REF_KINDS.has(ref.kind) && ref.role && VALID_REF_ROLES.has(ref.role) && !isEnforcedSkillRefSlot(ref.kind, ref.role)) {
+      const enforceableRoles = ENFORCED_SKILL_REF_SLOTS.filter((s) => s.role === ref.role).map((s) => s.kind);
+      if (enforceableRoles.length > 0) {
+        v.push({
+          rule: `${path}[${i}].unenforceable`,
+          message:
+            `${path}[${i}] 声明了 role「${ref.role}」但 kind「${ref.kind}」运行时不会被执行` +
+            `（该 role 目前只对 kind ${enforceableRoles.map((k) => `「${k}」`).join("、")} 生效）` +
+            `——这类声明会被静默丢弃，请改用可执行的 kind，或先为该组合接上消费方并登记到 ENFORCED_SKILL_REF_SLOTS`,
+          location: "metadata",
+        });
+      }
+    }
+
     const duplicateKey = `${ref.kind}:${ref.key}`;
     if (seen.has(duplicateKey)) {
       v.push({ rule: `${path}[${i}].duplicate`, message: `${path} 内存在重复引用 ${duplicateKey}`, location: "metadata" });

@@ -1329,6 +1329,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         type: "object",
         properties: { actions: { type: "array" }, rationale: { type: "string" } },
       },
+      // WO-S05（欠账 #154）· 这条**保持 kind:"solver" 不动**，改的是消费方。
+      // 判据取自本技能自己的 body：「仅在已有推演结论（capacity_forecast / risk_timeline 输出）时使用；
+      // 无结论则先跑推演」+ summary 的「不适用：…尚未跑过推演」——业务语义是「先跑那个求解器」，
+      // 不是「满足某条规则」（全篇没有任何规则口径）。改成 kind:"rule" 会把「哪个求解器」这个信息丢掉，
+      // 且得凭空发明一条并不存在的规则 key。执行点见 engine.ts `unmetSolverPreconditions` + loadSkill 门。
       references: [{ kind: "solver", key: "capacity_forecast", role: "precondition", required: true }],
     },
   ];
