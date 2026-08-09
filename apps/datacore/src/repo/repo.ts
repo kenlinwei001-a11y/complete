@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -327,6 +327,13 @@ export interface Repos {
   buildWorkflowRuns: Store<BuildWorkflowRun>;
   // Dogfooding P2：元本体访问策略（角色白名单,按租户;id=tenantId）
   metaAccessPolicies: Store<MetaAccessPolicyRecord>;
+  // ── WO-Q0 · 业务流程层（migrations/029_process_definitions.sql · PRD-UPGRADE-decision-sandbox-v2 §3.2）──
+  // R9 三处同改：本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 走通用 Store（表结构就是 id/tenant_id/doc/created_at/updated_at，与 PgStore 的 doc-jsonb 假设逐字吻合），
+  // **不另立专用接口** —— 流程层没有「按 startTick 排序」这类语义约束（对比 SimRepo.listPerturbations），
+  // 排序需求由调用方按 `key` 自己排（key 形如 P01，字典序 ≡ 数字序，因两位定宽）。
+  processDomains: Store<ProcessDomain>;
+  processDefinitions: Store<ProcessDefinition>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */

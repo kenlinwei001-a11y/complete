@@ -1,4 +1,5 @@
-import type { PropagationRule } from "@platform/contracts";
+import type { ProcessWaitKind, PropagationRule } from "@platform/contracts";
+import { ProcessDefinitionSchema, ProcessDomainSchema } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
@@ -265,4 +266,196 @@ export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
   for (const r of DEMO_PROPAGATION_RULES) {
     await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// WO-Q0 · 业务流程层种子（13 一级业务域 × 65 核心业务流程）
+// PRD-UPGRADE-decision-sandbox-v2 §3.2 · DECISION-13domain-65process-layering.md
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 13 个一级业务域。
+ *
+ * 🔴 **每个 D## 都锚到 `graphmeta.ts` 的 `BUSINESS_DOMAINS`（14 域注册表）**，不新造词表。
+ * 理由与实测证据写在 `packages/contracts/src/process.ts` §3：裁决文档说「平台无域概念」是错的，
+ * 那份 14 域注册表真接线（`GET /a/v1/business-domains` · `refbase.ts` · `refbase-coverage.ts`），
+ * 还被 `test/a3-business-domains.test.ts` 锁在 14 条。不锚 = 造第二套业务域词表。
+ *
+ * ── 14 域里唯一没有对应流程域的是 `external`（外部信号）—— **这是判断，不是遗漏** ──
+ * `external` 是**数据来源域**（`ExternalSignal` / `CommodityPriceTrend` 是外部行情数据），
+ * 不是「企业内部的一类业务活动」。真正消费外部信号的活动（采集、研判、跟踪）
+ * 已落在 D02 需求与预测（P08/P09/P10），承载物就是那两个类型。
+ * 为它单开一个流程域会造出一个域名叫「外部信号」、里面全是别的域已有的活动的空域。
+ */
+const DEMO_PROCESS_DOMAINS: ReadonlyArray<{ key: string; name: string; businessDomainKey: string }> = [
+  { key: "D01", name: "经营规划与情景", businessDomainKey: "plan" },
+  { key: "D02", name: "需求与预测", businessDomainKey: "forecast" },
+  { key: "D03", name: "销售与客户", businessDomainKey: "sales" },
+  { key: "D04", name: "产品与工程", businessDomainKey: "product" },
+  { key: "D05", name: "采购与供应", businessDomainKey: "material" },
+  { key: "D06", name: "计划与排产", businessDomainKey: "capacity" },
+  { key: "D07", name: "生产制造", businessDomainKey: "process" },
+  { key: "D08", name: "质量管理", businessDomainKey: "quality" },
+  { key: "D09", name: "设备与维护", businessDomainKey: "equip" },
+  { key: "D10", name: "基地与仓储交付", businessDomainKey: "factory" },
+  { key: "D11", name: "财务与成本", businessDomainKey: "finance" },
+  { key: "D12", name: "人员与班组", businessDomainKey: "people" },
+  { key: "D13", name: "决策与改善", businessDomainKey: "decision" },
+];
+
+/**
+ * 65 条核心业务流程。四件齐：`ownerFunctionKey`（谁做）· `stdDurationDays`（多久）·
+ * `waitKind`（卡在哪种等待）· `carrierTypeKey`（🔴 承载物）。
+ *
+ * ── 🔴 承载物纪律（红线 3）───────────────────────────────────────────────
+ * 每条的 `carrierTypeKey` 都是 **battery 种子真物化出来的 94 个对象类型之一**
+ * （实测枚举，非照文档抄）。`test/process-layer.test.ts` 断言① 真跑一次种子后逐条核对，
+ * 拼错一个字母就红。**论证不出承载物的流程一条都没建**（放弃清单见本注释末尾）。
+ *
+ * ── 两个编号锚点，别改 ────────────────────────────────────────────────────
+ * PRD §3.2.2 用 `P37 MPS` 与 `P40 APS排产` 举例说明「映射是 N:M」，WO-Q1 的
+ * `process_chain_node_map` 会照它建映射。故本表的 **P37 = 主生产计划（MPS）编制**、
+ * **P40 = 详细排产（APS）** 是对外承诺过的编号，改动会让 PRD 的例子与数据对不上。
+ * 这两条**共用同一个承载物 `ProductionSchedule`** —— 这正是 `chain-sim.ts` 里
+ * 「全仓只有一个排产承载物」那条实测事实，在流程层的合法形态（共用 ≠ 空壳，见 process.ts 文件头）。
+ *
+ * ── 放弃的流程（论证不出承载物，宁可少建也不填空壳）────────────────────
+ *  ① **流程审批/会签**（跨域通用）—— 仓主已裁「流程审批不体现」（PRD §6.4 #1 维持不做），
+ *     且平台无流程级审批承载物（`ActionDraft` 是 S2 行动审批，不是业务流程审批）。
+ *     这与 `waitKind` 不收 `WAITING_APPROVAL` 是**同一条理由**。
+ *  ② **招聘与培训**（人员域）—— 无 `TrainingPlan`/`Recruitment` 类型；
+ *     `OperatorSkillCert` 承载的是「已认证」这个结果，承载不了培训过程本身。
+ *  ③ **合同与法务评审**（销售/采购域）—— 无通用 `Contract` 类型；
+ *     `LongTermAgreement` 是采购长协的专用承载物，套给销售合同就是错挂。
+ *  ④ **售后与退换货（RMA）**（销售域）—— 无 `ReturnOrder`/`ServiceTicket`/`Complaint` 类型；
+ *     `ExceptionEvent` 是产线异常事件，不是客户投诉，借用它会把两类东西搅成一摊。
+ *  ⑤ **碳足迹核算与碳护照申报**（供应域）—— `CarbonFactor` 是**因子字典**
+ *     （`factorId/kind/key/factor`），不是核算流程的产出物；碳足迹本身只作为
+ *     `Order.carbonFootprint` **属性**存在（规则 C33 挂在它上面），属性不是一等承载物。
+ *
+ * R6：固定 id/key/时长，同 SEED_DEMO 重跑字节级一致；幂等（固定 id + put 覆盖）。
+ */
+const DEMO_PROCESS_DEFINITIONS: ReadonlyArray<{
+  key: string; domainKey: string; name: string;
+  ownerFunctionKey: string; stdDurationDays: number; waitKind: ProcessWaitKind; carrierTypeKey: string;
+}> = [
+  // ── D01 经营规划与情景（plan）· P01–P06 ────────────────────────────────
+  { key: "P01", domainKey: "D01", name: "年度经营目标分解", ownerFunctionKey: "strategy_office", stdDurationDays: 30, waitKind: "WAITING_USER", carrierTypeKey: "PlanTarget" },
+  { key: "P02", domainKey: "D01", name: "关键成功要素（KSF）梳理", ownerFunctionKey: "strategy_office", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "KSF" },
+  { key: "P03", domainKey: "D01", name: "年度情景测算与选案", ownerFunctionKey: "strategy_office", stdDurationDays: 20, waitKind: "WAITING_DATA", carrierTypeKey: "AnnualScenario" },
+  { key: "P04", domainKey: "D01", name: "情景触发条件维护", ownerFunctionKey: "strategy_office", stdDurationDays: 5, waitKind: "WAITING_USER", carrierTypeKey: "ScenarioTrigger" },
+  { key: "P05", domainKey: "D01", name: "产能投资立项与评审", ownerFunctionKey: "strategy_office", stdDurationDays: 45, waitKind: "WAITING_USER", carrierTypeKey: "CapexProject" },
+  // S&OP 例会是典型的节拍等待（`chain-sim.ts` 的 demand.consensus 也在测这段）——本层只标类别，不算天数。
+  { key: "P06", domainKey: "D01", name: "S&OP 产销平衡例会", ownerFunctionKey: "strategy_office", stdDurationDays: 3, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "SopVersionRow" },
+
+  // ── D02 需求与预测（forecast）· P07–P11 ────────────────────────────────
+  { key: "P07", domainKey: "D02", name: "需求细分预测编制", ownerFunctionKey: "demand_planning", stdDurationDays: 7, waitKind: "WAITING_DATA", carrierTypeKey: "DemandSegment" },
+  { key: "P08", domainKey: "D02", name: "外部信号采集与研判", ownerFunctionKey: "demand_planning", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "ExternalSignal" },
+  { key: "P09", domainKey: "D02", name: "原材料价格趋势跟踪", ownerFunctionKey: "demand_planning", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CommodityPriceTrend" },
+  { key: "P10", domainKey: "D02", name: "竞品份额监测", ownerFunctionKey: "demand_planning", stdDurationDays: 5, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CompetitorShare" },
+  { key: "P11", domainKey: "D02", name: "竞品价格监测", ownerFunctionKey: "demand_planning", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CompetitorPrice" },
+
+  // ── D03 销售与客户（sales）· P12–P19 ───────────────────────────────────
+  { key: "P12", domainKey: "D03", name: "商机漏斗跟进", ownerFunctionKey: "sales", stdDurationDays: 10, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "PipelineOpportunity" },
+  { key: "P13", domainKey: "D03", name: "询报价与投标", ownerFunctionKey: "sales", stdDurationDays: 14, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "BidRecord" },
+  { key: "P14", domainKey: "D03", name: "赢单丢单复盘", ownerFunctionKey: "sales", stdDurationDays: 5, waitKind: "WAITING_DATA", carrierTypeKey: "WinLossRecord" },
+  { key: "P15", domainKey: "D03", name: "客户准入与信用授信", ownerFunctionKey: "sales", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "Customer" },
+  { key: "P16", domainKey: "D03", name: "客户收货地点与物流条款维护", ownerFunctionKey: "sales", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "CustomerLocation" },
+  { key: "P17", domainKey: "D03", name: "销售订单评审接单", ownerFunctionKey: "sales", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "Order" },
+  { key: "P18", domainKey: "D03", name: "订单拆行与排产要素确认", ownerFunctionKey: "sales", stdDurationDays: 1, waitKind: "WAITING_USER", carrierTypeKey: "OrderLine" },
+  { key: "P19", domainKey: "D03", name: "交期承诺（ATP/CTP）", ownerFunctionKey: "sales", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "OrderPromise" },
+
+  // ── D04 产品与工程（product）· P20–P27 ─────────────────────────────────
+  { key: "P20", domainKey: "D04", name: "产品平台规划", ownerFunctionKey: "product_engineering", stdDurationDays: 60, waitKind: "WAITING_USER", carrierTypeKey: "ProductPlatform" },
+  { key: "P21", domainKey: "D04", name: "产品系列规划", ownerFunctionKey: "product_engineering", stdDurationDays: 30, waitKind: "WAITING_USER", carrierTypeKey: "ProductSeries" },
+  { key: "P22", domainKey: "D04", name: "型号立项与定义", ownerFunctionKey: "product_engineering", stdDurationDays: 45, waitKind: "WAITING_USER", carrierTypeKey: "Model" },
+  { key: "P23", domainKey: "D04", name: "产品版本发布", ownerFunctionKey: "product_engineering", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "ProductVersion" },
+  { key: "P24", domainKey: "D04", name: "BOM 编制与维护", ownerFunctionKey: "product_engineering", stdDurationDays: 10, waitKind: "WAITING_DATA", carrierTypeKey: "BOMHeader" },
+  { key: "P25", domainKey: "D04", name: "工程变更（ECN）处理", ownerFunctionKey: "product_engineering", stdDurationDays: 14, waitKind: "WAITING_USER", carrierTypeKey: "EngineeringChange" },
+  { key: "P26", domainKey: "D04", name: "工艺路线与工序设计", ownerFunctionKey: "process_engineering", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "Routing" },
+  { key: "P27", domainKey: "D04", name: "工艺能力窗口标定", ownerFunctionKey: "process_engineering", stdDurationDays: 12, waitKind: "WAITING_DATA", carrierTypeKey: "ProcessCapabilityWindow" },
+
+  // ── D05 采购与供应（material）· P28–P36 ────────────────────────────────
+  { key: "P28", domainKey: "D05", name: "供应商准入与评估", ownerFunctionKey: "procurement", stdDurationDays: 30, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Supplier" },
+  { key: "P29", domainKey: "D05", name: "长期协议谈判与签订", ownerFunctionKey: "procurement", stdDurationDays: 45, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "LongTermAgreement" },
+  { key: "P30", domainKey: "D05", name: "备份供应池维护", ownerFunctionKey: "procurement", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "BackupSupplierPool" },
+  { key: "P31", domainKey: "D05", name: "替代料评估与切换", ownerFunctionKey: "process_engineering", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "MaterialAlternative" },
+  { key: "P32", domainKey: "D05", name: "物料平衡（MRP）运行", ownerFunctionKey: "supply_chain", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaterialBalance" },
+  { key: "P33", domainKey: "D05", name: "请购与采购下单", ownerFunctionKey: "procurement", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "PurchaseOrder" },
+  { key: "P34", domainKey: "D05", name: "进口清关", ownerFunctionKey: "supply_chain", stdDurationDays: 7, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CustomsClearance" },
+  // 承载物跨域是设计（domainKey 说「谁的活」，carrierTypeKey 说「作用在什么上」）：IQC 归采购段流程，
+  // 但 IncomingInspection 这个类型属质量域 —— 与 procurement.ts 的四段责任方划分（QUALITY_IQC）一致。
+  { key: "P35", domainKey: "D05", name: "到货检验（IQC）", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "IncomingInspection" },
+  { key: "P36", domainKey: "D05", name: "物料批次入库与呆滞盘点", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 2, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaterialBatch" },
+
+  // ── D06 计划与排产（capacity）· P37–P41 ────────────────────────────────
+  // ⚓ P37 / P40 是 PRD §3.2.2 点名的编号锚点，WO-Q1 的映射表按它建 —— 不许改号。
+  { key: "P37", domainKey: "D06", name: "主生产计划（MPS）编制", ownerFunctionKey: "production_planning", stdDurationDays: 5, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ProductionSchedule" },
+  { key: "P38", domainKey: "D06", name: "产能与瓶颈复核（RCCP）", ownerFunctionKey: "production_planning", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "Line" },
+  { key: "P39", domainKey: "D06", name: "节拍闸门维护", ownerFunctionKey: "production_planning", stdDurationDays: 5, waitKind: "WAITING_USER", carrierTypeKey: "Cadence" },
+  { key: "P40", domainKey: "D06", name: "详细排产（APS）", ownerFunctionKey: "production_planning", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "ProductionSchedule" },
+  { key: "P41", domainKey: "D06", name: "跨基地调拨决策", ownerFunctionKey: "supply_chain", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "InterBaseTransfer" },
+
+  // ── D07 生产制造（process）· P42–P45 ───────────────────────────────────
+  { key: "P42", domainKey: "D07", name: "工单下达", ownerFunctionKey: "production_planning", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "WorkOrder" },
+  { key: "P43", domainKey: "D07", name: "齐套发料与投料", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "WIPLot" },
+  { key: "P44", domainKey: "D07", name: "工序流转报工", ownerFunctionKey: "manufacturing", stdDurationDays: 1, waitKind: "WAITING_USER", carrierTypeKey: "WIPMove" },
+  { key: "P45", domainKey: "D07", name: "换型切换执行", ownerFunctionKey: "manufacturing", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ChangeoverMatrix" },
+
+  // ── D08 质量管理（quality）· P46–P49 ───────────────────────────────────
+  { key: "P46", domainKey: "D08", name: "质量标准与检验特性制定", ownerFunctionKey: "quality", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "QualityStandard" },
+  { key: "P47", domainKey: "D08", name: "过程质检攒批与判定", ownerFunctionKey: "quality", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "QualityLot" },
+  { key: "P48", domainKey: "D08", name: "缺陷记录与不良分析", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "DefectRecord" },
+  { key: "P49", domainKey: "D08", name: "异常事件处置闭环", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_USER", carrierTypeKey: "ExceptionEvent" },
+
+  // ── D09 设备与维护（equip）· P50–P53 ───────────────────────────────────
+  { key: "P50", domainKey: "D09", name: "计划检修窗排定", ownerFunctionKey: "maintenance", stdDurationDays: 10, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaintPlan" },
+  { key: "P51", domainKey: "D09", name: "设备告警响应与维修派工", ownerFunctionKey: "maintenance", stdDurationDays: 1, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "MaintenanceOrder" },
+  { key: "P52", domainKey: "D09", name: "OEE 采集与损失分解", ownerFunctionKey: "maintenance", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "EquipmentOEE" },
+  { key: "P53", domainKey: "D09", name: "备件消耗与补货", ownerFunctionKey: "maintenance", stdDurationDays: 7, waitKind: "WAITING_DATA", carrierTypeKey: "SparePartConsumption" },
+
+  // ── D10 基地与仓储交付（factory）· P54–P57 ─────────────────────────────
+  { key: "P54", domainKey: "D10", name: "基地与车间产能台账维护", ownerFunctionKey: "production_planning", stdDurationDays: 10, waitKind: "WAITING_USER", carrierTypeKey: "Base" },
+  { key: "P55", domainKey: "D10", name: "产线型号认证", ownerFunctionKey: "quality", stdDurationDays: 30, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Certification" },
+  { key: "P56", domainKey: "D10", name: "成品入库与库存对账", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "FinishedGoodsInventory" },
+  { key: "P57", domainKey: "D10", name: "发运与在途跟踪", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Shipment" },
+
+  // ── D11 财务与成本（finance）· P58–P60 ─────────────────────────────────
+  { key: "P58", domainKey: "D11", name: "财务预算编制", ownerFunctionKey: "finance", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "FinancePlan" },
+  { key: "P59", domainKey: "D11", name: "开票、应收与账龄监控", ownerFunctionKey: "finance", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "ARInvoice" },
+  { key: "P60", domainKey: "D11", name: "逾期催收", ownerFunctionKey: "finance", stdDurationDays: 15, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "OverdueRecord" },
+
+  // ── D12 人员与班组（people）· P61–P62 ──────────────────────────────────
+  { key: "P61", domainKey: "D12", name: "班次计划排定", ownerFunctionKey: "hr_operations", stdDurationDays: 5, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ShiftPlan" },
+  { key: "P62", domainKey: "D12", name: "操作工技能认证与授权", ownerFunctionKey: "hr_operations", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "OperatorSkillCert" },
+
+  // ── D13 决策与改善（decision）· P63–P65 ────────────────────────────────
+  { key: "P63", domainKey: "D13", name: "经营指标越线监控", ownerFunctionKey: "decision_support", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "Metric" },
+  { key: "P64", domainKey: "D13", name: "根因归因与复盘", ownerFunctionKey: "decision_support", stdDurationDays: 3, waitKind: "WAITING_DATA", carrierTypeKey: "RootCauseChain" },
+  { key: "P65", domainKey: "D13", name: "处置方案采纳与跟踪", ownerFunctionKey: "decision_support", stdDurationDays: 7, waitKind: "WAITING_USER", carrierTypeKey: "AdoptedMitigation" },
+];
+
+/**
+ * 播 demo 的业务流程层种子（13 域 + 65 流程）。幂等：固定 id + `putMany` 覆盖。
+ *
+ * **写前先 zod parse**：种子是本层唯一的数据来源，形状错了要在播种时就炸，
+ * 而不是等到某个消费方读到一条缺字段的记录再报一个没头没尾的错
+ * （`strictObject` 同时挡住"多写一个字段"——那通常是改名改了一半）。
+ *
+ * 由 SEED_DEMO 启动路径调用（`server.ts` / `seed-cli.ts`）。**不放进基座 `seedDemo`**：
+ * 与 `seedDemoEntitlements` 同一条理由 —— 单测 `makeApp()` 需要「干净 demo」基线，
+ * 流程层是行业模板内容，不该出现在每个不相干的单测里。
+ *
+ * ⚠ 本函数**不校验 `carrierTypeKey` 在本体里存在**（那需要本体已物化，而播种顺序不该由它绑架）。
+ * 那条判据由 `test/process-layer.test.ts` 断言① 守 —— 门在测试层，不在运行时。
+ */
+export async function seedDemoProcessLayer(repos: Repos): Promise<void> {
+  const domains = DEMO_PROCESS_DOMAINS.map((d, i) =>
+    ProcessDomainSchema.parse({ ...d, id: `pdom_${DEMO_TENANT}_${d.key}`, tenantId: DEMO_TENANT, order: i }),
+  );
+  const defs = DEMO_PROCESS_DEFINITIONS.map((p) =>
+    ProcessDefinitionSchema.parse({ ...p, id: `pdef_${DEMO_TENANT}_${p.key}`, tenantId: DEMO_TENANT }),
+  );
+  await repos.processDomains.putMany(domains);
+  await repos.processDefinitions.putMany(defs);
 }

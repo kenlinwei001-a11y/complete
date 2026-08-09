@@ -8,7 +8,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoEntitlements } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoEntitlements } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +35,10 @@ async function main(): Promise<void> {
     logger.info("generated battery-manufacturing synthetic dataset (seed 42)");
     await seedDemoPropagationRules(repos);
     logger.info("seeded demo sim propagation rules (sandbox non-empty)");
+    // WO-Q0 业务流程层（与 server.ts 的启动播种路径**必须同步**——两条播种路径漂了，
+    // 就会出现「容器起得来的环境有流程层、跑过 pnpm seed 的环境没有」这种只在某些机器上复现的坑）。
+    await seedDemoProcessLayer(repos);
+    logger.info("seeded business process layer (13 domains × 65 processes)");
     await seedDemoEntitlements(repos);
     logger.info("lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
   }

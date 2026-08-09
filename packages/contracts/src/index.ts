@@ -71,3 +71,4 @@ export * from "./chain-sim.js"; // WO-SANDBOX-S0 · 推演沙盘全链契约冻�
 export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层三项（OTD 批次准时率口径定死 CUSTOMER_REQUEST · 库存地点×时间序列 · 全链经营现金流 EMPTY 取证）
 export * from "./procurement.js"; // WO-SANDBOX-D2 · 采购段凭证契约（四段按责任方可分解：供应商生产/在途/清关/到货检验 · MOQ/准时率接线 · 三态 MEASURED|NOT_APPLICABLE|EMPTY 禁假默认值 · totalDays 硬绑四段之和）
 export * from "./skill-graph.js"; // WO-SKILL-ORCHESTRATOR-S1 · Skill Graph（Reasoning Graph）契约 + 拓扑分层/环检测编译器（PRD-skill-runtime-orchestrator §3.1/§3.2/§3.4）
+export * from "./process.js"; // WO-Q0 · 业务流程层（13 域 × 65 流程）：ProcessDomain/ProcessDefinition 走数据层，与冻结的 CHAIN_NODE_REGISTRY 分层；waitKind 四值单源（REQ057 减 WAITING_APPROVAL·仓主已裁审批不做）；每条 P## 必须有承载物 carrierTypeKey

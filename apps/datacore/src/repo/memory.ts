@@ -500,6 +500,9 @@ export function createMemoryRepos(): Repos {
     storyBuildRuns: new MemStore(),
     buildWorkflowRuns: new MemStore(),
     metaAccessPolicies: new MemStore(),
+    // WO-Q0 · 业务流程层（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
+    processDomains: new MemStore(),
+    processDefinitions: new MemStore(),
     sim: new MemSimRepo(),
     async ping() {
       /* always ready */

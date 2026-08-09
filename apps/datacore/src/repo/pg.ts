@@ -801,6 +801,12 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     storyBuildRuns: new PgStore(pool, "story_build_runs"),
     buildWorkflowRuns: new PgStore(pool, "build_workflow_runs"),
     metaAccessPolicies: new PgStore(pool, "meta_access_policies"),
+    // WO-Q0 · 业务流程层（R9 三处同改之三 · migrations/029_process_definitions.sql）。
+    // 表名与 migration 里的 CREATE TABLE 逐字一致 —— 写错这里不会编译报错，只会在 pg 模式下运行时炸，
+    // 而测试默认走 memory ⇒ 单测全绿也证明不了这一行对（本仓「生产实参与测试实参交集为空」的老形态）。
+    // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
+    processDomains: new PgStore(pool, "process_domains"),
+    processDefinitions: new PgStore(pool, "process_definitions"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
