@@ -38,16 +38,108 @@ function skillWriteMode(skills: SkillDefinition[]): boolean {
   return skills.some((s) => isWriteModeSkill(s));
 }
 
-function skillRuleRefs(skills: SkillDefinition[], role: "precondition" | "postcheck"): string[] {
+/**
+ * WO-S05（欠账 #154）· **强制执行型引用槽位登记表** —— 运行时真正会执行的 (kind, role) 组合单一来源。
+ *
+ * 病根不是「配错了一个字段」，是**配错了没人吭声**：契约词表允许 8 种 kind × 4 种 role = 32 种组合
+ * （`SKILL_REFERENCE_KINDS` × `SKILL_REFERENCE_ROLES`），schema 一律放行；而 `precondition`/`postcheck`
+ * 这两个**带强制语义**的 role，运行时只对少数 kind 真的做事。出厂唯一的 precondition 声明
+ * （`capacity_action_draft` → `{kind:"solver", key:"capacity_forecast", role:"precondition"}`）
+ * 恰好落在差集里：声明在、消费方在、两者对不上 —— 被 `kind === "rule"` 一行静默滤掉，不报错不告警。
+ *
+ * 本表是**消费方自己取值用的那一份**（下面 `skillRefKeys` 按它过滤，`skill-lint` 也 import 它），
+ * 不是给 lint 抄的第二份清单 —— 抄一份就是装饰品：改了这边、lint 拿旧的去测、照样绿
+ * （CLAUDE.md 铁律 0.6「金丝雀必须与主逻辑共用同一份实现」）。
+ * 谁删掉一个消费方就得从本表删条目，lint 立刻开始报「声明了运行时不会执行的前置/后验」——
+ * **机器先说话，而不是等下一个 dev 再踩一次**。
+ *
+ * `context` / `fallback` 两个 role 不在本表：它们是**告知性**的（由 `dril/resource-projector.ts:322`
+ * 投影进资源图供检索），本就不承诺执行，不该被判为「没人消费」。
+ */
+export const ENFORCED_SKILL_REF_SLOTS: readonly { kind: string; role: "precondition" | "postcheck" }[] = [
+  // engine 预检：BLOCK 即拦下，不调 LLM（见 runRegisteredAgent「Skill 规则引用预检」）
+  { kind: "rule", role: "precondition" },
+  // engine 后验：BLOCK 即把答案替换为 rule_violation
+  { kind: "rule", role: "postcheck" },
+  // WO-S05 新增：跑该技能前必须先成功调用该求解器（见 unmetSolverPreconditions / loadSkill 门）
+  { kind: "solver", role: "precondition" },
+];
+
+/** 某 (kind, role) 组合运行时是否真的会被执行（lint 与 engine 共用同一判据）。 */
+export function isEnforcedSkillRefSlot(kind: string, role: string): boolean {
+  return ENFORCED_SKILL_REF_SLOTS.some((s) => s.kind === kind && s.role === role);
+}
+
+/**
+ * 按 (kind, role) 抽取 skill 引用的 key 集合。
+ *
+ * 原 `skillRuleRefs` 把 `kind === "rule"` 硬编码在判据里，于是 `kind==="solver"` 的 precondition
+ * 连「被看见」的机会都没有（#154）。这里把 kind 提成形参：rule 路径逐字节沿用既有语义，
+ * solver 路径走下面 `unmetSolverPreconditions` 的另一套判据。
+ */
+function skillRefKeys(skills: SkillDefinition[], kind: string, role: "precondition" | "postcheck"): string[] {
   const keys: string[] = [];
   for (const s of skills) {
     for (const r of s.references ?? []) {
-      if (r.kind === "rule" && r.role === role && (r.required === undefined || r.required)) {
+      if (r.kind === kind && r.role === role && (r.required === undefined || r.required)) {
         keys.push(r.key);
       }
     }
   }
   return [...new Set(keys)];
+}
+
+function skillRuleRefs(skills: SkillDefinition[], role: "precondition" | "postcheck"): string[] {
+  return skillRefKeys(skills, "rule", role);
+}
+
+/**
+ * WO-S05 · solver 类 precondition 的判据 —— 与 rule 类**不是同一种问题**，不能混进 `rules.evaluate`：
+ * rule 问的是「当前是否违规」（规则引擎答），solver 问的是「这个求解器**跑过没有**」（本任务工具调用史答）。
+ * 把 solver key 当规则 id 送进规则引擎，只会查无此规则并 fail-open —— 那是把一次静默丢弃换成另一次。
+ *
+ * 判「跑过」= 本任务里存在一条 `invoke_solver` 且 `outcome==="OK"` 且 `input.solverKey` 命中。
+ * （MCP 形态 `mcp__solvers__{key}` 已在 `tools/executor.ts:164-168` 归一成同样的 toolName/input，故一并覆盖。）
+ *
+ * @returns 尚未满足的 solver key（空数组 = 全部满足）
+ */
+async function unmetSolverPreconditions(
+  repos: Repos,
+  taskId: string,
+  solverKeys: string[],
+): Promise<string[]> {
+  if (solverKeys.length === 0) return [];
+  const calls = await repos.toolCalls.listByTask(taskId);
+  const succeeded = new Set<string>();
+  for (const c of calls) {
+    if (c.toolName !== "invoke_solver" || c.outcome !== "OK") continue;
+    const key = (c.input as Record<string, unknown> | undefined)?.solverKey;
+    if (typeof key === "string") succeeded.add(key);
+  }
+  return solverKeys.filter((k) => !succeeded.has(k));
+}
+
+/**
+ * WO-S05 · precondition 未满足时**替代技能正文**下发的门禁说明。
+ *
+ * 为何不直接返回 undefined：loop 侧会把它渲染成 `skill not found`（`agent/loop.ts:579`）——
+ * 那是**假信息**，模型会以为技能不存在而放弃，而不是「先去跑推演」。本文案照该技能 body 自己写的
+ * 失败处理（「无结论则先跑推演」）给出可执行的下一步。
+ */
+function unmetPreconditionBody(skillKey: string, missingSolverKeys: string[]): string {
+  const list = missingSolverKeys.map((k) => `\`${k}\``).join("、");
+  return [
+    `## 技能「${skillKey}」的前置条件尚未满足（平台门禁）`,
+    "",
+    `本技能声明了 precondition：必须**先成功调用**求解器 ${list}，拿到推演结论后才能使用。`,
+    "本任务的工具调用记录里还没有这些求解器的成功调用，因此技能正文暂不下发。",
+    "",
+    "## 下一步",
+    `1. 先调 \`invoke_solver\`（${list}）并拿到结果；`,
+    "2. 再次 `load_skill` 加载本技能，届时会下发正文。",
+    "",
+    "不要在缺推演结论的情况下臆造数字或直接拟稿。",
+  ].join("\n");
 }
 
 function ruleViolationAnswer(verdicts: RuleVerdict[]): Answer {
@@ -372,6 +464,18 @@ export class ExecutionEngine {
         const skill = await this.resolveSkill(agent.tenantId, skillId, pinned);
         if (!skill) return undefined;
         opts.onResolvedRef?.({ kind: "skill", key: skill.key, version: skill.version });
+        // WO-S05（#154）· solver 类 precondition 在**使用点**求值，而不是 runRegisteredAgent 开跑时。
+        // 为何不放在上面那条预检里：开跑那一刻求解器**必然还没跑**（agent 要在 loop 里先调 invoke_solver
+        // 才拿得到推演结论），开跑即拦 = 该技能永远用不了。本技能 body 写的正是「无结论则先跑推演」——
+        // 前置条件是在 loop 内由 unmet 翻成 met 的，所以门必须落在「模型来取正文」这一刻。
+        const missingSolvers = await unmetSolverPreconditions(
+          this.deps.repos,
+          opts.taskId,
+          skillRefKeys([skill], "solver", "precondition"),
+        );
+        if (missingSolvers.length > 0) {
+          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [] };
+        }
         return {
           // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）
           // 告诉模型有哪些附件、何时用 read_skill_resource 读（渐进披露第三级）。
