@@ -14,6 +14,9 @@ import {
   ModelBindingSchema,
   SceneEntryConfigSchema,
   ScenarioSchema,
+  SkillExecutionSchema,
+  SkillGraphSchema,
+  PlanStepSchema,
   ScaffoldManifestSchema,
   DecisionTraceSchema,
   EvalCaseSchema,
@@ -42,6 +45,7 @@ import {
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
+import { GraphScheduler, SkillGraphCompileError } from "./skill-orchestrator.js";
 import { stdioPolicyFromConfig } from "./config.js";
 import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
@@ -1306,6 +1310,49 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       target = { summary: body.summary ?? "", body: body.body ?? "", resources: body.resources ?? [] };
     }
     return lintSkill(target);
+  });
+
+  // ---- WO-SKILL-ORCHESTRATOR-S1 · Skill Graph 编排（PRD-skill-runtime-orchestrator §3.4）----
+  const SkillGraphRunBody = z.object({
+    /** 新路（推荐）：`Skill.execution`（`steps` 线性 / `graph` 图，审核方对名裁决）。 */
+    execution: SkillExecutionSchema.optional(),
+    /** `execution.graph` 的简写。 */
+    graph: SkillGraphSchema.optional(),
+    /** 旧路：legacy `ExecutionPlan.steps[]` —— 走它会在响应 `source` 里如实标出，不静默。 */
+    planSteps: z.array(PlanStepSchema).optional(),
+    slots: z.record(z.string(), z.unknown()).optional(),
+    context: z.unknown().optional(),
+  });
+  // 图调度**旁挂**于既有线性 `workflow/executor.ts`，不改后者。编译期拒环/拒未实现节点，
+  // 运行期按层并发、数据只沿边流动（作用域 = 祖先输出）。
+  app.post("/b/v1/skill-graphs/run", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    // 三路执行来源（审核方 2026-08-09 对名裁决）：`execution.graph` / `execution.steps` / legacy `plan.steps`。
+    // 判别与「走了哪一路」的上报由 contracts `compileExecution` 单点负责——服务端不自己再判一次。
+    // `graph` 是 `execution.graph` 的便捷简写（老调用形态，向后兼容）。
+    const body = SkillGraphRunBody.parse(req.body ?? {});
+    const execution = body.execution ?? (body.graph ? { graph: body.graph } : undefined);
+    const scheduler = new GraphScheduler({ repos: deps.repos, dataCore: deps.dataCore });
+    try {
+      // R2 tenant_id everywhere：节点内所有仓储读取经 a.tenantId 过滤。
+      return await scheduler.run(
+        a,
+        { ...(execution ? { execution } : {}), ...(body.planSteps ? { legacyPlanSteps: body.planSteps } : {}) },
+        {
+          runId: newId("sgr"),
+          ...(body.slots ? { slots: body.slots } : {}),
+          ...(body.context !== undefined ? { context: body.context } : {}),
+        },
+      );
+    } catch (e) {
+      if (e instanceof SkillGraphCompileError) {
+        // 环 / 未实现节点 / 三路皆空 → 422 + 可读原因
+        //（错误信封由 setErrorHandler 统一成 {error:{code,message,requestId}}）
+        throw new HttpError(422, e.code, e.message);
+      }
+      throw e;
+    }
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----

@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   ancestorsOf,
+  compileExecution,
   compileGraph,
   DEFAULT_MAX_PARALLEL,
   determinismOf,
   IMPLEMENTED_NODE_KINDS,
   NODE_KIND_TO_PLAN_STEP_TYPE,
+  PLAN_STEP_TYPE_TO_NODE_KIND,
   PlanStepSchema,
   SKILL_GRAPH_NODE_KINDS,
   SkillGraphSchema,
+  type PlanStep,
   type SkillGraph,
 } from "../src/index.js";
 
@@ -230,5 +233,98 @@ describe("compileGraph · 诚实边界（NOT_IMPLEMENTED 不静默跳过）", ()
     const lying = compileGraph(g({ nodes: [{ id: "a", kind: "solver", determinism: "LLM" }] }));
     expect(lying.ok).toBe(false);
     if (!lying.ok) expect(lying.code).toBe("GRAPH_INVALID");
+  });
+});
+
+/**
+ * 审核方 2026-08-09 对名裁决：字段名 `Skill.execution.steps`，元素复用既有 `PlanStep` 判别联合。
+ * 判据 #1：两路并存期间**必须能判别当前走的是哪一路**并在返回里标出来
+ *          ——「回落 legacy」一旦静默，这个特性就等于没做而测试照绿。
+ */
+describe("compileExecution · 执行来源判别（不许静默回落 legacy）", () => {
+  const SOLVER_STEP = (id: string): PlanStep =>
+    ({ id, type: "invoke_solver", params: { solverKey: "capacity_forecast", args: {} } }) as PlanStep;
+
+  it("PLAN_STEP_TYPE_TO_NODE_KIND 是正向表的真反向（不手抄第二份）", () => {
+    // 金丝雀：已知必存在的一条
+    expect(PLAN_STEP_TYPE_TO_NODE_KIND.invoke_solver).toBe("solver");
+    for (const [kind, type] of Object.entries(NODE_KIND_TO_PLAN_STEP_TYPE)) {
+      if (type === null) continue;
+      expect(PLAN_STEP_TYPE_TO_NODE_KIND[type]).toBe(kind);
+    }
+  });
+
+  it("execution.graph 存在 → source=execution.graph", () => {
+    const r = compileExecution({
+      execution: { graph: SkillGraphSchema.parse({ nodes: [{ id: "a", kind: "solver" }] }) },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.source).toBe("execution.graph");
+  });
+
+  it("只有 execution.steps → source=execution.steps，且编成**全 seq 链**（不做隐式并行推断）", () => {
+    const r = compileExecution({ execution: { steps: [SOLVER_STEP("s1"), SOLVER_STEP("s2"), SOLVER_STEP("s3")] } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.source).toBe("execution.steps");
+    // 链式退化：三层，每层一个 —— 而不是"看着独立就并行"
+    expect(r.layers).toEqual([
+      { index: 0, nodeIds: ["s1"] },
+      { index: 1, nodeIds: ["s2"] },
+      { index: 2, nodeIds: ["s3"] },
+    ]);
+    expect(r.graph.edges).toEqual([
+      { from: "s1", to: "s2", kind: "seq" },
+      { from: "s2", to: "s3", kind: "seq" },
+    ]);
+  });
+
+  it("★ 回落 legacy 必须**显式可见**：只有 legacy plan.steps → source=legacy.plan.steps", () => {
+    const r = compileExecution({ legacyPlanSteps: [SOLVER_STEP("p1"), SOLVER_STEP("p2")] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // 这一条就是判据 #1：走了旧路，调用方一眼看得出来。
+    expect(r.source).toBe("legacy.plan.steps");
+  });
+
+  it("优先级：graph > execution.steps > legacy —— 且被压住的那两路不会被误报", () => {
+    const graph = SkillGraphSchema.parse({ nodes: [{ id: "g", kind: "solver" }] });
+    const all = compileExecution({
+      execution: { graph, steps: [SOLVER_STEP("s1")] },
+      legacyPlanSteps: [SOLVER_STEP("p1")],
+    });
+    expect(all.ok && all.source).toBe("execution.graph");
+
+    const noGraph = compileExecution({
+      execution: { steps: [SOLVER_STEP("s1")] },
+      legacyPlanSteps: [SOLVER_STEP("p1")],
+    });
+    expect(noGraph.ok && noGraph.source).toBe("execution.steps");
+  });
+
+  it("★ 三路皆空 → 显式报错，**不是**空跑（静默 = 功能等于没做而测试照绿）", () => {
+    const r = compileExecution({});
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.code).toBe("GRAPH_INVALID");
+    expect(r.message).toContain("三路皆空");
+
+    const emptyExec = compileExecution({ execution: {} });
+    expect(emptyExec.ok).toBe(false);
+  });
+
+  it("legacy 步里出现图词表覆盖不到的 PlanStep.type → NOT_IMPLEMENTED，不静默丢步", () => {
+    const r = compileExecution({
+      legacyPlanSteps: [
+        { id: "q", type: "query_objects", params: { objectType: "Order", filter: {} } } as PlanStep,
+      ],
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.code).toBe("NOT_IMPLEMENTED");
+    expect(r.message).toContain("query_objects");
+    // 出错也要说清是哪一路出的错
+    expect(r.source).toBe("legacy.plan.steps");
   });
 });

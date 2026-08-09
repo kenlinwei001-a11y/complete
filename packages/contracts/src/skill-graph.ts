@@ -24,7 +24,7 @@
  *     已登记本体 §8 `G-SKILL-GRAPH-NO-RENDER-CLOSURE`。
  */
 import { z } from "zod";
-import { OnErrorSchema, TemplateValueSchema } from "./qos.js";
+import { OnErrorSchema, PlanStepSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
 
 // ---------------------------------------------------------------------------
 // §3.1 结构
@@ -235,7 +235,7 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
   }
   const seenEdge = new Set<string>();
   for (const e of graph.edges) {
-    const k = `${e.from} ${e.to}`;
+    const k = `${e.from}\u0000${e.to}`;
     if (seenEdge.has(k)) continue; // seq + parallel 平行重边 → 语义上同一条依赖，去重后不影响拓扑
     seenEdge.add(k);
     succ.get(e.from)!.push(e.to);
@@ -310,6 +310,158 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
   }
 
   return { ok: true, entry, layers, predecessors };
+}
+
+// ---------------------------------------------------------------------------
+// Skill.execution · 三条线共用字段（审核方对名裁决 2026-08-09）
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠⚠ **三条 PRD 线共用的字段名，改名会同时断三条链——改之前先看这段。** ⚠⚠
+ *
+ * 事故背景（审核方裁决原文）：同一个字段一度有三个名字——
+ *   · `docs/PRD-skill-migration.md:165`          → `execution.plan[]`
+ *   · `docs/PRD-skill-compiler-registry.md:176`  → `skill.execution.steps`
+ *   · `docs/PRD-skill-runtime-orchestrator.md:41`→ `compileGraph(Skill.execution ⊕ legacy plan.steps)`
+ * 三条线各按各的名字落地 ⇒ 互相读到 `undefined` ⇒ **静默回落 legacy** ⇒ 功能等于没做，而四包全绿。
+ * 同族 `G-SIDEEFFECT-VOCAB-SPLIT`。
+ *
+ * **裁决：字段名 `Skill.execution.steps`，元素类型复用既有 `PlanStep` 判别联合，不新造。**
+ *
+ * 改名会断的链：
+ *   ① 迁移线（PRD-skill-migration）：存量 Skill → `execution.steps` 的搬运写不进来；
+ *   ② 编译器线（PRD-skill-compiler-registry）：`.skill` 包编译产物落不到这个字段；
+ *   ③ 运行时线（本文件 · PRD-skill-runtime-orchestrator）：`compileExecution` 读不到执行来源，
+ *      静默回落 legacy —— 正是这条裁决要堵的那个洞。
+ *
+ * ── 本 dev 对裁决的技术异议（照裁决先落，但不沉默）────────────────────────────
+ * `steps: PlanStep[]` 是**线性**形态：`PlanStep` 判别联合里**没有边、没有并行、没有 skill 节点 kind**，
+ * 它按构造就表达不了图。所以 `execution.steps` 单独存在时，**并行调度这个增量永远不会发生**——
+ * 而这恰恰是裁决想避免的「功能等于没做还全绿」，只是换了个位置发作。
+ * 故本文件让 `execution` 同时容纳两种形态（与 PRD-skill-runtime-orchestrator §3.2 一致）：
+ *   · `steps` → 线性（裁决指定名，元素就是 `PlanStep`，逐字节复用）
+ *   · `graph` → 图（本线的增量；PRD §3.2「source = Skill.execution.graph → 直接用」）
+ * 并由 `compileExecution` **显式判别当前走的是哪一路并在返回里标出 `source`**，
+ * 任何一路都不许静默：没有任何来源 = 显式报错，不是空跑。
+ *
+ * ── 落点边界 ──────────────────────────────────────────────────────────────
+ * 本 WO 的文件边界不含 `packages/contracts/src/agentcore.ts`，故**未**把 `execution` 挂进
+ * `SkillDefinitionSchema`。挂载归 Skill 契约线；本文件先把形状与判别语义定死，三条线共用。
+ */
+export const SkillExecutionSchema = z
+  .object({
+    /** 裁决指定名 · 线性形态 · 元素**就是** `PlanStep`（复用既有判别联合，不新造）。 */
+    steps: z.array(PlanStepSchema).min(1).max(MAX_GRAPH_NODES).optional(),
+    /** 图形态（本线增量）· PRD §3.2「source = Skill.execution.graph → 直接用」。 */
+    graph: SkillGraphSchema.optional(),
+    /** PRD §3.3-1：DETERMINISTIC 图内不得出现 LLM 节点（agent/compose）。 */
+    mode: z.enum(["DETERMINISTIC", "AGENTIC"]).optional(),
+  })
+  .strict();
+export type SkillExecution = z.infer<typeof SkillExecutionSchema>;
+
+/**
+ * 执行来源。**必须在返回里标出来**——「回落 legacy」一旦是静默的，
+ * 这个特性就等于没做而测试照绿（审核方裁决判据 #1）。
+ */
+export const EXECUTION_SOURCES = ["execution.graph", "execution.steps", "legacy.plan.steps"] as const;
+export type ExecutionSource = (typeof EXECUTION_SOURCES)[number];
+
+/** `PlanStep.type` → 节点 kind 的**反向映射**，从正向表派生（不手抄第二份）。 */
+export const PLAN_STEP_TYPE_TO_NODE_KIND: Readonly<Record<string, SkillGraphNodeKind>> =
+  Object.freeze(
+    Object.fromEntries(
+      (Object.entries(NODE_KIND_TO_PLAN_STEP_TYPE) as [SkillGraphNodeKind, string | null][])
+        .filter((e): e is [SkillGraphNodeKind, string] => e[1] !== null)
+        .map(([kind, type]) => [type, kind]),
+    ),
+  );
+
+/**
+ * 线性 `PlanStep[]` → **链式退化图**（PRD §3.2）。
+ *
+ * 保守：一律编成全 seq 链，**不做隐式并行推断**（今天的 steps 不带依赖信息，任何自动分组都是猜；
+ * 「更快但偶尔错」是本仓最贵的错法）。想并行必须显式写 `execution.graph` 的 parallel 边。
+ */
+export function chainGraphFromPlanSteps(
+  steps: PlanStep[],
+): { ok: true; graph: SkillGraph } | { ok: false; code: SkillGraphCompileErrorCode; message: string } {
+  const nodes: SkillGraphNode[] = [];
+  for (const s of steps) {
+    const kind = PLAN_STEP_TYPE_TO_NODE_KIND[s.type];
+    if (!kind) {
+      return {
+        ok: false,
+        code: "NOT_IMPLEMENTED",
+        message: `PlanStep.type=${s.type}（步骤「${s.id}」）在图节点词表里没有对应 kind —— 诚实拒绝，不静默丢步`,
+      };
+    }
+    nodes.push({
+      id: s.id,
+      kind,
+      params: ("params" in s ? (s.params as Record<string, unknown>) : {}) as SkillGraphNode["params"],
+      ...("onError" in s && s.onError ? { onError: s.onError } : {}),
+      ...("timeoutMs" in s && typeof s.timeoutMs === "number" ? { timeoutMs: s.timeoutMs } : {}),
+    });
+  }
+  const edges: SkillGraphEdge[] = [];
+  for (let i = 1; i < nodes.length; i++) {
+    edges.push({ from: nodes[i - 1]!.id, to: nodes[i]!.id, kind: "seq" });
+  }
+  return { ok: true, graph: { nodes, edges, maxParallelNodes: DEFAULT_MAX_PARALLEL } };
+}
+
+export type CompileExecutionResult =
+  | {
+      ok: true;
+      /** 走的哪一路（裁决判据 #1：不许静默）。 */
+      source: ExecutionSource;
+      graph: SkillGraph;
+      entry: string[];
+      layers: SkillGraphLayer[];
+      predecessors: Record<string, string[]>;
+    }
+  | { ok: false; code: SkillGraphCompileErrorCode; message: string; cycle?: string[]; source?: ExecutionSource };
+
+/**
+ * 唯一升格入口（PRD §0.2「`compileGraph(plan.steps)` 为唯一升格入口」）。
+ *
+ * 判别序：`execution.graph` → `execution.steps` → `legacy plan.steps`。
+ * **三路都没有 = 显式报错**，绝不"什么都没有就当空图跑通"——静默回落正是本裁决要堵的洞。
+ */
+export function compileExecution(input: {
+  execution?: SkillExecution | undefined;
+  legacyPlanSteps?: PlanStep[] | undefined;
+}): CompileExecutionResult {
+  let source: ExecutionSource;
+  let graph: SkillGraph;
+
+  if (input.execution?.graph) {
+    source = "execution.graph";
+    graph = input.execution.graph;
+  } else if (input.execution?.steps && input.execution.steps.length > 0) {
+    source = "execution.steps";
+    const chained = chainGraphFromPlanSteps(input.execution.steps);
+    if (!chained.ok) return { ...chained, source };
+    graph = chained.graph;
+  } else if (input.legacyPlanSteps && input.legacyPlanSteps.length > 0) {
+    source = "legacy.plan.steps";
+    const chained = chainGraphFromPlanSteps(input.legacyPlanSteps);
+    if (!chained.ok) return { ...chained, source };
+    graph = chained.graph;
+  } else {
+    return {
+      ok: false,
+      code: "GRAPH_INVALID",
+      message:
+        "没有任何执行来源：execution.graph / execution.steps / legacy plan.steps 三路皆空 —— " +
+        "拒绝空跑（静默回落 = 功能等于没做而测试照绿，审核方 2026-08-09 对名裁决判据 #1）",
+    };
+  }
+
+  const compiled = compileGraph(graph);
+  if (!compiled.ok) return { ...compiled, source };
+  return { ok: true, source, graph, entry: compiled.entry, layers: compiled.layers, predecessors: compiled.predecessors };
 }
 
 /**
