@@ -76,7 +76,7 @@ export const SIM_CONSUMER_KEYS = {
  * 只剩 `sim.checkpoint_saved` 仍是缺口，且它的成因与那三条**不同类**：
  * 不是"前端没接"，是**后端根本没有可读的列表路由**（详见下方理由）。
  */
-export const SIM_EVENT_GAPS: Record<string, string> = {
+export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow —— 缺口台账（散文），非业务数据：值是「今天为什么不接线」的说明文字，探测器 B 数到的数字全部来自其中的 file:line 引用。
   "sim.checkpoint_saved":
     "缺的是**后端读端**不是前端订阅（2026-08-09 复核）：datacore 只有 POST /a/v1/sim/sessions/:id/checkpoint" +
     "（app.ts:1488），**没有任何列出检查点的路由**。仓储层三处都写好了（接口 repo/repo.ts:352 · " +
