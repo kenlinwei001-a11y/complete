@@ -754,7 +754,7 @@ export interface ImpedimentHandoff {
 }
 
 /** 病因文案（单一出处；视图与门都读这里，两处各写一遍必漂）。 */
-export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = {
+export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = { // hardcoded-data-allow：病因文案非业务数据，正文里的数字是日期与 file:line 引用
   JOINED: "引擎载荷已带因果因子维，本次按因子精确跳转。",
   NO_FACTOR_DIMENSION:
     "本次未能把这个阻滞点对到具体因子。原因：阻滞点锚在真对象 locus{objectType,objectId} 上，" +
