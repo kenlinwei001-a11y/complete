@@ -1124,7 +1124,13 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
 4. **每完成一个可命名单元立刻 commit + push**（铁律 1 判据 #5 · 已丢过一次工作）。
    「gate 跑着」不是「工作已落盘」。
 5. **dev 不许跑 `bash scripts/gate.sh` 或 `pnpm -r test`** —— datacore 勿并发多 vitest（4 核机）。
-6. **派 dev 必须 `isolation: "worktree"`** —— 不隔离会污染我正在跑的 gate。
+6. **派任何 agent 必须 `isolation: "worktree"` —— 包括只读复验 agent**（2026-08-09 扩充，我自己栽的）。
+   CLAUDE.md 原条文写的是「派 dev 必须隔离，否则污染 gate」。本次我派四路**只读**复验 agent 时
+   想当然地认为「只读不用隔离」，没传该参数 —— 结果它们在主工作目录里写产物文件，
+   我一个 `git add -A` 把两份**还在写的半成品**扫进了提交（`CHECK-DSL-CMP.md` 提交时 915 行、
+   随后长到 943 行）。
+   **判据：「只读 agent」指的是它不改生产代码，不是它不写文件。** 复验 agent 一样要出报告、
+   一样落磁盘、一样会被 `git add -A` 卷走。**同一个根因，两种后果**（gate 污染 / 提交污染）。
 
 ### 6.2 三条主动脉的 WO（**按依赖排序，不许并**）
 
