@@ -19,11 +19,13 @@
 仓主 2026-08-09 定性：「项目推演、全局推演、产能推演都是**局部推演**，决策沙盘推演是**全局推演**」。
 这条**必须写在最前面**，因为它决定了本次升级是「再造一个推演」还是「造一个能指挥它们的层」。
 
-**先说清一件反讽的事**：叫「全局推演」的那个（`global-sim`），按这条判据其实是**局部**的。
+**先说清一件反讽的事**：叫「全局推演」的那个（`global-sim`），按这条定性其实是**局部**的。
 它的目标枚举 `GlobalSimObjectiveSchema`（`packages/contracts/src/global-sim.ts:86`）只有五个：
-`max_ontime` / `min_delay` / `min_changeover` / `min_cost` / `min_fg_inventory` ——
-**全部落在「订单 → 排产」这一层**。它确实覆盖整个订单簿（跨实例是全的），但它**不跨域**：
-碰不到组织、碰不到批复、碰不到上游供应、更不改变企业状态。
+`max_ontime` / `min_delay` / `min_changeover` / `min_cost` / `min_fg_inventory`，
+**全部落在「订单 → 排产」这一层**；分析单元是 `orderId`（8 处，见下）。
+
+> ⚠️ 我在本节 v1 稿里由此推出「它**不跨域**」—— **那句是错的，已撤销**，理由见下方「已撤销的两条判错」。
+> 它实测**跨 6 个业务域**。它局部**不是因为域少，而是因为世界边界钉死在 6 类对象上**。
 
 #### 更精确的定性（仓主 2026-08-09 二次补充）：现有「全局推演」是**项目级别的全局推演**
 
@@ -173,7 +175,7 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 
 **关闭或影响的断点**（§8）
 - 直接关闭：`G-SIM-SCOPE-UNREAD`（欠账 #130，`SimSession.scope` 有写端无读端 → 本 PRD 的 Slice Expansion 就是它的读端）· `G-ACTION-NOOP-EXEC` 最后 1 条（欠账 #71/#81，「采纳经营方案」缺语义正确的已接线动作类型 → 本 PRD 的 `Decision → Action` 给它落点）
-- 新增登记：`G-TWIN-STATE-NO-CARRIER`（企业级状态无常驻承载体）· `G-APPROVAL-STATIC-CHAIN`（批复链写死而非规则+权限动态生成）· `G-SLICE-NOT-AN-ENTITY`（切片是计划不是实体）
+- 新增登记：`G-TWIN-STATE-NO-CARRIER`（企业级状态无常驻承载体）· `G-APPROVAL-STATIC-CHAIN`（批复链写死而非规则+权限动态生成）· ~~`G-SLICE-NOT-AN-ENTITY`~~（**已撤销**：切片实测已是完整一等实体，见 §2.3；真缺口改记为 `G-SLICE-NO-INTENT-PRUNING` 切片展开无决策意图语义裁剪）
 - 必须避免复发：`G-EVENT-GATE-MEASURES-SUBS-NOT-EMITS`（新事件既要 emit 也要有订阅方，且门要能同时量到两端）
 
 ---
