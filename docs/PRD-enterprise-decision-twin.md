@@ -6,6 +6,89 @@
 
 ---
 
+## 0.01 ⭐ North Star（仓主 2026-08-09 定的目标 —— 一切设计以此为准）
+
+> **让决策者一眼就了解全流程端到端的卡点、堵点、断点、韧性不足、消耗大的部分，
+> 包括流程、时长、决策复杂度等等，输入变量，推演决策的可行性。**
+
+这句话把沙盘要回答的问题收敛成 **9 个维度**。逐条对到平台已有的单一来源上
+（金丝雀 `CHAIN_NODE_REGISTRY` 本轮 5 命中，工具正常）：
+
+| # | 目标里的词 | 平台已有的单一来源 | 状态 |
+|---|---|---|---|
+| 1 | **卡点** | `BOTTLENECK` ——「能力**不够**（利用率达红线 且 是全链最小通过率环节）→ **加产能有用**」 | ✅ 定义完全吻合 |
+| 2 | **堵点** | `CONGESTION` ——「能力够但**流不动**（排队/WIP 高、实际产出低，利用率**未**达红线）→ **加产能没用**」 | ✅ |
+| 3 | **断点** | `BREAK` ——「链条**接不上**」+ 三亚型 `MATERIAL` / `LEADTIME` / `DATA` | ✅ |
+| 4 | **流程** | `CHAIN_NODE_REGISTRY` 24 节点 × 5 阶段（`chain-sim.ts:183`） | ✅ |
+| 5 | **时长** | `CHAIN_STEP_KINDS` 五段 `queue/cadence/work/rework/handoff`（`chain-sim.ts:318`） | ✅ |
+| 6 | **消耗大的部分** | `isValueAddKind`（`chain-sim.ts:328`）——**五段中唯一增值的是 `work`**，其余四段全是消耗。契约里明写「各处禁止再写 `kind === "work"`，一律走 `isValueAddKind`」 | ✅ **判据现成且是单源** |
+| 7 | **输入变量** | `VAR_CLASSES` T/K/B/C/P/R/S + `VAR_CLASS_META.mechanism` + `LEVER_PROP_META`（带 unit/kind） | ✅ |
+| 8 | **推演决策的可行性** | `capacity_feasibility` + `feasible` 判定 30 处 + `optimize_whatif.conflictConstraints`（不可行时给冲突约束） | ✅ |
+| 9a | **韧性不足** | ❌ **零承载** | ➕ 见下 |
+| 9b | **决策复杂度** | ❌ **零承载** | ➕ 见下 |
+
+**⇒ 9 个维度里 7 个已有单一来源，沙盘的活是「把它们摆到一屏上」，不是重算。**
+（这正是「不要重复造轮子」的具体所指。）
+
+### 0.01.1 两个零承载维度 —— 必须先给可计算定义，否则必被糊弄过去
+
+我按铁律 0.5 追了一层，确认这两个词今天**在平台里没有任何承载体**，
+而不是「有但没接线」——两者修法完全不同：
+
+- **韧性**：全仓 18 处命中，**没有一处是业务韧性** ——
+  `WO-MEMORY-VIEW-RESILIENCE` 是前端双 baseURL 解析容错（`env.ts:1`）；
+  `agent/loop.ts:854` 的「Manus 级韧性」是 LLM 结构化收尾轮。**属未实现。**
+- **决策复杂度**：全仓 11 处命中，**全是** `dril/search-engine.ts:255-260` 的
+  `complexity: HIGH|MEDIUM|LOW` —— 那是**求解器运行成本权重**，不是决策复杂度。**属未实现。**
+
+**关键结论：这两个维度虽然「未实现」，但都不需要新数据源 —— 全是既有数据的派生投影。**
+下面给出可计算定义，**不许再用形容词**：
+
+#### 韧性不足 `resilienceGap`（逐节点，0–1，越高越脆）
+
+四个分量全部来自既有数据，零新采集：
+
+| 分量 | 从哪算 | 已有来源 |
+|---|---|---|
+| **备选度** `alternatives` | 该节点被扰动后有几个可行替代（跨基地 / 外协 / 替代料 / 加班） | `mitigation_select` · `outsourcing_split` · `MaterialAlternative` |
+| **单点依赖** `singleSource` | 该节点是否依赖单一来源（供应商=1 / 产线=1 / 认证基地=1） | `Supplier`(15) · `material_supplied_by` N:N · 认证产线判定 |
+| **缓冲量** `buffer` | 该环节 `queue` 段时长与在制/成品库存 | `CHAIN_STEP_KINDS.queue` · `FinishedGoodsInventory`(57) · `WIPLot`(260) |
+| **恢复时间** `recoveryTicks` | 注入标准扰动后，状态变量回到基线所需 tick 数 | **`propagateTick` 实测**，不是估算 |
+
+`resilienceGap = w1·(1−归一(alternatives)) + w2·singleSource + w3·(1−归一(buffer)) + w4·归一(recoveryTicks)`
+**权重进规则表**（R14 零业务常数），不写进代码。
+
+#### 决策复杂度 `decisionComplexity`（逐节点，0–1，越高越难决）
+
+五个分量同样全部来自既有数据：
+
+| 分量 | 从哪算 | 已有来源 |
+|---|---|---|
+| **视野广度** | 这个决策要看几个对象 = 切片大小 | `OntologySlice.objects` 数（`executeSlice`） |
+| **跨职能数** | 涉及几个部门 | `ProcessNodeSpec.ownerFunctionKey`（**D4 要补的那一列**） |
+| **约束密度** | 命中几条规则/约束 | `SolverContext.rules` 命中数 + `ruleSetVersion` |
+| **候选数** | 有几个可选方案 | `DecisionOption` 数（六维已算分） |
+| **耦合度** | 该节点在传导图上的入度 + 出度 | `PropagationRule` 图（⚠️ **今天只有 3 条边**，见 §2.2） |
+
+**⚠️ 诚实边界**：耦合度这一项今天**算不准** —— 传导边只有 3 条 demo 种子。
+所以决策复杂度上线时必须**标注该分量的证据强度**，不许拿一个 3 条边算出来的数冒充全图耦合度。
+这条同时说明：**补传导边（数据）比做复杂度公式（引擎）更优先。**
+
+### 0.01.2 由 North Star 反推的验收（替代原先零散的 UI 验收）
+
+**一屏之内，决策者必须能同时看到**：
+① 24 节点上的卡/堵/断三色标记（真来自 `chain_impediments`，非前端写死）；
+② 每节点五段时长与**非增值占比**（`isValueAddKind` 单源判定）；
+③ 韧性最弱的 N 个节点 + 弱在哪个分量；
+④ 决策最复杂的 N 个节点 + 难在哪个分量；
+⑤ 每节点可拨的输入变量（带单位）；
+⑥ 拨完之后**这个决策可不可行**，不可行时给出冲突约束。
+
+**反证判据**：把 `chain_impediments` 端点打成 500 —— ①③④ 必须变成诚实空 + reason，
+**仍显示三色标记 = 那些颜色是写死的 = 红**（§0.06 裁定二）。
+
+---
+
 ## 0. 一句话判断（本 PRD 的立足点）
 
 **孪生对象不是 Workflow，而是 `Enterprise State + Process + Organization + Ontology + Decision + Action + Time`。**
