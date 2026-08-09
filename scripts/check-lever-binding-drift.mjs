@@ -125,6 +125,63 @@ if (canaryErrs.length) {
   process.exit(1);
 }
 
+/* ---------------------------------------------------------------------------
+ * 🔴 金丝雀 ②「dist 是否过期」——2026-08-09 建，来历见下（铁律 0.6 第 2 级：必须当场建机制）
+ *
+ * 本门读的是 `packages/contracts/dist/capacity-factors.js`（构建产物），**不是源码**。
+ * 于是产生一种它自己看不见的假红：
+ *   **源码是对的、dist 是旧的 ⇒ 门报「源码绑定表缺落点」并给出精确到 file:line 的修法。**
+ * 那份修法是**对着一份并不存在的缺陷**开的药。
+ *
+ * 实测（2026-08-09，审核方亲手复现）：
+ *   源码 `capacity-factors.ts:52` 明确有 `{设备OEE, Equipment, oee_current, grain:"process", writable:true}`；
+ *   `pnpm --filter @platform/contracts build` 之前门 EXIT=1，之后 EXIT=0，**零源码改动**。
+ *   而绑定修复早在 2026-08-08（`8dbfd651`）就已并入，是 `0f5195ab` 的祖先。
+ *
+ * 形态（照铁律 0.6 句式）：
+ *   **「我用『gate 报红』当作『源码绑定表缺落点』的证据，而 gate 度量的是 dist 构建产物。」**
+ *
+ * 为什么老金丝雀拦不住：它验的是 `Process.yield_baseline`，那一行**修前修后逐字相同**，
+ * 于是它在过期 dist 上照样通过，门便理直气壮地去冤枉无辜的源码。
+ * ⇒ **金丝雀必须验「会随本次改动而变的东西」，验不变量等于没验。**
+ *
+ * 判据用**内容比对**不用 mtime：mtime 在 git checkout / worktree 之间不可靠
+ * （本仓 worktree 隔离派单是常态，dev 拿到的 worktree 天然带一份继承来的旧 dist）。
+ * ------------------------------------------------------------------------- */
+{
+  const srcText = readFileSync(CONTRACT_SRC, "utf8");
+  // 从**源码**抽 (objectType, prop) 对；与 dist 载入的 CAPACITY_FACTOR_BINDINGS 求差集。
+  const srcPairs = new Set();
+  for (const m of srcText.matchAll(/objectType:\s*"([^"]+)"\s*,\s*prop:\s*"([^"]+)"/g)) {
+    srcPairs.add(`${m[1]}.${m[2]}`);
+  }
+  const distPairs = new Set(CAPACITY_FACTOR_BINDINGS.map((b) => `${b.objectType}.${b.prop}`));
+
+  // 🐤 本检查自己的金丝雀：源码里必须抽得出东西，否则是抽取式失配而非 dist 过期
+  if (srcPairs.size === 0) {
+    console.error(
+      `✗ **门自己坏了**：从源码 ${CONTRACT_SRC} 抽出 0 个 (objectType, prop) 对。\n` +
+        `   ⇒ 报的是「抽取式失配」，**不是**「源码里没有绑定」。`,
+    );
+    process.exit(2);
+  }
+
+  const onlyInSrc = [...srcPairs].filter((p) => !distPairs.has(p));
+  const onlyInDist = [...distPairs].filter((p) => !srcPairs.has(p));
+  if (onlyInSrc.length || onlyInDist.length) {
+    console.error(
+      `✗ **门自己坏了：dist 过期** —— 源码与构建产物的绑定表不一致，此时本门的任何结论都是假的。\n` +
+        `   源码 ${srcPairs.size} 对 · dist ${distPairs.size} 对\n` +
+        (onlyInSrc.length ? `   仅在源码里（dist 还没跟上）：${onlyInSrc.join(" · ")}\n` : "") +
+        (onlyInDist.length ? `   仅在 dist 里（源码已删/改名）：${onlyInDist.join(" · ")}\n` : "") +
+        `\n   ⇒ 先跑：pnpm --filter @platform/contracts build\n` +
+        `   **不许**据此去改 capacity-factors.ts —— 那是对着一份并不存在的缺陷开药。\n` +
+        `   来历：2026-08-09 我（审核方）就是这么误判的，还据此派了一张 WO 出去。`,
+    );
+    process.exit(2);
+  }
+}
+
 /* ---------- A1 层可反推（硬·逐字复刻生产谓词 service.ts discoverCapacityLevers 候选筛选） ---------- */
 const dialable = new Map(); // `Type.prop` → binding（writable 且 grain 兼容生产实参）
 for (const b of CAPACITY_FACTOR_BINDINGS) {
