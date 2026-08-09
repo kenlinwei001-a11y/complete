@@ -506,7 +506,7 @@ intents= 32 plans= 32          ← 总数两份文档都对
 
 | # | 需求 | 档 | file:line | 追的那一层调用 |
 |---|---|---|---|---|
-| C041 | O1 引用可校验门成为**必配硬门**：引用不存在的 rule/solver/objectType/tool/skill → publish **被拒**（非告警），错误点名 key + 注册表 + 端点 | 🔗 **rule/solver/objectType/skill 达成；tool 未达** | `server.ts:1272-1281` · `resources.ts:9-13` | 拒绝理由含「求解器「X」在 DataCore 未注册」并点名注册表来源（`PROBE_SOURCE`），**但未点名"查询用的哪个端点"**（只到注册表方法名）；`tool` kind 不存在故无从校验 |
+| C041 | O1 引用可校验门成为**必配硬门**：引用不存在的 rule/solver/objectType/tool/skill → publish **被拒**（非告警），错误点名 key + 注册表 + 端点 | 🔗 **rule/solver/objectType/skill 达成；tool 未达；"端点"未点名** | `server.ts:1273-1281` · `resources.ts:9-13` | 422 message 逐字读：`技能引用存在死路（N 项，发布被拒且未落库）：求解器「X」在 DataCore 未注册` ⇒ **点名了 key 与"DataCore"，没有注册表方法名、没有端点**；带方法名的 `PROBE_SOURCE`（`resources.ts:9-13`）**只用在 503 不可用分支**，422 分支读不到它。`tool` kind 不存在故无从校验 |
 | C042 | O2 推理图静态可校验（有环/异常路径未定义/终止节点缺失 → 编译期红） | 🔗[未并] | `apps/agentcore/src/skill-compiler.ts:129`(GR-REACH) | 有 `GR-REACH`（可达性）；**环检测**由 `detectSkillDependencyCycle` 走 skill 依赖图，不是推理图；**`GR-EXCEPTION`（onError 必填）未实现** |
 | C043 | O3 命名红线不被突破，静态门守 | ❌门 | `package.json` | 无 `skill-compiler:check`；人工核：compiler-s1 产物名无 `ExecutionPlan`/`ExecutionGraph` ✅（但无门锁住） |
 | C044 | O4 生命周期完整 DRAFT→TESTING→PUBLISHED→DEPRECATED(+RETIRED)，非法跃迁 409 | ❌ | `packages/contracts/src/agentcore.ts:247` | `status` 仍三值；`grep TESTING\|DEPRECATED` 在 Skill 契约 = 0 |
@@ -601,7 +601,7 @@ intents= 32 plans= 32          ← 总数两份文档都对
 
 | # | 码 | 断言 | 档 | 证据 |
 |---|---|---|---|---|
-| C102 | RG-RULE | rule/constraint key ∈ 本租户规则库且 **PUBLISHED** | 🔗 | 存在性由 `probeMissingRefs`(`resources.ts:80`) 校验 ✅；**"且 PUBLISHED"未校验**——`listRuleKeys` 的过滤语义 CMP §14.2 自标未核实，我实测调用点只取 key 不看状态 ⇒ 引用 DRAFT 规则今天会判通过 |
+| C102 | RG-RULE | rule/constraint key ∈ 本租户规则库且 **PUBLISHED** | 🔗 | 存在性 ✅（`resources.ts:80`）；**"且 PUBLISHED"未校验**——CMP §14.2 自标"未核实 `listRuleKeys` 的过滤语义"，**我替它核实了**：`apps/agentcore/src/tools/datacore-http.ts:233` `listRuleKeys` 调 `GET /a/v1/rules`（**不带 `?status=PUBLISHED`**），而同文件 `:238 listRules` 明确带了 `?status=PUBLISHED` ⇒ **两个方法过滤语义不同，探针用的是不过滤那个** ⇒ 引用 DRAFT 规则今天判通过。CMP 的担心成立 |
 | C103 | RG-SOLVER | solver key ∈ 求解器目录 | ✅ | `resources.ts:77` `catalog.discover(ctx,"solvers")` |
 | C104 | RG-SOLVER-TRUST | 引用 provisional 求解器须显式声明容忍 | ❌ | `apps/datacore/src/solvers/service.ts:538-551` 有 `trustLevel:"UNVERIFIED"`/`PROVISIONAL` 概念，**Skill 侧无声明面、无判定** |
 | C105 | RG-TYPE | ontologyType key ∈ 已发布 ACTIVE 类型 | ✅ | `resources.ts:83` |
@@ -916,6 +916,16 @@ intents= 32 plans= 32          ← 总数两份文档都对
 | **X-10** | CMP §8.1 | 「✚ `POST /b/v1/skills/:id/compile`；**`?dryRun=true` 不落库**」 | 端点在，但**不接受 `dryRun` 查询参数**（注释写"dryRun 语义即默认且唯一行为"） | 语义等价但**契约不符**：SDK/CLI 按文档传 `?dryRun=true` 会被静默忽略；若将来加了落库分支，老调用方会突然落库 |
 | **X-11** | CMP §12.2 S2 | 「返 **503 `DATACORE_UNAVAILABLE`**」 | 实现返 503 **`REF_PROBE_UNAVAILABLE`**（`resources.ts:24`） | 行为对、码不对。前端/SDK 若按 CMP 写错误分支处理，会落进 default 分支 |
 | **X-12** | CMP §14.4-1 | 「RG 组硬门会挡住存量……实施 P0 时必须先跑一次全量存量 dry-run 编译列出违规清单」 | 门已上线，**存量根本没被挡**——出厂 7 个 skill 是直接以 PUBLISHED 落库、不走发布路由（`mocks/seed.ts`），门够不着 | 「没有存量被挡」会被误读成「存量干净」。真相是**门看不见它们**（本体 §8 已记载同一事实）。若种子里有死路引用，今天没有任何信号 |
+
+### 5.1 本轮新发现的两条**真实缺口**（不在两份文档的已知清单里，也不在本体 §8）
+
+| # | 缺口 | 证据 | 为什么现在看不见 |
+|---|---|---|---|
+| **N-01** | **引用可校验门对 rule 只查"存在"不查"状态"** ⇒ 一个 Skill 引用**未发布的 DRAFT 规则**今天可以正常发布 | `apps/agentcore/src/tools/datacore-http.ts:233` `listRuleKeys` → `GET /a/v1/rules`（**无 `?status=PUBLISHED`**）；同文件 `:238 listRules` → `GET /a/v1/rules?status=PUBLISHED`。探针 `resources.ts:80` 用的是**前者** | 两个客户端方法**过滤语义不同、命名看不出差别**。CMP §14.2 把它列进"未核实"并写明「实施时**必须先核对该客户端方法的过滤语义**，否则会出现「引用了 DRAFT 规则却判通过」」—— **它猜对了，但 P0 落地时没人回来核这一条** |
+| **N-02** | **`POST /b/v1/skills/:id/compile` 无 entitlement 门**（= X-09），且 **CMP §0 R3 白纸黑字要求"暗发 + 双注册 + 关闭 404"** | 两分支 `grep "skill.compiler" apps/*/src` 均 = 0；`server.ts:1333`(compiler-s1) handler 只有 `auth` + `requireCatalogAdmin` | 该端点在**未并**分支上，没进过四包 gate 的 entitlement 检查面；`ref-closure:check` 不管这个 |
+
+> 两条都属**「门在，但量的东西不对」**：N-01 的门在跑、绿的，量的是「key 在不在」而不是「key 可不可用」；
+> N-02 的 `requireCatalogAdmin` 在跑、绿的，量的是「角色够不够」而不是「功能开没开」（R3 要求 entitlement **先于** authz）。
 
 **另记两条"文档之间打架"（不是单方宣称，但同样有害）**：
 - **Y-01** `execution` 字段：DSL 要 `plan[]`+`mode(3值,必填)`+`planRef`+`fallback`；CMP 要 `execution.steps` 且元素复用 `PlanStepSchema`；实现是 `{steps?,graph?,mode?(2值,可选)}` —— **三方两两不一致，且三份文档都没回写**。
