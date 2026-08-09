@@ -40,7 +40,7 @@
 | **L1 对象级** | 项目推演 `project-sim` | 单个项目/订单 | 一张单的全链 | ❌ |
 | **L2 组合级** | 全局推演 `global-sim` | **订单簿（全部项目）** | 项目层变量（交付/排产/成本/库存） | ❌ |
 | **L2′ 专业域级** | 产能推演 `capacity_*` | 基地/产线/工序 | 产能一个域，跨基地 | ❌ |
-| **L3 企业级** | **决策沙盘推演** | **企业状态** | 跨域 + 组织 + 批复 + 时间 | ✅ |
+| **L3 企业级** | **决策沙盘推演** | **企业状态** | 跨域 + 时间（**批复流程已由仓主裁掉，不做**） | ✅ |
 
 L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横切，一个按「产能」纵切，
 两者都在 L1 之上、L3 之下。**L3 才是唯一会让企业变成另一个样子的那一层。**
@@ -128,12 +128,12 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 ⑥ 运行排产求解器      ← 就是「全局推演」global-sim ★ 局部推演在此被调用
 ⑦ 重算产能            ← 就是「产能推演」capacity_forecast ★
 ⑧ 重算财务            ← finance_pnl / quote_margin（已有）
-⑨ 重估批复要求        ← 本次新建（ApprovalPolicyEngine）
+⑨ ~~重估批复要求~~     ← **已裁掉**（§0.06 裁定一）
 ⑩ 构建决策图          ← 本次新建（Decision Graph）
 ```
 
 **局部推演 = 引擎；全局推演 = 指挥。** 这是本次升级的架构定位：
-不重写 ⑥⑦⑧，而是补 ④⑨⑩，再把 ①②③ 的两栈缝合（§2.1）。
+不重写 ⑥⑦⑧，而是补 ④⑩，再把 ①②③ 的两栈缝合（§2.1）。
 **任何要求「重做一遍排产/产能推演」的 WO 都是走错方向，直接退。**
 
 #### 由此产生的一条硬约束（会影响 WO 边界）
@@ -144,9 +144,58 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 
 ---
 
+### 0.06 ⛔ 仓主 2026-08-09 两条裁定（改变本 PRD 范围，先于一切）
+
+#### 裁定一：**流程审批不做** ——「类似流程审批这种都不需要体现」
+
+**出局的部分**（本 PRD 与 WO 包中全部删除，不是延期，是不做）：
+
+| 原计划 | 处置 |
+|---|---|
+| `ApprovalPolicy` / `ApprovalInstance` / `ApprovalTask` 三对象 | ❌ 删 |
+| `ApprovalPolicyEngine` 动态批复链（原 §4.2 / E3） | ❌ 删 |
+| D2「批复策略种子」整单 | ❌ 撤单 |
+| D1 中的 `AuthorityLimit` / `Delegation`（它们只为算批复链而存在） | ❌ 删 |
+| 十步序列第 ⑨ 步「重估批复要求」 | ❌ 删 |
+| UI 的批复链面板 / 委托代批 / 审批被拒重报 | ❌ 删 |
+
+**保留的部分**（这两条不是「流程审批」，别一起砍掉）：
+
+- ✅ **R4「真值经 Action」仍然成立** —— 它是**写入安全闸**，不是审批流程 UI。
+  采纳一个推演结论仍然要生成 Action 提案再落库，否则仿真世界会污染真实世界（§4.1）。
+  R4 已经在平台里跑了，本次不动它，也不为它建新东西。
+- ✅ **组织的「谁负责」仍然保留** —— `ProcessNodeSpec.ownerFunctionKey`（D4）要回答「这个节点归哪个部门」，
+  那是**流程归属**不是**审批权限**。D1 保留 `Principal(kind="person")` 与部门层级，只删限额与委托。
+
+#### 裁定二：⛔ **只补真数据，不做 mock；前端写死的数据一律不算数**
+
+仓主原文：「**需要补齐数据，而不是 mock 数据，写死在前端的数据都不行**」。
+
+这条是**验收判据**，不是建议。落成三条硬规矩：
+
+1. **前端不得内嵌业务数据。** 页面上任何一个业务数字，必须能追到一次真实 API 调用。
+   前端里出现业务数据常量数组（订单/基地/物料/指标值…）= **退单**。
+   唯一豁免：`*.test.*` 与 `src/mocks/`（MSW mock 模式专用，且**不得**被生产路径 import）。
+2. **后端不得靠 mock 顶数。** 「接了线没数据」不算交付 —— 必须真种子物化进对象库，
+   `listByType` 查得到、条数报得出（这正是 **D0** 与 **D3** 的全部意义）。
+3. **诚实空 > 假数据。** 真没有的数据，返回空 + 明确 `reason`，**不许兜底编一个**。
+   本仓已有多例「写死的诚实位在说谎」（欠账 #132/#135/#136），不再犯。
+
+**⚠️ 本裁定直接作废一类既有产物**：我此前交付的 HTML 设计稿（`twin-console.html` 等）
+其数值**全部是前端写死的数组**。它们只能作为**版式与交互的参照**，
+**不得**被任何 dev 当作实现依据照抄数据。派单时必须写明这一点。
+
+**机制（照铁律 0.6 —— 下次是机器先说话，不是人先想起来）**：
+新增门 `frontend-no-hardcoded-business-data:check`，扫 `apps/frontend-shell/src`
+（排除 `src/mocks/` 与 `*.test.*`）里的业务数据常量数组，**棘轮豁免数只减不增**。
+不加这道门，这条裁定三周后必然回潮 —— 本仓已有 `G-FRONTEND-HARDCODED-ABSENCE`
+与 `G-GSIM-DEAD-COCKPIT` 两个同族前科。
+
+---
+
 ### 0.1 与既有结论的关系（必须先说清，否则会走错方向）
 
-- 本 PRD **推翻**了 2026-08-09 早些时候「后端无需变、只改前端」的那条边界。那条边界当时成立，是因为需求只到「把后端已有字段展示完整」。本次需求要求的是**新增企业级状态与批复语义**，后端必须动。这是需求升级，不是返工。
+- 本 PRD **推翻**了 2026-08-09 早些时候「后端无需变、只改前端」的那条边界。那条边界当时成立，是因为需求只到「把后端已有字段展示完整」。本次需求要求的是**新增企业级状态语义**，后端必须动。这是需求升级，不是返工。
 - 本 PRD **不推翻**推演沙盘域（§2.I）的既有设计。恰恰相反：**仿真世界的骨架已经建成**，本次是接线与补面，不是重造。下面 §2 给实测证据。
 
 ---
@@ -155,15 +204,15 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 
 **触及的对象类型**
 - 既有：`SimSession` / `SimTickState` / `SimCheckpoint` / `PropagationRule` / `SimCertification` / `ChainImpediment`（§2.I）· `Solver` / `SolverContext` / `SolverParam`（§2.E）· `RuleEntry`（§2.C）· `Action`（§2.D）· `ObjectType` / `LinkType` / `ObjectInstance`（§2.B）· `Skill` / `Workflow` / `Agent`（§2.H）· `SimClock`（§2.F）
-- 新增：`EnterpriseState`（企业级常驻状态）· `StateDelta`（状态增量，一等对象）· `ProcessDefinition` / `ProcessInstance` / `ProcessTask`（流程世界）· `ApprovalPolicy` / `ApprovalInstance` / `ApprovalTask`（批复世界）· `OntologySlice`（本体切片一等实体）· `DecisionOption` / `DecisionEvidence` / `CausalEdge`（决策世界补面）· `Person` / `OrgRole` / `AuthorityLimit` / `Delegation`（组织世界）
+- 新增：`EnterpriseState`（企业级常驻状态）· `StateDelta`（状态增量，一等对象）· `ProcessDefinition` / `ProcessInstance` / `ProcessTask`（流程世界）· `OntologySlice`（本体切片一等实体）· `DecisionOption` / `DecisionEvidence` / `CausalEdge`（决策世界补面）· `Person` / `OrgRole` / `AuthorityLimit` / `Delegation`（组织世界）
 
 **触及的链路**（§3）
 - 既有并复用：`扰动 → propagateTick → SimTickState → 阻滞点判定 → 候选枚举`
-- 新增：`扰动 → StateDelta → 受影响对象闭包 → 受影响流程实例 → 触发的批复策略 → 批复链实例化 → 决策 → 行动 → EnterpriseState'`
+- 新增：`扰动 → StateDelta → 受影响对象闭包 → 受影响流程实例 → 决策 → 行动(Action·R4 正门) → EnterpriseState'`
 - 新增：`Decision Intent → Slice Expansion → OntologySlice → SolverContext 裁剪`
 
 **触及的事件**（§4，命名须与 QOS PRD §8.2 同风格）
-- 新增：`enterprise_state.snapshotted` · `state_delta.computed` · `process_instance.started` / `.advanced` / `.blocked` / `.completed` · `approval_instance.raised` / `.approved` / `.rejected` / `.timeout` · `ontology_slice.expanded` · `decision.recorded` · `world.forked`
+- 新增：`enterprise_state.snapshotted` · `state_delta.computed` · `process_instance.started` / `.advanced` / `.blocked` / `.completed` · `ontology_slice.expanded` · `decision.recorded` · `world.forked`
 - **每个新事件必须有下游订阅方**（D-29），否则按 `G-EVENT-*` 家族记为断点，不得声称已接线。
 
 **触及的不变量**（§5）
@@ -171,11 +220,11 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 - **R4 真值经 Action**：`EnterpriseState` 的**真实世界**写入必须经 Action 审批；**仿真世界**（fork 出来的）写入不经 Action，但必须物理隔离、不得回写真实世界。这是本 PRD 最重要的一条不变量，见 §4.1。
 - **R6 确定性**：同 `(baseStateId, changeSet, ruleSetVersion)` 重跑，`StateDelta` 字节级一致。
 - **R11 全链闭包**：`OntologySlice` 展开结果必须闭包（引用到的对象类型/关系/规则/求解器全部存在），否则发布即失败——复用已有 `probeMissingRefs`（`apps/datacore/src/resources.ts:11`）。
-- **R14 行业无关**：批复策略、传导规则、切片展开策略一律**配置驱动、零业务常数**；锂电只是第一个模板。
+- **R14 行业无关**：传导规则、切片展开策略一律**配置驱动、零业务常数**；锂电只是第一个模板。
 
 **关闭或影响的断点**（§8）
 - 直接关闭：`G-SIM-SCOPE-UNREAD`（欠账 #130，`SimSession.scope` 有写端无读端 → 本 PRD 的 Slice Expansion 就是它的读端）· `G-ACTION-NOOP-EXEC` 最后 1 条（欠账 #71/#81，「采纳经营方案」缺语义正确的已接线动作类型 → 本 PRD 的 `Decision → Action` 给它落点）
-- 新增登记：`G-TWIN-STATE-NO-CARRIER`（企业级状态无常驻承载体）· `G-APPROVAL-STATIC-CHAIN`（批复链写死而非规则+权限动态生成）· ~~`G-SLICE-NOT-AN-ENTITY`~~（**已撤销**：切片实测已是完整一等实体，见 §2.3；真缺口改记为 `G-SLICE-NO-INTENT-PRUNING` 切片展开无决策意图语义裁剪）
+- 新增登记：`G-TWIN-STATE-NO-CARRIER`（企业级状态无常驻承载体）· ~~`G-APPROVAL-STATIC-CHAIN`~~（**已裁掉**：仓主定「流程审批不需要体现」，批复链写死这件事本次不修）· ~~`G-SLICE-NOT-AN-ENTITY`~~（**已撤销**：切片实测已是完整一等实体，见 §2.3；真缺口改记为 `G-SLICE-NO-INTENT-PRUNING` 切片展开无决策意图语义裁剪）
 - 必须避免复发：`G-EVENT-GATE-MEASURES-SUBS-NOT-EMITS`（新事件既要 emit 也要有订阅方，且门要能同时量到两端）
 
 ---
@@ -240,7 +289,7 @@ L2 与 L2′ 是**并列**关系，不是包含关系：一个按「项目」横
 | ① | Business | `EnterpriseState`（企业级常驻状态） | `SimSession.base_snapshot` 是**会话内**的：一次推演结束，世界态随会话消失。企业「现在是什么状态」没有常驻承载体，因此「执行结果反过来改变企业状态」这一句今天**无处落笔** |
 | ⑥ | Scenario | `StateDelta`（一等对象） | `SimTickState.trace` 记的是**传导轨迹**（哪条规则烧了哪条边），不是**语义增量**（哪个业务对象的哪个属性从 X 变成 Y、因为哪个决策）。两者不同：前者面向算法调试，后者面向「这个决定让企业发生了什么变化」 |
 | ④ | Process | `ProcessInstance` / `ProcessTask` | B2 Workflow 是**编排执行器**（跑 Agent/Solver 的步骤），不是**业务流程实例**（订单评审走到哪一步、卡在谁那里、等了多久）。同名不同物 |
-| — | Approval | `ApprovalPolicy` 动态生成批复链 | S2 Action 审批是**单点审批**（一个动作要不要批），不是**条件驱动的多级批复链**（`capacity_gap>10% → 计划总监+制造总监+总经理`） |
+| — | ~~Approval~~ | ~~`ApprovalPolicy` 动态生成批复链~~ | **已裁掉（§0.06 裁定一）** —— 此行只作为实测记录保留：S2 Action 审批是单点审批，平台确实没有条件驱动的多级批复链，但本次不补 |
 | ② | Organization | `Person`/`OrgRole`/`AuthorityLimit`/`Delegation` | 平台有 RBAC 角色（用于鉴权），没有**审批权限模型**（谁能批多大金额、超限如何升级、休假如何委托）。鉴权角色 ≠ 审批权限 |
 | ③ | Ontology | ~~`OntologySlice` 一等实体~~ **← 此条我判错了，已撤销，见 §2.3** | — |
 | ⑤ | Decision | `DecisionOption`/`DecisionEvidence`/`CausalEdge` | 决策表可能只记了结论，没记**为什么**（候选方案、证据、因果链）。管理层要的正是这个 |
@@ -334,7 +383,7 @@ Enterprise_State'  （下一轮的起点）
 ```
 
 **闭环判据（SEAM-GATE）**：一条组合测试必须能走通
-`扰动 → StateDelta → 受影响闭包 → ApprovalPolicy 命中 → 批复链实例化 → Decision → Action → EnterpriseState'`，
+`扰动 → StateDelta → 受影响闭包 → Decision → Action(R4 正门) → EnterpriseState'`，
 且 `EnterpriseState'` ≠ `EnterpriseState`。任一环节断开即红。**各半 unit 全绿不算数**（绿测试 ≠ 能用）。
 
 ---
@@ -355,18 +404,14 @@ EnterpriseState(SIM,  is_simulated=true, forked_from=<real_state_id>)
 - **禁止**仿真世界的写入走 Action 审批（会污染真实审批队列）；同时**禁止**仿真世界直接写真实对象实例。
 - 采纳一个仿真结论 = 生成一个 **Action 提案**，走 R4 正门审批后才改真实世界。这条同时给欠账 #71/#81「采纳经营方案」一个语义正确的落点。
 
-### 4.2 批复链是**算出来的**，不是**写死的**
+### 4.2 ~~批复链动态生成~~ —— **本节已整节裁掉**
 
-```
-ApprovalPolicy(condition_expr, required_roles[], escalation, timeout)
-        +  Organization(Person, OrgRole, AuthorityLimit, Delegation)
-        ↓  ApprovalPolicyEngine.resolve(context)
-   ApprovalInstance(chain=[task1..taskN])   ← 每次条件不同，链就不同
-```
+仓主 2026-08-09 裁定「类似流程审批这种都不需要体现」（§0.06 裁定一）。
+本节原设计的 `ApprovalPolicy` + `ApprovalPolicyEngine.resolve()` **不做**。
 
-- `condition_expr` **必须复用既有规则 DSL**（A5），不许另造一套表达式语言。这是本仓踩过的坑（`G-C08-EXPR-PARAM-SPLIT`，欠账 #77）。
-- 阈值一律从规则读回，引擎内零阈值——与 `ChainImpediment` 的 `readRuleThreshold` 同一纪律。
-- **零业务常数（R14）**：不许在代码里写 `capacity_gap > 0.10` 或 `margin < 0.08`，一律进规则表。
+保留一句实测记录供将来参考：批复链今天写死在 `apps/datacore/src/actions.ts:562`
+（`const chain = type?.approvalChain ?? [{ role: "admin" }]`，契约里只有 `role`）。
+**这是已知现状，本次不修。** 写入安全仍由 R4「真值经 Action」保证（§4.1），那条不变。
 
 ### 4.3 切片是**实体**，不是**一次性计算**
 
@@ -406,40 +451,44 @@ Ontology → Context → Rule → Constraint → Agent → Solver → Decision �
 
 | 层 | 代号 | 名称 | 依赖 | 画像 |
 |---|---|---|---|---|
-| D | D1 | 组织与审批权限种子 | 无 | 轻 |
-| D | D2 | 批复策略种子（规则表达式） | 无 | 轻 |
-| D | D3 | 产销主数据补齐（BOM/Routing/Supplier/Material） | 无 | 轻 |
-| D | D4 | 流程定义与耗时种子（23 节点 × 时间） | 无 | 轻 |
-| D | D5 | 异常事件剧本种子（销售/生产/供应链/物流/管理五类） | 无 | 轻 |
+| D | **D0** | 七个类型「生成器已产行、却漏 putAll」 | 无 | 轻 |
+| D | D1 | 组织种子（`Principal(person)` + 部门层级，**已删限额/委托**） | 无 | 轻 |
+| ~~D~~ | ~~D2~~ | ~~批复策略种子~~ **已撤单（§0.06）** | — | — |
+| D | D3 | 产销链**尾段**（产能一等对象 / 交付验收段）·**主数据已存在不重建** | 无 | 轻 |
+| D | D4 | 流程定义与耗时种子（**24** 节点 × 时间 × owner） | §4.5 | 轻 |
+| D | D5 | 异常剧本种子（五类·**管理异常改为非批复口径**） | 无 | 轻 |
+| D | **D6** | 🔴 `upsertType` 吞七字段（欠账 #69 根因） | 无 | 轻 |
 | E | E1 | `EnterpriseState` + `StateDelta` 两表与真实/仿真隔离 | §4.1 | 重 |
 | E | E2 | `ProcessInstance`/`ProcessTask` + 五种 WAITING | §4.5 | 中 |
-| E | E3 | `ApprovalPolicyEngine` 动态批复链 | §4.2 + D1 + D2 | 中 |
+| ~~E~~ | ~~E3~~ | ~~`ApprovalPolicyEngine` 动态批复链~~ **已删（§0.06）** | — | — |
 | E | E4 | `OntologySlice` 一等实体 + Slice Expansion Engine | §4.3 | 重 |
 | E | E5 | Impact Propagation API `POST /a/v1/simulation/impact-analysis` | E1 + 既有 `PropagationRule` | 重 |
 | E | E6 | `DecisionOption`/`DecisionEvidence`/`CausalEdge` 补面 | §4.4 | 中 |
 | U | U1 | Enterprise Decision Timeline（不是 BPMN） | E1/E2/E3 | 中 |
 | U | U2 | What-if Control + 两世界对比 | E5 | 中 |
 
-**本次先发 D 层五张单**（仓主要的「数据补齐 WO」），单独成文见 `docs/WO-PACK-twin-data.md`。
+**本次先发 D 层六张单**（D0/D1/D3/D4/D5/D6 —— D2 已撤单），单独成文见 `docs/WO-PACK-twin-data.md`。
 
 ---
 
 ## 6. 验收（SEAM-GATE 驱动接缝，不验各半）
 
 1. **闭环组合测试**：§3 那条链端到端跑通，`EnterpriseState' ≠ EnterpriseState`，且中间每一跳都有事件 emit + 有订阅方。
-2. **动态批复链反证**：改一条批复策略规则的阈值（不改代码），同一个扰动必须产生**不同长度**的批复链。改不动 = 链是写死的 = 红。
+2. **零前端写死数据反证（§0.06 裁定二）**：把某个 API 打成 500，页面对应数字必须**变成诚实空 + reason**，不许还显示一个数。仍显示 = 那个数是写死的 = 红。
 3. **切片语义裁剪反证**：同一订单、两个不同 Decision Intent，产出的 `OntologySlice.objects` 集合必须**不同**。相同 = 退化成了无脑 BFS = 红。
 4. **世界隔离反证**：在仿真世界改一个属性，真实世界的同一对象**必须不变**。变了 = 红（这是最危险的一条，必须有对抗测试）。
 5. **确定性（R6）**：同 `(baseStateId, changeSet, ruleSetVersion)` 重跑两次，`StateDelta` 字节级一致。
-6. **零业务常数（R14）**：门扫描 `ApprovalPolicyEngine` 与 Slice Expansion 的实现文件，出现数值字面量阈值即红（棘轮，豁免数只减不增）。
+6. **零业务常数（R14）**：门扫描 Slice Expansion 的实现文件，出现数值字面量阈值即红（棘轮，豁免数只减不增）。
+7. **前端零写死业务数据**：新门 `frontend-no-hardcoded-business-data:check`，棘轮豁免数只减不增（§0.06 裁定二）。
 
 ---
 
 ## 7. 命名纪律
 
-- 禁用外部产品名。「Enterprise Decision Twin」作为**产品定位**可以说，落到代码里一律用平台自有术语：`twin` / `enterpriseState` / `stateDelta` / `ontologySlice` / `approvalPolicy`。
+- 禁用外部产品名。「Enterprise Decision Twin」作为**产品定位**可以说，落到代码里一律用平台自有术语：`twin` / `enterpriseState` / `stateDelta` / `ontologySlice`。
 - 事件名遵循 `<domain>.<past_tense_verb>`，与 QOS PRD §8.2 同风格，一字不差。
-- 新表名一律 snake_case 单数域前缀：`enterprise_states` / `state_deltas` / `process_instances` / `process_tasks` / `approval_policies` / `approval_instances` / `approval_tasks` / `ontology_slices`。
+- 新表名一律 snake_case 单数域前缀：`enterprise_states` / `state_deltas` / `process_instances` / `process_tasks`。
+  （`ontology_slices` **不建** —— 切片已有 `slice_specs` 表，见 §2.3；`approval_*` 三表已裁掉，见 §0.06。）
 
 ---
 

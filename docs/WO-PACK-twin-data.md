@@ -1,11 +1,32 @@
-# WO 派发包 · 企业决策孪生「数据补齐」七单（D 层）
+# WO 派发包 · 企业决策孪生「数据补齐」六单（D 层）
 
 > 出单日期 2026-08-09 · 出单方：审核方 · 上游 PRD：`docs/PRD-enterprise-decision-twin.md`
-> **本包七张单相互不阻塞、可同时开工。** 每单一个 dev、一条 handoff 分支、一套互不重叠的文件边界。
+> **本包六张单相互不阻塞、可同时开工。**（原 D2 批复策略已于 2026-08-09 撤单，见 §0.2） 每单一个 dev、一条 handoff 分支、一套互不重叠的文件边界。
 
 ---
 
-## 0. 派单前必读（七张单共用 · 全部是本仓踩过坑写下的纪律）
+## 0. 派单前必读（六张单共用 · 全部是本仓踩过坑写下的纪律）
+
+### 0.05 ⛔ 仓主 2026-08-09 两条裁定（先于所有单）
+
+**裁定一：流程审批不做** ——「类似流程审批这种都不需要体现」。
+⇒ **D2「批复策略种子」整单撤销**；**D1 删掉 `AuthorityLimit` 与 `Delegation`**（它们只为算批复链而存在）；
+**D5 的「管理异常」类改口径**（见该单）。
+保留：R4「真值经 Action」写入安全闸不动（那是写入安全，不是审批流程）；
+D1 的 `Principal(kind="person")` 与部门层级保留（那是**流程归属**，回答「这个节点归哪个部门」，不是审批权限）。
+
+**裁定二：⛔ 只补真数据，不做 mock；前端写死的数据一律不算数**
+——「需要补齐数据，而不是 mock 数据，写死在前端的数据都不行」。三条硬规矩：
+
+1. **后端不得靠 mock 顶数。**「接了线没数据」不算交付 —— 必须真种子物化进对象库，
+   `listByType` 查得到、条数报得出。**这正是 D0 与 D3 的全部意义。**
+2. **前端不得内嵌业务数据。** 页面上任何业务数字必须能追到一次真实 API 调用。
+   出现业务数据常量数组 = 退单。唯一豁免 `*.test.*` 与 `src/mocks/`（且不得被生产路径 import）。
+3. **诚实空 > 假数据。** 真没有的返回空 + 明确 `reason`，**不许兜底编一个**。
+   本仓已有多例「写死的诚实位在说谎」（欠账 #132/#135/#136）。
+
+**⚠️ 连带作废**：审核方此前交付的 HTML 设计稿（`twin-console.html` 等）**数值全是前端写死的数组**。
+它们**只能作为版式与交互参照，不得当作实现依据照抄数据**。
 
 ### 0.1 判分支对不对：**用祖先关系，不用文件存在性**
 
@@ -136,10 +157,10 @@ docs/handoff/twin-d0.md                                       (交付说明)
 
 ---
 
-## D1 · 组织世界补齐（**扩既有 `Principal`，不许新造 `Person` 类型**）
+## D1 · 组织世界补齐（**扩既有 `Principal`，不许新造 `Person` 类型**·已删审批权限部分）
 
-**分支**：`claude/handoff-twin-d1-org-authority`
-**一句话**：平台答不出「谁能批这单」「超限升给谁」「他休假谁代批」。但**组织的骨架已经有了**——`Principal` 一个类型带 `kind: "org"|"role"|"person"` 四合一，本单是**往里补**，不是另起炉灶。
+**分支**：`claude/handoff-twin-d1-org`
+**一句话**：平台答不出「这个流程节点归谁、他在不在岗」。但**组织的骨架已经有了**——`Principal` 一个类型带 `kind: "org"|"role"|"person"` 四合一，本单是**往里补**，不是另起炉灶。
 
 ### ⚠️ 实测前提（我原稿在这里错过一次，已改正）
 - `Principal` 定义在 `packages/contracts/src/spine.ts:23`，`PRINCIPAL_KINDS` **已经声明了 `"person"`**。
@@ -166,84 +187,38 @@ apps/datacore/src/__tests__/organization.test.ts        (新建)
 |---|---|
 | `Principal(kind="person")` | 往既有种子里**追加**，≥12 人，覆盖 6 个职能 |
 | 部门层级 | 用既有 `Principal(kind="org")` 的 6 条 + 补 `parentPrincipalId` 属性形成层级，**不新建 `Department` 类型** |
-| `AuthorityLimit` | 新对象类型：`principalId` / `dimension`(order_amount/margin_rate/capex/cross_base) / `operator` / `threshold` / `unit` |
-| `Delegation` | 新对象类型：`fromPrincipalId` / `toPrincipalId` / `validFrom` / `validTo` / `scope` |
+| ~~`AuthorityLimit`~~ | ❌ **已删（§0.05 裁定一）** —— 只为算批复链而存在 |
+| ~~`Delegation`~~ | ❌ **已删（§0.05 裁定一）** |
 | 人↔账号映射 | `Principal(person).userId` 指向 `users` 表；`admin`/`planner`/`base_manager:常州` 三个既有账号必须能映射上 |
 
 ### 种子要求（demo 租户）
 - 6 个职能覆盖：销售 / 计划 / 财务 / 制造 / 供应链 / 经营管理层，每职能 ≥2 人含 1 名负责人。
 - **至少 1 人 `available=false`**（否则「为什么卡住」这条链永远测不到）。
-- `AuthorityLimit` ≥8 条，覆盖 ≥3 个 dimension，且**必须有一条会被 D2 的策略触发**。
-- `Delegation` ≥2 条：1 条**当前生效**、1 条**已过期**（边界值）。
+- 每个 `Principal(person)` 必须能被 **D4 的 `ProcessNodeSpec.ownerFunctionKey` 引用到** ——
+  这是本单存在的理由：回答「这个流程节点归谁」。对不上就白做。
 
 ### 只读 API
 ```
 GET  /a/v1/org/principals         ?kind= &functionKey= &available=
-GET  /a/v1/org/authority-limits   ?principalId= &dimension=
-GET  /a/v1/org/delegations        ?asOf=
-POST /a/v1/org/resolve-approver   # {functionKey, dimension, value} → 审批人 + 是否升级 + 委托后的实际审批人
+GET  /a/v1/org/functions                            # 6 个职能 + 每职能的负责人
 ```
 
 ### 交付判据（缺一不可）
-1. `resolve-approver` 传一个**超过某人限额**的值，必须**升级到上一级**，返回 `escalated:true` + 升级原因。
-2. 委托生效期内，实际审批人必须是**受托人**且带 `delegatedFrom`；传**已过期**区间必须**回落到原审批人**。
+1. `GET /a/v1/org/principals?kind=person&functionKey=planning` 返回非空，且**每个职能都查得到人**。
+2. 至少 1 人 `available=false` 能被查出来（「为什么卡住」这条链要用）。
 3. **不许出现新的 `Person` 类型** —— 加一条测试断言 `listByType("Person")` 为空、`listByType("Principal")` 里 `kind="person"` 非空。这条是本单的防复发门。
 4. 跨租户 403/404（R1 反证）；种子确定性字节级一致（R6）。
 5. `pnpm --filter datacore test -- organization.test.ts` 全绿，`pnpm --filter datacore build` RC=0。
 
 ---
 
-## D2 · 批复策略种子（条件 → 动态批复链）
+## ~~D2 · 批复策略种子~~ —— **已撤单（2026-08-09）**
 
-**分支**：`claude/handoff-twin-d2-approval-policy`
-**一句话**：批复链**不许写死**，必须由 `业务规则条件 + 组织权限` 算出来。同一个扰动，改一条规则阈值，链长就该变。
+仓主裁定「类似流程审批这种都不需要体现」。本单**不派**，原设计（`ApprovalPolicy` 指向规则条件、
+动态生成批复链、`ApprovalInstance`/`ApprovalTask`）全部作废。**预留迁移号 029 一并留白。**
 
-### 🚦 范围边界（只碰这些）
-```
-packages/contracts/src/approval-policy.ts                    (新建)
-packages/contracts/src/index.ts                              (只加 export 一行)
-apps/datacore/migrations/029_approval_policy.sql             (新建)
-apps/datacore/src/repo.ts / repo/memory.ts / repo/pg.ts      (加接口与实现)
-apps/datacore/src/approval-policy.ts                         (新建 · service + 路由)
-apps/datacore/src/app.ts                                     (只加路由挂载)
-apps/datacore/src/seed.ts                                    (加种子)
-apps/datacore/src/__tests__/approval-policy.test.ts          (新建)
-```
-
-> ⚠️ **不许碰 `apps/datacore/src/organization.ts`**（那是 D1 的地盘）。本单如果需要组织数据，**通过接口调用**，不要直接读对方的表实现。两单可能同时在跑。
-
-### 要建的对象
-| 对象 | 关键字段 |
-|---|---|
-| `ApprovalPolicy` | `policyKey` / `name` / `conditionRuleKey`(**指向既有规则表的一条规则**) / `requiredFunctions[]` / `mode`(sequential/parallel) / `timeoutHours` / `escalateTo` / `priority` |
-| `ApprovalInstance` | `instanceId` / `policyKey` / `subjectRef`(被批的东西) / `status` / `raisedAt` / `closedAt` |
-| `ApprovalTask` | `taskId` / `instanceId` / `seq` / `functionKey` / `assigneePersonId` / `status` / `startedAt` / `endedAt` / `comment` |
-
-### 关键约束（这条最容易做错）
-- `conditionRuleKey` **必须指向既有规则表的一条真规则**（`apps/datacore/src/rules.ts` 那套 DSL），**不许在本单另造一套表达式语言**。本仓已经因此吃过亏（`G-C08-EXPR-PARAM-SPLIT`，欠账 #77）。
-- **阈值一律从规则读回，引擎内零阈值**。代码里出现 `> 0.10` / `< 0.08` 这类业务数值字面量 = 退单（R14）。
-- `ApprovalTask.status` 必须含 `WAITING_APPROVAL`（与 D4 的等待语义共用同一套枚举，见 D4 §枚举单源）。
-
-### 种子要求（demo 租户）
-至少 4 条策略，条件必须**互不相同且可被同一个扰动分别命中**：
-1. 产能缺口 > 阈值 → 计划 + 制造 + 经营负责人
-2. 毛利率 < 阈值 → 财务 + 销售 + 经营负责人
-3. 跨基地调拨 → 供应链 + 制造 + 经营负责人
-4. 订单金额 > 阈值 → 销售 + 财务（`mode=parallel`，用来验并行链）
-
-### 只读 + 求解 API
-```
-GET  /a/v1/approval-policies
-POST /a/v1/approval-policies/resolve     # {context:{capacityGap, marginRate, crossBase, orderAmount}} → 命中的策略[] + 实例化出来的批复链[]
-```
-
-### 交付判据（缺一不可）
-1. **动态性反证（本单头号判据）**：只改规则表里那条阈值（**不改一行代码**），同一个 context 必须产生**不同长度**的批复链。链长不变 = 链是写死的 = 退单。
-2. 一个 context 同时命中 2 条策略时，返回的链必须**按 priority 合并去重**，不许出现同一职能重复两次。
-3. `mode=parallel` 的策略产出的 task 必须 `seq` 相同；`sequential` 的必须 `seq` 递增。
-4. 零命中时返回**空链 + 明确的 `reason`**，不许静默返回一条兜底链（诚实空，不伪造）。
-5. 跨租户 403/404；种子确定性字节级一致。
-6. `pnpm --filter datacore test -- approval-policy.test.ts` 全绿，`pnpm --filter datacore build` RC=0。
+保留一句实测记录：批复链今天写死在 `apps/datacore/src/actions.ts:562`，契约里只有 `role`。
+**这是已知现状，本次不修。**
 
 ---
 
@@ -419,7 +394,7 @@ apps/datacore/src/__tests__/exception-playbook.test.ts       (新建)
 | 生产异常 | 设备故障 / 良率下降 / 产能下降 / 换线时间增加 |
 | 供应链异常 | 供应商延期 / 关键物料短缺 / 价格上涨 |
 | 物流异常 | 运输延迟 / 物流成本增加 |
-| 管理异常 | 审批拒绝 / 审批超时 / 重新提交 / 方案修改 |
+| 管理/决策异常 | 方案修改 / 方案撤回 / 目标调整 / 优先级变更 　**（原「审批拒绝/超时」已删 —— §0.05 裁定一）** |
 
 ### 关键约束
 - `affectedNodeIds` **必须引用 `CHAIN_NODE_REGISTRY` 的真 nodeId**，引用不存在的节点 = 发布失败（**fail-closed，不许 fail-open**）。本仓已有 `probeMissingRefs`（`apps/datacore/src/resources.ts:11`）可复用——**先读它再决定复用还是新写**。
@@ -435,13 +410,13 @@ GET /a/v1/exception-playbooks/:key
 ### 交付判据（缺一不可）
 1. **fail-closed 反证**：种子里塞一条引用不存在 nodeId 的剧本，启动/发布必须**失败并指名道姓**，不许静默跳过。（做完这条**记得把这条脏数据删掉**。）
 2. 五类各 ≥3 条，`?category=` 过滤准确；`?nodeId=` 能反查出所有影响该节点的剧本。
-3. 管理异常类必须能表达「审批超时」——它的 `affectedNodeIds` 指向的是**批复环节**而不是业务环节，这个区分要在数据里体现出来。
+3. 管理/决策异常类的 `affectedNodeIds` 必须指向**真实链路节点**（不许指向已裁掉的批复环节）。
 4. 跨租户 403/404；种子确定性字节级一致（R6）。
 5. `pnpm --filter datacore test -- exception-playbook.test.ts` 全绿，`pnpm --filter datacore build` RC=0。
 
 ---
 
-## 1. 交付格式（七单统一）
+## 1. 交付格式（六单统一）
 
 推分支后，在 `docs/handoff/<单号>.md` 写一份交付说明，必须含：
 
