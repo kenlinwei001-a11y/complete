@@ -121,7 +121,23 @@ function loadLoss(): ChainLossPayload {
   return ChainLossPayloadSchema.parse(JSON.parse(readFileSync(join(FIX, "chain-loss-real.json"), "utf8")));
 }
 
+/**
+ * 沙盘视图配置 —— 必须是**完整**的 `SandboxViewConfig`，不是 Partial。
+ *
+ * 坑（本门曾据此全红）：`SandboxView` 的 prop 是 `injectedConfig?: SandboxViewConfig`（整份，非 Partial），
+ * 而契约 `SandboxViewConfigSchema` 里只有 `nodeObjectIds` 是 `.optional()` —— `tenantId`/`nodeTypes`/`linkTypes`
+ * 全是**必填**。少了 `nodeTypes`，`SandboxView.tsx:97 buildNodes` 的 `cfg.nodeTypes.map` 直接在**渲染期**抛
+ * `TypeError: Cannot read properties of undefined (reading 'map')`，§2 三条在跑到任何断言前就死了
+ * （栈里是 `mountIndeterminateComponent`/`recoverFromConcurrentError` = React 渲染期，不是断言失败）。
+ * 这类漏字段 `tsc` 是看得见的（TS2739），但 `tsconfig.build.json` 把 `test` 排除了、四包门又只跑 build+test
+ * 不跑 typecheck ⇒ 唯一会说话的工具没被接进门。故此处显式写全，并留此注释。
+ *
+ * `nodeTypes` 取 fixture 里阻滞点 locus 的**真实对象类型**，让沙盘拓扑与阻滞点同源（而非凭空造名）。
+ */
 const CFG: SandboxViewConfig = {
+  tenantId: "demo", // = fixture 里 impediments[].tenantId
+  nodeTypes: ["MaterialBatch", "MaterialBalance", "Line"], // = 基线 fixture 全部 locus.objectType
+  linkTypes: ["feeds", "produces"],
   stateVars: ["risk", "load"],
   radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
   screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
