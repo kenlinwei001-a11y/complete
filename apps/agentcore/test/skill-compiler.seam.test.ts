@@ -160,6 +160,49 @@ describe("WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile →
     expect(body.diagnostics.some((d) => d.code === "RG-NOT-WIRED")).toBe(true);
   });
 
+  /**
+   * 审核方 2026-08-09 补裁：元素形状以 `validatePlanSteps` 实际接受的集合为准
+   * （`ExtendedPlanStep = PlanStep | ExtraToolStep`），不是 `PlanStep` 闭合联合。
+   * 从 HTTP 打进去咬同一条：谁把元素钉回 `PlanStep`，本例当场红。
+   */
+  it("⑨ 元素形状以 validatePlanSteps 接受的集合为准：带 query_timeseries_agg 的技能必须编译成功", async () => {
+    const t = await createTestApp();
+    // 直接落库：POST /b/v1/skills 的 zod 会剥掉契约上还不存在的 execution 字段，
+    // 故用仓储插入模拟「迁移线已把该字段落地」的那一天。
+    const withExtraTool = {
+      id: "skl_extra_tool_steps",
+      tenantId: TENANT,
+      key: "extra_tool_steps",
+      version: 1,
+      name: "含 ExtraToolStep 的技能",
+      summary: "当需要验证步骤集合单一来源时使用。不适用：生产。",
+      body: "# body",
+      resources: [],
+      status: "DRAFT",
+      references: [{ kind: "solver", key: "capacity_forecast", role: "context", required: true }],
+      execution: {
+        steps: [
+          { id: "s1", type: "query_timeseries_agg", params: { metric: "oee", grain: "day" } },
+          { id: "s2", type: "render_answer", params: { blocks: [] } },
+        ],
+      },
+    } as unknown as SkillDefinition;
+    await t.repos.skills.insert(withExtraTool);
+
+    const { status, body } = await compile(t, "skl_extra_tool_steps");
+    expect(status).toBe(200);
+    // 头号断言：整个编译响应必须过契约（元素被钉回 PlanStep 时，ast.execution.steps 校验失败 → 这里红）
+    expect(
+      SkillCompileResultSchema.safeParse(body).success,
+      "带 query_timeseries_agg 的技能编译产物不合契约 —— 元素形状被错钉成 PlanStep 了",
+    ).toBe(true);
+    expect(body.ast.execution.declared).toBe(true);
+    expect(body.ast.execution.stepTypes).toEqual(["query_timeseries_agg", "render_answer"]);
+    // 有数据时报的是 GR-STEPS（未跑 validatePlanSteps），不是 GR-STEPS-NO-DATA —— 两态不许混
+    expect(body.diagnostics.some((d) => d.code === "GR-STEPS")).toBe(true);
+    expect(body.diagnostics.some((d) => d.code === "GR-STEPS-NO-DATA")).toBe(false);
+  });
+
   it("⑧ 对名裁决：AST 只按 execution.steps 读，且今天恒「接了线没数据」并在诊断里说出来", async () => {
     const t = await createTestApp();
     const skills = await seedSkills(t);

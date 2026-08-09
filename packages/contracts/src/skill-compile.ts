@@ -151,10 +151,28 @@ export const SKILL_EXECUTION_STEPS_PATH = "execution.steps" as const;
  */
 export const SkillAstExecutionSchema = z.object({
   /**
-   * 读自 `Skill.execution.steps`。元素**不在本切片做形状校验**——元素类型该用哪个判别联合
-   * 尚有未决问题（`PlanStep` 是闭合联合，而生产校验器 `validatePlanSteps` 收的是
-   * `ExtendedPlanStep = PlanStep | ExtraToolStep`，见 `apps/agentcore/src/workflow/executor.ts:27`），
-   * 已上报审核方。在裁决前把任一侧写死进契约都会制造下一次分裂，故此处保持透传。
+   * 读自 `Skill.execution.steps`，**元素形状刻意保持透传（`unknown`），不钉 `PlanStep`**。
+   *
+   * ⛔ **单一来源在函数，不在类型（审核方 2026-08-09 补裁 · 违反即返工）** ⛔
+   * 合法步骤集合的唯一真源 = **`validatePlanSteps` 实际接受的那个集合**，
+   * 今天是 `ExtendedPlanStep = PlanStep | ExtraToolStep`（`apps/agentcore/src/workflow/executor.ts:27`），
+   * **不是** `PlanStep` 这个闭合判别联合本身。
+   *
+   * 为什么不能钉 `PlanStep[]`（原裁决曾如此、已改判）：
+   * `ExtraToolStepSchema`（`apps/agentcore/src/catalog/service.ts:27`）里的
+   * `query_timeseries_agg` / `search_knowledge` / `plan_slice` 是**真实可执行**的步骤类型
+   * （执行器 `apps/agentcore/src/workflow/executor.ts:136-138` 真在分发它们）。钉成 `PlanStep[]` 会让
+   * 用这三类步骤的技能**解析即失败**，并逼 PRD §4.2 GR-STEPS 那条「直接调用 `validatePlanSteps`」去 cast ——
+   * 那就是把 `G-SIDEEFFECT-VOCAB-SPLIT`（同一概念多套词表 → 判定分支永不触发 → 两边测试都绿）
+   * 在下一层原样复现。错因是**把「判别联合的名字」当成了「合法步骤的集合」，而前者并不度量后者**。
+   *
+   * **约束（写死在此）**：任何消费方要校验这些步骤，**必须调 `validatePlanSteps`**，
+   * 不许自己写第二套判别（第二套判别 = 又一次分裂）。
+   * 咬这条的断言：`packages/contracts/test/skill-compile.test.ts`「ExtraToolStep 那侧的步骤必须编得过」
+   * 与 `apps/agentcore/test/skill-compiler.seam.test.ts` ⑨ —— 谁把元素钉回 `PlanStep`，这两条当场红。
+   *
+   * ⚠️ 合法步骤集合今天**分居两处**（`PlanStep` 在 contracts、`ExtraToolStep` 在 agentcore），
+   * 跨包消费方看不见 agentcore 那半 —— 已登记本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES`，修法=上提进 contracts。
    */
   steps: z.array(z.unknown()),
   /** `false` = 契约上还没有这个字段（今天恒 false）。 */

@@ -256,6 +256,42 @@ describe("WO-SKILL-COMPILER-S1 · 对名裁决 · Skill.execution.steps 是三�
     }
   });
 
+  /**
+   * 审核方 2026-08-09 补裁：元素形状的单一来源 = `validatePlanSteps` 实际接受的集合
+   * （`ExtendedPlanStep = PlanStep | ExtraToolStep`），**不是** `PlanStep` 闭合联合。
+   * 本例就是那条"谁钉回 PlanStep 谁当场红"的断言。
+   */
+  it("ExtraToolStep 那侧的步骤（query_timeseries_agg）必须编得过 —— 钉回 PlanStep 则本例红", () => {
+    // 这三类步骤真实可执行：executor.ts:136-138 在分发它们；catalog/service.ts:30 声明它们。
+    // 它们**不在** PlanStep 判别联合里 —— 正因如此，元素形状不能钉 PlanStep。
+    const extraToolSteps = [
+      { id: "s1", type: "query_timeseries_agg", params: { metric: "oee", grain: "day" } },
+      { id: "s2", type: "search_knowledge", params: { q: "换型 SOP" } },
+      { id: "s3", type: "plan_slice", params: { sliceKey: "model_capacity_network" } },
+    ];
+    const withExtra = { ...skill(), execution: { steps: extraToolSteps } } as unknown as SkillDefinition;
+
+    const ast = parseSkillToAst(withExtra);
+    // ① 契约必须接得住（钉成 z.array(PlanStepSchema) 时这里 false → 红）
+    expect(SkillAstSchema.safeParse(ast).success, "ExtraToolStep 侧步骤被契约拒收 —— 元素形状被错钉成 PlanStep 了").toBe(true);
+    // ② 三条步骤一条不许被吞
+    expect(ast.execution.declared).toBe(true);
+    expect(ast.execution.steps).toHaveLength(3);
+    expect(ast.execution.stepTypes).toEqual(["query_timeseries_agg", "search_knowledge", "plan_slice"]);
+    // ③ 图仍照常派生（步骤段不拖垮整条编译）
+    expect(SkillReasoningGraphSchema.safeParse(deriveSkillReasoningGraph(ast)).success).toBe(true);
+  });
+
+  it("PlanStep 那侧的步骤也照常编得过（两侧都要接住，不是换一边偏食）", () => {
+    const planSteps = [
+      { id: "s1", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: {} } },
+      { id: "s2", type: "render_answer", params: { blocks: [] } },
+    ];
+    const ast = parseSkillToAst({ ...skill(), execution: { steps: planSteps } } as unknown as SkillDefinition);
+    expect(SkillAstSchema.safeParse(ast).success).toBe(true);
+    expect(ast.execution.stepTypes).toEqual(["invoke_solver", "render_answer"]);
+  });
+
   it("readSkillExecutionSteps 对畸形输入不崩：null / 非数组 steps / 非对象 execution", () => {
     expect(readSkillExecutionSteps(null)).toEqual({ steps: [], declared: false });
     expect(readSkillExecutionSteps({ execution: null })).toEqual({ steps: [], declared: false });
