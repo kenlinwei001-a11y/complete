@@ -690,18 +690,27 @@ export class MockRuleEngineClient implements RuleEngineClient {
       .filter((id) => all[id])
       .map((id) => ({ ...(all[id] as () => RuleVerdict)(), ruleVersion: this.versions[id] ?? 1 }));
   }
+  /**
+   * WO-REFGATE-ENT · N-01 · mock 侧同样只暴露「**可被引用**」的那一集 = 已发布。
+   *
+   * `draftRuleKeys` 是 mock 专用旋钮：测试可把某个 key 挪进草稿集，模拟 A 侧 DRAFT 规则——
+   * 它**不**出现在下面两个 `listPublished*` 的返回里，从而让「引用 DRAFT 规则 → 发布被拒」
+   * 这条判据在纯 mock 链路上也能被驱动（真 HTTP 链路另有 seam 测试直咬 URL 上的 status 过滤）。
+   */
+  readonly draftRuleKeys = new Set<string>();
+  private readonly allRuleKeys = ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
   // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
-  async listRuleKeys(): Promise<string[]> {
-    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
+  async listPublishedRuleKeys(): Promise<string[]> {
+    return this.allRuleKeys.filter((k) => !this.draftRuleKeys.has(k));
   }
   // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
-  async listRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
+  async listPublishedRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
     const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
       C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
       C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
       C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
     };
-    const keys = await this.listRuleKeys();
+    const keys = await this.listPublishedRuleKeys();
     return keys.map((key) => {
       const k = known[key];
       return k

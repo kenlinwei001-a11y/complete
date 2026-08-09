@@ -8,7 +8,7 @@ type ProbeScope = "solvers" | "rules" | "objectTypes";
 
 const PROBE_SOURCE: Record<ProbeScope, string> = {
   solvers: "求解器目录（DataCore catalog.discover(\"solvers\")）",
-  rules: "规则库（DataCore rules.listRuleKeys）",
+  rules: "已发布规则库（DataCore rules.listPublishedRuleKeys）",
   objectTypes: "本体对象类型（DataCore ontology.listObjectTypeKeys）",
 };
 
@@ -77,7 +77,9 @@ export async function probeMissingRefs(
     missing.solvers = want.solverKeys.filter((k) => !known.has(k));
   }
   if (want.ruleKeys.length > 0) {
-    const known = await knownKeys("rules", () => dataCore.rules.listRuleKeys(ctx));
+    // WO-REFGATE-ENT · N-01：判据是「可不可以被引用」，不是「库里有没有这条记录」——
+    // 故读的是**已发布**规则集（DRAFT 规则不在其中 ⇒ 引用它的资源发布被拒）。
+    const known = await knownKeys("rules", () => dataCore.rules.listPublishedRuleKeys(ctx));
     missing.rules = want.ruleKeys.filter((k) => !known.has(k));
   }
   if (want.objectTypes.length > 0) {
