@@ -15,8 +15,8 @@ import {
   SceneEntryConfigSchema,
   ScenarioSchema,
   SkillExecutionSchema,
+  SkillExecutionStepSchema,
   SkillGraphSchema,
-  PlanStepSchema,
   ScaffoldManifestSchema,
   DecisionTraceSchema,
   EvalCaseSchema,
@@ -1318,8 +1318,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     execution: SkillExecutionSchema.optional(),
     /** `execution.graph` 的简写。 */
     graph: SkillGraphSchema.optional(),
-    /** 旧路：legacy `ExecutionPlan.steps[]` —— 走它会在响应 `source` 里如实标出，不静默。 */
-    planSteps: z.array(PlanStepSchema).optional(),
+    /**
+     * 旧路：legacy `ExecutionPlan.steps[]` —— 走它会在响应 `source` 里如实标出，不静默。
+     * 元素**不钉死** `PlanStepSchema`（闭合联合会挡掉 ExtraToolStep 三类真实可执行步骤）；
+     * 语义校验由 `GraphScheduler` 调 `validatePlanSteps` 完成（裁决 v3 约束①：单一来源在函数不在类型）。
+     */
+    planSteps: z.array(SkillExecutionStepSchema).optional(),
     slots: z.record(z.string(), z.unknown()).optional(),
     context: z.unknown().optional(),
   });

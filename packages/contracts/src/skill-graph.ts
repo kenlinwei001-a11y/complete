@@ -344,14 +344,51 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
  * 并由 `compileExecution` **显式判别当前走的是哪一路并在返回里标出 `source`**，
  * 任何一路都不许静默：没有任何来源 = 显式报错，不是空跑。
  *
- * ── 落点边界 ──────────────────────────────────────────────────────────────
- * 本 WO 的文件边界不含 `packages/contracts/src/agentcore.ts`，故**未**把 `execution` 挂进
- * `SkillDefinitionSchema`。挂载归 Skill 契约线；本文件先把形状与判别语义定死，三条线共用。
+ * ── ⚠ 落点边界（未挂 ≠ 已实现）──────────────────────────────────────────────
+ * **本形状要挂在 `SkillDefinitionSchema.execution` 上，归 Skill 契约线。**
+ * **在挂上去之前，`Skill.execution` 这条路恒空** —— 也就是说：本文件的编译/调度能力虽已可跑
+ * （经 `POST /b/v1/skill-graphs/run` 显式传图即可），但**没有任何一个 Skill 能声明它自己的执行图**，
+ * 因为 `SkillDefinition` 上根本还没有 `execution` 这个字段。
+ * 这是典型的「**接了线没数据**」，**不是**「已实现」——下一个人若误读成后者，就会去修错的地方。
+ * 本 WO 的文件边界不含 `packages/contracts/src/agentcore.ts`，故未代挂。
+ *
+ * ── 两条约束（审核方裁决 v3，消费方必须照做）──────────────────────────────
+ * **① 步骤形状的单一来源是「函数」不是「类型」。**
+ *    权威 = agentcore `workflow/validate.ts validatePlanSteps`，它实际接受的是
+ *    `ExtendedPlanStep = PlanStep | ExtraToolStep`，后者含 `query_timeseries_agg` /
+ *    `search_knowledge` / `plan_slice` 三个**真实可执行**类型（`workflow/executor.ts:19`）。
+ *    若把 `steps` 钉死成闭合的 `PlanStepSchema`，用这三类的技能会**解析即失败**。
+ *    故下面 `steps` 的元素只做**结构地板**校验，语义真值交给 `validatePlanSteps`。
+ *    （契约在下层，不能 import agentcore —— R1；所以这条只能靠消费方遵守 + 注释钉住。
+ *      本仓已有消费方：`skill-orchestrator.ts` 在 steps/legacy 两路上真调了它。）
+ * **② `source` 的可见性是判据不是修饰。**
+ *    只要「回落 legacy」是静默的，这个特性就等于没做而测试照绿。
  */
+
+/**
+ * 线性步骤的**结构地板**（不是真值源，见上文约束①）。
+ * 只校验「有 id、有 type、params 是对象」这种任何步骤都成立的最小形状；
+ * `type` 刻意是**开放** `string` 而不是闭合枚举 —— 闭合会把 ExtraToolStep 三类挡在门外。
+ */
+export const SkillExecutionStepSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.string().min(1),
+    params: z.record(z.string(), z.unknown()).default({}),
+    onError: OnErrorSchema.optional(),
+    timeoutMs: z.number().int().positive().optional(),
+  })
+  .passthrough();
+export type SkillExecutionStep = z.infer<typeof SkillExecutionStepSchema>;
+
 export const SkillExecutionSchema = z
   .object({
-    /** 裁决指定名 · 线性形态 · 元素**就是** `PlanStep`（复用既有判别联合，不新造）。 */
-    steps: z.array(PlanStepSchema).min(1).max(MAX_GRAPH_NODES).optional(),
+    /**
+     * 裁决指定名 · 线性形态。
+     * 元素**不钉死** `PlanStepSchema`（闭合联合会挡掉 ExtraToolStep 三类）——
+     * 结构地板在此，语义校验必须走 `validatePlanSteps`（约束①）。
+     */
+    steps: z.array(SkillExecutionStepSchema).min(1).max(MAX_GRAPH_NODES).optional(),
     /** 图形态（本线增量）· PRD §3.2「source = Skill.execution.graph → 直接用」。 */
     graph: SkillGraphSchema.optional(),
     /** PRD §3.3-1：DETERMINISTIC 图内不得出现 LLM 节点（agent/compose）。 */
@@ -367,7 +404,7 @@ export type SkillExecution = z.infer<typeof SkillExecutionSchema>;
 export const EXECUTION_SOURCES = ["execution.graph", "execution.steps", "legacy.plan.steps"] as const;
 export type ExecutionSource = (typeof EXECUTION_SOURCES)[number];
 
-/** `PlanStep.type` → 节点 kind 的**反向映射**，从正向表派生（不手抄第二份）。 */
+/** 步骤 `type` → 节点 kind 的**反向映射**，从正向表派生（不手抄第二份）。 */
 export const PLAN_STEP_TYPE_TO_NODE_KIND: Readonly<Record<string, SkillGraphNodeKind>> =
   Object.freeze(
     Object.fromEntries(
@@ -378,13 +415,19 @@ export const PLAN_STEP_TYPE_TO_NODE_KIND: Readonly<Record<string, SkillGraphNode
   );
 
 /**
- * 线性 `PlanStep[]` → **链式退化图**（PRD §3.2）。
+ * 线性步骤 → **链式退化图**（PRD §3.2）。
+ *
+ * 入参刻意是**放宽**的 `SkillExecutionStep`（`type: string`）而不是闭合的 `PlanStep`：
+ * `ExtraToolStep` 三类（`query_timeseries_agg`/`search_knowledge`/`plan_slice`）是真实可执行步骤，
+ * 钉死闭合联合会让用它们的技能**解析即失败**（裁决 v3 约束①）。
+ * 图词表覆盖不到的 type 在这里**被点名拒绝**（NOT_IMPLEMENTED），而不是在 zod 层被一句
+ * 含混的 VALIDATION_ERROR 挡掉 —— 报错要说得出「是哪个步骤的哪个 type」。
  *
  * 保守：一律编成全 seq 链，**不做隐式并行推断**（今天的 steps 不带依赖信息，任何自动分组都是猜；
  * 「更快但偶尔错」是本仓最贵的错法）。想并行必须显式写 `execution.graph` 的 parallel 边。
  */
 export function chainGraphFromPlanSteps(
-  steps: PlanStep[],
+  steps: (SkillExecutionStep | PlanStep)[],
 ): { ok: true; graph: SkillGraph } | { ok: false; code: SkillGraphCompileErrorCode; message: string } {
   const nodes: SkillGraphNode[] = [];
   for (const s of steps) {
@@ -393,7 +436,10 @@ export function chainGraphFromPlanSteps(
       return {
         ok: false,
         code: "NOT_IMPLEMENTED",
-        message: `PlanStep.type=${s.type}（步骤「${s.id}」）在图节点词表里没有对应 kind —— 诚实拒绝，不静默丢步`,
+        message:
+          `步骤「${s.id}」的 type=${s.type} 在图节点词表里没有对应 kind —— 诚实拒绝，不静默丢步。` +
+          `（注：该 type 可能是完全合法的可执行步骤——如 ExtraToolStep 的 query_timeseries_agg/` +
+          `search_knowledge/plan_slice——只是**图调度尚未实现它**，两回事别混。）`,
       };
     }
     nodes.push({
@@ -431,7 +477,7 @@ export type CompileExecutionResult =
  */
 export function compileExecution(input: {
   execution?: SkillExecution | undefined;
-  legacyPlanSteps?: PlanStep[] | undefined;
+  legacyPlanSteps?: (SkillExecutionStep | PlanStep)[] | undefined;
 }): CompileExecutionResult {
   let source: ExecutionSource;
   let graph: SkillGraph;

@@ -272,7 +272,10 @@ node dispatch：`skill`（按 key 载入本租户 Skill，摊平 references[kind
    ↓
 POST /b/v1/skill-graphs/run → { runId, source, layers[], nodeResults[] }
 ```
-- **字段对名（三条 PRD 线共用·审核方 2026-08-09 裁决）**：`Skill.execution.steps`，元素**复用既有 `PlanStep` 判别联合不新造**；图形态另走 `Skill.execution.graph`。三条线（迁移 / 编译器 / 运行时）任一改名即互相读到 `undefined` → 静默回落 legacy → 功能等于没做而四包全绿（同族 `G-SIDEEFFECT-VOCAB-SPLIT`）。形状定义在 `packages/contracts/src/skill-graph.ts`；**挂进 `SkillDefinitionSchema` 归 Skill 契约线**，本 WO 未挂。
+- **字段对名（三条 PRD 线共用·审核方 2026-08-09 裁决 v3 终版）**：容器名 `Skill.execution`，下含 `steps`（线性）/ `graph`（图）/ 判别出的 `source`。三条线（迁移 / 编译器 / 运行时）任一改名即互相读到 `undefined` → 静默回落 legacy → 功能等于没做而四包全绿（同族 `G-SIDEEFFECT-VOCAB-SPLIT`）。形状定义在 `packages/contracts/src/skill-graph.ts`。
+  - **约束①：步骤形状的单一来源是「函数」不是「类型」** —— 权威 = `workflow/validate.ts validatePlanSteps`，它实际接受 `ExtendedPlanStep = PlanStep | ExtraToolStep`，后者含 `query_timeseries_agg`/`search_knowledge`/`plan_slice` 三个**真实可执行**类型（`apps/agentcore/src/workflow/executor.ts:19 (ExtraToolStep)`）。**`steps` 元素刻意不钉死闭合的 `PlanStepSchema`**（钉死会让用这三类的技能**解析即失败**）；契约层只做结构地板（`type` 为开放 string），语义校验由消费方调 `validatePlanSteps`。已真接线：`skill-orchestrator.ts` 在 steps/legacy 两路上真调（图路不适用——「只能引用 j<i」是线性假设，DAG 上不成立）。
+  - **约束②：`source` 的可见性是判据不是修饰** —— 只要「回落 legacy」是静默的，这个特性就等于没做而测试照绿。
+  - ⚠ **未挂 ≠ 已实现**：本形状**尚未挂进 `SkillDefinitionSchema.execution`**（归 Skill 契约线，本 WO 文件边界外）。**在挂上去之前，`Skill.execution` 这条路恒空** —— 编译/调度能力可经 `POST /b/v1/skill-graphs/run` 显式传图跑通，但**没有任何一个 Skill 能声明自己的执行图**。这是「**接了线没数据**」，不是「已实现」，误读会去修错的地方。
 - **不新增任何领域事件**（守 QOS-PRD §8.2 一字不差；§4 事件集不受影响）。
 - **与既有线性执行器的关系**：`workflow/executor.ts` 的 `for…await` 串行执行器**原样保留、本单未改**；图调度是**旁挂**的第二条路径。PRD §3.4 的「三处扇出收编」（executor 线性 / multi-route 多域 / Coordinator 角色）**尚未做**，见 §8 `G-SERIAL-GRAPH-EXECUTION`。
 - **S1 已实现节点 kind 仅 `skill` / `solver`**；`rule|agent|human|slice|render|mcp|compose` 与边 kind `cond` 一律**编译期显式 `NOT_IMPLEMENTED` 并点名**，不静默跳过。

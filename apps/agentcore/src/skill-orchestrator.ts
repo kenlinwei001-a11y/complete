@@ -23,8 +23,8 @@ import {
   compileExecution,
   ErrorCodes,
   type ExecutionSource,
-  type PlanStep,
   type SkillExecution,
+  type SkillExecutionStep,
   type SkillGraph,
   type SkillGraphLayer,
   type SkillGraphNode,
@@ -32,6 +32,11 @@ import {
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import type { Repos } from "./persistence/repos.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "./util/template.js";
+// 裁决 v3 约束①：步骤形状的**单一来源是这个函数，不是某个闭合类型名**。
+// 它实际接受 `ExtendedPlanStep = PlanStep | ExtraToolStep`（后者含 query_timeseries_agg /
+// search_knowledge / plan_slice 三个真实可执行类型）。任何消费方校验步骤都必须走它。
+import { validatePlanSteps } from "./workflow/validate.js";
+import type { ExtendedPlanStep } from "./workflow/executor.js";
 
 export interface GraphNodeResult {
   nodeId: string;
@@ -99,13 +104,35 @@ export class GraphScheduler {
    */
   async run(
     auth: ToolAuthCtx,
-    input: { execution?: SkillExecution; legacyPlanSteps?: PlanStep[] },
+    input: { execution?: SkillExecution; legacyPlanSteps?: SkillExecutionStep[] },
     opts: { runId: string; slots?: Record<string, unknown>; context?: unknown } = { runId: "run_0" },
   ): Promise<GraphRunResult> {
     const compiled = compileExecution(input);
     if (!compiled.ok) {
       throw new SkillGraphCompileError(compiled.code, compiled.message, compiled.cycle);
     }
+
+    // ── 裁决 v3 约束①：线性两路必须过**生产校验器** `validatePlanSteps` ──────────────
+    // 契约层只做结构地板（`type` 是开放 string，好让 ExtraToolStep 三类进得来）；
+    // 语义真值（id 重复 / 悬空步骤引用 / 前向引用 / 超时合计上界）在这个函数里。
+    // 契约包在下层不能 import agentcore（R1），所以这条线只能由消费方接——这里就是那个消费方。
+    // 图路**不适用**：`validatePlanSteps` 的「只能引用 j<i」是线性假设，DAG 上不成立。
+    const linearSteps =
+      compiled.source === "execution.steps"
+        ? input.execution?.steps
+        : compiled.source === "legacy.plan.steps"
+          ? input.legacyPlanSteps
+          : undefined;
+    if (linearSteps) {
+      const errors = validatePlanSteps(linearSteps as unknown as ExtendedPlanStep[]);
+      if (errors.length > 0) {
+        throw new SkillGraphCompileError(
+          ErrorCodes.PLAN_VALIDATION_ERROR,
+          `线性步骤未过 validatePlanSteps（${errors.length} 项）：${errors.join("；")}`,
+        );
+      }
+    }
+
     const graph = compiled.graph;
 
     const byId = new Map<string, SkillGraphNode>();

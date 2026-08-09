@@ -349,6 +349,40 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
     expect(err.error.message).toContain("三路皆空");
   });
 
+  /**
+   * 裁决 v3 约束①：步骤形状的单一来源是 **`validatePlanSteps` 这个函数**，不是 `PlanStep` 这个闭合类型名。
+   * `ExtraToolStep` 三类（query_timeseries_agg / search_knowledge / plan_slice）是**真实可执行**步骤
+   * （`workflow/executor.ts:19`，`validatePlanSteps` 实际收 `PlanStep | ExtraToolStep`）。
+   * 若把 steps 钉死成闭合 `PlanStepSchema`，它们会在 **zod 解析层**就被挡掉 → 用这三类的技能解析即失败。
+   */
+  it("★ ExtraToolStep 三类不得在解析层被挡掉，且要拿到**点名**的诚实错误", async () => {
+    for (const type of ["query_timeseries_agg", "search_knowledge", "plan_slice"]) {
+      const res = await runGraph({
+        execution: { steps: [{ id: "x1", type, params: { foo: 1 } }] },
+      });
+      // 不是 400 VALIDATION_ERROR（那才是"解析即失败"）
+      expect(res.statusCode, type).toBe(422);
+      const err = res.json() as { error: { code: string; message: string } };
+      // 是 422 NOT_IMPLEMENTED，且说得出是哪个步骤的哪个 type
+      expect(err.error.code, type).toBe("NOT_IMPLEMENTED");
+      expect(err.error.message, type).toContain(type);
+      expect(err.error.message, type).toContain("x1");
+    }
+  });
+
+  it("★ 约束①真接线：线性路上 validatePlanSteps 的语义错真的会拦（不是只写在注释里）", async () => {
+    // 悬空步骤引用 —— 这是 validatePlanSteps 的判据，不是 zod 结构地板能看见的
+    const res = await runGraph({
+      planSteps: [
+        { id: "p1", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { m: "{{steps.ghost.output.x}}" } } },
+      ],
+    });
+    expect(res.statusCode).toBe(422);
+    const err = res.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("PLAN_VALIDATION_ERROR");
+    expect(err.error.message).toContain("ghost");
+  });
+
   it("优先级 graph > steps > legacy：三路同给，走图且如实上报", async () => {
     const res = await runGraph({
       execution: { graph: TWO_LAYER_GRAPH, steps: LEGACY_STEPS },
