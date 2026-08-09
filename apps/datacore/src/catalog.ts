@@ -1,7 +1,8 @@
 import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
-import type { ResourceDescriptor } from "@platform/contracts";
+import type { ResourceDescriptor, SolverCategory } from "@platform/contracts";
+import { solverCategoryOf } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维（消费方在本文件：检索筛选 + 资源投影）
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -23,6 +24,23 @@ export interface CatalogItem {
   tags?: string[];
   /** 关联 feature key（未开通 → 不出现在目录）。 */
   featureKey?: string;
+  /**
+   * WO-L7A 决策问题类目（求解器专有·10 类枚举）。**派生投影（R13）不是新真值源**——
+   * 由 `solvers/taxonomy.ts` 的归档表按 key 查出后挂上，目录数组本身不手写这一字段
+   * （手写就会和 `SOLVER_CATEGORY_MAP` 两处漂移）。切片等非求解器条目无此字段。
+   */
+  category?: SolverCategory;
+}
+
+/**
+ * WO-L7A · 给求解器目录条目挂上决策问题类目（派生投影·纯映射·R6 确定性·保序）。
+ * 单一出处 = `SOLVER_CATEGORY_MAP`；未登记的 key 不挂字段（诚实缺省，不塞"其他"兜底）。
+ */
+function withSolverCategory(items: CatalogItem[]): CatalogItem[] {
+  return items.map((it) => {
+    const category = solverCategoryOf(it.key);
+    return category ? { ...it, category } : it;
+  });
 }
 
 /** 内置切片目录（与 ontology.resolveSlice 的内置分支一一对应）。 */
@@ -172,17 +190,21 @@ export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_
  * 确定性（R6）：纯映射，无 IO。description 为空的条目会被 findUndescribed 捕获（门红）。
  */
 export function datacoreResourceDescriptors(): ResourceDescriptor[] {
-  const solvers: ResourceDescriptor[] = ALL_SOLVER_CATALOG.map((s) => ({
-    kind: "solver",
-    key: s.key,
-    label: s.name,
-    description: s.description,
-    argHints: s.argHints,
-    ...(s.domain ? { domain: s.domain } : {}),
-    ...(s.featureKey ? { featureKey: s.featureKey } : {}),
-    ...(s.answersQuestions ? { answersQuestions: s.answersQuestions } : {}),
-    ...(s.tags ? { tags: s.tags } : {}),
-  }));
+  const solvers: ResourceDescriptor[] = ALL_SOLVER_CATALOG.map((s) => {
+    const category = solverCategoryOf(s.key); // WO-L7A · 分类维随资源投影下发（发现侧按类筛选的供给）
+    return {
+      kind: "solver",
+      key: s.key,
+      label: s.name,
+      description: s.description,
+      argHints: s.argHints,
+      ...(s.domain ? { domain: s.domain } : {}),
+      ...(s.featureKey ? { featureKey: s.featureKey } : {}),
+      ...(s.answersQuestions ? { answersQuestions: s.answersQuestions } : {}),
+      ...(s.tags ? { tags: s.tags } : {}),
+      ...(category ? { category } : {}),
+    };
+  });
   const slices: ResourceDescriptor[] = BUILTIN_SLICE_CATALOG.map((s) => ({
     kind: "slice",
     key: s.key,
@@ -226,15 +248,27 @@ function matchScore(item: CatalogItem, query?: string): number {
 export class CatalogService {
   constructor(private repos: Repos, private features: FeatureService) {}
 
-  /** §1: discover 目录（≤20，关键词过滤 + 权限/功能开通过滤）。 */
+  /**
+   * §1: discover 目录（≤20，关键词过滤 + 权限/功能开通过滤）。
+   *
+   * WO-L7A：`category` 为**求解器决策问题类目硬过滤**（10 类枚举）——给了类目就只返回该类目的求解器，
+   * 且每条带回 `category` 字段。类目过滤发生在关键词打分**之前**（先收窄论域再排序）。
+   * ⚠ discover 的论域是**场景池**（`SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`，不含通用优化模板池），
+   *   故这里的结果 = 该类目 ∩ 场景池；要「类目成员严格相等」请走 `solverRegistry`（论域 = 全 59）。
+   * 切片池无类目维，给了即空集（诚实空，不静默忽略参数返全量——静默忽略会让调用方以为筛过了）。
+   */
   async discover(
     ctx: AuthCtx,
     kind: "slices" | "solvers",
     query?: string,
+    category?: SolverCategory,
   ): Promise<{ items: CatalogItem[] }> {
     let items: CatalogItem[];
     if (kind === "solvers") {
-      items = [...SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG];
+      items = withSolverCategory([...SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG]);
+      if (category) items = items.filter((it) => it.category === category);
+    } else if (category) {
+      items = []; // 切片不参与求解器分类维
     } else {
       // 内置 + 已发布的自定义切片（自定义切片必须带 description，否则不入目录）
       const custom = await this.repos.sliceSpecs.list(ctx.tenantId);
@@ -266,10 +300,20 @@ export class CatalogService {
    * A1：求解器全集注册表（业务场景 22 + 通用 9 + 决策/骨架 8 = 39）。供 AgentCore 构建 `solvers` MCP server 的
    * 全部工具（mcp__solvers__{key}）。与 discover 同走 feature 过滤——关某求解器 feature → 工具消失
    * （R3 先于 authz，与 404 不泄露存在性同构）。不做 ≤20 截断（治理页需全量）。
+   *
+   * WO-L7A：论域 = `ALL_SOLVER_CATALOG`（与 `SOLVER_KEYS` 键集相等，catalog.test 守），故给了 `category`
+   * 时返回的 key 集 **恰好等于**该类目的成员集（`solversInCategory(category)`，feature 全开时）——
+   * 这就是「按类找求解器」这个动作的落点：治理页分组、Agent 按决策问题收窄选型范围都走这条。
+   * 每条无条件带回 `category`（不给类目时也带，前端可自行分组）。
    */
-  async solverRegistry(ctx: AuthCtx, query?: string): Promise<{ items: CatalogItem[] }> {
+  async solverRegistry(
+    ctx: AuthCtx,
+    query?: string,
+    category?: SolverCategory,
+  ): Promise<{ items: CatalogItem[] }> {
     const out: CatalogItem[] = [];
-    for (const it of ALL_SOLVER_CATALOG) {
+    for (const it of withSolverCategory(ALL_SOLVER_CATALOG)) {
+      if (category && it.category !== category) continue; // 类目硬过滤先于关键词打分
       if (matchScore(it, query) <= 0) continue;
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
       out.push(it);

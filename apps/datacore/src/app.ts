@@ -79,6 +79,8 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
+import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory } from "@platform/contracts";
 // WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
 import { resolveBaseId } from "./solvers/risk.js";
 import type { SolverContext } from "./solvers/types.js";
@@ -2825,9 +2827,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
   app.get("/a/v1/catalog", async (req) => {
-    const { kind, query } = req.query as { kind?: string; query?: string };
+    const { kind, query, category } = req.query as { kind?: string; query?: string; category?: string };
     if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
-    return catalog.discover(ctx(req), kind, query);
+    // WO-L7A 求解器决策问题类目筛选：非法类目**显式 400**，不静默忽略参数返全量（静默 = 调用方以为筛过了）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    return catalog.discover(ctx(req), kind, query, category);
+  });
+  // WO-L7A 求解器决策问题类目登记表（10 类 + 每类的决策问句 + 成员 key·治理页分组/Agent 选型收窄的供给侧）
+  app.get("/a/v1/solvers/categories", async (req) => {
+    ctx(req); // 鉴权上下文（分类维为平台元数据，按租户读）
+    return {
+      categories: solversByCategory().map((g) => ({
+        category: g.category,
+        label: SOLVER_CATEGORY_META[g.category].label,
+        decisionQuestion: SOLVER_CATEGORY_META[g.category].decisionQuestion,
+        solverKeys: g.solverKeys,
+        count: g.solverKeys.length,
+      })),
+      total: SOLVER_KEYS.length,
+      uncategorized: uncategorizedSolverKeys(), // 空数组 = 无漏网（诚实亮出，不藏）
+    };
   });
   // A3.1 · 14 业务域参考注册表（配置驱动 R14）：给 A4 浏览器分组、切片规划器 tie-break、跨域接缝识别共用。
   app.get("/a/v1/business-domains", async (req) => {
@@ -2911,8 +2932,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // MCP server 的全部工具（含 A8 新模型 + 净室通用族）；附输出形状供治理页/渲染绑定校验参考。
   app.get("/a/v1/solvers/registry", async (req) => {
     const c = ctx(req);
-    const { query } = req.query as { query?: string };
-    const { items } = await catalog.solverRegistry(c, query);
+    const { query, category } = req.query as { query?: string; category?: string };
+    // WO-L7A：非法类目显式 400（同 /a/v1/catalog，不静默返全量）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    const { items } = await catalog.solverRegistry(c, query, category);
     return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
   });
   // SPINE 经营目标-指标-责任骨架：指标库 / KSF / 责任人（各视图 KPI 单一出处 R-一致；Metric 经 metric_rollup 派生投影）。
