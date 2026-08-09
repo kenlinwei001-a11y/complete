@@ -50,7 +50,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
-import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -1421,6 +1421,48 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
     const propagate = propRules.length > 0;
+    // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
+    // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
+    // `delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`），顺序即语义。
+    const sessionPerturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    /**
+     * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
+     * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
+     * `delta`/`scale(≠0)` 的逆是减/除，不需要记忆（也因此不会把中间几 tick 的演化一并抹掉）。
+     *
+     * ⚠ 为什么不照 PRD 原文「记 preValue 于生效当 tick 的 trace」：`POST /perturbations`
+     * 对**建单时已生效**的扰动是在路由里直接施加的（本文件 `simApplyAtCurrentTick`），
+     * 那条路原样保留旧 trace、**不写新 trace** ⇒ trace 里永远不会有它的 preValue，
+     * 而 `startTick` 缺省 = 当前 tick，正是最常走的一条路。改从世界线快照取：
+     * 两条施加路径都成立，且与引擎自己施加时读到的**是同一个数**
+     * （引擎的 enter 发生在 `producedTick === startTick`，其输入态正是 `state@(startTick-1)`）。
+     */
+    const preValueOf = async (p: Perturbation): Promise<number | undefined> => {
+      const snap = p.startTick === 0
+        ? s.baseSnapshot
+        : (await repos.sim.getTickState(c.tenantId, s.id, p.startTick - 1))?.state;
+      const v = snap?.[p.targetObjectId]?.[p.targetStateVar];
+      return typeof v === "number" ? v : undefined;
+    };
+    /** 本 tick（= 产出的那一格 `producedTick`）**相关**的扰动：生效期内的 + 刚到期的（回退要用它）。 */
+    const perturbationsForTick = async (producedTick: number): Promise<PerturbationInTick[]> => {
+      const out: PerturbationInTick[] = [];
+      for (const p of sessionPerturbations) {
+        const now = isPerturbationActiveAt(p, producedTick);
+        const prev = isPerturbationActiveAt(p, producedTick - 1);
+        if (!now && !prev) continue; // 与本 tick 无关
+        // 刚到期且不可解析求逆 ⇒ 现查落地前值（只在真要用时查，不给每条扰动都加一次读）
+        if (!now && (p.mode === "set" || (p.mode === "scale" && p.magnitude === 0))) {
+          out.push({ ...p, preValue: await preValueOf(p) });
+          continue;
+        }
+        out.push(p);
+      }
+      return out;
+    };
+    // 有扰动但没有 PUBLISHED 传导规则的世界也要走引擎：否则「限时停机」到期不回退，
+    // 悄悄变成永久生效（恒等桩那条路只会原样搬运世界态）。
+    const engineTick = propagate || sessionPerturbations.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };
     const ruleParams: RuleParamLookup = {};
     // WO-SANDBOX-E4 节拍闸门：从**对象库**读 D1 落的 `Cadence` 行（`synthetic/service.ts` putAll("Cadence", …)），
@@ -1452,11 +1494,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       cadenceGates = built.gates; gateSkipped = built.skipped;
     }
     let trace: PropagationTrace[] | null = null;
+    let appliedPerturbations: string[] = [];
     for (let i = 0; i < n; i++) {
       const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
-      if (propagate) {
-        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates);
-        state = out.next; pending = out.pending; trace = out.trace; unresolvedGates = out.unresolvedGates; s.curTick += 1;
+      if (engineTick) {
+        const out = propagateTick(
+          graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
+          await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
+        );
+        state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
+        appliedPerturbations = out.appliedPerturbations;
+        // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
+        trace = propagate || out.trace.length > 0 ? out.trace : null;
+        s.curTick += 1;
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
         state = simState(state); pending = []; trace = null; s.curTick += 1;
@@ -1474,6 +1524,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ...(propagate
         ? { trace, cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates } }
         : {}),
+      // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
+      // 无扰动的租户响应形状逐字节同旧（可回退）。
+      ...(sessionPerturbations.length > 0 ? { appliedPerturbations } : {}),
     };
   });
   /**
