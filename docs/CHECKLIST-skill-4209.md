@@ -65,7 +65,7 @@
 | **③ `maxBudgetRounds` 效果层** | `SK-SPEC-G-15/G-20` · `SK-MIG-35/84/136` | ⚠️ **形态②·只有 test 引用** | `grep maxBudgetRounds apps/agentcore/src --include=*.ts \| grep -v test` = **0**。实现在 `handoff-skill-partial-a` 分支上，**该分支未并**（撞 `SYSTEM-ONTOLOGY.md`）。⇒ 这条的闭合**卡在合并冲突上，不是卡在开发上**。 |
 | **④ `outputSchema` 接消费方或删** | `SK-SPEC-11-5` · `SK-MIG-57/139` | 🔗 **有消费方，但不校验实际输出** | 两处消费方：`skill-lint.ts:342` 只跑 `validateJsonSchemaShape`（**验的是"它是不是一个合法 JSON Schema"**）· `dril/resource-projector.ts:149` 只做投影展示。**没有任何一处拿它校验 Skill 的实际输出。** ⇒ 形态④：字段在、消费方在，但消费方量的不是这个字段该管的事。 |
 | **⑤ Business Intent 棘轮** | `SK-SPEC-2-15..2-17` · `SK-MIG-31/90/143/144` | ❌ **无承载物** | `businessIntent` 在 `contracts/src/agentcore.ts` = **0**、`skill-lint.ts` = **0**。SPEC 第②层（Business Intent）**整层无承载物**。 |
-| **⑥ `body` 3000 上限** | `SK-SPEC-6-6..6-9` · `SK-AUT-30/48` | 🔴 **契约与门口径打架（新发现）** | 契约 `agentcore.ts:243` 写 `body: z.string().max(50_000)`；而 `skill-lint.ts:47` 写 `const BODY_MAX = 3000`。⇒ **契约放行的东西，门会拒**。一条 4000 字的 Skill 过得了 zod、过不了发布门，且两个数谁是真源没有任何地方声明。 |
+| **⑥ `body` 3000 上限** | `SK-SPEC-6-6..6-9` · `SK-AUT-30/48` | ✅ **我判错了，这不是冲突** | 🔴 **本条是我的误判，A 路顶回来，我复核认错。** `SPEC-industrial-skill.md:461` **明确写了**：「注：契约层 `SkillDefinitionSchema.body` 是 `z.string().max(50_000)`，lint 的 3,000 是**更严的治理线**。两者不冲突：**契约管『存得下』，lint 管『该不该这么写』**。」⇒ 两层治理线本就该不一样，我把「两个数不同」当成了「它们冲突」。形态：**「我用『两个数不一样』当作『它们冲突』的证据，而前者不度量后者。」** 教训：**报「新发现的冲突」之前，先去被审文档里搜一遍那两个数——它可能早就解释过了。** |
 
 ### 2.1 这六族核出来的两条硬结论
 
