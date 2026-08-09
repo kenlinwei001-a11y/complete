@@ -288,11 +288,16 @@ PRD 粒度全绿、构件粒度 460 个洞，正是本仓"绿测试≠能用"的
 `coverage: 1`（100% 覆盖，验收项 `A5`）。而：
 
 ```
+# 金丝雀（已知必中，证明 grep 工具正常）
+$ grep -rn "PRD-addendum-validation-loop" apps packages scripts | wc -l
+12
+# 被测目标
 $ grep -rn "PRD-A18" apps packages scripts | wc -l
 0
 ```
 
-**这篇 PRD 在全仓零引用**，它的"A5 被覆盖"是因为**别的 PRD 的 A5** 出现在某个测试里。
+**这篇 PRD 在全仓零引用**（金丝雀 12 命中 ⇒ 不是工具坏了），
+它的"A5 被覆盖"是因为**别的 PRD 的 A5** 出现在某个测试里。
 
 另外两个实测缺陷：
 - 只扫 `apps/{frontend-shell,datacore,agentcore}/test` **三个目录的顶层**（`readdirSync` 非递归），
