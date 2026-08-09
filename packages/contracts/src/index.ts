@@ -70,3 +70,4 @@ export * from "./solver-run-diagnostics.js"; // WO-D2/D3 · 同步求解超时�
 export * from "./chain-sim.js"; // WO-SANDBOX-S0 · 推演沙盘全链契约冻结（ChainNode/ChainStep 五段 · Cadence 一等公民「等待期望=everyDays/2」· ChainImpediment 三类派生对象 · LossAttribution 分母排除增值段「Σ==100%」· ChainScope 闭业务线口子）
 export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层三项（OTD 批次准时率口径定死 CUSTOMER_REQUEST · 库存地点×时间序列 · 全链经营现金流 EMPTY 取证）
 export * from "./procurement.js"; // WO-SANDBOX-D2 · 采购段凭证契约（四段按责任方可分解：供应商生产/在途/清关/到货检验 · MOQ/准时率接线 · 三态 MEASURED|NOT_APPLICABLE|EMPTY 禁假默认值 · totalDays 硬绑四段之和）
+export * from "./skill-compile.js"; // WO-SKILL-COMPILER-S1 · 技能编译流水线 S1 切片（Parser→SkillAst→推理图，纯函数 R6；Validator 在 agentcore；Optimizer/包段显式 NOT_IMPLEMENTED）
