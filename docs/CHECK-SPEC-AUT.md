@@ -529,7 +529,7 @@ Test Files 10 passed (10) · Tests 92 passed (92) · RC=0
 | SK-AUT-4-5 | 门一：示例含正反例 | 🔗 | 见 SK-AUT-3-5（关键词存在性） | 同上 |
 | SK-AUT-4-6 | 门一：工具/字段名注册表反查 | 🔗 | 见 SK-AUT-3-10（只工具名） | 同上 |
 | SK-AUT-4-7 | 门一：`{{resource:name}}` 可解析 | ✅ | `skill-lint.ts:320-326` 正则 `\{\{resource:([^}]+)\}\}` 比对 `skill.resources[].name` | 发布路真跑；**但 7/7 resources 为空且 body 无 `{{resource:}}` ⇒ 生产从未命中**（接了线没数据） |
-| SK-AUT-4-8 | 门二：每技能发布必附 **≥3 条** EvalCase | ✅ | `server.ts:1284-1287` `<3` ⇒ `422 SKILL_EVAL_INSUFFICIENT` | `force=true` 审计豁免（`:1285`）。**seed 里 0 条 skill_quality 用例 ⇒ 出厂 7 个 Skill 今天一个都发布不了（除非 force）** |
+| SK-AUT-4-8 | 门二：每技能发布必附 **≥3 条** EvalCase | 🔗 | `server.ts:1284-1287` `<3` ⇒ `422 SKILL_EVAL_INSUFFICIENT`（`force=true` 审计豁免） | **追一层发现旁门**：`main.ts:29` `repos.skills.insert(sk)` 把种子**直插仓储**，完全绕过 `POST /b/v1/skills/:id/publish` ⇒ 出厂 **5 个 `status:PUBLISHED`** 的 Skill **从未过这道门**。亲手实测：7/7 过 lint（逐个跑 `lintSkill`，0 violation），但 `skill_quality` 用例 **0 条** ⇒ 若走正门 **7/7 会被 `422 SKILL_EVAL_INSUFFICIENT` 拦下**。见 F14 |
 | SK-AUT-4-9 | 门二 · **应触发**：toolSequence 含 `load_skill(本技能)` 且回答符合"输出要求"段（answerMust） | 🔗 | `skill-lint.ts:92` 计数 + `server.ts:1291-1298` 覆盖门 ✅；`skill-probe.ts` 真跑 toolSequence 断言 ✅ | **「含 `load_skill(本技能)`」只判工具名不判实参**（`skill-lint.ts:92` `s.name === LOAD_SKILL_TOOL.name`）；「回答符合输出要求段」无结构化校验，靠 `answerMust` 人写字符串 |
 | SK-AUT-4-10 | 门二 · **不应触发**：toolSequence 不含本技能加载 | 🔗 | `skill-lint.ts:93` `else shouldNotTrigger++` | 判据是「声明了 toolSequence 且不含 load_skill」⇒ **一条根本不加载任何技能的普通用例也算"不应触发"**，判别较宽 |
 | SK-AUT-4-11 | 门二 · **行为增益**：挂载/不挂载两态跑，挂载态在指定断言上更优 | ✅ | `skill-probe.ts:293-330` 真跑 twin agent | `ensureTwinAgent`(`:119`) 建不挂 skill 的对照 agent；`:329-330` twin 也含该内容 ⇒ 判失败。`:271-272` 补了「无 answerMust 直接失败」 |
@@ -564,15 +564,15 @@ Test Files 10 passed (10) · Tests 92 passed (92) · RC=0
 
 | 档 | SPEC（196） | 增量 PRD（78） | 合计 | 占比 |
 |---|---|---|---|---|
-| ✅ 实体层真满足 | 30 | 36 | **66** | 24.1% |
-| 🔗 有实现·接线不全 | 58 | 20 | **78** | 28.5% |
+| ✅ 实体层真满足 | 30 | 35 | **65** | 23.7% |
+| 🔗 有实现·接线不全 | 58 | 21 | **79** | 28.8% |
 | ⚠ 只有 test 引用 / 接了线没数据 | 8 | 5 | **13** | 4.7% |
 | ❌ 无承载物 | 72 | 16 | **88** | 32.1% |
 | ⛔ 文档自标非目标 | 28 | 1 | **29** | 10.6% |
 
 > 统计口径：脚本按「行首 `| SK-SPEC` / `| SK-AUT`」取行，取该行第一个以档位符号开头的单元格。
-> 校验：274 = 66+78+13+88+29 ✓；编号无重复 ✓；未定档行 0 ✓。
-> 注意**增量 PRD 的 ✅ 比例（46%）远高于 SPEC（15%）** —— 因为增量 PRD 写的是**已实施过的 WO**（lint/eval 双门），
+> 校验：274 = 65+79+13+88+29 ✓；编号无重复 ✓；未定档行 0 ✓。
+> 注意**增量 PRD 的 ✅ 比例（45%）远高于 SPEC（15%）** —— 因为增量 PRD 写的是**已实施过的 WO**（lint/eval 双门），
 > SPEC 写的是**目标形态**（12 层工业级 Skill）。两份文档不在同一个成熟度上，合并算总分会掩盖这个差别。
 
 ### ⛔ 的三分（29 条）
@@ -617,6 +617,7 @@ Test Files 10 passed (10) · Tests 92 passed (92) · RC=0
 | **F11** | `SPEC-industrial-skill.md:117` §2-⑫ | 「**生长回路真的会写**」（对上一版「只报不写」的更正） | **复验成立**，此条**不是**假宣称，列此仅为闭环记录 | — |
 | **F12** | `SPEC-industrial-skill.md:110` §2-⑤ | 「5.3 记忆：`search_experience` 50 案例」「**5.3 只读不写**」 | **复验成立，非假宣称**（本条曾被我误判为"部分不成立"，追一层后自纠）：`distillExperienceCases`(`mocks/seed.ts:1741`) 的唯一 src 调用方是 `main.ts:44` —— **启动时灌常量 `LIVED_IN_SCENE_HISTORY`**，不是从真实 task 蒸馏。写侧确实不存在 | 列此仅为记录一次自纠：**「有个函数叫 distill」不是「有回写通道」的证据** |
 | **F13** | 派单给的「已知冲突」 | 「契约 `body: max(50_000)` vs `skill-lint.ts:47 BODY_MAX=3000`」列为冲突 | **不是冲突**：`SPEC §9.3`（`:461-462`）明写「契约管存得下，lint 管该不该这么写」，是**设计**。两者今天字节一致于文档 | 按"冲突"去修会放开 lint 或收紧契约，两者都违反 §9.3 定案 5 |
+| **F14** | `PRD-addendum-skill-authoring.md:35` R16 | 「**发育闭环：Skill 发布经 lint+eval 两门**」 | 门是真的，**但出厂数据走旁门**：`apps/agentcore/src/main.ts:29` `repos.skills.insert(sk)` 直插仓储，5 个种子以 `status:PUBLISHED` 落库，**一次也没经过 `POST /b/v1/skills/:id/publish`**。亲手实测：7/7 能过 lint（0 violation），但 `skill_quality` 用例 0 条 ⇒ 走正门 **7/7 会被评测门拦** | 「门装上了」被读成「库里的东西都过了门」。任何拿出厂 Skill 当「达标样例」的推理都不成立 |
 
 ### 附：**真冲突**（文档之间口径不一致，非上表的"宣称做了"）
 
@@ -680,7 +681,7 @@ grep -n "probeMissingRefs" apps/agentcore/src/server.ts   # 应见 694 / 1012 / 
 
 ## 7 · 结论（一句话）
 
-**274 条里，真正"实体层满足"的只有 66 条（24%）；最大的一块是 ❌ 88 条（32%）——
-而最该先看的不是这 103 条，是 13 条「宣称做了其实没做」（F1–F13）**：其中 **F8/F9/F10 三条是"已经做完了但文档还写着没做"**
-（照文档排期会重复造门），**F1/F2/F3/F5/F6/F7 六条是"文档说有其实没有"**（照文档验收会验空气）。
+**274 条里，真正「实体层满足」的只有 65 条（23.7%）；最大的一块是 ❌ 88 条（32.1%）——
+而最该先看的不是这 103 条，是 13 条「宣称做了其实没做」（F1–F13）**：其中 **F8/F9/F10 三条是「已经做完了但文档还写着没做」**
+（照文档排期会重复造门），**F1/F2/F3/F5/F6/F7/F14 七条是「文档说有其实没有 / 有门但库里的东西没走过」**（照文档验收会验空气）。
 两个方向的错都源自同一个形态：**拿文档里的一句话当作事实的证据，而那句话并不度量那个事实。**
