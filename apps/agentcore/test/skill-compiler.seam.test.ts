@@ -44,8 +44,12 @@ describe("WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile →
     // 实测口径：7 个出厂技能、6 个 references 非空。数量变了要么种子变了、要么金丝雀坏了 —— 都得先查再改断言。
     expect(skills.length).toBe(7);
     expect(withRefs.length).toBe(6);
-    // dependsOn 今天 0 条：本文件刻意不拿它当断言依据
-    expect(skills.filter((s) => (s.dependsOn ?? []).length > 0).length).toBe(0);
+    // `dependsOn`：本单写这条断言时全仓 **0 条**（「接了线没数据」，见 CLAUDE.md 铁律 0.5）。
+    // 2026-08-09 收编 WO-SKILL-PARTIAL-A 后变成 **1 条**（`mocks/seed.ts:1350`
+    // sop_meeting --dependsOn--> capacity_analysis）——本金丝雀当场报红，审核方逐层追到
+    // 那个提交（`0b49b75a`）确认是**有意补的种子**、不是回归，才改的这个数。
+    // ⚠️ 下次这个数再变，同样先查提交再改断言，不许直接改数把红压掉。
+    expect(skills.filter((s) => (s.dependsOn ?? []).length > 0).length).toBe(1);
   });
 
   it("① 每个出厂技能：graph 的节点集合 === 它 references[] 声明的资源（逐个技能对账，一条都不许漏或多）", async () => {
