@@ -2343,6 +2343,21 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
+    // ── WO-P1 · 供应「影响方向」反向边（REQ143 补传导边的地基）──────────────────────────
+    // 为什么必须是**新 key** 而不是往上面三条里反向塞行：
+    //   上面的 `order_for_model`/`model_uses_material`/`material_supplied_by` 表达的是**归属/FK**
+    //   （订单属于哪个型号、型号用哪些料、料的主供是谁），方向是「下游→上游」。
+    //   而扰动传导要的是**物流/影响方向**「上游→下游」（供应商断供 → 物料短缺 → 型号缺料 → 订单交不出）。
+    //   传导引擎只沿 `fromId→toId` 走（`sim/propagation.ts` navOut），拿归属边跑影响传导必然走反。
+    //   实测（`node scripts/…` 全本体盘点）：**没有任何一条边的 toTypeKey 是 Order**——
+    //   `promise_for_order`/`line_of_order` 虽指向 Order，但其 from 端 OrderPromise/OrderLine 自身零入边，
+    //   ⇒ 不补这三条，供应侧扰动在图上**根本走不到 Order**。
+    //   同名 key 反向塞行会违反该 key 自己声明的 fromTypeKey/toTypeKey，并污染既有切片的
+    //   `direction:"out"` 遍历，故一律另立 key、与归属边共存互不干扰。
+    // 三条边的实例全部由既有对象 FK **确定性反投影**（同一份数据换个方向落），无随机/无时钟 ⇒ R6 同 seed 字节一致。
+    { key: "supplier_supplies_material", fromTypeKey: "Supplier", toTypeKey: "Material", cardinality: "1:N" }, // supply（影响向·`material_supplied_by` 之逆）
+    { key: "material_used_by_model", fromTypeKey: "Material", toTypeKey: "Model", cardinality: "N:N" }, // supply→product（影响向·`model_uses_material` 之逆）
+    { key: "model_demanded_by_order", fromTypeKey: "Model", toTypeKey: "Order", cardinality: "1:N" }, // product→commercial（影响向·`order_for_model` 之逆）
     { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
     // WO-WAREHOUSE-CUSTLOC：客户交付地点归属客户（CustomerLocation N:1 Customer·参照 order_of_customer 方向）
     { key: "custloc_of_customer", fromTypeKey: "CustomerLocation", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多地点归一客户）

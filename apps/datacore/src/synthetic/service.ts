@@ -954,7 +954,24 @@ export class SyntheticService {
       const bom = Array.from({ length: 4 }, (_, k) => matIds[(mi * 2 + k) % matIds.length] as string);
       for (const matId of new Set(bom)) {
         await putLink(`lnk_mum_${m.modelId}_${matId}`, "model_uses_material", oid("Model", m.modelId), oid("Material", matId));
+        // WO-P1 影响向逆边：与上一行**共用同一个 bom 变量**（不是抄一遍派生式）⇒ 两向严格互逆，
+        // 改 BOM 派生式时不可能只改一半（抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
+        await putLink(`lnk_mubm_${matId}_${m.modelId}`, "material_used_by_model", oid("Material", matId), oid("Model", m.modelId));
       }
+    }
+    // ── WO-P1 · 供应「影响方向」逆边（类型声明见 battery.ts `batteryLinkTypes()` 同名三条）────────
+    // 既有 `material_supplied_by`(Material→Supplier) / `model_uses_material`(Model→Material) /
+    // `order_for_model`(Order→Model) 表达的是**归属 FK**，方向「下游→上游」；
+    // 传导引擎只沿 fromId→toId 走（`sim/propagation.ts` navOut），拿归属边跑影响传导必然走反。
+    // 这里按**同一批 FK** 反投影出「上游→下游」的影响边（供应商断供→物料短缺→型号缺料→订单交不出）。
+    // 纯投影：遍历序跟着既有边、无 rng/无时钟 ⇒ 同 (industry, scale, seed) 重跑字节一致（R6）。
+    for (const m of ext.materials) {
+      const supplierId = (m as { supplierId?: string }).supplierId;
+      const matId = (m as { matId: string }).matId;
+      if (supplierId) await putLink(`lnk_ssm_${supplierId}_${matId}`, "supplier_supplies_material", oid("Supplier", supplierId), oid("Material", matId));
+    }
+    for (const o of g.orders) {
+      await putLink(`lnk_mdbo_${o.so}`, "model_demanded_by_order", oid("Model", o.model), oid("Order", o.so));
     }
     // commercial: Order → Customer（按订单序轮转绑定，覆盖全部客户）
     const custIds = ext.customers.map((c) => String((c as { custId: string }).custId));
