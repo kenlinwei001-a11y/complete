@@ -19,7 +19,14 @@
 > **来历**：2026-08-03 一天之内，我（审核方）对 dev 与自己的产出连下四个错误结论，**其中三个是同一个病**——
 > 拿 grep 的直接命中数当结论，少追一层间接调用：
 > ① 判「`dependsOn` 无消费方」→ 实有 `skill-lint.ts:212/302` + `resource-projector.ts:334`，
->    真相是**接了线但 7/7 数据为空所以从没触发**（"接了线没数据" ≠ "没接线"，修法完全不同）；
+>    真相是**接了线但数据为空所以从没触发**（"接了线没数据" ≠ "没接线"，修法完全不同）。
+>    ⚠️**本条自身于 2026-08-09 部分过期，照 0.6 回写**：原文写「7/7 数据为空」，
+>    把 `dependsOn` 与 `references` **两个不同字段合成了一句** —— 亲手实测
+>    （`apps/agentcore/src/mocks/seed.ts`）：`dependsOn` **仍是 0 条**（确为「接了线没数据」），
+>    但 `references` **已有 7 条种子、其中 6 条非空**（已是「接了线有数据、会触发」）。
+>    两者定性不同、修法不同，**必须拆开说**。这条戒律自己犯了它警告的病：
+>    拿一个笼统数字盖住两个不同事实。复验命令：
+>    `grep -c "dependsOn\|references:" apps/agentcore/src/mocks/seed.ts`；
 > ② 判「生长回路只报不写」→ 写链真实存在
 >    （`scenario-grow.ts:98 → scaffoldDraftIntent → catalog.createIntent → intents.insert`），
 >    只因 grep 了 `intents.insert` 的**直接**调用方就收工；
