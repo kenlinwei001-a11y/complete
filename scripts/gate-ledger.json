@@ -647,6 +647,24 @@
       "notes": "",
       "disposition": "WIRE"
     },
+    "check-ref-closure.mjs": {
+      "alias": "ref-closure:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/resources.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/test/skill-ref-closure.seam.test.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:878",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 `ref-closure:check` 条目 · on-disk 变异实跑",
+        "note": "把 skill 发布路的 probeMissingRefs 改名 -> RC=1 且报 `D1 摘门：skill 发布`；撤回后 RC=0。另有 5/5 内嵌金丝雀（摘探针/注释掉探针/空集放行/静默 catch/抽取器失灵）与主逻辑共用同一份 scan()。"
+      },
+      "notes": "守 B->A 存在性探针在三条发布路上都还在、且两层 fail-open 没回潮。静态哨兵，判得对不对由接缝测试 skill-ref-closure.seam.test.ts 咬。"
+    },
     "check-resource-descriptor.mjs": {
       "alias": "resource-descriptor:check",
       "binding": "GATES_CHAIN",
