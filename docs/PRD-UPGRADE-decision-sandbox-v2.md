@@ -1142,6 +1142,29 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
    判据是**远端 ref 的 sha 等于本地 HEAD**，不是 push 的退出码。
    并用 `HEAD:<branch>` 显式推 HEAD，不用 `-u origin <branch>` —— 后者在 HEAD 漂了的时候会静默空推。
 
+3.6. 🔴 **`git diff <canonical>..HEAD` 不是这张单的改动集**（2026-08-09 · **一批 5 张单里 3 个 dev 各自独立撞上**，
+   三人都是自己发现并写进交付说明顶回来的，不是我发现的 ⇒ 照铁律 0.6 第 3 级写进模板）
+
+   **形态**（0.6 句式）：
+   > **「我用『当前 canonical 与我 HEAD 的两点差』当作『我改了什么』的证据，而前者还包含
+   > 我开工之后 canonical 自己前进的那些提交 —— 那部分会以**反方向**（删除）出现。」**
+
+   一张单开工要花几十分钟，这期间 canonical 往往已前进。于是 `git diff $CANON..HEAD` 会把
+   **canonical 新增的文件报成"本分支删除了它们"**。三个 dev 分别被报成删了
+   `docs/STATUS-*.md`、`scripts/check-verdict-rollup.mjs`、`scripts/**`、`SYSTEM-ONTOLOGY.md` —— 全是他们没碰过的文件。
+   若审核方照这个 diff 复验，会给一张干净的单扣上"删了不该删的东西"。
+
+   **机制（写进每张 WO，dev 与审核方各一半）**：
+   ```bash
+   # dev：开工第一件事，把基线 sha 记进交付说明，别只写「基于 canonical」
+   BASE=$(git rev-parse HEAD) && echo "BASE=$BASE"
+   # 交付与复验一律用三点差（= 从共同祖先起算），或显式用 BASE 的两点差
+   git diff $BASE..HEAD --stat        # 我到底改了什么
+   git diff $CANON...HEAD --stat      # 三点差：自动取共同祖先，canonical 前进不会污染
+   ```
+   判据：**两点差 `A..B` 回答的是「B 相对 A 的状态差」，三点差 `A...B` 回答的才是「B 这一支做了什么」。**
+   前者会随 A 前进而变，后者不会。**报"这张单删了什么"之前，先确认你用的是哪一种。**
+
 4. **每完成一个可命名单元立刻 commit + push**（铁律 1 判据 #5 · 已丢过一次工作）。
    「gate 跑着」不是「工作已落盘」。
 5. **dev 不许跑 `bash scripts/gate.sh` 或 `pnpm -r test`** —— datacore 勿并发多 vitest（4 核机）。
