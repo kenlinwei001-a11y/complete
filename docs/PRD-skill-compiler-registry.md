@@ -33,6 +33,24 @@
   - **R1** contracts-only-shared：`SkillRuntimePackageSchema` / `SkillPackageManifestSchema` / `SkillCompileReportSchema` 一律落 `packages/contracts`；编译器**实现**只在 AgentCore，不跨包共享实现。
   - **R2** tenant_id everywhere：编译、注册、包、签名验签、反查全部带 tenantId；跨租户 404。
   - **R3** entitlement 先于 authz：新模块暗发 `skill.compiler`（`defaultOn:false`），**双注册** DataCore `apps/datacore/src/features.ts` + AgentCore `apps/agentcore/src/features/registry.ts`，关闭 = 404 `FEATURE_NOT_FOUND`。
+    > 🔴 **2026-08-09 复验：R3 这条已被 S1 切片实打实违反**（`docs/CHECK-DSL-CMP.md` §5 **X-09** = §5.1 **N-02**）。
+    > **这不是「本期不做」，是「做了但漏了门」** —— 两者性质完全不同，前者不算缺口，后者是缺口。
+    >
+    > | 事实 | 证据 |
+    > |---|---|
+    > | canonical 上**端点还不存在** | `grep -rn "skills/:id/compile" apps/agentcore/src` → **0**（金丝雀 `SkillDefinitionSchema` = 7 ⇒ 工具有效） |
+    > | 未并分支 `claude/handoff-skill-compiler-s1` 上**端点已存在** | `apps/agentcore/src/server.ts:1323` `app.post("/b/v1/skills/:id/compile", ...)`（该分支 `git merge-base --is-ancestor` 实测 **NOT MERGED**） |
+    > | 该端点**无任何 entitlement 门** | handler 前两行只有 `const a = await auth(req); requireCatalogAdmin(a);`；两个分支 `grep "skill.compiler" apps/*/src packages/*/src` 均 **0 命中** |
+    >
+    > **形态定性**：`requireCatalogAdmin` 在跑、是绿的，但它量的是「**角色够不够**」，
+    > 而 R3 要求的是「**功能开没开**」，且 entitlement 必须**先于** authz。
+    > 「门在，但量的东西不对」—— 与 §5.1 的 **N-01** 同族。
+    > **后果**：该端点一旦并入，对任何 `catalog_admin` **恒开**，暗发（`defaultOn:false`）这件事等于没做。
+    >
+    > **并入前必须补的三件（缺一不可）**：① `apps/datacore/src/features.ts` 注册 `skill.compiler`；
+    > ② `apps/agentcore/src/features/registry.ts` 同步注册；③ handler 里 **entitlement 检查放在 `auth`/`requireCatalogAdmin` 之前**，
+    > 关闭时返 `404 FEATURE_NOT_FOUND`（不是 403 —— 功能关闭 = 不存在）。
+    > **顺带订正 CHECK 坐标**：`CHECK-DSL-CMP.md` 记该 handler 在 `server.ts:1333`，实测是 **`:1323`**。
   - **R4** 真值写入经 Action：编译/注册**不写业务真值**，故不入 Action 审批；但 `sideEffect=WRITE` 或 `approvalGate≠none` 的 Skill 其**运行时**仍走既有 `create_action_draft` 链（`isWriteModeSkill`，`packages/contracts/src/agentcore.ts:201`）。编译器只负责**声明与运行时一致性**的静态校验，不放宽 R4。
   - **R6** 确定性：编译是**纯函数**——同 (Skill 源, 引用快照, 编译器版本) → `SkillRuntimePackage` **字节一致**；`digest` 为规范化序列化后的 SHA-256。编译器内禁 `Date.now()`/随机（`compiledAt` 由调用方注入，不进 digest）。
   - **R7** 错误信封：编译失败 → `{error:{code:"SKILL_COMPILE_FAILED", message, requestId}}`；引用不可解析 → `SKILL_REF_UNRESOLVED`；签名不匹配 → `SKILL_SIGNATURE_INVALID`。均沿用既有信封。
@@ -80,7 +98,26 @@
 ### 1.2 非目标（本期明确不做）
 
 - **不做** Track E 的「Skill 吞并 ExecutionPlan」迁移本身。本 PRD 提供编译器与注册中心；迁移由 Track E 单独立单（其四条硬约束见 `docs/WO-ROUTING-RETRIEVAL-FIRST.md:415-429`）。
-- **不做** Skill Orchestrator（多 Skill 编排/Skill Graph 运行时）。
+- ~~**不做** Skill Orchestrator（多 Skill 编排/Skill Graph 运行时）。~~
+  > 🔁 **2026-08-09 复验：【反向过期】Skill Graph 运行时已经存在了**（`docs/CHECK-DSL-CMP.md` §5 **X-08**）。
+  > **这不是 CMP 违规**（是 `WO-SKILL-ORCHESTRATOR-S1` 另一张单做的），
+  > 但**这一行必须回写** —— 否则下一个人读 CMP 会以为「Skill Graph 运行时不存在」而去从零造。
+  >
+  > **canonical 上已并入的承载物（`handoff-skill-orchestrator-s1` 实测 MERGED）**：
+  > - 图契约 + 编译器：`packages/contracts/src/skill-graph.ts`（`SkillGraphSchema:126` / `compileGraph:175` / `compileExecution:478`）
+  > - 分层并发调度器：`apps/agentcore/src/skill-orchestrator.ts:95 GraphScheduler`
+  > - **生产 HTTP 入口**：`apps/agentcore/src/server.ts:1360 POST /b/v1/skill-graphs/run` → `:1368 new GraphScheduler(...)`
+  > - SEAM 测 18 条绿（`apps/agentcore/test/skill-orchestrator.seam.test.ts`）
+  >
+  > **仍然成立、且是真缺口的那一半（本行不许整条划掉）**：
+  > `SkillDefinitionSchema`（`packages/contracts/src/agentcore.ts:236-261`，18 字段）**没有 `execution` 字段**
+  > ⇒ **没有任何一个 Skill 能声明自己的图**，端点只接受**请求体里显式传的图**。
+  > 定性 = **接了线没数据**（不是「没接线」，也不是「已实现」）——
+  > `packages/contracts/src/skill-graph.ts:347-353` 自己把这句钉死了：「**未挂 ≠ 已实现**」。
+  > 另：`cond` 边在词表里但 `compileGraph` 显式返 `NOT_IMPLEMENTED`（`skill-graph.ts:206-212`）——**登记在案的未实现，不是假绿**。
+  >
+  > ⇒ 正确读法：**「运行时骨架已存在（旁挂形态） · Skill 侧数据入口未建 · 条件分支未实现」**，
+  > 而不是「不做 / 不存在」。
 - **不做** Learning Loop（人工采纳率回流）。SPEC §8 已判定其前置（跨租户混算指标 + `/metrics` 无鉴权）未解决，**在错的指标上建学习闭环，学到的也是错的**。
 - **不改** 规则 DSL / 求解器 / 本体 / MCP 的任何语义与实现。编译器只**读**它们的注册表。
 - **不引入**第二套规则语法、第二套约束语法、第二个 CLI 二进制、第二条 Skill 注入路径。
@@ -148,7 +185,26 @@
 ### 2.4 命名占用现状（红线依据）
 
 - `ExecutionPlanSchema` 定义在 `packages/contracts/src/qos.ts:180`，`type ExecutionPlan` 在 :188。
-- 该名字承载 **QOS 路径 A 的执行计划**语义：出厂种子里**每个意图绑一个 `ExecutionPlan`**。种子数量静态可数：`seedIntentsAndPlans`（`apps/agentcore/src/mocks/seed.ts:120`）= 手写 4 条 + `SCENARIO_CATALOG` 20 张卡去重后补 16 条（:490-516，代码注释「已有的 4 个跳过」）+ `ceoCaps` 12 条（:565-620）= **32 意图 / 32 计划**，与 `docs/WO-ROUTING-RETRIEVAL-FIRST.md:369-370` 的实测数一致。
+- 该名字承载 **QOS 路径 A 的执行计划**语义：出厂种子里**每个意图绑一个 `ExecutionPlan`**。种子数量静态可数：`seedIntentsAndPlans`（`apps/agentcore/src/mocks/seed.ts:120`）= ~~手写 4 条~~ + `SCENARIO_CATALOG` 20 张卡去重后补 16 条（~~:490-516~~，代码注释「已有的 4 个跳过」）+ ~~`ceoCaps` 12 条（:565-620）~~ = **32 意图 / 32 计划**，与 `docs/WO-ROUTING-RETRIEVAL-FIRST.md:369-370` 的实测数一致。
+
+  > ### ⚠️ 2026-08-09 复验订正 **X-06** · 总数对，但**两个加数都错，且互相抵消**
+  >
+  > 依据 `docs/CHECK-DSL-CMP.md` §5 **X-06**。**这是 CLAUDE.md 铁律 0.6 的标准形态**：
+  > 「我用**总数对得上**当作**分段口径对**的证据，而前者并不度量后者。」
+  > 总数 32 碰巧正确 ⇒ 谁都不会去查分段 ⇒ **任何按分段口径做的迁移排期都会错**。
+  >
+  > | 加数 | 文档说 | 实测 | 错因 |
+  > |---|---:|---:|---|
+  > | 手写意图 | **4** | **5** | 那个 `4` 是**代码注释里"被跳过的卡数"**，不是手写数。实测手写 5 条：`affected_orders` · `capacity_feasibility` · `risk_root_cause` · `adopt_mitigation` · `order_deep_360`（`seed.ts` 中 `key: "…"` 逐条点名）。其中 4 条同时是场景卡 ⇒ 去重时跳过 4 张，**"跳过 4"≠"手写 4"** |
+  > | 场景卡补入 | 16 | **16** ✅ | `seed.ts:624` `for (const card of SCENARIO_CATALOG)` + `:625` `if (seededKeys.has(card.intentKey)) continue;` |
+  > | `ceoCaps` | **12** | **11** | 纯误记。实测 `grep -c 'key: "ceo_' apps/agentcore/src/mocks/seed.ts` → **11** |
+  > | **合计** | 4+16+12=32 | **5+16+11=32** | 两个错**恰好抵消** |
+  >
+  > **坐标同时订正**（原文行号已漂）：场景卡循环今天在 **`seed.ts:624-625`**；`ceoCaps` 数组在 **`seed.ts:677-704`**。
+  > **正确的口径来源**：`docs/CHECK-RT-GOV.md` §12 的 `5+16+11` 是对的，本文 §2.4/§14.2 的 `4+16+12` 是错的。
+  >
+  > **复验（不用 grep 猜，直接数）**：
+  > `grep -c 'key: "ceo_' apps/agentcore/src/mocks/seed.ts` → **11**（金丝雀：同文件 `grep -c 'resources: \[\]'` → **7**，与 7 个出厂 Skill 对得上 ⇒ 文件读得到）。
 - **仓里已有一次同名冲突的处置先例，且写在注释里**：`packages/contracts/src/execution-plan.ts:6-7` ——
   > 「契约 §1 称之为 ExecutionPlan；因 `qos.js` 已占用 `ExecutionPlanSchema`/`PlanStepSchema`（workflow 概念），本组合路径契约改用 **ComposePlan** 族命名…避导出冲突。」
   本 PRD 沿用同一处置法则：**新产物一律换名，不与已占用语义抢名。**
@@ -209,7 +265,7 @@ SkillCompileReport  —— 逐条诊断（含通过项，便于「为什么它�
 | 码 | 断言 | 权威注册表 / 查询来源 | 今天有没有 |
 |---|---|---|---|
 | **RG-RULE** | 每个 `kind:"rule"` / `"constraint"` 的 `key` ∈ 本租户规则库，且状态 PUBLISHED | DataCore `GET /a/v1/rules`（探针已封装：`dataCore.rules.listRuleKeys`，`resources.ts:33`） | 探针在，skill 侧未接 |
-| **RG-SOLVER** | 每个 `kind:"solver"` 的 `key` ∈ 求解器目录 | `dataCore.catalog.discover(ctx,"solvers")`（`resources.ts:24`）；内置集 `SOLVER_KEYS`（`apps/datacore/src/solvers/service.ts:44`，静态可数 **57** 条）∪ 租户临时求解器制品（`GET /a/v1/solvers/artifacts`） | 探针在，skill 侧未接 |
+| **RG-SOLVER** | 每个 `kind:"solver"` 的 `key` ∈ 求解器目录 | `dataCore.catalog.discover(ctx,"solvers")`（`resources.ts:24`）；内置集 `SOLVER_KEYS`（~~`apps/datacore/src/solvers/service.ts:44`，静态可数 **57** 条~~ 〔⚠️ **2026-08-09 实测：`service.ts:51`，**59** 条** —— 见 §14.3 的 **X-07** 订正〕）∪ 租户临时求解器制品（`GET /a/v1/solvers/artifacts`） | ~~探针在，skill 侧未接~~ 〔🔁 **2026-08-09：已接** —— `server.ts:1272`，见 §1.2 与 §14.2 的订正〕|
 | **RG-SOLVER-TRUST** | 引用的求解器若是临时制品（provisional），必须显式声明容忍，否则拒绝 PUBLISHED | `SolverService.checkWriteTruth`（`apps/datacore/src/solvers/service.ts:559-568`）已有 trustLevel 概念 | 无 |
 | **RG-TYPE** | 每个 `kind:"ontologyType"` 的 `key` ∈ 已发布本体 ACTIVE 类型 | `dataCore.ontology.listObjectTypeKeys`（`resources.ts:41`）；端点 `GET /a/v1/ontology/object-types` | 探针在，skill 侧未接 |
 | **RG-TYPE-PROP** | `requires` 里声明的**必需属性**（SPEC §7 定案 1：「我需要 Factory，且它必须有 capacity」）在该类型的属性表里存在 | `GET /a/v1/ontology/object-types`（含属性）/ `GET /a/v1/ontology/type-semantics` | 无（契约无处声明） |
@@ -513,7 +569,7 @@ supersedes?: number   // 本版本顶替的同 key 版本号；缺省 = 不顶�
 |---|---|---|---|
 | `/b/v1/skills` | GET/POST | 列表 / 注册（创建 DRAFT） | **既有**（`server.ts:1182,1202`）；SDK 的 `/skills/register` 映射到 POST，不新建 |
 | `/b/v1/skills/:id` | GET/PUT/DELETE | 详情（含版本链）/ 改草稿 / 删 | **既有**（:1190,1218,1342） |
-| `/b/v1/skills/:id/compile` | POST | ✚ 编译：产 `SkillRuntimePackage` + `SkillCompileReport`；`?dryRun=true` 不落库 | 新增 |
+| `/b/v1/skills/:id/compile` | POST | ✚ 编译：产 `SkillRuntimePackage` + `SkillCompileReport`；~~`?dryRun=true` 不落库~~ 〔⚠️ **2026-08-09：实现不接受这个查询参数 · 见表后订正 X-10**〕 | 新增 |
 | `/b/v1/skills/compile` | POST | ✚ 无 id 的临时体编译（编辑器实时反馈）；与既有 `POST /b/v1/skills/lint`（:1292）同族，**lint 保留为轻量子集**，不重复实现 lint 逻辑 | 新增薄层 |
 | `/b/v1/skills/:id/package` | GET | ✚ 导出 `.skill` 包（含 manifest + 签名） | 新增 |
 | `/b/v1/skills/install` | POST | ✚ 安装 `.skill` 包：验签 → 编译 → RG 硬门 → 落 DRAFT/TESTING | 新增 |
@@ -524,6 +580,24 @@ supersedes?: number   // 本版本顶替的同 key 版本号；缺省 = 不顶�
 | `/b/v1/skills/:id/retire` · `/new-version` · `/references` · `/resources/:name` | POST/GET | 退役 / 派生新版 / 反查 / 读附件 | **全部既有**（:1329,1308,1320,1355） |
 
 **别名**：AgentCore 既有 `/api/v1` 原生 + `/b/v1` 重写别名双前缀。新端点沿用同一注册方式，不新造第三前缀。
+
+> ### ⚠️ 2026-08-09 复验订正 **X-10** · `?dryRun=true` **契约不符**（行为等价，但参数不存在）
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-10**。
+>
+> **实测**（未并分支 `claude/handoff-skill-compiler-s1`，`git merge-base --is-ancestor` = **NOT MERGED**）：
+> `apps/agentcore/src/server.ts:1323` 的 handler **完全不读 `req.query`**，
+> 注释写「只读操作：不落库、不改状态、不发领域事件（`?dryRun` 语义即默认且唯一行为）」。
+>
+> **为什么"行为等价"还要订正**：
+> 1. **SDK/CLI 按本文档传 `?dryRun=true` 会被静默忽略** —— 今天没事，但"静默忽略未知参数"是本仓反复吃亏的形态。
+> 2. **将来一旦加了落库分支，老调用方会突然开始落库** —— 它们以为自己传了 `dryRun`，其实那个参数从来没被读过。
+>    这是一个**定时的行为漂移**，而且发生时不会有任何信号。
+>
+> **两条可选处置（并入前二选一，不许两边都不做）**：
+> ① 实现侧真读 `?dryRun`，非 `true` 时走落库分支（与本文档对齐）；
+> ② 文档侧删掉 `?dryRun=true` 这半句，明写「**编译恒为只读，不落库；落库另走 `promote`**」。
+> **不许保持现状** —— 现状是"文档承诺了一个不存在的开关"。
 
 ### 8.2 八组必须代理复用的既有端点（逐条给出目标）
 
@@ -659,11 +733,34 @@ supersedes?: number   // 本版本顶替的同 key 版本号；缺省 = 不顶�
 | # | SEAM | 断言 | 变异反证（打掉实现必须变红） |
 |---|---|---|---|
 | **S1** | **数据半 × 引擎半**：种一个 `references:[{kind:"solver",key:"<不存在>"}]` 的 skill → `POST /b/v1/skills/:id/publish` | 返 4xx `SKILL_REF_UNRESOLVED`，message 含该 key 与查询端点；skill 状态**未变** | 去掉 RG 段 → 变绿即测试失效 |
-| **S2** | **fail-closed**：DataCore 不可达（注入抛错的 `DataCoreClient`）→ publish | 返 503 `DATACORE_UNAVAILABLE`，**不放行**；同场景下草稿 compile 返 200 且诊断标「未能校验」 | 把 catch 改回 fail-open → S2 红 |
+| **S2** | **fail-closed**：DataCore 不可达（注入抛错的 `DataCoreClient`）→ publish | ~~返 503 `DATACORE_UNAVAILABLE`~~ → **实测返 503 `REF_PROBE_UNAVAILABLE`**（见表后订正 **X-11**），**不放行**；同场景下草稿 compile 返 200 且诊断标「未能校验」 | 把 catch 改回 fail-open → S2 红 |
 | **S3** | **反查真通**：种一个引用 `C08` 的 skill → 重投影 → `GET /b/v1/resources/rule/C08/relations` | `inbound` 含该 skill（relType=references） | 删掉抽取分支 / 换回不抽 skill 的那个函数 → 红（直咬 §2.3(c)） |
 | **S4** | **顶替与回滚**：v1 PUBLISHED → v2 带 `supersedes:1` 发布 → 回滚 | v2 发布后 v1=DEPRECATED（**非 RETIRED**）；回滚后 v1=PUBLISHED、v2=DEPRECATED；回滚前若 v1 引用的规则已退役 → 回滚被拒并点名 | 把 DEPRECATED 改回 RETIRED → 红 |
 | **S5** | **包往返**：export → install 到另一租户 | 验签通过、digest 一致、RG 全绿则落 DRAFT；篡改一个字节 → `SKILL_SIGNATURE_INVALID` 拒绝 | 跳过验签 → 红 |
 | **S6** | **确定性 R6** | 同输入两次 compile → `SkillRuntimePackage` 序列化字节相等、digest 相等 | 在 Optimizer 里插 `Date.now()` → 红（且门 5 也红） |
+
+> ### ⚠️ 2026-08-09 复验订正 **X-11** · S2 的错误码写错了（**行为对 · 码不对**）
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-11**。
+>
+> | | 文档说 | 实现是 |
+> |---|---|---|
+> | 状态码 | 503 ✅ | 503 ✅ |
+> | 错误码 | `DATACORE_UNAVAILABLE`（`packages/contracts/src/common.ts:51`，确实存在但**这里没用它**） | **`REF_PROBE_UNAVAILABLE`**（`apps/agentcore/src/resources.ts:26` 常量 · `:59-68 probeUnavailable()` 构造并抛出） |
+>
+> **为什么这不是小事**：前端 / SDK 按本文档去写 `switch (error.code)` 的分支，
+> `REF_PROBE_UNAVAILABLE` 会**落进 default** —— 于是「注册表暂时不可用，请稍后重试发布」
+> 这条本该给出明确指引的错误，会被渲染成一句通用的未知错误。
+> **码是契约的一部分，行为对不能替代码对。**
+>
+> **两条可选处置（二选一，本单不裁）**：① 文档改成 `REF_PROBE_UNAVAILABLE`（跟随实现，成本最低）；
+> ② 实现改用既有的 `DATACORE_UNAVAILABLE`（但会丢掉「是引用探针这一段不可用」这个更精确的信息）。
+> §5 的 `publish/install` 段（本文 `:328`）也写着 `DATACORE_UNAVAILABLE`，**两处必须同改**，
+> 只改一处 = 再制造一次同样的漂移。
+>
+> **复验**：`grep -n "REF_PROBE_UNAVAILABLE" apps/agentcore/src/resources.ts` → `:26 / :55 / :62`；
+> `grep -rn "DATACORE_UNAVAILABLE" apps/agentcore/src/resources.ts` → **0**（金丝雀：同命令在
+> `packages/contracts/src/common.ts` 命中 `:51` ⇒ 这个码存在，只是没用在这条路上）。
 
 ### 12.3 交付底线
 
@@ -704,13 +801,59 @@ supersedes?: number   // 本版本顶替的同 key 版本号；缺省 = 不顶�
 | 「91 个 ACTIVE 对象类型 / 11,087 对象 / 771 属性」 | **未核实**（运行态数字，需起服务查） |
 | `/metrics` 两服务 200 无鉴权、埋点跨租户混算 | **未核实**（引自 SPEC §2-⑫、§8） |
 | 租户运行态实际可用的 rule / solver / MCP 工具集 | **未核实**（与出厂静态集不同；正因如此 RG 组必须查**运行态注册表**而非内联静态白名单） |
-| DataCore `/a/v1/rules` 的 `listRuleKeys` 是否返回全部状态或仅 PUBLISHED | **未核实**（`resources.ts:33` 只调用，未展开 `DataCoreClient` 实现）。RG-RULE 要求「PUBLISHED」，实施时**必须先核对该客户端方法的过滤语义**，否则会出现「引用了 DRAFT 规则却判通过」 |
+| DataCore `/a/v1/rules` 的 `listRuleKeys` 是否返回全部状态或仅 PUBLISHED | ~~**未核实**~~ → **🔴 2026-08-09 已核实：本文猜对了，而且这个坑真的踩下去了** —— 见下方 **N-01** |
 | 「MCP 工具 key 的命名空间形态是否为 `serverName.toolName`」 | **未核实**（据 `mcpServerNameSlug`/`MCP_SERVER_NAME_RE` 推断，未读工具装载实现） |
+| ~~出厂 7 个 Skill 的分段计数「手写 4 + 卡 16 + ceoCaps 12 = 32」~~ | **🔴 2026-08-09 已核实为错**：实测 **5 + 16 + 11 = 32**，两个加数都错且互相抵消。详见 §2.4 的 **X-06** 订正 |
+
+> ### 🔴 2026-08-09 复验新增 **N-01** · 引用可校验门对 rule **只查"存在"不查"状态"**
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5.1 **N-01**。**这条不在任何一份 PRD 的已知清单里，也不在本体 §8** ——
+> 是本轮复验新发现的**真实缺口**，且**本文上一行的"未核实"条目精确地预言了它**。
+>
+> **后果**：**一个 Skill 引用未发布的 DRAFT 规则，今天可以正常发布。**
+>
+> **根因（两个客户端方法过滤语义不同，而命名看不出差别）**：
+>
+> | 方法 | 请求 | 过滤 |
+> |---|---|---|
+> | `listRuleKeys(ctx)` — **探针用的是这个** | `GET /a/v1/rules` | **无 `status` 过滤 ⇒ 返回全部状态** |
+> | `listRules(ctx)` | `GET /a/v1/rules?status=PUBLISHED` | 仅 PUBLISHED（注释：「WO-DRIL-P1：只投影已发布规则」） |
+>
+> 证据：`apps/agentcore/src/tools/datacore-http.ts:233-236`（`listRuleKeys`）vs `:237-245`（`listRules`）；
+> 探针的调用点 `apps/agentcore/src/resources.ts` 的 `probeMissingRefs` 内
+> `knownKeys("rules", () => dataCore.rules.listRuleKeys(ctx))`。
+>
+> **形态定性**：**「门在，但量的东西不对」** —— 这道门在跑、是绿的，
+> 但它量的是「**key 在不在**」而不是「**key 可不可用**」。
+> 与 §0 R3 的 **X-09/N-02** 同族（那条是 `requireCatalogAdmin` 量的是"角色够不够"而不是"功能开没开"）。
+> ⚠️ **它不是「没接线」**，所以**不要**再去接一次探针 —— 修法是**换客户端方法或加 `minStatus` 参数**。
+>
+> **本条的元教训（值得写进流程）**：本文 §14.2 把它列为"未核实"并写明
+> 「实施时**必须先核对该客户端方法的过滤语义**，否则会出现『引用了 DRAFT 规则却判通过』」——
+> **预言完全正确，但 P0 落地时没有人回来核这一条**。
+> ⇒ 「未核实清单」若没有**机械的回访机制**，等于没写。
 
 ### 14.3 可复跑的核实命令（全部只读）
 
+> ### ⚠️ 2026-08-09 复验订正 **X-07** · 命令还在，**数字已漂**（求解器 57 → **59**）
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-07**。本节自己要求「所有计数给可复跑命令」——
+> 命令给了，**但没有人回来重跑**，于是 57 这个数在文中活了下来。
+>
+> **实测（就用下面这条命令，原样，2026-08-09）**：
+> ```
+> awk '/^export const SOLVER_KEYS = \[/,/^\] as const;/' apps/datacore/src/solvers/service.ts | grep -cE '^\s*"'
+> → 59
+> ```
+> **坐标同时订正**：`SOLVER_KEYS` 今天在 **`apps/datacore/src/solvers/service.ts:51`**（§4.2 记的 `:44` 已漂）。
+> 本文 §14.1 与 §4.2 出现的「57」**一律读作 59**；`docs/SPEC-industrial-skill.md` §2 第 ⑨ 层的「57 个注册求解器」同病。
+>
+> **元教训**：**「给了可复跑命令」不等于「数字是新的」。**
+> 一个写死在正文里的计数，保质期等于写下它的那一天 ——
+> 真正的解法是**让门去现算**（本仓 `check-gate-ledger.mjs` 就是这么做的：数字由门自己普查，不许固化）。
+
 ```bash
-# 求解器 57
+# 求解器 57 → ⚠️ 2026-08-09 实测 59（见上方 X-07 订正）
 awk '/^export const SOLVER_KEYS = \[/,/^\] as const;/' apps/datacore/src/solvers/service.ts | grep -cE '^\s*"'
 # 工具 30
 grep -oE 'name: "[a-z_]+"' apps/agentcore/src/tools/registry.ts | sort -u | wc -l
@@ -724,7 +867,8 @@ grep -c 'card("S' apps/agentcore/src/scenarios-catalog.ts
 grep -rniE '\bsignature\b|cosign|sigstore|\.sig\b' --include='*.ts' apps packages | grep -viE 'design|signal|assign|signif|signoff'
 # 无 YAML / zip / tar 依赖
 grep -rn 'yaml\|adm-zip\|jszip\|"tar"' apps/*/package.json packages/*/package.json package.json
-# skill 发布不调引用探针（只有 agent/workflow 调）
+# ~~skill 发布不调引用探针（只有 agent/workflow 调）~~
+# 🔁 2026-08-09 已过期（反向）：三条发布路都调了 —— 应见 694(agent) / 1012(workflow) / 1272(skill)
 grep -rn 'probeMissingRefs' apps/agentcore/src
 # 引用抽取器零生产调用方
 grep -rn '\bextractRelations\b' apps packages scripts
@@ -735,6 +879,28 @@ grep -rn 'outputSchema' apps/agentcore/src --include='*.ts'
 ### 14.4 设计层面的已知风险（不藏）
 
 1. **RG 组硬门会挡住存量。** 出厂 7 个 skill 的 `references` 内容本次未逐条解析。若其中有指向未注册资源的引用，接门后**它们会发布不了**。实施 P0 时必须先跑一次「全量存量 dry-run 编译」列出违规清单，再决定是修数据还是给存量一次性豁免（**豁免须逐条登记理由，不许开全局开关**）。
+
+   > ### ⚠️ 2026-08-09 复验订正 **X-12** · 门已上线，而**存量根本没被挡** —— 因为门够不着它们
+   >
+   > 依据 `docs/CHECK-DSL-CMP.md` §5 **X-12**。
+   >
+   > 上面这条风险的**前提**是「存量会经过这道门」。实测**这个前提不成立**：
+   > 出厂 7 个 Skill 由 `apps/agentcore/src/main.ts:29`
+   > `for (const sk of skills) if (!(await repos.skills.get(sk.id))) await repos.skills.insert(sk);`
+   > **直插仓储**，其中 5 条以 `status:"PUBLISHED"` 落库
+   > （`apps/agentcore/src/mocks/seed.ts:1046/1137/1181/1268/1315`；另 2 条 DRAFT 在 `:1093/1224`），
+   > **一次也没有经过 `POST /b/v1/skills/:id/publish`**。
+   >
+   > ⇒ 引用可校验门（`apps/agentcore/src/server.ts:1272`）**在种子路径上根本不会被执行**。
+   >
+   > **⛔ 最容易犯的误读**：「接门之后没有存量被挡」会被读成「**存量是干净的**」。
+   > 真相是「**门看不见它们**」。这两句话在排期表上是相反的结论：
+   > 前者说"不用管了"，后者说"今天如果种子里有死路引用，没有任何信号"。
+   >
+   > **所以本条风险不但没消，还多了一条**：dry-run 清单**不能靠"跑一遍发布路"来产出**，
+   > 必须**离线对种子数据直接跑探针**（或先把种子改成走发布路）。否则清单会是空的，而空清单看起来像通过。
+   >
+   > 同一事实的其他记载：`docs/PRD-addendum-skill-authoring.md` §0 R16 的 **F14** 订正 · 本体 §8。
 2. **状态枚举扩展是最容易打崩下游的一步。** §5.1 已要求把 `status === "PUBLISHED"` 收敛为谓词；如果实施时偷懒不收敛，会出现「TESTING 的技能被自由问答池选中」这类半开态（`G-SKILL-UNREACHABLE-FREE-QA` 同族）。
 3. **`maxBudgetRounds` 本期仍无运行时消费方。** 本 PRD 只保证它被校验并写进产物。若验收时宣称「预算按题型生效」而不做 Track E 的运行时接线，就是又一次 D5 式的假完成。**验收文案必须写「已声明·未接运行时」。**
 4. **包签名的信任根是新的攻击面。** 本 PRD 复用 JWKS 分发机制但新增签名密钥；密钥保管、轮换、吊销未设计（二期）。在此之前，`install` 应默认只接受**平台自签**包，租户第三方包需显式开启。

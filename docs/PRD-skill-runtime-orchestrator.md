@@ -205,6 +205,24 @@ SPEC §8 的 Runtime 链首两站是「Intent 识别 → Skill 匹配」。仓�
 **目标**
 
 1. G1 · **并行边**：Reasoning Graph 的独立节点真并发执行，且**不引入第三套扇出**。
+
+   > 🔴 **2026-08-09 复验：G1 的后半句已被 S1 切片自己违反 —— 今天是「三套 + 一套新的」**
+   > （`docs/CHECK-RT-GOV.md` §D.2 **E1** · §10-E1 验收判 **不过 · 反向违反**）。
+   >
+   > **事实**：`apps/agentcore/src/skill-orchestrator.ts` 的 `GraphScheduler`（`:95`）是**旁挂**新增的第 4 套扇出，
+   > 而 §3.4 点名要收编的三处（`workflow/executor.ts` · `multi-route.ts` · Coordinator）**一处都没动**
+   > —— `apps/agentcore/src/workflow/executor.ts:104` 仍是 `for (const step of input.steps) { … await … }` 严格串行，
+   > 循环体内无 `Promise.all`。
+   >
+   > **本条按 `CHECK-RT-GOV.md` 的判定不算「宣称做了其实没做」**：切片自己在
+   > `skill-orchestrator.ts:6-9,332-338` 明写「不动它、不替换它，只在旁边加图调度……**本切片明确未做**」，
+   > 本体 `:983` 更是主动承认「**比 PRD §3.4 目标态更远**」。**诚实标注是到位的。**
+   >
+   > **但它是本轮最实质的架构负债，必须记在 G1 这一行的旁边**：
+   > 为了交付 S1，先把扇出从 3 套变成 4 套，**收敛动作全押在尚未开工的 W2 上**。
+   > 若 W2 不做，§3.4 的核心论证（「再加一套 = 第三套」）就成了**自我实现的预言**。
+   >
+   > ⇒ G1 今天的正确状态：**前半句（并行边真并发）已达成 · 后半句（不引入新扇出）已违反 · 债挂在 W2**。
 2. G2 · **确定性可保**：图节点允许是确定性求解器/规则；全 PURE 图与今天线性 plan **字节等价**。
 3. G3 · **按题型预算**：`maxBudgetRounds` 等从"字段存在"变成"改这个数 → 该类题实际轮次真变"。
 4. G4 · **取消到底**：任务取消/超时穿透到 DataCore 求解，继承 D1 语义。
@@ -314,7 +332,28 @@ while ready 非空:
     重算 ready
 ```
 
-- `maxParallelNodes` 缺省 = wave 全宽；部署态可经 env 收紧（须登记进 `deploy-governance:check`）。
+- ~~`maxParallelNodes` 缺省 = wave 全宽；部署态可经 env 收紧（须登记进 `deploy-governance:check`）。~~
+
+  > ⚠️ **2026-08-09 复验：实现与本行相反 —— 缺省是 4，不是 wave 全宽**（`docs/CHECK-RT-GOV.md` §D.2 **E2**）。
+  >
+  > | | 本 PRD 说 | 实现是 |
+  > |---|---|---|
+  > | 缺省 | **wave 全宽**（不设上限） | **4** —— `packages/contracts/src/skill-graph.ts:119 DEFAULT_MAX_PARALLEL = 4`，`:130` zod `.default(DEFAULT_MAX_PARALLEL)`，`:457` 由 `execution.steps`/legacy 编译出的图也用它 |
+  > | 上界 | 未规定 | **硬上界 16** —— `skill-graph.ts:121 MAX_PARALLEL_CEILING = 16`，`:130` `.max(...)`，注释原文「**不许无上限**」 |
+  > | 实际生效点 | — | `apps/agentcore/src/skill-orchestrator.ts:149` `const concurrency = Math.max(1, graph.maxParallelNodes);` |
+  >
+  > **这条偏离是有意的、且已在代码与本体 `:267` 双处声明**，
+  > 所以按 `CHECK-RT-GOV.md` 的判定它**不算「宣称做了其实没做」** ——
+  > **但 PRD 文本一直没同步订正**，于是「下一个人读 PRD 会以为是全宽」。本条即为该同步。
+  >
+  > **为什么实现是对的**：「缺省无上限」等于把并发护栏交给数据 ——
+  > 一张 40 个入口节点的图会一次点起 40 路并发（G-9 / `G-WORKFLOW-BUDGET-LEAK` 同族）。
+  > **护栏的缺省值必须是安全值，不是最宽值。**
+  >
+  > ⇒ 正确读法：**缺省 4 · 硬上界 16 · 声明值只在 [1,16] 内生效**；
+  > 「部署态可经 env 收紧」这半句**今天没有承载物**（`grep -rn "MAX_PARALLEL" apps/*/src packages/*/src`
+  > 只命中 `skill-graph.ts` 的常量定义与 `skill-orchestrator.ts:149` 的使用点，**无 env 读取**），
+  > 属**待实现**，不要读成已有。
 - **失败传播**：某节点 `onError=FAIL` 且失败 → 立即 abort 同波兄弟（§5.4）→ 整图 FAILED；`onError=SKIP` → 该节点及其纯后继标 SKIPPED，其余照跑（今天 `executor.ts:169-173` 的 SKIP 语义原样保留）。
 - **规则 BLOCK 短路**：`rule` 节点判出 BLOCK → 与今天 `executor.ts:212-213` 同义，整图终止并返回 rule_violation 模板答案（COMPLETED 非 FAILED），同波兄弟按失败传播规则 abort。
 
@@ -603,12 +642,37 @@ Skill A.dependsOn = [B]
 
 | kind | 权威源 | 校验方式 |
 |---|---|---|
-| `solver` | `apps/datacore/src/solvers/service.ts:44 SOLVER_KEYS`（57） | 跨系统只读端点 + `SERVICE_TOKEN`（B→A 已有服务间通道），带 60s 缓存 + `{kind}.updated` 事件失效（本体 §5 既有约定，传播 SLO ≤60s） |
+| `solver` | ~~`apps/datacore/src/solvers/service.ts:44 SOLVER_KEYS`（57）~~ → **2026-08-09 实测：`service.ts:51`，59 条**（同族订正见 `docs/PRD-skill-compiler-registry.md` §14.3 的 **X-07**） | 跨系统只读端点 + `SERVICE_TOKEN`（B→A 已有服务间通道），带 60s 缓存 + `{kind}.updated` 事件失效（本体 §5 既有约定，传播 SLO ≤60s） |
 | `rule` | 已发布规则库（C01–C33） | 同上；呼应 `rule-closure:check` 口径 |
 | `slice` | `SliceSpec` / 切片库 | 同上 |
 | `ontologyType` | 已发布本体 ACTIVE 类型 | 同上 |
 | `workflow`/`agent`/`skill` | 本租户 PUBLISHED | 本地（今天只做了 `skill` 一类） |
-| `constraint` | **无权威注册表** | ⚠ SPEC §5-C2 定案「约束只在求解器里定义一次」→ `constraint` 这个 kind 今天**没有独立真值源可校验**。处置二选一（归 Skill 契约 PRD 定）：① 退役该 kind（约束经 `solver` 引用表达）② 定义为 `solver.constraintFamily` 的子引用并随 solver 一起校验。**不得**留一个"校验不了但看起来能校验"的 kind |
+| `constraint` | **无权威注册表** | ⚠ SPEC §5-C2 定案「约束只在求解器里定义一次」→ `constraint` 这个 kind 今天**没有独立真值源可校验**。处置二选一（归 Skill 契约 PRD 定）：① 退役该 kind（约束经 `solver` 引用表达）② 定义为 `solver.constraintFamily` 的子引用并随 solver 一起校验。**不得**留一个"校验不了但看起来能校验"的 kind 〔🔴 **2026-08-09：这条反向禁令正被现状违反 —— 见表后**〕|
+
+> ### 🔴 2026-08-09 复验：**本节最后一行的反向禁令，今天正被现状违反**（`docs/CHECK-RT-GOV.md` §D.2 **E3**）
+>
+> 本文 §8.3 明令「**不得**留一个『校验不了但看起来能校验』的 kind」。**今天 `constraint` 正处于该状态**：
+>
+> | 事实 | 证据 |
+> |---|---|
+> | `constraint` **在枚举里**（作者写得出来、契约收得下） | `SKILL_REFERENCE_KINDS`（`packages/contracts/src/agentcore.ts:216`）8 值含 `constraint` |
+> | 发布探针**不校验它** | `apps/agentcore/src/server.ts:1267-1269` 只抽 `solver` / `rule` / `ontologyType` 三种 kind 送 `probeMissingRefs` |
+> | 本地 lint **也不校验它** | `apps/agentcore/src/skill-lint.ts:218` `if (ref.kind !== "skill") continue;` |
+> | **且没有任何地方标注这件事** | `skill-lint.ts:215-217` 的注释虽点了名（「constraint / slice / workflow / agent **今天仍无人校验**」），但**契约侧、API 侧、前端侧一个字都没有** |
+>
+> ⇒ 一个作者今天写下 `{kind:"constraint", key:"完全不存在的东西"}`，
+> **发布会通过、lint 会绿、探针不看它** —— 而枚举的存在让人以为它被管着。
+> **这正是本文自己禁止的那个形态**，且**它不是「本期不做」**（本期不做的东西不会长成一个可写入的枚举值）。
+>
+> **同一档的另外三种**：`slice` / `workflow` / `agent` 同样"可声明零校验"。
+> 其中 `workflow` 更毒一点 —— **出厂种子 `sop_meeting` 真的声明了一条**：
+> `apps/agentcore/src/mocks/seed.ts:1106`
+> `references: [{ kind: "workflow", key: "sop_balance_wf", role: "context", required: true }]`
+> —— `required: true` 都写了，**声明了、也没人校验它存不存在**。
+>
+> **处置不改本文的二选一裁决**（那是 Skill 契约 PRD 的活），但**在裁决落地前必须先做一件事**：
+> **把"这 4 个 kind 不校验"写进门的输出/API 响应**（本文 §10.1 的诚实边界纪律要求的正是这个），
+> 否则「看起来能校验」会一直骗人。
 
 **契约缺口（不在本文改，登记给 Skill 契约 PRD）**：SPEC §5 的引用清单含 `tools[]` 与 `mcp[]`，而 `SKILL_REFERENCE_KINDS` **无 `tool`/`mcp`**（本会话核实）。要么扩枚举，要么另设字段——两种都属契约决策；Runtime 侧只承诺"契约里有的 kind，装载时全部校验"。
 

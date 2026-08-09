@@ -126,7 +126,32 @@ Track E 已定案：**Skill 是「一个意图一份声明」的单一外壳**�
 | `dependsOn[]` | `SkillReference[]`? | lint 解析 + 环检测（`skill-lint.ts:212/306/309`）· DRIL 关系投影（`resource-projector.ts:334`） | **沿用**·**核实补正**：并非"零消费方"，是**7/7 全空导致消费方从不触发**（两回事：前者是没接线，后者是没数据） |
 | `approvalGate` | `none｜human｜workflow`? | `isWriteModeSkill` | **沿用** |
 | `provenancePolicy` | `required｜best_effort｜none`? | `skillProvenancePolicy`（`engine.ts:30-34`）→ 运行时聚合 | **沿用** |
-| `maxBudgetRounds` | `int.positive()`? | **零消费方**（核实：全仓仅契约声明一处） | **沿用字段名 + 接消费方**：归一到 `AgentBudget.maxRoundTrips`（§4.6）。这是 Track E 约束 4 的硬验收 |
+| `maxBudgetRounds` | `int.positive()`? | **零消费方**（核实：全仓仅契约声明一处） | **沿用字段名 + 接消费方**：归一到 `AgentBudget.maxRoundTrips`（§4.6）。这是 Track E 约束 4 的硬验收 〔⚠️ **2026-08-09：这一格是「打算怎么做」不是「已经做了」·见下方订正 X-01**〕|
+
+> ### ⚠️ 2026-08-09 复验订正 **X-01** · `maxBudgetRounds` 的处置列必须读作「未来时」
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-01**。
+>
+> **实测（canonical，金丝雀：同命令跑 `SkillDefinitionSchema` = 7 命中 ⇒ 工具有效）**：
+> `grep -rn "maxBudgetRounds" apps/*/src packages/*/src` → **1 命中**，
+> 就是 `packages/contracts/src/agentcore.ts:260` 的契约声明自己。**零生产读点。**
+> 再追一层（铁律 0.5 第 3 条：会不会被间接调用？）：`new BudgetTracker(...)` 的三处入参
+> **全部走 `residualBudgetFromConfig()`（只读 env）**，Skill 的声明**根本不在预算优先级链上** ——
+> 不是"读了但被覆盖"，是"压根没进这条链"。
+>
+> **本条订正的对象是措辞不是事实**：上表**现状列**写的「零消费方」**完全正确**，
+> 问题出在**处置列**——「沿用字段名 **+ 接消费方**…**这是 Track E 约束 4 的硬验收**」
+> 用的是**已定事实的语气**，读者（尤其是只扫处置列做排期的人）会读成「预算已经接好了」。
+> `docs/PRD-skill-compiler-registry.md` §14.4-3 对同一件事的诚实标注是：
+> 「`maxBudgetRounds` 本期仍无运行时消费方……**验收文案必须写『已声明·未接运行时』**」。
+> **两份文档同一件事、两种语气** —— 本条把 DSL 侧的语气拉回来。
+>
+> **今后引用本行时的唯一正确读法**：**「已声明 · 未接运行时」**。任何验收/排期都不得把它当已完成。
+>
+> 🔎 **顺带订正 CHECK 自身**：`CHECK-DSL-CMP.md` X-01 写「DSL 全文**无一处标注它未接**」——
+> 这句**不准确**。本文实际有 **3 处**明确标注了「零消费方」：`§1 头号纪律`（表首行）、
+> `§1 P4 行`、`§11.1 事实核实表`。真正的问题只在**处置列的语气**，不在"全文没标注"。
+> 详见 `docs/WO-DOCFIX-SKILL-CLAIMS-delivery.md`。
 
 **结论**：**无一字段需要语义变更或删除**；缺的全是"新层"与"消费方"。这决定了本 PRD 的形态是 **additive 超集**，不是重写。
 
@@ -346,13 +371,35 @@ export const SkillBudgetSchema = z.object({
 | 字段 | 必填 | 默认 | 消费方 / 效果层判据 |
 |---|---|---|---|
 | `outputEnforcement` | 否 | `"off"` | **给 `outputSchema` 接上消费方**（SPEC D5：要么接消费方要么删）。`off`=今日行为逐字节不变；`warn`=不符只标注；`block`=不符拒绝作为最终答案。判据：**改 `outputSchema` 必填字段 → 缺该字段的答案在 `block` 下真被拦**（效果层，非"读出来了"） |
-| `budget.rounds` | 否 | — | 归一 `skillBudgetOverride(skill) = budget.rounds ?? maxBudgetRounds`（**唯一读点**），注入 `AgentBudget.maxRoundTrips`（`packages/contracts/src/qos.ts:612`）。判据（Track E 约束 4）：**改这个数 → 该类题实际探索轮次真变** |
+| `budget.rounds` | 否 | — | 归一 `skillBudgetOverride(skill) = budget.rounds ?? maxBudgetRounds`（**唯一读点**），注入 `AgentBudget.maxRoundTrips`（`packages/contracts/src/qos.ts:612`）。判据（Track E 约束 4）：**改这个数 → 该类题实际探索轮次真变** 〔⚠️ **2026-08-09：这是「验收判据」不是「已发生的事实」·见表后订正 X-02**〕|
 | `budget.discoverCalls` | 否 | — | → `AgentBudget.maxDiscoverCalls`（qos.ts:611）。治"探索预算是全局常数不分题型" |
 | `budget.toolCalls` | 否 | — | → `AgentBudget.maxToolCalls` |
 | `expectedDurationMs` | 否 | — | 前端进度预期 + 超时"是信号不是判决"的基线；**不得**直接当 abort 阈值 |
 | `cancellable` | 否 | `true` | 声明本 Skill 是否可中途取消（诚实边界：底层求解取消能力另属 Track D，此处只是声明） |
 
 **红线**：`budget.*` 一律**只收紧不放宽**——取 `min(声明值, 平台硬上界)`。否则一个 Skill 就能把全局预算护栏顶开（G-9/G-WORKFLOW-BUDGET-LEAK 同族）。
+
+> ### ⚠️ 2026-08-09 复验订正 **X-02** · `budget.rounds` 的「效果层判据」被写成了「效果层事实」
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-02**。
+>
+> 上表 `budget.rounds` 行的「判据（Track E 约束 4）：**改这个数 → 该类题实际探索轮次真变**」
+> 是一条**验收标准（未来时）**，不是**已观测到的行为（现在时）**。两者只差一个语气，
+> 但在排期表上差一整个工作量 —— 而排期的人往往只扫这一列。
+>
+> **实测（canonical，2026-08-09）**：
+> - `budget` / `skillBudgetOverride` 这条链**在 canonical 上零生产读点**；
+>   `maxBudgetRounds` 全仓 1 命中（契约声明，`packages/contracts/src/agentcore.ts:260`），见 §2 的 **X-01** 订正。
+> - **即便并入未合并的 `claude/handoff-skill-partial-a` 分支**（`git merge-base --is-ancestor` 实测 **NOT MERGED**），
+>   `skillBudgetOverride(...)` 在该分支上的**唯一 `src/` 读点**是 `apps/agentcore/src/skill-probe.ts:133`
+>   （**探针路**；另有 `mocks/seed.ts:1283` 的注释与 `test/skill-partial-a-seam.test.ts` 的单测），
+>   **生产 agent loop 未接** ⇒ 并了也**不满足**这条判据。
+>   注：这正是「**只有 test 引用 = 已排练不是已实现**」的近亲形态 —— 这里连 src 读点都只在探针上。
+>   （这一条必须拆开说：「并入后会满足」与「并了也不满足」是两个不同的结论，
+>   合成一句「等 partial-a 并进来就好了」会直接排错期。）
+>
+> **今后引用本行时的唯一正确读法**：**「这是待验收的判据 · 今天不成立」**。
+> 与 §2 的 X-01 合起来看：**字段在 · 归一函数不在 · 读点不在 · 效果层无从验**。
 
 ### 4.7 `progress` — 可观测声明（Track E ⑦）
 
@@ -555,6 +602,26 @@ SPEC §6 指出包的多文件结构**天然映射到既有 `resources[]`**（`S
 
 **编译产物与 `execution.plan[]` 的关系**：`SkillRuntimeGraph` 是**编译期产物**（含引用解析结果、拓扑校验、预算合成）；`execution.plan[]` 是**声明源**。二者不是同一层，绝不能共用一个名字——共用即回到"两份声明互不知情"。
 
+> ### ⚠️ 2026-08-09 复验订正 **X-05** · 上表的「采用名 `SkillRuntimeGraph`」**写成了已裁定生效，实际零落地**
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-05**（另见同文 **Y-02**「同一层三个名字」）。
+>
+> **实测（金丝雀：`grep -rn "SkillDefinitionSchema" apps/*/src packages/*/src` = 7 命中 ⇒ 工具有效）**：
+>
+> | 名字 | 在哪 | 状态 |
+> |---|---|---|
+> | `SkillRuntimeGraph`（**本表裁定的采用名**） | `apps/*/src` `packages/*/src` **0 命中**；只在本文自己两行出现 | ❌ **零落地** |
+> | `SkillGraph` / `SkillGraphSchema` | `packages/contracts/src/skill-graph.ts`（canonical，已并） | ✅ 实现在用 |
+> | `SkillReasoningGraph` | `docs/PRD-skill-compiler-registry.md` §3.2 术语表 + `claude/handoff-skill-compiler-s1` 分支实现（**NOT MERGED**） | 🔗 另一条线在用 |
+>
+> **形态**：这不是「做了没做」的问题，是**裁定被另一份文档的术语表实际覆盖，而本文没有回写**。
+> 后果恰恰是 §9.1 举证要防的那件事 —— **「哪个 Graph」重新失去单一指代**：
+> 今天同一层有 **3 个名字**（文档裁定名 / canonical 实现名 / 编译器线名），一个都对不上另一个。
+>
+> **本单不裁**（口径裁决是仓主的活），只把三方事实钉在这里，标 **待裁决**。
+> 裁决时必须同时回写三处：本表 · `docs/PRD-skill-compiler-registry.md` §3.2 · 实现的导出名。
+> 只改其中一处 = 再制造一次同样的漂移。
+
 ### 9.3 其他命名纪律
 
 - 禁用外部产品名（CLAUDE.md 铁律）。
@@ -577,7 +644,36 @@ SPEC §6 指出包的多文件结构**天然映射到既有 `resources[]`**（`S
 
 **运行态半**（发布端点，非静态门）：`requires.objectTypes/relations/slices/rules/workflows/agents/dependsOn` 是**租户运行态**，静态扫描看不见 → 在 `POST /b/v1/skills/:id/publish` 校验，不满足即 `422 SKILL_REF_UNRESOLVED`。
 
-> **诚实边界必须写进门的输出**：门只守静态池那一半；哪一半由端点守、哪一半没人守，必须在门的通过/失败信息里显式声明。今天 `skill-lint.ts:176` 的现状是——`validateRefResolution` **只校验 `kind==="skill"`**，注释写"非 skill 引用由发布时的跨系统探针或各自注册表保证"，而**该探针本会话未在 publish 路径中找到**（`apps/agentcore/src/server.ts:1231-1289` 只有 lint + eval + probe 三段）。这正是 SPEC §5 说"这道门今天做不了"的实证。
+> **诚实边界必须写进门的输出**：门只守静态池那一半；哪一半由端点守、哪一半没人守，必须在门的通过/失败信息里显式声明。~~今天 `skill-lint.ts:176` 的现状是——`validateRefResolution` **只校验 `kind==="skill"`**，注释写"非 skill 引用由发布时的跨系统探针或各自注册表保证"，而**该探针本会话未在 publish 路径中找到**（`apps/agentcore/src/server.ts:1231-1289` 只有 lint + eval + probe 三段）。这正是 SPEC §5 说"这道门今天做不了"的实证。~~
+
+> ### 🔁 2026-08-09 复验订正 **X-04** · 【反向过期】那个探针**已经接在 publish 路径上了**
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-04**（与 §11.1 的 **X-03**、`SPEC §5` 的 **F8** 是同一件事的三处复述）。
+>
+> **⛔ 危害**：照划掉的原文排期，下一个 dev 会去**补一道已经存在的门** ——
+> CLAUDE.md 铁律 0.5「来历」第 ③ 条记载的正是这个错，**它当时把工作量从「接一条线」错报成「造一道门」**。
+>
+> **新事实**：`WO-SKILL-REFCLOSURE-A` 于 **2026-08-09** 把探针接上了 skill 发布路。
+>
+> | 事实 | 证据 |
+> |---|---|
+> | 探针接在 publish 路径 | `apps/agentcore/src/server.ts:1272` `probeMissingRefs(deps.dataCore, a, { solverKeys, ruleKeys, objectTypes })` |
+> | 三条发布路都接了 | `server.ts:694`（agent）· `:1012`（workflow）· `:1272`（skill） |
+> | 死路引用 = 拒绝发布 | `server.ts:1279` `422 SKILL_REF_UNRESOLVED`，且在 `repos.skills.update` 之前 ⇒ **未落库** |
+> | fail-closed | `apps/agentcore/src/resources.ts:59-68`：注册表读不出/返空集 ⇒ `503 REF_PROBE_UNAVAILABLE`，**不静默放行** |
+> | `force` 不豁免 | `server.ts:1263-1264` 注释与实现：force 只豁免质量门，事实错误不豁免 |
+> | 有防退化门在守 | `node scripts/check-ref-closure.mjs`（RC=0；摘掉 `server.ts:1272` 那行 → 该门当场红） |
+>
+> `apps/agentcore/src/skill-lint.ts:203-217` 的注释也已同步改写，原文写着：
+> 「⚠️ 这句话在 2026-08-09 之前是**谎报**……2026-08-09（WO-SKILL-REFCLOSURE-A）把探针接上了
+> `POST /b/v1/skills/:id/publish`，这句话**从这天起才成立**。」
+>
+> **本段仍然成立、且必须保留的那一半**（别把整段一起划掉）：
+> 「**哪一半没人守必须写进门的输出**」这条纪律**依然有效且依然有缺口** ——
+> 探针只覆盖 **solver / rule / ontologyType** 三种 kind；
+> **`constraint` / `slice` / `workflow` / `agent` 四种今天仍无人校验**
+> （`skill-lint.ts:215-217` 自己写明）。**坐标同时订正**：
+> `validateRefResolution` 的 `if (ref.kind !== "skill") continue;` 今天在 **`skill-lint.ts:218`**（原文记的 `:176` 已漂）。
 
 ### 10.2 SEAM 验收（头号复验判据，不接受各半 unit 绿）
 
@@ -603,6 +699,18 @@ SPEC §6 指出包的多文件结构**天然映射到既有 `resources[]`**（`S
 
 ### 11.1 本会话亲手核实（给出 `file:line` 或可复跑命令）
 
+> ### 🔁 2026-08-09 复验订正 **X-03** · 本表最后两行已过期（**反向**：说没做，其实已做）
+>
+> 依据 `docs/CHECK-DSL-CMP.md` §5 **X-03**。下表已就地打删除线并给出今日事实。
+>
+> **⛔ 这是本表最危险的一类过期**：本节的标题就是「**本会话亲手核实**」——
+> 一句自称"亲手核实过"的断言，**可疑度被压到最低**，复审看见就不再追一层。
+> 而**实测的保质期等于做实测的那一天**：`WO-SKILL-REFCLOSURE-A` 于 2026-08-09 接线之后，
+> 这句"核实过"的话当场变成屏上说谎，**而没有任何人会被通知**。
+> （本仓已为此立了机械门：`node scripts/check-stale-claims.mjs`，本体 §8 `G-STALE-MEASURED-CLAIM`。）
+>
+> **今后写"核实"必须带三件套**：**哪天测的 · 怎么复跑 · 上游改了谁会红**。缺一件就是下一次的 X-03。
+
 | 事实 | 证据 |
 |---|---|
 | `SkillDefinitionSchema` 现有 18 个字段，其中工业级契约字段（`capability`…`maxBudgetRounds`）9 个全为 optional | `packages/contracts/src/agentcore.ts:236-262` |
@@ -618,8 +726,8 @@ SPEC §6 指出包的多文件结构**天然映射到既有 `resources[]`**（`S
 | 仓内已有一次同名冲突并改名 `ComposePlan` 的先例 | `packages/contracts/src/execution-plan.ts` 文件头注释 |
 | 工具注册表：`BUILTIN_TOOLS` 28 条 + `FINAL_ANSWER_TOOL` + `LOAD_SKILL_TOOL` | `awk '/export const BUILTIN_TOOLS/,/^\];/' apps/agentcore/src/tools/registry.ts \| grep -c 'name: "'` → 28；`apps/agentcore/src/tools/registry.ts:480` |
 | `FeatureDef.bindings` **无 `skills`** | `packages/contracts/src/features.ts:16-22`（只有 `intents`/`solverKeys`/`apiTags`） |
-| 发布路径只有 lint + eval 计数/分类 + probe 三段，**无跨注册表引用校验** | `apps/agentcore/src/server.ts:1231-1289` |
-| `validateRefResolution` 只校验 `kind==="skill"` | `apps/agentcore/src/skill-lint.ts:176` |
+| ~~发布路径只有 lint + eval 计数/分类 + probe 三段，**无跨注册表引用校验**~~ 🔁 **2026-08-09 已过期（反向）** | ~~`apps/agentcore/src/server.ts:1231-1289`~~ → **今天是四段**：lint（`:1251`）→ **跨注册表引用探针（`:1272`）** → eval 计数/分类（`:1284-1298`）→ probe（`:1301`）。详见 §10.1 的 **X-04** 订正 |
+| `validateRefResolution` 只校验 `kind==="skill"` | ~~`apps/agentcore/src/skill-lint.ts:176`~~ → **坐标已漂，今天在 `skill-lint.ts:218`**。**断言本身仍成立**（本地 lint 确实只解析 kind=skill），但**不要**再由它推出「非 skill 引用无人校验」——跨系统那半已由 `server.ts:1272` 的探针覆盖 solver/rule/ontologyType 三种 |
 | 三级渐进披露的三个注入点 | `apps/agentcore/src/agent/prompts.ts:72` · `apps/agentcore/src/engine.ts:378` · `:379-384` |
 | `selectTenantSkills` 语义（PUBLISHED / 同 key 取最高版本 / key 字典序） | `apps/agentcore/src/router/orchestrator.ts:232-240` |
 | `AgentBudget` 的 `maxRoundTrips`/`maxDiscoverCalls` 字段与默认值 | `packages/contracts/src/qos.ts:611-612` |
