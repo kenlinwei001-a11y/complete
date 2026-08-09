@@ -136,6 +136,8 @@ export const zh = {
     gapUnreachable: (code: string) => `不可达：断在 ${code}（需开发/人工补）`,
     gapTicket: "查看成长工单 →",
     routedWorkflow: (name: string) => `命中工作流 · ${name}`,
+    /** WO-FE-AGENT-TRACE：agent loop 轮次（后端 agent/loop.ts:848 的 iteration·0 基 → 展示 +1） */
+    iterationChip: (n: number) => `第 ${n + 1} 轮`,
     blockedByRule: "被规则拦截",
   },
   prov: {

@@ -60,6 +60,68 @@
   color: var(--muted2);
 }
 
+/* ── WO-FE-AGENT-TRACE：多角色会诊分栏（一角色一栏·窄屏自动堆叠） ── */
+.roleTracks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+  margin: 2px 0 4px;
+}
+
+.roleTrack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+
+.roleHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.roleLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--txt);
+}
+
+.roleSub {
+  font-size: 10.5px;
+  color: var(--muted2);
+  line-height: 1.35;
+}
+
+/* 结构化标识 chip：角色 / 轮次。缺字段时组件整格不渲染，这里只管有的那格长什么样。 */
+.chipRole,
+.chipIter {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.chipRole {
+  color: var(--accent);
+  background: rgba(76, 144, 240, 0.12);
+  border: 1px solid rgba(76, 144, 240, 0.3);
+}
+
+.chipIter {
+  font-family: var(--font-mono);
+  color: var(--muted2);
+  background: rgba(226, 235, 245, 0.06);
+  border: 1px solid var(--line);
+}
+
 .spinnerRow {
   display: flex;
   align-items: center;

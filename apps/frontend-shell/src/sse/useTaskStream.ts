@@ -19,10 +19,17 @@ export interface EventSourceLike {
 
 export type EventSourceFactory = (url: string) => EventSourceLike;
 
+/**
+ * 必须逐个 addEventListener：SSE 帧带 `event: <name>`（后端 `api/sse.ts:39`），
+ * **具名事件不会走 onmessage** —— 不在本表里的事件名等于整条被浏览器丢弃。
+ * WO-FE-AGENT-TRACE 补 `coordinator.planned`（后端 `orchestrator.ts:2480` 一直在发，
+ * 前端此前没订阅 → 多角色会诊的「参与角色是谁」在前端从来收不到）。
+ */
 const KNOWN_EVENTS = [
   "task.accepted",
   "routing.completed",
   "clarification.required",
+  "coordinator.planned",
   "step.started",
   "step.completed",
   "answer.final",
