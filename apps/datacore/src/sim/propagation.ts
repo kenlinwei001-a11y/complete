@@ -16,7 +16,17 @@
  *  - Temporal Trust（§1.3-6）：tick t 只读 <=t 的 state + pending；延迟贡献只落 arriveTick > 当前 tick，
  *    绝不读未来 tick 态。
  */
-import { expectedCadenceWaitDays, type Cadence, type DelayedContribution, type PropagationRule, type PropagationTrace, type TickState } from "@platform/contracts";
+import {
+  applyPerturbationToState,
+  expectedCadenceWaitDays,
+  isPerturbationActiveAt,
+  type Cadence,
+  type DelayedContribution,
+  type Perturbation,
+  type PropagationRule,
+  type PropagationTrace,
+  type TickState,
+} from "@platform/contracts";
 
 /** 传导图（抽象：仅对象 id+typeKey、链路 from/to+linkKey，零行业列）。 */
 export interface PropagationGraph {
@@ -177,6 +187,72 @@ function effectiveCoefficient(rule: PropagationRule, ruleParams: RuleParamLookup
   return rule.coefficient;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 扰动相位（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一条交给引擎处理的扰动 = 契约 `Perturbation` + 调用方查得的「**落地前值**」。
+ *
+ * `preValue` 只在 **`set`（以及 `scale` 且 `magnitude === 0`）到期回退**时用得上 ——
+ * 这两种模式**不可解析求逆**（`set` 抹掉了原值；乘 0 不可逆），非记不可；
+ * `delta` / `scale(magnitude≠0)` 的逆是解析的（减 / 除），**不需要记忆**，
+ * 因而也不会把「回退」退化成「把这几 tick 的演化一并抹掉」。
+ *
+ * ⚠ **为什么 `preValue` 由调用方给，而不是照 PRD 原文「记于生效当 tick 的 trace」**：
+ * WO-P0 的 `POST /perturbations`（`app.ts:1542`）对**建单时已生效**的扰动是
+ * **在路由里直接施加**的（`simApplyAtCurrentTick`），那条路**原样保留旧 trace、不写新 trace**
+ * ⇒ trace 里根本不会出现这条扰动的 preValue，而它恰是最常走的一条路
+ * （`startTick` 缺省 = 当前 tick）。换言之「记于 trace」在今天的接线下**恒缺**。
+ * 改由调用方从**世界线快照**取（`state@(startTick-1)`）：路由施加 / 引擎施加两条路都成立，
+ * 且与引擎自己施加时读到的**是同一个数**（enter 发生在 `producedTick === startTick`，
+ * 其输入态正是 `state@(startTick-1)`）—— 单源、可复算、跨请求不丢。
+ * 引擎仍把 preValue 写进 trace（`(perturbation.before)` 行），溯源需求照样满足。
+ */
+export interface PerturbationInTick extends Perturbation {
+  /** 该扰动落地前、目标 stateVar 在这条世界线上最后一个未被它污染的值。缺 = 引擎不许猜。 */
+  preValue?: number;
+}
+
+/** 扰动落地在 `trace.ruleKey` 上的前缀（前端据此把它与传导边分开渲染）。 */
+export const PERTURBATION_TRACE_PREFIX = "perturbation:";
+/** 扰动到期回退。 */
+export const PERTURBATION_REVERT_TRACE_PREFIX = "perturbation-revert:";
+/** 到期了、却**拿不到可用的回退值** —— 诚实报缺，照 `unresolvedGates` 的范式，绝不静默乱猜一个数。 */
+export const PERTURBATION_REVERT_UNRESOLVED_PREFIX = "perturbation-revert-unresolved:";
+/** trace 行的 `fromObjectId`：施加前 / 施加后（两行成对，preValue 即 before 行的 amount）。 */
+const TRACE_FROM_BEFORE = "(perturbation.before)";
+const TRACE_FROM_AFTER = "(perturbation.after)";
+
+function readVar(state: TickState, objectId: string, stateVar: string): number {
+  const v = state[objectId]?.[stateVar];
+  return typeof v === "number" ? v : 0;
+}
+
+/**
+ * 「**本 tick 首次生效**」判据 —— 用契约的 `isPerturbationActiveAt` 表达，**不另写一套**
+ * （PRD §3.1.3：生效判据单源）。等价于 `p.startTick === atTick`。
+ */
+function entersAt(p: Perturbation, atTick: number): boolean {
+  return isPerturbationActiveAt(p, atTick) && !isPerturbationActiveAt(p, atTick - 1);
+}
+
+/** 「**本 tick 到期**」判据（同上单源）。等价于 `durationTicks !== null && startTick + durationTicks === atTick`。 */
+function exitsAt(p: Perturbation, atTick: number): boolean {
+  return !isPerturbationActiveAt(p, atTick) && isPerturbationActiveAt(p, atTick - 1);
+}
+
+/**
+ * 到期回退值 = 「若无此扰动，本应有的值」。
+ * `null` = **算不出来**（`set`/`scale(0)` 且调用方没给 preValue）—— 调用方必须看见这个缺，
+ * 不许在这里编一个 0 或原样留着（留着 = 把「限时停机」悄悄变成「永久停机」）。
+ */
+function revertValue(p: PerturbationInTick, current: number): number | null {
+  if (p.mode === "delta") return current - p.magnitude;
+  if (p.mode === "scale" && p.magnitude !== 0) return current / p.magnitude;
+  return p.preValue ?? null; // set / scale(0)：只能靠记下来的落地前值
+}
+
 /**
  * 累加一条贡献到 next（按 combine 语义 sum/max）。amount 已含系数 x 源态 x 衰减。
  * touched 记录本 tick 已触达的 (obj,var)：max 首条以贡献为基，之后取 max；sum 在既有值上加。
@@ -213,8 +289,15 @@ function applyContribution(
  * @param gates    可选节拍闸门表（`Cadence.nodeId` → 闸门，WO-SANDBOX-E4）。规则声明了
  *                 `cadenceNodeId` 时，本 tick 产生的量**排到下一次开闸**才放行（到点才办）；
  *                 表里查不到 ⇒ 该流不传导并进 `unresolvedGates`（不当作随到随办、不补默认周期）。
- * @returns next（t+1 态）/ pending（去掉已结算、含新延迟）/ trace（本 tick 即时贡献轨迹）
+ * @param perturbations 本 tick **相关**的扰动（WO-P2 · PRD §3.1.3）。调用方按
+ *                 `isPerturbationActiveAt` 收窄（生效判据在调用方算），并按
+ *                 `listPerturbations` 的顺序（`startTick↑ → 建单先后`）传入 ——
+ *                 **顺序即语义**：`delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`，
+ *                 `repo.ts:368`），本函数**绝不重排**。多传无关的扰动是 no-op（见下 enter/exit 判据），
+ *                 少传「本 tick 到期的那条」则回退不会发生 —— 故调用方须把**刚到期**的也一并传入。
+ * @returns next（t+1 态）/ pending（去掉已结算、含新延迟）/ trace（本 tick 即时贡献轨迹 + 扰动落地/回退行）
  *          / unresolvedGates（声明了闸门却拿不到闸门的流）
+ *          / appliedPerturbations（本 tick **处于生效期**的扰动 id，输入序 —— 溯源：这个结果是哪几次扰动造成的）
  */
 export function propagateTick(
   graph: PropagationGraph,
@@ -224,8 +307,72 @@ export function propagateTick(
   tick: number,
   ruleParams: RuleParamLookup = {},
   gates: CadenceGateLookup = {},
-): { next: TickState; pending: DelayedContribution[]; trace: PropagationTrace[]; unresolvedGates: UnresolvedCadenceGate[] } {
-  const next = cloneState(state);
+  perturbations: readonly PerturbationInTick[] = [],
+): {
+  next: TickState;
+  pending: DelayedContribution[];
+  trace: PropagationTrace[];
+  unresolvedGates: UnresolvedCadenceGate[];
+  appliedPerturbations: string[];
+} {
+  // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
+  //
+  // 🔴 时基：`next` 由调用方存到 **tick+1**（`app.ts` 循环 `s.curTick += 1` 后 `putTickState`），
+  //    所以本函数产出的是 **producedTick = tick + 1** 那一格的世界态，扰动的生效期必须按它算。
+  //    ⚠ 这一格错开一位就会同时炸两头（两条都是实测踩过的形态）：
+  //      · 按 `tick` 算 ⇒ 建单当 tick 已被路由施加过一次（`app.ts:1542`）的 `delta` 会在
+  //        第一次 tick 时**再加一遍**（+2 变 +4）；
+  //      · 为躲上面那条而"在 startTick 一律跳过" ⇒ **未来才起效**的扰动（建单时未生效、路由没施加）
+  //        在它真正的 startTick 被跳过、又在之后每 tick 反复施加 ⇒ delta 无限累积。
+  //    按 producedTick 算，两种来路自动各归其位：路由施加的那条 enter 在 `startTick`（引擎看不到，
+  //    正好不重复）；未来起效的那条 enter 落在 `producedTick === startTick`（引擎施加，正好一次）。
+  //
+  // 「一次性施加 + 到期反向施加」而不是「每 tick 重新施加」：后者对 `delta`/`scale` 会逐 tick 复利，
+  //    与 `label` 说的「涨价 15%」「加 200 台」不是一回事。
+  const producedTick = tick + 1;
+  const perturbationTrace: PropagationTrace[] = [];
+  const appliedPerturbations: string[] = [];
+  let effState = state; // 未被扰动改动时**保持同一引用**（无扰动 ⇒ 与本相位引入前逐字节相同·可回退）
+  const writePerturbed = (p: PerturbationInTick, value: number, ruleKey: string, before: number): void => {
+    const bucket = (effState[p.targetObjectId] ??= {});
+    bucket[p.targetStateVar] = round12(value);
+    perturbationTrace.push(
+      { ruleKey, fromObjectId: TRACE_FROM_BEFORE, toObjectId: p.targetObjectId, amount: round12(before), viaLinkKey: p.targetStateVar },
+      { ruleKey, fromObjectId: TRACE_FROM_AFTER, toObjectId: p.targetObjectId, amount: round12(value), viaLinkKey: p.targetStateVar },
+    );
+  };
+  if (perturbations.length > 0) {
+    // ① 先收尾**到期**的（逆输入序 = LIFO 反向解开叠加：`(v+2)×1.5` 要先除 1.5 再减 2）。
+    for (let i = perturbations.length - 1; i >= 0; i--) {
+      const p = perturbations[i]!;
+      if (!exitsAt(p, producedTick)) continue;
+      if (effState === state) effState = cloneState(state);
+      const cur = readVar(effState, p.targetObjectId, p.targetStateVar);
+      const restored = revertValue(p, cur);
+      if (restored === null) {
+        // 诚实缺席：算不出「若无此扰动本应有的值」就**不动这个数**，并把缺口亮在 trace 里，
+        // 而不是留一个看着正常、其实已经永久生效的世界（那正是"绿测试≠能用"的形态）。
+        perturbationTrace.push({
+          ruleKey: `${PERTURBATION_REVERT_UNRESOLVED_PREFIX}${p.id}`,
+          fromObjectId: TRACE_FROM_BEFORE, toObjectId: p.targetObjectId, amount: round12(cur), viaLinkKey: p.targetStateVar,
+        });
+        continue;
+      }
+      writePerturbed(p, restored, `${PERTURBATION_REVERT_TRACE_PREFIX}${p.id}`, cur);
+    }
+    // ② 再落地**首次生效**的（输入序 = `listPerturbations` 序 = 建单先后，顺序即语义）。
+    //    施加走契约唯一实现 `applyPerturbationToState`（与 `/act`、`POST /perturbations` 同一支）。
+    for (const p of perturbations) {
+      if (!entersAt(p, producedTick)) continue;
+      const before = readVar(effState, p.targetObjectId, p.targetStateVar);
+      effState = applyPerturbationToState(effState, p); // 纯函数：返回新对象，入参不改
+      writePerturbed(p, readVar(effState, p.targetObjectId, p.targetStateVar), `${PERTURBATION_TRACE_PREFIX}${p.id}`, before);
+    }
+    // ③ 溯源：本 tick 处于生效期的全部扰动（含早先落地、仍在持续的；**不含**本 tick 刚到期的）。
+    for (const p of perturbations) if (isPerturbationActiveAt(p, producedTick)) appliedPerturbations.push(p.id);
+  }
+
+  const next = cloneState(effState);
   const touched = new Map<string, Set<string>>(); // objId -> stateVars 已触达（区分 max 首条 + 末尾规整）
   const trace: PropagationTrace[] = [];
   const nextPending: DelayedContribution[] = [];
@@ -303,7 +450,9 @@ export function propagateTick(
       const targets = targetsOf(rule, sourceId);
       if (targets.length === 0) continue;
       // 源态只读 <=t 的 state（绝不读 next/未来 = Temporal Trust）。缺位视为 0（无源即无贡献）。
-      const sourceVal = state[sourceId]?.[rule.sourceStateVar] ?? 0;
+      // 读 `effState` 而非 `state`：本 tick 落地的扰动**当 tick 就要往下游传**（"停机了，产能马上受影响"），
+      // 否则扰动要白等一个 tick 才开始扩散。无扰动时 `effState === state`（同一引用），逐字节不变。
+      const sourceVal = effState[sourceId]?.[rule.sourceStateVar] ?? 0;
       if (sourceVal === 0) continue;
       // 衰减（可选，复用 risk.ts amp x (1 - dist/den)）。源/目标在抽象图上相邻 -> dist=1。
       let factor = 1;
@@ -376,7 +525,10 @@ export function propagateTick(
       a.amount - b.amount,
   );
 
-  // trace 稳定排序（可视化确定）。
+  // trace 稳定排序（可视化确定）。扰动行（落地/回退）与传导行同排一处：ruleKey 带
+  // `perturbation:` / `perturbation-revert:` 前缀，前端据此分流；不另开一个数组，
+  // 免得"这个数是谁改的"要去两个地方对。无扰动时本段为空 ⇒ 逐字节同旧。
+  trace.push(...perturbationTrace);
   trace.sort(
     (a, b) =>
       a.ruleKey.localeCompare(b.ruleKey) ||
@@ -388,5 +540,5 @@ export function propagateTick(
   // 诚实清单也稳定排序（R6：同输入同字节，含"缺什么"这份清单）。
   unresolvedGates.sort((a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.cadenceNodeId.localeCompare(b.cadenceNodeId));
 
-  return { next, pending: outPending, trace, unresolvedGates };
+  return { next, pending: outPending, trace, unresolvedGates, appliedPerturbations };
 }
