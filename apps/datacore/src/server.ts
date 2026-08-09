@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -79,6 +79,11 @@ async function main(): Promise<void> {
       phase("seed:propagation-rules");
       await seedDemoPropagationRules(repos);
       logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+      // WO-Q0 业务流程层：13 域 + 65 流程（配置驱动数据，与冻结的 CHAIN_NODE_REGISTRY 分层）。
+      // 排在合成之后：种子里每条 P## 的 carrierTypeKey 指向本体类型，本体先物化读起来才是完整的。
+      phase("seed:process-layer");
+      await seedDemoProcessLayer(repos);
+      logger.info("SEED_DEMO=1: seeded business process layer (13 domains × 65 processes)");
       // WO-LIGHTUP：生产 demo 点亮 5 个 QOS 暗发功能（DRIL/反思/free-llm/coordinator/compose-path）——仅生产播种路径，不入基座 seedDemo。
       phase("seed:entitlements");
       await seedDemoEntitlements(repos);
