@@ -73,6 +73,11 @@ export const SIM_EVENT_GAPS: Record<string, string> = {
     "无缓存消费方：前端只有 POST simCheckpoint，没有检查点列表 useQuery。",
   "sim.branched":
     "无缓存消费方：前端只有 POST simBranch，子会话 id 落 SandboxView 的 useState(branchId)，无列表缓存。",
+  "sim.perturbation_created":
+    "无缓存消费方（WO-P0 · 2026-08-09 新增）：本单只到 API 封装层——endpoints.ts 有 " +
+    "createSimPerturbation/fetchSimPerturbations/deleteSimPerturbation，但**没有任何 useQuery 用它们**" +
+    "（扰动时间轴 UI 是另一张单）。此刻接线就是给一个不存在的缓存发失效 = 假接线（#90/#92 同族）。" +
+    "解法与上面四条同源：等扰动清单真进 TanStack Query 后，把本条从台账挪进 EVENT_INVALIDATES。",
 };
 
 /**

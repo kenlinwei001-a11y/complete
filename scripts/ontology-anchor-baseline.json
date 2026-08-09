@@ -47,6 +47,7 @@
     "apps/datacore/src/planviews.ts::capexScenarioFor",
     "apps/datacore/src/repo/pg.ts::runMigrations",
     "apps/datacore/src/solvers/capacity.ts::hasBase",
+    "apps/datacore/src/solvers/chain-impediment.ts::ChainImpedimentSchema",
     "apps/datacore/src/solvers/chain-loss.ts::STRUCTURAL_GAPS",
     "apps/datacore/src/solvers/extended.ts::mats",
     "apps/datacore/src/solvers/risk.ts::bottleneckMatrix",
@@ -80,7 +81,8 @@
     "packages/contracts/src/chain-sim.ts::ChainLocusSchema",
     "packages/contracts/src/object-ref-resolve.ts::partialRefMatch",
     "packages/llm-adapters/src/slot-harvest.ts::normalizeSlotValue",
-    "packages/llm-adapters/src/slot-harvest.ts::slotValueWrapper"
+    "packages/llm-adapters/src/slot-harvest.ts::slotValueWrapper",
+    "scripts/check-system-ontology.mjs::codeEvents"
   ],
   "unverified": {
     "anthropic.ts": 1,
