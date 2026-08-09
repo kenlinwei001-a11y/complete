@@ -1121,6 +1121,27 @@ decisionComplexity = f(切片对象数, 跨职能数, 约束密度, 候选数, �
    （该门现已加 dist 新鲜度金丝雀，不一致直接 exit 2 报「门自己坏了」；
    但别的门未必有，所以这条纪律照旧。）
 3. **每张 WO = 一条 handoff 分支**，dev 建 → push `claude/handoff-<wo>`，**不碰正线**。
+3.5. 🔴 **`git push` 返回成功 ≠ 你的提交进了 canonical**（2026-08-09 真事故，10 个提交差点丢）
+
+   **事故经过**：一个共享工作目录里的 agent 做了 `git checkout`，**把我的 HEAD 挪到了它的分支上**。
+   此后我的 10 个提交全落在那条 handoff 分支，而我每次仍跑
+   `git push -u origin claude/inspiring-gates-aqczjg` —— 该命令推的是**我指名的那个 ref**
+   （内容未变，于是"成功"返回），**不是我 HEAD 所在的地方**。
+   我因此连续几次向仓主报告「canonical 已推」，**全是空推**；
+   canonical 本地与远端都还停在 `f392ae00`。是 stop hook 报「handoff 分支有 3 个未推提交」才暴露。
+
+   **形态**（铁律 0.6 句式）：
+   > **「我用『push 命令成功返回』当作『我的提交进了 canonical』的证据，而前者不度量后者。」**
+
+   **机制（每次 push 后必做，两行）**：
+   ```bash
+   git push origin HEAD:claude/inspiring-gates-aqczjg
+   [ "$(git ls-remote origin claude/inspiring-gates-aqczjg | cut -f1)" = "$(git rev-parse HEAD)" ] \
+     && echo "✅ 远端 canonical == 本地 HEAD" || echo "🔴 远端没动，别报『已推』"
+   ```
+   判据是**远端 ref 的 sha 等于本地 HEAD**，不是 push 的退出码。
+   并用 `HEAD:<branch>` 显式推 HEAD，不用 `-u origin <branch>` —— 后者在 HEAD 漂了的时候会静默空推。
+
 4. **每完成一个可命名单元立刻 commit + push**（铁律 1 判据 #5 · 已丢过一次工作）。
    「gate 跑着」不是「工作已落盘」。
 5. **dev 不许跑 `bash scripts/gate.sh` 或 `pnpm -r test`** —— datacore 勿并发多 vitest（4 核机）。
