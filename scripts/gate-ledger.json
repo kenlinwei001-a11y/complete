@@ -19,6 +19,27 @@
       },
       "notes": ""
     },
+    "check-backend-frontend-seam.mjs": {
+      "alias": "befe-seam:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/sse/taskStreamReducer.ts",
+        "scripts/backend-frontend-seam-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-GATE-BEFE-SEAM 交付说明 docs/WO-GATE-BEFE-SEAM-delivery.md §3（红/绿输出原文逐字贴出）",
+        "note": "四次变异反证已跑：① agent/loop.ts emit 加一个前端不读的字段 escalationRationaleLabel → RC=1 点名 file:line，撤销即 RC=0；② server.ts 加一条前端不调的 GET /b/v1/agent-trace-summary → RC=1；③ 保留该端点、在 endpoints.ts 补前端消费方 → RC=0（证明门量的是**接缝**，不是「有没有新路由」）；④ 只在 src/mocks/handlers.ts 里消费 → **仍 RC=1**（只有 mock 引用 = 已排练不是已实现）。另跑门自变异：把 mentionsInProd 改成恒真 → 金丝雀「consume/双向判据」当场不中，RC=2 报「⛔ 门自己坏了」且拒绝产出任何结论——没有这条双向金丝雀，这个坏法会安静地报「零缺口·通过」。⚠️ 变异②的第一版**没红**：抽取器被 payload 里的行注释挡住，凡带注释的字段一律读作不存在，而当时 13 条金丝雀全中。已修（objectTopLevelKeys 先经 stripComments，复用 lex 的 mask）并补金丝雀 C3b。此事写进脚本顶注，防有人图省事删掉那一步。"
+      },
+      "notes": "闭 G-BE-FE-SEAM-DEAD 整类：既有 SEAM-GATE 纪律只覆盖「数据+引擎两半」与「A+B 两系统」，从没把「后端+前端两半」列进去 ⇒ 这类缺口一路裸奔。棘轮门（基线 scripts/backend-frontend-seam-baseline.json，SSE 字段 8 · 端点 176），--update 只减不增，收编新缺口必须人手改基线文件（可评审的显式动作）。诚实边界见脚本顶注：载体① 的消费判据是「字段名在前端生产代码里出现」，通名（role/type）撞车会漏报，抓得住的是 roleLabel 这类专名零消费。"
+    },
     "check-arg-drop-seam.mjs": {
       "alias": "arg-drop-seam:check",
       "binding": "GATES_CHAIN",
