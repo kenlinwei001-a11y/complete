@@ -23,13 +23,20 @@
  *                      证明会造第二套真相源」；若理由是「工作量大/独立项目/平台有近似物」，
  *                      本门报 🔴 —— 那三条在 PRD §0.25 里已被判定为**不成立的裁需求理由**
  *
- * 「落点」= 该需求编号（R###）在 `docs/` 下**除台账以外**的任一文档里被引用。
+ * 「落点」= 该需求编号（REQ###）在 `docs/` 下**除台账以外**的任一文档里被引用。
  * 强制引用编号，是为了让「这条需求落在哪」变成**机器可判**的，而不是靠人读散文判断。
  *
  * ── 棘轮基线 ────────────────────────────────────────────────────────────────
  * 基线是**具名 ID 清单**，不是一个数字。
- * 拿数字当基线会出事：漏掉 R070 同时补上 R071，数字不变、门照绿 ——
+ * 拿数字当基线会出事：漏掉 REQ070 同时补上 REQ071，数字不变、门照绿 ——
  * 那正是「我用一个看起来相关的数字当判据，而它并不度量我要度量的东西」（铁律 0.6 原话）。
+ *
+ * ── 为什么编号是 `REQ###` 而不是 `R###`（2026-08-09 改名，治本不打补丁） ──────
+ * 原用 `R###`，与**本体不变量** `R1`–`R19` 共用前缀。后果是真的：
+ * `check-prd-ontology` 把 PRD 里的 `R060`/`R143` 读成「引用了本体不存在的不变量」而报红 ——
+ * 两个 ID 空间共用前缀，正是欠账 #99「D1/E1 各造一套词表」那个病。
+ * 处置不是给门加白名单（那是打补丁），是**把需求 ID 空间整体改名**，让它在词法上就撞不着。
+ * 实测本体侧 `R###` 三位数命中 = 0，故 `\bR(\d{3})\b → REQ\1` 的机械改名不会误伤不变量。
  *
  * ── 金丝雀 ──────────────────────────────────────────────────────────────────
  * 与主逻辑共用同一份实现（`refsOf`），不许各抄一份正则。
@@ -71,19 +78,19 @@ const BAD_CUT_REASONS = [
   ["后续再", "「后续再说」= 无限期推迟，须给可测的触发条件或期次"],
 ];
 
-const ID_RE = /\*\*(R\d{3})\*\*/g;
+const ID_RE = /\*\*(REQ\d{3})\*\*/g;
 
 /** 主逻辑 · 单一实现：一段文本里引用了哪些需求编号。金丝雀与主检测共用它。 */
 function refsOf(text) {
   const out = new Set();
-  for (const m of text.matchAll(/\bR(\d{3})\b/g)) out.add(`R${m[1]}`);
+  for (const m of text.matchAll(/\bREQ(\d{3})\b/g)) out.add(`REQ${m[1]}`);
   return out;
 }
 
 function parseLedger(src) {
   const items = [];
   for (const line of src.split("\n")) {
-    const m = /^\s*-\s*\[[ x]\]\s*\*\*(R\d{3})\*\*\s*(.*)$/.exec(line);
+    const m = /^\s*-\s*\[[ x]\]\s*\*\*(REQ\d{3})\*\*\s*(.*)$/.exec(line);
     if (!m) continue;
     const [, id, rest] = m;
     const verdict = Object.keys(NEEDS_LANDING).find((v) => rest.includes(v)) ?? "?";
@@ -118,7 +125,7 @@ if (declared && Number(declared[1]) !== items.length) {
 }
 
 // ── 扫 docs/ 下除台账外的全部文档 ────────────────────────────────────────────
-const referenced = new Map(); // R### -> [文件…]
+const referenced = new Map(); // REQ### -> [文件…]
 let scanned = 0;
 for (const f of readdirSync(DOCS)) {
   if (!f.endsWith(".md") || join(DOCS, f) === LEDGER) continue;
@@ -131,7 +138,7 @@ for (const f of readdirSync(DOCS)) {
 }
 
 // ── 🐤 金丝雀 ② 引用扫描器有效性（与主逻辑同一个 refsOf） ────────────────────
-const CANARY_IDS = ["R060", "R143"]; // 两条我确定在 PRD-UPGRADE 里被引用过的编号
+const CANARY_IDS = ["REQ060", "REQ143"]; // 两条我确定在 PRD-UPGRADE 里被引用过的编号
 const canaryMiss = CANARY_IDS.filter((id) => !referenced.has(id));
 if (canaryMiss.length) {
   console.error(

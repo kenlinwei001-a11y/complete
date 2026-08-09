@@ -856,6 +856,41 @@
         "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
       },
       "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
+    },
+    "check-req-coverage.mjs": {
+      "alias": "req-coverage:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/REQ-LEDGER-sandbox.md",
+        "docs/PRD-UPGRADE-decision-sandbox-v2.md",
+        "scripts/req-coverage-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "建成首跑即红两次（2026-08-09）",
+        "note": "① exit 2「门自己坏了」：台账自称 148 条而解析器认出 172 条 —— 拒绝按错的数算覆盖率，追查坐实错的是台账（S2 自称38实为54·S6 自称9实为10），表头五个数字全错并已订正。② exit 1：85 条要求落点的需求里 82 条无带编号落点，基线遂定 82。棘轮基线是具名 ID 清单非数字，故「漏一条补一条」不会照样绿。"
+      },
+      "notes": "治「我用『我列了一份清单』当作『需求都覆盖了』的证据」——该形态本轮已发生四次（时序推演整维/Solver性质说错/方案比对丢在UI/『不要打补丁…遗漏了我的需求』）。度量的是「需求编号在 docs 除台账外被引用过」，**不是**「已实现」：被引用 ⊃ 被讨论 ⊃ 被实现，脚本头部已写明它不度量什么。"
+    },
+    "check-crossbranch-reinvent.mjs": {
+      "alias": "crossbranch-reinvent:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "packages/contracts/src/sim.ts",
+        "packages/contracts/src/agentcore.ts",
+        "apps/datacore/migrations"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "建成首跑即红（2026-08-09）",
+        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。"
+      },
+      "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。",
+      "disposition": "MANUAL"
     }
   }
 }

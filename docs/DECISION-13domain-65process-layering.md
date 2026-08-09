@@ -71,7 +71,7 @@
 | 模型层 | 你的 V1 目标 | 平台实测 | 差距性质 |
 |---|---:|---:|---|
 | 一级业务域 | 13 | **0**（无域概念，只有 `DataCategory` 归类） | 🆕 新建（轻·纯分类） |
-| 核心业务流程 | 65 | **0**（`ProcessDefinition/Instance/Task`/`BusinessProcess` **全仓 0 命中**） | 🆕 新建（这是 R024/G1） |
+| 核心业务流程 | 65 | **0**（`ProcessDefinition/Instance/Task`/`BusinessProcess` **全仓 0 命中**） | 🆕 新建（这是 REQ024/G1） |
 | 一级本体对象 | 300+ | **86 已物化**（`putAll` 计数）· 33 处 `def()` 声明 | 🔗 补面（已有骨架） |
 | 动态状态 | 500+ | 已有多套状态机（`ActionStatus` 8 · `SimSessionStatus` 5 · `QueryTaskStatus` 7 …），**无统一状态本体** | 🔗 统一 + 补 |
 | 动态事件 | 300+ | outbox 事件 **79 处 emit**，`sim.*` 5 个里仅 1 个有订阅方 | 🔗 补订阅方 |

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-08",
+  "generatedAt": "2026-08-09",
   "ontology": {
     "invariants": [
       "R1",
@@ -129,6 +129,27 @@
         "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-UPGRADE-decision-sandbox-v2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R16",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/test/skill-orchestrator.seam.test.ts",
+        "packages/contracts/src/sim.ts",
+        "scripts/check-debattery.mjs",
+        "scripts/check-req-coverage.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/test/skill-orchestrator.seam.test.ts"
+      ]
     },
     "PRD-WO-LIVE-DISPOSITION.md": {
       "hasOntologyRef": true,
@@ -978,6 +999,27 @@
         "apps/datacore/src/synthetic/battery.ts"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-enterprise-decision-twin.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/migrations/008_ontology_core.sql",
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/resources.ts",
+        "packages/contracts/src/global-sim.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/resources.ts"
+      ]
     },
     "PRD-external-signal-domain.md": {
       "hasOntologyRef": true,
@@ -2761,6 +2803,19 @@
       "PRD-IND-plan-generate-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
+    "apps/agentcore/test/skill-orchestrator.seam.test.ts": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "packages/contracts/src/sim.ts": [
+      "PRD-UPGRADE-decision-sandbox-v2.md",
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "scripts/check-debattery.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "scripts/check-req-coverage.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
     "apps/datacore/src/solvers/base-outlook.ts": [
       "PRD-WO-LIVE-DISPOSITION.md"
     ],
@@ -2841,6 +2896,7 @@
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md",
+      "PRD-enterprise-decision-twin.md",
       "PRD-sandbox-multiplan.md",
       "PRD-skill-governance-learning.md"
     ],
@@ -3103,6 +3159,22 @@
       "PRD-node-semantics.md",
       "PRD-semantics-singlesource.md"
     ],
+    "apps/datacore/migrations/008_ontology_core.sql": [
+      "PRD-enterprise-decision-twin.md"
+    ],
+    "apps/datacore/src/domain.ts": [
+      "PRD-enterprise-decision-twin.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-ontoflow-v2-unified-modeling.md",
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/resources.ts": [
+      "PRD-enterprise-decision-twin.md"
+    ],
+    "packages/contracts/src/global-sim.ts": [
+      "PRD-enterprise-decision-twin.md",
+      "PRD-global-sim.md"
+    ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
     ],
@@ -3147,11 +3219,6 @@
       "PRD-stale-claims.md",
       "PRD-transit-wire.md"
     ],
-    "apps/datacore/src/domain.ts": [
-      "PRD-generation-boundary-grounding.md",
-      "PRD-ontoflow-v2-unified-modeling.md",
-      "PRD-ontology-7elements.md"
-    ],
     "apps/datacore/src/growth/loop.ts": [
       "PRD-generation-boundary-grounding.md"
     ],
@@ -3169,12 +3236,6 @@
     ],
     "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": [
       "PRD-global-sim-live-upgrade.md"
-    ],
-    "packages/contracts/src/sim.ts": [
-      "PRD-global-sim-live-upgrade.md"
-    ],
-    "packages/contracts/src/global-sim.ts": [
-      "PRD-global-sim.md"
     ],
     "apps/datacore/src/ontology-governance.ts": [
       "PRD-goal-metric-owner-spine.md",
