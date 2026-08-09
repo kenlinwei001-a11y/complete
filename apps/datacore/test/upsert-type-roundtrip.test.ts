@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, type TestApp } from "./helpers.js";
+import { makeApp, ADMIN } from "./helpers.js";
 import type { AuthCtx, ObjectTypeDef } from "../src/domain.js";
 import { PgStore } from "../src/repo/pg.js";
 import { createMemoryRepos } from "../src/repo/memory.js";
