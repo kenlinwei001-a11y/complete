@@ -364,11 +364,42 @@ HTTP 层同样验一遍：不带 `category` 时 `/a/v1/solvers/registry` 返回 
 
 ```
 $ git ls-remote origin claude/handoff-wo-l7a-solver-taxonomy
-<见下方"最终确认"节的实测 sha>
+f9b3d8ea6ef11da53856014578c4a22ffd0dfba8	refs/heads/claude/handoff-wo-l7a-solver-taxonomy
 ```
 
-提交（每完成一个可命名单元即 commit + push，不等门）：
+提交（每完成一个可命名单元即 commit + push，不等门 —— push 与"过 gate"是两回事）：
 
 1. `6c928b3d feat(solvers): WO-L7A 内置求解器 10 类决策问题分类维（59/59 全覆盖·类型层强制）`
 2. `421fe8ea test(solvers): WO-L7A 两条效果层判据（类目集合恰好相等 + 59/59 无漏网）·纯函数层⊥HTTP 层各一遍`
-3. `docs: WO-L7A 交付说明`（本文件）
+3. `f9b3d8ea docs: WO-L7A 交付说明`（本文件）
+
+工作树 `git status --porcelain` 为空（无未提交残留；临时脚本已删，未入库）。
+
+### 8.1 给审核方的一个提醒：diffstat 别对着"现在的 canonical"读
+
+复验时若跑 `git diff --stat origin/claude/inspiring-gates-aqczjg..HEAD`，会看到
+`docs/STATUS-2026-08-09-loop-ledger.md`(-202) 与 `scripts/check-verdict-rollup.mjs`(-61)
+两个**我从未碰过**的文件显示为"删除"。**那不是删除**：canonical 在我开分支之后前进了 1 个提交
+`684f78f1 docs: 进度实测账`，正是它新增了这两个文件（`git show --stat 684f78f1` 实测：
+2 files changed, 263 insertions(+)，纯新增）。我的分支只是还没有这个提交而已。
+
+对着**真正的分支点**看才是本单的实际改动面：
+
+```
+$ git diff --stat 69804185..HEAD      # 69804185 = 开分支时的 canonical
+ apps/datacore/src/app.ts                      |  33 ++-
+ apps/datacore/src/catalog.ts                  |  76 ++++--
+ apps/datacore/src/solvers/taxonomy.ts         | 137 ++++++++++
+ apps/datacore/test/solver-taxonomy.test.ts    | 261 ++++++++++++++++++
+ docs/WO-L7A-delivery.md                       | 374 ++++++++++++++++++++++++++
+ packages/contracts/src/index.ts               |   1 +
+ packages/contracts/src/resource-descriptor.ts |   6 +
+ packages/contracts/src/solver-taxonomy.ts     |  95 +++++++
+ 8 files changed, 963 insertions(+), 20 deletions(-)
+```
+
+8 个文件、零文件删除。`git merge-base --is-ancestor 69804185 684f78f1` → `RC=0`，
+两条线无冲突面（新增的 2 个文件与本单 8 个文件无交集），cherry-pick / rebase 上 canonical 应为直进。
+
+**形态归档**（照铁律 0.6 的句式）：*「我用『diff 里出现减号』当作『这个分支删了文件』的证据，
+而前者并不度量后者 —— 它度量的是『目标 ref 有而本分支没有』，包括本分支根本没赶上的新提交。」*
