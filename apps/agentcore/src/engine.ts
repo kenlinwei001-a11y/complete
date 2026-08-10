@@ -1,7 +1,7 @@
 import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
-import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
+import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys, scopeCanInvokeSolvers } from "./agent/navigation-slice.js";
 // WO-CAPMAP-LIVE · 能力地图注入源：活资源目录（替掉手写镜像）。
 import { fetchLiveSolverCatalog, type CapabilityMapSource } from "./agent/live-capability-map.js";
 import { buildOntologySemanticContext } from "./agent/ontology-context.js";
@@ -427,7 +427,11 @@ export class ExecutionEngine {
     // R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
     // ★ WO-CAPMAP-LIVE · 注入源 = **活资源目录**（59 solver）现取 top-N 相关候选，不再是那份 19 条手写镜像；
     //   取不到（registry 未装配 / A 不可达 / 未开通）→ liveCatalog=undefined → 退降级镜像（fail-open·不阻断）。
-    const liveCatalog = await fetchLiveSolverCatalog(this.capabilityMapSource(), opts.ctx, opts.prompt);
+    //   跳过条件：本 agent 根本调不了 solver（scope 工具白名单无 invoke_solver / mcp 求解器工具）——
+    //   那样投影出的图里一条 solver 都不会列，取目录纯属白花一次 A 侧往返。
+    const liveCatalog = scopeCanInvokeSolvers(agent.scopeDeclaration.toolNames)
+      ? await fetchLiveSolverCatalog(this.capabilityMapSource(), opts.ctx, opts.prompt)
+      : undefined;
     const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration, liveCatalog);
     const sliceSection = renderNavigationSlice(navSlice);
     // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径

@@ -290,7 +290,13 @@ export interface NavigationSlice {
   nonEmpty: boolean;
 }
 
-/** 本轮工具是否具备调 solver 的能力（invoke_solver 或任一 mcp__*__<key> solver 工具）。 */
+/** 本轮工具是否具备调 solver 的能力（invoke_solver 或任一 mcp__*__<key> solver 工具）。
+ *  WO-CAPMAP-LIVE 导出：调不了 solver 的 agent，投影出来的图里本就一条 solver 都不会列
+ *  （见下方 `solversAllowed` 分支）——此时**再去打活资源目录纯属白花钱**，调用方据此跳过取目录。 */
+export function scopeCanInvokeSolvers(toolNames: string[] | undefined): boolean {
+  return canInvokeSolvers(toolNames);
+}
+
 function canInvokeSolvers(toolNames: string[] | undefined): boolean {
   if (!toolNames || toolNames.length === 0) return true; // 未声明 = 不限（通用 path-B）
   return toolNames.some((n) => n === "invoke_solver" || /^mcp__[a-z0-9_]+__/.test(n));
