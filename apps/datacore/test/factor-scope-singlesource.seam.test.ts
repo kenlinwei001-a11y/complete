@@ -163,6 +163,36 @@ describe("WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域单源 SEAM", () => {
     expect(oee.causalEdges ?? []).toEqual([]); // 不编「设备OEE caused_by 上游减供」这种因果断言
   });
 
+  /**
+   * ⚠ 本例是**亲手跑真服务**（`POST /a/v1/solvers/gap_attribution/invoke`·datacore :4051·seed 42）抓出来的，
+   * 上面那 8 条断言**全绿也照样漏**——它们咬的是「树不同 / 能下钻到真对象」，没有一条咬**数值是否退化**。
+   * 病灶：归一底原取「本基地内最大值」，而 `Shipment` 每基地恰好 1 条 ⇒
+   *   `popMin`（物料齐套）恒 `1 − v/v = 0` → 整层 contribution 全 0，界面读作"没影响"；
+   *   `popMax`（物流时长）恒 `v/v = 1` → 把**整个基地缺口**都算到一条在途单上。
+   * 形态（铁律 0.6 句式）：**「我用『树变了且能下钻』当作『数值算对了』的证据，而前者不度量后者。」**
+   * 现在归一底改取**全网同字段最大**，本例逐因子咬"不许整层恒 0、也不许恰好等于父 gap"。
+   */
+  it("⑧ 数值不退化：每个因子的细分层既不整层恒 0，也不把整个基地缺口独吞（单对象归一退化门）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const baseOnly = await inv(t, { scope: { baseId: "常州" } });
+    const pg = nodesAt(baseOnly, 1)[0]!.contribution;
+    expect(pg).toBeGreaterThan(0);
+    for (const f of baseOnly.scope?.availableFactors ?? []) {
+      const ga = await inv(t, { scope: { baseId: "常州", factorId: f.factorId } });
+      const head = nodesAt(ga, 3).find((n) => n.id.startsWith("capfactor:"));
+      expect(head, `${f.factorId} 无因子头节点`).toBeTruthy();
+      // ① 不许整层恒 0（"没影响"和"没算"在界面上分不开）。
+      expect(head!.contribution, `${f.label}（${f.drillType}.${f.drillField}）细分层 contribution 恒 0 —— 单对象组内归一退化`).toBeGreaterThan(0);
+      // ② 不许恰好等于父 gap（单对象 popMax 退化会把整个基地缺口算给一条记录）。
+      expect(head!.contribution, `${f.label} 的因子头独吞了整个基地缺口（紧张度恒 1 = 组内归一退化）`).toBeLessThan(pg);
+      // ③ 子节点份额之和 ≈ 1（份额是真分摊，不是各写各的）。
+      const kids = nodesAt(ga, 3).filter((n) => n.id.startsWith("capobj:"));
+      const shareSum = kids.reduce((a, n) => a + (n.share ?? 0), 0);
+      expect(Math.abs(shareSum - 1), `${f.label} 子节点份额和=${shareSum}`).toBeLessThan(1e-3);
+    }
+  });
+
   it("⑦ R6 确定性：同 seed 两次调用逐字节一致", async () => {
     const t1 = await makeApp();
     await seedBattery(t1);

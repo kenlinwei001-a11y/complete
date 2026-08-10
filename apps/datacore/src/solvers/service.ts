@@ -2301,15 +2301,24 @@ export class SolverService {
     const pk = DRILL_PK_FIELD[type] ?? "id";
     const filterField = str(cf.drillFilterField);
     const filterValue = str(cf.drillFilterValue);
-    const rows = (await this.repos.objects.listByType(ctx.tenantId, type))
+    // 全网同类同字段population（**归一参照系**·下）与本基地行集，用同一份过滤条件切出来。
+    const universe = (await this.repos.objects.listByType(ctx.tenantId, type))
       .map((o) => o.props)
-      .filter((r) => str(r[baseField]) === baseId)
       .filter((r) => (filterField ? str(r[filterField]) === filterValue : true))
       .filter((r) => typeof r[field] === "number" && Number.isFinite(r[field] as number));
+    const rows = universe.filter((r) => str(r[baseField]) === baseId);
     if (rows.length === 0) return [];
     const norm = str(cf.drillNorm);
-    // popMax/popMin 的归一底 = **本作用域内**最大绝对值（非全局常数·换基地即换底·C5 改颗粒→归因变）。
-    const popMax = Math.max(...rows.map((r) => Math.abs(num(r[field]))), 0) || 1;
+    // ── popMax/popMin 的归一底 = **全网同字段最大绝对值**，不是本基地内最大 ──────────────────
+    // ⚠ 这行是亲手跑真服务（`POST /a/v1/solvers/gap_attribution/invoke`·datacore :4051·seed 42）
+    //   抓出来的退化：原实现拿**本基地内**最大值当底，而 `Shipment` 每基地恰好只有 1 条 ⇒
+    //   `popMin` 恒 `1 − v/v = 0`（物料齐套整层 contribution 全 0，界面读作"没影响"），
+    //   `popMax` 恒 `v/v = 1`（物流时长把**整个基地缺口**都算到一条在途单上）。
+    //   两个方向都错，且**测试全绿**——因为断言咬的是"树不同/能下钻到真对象"，没咬数值是否退化。
+    //   换成全网参照后：常州 coverageDays=2 / 全网最长 5 → 紧张度 0.6；etaDay=14 / 全网最长 16 → 0.875。
+    //   仍然 100% 真值、仍然 R6 确定性，且**跨基地可比**（这才是"本基地紧不紧"该有的口径）。
+    //   `ratio`/`inverseRatio` 不受影响：那两种口径的值本身就是 0–1 绝对量，不需要参照系。
+    const popMax = Math.max(...universe.map((r) => Math.abs(num(r[field]))), 0) || 1;
     const c01 = (v: number): number => Math.min(1, Math.max(0, v));
     const tensionOf = (v: number): number => {
       if (norm === "ratio") return c01(v);
@@ -2379,7 +2388,9 @@ export class SolverService {
     const nodes: Record<string, unknown>[] = [];
     nodes.push({
       id: headId,
-      factor: `${label}（本基地 ${drillType}.${drillField} ${pickWord} ${top.length} 个 / 共 ${all.length} 个）`,
+      // 紧张度进标题：contribution 为 0 时用户看得见**为什么**是 0（= 本基地在该因子上处于全网最松位），
+      // 而不是对着一个孤零零的 0 猜"是没算还是真没影响"。
+      factor: `${label}（本基地 ${drillType}.${drillField} ${pickWord} ${top.length} 个 / 共 ${all.length} 个 · 紧张度 ${avgTension}${avgTension === 0 ? "·全网最松位" : ""}）`,
       contribution: pgFactor,
       unit,
       share: avgTension,
