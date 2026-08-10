@@ -152,10 +152,14 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
         const short = hz.gap < 0;
         return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生", tight: null, status: short ? "crit" : "ok", color: short ? "var(--danger)" : "var(--ok)" };
       }
-      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE 张力", value: formatTightness(v), field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动 张力", value: formatTightness(v), field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"} 张力`, value: formatTightness(v), field: "bottleneck_matrix.primary", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套 张力", value: formatTightness(v), field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
+      // 说明：这四个 label **不带"张力"二字** —— 量纲由 `formatTightness` 放进 value（「张力59/100」，
+      // WO-UNIT-MEANING 的单一来源）。卡片布局把 label 与 value 上下叠放后，原来的
+      // `"设备OEE 张力" + "张力59/100"` 会连读成「设备OEE 张力 张力59/100」，同一个词在
+      // 眼睛落点上重复两次。去掉 label 这一份（不是去掉 value 那一份 —— 那份才是单源）。
+      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE", value: formatTightness(v), field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
+      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动", value: formatTightness(v), field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
+      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"}`, value: formatTightness(v), field: "bottleneck_matrix.primary", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
+      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套", value: formatTightness(v), field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
     }
   };
 
@@ -255,14 +259,18 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
                 {/* 这个数是什么（R-UI-1：标签与数值同处一卡，视线不必跨屏） */}
                 <span className={styles.caption}>{anchor.label}</span>
 
-                {/* 状态：颜色 + 形状 + 文字三通道 */}
+                {/* 状态：颜色 + 形状 + 文字三通道。
+                    颜色只上在**形状**上、状态词走 `--muted` —— 语义域色（`--ok` / `--c-forecast`）
+                    是按暗底调的，逐主题不变，对浅色主题的白面只有约 2:1，当 10.5px 正文色必然看不清；
+                    而作为一块实心色斑（形状）它们完全够辨。三通道一个不少，可读性不赔。
+                    （本文件与其 CSS module 一个字面色值都没有 —— 测试⑦ 用同一把尺子扫，
+                     连注释里写个十六进制都会红。这是故意的：规则越笨越难被绕过。） */}
                 <span
                   className={styles.status}
                   data-testid={`cap-dag-status-${n}`}
                   data-status={anchor.status}
-                  style={{ color: anchor.color }}
                 >
-                  <span className={styles.glyph} aria-hidden>{STATUS_GLYPH[anchor.status]}</span>
+                  <span className={styles.glyph} style={{ color: anchor.color }} aria-hidden>{STATUS_GLYPH[anchor.status]}</span>
                   {statusText}
                 </span>
 

@@ -111,12 +111,16 @@ describe("WO-CAPACITY-CARD-LAYOUT · 6 层派生诊断卡片化（规范 §5 逐
     expect(new Set(Object.values(CAP_TYPE_SCALE)).size).toBe(3);
 
     // 状态是**颜色 + 形状 + 文字**三通道，不靠颜色单通道（灰度/色觉障碍下仍可辨）。
+    // 颜色只上在形状上（浅色主题下 --ok/--c-forecast 当 10.5px 正文色对比不足），状态词走中性高对比色。
     for (const n of LAYERS) {
       const st = screen.getByTestId(`cap-dag-status-${n}`);
       expect(st.getAttribute("data-status")).toBeTruthy();
       expect((st.textContent ?? "").trim().length).toBeGreaterThan(0); // 文字通道
-      expect((st.textContent ?? "")).toMatch(/[●▲◆○]/); // 形状通道
-      expect(st.getAttribute("style") ?? "").toContain("var(--"); // 颜色通道（token·非硬编码）
+      const glyph = st.querySelector("[aria-hidden]");
+      expect(glyph?.textContent ?? "").toMatch(/^[●▲◆○]$/); // 形状通道
+      expect(glyph?.getAttribute("style") ?? "").toContain("var(--"); // 颜色通道（token·非硬编码）
+      // 状态词本身不着语义色 —— 它靠 `.status` 的 --muted，浅色主题下才读得清。
+      expect(st.getAttribute("style") ?? "").not.toContain("color");
     }
   });
 

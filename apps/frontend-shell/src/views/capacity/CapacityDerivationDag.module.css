@@ -133,6 +133,8 @@
   align-items: center;
   gap: 4px;
   margin-top: 1px;
+  /* 状态**词**走高对比中性色；语义色只上在下面的形状上（浅色主题 --ok/--c-forecast 当正文色不够对比）。 */
+  color: var(--muted);
   font-size: 10.5px;
   font-weight: 600;
 }
