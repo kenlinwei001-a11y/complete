@@ -261,6 +261,40 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
     expect(JSON.parse(r.body).error.code).toBe("AMBIGUOUS_SCOPE");
   });
 
+  // S15 `quote_margin` —— 同属「16 个派生意图对用户实体失聪」，但**两维定性不同，不许合成一句**
+  it("★ 命门差分（S15·型号维·真接线）：换型号 → BOM 成本与毛利真变（修前两个型号逐字节相同）", async () => {
+    const ncm = data(await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "4680-NCM", qty: 500 }, ADMIN));
+    const lfp = data(await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "方形-LFP", qty: 500 }, ADMIN));
+    // ← 修前这一条是红的：`bom` 恒取 `mats.slice(0,4)`（与型号无关的全局前 4 行）。
+    expect((ncm.breakdown as Record<string, number>).bomCost).not.toEqual((lfp.breakdown as Record<string, number>).bomCost);
+    expect(ncm.margin).not.toEqual(lfp.margin);
+    expect((ncm.scope as Record<string, unknown>).modelDimension).toBe("APPLIED");
+  });
+
+  it("★ 诚实位（S15·客户维·今天真的没有这一维）：换客户 margin 不变，但回包必须**明说这一维没生效**", async () => {
+    const a = data(await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "4680-NCM" }, ADMIN));
+    const b = data(await invokeSolver(t, "quote_margin", { custName: "商用车集团G", modelId: "4680-NCM" }, ADMIN));
+    // 这一维**确实**没生效 —— 本门不假装它生效，而是要求答案自己说出来（诚实位降层但不删除）。
+    expect(b.margin).toEqual(a.margin);
+    const sc = b.scope as Record<string, unknown>;
+    expect(sc.custDimension, "客户维没生效却不标注 = 静默错答（假个性化）").toBe("NOT_APPLIED");
+    expect(sc.custName).toBe("商用车集团G"); // 回显用户真说的那个，不是目录里写死的那个
+    expect(String(sc.custNote)).toContain("换个客户名");
+    expect((sc.missingInputs as unknown[]).length).toBeGreaterThan(0); // 缺什么源要写出来，不是一句"暂不支持"
+  });
+
+  it("诚实缺席（S15）：认不出的型号 → 400，不拿全局前 4 种物料冒充该型号 BOM", async () => {
+    const r = await invokeSolver(t, "quote_margin", { modelId: "火星电池" }, ADMIN);
+    expect(r.statusCode).toBe(400);
+    expect(JSON.parse(r.body).error.code).toBe("AMBIGUOUS_SCOPE");
+  });
+
+  it("加性（S15·不给型号 → 与修前同解）：bomCost 金值 313.7452 · scope 标 modelDimension:ALL", async () => {
+    const out = data(await invokeSolver(t, "quote_margin", {}, ADMIN));
+    expect((out.breakdown as Record<string, number>).bomCost).toBe(313.7452);
+    expect((out.scope as Record<string, unknown>).modelDimension).toBe("ALL");
+  });
+
   it("调用方直传 orders（规则 payload / 测试路）→ 不注入 scope 键 = 逐字节加性", async () => {
     const r = data(
       await invokeSolver(
