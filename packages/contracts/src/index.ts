@@ -30,6 +30,7 @@ export * from "./entity-resolution.js";
 export * from "./output-validation.js";
 export * from "./meta-ontology.js";
 export * from "./slice-planner.js";
+export * from "./slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层结构只读投影（三态：present/not_in_slice/absent）
 export * from "./operation-intent.js";
 export * from "./prototype-intake.js";
 export * from "./spine.js";

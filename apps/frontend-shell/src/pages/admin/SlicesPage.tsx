@@ -27,9 +27,15 @@ import SliceInspector from "./SliceInspector";
 export default function SlicesPage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "ontology-slices"], queryFn: fetchSlices });
-  const slices = data ?? [];
+  const allSlices = useMemo(() => data ?? [], [data]);
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // WO-SLICE-16-LAYERS：真租户实测 98 条切片，其中 94 条是每类型一条的 `coverage_*` 覆盖切片
+  // （字段覆盖率门用），真正的多跳业务切片只有 4 条。全表平铺 = 4 条重点被 94 条淹掉
+  // （正是「密密麻麻看不到重点」）。默认只看多跳，覆盖切片一键展开。
+  const [scope, setScope] = useState<"multihop" | "all">("multihop");
+  const multiHop = useMemo(() => allSlices.filter((s) => s.hops > 0), [allSlices]);
+  const slices = scope === "multihop" && multiHop.length > 0 ? multiHop : allSlices;
 
   const { data: workspace } = useWorkspace();
   const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
@@ -86,9 +92,29 @@ export default function SlicesPage() {
           {editing ? "收起" : "＋新建切片"}
         </button>
       </div>
+      {/* 第一层只放结论：这一页要回答的那个数 = 有多少条可用切片、其中多跳几条。 */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+        <span style={{ fontSize: 20, fontWeight: 600, fontFamily: "var(--font-mono)" }} data-testid="slices-total">
+          {allSlices.length}
+        </span>
+        <span className="muted" style={{ fontSize: 11.5 }} data-testid="slices-breakdown">
+          条已注册切片 · 多跳业务切片 <b>{multiHop.length}</b> 条 · 单类型覆盖切片{" "}
+          <b>{allSlices.length - multiHop.length}</b> 条
+        </span>
+        {multiHop.length > 0 && multiHop.length < allSlices.length && (
+          <button
+            className="btn sm"
+            data-testid="slices-scope-toggle"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setScope((s) => (s === "multihop" ? "all" : "multihop"))}
+          >
+            {scope === "multihop" ? `显示全部 ${allSlices.length} 条` : `只看多跳 ${multiHop.length} 条`}
+          </button>
+        )}
+      </div>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
-        {canEdit ? "点切片键就地展开内联子图并可编辑规格。" : "点切片键就地查看内联子图（只读）。"}
+        {canEdit ? "点切片键就地展开十六层结构 + 内联子图并可编辑规格。" : "点切片键就地查看十六层结构与内联子图（只读）。"}
       </div>
 
       {editing && (

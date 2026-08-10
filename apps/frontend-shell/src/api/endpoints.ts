@@ -12,6 +12,7 @@ import type {
   FdeNode,
   BackfillReport,
   PlanSliceResponse,
+  SliceLayersResponse,
   SliceLibraryResponse,
   DataBuilderAgent,
   ConnectionInstance,
@@ -1126,6 +1127,16 @@ export interface SliceGraph {
 }
 export const resolveSliceGraph = (sliceKey: string, args: Record<string, unknown> = {}) =>
   api.a<SliceGraph>(`/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}/resolve`, { body: { args } });
+
+/**
+ * WO-SLICE-16-LAYERS：切片的十六层结构（只读投影 · 契约 SliceLayersResponse 在 @platform/contracts）。
+ * 三态而非二值：present / not_in_slice（平台有、这条切片没纳入）/ absent（无数据 + 说明缺在哪一环）。
+ */
+export const fetchSliceLayers = (sliceKey: string, args: Record<string, unknown> = {}) =>
+  api.a<SliceLayersResponse>(
+    `/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}/layers` +
+      (Object.keys(args).length > 0 ? `?args=${encodeURIComponent(JSON.stringify(args))}` : ""),
+  );
 
 /** 无契约 → 推进为契约（单）：从真实子图确定性派生 baseline fixture 写回 spec。 */
 export interface DeriveFixtureResult {

@@ -58,6 +58,7 @@ import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
+import { projectSliceLayers } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影
 import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
 import { buildBatteryDomainCoverage } from "./ontology/refbase-coverage.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -4681,6 +4682,97 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const spec = await ontologyCore.getSliceSpec(c, sliceKey);
     if (!spec) throw notFound(`slice ${sliceKey}`);
     return { sliceKey: spec.sliceKey, version: spec.version, spec: spec.spec };
+  });
+
+  /**
+   * WO-SLICE-16-LAYERS：切片的「十六层结构」只读投影（取证见 docs/AUDIT-slice-16-layers.md）。
+   *
+   * 病根：`executeSlice` 只回 {nodes, edges} ⇒ 十六层里只有 ③对象 ④属性 ⑤关系带得出来；
+   * 其余 11 层**承载物在、数据也在**（规则 28 条 / 传导 13 条 / 数据绑定 93 类 / 事件 372 条…），
+   * 只是从来没人沿切片的类型集把它们 join 出来 —— 三形态里的「接了线接错地方」。
+   * 本路由就是那条缺失的 join：纯读、零新真值源、R6 确定性。
+   *
+   * 取不到的层不画占位内容：三态 present / not_in_slice（平台有、这条切片没纳入）/
+   * absent（本租户无数据，并说明**缺在哪一环**）。
+   */
+  app.get("/a/v1/ontology/slices/:sliceKey/layers", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const q = req.query as { args?: string };
+    const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    // 试切参数：与 POST …/resolve 同口径（root selector 的 {{args.x}}）。非法 JSON → 空参（诚实降级，不 500）。
+    let args: Record<string, unknown> = {};
+    if (q.args) {
+      try {
+        const parsed: unknown = JSON.parse(q.args);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+    }
+    const graph = await ontologyCore.executeSlice(c, spec.spec, args);
+    // 各层承载物一次读齐（全部既有表，无新表）。A6 行级过滤已在 executeSlice 逐跳生效。
+    const [types, linkTypes, ruleList, propagationRules, tsSeries, excObjs, actionTypeList, derivSpecs] =
+      await Promise.all([
+        ontology.listTypes(c),
+        repos.ontologyLinks.list(c.tenantId),
+        repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED"),
+        repos.sim.listPropagationRules(c.tenantId, true),
+        repos.tsSeries.list(c.tenantId),
+        repos.objects.listByType(c.tenantId, "ExceptionEvent"),
+        actions.listTypes(c),
+        repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
+      ]);
+    // 空子图诊断的输入：root 类型在本租户有多少对象 —— 用来区分「零对象」与「有对象但 selector 没匹配」，
+    // 并从**真对象**上取「这个参数可以填什么」的候选值（绝不编示例值）。
+    // 只在子图为空时才读（非空路径零额外开销）。样本上限防大租户全表拉取。
+    const ROOT_SAMPLE_CAP = 200;
+    const rootObjects = graph.nodes.length === 0
+      ? await repos.objects.listByType(c.tenantId, spec.spec.root.typeKey)
+      : [];
+    const rootObjectTotal = rootObjects.length;
+    // 显示键与 executeSlice 的 byKey 匹配口径同源（ontology-core.ts:620 `objectKey ?? props[pk] ?? id`）：
+    // 候选值必须是**填进去真能解出子图的那个值**，否则候选就是摆设。优先业务主键（SO-3391）
+    // 而非内部 id（obj_order_SO-3391）——两者都能匹配，但只有前者是人认得的那个。
+    const rootPkProp = types.find((t) => t.key === spec.spec.root.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const rootObjectSamples = rootObjects.slice(0, ROOT_SAMPLE_CAP).map((o) => ({
+      objectKey: String(o.objectKey ?? (rootPkProp !== undefined ? o.props[rootPkProp] : undefined) ?? o.id),
+      props: o.props,
+    }));
+    const exceptionRefTypes: Record<string, number> = {};
+    for (const o of excObjs) {
+      const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
+      exceptionRefTypes[rt] = (exceptionRefTypes[rt] ?? 0) + 1;
+    }
+    const references = (await governance.sliceReferences(c, sliceKey)).refs;
+    return projectSliceLayers({
+      sliceKey: spec.sliceKey,
+      version: spec.version,
+      spec: spec.spec,
+      graph,
+      types,
+      linkTypes,
+      rules: ruleList,
+      propagationRules: propagationRules.map((p) => ({
+        key: p.key,
+        sourceTypeKey: p.sourceTypeKey,
+        sourceStateVar: p.sourceStateVar,
+        targetTypeKey: p.targetTypeKey,
+        targetStateVar: p.targetStateVar,
+        viaLinkKey: p.viaLinkKey,
+        coefficient: p.coefficient,
+      })),
+      tsSeries,
+      exceptionEventTotal: excObjs.length,
+      exceptionRefTypes,
+      references: references.map((r) => ({ refKind: r.refKind, key: r.key, where: r.where })),
+      actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
+      derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+      args,
+      rootObjectTotal,
+      rootObjectSamples,
+    });
   });
 
   return {

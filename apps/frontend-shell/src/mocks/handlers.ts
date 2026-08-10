@@ -773,6 +773,71 @@ export function __resetSliceGovMock(): void {
 }
 
 /**
+ * WO-SLICE-16-LAYERS：十六层结构 mock。
+ *
+ * 形状与真后端 `GET /a/v1/ontology/slices/{key}/layers` 一字不差（契约 SliceLayersResponse），
+ * 且**三态齐全**（present / not_in_slice / absent）——mock 只给全绿的话，
+ * 诚实态那半边界面在 mock 模式下永远走不到，等于没测。
+ * 真实取证数字见 docs/AUDIT-slice-16-layers.md：真后端 order_fulfillment_360 = 12/1/3。
+ */
+const MOCK_LAYER_SPEC: { id: string; unit: string; carrier: string; n: number; platform?: number; reason?: string }[] = [
+  { id: "business_scenario", unit: "个", carrier: "reported_refs → governance.sliceReferences", n: 0, reason: "承载物在，但 AgentCore 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。" },
+  { id: "decision_intent", unit: "个", carrier: "reported_refs.refKind ∈ {plan,intent,agent}", n: 0, reason: "workflow→slice 的关系算在 AgentCore 侧，不回写 DataCore ⇒ A 侧反查取不到。" },
+  { id: "object", unit: "类", carrier: "objects（executeSlice 真子图 nodes）", n: 2 },
+  { id: "property", unit: "个", carrier: "object_types.properties + 子图 node.props", n: 6 },
+  { id: "relation", unit: "种", carrier: "links + ontology_links", n: 1 },
+  { id: "event", unit: "条", carrier: "objects[type=ExceptionEvent] + exc_sourced_from", n: 0, platform: 372 },
+  { id: "state", unit: "个", carrier: "sim_propagation_rules.{source,target}StateVar + enum 属性", n: 3 },
+  { id: "metric", unit: "个", carrier: "object_types.derivedProperties.formula + PropertyDef.unit", n: 2 },
+  { id: "time", unit: "个", carrier: "ts_series.entityType + PropertyDef.temporal/date", n: 2 },
+  { id: "rule", unit: "条", carrier: "rules.scopeObjectTypes ∩ 切片类型", n: 3, platform: 28 },
+  { id: "constraint", unit: "条", carrier: "contractFixtures + rules[BLOCK] + rules.params", n: 2 },
+  { id: "data_binding", unit: "条", carrier: "object_types.sourceBindings", n: 2 },
+  { id: "scenario", unit: "条", carrier: "objects[AnnualScenario] + sim_propagation_rules", n: 1, platform: 13 },
+  { id: "evidence", unit: "条", carrier: "derivation_specs + contractFixtures", n: 1 },
+  { id: "action", unit: "个", carrier: "object_types.actions[] + action_types", n: 0, platform: 10, reason: "全局注册了 10 个 ActionType，但 ActionType 无 targetTypeKey 字段、且 object_types.actions[] 全空 ⇒ 无法归因到本切片类型。缺的是 join 键（结构缺口），不是数据。" },
+  { id: "governance", unit: "项", carrier: "objects.origin/epoch + object_types.domain/published", n: 2 },
+];
+function mockSliceLayers(sliceKey: string) {
+  const rootType = mockSliceGov[sliceKey]?.rootType ?? "Model";
+  const layers = MOCK_LAYER_SPEC.map((s, i) => {
+    const status = s.n > 0 ? "present" : (s.platform ?? 0) > 0 && !s.reason ? "not_in_slice" : "absent";
+    return {
+      id: s.id,
+      ordinal: i + 1,
+      status,
+      count: s.n,
+      unit: s.unit,
+      carrier: s.carrier,
+      ...(s.platform !== undefined ? { platformCount: s.platform } : {}),
+      ...(status !== "present"
+        ? { absentReason: s.reason ?? `平台有 ${s.platform ?? 0} ${s.unit}，但本切片的路径没纳入 —— 改切片 paths 把相关类型接进来即可取到。` }
+        : {}),
+      items: Array.from({ length: s.n }, (_, k) => ({
+        key: `${s.id}-${k + 1}`,
+        label: `${s.id}-${k + 1}`,
+        group: rootType,
+        detail: `mock 明细 ${k + 1}`,
+      })),
+    };
+  });
+  return {
+    sliceKey,
+    version: 1,
+    rootType,
+    graph: { nodes: 3, edges: 2, truncated: false, typeKeys: [rootType, "Base"], linkKeys: ["model_producible_at"] },
+    snapshotVersion: "ov-12",
+    layers,
+    summary: {
+      total: 16,
+      present: layers.filter((l) => l.status === "present").length,
+      notInSlice: layers.filter((l) => l.status === "not_in_slice").length,
+      absent: layers.filter((l) => l.status === "absent").length,
+    },
+  };
+}
+
+/**
  * mock 端唯一的异步定时器（模拟时钟推进）。**必须可取消**：用例结束后仍活着的句柄，其回调会在
  * 测试环境拆除后才 fire —— 正是「全绿却 RC≠0」那条 teardown 期未捕获错误的火种。
  */
@@ -1227,6 +1292,13 @@ export const handlers = [
       })),
     ),
   ),
+  // WO-SLICE-16-LAYERS：十六层结构（须排在 `/slices/:sliceKey` 之前——MSW 按注册序匹配，
+  // 否则 `:sliceKey` 会把 `xxx/layers` 也吞掉）。
+  http.get("*/a/v1/ontology/slices/:sliceKey/layers", ({ params }) => {
+    const key = String(params.sliceKey);
+    if (!mockSliceGov[key]) return err(404, "NOT_FOUND", `slice ${key}`);
+    return HttpResponse.json(mockSliceLayers(key));
+  }),
   // WO-SLICE-GOVERNANCE-FULL：完整 spec（编辑器预填）/ 内联子图 / 推进为契约（单+批）。
   http.get("*/a/v1/ontology/slices/:sliceKey", ({ params }) => {
     const key = String(params.sliceKey);

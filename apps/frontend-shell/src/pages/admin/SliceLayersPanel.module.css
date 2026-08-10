@@ -1,0 +1,342 @@
+/* WO-SLICE-16-LAYERS · 十六层结构面板。
+   遵 docs/CONVENTION-ui-information-layering.md：
+     第一层 = 层名 + 计数 + 状态（三样，别的都不放）
+     第二层 = 点开的明细
+     浮层   = 承载物 / 缺席原因 / 口径
+   §3「数据本身有结构时，第一层要把结构画出来」：十六层是一条**自上而下的推导链**
+   （意图 → 结构 → 动态 → 约束 → 支撑 → 闭环），所以按带（band）排并在带间画箭头，
+   不是把 16 个格子平铺 —— 平铺就把递进关系丢了（那正是产能页 6 层被退的原因）。 */
+
+.wrap {
+  display: grid;
+  gap: 10px;
+}
+
+/* ── 第一层的那个数（R-UI-2：最大一级只给本页要回答的那个数） ───────────────── */
+.headline {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.headlineNum {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--txt);
+  line-height: 1.1;
+}
+.headlineSub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.headlineMeta {
+  font-size: 11px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  margin-left: auto;
+}
+
+/* ── 带（band）：表达递进 ─────────────────────────────────────────────────── */
+.band {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.bandLabel {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.6px;
+  padding-top: 8px;
+  text-align: right;
+  border-right: 1px solid var(--line);
+  padding-right: 8px;
+  min-height: 34px;
+}
+/* 带与带之间的方向记号：不看文字也能读出「谁推出谁」（规范 §3 判据）。 */
+.bandArrow {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--muted2);
+  text-align: left;
+  padding-left: 84px;
+  line-height: 1;
+  margin: -2px 0;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+/* ── 层卡（第一层：名 + 数 + 状态，视线距离 ≤ 一张卡宽 · R-UI-1） ───────────
+   卡是 div、主体是 button、浮层记号是兄弟节点：button 套 button 是非法 DOM 嵌套。 */
+.card {
+  position: relative;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  min-height: 34px;
+}
+.card:hover {
+  border-color: var(--accent);
+}
+/* 展开态高亮走 color-mix(var(--accent))，**不写死蓝色**：--accent 三套主题各不同
+   （暗色 #4c90f0 / 浅色 #3b5bdb / warm #E8590C），写死就会出现「橙描边 + 蓝底」这种主题错配。 */
+.card[data-expanded="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.cardMain {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 22px 8px 10px; /* 右侧留出 ? 记号的位置 */
+  border: none;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--txt);
+  font: inherit;
+}
+.cardMarkSlot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  line-height: 1;
+}
+.cardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.ord {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--muted2);
+}
+.name {
+  font-size: 12px;
+  color: var(--txt);
+}
+.num {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  line-height: 1.15;
+}
+.unit {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-left: 3px;
+}
+.numPresent {
+  color: var(--ok);
+}
+.numNotInSlice {
+  color: var(--amber);
+}
+.numAbsent {
+  color: var(--muted2);
+}
+
+/* 诚实位记号：降到浮层后第一层必须留可见记号（规范 §1「静默降层等于删除」）。 */
+.mark {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  cursor: help;
+  padding: 0 2px;
+  line-height: 1;
+}
+.markWarn {
+  color: var(--amber);
+}
+
+.statusLine {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+/* ── 第二层：明细 ─────────────────────────────────────────────────────────── */
+.detail {
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+.detailHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.detailTitle {
+  font-size: 13px;
+  color: var(--txt);
+}
+.itemTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.itemTable th {
+  text-align: left;
+  color: var(--muted2);
+  font-weight: 400;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  border-bottom: 1px solid var(--line);
+  padding: 3px 6px;
+}
+.itemTable td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+  vertical-align: top;
+}
+.itemDetail {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  word-break: break-word;
+}
+.scroll {
+  max-height: 320px;
+  overflow: auto;
+}
+.reason {
+  font-size: 11.5px;
+  color: var(--amber);
+  line-height: 1.5;
+}
+.carrier {
+  display: block;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--muted2);
+  word-break: break-all;
+}
+
+/* ── 浮层（口径 / 承载物 / 缺席原因） ─────────────────────────────────────── */
+.popWrap {
+  position: relative;
+  display: inline-block;
+}
+/* 表面（背景/边/圆角/投影）由全局 .popover-surface 提供 —— 不自写 background（欠账 #104）。 */
+.pop {
+  display: block;
+  position: absolute;
+  z-index: 300;
+  top: 100%;
+  right: 0;
+  width: min(380px, 78vw);
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--txt);
+  text-align: left;
+  white-space: normal;
+  cursor: auto;
+}
+.popTitle {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  color: var(--muted2);
+  margin-bottom: 3px;
+}
+.popSec {
+  display: block;
+}
+.popSec + .popSec {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.honesty {
+  font-size: 10.5px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+
+/* ── 子图未解出的诚实条（WO-SLICE-16-LAYERS 复核补） ─────────────────────────
+   规范 §1：诚实位允许降到浮层，**但第一层必须留可见记号**。所以这里第一层放
+   「短结论 + 状态徽标 + 可点的真实候选值」，长因由进 ⚠ 浮层 —— 只留浮层等于静默删除。
+   放在带（band）之上：不先说「子图没解出来」，下面十六张空卡就会被读成「平台没有」。 */
+.emptyBar {
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: grid;
+  gap: 7px;
+  background: color-mix(in srgb, var(--amber) 7%, transparent);
+}
+.emptyHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.emptyTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--amber);
+}
+.emptyMeta {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.emptyPick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.emptyPickLabel {
+  font-size: 10.5px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+/* 候选值按钮：值本身来自真对象，点一下即试切。 */
+.candBtn {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: none;
+  color: var(--txt);
+  cursor: pointer;
+}
+.candBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.candInput {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  width: 148px;
+  padding: 2px 6px;
+}
+.appliedBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
