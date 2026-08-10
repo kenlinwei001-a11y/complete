@@ -29,7 +29,7 @@
     "boundary-singlesource:check": "node scripts/check-boundary-singlesource.mjs",
     "ontology-anchors:check": "node scripts/check-ontology-anchors.mjs",
     "migration-numbering:check": "node scripts/check-migration-numbering.mjs",
-    "gates": "node scripts/check-case-collision.mjs && node scripts/check-system-ontology.mjs && node scripts/check-ontology-anchors.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-resource-descriptor.mjs && node scripts/check-ontology-slice-coverage.mjs && node scripts/check-slice-connectivity.mjs && node scripts/check-loop-control.mjs && node scripts/check-arg-drop-seam.mjs && node scripts/check-scenario-slot-keys.mjs && node scripts/check-action-wiring.mjs && node scripts/check-outsource-redline.mjs && node scripts/check-boundary-singlesource.mjs && node scripts/check-chain-node-singlesource.mjs && node scripts/check-view-reachable.mjs && node scripts/check-ontology-descriptions.mjs && node scripts/check-deploy-governance.mjs && node scripts/check-migration-numbering.mjs && node scripts/check-no-raw-nul.mjs && node scripts/check-lever-binding-drift.mjs && node scripts/check-req-coverage.mjs && node scripts/check-ref-closure.mjs && node scripts/check-worktree-canonical.mjs && node scripts/check-gate-ledger.mjs",
+    "gates": "node scripts/check-case-collision.mjs && node scripts/check-system-ontology.mjs && node scripts/check-ontology-anchors.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-resource-descriptor.mjs && node scripts/check-ontology-slice-coverage.mjs && node scripts/check-slice-connectivity.mjs && node scripts/check-loop-control.mjs && node scripts/check-arg-drop-seam.mjs && node scripts/check-scenario-slot-keys.mjs && node scripts/check-action-wiring.mjs && node scripts/check-outsource-redline.mjs && node scripts/check-boundary-singlesource.mjs && node scripts/check-chain-node-singlesource.mjs && node scripts/check-view-reachable.mjs && node scripts/check-ontology-descriptions.mjs && node scripts/check-deploy-governance.mjs && node scripts/check-migration-numbering.mjs && node scripts/check-no-raw-nul.mjs && node scripts/check-lever-binding-drift.mjs && node scripts/check-req-coverage.mjs && node scripts/check-ref-closure.mjs && node scripts/check-worktree-canonical.mjs && node scripts/check-gate-ledger.mjs && node scripts/check-dark-launch-integrity.mjs",
     "gate-ledger:check": "node scripts/check-gate-ledger.mjs",
     "lever-binding-drift:check": "node scripts/check-lever-binding-drift.mjs",
     "ref-closure:check": "node scripts/check-ref-closure.mjs",
@@ -47,7 +47,8 @@
     "req-coverage:check": "node scripts/check-req-coverage.mjs",
     "crossbranch-reinvent:check": "node scripts/check-crossbranch-reinvent.mjs",
     "worktree-canonical:check": "node scripts/check-worktree-canonical.mjs",
-    "verdict-rollup:check": "node scripts/check-verdict-rollup.mjs"
+    "verdict-rollup:check": "node scripts/check-verdict-rollup.mjs",
+    "dark-launch:check": "node scripts/check-dark-launch-integrity.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
