@@ -824,13 +824,22 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 {sessionScope ? `${sessionScope.kind}${sessionScope.target ? `:${sessionScope.target}` : ""}` : "（建立中…）"}
               </b>
             </div>
-            {/* 诚实位（不许暗示范围已生效）：`SimSession.scope` 今天在引擎侧**有写端无读端** ——
-                落库在 datacore `app.ts:1391`，此后只被读 `snapshotKind` 一个键（`:1408`/`:1705` 过滤方案快照·
-                `:1512` 分支整体继承）；tick 路（`app.ts:1415` 起）遍历的是 `ontologyTypes.list(tenantId)` 全本体，
-                从不看 `session.scope`。所以范围选择当前**只作用于就绪认证口径，尚未裁剪推演本身**。
-                这笔账另记（G-SIM-SCOPE-UNREAD），本屏只负责不撒谎。 */}
+            {/* 诚实位 —— **这行字曾经是反的，必须随实现一起改，别再让它漂回去**。
+                旧文案：「范围选择只作用于就绪认证口径，尚未裁剪推演本身」。那句话在 `G-SIM-SCOPE-UNREAD`
+                开着的时候是真的（`SimSession.scope` 有写端无读端，tick 路遍历全本体）。
+                `WO-SIM-SCOPE-TRIAL` 闭掉该断点之后它就成了**反着的谎**：引擎已经真的按范围裁剪，
+                屏上却还在说没有 —— 用户会以为自己选的「局部推演」没生效而去绕路。
+                这一处是合并时（WO-SIM-TRIAL-SCOPE-RECONCILE）发现的：实现改了、UI 文案没跟，
+                而且**有一条绿测试把这句谎话锁着**（`test/sim-scope-local.seam.test.tsx` 原断言
+                `toContain("尚未裁剪推演本身")`）—— 绿测试证明的是"文案没变"，不是"说的是真的"。
+                今天的真相（引擎侧单源：`datacore app.ts buildPropagationInputs` → `scopePropagationGraph`）：
+                 · GLOBAL ⇒ 全本体，逐字节同旧；
+                 · LOCAL ⇒ 只算根类型 + hops 跳邻域，且只留两端都在范围内的边；
+                 · 自称 LOCAL 却拿不到根 ⇒ 裁成空图并显式报缺，**绝不**退回 GLOBAL。
+                tick 回包里的 `scope` 回执（算了几个对象/几条边/丢了多少）就是它的收据。 */}
             <div data-testid="sandbox-scope-reach-note">
-              ⚠ 范围选择当前<b>只作用于就绪认证口径</b>，<b>尚未裁剪推演本身</b>——推演引擎按整租户本体传导，不读会话范围。
+              ✅ 范围选择<b>已作用于推演本身</b>：切「局部」后引擎只按该对象类型的邻域子图传导，
+              就绪认证的试算也跑在同一范围里。范围拿不到根时<b>裁成空图并报缺</b>，不会拿全局结果冒充局部。
             </div>
             {scopeDrifted && (
               <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

@@ -240,6 +240,48 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
       expect(countCodeSites(APP_SRC, CADENCE_ASSEMBLE()), "🔴 闸门装配出现第二处").toBe(1);
     });
 
+    /**
+     * ④ **屏上那句话与引擎能力必须同真同假** —— 这是 `G-FRONTEND-HARDCODED-ABSENCE`
+     * （假绿第 11 形态：诚实位被冻成常量 ⇒ 它是唯一必然过期的那种谎）的**第二例**，
+     * 故照铁律 0.6 二级处置**当场建机制**，而不是只在报告里写一句「已知此坑」。
+     *
+     * 第一例（已闭）：在途/在制图层用 `status:"EMPTY" as const` 宣告 Cadence 等三类对象「不存在」，
+     * 而它们早已真实落库。第二例（本单发现）：`SandboxView.tsx` 的范围诚实位写着
+     * 「尚未裁剪推演本身」，而 `WO-SIM-SCOPE-TRIAL` 早已让引擎真的裁剪了 ——
+     * 而且前端有一条**绿断言**（`toContain("尚未裁剪推演本身")`）把这句谎话锁着。
+     * 两例同形：**「我用『文案里有某几个字』当作『屏上说的是真的』的证据，而前者并不度量后者。」**
+     *
+     * 本条按那一行的判据 ③ 落地：**把文案引用的上游事实当场从仓库读出来复验**。
+     * 跨包读源码在本仓是既有范式（`sim-act-close.seam.test.ts` 就从 datacore 侧读前端源码驱动接缝）。
+     * 于是两侧**任一侧**回退都由机器先说话：
+     *  · 引擎不裁了（装配处里没有范围裁剪）⇒ ③ 的前几条先红；
+     *  · 引擎还在裁、而屏上又贴回「尚未裁剪推演本身」⇒ 本条红。
+     */
+    it("④ 屏上的范围诚实位与引擎能力同真同假（G-FRONTEND-HARDCODED-ABSENCE 第 2 例的常驻门）", () => {
+      const VIEW = "../../frontend-shell/src/views/sim/SandboxView.tsx";
+      const view = readFileSync(fileURLToPath(new URL(VIEW, import.meta.url)), "utf8");
+      // 金丝雀：先证明真读到了那份文件（读空 ⇒ 报「工具坏了」，不许报「前端没撒谎」）。
+      expect(view.length, "SandboxView.tsx 读到空内容 ⇒ 路径漂了，先修工具再看结论").toBeGreaterThan(1000);
+      expect(view, "金丝雀不中 ⇒ 抽取工具坏了").toContain(`data-testid="sandbox-scope-reach-note"`);
+
+      // 上游事实：装配处里确实做了范围裁剪（= 引擎真的按范围算）。
+      const start = APP_SRC.indexOf("const buildPropagationInputs = async");
+      const body = APP_SRC.slice(start, APP_SRC.indexOf("\n  };", start));
+      const engineCrops = countCodeSites(body, SCOPE_CROP()) === 1;
+      expect(engineCrops, "前置事实不成立 ⇒ 本条无从谈起（先看上面几条）").toBe(true);
+
+      // 结论：引擎在裁，屏上就**不许**说它没裁。
+      const noteRegion = view.slice(
+        view.indexOf(`data-testid="sandbox-scope-reach-note"`),
+        view.indexOf(`data-testid="sandbox-scope-reach-note"`) + 600,
+      );
+      expect(
+        noteRegion,
+        "🔴 引擎已按范围裁剪，屏上却还写「尚未裁剪推演本身」—— 诚实位过期成了反向的谎（假绿第 11 形态复发）",
+      ).not.toContain("尚未裁剪推演本身");
+      expect(noteRegion, "屏上未声明范围已生效 ⇒ 用户会以为「局部推演」没起作用而绕路").toContain("已作用于推演本身");
+    });
+
     it("那一处就在 buildPropagationInputs 里，且它至少被两条路各调一次（tick / Trial Tick）", () => {
       const start = APP_SRC.indexOf("const buildPropagationInputs = async");
       expect(start, "找不到装配处 ⇒ 先修工具再看结论").toBeGreaterThan(-1);
