@@ -113,6 +113,14 @@
  *      不为它加判据的理由：C 数的是 **id**，「值是不是该由前端定义」是另一个问题
  *      （真要治得给「前端可原创字段」建册，另一笔欠账）；而抄在册 `label` 这条主路 L 仍然咬得住。
  *
+ *   ⑥ **P 只看得见「静态片段」**（WO-GATE-BLINDSPOTS 新增，照实写不圆场）：把前缀本身也算出来
+ *      （`` `${STAGE_MAP[k]}.${x}` `` / `[stage, ".", name].join("")` / `String.raw`）⇒ AST 里没有
+ *      任何一个以 stage 前缀开头的静态片段 ⇒ P 看不见。不为它加判据的理由：再往下就要做常量传播/
+ *      数据流分析，而那类实现的**误报**会逼出豁免名单——豁免名单一开口，将来的真问题会跟着被放过。
+ *      P 咬住的是**省事的那条路**（本仓真实存量就长这样），刻意不追**刻意规避**。
+ *   ⑦ **P 不判「拼出来的值对不对」**，只判「有没有走单源」。这两件事本门分别由 P 与 K/N 管，
+ *      混为一谈会漏：手拼的取值**恰好合法**，正是它此前能从 K/N 底下溜过去的原因。
+ *
  * ── 门自己不许瞎（G-GATE-PARSER-TRUNCATED-VIEW 同族）────────────────────
  *  ① 契约解析：正则锚到 `] as const satisfies`；条目数 ≥ MIN_NODES；四个哨兵 id 必在。
  *  ② 阶段前缀 / 工序前缀**从契约现解**（`CHAIN_STAGES` / `CHAIN_OP_NODE_PREFIX`），
@@ -492,7 +500,7 @@ function extractHandBuilt(code, fileNameHint) {
   // 同一行同一串可能被 ③④ 同时收到（`"capacity.op." + x` 的左操作数既是拼接也是前缀抄写）——去重。
   const seen = new Set();
   return out.filter((o) => {
-    const k = `${o.line} ${o.text}`;
+    const k = `${o.line}\u0000${o.text}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
