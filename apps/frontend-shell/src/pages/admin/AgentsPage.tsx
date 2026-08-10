@@ -153,9 +153,14 @@ export default function AgentsPage() {
 //
 // **本区分两段，名字必须分清（合成一段就会拿租户级数据冒充单 Agent 数据）**：
 //   ① 「本 Agent 的运行」   —— 引擎真回填了归属的那些运行，可信地属于选中的这个 Agent；
-//   ② 「本租户 AGENT 路径运行」—— 租户级任务清单，其中含归不到任何 Agent 头上的三类
-//                              （探索路 / 归属上线前的旧记录 / 未落库的会诊子运行），
+//   ② 「本租户 AGENT 路径运行」—— 租户级任务清单，其中含归不到任何 Agent 头上的两类
+//                              （探索路 / 归属上线前的旧记录），
 //                              残余缺口写在 `.honest` 横幅里，**降层保留、不许删**。
+//
+// WO-AGENTRUN-FANOUT-PERSIST（本单）：残余缺口原有第三类「未落库的会诊子运行」**已闭合** ——
+// 那些运行现在真落库、真计入 ①，横幅里那一条随之删掉（留着就是拿修好的缺口冒充缺口）。
+// 代价是 ① 的数字含义变了（含被会诊叫去的次数），故列表新增「来源」列把它显式说出来：
+// **数字变了却不说，与当初把租户级数据当单 Agent 数据是同一种病。**
 // ---------------------------------------------------------------------------
 
 const c = zh.admin.agents.console;
@@ -349,6 +354,7 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
             <thead>
               <tr>
                 <th>{c.colTime}</th>
+                <th>{c.colOrigin}</th>
                 <th>{c.colVersion}</th>
                 <th>{c.colModel}</th>
                 <th>{c.colIterations}</th>
@@ -360,6 +366,12 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
               {runs.map((r) => (
                 <tr key={r.id} data-testid="agent-own-run-row">
                   <td>{r.createdAt ? new Date(r.createdAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</td>
+                  {/* WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出的子运行开始计入之后，**这一列的存在本身**
+                      就是那次语义变更的可见记号：不标出来，「运行 5 次」会被读成"被直接调用了 5 次"。
+                      字段缺失（本单上线前的旧记录）显示 "—"，不冒充「直接运行」。 */}
+                  <td data-testid="own-run-origin">
+                    {r.origin === "FANOUT" ? c.originFanout : r.origin === "ROOT" ? c.originRoot : c.originUnknown}
+                  </td>
                   <td className="mono" data-testid="own-run-version">
                     {r.agentVersion !== undefined ? `v${r.agentVersion}` : "—"}
                   </td>

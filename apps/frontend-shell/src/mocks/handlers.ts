@@ -387,6 +387,13 @@ const MOCK_BUILD_JOBS: unknown[] = [];
  *  · `run-legacy-1` → 无任何归属字段：归属上线前的旧记录，**未知**。它必须既不出现在
  *                     任何 Agent 的运行列表里，也不被当成 EXPLORATORY 混算。
  * `contextOps: []` 同样是刻意的真值（欠账 #91：默认 20 万窗口下软阈值够不到，三刀一次都不会跑）。
+ *
+ * WO-AGENTRUN-FANOUT-PERSIST · `origin` 同样覆盖三态，且**与归属正交**（别把两列合读）：
+ *  · 今天的引擎给每条新记录都写 `origin` —— 顶层 `ROOT`，`invoke_agent` 扇出的子运行 `FANOUT`。
+ *    故除 `run-legacy-1` 外每条都必须有，漏写就是 mock 形状比真后端旧了一个版本。
+ *  · `run-fanout-1` → FANOUT + REGISTERED：一条记录同时是"被会诊叫去的"和"归属明确的"，
+ *    这是**正常**形态而非矛盾 —— 位置回答"谁叫它跑的"，归属回答"跑的是哪个 Agent"。
+ *  · `run-legacy-1` → 无 `origin`：本字段上线前的旧记录，界面显示 "—"，不冒充「直接运行」。
  */
 const AGENT_RUNS: AgentRunRecord[] = [
   {
@@ -417,6 +424,7 @@ const AGENT_RUNS: AgentRunRecord[] = [
     contextOps: [],
     tenantId: TENANT_ID,
     attribution: "EXPLORATORY",
+    origin: "ROOT", // 探索路也是**这个任务自己**那次循环（位置与归属正交：ROOT + EXPLORATORY 并存）
     createdAt: "2026-06-16T10:20:31Z",
   },
   {
@@ -437,6 +445,7 @@ const AGENT_RUNS: AgentRunRecord[] = [
     agentKey: "explore_agent",
     agentVersion: 2,
     attribution: "REGISTERED",
+    origin: "ROOT",
     createdAt: "2026-06-16T14:02:10Z",
   },
   {
@@ -454,7 +463,37 @@ const AGENT_RUNS: AgentRunRecord[] = [
     agentKey: "explore_agent",
     agentVersion: 1,
     attribution: "REGISTERED",
+    origin: "ROOT",
     createdAt: "2026-06-15T11:41:00Z",
+  },
+  {
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST · **会诊扇出的子运行**（此前这类记录在全仓根本不存在）。
+     *
+     * 真实形态刻意照抄后端：`taskId` 是**会诊那个任务**的 id（子 agent 挂父任务，事件才串得起来），
+     * `origin: "FANOUT"` + `stepId: "dispatch_0"`（它是三角里的第一路），归属仍是 REGISTERED ——
+     * 位置与归属正交，一条记录同时是 FANOUT 和 REGISTERED 是**正常**的，不是矛盾。
+     * 有了它，`explore_agent` 的运行数从 2 变 3，界面必须能说清多出来的那次是被会诊叫去的。
+     */
+    id: "run-fanout-1",
+    taskId: "task-consult-1",
+    model: "claude-opus-4-8",
+    iterations: [
+      { index: 0, toolCalls: [{ toolCallId: "toolu_f1", toolName: "query_objects", input: { objectType: "Material" }, outcome: "OK", durationMs: 240 }] },
+    ],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 3180,
+    totalOutputTokens: 470,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore",
+    agentKey: "explore_agent",
+    agentVersion: 2,
+    attribution: "REGISTERED",
+    origin: "FANOUT",
+    stepId: "dispatch_0",
+    createdAt: "2026-06-16T15:30:00Z",
   },
   {
     id: "run-legacy-1",
@@ -3153,12 +3192,26 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId/agent-run", ({ request, params }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const taskId = String(params.taskId);
-    const run = AGENT_RUNS.find((r) => r.taskId === taskId);
+    // WO-AGENTRUN-FANOUT-PERSIST · 与真后端 `getByTask` **同一个谓词**（`origin IS DISTINCT FROM 'FANOUT'`）：
+    // 单数端点只返这个任务自己那条，绝不拿会诊扇出的子运行冒充。少了这个过滤，mock 模式下
+    // 会诊任务会返回一条真后端会 404 的记录 —— 又一次「mock 形状 ≠ 真后端形状」（G-MOCK-PATH-ENUM-DRIFT 同源）。
+    // 旧记录无 origin ⇒ 视为顶层，照旧返回（`!== "FANOUT"` 而非 `=== "ROOT"`）。
+    const run = AGENT_RUNS.find((r) => r.taskId === taskId && r.origin !== "FANOUT");
     if (!run) {
       // 与真后端同码：任务在但引擎没进循环 → AGENT_RUN_NOT_FOUND（不是 TASK_NOT_FOUND）
       return err(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
     }
     return HttpResponse.json(run);
+  }),
+
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST · 一次任务的**全部**运行（真后端 `GET /api/v1/queries/:taskId/agent-runs`）。
+   * 多角色会诊的真实形态是「0 条顶层 + N 条子运行」，故这里刻意不做 origin 过滤。
+   */
+  http.get("*/b/v1/queries/:taskId/agent-runs", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const taskId = String(params.taskId);
+    return HttpResponse.json({ taskId, runs: AGENT_RUNS.filter((r) => r.taskId === taskId) });
   }),
 
   /**
@@ -3176,7 +3229,12 @@ export const handlers = [
     return HttpResponse.json({
       agentId: agent.id,
       agentKey: agent.key,
-      runs: AGENT_RUNS.filter((r) => r.agentKey === agent.key && r.tenantId === TENANT_ID),
+      // WO-AGENTRUN-FANOUT-PERSIST · 次序也照抄真后端（`listByAgent`: `created_at DESC NULLS LAST, id DESC`）。
+      // 此前 mock 直接用数组序，恰好与倒序一致所以看不出来 —— 一加会诊子运行（时间更晚但排在数组末尾）
+      // 当场就漂。「恰好对」不是「对」，靠数组序等于把正确性押在字面量的书写顺序上。
+      runs: AGENT_RUNS.filter((r) => r.agentKey === agent.key && r.tenantId === TENANT_ID).sort((a, b) =>
+        (b.createdAt ?? b.id).localeCompare(a.createdAt ?? a.id),
+      ),
     });
   }),
 

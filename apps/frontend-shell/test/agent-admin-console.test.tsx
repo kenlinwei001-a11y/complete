@@ -236,7 +236,11 @@ describe("WO-AGENT-ADMIN-CONSOLE · 运行观测台", () => {
     expect(banner.textContent).toContain("不是每一次运行都归得上");
     expect(banner.textContent).toContain("探索");
     expect(banner.textContent).toContain("旧记录");
-    expect(banner.textContent).toContain("会诊"); // 多角色扇出的子运行今天根本没落库
+    // WO-AGENTRUN-FANOUT-PERSIST · 第二次**降层**：会诊子运行那一条缺口已经闭合（真落库真计入），
+    // 横幅必须改口说"已包含"，**不许**继续把它列为残余缺口 ——
+    // 拿一条修好的缺口冒充缺口，与当初挂着"一次都归不上"是同一种说假话，只是方向相反。
+    expect(banner.textContent).toContain("已包含多角色会诊扇出的子运行");
+    expect(banner.textContent).not.toContain("根本没有落库");
     // 浮层：点击必须能打开（onClick 幂等 setOpen(true) —— 取反会被 focus 抢先关回去）
     await user.click(within(banner).getByTestId("info-agent-attribution"));
     const body = await screen.findByTestId("info-body-agent-attribution");
@@ -283,23 +287,39 @@ describe("WO-AGENT-ADMIN-CONSOLE · 运行观测台", () => {
     await user.click(await screen.findByText("探索分析 Agent"));
 
     const own = await screen.findByTestId("agent-own-runs");
-    expect(within(own).getByTestId("kpi-own-runs").textContent).toContain("2");
+    // WO-AGENTRUN-FANOUT-PERSIST：3 = 直接运行 v2 + 直接运行 v1 + **被会诊扇出的那一次**。
+    // 本单之前是 2 —— 少的那一次不是没跑，是根本没落库。
+    expect(within(own).getByTestId("kpi-own-runs").textContent).toContain("3");
     const rows = within(own).getAllByTestId("agent-own-run-row");
-    expect(rows.length).toBe(2);
-    // 跨版本：同一个 Agent 的 v1 与 v2 各一次（按 id 过滤会当场少一条）
+    expect(rows.length).toBe(3);
+    // 跨版本：同一个 Agent 的 v1 与 v2 都在（按 id 过滤会当场少一条）
     const versions = within(own).getAllByTestId("own-run-version").map((e) => e.textContent);
     expect(new Set(versions)).toEqual(new Set(["v2", "v1"]));
-    // 数字取自 run 记录本身（不是从任务清单猜的）
-    expect(within(own).getAllByTestId("own-run-tokens")[0]!.textContent).toContain("9120");
+    // 数字取自 run 记录本身（不是从任务清单猜的）；倒序 ⇒ 首行是最近那次（会诊扇出，15:30）。
+    expect(within(own).getAllByTestId("own-run-tokens")[0]!.textContent).toContain("3180");
     // 归属不上的那条（EXPLORATORY 的 task-agent-1）**绝不能**混进来
     expect(own.textContent).not.toContain("18432");
+  });
+
+  it("⑪ WO-AGENTRUN-FANOUT-PERSIST · 会诊扇出的那次**计入且可辨**（数字变了就必须说清多出来的是什么）", async () => {
+    const user = userEvent.setup();
+    await openConsole();
+    await user.click(await screen.findByText("探索分析 Agent"));
+
+    const own = await screen.findByTestId("agent-own-runs");
+    const origins = within(own).getAllByTestId("own-run-origin").map((e) => e.textContent);
+    // 三次里恰好一次是被会诊叫去的，两次是直接运行 —— 全标「直接运行」等于把新语义偷偷藏起来。
+    expect(origins.filter((x) => x === "会诊扇出").length).toBe(1);
+    expect(origins.filter((x) => x === "直接运行").length).toBe(2);
+    // 倒序首行就是那次会诊扇出（次序与真后端 created_at DESC 一致）
+    expect(origins[0]).toBe("会诊扇出");
   });
 
   it("⑪ 变异反证：换选另一个 Agent → 数字必须跟着变（证明真按 agentId 取数，不是租户级清单换标题）", async () => {
     const user = userEvent.setup();
     await openConsole();
     await user.click(await screen.findByText("探索分析 Agent"));
-    expect(within(await screen.findByTestId("agent-own-runs")).getByTestId("kpi-own-runs").textContent).toContain("2");
+    expect(within(await screen.findByTestId("agent-own-runs")).getByTestId("kpi-own-runs").textContent).toContain("3");
 
     // 周报生成 Agent 一次都没跑过 → 必须变成诚实空态，而不是继续显示上一个 Agent 的 2
     await user.click(screen.getByText("周报生成 Agent（草稿）"));
