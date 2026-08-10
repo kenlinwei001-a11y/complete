@@ -971,7 +971,11 @@ function SandboxModeSwitch({
 }) {
   return (
     <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10, marginBottom: 10 }}>
-      <div role="tablist" aria-label="推演模式" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {/* `role="group"` + `aria-pressed` 而不是 `tablist`/`tab`/`aria-selected`：
+          ARIA 的 tab 必须能指向一个 `tabpanel`，而这里切的是**整屏**（另一屏根本不在 DOM），
+          没有稳定的 panel id 可指。用 tab 语义会向读屏器承诺一个不存在的关系。
+          这也与 `SandboxConsole` 画布模式条的既有做法一致（`role="group" aria-label="画布模式"`）。*/}
+      <div role="group" aria-label="推演模式" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {SANDBOX_MODES.map((m, i) => (
           <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {/* 决策链的箭头是**结构表达**，不是装饰：五个模式是「看见 → 为什么 → 试试看 → 最优 → 波及」
@@ -979,11 +983,9 @@ function SandboxModeSwitch({
             {i > 0 ? <span aria-hidden style={{ color: "var(--muted2)", fontSize: 11 }}>→</span> : null}
             <button
               type="button"
-              role="tab"
               className={`btn sm${mode === m ? " primary" : ""}`}
               data-testid={`sandbox-mode-${m}`}
               aria-pressed={mode === m}
-              aria-selected={mode === m}
               title={SANDBOX_MODE_QUESTION[m]}
               onClick={() => onChange(m)}
             >

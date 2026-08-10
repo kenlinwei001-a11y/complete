@@ -312,6 +312,29 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
     expect(screen.getByTestId("sandbox-mode-now").getAttribute("aria-pressed")).toBe("true");
   });
 
+  /**
+   * 深浅两套主题（仓主用浅色）—— jsdom 不跑真 CSS，故这里咬**可静态判定的那一半**：
+   * 模式切换条这棵子树里**不许出现写死的颜色**（内联 `#RRGGBB` / `rgb()` / 颜色关键字）。
+   * 写死一个色，暗色主题下看得见、浅色主题下就可能糊成一片 —— 这是本仓 tokens.css 存在的理由。
+   * 允许 `var(--…)`：那正是跟着主题走的写法。
+   */
+  it("主题无关：模式切换条整棵子树零硬编码颜色（只许 var(--…) ）", async () => {
+    mount();
+    await ready();
+    const bar = screen.getByTestId("sandbox-mode-switch");
+    const nodes = [bar, ...Array.from(bar.querySelectorAll<HTMLElement>("*"))];
+    // 金丝雀：这棵子树确实有带 style 的节点（一个都没有 ⇒ 下面的检查恒真）
+    expect(nodes.filter((n) => n.getAttribute("style")).length).toBeGreaterThan(0);
+    const offenders = nodes
+      .map((n) => n.getAttribute("style") ?? "")
+      .filter((s) => /#[0-9a-f]{3,8}\b|\brgba?\(/i.test(s));
+    expect(
+      offenders,
+      `模式切换条里出现了写死的颜色：${offenders.join(" | ")} —— 暗色下看得见不代表浅色下看得见，` +
+        `颜色一律走 tokens.css 的 var(--…)（三套主题自动跟随）。`,
+    ).toEqual([]);
+  });
+
   it("屏上的「已收编原独立页」清单与 CONSOLIDATED_INTO_SANDBOX **不许漂移**（两张表各写一半 = #99/#110 的病根）", async () => {
     mount();
     await ready();
