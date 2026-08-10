@@ -122,7 +122,7 @@
   - 「Interface 8」vs 全仓 `Interface` 契约 **0**（§0 金丝雀背书；旁证 `docs/TESTGAP-TRIAGE.md:274`「canonical `packages/contracts/src/index.ts` 无任何 `Interface` 导出」）；
   - 「Function 签名 0」是四个里**唯一**能对上的（`docs/ONTOLOGY-7ELEM-AUDIT.md` §0 条④「A 侧权威零签名」）。
 - **这不是说那四个数是错的** —— 是说**它们量的东西没被写下来**，所以既不能复现也不能证伪。
-  按本仓纪律，这样的数**不得再被引用**（§5 给替代写法）。
+  按本仓纪律，这样的数**不得再被引用**（§6 给替代写法）。
 
 ---
 
