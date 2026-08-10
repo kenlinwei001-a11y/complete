@@ -139,7 +139,11 @@ export class ApprovalPolicyService {
         });
         continue;
       }
-      trace.push({ policyKey: p.key, matched: hit });
+      // 声明序 vs 组织层级序：不一致时以 level 为准（§5），但**必须报出来** —— 静默改写作者写下的
+      // 顺序比报错危险，因为没人会来查。未登记的权限位在此不参与判断（下面 ③ 会以 missing 报它）。
+      const levels = p.approval.map((k) => byAuthorityKey.get(k)?.level).filter((l): l is number => l !== undefined);
+      const reordered = levels.some((l, i) => i > 0 && l < (levels[i - 1] as number));
+      trace.push({ policyKey: p.key, matched: hit, ...(reordered ? { reordered: true } : {}) });
       if (hit) matched.push(p);
     }
 

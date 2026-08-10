@@ -215,6 +215,15 @@ export const ApprovalPolicyTraceSchema = z.strictObject({
   /** 未参与求值的原因（主体类型不适用 / 表达式求值抛错）。命中或正常未命中时为 undefined。 */
   skipped: z.string().optional(),
   error: z.string().optional(),
+  /**
+   * 本策略的 `approval` **声明序**与组织层级序不一致，已按 level 序排（§5）。
+   *
+   * 为什么要专门报这一位：不报就是**静默改写作者写下的顺序**。本仓对"静默"的判据一向是
+   * ——「悄悄换成一个看着合理的东西」比报错更危险，因为它不会有人来查。
+   * 以 level 为准的理由：逐级上报是**组织事实**，声明序只是书写顺序；两者冲突时组织事实赢。
+   * 但作者有权知道自己写的顺序没被采用，所以这一位必须出现在 trace 里。
+   */
+  reordered: z.boolean().optional(),
 });
 export type ApprovalPolicyTrace = z.infer<typeof ApprovalPolicyTraceSchema>;
 

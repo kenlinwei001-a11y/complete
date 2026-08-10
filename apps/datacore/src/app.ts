@@ -1715,6 +1715,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!(await features.enabled(c.tenantId, "approval.policy-engine"))) throw featureNotFound();
   };
   // 路由体 schema 直接从契约 omit 掉仓储字段 —— 不另抄一份形状（抄了就有第二真相源，改契约时这里不会红）。
+  // ⚠ 一律走 `parseBody` 而不是裸 `.parse()`：ZodError 身上没有 statusCode，会被兜底处理器判成
+  //    **500 INTERNAL_ERROR** —— 把「用户填错了」报成「服务器坏了」，且进 error 日志（同 app.ts:1591 的坑）。
   const AuthorityUpsertSchema = ApprovalAuthoritySchema.omit({ id: true, tenantId: true });
   const PolicyUpsertSchema = ApprovalPolicySchema.omit({ id: true, tenantId: true });
 
@@ -1725,7 +1727,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.put("/a/v1/approval-authorities/:key", async (req, reply) => {
     const c = ctx(req); await requireApproval(c);
     const key = (req.params as { key: string }).key;
-    const body = AuthorityUpsertSchema.parse({ ...(req.body as object), key });
+    const body = parseBody(AuthorityUpsertSchema, { ...(req.body as object), key });
     return reply.status(200).send(await approvalPolicy.upsertAuthority(c, body));
   });
 
@@ -1736,7 +1738,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.put("/a/v1/approval-policies/:key", async (req, reply) => {
     const c = ctx(req); await requireApproval(c);
     const key = (req.params as { key: string }).key;
-    const body = PolicyUpsertSchema.parse({ ...(req.body as object), key });
+    const body = parseBody(PolicyUpsertSchema, { ...(req.body as object), key });
     return reply.status(200).send(await approvalPolicy.upsertPolicy(c, body));
   });
   app.delete("/a/v1/approval-policies/:key", async (req) => {
@@ -1753,13 +1755,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.post("/a/v1/approvals/resolve", async (req) => {
     const c = ctx(req); await requireApproval(c);
-    const request = ApprovalRequestSchema.parse(req.body ?? {});
+    const request = parseBody(ApprovalRequestSchema, req.body);
     return approvalPolicy.resolveChain(c, request);
   });
 
   app.post("/a/v1/approvals", async (req, reply) => {
     const c = ctx(req); await requireApproval(c);
-    const request = ApprovalRequestSchema.parse(req.body ?? {});
+    const request = parseBody(ApprovalRequestSchema, req.body);
     const inst = await approvalPolicy.createInstance(c, request, new Date().toISOString());
     return reply.status(201).send(inst);
   });
