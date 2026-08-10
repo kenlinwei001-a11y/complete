@@ -1048,6 +1048,62 @@ export const zh = {
     metricOntimeRate: "按期率(%)",
     adopted: (label: string, status: string) => `已采纳「${label}」→ Action 草稿 ${status}`,
   },
+  /**
+   * WO-CAPACITY-CARD-LAYOUT · 产能推演「可用产能派生诊断（自下而上 6 层）」卡片布局文案。
+   *
+   * R14（应用层无业务常数）：**壳文案**在这里；**公式与层名不在这里** ——
+   * 那些是 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role / .name`（单一来源），
+   * 抄进本文件就是给它开一条会漂的分身。本块只放"框"，"瓤"仍从本体表取。
+   *
+   * 唯一的例外是 `honesty`：那句诚实位原本内联在组件里，本单把它从常驻正文
+   * 降到 `?` 浮层，按 R-UI-3「浮层文案一律走 locales」搬到这里，**一字未改**。
+   */
+  capDag: {
+    title: "🧮 可用产能派生诊断（自下而上 6 层）",
+    sub: (baseName: string, available: string) => `${baseName} · 可用 ${available} 套如何逐层算出`,
+    loading: "派生链加载中…",
+    unavailable: "派生求解器不可用（诚实空·未伪造）",
+    /** 卡片链容器的 aria 说明（递进承载物③ 之一：不靠视觉也读得出方向）。 */
+    chainAria: "可用产能派生链 · 自下而上 6 层 · 设备产能 → 工序产能 → 产线产能 → 可投产能 → 产能预测 → 产能缺口",
+    step: (n: number) => `第 ${n} 层`,
+    /** 卡面 aria-label：把「第几层 / 由谁推出 / 数值 / 状态」压成一句，读屏不必扫视。 */
+    cardAria: (step: number, name: string, valueLabel: string, value: string, status: string, from: string) =>
+      `${from}${step}. ${name}；${valueLabel} ${value}；状态 ${status}。回车展开本层明细`,
+    fromStep: (n: number, name: string) => `由第 ${n} 层 ${name} 推导得出 · `,
+    fromNone: "推导链起点（不由上游推出）· ",
+    rungAria: (n: number) => `推导链第 ${n} 级 / 共 6 级`,
+    /** `?` 浮层（第三层：凭什么）。 */
+    formulaTopic: (step: number, name: string) => `第${step}层 ${name} · 口径与公式`,
+    formula: (role: string) => `公式：${role}`,
+    anchorOf: (label: string, field: string, kind: string) => `本层锚点：${label} · 溯源字段 ${field}（${kind}）`,
+    upstream: (n: number, name: string) => `上游 ← 第${n}层 ${name}`,
+    upstreamNone: "上游 ← 无（推导链起点：设备层）",
+    downstream: (n: number, name: string) => `下游 → 第${n}层 ${name}`,
+    downstreamNone: "下游 → 无（推导链终点：本页要回答的那个数）",
+    /** 状态词：与形状、颜色三通道并行，不靠颜色单通道。 */
+    status: {
+      ok: "好",
+      warn: "警",
+      crit: "危",
+      /** 该层锚点是派生量、没有阈值 —— 诚实说"没有状态"，不臆造一个。 */
+      derived: "派生值·无阈值",
+      /** 无 LIVE 真源（tightness 为 null）。 */
+      na: "无真源",
+    },
+    /** 第二层（一次点击）。 */
+    detailHint: "点任一层卡片 → 看该层的判定 / 驱动因素 / 溯源字段",
+    detailTitle: (step: number, name: string) => `第 ${step} 层 · ${name} · 明细`,
+    detailClose: "收起明细",
+    judge: "判定：",
+    drivers: "驱动因素：",
+    derive: "推导：",
+    factorAria: (mark: string, name: string, layer: number) => `本体 ${mark} ${name}（第 ${layer} 层）`,
+    /** 诚实位：正文降到浮层，第一层留 `honestyMark` 这个可见记号（静默降层 = 删除）。 */
+    honestyMark: "口径·溯源",
+    honestyTopic: "口径与溯源（诚实位）",
+    honesty:
+      "6 层沿产能金字塔既有派生链路（本体 §3·不改链路，仅可视化）；锚点真值溯 base_capacity_outlook.available/gap，各层瓶颈张力溯 bottleneck_matrix（R13 每值可溯·R14 因素表单源 factorOntology）。",
+  },
 } as const;
 
 export type Locale = typeof zh;
