@@ -100,7 +100,7 @@
 | **A-6** | `maxBudgetRounds` 从「字段存在」变成「改这个数 → 该类题实际轮次真变」 | runtime G3 · migration 硬约束④ | 🔗 **接了线接错地方** | 唯一 src 消费方 = `apps/agentcore/src/skill-probe.ts:133 (skillBudgetOverride)` —— **发布探针**，不是生产答题路。`grep -rn "maxBudgetRounds" apps/agentcore/src --include='*.ts' \| grep -v test` → 仅 `skill-probe.ts:129` 注释 + `mocks/seed.ts:1284,1286`。⇒ 用户改这个数，**屏上答案一个字不变**；只有点「发布」时的探针会变 |
 | **A-7** | `execution.mode: DETERMINISTIC` 红线（图内不得出现 LLM 节点） | runtime §3.3-1 | ⚠️ **只有声明，零读点（契约注释在说谎）** | 声明在 `packages/contracts/src/skill-graph.ts:395`，注释写「PRD §3.3-1：DETERMINISTIC 图内不得出现 LLM 节点（agent/compose）」。**全仓无任何读点** —— `grep -rn "DETERMINISTIC" apps packages --include='*.ts'` 的命中里，与 skill-graph 相关的**只有这一行声明 + 它自己的注释**；其余全是无关的 `WO-DETERMINISTIC-CROSS-DOMAIN` 与 `DETERMINISTIC_PREFERENCE_THRESHOLD`（router 常量）。金丝雀：同文件 `SkillExecutionSchema` 全仓 **4** 命中 ⇒ 文件可读。⇒ 写 `mode:"DETERMINISTIC"` 再往图里塞 `agent` 节点，**没有任何一处会红** |
 | **A-8** | Skill 参与 path-A（确定性主路）的选路或执行 | migration M2「权威翻转」 | ❌ **没做** | `workflow/executor.ts` 的 `PlanStep` 执行链上零 skill 读点；path-A 的 `Intent.planRef → ExecutionPlan` 与 Skill 无任何交集（`SkillDefinitionSchema` 无 `planRef`/`intentKey`，`IntentDefinition` 无 `skillKey`）。⇒ **32 个出厂意图，0 个由 Skill 驱动** |
-| **A-9** | Skill 对默认自由问答路径可达 | 本体 §8 `G-SKILL-UNREACHABLE-FREE-QA` | 🔗 **接了线，默认关** | 已闭（暗发）：`selectTenantSkills`（`router/orchestrator.ts:257`）→ `buildSkillSection`（`:2000`）。**但门 `agent.skill-on-free-qa` 是 `defaultOn:false`**（`apps/agentcore/src/features/registry.ts:120` + `apps/datacore/src/features.ts:120`，且列入 `QOS_DARK_LAUNCH_FEATURES` `features.ts:166`）⇒ **出厂态用户在对话坞随便问一句，仍然一个技能都看不见** |
+| **A-9** | Skill 对默认自由问答路径可达 | 本体 §8 `G-SKILL-UNREACHABLE-FREE-QA` | 🔗 **接了线，默认关（已追到租户解析层）** | 机制已闭（暗发）：`selectTenantSkills`（`router/orchestrator.ts:257`）→ `buildSkillSection`（`:2000`）。**但默认关，且 demo 租户也开不了**：`agent.skill-on-free-qa` `defaultOn:false`（`apps/agentcore/src/features/registry.ts:120` + `apps/datacore/src/features.ts:120`），并列入 `QOS_DARK_LAUNCH_FEATURES`（`features.ts:166`）—— 而 `features.ts:283` 的「all on」模板解析**显式把该集合过滤掉**（`ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k) && …)`）⇒ **battery「全开」模板也不顺带开它**，必须经显式租户 override。**出厂态用户在对话坞随便问一句，一个技能都看不见** |
 
 > **A 组小结（一句话）**：**9 条里，能改变屏上答案的是 0 条。**
 > A-2 是真的、能跑的、有生产调用方的 —— 但它跑的是 HTTP 请求体里传进来的图，而**没有 Skill 能声明图**（A-1）、**没有前端会调它**（§1.2）。这不是「差一点」，这是**两端都断**。
@@ -118,8 +118,9 @@
 | **B-7** | `/metrics` 鉴权（学习闭环 P0-B 硬前置 · 现存信息泄漏面） | governance §2.2 | ❌ **没做** | DataCore：`/metrics` 在 `PUBLIC_PATHS`（`apps/datacore/src/app.ts:851`），鉴权钩子第一行 `if (PUBLIC_PATHS.has(path)) return;`（`:863`）**在任何认证之前**；handler `:930` 签名 `async (_req, reply)` 不看 req。AgentCore：`apps/agentcore/src/server.ts:211` handler `async (_req, reply)`，**不调 `auth(req)`**（金丝雀：同文件相邻业务端点第一行即 `const a = await auth(req);`）。**⚠️ PRD 漏写的坑，本文补上**：只改 handler **无效** —— DataCore 侧 `onRequest` 在 `:863` 已 `return`，请求根本走不到 handler。**`PUBLIC_PATHS` 与 handler 两处必须同改** |
 | **B-8** | 门 `metrics-tenant:check` | governance §2.3 | ❌ **没做** | `ls scripts/check-metrics-tenant.mjs` → No such file（金丝雀：同目录 `ls scripts/check-ref-closure.mjs` → **存在** ⇒ 目录读得到） |
 | **B-9** | Skill 权限三面（data / tool / action）一处判定 | governance §3 | ❌ **没做** | `SKILL_REFERENCE_KINDS`（`packages/contracts/src/agentcore.ts:246`）= 8 种，**无 `tool` / `mcp` / `actionType`**；`SkillDefinitionSchema` 无任何权限字段。⇒ 「这个 Skill 能用哪些工具、能发哪些 Action」在契约层**无处可写** |
-| **B-10** | Prompt 版本化（Execution Trace 缺的那一维） | governance §4.2 | ❌ **没做** | `grep -rn "promptVersion\|promptHash" apps packages --include='*.ts'` → 0（口径同 governance §1.2-1，本单未重跑该 grep，标注为**引用他人实测**，见 §7） |
-| **B-11** | 生长回路补角色门 + R4 审批位 | governance §6 | ❓ **未判定** | 本单未验（时间边界，见 §7）。governance §1.4 给的锚点是 `apps/agentcore/src/server.ts:236` 无 `requireRole` |
+| **B-10** | Prompt 版本化（Execution Trace 缺的那一维） | governance §4.2 | ❌ **没做**（本单亲手复跑） | `grep -rn "promptVersion\|prompt_version\|promptHash" apps packages --include='*.ts' --include='*.tsx'` → **RC=1（零命中）**（金丝雀：`grep -rn "PROMPT_KEYS" packages/contracts/src` → **3** 命中，`prompt-template.ts:10` 在 ⇒ 工具是活的）。⇒ 改一句 prompt 导致回归，今天没有任何数据能把两次运行区分开 |
+| **B-11** | 生长回路补角色门（④-a） | governance §6.1 | ❌ **没做**（本单亲手复核，锚点已漂需订正） | `POST /api/v1/growth/run` 今天在 `apps/agentcore/src/server.ts:246`（governance §1.4 记的 `:236` **已漂**），handler 第一行 `const a = await auth(req);`，**无 `requireRole`**。**金丝雀（同文件正门对照）**：`POST /api/v1/catalog/packages/:packageId/intents`（`server.ts:558`）第三行即 `requireRole(a, "catalog_admin")`（`:560`）⇒ 该文件里 `requireRole` 是存在且可被 grep 到的，growth 路的 0 是真 0。⇒ **任何已认证用户都能经生长回路把 DRAFT 意图写进本租户目录，绕过 `catalog_admin`** |
+| **B-12** | 生长回路补 R4 审批位（④-b）+ 审批界面（④-c） | governance §6.2/§6.3 | ❓ **未判定** | 本单未验（时间边界，见 §7）。governance 给的锚点是 `server.ts:528-533` 的 `publishIntent` 只有 RBAC 无 ActionDraft |
 
 ### 2.3 C 组 · 契约与迁移
 
@@ -166,7 +167,7 @@ ls scripts/check-{skill-compiler,graph-runtime,progress-reachability,metrics-ten
 | 组 | 条数 | ✅ 生产链路上 | 🔗 接错/没数据 | ⚠️ 只有 test | ❌ 没做 | ❓ 未判定 |
 |---|---:|---:|---:|---:|---:|---:|
 | **A 推演** | 9 | **1**（A-2，且两端断） | 5 | 1 | 2 | 0 |
-| **B 治理** | 11 | 3 | 0 | 1 | 6 | 1 |
+| **B 治理** | 12 | 3 | 0 | 1 | 7 | 1 |
 | **C 契约/迁移** | 8 | 1（靠人不靠门） | 1 | 0 | 6 | 0 |
 | **D 门账** | 17 道门 | 0 | — | — | 17 | — |
 
@@ -418,17 +419,21 @@ ls scripts/check-{skill-compiler,graph-runtime,progress-reachability,metrics-ten
 
 1. **只读代码 + 静态 grep，未跑任何测试套件，未跑 `scripts/gate.sh`，未起服务真跑一次问答。** 工单明令禁止（仓主在跑组合门，4 核机）。故本文**所有「能不能跑通」的判断都是结构性推断，不是实测**。
 2. **未跑 `pnpm install`**（worktree 无 `node_modules`）。故未做任何 `tsc --noEmit` 验证；§4 的 WO 拆分中「改哪些文件」是按 import 关系推断的，实施时可能需要扩边界。
-3. **§2 对账表覆盖的是各 PRD 自己声明的「目标 / 硬约束 / P0 前置」共 28 条 + 17 道门**，**不是** `docs/CHECKLIST-skill-4209.md` 提取的 **1365 条**。逐条复验 1365 条在本单时间内不可能完成 —— 我选择了**载荷最重的那 28 条逐条给证据**，而不是给 1365 条各写一个未经核实的状态。**这是有意的取舍，不是遗漏。**
+3. **§2 对账表覆盖的是各 PRD 自己声明的「目标 / 硬约束 / P0 前置」共 29 条 + 17 道门**，**不是** `docs/CHECKLIST-skill-4209.md` 提取的 **1365 条**。逐条复验 1365 条在本单时间内不可能完成 —— 我选择了**载荷最重的那 29 条逐条给证据**，而不是给 1365 条各写一个未经核实的状态。**这是有意的取舍，不是遗漏。**
+4. **本 PRD 已过 `prd:check`**（本单亲手：`node scripts/check-prd-ontology.mjs` → **RC=0**，「无悬空引用」）。注意该门只解析**编号断点** `G-1..G-12`（输出「断点 12（G）」），**不解析 §6.5 提出的三个命名断点** —— 所以「过了 prd:check」**不证明**那三个 ID 已被登记，登记仍须人工回写本体 §8。
 
 ### 7.2 明确**未判定**的条款
 
 | 条款 | 为什么没判 |
 |---|---|
-| **B-11** 生长回路的角色门 / R4 审批位（governance §6） | 未验。需要读 `server.ts:236` 附近的实际中间件链 + `catalog/service.ts publishIntent`，本单时间用在 A 组了。governance §1.4 的锚点可信度未复核 |
-| **B-10** Prompt 版本化 | **引用 governance §1.2 的实测（`promptVersion` 全仓 0 命中），本单未复跑该 grep**。标记为「引用他人实测」而非「本单核实」 |
-| **A-9 的效果** | 我核实了 `agent.skill-on-free-qa` 是 `defaultOn:false`，但**没有核实**「demo 租户的 features 解析结果里它到底是开是关」—— DataCore 的 feature 解析有 `QOS_DARK_LAUNCH_FEATURES` 排除集与「all on」模板的交互（本体称 battery「all on」模板也不顺带开它）。**结论方向应该是对的，但我没亲手证到租户解析这一层** |
+| **B-12** 生长回路的 R4 审批位 / 审批界面（governance §6.2/§6.3） | 未验。需要读 `catalog/service.ts publishIntent` 的完整链 + `GrowthCockpitPage`。本单时间用在 A 组了。**注意 B-11 已判定（角色门确实缺），但 B-12 是另一件事，不许拿 B-11 的结论推它** |
 | **K1 的真实工作量** | 「把 `GraphScheduler` 接进答题路」我只读到了两条路径的入口（`engine.ts:412` / `orchestrator.ts:2000`），**没有读完** `runPathB` 的完整分支树。接线点可能不止一处，也可能有我没看到的前置（如 `expectsSchema` / `emitNarration` 之类的透传约定） |
 | **K3 的可行性** | 「让 Skill 参与选路」需要读 `router/orchestrator.ts` 的 classify 段与 `domain-resolver.ts`，**本单完全没读**。K3 的验收判据是我按 K1 的形状类推写的，**实施前必须先做一次真正的选路链路调研** |
+
+> **本单进行中已由「未判定」升级为「已判定」的三条**（写在这里，是因为「我后来查了」本身就是本文该有的诚实）：
+> **B-10**（Prompt 版本化 → 亲手复跑 grep + `PROMPT_KEYS` 金丝雀）·
+> **B-11**（生长回路角色门 → 亲手复核，并**订正了 governance §1.4 已漂的行号** `:236` → `:246`）·
+> **A-9**（追到 `features.ts:283` 的 all-on 过滤逻辑，证到租户解析这一层）。
 
 ### 7.3 需要**跑起来才知道**的
 
