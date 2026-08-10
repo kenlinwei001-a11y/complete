@@ -386,28 +386,75 @@ describe("§3 · `?` 浮层规格（docs/CONVENTION-ui-information-layering.md �
  */
 describe("§4 · 右栏撑高三栏行 ⇒ 中栏空白（结构不变量回归锁）", () => {
   const CSS_PATH = join(dirname(fileURLToPath(import.meta.url)), "../src/views/sim/SandboxConsole.module.css");
-  const css = readFileSync(CSS_PATH, "utf8");
+  const rawCss = readFileSync(CSS_PATH, "utf8");
+  /**
+   * ⚠ **必须先去注释再匹配** —— 这条是被自己坑过一次才加的（2026-08-10）。
+   *
+   * 本文件第一版直接在原始 CSS 上 `toContain("flex: 1 1 0")`，而 `.mid` 的注释里
+   * **恰好写着** `` `flex: 1 1 0` `` 这几个字（在解释"为什么把它删了"）。于是我把
+   * `flex: 1 1 0` 改成 `flex: 0 1 auto` 之后，这条断言**照样绿** —— 它一直咬的是注释，不是声明。
+   * 形态就是铁律 0.6 那一句：「我用 X 当作 Y 的证据，而 X 并不度量 Y。」
+   * 现在：先剥注释，再取规则体，并且断言**具体声明**而不是子串出现过。
+   */
+  const css = rawCss.replace(/\/\*[\s\S]*?\*\//g, "");
+  /** 取某条规则的**声明集合**（已去注释、去空白）。 */
+  const decls = (selector: string): string[] => {
+    const body = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    return body
+      .split(";")
+      .map((d) => d.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  };
 
-  it("金丝雀：CSS 文件真的读到了（否则下面每条『没找到』都是工具坏了，不是代码对了）", () => {
-    expect(css.length, "CSS 读成空 ⇒ 路径错了").toBeGreaterThan(2000);
-    // 一个与本单无关、canonical 上就有的已知规则 —— 它若也找不到，就是路径/解析的问题。
-    expect(css, "金丝雀规则 `.impCard` 都找不到 ⇒ 读错文件了").toContain(".impCard");
+  it("金丝雀：CSS 读到了 **且注释真被剥掉了**（这两条都不成立时，下面全是哑断言）", () => {
+    expect(rawCss.length, "CSS 读成空 ⇒ 路径错了").toBeGreaterThan(2000);
+    expect(rawCss, "金丝雀规则 `.impCard` 都找不到 ⇒ 读错文件了").toContain(".impCard");
+    // 剥注释的金丝雀：挑一句**只存在于注释里**的话，剥完必须消失。
+    expect(rawCss, "金丝雀前提不成立：这句话本该在注释里").toContain("magic number");
+    expect(css, "注释没被剥干净 ⇒ 下面的断言可能又在咬注释（本文件踩过这个坑）").not.toContain("magic number");
+    // 而真声明必须还在
+    expect(decls(".mid").length, "剥完注释连声明都没了 ⇒ 正则把规则体吃掉了").toBeGreaterThan(2);
   });
 
-  it("A · `.mid` 的高度取**剩余空间**（flex-basis 0），不再由最高那一列的内容决定", () => {
-    const mid = /\.mid\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(mid, "没抓到 .mid 规则体").not.toBe("");
+  it("A · 三栏区**按内容定高**：既不 grow 也不设行高下限（那两条正是空白的来源）", () => {
+    const mid = decls(".mid");
+    expect(mid, "没抓到 .mid 规则体").not.toEqual([]);
+    // 不许再 grow：`flex-grow > 0` ⇒ 三栏区吃掉整块剩余空间，短内容那栏必然留空。
+    const flex = mid.find((d) => d.startsWith("flex:"));
+    expect(flex, "`.mid` 必须显式写 flex，否则默认 `0 1 auto` 只是巧合").toBe("flex: 0 1 auto");
+    // 不许再钉行高：440px 那条把三栏一律拉到 440，而真实内容只有 337/210/168。
     expect(
-      mid.replace(/\s+/g, " "),
-      "`.mid` 缺 `flex: 1 1 0` ⇒ 三栏行高又变回内容驱动，右栏一多就把中栏拉出大片空白",
-    ).toContain("flex: 1 1 0");
+      mid.some((d) => /^min-height:\s*(?!0)/.test(d)),
+      "`.mid` 又出现了非 0 的 min-height ⇒ 三栏被钉回固定高，短的那栏又要留白",
+    ).toBe(false);
+    // 每栏按自己的内容定高（默认 stretch 会把三栏一律拉到行高）
+    expect(mid, "缺 `align-items: start` ⇒ 三栏又被一律拉到最高那一栏的高度").toContain("align-items: start");
   });
 
-  it("B · 右栏折叠区有**自己的滚动容器**（内容再多也不外溢到行高上）", () => {
-    const stack = /\.railStack\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(stack, "没抓到 .railStack 规则体 —— 折叠区又回到裸挂在 .pane 下了").not.toBe("");
+  it("A' · `.root` 不再有 76vh 下限（内容不足时它只会在控制台底部留一段没人用的空白）", () => {
+    expect(
+      decls(".root").some((d) => /^min-height:/.test(d)),
+      "`.root` 又设了 min-height ⇒ 内容不足时底部凭空多一块空白",
+    ).toBe(false);
+  });
+
+  it("B · 右栏折叠区有**自己的滚动容器**，且上限不是百分比（百分比会与内容定高循环依赖）", () => {
+    const stack = decls(".railStack");
+    expect(stack, "没抓到 .railStack 规则体 —— 折叠区又回到裸挂在 .pane 下了").not.toEqual([]);
     expect(stack).toContain("overflow: auto");
-    expect(stack, "缺 max-height ⇒ overflow 永远不会触发").toContain("max-height");
+    const mh = stack.find((d) => d.startsWith("max-height:"));
+    expect(mh, "缺 max-height ⇒ overflow 永远不会触发").toBeTruthy();
+    expect(
+      /%/.test(mh ?? ""),
+      "max-height 用百分比 ⇒ 父高按内容算、内容又受父高限制，实拍下折叠条被裁掉一截（-36px）",
+    ).toBe(false);
+  });
+
+  it("B'' · 基地筛选清单自己滚，不把左栏顶成这一屏最高的东西", () => {
+    const list = decls(".optList");
+    expect(list, "`.optList` 没了 ⇒ 13 个复选框会把左栏铺到 416px，比中栏画布还高一倍").not.toEqual([]);
+    expect(list.some((d) => d.startsWith("max-height:"))).toBe(true);
+    expect(list).toContain("overflow: auto");
   });
 
   it("B' · DOM 上折叠区**确实**被包在那个滚动容器里（CSS 写了但没挂上等于没写）", async () => {

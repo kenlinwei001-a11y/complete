@@ -599,8 +599,11 @@ export function SandboxConsole({
                       </InfoPopover>
                     )}
                   </div>
-                  {dim.key === "baseIds"
-                    ? BASE_REGISTRY.map((b) => (
+                  {/* 基地清单自己滚（`.optList`）：13 个复选框铺开就是 416px，
+                      比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。 */}
+                  {dim.key === "baseIds" ? (
+                    <div className={styles.optList} data-testid="sc-base-list">
+                      {BASE_REGISTRY.map((b) => (
                         <label key={b.baseId} className={styles.opt}>
                           <input
                             type="checkbox"
@@ -611,8 +614,9 @@ export function SandboxConsole({
                           <span className={styles.optName}>{b.name}</span>
                           <span className={styles.optSub}>{b.baseId}</span>
                         </label>
-                      ))
-                    : null}
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -650,7 +654,7 @@ export function SandboxConsole({
         </aside>
 
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}
-        <main className={styles.pane} data-testid="sc-canvas-pane">
+        <main className={`${styles.pane} ${styles.canvasPaneStretch}`} data-testid="sc-canvas-pane">
           <div className={styles.paneHead}>
             <h2 data-testid="sc-canvas-title">{CANVAS_MODE_TITLE[mode]}</h2>
             <div className={styles.seg} role="group" aria-label="画布模式">
