@@ -394,16 +394,13 @@ export function SandboxConsole({
           <span className={`${styles.tag} ${styles.tagOn}`} data-testid="sc-seed">
             ● SEED {PLACEHOLDER_SEED_DEFAULT} · 确定性（物理拓扑占位值种子）
           </span>
-          <span
-            className={`${styles.badge} ${styles.badgeGap}`}
-            data-testid="sc-window-badge"
-            title="chain_loss_attribution 只认 so；chain_impediments 只认 scope。两者都没有时间窗入参。"
-          >
+          {/* 徽标只是**记号**；「为什么」那句话的单一出处是顶栏时窗旁的 `?`（`sc-window-note`），
+              这里不抄第二份 —— 抄了就是给它开一条会漂的分身。
+              原来挂在这上面的 `title=` 属性也去掉了：规范 §2 明令禁止用原生 tooltip 充当浮层
+              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。 */}
+          <span className={`${styles.badge} ${styles.badgeGap}`} data-testid="sc-window-badge">
             时窗无 ARGS
           </span>
-          <p className={styles.note} style={{ margin: 0 }}>
-            <TimeWindowNote />
-          </p>
         </div>
       ),
     },
@@ -741,8 +738,15 @@ export function SandboxConsole({
 
             {/* 链路阶段 */}
             <div className={styles.canvasSlot} hidden={mode !== "chain"} data-testid="sc-slot-chain">
+              {/* WO-SANDBOX-DECLUTTER（规范 §1）：第一层只留**结论式的三个数**（在册 / 有数据 /
+                  算不出来 / 不在场），完整口径与取证进 `?` 浮层。原文一字未改，见 `sc-chain-coverage`。 */}
               {honesty ? (
-                <p className={styles.noteWarn} data-testid="sc-chain-coverage">
+                <p className={styles.noteWarn} data-testid="sc-chain-coverage-brief">
+                  <b>在册 ≠ 有数据：</b>本段在册 {coverage.backendRegistryNodeCount} · 本次有数据{" "}
+                  {presence.withSteps.length} · 诚实缺席 {presence.emptyOnly.length} · 在册不在场{" "}
+                  {presence.absent.length}
+                  <InfoPopover topic={zh.sim.sandbox.info.chainCoverage} testId="chain-coverage">
+                    <span data-testid="sc-chain-coverage">
                   <b>诚实边界 · 在册 ≠ 有数据：</b>设计目标 {coverage.designStageCount} 段 {coverage.designNodeCount} 节点
                   （{coverage.designStageNames.join(" / ")}）；后端单源 <code>CHAIN_STAGES</code> 今天是{" "}
                   {coverage.backendStageCount} 段（{coverage.backendStageLabels.join(" / ")}）、
@@ -762,6 +766,8 @@ export function SandboxConsole({
                   单列一行 = 在册不在场。本画布按后端真有的渲染（本次载荷 {coverage.renderedNodeCount} 个节点，其中{" "}
                   {coverage.renderedDynamicOpCount} 个来自动态工序命名空间 <code>capacity.op.*</code>），
                   <b>不拿「在册数」冒充「有数据数」</b>，也不在前端手抄一份 24 节点词表。
+                    </span>
+                  </InfoPopover>
                 </p>
               ) : null}
               {board === null ? (
@@ -971,13 +977,21 @@ export function SandboxConsole({
                   );
                 })}
               </div>
+              {/* 规范 §2 R-UI-3 点名的那一类：`A ÷ B` 形状的**公式**一律进 `?`。
+                  第一层只留守恒结论（Σ 与是否在容差内）—— 那是结论，不是口径。 */}
               {honesty ? (
-                <p className={styles.note} data-testid="sc-pareto-note">
-                  影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
-                  <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
-                  故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
-                  {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
-                  ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
+                <p className={styles.note} data-testid="sc-pareto-note-brief">
+                  守恒 Σ = {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                  （{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）
+                  <InfoPopover topic={zh.sim.sandbox.info.paretoRate} testId="pareto-note" align="right">
+                    <span data-testid="sc-pareto-note">
+                      影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
+                      <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
+                      故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
+                      {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                      ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
+                    </span>
+                  </InfoPopover>
                 </p>
               ) : null}
             </>
@@ -1233,7 +1247,12 @@ function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentK
  */
 function InspectorEvidenceGapNote() {
   return (
-    <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap">
+    // WO-SANDBOX-DECLUTTER（规范 §1「诚实位可降层、不可删，且第一层要留记号」）：
+    // 第一层只留一句**结论**（这一栏的 R13 证据是空的、原因不在引擎），完整取证进 `?`。
+    <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap-brief">
+      <b>下钻证据为空 —— 是宿主这一份载荷缺字段，不是引擎没给。</b>
+      <InfoPopover topic={zh.sim.sandbox.info.inspectorEvidence} testId="inspect-evidence" align="right">
+        <span data-testid="sc-inspect-evidence-gap">
       <b>本栏复用宿主已取回的那一份 <code>chain_loss_attribution</code>（不再自取第二次）。代价照实说：</b>
       宿主这一份经前端宽松读取层 <code>ChainLossPayloadSchema</code> 解析，而该 schema
       <b>没有声明 <code>evidence[]</code></b> ⇒ zod 按 strip 语义把它剥掉了。
@@ -1243,6 +1262,8 @@ function InspectorEvidenceGapNote() {
       补齐 = 在 <code>chainLineMap.ts</code> 的 <code>ChainLossPayloadSchema</code> 里加一行 <code>evidence</code>
       （该文件在本单边界外）；加上后本页一行不改、证据自动回来。独立页{" "}
       <code>/v/node-inspector</code> 走自取原始响应，证据照常。
+        </span>
+      </InfoPopover>
     </p>
   );
 }
@@ -1497,11 +1518,17 @@ function StepDetail({ node, honesty }: { node: NodeCardVM | null; honesty: boole
         </>
       ) : null}
 
+      {/* 表的**口径**（天数取哪个字段、分母是什么）是浮层内容；表本身才是第一/二层。 */}
       {honesty ? (
-        <p className={styles.note} data-testid="sc-step-detail-note">
-          天数取引擎 <code>ChainStep.days</code>（期望态）；影响率取 <code>attribution[].pctOfChainLoss</code>，
-          分母 = 全链非增值总量（增值段不进分母，故增值行影响率显示「—」而非 0）。
-          <b>本表与画布卡片、底部 Pareto 是同一份响应的三种投影</b>，不是三次取数。
+        <p className={styles.note} data-testid="sc-step-detail-note-brief">
+          本表口径
+          <InfoPopover topic={zh.sim.sandbox.info.stepTable} testId="step-detail" align="right">
+            <span data-testid="sc-step-detail-note">
+              天数取引擎 <code>ChainStep.days</code>（期望态）；影响率取 <code>attribution[].pctOfChainLoss</code>，
+              分母 = 全链非增值总量（增值段不进分母，故增值行影响率显示「—」而非 0）。
+              <b>本表与画布卡片、底部 Pareto 是同一份响应的三种投影</b>，不是三次取数。
+            </span>
+          </InfoPopover>
         </p>
       ) : null}
     </div>

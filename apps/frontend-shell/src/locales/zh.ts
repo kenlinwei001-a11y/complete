@@ -530,6 +530,10 @@ export const zh = {
         legend: "阻滞点图例",
         timeWindow: "时窗 30D / 60D / 90D 为何禁用",
         seed: "SEED · 确定性种子",
+        chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
+        paretoRate: "影响率怎么算 · 分母是什么",
+        inspectorEvidence: "下钻证据为何是空的",
+        stepTable: "逐环节表的口径",
       },
     },
     inference: {
