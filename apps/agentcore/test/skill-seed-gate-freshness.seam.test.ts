@@ -50,8 +50,19 @@ async function seedSkillsIntoRepos(repos?: Repos): Promise<Repos> {
   return r;
 }
 
+/**
+ * 时钟锚点**照抄现场实测值**，不从 `SEED_GATE_TTL_MS` 推导。
+ *
+ * ⚠️ 这一点是刻意的（铁律 0.6：「我用 X 当作 Y 的证据，而 X 并不度量 Y」）：
+ * 若把推进量写成 `T0 + SEED_GATE_TTL_MS + 1s`，那么谁把 TTL 改成 10 分钟，
+ * 测试就跟着推 10 分钟、**照样绿** —— 它度量的变成「缓存按自己声明的 TTL 过期」，
+ * 而不是「运维隔 3 分钟再看，看到的是新结论」。后者才是本单要修的那件事。
+ */
+const T0 = "2026-08-10T16:33:03.003Z";        // 现场实测的 ranAt（三次请求一字未变的那个值）
+const T_PLUS_10S = "2026-08-10T16:33:13.003Z"; // TTL(30s) 内
+const T_PLUS_3MIN = "2026-08-10T16:36:11.000Z"; // 现场实测的当时钟 —— 隔 3 分钟再问
+
 /** 只 fake `Date`：`setTimeout` 等仍走真实实现，避免把 fastify/promise 调度一起冻住。 */
-const T0 = "2026-08-10T16:33:03.003Z";
 function atClock(iso: string): void {
   vi.setSystemTime(new Date(iso));
 }
@@ -74,19 +85,19 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 A · 审计必须按请求现算，不
     const a = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
     expect(a.ranAt).toBe(T0);
 
-    atClock("2026-08-10T16:36:11.000Z");
+    atClock(T_PLUS_3MIN);
     const b = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
-    expect(b.ranAt).toBe("2026-08-10T16:36:11.000Z");
+    expect(b.ranAt).toBe(T_PLUS_3MIN);
     // 金丝雀命中 ⇒ 时钟夹具可信，下面「ranAt 变了 / 没变」的断言才有意义
     expect(b.ranAt).not.toBe(a.ranAt);
   });
 
-  it("A · TTL 内复用同一份快照（ranAt 不变）—— 允许缓存，但只允许缓存这么久", async () => {
+  it("A · TTL 内（+10s）复用同一份快照（ranAt 不变）—— 允许缓存，但只允许缓存这么久", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
 
     const first = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
-    atClock(new Date(Date.now() + SEED_GATE_TTL_MS - 1_000).toISOString()); // TTL 内
+    atClock(T_PLUS_10S);
     const cached = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
 
     expect(cached.ranAt).toBe(first.ranAt);
@@ -96,21 +107,26 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 A · 审计必须按请求现算，不
    * **本单的头号断言**。原实现在这里必红：ranAt 是进程启动那一瞬的常量，推多久都不会变。
    * 断言写成 `not.toBe(first.ranAt)` 而不是 `toBeDefined()` —— 后者在坏实现上照样绿。
    */
-  it("A · 越过 TTL 后必须重算：ranAt **变了**（不是『ranAt 存在』）", async () => {
+  it("A · 现场那 3 分钟：隔 3 分钟再问，ranAt **变了**（不是『ranAt 存在』——后者在坏实现上照样绿）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
 
     const first = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
-    const later = new Date(Date.parse(T0) + SEED_GATE_TTL_MS + 1_000).toISOString();
-    atClock(later);
+    expect(first.ranAt).toBe(T0);
+    atClock(T_PLUS_3MIN);
     const fresh = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
 
     expect(fresh.ranAt).not.toBe(first.ranAt);
-    expect(fresh.ranAt).toBe(later); // ranAt = **这份数据真正被计算的时刻**，不是响应组装时刻
+    expect(fresh.ranAt).toBe(T_PLUS_3MIN); // ranAt = **这份数据真正被计算的时刻**，不是响应组装时刻
   });
 
-  it("A · 生产 TTL 就是被测的那个值：30s（判据 #6 —— 别让测试验一条生产没走的路）", () => {
+  /**
+   * 判据 #6：生产走的那个值必须被覆盖。上面几条用的是**固定 3 分钟**，
+   * 只有当生产 TTL 真的 ≤ 3 分钟时它们才在度量新鲜度 —— 这条把那个前提钉死。
+   */
+  it("A · 生产 TTL 值本身被断言：30s ≤ 上面用的 3 分钟（别让测试验一条生产没走的路）", () => {
     expect(SEED_GATE_TTL_MS).toBe(30_000);
+    expect(SEED_GATE_TTL_MS).toBeLessThan(Date.parse(T_PLUS_3MIN) - Date.parse(T0));
   });
 
   it("A · 手动刷新入口（force）无视 TTL 立刻重算 —— 运维刚修好上游不该被迫等 30 秒", async () => {
@@ -139,16 +155,20 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 A · 审计必须按请求现算，不
     const boot = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
     expect(boot.status).not.toBe<SeedSkillGateReport["status"]>("CLEAN");
 
-    // DataCore 起来了，时间过了 TTL
+    // DataCore 起来了，运维隔 3 分钟回来看
     dc.catalog.discover = healthy;
-    atClock(new Date(Date.parse(T0) + SEED_GATE_TTL_MS + 1_000).toISOString());
+    atClock(T_PLUS_3MIN);
     const after = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
 
     expect(after.status).toBe<SeedSkillGateReport["status"]>("CLEAN");
     expect(after.ranAt).not.toBe(boot.ranAt);
   });
 
-  it("A · 真 HTTP 路由驱动：两次 GET 跨过 TTL → 响应里的 ranAt 变了（咬的是链路不是函数）", async () => {
+  /**
+   * **现场那一幕的原样复现**：连续 3 次请求（0s / +10s / +3min）读同一个真 HTTP 端点。
+   * 实测的坏行为是三次 `ranAt` 完全相同；修好后第三次必须是新值。
+   */
+  it("A · 真 HTTP 路由驱动：连续三次 GET（0s / +10s / +3min）→ 第三次的 ranAt 变了（咬的是链路不是函数）", async () => {
     const t = await createTestApp();
     await seedSkillsIntoRepos(t.repos);
 
@@ -159,16 +179,15 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 A · 审计必须按请求现算，不
     expect(b1.checked).toBeGreaterThan(0); // 金丝雀：真审到东西了，不是空转出来的结论
 
     // TTL 内再问：同一份快照（缓存生效，不打爆 DataCore）
-    atClock("2026-08-10T16:33:13.000Z");
+    atClock(T_PLUS_10S);
     const b2 = (await t.app.inject({ method: "GET", url: "/b/v1/ops/skill-seed-gate", headers: H })).json() as SeedSkillGateReport;
     expect(b2.ranAt).toBe(b1.ranAt);
 
-    // 越过 TTL：必须重算
-    const later = new Date(Date.parse(T0) + SEED_GATE_TTL_MS + 1_000).toISOString();
-    atClock(later);
+    // 隔 3 分钟：必须是新算的
+    atClock(T_PLUS_3MIN);
     const b3 = (await t.app.inject({ method: "GET", url: "/b/v1/ops/skill-seed-gate", headers: H })).json() as SeedSkillGateReport;
     expect(b3.ranAt).not.toBe(b1.ranAt);
-    expect(b3.ranAt).toBe(later);
+    expect(b3.ranAt).toBe(T_PLUS_3MIN);
   });
 
   it("A · 真 HTTP 路由驱动：?refresh=1 是显式手动刷新入口，TTL 内也重算", async () => {
