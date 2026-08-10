@@ -15,7 +15,7 @@
 
 ## §0 · 取证方法与金丝雀（铁律 0.5 / 0.6 的前置自证）
 
-本文所有「实测」二字都指下面这台**真跑起来的 DataCore**，不是读代码猜：
+本文所有「实测」二字都指下面这**两台真跑起来的服务**（DataCore 4051 + AgentCore 4052），不是读代码猜：
 
 ```bash
 pnpm --filter @platform/contracts build
@@ -81,9 +81,9 @@ PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.
   与本体 §8 `G-SLICE-REF-PRODUCER-EMPTY` 记载一致（消费方 `ontology-governance.ts:336` 在，生产方从不产 `kind:"slice"`）。
 
 - **「切片字段全覆盖」这句话的判别力接近 0。**
-  门 `scripts/check-ontology-slice-coverage.mjs:70` 把 `batteryCoverageSlices()`（`apps/datacore/src/synthetic/data-categories.ts:109`）
+  门 `scripts/check-ontology-slice-coverage.mjs:68` 把 `batteryCoverageSlices()`（`apps/datacore/src/synthetic/data-categories.ts:109`）
   一起喂进覆盖计算，而那是**每类型一条零跳根切片** `{root:{typeKey},paths:[]}`；
-  覆盖算法 `apps/datacore/src/databuilder/slice-coverage.ts:45` 又写着「root 自身全字段恒覆盖」。
+  覆盖算法 `apps/datacore/src/databuilder/slice-coverage.ts:47` 又写着「root 自身全字段恒覆盖」。
   ⇒ **只要一个类型进了数据分类，它的字段就自动「被切片覆盖」**。这句话是真的，但它**不度量**「多跳业务切片能不能取到这些字段」。
 
 ### 1.3 切片 / Skill / Agent 是同一份本体视图吗 —— **不是，各读各的**（派单问题 4 的正面回答）
@@ -127,7 +127,7 @@ PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.
 | O8 slice 执行 · truncated | **A** | `ontology-core.ts:632 (truncated=true)`；实测 `enterprise_360@so=SO-3391` → `nodes=555` |
 | O9 逐跳 A6 行级过滤剪枝 | **A** | `ontology-core.ts:573 (visibilityFor)` · `:670 (if (!vis(child)) continue)`；回归锁 `apps/datacore/test/slice-order-fulfillment.test.ts` SL3 |
 | O10 `{{args.x}}` 只作字面量参数（无注入面） | **A** | `ontology-core.ts:596 (resolveTemplate)` 严格全匹配正则 `^\{\{\s*args\.([\w]+)\s*\}\}$` |
-| **PRD 举的示例切片 `model_capacity_network` 本身** | **C·接错地方** | PRD `:126-135` 把它写成**声明式 SliceSpec**；实现却是**硬编码解析器** `apps/datacore/src/ontology.ts:629`。⇒ 它不在 `GET /a/v1/ontology/slices` 的 98 条里、不过 `executeSlice`、不受十六层投影/连通性门/覆盖门管辖。实测：`POST /a/v1/ontology/slices/model_capacity_network/resolve` → **404**；`POST /a/v1/slices/model_capacity_network/resolve {"modelId":"2170-NCM"}` → **200**（`model/bases/edges`） |
+| **PRD 举的示例切片 `model_capacity_network` 本身** | **C·接错地方** | PRD `:126-135` 把它写成**声明式 SliceSpec**；实现却是**硬编码解析器** `apps/datacore/src/ontology.ts:630`（入口 `:624 resolveSlice`）。⇒ 它不在 `GET /a/v1/ontology/slices` 的 98 条里、不过 `executeSlice`、不受十六层投影/连通性门/覆盖门管辖。实测：`POST /a/v1/ontology/slices/model_capacity_network/resolve` → **404**；`POST /a/v1/slices/model_capacity_network/resolve {"modelId":"2170-NCM"}` → **200**（`model/bases/edges`） |
 
 ### 2.2 `docs/PRD-A3-multihop-slice-completion.md`
 
@@ -219,8 +219,11 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 - **SEAM（接缝驱动）**：上面那条真问句的 top-20 里出现 `slice:order_to_cash_720`。
   ⚠️ 判据必须写成「**那条问句**召回**那条切片**」，不许写成「资源目录里切片数 > 2」——
   后者是供给侧计数，**不度量**「Agent 真能用上」。
-- **顺带自动闭合的二阶判据**：`GET /b/v1/resources/workflow/capacity_feasibility/relations`（或任一带 `resolve_slice` 步的工作流）
-  出现 `relType:"includes" toKind:"slice"` 的边（今天恒为 0，因 `resource-registry.ts:221` 两端在册过滤把它丢了）。
+- **顺带自动闭合的二阶判据**（需与 T2 一起才完全成立）：`GET /b/v1/resources/workflow/sop_balance_wf/relations`
+  出现 `relType:"includes" toKind:"slice"` 的边。**今天实测 = 2 条边全是 `toKind:"rule"`（C18/C21）、零 slice 边**，
+  尽管它的 `s1` 就是 `resolve_slice` —— 因为 `resource-registry.ts:221` 要求两端在册，而切片只在册 2 条。
+  ⚠️ 注意 `capacity_feasibility` **不是 Workflow**（实测 `/b/v1/resources/workflow/capacity_feasibility` → 404，它是 ExecutionPlan/Intent），
+  别拿它当探针。
 
 ### T2 · 悬空切片引用清零 + 一道守它的门
 
@@ -340,7 +343,7 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 | # | 处置 | 对象 | 理由 |
 |---|---|---|---|
 | 1 | **砍** | 「再造一份统一切片视图，把导航切片/本体切片/DRIL 资源图合三为一」 | 三者今天各自都有非 test 调用方、各自有测试、各自在跑。合并 = 同时动 QOS 路由 + 本体引擎 + 资源检索三条链，是本仓反复吃亏的「平行造第二套」的镜像版（RL10）。**改为 P1-4 只做改名 + 禁混用门**——先让"同名不同物"这件事本身停止骗人，成本一天，收益立刻 |
-| 2 | **降级（不是删）** | 94 条 `coverage_*` 切片 | 不再作为「字段被切片覆盖」的证据，降级为**字段可达性索引**（它确实能取到那个字段，只是零跳）。理由：覆盖算法 `slice-coverage.ts:45` 对 root 类型「全字段恒覆盖」，加上 `data-categories.ts:109` 每类型自动生成一条根切片 ⇒ 判别力≈0。**注意措辞**：这道门**不是在撒谎**（root-only 切片真能返回全字段），是**它度量的东西不是我们要的东西**。<br/>**降级安全性已追一层调用**：`batteryCoverageSlices` 的全部消费方仅两处——`apps/datacore/src/synthetic/service.ts:1152`（合成即落库，因此它们出现在 `GET /a/v1/ontology/slices` 的 98 条里、并被 `SlicesPage.tsx:34` 默认折叠）与 `scripts/check-ontology-slice-coverage.mjs:68`。⇒ **只改门的判据、不删这 94 条**，不会打断别的链 |
+| 2 | **降级（不是删）** | 94 条 `coverage_*` 切片 | 不再作为「字段被切片覆盖」的证据，降级为**字段可达性索引**（它确实能取到那个字段，只是零跳）。理由：覆盖算法 `slice-coverage.ts:47` 对 root 类型「全字段恒覆盖」，加上 `data-categories.ts:109` 每类型自动生成一条根切片 ⇒ 判别力≈0。**注意措辞**：这道门**不是在撒谎**（root-only 切片真能返回全字段），是**它度量的东西不是我们要的东西**。<br/>**降级安全性已追一层调用**：`batteryCoverageSlices` 的全部消费方仅两处——`apps/datacore/src/synthetic/service.ts:1152`（合成即落库，因此它们出现在 `GET /a/v1/ontology/slices` 的 98 条里、并被 `SlicesPage.tsx:34` 默认折叠）与 `scripts/check-ontology-slice-coverage.mjs:68`。⇒ **只改门的判据、不删这 94 条**，不会打断别的链 |
 | 3 | **降级** | 「平台 12/16 层有承载物」这类光秃秃的覆盖数 | 实测证明 A 集覆盖数是变量：同一快照 11–12 present 随切片/参数变，无参时全部掉到 3。任何不带「哪一套 + 哪条切片 + 什么 args + 三态分开」的覆盖数，一律不得引用（§2.5 裁决 3） |
 | 4 | **砍** | REQ153 那套十六层的对账收尾 | 缺的输入（S7 原文档）不在仓里。继续对账只会产生更多没有证据的猜测。**判定停在「已证不同、成因未知」是正确的终点，不是欠账** |
 | 5 | **砍** | 「让所有 98 条切片都 16/16」 | `aop_scenario_chain` 实测 5 节点 → 11 present 是**合理的**（那条链本来就只跨 plan+finance 两域）。追求全绿会逼出造数据。**十六层的正确用法是诊断，不是 KPI** |
@@ -403,7 +406,7 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 |---|---|---|---|
 | **G-SLICE-CATALOG-TWO-ITEMS** | **Agent 能发现的切片只有 2 条硬编码的，98 条一等 SliceSpec 一条都进不去**。门槛是 `spec.description` 非空（`apps/datacore/src/catalog.ts:276`，合并于 `:284`），实测 0/98 满足 ⇒ 平台唯一的跨域推演入口对 Agent 不可见（双服务实测：`/b/v1/resources` 1055 条资源里 `kind=slice`=2；DRIL 检索「订单从下单到回款」top-20 零切片）。**二阶后果**：`resource-registry.ts:221` 的「关系两端都须在册」过滤，会把 `relations.ts:57` 已经算出的 `workflow --includes--> slice` 边**静默丢掉** ⇒ 资源图上永远看不到哪条工作流用了哪条切片（实测 `sop_balance_wf` 的 relations = 2 条 rule 边、零 slice 边，而它的 `s1` 就是 `resolve_slice`） | `catalog.discover("slices") → dril/resource-registry.ts:109/182/221 → discover 工具 / /b/v1/resources[/relations]` | **接了线没数据**（修法=补数据，不是改引擎） |
 | **G-SLICE-KEY-DANGLING** | **已发布工作流引用不存在的切片**：`sop_balance_wf` 的 `s1 = resolve_slice(monthly_balance)`（`apps/agentcore/src/mocks/seed.ts:970`），实测两条路由均 404、mock 亦抛 `unknown slice` ⇒ 该工作流第一步必 FAIL 且**四包全绿**（测试咬的是执行器，不是这条引用） | `seed 计划/工作流.params.sliceKey → slices 表 / BUILTIN_SLICE_CATALOG` | **悬空引用**（无门守·T2 补门） |
-| **G-SLICE-COVERAGE-TAUTOLOGY** | **切片字段覆盖门由「每类型一条零跳根切片」自动满足**：`data-categories.ts:109` 自动派生 94 条 `coverage_*`，`slice-coverage.ts:45` 又规定 root 全字段恒覆盖 ⇒ 新类型进分类即自动绿。**门为真但判别力≈0** | `check-ontology-slice-coverage.mjs:70 → computeFieldCoverage` | **判据不度量目标**（形态：「我用『每个类型都有一条根切片』当作『字段被业务切片覆盖』的证据」） |
+| **G-SLICE-COVERAGE-TAUTOLOGY** | **切片字段覆盖门由「每类型一条零跳根切片」自动满足**：`data-categories.ts:109` 自动派生 94 条 `coverage_*`，`slice-coverage.ts:47` 又规定 root 全字段恒覆盖 ⇒ 新类型进分类即自动绿。**门为真但判别力≈0** | `check-ontology-slice-coverage.mjs:68/75 → computeFieldCoverage` | **判据不度量目标**（形态：「我用『每个类型都有一条根切片』当作『字段被业务切片覆盖』的证据」） |
 | **G-NAVSLICE-NOT-ONTOLOGY** | **「导航切片」与「本体切片」同名不同物**：`agent/navigation-slice.ts:283` 是硬编码 `SOLVER_CATALOG` 的正则投影，对 `SliceSpec`/`sliceKey`/`slice-index` **零命中**（金丝雀 `SOLVER_CATALOG`=8）。而 `docs/PRD-agent-navigation-slice-latency.md:53` 白纸黑字写「复用 `ontology/slice-index` 切片」⇒ 读文档的人会以为 Agent 已经在读本体切片 | `Query → projectNavigationSlice → 首轮 prompt`（与 `SliceSpec` 无任何边） | **同名不同物 · 文档承诺与实现分岔**（P1-4 改名 + 禁混用门） |
 
 > **回写要求**：以上 4 条 ID 若被采纳，**必须回写本体 §8**；`G-SLICE-COVERAGE-TAUTOLOGY` 若按 T6 换判据，
