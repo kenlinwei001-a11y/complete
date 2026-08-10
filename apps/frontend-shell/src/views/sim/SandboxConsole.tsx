@@ -127,6 +127,20 @@ export interface SandboxConsoleProps {
    * 不是渲染出来再用 CSS 藏起来（藏起来的东西照样进 DOM、照样被读屏念、照样让人以为屏上有）。
    */
   diagnostics?: SandboxConsoleRailSection[];
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE · **受控的基地范围**（两个都传才受控，都不传 = 今天的行为，零回归）。
+   *
+   * 为什么要把这一份 state 提到宿主：沙盘现在是**一屏五模式**（现状/归因/试一手/求最优/影响半径），
+   * 而"选中的基地"必须跨模式活着 —— 不然切一次模式清一次范围，这次合并就只是"把五页塞进一个 tab 条"。
+   * state 留在本组件里做不到这件事：切模式时本组件整个不渲染（硬约束是**不在 DOM**，不是 hidden）。
+   *
+   * ⚠ 只提 state，**不动本组件的任何布局**：左栏那些勾选框、它们的 testid、勾选语义
+   *   （空数组 = 全部基地）一个字都没变；受控与否只影响 `baseIds` 存在谁的 `useState` 里。
+   *   六个不带 Router 直接挂载本组件的门（sandbox-console.seam / sandbox-p0 / …）不传这两个 prop，
+   *   走的仍是内部 state 那条路 —— 那正是"默认值 = 今天的行为"的意思。
+   */
+  scopeBaseIds?: string[];
+  onScopeBaseIdsChange?: (next: string[]) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -169,6 +183,8 @@ export function SandboxConsole({
   ontologyCanvas,
   rail = [],
   diagnostics = [],
+  scopeBaseIds,
+  onScopeBaseIdsChange,
 }: SandboxConsoleProps) {
   const [mode, setMode] = useState<CanvasMode>("metro");
   /** 诊断抽屉：**默认关**，且关着时内部一个节点都不渲染（见 `diagnostics` 的注）。 */
@@ -179,7 +195,20 @@ export function SandboxConsole({
   const [loss, setLoss] = useState<ChainLossPayload | null>(null);
   const [imp, setImp] = useState<ImpLoad>({ status: "loading" });
   const [dimKind, setDimKind] = useState<ChainImpedimentKind | null>(null);
-  const [baseIds, setBaseIds] = useState<string[]>([]);
+  /**
+   * 基地范围：**受控/非受控二合一**（WO-SANDBOX-IA-CONSOLIDATE）。
+   * 宿主同时给了 `scopeBaseIds` + `onScopeBaseIdsChange` ⇒ 用宿主那一份（跨模式活着）；
+   * 否则退回内部 state = 今天的行为（六个直接挂载本组件的门一个字都不用改）。
+   * 判据是**两个都给**：只给值不给回调 = 一个点不动的死勾选框，比不受控更糟。
+   */
+  const [ownBaseIds, setOwnBaseIds] = useState<string[]>([]);
+  const controlledScope = scopeBaseIds !== undefined && onScopeBaseIdsChange !== undefined;
+  const baseIds = controlledScope ? scopeBaseIds : ownBaseIds;
+  /** 写口径统一成「给下一个完整值」——宿主回调没有函数式更新形态，两条路必须同一种签名。 */
+  const applyBaseIds = (next: string[]) => {
+    if (controlledScope) onScopeBaseIdsChange(next);
+    else setOwnBaseIds(next);
+  };
   const [honesty, setHonesty] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"steps" | "vars">("steps");
@@ -373,7 +402,7 @@ export function SandboxConsole({
   }, []);
 
   const toggleBase = (id: string) =>
-    setBaseIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].sort()));
+    applyBaseIds(baseIds.includes(id) ? baseIds.filter((x) => x !== id) : [...baseIds, id].sort());
 
   const scopeText = `${baseIds.length === 0 ? "全部基地" : `${baseIds.length} 基地`} · 业务线/产品未接线`;
 
