@@ -167,7 +167,11 @@ export function deriveSliceSummary(input: SliceSummaryInput): DerivedSliceSummar
     questions.push(`${rootShort}关联的${typeShort(typeByKey.get(k), k)}有哪些`);
   }
   if (others.length > 0) {
-    questions.push(`沿本体从${rootShort}一路展开覆盖哪些对象和关系`);
+    // 逐类型问句被 QUESTION_CAP 截断后，排在后面的类型就**从检索面上消失了**（截断是按字典序，
+    // 与业务重要性无关）。故再补一条把全部类型列全的总问句：谁也不会因为首字母靠后而检索不到。
+    questions.push(
+      `沿本体从${rootShort}一路展开覆盖哪些对象和关系：${others.map((k) => typeShort(typeByKey.get(k), k)).join("、")}`,
+    );
     if (spannedDomains.length > 1) {
       questions.push(`${rootShort}这条链跨了哪 ${spannedDomains.length} 个业务域（${domainNames.join("、")}）`);
     }
