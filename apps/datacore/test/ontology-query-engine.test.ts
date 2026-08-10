@@ -11,43 +11,105 @@ const oq = async (t: TestApp, args: Record<string, unknown>): Promise<OntologyQu
   return res.json().data as OntologyQueryOutput;
 };
 
+// ══════════════════════════════════════════════════════════════════════════════════════════
+// 【金值更新 · WO-FIX-P1-REGRESSION · 2026-08-10 实测】自动最短路的 Model↔Order 那一跳换了边。
+//
+// 成因（不是引擎坏了，是图上多了一条等价捷径）：
+//   WO-P1（50c17468）为**传导引擎**补了「影响方向」逆边 `model_demanded_by_order`(Model→Order)——
+//   `sim/propagation.ts:384-399` 的传导核只建 `navOut`、只沿 `fromId→toId` 走，没有 navIn，
+//   所以「上游→下游」的影响传导必须有一条 from=上游 的边（`seed.ts:350` 的
+//   `demo_model_supply_risk_to_order_shortage` 正是靠它才走得到 Order）。
+//   它与既有 `order_for_model`(Order→Model) 是**逐实例严格互逆投影**：
+//   `synthetic/service.ts:841` 与 `:973` 是**同一个 `for (const o of g.orders)` 循环**、
+//   同一对端点 id（`obj_order_${o.so}` ↔ `obj_model_${o.model}`），1:1 无遗漏。
+//   而 `ontology/slice-planner.ts:21-27` 的 BFS tie-break 是**纯字典序**：
+//   Model 与 Order 同域（都是 product）⇒ 第 1 项打平；两条候选边的 toType 都是 Order ⇒ 第 2 项打平；
+//   第 3 项比 linkKey，`model_demanded_by_order` < `order_for_model`（`m` < `o`）⇒ 新边胜出。
+//
+// 为什么"这条也对"：跳数不变（2 跳）、方向正确（Base←Model 可产 → Model→需求它的 Order）、
+// 结果集逐 objId 相同。故判「图变了，金值该更新」而非「P1 的边加错了」。
+//
+// ⛔ 光把期望值改成实收值 = 把回归洗白。故下面两条测试各自**追加一条等价断言**：
+//    自动最短路的结果集，必须与显式走旧边 `order_for_model` 的结果集逐 objId 相等。
+//    以后再有人加边改写了计划、而新计划**语义不等价**时，这条断言会红。
+//
+// 复验：`pnpm --filter datacore build && pnpm --filter datacore test -- ontology-query-engine`
+// ══════════════════════════════════════════════════════════════════════════════════════════
+
 describe("WO-Phase3-B · ontology_query 本体查询引擎（SEAM ≥4 + 红咬 + R6）", () => {
   it("① 前向跨类型遍历（Base→Order 自动最短路）→ rows + 逐行 provenance{typeKey,objId,linkPath}", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    const rootSel = { rootType: "Base", rootFilter: [{ field: "name", op: "eq", value: "常州" }] };
     const out = await oq(t, {
-      rootType: "Base",
-      rootFilter: [{ field: "name", op: "eq", value: "常州" }],
+      ...rootSel,
       select: [{ type: "Order", fields: ["so", "qty", "due"] }],
     });
     expect(out.rows.length).toBeGreaterThan(0);
     expect(out.columns).toEqual(["Order.so", "Order.qty", "Order.due"]);
-    // 类型级最短路 = model_producible_at:in → order_for_model:in（R13 逐行可溯）
-    expect(out.queryPlan.hops.map((h) => h.linkKey)).toEqual(["model_producible_at", "order_for_model"]);
+    // 类型级最短路 = model_producible_at:in → model_demanded_by_order:out（R13 逐行可溯·金值更新见文件顶注）
+    expect(out.queryPlan.hops.map((h) => h.linkKey)).toEqual(["model_producible_at", "model_demanded_by_order"]);
     for (const p of out.provenance) {
       expect(p.typeKey).toBe("Order");
       expect(p.objId).toMatch(/^obj_order_/);
-      expect(p.linkPath).toEqual(["model_producible_at:in", "order_for_model:in"]);
+      expect(p.linkPath).toEqual(["model_producible_at:in", "model_demanded_by_order:out"]);
     }
     expect(out.provenance.length).toBe(out.rows.length);
+
+    // ── 等价断言（防「改金值洗白」）：自动最短路 ≡ 显式走旧边 order_for_model 的那条路 ──
+    // 这两条边是同一批 Order 的互逆投影，若哪天不再互逆（少投影一批 / 投错端点），此处即红。
+    const viaLegacy = await oq(t, {
+      ...rootSel,
+      hops: [
+        { linkKey: "model_producible_at", direction: "backward" },
+        { linkKey: "order_for_model", direction: "backward" },
+      ],
+      select: [{ type: "Order", fields: ["so", "qty", "due"] }],
+    });
+    expect(viaLegacy.provenance.length).toBeGreaterThan(0); // 金丝雀：对照组不能是空集（空集恒等于空集）
+    expect(out.provenance.map((p) => p.objId).sort()).toEqual(viaLegacy.provenance.map((p) => p.objId).sort());
+    expect(JSON.stringify(out.rows)).toBe(JSON.stringify(viaLegacy.rows));
   });
 
-  it("② 反向遍历（Order→Base）方向真反转（linkPath = order_for_model:out → model_producible_at:out）", async () => {
+  it("② 反向遍历（Order→Base）方向真反转（linkPath = model_demanded_by_order:in → model_producible_at:out）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const orders = await t.repos.objects.listByType("demo", "Order");
     const so = String(orders[0]!.props.so);
-    const out = await oq(t, {
-      rootType: "Order",
-      rootFilter: [{ field: "so", op: "eq", value: so }],
-      select: [{ type: "Base", fields: ["baseId", "name"] }],
-    });
+    const rootSel = { rootType: "Order", rootFilter: [{ field: "so", op: "eq", value: so }] };
+    const out = await oq(t, { ...rootSel, select: [{ type: "Base", fields: ["baseId", "name"] }] });
     expect(out.rows.length).toBeGreaterThan(0);
-    expect(out.queryPlan.hops.map((h) => `${h.linkKey}:${h.direction}`)).toEqual(["order_for_model:forward", "model_producible_at:forward"]);
+    expect(out.queryPlan.hops.map((h) => `${h.linkKey}:${h.direction}`)).toEqual(["model_demanded_by_order:backward", "model_producible_at:forward"]);
     for (const p of out.provenance) {
       expect(p.typeKey).toBe("Base");
-      expect(p.linkPath).toEqual(["order_for_model:out", "model_producible_at:out"]);
+      expect(p.linkPath).toEqual(["model_demanded_by_order:in", "model_producible_at:out"]);
     }
+
+    // ── 「方向真反转」的机械判据（本测试的真实意图，不靠人肉盯金值）──────────────────────
+    // 把 Base→Order 的计划**整条倒过来、每跳方向逐个取反**，就该恰好等于 Order→Base 的计划。
+    // 这条断言与「用哪条边」无关：P1 之前（order_for_model）与之后（model_demanded_by_order）都成立，
+    // 一旦引擎把方向写死或漏反转即红 —— 这才是①②这对测试原本要咬的东西。
+    const fwd = await oq(t, {
+      rootType: "Base",
+      rootFilter: [{ field: "name", op: "eq", value: "常州" }],
+      select: [{ type: "Order", fields: ["so"] }],
+    });
+    const mirrored = [...fwd.queryPlan.hops].reverse().map((h) => `${h.linkKey}:${h.direction === "forward" ? "backward" : "forward"}`);
+    expect(mirrored.length).toBe(2); // 金丝雀：对照计划真有两跳（空数组会让下一行恒真）
+    expect(out.queryPlan.hops.map((h) => `${h.linkKey}:${h.direction}`)).toEqual(mirrored);
+
+    // ── 等价断言（防「改金值洗白」）：自动最短路 ≡ 显式走旧边 order_for_model 的那条路 ──
+    const viaLegacy = await oq(t, {
+      ...rootSel,
+      hops: [
+        { linkKey: "order_for_model", direction: "forward" },
+        { linkKey: "model_producible_at", direction: "forward" },
+      ],
+      select: [{ type: "Base", fields: ["baseId", "name"] }],
+    });
+    expect(viaLegacy.provenance.length).toBeGreaterThan(0); // 金丝雀：对照组非空
+    expect(out.provenance.map((p) => p.objId).sort()).toEqual(viaLegacy.provenance.map((p) => p.objId).sort());
+    expect(JSON.stringify(out.rows)).toBe(JSON.stringify(viaLegacy.rows));
   });
 
   it("③ 带 filter（eq 下推 + 非 eq 引擎内后置）：过滤后严格子集且每行满足条件", async () => {
