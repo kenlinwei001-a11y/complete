@@ -88,6 +88,29 @@ decision.committed · coordinator.planned · entity.out_of_domain · feedback.re
 `AgentRunRecordSchema` 加可选 `agentId`/`agentKey` → `runRolePathB` 与 `runPathB` 各自回填 →
 `agentRuns` 增 `listByAgent`。属跨契约+引擎改动，须整单一个 dev 做。
 
+> ### 🟡 1.5.1 后续（**WO-AGENTRUN-ATTRIBUTION 已部分闭合本条**，2026-08-10）
+>
+> 本节以上文字描述的是**改动前的原状**，保留作为取证原文；现状以本框为准
+> （本体登记见 `docs/SYSTEM-ONTOLOGY.md` §8 `G-AGENTRUN-NO-AGENT-ATTRIBUTION`）。
+>
+> **已闭的那一半**：归属由引擎在 `apps/agentcore/src/agent/loop.ts` 的 `attributionFields` **单点回填**
+> （与运行数据同一次构造，不在三处 `insert` 点各填各的）。`engine.runRegisteredAgent` 取
+> `resolveAgent` 真落定的那一版 ⇒ `REGISTERED`（场景入口 Agent / 角色 Agent 都走这条）；
+> 读端 `GET /b/v1/agents/:id/runs` 按 `agentKey` **跨版本**聚合。
+>
+> **前任给的路径这里做了一处修正**：原文写「`runPathB` 也回填」——**不能那样做**。
+> `runPathB` 是探索路，全程没有 AgentDefinition，回填就得凭空找一个 id 塞进去。
+> 现在它只传 `tenantId`，引擎据此**正面**记 `attribution: "EXPLORATORY"`；
+> 而本次改动**之前**的旧记录整个归属字段缺失 = **未知**，与 EXPLORATORY 分开计。
+> 「我没找到」和「它不存在」是两个命题，这条在数据层就分开了。
+>
+> **仍未闭的三类（界面诚实位据此降层保留，未删除）**：
+> ① 探索路运行（按构造无归属对象）；② 上线前的旧记录（未知）；
+> ③ **多角色会诊扇出的子 agent 运行根本没落库** —— `agent_runs` 以 `task_id` 为唯一键，
+> 一个 task 只存得下一条，三处 insert 点全在编排层顶层
+> （金丝雀复核：`grep "agentRuns" apps/agentcore/src/workflow/` 零命中，
+> 同目录 `export` 8 命中 ⇒ 工具是好的）。消除 ③ 需把主键从 task 级改成 run 级，另起一单。
+
 ---
 
 ## 2 · Execution 状态机 —— **接了线接错地方**（数据、读端、前端取数器全都现成）
@@ -196,7 +219,7 @@ decision.committed · coordinator.planned · entity.out_of_domain · feedback.re
 | # | 能力 | 定性 | 关键 file:line | 本单处置 |
 |---|---|---|---|---|
 | 1 | Agent Trace | **接了线接错地方** | `loop.ts:672-673` 发 · `server.ts:380/426/459` 读 | ✅ 接到 Agent 页 |
-| 1b | ↳ 运行归属到具体 Agent | **无承载物** | `qos.ts:484-524` / `qos.ts:711-722` 均无 `agentId` | ⚠️ 界面诚实标注 + 交回排期 |
+| 1b | ↳ 运行归属到具体 Agent | **无承载物**（改动前）→ 🟡 **部分闭**（见 §1.5.1） | `qos.ts:484-524` / `qos.ts:711-722` 均无 `agentId` | ⚠️ 界面诚实标注 + 交回排期 → **WO-AGENTRUN-ATTRIBUTION 已接**（REGISTERED 路已归属；探索路/旧记录/会诊子运行三类仍未闭） |
 | 2 | Execution 状态机 | **接了线接错地方** | 枚举 `qos.ts:269-278` · 读端 `server.ts:354` | ✅ 接到 Agent 页 |
 | 3a | Context Manager **五段** | **无承载物** | 仅 `docs/reference-prototype-decision-platform.html:1074` 标签 | ❌ 不画、不放占位 |
 | 3b | ↳ 真实三刀（fold/compact/force_finalize） | **接了线没数据**（#91 阈值够不到） | `loop.ts:747` 分支 · `SYSTEM-ONTOLOGY.md:1063` | ✅ 显示真计数(0) + `?` 说明为什么 |
