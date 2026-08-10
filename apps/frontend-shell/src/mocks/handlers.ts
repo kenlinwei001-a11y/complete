@@ -3531,11 +3531,11 @@ export const handlers = [
       scope,
       targetRef: scope === "LOCAL" ? url.searchParams.get("target") : null,
       worldCompleteness: {
-        pct: 60,
-        stateVars: { present: 2, needed: 3 },
+        pct: 50, // = 100 × (1+0+1) / (2+1+1)：WO-CERT-HONESTY ① 删掉重复的 stateVars 行后重算
         derivationRules: { present: 1, needed: 2 },
         actions: { present: 0, needed: 1 },
         propagationRules: { present: 1, needed: 1 },
+        stateVarKeys: ["s2", "s3"],
         entering: [
           { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
           { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
@@ -3649,13 +3649,13 @@ export const handlers = [
       level: "L2_RUNNABLE",
       dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
       l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
-      trialTick: { passed: false, rulesFired: 1, at: null, error: null },
+      trialTick: { passed: false, derivationNodes: 1, propagationCovered: false, at: null, error: null },
       worldCompleteness: {
-        pct: scope === "LOCAL" ? 48 : 60,
-        stateVars: { present: 2, needed: 3 },
+        pct: scope === "LOCAL" ? 48 : 50,
         derivationRules: { present: 1, needed: 2 },
         actions: { present: 0, needed: 1 },
         propagationRules: { present: 1, needed: 1 },
+        stateVarKeys: ["s2", "s3"],
         entering: [
           { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
           { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },

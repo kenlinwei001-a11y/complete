@@ -69,10 +69,10 @@ function installHandlers() {
         scope: "GLOBAL", targetRef: null, level: "L2_RUNNABLE",
         dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
         l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
-        trialTick: { passed: false, rulesFired: 1, at: null, error: null },
+        trialTick: { passed: false, derivationNodes: 1, propagationCovered: false, at: null, error: null },
         worldCompleteness: {
-          pct: 60, stateVars: { present: 2, needed: 3 }, derivationRules: { present: 1, needed: 2 },
-          actions: { present: 0, needed: 1 }, propagationRules: { present: 1, needed: 1 }, entering: [],
+          pct: 60, derivationRules: { present: 1, needed: 2 },
+          actions: { present: 0, needed: 1 }, propagationRules: { present: 1, needed: 1 }, stateVarKeys: [], entering: [],
         },
         canEnterSimulation: false, gaps: [], computedAt: "2026-08-09T00:00:00.000Z",
       }),
