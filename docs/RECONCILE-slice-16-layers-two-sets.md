@@ -38,7 +38,7 @@
 
 | | **A 集 · 契约集** | **B 集 · 台账集** |
 |---|---|---|
-| 单一来源 | `packages/contracts/src/slice-layers.ts:19-34`（`SLICE_LAYER_IDS`） | `docs/REQ-LEDGER-sandbox.md:246`（REQ153）**转述**的外部文档 |
+| 单一来源 | `packages/contracts/src/slice-layers.ts:34-49`（`SLICE_LAYER_IDS`） | `docs/REQ-LEDGER-sandbox.md:246`（REQ153）**转述**的外部文档 |
 | 16 个层名是否写下来过 | ✅ **逐字枚举，机器可读** | ❌ **从未写下来**（当前树 + 全部历史，只出现过 **4** 个名字） |
 | 含 Function 层 | ❌ 无 | ✅ 有（"Function 签名 0"） |
 | 含 Interface 层 | ❌ 无 | ✅ 有（"Interface 8"） |
@@ -60,7 +60,7 @@
 
 ## 2 · 逐层对照表
 
-### 2.1 A 集 —— 十六层逐字枚举（`packages/contracts/src/slice-layers.ts:19-34`）
+### 2.1 A 集 —— 十六层逐字枚举（`packages/contracts/src/slice-layers.ts:34-49`）
 
 | # | id | 中文层名（`apps/frontend-shell/src/locales/zh.ts:1113-1128`） | B 集里有对应名字吗 |
 |---|---|---|---|
@@ -153,7 +153,7 @@
 
 | 环节 | file:line |
 |---|---|
-| 契约（zod enum，且断言恰好 16 层） | `packages/contracts/src/slice-layers.ts:18`（`SLICE_LAYER_IDS` 声明，层名 `:19-34`）· `:145`（`.length(16)`）· `:148`（`total: z.literal(16)`） |
+| 契约（zod enum，且断言恰好 16 层） | `packages/contracts/src/slice-layers.ts:33`（`SLICE_LAYER_IDS` 声明，层名 `:34-49`）· `:160`（`.length(16)`）· `:163`（`total: z.literal(16)`） |
 | 导出 | `packages/contracts/src/index.ts:33` |
 | 引擎（按 id 逐层投影） | `apps/datacore/src/ontology/slice-layers.ts:8`（import）· `:527`（`SLICE_LAYER_IDS.map`）· `:168`（`projectSliceLayers`） |
 | 路由 | `apps/datacore/src/app.ts:4884`（`GET /a/v1/ontology/slices/:sliceKey/layers`）· `:4935` |
