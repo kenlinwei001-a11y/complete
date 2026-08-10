@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -121,14 +121,48 @@ describe("§2 · 判据真的会咬（喂已知坏样例）", () => {
 describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红）", () => {
   const model = () => readRepo("apps/frontend-shell/src/views/sim/inspectorModel.ts");
 
-  it("上游承载还在：service.ts 仍 `putAll(\"Cadence\")`、app.ts 仍读回 —— 删了则 K1/K2 新文案又变假话", () => {
+  it("上游承载还在：service.ts 仍 `putAll(\"Cadence\")`、装配处仍读回、tick 仍吃闸门 —— 断一环则 K1/K2 新文案又变假话", () => {
+    // ── 锁的是**事实**（承载→读回→喂进 tick 这条链还在），不是**某个文件的行**。────────────
+    // 2026-08-10 这条锁自己栽了两跤，两跤同一个形态（铁律 0.6：「我用 X 当作 Y 的证据，
+    // 而 X 并不度量 Y」），所以这次连修法一起写在这里，免得第三次：
+    //   ① 旧断言 `app.contains("buildCadenceGates")` 是**装饰品**：去掉注释后 app.ts 里
+    //      该标识符出现 **0 次** —— 它当时唯一的命中是第 59 行那句
+    //      「`buildCadenceGates` 刻意**不在本文件 import**」。**断言靠一句说它不在的注释过了关。**
+    //      ⇒ 判据必须落在**代码**上，注释一律先剥掉。
+    //   ② 旧断言 `app.contains('listByType(c.tenantId, "Cadence")')` 锁了**文件位置**。
+    //      `WO-SIM-SCOPE-TRIAL`（闭 #129/#130 `G-SIM-SCOPE-UNREAD`）把读回搬进
+    //      `sim/propagation-inputs.ts` 的 `buildPropagationInputs`，好让真 tick 与 Trial Tick
+    //      **共用同一处装配** —— 这是正确的重构，事实一点没少，锁却当场红。
+    //      ⇒ 读回口按**全 datacore 源码树**找，谁搬家都不该惊动这道锁。
+    const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+
+    // 承载：D1 把 Cadence 行落库
     expect(
       readRepo("apps/datacore/src/synthetic/service.ts"),
       'service.ts 不再 putAll("Cadence") —— K1/K2 的「承载今天也有」当场变成假话，必须改回去',
     ).toContain('putAll("Cadence"');
-    const app = readRepo("apps/datacore/src/app.ts");
-    expect(app, "推演 tick 不再 buildCadenceGates —— K1 的「已在读回」变假").toContain("buildCadenceGates");
-    expect(app, "tick 不再 listByType(\"Cadence\")").toContain('listByType(c.tenantId, "Cadence")');
+
+    // 读回：全树扫（含金丝雀自证 —— 扫不到就得先怀疑扫描器，不许直接判「读回没了」）
+    const walk = (dir: string): string[] =>
+      readdirSync(join(REPO_ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith(".ts") ? [`${dir}/${e.name}`] : [],
+      );
+    const dcFiles = walk("apps/datacore/src");
+    const codeOf = new Map(dcFiles.map((f) => [f, stripComments(readRepo(f))]));
+    /** 金丝雀：`putAll("Cadence"` 已由上一条断言证明存在于树内。扫描器若连它都找不到 ⇒ 是**扫描器坏了**。 */
+    const canary = [...codeOf].filter(([, c]) => c.includes('putAll("Cadence"')).map(([f]) => f);
+    expect(canary, "⛔ 金丝雀不中：全树扫不到已证实存在的 putAll(\"Cadence\") ⇒ 扫描器坏了，不是读回没了").not.toHaveLength(0);
+
+    const readback = [...codeOf].filter(([, c]) => /listByType\([^,)]+,\s*["']Cadence["']\)/.test(c)).map(([f]) => f);
+    expect(
+      readback,
+      `全 datacore 源码树已无 listByType(…, "Cadence") 读回口（扫了 ${dcFiles.length} 个文件，金丝雀命中 ${canary.length} 处 ⇒ 扫描器是好的）—— K1 的「已在读回」变假`,
+    ).not.toHaveLength(0);
+
+    // 喂进 tick：装配结果真的进了传导调用（否则就是「读了没人用」的假绿第 9 形态）
+    const appCode = stripComments(readRepo("apps/datacore/src/app.ts"));
+    expect(appCode, "tick 不再调用 buildPropagationInputs —— 闸门装配处断了").toContain("buildPropagationInputs");
+    expect(appCode, "tick 不再把 cadenceGates 喂给传导 —— 读回还在但没人消费").toContain("cadenceGates");
   });
 
   it("offsetDays 的运行时消费方还在（K2 那句「零消费方为假」的依据）", () => {

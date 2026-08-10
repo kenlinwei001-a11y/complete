@@ -15,7 +15,9 @@ import styles from "./ImpactAnalysisPanel.module.css";
 /**
  * WO-BEFE-WIRE-3 · **企业状态快照 · 分叉与比对**
  * （`POST /a/v1/twin/enterprise-states/:id/fork` 与 `GET /a/v1/twin/enterprise-states/:id/diff`
- *   的前端消费方 —— 这两条后端注册了却一直零调用方，门 `befe-seam:check` 载体② 实测）。
+ *   的前端消费方 —— 这两条后端注册了却零调用方，2026-08-10 由门 `befe-seam:check` 载体② 实测照出；
+ *   复验：`node scripts/check-backend-frontend-seam.mjs`。
+ *   ⚠️ **时态**：那是**本文件存在之前**的事实。本文件就是那个消费方，落地后该缺口已闭。）
  *
  * ── 为什么是一个**新**面板，而不是往 `EnterpriseStatePanel` 里塞 ──────────────
  * 那个面板刻意是**只读**的：它答「这个世界现在什么状态」，一个动作按钮都没有。
