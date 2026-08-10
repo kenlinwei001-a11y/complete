@@ -133,18 +133,36 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
                 if (!l) return null;
                 const expanded = openLayer === id;
                 return (
-                  <button
-                    key={id}
-                    type="button"
-                    className={styles.card}
-                    aria-expanded={expanded}
-                    data-testid={`slice-layer-card-${sliceKey}-${id}`}
-                    onClick={() => setOpenLayer((k) => (k === id ? null : id))}
-                  >
-                    <span className={styles.cardTop}>
-                      <span className={styles.ord}>{l.ordinal}</span>
-                      <span className={styles.name}>{t.names[id] ?? id}</span>
-                      {/* 诚实位记号：说明降到了浮层，但第一层看得见「这里有话要说」。 */}
+                  // 卡片是 div 而非 button —— 浮层触发器本身是 <button>，button 套 button 是非法 DOM
+                  // 嵌套（React validateDOMNesting 会警告，且键盘可达性会坏）。故卡片主体一个 button，
+                  // 浮层记号是它的兄弟节点，绝对定位到右上角。
+                  <div key={id} className={styles.card} data-expanded={expanded ? "true" : "false"}>
+                    <button
+                      type="button"
+                      className={styles.cardMain}
+                      aria-expanded={expanded}
+                      data-testid={`slice-layer-card-${sliceKey}-${id}`}
+                      onClick={() => setOpenLayer((k) => (k === id ? null : id))}
+                    >
+                      <span className={styles.cardTop}>
+                        <span className={styles.ord}>{l.ordinal}</span>
+                        <span className={styles.name}>{t.names[id] ?? id}</span>
+                      </span>
+                      {/* 数值本身 + 单位（裸数会被读成层数/跳数 —— WO-UNIT-MEANING 同口径） */}
+                      <span>
+                        <span className={`${styles.num} ${NUM_CLASS[l.status]}`} data-testid={`slice-layer-count-${sliceKey}-${id}`}>
+                          {l.count}
+                        </span>
+                        <span className={styles.unit}>{l.unit}</span>
+                      </span>
+                      <span className={styles.statusLine} data-testid={`slice-layer-status-${sliceKey}-${id}`}>
+                        {STATUS_LABEL[l.status]}
+                        {l.status === "not_in_slice" && l.platformCount !== undefined && ` · ${t.platformHas(l.platformCount, l.unit)}`}
+                      </span>
+                    </button>
+                    {/* 诚实位记号：口径/缺席原因降到了浮层，但第一层看得见「这里有话要说」
+                        （规范 §1：静默降层等于删除）。 */}
+                    <span className={styles.cardMarkSlot}>
                       <WhyPopover
                         label={t.whyLabel}
                         marked={l.status !== "present"}
@@ -152,28 +170,17 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
                       >
                         <span className={styles.popSec}>
                           <span className={styles.popTitle}>{t.carrierLabel}</span>
-                          <div className={styles.carrier}>{l.carrier}</div>
+                          <span className={styles.carrier}>{l.carrier}</span>
                         </span>
                         {l.absentReason && (
                           <span className={styles.popSec}>
                             <span className={styles.popTitle}>{t.reasonLabel}</span>
-                            <div>{l.absentReason}</div>
+                            <span>{l.absentReason}</span>
                           </span>
                         )}
                       </WhyPopover>
                     </span>
-                    {/* 数值本身 + 单位（裸数会被读成层数/跳数 —— WO-UNIT-MEANING 同口径） */}
-                    <span>
-                      <span className={`${styles.num} ${NUM_CLASS[l.status]}`} data-testid={`slice-layer-count-${sliceKey}-${id}`}>
-                        {l.count}
-                      </span>
-                      <span className={styles.unit}>{l.unit}</span>
-                    </span>
-                    <span className={styles.statusLine} data-testid={`slice-layer-status-${sliceKey}-${id}`}>
-                      {STATUS_LABEL[l.status]}
-                      {l.status === "not_in_slice" && l.platformCount !== undefined && `· ${t.platformHas(l.platformCount, l.unit)}`}
-                    </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>

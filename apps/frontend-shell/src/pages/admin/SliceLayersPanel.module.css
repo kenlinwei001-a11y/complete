@@ -72,26 +72,41 @@
   gap: 8px;
 }
 
-/* ── 层卡（第一层：名 + 数 + 状态，视线距离 ≤ 一张卡宽 · R-UI-1） ─────────── */
+/* ── 层卡（第一层：名 + 数 + 状态，视线距离 ≤ 一张卡宽 · R-UI-1） ───────────
+   卡是 div、主体是 button、浮层记号是兄弟节点：button 套 button 是非法 DOM 嵌套。 */
 .card {
+  position: relative;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  min-height: 34px;
+}
+.card:hover {
+  border-color: var(--accent);
+}
+/* 展开态高亮走 color-mix(var(--accent))，**不写死蓝色**：--accent 三套主题各不同
+   （暗色 #4c90f0 / 浅色 #3b5bdb / warm #E8590C），写死就会出现「橙描边 + 蓝底」这种主题错配。 */
+.card[data-expanded="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.cardMain {
   display: grid;
   gap: 3px;
-  padding: 8px 10px;
-  border: 1px solid var(--line2);
+  width: 100%;
+  padding: 8px 22px 8px 10px; /* 右侧留出 ? 记号的位置 */
+  border: none;
   border-radius: 10px;
   background: none;
   text-align: left;
   cursor: pointer;
   color: var(--txt);
   font: inherit;
-  min-height: 34px;
 }
-.card:hover {
-  border-color: var(--accent);
-}
-.card[aria-expanded="true"] {
-  border-color: var(--accent);
-  background: rgba(76, 144, 240, 0.08);
+.cardMarkSlot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  line-height: 1;
 }
 .cardTop {
   display: flex;
@@ -202,6 +217,7 @@
   line-height: 1.5;
 }
 .carrier {
+  display: block;
   font-size: 10.5px;
   font-family: var(--font-mono);
   color: var(--muted2);
@@ -215,10 +231,11 @@
 }
 /* 表面（背景/边/圆角/投影）由全局 .popover-surface 提供 —— 不自写 background（欠账 #104）。 */
 .pop {
+  display: block;
   position: absolute;
   z-index: 300;
   top: 100%;
-  left: 0;
+  right: 0;
   width: min(380px, 78vw);
   max-height: 260px;
   overflow: auto;
@@ -231,12 +248,16 @@
   cursor: auto;
 }
 .popTitle {
+  display: block;
   font-size: 10px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
   font-family: var(--font-mono);
   color: var(--muted2);
   margin-bottom: 3px;
+}
+.popSec {
+  display: block;
 }
 .popSec + .popSec {
   margin-top: 8px;
