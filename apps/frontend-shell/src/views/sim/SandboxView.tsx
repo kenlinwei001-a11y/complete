@@ -15,6 +15,7 @@ import {
   type SimCompareSeries,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import zh from "@/locales/zh";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
@@ -23,7 +24,15 @@ import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
+import consoleStyles from "./SandboxConsole.module.css";
 import styles from "./SimViews.module.css";
+
+/**
+ * 治理横幅上**先显几条**缺件。纯呈现常数（不是业务阈值 —— 它不参与任何判定，
+ * 改成 2 或 5 都不会让任何结论变），且截断量当面写出来（「另有 N 条」+ 进抽屉看全），
+ * 所以它不可能变成一条"看起来只有这么多"的谎。
+ */
+const BANNER_GAP_PREVIEW = 3;
 
 /**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
@@ -223,6 +232,65 @@ function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; cu
           <TaskRun taskId={taskId} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**：为什么现在不能推演。
+ *
+ * ── 为什么只留这一条 ──────────────────────────────────────────────────────────
+ * 就绪认证整块（L0–L4 stepper、三维准备度、世界完整度 gauge、entering 清单、缺件清单）
+ * 是**建模者**的工作台，收进诊断抽屉。但其中有**一位**信息是决策者必须当面看到的：
+ * 「这个沙盘还没通过就绪认证，所以你现在看到的结论只是试跑」。
+ * 那句话不该藏在抽屉里 —— 藏起来就等于默认让人把未认证的结论当认证结论用。
+ *
+ * ── 三条硬判据 ────────────────────────────────────────────────────────────────
+ * ① `canEnterSimulation === true` ⇒ **返回 null**（不渲染，不占像素）。「一切正常」不需要横幅。
+ * ② `cert` 还没取到（认证 entitlement 关 / 请求未回）⇒ 也返回 null。
+ *    **不知道**不等于**不能推演**，拿一条警告去填未知就是在编造治理结论。
+ * ③ 显示的每一条 gap 都是 `cert.gaps[]` 的原文（gapCode / ref / detail 逐字透传），
+ *    截断了必须写明还剩几条，并给一条进抽屉看全的路。
+ */
+function SimGovernanceBanner({
+  cert,
+  onOpenDiagnostics,
+}: {
+  cert: SimCertification | null;
+  onOpenDiagnostics: () => void;
+}) {
+  // ②：cert 未取到时不出横幅（未知 ≠ 不可推演）。
+  if (cert === null) return null;
+  // ①：已认证 ⇒ 整条不渲染。
+  if (cert.canEnterSimulation) return null;
+  const shown = cert.gaps.slice(0, BANNER_GAP_PREVIEW);
+  const rest = cert.gaps.length - shown.length;
+  return (
+    <div className={consoleStyles.banner} data-testid="sandbox-gov-banner" role="status">
+      <span className={consoleStyles.bannerTitle} data-testid="sandbox-gov-banner-title">
+        ◐ {zh.sim.sandbox.banner.title}
+      </span>
+      {shown.length > 0 ? (
+        <span className={consoleStyles.bannerGaps} data-testid="sandbox-gov-banner-gaps">
+          {zh.sim.sandbox.banner.why}
+          {shown.map((g, i) => (
+            <span key={`${g.gapCode}-${i}`} data-testid={`sandbox-gov-banner-gap-${i}`}>
+              {i > 0 ? "；" : ""}
+              <code>{g.gapCode}</code> · {g.ref} — {g.detail}
+            </span>
+          ))}
+          {rest > 0 ? <span data-testid="sandbox-gov-banner-more">（{zh.sim.sandbox.banner.more(rest)}）</span> : null}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="btn sm ghost"
+        data-testid="sandbox-gov-banner-cta"
+        aria-label={zh.sim.sandbox.banner.ctaAria}
+        onClick={onOpenDiagnostics}
+      >
+        {zh.sim.sandbox.banner.cta}
+      </button>
     </div>
   );
 }
@@ -521,12 +589,24 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
 
-  // ── 右栏可折叠区：旧主屏的就绪认证 / 多场景对比 / AI 指挥台，一个都不许掉 ─────────
-  const rail: SandboxConsoleRailSection[] = [
+  /**
+   * WO-SANDBOX-DECLUTTER · **诊断抽屉**（建模者 / 调试者那两档）。
+   *
+   * 病灶（仓主亲眼所见）：「就绪认证」L0–L4 + 世界完整度 gauge + 「将进入沙盘的状态变量（13）」
+   * 13 条全展开 + 「世界列表」7 个世界各带一个按钮 —— 全部常驻右栏，把决策者要看的
+   * 卡点/堵点/断点挤到看不见，右栏本身也塞爆。
+   *
+   * 这些内容**一条都没删**（它们是真功能、也是诚实位），只是从"常驻右栏"改成
+   * "默认折叠的诊断抽屉"。抽屉入口带**真计数**（`issues`）：就绪认证报 `cert.gaps.length`
+   * ——也就是「还差哪几件才算就绪」的真条数，不是装饰徽标。
+   */
+  const diagnostics: SandboxConsoleRailSection[] = [
     {
       id: "readiness",
       title: "就绪认证",
       defaultOpen: true,
+      // 缺件清单的真条数 = 这一格真正的待办数（cert 未取到时不报数，不拿 0 冒充"没问题"）。
+      issues: cert?.gaps.length ?? 0,
       node: (
         <div data-testid="sandbox-readiness">
           {/* WO-SIM-SCOPE-LOCAL：局部范围的目标对象类型选择器（候选来自本体派生 cfg.nodeTypes·R14 零行业实体名）。
@@ -690,6 +770,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       ),
     },
     {
+      /**
+       * WO-SANDBOX-DECLUTTER · 本体派生计数（旧顶栏 `sandbox-config-summary`）。
+       * 「3 类对象 · 1 类链路 · 2 状态变量 · 1 传导规则」是**调试者**的读数：
+       * 它回答「这一屏的骨架从哪来」，不回答「今天该动哪个决策」。搬进抽屉，字一个没改。
+       */
+      id: "derived",
+      title: "本体派生",
+      node: (
+        <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
+          本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
+          {cfg.propagationCount} 传导规则
+        </span>
+      ),
+    },
+  ];
+
+  // ── 右栏可折叠区：决策者用得上的两样（多场景对比 / AI 指挥台）─────────────────
+  const rail: SandboxConsoleRailSection[] = [
+    {
       id: "compare",
       title: "多场景对比",
       node: compare ? (
@@ -718,13 +817,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   return (
     <div data-testid="sandbox-view" className={styles.head}>
       <SandboxConsole
+        /**
+         * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
+         *
+         * 判据只有一个：`cert.canEnterSimulation === false`。为 `true` 时这个函数返回 `null` ⇒
+         * 横幅**不渲染**（不是 `display:none`），一个像素都不占 —— 「没有问题」时屏上不该有
+         * 任何提示占位，那是把噪音当成安全感。
+         *
+         * 内容取 `cert.gaps[]` 的**真条目**（gapCode + ref + detail 原文透传，前端不改写、不总结），
+         * 只在屏上显前几条，其余条数明写并给「查看详情 →」进抽屉看全 —— 截断必须看得见，
+         * 不许让人以为"就这几条"。
+         */
+        banner={(openDiag) => <SimGovernanceBanner cert={cert} onOpenDiagnostics={openDiag} />}
         // 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值，量纲仍是 0–100 状态指数）
         topTags={
           <>
-            <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
-              本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
-              {cfg.propagationCount} 传导规则
-            </span>
             <span
               data-testid="sandbox-kpis"
               style={{ display: "flex", gap: 8, alignItems: "center", font: "600 10px var(--font-mono)" }}
@@ -787,6 +894,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
         }
         rail={rail}
+        diagnostics={diagnostics}
       />
     </div>
   );

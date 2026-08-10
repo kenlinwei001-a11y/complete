@@ -97,6 +97,17 @@ function mount(cfg: SandboxViewConfig = CFG) {
 /** 最后一次认证请求的 URL（= 屏上那份数字真正问的是哪个范围）。 */
 const lastCertUrl = () => certUrls[certUrls.length - 1] ?? "";
 
+/**
+ * WO-SANDBOX-DECLUTTER · 就绪认证（含范围切换器与范围对账）已收进**默认折叠的诊断抽屉**：
+ * 主屏只留决策者那一档，建模者那一档按需展开。折叠时抽屉内部**不渲染**，故本门的 UI 交互
+ * 都要先点开它。**接缝本身一行没变** —— 会话建立时那一发 GLOBAL 认证请求仍在挂载即发出
+ * （下面第一条断言就咬这个），抽屉只影响"人怎么点到范围切换器"，不影响"参数怎么随行"。
+ */
+async function openDiagnostics(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByTestId("sc-diag-toggle"));
+  await screen.findByTestId("sc-diag-panel");
+}
+
 beforeEach(() => {
   certUrls.length = 0;
   installSimHandlers();
@@ -115,7 +126,8 @@ describe("WO-SIM-SCOPE-LOCAL · ① 局部范围接缝（真 endpoints + 真 URL
     // GLOBAL 档不该带 target（带了就是另一种撒谎：全局却声称按某类型裁过）。
     expect(lastCertUrl()).not.toContain("target=");
 
-    // 切到「局部」。
+    // 切到「局部」（范围切换器住在诊断抽屉里 —— 先开抽屉）。
+    await openDiagnostics(user);
     await screen.findByTestId("sim-cert-scope-LOCAL");
     await user.click(screen.getByTestId("sim-cert-scope-LOCAL"));
 
@@ -138,6 +150,7 @@ describe("WO-SIM-SCOPE-LOCAL · ① 局部范围接缝（真 endpoints + 真 URL
     const user = userEvent.setup();
     mount();
     await screen.findByTestId("sandbox-view");
+    await openDiagnostics(user);
     await screen.findByTestId("sim-cert-scope-LOCAL");
     await user.click(screen.getByTestId("sim-cert-scope-LOCAL"));
     await waitFor(() => expect(lastCertUrl()).toContain("target=TypeA"));
@@ -154,7 +167,8 @@ describe("WO-SIM-SCOPE-LOCAL · ① 局部范围接缝（真 endpoints + 真 URL
     await screen.findByTestId("sandbox-view");
     await waitFor(() => expect(certUrls.length).toBeGreaterThan(0));
 
-    // 诚实降级位在屏上（不是静默禁用）。
+    // 诚实降级位在屏上（不是静默禁用）—— 在诊断抽屉里，展开即可见。
+    await openDiagnostics(user);
     expect(screen.getByTestId("sandbox-cert-local-unavailable").textContent ?? "").toContain("局部范围不提供");
     expect(screen.queryByTestId("sandbox-cert-target-select")).toBeNull();
 
@@ -175,6 +189,7 @@ describe("WO-SIM-SCOPE-LOCAL · ① 局部范围接缝（真 endpoints + 真 URL
 
 describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围会话）", () => {
   it("建会话时把**选中的范围**真写进 SimSession.scope（不再是空对象），屏上可对账", async () => {
+    const user = userEvent.setup();
     const bodies: unknown[] = [];
     server.use(
       http.post("*/a/v1/sim/sessions", async ({ request }) => {
@@ -191,14 +206,17 @@ describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围�
     await waitFor(() => expect(bodies.length).toBeGreaterThan(0));
     // 修前恒为 `{}`（空范围）：向导里选的范围被丢弃，用户跑的是另一个会话。
     expect(bodies[0]).toEqual({ kind: "GLOBAL", target: null });
+    await openDiagnostics(user);
     await waitFor(() =>
       expect(screen.getByTestId("sandbox-session-scope-of-record").textContent ?? "").toContain("GLOBAL"),
     );
   });
 
   it("诚实位：范围当前只作用于就绪认证口径，**不许**暗示它已裁剪推演本身（G-SIM-SCOPE-UNREAD）", async () => {
+    const user = userEvent.setup();
     mount();
     await screen.findByTestId("sandbox-view");
+    await openDiagnostics(user);
     const note = (await screen.findByTestId("sandbox-scope-reach-note")).textContent ?? "";
     expect(note).toContain("只作用于就绪认证口径");
     expect(note).toContain("尚未裁剪推演本身");
@@ -221,6 +239,7 @@ describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围�
     await screen.findByTestId("sandbox-view");
     await waitFor(() => expect(scopes).toHaveLength(1));
 
+    await openDiagnostics(user);
     await screen.findByTestId("sim-cert-scope-LOCAL");
     await user.click(screen.getByTestId("sim-cert-scope-LOCAL"));
 

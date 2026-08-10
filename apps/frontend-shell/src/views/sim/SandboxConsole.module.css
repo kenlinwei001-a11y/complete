@@ -8,12 +8,109 @@
  * 设计稿的 --vio 取 --c-equip（#9d8bf0，仓里最近的紫），--cyn 取 --c-capacity（#43b7d7）。
  */
 
+/* WO-SANDBOX-DECLUTTER · 从 grid 改 flex 的原因（两条，都是实的）：
+ *  ① 本单新增两个**条件渲染**的行（治理横幅 / 诊断抽屉），固定 `grid-template-rows` 的
+ *     行数与孩子数一对不上就会错位；flex 列天然按实际孩子排。
+ *  ② `.mid` 改成 `flex: 1 1 0` ⇒ 三栏区的高度由**剩余空间**决定，
+ *     而不是由"最高的那一列的内容"决定。这就堵死了「右栏内容一多、整行被撑高、
+ *     中栏画布下方拉出一大片空白」那条路（仓主截图里的症状 ③）。
+ */
 .root {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   /* 顶栏 + 面包屑之下的可用高度；min-height 保证三栏区不塌 */
   min-height: 76vh;
+}
+
+/* ── 治理横幅（canEnterSimulation === false 才渲染；为 true 时整条不存在）──────── */
+.banner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  background: var(--panel2);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.bannerTitle {
+  font-weight: 700;
+  color: var(--warn);
+}
+.bannerGaps {
+  margin: 0;
+  color: var(--muted);
+}
+.bannerGaps code {
+  font: 10px var(--font-mono);
+  color: var(--muted2);
+}
+
+/* ── 诊断抽屉 ─────────────────────────────────────────────────────────────── */
+.diagBtn {
+  background: none;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.diagBtn:hover,
+.diagBtn[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.diagBtn[data-issues="0"] b {
+  color: var(--muted2);
+}
+.diagBtn b {
+  color: var(--warn);
+}
+.diagPanel {
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  background: var(--panel);
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: none;
+}
+.diagHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  flex: none;
+}
+.diagHead b {
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.12em;
+  color: var(--txt);
+}
+.diagBody {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 2px 4px;
+}
+.diagBody .railSection:first-child {
+  border-top: 0;
+}
+.diagBody summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ── 顶栏 ─────────────────────────────────────────────────────────────────── */
@@ -221,7 +318,10 @@
   display: grid;
   grid-template-columns: 172px minmax(0, 1fr) 300px;
   gap: 6px;
-  min-height: 0;
+  /* `flex: 1 1 0` = 高度取**剩余空间**，不取"最高那一列的内容高度"。
+     min-height 兜底：其余行（阻滞点逐条清单可能十几行）吃掉全部空间时，三栏区仍有可用高度。 */
+  flex: 1 1 0;
+  min-height: 440px;
 }
 @media (max-width: 1240px) {
   .mid {
@@ -257,6 +357,8 @@
   padding: 7px 9px;
   overflow: auto;
   min-height: 0;
+  /* 可收缩 + 自己滚 ⇒ 内容再长也不撑破所在的 `.pane`（右栏溢出的第二条堵法） */
+  flex: 1 1 auto;
 }
 .paneBodyFlush {
   padding: 0;
@@ -786,6 +888,14 @@
   font: 11px var(--font-mono);
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+/* 右栏折叠区的滚动容器：`max-height` + 自己滚 ⇒ 折叠区内容再多也**不撑高三栏那一行**。
+   （成因与修法见 SandboxConsole.tsx 里 `sc-rail-stack` 的注。） */
+.railStack {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 42%;
+  overflow: auto;
 }
 .railSection {
   border-top: 1px solid var(--line);
