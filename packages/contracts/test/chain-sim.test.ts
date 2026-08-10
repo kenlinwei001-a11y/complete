@@ -18,7 +18,9 @@ import {
   ChainScopeSchema,
   ChainStepSchema,
   CANDIDATE_JOIN_RANK,
+  NO_CANDIDATE_KINDS,
   SolutionCandidateSchema,
+  solutionCandidateId,
   candidateDimImprovement,
   candidateDimMoved,
   candidatesEffectDistinct,
@@ -255,7 +257,18 @@ describe("S0-① 契约往返 · zod 4 strict", () => {
     // 空候选集必须同时给 `noCandidateReason`（诚实缺席不许静默空）。理由变了就得改断言，
     // 否则它会变成一条"碰巧还绿"的测试——绿着但证的已不是它自称在证的那件事。
     expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [], noCandidateReason: undefined })).toThrow();
-    expect(ChainImpedimentSchema.safeParse({ ...impediment, candidates: [], noCandidateReason: "杠杆集为空" }).success).toBe(true);
+    // 金值再更新（WO-SANDBOX-S3-ENUM）：**只给原因已经不够了**，还必须给 `noCandidateKind`。
+    // 理由（又变了一次，照旧记下来）：`noCandidateReason` 是给人读的散文，分不出
+    // 「我算过了，没有」（NONE）与「我没算出来」（UNAVAILABLE）—— 而这两件事修法相反。
+    // 只给散文 = 让消费方去猜，等于把两个命题塌成一个。故空候选集现在是**两样都必填**。
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [], noCandidateReason: "杠杆集为空" })).toThrow();
+    expect(
+      ChainImpedimentSchema.safeParse({ ...impediment, candidates: [], noCandidateReason: "杠杆集为空", noCandidateKind: "NONE" }).success,
+    ).toBe(true);
+    // 「算不了」是另一种返回，不是同一种：定性不同、原因不同，消费方据 kind 分流。
+    expect(
+      ChainImpedimentSchema.safeParse({ ...impediment, candidates: [], noCandidateReason: "探针预算耗尽", noCandidateKind: "UNAVAILABLE" }).success,
+    ).toBe(true);
     expect(() => ChainImpedimentSchema.parse({ ...impediment, solutions: [] })).toThrow(); // 真·多写字段仍抛
     expect(() => LossAttributionSchema.parse({ stepId: "s", nonValueDays: 1, pctOfChainLoss: 1, rank: 1 })).toThrow();
   });
@@ -478,6 +491,42 @@ describe("S3 · SolutionCandidate 契约（A4 效果层判据的单一来源）"
     expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [c], noCandidateReason: "空" })).toThrow();
     expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [{ ...c, impedimentId: "imp-other" }] })).toThrow();
     expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [] })).toThrow();
+  });
+
+  it("候选 id 是**单源构造**：同参必同 id，且任一参数变了 id 必变（拼法散到别处就会漂）", () => {
+    const base = {
+      impedimentId: "imp-1",
+      objectType: "Line",
+      leverObjectId: "L-1",
+      prop: "utilization",
+      rungKind: "THRESHOLD" as const,
+      toValue: 95,
+    };
+    const id = solutionCandidateId(base);
+    expect(solutionCandidateId(base)).toBe(id); // 确定性（R6）
+    // 六个入参逐个扰动 → id 必须都变。少了任何一维，两条不同的候选就会撞成同一个 id。
+    expect(solutionCandidateId({ ...base, impedimentId: "imp-2" })).not.toBe(id);
+    expect(solutionCandidateId({ ...base, objectType: "Process" })).not.toBe(id);
+    expect(solutionCandidateId({ ...base, leverObjectId: "L-2" })).not.toBe(id);
+    expect(solutionCandidateId({ ...base, prop: "attendance" })).not.toBe(id);
+    expect(solutionCandidateId({ ...base, rungKind: "PEER_BEST" })).not.toBe(id);
+    expect(solutionCandidateId({ ...base, toValue: 96 })).not.toBe(id);
+  });
+
+  it("「空集」与「算不了」是两种不同的返回：空候选必须同时给原因与定性，有候选则两者都不许在场", () => {
+    expect(NO_CANDIDATE_KINDS).toEqual(["NONE", "UNAVAILABLE"]);
+    const empty = { ...impediment, candidates: [] as SolutionCandidate[] };
+    // 只给散文原因不够 —— 散文分不出「算过了没有」与「没算出来」，而两者修法相反。
+    expect(() => ChainImpedimentSchema.parse({ ...empty, noCandidateReason: "杠杆集为空" })).toThrow();
+    // 只给定性也不够 —— 机器分得清了，人还是不知道缺哪一维。
+    expect(() => ChainImpedimentSchema.parse({ ...empty, noCandidateKind: "NONE" })).toThrow();
+    expect(ChainImpedimentSchema.safeParse({ ...empty, noCandidateReason: "杠杆集为空", noCandidateKind: "NONE" }).success).toBe(true);
+    expect(ChainImpedimentSchema.safeParse({ ...empty, noCandidateReason: "探针预算耗尽", noCandidateKind: "UNAVAILABLE" }).success).toBe(true);
+    // 有候选却还挂着"没有候选"的定性 = 自相矛盾，抛。
+    const c = cand("c-a", [dim("breach", 1, 3)]);
+    expect(() => ChainImpedimentSchema.parse({ ...impediment, candidates: [c], noCandidateKind: "NONE" })).toThrow();
+    // 枚举**没跑**（字段缺省）与 枚举跑了但产不出（空数组）不是一回事：前者两样都不该有。
+    expect(ChainImpedimentSchema.safeParse(impediment).success).toBe(true);
   });
 
   it("join 优先序是显式全序常量（同一 (对象,属性) 被多路命中时取最强那条）", () => {
