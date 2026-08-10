@@ -394,25 +394,34 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     // 剩下的环节仍然守恒（分母跟着缩小，不是留着 60 天的洞）。
     const sum = after.attribution.reduce((a, x) => a + x.pctOfChainLoss, 0);
     expect(Math.abs(sum - 100), `删了一段之后 Σ=${sum}`).toBeLessThanOrEqual(WO_TOLERANCE_PCT);
-    expect(after.totals.nonValueDays).toBeCloseTo(before.totals.nonValueDays - 60, 9);
-    // 且损失结构真的重排（账期本来占 85%，删掉后老化/供应商交期升到 Top）。
+
+    // ── WO-LEADTIME-SPLIT 改判：这 60 天该从**现金侧**消失，交付侧一字不动 ──
+    // 改前本行断的是 `nonValueDays 少 60 天`（因为账期当时混在损失分母里）。
+    // 拆分之后账期已不在交付侧任何读数里，那条旧断言在新口径下**必然失败**，
+    // 且失败得对 —— 它证明的正是「账期不再污染交付侧」。故改成分别断两侧：
+    expect(after.totals.settlementDays, "删掉客户 ⇒ 结算段（账期）必须真的少 60 天").toBeCloseTo(before.totals.settlementDays - 60, 9);
+    expect(after.totals.cashConversionDays, "现金周转期必须跟着少 60 天").toBeCloseTo(before.totals.cashConversionDays - 60, 9);
+    expect(after.totals.nonValueDays, "删账期动了交付侧损失分母 ⇒ 账期又回到分母里了").toBeCloseTo(before.totals.nonValueDays, 9);
+    expect(after.totals.deliveryLeadTimeDays, "删账期动了交付前置期 ⇒ 两个指标又混算了").toBeCloseTo(before.totals.deliveryLeadTimeDays, 9);
+    expect(after.cash.steps, "承载对象没了 ⇒ cash 块里不许还留着账期那一段").toEqual([]);
+
+    // 归因表的主因结构不受删账期影响（拆分之后账期本就不在表里 —— 这条现在断的是「删它确实没动归因表」）。
+    expect(after.attribution, "删掉账期居然改变了交付侧归因表 ⇒ 账期仍在归因分母里").toEqual(before.attribution);
     const ranked = [...after.attribution].sort((a, b) => b.pctOfChainLoss - a.pctOfChainLoss);
     const top = ranked[0]!;
-    expect(top.stepId).not.toBe("order.settlement_terms");
+    expect(top.stepId, "账期段绝不该出现在交付侧归因表里").not.toBe("order.settlement_terms");
     // ── 金值改法（WO-CHAIN-24）：40 → 30 → **不再用魔数** ─────────────────────
-    // 这个阈值已经被改过一次（40→30，因为 D1 节拍落库让分母多了 8 天），本单又会让它失效第二次
-    // （采购三腿再加 6 天 ⇒ 实测从 38.47% 稀释到 28.93%）。**同一个魔数被链路增长打穿两次，
-    // 说明写死数字本身就是错的写法** —— 每次链路变长都要来改一次，改的人还得重新猜意图。
-    // 故改成从**本次数据自身**推期望：断言的意图一直是「删掉账期后结构真的重排、
-    // 新 Top 仍是一个占大头的单一主因」，那就直接断这两件事：
+    // 这个阈值已经被改过一次（40→30，因为 D1 节拍落库让分母多了 8 天），后来采购三腿又让它失效第二次。
+    // **同一个魔数被链路增长打穿两次，说明写死数字本身就是错的写法** —— 每次链路变长都要来改一次。
+    // 故改成从**本次数据自身**推期望：断言的意图是「归因表能指出一个占大头的单一主因」，直接断两件事：
     //   ① 显著高于「均分」（若各环节平均分配，每条只占 100/行数）；
-    //   ② 是**唯一**最大（与第二名严格拉开，并列 = 没重排出主因）。
+    //   ② 是**唯一**最大（与第二名严格拉开，并列 = 说不出主因）。
     const evenShare = 100 / after.attribution.length;
     expect(
       top.pctOfChainLoss,
       `新 Top ${top.stepId}=${top.pctOfChainLoss.toFixed(2)}% 没有明显高于均分 ${evenShare.toFixed(2)}% ⇒ 结构没重排出主因`,
     ).toBeGreaterThan(evenShare * 2);
-    expect(top.pctOfChainLoss, "新 Top 与第二名并列 ⇒ 说不出「谁接替账期成了主因」").toBeGreaterThan(ranked[1]!.pctOfChainLoss);
+    expect(top.pctOfChainLoss, "Top 与第二名并列 ⇒ 说不出「谁是主因」").toBeGreaterThan(ranked[1]!.pctOfChainLoss);
   });
 
   // ════════════════════════════════════════════════════════════════════════
