@@ -1130,6 +1130,13 @@ export const zh = {
       statusPresent: "有数据",
       statusNotInSlice: "本切片未纳入",
       statusAbsent: "缺席",
+      // WO-SLICE-DEFAULT-ARGS：第四态「未判定」。子图没解出来时这十六层**压根没被算过**，
+      // 此时显「0 · 缺席」是静默错答——它说的是「查过了，平台没有」，真相是「没查成」。
+      // 「算不了」「查了确实为空」「后端出错」必须是屏上三件不同的事。
+      statusPending: "未判定",
+      pendingNum: "—",
+      pendingHeadline: "十六层暂未判定",
+      pendingSummary: "子图未解出 ⇒ 各层还没被算过（不是「平台没有」）。先给出 root 实参再看层。",
       // 三态各自的一句话结论（第一层只放结论，口径/原因进浮层）
       summaryLine: (present: number, notInSlice: number, absent: number) =>
         `${present} 层有数据 · ${notInSlice} 层平台有但本切片未纳入 · ${absent} 层缺席`,
@@ -1168,9 +1175,20 @@ export const zh = {
         noCandidates: "取不到候选值（诚实留白：不拿假值凑）",
         inputLabel: (arg: string) => `或自填 ${arg}`,
         apply: "试切",
-        clear: "清空参数",
+        clear: "清空参数（看原始诚实态）",
         applied: (pairs: string) => `当前试切参数：${pairs}`,
         whyLabel: "为什么是空的",
+        // ── WO-SLICE-DEFAULT-ARGS：首屏默认实参（修法 B）────────────────────────
+        // 首屏默认那 4 条多跳切片的 root selector 全带 {{args.X}}，调用侧传 {} ⇒ 十六层全空。
+        // 默认值**取自后端从真实 root 对象读出的候选**（零写死 · R14），并必须公示在屏上：
+        // 悄悄替用户选一个还不说，比空卡更坏。
+        autoDefaultBadge: "默认实参 · 自动取自真实数据",
+        autoDefaultWhyLabel: "这个默认值哪来的",
+        autoDefaultWhy:
+          "这条切片的 root selector 声明了 {{args.X}} 占位符，不给实参则过滤恒不匹配、十六层全空。" +
+          "默认实参取自后端在本租户**真实 root 对象**上读出的候选值（按 objectKey 字典序取第一个，同快照同结果），" +
+          "不是写死的示例值；取不到真实候选时不猜不编，直接回到「需要参数，请先选择」的诚实态。",
+        switchLabel: (arg: string) => `换 ${arg}`,
       },
     },
   },
