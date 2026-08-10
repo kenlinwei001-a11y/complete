@@ -120,10 +120,19 @@ export class ProcessRuntimeService {
   /**
    * 推进实例：用调用方给的**外部事实**重判当前步的 gate。
    *
-   * 三种结局：
-   *  · gate 未满足 → 当前步落成对应的 `WAITING_*`，实例 `WAITING`（**这是常态，不是失败**）；
-   *  · gate 满足且还有后续步 → 当前步 `DONE`（落 endedAt/durationMs/output/decision），推进到下一步并**递归判下一步的 gate**；
-   *  · gate 满足且是末步 → 实例 `DONE`。
+   * ══ 一次 advance 只做**一件**事 ═══════════════════════════════════════════
+   * 要么让当前步**开工**，要么让当前步**收工**。取决于它现在的状态：
+   *
+   * | 当前步状态        | gate 未满足        | gate 满足                              |
+   * |-------------------|--------------------|----------------------------------------|
+   * | `PENDING`/`WAITING_*` | 停在（新的）等待态 | → `RUNNING`（开工），**不收工**        |
+   * | `RUNNING`         | 退回等待态         | → `DONE`（收工），下一步随即入场并判 gate |
+   *
+   * ⚠ **初版在这里是错的，实测抓出来的**：初版让 gate 一满足就一路跑到底，
+   * 于是一条没有任何前置条件的流程**在创建的那一刻就 `DONE` 了**，
+   * `Duration` 恒为 0 —— 一个「瞬间完成」的 45 天产能立项流程。
+   * 根因是把 `gate`（能不能**开工**）读成了「是不是**做完了**」。
+   * 前者是前置条件，后者要由调用方明说，两者不可互相推断。
    *
    * ⚠ 调用方**不能直接指定状态**（契约里 body 只有事实、没有 status 字段）。
    * 给了 status 字段，五个等待态就退化成五个可以被随便写的字符串，
@@ -166,19 +175,19 @@ export class ProcessRuntimeService {
     if (cursor < 0) cursor = tasks.findIndex((t) => t.status !== "DONE" && t.status !== "CANCELLED");
     if (cursor < 0) cursor = tasks.length; // 全做完了
 
-    // 进来时停在哪一步。`output`/`decision` **只落在这一步**上 ——
-    // 一次 advance 可能连过好几步（补齐数据后，后面几步本就无 gate），
-    // 把调用方给的产出往每一步上抄，等于伪造它没做过的记录。
-    const startCursor = cursor;
-
     let next: ProcessInstance = { ...instance };
-    // 依次推进。循环上界 = 步数，防止任何情况下的死循环。
-    for (let guard = 0; guard <= tasks.length && cursor < tasks.length; guard += 1) {
-      const task = tasks[cursor]!;
-      const verdict = evaluateGate(task.gate, ctx);
 
+    /**
+     * 让 `tasks[i]` **入场**：判它的 gate，落成等待态或 RUNNING，并同步实例状态。
+     *
+     * `startedAt` 在**入场即写**（不是等到 RUNNING 才写）：一个步从进入流程那一刻
+     * 就开始占用前置期，等待也是耗时。于是 `durationMs` = 该步的**总停留时长**（含等待），
+     * 而「其中此刻还在等多久」由 `waitingSince`/`waitedMs` 单独回答 —— 两个数各答各的问题。
+     */
+    const enter = (i: number) => {
+      const task = tasks[i]!;
+      const verdict = evaluateGate(task.gate, ctx);
       if (verdict.waitState) {
-        // ── 卡住 ──
         // `waitingSince` 只在**刚进入或换了等待成因**时重置。同一个态继续等，起点不动 ——
         // 否则每次刷新页面（每次 advance）都把「等了多久」清零，那个数字就永远是 0，
         // 前端显示的「已等 3 天」会变成「已等 0 秒」。这是本层最容易犯的静默错误。
@@ -191,39 +200,48 @@ export class ProcessRuntimeService {
           ...(verdict.waitRef ? { waitRef: verdict.waitRef } : {}),
         };
         if (!verdict.waitRef) delete (blocked as Partial<ProcessTask>).waitRef;
-        tasks[cursor] = touch(blocked);
+        tasks[i] = touch(blocked);
         next = { ...next, status: "WAITING", currentTaskId: task.id };
-        break;
+        return;
       }
+      // gate 已满足 ⇒ 开工。清掉等待痕迹（不再卡着了）。
+      const running: ProcessTask = { ...task, status: "RUNNING", startedAt: task.startedAt ?? nowIso };
+      delete (running as Partial<ProcessTask>).waitingSince;
+      delete (running as Partial<ProcessTask>).waitRef;
+      tasks[i] = touch(running);
+      next = { ...next, status: "RUNNING", currentTaskId: task.id };
+    };
 
-      // ── 通过 ── 当前步收工。
-      const startedAt = task.startedAt ?? nowIso;
-      const durationMs = Math.max(0, now.getTime() - Date.parse(startedAt));
-      const isEntryStep = cursor === startCursor;
-      const done: ProcessTask = {
-        ...task,
-        status: "DONE",
-        startedAt,
-        endedAt: nowIso,
-        durationMs,
-        ...(isEntryStep && body.output ? { output: body.output } : {}),
-        ...(isEntryStep && body.decision ? { decision: body.decision } : {}),
-      };
-      // 收工即清等待痕迹：留着 waitingSince 会让一个已完成的步看起来还在等。
-      delete (done as Partial<ProcessTask>).waitingSince;
-      delete (done as Partial<ProcessTask>).waitRef;
-      tasks[cursor] = touch(done);
+    if (cursor < tasks.length) {
+      const task = tasks[cursor]!;
+      if (task.status === "RUNNING") {
+        // ── 收工 ──（只有已开工的步才能收工；`output`/`decision` 落在这一步上）
+        const startedAt = task.startedAt ?? nowIso;
+        const done: ProcessTask = {
+          ...task,
+          status: "DONE",
+          startedAt,
+          endedAt: nowIso,
+          durationMs: Math.max(0, now.getTime() - Date.parse(startedAt)),
+          ...(body.output ? { output: body.output } : {}),
+          ...(body.decision ? { decision: body.decision } : {}),
+        };
+        // 收工即清等待痕迹：留着 waitingSince 会让一个已完成的步看起来还在等。
+        delete (done as Partial<ProcessTask>).waitingSince;
+        delete (done as Partial<ProcessTask>).waitRef;
+        tasks[cursor] = touch(done);
 
-      cursor += 1;
-      if (cursor >= tasks.length) {
-        next = { ...next, status: "DONE", endedAt: nowIso };
-        delete (next as Partial<ProcessInstance>).currentTaskId;
-        break;
+        cursor += 1;
+        if (cursor >= tasks.length) {
+          next = { ...next, status: "DONE", endedAt: nowIso };
+          delete (next as Partial<ProcessInstance>).currentTaskId;
+        } else {
+          enter(cursor); // 下一步随即入场并判它的 gate
+        }
+      } else {
+        // ── 开工（或继续卡着）── PENDING / WAITING_* 都走这里。
+        enter(cursor);
       }
-      // 下一步开工（RUNNING），下一轮循环判它的 gate。
-      const upcoming = tasks[cursor]!;
-      tasks[cursor] = touch({ ...upcoming, status: "RUNNING", startedAt: upcoming.startedAt ?? nowIso });
-      next = { ...next, status: "RUNNING", currentTaskId: upcoming.id };
     }
 
     if (dirty.size > 0) await this.repos.processTasks.putMany([...dirty.values()]);

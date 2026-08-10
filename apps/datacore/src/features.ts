@@ -189,6 +189,28 @@ export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "dc.lazy-solver-context",
 ]);
 
+/**
+ * WO-PROCESS-INSTANCE · **数据尚缺**暗发门 —— 同上两个集合一样不随 battery「all on」顺带开。
+ *
+ * ── 为什么必须单列（这条是实测踩出来的，不是照抄格式）──────────────────────
+ * `defaultOn:false` **单靠自己拦不住** demo 租户：`templateFeatures()` 对
+ * `battery-manufacturing` 的规则是「ALL_FEATURE_KEYS 全开，减去这几个暗发集合」，
+ * 于是任何新键只要不在某个集合里，`defaultOn:false` 就会被 L2 覆盖成开。
+ * 本单初版正是这么漏的：注册时写了 `defaultOn:false`，实测 `resolve("demo")` 仍为 `true`
+ * ——「我以为暗发了」和「它真的关着」是两个命题，靠一条断言（`process-instance.test.ts`
+ * 的 R3 用例）才抓出来。**新增暗发门必须同时进这三个集合之一，否则等于没暗发。**
+ *
+ * ── 本门的语义（与上两个都不同，故不合并）───────────────────────────────
+ * 上面两个是「路由会变慢」「性能收窄」；本门是**数据尚无**：
+ * 流程运行时的引擎与读端都已就绪，但平台自带的 65 条流程是**模板**，
+ * 没有任何「正在跑的单子」的种子数据。默认开 ⇒ 每个租户的卡点面板都是空的，
+ * 而**空面板与「一切顺利」在界面上分不开** —— 那是一个会说谎的诚实位。
+ * 有真实例数据源之后再议默认开（届时删掉本条即可）。
+ */
+export const INCOMPLETE_DATA_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "process.runtime",
+]);
+
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
   // 内置视图核心段（dash/graph/risk/order/plan-audit/plan-generate/project-sim/sop-balance/global-sim）
@@ -286,7 +308,14 @@ export class FeatureService {
     // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
     // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
     if (industry === "battery-manufacturing") {
-      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k) && !PERF_DARK_LAUNCH_FEATURES.has(k)));
+      return new Set(
+        ALL_FEATURE_KEYS.filter(
+          (k) =>
+            !QOS_DARK_LAUNCH_FEATURES.has(k) &&
+            !PERF_DARK_LAUNCH_FEATURES.has(k) &&
+            !INCOMPLETE_DATA_DARK_LAUNCH_FEATURES.has(k),
+        ),
+      );
     }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)
