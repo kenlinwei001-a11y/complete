@@ -307,7 +307,7 @@ thin-margin  : [finance_director(20),  sales_director(25),         gm(40)]  prio
 | `apps/datacore/src/approval-policy.ts` | 新增（引擎） |
 | `apps/datacore/migrations/030_approval_policy.sql` | 新增（3 表） |
 | `apps/datacore/src/repo/repo.ts` · `repo/memory.ts` · `repo/pg.ts` | R9 三处同改 |
-| `apps/datacore/src/app.ts` | import + 服务构造 + `services.approvalPolicy` + 9 条路由 |
+| `apps/datacore/src/app.ts` | import + 服务构造 + `services.approvalPolicy` + 10 条路由 |
 | `apps/datacore/src/features.ts` | `approval.policy-engine`（`defaultOn:false`）+ `GOVERNANCE_DARK_LAUNCH_FEATURES` + 模板过滤 |
 | `apps/datacore/test/approval-policy.test.ts` | 新增（28 条） |
 | `docs/WO-APPROVAL-POLICY-delivery.md` | 本文 |
