@@ -269,7 +269,19 @@ export const SkillDefinitionSchema = z.object({
   key: z.string(),
   version: z.number().int(),
   name: z.string(),
-  summary: z.string().max(400),
+  /**
+   * ⚠️ 上限 **200**，与 `skill-lint.ts` 的 `SUMMARY_MAX` **必须相等**（审核方 2026-08-09 裁决 X1）。
+   *
+   * 为什么不照 `body` 的两层治理办（契约 50000 管「存得下」· lint 3000 管「该不该这么写」，SPEC §9.3）：
+   * `summary` 会被**逐条注入 system prompt**（`agentcore/src/agent/prompts.ts` 的
+   * `- [id] name: summary`），长度**直接吃 token 预算且随 skill 数量线性放大** ——
+   * 它是**运行期成本字段**，不是「存得下就行」的字段。lint 自己的报错文案也写着
+   * 「summary 是触发器不是简介」。⇒ 契约层就该收紧，不留两层。
+   *
+   * 收紧前实测零破坏（2026-08-09）：出厂种子 8 条 summary，最长 71 字符，超 200 的 0 条。
+   * 复验命令：`node -e '...matchAll(/summary:\s*"([^"]*)"/g)...' apps/agentcore/src/mocks/seed.ts`
+   */
+  summary: z.string().max(200),
   body: z.string().max(50_000),
   /** 增量 §3（additive）：mime/description 让模型知道附件是什么、何时读（read_skill_resource） */
   resources: z.array(SkillAttachmentSchema),

@@ -123,7 +123,7 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       <SkillPublishGateFeedback rejection={rejection} onDismiss={() => setRejection(null)} />
 
       <label style={{ fontSize: 12, color: "var(--muted)" }}>summary（≤400 字，常驻 agent system prompt）</label>
-      <textarea style={{ width: "100%", minHeight: 50, marginBottom: 10 }} maxLength={400} value={summary} disabled={!editable} aria-label="summary" onChange={(e) => setSummary(e.target.value)} />
+      <textarea style={{ width: "100%", minHeight: 50, marginBottom: 10 }} maxLength={200} value={summary} disabled={!editable} aria-label="summary" onChange={(e) => setSummary(e.target.value)} />
       <label style={{ fontSize: 12, color: "var(--muted)" }}>body（markdown 全文）</label>
       <textarea className="mono" style={{ width: "100%", minHeight: 220, fontSize: 12 }} value={body} disabled={!editable} aria-label="body" onChange={(e) => setBody(e.target.value)} />
 
