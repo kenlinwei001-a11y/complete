@@ -2,14 +2,15 @@
   "__fixture_provenance": {
     "wo": "WO-LEADTIME-SPLIT（原 WO-NODE-SEMANTICS 捕获，本单因 totals 口径拆分重抓）",
     "capturedAt": "2026-08-10",
-    "branchHead": "7b1e5e4ea4b1842ed55b72c8ec3784d98721600f",
+    "branchHead": "3dec1e9be421ba9263ecaede6f4b1d52307a0587",
     "how": "内存态 datacore（seed 42·无数据库）经 test/helpers.makeApp + seedBattery 真跑一次 chain_loss_attribution，取返回体原样落盘（零手改）。重抓原因：totals.leadTimeDays 拆成 deliveryLeadTimeDays / cashConversionDays / settlementDays，旧 fixture 的 totals 形状已不存在。",
-    "why": "既有 test/fixtures/chain-loss-real.json 是更早一次的真捕获，evidence 只有 23 条、无 Cadence 行；D1 的节拍数据落库后本分支实测 26 条（多出 3 条 drillUnit=cadence_day）。本单的 SEAM 门必须咬到 cadence 换算式那一档，故另抓一份，不改动既有 fixture（别的门以它为基线）。",
+    "why": "既有 test/fixtures/chain-loss-real.json 是更早一次的真捕获；本份另抓是为了咬到 cadence 换算式那一档（drillUnit=cadence_day）。⚠ 2026-08-10 重抓记账：counts 从 evidence 26 / empty 8 / nodes 16 变为 28 / 16 / 18 —— **这不是本单造成的**。旧 counts 停在 2026-08-07 捕获点，此后 canonical 自身长出了新节点与新缺席行；同分支的 chain-loss-real.json 在本单动手**之前**就已是 28/16/18（`git show HEAD~1:apps/frontend-shell/test/fixtures/chain-loss-real.json` 可复核）。本单真正改变的只有 attribution：18 → 17，少的那条正是账期 order.settlement_terms —— 它按裁决移出损失归因表、单列进 cash 块。",
     "counts": {
-      "evidence": 26,
-      "empty": 8,
-      "nodes": 16,
-      "stepCount": 26
+      "evidence": 28,
+      "empty": 16,
+      "nodes": 18,
+      "attribution": 17,
+      "stepCount": 28
     }
   },
   "anchor": {

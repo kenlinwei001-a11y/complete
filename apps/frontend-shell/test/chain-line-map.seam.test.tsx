@@ -287,8 +287,17 @@ describe("半径映射 · 极端不均下最小站圈仍可见、最大站圈不
   });
 
   it("极小占比不显示成 0.00%（把「极小」与「没有」分开）", () => {
-    expect(formatPct(BOTTOM.pctOfChainLoss)).toBe("<0.01%");
-    expect(formatPct(null)).toBe("—");
+    // 格式化契约本身：拿一个**确实落在该分支里**的值去咬，不依赖 fixture 恰好有多小。
+    // ⚠ WO-LEADTIME-SPLIT 改法记账：本行原来写的是 `formatPct(BOTTOM.pctOfChainLoss) === "<0.01%"`，
+    //   依赖的是「真实数据里最小那条恰好 < 0.01%」。拆分把归因分母从 84.19 天（含账期 60 天）
+    //   收窄到 24.19 天（交付段），最小那条于是从 0.0041% 升到 0.0143% —— **数据变了，格式化没坏**。
+    //   若照旧断言就会得出「格式化坏了」这个恰好相反的结论，故把两件事拆开断：
+    expect(formatPct(0.004), "极小值必须走 <0.01% 分支，不许四舍五入成 0.00%").toBe("<0.01%");
+    expect(formatPct(null), "「没有归因行」与「占比极小」是两件事").toBe("—");
+    expect(formatPct(0), "真 0 就该显示 0.00%（它是结论，不是缺席）").toBe("0.00%");
+    // 真实数据侧：最小那条无论多小，都**不许**被显示成 0.00%（把「极小」说成「没有」）。
+    expect(BOTTOM.pctOfChainLoss, "前置：最小归因行必须真的 > 0，否则这条断言空转").toBeGreaterThan(0);
+    expect(formatPct(BOTTOM.pctOfChainLoss), "真实最小归因行被显示成 0.00% = 把「极小」说成「没有」").not.toBe("0.00%");
   });
 });
 
