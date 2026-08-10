@@ -215,6 +215,28 @@ export function SimReadinessPanel({
             <div className="mono" style={{ fontSize: 12 }} data-testid="sim-cert-trial-rulesfired">
               规则触发 {cert.trialTick.rulesFired} 条
             </div>
+            {/* #152 拆账：Trial Tick 曾长期**只跑派生**，`rulesFired` 一个合数把「传导零触发」盖得严严实实。
+                后端补了两相拆账（optional 字段·老回包没有则整段不显 ⇒ 逐字节可回退）。
+                `declared > 0 && fired === 0` 是**必须让人看见**的事实：规则都在，但这个世界态驱动不动它们。 */}
+            {cert.trialTick.propagationRulesDeclared !== undefined && (
+              <div
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color:
+                    cert.trialTick.propagationRulesDeclared > 0 && (cert.trialTick.propagationRulesFired ?? 0) === 0
+                      ? "var(--warn)"
+                      : "var(--muted2)",
+                }}
+                data-testid="sim-cert-trial-breakdown"
+              >
+                派生 {cert.trialTick.derivationRulesFired ?? 0} 条 · 传导{" "}
+                {cert.trialTick.propagationRulesFired ?? 0}/{cert.trialTick.propagationRulesDeclared} 条
+                {cert.trialTick.propagationRulesDeclared > 0 && (cert.trialTick.propagationRulesFired ?? 0) === 0
+                  ? "（规则在册，但当前世界态驱动不动传导）"
+                  : ""}
+              </div>
+            )}
             {cert.trialTick.error && (
               <div style={{ fontSize: 11, color: "var(--danger)" }} data-testid="sim-cert-trial-error">{cert.trialTick.error}</div>
             )}

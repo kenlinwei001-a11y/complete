@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { createActionDraft } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
@@ -14,6 +15,53 @@ export function SnapshotBadge({ snapshotVersion, tool }: { snapshotVersion?: str
   return (
     <span className="badge" title={`invoke_solver:${tool} · snapshot ${snapshotVersion}`} data-testid="snapshot-badge">
       ⓘ {zh.sim.snapshotBadge(snapshotVersion)}
+    </span>
+  );
+}
+
+/**
+ * `?` 口径浮层（`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3 的统一实现）。
+ *
+ * 规范原文的三条硬要求，逐条对应到下面的实现：
+ *  · **禁止用 HTML `title` 属性 / SVG `<title>` 充当浮层** —— 那是浏览器原生 tooltip，
+ *    由操作系统绘制、不受组件控制、永远画在最上层、移开后会滞留
+ *    （2026-08-10 实测事故：`ChainLineMapView.tsx` 的两个 SVG `<title>` 在环形图上滞留遮挡图形）。
+ *    所以这里是一个**受控 DOM 节点**：`open` 由 React state 决定，移开即卸载，不可能滞留。
+ *  · **键盘可达**：focus 显示 / blur 消失 / `Esc` 关闭（`Esc` 同时 `blur()`，
+ *    否则焦点还在按钮上、`onFocus` 不会再触发，用户会以为浮层坏了）。
+ *  · **`max-width` ≈ 380px、超长内可滚动** —— 见 `SimViews.module.css` 的 `.hintPop`。
+ *
+ * ⚠ 本组件只放「口径 / 公式 / 为什么这么算 / 诚实位说明 / 数据来源」。
+ * **结论性数字不许只藏在浮层里**（规范 §1 表：数字属于第一层）。
+ */
+export function HintDot({ label, testId, children }: { label: string; testId: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className={styles.hintWrap}>
+      <button
+        type="button"
+        className={styles.hintBtn}
+        aria-label={`${label}·口径说明`}
+        aria-expanded={open}
+        data-testid={testId}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            e.currentTarget.blur();
+          }
+        }}
+      >
+        ?
+      </button>
+      {open && (
+        <span role="tooltip" className={styles.hintPop} data-testid={`${testId}-pop`}>
+          {children}
+        </span>
+      )}
     </span>
   );
 }

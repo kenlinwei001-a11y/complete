@@ -718,11 +718,25 @@ const gsliveScenarios = new Map<string, { id: string; label: string; parentId: s
 type MockSimSession = { id: string; tenantId: string; baseSnapshot: Record<string, unknown>; scope: Record<string, unknown>; status: string; curTick: number; parentCheckpointId: string | null; createdAt: string };
 const mockSimSessions = new Map<string, MockSimSession>();
 const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unknown> }>();
+/**
+ * WO-SIM-PERTURB-TIMELINE · 扰动清单（= `GET …/:id/perturbations` 的 mock 数据源）。
+ *
+ * 为什么必须加这三条 handler：`test/setup.ts` 起的是 `onUnhandledRequest: "error"` ——
+ * 扰动时间轴一挂上就会 `GET …/perturbations`，mock 这边没镜像的话，**每一个挂载 SandboxView
+ * 的既有用例都会红**（而且红在一条与它自己无关的请求上，最容易被误判成"时间轴写坏了"）。
+ * 顺带补齐 `POST`：WO-SIM-ACT-CLOSE 把施加口接上了，但 mock 模式下一直没有对应 handler，
+ * 于是 `VITE_MOCK=1` 跑起来点「施加扰动」必然报错 —— 那是那一单留下的、只在 mock 模式暴露的口子。
+ * R6 确定性：id 走计数器、`createdAt` 固定串，无随机数、无真实时钟。
+ */
+const mockSimPerturbations = new Map<string, Record<string, unknown>[]>();
 let mockSimSeq = 0;
+let mockPertSeq = 0;
 export function resetMockSim(): void {
   mockSimSessions.clear();
   mockSimWorlds.clear();
+  mockSimPerturbations.clear();
   mockSimSeq = 0;
+  mockPertSeq = 0;
 }
 /**
  * WO-CAPLIVE-2 · 方案横比矩阵产能增益（KILL-MOCK）：各方案 apply 经 generic_inference 同款前向重算公式真算——
@@ -3884,6 +3898,47 @@ export const handlers = [
   http.get("*/a/v1/sim/sessions/:id/world", ({ params }) => {
     const id = String((params as { id: string }).id);
     return HttpResponse.json(mockSimWorlds.get(id) ?? { tick: 0, state: {} });
+  }),
+  // ── WO-SIM-PERTURB-TIMELINE · 扰动一等公民三条（后端对应 datacore app.ts 的 POST/GET/DELETE …/perturbations）──
+  // GET 是**扰动时间轴的真数据源**；POST 是施加口在 mock 模式下的镜像（WO-SIM-ACT-CLOSE 只接了真后端）。
+  // 施加语义只做入库 + 世界态就地改写（与 datacore `simApplyAtCurrentTick` 同语义），
+  // 不复制引擎的传导 —— mock 冒充引擎就是第二套真相源。
+  http.post("*/a/v1/sim/sessions/:id/perturbations", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const b = (await request.json()) as Record<string, unknown>;
+    const cur = mockSimWorlds.get(id) ?? { tick: 0, state: {} };
+    const p = {
+      id: `simpert_mock_${++mockPertSeq}`,
+      tenantId: "demo",
+      sessionId: id,
+      kind: b.kind,
+      targetObjectId: String(b.targetObjectId),
+      targetStateVar: String(b.targetStateVar),
+      startTick: typeof b.startTick === "number" ? b.startTick : cur.tick,
+      durationTicks: (b.durationTicks ?? null) as number | null,
+      magnitude: Number(b.magnitude),
+      mode: (b.mode ?? "set") as "set" | "delta" | "scale",
+      label: String(b.label ?? ""),
+      createdAt: "2026-08-10T00:00:00.000Z",
+    };
+    mockSimPerturbations.set(id, [...(mockSimPerturbations.get(id) ?? []), p]);
+    const state = { ...(cur.state as Record<string, Record<string, number>>) };
+    const bucket = { ...(state[p.targetObjectId] ?? {}) };
+    const before = Number(bucket[p.targetStateVar] ?? 0);
+    bucket[p.targetStateVar] = p.mode === "delta" ? before + p.magnitude : p.mode === "scale" ? before * p.magnitude : p.magnitude;
+    state[p.targetObjectId] = bucket;
+    mockSimWorlds.set(id, { tick: cur.tick, state });
+    return HttpResponse.json({ perturbation: p, curTick: cur.tick, state }, { status: 201 });
+  }),
+  http.get("*/a/v1/sim/sessions/:id/perturbations", ({ params }) =>
+    HttpResponse.json({ items: mockSimPerturbations.get(String((params as { id: string }).id)) ?? [] }),
+  ),
+  http.delete("*/a/v1/sim/sessions/:id/perturbations/:pid", ({ params }) => {
+    const { id, pid } = params as { id: string; pid: string };
+    const rows = mockSimPerturbations.get(String(id)) ?? [];
+    // 删的是记录，**不回滚世界态**（与后端同语义：回滚走 checkpoint/rollback）。
+    mockSimPerturbations.set(String(id), rows.filter((r) => r.id !== String(pid)));
+    return HttpResponse.json({ deleted: true });
   }),
   http.get("*/a/v1/sim/sessions/:id/scope-precheck", ({ request }) => {
     const url = new URL(request.url);

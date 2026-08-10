@@ -5,12 +5,22 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（**两栈**：派生栈 `ontology-core recompute` + 传导栈 沙盘传导核）。
+ * 一次 Trial Tick（**两相**：派生相 `ontology-core recompute` + 传导相 `sim/propagation` 传导核）。
  *
- * ⚠ 上面这行原文停在「传导 `propagateTick` 待增量3」—— 而传导栈早已实装并有生产调用方
+ * ⚠ 上面这行原文停在「传导 `propagateTick` 待增量3」—— 而传导相早已实装并有生产调用方
  *   （tick 路由 `app.ts`），于是注释比实现落后了整整一个增量，认证屏上的「规则触发 N 条」
- *   一直只在数派生栈、传导栈恒记 0（欠账 #152）。**本仓把注释说谎算作缺陷**，
- *   随 WO-SIM-SCOPE-TRIAL 一并改正，别再让它漂回去。
+ *   一直只在数派生相、传导相恒记 0（欠账 #152）。**本仓把注释说谎算作缺陷**。
+ *   两条工单各自从一头把它闭掉，来历都留在这儿、不合并成一句：
+ *   · `WO-SIM-SCOPE-TRIAL`（#129/#130 `G-SIM-SCOPE-UNREAD`）—— 让传导相**在会话/认证的范围里**真跑，
+ *     并拆出 `derivationRulesFired` / `propagationRulesFired` 两个分相明细；
+ *   · `WO-SIM-ACT-CLOSE`（2026-08-10·#152）—— 把两相的输入收成**唯一装配处**
+ *     `app.ts buildPropagationInputs`（与真 tick 同源），并补 `propagationRulesDeclared`
+ *     这个诚实位（`declared > 0 && fired === 0` = 世界态驱动不动传导）。
+ *   两相如今都由调用方 `app.ts assembleCertification` 真跑，结果经 `TrialTickInput` 传进来。
+ *
+ * ⚠ 本文件仍然**一相都不跑**：门 `check-sim-readiness.mjs` 明文禁止本文件出现传导函数的调用式写法
+ *   ——注意它扫的是**整份文件正文、不剔注释**，所以连注释里都不许把那个函数名后面跟上左括号
+ *   （B 侧那条注释的初稿就是这么把自己的门踩红的，原样记在这儿，别重蹈）。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *
@@ -103,11 +113,17 @@ export const DEFAULT_CERT_CONFIG: CertConfig = {
  */
 export interface TrialTickInput {
   passed: boolean;
+  /** 两相合计（派生 + 传导）。拆账见下三个可选字段（#152）。 */
   rulesFired: number;
-  /** 派生栈（ontology-core 重算）触发数。缺省 = 调用方没分栈（老调用点，合计仍成立）。 */
+  /**
+   * #152 拆账 · 派生相（ontology-core 重算）触发数 = recompute topo order 长度。
+   * 调用方给什么就投影什么，本文件不算。缺省 = 调用方没分相（老调用点，合计仍成立）。
+   */
   derivationRulesFired?: number;
-  /** 传导栈（沙盘传导核）真正产出贡献的规则数。 */
+  /** #152 拆账 · 传导相真正产出贡献（即时或延迟）的 PropagationRule 条数。 */
   propagationRulesFired?: number;
+  /** #152 拆账 · 传导相已发布规则条数。`declared>0 && fired===0` = 世界态驱动不动传导（诚实位）。 */
+  propagationRulesDeclared?: number;
   at: string | null;
   error: string | null;
 }
@@ -232,12 +248,14 @@ export function deriveCertification(
     level,
     dims: { structure, knowledge, behavior, composite },
     l4Checks,
+    // 分相明细**原样投影**（本文件零计算 RL3）：调用方跑了两相就有数，没跑就 undefined ——
+    // 不在这里补 0 冒充"传导相跑过且是 0"（编 0 就等于宣称"传导相没触发"，而事实是"没人告诉我"，
+    // 这正是 #152 那个静默错答的形态）。
     trialTick: {
       passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error,
-      // 分栈明细原样透传（投影，不新算）。调用方没分栈时不下发 —— 不替它编一个 0
-      // （编 0 就等于宣称"传导栈没触发"，而事实是"没人告诉我"，这正是 #152 的形态）。
       ...(trial.derivationRulesFired !== undefined ? { derivationRulesFired: trial.derivationRulesFired } : {}),
       ...(trial.propagationRulesFired !== undefined ? { propagationRulesFired: trial.propagationRulesFired } : {}),
+      ...(trial.propagationRulesDeclared !== undefined ? { propagationRulesDeclared: trial.propagationRulesDeclared } : {}),
     },
     worldCompleteness: { pct: wcPct, ...wc, entering },
     canEnterSimulation,
