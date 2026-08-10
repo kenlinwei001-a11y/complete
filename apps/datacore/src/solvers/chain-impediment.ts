@@ -47,6 +47,7 @@ import {
   type ChainScope,
   type ChainStage,
   type DerivedDataMode,
+  type NoCandidateKind,
 } from "@platform/contracts";
 import type { LinkInstance, ObjectInstance } from "../domain.js";
 import { canonicalJson, hashString, round } from "../prng.js";
@@ -467,6 +468,8 @@ export interface ChainScanResult extends Record<string, unknown> {
     effective: number;
     emitted: number;
     gaps: string[];
+    /** 空候选的机器可读定性（`NONE` 算过了真没有 / `UNAVAILABLE` 压根没算出来）；有候选时缺省。 */
+    noCandidateKind?: NoCandidateKind;
   }[];
   /** 探针预算耗尽 → **显式**标注截断（`PRD-sandbox-redesign.md` §7.2③：不静默截断）。 */
   candidatesTruncated: boolean;
@@ -486,6 +489,14 @@ export interface ChainScanInput {
    * （那正是编映射的开始）。由调用方（`SolverService.chainImpediments`）注入，判定本身不受影响。
    */
   links?: readonly LinkInstance[];
+  /**
+   * WO-SANDBOX-S3-ENUM · 候选枚举的产能探针预算上界（缺省 `CANDIDATE_PROBE_BUDGET`）。
+   *
+   * **刻意不做成 HTTP 入参**：它是算力旋钮不是业务范围，暴露到 `args` 会被误读成"筛选条件"。
+   * 存在的理由是「算不了」这条路必须**可被驱动**才不是死分支 —— 预算调小 ⇒ 逐候选试算跑不完 ⇒
+   * 空候选被定性为 `UNAVAILABLE` 而非 `NONE`。判定本身（阻滞点条数/severity）不受此参数影响。
+   */
+  probeBudget?: number;
 }
 
 /** 该 binding 要扫的对象集合（+ 每个对象的**派生补充字段**，如 D3 硬容量算出的 parallelThroughput）。 */
@@ -764,15 +775,17 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
     links: input.links ?? [],
     originOf: (im) => originById.get(im.impedimentId),
     ...(c.rules === undefined ? {} : { rules: c.rules }),
+    ...(input.probeBudget === undefined ? {} : { probeBudget: input.probeBudget }),
   });
   const impediments = arbitrated.map((im) => {
     const o = options.byImpediment.get(im.impedimentId);
     if (!o) return im;
-    // 经 schema 再 parse 一次：候选与宿主的一致性约束（impedimentId 对齐 / 空候选必带原因）由契约把关。
+    // 经 schema 再 parse 一次：候选与宿主的一致性约束（impedimentId 对齐 / 空候选必带原因**与定性**）由契约把关。
     return ChainImpedimentSchema.parse({
       ...im,
       candidates: o.candidates,
       ...(o.noCandidateReason === undefined ? {} : { noCandidateReason: o.noCandidateReason }),
+      ...(o.noCandidateKind === undefined ? {} : { noCandidateKind: o.noCandidateKind }),
     });
   });
 
