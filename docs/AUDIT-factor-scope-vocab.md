@@ -177,6 +177,44 @@ xinyang 4 · zaozhuang 1 · handan 1 · zigong 2 · jinhua 2 · yangzhou 3
 
 ---
 
+## 3.5 · 交付后的亲手复验（绿测试 ≠ 能用）
+
+起真服务跑（`node apps/datacore/dist/server.js` · `POST /a/v1/synthetic/jobs` 种 seed=42 ·
+`POST /a/v1/solvers/gap_attribution/invoke` 逐因子真调）。`CausalFactor` 行数 28 → **35**（+7）。
+
+`scope.baseId=常州` 下发的 chip 候选（全部**真解析到承载对象**）：
+
+| factorId | label | 下钻 | 本基地对象数 |
+|---|---|---|---|
+| cf-cap-bottleneck-process | 瓶颈工序 | Line.utilization | 10 |
+| cf-cap-changeover-loss | 换型损失 | EquipmentDowntime.durationMin | 3 |
+| cf-cap-equipment-oee | 设备OEE | Equipment.oee_current | 60 |
+| cf-cap-labor-hours | 人力工时 | Process.shiftHours | 50 |
+| cf-cap-logistics-leadtime | 物流时长 | Shipment.etaDay | 1 |
+| cf-cap-material-kitting | 物料齐套 | Shipment.coverageDays | 1 |
+| cf-cap-yield-variance | 良率波动 | Process.yield_baseline | 50 |
+
+- **7 个按钮两两比对：相同对数 = 0**（修前是 7 个逐字节全同）。
+- 每个因子的 L1/L2 与 base-only **逐字节相同**（细分是加出来的占比层·R6 零回归）。
+- 换基地 → 下钻到**不同**对象（常州 `LINE-WS-changzhou-formation…` / 信阳 `LINE-WS-xinyang-calendering…`）。
+- 传 BN 中文名「瓶颈工序」→ `factorApplied=false` + note，基地树保住。
+- 眉山不下发「换型损失」chip；硬点它 → `factorApplied=false` + 「本基地 0 条」原话。
+
+### ⚠ 这一步抓出了 9 条绿断言都咬不到的一个数值退化（记账）
+
+归一底原取「**本基地内**最大值」，而 `Shipment` 每基地恰好 1 条 ⇒
+`popMin`（物料齐套）恒 `1−v/v = 0` → **整层 contribution 全 0**（界面读作"没影响"）；
+`popMax`（物流时长）恒 `v/v = 1` → 把**整个基地缺口 9.0076** 都算到一条在途单上。两个方向都错，而**测试全绿**——
+因为断言咬的是「树不同 / 能下钻到真对象」，**没有一条咬数值是否退化**。
+
+> 形态：**「我用『树变了且能下钻到真对象』当作『数值算对了』的证据，而前者不度量后者。」**
+
+修法：`popMax`/`popMin` 的归一底改取**全网同字段最大绝对值**（`ratio`/`inverseRatio` 不受影响——
+值本身就是 0–1 绝对量）。实测：物料齐套 `0 → 5.4046`（并带出 8 跳 `caused_by` 到 `cf-geopolitical`）；
+物流时长 `9.0076 → 7.8817`。新增门 ⑧「数值不退化」逐因子锁死；变异反证：底退回本基地内 → 当场红。
+
+---
+
 ## 4 · 《本体引用与影响》
 
 - **对象类型**：`CausalFactor`（+3 个可选解析属性 `baseScopeField`/`drillPick`/`drillNorm`
