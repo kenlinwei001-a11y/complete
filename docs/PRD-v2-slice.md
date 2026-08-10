@@ -35,6 +35,7 @@ PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.
 
 | 本文要报的否定结论 | 检索 | 结果 | 金丝雀（同工具同路径·已知必中） | 判定 |
 |---|---|---|---|---|
+| 出厂 Skill 没有一条 `kind:"slice"` 的引用 | 真跑 `GET /b/v1/skills` 逐条读 `references` | **0/7**（全是 `solver:`/`rule:`/`workflow:`/`skill:`） | 同一次读到 `sop_meeting.references=["workflow:sop_balance_wf"]`、`capacity_action_draft.dependsOn=[{skill:capacity_analysis}]` | ✅ 读到的确实是引用字段 |
 | `navigation-slice.ts` 零行读本体切片 | `grep -n "slice-index\|SliceSpec\|sliceKey\|resolve_slice" apps/agentcore/src/agent/navigation-slice.ts` | **0** | 同文件 `grep -c "SOLVER_CATALOG"` → **8** | ✅ 工具正常 ⇒ 0 是真 0 |
 | 生产种子里没有 `kind:"slice"` 的 Skill 引用 | `grep -n 'kind: "slice"' apps/agentcore/src/mocks/seed.ts` | **0** | 同文件 `grep -c 'kind: "workflow"'` → **1** | ✅ 工具正常 |
 | 98 条 SliceSpec 全部没有 `spec.description` | 逐条 `GET /a/v1/ontology/slices/{key}` 读 `spec.description` | **0/98** | 同一次读同一条 `order_fulfillment_360` → `root.typeKey=Order` · `paths=4` · `contractFixtures=1` | ✅ 读到的确实是 spec |
@@ -85,7 +86,22 @@ PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.
   覆盖算法 `apps/datacore/src/databuilder/slice-coverage.ts:45` 又写着「root 自身全字段恒覆盖」。
   ⇒ **只要一个类型进了数据分类，它的字段就自动「被切片覆盖」**。这句话是真的，但它**不度量**「多跳业务切片能不能取到这些字段」。
 
-### 1.3 结论（给排期用的一句话）
+### 1.3 切片 / Skill / Agent 是同一份本体视图吗 —— **不是，各读各的**（派单问题 4 的正面回答）
+
+| 谁 | 它读的那份「本体视图」是什么 | 真源 file:line | 与 `SliceSpec`（98 条）的关系 |
+|---|---|---|---|
+| **本体切片引擎** | `slice_specs` 表 → `executeSlice` 真子图 | `apps/datacore/src/ontology-core.ts:552` | **就是它本身** |
+| **Agent 选型时看的地图**（NavigationSlice） | AgentCore 内**硬编码**的 `SOLVER_CATALOG` 按问句正则投影 | `apps/agentcore/src/agent/navigation-slice.ts:283` | **零关系**（金丝雀背书的 0 命中） |
+| **Agent discover 的供给侧**（DRIL 资源目录） | `catalog.discover("slices")` | `apps/datacore/src/catalog.ts:284` → `dril/resource-registry.ts:109/182` | **只看得见 2 条硬编码的**，98 条一条不在（双服务实测：1055 资源里 `kind=slice`=2） |
+| **Skill 的引用图** | `Skill.references[] / dependsOn[]` | 契约允许 `kind:"slice"`（本体 §3:251） | **实测 7 个出厂 skill 全是 `solver:` / `rule:` / `workflow:` / `skill:`，`kind:"slice"` 一条没有** |
+| **资源关系图**（`workflow --includes--> slice`） | `extractResourceRelations` 真会从 `resolve_slice` 步抽这条边 | `apps/agentcore/src/dril/relations.ts:57` | ⚠️ **抽出来了又被丢掉**：`resource-registry.ts:221` 要求**两端都在册**，而切片只在册 2 条 ⇒ 指向那 4 条多跳切片的边**全被静默过滤**。实测 `GET /b/v1/resources/workflow/sop_balance_wf/relations` = 2 条边，**全是 rule，零 slice**（该工作流的 `s1` 明明就是 `resolve_slice`） |
+
+**⇒ 一句话**：平台里叫「切片」的东西**至少有三份互不相干的实现**（本体切片 / 导航切片 / 目录里那 2 条硬编码切片），
+**只有第一份是真的本体视图，而 Agent 主要读的是另外两份**。
+这也是 `G-SLICE-CATALOG-TWO-ITEMS` 的**二阶后果**：切片不在册，不只是「搜不到」，
+连**已经算出来的 `workflow→slice` 关系边都会被丢掉** ⇒ 资源图上永远看不到「哪条工作流用了哪条切片」。
+
+### 1.4 结论（给排期用的一句话）
 
 > 切片的地基（引擎 / 规划器 / 索引 / 两库 / 契约 / 连通性门 / 十六层投影）**都在，而且真能跑**；
 > 断的全在**接缝的最后一米**：**没进 Agent 的地图**（③）、**没喂进求解器入参**（①）、**默认参数没人给**（§2.3）。
@@ -173,7 +189,7 @@ PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.
 | 形态 | 本域实例 | 修法 |
 |---|---|---|
 | **没接线** | —— 本域**没有**这一类。切片的每个组件都有非 test 调用方 | — |
-| **接了线没数据** | ① 98 条 SliceSpec 无 `description` ⇒ Agent 目录只有 2 条<br/>② 切片契约 `ruleRef` 从不设 ⇒ 一等规则不驱动验收<br/>③ `reported_refs` 无 `kind:"slice"` ⇒ 十六层 ①② 恒空<br/>④ 场景卡无 `sliceTargets` ⇒ 发育闭环那条判据恒 N/A（门自己写着：`scripts/check-ontogenesis.mjs:144`「出厂目录卡未声明 sliceTargets 字段 → N/A」）<br/>⑤ Skill 的 `references` 里 `kind:"slice"` 为 0（金丝雀 `kind:"workflow"`=1） | 补数据 |
+| **接了线没数据** | ① 98 条 SliceSpec 无 `description` ⇒ Agent 目录只有 2 条<br/>② 切片契约 `ruleRef` 从不设 ⇒ 一等规则不驱动验收<br/>③ `reported_refs` 无 `kind:"slice"` ⇒ 十六层 ①② 恒空<br/>④ 场景卡无 `sliceTargets` ⇒ 发育闭环那条判据恒 N/A（门自己写着：`scripts/check-ontogenesis.mjs:144`「出厂目录卡未声明 sliceTargets 字段 → N/A」）<br/>⑤ Skill 的 `references` 里 `kind:"slice"` 为 0（种子侧金丝雀 `kind:"workflow"`=1；真跑侧 7/7 个 skill 全无 slice 引用）<br/>⑥ `workflow --includes--> slice` 边算出来就被「两端在册」过滤丢掉（`resource-registry.ts:221`）——**是 ① 的二阶后果，不是独立缺陷，修 ① 即自动好** | 补数据 |
 | **接了线接错地方** | ① `model_capacity_network`/`base_risk_profile` 走硬编码解析器而非 SliceSpec<br/>② 「先切片检索再推演」只在离线脚本成立，在线计划里切片产物只进 ValidationTrace<br/>③ 覆盖门把零跳根切片计入覆盖 | 补挂载点 / 换判据 |
 | **悬空** | `sop_balance_wf` 引用 `monthly_balance`（不存在） | 补切片或改引用 + 加门 |
 
@@ -203,6 +219,8 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 - **SEAM（接缝驱动）**：上面那条真问句的 top-20 里出现 `slice:order_to_cash_720`。
   ⚠️ 判据必须写成「**那条问句**召回**那条切片**」，不许写成「资源目录里切片数 > 2」——
   后者是供给侧计数，**不度量**「Agent 真能用上」。
+- **顺带自动闭合的二阶判据**：`GET /b/v1/resources/workflow/capacity_feasibility/relations`（或任一带 `resolve_slice` 步的工作流）
+  出现 `relType:"includes" toKind:"slice"` 的边（今天恒为 0，因 `resource-registry.ts:221` 两端在册过滤把它丢了）。
 
 ### T2 · 悬空切片引用清零 + 一道守它的门
 
@@ -383,7 +401,7 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 
 | 建议编号 | 断点 | 链路位置 | 性质 |
 |---|---|---|---|
-| **G-SLICE-CATALOG-TWO-ITEMS** | **Agent 能发现的切片只有 2 条硬编码的，98 条一等 SliceSpec 一条都进不去**。门槛是 `spec.description` 非空（`apps/datacore/src/catalog.ts:276`，合并于 `:284`），实测 0/98 满足 ⇒ 平台唯一的跨域推演入口对 Agent 不可见 | `catalog.discover("slices") → dril/resource-registry.ts:109/182 → discover 工具` | **接了线没数据**（修法=补数据，不是改引擎） |
+| **G-SLICE-CATALOG-TWO-ITEMS** | **Agent 能发现的切片只有 2 条硬编码的，98 条一等 SliceSpec 一条都进不去**。门槛是 `spec.description` 非空（`apps/datacore/src/catalog.ts:276`，合并于 `:284`），实测 0/98 满足 ⇒ 平台唯一的跨域推演入口对 Agent 不可见（双服务实测：`/b/v1/resources` 1055 条资源里 `kind=slice`=2；DRIL 检索「订单从下单到回款」top-20 零切片）。**二阶后果**：`resource-registry.ts:221` 的「关系两端都须在册」过滤，会把 `relations.ts:57` 已经算出的 `workflow --includes--> slice` 边**静默丢掉** ⇒ 资源图上永远看不到哪条工作流用了哪条切片（实测 `sop_balance_wf` 的 relations = 2 条 rule 边、零 slice 边，而它的 `s1` 就是 `resolve_slice`） | `catalog.discover("slices") → dril/resource-registry.ts:109/182/221 → discover 工具 / /b/v1/resources[/relations]` | **接了线没数据**（修法=补数据，不是改引擎） |
 | **G-SLICE-KEY-DANGLING** | **已发布工作流引用不存在的切片**：`sop_balance_wf` 的 `s1 = resolve_slice(monthly_balance)`（`apps/agentcore/src/mocks/seed.ts:970`），实测两条路由均 404、mock 亦抛 `unknown slice` ⇒ 该工作流第一步必 FAIL 且**四包全绿**（测试咬的是执行器，不是这条引用） | `seed 计划/工作流.params.sliceKey → slices 表 / BUILTIN_SLICE_CATALOG` | **悬空引用**（无门守·T2 补门） |
 | **G-SLICE-COVERAGE-TAUTOLOGY** | **切片字段覆盖门由「每类型一条零跳根切片」自动满足**：`data-categories.ts:109` 自动派生 94 条 `coverage_*`，`slice-coverage.ts:45` 又规定 root 全字段恒覆盖 ⇒ 新类型进分类即自动绿。**门为真但判别力≈0** | `check-ontology-slice-coverage.mjs:70 → computeFieldCoverage` | **判据不度量目标**（形态：「我用『每个类型都有一条根切片』当作『字段被业务切片覆盖』的证据」） |
 | **G-NAVSLICE-NOT-ONTOLOGY** | **「导航切片」与「本体切片」同名不同物**：`agent/navigation-slice.ts:283` 是硬编码 `SOLVER_CATALOG` 的正则投影，对 `SliceSpec`/`sliceKey`/`slice-index` **零命中**（金丝雀 `SOLVER_CATALOG`=8）。而 `docs/PRD-agent-navigation-slice-latency.md:53` 白纸黑字写「复用 `ontology/slice-index` 切片」⇒ 读文档的人会以为 Agent 已经在读本体切片 | `Query → projectNavigationSlice → 首轮 prompt`（与 `SliceSpec` 无任何边） | **同名不同物 · 文档承诺与实现分岔**（P1-4 改名 + 禁混用门） |
