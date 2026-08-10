@@ -943,6 +943,24 @@
       },
       "disposition": "MANUAL",
       "notes": "非常驻门（不进 gates 链）：它是**分析器**不是**守卫**——跑一次要读四份逐条复验文档、产出的是分布数字而非通过/失败判定，进链只会让 gate 变慢且没有防退化意义。登账的理由是治理而非拦截：它产出的数字会被直接当结论用，而它自己在建成当天被金丝雀翻过两次。重报 1671 条判定分布时手动 `pnpm verdict-rollup:check`。"
+    },
+    "check-case-collision.mjs": {
+      "alias": "case-collision:check",
+      "binding": "GATES_CHAIN",
+      "disposition": "WIRE",
+      "guardedPaths": [
+        "apps/",
+        "packages/",
+        "scripts/"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:958",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "审核方 2026-08-10 实跑（本单同批）",
+        "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
+      },
+      "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
     }
   }
 }
