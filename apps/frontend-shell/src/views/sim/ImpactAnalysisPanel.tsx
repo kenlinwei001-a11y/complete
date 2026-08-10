@@ -19,8 +19,10 @@ import styles from "./ImpactAnalysisPanel.module.css";
  *
  * ── 它为什么存在 ─────────────────────────────────────────────────────────────
  * 后端 `WO-IMPACT-PROPAGATION` 早已落地（`apps/datacore/src/app.ts` 注册 · `sim/impact-analysis.ts` 实现），
- * 但门 `befe-seam:check` 载体② 实测：**前端零调用方**。这正是本仓 `G-BE-FE-SEAM-DEAD`：
- * 后端开了口子没人用 —— 「有端点无入口」。本组件把那个口子接到用户的手指上。
+ * 而 **2026-08-10 实测**（复验命令：`node scripts/check-backend-frontend-seam.mjs --verbose`）
+ * 该端点在门 `befe-seam:check` 载体② 的「当前零调用端点明细」里赫然在列：**前端零调用方**。
+ * 这正是本仓 `G-BE-FE-SEAM-DEAD`：后端开了口子没人用 ——「有端点无入口」。
+ * 本组件把那个口子接到用户的手指上；接完同一条命令报「已修复」。
  *
  * ── 与隔壁那个按钮的区别（同一份假设，两个出口）──────────────────────────────
  * 宿主页（`views/WhatIfView.tsx`）已有一个「推演下游影响」按钮，走 `generic_inference` 求解器：

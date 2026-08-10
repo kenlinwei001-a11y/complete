@@ -704,9 +704,11 @@ export const captureEnterpriseStateSnapshot = (worldId?: string) =>
   api.a<EnterpriseState>("/a/v1/twin/enterprise-states", { body: worldId ? { worldId } : {} });
 
 // ── WO-BEFE-WIRE-3 · 上面三条读/写之外，`fork` 与 `diff` 后端注册了却一直零前端调用方 ──────
-// （门 `befe-seam:check` 载体② 实测：`POST /a/v1/twin/enterprise-states/*/fork` 与
-//  `GET /a/v1/twin/enterprise-states/*/diff` 在并集态第一次被照出来。真消费方 =
-//  `views/sim/EnterpriseStateTwinPanel.tsx`，挂在推演沙盘右栏「快照分叉与比对」。）
+// **2026-08-10 实测**（复验命令：`node scripts/check-backend-frontend-seam.mjs --verbose`，
+// 载体② 的「当前零调用端点明细」里当天确有这两条）：`POST …/twin/enterprise-states/:id/fork`
+// 与 `GET …/twin/enterprise-states/:id/diff` 在并集态第一次被照出来。
+// 本次接线后同一条命令报「已修复 3」——真消费方 = `views/sim/EnterpriseStateTwinPanel.tsx`，
+// 挂在推演沙盘右栏「快照分叉与比对」。
 
 /**
  * 把一份快照 fork 进**仿真世界**（PRD-enterprise-decision-twin §4.1 两世界物理隔离）。
