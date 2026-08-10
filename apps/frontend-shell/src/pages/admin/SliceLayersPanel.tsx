@@ -87,6 +87,12 @@ function WhyPopover({ label, marked, children, testId }: { label: string; marked
 /**
  * 「子图没解出来」的诚实条 —— 复核补的一块（真后端实测驱动）。
  *
+ * 实测日期 **2026-08-10**（租户 demo · seed 42 · 起本地 datacore 内存模式）。
+ * 复验：`GET /a/v1/ontology/slices` 取全表，逐条打
+ * `GET /a/v1/ontology/slices/{key}/layers`（**不带 args**）看 `graph.empty.reason`；
+ * 判定实现单源在 `apps/datacore/src/ontology/slice-layers.ts (diagnoseEmptyGraph)`，
+ * 占位符正则与 `apps/datacore/src/ontology-core.ts (resolveTemplate)` 一字不差。
+ *
  * 病根：98 条切片里 12 条无参调用即空子图，而这 12 条里**恰好包含首屏默认只显示的
  * 那 4 条多跳业务切片**（它们的 root selector 写着 `{{args.so}}` / `{{args.key}}`）。
  * 不给参数 ⇒ 十六层全空。若不先说清楚，十六张空卡会被读成「平台没有这些层」——

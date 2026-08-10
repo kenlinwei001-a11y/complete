@@ -30,9 +30,12 @@ export default function SlicesPage() {
   const allSlices = useMemo(() => data ?? [], [data]);
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  // WO-SLICE-16-LAYERS：真租户实测 98 条切片，其中 94 条是每类型一条的 `coverage_*` 覆盖切片
-  // （字段覆盖率门用），真正的多跳业务切片只有 4 条。全表平铺 = 4 条重点被 94 条淹掉
+  // WO-SLICE-16-LAYERS：真租户实测（**2026-08-10** · demo · seed 42）98 条切片，
+  // 其中 94 条是每类型一条的 `coverage_*` 覆盖切片（字段覆盖率门用），
+  // 真正的多跳业务切片只有 4 条。全表平铺 = 4 条重点被 94 条淹掉
   // （正是「密密麻麻看不到重点」）。默认只看多跳，覆盖切片一键展开。
+  // 复验：`GET /a/v1/ontology/slices` 数 `items.length` 与 `key` 前缀为 `coverage_` 的条数；
+  // 种子来源 `apps/datacore/src/synthetic/` 的切片登记（每对象类型派生一条覆盖切片）。
   const [scope, setScope] = useState<"multihop" | "all">("multihop");
   const multiHop = useMemo(() => allSlices.filter((s) => s.hops > 0), [allSlices]);
   const slices = scope === "multihop" && multiHop.length > 0 ? multiHop : allSlices;

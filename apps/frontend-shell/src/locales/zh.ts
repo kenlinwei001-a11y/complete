@@ -1134,8 +1134,12 @@ export const zh = {
       // 诚实位（绝不删除，只允许降层）：说明这一页为什么可能显示空。
       honesty:
         "缺席的层不画占位内容——本平台宁可显示空并说明为什么，也不画假数据。",
-      // ── 子图未解出（graph.empty）· 真后端实测：98 条切片里 12 条无参即空子图，
-      //    其中 4 条正是首屏默认显示的多跳业务切片 ⇒ 不说清楚就等于"页面又是空的"。
+      // ── 子图未解出（graph.empty）· 真后端实测（2026-08-10，demo/seed 42）：
+      //    98 条切片里 12 条无参即空子图，其中 4 条正是首屏默认显示的多跳业务切片
+      //    ⇒ 不说清楚就等于"页面又是空的"。
+      //    复验：`GET /a/v1/ontology/slices` 取全表，逐条 `GET /a/v1/ontology/slices/{key}/layers`
+      //    （不带 args），看 `graph.empty.reason`；判定实现见
+      //    `apps/datacore/src/ontology/slice-layers.ts (diagnoseEmptyGraph)`。
       //    第一层只放**短结论**（状态 + 缺哪个参数名），长说明降到浮层（R-UI-3）。
       empty: {
         // 短结论（第一层）：一眼看出「不是十六层没有，是子图没解出来」
