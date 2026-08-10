@@ -1,5 +1,5 @@
 import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
-import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
+import { runAgentLoop, skillGovernance, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "./agent/ontology-context.js";
@@ -474,7 +474,9 @@ export class ExecutionEngine {
           skillRefKeys([skill], "solver", "precondition"),
         );
         if (missingSolvers.length > 0) {
-          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [] };
+          // 下发的是门禁说明而非技能正文；治理位仍按**该技能真实声明**回报（只收紧不放宽的方向），
+          // 不因「这次没给正文」而放松闸门。
+          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [], ...skillGovernance(skill) };
         }
         return {
           // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）
@@ -486,6 +488,10 @@ export class ExecutionEngine {
             ...(r.mime ? { mime: r.mime } : {}),
             ...(r.description ? { description: r.description } : {}),
           })),
+          // WO-R4-FREEQA-GATE · 逐技能治理位回报（R4）。本路径本已有开跑静态聚合位，这里回报是**单调冗余**
+          // （只收紧不放宽 ⇒ 对本路径行为零改变），目的是让两条 loadSkill 路径**回报同一份口径**——
+          // 不允许「一条路报、另一条路不报」再次分叉。判定单源仍是契约 `isWriteModeSkill`。
+          ...skillGovernance(skill),
         };
       },
       runWorkflowTool: async (workflowId, version, input) =>
