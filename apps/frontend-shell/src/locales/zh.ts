@@ -485,6 +485,53 @@ export const zh = {
   sim: {
     run: "开始推演",
     runAudit: "体检",
+    /**
+     * WO-SANDBOX-DECLUTTER · 推演沙盘主屏「信息减负」新增的**壳文案**。
+     *
+     * 只收本单**新写**的字（抽屉入口 / 横幅 / `?` 浮层的触发器与标题）。
+     * **不搬**既有诚实位正文：那些正文带 `<b>/<code>` 结构、且相当一部分是
+     * `sandboxConsoleModel.SCOPE_DIMENSIONS` / `chainImpediment.IMPEDIMENT_*` 的
+     * **单一来源数据**（R14）——抄进本文件就是给它开一条会漂的分身。
+     * 正文原样留在组件里（一个字没删），本单改的只是**承载方式**。
+     */
+    sandbox: {
+      diag: {
+        /** 抽屉入口（折叠态也必须看得见 + 带计数）。 */
+        entry: "诊断",
+        entryAria: "打开/收起诊断抽屉",
+        /** 计数：有待办时报待办数，无待办时报收纳了几项（两种都是真数，不是装饰）。 */
+        pending: (n: number) => `${n} 项待办`,
+        items: (n: number) => `${n} 项`,
+        title: "诊断 · 建模者 / 开发者 / 调试者的那三档",
+        hint: "主屏只留决策者要看的东西；这里是就绪认证、世界列表与调试信息。诚实位一条没删，只是换了位置。",
+        close: "收起诊断",
+        empty: "本次没有可收纳的诊断项。",
+        /** 调试信息分区（SEED / 时窗无 ARGS 等）。 */
+        debugTitle: "调试信息",
+        derivedTitle: "本体派生",
+      },
+      banner: {
+        /** `canEnterSimulation === false` 时的**唯一**主屏治理信号；为 true 时整条不渲染。 */
+        title: "尚未通过就绪认证 —— 现在推演出的结论仅供参考",
+        why: "为什么不能推演（缺件清单前几条）：",
+        more: (n: number) => `另有 ${n} 条`,
+        cta: "查看详情 →",
+        ctaAria: "在诊断抽屉里看完整就绪认证",
+      },
+      info: {
+        /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
+        trigger: "?",
+        triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,
+        close: "关闭说明",
+        impedimentCaliber: "口径差（按引擎显示，不按设计稿措辞）",
+        impedimentJoin: "联动口径（真实的接缝缺口）",
+        scopeDim: (label: string) => `${label} · 这一维带不带得下去`,
+        scopeReach: "范围能带到哪",
+        legend: "阻滞点图例",
+        timeWindow: "时窗 30D / 60D / 90D 为何禁用",
+        seed: "SEED · 确定性种子",
+      },
+    },
     inference: {
       toggle: "▸ 推演过程（编排 DAG）",
       hide: "▾ 推演过程（编排 DAG）",
