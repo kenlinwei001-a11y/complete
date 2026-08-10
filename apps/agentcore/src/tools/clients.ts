@@ -199,11 +199,24 @@ export interface EpochClient {
  */
 /**
  * DataCore 目录条目（`GET /a/v1/catalog` / `GET /a/v1/solvers/registry` 的行形状）。
+ * **接缝纪律**：DataCore 目录产出的字段一律在此透传，不许在 map 时丢弃。
  *
- * WO-SLICE-DISCOVERY：新增 `requiredArgs` / `descriptionSynthesized` 两个**加性**字段。
- * 之所以要在这里显式声明：HTTP 客户端把响应整体透传（运行时本就带着这两个字段），
+ * WO-SLICE-DISCOVERY：新增 `requiredArgs` / `descriptionSynthesized` / 三个切片专有字段。
+ * 之所以要在这里显式声明：HTTP 客户端把响应整体透传（运行时本就带着这些字段），
  * 但类型层若不声明，下游 `resource-projector` 读不到 ⇒ 字段**在接缝上被静默丢弃**
  * —— 与 WO-DRIL-PRECISION 当年丢 `answersQuestions/tags` 是同一个坑，故一并显式化。
+ *
+ * ⚠️ **并线提示（跨分支同名收敛，非重造）**：`origin/claude/handoff-wo-69-p2-function-signature`
+ * 与 `…-p3-interface` 上也有一个 `CatalogClientItem`，同名、同位置（本文件）、同立意
+ * （两边的注释都引 WO-DRIL-PRECISION「出口 map 丢字段」那个坑），只是各自补的加性字段不同：
+ * 那边补 `ontologySignature`，这边补 `requiredArgs` / `descriptionSynthesized` /
+ * `rootType` / `includedTypes` / `includedLinkKeys`。**两组字段互不相交 ⇒ 并线时取并集，
+ * 不是二选一**；选一个就会把另一半的接缝重新打断（丢字段的病灶原样复发）。
+ * 注：`scripts/check-crossbranch-reinvent.mjs` 的**门模式**发现不了这类碰撞 ——
+ * 它的 `newlyExportedSymbols` 把 diff 限定在 pathspec `apps` + 星号 + `src` 上，
+ * 而 pathspec 里的星号**不跨斜杠** ⇒ 恒 0 命中、恒报「无重造风险」
+ * （本单实测：真新增 13 个导出符号，门报 0；这正是铁律 0.6 表里第 1 条那个病）。
+ * 这条碰撞是**手工跑该脚本的 `--symbol` 查询模式**才发现的。
  */
 export interface CatalogClientItem {
   key: string;
