@@ -87,7 +87,9 @@ export function batteryDataCategories(): DataCategory[] {
       // WO-ADOPT-MITIGATION：AdoptedMitigation（已采纳处置方案台账·adopt_mitigation 审批落点）归此类目——
       // 它是**决策落地记录**（哪个基地/因素采纳了哪个方案、量化 eff/tn），与 DecisionGap/CausalFactor 同族；
       // 恰归一类（守 computeCategoryCoverage 的 uncategorizedTypes==[] / duplicateTypes==[] 不变量·注册即更）。
-      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule", "ExceptionEvent", "AdoptedMitigation"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      // WO-ADOPT-DECISION-PLAY：AdoptedDecisionPlay（已采纳战略方案台账·adopt_decision_play 审批落点）同理归此类目——
+      // 与 AdoptedMitigation 分属两个域（战略杠杆 vs 单基地战术处置），但同为**决策落地记录**；同样恰归一类。
+      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain", "DecisionGap", "CausalFactor", "TriggerRule", "ExceptionEvent", "AdoptedMitigation", "AdoptedDecisionPlay"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "workforce", displayName: "人力与班组", description: "操作工考勤与技能认证（MES 人力执行域，班组排产/技能匹配前置）。",
