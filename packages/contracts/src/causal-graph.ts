@@ -263,6 +263,20 @@ export const DecisionGraphSchema = z
     segmentCounts: z.record(CausalSegmentSchema, z.number().int().min(0)),
     /** ★ 诚实缺席：哪几段没有数据源 + 缺什么 + 需要接什么。空段必有条目（superRefine ①）。 */
     segmentGaps: z.array(CausalSegmentGapSchema),
+    /**
+     * **边级**诚实缺席（段级的在 `segmentGaps`）。
+     *
+     * 有些真值**存在**、因而节点抽得出来，但**把它接到上游的那条边所需的字段不存在**。
+     * 实测两例（都写进了构图器）：
+     *  · `DelayedContribution` 只记 `{arriveTick, target*, amount, ruleKey}`，**不记 `fromObjectId`**
+     *    ⇒ 延迟到达的贡献知道"来自哪条规则"，但不知道"来自哪个源对象" —— 边补不出来。
+     *  · `POST /perturbations` 对建单时已生效的扰动走 `simApplyAtCurrentTick`，该路**原样保留旧 trace、
+     *    不写新 trace** ⇒ 这条扰动在世界上真的落了地，却没有任何 trace 行承载它的落点。
+     *
+     * 两例的正确处置都是「出节点、不出边、把缺口写在这里」——
+     * 而**不是**猜一个 `fromObjectId` 把边补上（那是现编），也不是把节点一起丢掉（那是瞒报）。
+     */
+    caveats: z.array(z.string().min(1)),
   })
   .superRefine((g, ctx) => {
     // ── 前置：段计数必须与 nodes 一致，且五段齐全（否则下面两条校验都建立在假数上）──
