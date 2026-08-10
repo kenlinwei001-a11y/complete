@@ -10,12 +10,16 @@ import styles from "./SimViews.module.css";
  * ══ WO-SIM-PERTURB-TIMELINE · 扰动时间轴 —— 「这个世界受过哪些扰动」的答案 ══
  *
  * ── 病灶定性（铁律 0.5 三形态，先定性再动手）─────────────────────────────────
- * `fetchSimPerturbations` 是 **形态①「没接线」**，不是「接了线没数据」：
- * 交付前实测 `grep -rn 'fetchSimPerturbations(' apps/frontend-shell/src apps/frontend-shell/test
- * | grep -v api/endpoints.ts` **零命中** —— src 与 test 两侧都没有任何调用点
+ * `fetchSimPerturbations` 是 **形态①「没接线」**，不是「接了线没数据」。
+ * **实测日期 2026-08-10**（接线前，在 `claude/handoff-wo-sim-act-close@ffe1e756` 上）。
+ * 复验命令（带 `(` 只数调用点，免得把本段散文自己数进去）：
+ *   `grep -rn 'fetchSimPerturbations(' apps/frontend-shell/src apps/frontend-shell/test | grep -v api/endpoints.ts`
+ * 当日结果 **零命中** —— src 与 test 两侧都没有任何调用点
  * （连"只有 test 引用 = 已排练"那一档都够不上）。
  * 金丝雀（证明该检索不是工具坏了）：同一条命令把符号换成 `createSimPerturbation(`，
- * 命中 `views/sim/SandboxView.tsx:534`。
+ * 当日命中 `views/sim/SandboxView.tsx:534`。
+ * ⚠ 保质期：本文件落地后该命令**必然命中本文件**（这正是本单的产出）；
+ * 要复验"接线前是什么样"，请在上述基线提交上跑。
  * 所以前任 `SIM_EVENT_GAPS` 里写的「读端缺失」是**准确**的，修法是接线（本文件），不是补数据。
  *
  * ── 为什么读端必须先于事件订阅 ───────────────────────────────────────────────
@@ -146,12 +150,17 @@ export function PerturbationTimeline({ sessionId, curTick }: PerturbationTimelin
    * 泳道 = 落点（`targetObjectId.targetStateVar`）。**保序分组**：
    * 泳道之间按首次出现序、泳道之内按后端返回序 —— 两级都不重排（R6：`listPerturbations`
    * 已按 `startTick → 建单先后` 定序，重排会把"叠加顺序"这个语义弄丢）。
+   *
+   * 分组键用 `U+0000` 而不是 `.` 或空格：`targetObjectId` / `targetStateVar` 是**租户本体派生**的
+   * 任意字符串，含点或空格完全可能 ⇒ 用可见字符当分隔符会让 `a.b` + `c` 与 `a` + `b.c` 撞成一个泳道
+   * （屏上把两个不同落点画成同一条，还会误报"叠加"）。`U+0000` 不可能出现在 id 里。
+   * 写成转义而不是裸字节：裸 NUL 会让 git 把文件当二进制、diff 不可复审（`no-raw-nul` 门守着）。
    */
   const lanes = useMemo(() => {
     const order: string[] = [];
     const byKey = new Map<string, Perturbation[]>();
     for (const p of items) {
-      const key = `${p.targetObjectId} ${p.targetStateVar}`;
+      const key = `${p.targetObjectId}\u0000${p.targetStateVar}`;
       let bucket = byKey.get(key);
       if (!bucket) {
         bucket = [];
@@ -162,7 +171,7 @@ export function PerturbationTimeline({ sessionId, curTick }: PerturbationTimelin
     }
     return order.map((key) => {
       const bucket = byKey.get(key)!;
-      const [objectId, stateVar] = key.split(" ");
+      const [objectId, stateVar] = key.split("\u0000");
       return {
         key,
         objectId: objectId!,
