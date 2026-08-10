@@ -64,9 +64,15 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
 /** 求解器目录（与 SOLVER_KEYS 对齐；描述供 LLM 选型）。 */
 export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan", answersQuestions: ["各基地产能怎么上卷汇总", "型号维度的总产能是多少", "工序产能怎么卷到基地"], tags: ["产能上卷", "capacity", "rollup"] },
-  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
+  // WO-SILENT-WRONG-ANSWER-3 症①：`base` 此前**根本没被声明**（求解器 capacity.ts:424 一直在读它），
+  //   照目录只能猜出 modelId/qty/weeks ⇒ 想限定基地的调用方按兄弟求解器惯例传 `baseId` → 静默答全网。
+  //   声明补齐 + `arg-aliases.ts` 收 `baseId/baseName` 别名，两半齐才治得住（门：check-arg-drop-seam.mjs 断言③）。
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数", base: "基地（可选·不给=全网合计 scope:ALL；也认 baseId/baseName）" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
   { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["瓶颈在哪个基地哪道工序", "约束工序是哪些", "瓶颈强度矩阵怎么看"], tags: ["瓶颈", "bottleneck", "约束工序"] },
-  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
+  // WO-SILENT-WRONG-ANSWER-3 症②：此前声明 `{baseId, days}`，而求解器读的是 `{base, factor, horizon}`
+  //   —— **两个声明键一个都不被读**。照目录传 `{baseId:"zaozhuang"}` 返回 8 张卡且枣庄不在其中、
+  //   与不传参数逐字节相同；传 `{days:7}` 窗口仍是 30 天。声明改成真实读取键，历史键由 arg-aliases.ts 兜。
+  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { base: "基地（可选·不给=全网 scope:ALL；也认 baseId/baseName）", factor: "风险因素（可选·不给=该基地全因素）", horizon: "推演天数（默认 30；也认 days）" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
   { key: "affected_orders", name: "受影响订单", description: "给定扰动，返回受影响订单清单（problems/rootChain）。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["扰动会影响哪些订单", "受影响订单清单有哪些", "哪些单会被波及"], tags: ["受影响订单", "affected", "扰动"] },
   { key: "plan_audit", name: "计划体检", description: "对给定计划版本做体检评分（达成率/风险敞口）。", argHints: { versionId: "计划版本 ID" }, domain: "plan", featureKey: "view.plan-audit", answersQuestions: ["这个计划版本达成率多少", "计划体检评分是多少", "计划的风险敞口多大"], tags: ["计划体检", "达成率", "audit"] },
   { key: "plan_generate", name: "计划生成", description: "按目标与约束生成候选排产计划。", argHints: { objective: "目标口径" }, domain: "plan", answersQuestions: ["按目标约束生成排产计划", "怎么排一版候选计划", "生成满足交期的排产方案"], tags: ["计划生成", "排产", "generate"] },
@@ -74,7 +80,9 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   // 20 场景目录 §2 新增 13（成熟度 E6a）
   { key: "mitigation_select", name: "处置方案优选", description: "按因素从方案库打分排序，给推荐案与草稿 payload。", argHints: { baseName: "基地名", factor: "风险因素" }, domain: "plan", answersQuestions: ["这个风险因素怎么处置", "从方案库选哪个处置案", "推荐的处置方案是什么"], tags: ["处置方案", "mitigation", "优选"] },
   { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", argHints: { items: "待认证集", engineerGroups: "工程师组数" }, domain: "plan", answersQuestions: ["认证工程师怎么排期到周", "认证按什么优先级排", "并行约束下认证排到哪周"], tags: ["认证排期", "cert", "排期"] },
-  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据" }, domain: "plan", answersQuestions: ["订单物料齐套率怎么算", "缺哪些料、在途 ETA 多少", "逐单齐套和补料建议"], tags: ["物料齐套", "齐套率", "kit"] },
+  // WO-SILENT-WRONG-ANSWER-3 症③：补声明 base/fromDay/toDay —— 引擎半本单接上了基地维（Order.bases ∋ baseId），
+  //   声明不补齐等于「能力有了但没人知道怎么用」，agent 照旧只会传 orders。
+  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据（直传则跳过引擎取数）", base: "基地（可选·不给=全网 scope.mode:ALL；也认 baseId/baseName）", fromDay: "分析窗起点（默认 1）", toDay: "分析窗终点（默认 14）" }, domain: "plan", answersQuestions: ["订单物料齐套率怎么算", "缺哪些料、在途 ETA 多少", "逐单齐套和补料建议"], tags: ["物料齐套", "齐套率", "kit"] },
   { key: "lta_gap", name: "长协补缺", description: "净需求/覆盖率/现货缺口与分批 PO 建议。", argHints: { material: "物料", month: "月份" }, domain: "plan", answersQuestions: ["长协覆盖净需求多少", "现货缺口要补多少", "分批 PO 怎么下"], tags: ["长协", "补缺", "lta"] },
   { key: "inventory_optimize", name: "库存优化", description: "目标水位/超储/欠储/呆滞与可释放资金。", argHints: { materials: "物料库存数据" }, domain: "plan", answersQuestions: ["库存呆滞和超储怎么优化", "目标水位怎么定、能释放多少资金", "欠储超储各多少"], tags: ["库存优化", "呆滞", "inventory"] },
   { key: "changeover_sequence", name: "换型排序", description: "最近邻贪心最小化换型时长，标注交期不可行单。", argHints: { lineId: "产线", orders: "周订单" }, domain: "plan", answersQuestions: ["换型顺序怎么排最省换型时间", "产线一周订单怎么排换型", "哪些单交期不可行"], tags: ["换型排序", "changeover", "换型"] },

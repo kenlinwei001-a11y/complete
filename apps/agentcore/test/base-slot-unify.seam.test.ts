@@ -197,6 +197,10 @@ describe("WO-BASE-SLOT-UNIFY §A · 全意图 base 槽口径统一（数据半·
     //     · `yield_diag.base`（S12·原写死 `"常州"`）
     //     · `carbon_q.baseName`（S20·原写死 `"成都"`）
     //   新增而非放宽：本门的判据一字未改，只是被罩住的槽多了两个（漏更金值即退，见 CLAUDE.md「金值即更」）。
+    //   ★ 金值再更（WO-SILENT-WRONG-ANSWER-3 症③）：`kit_analysis.base`（S08）本次进入扫描面。
+    //     前一单判它「刻意不新增 base 槽」，理由是引擎半 `kit_readiness` 没有基地维；本单在引擎半接上了
+    //     （`Order.bases ∋ baseId` 真收窄 + `scope` 诚实位），故 B 侧补 `base:""` 中性默认，槽随之派生。
+    //     同样是**新增而非放宽**：本门判据一字未改（单值 base 语义槽必须 objectRef+refType:"Base"）。
     expect(found.sort()).toEqual([
       "adopt_mitigation.base:objectRef(Base)",
       "affected_orders.base:objectRef(Base)",
@@ -205,6 +209,7 @@ describe("WO-BASE-SLOT-UNIFY §A · 全意图 base 槽口径统一（数据半·
       "ceo_base_outlook.baseId:objectRef(Base)",
       "ceo_bottleneck.baseIds:json",
       "ceo_whatif.scopeObjectIds:json",
+      "kit_analysis.base:objectRef(Base)",
       "order_deep_360.base:objectRef(Base)",
       "risk_root_cause.base:objectRef(Base)",
       "yield_diag.base:objectRef(Base)",
