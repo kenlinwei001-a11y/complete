@@ -203,11 +203,14 @@ export interface CatalogClient {
     kind: "slices" | "solvers",
     query?: string,
   ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
-  /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
+  /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。
+   *  WO-CAPMAP-LIVE：item 形状补 `outputShape`（DataCore `/a/v1/solvers/registry` 逐条回 `SOLVER_OUTPUT_SHAPES[key]`，
+   *  见 datacore app.ts:3024）——能力地图注入「结果长什么样/取哪个字段溯源」全靠它；此前 HTTP 出口 map 时被丢弃，
+   *  与上面 `answersQuestions` 同一种「断在接缝」。 */
   solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[]; outputShape?: string[] }[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */

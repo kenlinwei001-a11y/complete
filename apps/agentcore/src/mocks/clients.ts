@@ -5,6 +5,8 @@ import { matchObjectRefInType, normalizeObjectRefKey, objectRefDeclaredType, pic
 // DF.13 外协红线单一来源（C08）：mock DataCore 的 C08 阈值必须与真 DataCore 同源，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
+// WO-CAPMAP-LIVE · 求解器全集替身（取自真实 /a/v1/solvers/registry 返回·替掉原来 3 条手写条目）。
+import { MOCK_SOLVER_REGISTRY } from "./solver-registry.js";
 import type {
   ActionClient,
   CatalogClient,
@@ -949,14 +951,18 @@ class MockCatalogClient implements CatalogClient {
     );
     return { items: items.slice(0, 20) };
   }
-  /** A1 求解器全集注册表（mock：场景 2 + 通用 1，含 A8 CP-SAT 代表 assignment_optimize 供 MCP 工具构建）。 */
+  /**
+   * A1 求解器全集注册表。
+   *
+   * WO-CAPMAP-LIVE：改造前这里只回 **3 条**手写条目，而真实注册表 **59 条** —— 论域差 20 倍。
+   * 在"能力地图注入源 = 手写镜像"的年代这个谎言无人察觉（没人消费活目录）；一旦注入源换成活目录，
+   * 它立刻把导航图候选和 `compileSolverPlan` 的组合选型一起打塌。现改为取真实注册表返回的全集
+   * （`mocks/solver-registry.ts`·逐字段取自真起服务的 `GET /a/v1/solvers/registry`）。
+   */
   async solverRegistry(_ctx: ToolAuthCtx, query?: string) {
-    const all: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
-      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
-      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
-      { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）", argHints: { items: "待指派项", bins: "容器" }, domain: "generic" },
-    ];
-    const items = all.filter((it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query));
+    const items = MOCK_SOLVER_REGISTRY.filter(
+      (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
+    ).map((it) => ({ ...it }));
     return { items };
   }
 }

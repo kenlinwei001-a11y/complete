@@ -53,9 +53,30 @@ describe("七要素 Harness 提示词标准（叠加式·SEAM 断七要素齐 + 
 
   it("§6 求解纪律段在（排产/优化类问题必须调对口 solver·禁止心算）", () => {
     expect(AGENT_SYSTEM_CORE).toContain("求解纪律");
-    for (const kw of ["排产", "优化", "产能约束", "可行性判断", "心算", "capacity_feasibility", "portfolio_optimize"]) {
+    for (const kw of ["排产", "优化", "产能约束", "可行性判断", "心算"]) {
       expect(AGENT_SYSTEM_CORE, `求解纪律缺关键词「${kw}」`).toContain(kw);
     }
+  });
+
+  /**
+   * WO-CAPMAP-LIVE · 反写死护栏（**取代**原先 `toContain("capacity_feasibility"/"portfolio_optimize")` 的断言）。
+   *
+   * 原断言把两个 key **钉死**在 system prompt 里，而实测这两个 key **在活求解器注册表（59 条）里根本不存在**：
+   *   · `capacity_feasibility` 是**意图** key，不是求解器（datacore `databuilder/comprehend.ts:149`
+   *     写着 `capacity_feasibility: "capacity_forecast"` —— 意图→求解器的映射）；
+   *   · `portfolio_optimize` 只作为**规则** key 存在（`portfolio_optimize_coeffs` 系数校准规则），
+   *     真正的求解器叫 `portfolio`（`solvers/service.ts` SOLVER_KEYS）。
+   * 即：prompt 在教模型去调两个不存在的 solver key，而测试在保证这句话不许改。
+   * 现改为**反向**断言：求解纪律段里不许再内联具体 solver key（R14），改为指向导航图候选 + 检索。
+   */
+  it("求解纪律不内联具体 solver key（R14·选型指向活目录候选而非写死名单）", () => {
+    const section = AGENT_SYSTEM_CORE.slice(AGENT_SYSTEM_CORE.indexOf("【求解纪律】"));
+    for (const ghost of ["capacity_feasibility", "portfolio_optimize"]) {
+      expect(section, `求解纪律仍内联了活注册表里不存在的 key「${ghost}」`).not.toContain(ghost);
+    }
+    // 正向：改为指向"导航图候选 + 检索"这条不写死的路。
+    expect(section).toContain("导航图");
+    expect(section).toMatch(/discover|retrieve_knowledge/);
   });
 
   it("旧红线短语一字不删（叠加改造的回归护栏）", () => {
