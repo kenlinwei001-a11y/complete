@@ -122,19 +122,17 @@ function DimensionCard<T>({
   label,
   testId,
   caliber,
-  className,
 }: {
   dim: Dim<T>;
   label: string;
   testId: string;
   /** 进浮层的口径说明（连接键、全域是什么）。 */
   caliber: ReactNode;
-  className?: string;
 }) {
   const ok = isAvailable(dim);
   return (
     <div
-      className={`${styles.card} ${ok ? "" : styles.blocked} ${className ?? ""}`}
+      className={`${styles.card} ${ok ? "" : styles.blocked}`}
       data-testid={`impact-dim-${testId}`}
       data-available={ok ? "1" : "0"}
     >
