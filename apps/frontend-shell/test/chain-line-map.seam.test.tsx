@@ -860,6 +860,99 @@ describe("站名摆位 · 上下交替 + 同侧分层 ⇒ 包围盒两两不重�
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 11.5 WO-CHAIN-MAP-LAYOUT 件二 · **换布局不许弄丢的八项**（一处集中断言，便于复审逐项对）
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * 这张图的价值不在"是圆还是横线"，在下面这八项编码。**换布局时最容易顺手丢掉它们**，
+ * 而且丢了以后测试往往照样绿（丢的是表达，不是函数）。故集中咬一遍，删一项即红。
+ */
+describe("件二 · 换布局不许弄丢的八项", () => {
+  it("① 站圈大小 ∝ 该环节吃掉的全链损失占比（半径是引擎 pct 的纯函数）", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    expect(domRadius(TOP.stepId)).toBeCloseTo(stationRadius(TOP.pctOfChainLoss), 9);
+    expect(domRadius(BOTTOM.stepId)).toBeCloseTo(stationRadius(BOTTOM.pctOfChainLoss), 9);
+    expect(domRadius(TOP.stepId)).toBeGreaterThan(domRadius(BOTTOM.stepId));
+  });
+
+  it("② 停运站画成**虚线方框 + ✕**（不是一个小一点的圆）", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const map = buildChainLineMap(REAL);
+    expect(map.suspended.length).toBeGreaterThan(0);
+    const css = readRepo("apps/frontend-shell/src/views/sim/ChainLineMapView.module.css");
+    expect(css, "停运方框不再是虚线 ⇒ 与在运站的形状差别没了").toMatch(/\.suspendedBox\s*\{[^}]*stroke-dasharray/);
+    for (const s of map.suspended) {
+      const g = screen.getByTestId(`clm-suspended-${s.stepId}`);
+      expect(g.querySelector("rect"), `停运站 ${s.stepId} 没有方框`).not.toBeNull();
+      expect(g.querySelector("path"), `停运站 ${s.stepId} 没有 ✕`).not.toBeNull();
+      expect(g.querySelector("circle"), "停运站画成了圆 ⇒ 与「有值的站」混同").toBeNull();
+    }
+  });
+
+  it("③ 换乘站的**同心圆**标记（外环 + 内心，两个 circle）", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const inter = buildChainLineMap(REAL).stations.filter((s) => s.glyph === "interchange");
+    expect(inter.length).toBeGreaterThan(0);
+    for (const s of inter) expect(screen.getByTestId(`clm-station-${s.stepId}`).querySelectorAll("circle")).toHaveLength(2);
+  });
+
+  it("④ 共线族的**外环 halo**（多条族线共用该环节时出现；单条时一个都没有）", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    expect(document.querySelectorAll('[data-testid^="clm-shared-halo-"]'), "单条族线不该有共线标记").toHaveLength(0);
+    expect(document.querySelectorAll('[data-shared-families]').length, "共线标记的挂点没了 ⇒ 多族时也不会出现").toBeGreaterThan(0);
+    const css = readRepo("apps/frontend-shell/src/views/sim/ChainLineMapView.module.css");
+    expect(css, "halo 的样式被删了").toContain(".sharedFamilyHalo");
+  });
+
+  it("⑤ 增值段用**不同图元/颜色**，与「占比≈0 的普通站」分得开", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const va = buildChainLineMap(REAL).stations.filter((s) => s.valueAdd);
+    expect(va.length).toBeGreaterThan(3);
+    for (const s of va) {
+      expect(screen.getByTestId(`clm-station-${s.stepId}`)).toHaveAttribute("data-station-kind", "value-add");
+      expect(domPctText(s.stepId)).toBe("增值·不进分母");
+    }
+    const css = readRepo("apps/frontend-shell/src/views/sim/ChainLineMapView.module.css");
+    expect(/\.stationValueAdd\s*\{[^}]*fill:\s*var\(--ok\)/.test(css), "增值站不再用正向语义色 ⇒ 与普通站看不出差别").toBe(true);
+  });
+
+  it("⑥ 头行的守恒自证（锚点 · Σ · 残差 · 容差 · 站/停运/换乘/增值/返工 计数）", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    expect(screen.getByTestId("clm-anchor").textContent).toContain("锚点");
+    const cons = screen.getByTestId("clm-conservation");
+    expect(cons).toHaveAttribute("data-ok", "1");
+    for (const frag of ["损失守恒", "100.000%", "残差", "容差"]) expect(cons.textContent).toContain(frag);
+    const stats = screen.getByTestId("clm-stats").textContent ?? "";
+    for (const frag of ["站", "停运", "换乘", "增值", "返工"]) expect(stats).toContain(frag);
+  });
+
+  it("⑦ 底部「本次载荷的诚实边界（不画没有的东西）」", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const notes = screen.getByTestId("clm-notes");
+    expect(notes.textContent).toContain("本次载荷的诚实边界");
+    expect(notes.textContent).toContain("不画没有的东西");
+    expect(notes.querySelectorAll("li").length).toBeGreaterThan(0);
+  });
+
+  it("⑧ AND 门符号 + 「齐套 AND · 全到齐才放行」+ 图例里的 AND ≠ OR 警示", async () => {
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const join = screen.getByTestId("clm-and-join");
+    expect(join).toHaveAttribute("data-join-semantics", "AND");
+    expect(within(join).getByTestId("clm-and-gate")).toHaveAttribute("data-glyph", "and-gate");
+    expect(join.textContent, "画布上「齐套 AND · 全到齐才放行」这句话没了").toContain("齐套 AND · 全到齐才放行");
+    const warn = screen.getByTestId("clm-and-or-warning").textContent ?? "";
+    for (const frag of ["OR", "AND", "全部"]) expect(warn).toContain(frag);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 12. WO-CHAIN-MAP-LAYOUT 件三 · **SVG <title> 已删**（原生 tooltip 滞留遮挡图形）
 // ═══════════════════════════════════════════════════════════════════════════════
 /**
