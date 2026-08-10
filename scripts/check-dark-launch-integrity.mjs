@@ -313,7 +313,13 @@ if (runtime) {
   const missed = [...rtOff].filter((k) => !offSet.has(k));
   const extra = model.offByDefault.filter((k) => !rtOff.has(k));
   if (missed.length || extra.length) {
-    fail(`A9 抽取器与运行期真 registry 不一致：静态漏 ${missed.length} 个（${missed.join(",") || "-"}）· 静态多 ${extra.length} 个（${extra.join(",") || "-"}）\n      → 静态走查坏了，本门所有结论作废。`);
+    fail(
+      `A9 静态抽取与运行期真 registry 不一致：静态漏 ${missed.length} 个（${missed.join(",") || "-"}）· 静态多 ${extra.length} 个（${extra.join(",") || "-"}）\n` +
+      `      → 两种可能，**不许挑一个顺眼的信**，先分清：\n` +
+      `        ① dist 陈旧：features.ts 改了但没重新 build ⇒ 跑 \`pnpm --filter datacore build\` 再来。\n` +
+      `        ② 静态走查坏了：抽取器读漏了条目 ⇒ 本门所有结论作废，先修抽取器。\n` +
+      `      判别：\`git status\` 看 features.ts 是否有未构建的改动；有 ⇒ 多半是①。`,
+    );
     runtimeNote = "A9 运行期交叉核对：❌ 不一致";
   } else {
     runtimeNote = `A9 运行期交叉核对：✅ 静态 ${offSet.size} ≡ 运行期 ${rtOff.size}`;
