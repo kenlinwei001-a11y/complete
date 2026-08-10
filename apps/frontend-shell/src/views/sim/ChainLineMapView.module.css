@@ -306,6 +306,23 @@
   font-size: 11px;
 }
 
+/* WO-SANDBOX-DECLUTTER · 无名站的隐藏读数节点（替代原来的 SVG `<title>`）。
+ *
+ * 原生 `<title>` 会被浏览器画成 OS tooltip：**恒在最上层、盖住环形图、移开还滞留**
+ * （仓主实测报的就是这一条）。这里改用一个视觉隐藏的 `<text>`：
+ *  · `opacity: 0`  —— 不可见，但节点与文本内容都在（读屏/测试都还找得到）；
+ *  · `pointer-events: none` —— 不参与命中测试，不会挡住站圈本身的 hover；
+ *  · **不用** `display:none` / `visibility:hidden` —— 那会把它从可访问性树里摘掉，
+ *    等于为了修 UI 牺牲可达性（本单明令禁止）。
+ * SVG `<text>` 不参与流式布局，故它一个像素都不占。
+ */
+.srOnlyText {
+  opacity: 0;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 /* ── 详情 ─────────────────────────────────────────────────────────────────── */
 .detail {
   background: var(--panel2);
