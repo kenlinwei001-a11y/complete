@@ -554,7 +554,11 @@ export class OntologyCoreService {
     spec: SliceSpecRecord["spec"],
     args: Record<string, unknown>,
   ): Promise<{
-    nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }[];
+    // WO-SLICE-16-LAYERS（R13 修复）：origin/epoch 为**加性**带出——此前 addNode 只写
+    // {id,typeKey,objectKey,props}，把每个对象都有的溯源信息（ObjectOrigin + 写入批次 epoch）
+    // 整个丢掉，于是「这条切片的数据是哪来的」在切片这条路上永远答不出来（十六层的⑯层）。
+    // 既有消费方读的是同名字段，多两个字段不影响（加性，不破契约）。
+    nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown>; origin: ObjectInstance["origin"]; epoch?: number }[];
     edges: { linkKey: string; from: string; to: string }[];
     truncated: boolean;
     snapshotVersion: string;
@@ -618,7 +622,7 @@ export class OntologyCoreService {
       roots = roots.filter((o) => matchFilter(o.props, spec.root.selector.filter));
     }
 
-    const nodes = new Map<string, { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }>();
+    const nodes = new Map<string, { id: string; typeKey: string; objectKey: string; props: Record<string, unknown>; origin: ObjectInstance["origin"]; epoch?: number }>();
     const edges = new Map<string, { linkKey: string; from: string; to: string }>();
     let truncated = false;
     const typeCache = new Map<string, ObjectTypeDef | undefined>();
@@ -638,7 +642,15 @@ export class OntologyCoreService {
       const props = project
         ? Object.fromEntries(project.filter((p) => p in o.props).map((p) => [p, o.props[p]]))
         : o.props;
-      nodes.set(o.id, { id: o.id, typeKey: o.type, objectKey: await objectKeyOf(o), props });
+      // origin/epoch 加性带出（R13）：溯源随对象走，不再在投影这一步被丢掉。
+      nodes.set(o.id, {
+        id: o.id,
+        typeKey: o.type,
+        objectKey: await objectKeyOf(o),
+        props,
+        origin: o.origin,
+        ...(o.epoch !== undefined ? { epoch: o.epoch } : {}),
+      });
       return true;
     };
 
