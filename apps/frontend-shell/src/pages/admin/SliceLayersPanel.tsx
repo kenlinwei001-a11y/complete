@@ -197,11 +197,11 @@ function EmptyGraphBar({
  * 而这 4 条的 root selector 全部写着占位符 ——
  *   `order_fulfillment_360` / `order_to_cash_720` / `enterprise_360` → `{{args.so}}`（battery.ts:2447/2492/2560）
  *   `aop_scenario_chain` → `{{args.key}}`（battery.ts:2601）
- * 而调用侧传的是 **`{}`**（`SliceInspector.tsx` 渲染本面板时不给 args）⇒
+ * 而修复前调用侧传的是 **`{}`**（`SliceInspector` 渲染本面板时不给 args，本参数默认 `{}`）⇒
  * 「要求的实参集」∩「实际传的实参集」= **空** ⇒ root 过滤恒不匹配 ⇒ 十六层全取不到东西。
- * 实测原文：无参 `nodes=0 edges=0 summary.present=3/16`；给 `{"so":"SO-3391"}` 立刻
- * `nodes=531 edges=570 present=12/16`。**形态是「接了线没数据」，不是「没接线」** ——
- * 所以修的不是接线，是「生产实参」。
+ * 实测原文（4 条逐条跑）：无参一律 `nodes=0 present=3/16 · 13/16 张卡计数为 0`；
+ * 补上默认实参后 `531 / 540 / 555 / 5` 个节点、`present=12/12/12/11 /16`。
+ * **形态是「接了线没数据」，不是「没接线」** —— 所以修的不是接线，是「生产实参」。
  *
  * 修法 **B（默认注入真实实参）**：第一次无参请求拿回后端从**真对象**上读出的候选值
  * （`app.ts:4813-4824` → `slice-layers.ts:107-119`，按 objectKey 字典序去重，R6 确定性），
