@@ -147,6 +147,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）+ L3 耦合联合求解（一次 portfolio 守恒解·真传导）。
   { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
   { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
+  // WO-APPROVAL-POLICY（R3 暗发·defaultOn:false·关 = /a/v1/approval-* 全部 404 FEATURE_NOT_FOUND）：
+  // 批复链由「业务规则 × 组织权限」动态生成（与业务流程正交）。**开关默认值是产品决策不是 dev 决策** ——
+  // 本单只注册，不开；且同列 GOVERNANCE_DARK_LAUNCH_FEATURES ⇒ battery「all on」模板也**不顺带开**
+  // （否则 demo 租户会被模板悄悄打开 = 等于 dev 替产品做了决定）。只经显式租户 override 启用。
+  { key: "approval.policy-engine", name: "批复策略引擎（业务规则×组织权限动态生成批复链）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -181,6 +186,21 @@ export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
  */
 export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "dc.lazy-solver-context",
+]);
+
+/**
+ * WO-APPROVAL-POLICY · 治理暗发门 —— 同 QOS/PERF 暗发门一样**不随行业模板「all on」顺带开**。
+ *
+ * 单列一个集合（不塞进 QOS_DARK_LAUNCH_FEATURES）的理由与那两个集合分家时相同：语义不同，
+ * 混进去会让 `QOS_DARK_LAUNCH_FEATURES` 这个名字不再度量它宣称的东西。
+ *
+ * ⚠ 为什么必须列进来，而不是只写 `defaultOn:false` 就完事（这是本条存在的**全部**理由）：
+ * demo 租户 industry=`battery-manufacturing`，其模板是「all on」——`defaultOn:false` 只挡 L1，
+ * L2 会把它重新打开。即：光写 defaultOn:false 的效果是**demo 上它是开的**，
+ * 那就等于 dev 替产品做了「默认开」的决定。工单原文：「开关默认值是产品决策不是 dev 决策，不许自己开」。
+ */
+export const GOVERNANCE_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "approval.policy-engine",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
@@ -280,7 +300,14 @@ export class FeatureService {
     // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
     // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
     if (industry === "battery-manufacturing") {
-      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k) && !PERF_DARK_LAUNCH_FEATURES.has(k)));
+      return new Set(
+        ALL_FEATURE_KEYS.filter(
+          (k) =>
+            !QOS_DARK_LAUNCH_FEATURES.has(k) &&
+            !PERF_DARK_LAUNCH_FEATURES.has(k) &&
+            !GOVERNANCE_DARK_LAUNCH_FEATURES.has(k), // WO-APPROVAL-POLICY 批复策略引擎
+        ),
+      );
     }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)

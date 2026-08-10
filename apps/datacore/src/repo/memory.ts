@@ -503,6 +503,10 @@ export function createMemoryRepos(): Repos {
     // WO-Q0 · 业务流程层（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
     processDomains: new MemStore(),
     processDefinitions: new MemStore(),
+    // WO-APPROVAL-POLICY · 批复策略引擎（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
+    approvalAuthorities: new MemStore(),
+    approvalPolicies: new MemStore(),
+    approvalInstances: new MemStore(),
     sim: new MemSimRepo(),
     async ping() {
       /* always ready */

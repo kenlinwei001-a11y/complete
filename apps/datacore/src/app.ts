@@ -50,6 +50,8 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+// WO-APPROVAL-POLICY · 批复策略引擎契约（路由体 schema 从这里 omit 派生，不另抄形状）。
+import { ApprovalAuthoritySchema, ApprovalPolicySchema, ApprovalRequestSchema } from "@platform/contracts";
 import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -88,6 +90,8 @@ import { runWithCancellation } from "./solvers/cancellation.js"; // WO-D1 · 请
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired, type ActionExecutor } from "./actions.js";
+// WO-APPROVAL-POLICY · 批复策略引擎（批复链由「业务规则 × 组织权限」动态求值生成，与业务流程正交）。
+import { ApprovalPolicyService } from "./approval-policy.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -174,6 +178,7 @@ export interface BuiltApp {
     scheduler: SchedulerService;
     ruleScan: RuleScanService;
     actions: ActionService;
+    approvalPolicy: ApprovalPolicyService; // WO-APPROVAL-POLICY · 批复策略引擎（动态批复链）
     decisionKernel: DecisionKernelService; // WO-C1 · L2 决策内核
     databuilder: DataBuilderService;
     sop: SopService;
@@ -371,6 +376,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 计数照记但只有 `services.actions.metrics` 读得到，`/metrics`（下方渲染的是这里的 metrics）看不见 ——
   // 埋点等于对外不存在。传参即接上 dc_action_{submit,approval,execute,execute_attempts}_total。
   const actions = new ActionService(repos, rules, outbox, notifications, metrics);
+  // WO-APPROVAL-POLICY · 批复策略引擎。与 ActionService 的关系要说清楚（两者都叫"审批"但不是一回事）：
+  //  · `ActionService.approvalChain` 是**注册在 ActionType 上的静态链**（1–3 步，写死在类型定义里）；
+  //  · 本服务的链是**求值出来的**——同一个业务事件，事实变一个数链就换一条。
+  // 二者今天并存（本单不改 S2 的既有行为，避免动到 R4 真值写入路径）；收敛口径见
+  // docs/WO-APPROVAL-POLICY-delivery.md §7「需审核方回写本体的清单」。
+  const approvalPolicy = new ApprovalPolicyService(repos, outbox);
   // WO-C1 · L2 决策内核：gap_attribution(根因)+decision_play(方案)→一等 Decision→commit 派 ActionDraft（走 S2）。
   const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
@@ -1689,6 +1700,85 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       propagationCount: rules.length,
     };
     return SandboxViewConfigSchema.parse(cfg);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // WO-APPROVAL-POLICY · 批复策略引擎（批复流程 ⟂ 业务流程）
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // 🔴 本组路由里**没有一个端点接受调用方传入批复链**。想指定链条也没有字段可填 ——
+  //    `ApprovalRequest` 只有 { subjectKind, subjectKey, facts }。业务侧发出的是
+  //    「我需要批复 + 这是上下文事实」，链条由 `/resolve` 当场求值。能力的缺席就是纪律的载体。
+  //
+  // 全部经 entitlement 暗发（R3 先于 authz：关 = 404 FEATURE_NOT_FOUND，默认就是关的）。
+  const requireApproval = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "approval.policy-engine"))) throw featureNotFound();
+  };
+  // 路由体 schema 直接从契约 omit 掉仓储字段 —— 不另抄一份形状（抄了就有第二真相源，改契约时这里不会红）。
+  const AuthorityUpsertSchema = ApprovalAuthoritySchema.omit({ id: true, tenantId: true });
+  const PolicyUpsertSchema = ApprovalPolicySchema.omit({ id: true, tenantId: true });
+
+  app.get("/a/v1/approval-authorities", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    return { items: await approvalPolicy.listAuthorities(c) };
+  });
+  app.put("/a/v1/approval-authorities/:key", async (req, reply) => {
+    const c = ctx(req); await requireApproval(c);
+    const key = (req.params as { key: string }).key;
+    const body = AuthorityUpsertSchema.parse({ ...(req.body as object), key });
+    return reply.status(200).send(await approvalPolicy.upsertAuthority(c, body));
+  });
+
+  app.get("/a/v1/approval-policies", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    return { items: await approvalPolicy.listPolicies(c) };
+  });
+  app.put("/a/v1/approval-policies/:key", async (req, reply) => {
+    const c = ctx(req); await requireApproval(c);
+    const key = (req.params as { key: string }).key;
+    const body = PolicyUpsertSchema.parse({ ...(req.body as object), key });
+    return reply.status(200).send(await approvalPolicy.upsertPolicy(c, body));
+  });
+  app.delete("/a/v1/approval-policies/:key", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    await approvalPolicy.deletePolicy(c, (req.params as { key: string }).key);
+    return { deleted: true };
+  });
+
+  /**
+   * 🔴 引擎主入口：给定业务事件 + 上下文事实 → **本次**该走哪条批复链。
+   *
+   * 这是个纯读端点（不落任何实例），因为「链条会不会变」必须能被单独观测 ——
+   * 只有开单才能看到链条的话，"改一个数链条就变"这件事就没法在不产生副作用的前提下验证。
+   */
+  app.post("/a/v1/approvals/resolve", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    const request = ApprovalRequestSchema.parse(req.body ?? {});
+    return approvalPolicy.resolveChain(c, request);
+  });
+
+  app.post("/a/v1/approvals", async (req, reply) => {
+    const c = ctx(req); await requireApproval(c);
+    const request = ApprovalRequestSchema.parse(req.body ?? {});
+    const inst = await approvalPolicy.createInstance(c, request, new Date().toISOString());
+    return reply.status(201).send(inst);
+  });
+  app.get("/a/v1/approvals", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    const q = req.query as { status?: string };
+    return { items: await approvalPolicy.listInstances(c, q) };
+  });
+  app.get("/a/v1/approvals/:id", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    return approvalPolicy.getInstance(c, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/approvals/:id/decide", async (req) => {
+    const c = ctx(req); await requireApproval(c);
+    const b = (req.body ?? {}) as { decision?: string; comment?: string };
+    if (b.decision !== "APPROVE" && b.decision !== "REJECT") {
+      throw validationError("decision 必须是 APPROVE 或 REJECT");
+    }
+    return approvalPolicy.decide(c, (req.params as { id: string }).id, b.decision, new Date().toISOString(), b.comment);
   });
 
   // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----
@@ -4592,6 +4682,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scheduler,
       ruleScan,
       actions,
+      approvalPolicy, // WO-APPROVAL-POLICY · 批复策略引擎
       decisionKernel,
       databuilder,
       sop,

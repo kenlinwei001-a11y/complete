@@ -807,6 +807,12 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
     processDomains: new PgStore(pool, "process_domains"),
     processDefinitions: new PgStore(pool, "process_definitions"),
+    // WO-APPROVAL-POLICY · 批复策略引擎（R9 三处同改之三 · migrations/030_approval_policy.sql）。
+    // 同上：表名写错这里不编译报错、memory 单测也照绿 —— 故 approval-policy.test.ts 复用
+    // process-layer.test.ts 那道机制，把 migration 里的 CREATE TABLE 名抽出来与这三个字面量比对。
+    approvalAuthorities: new PgStore(pool, "approval_authorities"),
+    approvalPolicies: new PgStore(pool, "approval_policies"),
+    approvalInstances: new PgStore(pool, "approval_instances"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");

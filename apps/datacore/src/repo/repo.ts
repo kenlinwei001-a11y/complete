@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ApprovalAuthority, ApprovalInstance, ApprovalPolicy, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -334,6 +334,13 @@ export interface Repos {
   // 排序需求由调用方按 `key` 自己排（key 形如 P01，字典序 ≡ 数字序，因两位定宽）。
   processDomains: Store<ProcessDomain>;
   processDefinitions: Store<ProcessDefinition>;
+  // ── WO-APPROVAL-POLICY · 批复策略引擎（migrations/030_approval_policy.sql）──
+  // R9 三处同改：本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 🔴 这三个 Store 与上面两个流程层 Store **互不引用**：批复链由策略求值生成，
+  //    不挂在任何 ProcessDefinition 上（正交性·契约红线 1）。它们排在一起只是因为都走通用 Store。
+  approvalAuthorities: Store<ApprovalAuthority>;
+  approvalPolicies: Store<ApprovalPolicy>;
+  approvalInstances: Store<ApprovalInstance>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */
