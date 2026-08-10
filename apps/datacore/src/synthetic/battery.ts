@@ -1782,6 +1782,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Metric: "decision", RootCauseChain: "decision", KSF: "decision", Principal: "people",
   // WO-ADOPT-MITIGATION：已采纳处置方案（决策落地台账·归 decision 域，同 RootCauseChain/DecisionGap）
   AdoptedMitigation: "decision",
+  // WO-ADOPT-DECISION-PLAY：已采纳战略方案（同为决策落地台账·归 decision 域）
+  AdoptedDecisionPlay: "decision",
   // cockpit P5 / sop 绿地（S&OP 版本演进）
   SopVersionRow: "plan",
   // Phase 3 MES Domain

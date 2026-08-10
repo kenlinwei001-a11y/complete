@@ -41,7 +41,9 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     //   + WO-SANDBOX D1×E1 接缝：Cadence（节拍落库·61 battery + 31 extended）→ 92。
     //   + WO-SANDBOX-D2 采购段两段承载 2 类（CustomsClearance 清关 / IncomingInspection 到货检验）→ 94。
     //     两类**均有实例**（清关仅进口单 1 条 · 检验每单必检 30 条），故下面的 provenance 校验覆盖它们。
-    expect(types.length).toBe(94);
+    //   + WO-ADOPT-DECISION-PLAY 1 类（AdoptedDecisionPlay·已采纳战略方案台账·adopt_decision_play 执行器落点）→ 95。
+    //     同 AdoptedMitigation：**出厂零实例**（运行期由 Action 审批写入），故 objs 计数不变、provenance 校验不覆盖它。
+    expect(types.length).toBe(95);
     // R13 provenance 因果真实：凡在 demo 中物化了实例的类型，其 sourceBindings 非空且指向同名真 rawDataset
     //（非硬编码模板）。Phase3 MES 类型（WorkOrder/WIP*/Equipment*E/Operator* 等）为轻量 demo 的
     // 本体模型定义、不落 demo 实例（否则单次 seed 逾万对象拖垮用例），无实例 provenance，故按物化类型校验。
@@ -86,7 +88,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(94); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）；+WO-SANDBOX Cadence（节拍·8 实例）；+WO-SANDBOX-D2 CustomsClearance/IncomingInspection（92→94）
+    expect(a.types.length).toBe(95); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）；+WO-SANDBOX Cadence（节拍·8 实例）；+WO-SANDBOX-D2 CustomsClearance/IncomingInspection（92→94）；+WO-ADOPT-DECISION-PLAY AdoptedDecisionPlay（同为零实例台账 → objs 计数不变·94→95）
     // WO-SANDBOX-D2：+32 对象 = 进口供应商 SUP-015 宇部兴产 1 条（清关段唯一能走到实测分支的路，
     // 原 14 家 region 全境内 → 清关段恒 NOT_APPLICABLE = 接了线没数据）+ CustomsClearance 1 条（仅进口 PO）
     // + IncomingInspection 30 条（每张 PO 到货必检）。PurchaseOrder 仍 30 条、Material 仍 8 条（只加字段不加实例）。
