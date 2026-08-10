@@ -71,7 +71,10 @@ import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
-import { lintSkill, classifySkillEvalCases } from "./skill-lint.js";
+import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
+import { compileSkill } from "./skill-compiler.js";
+// WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
+import { getSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -585,6 +588,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     const q = req.query as { packageId?: string; from?: string; to?: string };
     return fallbackStats(deps.repos, { tenantId: a.tenantId, ...q });
+  });
+
+  /**
+   * WO-REFGATE-ENT · F14 · 出厂技能发布门审计的**诚实位**（`/b/v1/ops/*` 由 rewriteUrl 折到此处）。
+   *
+   * 为什么要有这道位：出厂技能经 `repos.skills.insert` 旁路落库，从未走过
+   * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
+   * 启动期 `auditSeededSkills` 用**同一份判据**补问一遍，结论落在这里，运维随时可查。
+   *
+   * 四态里 `NOT_RUN` 与 `GATE_UNAVAILABLE` **都不是"干净"**：
+   * 前者是没审计过，后者是注册表读不出来所以没法判——「我没找到」≠「它不存在」。
+   */
+  app.get("/api/v1/ops/skill-seed-gate", async (req) => {
+    await auth(req);
+    return getSeedSkillGateReport();
   });
 
   app.post("/api/v1/ops/fallback/:traceId/promote", async (req, reply) => {
@@ -1242,43 +1260,31 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     const skill = await deps.repos.skills.get(id);
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
-    // Skill 编写规范 §4 门禁一：结构 lint 必过（force=true 走审计豁免）。
     const { force } = req.query as { force?: string };
-    // ⚠️ 必须传 ctx.allSkills：WO-SKILL-3 的跨资源规则（dependsOn 可解析 / 依赖图无环）在
-    //    `ctx.allSkills` 缺省时会直接 `return []`——只调 `lintSkill(skill)` 等于把这两条规则**接了没通**
-    //    （lint 恒过，真正的环/悬挂依赖照样发布出去，而单测因为直接调函数并传了 ctx 仍是绿的）。
-    const lint = lintSkill(skill, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId), requirePublishedDeps: true });
-    if (!lint.ok && force !== "true") {
-      throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
-    }
-    // ⚠️ 门禁一·补 · B→A 存在性探针（引用闭合「无死路」）——WO-SKILL-REFCLOSURE-A，2026-08-09 接线。
+    // ——— Skill 编写规范 §4 门禁一（结构 lint）+ 门禁一·补（B→A 引用闭合）———
     //
-    // 病：`probeMissingRefs` 早已存在、且早已接在 **agent 发布**与 **workflow 发布**两路上，
-    // **唯独 skill 发布路没接**——于是一个技能可以 `references:[{kind:"solver",key:"根本不存在"}]`
-    // 照样发布成功（`lintSkill` 只校验 kind=skill 的本地引用，跨系统那半它管不着）。
-    // 这不是"没造门"，是"门造好了没挂在这个门框上"（三种不工作形态里的**接了线接错地方**）。
+    // WO-REFGATE-ENT · F14：这两道判据**已抽到 `skill-publish-gate.ts`**，本路由与
+    // `main.ts` 启动期种子审计**调用同一份实现**。原因是 F14 的病灶：出厂技能经
+    // `repos.skills.insert` 旁路落库，以 `status:"PUBLISHED"` 直接进库，**一次也没走过本端点** ——
+    // 「门装上了」于是被读成「库里的东西都过了门」，而这是两个不同的命题。
+    // 抽一份实现出来（而不是在 seed 里再写一遍校验）是刻意的：抄一份就是装饰品，
+    // 改主逻辑时另一份拿旧的去测、照样绿（CLAUDE.md 铁律 0.6）。
     //
-    // 位置：紧跟 lint 之后、评测门之前——死路引用是事实错误，没必要先烧一轮评测再拒；
-    // 且远在 `repos.skills.update` 之前，故拒发布 = **未落库**。
-    // force：**不豁免**。force 豁免的是**质量门**（lint 写得不够好 / 评测用例还没补齐），
-    // 而死路引用是**事实错误**——审计签字不能让一个不存在的求解器变成存在。
-    // 与 workflow 发布同口径（那里 force 只豁免破坏性 schema 变更，探针缺失一律拦）。
-    const skillCrossRefs = [...(skill.references ?? []), ...(skill.dependsOn ?? [])].filter((r) => r.required !== false);
-    const refSolverKeys = skillCrossRefs.filter((r) => r.kind === "solver").map((r) => r.key);
-    const refRuleKeys = skillCrossRefs.filter((r) => r.kind === "rule").map((r) => r.key);
-    const refObjectTypes = skillCrossRefs.filter((r) => r.kind === "ontologyType").map((r) => r.key);
-    if (refSolverKeys.length + refRuleKeys.length + refObjectTypes.length > 0) {
-      // 注册表不可用（读不出 / 空集）→ probeMissingRefs 抛 503 REF_PROBE_UNAVAILABLE（fail-closed）。
-      const deadRefs = await probeMissingRefs(deps.dataCore, a, { solverKeys: refSolverKeys, ruleKeys: refRuleKeys, objectTypes: refObjectTypes });
-      const dead = [
-        ...deadRefs.solvers.map((k) => `求解器「${k}」在 DataCore 未注册`),
-        ...deadRefs.rules.map((k) => `规则「${k}」在 DataCore 规则库不存在`),
-        ...deadRefs.objectTypes.map((k) => `对象类型「${k}」在 DataCore 本体不存在`),
-      ];
-      if (dead.length > 0) {
-        throw new HttpError(422, "SKILL_REF_UNRESOLVED", `技能引用存在死路（${dead.length} 项，发布被拒且未落库）：${dead.join("；")}`);
-      }
-    }
+    // 语义原样保留：
+    //  · 短路——lint 未过即返回，**不打 DataCore**（I/O 顺序与此前字节一致）；
+    //  · force——只豁免**质量门**（lint / 评测），**不豁免事实门**（引用死路）：
+    //    审计签字不能让一个不存在的求解器变成存在，也不能让一条 DRAFT 规则变成已发布；
+    //  · 注册表不可用（读不出 / 空集）→ `probeMissingRefs` 抛 503 REF_PROBE_UNAVAILABLE（fail-closed，向上冒泡）；
+    //  · 位置仍在评测门之前、`repos.skills.update` 之前 ⇒ 拒发布 = **未落库**。
+    const gate = await runSkillPublishGate({
+      skill,
+      allSkills: await deps.repos.skills.listByTenant(a.tenantId),
+      probe: (want) => probeMissingRefs(deps.dataCore, a, want),
+      options: { force: force === "true", shortCircuit: true },
+    });
+    const lint = gate.lint;
+    const blocking = gate.violations[0];
+    if (blocking) throw new HttpError(422, blocking.code, blocking.message);
     // Skill 编写规范 §4 门禁二：评测门禁——发布必附 ≥3 个 skill_quality 评测用例（关联本技能，
     // 应触发/不应触发/行为增益三类）+ 评测套件全过（force=true 审计豁免）。此前仅 lint，无评测门。
     const skillCases = (await deps.repos.evalCases.listByTenant(a.tenantId, "skill_quality")).filter((c) => c.skillKey === skill.key);
@@ -1328,16 +1334,39 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/skills/lint", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
-    const body = req.body as { id?: string; summary?: string; body?: string; resources?: { name: string }[] };
-    let target: { summary: string; body: string; resources: { name: string }[] };
+    const body = req.body as Partial<SkillLintTarget> & { id?: string };
+    let target: SkillLintTarget;
     if (body.id) {
       const skill = await deps.repos.skills.get(body.id);
       if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
-      target = { summary: skill.summary, body: skill.body, resources: skill.resources };
+      // ⚠️ 此前这里只摘 `{summary, body, resources}` 三项 → WO-SKILL-3 的工业级契约规则
+      //   （inputSchema/outputSchema 形状 · references/dependsOn 合法性与可解析性 · 依赖图环）
+      //   在**编辑器干跑**这条路上从不参评：编辑器报「lint 通过」，同一个 skill 到发布门（:1246 传了全量 + ctx）
+      //   却 422。同一份 lint 两条路两套输入 = 「接了线接错地方」，且两侧测试都能是绿的
+      //   （单测直接调 lintSkill 并手传全量 → 覆盖不到这条窄化路径）。现在干跑与发布**同一份输入**。
+      target = {
+        summary: skill.summary,
+        body: skill.body,
+        resources: skill.resources,
+        ...(skill.inputSchema ? { inputSchema: skill.inputSchema } : {}),
+        ...(skill.outputSchema ? { outputSchema: skill.outputSchema } : {}),
+        ...(skill.references ? { references: skill.references } : {}),
+        ...(skill.dependsOn ? { dependsOn: skill.dependsOn } : {}),
+      };
     } else {
-      target = { summary: body.summary ?? "", body: body.body ?? "", resources: body.resources ?? [] };
+      target = {
+        summary: body.summary ?? "",
+        body: body.body ?? "",
+        resources: body.resources ?? [],
+        ...(body.inputSchema ? { inputSchema: body.inputSchema } : {}),
+        ...(body.outputSchema ? { outputSchema: body.outputSchema } : {}),
+        ...(body.references ? { references: body.references } : {}),
+        ...(body.dependsOn ? { dependsOn: body.dependsOn } : {}),
+      };
     }
-    return lintSkill(target);
+    // 干跑同样需要 ctx.allSkills（跨资源规则缺 ctx 时 `return []` = 恒过）；但**不**传 requirePublishedDeps
+    //   —— 草稿态预览不该因依赖还没发布就报错（skill-lint.ts:32-33 的既定语义），发布门那半才收紧。
+    return lintSkill(target, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId) });
   });
 
   // ---- WO-SKILL-ORCHESTRATOR-S1 · Skill Graph 编排（PRD-skill-runtime-orchestrator §3.4）----
@@ -1385,6 +1414,30 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
       throw e;
     }
+  });
+
+  /**
+   * WO-SKILL-COMPILER-S1 · 技能编译（PRD-skill-compiler-registry §8.1「真新增端点」）。
+   *
+   * 七段管线的 S1 最小垂直切片：① Parser → ② Validator（**复用既有 `lintSkill`**）→ ③ 推理图派生。
+   * Optimizer 与运行时包两段**未实现**，在 `stages[]` 里显式标 `NOT_IMPLEMENTED`——
+   * 不返回空对象让调用方以为跑过了。
+   *
+   * 鉴权 / 租户 / 错误信封照抄同文件既有 skill 路由：`auth` → `requireCatalogAdmin`
+   * → 跨租户一律 404 `SKILL_NOT_FOUND`（不泄漏存在性，R2 + PRD §4.2 GV-TENANT）。
+   * 只读操作：不落库、不改状态、不发领域事件（`?dryRun` 语义即默认且唯一行为）。
+   */
+  app.post("/b/v1/skills/:id/compile", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    // ⚠️ 必须传 ctx.allSkills：`lintSkill` 的跨资源规则（dependsOn 可解析 / 依赖图无环）在缺省时直接
+    //    `return []`——不传等于「接了线没通」（同 server.ts:1243 publish 路已踩过的坑）。
+    const allSkills = (await deps.repos.skills.listByTenant(a.tenantId)).filter((s) => s.tenantId === a.tenantId);
+    // 发布态口径（requirePublishedDeps）只在技能已发布时套用；草稿编译不该因依赖还没发布就报错。
+    return compileSkill(skill, { allSkills, requirePublishedDeps: skill.status === "PUBLISHED" });
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----

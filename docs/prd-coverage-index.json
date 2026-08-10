@@ -144,6 +144,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-addendum-skill-authoring.md": {
+      "acceptanceIds": [
+        "F6"
+      ],
+      "covered": [
+        "F6"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-addendum-validation-loop.md": {
       "acceptanceIds": [
         "VL1",
@@ -630,6 +640,16 @@
         "B8"
       ],
       "coverage": 0.87
+    },
+    "PRD-skill-contract-dsl.md": {
+      "acceptanceIds": [
+        "F8"
+      ],
+      "covered": [
+        "F8"
+      ],
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-skill-runtime-orchestrator.md": {
       "acceptanceIds": [

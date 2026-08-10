@@ -44,7 +44,8 @@
   | R15 CLI 对等 | Plan 的管理面若有 CLI 等价，须随之迁移或登记 GUI 深链 | M2 收口项，`cli-parity:check` 守 |
   | R16 发育闭环 | 生长回路 `growth/scaffold.ts` 今天 scaffold 的是 Plan | §7.2 第 6 号写入方，必须一起翻 |
 
-- **触及门禁**（§7）：新增 **7 道**，全部进 `pnpm gates` → 聚合 **16 → 23**（当前 16 条，实测 `package.json:29`）：
+- **触及门禁**（§7）：新增 **7 道**，全部进 `pnpm gates` → ~~聚合 **16 → 23**（当前 16 条，实测 `package.json:29`）~~
+  → **⚠️ 2026-08-09 实测订正：当前 `pnpm gates` = 26 条 ⇒ 聚合应为 26 → 33**（见文末《基数订正总表》drift-a / drift-b）：
 
   | 期 | 门 | 守什么 |
   |---|---|---|
@@ -71,7 +72,14 @@
       只在 main.ts boot 时为 demo 播种。翻转后非 demo 租户必然「有意图·无 Skill」
       | main.ts 播种 ⊥ server.ts 懒播种 | 🔴 未修（本 PRD M2 硬前置）|
     ```
-- **CLI 打通（R15）**：Plan 管理今天**无** CLI 等价命令——`OPERATION_CATALOG`（`packages/contracts/src/operation-intent.ts`，17 条）全文零处提及 plan（已核实：该文件 `plan` 命中数 = 0）。故本迁移**不引入 CLI 洼地**（删掉的东西本来就没有 CLI 面）；但 M2 若给 Skill 侧新增管理入口，须同步登记 `cliCommand` 或 `uiDeepLink`，否则 `cli-parity:check` 红。
+- **CLI 打通（R15）**：Plan 管理今天**无** CLI 等价命令——`OPERATION_CATALOG`（`packages/contracts/src/operation-intent.ts`，~~17 条~~ **⚠️ 2026-08-09 实测 39 条**）全文零处提及 plan（~~已核实：该文件 `plan` 命中数 = 0~~ **⚠️ 实测命中数 = 1**，见下）。故本迁移**不引入 CLI 洼地**（删掉的东西本来就没有 CLI 面）；但 M2 若给 Skill 侧新增管理入口，须同步登记 `cliCommand` 或 `uiDeepLink`，否则 `cli-parity:check` 红。
+  > ⚠️ **2026-08-09 复验（drift-e）**：**结论仍成立，两个数都错。**
+  > `OPERATION_CATALOG` 今天在 `packages/contracts/src/operation-intent.ts:53`，共 **39 条**（不是 17）。
+  > 目录体内 `plan` **命中 1 处**（不是 0）：`:60` 的 `{ op: "build", … }`，描述里的是 **`BuildPlan`（数据构建发动机的建域计划）**，
+  > **不是 `ExecutionPlan`** ⇒ 「Plan 管理无 CLI 等价命令」这个结论**不受影响**。
+  > **但必须把这一处写出来**：下一个人自己跑一遍会得到 1 而不是 0，
+  > 若文档写着「命中数 = 0」，他会以为自己搞错了工具、或以为代码变了——
+  > **一个恰好为 0 的数字最脆弱，因为任何同形近义词都会把它顶成 1。**
 - **范畴**：把「一个意图怎么答」的权威从 ExecutionPlan 迁到 Skill，且保证迁移过程零行为漂移、迁移之后单一真源。
 
 ---
@@ -105,8 +113,34 @@
 
 > **⚠ 自动导出的两个诚实边界（不写清就会被当成"这块做完了"）**
 >
-> 1. **`inputSchema` 有 17/32 是空壳**：`SCENARIO_CATALOG` 派生的 16 条意图一律 `slots: []`（`seed.ts` 循环体），
->    加上 `ceo_finance_pnl`（`slotNames: []`，`seed.ts:547`），共 17 条 `slots` 为空。
+> 1. ~~**`inputSchema` 有 17/32 是空壳**：`SCENARIO_CATALOG` 派生的 16 条意图一律 `slots: []`（`seed.ts` 循环体），
+>    加上 `ceo_finance_pnl`（`slotNames: []`，`seed.ts:547`），共 17 条 `slots` 为空。~~
+>
+>    > ### ⚠️ 2026-08-09 复验订正（drift-d）· **实测是 5/32，不是 17/32**
+>    >
+>    > 依据 `docs/CHECK-MIG-XR.md` §5 附表 **d**。本单**亲手真跑了 `seedIntentsAndPlans("demo")`**
+>    > （非静态推算 —— 原文 §13 自己也承认那 17 是推算出来的）：
+>    >
+>    > ```
+>    > node -e '…require("./apps/agentcore/dist/mocks/seed.js").seedIntentsAndPlans("demo","2026-01-01T00:00:00.000Z")…'
+>    > → intents = 32  plans = 32
+>    > → empty-slot intents = 5 / 32
+>    > → keys: plan_recommend, inventory_opt, maint_stagger, sop_status, ceo_finance_pnl
+>    > ```
+>    >
+>    > **错因（推算的前提已被上游修掉）**：原文的前提是「`SCENARIO_CATALOG` 派生的 16 条意图**一律** `slots: []`」。
+>    > 这条前提**今天不成立** —— `WO-DERIVED-INTENT-SLOT-DEAF` 已把它改成从卡声明的求解器入参**派生槽位**：
+>    > `apps/agentcore/src/mocks/seed.ts:634` `const derivedSlots = deriveIntentSlots(effectiveSolver, declaredArgs);`
+>    > → `:666` `slots: derivedSlots`（`deriveIntentSlots` 定义在 `:95`），
+>    > 代码里那行注释写得很清楚：「★ `slots: []` 是本病的病灶（声明无槽 ⇒ 用户实体无处可落）。现在从卡已声明的求解器入参派生」。
+>    > 只有 `declaredArgs` 本身为空的那几张卡才落回空槽 —— 实测就是上面那 4 张 + `ceo_finance_pnl`。
+>    >
+>    > **形态（照 CLAUDE.md 铁律 0.6 的句式）**：
+>    > 「我用**一个静态推算**当作**运行时事实**的证据，而前者并不度量后者。」
+>    > 推算本身在写下的那天可能是对的，但**它的输入前提会被上游改掉，而推算不会自己失效**。
+>    >
+>    > **本条的诚实边界仍然完全成立**：这 5 条**不是"这题不需要输入"**，导出时**必须**打标 `x-derived: "empty-slots"`。
+>    > 只是**基数从 17 降到 5**，工作量与风险面都小了一大截 —— 排期该按 5 算。
 >    它们**不是"这题不需要输入"**，而是"槽从未声明、参数由路由 args 直灌"（`resolveCeoRoute` → `proceedWithIntent(…, route.args)`，
 >    `apps/agentcore/src/router/orchestrator.ts:837/854/2041/2053`）——这正是 `R-ARG-FIDELITY` / `G-ARG-DROP-SEAM` 治的那个面。
 >    导出时**必须**打标 `x-derived: "empty-slots"`，不许静默输出一个 `{type:"object",properties:{}}` 冒充契约。
@@ -142,14 +176,58 @@
 |---|---|---|
 | `maxBudgetRounds` | **7/7 未填 · 全仓零生产消费方** | 全仓命中仅 3 处：契约定义 `packages/contracts/src/agentcore.ts:260` + `apps/agentcore/test/skill-contract.test.ts:65/77`（测试自产自销） |
 | `outputSchema` | 有值但**零校验消费方** | 仅两处读：`apps/agentcore/src/skill-lint.ts:300`（只校 JSON Schema **形状**）与 `apps/agentcore/src/dril/resource-projector.ts:149`（投影成 `outputSpec` 给检索看）。**没有任何一处拿它校验实际输出** |
-| `references` 的非-skill 引用 | **不校验存在性** | `apps/agentcore/src/skill-lint.ts:177` 明写 `if (ref.kind !== "skill") continue;`——solver/rule/slice/ontologyType/workflow/agent 引用**一律不查是否已注册** |
+| ~~`references` 的非-skill 引用~~ | ~~**不校验存在性**~~ 🔁 **2026-08-09 已部分闭合（反向过期）** | ~~`apps/agentcore/src/skill-lint.ts:177` 明写 `if (ref.kind !== "skill") continue;`——solver/rule/slice/ontologyType/workflow/agent 引用**一律不查是否已注册**~~ → 见下方订正 |
+
+> ### 🔁 2026-08-09 复验订正 · 第三行「非-skill 引用不校验存在性」**已部分闭合**
+>
+> 依据 `docs/CHECK-MIG-XR.md` §5-4。**这一行今天读起来像"这块还没人管"，而实际上一半已经有人管了。**
+>
+> **闭合的那一半（`WO-SKILL-REFCLOSURE-A`，2026-08-09）**：
+> `apps/agentcore/src/server.ts:1267-1269` 从 `references` ∪ `dependsOn` 里抽出
+> **solver / rule / ontologyType** 三种 kind → `:1272 probeMissingRefs` 打到 DataCore 注册表
+> → 不存在则 `:1279` `422 SKILL_REF_UNRESOLVED`，**拦在落库之前**、**fail-closed**（读不出/空集 ⇒ 503）、
+> **`force` 不豁免**。有防退化门 `node scripts/check-ref-closure.mjs` 守着（摘掉那行 → 门当场红）。
+>
+> **仍然没闭的那一半（这才是今天该排期的东西）**：
+> `apps/agentcore/src/skill-lint.ts:215-217` 的注释自承 —— **`constraint` / `slice` / `workflow` / `agent`
+> 四种 kind 今天仍无人校验**（既不在本地 lint，也不在探针里）。
+> 其中 `workflow` 已有活样本：`apps/agentcore/src/mocks/seed.ts:1106` 的 `sop_meeting` 声明了
+> `{ kind:"workflow", key:"sop_balance_wf", required:true }` —— **声明了、没人查它存不存在**。
+>
+> **⛔ 两个方向都别读错**：
+> - 别读成「所有非 skill 引用都有人管」 ⇒ 4/6 种仍裸奔；
+> - 也别读成「这道门今天做不了」 ⇒ 那会**重复造一道已存在的门**（`docs/SPEC-industrial-skill.md` §5 的 **F8** 订正记的正是这个错）。
+>
+> **坐标订正**：`if (ref.kind !== "skill") continue;` 今天在 **`skill-lint.ts:218`**（原文 `:177` 已漂）。
 
 ### 1.5 三件地基的现状（供 §10 排期）
 
 | 地基 | 现状 | 证据 |
 |---|---|---|
 | **G1 executor 并行边** | 严格串行：`for (const step of input.steps) { … await … }`，循环体内无 `Promise.all` | `apps/agentcore/src/workflow/executor.ts:104` |
-| **G2 规则 DSL** | 28 条业务规则；`expression` **不能引用 `params`**，且**静默恒假不报错** | 规则数：`apps/datacore/src/synthetic/battery.ts` 中 `key: "Cxx"` 共 28 条。机制：`Operand` 联合只有 `literal｜field｜user｜func`（`apps/datacore/src/ruledsl.ts:26`）→ `params.cashFloor` 被当 field path → `resolveField` 返 `undefined` → `compare()` 里 `if (typeof l !== "number" \|\| typeof r !== "number") return false`（`ruledsl.ts:458`）→ **恒 false，无异常**。活样本：C18 `expression:"AnnualScenario.cashCushion < 50"` 与 `params:{cashFloor: PLAN_GOAL_TARGETS.cashFloor}` 并存（`battery.ts:231`）= 同一条规则上两个可各自编辑的阈值 |
+| **G2 规则 DSL** | ~~28 条业务规则；`expression` **不能引用 `params`**，且**静默恒假不报错**~~ 🔁 **2026-08-09：已被修掉（反向过期）** | ~~机制：`Operand` 联合只有 `literal｜field｜user｜func`（`apps/datacore/src/ruledsl.ts:26`）→ `params.cashFloor` 被当 field path → `resolveField` 返 `undefined` → `compare()` 里 `if (typeof l !== "number" \|\| typeof r !== "number") return false`（`ruledsl.ts:458`）→ **恒 false，无异常**。活样本：C18 `expression:"AnnualScenario.cashCushion < 50"` 与 `params:{cashFloor: PLAN_GOAL_TARGETS.cashFloor}` 并存（`battery.ts:231`）~~ → 见下方订正 |
+
+> ### 🔁 2026-08-09 复验订正 · **G2 已被 `WO-RULE-EXPR-PARAMS` 修掉 —— §10.2 的排期要跟着改**
+>
+> 依据 `docs/CHECK-MIG-XR.md` §5-5。**这一条的方向是反的：文档低估了进展。**
+> 照原文排期，会去修一个已经修好的东西 —— 而**真正剩下的那一半会被漏掉**。
+>
+> **已修的那一半（`params` 不再是 field path，缺席不再静默）**：
+>
+> | 环节 | 今天 | 证据 |
+> |---|---|---|
+> | `Operand` 联合 | **已含 `{ kind:"param"; name:string }`** | `apps/datacore/src/ruledsl.ts:39` |
+> | 解析 | `params.<名>` 解析成 `param` 操作数（必须恰好两段） | `ruledsl.ts:318-324` |
+> | 求值 | 未在 `rule.params` 声明 ⇒ **`throw new DslError`** —— 注释原文：「诚实缺席：未声明的阈值**抛错**，不回退载荷、不取 0/undefined」 | `ruledsl.ts:491-499` |
+> | 发布期校验料 | `collectParamRefs(ast)` 供「引用的阈值 ⊆ 声明的阈值」校验 | `ruledsl.ts:414-420` |
+> | 活样本 | C18 已改用 `ruleParamRef("cashFloor")`，不再是"同一条规则两个可各自编辑的阈值" | `apps/datacore/src/synthetic/battery.ts` |
+>
+> **仍然没做的那一半（§10.2 的"真交付物 = 解析期门"只做了一半）**：
+> **`kind:"field"` 拼错仍然静默恒假** —— `resolveField` 带前缀回退，写错字段名不报错、不抛异常。
+> ⇒ 「静默恒假」这个**病灶形态并没有消失**，只是从 `params.*` 挪到了 `field` 路径上。
+>
+> ⇒ 正确读法：**「`params` 那一支已修（抛错）· `field` 拼错那一支仍静默恒假 · 解析期门只做了一半」**。
+> 同一条订正另见 `docs/SPEC-industrial-skill.md` §2 第 ⑧ 层的 **F9**。
 | **G3 命名** | 未定；且**已有一处词表冲突**：SPEC §7 定案 1 用 `requires`，而 `requires` 在本仓已被 `FeatureDef.requires`（entitlement 依赖级联，`apps/agentcore/src/features/registry.ts` `featureEnabled` 内 `def.requires`）占用 | 见 §10.3 |
 
 ---
@@ -240,7 +318,7 @@ G3 命名定死 ──▶ M0 影子声明 ──▶ M1 一致性门 ──▶ M2
 
 ### 5.3 M0 的诚实边界（必须写进导出器注释）
 
-- 17/32 的 `inputSchema` 是空壳（§1.2 边界 1），已打标 `x-derived: "empty-slots"`；
+- ~~17/32~~ **5/32**（⚠️ 2026-08-09 实测订正 drift-d，见 §1.2 边界 1）的 `inputSchema` 是空壳，已打标 `x-derived: "empty-slots"`；
 - 12/32 无金标变体（11 CEO 意图 + `order_deep_360`），`examples` 只有各自 2~3 条；
 - CEO 域 solver 未登记在 `SOLVER_RULE_REFS`（`packages/contracts/src/datacore.ts:127` 只有 19 条），
   故这些 Skill 的 `references[kind=rule]` 为空——**空是事实，不是遗漏**，但要标出来，否则下一个人会以为"这题不涉及规则"。
@@ -490,7 +568,7 @@ M0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子一旦�
 | **R-C** | **六个 Plan 写入方**（新发现，原路线骨架只点了两个）：目录 REST / 出厂播种 / `internal/scaffold` / `growth/scaffold` / `ops/fallback` / 冒烟脚本 | 🟠 | §7.2 逐条 file:line | `skill-single-source:check` 静态断言 2（禁 `repos.plans.insert(`） |
 | **R-D** | **键空间收窄**：Skill 是 tenant 级、Plan 是 package 级；翻转把"取第一个包"的隐含假设升级成键唯一性要求 | 🟠 | `server.ts:2021/2245/2516` 的 `listByTenant(…)[0]` | §7.3：启动期显式断言，不满足则拒绝启用翻转 flag |
 | **R-E** | **`requires` 词表冲突** | 🟠 | `FeatureDef.requires` 已占用（`features/registry.ts`） | §10.3 定名 |
-| **R-F** | **17/32 `inputSchema` 是空壳**，不标注会被当成"这题不需要输入" | 🟡 | §1.2 边界 1 | 导出打标 `x-derived: "empty-slots"` |
+| **R-F** | ~~**17/32**~~ **5/32** `inputSchema` 是空壳（⚠️ 2026-08-09 实测订正 drift-d），不标注会被当成"这题不需要输入" | 🟡 | §1.2 边界 1 | 导出打标 `x-derived: "empty-slots"` |
 | **R-G** | **G1 与 Track B1 撞同一段** `executor.ts:104` | 🟡 | §10.1 | 串行化或一 dev 整单 |
 | **R-H** | **删 `plan-create` 按钮 = 重新挖开 G-4** | 🟡 | 本体 §8 G-4 | §7.2：必须同时给 Skill 侧等价入口 |
 
@@ -510,7 +588,7 @@ M0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子一旦�
 
 ### 12.2 金值 / 注册即更（LOOP 纪律 ④ · 漏一处即退）
 
-- `pnpm gates` 聚合计数：**16 → 23**（`package.json:29` 当前 16 条；七道新门见 §0）。每加一门须同步 §7 本体登记，否则 `ontology-writeback:check` 红。
+- `pnpm gates` 聚合计数：~~**16 → 23**（`package.json:29` 当前 16 条~~ → **⚠️ 2026-08-09 实测：当前 26 条 ⇒ 应为 26 → 33**（drift-a/b，见文末《基数订正总表》）；七道新门见 §0）。每加一门须同步 §7 本体登记，否则 `ontology-writeback:check` 红。
 - 本体回写：§2.H（`ExecutionPlan` 降为字段）· §3（编排链那一跳的解析源）· §7（四道新门）· §8（两条新断点 + G-1/G-4/G-9 的描述随之改）。
 - 计数金值：M2 后 `plans` 32 → 0（播种侧）、`skills` 7 → 39+（7 既有 + 32 迁移）。
   `docs/SPEC-industrial-skill.md` §4 的「7 个 Skill 实测表」必须同步更新，否则那张表立刻过期。
@@ -531,15 +609,52 @@ M0 一次生成 32 份声明。名字定错 = 32 份全返工；且影子一旦�
 **已核实（本会话静态读码，逐条给了 file:line，可复跑 `grep`/`sed` 复核）**
 - §1.1 全部基数与绑定事实；§1.2 自动导出的来源表；§1.4 三个零消费方；§1.5 三件地基现状；
 - §7.1 十个读取点、§7.2 六个写入方（全部逐条定位到 file:line）；
-- `pnpm gates` 当前聚合 16 条（`package.json:29`）；
+- `pnpm gates` 当前聚合 ~~16~~ **26** 条（⚠️ 2026-08-09 实测订正 drift-a；`package.json` 的 `gates` 脚本，行号已漂，别写死行号——用下面这条命令现算）；
 - `provId` 不可字节稳定的机制链（`executor.ts` → `ids.ts`）；
 - `ruledsl.ts` 的 `params` 静默恒假机制链（`Operand` 联合 → `resolveField` → `compare` 早退）；
 - R-B 多租户 Skill 播种缺口（`seedRegistry` 签名 + `main.ts:29` + `server.ts:1966` 三处对照）。
 
 **未核实（不许当成事实用）**
 - **本文一个测试、一个 gate 都没有跑**（本单纪律：只读代码、只写文档）。所有"今天是 X"均为**静态读码**结论，非运行时实测。
-- 17/32 `inputSchema` 空壳的计数是**静态推算**（5 显式 + 11 CEO 中 10 条有槽 → 15 有槽；32−15=17），未跑 `seedIntentsAndPlans()` 实测。
+- ~~17/32 `inputSchema` 空壳的计数是**静态推算**（5 显式 + 11 CEO 中 10 条有槽 → 15 有槽；32−15=17），未跑 `seedIntentsAndPlans()` 实测。~~
+  → **✅ 2026-08-09 已实测（`WO-DOCFIX-SKILL-CLAIMS`）：真跑 `seedIntentsAndPlans("demo")` 得 **5/32**（不是 17）。**
+  推算之所以错，是因为它的前提「`SCENARIO_CATALOG` 派生的 16 条一律 `slots: []`」已被 `WO-DERIVED-INTENT-SLOT-DEAF` 修掉
+  （`apps/agentcore/src/mocks/seed.ts:634/666` 改为 `deriveIntentSlots`）。详见 §1.2 边界 1 的就地订正。
+  **本条自身即是「诚实标注救了自己」的正面样例**：正因为原文老实写了「这是推算不是实测」，
+  复验时才知道该去实测哪一条。**如果当初写成"实测 17/32"，今天没有人会去重跑。**
 - 本体 §7 声称"已并入 `pnpm gates`"的 `sim:check` / `propagation:check` / `sim-readiness:check` / `solver-license:check` / `opt-template:check` / `opt-determinism:check` **在本分支 `package.json` 中无对应 script**（`package.json:9-38` 全文核对）。这是本体与 package.json 的一处漂移，**原因未核实**（可能在别的分支、可能是本体过期）。§12.2 的"16 → 23"以 `package.json` 实测为准。
 - 部署库（PG）里已有的 `plans`/`skills` 真实数据分布未核实——本会话无法访问部署库。§7.6"不删表"的建议部分基于这个不确定性。
 - 真 DataCore（非 mock）下 32 条 plan 是否全部能跑通、跑通后的答案形态，未核实。M1 §6.5 边界 1 正是为此留的口子。
 - Track A/B/C/D 各期的落地状态未核实（本文只引用 WO 文本，未验证其"已完成"章节的当前真伪）。
+
+---
+
+## 附 · 2026-08-09 基数订正总表（`WO-DOCFIX-SKILL-CLAIMS`）
+
+> 依据 `docs/CHECK-MIG-XR.md` §5 附表。**这些数今天全部进不了任何门，靠人读 —— 读一次错一次。**
+> 每条都给了**可复跑命令**；命令跑出来的数与本表不符时，**以命令为准并回来改本表**。
+
+| # | 出处 | 文档原写 | 2026-08-09 实测 | 复跑命令 |
+|---|---|---:|---:|---|
+| **drift-a** | §0 触及门禁 · §12.2 · §13 | `pnpm gates` = **16** 道 | **26** 道 | `node -e 'console.log(require("./package.json").scripts.gates.split("&&").length)'` |
+| **drift-b** | §0 · §12.2 | 迁移后聚合 **16 → 23** | **26 → 33** | 同上 + 本文 §0 的七道新门 |
+| **drift-d** | §1.2 · §5.3 · §11 R-F · §13 | `inputSchema` 空壳 **17/32** | **5/32**（`plan_recommend` · `inventory_opt` · `maint_stagger` · `sop_status` · `ceo_finance_pnl`） | 真跑 `seedIntentsAndPlans("demo")`，见 §1.2 边界 1 |
+| **drift-e** | §0 CLI 段 | `OPERATION_CATALOG` **17 条**、`plan` 命中 **0** | **39 条**、`plan` 命中 **1**（`op:"build"` 的 **BuildPlan**，非 `ExecutionPlan` ⇒ **结论仍成立**） | 见 §0 CLI 段的就地订正 |
+| **drift-f** | 跨文档行数表（`PRD-skill-crossreview.md`） | migration **534** 行 · runtime **720** 行 | **545** · **725**（其余三份 643/741/722 全对） | `wc -l docs/PRD-skill-*.md` |
+
+**另有两条不在本表、但同批复验出来的（已在正文就地标注）**：
+- §1.4 第三行「非-skill 引用不校验存在性」—— **已部分闭合**（solver/rule/ontologyType 三种已守，四种仍裸奔）；
+- §1.5 G2「`expression` 不能引用 `params` 且静默恒假」—— **已被 `WO-RULE-EXPR-PARAMS` 修掉**（剩 `kind:"field"` 拼错那一支）。
+
+### 为什么这些数会一起漂 —— 一条值得写进流程的判据
+
+**写死在正文里的计数，保质期等于写下它的那一天。**
+`drift-a/b/e` 三条的共同形态是：**引用了一个会长的东西（门数 / 目录条数），却把当时的快照写成了常数**；
+`drift-d` 的形态是**把静态推算当成了运行时事实**（而它的输入前提被上游改掉了，推算却不会自己失效）。
+
+**机制（不是"下次注意"）**：
+1. **能现算就别写死** —— 本仓 `scripts/check-gate-ledger.mjs` 已是正面样例（数字由门自己普查，不许固化自证）；
+   `scripts/gate.sh` 里 `GATES_N` 也是现算的，其注释写着「这行标签曾长期写着 13 条，而实际已涨到 15」。
+2. **必须写死时，同一行给出复跑命令**（本表每行都给了）——没有命令的数字等于没有保质期。
+3. **凡自称"实测"的数字，必须带日期**（本仓已有机械门：`node scripts/check-stale-claims.mjs`，
+   本体 §8 `G-STALE-MEASURED-CLAIM`）。

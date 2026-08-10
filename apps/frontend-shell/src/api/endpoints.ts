@@ -48,6 +48,8 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  SkillCompileResult,
+  SolverCategory,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -232,6 +234,32 @@ export interface SolverCatalogItem {
 }
 export const fetchSolverRegistry = (query?: string) =>
   api.a<{ solvers: SolverCatalogItem[] }>(`/a/v1/solvers/registry${query ? `?query=${encodeURIComponent(query)}` : ""}`);
+
+/**
+ * WO-L7A 求解器**决策问题类目**登记表（`GET /a/v1/solvers/categories`）。
+ *
+ * ⚠️ 与 `SolverCatalogItem.domain` 是**两个不同的维**，不许混用（混了就是"同一概念两套词表"）：
+ *  · `domain`   = 求解器归哪块业务（plan / generic / decision / product，4 值）——registry 每条自带；
+ *  · `category` = 求解器回答**哪类决策问题**（10 类，`SOLVER_CATEGORIES`）——判据是"它回答的是不是这句问话"。
+ *
+ * 本端点独有、registry 给不了的三样（这是它必须单独接的理由）：
+ *  ① `label`：类目中文标题；
+ *  ② `decisionQuestion`：该类目回答的**决策问句** —— 「按类找求解器」这个动作的判据本身；
+ *  ③ `uncategorized`：一条都没归类的 key（**空数组 = 无漏网**，后端诚实亮出，前端照样亮出，不藏）。
+ */
+export interface SolverCategoryGroup {
+  category: SolverCategory;
+  label: string;
+  decisionQuestion: string;
+  solverKeys: string[];
+  count: number;
+}
+export interface SolverCategoryRegistry {
+  categories: SolverCategoryGroup[];
+  total: number;
+  uncategorized: string[];
+}
+export const fetchSolverCategories = () => api.a<SolverCategoryRegistry>("/a/v1/solvers/categories");
 
 /** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore）。
  *  signal：改参即重算的竞态控制（AbortController 最后发出者胜，增量 §0-3）。 */
@@ -863,6 +891,49 @@ export const fetchSkills = () => api.b<SkillDefinition[]>("/b/v1/skills");
 export const saveSkill = (id: string | null, body: Partial<SkillDefinition>) =>
   id ? api.b<SkillDefinition>(`/b/v1/skills/${id}`, { method: "PUT", body }) : api.b<SkillDefinition>("/b/v1/skills", { body });
 export const publishSkill = (id: string) => api.b<SkillDefinition>(`/b/v1/skills/${id}/publish`, { body: {} });
+
+/**
+ * WO-SKILL-COMPILER-S1 · 技能编译（`POST /b/v1/skills/:id/compile`）。
+ *
+ * **只读**：后端 `server.ts:1430` 明确不落库、不改状态、不发领域事件（`?dryRun` 语义即默认且唯一行为），
+ * 故前端调它**不需要** invalidate 任何 query —— 编译不改变服务端真值。
+ *
+ * 响应契约 `SkillCompileResult`（`packages/contracts/src/skill-compile.ts:333`）一律从契约 import，
+ * 前端不重定义（contracts-only-shared）。其中 `stages[]` 里 optimize / package 两段恒为
+ * `NOT_IMPLEMENTED` —— 那是后端的**诚实位**，界面必须原样透出，不许滤掉只显示 OK 的那几段
+ * （滤掉 = 让用户以为七段管线全跑过了，正是本仓「填了字段没有消费方，比不填更危险」那族病）。
+ */
+export const compileSkill = (id: string) =>
+  api.b<SkillCompileResult>(`/b/v1/skills/${encodeURIComponent(id)}/compile`, { body: {} });
+
+/**
+ * F14 出厂技能发布门审计的**诚实位**（`GET /b/v1/ops/skill-seed-gate` → 后端 `/api/v1/ops/skill-seed-gate`）。
+ *
+ * 为什么前端必须有这道位的可见面：出厂技能经 `repos.skills.insert` 旁路落库，从未走过
+ * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
+ * 后端注释写着「运维随时可查」，而在本单接上之前，**没有任何地方可查**。
+ *
+ * ⚠️ 四态里 `NOT_RUN` 与 `GATE_UNAVAILABLE` **都不是"干净"**（后端 `skill-publish-gate.ts:178` 的口径）：
+ * 前者是没审计过，后者是注册表读不出来所以没法判。界面把这两态渲染成绿色或"通过"，
+ * 就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
+ *
+ * 类型在 agentcore（`skill-publish-gate.ts:180`）而非 contracts，跨 app import 源码是禁止的，
+ * 故此处按后端形状声明只读 VM；字段名一字对齐，不改写。
+ */
+export interface SkillSeedGateFinding {
+  skillId: string;
+  skillKey: string;
+  violations: { code: string; message: string }[];
+}
+export interface SkillSeedGateReport {
+  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "GATE_UNAVAILABLE";
+  ranAt?: string;
+  tenantId?: string;
+  checked: number;
+  findings: SkillSeedGateFinding[];
+  unavailableReason?: string;
+}
+export const fetchSkillSeedGate = () => api.b<SkillSeedGateReport>("/b/v1/ops/skill-seed-gate");
 
 export const fetchMcpConfigs = () => api.b<McpServerConfig[]>("/b/v1/mcp-configs");
 export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) =>

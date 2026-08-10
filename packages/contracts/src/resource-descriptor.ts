@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SolverCategorySchema } from "./solver-taxonomy.js";
 
 /**
  * WO-RESOURCE-DESCRIPTOR · 统一资源描述契约（发现供给侧的单一形状）。
@@ -40,6 +41,11 @@ export const ResourceDescriptorSchema = z.object({
   domain: z.string().optional(),
   /** 关联 feature key（未开通 → 不出现在发现池，可选）。 */
   featureKey: z.string().optional(),
+  /**
+   * WO-L7A 决策问题类目（当前仅 `kind=solver` 携带·10 类枚举）。派生投影（R13）：
+   * 由求解器归档表按 key 查出后挂上，不是新真值源。声明在契约里，投影经 schema 后不被 strip。
+   */
+  category: SolverCategorySchema.optional(),
 });
 export type ResourceDescriptor = z.infer<typeof ResourceDescriptorSchema>;
 

@@ -62,6 +62,7 @@ export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-sema
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
 export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
+export * from "./solver-taxonomy.js"; // WO-L7A · 求解器决策问题分类维（10 类枚举 + 类目定义·按"解决什么决策问题"分·非算法分·R13 派生投影不改 key）
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
 export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
 export * from "./capacity-factors.js"; // WO-CAPLIVE-1-ATOM · 产能 20 原子因子 → object.property 绑定单源（治 G-CAPACITY-FACTOR-SHALLOW·R14）
@@ -72,3 +73,4 @@ export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层�
 export * from "./procurement.js"; // WO-SANDBOX-D2 · 采购段凭证契约（四段按责任方可分解：供应商生产/在途/清关/到货检验 · MOQ/准时率接线 · 三态 MEASURED|NOT_APPLICABLE|EMPTY 禁假默认值 · totalDays 硬绑四段之和）
 export * from "./skill-graph.js"; // WO-SKILL-ORCHESTRATOR-S1 · Skill Graph（Reasoning Graph）契约 + 拓扑分层/环检测编译器（PRD-skill-runtime-orchestrator §3.1/§3.2/§3.4）
 export * from "./process.js"; // WO-Q0 · 业务流程层（13 域 × 65 流程）：ProcessDomain/ProcessDefinition 走数据层，与冻结的 CHAIN_NODE_REGISTRY 分层；waitKind 四值单源（REQ057 减 WAITING_APPROVAL·仓主已裁审批不做）；每条 P## 必须有承载物 carrierTypeKey
+export * from "./skill-compile.js"; // WO-SKILL-COMPILER-S1 · 技能编译流水线 S1 切片（Parser→SkillAst→推理图，纯函数 R6；Validator 在 agentcore；Optimizer/包段显式 NOT_IMPLEMENTED）

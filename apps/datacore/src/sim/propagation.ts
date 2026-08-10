@@ -25,6 +25,7 @@ import {
   type Perturbation,
   type PropagationRule,
   type PropagationTrace,
+  type ResolvedSimScope,
   type TickState,
 } from "@platform/contracts";
 
@@ -32,6 +33,145 @@ import {
 export interface PropagationGraph {
   objects: { id: string; typeKey: string }[];
   links: { fromId: string; toId: string; linkKey: string }[];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 推演范围裁剪（WO-SIM-SCOPE-TRIAL · 关闭欠账 #129/#130 `G-SIM-SCOPE-UNREAD`）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一次范围裁剪的**诚实回执**：这次推演到底算了哪些对象/边、丢了多少、以及（若有）为什么范围拿不到。
+ * 随 tick 响应下发 —— R-ARG-FIDELITY：结果必须回带自己是在什么范围下算出来的，
+ * 不许让用户从一个安静的数字里去猜筛选有没有生效。
+ */
+export interface ScopeReport {
+  kind: "GLOBAL" | "LOCAL";
+  target: string | null;
+  hops: number;
+  /** 裁剪后参与传导的对象数 / 边数。 */
+  objects: number;
+  links: number;
+  /** 被裁掉的对象数 / 边数（GLOBAL 恒 0）。 */
+  droppedObjects: number;
+  droppedLinks: number;
+  /** 非空 = 范围拿不到 ⇒ 本次传导图为空。绝不因此退回 GLOBAL。 */
+  unresolved: string | null;
+}
+
+export interface ScopedPropagationGraph {
+  graph: PropagationGraph;
+  report: ScopeReport;
+}
+
+/**
+ * 按会话范围裁出传导子图。**纯函数**（R6：同 (graph, scope) → 同输出，零时钟零随机）。
+ *
+ * 语义（一句话）：**LOCAL = 以 `target` 类型的全部已物化对象为根、沿链路无向展开 `hops` 跳，
+ * 只保留两端都在范围内的边**。
+ *
+ * 三个判据，逐条写明理由（都踩过坑，别按"看着更简洁"改）：
+ *
+ * 1. **GLOBAL 原样返回同一引用**，不 copy、不重排。这样"没选范围的租户"逐字节维持旧行为
+ *    （RL9 additive 可回退）；用 `===` 就能验，不必比内容。
+ * 2. **边要求两端都在范围内**（不是"任一端"）。留一条只有一端在范围内的边，会让贡献写到
+ *    范围外的对象上 —— 用户说"只推演这块"，结果范围外的数被改了，那是另一种静默错答。
+ * 3. **展开无向**（`fromId`/`toId` 两个方向都走）。传导规则的方向是 `PropagationRule` 定的
+ *    （`propagateTick` 的 `navOut` 只沿 `fromId→toId`），范围是"哪些对象在这块世界里"的问题，
+ *    与流向无关。只沿出边展开会把"上游供给我的那些对象"整批排除在外，那不是局部世界，是半条尾巴。
+ *
+ * 诚实缺席（照 `unresolvedGates` 的既有范式）：
+ *  · scope 自称 LOCAL 却没有根 ⇒ `report.unresolved` 写明，**图裁成空**；
+ *  · 根类型在本租户**一个已物化对象都没有** ⇒ 同样报缺、图裁成空。
+ * 两种都**绝不**退回 GLOBAL —— 「我算不出局部」和「局部等于全局」是两个命题。
+ */
+export function scopePropagationGraph(graph: PropagationGraph, scope: ResolvedSimScope): ScopedPropagationGraph {
+  if (scope.kind === "GLOBAL") {
+    return {
+      graph, // 判据 1：同一引用返回，`===` 即可验"GLOBAL 逐字节同旧"
+      report: {
+        kind: "GLOBAL", target: null, hops: scope.hops,
+        objects: graph.objects.length, links: graph.links.length,
+        droppedObjects: 0, droppedLinks: 0, unresolved: null,
+      },
+    };
+  }
+
+  const empty = (unresolved: string): ScopedPropagationGraph => ({
+    graph: { objects: [], links: [] },
+    report: {
+      kind: "LOCAL", target: scope.target, hops: scope.hops,
+      objects: 0, links: 0,
+      droppedObjects: graph.objects.length, droppedLinks: graph.links.length,
+      unresolved,
+    },
+  });
+  if (scope.unresolved !== null) return empty(scope.unresolved);
+
+  const roots = graph.objects.filter((o) => o.typeKey === scope.target).map((o) => o.id);
+  if (roots.length === 0) {
+    return empty(
+      `会话范围 LOCAL(${scope.target}) 在本租户没有任何已物化对象 ⇒ 裁不出子图。` +
+      `本次推演不按全域跑——「我算不出局部」与「局部等于全局」是两个命题。`,
+    );
+  }
+
+  // 无向邻接（判据 3）。id 排序保证遍历确定（R6）。
+  const adj = new Map<string, string[]>();
+  const link = (a: string, b: string) => (adj.get(a) ?? adj.set(a, []).get(a)!).push(b);
+  for (const l of graph.links) { link(l.fromId, l.toId); link(l.toId, l.fromId); }
+  for (const [, v] of adj) v.sort((a, b) => a.localeCompare(b));
+
+  const inScope = new Set<string>(roots);
+  let frontier = [...roots].sort((a, b) => a.localeCompare(b));
+  for (let h = 0; h < scope.hops && frontier.length > 0; h++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (inScope.has(nb)) continue;
+        inScope.add(nb);
+        next.push(nb);
+      }
+    }
+    frontier = next;
+  }
+
+  // filter 保留输入序 ⇒ 与 GLOBAL 同一份遍历序（R6：裁剪不引入新的顺序来源）。
+  const objects = graph.objects.filter((o) => inScope.has(o.id));
+  const links = graph.links.filter((l) => inScope.has(l.fromId) && inScope.has(l.toId));
+  return {
+    graph: { objects, links },
+    report: {
+      kind: "LOCAL", target: scope.target, hops: scope.hops,
+      objects: objects.length, links: links.length,
+      droppedObjects: graph.objects.length - objects.length,
+      droppedLinks: graph.links.length - links.length,
+      unresolved: null,
+    },
+  };
+}
+
+/**
+ * 本次 Trial Tick / tick 里**真正产出过贡献**的传导规则 key（去重、排序）。
+ *
+ * 判据是**效果**不是**调用**：一条规则"被遍历到"不算触发，得真落下一条即时贡献（`trace`）
+ * 或真排进延迟队列（新增 `pending`）才算。这正是「函数被调用了不算数」那条验收判据的落点。
+ * 排除两类非传导行：扰动落地/回退行（`ruleKey` 带前缀）、以及**上一轮**延迟到达行（`viaLinkKey === "(pending)"`，
+ * 那是历史贡献结算，不是本 tick 有规则触发）。
+ */
+export function firedPropagationRuleKeys(
+  trace: readonly PropagationTrace[],
+  newPending: readonly DelayedContribution[],
+): string[] {
+  const keys = new Set<string>();
+  for (const t of trace) {
+    if (t.viaLinkKey === "(pending)") continue;
+    if (t.ruleKey.startsWith(PERTURBATION_TRACE_PREFIX)) continue;
+    if (t.ruleKey.startsWith(PERTURBATION_REVERT_TRACE_PREFIX)) continue;
+    if (t.ruleKey.startsWith(PERTURBATION_REVERT_UNRESOLVED_PREFIX)) continue;
+    keys.add(t.ruleKey);
+  }
+  for (const p of newPending) keys.add(p.ruleKey);
+  return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
 // ══════════════════════════════════════════════════════════════════════════

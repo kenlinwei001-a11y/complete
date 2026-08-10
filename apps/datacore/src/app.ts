@@ -49,8 +49,8 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
-import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, type DelayedContribution, type Perturbation, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { buildCadenceGates, firedPropagationRuleKeys, propagateTick, scopePropagationGraph, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -79,6 +79,8 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
+import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory } from "@platform/contracts";
 // WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
 import { resolveBaseId } from "./solvers/risk.js";
 import type { SolverContext } from "./solvers/types.js";
@@ -1472,6 +1474,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let cadenceGates: CadenceGateLookup = {};
     let gateSkipped: { nodeId: string; reason: string }[] = [];
     let unresolvedGates: UnresolvedCadenceGate[] = [];
+    /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
+    let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
       // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
@@ -1480,7 +1484,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
       }
       const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
-      graph = { objects, links };
+      // ── 会话范围读端（WO-SIM-SCOPE-TRIAL · 闭 #129/#130 `G-SIM-SCOPE-UNREAD`）────────────
+      // 此前这一行之后直接 `graph = {objects, links}` —— 无条件全本体，`s.scope` **从头到尾没人读**：
+      // 用户在屏上切到「局部推演」，引擎照样按 GLOBAL 全量算，答案是错的而页面不报错。
+      // 现在范围在**图物化这一步**就生效：LOCAL ⇒ 只留根类型对象 + `hops` 跳邻域 + 两端都在范围内的边。
+      // GLOBAL ⇒ `scopePropagationGraph` 原样返回同一引用（`===`），旧行为逐字节不变（RL9）。
+      const scoped = scopePropagationGraph({ objects, links }, resolveSimScope(s.scope));
+      graph = scoped.graph;
+      scopeReport = scoped.report;
       // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
       for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
         if (r.params) ruleParams[r.key] = r.params;
@@ -1522,7 +1533,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       curTick: s.curTick,
       state,
       ...(propagate
-        ? { trace, cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates } }
+        ? {
+            trace,
+            cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
+            // 范围回执（WO-SIM-SCOPE-TRIAL）：算了几个对象、几条边、丢了多少、范围是不是根本拿不到。
+            // 与 `cadence` 同一条纪律 —— 让"筛选没生效"看得见，而不是从一个安静的数字里去猜。
+            scope: scopeReport,
+          }
         : {}),
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
       // 无扰动的租户响应形状逐字节同旧（可回退）。
@@ -1703,12 +1720,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   /**
    * 从 live 本体装配认证三件输入（closure/gaps/trial）+ scope 计数 —— 全部复用既有产物，零新校验。
    * scope=LOCAL 时按 target（typeKey）裁出子图；GLOBAL 时全本体。computedAt 由调用方传入（R6）。
+   *
+   * WO-SIM-SCOPE-TRIAL：新增 `session` 入参 —— Trial Tick 要在**这个世界的当前态**上真跑一遍传导
+   * （见下 §Trial Tick）。此前两个端点都已经 `getSimOr404` 拿到了会话却随手丢掉，只用来做 404 隔离。
    */
   const assembleCertification = async (
     c: AuthCtx,
     scopeKind: "GLOBAL" | "LOCAL",
     target: string | null,
     computedAt: string,
+    session: SimSession,
   ) => {
     const allTypes = await ontology.listTypes(c);
     const types = scopeKind === "LOCAL" && target ? allTypes.filter((t) => t.key === target) : allTypes;
@@ -1747,15 +1768,60 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
 
-    // ── Trial Tick（§3）：克隆态跑一遍 recompute（派生）；propagateTick 待增量3 → 传导记 0 ──
+    // ── Trial Tick（§3）：**两栈**都真跑一遍（WO-SIM-SCOPE-TRIAL · 关闭欠账 #152）─────────
+    //
+    // 🔴 这里原先只跑 `ontologyCore.recompute`（**派生栈**），注释还写着「propagateTick 待增量3
+    //    → 传导记 0」—— 而传导栈早已实装并有生产调用方（本文件 tick 路由）。
+    //    于是认证屏上那句「规则触发 N 条」度量的是另一套栈，**传导栈恒记 0**：
+    //    「信号是真的，只是它不指向我要断言的那个对象」。
+    //
+    // 修法判据是**效果层**：不是"把 propagateTick 调一下"，而是**要求它真的产出贡献** ——
+    //    `firedPropagationRuleKeys` 只数「落下了即时贡献 或 排进了延迟队列」的规则 key。
+    //    一条规则被遍历到但源态为 0 / 无匹配边 / 闸门拿不到 ⇒ 不算触发（那正是今天最常见的病样）。
+    //
+    // 跑在什么态上：**这个会话当前 tick 的世界态**（克隆，`dryRun` 语义 —— 不落任何 tick 快照、
+    //    不推进 `curTick`、不 emit 事件）。用别的态就不是这个世界的试算了。
+    // 跑在什么范围上：**本次认证问的那个范围**（`scopeKind`/`target`），与上面 closure 的 `types`
+    //    裁剪同一个口径 —— 认证回答的是"这个范围能不能进推演"，试算就必须在同一个范围里跑。
+    //    范围解释走契约唯一实现 `resolveSimScope`（与 tick 路由同一支，不另写一套 if）。
     let trial: TrialTickInput;
     try {
       const rc = await ontologyCore.recompute(c, [], { dryRun: true });
-      // rulesFired = 触发的派生规则数（recompute topo order 长度）。传导规则待增量3，记 0。
-      trial = { passed: true, rulesFired: rc.order.length, at: computedAt, error: null };
+      // ① 传导图物化（与 tick 路由同一段读法：已物化对象 + 链路，零硬编码）。
+      const trialObjects: PropagationGraph["objects"] = [];
+      for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+        for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) trialObjects.push({ id: o.id, typeKey: o.type });
+      }
+      const trialLinks = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
+      const trialScope: ResolvedSimScope = resolveSimScope(
+        scopeKind === "LOCAL" ? { kind: "LOCAL", target, hops: SIM_SCOPE_DEFAULT_HOPS } : { kind: "GLOBAL" },
+      );
+      const trialGraph = scopePropagationGraph({ objects: trialObjects, links: trialLinks }, trialScope).graph;
+      // ② 节拍闸门（E4）：与 tick 路由同一支，否则声明了闸门的流在试算里会被判"拿不到闸门"而不传导。
+      const trialGates = buildCadenceGates(
+        (await repos.objects.listByType(c.tenantId, "Cadence"))
+          .filter((o) => !o.mergedInto)
+          .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
+      ).gates;
+      const trialRuleParams: RuleParamLookup = {};
+      for (const r of allRules) if (r.params) trialRuleParams[r.key] = r.params;
+      // ③ 真跑一 tick（PUBLISHED 传导规则 · 会话当前态克隆 · 空 pending · 无扰动）。
+      const trialProps = await repos.sim.listPropagationRules(c.tenantId, true);
+      const trialState = simState(await simCurrent(c, session));
+      const out = propagateTick(trialGraph, trialState, trialProps, [], session.curTick, trialRuleParams, trialGates);
+      const propFired = firedPropagationRuleKeys(out.trace, out.pending).length;
+      trial = {
+        passed: true,
+        rulesFired: rc.order.length + propFired, // 两栈合计
+        derivationRulesFired: rc.order.length,
+        propagationRulesFired: propFired,
+        at: computedAt, error: null,
+      };
     } catch (e) {
       // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
-      trial = { passed: false, rulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
+      // 注：`fanoutSafe` 复用 `trial.error === null` 当环检测（certification.ts），
+      //     故这里**不许**把非致命情况也写进 error（写了会把"无环"误判成"有环"）。
+      trial = { passed: false, rulesFired: 0, derivationRulesFired: 0, propagationRulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
     }
 
     // ── scope 计数（投影，给纯函数）────────────────────────────────────────────
@@ -1793,18 +1859,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   app.get("/a/v1/sim/sessions/:id/certification", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.certification");
-    await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
+    // WO-SIM-SCOPE-TRIAL：会话不再只用于 404 隔离 —— Trial Tick 要在它的当前世界态上真跑传导。
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
     const q = req.query as { scope?: string; target?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
-    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
   });
 
   app.get("/a/v1/sim/sessions/:id/scope-precheck", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    await getSimOr404(c, (req.params as { id: string }).id);
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
     const q = req.query as { scope?: string; target?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
-    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
     return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
   });
@@ -2268,6 +2335,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             searchable: z.boolean().optional(),
             unit: z.string().optional(),
             displayFormat: z.string().optional(),
+            // WO-D6：属性级中文业务名/语义描述 —— 契约里早有（PropertyDef），
+            // 此处漏声明 ⇒ zod strip 掉 ⇒ getTypeSemantics 下发给 B 的口径恒缺 displayName/description。
+            displayName: z.string().optional(),
+            description: z.string().optional(),
           }),
         ),
         derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
@@ -2280,6 +2351,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             }),
           )
           .default([]),
+        // WO-D6 第二个吞点（与 upsertType 那个各自独立，只修一个另一个照吞）：
+        // zod 默认 **strip** 未声明键 —— 这七个 OntoFlow 扩展字段此前在**进 service 之前**就没了，
+        // 于是 REST 是"填了也存不进去"，而 grep 只能看到 upsertType 那一处，容易误判已修完。
+        storageMode: z.enum(["STATIC", "ONTOLOGY"]).optional(),
+        stateVariables: z
+          .array(z.object({ propKey: z.string(), fromField: z.string(), fn: z.string(), dataType: z.string() }))
+          .optional(),
+        functions: z
+          .array(z.object({ name: z.string(), returns: z.string(), builtin: z.string().optional(), expr: z.string().optional() }))
+          .optional(),
+        actions: z.array(z.object({ actionTypeKey: z.string() })).optional(),
+        security: z
+          .array(
+            z.object({
+              prop: z.string(),
+              strategy: z.enum(["HASH", "REDACT", "PARTIAL"]),
+              scopeRoles: z.array(z.string()).optional(),
+            }),
+          )
+          .optional(),
+        entityCategory: z.string().optional(),
+        description: z.string().optional(),
       }),
       req.body,
     );
@@ -2734,9 +2827,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
   app.get("/a/v1/catalog", async (req) => {
-    const { kind, query } = req.query as { kind?: string; query?: string };
+    const { kind, query, category } = req.query as { kind?: string; query?: string; category?: string };
     if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
-    return catalog.discover(ctx(req), kind, query);
+    // WO-L7A 求解器决策问题类目筛选：非法类目**显式 400**，不静默忽略参数返全量（静默 = 调用方以为筛过了）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    return catalog.discover(ctx(req), kind, query, category);
+  });
+  // WO-L7A 求解器决策问题类目登记表（10 类 + 每类的决策问句 + 成员 key·治理页分组/Agent 选型收窄的供给侧）
+  app.get("/a/v1/solvers/categories", async (req) => {
+    ctx(req); // 鉴权上下文（分类维为平台元数据，按租户读）
+    return {
+      categories: solversByCategory().map((g) => ({
+        category: g.category,
+        label: SOLVER_CATEGORY_META[g.category].label,
+        decisionQuestion: SOLVER_CATEGORY_META[g.category].decisionQuestion,
+        solverKeys: g.solverKeys,
+        count: g.solverKeys.length,
+      })),
+      total: SOLVER_KEYS.length,
+      uncategorized: uncategorizedSolverKeys(), // 空数组 = 无漏网（诚实亮出，不藏）
+    };
   });
   // A3.1 · 14 业务域参考注册表（配置驱动 R14）：给 A4 浏览器分组、切片规划器 tie-break、跨域接缝识别共用。
   app.get("/a/v1/business-domains", async (req) => {
@@ -2820,8 +2932,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // MCP server 的全部工具（含 A8 新模型 + 净室通用族）；附输出形状供治理页/渲染绑定校验参考。
   app.get("/a/v1/solvers/registry", async (req) => {
     const c = ctx(req);
-    const { query } = req.query as { query?: string };
-    const { items } = await catalog.solverRegistry(c, query);
+    const { query, category } = req.query as { query?: string; category?: string };
+    // WO-L7A：非法类目显式 400（同 /a/v1/catalog，不静默返全量）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    const { items } = await catalog.solverRegistry(c, query, category);
     return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
   });
   // SPINE 经营目标-指标-责任骨架：指标库 / KSF / 责任人（各视图 KPI 单一出处 R-一致；Metric 经 metric_rollup 派生投影）。

@@ -217,6 +217,31 @@ scaffoldDraftIntent(deps, tenantId, query)           apps/agentcore/src/growth/s
 
 > 这两条不是「顺手改改」，是**门槛**。它们的验收标准与学习闭环的验收标准同等严肃。
 
+> ### ⚠️ 2026-08-09 复验：**「不许开工」的纪律被完整遵守了 —— 而这正是需要警惕的地方**
+>
+> 依据 `docs/CHECK-RT-GOV.md` §D.3。**本条不是「宣称做了其实没做」**（复验逐条查了 GOV 侧 68 条 ⛔，
+> **零违规**，§5 学习闭环 32 条无一条被偷跑）。**诚实标注与纪律执行都是这轮最扎实的一面。**
+>
+> **但代价必须写下来**：纪律的本意是「**先修前置再做学习闭环**」，
+> 实际发生的是「**前置和学习闭环一起没做**」。
+>
+> **实测（canonical，2026-08-09）—— 两项 P0 硬前置都没闭**：
+>
+> | 前置 | 实测 | 证据 |
+> |---|---|---|
+> | **P0-A** 指标租户维 | ❌ 未闭 | `grep -rn "tenant" apps/datacore/src/metrics.ts apps/agentcore/src/metrics.ts` → **零命中**（金丝雀：同两文件 `grep -c "inc("` → 5 / 1 ⇒ 文件读得到，是真零）。`ActionMetrics` 四方法签名逐字未变，标签集恒为 `{action_type, outcome}`；`ActionDraft.origin`（`packages/contracts/src/actions.ts:47-51`）仍只有 `taskId/agentId/userId` |
+> | **P0-B** `/metrics` 鉴权 | ❌ 未闭 | DataCore：`apps/datacore/src/app.ts:848` `/metrics` 仍在 `PUBLIC_PATHS`，`:860` 鉴权钩子第一行 `if (PUBLIC_PATHS.has(path)) return;` —— **在服务令牌与 JWT 判定之前**；`:927` handler 签名 `async (_req, reply)` 完全不看 req。AgentCore：`apps/agentcore/src/server.ts:207-210` handler `async (_req, reply)`，不调 `auth(req)`（金丝雀：同文件相邻业务端点 `:221` 第一行即 `const a = await auth(req);`） |
+> | 门 `metrics-tenant:check` | ❌ 不存在 | `ls scripts/ \| grep -iE "metrics-tenant"` → 无（金丝雀：`ls scripts/ \| grep -c "check-"` → 51 ⇒ 目录读得到） |
+>
+> **⛔ 关键判据：这两项是独立于学习闭环的安全/正确性缺口，不受「不许开工」纪律庇护。**
+> 尤其 **P0-B（`/metrics` 两服务均 200 无鉴权）是当下就可被利用的信息泄漏面** ——
+> 它一天不修，风险就一天在，**与 §5 是否开工毫无关系**。
+> ⇒ **§5 / P4 判「按纪律不该做」不计为缺口；但 P0-A / P0-B 本身是实打实的缺口，应立即单独排期。**
+>
+> **⚠️ 实施 P0-B 时的一个坑（追一层才看得见）**：即使有人只改了 handler 而不动 `PUBLIC_PATHS`，
+> **DataCore 侧仍然会失效** —— 因为 `onRequest` 钩子在 `app.ts:860` 已经 `return` 了，根本走不到 handler。
+> **两处必须同改**，这条要写进 P0-B 的工单。
+
 ### 2.1 前置 A · 指标补租户维（R2 补到可观测面）
 
 **做什么**

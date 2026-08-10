@@ -1,4 +1,4 @@
-import { isWriteModeSkill, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type EvalRunReport, type SkillDefinition } from "@platform/contracts";
+import { isWriteModeSkill, skillBudgetOverride, type AgentBudget, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type EvalRunReport, type SkillDefinition } from "@platform/contracts";
 import type { ExecutionEngine } from "./engine.js";
 import type { RequestAuth } from "./auth.js";
 import type { Repos } from "./persistence/repos.js";
@@ -125,9 +125,15 @@ export class SkillProbeRunner {
     );
 
     // 4. 逐 case 跑 probe（挂 skill）；behaviorGain 用例再跑 twin（不挂 skill）做差分。
+    //
+    // WO-SKILL-PARTIAL-A · 给 `maxBudgetRounds` 接上**真消费方**（此前零生产调用方 = 填了不改变任何行为）。
+    // 归一单源在 contracts `skillBudgetOverride()`；未声明 → undefined → 下方展开为空 → 逐字节维持今日行为（R6）。
+    // twin（不挂 skill）**同样**用这个预算：behaviorGain 差分的唯一变量必须是「挂没挂 skill」，
+    // 预算若两侧不同，差出来的就不是 skill 的增益（对照组失格·同族老病见本文件 runCase 注释）。
+    const budgetOverride = skillBudgetOverride([skill]);
     const results: EvalCaseResult[] = [];
     for (const c of cases) {
-      results.push(await this.runCase(auth, c, probeAgent, twinAgent, timeoutMs, opts.intentKey));
+      results.push(await this.runCase(auth, c, probeAgent, twinAgent, timeoutMs, opts.intentKey, budgetOverride));
     }
 
     const passed = results.filter((r) => r.pass).length;
@@ -263,6 +269,7 @@ export class SkillProbeRunner {
     twinAgent: AgentDefinition,
     timeoutMs: number,
     intentKey?: string,
+    budgetOverride?: Partial<AgentBudget>,
   ): Promise<EvalCaseResult> {
     const t0 = Date.now();
     const failures: string[] = [];
@@ -277,7 +284,7 @@ export class SkillProbeRunner {
     let probeToolNames: string[] = [];
     let probeTokenCost = 0;
     try {
-      const probeResult = await this.runAgent(auth, probeAgent, c, timeoutMs);
+      const probeResult = await this.runAgent(auth, probeAgent, c, timeoutMs, budgetOverride);
       probeAnswerText = extractAnswerText(probeResult.answer);
       probeToolNames = await this.getToolNamesForTask(probeResult.run.taskId);
       probeTokenCost = probeResult.run.totalInputTokens + probeResult.run.totalOutputTokens;
@@ -300,7 +307,7 @@ export class SkillProbeRunner {
     let twinAnswerText: string | null = null;
     if (c.expect.behaviorGain && failures.length === 0) {
       try {
-        const twinResult = await this.runAgent(auth, twinAgent, c, timeoutMs);
+        const twinResult = await this.runAgent(auth, twinAgent, c, timeoutMs, budgetOverride);
         twinAnswerText = extractAnswerText(twinResult.answer);
       } catch (e) {
         twinAnswerText = null;
@@ -358,7 +365,13 @@ export class SkillProbeRunner {
     };
   }
 
-  private async runAgent(auth: RequestAuth, agent: AgentDefinition, c: EvalCase, timeoutMs: number) {
+  private async runAgent(
+    auth: RequestAuth,
+    agent: AgentDefinition,
+    c: EvalCase,
+    timeoutMs: number,
+    budgetOverride?: Partial<AgentBudget>,
+  ) {
     const taskId = newId("task");
     const now = new Date().toISOString();
     await this.deps.repos.tasks.insert({
@@ -374,7 +387,9 @@ export class SkillProbeRunner {
       createdAt: now,
     });
 
-    const budget = new BudgetTracker({ maxIterations: 8, maxToolCalls: 12 });
+    // `budgetOverride` 展开在后 → skill 声明的 maxRoundTrips 生效；未声明时展开空对象，
+    // BudgetTracker 落回 DEFAULT_AGENT_BUDGET.maxRoundTrips(24)，与改造前逐字节一致（R6）。
+    const budget = new BudgetTracker({ maxIterations: 8, maxToolCalls: 12, ...(budgetOverride ?? {}) });
     const nesting: NestingCtx = { callChain: [], budget };
 
     const runPromise = this.deps.engine.runRegisteredAgent({

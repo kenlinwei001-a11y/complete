@@ -67,7 +67,7 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
     const keys = items.map((i: { key: string }) => i.key);
     expect(keys).toContain(REAL_SOLVER);
     expect(keys).not.toContain(DEAD_SOLVER);
-    expect(await t.dataCore.rules.listRuleKeys({ tenantId: "demo", userId: "u", roles: [] } as never)).toContain(REAL_RULE);
+    expect(await t.dataCore.rules.listPublishedRuleKeys({ tenantId: "demo", userId: "u", roles: [] } as never)).toContain(REAL_RULE);
   });
 
   // ——————————————————— ① 死路引用 → 422 且未落库 ———————————————————
@@ -196,7 +196,7 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
   it("③ 规则注册表空集同守（三个 scope 不许只关一个的 fail-open）", async () => {
     const t = await createTestApp();
     const id = await createSkill(t, "empty_rules", [{ kind: "rule", key: REAL_RULE, required: true }]);
-    t.dataCore.rules.listRuleKeys = async () => [];
+    t.dataCore.rules.listPublishedRuleKeys = async () => [];
     const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H });
     expect(pub.statusCode).toBe(503);
     expect((pub.json() as { error: { message: string } }).error.message).toContain("规则库");

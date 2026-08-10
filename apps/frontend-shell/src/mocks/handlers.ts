@@ -1,6 +1,16 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { PlanStep, Scenario } from "@platform/contracts";
+import type { PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
+// WO-UNBLOCK-SKILL-FE · 编译 mock 复用**契约里那份**纯函数实现（Parser/图派生住在 contracts，
+// 见 packages/contracts/src/skill-compile.ts）——绝不在此另抄一套 AST/图推导，抄了就是"同一概念两套词表"。
+import {
+  SOLVER_CATEGORIES,
+  SOLVER_CATEGORY_META,
+  deriveSkillReasoningGraph,
+  parseSkillToAst,
+  skillDeclaredRefKeys,
+  skillGraphRefKeys,
+} from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
@@ -29,6 +39,21 @@ import {
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
+
+/**
+ * C5 求解器目录（`GET /a/v1/solvers/registry` 的 mock 数据源）——**提升为模块级单一来源**。
+ *
+ * 为何不再内联在那一个 handler 里：`POST /b/v1/skills/:id/publish` 的引用存在性探针
+ * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts`）要拿"哪些求解器真的注册了"
+ * 来判死路。若在探针那边另抄一份 key 清单，就是本仓治过的老病——**同一事实两份词表**，
+ * 谁改一边另一边照绿（`sideEffect` 三套词表 → 判定永不触发，假绿第 6 例）。故两处共用本常量。
+ */
+const MOCK_SOLVER_REGISTRY = [
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", outputShape: ["p50", "p90", "gap", "ok"] },
+  { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["matrix"] },
+  { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。", argHints: { items: "候选项", budget: "预算上限" }, domain: "generic", outputShape: ["selected", "totalValue"] },
+  { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价X%接/不建议接）。", argHints: { so: "订单号" }, domain: "decision", outputShape: ["verdict", "chain"] },
+] as const;
 
 /** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
 function ruleReferences(ruleKey: string): { kind: string; key: string; name?: string; via: string }[] {
@@ -1477,16 +1502,43 @@ export const handlers = [
 
   // ---- solver ----
   // C5 求解器目录（只读发现页数据源）：真后端来自 /a/v1/solvers/registry（注册表 feature 过滤）。mock 给代表性子集。
-  http.get("*/a/v1/solvers/registry", () =>
-    HttpResponse.json({
-      solvers: [
-        { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", outputShape: ["p50", "p90", "gap", "ok"] },
-        { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["matrix"] },
-        { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。", argHints: { items: "候选项", budget: "预算上限" }, domain: "generic", outputShape: ["selected", "totalValue"] },
-        { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价X%接/不建议接）。", argHints: { so: "订单号" }, domain: "decision", outputShape: ["verdict", "chain"] },
-      ],
-    }),
-  ),
+  // 数据源见模块顶部 MOCK_SOLVER_REGISTRY（与 skill 发布引用探针共用同一份，勿在此内联另一份）。
+  http.get("*/a/v1/solvers/registry", () => HttpResponse.json({ solvers: MOCK_SOLVER_REGISTRY })),
+  /**
+   * WO-L7A 求解器**决策问题类目**登记表（`GET /a/v1/solvers/categories`）。
+   *
+   * 类目定义（label / decisionQuestion / 类目顺序）**直接读契约** `SOLVER_CATEGORY_META`
+   * （`packages/contracts/src/solver-taxonomy.ts:49`）—— 与真后端 `apps/datacore/src/app.ts:2844`
+   * 读的是同一份常量，不在此另抄一份中文标签（抄了就是"同一事实两份词表"）。
+   *
+   * 成员 key 是 mock 侧的代表性子集（真后端论域 59 条，mock 的 `MOCK_SOLVER_REGISTRY` 只有 4 条），
+   * 故 `total` 报的是 mock 论域大小、`uncategorized` 报 mock 里没归类的那些——
+   * **空数组 = 无漏网**，与真后端同口径地诚实亮出，不藏。
+   */
+  http.get("*/a/v1/solvers/categories", () => {
+    // mock 论域内每条求解器归哪一类（判据同契约：按"回答什么决策问题"分，不按算法分）
+    const MOCK_CATEGORY_OF: Record<string, string> = {
+      capacity_forecast: "capacity_bottleneck",
+      bottleneck_matrix: "capacity_bottleneck",
+      selection_optimize: "combinatorial_allocation",
+      order_fullchain: "order_commitment",
+    };
+    const allKeys = MOCK_SOLVER_REGISTRY.map((s) => s.key as string);
+    return HttpResponse.json({
+      categories: SOLVER_CATEGORIES.map((category) => {
+        const solverKeys = allKeys.filter((k) => MOCK_CATEGORY_OF[k] === category);
+        return {
+          category,
+          label: SOLVER_CATEGORY_META[category].label,
+          decisionQuestion: SOLVER_CATEGORY_META[category].decisionQuestion,
+          solverKeys,
+          count: solverKeys.length,
+        };
+      }),
+      total: allKeys.length,
+      uncategorized: allKeys.filter((k) => MOCK_CATEGORY_OF[k] === undefined),
+    });
+  }),
   http.post("*/a/v1/solvers/:key/invoke", async ({ params, request }) => {
     const key = String(params.key);
     // WO-CAPSIM-REPLICA 缺口②修（355b8502 同口径）：此前只解构 params 不读 body → 订单聚合基地筛选 base 参恒被忽略、
@@ -3217,12 +3269,169 @@ export const handlers = [
     Object.assign(s, body);
     return HttpResponse.json(s);
   }),
+  /**
+   * Skill 发布 —— **含引用存在性门**，口径照真后端 `server.ts` 的 `/b/v1/skills/:id/publish`
+   * （2026-08-09 WO-SKILL-REFCLOSURE-A 把 `probeMissingRefs` 接上了这条路）。
+   *
+   * 为何 mock 也必须带这道门：本单要在界面上暴露「发布被拒时到底哪条引用死了」。
+   * 若 mock 无脑 `status = "PUBLISHED"`，那段 UI 在 mock 模式下**永远走不到**，
+   * 就成了"只在真后端才存在的分支"——测试与手跑都验不到它，典型的「接了线没数据」。
+   *
+   * 与真后端一字对齐的三件事（改动其一即口径分家）：
+   *   ① HTTP 422 + code `SKILL_REF_UNRESOLVED`
+   *   ② message：`技能引用存在死路（N 项，发布被拒且未落库）：…；…`，每项形如 `求解器「k」在 DataCore 未注册`
+   *   ③ **未落库**：被拒时 status 保持原值，不得改成 PUBLISHED
+   * 覆盖范围同真后端：只探 solver / rule / ontologyType 三种 kind，且只探 `required !== false` 的；
+   * references 与 dependsOn 一起探。constraint/slice/workflow/agent 今天两侧都无人校验，别在此补——
+   * mock 比真后端严会造出"本地红、线上绿"的反向假信号。
+   */
   http.post("*/b/v1/skills/:id/publish", ({ params }) => {
     const s = db.skills.find((x) => x.id === params.id);
     if (!s) return err(404, "NOT_FOUND", "Skill 不存在");
+    const crossRefs = [...(s.references ?? []), ...(s.dependsOn ?? [])].filter((r) => r.required !== false);
+    const solverKeys = new Set(MOCK_SOLVER_REGISTRY.map((x) => x.key as string));
+    const ruleKeys = new Set(db.rules.map((r) => r.key));
+    const objectTypes = new Set(GRAPH.nodes.map((n) => n.key));
+    const dead = [
+      ...crossRefs.filter((r) => r.kind === "solver" && !solverKeys.has(r.key)).map((r) => `求解器「${r.key}」在 DataCore 未注册`),
+      ...crossRefs.filter((r) => r.kind === "rule" && !ruleKeys.has(r.key)).map((r) => `规则「${r.key}」在 DataCore 规则库不存在`),
+      ...crossRefs.filter((r) => r.kind === "ontologyType" && !objectTypes.has(r.key)).map((r) => `对象类型「${r.key}」在 DataCore 本体不存在`),
+    ];
+    if (dead.length > 0) {
+      // 未落库：故意不动 s.status。
+      return err(422, "SKILL_REF_UNRESOLVED", `技能引用存在死路（${dead.length} 项，发布被拒且未落库）：${dead.join("；")}`);
+    }
     s.status = "PUBLISHED";
     return HttpResponse.json(s);
   }),
+
+  /**
+   * Skill 编译（WO-UNBLOCK-SKILL-FE 接前端）——口径照真后端
+   * `apps/agentcore/src/server.ts:1430` → `skill-compiler.ts:238 compileSkill`。
+   *
+   * **对齐的部分**（改动其一即口径分家）：
+   *  ① ①Parser 与 ③图派生**直接调 contracts 的同一份纯函数**（`parseSkillToAst` / `deriveSkillReasoningGraph`）
+   *     —— 不是"照着抄一遍"，是同一份实现，故 AST 与推理图在 mock 与真后端逐字节一致；
+   *  ② `stages[]` 五段齐全，`optimize` / `package` 恒 `NOT_IMPLEMENTED`（后端的诚实位，界面靠它说真话）；
+   *  ③ 诊断按 `code + path + message` 字典序排（同 `skill-compiler.ts:64 sortDiagnostics`）；
+   *  ④ `ok = 无 error 级诊断`（同 `skill-compiler.ts:242`）；
+   *  ⑤ 只读：不落库、不改 status、不发事件。
+   *
+   * ⚠️ **mock 比真后端「松」的两条（诚实边界 · 方向是刻意选的）**：
+   *  · `GV-LINT`：真后端全量复用 `lintSkill`（`apps/agentcore/src/skill-lint.ts`），那是 agentcore 的源码，
+   *    跨 app import 是本仓禁止的（contracts-only-shared），故 mock **产不出** GV-LINT 诊断。
+   *  · `RG-TOOL`：需要平台工具注册表（`apps/agentcore/src/tools/registry.ts`），同上不可达。
+   *  松而不严是**刻意的方向**：mock 比真后端严会造出"本地红、线上绿"的反向假信号
+   *  （见上方 publish handler 的同款注释）。松的代价是本地看不到 lint 类诊断——
+   *  但诊断表本身的渲染路径由下面几条 contracts 可导出的诊断照常驱动，不是空表。
+   */
+  http.post("*/b/v1/skills/:id/compile", ({ params }) => {
+    const skill = db.skills.find((x) => x.id === params.id);
+    if (!skill) return err(404, "SKILL_NOT_FOUND", `skill not found: ${String(params.id)}`);
+
+    const ast = parseSkillToAst(skill);
+    const graph = deriveSkillReasoningGraph(ast);
+    const diagnostics: SkillCompileDiagnostic[] = [];
+
+    // GR-REACH：节点集合必须与声明的引用逐条对账（与真后端共用 contracts 的同两个函数）
+    if (JSON.stringify(skillGraphRefKeys(graph)) !== JSON.stringify(skillDeclaredRefKeys(skill))) {
+      diagnostics.push({
+        code: "GR-REACH", severity: "error", path: "/references",
+        message: "推理图节点集合与声明的引用不一致——有引用没长出节点，或有节点凭空冒出",
+        evidence: `graph=[${skillGraphRefKeys(graph).join(",")}] declared=[${skillDeclaredRefKeys(skill).join(",")}]`,
+      });
+    }
+    // GR-APPROVAL：写模式技能必须派生出 create_action_draft（R4 真值经 Action）
+    if (ast.skill.writeMode && !ast.tools.some((t) => t.name === "create_action_draft")) {
+      diagnostics.push({
+        code: "GR-APPROVAL", severity: "error", path: "/sideEffect",
+        message: "写模式技能未派生出 create_action_draft —— 它将无法产出可审批的行动草案",
+        evidence: `sideEffect=${ast.skill.sideEffect ?? "none"} approvalGate=${ast.skill.approvalGate ?? "none"}`,
+      });
+    }
+    // IO-OUTPUT-CONSUMER：声明了 outputSchema 但本切片没有运行时包去消费它
+    if (ast.io.outputSchema !== null) {
+      diagnostics.push({
+        code: "IO-OUTPUT-CONSUMER", severity: "warning", path: "/outputSchema",
+        message: "outputSchema 已声明，但本编译切片未产出运行时包，故此声明目前无人消费",
+        evidence: "SkillRuntimePackage 段 NOT_IMPLEMENTED（WO-SKILL-PACKAGE）",
+      });
+    }
+    // GR-STEPS-NO-DATA：`execution.steps` 契约上尚不存在 ⇒「接了线没数据」，不是「没有步骤」
+    if (!ast.execution.declared) {
+      diagnostics.push({
+        code: "GR-STEPS-NO-DATA", severity: "info", path: "/execution/steps",
+        message:
+          "Skill.execution.steps 在 SkillDefinitionSchema 上尚不存在（迁移线在建），故确定性步骤段恒空——" +
+          "属「接了线没数据」，不是「这个技能没有步骤」。本编译器不做任何别名回退：名字对不上就该空得刺眼。",
+        evidence: "对名裁决 2026-08-09 · 唯一字段名 execution.steps",
+      });
+    }
+    // RG-NOT-WIRED：跨系统引用可达性今天不校验，必须说出来
+    const unprobed = [...ast.ontology, ...ast.rules, ...ast.slices, ...ast.solvers, ...ast.agents, ...ast.workflows];
+    if (unprobed.length > 0) {
+      diagnostics.push({
+        code: "RG-NOT-WIRED", severity: "info", path: "/references",
+        message:
+          `${unprobed.length} 条非 skill 引用未做存在性校验：引用探针 probeMissingRefs 今天只接在 workflow / agent ` +
+          "发布路上，skill 这条路没接，且其自身 fail-open。接线 + 改发布期 fail-closed 属另一张单（PRD §4.3.1）。",
+        evidence: unprobed.map((r) => `${r.kind}:${r.key}`).sort().join(","),
+      });
+    }
+    diagnostics.sort((a, b) => {
+      const ka = `${a.code} ${a.path} ${a.message}`;
+      const kb = `${b.code} ${b.path} ${b.message}`;
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+
+    const hasError = diagnostics.some((d) => d.severity === "error");
+    const stages: SkillCompileStageReport[] = [
+      { stage: "parse", status: "OK", note: "SkillDefinition → SkillAst（纯函数·contracts/skill-compile.ts）" },
+      {
+        stage: "validate", status: hasError ? "FAILED" : "OK",
+        note:
+          "复用既有 lintSkill（skill-lint.ts:234）+ 工具注册表反查 + 图/引用对账。" +
+          "**未含**跨系统引用可达性探针（probeMissingRefs 未接 skill 路，见 RG-NOT-WIRED 诊断）。" +
+          "【mock 模式】lintSkill 与工具注册表在 agentcore，浏览器不可达 ⇒ 本地看不到 GV-LINT / RG-TOOL 两族诊断。",
+      },
+      { stage: "graph", status: "OK", note: "AST → SkillReasoningGraph（纯函数·分层拓扑·未经优化）" },
+      {
+        stage: "optimize", status: "NOT_IMPLEMENTED",
+        note:
+          "PRD §4.4 Optimizer（拓扑排序 / parallelGroup 分组 / 死节点剪除 / 常量折叠 / 预算下推）本切片未做。" +
+          "graph 段给出的是**未优化**的派生图，不要当成优化产物。",
+      },
+      {
+        stage: "package", status: "NOT_IMPLEMENTED",
+        note:
+          "PRD §4.5 / §6 的 SkillRuntimePackage、digest、manifest.json、signature/ 本切片全未做，归 WO-SKILL-PACKAGE。" +
+          "本响应**不含**任何可分发制品。",
+      },
+    ];
+
+    return HttpResponse.json({
+      skillId: skill.id, skillKey: skill.key, skillVersion: skill.version,
+      ok: !hasError, ast, graph, diagnostics, stages,
+    });
+  }),
+
+  /**
+   * F14 出厂技能门审计诚实位（`GET /b/v1/ops/skill-seed-gate`）。
+   *
+   * mock 给 `CLEAN`：本地 fixture 里的种子技能引用都在 `MOCK_SOLVER_REGISTRY` / `db.rules` / `GRAPH` 里
+   * （与上方 publish 探针同一份判据），确实审得干净。
+   * ⚠️ 不给 `NOT_RUN`：那会让"未审计"成为 mock 模式的常态，看久了就把灰色徽标读成正常——
+   * 四态各有各的含义，mock 该给的是它真实对应的那一态。另三态的渲染由测试直接构造响应驱动。
+   */
+  http.get("*/b/v1/ops/skill-seed-gate", () =>
+    HttpResponse.json({
+      status: "CLEAN",
+      ranAt: "2026-08-10T00:00:00.000Z",
+      tenantId: TENANT_ID,
+      checked: db.skills.filter((s) => s.status === "PUBLISHED").length,
+      findings: [],
+    }),
+  ),
 
   http.get("*/b/v1/mcp-configs", () => HttpResponse.json(db.mcpConfigs)),
   http.post("*/b/v1/mcp-configs/:id/test", () =>

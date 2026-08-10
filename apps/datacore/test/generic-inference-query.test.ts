@@ -10,18 +10,37 @@ describe("WO-Phase3-B · generic_inference → Query Engine fallback（遍历 + 
   it("apply 空 + rootType/select → fallback 到 Query Engine（返回遍历 rows/columns/provenance/queryPlan）", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    const rootSel = { rootType: "Base", rootFilter: [{ field: "name", op: "eq", value: "常州" }] };
     const res = await invokeSolver(t, "generic_inference", {
-      rootType: "Base",
-      rootFilter: [{ field: "name", op: "eq", value: "常州" }],
+      ...rootSel,
       select: [{ type: "Order", fields: ["so", "qty"] }],
     });
     expect(res.statusCode).toBe(200);
     const out = res.json().data as OntologyQueryOutput;
     // 走的是 Query Engine（非旧 apply 分支）：有 columns/queryPlan/provenance
     expect(out.columns).toEqual(["Order.so", "Order.qty"]);
-    expect(out.queryPlan.hops.map((h) => h.linkKey)).toEqual(["model_producible_at", "order_for_model"]);
+    // 金值更新 · WO-FIX-P1-REGRESSION · 2026-08-10 实测：Model→Order 那一跳改走 WO-P1 新补的
+    // 影响向逆边 `model_demanded_by_order`（与 `order_for_model` 逐实例互逆；规划器 tie-break 纯字典序
+    // 且 m < o）。完整成因与取证见 `apps/datacore/test/ontology-query-engine.test.ts` 顶部注释。
+    // 复验：`pnpm --filter datacore test -- generic-inference-query`
+    expect(out.queryPlan.hops.map((h) => h.linkKey)).toEqual(["model_producible_at", "model_demanded_by_order"]);
     expect(out.rows.length).toBeGreaterThan(0);
     expect(out.provenance.every((p) => p.typeKey === "Order")).toBe(true);
+
+    // 等价断言（防「改金值洗白」）：fallback 走的自动最短路 ≡ 显式走旧边 order_for_model 的那条路。
+    const legacy = await invokeSolver(t, "generic_inference", {
+      ...rootSel,
+      hops: [
+        { linkKey: "model_producible_at", direction: "backward" },
+        { linkKey: "order_for_model", direction: "backward" },
+      ],
+      select: [{ type: "Order", fields: ["so", "qty"] }],
+    });
+    expect(legacy.statusCode).toBe(200);
+    const legacyOut = legacy.json().data as OntologyQueryOutput;
+    expect(legacyOut.provenance.length).toBeGreaterThan(0); // 金丝雀：对照组非空
+    expect(out.provenance.map((p) => p.objId).sort()).toEqual(legacyOut.provenance.map((p) => p.objId).sort());
+    expect(JSON.stringify(out.rows)).toBe(JSON.stringify(legacyOut.rows));
   });
 
   it("overrides 假设注入 → 输出必带 before/after(deltas) + provenance.derivedFrom（对遍历对象前向重算）", async () => {

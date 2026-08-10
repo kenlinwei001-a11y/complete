@@ -108,13 +108,60 @@ Trigger → 数据准备 → 模型计算 → **专家审核** → 生成方案 
 | 3 | **Ontology Binding** | 🟡 **有物无声明** | 对象类型 91 个 ACTIVE / 11,087 对象；关系是一等行（`ontology_links`/`links`）；`NavigationSlice.objectTypes` 有 | **Skill 侧零声明**。今天"这个题涉及哪些对象/关系"散在 navSlice 投影 + DRIL 组包 + 角色画像**三处**，无一处是权威。另：本体是**平的**（无 subClassOf/传递/逆关系），`WITH RECURSIVE` 全仓 **0 次**，图遍历全在应用内存 |
 | 4 | **Input Contract** | 🟡 **两处未统一** | Skill 有 `inputSchema`（可选）；Intent 有 `slots[]`（名/类型/必填/defaultFrom） | 两份并存、无一为权威 —— 正是 Track E 要收敛的。**数据来源（ERP/MES/WMS/PLM/CRM）零声明**：连接器 A1 有，但 Skill 不声明自己依赖哪个源 |
 | 5 | **Context Manager** | 🟡 **三项各有各的问题** | 5.1 检索：`conversationSummary` + DRIL 组包（真·确定性·无 LLM）<br>5.2 压缩：`estimateTokensChars` + 8KB 工具结果截断 + maxToolCalls=40<br>5.3 记忆：`search_experience` 50 案例 | **5.2 实测在默认阈值下是死代码**（#91：最坏上下文 102,785 tok vs 软线 140,000 → 在 Anthropic 路径上不可达）；**5.3 只读不写** —— 决策历史/人工修正没有回写通道（见 §12）。三项**均非 Skill 字段**，无法按题型配置 |
-| 6 | **Reasoning Logic** | 🔴 **是线性步骤，不是图** | `ExecutionPlan.steps[]` 1–12 步（`resolve_slice`→`invoke_solver`→`evaluate_rules`→`render_answer`） | **无 Reasoning Graph**。今天是**线性管线**，不能表达"瓶颈识别的结果决定要不要走扩产建议"这类**条件分支/汇流**。探索态则相反 —— 完全自由 ReAct，无强制序（Track A Phase 4 要治） |
+| 6 | **Reasoning Logic** | 🔴 **是线性步骤，不是图** | `ExecutionPlan.steps[]` 1–12 步（`resolve_slice`→`invoke_solver`→`evaluate_rules`→`render_answer`） | **无 Reasoning Graph**。今天是**线性管线**，不能表达"瓶颈识别的结果决定要不要走扩产建议"这类**条件分支/汇流**。探索态则相反 —— 完全自由 ReAct，无强制序（Track A Phase 4 要治 〔⚠️ **2026-08-09：此处「Phase 4」是 C5 改名后的残留裸 Phase，按命名空间应读作 Track A 路由线 `R…` 期；见文末订正表**〕） |
 | 7 | **Tool / MCP Binding** | 🟡 **有物无声明** | 30 个工具（`tools/registry.ts`）+ MCP 配置（B3） | Skill 不声明自己用哪些工具 → 今天 agent 首轮**注入全部 30 个 schema**（Track B4 要按 DRIL 预选裁剪）。另 **`discover` 的 kind 无 `intents`**（E7）—— agent 按提示"先 discover"时看不见意图池 |
-| 8 | **Rule & Constraint** | 🟡 **引擎在·绑定缺·且有真缺陷** | 规则 DSL（`ruledsl.ts`）+ 28 条业务规则（C01–C33）+ `RULE_PARAM_BINDINGS` 投影 | Skill 不声明绑哪些规则。**且规则引擎自身有实缺**：`G-C08-EXPR-PARAM-SPLIT` 🔴 —— DSL 的 expression **不能引用 params**，写 `params.cashFloor` 会被当 field path、双 undefined → **静默恒假不报错**（C09/C18/C21 同病）。改 params 不改规则判定 |
+| 8 | **Rule & Constraint** | 🟡 **引擎在·绑定缺·且有真缺陷** | 规则 DSL（`ruledsl.ts`）+ 28 条业务规则（C01–C33）+ `RULE_PARAM_BINDINGS` 投影 | Skill 不声明绑哪些规则。**且规则引擎自身有实缺**：`G-C08-EXPR-PARAM-SPLIT` 🔴 —— DSL 的 expression **不能引用 params**，写 `params.cashFloor` 会被当 field path、双 undefined → **静默恒假不报错**（C09/C18/C21 同病）。改 params 不改规则判定 〔🔁 **2026-08-09：本格的 🔴 半已过期·见表后订正 F9**〕|
 | 9 | **Solver Integration** | 🟢 **有真物** | 57 个注册求解器 + CP-SAT sidecar（`services/optimizer`）+ `SOLVER_ARGS_SCHEMAS` | Skill 不声明绑哪个 solver / objective / constraints。**sidecar 无取消接口**（D1 已查实：`ThreadingHTTPServer`，不感知客户端断开——我们取消的是"调用"不是"求解进程"） |
 | 10 | **Workflow Execution** | 🟡 **有物·但审批与 Skill 不连** | `workflow/executor.ts`（**串行 for…await·无 `Promise.all`** ← E5：三角色 203s 的成因）+ Action 审批链（`approvalChain` 1–3 级） | Skill 无 workflow 绑定。**长流程里的"专家审核/审批"今天只在 Action 层有**，Skill 层不声明"我这一步需要人审"。另 `采纳经营方案` 仍是唯一 `NOT_IMPLEMENTED` 的 ActionType（#81） |
-| 11 | **Output Contract** | 🟡 **有形无约束** | Skill 有 `outputSchema`（可选）；答案是 `blocks[] + provenance[] + trustLevel + unverifiedNumerics` | `outputSchema` **零消费方** —— 没有任何地方拿它校验实际输出。**结构化决策（risk[]/recommendation[]）今天靠 LLM 自由生成 blocks**，不受 schema 约束 |
+| 11 | **Output Contract** | 🟡 **有形无约束** | Skill 有 `outputSchema`（可选）；答案是 `blocks[] + provenance[] + trustLevel + unverifiedNumerics` | `outputSchema` **零消费方** —— 没有任何地方拿它校验实际输出。**结构化决策（risk[]/recommendation[]）今天靠 LLM 自由生成 blocks**，不受 schema 约束 〔⚠️ **2026-08-09：「零消费方」已过期（有 2 个）·「不校验输出」仍成立·见表后订正 F10**〕|
 | 12 | **Governance & Learning** | 🔴 **写得了·治不住** | Evaluation：`EvalService` 在；埋点 `ActionMetrics` 在<br>Feedback：`growth/probe.ts` 能精确判出 `NO_INTENT` 并给 `suggestedFill`<br>**生长回路真的会写**（见右） | ⚠️ **本格原稿有错，此处更正**：原写「生长回路只报不写 / 从不建意图（E8）」**是错的**——写链真实存在且已核到底：`growth/scenario-grow.ts:98` → `scaffoldDraftIntent`(`growth/scaffold.ts:54`) → `catalog.createIntent`(`catalog/service.ts:139`) → `intents.insert`(`catalog/service.ts:159`)。错因是**只 grep 了 `intents.insert` 的直接调用方，漏了一层间接**（与本文档另外两处更正同一种病）。**真正的三个 🔴（均亲手核对 file:line）**：① **RBAC 不对称**——`/api/v1/growth/run`（`server.ts:235`）只有 `await auth(req)`，**无角色校验**；而人走正门建同一个对象 `POST /api/v1/catalog/packages/:packageId/intents`（`server.ts:512`）要 `requireRole(a,"catalog_admin")`（`:514`）→ **任何已登录用户都能让 AI 往目录里写 DRAFT 意图，人自己写反而要管理员**（缓解项：`createIntent` 恒落 `status:"DRAFT"`，DRAFT 不进分类候选，故污染有界——是**越权建草稿**，不是越权上线）；② **发布是 RBAC 直发、不在 R4 上**——`publishIntent`（`server.ts:530-532`）与 `publish-chain`（`server.ts:2507`·`requireCatalogAdmin` 于 `:2509`）都只查角色，注释虽写"经审批 R4"，实际**不经 Action 审批对象**，所以没有审批留痕/可追溯链；③ **没有审批面**——前端唯一碰生长回路的是 `components/Answer/GapCard.tsx`，它是**触发面**（「▶ 触发生成缺失数据」调 `/b/v1/growth/run`），**没有任何界面把 AI 建出的 DRAFT 意图列出来供人审**。**人工采纳率**：埋点在但 **跨租户混算**（`dc_action_submit_total` 标签只有 `{action_type,outcome}`，两租户合成一条曲线）且 `/metrics` **两服务均 200 无鉴权**（#65 实测）。**"人工改 20%→10% 后系统学习"这条通道确实不存在**（这半条原判成立） |
+
+> ## 2026-08-09 逐条复验 · 本表两格的订正（`WO-DOCFIX-SKILL-CLAIMS`）
+>
+> 依据 `docs/CHECK-SPEC-AUT.md` §4。**原文一律保留在上表格子里，不抹掉** —— 抹掉就看不出「这里曾经骗过人」。
+>
+> ### 🔁 F9 · 第 ⑧ 层「`G-C08-EXPR-PARAM-SPLIT` 🔴 静默恒假」 —— **【反向过期·危害最大的一类】**
+>
+> **⛔ 读到这里请停一下**：这一条的危害不是"文档写错了"，而是**它会让下一个人去修一个已经修好的东西**。
+> CLAUDE.md 铁律 0.5 记载的第三类错（把「接一条线」错报成「造一道门」）就是这个形态，本仓已真实发生过。
+>
+> **新事实：`params` 已经是 DSL 的一等操作数，且未声明时是抛错不是静默恒假**（`WO-RULE-EXPR-PARAMS` 已落地）：
+>
+> | 环节 | 证据 | 行为 |
+> |---|---|---|
+> | 词法/类型 | `apps/datacore/src/ruledsl.ts:39` `\| { kind: "param"; name: string }` | `params.<名>` 是**独立 operand 类型**，不再被当 field path |
+> | 解析 | `ruledsl.ts:318-324` `return { kind: "param", name: path[1] }` | 必须恰好两段（`params` 裸用 / `params.a.b` 都不合法） |
+> | 求值 | `ruledsl.ts:491-499` | 未在 `rule.params` 声明 ⇒ **`throw new DslError`**，注释原文：「诚实缺席：未声明的阈值**抛错**，不回退载荷、不取 0/undefined」 |
+> | 发布期校验 | `ruledsl.ts:414-420 collectParamRefs` | 供「expression 引用的阈值 ⊆ rule.params 声明的阈值」校验 |
+>
+> 原文描述的那条病灶链（`resolveField` 返 undefined → `compare()` 两边非数 → 恒 false 无异常）
+> **对 `params.x` 这个形态已不成立**。
+>
+> **仍然成立的那一半（别一起划掉）**：`kind:"field"` 拼错**仍会静默恒假** ——
+> `resolveField` 带前缀回退，写错字段名不报错。⇒ 「解析期门」这件事只做了一半。
+> 见 `docs/PRD-skill-migration.md` §1.5 G2 的同步订正。
+>
+> **复验（金丝雀：同文件 `grep -c "kind"` 应 =36；若金丝雀也 0 那是 grep 坏了）**：
+> `grep -n "param" apps/datacore/src/ruledsl.ts` → `:39 / :318-324 / :414-420 / :491-499` 全部命中。
+>
+> ### ⚠️ F10 · 第 ⑪ 层「`outputSchema` **零消费方**」 —— 前半过期，后半仍成立
+>
+> **必须拆成两句说**，合成一句会把人引向错误的修法：
+>
+> | 原文的两半 | 今日复验 | 证据 |
+> |---|---|---|
+> | 「**零消费方**」 | **❌ 已过期** —— 有 **2 个** `src/` 生产消费方 | ① `apps/agentcore/src/skill-lint.ts:342` `validateJsonSchemaShape(skill.outputSchema, ...)`（只校验「是不是 JSON Schema 形状」）② `apps/agentcore/src/dril/resource-projector.ts:149` `outputSpec: s.outputSchema ? ioSpecFromJsonSchema(...)` → 投影给 DRIL 检索 |
+> | 「没有任何地方拿它**校验实际输出**」 | **✅ 仍成立** | 答案形状仍由 `Answer.blocks[]` 自由生成，无一处拿 `outputSchema` 断言实际输出 |
+>
+> **形态定性**（照 CLAUDE.md 铁律 0.5 三分表）：不是「没接线」，是「**接了线接错地方**」——
+> 线接上了，但接在 lint 与检索投影上，没接在输出校验上。**修法完全不同**。
+>
+> **危害**：「零消费方」会被下一个人读成「删了没影响」，而删掉会**断掉 DRIL 检索的 `outputSpec`**。
+> 同时它也让 §4 的调整方向 3（「要么接消费方要么删」）看起来还没做，其实已经做了一半——
+> **真正没做的是"拿它校验输出"这件事**。
+>
+> **复验**：`grep -n "outputSchema" apps/agentcore/src/skill-lint.ts apps/agentcore/src/dril/resource-projector.ts`
+> （金丝雀：`grep -rn "outputSchema" apps/*/src packages/*/src | wc -l` = **11**）。
 
 ### 汇总
 
@@ -131,8 +178,13 @@ Trigger → 数据准备 → 模型计算 → **专家审核** → 生成方案 
 ### 三条最该先做（按"今天真在流血"排序）
 
 1. **⑫ Learning 闭环的治理面（原稿定性有误，此处改正）** —— 原写「生长回路只报不写…系统自己知道缺什么却没有手去补」**是错的**：它**有手，而且这只手没戴手套**。写链已核到底（`scenario-grow.ts:98 → scaffoldDraftIntent → catalog.createIntent → intents.insert`），真正在流血的是**权限不对称**：`/api/v1/growth/run`（`server.ts:235`）只 `auth(req)` 无角色，人走正门建同一个对象却要 `catalog_admin`（`server.ts:514`）→ **任何已登录用户都能驱动 AI 往目录写 DRAFT**；发布侧（`server.ts:530`/`:2507`）是 **RBAC 直发不经 R4 Action 审批**（无留痕）；且**没有任何审批界面**列出 AI 建的草稿供人过目（`GapCard.tsx` 只是触发面）。缓解项：草稿恒 `DRAFT` 且不进分类候选，故污染有界。另埋点跨租户混算 + `/metrics` 裸奔，等于**采纳率这个最关键的治理指标今天是错的**（这半条原判成立）。
-2. **⑧ 规则 expression 引用 params** —— `G-C08-EXPR-PARAM-SPLIT` 会**静默恒假**。静默错答比跑不通更糟，这是本仓的一级红线。
+2. ~~**⑧ 规则 expression 引用 params** —— `G-C08-EXPR-PARAM-SPLIT` 会**静默恒假**。静默错答比跑不通更糟，这是本仓的一级红线。~~
+   > 🔁 **2026-08-09 复验：【反向过期】这一条已经做完了 —— 照本表排期会把已完成项当"最该先做"**
+   > （`docs/CHECK-SPEC-AUT.md` §4 **F9**）。**危害是挤占排期**：它会挤掉真正的缺口（本表第 1 条治理面、第 3 条 Business Intent）。
+   > 详细订正见下文 §2 第 ⑧ 层表格的就地标注。**这一条从"最该先做"名单里划掉。**
 3. **② Business Intent** —— 全缺，且它是 ①③④⑥⑪ 的语义前提（不知道服务谁、成功指标是什么，就无法判断输出契约该长什么样）。
+   > ⚠️ **2026-08-09 复验：本条仍然成立**（`businessIntent` 全仓 0 命中，金丝雀 `SkillDefinitionSchema` = 7 命中）。
+   > 第 2 条已划掉后，**本条与第 1 条并列为今天真正的两个头号缺口**。
 
 > **诚实边界**：以上映射基于本会话实测与源码核对；标 🟡/🔴 的每一项都给了证据位置。
 > 未逐项跑真部署验证（如 ERP/MES 连接器在真环境的可达性），那部分只据仓内代码判定。
@@ -228,7 +280,50 @@ skill:
 
 加门断言**每个被引用的 key 真的已注册**：rule key ∈ `RULES` · solver key ∈ 求解器注册表 ·
 objectType ∈ 已发布本体 · tool ∈ `tools/registry.ts` · dependsOn ∈ skills。
-**这道门今天做不了**（无任何一处声明），有引用清单后才成为可能 —— 是本条设计的**直接新增能力**，不是附带好处。
+~~**这道门今天做不了**（无任何一处声明），有引用清单后才成为可能 —— 是本条设计的**直接新增能力**，不是附带好处。~~
+
+> ## 🔁 2026-08-09 复验：**【反向过期 · 最高危害】这道门已经建好了，5 项里 4 项已生效**
+>
+> 依据 `docs/CHECK-SPEC-AUT.md` §4 **F8** + `docs/CHECK-DSL-CMP.md` §5 **X-03/X-04**。
+>
+> **⛔ 照上面那句划掉的原文去排期，会重复造一道已经存在的门。**
+> 这正是 CLAUDE.md 铁律 0.5「来历」第 ③ 条记载的错误形态（把「接一条线」错报成「造一道门」，
+> **当时直接把工作量估歪、排期歪掉**）。它今天在本文里原样复发了一次 —— 所以这条订正必须最醒目。
+>
+> ### 5 项硬门的今日真实状态（逐项，不许合成一句）
+>
+> | # | 断言 | 状态 | 证据 · 追到的触发条件 |
+> |---|---|---|---|
+> | 1 | **rule key ∈ 规则库** | ✅ **已生效** | `apps/agentcore/src/server.ts:1268` 抽 `refRuleKeys` → `:1272 probeMissingRefs` → `apps/agentcore/src/resources.ts:64`。不存在 ⇒ `422 SKILL_REF_UNRESOLVED`（`server.ts:1279`） |
+> | 2 | **solver key ∈ 求解器注册表** | ✅ **已生效** | 同上，`server.ts:1267` 抽 `refSolverKeys` |
+> | 3 | **objectType ∈ 已发布本体** | ✅ **已生效** | 同上，`server.ts:1269` 抽 `refObjectTypes` |
+> | 4 | **dependsOn ∈ skills** | ✅ **已生效**（本地解析，非跨系统探针） | `apps/agentcore/src/skill-lint.ts:218` `if (ref.kind !== "skill") continue;` + `:347/348 validateRefResolution`；发布路真传 `allSkills` 与 `requirePublishedDeps:true`（`server.ts:1251`） |
+> | 5 | **tool ∈ `tools/registry.ts`** | 🔗 **只做了一半** | **不是引用清单校验**（`SKILL_REFERENCE_KINDS` 里**根本没有 `tool` 这个 kind**），而是 lint 从 **body 正文文本**里正则抓工具名反查（`skill-lint.ts:329-338`）。匹配形态仅「调用 \`x_y\`」「\`x_y\` 工具」两种 ⇒ **覆盖窄，且换个写法就绕过去了** |
+>
+> ### 这道门的三条关键性质（都不是附带的，落地时逐条守住了）
+>
+> 1. **fail-closed**：注册表读不出来或返回空集 ⇒ 抛 `503 REF_PROBE_UNAVAILABLE`（`resources.ts:59-68`），
+>    **不是静默放行**。旧实现两层 fail-open 已关死。判据原文：「**我没找到 ≠ 它不存在**」。
+> 2. **拦在落库之前**：探针在 `repos.skills.update` 之前，拒发布 = **未落库**。
+> 3. **`force` 不豁免**：`force` 豁免的是**质量门**（lint 没写好 / 用例没补齐），
+>    而死路引用是**事实错误** —— 审计签字不能让一个不存在的求解器变成存在。
+>
+> ### 仍然没有的那部分（**这才是真缺口，排期请对准这里**）
+>
+> - `SKILL_REFERENCE_KINDS` 8 个 kind 里，探针只覆盖 **solver / rule / ontologyType** 三种；
+>   **`constraint` / `slice` / `workflow` / `agent` 四种今天仍无人校验** ——
+>   `apps/agentcore/src/skill-lint.ts:215-217` 的注释自己写明了这一点。
+>   其中 `constraint` 属 `docs/PRD-skill-runtime-orchestrator.md` §8.3 明令禁止的
+>   「**校验不了但看起来能校验**」状态（见该文同日订正）。
+> - **`tool` / `mcp` 两个 kind 根本不在词表里** ⇒ 第 5 项不是"门没接"，是"**声明不了**"。
+> - 出厂 7 个 Skill **走旁门直插仓储**（`apps/agentcore/src/main.ts:29`），**门够不着它们** ——
+>   「没有存量被挡」不等于「存量干净」（同一事实见 `docs/PRD-skill-compiler-registry.md` §14.4-1 的 **X-12** 订正）。
+>
+> **复验（别信本段，亲手跑）**：
+> ```bash
+> grep -n "probeMissingRefs" apps/agentcore/src/server.ts   # 应见 694(agent) / 1012(workflow) / 1272(skill) 三处
+> node scripts/check-ref-closure.mjs                         # RC=0；摘掉 skill 那行探针 → 该门当场红
+> ```
 
 ### 反向收益（比正向更值钱）
 
@@ -254,6 +349,24 @@ objectType ∈ 已发布本体 · tool ∈ `tools/registry.ts` · dependsOn ∈ 
 
 Phase 0 的「自动导出」因此**更机械**：导出的是**引用清单**（solver key / rule key / objectType 名），
 今天都能从 `navSlice` 投影与 plan steps 直接读出，**不需要理解语义**。
+
+> ⚠️ **2026-08-09：上一段的「Phase 0」是 C5 改名后的残留裸 Phase**（`docs/CHECK-MIG-XR.md` §5-2）。
+> `docs/PRD-skill-crossreview.md` §9 的 **C5 行标 ✅** 并宣称「两份 PRD 均已全文替换…**残留裸「Phase N」= 0**（机械核过）」——
+> 该断言**对两份 PRD 成立**，但**同批一起改的本文（SPEC）没被扫到**：本文今天仍有 **2 处**裸 Phase
+> （本节的「Phase 0」·§2 第 ⑥ 层表格的「Track A Phase 4」）。
+> **形态**：「我用『两份 PRD 扫描为 0』当作『裸 Phase 已清零』的证据，而前者并不度量后者」——
+> **「机械核过」的扫描范围小于读者会理解的范围**，这正是 CLAUDE.md 铁律 0.6 要治的病。
+> **按 C5 的命名空间**：迁移线 = `M0–M3` · 路由线（Track A）= `R0–R4` · 运行时线 = `T1–T2`。
+> 本处的「Phase 0」指**迁移线的自动导出期**，应读作 **`M0`**。
+> **复验（含金丝雀，2026-08-09 实测）**：
+> ```
+> grep -c "Phase [0-9]" docs/PRD-skill-migration.md            → 0   ← C5 宣称的两份之一，属实
+> grep -c "Phase [0-9]" docs/PRD-skill-runtime-orchestrator.md → 0   ← C5 宣称的两份之二，属实
+> grep -c "Phase [0-9]" docs/SPEC-industrial-skill.md          → 2   ← 同批改的第三份，漏扫
+> grep -c "Phase [0-9]" docs/PRD-skill-crossreview.md          → 6   ← 全在 §5 讨论「Phase 2 三义」本身，属**元讨论非残留**，不计
+> ```
+> 最后一行是**金丝雀救场**：如果只看数字会以为 crossreview 也漏了 6 处 ——
+> 点开看才知道那是在讨论这个词本身。**「命中」不等于「违规」，计数前必须点开看一眼。**
 真正需要人填的缩小到"内联"那一列，其中大头是 Business Intent 四字段。
 
 ---

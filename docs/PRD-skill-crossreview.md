@@ -14,8 +14,14 @@
 | 1 | `docs/PRD-skill-contract-dsl.md` | `claude/handoff-prd-skill-contract` | 643 |
 | 2 | `docs/PRD-skill-compiler-registry.md` | `claude/handoff-prd-skill-compiler` | 741 |
 | 3 | `docs/PRD-skill-governance-learning.md` | `claude/handoff-prd-skill-governance` | 722 |
-| 4 | `docs/PRD-skill-runtime-orchestrator.md` | `claude/handoff-prd-skill-runtime` | 720 |
-| 5 | `docs/PRD-skill-migration.md` | `claude/handoff-prd-skill-migration` | 534 |
+| 4 | `docs/PRD-skill-runtime-orchestrator.md` | `claude/handoff-prd-skill-runtime` | ~~720~~ **725**（⚠️ 2026-08-09 `wc -l` 实测） |
+| 5 | `docs/PRD-skill-migration.md` | `claude/handoff-prd-skill-migration` | ~~534~~ **545**（⚠️ 同上） |
+
+> ⚠️ **2026-08-09 复验（drift-f）**：本表 5 行里 **3 行对、2 行错**
+> （643 / 741 / 722 全对；runtime 与 migration 两行已按 `wc -l` 订正）。
+> 复跑：`wc -l docs/PRD-skill-*.md`。
+> 注：以上是**本次订正前**的行数；本单给八份文档加了就地标注，行数会再涨 ——
+> **这正是"行数"这类数字不该写死在文档里的理由**（它每被人改一次就过期一次，而没有任何门在守）。
 
 ---
 
@@ -97,7 +103,24 @@ migration   : skill-ref-closure · skill-plan-parity · skill-single-source · s
               skill-business-intent · skill-budget-effect · skill-entitlement-single
 ```
 
-叠加现有 16 道 = **33 道**，而 `ontology-writeback:check` 强制每道门都要登记进本体 §7。
+~~叠加现有 16 道 = **33 道**~~，而 `ontology-writeback:check` 强制每道门都要登记进本体 §7。
+
+> ### ⚠️ 2026-08-09 复验订正（drift-c）· 「现有 16 + 新 17 = 33」**两个加数今天都不对**
+>
+> 依据 `docs/CHECK-MIG-XR.md` §5 附表 **c**。
+>
+> | 加数 | 本节写 | 2026-08-09 实测 | 说明 |
+> |---|---:|---:|---|
+> | 现有门 | 16 | **26** | `node -e 'console.log(require("./package.json").scripts.gates.split("&&").length)'` → 26。**现算，不看行号**（`package.json` 行号已漂多次） |
+> | 五份 PRD 新提的门 | 17 | **0 已落地** | 上面代码块列的 17 个门名，**今天 `scripts/` 下一个都不存在**：`ls scripts/ \| grep -i skill` → 无（金丝雀：`ls scripts/check-ref-closure.mjs` → 文件存在 ⇒ 目录读得到，0 是真 0） |
+> | 合计 | 33 | **26**（今天）· **43**（五份全落地后：26 + 17） | 原式的 33 = 16+17 —— **两个加数都错，且这次没有互相抵消** |
+>
+> **两个方向的误导都要说清**：
+> - 「现有 16」偏低 ⇒ 会**低估存量治理面**（今天实际有 26 道门要维护）；
+> - 「新 17 已计入总数」的写法 ⇒ 会让人以为**这 17 道门已经有着落**，而它们**一道都还没建**。
+>
+> **本节的核心论点完全不受影响、且更成立了**：门多不等于治理强，合并门账必须先立。
+> ⚠️ 事实上**这张账已经立了** —— 见 §9 收口表 C3 行的同日订正（那一行标的 🟡「仍无人认领」也已过期）。
 
 **风险**：门多不等于治理强。本仓已登记的第 5 形态假绿就是「**被制度指定的死门**」
 （红 + 零接线，见 #76）；门一多，"某道门长期红/长期没人跑"的概率线性上升。
@@ -199,11 +222,11 @@ runtime PRD 自己标注了两处与 WO 的口径差异，处理是对的（显�
 
 | 条 | 状态 | 落地方式 |
 |---|---|---|
-| **C1 命名** | 🟡 **已裁决（仓主 2026-08-03「ok」= 采纳）** | 采纳 `requires` 结构；`references[]`/`dependsOn[]` 降为**解析期输入别名**（读入即归一，不作为运行时字段）。写入 `docs/SPEC-industrial-skill.md` §9.1；`PRD-skill-migration` §10.3 的偏离行已改为「裁决结果 + 原提案存档」 | 🔴 **2026-08-09 订正：这个 ✅ 是错的。** 收口表记的是「文档改完了」，被当成了「事情做完了」。实测（`agentcore.ts:236-261` 18 字段逐个点名）：`SkillDefinition` 无 `requires`，也无任何变体；全仓 `requires` 命中全是 `FeatureDef.requires`/`requiresSidecar`，**无一在 skill 语境**。再追一层：SPEC §9.1 的落地口径是「旧名降为解析期归一别名，读入即折进 `requires`」——**归一层同样不存在**，消费方 `skill-lint.ts:343/347` 与 `resource-projector.ts:333/334` **直读** `s.references`/`s.dependsOn`。三分法定性：**这条线根本没画**（不是「接了线没数据」也不是「接错地方」）。且 `WO-SKILL-MIG-G3` 在 13 条 skill 分支里不存在 —— **裁决 2026-08-03 下达，6 天零派单**。
+| **C1 命名** | 🟡 **已裁决（仓主 2026-08-03「ok」= 采纳）** | 采纳 `requires` 结构；`references[]`/`dependsOn[]` 降为**解析期输入别名**（读入即归一，不作为运行时字段）。写入 `docs/SPEC-industrial-skill.md` §9.1；`PRD-skill-migration` §10.3 的偏离行已改为「裁决结果 + 原提案存档」 | 🔴 **2026-08-09 订正：这个 ✅ 是错的。** 收口表记的是「文档改完了」，被当成了「事情做完了」。实测（`agentcore.ts:236-261` 18 字段逐个点名）：`SkillDefinition` 无 `requires`，也无任何变体；全仓 `requires` 命中全是 `FeatureDef.requires`/`requiresSidecar`，**无一在 skill 语境**。再追一层：SPEC §9.1 的落地口径是「旧名降为解析期归一别名，读入即折进 `requires`」——**归一层同样不存在**，消费方 `skill-lint.ts:343/347` 与 `resource-projector.ts:333/334` **直读** `s.references`/`s.dependsOn`。三分法定性：**这条线根本没画**（不是「接了线没数据」也不是「接错地方」）。且 `WO-SKILL-MIG-G3` 在 13 条 skill 分支里不存在 —— **裁决 2026-08-03 下达，6 天零派单**。<br>✅ **2026-08-09 二次复核（`WO-DOCFIX-SKILL-CLAIMS`）：上面这段订正逐条复跑通过，不需要再改。** 复跑证据：`grep -rn "requires" packages/contracts/src/*.ts` → **仅 3 行**，全是 `features.ts:15` 的 `FeatureDef.requires` 与 `intelligence-resource.ts:75/137` 的 `requiresSidecar`，**skill 语境 0**（金丝雀：同 glob 跑 `SkillDefinitionSchema` → **5 命中** ⇒ 工具有效）；`skill-lint.ts:343/347` 与 `resource-projector.ts:333/334` 逐行确认仍是**直读原字段**（`skill.references` / `skill.dependsOn`）；`git ls-remote origin | grep -i mig-g3` → **无**（金丝雀：同命令 `grep -c handoff-skill` → **8** ⇒ 远端读得到）。**⇒ 裁决至今 6 天仍零派单，这条是本轮排期的第一优先级。**
 | **C2 门重名** | ✅ 随 C1 收口 | `skill-refs:check` 与 `skill-ref-closure:check` 合并为一道 `skill-refs:check` |
-| **C3 门总数 16→33** | 🟡 **仍无人认领** | 合并门账（谁跑 / 何时跑 / 红了谁修 / **每道门"曾真红过"的证据**）尚未立单。**任一份 PRD 落地前必须先有这张账** |
+| **C3 门总数 16→33** | ~~🟡 **仍无人认领**~~ → **✅ 2026-08-09 复验：账已立、门已接、棘轮已上（反向过期）** | ~~合并门账（谁跑 / 何时跑 / 红了谁修 / **每道门"曾真红过"的证据**）尚未立单。**任一份 PRD 落地前必须先有这张账**~~ → **🔁 这一行今天在"说没做、其实已做"的方向上误导排期**（`docs/CHECK-MIG-XR.md` §5-6）。承载物三件齐全：`scripts/gate-ledger.json`（51 条门账）· `scripts/check-gate-ledger.mjs`（在 `pnpm gates` 链**末位**，`package.json` 的 `gates` 串最后一项）· `scripts/gate-ledger-baseline.json`（棘轮基线）。**亲手跑 `node scripts/check-gate-ledger.mjs` → RC=0**，门自己的现算输出：`GATES_CHAIN 26 · GATE_SH 6 · CI_ONLY 0 · MANUAL 7 · NONE 12 · 合计 51`。⇒ **「任一份 PRD 落地前必须先有这张账」这个阻塞条件已解除**，五份 PRD 不再被它卡住。<br>⚠️ **但别把"账已立"读成"门都算门"**：现算 `NONE`（已建未接进任何链）**12 道**、`provenRed=NEVER`（从未真红过）**35 道 / 51** —— 按本文自己的判据，今天仍有约七成的门**不算门**；**棘轮只防新增，不烧存量**。数字请用 `node scripts/check-gate-ledger.mjs` 现算，别抄本行。<br>⚠️ **跑这道门前必须先 `pnpm --filter datacore build`**（本单实测踩到）：`apps/datacore/dist/**` 不存在时，它会报 **7 条「责任边界指向空气」并 RC=1** —— 那是**环境假红**，不是治理回归。<br>另：本行与 §3 的「16 + 17 = 33」同批订正，实测**现有 26 道 · 新门 0 道已落地**（drift-c）。 |
 | **C4 传播性错误** | ✅ 三处已掐掉 | `SPEC-industrial-skill.md` 两处（§2-⑫ 表格 + §4「三条最该先做」）· `PRD-skill-migration` §5.2 已改为「接一条已有的线 + 关掉 fail-open，不是造门」 |
-| **C5 Phase 2 三义** | ✅ 已改名 | 拆成 **M0–M3**（迁移线）· **R0–R4**（路由线 / WO Track A）· **T1–T2**（运行时线）。两份 PRD 均已全文替换且插入命名空间图例，**残留裸「Phase N」= 0**（机械核过） |
+| **C5 Phase 2 三义** | ✅ 已改名 **（⚠️ 2026-08-09 加脚注：扫描范围小于读者理解的范围）** | 拆成 **M0–M3**（迁移线）· **R0–R4**（路由线 / WO Track A）· **T1–T2**（运行时线）。两份 PRD 均已全文替换且插入命名空间图例，**残留裸「Phase N」= 0**（机械核过）<br>⚠️ **脚注（`docs/CHECK-MIG-XR.md` §5-2）**：「两份 PRD = 0」**属实**（`grep -c "Phase [0-9]"` → `PRD-skill-migration.md` **0** · `PRD-skill-runtime-orchestrator.md` **0**），**但同批一起改的 `docs/SPEC-industrial-skill.md` 没被扫到**，那里仍有 **2 处**裸 Phase（§2 第 ⑥ 层「Track A Phase 4」· §5「Phase 0 的自动导出」，已在该文就地标注并给出应读作的命名空间）。<br>**形态**：「我用『两份 PRD 扫描为 0』当作『裸 Phase 已清零』的证据，而前者并不度量后者。」**「机械核过」四个字最容易让人不再追问"核的是哪几份"。**<br>（本文 §5 自身的 6 处 `Phase [0-9]` 是**讨论这个词本身**的元文本，不计残留 —— 这也说明**光看计数会误判，必须点开看**。） |
 | **C6 口径差异** | 🟡 部分 | 决策点计数两种口径（13+1 vs 10 道正则门）尚未在本体里并列写明——留待下次回写本体时补 |
 
 > **另记一条本文写作时未预见、实施中才暴露的事**：`PRD-skill-crossreview.md` 自身被

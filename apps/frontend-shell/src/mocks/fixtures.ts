@@ -1133,9 +1133,102 @@ export const WORKFLOWS: WorkflowDefinition[] = [
   },
 ];
 
+/**
+ * B4 Skill 库 mock —— **口径对齐真后端种子** `apps/agentcore/src/mocks/seed.ts`（WO-FE-SKILL-STUDIO）。
+ *
+ * 病灶（2026-08-09 改前实测 · 复验命令：`grep -c 'capability\|sideEffect\|approvalGate' apps/frontend-shell/src/mocks/fixtures.ts`
+ * 改前为 0，金丝雀 `grep -c 'status:'` 同文件 >0 证明工具有效）：
+ * 本 fixture 只有 `SkillDefinition` 九个「改造之前就有的」字段
+ * （id/tenantId/key/version/name/summary/body/resources/status），而契约
+ * `SkillDefinitionSchema`（`packages/contracts/src/agentcore.ts:236`）早已带上
+ * capability / sideEffect / approvalGate / provenancePolicy / inputSchema / outputSchema /
+ * references / dependsOn / maxBudgetRounds。于是 mock 模式下这些块**永远渲染不出来**，
+ * 前端等于在一份比真后端瘦一圈的数据上自测——正是本仓吃过的「前端 mock 与真后端口径分家」。
+ *
+ * 对齐口径（逐条对得上真种子，不是编的）：
+ *   · `skl-capacity`  ≙ seed `skl_seed_capacity`（analysis/READ·references 2 条：solver+rule）
+ *   · `skl-draft`     ≙ seed `skl_seed_sop_meeting`（planning/READ·references 1 条：workflow）
+ *   · `skl-action`    ≙ seed `skl_seed_capacity_action`（prescription · sideEffect WRITE · approvalGate human ·
+ *                       provenancePolicy required —— 出厂唯一写回型技能，写模式判定的活体样本）
+ *   · `skl-mcp-guide` ≙ seed `skl_seed_mcp_guide`（`references: []` —— **空引用**的对照样本，
+ *                       用来钉死「空则不渲染该块、不崩、不出现假值」这条断言）
+ *
+ * ⚠️ 一处**刻意的、已知的**与真种子的差异，不许当成对齐失败：`skl-action.dependsOn`。
+ *    亲手实测 canonical（`grep -n 'dependsOn' apps/agentcore/src/mocks/seed.ts` → **0 命中**；
+ *    同文件 `grep -c 'references:'` → 7 命中，证明 grep 工具本身没坏）：真种子里 `dependsOn`
+ *    **一条都没有**，属「接了线没数据」而非「没接线」（消费方 skill-lint.ts 确实在读它）。
+ *    此处种 1 条**契约合法**的 `kind:"skill"` 依赖，只为让该渲染路径有活体可验；
+ *    对着真后端跑时该块会是空的 → 按设计不渲染。此差异已写进交付说明，勿删本注释。
+ */
 export const SKILLS: SkillDefinition[] = [
-  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], status: "PUBLISHED" },
-  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], status: "DRAFT" },
+  {
+    id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论",
+    summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…",
+    resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], status: "PUBLISHED",
+    capability: "analysis", sideEffect: "READ", provenancePolicy: "best_effort", approvalGate: "none",
+    inputSchema: {
+      type: "object",
+      required: ["modelId"],
+      properties: {
+        modelId: { type: "string", description: "型号键" },
+        weeks: { type: "number", description: "推演周数" },
+      },
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        conclusion: { type: "string" }, p50: { type: "number" }, p90: { type: "number" }, gapPct: { type: "number" },
+      },
+    },
+    references: [
+      { kind: "solver", key: "capacity_forecast", role: "context", required: true },
+      { kind: "rule", key: "C03", role: "postcheck", required: true },
+    ],
+  },
+  {
+    id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）",
+    summary: "纪要结构化要点。", body: "# 纪要", resources: [], status: "DRAFT",
+    capability: "planning", sideEffect: "READ", provenancePolicy: "best_effort", approvalGate: "none",
+    inputSchema: {
+      type: "object",
+      properties: { month: { type: "string" }, segment: { type: "string" } },
+    },
+    references: [{ kind: "workflow", key: "sop_balance_wf", role: "context", required: true }],
+  },
+  {
+    id: "skl-action", tenantId: TENANT_ID, key: "capacity_action_draft", version: 1, name: "产能处置行动拟稿",
+    summary: "把产能推演结论落成可审批的行动项。不适用：只问数不要行动。", body: "# 行动拟稿\n\n## 目的\n把结论转成可审批草案。",
+    resources: [], status: "DRAFT",
+    capability: "prescription", sideEffect: "WRITE", approvalGate: "human", provenancePolicy: "required",
+    maxBudgetRounds: 6,
+    inputSchema: {
+      type: "object",
+      required: ["modelId"],
+      properties: {
+        modelId: { type: "string", description: "型号键" },
+        baseId: { type: "string", description: "基地键（缺省=全网）" },
+      },
+    },
+    outputSchema: { type: "object", properties: { actions: { type: "array" }, rationale: { type: "string" } } },
+    references: [{ kind: "solver", key: "capacity_forecast", role: "precondition", required: true }],
+    dependsOn: [{ kind: "skill", key: "capacity_analysis", role: "precondition", required: true }],
+  },
+  {
+    // 空引用对照样本（≙ seed `skl_seed_mcp_guide` 的 `references: []`）：该技能不绑任何业务资产，
+    // 界面**不得**为它渲染「引用与依赖」块，更不得填「暂无数据」这类假值。
+    id: "skl-mcp-guide", tenantId: TENANT_ID, key: "mcp_integration", version: 1, name: "MCP 集成指南",
+    summary: "指导 MCP 服务器接入、命名规范与故障恢复。", body: "# MCP 集成\n\n## 目的\n指导接入。",
+    resources: [], status: "PUBLISHED",
+    capability: "analysis", sideEffect: "READ", provenancePolicy: "best_effort", approvalGate: "none",
+    inputSchema: {
+      type: "object",
+      properties: {
+        serverName: { type: "string" },
+        transport: { type: "string", enum: ["streamable_http", "stdio"] },
+      },
+    },
+    references: [],
+  },
 ];
 
 export const MCP_CONFIGS: McpServerConfig[] = [

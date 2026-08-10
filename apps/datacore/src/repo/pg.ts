@@ -142,7 +142,13 @@ class PgSimRepo implements SimRepo {
   }
 }
 
-class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
+/**
+ * 通用 doc-blob 仓储：整个实体 `JSON.stringify` 进 `doc` JSONB 列，读出即 `r.rows[0].doc`。
+ * **不逐字段列举** —— 契约加字段无需改本类，也因此本类不可能成为"吞字段"的那一层
+ * （WO-D6 的两个吞点都在它之上：service 的手写 `def` 白名单与 route 的 zod schema）。
+ * 导出供 `test/upsert-type-roundtrip.test.ts` 拿真实现跑 put→get，把上面这句话钉成断言而非注释里的声称。
+ */
+export class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
   constructor(
     protected pool: pg.Pool,
     protected table: string,

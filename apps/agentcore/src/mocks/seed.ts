@@ -1279,6 +1279,11 @@ export function seedRegistry(now = new Date().toISOString()): {
         properties: { conclusion: { type: "string" }, nextStep: { type: "string" } },
       },
       references: [],
+      // WO-SKILL-PARTIAL-A · 出厂唯一声明**题型预算**的技能，理由与上面那条 WRITE 技能同源：
+      // 让 `skillBudgetOverride()`（contracts 唯一读点 → AgentBudget.maxRoundTrips）在出厂态**有活体演练者**。
+      // 此前 `maxBudgetRounds` 全仓零生产调用方 + 零种子数据 —— 判定即使退化成死代码也没有任何真实数据会让它红。
+      // 值取 6（平台默认 24）：本技能是纯文档问答，不需要多轮探索；同时 6 < 24 ⇒ 「只收紧不放宽」的取 min 真的在动。
+      maxBudgetRounds: 6,
     },
     {
       // ⚠️ 出厂唯一的**写回型**技能（sideEffect:"WRITE"）。存在的理由不是业务补全，而是**让判定有演练者**：
@@ -1335,6 +1340,14 @@ export function seedRegistry(now = new Date().toISOString()): {
       // 不是「满足某条规则」（全篇没有任何规则口径）。改成 kind:"rule" 会把「哪个求解器」这个信息丢掉，
       // 且得凭空发明一条并不存在的规则 key。执行点见 engine.ts `unmetSolverPreconditions` + loadSkill 门。
       references: [{ kind: "solver", key: "capacity_forecast", role: "precondition", required: true }],
+      // WO-SKILL-PARTIAL-A · 出厂唯一的 `dependsOn` 数据。
+      // 此前全仓 7 个种子技能 `dependsOn` **0 条**（`grep -c dependsOn apps/agentcore/src/mocks/seed.ts` = 0），
+      // 于是三个真实消费方——skill-lint 的引用合法性(:302)/可解析性(:306)/依赖图环检测(:309) 与
+      // DRIL 关系投影(`dril/resource-projector.ts:334`)——**接了线但从没触发**（≠ 没接线，修法是补数据不是接线）。
+      // 唯一咬过它的是 `test/dril-registry.test.ts:190` 里手搓的 skill_a→skill_b，即「只有 test 引用 = 已排练」。
+      // 语义：本技能的步骤 1「读推演结论与关键因子」正是 capacity_analysis 的产物，据此依赖它（且它出厂即 PUBLISHED，
+      // 满足发布门 requirePublishedDeps=true）。
+      dependsOn: [{ kind: "skill", key: "capacity_analysis", role: "context", required: true }],
     },
   ];
   const agents: AgentDefinition[] = [
