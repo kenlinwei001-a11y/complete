@@ -958,9 +958,12 @@ export interface ChainLineMapOptions {
 }
 
 /**
- * 一圈上最多标几个站名。
+ * 一条线上最多标几个站名。
  *
- * 实测（demo seed 42）主干 35 个站位、每个站名是 4–19 个汉字。
+ * 2026-08-10 实测（`apps/frontend-shell/test/fixtures/chain-loss-real.json`，demo seed 42 的真引擎返回）：
+ * 主干 35 个站位、支线 9 个，站名 4–19 个汉字。复验：
+ * `node -e "const p=require('./apps/frontend-shell/test/fixtures/chain-loss-real.json');
+ *  console.log(p.nodes.flatMap(n=>n.steps).length, (p.empty||[]).length)"`。
  * 处置纪律：**减的是标签，不是站** —— 站一个不少、悬浮/右栏仍给全量读数；
  * 只把「先看哪几个」标出来。选取判据 = `pctOfChainLoss` 降序（引擎给的损失占比，前端不另定优先级），
  * 并列按 stepId 字典序（R6 全序）。停运站位**不参与减标**：断点必须一直看得见。
