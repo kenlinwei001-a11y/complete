@@ -20,7 +20,7 @@ const oq = async (t: TestApp, args: Record<string, unknown>): Promise<OntologyQu
 //   所以「上游→下游」的影响传导必须有一条 from=上游 的边（`seed.ts:350` 的
 //   `demo_model_supply_risk_to_order_shortage` 正是靠它才走得到 Order）。
 //   它与既有 `order_for_model`(Order→Model) 是**逐实例严格互逆投影**：
-//   `synthetic/service.ts:840` 与 `:973` 是**同一个 `for (const o of g.orders)` 循环**、
+//   `synthetic/service.ts:841` 与 `:973` 是**同一个 `for (const o of g.orders)` 循环**、
 //   同一对端点 id（`obj_order_${o.so}` ↔ `obj_model_${o.model}`），1:1 无遗漏。
 //   而 `ontology/slice-planner.ts:21-27` 的 BFS tie-break 是**纯字典序**：
 //   Model 与 Order 同域（都是 product）⇒ 第 1 项打平；两条候选边的 toType 都是 Order ⇒ 第 2 项打平；
