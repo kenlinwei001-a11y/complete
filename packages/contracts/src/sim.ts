@@ -302,22 +302,31 @@ export const SimCertificationSchema = z.object({
   trialTick: z.object({
     passed: z.boolean(),
     /**
-     * 两栈合计触发规则数。**WO-SIM-SCOPE-TRIAL 之前这个数只度量派生栈**
-     * （`recompute` 的 topo 长度），传导栈恒记 0（欠账 #152）——
-     * 「信号是真的，只是它不指向我要断言的那个对象」。现在 = 派生 + 传导。
+     * 两相合计触发规则数 = 派生相 + 传导相。**WO-SIM-SCOPE-TRIAL 之前这个数只度量派生相**
+     * （`recompute` 的 topo 长度），传导相恒记 0（欠账 #152）——
+     * 「信号是真的，只是它不指向我要断言的那个对象」。
+     *
+     * 立下面三个拆账字段的理由是一次真实的静默错答：`rulesFired` 恒等于派生 topo 长度，
+     * 而 `worldCompleteness.propagationRules` 那一栏照样按"声明了几条"计入完整度
+     * ⇒ 一个传导一条都跑不动的世界，认证也能报出漂亮的数字。
+     * 合成一个 `rulesFired` 恰好把这件事盖住，所以两相必须**拆开报**
+     * （同族戒律：一个笼统数字盖住两个不同事实）。
      */
     rulesFired: z.number().int(),
+    // ── #152 拆账（additive·optional ⇒ 老调用方逐字节可回退 RL9）───────────────────
     /**
-     * 分栈明细：派生栈（ontology-core 重算）触发数。
+     * 派生相：`ontology-core recompute` 的 topo order 长度。
      *
-     * ⚠ 两个明细字段**刻意是 optional 而非 required**：`SimCertification` 在前端被当**字面量**构造
+     * ⚠ 这三个拆账字段**刻意是 optional 而非 required**：`SimCertification` 在前端被当**字面量**构造
      * （`apps/frontend-shell/test/sandbox-p0.test.tsx` 的 `const CERT_GLOBAL: SimCertification = {…}` 等 6 处），
-     * 置为必填会把整包前端测试打成编译红——而那是本单边界外的包。
+     * 置为必填会把整包前端测试打成编译红。
      * DataCore 侧**恒填**（`app.ts assembleCertification`），故服务端答复里它们总在。
      */
     derivationRulesFired: z.number().int().optional(),
-    /** 分栈明细：传导栈（沙盘传导核）本次 Trial Tick 真正产出贡献的规则数。同上 optional 之由。 */
+    /** 传导相：`propagateTick` 一跑里**真的产生了效果**的 PropagationRule 条数（即时贡献或延迟贡献）。 */
     propagationRulesFired: z.number().int().optional(),
+    /** 传导相：本租户**已发布**的 PropagationRule 条数。`declared > 0 && fired === 0` = 世界态驱动不动传导。 */
+    propagationRulesDeclared: z.number().int().optional(),
     at: z.string().nullable(),
     error: z.string().nullable(),
   }),

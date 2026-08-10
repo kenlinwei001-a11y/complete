@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
+import type { PerturbationKind, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
+  createSimPerturbation,
   createSimSession,
   fetchSimCertification,
   fetchSimCompare,
@@ -19,6 +20,7 @@ import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
 import { PmDag, type PmDagNode } from "./PmDag";
+import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
@@ -49,6 +51,18 @@ import styles from "./SimViews.module.css";
  * 全部节点 / 边 / 状态变量 / 雷达维 / KPI 仍来自 `GET /a/v1/sim/view-config`（= 租户本体 + 传导规则派生），
  * 代码里**零行业实体名**——换租户 / 换行业 = 换本体内容，本组件一行不改（两配置证见 test/sandbox-view.test.tsx）。
  */
+
+/**
+ * 扰动语义类型的中文标签（WO-SIM-ACT-CLOSE）。
+ *
+ * 逐条对应契约 `PerturbationKindSchema` 的枚举成员（`packages/contracts/src/sim.ts`）——
+ * 这是**契约枚举的显示名**，不是业务数据：换行业这五类照样成立（契约注释里写明 `kind` 不进传导规则，
+ * 只管展示分类）。枚举里加了成员而这里没加 ⇒ 该项在下拉里消失，`sandbox-perturbation.seam.test.tsx`
+ * 的逐条对账用例会红。
+ */
+// WO-SIM-PERTURB-TIMELINE：`PERTURBATION_KINDS` 已挪进 `PerturbationTimeline.tsx` 并从那里导出 ——
+// 施加表单（本文件）与扰动时间轴（那里）显示的是同一批分类名，两处各写一份迟早对不上。
+// 依赖方向是单向的（SandboxView → PerturbationTimeline），不成环。
 
 // ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
 /** 字符串 → 稳定 [0,1)（用于把抽象 key 映射成可视初值；与行业无关）。 */
@@ -315,6 +329,32 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
 
+  /**
+   * ══ WO-SIM-ACT-CLOSE（欠账 #150）· 扰动入口 —— 沙盘此前**没有任何施加扰动的动作** ══
+   *
+   * 病灶（实测复核 2026-08-10，非照抄台账）：后端两个入口都在、都能用，缺的是**用户这一跳**：
+   *  · `POST /a/v1/sim/sessions/:id/act`          零 src 调用方（只有 datacore 测试调），
+   *    `endpoints.ts` **连封装都没有** ⇒ 铁律 0.5 形态①「没接线」；
+   *  · `POST /a/v1/sim/sessions/:id/perturbations` `endpoints.ts` 有 `createSimPerturbation` 封装
+   *    （WO-P0 落的），但**全仓无 UI 调用方** ⇒ 形态②「接了线没数据」，从用户视角同样是不存在。
+   * 净效果：用户能推进时间、能存档、能分叉、能比对，**唯独不能让任何事情发生** ——
+   * 一个只会原地滴答的沙盘（PRD §2.2①）。
+   *
+   * 走 `/perturbations` 而不是 `/act`：后者是前者的退化子集（`mode:"set"` + `durationTicks:null`，
+   * 契约 `applyPerturbationToState` 已是两者唯一施加实现），但它**无 id、不入库、不发事件、无时序**，
+   * 于是「这个世界受过哪些扰动」问不出来、「第 5 天起停机 72h」排不了。接一个一等公民的入口，
+   * 不接一个裸标量写入。
+   */
+  const [pKind, setPKind] = useState<PerturbationKind>("capacity_loss");
+  const [pObject, setPObject] = useState<string>("");
+  const [pStateVar, setPStateVar] = useState<string>("");
+  const [pMode, setPMode] = useState<"set" | "delta" | "scale">("delta");
+  const [pMagnitude, setPMagnitude] = useState<string>("-10");
+  const [pDuration, setPDuration] = useState<string>(""); // 空 = 永久（durationTicks: null）
+  const [perturbing, setPerturbing] = useState(false);
+  /** 最近一次施加的回执（后端真回的 perturbation + 该动作造成的 KPI 变化量）——不是本地臆造的乐观态。 */
+  const [lastPerturbation, setLastPerturbation] = useState<{ id: string; label: string; kpiBefore: number; kpiAfter: number } | null>(null);
+
   // ── WO-SIM-SCOPE-LOCAL：局部范围候选与生效 target ──────────────────────────────
   // 候选 = 本体派生的 nodeTypes（零业务常数 R14）。未显式选过时取首个（语义抄向导屏 step①，但**不 import 它**）。
   // 刻意**不用 useEffect 初始化 state**：那会让 `init` 的依赖在会话建立途中变身 → 重跑 init → 重复建会话。
@@ -339,6 +379,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     if (objs.length === 0) return 0;
     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
   }, [world]);
+
+  // ── 扰动落点候选（全部来自 view-config = 租户本体派生；本文件零行业实体名 R14）─────────────
+  // 对象 id 取 `cfg.nodeObjectIds`（= 引擎 `idsByType` 同源的**真物化对象 id**）——不是类型名。
+  // 这一点是本单能不能"KPI 真的变"的分水岭：扰动写到 `Type#0` 这种占位键上，
+  // `propagateTick` 的 `state[sourceId]` 永远取不到，屏上看着变了、下游一动不动（静默错答的老形态）。
+  const perturbTargets = useMemo(() => {
+    const out: { id: string; typeKey: string }[] = [];
+    for (const t of cfg?.nodeTypes ?? []) for (const id of cfg?.nodeObjectIds?.[t] ?? []) out.push({ id, typeKey: t });
+    return out;
+  }, [cfg]);
+  const effPObject = pObject || perturbTargets[0]?.id || "";
+  const effPStateVar = pStateVar || cfg?.stateVars[0] || "";
+  /** 本体里一个已物化对象都没有 ⇒ 无处可施加。诚实禁用并写明原因，不给一个点了没反应的按钮。 */
+  const canPerturb = perturbTargets.length > 0 && effPStateVar !== "";
 
   /**
    * 建会话：baseSnapshot 由配置派生（无业务常数）。
@@ -444,6 +498,68 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     }
   }, [sessionId, qc]);
 
+  /**
+   * 施加一条扰动（#150 的那一跳）—— 用户在沙盘上做一个动作，世界当场就变。
+   *
+   * 闭环的四段，缺一段就是「画得出、推不动」：
+   *   ① 本函数 → `POST …/perturbations`（一等公民入口·入库·发 `sim.perturbation_created`）；
+   *   ② 后端 `simApplyAtCurrentTick` 把它落到**当前 tick** 的世界态（`/act` 与它同一支实现）；
+   *   ③ 回包的 `state` 就是新世界态 → 这里就地落屏 ⇒ **KPI 当场变**（不等下一次 tick）；
+   *   ④ 之后每次「推进 tick」，引擎把这条扰动一并喂给 `propagateTick` ⇒ **沿本体链路往下游扩散**，
+   *      到期还会回退（`durationTicks` 非空时）。
+   *
+   * 为什么 KPI 用后端回的 `state` 重算、而不是本地按 magnitude 自己算一份：
+   * 本地算 = 第二套真相源，`mode:"scale"`/clamp/派生一改就与后端漂移，而且漂移**不会报错**，
+   * 只会让屏上的数悄悄不等于世界里的数。这里只搬运，不计算。
+   */
+  const onApplyPerturbation = useCallback(async () => {
+    if (!sessionId || !canPerturb) return;
+    const magnitude = Number(pMagnitude);
+    if (!Number.isFinite(magnitude)) {
+      toast("幅度必须是数字", "error");
+      return;
+    }
+    const durationRaw = pDuration.trim();
+    const durationTicks = durationRaw === "" ? null : Math.floor(Number(durationRaw));
+    if (durationTicks !== null && (!Number.isFinite(durationTicks) || durationTicks < 1)) {
+      toast("持续 tick 数留空 = 永久；填则必须 ≥ 1", "error");
+      return;
+    }
+    setPerturbing(true);
+    const kpiBefore = globalKpi;
+    try {
+      const res = await createSimPerturbation(sessionId, {
+        kind: pKind,
+        targetObjectId: effPObject,
+        targetStateVar: effPStateVar,
+        magnitude,
+        mode: pMode,
+        durationTicks,
+        // label 是给人看的溯源串（R13），由用户选的四个维度拼出——不写死任何行业词。
+        label: `${pKind} · ${effPObject}.${effPStateVar} ${pMode} ${magnitude}${durationTicks === null ? "（永久）" : `（${durationTicks} tick）`}`,
+      });
+      // ③ 后端回的世界态就地落屏：KPI 当场变（权威副本同步，避免再 GET 一次同样的东西）。
+      setWorld(res.state);
+      setCurTick(res.curTick);
+      qc.setQueryData(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state });
+      const objs = Object.keys(res.state);
+      const kpiAfter = objs.length ? objs.reduce((a, o) => a + aggregate(res.state[o]), 0) / objs.length : 0;
+      // 时间轴上把这一格**替换**成扰动后的值：扰动不推进 tick（它作用在当前 tick），
+      // 追加一格会让 heat 条凭空多出一个不存在的 tick。
+      setHistory((h) => (h.length === 0 ? [kpiAfter] : [...h.slice(0, -1), kpiAfter]));
+      setLastPerturbation({ id: res.perturbation.id, label: res.perturbation.label, kpiBefore, kpiAfter });
+      // WO-SIM-PERTURB-TIMELINE：清单重取（**不**本地 push 一条 —— 那是第二套真相源，
+      // 且顺序会与后端 `listPerturbations` 的 `startTick → 建单先后` 定序漂移，而顺序是语义）。
+      // 同标签页靠这一行；别的标签页靠 `sim.perturbation_created` 事件失效同一个 key。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId] });
+      toast(`扰动已施加：${res.perturbation.label} → 全局态 ${kpiBefore.toFixed(1)} → ${kpiAfter.toFixed(1)}`, "success");
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setPerturbing(false);
+    }
+  }, [sessionId, canPerturb, pMagnitude, pDuration, pKind, effPObject, effPStateVar, pMode, globalKpi, qc]);
+
   const onCheckpoint = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -521,8 +637,137 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
 
-  // ── 右栏可折叠区：旧主屏的就绪认证 / 多场景对比 / AI 指挥台，一个都不许掉 ─────────
+  // ── 右栏可折叠区：扰动入口 / 就绪认证 / 多场景对比 / AI 指挥台，一个都不许掉 ─────────
   const rail: SandboxConsoleRailSection[] = [
+    {
+      /**
+       * WO-SIM-ACT-CLOSE（#150）· **扰动入口** —— 沙盘上唯一"让事情发生"的动作。
+       * 落点候选全部来自 view-config（本体派生），本段零行业实体名（R14）。
+       */
+      id: "perturbation",
+      title: "施加扰动",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-perturbation">
+          {!canPerturb ? (
+            <div className={styles.sub} data-testid="sandbox-perturbation-unavailable">
+              本体暂无已物化对象（或无状态变量）⇒ 扰动无处落点。先在建模页发布对象并物化，再回来推演。
+              （不提供一个点了没反应的按钮：扰动写到不存在的对象上，屏上会变、下游不动 = 静默错答。）
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                <span className={styles.sub}>类型</span>
+                <select
+                  data-testid="sandbox-perturbation-kind"
+                  aria-label="扰动类型"
+                  value={pKind}
+                  onChange={(e) => setPKind(e.target.value as PerturbationKind)}
+                >
+                  {PERTURBATION_KINDS.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>落点对象</span>
+                <select
+                  data-testid="sandbox-perturbation-object"
+                  aria-label="扰动落点对象"
+                  value={effPObject}
+                  onChange={(e) => setPObject(e.target.value)}
+                >
+                  {perturbTargets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.typeKey} · {t.id}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>状态变量</span>
+                <select
+                  data-testid="sandbox-perturbation-statevar"
+                  aria-label="扰动状态变量"
+                  value={effPStateVar}
+                  onChange={(e) => setPStateVar(e.target.value)}
+                >
+                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>方式 / 幅度</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <select
+                    data-testid="sandbox-perturbation-mode"
+                    aria-label="扰动方式"
+                    value={pMode}
+                    onChange={(e) => setPMode(e.target.value as "set" | "delta" | "scale")}
+                  >
+                    {/* 三种方式来自契约 PerturbationSchema.mode —— 「涨价 15%」是 scale、「加 200 台」是 delta、
+                        「停机」是 set 0。只给 set 会逼前端自己算差值 = 第二套真相源。 */}
+                    <option value="delta">增减（delta）</option>
+                    <option value="scale">乘以（scale）</option>
+                    <option value="set">设为（set）</option>
+                  </select>
+                  <input
+                    data-testid="sandbox-perturbation-magnitude"
+                    aria-label="扰动幅度"
+                    style={{ width: 72 }}
+                    value={pMagnitude}
+                    onChange={(e) => setPMagnitude(e.target.value)}
+                  />
+                </div>
+
+                <span className={styles.sub}>持续 tick</span>
+                <input
+                  data-testid="sandbox-perturbation-duration"
+                  aria-label="扰动持续 tick 数（留空为永久）"
+                  placeholder="留空 = 永久"
+                  style={{ width: 110 }}
+                  value={pDuration}
+                  onChange={(e) => setPDuration(e.target.value)}
+                />
+              </div>
+
+              <button
+                className="btn sm primary"
+                data-testid="sandbox-perturbation-apply-btn"
+                disabled={!sessionId || perturbing}
+                onClick={() => void onApplyPerturbation()}
+              >
+                {perturbing ? "施加中…" : "施加扰动"}
+              </button>
+
+              <div className={styles.sub} style={{ marginTop: 6, lineHeight: 1.6 }} data-testid="sandbox-perturbation-note">
+                扰动作用在<b>当前 tick</b>（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游，
+                填了持续 tick 数的到期还会自动回退。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
+              </div>
+
+              {lastPerturbation && (
+                <div
+                  className={styles.sub}
+                  data-testid="sandbox-perturbation-last"
+                  style={{ marginTop: 6, lineHeight: 1.6 }}
+                >
+                  最近一次：<b className="mono" data-testid="sandbox-perturbation-last-id">{lastPerturbation.id}</b>
+                  <br />
+                  {lastPerturbation.label}
+                  <br />
+                  全局态{" "}
+                  <b data-testid="sandbox-perturbation-last-delta">
+                    {lastPerturbation.kpiBefore.toFixed(1)} → {lastPerturbation.kpiAfter.toFixed(1)}
+                  </b>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ),
+    },
     {
       id: "readiness",
       title: "就绪认证",
@@ -579,13 +824,22 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 {sessionScope ? `${sessionScope.kind}${sessionScope.target ? `:${sessionScope.target}` : ""}` : "（建立中…）"}
               </b>
             </div>
-            {/* 诚实位（不许暗示范围已生效）：`SimSession.scope` 今天在引擎侧**有写端无读端** ——
-                落库在 datacore `app.ts:1391`，此后只被读 `snapshotKind` 一个键（`:1408`/`:1705` 过滤方案快照·
-                `:1512` 分支整体继承）；tick 路（`app.ts:1415` 起）遍历的是 `ontologyTypes.list(tenantId)` 全本体，
-                从不看 `session.scope`。所以范围选择当前**只作用于就绪认证口径，尚未裁剪推演本身**。
-                这笔账另记（G-SIM-SCOPE-UNREAD），本屏只负责不撒谎。 */}
+            {/* 诚实位 —— **这行字曾经是反的，必须随实现一起改，别再让它漂回去**。
+                旧文案：「范围选择只作用于就绪认证口径，尚未裁剪推演本身」。那句话在 `G-SIM-SCOPE-UNREAD`
+                开着的时候是真的（`SimSession.scope` 有写端无读端，tick 路遍历全本体）。
+                `WO-SIM-SCOPE-TRIAL` 闭掉该断点之后它就成了**反着的谎**：引擎已经真的按范围裁剪，
+                屏上却还在说没有 —— 用户会以为自己选的「局部推演」没生效而去绕路。
+                这一处是合并时（WO-SIM-TRIAL-SCOPE-RECONCILE）发现的：实现改了、UI 文案没跟，
+                而且**有一条绿测试把这句谎话锁着**（`test/sim-scope-local.seam.test.tsx` 原断言
+                `toContain("尚未裁剪推演本身")`）—— 绿测试证明的是"文案没变"，不是"说的是真的"。
+                今天的真相（引擎侧单源：`datacore app.ts buildPropagationInputs` → `scopePropagationGraph`）：
+                 · GLOBAL ⇒ 全本体，逐字节同旧；
+                 · LOCAL ⇒ 只算根类型 + hops 跳邻域，且只留两端都在范围内的边；
+                 · 自称 LOCAL 却拿不到根 ⇒ 裁成空图并显式报缺，**绝不**退回 GLOBAL。
+                tick 回包里的 `scope` 回执（算了几个对象/几条边/丢了多少）就是它的收据。 */}
             <div data-testid="sandbox-scope-reach-note">
-              ⚠ 范围选择当前<b>只作用于就绪认证口径</b>，<b>尚未裁剪推演本身</b>——推演引擎按整租户本体传导，不读会话范围。
+              ✅ 范围选择<b>已作用于推演本身</b>：切「局部」后引擎只按该对象类型的邻域子图传导，
+              就绪认证的试算也跑在同一范围里。范围拿不到根时<b>裁成空图并报缺</b>，不会拿全局结果冒充局部。
             </div>
             {scopeDrifted && (
               <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -748,7 +1002,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </>
         }
         // 旧主屏 tick 控制条：推进 / 存档 / 分支 / 采纳 / tick 时间轴 heat（整块搬来，行为不变）
+        // ＋ WO-SIM-PERTURB-TIMELINE：扰动时间轴紧贴其下。
+        //   放这里而不是放右栏，是因为它**要和上面那条 tick 轴共用同一根时间线**：
+        //   右栏 300px 画不出"先后"，而"哪一格 KPI 动了 / 那一格里哪几条扰动在生效"
+        //   必须上下对得上才叫看得出因果（CONVENTION §3）。
         controlBar={
+          <>
           <div
             className="panel"
             data-testid="sandbox-controls"
@@ -773,6 +1032,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               <HeatStrip series={history} threshold={70} />
             </div>
           </div>
+          <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
+          </>
         }
         // 旧主屏本体 PmDag 拓扑 → 画布第四模式
         ontologyCanvas={

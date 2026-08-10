@@ -155,7 +155,13 @@ async function cmdSim(args) {
       console.log(C.bold(`就绪认证 ${r.scope}${r.targetRef ? `:${r.targetRef}` : ""}`) + ` → ${lvlColor(r.level)}`);
       console.log(`  三维：结构 ${r.dims.structure} · 知识 ${r.dims.knowledge} · 行为 ${r.dims.behavior} · 综合 ${C.bold(r.dims.composite)}/100`);
       console.log(`  L4 三元组：扇出安全=${r.l4Checks.fanoutSafe} · writeback=${r.l4Checks.writebackComplete} · 可观测=${r.l4Checks.observabilityMet}`);
-      console.log(`  Trial Tick：${r.trialTick.passed ? C.green("PASS") : C.red("FAIL")} 触发 ${r.trialTick.rulesFired} 条规则${r.trialTick.error ? ` (${r.trialTick.error})` : ""}` + C.dim("（传导待增量3）"));
+      // #152（WO-SIM-ACT-CLOSE）：原文尾巴上钉着 C.dim("（传导待增量3）") —— 那句话在传导相真跑起来之后
+      // 就成了 CLI 每次都要复述一遍的假话。改成拆账实数；老后端（无拆账字段）则整段不显，不编。
+      const tt = r.trialTick;
+      const breakdown = tt.propagationRulesDeclared !== undefined
+        ? C.dim(`（派生 ${tt.derivationRulesFired ?? 0} · 传导 ${tt.propagationRulesFired ?? 0}/${tt.propagationRulesDeclared}）`)
+        : "";
+      console.log(`  Trial Tick：${tt.passed ? C.green("PASS") : C.red("FAIL")} 触发 ${tt.rulesFired} 条规则${tt.error ? ` (${tt.error})` : ""}` + breakdown);
       console.log(`  世界完整度：${r.worldCompleteness.pct}% · 将进入沙盘 ${r.worldCompleteness.entering.length} 个状态变量`);
       console.log(`  ${r.canEnterSimulation ? C.green("✓ 可进入推演") : C.red("✗ 不可进入推演")}（缺件 ${r.gaps.length} 个）`);
       for (const g of r.gaps.slice(0, 20)) console.log(C.dim(`    - [${g.gapCode}] ${g.ref}: ${g.detail}`));

@@ -40,6 +40,10 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","sim-world", sessionId]    SandboxView.tsx worldQuery（当前世界态·前缀失效盖住所有会话）
   "sim-sessions": [["a", "sim-sessions"]],
   "sim-world": [["a", "sim-world"]],
+  // WO-SIM-PERTURB-TIMELINE：扰动清单/时间轴（PerturbationTimeline 的 listQuery）。
+  //   ["a","sim-perturbations", sessionId]   PerturbationTimeline.tsx listQuery
+  // 真 key 尾带 sessionId，靠前缀失效盖住（与 sim-world 同款）。
+  "sim-perturbations": [["a", "sim-perturbations"]],
 };
 
 /**
@@ -56,6 +60,8 @@ export const SIM_CONSUMER_KEYS = {
   simSessionList: ["a", "sim-sessions"],
   /** SandboxView · 当前世界态（tick + state）；真 key 尾带 sessionId，靠前缀失效盖住。 */
   simWorld: ["a", "sim-world"],
+  /** PerturbationTimeline · 扰动清单/时间轴；真 key 尾带 sessionId，同样靠前缀失效盖住。 */
+  simPerturbations: ["a", "sim-perturbations"],
 } as const;
 
 /**
@@ -87,11 +93,12 @@ export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow 
     "解法（需动 datacore，超出 WO-L4B 范围边界）：开 GET /a/v1/sim/sessions/:id/checkpoints → " +
     "前端加 checkpoints useQuery（存档列表 / 从任意检查点回滚·分支）→ 本事件即可接 ['sim-checkpoints']。",
   // WO-P0 合入：sim.branched 已被 WO-L4B 真接线（见 EVENT_INVALIDATES），故不再是缺口，此处不重列。
-  "sim.perturbation_created":
-    "无缓存消费方（WO-P0 · 2026-08-09 新增）：本单只到 API 封装层——endpoints.ts 有 " +
-    "createSimPerturbation/fetchSimPerturbations/deleteSimPerturbation，但**没有任何 useQuery 用它们**" +
-    "（扰动时间轴 UI 是另一张单）。此刻接线就是给一个不存在的缓存发失效 = 假接线（#90/#92 同族）。" +
-    "解法与上面同源：等扰动清单真进 TanStack Query 后，把本条从台账挪进 EVENT_INVALIDATES。",
+  // ── WO-SIM-PERTURB-TIMELINE（2026-08-10）：`sim.perturbation_created` 已出台账 ──────────
+  // 前任（WO-SIM-ACT-CLOSE）在这里写的缺口理由是**准确**的：读端零调用方 ⇒ 没有缓存可失效 ⇒
+  // 此刻接线 = 假接线。它给的出台账条件也写死了 ——「等扰动清单真进 TanStack Query
+  // （并在 agentcore event-subscriptions 同步登记）后，把本条从台账挪进 EVENT_INVALIDATES」。
+  // 本单两件都做了：`views/sim/PerturbationTimeline.tsx` 的 listQuery 是那个缓存，
+  // agentcore 的登记也补了，故按它自己定的条件出台账。**不是**把理由改软了放它过去。
 };
 
 /**
@@ -134,6 +141,16 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = { // hardcod
   // 写了 `s.status = "RUNNING"` + `curTick`（app.ts:1465 putSession），世界列表显示的就是这两个字段。
   // 所以两个标签都失效，不是凑数。
   "sim.tick_completed": ["sim-world", "sim-sessions"],
+  // ── WO-SIM-PERTURB-TIMELINE：施加/排期一条扰动（datacore app.ts:1626）───────────────
+  // 两个标签都不是凑数，各有各的实据：
+  //  · `sim-perturbations` —— 清单真的多一条（本单新建的 PerturbationTimeline listQuery 承载它）；
+  //  · `sim-world`         —— 同一个处理器在 emit 前会**改世界态**：`isPerturbationActiveAt(p, curTick)`
+  //    为真时走 `simApplyAtCurrentTick` → `putTickState`（app.ts:1624），于是别的标签页的
+  //    `GET …/world` 已经陈旧。诚实说清代价：**排期到未来 tick 的扰动不改世界态**，
+  //    而 `invalidateForEvent(event)` 只收事件名、拿不到 payload 里的 `startTick`，
+  //    无法只对"已生效"那半失效 ⇒ 这种情况下的重取是一次空跑。
+  //    两害相权取"多一次重取"，不取"屏上停在一个已经不对的世界"。
+  "sim.perturbation_created": ["sim-perturbations", "sim-world"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

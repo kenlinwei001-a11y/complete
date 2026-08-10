@@ -112,6 +112,14 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "sim.branched", producer: "推演沙盘·从检查点分支出子世界（POST /a/v1/sim/sessions/:id/branch · app.ts:1516）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
   // tick 同一处理器在 emit 前写了 status=RUNNING + curTick（app.ts:1465），世界列表显示的正是这两个字段 → 两个标签都失效。
   { event: "sim.tick_completed", producer: "推演沙盘·推进 tick（POST /a/v1/sim/sessions/:id/tick · app.ts:1467）", tier: "IN_SESSION", invalidates: ["sim-world", "sim-sessions"] },
+  // ── WO-SIM-PERTURB-TIMELINE（2026-08-10）：扰动事件补订阅方 ──────────────────────────
+  // 此前不登记的理由（前任 WO-SIM-ACT-CLOSE 写在 frontend SIM_EVENT_GAPS 里）是**读端零调用方**：
+  // `fetchSimPerturbations` 全仓没有任何 useQuery 用它 ⇒ 前端没有缓存承载本事件 ⇒ 硬接 = 假接线。
+  // 本单先把读端接出来（`frontend-shell/src/views/sim/PerturbationTimeline.tsx` 的
+  // `["a","sim-perturbations", sessionId]`），本条登记才有对象，故顺序是**先读端后事件**。
+  // `sim-world` 一并失效：同一处理器在 emit 前对**已在当前 tick 生效**的扰动走
+  // `simApplyAtCurrentTick` → `putTickState`（app.ts:1624），世界态真的变了。
+  { event: "sim.perturbation_created", producer: "推演沙盘·施加/排期一条扰动（POST /a/v1/sim/sessions/:id/perturbations · app.ts:1626）", tier: "IN_SESSION", invalidates: ["sim-perturbations", "sim-world"] },
   // sim.checkpoint_saved **仍不登记**：datacore 没有列出检查点的路由（listCheckpoints 仓储层写好了，但 route 层从不调用），
   // 前端无列表可缓存。理由与解法逐条记在 frontend-shell/src/store/eventInvalidation.ts 的 SIM_EVENT_GAPS。
 ];
