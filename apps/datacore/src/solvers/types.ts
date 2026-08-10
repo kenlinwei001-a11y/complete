@@ -50,6 +50,23 @@ export interface SolverParamsShape {
     arrivalCycleDays: number;
     mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk: string }[]>;
   };
+  /**
+   * WO-ADOPT-DECISION-PLAY · **公司级战略方案**的杠杆库（`adopt_decision_play` 执行器的**唯一**量化出处）。
+   *
+   * 与 `risk.mitigations` 同形态、同纪律，但**不是同一个域**（这正是本单存在的理由）：
+   *  · `risk.mitigations` 的键是**基地级产能风险因子**（物料齐套/设备OEE/…），方案是基地处置动作，量化 = {eff,tn} 张力削减；
+   *  · 本表的键是 `decision_play` 的 **optionId**（公司级供应链战略），量化 = 「把哪个本体属性推到什么值」。
+   * 两域无真实映射 —— 把战略方案映射成 `adopt_mitigation` 就是一次静默错答（见 `decision/kernel.ts` commit 注释）。
+   *
+   * 纪律（照抄 `adopt_mitigation` 的做法）：目标值**只从本表解出**，解不出即诚实拒绝，绝不猜一个值写下去。
+   * `to` 是**绝对目标值**而非增量 —— 使重复采纳幂等（不会越采越小），且"从多少变到多少"在审计里一望可知。
+   * `noLeverRationale` 是**留白的签字**：某个方案今天没有可落的本体杠杆时，必须在此写明为什么，
+   * 否则「没登记」与「忘了登记」不可分辨（同 `NO_WRITE_RATIONALE` 的道理）。
+   */
+  decisionPlay?: {
+    levers: Record<string, { prop: string; to: number | boolean; unit?: string; rationale: string }>;
+    noLeverRationale?: Record<string, string>;
+  };
   affected: {
     windowBefore: number;
     windowAfter: number;

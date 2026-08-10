@@ -465,6 +465,37 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       ],
     },
   },
+  // WO-ADOPT-DECISION-PLAY · 公司级战略方案杠杆库（`adopt_decision_play` 的**唯一**量化出处·SolverParamsShape.decisionPlay）。
+  // 键 = `decision_play` 求解器的 optionId；杠杆对象**不在此表里**——由方案自己的 provenance(drillType/drillId)
+  // 指名（那是求解器算这条方案时真读的那个对象），本表只回答「推哪个属性、推到什么值」。
+  // ⚠ 目标值不是拍脑袋：两条都对标**本仓已有的真实数据点**（下方 rationale 逐条写明是哪一条），
+  //   不是"看着合理"的数。解不出的方案一律诚实拒绝，见 noLeverRationale。
+  decisionPlay: {
+    levers: {
+      "opt-backup-cert": {
+        prop: "certWeeks",
+        to: 8,
+        unit: "周",
+        rationale:
+          "「缩短备份供应商认证周期」的实质 = 把 BackupSupplierPool.certWeeks 压下来（decision_play 正是读这个字段算 effBackup=1−certWeeks/26）。" +
+          "目标 8 周对标同表已有的 pool-anode（负极池 certWeeks:8·battery-extended.ts BACKUP_SUPPLIER_POOLS）——本企业已经跑到过的水平，不是臆造的数。",
+      },
+      "opt-lta-clause": {
+        prop: "priceLinked",
+        to: true,
+        rationale:
+          "「长协加价格联动条款」的实质 = 把 LongTermAgreement.priceLinked 由 false 置 true（decision_play 正是读这个字段算 effClause）。" +
+          "对标同表已有的 lta-ncm-dskj（priceLinked:true·带 MB钴+SMM镍锂联动公式）——同一批长协里已存在的条款形态。",
+      },
+    },
+    noLeverRationale: {
+      "opt-insource":
+        "「上游自采矿+战略储备」今天**没有可落的本体属性**：本仓无矿权/自有产能/战略储备库存这类对象，" +
+        "LongTermAgreement/BackupSupplierPool 上也没有任何属性表达它。硬找一个'最接近'的属性写下去 = 台账写着自采矿、" +
+        "真值改的却是认证周期，界面上分辨不出——正是本仓刚清掉的假 MO 号换件衣服。故诚实拒绝，" +
+        "缺口登记：需要一等对象（如 UpstreamMineStake / StrategicReserve）才谈得上采纳。",
+    },
+  },
   affected: {
     windowBefore: 7,
     windowAfter: 14,
@@ -1163,6 +1194,34 @@ const adoptedMitigationProps: PropertyDef[] = [
   { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, description: "采纳时间（ISO 时间戳·审批通过写入时刻）" },
   { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
   { propKey: "status", dataType: "enum", isPrimaryKey: false, description: "采纳状态 ACTIVE｜REVOKED；同一 (baseId,factor) 至多一条 ACTIVE，改采新方案时旧条置 REVOKED" },
+];
+
+/**
+ * WO-ADOPT-DECISION-PLAY · 已采纳**公司级战略方案**台账（`adopt_decision_play` 审批通过后的落点之一）。
+ *
+ * 与 `AdoptedMitigation` **刻意分成两个类型**，不是重复造轮子：
+ *  · `AdoptedMitigation` 记的是「某基地某瓶颈因素采纳了哪条处置方案」——**战术**、单基地、量化 = {eff,tn} 张力削减；
+ *  · 本类型记的是「公司级战略方案被采纳，把哪根杠杆从多少推到了多少」——**战略**、跨基地、量化 = 本体属性真值变更。
+ * 合成一个类型就得让 baseId/factor/eff/tn 对战略方案恒空，等于把两个业务语义塞进一张表——那才是真正的重复。
+ *
+ * 台账**不是**副作用的全部：杠杆真值已经写进了 `leverObjectType.leverProp`（下一次推演立刻读到）。
+ * 台账回答的是「谁在什么时候按哪条方案把它从 X 改成了 Y」——没有它，属性真值变了却查不出出处（R13）。
+ * 出厂零实例，运行期由 Action 审批通过后写入。
+ */
+const adoptedDecisionPlayProps: PropertyDef[] = [
+  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true, description: "采纳记录唯一标识（= optionId + 杠杆对象·同方案重复采纳幂等覆盖同一条）" },
+  { propKey: "optionId", dataType: "string", isPrimaryKey: false, description: "被采纳的战略方案 id（decision_play options[].optionId·必须是本次真推演出来的方案，幽灵方案拒写）" },
+  { propKey: "optionLabel", dataType: "string", isPrimaryKey: false, description: "方案中文名（审计可读·自求解器输出解出，非自由填写）" },
+  { propKey: "metricKey", dataType: "string", isPrimaryKey: false, description: "推演入口指标（decision_play 的 metricKey·R13 溯回是哪一次推演产出的这条方案）" },
+  { propKey: "factorId", dataType: "string", isPrimaryKey: false, description: "方案归属的根因因子（gap_attribution 因果因子 id·cf-*）" },
+  { propKey: "leverObjectType", dataType: "string", isPrimaryKey: false, description: "杠杆落点的对象类型（自方案 provenance.drillType 解出——求解器算这条方案时真读的那个对象）" },
+  { propKey: "leverObjectId", dataType: "string", isPrimaryKey: false, description: "杠杆落点的对象实例 id（自方案 provenance.drillId 解出·解不出即拒写，绝不挑一个对象写下去）" },
+  { propKey: "leverProp", dataType: "string", isPrimaryKey: false, description: "被推动的本体属性（自 solver_params.decisionPlay.levers[optionId].prop 解出）" },
+  { propKey: "leverFrom", dataType: "string", isPrimaryKey: false, description: "采纳前的属性真值（写入前实读·审计里「从多少」这一半）" },
+  { propKey: "leverTo", dataType: "string", isPrimaryKey: false, description: "采纳后的属性真值（= 杠杆库声明的绝对目标值·审计里「变到多少」这一半）" },
+  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, description: "采纳时间（取确定性时间锚 forecastStart·禁 Date.now·R6）" },
+  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, description: "采纳状态 ACTIVE｜REVOKED；同一 (optionId, 杠杆对象) 至多一条 ACTIVE" },
 ];
 
 const rootCauseChainProps: PropertyDef[] = [
@@ -2276,6 +2335,17 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
         "出厂零实例，运行期由 adopt_mitigation 动作审批通过后写入。",
       adoptedMitigationProps,
     ),
+    // WO-ADOPT-DECISION-PLAY：已采纳公司级战略方案台账（adopt_decision_play 执行器落点 → 杠杆真值出处 R13）。
+    // 同样出厂**无实例**（运行期由 Action 审批写入），不入 generation/BINDINGS。
+    plainD(
+      "AdoptedDecisionPlay",
+      "已采纳战略方案",
+      "公司级战略方案的采纳台账：记录「哪条战略方案被采纳、把哪个对象的哪个属性从多少推到了多少」。" +
+        "它与「已采纳处置方案」分属两个域——后者是单基地的战术缓解（量化 = 张力削减 {eff,tn}），" +
+        "本类型是跨基地的战略杠杆（量化 = 本体属性真值变更）。把战略方案映射成处置方案就是一次静默错答。" +
+        "出厂零实例，运行期由 adopt_decision_play 动作审批通过后写入。",
+      adoptedDecisionPlayProps,
+    ),
     // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
     { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
     // Phase 3 MES Domain: Production Planning
@@ -2744,6 +2814,24 @@ export const BATTERY_ACTION_TYPES = [
     },
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
+  },
+  // WO-ADOPT-DECISION-PLAY · 采纳公司级战略方案（decision_play 的落点·**不复用** adopt_mitigation）。
+  // 为什么必须是新类型：`adopt_mitigation` 的 payload 是 {base,factor,planKey} —— 单基地、单风险因素、
+  // 基地处置方案库里的一条；而战略方案是公司级、跨基地、多杠杆，两个域没有任何真实映射
+  // （`decision/kernel.ts` commit 注释逐条论证过）。映射过去 = 台账写着"上游自采矿"、真值改的却是"空运补料"，
+  // 界面上分辨不出——本仓最恨的静默错答形态。
+  // payload **只带身份、不带量化**（照 adopt_mitigation 的纪律）：metricKey/factorId 定位推演，optionIds 指名方案；
+  // 「推哪个属性、推到什么值」一律由执行器从 solver_params.decisionPlay.levers 解出，解不出即诚实失败。
+  {
+    key: "adopt_decision_play",
+    name: "采纳战略方案",
+    paramsSchema: {
+      type: "object",
+      required: ["metricKey", "optionIds"],
+      properties: { metricKey: { type: "string" }, factorId: { type: "string" }, optionIds: { type: "array" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "planner" }, { role: "admin" }],
   },
   // 增量 §7.12：S&OP 定稿走 Action（payload = 版本快照 + 决议清单），EXECUTED → 版本 FINAL（C22 锁定）。
   {

@@ -48,6 +48,13 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //   写回意图出处：decision/kernel.ts:126 真 dispatch 本 key 建 DRAFT；mapping.ts:86「预警处置方案 →
   //   处置工单（写回）+ 风险曲线消解」是同一业务动作的中文登记名（键名不同名，据实说明不硬凑）。
   adopt_mitigation: "WIRED",
+  // ← 已接（WO-ADOPT-DECISION-PLAY）：审批通过后把战略方案的杠杆**落成本体属性真值**（app.ts）+ runDerivations，
+  //   并写 AdoptedDecisionPlay 台账（R13：从多少变到多少、谁批的）。
+  //   写回意图出处 = 它自己的杠杆库 `solver_params.decisionPlay.levers`（battery.ts）——
+  //   「推哪个属性、推到什么值」在那里逐条声明并签了对标依据；执行器只解不猜，解不出即诚实失败。
+  //   ⚠ 与 `adopt_mitigation` **刻意不共用**：那是单基地战术处置（量化 {eff,tn}），这是公司级战略杠杆
+  //   （量化 = 属性真值）。两域无真实映射，合并 = 静默错答（`decision/kernel.ts` commit 注释逐条论证过）。
+  adopt_decision_play: "WIRED",
   // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
   // ⚠️ 只剩这一条了。写清它写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里
   //    都有写回意图"，对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。
@@ -105,6 +112,114 @@ export class MockActionExecutor implements ActionExecutor {
   async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
     return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };
   }
+}
+
+// ---------------------------------------------------------------------------
+// WO-ADOPT-DECISION-PLAY · 「采纳公司级战略方案」的杠杆解析（纯函数·单一出处）
+//
+// 为什么单独抽成纯函数而不是塞进 app.ts 分支里：这段是本单**唯一**决定"写不写、写哪儿、写成什么"的地方，
+// 抽出来才能被单测直接咬住三条判据（真落 / 幽灵拒 / 未映射拒），而不是只能隔着 HTTP 看 ok:true。
+//
+// 纪律（照 `adopt_mitigation` 抄，一条不减）：
+//  ① 方案身份只认**本次真推演**的输出（幽灵方案拒绝，同 decision/kernel.ts create 的 ghost 校验）；
+//  ② 杠杆**对象**由方案自己的 provenance 指名（drillType/drillId = 求解器算这条方案时真读的那个对象），
+//     不由 payload 指定 —— payload 能指定就能指错，而"指错对象"在界面上看不出来；
+//  ③ 杠杆**属性与目标值**只从 `solver_params.decisionPlay.levers` 解出，解不出即拒绝，**绝不降级到最接近的一条**。
+//     这条是本单的红线：静默降级 = 台账写着 A、真值改的是 B，正是假 MO 号换件衣服。
+// ---------------------------------------------------------------------------
+
+/** 一条战略杠杆的声明：把 `prop` 推到绝对目标值 `to`（绝对值非增量 → 重复采纳幂等）。 */
+export interface DecisionPlayLeverSpec {
+  prop: string;
+  to: number | boolean;
+  unit?: string;
+  rationale: string;
+}
+
+/** 杠杆库（= `solver_params.decisionPlay`）。`noLeverRationale` 是"留白的签字"，见 solvers/types.ts。 */
+export interface DecisionPlayLeverLibrary {
+  levers: Record<string, DecisionPlayLeverSpec>;
+  noLeverRationale?: Record<string, string>;
+}
+
+/** `decision_play` 输出里一条方案的**最小结构视图**（只取解杠杆用得上的字段·不与求解器全量形状耦合）。 */
+export interface DecisionPlayOptionView {
+  optionId: string;
+  label?: string;
+  factorId?: string;
+  provenance?: { drillType?: string; drillId?: string };
+}
+
+export type DecisionPlayLeverResolution =
+  | {
+      ok: true;
+      optionId: string;
+      label: string;
+      factorId: string;
+      objectType: string;
+      objectRef: string;
+      prop: string;
+      to: number | boolean;
+    }
+  | { ok: false; optionId: string; reason: string };
+
+/**
+ * 解一条战略方案的杠杆。**只解不猜**：任一环节解不出即 `ok:false` 并说明真实原因
+ * （前端/审计据此显示"为什么没派/没写"，而不是一个看不出所以然的失败）。
+ */
+export function resolveDecisionPlayLever(
+  optionId: string,
+  options: DecisionPlayOptionView[],
+  library: DecisionPlayLeverLibrary | undefined,
+): DecisionPlayLeverResolution {
+  const option = options.find((o) => o.optionId === optionId);
+  if (!option) {
+    return {
+      ok: false,
+      optionId,
+      reason:
+        `方案「${optionId}」不在本次 decision_play 推演的输出里（幽灵方案）。本次方案：` +
+        `${options.map((o) => o.optionId).join("、") || "（空）"}。拒绝采纳一个不是推出来的方案。`,
+    };
+  }
+  const drillType = String(option.provenance?.drillType ?? "");
+  const drillId = String(option.provenance?.drillId ?? "");
+  if (!drillType || !drillId) {
+    return {
+      ok: false,
+      optionId,
+      reason:
+        `方案「${optionId}」的 provenance 没有指名杠杆对象（drillType=${JSON.stringify(option.provenance?.drillType)} ` +
+        `drillId=${JSON.stringify(option.provenance?.drillId)}）——不知道该改谁，拒绝挑一个对象写下去。`,
+    };
+  }
+  const spec = library?.levers?.[optionId];
+  if (!spec) {
+    const why = library?.noLeverRationale?.[optionId];
+    return {
+      ok: false,
+      optionId,
+      reason:
+        `方案「${option.label ?? optionId}」(${optionId}) 在战略杠杆库 solver_params.decisionPlay.levers 里没有登记，` +
+        `即**没有可落的本体杠杆**。${why ? `登记在册的留白理由：${why}` : "杠杆库里连留白理由都没签（noLeverRationale 缺该键）——先补声明再谈采纳。"} ` +
+        `**绝不降级到"最接近"的另一条方案**：那会让台账与真值指向两件事，界面上分辨不出。`,
+    };
+  }
+  return {
+    ok: true,
+    optionId,
+    label: String(option.label ?? optionId),
+    factorId: String(option.factorId ?? ""),
+    objectType: drillType,
+    objectRef: drillId,
+    prop: spec.prop,
+    to: spec.to,
+  };
+}
+
+/** 对象 id 归一（导出供 app.ts 的 adopt_decision_play 分支复用，勿另起一套）。 */
+export function objectIdOf(type: string, pk: unknown): string {
+  return objId(type, pk);
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +417,33 @@ export const BUILTIN_ACTION_EFFECTS: Record<string, ActionEffectSpec> = {
     undeclared: [
       "执行末尾 runDerivations() 会重算全租户派生属性（etaDay 等），二阶写入的对象/属性集由 DerivationSpec 决定，静态声明枚举不了",
       "非 global-sim 的 plan_change 在 app.ts domainExecutor 里没有分支 → 落 MockActionExecutor，审批通过后实际零回写（上列三条 writes 均带 source==='global-sim' 条件，已把这一情况标出）",
+    ],
+  },
+  // WO-ADOPT-DECISION-PLAY：台账那一半是静态的（类型/属性集固定），逐条声明；
+  // **杠杆那一半故意不声明** —— objectType/propKey 由方案自己的 provenance + 杠杆库在运行期解出，
+  // 静态表达不了。照本表开头的纪律：宁可 PARTIAL + undeclared 交底，也不编一个看着完整的 writes。
+  adopt_decision_play: {
+    coverage: "PARTIAL",
+    writes: [
+      {
+        objectType: "AdoptedDecisionPlay",
+        op: "UPSERT",
+        properties: [
+          "adoptionId", "optionId", "optionLabel", "metricKey", "factorId",
+          "leverObjectType", "leverObjectId", "leverProp", "leverFrom", "leverTo",
+          "adoptedAt", "actionDraftId", "status",
+        ],
+        selector: { kind: "BY_PAYLOAD", payloadPath: "optionIds[]" },
+        cardinality: "MANY",
+        note: "采纳的每条战略方案写一条台账（含「从多少变到多少」·R13 溯回属性真值出处）",
+      },
+    ],
+    undeclared: [
+      "**杠杆真值写入**（本动作真正改变推演结果的那一半）：目标 objectType/objectId 由方案 provenance(drillType/drillId) 在运行期解出，" +
+        "目标 propKey/值由 solver_params.decisionPlay.levers[optionId] 解出 —— 二者都随租户参数与推演输出变，静态声明枚举不了。" +
+        "现行 demo 参数下实际落点是 BackupSupplierPool.certWeeks 与 LongTermAgreement.priceLinked。",
+      "执行末尾 runDerivations() 会重算全租户派生属性，二阶写入集由 DerivationSpec 决定，枚举不了",
+      "解不出杠杆的方案（如 opt-insource·杠杆库 noLeverRationale 已签留白理由）**零回写**并整单诚实失败——不是部分成功",
     ],
   },
 };

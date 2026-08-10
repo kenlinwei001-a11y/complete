@@ -87,7 +87,12 @@ import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { runWithCancellation } from "./solvers/cancellation.js"; // WO-D1 · 请求作用域求解取消令牌
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired, type ActionExecutor } from "./actions.js";
+import {
+  ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired,
+  // WO-ADOPT-DECISION-PLAY · 战略杠杆解析的**唯一出处**（纯函数·勿在此另起一套判定）。
+  resolveDecisionPlayLever, objectIdOf, type DecisionPlayOptionView,
+  type ActionExecutor,
+} from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -599,6 +604,128 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         });
         // targetRef 自证采纳了什么——**刻意不使用 MO- 前缀**（那正是本仓刚清掉的假工单号形态）。
         return { ok: true, targetRef: `MIT-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳公司级战略方案 adopt_decision_play（WO-ADOPT-DECISION-PLAY · G-ACTION-NOOP-EXEC 最后一块拼图）──
+      // 缺口（欠账 #81/#71）：`decision_play` 产出的是**公司级多杠杆战略**（缩短备份认证周期 / 长协加价格联动 /
+      // 上游自采矿），而 `params.risk.mitigations` 是**基地级战术处置**（空运补料 / 增开夜班 …）。两域无真实映射，
+      // 所以决策内核 commit 至今**诚实不派**——那个行为是对的，不能靠"挑一条最接近的"去迎合链路。
+      // 本分支补的是缺的那一环：给战略方案一个**语义正确**的落点，而不是把它塞进 adopt_mitigation。
+      //
+      // 「采纳」的实质 = 把方案的杠杆**落成本体属性真值**（下一次 decision_play/gap_attribution 立刻读到新值）。
+      // 三道解析全部**只解不猜**，任一解不出即整单诚实失败（不留"半采纳"状态）：
+      //   ① 方案身份 → 重跑 decision_play 真推演（幽灵方案拒绝·同 kernel.create 的 ghost 校验）；
+      //   ② 杠杆对象 → 取方案自己的 provenance.drillType/drillId（求解器算这条方案时真读的那个对象）；
+      //   ③ 杠杆属性与目标值 → 只从 solver_params.decisionPlay.levers 解出，**绝不降级到"最接近"的一条**。
+      // 🔒 红线（业务裁定·已定·勿改）：本分支**永不写 PLAN_GOAL_TARGETS 及其任何派生承载**
+      //    （solver_params.planGenerate.targets / PlanTarget 对象）。采纳战略方案改的是**手段**，
+      //    目标值是只读对照基准——目标能被采纳动作改写，"补了多少缺口"就永远可以自证成功。
+      if (draft.actionTypeKey === "adopt_decision_play") {
+        const metricKey = String(draft.payload.metricKey ?? "");
+        const factorId = draft.payload.factorId ? String(draft.payload.factorId) : undefined;
+        const optionIds = Array.isArray(draft.payload.optionIds) ? (draft.payload.optionIds as unknown[]).map(String) : [];
+        if (!metricKey || optionIds.length === 0) {
+          return {
+            ok: false,
+            error:
+              `adopt_decision_play：payload 缺 metricKey 或 optionIds 为空（收到 metricKey=${JSON.stringify(draft.payload.metricKey)} ` +
+              `optionIds=${JSON.stringify(draft.payload.optionIds)}）——无从定位推演与方案，拒绝空转（不假装已采纳）。`,
+          };
+        }
+        const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
+        // ① 真推演（经 A6 正门 invokeSolver·同 decision/kernel.ts create）——方案身份只认这一次的真输出，
+        //    不认 payload 里的任何描述性字段：payload 能描述就能描述错，而"描述错"在界面上看不出来。
+        let options: DecisionPlayOptionView[];
+        try {
+          const dp = (await ontology.invokeSolver(sysCtx, "decision_play", { metricKey, ...(factorId ? { factorId } : {}) })).data as Record<string, unknown>;
+          options = (dp.options as DecisionPlayOptionView[]) ?? [];
+        } catch (err) {
+          return {
+            ok: false,
+            error:
+              `adopt_decision_play：decision_play(metricKey=${metricKey}${factorId ? `,factorId=${factorId}` : ""}) 推演失败` +
+              `（${err instanceof Error ? err.message : String(err)}）——拿不到真方案就一个字节都不写。`,
+          };
+        }
+        const params = await solvers.getParams(draft.tenantId);
+        const library = params.decisionPlay;
+        // ② 全部解完再写（先解后写·避免"第一条写了、第二条解不出"留下半采纳的不可解释状态）。
+        //    排序使执行序不依赖入参顺序（R6）。
+        const resolved = [];
+        for (const optId of [...optionIds].sort()) {
+          const r = resolveDecisionPlayLever(optId, options, library);
+          if (!r.ok) return { ok: false, error: `adopt_decision_play：${r.reason}` };
+          resolved.push(r);
+        }
+        // ③ 落真值 + 落台账。adoptedAt 取确定性时间锚 forecastStart（禁 Date.now·R6·同 adopt_mitigation）。
+        const adoptedAt = String(params.forecastStart ?? "").slice(0, 10);
+        const written: string[] = [];
+        for (const r of resolved) {
+          // 杠杆对象：先按 obj_{type}_{pk} 约定取，取不到再按主键值回扫（不同批次种子的 id 规整可能不同）。
+          let obj = await repos.objects.get(draft.tenantId, objectIdOf(r.objectType, r.objectRef));
+          if (!obj) {
+            const sameType = await repos.objects.listByType(draft.tenantId, r.objectType);
+            obj = sameType.find((o) => Object.values(o.props).some((v) => String(v) === r.objectRef));
+          }
+          if (!obj) {
+            return {
+              ok: false,
+              error:
+                `adopt_decision_play：方案「${r.label}」的杠杆对象 ${r.objectType}(${r.objectRef}) 在本租户里找不到——` +
+                `拒绝把战略落到一个猜的对象上（写错真值比不写危险）。`,
+            };
+          }
+          const from = obj.props[r.prop];
+          if (from === undefined) {
+            return {
+              ok: false,
+              error:
+                `adopt_decision_play：杠杆属性 ${r.objectType}.${r.prop} 在对象 ${obj.id} 上不存在——` +
+                `杠杆库声明的属性与本体对不上，拒绝凭空新增一个属性（那会让"改了什么"无从对照）。`,
+            };
+          }
+          await repos.objects.put({
+            ...obj,
+            props: { ...obj.props, [r.prop]: r.to },
+            origin: { type: "ACTION", actionId: draft.id, source: "adopt_decision_play" },
+          });
+          // 台账：同一 (optionId, 杠杆对象) 至多一条 ACTIVE（写时不变量·同 adopt_mitigation 的"单源不并存"）。
+          const adoptionId = `${r.optionId}-${r.objectType}-${r.objectRef}`;
+          const ledgerId = objectIdOf("AdoptedDecisionPlay", adoptionId);
+          for (const o of await repos.objects.listByType(draft.tenantId, "AdoptedDecisionPlay")) {
+            if (o.id === ledgerId) continue; // 同方案重复采纳 → 下面整体覆盖（幂等）
+            if (String(o.props.optionId ?? "") !== r.optionId) continue;
+            if (String(o.props.leverObjectId ?? "") !== obj.id) continue;
+            if (String(o.props.status ?? "") !== "ACTIVE") continue;
+            await repos.objects.put({ ...o, props: { ...o.props, status: "REVOKED" } });
+          }
+          await repos.objects.put({
+            id: ledgerId,
+            tenantId: draft.tenantId,
+            type: "AdoptedDecisionPlay",
+            props: {
+              adoptionId,
+              optionId: r.optionId,
+              optionLabel: r.label,
+              metricKey,
+              factorId: r.factorId,
+              leverObjectType: r.objectType,
+              leverObjectId: obj.id,
+              leverProp: r.prop,
+              leverFrom: String(from),
+              leverTo: String(r.to),
+              adoptedAt,
+              actionDraftId: draft.id,
+              status: "ACTIVE",
+            },
+            origin: { type: "ACTION", actionId: draft.id, source: "adopt_decision_play" },
+          });
+          written.push(`${obj.id}.${r.prop}:${String(from)}→${String(r.to)}`);
+        }
+        // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」/「采纳产能保障方案」同一套）。
+        await ontology.runDerivations(sysCtx);
+        // targetRef 自证「改了哪根杠杆、从多少到多少」——**刻意不使用 MO- 前缀**（假单号形态）。
+        return { ok: true, targetRef: `DP-ADOPT:${written.length}:${written[0]}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
