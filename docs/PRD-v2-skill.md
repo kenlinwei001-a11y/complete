@@ -378,7 +378,7 @@ ls scripts/check-{skill-compiler,graph-runtime,progress-reachability,metrics-ten
 | **R11** 全链闭包 | K1 的图**必须以 render 收口** —— 见 §6.5 对 `G-SKILL-GRAPH-NO-RENDER-CLOSURE` 的处置 |
 | **R13** 结论可溯源 | K2 的本质就是 R13 的前置（没有推演就没有可溯源的数字）；图每个节点的输出须带 provenance |
 | **R14** 应用层无业务常数 | 技能声明里不得内联基地名/型号/阈值 |
-| **R15** CLI 对等 | K1 新增的对外能力须有 CLI 或 GUI 深链。**⚠️ 已知洼地**：`POST /b/v1/skills/:id/compile` 至今未进 `OPERATION_CATALOG`（`packages/contracts/src/skill-compile.ts:151` 自报 `R15 缺口`），`cli-parity:check` 因只从目录派生故不红 —— **这是「门量不到的洼地」**，K1 不得再制造第二个 |
+| **R15** CLI 对等 | K1 新增的对外能力须有 CLI 或 GUI 深链。**⚠️ 已知洼地（本单亲手复核）**：`POST /b/v1/skills/:id/compile` 至今**未进** `OPERATION_CATALOG` —— `grep -n "compile" packages/contracts/src/operation-intent.ts` → **RC=1（零命中）**（金丝雀：同文件 `grep -n 'op: "skill"'` → **1** 命中，`:67` 在 ⇒ 文件读得到）。该洼地由**本体 §2.H 的 `SkillCompileResult` 段**自报（非契约源码注释，见 §7.4-5 的更正）。`cli-parity:check` **因只从目录派生故不红** —— **这是「门量不到的洼地」**，K1 不得再制造第二个 |
 | **R16** 发育闭环 | Skill 缺引用 → 不静默残缺，开 `GrowthTicket` |
 | **R17** 决策单页 | WO-V2-SKILL-EXEC-FE 的图执行面板须就地下钻不跳页 |
 
@@ -447,3 +447,14 @@ ls scripts/check-{skill-compiler,graph-runtime,progress-reachability,metrics-ten
 2. **§5 砍掉 X-2（生命周期扩展）可能过激。** 若已有租户在生产上依赖「顶替旧版本」的语义，DEPRECATED 就不是纯治理面。我**没有核实是否有这样的租户**。
 3. **§2.4 的「17 道门」沿用 crossreview §3 的去重结果，本单只复验了它们「不存在」，没有复验「去重后确实是 17 道」。** 这个数本身可能也是错的 —— 而这正是 §5.4 那条机制要治的病。
 4. **本文自己也写了一堆数字**（907/789/747/751/660 行、7 个技能、29 道门、0/15 金丝雀）。**这些数会漂。** 每个数我都给了复跑命令；**读到本文的下一个人，请先跑一遍再引用。**「我没找到」和「它不存在」是两个不同的命题 —— 同样，「文档里写着 29」和「今天是 29」也是。
+
+5. **⚠️ 本单当场犯过一次、并当场改正的错（照铁律 0.6 记账，不静默修）**：
+   §6.4 R15 一行原写「`packages/contracts/src/skill-compile.ts:151` 自报 R15 缺口」。
+   复核时实测 `grep -n "R15\|OPERATION_CATALOG\|cli-parity" packages/contracts/src/skill-compile.ts apps/agentcore/src/skill-compiler.ts` → **零命中**。
+   真相：那句自报在 **`docs/SYSTEM-ONTOLOGY.md` §2.H 的第 151 行**，我**把本体的行号当成了源码文件的行号**。
+   > **形态（照 0.6 句式）**：「我用**某文件第 151 行的内容**当作**另一个文件第 151 行的内容**的证据，而前者并不度量后者。」
+   > 同族于本仓已记账的「拿一个看起来相关的数字当判据」。
+   **底层论断本身是对的**（compile 确实不在 `OPERATION_CATALOG`，已用金丝雀独立复验），但**证据链一度是假的** ——
+   若不复核，下一个人点开 `skill-compile.ts:151` 会看到一段完全无关的注释，然后合理地怀疑整份 §6.4。
+   **教训**：跨文件引用行号时，`file:line` 必须与写下它时**正在读的那个文件**一致；
+   凭记忆把「刚才读到的那句话」安到「正在写的那个文件」上，是这类错的固定发作点。
