@@ -4,6 +4,17 @@ import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/c
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
+// WO-ENTERPRISE-STATE：捕获核**与 datacore 共用同一份纯函数**（治「mock 与引擎口径分家」，见下方 mockEnterpriseStates 注释）。
+import {
+  captureEnterpriseState,
+  diffEnterpriseStates,
+  ENTERPRISE_STATE_REAL_WORLD_ID,
+  forkEnterpriseState,
+  type EnterpriseState,
+  type EnterpriseStateKpiInput,
+  type EnterpriseStateTypeInput,
+  type LogicalClock,
+} from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -698,6 +709,85 @@ export function resetMockSim(): void {
   mockSimSessions.clear();
   mockSimWorlds.clear();
   mockSimSeq = 0;
+  mockEnterpriseStates.clear();
+}
+
+/**
+ * WO-ENTERPRISE-STATE · 企业状态快照 mock store（模块态）。
+ *
+ * ⚠ **形状不是这里手写的**：下面的 handler 调用的是 `@platform/contracts` 的
+ * `captureEnterpriseState` —— 与 datacore `twin/enterprise-state.ts` **同一个函数**。
+ * 本仓有过「mock 与引擎口径分家、测试咬 mock 恒绿」的真事故，那次的根因是两边各写一套形状。
+ * 现在两边共用同一份纯函数：形状分家在结构上就不可能发生，而不是靠「两边都记得写成一样」。
+ * mock 这边**只负责喂输入**（mock 世界的对象数据 + mock 模拟时钟），算法一行都不重写。
+ */
+const mockEnterpriseStates = new Map<string, EnterpriseState>();
+
+/**
+ * mock 世界的逻辑时钟：从 `db.clock`（模拟时钟 mock，`simDate` + `currentTick`）派生。
+ * `t0` = simDate 往回推 currentTick 天 —— **推算**出来的，不是 `new Date()`
+ * （前端一旦补 wall-clock，界面上的"时刻"就与快照锚定的时间轴分家了）。
+ */
+function mockLogicalClock(): LogicalClock {
+  const tick = db.clock.currentTick;
+  const t0 = new Date(new Date(`${db.clock.simDate}T00:00:00Z`).getTime() - tick * 86400_000).toISOString().slice(0, 10);
+  return { tick, simulatedDate: db.clock.simDate, t0 };
+}
+
+/**
+ * mock 世界的「对象库」切片：与 `GET /a/v1/objects` 的 mock 同源（BASES / ORDERS / MODELS），
+ * 域名与真后端本体一致（factory / product）。数值属性清单显式声明 —— 真后端那边它来自本体
+ * `properties(dataType==="number") ∪ derivedProperties`，mock 无本体故手写，
+ * 但**聚合与排序一律走同一个纯函数**，所以 mock 与真后端的 doc 形状逐字段相同。
+ */
+function mockEnterpriseTypes(): EnterpriseStateTypeInput[] {
+  return [
+    {
+      typeKey: "Base",
+      displayName: "生产基地",
+      domain: "factory",
+      numericProps: [
+        { propKey: "gwh", unit: "GWh" },
+        { propKey: "lines", unit: "条" },
+        { propKey: "util", unit: "" },
+      ],
+      rows: BASES.map((b) => ({ ...b })),
+    },
+    {
+      typeKey: "Order",
+      displayName: "销售订单",
+      domain: "product",
+      numericProps: [
+        { propKey: "qty", unit: "套" },
+        { propKey: "unitPrice", unit: "元/套" },
+      ],
+      rows: ORDERS.map((o) => ({ ...o })),
+    },
+  ];
+}
+
+/** mock 世界的 SPINE 指标库切片（KPI 组）。真后端取 `Metric` 对象，mock 取本地固定几条。 */
+function mockEnterpriseKpis(): EnterpriseStateKpiInput[] {
+  return [
+    { metricKey: "ontime_rate", label: "订单准时率", unit: "%", category: "scale", actual: 92.4, target: 95 },
+    { metricKey: "gross_margin", label: "毛利率", unit: "%", category: "profit", actual: 18.7, target: 20 },
+    // 诚实空的样本：指标库有这一行，但 actual 从未回采 ⇒ value:null + reason（不许兜底成 0）。
+    { metricKey: "cash_cycle", label: "现金周转天数", unit: "天", category: "cash", actual: null, target: 45 },
+  ];
+}
+
+function mockCaptureEnterpriseState(worldId: string): EnterpriseState {
+  const state = captureEnterpriseState({
+    tenantId: TENANT_ID,
+    worldId,
+    isSimulated: worldId !== ENTERPRISE_STATE_REAL_WORLD_ID,
+    forkedFromStateId: null,
+    clock: mockLogicalClock(),
+    kpis: mockEnterpriseKpis(),
+    types: mockEnterpriseTypes(),
+  });
+  mockEnterpriseStates.set(state.id, state);
+  return state;
 }
 /**
  * WO-CAPLIVE-2 · 方案横比矩阵产能增益（KILL-MOCK）：各方案 apply 经 generic_inference 同款前向重算公式真算——
@@ -3581,6 +3671,68 @@ export const handlers = [
       b: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 40 } } }],
     }),
   ),
+
+  // ---- WO-ENTERPRISE-STATE · 企业状态快照（镜像 datacore app.ts `/a/v1/twin/enterprise-states` 五条路由）----
+  // 形状由 contracts 的 `captureEnterpriseState` / `forkEnterpriseState` / `diffEnterpriseStates` 保证
+  // 与真后端逐字段相同（同一份纯函数），mock 只喂 mock 世界的输入。状态码/错误信封也逐条镜像真后端。
+  http.post("*/a/v1/twin/enterprise-states", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json().catch(() => ({}))) as { worldId?: string };
+    const worldId = body.worldId?.trim() || ENTERPRISE_STATE_REAL_WORLD_ID;
+    // 真后端：worldId 非 REAL 时必须是一个已存在的推演会话，否则 404（worldId 不是自由字符串）。
+    if (worldId !== ENTERPRISE_STATE_REAL_WORLD_ID && !mockSimSessions.has(worldId)) {
+      return err(404, "NOT_FOUND", `sim session '${worldId}' not found`);
+    }
+    return HttpResponse.json(mockCaptureEnterpriseState(worldId), { status: 201 });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/latest", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const worldId = new URL(request.url).searchParams.get("worldId") ?? ENTERPRISE_STATE_REAL_WORLD_ID;
+    const items = [...mockEnterpriseStates.values()]
+      .filter((s) => s.worldId === worldId)
+      .sort((a, b) => a.capturedAt.tick - b.capturedAt.tick);
+    const state = items[items.length - 1];
+    // 诚实空（镜像后端）：没有就是没有 —— **不现场偷偷捕获一份**冒充"最新"。
+    return state
+      ? HttpResponse.json({ worldId, state })
+      : HttpResponse.json({ worldId, state: null, reason: `世界 ${worldId} 尚无任何快照（POST /a/v1/twin/enterprise-states 捕获一份）` });
+  }),
+  http.get("*/a/v1/twin/enterprise-states", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const worldId = new URL(request.url).searchParams.get("worldId") ?? undefined;
+    const items = [...mockEnterpriseStates.values()]
+      .filter((s) => !worldId || s.worldId === worldId)
+      .sort((a, b) => (a.worldId === b.worldId ? a.capturedAt.tick - b.capturedAt.tick : a.worldId < b.worldId ? -1 : 1));
+    return HttpResponse.json({ items });
+  }),
+  http.post("*/a/v1/twin/enterprise-states/:id/fork", async ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json().catch(() => ({}))) as { worldId?: string };
+    const worldId = body.worldId?.trim() ?? "";
+    if (worldId === "" || worldId === ENTERPRISE_STATE_REAL_WORLD_ID) {
+      return err(400, "VALIDATION_ERROR", "fork target must be a simulation world");
+    }
+    if (!mockSimSessions.has(worldId)) return err(404, "NOT_FOUND", `sim session '${worldId}' not found`);
+    const source = mockEnterpriseStates.get(String((params as { id: string }).id));
+    if (!source) return err(404, "NOT_FOUND", "enterprise state not found");
+    const forked = forkEnterpriseState(source, worldId);
+    mockEnterpriseStates.set(forked.id, forked);
+    return HttpResponse.json(forked, { status: 201 });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/:id/diff", ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const against = new URL(request.url).searchParams.get("against");
+    if (!against) return err(400, "VALIDATION_ERROR", "against=<stateId> required");
+    const after = mockEnterpriseStates.get(String((params as { id: string }).id));
+    const before = mockEnterpriseStates.get(against);
+    if (!after || !before) return err(404, "NOT_FOUND", "enterprise state not found");
+    return HttpResponse.json({ before: before.id, after: after.id, changes: diffEnterpriseStates(before, after) });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/:id", ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const state = mockEnterpriseStates.get(String((params as { id: string }).id));
+    return state ? HttpResponse.json(state) : err(404, "NOT_FOUND", "enterprise state not found");
+  }),
 
   // ---- WO-GSLIVE-1-COCKPIT 桩 · 活①compose 路径（WO-LIVE-NL 预期契约·ranAgentLoop=false·含被挤单/按期率） ----
   http.post("*/b/v1/sim/compose", async ({ request }) => {
