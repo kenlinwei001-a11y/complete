@@ -99,7 +99,7 @@ export function InfoPopover({
         <span
           id={bodyId}
           role="tooltip"
-          className={styles.body}
+          className={`popover-surface ${styles.body}`}
           data-align={align}
           data-testid={`info-body-${testId}`}
         >

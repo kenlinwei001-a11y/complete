@@ -38,7 +38,15 @@
   outline-offset: 1px;
 }
 
-/* 浮层：绝对定位 ⇒ **不占布局像素**（这正是本单要的"减负"）。 */
+/* 浮层：绝对定位 ⇒ **不占布局像素**（这正是本单要的"减负"）。
+ *
+ * ⚠ **表面（背景/边框/投影）不在这里定义** —— 由全局 `.popover-surface` 提供
+ * （`styles/global.css:165`）。那张表面是欠账 #104 专门做的：它的判据是
+ * 「渲染像素不依赖底下的内容」，且 `test/provenance-popover-legibility.test.tsx`
+ * 已对**三套主题**逐一验过遮蔽性与对比度。
+ * 自己再写一份 `background: var(--panel)` 就是给那张验过的表面开一条**没人验的分身**
+ * ——本仓已有明确反面教材（.panel 磨砂玻璃上的文字对比度从 9.19 掉到 1.01）。
+ * 本文件只留**几何与排版**。 */
 .body {
   position: absolute;
   z-index: 40;
@@ -49,10 +57,6 @@
   max-height: 60vh;
   overflow: auto;
   padding: 9px 11px;
-  border: 1px solid var(--line2);
-  border-radius: 6px;
-  background: var(--panel);
-  box-shadow: var(--popover-shadow);
   color: var(--muted);
   font-size: 11px;
   line-height: 1.6;

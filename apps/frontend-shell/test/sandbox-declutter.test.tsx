@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -337,5 +340,91 @@ describe("§3 · `?` 浮层规格（docs/CONVENTION-ui-information-layering.md �
       Array.from(svgTitles).map((t) => t.textContent),
       "SVG <title> = 原生 tooltip（规范 §2 明令禁止用它充当浮层）",
     ).toEqual([]);
+  });
+
+  it("浮层戴的是**验过的那张表面**（全局 .popover-surface），不是自己另写一份背景", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    await user.click(screen.getByTestId("info-legend"));
+    const body = await screen.findByTestId("info-body-legend");
+    // 欠账 #104 的那张表面：`test/provenance-popover-legibility.test.tsx` 已对三套主题
+    // 逐一验过「渲染像素不依赖底下的内容」。自己再写一份 background 就是开一条没人验的分身
+    // （反面教材：.panel 磨砂玻璃上文字对比度从 9.19 掉到 1.01）。
+    expect(body.className, "浮层没戴 popover-surface ⇒ 它的可读性没有任何门在验").toContain("popover-surface");
+    expect(/\bpanel\b/.test(body.className), "浮层挂在磨砂玻璃 .panel 上 ⇒ 底下内容会透上来").toBe(false);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * §4 · **右栏溢出 ⇒ 中栏大片空白** 这条结构缺陷的回归锁。
+ *
+ * ── 病理（在 canonical 96038d1d 的 CSS/DOM 上逐条追出来的，不是猜）─────────────
+ * 仓主截图里两个症状是**同一个成因**：右栏被塞爆 ＋ 中间主区几乎整屏空白。
+ *  ① `.root` 是 `display:grid`，第三行（三栏区）写 `minmax(0,1fr)`，
+ *     但**容器本身没有确定高度**（只有 `min-height:76vh`）⇒ 该行是**内容驱动**的，1fr 不封顶；
+ *  ② `.mid` 三列 grid + 默认 `align-items:stretch` ⇒ **行高 = 最高那一列的内容高度**；
+ *  ③ 右栏 `.pane` **自身没有 `overflow`**，而右栏折叠区那几个 `<details>`
+ *     （canonical `SandboxConsole.tsx:801-806`）是 `.paneBody` 的**兄弟节点**、
+ *     落在任何 `overflow:auto` 容器**之外** ⇒ 就绪认证（L0–L4 + 雷达 + 三卡 + gauge +
+ *     entering 13 条 + 缺件清单）＋ 世界列表 7 行按钮，全额计入右栏高度；
+ *  ④ 于是三栏行被撑得很高，而中栏 `.canvasSlot`（`flex:1` + `overflow:auto`）
+ *     被拉到同样高度、内容却只有画布那么高 ⇒ **下方大片全空**。
+ *
+ * ── 修法（三条，缺一条这个坑就还能从别的路回来）─────────────────────────────
+ *  A. `.root` 改 flex 列 + `.mid { flex: 1 1 0 }` ⇒ 行高取**剩余空间**，永不再由内容决定；
+ *  B. 右栏折叠区包进 `.railStack`（自带 `max-height` + `overflow:auto`）；
+ *  C. 最大的两个占位者（就绪认证 / 世界列表）整体搬进诊断抽屉。
+ *
+ * ── 为什么这道门咬的是 CSS 文本 + DOM 结构，不是像素 ─────────────────────────
+ * jsdom **不做布局**（`offsetHeight` 恒 0），断言不出"空了多少像素"。
+ * 所以这里咬的是**让那个像素结果不可能发生的结构不变量**。
+ * 本仓已有同款做法（`sandbox-console.seam §9` 直接咬 `.emptyCard` 的 `clip-path` 声明）。
+ * ⚠ 诚实边界：**这不能替代真浏览器实拍** —— 本沙箱没有 chromium
+ * （`scripts/ui-smoke-sandbox.mjs` 会 SKIP），故本单**未做浏览器复验**，此处只锁结构。
+ */
+describe("§4 · 右栏撑高三栏行 ⇒ 中栏空白（结构不变量回归锁）", () => {
+  const CSS_PATH = join(dirname(fileURLToPath(import.meta.url)), "../src/views/sim/SandboxConsole.module.css");
+  const css = readFileSync(CSS_PATH, "utf8");
+
+  it("金丝雀：CSS 文件真的读到了（否则下面每条『没找到』都是工具坏了，不是代码对了）", () => {
+    expect(css.length, "CSS 读成空 ⇒ 路径错了").toBeGreaterThan(2000);
+    // 一个与本单无关、canonical 上就有的已知规则 —— 它若也找不到，就是路径/解析的问题。
+    expect(css, "金丝雀规则 `.impCard` 都找不到 ⇒ 读错文件了").toContain(".impCard");
+  });
+
+  it("A · `.mid` 的高度取**剩余空间**（flex-basis 0），不再由最高那一列的内容决定", () => {
+    const mid = /\.mid\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(mid, "没抓到 .mid 规则体").not.toBe("");
+    expect(
+      mid.replace(/\s+/g, " "),
+      "`.mid` 缺 `flex: 1 1 0` ⇒ 三栏行高又变回内容驱动，右栏一多就把中栏拉出大片空白",
+    ).toContain("flex: 1 1 0");
+  });
+
+  it("B · 右栏折叠区有**自己的滚动容器**（内容再多也不外溢到行高上）", () => {
+    const stack = /\.railStack\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(stack, "没抓到 .railStack 规则体 —— 折叠区又回到裸挂在 .pane 下了").not.toBe("");
+    expect(stack).toContain("overflow: auto");
+    expect(stack, "缺 max-height ⇒ overflow 永远不会触发").toContain("max-height");
+  });
+
+  it("B' · DOM 上折叠区**确实**被包在那个滚动容器里（CSS 写了但没挂上等于没写）", async () => {
+    mount();
+    await ready();
+    const stack = screen.getByTestId("sc-rail-stack");
+    for (const id of ["sc-rail-compare", "sc-rail-commander"]) {
+      const el = screen.getByTestId(id);
+      expect(stack.contains(el), `${id} 不在 sc-rail-stack 里 ⇒ 它的高度仍会计入三栏行高`).toBe(true);
+    }
+  });
+
+  it("C · 最大的两个占位者（就绪认证 / 世界列表）**不在右栏**了（它们才是把右栏塞爆的那两个）", async () => {
+    mount();
+    await ready();
+    const inspectPane = screen.getByTestId("sc-inspect-pane");
+    expect(inspectPane.querySelector('[data-testid="sandbox-readiness"]')).toBeNull();
+    expect(inspectPane.querySelector('[data-testid="sandbox-worlds"]')).toBeNull();
   });
 });
