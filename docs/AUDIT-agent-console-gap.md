@@ -207,6 +207,42 @@ decision.committed · coordinator.planned · entity.out_of_domain · feedback.re
 
 ---
 
+## 5.5 · 取证之外、动手时才浮出来的两条（都已处置）
+
+这两条 grep 阶段看不见，是**亲手把链路跑一遍**才撞上的 —— 记在这里，因为它们都改变了界面该怎么写。
+
+### 5.5.1 AGENT 路 **不等于** 有运行记录（诚实态是常态，不是异常）
+
+实测（起 `dist/main.js` on :4102，真 submit 一条自由问句）：
+task 得到 `path=AGENT` + `status=COMPLETED`，而 `/agent-run` 返 **404**。
+
+追一层就清楚了：未接 LLM provider 时 `completeNoLlmDegradation`
+（`router/orchestrator.ts:2656`）把 task 标成 `path: "AGENT"` + `COMPLETED`
+并直接给一句诚实答复，**从不 `agentRuns.insert`**。
+
+⇒ **全新部署 / 未绑定 provider 的环境，AGENT 路运行全都没有 run 记录。**
+界面若把 404 当"加载失败"，仓主看到的就是一片红；若渲染成 0/0/0，那是编造的运行数据。
+故本单把它做成第三态（`AgentRunProbe.NO_RUN`），显示「本次未进入 Agent 循环」+ 去绑定 provider 的路，
+**且刻意不渲染统计块**（测试 ⑤ 专咬这一点，变异反证已验：渲染成全 0 即红）。
+
+### 5.5.2 mock 与真后端形状不一致（`path: "PATH_A"`）—— 已修
+
+`mocks/handlers.ts` 的 `GET /b/v1/queries` 此前返回 `path: "PATH_A"`，
+而契约枚举只有 `WORKFLOW | AGENT`（`packages/contracts/src/qos.ts:493`），
+真端点返 `t.path ?? null`（`agentcore/src/server.ts:366`）。
+
+**后果不是抽象的**：任何按 `path` 过滤的消费方在 mock 模式下都读到**空集**。
+本单的运行观测台正是第一个按 path 过滤的消费方，所以它一写就撞上了 ——
+在此之前没有消费方，于是这个错值三个多月没人发现。
+
+已改正为 `WORKFLOW`，并补两条 AGENT 路种子（一条引擎真跑过、一条走 5.5.1 的诚实降级），
+新增 `decision-trace` / `agent-run` 两个 handler。
+**防复发**：前端测试里 mock 载荷一律先用 `AgentRunRecordSchema` / `DecisionTraceSchema`
+`parse()` 一遍再交给 MSW —— 真后端也是 `Schema.parse(...)` 之后才下发，
+故「mock 能过 schema」⇒「mock 形状 = 真后端形状」，形状漂了当场红。
+
+---
+
 ## 6 · 本单实际做了什么（与上表逐条对应）
 
 1. **`GET /b/v1/queries/:taskId/agent-run`**（`apps/agentcore/src/server.ts`）——
@@ -221,7 +257,41 @@ decision.committed · coordinator.planned · entity.out_of_domain · feedback.re
    - 「本列表是**本租户 AGENT 路径**的运行，**不是本 Agent 的运行**」——
      附原因（`AgentRunRecord` 无 `agentId`）与消除路径；
    - 「上下文清理 0 次」附 #91 的真实原因，而非留白；
+   - 「本次未进入 Agent 循环」（见 §5.5.1）+ 去绑定 provider 的路，**且不渲染统计块**；
    - Context Manager **五段不渲染**（无承载物 ⇒ 不放占位）。
+
+### 6.1 · 验证输出（两向都贴，绿测试≠能用）
+
+**后端** `apps/agentcore/test/agent-run-readsurface.seam.test.ts` —— **4/4 绿**，
+且刻意不走「`repos.agentRuns.insert` 造记录再读」那条捷径（那只证明仓储会存会取），
+而是 **真 submitQuery → 真 runPathB → 真 runAgentLoop → 真 insert → 真 HTTP 读**。
+
+**前端** `apps/frontend-shell/test/agent-admin-console.test.tsx` —— **13/13 绿**，
+每条断言配一条变异反证（改后端数据 → 界面必须跟着变）。
+
+**变异反证（5 条，全部真红 —— 证明测试咬的是链路不是形状）**：
+
+| # | 变异 | 结果 | 红在哪 |
+|---|---|---|---|
+| B1 | 端点改返「schema 合法但**捏造**的空记录」 | 🔴 2 红 | `expected 'run_fake' to be 'run_01KZ…'` · `expected 0 to be greater than 0` |
+| B2 | 去掉端点的租户校验 | 🔴 1 红 | `expected 200 to be 404`（越租户读到了别家的 run） |
+| F1 | **植入假的五段流程图**（WO 说会整单退回的那种） | 🔴 1 红 | `expected '…' not to contain 'Retriever'` |
+| F2 | 无 run 时编一份全 0 的统计块（"总得有东西看"） | 🔴 1 红 | `expected <div class="_stats_…"> to be null` |
+| F3 | KPI 写死成「全部成功」 | 🔴 1 红 | `expected '0次' to contain '1'` |
+
+五条变异全部**当场真红**，回滚后 `git diff --stat` 为空、13/13 与 4/4 各自复绿。
+
+**深浅主题**：新增 CSS **零硬编码颜色**
+（`grep -nE "#[0-9a-fA-F]{3,8}|rgba?\("` 于 `AgentsPage.module.css` → 无命中；
+金丝雀：同文件 `var(--` **62 命中** ⇒ 工具是好的）。
+所用结构 token（`--bg2/--panel2/--line/--line2/--txt/--muted/--muted2/--accent/--hover-tint*/--popover-surface`）
+在 `:root[data-theme="light"]` 与 `[data-theme="warm"]` 均有重定义；
+状态色（`--ok/--warn/--amber/--danger/--on-accent`）刻意主题不变，
+与既有 `.badge.green/.amber/.red`（`global.css:119-133`）**同一套约定**，不另开分身。
+
+**typecheck**：`agentcore` 0 错；`frontend-shell` 仅剩 **2 条基线既有**错误
+（`test/chain-impediments-route.test.tsx:48` · `test/sim-event-invalidation.seam.test.ts:32`），
+已 `git stash` 比对确认与本单无关，本单**新增 0 条**。`frontend-shell build` 通过。
 
 ---
 
@@ -240,5 +310,8 @@ decision.committed · coordinator.planned · entity.out_of_domain · feedback.re
 - **断点**：
   - 新登记 `G-AGENTRUN-NO-READ-SURFACE`（**本单闭合**）：`AgentRunRecord` 四个字段写进库后零读端。
   - 新登记 `G-AGENTRUN-NO-AGENT-ATTRIBUTION`（**本单不闭合·交回排期**）：运行无法归属到 Agent 定义。
+  - 新登记 `G-MOCK-PATH-ENUM-DRIFT`（**本单闭合**，见 §5.5.2）：前端 mock 的 `path` 取值
+    （`PATH_A`）不在契约枚举内，三个多月无人发现 —— 因为在本单之前**没有任何消费方按它过滤**。
+    这是「接了线没消费方所以错值不显形」的一个实例。防复发机制已落地（测试内 `Schema.parse` mock 载荷）。
   - 沿用 `G-UI-FIRSTLAYER-OVERLOAD`（信息第一层过载）—— 新增区块按 §5 分层规范做。
   - 沿用 #91 / `G-COMPACT-DROPS-CONSTRAINT` 的触发面结论，**不调阈值、不加旋钮**，只把它显示出来。
