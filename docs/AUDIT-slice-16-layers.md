@@ -85,7 +85,7 @@ apps/frontend-shell/src/mocks/handlers.ts:747  mockSliceGov.base_risk_profile   
 
 | # | 层 | 承载物（file:line） | 切片带出？ | 三形态定性 | 实测数（本切片） |
 |---|---|---|---|---|---|
-| ① | **业务场景** | `ontology-governance.ts:336 sliceReferences` ← `repos.reportedRefs`（`repo.ts:304`）；写入口 `llmproviders.ts:505 POST /a/v1/references/report` | ❌ | **接了线没数据**（生产方 `agentcore/src/refs/report.ts` 只产 rule 引用，三处调用点全传 `ruleRefs`，`kind:"slice"` 零产出） | `GET …/slices/order_fulfillment_360/references` → `{"refs":[],"total":0}` |
+| ① | **业务场景** ⚠️**已由 §7 闭环并更正定性** | `ontology-governance.ts:336 sliceReferences` ← `repos.reportedRefs`（`repo.ts:304`）；写入口 `llmproviders.ts:505 POST /a/v1/references/report` | ❌ | **接了线没数据**（生产方 `agentcore/src/refs/report.ts` 只产 rule 引用，三处调用点全传 `ruleRefs`，`kind:"slice"` 零产出） | `GET …/slices/order_fulfillment_360/references` → `{"refs":[],"total":0}` |
 | ② | **决策意图** | 同①（`sliceReferences` 的 `refKind ∈ plan/intent/agent`）；另有 `agentcore/src/dril/relations.ts:57` 真算 `workflow --includes--> slice`，但**不回写 datacore** | ❌ | **接了线接错地方**（关系在 B 侧算出来了，没有回流到 A 的 `reportedRefs`，A 侧反查恒空） | 0 |
 | ③ | **对象** | `ontology-core.ts:641 nodes.set(...)` | ✅ | 已带出 | **531 个 / 9 类**（Order·Model·Base·Line·Process·Equipment·Workshop·Material·Customer） |
 | ④ | **属性** | `domain.ts:213 PropertyDef` + node.props（`ontology-core.ts:638` 支持 `project` 逐跳投影） | ✅ | 已带出 | 9 类共 **~180 个属性**；本切片 5 条 path 声明了逐跳 `project` |
@@ -147,6 +147,7 @@ join 键（全部是既有字段，零新增契约）：
 - 状态徽标：`缺席`
 - 一句话说明**缺在哪一环**（不是笼统「暂无数据」）：
   - ① 「承载物 `reportedRefs` 在，但 AgentCore 侧只上报 rule 引用，从不产出 slice 引用 ⇒ 恒空」
+    ⚠️ **此文案已于 §7 作废**：上报方已接通，现文案见 `slice-layers.ts` 的 `absentReason`。
   - ⑮ 「全局动作注册表有，但 `ActionType` 无 `targetTypeKey` 字段，无法归因到本切片类型」
 
 ### 3.3 三态而非两态（本单的关键设计判断）
@@ -178,7 +179,9 @@ join 键（全部是既有字段，零新增契约）：
 - **断点**：
   - 新登记 `G-SLICE-16LAYER-PROJECTION`（切片只投影 3/16 层，其余 11 层有承载物有数据但取不到）——本单闭。
   - `G-SLICE-PROVENANCE-DROPPED`（`ontology-core.ts:641` 丢 origin/epoch）——本单闭。
-  - 遗留未闭（另立单）：`G-SLICE-REF-PRODUCER-EMPTY`（B 侧不上报 slice 引用 ⇒ ①②恒空）、
+  - ~~遗留未闭（另立单）：`G-SLICE-REF-PRODUCER-EMPTY`（B 侧不上报 slice 引用 ⇒ ①②恒空）~~
+    → **已闭**（WO-SLICE-REF-PRODUCER，见 §7）；且该条的**定性在 §7.1 被更正**：
+    真因不止「不上报」，还有 `RefKindSchema` 里根本没有 `slice` 这个枚举值 ⇒ B 侧构造不出。、
     `G-ACTIONTYPE-NO-TARGET`（`ActionType` 无 `targetTypeKey` ⇒ ⑮无法归因）。
 - **门禁**：不新增门。新端点的接缝由 `apps/frontend-shell/test/slice-16-layers.test.tsx`
   的接缝驱动用例守（界面计数 == 后端返回，非 mock 常量）。
@@ -193,7 +196,7 @@ join 键（全部是既有字段，零新增契约）：
 
 | # | 层 | 状态 | 数 |
 |---|---|---|---|
-| ① 业务场景 | absent | 0 | 上游不产 slice 引用 |
+| ① 业务场景 | absent | 0 | 上游不产 slice 引用（⚠️ §7 已接通，现测为 present） |
 | ② 决策意图 | absent | 0 | B 侧关系不回流 |
 | ③ 对象 | present | 9 类 |
 | ④ 属性 | present | 127 个 |
@@ -363,3 +366,87 @@ R6 确定性：同请求连跑两次 md5 一致
   （Function 签名 0 · Interface 8 …）」——那套十六层里有 **Function / Interface** 两层，
   而本单契约 `SLICE_LAYER_IDS` 的十六层里没有这两个名字。两套「十六层」是否同一套**尚未对账**，
   谁也别拿其中一套的覆盖数去解释另一套（这正是本仓最常犯的「用 X 当 Y 的证据」）。
+
+---
+
+## 7 · 第三双手：①业务场景层的 producer 补线（WO-SLICE-REF-PRODUCER · 2026-08-10）
+
+> 分支 `claude/handoff-wo-slice-ref-producer`，基线 `claude/handoff-wo-slice-16-layers-emptygraph`
+> （`0d366103`，已用 `git merge-base --is-ancestor` 验过它是 `a41022e3` 的严格超集 —— 判据是**祖先关系**，
+> 不是「某个文件在不在」）。
+
+### 7.1 前任定性**成立**，但只说对了一半 —— 补三条结构事实
+
+§1.2 与 §2 表的 ① 行判「承载物在、上游不产数」，方向对：`report.ts` 里唯一的引用构造器是
+`ruleRef`（`kind:"rule"`），三处调用点传的全是 rule 引用（金丝雀：同一条 `grep -n 'kind:'`
+在该文件命中 2 行 —— 第 14 行是 `source.kind` 的类型、第 46 行是 `kind: "rule"`，
+证明工具在工作、且确实零处产 `kind:"slice"`）。但**「补个 producer 就行」是错的**，实测三条：
+
+| # | 事实 | 若不知道会怎样 |
+|---|---|---|
+| 1 | **契约里根本没有 `slice` 这个 ref kind**。`packages/contracts/src/refs.ts:9 RefKindSchema` = `[rule, skill, workflow, plan, agent, mcp, intent]`，而 `ontology-governance.ts:345` 一直写着 `ref.kind === "slice"` ⇒ **B 侧在类型层面就构造不出**这种引用，那条消费分支对 B **恒不可达**。A 的 wire schema 是 `z.string()`（`llmproviders.ts:77`），所以运行期从不报错，缺口才一直没人发现 | 直接写 `{kind:"slice"}` → TS 编译失败，会以为「契约包坏了」 |
+| 2 | **`reported_refs` 按 source 整条覆盖**：id = `refr_{tenantId}_{source.kind}_{source.key}`（`llmproviders.ts` report 路由），`Store.put` 按 id 覆盖 ⇒ 规则引用与切片引用**必须合并成一次上报**。种子 `sop_balance_wf` 同时含 `evaluate_rules(["C18","C21"])` 与 `resolve_slice("monthly_balance")`，这个覆盖**真会发生**，不是假想 | 直觉写法「再加一次 `reportRefs`」会**悄悄抹掉规则引用** —— 而且①会亮、看起来还是对的 |
+| 3 | **模板占位符不是 key**：种子 `plan_order_deep_360` 的 `params.sliceKey` 是 `{{steps.s1.output.sliceKey}}`。照抄 `dril/relations.ts:57` 的 `if (sliceKey)` 会上报一条**永远反查不到**的悬挂引用。relations.ts 不过滤是安全的 —— 它下游 registry 有「两端均须在册」这道过滤；**引用上报没有那道过滤** | ①会多出一条谁也点不开的假条目 |
+
+**形态更正**（照铁律 0.6 的句式）：原文记 ① 为「接了线没数据」，
+准确说法是「**接了线接错地方 + 契约少一个枚举值**」——
+消费端一直在等 `kind:"slice"`，生产端连这个类型都表达不出来。
+平台自己的另一处枚举 `SKILL_REFERENCE_KINDS`（`contracts/agentcore.ts:216`）**早就含 `slice`**，
+两处口径此前不一致，这次对齐。
+
+### 7.2 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `packages/contracts/src/refs.ts` | `RefKindSchema` 补 `"slice"`（用量仅本文件 3 处，无穷举 switch，爆炸半径已核） |
+| `apps/agentcore/src/refs/report.ts` | 新增 `planStepSliceRefs`（判据与 `dril/relations.ts:57` 同源）+ `planStepRefs`（规则⊕切片合并、按 (kind,key) 去重）+ 模板占位符过滤 |
+| `apps/agentcore/src/server.ts` workflow 发布处 | 改用 `planStepRefs` ⇒ 喂 ①业务场景层（`source.kind="workflow"`） |
+| `apps/agentcore/src/catalog/service.ts` plan 发布处 | 改用 `planStepRefs` ⇒ 喂 ②决策意图层（`source.kind="plan"`） |
+| `apps/datacore/src/ontology/slice-layers.ts` | ①② 的 `absentReason` 改写为**接通后的真话**（旧文案「从不产出 kind:slice ⇒ 恒空」已是假话），并保留未闭残缺 |
+| `apps/frontend-shell/src/mocks/handlers.ts` · `test/slice-16-layers.test.tsx` · `contracts/slice-layers.ts` 注释 | 同步过期文案（**举例也是断言**，留着过期例子＝在契约/界面里写假话） |
+
+⚠️ `agentRuleRefs`（agent 发布）**未动**：`AgentDefinition` 里没有切片引用字段，agent 结构上产不出。
+
+### 7.3 ①层翻转实测（接缝双侧驱动）
+
+- **A 侧** `apps/datacore/test/slice-ref-producer-seam.test.ts` · **6/6 绿**
+  - `SEAM-A1` 上报前 ① `absent`/count 0 → POST 真 `/a/v1/references/report` → ① **`present`/count 1**，
+    明细 `{key:"sop_balance_wf", group:"workflow", detail:"reportedRefs"}`，且 present 后不再挂 `absentReason`。
+  - `SEAM-A5` **① 与子图无关**：root selector 声明 `{{args.baseId}}` 却不给参、子图 0 节点时，
+    ① 依旧 `present`（`GRAPH_INDEPENDENT` 集合含 ①②）。这条专门防「参数没给」被误读成「上报没生效」；
+    对照组：靠子图 join 的 ③对象 层此时口径为「未解出子图 ⇒ 还没被判定过」，不说成「平台没有」。
+  - `SEAM-A6` R2 别租户上报同名切片引用不串（count 恒 1）· R6 同输入两次响应体**字节一致**。
+- **B 侧** `apps/agentcore/test/slice-ref-producer.seam.test.ts` · **5/5 绿**
+  走真发布路由 → 真 `wireDeps` 装配的 `reportRefs` → 真 `fetch` 出口，断言**请求体本身**
+  （不是单测抽取函数 —— 「测试咬的是函数不是链路」是本仓记在案的假绿形态）。
+
+### 7.4 变异反证（三个变异，全部真红后已还原；`git status --porcelain` 空）
+
+| 变异 | 改法 | 结果 |
+|---|---|---|
+| **M1 生产方关掉** | `planStepSliceRefs` 直接返回 `[]` | B 侧 **4/5 红**（B3 是「不许上报模板」的否定断言，关掉后仍成立，正确保持绿） |
+| **M2 合并拆回两次上报** | workflow 发布拆成 rule 一次、slice 一次 | B 侧 **3/5 红**，`SEAM-B1` 报 `expected [ {…}, {…} ] to have a length of 1 but got 2` —— 正是「后写覆盖先写」那个坑 |
+| **M3 消费方不认 slice** | `sliceReferences` 去掉 `ref.kind === "slice"` | A 侧 **6/6 全红**，`SEAM-A1` 报 `expected 'absent' to be 'present'` |
+
+⇒ ①层的 `present` **不可能**由常数/占位造成：两端任意一端断开，断言立刻红。
+
+### 7.5 诚实位：接通后**仍未闭**的部分（降层保留，不许删）
+
+| 层 | 仍产不出的来源 | 结构原因 |
+|---|---|---|
+| ① 业务场景 | `refKind = "scene"` | `RefReport.source.kind` 只有 agent/workflow/plan/intent —— **没有 scene**，场景直接引用切片的形态至今无上报调用点 |
+| ② 决策意图 | `refKind = "intent"` | 无任何上报调用点（`catalog` 只在 plan 发布时上报） |
+| ② 决策意图 | `refKind = "agent"` | `AgentDefinition` 里没有切片引用字段，结构上产不出 |
+
+以上三条已逐条写进 `slice-layers.ts` 的 `absentReason`，界面缺席时直接显示，
+并由 `SEAM-A2` 断言「变异后诚实位必须重新出现且仍含 `scene`」守住 —— 防止后人把它删成「暂无数据」。
+
+### 7.6 顺手发现（本单不修，记账）
+
+- **`plan_slice` 步类型不在契约里**：种子 `plan_order_deep_360` 用了 `type:"plan_slice"`，
+  而 `packages/contracts/src/qos.ts` 的步骤联合类型里**没有**这个 literal
+  （金丝雀：同一条 grep 在同文件命中 `resolve_slice`@112 等 10 个 literal，证明工具在工作）。
+  种子直插仓储绕过了 schema 校验，走 API 建同样的 plan 会 400。
+- **workflow 发布的存在性探针不查切片**：`server.ts` 的 `probeMissingRefs` 只查
+  `solverKeys`/`ruleKeys`，`resolve_slice` 步的 `sliceKey` 指向不存在的切片照样能发布
+  ⇒ 现在会上报一条反查不到的引用。建议另立 `G-SLICE-PUBLISH-NOT-PROBED`。
