@@ -227,19 +227,42 @@ export const SimCertificationSchema = z.object({
     writebackComplete: z.boolean(), // writeback 行动已配置
     observabilityMet: z.boolean(), // 图查询/切片达标
   }),
+  // Trial Tick（空跑 1 tick）。**字段名 = 它真正度量的东西**（WO-CERT-HONESTY ③ · 欠账 #152）：
+  // 装配方 `app.ts` 跑的是 `ontologyCore.recompute(c, [], { dryRun: true })` —— 只做「装载对象 +
+  // 对全部 ACTIVE DerivationSpec 拓扑排序」；`changes=[]` ⇒ dirty 集空 ⇒ 逐节点全部 continue
+  // ⇒ **一条派生公式都没求值，一条传导规则都没跑**。原字段名 `rulesFired`（"触发的规则数"）
+  // 与这三件事没有一件对得上，故按实测改名并补一个「本次覆盖到哪一层」的显式开关。
   trialTick: z.object({
+    /** 上述空跑**未抛异常** ⇒ 派生依赖图无环（`topoSort` 有环抛 `CyclicDerivationError`）。
+     *  ⚠ 它证明的是「重算没崩」，**不是**「这个世界推得动」——后者要等传导真空跑（#152 / WO L3-a）。 */
     passed: z.boolean(),
-    rulesFired: z.number().int(),
+    /** 拓扑排序出的**派生规格节点数** = 派生依赖图的**规模**。⚠ 不是「本次触发数」（本次恒 0 条求值）。 */
+    derivationNodes: z.number().int(),
+    /** 本次空跑**是否覆盖传导栈**。今天由 `app.ts` 恒传 `false`（跑的是 recompute 不是 propagateTick，
+     *  欠账 #152）；L3-a 让它真跑传导后翻 true。前端据此标注，不在 UI 里硬写这句话。 */
+    propagationCovered: z.boolean(),
     at: z.string().nullable(),
     error: z.string().nullable(),
   }),
   worldCompleteness: z.object({ // 世界完整度（范围预检 = init step③）
-    pct: z.number(), // 0-100
-    stateVars: z.object({ present: z.number().int(), needed: z.number().int() }),
+    pct: z.number(), // 0-100 = 100 × Σpresent / Σneeded（下列三对比值）
+    // ⚠ 已删 `stateVars: {present, needed}`（WO-CERT-HONESTY ①）。理由：它**两半都是复制品** ——
+    //   present 取自 `presentDerivations`（与 derivationRules 同一变量），needed 在 `app.ts` 是与
+    //   `derivationRules` **逐字节相同**的表达式（`Σ t.derivedProperties.length`）。
+    //   ⇒ 该行不度量任何独立事实，屏上「状态变量 N/M」与「派生规则 N/M」恒等；且把派生在
+    //     pct 的分子与分母里**各数了两遍**。
+    //   本平台真正的「状态变量」= 传导规则 source/target stateVar 的去重集（同 `SandboxViewConfig.stateVars`），
+    //   但**没有任何地方声明「这个世界应该有几个状态变量」** ⇒ 做不出诚实的 needed ⇒ 不做成比值，
+    //   改由下面的 `stateVarKeys` 列出真名（不参与 pct）。
     derivationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
     actions: z.object({ present: z.number().int(), needed: z.number().int() }),
     propagationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
-    entering: z.array(z.object({ // "将进入沙盘的状态变量"清单
+    /** 这个世界**将承载的状态变量名**（去重升序）。定义与 `SandboxViewConfig.stateVars` 单源一致：
+     *  scope 内传导规则的 `sourceStateVar ∪ targetStateVar`。是**清单不是比值**（无 needed 承载物）。 */
+    stateVarKeys: z.array(z.string()),
+    /** 将进入沙盘的**要素**清单。⚠ 不叫「状态变量」：三种 kind 里只有 DERIVATION 是属性，
+     *  ACTION 是写回动作、PROPAGATION 是传导规则 —— 前端必须按 kind 分组显示，别拿一个名词盖三样东西。 */
+    entering: z.array(z.object({
       key: z.string(),
       kind: z.enum(["DERIVATION", "ACTION", "PROPAGATION"]),
       source: z.string(),

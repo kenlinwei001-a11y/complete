@@ -5,7 +5,10 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（`ontology-core recompute`，传导 `propagateTick` 待增量3）。
+ * 一次 Trial Tick（调用方跑 `ontology-core recompute` 的 dryRun）。
+ * ⚠ 本行原写「传导 `propagateTick` 待增量3」——**已过期，是一条过期的诚实缺席声明**：
+ *   传导核早已实装且有生产调用方，真实缺口是**这条认证路没去调它**（欠账 #152），
+ *   与"还没做出来"是两回事（照 CLAUDE.md 铁律 0.5：没接线 / 接了线接错地方，修法不同）。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *
@@ -64,9 +67,10 @@ export interface CertScope {
   actions: ActionRef[];
   slices: SliceRef[];
   propagationRules: PropagationRuleRef[];
-  /** §4 needed 计数（本体声明的应有数）—— present 计数从上面数组数。 */
+  /** §4 needed 计数（本体声明的应有数）—— present 计数从上面数组数。
+   *  ⚠ 原有 `stateVars` 已删（WO-CERT-HONESTY ①）：装配方 `app.ts` 给它的表达式与 `derivationRules`
+   *  **逐字节相同**，它从来不是一个独立的应有数。留着就是一个名不副实的入参。 */
   needed: {
-    stateVars: number;
     derivationRules: number;
     actions: number;
     propagationRules: number;
@@ -88,9 +92,25 @@ export const DEFAULT_CERT_CONFIG: CertConfig = {
   weights: { s: 0.4, k: 0.3, b: 0.3 },
 };
 
+/**
+ * Trial Tick 的**实测口径**（WO-CERT-HONESTY ③ · 欠账 #152）。由调用方（`app.ts`）跑完空跑后填。
+ *
+ * 今天这趟空跑是 `ontologyCore.recompute` 的 dryRun 且**不喂变更集**（实参见 `app.ts` 装配处），
+ * 它实际做的只有两件事：装载/索引对象、对全部 ACTIVE DerivationSpec 做拓扑排序。
+ * 空变更集 ⇒ dirty 集为空 ⇒ 逐节点循环全部 `continue` ⇒ **零条派生公式被求值，零条传导规则被跑**。
+ * 所以这里能诚实承载的只有「图有多大」与「排序有没有崩」，字段名照此取。
+ *
+ * ⚠ 本文件是纯投影（RL3）：以上是**调用方**的行为描述，本文件不调用任何校验器/重算器
+ *   （门 `scripts/check-sim-readiness.mjs` 静态守此约束，连注释里的调用写法都会被它咬住 —— 这是对的，
+ *    别为了让注释好看去放宽那条正则）。
+ */
 export interface TrialTickInput {
+  /** 空跑未抛异常 ⇒ 派生依赖图无环。**不等于**「这个世界推得动」。 */
   passed: boolean;
-  rulesFired: number;
+  /** 拓扑排序出的派生规格节点数 = 派生依赖图**规模**（不是触发数 —— 本次求值恒 0 条）。 */
+  derivationNodes: number;
+  /** 本次空跑是否覆盖传导栈。今天恒 false（跑的是 recompute 不是 propagateTick）。 */
+  propagationCovered: boolean;
   at: string | null;
   error: string | null;
 }
@@ -160,17 +180,36 @@ export function deriveCertification(
   const presentDerivations = scope.derivations.filter((d) => d.present).length;
   const presentActions = scope.actions.length;
   const presentPropRules = scope.propagationRules.filter((p) => p.present).length;
+  // ⚠ WO-CERT-HONESTY ①：这里曾有第 4 行 `stateVars: { present: presentDerivations, needed: scope.needed.stateVars }`
+  //    —— present 与下一行**同一个变量**、needed 在 `app.ts` 与下一行**同一个表达式**，
+  //    于是屏上「状态变量 N/M」与「派生规则 N/M」恒等（两行数同一个数），且派生在 pct 的
+  //    分子分母里各被数了两遍（把 pct 系统性拉向派生的那个比值）。已删。
+  //    每一对比值都必须能回答「present 与 needed 各自的承载物是谁」：
+  //      · derivationRules：present = 已物化的 DerivationSpec(ACTIVE)；needed = 本体类型上声明的 derivedProperties
+  //      · actions：present = scope 内 ActionType 数；needed = 装配方给的应有数
+  //      · propagationRules：present = present=true 的 PropagationRule；needed = 本体声明的应有数
+  //    「状态变量」答不上第二问（无人声明「应有几个」），故不做成比值 —— 见下 stateVarKeys。
   const wc = {
-    stateVars: { present: presentDerivations, needed: scope.needed.stateVars },
     derivationRules: { present: presentDerivations, needed: scope.needed.derivationRules },
     actions: { present: presentActions, needed: scope.needed.actions },
     propagationRules: { present: presentPropRules, needed: scope.needed.propagationRules },
   };
-  const sumPresent = wc.stateVars.present + wc.derivationRules.present + wc.actions.present + wc.propagationRules.present;
-  const sumNeeded = wc.stateVars.needed + wc.derivationRules.needed + wc.actions.needed + wc.propagationRules.needed;
+  const sumPresent = wc.derivationRules.present + wc.actions.present + wc.propagationRules.present;
+  const sumNeeded = wc.derivationRules.needed + wc.actions.needed + wc.propagationRules.needed;
   const wcPct = sumNeeded <= 0 ? 100 : Math.round((100 * sumPresent) / sumNeeded);
 
-  // entering[]：将进入沙盘的状态变量清单（每条标 source = **真实来源** 派生依赖 / Action / PropagationRule）。
+  // stateVarKeys：这个世界**将承载的状态变量名**。定义与 `SandboxViewConfig.stateVars`（`app.ts` view-config）
+  // 单源一致 —— 传导规则的 `sourceStateVar ∪ targetStateVar` 去重升序，也正是 `TickState` 每个对象桶的键。
+  // 是**清单不是比值**：没有任何承载物声明「这个世界应该有几个状态变量」，编一个 needed 出来才是错答。
+  const stateVarKeys = [
+    ...new Set(scope.propagationRules.filter((p) => p.present).flatMap((p) => [p.sourceStateVar, p.targetStateVar])),
+  ].sort();
+
+  // entering[]：将进入沙盘的**要素**清单（每条标 source = **真实来源** 派生依赖 / Action / PropagationRule）。
+  // ⚠ WO-CERT-HONESTY ②：本注释与前端标题原写「状态变量清单」，而这个数组混装三类 kind，
+  //    其中只有 DERIVATION 是属性（ACTION 是写回动作、PROPAGATION 是传导规则）——
+  //    实测 demo 上 13 条里 DERIVATION 恰好 0 条，即"标题里的名词一条都没有"。故统一叫「要素」，
+  //    并由前端按 kind 分组显示（行动 N · 传导 N · 派生 N），不拿一个名词盖三样东西。
   // 评审遗留修：source 不再用占位 `FULFILLS r_<type>_<prop>`，改投影派生的**真实依赖源变量**（sourceVars，
   // 派生公式所依赖的状态变量）——知道每个将进入态从哪来（R13 可溯源；数据可溯原则）。
   const entering: { key: string; kind: "DERIVATION" | "ACTION" | "PROPAGATION"; source: string }[] = [];
@@ -182,6 +221,14 @@ export function deriveCertification(
   for (const p of scope.propagationRules) entering.push({ key: p.key, kind: "PROPAGATION", source: `PROPAGATION ${p.key}` });
 
   // ── §7 诚实门：canEnterSimulation = L4 ∧ trialTick.passed ∧ closure.gatePassed ────
+  // ⚠ WO-CERT-HONESTY ④：`worldCompleteness` **故意不在判据里**，这是对的，别加进来 ——
+  //    两者度量的是两件事：
+  //      · canEnterSimulation（认证）＝「**能不能跑**」：结构闭合、三元组达标、空跑没崩。
+  //      · worldCompleteness（完整度）＝「**这个世界建得全不全**」：present/needed 的填充率。
+  //    互不蕴含：一个只建了 33% 的世界，其已建的那部分完全可以闭合、可跑（L4 ∧ 33% 同时为真，
+  //    不是矛盾）；反过来 100% 建全的世界也可能因有环而跑不动。
+  //    缺陷不在这行判据，在**表达**：UI 曾把「✓可进入推演」与「完整度 33%」并排贴着且不解释，
+  //    读起来像自相矛盾。修在前端 `SimReadinessPanel` 的完整度卡说明行，不动这里的语义。
   const canEnterSimulation = level === "L4_CERTIFIED" && trial.passed && closure.gatePassed;
 
   // ── 缺件诚实清单 gaps[]（绝不静默；既有 GapReport.findings + L4/门未达项） ────────
@@ -215,8 +262,14 @@ export function deriveCertification(
     level,
     dims: { structure, knowledge, behavior, composite },
     l4Checks,
-    trialTick: { passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error },
-    worldCompleteness: { pct: wcPct, ...wc, entering },
+    trialTick: {
+      passed: trial.passed,
+      derivationNodes: trial.derivationNodes,
+      propagationCovered: trial.propagationCovered,
+      at: trial.at,
+      error: trial.error,
+    },
+    worldCompleteness: { pct: wcPct, ...wc, stateVarKeys, entering },
     canEnterSimulation,
     gaps: out,
     computedAt: scope.computedAt,

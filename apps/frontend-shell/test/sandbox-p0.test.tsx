@@ -26,13 +26,13 @@ const CERT_GLOBAL: SimCertification = {
   scope: "GLOBAL", targetRef: null, level: "L3_VERIFIED",
   dims: { structure: 80, knowledge: 70, behavior: 65, composite: 72 },
   l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: true },
-  trialTick: { passed: true, rulesFired: 3, at: "2026-06-25T00:00:00.000Z", error: null },
+  trialTick: { passed: true, derivationNodes: 3, propagationCovered: false, at: "2026-06-25T00:00:00.000Z", error: null },
   worldCompleteness: {
     pct: 72,
-    stateVars: { present: 3, needed: 4 },
     derivationRules: { present: 2, needed: 2 },
     actions: { present: 0, needed: 1 },
     propagationRules: { present: 2, needed: 2 },
+    stateVarKeys: ["load"], // 传导规则 source/target stateVar 去重集（清单不是比值，不参与 pct）
     entering: [
       { key: "risk", kind: "DERIVATION", source: "deriv:risk_calc" },
       { key: "load", kind: "PROPAGATION", source: "prop:supplies@0.85" },
@@ -185,9 +185,16 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     expect(screen.getByTestId("sim-cert-l4-writebackComplete").getAttribute("data-ok")).toBe("0");
     expect(screen.getByTestId("sim-cert-l4-observabilityMet").getAttribute("data-ok")).toBe("1");
 
-    // Trial Tick 卡（passed + rulesFired 3）。
+    // Trial Tick 卡（passed + 派生图节点 3）。
+    // WO-CERT-HONESTY ③：原断言咬的是 `sim-cert-trial-rulesfired` / 文案「规则触发 3 条」——
+    // 那个数其实是**派生依赖图节点数**，而那趟空跑一条规则都没触发、传导核根本没被调用。
+    // 现改咬实测口径的 testid + 文案，并断言「传导未纳入」这句诚实提示在屏（propagationCovered=false）。
     expect(screen.getByTestId("sim-cert-trial-passed").getAttribute("data-ok")).toBe("1");
-    expect(screen.getByTestId("sim-cert-trial-rulesfired").textContent).toContain("3");
+    expect(screen.getByTestId("sim-cert-trial-derivation-nodes").textContent).toContain("派生图节点 3 个");
+    expect(screen.getByTestId("sim-cert-trial-propagation-uncovered").textContent).toContain("传导未纳入本次空跑");
+    // 屏上不许再出现会被读成「传导跑过了」的旧文案。
+    expect(screen.queryByTestId("sim-cert-trial-rulesfired")).toBeNull();
+    expect(screen.getByTestId("sim-cert-trial-tick").textContent ?? "").not.toContain("规则触发");
 
     // 完整度 gauge（72%）。
     expect(screen.getByTestId("sim-cert-gauge-pct").textContent).toContain("72");

@@ -1747,15 +1747,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
 
-    // ── Trial Tick（§3）：克隆态跑一遍 recompute（派生）；propagateTick 待增量3 → 传导记 0 ──
+    // ── Trial Tick（§3）：这一趟**到底跑了什么、没跑什么**（WO-CERT-HONESTY ③ · 欠账 #152）──
+    //
+    // 【它做了什么】`recompute(c, [], { dryRun: true })` 在克隆态上：装载并索引全部对象，
+    //   再对全部 ACTIVE DerivationSpec 做拓扑排序（`ontology-core.ts topoSort`，有环抛
+    //   `CyclicDerivationError`）。
+    // 【它没做什么】`changes = []` ⇒ dirty 集为空 ⇒ 逐节点循环 `if (!targets…) continue` 全部命中
+    //   ⇒ **一条派生公式都没被 parse / 求值**（`updatedObjects` 恒 0）；
+    //   更没有调 `propagateTick` ⇒ **传导栈一条都没跑**（欠账 #152：Trial Tick 跑的是另一套栈）。
+    // 【所以只能诚实断言两件事，字段名照此取】
+    //   · `derivationNodes = rc.order.length` = 拓扑排序出的派生规格节点数 = 派生依赖图**规模**。
+    //     旧名 `rulesFired`（"触发的规则数"）是错的两次：既没有"触发"，数的也不是传导规则。
+    //   · `passed = true` = 上面这趟**没抛异常** ⇒ 派生图无环。它**不是**"这个世界推得动"的证明。
+    //     （L3 判据含 trial.passed、L4 又要先过 L3 ⇒ 梯子第三级架在"重算没崩"上，这是真实现状，
+    //      本单只负责把话说真；真让它空跑传导是 L3-a 的引擎活，不在本单范围。）
+    //   · `propagationCovered = false` —— **今天由构造恒为 false**（这条路根本没调传导核）。
+    //     它不是一个"还没接数据的开关"，而是这条路真实覆盖面的声明；L3-a 换成真空跑时翻 true，
+    //     前端的「传导未纳入本次空跑」提示随之自动消失，不必改 UI 文案。
     let trial: TrialTickInput;
     try {
       const rc = await ontologyCore.recompute(c, [], { dryRun: true });
-      // rulesFired = 触发的派生规则数（recompute topo order 长度）。传导规则待增量3，记 0。
-      trial = { passed: true, rulesFired: rc.order.length, at: computedAt, error: null };
+      trial = { passed: true, derivationNodes: rc.order.length, propagationCovered: false, at: computedAt, error: null };
     } catch (e) {
       // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
-      trial = { passed: false, rulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
+      trial = { passed: false, derivationNodes: 0, propagationCovered: false, at: computedAt, error: e instanceof Error ? e.message : String(e) };
     }
 
     // ── scope 计数（投影，给纯函数）────────────────────────────────────────────
@@ -1782,7 +1797,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         targetTypeKey: p.targetTypeKey, targetStateVar: p.targetStateVar, present: true,
       })),
       needed: {
-        stateVars: types.reduce((a, t) => a + t.derivedProperties.length, 0),
+        // ⚠ WO-CERT-HONESTY ①：这里曾多一行 `stateVars:`，其表达式与下一行 `derivationRules`
+        //    **逐字节相同** ⇒ 屏上两行数同一个数，且派生在完整度 pct 的分子分母里各数两遍。已删。
+        // needed 的承载物 = 本体类型上**声明**的派生属性数；present 的承载物 = 已物化的 ACTIVE DerivationSpec。
+        // 两者确是两个不同的东西，故 derivationRules 这一对比值成立。
         derivationRules: types.reduce((a, t) => a + t.derivedProperties.length, 0),
         actions: Math.max(scopeActions.length, types.length > 0 ? 1 : 0),
         propagationRules: propRules.length, // 增量3 才声明传导 needed；当前 present=needed（不虚减完整度）
