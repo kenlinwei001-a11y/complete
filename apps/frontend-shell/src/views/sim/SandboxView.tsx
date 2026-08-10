@@ -34,6 +34,7 @@ import {
   type SandboxMode,
   type SandboxScope,
 } from "./sandboxModes";
+import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
 import styles from "./SimViews.module.css";
 
 /**
@@ -846,6 +847,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       id: "commander",
       title: "AI 指挥台",
       node: <SimCommanderDock sessionId={sessionId} curTick={curTick} />,
+    },
+    {
+      // WO-ENTERPRISE-STATE · 企业状态快照（只读）。
+      //
+      // ⚠ **本行是 `EnterpriseStatePanel` 唯一的生产调用方**。沙盘右栏是手工组装的 rail 数组、
+      //    无自动扫描 —— 不加这一行，那个组件就是本仓 F2/F3/F4 连踩三次的
+      //    `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` 形态：实现有、测试绿、却没有任何路由渲染得到。
+      //
+      // 挂在沙盘（而不是新造一个导航组）是 PRD §0.06 裁定三的要求：沙盘复用既有模块，不做新页面。
+      // 世界固定为**真实世界**：右栏的推演会话是 tick 态（TickState），与企业状态快照不是同一个东西 ——
+      // 拿会话 id 当 worldId 传会得到"这个仿真世界还没有快照"的诚实空，反而让人以为面板坏了。
+      // 仿真世界的快照走 `POST …/fork`（另一张单的 UI），本面板只答"真实世界现在什么状态"。
+      id: "enterprise-state",
+      title: "企业状态快照",
+      node: <EnterpriseStatePanel />,
     },
   ];
 
