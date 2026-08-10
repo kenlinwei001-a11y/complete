@@ -707,14 +707,16 @@ export function ringArcPath(a0: number, a1: number, k: number): string {
   return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${(RING_LAYOUT.rx * k).toFixed(2)} ${(RING_LAYOUT.ry * k).toFixed(2)} 0 ${large} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
 }
 
-/**
- * 环上相邻两站的**最小欧氏间距**（用于「站圈不许叠在一起」的几何自证）。
- * 椭圆上最密的是短轴附近，故取 `2·ry·k·sin(π/total)` 作下界。
+/*
+ * `minStationGap(total, k)` —— 环上相邻两站最小欧氏间距（`2·ry·k·sin(π/total)`），
+ * **已于 WO-CHAIN-MAP-LAYOUT 删除**。它唯一的调用点在 `buildChainLineMap` 的
+ * 「环上最密处间距」那条诚实边界里；主干改横向布局后该判据换成了对 `METRO_LAYOUT.gapX`
+ * 的直接比较，这个函数就再没有调用点了。
+ *
+ * 不留成"以后可能有人用"的死代码：本仓的判据是**只有 test 引用 = 已排练不是已实现**，
+ * 零引用连排练都算不上。真要迁在途图层时，从 git 历史取回三行数学比读一段"看着在用"的
+ * 死导出便宜得多。（删除前已用金丝雀自证过 grep 没坏：`ringStationAnchors` 同法必中 3 个文件。）
  */
-export function minStationGap(total: number, k: number): number {
-  if (total <= 1) return Number.POSITIVE_INFINITY;
-  return 2 * RING_LAYOUT.ry * k * Math.sin(Math.PI / total);
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 5.2 · **环几何的对外单源**（WO-TRANSIT-GEOMETRY）
