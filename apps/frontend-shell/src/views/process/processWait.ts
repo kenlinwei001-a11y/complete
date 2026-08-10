@@ -17,7 +17,7 @@ import { zh } from "@/locales/zh";
  * | 层         | 链路节拍层（24 个冻结节点）           | 业务流程层（65 条流程·配置驱动）    |
  * | 数据来源   | 引擎求解器 `chain_impediments` 实时算 | `GET /a/v1/process-definitions` 配置 |
  * | 回答       | 哪里被卡住了、凭哪条规则说它被卡住    | 这条流程**在等哪一类东西、等谁**    |
- * | 时间口径   | 实测耗时 / 阈值                       | **标准工期**（非实测·见下诚实边界） |
+ * | 时间口径   | 引擎算出的耗时 / 阈值                 | **标准工期**（配置基线·见下诚实边界）|
  *
  * 两层的关系是契约里写死的（`packages/contracts/src/process.ts:74-75`）：
  * `WAITING_SCHEDULE` 与 `chain-sim.ts` 的 `expectedCadenceWaitDays = everyDays/2`
@@ -41,8 +41,9 @@ import { zh } from "@/locales/zh";
  *
  * ══ 诚实边界：本页**答不出**「此刻已经卡了多久」════════════════════════════════
  *
- * 那需要运行态 `ProcessTask.enteredAt`，而 `ProcessTask` / `ProcessInstance`
- * **全仓不存在**（`docs/PRD-enterprise-decision-twin.md §5` 的 E2 从未实现，实测 0 文件命中）。
+ * 那需要 `ProcessTask.enteredAt`，而 `ProcessTask` / `ProcessInstance` **全仓不存在**
+ * （2026-08-10 实测：`grep -rn 'ProcessTask\|ProcessInstance' apps packages --include=*.ts` 零命中；
+ *  `docs/PRD-enterprise-decision-twin.md §5` 的 E2 从未落地。复验照此命令重跑）。
  * 所以本页只给 `stdDurationDays`（**标准工期**）并逐处如实标注口径，
  * **绝不拿标准工期冒充「已卡 N 天」** —— 那正是本仓「拿一个看起来相关的数字冒充读数」的老病。
  */

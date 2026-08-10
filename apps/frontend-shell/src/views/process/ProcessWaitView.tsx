@@ -21,7 +21,9 @@ import styles from "./ProcessWaitView.module.css";
  *    「等待中」= 需求没做（需求原文：「5 个态混成一个字就等于没做」）。
  *  · **恒画四组**：某态 0 条也保留该组并写明「暂无此类等待」——否则「租户没有」
  *    与「前端漏画」在屏幕上长得一样，针对它的断言还会恒真（哑门）。
- *  · **诚实缺席**：只给标准工期，明写「不是已卡 N 天」；运行态 `ProcessTask` 未实现。
+ *  · **诚实缺席**：只给标准工期，明写「不是已卡 N 天」。运行态 `ProcessTask` 尚未实现
+ *    （2026-08-10 实测：`grep -rn 'ProcessTask\|ProcessInstance' apps packages --include=*.ts`
+ *     零命中；PRD-enterprise-decision-twin.md §5 的 E2 一行从未落地）。复验照此命令重跑即可。
  *  · **零硬编码颜色**：全部走 `styles/tokens.css` 的 `--c-*` 语义域色（三套皮自动跟随）。
  *  · **零硬编码文案**：全部走 `locales/zh.ts`。
  *
@@ -70,8 +72,11 @@ function WaitKindGroup({ g }: { g: WaitKindGroupVM }) {
           {style.mark}
         </span>
         <div className={styles.groupTitle}>
-          <h4 data-testid={`pw-label-${g.kind}`}>
-            {copy.label}
+          {/* ⚠ 标签文本单独挂 testid：若把它与下面的枚举名放在同一个节点上，
+              「四态标签两两不同」这条断言会被枚举名撑成恒真（四个态即使都叫「等待中」，
+              textContent 仍因 `WAITING_*` 后缀而互不相同）——变异反证当场抖出过这个哑门。 */}
+          <h4>
+            <span data-testid={`pw-label-${g.kind}`}>{copy.label}</span>
             <span className={styles.enum}>{g.kind}</span>
           </h4>
           {/* 「等谁」——本页的核心 answer，四态四句，绝不合并 */}
