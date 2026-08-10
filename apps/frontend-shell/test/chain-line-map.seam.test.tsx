@@ -917,7 +917,19 @@ describe("件三 · 悬浮层纪律：图上零 <title>，且可达性/测试都
       expect(g).toHaveAttribute("role", "img");
       const name = g.getAttribute("aria-label") ?? "";
       expect(name, `站 ${s.stepId} 的可达名丢了`).toContain(s.label);
-      expect(name, `站 ${s.stepId} 的可达名里没有读数`).toContain(formatPct(s.pctOfChainLoss));
+      // 读数必须与屏上那一行**同义**：增值段读「不进分母」，其余读百分比。
+      // 增值段若读成「占全链损失 —」，听起来是"取不到数"，而事实是"根本不进这个分母"——
+      // 屏上分得开、可达名却糊成一样，就是拿可达性换省事。
+      expect(name, `站 ${s.stepId} 的可达名里没有读数`).toContain(
+        s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss),
+      );
+    }
+    // 增值段逐个再咬一次：可达名里**不许**出现「占全链损失」这个措辞
+    const va = map.stations.filter((s) => s.valueAdd);
+    expect(va.length, "载荷里没有增值段 ⇒ 上面那条分支是恒真的废门").toBeGreaterThan(3);
+    for (const s of va) {
+      const name = screen.getByTestId(`clm-station-${s.stepId}`).getAttribute("aria-label") ?? "";
+      expect(name, `增值站 ${s.stepId} 的可达名把「不进分母」读成了「占全链损失 —」`).not.toContain("占全链损失");
     }
     for (const s of map.suspended) {
       const name = screen.getByTestId(`clm-suspended-${s.stepId}`).getAttribute("aria-label") ?? "";
