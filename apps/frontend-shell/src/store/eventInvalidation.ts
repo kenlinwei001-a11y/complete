@@ -88,10 +88,18 @@ export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow 
     "前端加 checkpoints useQuery（存档列表 / 从任意检查点回滚·分支）→ 本事件即可接 ['sim-checkpoints']。",
   // WO-P0 合入：sim.branched 已被 WO-L4B 真接线（见 EVENT_INVALIDATES），故不再是缺口，此处不重列。
   "sim.perturbation_created":
-    "无缓存消费方（WO-P0 · 2026-08-09 新增）：本单只到 API 封装层——endpoints.ts 有 " +
-    "createSimPerturbation/fetchSimPerturbations/deleteSimPerturbation，但**没有任何 useQuery 用它们**" +
-    "（扰动时间轴 UI 是另一张单）。此刻接线就是给一个不存在的缓存发失效 = 假接线（#90/#92 同族）。" +
-    "解法与上面同源：等扰动清单真进 TanStack Query 后，把本条从台账挪进 EVENT_INVALIDATES。",
+    "无缓存消费方（WO-P0 · 2026-08-09 立账 → WO-SIM-ACT-CLOSE · 2026-08-10 复核后缩窄）：" +
+    "**施加口已接线**——SandboxView 的「施加扰动」动作真调 createSimPerturbation（`onApplyPerturbation`），" +
+    "回包的世界态就地落屏，KPI 当场变；故 #150 的『扰动入口零调用方』这半已关。" +
+    "**仍是缺口的是读端**：endpoints.ts 的 fetchSimPerturbations/deleteSimPerturbation 至今" +
+    "**没有任何 useQuery 用它们**（扰动时间轴/清单 UI 是另一张单），所以本事件依旧没有缓存可失效，" +
+    "此刻接线就是给一个不存在的缓存发失效 = 假接线（#90/#92 同族）。" +
+    "复验命令（带 `(` 只数调用点，免得把本条散文自己数进去）：" +
+    "`grep -rn 'fetchSimPerturbations(' apps/frontend-shell/src | grep -v api/endpoints.ts` —— 期望零命中；" +
+    "对照组（证明该检索不是工具坏了）：把符号换成 `createSimPerturbation(` 跑同一条命令，" +
+    "会命中 views/sim/SandboxView.tsx。" +
+    "解法与上面同源：等扰动清单真进 TanStack Query（并在 agentcore event-subscriptions 同步登记）后，" +
+    "把本条从台账挪进 EVENT_INVALIDATES。",
 };
 
 /**
