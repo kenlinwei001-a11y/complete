@@ -753,7 +753,15 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   return (
     <div data-testid="sandbox-view" className={styles.head}>
       <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
-      {/* ══ 一次只渲染一个模式（判据是**不在 DOM**，不是 hidden）══════════════════ */}
+      {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
+          判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，
+          不是「都挂上再藏一个」。`hidden` 只让人看不见：DOM 还在、请求照发、
+          读屏器照读、页面照样越来越挤（变异 A2 亲手证过这一改测试就红）。
+
+          ⚠ 下面 `<SandboxConsole>` 那一整块**故意没有跟着多缩进一层**：
+          它一行内容都没改，只是被包进了条件分支。重新缩进 130 行会让 diff 从
+          「加了个壳」变成「整块重写」，与并行的其它前端单撞车面积成倍放大。
+          这是刻意的取舍，不是漏改格式。 */}
       {mode !== "now" ? <SandboxModePane mode={mode} /> : null}
       {mode !== "now" ? null : (
       <SandboxConsole
