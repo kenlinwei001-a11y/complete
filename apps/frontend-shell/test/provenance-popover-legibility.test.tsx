@@ -429,7 +429,13 @@ function tooltipOpeningTags(src: string): string[] {
       }
     }
     out.push(src.slice(start, end + 1));
-    idx = src.indexOf(MARK, end + 1);
+    // ⚠ `end` 可能落在 `idx` **之前**：当 `role="tooltip"` 出现在 JSDoc 注释里时（`InfoPopover.tsx:33`
+    //   的规格说明就是一例），向前找最近 `<` 会走进注释里的 `<title>`，其 `>` 远在标记之前 ⇒
+    //   `indexOf(MARK, end + 1)` 反复命中**同一个** idx，`out` 无限增长直到 `RangeError: Invalid array length`。
+    //   这不是断言失败，是扫描器自己不收敛 —— 表现为整份测试文件炸掉，看上去像"浮层测试挂了"。
+    //   修法只保证**前进**，不改判据：注释里那一处照样被访问一次（切出的片段不含 `title=` 属性、自然通过），
+    //   真正的 JSX（`:101`）随后照常被检查 —— 变异反证已证明它仍然有牙。
+    idx = src.indexOf(MARK, Math.max(end + 1, idx + MARK.length));
   }
   return out;
 }
