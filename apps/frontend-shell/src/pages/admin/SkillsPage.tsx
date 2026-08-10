@@ -37,7 +37,17 @@ export default function SkillsPage() {
    * `retry: false` 是刻意的：这道位的价值全在"说真话"，请求失败就该**整块不渲染**
    * （见 `SkillSeedGateStrip`），而不是反复重试后拿一个陈旧值糊上去。
    */
-  const { data: seedGate } = useQuery({ queryKey: ["b", "ops", "skill-seed-gate"], queryFn: fetchSkillSeedGate, retry: false });
+  const { data: seedGate } = useQuery({ queryKey: ["b", "ops", "skill-seed-gate"], queryFn: () => fetchSkillSeedGate(), retry: false });
+  /**
+   * 显式手动刷新（WO-SEEDGATE-FRESHNESS 缺陷 A）：后端按请求现算但带 TTL 缓存，
+   * 单纯 invalidate 只会在 TTL 内拿回同一份快照。运维刚修好上游要能**立刻**验证，
+   * 故走 `?refresh=1` 跳过 TTL，再把新结论写回 query 缓存。
+   */
+  const refreshSeedGate = useMutation({
+    mutationFn: () => fetchSkillSeedGate({ refresh: true }),
+    onSuccess: (r) => queryClient.setQueryData(["b", "ops", "skill-seed-gate"], r),
+    onError: toastError,
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = skills?.find((s) => s.id === selectedId) ?? null;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "skills"] });
@@ -57,7 +67,7 @@ export default function SkillsPage() {
         </button>
       </div>
       {/* 出厂技能门审计诚实位：与选中哪条技能无关，故在列表之上、页级展示。 */}
-      <SkillSeedGateStrip report={seedGate} />
+      <SkillSeedGateStrip report={seedGate} onRefresh={() => refreshSeedGate.mutate()} refreshing={refreshSeedGate.isPending} />
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(skills ?? []).map((s) => (
