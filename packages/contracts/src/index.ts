@@ -72,3 +72,4 @@ export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层�
 export * from "./procurement.js"; // WO-SANDBOX-D2 · 采购段凭证契约（四段按责任方可分解：供应商生产/在途/清关/到货检验 · MOQ/准时率接线 · 三态 MEASURED|NOT_APPLICABLE|EMPTY 禁假默认值 · totalDays 硬绑四段之和）
 export * from "./skill-graph.js"; // WO-SKILL-ORCHESTRATOR-S1 · Skill Graph（Reasoning Graph）契约 + 拓扑分层/环检测编译器（PRD-skill-runtime-orchestrator §3.1/§3.2/§3.4）
 export * from "./process.js"; // WO-Q0 · 业务流程层（13 域 × 65 流程）：ProcessDomain/ProcessDefinition 走数据层，与冻结的 CHAIN_NODE_REGISTRY 分层；waitKind 四值单源（REQ057 减 WAITING_APPROVAL·仓主已裁审批不做）；每条 P## 必须有承载物 carrierTypeKey
+export * from "./enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3 五张 MVP 表之一）：capturedAt 为**逻辑时钟**非 wall-clock · worldId 真实/仿真物理隔离（§4.1）· 捕获核 captureEnterpriseState 为纯函数且 datacore 与前端 mock **共用同一份**（治「mock 与引擎口径分家」）
