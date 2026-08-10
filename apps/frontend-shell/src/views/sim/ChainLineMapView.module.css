@@ -139,10 +139,19 @@
   }
 }
 
+/* 画布是一块**有界的视窗**，不是"跟着图一起长高的容器"。
+   为什么必须钉住高度（2026-08-10 真浏览器 CDP 实测）：`.stage` 那张 SVG 的
+   `width/height` 是**未缩放**的图尺寸（1534×1008），`transform: scale()` 不参与布局 ⇒
+   高度自动时画布会被撑到 1008px，**比屏上看得见的区域还高**。后果有两个，都很实：
+     ① 「适应画布」量到的是那个撑高之后的盒子 ⇒ 算出来的缩放"适应"了一块你根本看不全的地方，
+        图的下半截落在折叠线以下，得先滚页面再平移，等于 fit 按钮说了假话；
+     ② 画布利用率被稀释（实测 65%），也就是仓主点名的「大面积空白」换个方向复发。
+   钉住之后实测利用率 96%（复验：`node scripts/zz-shot-chain-line-map.mjs` 的「画布利用率(fit)」）。 */
 .canvas {
   position: relative;
   overflow: hidden;
   min-height: 420px;
+  height: clamp(420px, 58vh, 640px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
