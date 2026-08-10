@@ -32,6 +32,33 @@ import {
   type IterationFrame,
 } from "./context.js";
 
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 把归属实参投影成 `AgentRunRecord` 的归属字段（**全仓唯一一处**）。
+ *
+ * 三条不许破的规矩，全部落在这一个函数里（所以只可能对或只可能全错，不会半对）：
+ *  ① 不传 `attribution` → 返回 `{}`：一个归属字段都不写。旧记录长什么样，它就长什么样
+ *     （"未知"必须可与"确知没有"区分 —— 那是「我没找到 ≠ 它不存在」在数据层的落法）。
+ *  ② 传了但没有 `agentId` → `attribution: "EXPLORATORY"`，且 `agentId/agentKey/agentVersion`
+ *     **一个都不填**。这是**正面声明**"本次真的没有 Agent 定义"，不是缺数据。
+ *  ③ 传了且有 `agentId` → `REGISTERED`，三件套齐上。
+ * `createdAt` 无条件跟随归属一起写（此前 run 记录没有任何时间字段，列表只能靠 id 前缀猜时间）。
+ */
+export function attributionFields(a: AgentRunAttributionInput | undefined): Partial<AgentRunRecord> {
+  if (!a) return {};
+  return {
+    ...(a.tenantId ? { tenantId: a.tenantId } : {}),
+    ...(a.agentId
+      ? {
+          agentId: a.agentId,
+          ...(a.agentKey ? { agentKey: a.agentKey } : {}),
+          ...(a.agentVersion !== undefined ? { agentVersion: a.agentVersion } : {}),
+          attribution: "REGISTERED" as const,
+        }
+      : { attribution: "EXPLORATORY" as const }),
+    createdAt: new Date().toISOString(),
+  };
+}
+
 /** final_answer input schema (QOS-PRD §5.4-5, strict zod validation). */
 const FinalAnswerSchema = z
   .object({
@@ -50,11 +77,31 @@ export interface AgentToolSpec {
     | { kind: "LOCAL" }; // final_answer / load_skill — handled inside the loop
 }
 
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 归属实参（**调用方是唯一知情人**）。
+ *
+ * 为什么放在 loop 里回填、而不是各 `agentRuns.insert` 点各自 spread 一份：
+ * insert 点有三处（`orchestrator.ts` 2075/2364/2614），各填各的必然漂 —— 而且其中一处
+ * （runPathB）根本没有 AgentDefinition 可填，写在那里只会诱使人"就近找个 id 塞进去"。
+ * 归属与运行数据在这里**同一次构造**（`finishRun`），要么一起有要么一起没有。
+ *
+ * `agentId` 有值 ⇒ `REGISTERED`；无值 ⇒ `EXPLORATORY`（正面声明"本次真的没有 Agent 定义"）。
+ * **整个 `attribution` 不传 ⇒ 记录上一个归属字段都不写**（未知，不冒充 EXPLORATORY）。
+ */
+export interface AgentRunAttributionInput {
+  tenantId?: string;
+  agentId?: string;
+  agentKey?: string;
+  agentVersion?: number;
+}
+
 export interface AgentLoopOpts {
   taskId: string;
   model: string;
   /** Tenant scope for multi-provider model resolution (RoutingLlmClient). */
   tenantId?: string;
+  /** WO-AGENTRUN-ATTRIBUTION（additive·可选）：本次运行归属到哪个 Agent 定义（不传 = 不写归属字段）。 */
+  attribution?: AgentRunAttributionInput;
   system: string;
   userContent: string;
   tools: AgentToolSpec[]; // must NOT include final_answer/load_skill (added by the loop)
@@ -421,6 +468,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     totalInputTokens: totalInput,
     totalOutputTokens: totalOutput,
     ...(budgeter.ops.length > 0 ? { contextOps: [...budgeter.ops] } : {}),
+    // WO-AGENTRUN-ATTRIBUTION · 归属与运行数据同源同一次构造（全仓唯一回填点）。
+    ...attributionFields(opts.attribution),
   });
 
   /**

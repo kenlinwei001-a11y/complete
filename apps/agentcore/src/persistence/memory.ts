@@ -184,6 +184,15 @@ export function createMemoryRepos(): Repos {
       async getByTask(taskId) {
         return clone(agentRuns.get(taskId));
       },
+      // WO-AGENTRUN-ATTRIBUTION：与 pg 同语义 —— 两个条件都必须真值命中（`undefined === undefined`
+      // 那种"空对空"的误命中会让归属前的旧记录挂到随便哪个 agent 名下，故先要求字段非空）。
+      // 倒序用 createdAt；旧记录无该字段 → 回落 run id（ULID-ish 前 10 位是毫秒时间戳，仍是时序）。
+      async listByAgent(tenantId, agentKey) {
+        return [...agentRuns.values()]
+          .filter((r) => !!r.agentKey && r.agentKey === agentKey && !!r.tenantId && r.tenantId === tenantId)
+          .sort((a, b) => (b.createdAt ?? b.id).localeCompare(a.createdAt ?? a.id))
+          .map(clone);
+      },
     },
     fallbackTraces: {
       async insert(t) {

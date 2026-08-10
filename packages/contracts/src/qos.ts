@@ -708,6 +708,21 @@ export const ContextOpSchema = z.object({
 });
 export type ContextOp = z.infer<typeof ContextOpSchema>;
 
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 一次运行的**归属形态**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属那一半）。
+ *
+ * 三态而不是布尔 —— 因为「无 agentId」有**两个成因完全不同**的来源，混成一个就会说假话：
+ * - `REGISTERED`  ：引擎真解析了一个 `AgentDefinition`（`engine.runRegisteredAgent` → `resolveAgent`），
+ *                   `agentId`/`agentKey`/`agentVersion` 必然同时有值。**这是「这个 Agent 的运行」的唯一凭据。**
+ * - `EXPLORATORY` ：通用探索路（`router/orchestrator.ts runPathB`）——工具集由 package 白名单 ∩ {READ,COMPUTE}
+ *                   现算，**全程不存在 AgentDefinition**。所以它不是"忘了填"，而是"真的没有归属对象"，
+ *                   引擎在此**正面声明**这一点，界面才能把它和下面那种分开说。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。无从判定，只能标"未知"——
+ *                   绝不许把它当成 `EXPLORATORY` 混进去（那是拿"我没找到"冒充"它不存在"）。
+ */
+export const AgentRunAttributionSchema = z.enum(["REGISTERED", "EXPLORATORY"]);
+export type AgentRunAttribution = z.infer<typeof AgentRunAttributionSchema>;
+
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
@@ -719,6 +734,25 @@ export const AgentRunRecordSchema = z.object({
   totalOutputTokens: z.number(),
   /** Agent 运行时增量 §1.3（additive）：上下文清理操作记录 */
   contextOps: z.array(ContextOpSchema).optional(),
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-ATTRIBUTION（additive · 全部 optional · 可回退）
+  // 旧洞：run 记录只有 `taskId`，于是「这个 Agent 跑过几次」在全仓不可得 —— Agent 管理台只能显示
+  // 「本租户 AGENT 路径的全部运行」，把租户级数据当成单 Agent 数据是不许的，只能挂常驻诚实横幅。
+  // 现在归属在**引擎侧单点回填**（`agent/loop.ts finishRun`，而非各 insert 点各填各的），
+  // 保证「谁跑的」与「跑出了什么」同源同一次写入，不会漂。
+  // -------------------------------------------------------------------------
+  /** 租户隔离（tenant_id everywhere）：让 `listByAgent` 不必回表 join task 就能按租户过滤。 */
+  tenantId: z.string().optional(),
+  /** 归属到的 AgentDefinition 主键（**版本级**：`agt_` 一版一条）。仅 REGISTERED 有值。 */
+  agentId: z.string().optional(),
+  /** 归属到的 Agent 逻辑键（跨版本稳定）——「这个 Agent 的历次运行」按它聚合。仅 REGISTERED 有值。 */
+  agentKey: z.string().optional(),
+  /** 本次实际执行的 Agent 版本号（同 key 换版后仍能分辨是哪版跑的）。仅 REGISTERED 有值。 */
+  agentVersion: z.number().int().optional(),
+  /** 归属形态；缺失 = 本字段上线前的旧记录（未知，不等于 EXPLORATORY）。 */
+  attribution: AgentRunAttributionSchema.optional(),
+  /** 运行落库时刻（列表按它倒序；此前 run 记录**没有任何时间字段**，只能靠 taskId 猜）。 */
+  createdAt: IsoTime.optional(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecordSchema>;
 

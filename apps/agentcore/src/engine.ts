@@ -1,5 +1,5 @@
 import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
-import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
+import { attributionFields, runAgentLoop, type AgentLoopResult, type AgentRunAttributionInput, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "./agent/ontology-context.js";
@@ -158,7 +158,14 @@ function ruleViolationAnswer(verdicts: RuleVerdict[]): Answer {
   };
 }
 
-function emptyAgentRunRecord(taskId: string, model: string, budget: BudgetTracker): AgentRunRecord {
+function emptyAgentRunRecord(
+  taskId: string,
+  model: string,
+  budget: BudgetTracker,
+  // WO-AGENTRUN-ATTRIBUTION：规则预检 BLOCK 的早退出口也是**这个 agent 的**一次运行（零迭代但确有归属），
+  // 归属经同一个 `attributionFields` 投影 —— 不许在这里另抄一份字段拼装（抄了就会与 finishRun 漂）。
+  attribution?: AgentRunAttributionInput,
+): AgentRunRecord {
   return {
     id: newId("run"),
     taskId,
@@ -168,6 +175,7 @@ function emptyAgentRunRecord(taskId: string, model: string, budget: BudgetTracke
     budgetExhausted: false,
     totalInputTokens: 0,
     totalOutputTokens: 0,
+    ...attributionFields(attribution),
   };
 }
 
@@ -346,6 +354,16 @@ export class ExecutionEngine {
     // §2.2 留痕：实际执行的 agent 版本
     opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
 
+    // WO-AGENTRUN-ATTRIBUTION · 归属取自**刚刚真解析出来的这一版** agent（`resolveAgent` 已按 latest/固定版落定），
+    // 不是调用方传进来的 `opts.agentId`——后者可能是 key/latest 之类的间接说法，拿它当归属就会把
+    // 「跑的是 v3」记成「跑的是 latest」，换版之后再也对不上。同一份 agent 也用于 tenantId（越租户绝不混）。
+    const attribution: AgentRunAttributionInput = {
+      tenantId: agent.tenantId,
+      agentId: agent.id,
+      agentKey: agent.key,
+      agentVersion: agent.version,
+    };
+
     const skills = [];
     for (const s of agent.skills) {
       // §2.1：skill 引用缺省 latest（执行时解析）；§2.2：留痕含 skill 版本（L8）
@@ -374,7 +392,7 @@ export class ExecutionEngine {
           return {
             outcome: "ANSWERED",
             answer: ruleViolationAnswer(verdicts),
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget),
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution),
             sketch: [],
           };
         }
@@ -438,6 +456,7 @@ export class ExecutionEngine {
       taskId: opts.taskId,
       model,
       tenantId: agent.tenantId,
+      attribution, // WO-AGENTRUN-ATTRIBUTION：注册 agent 路 ⇒ REGISTERED（agentId/Key/Version 三件套齐）
       system,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),

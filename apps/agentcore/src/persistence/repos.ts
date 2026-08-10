@@ -187,6 +187,13 @@ export interface Repos {
   agentRuns: {
     insert(r: AgentRunRecord): Promise<void>;
     getByTask(taskId: string): Promise<AgentRunRecord | undefined>;
+    /**
+     * WO-AGENTRUN-ATTRIBUTION：某个 Agent 的历次运行（**跨版本**按 `agentKey` 聚合，倒序）。
+     * 按 key 而不是 id：`agt_` 是**版本级**主键，按 id 查只能看到某一版跑过几次，
+     * 而管理台问的是「这个 Agent 跑过几次」——换版之后按 id 查会当场归零。
+     * `tenantId` 是硬过滤（tenant_id everywhere），不靠"agentKey 大概率不重"这种默契。
+     */
+    listByAgent(tenantId: string, agentKey: string): Promise<AgentRunRecord[]>;
   };
   evalCases: {
     upsert(c: EvalCase): Promise<void>;

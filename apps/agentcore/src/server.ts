@@ -655,6 +655,43 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { ...agent, versions };
   });
 
+  /**
+   * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属半边）。
+   *
+   * 此前 `AgentRunRecord` 只有 `taskId`，「这个 Agent 跑过几次」在全仓不可得 —— 管理台只能显示
+   * 「本租户 AGENT 路径的全部运行」并常驻一条诚实横幅。现在归属由引擎在 `agent/loop.ts finishRun`
+   * 单点回填（注册 agent 路 ⇒ REGISTERED；通用探索路 ⇒ 正面记 EXPLORATORY），本端点是它的读投影。
+   *
+   * **按 key 而非按 id 聚合**：`agt_` 是版本级主键，按 id 查在换版当天就归零；管理台问的是
+   * 「这个 Agent」。入参仍收 id（那是前端手上有的东西），服务端先解析成 agent 再取它的 key。
+   *
+   * **租户隔离两道**：① agent 必须属于本租户（否则 404 AGENT_NOT_FOUND，与「不存在」同码，不泄漏存在性）；
+   * ② `listByAgent` 再按 `tenantId` 硬过滤 —— 不靠「key 大概率不撞」这种默契。
+   *
+   * **诚实边界（必须与前端对齐，别在界面上补一个后端没有的语义）**：
+   *  - 空数组是**常态**而非故障。未绑 LLM provider 时 `completeNoLlmDegradation`
+   *    （`router/orchestrator.ts:2657`）把 task 标成 `path=AGENT` + `COMPLETED` 却**从不写 run**，
+   *    这类环境下任何 agent 的运行数都是 0。前端不许把它画成"加载失败"。
+   *  - 本端点**只**回归属得上的那些。通用探索路的运行（`attribution:"EXPLORATORY"`）与归属上线前的
+   *    旧记录（无归属字段）**一条都不会出现在这里** —— 它们的存在必须由前端另行诚实交代，
+   *    不许因为"这个列表干净了"就当它们不存在。
+   *  - Coordinator 扇出的子 agent 运行今天**根本没落库**（`agentRuns` 以 taskId 为唯一键，
+   *    一个 task 只存得下一条 run；三处 insert 点均在编排层顶层）——故本列表天然不含它们。
+   */
+  app.get("/b/v1/agents/:id/runs", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const runs = await deps.repos.agentRuns.listByAgent(a.tenantId, agent.key);
+    return {
+      agentId: agent.id,
+      agentKey: agent.key,
+      // 逐条过 schema：真后端下发的形状 = 契约形状（前端 mock 也照这个 schema 对，形状漂了当场红）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
+  });
+
   app.post("/b/v1/agents", async (req, reply) => {
     const a = await auth(req);
     requireCatalogAdmin(a);

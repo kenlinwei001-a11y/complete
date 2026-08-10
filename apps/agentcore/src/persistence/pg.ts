@@ -265,16 +265,40 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       },
     },
     agentRuns: {
+      // WO-AGENTRUN-ATTRIBUTION（migrations/012）：归属**同时**落 JSONB（真值单一来源，读回即完整记录）
+      // 与四个投影列（供 WHERE/ORDER BY 走索引）。冲突分支同样更新投影列 —— 只更 record 不更列，
+      // 就会出现「JSON 里改了归属、列还留着上一版」这种两份真值打架的经典坑。
       async insert(rec: AgentRunRecord) {
         await q(
-          `INSERT INTO agent_runs(id, task_id, record) VALUES ($1,$2,$3)
-           ON CONFLICT (task_id) DO UPDATE SET record = $3`,
-          [rec.id, rec.taskId, JSON.stringify(rec)],
+          `INSERT INTO agent_runs(id, task_id, record, tenant_id, agent_id, agent_key, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (task_id) DO UPDATE SET
+             record = $3, tenant_id = $4, agent_id = $5, agent_key = $6, created_at = $7`,
+          [
+            rec.id,
+            rec.taskId,
+            JSON.stringify(rec),
+            rec.tenantId ?? null,
+            rec.agentId ?? null,
+            rec.agentKey ?? null,
+            rec.createdAt ?? null,
+          ],
         );
       },
       async getByTask(taskId) {
         const r = await q(`SELECT record FROM agent_runs WHERE task_id = $1`, [taskId]);
         return r.rows[0]?.record as AgentRunRecord | undefined;
+      },
+      async listByAgent(tenantId, agentKey) {
+        // NULL 列不会等于任何值 ⇒ 归属上线前的旧记录天然被排除（与 memory 侧「字段非空」同语义）。
+        // created_at 可能为 NULL（旧记录），故次序回落 id：ULID-ish 前 10 位是毫秒时间戳，仍是时序。
+        const r = await q(
+          `SELECT record FROM agent_runs
+            WHERE tenant_id = $1 AND agent_key = $2
+            ORDER BY created_at DESC NULLS LAST, id DESC`,
+          [tenantId, agentKey],
+        );
+        return r.rows.map((x) => x.record as AgentRunRecord);
       },
     },
     fallbackTraces: {

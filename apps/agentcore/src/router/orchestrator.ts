@@ -2003,6 +2003,12 @@ export class Orchestrator {
       taskId,
       model,
       tenantId: task.tenantId,
+      // WO-AGENTRUN-ATTRIBUTION · 通用探索路：**这里没有 AgentDefinition 可归属，而且这不是缺陷** ——
+      // 工具集是 `pkg.toolWhitelist ∩ {READ,COMPUTE}` 当场算出来的（见上方 tools 构造），
+      // 全程没有任何一版 agent 参与。所以传 `{ tenantId }` 而**不传 agentId**：
+      // 引擎据此正面记 `attribution: "EXPLORATORY"`，让「确知没有归属对象」与「上线前的旧记录」
+      // 在数据层就分得开。⛔ 绝不许为了让界面好看而在这里就近塞一个 agentId。
+      attribution: { tenantId: task.tenantId },
       system: systemWithSkills,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
