@@ -140,3 +140,45 @@ PRD `docs/PRD-enterprise-decision-twin.md:357` 一句话总结，与本次盘点
 2. **世界隔离**：`worldId` 映射到 `SimSession.id`（栈 A 的世界）。世界必须存在且同租户，否则 404 —— 这一条是 PRD §2.1「whatif 没有 world_id」缺口的直接落点。
 3. **诚实标记**：`affectedProcesses` 带 `instanceLevel:{available:false, reason}`；`affectedDecisions` 带 `universe`（台账总数）。绝不用裸 `0`。
 4. **不改存量**：不动 `recompute` 数学、不动 `inference/whatif`、不动 `propagateTick`。新端点是**第四个出口**，与 B/C 平行。
+
+---
+
+## 5 · 亲手真跑（绿测试 ≠ 能用）
+
+`pnpm --filter datacore build` → `PORT=4055 SEED_DEMO=1 node apps/datacore/dist/server.js`（真 demo 种子，非测试夹具）。
+
+| # | 动作 | 实测结果 |
+|---|---|---|
+| 1 | 开 `sim.sandbox` → `POST /a/v1/sim/sessions` | 建世界 `sims_dv7fh0hcn6br132b` |
+| 2 | `POST /a/v1/simulation/impact-analysis`（空世界 · 未编译派生规格） | `derivationSpecCount:0` + `worldOverlayApplied:0` + 4 条 warning。**四维全 0 但全部带解释**，无一处裸 0 |
+| 3 | 真 universe 数字 | `affectedObjects.universe=11320` · `affectedProcesses.universe=65` · `affectedKpis.universe=10` · `affectedDecisions.universe=0` |
+| 4 | `POST /a/v1/ontology/derivation-specs/compile`（真端点，编 `Metric.delta = this.actual - this.target`） | 201，`deps=[Metric.actual, Metric.target]` |
+| 5 | 真变更：储能达成率 `obj_metric_kpi-seg-ess.actual` 72.2 → 40 | `delta` −27.8 → **−60**；`breach:"BREACHED"`（40 < floor 95）；命中 **P63「经营指标越线监控」**（`carrierTypeKey=Metric`，来自 65 条真种子）；`observedOldValue:72.2` 与声明的 `oldValue` 一致 ⇒ `oldValueMismatch:false` |
+| 6 | **世界隔离真跑**：第二个世界把该指标 `target` 覆盖成 50，打同一处变更 | `worldOverlayApplied:1`，`delta` after = **−10**（而世界一是 −60）⇒ 同一变更、两个世界、两个答案 |
+| 7 | R2：`otherco` 拿 demo 的 `worldId` | `404 {"error":{"code":"NOT_FOUND","message":"sim world not found","requestId":"req_…"}}` |
+| 8 | R3：未开 entitlement 的租户 | `404 {"error":{"code":"FEATURE_NOT_FOUND",…}}` |
+
+### 5.1 🔴 真跑抖出的一条实测事实：**demo 开箱 `derivationSpecs` 恒 0**
+
+`derivationSpecs` 表的**唯一写入方**是 `POST /a/v1/ontology/derivation-specs/compile`
+（`app.ts` 内 `ontologyCore.compileSpecs`）——**任何 seed 都不写它**
+（`solvers/service.ts:796` 的注释早就写着「demo 未编译 capacity 派生 spec」）。
+
+⇒ 开箱即用的 demo 上，本端点的传播闭包**必然为空**。照铁律 0.5 的三分法，这是
+**「接了线没数据」**，不是「没接线」——修法是补数据（编规格），不是改代码。
+端点已如实报 `derivationSpecCount:0` + warning「四维的 0 是『算不了』而非『没影响』」，
+编一条规格后同一端点立刻产真传播（上表第 4–5 行）。
+
+### 5.2 变异反证（证明接缝测试咬的是链路不是函数）
+
+把 `impact-analysis.ts` 的 `apply: [...overlay, change]` 改成 `apply: [change]`（丢掉世界覆盖层）后重跑：
+
+```
+Tests  1 failed | 13 passed (14)
+FAIL … 🔴 同一变更 · 两个只差世界态的世界 → 一个打穿 KPI 底线、另一个安全
+```
+
+**只有头号接缝用例变红，其余 13 条全绿。** 这同时证明两件事：
+① 那条断言真的咬住了「栈 B 跑在栈 A 的世界里」这条缝；
+② 其余 13 条咬的是别的东西（各半的行为），**单靠它们发现不了接缝断裂** ——
+这正是「各半绿、缝上不通」那类假绿的形态。
