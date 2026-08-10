@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-09",
+  "generatedAt": "2026-08-10",
   "ontology": {
     "invariants": [
       "R1",
@@ -145,7 +145,8 @@
         "apps/agentcore/test/skill-orchestrator.seam.test.ts",
         "packages/contracts/src/sim.ts",
         "scripts/check-debattery.mjs",
-        "scripts/check-req-coverage.mjs"
+        "scripts/check-req-coverage.mjs",
+        "scripts/check-verdict-rollup.mjs"
       ],
       "brokenArtifacts": []
     },
@@ -2837,6 +2838,9 @@
       "PRD-UPGRADE-decision-sandbox-v2.md"
     ],
     "scripts/check-req-coverage.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "scripts/check-verdict-rollup.mjs": [
       "PRD-UPGRADE-decision-sandbox-v2.md"
     ],
     "apps/datacore/src/solvers/base-outlook.ts": [
