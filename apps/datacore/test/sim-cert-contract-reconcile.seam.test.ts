@@ -9,21 +9,22 @@
  *    `firedPropagationRuleKeys` 只数真产出贡献的规则 key。
  * ⇒ 合成结论：两个数**性质不同、不可相加**，旧字段 `rulesFired = 规模 + 触发` 量纲不成立。
  *
- * ── 四条判据 × 变异反证（破哪一处 → 哪一条红；必须**可分辨**，不许齐红）────────
- *  ① 切 LOCAL 时引擎**真的只算局部**（#129/#130 · `G-SIM-SCOPE-UNREAD`）
- *     变异：`sim/propagation.ts scopePropagationGraph` 的 LOCAL 分支改成原样返回
- *           ⇒ ① 红（LOCAL 的传导计数会与 GLOBAL 相同），②③④ 仍绿。
- *  ② 传导相**真的跑**，且能报出 declared vs fired 的差
- *     变异：`app.ts` Trial Tick 的 `propagationRulesFired` 改回硬写 `0`
- *           ⇒ ② 红（fired 恒 0 而 declared>0，且病样 gap 会误报），①③ 仍绿。
- *     变异：删掉 `certification.ts` 的 `PROPAGATION_ALL_SILENT` 分支
- *           ⇒ ②c 红（病样不再看得见），其余绿。
- *  ③ 派生那个数**名副其实**（叫规模就是规模，不许拿它冒充触发数）
- *     变异：`app.ts` 把 `derivationNodes` 换成任何「触发数」语义的值（如 `updatedObjects`）
- *           ⇒ ③ 红（它会随"有没有变更集"而变，而规模不该变），①②④ 仍绿。
- *  ④ 图/规则参数/节拍闸门只有**唯一装配处** `buildPropagationInputs`，tick 路与认证路同源
- *     变异：让认证路绕开该函数自己装配（漏 ruleParams 或漏 cadenceGates）
- *           ⇒ ④ 红（挂闸门那条 / 系数走 ref 那条会在认证路"消失"），①②③ 仍绿。
+ * ── 四条判据 × 变异反证（**已逐条实跑**，下表是实测结果不是设想）──────────────
+ * 判据是「破哪一处 → 哪一条红」**可分辨**：五次变异各有不同的红名单，据此能指认病灶。
+ *
+ *  | 变异 | 注入点 | 实测红 | 实测绿 |
+ *  |---|---|---|---|
+ *  | M1 | `propagation.ts scopePropagationGraph` 开头直接 `return {graph,…}`（LOCAL 不裁） | ①×2 | ②③④ 全绿 |
+ *  | M2 | `app.ts` Trial Tick 的 `propagationRulesFired` 硬写 `0` | ①×2 · ②a · ④ | ③ 全绿 · ②b②c 绿 |
+ *  | M3 | `app.ts` 把 `derivationNodes` 换成 `rc.updatedObjects`（拿触发数冒充规模） | ③端到端 ×1 | ①②④ 全绿 |
+ *  | M4a/b | 认证路绕开唯一装配处（分别漏 `ruleParams` / 漏 `cadenceGates`） | ④效果 ×1 | ①②③ 全绿 |
+ *  | M4c | 在 `app.ts` 里再装配一遍（`buildCadenceGates(`） | ④结构 | 其余绿 |
+ *  | M5 | 关掉 `certification.ts` 的 `PROPAGATION_ALL_SILENT` 分支 | ②c ×1 | ①③④ 全绿 |
+ *
+ * ⚠ M2 会连带 ① 与 ④ 一起红，这是**诚实的耦合**不是判据没做好：① 与 ④ 都只能**透过**传导计数
+ *   去观测（范围裁没裁、入参装没装，最终都体现为"这条规则触没触发"）。把一个计数钉死在 0，
+ *   等于把这三条的观测窗口一起蒙上 —— 此时红名单仍与 M1/M3/M4/M5 各不相同，可分辨性成立。
+ *   （③ 已刻意与传导计数解耦：M2 下 ③ 三例全绿，故"派生口径坏了"与"传导计数坏了"分得开。）
  *
  * ⚠ 判据一律是**效果层**：比的是端点真回出来的数，不是「某个函数被调用了」——
  *   函数可以调用了却原样返回（本仓 `scopePropagationGraph` 就有这个形态）。
@@ -244,15 +245,14 @@ describe("WO-CERT-CONTRACT-RECONCILE ③ 派生那个数名副其实（规模 �
       { specKey: "a_twice", targetType: "TypeA", targetProp: "twice", formula: "this.qty * 2" },
     ]);
 
-    // 两次认证：源态一次有料（传导真触发）、一次全 0（传导全哑火）。
+    // 两次认证：源态一次有料、一次全 0 —— 世界的"活跃度"截然不同。
     const live = await certify(t, TEN, "scope=GLOBAL");
     const dead = await certify(t, TEN, "scope=GLOBAL", { a1: { flow: 0 }, b1: { flow: 0, load: 0 }, c1: { load: 0 } });
 
-    // 传导那个数**变了**（它是触发数）……
-    expect(live.trialTick.propagationRulesFired).toBe(2);
-    expect(dead.trialTick.propagationRulesFired).toBe(0);
-    // ……而派生那个数**没变**（它是规模）。两者性质不同，这一对断言就是"不可相加"的证据。
-    expect(live.trialTick.derivationNodes).toBe(1);
+    // 判据只咬**派生那一个数**：它是规模 ⇒ 世界活跃与否都不该动它。
+    // ⚠ 本例**刻意不断言传导计数**（那是 ②b 的活）——两条判据共用一个观测量的话，
+    //   变异反证就分辨不出"是派生口径坏了"还是"是传导计数坏了"。判据要能各自指认病灶。
+    expect(live.trialTick.derivationNodes).toBe(1); // 本租户恰有 1 条 ACTIVE 派生规格
     expect(dead.trialTick.derivationNodes).toBe(1);
     expect(live.trialTick.derivationNodes).toBe(dead.trialTick.derivationNodes);
   });
