@@ -64,7 +64,7 @@ Agent 唯一无可替代的三件事，都是确定性层**结构上**做不到�
 1. **拼**：没有单一对口 solver 时，把问题拆成"哪几个 solver、按什么顺序、上一个的输出怎么喂下一个"。
    确定性层今天只能拼**已登记 args schema 且静态可填**的 solver（`compileSolverPlan`），拼不出来就整体放弃。
 2. **补证据**：证据不足时**自己去造证据**再推演——`fill_data` / `run_synthetic` / `build_domain`
-   三把合规工具已经注册好了（`apps/agentcore/src/tools/registry.ts:295/311/328`），
+   三把合规工具已经注册好了（`apps/agentcore/src/tools/registry.ts:295/312/329`），
    但**从来没有一次真实运行用过它们**（§7-U3）。这是今天离"多推演一步"最近的一块。
 3. **把数字变成决断**：solver 给的是 `totalGap=27.8%`；用户要的是"先动哪一步、动多少、谁批"。
    五段决策结构（结论/分析/证据/建议/风险）＋ `create_action_draft` 已在提示词里
@@ -175,7 +175,7 @@ off qos.llm-budget-enforce      ← 唯一刻意不点（理由见 datacore/src/
 
 `navigation-slice.ts:23` 自己写明了这一层的性质：「输出形状**镜像** DataCore `SOLVER_OUTPUT_SHAPES`（权威在 A 侧）」——
 **它是一份手工维护的只读镜像，不是从租户真实本体投影出来的**。
-问句→能力的映射也是 14 条写死正则（`navigation-slice.ts:51 FAMILY_SIGNALS`）。
+问句→能力的映射也是 14 条写死正则（`navigation-slice.ts:56 FAMILY_SIGNALS`）。
 后果：**任何租户自建的对象类型 / 求解器 / 切片 / 工作流，Agent 结构上看不见**——
 不是"检索排序靠后"，是**根本不在候选集里**。
 
@@ -191,7 +191,7 @@ off qos.llm-budget-enforce      ← 唯一刻意不点（理由见 datacore/src/
 这一条把 C2 的工作量从"造一个检索系统"改写成"把注入源换成已有的那个"，**必须写清楚**。
 
 真跑 `POST /b/v1/resources/search`（= `retrieve_knowledge` 工具背后的同一个 `ResourceRegistryService`，
-注入条件 `apps/agentcore/src/engine.ts:220-227`：`deps.features` 存在即建，**生产必然满足**）：
+注入条件 `apps/agentcore/src/engine.ts:219-227`（`:222` `new ResourceRegistryService`）：`deps.features` 存在即建，**生产必然满足**）：
 
 | 问句 | Top-1 | 命中里**不在静态 19 条目录**中的求解器 |
 |---|---|---|
@@ -292,7 +292,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 
 | 条款 | 状态 | 证据 |
 |---|---|---|
-| 三工具进 `BUILTIN_TOOLS` + executor case | **✅ 已实现在链** | `registry.ts:295 (fill_data)` / `:311 (run_synthetic)` / `:328 (build_domain)`；三者 `sideEffect: COMPUTE` ⇒ 过 `runPathB` 的 `{READ,COMPUTE}` 过滤（`orchestrator.ts:1867`），且 seed package `toolWhitelist = BUILTIN_TOOLS.map(name)`（`seed.ts:203`）⇒ **泛化 path-B 上真可见** |
+| 三工具进 `BUILTIN_TOOLS` + executor case | **✅ 已实现在链** | `registry.ts:295 (fill_data)` / `:312 (run_synthetic)` / `:329 (build_domain)`；三者 `sideEffect: COMPUTE` ⇒ 过 `runPathB` 的 `{READ,COMPUTE}` 过滤（`orchestrator.ts:1867`），且 seed package `toolWhitelist = BUILTIN_TOOLS.map(name)`（`seed.ts:203`）⇒ **泛化 path-B 上真可见** |
 | 回执只含元信息、数字须 query 工具读回 | **未判定** | 需真跑一次 agent 循环才能验护栏。见 §7-U3 |
 | 空租户闭环（问→判缺数据→合成→读回→答，标 PROVISIONAL） | **❌ 从未真跑过** | 这是本 PRD 认为**离"多推演一步"最近**的一块（§3-C1） |
 | 三工具登记 `OPERATION_CATALOG`（R15 CLI 对等） | **⚠️ 2/3 已对等·1/3 是 R15 洼地** | 逐条核 `packages/contracts/src/operation-intent.ts:53`（40 条）：`run_synthetic`→`{op:"synth", endpoint:"/a/v1/synthetic/jobs", cliCommand:"synth"}` ✅ 同端点；`build_domain`→`{op:"build", endpoint:"/a/v1/databuilder/runs", cliCommand:"build"}` ✅ 同端点；**`fill_data`（`POST /a/v1/growth/fill-data`）无对应条目**——catalog 里的 `{op:"growth", endpoint:"/api/v1/growth", cliCommand:"tickets"}` 是 AgentCore 的成长工单端点，**不是** DataCore 的 fill-data。金丝雀：3 条里 2 条命中 ⇒ 读法正确，第 3 条是真缺 |
@@ -328,14 +328,28 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 ### 2.7 "写了 PRD 没做吗"——正面回答仓主
 
 **不是"没做"。是"做了治理面、没做推演面"，而且做的那部分有一半只接了泛化 path-B 这一条腿。**
-量化如下（本节表格逐条汇总）：
 
-| 分类 | 条数 | 占比 |
+量化如下。**这四个数是机械数出来的，不是估的**——复验命令（任何人可原样重跑）：
+```bash
+awk '/^#### A\./,/^### 2.7/' docs/PRD-v2-agent.md \
+  | grep -o "\*\*✅[^*]*\*\*\|\*\*⚠️[^*]*\*\*\|\*\*❌[^*]*\*\*\|\*\*未判定\*\*" \
+  | sed 's/\*\*//g' | cut -c1-4 | sort | uniq -c
+```
+> ⚠️ **初稿这里我写的是 17/12/5/4，是拍脑袋填的，四个数全错。**
+> 跑上面那条命令当场对不上，才改成下面的真值。留着这条自曝是因为它正是 `CLAUDE.md` 铁律 0.6 点名的病：
+> **拿一个看起来相关的数字当判据，而没验证这个数字真的在度量我要度量的东西。**
+> 本文余下所有数字（19/59、94、813、372 行、46 天、9 个未覆盖 solver）都给了复现命令或 file:line，
+> 唯独这一处当时没有——所以它就是错的那一处。
+
+| 分类 | 条数 | 占比（/42） |
 |---|---|---|
-| ✅ 已实现且在生产链路上 | 17 | 45% |
-| ⚠️ 只接一半 / 接错地方 / 接了线没数据 | 12 | 32% |
-| ❌ 没做（含 PRD 自己排后的 P3） | 5 | 13% |
-| 未判定（无 provider / 未构造） | 4 | 10% |
+| ✅ 已实现且在生产链路上 | **18** | 43% |
+| ⚠️ 只接一半 / 接错地方 / 接了线没数据 | **11** | 26% |
+| ❌ 没做（含 PRD 自己排后的 P3） | **7** | 17% |
+| 未判定（无 provider / 未构造） | **6** | 14% |
+
+> 注意两个"未判定"数不是同一个东西，别混：**表里 6 行**未判定 ↔ **§7 里 4 条** U 项——
+> 因为 U2（无 LLM key）一条就盖住了表里 3 行（round-trip / 模型分层 / 同轮并行）。
 
 **"⚠️ 11 条"才是真正的病灶所在**——它们全都不是"要造新东西"，而是"把已经造好的东西接到该接的地方"。
 这也解释了为什么"看起来做了很多，用起来什么都没变"：
@@ -375,7 +389,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 - 修法**不是**把 59 条抄进静态目录（那只是把漂移期延后），**也不是**造新的检索。
   修法是让 `projectNavigationSlice`（`navigation-slice.ts:283`）的候选来源改为
   **`ResourceRegistryService.search`**——即 `retrieve_knowledge` 背后同一份实现
-  （`engine.ts:220-227` 注入条件，生产必然满足），静态目录降级为**排序先验**而非候选集。
+  （`engine.ts:222 (new ResourceRegistryService)` 注入条件，生产必然满足），静态目录降级为**排序先验**而非候选集。
   **单一来源纪律**：不许 orchestrator/engine/navigation-slice 各建各的检索客户端。
 - 顺带必须一起改（否则新地图会被提示词劝退）：`prompts.ts:16`【工作方式】那句
   「选型已替你做完，不必再用 discover 盲扫」要加一个诚实条件——
@@ -607,7 +621,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 | `G-AGENT-SCENE-ENTRY-RAW-SDK-ERROR` | AGENT_FIRST 场景入口不查 `providerAvailable`，无 provider 时把 SDK 原始英文串当错误信封返给用户（违 R7）。唯一实例 `scn_graph`（本体图谱视图）开箱即崩 | 🔴 未闭 → C4 |
 | `G-AGENT-GOVERNANCE-HALF-WIRED` | Loop Control P2 三件套（retry/per-tool cap/escalation）与 Reflect **只接泛化 path-B**，`runRegisteredAgent` 只拿到 `loopRepeatCap` 一个参数 ⇒ 角色 agent/Coordinator 子 agent/场景 agent/workflow invoke_agent/skill 探针全跑裸循环 | 🔴 未闭 → C3 |
 | `G-SKILL-GOVERNANCE-DROPPED-ON-FREE-QA` | free-QA 技能池只透传 `loadSkill`，丢 `writeMode`/`provenancePolicy` ⇒ 写回型技能的 `approvalGate:human` 在该路径上失效（R4 豁口） | 🔴 未闭 → C5 |
-| `G-NAVSLICE-STATIC-MIRROR-32PCT` | Agent 首轮导航图的候选源是 agentcore 内手工镜像目录（19 条·`navigation-slice.ts:76`），而**同进程内已有一份能查全 59 solver/94 objectType 的活检索**（`ResourceRegistryService`·`engine.ts:220`·实测 Top-1 命中金标）⇒ 租户自建能力与 40 个既有 solver 对首轮选型结构性不可见；且 `prompts.ts:16` 还劝模型别去现场检索 ⇒ 两层覆盖面不一致 | 🔴 未闭 → C2 |
+| `G-NAVSLICE-STATIC-MIRROR-32PCT` | Agent 首轮导航图的候选源是 agentcore 内手工镜像目录（19 条·`navigation-slice.ts:76`），而**同进程内已有一份能查全 59 solver/94 objectType 的活检索**（`ResourceRegistryService`·`engine.ts:222`·实测 Top-1 命中金标）⇒ 租户自建能力与 40 个既有 solver 对首轮选型结构性不可见；且 `prompts.ts:16` 还劝模型别去现场检索 ⇒ 两层覆盖面不一致 | 🔴 未闭 → C2 |
 
 ### 6.6 回写承诺
 
@@ -640,6 +654,13 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
   结论"0 条进 ReAct"在这 7 条上是硬的，推广到全 20 题需要跑完整金标（属 U1 范畴）。
 - **B2**：§2.3 的时延（1.0–2.0s）是**无 provider 态**的时延——它度量的是**确定性层**的快，
   **不度量** agent 的快慢。任何人拿这几个数去说"agent 已经很快了"都是拿 X 当 Y 的证据（铁律 0.6 判据）。
+
+**最后，本文自己的锚点也自证过一遍**（否则这份文件就成了它自己批评的那种东西）：
+全文引用的 **19 个文件路径全部存在**、**48 个 `file:line` 锚点逐条打开核对、指向的确实是所声称的符号**
+（首轮核出 4 处偏 1–2 行：`registry.ts` 两处指到了对象开括号、`navigation-slice.ts` 的 `FAMILY_SIGNALS`
+差 5 行、`engine.ts` 的 `new ResourceRegistryService` 差 2 行——已全部改正）。
+核对脚本带金丝雀（故意喂一个必不存在的符号，确认它会报错），**金丝雀不报 = 判"工具坏了"，不判"锚点全对"**。
+锚点会随代码演进漂移，复核方请重跑一次再信。
 
 ---
 
