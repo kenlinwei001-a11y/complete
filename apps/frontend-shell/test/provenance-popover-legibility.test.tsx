@@ -429,7 +429,21 @@ function tooltipOpeningTags(src: string): string[] {
       }
     }
     out.push(src.slice(start, end + 1));
-    idx = src.indexOf(MARK, end + 1);
+    /*
+     * ⚠ 必须**保证前进**（2026-08-10 实测：这里会死循环，本仓「工具坏了不是代码脏了」的又一例）。
+     *
+     * 病样：`components/InfoPopover.tsx` 的文档注释里写了 `SVG <title>` 这几个字，
+     * 位置在同文件某句提到 `role="tooltip"` 的**前面**。于是：
+     *   · 从 MARK 往回找最近的 `<` ⇒ 落到注释里那个 `<title>` 的 `<`（本函数不跳注释）；
+     *   · 往前找深度 0 的 `>` ⇒ 找到 `<title>` 自己的 `>`，它**在 idx 之前**；
+     *   · `idx = indexOf(MARK, end + 1)` ⇒ end+1 仍 ≤ idx ⇒ **找回同一个 idx**，永不前进。
+     * 后果不是报错，是**跑满 191 秒后 `out` 撑到 2^32 抛 RangeError: Invalid array length**
+     * ——一条本该 1 秒的静态扫描门，坏成了看起来像"超时/卡死"的样子。
+     *
+     * 判据（照铁律 0.6）：**扫描器的游标必须单调前进，不能由被扫内容决定**。
+     * 至少跳过本次命中的 MARK 自身；`end` 更靠后时按 `end` 走。
+     */
+    idx = src.indexOf(MARK, Math.max(end + 1, idx + MARK.length));
   }
   return out;
 }
