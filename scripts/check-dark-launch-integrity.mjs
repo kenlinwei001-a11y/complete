@@ -51,6 +51,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
+import { assertDistFresh, checkDistFreshness } from "./dist-freshness.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = resolve(ROOT, "apps/datacore/src/features.ts");
@@ -203,7 +204,17 @@ const declared = manifest.features ?? {};
 // 运行期真 registry（dist 在时）—— A9 交叉核对用，并补齐静态走查看不见的条目。
 // 静态走查读不到 `...builtInViewFeatureDefs()` 这种**展开调用**产出的 feature（它们不是对象字面量），
 // 若不补齐，A2「悬空声明」会对这些 key 误报。dist 不在时明说未验证，不冒充已验证。
+// ⛔ 新鲜度守卫（欠账 #161）：本门是**两种「不工作」必须分开处置**的样板，不许合成一句 ——
+//    · dist **缺**  ⇒ 沿用既有的诚实降级：不采信运行期，runtimeNote 明写「跳过·未验证」。
+//    · dist **过期** ⇒ **硬红**。过期比缺席更毒：A9 拿旧 registry 与新静态模型交叉核对，
+//      会报出并不存在的「❌ 不一致」；A2 还会把源码里刚加的 feature 判成「悬空声明」——
+//      **结论与源码恰好相反，而且是绿的**。此时唯一诚实的输出是「请先 build」，不是任何内容结论。
 let runtime = null;
+const fresh = checkDistFreshness([DIST], { root: ROOT });
+const staleProblem = fresh.problems.find((p) => p.kind === "STALE");
+if (staleProblem) {
+  assertDistFresh([DIST], { gate: "dark-launch:check" }); // 复用统一措辞并退出（不给任何内容结论）
+}
 if (existsSync(DIST)) {
   try {
     const mod = await import(pathToFileURL(DIST).href);

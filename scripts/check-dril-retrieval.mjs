@@ -9,7 +9,7 @@
  * 校验经已 build 的 dist（构建期检查·非源码跨 app import）：先 pnpm --filter agentcore build（+ contracts）。
  * 用法：node scripts/check-dril-retrieval.mjs
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -26,12 +26,9 @@ const need = [
   ["agentcore/projector", "apps/agentcore/dist/dril/resource-projector.js"],
   ["agentcore/taxonomy", "apps/agentcore/dist/dril/tag-taxonomy.js"],
 ];
-for (const [label, rel] of need) {
-  if (!existsSync(abs(rel))) {
-    console.error(`✗ dril-retrieval:check：${label} dist 未构建（${rel}）——先 pnpm --filter agentcore build`);
-    process.exit(1);
-  }
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门用 dist 的检索引擎/投影器算排名断言，
+//    dist 落后 ⇒ 排名来自旧实现，结论却讲成"源码的检索质量"。
+assertDistFresh(need.map(([, rel]) => rel), { gate: "dril-retrieval:check" });
 
 const { ResourceSearchEngine } = await import(abs("apps/agentcore/dist/dril/search-engine.js").href);
 const { projectSolvers } = await import(abs("apps/agentcore/dist/dril/resource-projector.js").href);

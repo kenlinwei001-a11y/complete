@@ -14,25 +14,22 @@
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7 门 resource-descriptor:check + §2 ResourceDescriptor 契约。
  * 用法：node scripts/check-resource-descriptor.mjs（先 pnpm -r build 或至少 build contracts/datacore/agentcore）。
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
 const fail = [];
 const poolCounts = {};
 
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门把 dist 投影成 ResourceDescriptor 后
+//    断言「发布纪律」——dist 落后于 src 时，新增/已修的资源根本不在产物里，门会报出与源码相反的池子。
+assertDistFresh(
+  ["packages/contracts/dist/index.js", "apps/datacore/dist/catalog.js", "apps/agentcore/dist/tools/registry.js"],
+  { gate: "resource-descriptor:check" },
+);
 const distContracts = abs("packages/contracts/dist/index.js");
 const distDatacore = abs("apps/datacore/dist/catalog.js");
 const distAgentcore = abs("apps/agentcore/dist/tools/registry.js");
-
-for (const [label, u] of [["contracts", distContracts], ["datacore", distDatacore], ["agentcore", distAgentcore]]) {
-  if (!existsSync(u)) fail.push(`${label} dist 未构建（${u.pathname}）——先 pnpm -r build 再跑本门`);
-}
-if (fail.length) {
-  console.error("✗ resource-descriptor:check 失败：");
-  for (const f of fail) console.error("  - " + f);
-  process.exit(1);
-}
 
 const contracts = await import(distContracts.href);
 const datacore = await import(distDatacore.href);

@@ -8,24 +8,20 @@
  * 依赖：agentcore dist（SCENARIO_CATALOG + seedIntentsAndPlans）。
  * 用法：node scripts/check-scenario-slot-keys.mjs（先 pnpm --filter agentcore build）。
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
 const fails = [];
 const notes = [];
 
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门比对 dist 里的场景目录与种子槽位，
+//    dist 过期 ⇒ 报的是旧目录的槽位差异，而修法要落在源码上 —— 两边不是同一个世界。
+assertDistFresh(["apps/agentcore/dist/scenarios-catalog.js", "apps/agentcore/dist/mocks/seed.js"], {
+  gate: "scenario-slot-keys:check",
+});
 const distCatalog = abs("apps/agentcore/dist/scenarios-catalog.js");
 const distSeed = abs("apps/agentcore/dist/mocks/seed.js");
-for (const [label, u] of [
-  ["agentcore/scenarios-catalog", distCatalog],
-  ["agentcore/mocks/seed", distSeed],
-]) {
-  if (!existsSync(u)) {
-    console.error(`✗ ${label} dist 未构建（${u.pathname}）——先 pnpm --filter agentcore build 再跑本门`);
-    process.exit(1);
-  }
-}
 
 const { SCENARIO_CATALOG } = await import(distCatalog.href);
 const { seedIntentsAndPlans } = await import(distSeed.href);

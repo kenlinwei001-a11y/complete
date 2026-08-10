@@ -14,6 +14,7 @@
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7 门 + §8 G-BUILD-LINK。用法：node scripts/check-link-stabilize.mjs
  */
 import { readFileSync, existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -36,7 +37,10 @@ else {
 // ── 动态测谎（经 dist · green→red）──
 async function dynamic() {
   const dist = abs("apps/datacore/dist/databuilder/comprehend.js");
-  if (!existsSync(dist)) { fail.push("comprehend dist 未构建——先 pnpm --filter datacore build 再跑本门（含动态测谎）"); return; }
+  // ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门静态半读 comprehend.ts **源码**（断言
+  //    deriveSliceHops 已接 planSlice），动态半 import 其 dist 做测谎 —— dist 落后 ⇒ 源码已修、
+  //    产物还是旧的 ⇒ 动态半报「恒空切片回潮」，与源码恰好相反。
+  assertDistFresh(["apps/datacore/dist/databuilder/comprehend.js"], { gate: "link-stabilize:check" });
   const m = await import(dist.href);
   if (typeof m.deriveSliceHops !== "function") { fail.push("dist 未导出 deriveSliceHops"); return; }
   const ot = (typeKey, domain, props) => ({ typeKey, displayName: typeKey, domain, sourceDataset: typeKey.toLowerCase(),
