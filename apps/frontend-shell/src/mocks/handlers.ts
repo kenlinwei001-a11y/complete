@@ -4210,7 +4210,17 @@ export const handlers = [
       level: "L2_RUNNABLE",
       dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
       l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
-      trialTick: { passed: false, derivationNodes: 1, propagationCovered: false, at: null, error: null },
+      // ⚠ 口径必须跟真后端走（本仓已记账的病：`G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE` /
+      //   欠账 #78「mock 与真引擎口径分家」——mock 是第二个真值源，且没有任何机制让它跟随第一个）。
+      //   真后端（`app.ts` Trial Tick）**真跑传导相**并恒传 `propagationCovered: true`，
+      //   同时下发 fired 与 declared 两个数；这里照同一形态给，否则 mock 模式会一直挂着
+      //   「传导未纳入本次空跑」的告警，而真环境早就没有了。
+      //   declared=1 与下面 `worldCompleteness.propagationRules.present=1` 同源（同一条传导规则）。
+      trialTick: {
+        passed: false, derivationNodes: 1,
+        propagationRulesFired: 1, propagationRulesDeclared: 1, propagationCovered: true,
+        at: null, error: null,
+      },
       worldCompleteness: {
         pct: scope === "LOCAL" ? 48 : 50,
         derivationRules: { present: 1, needed: 2 },
