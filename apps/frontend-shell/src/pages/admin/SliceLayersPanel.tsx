@@ -276,6 +276,17 @@ export default function SliceLayersPanel({
     () => ({ ...baseArgs, ...(q.data?.autoArgs ?? {}) }),
     [baseArgs, q.data],
   );
+  /**
+   * 候选值只在「子图为空」的响应里带回来。解出子图之后后端就不再给了 —— 若不留存，
+   * 换过一次 root 之后切换器就消失（等于「只能看默认那一个」）。故在组件里记住见过的那份。
+   */
+  const [knownCandidates, setKnownCandidates] = useState<SliceEmptyGraph["argCandidates"]>([]);
+  const candidatesKey = JSON.stringify(q.data?.candidates ?? []);
+  useEffect(() => {
+    const c = JSON.parse(candidatesKey) as SliceEmptyGraph["argCandidates"];
+    if (c.length > 0) setKnownCandidates(c);
+  }, [candidatesKey]);
+
   const effectiveArgsKey = JSON.stringify(effectiveArgs);
   const missingArgsKey = JSON.stringify(q.data?.data.graph.empty?.missingArgs ?? []);
   useEffect(() => {
@@ -298,7 +309,7 @@ export default function SliceLayersPanel({
    */
   const pending = graph.empty !== undefined;
   const autoArgs = q.data.autoArgs;
-  const candidates = q.data.candidates;
+  const candidates = q.data.candidates.length > 0 ? q.data.candidates : knownCandidates;
   const effectivePairs = Object.entries(effectiveArgs).map(([k, v]) => `${k}=${String(v)}`);
 
   return (
