@@ -38,6 +38,7 @@ import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
+import { checkProvisionalHonesty } from "./provisional-honesty.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
 import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
 import { analyzeGap, summarizeGap } from "./provisioners.js";
@@ -49,6 +50,35 @@ const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 /** A18 §3.7：模块同步矩阵求解器注册存在性核验集（注册求解器 + 工作流求解器 sop_balance，与 closure CHAIN 口径一致）。 */
 const REGISTERED_SOLVERS: ReadonlySet<string> = new Set<string>([...SOLVER_KEYS, "sop_balance"]);
+
+/**
+ * A18 诚实红线闸的**生产接线点**（欠账 #134 · 门 `redline-wired:check` 判据 W1）。
+ *
+ * ⛔ 病史：`checkProvisionalHonesty`（`./provisional-honesty.ts:12`）是守 R13「未审核态绝不谎报」的
+ * 红线闸，本体 §7 把它登记成一道门；2026-08-10 实测其调用方集合是 **test 5 处 · 生产 0 处**。
+ * ⇒ 测试证明的是「这个函数能识别谎报」，**不是**「系统不会谎报」——咬的是**函数**不是**链路**
+ * （假绿第 9 形态）。今天没有任何东西阻止一次 PROVISIONAL 构建被标成 VERIFIED/answerable。
+ *
+ * **fail-closed**：违规即拒绝落库。理由——这是红线不是告警；而且按现有构造它**打不响**
+ * （`buildMode=PROVISIONAL` ⇒ 本文件强制 `domainTrustLevel=UNVERIFIED`、`verifyBuild` 强制
+ * `PROVISIONAL_ANSWER`、`closure.ts` 强制 ADVISORY + `blocked=false`），
+ * 所以它只在**将来有人把这些不变量改坏时**才响 —— 那正是闸该响的时候。
+ *
+ * ⚠ **A18.4 晋升例外**：`promoteDomain` 后 `buildMode` 仍是 `PROVISIONAL` 而 `domainTrustLevel`
+ * 翻成 `GOVERNED`，此时纯函数的规则 ① `TRUST_LABEL` 会误判 —— 因为它只看 `buildMode`，
+ * 看不见「已人工审批」这层语义。已晋升的域**不再处于未审核态**，故在调用点跳过。
+ * 这是**调用点的语义补齐**，不是改红线本身；纯函数的规则 ① 要不要改成认 `domainPromotion`，
+ * 留给审核方裁定（见交付说明）。
+ */
+function assertProvisionalHonesty(run: StoryBuildRun, where: string): void {
+  if (run.domainPromotion !== undefined) return; // A18.4 已人工晋升 ⇒ 不再是「未审核态」
+  const violations = checkProvisionalHonesty(run);
+  if (violations.length === 0) return;
+  throw invalidState(
+    `A18 诚实红线拦截（${where}）：PROVISIONAL 未审核域不得谎报 —— ` +
+      violations.map((v) => `[${v.rule}] ${v.detail}`).join("；"),
+  );
+}
 
 /**
  * A7 Foundry-Grade Data Builder — agent 驱动的 data pipeline 发动机。
@@ -500,6 +530,9 @@ export class DataBuilderService {
             status,
             createdAt: nowIso(),
           };
+          // A18 红线闸接线点 ①：PROVISIONAL 域**诞生**的那一次落库（buildMode / domainTrustLevel /
+          // closureReport 都在这里首次写定）。谎报若要发生，最早就发生在这里。
+          assertProvisionalHonesty(run, "record 步落库");
           await this.repos.storyBuildRuns.put(run);
           await this.outbox?.emit(ctx.tenantId, "storybuild.run_recorded", {
             runId: run.id,
@@ -772,6 +805,9 @@ export class DataBuilderService {
     );
     // 仅写 verification + 回灌节点；run.answer/inferenceEvidence 归 inference 步所有（A10 不越界覆盖）。
     const updated: StoryBuildRun = { ...run, verification, nodes };
+    // A18 红线闸接线点 ②：验证终态回写（`verification.status` / `answerable` 在这里写定）——
+    // 「未审核域跑出的答案被标成 VERIFIED / answerable=true」这条谎报**只能**从这里出去。
+    assertProvisionalHonesty(updated, "verifyBuild 回写验证终态");
     await this.repos.storyBuildRuns.put(updated);
     await this.outbox?.emit(ctx.tenantId, "build.verified", {
       runId: run.id,

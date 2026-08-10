@@ -1,0 +1,21 @@
+{
+  "_note": "redline-wired:check 判据 W2 的棘轮基线。phantomEntrypointCount = 本体 §7 里以 `pnpm X` 形式声称、而 package.json 查无此键的执行入口条数。只降不升：新增即红，burn-down 时同步下调本数。",
+  "_measuredAt": "2026-08-10",
+  "_knownPhantoms": [
+    "validation:check → scripts/check-validation.mjs 存在，缺 package.json 别名",
+    "ui-smoke → scripts/ui-smoke.mjs 存在，缺别名",
+    "cli-parity:check → scripts/check-cli-parity.mjs 存在，缺别名",
+    "rule-closure:check → scripts/check-rule-closure.mjs 存在，缺别名",
+    "no-hardcoded-rules:check → scripts/check-no-hardcoded-rules.mjs 存在，缺别名",
+    "handoff-ledger:check → scripts/ 下无对应脚本（§7 自述「不并入 pnpm gates」，是独立 CI job）",
+    "ontology-writeback:check → scripts/check-ontology-writeback.mjs 存在，缺别名",
+    "ontogenesis:check → scripts/check-ontogenesis.mjs 存在，缺别名",
+    "sim:check → scripts/check-sim.mjs 存在，缺别名",
+    "ui-smoke:sandbox → scripts/ui-smoke-sandbox.mjs 存在，缺别名",
+    "solver-license:check → scripts/check-solver-license.mjs 存在，缺别名",
+    "opt-template:check → scripts/check-opt-template.mjs 存在，缺别名",
+    "opt-determinism:check → scripts/check-opt-determinism.mjs 存在，缺别名"
+  ],
+  "_burndownNote": "13 条里 12 条只差一行 package.json 别名（脚本真实存在）。刻意不在本 WO 一并补：补别名会把这些门的 census binding 从 NONE 翻成 MANUAL，进而要求同批改 scripts/gate-ledger.json 的 binding 字段（check-gate-ledger.mjs 判据③ 现算比对），牵扯面超出本单 🚦范围边界。另立 burn-down 单。",
+  "phantomEntrypointCount": 13
+}
