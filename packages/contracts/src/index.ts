@@ -72,3 +72,4 @@ export * from "./solver-aggregates.js"; // WO-SANDBOX-D4 · 求解器聚合层�
 export * from "./procurement.js"; // WO-SANDBOX-D2 · 采购段凭证契约（四段按责任方可分解：供应商生产/在途/清关/到货检验 · MOQ/准时率接线 · 三态 MEASURED|NOT_APPLICABLE|EMPTY 禁假默认值 · totalDays 硬绑四段之和）
 export * from "./skill-graph.js"; // WO-SKILL-ORCHESTRATOR-S1 · Skill Graph（Reasoning Graph）契约 + 拓扑分层/环检测编译器（PRD-skill-runtime-orchestrator §3.1/§3.2/§3.4）
 export * from "./process.js"; // WO-Q0 · 业务流程层（13 域 × 65 流程）：ProcessDomain/ProcessDefinition 走数据层，与冻结的 CHAIN_NODE_REGISTRY 分层；waitKind 四值单源（REQ057 减 WAITING_APPROVAL·仓主已裁审批不做）；每条 P## 必须有承载物 carrierTypeKey
+export * from "./impact-analysis.js"; // WO-IMPACT-PROPAGATION · Impact Propagation 统一端点契约（栈B传播 × 栈A世界隔离）：四维 available 判别联合 + universe 基数，把「没承载物」「全域为空」「确实没波及」三种 0 分开报；流程维 definition 粒度可用 · instance 粒度诚实不可用
