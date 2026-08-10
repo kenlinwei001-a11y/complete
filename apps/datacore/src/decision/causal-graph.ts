@@ -138,7 +138,6 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
 
   const stateAt = new Map<number, TickState>(input.ticks.map((t) => [t.tick, t.state]));
   const ruleByKey = new Map<string, PropagationRule>(input.rules.map((r) => [r.key, r]));
-  const pertById = new Map<string, Perturbation>(input.perturbations.map((p) => [p.id, p]));
 
   // ── CAUSE：每条扰动一个节点（真值原样投影）──────────────────────────────────
   const causeNodeId = (perturbationId: string) => `cause:${perturbationId}`;
@@ -204,7 +203,7 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
   // `toObjectId` + `viaLinkKey`）。被扰动改写的格子，其 `state@T` 就是引擎读到的那个数
   // （扰动相位在传导相位之前），故源锚在 `T`；其余格子照旧锚在 `T−1`。
   const perturbedCells = new Map<number, Set<string>>();
-  const cellKey = (objectId: string, stateVar: string) => `${objectId} ${stateVar}`;
+  const cellKey = (objectId: string, stateVar: string) => `${objectId}\u0000${stateVar}`;
   for (const row of input.ticks) {
     for (const tr of row.trace ?? []) {
       if (tr.fromObjectId !== TRACE_FROM_AFTER) continue; // before 行同格，取一次即可
