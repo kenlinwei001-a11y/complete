@@ -317,6 +317,93 @@ describe("WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取）
     expect(world.state.a1.load).toBe(100);
     await t.app.close();
   });
+
+  /**
+   * A7 —— **这条是亲手跑真链路撞出来的**，不是先写测试再写代码。
+   *
+   * 上面 A1 那条链（3 tick、扰动落地当 tick 就到末端）恰好全连通，于是"图是断的"这件事照不到。
+   * 真跑 demo 种子链（`SEED_DEMO=1` 的 `Order.demandPressure → Model → Base → Line`，跑 5 tick）时：
+   * **48 个节点数值随扰动真的变了，却掉在 `causalDownstream(cause)` 之外** —— 图上看它们与扰动无关。
+   * 根因之一：引擎只在扰动**首次生效**那一 tick 写落地 trace，此后它仍按住那个值却无任何 trace 行 ⇒
+   * 目标格在 t+1、t+2… 只作为源出现、没有入边，链条从那里断掉，下游全部跟着掉出可达集。
+   *
+   * 本例把那个条件**最小化复现**：扰动 t2 落地、`durationTicks:null`、跑到 t5。
+   * 没有「值延续」边时，`c1.load@t5` 必然不可达（老实现在此处会红）。
+   */
+  it("A7 持续扰动跨多 tick：值延续边把链接上 —— 末端节点仍在可达集内（真跑撞出来的断链回归）", async () => {
+    const t = await makeApp();
+    await enableAll(t);
+    await seedGraph(t);
+    const sid = (await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: BASE } })).json().id as string;
+    await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+      payload: { kind: "capacity_loss", targetObjectId: "a1", targetStateVar: "load", magnitude: 100, mode: "set", startTick: 2, durationTicks: null, label: "持续停机" },
+    });
+    await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 5 } });
+    const g = DecisionGraphSchema.parse((await t.app.inject({ method: "GET", url: `/a/v1/causal-graphs/sim/${sid}`, headers: ADMIN })).json());
+
+    const reach = causalDownstream(g, causeNode(g).nodeId);
+    // 扰动落点在 t3/t4 没有任何 trace 行（引擎只在首次生效写），靠「值延续」边接上。
+    for (const id of ["imp:a1.load@t2", "imp:a1.load@t3", "imp:a1.load@t4"]) expect(reach).toContain(id);
+    // …末端节点在最后一 tick 仍追得回这次扰动（没有延续边时这里必红）。
+    expect(reach).toContain("imp:c1.load@t5");
+    // 逐 tick 手算（`combine:"sum"` 是**累加**不是覆盖 —— 这里第一版写成 20 被测试当场顶回来）：
+    //   b1: t2=0.5×100=50 → t3=100 → t4=150 → t5=200
+    //   c1: t3=0.4×b1@t2=20 → t4=20+0.4×100=60 → t5=60+0.4×150=120
+    expect(valueOf(g, "imp:b1.load@t4")).toBe(150);
+    expect(valueOf(g, "imp:c1.load@t5")).toBe(120);
+
+    // 延续边必须**说清凭什么**：三条判据（扰动仍生效 / 本 tick 无人写 / 值真的相等）写在 detail 里。
+    const hold = g.edges.find((e) => e.edgeId.startsWith("e:hold:") && e.toNodeId === "imp:a1.load@t3")!;
+    expect(hold).toBeDefined();
+    expect(hold.amount).toBeNull(); // 延续不搬量，写 0 会被读成"传了个 0"
+    expect(hold.provenance.detail).toContain("isPerturbationActiveAt");
+    expect(hold.provenance.detail).toContain("无任何 trace 行写过这一格");
+
+    // 变异反证：把延续边全部拿掉 → 末端节点当场掉出可达集（证明这条边真的在承重）。
+    const without = { ...g, edges: g.edges.filter((e) => !e.edgeId.startsWith("e:hold:")) };
+    expect(causalDownstream(without, causeNode(g).nodeId)).not.toContain("imp:c1.load@t5");
+    await t.app.close();
+  });
+
+  it("A8 连通性自检写进返回体：延迟规则造成的断点被机器数出来（不靠人读图去发现）", async () => {
+    const t = await makeApp();
+    await enableAll(t);
+    await seedGraph(t);
+    // 再加一条 **delayTicks=1** 的规则 c1 → 另一个类型：延迟到达行不带 fromObjectId ⇒ 补不出入边。
+    await t.repos.ontologyTypes.put({
+      id: "otype_TypeF", tenantId: "demo", key: "TypeF", displayName: "TypeF",
+      properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
+    });
+    const origin = { type: "SYNTHETIC" as const, jobId: "wo-causal-graph" };
+    await t.repos.objects.put({ id: "f1", tenantId: "demo", type: "TypeF", props: {}, origin });
+    await t.repos.links.put({ id: "lnk_cf", tenantId: "demo", type: "FEEDS", fromId: "c1", toId: "f1", origin });
+    await t.app.inject({
+      method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
+      payload: { key: "r_cf", sourceTypeKey: "TypeC", sourceStateVar: "load", viaLinkKey: "FEEDS", targetTypeKey: "TypeF", targetStateVar: "load", coefficient: 0.5, delayTicks: 1, status: "PUBLISHED" },
+    });
+    const sid = (await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: { ...BASE, f1: { load: 0 } } } })).json().id as string;
+    await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+      payload: { kind: "capacity_loss", targetObjectId: "a1", targetStateVar: "load", magnitude: 100, mode: "set", startTick: 2, durationTicks: null, label: "持续停机" },
+    });
+    await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 6 } });
+    const g = DecisionGraphSchema.parse((await t.app.inject({ method: "GET", url: `/a/v1/causal-graphs/sim/${sid}`, headers: ADMIN })).json());
+
+    // f1 的值确实被扰动改了（延迟一跳到达）：贡献在 beforeTick=3 由 c1@t3(=20) 算出 = 10，
+    // arriveTick=4，在 beforeTick=4 那轮结算 ⇒ 落在 t5 这一行。
+    expect(valueOf(g, "imp:f1.load@t5")).toBe(10);
+    // ……但它**追不回因**（DelayedContribution 不记 fromObjectId），且这件事必须写在返回体里。
+    expect(causalDownstream(g, causeNode(g).nodeId)).not.toContain("imp:f1.load@t5");
+    const orphanCaveat = g.caveats.find((c) => c.startsWith("连通性自检"));
+    expect(orphanCaveat, "图是断的，返回体却一个字都不说 —— 这就是'诚实位在说谎'").toBeDefined();
+    expect(orphanCaveat!).toContain("没有任何入边");
+    const delayCaveat = g.caveats.find((c) => c.includes("r_cf") && c.includes("fromObjectId"));
+    expect(delayCaveat, "延迟贡献补不出入边的原因必须指名到具体规则").toBeDefined();
+    // 聚合而非逐条：一条规则只出一条 caveat（实测真种子链一次推演会产生 40 条延迟到达，逐条报会刷屏）。
+    expect(g.caveats.filter((c) => c.includes("r_cf") && c.includes("fromObjectId")).length).toBe(1);
+    await t.app.close();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════

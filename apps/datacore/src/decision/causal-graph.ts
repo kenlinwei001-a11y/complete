@@ -30,6 +30,7 @@ import {
   CAUSAL_SEGMENTS,
   DecisionGraphSchema,
   countCausalSegments,
+  isPerturbationActiveAt, // 生效判据**单源**：与 propagateTick / POST /perturbations 用同一支（不许各写一份）
   type CausalEdge,
   type CausalNode,
   type CausalSegment,
@@ -215,6 +216,8 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
 
   // ── IMPACT + 边：逐 tick 走 trace（trace 行是唯一的"谁把多少传给谁"的真值）────
   const seenPerturbationLanding = new Set<string>();
+  /** 延迟到达但补不出入边的目标，按规则聚合（逐条报会刷屏：实测 demo 种子一次推演 40 条）。 */
+  const delayedOrphans = new Map<string, { n: number; sample: string[] }>();
   for (const row of input.ticks) {
     const producedTick = row.tick; // trace 与 next 一同存在这一行 ⇒ 本行 trace 描述的是"到 producedTick 为止"
     const sourceTick = producedTick - 1;
@@ -272,14 +275,13 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
       }
 
       // ② 延迟贡献结算行 —— `DelayedContribution` **不记 fromObjectId**，源头无从考证。
+      //    逐条报会刷屏（实测 demo 种子一次推演 40 条），故聚合成一条，见下 `delayedOrphans`。
       if (tr.fromObjectId === TRACE_FROM_DELAYED) {
         const rule = ruleByKey.get(tr.ruleKey);
         const target = cellNode(tr.toObjectId, rule?.targetStateVar ?? tr.viaLinkKey, producedTick);
-        caveats.add(
-          `tick ${producedTick}：规则 ${tr.ruleKey} 的延迟贡献 ${tr.amount} 到达 ${target.anchor.objectId}.${target.anchor.stateVar}，` +
-            `但 DelayedContribution 只记 {arriveTick,target*,amount,ruleKey}、**不记 fromObjectId** ⇒ ` +
-            `本图出该 IMPACT 节点但**不出入边**（补边需给 DelayedContribution 加 fromObjectId 字段，属传导核改动，本单只读不改）`,
-        );
+        const agg = delayedOrphans.get(tr.ruleKey) ?? delayedOrphans.set(tr.ruleKey, { n: 0, sample: [] }).get(tr.ruleKey)!;
+        agg.n += 1;
+        if (agg.sample.length < 3) agg.sample.push(`${target.nodeId}(+${tr.amount})`);
         continue;
       }
 
@@ -326,13 +328,84 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
             `传导规则 ${rule.key}：${rule.sourceTypeKey}.${rule.sourceStateVar} --${rule.viaLinkKey}--> ` +
             `${rule.targetTypeKey}.${rule.targetStateVar}，系数 ${rule.coefficient}` +
             `${rule.coefficientRef ? `（引用 ${rule.coefficientRef.ruleKey}.params.${rule.coefficientRef.paramKey}）` : ""}` +
-            `，延迟 ${rule.delayTicks} tick ⇒ 本次搬运 ${tr.amount}（tick ${sourceTick} → ${producedTick}）`,
+            `，延迟 ${rule.delayTicks} tick ⇒ 本次搬运 ${tr.amount}（tick ${from.tick} → ${producedTick}）`,
         },
       });
     }
   }
 
-  // ── 边级诚实缺口：路由施加的扰动在 trace 上无痕 ────────────────────────────
+  // ── 持续扰动的「值延续」边（真跑 demo 种子链时抓出来的断链，单测的 delay=0 场景照不到）───
+  //
+  // 病象（实测 `POST /perturbations{startTick:2,durationTicks:null}` + `tick n=5`）：
+  // 引擎只在**首次生效**那一 tick 写落地 trace（`entersAt`），此后扰动仍生效、目标格的值仍被它按住，
+  // 但**没有任何 trace 行**承载 t3/t4。于是 `order.demandPressure@t3/@t4` 在图上**只作为源**出现、
+  // 没有入边 ⇒ `causalDownstream(cause)` 到 t2 就断了，而它们下游的 `model.demandLoad@t4/@t5`、
+  // `base.loadIndex@t5` 全部跟着掉出可达集 —— **数值明明是被这次扰动改的，图却说它们与扰动无关**。
+  // 这正是本仓「绿测试≠能用」的形态：单测用 delay=0 的两跳链恰好连得上，真种子链一跑就断。
+  //
+  // 补法**不是**发明一条边，而是把一个可复算的事实写下来。三条判据全部来自已落库真值，缺一条就不画：
+  //   ① 该格是某条扰动的落点，且这条扰动在 T 仍生效（契约单源 `isPerturbationActiveAt`，
+  //      与引擎/路由用的是同一支判据）、且它是**更早**生效的（`startTick < T`，首次生效那 tick 已有落地边）；
+  //   ② 本 tick **没有任何 trace 行写过这一格**（写过就不是延续，是新写入 —— 那条边已经画了）；
+  //   ③ `state@T` 与 `state@(T−1)` 在这一格上**真的相等**（不等就不是延续，宁可不画）。
+  // 三条同时成立 ⇒ 「这个值自上一 tick 原样延续，因为按住它的那条扰动还没到期」是**事实陈述**，不是推测。
+  const writtenAt = new Map<number, Set<string>>();
+  for (const row of input.ticks) {
+    const set = writtenAt.set(row.tick, new Set()).get(row.tick)!;
+    for (const tr of row.trace ?? []) {
+      if (tr.ruleKey.startsWith(PERTURBATION_REVERT_UNRESOLVED_PREFIX)) continue; // 明确"没动这个数"
+      if (tr.ruleKey.startsWith(PERTURBATION_TRACE_PREFIX) || tr.ruleKey.startsWith(PERTURBATION_REVERT_TRACE_PREFIX)) {
+        set.add(cellKey(tr.toObjectId, tr.viaLinkKey));
+        continue;
+      }
+      const rule = ruleByKey.get(tr.ruleKey);
+      set.add(cellKey(tr.toObjectId, rule?.targetStateVar ?? tr.viaLinkKey));
+    }
+  }
+  for (const p of input.perturbations) {
+    const key = cellKey(p.targetObjectId, p.targetStateVar);
+    for (const row of input.ticks) {
+      const t = row.tick;
+      if (t <= p.startTick) continue; // ① 首次生效那 tick 已有落地边，不重复画
+      if (!isPerturbationActiveAt(p, t)) continue; // ① 到期后不再声称是它按住的
+      if (writtenAt.get(t)?.has(key)) continue; // ② 本 tick 被写过 ⇒ 不是延续
+      const prev = readCell(stateAt.get(t - 1), p.targetObjectId, p.targetStateVar);
+      const cur = readCell(stateAt.get(t), p.targetObjectId, p.targetStateVar);
+      if (prev === null || cur === null || prev !== cur) continue; // ③ 值不等 ⇒ 不是延续
+      const from = cellNode(p.targetObjectId, p.targetStateVar, t - 1);
+      const to = cellNode(p.targetObjectId, p.targetStateVar, t);
+      edges.push({
+        edgeId: `e:hold:${p.id}:${to.nodeId}`,
+        fromNodeId: from.nodeId,
+        toNodeId: to.nodeId,
+        kind: "IMPACT_TO_IMPACT",
+        // 延续不搬运任何量（值没变），故 `amount: null` —— 写 0 会被读成"传了个 0 过去"。
+        amount: null,
+        provenance: {
+          kind: "tick_state",
+          refId: `${input.sessionId}@t${t}:${p.targetObjectId}.${p.targetStateVar}`,
+          producedBy: null, // 延续不是任何规则算出来的，是"没人动它"这个事实
+          detail:
+            `值延续：${p.targetObjectId}.${p.targetStateVar} 在 tick ${t} 仍为 ${cur}，与 tick ${t - 1} 相同，` +
+            `且本 tick 无任何 trace 行写过这一格；扰动 ${p.id}（${p.label}）按 isPerturbationActiveAt 在 tick ${t} 仍生效` +
+            `（startTick=${p.startTick}，durationTicks=${p.durationTicks ?? "null(永久)"}）⇒ 这个值仍是那次扰动的结果`,
+        },
+      });
+    }
+  }
+
+  // ── 边级诚实缺口 ① 延迟到达补不出入边（按规则聚合）──────────────────────────
+  for (const [ruleKey, agg] of [...delayedOrphans].sort((a, b) => a[0].localeCompare(b[0]))) {
+    caveats.add(
+      `规则 ${ruleKey} 有 ${agg.n} 条**延迟贡献**到达（如 ${agg.sample.join("、")}），` +
+        `本图为它们出了 IMPACT 节点但**补不出入边** —— `
+        + `DelayedContribution 只记 {arriveTick, targetObjectId, targetStateVar, amount, ruleKey}，**不记 fromObjectId**，` +
+        `源头对象无从考证。后果：这些节点及其下游落在扰动的前向可达集**之外**，` +
+        `图上看它们与那次扰动"无关"，实际是被它改的。补边需给 DelayedContribution 加 fromObjectId（属传导核 sim/ 改动，本单只读不改）`,
+    );
+  }
+
+  // ── 边级诚实缺口 ② 路由施加的扰动在 trace 上无痕 ──────────────────────────
   for (const p of input.perturbations) {
     if (seenPerturbationLanding.has(p.id)) continue;
     caveats.add(
@@ -382,6 +455,30 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
       needs: "同 ACTION 段：先把 session 与 Decision/ActionDraft 接上，实测成效才谈得上归到某次推演头上",
     },
   ];
+
+  // ── 连通性自检：把「有多少 IMPACT 节点接不回任何因」**算出来写进返回体** ──────────
+  //
+  // 为什么必须机器算而不是人读图：真跑 demo 种子链时，48 个节点数值明明随扰动变了、却掉在可达集外，
+  // 这件事**单测照不到**（单测那条 delay=0 两跳链恰好全连通），是亲手跑真链路才撞出来的。
+  // 于是把判据固化成返回体里的一个数：读图的人（和前端）不必自己去发现"这张图是断的"。
+  // 计数口径：非最早 tick 的 IMPACT 节点里，入度为 0 的有几个。最早 tick 的格子是世界的初值，
+  // 本来就没有"因"，排除掉才不会把正常现象报成缺陷。
+  {
+    const impactTicks = [...nodes.values()].filter((n) => n.segment === "IMPACT").map((n) => n.tick ?? 0);
+    if (impactTicks.length > 0) {
+      const earliest = Math.min(...impactTicks);
+      const hasIn = new Set(edges.map((e) => e.toNodeId));
+      const orphans = [...nodes.values()].filter((n) => n.segment === "IMPACT" && (n.tick ?? 0) > earliest && !hasIn.has(n.nodeId));
+      if (orphans.length > 0) {
+        caveats.add(
+          `连通性自检：${orphans.length}/${impactTicks.length} 个 IMPACT 节点（tick > ${earliest}）**没有任何入边**，` +
+            `即在本图上追不回它的因（例：${orphans.slice(0, 3).map((n) => n.nodeId).join("、")}）。` +
+            `已知成因见本清单其余各条（延迟贡献缺 fromObjectId / 扰动经路由施加无 trace 行）。` +
+            `⚠ 这些节点的数值是真的，"追不回因"是**本图的能力边界**，不是"它们与扰动无关"——两者别搞混`,
+        );
+      }
+    }
+  }
 
   return assemble({
     graphId: `cg_sim_${input.sessionId}`,
