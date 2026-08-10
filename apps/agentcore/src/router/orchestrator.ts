@@ -35,7 +35,7 @@ import {
   CEO_DEEP_QUESTION_SYSTEM,
   buildSkillSection,
 } from "../agent/prompts.js";
-import { runAgentLoop, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
+import { runAgentLoop, skillGovernance, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { makeLlmRollingSummarizer } from "../agent/context.js"; // WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（fail-open 注入 runAgentLoop.summarizer）
@@ -2066,6 +2066,18 @@ export class Orchestrator {
                   ...(r.mime ? { mime: r.mime } : {}),
                   ...(r.description ? { description: r.description } : {}),
                 })),
+                // ★ WO-R4-FREEQA-GATE（G-R4-FREEQA-UNGATED）· R4 豁口封堵：本路径此前**只透传技能正文**，
+                // writeMode / provenancePolicy 一个都不报 ⇒ 执行点 `if (governance.writeMode)` 收到 falsy ⇒
+                // 一个 `approvalGate:"human"` 的写回型技能走 free-QA 时，那道人工批复闸**完全不生效**
+                // （同一技能走注册 agent 路却是被闸住的——差的不是字段，是**参数集**）。
+                //
+                // 为什么不像 engine 那样在开跑时静态聚合：本路径没有 agent，技能来源是**租户已发布集**
+                // （selectTenantSkills）——按全集聚合等于「租户里有一个写回技能，每道自由问答都得交 action_draft」，
+                // 闸门失去指向性。故按「谁的正文真下发给模型，就按谁的治理位收紧」（loop 侧载入即升级）。
+                //
+                // 唯一入口自证：`buildSkillSection` 只注入 id/名/summary，技能**正文**在本路径上只可能经
+                // `load_skill` 下发 → 这里就是全部下发点，没有旁路。
+                ...skillGovernance(skill),
               };
             },
           }
