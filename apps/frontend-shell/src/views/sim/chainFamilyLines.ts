@@ -1,7 +1,11 @@
 /**
  * WO-SANDBOX-METRO-SEMANTICS · **三条产品族线的锚点发现**（纯派生 + 一次对象查询）。
  *
- * ── 这个文件回答一个问题：三条同心环的数据依据在哪 ────────────────────────────
+ * ⚠ WO-CHAIN-MAP-LAYOUT 起，族线在图上是**上下并排的三条横线**（不再是三圈同心环）——
+ *   本文件只管「三条线的数据依据是什么」，与画成环还是画成横线无关，故一行未动。
+ *   `ringIndex` / `ringCount` 这两个名字保留（它们表达的是"第几条 / 共几条"，不是"第几圈"）。
+ *
+ * ── 这个文件回答一个问题：三条族线的数据依据在哪 ──────────────────────────────
  * 设计稿把「三条产品族线」画成三圈同心环，但它是**写死**的三条线。
  * 后端这边先要过一道事实关：`chain_loss_attribution` **不吃 `businessTypes` / `modelIds`**
  * （实测：传 `baseIds` 结果逐字节不变，另两维在 `chain_impediments` 上直接 400）。
@@ -97,6 +101,7 @@ export function familyIdentityOf(
     anchorRoutingId: payloadAnchor?.routingId ?? null,
     ringIndex,
     ringOffset: ringOffsets(ringCount)[ringIndex] ?? 1,
+    ringCount,
   };
 }
 
