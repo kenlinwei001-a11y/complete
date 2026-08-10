@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { SliceLayer, SliceLayerId, SliceLayersResponse } from "@platform/contracts";
+import type { SliceEmptyGraph, SliceLayer, SliceLayerId, SliceLayersResponse } from "@platform/contracts";
 import { fetchSliceLayers } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import styles from "./SliceLayersPanel.module.css";
@@ -189,39 +189,127 @@ function EmptyGraphBar({
   );
 }
 
-export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: string; args?: Record<string, unknown> }) {
+/**
+ * WO-SLICE-DEFAULT-ARGS · **首屏默认实参**（本单要治的那件事）。
+ *
+ * 病灶（真后端实测 2026-08-10 · demo · seed 42 · 端口 4093 亲手跑）：
+ * 本体切片页首屏默认只列 4 条多跳业务切片（`SlicesPage.tsx:39-41` scope="multihop"），
+ * 而这 4 条的 root selector 全部写着占位符 ——
+ *   `order_fulfillment_360` / `order_to_cash_720` / `enterprise_360` → `{{args.so}}`（battery.ts:2447/2492/2560）
+ *   `aop_scenario_chain` → `{{args.key}}`（battery.ts:2601）
+ * 而调用侧传的是 **`{}`**（`SliceInspector.tsx` 渲染本面板时不给 args）⇒
+ * 「要求的实参集」∩「实际传的实参集」= **空** ⇒ root 过滤恒不匹配 ⇒ 十六层全取不到东西。
+ * 实测原文：无参 `nodes=0 edges=0 summary.present=3/16`；给 `{"so":"SO-3391"}` 立刻
+ * `nodes=531 edges=570 present=12/16`。**形态是「接了线没数据」，不是「没接线」** ——
+ * 所以修的不是接线，是「生产实参」。
+ *
+ * 修法 **B（默认注入真实实参）**：第一次无参请求拿回后端从**真对象**上读出的候选值
+ * （`app.ts:4813-4824` → `slice-layers.ts:107-119`，按 objectKey 字典序去重，R6 确定性），
+ * 取第一个作默认实参**立刻重取一次**，并把「当前用的是哪个实参」显式摆在屏上。
+ *
+ * **零写死（R14）**：本文件不含任何行业实体名。默认值 100% 来自后端候选；
+ * 候选取不到（`values` 空 / 非 missing_args）⇒ **不猜、不编**，退回诚实态（修法 C）
+ * 让用户自己选/自己填。
+ */
+export interface LayersWithDefaults {
+  data: SliceLayersResponse;
+  /** 自动注入的默认实参；null = 没注入（无需 / 取不到真值 / 用户要求看原始态）。 */
+  autoArgs: Record<string, string> | null;
+  /** 首次（无参）响应里后端给的真实候选值 —— 解出子图后仍要能换 root，故留存。 */
+  candidates: SliceEmptyGraph["argCandidates"];
+}
+
+export async function fetchLayersWithAutoDefault(
+  sliceKey: string,
+  baseArgs: Record<string, unknown>,
+  autoOff: boolean,
+): Promise<LayersWithDefaults> {
+  const first = await fetchSliceLayers(sliceKey, baseArgs);
+  const empty = first.graph.empty;
+  // 只有「缺参数」这一种空才补得上；`no_root_objects`（缺数据）/`no_match`（过滤不中）
+  // 补参数没用，硬补就是拿假动作盖住真问题 ⇒ 原样交给诚实态。
+  if (!empty || empty.reason !== "missing_args" || autoOff) {
+    return { data: first, autoArgs: null, candidates: empty?.argCandidates ?? [] };
+  }
+  const picks: Record<string, string> = {};
+  for (const arg of empty.missingArgs) {
+    const v = empty.argCandidates.find((c) => c.arg === arg)?.values[0];
+    if (v === undefined) return { data: first, autoArgs: null, candidates: empty.argCandidates }; // 取不到真值 ⇒ 诚实态
+    picks[arg] = v;
+  }
+  const second = await fetchSliceLayers(sliceKey, { ...baseArgs, ...picks });
+  // 第二次仍空 ⇒ 照实显示第二次的 empty 原因（可能翻成 no_match），但仍公示用了哪个默认值。
+  return { data: second, autoArgs: picks, candidates: empty.argCandidates };
+}
+
+export default function SliceLayersPanel({
+  sliceKey,
+  args = {},
+  onRootArgsChange,
+}: {
+  sliceKey: string;
+  args?: Record<string, unknown>;
+  /** 把「本面板最终用的那组实参 + 还缺哪些」上报给宿主（内联子图要用同一组，否则两块会互相打脸）。 */
+  onRootArgsChange?: (state: { args: Record<string, unknown>; missingArgs: string[] }) => void;
+}) {
   // 页内试切参数：多跳切片的 root selector 要参数，不给就恒空子图（见 EmptyGraphBar 注释）。
   // 外部传入的 args 是基线，页内选的覆盖它——不改调用方，纯加性。
   const [pickedArgs, setPickedArgs] = useState<Record<string, unknown>>({});
-  const effectiveArgs = useMemo(() => ({ ...args, ...pickedArgs }), [args, pickedArgs]);
-  const argsKey = JSON.stringify(effectiveArgs);
+  // 用户显式「清空参数」= 要看原始诚实态 ⇒ 关掉默认实参，否则清空按钮会被自动默认当场撤销（点了没反应）。
+  const [autoOff, setAutoOff] = useState(false);
+  const baseArgs = useMemo(() => ({ ...args, ...pickedArgs }), [args, pickedArgs]);
+  const baseArgsKey = JSON.stringify(baseArgs);
   const q = useQuery({
-    queryKey: ["a", "slice-layers", sliceKey, argsKey],
-    queryFn: () => fetchSliceLayers(sliceKey, effectiveArgs),
+    queryKey: ["a", "slice-layers", sliceKey, baseArgsKey, autoOff],
+    queryFn: () => fetchLayersWithAutoDefault(sliceKey, baseArgs, autoOff),
   });
   const [openLayer, setOpenLayer] = useState<SliceLayerId | null>(null);
 
   const byId = useMemo(() => {
     const m = new Map<SliceLayerId, SliceLayer>();
-    for (const l of q.data?.layers ?? []) m.set(l.id, l);
+    for (const l of q.data?.data.layers ?? []) m.set(l.id, l);
     return m;
   }, [q.data]);
+
+  // 生效实参（含自动默认）+ 仍缺的参数 —— 上报宿主，让内联子图与十六层看同一个 root。
+  const effectiveArgs = useMemo(
+    () => ({ ...baseArgs, ...(q.data?.autoArgs ?? {}) }),
+    [baseArgs, q.data],
+  );
+  const effectiveArgsKey = JSON.stringify(effectiveArgs);
+  const missingArgsKey = JSON.stringify(q.data?.data.graph.empty?.missingArgs ?? []);
+  useEffect(() => {
+    onRootArgsChange?.({
+      args: JSON.parse(effectiveArgsKey) as Record<string, unknown>,
+      missingArgs: JSON.parse(missingArgsKey) as string[],
+    });
+  }, [effectiveArgsKey, missingArgsKey, onRootArgsChange]);
 
   if (q.isLoading) return <div className="empty-state" data-testid={`slice-layers-loading-${sliceKey}`}>{t.loading}</div>;
   if (q.error || !q.data) return <div className="badge red" data-testid={`slice-layers-error-${sliceKey}`}>{t.error}</div>;
 
-  const { summary, graph, layers } = q.data;
+  const { summary, graph, layers } = q.data.data;
   const active = openLayer ? byId.get(openLayer) : undefined;
+  /**
+   * **未判定 ≠ 缺席**（本单硬性纪律：「算不了」「查了确实为空」「后端出错」屏上必须分得开）。
+   * 子图没解出来时，十六层根本没被算过 —— 此时把 `0 · 缺席` 摆在第一层就是静默错答：
+   * 它说的是「查过了，平台没有」，而真相是「压根没查成」。故整块切到未判定态：
+   * 数字位显 `—`（不显 0）、状态位显「未判定」、原因照旧在浮层给全。
+   */
+  const pending = graph.empty !== undefined;
+  const autoArgs = q.data.autoArgs;
+  const candidates = q.data.candidates;
+  const effectivePairs = Object.entries(effectiveArgs).map(([k, v]) => `${k}=${String(v)}`);
 
   return (
     <div className={styles.wrap} data-testid={`slice-layers-${sliceKey}`}>
       {/* ── 第一层：本页要回答的那个数 ─────────────────────────────────────── */}
       <div className={styles.headline}>
         <span className={styles.headlineNum} data-testid={`slice-layers-headline-${sliceKey}`}>
-          {t.headline(summary.present)}
+          {pending ? t.pendingHeadline : t.headline(summary.present)}
         </span>
         <span className={styles.headlineSub} data-testid={`slice-layers-summary-${sliceKey}`}>
-          {t.summaryLine(summary.present, summary.notInSlice, summary.absent)}
+          {pending ? t.pendingSummary : t.summaryLine(summary.present, summary.notInSlice, summary.absent)}
         </span>
         <span className={styles.headlineMeta} data-testid={`slice-layers-graph-${sliceKey}`}>
           {t.graphSummary(graph.nodes, graph.edges)}
@@ -235,20 +323,65 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
         <EmptyGraphBar
           sliceKey={sliceKey}
           empty={graph.empty}
-          rootType={q.data.rootType}
+          rootType={q.data.data.rootType}
           onPick={(arg, value) => {
             setPickedArgs((a) => ({ ...a, [arg]: value }));
             setOpenLayer(null);
           }}
         />
       )}
-      {/* 已试切：把当前生效参数显式摆在第一层（不显示 = 用户不知道自己在看哪个 root 的切片）。 */}
-      {Object.keys(pickedArgs).length > 0 && (
+      {/* 当前生效实参**必须显式摆在第一层**：不显示 = 用户不知道自己在看哪个 root 的切片
+          （自动默认尤其如此 —— 悄悄替用户选了一个还不说，比空卡更坏）。 */}
+      {effectivePairs.length > 0 && (
         <div className={styles.appliedBar} data-testid={`slice-layers-applied-${sliceKey}`}>
-          <span>{t.empty.applied(Object.entries(pickedArgs).map(([k, v]) => `${k}=${String(v)}`).join(" · "))}</span>
-          <button type="button" className="btn sm" data-testid={`slice-layers-clearargs-${sliceKey}`} onClick={() => setPickedArgs({})}>
+          <span>{t.empty.applied(effectivePairs.join(" · "))}</span>
+          {autoArgs && Object.keys(pickedArgs).length === 0 && (
+            <span className="badge" data-testid={`slice-layers-autodefault-${sliceKey}`}>{t.empty.autoDefaultBadge}</span>
+          )}
+          <WhyPopover label={t.empty.autoDefaultWhyLabel} testId={`slice-layers-autodefault-why-${sliceKey}`}>
+            <span className={styles.popSec}>
+              <span className={styles.popTitle}>{t.empty.autoDefaultWhyLabel}</span>
+              <span>{t.empty.autoDefaultWhy}</span>
+            </span>
+          </WhyPopover>
+          <button
+            type="button"
+            className="btn sm"
+            data-testid={`slice-layers-clearargs-${sliceKey}`}
+            onClick={() => {
+              setPickedArgs({});
+              setAutoOff(true); // 清空 = 要看原始诚实态；不关自动默认的话这个按钮就是摆设
+            }}
+          >
             {t.empty.clear}
           </button>
+        </div>
+      )}
+      {/* 换 root：候选值仍来自后端（首次响应留存的那份），解出子图后照样能切 —— 否则默认实参
+          就成了「只能看这一个」。空子图时不渲染（那时 EmptyGraphBar 已在给同一批候选，
+          两处同时渲染会撞 testid）。 */}
+      {!pending && candidates.length > 0 && (
+        <div className={styles.appliedBar} data-testid={`slice-layers-switch-${sliceKey}`}>
+          {candidates.map((c) => (
+            <span key={c.arg} className={styles.emptyPick}>
+              <span className={styles.emptyPickLabel}>{t.empty.switchLabel(c.arg)}</span>
+              {c.values.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={styles.candBtn}
+                  data-active={String(effectiveArgs[c.arg]) === v ? "true" : "false"}
+                  data-testid={`slice-layers-cand-${sliceKey}-${c.arg}-${v}`}
+                  onClick={() => {
+                    setPickedArgs((a) => ({ ...a, [c.arg]: v }));
+                    setOpenLayer(null);
+                  }}
+                >
+                  {v}
+                </button>
+              ))}
+            </span>
+          ))}
         </div>
       )}
 
@@ -279,16 +412,20 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
                         <span className={styles.ord}>{l.ordinal}</span>
                         <span className={styles.name}>{t.names[id] ?? id}</span>
                       </span>
-                      {/* 数值本身 + 单位（裸数会被读成层数/跳数 —— WO-UNIT-MEANING 同口径） */}
+                      {/* 数值本身 + 单位（裸数会被读成层数/跳数 —— WO-UNIT-MEANING 同口径）。
+                          未判定态显 `—`：这时 0 不是量出来的 0，是「没量」（WO-SLICE-DEFAULT-ARGS）。 */}
                       <span>
-                        <span className={`${styles.num} ${NUM_CLASS[l.status]}`} data-testid={`slice-layer-count-${sliceKey}-${id}`}>
-                          {l.count}
+                        <span
+                          className={`${styles.num} ${pending ? styles.numPending : NUM_CLASS[l.status]}`}
+                          data-testid={`slice-layer-count-${sliceKey}-${id}`}
+                        >
+                          {pending ? t.pendingNum : l.count}
                         </span>
-                        <span className={styles.unit}>{l.unit}</span>
+                        {!pending && <span className={styles.unit}>{l.unit}</span>}
                       </span>
                       <span className={styles.statusLine} data-testid={`slice-layer-status-${sliceKey}-${id}`}>
-                        {STATUS_LABEL[l.status]}
-                        {l.status === "not_in_slice" && l.platformCount !== undefined && ` · ${t.platformHas(l.platformCount, l.unit)}`}
+                        {pending ? t.statusPending : STATUS_LABEL[l.status]}
+                        {!pending && l.status === "not_in_slice" && l.platformCount !== undefined && ` · ${t.platformHas(l.platformCount, l.unit)}`}
                       </span>
                     </button>
                     {/* 诚实位记号：口径/缺席原因降到了浮层，但第一层看得见「这里有话要说」
@@ -296,7 +433,7 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
                     <span className={styles.cardMarkSlot}>
                       <WhyPopover
                         label={t.whyLabel}
-                        marked={l.status !== "present"}
+                        marked={pending || l.status !== "present"}
                         testId={`slice-layer-why-${sliceKey}-${id}`}
                       >
                         <span className={styles.popSec}>
@@ -327,15 +464,15 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
               {active.ordinal} · {t.names[active.id] ?? active.id}
             </span>
             <span className="badge" data-testid={`slice-layer-detail-count-${sliceKey}-${active.id}`}>
-              {active.count} {active.unit}
+              {pending ? t.statusPending : `${active.count} ${active.unit}`}
             </span>
             <span className={styles.carrier}>
               {t.carrierLabel}：{active.carrier}
             </span>
           </div>
 
-          {/* 缺席态：只说原因，**不渲染任何明细行**（不画占位内容）。 */}
-          {active.status !== "present" ? (
+          {/* 缺席态 / 未判定态：只说原因，**不渲染任何明细行**（不画占位内容）。 */}
+          {pending || active.status !== "present" ? (
             <div className={styles.reason} data-testid={`slice-layer-reason-${sliceKey}-${active.id}`}>
               {active.absentReason}
             </div>
