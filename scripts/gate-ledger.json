@@ -1017,6 +1017,24 @@
       },
       "disposition": "GATES_CHAIN",
       "notes": "闭 G-DIST-STALE-READ（欠账 #161）：本仓 15 道门 import dist 之后讲的是**源码**的话，却只查 existsSync（构建过没有），从不查新鲜度（构建得够不够新）。dist 落后于 src 时它们会说出与源码**恰好相反**的结论且全绿——2026-08-10 一天之内真实误判 4 次，其中一次把「dist 过期」错报成源码缺陷（欠账 #155：不是源码缺陷，是我的诊断错了）。共享守卫 scripts/dist-freshness.mjs 已接进全部 15 道门（fail-closed：过期即退，**只报「请先 build」不给任何内容结论**）。本门守的是「保持接线」：明天新加一道读 dist 的门若不接守卫，机器先说话，不靠人记性。两处非照抄的接法：check-chain-closure.mjs 的**静态** import dist 必须改 await import（静态 import 提升到模块体最前，写在下面的守卫形同虚设）；check-dark-launch-integrity.mjs 区分「dist 缺→诚实降级」与「dist 过期→硬红」（过期比缺席更毒：A9 会报出并不存在的不一致，A2 会把刚加的 feature 判成悬空声明）。"
+    },
+    "check-redline-wired.mjs": {
+      "alias": "redline-wired:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/databuilder/provisional-honesty.ts",
+        "apps/datacore/src/databuilder/service.ts",
+        "docs/SYSTEM-ONTOLOGY.md",
+        "scripts/redline-wired-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-GATE-ENTRYPOINT-PHANTOM",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "待填",
+        "note": "待填"
+      },
+      "notes": "欠账 #134。治「本体 §7 登记为门、执行入口却完全不存在」这一整类——现存两道治理门（check-gate-ledger / check-ontology-writeback G3）都只认 scripts/check-*.mjs 文件名这一种门的形状，而 §7 还登记着另两种：`pnpm <alias>` 声称的入口、test-backed 纯函数闸，两类整整逃逸。"
     }
   }
 }
