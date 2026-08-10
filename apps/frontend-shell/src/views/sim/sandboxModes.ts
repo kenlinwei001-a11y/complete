@@ -69,8 +69,12 @@ export const SANDBOX_MODE_ORIGIN_VIEW: Record<SandboxMode, string | null> = {
  *
  * 今天真正**跨模式带得动**的只有基地范围一项，故本类型只有这一个字段 ——
  * 这是诚实的边界，不是"先占个位"：
- *  · **基地**：`SandboxConsole` 左栏勾选 → 真进 `chain_impediments` 的 `args.scope.baseIds`
- *    （实测 baseIds=changzhou 时 total 15→13）。提升到壳里之后，切模式不丢。
+ *  · **基地**：`SandboxConsole` 左栏勾选 → 真进 `chain_impediments` 的 `args.scope.baseIds`。
+ *    这句**不是本文件的主张**，单一出处是 `SandboxConsole.tsx` 的 `sc-scope-reach` 那段既有诚实位
+ *    （连同它的数字一起，读那里；本文件不复述、不重新主张，免得两处措辞将来各飘各的）。
+ *    复验：`cd apps/frontend-shell && npx vitest run test/sandbox-console.seam.test.tsx`
+ *    的「范围三维**逐消费方**标接线」一例（断言基地勾选真进 `args.scope`）。
+ *    提升到壳里之后，切模式不丢。
  *  · **订单锚点**：今天不是壳级控件 —— 它由线路图自己按 `so` 取（`chain_loss_attribution`
  *    唯一认的入参），壳里没有第二个订单选择器。硬造一个"看起来能选、其实各模式各用各的"
  *    的下拉，就是本仓最恨的假旋钮。要做得先把线路图的锚点提上来，那是另一张单。
