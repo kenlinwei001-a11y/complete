@@ -28,6 +28,8 @@ import {
   type MockAccount,
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
+// WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
+import { PROCESS_DEFINITIONS_RESPONSE } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
@@ -1294,6 +1296,10 @@ export const handlers = [
       ],
     }),
   ),
+  // WO-WAITING-STATES-FE · 业务流程层等待态（需求 §20）。
+  // fixture 走 `processWaitFixtures.ts`：逐条过契约 zod schema（与后端播种同一份），
+  // 数据是 `apps/datacore/src/seed.ts` 的逐字子集 —— 防「mock 与真后端分家、测试咬 mock 恒绿」。
+  http.get("*/a/v1/process-definitions", () => HttpResponse.json(PROCESS_DEFINITIONS_RESPONSE)),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
     // WO-SCHEMA-ZH：properties[].displayName 镜像真后端 PROP_DISPLAY_NAMES（synthetic/battery.ts 单一真值）——

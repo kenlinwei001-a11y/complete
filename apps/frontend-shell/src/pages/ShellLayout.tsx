@@ -99,6 +99,10 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   {
     title: "归因与风险",
     items: [
+      // WO-WAITING-STATES-FE：流程等待态（需求 §20）——回答「为什么这个流程现在卡住了」。
+      // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演），
+      // 与同组两页同一判据。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
+      { kind: "view" as const, key: "process-wait" },
       { kind: "route" as const, key: "cleanroom-attr", label: "净室归因" },
       { kind: "route" as const, key: "disruption-radius", label: "断供影响半径" },
     ],

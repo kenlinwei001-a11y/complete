@@ -105,3 +105,10 @@ registerRenderer("review", () => import("./ReviewView"));
 // 净室归因投影页（三通用净室求解器 shared_bottleneck/concentration_risk/margin_attribution 首次前端接地·
 // 参数从真对象类型倒推·既作 renderer 供 ViewPage 分发，也有专用 route 见 App.tsx）。
 registerRenderer("cleanroom-attr", () => import("./cleanroom/CleanroomAttrView"));
+// WO-WAITING-STATES-FE 流程等待态（需求 §20「『等待』是一等状态」·回答「为什么这个流程现在卡住了」）。
+// 数据源 = GET /a/v1/process-definitions（本单同批新补的下发端点）：业务流程层 13 域 × 65 流程的
+// waitKind 四态。与上方 chain-impediments 是**两层、两个问题**：那页在链路节拍层（24 节点）问
+// 「哪里被卡住、凭哪条规则」，本页在业务流程层问「这条流程在等哪一类东西、等谁」，故不复用其组件。
+// 本行 = 这张页面唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
+// 缺它就是 F2/F3/F4/阻滞点连踩四次的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
+registerRenderer("process-wait", () => import("./process/ProcessWaitView"));

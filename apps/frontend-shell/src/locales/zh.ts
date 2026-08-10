@@ -997,6 +997,101 @@ export const zh = {
     metricOntimeRate: "按期率(%)",
     adopted: (label: string, status: string) => `已采纳「${label}」→ Action 草稿 ${status}`,
   },
+  /**
+   * WO-WAITING-STATES-FE · 业务流程等待态（需求 §20「『等待』是一等状态」）。
+   *
+   * 🔴 四态**四套文案，一个字都不许合并**。需求判据原文：
+   * 「每个态都要有可辨识的视觉区分（不是 5 个都显示同一个『等待中』）——
+   *   需求要的是回答『为什么卡住』，5 个态混成一个字就等于没做」。
+   * 故每态给三样互不相同的东西：`label`（叫什么）· `who`（**等谁**·本页的核心answer）·
+   * `hint`（判据原文，逐字取自 `packages/contracts/src/process.ts:70-75`，前端不改写）。
+   *
+   * 🔴 **没有 WAITING_APPROVAL**，且不许"顺手补齐成五种"。仓主已裁「流程审批不体现」；
+   * 契约 `PROCESS_WAIT_KINDS` 刻意四值，`process-layer.test.ts:99/106/114` 三条断言钉着。
+   * 本对象的类型是 `Record<ProcessWaitKind, …>`（见 `views/process/processWait.ts`）
+   * ⇒ 契约哪天真加了第五态，**这里编译期就红**，不会静默漏画。
+   */
+  processWait: {
+    title: "流程等待态",
+    subtitle:
+      "13 个一级业务域 × 65 条核心业务流程，每条标注它**卡在哪一类等待**、**等谁**、**标准要等多久**。" +
+      "这一页回答的是「为什么这个流程现在卡住了」——按等待类型分组，而不是笼统一个「等待中」。",
+    sourceNote: "数据来源：GET /a/v1/process-definitions（业务流程层配置，非引擎实时求解）。",
+    /** 与全链阻滞点的分工说明——两页容易被当成一回事，页面上直接写清楚。 */
+    vsImpediments:
+      "与「全链阻滞点」不是同一件事：那一页在**链路节拍层**（24 个节点）问「哪里被卡住了、凭哪条规则说它被卡住」，" +
+      "用引擎实时求解；本页在**业务流程层**（65 条流程）问「这条流程在等哪一类东西、等谁」，读的是流程层配置。",
+    waitKind: {
+      WAITING_USER: {
+        label: "等人",
+        short: "等人做动作",
+        who: "等**内部的人**拿主意或做动作 —— 评审、拍板、录入、维护。责任落在下方的职能上。",
+        hint: "判据：等人做动作/拿主意（评审、拍板、录入、签字以外的操作）。",
+      },
+      WAITING_DATA: {
+        label: "等数据",
+        short: "等上游数据齐",
+        who: "等**上游数据齐**才能起算 —— 人到位也没用，缺的是输入。典型如预测、MRP、良率分析、指标监控。",
+        hint: "判据：等上游数据齐才能算（预测、MRP、良率分析、指标监控）。",
+      },
+      WAITING_EXTERNAL_SYSTEM: {
+        label: "等外部",
+        short: "等外部回话",
+        who: "等**企业外面**回话 —— 供应商、海关、客户、行情源、设备网关。催内部没有用，工期不由我方决定。",
+        hint: "判据：等外部方/外部系统回话（供应商、海关、客户、行情源、设备网关）。",
+      },
+      WAITING_SCHEDULE: {
+        label: "等节拍",
+        short: "等窗口开闸",
+        who: "等**到点开闸** —— 例会、批次、班次、检修窗、盘点日。没人在拖，是窗口还没到。",
+        hint: "判据：等节拍/窗口开闸（例会、批次、班次、检修窗、盘点日）。",
+      },
+    },
+    summary: {
+      totalProcesses: "在册流程",
+      totalStdDays: "标准工期合计",
+      unit: { process: "条", day: "天" },
+      byKind: "按等待类型分布",
+    },
+    group: {
+      countLabel: (n: number) => `${n} 条流程`,
+      stdDaysLabel: (d: number, pct: number) => `标准工期合计 ${d} 天（占全部 ${pct}%）`,
+      owners: "等谁（责任职能）",
+      empty: "本租户暂无此类等待的流程 —— 这是真实读数，不是没渲染。",
+    },
+    table: {
+      key: "流程",
+      name: "名称",
+      domain: "业务域",
+      owner: "责任职能",
+      stdDays: "标准工期",
+      carrier: "承载物",
+    },
+    /**
+     * 诚实缺席位（本仓纪律：缺席要说出来，不许拿别的数字冒充）。
+     * `ProcessTask` / `ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现），
+     * 故「此刻已经卡了多久」今天答不了；页面只给标准工期并写明它不是实测。
+     */
+    honesty: {
+      title: "本页答得了什么、答不了什么",
+      canAnswer: "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。",
+      cannotAnswer:
+        "答不了：**此刻这条流程已经卡了多久**。那需要运行态 ProcessTask.enteredAt，" +
+        "而 ProcessInstance / ProcessTask 尚未实现（PRD-enterprise-decision-twin §5 的 E2）。",
+      notMeasured: "下方「标准工期」是流程定义里的**基线工期**，不是实测滞留天数 —— 不要当作「已卡 N 天」读。",
+    },
+    state: {
+      loading: "加载流程等待态…",
+      empty: "后端未返回任何流程定义。业务流程层种子由 SEED_DEMO 播入；未播种时此处为空是正常的。",
+      errorTitle: "取不到流程等待态",
+    },
+    /** 词表漂移（后端下发词表 ≠ 契约词表）——接缝断了要显式报，不许默默少画一组。 */
+    drift: {
+      title: "⚠ 等待类型词表漂移",
+      missing: (keys: string) => `契约里有、后端没下发：${keys}`,
+      unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
+    },
+  },
 } as const;
 
 export type Locale = typeof zh;
