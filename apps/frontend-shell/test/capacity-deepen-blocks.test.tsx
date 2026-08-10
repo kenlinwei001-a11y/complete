@@ -33,10 +33,13 @@ describe("WO-CAPACITY-DEEPEN-ADDITIVE · 增量块", () => {
 
     await waitFor(() => expect(screen.getByTestId("cap-dag-nodes")).toBeInTheDocument());
     for (let l = 1; l <= 6; l++) expect(screen.getByTestId(`cap-dag-node-${l}`)).toBeInTheDocument(); // 6 层齐
-    // 预测层默认展开 → 可用产能锚点真值（>0·溯 base_capacity_outlook.available）。
+    // 预测层的可用产能锚点真值（>0·溯 base_capacity_outlook.available）——**第一层就看得见**（卡面主数值）。
     const anchor5 = screen.getByTestId("cap-dag-anchor-5");
     expect(Number((anchor5.textContent ?? "0").replace(/[^0-9.]/g, ""))).toBeGreaterThan(0);
-    expect(screen.getByTestId("cap-dag-detail-5").textContent ?? "").toContain("base_capacity_outlook.available");
+    // WO-CAPACITY-CARD-LAYOUT：溯源字段等**逐项明细**已按信息分层规范降到第二层（一次点击），
+    // 不再默认展开 —— 故此处补一次点击。断言内容一字未改（仍咬 base_capacity_outlook.available）。
+    await user.click(screen.getByTestId("cap-dag-node-toggle-5"));
+    expect((await screen.findByTestId("cap-dag-detail-5")).textContent ?? "").toContain("base_capacity_outlook.available");
 
     // 点设备层（1）→ 展开显驱动因素 + 溯 bottleneck_matrix。
     await user.click(screen.getByTestId("cap-dag-node-toggle-1"));
