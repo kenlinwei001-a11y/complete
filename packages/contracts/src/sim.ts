@@ -229,9 +229,22 @@ export const SimCertificationSchema = z.object({
   }),
   trialTick: z.object({
     passed: z.boolean(),
+    /** 本次试算共触发的规则条数 = 派生相 + 传导相（两相拆账见下三个字段）。 */
     rulesFired: z.number().int(),
     at: z.string().nullable(),
     error: z.string().nullable(),
+    // ── #152 拆账（additive·optional ⇒ 老调用方逐字节可回退 RL9）───────────────────
+    // 立这三个字段的理由是一次真实的静默错答：Trial Tick 长期**只跑 recompute（派生）**，
+    // `rulesFired` 恒等于派生 topo 长度，而 `worldCompleteness.propagationRules` 那一栏照样
+    // 按"声明了几条"计入完整度 ⇒ 一个传导一条都跑不动的世界，认证也能报出漂亮的数字。
+    // 合成一个 `rulesFired` 恰好把这件事盖住，所以两相必须**拆开报**（同族戒律：一个笼统数字
+    // 盖住两个不同事实）。
+    /** 派生相：`ontology-core recompute` 的 topo order 长度。 */
+    derivationRulesFired: z.number().int().optional(),
+    /** 传导相：`propagateTick` 一跑里**真的产生了效果**的 PropagationRule 条数（即时贡献或延迟贡献）。 */
+    propagationRulesFired: z.number().int().optional(),
+    /** 传导相：本租户**已发布**的 PropagationRule 条数。`declared > 0 && fired === 0` = 世界态驱动不动传导。 */
+    propagationRulesDeclared: z.number().int().optional(),
   }),
   worldCompleteness: z.object({ // 世界完整度（范围预检 = init step③）
     pct: z.number(), // 0-100

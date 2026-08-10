@@ -49,7 +49,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -1382,6 +1382,47 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
     (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
 
+  /** 本租户已发布的传导规则（tick 路与 Trial Tick 的**同一个**入口，不许各查各的）。 */
+  const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
+    repos.sim.listPropagationRules(c.tenantId, true);
+
+  /**
+   * 传导引擎的输入装配 —— 图（已物化对象 + 链路）/ 规则参数 / 节拍闸门。
+   *
+   * 🔴 **为什么抽成一处**（欠账 #152 的结构性对策，不是为省行数）：
+   * Trial Tick 若另抄一份装配，就会出现「就绪认证说这个世界能跑、真 tick 跑起来不是这个数」——
+   * 两处输入不同源 = 第二套真相源，正是本仓「绿测试≠能用·断在接缝」的老形态。
+   * 现在认证里那一跑与 `POST …/tick` 那一跑**吃的是同一份图、同一份参数、同一份闸门**。
+   *
+   * ⚠ 刻意**不含** `propRules` 与 `pending`/`perturbations`：前者是"要不要走引擎"的判据（调用方先查、
+   * 为空则整段装配都省掉，保住"无传导规则的租户零本体读"这条既有性能特征），后两者是逐调用方的时基状态。
+   */
+  const buildPropagationInputs = async (c: AuthCtx): Promise<{
+    graph: PropagationGraph;
+    ruleParams: RuleParamLookup;
+    cadenceGates: CadenceGateLookup;
+    gateSkipped: { nodeId: string; reason: string }[];
+  }> => {
+    // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
+    const objects: PropagationGraph["objects"] = [];
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
+    }
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
+    // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
+    const ruleParams: RuleParamLookup = {};
+    for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
+      if (r.params) ruleParams[r.key] = r.params;
+    }
+    // 节拍闸门表（E4）：改 Cadence.everyDays 即改推演——闸门每次现读，不缓存不写死。
+    const built = buildCadenceGates(
+      (await repos.objects.listByType(c.tenantId, "Cadence"))
+        .filter((o) => !o.mergedInto)
+        .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
+    );
+    return { graph: { objects, links }, ruleParams, cadenceGates: built.gates, gateSkipped: built.skipped };
+  };
+
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
@@ -1419,7 +1460,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let state = await simCurrent(c, s);
     // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
-    const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
+    const propRules = await listPublishedPropRules(c); // PUBLISHED only
     const propagate = propRules.length > 0;
     // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
     // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
@@ -1474,24 +1515,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let unresolvedGates: UnresolvedCadenceGate[] = [];
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
-      // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
-      const objects: PropagationGraph["objects"] = [];
-      for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-        for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
-      }
-      const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
-      graph = { objects, links };
-      // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
-      for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
-        if (r.params) ruleParams[r.key] = r.params;
-      }
-      // 节拍闸门表（E4）：改 Cadence.everyDays 即改推演——闸门每次 tick 从对象库现读，不缓存不写死。
-      const built = buildCadenceGates(
-        (await repos.objects.listByType(c.tenantId, "Cadence"))
-          .filter((o) => !o.mergedInto)
-          .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
-      );
-      cadenceGates = built.gates; gateSkipped = built.skipped;
+      // 图 / 规则参数 / 节拍闸门全部走**唯一装配处**（与 Trial Tick 同源，见 buildPropagationInputs）。
+      const inp = await buildPropagationInputs(c);
+      graph = inp.graph;
+      Object.assign(ruleParams, inp.ruleParams);
+      cadenceGates = inp.cadenceGates; gateSkipped = inp.gateSkipped;
     }
     let trace: PropagationTrace[] | null = null;
     let appliedPerturbations: string[] = [];
@@ -1701,14 +1729,57 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   };
 
   /**
+   * Trial Tick 的**传导相**（欠账 #152 的修复点）。
+   *
+   * 🔴 病灶：此前 Trial Tick 只跑 `ontologyCore.recompute`（**派生**），`rulesFired` 恒等于派生 topo 长度，
+   * 注释写着「传导 `propagateTick` 待增量3」。而增量 3 早已落地 —— `POST …/tick` 里
+   * `propagateTick` 是真跑的（本文件 tick 路）。于是就绪认证一直在拿**派生**的成绩单
+   * 冒充「这个世界能不能推演」：传导规则一条没跑过，`propagationRules` 那一栏却照样计入完整度。
+   * 这是「接了线接错地方」——引擎接了 tick 路、没接认证路（不是没实现，也不是没数据）。
+   *
+   * 修法：认证时在**克隆态**上真跑一 tick 传导，数「真的产生了效果的规则条数」。
+   *
+   * 三条刻意的取舍（都写在这里，免得下一个人以为是漏了）：
+   *  · `pending` 传 `[]`、`perturbations` 传 `[]` —— Trial Tick 是**探针**不是续跑：同一份世界态
+   *    必须每次得到同一个结论（R6），不许被在途队列/扰动历史带偏。它回答的是「这个世界的
+   *    配置能不能驱动传导」，不是「下一格会变成什么」（那是 `POST …/tick` 的职责）。
+   *  · 输入图/参数/闸门走 `buildPropagationInputs` —— 与真 tick 同源（见该函数注释）。
+   *  · **不写任何东西**：`propagateTick` 是纯函数，产出丢弃；认证路一如既往零副作用。
+   *
+   * 「fired」的判据 = 该规则本 tick 真的产生了效果：即时贡献进 `trace`，延迟贡献进 `pending`，
+   * 两处都算。源态为 0 / 被闸门挡住 / 贡献恰为 0 ⇒ **不算 fired**，这是诚实的：
+   * 世界态是空的时候，`propagationRules: 3` 但 `propagationRulesFired: 0` 正是要让人看见的事实。
+   */
+  const trialPropagate = async (c: AuthCtx, s: SimSession): Promise<{ fired: number; declared: number }> => {
+    const propRules = await listPublishedPropRules(c);
+    if (propRules.length === 0) return { fired: 0, declared: 0 };
+    const inp = await buildPropagationInputs(c);
+    const out = propagateTick(
+      inp.graph, await simCurrent(c, s), propRules,
+      [], // pending：探针不续跑在途队列（见上）
+      s.curTick, inp.ruleParams, inp.cadenceGates,
+      [], // perturbations：探针不重放扰动（见上）
+    );
+    const declared = new Set(propRules.map((r) => r.key));
+    const fired = new Set<string>();
+    for (const t of out.trace) if (declared.has(t.ruleKey)) fired.add(t.ruleKey);
+    for (const p of out.pending) if (declared.has(p.ruleKey)) fired.add(p.ruleKey);
+    return { fired: fired.size, declared: propRules.length };
+  };
+
+  /**
    * 从 live 本体装配认证三件输入（closure/gaps/trial）+ scope 计数 —— 全部复用既有产物，零新校验。
    * scope=LOCAL 时按 target（typeKey）裁出子图；GLOBAL 时全本体。computedAt 由调用方传入（R6）。
+   *
+   * `session`：Trial Tick 的传导相要在**这个世界当前的态**上跑（#152）——认证问的是"这个世界"能不能推演，
+   * 不是"某个凭空造的态"能不能推演。两个端点本来就先 `getSimOr404` 拿到了会话，顺手传进来即可。
    */
   const assembleCertification = async (
     c: AuthCtx,
     scopeKind: "GLOBAL" | "LOCAL",
     target: string | null,
     computedAt: string,
+    session: SimSession,
   ) => {
     const allTypes = await ontology.listTypes(c);
     const types = scopeKind === "LOCAL" && target ? allTypes.filter((t) => t.key === target) : allTypes;
@@ -1747,15 +1818,27 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
 
-    // ── Trial Tick（§3）：克隆态跑一遍 recompute（派生）；propagateTick 待增量3 → 传导记 0 ──
+    // ── Trial Tick（§3）：克隆态跑一遍 recompute（**派生相**）+ 一遍 propagateTick（**传导相**·#152）──
+    // 两相都跑完才谈得上"这个世界能推演"：只跑派生 = 拿派生的成绩单冒充推演的（#152 病灶原文见 trialPropagate）。
     let trial: TrialTickInput;
     try {
       const rc = await ontologyCore.recompute(c, [], { dryRun: true });
-      // rulesFired = 触发的派生规则数（recompute topo order 长度）。传导规则待增量3，记 0。
-      trial = { passed: true, rulesFired: rc.order.length, at: computedAt, error: null };
+      const prop = await trialPropagate(c, session);
+      trial = {
+        passed: true,
+        // rulesFired 保持"本次试算共触发多少条规则"的既有语义，现在它真的把两相都算进来了。
+        rulesFired: rc.order.length + prop.fired,
+        derivationRulesFired: rc.order.length,
+        propagationRulesFired: prop.fired,
+        propagationRulesDeclared: prop.declared,
+        at: computedAt, error: null,
+      };
     } catch (e) {
-      // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
-      trial = { passed: false, rulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
+      // 派生图有环（CYCLIC_DERIVATION）/ 传导相抛错 等 → 诚实标 FAIL，不假装通过。
+      trial = {
+        passed: false, rulesFired: 0, derivationRulesFired: 0, propagationRulesFired: 0, propagationRulesDeclared: 0,
+        at: computedAt, error: e instanceof Error ? e.message : String(e),
+      };
     }
 
     // ── scope 计数（投影，给纯函数）────────────────────────────────────────────
@@ -1793,18 +1876,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   app.get("/a/v1/sim/sessions/:id/certification", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.certification");
-    await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
     const q = req.query as { scope?: string; target?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
-    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
   });
 
   app.get("/a/v1/sim/sessions/:id/scope-precheck", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    await getSimOr404(c, (req.params as { id: string }).id);
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
     const q = req.query as { scope?: string; target?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
-    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
     return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
   });

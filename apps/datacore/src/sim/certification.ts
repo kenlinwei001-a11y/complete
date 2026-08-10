@@ -90,9 +90,16 @@ export const DEFAULT_CERT_CONFIG: CertConfig = {
 
 export interface TrialTickInput {
   passed: boolean;
+  /** 两相合计（派生 + 传导）。拆账见下三个可选字段（#152）。 */
   rulesFired: number;
   at: string | null;
   error: string | null;
+  /** #152 拆账 · 派生相触发数（recompute topo order 长度）。调用方给什么就投影什么，本文件不算。 */
+  derivationRulesFired?: number;
+  /** #152 拆账 · 传导相真正产生效果的 PropagationRule 条数（调用方跑 propagateTick 数出来）。 */
+  propagationRulesFired?: number;
+  /** #152 拆账 · 传导相已发布规则条数。`declared>0 && fired===0` = 世界态驱动不动传导（诚实位）。 */
+  propagationRulesDeclared?: number;
 }
 
 function pct(num: number, den: number): number {
@@ -215,7 +222,14 @@ export function deriveCertification(
     level,
     dims: { structure, knowledge, behavior, composite },
     l4Checks,
-    trialTick: { passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error },
+    // 拆账字段**原样投影**（本文件零计算 RL3）：调用方跑了两相就有数，没跑就 undefined —— 不在这里补 0
+    // 冒充"传导跑过且是 0"（那正是 #152 那个静默错答的形态）。
+    trialTick: {
+      passed: trial.passed, rulesFired: trial.rulesFired, at: trial.at, error: trial.error,
+      ...(trial.derivationRulesFired !== undefined ? { derivationRulesFired: trial.derivationRulesFired } : {}),
+      ...(trial.propagationRulesFired !== undefined ? { propagationRulesFired: trial.propagationRulesFired } : {}),
+      ...(trial.propagationRulesDeclared !== undefined ? { propagationRulesDeclared: trial.propagationRulesDeclared } : {}),
+    },
     worldCompleteness: { pct: wcPct, ...wc, entering },
     canEnterSimulation,
     gaps: out,
