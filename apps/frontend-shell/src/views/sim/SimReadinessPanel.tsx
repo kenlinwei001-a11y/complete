@@ -256,6 +256,10 @@ export function SimReadinessPanel({
             <div className={styles.sub} style={{ fontSize: 11 }} data-testid="sim-cert-trial-meaning">
               「通过」= 派生依赖图可拓扑排序（无环），**不代表这个世界已经推动过**。
             </div>
+            {/* #152 拆账：Trial Tick 曾长期**只跑派生**，`rulesFired` 一个合数把「传导零触发」盖得严严实实。
+                现在两相分开报，且传导带**分母** —— `declared > 0 && fired === 0` 是**必须让人看见**的事实：
+                规则都在，但这个世界态驱动不动它们。（WO-SIM-ACT-CLOSE 的论据，与上面 WO-CERT-HONESTY 的
+                「名字要名副其实」是两条独立理由，都留着。） */}
             <div className="mono" style={{ fontSize: 12 }} data-testid="sim-cert-trial-derivation-nodes">
               派生图节点 {cert.trialTick.derivationNodes ?? 0} 个
             </div>
@@ -272,7 +276,7 @@ export function SimReadinessPanel({
                 {(cert.trialTick.propagationRulesDeclared ?? 0) > 0 && (cert.trialTick.propagationRulesFired ?? 0) === 0 && (
                   <div style={{ fontSize: 11, color: "var(--warn)" }} data-testid="sim-cert-trial-propagation-silent">
                     ⚠ 已发布 {cert.trialTick.propagationRulesDeclared} 条传导规则，本次一条都没触发
-                    （源态为 0 / 无匹配边 / 闸门未放行）
+                    —— 规则在册，但当前世界态驱动不动传导（源态为 0 / 无匹配边 / 闸门未放行）
                   </div>
                 )}
               </>

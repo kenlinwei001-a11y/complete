@@ -52,11 +52,11 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
-// WO-CERT-CONTRACT-RECONCILE 判据④：传导相入参（图/规则/规则参数/节拍闸门）的**唯一装配处**。
-// tick 路与认证 Trial Tick 路都只经它取参 —— 「两条路同源」由结构保证，不靠人记得同步改两遍。
+// 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
+// `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
@@ -1399,6 +1399,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
     (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
 
+  /** 本租户已发布的传导规则（tick 路与 Trial Tick 的**同一个**入口，不许各查各的）。 */
+  const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
+    repos.sim.listPropagationRules(c.tenantId, true);
+
+  // ⚠ `buildPropagationInputs` 曾**在这里**以闭包形式存在，现已提取到 `./sim/propagation-inputs.ts`
+  //   （WO-CERT-CONTRACT-RECONCILE：两个 dev 并行各造了一份同名物，收成一份）。
+  //   语义原样保留（含「不含 propRules」那条性能判据）；提出去的唯一理由是让结构门
+  //   能无条件断言「`app.ts` 里出现任何一处传导相装配 = 红」——留在本文件里就只能数「恰好一次」。
+  //   别再往本文件里写第二处装配：门 `sim-cert-contract-reconcile.seam.test.ts` ④结构判据会红。
+
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
@@ -1436,7 +1446,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let state = await simCurrent(c, s);
     // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
-    const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
+    const propRules = await listPublishedPropRules(c); // PUBLISHED only
     const propagate = propRules.length > 0;
     // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
     // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
@@ -1493,21 +1503,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
-      // ── 传导相入参：走**唯一装配处**（WO-CERT-CONTRACT-RECONCILE 判据④）────────────────
-      // 图物化 / 范围裁剪 / 规则参数 / 节拍闸门四样，此前在本文件里装配了两遍（tick 路一遍、
-      // 认证 Trial Tick 一遍）。两份今天恰好等价，但那是**巧合不是机制** —— 任一边改个过滤条件
-      // 就会静默分家，而两边测试都仍然绿。现在两条路只经 `buildPropagationInputs` 取参。
-      //
       // ── 会话范围读端（WO-SIM-SCOPE-TRIAL · 闭 #129/#130 `G-SIM-SCOPE-UNREAD`）────────────
-      // 此前这里无条件全本体、`s.scope` **从头到尾没人读**：用户在屏上切到「局部推演」，
-      // 引擎照样按 GLOBAL 全量算，答案是错的而页面不报错。
-      // 现在范围在**图物化这一步**就生效：LOCAL ⇒ 只留根类型对象 + `hops` 跳邻域 + 两端都在范围内的边。
-      // GLOBAL ⇒ `scopePropagationGraph` 原样返回同一引用（`===`），旧行为逐字节不变（RL9）。
-      const pin = await buildPropagationInputs(repos, c, s.scope);
-      graph = pin.graph;
-      scopeReport = pin.report;
-      Object.assign(ruleParams, pin.ruleParams);
-      cadenceGates = pin.cadenceGates; gateSkipped = pin.gateSkipped;
+      // 此前这里是就地物化 + 无条件全本体，`s.scope` **从头到尾没人读**：
+      // 用户在屏上切到「局部推演」，引擎照样按 GLOBAL 全量算，答案是错的而页面不报错。
+      // 现在范围在**图物化那一步**生效（裁剪在 `buildPropagationInputs` 里，与 Trial Tick 同一处）：
+      // LOCAL ⇒ 只留根类型对象 + `hops` 跳邻域 + 两端都在范围内的边；
+      // GLOBAL ⇒ 原样返回同一引用（`===`），旧行为逐字节不变（RL9）。
+      //
+      // 图 / 范围 / 规则参数 / 节拍闸门全部走**唯一装配处**（WO-SIM-ACT-CLOSE · #152，
+      // 与 Trial Tick 同源，见 `buildPropagationInputs`）—— 另抄一份就会出现
+      // 「认证说能跑、真 tick 不是这个数」。
+      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope));
+      graph = inp.graph;
+      scopeReport = inp.scopeReport;
+      Object.assign(ruleParams, inp.ruleParams);
+      cadenceGates = inp.cadenceGates; gateSkipped = inp.gateSkipped;
     }
     let trace: PropagationTrace[] | null = null;
     let appliedPerturbations: string[] = [];
@@ -1558,8 +1568,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * （原 `app.ts:1485`），而 tick 路由正是从同一行读回在途延迟贡献（`app.ts:1433`
    * `getTickState(...).pending`）。`seed.ts` 的 `demo_line_util_to_base_load` 带 `delayTicks: 1`
    * ⇒ demo 租户跑一次 tick 后 `pending` 必然非空 ⇒ `tick → act → tick` **静默丢掉全部在途传导**。
-   * 今天不炸只因 `/act` 零调用方（欠账 #150）——本单接上前端入口，它立刻会变成线上静默错答，
-   * 故两条账必须同单修（PRD §2.2③）。
+   * 立账时（WO-P0）不炸只因 `/act` 零调用方（欠账 #150）。**WO-SIM-ACT-CLOSE 已把前端入口接上**
+   * （沙盘「施加扰动」→ `POST /perturbations` → 本函数），所以这个坑现在真的在生产路径上 ——
+   * 「两条账必须同单修」（PRD §2.2③）说的正是这件事。两条施加路各有一条回归门，缺一不可：
+   * `test/sim-perturbation.test.ts` 断言②（`/act` 路）· `test/sim-act-close.seam.test.ts` ③（`/perturbations` 路）。
    * 改法：**读回并保留当前 tick 已有的 `pending`/`trace`，只改 `state`**。
    * 扰动是模拟态、不写真值（R4；采纳才出 ActionDraft），也不该动传导队列。
    */
@@ -1738,11 +1750,60 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   };
 
   /**
+   * Trial Tick 的**传导相**（欠账 #152 的修复点 —— 两条工单在这里合流）。
+   *
+   * 🔴 病灶：此前 Trial Tick 只跑 `ontologyCore.recompute`（**派生相**），`rulesFired` 恒等于派生 topo 长度，
+   * 注释写着「传导 `propagateTick` 待增量3」。而增量 3 早已落地 —— `POST …/tick` 里传导核
+   * 是真跑的（本文件 tick 路）。于是就绪认证一直在拿**派生相**的成绩单
+   * 冒充「这个世界能不能推演」：传导规则一条没跑过，`propagationRules` 那一栏却照样计入完整度。
+   * 这是「接了线接错地方」——引擎接了 tick 路、没接认证路（不是没实现，也不是没数据）。
+   *
+   * 修法：认证时在**克隆态**上真跑一 tick 传导，数「真的产生了效果的规则条数」。
+   *
+   * 四条刻意的取舍（都写在这里，免得下一个人以为是漏了）：
+   *  · `pending` 传 `[]`、`perturbations` 传 `[]` —— Trial Tick 是**探针**不是续跑：同一份世界态
+   *    必须每次得到同一个结论（R6），不许被在途队列/扰动历史带偏。它回答的是「这个世界的
+   *    配置能不能驱动传导」，不是「下一格会变成什么」（那是 `POST …/tick` 的职责）。
+   *  · 输入图/范围/参数/闸门走 `buildPropagationInputs` —— **与真 tick 同一处装配**
+   *    （WO-SIM-ACT-CLOSE；另抄一份就会出现「认证说能跑、真 tick 不是这个数」）。
+   *  · 跑在**本次认证问的那个范围**上（`scopeKind`/`target`，WO-SIM-SCOPE-TRIAL），与上面 closure 的
+   *    `types` 裁剪同一个口径 —— 认证回答的是"这个范围能不能进推演"，试算就必须在同一个范围里跑。
+   *    范围解释走契约唯一实现 `resolveSimScope`（与 tick 路由同一支，不另写一套 if）。
+   *  · **不写任何东西**：传导核是纯函数，产出丢弃；认证路一如既往零副作用。
+   *
+   * 「fired」的判据 = 该规则本 tick 真的产生了效果：即时贡献进 `trace`，延迟贡献进 `pending`，
+   * 两处都算（判据在 `firedPropagationRuleKeys` 这一支单源，扰动落地/回退行与上一轮延迟到达行
+   * 都不算传导触发）。源态为 0 / 被闸门挡住 / 被范围裁掉 / 贡献恰为 0 ⇒ **不算 fired**，这是诚实的：
+   * 世界态是空的时候，`propagationRules: 3` 但 `propagationRulesFired: 0` 正是要让人看见的事实。
+   */
+  const trialPropagate = async (
+    c: AuthCtx,
+    s: SimSession,
+    scope: ResolvedSimScope,
+  ): Promise<{ fired: number; declared: number }> => {
+    const propRules = await listPublishedPropRules(c);
+    if (propRules.length === 0) return { fired: 0, declared: 0 };
+    const inp = await buildPropagationInputs(repos, c, scope);
+    const out = propagateTick(
+      inp.graph, simState(await simCurrent(c, s)), propRules,
+      [], // pending：探针不续跑在途队列（见上）
+      s.curTick, inp.ruleParams, inp.cadenceGates,
+      [], // perturbations：探针不重放扰动（见上）
+    );
+    // 只数**本租户已发布规则**产出的那些（`firedPropagationRuleKeys` 已剔掉扰动行与延迟到达行；
+    // 这一层交集是第二道保险，也让"fired ≤ declared"在类型之外有实据）。
+    const declared = new Set(propRules.map((r) => r.key));
+    const fired = firedPropagationRuleKeys(out.trace, out.pending).filter((k) => declared.has(k));
+    return { fired: fired.length, declared: propRules.length };
+  };
+
+  /**
    * 从 live 本体装配认证三件输入（closure/gaps/trial）+ scope 计数 —— 全部复用既有产物，零新校验。
    * scope=LOCAL 时按 target（typeKey）裁出子图；GLOBAL 时全本体。computedAt 由调用方传入（R6）。
    *
-   * WO-SIM-SCOPE-TRIAL：新增 `session` 入参 —— Trial Tick 要在**这个世界的当前态**上真跑一遍传导
-   * （见下 §Trial Tick）。此前两个端点都已经 `getSimOr404` 拿到了会话却随手丢掉，只用来做 404 隔离。
+   * `session` 入参（WO-SIM-SCOPE-TRIAL ∧ WO-SIM-ACT-CLOSE 同一诉求）：Trial Tick 的传导相要在
+   * **这个世界当前的态**上真跑一遍 —— 认证问的是"这个世界"能不能推演，不是"某个凭空造的态"能不能推演。
+   * 此前两个端点都已经 `getSimOr404` 拿到了会话却随手丢掉，只用来做 404 隔离；顺手传进来即可。
    */
   const assembleCertification = async (
     c: AuthCtx,
@@ -1788,6 +1849,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
 
+    // ── Trial Tick（§3）：**两相**都真跑一遍（WO-SIM-SCOPE-TRIAL ∧ WO-SIM-ACT-CLOSE · 关闭欠账 #152）──
+    //
+    // 🔴 这里原先只跑 `ontologyCore.recompute`（**派生相**），注释还写着「传导待增量3 → 记 0」——
+    //    而传导相早已实装并有生产调用方（本文件 tick 路由）。
+    //    于是认证屏上那句「规则触发 N 条」度量的是另一相，**传导相恒记 0**：
+    //    「信号是真的，只是它不指向我要断言的那个对象」。
+    //
+    // 修法判据是**效果层**：不是"把传导核调一下"，而是**要求它真的产出贡献** ——
+    //    `firedPropagationRuleKeys` 只数「落下了即时贡献 或 排进了延迟队列」的规则 key。
+    //    一条规则被遍历到但源态为 0 / 无匹配边 / 闸门拿不到 / 被范围裁掉 ⇒ 不算触发。
     // ── Trial Tick（§3）：**两相都真跑**，且**每个数各叫各的名**────────────────────────
     //    （WO-CERT-CONTRACT-RECONCILE = WO-SIM-SCOPE-TRIAL 的实现 ⊕ WO-CERT-HONESTY 的口径）
     //
@@ -1813,28 +1884,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //    不推进 `curTick`、不 emit 事件）。用别的态就不是这个世界的试算了。
     // 跑在什么范围上：**本次认证问的那个范围**（`scopeKind`/`target`），与上面 closure 的 `types`
     //    裁剪同一个口径 —— 认证回答的是"这个范围能不能进推演"，试算就必须在同一个范围里跑。
-    // 入参从哪来：**唯一装配处** `buildPropagationInputs`（判据④）—— 与 tick 路同一个函数，
-    //    范围解释、规则参数、节拍闸门三样都不在这里另写一遍（写两遍就会静默分家）。
+    //    范围解释走契约唯一实现 `resolveSimScope`（与 tick 路由同一支，不另写一套 if）。
+    // 用哪一份图/参数/闸门：`trialPropagate` → `buildPropagationInputs`，**与真 tick 同一处装配**。
     let trial: TrialTickInput;
     try {
       const rc = await ontologyCore.recompute(c, [], { dryRun: true });
-      const pin = await buildPropagationInputs(
-        repos, c,
+      const trialScope: ResolvedSimScope = resolveSimScope(
         scopeKind === "LOCAL" ? { kind: "LOCAL", target, hops: SIM_SCOPE_DEFAULT_HOPS } : { kind: "GLOBAL" },
       );
-      // 真跑一 tick（PUBLISHED 传导规则 · 会话当前态克隆 · 空 pending · 无扰动）。
-      const trialState = simState(await simCurrent(c, session));
-      const out = propagateTick(pin.graph, trialState, pin.rules, [], session.curTick, pin.ruleParams, pin.cadenceGates);
+      const prop = await trialPropagate(c, session, trialScope);
       trial = {
         passed: true,
-        derivationNodes: rc.order.length, // 规模（非触发数，见上）
-        propagationRulesFired: firedPropagationRuleKeys(out.trace, out.pending).length, // 真·触发数
-        propagationRulesDeclared: pin.rules.length, // 分母：本范围内已发布的传导规则
-        propagationCovered: true, // 这条路**确实**跑了传导相；摘掉/短路时必须翻 false
+        derivationNodes: rc.order.length, // **规模**（非触发数，见上取证）
+        propagationRulesFired: prop.fired, // 真·触发数
+        propagationRulesDeclared: prop.declared, // 分母
+        // 这条路**确实**覆盖传导相。⚠ `trialPropagate` 在"本租户零已发布传导规则"时会早退
+        // （不调传导核，保住零本体读那条性能特征）——那仍算 covered：覆盖面说的是**这条路跑不跑传导相**，
+        // 而不是"这次有没有东西可跑"。declared=0 时 fired=0 本就可解读，不该再报"不可解读"。
+        propagationCovered: true,
         at: computedAt, error: null,
       };
     } catch (e) {
-      // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
+      // 派生图有环（CYCLIC_DERIVATION）/ 传导相抛错 等 → 诚实标 FAIL，不假装通过。
       // 注：`fanoutSafe` 复用 `trial.error === null` 当环检测（certification.ts），
       //     故这里**不许**把非致命情况也写进 error（写了会把"无环"误判成"有环"）。
       // `propagationCovered: false` —— 抛错时传导相**确实没跑完**，据实说，别报 true。

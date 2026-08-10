@@ -5,17 +5,27 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（**两相**：派生相 `ontology-core recompute` 的 dryRun + 传导相 沙盘传导核）。
+ * 一次 Trial Tick（**两相**：派生相 `ontology-core recompute` 的 dryRun + 传导相 `sim/propagation` 传导核）。
  *
- * ⚠ 这一行有两段来历，**都要留着**（WO-CERT-CONTRACT-RECONCILE 合成 · 别再合并成一句）：
+ * ⚠ 这一段有**三条**来历，都要留着（别再合并成一句，功劳也别并到一条上）：
  *   ① 原文曾停在「传导 `propagateTick` 待增量3 → 传导记 0」。那是**一条过期的诚实缺席声明**：
  *      传导核早已实装且有生产调用方（tick 路由 `app.ts`），真实缺口是**这条认证路没去调它**
  *      （欠账 #152）——「还没做出来」与「做出来了没接上」是两回事，修法不同（铁律 0.5）。
- *      → 由 WO-CERT-HONESTY 指出。
- *   ② 接上这条线的是 WO-SIM-SCOPE-TRIAL：装配方现在**真的**跑传导相，且只数「真产出贡献」
- *      的规则（源态为 0 / 无匹配边 / 闸门拿不到都不算触发）。→ 传导那个数是**真·触发计数**。
- *   ③ 但派生那个数**不是**触发数（见下 `TrialTickInput.derivationNodes` 的实测取证），
- *      两者性质不同，**不可相加** —— 旧字段 `rulesFired` 正是这么加出来的，已弃用。
+ *      本仓把注释说谎算作缺陷。→ 由 `WO-CERT-HONESTY` 指出。
+ *   ② `WO-SIM-SCOPE-TRIAL`（#129/#130 `G-SIM-SCOPE-UNREAD`）—— 让传导相**在会话/认证的范围里**真跑，
+ *      并拆出派生/传导两个分相明细。传导那个数只算「真产出贡献」的规则
+ *      （源态为 0 / 无匹配边 / 闸门拿不到都不算触发）⇒ 它是**真·触发计数**。
+ *   ③ `WO-SIM-ACT-CLOSE`（#152）—— 把两相输入收成**唯一装配处** `buildPropagationInputs`
+ *      （与真 tick 同源），并补 `propagationRulesDeclared` 这个诚实位
+ *      （`declared > 0 && fired === 0` = 世界态驱动不动传导）。
+ *   ④ `WO-CERT-CONTRACT-RECONCILE` 裁决：①②同时成立，但**派生那个数不是触发数**
+ *      （见下 `TrialTickInput.derivationNodes` 的实测取证），两者性质不同、**不可相加** ——
+ *      旧字段 `rulesFired` 正是这么加出来的，已弃用（仍下发以可回退）。
+ *   两相如今都由调用方 `app.ts assembleCertification` 真跑，结果经 `TrialTickInput` 传进来。
+ *
+ * ⚠ 本文件仍然**一相都不跑**：门 `check-sim-readiness.mjs` 明文禁止本文件出现传导函数的调用式写法
+ *   ——注意它扫的是**整份文件正文、不剔注释**，所以连注释里都不许把那个函数名后面跟上左括号
+ *   （已有 dev 的注释初稿就是这么把自己的门踩红的，原样记在这儿，别重蹈）。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *
@@ -310,6 +320,9 @@ export function deriveCertification(
     level,
     dims: { structure, knowledge, behavior, composite },
     l4Checks,
+    // 分相明细**原样投影**（本文件零计算 RL3）：调用方跑了两相就有数，没跑就 undefined ——
+    // 不在这里补 0 冒充"传导相跑过且是 0"（编 0 就等于宣称"传导相没触发"，而事实是"没人告诉我"，
+    // 这正是 #152 那个静默错答的形态）。
     trialTick: {
       passed: trial.passed,
       // 诚实口径（新）：规模 / 真触发 / 分母 / 覆盖面，四个数各答一个问题，互不冒充。

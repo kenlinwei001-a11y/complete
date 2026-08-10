@@ -745,3 +745,247 @@
   color: #0c1118;
   font-weight: 700;
 }
+
+/* ══ WO-SIM-PERTURB-TIMELINE · 扰动时间轴（读端）═══════════════════════════════
+ * 遵循 docs/CONVENTION-ui-information-layering.md：
+ *  · 第一层只放「数值 / 状态 / 名字」——泳道名、幅度、生效状态；
+ *  · 口径 / 公式 / 字段出处一律进 `?` 浮层（.hintPop，**不用** HTML title 属性）；
+ *  · §3「数据本身有结构时第一层要把结构画出来」——扰动有时序，故画成
+ *    共享 tick 轴的甘特条 + 「现在」竖线 + 同落点归入同一泳道（叠加顺序看得见）。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* —— `?` 口径浮层（悬停/聚焦显示 · Esc 关闭 · 移开立即消失）—— */
+.hintWrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+.hintBtn {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+  font: 700 9px var(--font-mono);
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hintBtn:hover,
+.hintBtn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+.hintPop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  max-width: 380px;
+  width: max-content;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+}
+.hintPop b {
+  color: var(--txt);
+}
+.hintPop code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* —— 时间轴外框 —— */
+.ptlBox {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 8px 10px 10px;
+  margin-top: 8px;
+}
+.ptlHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.ptlTitle {
+  font: 700 11px var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--muted2);
+}
+.ptlCount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--txt);
+}
+.ptlFlag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px dashed var(--amber);
+  color: var(--amber);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* —— tick 轴 —— */
+.ptlAxis {
+  position: relative;
+  height: 14px;
+  margin-left: 128px;
+  border-bottom: 1px solid var(--line2);
+}
+.ptlAxisTick {
+  position: absolute;
+  top: 0;
+  font: 9px var(--font-mono);
+  color: var(--muted2);
+  transform: translateX(-50%);
+}
+.ptlNow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--accent);
+  z-index: 2;
+}
+.ptlNowCap {
+  position: absolute;
+  top: -1px;
+  transform: translateX(-50%);
+  font: 700 9px var(--font-mono);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* —— 泳道（一个落点 = 一条）—— */
+.ptlLane {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: stretch;
+  border-top: 1px solid var(--line);
+}
+.ptlLaneName {
+  padding: 4px 8px 4px 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.ptlLaneName b {
+  display: block;
+  font: 600 11px var(--font-mono);
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ptlLaneName span {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.ptlTrack {
+  position: relative;
+  padding: 3px 0;
+  min-width: 0;
+}
+.ptlRow {
+  position: relative;
+  height: 20px;
+}
+.ptlBar {
+  position: absolute;
+  top: 2px;
+  height: 16px;
+  min-width: 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  font: 600 10px var(--font-mono);
+  color: var(--txt);
+  cursor: pointer;
+  overflow: visible;
+  white-space: nowrap;
+}
+.ptlBar:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 状态三态（第一层的「状态」维度） */
+.ptlBar.active {
+  background: color-mix(in srgb, var(--danger) 26%, transparent);
+  border-color: var(--danger);
+}
+.ptlBar.future {
+  background: transparent;
+  border-color: var(--line2);
+  border-style: dashed;
+  color: var(--muted2);
+}
+.ptlBar.past {
+  background: color-mix(in srgb, var(--muted2) 16%, transparent);
+  border-color: var(--line2);
+  color: var(--muted);
+}
+/* 永久（durationTicks=null）：右端不封口 */
+.ptlBar.forever {
+  border-right-style: dashed;
+}
+.ptlOrd {
+  font-size: 9px;
+  color: var(--muted2);
+}
+.ptlBarLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ptlStack {
+  font: 9px var(--font-mono);
+  color: var(--amber);
+  padding: 1px 0 3px;
+}
+
+/* —— 第二层：点开的明细 —— */
+.ptlDetail {
+  grid-column: 1 / -1;
+  border-top: 1px dashed var(--line2);
+  padding: 6px 0 8px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.ptlDetail dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 8px;
+  margin: 0;
+}
+.ptlDetail dt {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.ptlDetail dd {
+  margin: 0;
+  font: 10px var(--font-mono);
+  color: var(--txt);
+}

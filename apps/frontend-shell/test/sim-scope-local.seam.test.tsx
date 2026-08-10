@@ -213,14 +213,31 @@ describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围�
     );
   });
 
-  it("诚实位：范围当前只作用于就绪认证口径，**不许**暗示它已裁剪推演本身（G-SIM-SCOPE-UNREAD）", async () => {
+  /**
+   * 诚实位 —— **本条断言自己被改过一次方向，原样记在这儿**（合并单 WO-SIM-TRIAL-SCOPE-RECONCILE 发现）。
+   *
+   * 原断言是 `toContain("尚未裁剪推演本身")`。`G-SIM-SCOPE-UNREAD` 开着时它是对的；
+   * `WO-SIM-SCOPE-TRIAL` 把断点闭掉（引擎真按范围裁剪）之后，实现改了、UI 文案没跟，
+   * 而**这条断言把那句已经反过来的话原地锁住，且一直是绿的**。
+   * 形态：「我用『文案没变』当作『屏上说的是真的』的证据，而前者并不度量后者」——
+   * 这正是本仓「绿测试≠能用」的又一个形态：测试咬的是**字符串**，不是**它与实现是否一致**。
+   *
+   * 所以现在不只咬文案，**同时咬反向**：那句已作废的旧话**不许再出现**。
+   * 下一次若有人把引擎的范围裁剪改回全量、又顺手把老文案贴回来，这条会红。
+   */
+  it("诚实位：范围**已**作用于推演本身，且作废的旧文案不许复活（G-SIM-SCOPE-UNREAD 已闭）", async () => {
     const user = userEvent.setup();
     mount();
     await screen.findByTestId("sandbox-view");
     await openDiagnostics(user);
     const note = (await screen.findByTestId("sandbox-scope-reach-note")).textContent ?? "";
-    expect(note).toContain("只作用于就绪认证口径");
-    expect(note).toContain("尚未裁剪推演本身");
+    // 正向：屏上说的是今天的真相。
+    expect(note).toContain("已作用于推演本身");
+    // 诚实缺席那一档也必须写在屏上（拿不到根 ⇒ 空图报缺，不退回 GLOBAL）。
+    expect(note).toContain("裁成空图并报缺");
+    // 反向：作废的旧话不许再出现 —— 它曾经真的在屏上挂了一整个增量。
+    expect(note, "旧文案复活 = 屏上又开始说引擎不裁剪范围（与 buildPropagationInputs 的实现相反）")
+      .not.toContain("尚未裁剪推演本身");
   });
 
   it("选中范围与会话范围漂移 → 显式提示 + 「按当前范围重建会话」按钮（不静默、不自动重建）", async () => {

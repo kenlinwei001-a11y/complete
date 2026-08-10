@@ -358,8 +358,12 @@ describe("WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（
     expect(app).toContain("buildPropagationInputs"); // 金丝雀命中
     expect(inputs).toContain("buildCadenceGates"); // 金丝雀命中
 
-    // 判据：装配三件套的调用只出现在**唯一装配处**，app.ts 里一处都没有。
-    for (const sym of ["buildCadenceGates(", "scopePropagationGraph(", "resolveSimScope("]) {
+    // 判据：**装配**三件套只出现在唯一装配处，app.ts 里一处都没有。
+    // ⚠ 刻意**不含** `resolveSimScope(`：合并单采纳了「调用方自己解析 scope、把已解析的
+    //   `ResolvedSimScope` 传进装配处」这个设计（它是契约的唯一解释器，调用方调它是对的）。
+    //   把它列进禁用名单是**把判据写错了对象**——要禁的是"图/闸门被装配第二遍"，
+    //   不是"范围被解释了第二次"。本条初版就犯了这个错，当场被自己的门顶红，原样记在这儿。
+    for (const sym of ["buildCadenceGates(", "scopePropagationGraph("]) {
       expect(
         app.includes(sym),
         `app.ts 里出现了 ${sym} —— 传导相入参又被装配了第二遍。` +
@@ -367,9 +371,11 @@ describe("WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（
         `请改走 sim/propagation-inputs.ts 的 buildPropagationInputs。`,
       ).toBe(false);
     }
-    // 且唯一装配处**确实**把三件套都装了（否则"只有一处"是靠少做事换来的）。
-    for (const sym of ["buildCadenceGates(", "scopePropagationGraph(", "resolveSimScope("]) {
+    // 且唯一装配处**确实**把两件套都装了（否则"只有一处"是靠少做事换来的）。
+    for (const sym of ["buildCadenceGates(", "scopePropagationGraph("]) {
       expect(inputs, `唯一装配处漏装 ${sym}`).toContain(sym);
     }
+    // 范围必须**流进**装配处（而不是留给各调用方自己裁）：它吃的是已解析的 ResolvedSimScope。
+    expect(inputs, "装配处不吃范围 ⇒ 谁调用谁自己裁 = 装配处纪律作废").toContain("scope: ResolvedSimScope");
   });
 });
