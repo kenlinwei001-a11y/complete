@@ -45,6 +45,7 @@ const TOL = Number(process.env.ONTOLOGY_ANCHOR_TOLERANCE ?? 40);
 
 const update = process.argv.includes("--update");
 const report = process.argv.includes("--report");
+const canaryOnly = process.argv.includes("--canary");
 
 // --- 源文件索引（用于把简写锚点 `loop.ts:452` 解析到真实路径 / 判歧义）--------------
 const SRC_ROOTS = ["apps", "packages", "scripts", "deploy", "services", "db-seed", ".claude"];
@@ -146,6 +147,201 @@ function codeOf(line) {
   return m ? line.slice(0, m.index + m[1].length) : line;
 }
 
+// ─── 行分类：import/export-from · 定义处 · 普通引用（欠账 #166）──────────────────
+// 病灶：`--update` 原来「在所有代码出现里取离声称行最近的一个」回写。TypeScript 文件里一个符号
+// **第一次出现往往是 `import { X } from "..."`**，于是代码一漂，`--update` 就把锚点写到一句 import 上：
+// 门当场变绿（机械正确），但本体的 file:line 从「读这里能看懂接线」退化成「读这里只看到一句 import」，
+// 而本体是系统接线的单一来源 —— 烂掉了没人会立刻发现。这是**门自己把自己修绿**的假绿形态。
+//
+// ⚠️ **单一实现**：下面两个纯函数被**三处**共用 —— ① `--update` 的回写候选筛选、
+// ② 校验路径的 `IMPORT_LINE_ANCHOR` 护栏、③ 自证工具用的金丝雀 `runCanary()`。
+// **不许各抄一份正则**：抄了护栏就是装饰品，改主逻辑时金丝雀拿旧的去测、照样绿（CLAUDE.md 铁律 0.6 明令）。
+const JS_EXT = new Set(["ts", "tsx", "js", "jsx", "mjs", "cjs"]);
+const PY_EXT = new Set(["py"]);
+function extOf(rel) {
+  return (rel.split(".").pop() ?? "").toLowerCase();
+}
+
+/** import/export-from 语句是否已闭合（用于把多行 import 收成一条语句）。 */
+function stmtClosed(buf) {
+  return /(^|[\s}])from\s*["'][^"']*["']/.test(buf) || /^import\s*["'][^"']*["']/.test(buf) || /;\s*$/.test(buf);
+}
+
+/**
+ * 一份源文件里**属于 import / export-from 语句**的全部行号（1-based；多行 import 的每一行都算）。
+ * 纯函数（吃 lines + ext），故金丝雀可以直接投喂合成样例，与主逻辑跑的是同一份实现。
+ * 只认**静态** import 与 `export ... from`：`export const/function/class/type X`、
+ * 不带 from 的本地 `export { X }`、动态 `await import("./x")` **都不算**（它们是真代码位置）。
+ */
+function importStatementLines(lines, ext) {
+  const set = new Set();
+  if (PY_EXT.has(ext)) {
+    for (let i = 0; i < lines.length; i++) {
+      const t = codeOf(lines[i]).trim();
+      if (/^import\s+\S/.test(t) || /^from\s+\S+\s+import\b/.test(t)) set.add(i + 1);
+    }
+    return set;
+  }
+  if (!JS_EXT.has(ext)) return set;
+  for (let i = 0; i < lines.length; i++) {
+    const head = codeOf(lines[i]).trim();
+    // 廉价剪枝：只有这几种起手式**可能**是 import/export-from。`export const|function|class|interface|type X`
+    // 一律不进（它们正是我们要保住的"定义处"）。
+    const isImp = /^import\b/.test(head);
+    const isExpFrom = /^export\s+type\s*\{/.test(head) || /^export\s*\{/.test(head) || /^export\s*\*/.test(head);
+    if (!isImp && !isExpFrom) continue;
+    const span = [i];
+    let buf = head;
+    let k = i;
+    while (!stmtClosed(buf) && k + 1 < lines.length && span.length < 200) {
+      k++;
+      buf += " " + codeOf(lines[k]).trim();
+      span.push(k);
+    }
+    const sideEffect = /^import\s*["'][^"']*["']/.test(buf); // import "./x.js"（纯副作用导入）
+    const fromClause = /(^|[\s}])from\s*["'][^"']*["']/.test(buf);
+    if ((isImp && (fromClause || sideEffect)) || (isExpFrom && fromClause)) {
+      for (const n of span) set.add(n + 1);
+      i = k; // 整条语句已消费
+    }
+  }
+  return set;
+}
+
+/**
+ * 该行是不是 `symbol` 的**定义处**（而非调用/引用）。纯函数，金丝雀直接投喂。
+ * 覆盖 `export function X` / `class X` / `interface X` / `type X =` / `enum X` /
+ * `const|let|var X`（含解构） / 类成员与对象字面量键 `X:` / 方法简写 `X(...) {`。
+ */
+function isDefinitionLine(line, symbol) {
+  const code = codeOf(line ?? "");
+  if (!code) return false;
+  const s = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pats = [
+    String.raw`\b(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?function\s*\*?\s*${s}\b`,
+    String.raw`\b(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+${s}\b`,
+    String.raw`\b(?:export\s+)?(?:declare\s+)?interface\s+${s}\b`,
+    String.raw`\b(?:export\s+)?(?:declare\s+)?type\s+${s}\s*[=<]`,
+    String.raw`\b(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+${s}\b`,
+    String.raw`\b(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+(?:\{[^}]*\b${s}\b[^}]*\}|\[[^\]]*\b${s}\b[^\]]*\]|${s}\b)`,
+    String.raw`^\s*(?:export\s+)?(?:public\s+|private\s+|protected\s+|readonly\s+|static\s+|abstract\s+|async\s+)*${s}\s*[:(=]`,
+  ];
+  return pats.some((p) => new RegExp(p).test(code));
+}
+
+const importLineCache = new Map();
+/** 缓存版：某文件的 import 行号集合。 */
+function importLinesOf(rel) {
+  if (!importLineCache.has(rel)) importLineCache.set(rel, importStatementLines(linesOf(rel), extOf(rel)));
+  return importLineCache.get(rel);
+}
+
+/** 把 symbol 的出现按「import 行 / 定义处 / 普通引用」三分。回写候选**永不含 import 行**。 */
+function classifyOccurrences(rel, symbol) {
+  const lines = linesOf(rel);
+  const imports = importLinesOf(rel);
+  const out = { imp: [], def: [], code: [] };
+  for (const n of occurrences(rel, symbol)) {
+    if (imports.has(n)) out.imp.push(n);
+    else if (isDefinitionLine(lines[n - 1], symbol)) out.def.push(n);
+    else out.code.push(n);
+  }
+  return out;
+}
+
+// ─── 金丝雀（CLAUDE.md 铁律 0.6 · 强制）────────────────────────────────────────
+// 本门要报的是「0 个锚点指向 import 行」这种**否定结论**。而「我没找到」和「它不存在」是两个命题：
+// 若 `importStatementLines` 哪天被改坏（少认一种 import 形态 / 正则写歪），它会安静地返回空集，
+// 门照样打印「✓ 通过」。所以在下任何否定结论之前，先拿一份**已知必中**的合成样例证明检测逻辑是活的。
+// ⚠️ 金丝雀调用的就是主逻辑那两个函数本身（`importStatementLines` / `isDefinitionLine`），
+// **没有另抄一份正则** —— 抄了它就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿。
+const CANARY_LINES = [
+  /* 1 */ `import { seedDemoEntitlements, DEMO_TENANT } from "./seed.js";`,
+  /* 2 */ `import type { Foo } from "./foo.js";`,
+  /* 3 */ `import "./side-effect.js";`,
+  /* 4 */ `import {`,
+  /* 5 */ `  multiLineSymbol,`,
+  /* 6 */ `  other,`,
+  /* 7 */ `} from "./multi.js";`,
+  /* 8 */ `export { reExported } from "./re.js";`,
+  /* 9 */ `export * from "./star.js";`,
+  /* 10 */ `export const SEED_PACKAGE_ID = "pkg_battery_manufacturing";`,
+  /* 11 */ `export function seedDemoEntitlements(repos) {`,
+  /* 12 */ `  const m = await import("./dynamic.js");`,
+  /* 13 */ `  return multiLineSymbol(repos);`,
+  /* 14 */ `}`,
+  /* 15 */ `export interface Foo { bar: string }`,
+  /* 16 */ `export type Baz = { qux: number };`,
+  /* 17 */ `export class Widget {}`,
+  /* 18 */ `const localOnly = 1;`,
+  /* 19 */ `export { localOnly };`,
+];
+// (行号, 期望是不是 import 行) —— 覆盖单行/类型/副作用/多行/re-export/星号导出，以及一组**必须不中**的负例。
+const CANARY_IMPORT_EXPECT = [
+  [1, true], [2, true], [3, true],
+  [4, true], [5, true], [6, true], [7, true], // 多行 import 的每一行都要算
+  [8, true], [9, true],
+  [10, false], [11, false], [12, false], // `export const` / `export function` / 动态 import 都是真代码位置
+  [13, false], [15, false], [16, false], [17, false], [18, false],
+  [19, false], // 不带 from 的本地 `export { X }` 不算 import
+];
+const CANARY_DEF_EXPECT = [
+  [10, "SEED_PACKAGE_ID", true],
+  [11, "seedDemoEntitlements", true],
+  [15, "Foo", true],
+  [16, "Baz", true],
+  [17, "Widget", true],
+  [18, "localOnly", true],
+  [13, "multiLineSymbol", false], // 调用处不是定义处
+  [1, "seedDemoEntitlements", false], // import 行不是定义处
+];
+
+/** 跑金丝雀。返回 {ok, hits, misses[]}。不中 ⇒ 调用方必须报「工具坏了」，不许报「锚点都干净」。 */
+function runCanary() {
+  const misses = [];
+  let hits = 0;
+  const got = importStatementLines(CANARY_LINES, "ts");
+  for (const [ln, want] of CANARY_IMPORT_EXPECT) {
+    const have = got.has(ln);
+    if (have === want) hits++;
+    else misses.push(`importStatementLines 第 ${ln} 行（\`${CANARY_LINES[ln - 1].trim()}\`）期望 ${want ? "是" : "不是"} import 行，实得 ${have}`);
+  }
+  for (const [ln, sym, want] of CANARY_DEF_EXPECT) {
+    const have = isDefinitionLine(CANARY_LINES[ln - 1], sym);
+    if (have === want) hits++;
+    else misses.push(`isDefinitionLine 第 ${ln} 行 × \`${sym}\` 期望 ${want ? "是" : "不是"} 定义处，实得 ${have}`);
+  }
+  return { ok: misses.length === 0, hits, total: CANARY_IMPORT_EXPECT.length + CANARY_DEF_EXPECT.length, misses };
+}
+
+const canary = runCanary();
+if (!canary.ok) {
+  console.error("\n✗ **工具坏了**（不是「锚点都干净」）：import/定义行判定的金丝雀未全中，本门这一轮的结论一律不可信。");
+  for (const m of canary.misses) console.error(`  - ${m}`);
+  console.error(`  金丝雀 ${canary.hits}/${canary.total} 命中 —— 修好 importStatementLines / isDefinitionLine 再跑。`);
+  process.exit(2);
+}
+if (canaryOnly) {
+  console.log(`✓ 金丝雀全中：${canary.hits}/${canary.total}（import 行判定 ${CANARY_IMPORT_EXPECT.length} 例 + 定义处判定 ${CANARY_DEF_EXPECT.length} 例）`);
+  console.log(`  命中样例：合成样例第 1/4/5/6/7/8/9 行判为 import 行；第 10/11/12/19 行判为非 import（含动态 import 与本地 export{}）。`);
+  process.exit(0);
+}
+
+const nearestTo = (arr, line) =>
+  arr.length ? arr.reduce((best, n) => (Math.abs(n - line) < Math.abs(best - line) ? n : best), arr[0]) : null;
+
+/**
+ * 选回写目标：**import 行一律不进候选**（硬规则）；定义处优先（软规则）——
+ * 最近的定义若落在容差内，说明锚点本意就是指定义 ⇒ snap 到定义；
+ * 否则保留最近的**非 import** 出现（锚点可能有意指"接线点/调用处"而非定义处，不该被硬拽走）。
+ * 这条软规则刻意不会把任何原本绿的锚点判红：snap 只发生在 delta ≤ TOL 的情形。
+ */
+function pickAnchorTarget(cls, declared) {
+  const nearestDef = nearestTo(cls.def, declared);
+  if (nearestDef !== null && Math.abs(nearestDef - declared) <= TOL) return nearestDef;
+  return nearestTo(cls.def.concat(cls.code), declared);
+}
+
 /** symbol 在文件中的出现行号（标识符走词边界，含点/括号的按字面子串）。scope: "code" | "comment" */
 function occurrences(rel, symbol, scope = "code") {
   const lines = linesOf(rel);
@@ -194,6 +390,18 @@ for (const a of anchors) {
     (a.symbol ? verified : unverified).push(a);
     continue;
   }
+  // 护栏（欠账 #166）：**任何**锚点——带不带 symbol 都算——若指着一句 import/export-from，
+  // 就是"读过去只能看到一句 import"的坏锚点，直接红。与 `--update` 的回写候选筛选**共用
+  // `importLinesOf` 这一个实现**，不是另抄的正则。
+  if (importLinesOf(res.rel).has(a.line)) {
+    a.onImportLine = true;
+    problems.push({
+      kind: "IMPORT_LINE_ANCHOR",
+      a,
+      msg: `锚点指向 import/export-from 语句：${res.rel}:${a.line} → \`${(linesOf(res.rel)[a.line - 1] ?? "").trim().slice(0, 90)}\`—— 跳过去只看得到一句 import，看不到接线`,
+      auto: false, // 先占位；下面若能算出真实代码位置，会改成可自动修
+    });
+  }
   if (!a.symbol) {
     unverified.push(a);
     continue;
@@ -212,10 +420,29 @@ for (const a of anchors) {
     });
     continue;
   }
-  const nearest = occ.reduce((best, n) => (Math.abs(n - a.line) < Math.abs(best - a.line) ? n : best), occ[0]);
+  // 三分：import 行 / 定义处 / 普通引用。**import 行永不作为回写目标**（欠账 #166 的核心修法）。
+  const cls = classifyOccurrences(res.rel, a.symbol);
+  const nearest = pickAnchorTarget(cls, a.line);
+  if (nearest === null) {
+    // fail-closed：符号在该文件里**只**出现在 import 行（本地无定义、无调用）——
+    // 静默把锚点写到那句 import 上正是本缺陷，所以这里报错退出、交给人判锚点该指哪个文件。
+    problems.push({
+      kind: "SYMBOL_ONLY_IN_IMPORT",
+      a,
+      msg: `symbol \`${a.symbol}\` 在 ${res.rel} 里**只**出现在 import/export-from 语句（行 ${cls.imp.join("/")}）—— 该文件只是转口，锚点须改指真正定义/使用它的文件（--update 刻意不代劳）`,
+      auto: false,
+    });
+    continue;
+  }
   a.actual = nearest;
   a.delta = Math.abs(nearest - a.line);
-  if (a.delta > TOL) {
+  const badLine = problems.find((p) => p.kind === "IMPORT_LINE_ANCHOR" && p.a === a);
+  if (badLine) {
+    // 锚点当前压在 import 行上，但该 symbol 在本文件有真实代码位置 ⇒ 机械可修，交给 `--update`。
+    badLine.auto = true;
+    badLine.fix = nearest;
+    badLine.msg += `；真实代码位置 ${res.rel}:${nearest}`;
+  } else if (a.delta > TOL) {
     problems.push({
       kind: "LINE_DRIFT",
       a,
@@ -228,7 +455,16 @@ for (const a of anchors) {
 
 // --- --update：机械类（LINE_DRIFT）回写 markdown；语义类拒绝代劳 ------------------
 if (update) {
-  const drifted = problems.filter((p) => p.kind === "LINE_DRIFT");
+  const drifted = problems.filter((p) => p.auto && typeof p.fix === "number");
+  // fail-closed 自检（欠账 #166）：**回写目标绝不允许是 import 行**。这里跑的是与
+  // `pickAnchorTarget` / `IMPORT_LINE_ANCHOR` 护栏**同一个** `importLinesOf`，不是另抄的正则；
+  // 真撞上说明候选筛选被改坏了 —— 宁可整批不写，也不许再把锚点钉到一句 import 上。
+  const wouldWriteImport = drifted.filter((p) => p.a.resolved && importLinesOf(p.a.resolved).has(p.fix));
+  if (wouldWriteImport.length) {
+    console.error(`\n✗ --update 自检失败：${wouldWriteImport.length} 条回写目标落在 import/export-from 语句上（候选筛选被改坏了）——**未写任何文件**：`);
+    for (const p of wouldWriteImport) console.error(`  - ${p.a.raw} → ${p.a.resolved}:${p.fix}`);
+    process.exit(2);
+  }
   if (drifted.length) {
     const byDoc = new Map();
     for (const p of drifted) {
