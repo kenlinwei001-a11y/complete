@@ -20,6 +20,7 @@ import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
 import { PmDag, type PmDagNode } from "./PmDag";
+import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
@@ -59,13 +60,9 @@ import styles from "./SimViews.module.css";
  * 只管展示分类）。枚举里加了成员而这里没加 ⇒ 该项在下拉里消失，`sandbox-perturbation.seam.test.tsx`
  * 的逐条对账用例会红。
  */
-const PERTURBATION_KINDS: { key: PerturbationKind; label: string }[] = [ // hardcoded-data-allow —— 契约枚举的显示名映射，非业务数据
-  { key: "demand_shift", label: "需求突变" },
-  { key: "supply_disruption", label: "供应中断" },
-  { key: "capacity_loss", label: "产能损失" },
-  { key: "cost_shock", label: "成本冲击" },
-  { key: "quality_event", label: "质量事件" },
-];
+// WO-SIM-PERTURB-TIMELINE：`PERTURBATION_KINDS` 已挪进 `PerturbationTimeline.tsx` 并从那里导出 ——
+// 施加表单（本文件）与扰动时间轴（那里）显示的是同一批分类名，两处各写一份迟早对不上。
+// 依赖方向是单向的（SandboxView → PerturbationTimeline），不成环。
 
 // ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
 /** 字符串 → 稳定 [0,1)（用于把抽象 key 映射成可视初值；与行业无关）。 */
@@ -551,6 +548,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 追加一格会让 heat 条凭空多出一个不存在的 tick。
       setHistory((h) => (h.length === 0 ? [kpiAfter] : [...h.slice(0, -1), kpiAfter]));
       setLastPerturbation({ id: res.perturbation.id, label: res.perturbation.label, kpiBefore, kpiAfter });
+      // WO-SIM-PERTURB-TIMELINE：清单重取（**不**本地 push 一条 —— 那是第二套真相源，
+      // 且顺序会与后端 `listPerturbations` 的 `startTick → 建单先后` 定序漂移，而顺序是语义）。
+      // 同标签页靠这一行；别的标签页靠 `sim.perturbation_created` 事件失效同一个 key。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId] });
       toast(`扰动已施加：${res.perturbation.label} → 全局态 ${kpiBefore.toFixed(1)} → ${kpiAfter.toFixed(1)}`, "success");
     } catch (e) {
       toastError(e);
@@ -992,7 +993,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </>
         }
         // 旧主屏 tick 控制条：推进 / 存档 / 分支 / 采纳 / tick 时间轴 heat（整块搬来，行为不变）
+        // ＋ WO-SIM-PERTURB-TIMELINE：扰动时间轴紧贴其下。
+        //   放这里而不是放右栏，是因为它**要和上面那条 tick 轴共用同一根时间线**：
+        //   右栏 300px 画不出"先后"，而"哪一格 KPI 动了 / 那一格里哪几条扰动在生效"
+        //   必须上下对得上才叫看得出因果（CONVENTION §3）。
         controlBar={
+          <>
           <div
             className="panel"
             data-testid="sandbox-controls"
@@ -1017,6 +1023,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               <HeatStrip series={history} threshold={70} />
             </div>
           </div>
+          <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
+          </>
         }
         // 旧主屏本体 PmDag 拓扑 → 画布第四模式
         ontologyCanvas={
