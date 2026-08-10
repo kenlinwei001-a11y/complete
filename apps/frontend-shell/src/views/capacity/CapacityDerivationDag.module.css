@@ -149,7 +149,10 @@
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 13px;
+  /* 高度跟着 RUNG_STEP_PX 的最高一级走（= 2 + 6 × 2.6 ≈ 18）。
+     真浏览器实拍复核过：原来每级只差 1.6px，在 1600px 视口下六格几乎一样高，
+     「阶梯」这个信号等于没发出去 —— 加大级差后才真看得出在爬。 */
+  height: 18px;
   margin-top: 3px;
 }
 .rung {
@@ -163,6 +166,31 @@
 /* 当前这一级用层色点出来（层色由 inline style 传入 --cap-rung-on） */
 .rung[data-on="1"][data-cur="1"] {
   background: var(--cap-rung-on, var(--accent));
+}
+
+/* 极窄容器（手机竖屏 / 被挤压的栅格列）：改成**竖着的一条链** ——
+ * 卡不再撑 148px 硬底，箭头改指向下方，方向语义一个字不丢。
+ *
+ * 诚实说明：本页在 ≤420px 时**页面本身**就已经横滚了（实测对照：不挂本组件时
+ * documentElement.scrollWidth=500 / clientWidth=420，溢出元素是顶栏 userMenu 与
+ * risk-card-*，与本组件无关）。那是存量问题、不在本单范围；这条媒体查询只保证
+ * **本组件不往上添乱**：容器被压扁时它自己收，而不是横着顶出去。
+ */
+@media (max-width: 560px) {
+  .card {
+    flex-basis: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .link {
+    width: 100%;
+    height: 15px;
+    font-size: 0; /* 藏掉横向的 → ，换成下面竖向的 ↓（DOM 与 testid 一个字不改） */
+  }
+  .link::after {
+    content: "↓";
+    font-size: 12px;
+  }
 }
 
 /* `?` 浮层触发器：贴在卡右上角，**在按钮之外**（button 不能套 button）。 */

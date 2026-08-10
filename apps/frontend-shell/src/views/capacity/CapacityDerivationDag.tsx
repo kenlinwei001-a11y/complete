@@ -68,6 +68,14 @@ export const CAP_TYPE_SCALE = {
 const ANSWER_LAYER = 6;
 
 /**
+ * 梯级条第 i 格的高度（px）—— 递进承载物②「阶梯」的级差。
+ * 真浏览器实拍复核后从 `2 + i×1.6` 改成 `2 + i×2.6`：原级差在 1600px 视口下
+ * 六格几乎一样高，阶梯信号形同没有（jsdom 不做布局，这条只有实拍才看得见）。
+ * 与 CSS 里 `.rungs { height }` 同源：改这里须同步那里（最高一级 = RUNG(6) ≈ 18）。
+ */
+const rungHeight = (i: number) => 2 + i * 2.6;
+
+/**
  * WO-GSIM-3 灰数据修（G-DATAMODE-PROV 残口·产线派生 DAG 恒灰）：张力值 → 冷暖热力色。
  * 灰(v==null·无 LIVE 真源) vs 有真值即按幅度冷蓝→暖红上色 → 改 Equipment.oee_current 使 bottleneck_matrix
  * 张力真变 → 本层锚点格**真变色**（非恒灰·SEAM §5.4）。张力口径 0–100（越高越紧）。
@@ -288,7 +296,7 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
                       className={styles.rung}
                       data-on={s.layer <= n ? "1" : "0"}
                       data-cur={s.layer === n ? "1" : "0"}
-                      style={{ height: 3 + s.layer * 1.6, "--cap-rung-on": L.colorVar } as CSSProperties}
+                      style={{ height: rungHeight(s.layer), "--cap-rung-on": L.colorVar } as CSSProperties}
                     />
                   ))}
                 </span>
