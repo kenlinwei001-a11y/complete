@@ -1564,8 +1564,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * （原 `app.ts:1485`），而 tick 路由正是从同一行读回在途延迟贡献（`app.ts:1433`
    * `getTickState(...).pending`）。`seed.ts` 的 `demo_line_util_to_base_load` 带 `delayTicks: 1`
    * ⇒ demo 租户跑一次 tick 后 `pending` 必然非空 ⇒ `tick → act → tick` **静默丢掉全部在途传导**。
-   * 今天不炸只因 `/act` 零调用方（欠账 #150）——本单接上前端入口，它立刻会变成线上静默错答，
-   * 故两条账必须同单修（PRD §2.2③）。
+   * 立账时（WO-P0）不炸只因 `/act` 零调用方（欠账 #150）。**WO-SIM-ACT-CLOSE 已把前端入口接上**
+   * （沙盘「施加扰动」→ `POST /perturbations` → 本函数），所以这个坑现在真的在生产路径上 ——
+   * 「两条账必须同单修」（PRD §2.2③）说的正是这件事。两条施加路各有一条回归门，缺一不可：
+   * `test/sim-perturbation.test.ts` 断言②（`/act` 路）· `test/sim-act-close.seam.test.ts` ③（`/perturbations` 路）。
    * 改法：**读回并保留当前 tick 已有的 `pending`/`trace`，只改 `state`**。
    * 扰动是模拟态、不写真值（R4；采纳才出 ActionDraft），也不该动传导队列。
    */

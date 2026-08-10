@@ -83,6 +83,13 @@ async function lightWorld(t: TestApp, tenant: string, cadenceRows: readonly Reco
  * 写死 `pending: []`（`app.ts` act 分支）——**会把在途的延迟贡献整队清空**。
  * 用它掐来料会凭空吞掉一批已发出的量（实测 28 → 17），守恒当场破。
  * 那是既有行为、不在本单边界内，故本测改用"只统计完整批次窗口"绕开，并在交付说明里报这个发现。
+ *
+ * ⚠ **上面这段自 2026-08-09 起已过期，保留原文只为留住来历**（本仓规矩：过期的账要标掉不要抹掉）：
+ * 欠账 #151 已由 WO-P0 修掉 —— `simApplyAtCurrentTick`（`app.ts`）现在**读回并保留**当前 tick 的
+ * `pending`/`trace`，只改 `state`；`/act` 与 `POST /perturbations` 共用它。
+ * 复验：`test/sim-perturbation.test.ts` 断言②（`/act` 路）· `test/sim-act-close.seam.test.ts` ③（`/perturbations` 路），
+ * 两条都真跑 `tick → 施加 → tick` 并断言在途贡献如期到达。
+ * 本测**不改**计量窗口的取法：那个取法本身是对的（要的是完整周期的平均，与 `act` 能不能用无关）。
  */
 const WINDOW = 28; // 计量窗口长度（14 与 7 的公倍数 ⇒ 两边都是整数个完整周期）
 const TRAVEL_TICKS = 3; // 链上除节拍外的固定行程（rule.delayTicks）

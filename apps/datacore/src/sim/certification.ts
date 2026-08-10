@@ -5,7 +5,12 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（`ontology-core recompute`，传导 `propagateTick` 待增量3）。
+ * 一次 Trial Tick（**两相**：`ontology-core recompute` 派生 + `sim/propagation propagateTick` 传导）。
+ * ⚠ 原文写「传导 propagateTick 待增量3」，2026-08-10（WO-SIM-ACT-CLOSE·#152）起已不成立：
+ * 两相都由调用方 `app.ts assembleCertification` 真跑，结果经 `TrialTickInput` 传进来。
+ * 本文件仍然**一相都不跑**：门 `check-sim-readiness.mjs` 明文禁止本文件出现传导函数的调用式写法
+ * ——注意它扫的是**整份文件正文、不剔注释**，所以连注释里都不许把那个函数名后面跟上左括号
+ * （本条注释初稿就是这么把自己的门踩红的，原样记在这儿）。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *
