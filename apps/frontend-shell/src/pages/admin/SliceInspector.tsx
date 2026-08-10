@@ -10,6 +10,10 @@ import {
 } from "@/api/endpoints";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 import { toast, toastError } from "@/store/toastStore";
+import SliceLayersPanel from "./SliceLayersPanel";
+import zh from "@/locales/zh";
+
+const zhSliceLayers = zh.admin.sliceLayers;
 
 /**
  * WO-SLICE-GOVERNANCE-FULL 共享切片检视面板（本体切片页 + 切片库页共用）。
@@ -84,6 +88,12 @@ export default function SliceInspector({
 
   return (
     <div className="panel" data-testid={`slice-inspector-${sliceKey}`} style={{ margin: "6px 0 12px", display: "grid", gap: 12 }}>
+      {/* WO-SLICE-16-LAYERS：十六层结构放在最前 —— 它回答的是「这条切片到底覆盖了什么」，
+          是本面板的结论；子图与规格是它的展开。第一层只放层名+计数+状态，明细点开才看。 */}
+      <div>
+        <div className="section-title">{zhSliceLayers.title}</div>
+        <SliceLayersPanel sliceKey={sliceKey} />
+      </div>
       <InlineGraph sliceKey={sliceKey} q={graphQ} />
       {specQ.isLoading ? (
         <div className="empty-state">加载切片规格…</div>

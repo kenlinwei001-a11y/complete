@@ -940,6 +940,52 @@ export const zh = {
       noPath: "无可达路径",
       unreachable: (list: string) => `不可达目标：${list}`,
     },
+    // WO-SLICE-16-LAYERS · 本体切片十六层结构（层名/状态/说明文案单一来源，R14 不内联业务常数）。
+    sliceLayers: {
+      title: "十六层结构",
+      // 第一层只放结论（CONVENTION-ui-information-layering §1）：一句话说清"这条切片覆盖了几层"。
+      headline: (present: number) => `${present}/16 层有数据`,
+      sub: "点层卡展开明细。计数为本切片实取，非示例值。",
+      // 层名（① … ⑯，顺序即 ordinal，不可重排）
+      names: {
+        business_scenario: "业务场景",
+        decision_intent: "决策意图",
+        object: "对象",
+        property: "属性",
+        relation: "关系",
+        event: "事件",
+        state: "状态",
+        metric: "指标",
+        time: "时间",
+        rule: "规则",
+        constraint: "约束",
+        data_binding: "数据绑定",
+        scenario: "场景",
+        evidence: "证据",
+        action: "行动",
+        governance: "治理与溯源",
+      } as Record<string, string>,
+      statusPresent: "有数据",
+      statusNotInSlice: "本切片未纳入",
+      statusAbsent: "缺席",
+      // 三态各自的一句话结论（第一层只放结论，口径/原因进浮层）
+      summaryLine: (present: number, notInSlice: number, absent: number) =>
+        `${present} 层有数据 · ${notInSlice} 层平台有但本切片未纳入 · ${absent} 层缺席`,
+      platformHas: (n: number, unit: string) => `平台有 ${n} ${unit}`,
+      carrierLabel: "承载物",
+      reasonLabel: "为什么没有",
+      whyLabel: "口径说明",
+      emptyItems: "该层无明细可展开",
+      graphSummary: (n: number, e: number) => `子图 ${n} 个节点 · ${e} 条边`,
+      truncated: "已截断",
+      argsLabel: "试切参数（JSON）",
+      reload: "重新取数",
+      loading: "解析十六层…",
+      error: "十六层解析失败",
+      // 诚实位（绝不删除，只允许降层）：说明这一页为什么可能显示空。
+      honesty:
+        "缺席的层不画占位内容——本平台宁可显示空并说明为什么，也不画假数据。",
+    },
   },
 
   // 全局推演「活系统」升级（WO-GSLIVE-1-COCKPIT · 自由杠杆 / 人机对话 / 方案存分比）。additive。
