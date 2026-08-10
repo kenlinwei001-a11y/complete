@@ -105,3 +105,8 @@ registerRenderer("review", () => import("./ReviewView"));
 // 净室归因投影页（三通用净室求解器 shared_bottleneck/concentration_risk/margin_attribution 首次前端接地·
 // 参数从真对象类型倒推·既作 renderer 供 ViewPage 分发，也有专用 route 见 App.tsx）。
 registerRenderer("cleanroom-attr", () => import("./cleanroom/CleanroomAttrView"));
+// WO-PROCESS-INSTANCE 流程卡点面板（「为什么这个流程现在卡住了」·需求 §4.5·五个等待态的前端落点）。
+// 本行 = 这张页面唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
+// 缺它就是 F2/F3/F4 连踩三次的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
+// 审计 AUDIT-decision-twin-gap-2026-08-09 §3「后端已经知道答案，界面上一个字都没有」说的正是这一块。
+registerRenderer("process-stuck", () => import("./ProcessStuckView"));

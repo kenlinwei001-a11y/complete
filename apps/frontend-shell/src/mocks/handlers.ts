@@ -3,6 +3,8 @@ import type { PlanStep, Scenario } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// WO-PROCESS-INSTANCE：等待态词表单源（mock 也不许手抄一份五值数组）。
+import { PROCESS_TASK_WAIT_STATES } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import {
   ACCOUNTS,
@@ -794,6 +796,49 @@ export const handlers = [
     const account = auth(request);
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     return HttpResponse.json(LIVED_WATERMARK);
+  }),
+  // WO-PROCESS-INSTANCE · 流程卡点（mock 模式）。
+  // 三条纪律，与真后端逐字对齐：
+  //  ① `byWaitState` 的五个 key 从契约 `PROCESS_TASK_WAIT_STATES` **派生**，不手抄字面量
+  //     —— 手抄的那份会在后端加第六个态时静默落后，而 mock 模式看不出来；
+  //  ② 计数由 `stuck` **算出来**，不是另写一份常量：两个数不同源就会出现
+  //     「列表 2 条、计数说 3 条」这种只有用户能发现的矛盾；
+  //  ③ 第二条刻意**不带** `ownerDisplayName`/`waitedMs`（自定义职能 + 未知等待起点），
+  //     用来在 mock 模式下也能看见「缺就不显示那一块」的真实行为，而不是永远只演示满字段的理想态。
+  http.get("*/a/v1/process-instances/stuck", () => {
+    const stuck = [
+      {
+        instanceId: "pinst_demo_P17_ord_9001",
+        definitionKey: "P17",
+        definitionName: "销售订单评审接单",
+        subjectRef: { typeKey: "Order", objectId: "ord_9001" },
+        taskId: "ptask_pinst_demo_P17_ord_9001_1",
+        taskName: "信用超额审批",
+        taskSeq: 1,
+        waitState: "WAITING_APPROVAL" as const,
+        waitRef: "adraft_credit_9001",
+        ownerFunctionKey: "finance",
+        ownerDisplayName: "财务",
+        waitingSince: "2026-03-01T00:00:00.000Z",
+        waitedMs: 3 * 86_400_000,
+      },
+      {
+        instanceId: "pinst_demo_P44_wip_3312",
+        definitionKey: "P44",
+        definitionName: "工序流转报工",
+        subjectRef: { typeKey: "WIPMove", objectId: "wip_3312" },
+        taskId: "ptask_pinst_demo_P44_wip_3312_2",
+        taskName: "上料齐套确认",
+        taskSeq: 2,
+        waitState: "WAITING_DATA" as const,
+        waitRef: "stock_on_hand",
+        ownerFunctionKey: "tenant_custom_dept", // 登记册外 ⇒ 无中文名 ⇒ 前端退回显示 key
+      },
+    ];
+    const byWaitState = Object.fromEntries(
+      PROCESS_TASK_WAIT_STATES.map((s) => [s, stuck.filter((r) => r.waitState === s).length]),
+    );
+    return HttpResponse.json({ evaluatedAt: "2026-03-04T00:00:00.000Z", stuck, byWaitState });
   }),
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),

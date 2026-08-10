@@ -232,6 +232,10 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "graph-mvp": "view.graph.persp.mvp",
   "graph-agent": "view.graph.persp.agent",
   "graph-loop": "view.graph.persp.loop",
+  // WO-PROCESS-INSTANCE · 流程卡点面板（前端 renderer 键 "process-stuck"，见 frontend registry.ts）。
+  // 暗发中（process.runtime defaultOn:false + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES）⇒ 导航里默认不出现，
+  // 开通后才进 workspace 导航 —— 这一行正是「开通后它能被导航到」的接线，缺它则开了也看不见。
+  "process-stuck": "process.runtime",
 };
 
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
