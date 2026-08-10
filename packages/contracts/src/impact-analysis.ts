@@ -225,6 +225,16 @@ export const ImpactBasisSchema = z.object({
   countBasis: z.literal("DISTINCT_OBJECTS"),
   /** 本体里参与传播的 ACTIVE 派生规格数。`0` ⇒ 没有任何派生边，传播必然空（不是「没影响」）。 */
   derivationSpecCount: z.number().int().nonnegative(),
+  /**
+   * 被判定为「KPI 承载类型」的对象类型 key（排序·可审计）。
+   *
+   * 判据是**结构性**的：一个对象类型同时具备 `target` 与 `actual` 两个属性 ⇒ 它承载 KPI。
+   * 不写死 `"Metric"` 这个名字 —— 那是锂电种子里的叫法，写死就破 R14（换行业即失效）。
+   * 结构判据在本仓 demo 本体上恰好只选中 `Metric` 一个类型
+   * （`grep -rn 'propKey: "target"' apps/datacore/src` 全仓仅 1 命中，就在 `metricProps`），
+   * 但换行业时它会自动跟着走。空数组 ⇒ `affectedKpis` 报 `available:false`。
+   */
+  kpiTypeKeys: z.array(z.string()),
   /** 调用方声明的 `oldValue` 与世界里的真实旧值不一致时为 true（不一致不报错，只如实标注）。 */
   oldValueMismatch: z.boolean(),
   /** 世界里的真实旧值（回显·可与请求里的 `oldValue` 对照）。 */
