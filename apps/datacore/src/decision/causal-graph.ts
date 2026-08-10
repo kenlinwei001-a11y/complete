@@ -189,6 +189,30 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
     return node;
   };
 
+  // ── 预扫：本 tick 被**扰动直接改写**的格子（决定传导边的源该锚在哪一 tick）──────
+  //
+  // 为什么非有这一步不可（实测踩出来的，不是洁癖）：
+  // 传导读的源态是 `effState` = `state@(T−1)` **叠加本 tick 首次落地的扰动**，而 `effState` 不落库。
+  // 一律把源锚在 `T−1`，就会在**扰动落地的那一个 tick** 上把因果链**整条掐断**：
+  //   实测 seed 场景（扰动 t2 落在 a1.load）——边变成 `a1@t1(=0) → b1@t2(=50)`，
+  //   而 `a1@t1` 不在扰动的下游 ⇒ `causalDownstream(cause)` 里**没有** `c1@t3`，
+  //   图看起来节点数值全对、每条边都可溯，**却回答不了"这个决策为什么被触发"**（链断了）。
+  //   这正是本仓「绿测试≠能用」的形态：每个局部都真，整体不通。
+  //
+  // 判据不靠猜：哪些格子被扰动改写，**引擎自己写在 trace 里**（`perturbation:` / `perturbation-revert:` 行的
+  // `toObjectId` + `viaLinkKey`）。被扰动改写的格子，其 `state@T` 就是引擎读到的那个数
+  // （扰动相位在传导相位之前），故源锚在 `T`；其余格子照旧锚在 `T−1`。
+  const perturbedCells = new Map<number, Set<string>>();
+  const cellKey = (objectId: string, stateVar: string) => `${objectId} ${stateVar}`;
+  for (const row of input.ticks) {
+    for (const tr of row.trace ?? []) {
+      if (tr.fromObjectId !== TRACE_FROM_AFTER) continue; // before 行同格，取一次即可
+      if (!tr.ruleKey.startsWith(PERTURBATION_TRACE_PREFIX) && !tr.ruleKey.startsWith(PERTURBATION_REVERT_TRACE_PREFIX)) continue;
+      const set = perturbedCells.get(row.tick) ?? perturbedCells.set(row.tick, new Set()).get(row.tick)!;
+      set.add(cellKey(tr.toObjectId, tr.viaLinkKey)); // 扰动行的 viaLinkKey = targetStateVar
+    }
+  }
+
   // ── IMPACT + 边：逐 tick 走 trace（trace 行是唯一的"谁把多少传给谁"的真值）────
   const seenPerturbationLanding = new Set<string>();
   for (const row of input.ticks) {
@@ -268,8 +292,26 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
         );
         continue;
       }
-      const from = cellNode(tr.fromObjectId, rule.sourceStateVar, sourceTick);
+      // 源锚：被本 tick 扰动改写过的格子锚 `T`（扰动相位在传导相位之前 ⇒ state@T 就是引擎读到的数），
+      // 其余锚 `T−1`。见上文 `perturbedCells` 的取证。
+      const srcPerturbedHere = perturbedCells.get(producedTick)?.has(cellKey(tr.fromObjectId, rule.sourceStateVar)) ?? false;
+      const from = cellNode(tr.fromObjectId, rule.sourceStateVar, srcPerturbedHere ? producedTick : sourceTick);
       const to = cellNode(tr.toObjectId, rule.targetStateVar, producedTick);
+      // ── 对不上账就说对不上账（别让读图的人自己去发现）───────────────────────
+      // 上面那条锚点规则覆盖了「扰动落地当 tick 就往下游传」这条最常见的路。剩下的**残余**情形是：
+      // 同一格子在同一 tick 里既被扰动改写、又被别的传导规则写入 —— 此时 `state@T` 是两者叠加后的值，
+      // 而引擎读的 `effState` 只含扰动那一层，二者必然不等，且 `effState` 不落库、无从还原。
+      // 判据取最保守的一刀：源格快照为 0/缺失、边却搬了非零量 ⇒ 必然不是从这个快照算出来的。
+      // （不做 `coefficient × value` 全量对账：`coefficientRef` 要查 rule.params、decay/clamp 还要再算一遍，
+      //  等于在这里重实现半个传导核 —— 那才是真正的第二套真相源。）
+      if (tr.amount !== 0 && (from.value === null || from.value === 0)) {
+        caveats.add(
+          `tick ${producedTick}：规则 ${rule.key} 搬运了 ${tr.amount}，但源格 ${tr.fromObjectId}.${rule.sourceStateVar} ` +
+            `在 sim_tick_state[${from.tick}] 里是 ${from.value === null ? "缺失" : 0} ⇒ 二者对不上账。` +
+            `已知成因：引擎读的是 effState（= state@${sourceTick} 叠加本 tick 首次落地的扰动），该中间态不落库。` +
+            `节点值与边值各自都是真值，只是取自世界线的不同瞬间`,
+        );
+      }
       edges.push({
         edgeId: `e:prop:${tr.ruleKey}:${from.nodeId}->${to.nodeId}`,
         fromNodeId: from.nodeId,
