@@ -158,7 +158,10 @@ export function SimReadinessPanel({
     { label: "传导规则", v: wc.propagationRules },
   ];
   // ② entering[] 按 kind 分组：三类混装的清单必须让人一眼看出各多少条，
-  //    否则「13 条」会被读成「13 个状态变量」（实测 demo 上其中派生 0 条）。
+  //    否则「13 条」会被读成「13 个状态变量」（2026-08-10 实测 demo：其中 DERIVATION 恰好 0 条）。
+  //    复验：`pnpm --filter datacore exec vitest run test/sim-certification.test.ts`，
+  //    或真跑 `GET /a/v1/sim/certification?scope=GLOBAL` 数 `worldCompleteness.entering[].kind`；
+  //    产出该数组的引擎侧在 `apps/datacore/src/sim/certification.ts`。
   //    索引沿用**原数组序**（testid 稳定），只改分组呈现。
   const enteringByKind = ENTER_KIND_ORDER.map((kind) => ({
     kind,
@@ -233,11 +236,14 @@ export function SimReadinessPanel({
           </div>
         </Card>
 
-        {/* ③ Trial Tick 卡（WO-CERT-HONESTY ③ · 欠账 #152）——三处措辞全部改成实测口径：
+        {/* ③ Trial Tick 卡（WO-CERT-HONESTY ③ · 欠账 #152）——三处措辞全部按 2026-08-10 的实测口径改写：
               旧：「通过」+「规则触发 0 条」。读起来是「传导跑过了，只是没触发规则」。
               实：这趟空跑只做了「装载对象 + 派生依赖图拓扑排序」，零条派生被求值、传导核根本没被调用。
               故：passed 的语义写在屏上；数字改标它真正在数的东西（派生图节点数）；
-                  传导覆盖与否由后端字段 `propagationCovered` 驱动（不在 UI 硬写，L3-a 落地后自动消失）。*/}
+                  传导覆盖与否由后端字段 `propagationCovered` 驱动（不在 UI 硬写，L3-a 落地后自动消失）。
+              复验：读 `apps/datacore/src/sim/certification.ts` 里 trialTick 的实现（它调了什么、没调什么），
+              或跑 `pnpm --filter datacore exec vitest run test/sim-certification.test.ts`；
+              契约字段定义见 `packages/contracts/src/sim.ts` 的 `trialTick`。*/}
         <Card title="Trial Tick（空跑 1 tick）" testId="sim-cert-trial-tick">
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <CheckBadge
@@ -294,9 +300,13 @@ export function SimReadinessPanel({
       </div>
 
       {/* ⑥ entering[] 清单（按 kind 分组 + 含真 source）。
-             WO-CERT-HONESTY ②：标题原写「将进入沙盘的**状态变量**（13）」，而这 13 条是
-             DERIVATION|ACTION|PROPAGATION 三类混装 —— 实测 demo 上派生恰好 0 条，
-             即标题里的那个名词在列表里一条都没有。改标「要素」并把三类计数摆到明面上。 */}
+             WO-CERT-HONESTY ②：标题原写「将进入沙盘的**状态变量**（13）」，而这些条目是
+             DERIVATION|ACTION|PROPAGATION 三类混装 —— 2026-08-10 实测 demo 上 DERIVATION 恰好 0 条，
+             即标题里的那个名词在列表里一条都没有。改标「要素」并把三类计数摆到明面上。
+             （工单原文给的「13 条」也是错的，同日真跑数出真值 23 条 —— 见本单第三个提交。）
+             复验：`pnpm --filter datacore exec vitest run test/sim-certification.test.ts`，
+             或真跑 `GET /a/v1/sim/certification?scope=GLOBAL` 按 kind 数 `worldCompleteness.entering`；
+             产出方 `apps/datacore/src/sim/certification.ts`。 */}
       <div style={{ marginTop: 10 }} data-testid="sim-cert-entering">
         <div className={styles.sub}>将进入沙盘的要素（{wc.entering.length}）</div>
         <div className={styles.sub} style={{ fontSize: 11 }} data-testid="sim-cert-entering-groups">

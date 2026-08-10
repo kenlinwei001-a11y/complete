@@ -101,8 +101,13 @@ function certOf(canEnter: boolean): SimCertification {
     trialTick: { passed: canEnter, rulesFired: canEnter ? 3 : 0, at: null, error: null },
     worldCompleteness: {
       pct: canEnter ? 100 : 55,
-      stateVars: { present: 2, needed: 4 }, derivationRules: { present: 1, needed: 2 },
+      // WO-MERGE-11：本 fixture 原写 `stateVars: {present:2, needed:4}`，而 WO-CERT-HONESTY ①
+      // 已把该比值从契约里**删掉**（它两半都是 derivationRules 的复制品，且在 pct 分子分母各数两遍），
+      // 改为「清单不是比值」的 stateVarKeys。两单并行开发，cert-honesty 迁移其余 fixture 时
+      // 本文件还不存在 ⇒ 唯一漏网的一份。此处按 packages/contracts/src/sim.ts:262 的新形状补齐。
+      derivationRules: { present: 1, needed: 2 },
       actions: { present: 0, needed: 1 }, propagationRules: { present: 0, needed: 0 },
+      stateVarKeys: ["load", "risk"],
       entering: [{ key: "s1", kind: "DERIVATION", source: "deriv:s1" }],
     },
     canEnterSimulation: canEnter,
