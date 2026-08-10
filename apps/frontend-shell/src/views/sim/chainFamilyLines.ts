@@ -1,11 +1,7 @@
 /**
  * WO-SANDBOX-METRO-SEMANTICS · **三条产品族线的锚点发现**（纯派生 + 一次对象查询）。
  *
- * ⚠ WO-CHAIN-MAP-LAYOUT 起，族线在图上是**上下并排的三条横线**（不再是三圈同心环）——
- *   本文件只管「三条线的数据依据是什么」，与画成环还是画成横线无关，故一行未动。
- *   `ringIndex` / `ringCount` 这两个名字保留（它们表达的是"第几条 / 共几条"，不是"第几圈"）。
- *
- * ── 这个文件回答一个问题：三条族线的数据依据在哪 ──────────────────────────────
+ * ── 这个文件回答一个问题：三条同心环的数据依据在哪 ────────────────────────────
  * 设计稿把「三条产品族线」画成三圈同心环，但它是**写死**的三条线。
  * 后端这边先要过一道事实关：`chain_loss_attribution` **不吃 `businessTypes` / `modelIds`**
  * （实测：传 `baseIds` 结果逐字节不变，另两维在 `chain_impediments` 上直接 400）。
@@ -85,7 +81,14 @@ export function deriveFamilyAnchors(rows: readonly { props?: Record<string, unkn
   };
 }
 
-/** 锚点 + 环序 → `FamilyIdentity`（`buildChainLineMap` 的构图参数）。锚点细节由载荷回填。 */
+/**
+ * 锚点 + 族序 → `FamilyIdentity`（`buildChainLineMap` 的构图参数）。锚点细节由载荷回填。
+ *
+ * ⚠ WO-CHAIN-MAP-LAYOUT 起，族线在图上是**上下并排的三条横线**，不再是三圈同心环。
+ *   本文件只管「三条线的数据依据是什么」，与画成环还是画成横线无关，故取数逻辑一行未动；
+ *   `ringIndex` / `ringCount` 两个名字保留（表达的是"第几条 / 共几条"，不是"第几圈"）。
+ *   `ringCount` 是本单新增的：横向布局按**整块下移**摆放，不知道总条数就算不出画布高度。
+ */
 export function familyIdentityOf(
   anchor: FamilyAnchor,
   ringIndex: number,
