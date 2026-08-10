@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   AnswerBlockSchema,
   type AgentIteration,
+  type AgentRunOrigin,
   type AgentRunRecord,
   type Answer,
   type AnswerBlock,
@@ -59,6 +60,21 @@ export function attributionFields(a: AgentRunAttributionInput | undefined): Part
   };
 }
 
+/**
+ * WO-AGENTRUN-FANOUT-PERSIST · 编排位置字段的**全仓唯一**投影（与 `attributionFields` 同一条纪律）。
+ *
+ * 为什么也走单点：`origin` 决定 `getByTask` 会不会把一条子运行当成"这个任务的运行"返给
+ * `/queries/:taskId/agent-run` 与 `evals.ts` 的 token 记账。各写各的一旦漂，症状是
+ * **读端悄悄换了一条记录**（返回的是三个角色里随机某一个），而不是报错 —— 那种病最难查。
+ */
+export function originFields(o: AgentRunPlacementInput | undefined): Partial<AgentRunRecord> {
+  if (!o) return {};
+  return {
+    origin: o.origin,
+    ...(o.stepId ? { stepId: o.stepId } : {}),
+  };
+}
+
 /** final_answer input schema (QOS-PRD §5.4-5, strict zod validation). */
 const FinalAnswerSchema = z
   .object({
@@ -95,6 +111,19 @@ export interface AgentRunAttributionInput {
   agentVersion?: number;
 }
 
+/**
+ * WO-AGENTRUN-FANOUT-PERSIST · 编排位置实参（**调用方是唯一知情人**，与归属同理）。
+ *
+ * loop 自己看不出「我是任务本身那次循环，还是被某个 invoke_agent 步扇出的子 agent」——
+ * 两种情形传进来的 `taskId` 是**同一个**（子 agent 挂在父任务的 taskId 上，事件/工具调用才串得起来）。
+ * 所以位置必须由调用方声明：编排层三处顶层 insert 点传 `ROOT`，
+ * `engine.runWorkflowSteps` 的 `runAgentStep` 传 `FANOUT` + 扇出它的步 id。
+ */
+export interface AgentRunPlacementInput {
+  origin: AgentRunOrigin;
+  stepId?: string;
+}
+
 export interface AgentLoopOpts {
   taskId: string;
   model: string;
@@ -102,6 +131,8 @@ export interface AgentLoopOpts {
   tenantId?: string;
   /** WO-AGENTRUN-ATTRIBUTION（additive·可选）：本次运行归属到哪个 Agent 定义（不传 = 不写归属字段）。 */
   attribution?: AgentRunAttributionInput;
+  /** WO-AGENTRUN-FANOUT-PERSIST（additive·可选）：本次运行在编排结构里的位置（不传 = 不写位置字段）。 */
+  placement?: AgentRunPlacementInput;
   system: string;
   userContent: string;
   tools: AgentToolSpec[]; // must NOT include final_answer/load_skill (added by the loop)
@@ -470,6 +501,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...(budgeter.ops.length > 0 ? { contextOps: [...budgeter.ops] } : {}),
     // WO-AGENTRUN-ATTRIBUTION · 归属与运行数据同源同一次构造（全仓唯一回填点）。
     ...attributionFields(opts.attribution),
+    // WO-AGENTRUN-FANOUT-PERSIST · 编排位置同上（ROOT / FANOUT + 扇出它的步 id）。
+    ...originFields(opts.placement),
   });
 
   /**

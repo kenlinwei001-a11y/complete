@@ -1,5 +1,13 @@
 import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
-import { attributionFields, runAgentLoop, type AgentLoopResult, type AgentRunAttributionInput, type AgentToolSpec } from "./agent/loop.js";
+import {
+  attributionFields,
+  originFields,
+  runAgentLoop,
+  type AgentLoopResult,
+  type AgentRunAttributionInput,
+  type AgentRunPlacementInput,
+  type AgentToolSpec,
+} from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
 import { buildOntologySemanticContext } from "./agent/ontology-context.js";
@@ -165,6 +173,9 @@ function emptyAgentRunRecord(
   // WO-AGENTRUN-ATTRIBUTION：规则预检 BLOCK 的早退出口也是**这个 agent 的**一次运行（零迭代但确有归属），
   // 归属经同一个 `attributionFields` 投影 —— 不许在这里另抄一份字段拼装（抄了就会与 finishRun 漂）。
   attribution?: AgentRunAttributionInput,
+  // WO-AGENTRUN-FANOUT-PERSIST：同理——被会诊扇出的子 agent 若在规则预检就被 BLOCK，那也是**它真跑过一次**
+  // （零迭代但确有位置），照样得带上 FANOUT 落库，否则「这个 Agent 跑了几次」会漏掉被拦下的那些。
+  placement?: AgentRunPlacementInput,
 ): AgentRunRecord {
   return {
     id: newId("run"),
@@ -176,6 +187,7 @@ function emptyAgentRunRecord(
     totalInputTokens: 0,
     totalOutputTokens: 0,
     ...attributionFields(attribution),
+    ...originFields(placement),
   };
 }
 
@@ -218,6 +230,12 @@ export interface RunRegisteredAgentOpts {
    * 默认 false → 多角色扇出（实测 6 次 agent 往返）一条旁白都发不出。缺省 undefined = 逐字节沿用既有行为。
    */
   emitNarration?: boolean;
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST（additive·可选）· 本次运行在编排结构里的位置。
+   * 调用方是唯一知情人（loop/engine 都看不出自己是顶层还是被扇出的——taskId 是同一个）。
+   * 不传 = 不写位置字段（既有调用方逐字节兼容）。
+   */
+  placement?: AgentRunPlacementInput;
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -392,7 +410,7 @@ export class ExecutionEngine {
           return {
             outcome: "ANSWERED",
             answer: ruleViolationAnswer(verdicts),
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution),
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
             sketch: [],
           };
         }
@@ -457,6 +475,8 @@ export class ExecutionEngine {
       model,
       tenantId: agent.tenantId,
       attribution, // WO-AGENTRUN-ATTRIBUTION：注册 agent 路 ⇒ REGISTERED（agentId/Key/Version 三件套齐）
+      // WO-AGENTRUN-FANOUT-PERSIST：纯透传（不传 = 不写位置字段·既有调用方字节兼容）。
+      ...(opts.placement ? { placement: opts.placement } : {}),
       system,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
@@ -681,7 +701,22 @@ export class ExecutionEngine {
             ...(opts.enforceAgentObjectScope || params.enforceObjectScope ? { enforceObjectScope: true } : {}),
             // WO-ROUTE-1（E9）· 纯透传：多角色扇出的每个子 agent 都发旁白（不传 = 既有行为字节不变）。
             ...(opts.emitNarration ? { emitNarration: true } : {}),
+            // WO-AGENTRUN-FANOUT-PERSIST：这一步跑出来的是**子** agent 的运行（父任务的 taskId，但不是父任务那条）。
+            placement: { origin: "FANOUT", stepId: params.stepId },
           });
+          // ★★ WO-AGENTRUN-FANOUT-PERSIST · 缺口就在这一行原本不存在 ★★
+          // 此前这里只 `return { structured, answer }` —— `r.run`（这个子 agent 整整一轮循环的迭代、
+          // 工具调用、token、预算、上下文清理留痕）被**整个丢掉**，一个字节都没落库。
+          // 后果不是抽象的：多角色会诊真跑三个角色 agent，而 Agent 管理台「本 Agent 的运行」
+          // 里那三个角色一条都不在 —— 用户看到的是"这个 Agent 从没跑过"。
+          //
+          // 为什么落在 engine 而不是 orchestrator：`invoke_agent` 步可以出现在**任何**工作流里
+          // （多角色会诊只是其中一种），挂在 orchestrator 的 Coordinator 分支上就只补了这一条路，
+          // path-A 工作流里的 agent 步照样漏。这里是这类子运行的唯一必经之地。
+          //
+          // 不吞异常：与编排层三处顶层 insert（orchestrator.ts:2081/2370/2620）同姿势。写失败就让它响，
+          // 静默 catch 会把「落库坏了」伪装成「这个 Agent 没跑过」——正是本单要修的那种病。
+          await this.deps.repos.agentRuns.insert(r.run);
           return { structured: r.structured, answer: r.answer };
         },
       },

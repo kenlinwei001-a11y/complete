@@ -513,6 +513,34 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return AgentRunRecordSchema.parse(run);
   });
 
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST · 一次任务的**全部**运行（顶层 + 多角色会诊扇出的子运行）。
+   *
+   * 为什么上面那条不够、必须另开一条：`/agent-run`（单数）按契约返**一个** `AgentRunRecord`，
+   * 而多角色会诊的真实形态是「**0 条顶层 + N 条子运行**」—— 编排层顶层压根没跑 agent 循环
+   * （`runCoordinator` 直接进 `runWorkflowSteps` 扇出），真正干活的是那 N 个角色子 agent。
+   * 把它塞进单数端点只有两条路，两条都是说假话：返 N 条里的某一条（悄悄换了对象），
+   * 或继续返 404（真跑了三个角色却说"本次未进入 Agent 循环"）。所以单数端点语义**一个字不改**，
+   * 这条复数端点是新增的读投影。
+   *
+   * 租户隔离与同文件既有四条 trace 端点同形：先 auth，再校 task 归属，越租户一律 404。
+   */
+  app.get("/api/v1/queries/:taskId/agent-runs", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    // 先校 task 归属再取 run —— run 记录的 tenantId 是 additive 可选字段（旧记录没有），
+    // 隔离必须靠它的 task，勿颠倒顺序也勿改成信 run 自己的 tenantId。
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const runs = await deps.repos.agentRuns.listByTask(taskId);
+    return {
+      taskId,
+      // 空数组是**常态**：走 WORKFLOW 路、或未接 LLM provider 被 `completeNoLlmDegradation` 诚实降级，
+      // 都不产生任何 run。前端不许把它画成加载失败（与 `/b/v1/agents/:id/runs` 同一条纪律）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
+  });
+
   // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。
   // 收集本任务的 selectedObjects + objectRef 槽位 → 每个对象前端再经 DataCore 对象 lineage
   // 溯回原始行/连接器，形成"结果 → 入参对象 → 原始数据"的完整可溯链。
@@ -675,8 +703,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    *  - 本端点**只**回归属得上的那些。通用探索路的运行（`attribution:"EXPLORATORY"`）与归属上线前的
    *    旧记录（无归属字段）**一条都不会出现在这里** —— 它们的存在必须由前端另行诚实交代，
    *    不许因为"这个列表干净了"就当它们不存在。
-   *  - Coordinator 扇出的子 agent 运行今天**根本没落库**（`agentRuns` 以 taskId 为唯一键，
-   *    一个 task 只存得下一条 run；三处 insert 点均在编排层顶层）——故本列表天然不含它们。
+   *  - **WO-AGENTRUN-FANOUT-PERSIST 起，多角色会诊扇出的子运行已在本列表内**（`origin:"FANOUT"`）。
+   *    此前它们根本没落库（`runAgentStep` 把 `r.run` 整个丢了 + `agent_runs.task_id` 带 UNIQUE
+   *    一个 task 只存得下一条），于是"被会诊叫去跑的那几次"在全仓不可见。现在两层都修了：
+   *    引擎侧在 `engine.runWorkflowSteps` 的 `runAgentStep` 落库，表侧主键回到 run 级（migrations/013）。
+   *    ⇒ 本端点返回的次数 = 这个 Agent **真跑过的**次数（含被叫去会诊的），不再少报。
    */
   app.get("/b/v1/agents/:id/runs", async (req) => {
     const a = await auth(req);

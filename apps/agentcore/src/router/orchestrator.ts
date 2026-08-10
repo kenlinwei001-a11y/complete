@@ -2009,6 +2009,9 @@ export class Orchestrator {
       // 引擎据此正面记 `attribution: "EXPLORATORY"`，让「确知没有归属对象」与「上线前的旧记录」
       // 在数据层就分得开。⛔ 绝不许为了让界面好看而在这里就近塞一个 agentId。
       attribution: { tenantId: task.tenantId },
+      // WO-AGENTRUN-FANOUT-PERSIST：通用探索路是**这个任务本身**那次循环 ⇒ ROOT。
+      // （位置与归属正交：这条既是 ROOT 又是 EXPLORATORY，两个字段各答各的问题。）
+      placement: { origin: "ROOT" },
       system: systemWithSkills,
       userContent,
       ...(sliceSolverKeys.length > 0 ? { sliceSolverKeys } : {}),
@@ -2366,6 +2369,8 @@ export class Orchestrator {
         isCancelled: () => this.cancelled.has(taskId),
         onResolvedRef: (r) => resolvedRefs.push(r),
         enforceObjectScope: true,
+        // WO-AGENTRUN-FANOUT-PERSIST：角色 path-B 是**这个任务本身**那次循环 ⇒ ROOT（`getByTask` 返的就是它）。
+        placement: { origin: "ROOT" },
       });
       await this.deps.repos.agentRuns.insert(result.run);
       await this.deps.repos.tasks.patch(taskId, {
@@ -2616,6 +2621,8 @@ export class Orchestrator {
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
         isCancelled: () => this.cancelled.has(task.id),
         onResolvedRef: (r) => resolvedRefs.push(r),
+        // WO-AGENTRUN-FANOUT-PERSIST：场景入口 agent 是**这个任务本身**那次循环 ⇒ ROOT。
+        placement: { origin: "ROOT" },
       });
       await this.deps.repos.agentRuns.insert(result.run);
       await this.deps.repos.tasks.patch(task.id, {

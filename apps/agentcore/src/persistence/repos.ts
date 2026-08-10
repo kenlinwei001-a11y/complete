@@ -185,13 +185,33 @@ export interface Repos {
     listByTask(taskId: string): Promise<ToolCallRow[]>;
   };
   agentRuns: {
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST：主键是 **run 级**（`r.id`），不再是 task 级。
+     * 旧键 `taskId` 让一个任务只存得下一条 ⇒ 多角色会诊扇出的 N 个子 agent 运行**互相覆盖**
+     * （实际是根本没走到这里——`runAgentStep` 早把它们丢了；但即便接上线，旧键也只留得下最后一条）。
+     */
     insert(r: AgentRunRecord): Promise<void>;
+    /**
+     * **这个任务自己**那次循环（`origin !== "FANOUT"`），至多一条。
+     * 语义与改键前逐字节一致：`/queries/:taskId/agent-run` 与 `evals.ts` 的 token 记账都靠它，
+     * 若改成"随便返一条"，多角色会诊任务上返回的就是三个角色里随机某一个 —— 悄悄换了对象而不报错。
+     * 旧记录无 `origin` 字段 ⇒ 视为 ROOT（旧表 task_id UNIQUE 可证其必为顶层，非猜测）。
+     */
     getByTask(taskId: string): Promise<AgentRunRecord | undefined>;
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST：这个任务的**全部**运行（顶层 + 扇出的子运行），时序正序。
+     * 多角色会诊的形态是「0 条 ROOT + N 条 FANOUT」——编排层顶层根本没跑 agent 循环，
+     * 真正干活的是那 N 个角色子 agent。只有这个方法能把一次会诊完整看全。
+     */
+    listByTask(taskId: string): Promise<AgentRunRecord[]>;
     /**
      * WO-AGENTRUN-ATTRIBUTION：某个 Agent 的历次运行（**跨版本**按 `agentKey` 聚合，倒序）。
      * 按 key 而不是 id：`agt_` 是**版本级**主键，按 id 查只能看到某一版跑过几次，
      * 而管理台问的是「这个 Agent 跑过几次」——换版之后按 id 查会当场归零。
      * `tenantId` 是硬过滤（tenant_id everywhere），不靠"agentKey 大概率不重"这种默契。
+     *
+     * WO-AGENTRUN-FANOUT-PERSIST：**含扇出的子运行**（`origin: "FANOUT"`）——多角色会诊里被叫去的
+     * 那几次，正是这个 Agent 真跑过的次数的一部分，滤掉它们等于继续少报。
      */
     listByAgent(tenantId: string, agentKey: string): Promise<AgentRunRecord[]>;
   };
