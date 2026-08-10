@@ -4,6 +4,8 @@ import type {
   AdminUser,
   AdminViewConfig,
   AgentDefinition,
+  AgentRunRecord,
+  DecisionTrace,
   BuildJob,
   BuildPlan,
   BuildRunBody,
@@ -812,6 +814,45 @@ export interface QueryHistoryItem {
 }
 export const fetchQueryHistory = (limit = 100) =>
   api.b<{ items: QueryHistoryItem[]; total: number }>(`/b/v1/queries?limit=${limit}`);
+
+/**
+ * WO-AGENT-ADMIN-CONSOLE · 一次推演的决策痕迹（聚合 task/answer/**真实工具调用**）。
+ * 后端 `agentcore/src/server.ts:426`，已存在多时，此前前端**零消费**
+ * （取证：`grep -rn "decision-trace" apps/frontend-shell/src` → 无命中，
+ *  金丝雀 `QueryTask` 同文件 2 命中 ⇒ 工具是好的）。
+ */
+export const fetchDecisionTrace = (taskId: string) =>
+  api.b<DecisionTrace>(`/b/v1/queries/${taskId}/decision-trace`);
+
+/**
+ * WO-AGENT-ADMIN-CONSOLE · 一次 Agent 循环的运行记录（迭代 / 工具结果 / 预算 / token / 上下文清理留痕）。
+ *
+ * **三态而非「有或错」**——这是本页诚实位的数据基础，别把它压成 `AgentRunRecord | null`：
+ * - `RUN`    ：引擎真跑过，记录在库；
+ * - `NO_RUN` ：任务在、走的也是 AGENT 路，但**引擎根本没进循环**。这不是异常，是常态：
+ *              未接 LLM provider 时 `completeNoLlmDegradation`（`agentcore/src/router/orchestrator.ts:2656`）
+ *              会把 task 标成 `path=AGENT` + `COMPLETED` 却从不写 run 记录。
+ *              全新部署天天是这个态，界面必须**说清楚**而不是显示"加载失败"。
+ * - `NO_TASK`：任务不存在（或不属于本租户）。
+ *
+ * 两个 404 必须分开报，混成一个码界面就只能含糊其辞（后端已刻意分了两个 code）。
+ */
+export type AgentRunProbe =
+  | { kind: "RUN"; run: AgentRunRecord }
+  | { kind: "NO_RUN" }
+  | { kind: "NO_TASK" };
+
+export const fetchAgentRun = async (taskId: string): Promise<AgentRunProbe> => {
+  try {
+    const run = await api.b<AgentRunRecord>(`/b/v1/queries/${taskId}/agent-run`);
+    return { kind: "RUN", run };
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "AGENT_RUN_NOT_FOUND") return { kind: "NO_RUN" };
+    if (code === "TASK_NOT_FOUND") return { kind: "NO_TASK" };
+    throw e; // 真错误（网络 / 401 / 500）照旧抛，不许被"诚实态"吞掉
+  }
+};
 export const replyClarification = (
   taskId: string,
   body: { kind: "INTENT_CHOICE" | "SLOT_FILLING"; chosenIntentKey?: string; slotValues?: Record<string, unknown>; none?: true },

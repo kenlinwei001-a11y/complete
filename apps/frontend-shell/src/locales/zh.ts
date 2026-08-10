@@ -487,6 +487,57 @@ export const zh = {
   sim: {
     run: "开始推演",
     runAudit: "体检",
+    /**
+     * WO-SANDBOX-DECLUTTER · 推演沙盘主屏「信息减负」新增的**壳文案**。
+     *
+     * 只收本单**新写**的字（抽屉入口 / 横幅 / `?` 浮层的触发器与标题）。
+     * **不搬**既有诚实位正文：那些正文带 `<b>/<code>` 结构、且相当一部分是
+     * `sandboxConsoleModel.SCOPE_DIMENSIONS` / `chainImpediment.IMPEDIMENT_*` 的
+     * **单一来源数据**（R14）——抄进本文件就是给它开一条会漂的分身。
+     * 正文原样留在组件里（一个字没删），本单改的只是**承载方式**。
+     */
+    sandbox: {
+      diag: {
+        /** 抽屉入口（折叠态也必须看得见 + 带计数）。 */
+        entry: "诊断",
+        entryAria: "打开/收起诊断抽屉",
+        /** 计数：有待办时报待办数，无待办时报收纳了几项（两种都是真数，不是装饰）。 */
+        pending: (n: number) => `${n} 项待办`,
+        items: (n: number) => `${n} 项`,
+        title: "诊断 · 建模者 / 开发者 / 调试者的那三档",
+        hint: "主屏只留决策者要看的东西；这里是就绪认证、世界列表与调试信息。诚实位一条没删，只是换了位置。",
+        close: "收起诊断",
+        empty: "本次没有可收纳的诊断项。",
+        /** 调试信息分区（SEED / 时窗无 ARGS 等）。 */
+        debugTitle: "调试信息",
+        derivedTitle: "本体派生",
+      },
+      banner: {
+        /** `canEnterSimulation === false` 时的**唯一**主屏治理信号；为 true 时整条不渲染。 */
+        title: "尚未通过就绪认证 —— 现在推演出的结论仅供参考",
+        why: "为什么不能推演（缺件清单前几条）：",
+        more: (n: number) => `另有 ${n} 条`,
+        cta: "查看详情 →",
+        ctaAria: "在诊断抽屉里看完整就绪认证",
+      },
+      info: {
+        /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
+        trigger: "?",
+        triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,
+        close: "关闭说明",
+        impedimentCaliber: "口径差（按引擎显示，不按设计稿措辞）",
+        impedimentJoin: "联动口径（真实的接缝缺口）",
+        scopeDim: (label: string) => `${label} · 这一维带不带得下去`,
+        scopeReach: "范围能带到哪",
+        legend: "阻滞点图例",
+        timeWindow: "时窗 30D / 60D / 90D 为何禁用",
+        seed: "SEED · 确定性种子",
+        chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
+        paretoRate: "影响率怎么算 · 分母是什么",
+        inspectorEvidence: "下钻证据为何是空的",
+        stepTable: "逐环节表的口径",
+      },
+    },
     inference: {
       toggle: "▸ 推演过程（编排 DAG）",
       hide: "▾ 推演过程（编排 DAG）",
@@ -797,6 +848,102 @@ export const zh = {
       builtinTools: "内置工具",
       mcpTools: "MCP 工具",
       workflowTools: "Workflow 工具",
+      /**
+       * WO-AGENT-ADMIN-CONSOLE · 运行观测台文案（R14：页面不内联业务串）。
+       *
+       * ⚠️ **本块只写取证证实「后端真有数据」的那些**（`docs/AUDIT-agent-console-gap.md`）。
+       * Context Manager 五段（Retriever / Ranker / Compressor / Assembler / Validator）
+       * **刻意一个字都没有** —— 取证结论是「无承载物」（全仓仅参考原型 HTML 里一个节点标签），
+       * 写了文案就等于给一块永远空着的面板发了通行证。
+       */
+      console: {
+        title: "运行观测",
+        subtitle: "本租户经 Agent 路径的真实推演运行",
+        refresh: "刷新",
+        /** 第一层 KPI（只放数值 + 状态 + 名字，口径一律进 ? 浮层）。 */
+        kpiTotal: "AGENT 路径运行",
+        kpiCompleted: "已完成",
+        kpiFailed: "失败 / 取消",
+        kpiRunning: "进行中",
+        unitRuns: "次",
+        /** 空态：真的没有运行，不是加载失败。 */
+        empty: "本租户还没有经 Agent 路径的推演。到任意场景对话坞问一个开放问句即可产生。",
+        loading: "加载中…",
+        /** 最近运行清单 */
+        recentTitle: "最近运行",
+        colTime: "时间",
+        colQuery: "问句",
+        colStatus: "状态",
+        colAction: "",
+        openDetail: "展开",
+        closeDetail: "收起",
+        gotoTask: "证据链 →",
+        /** 第二层 · 执行状态机 */
+        stateMachineTitle: "执行状态机",
+        stateReached: "本次到达",
+        stateNotReached: "本次未经过",
+        /** 第二层 · 工具调用 */
+        toolCallsTitle: "工具调用",
+        toolCallsEmpty: "本次运行没有工具调用记录。",
+        colTool: "工具",
+        colOutcome: "结果",
+        colDuration: "耗时",
+        /** 第二层 · 上下文工程 */
+        contextTitle: "上下文工程",
+        ctxIterations: "迭代轮次",
+        ctxToolCalls: "工具调用",
+        ctxTokensIn: "输入 token",
+        ctxTokensOut: "输出 token",
+        ctxOps: "上下文清理",
+        ctxBudgetExhausted: "预算耗尽",
+        yes: "是",
+        no: "否",
+        unitTimes: "次",
+        unitRounds: "轮",
+        /**
+         * 诚实位 ①：上下文清理 0 次不是"没做"，是阈值够不到（#91）。
+         * **允许降到浮层，绝不允许删除**；第一层留可见记号（数值本身 + ? 触发器）。
+         */
+        ctxZeroNote: "本次未触发上下文清理 —— 这是真值，不是缺数据",
+        /** 诚实位 ②：引擎根本没跑（未接 LLM provider 的诚实降级）。 */
+        noRunTitle: "本次未进入 Agent 循环",
+        noRunBody:
+          "任务走的是 AGENT 路径，但引擎没有执行工具循环，因此没有运行记录。最常见原因是未接入可用的 LLM 提供商 —— 此时系统会诚实降级并直接作答，而不是空转。",
+        noRunCta: "去绑定 LLM 提供商 →",
+        noTask: "该任务不存在或不属于当前租户。",
+        /**
+         * 诚实位 ③（本页最重要的一条）：这不是"本 Agent 的运行"。
+         * 取证：QueryTask 与 AgentRunRecord 都没有 agentId 字段。
+         */
+        attributionTitle: "这些运行无法归属到上面选中的 Agent",
+        attributionBody:
+          "当前引擎在自由问句路径上不绑定具体 Agent 定义，运行记录里也没有 Agent 标识，因此本区列的是本租户全部 AGENT 路径运行，而不是选中 Agent 的运行。",
+        /** ? 浮层（口径 · 公式 · 为什么这么算 · 数据来源） */
+        info: {
+          attribution: "为什么运行归不到具体 Agent 头上",
+          attributionBody:
+            "运行记录（AgentRunRecord）只带 taskId、模型、迭代、预算与 token，没有 agentId；查询任务（QueryTask）同样没有。自由问句路径进入探索模式时按场景包白名单组装工具，并不解析某个 Agent 定义。要让它有归属，需在运行记录上增加 Agent 标识并由引擎回填 —— 属引擎侧改动，尚未排期。",
+          contextOps: "上下文清理的触发口径",
+          contextOpsBody:
+            "三种清理动作：折叠最旧一轮工具结果 · 服务端压缩 · 强制收尾。三者共用同一道软阈值：模型上下文窗口与 20 万 token 取小，再乘 0.7。默认 20 万窗口下软阈值是 14 万，而系统自身预算上界（工具调用次数上限 × 单条工具结果 8KB 硬截断）允许的最坏上下文约 10.3 万 —— 够不到，所以默认路上一次都不会触发。换成 12.8 万及以下窗口的提供商，同一份上下文就会触发。够不到的真正原因是上游两道防线在正常工作，属设计正确，不是缺陷。",
+          stateMachine: "执行状态机的口径",
+          stateMachineBody:
+            "七个状态来自查询任务的状态枚举：路由中 · 等待澄清 · 执行工作流 · 执行 Agent · 已完成 · 失败 · 已取消。一次运行只会落在其中一个终态上；灰色的是本次没有经过的状态，不代表它不存在。",
+          tokens: "token 计数的口径",
+          tokensBody:
+            "只统计 Agent 工具循环那部分的输入/输出 token，不含意图分类与文本组装的开销 —— 因为那两处的接口不外透用量。所以这个数是下界，不是全量成本。",
+        },
+        /** 状态机七态显示名（与后端枚举一一对应，勿另造词） */
+        states: {
+          ROUTING: "路由中",
+          AWAITING_CLARIFICATION: "等待澄清",
+          EXECUTING_WORKFLOW: "执行工作流",
+          EXECUTING_AGENT: "执行 Agent",
+          COMPLETED: "已完成",
+          FAILED: "失败",
+          CANCELLED: "已取消",
+        },
+      },
     },
     workflows: {
       title: "Workflow 编辑器",

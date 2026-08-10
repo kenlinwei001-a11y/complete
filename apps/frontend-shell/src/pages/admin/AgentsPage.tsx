@@ -1,11 +1,25 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
-import { fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
+import type { AgentDefinition, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
+import {
+  fetchAgentRun,
+  fetchAgents,
+  fetchDecisionTrace,
+  fetchLlmProviders,
+  fetchMcpConfigs,
+  fetchQueryHistory,
+  fetchSkills,
+  fetchWorkflows,
+  publishAgent,
+  saveAgent,
+  type QueryHistoryItem,
+} from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { InfoPopover } from "@/components/InfoPopover";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import styles from "./AgentsPage.module.css";
 
 /** C6/D-27 空态有路：被引用资源列表为空 → 给"去创建"链接（跳目标创作页），绝不留无选项死下拉。 */
 function RefEmptyLink({ to, label, testid }: { to: string; label: string; testid: string }) {
@@ -112,6 +126,306 @@ export default function AgentsPage() {
             <AgentEditor key={selected.id} agent={selected} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "agents"] })} />
           </div>
         )}
+      </div>
+      <AgentRuntimeConsole />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WO-AGENT-ADMIN-CONSOLE · 运行观测台
+//
+// **这一段只渲染取证证实「后端真有数据」的东西**（`docs/AUDIT-agent-console-gap.md`）：
+//   · 执行状态机   —— 枚举 `QueryTaskStatusSchema`，读端 `GET /b/v1/queries?limit=`（现成）
+//   · Agent Trace  —— 工具调用轨迹，读端 `GET /b/v1/queries/:taskId/decision-trace`（现成，此前前端零消费）
+//   · 上下文工程   —— 迭代/预算/token/清理留痕，读端 `GET /b/v1/queries/:taskId/agent-run`（本单新补）
+//   · Decision Replay —— 不重造，跳既有证据链页（`/tasks/:taskId`）
+//
+// **刻意不渲染的东西**（取证结论：无承载物）：
+//   · Context Manager 五段（Retriever / Ranker / Compressor / Assembler / Validator）——
+//     全仓零实现，唯一命中是参考原型 HTML 里一个图节点标签。一个永远空着的面板比没有更糟，
+//     所以这里一个像素都不给它。真实实现是**三刀**（折叠 / 压缩 / 强制收尾），按真值渲染。
+//   · 「本 Agent 的运行」—— 运行记录里没有 Agent 标识（见 `.honest` 横幅），
+//     所以本区诚实地叫「本租户 AGENT 路径运行」，绝不把租户级数据冒充成单 Agent 数据。
+// ---------------------------------------------------------------------------
+
+const c = zh.admin.agents.console;
+
+/** 状态机主链（七态里的顺序骨架）。分类结果决定走 WORKFLOW 还是 AGENT，故那两态是并列分支。 */
+const MAIN_CHAIN: QueryTaskStatus[] = ["ROUTING", "EXECUTING_AGENT", "COMPLETED"];
+const BRANCH_STATES: QueryTaskStatus[] = ["AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "FAILED", "CANCELLED"];
+
+function stateClass(s: string): string {
+  if (s === "COMPLETED") return styles.stateDone!;
+  if (s === "FAILED" || s === "CANCELLED") return styles.stateBad!;
+  return styles.stateRun!;
+}
+
+function AgentRuntimeConsole() {
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["b", "query-history", "agent-console"],
+    queryFn: () => fetchQueryHistory(100),
+  });
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+
+  // 只留 AGENT 路径的运行 —— 这是本页唯一能诚实声称与 Agent 有关的过滤条件
+  // （没有 agentId 可用，见 `.honest` 横幅与它的 `?`）。
+  const runs: QueryHistoryItem[] = (data?.items ?? []).filter((x) => x.path === "AGENT");
+  const done = runs.filter((r) => r.status === "COMPLETED").length;
+  const bad = runs.filter((r) => r.status === "FAILED" || r.status === "CANCELLED").length;
+  const running = runs.length - done - bad;
+
+  return (
+    <section className={styles.console} data-testid="agent-console">
+      <div className={styles.head}>
+        <span className={styles.headTitle}>{c.title}</span>
+        <span className={styles.headSub}>{c.subtitle}</span>
+        <span className={styles.headActions}>
+          <button className="btn sm" onClick={() => void refetch()} disabled={isFetching} data-testid="agent-console-refresh">
+            {c.refresh}
+          </button>
+        </span>
+      </div>
+
+      {/* 诚实位 ③：永远渲染，不折叠 —— 规范 §1「静默降层等于删除」。 */}
+      <div className={styles.honest} data-testid="agent-console-attribution">
+        <div>
+          <div className={styles.honestTitle}>
+            {c.attributionTitle}
+            <InfoPopover topic={c.info.attribution} testId="agent-attribution">
+              <p>{c.info.attributionBody}</p>
+            </InfoPopover>
+          </div>
+          <div className={styles.honestBody}>{c.attributionBody}</div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className={styles.empty}>{c.loading}</div>
+      ) : runs.length === 0 ? (
+        // 真的没有运行 —— 说清楚怎么才会有，而不是空白。
+        <div className={styles.empty} data-testid="agent-console-empty">
+          {c.empty}
+        </div>
+      ) : (
+        <>
+          {/* 第一层：只放数值 + 状态 + 名字。口径一律在 `?` 里。 */}
+          <div className={styles.kpiRow} data-testid="agent-console-kpis">
+            <div className={styles.kpi}>
+              <div className={styles.kpiLabel}>{c.kpiTotal}</div>
+              <div className={styles.kpiValue} data-testid="kpi-total">
+                {runs.length}
+                <span className={styles.kpiUnit}>{c.unitRuns}</span>
+              </div>
+            </div>
+            <div className={`${styles.kpi} ${styles.kpiOk}`}>
+              <div className={styles.kpiLabel}>{c.kpiCompleted}</div>
+              <div className={styles.kpiValue} data-testid="kpi-completed">
+                {done}
+                <span className={styles.kpiUnit}>{c.unitRuns}</span>
+              </div>
+            </div>
+            <div className={`${styles.kpi} ${styles.kpiBad}`}>
+              <div className={styles.kpiLabel}>{c.kpiFailed}</div>
+              <div className={styles.kpiValue} data-testid="kpi-failed">
+                {bad}
+                <span className={styles.kpiUnit}>{c.unitRuns}</span>
+              </div>
+            </div>
+            <div className={`${styles.kpi} ${styles.kpiWarn}`}>
+              <div className={styles.kpiLabel}>{c.kpiRunning}</div>
+              <div className={styles.kpiValue} data-testid="kpi-running">
+                {running}
+                <span className={styles.kpiUnit}>{c.unitRuns}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.blockTitle}>{c.recentTitle}</div>
+          <div className={styles.runList} data-testid="agent-console-runs">
+            {runs.map((r) => {
+              const open = openTaskId === r.taskId;
+              return (
+                <div key={r.taskId}>
+                  <button
+                    type="button"
+                    className={styles.runRow}
+                    data-open={open ? "1" : "0"}
+                    data-testid="agent-run-row"
+                    aria-expanded={open}
+                    onClick={() => setOpenTaskId(open ? null : r.taskId)}
+                  >
+                    <span className={styles.runTime}>{new Date(r.createdAt).toLocaleString("zh-CN", { hour12: false })}</span>
+                    <span className={styles.runQuery}>{r.query}</span>
+                    <span className={`${styles.state} ${stateClass(r.status)}`} data-testid="agent-run-state">
+                      {zh.admin.agents.console.states[r.status as QueryTaskStatus] ?? r.status}
+                    </span>
+                    <span className={styles.runCaret}>{open ? "▾" : "▸"}</span>
+                  </button>
+                  {open && <RunDetail item={r} />}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 第二层：一次运行的明细（状态机 · 工具调用 · 上下文工程）。 */
+function RunDetail({ item }: { item: QueryHistoryItem }) {
+  const { data: trace } = useQuery({
+    queryKey: ["b", "decision-trace", item.taskId],
+    queryFn: () => fetchDecisionTrace(item.taskId),
+  });
+  const { data: probe } = useQuery({
+    queryKey: ["b", "agent-run", item.taskId],
+    queryFn: () => fetchAgentRun(item.taskId),
+  });
+
+  const run = probe?.kind === "RUN" ? probe.run : null;
+  const toolCalls = trace?.toolCalls ?? [];
+
+  return (
+    <div className={styles.detail} data-testid="agent-run-detail">
+      {/* ── 执行状态机 ── 结构表达递进（规范 §3）：不看文字也能看出走到哪一步。 */}
+      <div className={styles.block}>
+        <div className={styles.blockTitle}>
+          {c.stateMachineTitle}
+          <InfoPopover topic={c.info.stateMachine} testId={`sm-${item.taskId}`}>
+            <p>{c.info.stateMachineBody}</p>
+          </InfoPopover>
+        </div>
+        <div className={styles.machine} data-testid="agent-state-machine">
+          {MAIN_CHAIN.map((s, i) => (
+            <span key={s} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              {i > 0 && <span className={styles.arrow}>→</span>}
+              <span
+                className={`${styles.node} ${item.status === s ? styles.nodeOn : ""}`}
+                data-on={item.status === s ? "1" : "0"}
+                title={undefined /* 规范 §2 明令禁止用原生 title 充当浮层 */}
+              >
+                {c.states[s]}
+              </span>
+            </span>
+          ))}
+          <span className={styles.branch}>
+            {BRANCH_STATES.map((s) => (
+              <span
+                key={s}
+                className={`${styles.node} ${item.status === s ? styles.nodeOn : ""}`}
+                data-on={item.status === s ? "1" : "0"}
+                style={{ marginRight: 4 }}
+              >
+                {c.states[s]}
+              </span>
+            ))}
+          </span>
+        </div>
+      </div>
+
+      {/* ── 上下文工程 ── 真值优先；未触发时诚实说明为什么，绝不留白也绝不画假流程。 */}
+      <div className={styles.block}>
+        <div className={styles.blockTitle}>{c.contextTitle}</div>
+        {probe?.kind === "NO_TASK" && <div className={styles.note}>{c.noTask}</div>}
+        {probe?.kind === "NO_RUN" && (
+          <div className={styles.note} data-testid="agent-run-absent">
+            <div className={styles.noteTitle}>{c.noRunTitle}</div>
+            <div className={styles.noteBody}>{c.noRunBody}</div>
+            <Link className={styles.noteCta} to="/admin/llm-providers">
+              {c.noRunCta}
+            </Link>
+          </div>
+        )}
+        {run && (
+          <>
+            <div className={styles.stats} data-testid="agent-run-stats">
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>{c.ctxIterations}</div>
+                <div className={styles.statValue} data-testid="stat-iterations">
+                  {run.iterations.length}
+                  <span className={styles.kpiUnit}>{c.unitRounds}</span>
+                </div>
+              </div>
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>{c.ctxToolCalls}</div>
+                <div className={styles.statValue} data-testid="stat-toolcalls">
+                  {run.iterations.reduce((n, it) => n + it.toolCalls.length, 0)}
+                  <span className={styles.kpiUnit}>{c.unitTimes}</span>
+                </div>
+              </div>
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>
+                  {c.ctxTokensIn}
+                  <InfoPopover topic={c.info.tokens} testId={`tok-${item.taskId}`}>
+                    <p>{c.info.tokensBody}</p>
+                  </InfoPopover>
+                </div>
+                <div className={styles.statValue} data-testid="stat-tokens-in">{run.totalInputTokens}</div>
+              </div>
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>{c.ctxTokensOut}</div>
+                <div className={styles.statValue} data-testid="stat-tokens-out">{run.totalOutputTokens}</div>
+              </div>
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>
+                  {c.ctxOps}
+                  {/* 诚实位 ①：0 次是真值不是缺数据 —— 记号留在第一层，口径进浮层。 */}
+                  <InfoPopover topic={c.info.contextOps} testId={`ctx-${item.taskId}`}>
+                    <p>{c.info.contextOpsBody}</p>
+                  </InfoPopover>
+                </div>
+                <div className={styles.statValue} data-testid="stat-context-ops">
+                  {(run.contextOps ?? []).length}
+                  <span className={styles.kpiUnit}>{c.unitTimes}</span>
+                </div>
+              </div>
+              <div className={styles.stat}>
+                <div className={styles.statLabel}>{c.ctxBudgetExhausted}</div>
+                <div className={styles.statValue} data-testid="stat-budget">{run.budgetExhausted ? c.yes : c.no}</div>
+              </div>
+            </div>
+            {(run.contextOps ?? []).length === 0 && (
+              <div className={styles.noteBody} data-testid="agent-ctx-zero-note">
+                {c.ctxZeroNote}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── 工具调用（Agent Trace 的可读形态）── */}
+      <div className={styles.block}>
+        <div className={styles.blockTitle}>{c.toolCallsTitle}</div>
+        {toolCalls.length === 0 ? (
+          <div className={styles.noteBody} data-testid="agent-toolcalls-empty">
+            {c.toolCallsEmpty}
+          </div>
+        ) : (
+          <table className={styles.table} data-testid="agent-toolcalls">
+            <thead>
+              <tr>
+                <th>{c.colTool}</th>
+                <th>{c.colOutcome}</th>
+                <th>{c.colDuration}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toolCalls.map((tc, i) => (
+                <tr key={i} data-testid="agent-toolcall-row">
+                  <td className="mono">{tc.tool}</td>
+                  <td className={tc.outcome === "OK" ? styles.outOk : styles.outBad}>{tc.outcome}</td>
+                  <td>{tc.durationMs !== undefined ? `${tc.durationMs} ms` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* Decision Replay 不重造：跳既有证据链页（事件重放表 + 二次推演都在那边）。 */}
+        <Link className={styles.noteCta} to={`/tasks/${item.taskId}`} data-testid="agent-goto-task">
+          {c.gotoTask}
+        </Link>
       </div>
     </div>
   );

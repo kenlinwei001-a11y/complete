@@ -3124,12 +3124,92 @@ export const handlers = [
   http.get("*/b/v1/queries", ({ request }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get("limit") ?? "50") || 50));
+    // ⚠️ WO-AGENT-ADMIN-CONSOLE 修正：`path` 此前写的是 `PATH_A`，**真后端从不返回这个值** ——
+    // 契约是 `z.enum(["WORKFLOW","AGENT"])`（`packages/contracts/src/qos.ts:493`），
+    // 真端点返 `t.path ?? null`（`agentcore/src/server.ts:366`）。mock 与真后端形状不一致，
+    // 任何按 path 过滤的消费方在 mock 模式下都会读到空集（本单的 Agent 运行观测台正是其一）。
     const items = [
-      { taskId: "task-hist-1", query: "4680-NCM 加 20% 六周能不能接？", path: "PATH_A", status: "COMPLETED", view: "project-sim", conversationId: "conv-h1", classification: { intentKey: "capacity_feasibility", confidence: 0.94 }, answerSummary: "P50 42.0 万套 · 缺口 1.0；加夜班可补齐", createdAt: "2026-06-15T09:12:00Z", completedAt: "2026-06-15T09:12:08Z" },
-      { taskId: "task-hist-2", query: "常州基地影响哪些订单？", path: "PATH_A", status: "COMPLETED", view: "risk", conversationId: "conv-h2", classification: { intentKey: "affected_orders", confidence: 0.91 }, answerSummary: "8 单受影响 · 营收暴露 27.6 亿", createdAt: "2026-06-15T08:40:00Z", completedAt: "2026-06-15T08:40:05Z" },
-      { taskId: "task-hist-3", query: "现金垫 45 亿过得了体检吗？", path: "PATH_A", status: "COMPLETED", view: "plan-audit", conversationId: "conv-h3", classification: { intentKey: "plan_audit_q", confidence: 0.88 }, answerSummary: "站不住：现金垫 C18 越线，建议补 5 亿", createdAt: "2026-06-14T16:05:00Z", completedAt: "2026-06-14T16:05:06Z" },
+      { taskId: "task-hist-1", query: "4680-NCM 加 20% 六周能不能接？", path: "WORKFLOW", status: "COMPLETED", view: "project-sim", conversationId: "conv-h1", classification: { intentKey: "capacity_feasibility", confidence: 0.94 }, answerSummary: "P50 42.0 万套 · 缺口 1.0；加夜班可补齐", createdAt: "2026-06-15T09:12:00Z", completedAt: "2026-06-15T09:12:08Z" },
+      { taskId: "task-hist-2", query: "常州基地影响哪些订单？", path: "WORKFLOW", status: "COMPLETED", view: "risk", conversationId: "conv-h2", classification: { intentKey: "affected_orders", confidence: 0.91 }, answerSummary: "8 单受影响 · 营收暴露 27.6 亿", createdAt: "2026-06-15T08:40:00Z", completedAt: "2026-06-15T08:40:05Z" },
+      { taskId: "task-hist-3", query: "现金垫 45 亿过得了体检吗？", path: "WORKFLOW", status: "COMPLETED", view: "plan-audit", conversationId: "conv-h3", classification: { intentKey: "plan_audit_q", confidence: 0.88 }, answerSummary: "站不住：现金垫 C18 越线，建议补 5 亿", createdAt: "2026-06-14T16:05:00Z", completedAt: "2026-06-14T16:05:06Z" },
+      // AGENT 路两条：一条引擎真跑过（有 run 记录），一条走了未接 LLM 的诚实降级（无 run 记录）。
+      // 后者不是为了凑数——它是全新部署的**常态**（`orchestrator.ts:2656 completeNoLlmDegradation`
+      // 把 task 标成 path=AGENT + COMPLETED 却从不写 run），mock 不带这一态就测不出诚实位。
+      { taskId: "task-agent-1", query: "结合最近产能与订单，帮我判断下季度整体经营风险在哪", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a1", classification: null, answerSummary: "识别 3 处风险敞口，其中电解液供应最紧", createdAt: "2026-06-16T10:20:00Z", completedAt: "2026-06-16T10:20:31Z" },
+      { taskId: "task-agent-2", query: "随便聊聊，当前产线整体健康度怎么样", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a2", classification: null, answerSummary: "未接入可用的 LLM 提供商，已诚实降级", createdAt: "2026-06-16T09:05:00Z", completedAt: "2026-06-16T09:05:01Z" },
     ].slice(0, limit);
     return HttpResponse.json({ items, total: items.length });
+  }),
+
+  // WO-AGENT-ADMIN-CONSOLE · 决策痕迹（真后端 `agentcore/src/server.ts:426`）。
+  // 形状对着 `DecisionTraceSchema`（`packages/contracts/src/qos.ts:626-650`）写，勿自造字段。
+  http.get("*/b/v1/queries/:taskId/decision-trace", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const taskId = String(params.taskId);
+    const toolCalls =
+      taskId === "task-agent-1"
+        ? [
+            { tool: "discover", outcome: "OK", durationMs: 120, at: "2026-06-16T10:20:03Z" },
+            { tool: "query_objects", outcome: "OK", durationMs: 310, at: "2026-06-16T10:20:09Z" },
+            { tool: "invoke_solver", outcome: "OK", durationMs: 1840, at: "2026-06-16T10:20:18Z" },
+            { tool: "evaluate_rules", outcome: "ERROR", durationMs: 95, at: "2026-06-16T10:20:24Z" },
+          ]
+        : []; // 降级那条没进循环 ⇒ 没有工具调用，这是真值不是缺数据
+    return HttpResponse.json({
+      decisionId: taskId,
+      tenantId: TENANT_ID,
+      question: "（mock）",
+      status: "COMPLETED",
+      path: "AGENT",
+      resolvedRefs: [],
+      unverifiedNumerics: false,
+      provenanceCount: toolCalls.filter((t) => t.outcome === "OK").length,
+      ontologyValidation: "NONE",
+      humanReviewRequired: true,
+      toolCalls,
+      createdAt: "2026-06-16T10:20:00Z",
+      completedAt: "2026-06-16T10:20:31Z",
+    });
+  }),
+
+  // WO-AGENT-ADMIN-CONSOLE · Agent 运行记录（真后端 `agentcore/src/server.ts` 新增）。
+  // 形状对着 `AgentRunRecordSchema`（`packages/contracts/src/qos.ts:711-722`）。
+  // `contextOps: []` 是**刻意的真值**：默认 20 万上下文窗口下软阈值够不到（欠账 #91），
+  // 三刀一次都不会跑。mock 若在这里塞几条假的 fold，界面就会画出一个真部署里永远看不到的东西。
+  http.get("*/b/v1/queries/:taskId/agent-run", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const taskId = String(params.taskId);
+    if (taskId !== "task-agent-1") {
+      // 与真后端同码：任务在但引擎没进循环 → AGENT_RUN_NOT_FOUND（不是 TASK_NOT_FOUND）
+      return err(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
+    }
+    return HttpResponse.json({
+      id: "run-agent-1",
+      taskId,
+      model: "claude-opus-4-8",
+      iterations: [
+        {
+          index: 0,
+          toolCalls: [
+            { toolCallId: "toolu_1", toolName: "discover", input: {}, outcome: "OK", durationMs: 120 },
+            { toolCallId: "toolu_2", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 310 },
+          ],
+        },
+        {
+          index: 1,
+          toolCalls: [{ toolCallId: "toolu_3", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1840 }],
+        },
+        {
+          index: 2,
+          toolCalls: [{ toolCallId: "toolu_4", toolName: "evaluate_rules", input: {}, outcome: "ERROR", durationMs: 95 }],
+        },
+      ],
+      budget: { maxIterations: 24, maxToolCalls: 40, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+      budgetExhausted: false,
+      totalInputTokens: 18432,
+      totalOutputTokens: 2106,
+      contextOps: [],
+    });
   }),
 
   http.get("*/b/v1/queries/:taskId", ({ params }) => {

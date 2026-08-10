@@ -1,0 +1,92 @@
+/* WO-SANDBOX-DECLUTTER · `?` 说明浮层。
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的 token ⇒ 暗色 / 冷蓝 / 亮橙三套自动跟随
+ * （`--popover-shadow` 本身就是**逐主题**定义的，见 tokens.css:61/98/138 —— 深色用大扩散、
+ *  浅色两套用低透深墨，故本文件不写任何 rgba）。
+ */
+
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+/* 触发器：贴在它解释的那个数值/标签旁边，占位极小（一个字符宽） */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0 0 0 4px;
+  border: 1px solid var(--line2);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted2);
+  font: 700 9px/1 var(--font-mono);
+  cursor: help;
+}
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 浮层：绝对定位 ⇒ **不占布局像素**（这正是本单要的"减负"）。
+ *
+ * ⚠ **表面（背景/边框/投影）不在这里定义** —— 由全局 `.popover-surface` 提供
+ * （`styles/global.css:165`）。那张表面是欠账 #104 专门做的：它的判据是
+ * 「渲染像素不依赖底下的内容」，且 `test/provenance-popover-legibility.test.tsx`
+ * 已对**三套主题**逐一验过遮蔽性与对比度。
+ * 自己再写一份 `background: var(--panel)` 就是给那张验过的表面开一条**没人验的分身**
+ * ——本仓已有明确反面教材（.panel 磨砂玻璃上的文字对比度从 9.19 掉到 1.01）。
+ * 本文件只留**几何与排版**。 */
+.body {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  max-width: 380px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 9px 11px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+  cursor: default;
+}
+/* 贴右边缘时改向左展开（`data-align` 由组件按触发器位置定，纯几何、无业务语义） */
+.body[data-align="right"] {
+  left: auto;
+  right: 0;
+}
+.body b {
+  color: var(--txt);
+}
+.body code {
+  font: 10px var(--font-mono);
+  color: var(--muted2);
+  word-break: break-all;
+}
+.title {
+  display: block;
+  margin-bottom: 4px;
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--txt);
+}
+.body p {
+  margin: 6px 0 0;
+}
+.body p:first-of-type {
+  margin-top: 0;
+}

@@ -18,6 +18,7 @@ import {
   SkillExecutionStepSchema,
   SkillGraphSchema,
   ScaffoldManifestSchema,
+  AgentRunRecordSchema,
   DecisionTraceSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
@@ -479,6 +480,40 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       task.answer,
     );
     return InferenceTraceSchema.parse(trace);
+  });
+
+  /**
+   * WO-AGENT-ADMIN-CONSOLE · Agent 运行记录只读下发（闭 `G-AGENTRUN-NO-READ-SURFACE`）。
+   *
+   * **为什么要加这条**（取证见 `docs/AUDIT-agent-console-gap.md` §3.4）：
+   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts:2075 / 2364 / 2614`
+   * → `repos.agentRuns.insert`），仓储双实现的 `getByTask` 也早就在
+   * （`persistence/memory.ts:180` · `persistence/pg.ts:276`）——**但全仓没有任何 HTTP 读端**
+   * （`grep -n "agentRuns" server.ts` 零命中，金丝雀 `toolCalls` 同文件 5 命中 ⇒ 工具是好的）。
+   * 唯一的 src 消费方 `evals.ts:237` 只取 token 数，于是 `iterations` / `budget` /
+   * `budgetExhausted` / `contextOps` 这四项**写进库之后从没有任何人读过**。
+   * 这是「写了没人读」，不是「没实现」——所以本单补的是**读投影**，不是新功能：
+   * 零新增仓储方法、零新增契约字段、零写操作。
+   *
+   * **上下文工程的诚实边界（#91 · `SYSTEM-ONTOLOGY.md:1063`）**：`contextOps` 挂在
+   * `agent/loop.ts:747` 的 `tokens > budgeter.softLimit` 分支下。200k provider 的
+   * softLimit=140,000，而系统自身预算上界允许的最坏上下文=102,785 tok ⇒ **默认路恒为空数组**；
+   * ≤128k provider 才够得到。故本端点常态返回 `contextOps: []` 是**真值**，不是缺陷，
+   * 前端必须把「为什么是 0」说出来而不是留白。
+   *
+   * 租户隔离与同文件既有三条 trace 端点同形：先 auth，再校 task 归属，越租户一律 404。
+   */
+  app.get("/api/v1/queries/:taskId/agent-run", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    // 先校 task 归属再取 run —— run 记录本身不带 tenantId，隔离只能靠它的 task（勿颠倒顺序）。
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const run = await deps.repos.agentRuns.getByTask(taskId);
+    // 走 WORKFLOW 路 / 尚未跑完 agent 循环 → 本来就没有 run 记录。这是正常态，不是错误态，
+    // 但仍返 404（而非空对象）：让「没有」和「有但空」在调用方那里可区分。
+    if (!run) throw new HttpError(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
+    return AgentRunRecordSchema.parse(run);
   });
 
   // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。

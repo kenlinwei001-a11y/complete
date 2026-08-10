@@ -1,0 +1,312 @@
+/* WO-AGENT-ADMIN-CONSOLE · Agent 运行观测台。
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的 token ⇒ 深浅两套主题自动跟随。
+ * 分层按 docs/CONVENTION-ui-information-layering.md：
+ *   第一层（.kpiRow / .runRow）只放 数值 · 状态 · 名字；
+ *   第二层（.detail）放明细与逐项拆解；
+ *   口径公式一律进 InfoPopover（本文件不为浮层写任何表面样式，那是 .popover-surface 的事）。
+ */
+
+.console {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.headTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--txt);
+}
+.headSub {
+  font-size: 11px;
+  color: var(--muted2);
+}
+.headActions {
+  margin-left: auto;
+}
+
+/* ── 诚实位横幅 ──────────────────────────────────────────────────────────────
+ * 规范 §1：诚实位允许降到浮层，**绝不允许删除**，且第一层必须留可见记号。
+ * 这里的记号就是横幅本身（永远渲染，不折叠）；完整口径在它右边的 `?` 里。 */
+.honest {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--panel2);
+}
+.honestTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--txt);
+}
+.honestBody {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ── 第一层：KPI ─────────────────────────────────────────────────────────────
+ * R-UI-1 视线距离：标签与数值同卡、上下相邻，绝不横跨屏幕。
+ * R-UI-2 字号层级：.kpiValue 是本区最大一级，只给数字本身。 */
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.kpi {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 9px 11px;
+  background: var(--panel2);
+}
+.kpiLabel {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted2);
+}
+.kpiValue {
+  margin-top: 2px;
+  font: 700 22px/1.1 var(--font-mono);
+  color: var(--txt);
+}
+.kpiUnit {
+  margin-left: 3px;
+  font: 400 11px var(--font-sans);
+  color: var(--muted2);
+}
+.kpiOk .kpiValue {
+  color: var(--ok);
+}
+.kpiBad .kpiValue {
+  color: var(--danger);
+}
+.kpiWarn .kpiValue {
+  color: var(--warn);
+}
+
+/* ── 第一层：最近运行清单 ───────────────────────────────────────────────────── */
+.runList {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.runRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: none;
+  width: 100%;
+  text-align: left;
+  color: var(--txt);
+}
+.runRow:last-of-type {
+  border-bottom: none;
+}
+.runRow:hover {
+  background: var(--hover-tint);
+}
+.runRow[data-open="1"] {
+  background: var(--hover-tint-strong);
+}
+.runTime {
+  flex: 0 0 auto;
+  font: 11px var(--font-mono);
+  color: var(--muted2);
+  white-space: nowrap;
+}
+.runQuery {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.runCaret {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--muted2);
+}
+
+/* 状态徽标：颜色即状态（第一层允许的三样之一）。 */
+.state {
+  flex: 0 0 auto;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font: 700 10px var(--font-mono);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.stateDone {
+  color: var(--ok);
+}
+.stateBad {
+  color: var(--danger);
+}
+.stateRun {
+  color: var(--warn);
+}
+
+/* ── 第二层：明细 ───────────────────────────────────────────────────────────── */
+.detail {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 12px 14px;
+  background: var(--bg2);
+}
+.detail:last-child {
+  border-bottom: none;
+}
+.blockTitle {
+  display: flex;
+  align-items: center;
+  margin: 0 0 7px;
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+.block + .block {
+  margin-top: 14px;
+}
+
+/* 状态机：结构本身要表达（规范 §3）—— 用箭头把七态串成有方向的链，
+ * 本次到达的那一态高亮，其余降到底噪；不看文字也能看出"走到哪一步"。 */
+.machine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.node {
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--muted2);
+  background: var(--panel2);
+  opacity: 0.5;
+}
+.nodeOn {
+  opacity: 1;
+  font-weight: 700;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.arrow {
+  font-size: 10px;
+  color: var(--line2);
+}
+.branch {
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--line2);
+}
+
+/* 明细表（工具调用）：豁免第一层密度约束——用户展开它就是为了看全量行（规范 §4）。 */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.table th {
+  border-bottom: 1px solid var(--line2);
+  padding: 4px 6px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted2);
+}
+.table td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 6px;
+  color: var(--muted);
+}
+.table td.mono {
+  font: 11px var(--font-mono);
+  color: var(--txt);
+}
+.outOk {
+  color: var(--ok);
+  font-weight: 700;
+}
+.outBad {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* 上下文工程：一排小数字 + 各自的 `?`。数值在第一层，口径在浮层。 */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--panel2);
+}
+.statLabel {
+  display: flex;
+  align-items: center;
+  font-size: 10.5px;
+  color: var(--muted2);
+}
+.statValue {
+  margin-top: 1px;
+  font: 700 15px/1.2 var(--font-mono);
+  color: var(--txt);
+}
+
+/* 诚实说明块（无 run / 未触发清理）：不是错误态，故不用 danger 色。 */
+.note {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  padding: 9px 11px;
+  background: var(--panel2);
+}
+.noteTitle {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--txt);
+}
+.noteBody {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.noteCta {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.empty {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
