@@ -93,6 +93,37 @@ export const SliceLayerSchema = z.object({
 });
 export type SliceLayer = z.infer<typeof SliceLayerSchema>;
 
+/**
+ * 子图为空（nodes=0）时的**诚实说明**——「这一层没数据」和「这条切片根本没解出子图」是两件事，
+ * 混成一个「无」就是审计 §1.2 那个误判的翻版。实测（2026-08-10 · demo 租户 · 真后端）：
+ * 98 条切片里 **12 条**无参调用即空子图，其中 4 条是 root selector 声明了 `{{args.X}}` 却没给参
+ * （`order_fulfillment_360` 给 `{"so":"SO-3391"}` 立刻解出 531 节点），另 8 条是该 root 类型零对象。
+ * 两者下一步动作完全不同：前者补参数，后者补数据。
+ */
+export const SliceEmptyGraphSchema = z.object({
+  /**
+   * - `missing_args`：root selector 里有 `{{args.X}}` 占位符，本次调用没给 ⇒ 过滤条件恒不匹配。
+   * - `no_root_objects`：本租户该 root 对象类型**一个对象都没有**。
+   * - `no_match`：参数给全了、root 类型也有对象，但 selector 过滤后无匹配。
+   */
+  reason: z.enum(["missing_args", "no_root_objects", "no_match"]),
+  /** root selector（byKey + filter）里出现的全部 `{{args.X}}` 占位符名，字典序。 */
+  requiredArgs: z.array(z.string()),
+  /** 上面这些里，本次调用**没给**的那些（字典序）。 */
+  missingArgs: z.array(z.string()),
+  /** root 对象类型在本租户的对象总数（区分「零对象」与「有对象但没匹配」）。 */
+  rootObjectTotal: z.number().int().nonnegative(),
+  /**
+   * 缺参数时的**可选值** —— 从本租户**真实 root 对象**上读出来的，不是编的示例。
+   * 空数组 = 真的取不到（诚实留白：界面只显输入框、不显候选，绝不拿假值凑）。
+   * 确定性（R6）：按 objectKey 字典序扫、去重后取前若干个，同快照同输出。
+   */
+  argCandidates: z.array(z.object({ arg: z.string(), values: z.array(z.string()) })),
+  /** 一句话人读说明（界面直接显示；说明缺在哪一环，不写"暂无数据"）。 */
+  message: z.string(),
+});
+export type SliceEmptyGraph = z.infer<typeof SliceEmptyGraphSchema>;
+
 /** `GET /a/v1/ontology/slices/{sliceKey}/layers` 响应。 */
 export const SliceLayersResponseSchema = z.object({
   sliceKey: z.string(),
@@ -106,6 +137,8 @@ export const SliceLayersResponseSchema = z.object({
     /** 切片触达的对象类型（层 join 的键集合，字典序）。 */
     typeKeys: z.array(z.string()),
     linkKeys: z.array(z.string()),
+    /** 仅当 nodes=0：为什么空。有它 ⇒ 界面必须先说「子图没解出来」，再谈层。 */
+    empty: SliceEmptyGraphSchema.optional(),
   }),
   snapshotVersion: z.string(),
   /** 恰好 16 层，按 ordinal 升序。 */

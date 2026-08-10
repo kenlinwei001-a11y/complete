@@ -1,4 +1,5 @@
 import type {
+  SliceEmptyGraph,
   SliceLayer,
   SliceLayerId,
   SliceLayerItem,
@@ -53,6 +54,98 @@ export interface SliceLayerInput {
   actionTypeKeys: string[];
   /** 切片类型上的派生规格（证据层：派生 inputs 快照的规格来源）。 */
   derivationSpecKeys: { specKey: string; targetType: string; targetProp: string; formula: string }[];
+  /** 本次 resolve 实际收到的试切参数（用于判定「子图为空」是不是缺参导致）。 */
+  args: Record<string, unknown>;
+  /** root 对象类型在本租户的对象总数（区分「零对象」与「有对象但 selector 没匹配」）。 */
+  rootObjectTotal: number;
+  /**
+   * root 对象样本（**只在子图为空时**由调用方装填，用于给出「可以填什么」的真实候选值）。
+   * 候选值全部来自真对象，绝不编造；取不到就留空数组。
+   */
+  rootObjectSamples: { objectKey: string; props: Record<string, unknown> }[];
+}
+
+/** 候选值上限：第一层不该堆一屏值，够点一下就行（多的让人自己填）。 */
+const ARG_CANDIDATE_CAP = 8;
+
+/**
+ * 判定「子图为什么是空的」——**空子图不是「这些层没数据」**（WO-SLICE-16-LAYERS 复核发现）。
+ *
+ * 实测（2026-08-10 · demo 租户 · 真后端 4093 端口逐条跑完 98 条切片）：无参调用时 **86 条非空 / 12 条空**，
+ * 12 条空的分两种、修法完全不同：
+ *   - 4 条多跳切片（`enterprise_360` / `order_fulfillment_360` / `order_to_cash_720` / `aop_scenario_chain`）
+ *     的 root selector 写着 `{{args.so}}` / `{{args.key}}`，不给参数 ⇒ 过滤恒不匹配。
+ *     给 `{"so":"SO-3391"}` 立刻解出 531 节点 / 570 边 / 9 类型 ⇒ **缺的是参数，不是数据**。
+ *   - 8 条 `coverage_*` 切片的 root 类型在本租户零对象 ⇒ **缺的是数据**。
+ * 把这两种和「层没数据」搅成一个「无」，就是审计 §1.2 那个误判的翻版。
+ */
+function diagnoseEmptyGraph(
+  spec: SliceLayerInput["spec"],
+  args: Record<string, unknown>,
+  rootObjectTotal: number,
+  rootObjectSamples: SliceLayerInput["rootObjectSamples"],
+): SliceEmptyGraph {
+  // 占位符正则与 ontology-core.ts:596 resolveTemplate 一字不差（口径单源，改一处必同改）。
+  const PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
+  // 占位符所在的**位置**要记住：filter 的 key 就是 root 对象上的属性名，byKey 则取 objectKey。
+  // 只记参数名不记位置，就没法回答「这个参数该填什么」——那正是缺参诊断最有用的一半。
+  const argSource = new Map<string, { from: "prop"; propKey: string } | { from: "objectKey" }>();
+  const scan = (raw: unknown, source: { from: "prop"; propKey: string } | { from: "objectKey" }): string[] => {
+    const m = typeof raw === "string" ? PLACEHOLDER.exec(raw) : null;
+    if (!m) return [];
+    const name = m[1] as string;
+    if (!argSource.has(name)) argSource.set(name, source);
+    return [name];
+  };
+  const found = [
+    ...(spec.root.selector.byKey !== undefined ? scan(spec.root.selector.byKey, { from: "objectKey" }) : []),
+    ...Object.entries(spec.root.selector.filter ?? {}).flatMap(([propKey, raw]) => scan(raw, { from: "prop", propKey })),
+  ];
+  const requiredArgs = uniqSorted(found);
+  const missingArgs = requiredArgs.filter((a) => args[a] === undefined || args[a] === "");
+
+  /** 真值候选：从真对象上读，不编。确定性 —— 先按 objectKey 字典序，再去重取前 CAP 个。 */
+  const candidatesFor = (arg: string): string[] => {
+    const src = argSource.get(arg);
+    if (!src) return [];
+    const ordered = [...rootObjectSamples].sort((a, b) => by(a.objectKey, b.objectKey));
+    const raw = ordered.flatMap((o) => {
+      const v = src.from === "objectKey" ? o.objectKey : o.props[src.propKey];
+      // 数组属性（如 Order.bases）逐元素展开；对象/undefined 一律丢弃（宁可少给也不给看不懂的值）。
+      const vs = Array.isArray(v) ? v : [v];
+      return vs.filter((x): x is string | number => typeof x === "string" || typeof x === "number").map(String);
+    });
+    return [...new Set(raw)].slice(0, ARG_CANDIDATE_CAP);
+  };
+
+  if (missingArgs.length > 0) {
+    return {
+      reason: "missing_args",
+      requiredArgs,
+      missingArgs,
+      rootObjectTotal,
+      argCandidates: missingArgs.map((a) => ({ arg: a, values: candidatesFor(a) })),
+      message: `子图为空是因为**缺试切参数**：该切片的 root selector 声明了 ${requiredArgs.map((a) => `{{args.${a}}}`).join("、")}，本次未提供 ${missingArgs.join("、")} ⇒ root 过滤恒不匹配。补上参数即可解出真子图（十六层随之有数）。`,
+    };
+  }
+  if (rootObjectTotal === 0) {
+    return {
+      reason: "no_root_objects",
+      requiredArgs,
+      missingArgs,
+      rootObjectTotal,
+      argCandidates: [],
+      message: `子图为空是因为 root 对象类型 ${spec.root.typeKey} 在本租户**一个对象都没有**（不是切片写错，是这一类还没有数据）。`,
+    };
+  }
+  return {
+    reason: "no_match",
+    requiredArgs,
+    missingArgs,
+    rootObjectTotal,
+    argCandidates: requiredArgs.map((a) => ({ arg: a, values: candidatesFor(a) })),
+    message: `子图为空是因为 root selector 过滤后无匹配：${spec.root.typeKey} 共 ${rootObjectTotal} 个对象，没有一个满足 selector 条件。`,
+  };
 }
 
 const by = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -378,8 +471,19 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
       items: sliceTypes
         .flatMap((t) => (t.actions ?? []).map((a) => ({ key: `${t.key}:${a.actionTypeKey}`, label: a.actionTypeKey, group: t.key })))
         .sort((a, b) => by(a.key, b.key)),
+      // 复核修正（WO-SLICE-16-LAYERS 接续单 · 2026-08-10 实测）：前稿把 actions 恒空写成
+      //「接了线没数据」，只说对了一半。追一层调用发现是**两道口子叠在一起**：
+      //   ① 生产方确实不产：种子 battery.ts 里 `actions:` 与 `stateVariables` 命中数皆为 0
+      //      （金丝雀 `derivedProperties` 同文件 14 命中 ⇒ grep 工具正常，是真的 0）。
+      //   ② 就算产了也落不了库：`pipeline/subgraph.ts:53-57` 确实构造了 stateVariables/actions/
+      //      functions/security，但唯一入库口 `ontology.ts:199 upsertType` 逐字段列举重建 def，
+      //      这四个字段一个都没抄 ⇒ 写进去也丢（与 docs/ONTOLOGY-7ELEM-AUDIT.md §2.1(b) 同结论）。
+      // 二者定性不同、修法不同（补种子 vs 补持久化窄门），必须一起说，否则会去修错那一头。
       absentReason:
-        `全局注册了 ${input.actionTypeKeys.length} 个 ActionType，但 ActionType 无 targetTypeKey 字段、且 object_types.actions[] 全空 ⇒ 无法把动作归因到本切片的对象类型。缺的是 join 键（结构缺口），不是数据。`,
+        `全局注册了 ${input.actionTypeKeys.length} 个 ActionType，但归因不到本切片的类型，缺口有两道：` +
+        `(1) 结构缺口 —— ActionType 无 targetTypeKey 字段，无法机械 join 到对象类型；` +
+        `(2) 持久化窄门 —— object_types.actions[] 全空，且 ontology.ts:199 upsertType 逐字段重建 def 时不抄 actions/stateVariables/functions/security，` +
+        `即便 pipeline/subgraph.ts:53-57 产出了也落不了库。补种子与补窄门是两件事，不许当一件做。`,
     },
     // ── ⑯ 治理与溯源 ──────────────────────────────────────────────────────────
     // 本单最重的一条：executeSlice 原本在 nodes.set 时丢掉了 o.origin / o.epoch
@@ -413,6 +517,13 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
     },
   };
 
+  // 子图空 ⇒ 十三个「靠子图 join」的层必然为空，但那**不是层的问题**。①②只看 reportedRefs、
+  // 与子图无关，所以不受此影响（否则会把「上游不上报」错报成「参数没给」）。
+  const emptyGraph = graph.nodes.length === 0
+    ? diagnoseEmptyGraph(spec, input.args, input.rootObjectTotal, input.rootObjectSamples)
+    : undefined;
+  const GRAPH_INDEPENDENT: ReadonlySet<SliceLayerId> = new Set<SliceLayerId>(["business_scenario", "decision_intent"]);
+
   const layers: SliceLayer[] = SLICE_LAYER_IDS.map((id, i) => {
     const d = drafts[id];
     const count = d.items.length;
@@ -432,7 +543,14 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
       items: d.items,
     };
     if (d.platformCount !== undefined) layer.platformCount = d.platformCount;
-    if (status === "not_in_slice") {
+    // 子图为空时，靠子图 join 的层一律改口径为「子图没解出来」——原文案「平台有 N 条但本切片没纳入」
+    // 在这里是**假话**：切片纳没纳入根本还没判定过。这正是「不许拿一个看起来相关的说法当解释」。
+    const graphEmptyBlocked = emptyGraph !== undefined && !GRAPH_INDEPENDENT.has(id) && status !== "present";
+    if (graphEmptyBlocked) {
+      layer.absentReason =
+        `本切片未解出子图 ⇒ 这一层还没被判定过（不是「平台没有」）。${emptyGraph.message}` +
+        (d.platformCount !== undefined ? `（平台现有 ${d.platformCount} ${d.unit}。）` : "");
+    } else if (status === "not_in_slice") {
       layer.absentReason =
         d.absentReason ??
         `平台有 ${d.platformCount ?? 0} ${d.unit}，但本切片的路径没纳入 —— 改切片 paths 把相关类型接进来即可取到。`;
@@ -452,6 +570,7 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
       truncated: graph.truncated,
       typeKeys,
       linkKeys,
+      ...(emptyGraph ? { empty: emptyGraph } : {}),
     },
     snapshotVersion: graph.snapshotVersion,
     layers,

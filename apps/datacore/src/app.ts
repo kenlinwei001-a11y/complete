@@ -4608,6 +4608,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         actions.listTypes(c),
         repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
       ]);
+    // 空子图诊断的输入：root 类型在本租户有多少对象 —— 用来区分「零对象」与「有对象但 selector 没匹配」，
+    // 并从**真对象**上取「这个参数可以填什么」的候选值（绝不编示例值）。
+    // 只在子图为空时才读（非空路径零额外开销）。样本上限防大租户全表拉取。
+    const ROOT_SAMPLE_CAP = 200;
+    const rootObjects = graph.nodes.length === 0
+      ? await repos.objects.listByType(c.tenantId, spec.spec.root.typeKey)
+      : [];
+    const rootObjectTotal = rootObjects.length;
+    // 显示键与 executeSlice 的 byKey 匹配口径同源（ontology-core.ts:620 `objectKey ?? props[pk] ?? id`）：
+    // 候选值必须是**填进去真能解出子图的那个值**，否则候选就是摆设。优先业务主键（SO-3391）
+    // 而非内部 id（obj_order_SO-3391）——两者都能匹配，但只有前者是人认得的那个。
+    const rootPkProp = types.find((t) => t.key === spec.spec.root.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const rootObjectSamples = rootObjects.slice(0, ROOT_SAMPLE_CAP).map((o) => ({
+      objectKey: String(o.objectKey ?? (rootPkProp !== undefined ? o.props[rootPkProp] : undefined) ?? o.id),
+      props: o.props,
+    }));
     const exceptionRefTypes: Record<string, number> = {};
     for (const o of excObjs) {
       const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
@@ -4637,6 +4653,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       references: references.map((r) => ({ refKind: r.refKind, key: r.key, where: r.where })),
       actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
       derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+      args,
+      rootObjectTotal,
+      rootObjectSamples,
     });
   });
 
