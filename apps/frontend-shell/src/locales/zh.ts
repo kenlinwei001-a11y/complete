@@ -909,18 +909,39 @@ export const zh = {
           "任务走的是 AGENT 路径，但引擎没有执行工具循环，因此没有运行记录。最常见原因是未接入可用的 LLM 提供商 —— 此时系统会诚实降级并直接作答，而不是空转。",
         noRunCta: "去绑定 LLM 提供商 →",
         noTask: "该任务不存在或不属于当前租户。",
+        // -------------------------------------------------------------------
+        // WO-AGENTRUN-ATTRIBUTION · 「本 Agent 的运行」——归属已可得的那一半
+        // 数据源：GET /b/v1/agents/:id/runs（引擎在 agent/loop.ts finishRun 单点回填归属）。
+        // -------------------------------------------------------------------
+        agentRunsTitle: "本 Agent 的运行",
+        agentRunsSubtitle: "引擎在运行时回填的真实归属，跨版本按同一个 Agent 聚合",
+        agentRunsCount: "已归属运行",
+        agentRunsEmpty:
+          "这个 Agent 还没有运行记录。把它绑到某个场景入口（AGENT_FIRST / AGENT_ONLY）或角色分派上，再去对话坞提问即可产生。注意：未接入可用 LLM 提供商时系统会诚实降级直接作答，那种情况下不产生运行记录 —— 数字为 0 是真值，不是加载失败。",
+        agentRunsNoSelection: "在左侧选中一个 Agent，即可看到它自己的历次运行。",
+        colModel: "模型",
+        colVersion: "版本",
+        colIterations: "轮次",
+        colTokens: "token（入/出）",
+        /** 单次运行的归属形态（三态一一对应契约 attribution 字段；缺失≠EXPLORATORY） */
+        attrLabel: "运行归属",
+        attrRegisteredPrefix: "本次由 Agent ",
+        attrRegisteredSuffix: " 执行",
+        attrExploratory: "通用探索路 —— 本次没有任何 Agent 定义参与（引擎正面标记，不是缺数据）",
+        attrUnknown: "归属未知 —— 本条运行写于归属上线之前，无从判定属于哪个 Agent",
         /**
-         * 诚实位 ③（本页最重要的一条）：这不是"本 Agent 的运行"。
-         * 取证：QueryTask 与 AgentRunRecord 都没有 agentId 字段。
+         * 诚实位 ③（**降层而非删除**）：归属已经可得，但**只对一部分运行**可得。
+         * 原文是「这些运行无法归属到上面选中的 Agent」——那句话在归属上线后已经不成立，
+         * 继续挂着就是另一种说假话。现在改成陈述**残余缺口**，且残余缺口一条不少地列出来。
          */
-        attributionTitle: "这些运行无法归属到上面选中的 Agent",
+        attributionTitle: "归属已可得，但不是每一次运行都归得上",
         attributionBody:
-          "当前引擎在自由问句路径上不绑定具体 Agent 定义，运行记录里也没有 Agent 标识，因此本区列的是本租户全部 AGENT 路径运行，而不是选中 Agent 的运行。",
+          "上方「本 Agent 的运行」是引擎真回填的归属，可信。下方「本租户 AGENT 路径运行」仍是租户级清单，其中三类运行归不到任何 Agent 头上：① 通用探索路（自由问句进探索模式，工具集当场按场景包白名单组装，全程没有 Agent 定义）；② 归属上线之前写下的旧记录；③ 多角色会诊扇出的子 Agent 运行（今天根本没有落库）。展开任意一次运行可看到它自己的归属形态。",
         /** ? 浮层（口径 · 公式 · 为什么这么算 · 数据来源） */
         info: {
-          attribution: "为什么运行归不到具体 Agent 头上",
+          attribution: "哪些运行归得上、哪些归不上",
           attributionBody:
-            "运行记录（AgentRunRecord）只带 taskId、模型、迭代、预算与 token，没有 agentId；查询任务（QueryTask）同样没有。自由问句路径进入探索模式时按场景包白名单组装工具，并不解析某个 Agent 定义。要让它有归属，需在运行记录上增加 Agent 标识并由引擎回填 —— 属引擎侧改动，尚未排期。",
+            "运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属形态只有两种正值：REGISTERED（真解析了某一版 Agent 定义，如场景入口 Agent、角色 Agent）与 EXPLORATORY（本次确实没有 Agent 定义）。字段整体缺失是第三种情况：归属上线前的旧记录，属于未知，不会被当成 EXPLORATORY 混算。另有一处今天仍缺：多角色会诊扇出的子 Agent 运行不落库（运行记录以任务为唯一键，一个任务只存得下一条），故那类运行既不在本 Agent 列表里，也不在任何统计里。",
           contextOps: "上下文清理的触发口径",
           contextOpsBody:
             "三种清理动作：折叠最旧一轮工具结果 · 服务端压缩 · 强制收尾。三者共用同一道软阈值：模型上下文窗口与 20 万 token 取小，再乘 0.7。默认 20 万窗口下软阈值是 14 万，而系统自身预算上界（工具调用次数上限 × 单条工具结果 8KB 硬截断）允许的最坏上下文约 10.3 万 —— 够不到，所以默认路上一次都不会触发。换成 12.8 万及以下窗口的提供商，同一份上下文就会触发。够不到的真正原因是上游两道防线在正常工作，属设计正确，不是缺陷。",

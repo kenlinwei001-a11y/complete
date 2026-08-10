@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgentDefinition, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
+import type { AgentDefinition, AgentRunRecord, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
 import {
   fetchAgentRun,
+  fetchAgentRuns,
   fetchAgents,
   fetchDecisionTrace,
   fetchLlmProviders,
@@ -127,7 +128,9 @@ export default function AgentsPage() {
           </div>
         )}
       </div>
-      <AgentRuntimeConsole />
+      {/* WO-AGENTRUN-ATTRIBUTION：把选中的 Agent 传下去 —— 观测台第一段现在能显示「**这个 Agent** 的运行」，
+          而不再只有租户级清单。未选中时该段显示引导语，不显示任何数字（没有对象就没有归属可言）。 */}
+      <AgentRuntimeConsole agent={selected} />
     </div>
   );
 }
@@ -140,13 +143,19 @@ export default function AgentsPage() {
 //   · Agent Trace  —— 工具调用轨迹，读端 `GET /b/v1/queries/:taskId/decision-trace`（现成，此前前端零消费）
 //   · 上下文工程   —— 迭代/预算/token/清理留痕，读端 `GET /b/v1/queries/:taskId/agent-run`（本单新补）
 //   · Decision Replay —— 不重造，跳既有证据链页（`/tasks/:taskId`）
+//   · 运行归属     —— **这个 Agent** 的历次运行，读端 `GET /b/v1/agents/:id/runs`
+//                     （WO-AGENTRUN-ATTRIBUTION 新补；引擎在 `agent/loop.ts finishRun` 单点回填）
 //
 // **刻意不渲染的东西**（取证结论：无承载物）：
 //   · Context Manager 五段（Retriever / Ranker / Compressor / Assembler / Validator）——
 //     全仓零实现，唯一命中是参考原型 HTML 里一个图节点标签。一个永远空着的面板比没有更糟，
 //     所以这里一个像素都不给它。真实实现是**三刀**（折叠 / 压缩 / 强制收尾），按真值渲染。
-//   · 「本 Agent 的运行」—— 运行记录里没有 Agent 标识（见 `.honest` 横幅），
-//     所以本区诚实地叫「本租户 AGENT 路径运行」，绝不把租户级数据冒充成单 Agent 数据。
+//
+// **本区分两段，名字必须分清（合成一段就会拿租户级数据冒充单 Agent 数据）**：
+//   ① 「本 Agent 的运行」   —— 引擎真回填了归属的那些运行，可信地属于选中的这个 Agent；
+//   ② 「本租户 AGENT 路径运行」—— 租户级任务清单，其中含归不到任何 Agent 头上的三类
+//                              （探索路 / 归属上线前的旧记录 / 未落库的会诊子运行），
+//                              残余缺口写在 `.honest` 横幅里，**降层保留、不许删**。
 // ---------------------------------------------------------------------------
 
 const c = zh.admin.agents.console;
@@ -161,7 +170,7 @@ function stateClass(s: string): string {
   return styles.stateRun!;
 }
 
-function AgentRuntimeConsole() {
+function AgentRuntimeConsole({ agent }: { agent: AgentDefinition | null }) {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["b", "query-history", "agent-console"],
     queryFn: () => fetchQueryHistory(100),
@@ -187,7 +196,12 @@ function AgentRuntimeConsole() {
         </span>
       </div>
 
-      {/* 诚实位 ③：永远渲染，不折叠 —— 规范 §1「静默降层等于删除」。 */}
+      {/* ── ① 本 Agent 的运行（WO-AGENTRUN-ATTRIBUTION：归属已可得的那一半）── */}
+      <AgentOwnRuns agent={agent} />
+
+      {/* 诚实位 ③：永远渲染，不折叠 —— 规范 §1「静默降层等于删除」。
+          归属上线后这条**降层**（从"一次都归不上"改为"哪些归得上、哪些仍归不上"），
+          **绝不删除**：残余的三类缺口（探索路 / 上线前旧记录 / 未落库的会诊子运行）逐条写明。 */}
       <div className={styles.honest} data-testid="agent-console-attribution">
         <div>
           <div className={styles.honestTitle}>
@@ -199,6 +213,8 @@ function AgentRuntimeConsole() {
           <div className={styles.honestBody}>{c.attributionBody}</div>
         </div>
       </div>
+
+      <div className={styles.blockTitle}>{c.subtitle}</div>
 
       {isLoading ? (
         <div className={styles.empty}>{c.loading}</div>
@@ -273,7 +289,120 @@ function AgentRuntimeConsole() {
   );
 }
 
-/** 第二层：一次运行的明细（状态机 · 工具调用 · 上下文工程）。 */
+/**
+ * WO-AGENTRUN-ATTRIBUTION · **本 Agent 的运行**（本页第一次可以诚实这么叫的一段）。
+ *
+ * 数据源与下方租户级清单**完全不同**，不是同一份数据换个过滤条件：
+ * 这里读 `GET /b/v1/agents/:id/runs`，服务端按引擎回填的 `agentKey` 跨版本聚合；
+ * 下方读的是 `GET /b/v1/queries`（任务清单，归不到 Agent 头上）。
+ *
+ * 三条诚实规矩：
+ *  ① 没选中 Agent → 只给引导语，**一个数字都不摆**（没有对象就没有归属可言）；
+ *  ② 数字为 0 → 说清楚"怎么才会有"，并点明未接 LLM 提供商时本就不产生运行记录，
+ *     **不许**画成加载失败，也不许摆一排 0 值 KPI 充数；
+ *  ③ 每行显示的模型/版本/轮次/token 全部取自该条 run 记录本身，不做任何推断。
+ */
+function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["b", "agent-runs", agent?.id ?? "__none__"],
+    queryFn: () => fetchAgentRuns(agent!.id),
+    enabled: !!agent,
+  });
+
+  if (!agent) {
+    return (
+      <div className={styles.block} data-testid="agent-own-runs-none">
+        <div className={styles.blockTitle}>{c.agentRunsTitle}</div>
+        <div className={styles.noteBody}>{c.agentRunsNoSelection}</div>
+      </div>
+    );
+  }
+
+  const runs = data?.runs ?? [];
+  return (
+    <div className={styles.block} data-testid="agent-own-runs">
+      <div className={styles.blockTitle}>
+        {c.agentRunsTitle}
+        <span className={styles.headSub} style={{ marginLeft: 8 }}>
+          {c.agentRunsSubtitle}
+        </span>
+      </div>
+      {isLoading ? (
+        <div className={styles.noteBody}>{c.loading}</div>
+      ) : runs.length === 0 ? (
+        // 真的一次都没跑过 —— 说清楚怎么才会有，且不摆 0 值 KPI 充数。
+        <div className={styles.noteBody} data-testid="agent-own-runs-empty">
+          {c.agentRunsEmpty}
+        </div>
+      ) : (
+        <>
+          <div className={styles.kpiRow} data-testid="agent-own-runs-kpis">
+            <div className={styles.kpi}>
+              <div className={styles.kpiLabel}>{c.agentRunsCount}</div>
+              <div className={styles.kpiValue} data-testid="kpi-own-runs">
+                {runs.length}
+                <span className={styles.kpiUnit}>{c.unitRuns}</span>
+              </div>
+            </div>
+          </div>
+          <table className={styles.table} data-testid="agent-own-runs-table">
+            <thead>
+              <tr>
+                <th>{c.colTime}</th>
+                <th>{c.colVersion}</th>
+                <th>{c.colModel}</th>
+                <th>{c.colIterations}</th>
+                <th>{c.colTokens}</th>
+                <th>{c.colAction}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id} data-testid="agent-own-run-row">
+                  <td>{r.createdAt ? new Date(r.createdAt).toLocaleString("zh-CN", { hour12: false }) : "—"}</td>
+                  <td className="mono" data-testid="own-run-version">
+                    {r.agentVersion !== undefined ? `v${r.agentVersion}` : "—"}
+                  </td>
+                  <td className="mono">{r.model}</td>
+                  <td data-testid="own-run-iterations">{r.iterations.length}</td>
+                  <td className="mono" data-testid="own-run-tokens">
+                    {r.totalInputTokens} / {r.totalOutputTokens}
+                  </td>
+                  <td>
+                    <Link className={styles.noteCta} to={`/tasks/${r.taskId}`} data-testid="own-run-goto-task">
+                      {c.gotoTask}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 单次运行的归属形态（**三态一一对应契约，缺失 ≠ EXPLORATORY**）。
+ * 这是把「哪些归得上」从横幅上的一句总述，落到**每一行运行**上的可核对事实。
+ */
+function RunAttribution({ run }: { run: AgentRunRecord }) {
+  const text =
+    run.attribution === "REGISTERED" && run.agentKey
+      ? `${c.attrRegisteredPrefix}${run.agentKey}${run.agentVersion !== undefined ? ` v${run.agentVersion}` : ""}${c.attrRegisteredSuffix}`
+      : run.attribution === "EXPLORATORY"
+        ? c.attrExploratory
+        : c.attrUnknown; // 字段缺失：归属上线前的旧记录，未知 —— 不许当成 EXPLORATORY
+  return (
+    <div className={styles.noteBody} data-testid="agent-run-attribution-row">
+      <span className={styles.statLabel}>{c.attrLabel}：</span>
+      <span data-testid="agent-run-attribution-text">{text}</span>
+    </div>
+  );
+}
+
+/** 第二层：一次运行的明细（状态机 · 归属 · 工具调用 · 上下文工程）。 */
 function RunDetail({ item }: { item: QueryHistoryItem }) {
   const { data: trace } = useQuery({
     queryKey: ["b", "decision-trace", item.taskId],
@@ -340,6 +469,9 @@ function RunDetail({ item }: { item: QueryHistoryItem }) {
         )}
         {run && (
           <>
+            {/* WO-AGENTRUN-ATTRIBUTION：这一行把「归得上还是归不上」落到**这一次运行**上，
+                而不是让用户拿横幅上的总述去猜。三态取自 run 记录本身，不做任何推断。 */}
+            <RunAttribution run={run} />
             <div className={styles.stats} data-testid="agent-run-stats">
               <div className={styles.stat}>
                 <div className={styles.statLabel}>{c.ctxIterations}</div>

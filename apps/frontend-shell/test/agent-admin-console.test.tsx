@@ -63,12 +63,12 @@ async function openFirstAgentRun() {
 describe("WO-AGENT-ADMIN-CONSOLE · 运行观测台", () => {
   it("① 第一层：KPI 数字由**真实运行列表**算出（不是常量）", async () => {
     await openConsole();
-    // mock 的 /b/v1/queries 里 AGENT 路共 2 条、均 COMPLETED；WORKFLOW 路 3 条必须被排除。
-    expect((await screen.findByTestId("kpi-total")).textContent).toContain("2");
-    expect((await screen.findByTestId("kpi-completed")).textContent).toContain("2");
+    // mock 的 /b/v1/queries 里 AGENT 路共 4 条、均 COMPLETED；WORKFLOW 路 3 条必须被排除。
+    expect((await screen.findByTestId("kpi-total")).textContent).toContain("4");
+    expect((await screen.findByTestId("kpi-completed")).textContent).toContain("4");
     expect((await screen.findByTestId("kpi-failed")).textContent).toContain("0");
     const rows = await screen.findAllByTestId("agent-run-row");
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(4);
   });
 
   it("① 变异反证：后端多返一条 FAILED 的 AGENT 运行 → KPI 必须跟着变（证明不是写死的）", async () => {
@@ -227,15 +227,21 @@ describe("WO-AGENT-ADMIN-CONSOLE · 运行观测台", () => {
     expect(rows[1]!.textContent).toContain("DENIED"); // 失败的那条没被藏起来
   });
 
-  it("⑦ 诚实位 · 归属横幅常驻（这不是「本 Agent 的运行」），且口径在 ? 浮层里可读", async () => {
+  it("⑦ 诚实位 · 残余缺口横幅常驻（WO-AGENTRUN-ATTRIBUTION 后**降层不删除**），且口径在 ? 浮层里可读", async () => {
     const user = userEvent.setup();
     await openConsole();
     const banner = await screen.findByTestId("agent-console-attribution");
-    expect(banner.textContent).toContain("无法归属");
+    // 归属上线后原文「这些运行无法归属」已不成立，继续挂着就是另一种说假话；
+    // 但缺口没消失，只是缩小了 —— 横幅必须**逐条**说出还剩哪几类归不上。
+    expect(banner.textContent).toContain("不是每一次运行都归得上");
+    expect(banner.textContent).toContain("探索");
+    expect(banner.textContent).toContain("旧记录");
+    expect(banner.textContent).toContain("会诊"); // 多角色扇出的子运行今天根本没落库
     // 浮层：点击必须能打开（onClick 幂等 setOpen(true) —— 取反会被 focus 抢先关回去）
     await user.click(within(banner).getByTestId("info-agent-attribution"));
     const body = await screen.findByTestId("info-body-agent-attribution");
     expect(body.textContent).toContain("agentId");
+    expect(body.textContent).toContain("EXPLORATORY");
     // 规范 §2：必须是受控 DOM 浮层 + 全局 popover-surface，不许自写背景
     expect(body.className).toContain("popover-surface");
   });
@@ -254,5 +260,83 @@ describe("WO-AGENT-ADMIN-CONSOLE · 运行观测台", () => {
     expect((await screen.findByTestId("agent-console-empty")).textContent).toContain("还没有");
     expect(screen.queryByTestId("agent-run-row")).toBeNull();
     expect(screen.queryByTestId("kpi-total")).toBeNull(); // 没有运行就不摆 0 值 KPI 充数
+  });
+
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-ATTRIBUTION · 「本 Agent 的运行」—— 归属已可得的那一半
+  //
+  // 这几条盯的是本单的命门：**选中哪个 Agent，数字必须跟着变**。
+  // 若换一个 Agent 数字纹丝不动，那说明界面根本没按 agentId 取数，只是把租户级清单
+  // 换了个标题挂上去 —— 那正是本单要消灭的那种假象（比不做更糟，因为它看起来做了）。
+  // -------------------------------------------------------------------------
+
+  it("⑩ 未选中 Agent → 只给引导语，**一个数字都不摆**（没有对象就没有归属可言）", async () => {
+    await openConsole();
+    expect((await screen.findByTestId("agent-own-runs-none")).textContent).toContain("选中一个 Agent");
+    expect(screen.queryByTestId("kpi-own-runs")).toBeNull();
+    expect(screen.queryByTestId("agent-own-run-row")).toBeNull();
+  });
+
+  it("⑪ 选中 Agent → 列出**这个 Agent** 的历次运行，且跨版本聚合（v1/v2 都在）", async () => {
+    const user = userEvent.setup();
+    await openConsole();
+    await user.click(await screen.findByText("探索分析 Agent"));
+
+    const own = await screen.findByTestId("agent-own-runs");
+    expect(within(own).getByTestId("kpi-own-runs").textContent).toContain("2");
+    const rows = within(own).getAllByTestId("agent-own-run-row");
+    expect(rows.length).toBe(2);
+    // 跨版本：同一个 Agent 的 v1 与 v2 各一次（按 id 过滤会当场少一条）
+    const versions = within(own).getAllByTestId("own-run-version").map((e) => e.textContent);
+    expect(new Set(versions)).toEqual(new Set(["v2", "v1"]));
+    // 数字取自 run 记录本身（不是从任务清单猜的）
+    expect(within(own).getAllByTestId("own-run-tokens")[0]!.textContent).toContain("9120");
+    // 归属不上的那条（EXPLORATORY 的 task-agent-1）**绝不能**混进来
+    expect(own.textContent).not.toContain("18432");
+  });
+
+  it("⑪ 变异反证：换选另一个 Agent → 数字必须跟着变（证明真按 agentId 取数，不是租户级清单换标题）", async () => {
+    const user = userEvent.setup();
+    await openConsole();
+    await user.click(await screen.findByText("探索分析 Agent"));
+    expect(within(await screen.findByTestId("agent-own-runs")).getByTestId("kpi-own-runs").textContent).toContain("2");
+
+    // 周报生成 Agent 一次都没跑过 → 必须变成诚实空态，而不是继续显示上一个 Agent 的 2
+    await user.click(screen.getByText("周报生成 Agent（草稿）"));
+    const empty = await screen.findByTestId("agent-own-runs-empty");
+    expect(empty.textContent).toContain("还没有运行记录");
+    expect(screen.queryByTestId("kpi-own-runs")).toBeNull(); // 0 也不摆 KPI 充数
+  });
+
+  it("⑫ 诚实位 · 单次运行的归属形态三态可辨（REGISTERED / EXPLORATORY / 上线前未知）", async () => {
+    const user = userEvent.setup();
+    await openConsole();
+    const rows = await screen.findAllByTestId("agent-run-row");
+
+    // rows[0] = task-agent-1：dash 视图自由问句 → 真走探索路，引擎正面标 EXPLORATORY
+    await user.click(rows[0]!);
+    const d1 = await screen.findByTestId("agent-run-detail");
+    expect(within(d1).getByTestId("agent-run-attribution-text").textContent).toContain("没有任何 Agent 定义");
+    await user.click(rows[0]!); // 收起
+
+    // rows[2] = task-explore-2：真绑到 explore_agent v2
+    await user.click(rows[2]!);
+    const d2 = await screen.findByTestId("agent-run-detail");
+    const text = within(d2).getByTestId("agent-run-attribution-text").textContent ?? "";
+    expect(text).toContain("explore_agent");
+    expect(text).toContain("v2");
+  });
+
+  it("⑫ 变异反证：后端把归属字段整个拿掉（上线前的旧记录形态）→ 必须说「未知」，**不许**降成「没有 Agent 定义」", async () => {
+    server.use(
+      http.get("*/b/v1/queries/:taskId/agent-run", () =>
+        HttpResponse.json(AgentRunRecordSchema.parse({ ...RUN_FIXTURE })), // 无 attribution / agentId
+      ),
+    );
+    const { detail } = await openFirstAgentRun();
+    const text = within(detail).getByTestId("agent-run-attribution-text").textContent ?? "";
+    expect(text).toContain("未知");
+    // 「我没找到」≠「它不存在」：旧记录不许被当成"确知没有 Agent 定义"
+    expect(text).not.toContain("没有任何 Agent 定义");
   });
 });

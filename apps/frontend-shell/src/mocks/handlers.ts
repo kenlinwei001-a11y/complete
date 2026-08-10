@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { PlanStep, Scenario } from "@platform/contracts";
+import type { AgentRunRecord, PlanStep, Scenario } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
@@ -371,6 +371,102 @@ const DATA_BUILDER_PRESET = {
   updatedAt: "2026-06-14T00:00:00.000Z",
 };
 const MOCK_BUILD_JOBS: unknown[] = [];
+
+/**
+ * WO-AGENTRUN-ATTRIBUTION · Agent 运行记录（形状对着 `AgentRunRecordSchema`）。
+ *
+ * **一份数据、两个读端**（`/queries/:taskId/agent-run` 与 `/agents/:id/runs` 都从这里取）——
+ * 抄成两份就会漂：真后端两个读端读的是同一行库记录，mock 里各写各的当场就制造出一个
+ * 「同一次运行在两个界面上数字不一样」的假象，而那个假象在真部署里不存在。
+ *
+ * 归属刻意覆盖三态（这正是界面要区分的三种情况，缺一种就测不出诚实位）：
+ *  · `run-agent-1`  → EXPLORATORY：`task-agent-1` 是 dash 视图上的自由问句，真走探索路，
+ *                     全程没有 Agent 定义参与。这不是"忘了填 agentId"，是引擎正面声明。
+ *  · `run-explore-*`→ REGISTERED：真绑到 `explore_agent` 的两次运行，且**跨版本**（v1 / v2）——
+ *                     用来钉死「按 key 聚合」这条：若哪天改成按 id 过滤，v1 那条会当场消失。
+ *  · `run-legacy-1` → 无任何归属字段：归属上线前的旧记录，**未知**。它必须既不出现在
+ *                     任何 Agent 的运行列表里，也不被当成 EXPLORATORY 混算。
+ * `contextOps: []` 同样是刻意的真值（欠账 #91：默认 20 万窗口下软阈值够不到，三刀一次都不会跑）。
+ */
+const AGENT_RUNS: AgentRunRecord[] = [
+  {
+    id: "run-agent-1",
+    taskId: "task-agent-1",
+    model: "claude-opus-4-8",
+    iterations: [
+      {
+        index: 0,
+        toolCalls: [
+          { toolCallId: "toolu_1", toolName: "discover", input: {}, outcome: "OK", durationMs: 120 },
+          { toolCallId: "toolu_2", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 310 },
+        ],
+      },
+      {
+        index: 1,
+        toolCalls: [{ toolCallId: "toolu_3", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1840 }],
+      },
+      {
+        index: 2,
+        toolCalls: [{ toolCallId: "toolu_4", toolName: "evaluate_rules", input: {}, outcome: "ERROR", durationMs: 95 }],
+      },
+    ],
+    budget: { maxIterations: 24, maxToolCalls: 40, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 18432,
+    totalOutputTokens: 2106,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    attribution: "EXPLORATORY",
+    createdAt: "2026-06-16T10:20:31Z",
+  },
+  {
+    id: "run-explore-2",
+    taskId: "task-explore-2",
+    model: "claude-opus-4-8",
+    iterations: [
+      { index: 0, toolCalls: [{ toolCallId: "toolu_e1", toolName: "query_objects", input: { objectType: "Base" }, outcome: "OK", durationMs: 210 }] },
+      { index: 1, toolCalls: [{ toolCallId: "toolu_e2", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1620 }] },
+    ],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 9120,
+    totalOutputTokens: 1340,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore",
+    agentKey: "explore_agent",
+    agentVersion: 2,
+    attribution: "REGISTERED",
+    createdAt: "2026-06-16T14:02:10Z",
+  },
+  {
+    id: "run-explore-1",
+    taskId: "task-explore-1",
+    model: "claude-opus-4-8",
+    iterations: [{ index: 0, toolCalls: [{ toolCallId: "toolu_o1", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 180 }] }],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 4210,
+    totalOutputTokens: 660,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore-v1",
+    agentKey: "explore_agent",
+    agentVersion: 1,
+    attribution: "REGISTERED",
+    createdAt: "2026-06-15T11:41:00Z",
+  },
+  {
+    id: "run-legacy-1",
+    taskId: "task-legacy-1",
+    model: "claude-opus-4-8",
+    iterations: [],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 100,
+    totalOutputTokens: 20,
+  },
+];
 // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
 const META_POLICY = { tenantId: "demo", roles: ["admin"] as string[] };
 const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
@@ -3013,6 +3109,11 @@ export const handlers = [
       // 把 task 标成 path=AGENT + COMPLETED 却从不写 run），mock 不带这一态就测不出诚实位。
       { taskId: "task-agent-1", query: "结合最近产能与订单，帮我判断下季度整体经营风险在哪", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a1", classification: null, answerSummary: "识别 3 处风险敞口，其中电解液供应最紧", createdAt: "2026-06-16T10:20:00Z", completedAt: "2026-06-16T10:20:31Z" },
       { taskId: "task-agent-2", query: "随便聊聊，当前产线整体健康度怎么样", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a2", classification: null, answerSummary: "未接入可用的 LLM 提供商，已诚实降级", createdAt: "2026-06-16T09:05:00Z", completedAt: "2026-06-16T09:05:01Z" },
+      // WO-AGENTRUN-ATTRIBUTION：两条**归属得上**的运行（绑到 explore_agent，且分属 v1/v2）。
+      // 加进来不是为了凑数：租户级清单里若一条归属得上的都没有，「归属已可得」这句话在 mock 模式下
+      // 就无从被界面证实，而真部署里这类运行恰恰是主流（场景入口 Agent / 角色 Agent 都走这条）。
+      { taskId: "task-explore-2", query: "用探索分析 Agent 复核一下常州基地的产能缺口", path: "AGENT", status: "COMPLETED", view: "graph", conversationId: "conv-e2", classification: null, answerSummary: "缺口 1.0 万套，建议加夜班", createdAt: "2026-06-16T14:02:00Z", completedAt: "2026-06-16T14:02:10Z" },
+      { taskId: "task-explore-1", query: "在手单里哪些型号交期最紧", path: "AGENT", status: "COMPLETED", view: "graph", conversationId: "conv-e1", classification: null, answerSummary: "3 个型号进入交期红区", createdAt: "2026-06-15T11:40:00Z", completedAt: "2026-06-15T11:41:00Z" },
     ].slice(0, limit);
     return HttpResponse.json({ items, total: items.length });
   }),
@@ -3022,15 +3123,12 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId/decision-trace", ({ request, params }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const taskId = String(params.taskId);
-    const toolCalls =
-      taskId === "task-agent-1"
-        ? [
-            { tool: "discover", outcome: "OK", durationMs: 120, at: "2026-06-16T10:20:03Z" },
-            { tool: "query_objects", outcome: "OK", durationMs: 310, at: "2026-06-16T10:20:09Z" },
-            { tool: "invoke_solver", outcome: "OK", durationMs: 1840, at: "2026-06-16T10:20:18Z" },
-            { tool: "evaluate_rules", outcome: "ERROR", durationMs: 95, at: "2026-06-16T10:20:24Z" },
-          ]
-        : []; // 降级那条没进循环 ⇒ 没有工具调用，这是真值不是缺数据
+    // 工具调用从**同一份** run 记录派生（真后端两处读的也是同一批 toolCalls 行）——
+    // 抄成两份，界面上就会出现「运行记录说调了 4 次、痕迹里只有 2 次」这种真部署里不存在的矛盾。
+    // 没有 run 记录的那条（未接 LLM 的诚实降级）自然得到空数组：真值，不是缺数据。
+    const toolCalls = (AGENT_RUNS.find((r) => r.taskId === taskId)?.iterations ?? []).flatMap((it) =>
+      it.toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs })),
+    );
     return HttpResponse.json({
       decisionId: taskId,
       tenantId: TENANT_ID,
@@ -3055,36 +3153,30 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId/agent-run", ({ request, params }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const taskId = String(params.taskId);
-    if (taskId !== "task-agent-1") {
+    const run = AGENT_RUNS.find((r) => r.taskId === taskId);
+    if (!run) {
       // 与真后端同码：任务在但引擎没进循环 → AGENT_RUN_NOT_FOUND（不是 TASK_NOT_FOUND）
       return err(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
     }
+    return HttpResponse.json(run);
+  }),
+
+  /**
+   * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（真后端 `GET /b/v1/agents/:id/runs`）。
+   *
+   * 与真后端同语义，三条都不许省（省一条，界面在 mock 模式下就会显示一个真部署里不存在的样子）：
+   *  ① 按 `agentKey` **跨版本**聚合 —— 按 id 过滤在换版当天就归零；
+   *  ② 归属不上的运行（EXPLORATORY / 无归属字段的旧记录）**一条都不出现**；
+   *  ③ agent 不存在 → 404 AGENT_NOT_FOUND（与越租户同码）。
+   */
+  http.get("*/b/v1/agents/:id/runs", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const agent = db.agents.find((a) => a.id === String(params.id));
+    if (!agent) return err(404, "AGENT_NOT_FOUND", `agent not found: ${String(params.id)}`);
     return HttpResponse.json({
-      id: "run-agent-1",
-      taskId,
-      model: "claude-opus-4-8",
-      iterations: [
-        {
-          index: 0,
-          toolCalls: [
-            { toolCallId: "toolu_1", toolName: "discover", input: {}, outcome: "OK", durationMs: 120 },
-            { toolCallId: "toolu_2", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 310 },
-          ],
-        },
-        {
-          index: 1,
-          toolCalls: [{ toolCallId: "toolu_3", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1840 }],
-        },
-        {
-          index: 2,
-          toolCalls: [{ toolCallId: "toolu_4", toolName: "evaluate_rules", input: {}, outcome: "ERROR", durationMs: 95 }],
-        },
-      ],
-      budget: { maxIterations: 24, maxToolCalls: 40, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
-      budgetExhausted: false,
-      totalInputTokens: 18432,
-      totalOutputTokens: 2106,
-      contextOps: [],
+      agentId: agent.id,
+      agentKey: agent.key,
+      runs: AGENT_RUNS.filter((r) => r.agentKey === agent.key && r.tenantId === TENANT_ID),
     });
   }),
 

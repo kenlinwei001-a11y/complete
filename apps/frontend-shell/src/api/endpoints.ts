@@ -824,6 +824,19 @@ export const fetchAgentRun = async (taskId: string): Promise<AgentRunProbe> => {
     throw e; // 真错误（网络 / 401 / 500）照旧抛，不许被"诚实态"吞掉
   }
 };
+/**
+ * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（真后端 `agentcore/src/server.ts` `GET /b/v1/agents/:id/runs`）。
+ *
+ * 与 `fetchQueryHistory(...).filter(path==="AGENT")` 是**两件不同的事**，别混：
+ * 后者是「本租户走过 AGENT 路的全部任务」（租户级，归不到 Agent 头上）；
+ * 本函数返回的是引擎在运行时真回填了归属的那些运行（跨版本按 agentKey 聚合）。
+ *
+ * 空数组是**常态**不是故障：未接 LLM 提供商时引擎根本不进循环（诚实降级直接作答），
+ * 那种环境下任何 Agent 的运行数都是 0。调用方不许把它画成"加载失败"。
+ */
+export const fetchAgentRuns = (agentId: string) =>
+  api.b<{ agentId: string; agentKey: string; runs: AgentRunRecord[] }>(`/b/v1/agents/${agentId}/runs`);
+
 export const replyClarification = (
   taskId: string,
   body: { kind: "INTENT_CHOICE" | "SLOT_FILLING"; chosenIntentKey?: string; slotValues?: Record<string, unknown>; none?: true },
