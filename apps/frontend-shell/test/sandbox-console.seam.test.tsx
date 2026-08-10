@@ -218,6 +218,9 @@ describe("§1 · 口径单源接缝（头号判据）", () => {
     const shown = bars.map((b) => (b.getAttribute("data-testid") ?? "").replace(/^sc-pareto-/, ""));
     expect(shown).toEqual(expected);
     // 分母来自引擎：守恒说明里那个 Σ 必须是载荷里的 conservation.sumPct，不是前端加出来的。
+    // WO-SANDBOX-DECLUTTER：Σ 这个**结论数**留在第一层，`A ÷ B` 那条**口径**进 `?`（规范 §2 R-UI-3）。
+    expect(screen.getByTestId("sc-pareto-note-brief").textContent ?? "").toContain(payload.conservation!.sumPct.toFixed(3));
+    await openInfo(userEvent.setup(), "pareto-note");
     expect(screen.getByTestId("sc-pareto-note").textContent ?? "").toContain(payload.conservation!.sumPct.toFixed(3));
   });
 });
@@ -336,6 +339,8 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-mode-chain"));
+    // WO-SANDBOX-DECLUTTER：第一层只留四个结论数，完整口径与取证进 `?`（原文一字未改）。
+    await openInfo(user, "chain-coverage");
     const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
     expect(txt).toContain(`${CHAIN_STAGE_DESIGN_TARGET.stageCount} 段 ${CHAIN_STAGE_DESIGN_TARGET.nodeCount} 节点`);
     expect(txt).toContain(`${CHAIN_STAGES.length} 段`);
@@ -728,6 +733,7 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-tab-vars"));
+    await openInfo(user, "inspect-evidence");
     const note = (await screen.findByTestId("sc-inspect-evidence-gap")).textContent ?? "";
     expect(note, "必须点名是宿主这一份缺字段").toContain("evidence");
     expect(note, "必须把「不是引擎没给」说出来 —— 两件事修法完全不同").toContain("不是引擎没给");
@@ -825,6 +831,8 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-mode-chain"));
+    // WO-SANDBOX-DECLUTTER：第一层只留四个结论数，完整口径与取证进 `?`（原文一字未改）。
+    await openInfo(user, "chain-coverage");
     const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
 
     // 头号判据：这句话必须在（变异反证 ② 删掉它 ⇒ 本条红）
