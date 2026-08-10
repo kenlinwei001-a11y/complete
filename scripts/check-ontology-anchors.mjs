@@ -591,9 +591,14 @@ if (fails.length) {
   for (const f of fails) console.error(`  - ${f}`);
   const autoFixable = problems.filter((p) => p.auto).length;
   console.error("\n  修法：");
-  if (autoFixable) console.error(`    · ${autoFixable} 条为**行号漂移**（机械） → \`node scripts/check-ontology-anchors.mjs --update\` 一键校准，diff 只有行号`);
+  if (autoFixable) console.error(`    · ${autoFixable} 条为**行号漂移 / 锚点压在 import 行**（机械） → \`node scripts/check-ontology-anchors.mjs --update\` 一键校准，diff 只有行号`);
   console.error("    · SYMBOL_GONE / FILE_MISSING / PATH_AMBIGUOUS 为**语义漂移** → 人工改锚点指向新位置（--update 刻意不代劳）");
+  console.error("    · IMPORT_LINE_ANCHOR：锚点指着一句 import（跳过去看不到接线）→ 改指该 symbol 的**定义处或接线点**；");
+  console.error("      不带 (symbol) 的裸锚点无法自动重算，须人工补 `path:line (symbol)` 后再 `--update`。");
+  console.error("    · SYMBOL_ONLY_IN_IMPORT：该文件只是转口（符号只在 import 行出现）→ 锚点须改指真正定义/使用它的文件。");
   console.error("    · 新写锚点请带 symbol：`apps/agentcore/src/agent/loop.ts:452 (degrade)`");
+  console.error("    · ⚠️ 在本体正文里**举例**提某个 file:line 时别写进反引号——抽取器不区分「举例」和「锚点」，");
+  console.error("      会把它当成真锚点校验（写成「`x.ts` 第 N 行」即可）。");
   process.exit(1);
 }
 console.log("\n✓ 本体锚点校准门通过（已校准锚点均指向其声称的 symbol；未校准存量未回潮）。");
