@@ -151,7 +151,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | `SkillReasoningGraph` **0 命中** | ✅ **已实现** | 契约 `packages/contracts/src/skill-compile.ts:321`；生产消费方 `apps/agentcore/src/skill-compiler.ts:125/241` `deriveSkillReasoningGraph` |
 | `maxBudgetRounds` **零生产消费方** | 🔗 **接了线接错地方**（详见 §3 X-02′） | 唯一 src 读点 `apps/agentcore/src/skill-probe.ts:133 skillBudgetOverride([skill])`，归一函数 `packages/contracts/src/agentcore.ts:224`；种子已有数据 `apps/agentcore/src/mocks/seed.ts:1286 maxBudgetRounds: 6` |
 
-#### Agent 域（6 份 PRD + 1 份审计 · 154 条）
+#### Agent 域（6 份 PRD + 1 份审计 · 155 条）
 
 > 条款为本单自行提取（每条 = 一句可判真假的验收陈述），编号 `AG-*`。逐条见 §2.2。
 
