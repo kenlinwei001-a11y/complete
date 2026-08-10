@@ -151,6 +151,16 @@
 `apps/frontend-shell/src/mocks/fixtures.ts` 的 `allViews` 也一行不动（它必须继续 ⊇ 后端 seeded 集，
 否则 `scripts/check-nav-group-coverage.mjs` 判据② 红）。
 
+**四个 `static-route` 页则相反：条目不删，改成条件隐藏。**
+它们**本身不受 `sim.sandbox` 门控**（人人可进、页面侧无 Guard）。无条件删条目 ⇒
+`sim.sandbox` 关着的租户「沙盘没有 + 导航也没有」= 四页从 IA 里蒸发，只剩手敲 URL。
+故给 `NavItemRef` 的 route 变体加了 `consolidatedWhen`：**语义与 `feature` 正好相反** ——
+`feature` 关则隐藏（R3 暗发），`consolidatedWhen` **开**则隐藏（收编）。
+沙盘开 → 在模式切换里；沙盘关 → 条目照旧单列。
+（这一条是被既有测试顶出来的：f61「无 Guard 的专用 route 入口不该随 sim.sandbox 消失」当场红。
+反过来说，五个 `workspace.views` 子视图**不需要**这种回退 —— 它们的 entitlement 本就
+`requires: ["sim.sandbox"]`，沙盘关 ⇒ 连下发都没有、`/v/<key>` 本来就 404，没有可回退的东西。）
+
 **唯一的代价（照实说）**：这五个键仍出现在 `workspace.navigation` 下发里。
 前端现在**显式**把它们从导航里滤掉（`ShellLayout.CONSOLIDATED_INTO_SANDBOX` + `UnifiedNav` 的过滤），
 而不是"没登记所以掉进兜底桶"——两者屏上结果都是"不单列"，但性质完全不同：
@@ -159,6 +169,50 @@
 那是另一张单。
 
 ---
+
+## 4.5 · 件三 · 模式切换是怎么做的（骨架，不重画各模式内部）
+
+**模式序列 = 决策链**（定在 `apps/frontend-shell/src/views/sim/sandboxModes.ts` 的 `SANDBOX_MODES`，
+顺序本身就是产品表达，测试对着这张表咬顺序）：
+
+```
+现状 → 归因 → 试一手 → 求最优 → 影响半径
+看见   为什么  改一个    最优解    万一断了
+什么   会这样  试试看    是什么    波及多大
+```
+
+- **只呈现一屏**：`SandboxView.tsx` 里 `mode !== "now"` 与 `mode === "now"` 两个分支**互斥条件渲染**，
+  非当前模式的组件**根本不挂载**。判据是「不在 DOM」——`hidden` / `display:none` 一律不算：
+  那只是让人看不见，DOM 还在、请求照发、屏幕阅读器照读、页面照样越来越挤。
+  测试逐对全测（5 × 4 = 20 对），不是抽一对。
+- **上下文**：`scope`（今天只有 `baseIds`）**提到壳里**。`SandboxConsole` 加了一对可选的受控 prop
+  （`scopeBaseIds` + `onScopeBaseIdsChange`，**两个都传才受控**；都不传 = 今天的行为，
+  六个直接挂载它的门一字未改）。**只提 state，不动控制台任何布局**。
+- **上下文的诚实边界**（写在屏上的 ⓘ 浮层里，不静默省略）：
+  **订单锚点**与**时窗**没有提为壳级上下文。提了就是假旋钮 ——
+  线路图的锚点是它自取的 `so`；两个链路求解器都没有时间窗入参
+  （控制台顶栏那个 `30D/60D/90D` 本来就是禁用的 + 挂「时窗无 ARGS」徽标）。
+  要做得先把线路图的锚点提上来，那是另一张单。
+- **分层**（`docs/CONVENTION-ui-information-layering.md`）：
+  第一层只加**一行按钮 + 一行范围读数 + 一句「这个模式回答哪一问」**；
+  「已收编的原独立页」9 条深链接降到第二层（默认折叠 `<details>`）。
+  仓主原话「信息太多，第一层看不到重点」—— 并完更挤就是负分，所以口径与诚实位一律降层。
+- **加载**：四个模式视图走 `lazy`，与 `App.tsx` 那四条专用 route 是**同一个模块** ⇒ 同一份 chunk，
+  深链接进来与在沙盘里切过去不会打两份。
+
+## 4.6 · 变异反证（四条，两向输出都贴在这里）
+
+| 变异 | 改了什么 | 期望 | 实测 |
+|---|---|---|---|
+| **A** | 让「归因」与当前模式**同屏渲染** | 测试 3 红 | ✅ 红：`切到「现状」后，「归因」的特征元素仍在 DOM 里 —— 这是「叠一屏再盖住」…` |
+| **A2** | 四格全渲染，只用 `hidden` 盖住非当前模式 | 测试 3 红 | ✅ 红（同一条断言、同一句话）—— 这条证明判据咬的是**挂载**不是**可见性** |
+| **B** | 去掉 `scopeBaseIds` / `onScopeBaseIdsChange` 传递 | 测试 4 红 | ✅ 红 ×2：`expected '…全部基地…' to contain 'changzhou'` |
+| **C** | 只删 NAV_GROUPS 登记、**不滤 leftover** | 兜底桶守卫红 | ✅ 红 ×3（含既有那条）：`「其它」兜底组里出现了业务视图链接：[/v/chain-line-map（全链线路图）, …5 条]` |
+| **D** | 后端 `chain-line-map` 改 `seed: false`（= 件四若停派） | 门判据⑧b 红 | ✅ 红：`收编不许变黑洞：…BUILTIN_VIEWS(seed:true) 里已经没有它 —— /v/chain-line-map 现在是 404` |
+
+每条变异后逐一 `git checkout --` / 备份还原，还原后：
+`sandbox-ia-consolidate.seam` 15/15 绿、`f61` 14/14 绿、`chain-impediments-route` 5/5 绿、
+`nav-group-coverage:check` RC=0、`git status --porcelain` 干净。
 
 ## 5 · 本体引用与影响
 
@@ -177,7 +231,12 @@
     故 `UnifiedNav` 必须把收编键从 `leftover` 里一并滤掉，且 `f61` 有一条断言咬这一点。
   - 新记一条 `G-SANDBOX-IMPEDIMENT-PROJECTION-PARTIAL`（§2 的残差：沙盘投影缺 4 块，
     路由与折叠清单是当前的补偿路径，不是修好了）。
-- **门禁**：`scripts/check-nav-group-coverage.mjs` 判据①/④ 新增**带理由豁免**
+- **门禁**：`scripts/check-nav-group-coverage.mjs` 判据① 新增**带理由豁免**
   （从 `ShellLayout.tsx` 解析 `CONSOLIDATED_INTO_SANDBOX`，单一出处，不在门里手抄一份）；
-  并加两条反向断言：豁免键必须**真的**不在 `NAV_GROUPS`（陈旧豁免 = 红），
-  且必须**真的**仍被后端派单或仍有专用 route（豁免掉一个已经不可达的键 = 红）。
+  新增**判据⑧ 五条反向约束**，防这张表变成免死金牌：
+  a 不许两头占（`kind:"view"` 条目还在 = 重复入口）·
+  b/c 不许变黑洞（`via` 指定的到达路径必须真的还在：后端仍 seed 派单 + 仍在 mock allViews；
+  或 `App.tsx` 仍有专用 route）· d `where` 要写出「点哪里能到」（≥6 字）·
+  e `via:"static-route"` 的必须留着带 `consolidatedWhen` 的回退条目。
+  判据③ 加了收编表的金丝雀与下界（解析空 → 报「门瞎了」，不报「前端漏登记」），
+  词法自检加 `parseConsolidated` 样例。变异反证见 §4.6 的 D。

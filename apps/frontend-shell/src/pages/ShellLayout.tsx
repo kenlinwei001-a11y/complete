@@ -79,8 +79,9 @@ type NavItemRef =
  * ── 依据（仓库自己写下、当时没执行的定案）─────────────────────────────────────
  * 本文件上一版第 67-70 行原文：「四个子视图在此登记是**过渡态**……WO-SANDBOX-CONSOLE 落地后，
  * 这四行应当**删掉**」。控制台（`views/sim/SandboxConsole.tsx`）早已落地并在跑 ⇒ 前提已满足。
- * 逐条到达路径的**实测取证**在 `docs/AUDIT-sandbox-ia-consolidate.md`（可执行证据在
- * `test/sandbox-ia-consolidate.seam.test.tsx` §件一，5/5 绿）——
+ * 逐条到达路径的**实测取证**在 `docs/AUDIT-sandbox-ia-consolidate.md`（2026-08-10 实测，5/5 绿）。
+ * 复验方式：`cd apps/frontend-shell && npx vitest run test/sandbox-ia-consolidate.seam.test.tsx`
+ * 的 §件一 五条 —— 每条从沙盘主屏出发、只用用户点得到的动作，断言子视图组件本体真渲染。
  * **取证不过的那一条不许进本表**（删了就是让功能消失）。
  *
  * ── `via` 字段：删的是"单列"，不是"可达"，而两种可达机制不同 ────────────────────
@@ -135,7 +136,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    `chain-impediments`）+ 三个独立推演页（`what-if` / `optimize-whatif`）与隔壁「归因与风险」组的
   //    `cleanroom-attr` / `disruption-radius`。九个**全部已收编进沙盘**（子视图 = 画布模式/图层/常驻栏；
   //    四个推演页 = 沙盘顶部的模式切换），登记表见本文件 `CONSOLIDATED_INTO_SANDBOX`，
-  //    逐条到达路径的实测取证见 `docs/AUDIT-sandbox-ia-consolidate.md`。
+  //    逐条到达路径的实测取证见 `docs/AUDIT-sandbox-ia-consolidate.md`（2026-08-10 实测 5/5 绿；
+  //    复验：`cd apps/frontend-shell && npx vitest run test/sandbox-ia-consolidate.seam.test.tsx` §件一）。
   //    上一版自己写着「WO-SANDBOX-CONSOLE 落地后这几行应当删掉」——控制台早已落地，这是在执行那条定案。
   //    **保留** `project-sim` / `global-sim` / `risk` / `order-chain` / `decision-play`：
   //    它们是独立场景（各自的求解器、各自的一页），不是沙盘的画布模式，收进去只会把沙盘撑爆。
