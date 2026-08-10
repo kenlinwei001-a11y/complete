@@ -32,6 +32,40 @@
 ① `git grep -- "apps/*/src"`（pathspec 的 `*` 不跨 `/`，恒 0 命中）——本单用的是 **shell glob 传给 `grep -r`**，K1 已自证跨得了 `/`；
 ② `git rev-parse <rev>:<path>` 不带 `--verify -q`（路径不存在会原样回显且 RC=0）——§1.1 的分支反查脚本**全部带 `--verify -q`**。
 
+### 0.1 ⛔ 本单自己犯的错（第 3 种骗法 · 当场自纠 · 照铁律 0.6 记账）
+
+**我在本单第一版里连报 6 条错误的否定结论，全部同一个根因：`grep … | head -20` 把命中截掉了。**
+
+我跑的是一条**多符号或查 + `head -20`** 的命令：
+```bash
+grep -rn "callSignature\|LOOP_REPEAT_CAP\|perToolCallCap\|EscalationLadder\|loop-control:check" \
+     apps/agentcore/src packages/contracts/src scripts package.json | head -20
+```
+`callSignature` 一个符号就占满了 20 行 ⇒ 排在后面的 `loop-control:check`（在 `package.json`）与
+`EscalationLadder` 的邻近证据**一行都没露面**。我据此报了「0 命中」。
+
+**形态（照铁律 0.6 的句式）**：
+> **「我用『前 20 行输出里没有 X』当作『X 不存在』的证据，而前者并不度量后者。」**
+
+与本仓已记载的三次同族（pathspec `*` 不跨 `/` · `--include` 过滤让 docs 恒不命中 · 120 字窗口截断 ID）
+**结构完全相同**，只是这次的截断器叫 `head`。
+
+**被这个错误坑掉的 6 条结论（均已在正文订正，并标 ⟪已自纠⟫）**：
+
+| 我原本报的 | 实测 | 订正后 |
+|---|---|---|
+| `loop-control:check` 门不存在 | `scripts/check-loop-control.mjs` **存在**，且**在 `pnpm gates` 链内第 12 位**，还有具名 npm script `loop-control:check` | AG-LC-21 ❌ → **✅** |
+| 三个治理 metric 不存在 | `apps/agentcore/src/metrics.ts:108/113/118` 三个全在（而且 `check-loop-control.mjs` 判据⑥**就在守这条接线**） | AG-LC-30 ❌ → **✅** |
+| EscalationLadder 只有开关没有机制 | 机制在 `agent/loop.ts:507-530 maybeEscalate`（rung① 换策略）+ `orchestrator.ts:2388`（rung② 升 Coordinator） | AG-LC-15 ⚠️ → **✅** |
+| `agent_escalated` 伪 step 没做 | `loop.ts:509,520` 真 emit | AG-LC-25 ❌ → **✅** |
+| 四条 SEAM 测试文件名不符/不存在 | `loop-detector-seam.test.ts` · `retry-manager-seam.test.ts` · `per-tool-cap-seam.test.ts` · `escalation-ladder-seam.test.ts` · `escalation-reroute-seam.test.ts` **五个全在** | AG-LC-24 ⚠️ → **✅** |
+| 复现脚本 `slice-scenarios-excel.mjs` 不在仓库 | `scripts/slice-scenarios-excel.mjs` **存在**；`deliverables/` 是 **`.gitignore:27` 里的产物目录**，本来就不该进仓 | A-16 **整条撤回**；建议断点 `G-DOC-EVIDENCE-NOT-IN-REPO` **撤回** |
+
+**为什么这一节必须留在文里**：这 6 条如果没自纠，本审计会把一份**P1+P2 已完整交付**的 PRD
+报成「路线图大半没做」——**恰好是与事实相反的结论**，正是本仓被 grep 骗过四次的那个后果。
+**机制（本单当场执行）**：凡要报**否定结论**的那一次 grep，**单符号单跑、不加 `head`、先看 `wc -l`**。
+§6 复验命令里所有否定型检查都已改成这个形状。
+
 ---
 
 ## 1 · 一页纸结论
@@ -43,7 +77,7 @@
 | 域 | 一句话定性 | 判据 |
 |---|---|---|
 | **Skill** | **PRD 写完了并线了，实现只落地了一小截。** 1630 条可验收条款里，**实体层真满足 434 条（26.6%），无承载物 624 条（38.3%）**；而 434 条 ✅ 里至少 **133 条**只是「PRD 对现状的事实断言复核正确」——证明**盘点做对了**，不是**能力做出来了**。剔掉后**实现层 ✅ ≈ 301/1630 = 18.5%** | §2.1 |
-| **Agent** | **绝大部分做了，而且在生产链路上。** 7 份 PRD 里 5 份**已实现已并线**（含部署态默认启用），1 份**接了线但暗发默认关**，1 份是**路线图型 PRD**（P0 已落 / P1+P2 已落 / P3 未开工）。共 **154 条**，实体层真满足 **101 条（65.6%）**，无承载物 **21 条（13.6%）** | §2.2 |
+| **Agent** | **绝大部分做了，而且在生产链路上。** 6 份 PRD 里 5 份**已实现已并线**（含容器态默认启用），1 份（ReAct Harness）**接了线但暗发默认关**。共 **155 条**，实体层真满足 **105 条（67.7%）**，无承载物 **17 条（11.0%）**；治理层 PRD 的 P0+P1+P2 **全部落地**（含门 + metric + 五条 SEAM），只剩它自己排「低优先」的 P3 四项 | §2.2 |
 | **本体切片** | **做了，而且是三域里最完整的。** 后端 98 条切片真数据、规划器/索引/两库/参考基线/十六层投影全在生产链路上；前端「切片库」「十六层面板」页真接后端。共 **62 条**，实体层真满足 **44 条（71.0%）**，无承载物 **8 条（12.9%）** | §2.3 |
 
 **⚠️ 与派单给的三条已知事实的分歧（按纪律显式说明，以我的实测为准）**：
@@ -121,15 +155,18 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 
 > 条款为本单自行提取（每条 = 一句可判真假的验收陈述），编号 `AG-*`。逐条见 §2.2。
 
-| 档 | RT<br>(38) | HAR<br>(40) | LOOP<br>(34) | NAV<br>(12) | DG<br>(24) | GUARD<br>(6) | **合计** | 占比 |
+| 档 | RT<br>(38) | HAR<br>(40) | LOOP<br>(34) | NAV<br>(13) | DG<br>(24) | GUARD<br>(6) | **合计** | 占比 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| ✅ 已实现且在生产链路上 | 31 | 21 | 24 | 11 | 8 | 6 | **101** | 65.6% |
-| 🔗 接了线接错地方/覆盖不全 | 2 | 4 | 1 | 1 | 3 | 0 | **11** | 7.1% |
+| ✅ 已实现且在生产链路上 | 30 | 21 | **29** | 11 | 8 | 6 | **105** | 67.7% |
+| 🔗 接了线接错地方/覆盖不全 | 2 | 4 | 1 | 0 | 3 | 0 | **10** | 6.5% |
 | ⚠️ 只有实现没接线 / 接了线没数据 | 3 | 5 | 0 | 1 | 2 | 0 | **11** | 7.1% |
-| ❌ 没做 | 1 | 6 | 8 | 0 | 6 | 0 | **21** | 13.6% |
-| ⛔ 文档自标非目标（不计缺口） | 1 | 3 | 1 | 0 | 4 | 0 | **9** | 5.8% |
-| ◐ 未判定（需起服务/live 测） | 0 | 1 | 0 | 0 | 1 | 0 | **1** | 0.6% |
-| **小计** | **38** | **40** | **34** | **12** | **24** | **6** | **154** | 100% |
+| ❌ 没做 | 1 | 6 | **4** | 0 | 6 | 0 | **17** | 11.0% |
+| ⛔ 文档自标非目标（不计缺口） | 1 | 3 | 0 | 0 | 4 | 0 | **8** | 5.2% |
+| ◐ 未判定（需起服务 / live 测 / 未逐行读完） | 1 | 1 | 0 | 1 | 1 | 0 | **4** | 2.6% |
+| **小计** | **38** | **40** | **34** | **13** | **24** | **6** | **155** | 100% |
+
+> ⟪**已自纠**⟫ 本表 LOOP 列由「✅24 / ❌8」订正为「✅29 / ❌4」——第一版因 `grep … | head -20` 截断，
+> 把 5 条已交付条款错报成没做（详见 §0.1）。**订正后 LOOP 的 4 条 ❌ 全部是 PRD 自己排的 P3「低优先·排后」。**
 
 （RT=`PRD-addendum-agent-runtime` · HAR=`PRD-agent-react-harness` · LOOP=`PRD-agent-execution-governance-loop-control` · NAV=`PRD-agent-navigation-slice-latency` · DG=`PRD-agent-data-generation-tools` · GUARD=`PRD-llm-agent-empty-response-guard`）
 
@@ -186,7 +223,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | `PRD-skill-runtime-orchestrator.md` | 311 | **S1 切片已落**（图契约 + 分层并发调度 + 引用探针 ≈ 42 条真满足）；**W2 收编未开工** —— 本 PRD 自己的 G1「不引入第三套扇出」**被自己违反**（现为「三套 + 一套新的」） | `GraphScheduler`（`apps/agentcore/src/skill-orchestrator.ts:95`）→ 生产调用方 `server.ts:1432`；本体 `docs/SYSTEM-ONTOLOGY.md:983` **主动承认「比 PRD §3.4 目标态更远」** |
 | `PRD-skill-governance-learning.md` | 320 | **P0–P4 五期在 canonical 上交付量为 0**；67 条 ✅ 里 **54 条**是「AS-IS 断言仍成立」，真满足 13 条**全是既有资产**，无一条来自本 PRD | `CHECK-RT-GOV.md` §C.2/§C.3；P0 硬前置两项（`metrics-tenant:check` 门 / `/metrics` 鉴权）**都没闭** |
 | `PRD-skill-migration.md` | 224 | **M0 影子声明零开工**；224 条里 **119 条 ⛔**（PRD 自标「零代码改动，实施由后续 WO 承接」）——**「没做」不是缺口**，但 §3 列出 6 条**别处宣称做了**的 | `migrateSkill` 等迁移符号 0 命中（金丝雀 `SkillDefinitionSchema`=13 ✅） |
-| `PRD-skill-crossreview.md` | 46 | **审查报告，非可施工 PRD**。其最要害的一条（「引用可校验门今天做不了」是传播性错误）**今天复核仍正确** | `probeMissingRefs`（`apps/agentcore/src/resources.ts:11`）已接**三处**：`server.ts:690`(agent 发布) · `:1012`(workflow 发布) · **`:1272`(skill 发布，本轮已补)** |
+| `PRD-skill-crossreview.md` | 46 | **审查报告，非可施工 PRD**。其最要害的一条（「引用可校验门今天做不了」是传播性错误）**今天复核仍正确** | `probeMissingRefs`（`apps/agentcore/src/resources.ts`）**今日 canonical 实测三处调用点**：`server.ts:747`(agent 发布·校 `scopeDeclaration.objectTypes`) · `:1065`(workflow 发布·校 `solverKeys`/`ruleKeys`) · **`:1317`(skill 发布·经 `probe:` 回调注入，fail-closed，`:1312` 注释明写 503 向上冒泡)**。⚠️ 上游 CHECK 文档里的 `690/1008/1272` 三个行号**已漂**，本单已订正 |
 | `PRD-addendum-skill-authoring.md` | 78 | **本批最扎实的一份**（✅ 45%）。发布三重门真在链路上；但门名（`skill-lint:check` 等）在 `package.json`/`scripts/` **0 命中** → §3 F1/F2/F3 | 三重门 `apps/agentcore/src/server.ts:1246`(lint) `:1252-1267`(评测覆盖) `:1268-1273`(评测真跑) |
 | `SPEC-industrial-skill.md` | 196 | **12 层里契约/注册/校验/执行/权限层有等价物；编译/包格式/CLI/签名层零实现**。✅ 仅 15% | `SKILL_REFERENCE_KINDS`（`agentcore.ts:216`）8 值**无 `tool`/`mcp`/`relation`/`connector`** ⇒ 第③⑦层「声明不了」不是「不声明」 |
 
@@ -227,7 +264,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 
 > 条款为本单自行提取。每条给「状态 + 证据 file:line」。**否定结论均配 §0 金丝雀。**
 
-#### 2.2.1 `PRD-addendum-agent-runtime.md`（38 条 · ✅31 / 🔗2 / ⚠️3 / ❌1 / ⛔1）
+#### 2.2.1 `PRD-addendum-agent-runtime.md`（38 条 · ✅30 / 🔗2 / ⚠️3 / ❌1 / ⛔1 / ◐1）
 
 | # | 条款（截断） | 状态 | 证据 file:line |
 |---|---|---|---|
@@ -268,7 +305,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | AG-RT-35 | 验收 R5 workflow 执行中 kill 重启 → INTERRUPTED_BY_RESTART + 一键重试 | ✅ | 同 AG-RT-14/15 |
 | AG-RT-36 | 验收 R7 MCP 宕机 → 退避→ERROR→agent 得 is_error 不阻塞→恢复回 ACTIVE | ✅ | `mcp/runtime.ts` |
 | AG-RT-37 | 验收 R9 stdio 安全四拒 | ✅ | `mcp/runtime.ts:44` |
-| AG-RT-38 | 验收 R10 并行耗时断言 < 串行 | ❌ **没做** | 未见耗时断言型测试（金丝雀：`apps/agentcore/test/` 下 `grep -l parallel` 可命中其他并发测试 ⇒ 目录可读） |
+| AG-RT-38 | 验收 R10 并行耗时断言 < 串行 | ◐ **未判定** | 机制在（AG-RT-33），但**耗时型断言**只在 `apps/agentcore/test/runtime-workflow.test.ts` 找到（那是 workflow 并行不是 agent 同轮工具并行）。**本单未逐一读完 agent 侧测试的断言内容，不下否定结论**（§5.2-7） |
 
 #### 2.2.2 `PRD-agent-react-harness.md`（40 条 · ✅21 / 🔗4 / ⚠️5 / ❌6 / ⛔3 / ◐1）
 
@@ -315,9 +352,10 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | AG-HAR-39 | §11-3 Solver-first SEAM（漏调 solver 即红） | ❌ **没做** | 同 AG-HAR-34 |
 | AG-HAR-40 | §0.2 七要素诚实体检表（对现状的事实断言） | ◐ **未判定** | 需读 `prompts.ts` 全文逐要素比对，本单未做 |
 
-#### 2.2.3 `PRD-agent-execution-governance-loop-control.md`（34 条 · ✅24 / 🔗1 / ❌8 / ⛔1）
+#### 2.2.3 `PRD-agent-execution-governance-loop-control.md`（34 条 · ✅29 / 🔗1 / ⚠️0 / ❌4）
 
-**这份 PRD 最值得单独说：它是三个域里唯一「路线图型 PRD 且路线图真被执行了」的一份。**
+**这份 PRD 最值得单独说：它是三个域里交付度最高的一份 —— P0+P1+P2 全部落地（含门、metric、五条 SEAM、容器态默认开），只剩 PRD 自己排「低优先·排后」的 P3 四项。**
+⟪本节 5 行经 §0.1 自纠，第一版把它错报成「路线图大半没做」⟫
 
 | # | 条款（截断） | 状态 | 证据 file:line |
 |---|---|---|---|
@@ -325,7 +363,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | AG-LC-02 | §2-1 路线图 P1：**loop-hash 环检测**（同签名重复即便"成功"也算环） | ✅ **已实现且在生产链路上** | 实现 `agent/loop.ts:264 callSignature`(FNV-1a) + `:988-995` 累计判环；接线 `orchestrator.ts:2046` + `engine.ts:452` 读 `config.QOS_AGENT_LOOP_REPEAT_CAP` |
 | AG-LC-03 | ↳ **该开关在生产是开的吗** | ✅ **容器态开** | `config.ts:46` 是 `.optional()` **无默认值**，代码 `loop.ts` 明写 `≤0 = 禁用` ⇒ 裸 `node dist/main.js` **禁用**；但 `docker-compose.yml:129` `QOS_AGENT_LOOP_REPEAT_CAP: ${…:-3}` ⇒ **容器部署默认 3**。**必须追这一层，只看 config.ts 会误判成「接了线没数据」** |
 | AG-LC-04 | §2-2 State Monitor：`BudgetTracker` + `ContextBudgeter` | ✅ | `tools/budget.ts` + `agent/context.ts:309` |
-| AG-LC-05 | §2-2 路线图 P3：per-iteration 结构化 trace 外透 | ❌ **没做** | 未见 per-iteration 伪 step 外透 |
+| AG-LC-05 | §2-2 路线图 P3：per-iteration 结构化 trace 外透 | ❌ **没做**（PRD 自排 P3） | 未见 per-iteration 伪 step 外透 |
 | AG-LC-06 | §2-3 Budget Controller：maxIterations + 三查 + per-call 有界超时 | ✅ | `loop.ts:584,586-590,622-668` |
 | AG-LC-07 | §2-3 路线图 P2：**per-tool 调用上界** | ✅ **已实现** | `loop.ts:136 perToolCallCap` + `:977-985`；接线 `orchestrator.ts:2050`；容器默认 8（`docker-compose.yml:130`） |
 | AG-LC-08 | §2-4 Retry Manager：连续权限拒绝 ≥3 → 强制收尾 | ✅ | `loop.ts:875-883` |
@@ -335,28 +373,28 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | AG-LC-12 | §2-6 Deadlock：单 agent 停滞早停 | ✅ | `loop.ts:867` |
 | AG-LC-13 | §2-6 路线图 P3：**跨 agent（Coordinator 扇出）死锁检测** | ❌ **没做** | `coordinator.ts` 无循环委派检测 |
 | AG-LC-14 | §2-7 Escalation：`degrade()` 统一降级出口 | ✅ | `loop.ts:350-391` |
-| AG-LC-15 | §2-7 路线图 P2：**EscalationLadder（换策略→Coordinator→降级）** | ⚠️ **feature 在·阶梯未见** | `features/registry.ts:108` `agent.escalation` `defaultOn:false` 已注册；但 `EscalationLadder` 符号全仓 **0 命中**（金丝雀 K4 `BudgetTracker`=28 ✅）⇒ **开关先落地了，机制还没有** |
+| AG-LC-15 | §2-7 路线图 P2：**EscalationLadder（换策略→Coordinator→降级）** | ✅ ⟪**已自纠**⟫ **已实现·暗发默认关** | 机制 `agent/loop.ts:507-530 maybeEscalate`（rung① 换提示策略再试一轮 + 复位停滞计数一次 + 一次性 `escalated` 状态位）；**rung② 升 Coordinator** `orchestrator.ts:2388`；rung③ 落既有 `degrade`。开关 `features/registry.ts:108` `agent.escalation` `defaultOn:false`。⚠️ 类名 `EscalationLadder` 确为 0 命中（金丝雀 K4 `BudgetTracker`=28 ✅）——**但那只证明"这个类名没被用"，不证明"这个机制没做"**（我第一版就栽在这一步，见 §0.1） |
 | AG-LC-16 | §2-8 Progress Detection：`roundsWithoutSuccess` | ✅ | `loop.ts:844-851` |
 | AG-LC-17 | §2-8 路线图 P1：与 Loop Detector 合并（signature 重复 = 无进度） | ✅ | 同 AG-LC-02 |
 | AG-LC-18 | §2-9 Reflection Checkpoint：确定性 reflect + 暗发 critic + 有界重规划 | ✅ | `reflect.ts` + `loop.ts:223-239,281-284` |
 | AG-LC-19 | §2-9 路线图 P3：周期性中途反思 | ❌ **没做** | — |
 | AG-LC-20 | §3.0 所有终止汇聚唯一出口 `degrade()`，无第二条 return | ✅ | `loop.ts:350` |
-| AG-LC-21 | §3.0 门 `loop-control:check` 静态断言"每 return 经 degrade" | ❌ **没做** | `loop-control:check` 全仓 **0 命中**（金丝雀 K4 ✅） |
+| AG-LC-21 | §3.0 门 `loop-control:check` 静态断言"每 return 经 degrade" | ✅ ⟪**已自纠**⟫ **已实现且在 gates 链内** | `scripts/check-loop-control.mjs`（**六条判据**：唯一降级出口 / reason 白名单 / 环检测触顶 → `degrade(STALL_LOOP)` / S01 停滞早停 / R6 无 `Date.now`+随机 / **metric 已接线**）；具名 npm script `loop-control:check`；**在 `pnpm gates` 链内第 12 位**（`node -e` 实测链长 **29** 道） |
 | AG-LC-22 | §3.1 `callSignature` 纯函数、稳定序列化、无 Date.now/random | ✅ | `loop.ts:260-264` 注释明写 |
 | AG-LC-23 | §3.1 不误伤：签名含入参，不同入参各自独立计数 | ✅ | `loop.ts:992-994` |
-| AG-LC-24 | §3.1 SEAM `loop-detector-seam.test.ts` | ⚠️ **文件名不符** | 未见该文件名；机制由其他 SEAM 覆盖（本单未逐一核对 SEAM 文件名） |
-| AG-LC-25 | §3.4 升级信号复用 `step.completed` 伪 step `type=agent_escalated` | ❌ **没做** | 随 AG-LC-15 |
+| AG-LC-24 | §3.1〜3.4 各 SEAM 测试 | ✅ ⟪**已自纠**⟫ **五个全在** | `apps/agentcore/test/`：`loop-detector-seam.test.ts` · `retry-manager-seam.test.ts` · `per-tool-cap-seam.test.ts` · `escalation-ladder-seam.test.ts` · `escalation-reroute-seam.test.ts`（rung②）。⚠️ **本单未跑它们**（派单禁止），只核了文件存在 —— 「文件在」≠「断言咬链路」 |
+| AG-LC-25 | §3.4 升级信号复用 `step.completed` 伪 step `type=agent_escalated` | ✅ ⟪**已自纠**⟫ | `agent/loop.ts:509`(注释) `:520`(`type:"agent_escalated"` 真 emit)；`orchestrator.ts:2388`（rung② 同款）；**未新增 §8.2 事件名**（守 QOS-PRD 一字不差） |
 | AG-LC-26 | §3.4 暗发关闭 = 字节兼容 | ✅ | `features/registry.ts:108` defaultOn:false |
 | AG-LC-27 | §4 无新端点 / 无新 REST | ✅ | 符合 |
 | AG-LC-28 | §4 `AgentLoopOpts` 扩四个可选字段 | ✅ | `loop.ts:126,136,139` + `escalation` |
 | AG-LC-29 | §4 `degraded.reason` 补 `"STALL_LOOP"` | ✅ | `loop.ts:461` 文案 + 枚举 |
-| AG-LC-30 | §4 metric `qos_agent_loop_repeat_total` / `_escalation_total` / `_retry_total` | ❌ **没做** | 三个 metric 名全仓 0（金丝雀：`src/metrics.ts:134` `ac_context_ops_total` 命中 ⇒ metrics 文件可读） |
+| AG-LC-30 | §4 metric `qos_agent_loop_repeat_total` / `_escalation_total` / `_retry_total` | ✅ ⟪**已自纠**⟫ **三个全在** | `apps/agentcore/src/metrics.ts:108`(`qos_agent_loop_repeat_total`) `:113`(`qos_agent_retry_total`) `:118`(`qos_agent_escalation_total`)；生产 inc 点 `loop.ts:515 agentEscalation.inc()`；**且 `check-loop-control.mjs` 判据⑥ 就在守这条接线**（门坏了会红） |
 | AG-LC-31 | §4 本层无新表（治理状态运行时内存态） | ✅ | 符合 |
 | AG-LC-32 | §7 铁保证：任意病态输入下确定性终止且终态必经 degrade | ✅ | `qos-agent-timeout.test.ts` + 停滞早停 SEAM |
-| AG-LC-33 | §8 P0 已落 / P1 待派 / P2 待派 / P3 排后 | 🔗 **PRD 自陈已过期** | **P1 与 P2 的主体（loop-hash / per-tool cap / retry）都已落地**（AG-LC-02/07/09），PRD §8 的「待派 1 dev」已不成立；**只有 EscalationLadder + 门 + metric 三项仍缺** |
+| AG-LC-33 | §8 P0 已落 / P1 待派 / P2 待派 / P3 排后 | 🔗 **PRD 自陈已过期** ⟪已自纠⟫ | **P1 与 P2 已完整交付**：loop-hash(`:264,988`) · `loop-control:check` 门(链内) · retry(`:664`) · per-tool cap(`:977`) · EscalationLadder rung①③(`:507`)+rung②(`orchestrator.ts:2388`) · 三个 metric · 五条 SEAM。PRD §8 写的「P1 待派 1 dev / P2 待派」**已不成立**。**只剩 P3 四项**（AG-LC-05/11/13/19），而 P3 是 PRD 自己排的「低优先·排后」 |
 | AG-LC-34 | 附表 Agent OS Kernel 三模块交叉引用（事实断言） | ✅ | 三模块代码落点均复核属实 |
 
-#### 2.2.4 `PRD-agent-navigation-slice-latency.md`（12 条 · ✅11 / 🔗1 · 另 1 条 ◐）
+#### 2.2.4 `PRD-agent-navigation-slice-latency.md`（13 条 · ✅11 / ⚠️1 / ◐1）
 
 | # | 条款 | 状态 | 证据 |
 |---|---|---|---|
@@ -466,8 +504,8 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | SL-IM-17〜19 | Phase 9 A/B/C（10 场景真跑落历史 / 对象级 Action CRUD / 推演历史列表页） | ✅ | `GET /b/v1/queries` + 前端「推演历史」页 |
 | SL-IM-20 | 各 Phase 声称的测试计数（datacore 244→248 / agentcore 173→192 / frontend 106 / parity 129/129） | ⛔ **本单未跑测试** | 派单禁止跑 `pnpm -r test` ⇒ **这些数字本单未复核**（见 §5） |
 | SL-IM-21 | P0-c `finance` 域无对象类型 —— 标「⏳ 后续 Phase 5」 | ✅ **已闭**（Phase 5A） | 见 SL-IM-05 |
-| SL-IM-22 | 证据 Excel `deliverables/enterprise_360-8域推演节点.xls` | ❌ **canonical 上无 `deliverables/`** | `git ls-files` 无该目录（金丝雀：`docs/evidence/` 可命中 ⇒ 工具正常）⇒ **文档引用的证据文件不在仓库里** |
-| SL-IM-23 | 复现命令 `node scripts/slice-scenarios-excel.mjs` | ❌ | `scripts/` 下无该文件 |
+| SL-IM-22 | 证据 Excel `deliverables/enterprise_360-8域推演节点.xls` | ✅ ⟪**已自纠**⟫ **设计如此** | `deliverables/` 在 `.gitignore:27` —— 是**跑复现命令产出的目录**，本就不该进仓。第一版我把「不在仓库」错当「不存在」 |
+| SL-IM-23 | 复现命令 `node scripts/slice-scenarios-excel.mjs` | ✅ ⟪**已自纠**⟫ | `scripts/slice-scenarios-excel.mjs` **存在**（⚠️ 本单**未跑**它，只核了文件在） |
 | SL-IM-24 | 接真实大模型三步运维说明 | ✅ | `LlmProvidersPage` + `QOS_ROLLING_SUMMARY_LLM` + `QOS_EMBEDDING_*` |
 
 #### 2.3.3 `AUDIT-slice-16-layers.md` 的四项承载物结论（5 条 · 复核「今天还成不成立」）
@@ -512,17 +550,17 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | **A-10** | `PRD-skill-contract-dsl.md` §2 基线表 | `maxBudgetRounds`「沿用字段名 **+ 接消费方**：归一到 `AgentBudget.maxRoundTrips`。**这是 Track E 约束 4 的硬验收**」 | **半成立**：`partial-a` 并入后有了归一函数（`agentcore.ts:224 skillBudgetOverride`）与唯一读点，**但读点在 eval 探针路**（`skill-probe.ts:133`），生产 6 处 `BudgetTracker` 全走 `residualBudgetFromConfig()` | 用户填了预算**跑起来毫无变化**（§1.3 序 4） |
 | **A-11** | `CMP §0 R3` | 「新模块暗发 `skill.compiler`（`defaultOn:false`），双注册 DataCore + AgentCore，关闭 = 404」 | `POST /b/v1/skills/:id/compile`（`server.ts:1465`）**无任何 entitlement 门**，只有 `auth` + `requireCatalogAdmin`；`"skill.compiler"` 字面量全仓 **0**（金丝雀 K2=17） | **R3「Entitlement 先于 authz」实打实被违反**（§1.3 序 3） |
 | **A-12** | `CMP §8.1` | 「✚ `POST /b/v1/skills/:id/compile`；**`?dryRun=true` 不落库**」 | 端点在，但**不接受 `dryRun` 查询参数**（`server.ts:1462` 注释写「dryRun 语义即默认且唯一行为」） | 语义等价但**契约不符**：SDK/CLI 按文档传 `?dryRun=true` 会被静默忽略 |
-| **A-13** | `CMP §12.2 S2` | 「返 503 `DATACORE_UNAVAILABLE`」 | 实现返 503 **`REF_PROBE_UNAVAILABLE`**（`resources.ts:24`） | 行为对、码不对，前端按文档写的错误分支会落进 default |
+| **A-13** | `CMP §12.2 S2` | 「返 503 `DATACORE_UNAVAILABLE`」 | 实现返 503 **`REF_PROBE_UNAVAILABLE`**（`apps/agentcore/src/resources.ts:26`） | 行为对、码不对，前端按文档写的错误分支会落进 default |
 | **A-14** | `PRD-agent-react-harness.md §10.3` | 「新增 `agent.reflected` 事件」 | 全仓 0 命中。**本体已诚实回写**（`SYSTEM-ONTOLOGY.md:329`「实现改为不新增」），**PRD 未同步** | 读 PRD 的人会去订阅一个不存在的事件 |
-| **A-15** | `PRD-agent-execution-governance-loop-control.md §8` 分期表 | 「P1 待派 1 dev / P2 待派」 | **P1 与 P2 的主体都已落地**（loop-hash `loop.ts:264` · per-tool cap `:977` · retry `:664`），且容器态默认开（`docker-compose.yml:129-131`） | **方向反了**：会重复派单做已完成的事 |
-| **A-16** | `IMPLEMENTATION-phase1-4-slice-rules.md §4` | 「证据 Excel `deliverables/enterprise_360-8域推演节点.xls`（5 表）」+「复现：`node scripts/slice-scenarios-excel.mjs`」 | **`deliverables/` 目录与该脚本在 canonical 上都不存在**（金丝雀：`docs/evidence/` 可命中） | 文档拿一份**不在仓库里的产物**当证据 |
-| **A-17** | `PRD-A3-multihop-slice-completion.md §2-4` | 「门：`pnpm gates` 新增或扩展一条 refbase 检查 + tooth 测试」 | `scripts/` 下无 `check-refbase*`（金丝雀 `check-slice-connectivity.mjs` 存在） | refbase 的确定性/节点数今天**没有机器在守** |
+| **A-15** | `PRD-agent-execution-governance-loop-control.md §8` 分期表 | 「P1 待派 1 dev / P2 待派」 | **P1 与 P2 已完整交付**（loop-hash `loop.ts:264,988` · `loop-control:check` 门在 gates 链内 · retry `:664` · per-tool cap `:977` · Escalation rung①③ `:507` + rung② `orchestrator.ts:2388` · 三个 metric `metrics.ts:108/113/118` · 五条 SEAM），且容器态默认开（`docker-compose.yml:127-131`） | **方向反了，且幅度最大**：照此表派单会重复做**两整期已完成的工作**。⚠️ 我第一版也被它误导（§0.1） |
+| ~~**A-16**~~ | ~~`IMPLEMENTATION-phase1-4-slice-rules.md §4`~~ | ~~证据 Excel 与复现脚本不在仓库~~ | ⟪**本条已撤回**⟫ `scripts/slice-scenarios-excel.mjs` **存在**；`deliverables/` 是 **`.gitignore:27` 声明的产物目录**，本就不该进仓。**是我错了，不是文档错了** | — |
+| **A-17** | `PRD-A3-multihop-slice-completion.md §2-4` | 「门：`pnpm gates` 新增或扩展一条 refbase 检查 + tooth 测试」 | `scripts/` 下 55 个 `check-*.mjs` **无 `check-refbase*`**（单符号单跑无 `head`；金丝雀 `check-ref-closure.mjs` 存在 ✅） | refbase 的确定性/节点数今天**没有机器在守** |
 
 ### 3.2 方向 B：说没做，其实做了（会导致「重复造门 / 排期歪掉」）
 
 | # | 出处 | 宣称 | 实测 | 危害 |
 |---|---|---|---|---|
-| **B-01** | `SPEC-industrial-skill.md:231` §5 | 「（引用可校验）**这道门今天做不了**（无任何一处声明）」 | **已过期**：rule/solver/ontologyType 三种 kind 的存在性探针已接上 skill 发布路（`server.ts:1272`），死路引用 `422 SKILL_REF_UNRESOLVED` 且未落库 | 照此文安排工作会**重复造一道已存在的门**（CLAUDE.md 铁律 0.5 记载的第三类错原样复发） |
+| **B-01** | `SPEC-industrial-skill.md:231` §5 | 「（引用可校验）**这道门今天做不了**（无任何一处声明）」 | **已过期**：rule/solver/ontologyType 三种 kind 的存在性探针已接上 skill 发布路（**今日实测 `server.ts:1317`**），死路引用 `422 SKILL_REF_UNRESOLVED` 且未落库、fail-closed 不可 force | 照此文安排工作会**重复造一道已存在的门**（CLAUDE.md 铁律 0.5 记载的第三类错原样复发） |
 | **B-02** | `PRD-skill-contract-dsl.md §11.1` / `§10.1` | 「发布路径只有 lint + eval + probe 三段，**无跨注册表引用校验**」/「注释里承诺的那个探针，在 skill 这条路上**没人调**」 | 同 B-01，已过期 | 同上 |
 | **B-03** | `SPEC-industrial-skill.md:113` §2-⑧ | 「`G-C08-EXPR-PARAM-SPLIT` 🔴 —— DSL 的 expression **不能引用 params**…静默恒假不报错」并列「三条最该先做」第 2 位 | **已修**：`ruledsl.ts:318-325` `params.<名>` 是一等操作数；`:357-361` 未提供即**抛错**；`:414-420 collectParamRefs` 供发布期校验 | 按 SPEC 排期会把已完成项当"最该先做"，**挤掉真缺口** |
 | **B-04** | `SPEC-industrial-skill.md:116` §2-⑪ | 「`outputSchema` **零消费方**」 | **前半过期**：有 2 个 src 消费方（`skill-lint.ts:342` 形状校验、`resource-projector.ts:149` 投影 `outputSpec`）。**后半仍成立**（无人拿它校验实际输出） | 「零消费方」会被读成"删了没影响"，删掉会断 DRIL 检索的 `outputSpec` |
@@ -535,9 +573,9 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 
 | # | 出处 | 文档说 | 实测 |
 |---|---|---|---|
-| C-01 | MIG §0/§12.2/§13 · XR §3 | `pnpm gates` = **16** 道 | **26** 道 |
-| C-02 | MIG §0/§12.2 | 迁移后聚合 16 → **23** | 应为 26 → 33 |
-| C-03 | XR §3 | 现有 16 + 新 17 = **33** | 现有 26 + 新 **0** = 26 |
+| C-01 | MIG §0/§12.2/§13 · XR §3 | `pnpm gates` = **16** 道 | **今日实测 29 道**（`node -e` 解析 `package.json.scripts.gates`；`scripts/` 下共有 **55** 个 `check-*.mjs`，**26 个不在链内**）。上游 CHECK 订正为「26」也已再次过期 |
+| C-02 | MIG §0/§12.2 | 迁移后聚合 16 → **23** | 基数已两次漂移，本单只订正现值 **29** |
+| C-03 | XR §3 | 现有 16 + 新 17 = **33** | 现有 **29** + 新 **0** = 29 |
 | C-04 | MIG §1.2/§5.3/R-F | `inputSchema` 空壳 **17/32** | **5/32** |
 | C-05 | MIG §0 CLI 段 | `OPERATION_CATALOG` **17 条** | **39 条**（结论仍成立） |
 | C-06 | CMP §2.4 + §14.2 | 手写 **4** + catalog 16 + ceoCaps **12** = 32 | **5 + 16 + 11 = 32**（**两个错互相抵消**，总数碰巧对） |
@@ -586,7 +624,7 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | **R3 Entitlement 先于 authz** | 🔴 **被违反 1 处** | `POST /b/v1/skills/:id/compile` 无 entitlement 门（A-11 / §1.3 序 3）。CMP §0 R3 白纸黑字要求暗发 |
 | **R4 写降级 / 未审核态** | ✅ | 三把数据生成工具回执带 `provisional:true`，转正走 `create_action_draft`（`executor.ts:439`） |
 | **R6 确定性地板** | ✅ | `callSignature` 纯函数无 `Date.now`/随机（`loop.ts:260-264`）；NavigationSlice 确定性投影；refbase `refbaseDigest`；`diagnoseEmptyGraph` 候选值按 objectKey 字典序去重 |
-| **R7 错误信封** | 🔗 **1 处码不符文档** | `REF_PROBE_UNAVAILABLE` vs CMP 文档写的 `DATACORE_UNAVAILABLE`（A-13） |
+| **R7 错误信封** | 🔗 **1 处码不符文档** | 实现 `apps/agentcore/src/resources.ts:26` 返 `REF_PROBE_UNAVAILABLE`，CMP §12.2 文档写的是 `DATACORE_UNAVAILABLE`（A-13） |
 | **R11 render 收口** | ⚠️ 已知未覆盖门 | `skill-graph.ts:22-24` 自承；断点 `G-SKILL-GRAPH-NO-RENDER-CLOSURE` 已登记 |
 | **R13 结论可溯源 / 不伪造** | ✅ | 生成工具只回执不产数字；reflect 数字落地检查；degrade 恒标「未能完全解答 + 已探索线索」 |
 | **R14 应用层无业务常数** | ✅ | Agent 管理台新增文案进 `locales/zh.ts`，阈值数字只在 `?` 浮层作口径说明 |
@@ -611,13 +649,17 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 | **G-SKILL-COMPILE-NO-ENTITLEMENT**（建议） | `POST /b/v1/skills/:id/compile` 只有 `requireCatalogAdmin`，无 entitlement 门 ⇒ R3「Entitlement 先于 authz」在这一处被违反，端点对任何 catalog_admin 恒开、关不掉 | 与既有断点都不同源：不是「没接线」也不是「没数据」，是**门装错了层**（量的是"角色够不够"而不是"功能开没开"） |
 | **G-SKILL-BUDGET-PROBE-ONLY**（建议） | `maxBudgetRounds` 的唯一生产读点在 eval 探针路（`skill-probe.ts:133`），生产 agent loop 的 6 处 `BudgetTracker` 全走 env ⇒ 用户填的预算在真实推演里无效 | 「接了线接错地方」的教科书样本；且 DSL §4.6 的验收原话是效果层判据（「改这个数 → 轮次真变」），今天不成立 |
 | **G-SLICE-FIRSTPAINT-EMPTY-ARGS**（建议） | 十六层面板首屏以 `args={}` 起手，而首屏默认的 4 条多跳切片 root selector 全带 `{{args.X}}` ⇒ 第一眼恒空 | 后端已给出真候选值（`slice-layers.ts:107`），缺的只是**前端默认起手值**。这是仓主唯一亲手点到的面 |
-| **G-DOC-EVIDENCE-NOT-IN-REPO**（建议） | 文档引用的证据产物（`deliverables/*.xls`）与复现脚本（`scripts/slice-scenarios-excel.mjs`）在 canonical 上不存在 | 「拿一份不在仓库里的产物当证据」= 铁律 0.6 的同族形态（我用 X 当 Y 的证据，而 X 根本不存在） |
+| ~~**G-DOC-EVIDENCE-NOT-IN-REPO**~~ | ⟪**撤回**⟫ 我误判 —— 复现脚本存在，`deliverables/` 是 `.gitignore:27` 的产物目录 | — |
 
 ### 4.6 触及门禁（本体 §7）
 
-- **已在链内且本单复核有效**：`ref-closure:check` · `gate-ledger:check` · `slice-connectivity:check`（产物 `docs/ONTOLOGY-SLICE-GAPS.md`：切片 43 · 连通边 403 · 孤岛 0）· `check-deploy-governance.mjs`（守 compose 里五个 Loop Control 开关，**删行即红** —— 这是 #88 那个坑的机制化对策）。
-- **文档提到但不存在的门**：`skill-lint:check` · `skill-eval:check` · `skill-refs:check` · `skill-graph:check` · `skill-business-intent:check` · `harness-elements:check` · `loop-control:check` · refbase 门 —— **全部 0 命中**（金丝雀：`ref-closure:check`=10 ✅）。
-- **存在但不在 `gates` 串里的门**：`check-ontology-writeback.mjs`（A-03）+ A-09 的六道。
+**实测口径（本单亲手数，不抄文档）**：`scripts/` 下共 **55** 个 `check-*.mjs`；`package.json.scripts.gates` 链长 **29** 道 ⇒ **26 个脚本在仓里但不在链内**。
+
+- **已在链内且本单复核有效**：`check-ref-closure.mjs` · `check-gate-ledger.mjs` · `check-slice-connectivity.mjs`（产物 `docs/ONTOLOGY-SLICE-GAPS.md`：切片 43 · 连通边 403 · 孤岛 0）· **`check-loop-control.mjs`**（六条判据，含 metric 接线，链内第 12 位）· `check-deploy-governance.mjs`（守 compose 里五个 Loop Control 开关，**删行即红** —— 这是 #88 那个坑的机制化对策）。
+- **文档提到但确实不存在的门**（单符号单跑、无 `head`；金丝雀 `check-ref-closure.mjs` 存在 ✅）：
+  `check-skill*`（覆盖文档里的 `skill-lint:check` / `skill-eval:check` / `skill-refs:check` / `skill-graph:check` / `skill-business-intent:check`）· `check-harness*` · `check-refbase*` —— **三族全 0 个文件**。
+- ⟪**已自纠**⟫ **`loop-control:check` 不在此列** —— 它存在、有具名 npm script、且在链内（§0.1）。
+- **存在但不在 `gates` 链内的门**：`check-ontology-writeback.mjs`（A-03）+ A-09 点名的六道（`check-sim.mjs` · `check-propagation.mjs` · `check-sim-readiness.mjs` · `check-solver-license.mjs` · `check-opt-template.mjs` · `check-opt-determinism.mjs`，**六个逐一实测 `binding` 非链内**）。
 
 ---
 
@@ -648,14 +690,30 @@ DSL 17 · CMP 26 · RT 36 · GOV 54（四份 CHECK 各自点名的数）。它�
 10. **未合并分支上的文档内容只读了 1 份**（`RECONCILE-skill-agent-prd-2026-08-09.md`）。
     另外 9 份（§1.1 表）**只确认了存在与落在哪条分支，未读内容** ⇒ 它们可能含本单没覆盖的条款。
 
-### 5.3 一句话
+### 5.3 本单自己犯过的错（已全部在正文订正 · 详见 §0.1）
+
+11. **我第一版连报 6 条错误的否定结论**，根因是 `grep … | head -20` 把命中截掉了。
+    受影响的 6 条（AG-LC-15/21/24/25/30 + A-16 + 建议断点 `G-DOC-EVIDENCE-NOT-IN-REPO`）**全部已订正并标 ⟪已自纠⟫**。
+    ⇒ **本文第一版对 `PRD-agent-execution-governance-loop-control.md` 的判定（「路线图大半没做」）与事实相反**，
+    订正后是「P0+P1+P2 全部落地，只剩自排低优先的 P3 四项」。
+    **这条留在文里是为了让下一个读者知道：本文的否定结论也可能有错，请照 §6 的命令亲手复跑。**
+12. 顺带订正三处**上游文档已漂的坐标/基数**（不是我的错，但读者会被误导）：
+    `probeMissingRefs` 三处调用点 `690/1008/1272` → **今日 `747/1065/1317`**；
+    `REF_PROBE_UNAVAILABLE` 在 `resources.ts:24` → **`:26`**；
+    `pnpm gates` 门数 16 → 26 → **今日实测 29**。
+
+### 5.4 一句话
 
 > **「我没找到」和「它不存在」是两个不同的命题。**
-> 本文所有「不存在」都配了 §0 的金丝雀；所有「我没找到但没敢说不存在」的，都进了 §5.2 这张单子。
+> 本文所有「不存在」都配了 §0 的金丝雀；所有「我没找到但没敢说不存在」的，都进了 §5.2 这张单子；
+> **所有「我说了不存在但其实存在」的，都进了 §0.1 和 §5.3 —— 一条没删。**
 
 ---
 
 ## 6 · 复验命令（别信本文，亲手跑）
+
+> ⚠️ **纪律（本单踩过，见 §0.1）：报否定结论的那次 grep 必须单符号单跑、不加 `head`、先看 `wc -l`。**
+> 下面每条否定型检查都是这个形状；多符号或查只用于**正向**取证。
 
 ```bash
 # ① 基线（本文所有 file:line 只对这个 commit 有效）
@@ -684,8 +742,25 @@ grep -n "QOS_AGENT_" docker-compose.yml                        # 应见 :127/:12
 grep -n "diagnoseEmptyGraph" apps/datacore/src/ontology/slice-layers.ts    # :82
 grep -n "EmptyGraphBar"      apps/frontend-shell/src/pages/admin/SliceLayersPanel.tsx  # :87
 
-# ⑦ 门名是否真存在（应全 0；金丝雀 ref-closure:check 应 >0）
-for n in skill-lint:check skill-eval:check harness-elements:check loop-control:check ref-closure:check; do
-  printf "%-28s => " "$n"; grep -rn "$n" package.json scripts/ apps/*/src packages/*/src 2>/dev/null | wc -l
-done
+# ⑦ 门：数「文件」不数「npm 名」—— 两者不是一回事（§0.1 我在这里栽过）
+ls scripts/ | grep -cE "^check-"                      # 55 个 check-* 脚本
+node -e "const g=require('./package.json').scripts.gates;
+         console.log('gates 链长 =', (g.match(/node scripts\/check-[a-z-]+\.mjs/g)||[]).length);
+         for (const s of ['loop-control','ontology-writeback','sim','propagation','solver-license'])
+           console.log(s, '在链内 =', g.includes('check-'+s+'.mjs'));"
+# 期望：链长 29 · loop-control **true** · 其余四个 false
+
+# ⑦b 真正不存在的三族门（单跑·无 head·先看计数；金丝雀必须先中）
+ls scripts/check-ref-closure.mjs                      # 金丝雀：应存在
+ls scripts/ | grep -cE "^check-skill"                 # 应 0
+ls scripts/ | grep -cE "^check-harness"               # 应 0
+ls scripts/ | grep -cE "^check-refbase"               # 应 0
+
+# ⑧ §0.1 那 6 条自纠的反证（都应命中，命中即证明"第一版报的 0 是假的"）
+grep -c "check-loop-control" package.json                              # ≥2（gates 链 + 具名 script）
+grep -n "qos_agent_loop_repeat_total" apps/agentcore/src/metrics.ts    # :108
+grep -n "agent_escalated" apps/agentcore/src/agent/loop.ts             # :509 :520
+ls apps/agentcore/test/ | grep -E "loop-detector|retry-manager|per-tool-cap|escalation"  # 5 个
+ls scripts/slice-scenarios-excel.mjs                                   # 存在
+grep -n "deliverables" .gitignore                                      # :27
 ```
