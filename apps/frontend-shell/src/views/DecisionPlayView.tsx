@@ -117,7 +117,7 @@ function dimValueLabel(key: keyof DPDims, v: number, gapUnit: string): string {
  * WO-SANDBOX-IMP2PLAN · **「从阻滞点进来」的入参路径**（本页只加这一条，5 区渲染一行不动）。
  *
  * 沙盘 `SandboxConsole` 的逐条阻滞点点进来时带一串 `imp*` query（键的单一出处 =
- * `views/sim/sandboxConsole.ts` 的 `IMP_PARAM`）。本页据此在顶上出一条**入口横幅**，
+ * `views/sim/sandboxConsoleModel.ts` 的 `IMP_PARAM`）。本页据此在顶上出一条**入口横幅**，
  * 说清三件事，缺一件都算骗人：
  *  ① 你是从哪条阻滞点点进来的（真对象 locus + 触发的规则 + 实测 vs 阈值那一维在沙盘上已给）；
  *  ② **这条阻滞点有没有对到具体因子**。今天对不上 —— 而且不许静默：

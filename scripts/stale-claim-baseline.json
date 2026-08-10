@@ -343,8 +343,8 @@
       "sample": "shapeToday: \"逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）\","
     },
     {
-      "key": "apps/frontend-shell/src/views/sim/sandboxConsole.ts#b4c72321da584f97",
-      "file": "apps/frontend-shell/src/views/sim/sandboxConsole.ts",
+      "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#b4c72321da584f97",
+      "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
       "line": 136,
       "codes": [
         "STALE-1",
@@ -354,8 +354,8 @@
       "sample": "* **设计稿副标题与引擎判据的语义差**（实测 `chain_impediments` 在 demo 合成种子上的判据得出，"
     },
     {
-      "key": "apps/frontend-shell/src/views/sim/sandboxConsole.ts#df3223f80984ceaf",
-      "file": "apps/frontend-shell/src/views/sim/sandboxConsole.ts",
+      "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#df3223f80984ceaf",
+      "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
       "line": 366,
       "codes": [
         "STALE-1"

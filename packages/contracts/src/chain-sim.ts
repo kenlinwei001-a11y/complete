@@ -54,7 +54,7 @@ import { DerivedDataModeSchema } from "./derive-fields.js";
  * **枚举变宽的连带责任**（加第 6 段时照此清点，别再靠 TS 报错碰运气）：
  *  · `Record<ChainStage, X>` 型的表会 TS 当场红（`chainLineMap.ts` / `chainImpediment.ts` 的 `STAGE_LABEL`）；
  *  · 但 `Partial<Record<…>>`、索引签名、`switch` 的 `default` 分支**不会红** —— 这几处必须人工走一遍。
- *    本单实测走过：`sandboxConsole.ts` 的 `buildStageBoard`（`CHAIN_STAGES.map`，自动多一条 lane）、
+ *    本单实测走过：`sandboxConsoleModel.ts` 的 `buildStageBoard`（`CHAIN_STAGES.map`，自动多一条 lane）、
  *    `chainLineMap.ts` 的 `TRUNK_STAGES`（`filter`，自动多一段）、`sim/propagation.ts` 的
  *    `CadenceGateLookup`（`Record<string, …>`，键是 nodeId 不是 stage，不受影响）。
  */

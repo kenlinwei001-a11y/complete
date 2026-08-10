@@ -88,7 +88,7 @@ import {
   chainStageCoverage,
   transitOverlayBox,
   CHAIN_STAGE_DESIGN_TARGET,
-} from "@/views/sim/sandboxConsole";
+} from "@/views/sim/sandboxConsoleModel";
 
 // ── 仓根 / fixture ────────────────────────────────────────────────────────────
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));

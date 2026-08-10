@@ -399,7 +399,7 @@
  * 但控制台把它们渲染成**上下两个兄弟节点**，于是"叠加"这件事一直没发生。
  * 这里补的就是挂载点：把在途层那张环 SVG 钉到线路图舞台 SVG 的**同一个屏上矩形**上。
  * 两图 viewBox 相同 ⇒ 盒子重合即坐标重合，**本文件不写一行几何**（矩形由
- * `sandboxConsole.ts` 的 `transitOverlayBox` 纯函数算好，经 CSS 变量落下来）。
+ * `sandboxConsoleModel.ts` 的 `transitOverlayBox` 纯函数算好，经 CSS 变量落下来）。
  *
  * 选择器咬的是在途层**已发布的 testid**（`transit-ring`，它本来就是那一层的测试契约），
  * 因为不许改那个文件；testid 一旦改名，`sandbox-console.seam §9` 的"叠加层必须存在"当场红。

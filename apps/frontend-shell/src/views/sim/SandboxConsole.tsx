@@ -42,7 +42,7 @@ import {
   type OverlayRect,
   type StepVM,
   type TransitOverlayBox,
-} from "./sandboxConsole";
+} from "./sandboxConsoleModel";
 import styles from "./SandboxConsole.module.css";
 
 /**

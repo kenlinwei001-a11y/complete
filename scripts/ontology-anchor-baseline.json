@@ -82,7 +82,7 @@
     "apps/frontend-shell/src/views/registry.ts::registerRenderer",
     "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx::NodeInspectorView",
     "apps/frontend-shell/src/views/sim/inspectorModel.ts::CADENCE_ABSENCE_REASON",
-    "apps/frontend-shell/src/views/sim/sandboxConsole.ts::chainStageCoverage",
+    "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts::chainStageCoverage",
     "packages/contracts/src/agentcore.ts::SceneEntryConfigSchema",
     "packages/contracts/src/chain-sim.ts::ChainLocusSchema",
     "packages/contracts/src/object-ref-resolve.ts::partialRefMatch",
