@@ -139,7 +139,9 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
       layersFixture({
         counts: [0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         platform: { 6: 372 },
-        reasons: { 1: "AgentCore 只上报 rule 引用，从不产出 kind:slice ⇒ 反查恒空" },
+        // WO-SLICE-REF-PRODUCER 后的真文案：管道已通，为空只意味着「没人引用它」，
+        // 并点名仍未闭的那一路（scene 无生产方）。旧文案「从不产出 kind:slice」已是假话。
+        reasons: { 1: "上报管道已接通；为空 = 没有已发布 workflow 引用这条切片。残留缺口：refKind=\"scene\" 仍无生产方" },
       }),
     );
     const user = userEvent.setup();
@@ -166,7 +168,7 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
     const bsDetail = await screen.findByTestId("slice-layer-detail-model_capacity_network-business_scenario");
     expect(within(bsDetail).queryAllByTestId(/^slice-layer-item-/)).toHaveLength(0);
     expect(screen.getByTestId("slice-layer-reason-model_capacity_network-business_scenario").textContent).toContain(
-      "从不产出 kind:slice",
+      "残留缺口",
     );
   });
 

@@ -85,7 +85,10 @@ export const SliceLayerSchema = z.object({
   carrier: z.string(),
   /**
    * 缺席原因（status≠present 时必填）：说明**缺在哪一环**，不许写"暂无数据"这类无信息量文案。
-   * 例："AgentCore 只上报 rule 引用，从不产出 kind:\"slice\" ⇒ reportedRefs 恒空"。
+   * 例（⑮行动）："ActionType 无 targetTypeKey 字段，无法机械 join 到对象类型"。
+   * ⚠️ 这段注释原本举的例子是「AgentCore 从不产出 kind:\"slice\" ⇒ reportedRefs 恒空」——
+   * 该结论已被 WO-SLICE-REF-PRODUCER 证伪（上报方已接通），例子随之换掉：
+   * **文档里的举例也是断言**，留着过期的例子等于在契约里写假话。
    */
   absentReason: z.string().optional(),
   /** 明细（第二层）。status=present 时非空；确定性字典序。 */

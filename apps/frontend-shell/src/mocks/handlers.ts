@@ -756,8 +756,12 @@ export function __resetSliceGovMock(): void {
  * 真实取证数字见 docs/AUDIT-slice-16-layers.md：真后端 order_fulfillment_360 = 12/1/3。
  */
 const MOCK_LAYER_SPEC: { id: string; unit: string; carrier: string; n: number; platform?: number; reason?: string }[] = [
-  { id: "business_scenario", unit: "个", carrier: "reported_refs → governance.sliceReferences", n: 0, reason: "承载物在，但 AgentCore 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。" },
-  { id: "decision_intent", unit: "个", carrier: "reported_refs.refKind ∈ {plan,intent,agent}", n: 0, reason: "workflow→slice 的关系算在 AgentCore 侧，不回写 DataCore ⇒ A 侧反查取不到。" },
+  // WO-SLICE-REF-PRODUCER 已把上报方接上（workflow/plan 发布 → kind:"slice" 引用）。
+  // mock 这两层仍给 0，是为了让「诚实缺席」那半边界面在 mock 模式下走得到；
+  // 但**理由文案必须跟着改成真话** —— 旧文案（「从不产出 kind:slice ⇒ 恒空」）现在是假的，
+  // 留着就是拿 mock 教用户一个已经不成立的结论。
+  { id: "business_scenario", unit: "个", carrier: "reported_refs → governance.sliceReferences", n: 0, reason: "上报管道已接通（workflow 发布会上报 resolve_slice 步的切片引用）。为空 = 没有已发布 workflow 引用这条切片。残留缺口：refKind=\"scene\" 这一路仍无生产方。" },
+  { id: "decision_intent", unit: "个", carrier: "reported_refs.refKind ∈ {plan,intent,agent}", n: 0, reason: "plan 发布已上报切片引用。为空 = 没有已发布 plan 引用这条切片。残留缺口：intent 无上报调用点，agent 定义里没有切片引用字段。" },
   { id: "object", unit: "类", carrier: "objects（executeSlice 真子图 nodes）", n: 2 },
   { id: "property", unit: "个", carrier: "object_types.properties + 子图 node.props", n: 6 },
   { id: "relation", unit: "种", carrier: "links + ontology_links", n: 1 },
