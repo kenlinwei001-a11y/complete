@@ -1003,12 +1003,19 @@ export const compileSkill = (id: string) =>
  * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
  * 后端注释写着「运维随时可查」，而在本单接上之前，**没有任何地方可查**。
  *
- * ⚠️ 四态里 `NOT_RUN` 与 `GATE_UNAVAILABLE` **都不是"干净"**（后端 `skill-publish-gate.ts:178` 的口径）：
- * 前者是没审计过，后者是注册表读不出来所以没法判。界面把这两态渲染成绿色或"通过"，
- * 就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
+ * ⚠️ `NOT_RUN` / `REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` / `GATE_UNAVAILABLE` **都不是"干净"**
+ * （后端 `skill-publish-gate.ts` 的口径）：第一个是没审计过，后三个是注册表读不出来所以没法判。
+ * 界面把这几态渲染成绿色或"通过"，就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
  *
- * 类型在 agentcore（`skill-publish-gate.ts:180`）而非 contracts，跨 app import 源码是禁止的，
- * 故此处按后端形状声明只读 VM；字段名一字对齐，不改写。
+ * **WO-SEEDGATE-FRESHNESS**：
+ *  · 缺陷 A —— `ranAt` 原先是**进程启动那一瞬**的常量（实测连续 3 次请求间隔 3 分钟一字未变）。
+ *    后端改为按请求现算（TTL `ttlSeconds` 秒内复用 + `?refresh=1` 手动刷新），
+ *    界面因此必须把 `ranAt` 当作「**这份数据真正被计算的时刻**」显示，并给出手动刷新入口。
+ *  · 缺陷 B —— 原先「抛错」与「读回空集」合并成一个 `GATE_UNAVAILABLE`，
+ *    文案却二选一地断言「DataCore is unreachable」。现拆成两态，界面文案必须跟着分开。
+ *
+ * 类型在 agentcore（`skill-publish-gate.ts` `SeedSkillGateStatus`）而非 contracts，
+ * 跨 app import 源码是禁止的，故此处按后端形状声明只读 VM；字段名一字对齐，不改写。
  */
 export interface SkillSeedGateFinding {
   skillId: string;
@@ -1016,14 +1023,19 @@ export interface SkillSeedGateFinding {
   violations: { code: string; message: string }[];
 }
 export interface SkillSeedGateReport {
-  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "GATE_UNAVAILABLE";
+  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "REGISTRY_UNREACHABLE" | "REGISTRY_EMPTY" | "GATE_UNAVAILABLE";
+  /** 这份数据真正被计算的时刻（不是响应组装时刻）。 */
   ranAt?: string;
   tenantId?: string;
   checked: number;
   findings: SkillSeedGateFinding[];
   unavailableReason?: string;
+  /** 这份快照最多被复用多少秒；界面据此说清"它最新到什么程度"。 */
+  ttlSeconds?: number;
 }
-export const fetchSkillSeedGate = () => api.b<SkillSeedGateReport>("/b/v1/ops/skill-seed-gate");
+/** `refresh` = 显式手动刷新：跳过后端 TTL 立刻重算（运维刚修好上游，不该被迫等一个 TTL）。 */
+export const fetchSkillSeedGate = (opts?: { refresh?: boolean }) =>
+  api.b<SkillSeedGateReport>(`/b/v1/ops/skill-seed-gate${opts?.refresh ? "?refresh=1" : ""}`);
 
 export const fetchMcpConfigs = () => api.b<McpServerConfig[]>("/b/v1/mcp-configs");
 export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) =>

@@ -3730,7 +3730,13 @@ export const handlers = [
   http.get("*/b/v1/ops/skill-seed-gate", () =>
     HttpResponse.json({
       status: "CLEAN",
-      ranAt: "2026-08-10T00:00:00.000Z",
+      /*
+       * WO-SEEDGATE-FRESHNESS 缺陷 A：`ranAt` **按请求现算**，不是写死的常量。
+       * mock 里写死一个日期会把「这份数据永远不刷新」这件事在 mock 模式下原样复刻出来——
+       * 而那正是本单要修的病。这里如实反映真实后端行为：每次请求都是新时刻。
+       */
+      ranAt: new Date().toISOString(),
+      ttlSeconds: 30,
       tenantId: TENANT_ID,
       checked: db.skills.filter((s) => s.status === "PUBLISHED").length,
       findings: [],

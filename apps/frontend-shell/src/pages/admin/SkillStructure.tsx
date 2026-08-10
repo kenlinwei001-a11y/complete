@@ -475,26 +475,52 @@ export function SkillCompileReport({
 // ---------------------------------------------------------------------------
 
 /**
- * F14 的诚实位。四态**各有各的措辞**，绝不合并：
+ * F14 的诚实位。**六态各有各的措辞，绝不合并**：
  *
  * | status | 界面措辞 | 绝不可渲染成 |
  * |---|---|---|
- * | `NOT_RUN`          | 未审计（灰） | 通过 / 绿 |
- * | `CLEAN`            | 通过（绿）   | — |
- * | `VIOLATIONS`       | 有违规（红） | — |
- * | `GATE_UNAVAILABLE` | 无法判定（黄）+ 原因原文 | 通过 / 绿 |
+ * | `NOT_RUN`              | 未审计（灰） | 通过 / 绿 |
+ * | `CLEAN`                | 通过（绿）   | — |
+ * | `VIOLATIONS`           | 有违规（红） | — |
+ * | `REGISTRY_UNREACHABLE` | 注册表读不出（黄）+ 上游原文 | 通过 / 绿 / 「网络不可达」 |
+ * | `REGISTRY_EMPTY`       | 注册表答了 0 条（黄） | 通过 / 绿 / 「都合法」 |
+ * | `GATE_UNAVAILABLE`     | 无法判定（黄）+ 原因原文 | 通过 / 绿 |
  *
- * 把 `NOT_RUN` / `GATE_UNAVAILABLE` 画成绿色，就是把「我没找到」说成「它不存在」——
- * 那这道位就白加了（后端 `skill-publish-gate.ts:178` 原话）。
+ * 把 `NOT_RUN` / 三个不可用态画成绿色，就是把「我没找到」说成「它不存在」——
+ * 那这道位就白加了（后端 `skill-publish-gate.ts` 原话）。
+ *
+ * **WO-SEEDGATE-FRESHNESS · 缺陷 B**：`REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` 是本单拆出来的。
+ * 原先两者共用一句"注册表读不出来"，而后端播报的 reason 却二选一地说「DataCore is unreachable」
+ * ——运维照那条结论去查网络，会查一整天查不到东西。现在**观测到哪一种就说哪一种**；
+ * `REGISTRY_UNREACHABLE` 的措辞刻意**不**替上游下"不可达"这个结论，只说"读取抛错"并把原文摆出来。
  */
 const SEED_GATE_VIEW: Record<SkillSeedGateReport["status"], { label: string; badge: string; hint: string }> = {
   NOT_RUN: { label: "未审计", badge: "", hint: "启动期审计尚未跑过 —— 这不等于出厂技能干净，只等于没人问过。" },
   CLEAN: { label: "通过", badge: "green", hint: "出厂技能已用与发布路完全相同的门问过一遍，零违规。" },
   VIOLATIONS: { label: "有违规", badge: "red", hint: "出厂技能经旁路落库时带着违规 —— 它们从未走过发布门。" },
-  GATE_UNAVAILABLE: { label: "无法判定", badge: "amber", hint: "注册表读不出来，门无法判定 —— 没判定 ≠ 判定为好。" },
+  REGISTRY_UNREACHABLE: {
+    label: "注册表读不出",
+    badge: "amber",
+    hint: "探针读注册表时抛错，门无法判定。⚠️ 这不等于「网络不可达」—— 鉴权失败 / 上游报错也落这一支，以下方原始错误原文为准。",
+  },
+  REGISTRY_EMPTY: {
+    label: "注册表读回空集",
+    badge: "amber",
+    hint: "注册表答了，答的是 0 条已知 key —— 门无从比对。空集 ≠ 都合法；网络是通的，该查的是 A 侧注册表为何空。",
+  },
+  GATE_UNAVAILABLE: { label: "无法判定", badge: "amber", hint: "读不出（不可达或空集，未能区分）—— 没判定 ≠ 判定为好。" },
 };
 
-export function SkillSeedGateStrip({ report }: { report: SkillSeedGateReport | undefined }): JSX.Element | null {
+export function SkillSeedGateStrip({
+  report,
+  onRefresh,
+  refreshing,
+}: {
+  report: SkillSeedGateReport | undefined;
+  /** 显式手动刷新入口（`?refresh=1`）。缺省则不渲染按钮 —— 没有入口就别画一个假的。 */
+  onRefresh?: () => void;
+  refreshing?: boolean;
+}): JSX.Element | null {
   // 还没取到（加载中/请求失败）⇒ 整块不渲染。不许先画一个"通过"再等真值回来。
   if (!report) return null;
   const view = SEED_GATE_VIEW[report.status];
@@ -511,7 +537,28 @@ export function SkillSeedGateStrip({ report }: { report: SkillSeedGateReport | u
         <span className={`badge ${view.badge}`} data-testid="skill-seed-gate-status">{view.label}</span>
         {/* checked 是"审计了几个"，与 findings.length（"几个有违规"）不是一回事，分别点明所数何物。 */}
         <span className="badge mono" data-testid="skill-seed-gate-checked">已审 {report.checked} 个技能</span>
-        {report.ranAt && <span className="badge mono">{report.ranAt}</span>}
+        {/*
+          ranAt 必须**明说它是什么时刻**。WO-SEEDGATE-FRESHNESS 缺陷 A 的杀伤力全在这里：
+          光秃秃一个时间戳会被读成"刚刚测过"，而它曾经是进程启动那一瞬的常量、三分钟不动。
+          现在它是「这份数据真正被计算的时刻」，并把缓存窗口一并说清。
+        */}
+        {report.ranAt && (
+          <span className="badge mono" data-testid="skill-seed-gate-ran-at" title="这份数据真正被计算的时刻（不是页面加载时刻）">
+            实测于 {report.ranAt}
+            {report.ttlSeconds !== undefined && `（缓存 ≤${report.ttlSeconds}s）`}
+          </span>
+        )}
+        {onRefresh && (
+          <button
+            className="btn sm"
+            onClick={onRefresh}
+            disabled={refreshing === true}
+            data-testid="skill-seed-gate-refresh"
+            title="跳过缓存，立刻重跑一遍审计"
+          >
+            {refreshing === true ? "重测中…" : "重新实测"}
+          </button>
+        )}
         <span className="muted" style={{ fontSize: 11.5 }}>{view.hint}</span>
       </div>
       {/* 门不可用时的原因原文：运维照着它直接定位是哪个注册表读不出来。 */}
