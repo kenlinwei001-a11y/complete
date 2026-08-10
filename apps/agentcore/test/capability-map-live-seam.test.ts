@@ -3,6 +3,7 @@ import type { PageContext } from "@platform/contracts";
 import { createTestApp, submitQuery, waitForTask, lastToolCallId, ADMIN, TENANT, type TestApp } from "./helpers.js";
 import { text, toolUse, type ScriptedTurn } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 import { FALLBACK_SOLVER_CATALOG_KEYS } from "../src/agent/navigation-slice.js";
 import { installLiveSolverCatalog, LIVE_SOLVER_CATALOG_FIXTURE } from "./live-solver-catalog.fixture.js";
 
@@ -136,6 +137,56 @@ describe("WO-CAPMAP-LIVE · SEAM ① 注入源 = 活资源目录（镜像里没�
     // [rootMetric,totalGap,levels,atomicLeaves,causalEdges,reconciled,summary]，
     // 而 A 侧真值另有 reconChecks/residualPct/severityKind —— 出现即证明形状来自活目录而非镜像。
     expect(prompt, "输出形状仍是镜像那份（接缝把 outputShape 丢了）").toMatch(/reconChecks|residualPct|severityKind/);
+    await t.app.close();
+  });
+});
+
+/**
+ * 第二条生产注入路径：`engine.runRegisteredAgent`（7 角色 agent / coordinator 扇出 / 场景 agent）。
+ * 与 path-B 是**两个独立挂点**——只验一条会漏掉另一条（本单两处都改了，就必须两处都咬）。
+ */
+describe("WO-CAPMAP-LIVE · SEAM ①b 注册 agent 路径（engine.runRegisteredAgent）同样吃活目录", () => {
+  it("注册 agent 的首轮 prompt 里也出现镜像没有的求解器", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    await t.repos.agents.insert({
+      tenantId: TENANT,
+      id: "agt_capmap",
+      key: "capmap_agent",
+      version: 1,
+      name: "capmap_agent",
+      description: "能力地图接线验证 agent",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是测试 agent。",
+      tools: [{ kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      // 不声明 objectTypes → 不做对象域收窄；toolNames 含 invoke_solver → 图会列 solver。
+      scopeDeclaration: { objectTypes: [], toolNames: ["invoke_solver"] },
+      status: "PUBLISHED",
+    } as never);
+
+    t.llm.queueAgentTurn(() => ({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "ok" }], provenance: [] })],
+    }));
+    await t.deps.engine.runRegisteredAgent({
+      taskId: "task_capmap",
+      agentId: "agt_capmap",
+      version: "latest",
+      prompt: OPEN_DEEP_Q,
+      ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+      nesting: { callChain: [], budget: new BudgetTracker() },
+      emit: async () => undefined,
+    });
+
+    const prompt = JSON.stringify(t.llm.agentRequests[0]!.messages);
+    const injected = injectedSolverKeys(prompt);
+    const liveOnly = injected.filter((k) => !FALLBACK_SOLVER_CATALOG_KEYS.includes(k));
+    expect(
+      liveOnly.length,
+      `注册 agent 路径的候选集里没有任何"镜像没有"的求解器 ⇒ engine.ts 那个挂点还连在镜像上。实际注入=${injected.join(",")}`,
+    ).toBeGreaterThan(0);
     await t.app.close();
   });
 });
