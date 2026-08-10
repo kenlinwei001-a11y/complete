@@ -985,6 +985,27 @@ export const zh = {
       // 诚实位（绝不删除，只允许降层）：说明这一页为什么可能显示空。
       honesty:
         "缺席的层不画占位内容——本平台宁可显示空并说明为什么，也不画假数据。",
+      // ── 子图未解出（graph.empty）· 真后端实测：98 条切片里 12 条无参即空子图，
+      //    其中 4 条正是首屏默认显示的多跳业务切片 ⇒ 不说清楚就等于"页面又是空的"。
+      //    第一层只放**短结论**（状态 + 缺哪个参数名），长说明降到浮层（R-UI-3）。
+      empty: {
+        // 短结论（第一层）：一眼看出「不是十六层没有，是子图没解出来」
+        titleMissingArgs: "子图未解出 · 缺试切参数",
+        titleNoRootObjects: "子图未解出 · 根类型零对象",
+        titleNoMatch: "子图未解出 · 过滤无匹配",
+        // 状态徽标（第一层允许：这是"状态"）
+        badge: "十六层暂未判定",
+        needArgs: (args: string) => `需要参数：${args}`,
+        rootTotal: (typeKey: string, n: number) => `${typeKey} 共 ${n} 个对象`,
+        // 候选值（真对象上读出来的，不是示例值）
+        pickLabel: (arg: string) => `选一个真实 ${arg} 试切`,
+        noCandidates: "取不到候选值（诚实留白：不拿假值凑）",
+        inputLabel: (arg: string) => `或自填 ${arg}`,
+        apply: "试切",
+        clear: "清空参数",
+        applied: (pairs: string) => `当前试切参数：${pairs}`,
+        whyLabel: "为什么是空的",
+      },
     },
   },
 

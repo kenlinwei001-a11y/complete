@@ -24,6 +24,16 @@ function layersFixture(opts: {
   counts: number[]; // 16 个
   platform?: Record<number, number>; // ordinal → 平台条数（用于 not_in_slice）
   reasons?: Record<number, string>; // ordinal → 结构性缺席原因（用于 absent）
+  /** 子图未解出（真后端 graph.empty）——「层没数据」与「子图没解出来」是两件事。 */
+  empty?: {
+    reason: "missing_args" | "no_root_objects" | "no_match";
+    requiredArgs: string[];
+    missingArgs: string[];
+    rootObjectTotal: number;
+    argCandidates: { arg: string; values: string[] }[];
+    message: string;
+  };
+  graphNodes?: number;
 }) {
   const ids = [
     "business_scenario", "decision_intent", "object", "property", "relation", "event",
@@ -51,7 +61,14 @@ function layersFixture(opts: {
     sliceKey: opts.sliceKey ?? "model_capacity_network",
     version: 1,
     rootType: "Model",
-    graph: { nodes: 531, edges: 570, truncated: false, typeKeys: ["Model", "Base"], linkKeys: ["model_producible_at"] },
+    graph: {
+      nodes: opts.graphNodes ?? 531,
+      edges: 570,
+      truncated: false,
+      typeKeys: ["Model", "Base"],
+      linkKeys: ["model_producible_at"],
+      ...(opts.empty ? { empty: opts.empty } : {}),
+    },
     snapshotVersion: "ov-77",
     layers,
     summary: {
@@ -226,5 +243,118 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
     expect(screen.getByTestId("slice-layer-count-model_capacity_network-action").textContent).toBe("0");
     // 不跳转（G-VIS 就地展开）
     expect(router.state.location.pathname).toBe("/admin/slices");
+  });
+
+  /**
+   * SEAM-6 —— 复核补的一组：**「子图没解出来」不许被读成「平台没有这十六层」**。
+   *
+   * 真后端实测（4093 端口逐条跑完 98 条切片）：无参调用时 12 条空子图，其中 **4 条正是
+   * 首屏默认只显示的多跳业务切片**（root selector 写着 `{{args.so}}` / `{{args.key}}`）。
+   * 也就是说不接这块，仓主点开首屏那 4 条里的任何一条，看到的仍然是十六张空卡 ——
+   * 「看不到」这个原始投诉换个位置原样复发。
+   */
+  it("SEAM-6a 空子图必须先说清楚为什么：短结论进第一层，长因由只在浮层（诚实位降层但留记号）", async () => {
+    const user = userEvent.setup();
+    const MSG = "子图为空是因为缺试切参数：该切片的 root selector 声明了 {{args.so}}，本次未提供 so ⇒ root 过滤恒不匹配。";
+    stubLayers(
+      layersFixture({
+        counts: Array<number>(16).fill(0),
+        graphNodes: 0,
+        platform: { 6: 372, 10: 28 },
+        empty: {
+          reason: "missing_args",
+          requiredArgs: ["so"],
+          missingArgs: ["so"],
+          rootObjectTotal: 24,
+          argCandidates: [{ arg: "so", values: ["SO-3391", "SO-3402"] }],
+          message: MSG,
+        },
+      }),
+    );
+    renderPanel();
+    await screen.findByTestId("slice-layers-model_capacity_network");
+
+    // 第一层：给出**短结论**（是"子图没解出来"，不是"平台没有"）+ 状态徽标
+    const bar = await screen.findByTestId("slice-layers-empty-model_capacity_network");
+    expect(within(bar).getByTestId("slice-layers-empty-title-model_capacity_network").textContent).toContain("子图未解出");
+    // R-UI-3：长因由（口径/解释）**不在第一层**，只在浮层 —— 但第一层留了 ⚠ 记号
+    expect(screen.queryByTestId("slice-layers-empty-message-model_capacity_network")).toBeNull();
+    const why = screen.getByTestId("slice-layers-empty-why-model_capacity_network");
+    expect(why).toBeTruthy();
+    await user.click(why);
+    const pop = await screen.findByTestId("slice-layers-empty-why-model_capacity_network-pop");
+    expect(pop.className).toContain("popover-surface"); // 不自写背景（欠账 #104）
+    expect(pop.textContent).toContain("缺试切参数");
+
+    // 十六层仍然全在（层数守恒），且**一条占位明细都不许有**
+    expect(screen.getByTestId("slice-layers-total-model_capacity_network").textContent).toContain("16");
+    await user.click(screen.getByTestId("slice-layer-card-model_capacity_network-rule"));
+    const detail = await screen.findByTestId("slice-layer-detail-model_capacity_network-rule");
+    expect(within(detail).queryAllByTestId(/^slice-layer-item-/)).toHaveLength(0);
+  });
+
+  it("SEAM-6b 候选值来自后端且真能试切：点一下 → 请求带上 args → 界面翻成有数据", async () => {
+    const user = userEvent.setup();
+    const seenArgs: (string | null)[] = [];
+    const emptyBody = layersFixture({
+      counts: Array<number>(16).fill(0),
+      graphNodes: 0,
+      empty: {
+        reason: "missing_args",
+        requiredArgs: ["so"],
+        missingArgs: ["so"],
+        rootObjectTotal: 24,
+        argCandidates: [{ arg: "so", values: ["SO-3391", "SO-3402"] }],
+        message: "缺 so",
+      },
+    });
+    const filledBody = layersFixture({ counts: [0, 0, 9, 127, 5, 0, 32, 17, 10, 15, 13, 9, 12, 1, 0, 7] });
+    server.use(
+      http.get("*/a/v1/ontology/slices/:sliceKey/layers", ({ request }) => {
+        const a = new URL(request.url).searchParams.get("args");
+        seenArgs.push(a);
+        // 后端行为的忠实模拟：给了参数才解得出子图。
+        return HttpResponse.json(a && a.includes("SO-3391") ? filledBody : emptyBody);
+      }),
+    );
+    renderPanel();
+    await screen.findByTestId("slice-layers-empty-model_capacity_network");
+    // 候选值是后端给的两个真值，不是页面写死的
+    expect(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3391")).toBeTruthy();
+    expect(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3402")).toBeTruthy();
+    expect(seenArgs[0]).toBeNull(); // 首次不带 args
+
+    await user.click(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3391"));
+    // 接缝：点击必须真的把参数发出去（不是本地假装）
+    await waitFor(() => expect(seenArgs.some((a) => a !== null && a.includes("SO-3391"))).toBe(true));
+    // 界面随后端翻面：空子图条消失、层计数变成后端返回的那组
+    await waitFor(() => expect(screen.queryByTestId("slice-layers-empty-model_capacity_network")).toBeNull());
+    expect(screen.getByTestId("slice-layer-count-model_capacity_network-property").textContent).toBe("127");
+    expect(screen.getByTestId("slice-layer-count-model_capacity_network-rule").textContent).toBe("15");
+    // 当前生效参数显式摆在第一层（否则用户不知道自己在看哪个 root 的切片）
+    expect(screen.getByTestId("slice-layers-applied-model_capacity_network").textContent).toContain("so=SO-3391");
+  });
+
+  it("SEAM-6c 取不到候选就明说取不到（诚实留白，绝不拿假值凑）", async () => {
+    stubLayers(
+      layersFixture({
+        counts: Array<number>(16).fill(0),
+        graphNodes: 0,
+        empty: {
+          reason: "no_match",
+          requiredArgs: ["so"],
+          missingArgs: [],
+          rootObjectTotal: 24,
+          argCandidates: [{ arg: "so", values: [] }], // 真取不到
+          message: "过滤后无匹配",
+        },
+      }),
+    );
+    renderPanel();
+    await screen.findByTestId("slice-layers-empty-model_capacity_network");
+    expect(screen.getByTestId("slice-layers-nocand-model_capacity_network-so").textContent).toContain("取不到候选值");
+    // 一个候选按钮都不许凭空造出来
+    expect(screen.queryAllByTestId(/^slice-layers-cand-/)).toHaveLength(0);
+    expect(screen.getByTestId("slice-layers-empty-title-model_capacity_network").textContent).toContain("过滤无匹配");
   });
 });

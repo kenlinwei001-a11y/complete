@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { SliceLayer, SliceLayerId } from "@platform/contracts";
+import type { SliceLayer, SliceLayerId, SliceLayersResponse } from "@platform/contracts";
 import { fetchSliceLayers } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import styles from "./SliceLayersPanel.module.css";
@@ -84,11 +84,114 @@ function WhyPopover({ label, marked, children, testId }: { label: string; marked
   );
 }
 
+/**
+ * 「子图没解出来」的诚实条 —— 复核补的一块（真后端实测驱动）。
+ *
+ * 病根：98 条切片里 12 条无参调用即空子图，而这 12 条里**恰好包含首屏默认只显示的
+ * 那 4 条多跳业务切片**（它们的 root selector 写着 `{{args.so}}` / `{{args.key}}`）。
+ * 不给参数 ⇒ 十六层全空。若不先说清楚，十六张空卡会被读成「平台没有这些层」——
+ * 与审计 §1.2 那个误判一模一样，只是换了个位置复发。
+ *
+ * 第一层放：短结论（缺什么）+ 状态徽标 + **真实候选值**（后端从真对象上读出来的，
+ * 点一下即试切）。长因由降到 ⚠ 浮层，但第一层留记号（规范 §1：静默降层等于删除）。
+ */
+function EmptyGraphBar({
+  sliceKey,
+  empty,
+  rootType,
+  onPick,
+}: {
+  sliceKey: string;
+  empty: NonNullable<SliceLayersResponse["graph"]["empty"]>;
+  rootType: string;
+  onPick: (arg: string, value: string) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const title =
+    empty.reason === "missing_args"
+      ? t.empty.titleMissingArgs
+      : empty.reason === "no_root_objects"
+        ? t.empty.titleNoRootObjects
+        : t.empty.titleNoMatch;
+  return (
+    <div className={styles.emptyBar} data-testid={`slice-layers-empty-${sliceKey}`}>
+      <div className={styles.emptyHead}>
+        <span className={styles.emptyTitle} data-testid={`slice-layers-empty-title-${sliceKey}`}>
+          {title}
+        </span>
+        <span className="badge amber">{t.empty.badge}</span>
+        {empty.requiredArgs.length > 0 && (
+          <span className={styles.emptyMeta}>{t.empty.needArgs(empty.requiredArgs.join("、"))}</span>
+        )}
+        <span className={styles.emptyMeta}>{t.empty.rootTotal(rootType, empty.rootObjectTotal)}</span>
+        {/* 诚实位记号：完整因由在浮层，第一层看得见「这里有话要说」。 */}
+        <WhyPopover label={t.empty.whyLabel} marked testId={`slice-layers-empty-why-${sliceKey}`}>
+          <span className={styles.popSec}>
+            <span className={styles.popTitle}>{t.empty.whyLabel}</span>
+            <span data-testid={`slice-layers-empty-message-${sliceKey}`}>{empty.message}</span>
+          </span>
+        </WhyPopover>
+      </div>
+
+      {/* 候选值：**值来自真 root 对象**（后端 argCandidates），不是编的示例。
+          取不到就明说取不到 —— 宁可留白也不拿假值凑。 */}
+      {empty.argCandidates.map((c) => (
+        <div key={c.arg} className={styles.emptyPick}>
+          <span className={styles.emptyPickLabel}>{t.empty.pickLabel(c.arg)}</span>
+          {c.values.length === 0 ? (
+            <span className={styles.emptyPickLabel} data-testid={`slice-layers-nocand-${sliceKey}-${c.arg}`}>
+              {t.empty.noCandidates}
+            </span>
+          ) : (
+            c.values.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={styles.candBtn}
+                data-testid={`slice-layers-cand-${sliceKey}-${c.arg}-${v}`}
+                onClick={() => onPick(c.arg, v)}
+              >
+                {v}
+              </button>
+            ))
+          )}
+          <label className={styles.emptyPickLabel}>
+            {t.empty.inputLabel(c.arg)}
+            <input
+              className={styles.candInput}
+              data-testid={`slice-layers-arginput-${sliceKey}-${c.arg}`}
+              value={draft[c.arg] ?? ""}
+              onChange={(e) => setDraft((d) => ({ ...d, [c.arg]: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (draft[c.arg] ?? "") !== "") onPick(c.arg, draft[c.arg]!);
+              }}
+              style={{ marginLeft: 4 }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn sm"
+            data-testid={`slice-layers-argapply-${sliceKey}-${c.arg}`}
+            disabled={(draft[c.arg] ?? "") === ""}
+            onClick={() => onPick(c.arg, draft[c.arg] ?? "")}
+          >
+            {t.empty.apply}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: string; args?: Record<string, unknown> }) {
-  const argsKey = JSON.stringify(args);
+  // 页内试切参数：多跳切片的 root selector 要参数，不给就恒空子图（见 EmptyGraphBar 注释）。
+  // 外部传入的 args 是基线，页内选的覆盖它——不改调用方，纯加性。
+  const [pickedArgs, setPickedArgs] = useState<Record<string, unknown>>({});
+  const effectiveArgs = useMemo(() => ({ ...args, ...pickedArgs }), [args, pickedArgs]);
+  const argsKey = JSON.stringify(effectiveArgs);
   const q = useQuery({
     queryKey: ["a", "slice-layers", sliceKey, argsKey],
-    queryFn: () => fetchSliceLayers(sliceKey, args),
+    queryFn: () => fetchSliceLayers(sliceKey, effectiveArgs),
   });
   const [openLayer, setOpenLayer] = useState<SliceLayerId | null>(null);
 
@@ -120,6 +223,28 @@ export default function SliceLayersPanel({ sliceKey, args = {} }: { sliceKey: st
         </span>
       </div>
       <div className={styles.honesty}>{t.honesty}</div>
+
+      {/* 子图没解出来时，**先说这件事**：否则下面十六张空卡会被读成「平台没有这些层」。 */}
+      {graph.empty && (
+        <EmptyGraphBar
+          sliceKey={sliceKey}
+          empty={graph.empty}
+          rootType={q.data.rootType}
+          onPick={(arg, value) => {
+            setPickedArgs((a) => ({ ...a, [arg]: value }));
+            setOpenLayer(null);
+          }}
+        />
+      )}
+      {/* 已试切：把当前生效参数显式摆在第一层（不显示 = 用户不知道自己在看哪个 root 的切片）。 */}
+      {Object.keys(pickedArgs).length > 0 && (
+        <div className={styles.appliedBar} data-testid={`slice-layers-applied-${sliceKey}`}>
+          <span>{t.empty.applied(Object.entries(pickedArgs).map(([k, v]) => `${k}=${String(v)}`).join(" · "))}</span>
+          <button type="button" className="btn sm" data-testid={`slice-layers-clearargs-${sliceKey}`} onClick={() => setPickedArgs({})}>
+            {t.empty.clear}
+          </button>
+        </div>
+      )}
 
       {/* ── 第一层：十六层按递进带排（不平铺，箭头表达方向） ───────────────── */}
       {BANDS.map((band, bi) => (

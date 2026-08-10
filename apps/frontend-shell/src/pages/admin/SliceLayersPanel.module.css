@@ -270,3 +270,73 @@
   color: var(--muted2);
   line-height: 1.5;
 }
+
+/* ── 子图未解出的诚实条（WO-SLICE-16-LAYERS 复核补） ─────────────────────────
+   规范 §1：诚实位允许降到浮层，**但第一层必须留可见记号**。所以这里第一层放
+   「短结论 + 状态徽标 + 可点的真实候选值」，长因由进 ⚠ 浮层 —— 只留浮层等于静默删除。
+   放在带（band）之上：不先说「子图没解出来」，下面十六张空卡就会被读成「平台没有」。 */
+.emptyBar {
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: grid;
+  gap: 7px;
+  background: color-mix(in srgb, var(--amber) 7%, transparent);
+}
+.emptyHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.emptyTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--amber);
+}
+.emptyMeta {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.emptyPick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.emptyPickLabel {
+  font-size: 10.5px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+/* 候选值按钮：值本身来自真对象，点一下即试切。 */
+.candBtn {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: none;
+  color: var(--txt);
+  cursor: pointer;
+}
+.candBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.candInput {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  width: 148px;
+  padding: 2px 6px;
+}
+.appliedBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
