@@ -45,17 +45,21 @@ export const SimCertificationSchema = z.object({
     writebackComplete: z.boolean(),             // writeback 行动已配置
     observabilityMet:  z.boolean(),             // 图查询/切片达标
   }),
-  trialTick: z.object({
-    passed: z.boolean(), rulesFired: z.number().int(),
+  trialTick: z.object({                         // ⚠ WO-CERT-HONESTY ③ 改名：字段名 = 实测口径
+    passed: z.boolean(),                        // = 空跑未抛异常（派生图无环）；**不是**"世界推得动"
+    derivationNodes: z.number().int(),          // 拓扑排序出的派生规格节点数（图规模，非触发数）
+    propagationCovered: z.boolean(),            // 本次空跑是否覆盖传导栈（今天恒 false，欠账 #152）
     at: z.string().nullable(), error: z.string().nullable(),
   }),
   worldCompleteness: z.object({                 // 世界完整度（范围预检 = init step③）
     pct: z.number(),                            // 0-100
-    stateVars:       z.object({ present: z.number().int(), needed: z.number().int() }),
+    // ⚠ WO-CERT-HONESTY ① 删 `stateVars: {present, needed}`：两半都是 derivationRules 的复制品
+    //   （present 同一变量 / needed 同一表达式）⇒ 零独立事实，且把派生在 pct 里数了两遍。
     derivationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
     actions:         z.object({ present: z.number().int(), needed: z.number().int() }),
     propagationRules:z.object({ present: z.number().int(), needed: z.number().int() }),
-    entering: z.array(z.object({                // "将进入沙盘的状态变量"清单
+    stateVarKeys:    z.array(z.string()),       // 真状态变量名（传导规则 source∪target，清单非比值，不入 pct）
+    entering: z.array(z.object({                // "将进入沙盘的**要素**"清单（三类混装，前端按 kind 分组）
       key: z.string(),                          // 如 order_risk
       kind: z.enum(["DERIVATION", "ACTION", "PROPAGATION"]),
       source: z.string(),                       // 如 "FULFILLS r_order_risk_from_factory"
@@ -154,11 +158,25 @@ export type SimCertification = z.infer<typeof SimCertificationSchema>;
 ## 3. Trial Tick（空跑 1 tick · 复用既有 · 确定性 R6）
 
 **精确步骤**：
-1. 在 session scope 的**克隆态**上跑**一个 tick**：`propagateTick`（增量3，若就绪，触发传导规则）+ `recompute`（触发派生）—— **dryRun 不落真值（R4）**。
-2. 统计 `rulesFired`（触发的派生+传导规则数）；捕获是否抛错 → `error`。
-3. 写 `trialTick = { passed: error===null, rulesFired, at, error }`。**留痕**（PASS/FAIL + 时间 + 触发数）= 竞品"Trial Tick 完成，触发 4 条规则"。
-4. **确定性 R6**：同 scope+规则 → 同 `rulesFired`（单测跑两次断言相等）。
-5. **次序**：增量 2 可能早于增量 3。若 `propagateTick` 未就绪，Trial Tick 只跑 `recompute`（派生），`rulesFired` 只计派生数，传导记 0，**诚实标注"传导规则待增量3"**——不假装跑了传导。
+> ⛔ **本节原文与实装不符，已按实测改写（WO-CERT-HONESTY ③ · 2026-08-10 · 欠账 #152）。**
+> 原文写「跑 `propagateTick` + `recompute`，统计 `rulesFired`（触发的派生+传导规则数）」，
+> 并把缺口描述成「`propagateTick` 未就绪，待增量3」。**两句都已过期且方向相反**：
+> 传导核 `propagateTick` 早已实装且有生产调用方，真实缺口是**这条认证路从没调用它**
+> （形态是「接了线接错地方」，不是「还没做出来」——修法完全不同）。
+
+**实装步骤（`app.ts` `assembleCertification`）**：
+1. 在克隆态上跑 `ontologyCore.recompute(c, [], { dryRun: true })` —— **dryRun 不落真值（R4）**。
+   它只做两件事：装载/索引对象 + 对全部 ACTIVE `DerivationSpec` 拓扑排序（有环抛 `CyclicDerivationError`）。
+2. ⚠ `changes = []` ⇒ dirty 集为空 ⇒ 逐节点循环全部 `continue` ⇒ **零条派生公式被求值**（`updatedObjects` 恒 0）；
+   且**全程没有调用 `propagateTick`** ⇒ 零条传导规则被跑。
+3. 故只能诚实写两个数 + 一个覆盖面声明：
+   `trialTick = { passed: 未抛异常, derivationNodes: topo.length, propagationCovered: false, at, error }`。
+   - `passed` 语义 = 「**重算未抛异常（派生图无环）**」，**不是**「这个世界推得动」。
+     ⚠ L3 判据含 `trial.passed`、L4 又要先过 L3 ⇒ 整把梯子的第三级今天架在「重算没崩」上，这是现状实录。
+   - `derivationNodes` = 派生依赖图**规模**，不是「触发数」（旧名 `rulesFired` 错了两次：既无触发，数的也不是传导）。
+4. **确定性 R6**：同 scope+规则 → 同 `derivationNodes`（单测跑两次断言相等）。
+5. **待办（L3-a / 欠账 #152）**：让 Trial Tick 真空跑一个传导 tick，届时 `propagationCovered` 翻 `true`，
+   前端「⚠ 传导未纳入本次空跑」提示自动消失（UI 无需改文案）。
 
 > 复用：`simclock.ts tick()` 的 `ClockTickReport.firedEvents` 计数模式（`:64`/`:166`）。
 
@@ -167,14 +185,28 @@ export type SimCertification = z.infer<typeof SimCertificationSchema>;
 ## 4. 世界完整度（范围预检 = init wizard step ③ · 复用 closure over scope）
 
 **精确**：
-1. 对 init 选定的 **scope（slice 子图）** 跑 `validateClosure` → 算 present/needed：
-   - `stateVars`：scope 内派生属性 present（已物化）/ needed（本体声明）
-   - `derivationRules`：`DerivationSpec` present/needed
+1. 对 init 选定的 **scope（slice 子图）** 跑 `validateClosure` → 算 present/needed。
+   **每一对比值都必须能回答「present 与 needed 各自的承载物是谁」，答不上就不许上屏**：
+   - `derivationRules`：present = 已物化的 `DerivationSpec(ACTIVE)`；needed = 本体类型上声明的 `derivedProperties`
    - `actions`：`ActionType` present/needed
    - `propagationRules`：`PropagationRule` present/needed（增量3）
-2. `worldCompleteness.pct = 100 × Σpresent / Σneeded`。
-3. `entering[]` = scope 内"将进入沙盘的状态变量"清单，每条标 `source`（派生规则名 `r_xxx` / Action / PropagationRule）= 竞品 image7「order_risk 派生（FULFILLS `r_order_risk_from_factory`）…」。
-4. **全局 vs 局部**：`scope=GLOBAL`（整本体）vs `scope=LOCAL`（单对象子图）—— **同一投影函数，只换 scope 输入**（meta:sync 防漂；竞品 image5 局部 75/100 vs image6 全局 100/100）。
+   - ⛔ ~~`stateVars`：scope 内派生属性 present（已物化）/ needed（本体声明）~~
+     **已删（WO-CERT-HONESTY ① · 2026-08-10）**：这条原文与上面 `derivationRules` 说的是同一件事，
+     实装里 present 取的是**同一个变量**、needed 在 `app.ts` 是**逐字节相同的表达式**
+     ⇒ 屏上两行恒等、且派生在 `pct` 的分子分母里各被数两遍。
+     本平台真正的「状态变量」= 传导规则 `sourceStateVar ∪ targetStateVar` 去重集（同 `SandboxViewConfig.stateVars`），
+     但**无任何承载物声明「这个世界应有几个状态变量」** ⇒ 做不出诚实的 needed ⇒ 不做成比值。
+2. `worldCompleteness.pct = 100 × Σpresent / Σneeded`（**只含上述三对**）。
+3. `worldCompleteness.stateVarKeys` = 世界将承载的**状态变量名**（去重升序）。**是清单不是比值**，不参与 `pct`。
+4. `entering[]` = scope 内"将进入沙盘的**要素**"清单，每条标 `kind` + `source`（派生依赖 / Action / PropagationRule）。
+   ⚠ **不叫「状态变量」**（WO-CERT-HONESTY ②）：三种 `kind` 里只有 `DERIVATION` 是属性，
+   实测 demo 上 13 条里 `DERIVATION` 恰好 0 条 —— 旧标题里的那个名词在列表里一条都没有。
+   前端**必须按 kind 分组显示计数**（行动 N · 传导 N · 派生 N），不许拿一个名词盖三样东西。
+5. **全局 vs 局部**：`scope=GLOBAL`（整本体）vs `scope=LOCAL`（单对象子图）—— **同一投影函数，只换 scope 输入**（meta:sync 防漂；竞品 image5 局部 75/100 vs image6 全局 100/100）。
+6. **完整度 ≠ 认证（WO-CERT-HONESTY ④）**：`canEnterSimulation` **不含** `worldCompleteness`，这是对的、别加。
+   认证判「**能不能跑**」（结构闭合 + L4 三元组 + 空跑未抛异常），完整度判「**这个世界建得全不全**」；
+   两者互不蕴含（33% 的世界照样可以是 L4 可跑）。缺陷只在**表达** —— UI 把两者并排贴着且不解释，
+   读起来像自相矛盾。修法是在完整度卡加一句说明，**不改判据**。
 
 ---
 
@@ -185,7 +217,7 @@ export type SimCertification = z.infer<typeof SimCertificationSchema>;
 export function deriveCertification(
   closure: ClosureReport,        // 既有 validateClosure 产出（你不重算）
   gaps: GapReport,               // 既有 selfcheck 产出
-  trial: { passed: boolean; rulesFired: number; at: string | null; error: string | null },
+  trial: { passed: boolean; derivationNodes: number; propagationCovered: boolean; at: string | null; error: string | null },
   scope: {
     kind: "GLOBAL" | "LOCAL"; targetRef: string | null;
     objectTypes: ObjectTypeRef[]; derivations: DerivationRef[]; actions: ActionRef[];
