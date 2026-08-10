@@ -21,11 +21,15 @@
 pnpm --filter @platform/contracts build
 pnpm --filter @platform/llm-adapters build      # ⚠ 不先建这个，datacore build 会报
                                                 #   "Cannot find module '@platform/llm-adapters'"（与本单无关的假红）
-pnpm --filter datacore build
+pnpm --filter datacore build && pnpm --filter agentcore build
 PORT=4051 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
   CREDENTIAL_KEY=$(printf '%064d' 1) node apps/datacore/dist/server.js
+PORT=4052 DATACORE_BASE_URL=http://127.0.0.1:4051 node apps/agentcore/dist/main.js
 # 全部探针一律带：-H 'X-Debug-User: demo:admin:admin|planner|catalog_admin'
 ```
+
+**双服务都起了才算数**：本文有三条结论只有把 AgentCore 也起起来、**亲手把那条链跑一遍**才成立
+（§2.3 的工作流失败、§1.1③ 的资源目录 2 条、§3-T1 的检索召回）——「我 grep 了」不是复验。
 
 **否定结论的金丝雀（铁律 0.6：报「0 命中 / 不存在 / 零调用方」前必须先证工具是对的）**
 
@@ -57,9 +61,9 @@ PORT=4051 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
 
 | # | 落点 | 谁在调 | 它让平台多推演出什么 | 定性 |
 |---|---|---|---|---|
-| ① | **Path-A 执行计划的取证跳** `resolve_slice` | `apps/agentcore/src/workflow/executor.ts:131` ← 生产种子计划 `apps/agentcore/src/mocks/seed.ts:266/331`（`main.ts:26 → ensureScenarioPackageSeed → seedIntentsAndPlans`） | 产出 **ValidationTrace**：切片对象类型进一致性检查（`ENTITY_DEFINED`）、切片对象标量属性反向核对知识图谱（`crossValidate`）——`executor.ts:594/623` | **已实现且在生产链路上**。但**切片结果不进求解器入参**（同计划 `s2` 的 args 里没有任何 `{{steps.s1…}}`，`seed.ts:266-280`）⇒ 它贡献的是**可信度**，不是**结论** |
+| ① | **Path-A 执行计划的取证跳** `resolve_slice` | `apps/agentcore/src/workflow/executor.ts:131`（dispatch）· `:184 (collectSliceObjects)` ← 生产种子计划 `apps/agentcore/src/mocks/seed.ts:266/331`（`main.ts:26 → ensureScenarioPackageSeed → seedIntentsAndPlans`） | 产出 **ValidationTrace**：切片对象类型进一致性检查（`executor.ts:596` `ENTITY_DEFINED`）、切片对象标量属性反向核对知识图谱（`executor.ts:623` `crossValidate`） | **已实现且在生产链路上**。但**切片结果不进求解器入参**（同计划 `s2` 的 args 里没有任何 `{{steps.s1…}}`，`seed.ts:266-280`）⇒ 它贡献的是**可信度**，不是**结论** |
 | ② | **`ontology_query` 薄层遍历求解器** | `apps/datacore/src/solvers/service.ts:1156-1157`（装配 `executeSlice` 进 `QueryEngineDeps`）→ `apps/datacore/src/ontology/query-engine.ts:198` | **唯一一条切片真参与算数的路**。实测 `rootType=Order --order_of_customer--> Customer, count` → `{"Customer.count(custName)":8}`，且逐行带 `provenance{typeKey,objId,linkPath}` | **已实现且在生产链路上**（求解器注册表实测 59 条，含 `ontology_query`） |
-| ③ | **Agent 的「能发现的切片」供给侧** | `apps/agentcore/src/dril/resource-registry.ts:109 → :182 (projectSlices)` ← `apps/datacore/src/catalog.ts:284` | 让 Agent 在 discover 时看得见「有哪些切片可用」 | **接了线没数据**：实测 `GET /a/v1/catalog?kind=slices` = **2 条**（`model_capacity_network` / `base_risk_profile`，硬编码于 `catalog.ts:47 (BUILTIN_SLICE_CATALOG)`）。98 条 SliceSpec **一条都进不去**（门槛是 `spec.description` 非空，实测 0/98） |
+| ③ | **Agent 的「能发现的切片」供给侧** | `apps/agentcore/src/dril/resource-registry.ts:109 → :182 (projectSlices)` ← `apps/datacore/src/catalog.ts:284` | 让 Agent 在 discover 时看得见「有哪些切片可用」 | **接了线没数据**：双服务实测 `GET /b/v1/resources` 总资源 **1055** 条，其中 `kind=slice` 恰 **2** 条（`base_risk_profile` / `model_capacity_network`，硬编码于 `catalog.ts:47 (BUILTIN_SLICE_CATALOG)`）。98 条 SliceSpec **一条都进不去**（门槛是 `spec.description` 非空，实测 0/98） |
 | ④ | **管理台可视** | `apps/frontend-shell/src/App.tsx:174/175`（`/admin/slices` · `/admin/slice-library`）· `SliceInspector.tsx:95` 内联十六层面板 | 让人看见切片长什么样 | **已实现且在生产链路上**（但首屏默认路径出空卡，见 §2.3） |
 
 ### 1.2 三个「用户以为有、实测不是」的地方
@@ -133,7 +137,7 @@ PORT=4051 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
 | P0-a「`resolve_slice` fall-through 到通用引擎」 | **A** | `apps/datacore/src/app.ts:2997-3013`（先旧解析器，`NOT_FOUND` 才 fall-through `getSliceSpec`+`executeSlice`） |
 | **「两场景都经它检索再推演」**（`SLICE-order-fulfillment-360.md` §3） | **C·接了线接错地方** | 该说法成立**只在脚本里**（`scripts/provision-enterprise.mjs` 第 5b 步 / `scripts/slice-scenarios-excel.mjs`——非在线推演链）。**在线**的 Path-A 计划里，`resolve_slice` 的产物只进 ValidationTrace（`workflow/executor.ts:183-184`），求解器入参不引用它 |
 | 首屏默认多跳切片可用 | **C·接了线没数据** | 实测 4 条多跳切片 `args={}` 直解 **全部 nodes=0 edges=0**；十六层投影 `args={}` → `present=3 / not_in_slice=3 / absent=10` + `graph.empty.reason=missing_args`。给真参（`so=SO-3391`）后：`order_fulfillment_360` **nodes=531 · 12/1/3**、`enterprise_360` **555 · 12/1/3**、`order_to_cash_720` **540 · 12/1/3**、`aop_scenario_chain@key=aggressive` **5 节点 · 11/1/4**。调用点 `apps/frontend-shell/src/pages/admin/SliceInspector.tsx:95` 不传 args → `SliceLayersPanel.tsx:192` 默认 `args = {}`。**（此条归 `WO-SLICE-DEFAULT-ARGS`，本文不给修法）** |
-| **已发布工作流 `sop_balance_wf` 的切片引用** | **D·悬空**（金丝雀见下） | `apps/agentcore/src/mocks/seed.ts:970` 步骤 `s1 = resolve_slice(monthly_balance)`。实测 `monthly_balance` **两条路由都 404**（`/a/v1/ontology/slices/*/resolve` 与 `/a/v1/slices/*/resolve`），且不在 98 条 SliceSpec 里、不在 `BUILTIN_SLICE_CATALOG` 的 2 条里、mock 客户端也抛 `unknown slice`（`apps/agentcore/src/mocks/clients.ts:203`）。⇒ 该工作流第一步必落 `!r.ok` → `onError` 缺省 `FAIL`（`workflow/executor.ts:125/171-177`）⇒ **整条工作流必失败**。<br/>**金丝雀**：同一探针同一路由，`order_fulfillment_360` → **200**；`model_capacity_network`+正确参数 → **200**。⇒ 404 是真 404 |
+| **已发布工作流 `sop_balance_wf` 的切片引用** | **D·悬空**（金丝雀见下） | `apps/agentcore/src/mocks/seed.ts:970` 步骤 `s1 = resolve_slice(monthly_balance)`。实测 `monthly_balance` **两条路由都 404**（`/a/v1/ontology/slices/*/resolve` 与 `/a/v1/slices/*/resolve`），且不在 98 条 SliceSpec 里、不在 `BUILTIN_SLICE_CATALOG` 的 2 条里、mock 客户端也抛 `unknown slice`（`apps/agentcore/src/mocks/clients.ts:201`）。⇒ 该工作流第一步必落 `!r.ok`（`workflow/executor.ts:168`）→ `onError` 缺省 `FAIL`（`:125`）⇒ **整条工作流必失败**。<br/>**金丝雀**：同一探针同一路由，`order_fulfillment_360` → **200**；`model_capacity_network`+正确参数 → **200**。⇒ 404 是真 404。<br/>**⚠️ 亲手真跑（绿测试≠能用·不是读代码推的）**：双服务起好后 `POST /b/v1/workflows/wf_seed_sop_balance/run {"inputs":{"month":"2026-03","segment":"ESS"}}` → HTTP 200、**`status:"FAILED"`**、`error.code=TOOL_ERROR`、`stepId:"s1"`、原文 `DataCore POST /a/v1/slices/monthly_balance/resolve -> 404 {"code":"NOT_FOUND"}`、`stepOutputs:{}` |
 
 ### 2.4 `docs/PRD-agent-navigation-slice-latency.md`
 
@@ -186,16 +190,25 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 于是同一个问题两次问可能给两张不同的图。放开后，Agent 一步命中一条**已被契约锁住的**跨域子图（10 域·540 节点），
 答案的证据链从"我拼的"变成"平台登记的那条链"。
 
+**今天的基线（双服务实测，供验收对拍）**
+- `GET /b/v1/resources` 总资源 **1055**，`kind=slice` = **2**；
+- `POST /b/v1/resources/search {"query":"这张订单从下单到回款牵涉哪些对象"}` → 前 20 名 **一条切片都没有**
+  （命中的是 `intent:affected_orders 0.381` / `solver:affected_orders 0.381` / `solver:ontology_query 0.375` / `intent:order_deep_360 0.375` / `object_type:OrderLine` …）。
+  ⇒ 平台**有**一条为这个问题量身定做的切片（`order_to_cash_720`，10 域 540 节点），**而检索层看不见它**。
+
 **验收判据（机器可验证）**
-- `GET /a/v1/catalog?kind=slices` 返回条数 **≥ 4 + 2**（4 条多跳 + 2 条内置），且含 `order_fulfillment_360`；
+- `GET /b/v1/resources?kind=slice` 从 **2** → **≥6**（4 条多跳 + 2 条内置），且含 `order_to_cash_720`；
 - 每条自定义切片带 `description`（非空）与 `argHints`（含 root selector 的 `{{args.X}}` 名，见 T3）；
 - **变异反证**：把某条切片的 `description` 清空 → 该条从目录消失（证明门槛是它，不是别的）；
-- SEAM：一条真问句经 path-B discover → 返回资源包里出现 `kind=slice` 且 key 是那 4 条之一（今天恒为 2 条内置之一）。
+- **SEAM（接缝驱动）**：上面那条真问句的 top-20 里出现 `slice:order_to_cash_720`。
+  ⚠️ 判据必须写成「**那条问句**召回**那条切片**」，不许写成「资源目录里切片数 > 2」——
+  后者是供给侧计数，**不度量**「Agent 真能用上」。
 
 ### T2 · 悬空切片引用清零 + 一道守它的门
 
 **多推演出什么**：`sop_balance_wf`（S&OP 月度平衡，已发布）今天**第一步必失败**——用户问月度平衡，拿到的是错误而不是结论。
 清零后这条工作流能跑到底。
+**今天的基线（亲手真跑）**：`POST /b/v1/workflows/wf_seed_sop_balance/run` → `status:"FAILED"` · `stepId:"s1"` · `TOOL_ERROR … 404 NOT_FOUND`。
 
 **验收判据**
 - 静态门：扫全部 `PUBLISHED` 的 ExecutionPlan/Workflow 步骤里的 `params.sliceKey`，
@@ -309,7 +322,7 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 | # | 处置 | 对象 | 理由 |
 |---|---|---|---|
 | 1 | **砍** | 「再造一份统一切片视图，把导航切片/本体切片/DRIL 资源图合三为一」 | 三者今天各自都有非 test 调用方、各自有测试、各自在跑。合并 = 同时动 QOS 路由 + 本体引擎 + 资源检索三条链，是本仓反复吃亏的「平行造第二套」的镜像版（RL10）。**改为 P1-4 只做改名 + 禁混用门**——先让"同名不同物"这件事本身停止骗人，成本一天，收益立刻 |
-| 2 | **降级** | 94 条 `coverage_*` 切片 | 不再作为「字段被切片覆盖」的证据，降级为**字段可达性索引**（它确实能取到那个字段，只是零跳）。理由：覆盖算法 `slice-coverage.ts:45` 对 root 类型「全字段恒覆盖」，加上 `data-categories.ts:109` 每类型自动生成一条根切片 ⇒ 判别力≈0。**注意措辞**：这道门**不是在撒谎**（root-only 切片真能返回全字段），是**它度量的东西不是我们要的东西** |
+| 2 | **降级（不是删）** | 94 条 `coverage_*` 切片 | 不再作为「字段被切片覆盖」的证据，降级为**字段可达性索引**（它确实能取到那个字段，只是零跳）。理由：覆盖算法 `slice-coverage.ts:45` 对 root 类型「全字段恒覆盖」，加上 `data-categories.ts:109` 每类型自动生成一条根切片 ⇒ 判别力≈0。**注意措辞**：这道门**不是在撒谎**（root-only 切片真能返回全字段），是**它度量的东西不是我们要的东西**。<br/>**降级安全性已追一层调用**：`batteryCoverageSlices` 的全部消费方仅两处——`apps/datacore/src/synthetic/service.ts:1152`（合成即落库，因此它们出现在 `GET /a/v1/ontology/slices` 的 98 条里、并被 `SlicesPage.tsx:34` 默认折叠）与 `scripts/check-ontology-slice-coverage.mjs:68`。⇒ **只改门的判据、不删这 94 条**，不会打断别的链 |
 | 3 | **降级** | 「平台 12/16 层有承载物」这类光秃秃的覆盖数 | 实测证明 A 集覆盖数是变量：同一快照 11–12 present 随切片/参数变，无参时全部掉到 3。任何不带「哪一套 + 哪条切片 + 什么 args + 三态分开」的覆盖数，一律不得引用（§2.5 裁决 3） |
 | 4 | **砍** | REQ153 那套十六层的对账收尾 | 缺的输入（S7 原文档）不在仓里。继续对账只会产生更多没有证据的猜测。**判定停在「已证不同、成因未知」是正确的终点，不是欠账** |
 | 5 | **砍** | 「让所有 98 条切片都 16/16」 | `aop_scenario_chain` 实测 5 节点 → 11 present 是**合理的**（那条链本来就只跨 plan+finance 两域）。追求全绿会逼出造数据。**十六层的正确用法是诊断，不是 KPI** |
@@ -370,7 +383,7 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 
 | 建议编号 | 断点 | 链路位置 | 性质 |
 |---|---|---|---|
-| **G-SLICE-CATALOG-TWO-ITEMS** | **Agent 能发现的切片只有 2 条硬编码的，98 条一等 SliceSpec 一条都进不去**。门槛是 `spec.description` 非空（`apps/datacore/src/catalog.ts:275-284`），实测 0/98 满足 ⇒ 平台唯一的跨域推演入口对 Agent 不可见 | `catalog.discover("slices") → dril/resource-registry.ts:109/182 → discover 工具` | **接了线没数据**（修法=补数据，不是改引擎） |
+| **G-SLICE-CATALOG-TWO-ITEMS** | **Agent 能发现的切片只有 2 条硬编码的，98 条一等 SliceSpec 一条都进不去**。门槛是 `spec.description` 非空（`apps/datacore/src/catalog.ts:276`，合并于 `:284`），实测 0/98 满足 ⇒ 平台唯一的跨域推演入口对 Agent 不可见 | `catalog.discover("slices") → dril/resource-registry.ts:109/182 → discover 工具` | **接了线没数据**（修法=补数据，不是改引擎） |
 | **G-SLICE-KEY-DANGLING** | **已发布工作流引用不存在的切片**：`sop_balance_wf` 的 `s1 = resolve_slice(monthly_balance)`（`apps/agentcore/src/mocks/seed.ts:970`），实测两条路由均 404、mock 亦抛 `unknown slice` ⇒ 该工作流第一步必 FAIL 且**四包全绿**（测试咬的是执行器，不是这条引用） | `seed 计划/工作流.params.sliceKey → slices 表 / BUILTIN_SLICE_CATALOG` | **悬空引用**（无门守·T2 补门） |
 | **G-SLICE-COVERAGE-TAUTOLOGY** | **切片字段覆盖门由「每类型一条零跳根切片」自动满足**：`data-categories.ts:109` 自动派生 94 条 `coverage_*`，`slice-coverage.ts:45` 又规定 root 全字段恒覆盖 ⇒ 新类型进分类即自动绿。**门为真但判别力≈0** | `check-ontology-slice-coverage.mjs:70 → computeFieldCoverage` | **判据不度量目标**（形态：「我用『每个类型都有一条根切片』当作『字段被业务切片覆盖』的证据」） |
 | **G-NAVSLICE-NOT-ONTOLOGY** | **「导航切片」与「本体切片」同名不同物**：`agent/navigation-slice.ts:283` 是硬编码 `SOLVER_CATALOG` 的正则投影，对 `SliceSpec`/`sliceKey`/`slice-index` **零命中**（金丝雀 `SOLVER_CATALOG`=8）。而 `docs/PRD-agent-navigation-slice-latency.md:53` 白纸黑字写「复用 `ontology/slice-index` 切片」⇒ 读文档的人会以为 Agent 已经在读本体切片 | `Query → projectNavigationSlice → 首轮 prompt`（与 `SliceSpec` 无任何边） | **同名不同物 · 文档承诺与实现分岔**（P1-4 改名 + 禁混用门） |
@@ -389,9 +402,10 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 | 2 | **path-B agent 在真 LLM 下会不会真选中切片** | 本单无 LLM 凭据，且不跑 live LLM。SEAM 测证的是机制，不是"模型会不会选" | 真 LLM 20 题 live 重测（与 `PRD-agent-navigation-slice-latency.md` §7.4 同一笔未闭环账） |
 | 3 | **导航切片 + 规划式执行的墙钟提速** | 同上：墙钟只能 live 测 | live 计时（原观测 137s → 目标 path-A <5s / path-B <10s） |
 | 4 | **pg 模式下切片行为是否与 memory 模式一致** | 本单只跑了 memory 模式（`SEED_DEMO=1`，无 `DATABASE_URL`）。R9 双实现要求两边一致，但我**没测 pg** | 起 pg 跑同一组探针，逐条比对 nodes/edges 与十六层三态 |
-| 5 | **`sop_balance_wf` 在生产里被触发过几次 / 有没有用户真撞上** | 我只证了「它必失败」（404 + `onError` 缺省 FAIL），**没有**证明它被调用的频次；仓里也没有可读的调用计数 | 查生产 task 表按 workflow key 计数，或加 metric |
-| 6 | **T4 的 SEAM 判据今天是否真的"必然相同"** | 我从代码读到求解器入参不引用切片步骤（`seed.ts:266-280`），**但没有真跑两种身份对拍**（要起 AgentCore + 造 base_manager 会话，超出本单的只读取证范围） | 起双服务，用 `X-Debug-User: demo:u:base_manager:常州` 与 admin 各跑一次同问句，对拍结论 |
-| 7 | **94 条 `coverage_*` 切片有没有别的真实消费方** | 我确认了覆盖门在用它们；**没有**穷举其他消费方（可能有 A4 浏览器/数据模版在用）。降级前须补这一层 | `grep` + 追一层调用，确认降级不打断别的链 |
-| 8 | **T1 放开目录后 Agent 上下文预算是否够** | `catalog.ts:295` 有 `query ? filtered.slice(0,20)` 的截断，但 98 条全进目录后的**无关键词全量列表**会不会撑爆管理台/prompt，我没量 | 量一次投影后的 token 体积；必要时对 `coverage_*` 单独设 `description` 策略 |
-| 9 | **`GET /a/v1/resources?kind=slice` 实测 404** | 该路径可能不叫这个名字（我没继续追）。**不许**据此说"统一资源目录里没有切片"——`dril/resource-registry.ts:182` 明明在投影 | 找到真实端点名再测；或直接读 `resource-registry` 的产物 |
-| 10 | **本文所有行号的时效** | 锚点取自 canonical `282b8239`；`docs/RECONCILE-slice-16-layers-two-sets.md` 引的 `slice-layers.ts:33/34-49` 是 **reconcile 分支**的行号（该分支给 `SLICE_LAYER_IDS` 加了 15 行注释），canonical 上同一符号在 **:18**。**两套行号不可混用** | 并线后统一校准 |
+| 5 | **`sop_balance_wf` 在生产里被触发过几次 / 有没有用户真撞上** | 「它必失败」已由**亲手真跑**坐实（`status:FAILED` · `stepId:s1` · 404），但**被调用的频次**我没证；仓里也没有可读的调用计数。**「它一定坏」和「它一定被用过」是两个命题** | 查生产 task 表按 workflow key 计数，或加 metric |
+| 6 | **T4 的 SEAM 判据今天是否真的"必然相同"** | 我从代码读到求解器入参不引用切片步骤（`seed.ts:266-280`），**但没有真跑两种身份对拍**——双服务虽已起，造 `base_manager:常州` 会话 + 对拍同问句结论超出本单只读取证的边界 | 用 `X-Debug-User: demo:u1:base_manager:常州` 与 admin 各跑一次 `capacity_feasibility` 同问句，对拍结论是否逐字节相同 |
+| 7 | ~~94 条 `coverage_*` 有无别的消费方~~ **已判定** | 追一层调用后穷举完毕：仅 `synthetic/service.ts:1152`（落库）与 `check-ontology-slice-coverage.mjs:68`（门）两处。**降级安全**，见 §5-2 | — |
+| 8 | **T1 放开目录后 Agent 上下文预算是否够** | `catalog.ts:296` 有 `query ? filtered.slice(0,20)` 的截断，但**无关键词全量列表**（管理台那条路）会不会撑爆 prompt/页面，我没量 | 量一次投影后的 token 体积；必要时对 `coverage_*` 单独设 `description` 策略 |
+| 9 | ~~`GET /a/v1/resources?kind=slice` 404~~ **已判定（两步）** | ①路由不在 DataCore 在 **AgentCore**（`apps/agentcore/src/server.ts:910/912`），我把 AgentCore 的路由打到了 4051 ⇒ 那个 404 是**探针错**不是**缺口**（第一版差点据此写成"统一资源目录里没有切片"）。②起 AgentCore 后实测：总资源 **1055**、`kind=slice` **2**、DRIL 检索 top-20 **零切片** ⇒ 缺口是真的，但**理由和那个 404 无关** | — |
+| 10 | **AgentCore 端的资源目录会不会有第二个切片供给源** | 我只验到「总数 2 且 key 与 `BUILTIN_SLICE_CATALOG` 逐字相同」，这**强烈提示**唯一供给源是 `catalog.discover("slices")`，但我**没有**变异反证（改 catalog 后看资源目录是否随之变） | 改一条 `BUILTIN_SLICE_CATALOG` 的 key → 重启 → 看 `/b/v1/resources?kind=slice` 是否跟着变 |
+| 11 | **本文所有行号的时效** | 锚点取自 canonical `282b8239`；`docs/RECONCILE-slice-16-layers-two-sets.md` 引的 `slice-layers.ts:33/34-49` 是 **reconcile 分支**的行号（该分支给 `SLICE_LAYER_IDS` 加了 15 行注释），canonical 上同一符号在 **:18**。**两套行号不可混用** | 并线后统一校准 |
