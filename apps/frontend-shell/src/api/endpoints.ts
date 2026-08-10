@@ -54,6 +54,8 @@ import type {
   SkillCompileResult,
   SolverCategory,
   EnterpriseState,
+  ImpactAnalysisRequest,
+  ImpactAnalysisResponse,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
@@ -700,6 +702,58 @@ export const fetchEnterpriseState = (id: string) =>
 /** 捕获一份快照（幂等：同一逻辑时刻重复捕获覆盖同一行、内容逐字节相同）。 */
 export const captureEnterpriseStateSnapshot = (worldId?: string) =>
   api.a<EnterpriseState>("/a/v1/twin/enterprise-states", { body: worldId ? { worldId } : {} });
+
+// ── WO-BEFE-WIRE-3 · 上面三条读/写之外，`fork` 与 `diff` 后端注册了却一直零前端调用方 ──────
+// **2026-08-10 实测**（复验命令：`node scripts/check-backend-frontend-seam.mjs --verbose`，
+// 载体② 的「当前零调用端点明细」里当天确有这两条）：`POST …/twin/enterprise-states/:id/fork`
+// 与 `GET …/twin/enterprise-states/:id/diff` 在并集态第一次被照出来。
+// 本次接线后同一条命令报「已修复 3」——真消费方 = `views/sim/EnterpriseStateTwinPanel.tsx`，
+// 挂在推演沙盘右栏「快照分叉与比对」。
+
+/**
+ * 把一份快照 fork 进**仿真世界**（PRD-enterprise-decision-twin §4.1 两世界物理隔离）。
+ *
+ * ⚠ `worldId` 必须是一个**已存在的推演会话 id**（不是自由字符串，更不是 `REAL`）——
+ *   后端 400 `worldId required` / 404 `sim session not found`。fork **产生新行**，
+ *   真实世界那一行一个字节都不动；新行每条指标的 `source.kind` 被翻成 `FORKED`
+ *   （诚实：这些数是复制来的，没有重算）。
+ */
+// ⚠ 名字刻意不叫 `forkEnterpriseState`：契约里已有一个**同名纯函数**（算法本尊，mock 侧在用）。
+//   同名两件事迟早被 import 混，`ToWorld` 后缀让"这是那条 HTTP 调用"一眼可辨。
+export const forkEnterpriseStateToWorld = (stateId: string, worldId: string) =>
+  api.a<EnterpriseState>(`/a/v1/twin/enterprise-states/${encodeURIComponent(stateId)}/fork`, { body: { worldId } });
+
+/** 快照差分的一行（口径 = 契约纯函数 `diffEnterpriseStates`，A/B 两侧同一份实现）。 */
+export interface EnterpriseStateChange {
+  key: string;
+  group: string;
+  label: string;
+  from: number | null;
+  to: number | null;
+}
+/**
+ * 两份快照的指标差：`after` = 路径上那份，`before` = `?against=` 那份。
+ * `changes` **只含真的变了的项**（值相等的不进结果）⇒ 空数组 = 两份快照逐项一致，
+ * 不是"没查到"。
+ */
+export const fetchEnterpriseStateDiff = (stateId: string, against: string) =>
+  api.a<{ before: string; after: string; changes: EnterpriseStateChange[] }>(
+    `/a/v1/twin/enterprise-states/${encodeURIComponent(stateId)}/diff?against=${encodeURIComponent(against)}`,
+  );
+
+// ---------------- WO-IMPACT-PROPAGATION · 影响传播统一入口（Decision Twin §14 / PRD E5）----------------
+/**
+ * 在**某个被隔离的世界里**跑一次变更的影响传播，返回四维分项 + 诚实标记。
+ *
+ * 与既有两个出口（`POST /a/v1/inference/whatif` · `generic_inference` 求解器）平行：
+ * 那两个只给一个裸 `affectedObjects:number`，本端点把「对象 / 流程 / 决策 / KPI」四维拆开，
+ * 且每一维都是 `available` 上的判别联合 —— **`available:false` 与 `count:0` 是两件不同的事**
+ * （前者"算不了"，后者"查过了没中"），前端必须分开显示，不许都渲染成 0。
+ *
+ * `worldId` = `SimSession.id`（栈 A 的世界）。跨租户/不存在一律 404（暗发）。
+ */
+export const runImpactAnalysis = (body: ImpactAnalysisRequest) =>
+  api.a<ImpactAnalysisResponse>("/a/v1/simulation/impact-analysis", { body });
 
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }

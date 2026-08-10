@@ -549,6 +549,12 @@ export const zh = {
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
+        // ── WO-BEFE-WIRE-3 · 影响传播 / 快照分叉比对（口径与公式一律进浮层，第一层只留数值与状态）──
+        impactBasis: "影响面怎么算 · 引擎与口径",
+        impactDimension: (label: string) => `${label} · 这一维的连接键与全域`,
+        impactHonesty: "「算不了」与「没影响」的区别",
+        twinFork: "分叉进仿真世界会发生什么",
+        twinDiff: "两份快照的差怎么算",
       },
     },
     inference: {

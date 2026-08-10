@@ -1,0 +1,161 @@
+/*
+ * WO-BEFE-WIRE-3 · 影响传播面板 / 快照分叉比对面板共用样式。
+ *
+ * 遵 `docs/CONVENTION-ui-information-layering.md`：
+ *  · R-UI-1 视线距离 —— 数值与它的标签同在一张卡内（`.card`），不做「左端名右端数中间 1800px」的行式布局；
+ *  · R-UI-2 字号 ≤3 级 —— `.headNum`（本页要回答的那个数·唯一最大级）
+ *                        / `.cardNum`（分项，降一级）
+ *                        / `.meta`（辅助说明，最小级）；
+ *  · §3 结构要画出来 —— `.chain` 用连接线把「对象 → 流程 / 对象 → KPI → 决策」的推导方向摆出来，
+ *    不看文字也能看出谁推出谁（四个并列方块表达不出这层关系）。
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── 表单行（世界选择 + 触发按钮）───────────────────────────────── */
+.form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px;
+  align-items: center;
+}
+.form select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ── 第一层：本面板要回答的那个数（唯一最大字号）──────────────── */
+.head {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.headNum {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+.headLabel {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ── 结构：推导链（对象 → 流程 / 对象 → KPI → 决策）────────────── */
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/** 一支：左边一根连接线 + 卡片，视觉上"从上面那个数分出来的" */
+.branch {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.connector {
+  flex: 0 0 14px;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-bottom-left-radius: 6px;
+  margin-bottom: 14px;
+}
+/** 二级支（KPI → 决策）：再缩进一层，表达"决策是从 KPI 推出来的"，不是与 KPI 并列 */
+.sub {
+  margin-left: 18px;
+}
+
+.card {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cardMain {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.cardNum {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.cardLabel {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.meta {
+  font-size: 10.5px;
+  color: var(--muted2);
+  white-space: nowrap;
+}
+
+/** 「算不了」（available:false）：不是 0，必须在第一层看得见有话要说 */
+.blocked .cardNum {
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── 诚实位记号（降层到浮层后，第一层保留的可见记号）────────────── */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ── 第二层：明细（一次点击后才出现）───────────────────────────── */
+.detailToggle {
+  align-self: flex-start;
+  font-size: 11px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 6px 2px 0;
+  white-space: nowrap;
+}
+.table td {
+  padding: 2px 6px 2px 0;
+  vertical-align: top;
+}
+.scroll {
+  overflow-x: auto;
+  max-height: 220px;
+  overflow-y: auto;
+}
