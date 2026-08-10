@@ -249,6 +249,23 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
       ).toBe(0);
     });
 
+    /**
+     * ⚠ **别名逃逸**（2026-08-10 合并单实测，铁律 0.6 第 2 次 ⇒ 建机制）：
+     * 下面几条数的是 `buildCadenceGates(` / `scopePropagationGraph(` 这类**调用式**。
+     * 注入一份 `import { buildCadenceGates as _x }` + `_x(...)` 的第二处装配 ⇒ **一条都没中、全绿**。
+     * 与本文件 GRAPH_MATERIALIZE 那次踩的是**同一个形态**（那次是变量名，这次是 import 别名）：
+     * 抄装配的人必然改名，于是"按名字数调用式"天生抓不到它要抓的那个人。
+     * 机制：**在 import 边界上断言** —— 别名可以随便起，但原名必须出现在 `import {…}` 子句里。
+     */
+    it("app.ts 不许 import 装配原语（别名也不行——这是上面几条数调用式抓不到的那一半）", () => {
+      const clause = [...APP_SRC.matchAll(/import\s*\{([^}]*)\}\s*from\s*"\.\/sim\/propagation\.js"/g)]
+        .map((m) => m[1] ?? "")
+        .join(",");
+      expect(clause, "金丝雀不中 ⇒ import 抽取器坏了，否定结论不许信").toContain("propagateTick");
+      expect(clause.includes("buildCadenceGates"), "app.ts import 了闸门装配原语（哪怕 as 成别名）").toBe(false);
+      expect(clause.includes("scopePropagationGraph"), "app.ts import 了范围裁剪原语（哪怕 as 成别名）").toBe(false);
+    });
+
     it("范围裁剪只有一处，且闸门装配也只有一处（两者必须与图物化同处，否则总有一条路绕得过去）", () => {
       expect(countCodeSites(INPUTS_SRC, SCOPE_CROP()), "🔴 装配处里没有范围裁剪").toBe(1);
       expect(countCodeSites(INPUTS_SRC, CADENCE_ASSEMBLE()), "🔴 装配处里没有闸门装配").toBe(1);

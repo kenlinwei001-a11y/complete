@@ -752,7 +752,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * "默认折叠的诊断抽屉"。抽屉入口带**真计数**（`issues`）：就绪认证报 `cert.gaps.length`
    * ——也就是「还差哪几件才算就绪」的真条数，不是装饰徽标。
    */
-  const diagnostics: SandboxConsoleRailSection[] = [
+  const diagnostics: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**右栏区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
     {
       id: "readiness",
       title: "就绪认证",
@@ -948,7 +948,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   ];
 
   // ── 右栏可折叠区：决策者用得上的两样（多场景对比 / AI 指挥台）─────────────────
-  const rail: SandboxConsoleRailSection[] = [
+  const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**右栏区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
     // WO-SIM-ACT-CLOSE(#150) × WO-SANDBOX-DECLUTTER 合流：扰动入口留在**主右栏**，
     // 不进诊断抽屉 —— 它是「让事情发生」的动作（decision-maker 用），不是诊断读数；
     // 塞进默认折叠的抽屉等于把沙盘上唯一的动作按钮藏起来，那是把两条 WO 合坏了。

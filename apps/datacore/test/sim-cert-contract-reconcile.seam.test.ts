@@ -9,22 +9,26 @@
  *    `firedPropagationRuleKeys` 只数真产出贡献的规则 key。
  * ⇒ 合成结论：两个数**性质不同、不可相加**，旧字段 `rulesFired = 规模 + 触发` 量纲不成立。
  *
- * ── 四条判据 × 变异反证（**已逐条实跑**，下表是实测结果不是设想）──────────────
- * 判据是「破哪一处 → 哪一条红」**可分辨**：五次变异各有不同的红名单，据此能指认病灶。
+ * ── 四条判据 × 变异反证（**并新 canonical 后逐条重跑**，下表是实测不是设想）──────────
+ * 红名单在 3 个门（本门 + `sim-trial-scope-reconcile` + `sim-act-close`，共 24–25 例）上采样：
  *
- *  | 变异 | 注入点 | 实测红 | 实测绿 |
- *  |---|---|---|---|
- *  | M1 | `propagation.ts scopePropagationGraph` 开头直接 `return {graph,…}`（LOCAL 不裁） | ①×2 | ②③④ 全绿 |
- *  | M2 | `app.ts` Trial Tick 的 `propagationRulesFired` 硬写 `0` | ①×2 · ②a · ④ | ③ 全绿 · ②b②c 绿 |
- *  | M3 | `app.ts` 把 `derivationNodes` 换成 `rc.updatedObjects`（拿触发数冒充规模） | ③端到端 ×1 | ①②④ 全绿 |
- *  | M4a/b | 认证路绕开唯一装配处（分别漏 `ruleParams` / 漏 `cadenceGates`） | ④效果 ×1 | ①②③ 全绿 |
- *  | M4c | 在 `app.ts` 里再装配一遍（`buildCadenceGates(`） | ④结构 | 其余绿 |
- *  | M5 | 关掉 `certification.ts` 的 `PROPAGATION_ALL_SILENT` 分支 | ②c ×1 | ①③④ 全绿 |
+ *  | 变异 | 注入点 | 实测红 |
+ *  |---|---|---|
+ *  | M1 | `scopePropagationGraph` 开头直接返回（LOCAL 不裁） | 3（本门 ①×2 + 合并门 ①） |
+ *  | M2 | Trial Tick 的 `propagationRulesFired` 硬写 0 | 7（①×2·②a·④效果 + 合并门 ①② + act-close ④） |
+ *  | M3 | `derivationNodes` 换成 `rc.updatedObjects` | **1**（本门 ③端到端） |
+ *  | M4a | 认证路漏 `ruleParams` | **1**（本门 ④效果） |
+ *  | M4b | 认证路漏 `cadenceGates` | **1**（本门 ④效果） |
+ *  | M4c | app.ts 里再装配一遍（**import 别名**·运行时逐字节不变） | **2**（两道结构门） |
+ *  | M5 | 关掉 `PROPAGATION_ALL_SILENT` | **1**（本门 ②c） |
  *
- * ⚠ M2 会连带 ① 与 ④ 一起红，这是**诚实的耦合**不是判据没做好：① 与 ④ 都只能**透过**传导计数
- *   去观测（范围裁没裁、入参装没装，最终都体现为"这条规则触没触发"）。把一个计数钉死在 0，
- *   等于把这三条的观测窗口一起蒙上 —— 此时红名单仍与 M1/M3/M4/M5 各不相同，可分辨性成立。
- *   （③ 已刻意与传导计数解耦：M2 下 ③ 三例全绿，故"派生口径坏了"与"传导计数坏了"分得开。）
+ * ⚠ M2 连带 ①④ 红是**诚实耦合**：范围裁没裁、入参装没装，最终都只能透过传导计数观测；
+ *   把计数钉死在 0 等于把这三条的观测窗口一起蒙上。红名单仍两两不同 ⇒ 可辨别。
+ *   ③ 已刻意与传导计数解耦（M2 下 ③ 全绿），故「派生口径坏了」与「传导计数坏了」分得开。
+ *
+ * ⚠ **M4c 第一次注入时没被抓到（24 例全绿）—— 那是本门自己的漏洞，不是代码干净。**
+ *   见下 ④结构判据「判据 A」的注释：只数调用式会被 `import { X as _y }` 整个绕过。
+ *   已按铁律 0.6 二级处置**当场建机制**（在 import 边界上断言），补后同一注入 ⇒ 2 门红。
  *
  * ⚠ 判据一律是**效果层**：比的是端点真回出来的数，不是「某个函数被调用了」——
  *   函数可以调用了却原样返回（本仓 `scopePropagationGraph` 就有这个形态）。
@@ -358,7 +362,28 @@ describe("WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（
     expect(app).toContain("buildPropagationInputs"); // 金丝雀命中
     expect(inputs).toContain("buildCadenceGates"); // 金丝雀命中
 
-    // 判据：**装配**三件套只出现在唯一装配处，app.ts 里一处都没有。
+    // ── 判据 A：**在 import 边界上**断言，而不是只数调用式 ────────────────────────────
+    // ⚠ 这一条是被自己的变异反证当场纠正过来的（铁律 0.6 第 2 次 = 建机制，不是"下次注意"）：
+    //   初版只数 `buildCadenceGates(` / `scopePropagationGraph(` 这两个**调用式**。
+    //   注入一份"干净的第二处装配"—— `import { buildCadenceGates as _mutCadence }` 再调 `_mutCadence(...)`
+    //   —— **两条正则一次都没中，24 例全绿**。形态与 simrec 在 GRAPH_MATERIALIZE 上踩过的**同一个**：
+    //   「我用『某个名字后面跟左括号』当作『这里装配了一遍』的证据，而前者并不度量后者」——
+    //   抄一份装配的人**恰恰**会改名（不改就撞名/不好读），改名的最省事写法就是 import 别名。
+    //   机制：**别名逃不过 import 子句** —— 无论 `as` 成什么，原名都必须出现在 `import {…}` 里。
+    const propImports = [...app.matchAll(/import\s*\{([^}]*)\}\s*from\s*"\.\/sim\/propagation\.js"/g)]
+      .map((m) => m[1] ?? "")
+      .join(",");
+    // 金丝雀：app.ts 确实 import 了传导核（否则下面的"没 import 装配原语"是工具坏了，不是代码干净）。
+    expect(propImports, "金丝雀不中 ⇒ import 子句抽取器坏了，下面的否定结论不许信").toContain("propagateTick");
+    for (const prim of ["buildCadenceGates", "scopePropagationGraph"]) {
+      expect(
+        propImports.includes(prim),
+        `app.ts 从 ./sim/propagation.js import 了装配原语 ${prim}（哪怕 as 成别的名字）——` +
+        `装配只该发生在 sim/propagation-inputs.ts 里。`,
+      ).toBe(false);
+    }
+
+    // 判据 B：**装配**三件套的调用式也不许出现在 app.ts（与 A 互补：A 抓别名，B 抓同名直调）。
     // ⚠ 刻意**不含** `resolveSimScope(`：合并单采纳了「调用方自己解析 scope、把已解析的
     //   `ResolvedSimScope` 传进装配处」这个设计（它是契约的唯一解释器，调用方调它是对的）。
     //   把它列进禁用名单是**把判据写错了对象**——要禁的是"图/闸门被装配第二遍"，

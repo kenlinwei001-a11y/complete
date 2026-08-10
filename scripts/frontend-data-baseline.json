@@ -17,7 +17,6 @@
   "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": 2,
   "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": 1,
   "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": 1,
-  "apps/frontend-shell/src/views/sim/SandboxView.tsx": 1,
   "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": 2,
   "apps/frontend-shell/src/views/sim/chainLineMap.ts": 2,
   "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": 1,
