@@ -222,8 +222,23 @@ function Station({
       tabIndex={0}
       role="img"
       /* 读屏的唯一读数出口。`role="img"` 下 aria-label 优先于 SVG <title>，
-         所以删掉 <title> 之后无名站的可达名**不退化**（门：clm-a11y 组逐站断言 accessible name）。 */
-      aria-label={`${s.label}：占全链损失 ${formatPct(s.pctOfChainLoss)}`}
+         所以删掉 <title> 之后无名站的可达名**不退化**（门：件三组逐站断言 accessible name）。
+         ⚠ 增值段必须读成「增值段·不进损失分母」，**不能**读成「占全链损失 —」：
+         后者会被听成"占比未知/取不到数"，而事实是它**根本不进这个分母**（S0 §5）——
+         两件事完全不同，屏上早就分开了（`data-pct-text`），可达名不能反而糊回去。
+         2026-08-10 实测：本次载荷 10 个增值站**全部未标名**，即全部只能靠可达名说话。
+         复验：`test/chain-line-map.seam.test.tsx` 的「★ 可达性不退化」用例逐站断言，或
+         `node -e "const p=require('./test/fixtures/chain-loss-real.json');
+           console.log(p.nodes.flatMap(n=>n.steps).filter(s=>s.valueAdd).length)"` → 10。
+         ⚠ **别用 `grep -c '\"valueAdd\": true'` 数**：那会数出 20 ——
+         载荷里 `evidence[]` 另带 10 条同名字段，而站点只来自 `nodes[].steps`。
+         （2026-08-10 我自己就先写错了这条复验命令，当场被数字对不上抓住：
+           拿一个"看起来相关的数字"当判据，正是 CLAUDE.md 铁律 0.6 点名的那个病。） */
+      aria-label={
+        s.valueAdd
+          ? `${s.label}：${VALUE_ADD_TAG}（增值段不计入损失分母）`
+          : `${s.label}：占全链损失 ${formatPct(s.pctOfChainLoss)}`
+      }
       onMouseEnter={onEnter}
       onFocus={onEnter}
       onMouseLeave={onLeave}
