@@ -140,6 +140,12 @@ describe("WO-CAPACITY-CARD-LAYOUT · 6 层派生诊断卡片化（规范 §5 逐
       const rungs = screen.getByTestId(`cap-dag-rungs-${n}`);
       expect(rungs.querySelectorAll('[data-on="1"]').length).toBe(n);
       expect(rungs.querySelectorAll('[data-cur="1"]').length).toBe(1);
+      // 且它真是**阶梯**：六格高度严格递增，级差 ≥2px（真浏览器实拍发现原级差 1.6px
+      // 在 1600px 视口下六格几乎一样高 —— 阶梯信号形同没有。jsdom 不做布局，
+      // 但 inline height 是死的，这条守得住"别再把级差改回看不见"）。
+      const hs = [...rungs.querySelectorAll("i")].map((i) => parseFloat((i as HTMLElement).style.height));
+      expect(hs).toHaveLength(6);
+      for (let k = 1; k < hs.length; k++) expect(hs[k]! - hs[k - 1]!).toBeGreaterThanOrEqual(2);
     }
 
     // 承载物③ data-step / 上下游：谁推出谁，机器可读。
