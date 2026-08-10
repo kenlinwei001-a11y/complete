@@ -745,6 +745,39 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
   残口：ATP/齐套行级消费、affected_orders 行级归因下沉归后续 WO（本单只立行级数据 + rollup 勾稽）
 ```
 
+**影响传播链（WO-IMPACT-PROPAGATION · Decision Twin §14 / PRD-enterprise-decision-twin E5 · 栈B传播 × 栈A世界隔离）**
+```
+POST /a/v1/simulation/impact-analysis {worldId, change{objectType,objectId,prop,value,oldValue?}}
+  --requireSim("sim.sandbox")--> R3 暗发（关=404 FEATURE_NOT_FOUND·先于 authz）
+  --repos.sim.getSession(tenantId, worldId)--> SimSession【栈 A · 世界】（跨租户返 null ⇒ 404·R2）
+    ↓ SimTickState.state(objectId→stateVar→number) 摊平成覆盖层 overlay[]
+  --ontologyCore.recompute(changes=[change], {dryRun:true, apply:[...overlay, change]})--> 【栈 B · 变更驱动传播】
+    ⚠ 接缝就在这一行：changes 只播种**变更本身**的脏集 ⇒ 闭包=该变更下游；
+      apply 同时带 overlay ⇒ 下游重算读到的输入是**世界里的值**而非真本体值。
+      overlay 丢掉 → 两个不同世界返回逐字节相同结果（变异反证实测：只红头号接缝用例）。
+    ↓ {affectedObjectIds, dryRunDeltas}（R4 dryRun 不落库·R6 确定性）
+  四维分项（全部复用存量连接键，无一新造）：
+    ① affectedObjects ← affectedObjectIds / dryRunDeltas（口径 DISTINCT_OBJECTS·显式声明防第三套）
+    ④ affectedKpis    ← 闭包内类型 ∈ KPI 承载类型；**KPI 类型由结构判定**（同时具备 target/actual·R14 不写死 "Metric"）
+    ② affectedProcesses ← ProcessDefinition.carrierTypeKey ∩ 闭包对象类型（65 条真种子·seed.ts seedDemoProcessLayer）
+    ③ affectedDecisions ← Decision.metricKey / rootRef.rootMetric.key ∩ 受影响 KPI 的 key（台账 repo.ts:247）
+  诚实边界（本链的**核心不变量**：四个「0」不是同一个 0）：
+    · 每维 available 判别联合；可用时**必带 universe**（全域基数）⇒ 「台账为空」≠「查过了没中」
+    · 流程维 definition 粒度可用，**instanceLevel 恒 available:false**
+      （ProcessInstance/ProcessTask 无承载物 · 节点无 owner/assignee · 五种 WAITING 全缺）
+    · KPI breach 三态（BREACHED/SAFE/**UNKNOWN**）——floorVal 或 actual 取不到必报 UNKNOWN，禁当 SAFE
+    · basis.worldOverlayApplied=0 / derivationSpecCount=0 / 变更起点不存在 → 各出 warning 说明「算不了」而非「没影响」
+  ⚠ 实测（2026-08-10 亲手真跑 SEED_DEMO=1）：**demo 租户 derivationSpecs 恒 0**
+    —— 该表唯一写入方是 `POST /a/v1/ontology/derivation-specs/compile`（app.ts），任何 seed 都不写它
+    ⇒ 开箱即用的 demo 上本链闭包必空，端点如实报 derivationSpecCount:0 + warning（「接了线没数据」形态，非「没接线」）。
+    编译一条规格后同一端点即产真传播（实测：seg_attain_ess actual 72.2→40 ⇒ delta −27.8→−60 ⇒ breach BREACHED ⇒ 命中 P63 经营指标越线监控）。
+  与既有两个出口**平行不改**：`POST /a/v1/inference/whatif`(app.ts) · `generic_inference` 求解器
+    —— 它们只有一个裸 `affectedObjects:number`，无世界、无分项、无诚实标记（PRD §2.1 逐字段点名）。
+  存量盘点：`docs/WO-IMPACT-PROPAGATION-inventory.md`（13 处 affectedObjects 逐条 · 只 1 处是真算法）
+  契约 `packages/contracts/src/impact-analysis.ts` · 引擎 `apps/datacore/src/sim/impact-analysis.ts`
+  SEAM 测 `apps/datacore/test/impact-propagation.seam.test.ts`（14 绿·头号判据=同变更两世界 KPI 结论相反）
+```
+
 ---
 
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
