@@ -50,6 +50,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
@@ -100,6 +101,7 @@ import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
+import { EnterpriseStateService } from "./twin/enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（读写端点见 /a/v1/twin/enterprise-states）
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
 import { ConfigBundleService } from "./config-bundle.js";
@@ -181,6 +183,7 @@ export interface BuiltApp {
     sop: SopService;
     kb: KbService;
     simclock: SimClockService;
+    enterpriseState: EnterpriseStateService; // WO-ENTERPRISE-STATE · 企业状态快照
     features: FeatureService;
     configBundle: ConfigBundleService;
     embeddings: EmbeddingProvider;
@@ -381,6 +384,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const kb = new KbService(repos, authz, blob, embeddings, outbox);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
+  // WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3 五张 MVP 表之一）。
+  // 逻辑时刻取自上一行的 A8 模拟时钟 —— 服务里一次 `new Date()` 都没有（见 twin/enterprise-state.ts 文件头）。
+  const enterpriseState = new EnterpriseStateService(repos, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
@@ -1842,6 +1848,63 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
     return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // WO-ENTERPRISE-STATE · `EnterpriseState` 企业状态快照读写端点
+  //   （PRD-enterprise-decision-twin §3 五张 MVP 表之一 · §4.1 真实/仿真两世界物理隔离）。
+  //
+  //  语义：「企业**现在**是什么状态」——某个世界在某个**逻辑时刻**上的 KPI/产能/库存/订单快照。
+  //  · `capturedAt` 是 A8 模拟时钟派生的逻辑时钟，**不是 wall-clock**；时钟没初始化就 409 明说，不兜底
+  //    （wall-clock 兜底 = 给快照按一个不在任何时间轴上的坐标，之后所有对比/回放/确定性判据全建在假坐标上）。
+  //  · 幂等：id 由 (tenant, world, tick) 确定 ⇒ 同一逻辑时刻重复 POST 覆盖同一行、内容逐字节相同（R6）。
+  //  · 不挂 entitlement：与同为数据面的 `/a/v1/metrics`、`/a/v1/decisions` 同档（沙盘 `sim.*` 那组门守的是
+  //    推演功能，不是"企业现在什么状态"这类基础事实读取）。R2 租户隔离照旧由 ctx + 仓储层强制。
+  // ─────────────────────────────────────────────────────────────────────────────
+  app.post("/a/v1/twin/enterprise-states", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    const state = await enterpriseState.capture(c, { worldId: b.worldId });
+    return reply.status(201).send(state);
+  });
+  app.get("/a/v1/twin/enterprise-states", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    return { items: await enterpriseState.list(c, { worldId }) };
+  });
+  // ⚠ 必须排在 `/:id` 之前：Fastify 静态段优先于参数段，但把 `latest` 写在后面容易在后续重构里
+  //   被挪成参数段的兄弟路由从而歧义 —— 顺序即意图，别调换。
+  app.get("/a/v1/twin/enterprise-states/latest", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    const world = worldId?.trim() || ENTERPRISE_STATE_REAL_WORLD_ID;
+    const state = await enterpriseState.latest(c, world);
+    // 诚实空：没有就是没有，返回 `state: null` + 原因，**不现场偷偷捕获一份**冒充"最新"
+    // （那会让一次只读请求产生写副作用，且前端分不清"本来就有"和"我一问它才有"）。
+    return state
+      ? { worldId: world, state }
+      : { worldId: world, state: null, reason: `世界 ${world} 尚无任何快照（POST /a/v1/twin/enterprise-states 捕获一份）` };
+  });
+  app.get("/a/v1/twin/enterprise-states/:id", async (req) => {
+    const c = ctx(req);
+    return enterpriseState.get(c, (req.params as { id: string }).id);
+  });
+  // fork 进仿真世界（§4.1）：产生**新行**，真实世界那一行一个字节都不动。
+  app.post("/a/v1/twin/enterprise-states/:id/fork", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    if (!b.worldId) throw validationError("worldId required (target simulation world = an existing sim session id)");
+    const forked = await enterpriseState.fork(c, (req.params as { id: string }).id, b.worldId);
+    return reply.status(201).send(forked);
+  });
+  // 两份快照的指标差（口径与将来的 `StateDelta` 同一份纯函数 `diffEnterpriseStates`，不许各算一套）。
+  app.get("/a/v1/twin/enterprise-states/:id/diff", async (req) => {
+    const c = ctx(req);
+    const { against } = req.query as { against?: string };
+    if (!against) throw validationError("against=<stateId> required");
+    const after = await enterpriseState.get(c, (req.params as { id: string }).id);
+    const before = await enterpriseState.get(c, against);
+    return { before: before.id, after: after.id, changes: diffEnterpriseStates(before, after) };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -4632,6 +4695,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       sop,
       kb,
       simclock,
+      enterpriseState,
       features,
       configBundle,
       embeddings,
