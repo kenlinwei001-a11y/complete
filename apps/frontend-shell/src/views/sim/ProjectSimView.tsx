@@ -248,7 +248,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
             ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；项目推演仅细排销售订单。
           </span>
           <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
-            返回全局联合推演 →
+            返回全局项目推演 →
           </Link>
         </div>
       )}
@@ -883,7 +883,7 @@ function StepBody({
         />
       </Feature>
       {/* WO-GLOBALSIM-GLASS-REDESIGN 去重：多目标 + 跨对象占用联合 what-if 本是「全局能力」，
-          已迁至全局联合推演页（/v/global-sim）。单项目 what-if（generic_inference 动态杠杆）留此。 */}
+          已迁至全局项目推演页（/v/global-sim）。单项目 what-if（generic_inference 动态杠杆）留此。 */}
     </div>
   );
 }

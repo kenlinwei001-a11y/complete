@@ -198,7 +198,7 @@ export const ActionErrorCodes = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// WO-GSIM-5-ACTION · 全局联合推演「采纳→行动写回」payload 契约（G-DECISION 行动半 / G-LOOP-FEEDBACK）
+// WO-GSIM-5-ACTION · 全局项目推演「采纳→行动写回」payload 契约（G-DECISION 行动半 / G-LOOP-FEEDBACK）
 // 采纳 GlobalSim 方案 → `plan_change` Action（source:"global-sim"）→ S2 审批 → 执行回灌基线。
 // additive：既有 `plan_change` payload（OrderChainView 的 {so,verdict,reason}）与其它 action 类型不受影响；
 // 仅 source==="global-sim" 走真实执行器 + 回灌（物化在产 WorkOrder / 跨基地调剂 InterBaseTransfer）。

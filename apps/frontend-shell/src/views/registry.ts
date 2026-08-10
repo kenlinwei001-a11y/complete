@@ -65,7 +65,7 @@ registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
 registerRenderer("project-sim", () => import("./sim/ProjectSimView"));
-// WO-PORTFOLIO-OPTIMAL 全局联合推演（portfolio 求解器·全订单×全基地×时间联合最优组合·闭 G-PORTFOLIO-LOCAL-ONLY 前端半）
+// WO-PORTFOLIO-OPTIMAL 全局项目推演（portfolio 求解器·全订单×全基地×时间联合最优组合·闭 G-PORTFOLIO-LOCAL-ONLY 前端半）
 registerRenderer("global-sim", () => import("./sim/GlobalSimView"));
 registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
 // WO-SANDBOX-F3 物理拓扑（13 基地 × 10 工序热力流水矩阵）。

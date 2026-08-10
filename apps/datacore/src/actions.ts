@@ -144,7 +144,7 @@ export interface PlanWritebackDeps {
 }
 
 /**
- * 全局联合推演「采纳方案」真实执行器（G-LOOP-FEEDBACK 数据半）：审批通过 → 执行时把采纳的方案
+ * 全局项目推演「采纳方案」真实执行器（G-LOOP-FEEDBACK 数据半）：审批通过 → 执行时把采纳的方案
  * **回灌基线**——为每个 served 订单物化「在产 WorkOrder（承诺占用·portfolio.assemble 读为 committed WIP·
  * 预扣净产能）」+ 把该 Order 移出 OPEN 决策集（status→已排产），跨基地分配再生成「InterBaseTransfer
  * 两段电芯就近调运 leg」→ 下一轮 portfolioOptimize 读到真变基线（served 订单已承诺/产能已占）。
@@ -229,7 +229,7 @@ export class GlobalSimPlanExecutor implements ActionExecutor {
             transferId, fromBase: homeBase, toBase: base, model, qty, transitDays, status: "PLANNED",
             dispatchDay, dispatchDate: isoAddDays(forecastStart, dispatchDay),
             etaDay: dispatchDay + transitDays, etaDate: isoAddDays(forecastStart, dispatchDay + transitDays),
-            reason: `全局联合推演采纳·两段电芯就近调运（${homeBase}→${base}）`,
+            reason: `全局项目推演采纳·两段电芯就近调运（${homeBase}→${base}）`,
             _provenance: provenance, _adoptedOrderId: orderId, _adoptedByAction: draft.id,
           },
         });
@@ -274,7 +274,7 @@ export const BUILTIN_ACTION_EFFECTS: Record<string, ActionEffectSpec> = {
         selector: { kind: "BY_PAYLOAD", payloadPath: "served[].orderId" },
         cardinality: "MANY",
         condition: { payloadPath: "source", equals: "global-sim" },
-        note: "采纳全局联合推演方案 → 每个 served 订单物化一张在产工单（承诺占用·预扣净产能）",
+        note: "采纳全局项目推演方案 → 每个 served 订单物化一张在产工单（承诺占用·预扣净产能）",
       },
       {
         objectType: "Order",
@@ -532,7 +532,7 @@ export class ActionService {
       throw invalidStep(`draft is ${draft.status}, expected DRAFT`);
     }
     const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
-    // WO-GSIM-5-ACTION：`plan_change` 键被 S&OP「计划变更」(required versionId) 与全局联合推演采纳共享；
+    // WO-GSIM-5-ACTION：`plan_change` 键被 S&OP「计划变更」(required versionId) 与全局项目推演采纳共享；
     // 后者由 source:"global-sim" 判别，校验其自有 payload（source+objective），不套 S&OP paramsSchema。
     const isGlobalSimPlan = draft.actionTypeKey === "plan_change" && draft.payload?.source === "global-sim";
     if (isGlobalSimPlan) {

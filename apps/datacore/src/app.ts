@@ -410,7 +410,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const mockExecutor = new MockActionExecutor();
   // G-ACTION-NOOP-EXEC：未接线动作走**诚实执行器**（未实现即 ok:false），不再返回 MO 形态的假单号。
   const unwiredExecutor = new UnwiredActionExecutor();
-  // WO-GSIM-5-ACTION · 全局联合推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  // WO-GSIM-5-ACTION · 全局项目推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
   const globalSimExecutor = new GlobalSimPlanExecutor(
     {
       repos,
@@ -423,7 +423,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   );
   const domainExecutor: ActionExecutor = {
     async execute(draft) {
-      // 全局联合推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
+      // 全局项目推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
       if (draft.actionTypeKey === "plan_change") {
         // 仅 global-sim 来源有真回灌；其余来源**不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败。
         if (planChangeIsWired(draft.payload)) return globalSimExecutor.execute(draft);

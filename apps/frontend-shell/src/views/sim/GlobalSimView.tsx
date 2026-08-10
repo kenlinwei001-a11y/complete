@@ -401,7 +401,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* ① 顶栏 */}
       <div className={styles.header}>
         <div className={styles.titleBlock}>
-          <h2 title="联合推演（联合求解）：把全部订单、全部基地、各个时间段放在一起统一排产，不是一单一单单独算，而是一次算出全局最划算的方案。">全局联合推演 · 决策驾驶舱（全局最优在先）</h2>
+          <h2 title="全局项目推演：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局最划算的方案——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">全局项目推演 · 决策驾驶舱（全局最优在先）</h2>
           <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次算出全局最优。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
         </div>
         <span className={styles.badge} title="这些数字是算法在满足产能约束下试算出来的最优方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
@@ -430,7 +430,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {res.needsConfirm && (
         <RecomputeConfirmDialog
           elapsedMs={res.elapsedMs}
-          what="全局联合推演"
+          what="全局项目推演"
           onConfirm={res.confirmRecompute}
           onKeep={res.keepCurrent}
         />

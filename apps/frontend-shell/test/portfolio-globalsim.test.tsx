@@ -4,12 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 
 /**
- * WO-PORTFOLIO-OPTIMAL · 全局联合推演视图（global-sim）前端接缝测。
+ * WO-PORTFOLIO-OPTIMAL · 全局项目推演视图（global-sim）前端接缝测。
  *
  * 订单多选 + 冻结勾选 → portfolio 求解器（mock 逐口径移植·守恒 + ≥2 方案 + 冻结）→ 方案对比矩阵 +
  * 分配台账 + capacityLedger 逐格守恒（无重复占用）+ 冻结单卡。改冻结 → 联合最优真变（KILL-MOCK-RED）。
  */
-describe("global-sim · 全局联合推演（方案矩阵 + 守恒台账 + 冻结子集）", () => {
+describe("global-sim · 全局项目推演（方案矩阵 + 守恒台账 + 冻结子集）", () => {
   it("默认全订单联合解 → ≥2 方案矩阵 + capacityLedger 逐格 allocated≤cap（守恒·无重复占用）", async () => {
     loginAs("planner");
     renderApp("/v/global-sim");

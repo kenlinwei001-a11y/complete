@@ -1070,7 +1070,7 @@ export function mockSopReschedule(args: Record<string, unknown>): Record<string,
 
 
 // ---------------------------------------------------------------------------
-// WO-PORTFOLIO-OPTIMAL · portfolio 全局联合推演（逐口径移植 datacore/solvers/portfolio.ts·KILL-MOCK-RED）
+// WO-PORTFOLIO-OPTIMAL · portfolio 全局项目推演（逐口径移植 datacore/solvers/portfolio.ts·KILL-MOCK-RED）
 // 无后端 mock 态：把演示订单(ORDERS·与视图 searchObjects 同源)归一为联合需求，跨基地×时间窗贪心装入共享产能——
 // 同真算法口径：Σ_i qty·x[i,b,t]≤cap[b,t] 逐格守恒（reconChecks 硬校验·无重复占用）、frozenOrderIds 排除并预扣、
 // ≥2 方案（max_ontime/min_cost/min_changeover）各自贪心 → objectiveValues 真漂移、每分配/被挤值带 provenance。

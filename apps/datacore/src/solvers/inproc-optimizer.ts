@@ -3,7 +3,7 @@
  *
  * 病根（真实症状·断在接缝）：内存模式启动（`node apps/datacore/dist/server.js`·无 `OPTIMIZER_BASE_URL`）下
  * app.ts 只在配了 `OPTIMIZER_BASE_URL` 时才装 `HttpOptimizerClient`——未配 → `optimizer` 为 undefined →
- * portfolio（全局联合推演）走 `service.ts:2019` 的 `!this.optimizer?.solvePortfolio` 守卫抛「未接入」→
+ * portfolio（全局项目推演）走 `service.ts:2019` 的 `!this.optimizer?.solvePortfolio` 守卫抛「未接入」→
  * 前端「发起联合求解」看不到结果。引擎（CP-SAT）与前端接线都是真的，唯独内存态接缝空（绿测试≠能用）。
  *
  * 本兜底：内存模式装 `InProcOptimizerClient`——用**确定性贪心**（R6：稳定 sort·无 `Date.now()`/`Math.random()`·

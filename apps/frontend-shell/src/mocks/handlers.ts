@@ -2753,7 +2753,7 @@ export const handlers = [
       });
     if (key === "sop_reschedule")
       return HttpResponse.json({ data: mockSopReschedule(args), snapshotVersion: "ov-12" });
-    // WO-PORTFOLIO-OPTIMAL portfolio 全局联合推演（mock 逐口径移植·守恒 + ≥2 方案 + 冻结·真求解走 CP-SAT sidecar）。
+    // WO-PORTFOLIO-OPTIMAL portfolio 全局项目推演（mock 逐口径移植·守恒 + ≥2 方案 + 冻结·真求解走 CP-SAT sidecar）。
     // WO-SURFACE-7DIM · 编排路由（镜像后端 service.ts orchestrate 判据）：twoStage/materialConstraint/levers/priorityLocks/globalSim
     // → mockGlobalSim（返 7 维 schedule[]/kpi/mockNotes additively 叠加经典字段）；否则经典 mockPortfolio。
     if (key === "portfolio") {

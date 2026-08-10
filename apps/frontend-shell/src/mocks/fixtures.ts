@@ -149,7 +149,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
   { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
   { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
-  { key: "view.global-sim", name: "全局联合推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
+  { key: "view.global-sim", name: "全局项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
   // 全局推演·活系统 NL/方案存比暗发门（mock 态开·MSW 桩支撑·真后端 defaultOff 避 404）。
   { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: true },
   // 原型中的 story 视图无后端支持 → 保留 aop 直链入口演示「该视图类型暂不支持」兜底（renderer="aop" 未注册）
@@ -499,8 +499,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
     { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
-    // WO-PORTFOLIO-OPTIMAL 全局联合推演（全订单×全基地×时间联合最优组合·共享产能守恒·冻结子集·多方案）
-    { key: "global-sim", title: "全局联合推演", renderer: "global-sim", layout: {} },
+    // WO-PORTFOLIO-OPTIMAL 全局项目推演（全订单×全基地×时间联合最优组合·共享产能守恒·冻结子集·多方案）
+    { key: "global-sim", title: "全局项目推演", renderer: "global-sim", layout: {} },
     { key: "sop-balance", title: "月度规划", renderer: "sop-balance", layout: {} },
     // 剩余视图增量（§7.14–7.17）
     { key: "annual-scenario", title: "年度规划", renderer: "annual-scenario", layout: {} },

@@ -5,7 +5,7 @@ import type { NavigationSlice, SliceSolver } from "./navigation-slice.js";
 /**
  * WO-GSIM-4-AGENT · 全局推演 NL 大脑（消费 Phase2-C 组合器·portfolio 为中心的推演链投影）。
  *
- * 病根：通用 `projectNavigationSlice` 的 SOLVER_CATALOG **不含 `portfolio`**（全局联合推演求解器）→ 推演类 NL
+ * 病根：通用 `projectNavigationSlice` 的 SOLVER_CATALOG **不含 `portfolio`**（全局项目推演求解器）→ 推演类 NL
  * （「全乘用车单跨基地排最优」）落 path-B 时通用 compose 编不出以 portfolio 为中心的推演链 → 掉回 runAgentLoop 盲跳。
  *
  * 本模块（纯函数 R6·不碰 navigation-slice 系统级 catalog·不碰 Phase2-C 组合器内部）：① 识别推演 NL 意图

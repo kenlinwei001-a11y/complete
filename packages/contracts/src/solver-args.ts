@@ -39,7 +39,7 @@ export const CapacityForecastArgs = z.object({
   mode: z.enum(["forecast", "threshold"]).optional(),
 });
 
-/** portfolio（全局联合推演·service.ts:2037-2041）：全订单×全基地×时间 联合最优组合。 */
+/** portfolio（全局项目推演·service.ts:2037-2041）：全订单×全基地×时间 联合最优组合。 */
 export const PortfolioArgs = z.object({
   orderIds: z.array(z.string()).optional(),
   frozenOrderIds: z.array(z.string()).optional(),

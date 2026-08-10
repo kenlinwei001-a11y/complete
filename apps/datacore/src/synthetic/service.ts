@@ -1668,7 +1668,7 @@ export class SyntheticService {
       admin: [...views, ...extraViews],
       planner: [...views, ...extraViews],
       base_manager: [
-        // global-sim（全局联合推演）属规划/管理层视图·base_manager 沿用原样不纳入（此前经 extraViews 分桶天然不含·
+        // global-sim（全局项目推演）属规划/管理层视图·base_manager 沿用原样不纳入（此前经 extraViews 分桶天然不含·
         // 升为核心 views 后须显式排除以保行为不变·WO-MEMORY-VIEW-RESILIENCE 只让"该出现的角色"稳定出现，不扩权）。
         ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate", "global-sim"].includes(v)),
         ...baseManagerExtras,

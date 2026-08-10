@@ -6,7 +6,7 @@ import { db } from "@/mocks/db";
 /**
  * WO-GUI4-MULTIOBJ-REAL 前端 · MultiObjWhatifPanel（多目标 Δ 分解 + 跨对象占用表 · 接**真实订单簿** · R3）。
  *
- * 面板迁至全局联合推演页（/v/global-sim）。此前喂求解器的是写死 toy 三单 SO-A/B/C；本 WO 换成真 Order
+ * 面板迁至全局项目推演页（/v/global-sim）。此前喂求解器的是写死 toy 三单 SO-A/B/C；本 WO 换成真 Order
  * （GET /a/v1/objects?type=Order 同源），营收/违约金/换型成本从真字段派生，改权重→后端真重算→占用真漂移。
  *
  * 证：① opt.multiobj 关 → 整块不存在（R3）② 开 → 占用表读**真实订单簿**（真 so id·无 toy SO-A/B/C）
