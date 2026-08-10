@@ -246,27 +246,10 @@ function Station({
           </text>
         </>
       ) : (
-        /*
-         * 无名站也要能被测试与读屏找到读数（悬浮面板给全量），故保留一个隐藏读数节点。
-         *
-         * ⚠ WO-SANDBOX-DECLUTTER · 这里**曾经是 SVG `<title>`**，那是一个真 bug（仓主实测：
-         * 「环形流程图部分，鼠标移走后弹窗没有消失，遮挡了环形图」）：
-         * SVG `<title>` 会被浏览器渲染成**原生 tooltip** —— 由操作系统绘制、**不受 React 控制、
-         * 恒画在最上层**（包括盖住 SVG 自己），且移开后滞留是原生 tooltip 的常见行为。
-         * 本图 28 站里只标 9 个站名（`MAX_LABELS_PER_RING`），其余 19 个全走这一支 ⇒
-         * 环上大半的站一碰就弹一个盖住图、还不肯走的原生框。
-         *
-         * 换成**视觉隐藏的 `<text>`**（`.srOnlyText` = `opacity:0` + `pointer-events:none`）：
-         *  · DOM 节点与 testid 原样保留 ⇒ 咬 `clm-pct-*` 的四处测试一行不用改；
-         *  · 读数文本原样保留 ⇒ 读屏仍读得到（且 `<g role="img" aria-label>` 本就是权威读法，
-         *    `aria-label` 优先于 `<title>`，删 `<title>` 不降级 —— 见 metro-semantics 门里的
-         *    `getByLabelText` 实测断言）；
-         *  · 悬停读数的正解一直都在：React 那个 `<aside data-testid="clm-detail">` 给全量，
-         *    它不是 `position:absolute`，不遮挡任何东西。
-         */
-        <text className={styles.srOnlyText} data-testid={`clm-pct-${s.stepId}`} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
+        /* 无名站也要能被测试与读屏找到读数（悬浮面板给全量），故保留一个隐藏读数节点 */
+        <title data-testid={`clm-pct-${s.stepId}`}>
           {s.label} · {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
-        </text>
+        </title>
       )}
     </g>
   );
@@ -313,11 +296,9 @@ function SuspendedStop({
           </text>
         </>
       ) : (
-        /* 同上：原生 tooltip（SVG `<title>`）会盖住环形图且移开不消失 ⇒ 换视觉隐藏 `<text>`。
-           读屏读的是 `<g role="img" aria-label>`（本组件 :281），不依赖这一节点。 */
-        <text className={styles.srOnlyText} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
+        <title>
           {s.label} · 停运（断点）
-        </text>
+        </title>
       )}
     </g>
   );

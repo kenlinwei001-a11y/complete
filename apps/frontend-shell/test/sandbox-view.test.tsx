@@ -92,11 +92,23 @@ function wrap(cfg: SandboxViewConfig) {
   );
 }
 
+/**
+ * WO-SANDBOX-DECLUTTER · 就绪认证整块已从**常驻右栏**改成**默认折叠的诊断抽屉**
+ * （仓主原话：「这些信息都可以删除」——本仓的做法是收纳不是删除）。
+ * 折叠时抽屉内部**一个节点都不渲染**，所以要断它里面的东西，必须先真的把抽屉点开。
+ * 这一步本身就是「收纳成功」的另一半证据：不点开就找不到 ⇒ 主屏确实不再挂着它。
+ */
+async function openDiagnostics(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByTestId("sc-diag-toggle"));
+  await screen.findByTestId("sc-diag-panel");
+}
+
 describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
   beforeEach(() => tickFn.mockClear());
   afterEach(() => cleanup());
 
   it("配置A（供应链 3 类对象）：渲染 3 个拓扑节点 + 每个 stateVar 一个 KPI + 就绪认证", async () => {
+    const user = userEvent.setup();
     wrap(CONFIG_A);
     await screen.findByTestId("sandbox-view");
     // 会话 init 后拓扑节点出现（节点=nodeTypes，逐 nodeType 一个 PmDag 节点）。
@@ -112,7 +124,8 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     for (const v of CONFIG_A.stateVars) {
       expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").toContain("0–100 指数");
     }
-    // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）。
+    // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）——现在住在诊断抽屉里。
+    await openDiagnostics(user);
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
     // WO-RC-UX-DOOR-TEXT：未认证态显「可试跑（未认证·结论仅供参考）」——标准页 tick 未被 canEnter 门控·非劝退（诚实门）。
     const canenterText = screen.getByTestId("sim-cert-canenter").textContent ?? "";

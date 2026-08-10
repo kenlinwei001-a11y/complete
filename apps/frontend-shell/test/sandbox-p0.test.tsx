@@ -169,6 +169,11 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     wrap();
     await screen.findByTestId("sandbox-view");
 
+    // WO-SANDBOX-DECLUTTER：就绪认证已收进默认折叠的诊断抽屉（折叠时内部不渲染），
+    // 故断它之前先真的点开抽屉 —— 这一步同时证明「主屏默认不挂它」。
+    await user.click(await screen.findByTestId("sc-diag-toggle"));
+    await screen.findByTestId("sc-diag-panel");
+
     // L0-L4 stepper：5 步全在，当前 L3。
     await screen.findByTestId("sim-cert-level");
     expect(screen.getByTestId("sim-cert-step-L0_INVALID")).toBeTruthy();
