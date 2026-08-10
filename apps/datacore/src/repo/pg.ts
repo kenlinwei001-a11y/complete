@@ -807,6 +807,10 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
     processDomains: new PgStore(pool, "process_domains"),
     processDefinitions: new PgStore(pool, "process_definitions"),
+    // WO-ENTERPRISE-STATE · 企业状态快照（R9 四处同改之四 · migrations/030_enterprise_states.sql）。
+    // 同上：表名写错只在 pg 模式下运行时炸，memory 默认的单测证明不了这一行 ——
+    // 故 enterprise-state.seam.test.ts 里另有一条断言，把 030 migration 的 CREATE TABLE 名字抽出来与本行比对。
+    enterpriseStates: new PgStore(pool, "enterprise_states"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
