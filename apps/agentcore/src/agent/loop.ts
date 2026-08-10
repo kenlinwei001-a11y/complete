@@ -97,7 +97,7 @@ export interface AgentToolSpec {
  * WO-AGENTRUN-ATTRIBUTION · 归属实参（**调用方是唯一知情人**）。
  *
  * 为什么放在 loop 里回填、而不是各 `agentRuns.insert` 点各自 spread 一份：
- * insert 点有三处（`orchestrator.ts` 2075/2364/2614），各填各的必然漂 —— 而且其中一处
+ * insert 点有三处（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent），各填各的必然漂 —— 而且其中一处
  * （runPathB）根本没有 AgentDefinition 可填，写在那里只会诱使人"就近找个 id 塞进去"。
  * 归属与运行数据在这里**同一次构造**（`finishRun`），要么一起有要么一起没有。
  *

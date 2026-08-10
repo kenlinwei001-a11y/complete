@@ -483,7 +483,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    * WO-AGENT-ADMIN-CONSOLE · Agent 运行记录只读下发（闭 `G-AGENTRUN-NO-READ-SURFACE`）。
    *
    * **为什么要加这条**（取证见 `docs/AUDIT-agent-console-gap.md` §3.4）：
-   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts:2075 / 2364 / 2614`
+   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent
    * → `repos.agentRuns.insert`），仓储双实现的 `getByTask` 也早就在
    * （`persistence/memory.ts:180` · `persistence/pg.ts:276`）——**但全仓没有任何 HTTP 读端**
    * （`grep -n "agentRuns" server.ts` 零命中，金丝雀 `toolCalls` 同文件 5 命中 ⇒ 工具是好的）。
@@ -698,7 +698,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    *
    * **诚实边界（必须与前端对齐，别在界面上补一个后端没有的语义）**：
    *  - 空数组是**常态**而非故障。未绑 LLM provider 时 `completeNoLlmDegradation`
-   *    （`router/orchestrator.ts:2657`）把 task 标成 `path=AGENT` + `COMPLETED` 却**从不写 run**，
+   *    （`router/orchestrator.ts` 的 completeNoLlmDegradation）把 task 标成 `path=AGENT` + `COMPLETED` 却**从不写 run**，
    *    这类环境下任何 agent 的运行数都是 0。前端不许把它画成"加载失败"。
    *  - 本端点**只**回归属得上的那些。通用探索路的运行（`attribution:"EXPLORATORY"`）与归属上线前的
    *    旧记录（无归属字段）**一条都不会出现在这里** —— 它们的存在必须由前端另行诚实交代，

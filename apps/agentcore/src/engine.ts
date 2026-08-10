@@ -714,7 +714,7 @@ export class ExecutionEngine {
           // （多角色会诊只是其中一种），挂在 orchestrator 的 Coordinator 分支上就只补了这一条路，
           // path-A 工作流里的 agent 步照样漏。这里是这类子运行的唯一必经之地。
           //
-          // 不吞异常：与编排层三处顶层 insert（orchestrator.ts:2081/2370/2620）同姿势。写失败就让它响，
+          // 不吞异常：与编排层三处顶层 insert（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent）同姿势。写失败就让它响，
           // 静默 catch 会把「落库坏了」伪装成「这个 Agent 没跑过」——正是本单要修的那种病。
           await this.deps.repos.agentRuns.insert(r.run);
           return { structured: r.structured, answer: r.answer };
