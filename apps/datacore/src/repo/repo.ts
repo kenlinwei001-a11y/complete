@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -334,6 +334,11 @@ export interface Repos {
   // 排序需求由调用方按 `key` 自己排（key 形如 P01，字典序 ≡ 数字序，因两位定宽）。
   processDomains: Store<ProcessDomain>;
   processDefinitions: Store<ProcessDefinition>;
+  // ── WO-PROCESS-INSTANCE · 流程**运行时**层（migrations/030_process_instances.sql · PRD-enterprise-decision-twin §4.5）──
+  // 与上面两行是**两层**不是两半：029/上两行 = 模板（这类流程通常怎么走），030/下两行 = 现场（这一单此刻卡在哪）。
+  // 同样走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at）；R9 三处同改的另两处见 memory.ts / pg.ts。
+  processInstances: Store<ProcessInstance>;
+  processTasks: Store<ProcessTask>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */

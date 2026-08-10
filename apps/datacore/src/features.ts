@@ -96,6 +96,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: false },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  // WO-PROCESS-INSTANCE（R3 暗发·defaultOn:false·关=404 FEATURE_NOT_FOUND·先于 authz）：
+  // 流程**运行时**层 —— `ProcessInstance`/`ProcessTask` + 五个等待态，回答需求 §4.5「为什么这个流程现在卡住了」。
+  // 暗发理由：本单只落引擎与读端，**平台自带流程实例种子尚无**（65 条是模板，不是在跑的单子）——
+  // 默认开会让每个租户的卡点面板都是空的，而空面板与「一切顺利」在界面上分不开，那是会说谎的诚实位。
+  // 先由 CLI/curl 造实例验证（R15 CLI 先于 UI），有真实例数据源之后再议默认开。
+  { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["process-runtime"] } },
   // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。
   { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
   // WO-CEO-DATA-2（R3 暗发·defaultOn:false）：CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·可 back-derivation）。
