@@ -1,9 +1,9 @@
 {
   "__fixture_provenance": {
-    "wo": "WO-NODE-SEMANTICS",
-    "capturedAt": "2026-08-07",
+    "wo": "WO-LEADTIME-SPLIT（原 WO-NODE-SEMANTICS 捕获，本单因 totals 口径拆分重抓）",
+    "capturedAt": "2026-08-10",
     "branchHead": "7b1e5e4ea4b1842ed55b72c8ec3784d98721600f",
-    "how": "内存态 datacore（SEED_DEMO=1 · seed 42 · 无数据库）真跑一次：curl -X POST http://127.0.0.1:4001/a/v1/solvers/chain_loss_attribution/invoke -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{\"args\":{}}' → 取 .data 原样落盘（零手改）。",
+    "how": "内存态 datacore（seed 42·无数据库）经 test/helpers.makeApp + seedBattery 真跑一次 chain_loss_attribution，取返回体原样落盘（零手改）。重抓原因：totals.leadTimeDays 拆成 deliveryLeadTimeDays / cashConversionDays / settlementDays，旧 fixture 的 totals 形状已不存在。",
     "why": "既有 test/fixtures/chain-loss-real.json 是更早一次的真捕获，evidence 只有 23 条、无 Cadence 行；D1 的节拍数据落库后本分支实测 26 条（多出 3 条 drillUnit=cadence_day）。本单的 SEAM 门必须咬到 cadence 换算式那一档，故另抓一份，不改动既有 fixture（别的门以它为基线）。",
     "counts": {
       "evidence": 26,
@@ -22,6 +22,9 @@
     "supplierId": "SUP-001",
     "baseId": "hefei",
     "agingProcessId": "LINE-WS-hefei-assembly-aging",
+    "purchaseOrderId": "po_1",
+    "customsClearanceId": null,
+    "incomingInspectionId": "iqc_po_1",
     "selection": "锚点订单 = Order 按 so 字典序第一张（SO-3391）；其余对象沿本体链路 hop，多解时取对端 id 字典序最小（R6 全序）"
   },
   "nodes": [
@@ -361,6 +364,46 @@
       ]
     },
     {
+      "nodeId": "material.inbound_transit",
+      "label": "入厂在途与清关",
+      "stage": "MATERIAL",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "material.in_transit",
+          "nodeId": "material.inbound_transit",
+          "label": "入厂在途（供应商发货 → 到厂/到港）",
+          "kind": "handoff",
+          "days": 3,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
+      "nodeId": "material.iqc",
+      "label": "到货检验",
+      "stage": "MATERIAL",
+      "scope": {
+        "modelIds": [
+          "4680-NCM"
+        ]
+      },
+      "steps": [
+        {
+          "stepId": "material.iqc",
+          "nodeId": "material.iqc",
+          "label": "到货检验（到货待检 → 检验放行）",
+          "kind": "queue",
+          "days": 3,
+          "valueAdd": false
+        }
+      ]
+    },
+    {
       "nodeId": "capacity.qc_batch",
       "label": "过程质检攒批",
       "stage": "CAPACITY",
@@ -420,84 +463,89 @@
   ],
   "attribution": [
     {
-      "stepId": "order.settlement_terms",
-      "nonValueDays": 60,
-      "pctOfChainLoss": 76.73179396092362
-    },
-    {
       "stepId": "capacity.op.OP-001#setup",
       "nonValueDays": 0.003472222222222222,
-      "pctOfChainLoss": 0.004440497335701598
+      "pctOfChainLoss": 0.014351320321469576
     },
     {
       "stepId": "capacity.op.OP-002#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.02664298401420959
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-003#setup",
       "nonValueDays": 0.013888888888888888,
-      "pctOfChainLoss": 0.017761989342806393
+      "pctOfChainLoss": 0.0574052812858783
     },
     {
       "stepId": "capacity.op.OP-004#setup",
       "nonValueDays": 0.010416666666666666,
-      "pctOfChainLoss": 0.013321492007104795
+      "pctOfChainLoss": 0.04305396096440872
     },
     {
       "stepId": "capacity.op.OP-005#setup",
       "nonValueDays": 0.017361111111111112,
-      "pctOfChainLoss": 0.022202486678507993
+      "pctOfChainLoss": 0.07175660160734788
     },
     {
       "stepId": "capacity.op.OP-006#setup",
       "nonValueDays": 0.013888888888888888,
-      "pctOfChainLoss": 0.017761989342806393
+      "pctOfChainLoss": 0.0574052812858783
     },
     {
       "stepId": "capacity.op.OP-007#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.02664298401420959
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-008#setup",
       "nonValueDays": 0.041666666666666664,
-      "pctOfChainLoss": 0.05328596802841918
+      "pctOfChainLoss": 0.1722158438576349
     },
     {
       "stepId": "capacity.op.OP-009#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.02664298401420959
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-010#setup",
       "nonValueDays": 0.03125,
-      "pctOfChainLoss": 0.03996447602131439
+      "pctOfChainLoss": 0.1291618828932262
     },
     {
       "stepId": "capacity.aging#dwell",
       "nonValueDays": 5,
-      "pctOfChainLoss": 6.394316163410302
+      "pctOfChainLoss": 20.66590126291619
     },
     {
       "stepId": "material.supplier_leadtime",
       "nonValueDays": 5,
-      "pctOfChainLoss": 6.394316163410302
+      "pctOfChainLoss": 20.66590126291619
+    },
+    {
+      "stepId": "material.in_transit",
+      "nonValueDays": 3,
+      "pctOfChainLoss": 12.399540757749714
+    },
+    {
+      "stepId": "material.iqc",
+      "nonValueDays": 3,
+      "pctOfChainLoss": 12.399540757749714
     },
     {
       "stepId": "capacity.qc_batch__cadence",
       "nonValueDays": 0.5,
-      "pctOfChainLoss": 0.6394316163410302
+      "pctOfChainLoss": 2.066590126291619
     },
     {
       "stepId": "capacity.schedule__cadence",
       "nonValueDays": 0.5,
-      "pctOfChainLoss": 0.6394316163410302
+      "pctOfChainLoss": 2.066590126291619
     },
     {
       "stepId": "demand.consensus__cadence",
       "nonValueDays": 7,
-      "pctOfChainLoss": 8.952042628774423
+      "pctOfChainLoss": 28.932261768082668
     }
   ],
   "evidence": [
@@ -893,6 +941,44 @@
       "derivationEdge": "order_for_model → model_uses_material → material_supplied_by"
     },
     {
+      "stepId": "material.in_transit",
+      "nodeId": "material.inbound_transit",
+      "stage": "MATERIAL",
+      "label": "入厂在途（供应商发货 → 到厂/到港）",
+      "kind": "handoff",
+      "days": 3,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "PurchaseOrder",
+      "drillId": "po_1",
+      "drillField": "shipDay",
+      "drillValue": 13,
+      "drillUnit": "day_stamp_span",
+      "drillFieldEnd": "arriveDay",
+      "drillValueEnd": 16,
+      "conversion": "days = PurchaseOrder.arriveDay − PurchaseOrder.shipDay（两个日戳之差；两端都是字段真值）",
+      "derivationEdge": "order_for_model → model_uses_material → material_supplied_by_po"
+    },
+    {
+      "stepId": "material.iqc",
+      "nodeId": "material.iqc",
+      "stage": "MATERIAL",
+      "label": "到货检验（到货待检 → 检验放行）",
+      "kind": "queue",
+      "days": 3,
+      "valueAdd": false,
+      "solverKey": "chain_loss_attribution",
+      "drillType": "IncomingInspection",
+      "drillId": "iqc_po_1",
+      "drillField": "arrivedDay",
+      "drillValue": 16,
+      "drillUnit": "day_stamp_span",
+      "drillFieldEnd": "releasedDay",
+      "drillValueEnd": 19,
+      "conversion": "days = IncomingInspection.releasedDay − IncomingInspection.arrivedDay（两个日戳之差；两端都是字段真值）",
+      "derivationEdge": "order_for_model → model_uses_material → material_supplied_by_po → po_inspected_by"
+    },
+    {
       "stepId": "capacity.qc_batch__cadence",
       "nodeId": "capacity.qc_batch",
       "stage": "CAPACITY",
@@ -946,6 +1032,17 @@
   ],
   "empty": [
     {
+      "stepId": "material.customs",
+      "nodeId": "material.inbound_transit",
+      "stage": "MATERIAL",
+      "label": "清关（申报 → 海关放行）",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_INSTANCE",
+      "reason": "本锚点链上的采购单 po_1 的供货模式是「境内」——境内直供**结构上没有清关环节**，因此这条链上不存在 CustomsClearance 实例（NOT_APPLICABLE，不是数据没采到，更不是 0 天）。承载物本身是有的（seed 42 全仓 30 张采购单里恰有 1 张进口单 po_12 带清关记录），所以这是 NO_INSTANCE 而非 NO_CARRIER：要看到这一腿的真值，换一张进口单当锚点即可，不需要加任何字段。",
+      "probe": "沿 po_customs_cleared_by 从采购单 po_1 取清关凭证；读 PurchaseOrder.sourceMode 判断本单是否进口。"
+    },
+    {
       "stepId": "material.mrp__cadence",
       "nodeId": "material.mrp",
       "stage": "MATERIAL",
@@ -990,39 +1087,6 @@
       "probe": "读对象 Cadence(nodeId=order.settlement)：dataMode=EMPTY · emptyReason=NO_CARRIER · 由 synthetic/cadence.ts 从种子自身发生序列推导，推不出即诚实标空。"
     },
     {
-      "stepId": "material.in_transit",
-      "nodeId": "material.replenish",
-      "stage": "MATERIAL",
-      "label": "物料入厂在途",
-      "kind": "handoff",
-      "dataMode": "EMPTY",
-      "emptyKind": "NO_CARRIER",
-      "reason": "没有「物料入厂在途天数」这个字段。三个看着像的都**不是**：Material.inTransit 是数量（吨）；PurchaseOrder.etaDay / Shipment.etaDay 是相对 forecastStart 的到货日偏移（日期锚，不是时长）；InterBaseTransfer.transitDays 是成品跨基地调拨在途，不是物料入厂在途 —— 挪用任何一个都是口径错标（本仓刚修过差 1e4 的同族病）。",
-      "probe": "读 apps/datacore/src/synthetic/battery.ts 属性定义：materialProps.inTransit（数量）/ shipmentProps.etaDay 注释 'relative to forecastStart' / interBaseTransferProps.transitDays 注释 '距离派生 = ceil(baseDistanceKm / dailyTruckKm)'（成品调拨）。三者语义逐个核过，均非本段。"
-    },
-    {
-      "stepId": "material.customs",
-      "nodeId": "material.replenish",
-      "stage": "MATERIAL",
-      "label": "清关",
-      "kind": "handoff",
-      "dataMode": "EMPTY",
-      "emptyKind": "NO_CARRIER",
-      "reason": "清关段在本体里完全不存在：没有对象、没有字段、没有链路承载它。（D2 单要新增的两段之一。）",
-      "probe": "grep -rni 'customs|清关|报关' apps/*/src packages/*/src --include=*.ts → 0 命中（2026-08-05 在 origin/claude/inspiring-gates-aqczjg + S0 上实测）。"
-    },
-    {
-      "stepId": "material.iqc",
-      "nodeId": "material.replenish",
-      "stage": "MATERIAL",
-      "label": "到货检验（IQC）",
-      "kind": "queue",
-      "dataMode": "EMPTY",
-      "emptyKind": "NO_CARRIER",
-      "reason": "到货检验段无承载。注意：仓里**有**质量域（QualityLot/InspectionResult/InspectionCharacteristic），但那是**在制/出货**检验（挂 WorkOrder/lotId），不是**来料**检验；拿它冒充 IQC 是换个对象继续说谎。（D2 单要新增的两段之二。）",
-      "probe": "grep -rni '\\bIQC\\b|到货检验|来料检验|incoming.*inspect' apps/*/src packages/*/src --include=*.ts → 0 命中；再追一层核 QualityLot.woId / InspectionResult.charId 的挂载点，确认全部挂在在制工单上，无来料侧。"
-    },
-    {
       "stepId": "chain.rework",
       "nodeId": "capacity.quality",
       "stage": "CAPACITY",
@@ -1032,21 +1096,144 @@
       "emptyKind": "NO_CARRIER",
       "reason": "返工**天数**无承载。仓里有不良记录（DefectRecord.qty 85 条 / QualityLot.failQty 260 条 / InspectionResult 520 条），但全是**数量与判定**，没有返工工时或返工天数字段。要从不良数换算成天数得有「单件返工工时率」——那个数仓里不存在，编一个出来就是静默兜底。",
       "probe": "grep -rni '返工|rework' apps/datacore/src packages/contracts/src --include=*.ts → 仅命中 battery.ts:574 的一段叙事文案（外协质量波动的因果链描述串）与 chain-sim.ts 的 kind 枚举声明本身，**零字段、零对象**；再逐个读 defectRecordProps / qualityLotProps / inspectionResultProps 的属性表，确认无任何时长字段。"
+    },
+    {
+      "stepId": "demand.forecast#intake",
+      "nodeId": "demand.forecast",
+      "stage": "DEMAND",
+      "label": "客户预告接收",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里**有**两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/p50/p90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
+      "probe": "实测（seed 42·内存仓）：listByType('LongTermAgreement') n=3，首行字段 ltaId/supplierId/materialType/contractedQtyTon/actualDeliveredTon/priceLinked/breachPenaltyWan/priceFormula/effectiveDate/expiryDate 逐个核过；listByType('DemandSegment') n=3，字段 segId/segment/tgt/p50/p90/act/priceWan/marginPct/floorPct/businessType/revenueWan/marginWan。两者均无时刻序列、无时长字段。"
+    },
+    {
+      "stepId": "demand.quote#approval",
+      "nodeId": "demand.quote",
+      "stage": "DEMAND",
+      "label": "询报价",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "询报价段**连对象都没有**：全仓没有 Quote / 报价单对象类型。`Quote` 这个名字在仓里只作为**规则求值期注入的命名空间**存在（规则 C24 `Quote.marginPct < Quote.floorPct`），battery.ts:2777 明写「Quote 仅 eval 期注入命名空间非本体对象类型」。Order 只有 due/status、OrderLine 只有 lineStatus——都是单据状态，不是「询单→报出价」这件事发生的时刻。修法是先有报价单对象，不是在这里编一个审批周期。",
+      "probe": "grep -rn 'Quote|Quotation|报价' apps/datacore/src/synthetic --include=*.ts → 5 命中，逐条点开：battery.ts:290 是规则 C24 表达式、:2777 是它的 scope 归属注释（并明写 Quote 非本体对象类型）、:568/:571 是叙事文案。另核 synthetic/service.ts 的 putAll 清单（全部物化对象类型）无 Quote。"
+    },
+    {
+      "stepId": "capacity.rccp#review",
+      "nodeId": "capacity.rccp",
+      "stage": "CAPACITY",
+      "label": "产能与瓶颈复核",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "产能/瓶颈复核的**耗时**无承载。仓里有 Process / Equipment / ProcessCapabilityWindow（345 条），但它们是**能力参数**（minValue/maxValue/targetValue/ucl/lcl），回答的是「能跑多快」，不是「这次复核花了多久 / 多久复核一次」。唯一像样的候选 ProductionSchedule **未物化为对象**（synthetic/service.ts 明列为「高量低值执行类保持模型态不物化」），下游按对象根本查不到。",
+      "probe": "实测：listByType('ProcessCapabilityWindow') n=345，首行字段 capabilityId/operationId/parameterName/paramCode/unit/minValue/maxValue/targetValue/tolerance/ucl/lcl/status；listByType('ProductionSchedule') **n=0**（生成器里有、对象库里没有）。"
+    },
+    {
+      "stepId": "capacity.wo_release#release",
+      "nodeId": "capacity.wo_release",
+      "stage": "CAPACITY",
+      "label": "工单下达",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "工单下达段无承载。WorkOrder **有** startDate/endDate（260 条），但那对日期是**生产窗口**（开工→完工），把它俩相减得到的是作业时长，不是「排产定了→工单真正下到车间」的这段等待。缺的是 releaseDate / plannedReleaseDate 这类**下达时刻**字段——「有对象、缺字段」，修法是加字段。",
+      "probe": "实测：listByType('WorkOrder') n=260，首行字段 woId/moNo/modelId/lineId/baseId/qtyPlanned/qtyActual/startDate/endDate/status 逐个核过，无任何下达/放行时刻。"
+    },
+    {
+      "stepId": "material.kitting#pick",
+      "nodeId": "material.kitting",
+      "stage": "MATERIAL",
+      "label": "齐套发料",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "齐套发料段无承载。InventoryTxn（128 条）**每行只有一个时刻** occurredAt + txnType/qty/fromWarehouse/toWarehouse，没有「齐套请求时刻」与「线边收到时刻」的**配对**；Warehouse（34 条）是仓位主数据（whType/capacityUnits/province/city），不带时长。拿单条 occurredAt 去减别的对象的日期，是在编一条本来不存在的时间线。",
+      "probe": "实测：listByType('InventoryTxn') n=128，首行字段 txnId/txnType/fgRef/woRef/qty/fromWarehouse/toWarehouse/refDoc/occurredAt；listByType('Warehouse') n=34，首行字段 warehouseId/baseId/name/whType/capacityUnits/province/city。"
+    },
+    {
+      "stepId": "material.purchase_req#approval",
+      "nodeId": "material.purchase_req",
+      "stage": "MATERIAL",
+      "label": "请购",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "请购段**连对象都没有**：全仓没有 PurchaseRequisition / 请购单对象类型。PurchaseOrder 有 orderDay（下单天）作为这一段的**终点**，但起点（请购提出天）不存在——一段时长只有一端等于没有。（设计稿 S1 自己也标 `V.G`「无 PurchaseReq 对象」，与实测一致。）",
+      "probe": "grep -rn 'PurchaseReq|请购|Requisition' apps/datacore/src/synthetic --include=*.ts → **0 命中**（先拿确定存在的 'PurchaseOrder' 跑同一条命令验证工具没坏：命中 20+ 行）。另核 synthetic/service.ts putAll 清单无请购类。"
+    },
+    {
+      "stepId": "material.purchase_order#place",
+      "nodeId": "material.purchase_order",
+      "stage": "MATERIAL",
+      "label": "采购下单",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "**这是「有对象、缺字段」，不是「没对象」——两者修法完全不同，不许混为一谈。** PurchaseOrder 对象存在且字段很全（D2 落的四段日戳 orderDay/shipDay/arriveDay + etaDay），但四段日戳的第一段 `orderDay → shipDay` 语义是**供应商生产前置期**（battery-extended.ts 生成处注释：`orderDay ──供应商生产(Supplier.leadTime)──▶ shipDay`），已由 material.supplier_leadtime 这一段计过；拿它冒充「下单作业」会**重复计**同一段时间。缺的是「请购批准→采购下单」或「下单作业时长」这一个字段。",
+      "probe": "实测：listByType('PurchaseOrder') n=30，首行 po_0 字段 poId/matId/qty/etaDay/delayed/supplierId/sourceMode/orderDay(-6)/shipDay(-1)/arriveDay(1) 逐个核过；再读 battery-extended.ts:685 的日戳倒推注释确认 orderDay→shipDay 的语义归属。"
+    },
+    {
+      "stepId": "delivery.fg_stock#putaway",
+      "nodeId": "delivery.fg_stock",
+      "stage": "DELIVERY",
+      "label": "成品入库",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "成品入库停留段无承载。FinishedGoodsInventory（57 条）只有 qtyOnHand/qtyReserved/qtyAvailable/asOf——前三个是**存量**（件），asOf 是**快照时刻**且全表同值，构不成序列。要算这一段得有「下线时刻 → 上架可发运时刻」，仓里没有。注意：安全库存天数 / 覆盖天数那类「库存够卖几天」也**不是**这一段——那是存量除以日耗，不是货在库里停了多久。",
+      "probe": "实测：listByType('FinishedGoodsInventory') n=57，首行字段 fgId/model/warehouseId/qtyOnHand/qtyReserved/asOf/qtyAvailable；asOf 全表同为快照日。"
+    },
+    {
+      "stepId": "delivery.transit#linehaul",
+      "nodeId": "delivery.transit",
+      "stage": "DELIVERY",
+      "label": "干线运输在途",
+      "kind": "handoff",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "**成品发到客户**的在途时长无承载。三个看着像的逐个核过、全都不是：① Shipment（13 条）是 **SRM 来料在途**（连接器 conn-srm / 数据集 srm_shipments，挂 base_has_shipment），且 etaDay 是相对 forecastStart 的**到货日偏移**（日期锚）不是时长；② InterBaseTransfer.transitDays 是**成品跨基地调拨**在途，不是发到客户；③ Supplier.transitDays 是**入厂**在途（本单已用于 material.inbound_transit）。挪用任何一个都是口径错标。",
+      "probe": "实测：listByType('Shipment') n=13，首行 SHIP-changzhou 字段 shipId/baseId/etaDay/status/qtyTons/coverageDays；再读 battery.ts:1630 连接器映射 `Shipment: [{ connId:'conn-srm', dataset:'srm_shipments' … }]` 确认它是来料侧；再读 battery.ts:1157 interBaseTransferProps.transitDays 注释确认是基地间调拨。"
+    },
+    {
+      "stepId": "delivery.acceptance#inspect",
+      "nodeId": "delivery.acceptance",
+      "stage": "DELIVERY",
+      "label": "客户验收",
+      "kind": "queue",
+      "dataMode": "EMPTY",
+      "emptyKind": "NO_CARRIER",
+      "reason": "客户验收段无承载。OrderPromise（24 条）只有 promiseDate（ATP 承诺日）与 asOf（快照时刻），**没有「客户收货时刻」也没有「验收通过时刻」**；CustomerLocation 是交付地点主数据（省市/地址），不带时刻。于是「到货 ≠ 交付」这句话今天在数据上根本不可分——这正是底部 OTD 口径说不清的根因之一。",
+      "probe": "实测：listByType('OrderPromise') n=24，首行 AP-SO-3391 字段 promiseId/orderRef/model/requestedQty/committableQty/promiseDate/atpStatus/shortfallQty/bottleneck/asOf 逐个核过，无收货/验收时刻。"
     }
   ],
   "totals": {
-    "leadTimeDays": 79.38888888888889,
+    "deliveryLeadTimeDays": 25.38888888888889,
+    "cashConversionDays": 85.38888888888889,
+    "settlementDays": 60,
     "valueAddDays": 1.1944444444444444,
-    "nonValueDays": 78.19444444444444,
-    "flowEfficiency": 0.015045486354093772,
-    "stepCount": 26,
-    "emptyCount": 8
+    "nonValueDays": 24.194444444444443,
+    "flowEfficiency": 0.047045951859956234,
+    "stepCount": 28,
+    "emptyCount": 16
+  },
+  "cash": {
+    "settlementDays": 60,
+    "steps": [
+      {
+        "stepId": "order.settlement_terms",
+        "nodeId": "order.cash",
+        "label": "账期等待（回款）",
+        "days": 60
+      }
+    ]
   },
   "conservation": {
-    "sumPct": 100.00000000000003,
-    "residual": 2.842170943040401e-14,
+    "sumPct": 100,
+    "residual": 0,
     "tolerancePct": 0.001,
     "ok": true
   },
-  "summary": "锚点订单 SO-3391：全链 79.39 天，其中增值 1.19 天、非增值（损失）78.19 天，覆盖 26 个环节；吃掉损失最多的是「账期等待（回款）」76.7%。另有 8 个环节诚实标 EMPTY（7 段本体无承载 / 1 段本链无实例），未补 0。"
+  "summary": "锚点订单 SO-3391：交付前置期（下单→收货·不含账期）25.39 天，其中增值 1.19 天、非增值（损失）24.19 天，覆盖 27 个交付环节；吃掉损失最多的是「等S&OP 共识会节拍」28.9%。现金周转期（下单→回款·含账期）85.39 天 = 交付前置期 + 结算段 60.00 天（单列·不进损失归因）。另有 16 个环节诚实标 EMPTY（14 段本体无承载 / 2 段本链无实例），未补 0。"
 }

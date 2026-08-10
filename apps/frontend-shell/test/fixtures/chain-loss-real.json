@@ -450,94 +450,89 @@
   ],
   "attribution": [
     {
-      "stepId": "order.settlement_terms",
-      "nonValueDays": 60,
-      "pctOfChainLoss": 71.26360936984494
-    },
-    {
       "stepId": "capacity.op.OP-001#setup",
       "nonValueDays": 0.003472222222222222,
-      "pctOfChainLoss": 0.004124051468162322
+      "pctOfChainLoss": 0.014351320321469576
     },
     {
       "stepId": "capacity.op.OP-002#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.024744308808973936
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-003#setup",
       "nonValueDays": 0.013888888888888888,
-      "pctOfChainLoss": 0.01649620587264929
+      "pctOfChainLoss": 0.0574052812858783
     },
     {
       "stepId": "capacity.op.OP-004#setup",
       "nonValueDays": 0.010416666666666666,
-      "pctOfChainLoss": 0.012372154404486968
+      "pctOfChainLoss": 0.04305396096440872
     },
     {
       "stepId": "capacity.op.OP-005#setup",
       "nonValueDays": 0.017361111111111112,
-      "pctOfChainLoss": 0.020620257340811615
+      "pctOfChainLoss": 0.07175660160734788
     },
     {
       "stepId": "capacity.op.OP-006#setup",
       "nonValueDays": 0.013888888888888888,
-      "pctOfChainLoss": 0.01649620587264929
+      "pctOfChainLoss": 0.0574052812858783
     },
     {
       "stepId": "capacity.op.OP-007#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.024744308808973936
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-008#setup",
       "nonValueDays": 0.041666666666666664,
-      "pctOfChainLoss": 0.04948861761794787
+      "pctOfChainLoss": 0.1722158438576349
     },
     {
       "stepId": "capacity.op.OP-009#setup",
       "nonValueDays": 0.020833333333333332,
-      "pctOfChainLoss": 0.024744308808973936
+      "pctOfChainLoss": 0.08610792192881744
     },
     {
       "stepId": "capacity.op.OP-010#setup",
       "nonValueDays": 0.03125,
-      "pctOfChainLoss": 0.037116463213460904
+      "pctOfChainLoss": 0.1291618828932262
     },
     {
       "stepId": "capacity.aging#dwell",
       "nonValueDays": 5,
-      "pctOfChainLoss": 5.938634114153745
+      "pctOfChainLoss": 20.66590126291619
     },
     {
       "stepId": "material.supplier_leadtime",
       "nonValueDays": 5,
-      "pctOfChainLoss": 5.938634114153745
+      "pctOfChainLoss": 20.66590126291619
     },
     {
       "stepId": "material.in_transit",
       "nonValueDays": 3,
-      "pctOfChainLoss": 3.563180468492247
+      "pctOfChainLoss": 12.399540757749714
     },
     {
       "stepId": "material.iqc",
       "nonValueDays": 3,
-      "pctOfChainLoss": 3.563180468492247
+      "pctOfChainLoss": 12.399540757749714
     },
     {
       "stepId": "capacity.qc_batch__cadence",
       "nonValueDays": 0.5,
-      "pctOfChainLoss": 0.5938634114153745
+      "pctOfChainLoss": 2.066590126291619
     },
     {
       "stepId": "capacity.schedule__cadence",
       "nonValueDays": 0.5,
-      "pctOfChainLoss": 0.5938634114153745
+      "pctOfChainLoss": 2.066590126291619
     },
     {
       "stepId": "demand.consensus__cadence",
       "nonValueDays": 7,
-      "pctOfChainLoss": 8.314087759815243
+      "pctOfChainLoss": 28.932261768082668
     }
   ],
   "evidence": [
@@ -1201,18 +1196,31 @@
     }
   ],
   "totals": {
-    "leadTimeDays": 85.38888888888889,
+    "deliveryLeadTimeDays": 25.38888888888889,
+    "cashConversionDays": 85.38888888888889,
+    "settlementDays": 60,
     "valueAddDays": 1.1944444444444444,
-    "nonValueDays": 84.19444444444444,
-    "flowEfficiency": 0.01398828887443071,
+    "nonValueDays": 24.194444444444443,
+    "flowEfficiency": 0.047045951859956234,
     "stepCount": 28,
     "emptyCount": 16
   },
+  "cash": {
+    "settlementDays": 60,
+    "steps": [
+      {
+        "stepId": "order.settlement_terms",
+        "nodeId": "order.cash",
+        "label": "账期等待（回款）",
+        "days": 60
+      }
+    ]
+  },
   "conservation": {
-    "sumPct": 100.00000000000003,
-    "residual": 2.842170943040401e-14,
+    "sumPct": 100,
+    "residual": 0,
     "tolerancePct": 0.001,
     "ok": true
   },
-  "summary": "锚点订单 SO-3391：全链 85.39 天，其中增值 1.19 天、非增值（损失）84.19 天，覆盖 28 个环节；吃掉损失最多的是「账期等待（回款）」71.3%。另有 16 个环节诚实标 EMPTY（14 段本体无承载 / 2 段本链无实例），未补 0。"
+  "summary": "锚点订单 SO-3391：交付前置期（下单→收货·不含账期）25.39 天，其中增值 1.19 天、非增值（损失）24.19 天，覆盖 27 个交付环节；吃掉损失最多的是「等S&OP 共识会节拍」28.9%。现金周转期（下单→回款·含账期）85.39 天 = 交付前置期 + 结算段 60.00 天（单列·不进损失归因）。另有 16 个环节诚实标 EMPTY（14 段本体无承载 / 2 段本链无实例），未补 0。"
 }
