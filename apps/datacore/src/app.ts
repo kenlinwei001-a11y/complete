@@ -44,6 +44,9 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+// WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
+// 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
+import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
@@ -2742,6 +2745,42 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/business-domains", async (req) => {
     ctx(req); // 鉴权上下文（域注册表为平台参考基线，按租户读）
     return { domains: BUSINESS_DOMAINS };
+  });
+  /**
+   * WO-WAITING-STATES-FE · 业务流程层下发（13 域 + 65 流程 · 含 `waitKind` 四态）。
+   *
+   * ── 为什么本路由是新增的：读端此前是 0 ────────────────────────────────────
+   * `processDefinitions` / `processDomains` 两个 store 自建成起**只有写端与 test 读端**
+   * （`seed.ts:697-698` 写 · `test/process-layer.test.ts` 读），src 里零读取方 ——
+   * 即假绿第 9 形态 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：实现有、测试 65 条全绿、
+   * 却没有任何生产链路能把它取出来。前端「五个等待态 0 命中」的病根在这里，
+   * 不在前端（取证见 `docs/WO-WAITING-STATES-FE-evidence.md` §1.4 / §3）。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · 只读投影，无副作用；按 `key` 升序（R6 确定性：不依赖 Store 迭代序）。
+   * · R2：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   * · `waitKinds` 随响应下发**词表本身**，让前端渲染「四态图例」时不必再写一份字面量数组
+   *   —— 契约注释原文：「任何一侧再写一份字面量数组就是回退到『两个 dev 各发明一套词表、
+   *   交集为 0』出事前的状态」。四值不含 `WAITING_APPROVAL`（仓主已裁「流程审批不体现」，
+   *   `process.ts:59-67` 诚实缺席，不是漏写）。
+   * · **不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *   `ProcessTask`/`ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现）。
+   *   本路由只给 `stdDurationDays`（标准工期）并由前端如实标注口径，
+   *   **不拿标准工期冒充实测卡顿**。
+   */
+  app.get("/a/v1/process-definitions", async (req) => {
+    const c = ctx(req);
+    const byKey = <T extends { key: string }>(a: T, b: T) => a.key.localeCompare(b.key);
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    return {
+      domains: [...domains].sort(byKey),
+      definitions: [...definitions].sort(byKey),
+      waitKinds: PROCESS_WAIT_KINDS,
+      ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+    };
   });
   // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
   app.post("/a/v1/slices/plan", async (req) => {
