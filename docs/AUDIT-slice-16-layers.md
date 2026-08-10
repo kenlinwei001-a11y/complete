@@ -252,3 +252,114 @@ origin 样例：{"type":"SYNTHETIC","jobId":"synthetic-battery-manufacturing-S-4
 
 无回归：`slice-governance-full` / `admin-closure-slices` / `f43.admin-cluster` /
 `f42.validation-trace` / `dril-resources-view` 合计 **20/20 绿**。
+
+---
+
+## 6 · 第二双手的独立复验（接续 dev · 2026-08-10）
+
+> **为什么有这一节**：本单被沙箱重启打断后派了两个接续 dev，两人各在一个 worktree、
+> 同挂 `claude/handoff-wo-slice-16-layers` 分支（`git worktree list` 可见两行同分支）。
+> 本节由**没写 §1–§5 的那一位**独立重跑，用途是「第二双手核对」——
+> 因为 §0 的金丝雀只能证明**工具**没坏，证明不了**结论**没错。
+> 独立后端：端口 4093 · `SEED_DEMO=1` · seed 42 · 与 §1 同口径。
+
+### 6.1 抽验：§1–§5 的关键数字**全部复现**
+
+| 断言（出处） | 声称 | 我实测 | 判定 |
+|---|---|---|---|
+| 切片总数（§1.1） | 98 | **98**（多跳 4 · 覆盖 94） | ✅ |
+| ExceptionEvent（§1.2） | 372 | **372** | ✅ |
+| `temporal=true` 属性（§1.2） | 0 | **0**（金丝雀：同查询下 `dataType=="enum"` 命中 **105** ⇒ 工具正常） | ✅ |
+| `stateVariables` 非空类型（§2⑦a） | 0 | **0** | ✅ |
+| `actions` 非空类型（§2⑮a） | 0 | **0** | ✅ |
+| `sourceBindings` 非空类型（§2⑫） | 93 | **93** | ✅ |
+| slice references（§1.2①） | 恒空 | **3 条切片各 `total:0`** | ✅ |
+| 三态汇总（§5.1） | 12/1/3 | **12/1/3** | ✅ |
+| ⑯ 溯源（§5.2） | 531/531 | **`og:SYNTHETIC count=531`**，node0 带 `origin.sourceConnId=conn-erp` | ✅ |
+
+⇒ 「真后端实测、非 grep」这句话**属实**，§1–§5 可信。
+
+### 6.2 但有两处数字要更正（以实测为准）
+
+| 位置 | 原文 | 实测 | 差在哪 |
+|---|---|---|---|
+| §2 表 ④属性 | 「9 类共 **~180 个**属性」 | **127 个** | 原文带 `~` 是估算不是实测。逐类点清：Base 19 · Material 19 · Equipment 18 · Process 17 · Model 16 · Order 16 · Line 11 · Customer 7 · Workshop 4 = **127**，与端点 `property.count=127` 一致 |
+| §2 表 ⑭证据 | 「本切片派生规格覆盖 **6** 条派生属性」 | **1 条**（只有契约基线 fixture） | 把两个不同承载物合成了一句：`derivation_specs` 实测 **ACTIVE 0 条**；那「6 条」其实是 `ObjectTypeDef.derivedProperties`，它落在 **⑧指标**层（实测 ⑧=17，含 6 条派生 + 11 个带量纲属性）。⑭的派生溯源那一半是**接了线没数据** |
+
+### 6.3 新发现（§1–§5 未覆盖）：**十六层做对了，但首屏那 4 条切片点开仍是空的**
+
+逐条跑完全部 98 条切片（无参调用）：**86 条非空 / 12 条空子图**。12 条空的分两类：
+
+| 类 | 条数 | 切片 | 空因 | 修法 |
+|---|---|---|---|---|
+| **缺试切参数** | 4 | `enterprise_360` · `order_fulfillment_360` · `order_to_cash_720` · `aop_scenario_chain` | root selector 写着 `{{args.so}}` / `{{args.key}}`，不给参数则 root 过滤恒不匹配 | 补参数（数据是好的） |
+| **root 类型零对象** | 8 | `coverage_adoptedmitigation` / `coverage_wipmove` / `coverage_shiftplan` / `coverage_productionschedule` / `coverage_operatorattendance` / `coverage_operatorskillcert` / `coverage_sparepartconsumption` / `coverage_wipqualitycheckpoint` | 该对象类型本租户零对象 | 补数据 |
+
+**为什么这条要紧**：`SlicesPage` 现在默认「只看多跳 4 条」，而**这 4 条恰好全在缺参名单里**，
+`SliceLayersPanel` 又是以 `args={}` 调用的 ⇒ **首屏默认路径上，点开任何一条都是十六张空卡**。
+仓主「切片页看不到十六层」的原始投诉会原样复发，只是卡片更好看。
+
+更糟的是当时的层文案：⑩规则会说「平台有 28 条，但**本切片的路径没纳入**」——
+**这是假话**，切片纳没纳入根本还没判定过（子图都没解出来）。
+形态与 §1.2 那个误判同源：**拿一个看起来相关的说法当解释**。
+
+### 6.4 §2 表 ⑮行动的定性要拆细（原文只说对一半）
+
+原文写 `object_types.actions[]` 全空 =「接了线没数据」。追一层调用发现是**两道口子叠着**：
+
+1. **生产方确实不产**：`synthetic/battery.ts` 里 `actions:` 与 `stateVariables` 命中数皆为 **0**
+   （金丝雀：同文件 `derivedProperties` 命中 **14** ⇒ 是真 0，不是 grep 坏）。
+2. **就算产了也落不了库**：`pipeline/subgraph.ts:53-57` 确实构造了
+   `stateVariables`/`actions`/`functions`/`security`，且 `pipeline/service.ts:141` 会调
+   `ontology.upsertType`；但 `ontology.ts:199 upsertType` **逐字段列举重建 `def`**，
+   这四个字段一个都没抄 ⇒ 写进去也丢。与 `docs/ONTOLOGY-7ELEM-AUDIT.md` §2.1(b) 同结论。
+
+补种子与补持久化窄门是**两件事**，混成一句会去修错那一头。
+
+### 6.5 本次补的修（分支 `claude/handoff-wo-slice-16-layers-emptygraph`）
+
+- **后端**：`graph.empty{reason, requiredArgs, missingArgs, rootObjectTotal, argCandidates, message}`
+  —— 三分空因（`missing_args` / `no_root_objects` / `no_match`），占位符正则与
+  `ontology-core.ts:596 resolveTemplate` 一字不差（口径单源）。
+  子图为空时，靠子图 join 的 14 层改口径为「本切片未解出子图 ⇒ 这一层还没被判定过」；
+  ①②只看 `reportedRefs`、与子图无关，保留其结构性原因不被覆盖。
+- **`argCandidates`**：「那我该填什么」的答案，值全部从**真 root 对象**读（显示键与
+  `executeSlice` 的 byKey 匹配口径同源 `objectKey ?? props[pk] ?? id`），
+  保证**填进去真能解出子图**；取不到就给空数组，绝不编示例值。
+- **前端**：`EmptyGraphBar` —— 第一层放短结论 + 状态徽标 + 真值候选（点一下即试切），
+  长因由降到 ⚠ 浮层但第一层留记号（规范 §1「静默降层等于删除」）。
+
+**实测自证（亲手真跑，非只读代码）**：
+
+```
+无参：{"reason":"missing_args","requiredArgs":["so"],"rootObjectTotal":24,
+       "argCandidates":[{"arg":"so","values":["SO-3391","SO-3402",…8 个]}]}
+拿候选首值 SO-3391 回填 → 531 节点 / 570 边 / 9 类型 / 12 present   ← 候选是真能用的
+给不存在的值 SO-NOT-EXIST-XYZ → reason 翻成 "no_match"（不是 missing_args）
+coverage_adoptedmitigation → "no_root_objects"，argCandidates=[]（诚实留白）
+R6 确定性：同请求连跑两次 md5 一致
+```
+
+**真响应过真组件（不走 mock 造的形状）**：把上面两份**真后端响应**存成 fixture 直接喂
+`SliceLayersPanel`——① 两份都通过 `SliceLayersResponseSchema.safeParse`；
+② 空子图那份界面首行渲染出「子图未解出 · 缺试切参数 / 需要参数：so / Order 共 24 个对象」
++ 8 个真候选按钮，长因由只在浮层；③ 非空那份十六层逐层数
+（9/127/9/0/32/17/10/15/13/9/12/1/0/9）与 curl 返回**逐个对上**，
+⑩规则第二层展开 15 行真规则（`C01 产线设计产能上限 · Line.weeklyCapacityWan > Line.designCeilingWan` …）。
+
+**变异反证（证明新测试不是装饰品）**：
+① 把 `EmptyGraphBar` 渲染短路 → SEAM-6a/6b/6c **三例全红**，其余 5 例仍绿；
+② `queryFn` 丢掉试切参数 → **只有 6b 红** ⇒ 6b 咬的确是「参数真发出去了」这条链，不是渲染。
+
+### 6.6 遗留（本单不修，另立单）
+
+- `G-SLICE-ROOT-ARGS-UNDISCOVERABLE` —— 4 条多跳切片要参数这件事，**切片列表页看不出来**；
+  今天要点进去才知道。列表页应直接标「需参数」，本单只在详情页解决。
+- `G-DERIVSPEC-EMPTY` —— `derivation_specs` ACTIVE 0 条 ⇒ ⑭证据层的派生溯源那一半恒空
+  （接了线没数据）。
+- `G-UPSERTTYPE-DROPS-FIELDS` —— `ontology.ts:199 upsertType` 吞掉
+  `stateVariables`/`actions`/`functions`/`security`（§6.4），⑦a/⑮a 因此永远为空。
+- **REQ153 口径不一致**（记账用，非本单）：`docs/REQ-LEDGER-sandbox.md:246` 说「平台覆盖 12/16 层
+  （Function 签名 0 · Interface 8 …）」——那套十六层里有 **Function / Interface** 两层，
+  而本单契约 `SLICE_LAYER_IDS` 的十六层里没有这两个名字。两套「十六层」是否同一套**尚未对账**，
+  谁也别拿其中一套的覆盖数去解释另一套（这正是本仓最常犯的「用 X 当 Y 的证据」）。
