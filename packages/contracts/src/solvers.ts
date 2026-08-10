@@ -338,6 +338,20 @@ export const RiskTimelineOutputSchema = z.object({
    * （不是第二套排序算法 → 不会漂移）。
    */
   exposureOrder: z.array(z.string()).optional(),
+  /**
+   * WO-SILENT-WRONG-ANSWER-3（加性·optional）：**这一次算的是谁** —— `BASE`=只这一个基地 / `ALL`=全网。
+   *
+   * 为什么必须同时在契约里声明（本文件 :260 那条戒律的原样复用）：zod 默认 strip 未声明键，
+   * 而前端 `RiskBoardView` 必经 `RiskTimelineOutputSchema.parse` ⇒ 服务端写了、契约吞了、前端永远拿不到，
+   * 诚实位形同虚设。**加性字段必须同时在契约里声明，否则等于没加。**
+   *
+   * 病历：修前 `risk_timeline` 输出**没有任何一处说明作用域**，于是「问枣庄返回 8 张别的基地的卡」
+   * 在屏上完全看不出来（判为静默错答而非报错的直接原因）。与 `capacity_forecast` 的 scope/scopeNote 同款口径。
+   */
+  scope: z.enum(["BASE", "ALL"]).optional(),
+  scopeBaseId: z.string().optional(),
+  scopeBaseName: z.string().optional(),
+  scopeNote: z.string().optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 
