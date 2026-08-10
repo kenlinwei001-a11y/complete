@@ -393,7 +393,7 @@ export function readSkillExecutionSteps(skill: unknown): { steps: unknown[]; dec
 
 /** 稳定排序键：kind → key → version(latest 排在具体版本前) → origin。 */
 function refSortKey(r: SkillAstRef): string {
-  return `${r.kind} ${r.key} ${r.version === null ? "" : String(r.version).padStart(10, "0")} ${r.origin}`;
+  return `${r.kind}\u0000${r.key}\u0000${r.version === null ? "" : String(r.version).padStart(10, "0")}\u0000${r.origin}`;
 }
 
 function normalizeRef(ref: SkillReference, origin: "references" | "dependsOn", index: number): SkillAstRef {
@@ -534,8 +534,8 @@ function sortNodes(a: SkillReasoningNode, b: SkillReasoningNode): number {
 }
 
 function sortEdges(a: SkillReasoningEdge, b: SkillReasoningEdge): number {
-  const ka = `${a.from} ${a.to} ${a.condition ?? ""}`;
-  const kb = `${b.from} ${b.to} ${b.condition ?? ""}`;
+  const ka = `${a.from}\u0000${a.to}\u0000${a.condition ?? ""}`;
+  const kb = `${b.from}\u0000${b.to}\u0000${b.condition ?? ""}`;
   return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 
