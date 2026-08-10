@@ -53,7 +53,9 @@ import type {
   TickState,
   SkillCompileResult,
   SolverCategory,
+  EnterpriseState,
 } from "@platform/contracts";
+import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
 import type {
   FallbackClusterVM,
@@ -67,6 +69,8 @@ import type {
   Workspace,
 } from "./types";
 import { WorkspaceSchema } from "./types";
+// WO-WAITING-STATES-FE · 业务流程等待态响应形状（与真后端 GET /a/v1/process-definitions 对账的单一定义）。
+import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
 
 // ---------------- A · DataCore ----------------
 
@@ -184,6 +188,20 @@ export const fetchObjectTypes = () =>
 export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }
 export const fetchObjectTypeStats = () => api.a<{ stats: ObjectTypeStat[] }>("/a/v1/ontology/object-types/stats");
 export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displayName: string; color: string }[] }>("/a/v1/business-domains");
+
+/**
+ * WO-WAITING-STATES-FE · 业务流程层（13 域 × 65 流程，含 `waitKind` 四态等待类型）。
+ *
+ * 该端点是**本单新补的**：`processDefinitions` 仓储自建成起 src 读取方为 0
+ * （只有 `seed.ts` 写 + `test/process-layer.test.ts` 读），零路由、零事件 ⇒
+ * 前端「五个等待态 0 命中」的病根在后端没下发，不在前端没接。
+ * 取证见 `docs/WO-WAITING-STATES-FE-evidence.md`。
+ *
+ * 返回体形状与 `apps/datacore/src/app.ts` 的路由逐字段一致；类型直接复用契约，
+ * **前端不重定义**（R1 contracts-only-shared）。
+ */
+export const fetchProcessDefinitions = () =>
+  api.a<ProcessDefinitionsResponse>("/a/v1/process-definitions");
 
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
@@ -652,6 +670,36 @@ export const fetchSimCompare = (a: string, b: string) =>
   api.a<{ a: SimCompareSeries; b: SimCompareSeries }>(
     `/a/v1/sim/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
   );
+
+// ---------------- WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3/§27）----------------
+// 「企业**现在**是什么状态」：某个世界（真实 REAL / 仿真 <simSessionId>）在某个**逻辑时刻**上的
+// KPI/产能/库存/订单快照。类型一律来自 `@platform/contracts`（contracts-only-shared，前端不重定义）。
+//
+// ⚠ `capturedAt` 是逻辑时钟不是 wall-clock —— 页面上显示的"时刻"必须显示 `simulatedDate`/`tick`，
+//    **不许**在前端补一个 `new Date()`（那会让界面上的时间与快照实际锚定的时间轴分家）。
+
+/** 某世界的快照时间线（不传 worldId = 全部世界）。 */
+export const fetchEnterpriseStates = (worldId?: string) =>
+  api.a<{ items: EnterpriseState[] }>(
+    `/a/v1/twin/enterprise-states${worldId ? `?worldId=${encodeURIComponent(worldId)}` : ""}`,
+  );
+
+/**
+ * 取某世界最新一份快照。**后端诚实空**：没有快照时返回 `{state: null, reason}` 而不是现场造一份，
+ * 前端必须把 `reason` 原样显示（不许自己编一句"暂无数据"把后端给的原因盖掉）。
+ */
+export const fetchLatestEnterpriseState = (worldId: string = ENTERPRISE_STATE_REAL_WORLD_ID) =>
+  api.a<{ worldId: string; state: EnterpriseState | null; reason?: string }>(
+    `/a/v1/twin/enterprise-states/latest?worldId=${encodeURIComponent(worldId)}`,
+  );
+
+/** 取一份快照（跨租户 404）。 */
+export const fetchEnterpriseState = (id: string) =>
+  api.a<EnterpriseState>(`/a/v1/twin/enterprise-states/${encodeURIComponent(id)}`);
+
+/** 捕获一份快照（幂等：同一逻辑时刻重复捕获覆盖同一行、内容逐字节相同）。 */
+export const captureEnterpriseStateSnapshot = (worldId?: string) =>
+  api.a<EnterpriseState>("/a/v1/twin/enterprise-states", { body: worldId ? { worldId } : {} });
 
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }

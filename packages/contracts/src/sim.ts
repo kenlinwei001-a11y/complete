@@ -299,35 +299,95 @@ export const SimCertificationSchema = z.object({
     writebackComplete: z.boolean(), // writeback 行动已配置
     observabilityMet: z.boolean(), // 图查询/切片达标
   }),
+  // ── Trial Tick（空跑 1 tick）· 两条 WO 的**合成**（WO-CERT-CONTRACT-RECONCILE 裁决）────────
+  //
+  // 这块字段曾有两种设计各执一词，**裁决结果是两边各对一半，都保留**：
+  //
+  //  ① WO-CERT-HONESTY ③ 主张「`rulesFired` 这个名字本身就是错的」——**成立，已实测复验**。
+  //     实测（`apps/datacore/test/sim-cert-contract-reconcile.seam.test.ts` ③）：对同一份本体
+  //     调用两次 `recompute`，一次 `changes=[]`（认证路的实参）、一次喂真变更集，
+  //     `order.length` **两次同为 2**，而 `updatedObjects` 分别是 0 与 1。
+  //     ⇒ `order.length` 度量的是**派生依赖图的节点数（规模）**，与"本次触发了几条"完全无关；
+  //       空变更集下 dirty 集为空 ⇒ 逐节点 `continue` ⇒ **零条派生公式被求值**。
+  //     故派生那个数改名 `derivationNodes`（名副其实：它就是规模）。
+  //
+  //  ② WO-SIM-SCOPE-TRIAL 主张「传导相今天真的在跑、真的在数触发」——**同样成立，必须保留**。
+  //     装配方 `app.ts` 确实调 `propagateTick` 并用 `firedPropagationRuleKeys` 计数，
+  //     该函数只数「落下了即时贡献 或 排进了延迟队列」的规则 key（遍历到但源态为 0 /
+  //     无匹配边 / 闸门拿不到 **都不算触发**）⇒ 它是**真·触发计数**，与①的规模数性质不同。
+  //     ⚠ 因此 WO-CERT-HONESTY 原文「传导一条都没跑 / `propagationCovered` 今天恒 false」
+  //       是对**它自己那条分支**的如实描述，合流到本线后**已不再成立** —— 这里据实翻正。
+  //
+  //  ③ 两条合起来正好判掉旧字段 `rulesFired = order.length + propFired`：
+  //     **它把一个规模数加到一个触发数上**，量纲不成立，任何解读都是错的。故弃用（见下）。
   trialTick: z.object({
+    /** 空跑**未抛异常** ⇒ 派生依赖图无环（`topoSort` 有环抛 `CyclicDerivationError`）。
+     *  ⚠ 它证明的是「重算没崩」，**不是**「这个世界推得动」。 */
     passed: z.boolean(),
     /**
-     * 两栈合计触发规则数。**WO-SIM-SCOPE-TRIAL 之前这个数只度量派生栈**
-     * （`recompute` 的 topo 长度），传导栈恒记 0（欠账 #152）——
-     * 「信号是真的，只是它不指向我要断言的那个对象」。现在 = 派生 + 传导。
-     */
-    rulesFired: z.number().int(),
-    /**
-     * 分栈明细：派生栈（ontology-core 重算）触发数。
+     * 派生依赖图的**规模** = 拓扑排序出的派生规格节点数（`recompute` 的 `order.length`）。
+     * ⚠ **不是触发数**：认证路以 `changes=[]` 调用，本次求值恒 0 条。名字即口径，别再当"触发"读。
      *
-     * ⚠ 两个明细字段**刻意是 optional 而非 required**：`SimCertification` 在前端被当**字面量**构造
-     * （`apps/frontend-shell/test/sandbox-p0.test.tsx` 的 `const CERT_GLOBAL: SimCertification = {…}` 等 6 处），
-     * 置为必填会把整包前端测试打成编译红——而那是本单边界外的包。
-     * DataCore 侧**恒填**（`app.ts assembleCertification`），故服务端答复里它们总在。
+     * ⚠ 本字段与以下三个新字段**刻意 optional 而非 required**（沿用 canonical 侧既定理由，
+     * 别推翻）：`SimCertification` 在前端被当**字面量**构造 7 处
+     * （`apps/frontend-shell/test/sandbox-p0.test.tsx` 的 `const CERT_GLOBAL: SimCertification = {…}` 等
+     * 6 个测试 + `src/mocks/handlers.ts`），置为必填会把整包前端打成编译红。
+     * DataCore 侧**恒填**（`app.ts assembleCertification`），故服务端答复里它们总在
+     * （由 `sim-cert-contract-reconcile.seam.test.ts` ③ 端到端咬住"恒填"这件事）。
      */
-    derivationRulesFired: z.number().int().optional(),
-    /** 分栈明细：传导栈（沙盘传导核）本次 Trial Tick 真正产出贡献的规则数。同上 optional 之由。 */
+    derivationNodes: z.number().int().optional(),
+    /** 传导相本次 Trial Tick **真正产出贡献**的规则数（真·触发计数，来源 `firedPropagationRuleKeys`）。 */
     propagationRulesFired: z.number().int().optional(),
+    /**
+     * 本次 Trial Tick **范围内已发布**的传导规则数 = `propagationRulesFired` 的**分母**。
+     * 有了它，`declared > 0 && fired === 0`（"规则声明了一堆，一条都没触发"）这个病样才**看得见**；
+     * 只报 fired 的话，"没有规则"与"有规则但全哑火"在屏上都是 0，无法分辨。
+     */
+    propagationRulesDeclared: z.number().int().optional(),
+    /**
+     * 本次空跑**是否真的覆盖了传导相**。合流后由 `app.ts` 恒传 `true`（它确实调了 `propagateTick`）；
+     * 若将来把传导相摘掉/短路，这里必须翻 `false` —— 它是这条路**真实覆盖面**的声明，
+     * 不是 UI 文案开关。前端据此标注，别在 UI 里硬写"传导已/未纳入"这句话。
+     */
+    propagationCovered: z.boolean().optional(),
+    /**
+     * @deprecated 口径不成立，勿用于新代码。曾定义为「两栈合计」= 派生 `order.length` + 传导 fired，
+     * 即**规模数 + 触发数**，量纲不通（见本块头 ③）。为**过渡可回退**保留并继续下发原值，
+     * 消费方请改读 `derivationNodes` / `propagationRulesFired` / `propagationRulesDeclared`。
+     * **可删条件**：全仓无读端（判据 `grep -rn "rulesFired" apps packages --include=*.ts --include=*.tsx`
+     * 只剩本契约定义与 `app.ts` 的写入点）时即可连同 `derivationRulesFired` 一并删除。
+     */
+    rulesFired: z.number().int().optional(),
+    /** @deprecated 已改名 `derivationNodes`（同值）。保留仅为过渡，删除条件同 `rulesFired`。 */
+    derivationRulesFired: z.number().int().optional(),
     at: z.string().nullable(),
     error: z.string().nullable(),
   }),
   worldCompleteness: z.object({ // 世界完整度（范围预检 = init step③）
-    pct: z.number(), // 0-100
-    stateVars: z.object({ present: z.number().int(), needed: z.number().int() }),
+    pct: z.number(), // 0-100 = 100 × Σpresent / Σneeded（下列**三**对比值，不含已弃用的 stateVars）
+    /**
+     * @deprecated 不再下发、**不再参与 `pct`**（WO-CERT-HONESTY ①，本单复验成立）。
+     * 理由：它**两半都是复制品** —— `present` 取自 `presentDerivations`（与 `derivationRules`
+     * 同一个变量），`needed` 在 `app.ts` 是与 `derivationRules` **逐字节相同**的表达式
+     * （两行都是 `types.reduce((a, t) => a + t.derivedProperties.length, 0)`，已实测比对）。
+     * ⇒ 它不度量任何独立事实：屏上「状态变量 N/M」与「派生规则 N/M」恒等，
+     *   且把派生在 `pct` 的分子与分母里**各数了两遍**（系统性把 pct 拉向派生那个比值）。
+     * 本平台真正的「状态变量」= 传导规则 source/target stateVar 的去重集
+     * （同 `SandboxViewConfig.stateVars`），但**没有任何承载物声明「这个世界应该有几个」**
+     * ⇒ 做不出诚实的 `needed` ⇒ 不做成比值，改由 `stateVarKeys` 列真名。
+     * 保留为 optional 仅为**过渡可回退**（前端 7 处字面量仍在供它）；删除条件同 `trialTick.rulesFired`。
+     */
+    stateVars: z.object({ present: z.number().int(), needed: z.number().int() }).optional(),
     derivationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
     actions: z.object({ present: z.number().int(), needed: z.number().int() }),
     propagationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
-    entering: z.array(z.object({ // "将进入沙盘的状态变量"清单
+    /** 这个世界**将承载的状态变量名**（去重升序）。定义与 `SandboxViewConfig.stateVars` 单源一致：
+     *  scope 内传导规则的 `sourceStateVar ∪ targetStateVar`。是**清单不是比值**（无 needed 承载物）。
+     *  optional 之由同 `trialTick.derivationNodes`（前端 7 处字面量）；DataCore 侧恒填。 */
+    stateVarKeys: z.array(z.string()).optional(),
+    /** 将进入沙盘的**要素**清单。⚠ 不叫「状态变量」：三种 kind 里只有 DERIVATION 是属性，
+     *  ACTION 是写回动作、PROPAGATION 是传导规则 —— 前端必须按 kind 分组显示，别拿一个名词盖三样东西。 */
+    entering: z.array(z.object({
       key: z.string(),
       kind: z.enum(["DERIVATION", "ACTION", "PROPAGATION"]),
       source: z.string(),

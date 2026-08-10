@@ -43,6 +43,43 @@ import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
+/**
+ * WO-FACTOR-SCOPE-SINGLESOURCE · 归因下钻对象类型 → 主键字段（**单一出处**）。
+ *
+ * 修前这张表内联在 `gapAttributionMetricDomain` 里，只覆盖商业/财务域；产能域要下钻的
+ * `Line/Process/Shipment/EquipmentDowntime` 全都命不中，会静默落到 `"id"` 兜底 → `drillValue` 恒 0
+ * （「有值 0」和「查不到」在界面上分不开，正是本仓病灶族）。提到模块级后两处共用一份，
+ * 新增下钻类型只需在这里加一行。
+ */
+const DRILL_PK_FIELD: Record<string, string> = {
+  CompetitorShare: "shareId",
+  CompetitorPrice: "priceId",
+  BidRecord: "bidId",
+  OverdueRecord: "overdueId",
+  MaterialBalance: "matBalId",
+  Supplier: "supplierId",
+  LongTermAgreement: "ltaId",
+  CommodityPriceTrend: "trendId",
+  ExternalSignal: "signalKey",
+  BackupSupplierPool: "poolId",
+  DecisionGap: "gapId",
+  PipelineOpportunity: "oppId",
+  PriceRealization: "priceId",
+  ARAging: "agingId",
+  DSO: "dsoId",
+  Customer: "custId",
+  Equipment: "equipId",
+  GrossMarginBridge: "bridgeId", // WO-TIER3 毛利域 drill（gross_profit 专属域·唯一引擎触点）
+  // WO-FACTOR-SCOPE-SINGLESOURCE · 产能域下钻（7 个 BN 张力因子的真承载物·审计文档 §2 逐个实测过）
+  Line: "lineId",
+  Process: "processId",
+  Shipment: "shipId",
+  EquipmentDowntime: "dtId",
+};
+
+/** 产能因子细分层取几个对象（同一因子下按紧张度排序的前 N 个真对象·N 太大树会糊）。 */
+const CAPACITY_FACTOR_TOP_N = 5;
+
 /** WO-OPTWHATIF-NL-WIRING · 选中决策对象引用（= AgentCore ObjectRef 结构·经 invoke args 透传）。 */
 interface SelectionRef { objectType: string; objectId: string; label?: string }
 /** WO-OPTWHATIF-NL-WIRING · role 提示（AgentCore opt-whatif-route 透传·候选承载类型·不硬编）。 */
@@ -1474,16 +1511,29 @@ export class SolverService {
     //      前端 `gapAttributionToBaseRootCause` 匹配不到基地节点 → 整棵树消失成"诚实灰"。
     // 修后：factorId 必须命中真 CausalFactor 才走因果域；命中不了 → **保留 base 作用域结构树**并诚实标注
     //      `scope.factorApplied=false` + 原因（绝不静默退化，也绝不假装按因子细分了）。
-    const causalFactorIds = new Set(
-      (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => str(o.props.factorId)),
-    );
-    if (scopedFactorId && causalFactorIds.has(scopedFactorId)) {
+    const allCausalFactors = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
+    const causalFactorIds = new Set(allCausalFactors.map((c) => str(c.factorId)));
+    // ── WO-FACTOR-SCOPE-SINGLESOURCE · 产能域因子（`baseScopeField` 非空 = 需在基地作用域内解析对象）──
+    // 这类因子**不能**走 metricDomain 早返回：那条路的 L1 是 `metricgap:<key>`，而前端
+    // `gapAttributionToBaseRootCause` 只认 `base:<基地>` ⇒ 树会整棵消失成"诚实灰"（老病 `service.ts:1470` 已记）。
+    // 故产能因子**保住基地结构树**，另加 depth-3「因子细分」层（占比层·不切 gap·不动 L1/L2 勾稽 ⇒ base-only 树逐字节不变 R6）。
+    const capacityFactors = allCausalFactors.filter((c) => str(c.baseScopeField) !== "");
+    const capFactor = scopedFactorId ? capacityFactors.find((c) => str(c.factorId) === scopedFactorId) : undefined;
+    if (scopedFactorId && causalFactorIds.has(scopedFactorId) && !capFactor) {
       const res = await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, scopedFactorId);
       res.scope = { ...(scopedBaseId ? { baseId: scopedBaseId, displayName: displayNameOf(scopedBaseId) } : {}), factorId: scopedFactorId, factorApplied: true };
       return res;
     }
-    const unsupportedFactor = scopedFactorId
-      ? { factorId: scopedFactorId, factorApplied: false, factorNote: `因子「${scopedFactorId}」无对应 CausalFactor 因果域（引擎按结构反向分摊出基地树·未按该因子细分）` }
+    // 产能因子必须有 scope.baseId 才谈得上"本基地的哪台设备/哪条线"——没给就据实说，绝不假装细分了。
+    const capFactorNeedsBase = Boolean(capFactor) && !scopedBaseId;
+    const unsupportedFactor = scopedFactorId && (!capFactor || capFactorNeedsBase)
+      ? {
+          factorId: scopedFactorId,
+          factorApplied: false,
+          factorNote: capFactorNeedsBase
+            ? `因子「${str(capFactor!.label)}」是基地作用域因子，需同时给 scope.baseId 才能细分到具体${str(capFactor!.drillType)}对象（本次未给·按基地聚合返回）`
+            : `因子「${scopedFactorId}」无对应 CausalFactor 因果域（引擎按结构反向分摊出基地树·未按该因子细分）`,
+        }
       : undefined;
 
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
@@ -1646,6 +1696,33 @@ export class SolverService {
     // 同 R6 确定性。前端点「合肥」/「hefei」皆归一到同 baseId → 返回字节同一棵树。
     if (scopedBaseId) {
       const dName = displayNameOf(scopedBaseId);
+      // ── WO-FACTOR-SCOPE-SINGLESOURCE · chip 候选**单一来源**：本基地真解析得到承载对象的因子集 ──
+      // 前端不再从 `card.factor`（BN 张力词表中文名）拼候选；「哪些因子今天真能细分」只有引擎知道。
+      const availableFactors = await this.listRefinableFactors(ctx, capacityFactors, scopedBaseId);
+      const scopeBase: Record<string, unknown> = {
+        baseId: scopedBaseId,
+        displayName: dName,
+        availableFactors,
+        ...(availableFactors.length === 0
+          ? { availableFactorsNote: `基地「${dName}」在产能因子的承载对象上无数据（Line/Equipment/Process/Shipment/EquipmentDowntime 均未解析到），本页当前无可细分因子。` }
+          : {}),
+      };
+      // 产能因子细分层（depth 3·占比层）——解析不到对象时诚实回 factorApplied=false + 原因，绝不假装细分了。
+      const capRefine = capFactor
+        ? await this.capacityFactorRefinement(ctx, capFactor, scopedBaseId, str(m.metricId), num(l1nodes.find((n) => n.id === `base:${scopedBaseId}`)?.contribution ?? G * structuralExplained), unit, causalExplained)
+        : undefined;
+      const capScope: Record<string, unknown> = capFactor
+        ? (capRefine
+            ? { factorId: str(capFactor.factorId), factorLabel: str(capFactor.label), factorApplied: true }
+            : {
+                factorId: str(capFactor.factorId), factorLabel: str(capFactor.label), factorApplied: false,
+                factorNote: `基地「${dName}」没有「${str(capFactor.label)}」的承载对象（${str(capFactor.drillType)}.${str(capFactor.drillField)} 在本基地 0 条）——按基地聚合返回，未按该因子细分。`,
+              })
+        : {};
+      const capLevel = capRefine
+        ? [{ depth: 3, label: capRefine.levelLabel, nodes: capRefine.nodes, residual: 0 }]
+        : [];
+      const capEdges = capRefine?.causalEdges ?? [];
       const baseNode = l1nodes.find((n) => n.id === `base:${scopedBaseId}`);
       if (!baseNode) {
         // 该基地不是任何 OPEN 订单的**首基地**（bases[0]·全局 L1 按 bases[0] 分组）——如厦门/枣庄
@@ -1658,7 +1735,7 @@ export class SolverService {
         if (exposureOrders.length === 0) {
           const outEmpty: Record<string, unknown> = {
             rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-            scope: { baseId: scopedBaseId, displayName: dName, ...(unsupportedFactor ?? {}) },
+            scope: { ...scopeBase, ...capScope, ...(unsupportedFactor ?? {}) },
             globalGap: G, totalGap: 0, noBaseData: true,
             levels: [], atomicLeaves: [], causalEdges: [], reconChecks: [], reconciled: true, residualPct: 0,
             severityKind: "info" as const,
@@ -1696,14 +1773,15 @@ export class SolverService {
         const expReconciled = Math.abs(expChildSum + expResidual - pgExp) <= 1e-4;
         const outExp: Record<string, unknown> = {
           rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-          scope: { baseId: scopedBaseId, displayName: dName, exposure: true, ...(unsupportedFactor ?? {}) },
+          scope: { ...scopeBase, exposure: true, ...capScope, ...(unsupportedFactor ?? {}) },
           globalGap: G, totalGap: pgExp,
           levels: [
             { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expValueYuan } }] },
             { depth: 2, label: "订单/瓶颈", nodes: expLeaves, residual: expResidual },
+            ...capLevel,
           ],
           atomicLeaves: expLeaves.filter((n) => !str(n.id).startsWith("material:")),
-          causalEdges: [],
+          causalEdges: capEdges,
           reconChecks: [
             { depth: 1, label: "基地", parentGap: pgExp, sumChildren: pgExp, residual: 0, ok: true },
             { depth: 2, label: `基地 ${scopedBaseId} 内（可产订单敞口）`, parentGap: pgExp, sumChildren: expChildSum, residual: expResidual, ok: expReconciled },
@@ -1730,22 +1808,24 @@ export class SolverService {
       const residualPctScoped = round(pg !== 0 ? Math.abs(baseResidual) / Math.abs(pg) * 100 : 0, 2);
       const outScoped: Record<string, unknown> = {
         rootMetric: { key: str(m.key), name: str(m.name), unit, target: num(m.target), actual: num(m.actual), gap: G },
-        scope: { baseId: scopedBaseId, displayName: dName, ...(unsupportedFactor ?? {}) },
+        scope: { ...scopeBase, ...capScope, ...(unsupportedFactor ?? {}) },
         globalGap: G, // 全局缺口（基地贡献 pg 是其一分摊）
         totalGap: round(pg, 4), // 基地专属树根 gap = 该基地对全局 gap 贡献
         levels: [
           { depth: 1, label: "基地", nodes: [baseNode], residual: 0 },
           { depth: 2, label: "订单/瓶颈", nodes: baseL2, residual: baseResidual },
+          // WO-FACTOR-SCOPE-SINGLESOURCE：因子细分层（选了产能因子才有·占比层·不入 reconChecks ⇒ 未选时本树逐字节不变 R6）
+          ...capLevel,
         ],
         atomicLeaves: scopedLeaves,
-        causalEdges: [],
+        causalEdges: capEdges,
         reconChecks: scopedRecon,
         reconciled: reconciledScoped,
         residualPct: residualPctScoped,
         severityKind: equipLeaf ? "major" : "minor",
-        summary: `基地「${dName}」对目标「${str(m.name)}」缺口贡献 ${round(pg, 4)}${unit}：结构分摊到 ${scopedLeaves.length} 叶（${equipLeaf ? "含设备OEE瓶颈叶·非空" : "无设备瓶颈叶"}·勾稽${reconciledScoped ? "通过" : "未通过"}·residual ${residualPctScoped}%）。`,
+        summary: `基地「${dName}」对目标「${str(m.name)}」缺口贡献 ${round(pg, 4)}${unit}：结构分摊到 ${scopedLeaves.length} 叶（${equipLeaf ? "含设备OEE瓶颈叶·非空" : "无设备瓶颈叶"}·勾稽${reconciledScoped ? "通过" : "未通过"}·residual ${residualPctScoped}%）${capRefine ? `；已按因子「${capRefine.label}」细分到本基地 ${capRefine.nodes.length} 个真对象节点。` : "。"}`,
       };
-      await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: scopedLeaves.length, residualPct: residualPctScoped, reconciled: reconciledScoped });
+      await this.outbox?.emit(ctx.tenantId, "gap.attributed", { metricKey: str(m.key), scopeBaseId: scopedBaseId, leafCount: scopedLeaves.length, residualPct: residualPctScoped, reconciled: reconciledScoped, ...(capFactor ? { factorId: str(capFactor.factorId), factorApplied: Boolean(capRefine) } : {}) });
       return outScoped;
     }
 
@@ -1923,6 +2003,9 @@ export class SolverService {
       summary: `目标「${str(m.name)}」缺口 ${G}${unit}：结构反向分摊到 ${baseEntries.length} 基地 × ${atomicLeaves.length} 叶子原子因素（勾稽${reconciled ? "通过" : "未通过"}·顶层 residual ${residualPct}%），物料短缺沿 caused_by 溯 ${causalEdges.length} 条因果边到 ${causalNodes.filter((n) => (n.causalPath as string[]).length > 0).length} 个终点根因`,
     };
     if (hypotheses.length) out.hypotheses = hypotheses;
+    // WO-FACTOR-SCOPE-SINGLESOURCE：全域路（无 scope.baseId）也要把「传了因子但没生效」如实带出去 ——
+    // 修前这条路**整个丢掉** unsupportedFactor，调用方拿不到任何回执，界面只能自己猜"点了是不是生效了"。
+    if (unsupportedFactor) out.scope = { ...unsupportedFactor };
     return out;
   }
 
@@ -2199,6 +2282,201 @@ export class SolverService {
    *   demand_attain→cf-forecast-bias），**绝不回落 cathode 供应链根**。
    * 通用 severity 由叶级真 drill 值幅度在到达集内归一（改颗粒→归因变·C5 铁律）。R6 确定性（排序稳定·无时钟随机）。
    */
+  /**
+   * WO-FACTOR-SCOPE-SINGLESOURCE · 把一个**产能域 CausalFactor** 在指定基地内解析成真实承载对象。
+   *
+   * 解析规则全部来自**种子数据**（`CausalFactor.baseScopeField/drillPick/drillNorm/drillFilter*`·R14），
+   * 引擎里没有一行「哪个因子查哪张表」的 if —— 那种 if 链就是本单要消灭的第二套词表。
+   * 全序：紧张度降序 → 主键升序（R6·同 seed 同序·不靠数组序）。
+   */
+  private async resolveCapacityFactorObjects(
+    ctx: AuthCtx,
+    cf: Record<string, unknown>,
+    baseId: string,
+  ): Promise<{ objId: string; value: number; tension: number }[]> {
+    const type = str(cf.drillType);
+    const field = str(cf.drillField);
+    const baseField = str(cf.baseScopeField);
+    if (!type || !field || !baseField) return [];
+    const pk = DRILL_PK_FIELD[type] ?? "id";
+    const filterField = str(cf.drillFilterField);
+    const filterValue = str(cf.drillFilterValue);
+    // 全网同类同字段population（**归一参照系**·下）与本基地行集，用同一份过滤条件切出来。
+    const universe = (await this.repos.objects.listByType(ctx.tenantId, type))
+      .map((o) => o.props)
+      .filter((r) => (filterField ? str(r[filterField]) === filterValue : true))
+      .filter((r) => typeof r[field] === "number" && Number.isFinite(r[field] as number));
+    const rows = universe.filter((r) => str(r[baseField]) === baseId);
+    if (rows.length === 0) return [];
+    const norm = str(cf.drillNorm);
+    // ── popMax/popMin 的归一底 = **全网同字段最大绝对值**，不是本基地内最大 ──────────────────
+    // ⚠ 这行是亲手跑真服务（`POST /a/v1/solvers/gap_attribution/invoke`·datacore :4051·seed 42）
+    //   抓出来的退化：原实现拿**本基地内**最大值当底，而 `Shipment` 每基地恰好只有 1 条 ⇒
+    //   `popMin` 恒 `1 − v/v = 0`（物料齐套整层 contribution 全 0，界面读作"没影响"），
+    //   `popMax` 恒 `v/v = 1`（物流时长把**整个基地缺口**都算到一条在途单上）。
+    //   两个方向都错，且**测试全绿**——因为断言咬的是"树不同/能下钻到真对象"，没咬数值是否退化。
+    //   换成全网参照后：常州 coverageDays=2 / 全网最长 5 → 紧张度 0.6；etaDay=14 / 全网最长 16 → 0.875。
+    //   仍然 100% 真值、仍然 R6 确定性，且**跨基地可比**（这才是"本基地紧不紧"该有的口径）。
+    //   `ratio`/`inverseRatio` 不受影响：那两种口径的值本身就是 0–1 绝对量，不需要参照系。
+    const popMax = Math.max(...universe.map((r) => Math.abs(num(r[field]))), 0) || 1;
+    const c01 = (v: number): number => Math.min(1, Math.max(0, v));
+    const tensionOf = (v: number): number => {
+      if (norm === "ratio") return c01(v);
+      if (norm === "inverseRatio") return c01(1 - v);
+      if (norm === "popMin") return c01(1 - Math.abs(v) / popMax);
+      return c01(Math.abs(v) / popMax); // popMax（缺省）
+    };
+    return rows
+      .map((r) => ({ objId: str(r[pk]), value: round(num(r[field]), 6), tension: round(tensionOf(num(r[field])), 6) }))
+      .sort((a, b) => b.tension - a.tension || a.objId.localeCompare(b.objId));
+  }
+
+  /**
+   * WO-FACTOR-SCOPE-SINGLESOURCE · 本基地「真能细分」的因子集（= chip 候选**单一来源**）。
+   *
+   * 只有在本基地**真解析得到承载对象**的因子才进这个列表 ⇒ 界面上不存在「点了永远不生效」的按钮。
+   * （例：眉山的 `EquipmentDowntime(reason=换型)` 实测 0 条 → 眉山卡不下发「换型损失」chip，并给 note。）
+   */
+  private async listRefinableFactors(
+    ctx: AuthCtx,
+    capacityFactors: Record<string, unknown>[],
+    baseId: string,
+  ): Promise<{ factorId: string; label: string; drillType: string; drillField: string; objectCount: number }[]> {
+    const out: { factorId: string; label: string; drillType: string; drillField: string; objectCount: number }[] = [];
+    for (const cf of capacityFactors) {
+      const objs = await this.resolveCapacityFactorObjects(ctx, cf, baseId);
+      if (objs.length === 0) continue;
+      out.push({ factorId: str(cf.factorId), label: str(cf.label), drillType: str(cf.drillType), drillField: str(cf.drillField), objectCount: objs.length });
+    }
+    return out.sort((a, b) => a.factorId.localeCompare(b.factorId)); // R6 全序（不靠 listByType 的返回序）
+  }
+
+  /**
+   * WO-FACTOR-SCOPE-SINGLESOURCE · 因子细分层（depth 3）。
+   *
+   * **占比层，不切 gap**（与本文件既有因果层同一约定）：只加 depth-3，不动 L1/L2 与 reconChecks
+   * ⇒ 未选因子的基地树**逐字节不变**（R6·既有断言零回归），而选了因子的树**真的多出内容**
+   * （本基地那几台设备/那几条线的真 id + 真值）——这就是「按钮真有反应」的硬判据。
+   *
+   * 数值口径（写死在这段注释里，别再各处猜）：
+   *  - `tension_i` ∈[0,1] 由种子声明的 `drillNorm` 从**真值**折算（改真值→细分变·C5）；
+   *  - 因子头贡献 `pgFactor = 父gap × 平均紧张度`；子节点按 `tension_i / Σtension` 分该头贡献；
+   *  - 因果链节点（若该因子有 caused_by 边）按**到达集内真 drill 值幅度**归一（同 metricDomain 口径）。
+   */
+  private async capacityFactorRefinement(
+    ctx: AuthCtx,
+    cf: Record<string, unknown>,
+    baseId: string,
+    metricId: string,
+    pg: number,
+    unit: string,
+    causalExplained: number,
+  ): Promise<{ nodes: Record<string, unknown>[]; causalEdges: { from: string; to: string; viaLinkKey: string }[]; label: string; levelLabel: string } | undefined> {
+    const all = await this.resolveCapacityFactorObjects(ctx, cf, baseId);
+    if (all.length === 0) return undefined;
+    const factorId = str(cf.factorId);
+    const label = str(cf.label);
+    const drillType = str(cf.drillType);
+    const drillField = str(cf.drillField);
+    const kind = (str(cf.kind) || "实测") as "实测" | "派生" | "外部信号" | "决策";
+    const top = all.slice(0, CAPACITY_FACTOR_TOP_N);
+    const tensionSum = top.reduce((a, o) => a + o.tension, 0);
+    const avgTension = round(top.reduce((a, o) => a + o.tension, 0) / top.length, 6);
+    const pgFactor = round(pg * avgTension, 4);
+    const headId = `capfactor:${factorId}`;
+    const pickWord = str(cf.drillPick) === "min" ? "最低" : "最高";
+    const nodes: Record<string, unknown>[] = [];
+    nodes.push({
+      id: headId,
+      // 紧张度进标题：contribution 为 0 时用户看得见**为什么**是 0（= 本基地在该因子上处于全网最松位），
+      // 而不是对着一个孤零零的 0 猜"是没算还是真没影响"。
+      factor: `${label}（本基地 ${drillType}.${drillField} ${pickWord} ${top.length} 个 / 共 ${all.length} 个 · 紧张度 ${avgTension}${avgTension === 0 ? "·全网最松位" : ""}）`,
+      contribution: pgFactor,
+      unit,
+      share: avgTension,
+      path: [metricId, `base:${baseId}`, headId],
+      causalPath: [] as string[],
+      provenance: { kind, drillType, drillId: top[0]!.objId, drillField, drillValue: top[0]!.value },
+    });
+    for (const o of top) {
+      const share = tensionSum > 0 ? round(o.tension / tensionSum, 4) : round(1 / top.length, 4);
+      nodes.push({
+        id: `capobj:${factorId}:${o.objId}`,
+        factor: `${o.objId} · ${drillField}=${o.value}`,
+        contribution: round(pgFactor * share, 4),
+        unit,
+        share,
+        path: [metricId, `base:${baseId}`, headId, `capobj:${factorId}:${o.objId}`],
+        causalPath: [] as string[],
+        provenance: { kind, drillType, drillId: o.objId, drillField, drillValue: o.value },
+      });
+    }
+
+    // ── 该因子的 caused_by 链（有才走·无则这层就是"终点证据在本基地对象上"）──
+    const links = await this.repos.links.list(ctx.tenantId);
+    const oidToPk = (id: string) => id.replace(/^obj_causalfactor_/, "");
+    const adj = new Map<string, string[]>();
+    for (const l of links.filter((x) => x.type === "caused_by")) {
+      const from = oidToPk(l.fromId);
+      if (!adj.has(from)) adj.set(from, []);
+      adj.get(from)!.push(oidToPk(l.toId));
+    }
+    for (const [, tos] of adj) tos.sort();
+    const causalEdges: { from: string; to: string; viaLinkKey: string }[] = [];
+    const visited = new Set<string>([factorId]);
+    const reached: string[] = [];
+    const queue: string[] = [factorId];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const nx of adj.get(cur) ?? []) {
+        causalEdges.push({ from: cur, to: nx, viaLinkKey: "caused_by" });
+        if (!visited.has(nx)) { visited.add(nx); reached.push(nx); queue.push(nx); }
+      }
+    }
+    if (reached.length > 0) {
+      const cfById = new Map((await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => [str(o.props.factorId), o.props]));
+      const drillCache = new Map<string, Record<string, unknown>[]>();
+      const drillVal = async (type: string, id: string, field: string): Promise<number> => {
+        if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
+        const pkf = DRILL_PK_FIELD[type] ?? "id";
+        const row = drillCache.get(type)!.find((r) => str(r[pkf]) === id);
+        return row ? num(row[field]) : 0;
+      };
+      const sev: { id: string; mag: number; c: Record<string, unknown> }[] = [];
+      for (const id of reached) {
+        const c = cfById.get(id);
+        if (!c) continue;
+        sev.push({ id, mag: Math.abs(await drillVal(str(c.drillType), str(c.drillId), str(c.drillField))), c });
+      }
+      const magSum = sev.reduce((a, s) => a + s.mag, 0);
+      const causalPool = round(pgFactor * causalExplained, 4);
+      for (const s of sev.sort((a, b) => b.mag - a.mag || a.id.localeCompare(b.id))) {
+        const share = magSum > 0 ? round(s.mag / magSum, 4) : round(1 / sev.length, 4);
+        nodes.push({
+          id: `cf:${s.id}`,
+          factor: str(s.c.label),
+          contribution: round(causalPool * share, 4),
+          unit,
+          share,
+          path: [metricId, `base:${baseId}`, headId, `cf:${s.id}`],
+          causalPath: [factorId, s.id],
+          provenance: {
+            kind: (str(s.c.kind) || "派生") as "实测" | "派生" | "外部信号" | "决策",
+            drillType: str(s.c.drillType), drillId: str(s.c.drillId), drillField: str(s.c.drillField),
+            drillValue: await drillVal(str(s.c.drillType), str(s.c.drillId), str(s.c.drillField)),
+            ...(s.c.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
+          },
+        });
+      }
+    }
+    return {
+      nodes,
+      causalEdges,
+      label,
+      levelLabel: `因子细分 · ${label}（占比层·不切 gap${reached.length > 0 ? ` · 含 ${reached.length} 跳 caused_by` : ""}）`,
+    };
+  }
+
   private async gapAttributionMetricDomain(
     ctx: AuthCtx,
     m: Record<string, unknown>,
@@ -2233,26 +2511,7 @@ export class SolverService {
     const drillVal = async (type: string, id: string, field: string): Promise<number> => {
       if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
       const rows = drillCache.get(type)!;
-      const pkField = {
-        CompetitorShare: "shareId",
-        CompetitorPrice: "priceId",
-        BidRecord: "bidId",
-        OverdueRecord: "overdueId",
-        MaterialBalance: "matBalId",
-        Supplier: "supplierId",
-        LongTermAgreement: "ltaId",
-        CommodityPriceTrend: "trendId",
-        ExternalSignal: "signalKey",
-        BackupSupplierPool: "poolId",
-        DecisionGap: "gapId",
-        PipelineOpportunity: "oppId",
-        PriceRealization: "priceId",
-        ARAging: "agingId",
-        DSO: "dsoId",
-        Customer: "custId",
-        Equipment: "equipId",
-        GrossMarginBridge: "bridgeId", // WO-TIER3 毛利域 drill（gross_profit 专属域·唯一引擎触点）
-      }[type] ?? "id";
+      const pkField = DRILL_PK_FIELD[type] ?? "id"; // WO-FACTOR-SCOPE-SINGLESOURCE：表提到模块级·与产能域下钻共用一份
       const row = rows.find((r) => str(r[pkField]) === id);
       return row ? num(row[field]) : 0;
     };

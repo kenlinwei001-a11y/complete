@@ -429,12 +429,20 @@ function tooltipOpeningTags(src: string): string[] {
       }
     }
     out.push(src.slice(start, end + 1));
-    // ⚠ `end` 可能落在 `idx` **之前**：当 `role="tooltip"` 出现在 JSDoc 注释里时（`InfoPopover.tsx:33`
-    //   的规格说明就是一例），向前找最近 `<` 会走进注释里的 `<title>`，其 `>` 远在标记之前 ⇒
-    //   `indexOf(MARK, end + 1)` 反复命中**同一个** idx，`out` 无限增长直到 `RangeError: Invalid array length`。
-    //   这不是断言失败，是扫描器自己不收敛 —— 表现为整份测试文件炸掉，看上去像"浮层测试挂了"。
-    //   修法只保证**前进**，不改判据：注释里那一处照样被访问一次（切出的片段不含 `title=` 属性、自然通过），
-    //   真正的 JSX（`:101`）随后照常被检查 —— 变异反证已证明它仍然有牙。
+    /*
+     * ⚠ 必须**保证前进**（2026-08-10 实测：这里会死循环，本仓「工具坏了不是代码脏了」的又一例）。
+     *
+     * 病样：`components/InfoPopover.tsx` 的文档注释里写了 `SVG <title>` 这几个字，
+     * 位置在同文件某句提到 `role="tooltip"` 的**前面**。于是：
+     *   · 从 MARK 往回找最近的 `<` ⇒ 落到注释里那个 `<title>` 的 `<`（本函数不跳注释）；
+     *   · 往前找深度 0 的 `>` ⇒ 找到 `<title>` 自己的 `>`，它**在 idx 之前**；
+     *   · `idx = indexOf(MARK, end + 1)` ⇒ end+1 仍 ≤ idx ⇒ **找回同一个 idx**，永不前进。
+     * 后果不是报错，是**跑满 191 秒后 `out` 撑到 2^32 抛 RangeError: Invalid array length**
+     * ——一条本该 1 秒的静态扫描门，坏成了看起来像"超时/卡死"的样子。
+     *
+     * 判据（照铁律 0.6）：**扫描器的游标必须单调前进，不能由被扫内容决定**。
+     * 至少跳过本次命中的 MARK 自身；`end` 更靠后时按 `end` 走。
+     */
     idx = src.indexOf(MARK, Math.max(end + 1, idx + MARK.length));
   }
   return out;

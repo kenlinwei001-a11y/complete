@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -69,10 +69,10 @@ function installHandlers() {
         scope: "GLOBAL", targetRef: null, level: "L2_RUNNABLE",
         dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
         l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
-        trialTick: { passed: false, rulesFired: 1, at: null, error: null },
+        trialTick: { passed: false, derivationNodes: 1, propagationCovered: false, at: null, error: null },
         worldCompleteness: {
-          pct: 60, stateVars: { present: 2, needed: 3 }, derivationRules: { present: 1, needed: 2 },
-          actions: { present: 0, needed: 1 }, propagationRules: { present: 1, needed: 1 }, entering: [],
+          pct: 60, derivationRules: { present: 1, needed: 2 },
+          actions: { present: 0, needed: 1 }, propagationRules: { present: 1, needed: 1 }, stateVarKeys: [], entering: [],
         },
         canEnterSimulation: false, gaps: [], computedAt: "2026-08-09T00:00:00.000Z",
       }),
@@ -100,9 +100,21 @@ function mount() {
   );
 }
 
-/** 等到主会话建好并出现在世界列表里（= 起跑线）。 */
+/**
+ * 等到主会话建好并出现在世界列表里（= 起跑线）。
+ *
+ * WO-SANDBOX-DECLUTTER：世界列表已从**常驻右栏**收进**默认折叠的诊断抽屉**
+ * （仓主实测：7 个世界各带一个「切到此世界」按钮常驻右栏，把决策者的屏塞爆）。
+ * 折叠时抽屉内部不渲染，故本门先把抽屉点开再等起跑线。
+ *
+ * ⚠ 这不改变本门要证的东西：它咬的是「`sim.*` 事件到达 ⇒ **列表内容真的变了**」，
+ * 而列表在哪一层与事件消费链一行关系都没有。抽屉开着之后，每一条断言逐字不变。
+ */
 async function waitForMainWorld() {
   await screen.findByTestId("sandbox-view");
+  const toggle = await screen.findByTestId("sc-diag-toggle");
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  await screen.findByTestId("sc-diag-panel");
   await waitFor(() => expect(screen.getByTestId("sandbox-world-sims_main")).toBeInTheDocument());
 }
 

@@ -40,6 +40,9 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","sim-world", sessionId]    SandboxView.tsx worldQuery（当前世界态·前缀失效盖住所有会话）
   "sim-sessions": [["a", "sim-sessions"]],
   "sim-world": [["a", "sim-world"]],
+  // WO-ENTERPRISE-STATE · 企业状态快照（真消费方 = views/sim/EnterpriseStatePanel.tsx 的
+  // `useQuery(["a","enterprise-states", worldId])`；前缀失效盖住所有世界）。
+  "enterprise-states": [["a", "enterprise-states"]],
 };
 
 /**
@@ -134,6 +137,14 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = { // hardcod
   // 写了 `s.status = "RUNNING"` + `curTick`（app.ts:1465 putSession），世界列表显示的就是这两个字段。
   // 所以两个标签都失效，不是凑数。
   "sim.tick_completed": ["sim-world", "sim-sessions"],
+  // ── WO-ENTERPRISE-STATE 企业状态快照环 ─────────────────────────────────────────
+  // 这两条**不是"发了没人收"**：真消费方是 `views/sim/EnterpriseStatePanel.tsx` 的
+  // `useQuery(["a","enterprise-states", worldId])`（沙盘右栏「企业状态快照」，SandboxView rail 挂载）。
+  // 捕获（datacore twin/enterprise-state.ts capture）→ 该世界多一份快照 ⇒ 面板重取显示新的逻辑时刻；
+  // fork（同文件 fork）→ 仿真世界多一份快照 ⇒ 同一缓存前缀失效（key 尾带 worldId，靠前缀盖住所有世界）。
+  // ⚠ 若将来把面板删了/改了 queryKey，这两条就变成假接线，必须同时从这里挪进 SIM_EVENT_GAPS 台账。
+  "enterprise_state.snapshotted": ["enterprise-states"],
+  "enterprise_state.forked": ["enterprise-states"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

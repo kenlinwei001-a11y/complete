@@ -982,6 +982,24 @@
         "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+    },
+    "check-dark-launch-integrity.mjs": {
+      "alias": "dark-launch:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/seed.ts",
+        "scripts/feature-rollout.json"
+      ],
+      "escalation": "仓主",
+      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 换判据后七向变异全中（工作树每次跑完还原、全部显式捕获退出码）：①新增 defaultOn:false 且模板会打开它、声明 tiered → RC=0（合法分档，门不管）②**同一个 feature 只把声明改成 dark** → RC=1 A5（这一对是决定性的：代码完全相同，唯一变量是声明，证明门量的是「意图 vs 机制是否一致」而非形态）③explicit 的 ceo.free-llm 从暗发集掉出去 → RC=1 A6 ④把 tiered 的 sim.sandbox 塞进暗发集（正是旧门要求的修法）→ RC=1 A7 ⑤新增 defaultOn:false 不声明 → RC=1 A1 ⑥新增第三个暗发集合但 templateFeatures 没减去它 → RC=1 A8 ⑦把种子已点亮的 qos.dril-routing 声明成 dark → RC=1 A5。另：dist 陈旧 → RC=1 A9；抽取器读不到东西 → RC=2「⛔ 门自己瞎了」拒绝给结论。",
+        "note": "⚠️ 本门于 2026-08-10 **换过判据（WO-FIX-DARK-LAUNCH-GATE）——旧判据是错的**。旧判据：凡 defaultOn:false 必须进某个 *_DARK_LAUNCH_FEATURES 集合。形态（铁律 0.6 句式）：「我用『是否 defaultOn:false』当作『是否暗发』的证据，而前者并不度量后者。」实测旧门报的 15 个「违规」**15 个全是误报**（全是产品分档），且它给的修法有实际破坏力：拿 sim.sandbox 照做一次 → demo 有效功能 75→63、出厂视图 14→9（级联删掉 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments，因为它们 requires:[sim.sandbox]）。两个 dev 各自独立顶回来过这道门，他们是对的。根因：defaultOn:false 底下藏着四种意图（dark 暗发 / explicit 显式启用 / tiered 产品分档 / ga 全量），形态一模一样，任何靠「集合成员」的判据都分不开。新判据：意图显式声明在 scripts/feature-rollout.json，门只断言「声明的意图」与「代码的机制」是否一致；未声明=红，不猜默认档（两个方向的默认值都会错且错法相反）。A6/A7 互为镜像是方向正确的关键——旧门只有 A6 那一半。全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。原病史（仍成立，只是判据换了）：defaultOn:false 只挡 L1，templateFeatures() 对 battery 返回 all-on，L2 无条件覆盖 L1，demo 恰是 battery。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
     }
   }
 }
