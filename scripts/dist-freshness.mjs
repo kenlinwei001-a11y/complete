@@ -172,9 +172,16 @@ export function assertDistFresh(entries, { gate = "（未具名门）", root = p
   const r = checkDistFreshness(entries, { root });
   if (r.ok) return r;
 
+  // 构建命令里必须用 **package.json 的 name**，不是目录名：`packages/contracts` 的包名是
+  // `@platform/contracts`，照目录名拼出的 `pnpm --filter contracts build` 是跑不通的
+  // —— 一条跑不通的修复建议，会让人以为守卫在乱报。
   const pkgs = [...new Set(r.problems.map((p) => p.pkg).filter(Boolean))];
+  const nameOf = (p) => {
+    try { return JSON.parse(readFileSync(join(root, p, "package.json"), "utf8")).name || p.split("/").pop(); }
+    catch { return p.split("/").pop(); }
+  };
   const buildCmd = pkgs.length
-    ? pkgs.map((p) => `pnpm --filter ${p.split("/").pop()} build`).join(" && ")
+    ? pkgs.map((p) => `pnpm --filter ${nameOf(p)} build`).join(" && ")
     : "pnpm -r build";
 
   console.error(`\n✗ ${gate}：**dist 过期或未构建，本门拒绝给出任何结论**。`);
@@ -331,10 +338,18 @@ export function distReadSites(text) {
   return hits;
 }
 
+/**
+ * 审计自身要排除的文件：`check-dist-freshness.mjs` 是**审计者**，它的修法提示里带着
+ * `import(".../dist/…")`、`assertDistFresh([…])` 这类**示例字符串**（在代码里，不在注释里，
+ * 故剥注释也去不掉）。若不排除，它会把自己算成「读 dist 且已接守卫」——两边都是假的：
+ * 它既不读 dist，也没调用守卫。**又一次「提及 ≠ 读取」，这次是检测器把自己的帮助文本当成了代码。**
+ */
+const AUDIT_SELF_EXCLUDE = new Set(["check-dist-freshness.mjs"]);
+
 export function auditCoverage({ root = process.cwd() } = {}) {
   const dir = join(root, "scripts");
   const rows = [];
-  for (const f of readdirSync(dir).filter((f) => /^check-[a-z0-9-]+\.mjs$/.test(f)).sort()) {
+  for (const f of readdirSync(dir).filter((f) => /^check-[a-z0-9-]+\.mjs$/.test(f) && !AUDIT_SELF_EXCLUDE.has(f)).sort()) {
     const text = readFileSync(join(dir, f), "utf8");
     const sites = distReadSites(text);
     if (!sites.length) continue;

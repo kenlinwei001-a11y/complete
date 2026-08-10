@@ -1000,6 +1000,23 @@
       },
       "disposition": "GATES_CHAIN",
       "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
+    },
+    "check-dist-freshness.mjs": {
+      "alias": "dist-freshness:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "scripts/dist-freshness.mjs",
+        "scripts/check-*.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-DIST-STALE-READ",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 两向变异全中（工作树跑完还原、逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码，非管道尾 $?）：①摘掉 check-slice-connectivity.mjs 的 assertDistFresh 调用 → RC=1，判据②点名「scripts/check-slice-connectivity.mjs 读 dist（L14/20）却未接新鲜度守卫」并给出修法（含「静态 import 必须先改 await import」的提醒）；②把守卫主逻辑的 STALE 判据改成恒假（`if (src.ms > build.ms)` → `if (false)`）→ RC=1，且**先红的是金丝雀**（「① src 新于 dist → 报 STALE（期望 STALE，实得 OK）」）并打印「⛔ 金丝雀不中 ⇒ 报守卫坏了，不许报 dist 都是新的」。②是决定性的一条：它证明金丝雀与主逻辑**共用同一份 checkDistFreshness**，不是各抄一份的装饰品——装饰品在这个变异下会照样绿。另有守卫本体的三包变异反证：分别 touch datacore/contracts/agentcore 源码使 dist 过期 → 对应门 RC=1 并打印滞后时长与最新源码/最新产物路径；同时对照组（只读 agentcore 的 check-dril-registry）在 datacore 变异下仍 RC=0，证明不是恒红的哑门；pnpm -r build 后六道门全部复绿。",
+        "note": "金丝雀 11 例分两层：①②③ 验守卫本体（src 新于 dist 报 STALE / 无 dist 报 MISSING / dist 新于 src 放行）；④⑤⑥ 验**检测器**分得清「读 dist」与「提 dist」，用的是本仓真实原句。⑤ 是检测器自己踩过的坑：首版把 check-crossbranch-reinvent.mjs:80 的 `!f.includes(\"/dist/\")`（**排除** dist）算成读 dist，被金丝雀当场抖出——「提及 ≠ 读取」的同一个病，检测器自己犯了一次，故以真实原句钉死。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "闭 G-DIST-STALE-READ（欠账 #161）：本仓 15 道门 import dist 之后讲的是**源码**的话，却只查 existsSync（构建过没有），从不查新鲜度（构建得够不够新）。dist 落后于 src 时它们会说出与源码**恰好相反**的结论且全绿——2026-08-10 一天之内真实误判 4 次，其中一次把「dist 过期」错报成源码缺陷（欠账 #155：不是源码缺陷，是我的诊断错了）。共享守卫 scripts/dist-freshness.mjs 已接进全部 15 道门（fail-closed：过期即退，**只报「请先 build」不给任何内容结论**）。本门守的是「保持接线」：明天新加一道读 dist 的门若不接守卫，机器先说话，不靠人记性。两处非照抄的接法：check-chain-closure.mjs 的**静态** import dist 必须改 await import（静态 import 提升到模块体最前，写在下面的守卫形同虚设）；check-dark-launch-integrity.mjs 区分「dist 缺→诚实降级」与「dist 过期→硬红」（过期比缺席更毒：A9 会报出并不存在的不一致，A2 会把刚加的 feature 判成悬空声明）。"
     }
   }
 }
