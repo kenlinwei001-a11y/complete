@@ -810,6 +810,35 @@ POST /a/v1/simulation/impact-analysis {worldId, change{objectType,objectId,prop,
 
 ---
 
+
+### P1 · 产销链对象关系边（WO-P1 · 2026-08-09 补登 · 此前本体零处提及，违反铁律 0 已补）
+
+WO-P1「补传导边至六方向」在 `apps/datacore/src/synthetic/service.ts` 新增 **3 条对象关系链路**：
+
+| 链路 key | 方向 | 说明 |
+|---|---|---|
+| `model_demanded_by_order` | Model → Order | **与既有 `order_for_model` 逐实例严格互逆**（同一个 `for (const o of g.orders)` 循环、同一对端点 id） |
+| `material_used_by_model` | Material → Model | 物料进入产销链的入口边 |
+| `supplier_supplies_material` | Supplier → Material | 供应商侧上游边 |
+
+⚠️ **`model_demanded_by_order` 是「等价捷径边」，它改写了最短路而不改变语义**（2026-08-09 实测）：
+`slice-planner.ts` 的 BFS tie-break 是**纯字典序** —— 同域打平、toType 打平后比 linkKey，
+`m` < `o` ⇒ 新边胜出。跳数不变、方向正确、结果集相同，但 `queryPlan.hops` 与 `provenance.linkPath`
+的**字面值全变了**。任何钉死路径字面值的金值都会因此变红，而这**不是回归**。
+**判据：钉 hops 抓不住「边加错」，要抓它得钉「两条边等价」这个不变量**（见 R20）。
+
+⚠️ **不许删这条边来"修"金值**：`propagation.ts` 的传导核**只建 `navOut`、无 navIn**，
+物理上无法逆向走边 —— 删掉会打断 P1 交付的供应链传导。（P1 提交信息里「全本体无任何边的
+toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「OrderPromise/OrderLine 零入边」实测为真，结论仍成立。）
+
+### P1 · 传导规则 3 → 13（同单 · `apps/datacore/src/seed.ts`）
+
+新增 10 条 `demo_*_to_*` 传导规则，把传导从 3 条扩到 13 条，覆盖六方向：
+`base_load→line_util` · `line_util→process_queue` · `material_price→model_cost` ·
+`model_cost→order_cost` · `order_cost→customer_receivable` · `customer_receivable→invoice_overdue` ·
+`supplier_delay→material_shortage` · `material_shortage→model_supply_risk` ·
+`material_shortage→po_expedite` · `po_expedite→inspection_queue` · `model_supply_risk→order_shortage`
+
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
@@ -1168,6 +1197,8 @@ POST /a/v1/simulation/impact-analysis {worldId, change{objectType,objectId,prop,
 | G-EVENT-GATE-MEASURES-SUBS-NOT-EMITS | **门量错了东西（这道门自己的假绿，且是同一文件第二次犯）**：`scripts/check-system-ontology.mjs:30 (codeEvents)` 用 `/event:\s*"…"/` 抽 `apps/agentcore/src/event-subscriptions.ts` —— 那是**订阅声明**，不是发射端。它**从没看过一眼 `outbox.emit` / `emitDomainEvent`**（两者在 `apps/datacore/src`+`apps/agentcore/src` 共 79 处调用点、59 个不同事件名）。于是「**emit 了但 §4 没登记**」这一整类**结构性不可见** —— 2026-08-08 实测存量 **23 个**（`action.approved` / `sop.finalized` / `calibration.proposed` / `ts.late_arrival` …）。更毒的是它打印的那行写着「**代码** N 个」：本体维护者（包括写它的我）读到「代码」二字就以为发射端已被覆盖，于是不再追那一层。**形态**（`CLAUDE.md` 铁律 0.6）：「我用『订阅声明数』当作『代码真发的事件数』的证据，而前者并不度量后者。」同文件上一次同病是 `SOLVER_KEYS` 被注释里的方括号截断 → 门只看见 54/57 个键却照报「一致」（两边是被截断的同一集合，永远一致）。**已修**：新增发射端抽取器 + 棘轮（存量 23 记账、新增被挡、只降不升），并把打印改为「订阅声明侧 / 发射端」两行。**机制不是「下次注意」而是「每条抽取器各有自己的金丝雀」**：上一版对账脚本的三个样例全走 `outbox.emit` 那条抽取器，第二条 `emitDomainEvent` 抽取器写成什么样都照样全绿（把 4 个事件误报成「零 emit」，与事实相反）；现两条金丝雀与主逻辑共用 `harvestEmits` 本尊，**变异反证 3/3 实跑**：掐 `outbox.emit` 正则 → 其金丝雀红 RC=1；掐 `emitDomainEvent` 正则 → 其金丝雀**独立**红 RC=1；棘轮 23→22 → 点名新增的 `ts.late_arrival` 红 RC=1；三次 `cp` 复原后复绿 RC=0。**修这条时当场又踩出同病一脚，一并记账**：`docEvents` 原本**扫全文**取反引号串，于是「本体任何地方提过一次」= 「§4 已登记」。我把上面这条断点写进 §8、描述里点名了 4 个**没登记**的事件，棘轮当场从 23 掉到 19 —— **一段说「这些没登记」的话，反而让门判它们登记了**。形态同上：「我用『全文出现过这个反引号串』当作『§4 登记了这个事件』的证据。」订阅声明侧那条断言此前吃的也是同一个宽口径。**已改为只截 §4 章节**，并配两条金丝雀（切窗切不出 → 红；切窗错位到 §5 导致金丝雀 `raw_dataset.uploaded` 不中 → 红），变异反证 2/2 实跑通过；收窄后订阅声明侧仍 51/51，无误伤。 | 代码 emit 新事件 → 门只查订阅声明 → §4 漏登无人知 → 本体作为「接线单一来源」在事件维过期 | 🟡 已修（发射端已上门·存量 23 棘轮记账待清） |
 | G-PROVISIONAL-HONESTY-DEAD | **红线闸零生产调用方**（假绿第 9 形态同族，但守的是「说谎」本身）：`apps/datacore/src/databuilder/provisional-honesty.ts:12 (checkProvisionalHonesty)` 守「PROVISIONAL 域绝不谎报 VERIFIED/answerable」，**src 调用方 0、门脚本 0，仅 5 处 test 引用**。复核方式比符号级更强：全文扫 `provisional-honesty` 于 `apps/*/src`+`packages/*/src`+`scripts/`，命中的**只有它自己那行文件头注释** ⇒ **连目录内都没人 import**（同目录的 `service.ts` 有 21 个外部 importer，故该目录是活的，不是整块死代码）。**测试证明的是「函数能识别谎报」，不是「系统不会谎报」。** | `StoryBuildRun` 产出 → （无人调用 `checkProvisionalHonesty`）→ PROVISIONAL 域谎报无拦截 | 🔴 未修（已记账·待接线） |
 | G-TWIN-STATE-NO-CARRIER | **企业级状态无常驻承载体**（`docs/PRD-enterprise-decision-twin.md` §1 登记）。原病：平台能算出一堆 KPI / 产能 / 库存数字，却**没有任何对象把「企业此刻是什么状态」存下来** —— 于是问不出「上周二和今天差在哪」，也没有任何东西能当推演的起点或落点。2026-08-10 实测基线：五张 MVP 表里 `Enterprise_State` / `Process_Instance` / `State_Delta` 全库 **0 命中**（金丝雀 `SimSession` = 87 命中，证扫描工具有效，「0」是真 0）。◐ **部分处置（WO-ENTERPRISE-STATE）**：`EnterpriseState` 已落为一等对象（§2.K：契约 `packages/contracts/src/enterprise-state.ts` · 服务 `apps/datacore/src/twin/enterprise-state.ts` · 表 `apps/datacore/migrations/030_enterprise_states.sql` · 路由 `/a/v1/twin/enterprise-states` 五条 · 前端只读落点 `apps/frontend-shell/src/views/sim/EnterpriseStatePanel.tsx`），逻辑时钟锚定 + 两世界物理隔离 + R6 确定性均有接缝测试咬。**但本断点仍开**：PRD §3 的闭环 `扰动 → StateDelta → 受影响闭包 → Decision → Action(R4) → EnterpriseState'` 中，`StateDelta` 与 `ProcessInstance` **今天仍无承载体**（各自另有 WO），故「一份快照 → 下一份快照之间发生了什么」这一跳**尚不可查**。关闭条件：那两张表落地 + 一条端到端组合测试证明 `EnterpriseState' ≠ EnterpriseState` 且中间每跳都有 emit 与订阅方。**判据提醒**：`EnterpriseState` 存在**不等于**闭环存在 —— 别拿本条的「部分处置」当作整链已通。 | 对象库/指标库 → `captureEnterpriseState` → `EnterpriseState(world, tick)` ✅ → **（StateDelta 缺）** → 受影响闭包 → `Decision` → `Action` → `EnterpriseState'` | ◐ 部分处置·**仍开**（承载体已立·中间两跳待落） |
+| G-P1-EDGE-BLAST-RADIUS-UNWATCHED | **一次种子改动静默改写了 24.7% 的类型对最短路，而只有 3 条有金值看守**（WO-FIX-P1-REGRESSION 2026-08-09 取证）。WO-P1 新增的 `model_demanded_by_order` 等 3 条等价捷径边，使 **2162/8742 条类型对**的 BFS 最短路被改写（tie-break 纯字典序，`m` < `o`）。全仓只有 `ontology-query-engine.test.ts` 的 3 条断言钉了具体路径，因此只有它们变红；**其余 2159 条改写无人知晓**。危害不是「错」——路径语义是对的——而是**任何依赖 `linkPath` 字面值的下游（溯源展示 / mock / 文档示例）都已静默漂移**。**判据（写给下一个 dev）**：给图加边**必须**同时问「哪些消费方钉了路径字面值」，`grep linkPath` 得到的数字不度量这件事，要跑一次全类型对最短路 diff。 | `synthetic/service.ts` 新增边 --> `slice-planner.ts` BFS tie-break --> `queryPlan.hops` / `provenance.linkPath` --> 溯源展示 / mock / 文档 | 🔴 未闭 —— 3 条已修（金值更新 + 新增等价断言），2159 条无看守；需一道「最短路 diff 报告」门 |
+| G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE | **mock 与真引擎脱节，而咬 mock 的测试永远绿**（假绿同族·2026-08-09 取证）：`apps/agentcore/src/mocks/clients.ts:456` 仍写死 P1 之前的旧 `linkPath`，而 `apps/agentcore/test/navigation-ontology-query.test.ts:43` 断言的正是这个 mock ⇒ 真引擎已改、mock 未改、测试**恒绿**。这与本仓已记载的「前端 mock RULES 与真后端表达式口径分家」（欠账 #78）**同族**：**mock 是第二个真值源，且没有任何机制让它跟随第一个**。 | 真引擎 `slice-planner` --（已漂）--> `mocks/clients.ts:456` --> `navigation-ontology-query.test.ts`（咬 mock·恒绿） | 🔴 未闭 —— 需一道「mock 与真引擎口径一致」的门，或让 mock 从真引擎派生 |
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**
 > 三条**已标 ✅ 已闭**的断点在**真浏览器亲跑**下仍有可复现残口，本单补闭（均不新增对象类型/链路/事件/求解器，故金值不变）：
