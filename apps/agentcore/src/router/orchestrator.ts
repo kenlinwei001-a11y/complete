@@ -37,6 +37,8 @@ import {
 } from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec, type AgentLoopResult } from "../agent/loop.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../agent/navigation-slice.js";
+// WO-CAPMAP-LIVE · 能力地图注入源：活资源目录（替掉手写镜像·与 engine/retrieve_knowledge 共用同一 registry）。
+import { fetchLiveSolverCatalog } from "../agent/live-capability-map.js";
 import { buildOntologySemanticContext } from "../agent/ontology-context.js";
 import { makeLlmRollingSummarizer } from "../agent/context.js"; // WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（fail-open 注入 runAgentLoop.summarizer）
 import { compileSolverPlan, type CompileSlots } from "./compile-plan.js"; // WO-Phase2-C-COMPLETE · 组合路径编译器（地基·消费不改）
@@ -1890,7 +1892,21 @@ export class Orchestrator {
     // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：通用 path-B（含 CEO/块级真 LLM 深问）——
     // 据问句 domain + 本轮工具白名单（toolNames）确定性投影本题导航图注入首轮 user，agent 有对口 solver 就一步到位、
     // 不再逐跳盲选重编排。通用 path-B 不做对象域收窄（objectTypes 不声明·由 A6 行级过滤真隔离）。R6 纯投影·空图不注入。
-    const navSlice = projectNavigationSlice(task.query, task.context.pageContext, { toolNames: tools.map((t) => t.name) });
+    // ★ WO-CAPMAP-LIVE · 注入源 = **活资源目录**（实测 59 solver）按本题相关性现取 top-N 候选，
+    //   替掉 navigation-slice 那份 19 条手写镜像（差集 40 条求解器此前对模型完全不可见）。
+    //   取不到 → undefined → 退降级镜像（fail-open·绝不阻断查询）。检索确定性 ⇒ R6 不破。
+    const liveCatalog = await fetchLiveSolverCatalog(
+      this.deps.engine.capabilityMapSource(),
+      auth,
+      task.query,
+      task.context.pageContext,
+    );
+    const navSlice = projectNavigationSlice(
+      task.query,
+      task.context.pageContext,
+      { toolNames: tools.map((t) => t.name) },
+      liveCatalog,
+    );
     const sliceSection = renderNavigationSlice(navSlice);
     // ★ WO-Phase2-C-COMPLETE · 组合路径挂点（本会落 path-B 的题·在 navSlice 之后、runAgentLoop 之前插·最小 additive）。
     // 导航图有多个对口且**已登记 args schema** 的 solver 且可串时 → compileSolverPlan 出机器计划 →

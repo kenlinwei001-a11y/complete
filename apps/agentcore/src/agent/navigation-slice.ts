@@ -19,19 +19,23 @@ import { isOptWhatifSignal } from "../router/opt-whatif-route.js"; // WO-OPTWHAT
  *（不是 CEO 写死一张全局图）；无 objectTypes 声明（通用 path-B）→ 不做对象域收窄，按问句 domain 投影。
  */
 
-/** 求解器目录条目：一句话能力 + 输出形状（顶层 key）+ 读取的对象类型域 + 归属业务域族。
- *  ⚠ 输出形状**镜像** DataCore `solvers/service.ts SOLVER_OUTPUT_SHAPES`（权威在 A 侧·R1 不跨包共享实现）——
- *  此处仅作 agent 导航用途的只读投影（非校验），补齐/漂移由 A 侧权威主导。 */
-interface SolverCatalogEntry {
+/** 求解器目录条目：一句话能力 + 输出形状（顶层 key）+ 读取的对象类型域 + 归属业务域族。 */
+export interface SolverCatalogEntry {
   /** 一句话能力（给 agent 看：这个 solver 干什么·一步到位答什么题）。 */
   capability: string;
-  /** 输出形状（顶层 key·镜像 SOLVER_OUTPUT_SHAPES 子集·agent 据此知结果长什么样、取哪个字段做溯源）。 */
+  /** 输出形状（顶层 key·agent 据此知结果长什么样、取哪个字段做溯源）。活目录来自 A 侧 `SOLVER_OUTPUT_SHAPES` REST 透传。 */
   outputShape: string[];
-  /** 该 solver 读取的对象类型（用于 scope.objectTypes 相交判定：越界不投影）。 */
+  /** 该 solver 读取的对象类型（用于 scope.objectTypes 相交判定：越界不投影）。**空 = 无证据**，不据此排除。 */
   reads: string[];
-  /** 归属业务域族键（问句族匹配 → 拉入图）。 */
-  families: DomainFamilyKey[];
+  /** 归属业务域族键（问句族匹配 → 拉入图）。仅**降级镜像**用；活目录靠检索相关性排序，不需要族表。 */
+  families?: DomainFamilyKey[];
+  /** WO-CAPMAP-LIVE · 活目录检索相关性名次（0 = 最相关）。存在即按它排序（确定性·检索引擎 R6）；
+   *  缺省（降级镜像）→ 退回字典序，与本单之前逐字节一致。 */
+  rank?: number;
 }
+
+/** 求解器目录（key → 条目）。生产态由**活资源目录**现取（见 live-capability-map.ts），非手写。 */
+export type SolverCatalog = Record<string, SolverCatalogEntry>;
 
 type DomainFamilyKey =
   | "gap"
@@ -70,10 +74,21 @@ const FAMILY_SIGNALS: { key: DomainFamilyKey; re: RegExp }[] = [
 ];
 
 /**
- * 求解器目录（key → 一句话能力 + 输出形状 + 读取对象 + 域族）。
- * 输出形状镜像 DataCore SOLVER_OUTPUT_SHAPES 子集（覆盖 path-B 深问高频对口 solver + 7 角色 agent 域）。
+ * ⚠️ **降级镜像·不是生产注入源**（WO-CAPMAP-LIVE 改判）。
+ *
+ * 这份手写表**曾经**是唯一注入源：19 条，而活资源目录当日实测 **59 条求解器**——
+ * 也就是说 **40 个已注册、已开通、检索得到的求解器，模型一次都没被告知它们存在**
+ * （含 `portfolio` / `multi_objective` / `cross_object_occupancy` / `plan_rootcause` /
+ * `chain_loss_attribution` 等）。`sim-planner.ts` 整个模块的存在理由就是绕开这份表缺 `portfolio`。
+ *
+ * 现在生产两条注入路径（`router/orchestrator.ts` path-B、`engine.ts` 注册 agent）**一律传活目录**
+ * （`fetchLiveSolverCatalog`），本表**只在活目录取不到时兜底**（DataCore 不可达 / 未开通 entitlement /
+ * registry 未装配）——保留它是为了「A 挂了 agent 也还有图可看」，**不是**为了继续手抄。
+ *
+ * 纪律：**不要往这张表里加新求解器**。要让模型看见某个 solver，去 A 侧注册表登记它（单一真值），
+ * 活目录自会检索到；往这里加只会让镜像与真值继续分叉。
  */
-const SOLVER_CATALOG: Record<string, SolverCatalogEntry> = {
+const FALLBACK_SOLVER_CATALOG: SolverCatalog = {
   gap_attribution: {
     capability: "总目标缺口逐层反向归因到 ~20 个原子根因（勾稽 Σ子+residual=父）",
     outputShape: ["rootMetric", "totalGap", "levels", "atomicLeaves", "causalEdges", "reconciled", "summary"],
@@ -276,15 +291,29 @@ const MAX_SOLVERS = 6;
 const MAX_OBJECT_TYPES = 8;
 
 /**
- * 投影本题导航图（R6 纯函数）：问句(+PageContext) + agent scope → NavigationSlice。
- * 复用 `domainResolve`（单一 domain 来源）取对口 solver / domain；据问句族信号 + scope.objectTypes
- * 相交拉入相关 solver；越界（不读 scope 内任一对象类型）的 solver 不进图（尊重隔离语义）。
+ * 投影本题导航图（R6 纯函数）：问句(+PageContext) + agent scope + **目录** → NavigationSlice。
+ *
+ * WO-CAPMAP-LIVE：`catalog` 是**注入源**。生产两条路径都传**活资源目录**现取的候选
+ * （`fetchLiveSolverCatalog` → 检索 top-N·相关性序·R6 确定）；不传 → 退 `FALLBACK_SOLVER_CATALOG`
+ * （降级镜像·A 不可达时的兜底），此时行为与本单之前**逐字节一致**（族信号选型 + 字典序）。
+ *
+ * 复用 `domainResolve`（单一 domain 来源）取对口 solver / domain；越界（不读 scope 内任一对象类型）的
+ * solver 不进图（尊重隔离语义）——但**目录未声明对象域（reads 为空）时不据此排除**：活目录 59 条里
+ * 实测 23 条无派生对象域，把"没证据"当成"越界"会把它们一律剔掉，等于换个方式重演本单要修的病。
  */
-export function projectNavigationSlice(query: string, pageContext?: PageContext, scope?: AgentScope): NavigationSlice {
+export function projectNavigationSlice(
+  query: string,
+  pageContext?: PageContext,
+  scope?: AgentScope,
+  catalog?: SolverCatalog,
+): NavigationSlice {
   const q = query ?? "";
   const res = domainResolve(q, pageContext);
   const scopeTypes = scope?.objectTypes && scope.objectTypes.length > 0 ? new Set(scope.objectTypes) : undefined;
   const solversAllowed = canInvokeSolvers(scope?.toolNames);
+  // 活目录（生产）vs 降级镜像（兜底）。isLive 决定"候选怎么来"：检索已收窄 → 全员候选；镜像 → 族信号选型。
+  const isLive = catalog !== undefined;
+  const cat: SolverCatalog = catalog ?? FALLBACK_SOLVER_CATALOG;
 
   // 命中的域族（问句信号）。
   const hitFamilies = new Set<DomainFamilyKey>();
@@ -292,42 +321,53 @@ export function projectNavigationSlice(query: string, pageContext?: PageContext,
   // WO-OPTWHATIF-NL-WIRING · opt_whatif 双命中门（决策族词 ∧ 参数改动值）——单一 whatif 词不误拉 optimize_whatif（守回归）。
   if (isOptWhatifSignal(q)) hitFamilies.add("opt_whatif");
 
-  // 候选 solver：① domain-resolver 对口 solver（primary）② 命中族的 solver ③ scope 内对象域覆盖的 solver。
+  // 候选 solver：① domain-resolver 对口 solver（primary）② 活目录 = 检索返回的全部（已按相关性收窄到 top-N）；
+  //   降级镜像 = 命中族的 solver ∪ scope 内对象域覆盖的 solver（旧行为·字节兼容）。
   const candidateKeys = new Set<string>();
-  if (res.solverKey && SOLVER_CATALOG[res.solverKey]) candidateKeys.add(res.solverKey);
-  for (const [key, entry] of Object.entries(SOLVER_CATALOG)) {
-    if (entry.families.some((fam) => hitFamilies.has(fam))) candidateKeys.add(key);
-  }
-  if (scopeTypes) {
-    for (const [key, entry] of Object.entries(SOLVER_CATALOG)) {
-      if (entry.reads.some((t) => scopeTypes.has(t))) candidateKeys.add(key);
+  if (res.solverKey && cat[res.solverKey]) candidateKeys.add(res.solverKey);
+  if (isLive) {
+    for (const key of Object.keys(cat)) candidateKeys.add(key);
+  } else {
+    for (const [key, entry] of Object.entries(cat)) {
+      if ((entry.families ?? []).some((fam) => hitFamilies.has(fam))) candidateKeys.add(key);
+    }
+    if (scopeTypes) {
+      for (const [key, entry] of Object.entries(cat)) {
+        if (entry.reads.some((t) => scopeTypes.has(t))) candidateKeys.add(key);
+      }
     }
   }
 
   // 隔离过滤：scope 收窄时，只留读 scope 内至少一个对象类型的 solver（越界 solver 不进图）。
+  // reads 为空 = 目录没声明对象域 = 无证据判越界 → 保留（降级镜像每条 reads 都非空，故旧行为不变）。
   let solverKeys = [...candidateKeys].filter((key) => {
     if (!scopeTypes) return true;
-    return SOLVER_CATALOG[key]!.reads.some((t) => scopeTypes.has(t));
+    const reads = cat[key]!.reads;
+    if (reads.length === 0) return true;
+    return reads.some((t) => scopeTypes.has(t));
   });
   if (!solversAllowed) solverKeys = []; // 无 invoke_solver 能力 → 不列 solver（诚实·尊重工具白名单）
 
-  // 稳定排序：primary 置顶，其余按 key 字典序（R6 字节一致）。
+  // 稳定排序：primary 置顶；活目录按检索相关性名次（rank·确定性），降级镜像按 key 字典序（R6 字节一致）。
   solverKeys.sort((a, b) => {
     if (a === res.solverKey) return -1;
     if (b === res.solverKey) return 1;
+    const ra = cat[a]!.rank;
+    const rb = cat[b]!.rank;
+    if (ra !== undefined && rb !== undefined && ra !== rb) return ra - rb;
     return a < b ? -1 : a > b ? 1 : 0;
   });
   solverKeys = solverKeys.slice(0, MAX_SOLVERS);
 
   const solvers: SliceSolver[] = solverKeys.map((key) => ({
     key,
-    capability: SOLVER_CATALOG[key]!.capability,
-    outputShape: SOLVER_CATALOG[key]!.outputShape,
+    capability: cat[key]!.capability,
+    outputShape: cat[key]!.outputShape,
   }));
 
   // 对象类型：选中 solver 读取的对象类型（scope 收窄）∪（scope 声明但未被 solver 覆盖的对象类型）。
   const objSet = new Set<string>();
-  for (const key of solverKeys) for (const t of SOLVER_CATALOG[key]!.reads) if (!scopeTypes || scopeTypes.has(t)) objSet.add(t);
+  for (const key of solverKeys) for (const t of cat[key]!.reads) if (!scopeTypes || scopeTypes.has(t)) objSet.add(t);
   if (scopeTypes) for (const t of scopeTypes) objSet.add(t); // 声明的对象域始终可见（即便无对口 solver）
   const objectTypes: SliceObjectType[] = [...objSet]
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
@@ -353,14 +393,23 @@ export function projectNavigationSlice(query: string, pageContext?: PageContext,
 
 /**
  * 渲染导航图为人读段（确定性·注入 agent 首轮 prompt）。空图返 ""（不注入·字节兼容）。
- * 语气配合 prompts.ts【工作方式】改造：有对口 solver → 一步到位、别逐跳重编排。
+ *
+ * WO-CAPMAP-LIVE · 措辞改造：旧版写「**已替你做完选型**，不必再 discover 盲扫」——
+ * 而当时这张图只有 19 条手写候选、活目录实有 59 条，等于**一边漏掉 40 个求解器、一边劝模型别去查**。
+ * 现在如实说：这是**据本题检索出的候选（不是全集）**，覆盖不到就该继续 discover / retrieve_knowledge。
+ * 「一步到位」的建议保留（它治的是逐跳盲选的真问题），但**不再封死检索那条路**。
  */
 export function renderNavigationSlice(slice: NavigationSlice): string {
   if (!slice.nonEmpty) return "";
   const lines: string[] = [];
-  lines.push("【本题导航图（据你的能力范围投影·已替你做完选型；有对口求解器就直接调它一步到位，别再 discover 盲扫或逐跳重编排）】");
+  lines.push(
+    "【本题导航图（据你的能力范围 + 本题相关性从**资源目录检索**出的候选——是候选，不是全集）】\n" +
+      "用法：① 候选里有对口求解器 → 直接调它一步到位，别拆成「查对象→猜 solver→再查」的多跳重编排；" +
+      "② 候选里没有真正对口的，或你判断本题需要目录里没列出的能力 → **就去 discover / retrieve_knowledge 再捞一次**，" +
+      "这是正当且被鼓励的动作（本图按相关性截断，未列出 ≠ 不存在）。",
+  );
   if (slice.solvers.length > 0) {
-    lines.push("· 对口求解器（invoke_solver·输出形状告诉你结果长什么样/取哪个字段溯源）：");
+    lines.push("· 候选求解器（invoke_solver·输出形状告诉你结果长什么样/取哪个字段溯源）：");
     for (const s of slice.solvers) {
       const star = s.key === slice.primarySolver ? "★" : "-";
       lines.push(`  ${star} ${s.key}：${s.capability}｜输出 { ${s.outputShape.join(", ")} }`);
@@ -380,9 +429,15 @@ export function renderNavigationSlice(slice: NavigationSlice): string {
   return lines.join("\n");
 }
 
-/** 便捷：一步投影 + 渲染（空图返 ""）。供 orchestrator/engine 注入首轮 prompt。 */
-export function buildNavigationSliceSection(query: string, pageContext?: PageContext, scope?: AgentScope): string {
-  return renderNavigationSlice(projectNavigationSlice(query, pageContext, scope));
+/** 便捷：一步投影 + 渲染（空图返 ""）。供 orchestrator/engine 注入首轮 prompt。
+ *  `catalog` 同 `projectNavigationSlice`：传活目录 = 生产态；不传 = 降级镜像兜底。 */
+export function buildNavigationSliceSection(
+  query: string,
+  pageContext?: PageContext,
+  scope?: AgentScope,
+  catalog?: SolverCatalog,
+): string {
+  return renderNavigationSlice(projectNavigationSlice(query, pageContext, scope, catalog));
 }
 
 /** 本题图内的 solver key 集（供 loop.ts plan 自检：plan 引用的 solver 须在图内·否则回退 ReAct）。 */
