@@ -154,7 +154,7 @@ describe("§件一 · 五个子视图在沙盘内的到达路径（删入口的�
     await user.click(screen.getByTestId("sc-mode-topo"));
     expect(screen.getByTestId("sandbox-console").getAttribute("data-mode")).toBe("topo");
     expect(screen.getByTestId("sc-slot-topo").hasAttribute("hidden")).toBe(false);
-    expect(await within(screen.getByTestId("sc-slot-topo")).findByTestId("pt-matrix")).toBeInTheDocument();
+    expect(await within(screen.getByTestId("sc-slot-topo")).findByTestId("phys-topo")).toBeInTheDocument();
   });
 
   it("③ node-inspector（节点检视）= 右栏常驻面板 →「变量输入」页签，一次点击到达", async () => {
@@ -245,13 +245,15 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
       db.tenantOverrides,
       db.configVersion,
     );
+    const wsViews = ws.views ?? [];
+    const wsFeatures = ws.features ?? [];
     // 金丝雀：mock 下发确实有视图（一个都没有 ⇒ 下面的 find 全部落空、断言方向恰好反过来）
-    expect(ws.views.length).toBeGreaterThan(5);
+    expect(wsViews.length).toBeGreaterThan(5);
     for (const key of viaDispatch) {
-      const view = ws.views.find((v) => v.key === key);
+      const view = wsViews.find((v) => v.key === key);
       expect(view, `${key} 已从 workspace.views 消失 ⇒ /v/${key} 深链接会落 403/404（这就是回归）`).toBeTruthy();
       expect(
-        ws.features.includes(`view.${key}`),
+        wsFeatures.includes(`view.${key}`),
         `${key} 的 entitlement 没下发 ⇒ ViewPage 先判 feature → 404`,
       ).toBe(true);
       expect(getRenderer(view!.renderer), `${key} 的 renderer 没注册 ⇒ 打开是 UnsupportedViewCard`).toBeDefined();
@@ -276,13 +278,21 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
 // § 件三 · 模式切换：一次只呈现一屏（判据是**不在 DOM**，不是 hidden）
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** 各模式的**特征元素**：只有该模式渲染时才可能出现的 testid。 */
+/**
+ * 各模式的**特征元素**：只有该模式渲染时才可能出现的 testid。
+ *
+ * ⚠ 后四格刻意用**壳级** `sandbox-mode-pane-<m>` 而不是各视图自己的根 testid
+ * （`cleanroom-attr` / `what-if` / …）：那四个根在数据取不到时会换成诚实空态
+ * （`cr-types-error` / `dr-empty-no-chain` 之流），拿它们当"这一屏在不在"的判据，
+ * 会把**空态**误判成**没渲染** —— 那是「我用 X 当作 Y 的证据，而 X 并不度量 Y」的老形态。
+ * 「现状」用 `sandbox-console`：它是真实组件的根，不是本单自造的壳。
+ */
 const MODE_SIGNATURE: Record<SandboxMode, string> = {
   now: "sandbox-console",
-  attribute: "cleanroom-attr-root",
-  tryone: "whatif-root",
-  optimize: "optimize-whatif-root",
-  radius: "disruption-radius-root",
+  attribute: "sandbox-mode-pane-attribute",
+  tryone: "sandbox-mode-pane-tryone",
+  optimize: "sandbox-mode-pane-optimize",
+  radius: "sandbox-mode-pane-radius",
 };
 
 describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
@@ -300,6 +310,21 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
       expect(within(bar).getByTestId(`sandbox-mode-${m}`).textContent).toContain(SANDBOX_MODE_LABEL[m]);
     }
     expect(screen.getByTestId("sandbox-mode-now").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("屏上的「已收编原独立页」清单与 CONSOLIDATED_INTO_SANDBOX **不许漂移**（两张表各写一半 = #99/#110 的病根）", async () => {
+    mount();
+    await ready();
+    const box = screen.getByTestId("sandbox-consolidated-links");
+    const shown = Array.from(box.querySelectorAll("a")).map((a) => (a.getAttribute("data-testid") ?? "").replace(/^sandbox-consolidated-/, ""));
+    expect(shown.slice().sort()).toEqual(Object.keys(CONSOLIDATED_INTO_SANDBOX).slice().sort());
+    // 每条的 href 就是那个键的深链接（写错 href = 清单在，点过去 404）
+    for (const a of Array.from(box.querySelectorAll("a"))) {
+      const key = (a.getAttribute("data-testid") ?? "").replace(/^sandbox-consolidated-/, "");
+      expect(a.getAttribute("href")).toBe(`/v/${key}`);
+    }
+    // 默认折叠（第二层，不占第一层——仓主原话「信息太多，第一层看不到重点」）
+    expect((box as HTMLDetailsElement).open).toBe(false);
   });
 
   it("切到模式 B ⇒ 模式 A 的特征元素**不在 DOM 里**（逐对全测，不是抽一对）", async () => {

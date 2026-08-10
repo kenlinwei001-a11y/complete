@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { getRenderer } from "@/views/registry";
-import { NAV_GROUPS } from "@/pages/ShellLayout";
+import { NAV_GROUPS, CONSOLIDATED_INTO_SANDBOX } from "@/pages/ShellLayout";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
 import { db } from "@/mocks/db";
 import { loginAs, renderApp } from "./utils";
@@ -68,22 +68,53 @@ describe("WO-IMPEDIMENTS-REACHABLE · /v/chain-impediments 真打得开（可达
     expect(screen.getByTestId("ci-honesty-counts")).toBeInTheDocument();
   });
 
-  it("可发现性：侧栏「推演」组里有一条 /v/chain-impediments 链接，且没落进「其它」兜底桶", async () => {
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE：本条的**方向反过来了**，但守的还是同一件事 —— 可发现性。
+   *
+   * 原文断言「侧栏『推演』组里有一条 /v/chain-impediments 链接」。它现在已收编进沙盘
+   * （主屏阻滞点统计条 + 逐条清单，逐条取证见 docs/AUDIT-sandbox-ia-consolidate.md），
+   * 单列 = 重复入口，故断言改为「**不单列**」。
+   *
+   * ⚠ 但「不单列」绝不许滑成「找不到」。所以本条同时咬三件事，缺一即红：
+   *   ① 侧栏没有它自己的链接（重复入口已消）；
+   *   ② 侧栏**有沙盘的链接** —— 沙盘就是它现在的到达路径，沙盘入口没了它就真的找不到了；
+   *   ③ 也**不在**「其它」兜底桶里（只删 NAV_GROUPS 登记而不滤 leftover 的典型死法：
+   *      原地掉进兜底桶，比单列还糟。这一条是那种改法的确切探针）。
+   */
+  it("可发现性：侧栏不再单列它（已收编），但沙盘入口在 —— 且没落进「其它」兜底桶", async () => {
     renderApp("/v/dash");
     const nav = await screen.findByTestId("nav-business");
-    const sim = within(nav).getByTestId("nav-group-推演");
-    const link = within(sim).getByText("全链阻滞点");
-    expect(link.closest("a")?.getAttribute("href")).toBe("/v/chain-impediments");
-    // 反向：「其它」组（若存在）不得含它 —— 可达但折叠在兜底桶里 = 用户找不到（同族病第四层）
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+    // 金丝雀：侧栏确实渲染出了业务视图链接（一条都没有 ⇒ 下面 ①③ 恒真）
+    expect(hrefs.filter((h) => h.startsWith("/v/")).length).toBeGreaterThan(3);
+    // ② 到达路径本身必须在（沙盘入口没了，「收编进沙盘」就是空话）
+    expect(hrefs, "沙盘入口不在侧栏 ⇒ chain-impediments 的到达路径不成立").toContain("/v/sim-sandbox");
+    // ① 不单列
+    expect(hrefs, "/v/chain-impediments 已收编进沙盘，却仍在侧栏单列 —— 重复入口").not.toContain("/v/chain-impediments");
+    // ③ 也不在兜底桶（这一条抓的是"只删登记不滤 leftover"那种改法）
     const other = within(nav).queryByTestId("nav-group-其它");
     if (other) expect(within(other).queryByText("全链阻滞点")).toBeNull();
   });
 
-  it("结构守卫：NAV_GROUPS 里它挂的是 kind:\"view\"（本视图**经后端下发**，挂成 route 会变成一条绕过下发的死链）", () => {
+  /**
+   * 结构守卫：原文咬「NAV_GROUPS 里挂 kind:"view" 而不是 kind:"route"」——
+   * 那条断言的**真正标的**从来不是"在不在导航里"，而是**它必须经后端下发到达**
+   * （见下一条 R3 级联：走专用 route 的话页面侧没 Guard，手敲 URL 照样进得去 ⇒ 违反 R3）。
+   * 收编之后它不在 NAV_GROUPS 了，那个标的转移到收编表的 `via` 字段上，故断言跟着搬家：
+   * `via` 必须是 `"workspace.views"`。改成 `"static-route"` 会让本条与门判据⑧c 同时红。
+   */
+  it("结构守卫：不在 NAV_GROUPS；且收编表声明 via=\"workspace.views\"（经后端下发，不是绕过下发的专用 route）", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
-    const hit = items.filter((it) => it.key === "chain-impediments");
-    expect(hit, "chain-impediments 在 NAV_GROUPS 里一条都没有").toHaveLength(1);
-    expect(hit[0]!.kind).toBe("view");
+    expect(
+      items.filter((it) => it.key === "chain-impediments"),
+      "chain-impediments 已收编进沙盘，NAV_GROUPS 里不该再有它的条目",
+    ).toHaveLength(0);
+    const entry = CONSOLIDATED_INTO_SANDBOX["chain-impediments"];
+    expect(entry, "chain-impediments 既不在 NAV_GROUPS 也不在收编表 —— 那就是**漏登记**（落兜底桶），不是收编").toBeTruthy();
+    expect(
+      entry!.via,
+      "改成 static-route 会绕过后端下发 ⇒ requires: [sim.sandbox] 级联断掉 ⇒ 沙盘关了页面仍进得去（违反 R3）",
+    ).toBe("workspace.views");
   });
 
   /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
@@ -23,7 +23,29 @@ import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
+import {
+  describeSandboxScope,
+  EMPTY_SANDBOX_SCOPE,
+  SANDBOX_MODES,
+  SANDBOX_MODE_LABEL,
+  SANDBOX_MODE_QUESTION,
+  type SandboxMode,
+  type SandboxScope,
+} from "./sandboxModes";
 import styles from "./SimViews.module.css";
+
+/**
+ * WO-SANDBOX-IA-CONSOLIDATE · 四个被收编的推演页（模式切换的后四格）。
+ *
+ * `lazy` 不是可选项：不 lazy 就等于把四整页的 JS 一起打进沙盘首屏 ——
+ * 用户十次里有九次只看「现状」，却每次都为另外四页的代码付加载成本。
+ * 与 `App.tsx` 里那四条专用 route 的 `lazy` 是**同一个模块**，
+ * 故深链接进来与在沙盘里切过去，加载的是同一份 chunk（不会打两份）。
+ */
+const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
+const WhatIfView = lazy(() => import("@/views/WhatIfView"));
+const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
+const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
 
 /**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
@@ -240,6 +262,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [world, setWorld] = useState<TickState>({});
   const [curTick, setCurTick] = useState(0);
+
+  /**
+   * ══ WO-SANDBOX-IA-CONSOLIDATE · 一屏五模式 + 跨模式上下文 ══════════════════════
+   *
+   * `mode`：当前呈现哪一屏（决策链序见 `sandboxModes.ts`）。默认「现状」= 沙盘控制台本身。
+   * **硬约束**：任何时刻只渲染一个模式的内容 —— 切模式 = 换一整屏，判据是另一屏
+   * **不在 DOM 里**（`hidden`/`display:none` 一律不算：那只是让人看不见，DOM 还在、请求照发）。
+   *
+   * `scope`：跨模式活着的上下文。它必须在**这一层**（壳）而不是各模式内部 ——
+   * 因为切模式时那些组件整个不渲染，state 随之蒸发。不带上下文的合并只是把五页塞进一个 tab 条。
+   */
+  const [mode, setMode] = useState<SandboxMode>("now");
+  const [scope, setScope] = useState<SandboxScope>(EMPTY_SANDBOX_SCOPE);
 
   /**
    * ══ WO-L4B（欠账 #145）· `sim.*` 事件的**真消费方**就是下面这两条 useQuery ══
@@ -717,6 +752,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
 
   return (
     <div data-testid="sandbox-view" className={styles.head}>
+      <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
+      {/* ══ 一次只渲染一个模式（判据是**不在 DOM**，不是 hidden）══════════════════ */}
+      {mode !== "now" ? <SandboxModePane mode={mode} /> : null}
+      {mode !== "now" ? null : (
       <SandboxConsole
         // 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值，量纲仍是 0–100 状态指数）
         topTags={
@@ -787,7 +826,155 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
         }
         rail={rail}
+        // WO-SANDBOX-IA-CONSOLIDATE · 基地范围提到壳里（受控）：切模式不丢。
+        // 只提 state，不动控制台任何布局——左栏勾选框、testid、语义（空数组 = 全部基地）一字未改。
+        scopeBaseIds={scope.baseIds}
+        onScopeBaseIdsChange={(baseIds) => setScope((s) => ({ ...s, baseIds }))}
       />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-IA-CONSOLIDATE · 模式切换骨架（本单只做壳，不重画各模式内部布局）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 顶部模式切换条 + 跨模式上下文条（沙盘这一屏的**第一层**）。
+ *
+ * ── 分层（`docs/CONVENTION-ui-information-layering.md`）────────────────────────
+ *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数。
+ *    只有「名字 / 它是什么 / 一个读数」——没有公式、没有口径推导、没有明细。
+ *  · **第二层**（一次点击）：「已收编的原独立页」折叠清单（深链接仍可达，见 `<details>`）。
+ *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `title` 浮层与折叠区，不占第一层。
+ *
+ * 仓主对这一屏的原话是「信息太多，第一层看不到重点」——**并完更挤 = 这次合并是负分**。
+ * 故本条只加一行按钮 + 一行范围读数，其余一律降层。
+ */
+function SandboxModeSwitch({
+  mode,
+  onChange,
+  scope,
+}: {
+  mode: SandboxMode;
+  onChange: (m: SandboxMode) => void;
+  scope: SandboxScope;
+}) {
+  return (
+    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10, marginBottom: 10 }}>
+      <div role="tablist" aria-label="推演模式" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {SANDBOX_MODES.map((m, i) => (
+          <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {/* 决策链的箭头是**结构表达**，不是装饰：五个模式是「看见 → 为什么 → 试试看 → 最优 → 波及」
+                这一条链，不是一排并列 tab（规范 §3：结构本身也要画出来）。 */}
+            {i > 0 ? <span aria-hidden style={{ color: "var(--muted2)", fontSize: 11 }}>→</span> : null}
+            <button
+              type="button"
+              role="tab"
+              className={`btn sm${mode === m ? " primary" : ""}`}
+              data-testid={`sandbox-mode-${m}`}
+              aria-pressed={mode === m}
+              aria-selected={mode === m}
+              title={SANDBOX_MODE_QUESTION[m]}
+              onClick={() => onChange(m)}
+            >
+              {SANDBOX_MODE_LABEL[m]}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {/* 当前模式回答哪一问（一句话，第一层唯一的说明性文字） */}
+      <div className={styles.sub} data-testid="sandbox-mode-question" style={{ marginTop: 6 }}>
+        {SANDBOX_MODE_QUESTION[mode]}
+      </div>
+
+      {/*
+        跨模式上下文条 —— **常驻**（五个模式下都在，且读数同一份）。
+        这一条是合并的价值本身：不带上下文的合并只是把五页塞进一个 tab 条。
+        诚实位（订单锚点 / 时窗为什么不在这里）降到 title 浮层，不占第一层。
+      */}
+      <div
+        className={styles.sub}
+        data-testid="sandbox-scope-strip"
+        style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+      >
+        <span>
+          当前范围（切模式保持）：<b data-testid="sandbox-scope-bases">{describeSandboxScope(scope)}</b>
+        </span>
+        <span
+          data-testid="sandbox-scope-honesty"
+          title={
+            "订单锚点：今天不是壳级控件——它由线路图按 so 自取（chain_loss_attribution 唯一认的入参），" +
+            "壳里没有第二个订单选择器，硬造一个就是各模式各用各的假旋钮。\n" +
+            "时窗：chain_loss_attribution 只认 so、chain_impediments 只认 scope，两者都没有时间窗入参，" +
+            "故控制台顶栏那个 30D/60D/90D 是禁用的（挂「时窗无 ARGS」徽标），壳里不再造第二个。"
+          }
+          style={{ cursor: "help", textDecoration: "underline dotted" }}
+        >
+          ⓘ 订单锚点 / 时窗尚未提为壳级上下文
+        </span>
+      </div>
+
+      {/*
+        第二层：已收编的原独立页 —— 默认折叠。
+        存在理由有二：① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，
+        不是只有知道 URL 的人才进得去；② 沙盘对某些页只做了投影而非全量搬运
+        （`chain-impediments` 的阈值出处 / 未判定判据等四块，见 AUDIT §2）——
+        那些内容今天只在原独立页上，得留一条路过去。
+      */}
+      <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
+        <summary className={styles.sub} style={{ cursor: "pointer" }}>
+          已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
+        </summary>
+        <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+          {CONSOLIDATED_PAGES.map((p) => (
+            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} title={p.where}>
+              {p.label}
+            </a>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * 收编清单的**屏上投影**（键与 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 同源 —— 那张表是导航侧的
+ * 单一出处，本屏只补一个人读标签）。`sandbox-ia-consolidate.seam` 有一条断言咬两侧不许漂移。
+ */
+const CONSOLIDATED_PAGES: { key: string; label: string; where: string }[] = [
+  { key: "chain-line-map", label: "全链线路图", where: "已在：中栏画布默认模式「线路图」" },
+  { key: "physical-topology", label: "物理拓扑", where: "已在：中栏画布模式「物理拓扑」" },
+  { key: "node-inspector", label: "节点检视", where: "已在：右栏常驻面板 → 页签「变量输入」" },
+  { key: "transit-flow", label: "在途与在制", where: "已在：线路图上的「在途批次图层」勾选框" },
+  { key: "chain-impediments", label: "全链阻滞点", where: "已在：主屏统计条 + 逐条清单（阈值出处等四块仍只在原页）" },
+  { key: "cleanroom-attr", label: "净室归因", where: "已在：模式「归因」" },
+  { key: "what-if", label: "假设推演", where: "已在：模式「试一手」" },
+  { key: "optimize-whatif", label: "优化推演", where: "已在：模式「求最优」" },
+  { key: "disruption-radius", label: "断供影响半径", where: "已在：模式「影响半径」" },
+];
+
+/**
+ * 非「现状」模式的内容承载 —— **内容原样搬进来，不重画布局**（本单是骨架单）。
+ *
+ * 三件事在这里做，别的一件不做：
+ *  ① 只渲染当前模式那一个（调用点已经 `mode !== "now"` 才挂，本组件内部再按 mode 分发**一个**）；
+ *  ② 给一个稳定的壳级 testid `sandbox-mode-pane-<m>` —— 各模式自己的根 testid
+ *     （`cleanroom-attr` / `what-if` / …）在数据取不到时会换成诚实空态，
+ *     用它们当"这一屏在不在"的判据会把**空态**误判成**没渲染**；
+ *  ③ `<Suspense>`：四个模式都是 `lazy` 进来的（不 lazy 就等于把四页的 JS 全塞进沙盘首屏）。
+ */
+function SandboxModePane({ mode }: { mode: Exclude<SandboxMode, "now"> }) {
+  return (
+    <div data-testid={`sandbox-mode-pane-${mode}`} data-mode={mode}>
+      <Suspense fallback={<div className="empty-state" data-testid={`sandbox-mode-loading-${mode}`}>加载{SANDBOX_MODE_LABEL[mode]}…</div>}>
+        {mode === "attribute" ? <CleanroomAttrView /> : null}
+        {mode === "tryone" ? <WhatIfView /> : null}
+        {mode === "optimize" ? <OptimizeWhatifView /> : null}
+        {mode === "radius" ? <DisruptionRadiusView /> : null}
+      </Suspense>
     </div>
   );
 }
