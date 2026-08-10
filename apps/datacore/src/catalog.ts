@@ -80,7 +80,9 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   // 20 场景目录 §2 新增 13（成熟度 E6a）
   { key: "mitigation_select", name: "处置方案优选", description: "按因素从方案库打分排序，给推荐案与草稿 payload。", argHints: { baseName: "基地名", factor: "风险因素" }, domain: "plan", answersQuestions: ["这个风险因素怎么处置", "从方案库选哪个处置案", "推荐的处置方案是什么"], tags: ["处置方案", "mitigation", "优选"] },
   { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", argHints: { items: "待认证集", engineerGroups: "工程师组数" }, domain: "plan", answersQuestions: ["认证工程师怎么排期到周", "认证按什么优先级排", "并行约束下认证排到哪周"], tags: ["认证排期", "cert", "排期"] },
-  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据" }, domain: "plan", answersQuestions: ["订单物料齐套率怎么算", "缺哪些料、在途 ETA 多少", "逐单齐套和补料建议"], tags: ["物料齐套", "齐套率", "kit"] },
+  // WO-SILENT-WRONG-ANSWER-3 症③：补声明 base/fromDay/toDay —— 引擎半本单接上了基地维（Order.bases ∋ baseId），
+  //   声明不补齐等于「能力有了但没人知道怎么用」，agent 照旧只会传 orders。
+  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据（直传则跳过引擎取数）", base: "基地（可选·不给=全网 scope.mode:ALL；也认 baseId/baseName）", fromDay: "分析窗起点（默认 1）", toDay: "分析窗终点（默认 14）" }, domain: "plan", answersQuestions: ["订单物料齐套率怎么算", "缺哪些料、在途 ETA 多少", "逐单齐套和补料建议"], tags: ["物料齐套", "齐套率", "kit"] },
   { key: "lta_gap", name: "长协补缺", description: "净需求/覆盖率/现货缺口与分批 PO 建议。", argHints: { material: "物料", month: "月份" }, domain: "plan", answersQuestions: ["长协覆盖净需求多少", "现货缺口要补多少", "分批 PO 怎么下"], tags: ["长协", "补缺", "lta"] },
   { key: "inventory_optimize", name: "库存优化", description: "目标水位/超储/欠储/呆滞与可释放资金。", argHints: { materials: "物料库存数据" }, domain: "plan", answersQuestions: ["库存呆滞和超储怎么优化", "目标水位怎么定、能释放多少资金", "欠储超储各多少"], tags: ["库存优化", "呆滞", "inventory"] },
   { key: "changeover_sequence", name: "换型排序", description: "最近邻贪心最小化换型时长，标注交期不可行单。", argHints: { lineId: "产线", orders: "周订单" }, domain: "plan", answersQuestions: ["换型顺序怎么排最省换型时间", "产线一周订单怎么排换型", "哪些单交期不可行"], tags: ["换型排序", "changeover", "换型"] },

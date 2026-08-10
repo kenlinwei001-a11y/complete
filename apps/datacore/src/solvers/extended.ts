@@ -240,7 +240,14 @@ export function kitReadiness(args: Record<string, unknown>) {
       ...(earliestKitDay === null ? { earliestKitDayReason: `以下物料的采购段四段不全，无法结算最早齐套日（拒绝用已知几段之和冒充日期）：${unresolved.join("、")}` } : {}),
     };
   });
-  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, ruleRefs: ["C06", "C16"] };
+  return {
+    rows,
+    shortageCount: rows.filter((r) => r.kitRatio < 1).length,
+    // WO-SILENT-WRONG-ANSWER-3 症③ 诚实位：**这份齐套算的是谁** —— BASE=该基地可承接订单 / ALL=全网。
+    // 由 `deriveExtendedArgs` 注入（见那里的理由）；调用方直传 `orders` 的路不注入 ⇒ 键不出现 ⇒ 逐字节加性。
+    ...(args.kitScope !== undefined ? { scope: args.kitScope } : {}),
+    ruleRefs: ["C06", "C16"],
+  };
 }
 
 // S09 lta_gap：净需求 = 月需求×BOM − 库存 − 在途；现货缺口 = max(0, 净需求 − 长协可用)。
@@ -698,7 +705,56 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       // WO-SANDBOX-D2：每个物料带上**采购段四段凭证**（供应商生产/在途/清关/到货检验），
       // 让齐套判定能按责任方分解，而不是只给 `Material.leadTime` 这一个合成标量。
       const evidenceOf = buildProcurementEvidence(c);
-      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
+      // ── WO-SILENT-WRONG-ANSWER-3 症③（引擎半·S08 齐套分析「对用户实体失聪」的最后一段）──────────
+      // 修前：`orders = c.orders.slice(0,8)` —— **全链没有基地维**，且输出里**没有一个字**说明这是全网口径。
+      //   实测原病历（WO-DERIVED-INTENT-SLOT-DEAF §1，真 Kimi·真服务）：
+      //     「常州下周哪些订单缺料开不了工？」→ shortageCount=8 · 首行 SO-3391
+      //     「金华下周哪些订单缺料开不了工？」→ **答案逐字节相同**
+      //   上一单把「用户说的基地到不到得了求解器」（运输层）治好了，但**引擎层没人用它** ——
+      //   于是病从「丢参」变成「传到了没人读」，屏上仍然一模一样（§6.6 遗留缺口 ①，明写在 datacore 侧）。
+      // 三态定性 = **没接线**（不是没数据）：基地维的真源一直在 —— `Order.bases[]` 是每张订单的产地数组
+      //   （`affected_orders` / `portfolio` / `scope.orderInChainScope` 早就在按它过滤），只是齐套这条路没接。
+      // 修后三件（缺一条就还是静默）：
+      //   ① 给 `base` → 按 `Order.bases ∋ baseId` 真收窄订单池（解析走 `resolveBaseRef` 单一出处，
+      //      与 carbon_footprint / mitigation_select 同一份规则；键名 baseId/baseName 由 arg-aliases.ts 归一）；
+      //   ② 解析不到 → **AMBIGUOUS_SCOPE 400**，绝不静默按"没给基地"退回全网（那正是本单要治的病）；
+      //   ③ **无论给没给**都透出 `kitScope` 诚实位 —— 全网路显式标 `mode:"ALL"`，并把
+      //      「只取前 8 张订单」这个此前完全隐形的截断写进答案（`orderPoolTotal` vs `sampled`）；
+      //      基地路 `sampled===0` 时显式说明「该基地窗内无可分析订单 ≠ 全部齐套」（空 ≠ 齐套）。
+      // 加性：不给 base → 订单池与改前逐字节相同（同一 `c.orders` 同一 slice(0,8)），只多出 `kitScope` 一个新键。
+      const baseRefRaw = args.base;
+      const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
+      let pool = c.orders ?? [];
+      let kitScope: Record<string, unknown>;
+      if (hasBaseRef) {
+        const r = resolveBaseRef(c.bases, baseRefRaw);
+        if (!r.resolved || !r.objectId)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `kit_readiness：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+              `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+              `——拒绝静默退回全网订单池（R-ARG-FIDELITY·G-SOLVER-SCOPE-DEAF）`,
+            400,
+          );
+        const scopedBaseId = r.objectId;
+        const scopedBaseName = baseNameOf(c, scopedBaseId);
+        const total = pool.length;
+        pool = pool.filter((o) => {
+          const bs = props(o).bases;
+          return Array.isArray(bs) && (bs as unknown[]).map((x) => str(x)).includes(scopedBaseId);
+        });
+        kitScope = {
+          mode: "BASE",
+          baseId: scopedBaseId,
+          baseName: scopedBaseName,
+          orderPoolTotal: pool.length,
+          networkOrderTotal: total,
+          note: `仅 ${scopedBaseName} 基地可承接的订单（Order.bases ∋ ${scopedBaseId}）·非全网`,
+        };
+      } else {
+        kitScope = { mode: "ALL", orderPoolTotal: pool.length, note: "全网口径（未指定基地·跨全部产地）" };
+      }
+      const orders = pool.slice(0, 8).map((o, i) => ({
         orderId: str(props(o).so, `O${i}`),
         qty: num(props(o).qty, 100),
         startDay: 7,
@@ -710,7 +766,13 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
           procurement: evidenceOf(m),
         })),
       }));
-      return { fromDay: 1, toDay: 14, ...args, orders };
+      kitScope.sampled = orders.length;
+      // 「只看前 8 张」此前完全隐形 —— 用户看到 shortageCount=8 会以为那是该口径下的全部缺料单。
+      if (orders.length < (kitScope.orderPoolTotal as number))
+        kitScope.samplingNote = `本次只分析订单池里排序靠前的 ${orders.length}/${kitScope.orderPoolTotal} 张（引擎侧固定采样上限 8）·shortageCount 是这 ${orders.length} 张里的缺料数，不是该口径下的全部`;
+      if (orders.length === 0)
+        kitScope.emptyNote = `该口径下无可分析订单 —— rows 为空**不等于**全部齐套（拒绝把"没数据"渲染成"没问题"）`;
+      return { fromDay: 1, toDay: 14, ...args, orders, kitScope };
     }
     case "lta_gap": {
       if (has("monthDemand")) return args;
