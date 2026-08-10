@@ -19,7 +19,7 @@ import styles from "./SimViews.module.css";
  *  ① 「状态变量 N/M」与「派生规则 N/M」**恒等**（后端两行取同一个变量/同一个表达式）→ 删该行，
  *     改列**真正的状态变量名**（传导规则 source/target stateVar 去重集，同 SandboxViewConfig.stateVars）。
  *  ② 标题「将进入沙盘的**状态变量**」下挂的却是 DERIVATION|ACTION|PROPAGATION 三类混装
- *     （实测 demo 13 条里 DERIVATION 0 条 ⇒ 标题里的名词一条都没有）→ 改称「要素」并按 kind 分组计数。
+ *     （实测 demo（SEED_DEMO=1 真跑 GET /a/v1/sim/sessions/:id/certification）23 条 = 行动 10 · 传导 13 · 派生 0 ⇒ 标题里的名词一条都没有）→ 改称「要素」并按 kind 分组计数。
  *  ③ 「规则触发 N 条」数的是**派生依赖图节点数**，且那趟空跑**一条都没触发、传导栈根本没跑**
  *     （欠账 #152）→ 改标「派生图节点 N 个」+ 显式标注传导未纳入 + 把 passed 的语义写在屏上。
  *  ④ 「✓可进入推演（已认证）」与「完整度 33%」并排贴着不解释 → 加一句话说清两者度量的是两件事、

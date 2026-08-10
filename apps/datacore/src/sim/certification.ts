@@ -208,7 +208,7 @@ export function deriveCertification(
   // entering[]：将进入沙盘的**要素**清单（每条标 source = **真实来源** 派生依赖 / Action / PropagationRule）。
   // ⚠ WO-CERT-HONESTY ②：本注释与前端标题原写「状态变量清单」，而这个数组混装三类 kind，
   //    其中只有 DERIVATION 是属性（ACTION 是写回动作、PROPAGATION 是传导规则）——
-  //    实测 demo 上 13 条里 DERIVATION 恰好 0 条，即"标题里的名词一条都没有"。故统一叫「要素」，
+  //    实测 demo（SEED_DEMO=1 真跑 GET /a/v1/sim/sessions/:id/certification）23 条 = 行动 10 · 传导 13 · 派生 0，即"标题里的名词一条都没有"。故统一叫「要素」，
   //    并由前端按 kind 分组显示（行动 N · 传导 N · 派生 N），不拿一个名词盖三样东西。
   // 评审遗留修：source 不再用占位 `FULFILLS r_<type>_<prop>`，改投影派生的**真实依赖源变量**（sourceVars，
   // 派生公式所依赖的状态变量）——知道每个将进入态从哪来（R13 可溯源；数据可溯原则）。

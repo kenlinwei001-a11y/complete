@@ -20,9 +20,10 @@ import { SimReadinessPanel } from "@/views/sim/SimReadinessPanel";
  * 病灶不是功能缺失，是**名不副实**——数字与名词都在，但没有一个度量它自称度量的东西：
  *  ① `worldCompleteness.stateVars` 与 `derivationRules` 恒等（后端取同一个变量/同一个表达式）；
  *  ② `entering[]` 混装 DERIVATION|ACTION|PROPAGATION 三类，标题却写「状态变量」
- *     —— 实测 demo 13 条里 DERIVATION 恰好 0 条，标题里的名词一条都没有；
+ *     —— 实测 demo（SEED_DEMO=1 真跑 GET /a/v1/sim/sessions/:id/certification）23 条 = 行动 10 · 传导 13 · 派生 0，标题里的名词一条都没有；
  *  ③ `trialTick.rulesFired` 数的是派生依赖图**节点数**，而那趟空跑零求值、传导核根本没被调用（欠账 #152）；
- *  ④ 「已认证 · 可进入推演」与「完整度 33%」并排贴着不解释，读起来自相矛盾。
+ *  ④ 「已认证 · 可进入推演」与一个远不满的「完整度 N%」并排贴着不解释，读起来自相矛盾
+ *     （真跑 demo：L4_CERTIFIED ∧ canEnter=true ∧ 完整度 64%）。
  *
  * 本门的判据一句话：**屏上每个数字/每句话，都要能回答「它度量的到底是什么」。**
  */
@@ -42,9 +43,11 @@ const trial = (): TrialTickInput => ({
 });
 
 /**
- * WO 指定的接缝画像：**派生 0 · 行动 10 · 传导 3**。
- * 选它正因为它复刻了实测 demo 的形态——13 条 entering 里一条派生都没有，
- * 而旧标题偏偏管这 13 条叫「状态变量」。
+ * WO 指定的接缝画像：**派生 0 · 行动 10 · 传导 3**（共 13 条 entering）。
+ * 选它是因为它复刻了实测 demo 的**形态**（派生恒 0、其余全是行动与传导），
+ * 而旧标题偏偏管这一整串叫「状态变量」。
+ * ⚠ 只是形态相同，**数量不同**：真 demo 今天是 23 条（行动 10 · 传导 13 · 派生 0）——
+ *   本门用固定小样本保证确定性 R6，不跟着种子数据漂。
  */
 const ACTION_COUNT = 10;
 const PROP_COUNT = 3;
@@ -73,7 +76,7 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
   it("② entering[] 按 kind 分组显示真计数「行动 10 · 传导 3 · 派生 0」，标题不再自称「状态变量」", () => {
     const cert = renderPanel(skewedScope());
 
-    // 后端这一半：13 条 entering，派生 0 条（正是实测 demo 的形态）。
+    // 后端这一半：13 条 entering，派生 0 条（形态同实测 demo：派生恒 0）。
     expect(cert.worldCompleteness.entering).toHaveLength(ACTION_COUNT + PROP_COUNT);
     expect(cert.worldCompleteness.entering.filter((e) => e.kind === "DERIVATION")).toHaveLength(0);
 
@@ -86,7 +89,7 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(screen.getByTestId("sim-cert-entering-group-PROPAGATION")).toBeTruthy();
     expect(screen.queryByTestId("sim-cert-entering-group-DERIVATION")).toBeNull();
 
-    // 标题里绝不许再出现「状态变量」——这 13 条里没有一条是状态变量。
+    // 标题里绝不许再出现「状态变量」——这 13 条里没有一条是状态变量（真 demo 23 条同样一条都没有）。
     const enteringSection = screen.getByTestId("sim-cert-entering");
     const title = enteringSection.firstElementChild!;
     expect(title.textContent).toContain("将进入沙盘的要素");

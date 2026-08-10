@@ -200,7 +200,7 @@ export type SimCertification = z.infer<typeof SimCertificationSchema>;
 3. `worldCompleteness.stateVarKeys` = 世界将承载的**状态变量名**（去重升序）。**是清单不是比值**，不参与 `pct`。
 4. `entering[]` = scope 内"将进入沙盘的**要素**"清单，每条标 `kind` + `source`（派生依赖 / Action / PropagationRule）。
    ⚠ **不叫「状态变量」**（WO-CERT-HONESTY ②）：三种 `kind` 里只有 `DERIVATION` 是属性，
-   实测 demo 上 13 条里 `DERIVATION` 恰好 0 条 —— 旧标题里的那个名词在列表里一条都没有。
+   实测 demo（SEED_DEMO=1 真跑 GET /a/v1/sim/sessions/:id/certification）23 条 = 行动 10 · 传导 13 · 派生 0 —— 旧标题里的那个名词在列表里一条都没有。
    前端**必须按 kind 分组显示计数**（行动 N · 传导 N · 派生 N），不许拿一个名词盖三样东西。
 5. **全局 vs 局部**：`scope=GLOBAL`（整本体）vs `scope=LOCAL`（单对象子图）—— **同一投影函数，只换 scope 输入**（meta:sync 防漂；竞品 image5 局部 75/100 vs image6 全局 100/100）。
 6. **完整度 ≠ 认证（WO-CERT-HONESTY ④）**：`canEnterSimulation` **不含** `worldCompleteness`，这是对的、别加。
