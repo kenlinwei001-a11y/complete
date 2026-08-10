@@ -208,6 +208,15 @@ const FALLBACK_SOLVER_CATALOG: SolverCatalog = {
   },
 };
 
+/**
+ * WO-CAPMAP-LIVE · 降级镜像的 key 集（**只供守护测试**求「活目录 ∖ 镜像」差集用）。
+ * 有了它，接缝测试就能**算出**"这条 solver 镜像里没有"，而不是把 key 抄进断言里——
+ * 抄进断言 = 再造一份镜像，将来镜像变了断言还绿（本仓栽过的老坑）。
+ */
+export const FALLBACK_SOLVER_CATALOG_KEYS: readonly string[] = Object.freeze(
+  Object.keys(FALLBACK_SOLVER_CATALOG).sort(),
+);
+
 /** 对象类型 → 关键属性（agent 导航用·只列驱动求解器/答案的关键字段）。 */
 const OBJECT_KEY_PROPS: Record<string, string[]> = {
   Metric: ["metricKey", "actual", "target", "gap"],
