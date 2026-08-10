@@ -757,6 +757,35 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 
 ---
 
+
+### P1 · 产销链对象关系边（WO-P1 · 2026-08-09 补登 · 此前本体零处提及，违反铁律 0 已补）
+
+WO-P1「补传导边至六方向」在 `apps/datacore/src/synthetic/service.ts` 新增 **3 条对象关系链路**：
+
+| 链路 key | 方向 | 说明 |
+|---|---|---|
+| `model_demanded_by_order` | Model → Order | **与既有 `order_for_model` 逐实例严格互逆**（同一个 `for (const o of g.orders)` 循环、同一对端点 id） |
+| `material_used_by_model` | Material → Model | 物料进入产销链的入口边 |
+| `supplier_supplies_material` | Supplier → Material | 供应商侧上游边 |
+
+⚠️ **`model_demanded_by_order` 是「等价捷径边」，它改写了最短路而不改变语义**（2026-08-09 实测）：
+`slice-planner.ts` 的 BFS tie-break 是**纯字典序** —— 同域打平、toType 打平后比 linkKey，
+`m` < `o` ⇒ 新边胜出。跳数不变、方向正确、结果集相同，但 `queryPlan.hops` 与 `provenance.linkPath`
+的**字面值全变了**。任何钉死路径字面值的金值都会因此变红，而这**不是回归**。
+**判据：钉 hops 抓不住「边加错」，要抓它得钉「两条边等价」这个不变量**（见 R20）。
+
+⚠️ **不许删这条边来"修"金值**：`propagation.ts` 的传导核**只建 `navOut`、无 navIn**，
+物理上无法逆向走边 —— 删掉会打断 P1 交付的供应链传导。（P1 提交信息里「全本体无任何边的
+toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「OrderPromise/OrderLine 零入边」实测为真，结论仍成立。）
+
+### P1 · 传导规则 3 → 13（同单 · `apps/datacore/src/seed.ts`）
+
+新增 10 条 `demo_*_to_*` 传导规则，把传导从 3 条扩到 13 条，覆盖六方向：
+`base_load→line_util` · `line_util→process_queue` · `material_price→model_cost` ·
+`model_cost→order_cost` · `order_cost→customer_receivable` · `customer_receivable→invoice_overdue` ·
+`supplier_delay→material_shortage` · `material_shortage→model_supply_risk` ·
+`material_shortage→po_expedite` · `po_expedite→inspection_queue` · `model_supply_risk→order_shortage`
+
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
@@ -1114,6 +1143,8 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
 | G-EVENT-GATE-MEASURES-SUBS-NOT-EMITS | **门量错了东西（这道门自己的假绿，且是同一文件第二次犯）**：`scripts/check-system-ontology.mjs:30 (codeEvents)` 用 `/event:\s*"…"/` 抽 `apps/agentcore/src/event-subscriptions.ts` —— 那是**订阅声明**，不是发射端。它**从没看过一眼 `outbox.emit` / `emitDomainEvent`**（两者在 `apps/datacore/src`+`apps/agentcore/src` 共 79 处调用点、59 个不同事件名）。于是「**emit 了但 §4 没登记**」这一整类**结构性不可见** —— 2026-08-08 实测存量 **23 个**（`action.approved` / `sop.finalized` / `calibration.proposed` / `ts.late_arrival` …）。更毒的是它打印的那行写着「**代码** N 个」：本体维护者（包括写它的我）读到「代码」二字就以为发射端已被覆盖，于是不再追那一层。**形态**（`CLAUDE.md` 铁律 0.6）：「我用『订阅声明数』当作『代码真发的事件数』的证据，而前者并不度量后者。」同文件上一次同病是 `SOLVER_KEYS` 被注释里的方括号截断 → 门只看见 54/57 个键却照报「一致」（两边是被截断的同一集合，永远一致）。**已修**：新增发射端抽取器 + 棘轮（存量 23 记账、新增被挡、只降不升），并把打印改为「订阅声明侧 / 发射端」两行。**机制不是「下次注意」而是「每条抽取器各有自己的金丝雀」**：上一版对账脚本的三个样例全走 `outbox.emit` 那条抽取器，第二条 `emitDomainEvent` 抽取器写成什么样都照样全绿（把 4 个事件误报成「零 emit」，与事实相反）；现两条金丝雀与主逻辑共用 `harvestEmits` 本尊，**变异反证 3/3 实跑**：掐 `outbox.emit` 正则 → 其金丝雀红 RC=1；掐 `emitDomainEvent` 正则 → 其金丝雀**独立**红 RC=1；棘轮 23→22 → 点名新增的 `ts.late_arrival` 红 RC=1；三次 `cp` 复原后复绿 RC=0。**修这条时当场又踩出同病一脚，一并记账**：`docEvents` 原本**扫全文**取反引号串，于是「本体任何地方提过一次」= 「§4 已登记」。我把上面这条断点写进 §8、描述里点名了 4 个**没登记**的事件，棘轮当场从 23 掉到 19 —— **一段说「这些没登记」的话，反而让门判它们登记了**。形态同上：「我用『全文出现过这个反引号串』当作『§4 登记了这个事件』的证据。」订阅声明侧那条断言此前吃的也是同一个宽口径。**已改为只截 §4 章节**，并配两条金丝雀（切窗切不出 → 红；切窗错位到 §5 导致金丝雀 `raw_dataset.uploaded` 不中 → 红），变异反证 2/2 实跑通过；收窄后订阅声明侧仍 51/51，无误伤。 | 代码 emit 新事件 → 门只查订阅声明 → §4 漏登无人知 → 本体作为「接线单一来源」在事件维过期 | 🟡 已修（发射端已上门·存量 23 棘轮记账待清） |
 | G-PROMPT-KEYS-CONFIG-ONLY | **配置面接通了、效果面是死的：5 个可配提示词键里 4 个改了不产生任何影响**（形态 = 「接了线接错地方」——线接在 CRUD 上，没接在 LLM 调用上；2026-08-09 WO-SKILL-PARTIAL-A 复核实测）。`PROMPT_KEYS`（`packages/contracts/src/prompt-template.ts:10 (PROMPT_KEYS)`）= `classifier / extraction / modeling / skill_summary_lint / answer_compose`，每个键都有完整的**读写通路**：`GET /a/v1/prompt-templates`（`apps/datacore/src/app.ts:1091 (resolvePrompt)` 对全部 5 键 `resolvePrompt`）、`GET …/:key/resolve`（`apps/datacore/src/app.ts:1098 (resolvePrompt)`）、`PUT …/:key`（`apps/datacore/src/app.ts:1104 (PROMPT_KEYS)`）——租户 admin 存得进、读得回、版本号会涨。但**真正驱动 LLM 的那一处**只有 1 个键接上：`classifier` 经 `resolvePromptOverride(..., "classifier")`（`apps/agentcore/src/router/orchestrator.ts:1255 (resolvePromptOverride)`）流进 `buildClassifierSystem`，并有 SEAM 测 `test/prompt-defaults-wiring.test.ts` 端到端咬住。另 4 键的实际执行处各自用**硬编码常量**：`extraction` → `apps/datacore/src/ruledocs.ts:211 (EXTRACTION_SYSTEM)` 的 `system: EXTRACTION_SYSTEM`；`modeling` → `apps/datacore/src/modeling.ts:215 (SUGGEST_SYSTEM)` 的 `system: SUGGEST_SYSTEM`；`answer_compose` → `llm.compose({instruction})` 八处调用点（`apps/agentcore/src/router/orchestrator.ts:1137 (compose)` 等）无一读模板；`skill_summary_lint` → `apps/agentcore/src/skill-lint.ts:247 (lintSkill)` 起三条**确定性正则**（触发句/排除句/禁用词），与模板文案描述的规则一字对应但互不相识。**为什么危险**：管理台改了模板、`version` 真的 +1、界面看起来"生效了"，而抽取/建模/合成/摘要审查的行为**逐字节不变**——这是比"没有配置面"更坏的一种，它**主动制造已生效的错觉**。⚠️ **`extraction`/`modeling` 这两个串在本仓有两个键空间**（`packages/contracts/src/llm.ts:218 (LlmPurposeSchema)` 的**用途绑定**同名），grep 到 `purpose:"extraction"` 会误判为"接上了"——那是**选哪个模型**，不是**用哪段提示词**。金丝雀：同一套 grep 对 `classifier` 命中 `resolvePromptOverride` 那一处 ⇒ 工具没坏。**处置分层（不是一道题）**：`extraction`/`modeling`/`answer_compose` = 补挂载点（各自在 A 侧/B 侧真实调用处改读 `resolvePrompt`，注意 A 侧无需过 B 的 fail-open 层）；`skill_summary_lint` **不宜照搬** —— 它的语义消费方是「LLM 摘要审查器」，而 `apps/agentcore/src/skill-lint.ts:7 (SkillLintViolation)` 上方文件头明写本门是「机械检查零判断力」且发布门依赖其确定性（R6），硬接会造出第二个空转消费方（正是本仓在猎的病）；前置是先裁决「LLM 辅助审查是发布门的第几道 / 如何不破 R6（如只在 DRAFT 预览态跑、不进发布门）」，裁完再接或改为**删键**。 | admin `PUT /a/v1/prompt-templates/:key` → `prompt_templates` 落库 → `GET …/resolve` 读得回（**通**）→ … → 实际 LLM 调用处读硬编码常量（**断**）→ 模型行为不变 | 🔴 未修（本单范围外·已定性到 file:line·`skill_summary_lint` 需先裁决再动） |
 | G-PROVISIONAL-HONESTY-DEAD | **红线闸零生产调用方**（假绿第 9 形态同族，但守的是「说谎」本身）：`apps/datacore/src/databuilder/provisional-honesty.ts:12 (checkProvisionalHonesty)` 守「PROVISIONAL 域绝不谎报 VERIFIED/answerable」，**src 调用方 0、门脚本 0，仅 5 处 test 引用**。复核方式比符号级更强：全文扫 `provisional-honesty` 于 `apps/*/src`+`packages/*/src`+`scripts/`，命中的**只有它自己那行文件头注释** ⇒ **连目录内都没人 import**（同目录的 `service.ts` 有 21 个外部 importer，故该目录是活的，不是整块死代码）。**测试证明的是「函数能识别谎报」，不是「系统不会谎报」。** | `StoryBuildRun` 产出 → （无人调用 `checkProvisionalHonesty`）→ PROVISIONAL 域谎报无拦截 | 🔴 未修（已记账·待接线） |
+| G-P1-EDGE-BLAST-RADIUS-UNWATCHED | **一次种子改动静默改写了 24.7% 的类型对最短路，而只有 3 条有金值看守**（WO-FIX-P1-REGRESSION 2026-08-09 取证）。WO-P1 新增的 `model_demanded_by_order` 等 3 条等价捷径边，使 **2162/8742 条类型对**的 BFS 最短路被改写（tie-break 纯字典序，`m` < `o`）。全仓只有 `ontology-query-engine.test.ts` 的 3 条断言钉了具体路径，因此只有它们变红；**其余 2159 条改写无人知晓**。危害不是「错」——路径语义是对的——而是**任何依赖 `linkPath` 字面值的下游（溯源展示 / mock / 文档示例）都已静默漂移**。**判据（写给下一个 dev）**：给图加边**必须**同时问「哪些消费方钉了路径字面值」，`grep linkPath` 得到的数字不度量这件事，要跑一次全类型对最短路 diff。 | `synthetic/service.ts` 新增边 --> `slice-planner.ts` BFS tie-break --> `queryPlan.hops` / `provenance.linkPath` --> 溯源展示 / mock / 文档 | 🔴 未闭 —— 3 条已修（金值更新 + 新增等价断言），2159 条无看守；需一道「最短路 diff 报告」门 |
+| G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE | **mock 与真引擎脱节，而咬 mock 的测试永远绿**（假绿同族·2026-08-09 取证）：`apps/agentcore/src/mocks/clients.ts:456` 仍写死 P1 之前的旧 `linkPath`，而 `apps/agentcore/test/navigation-ontology-query.test.ts:43` 断言的正是这个 mock ⇒ 真引擎已改、mock 未改、测试**恒绿**。这与本仓已记载的「前端 mock RULES 与真后端表达式口径分家」（欠账 #78）**同族**：**mock 是第二个真值源，且没有任何机制让它跟随第一个**。 | 真引擎 `slice-planner` --（已漂）--> `mocks/clients.ts:456` --> `navigation-ontology-query.test.ts`（咬 mock·恒绿） | 🔴 未闭 —— 需一道「mock 与真引擎口径一致」的门，或让 mock 从真引擎派生 |
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**
 > 三条**已标 ✅ 已闭**的断点在**真浏览器亲跑**下仍有可复现残口，本单补闭（均不新增对象类型/链路/事件/求解器，故金值不变）：
