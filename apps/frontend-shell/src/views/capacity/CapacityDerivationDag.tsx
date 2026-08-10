@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { useLiveSolver } from "../sim/useLiveSolver";
-import { InfoPopover } from "../sim/InfoPopover";
+import { InfoPopover } from "@/components/InfoPopover";
 import rk from "../RiskBoardView.module.css";
 import styles from "./CapacityDerivationDag.module.css";
 import zh from "@/locales/zh";
