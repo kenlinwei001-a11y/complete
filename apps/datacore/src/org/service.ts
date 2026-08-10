@@ -126,15 +126,22 @@ export class OrgWorldService {
       const reasons =
         mine.length === 0 ? ["该职权未配置任何审批额度（未授权）"] : mine.flatMap((l) => evaluateLimit(l, matter));
 
+      // 额度没过 → 落选。**逐个具体的人**记账，不是记在角色头上：
+      // 「销售经理这个角色批不了」对使用者没用，「张明批不了、因为超了 500 万」才是答案。
+      // 角色下一个人都没有时才退回到角色本身（否则该职权会从诊断里整条消失）。
       if (reasons.length > 0) {
-        blockers.push({
-          authorityKey: auth.authorityKey,
-          authorityName: auth.name,
-          principalId: holder.principalId,
-          name: holder.name,
-          escalationRank: auth.escalationRank,
-          reasons,
-        });
+        const persons = this.expandToPersons(holder, principals);
+        const rows = persons.length > 0 ? persons : [holder];
+        for (const p of rows) {
+          blockers.push({
+            authorityKey: auth.authorityKey,
+            authorityName: auth.name,
+            principalId: p.principalId,
+            name: p.name,
+            escalationRank: auth.escalationRank,
+            reasons,
+          });
+        }
         continue;
       }
 
@@ -172,8 +179,12 @@ export class OrgWorldService {
     return {
       matter,
       eligible: sorted,
+      // 三级 tie-break（一个职权可展开成多人 ⇒ authorityKey 不再唯一，必须再加 principalId 兜底排序）
       blockers: blockers.sort(
-        (a, b) => a.escalationRank - b.escalationRank || a.authorityKey.localeCompare(b.authorityKey),
+        (a, b) =>
+          a.escalationRank - b.escalationRank ||
+          a.authorityKey.localeCompare(b.authorityKey) ||
+          a.principalId.localeCompare(b.principalId),
       ),
       stuck: sorted.length === 0,
       diagnosis: sorted.length === 0 ? this.diagnose(blockers) : "",
