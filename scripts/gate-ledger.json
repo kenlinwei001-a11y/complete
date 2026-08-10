@@ -19,6 +19,25 @@
       },
       "notes": ""
     },
+    "check-arg-drop-seam.mjs": {
+      "alias": "arg-drop-seam:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/agentcore/dist/mocks/seed.js",
+        "apps/agentcore/dist/util/template.js",
+        "apps/agentcore/src/router/ceo-route.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/extended.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:839",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行839",
+        "note": "en→red 有牙：删某 CEO intent 的 slot（如 ceo_credit_exposure 去 custName）→ 门红（已亲测退 1）· `scripts/check-arg-drop-seam.mjs`，`pn"
+      },
+      "notes": ""
+    },
     "check-backend-frontend-seam.mjs": {
       "alias": "befe-seam:check",
       "binding": "GATES_CHAIN",
@@ -39,25 +58,6 @@
         "note": "四次变异反证已跑：① agent/loop.ts emit 加一个前端不读的字段 escalationRationaleLabel → RC=1 点名 file:line，撤销即 RC=0；② server.ts 加一条前端不调的 GET /b/v1/agent-trace-summary → RC=1；③ 保留该端点、在 endpoints.ts 补前端消费方 → RC=0（证明门量的是**接缝**，不是「有没有新路由」）；④ 只在 src/mocks/handlers.ts 里消费 → **仍 RC=1**（只有 mock 引用 = 已排练不是已实现）。另跑门自变异：把 mentionsInProd 改成恒真 → 金丝雀「consume/双向判据」当场不中，RC=2 报「⛔ 门自己坏了」且拒绝产出任何结论——没有这条双向金丝雀，这个坏法会安静地报「零缺口·通过」。⚠️ 变异②的第一版**没红**：抽取器被 payload 里的行注释挡住，凡带注释的字段一律读作不存在，而当时 13 条金丝雀全中。已修（objectTopLevelKeys 先经 stripComments，复用 lex 的 mask）并补金丝雀 C3b。此事写进脚本顶注，防有人图省事删掉那一步。"
       },
       "notes": "闭 G-BE-FE-SEAM-DEAD 整类：既有 SEAM-GATE 纪律只覆盖「数据+引擎两半」与「A+B 两系统」，从没把「后端+前端两半」列进去 ⇒ 这类缺口一路裸奔。棘轮门（基线 scripts/backend-frontend-seam-baseline.json，SSE 字段 8 · 端点 176），--update 只减不增，收编新缺口必须人手改基线文件（可评审的显式动作）。诚实边界见脚本顶注：载体① 的消费判据是「字段名在前端生产代码里出现」，通名（role/type）撞车会漏报，抓得住的是 roleLabel 这类专名零消费。"
-    },
-    "check-arg-drop-seam.mjs": {
-      "alias": "arg-drop-seam:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        "apps/agentcore/dist/mocks/seed.js",
-        "apps/agentcore/dist/util/template.js",
-        "apps/agentcore/src/router/ceo-route.ts",
-        "apps/datacore/src/solvers/capacity.ts",
-        "apps/datacore/src/solvers/extended.ts"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": "§7:839",
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "本体 §7 行839",
-        "note": "en→red 有牙：删某 CEO intent 的 slot（如 ceo_credit_exposure 去 custName）→ 门红（已亲测退 1）· `scripts/check-arg-drop-seam.mjs`，`pn"
-      },
-      "notes": ""
     },
     "check-boundary-singlesource.mjs": {
       "alias": "boundary-singlesource:check",
@@ -95,6 +95,24 @@
       },
       "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
       "disposition": "MANUAL"
+    },
+    "check-case-collision.mjs": {
+      "alias": "case-collision:check",
+      "binding": "GATES_CHAIN",
+      "disposition": "WIRE",
+      "guardedPaths": [
+        "apps/",
+        "packages/",
+        "scripts/"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:958",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "审核方 2026-08-10 实跑（本单同批）",
+        "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
+      },
+      "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
     },
     "check-chain-closure.mjs": {
       "alias": "chain:check",
@@ -186,6 +204,42 @@
       },
       "notes": "",
       "disposition": "WIRE"
+    },
+    "check-crossbranch-reinvent.mjs": {
+      "alias": "crossbranch-reinvent:check",
+      "binding": "MANUAL",
+      "guardedPaths": [
+        "packages/contracts/src/sim.ts",
+        "packages/contracts/src/agentcore.ts",
+        "apps/datacore/migrations"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "建成首跑即红（2026-08-09）",
+        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。"
+      },
+      "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。",
+      "disposition": "MANUAL"
+    },
+    "check-dark-launch-integrity.mjs": {
+      "alias": "dark-launch:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/seed.ts",
+        "scripts/feature-rollout.json"
+      ],
+      "escalation": "仓主",
+      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 换判据后七向变异全中（工作树每次跑完还原、全部显式捕获退出码）：①新增 defaultOn:false 且模板会打开它、声明 tiered → RC=0（合法分档，门不管）②**同一个 feature 只把声明改成 dark** → RC=1 A5（这一对是决定性的：代码完全相同，唯一变量是声明，证明门量的是「意图 vs 机制是否一致」而非形态）③explicit 的 ceo.free-llm 从暗发集掉出去 → RC=1 A6 ④把 tiered 的 sim.sandbox 塞进暗发集（正是旧门要求的修法）→ RC=1 A7 ⑤新增 defaultOn:false 不声明 → RC=1 A1 ⑥新增第三个暗发集合但 templateFeatures 没减去它 → RC=1 A8 ⑦把种子已点亮的 qos.dril-routing 声明成 dark → RC=1 A5。另：dist 陈旧 → RC=1 A9；抽取器读不到东西 → RC=2「⛔ 门自己瞎了」拒绝给结论。",
+        "note": "⚠️ 本门于 2026-08-10 **换过判据（WO-FIX-DARK-LAUNCH-GATE）——旧判据是错的**。旧判据：凡 defaultOn:false 必须进某个 *_DARK_LAUNCH_FEATURES 集合。形态（铁律 0.6 句式）：「我用『是否 defaultOn:false』当作『是否暗发』的证据，而前者并不度量后者。」实测旧门报的 15 个「违规」**15 个全是误报**（全是产品分档），且它给的修法有实际破坏力：拿 sim.sandbox 照做一次 → demo 有效功能 75→63、出厂视图 14→9（级联删掉 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments，因为它们 requires:[sim.sandbox]）。两个 dev 各自独立顶回来过这道门，他们是对的。根因：defaultOn:false 底下藏着四种意图（dark 暗发 / explicit 显式启用 / tiered 产品分档 / ga 全量），形态一模一样，任何靠「集合成员」的判据都分不开。新判据：意图显式声明在 scripts/feature-rollout.json，门只断言「声明的意图」与「代码的机制」是否一致；未声明=红，不猜默认档（两个方向的默认值都会错且错法相反）。A6/A7 互为镜像是方向正确的关键——旧门只有 A6 那一半。全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。原病史（仍成立，只是判据换了）：defaultOn:false 只挡 L1，templateFeatures() 对 battery 返回 all-on，L2 无条件覆盖 L1，demo 恰是 battery。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
     },
     "check-debattery.mjs": {
       "alias": "debattery:check",
@@ -706,6 +760,23 @@
       },
       "notes": "守 B->A 存在性探针在三条发布路上都还在、且两层 fail-open 没回潮。静态哨兵，判得对不对由接缝测试 skill-ref-closure.seam.test.ts 咬。"
     },
+    "check-req-coverage.mjs": {
+      "alias": "req-coverage:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/REQ-LEDGER-sandbox.md",
+        "docs/PRD-UPGRADE-decision-sandbox-v2.md",
+        "scripts/req-coverage-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "建成首跑即红两次（2026-08-09）",
+        "note": "① exit 2「门自己坏了」：台账自称 148 条而解析器认出 172 条 —— 拒绝按错的数算覆盖率，追查坐实错的是台账（S2 自称38实为54·S6 自称9实为10），表头五个数字全错并已订正。② exit 1：85 条要求落点的需求里 82 条无带编号落点，基线遂定 82。棘轮基线是具名 ID 清单非数字，故「漏一条补一条」不会照样绿。"
+      },
+      "notes": "治「我用『我列了一份清单』当作『需求都覆盖了』的证据」——该形态本轮已发生四次（时序推演整维/Solver性质说错/方案比对丢在UI/『不要打补丁…遗漏了我的需求』）。度量的是「需求编号在 docs 除台账外被引用过」，**不是**「已实现」：被引用 ⊃ 被讨论 ⊃ 被实现，脚本头部已写明它不度量什么。"
+    },
     "check-resource-descriptor.mjs": {
       "alias": "resource-descriptor:check",
       "binding": "GATES_CHAIN",
@@ -811,6 +882,26 @@
       },
       "notes": ""
     },
+    "check-solver-arg-key-drift.mjs": {
+      "alias": "solver-arg-key-drift:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/arg-aliases.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:1053",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行1053",
+        "note": "green→red 亲测：把 risk_timeline 的 argHints 退回 {baseId,days} 并删掉 SOLVER_ARG_ALIASES 里的 risk_timeline 登记 → 门红在 risk_timeline.days（MUTATED_RC=1）"
+      },
+      "notes": "存量 11 条已登记：REAL-DRIFT 9（附求解器实读的键·待后续单修）/ VERIFIED-OK 2（ontology_query 整包 args 经 zod 解析·字面扫描假阳性）"
+    },
     "check-solver-license.mjs": {
       "alias": null,
       "binding": "NONE",
@@ -880,72 +971,6 @@
       "notes": "",
       "disposition": "WIRE"
     },
-    "check-view-reachable.mjs": {
-      "alias": "view-reachable:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        "apps/frontend-shell/src/views/registry.ts",
-        "apps/frontend-shell/src/views"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": "§7",
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "注释掉 registry.ts 的 transit-flow / physical-topology / node-inspector 三行登记",
-        "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
-      },
-      "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
-    },
-    "check-req-coverage.mjs": {
-      "alias": "req-coverage:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        "docs/REQ-LEDGER-sandbox.md",
-        "docs/PRD-UPGRADE-decision-sandbox-v2.md",
-        "scripts/req-coverage-baseline.json"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": null,
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "建成首跑即红两次（2026-08-09）",
-        "note": "① exit 2「门自己坏了」：台账自称 148 条而解析器认出 172 条 —— 拒绝按错的数算覆盖率，追查坐实错的是台账（S2 自称38实为54·S6 自称9实为10），表头五个数字全错并已订正。② exit 1：85 条要求落点的需求里 82 条无带编号落点，基线遂定 82。棘轮基线是具名 ID 清单非数字，故「漏一条补一条」不会照样绿。"
-      },
-      "notes": "治「我用『我列了一份清单』当作『需求都覆盖了』的证据」——该形态本轮已发生四次（时序推演整维/Solver性质说错/方案比对丢在UI/『不要打补丁…遗漏了我的需求』）。度量的是「需求编号在 docs 除台账外被引用过」，**不是**「已实现」：被引用 ⊃ 被讨论 ⊃ 被实现，脚本头部已写明它不度量什么。"
-    },
-    "check-crossbranch-reinvent.mjs": {
-      "alias": "crossbranch-reinvent:check",
-      "binding": "MANUAL",
-      "guardedPaths": [
-        "packages/contracts/src/sim.ts",
-        "packages/contracts/src/agentcore.ts",
-        "apps/datacore/migrations"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": null,
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "建成首跑即红（2026-08-09）",
-        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。"
-      },
-      "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。",
-      "disposition": "MANUAL"
-    },
-    "check-worktree-canonical.mjs": {
-      "alias": "worktree-canonical:check",
-      "binding": "GATES_CHAIN",
-      "guardedPaths": [
-        ".git",
-        "scripts/check-worktree-canonical.mjs"
-      ],
-      "escalation": "审核方",
-      "ontologyRef": "docs/SYSTEM-ONTOLOGY.md §7 worktree-canonical:check",
-      "provenRed": {
-        "kind": "MUTATION",
-        "evidence": "2026-08-09 建成即跑两条变异反证，双双变红",
-        "note": "① CANONICAL_BRANCH=claude/some-other-branch → exit 1，报「主工作目录当前在分支 X，不是 canonical Y」⇒ 证明它真读分支名而不是读某个恒真的东西。② CANONICAL_BRANCH=claude/integ-s0-rest（该分支正被另一个 worktree 占着）→ exit 1 且第②号判据「占着 canonical 分支」开火 1 次 ⇒ 证明占用检测不是摆设。正常态 exit 0。建门理由见脚本头注：同一形态 2026-08-09 一天犯两次（一次真事故：canonical 卡在 f392ae00 十个提交；一次 stop hook 虚惊），根因都是主工作目录的分支名 ≠ 实际推送目标，而这又是被一个停在旧提交的 worktree 占着 canonical 分支逼出来的。 ⚠️ guardedPaths 的诚实边界：本门守的是**流程状态**（git worktree 布局 + 当前分支），不是某几个源文件；填 `.git` 是因为门账要求责任边界必须指向真实存在的路径，而 worktree 布局的物理载体就在 .git 下。"
-      }
-    },
     "check-verdict-rollup.mjs": {
       "alias": "verdict-rollup:check",
       "binding": "MANUAL",
@@ -965,41 +990,36 @@
       "disposition": "MANUAL",
       "notes": "非常驻门（不进 gates 链）：它是**分析器**不是**守卫**——跑一次要读四份逐条复验文档、产出的是分布数字而非通过/失败判定，进链只会让 gate 变慢且没有防退化意义。登账的理由是治理而非拦截：它产出的数字会被直接当结论用，而它自己在建成当天被金丝雀翻过两次。重报 1671 条判定分布时手动 `pnpm verdict-rollup:check`。"
     },
-    "check-case-collision.mjs": {
-      "alias": "case-collision:check",
+    "check-view-reachable.mjs": {
+      "alias": "view-reachable:check",
       "binding": "GATES_CHAIN",
-      "disposition": "WIRE",
       "guardedPaths": [
-        "apps/",
-        "packages/",
-        "scripts/"
+        "apps/frontend-shell/src/views/registry.ts",
+        "apps/frontend-shell/src/views"
       ],
       "escalation": "审核方",
-      "ontologyRef": "§7:958",
+      "ontologyRef": "§7",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "审核方 2026-08-10 实跑（本单同批）",
-        "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
+        "evidence": "注释掉 registry.ts 的 transit-flow / physical-topology / node-inspector 三行登记",
+        "note": "变异后 RC=1 且逐个点名三个孤儿模块（TransitFlowLayer / PhysicalTopologyView / InspectorNodePanel），还原即 RC=0。⚠️ 第一版这道门是**哑的**：裸文本匹配 import 说明符，对被注释掉的 registerRenderer 行照样算作「有引用」，于是变异后仍报 0 孤儿、仍绿 —— 门本身就是它要治的那种「会跑、永远绿、证明不了所断言之事」的东西。加 stripComments 后才真红。此事写进脚本注释，防有人图省事删掉那一步。"
       },
-      "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+      "notes": "闭 G-RENDERER-UNREGISTERED 整类：registry.ts 是手工登记的字符串键表、无自动扫描 ⇒ 新视图会静默生死。F3/F4/F2 三次都是人肉在并线时偶然发现（实现有·测试全绿·零生产调用方 = 假绿第 9 形态 G-SKILL-REFGRAPH-DEAD-EXTRACTOR）。本门问模块图「有没有人引用你」，对图层/宿主/工具一视同仁，且不可能被组件自述糊弄（F2 顶注自称「我是线路图的图层不进本表」，而宿主从未挂载过它）。"
     },
-    "check-dark-launch-integrity.mjs": {
-      "alias": "dark-launch:check",
+    "check-worktree-canonical.mjs": {
+      "alias": "worktree-canonical:check",
       "binding": "GATES_CHAIN",
       "guardedPaths": [
-        "apps/datacore/src/features.ts",
-        "apps/datacore/src/seed.ts",
-        "scripts/feature-rollout.json"
+        ".git",
+        "scripts/check-worktree-canonical.mjs"
       ],
-      "escalation": "仓主",
-      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "escalation": "审核方",
+      "ontologyRef": "docs/SYSTEM-ONTOLOGY.md §7 worktree-canonical:check",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "2026-08-10 换判据后七向变异全中（工作树每次跑完还原、全部显式捕获退出码）：①新增 defaultOn:false 且模板会打开它、声明 tiered → RC=0（合法分档，门不管）②**同一个 feature 只把声明改成 dark** → RC=1 A5（这一对是决定性的：代码完全相同，唯一变量是声明，证明门量的是「意图 vs 机制是否一致」而非形态）③explicit 的 ceo.free-llm 从暗发集掉出去 → RC=1 A6 ④把 tiered 的 sim.sandbox 塞进暗发集（正是旧门要求的修法）→ RC=1 A7 ⑤新增 defaultOn:false 不声明 → RC=1 A1 ⑥新增第三个暗发集合但 templateFeatures 没减去它 → RC=1 A8 ⑦把种子已点亮的 qos.dril-routing 声明成 dark → RC=1 A5。另：dist 陈旧 → RC=1 A9；抽取器读不到东西 → RC=2「⛔ 门自己瞎了」拒绝给结论。",
-        "note": "⚠️ 本门于 2026-08-10 **换过判据（WO-FIX-DARK-LAUNCH-GATE）——旧判据是错的**。旧判据：凡 defaultOn:false 必须进某个 *_DARK_LAUNCH_FEATURES 集合。形态（铁律 0.6 句式）：「我用『是否 defaultOn:false』当作『是否暗发』的证据，而前者并不度量后者。」实测旧门报的 15 个「违规」**15 个全是误报**（全是产品分档），且它给的修法有实际破坏力：拿 sim.sandbox 照做一次 → demo 有效功能 75→63、出厂视图 14→9（级联删掉 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments，因为它们 requires:[sim.sandbox]）。两个 dev 各自独立顶回来过这道门，他们是对的。根因：defaultOn:false 底下藏着四种意图（dark 暗发 / explicit 显式启用 / tiered 产品分档 / ga 全量），形态一模一样，任何靠「集合成员」的判据都分不开。新判据：意图显式声明在 scripts/feature-rollout.json，门只断言「声明的意图」与「代码的机制」是否一致；未声明=红，不猜默认档（两个方向的默认值都会错且错法相反）。A6/A7 互为镜像是方向正确的关键——旧门只有 A6 那一半。全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。原病史（仍成立，只是判据换了）：defaultOn:false 只挡 L1，templateFeatures() 对 battery 返回 all-on，L2 无条件覆盖 L1，demo 恰是 battery。"
-      },
-      "disposition": "GATES_CHAIN",
-      "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
+        "evidence": "2026-08-09 建成即跑两条变异反证，双双变红",
+        "note": "① CANONICAL_BRANCH=claude/some-other-branch → exit 1，报「主工作目录当前在分支 X，不是 canonical Y」⇒ 证明它真读分支名而不是读某个恒真的东西。② CANONICAL_BRANCH=claude/integ-s0-rest（该分支正被另一个 worktree 占着）→ exit 1 且第②号判据「占着 canonical 分支」开火 1 次 ⇒ 证明占用检测不是摆设。正常态 exit 0。建门理由见脚本头注：同一形态 2026-08-09 一天犯两次（一次真事故：canonical 卡在 f392ae00 十个提交；一次 stop hook 虚惊），根因都是主工作目录的分支名 ≠ 实际推送目标，而这又是被一个停在旧提交的 worktree 占着 canonical 分支逼出来的。 ⚠️ guardedPaths 的诚实边界：本门守的是**流程状态**（git worktree 布局 + 当前分支），不是某几个源文件；填 `.git` 是因为门账要求责任边界必须指向真实存在的路径，而 worktree 布局的物理载体就在 .git 下。"
+      }
     }
   }
 }
