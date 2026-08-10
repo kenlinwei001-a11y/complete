@@ -22,7 +22,7 @@ import {
 import { ORG_PRINCIPAL_VM_KEYS } from "../src/org/routes.js";
 import { OrgWorldService } from "../src/org/service.js";
 import { seedDemoOrgWorld } from "../src/seed.js";
-import { ADMIN, makeApp, type TestApp } from "./helpers.js";
+import { ADMIN, PLANNER, makeApp, type TestApp } from "./helpers.js";
 
 /**
  * WO-ORG-WORLD · 组织世界（七世界之②）。
@@ -478,6 +478,70 @@ describe("WO-ORG-WORLD ⑥ 平台铁律", () => {
     expect(r400.eligible.map((c) => c.name)).toContain("张明");
     expect(r600.eligible.map((c) => c.name)).not.toContain("张明");
     expect(r600.eligible.map((c) => c.name)).toContain("王强");
+  });
+
+  /**
+   * 「接了线没数据」防线：`available` 若没有写面，生产里它永远是种子的 `true`，
+   * 代理分支**一次都不会进** —— 实现有、单测绿、生产零触发（本仓假绿的老形态）。
+   * 故这条断言走**真 HTTP**，从改在岗状态到代理生效整条链一次打通，不手改仓储。
+   */
+  it("代理链在生产可达：真 HTTP 改在岗状态 → 同一端点返回的人从张明变成赵敏", async () => {
+    const { t } = await orgApp();
+    await t.app.inject({
+      method: "PUT",
+      url: "/a/v1/tenants/demo/features",
+      headers: ADMIN,
+      payload: { overrides: { "org.world": true } },
+    });
+    const ask = async () => {
+      const res = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/org/approvers/resolve",
+        headers: ADMIN,
+        payload: { scope: "order", amount: 4_000_000, marginPct: 8 },
+      });
+      return (res.json() as { eligible: { name: string; via: string }[] }).eligible;
+    };
+    expect((await ask()).map((c) => c.name)).toContain("张明");
+
+    // 真 HTTP 写面（不是手改仓储）
+    const patch = await t.app.inject({
+      method: "PATCH",
+      url: "/a/v1/org/principals/prin-p-zhangming/availability",
+      headers: ADMIN,
+      payload: { available: false },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect((patch.json() as { available: boolean }).available).toBe(false);
+
+    const after = await ask();
+    expect(after.map((c) => c.name)).not.toContain("张明");
+    expect(after.map((c) => c.name)).toContain("赵敏");
+    expect(after.find((c) => c.name === "赵敏")!.via).toBe("delegated");
+  });
+
+  it("写面守权：planner 改不了他人在岗状态（403）；不存在的人 404；部门/角色 400", async () => {
+    const { t } = await orgApp();
+    await t.app.inject({
+      method: "PUT",
+      url: "/a/v1/tenants/demo/features",
+      headers: ADMIN,
+      payload: { overrides: { "org.world": true } },
+    });
+    const patch = (id: string, headers: Record<string, string>) =>
+      t.app.inject({
+        method: "PATCH",
+        url: `/a/v1/org/principals/${id}/availability`,
+        headers,
+        payload: { available: false },
+      });
+    expect((await patch("prin-p-zhangming", PLANNER)).statusCode).toBe(403);
+    expect((await patch("prin-p-nobody", ADMIN)).statusCode).toBe(404);
+    // 角色没有在岗状态 → VALIDATION_ERROR（本仓 validationError 是 400，见 errors.ts:14；
+    // 不是 422 —— 422 在本仓专给 ROLE_CANNOT_EXCEED_TENANT 那类语义冲突用）
+    const roleRes = await patch("prin-role-sales-mgr", ADMIN);
+    expect(roleRes.statusCode).toBe(400);
+    expect((roleRes.json() as { error: { code: string } }).error.code).toBe("VALIDATION_ERROR");
   });
 
   it("R9 四处齐：030 migration 的表名与 pg.ts 的字面量逐字对账（含金丝雀）", async () => {

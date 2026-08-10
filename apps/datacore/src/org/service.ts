@@ -11,6 +11,7 @@ import {
   evaluateLimit,
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
+import { notFound, validationError } from "../errors.js";
 import type { Repos } from "../repo/repo.js";
 
 /**
@@ -69,6 +70,26 @@ export class OrgWorldService {
     const by = (kind: OrgPrincipal["kind"]): OrgPrincipal[] =>
       all.filter((p) => p.kind === kind).sort((a, b) => a.orgKey.localeCompare(b.orgKey));
     return { departments: by("org"), roles: by("role"), persons: by("person") };
+  }
+
+  /**
+   * 置某人在岗/不在岗（**代理链的唯一触发源**）。
+   *
+   * ⚠️ 这个写面不是可选的补充 —— 没有它，`available` 永远是种子里的 `true`，
+   * `resolveApprovers` 的整条代理分支在**生产里一次都不会进**，只在测试里被手改仓储驱动过。
+   * 那正是本仓反复栽的「**接了线没数据**」形态：实现有、测试绿、生产零触发。
+   * 判定与「没接线」不同、修法也不同，故本单直接把触发源补上，而不是留给下一单。
+   *
+   * R2：只能改本租户的人（`get` 已带租户过滤，跨租户查不到 → 404）。
+   */
+  async setAvailability(ctx: AuthCtx, principalId: string, available: boolean): Promise<OrgPrincipal> {
+    const rows = await this.repos.orgPrincipals.list(ctx.tenantId, (p) => p.principalId === principalId);
+    const row = rows[0];
+    if (!row) throw notFound(`org principal ${principalId} not found`);
+    if (row.kind !== "person") throw validationError("只有 kind=person 的主体有在岗状态（部门/角色没有）");
+    const next = { ...row, available };
+    await this.repos.orgPrincipals.put(next);
+    return next;
   }
 
   // ── 核心：谁有权批 ────────────────────────────────────────────────────────

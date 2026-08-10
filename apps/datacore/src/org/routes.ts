@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { z } from "zod";
 import { ApprovalMatterSchema } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
-import { validationError } from "../errors.js";
+import { forbidden, validationError } from "../errors.js";
 import type { OrgWorldService } from "./service.js";
 
 /**
@@ -72,6 +73,23 @@ export function registerOrgWorldRoutes(app: FastifyInstance, deps: OrgDeps): voi
   app.get("/a/v1/org/delegations", async (req) => {
     await requireFeature(req);
     return { delegations: await service.listDelegations(ctx(req)) };
+  });
+
+  /**
+   * 置某人在岗/不在岗 —— **代理链在生产里的唯一触发源**。
+   * 没有它，`available` 永远停在种子的 `true`，代理分支生产零触发（「接了线没数据」）。
+   * 需 admin / tenant_admin（组织人事是管理操作，planner 不得改他人在岗状态）。
+   */
+  app.patch("/a/v1/org/principals/:principalId/availability", async (req) => {
+    await requireFeature(req);
+    const c = ctx(req);
+    if (!c.roles.some((r) => ["admin", "tenant_admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("需要 admin 或 tenant_admin 角色");
+    }
+    const parsed = z.object({ available: z.boolean() }).safeParse(req.body ?? {});
+    if (!parsed.success) throw validationError("available 必须是布尔值");
+    const { principalId } = req.params as { principalId: string };
+    return personVM(await service.setAvailability(c, principalId, parsed.data.available));
   });
 
   /**
