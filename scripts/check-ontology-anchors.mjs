@@ -359,6 +359,7 @@ function occurrences(rel, symbol, scope = "code") {
 
 const verified = [];
 const unverified = [];
+const importScanned = []; // 真正过了 IMPORT_LINE_ANCHOR 护栏的锚点（路径可解析 + 行号在范围内）
 const problems = []; // {kind, anchor, msg, fix?}
 
 for (const a of anchors) {
@@ -379,7 +380,21 @@ for (const a of anchors) {
         auto: false,
       });
       verified.push(a);
-    } else unverified.push(a);
+    } else {
+      // 路径不唯一 ⇒ 无法确知锚点指的是哪个文件。但若**每个候选**的那一行都是 import/export-from，
+      // 则"指着一句 import"这个结论与选哪个候选无关 —— 仍可确定性判红（保守推广，不制造噪声红）。
+      const inRange = a.ambiguous.filter((c) => a.line >= 1 && a.line <= linesOf(c).length);
+      if (inRange.length && inRange.length === a.ambiguous.length && inRange.every((c) => importLinesOf(c).has(a.line))) {
+        importScanned.push(a);
+        problems.push({
+          kind: "IMPORT_LINE_ANCHOR",
+          a,
+          msg: `锚点指向 import/export-from 语句（${a.ambiguous.length} 个候选**全部**如此，故与选哪个无关）：${a.path}:${a.line} → \`${(linesOf(inRange[0])[a.line - 1] ?? "").trim().slice(0, 90)}\``,
+          auto: false,
+        });
+      }
+      unverified.push(a);
+    }
     continue;
   }
   a.resolved = res.rel;
@@ -393,6 +408,7 @@ for (const a of anchors) {
   // 护栏（欠账 #166）：**任何**锚点——带不带 symbol 都算——若指着一句 import/export-from，
   // 就是"读过去只能看到一句 import"的坏锚点，直接红。与 `--update` 的回写候选筛选**共用
   // `importLinesOf` 这一个实现**，不是另抄的正则。
+  importScanned.push(a);
   if (importLinesOf(res.rel).has(a.line)) {
     a.onImportLine = true;
     problems.push({
@@ -539,6 +555,22 @@ console.log(`· 已校准（带 (symbol) 可机器核）：${curVerifiedKeys.siz
 console.log(`· 未校准存量：${unverified.length} 条 / 基线 ${Object.values(baseUnverified).reduce((a, b) => a + b, 0)} 条`);
 const shrunk = Object.entries(baseUnverified).filter(([p, n]) => (curUnverified[p] ?? 0) < n);
 if (shrunk.length) console.log(`· 已补 (symbol) ${shrunk.length} 个文件的锚点（可 \`--update\` 收紧基线落账）`);
+// 否定结论必须自带**度量范围** + 金丝雀证据（CLAUDE.md 铁律 0.6）：
+// 「0 条坏锚点」只在"实查了的那些"里成立。查不到的那批必须点名，不许被一句"都干净"盖住 ——
+// 「我没找到」和「它不存在」是两个命题。
+const notScanned = anchors.length - importScanned.length;
+const scannedSet = new Set(importScanned);
+const blindAmbiguous = anchors.filter((a) => a.ambiguous && !a.symbol && !scannedSet.has(a)).length;
+console.log(
+  `· import 行护栏：实查 ${importScanned.length}/${anchors.length} 条 · 坏锚点 ` +
+    `${problems.filter((p) => p.kind === "IMPORT_LINE_ANCHOR").length} 条 · 金丝雀 ${canary.hits}/${canary.total} 全中（检测逻辑活着）`,
+);
+if (notScanned) {
+  console.log(
+    `  ⚠️ 另有 ${notScanned} 条**未受本护栏覆盖**（非"已确认干净"）：其中 ${blindAmbiguous} 条是裸文件名锚点路径不唯一` +
+      `（无 (symbol)·按既有设计记入未校准存量、不为此报红）；补上 (symbol) 或写全仓根相对路径即可纳入护栏。`,
+  );
+}
 
 if (report) {
   console.log("\n--- 逐条 ---");
