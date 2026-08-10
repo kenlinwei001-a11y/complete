@@ -186,6 +186,30 @@ off qos.llm-budget-enforce      ← 唯一刻意不点（理由见 datacore/src/
 选型层用的是 agentcore 内的出厂静态目录（19/59），口径层用的是 A 的真值但受选型层裁剪。
 两层都不是"租户本体的动态切片"。**
 
+#### 2.4.1 关键补充：能查全 59 条的检索**已经有了，而且好用** —— 只是第一轮地图没用它
+
+这一条把 C2 的工作量从"造一个检索系统"改写成"把注入源换成已有的那个"，**必须写清楚**。
+
+真跑 `POST /b/v1/resources/search`（= `retrieve_knowledge` 工具背后的同一个 `ResourceRegistryService`，
+注入条件 `apps/agentcore/src/engine.ts:220-227`：`deps.features` 存在即建，**生产必然满足**）：
+
+| 问句 | Top-1 | 命中里**不在静态 19 条目录**中的求解器 |
+|---|---|---|
+| 储能份额为什么没达成目标 | `solver/gap_attribution` **0.384**（与 20 题金标期望的对口 solver 一致） | `plan_rootcause` · `order_fullchain` · `chain_loss_attribution` |
+| 常州涂布良率↓…长协不足…订单延误 | `object_type/IncomingInspection` 0.289 | `cross_object_occupancy` · `chain_loss_attribution` · `audit_timeline` |
+| 如果需求翻倍而锂价涨 30%，怎么排产能与长协 | `skill/capacity_analysis` 0.343 | `shared_bottleneck` · `portfolio` · `chain_impediments` · `base_capacity_outlook` |
+
+**三条问句共surface 出 9 个静态目录里没有的求解器**（`plan_rootcause`/`order_fullchain`/`chain_loss_attribution`/
+`cross_object_occupancy`/`audit_timeline`/`shared_bottleneck`/`portfolio`/`chain_impediments`/`base_capacity_outlook`），
+而且第一条的 Top-1 就是金标期望的那个——**检索质量不是瓶颈，可见性才是。**
+
+矛盾点在这里：agent 理论上可以自己调 `retrieve_knowledge` 去够到这 40 条，
+但 `AGENT_SYSTEM_CORE`【工作方式】段（`apps/agentcore/src/agent/prompts.ts:16`）写的是
+「**选型已替你做完，不必再用 discover 盲扫或逐跳试探**」——
+**提示词在劝它别去查那个能查到全部答案的地方。**
+这不是提示词写错了（在 19 条覆盖得住的题上它是对的），是**两层的覆盖面不一致**：
+提示词按"地图是全的"写，地图实际只有 32%。
+
 ### 2.5 Agent ↔ Skill 的接线（复核账上 #156，并纠正它）
 
 账上 #156 记的是「`skl_seed_capacity_action` 未挂任何 agent」。**复核结论：一半对，一半必须纠正。**
@@ -271,7 +295,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 | 三工具进 `BUILTIN_TOOLS` + executor case | **✅ 已实现在链** | `registry.ts:295 (fill_data)` / `:311 (run_synthetic)` / `:328 (build_domain)`；三者 `sideEffect: COMPUTE` ⇒ 过 `runPathB` 的 `{READ,COMPUTE}` 过滤（`orchestrator.ts:1867`），且 seed package `toolWhitelist = BUILTIN_TOOLS.map(name)`（`seed.ts:203`）⇒ **泛化 path-B 上真可见** |
 | 回执只含元信息、数字须 query 工具读回 | **未判定** | 需真跑一次 agent 循环才能验护栏。见 §7-U3 |
 | 空租户闭环（问→判缺数据→合成→读回→答，标 PROVISIONAL） | **❌ 从未真跑过** | 这是本 PRD 认为**离"多推演一步"最近**的一块（§3-C1） |
-| 三工具登记 `OPERATION_CATALOG`（R15 CLI 对等） | **未判定** | 未逐条核 catalog。见 §7-U5 |
+| 三工具登记 `OPERATION_CATALOG`（R15 CLI 对等） | **⚠️ 2/3 已对等·1/3 是 R15 洼地** | 逐条核 `packages/contracts/src/operation-intent.ts:53`（40 条）：`run_synthetic`→`{op:"synth", endpoint:"/a/v1/synthetic/jobs", cliCommand:"synth"}` ✅ 同端点；`build_domain`→`{op:"build", endpoint:"/a/v1/databuilder/runs", cliCommand:"build"}` ✅ 同端点；**`fill_data`（`POST /a/v1/growth/fill-data`）无对应条目**——catalog 里的 `{op:"growth", endpoint:"/api/v1/growth", cliCommand:"tickets"}` 是 AgentCore 的成长工单端点，**不是** DataCore 的 fill-data。金丝雀：3 条里 2 条命中 ⇒ 读法正确，第 3 条是真缺 |
 
 #### E. `PRD-llm-agent-empty-response-guard.md`（81 行）
 
@@ -309,9 +333,9 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 | 分类 | 条数 | 占比 |
 |---|---|---|
 | ✅ 已实现且在生产链路上 | 17 | 45% |
-| ⚠️ 只接一半 / 接错地方 / 接了线没数据 | 11 | 29% |
+| ⚠️ 只接一半 / 接错地方 / 接了线没数据 | 12 | 32% |
 | ❌ 没做（含 PRD 自己排后的 P3） | 5 | 13% |
-| 未判定（无 provider / 未构造） | 5 | 13% |
+| 未判定（无 provider / 未构造） | 4 | 10% |
 
 **"⚠️ 11 条"才是真正的病灶所在**——它们全都不是"要造新东西"，而是"把已经造好的东西接到该接的地方"。
 这也解释了为什么"看起来做了很多，用起来什么都没变"：
@@ -345,14 +369,27 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 
 **用户看到的变化**：今天问租户自建域的问题 → agent 盲扫或答不了；做完后 → 直接命中自建 solver。
 
-- 修法**不是**把 59 条抄进静态目录（那只是把漂移期延后）。修法是让 `projectNavigationSlice`
-  的候选来源改为**已经存在的活目录** `GET /b/v1/resources?kind=solver|object_type|slice`（实测 59/94/2 可用），
-  静态目录降级为**排序先验**而非候选集。
+**这条的工作量比看上去小得多——§2.4.1 实证：能查全 59 条的检索已经在跑，质量也不差（金标问句 Top-1 命中）。
+缺的只是把"第一轮注入的地图"从静态镜像换成那个已经存在的检索。**
+
+- 修法**不是**把 59 条抄进静态目录（那只是把漂移期延后），**也不是**造新的检索。
+  修法是让 `projectNavigationSlice`（`navigation-slice.ts:283`）的候选来源改为
+  **`ResourceRegistryService.search`**——即 `retrieve_knowledge` 背后同一份实现
+  （`engine.ts:220-227` 注入条件，生产必然满足），静态目录降级为**排序先验**而非候选集。
+  **单一来源纪律**：不许 orchestrator/engine/navigation-slice 各建各的检索客户端。
+- 顺带必须一起改（否则新地图会被提示词劝退）：`prompts.ts:16`【工作方式】那句
+  「选型已替你做完，不必再用 discover 盲扫」要加一个诚实条件——
+  「若图中无对口能力，用 `retrieve_knowledge` 现场检索一次再下手」（这句 §3 补③段其实已有，
+  但【工作方式】段的绝对化措辞在实践中更强，两段互相打架，需对齐）。
 - 验收判据：
   1. 新建并发布一个自定义 solver（不改任何 agentcore 源码）→ 同一问句的首轮 prompt 中**出现**该 solver key；
-  2. R6：同问句同租户两次投影**逐字节一致**；
-  3. 不误伤：既有 20 题金标（`apps/agentcore/test/fixtures/qos-20q-goldset.ts`）路由结论**逐条不变**；
-  4. 金丝雀：把资源目录接口打回空 → 必须退回静态目录且**不崩**（fail-open），且该退化在 trace 中可见。
+  2. **回归实证**：对 §2.4.1 那三条问句，首轮地图中**必须出现**至少 `portfolio` / `shared_bottleneck` /
+     `base_capacity_outlook` 三者之一（今天一个都没有）；
+  3. R6：同问句同租户同资源快照，两次投影**逐字节一致**（排序不得引入时钟/随机）；
+  4. 不误伤：既有 20 题金标（`apps/agentcore/test/fixtures/qos-20q-goldset.ts`）路由结论**逐条不变**——
+     尤其"误降级=0"这条硬门不许松；
+  5. 金丝雀：把资源目录打回空 → 必须退回静态目录且**不崩**（fail-open），且该退化在 trace 中可见
+     （不许静默退化——那正是"我没找到"被读成"它不存在"的老坑）。
 
 ### C3 · 把治理三件套接到"所有 agent"而不只是泛化 path-B（接缝：11 条 ⚠️ 里最集中的一块）
 
@@ -558,7 +595,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 | `G-SHIP-CONFIG-IGNORES-CODE`（#88） | 已闭：`docker-compose.yml:127-131` 五个 Loop Control 旋钮真配了（本单实证）。**但配置只对泛化 path-B 生效**（§2.6-B）→ C3 |
 | `G-ENTITLEMENT-FAIL-OPEN-DEBUG`（#89） | 已闭（`features/gate.ts:113-119` 透传 `x-debug-user`）。本单实测 demo 租户 resolved 正确（§2.2） |
 | `G-DRIL-PATHB-INJECT` | 已闭（注入点在、feature 点亮）。**S2 把它降级**：候选集没修好之前不算 Agent 能力前置 |
-| `G-SEMANTIC-DISCOVER` | 与 §2.4 同源：`discover` 供给侧已扩到 36，但 **NavigationSlice 是另一份 19 条目录**——两份目录各自扩容、互不相认。C2 应把两者归一 |
+| `G-SEMANTIC-DISCOVER` | 与 §2.4 同源，但**实测把它细化了**：仓里其实有**三份**能力目录各自扩容、互不相认——① `discover` 供给侧（本体记 36）② `ResourceRegistryService`（实测 **59** solver·§2.4.1 检索质量已验）③ NavigationSlice 静态镜像（**19**）。**首轮注入用的是最小的那份。** C2 = 把 ③ 的候选源指向 ②（不新造第四份） |
 | `G-ROUTE-REGEX-PREEMPTS-RETRIEVAL` | 本体记「10 道正则门排在分类器之前」。**§2.3 ③ 是它的新证据**：真开放假设题（"如果需求翻倍而锂价涨 30%"）被 `ceo-route-fallback` 接走给了 `decision_play`——LLM 一次口都没开。本 PRD **不修**（属路由域，且今天没 provider 时这样反而更好），但**必须在 §7 说清：这意味着"落 path-B 的题"比金标预期的更少** |
 | `G-TIMEOUT-AS-VERDICT` | 🟡 修复在途。C4 与它同族（都是"agent 出事时给用户什么"），修法互不冲突 |
 | `G-9`（场景发育闭环）/ `G-3`（对话坞未消费缺口） | C1 是 G-3 的 agent 侧闭合（`PRD-agent-data-generation-tools.md §0` 原意） |
@@ -570,7 +607,7 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 | `G-AGENT-SCENE-ENTRY-RAW-SDK-ERROR` | AGENT_FIRST 场景入口不查 `providerAvailable`，无 provider 时把 SDK 原始英文串当错误信封返给用户（违 R7）。唯一实例 `scn_graph`（本体图谱视图）开箱即崩 | 🔴 未闭 → C4 |
 | `G-AGENT-GOVERNANCE-HALF-WIRED` | Loop Control P2 三件套（retry/per-tool cap/escalation）与 Reflect **只接泛化 path-B**，`runRegisteredAgent` 只拿到 `loopRepeatCap` 一个参数 ⇒ 角色 agent/Coordinator 子 agent/场景 agent/workflow invoke_agent/skill 探针全跑裸循环 | 🔴 未闭 → C3 |
 | `G-SKILL-GOVERNANCE-DROPPED-ON-FREE-QA` | free-QA 技能池只透传 `loadSkill`，丢 `writeMode`/`provenancePolicy` ⇒ 写回型技能的 `approvalGate:human` 在该路径上失效（R4 豁口） | 🔴 未闭 → C5 |
-| `G-NAVSLICE-STATIC-MIRROR-32PCT` | Agent 导航图候选源是 agentcore 内手工镜像目录（19 条），活资源目录有 59 solver/94 objectType/2 slice/6 workflow ⇒ 租户自建能力对 agent 结构性不可见 | 🔴 未闭 → C2 |
+| `G-NAVSLICE-STATIC-MIRROR-32PCT` | Agent 首轮导航图的候选源是 agentcore 内手工镜像目录（19 条·`navigation-slice.ts:76`），而**同进程内已有一份能查全 59 solver/94 objectType 的活检索**（`ResourceRegistryService`·`engine.ts:220`·实测 Top-1 命中金标）⇒ 租户自建能力与 40 个既有 solver 对首轮选型结构性不可见；且 `prompts.ts:16` 还劝模型别去现场检索 ⇒ 两层覆盖面不一致 | 🔴 未闭 → C2 |
 
 ### 6.6 回写承诺
 
@@ -585,15 +622,16 @@ free-QA 这条路只透传了 `loadSkillEnabled`/`loadSkill` 两个字段，
 
 ## §7 诚实边界（未判定的逐条列出 · 不猜状态）
 
-> 铁律 0.5：判不了就写"未判定 + 原因"。以下 **6 条我没能判定**，每条给出"要判定它需要什么"。
+> 铁律 0.5：判不了就写"未判定 + 原因"。初稿列了 6 条；写作过程中 **U4/U5 已被真跑闭掉**（划删线并注明结论），
+> **剩 4 条真未判定**，每条给出"要判定它需要什么"。
 
 | # | 未判定的条款 | 为什么判不了 | 要判定它需要 |
 |---|---|---|---|
 | **U1** | Loop Control §7 DoD「任意 mock LLM 病态输入下有界终止且必经 `degrade`」 | 需构造 mock LLM 驱动病态输入，属跑 vitest 范畴；本单被明确禁止跑测试套件 | 单跑 `apps/agentcore/test/loop-detector-seam.test.ts` 等 5 条 seam（约 1 分钟，中画像） |
 | **U2** | `round-trip ≤4` · `discover ≤1` · 同轮 READ 并行 ≤4 · 模型分层 D · 墙钟 <10s | **全部需要一个存活的 LLM provider key**。本机无 key，`providerAvailable=false`，agent 循环一次都没真转起来 | 一个可用 key + 20 题 live 重测（= `PRD-agent-navigation-slice-latency.md §7.4` 挂了半年那条唯一未闭环，本单**没能替它闭**） |
 | **U3** | 三把产数据工具的**铁律护栏**（回执不含业务数字 / 数字必须 query 读回 / PROVISIONAL 标注） | 工具**注册**已实证在链（§2.6-D），但**从未有一次真实 agent 运行调用过它们**——没有 provider 就没有模型来决定调用它们 | 同 U2；或写一条不经 LLM 的直调 executor 的 seam（可行，但属改代码，超本单边界） |
-| **U4** | `retrieve_knowledge` 的**真实检索质量**（DRIL P2 混合检索） | 只验到"工具已注册 + executor 有 case"（`registry.ts:26` / `executor.ts:305`），没验它返回什么 | 直调 `POST /b/v1/resources/retrieve` 或跑 `check-dril-retrieval.mjs`（本单未跑，避免与在跑的门抢 CPU） |
-| **U5** | 三把产数据工具是否登记 `OPERATION_CATALOG`（R15 CLI 对等） | 未逐条核对 catalog 内容 | `grep -n "fill_data\|run_synthetic\|build_domain" packages/contracts/src/operation-intent.ts` + 跑 `cli-parity:check` |
+| ~~U4~~ | ~~`retrieve_knowledge` 的真实检索质量~~ | **已判定（§2.4.1）**：真跑 `POST /b/v1/resources/search` 三条问句，检索**可用且质量不差**（金标问句 Top-1 命中期望 solver）。剩余未判定的只有"agent 在真循环里会不会调它"——归入 U2 | — |
+| ~~U5~~ | ~~三把产数据工具的 `OPERATION_CATALOG` 登记~~ | **已判定（§2.6-D）**：`synth`/`build` 两条已按同端点对等；`fill_data` 无对应条目 = R15 洼地 | — |
 | **U6** | MCP 运行时四节（连接池/心跳/命名空间/stdio 安全） | 本单完全未测 MCP；且无真实 MCP server 可连 | 起一个 demo MCP server + 走 `runtime-mcp.test.ts` |
 
 **另有 2 条"实测了但样本不足"，也一并诚实标注**：
