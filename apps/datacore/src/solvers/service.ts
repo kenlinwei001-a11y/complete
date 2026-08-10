@@ -34,6 +34,7 @@ import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } fr
 import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
+import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
 import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
 // WO-SANDBOX-S3：杠杆标签/单位单源已下沉到叶模块（见下方 re-export 注释）；本文件内部用别名引用同一份对象。
 import { LEVER_PROP_META as LEVER_PROP_META_LOCAL, type LeverValueKind } from "./lever-meta.js";
@@ -4496,7 +4497,12 @@ export class SolverService {
    * Pure deterministic dispatch — no storage side effects. The calibration
    * engine's replay attribution & backtest call this with patched contexts.
    */
-  compute(c: SolverContext, solverKey: string, args: Record<string, unknown>): Record<string, unknown> {
+  compute(c: SolverContext, solverKey: string, rawArgs: Record<string, unknown>): Record<string, unknown> {
+    // WO-SILENT-WRONG-ANSWER-3 · 入参**键名**归一的**唯一挂载点**（治 G-SOLVER-ARG-KEY-DRIFT）。
+    // 放在这里而不是各求解器内部：`compute` 是 REST invoke / runWithParams / 校准重放 / 规则 payload
+    // 四条路的共同咽喉（`invoke():4637` 与 `runWithParams():4561` 都在这里汇合），一处归一 = 全路生效。
+    // 未登记求解器返回**同一个引用** → 逐字节加性（R6）。
+    const args = normalizeSolverArgs(solverKey, rawArgs);
     switch (solverKey) {
       case "capacity_rollup": {
         const r = computeRollup(c);

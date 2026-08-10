@@ -865,8 +865,9 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //      与数字出自同一个基地，这正是本单要治的「假个性化」。
       // 加性：不给 `baseName`/`base`（S20 卡片今天正是 `baseName:""` 中性默认）→ 仍取 `[0]`，与改前逐字节一致。
       const meters = (c.energyMeters ?? []).map(props);
-      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
-      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
+      // WO-SILENT-WRONG-ANSWER-3：同上，`baseName ?? base` 收编到 `arg-aliases.ts`（唯一归一出处）。
+      const baseRefRaw = args.baseName;
+      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
       let em = meters[0];
       let scopedBaseName = "";
       if (baseRef !== undefined) {
@@ -1008,7 +1009,10 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //   ④ 加性透出 `dataMode`（LIVE/MOCK）—— 让"这份紧张度是实测还是估算"在答案里可见。
       // 调用方**直传 `tightness`** 时仍以调用方为准（`...args` 在后·`rules-p3-payload-11solvers.test.ts:159`
       // 传 92 的那条路逐字节不变）。**不给 base/baseName → `tightness:85` 且无 `dataMode` 键 = 改前逐字节一致。**
-      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
+      // WO-SILENT-WRONG-ANSWER-3：`baseName ?? base` 这份**手写键名兜底**已收编到单一出处
+      //   `arg-aliases.ts SOLVER_ARG_ALIASES.mitigation_select`（在 `compute()` 派发前统一归一）。
+      //   这里只读规范键 —— 每个消费方各写一份 `??` 正是本单要治的散落（同一概念两个名字的债散成 N 份）。
+      const baseRefRaw = args.baseName;
       const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
       // ⚠ `tightnessDataMode: undefined` 是**显式覆盖**，不是可省略的装饰：
       //   `...args` 在前，调用方若自带该键会原样留下 ⇒ 输出冠上 "LIVE 实测" 的名义。

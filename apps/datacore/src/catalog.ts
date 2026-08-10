@@ -64,9 +64,15 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
 /** 求解器目录（与 SOLVER_KEYS 对齐；描述供 LLM 选型）。 */
 export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan", answersQuestions: ["各基地产能怎么上卷汇总", "型号维度的总产能是多少", "工序产能怎么卷到基地"], tags: ["产能上卷", "capacity", "rollup"] },
-  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
+  // WO-SILENT-WRONG-ANSWER-3 症①：`base` 此前**根本没被声明**（求解器 capacity.ts:424 一直在读它），
+  //   照目录只能猜出 modelId/qty/weeks ⇒ 想限定基地的调用方按兄弟求解器惯例传 `baseId` → 静默答全网。
+  //   声明补齐 + `arg-aliases.ts` 收 `baseId/baseName` 别名，两半齐才治得住（门：check-arg-drop-seam.mjs 断言③）。
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数", base: "基地（可选·不给=全网合计 scope:ALL；也认 baseId/baseName）" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
   { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["瓶颈在哪个基地哪道工序", "约束工序是哪些", "瓶颈强度矩阵怎么看"], tags: ["瓶颈", "bottleneck", "约束工序"] },
-  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
+  // WO-SILENT-WRONG-ANSWER-3 症②：此前声明 `{baseId, days}`，而求解器读的是 `{base, factor, horizon}`
+  //   —— **两个声明键一个都不被读**。照目录传 `{baseId:"zaozhuang"}` 返回 8 张卡且枣庄不在其中、
+  //   与不传参数逐字节相同；传 `{days:7}` 窗口仍是 30 天。声明改成真实读取键，历史键由 arg-aliases.ts 兜。
+  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { base: "基地（可选·不给=全网 scope:ALL；也认 baseId/baseName）", factor: "风险因素（可选·不给=该基地全因素）", horizon: "推演天数（默认 30；也认 days）" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
   { key: "affected_orders", name: "受影响订单", description: "给定扰动，返回受影响订单清单（problems/rootChain）。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["扰动会影响哪些订单", "受影响订单清单有哪些", "哪些单会被波及"], tags: ["受影响订单", "affected", "扰动"] },
   { key: "plan_audit", name: "计划体检", description: "对给定计划版本做体检评分（达成率/风险敞口）。", argHints: { versionId: "计划版本 ID" }, domain: "plan", featureKey: "view.plan-audit", answersQuestions: ["这个计划版本达成率多少", "计划体检评分是多少", "计划的风险敞口多大"], tags: ["计划体检", "达成率", "audit"] },
   { key: "plan_generate", name: "计划生成", description: "按目标与约束生成候选排产计划。", argHints: { objective: "目标口径" }, domain: "plan", answersQuestions: ["按目标约束生成排产计划", "怎么排一版候选计划", "生成满足交期的排产方案"], tags: ["计划生成", "排产", "generate"] },
