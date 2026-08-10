@@ -336,7 +336,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-SANDBOX-E1 chain_loss_attribution 输出形状（= ChainLossResult 顶层 key）。
   // `attribution` 是 S0 `LossAttribution[]` 原形；`evidence` 是与 steps 一一对应的 R13 下钻行；
   // `empty` 是诚实缺席清单（前端必须显式渲染 EMPTY，不许当成 0 隐掉）。
-  chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
+  // WO-LEADTIME-SPLIT：+ `cash`（结算段单列块 —— 账期不进归因表，但必须能被经营视图取到）。
+  chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "cash", "conservation", "summary"],
   // WO-SANDBOX-E3 阻滞点扫描：impediments 是主表；unresolved/caveats/thresholds 是**诚实位**——
   // 前端必须能渲染"哪条判据判不出来、为什么"与"这条结论的旋钮在哪"，故一并进形状契约（漏了就成盲区）。
   // WO-SANDBOX-S3 追加三键：candidateStats（每点探了几个杠杆/为什么没方案的逐点账）·

@@ -595,7 +595,7 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
       <section className={styles.section} data-testid="insp-waterfall" aria-labelledby="insp-wf-h">
         <h4 className={styles.sectionTitle} id="insp-wf-h">
           ① 五段耗时瀑布
-          <small className={styles.sectionSub}>前置期 = 五段之和；五段与"哪种算增值"均由 S0 契约冻结，前端不另立口径</small>
+          <small className={styles.sectionSub}>本节点前置期 = 五段之和；五段与"哪种算增值"均由 S0 契约冻结，前端不另立口径（全链口径分交付前置期 / 现金周转期两个，见控制台顶栏）</small>
         </h4>
         <ul className={styles.wfList}>
           {readout.buckets.map((b) => (
@@ -608,7 +608,7 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
       <section className={styles.section} aria-labelledby="insp-fe-h">
         <h4 className={styles.sectionTitle} id="insp-fe-h">
           ② 流动效率
-          <small className={styles.sectionSub}>流动效率 = 增值 ÷ 前置期（制造业典型 5–15%，读数低是正常的）</small>
+          <small className={styles.sectionSub}>流动效率 = 增值 ÷ 本节点前置期（制造业典型 5–15%，读数低是正常的）</small>
         </h4>
         <div
           className={styles.flowBox}
@@ -621,12 +621,12 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
         >
           <b className={flowPct === null ? styles.emptyValue : styles.flowValue}>{flowPct === null ? "EMPTY" : fmtPct(flowPct)}</b>
           <span className={styles.flowFormula}>
-            = 增值 <b>{fmtDays(readout.valueAddDays)}</b> ÷ 前置期 <b>{fmtDays(readout.leadTimeDays)}</b>
+            = 增值 <b>{fmtDays(readout.valueAddDays)}</b> ÷ 本节点前置期 <b>{fmtDays(readout.leadTimeDays)}</b>
           </span>
         </div>
         {readout.absentCount > 0 ? (
           <p className={styles.warnNote} data-testid="insp-flow-absent">
-            <b>本读数偏高</b>：仍有 <b>{readout.absentCount}</b> 段诚实缺席未计入分母 ⇒ 前置期被低估、流动效率被高估。
+            <b>本读数偏高</b>：仍有 <b>{readout.absentCount}</b> 段诚实缺席未计入分母 ⇒ 本节点前置期被低估、流动效率被高估。
             补上承载物之前，<b>不要拿这个数对外报</b>。
           </p>
         ) : null}

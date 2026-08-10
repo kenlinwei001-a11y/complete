@@ -444,6 +444,119 @@ export function nodeFlowEfficiency(node: Pick<ChainNode, "steps">): number | nul
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// § 4.5 · 两个**不合成**的前置期指标（WO-LEADTIME-SPLIT · 仓主 2026-08-09 裁决）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★★ 全链只有**两个**前置期读数，各有各的口径，**永远不合成一个数** ★★
+ *
+ * ── 裁决前的形态（本节要根治的病）────────────────────────────────────────
+ * 此前只有一个 `totals.leadTimeDays` = **所有节点之和**，账期（`Customer.termDays`）
+ * 被当成一段普通 `queue` 混在里面。seed 42 · 锚点 SO-3391 实测：
+ *   全链 85.39 天，其中账期 **60 天**（占非增值时长 71.3%），
+ *   而整条产线十道工序的作业 + 换型加起来才 **1.55 天**。
+ * 后果不是"数字不好看"，是**决策看不见**：把 S&OP 节拍从 14 天压到 7 天（真实改进 3.5 天）
+ * 摊进 85.39 天只挪动 4.1%，指针几乎不动 —— 而沙盘正是给生产/供应链侧做决策用的。
+ * 反过来删掉账期也不行：经营层看的就是现金（13 周现金最低点逼近红线那条线正是账期驱动的）。
+ * ⇒ **拆开，不是二选一。**
+ *
+ * ── 口径定义（**这是唯一出处**，任何 UI / 返回体 / 报告都从这里取，不许各写一套）──
+ *
+ * | 指标 | 起点 | 终点 | 含账期？ | 给谁看 |
+ * |---|---|---|---|---|
+ * | **交付前置期** `deliveryLeadTimeDays` | 客户下单 | **客户收货** | **不含** | 生产 / 供应链（默认展示） |
+ * | **现金周转期** `cashConversionDays`   | 客户下单 | **回款到账** | **含**   | 经营 / 财务（单列） |
+ *
+ * 两者的关系是**分解**不是替代：`现金周转期 = 交付前置期 + 结算段`。
+ * 结算段 = 客户收货**之后**才发生的那些环节（开票对账 + 账期回款），见 `CHAIN_SETTLEMENT_NODE_IDS`。
+ *
+ * ── 三条硬纪律 ────────────────────────────────────────────────────────────
+ *  ① **不许出现裸的「前置期 = N 天」**。任何一处展示都必须标明是哪一个指标 ——
+ *     这正是裁决前那个 `leadTimeDays` 的形态：一个没有主语的数，谁看都以为是自己要的那个。
+ *     故本次**直接删掉** `totals.leadTimeDays` 而不是留一个别名：留别名 = 病还在，只是换了个名字。
+ *  ② **改账期只许动现金周转期**。`termDays` 变化后 `deliveryLeadTimeDays` 必须一字不变
+ *     （`apps/datacore/test/leadtime-split.seam.test.ts` 的灵魂断言咬死这一条）。
+ *  ③ **损失归因的分母只收交付段**。账期若留在分母里，生产侧每一段的占比都被它压扁 ——
+ *     那是同一个病换个地方犯（裁决理由第二段说的就是这个）。结算段单列在 `cash` 块里，不进归因表。
+ */
+
+/**
+ * **结算段节点**：客户收货**之后**才发生的环节 —— 只进现金周转期，**不进交付前置期**。
+ *
+ * 判据是**时序**不是"像不像财务"：这一段发生在「客户收货」这个终点之后，
+ * 所以它按定义落在交付前置期之外。今天在册的两个：
+ *  · `order.settlement` 开票对账 / 月结 —— 收货后开票（设计稿 C5）；
+ *  · `order.cash`       订单回款（账期等待）—— 开票后等账期到期收钱（设计稿 C6）。
+ *
+ * ⚠ **新增节点时必须自问一句**：它发生在客户收货之前还是之后？
+ *   之后 ⇒ 加进本表，否则它会被默默算进交付前置期，把裁决前那个混算形态复活一次。
+ *   `packages/contracts/test/chain-sim.test.ts` 把本表钉死 —— 改表必须同时改那条断言，
+ *   即"多加一个节点"这件事无法在不惊动任何人的情况下发生。
+ *
+ * ⚠ 反向也要守：`material.*` / `capacity.*` 这些**生产段**再怎么"跟钱有关"也不进本表 ——
+ *   它们发生在收货之前，是交付前置期的组成部分。
+ */
+export const CHAIN_SETTLEMENT_NODE_IDS: readonly string[] = ["order.settlement", "order.cash"] as const;
+
+/** 该节点是否属于**结算段**（收货后 · 只进现金周转期）。分类的唯一实现，各处禁止自己比字符串。 */
+export function isSettlementNodeId(nodeId: string): boolean {
+  return CHAIN_SETTLEMENT_NODE_IDS.includes(nodeId);
+}
+
+/**
+ * 该环节是否属于**交付段**（下单 → 收货）。
+ * 缺省归**交付段** —— 动态工序节点 `capacity.op.<id>` 不在注册表里，它们全是生产段，默认必须对。
+ */
+export function isDeliveryStep(step: Pick<ChainStep, "nodeId">): boolean {
+  return !isSettlementNodeId(step.nodeId);
+}
+
+/**
+ * **交付前置期**（天）= 客户下单 → 客户收货，**不含账期**。默认展示的那个。
+ * 生产/供应链侧的每一项改进都必须能在这个数上看见 —— 这是它存在的全部理由。
+ */
+export function chainDeliveryLeadTimeDays(steps: readonly ChainStep[]): number {
+  return steps.reduce((sum, s) => sum + (isDeliveryStep(s) ? s.days : 0), 0);
+}
+
+/** **结算段**（天）= 收货后的开票对账 + 账期回款。= 现金周转期 − 交付前置期。 */
+export function chainSettlementDays(steps: readonly ChainStep[]): number {
+  return steps.reduce((sum, s) => sum + (isDeliveryStep(s) ? 0 : s.days), 0);
+}
+
+/**
+ * **现金周转期**（天）= 客户下单 → 回款到账，**含账期**。单列给经营/财务看。
+ * 恒等式（由测试锁死）：`现金周转期 === 交付前置期 + 结算段`。
+ * ⚠ 它**不是**"更全的前置期"，不许拿它去当生产侧的 KPI —— 那正是裁决要终结的用法。
+ */
+export function chainCashConversionDays(steps: readonly ChainStep[]): number {
+  return steps.reduce((sum, s) => sum + s.days, 0);
+}
+
+/**
+ * 两个指标的**展示口径元数据** —— 前端/报告的标签与副标题一律取这里，
+ * 不许再手写「前置期」三个字（手写就是纪律 ① 的复发点）。
+ */
+export const CHAIN_LEAD_TIME_METRICS = {
+  delivery: {
+    key: "deliveryLeadTimeDays",
+    label: "交付前置期",
+    from: "客户下单",
+    to: "客户收货",
+    includesPaymentTerms: false,
+    note: "不含账期。生产/供应链改进要能在这个数上看见。",
+  },
+  cash: {
+    key: "cashConversionDays",
+    label: "现金周转期",
+    from: "客户下单",
+    to: "回款到账",
+    includesPaymentTerms: true,
+    note: "含账期。经营/财务口径，单列，不与交付前置期混算。",
+  },
+} as const;
+
+// ══════════════════════════════════════════════════════════════════════════
 // § 5 · LossAttribution（环节级损失归因）—— 分母排除增值段
 // ══════════════════════════════════════════════════════════════════════════
 

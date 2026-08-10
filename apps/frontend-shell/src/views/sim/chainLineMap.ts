@@ -87,9 +87,17 @@ export const ChainLossPayloadSchema = z.object({
   nodes: z.array(ChainNodeSchema),
   attribution: z.array(LossAttributionSchema),
   empty: z.array(ChainLossEmptyRowSchema).optional(),
+  /**
+   * WO-LEADTIME-SPLIT：前置期是**两个不合成的指标**，此处照引擎形状读，**不再有裸的 `leadTimeDays`**。
+   * 口径定义见契约 §4.5（`CHAIN_LEAD_TIME_METRICS`）—— 前端不另写一套解释文案。
+   *  · `deliveryLeadTimeDays` 交付前置期（下单→收货·不含账期）← 默认展示
+   *  · `cashConversionDays`   现金周转期（下单→回款·含账期）  ← 单列
+   */
   totals: z
     .object({
-      leadTimeDays: z.number(),
+      deliveryLeadTimeDays: z.number(),
+      cashConversionDays: z.number(),
+      settlementDays: z.number(),
       valueAddDays: z.number(),
       nonValueDays: z.number(),
       flowEfficiency: z.number().nullable(),

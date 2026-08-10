@@ -90,7 +90,16 @@ function variantOf(base: ChainLossPayload, factor: number): ChainLossPayload {
   return {
     ...base,
     anchor: { ...(base.anchor ?? {}), so: `SO-VAR-${factor}` },
-    totals: base.totals === undefined ? undefined : { ...base.totals, leadTimeDays: base.totals.leadTimeDays + factor },
+    // WO-LEADTIME-SPLIT：前置期已拆成两个指标，这里造差异用**交付前置期**（默认展示的那个）。
+    // 现金周转期同步 +factor 以保住恒等式 `现金周转期 = 交付前置期 + 结算段`（结算段不动）。
+    totals:
+      base.totals === undefined
+        ? undefined
+        : {
+            ...base.totals,
+            deliveryLeadTimeDays: base.totals.deliveryLeadTimeDays + factor,
+            cashConversionDays: base.totals.cashConversionDays + factor,
+          },
   };
 }
 

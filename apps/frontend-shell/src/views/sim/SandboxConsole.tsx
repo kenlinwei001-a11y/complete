@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useInRouterContext, useNavigate } from "react-router-dom";
-import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
+import { BASE_REGISTRY, CHAIN_LEAD_TIME_METRICS, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChainLineMapView } from "./ChainLineMapView";
@@ -377,8 +377,20 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
         </span>
         {topTags}
         <div className={styles.spacer} />
-        <span className={`${styles.tag} ${styles.tagHot}`} data-testid="sc-leadtime">
-          前置期 {fmtDays(totals?.leadTimeDays ?? null)}D · 增值 {fmtFlowEff(totals?.flowEfficiency ?? null)}
+        {/* WO-LEADTIME-SPLIT：顶栏两个指标各自点名，**不许出现裸的「前置期」**（口径见契约 §4.5）。 */}
+        <span
+          className={`${styles.tag} ${styles.tagHot}`}
+          data-testid="sc-leadtime"
+          title={`${CHAIN_LEAD_TIME_METRICS.delivery.label}：${CHAIN_LEAD_TIME_METRICS.delivery.from} → ${CHAIN_LEAD_TIME_METRICS.delivery.to}（${CHAIN_LEAD_TIME_METRICS.delivery.note}）`}
+        >
+          {CHAIN_LEAD_TIME_METRICS.delivery.label} {fmtDays(totals?.deliveryLeadTimeDays ?? null)}D · 增值 {fmtFlowEff(totals?.flowEfficiency ?? null)}
+        </span>
+        <span
+          className={styles.tag}
+          data-testid="sc-cashcycle"
+          title={`${CHAIN_LEAD_TIME_METRICS.cash.label}：${CHAIN_LEAD_TIME_METRICS.cash.from} → ${CHAIN_LEAD_TIME_METRICS.cash.to}（${CHAIN_LEAD_TIME_METRICS.cash.note}）`}
+        >
+          {CHAIN_LEAD_TIME_METRICS.cash.label} {fmtDays(totals?.cashConversionDays ?? null)}D
         </span>
         <div className={styles.seg}>
           <button type="button" aria-pressed={honesty} data-testid="sc-honesty-toggle" onClick={() => setHonesty((v) => !v)}>
@@ -421,7 +433,8 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           <span className={styles.impMeta}>
             <b>流动效率</b>
             <span>
-              增值 {fmtDays(totals?.valueAddDays ?? null)}D / 前置期 {fmtDays(totals?.leadTimeDays ?? null)}D
+              增值 {fmtDays(totals?.valueAddDays ?? null)}D / {CHAIN_LEAD_TIME_METRICS.delivery.label}{" "}
+              {fmtDays(totals?.deliveryLeadTimeDays ?? null)}D
             </span>
           </span>
         </div>
@@ -704,7 +717,7 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                                   </span>
                                 )}
                                 <span className={styles.nodeCardFoot}>
-                                  <span>{fmtDays(n.leadTimeDays)}D</span>
+                                  <span title="本节点耗时（该节点各环节之和·非全链前置期）">{fmtDays(n.leadTimeDays)}D</span>
                                   <span>增值 {fmtFlowEff(n.flowEfficiency)}</span>
                                   {n.collapsedCount > 0 ? (
                                     <span className={styles.nodeCardMore}>其余 {n.collapsedCount} 项 →</span>
@@ -853,9 +866,10 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
               </div>
               {honesty ? (
                 <p className={styles.note} data-testid="sc-pareto-note">
-                  影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
-                  <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
-                  故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
+                  影响率 = 该环节非增值天数 ÷ <b>交付段</b>非增值总量，<b>分母由引擎给</b>（
+                  <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母；
+                  账期（结算段）也<b>不进</b>分母 —— 它单列在现金周转期里，否则会把生产侧每一段的占比压扁。
+                  故交付段非增值环节之和恒 100%（本次守恒 Σ ={" "}
                   {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
                   ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
                 </p>
@@ -867,10 +881,28 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
 
       {/* ══ 底部指标卡片行（全部真值：算不出来的写 EMPTY 不写 0）══════════════ */}
       <div className={styles.metricRow} data-testid="sc-metrics">
-        <MetricCard label="前置期" value={totals === null ? null : `${fmtDays(totals.leadTimeDays)}D`} sub="锚点订单全链（引擎 totals.leadTimeDays）" />
-        <MetricCard label="增值天数" value={totals === null ? null : `${fmtDays(totals.valueAddDays)}D`} sub="kind=work 的环节之和" />
-        <MetricCard label="非增值（损失）" value={totals === null ? null : `${fmtDays(totals.nonValueDays)}D`} sub="Pareto 的分母" />
-        <MetricCard label="流动效率" value={totals === null ? null : fmtFlowEff(totals.flowEfficiency)} sub="增值 / 前置期" />
+        {/*
+          WO-LEADTIME-SPLIT：两个指标各自成卡、各自写明起点/终点/含不含账期。
+          裁决前这里是一张「前置期 85.4D」的裸卡 —— 生产侧 3.5 天的改进摊进 60 天账期后指针几乎不动。
+          现在交付前置期与现金周转期分开呈现，谁也不冒充谁（口径唯一出处 = 契约 CHAIN_LEAD_TIME_METRICS）。
+        */}
+        <MetricCard
+          label={CHAIN_LEAD_TIME_METRICS.delivery.label}
+          value={totals === null ? null : `${fmtDays(totals.deliveryLeadTimeDays)}D`}
+          sub={`${CHAIN_LEAD_TIME_METRICS.delivery.from} → ${CHAIN_LEAD_TIME_METRICS.delivery.to} · 不含账期`}
+        />
+        <MetricCard
+          label={CHAIN_LEAD_TIME_METRICS.cash.label}
+          value={totals === null ? null : `${fmtDays(totals.cashConversionDays)}D`}
+          sub={`${CHAIN_LEAD_TIME_METRICS.cash.from} → ${CHAIN_LEAD_TIME_METRICS.cash.to} · 含账期 ${totals === null ? "—" : fmtDays(totals.settlementDays)}D（结算段单列）`}
+        />
+        <MetricCard label="增值天数" value={totals === null ? null : `${fmtDays(totals.valueAddDays)}D`} sub="kind=work 的环节之和（交付段内）" />
+        <MetricCard label="非增值（损失）" value={totals === null ? null : `${fmtDays(totals.nonValueDays)}D`} sub="Pareto 的分母（交付段内·账期不进）" />
+        <MetricCard
+          label="流动效率"
+          value={totals === null ? null : fmtFlowEff(totals.flowEfficiency)}
+          sub={`增值 / ${CHAIN_LEAD_TIME_METRICS.delivery.label}`}
+        />
         <MetricCard
           label="环节 / 诚实缺席"
           value={totals === null ? null : `${totals.stepCount} / ${totals.emptyCount}`}
@@ -1261,7 +1293,11 @@ function StepDetail({ node, honesty }: { node: NodeCardVM | null; honesty: boole
       <dl className={styles.kv}>
         <dt>所属段</dt>
         <dd>{node.stage}</dd>
-        <dt>前置期</dt>
+        {/*
+          WO-LEADTIME-SPLIT：这是**本节点**各环节之和，不是全链任何一个前置期指标 ——
+          裸写「前置期」会被读成全链读数（`order.cash` 这张卡尤其致命：它的值就是账期 60 天）。
+        */}
+        <dt title="该节点各环节之和；全链口径见顶栏的交付前置期 / 现金周转期两卡">本节点耗时</dt>
         <dd>{fmtDays(node.leadTimeDays)}D</dd>
         <dt>增值</dt>
         <dd>

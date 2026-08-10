@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, type TestApp } from "./helpers.js";
 import type { AuthCtx } from "../src/domain.js";
-import { CHAIN_NODE_REGISTRY, ChainNodeSchema, LossAttributionSchema, isKnownChainNodeId, isValueAddKind } from "@platform/contracts";
+import { CHAIN_NODE_REGISTRY, ChainNodeSchema, LossAttributionSchema, isDeliveryStep, isKnownChainNodeId, isValueAddKind } from "@platform/contracts";
 import { daysFromDrill, MINUTES_PER_DAY, type ChainLossEmpty, type ChainLossEvidence, type ChainLossResult } from "../src/solvers/chain-loss.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
@@ -79,21 +79,29 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     expect(r.conservation.ok, `求解器自报守恒未通过：residual=${r.conservation.residual}`).toBe(true);
     expect(Math.abs(r.conservation.residual ?? Number.NaN)).toBeLessThanOrEqual(r.conservation.tolerancePct);
 
-    // 分母口径：Σ nonValueDays === totals.nonValueDays === 全链前置期 − 增值天数（三者互相咬死）。
+    // 分母口径：Σ nonValueDays === totals.nonValueDays === **交付前置期** − 增值天数（三者互相咬死）。
+    // ⚠ WO-LEADTIME-SPLIT：这里从「全链前置期」换成了「交付前置期」——账期（结算段）已不进分母，
+    //   它单列在 totals.settlementDays / cash{} 里。用现金周转期来断这条恒等式必红（差一个结算段）。
     const sumNv = r.attribution.reduce((a, x) => a + x.nonValueDays, 0);
     expect(sumNv).toBeCloseTo(r.totals.nonValueDays, 9);
-    expect(r.totals.leadTimeDays).toBeCloseTo(r.totals.valueAddDays + r.totals.nonValueDays, 9);
+    expect(r.totals.deliveryLeadTimeDays).toBeCloseTo(r.totals.valueAddDays + r.totals.nonValueDays, 9);
 
     // 增值段**一个都不许**出现在归因表里（分母排除增值段的可观测后果）。
     const attributed = new Set(r.attribution.map((x) => x.stepId));
     const leakedValueAdd = r.evidence.filter((e) => e.valueAdd && attributed.has(e.stepId)).map((e) => e.stepId);
     expect(leakedValueAdd, "增值段泄漏进损失归因表 = 分母口径破了").toEqual([]);
-    // 反向：每条非增值环节都必须在归因表里（少算一段 → 和仍是 100 但那段被吞了，此断言抓这种）。
-    expect(new Set(nonValue(r).map((e) => e.stepId))).toEqual(attributed);
+    // 反向：每条**交付段**非增值环节都必须在归因表里（少算一段 → 和仍是 100 但那段被吞了，此断言抓这种）。
+    // 结算段（账期）刻意排除在外 —— 它进归因表就会把生产侧每一段的占比压扁（WO-LEADTIME-SPLIT 裁决理由）。
+    const deliveryNonValue = nonValue(r).filter((e) => isDeliveryStep({ nodeId: e.nodeId }));
+    expect(new Set(deliveryNonValue.map((e) => e.stepId))).toEqual(attributed);
+    // 结算段必须**在 evidence 里在场**（R13 溯源不缺）但**不在归因表里**（口径分流的可观测后果）。
+    const settlementEv = nonValue(r).filter((e) => !isDeliveryStep({ nodeId: e.nodeId }));
+    expect(settlementEv.length, "结算段应有 evidence（账期这段本身是真实存在的）").toBeGreaterThan(0);
+    expect(settlementEv.filter((e) => attributed.has(e.stepId)), "结算段泄漏进损失归因表 = 拆分白做了").toEqual([]);
 
-    // 门有牙自检：把增值段也塞进分母（= 用「全链前置期」当分母，正是 S0 §5 点名的错法）
+    // 门有牙自检：把增值段也塞进分母（= 用「交付前置期」当分母，正是 S0 §5 点名的错法）
     // → Σ 必须**明显**偏离 100，否则说明本数据集里增值段小到守恒测咬不住任何东西。
-    const wrongSum = r.attribution.reduce((a, x) => a + (x.nonValueDays / r.totals.leadTimeDays) * 100, 0);
+    const wrongSum = r.attribution.reduce((a, x) => a + (x.nonValueDays / r.totals.deliveryLeadTimeDays) * 100, 0);
     expect(
       Math.abs(wrongSum - 100),
       `含增值段的错分母只让 Σ 变成 ${wrongSum}（偏离 ${Math.abs(wrongSum - 100)} < 容差 ${WO_TOLERANCE_PCT}）→ 这条守恒测在本数据集上无牙`,

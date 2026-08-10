@@ -21,6 +21,16 @@
  *    塞一个 0 天的环节会让它在归因表里占 0%——「这段没损失」与「这段我不知道」是两件事，
  *    前者是结论、后者是发现。本仓 `genuine-sim` 战役打的就是这个病。
  *
+ * ── WO-LEADTIME-SPLIT · 前置期是**两个数**不是一个（仓主 2026-08-09 裁决）────
+ * 本求解器**不再输出** `totals.leadTimeDays`。口径定义的唯一出处是契约 §4.5，这里只记落地形态：
+ *   · `totals.deliveryLeadTimeDays` 交付前置期 = 下单 → 收货，**不含账期** ← 默认展示、损失归因的分母
+ *   · `totals.cashConversionDays`   现金周转期 = 下单 → 回款，**含账期**   ← 单列给经营看
+ *   · `totals.settlementDays` / `cash{}` 结算段（收货后）单列，**不进归因表**
+ * 分流判据走契约 `isDeliveryStep(step)`（按 `nodeId` 查 `CHAIN_SETTLEMENT_NODE_IDS`），
+ * 本文件**不自己比字符串** —— 各写一套就是下一次口径漂移的起点。
+ * 为什么删掉而不是保留 `leadTimeDays` 别名：那个数没有主语，谁看都以为是自己要的那个，
+ * 留着别名等于换个名字继续犯。删掉会让每个消费方被编译器逼着显式选一个。
+ *
  * ── 口径（写死在这里，改口径必须改本注释 + 锁死测试）────────────────────────
  * 链的计量单位 = **一批货沿链走完所经历的日历天数**（不是产能、不是金额）。
  * 因此只收「一段流经时间」的字段；**语义不是时长的字段一律不收**，收了就是口径错标：
@@ -60,11 +70,14 @@ import {
   expectedCadenceWaitDays,
   chainNonValueDays,
   chainValueAddDays,
+  chainCashConversionDays,
+  chainDeliveryLeadTimeDays,
+  chainSettlementDays,
   computeLossAttribution,
+  isDeliveryStep,
   isValueAddKind,
   lossConservationResidual,
   LOSS_CONSERVATION_TOLERANCE_PCT,
-  nodeLeadTimeDays,
   type ChainNode,
   type ChainScope,
   type ChainStage,
@@ -229,14 +242,42 @@ export interface ChainLossResult {
   attribution: LossAttribution[];
   evidence: ChainLossEvidence[];
   empty: ChainLossEmpty[];
+  /**
+   * WO-LEADTIME-SPLIT：**两个不合成的前置期指标**（口径唯一出处 = 契约 §4.5）。
+   *
+   * ⚠ 此前这里是**一个** `leadTimeDays`（= 所有节点之和·账期混在里面）。
+   *   本单**删掉**了它而不是留别名 —— 留别名等于把「没有主语的那个数」换个名字继续用。
+   *   任何消费方现在都必须显式选一个，选不出来说明它自己也没想清楚要哪个口径。
+   */
   totals: {
-    leadTimeDays: number;
+    /** **交付前置期**（天）：客户下单 → 客户收货，**不含账期**。默认展示的那个。 */
+    deliveryLeadTimeDays: number;
+    /** **现金周转期**（天）：客户下单 → 回款到账，**含账期**。单列，不与上者混算。 */
+    cashConversionDays: number;
+    /** 结算段（天）= 收货后的开票对账 + 账期回款 = `cashConversionDays − deliveryLeadTimeDays`。 */
+    settlementDays: number;
+    /** 增值天数（**交付段内**）。结算段无增值段，故与全链口径同值，但归属明确写死在交付侧。 */
     valueAddDays: number;
+    /** 非增值天数（**交付段内**）= 损失归因的分母。账期不在其中，见契约 §4.5 纪律 ③。 */
     nonValueDays: number;
-    /** 流动效率 = 增值/前置期。前置期为 0 → `null`（诚实缺席，不回 0 冒充读数）。 */
+    /**
+     * 流动效率 = 增值 ÷ **交付前置期**（不是现金周转期）。
+     * 用现金周转期当分母会把账期的 60 天摊进来 —— seed 42 实测会把 4.70% 稀释成 1.40%，
+     * 生产侧的改进在这个数上同样看不见。分母为 0 → `null`（诚实缺席，不回 0 冒充读数）。
+     */
     flowEfficiency: number | null;
     stepCount: number;
     emptyCount: number;
+  };
+  /**
+   * 结算段单列块（**不进损失归因表**）—— 账期这 60 天不是"某个环节的损失"，
+   * 它是经营口径的一段等待，跟排产优化不在一个决策面上。放在这里是为了「单列而不删」：
+   * 经营层要看的现金数在这儿，生产层的归因表则彻底不受它影响。
+   */
+  cash: {
+    settlementDays: number;
+    /** 结算段各环节（stepId → 天数 + 标签），供经营视图逐段展开。 */
+    steps: { stepId: string; nodeId: string; label: string; days: number }[];
   };
   conservation: {
     sumPct: number;
@@ -881,11 +922,22 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
     return { nodeId, label: m.label, stage: m.stage, ...(m.scope ? { scope: m.scope } : {}), steps: m.steps };
   });
 
+  // ── WO-LEADTIME-SPLIT · 交付段 / 结算段分流（口径判据走契约 `isDeliveryStep`）──
+  // 这里是本单的命门：**先分流，再算数**。分流之后，交付侧的每一个读数
+  // （前置期 / 归因分母 / 流动效率）都与 `Customer.termDays` 彻底无关 ——
+  // 改账期只会动 `cashConversionDays` 与 `cash` 块，交付侧一字不变（灵魂断言咬这一条）。
+  const deliverySteps = steps.filter((s) => isDeliveryStep(s));
+  const settlementSteps = steps.filter((s) => !isDeliveryStep(s));
+
   // ── 归因：**全部走 S0 契约的唯一实现**（本文件不写除法）────────────────
-  const attribution = computeLossAttribution(steps);
-  const nonValueDays = chainNonValueDays(steps);
-  const valueAddDays = chainValueAddDays(steps);
-  const leadTimeDays = nodes.reduce((sum, n) => sum + nodeLeadTimeDays(n), 0);
+  // ⚠ 只喂**交付段**：账期留在分母里会把生产侧每一段的占比压扁（seed 42 实测账期独占 71.3%），
+  //   那是裁决要终结的那个病换个地方犯。守恒律不受影响 —— Σ pct 仍恒 == 100（分母同步收窄）。
+  const attribution = computeLossAttribution(deliverySteps);
+  const nonValueDays = chainNonValueDays(deliverySteps);
+  const valueAddDays = chainValueAddDays(deliverySteps);
+  const deliveryLeadTimeDays = chainDeliveryLeadTimeDays(steps);
+  const settlementDays = chainSettlementDays(steps);
+  const cashConversionDays = chainCashConversionDays(steps);
   const residual = lossConservationResidual(attribution);
   const sumPct = attribution.reduce((sum, r) => sum + r.pctOfChainLoss, 0);
 
@@ -913,12 +965,19 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
     evidence,
     empty,
     totals: {
-      leadTimeDays,
+      deliveryLeadTimeDays,
+      cashConversionDays,
+      settlementDays,
       valueAddDays,
       nonValueDays,
-      flowEfficiency: leadTimeDays > 0 ? valueAddDays / leadTimeDays : null,
+      // 分母是**交付前置期**，不是现金周转期（见字段注释：后者会把 4.70% 稀释成 1.40%）。
+      flowEfficiency: deliveryLeadTimeDays > 0 ? valueAddDays / deliveryLeadTimeDays : null,
       stepCount: steps.length,
       emptyCount: empty.length,
+    },
+    cash: {
+      settlementDays,
+      steps: settlementSteps.map((s) => ({ stepId: s.stepId, nodeId: s.nodeId, label: s.label ?? s.stepId, days: s.days })),
     },
     conservation: {
       sumPct,
@@ -927,11 +986,13 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       // 空表 residual === null → **不算通过**（空数据上假绿正是本仓 7/7 那族病）。
       ok: residual !== null && Math.abs(residual) <= LOSS_CONSERVATION_TOLERANCE_PCT,
     },
+    // WO-LEADTIME-SPLIT：摘要里**两个指标都点名**，一句话里不许出现无主语的「全链 N 天」。
     summary:
-      `锚点订单 ${so}：全链 ${leadTimeDays.toFixed(2)} 天，其中增值 ${valueAddDays.toFixed(2)} 天、` +
-      `非增值（损失）${nonValueDays.toFixed(2)} 天，覆盖 ${steps.length} 个环节` +
+      `锚点订单 ${so}：交付前置期（下单→收货·不含账期）${deliveryLeadTimeDays.toFixed(2)} 天，` +
+      `其中增值 ${valueAddDays.toFixed(2)} 天、非增值（损失）${nonValueDays.toFixed(2)} 天，覆盖 ${deliverySteps.length} 个交付环节` +
       (topLabel ? `；吃掉损失最多的是「${topLabel}」${(top!.pctOfChainLoss).toFixed(1)}%` : "") +
-      `。另有 ${empty.length} 个环节诚实标 EMPTY（${empty.filter((e) => e.emptyKind === "NO_CARRIER").length} 段本体无承载 / ` +
+      `。现金周转期（下单→回款·含账期）${cashConversionDays.toFixed(2)} 天 = 交付前置期 + 结算段 ${settlementDays.toFixed(2)} 天（单列·不进损失归因）。` +
+      `另有 ${empty.length} 个环节诚实标 EMPTY（${empty.filter((e) => e.emptyKind === "NO_CARRIER").length} 段本体无承载 / ` +
       `${empty.filter((e) => e.emptyKind === "NO_INSTANCE").length} 段本链无实例），未补 0。`,
   };
 }
