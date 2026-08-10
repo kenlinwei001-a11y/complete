@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SkillDefinition } from "@platform/contracts";
+import type { SkillCompileResult, SkillDefinition } from "@platform/contracts";
 import { isWriteModeSkill } from "@platform/contracts";
-import { fetchSkills, publishSkill, saveSkill } from "@/api/endpoints";
+import { compileSkill, fetchSkills, fetchSkillSeedGate, publishSkill, saveSkill } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import {
   parseDeadRefKeys,
+  SkillCompileReport,
   SkillGovernanceStrip,
   SkillPublishGateFeedback,
   SkillReferenceTable,
   SkillSchemaView,
+  SkillSeedGateStrip,
   type SkillPublishRejection,
 } from "./SkillStructure";
 
@@ -20,10 +22,22 @@ import {
  * 本页改造前只渲染 `id/name/status/version/body/summary/resources` 九个字段——全是 Skill 大改造
  * **之前**就有的；改造新增的治理属性 / 契约 / 资产引用，前端消费方为 0
  * （`docs/PRD-skill-compiler-registry.md:50` 预言的「有端点无入口」）。结构展示块见 `./SkillStructure`。
+ *
+ * WO-UNBLOCK-SKILL-FE 续接两处同族缺口（`befe-seam` 门抓出、本单接上）：
+ *  · **编译**（`POST /b/v1/skills/:id/compile`）：Skill Compiler S1 的唯一入口——
+ *    发布前干跑七段管线，把诊断/推理图/未实现段当场摊在编辑器里；
+ *  · **出厂技能门审计诚实位**（`GET /b/v1/ops/skill-seed-gate`）：后端注释写着「运维随时可查」，
+ *    而在本单之前**没有任何地方可查**。
  */
 export default function SkillsPage() {
   const queryClient = useQueryClient();
   const { data: skills } = useQuery({ queryKey: ["b", "skills", {}], queryFn: fetchSkills });
+  /**
+   * 出厂技能门审计（页级，与选中哪条技能无关）。
+   * `retry: false` 是刻意的：这道位的价值全在"说真话"，请求失败就该**整块不渲染**
+   * （见 `SkillSeedGateStrip`），而不是反复重试后拿一个陈旧值糊上去。
+   */
+  const { data: seedGate } = useQuery({ queryKey: ["b", "ops", "skill-seed-gate"], queryFn: fetchSkillSeedGate, retry: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = skills?.find((s) => s.id === selectedId) ?? null;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "skills"] });
@@ -42,6 +56,8 @@ export default function SkillsPage() {
           ＋新建技能
         </button>
       </div>
+      {/* 出厂技能门审计诚实位：与选中哪条技能无关，故在列表之上、页级展示。 */}
+      <SkillSeedGateStrip report={seedGate} />
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(skills ?? []).map((s) => (
@@ -70,6 +86,16 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
    * **具体哪条引用死了**，那是要照着去修的信息，不能三秒后自己消失。
    */
   const [rejection, setRejection] = useState<SkillPublishRejection | null>(null);
+  /**
+   * 编译报告的常驻态。与 `rejection` 同理用 state 而非 toast：诊断里写着**具体哪条引用/哪个工具出问题**
+   * （含 `evidence`），那是要照着去修的信息。
+   *
+   * ⚠️ 编译是**只读干跑**（后端 `server.ts:1430` 不落库、不改状态、不发事件），故：
+   *  · 不 `invalidate` 任何 query —— 服务端真值没变，刷新只会让报告闪一下；
+   *  · PUBLISHED 技能**也能编译**（干跑不写，没有理由只让 DRAFT 用）——
+   *    且发布态技能恰恰是最该复查的（它已经在被 agent 加载）。
+   */
+  const [compiled, setCompiled] = useState<SkillCompileResult | null>(null);
   const editable = skill.status === "DRAFT";
 
   const saveMut = useMutation({
@@ -79,6 +105,11 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       onChanged();
     },
     onError: toastError,
+  });
+  const compileMut = useMutation({
+    mutationFn: () => compileSkill(skill.id),
+    onSuccess: setCompiled,
+    onError: (e: unknown) => { setCompiled(null); toastError(e); },
   });
   const publishMut = useMutation({
     mutationFn: () => publishSkill(skill.id),
@@ -104,6 +135,10 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
     <div className="panel" data-testid="skill-editor">
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <input value={name} disabled={!editable} aria-label="skill 名称" onChange={(e) => setName(e.target.value)} style={{ fontWeight: 600, flex: 1 }} />
+        {/* 编译不受 editable 限制：只读干跑，PUBLISHED 技能同样可复查（见 compiled 的注释）。 */}
+        <button className="btn sm" onClick={() => compileMut.mutate()} disabled={compileMut.isPending} data-testid="skill-compile">
+          {compileMut.isPending ? "编译中…" : "编译"}
+        </button>
         {editable && (
           <>
             <button className="btn sm" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
@@ -134,6 +169,9 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       {/* ③ 契约：结构化展示，不是丢一坨 JSON 字符串 */}
       <SkillSchemaView title="输入契约" testid="skill-input-schema" schema={skill.inputSchema} />
       <SkillSchemaView title="输出契约" testid="skill-output-schema" schema={skill.outputSchema} />
+
+      {/* ⑤ 编译报告：七段管线的落地状态 + 诊断 + 推理图（发布前干跑，不落库） */}
+      <SkillCompileReport result={compiled} onDismiss={() => setCompiled(null)} />
 
       {skill.resources.length > 0 && (
         <div style={{ marginTop: 12 }}>

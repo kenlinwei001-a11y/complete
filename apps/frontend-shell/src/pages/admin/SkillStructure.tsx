@@ -18,8 +18,9 @@
  *     `isWriteModeSkill` 反复叮嘱过的"两侧同调、单一出处"（探针与运行时曾各判一半 → 假绿第 6 例）。
  *  3. 不新增任何 feature flag 默认值（开关默认值是产品决策不是 dev 决策）。
  */
-import type { SkillDefinition, SkillReference } from "@platform/contracts";
+import type { SkillCompileResult, SkillDefinition, SkillReference } from "@platform/contracts";
 import { isWriteModeSkill } from "@platform/contracts";
+import type { SkillSeedGateReport } from "@/api/endpoints";
 
 // ---------------------------------------------------------------------------
 // 词表：把契约枚举值译成中文可读标签。
@@ -293,6 +294,247 @@ export function SkillPublishGateFeedback({
       <div data-testid="skill-publish-rejection-message" style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
         {rejection.message}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ⑤ 编译报告 —— `POST /b/v1/skills/:id/compile` 的可见面（WO-UNBLOCK-SKILL-FE）
+// ---------------------------------------------------------------------------
+
+/**
+ * Skill Compiler S1 的可见面。**这是本单要解的正题**：编译端点
+ * （`apps/agentcore/src/server.ts:1430`）自 WO-SKILL-COMPILER-S1 落地以来
+ * 前端零调用 —— 「有端点无入口」的又一例，被 `befe-seam` 门抓住。
+ *
+ * ⛔ 三条硬约束（与本文件其余部分同源，改动前先读）：
+ *  1. **`stages[]` 必须五段全渲染，不许只显示 OK 的那几段。**
+ *     后端 `skill-compiler.ts:203 stageReports` 把 optimize / package 显式标成 `NOT_IMPLEMENTED`
+ *     并写明归谁做，这是它的**诚实位**。界面若滤掉这两段、只画三个绿勾，就是替后端宣布
+ *     「七段管线跑完了」——正是「填了字段没有消费方，比不填更危险」那族病的界面版。
+ *  2. **`ok` 与 `diagnostics` 分开读。** `ok === true` 只等于"没有 error 级诊断"
+ *     （`skill-compiler.ts:242` `hasError = diagnostics.some(d => d.severity === "error")`），
+ *     **不等于**"没有问题"——warning / info 照样在。所以 ok 时也必须把诊断列出来。
+ *  3. **`evidence` 原样显示。** 那是 R13 要求「当场亮出证据」的落点（命中的 key / 词表 / 调用点），
+ *     摘要掉它，诊断就退回成"有问题"这种没法照着修的话。
+ */
+const STAGE_LABEL: Record<string, string> = {
+  parse: "① 解析",
+  validate: "② 校验",
+  graph: "③ 推理图",
+  optimize: "④ 优化",
+  package: "⑤ 运行时包",
+};
+const SEVERITY_LABEL: Record<string, string> = { error: "错误", warning: "警告", info: "提示" };
+const SEVERITY_BADGE: Record<string, string> = { error: "red", warning: "amber", info: "" };
+
+export function SkillCompileReport({
+  result, onDismiss,
+}: {
+  result: SkillCompileResult | null;
+  onDismiss: () => void;
+}): JSX.Element | null {
+  if (!result) return null;
+  const notImplemented = result.stages.filter((s) => s.status === "NOT_IMPLEMENTED");
+  const errors = result.diagnostics.filter((d) => d.severity === "error");
+
+  return (
+    <div style={{ marginTop: 12 }} data-testid="skill-compile-report" data-compile-ok={String(result.ok)}>
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span>编译报告</span>
+        {/* ok 的措辞刻意不写「编译通过」：它只表示"无 error 级诊断"，warning/info 可能仍在。 */}
+        <span className={`badge ${result.ok ? "green" : "red"}`} data-testid="skill-compile-ok">
+          {result.ok ? "无错误级诊断" : `${errors.length} 条错误级诊断`}
+        </span>
+        <span className="badge mono" data-testid="skill-compile-version">
+          {result.skillKey} v{result.skillVersion}
+        </span>
+        <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onDismiss} data-testid="skill-compile-dismiss">
+          收起
+        </button>
+      </div>
+
+      {/* —— 七段管线的落地状态：五段全列，NOT_IMPLEMENTED 显式在案 —— */}
+      <table className="cmp" style={{ width: "100%" }} data-testid="skill-compile-stages">
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", width: "16%" }}>阶段</th>
+            <th style={{ textAlign: "left", width: "16%" }}>状态</th>
+            <th style={{ textAlign: "left" }}>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.stages.map((s) => (
+            <tr key={s.stage} data-testid="skill-compile-stage-row" data-stage={s.stage} data-stage-status={s.status}>
+              <td>{STAGE_LABEL[s.stage] ?? s.stage}</td>
+              <td>
+                <span className={`badge ${s.status === "OK" ? "green" : s.status === "FAILED" ? "red" : "amber"}`}>
+                  {/* 枚举值原样带出（不译成"未完成"这类模糊话）：NOT_IMPLEMENTED 是后端签的字。 */}
+                  {s.status}
+                </span>
+              </td>
+              {/* note 原文照登：NOT_IMPLEMENTED 时它写着「归哪张工单」，摘要掉就没法追。 */}
+              <td style={{ fontSize: 11.5, lineHeight: 1.6 }}>{s.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {notImplemented.length > 0 && (
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }} data-testid="skill-compile-not-implemented-note">
+          ⚠️ {notImplemented.length} 段未实现（{notImplemented.map((s) => STAGE_LABEL[s.stage] ?? s.stage).join(" / ")}）——
+          本报告**不含**任何可分发运行时制品，上方推理图是未经优化的派生图。
+        </div>
+      )}
+
+      {/* —— 诊断：ok 时也要列（ok 只说明没有 error 级） —— */}
+      {result.diagnostics.length > 0 && (
+        <div style={{ marginTop: 12 }} data-testid="skill-compile-diagnostics">
+          <div className="section-title">诊断（{result.diagnostics.length}）</div>
+          <table className="cmp" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", width: "16%" }}>诊断码</th>
+                <th style={{ textAlign: "left", width: "10%" }}>级别</th>
+                <th style={{ textAlign: "left", width: "16%" }}>位置</th>
+                <th style={{ textAlign: "left" }}>说明与证据</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.diagnostics.map((d, i) => (
+                <tr key={`${d.code}:${d.path}:${i}`} data-testid="skill-compile-diagnostic-row" data-diag-code={d.code} data-diag-severity={d.severity}>
+                  <td className="mono" style={{ fontSize: 11 }}>{d.code}</td>
+                  <td><span className={`badge ${SEVERITY_BADGE[d.severity] ?? ""}`}>{SEVERITY_LABEL[d.severity] ?? d.severity}</span></td>
+                  {/* JSON Pointer；根路径后端给的是空串 ⇒ 留空，不补 "/"（那会指向一个它没说过的位置）。 */}
+                  <td className="mono" style={{ fontSize: 11, wordBreak: "break-all" }}>{d.path}</td>
+                  <td style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+                    {d.message}
+                    {/* R13：证据原样亮出，不摘要 —— 没有它，诊断就退回成"有问题"这种没法照着修的话。 */}
+                    {d.evidence !== undefined && (
+                      <div className="mono muted" style={{ fontSize: 10.5, marginTop: 4, wordBreak: "break-all" }} data-testid="skill-compile-diagnostic-evidence">
+                        {d.evidence}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* —— 推理图：这条技能跑起来会依次碰哪些平台能力 —— */}
+      <div style={{ marginTop: 12 }} data-testid="skill-compile-graph">
+        <div className="section-title">
+          推理图（{result.graph.nodes.length} 节点 · {result.graph.edges.length} 条边）
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          {result.graph.nodes.map((n) => (
+            <span
+              key={n.id}
+              className={`badge ${n.id === result.graph.entry ? "blue" : n.type === "exit_error" ? "red" : n.type === "create_action_draft" ? "amber" : ""}`}
+              data-testid="skill-compile-graph-node"
+              data-node-id={n.id}
+              data-node-type={n.type}
+              // onError 是**声明位**：null 表示该节点未声明异常语义，不是"声明了 FAIL"。
+              title={`${n.type}${n.ref ? ` · ${n.ref.kind}:${n.ref.key}` : ""}${n.onError ? ` · onError=${n.onError}` : ""}`}
+            >
+              {n.ref ? `${n.ref.kind}:${n.ref.key}` : n.type}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* —— 派生工具集：跑这条技能必然要用到平台的哪个工具（derived，非作者声明） —— */}
+      {result.ast.tools.length > 0 && (
+        <div style={{ marginTop: 12 }} data-testid="skill-compile-tools">
+          <div className="section-title">派生工具（{result.ast.tools.length}）</div>
+          <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>
+            由引用 kind 与写模式**推导**得出（`source: derived`），不是作者声明的字段——每条标出推它的依据。
+          </div>
+          {result.ast.tools.map((t) => (
+            <div key={t.name} style={{ fontSize: 11.5, marginBottom: 3 }} data-testid="skill-compile-tool-row" data-tool-name={t.name}>
+              <span className="badge mono">{t.name}</span>
+              <span className="muted" style={{ marginLeft: 6 }}>← {t.impliedBy.join("、")}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* —— execution.steps 的诚实位：恒空属「接了线没数据」，不是「这个技能没有步骤」 —— */}
+      {!result.ast.execution.declared && (
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.6 }} data-testid="skill-compile-execution-note">
+          {result.ast.execution.note}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ⑥ 出厂技能门审计诚实位 —— `GET /b/v1/ops/skill-seed-gate` 的可见面
+// ---------------------------------------------------------------------------
+
+/**
+ * F14 的诚实位。四态**各有各的措辞**，绝不合并：
+ *
+ * | status | 界面措辞 | 绝不可渲染成 |
+ * |---|---|---|
+ * | `NOT_RUN`          | 未审计（灰） | 通过 / 绿 |
+ * | `CLEAN`            | 通过（绿）   | — |
+ * | `VIOLATIONS`       | 有违规（红） | — |
+ * | `GATE_UNAVAILABLE` | 无法判定（黄）+ 原因原文 | 通过 / 绿 |
+ *
+ * 把 `NOT_RUN` / `GATE_UNAVAILABLE` 画成绿色，就是把「我没找到」说成「它不存在」——
+ * 那这道位就白加了（后端 `skill-publish-gate.ts:178` 原话）。
+ */
+const SEED_GATE_VIEW: Record<SkillSeedGateReport["status"], { label: string; badge: string; hint: string }> = {
+  NOT_RUN: { label: "未审计", badge: "", hint: "启动期审计尚未跑过 —— 这不等于出厂技能干净，只等于没人问过。" },
+  CLEAN: { label: "通过", badge: "green", hint: "出厂技能已用与发布路完全相同的门问过一遍，零违规。" },
+  VIOLATIONS: { label: "有违规", badge: "red", hint: "出厂技能经旁路落库时带着违规 —— 它们从未走过发布门。" },
+  GATE_UNAVAILABLE: { label: "无法判定", badge: "amber", hint: "注册表读不出来，门无法判定 —— 没判定 ≠ 判定为好。" },
+};
+
+export function SkillSeedGateStrip({ report }: { report: SkillSeedGateReport | undefined }): JSX.Element | null {
+  // 还没取到（加载中/请求失败）⇒ 整块不渲染。不许先画一个"通过"再等真值回来。
+  if (!report) return null;
+  const view = SEED_GATE_VIEW[report.status];
+  if (!view) return null;
+  return (
+    <div
+      className="panel"
+      style={{ marginBottom: 12, padding: "8px 12px" }}
+      data-testid="skill-seed-gate"
+      data-seed-gate-status={report.status}
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12 }}>出厂技能发布门审计</span>
+        <span className={`badge ${view.badge}`} data-testid="skill-seed-gate-status">{view.label}</span>
+        {/* checked 是"审计了几个"，与 findings.length（"几个有违规"）不是一回事，分别点明所数何物。 */}
+        <span className="badge mono" data-testid="skill-seed-gate-checked">已审 {report.checked} 个技能</span>
+        {report.ranAt && <span className="badge mono">{report.ranAt}</span>}
+        <span className="muted" style={{ fontSize: 11.5 }}>{view.hint}</span>
+      </div>
+      {/* 门不可用时的原因原文：运维照着它直接定位是哪个注册表读不出来。 */}
+      {report.unavailableReason !== undefined && (
+        <div className="mono" style={{ fontSize: 11, marginTop: 6, wordBreak: "break-all" }} data-testid="skill-seed-gate-reason">
+          {report.unavailableReason}
+        </div>
+      )}
+      {report.findings.length > 0 && (
+        <div style={{ marginTop: 6 }} data-testid="skill-seed-gate-findings">
+          {report.findings.map((f) => (
+            <div key={f.skillId} style={{ fontSize: 11.5, marginTop: 3 }} data-testid="skill-seed-gate-finding" data-skill-key={f.skillKey}>
+              <span className="badge red mono">{f.skillKey}</span>
+              {/* 违规原文一字不改（含 code），那是要照着去修的信息。 */}
+              {f.violations.map((v, i) => (
+                <span key={i} style={{ marginLeft: 6 }}>
+                  <span className="mono">{v.code}</span>：{v.message}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

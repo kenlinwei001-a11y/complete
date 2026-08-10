@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSolverRegistry, type SolverCatalogItem } from "@/api/endpoints";
+import { fetchSolverCategories, fetchSolverRegistry, type SolverCatalogItem } from "@/api/endpoints";
 
 /**
  * C5 求解器目录页（/admin/solvers · 只读发现）。
@@ -18,6 +18,21 @@ export default function SolversPage() {
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const { data } = useQuery({ queryKey: ["a", "solver-registry"], queryFn: () => fetchSolverRegistry() });
   const solvers = data?.solvers ?? [];
+
+  /**
+   * WO-UNBLOCK-SKILL-FE · 决策问题类目登记表（`GET /a/v1/solvers/categories`）。
+   *
+   * ⚠️ 与上面的 `domain` 是**两个不同的维**，故并排两块、各自成块，**不合并**：
+   *  · `domain`（4 值）回答「这个求解器归哪块业务」——registry 每条自带，用于分组铺表；
+   *  · `category`（10 类）回答「我在做什么决策」——本端点独有，带着**决策问句**。
+   * 合成一维就是本仓治过的「同一概念两套词表」：两边都能跑，交集为空，谁也不报错。
+   *
+   * `retry: false`：类目维取不到就整块不渲染（下方 `categories &&`），
+   * 不画一个空的类目区让人以为"平台没有分类"。
+   */
+  const { data: categoryReg } = useQuery({ queryKey: ["a", "solver-categories"], queryFn: fetchSolverCategories, retry: false });
+  // 空类目不铺（后端 10 类是全集，本租户 feature 过滤后可能有类目一条求解器都没有）
+  const nonEmptyCategories = (categoryReg?.categories ?? []).filter((c) => c.count > 0);
 
   const domainOptions = useMemo(() => {
     const m = new Map<string, number>();
@@ -89,6 +104,59 @@ export default function SolversPage() {
             <button type="button" className="btn sm" onClick={() => setSelectedDomains([])} data-testid="solver-domain-clear">
               清除
             </button>
+          )}
+        </div>
+      )}
+
+      {/* 决策问题类目（10 类）：按「我在做什么决策」找求解器。与上面的 domain 筛选是两个维，不合并。 */}
+      {categoryReg && nonEmptyCategories.length > 0 && (
+        <div className="panel" style={{ marginBottom: 12 }} data-testid="solver-category-registry">
+          <div className="section-title">按决策问题找求解器（{nonEmptyCategories.length} 类 · 共 {categoryReg.total} 个求解器）</div>
+          <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+            归类判据是「它回答的是不是这句问话」，不是「它用了哪种算法」——故同一句问话下可能既有 CP-SAT 也有启发式。
+          </div>
+          <table className="cmp" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", width: "18%" }}>类目</th>
+                <th style={{ textAlign: "left" }}>这一类回答的决策问题</th>
+                <th style={{ textAlign: "left", width: "34%" }}>成员求解器</th>
+              </tr>
+            </thead>
+            <tbody>
+              {nonEmptyCategories.map((c) => (
+                <tr key={c.category} data-testid="solver-category-row" data-category={c.category}>
+                  <td>
+                    <span className="badge blue">{c.label}</span>
+                    {/* count 点明所数何物（本仓 WO-UNIT-MEANING：裸数看不出数的是什么） */}
+                    <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>{c.count} 个求解器</div>
+                  </td>
+                  <td style={{ fontSize: 11.5, lineHeight: 1.6 }} data-testid="solver-category-question">{c.decisionQuestion}</td>
+                  <td>
+                    {c.solverKeys.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className="badge mono"
+                        style={{ marginRight: 4, marginBottom: 3, cursor: "pointer" }}
+                        // 点类目成员即把下方目录搜索框填成该 key —— 类目维与检索维在此接上，不是两张互不相干的表。
+                        onClick={() => setQ(k)}
+                        data-testid={`solver-category-key-${k}`}
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* 未归类：**空数组 = 无漏网**，后端诚实亮出，前端照样亮出，不藏 */}
+          {categoryReg.uncategorized.length > 0 && (
+            <div style={{ fontSize: 11.5, marginTop: 8 }} data-testid="solver-category-uncategorized">
+              <span className="badge amber">未归类 {categoryReg.uncategorized.length} 个</span>
+              <span className="mono muted" style={{ marginLeft: 6 }}>{categoryReg.uncategorized.join("、")}</span>
+            </div>
           )}
         </div>
       )}
