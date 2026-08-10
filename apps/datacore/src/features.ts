@@ -147,6 +147,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）+ L3 耦合联合求解（一次 portfolio 守恒解·真传导）。
   { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
   { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
+  // WO-ORG-WORLD（R3 暗发·defaultOn:false·关 = 404 FEATURE_NOT_FOUND 先于 authz）：组织世界（七世界之②）——
+  // Person/Role/Department/Authority/ApprovalLimit/Delegation + 「给定待批事项→谁有权批」查询面。
+  // ⚠️ **开关默认值是产品决策不是 dev 决策**：本单一律 defaultOn:false，要开由产品显式 override（seedDemoEntitlements 或租户配置）。
+  { key: "org.world", name: "组织世界（人/角色/部门/职权/审批额度/代理）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["org-world"] } },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

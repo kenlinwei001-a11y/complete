@@ -503,6 +503,11 @@ export function createMemoryRepos(): Repos {
     // WO-Q0 · 业务流程层（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
     processDomains: new MemStore(),
     processDefinitions: new MemStore(),
+    // WO-ORG-WORLD · 组织世界（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
+    orgPrincipals: new MemStore(),
+    orgAuthorities: new MemStore(),
+    orgApprovalLimits: new MemStore(),
+    orgDelegations: new MemStore(),
     sim: new MemSimRepo(),
     async ping() {
       /* always ready */

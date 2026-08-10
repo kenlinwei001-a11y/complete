@@ -807,6 +807,14 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
     processDomains: new PgStore(pool, "process_domains"),
     processDefinitions: new PgStore(pool, "process_definitions"),
+    // WO-ORG-WORLD · 组织世界（R9 三处同改之三 · migrations/030_org_world.sql）。
+    // 同 processDefinitions 的理由：表名写错**不会编译报错**，只在 pg 模式运行时炸，而测试默认走 memory
+    // ⇒ 单测全绿证明不了这四行对。故 org-world.test.ts 有一条断言把 030 migration 里的 CREATE TABLE
+    // 表名抽出来与此处字面量比对（含金丝雀，抽不到 4 张就报「工具坏了」而不是「表名对」）。
+    orgPrincipals: new PgStore(pool, "org_principals"),
+    orgAuthorities: new PgStore(pool, "org_authorities"),
+    orgApprovalLimits: new PgStore(pool, "org_approval_limits"),
+    orgDelegations: new PgStore(pool, "org_delegations"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
