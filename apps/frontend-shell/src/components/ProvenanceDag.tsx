@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 import zh from "@/locales/zh";
+// WO-FACTOR-SCOPE-SINGLESOURCE：作用域回执结构走契约（contracts-only-shared·前端不重定义）。
+import type { GapScope } from "@platform/contracts";
 
 /**
  * cockpit P2 规划决策推演 · 根因归因 DAG（<ProvenanceDag>）。
@@ -87,7 +89,7 @@ export interface GapAttrOutput {
    * `factorApplied=false` + `factorNote` = 传了 factorId 但引擎无该因子的因果域 → 树仍按基地出，
    * 界面必须据实标"未按该因子细分"，而不是把树藏掉再编一个"引擎不支持作用域"的病因。
    */
-  scope?: { baseId?: string; displayName?: string; exposure?: boolean; factorId?: string; factorApplied?: boolean; factorNote?: string };
+  scope?: GapScope;
 }
 export function gapAttributionToDag(ga: GapAttrOutput | undefined): DagData | undefined {
   if (!ga?.rootMetric) return undefined;
@@ -197,10 +199,34 @@ export function gapAttributionToBaseRootCause(ga: GapAttrOutput | undefined, bas
     if (c.id.startsWith("material:")) materialId = c.id;
   }
 
+  // ── WO-FACTOR-SCOPE-SINGLESOURCE · 因子细分层（depth 3·`path` 指名父节点）───────────────────
+  // 引擎在 `scope.factorId` 命中产能因子时追加这一层：`capfactor:<id>` 头 + `capobj:<id>:<对象主键>` 若干，
+  // 每个节点的 `path` 形如 `[metricId, base:<基地>, capfactor:<id>(, capobj:…)]`。
+  // 修前本函数只认「物料叶挂 caused_by」这一种 depth-3 形态（`materialId && l3.length>0`），
+  // 而物料叶只挂在**首基地** ⇒ 其余 12 个基地即便引擎真细分了，前端也把整层丢掉。
+  // 现在：**有 path 且父节点已在图里**的 depth-3 节点按 path 挂父；剩下的才走老的物料锚逻辑（R6 不回归）。
+  const rendered = new Set(nodes.map((n) => n.id));
+  const pathAnchored = l3.filter((n) => Array.isArray(n.path) && n.path.length >= 3 && n.path[1] === baseId);
+  if (pathAnchored.length > 0) {
+    for (const cn of pathAnchored) {
+      const parent = cn.path![cn.path!.length - 2]!; // path 末位是自己，倒数第二位是父
+      nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, contribution: cn.contribution, share: cn.share, unit: cn.unit, ...provOf(cn) });
+      rendered.add(cn.id);
+      edges.push({ from: rendered.has(parent) ? parent : baseId, to: cn.id, weight: cn.share, kind: cn.id.startsWith("cf:") ? "caused_by" : "factor_refine" });
+      const pv = cn.provenance;
+      if (pv?.drillType) {
+        const ev = `${cn.id}:ev`;
+        nodes.push({ id: ev, kind: "evidence", label: `${pv.drillType}.${pv.drillField ?? ""}`, value: pv.drillValue, ...provOf(cn) });
+        edges.push({ from: cn.id, to: ev, weight: cn.share, kind: "drill" });
+      }
+    }
+  }
+
   // 第四层：物料短缺叶挂 caused_by 因果链（逐跳溯地缘/决策终点根因·复用 depth=3 因果层 + 下钻真值叶）。
-  if (materialId && l3.length > 0) {
+  if (materialId && l3.length > pathAnchored.length) {
     const reached = new Set(l3.map((n) => n.id.replace(/^cf:/, "")));
     for (const cn of l3) {
+      if (rendered.has(cn.id)) continue; // 已按 path 挂过（因子细分层）→ 不重复渲染
       nodes.push({ id: cn.id, kind: "factor", label: cn.factor, value: cn.contribution, contribution: cn.contribution, share: cn.share, unit: cn.unit, ...provOf(cn) });
       const pv = cn.provenance;
       if (pv?.drillType) {

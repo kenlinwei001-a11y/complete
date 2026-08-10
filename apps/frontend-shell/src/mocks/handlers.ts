@@ -1694,12 +1694,52 @@ export const handlers = [
       }
       // WO-COCKPIT-INFER gap_attribution（CEO-2 深度反向归因·多跳 caused_by 因果树·mock 同后端形状）：
       // 储能达成率越线 → 结构分摊 + caused_by 逐跳（上游减供→长协违约→矿价→地缘→决策 / 备份薄→认证周期）→ 终点根因 + 下钻真值叶。
+      //
+      // ⚠ WO-FACTOR-SCOPE-SINGLESOURCE（本段的形状是**病灶的直接对策**）：修前本桩
+      //   ① **完全忽略 `scope.factorId`**（7 个 chip 返回逐字节相同的载荷），
+      //   ② 且**不回 `scope` 字段** ⇒ 前端判据 `factorApplied !== false` 恒真
+      //      ⇒ mock 模式下一律显示「已按因子细分」——**比真后端更糟**（真后端至少诚实说了"未细分"）。
+      // 现在桩与真后端同形状：下发 `scope.availableFactors`（chip 候选单源）、按 factorId 真细分、
+      // 不在册的 factorId 诚实回 `factorApplied:false`。桩的取值随入参真变（KILL-MOCK·非写死示意）。
+      {
+        const gaScope = (invArgs.scope ?? {}) as { baseId?: string; factorId?: string };
+        // 可细分因子集（与 datacore 种子 CAPACITY_CAUSAL_FACTORS 同 id/同 label·mock 只取能演示的三个）。
+        const availableFactors = [
+          { factorId: "cf-cap-bottleneck-process", label: "瓶颈工序", drillType: "Line", drillField: "utilization", objectCount: 10 },
+          { factorId: "cf-cap-equipment-oee", label: "设备OEE", drillType: "Equipment", drillField: "oee_current", objectCount: 60 },
+          { factorId: "cf-cap-yield-variance", label: "良率波动", drillType: "Process", drillField: "yield_baseline", objectCount: 50 },
+        ];
+        const wantFactor = typeof gaScope.factorId === "string" && gaScope.factorId !== "" ? gaScope.factorId : undefined;
+        const hit = availableFactors.find((f) => f.factorId === wantFactor);
+        const baseKey = gaScope.baseId ?? "changzhou";
+        // 细分节点：每个因子给**不同**的对象节点（改 factorId → 树真变·非写死）。与因果链节点同处 depth 3
+        // （前端 `levels.find(depth===3)` 只取第一层 ⇒ 必须并到同一层，不能各起一层）。
+        const refineNodes = hit
+          ? [
+              { id: `capfactor:${hit.factorId}`, factor: `${hit.label}（本基地 ${hit.drillType}.${hit.drillField}）`, contribution: 3.1, unit: "%", share: 0.34,
+                path: ["m1", `base:${baseKey}`, `capfactor:${hit.factorId}`],
+                provenance: { kind: "实测", drillType: hit.drillType, drillId: `MOCK-${hit.factorId}-1`, drillField: hit.drillField, drillValue: 0.87 } },
+              { id: `capobj:${hit.factorId}:MOCK-1`, factor: `MOCK-${hit.factorId}-1 · ${hit.drillField}=0.87`, contribution: 1.8, unit: "%", share: 0.58,
+                path: ["m1", `base:${baseKey}`, `capfactor:${hit.factorId}`, `capobj:${hit.factorId}:MOCK-1`],
+                provenance: { kind: "实测", drillType: hit.drillType, drillId: `MOCK-${hit.factorId}-1`, drillField: hit.drillField, drillValue: 0.87 } },
+            ]
+          : [];
+        const scopeOut = {
+          baseId: baseKey,
+          availableFactors,
+          ...(wantFactor
+            ? (hit
+                ? { factorId: hit.factorId, factorLabel: hit.label, factorApplied: true }
+                : { factorId: wantFactor, factorApplied: false, factorNote: `因子「${wantFactor}」无对应 CausalFactor 因果域（按基地聚合返回·未按该因子细分）` })
+            : {}),
+        };
       return HttpResponse.json({
         data: {
           rootMetric: { key: "seg_attain_ess", name: "储能达成率", unit: "%", target: 100, actual: 72.2, gap: 27.8 },
           totalGap: 27.8,
+          scope: scopeOut,
           levels: [
-            { depth: 1, label: "基地", nodes: [{ id: "base:changzhou", factor: "基地 常州", contribution: 9.2, unit: "%" }], residual: 2.1 },
+            { depth: 1, label: "基地", nodes: [{ id: `base:${baseKey}`, factor: "基地 常州", contribution: 9.2, unit: "%" }], residual: 2.1 },
             { depth: 2, label: "订单/瓶颈", nodes: [{ id: "material:cathode", factor: "正极物料短缺", contribution: 6.1, unit: "%" }], residual: 1.0 },
             {
               depth: 3, label: "因果链（caused_by）", residual: 0.7,
@@ -1711,6 +1751,7 @@ export const handlers = [
                 { id: "cf:cf-decision-gap", factor: "价格预判缺失(root)", contribution: 0.3, unit: "%", share: 0.05, provenance: { drillType: "DecisionGap", drillField: "severity", drillValue: 0.8 } },
                 { id: "cf:cf-backup-thin", factor: "备份池不足", contribution: 0.5, unit: "%", share: 0.09, provenance: { drillType: "BackupSupplierPool", drillField: "memberCount", drillValue: 2 } },
                 { id: "cf:cf-cert-cycle", factor: "认证周期长(root)", contribution: 0.4, unit: "%", share: 0.07, provenance: { drillType: "BackupSupplierPool", drillField: "certWeeks", drillValue: 16 } },
+                ...refineNodes,
               ],
             },
           ],
@@ -1731,6 +1772,7 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+      }
     }
     if (key === "generic_inference") {
       // WO-PROJECT-SIM-WHATIF：杠杆发现 mode:levers（杠杆随⑤瓶颈变·服务端算敏感度）。

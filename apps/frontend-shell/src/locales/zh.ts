@@ -436,11 +436,24 @@ export const zh = {
       // WO-CAPACITY-PAGE-100PCT ⑩（R8 量纲错标）：本页传给面板的 before 值是 `card.peak`＝**峰值张力（0–100 指数）**，
       // 却被标成"可用产能"——屏幕上出现「调整前可用产能 98.0」这种量纲错到底的数字。改为按其真实口径标注。
       leverBefore: "调整前峰值张力（0–100）",
+      // WO-FACTOR-SCOPE-SINGLESOURCE：chip 显示用 label、传值用 CausalFactor.factorId；
+      // 候选集来自引擎回执 scope.availableFactors（单一来源）。文案一律走本表，不内联到组件里。
       rootcause: {
         scopeTitle: "因子作用域",
         allFactors: "全部因子（基地级）",
         pick: (f: string) => `按「${f}」细分`,
-        refined: (f: string) => `已按因子「${f}」细分（gap_attribution scope.factorId·引擎已支持 base×factor 作用域·前端已接线）`,
+        /** chip 悬停：这个因子细分后会下钻到哪类对象的哪个字段、本基地有几个（诚实可核）。 */
+        chipTitle: (label: string, drillType: string, drillField: string, n: number) =>
+          `按「${label}」细分 → 下钻本基地 ${drillType}.${drillField}（当前 ${n} 个对象）`,
+        refined: (f: string) => `已按因子「${f}」细分（gap_attribution scope.factorId·细分层为占比层·结构分摊 L1/L2 不变）`,
+        baseAggregated: (f: string) =>
+          `结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。注：当前按基地聚合根因，未按具体越线因子（${f}）细分——点上方因子 chip 即按因子细分。`,
+        /** 件三：一个可细分因子都没有时据实说，而不是画一排点不动的按钮。 */
+        noneAvailable: "本基地当前无可细分因子（引擎未在本基地解析到任何因子的承载对象）。",
+        /** 件四：引擎明说没细分时的告警条（用户不可能忽略的形态·非树底一行小字）。 */
+        notRefinedTitle: "⚠ 未按该因子细分",
+        notRefinedFallback: (f: string) => `引擎未按因子「${f}」细分，下方仍是本基地的聚合根因树。`,
+        backToBase: "回到基地级",
       },
       dialog: {
         title: "人机对话 · 真 NL（orchestrator 路由）",
