@@ -3,6 +3,9 @@ import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
 import type { ResourceDescriptor, SolverCategory } from "@platform/contracts";
 import { solverCategoryOf } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维（消费方在本文件：检索筛选 + 资源投影）
+// WO-SLICE-DISCOVERY · 切片目录摘要结构派生（R13 派生投影·R14 零写死）+ 域注册表（域中文名单一出处）。
+import { deriveSliceSummary } from "./ontology/slice-summary.js";
+import { BUSINESS_DOMAINS } from "./graphmeta.js";
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -30,6 +33,21 @@ export interface CatalogItem {
    * （手写就会和 `SOLVER_CATEGORY_MAP` 两处漂移）。切片等非求解器条目无此字段。
    */
   category?: SolverCategory;
+  /**
+   * WO-SLICE-DISCOVERY（闭 §8 `G-SLICE-ROOT-ARGS-UNDISCOVERABLE`）：本条目**必须提供哪些实参**
+   * 才解得出结果（切片 = root selector 里的 `{{args.X}}`，与执行期解析同一真源
+   * `ontology/slice-args.ts`）。空数组 = 无需实参；缺省 = 该 kind 不适用此维。
+   * 「摘要说要什么参数」与「执行按什么参数取」必须同源，否则是无人能发现的静默错答。
+   */
+  requiredArgs?: string[];
+  /** WO-SLICE-DISCOVERY：description 系结构合成（真值源没写业务描述）时置 true，诚实标注不冒充人写。 */
+  descriptionSynthesized?: boolean;
+  /** WO-SLICE-DISCOVERY（切片专有·派生投影 R13）：root 对象类型 key。 */
+  rootType?: string;
+  /** WO-SLICE-DISCOVERY（切片专有）：从 root 沿 paths 可达的对象类型（含 root·字典序·断链止步）。 */
+  includedTypes?: string[];
+  /** WO-SLICE-DISCOVERY（切片专有）：paths 上用到的链路 key（字典序去重）。 */
+  includedLinkKeys?: string[];
 }
 
 /**
@@ -270,18 +288,67 @@ export class CatalogService {
     } else if (category) {
       items = []; // 切片不参与求解器分类维
     } else {
-      // 内置 + 已发布的自定义切片（自定义切片必须带 description，否则不入目录）
+      // 内置 + 全部已登记的自定义切片。
+      //
+      // WO-SLICE-DISCOVERY（闭 §8 `G-SLICE-CATALOG-TWO-ITEMS`）：这里**原本**有一道
+      // `spec.description` 非空过滤 —— 立意是「没有给 LLM 看的描述就不允许发布」，
+      // 但没有任何生产写入方产出这个字段（`batteryBuiltinSlices` / `batteryCoverageSlices` /
+      // `libEntryToSpec` 都不写），于是真后端实测 **98 条 SliceSpec 全部落选、目录恒 2 条**
+      // （那 2 条还是本文件硬编码的 `BUILTIN_SLICE_CATALOG`，在 `slice_specs` 里并不存在），
+      // Agent 检索「订单从下单到回款」top-20 里一条切片都没有 —— 平台明明有 `order_to_cash_720`
+      // 覆盖 15 类 / 10 域。形态 = **「接了线没数据」**，修法是**补数据来源**而不是删这道门。
+      //
+      // 现在的口径：描述仍然是硬要求，但**允许结构派生**（`ontology/slice-summary.ts`·R13 派生投影·
+      // R14 零写死：类型中文名取本体 `displayName`、域名取域注册表，代码里无任何行业实体名）。
+      // 真值源自己写了 description 就以它为准；派生出来的标 `descriptionSynthesized` 诚实区分。
       const custom = await this.repos.sliceSpecs.list(ctx.tenantId);
-      const customItems: CatalogItem[] = custom
-        .filter((s) => typeof (s.spec as { description?: string }).description === "string" && (s.spec as { description?: string }).description!.trim() !== "")
-        .map((s) => ({
-          key: s.sliceKey,
-          name: s.sliceKey,
-          description: (s.spec as { description?: string }).description ?? "",
-          argHints: ((s.spec as { argHints?: Record<string, string> }).argHints ?? {}),
-          domain: (s.spec.root?.typeKey ? undefined : undefined),
-        }));
-      items = [...BUILTIN_SLICE_CATALOG, ...customItems];
+      // 只取 ACTIVE 类型（同 `OntologyService.listTypes` 的口径）——否则同 key 的历史版本会重复进
+      // typeByKey，中文名取到哪一版全看仓储返回序 ⇒ 违 R6。
+      const [types, linkTypes, tenantDomains] = await Promise.all([
+        this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE"),
+        this.repos.ontologyLinks.list(ctx.tenantId),
+        this.repos.domains.list(ctx.tenantId),
+      ]);
+      const summaryTypes = types.map((t) => ({ key: t.key, displayName: t.displayName, domain: t.domain }));
+      const summaryLinks = linkTypes.map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+      // 域中文名：**本租户已登记的域（一等治理单元）优先**，平台 14 域参考注册表兜底 ——
+      // 反过来（注册表优先）就会把租户自己改过的域名字盖掉，且租户新增的域永远拿不到名字。
+      // R6：先按 key 字典序归一，同 key 以租户记录为准（Map 后写覆盖）。
+      const domainLabels = new Map<string, string>(BUSINESS_DOMAINS.map((d) => [d.key, d.displayName]));
+      for (const d of [...tenantDomains].sort((a, b) => (a.domainKey < b.domainKey ? -1 : 1))) {
+        if (d.displayName.trim().length > 0) domainLabels.set(d.domainKey, d.displayName.trim());
+      }
+      const summaryDomains = [...domainLabels.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+        .map(([key, displayName]) => ({ key, displayName }));
+      // R6：仓储 list 无 ORDER BY 保证（pg 尤甚）⇒ 先按 sliceKey 字典序归一，否则两次 discover 行序会漂。
+      const customItems: CatalogItem[] = [...custom]
+        .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : a.sliceKey > b.sliceKey ? 1 : 0))
+        .map((s) => {
+          const d = deriveSliceSummary({
+            sliceKey: s.sliceKey,
+            spec: s.spec as never,
+            types: summaryTypes,
+            linkTypes: summaryLinks,
+            domains: summaryDomains,
+          });
+          return {
+            key: s.sliceKey,
+            name: d.label,
+            description: d.description,
+            argHints: d.argHints,
+            requiredArgs: d.requiredArgs,
+            answersQuestions: d.answersQuestions,
+            tags: d.tags,
+            rootType: d.rootType,
+            includedTypes: d.spannedTypes,
+            includedLinkKeys: d.includedLinkKeys,
+            ...(d.descriptionSynthesized ? { descriptionSynthesized: true } : {}),
+            ...(d.domain ? { domain: d.domain } : {}),
+          };
+        });
+      // 内置切片同样下发 requiredArgs（口径一致：它们的解析器不吃 root selector 占位符 ⇒ 声明式实参见 argHints）。
+      items = [...BUILTIN_SLICE_CATALOG.map((b) => ({ ...b, requiredArgs: Object.keys(b.argHints).sort() })), ...customItems];
     }
     // feature 过滤（未开通 → 不出现）+ 语义相关度排序（query 存在时）
     const scored: { item: CatalogItem; score: number }[] = [];

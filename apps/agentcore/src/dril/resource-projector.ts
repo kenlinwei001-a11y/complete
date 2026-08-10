@@ -40,6 +40,19 @@ export interface CatalogItem {
   answersQuestions?: string[];
   /** 检索标签（供语义候选补召回）。 */
   tags?: string[];
+  /**
+   * WO-SLICE-DISCOVERY：调用该条目**必须提供**的实参名（切片 = root selector 的 `{{args.X}}`，
+   * 与 DataCore 执行期解析同一真源 `ontology/slice-args.ts`）。空数组 = 无需实参。
+   */
+  requiredArgs?: string[];
+  /** WO-SLICE-DISCOVERY：description 系结构合成（真值源没写业务描述）⇒ true。 */
+  descriptionSynthesized?: boolean;
+  /** WO-SLICE-DISCOVERY（切片专有）：root 对象类型 key。 */
+  rootType?: string;
+  /** WO-SLICE-DISCOVERY（切片专有）：从 root 可达的对象类型（含 root·字典序）。 */
+  includedTypes?: string[];
+  /** WO-SLICE-DISCOVERY（切片专有）：paths 上用到的链路 key。 */
+  includedLinkKeys?: string[];
 }
 
 /**
@@ -66,7 +79,18 @@ export function projectSolvers(items: CatalogItem[]): SolverResource[] {
   }));
 }
 
-/** slice ← DataCore catalog.discover("slices")。P1 仅有目录级元数据；rootType/includedTypes 留 P3 从本体图补齐。 */
+/**
+ * slice ← DataCore catalog.discover("slices")。
+ *
+ * WO-SLICE-DISCOVERY：`rootType` / `includedTypes` / `includedLinkKeys` 原本硬写 `""` / `[]`
+ * （P1 注释说「留 P3 从本体图补齐」，而 P3 补的是别的东西，这三个字段就一直空着）。
+ * 空 `includedTypes` 的直接后果有两条，都不在测试面上：
+ *   ① `search-engine.ontologyScore` 的 objectTypeOverlap 对切片恒 0 —— 切片天生排不上榜；
+ *   ② `relations.declaredObjectTypes` 取不到类型 ⇒ `slice --reads--> objectType` 边恒空。
+ * 现在 DataCore 目录已按切片结构派生下发这三样（`ontology/slice-summary.ts`），接住即可，
+ * **不在 B 侧重算一遍图**（重算 = 第二处真源，迟早与 A 侧对不上）。
+ * 目录没给（老版本 A / 精简客户端）→ 回落原来的空值，行为不变（fail-open）。
+ */
 export function projectSlices(items: CatalogItem[]): SliceResource[] {
   return items.map((s) => ({
     kind: "slice" as const,
@@ -76,12 +100,15 @@ export function projectSlices(items: CatalogItem[]): SliceResource[] {
     // WO-DRIL-PRECISION：切片同理投影样例问句/标签（目录若声明则带上·search-engine 已消费）。
     ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
     ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
+    // WO-SLICE-DISCOVERY：摘要下发「这条切片需要哪些实参」——与执行期占位符解析同一真源。
+    ...(s.requiredArgs ? { requiredArgs: s.requiredArgs } : {}),
+    ...(s.descriptionSynthesized ? { descriptionSynthesized: true } : {}),
     argHints: s.argHints,
     domain: s.domain,
     capability: nonEmpty(s.description, s.name),
-    rootType: "",
-    includedTypes: [],
-    includedLinkKeys: [],
+    rootType: s.rootType ?? "",
+    includedTypes: s.includedTypes ?? [],
+    includedLinkKeys: s.includedLinkKeys ?? [],
   }));
 }
 

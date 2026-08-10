@@ -108,6 +108,16 @@ const intelligenceResourceBaseShape = {
   notSuitableQuestions: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   argHints: z.record(z.string(), z.string()).optional(),
+  /**
+   * WO-SLICE-DISCOVERY（闭 §8 `G-SLICE-ROOT-ARGS-UNDISCOVERABLE`）· **加性**字段：
+   * 调用该资源**必须提供**哪些实参才解得出结果。切片 = root selector 里的 `{{args.X}}`，
+   * 由 DataCore `apps/datacore/src/ontology/slice-args.ts` 扫描下发 —— 与**执行期**解析同一真源，
+   * 两处各写一份必然对不上（摘要说要 `so`、执行按别的名字取 = 无人能发现的静默错答）。
+   * `argHints` 说的是「每个参数该填什么」，本字段说的是「哪些是必需的」，二者不等价：
+   * argHints 可以描述可选参数，requiredArgs 不给就一定解不出来。
+   * 空数组 = 明确「无需实参」；缺省 = 该 kind 尚未申报此维（不等于无需实参）。
+   */
+  requiredArgs: z.array(z.string()).optional(),
   domain: z.string().optional(),
   featureKey: z.string().optional(),
   tieredTags: TieredTagsSchema.optional(),

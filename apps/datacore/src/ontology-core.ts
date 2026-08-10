@@ -36,6 +36,8 @@ import {
   type Dep,
   type NavNode,
 } from "./ontology-dsl.js";
+// WO-SLICE-DISCOVERY · `{{args.X}}` 占位符单源（执行 / 缺参诊断 / 目录摘要三方共用）。
+import { resolveArgTemplate } from "./ontology/slice-args.js";
 
 export interface PublishOptions {
   /** 迁移声明：被删除/改型且有数据的属性，必须显式声明 dropData 或 rename。 */
@@ -591,12 +593,10 @@ export class OntologyCoreService {
       return objCache.get(typeKey)!;
     };
 
-    const resolveTemplate = (v: unknown): unknown => {
-      if (typeof v !== "string") return v;
-      const m = /^\{\{\s*args\.([\w]+)\s*\}\}$/.exec(v);
-      if (m) return args[m[1] as string];
-      return v;
-    };
+    // WO-SLICE-DISCOVERY：占位符解析改走单源 `ontology/slice-args.ts`（原为本地内联正则 +
+    // slice-layers.ts 手抄一份「一字不差」）。执行 / 缺参诊断 / 目录摘要三方必须认同一组参数名 ——
+    // 各抄一份正则，迟早对不上（摘要说要 so、执行按别的名字取 = 无人能发现的静默错答）。
+    const resolveTemplate = (v: unknown): unknown => resolveArgTemplate(v, args);
     const matchFilter = (props: Record<string, unknown>, filter?: Record<string, unknown>): boolean => {
       if (!filter) return true;
       for (const [k, raw] of Object.entries(filter)) {

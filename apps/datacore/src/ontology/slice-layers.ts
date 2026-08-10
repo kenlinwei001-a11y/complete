@@ -7,6 +7,8 @@ import type {
 } from "@platform/contracts";
 import { SLICE_LAYER_IDS } from "@platform/contracts";
 import type { LinkTypeDef, ObjectTypeDef, Rule, SliceSpecRecord, TsSeriesRecord } from "../domain.js";
+// WO-SLICE-DISCOVERY · `{{args.X}}` 占位符单源（执行 / 缺参诊断 / 目录摘要三方共用）。
+import { scanRootArgs } from "./slice-args.js";
 
 /**
  * WO-SLICE-16-LAYERS · 把一条本体切片投影成「十六层结构」。
@@ -85,23 +87,11 @@ function diagnoseEmptyGraph(
   rootObjectTotal: number,
   rootObjectSamples: SliceLayerInput["rootObjectSamples"],
 ): SliceEmptyGraph {
-  // 占位符正则与 ontology-core.ts:596 resolveTemplate 一字不差（口径单源，改一处必同改）。
-  const PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
-  // 占位符所在的**位置**要记住：filter 的 key 就是 root 对象上的属性名，byKey 则取 objectKey。
-  // 只记参数名不记位置，就没法回答「这个参数该填什么」——那正是缺参诊断最有用的一半。
-  const argSource = new Map<string, { from: "prop"; propKey: string } | { from: "objectKey" }>();
-  const scan = (raw: unknown, source: { from: "prop"; propKey: string } | { from: "objectKey" }): string[] => {
-    const m = typeof raw === "string" ? PLACEHOLDER.exec(raw) : null;
-    if (!m) return [];
-    const name = m[1] as string;
-    if (!argSource.has(name)) argSource.set(name, source);
-    return [name];
-  };
-  const found = [
-    ...(spec.root.selector.byKey !== undefined ? scan(spec.root.selector.byKey, { from: "objectKey" }) : []),
-    ...Object.entries(spec.root.selector.filter ?? {}).flatMap(([propKey, raw]) => scan(raw, { from: "prop", propKey })),
-  ];
-  const requiredArgs = uniqSorted(found);
+  // WO-SLICE-DISCOVERY：占位符扫描改走单源 `slice-args.ts`（原为此处手抄一份正则 + 一句
+  // 「与 ontology-core.ts 一字不差，改一处必同改」的口头约定 —— 那不是单源，是两处写）。
+  // 参数的**出处**由 scanRootArgs 一并给出：filter 的 key 即 root 对象属性名，byKey 则取 objectKey；
+  // 只记参数名不记出处，就答不出「这个参数该填什么」——那正是缺参诊断最有用的一半。
+  const { requiredArgs, argSource } = scanRootArgs(spec.root.selector);
   const missingArgs = requiredArgs.filter((a) => args[a] === undefined || args[a] === "");
 
   /** 真值候选：从真对象上读，不编。确定性 —— 先按 objectKey 字典序，再去重取前 CAP 个。 */

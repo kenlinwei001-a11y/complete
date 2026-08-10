@@ -197,17 +197,42 @@ export interface EpochClient {
  * WO-DRIL-PRECISION：item 形状补 `answersQuestions`/`tags`（optional）——DataCore 目录本就产出，
  * 需透传到 DRIL projectSolvers 供语义检索（此前 HTTP 出口 map 时被丢弃 = 断在接缝）。
  */
+/**
+ * DataCore 目录条目（`GET /a/v1/catalog` / `GET /a/v1/solvers/registry` 的行形状）。
+ *
+ * WO-SLICE-DISCOVERY：新增 `requiredArgs` / `descriptionSynthesized` 两个**加性**字段。
+ * 之所以要在这里显式声明：HTTP 客户端把响应整体透传（运行时本就带着这两个字段），
+ * 但类型层若不声明，下游 `resource-projector` 读不到 ⇒ 字段**在接缝上被静默丢弃**
+ * —— 与 WO-DRIL-PRECISION 当年丢 `answersQuestions/tags` 是同一个坑，故一并显式化。
+ */
+export interface CatalogClientItem {
+  key: string;
+  name: string;
+  description: string;
+  argHints: Record<string, string>;
+  domain?: string;
+  answersQuestions?: string[];
+  tags?: string[];
+  /** 调用该条目**必须提供**的实参名（切片 = root selector 的 `{{args.X}}`；空数组 = 无需实参）。 */
+  requiredArgs?: string[];
+  /** description 系结构合成（真值源没写业务描述）⇒ true，诚实标注不冒充人写。 */
+  descriptionSynthesized?: boolean;
+  /** 切片专有（R13 派生投影）：root 对象类型 key。 */
+  rootType?: string;
+  /** 切片专有：从 root 沿 paths 可达的对象类型（含 root·字典序）。 */
+  includedTypes?: string[];
+  /** 切片专有：paths 上用到的链路 key（字典序去重）。 */
+  includedLinkKeys?: string[];
+}
+
 export interface CatalogClient {
   discover(
     ctx: ToolAuthCtx,
     kind: "slices" | "solvers",
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  ): Promise<{ items: CatalogClientItem[] }>;
   /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
-  solverRegistry(
-    ctx: ToolAuthCtx,
-    query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>;
+  solverRegistry(ctx: ToolAuthCtx, query?: string): Promise<{ items: CatalogClientItem[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */
