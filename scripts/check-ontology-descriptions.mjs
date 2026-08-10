@@ -14,7 +14,8 @@
  * 与 check-ontology-slice-coverage.mjs 同一真值集）。运行前需 pnpm --filter datacore build。
  * 用法：node scripts/check-ontology-descriptions.mjs [--update]   （package.json: ontology:check 链路一环）
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,9 +29,9 @@ function fail(msg) {
   process.exit(1);
 }
 
-if (!existsSync(DIST)) {
-  fail("缺少 apps/datacore/dist/，请先运行 pnpm -r build（或 pnpm --filter datacore build）");
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门数 dist 里缺 description 的对象类型并与基线棘轮比，
+//    dist 过期 ⇒ 刚补的描述不在产物里 ⇒ 门报「描述没补」，与源码恰好相反。
+assertDistFresh(["apps/datacore/dist"], { gate: "ontology-descriptions:check" });
 
 const { batteryObjectTypes } = await import(join(DIST, "synthetic/battery.js"));
 const { extendedObjectTypes } = await import(join(DIST, "synthetic/battery-extended.js"));

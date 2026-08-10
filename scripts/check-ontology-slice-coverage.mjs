@@ -8,7 +8,7 @@
  * 运行前需先构建 datacore：pnpm --filter datacore build
  * 用法：node scripts/check-ontology-slice-coverage.mjs   （建议经 package.json ontology-slice-coverage:check）
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,9 +21,9 @@ function fail(msg) {
   process.exit(1);
 }
 
-if (!existsSync(DIST)) {
-  fail("缺少 apps/datacore/dist/，请先运行 pnpm -r build（或 pnpm --filter datacore build）");
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门用 dist 的类型/切片算字段覆盖率并与基线比，
+//    dist 过期时覆盖率是**旧世界**的数，却被当作源码欠账报出来。
+assertDistFresh(["apps/datacore/dist"], { gate: "ontology-slice-coverage:check" });
 
 // 平台配置/元类型、审计/日志类型、Dogfooding 元层：合法地不在业务切片中。
 const EXEMPT_TYPES = new Set([

@@ -9,7 +9,7 @@
  * 校验经已 build 的 dist（构建期检查，非源码跨 app import）：先 pnpm --filter agentcore build（+ contracts）。
  * 用法：node scripts/check-dril-registry.mjs
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -23,12 +23,9 @@ const need = [
   ["agentcore/seed", "apps/agentcore/dist/mocks/seed.js"],
   ["agentcore/config", "apps/agentcore/dist/config.js"],
 ];
-for (const [label, rel] of need) {
-  if (!existsSync(abs(rel))) {
-    console.error(`✗ dril-registry:check：${label} dist 未构建（${rel}）——先 pnpm --filter agentcore build`);
-    process.exit(1);
-  }
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门 boot 整个 AgentCore 的 dist 跑注册/校验，
+//    dist 落后 ⇒ 跑的是旧服务，却把结论当成"源码今天的注册状况"报出来。
+assertDistFresh(need.map(([, rel]) => rel), { gate: "dril-registry:check" });
 
 const { findInvalidResources } = await import(abs("packages/contracts/dist/index.js").href);
 const { buildServer } = await import(abs("apps/agentcore/dist/server.js").href);

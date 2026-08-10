@@ -16,6 +16,7 @@
  * 注：本门**尚未并入** `pnpm gates`（主线集中 wire，见交付报告《要主线 wire 的》）。
  */
 import { readFileSync, existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -66,10 +67,9 @@ if (existsSync(ORACLE_SRC)) {
 
 // ── 2) V10 真跑 SMOKE：pass===true 且 score≥BASELINE ──
 async function runSmoke() {
-  if (!existsSync(join(DIST_DIR, "app.js"))) {
-    fail.push(`datacore dist 未构建（${DIST_DIR}/app.js 缺）—— 请先 pnpm --filter datacore build`);
-    return;
-  }
+  // ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门上半段读**源码**（vle-oracle.ts 等）下断言，
+  //    下半段 boot dist 真跑 SMOKE —— 两半必须是同一个世界，dist 落后就会一边说缺一边说有。
+  assertDistFresh(["apps/datacore/dist/app.js"], { gate: "validation:check" });
   const { createMemoryRepos } = await import(join(DIST_DIR, "repo/memory.js"));
   const { buildApp } = await import(join(DIST_DIR, "app.js"));
   const { loadConfig } = await import(join(DIST_DIR, "config.js"));
