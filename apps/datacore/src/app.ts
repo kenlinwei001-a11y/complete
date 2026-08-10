@@ -51,6 +51,8 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type Perturbation, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { buildCadenceGates, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
+import { analyzeImpact } from "./sim/impact-analysis.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -1689,6 +1691,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       propagationCount: rules.length,
     };
     return SandboxViewConfigSchema.parse(cfg);
+  });
+
+  // ---- WO-IMPACT-PROPAGATION · 影响传播统一入口（Decision Twin §14 / PRD E5）--------------
+  // PRD-enterprise-decision-twin.md:357：「想要的 impact-analysis = 栈 B 的传播算法 × 栈 A 的世界隔离」。
+  // 本端点**不造引擎**：栈 B = ontology-core.recompute（本体增量重算·全平台唯一真算法），
+  // 栈 A = SimSession（真独立世界）。存量盘点见 docs/WO-IMPACT-PROPAGATION-inventory.md。
+  //
+  // 与既有两个出口平行（不改它们）：POST /a/v1/inference/whatif（app.ts 上方）· generic_inference 求解器。
+  // 唯一新增的是**四维分项 + 诚实标记**——那两个出口只有一个裸 `affectedObjects:number`。
+  // 走 sim.sandbox entitlement（R3 暗发：关 = 404 FEATURE_NOT_FOUND，先于 authz）。
+  app.post("/a/v1/simulation/impact-analysis", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const body = parseBody(ImpactAnalysisRequestSchema, req.body);
+    return analyzeImpact({ repos, ontologyCore }, c, body);
   });
 
   // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----
