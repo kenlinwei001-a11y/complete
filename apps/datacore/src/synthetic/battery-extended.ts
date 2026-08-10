@@ -101,8 +101,11 @@ export function extendedObjectTypes(): TypeDef[] {
       p("metricKey", "string"),
       // WO-FACTOR-SCOPE-SINGLESOURCE · 作用域内解析声明（数据驱动·R14·契约见 contracts/gap-attribution.ts CausalFactorSchema）：
       // 产能域因子必须落到**本基地**的对象，而 drillId 是单值 → 这五个属性声明「怎么在作用域内挑对象」，引擎查询期解析。
-      p("baseScopeField", "string"), p("drillPick", "enum"), p("drillNorm", "enum"),
-      p("drillFilterField", "string"), p("drillFilterValue", "string"),
+      pd("baseScopeField", "作用域字段：下钻对象上承载基地键的属性名（如 baseId）。非空表示本因子需在 scope.baseId 作用域内逐对象解析，drillId 用 \"*\" 占位。", "string"),
+      pd("drillPick", "作用域内选谁：max=该字段最大者最紧（利用率/到货天/停机时长）；min=最小者最紧（OEE/良率/班次工时/齐套天数）。", "enum"),
+      pd("drillNorm", "紧张度归一口径：ratio=值本身（0–1 比率·越大越紧）/ inverseRatio=1−值 / popMax=值÷作用域内最大值 / popMin=1−值÷作用域内最大值。", "enum"),
+      pd("drillFilterField", "可选等值过滤字段（如 EquipmentDowntime.reason）——只取该字段等于 drillFilterValue 的对象。", "string"),
+      pd("drillFilterValue", "可选等值过滤取值（如 换型）——与 drillFilterField 成对使用，二者缺一即不过滤。", "string"),
     ]),
     // WO-CEO-DATA-2 每指标多假设因果域 drill 真对象（market_share / revenue / cash / demand_attain）
     def("CompetitorShare", "竞品份额", "commercial", [

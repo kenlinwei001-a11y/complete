@@ -63,6 +63,7 @@
     "apps/datacore/src/synthetic/battery-extended.ts::capexProjects",
     "apps/datacore/src/synthetic/battery-extended.ts::changeoverMatrix",
     "apps/datacore/src/synthetic/battery-extended.ts::generateExtended",
+    "apps/datacore/src/synthetic/battery.ts::BN_FACTORS",
     "apps/datacore/src/synthetic/battery.ts::capexScenario",
     "apps/datacore/src/synthetic/battery.ts::oee_current",
     "apps/datacore/src/synthetic/battery.ts::rngShip",
