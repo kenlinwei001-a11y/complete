@@ -656,14 +656,36 @@ describe("横向线路图 · 主线一条横线（起点在左 → 终点在右�
     expect(new Set(branch.map((s) => s.y)).size, "支线是一条横线 ⇒ 全部同一个 y").toBe(1);
   });
 
-  it("① 形不再是圆：y 的方差远小于 x 的方差，且**没有一个站落在旧椭圆上**", () => {
-    const xs = trunkSlots.map((s) => s.x);
-    const ys = trunkSlots.map((s) => s.y);
-    const varOf = (a: number[]) => {
-      const m = a.reduce((s, v) => s + v, 0) / a.length;
-      return a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length;
-    };
-    expect(varOf(ys) * 20, "y 的离散度已接近 x —— 这不是一条横线").toBeLessThan(varOf(xs));
+  /**
+   * ⚠ **这条断言换过一次判据，换的理由要留下来（否则下一个人会以为我在调数字凑绿）。**
+   *
+   * 工单举例可以用「y 的方差远小于 x 的方差」。我一开始就是这么写的（`var(y)×20 < var(x)`），
+   * 它在主线折 2 行时成立；2026-08-10 把每行站位数从 18 调到 12（折 3 行，理由见
+   * `METRO_LAYOUT.maxSlotsPerRow` 的实测表）之后，`var(y)` 从一档变三档，实测比值只剩
+   * **4.55×**（`var(y)=37177 / var(x)=169204`）—— 断言当场红。
+   *
+   * **正确处置不是把 20 改成 4**（那就是拿阈值迁就实现，门从此不再证明任何事），
+   * 而是换成一条**精确的结构性质**：折行横向图的不变量是
+   *   ① 每一行的 y **完全相同**（行内 y 只有一个取值）；
+   *   ② 全图的 y 取值个数 **恰好等于行数**；
+   *   ③ 全图的 x 取值个数 **恰好等于每行站位数**（列是对齐的）。
+   * 环形布局三条全不满足（35 个站会有 ~35 个不同的 y 和 ~35 个不同的 x），
+   * 所以这组判据比方差比更强、也更抗折行数变化。方差那句作为**辅助**保留，但阈值改为
+   * 「行内 y 方差恒为 0」这个不含魔数的形式。
+   */
+  it("① 形不再是圆：y 只取「行数」个值、x 只取「每行站位数」个值，且**没有一个站落在旧椭圆上**", () => {
+    const plan = map.lines.find((l) => l.lineId === "trunk")!.plan;
+    const ys = new Set(trunkSlots.map((s) => s.y));
+    const xs = new Set(trunkSlots.map((s) => s.x));
+    expect(trunkSlots.length, "站位太少，下面的『取值个数』判据分辨不出圆和横线").toBeGreaterThan(3 * plan.rowCount);
+    expect(ys.size, `y 有 ${ys.size} 个不同取值，而主线只有 ${plan.rowCount} 行 ⇒ 这不是横向折行布局`).toBe(plan.rowCount);
+    expect(xs.size, `x 有 ${xs.size} 个不同取值，而每行 ${plan.perRow} 个站位 ⇒ 列没有对齐`).toBe(plan.perRow);
+    // 行内 y 方差恒为 0（不含魔数的「横」判据）
+    for (const row of new Set(trunkSlots.map((s) => s.row))) {
+      const rowYs = trunkSlots.filter((s) => s.row === row).map((s) => s.y);
+      const m = rowYs.reduce((a, v) => a + v, 0) / rowYs.length;
+      expect(rowYs.reduce((a, v) => a + (v - m) ** 2, 0), `第 ${row} 行的 y 有离散 ⇒ 这一行不是水平的`).toBe(0);
+    }
     // 变异反证的锚：环形版的不变量是「每个站都在椭圆上」。现在必须**一个都不在**。
     const onEllipse = trunkSlots.filter((s) => {
       const dx = (s.x - RING_LAYOUT.cx) / RING_LAYOUT.rx;
@@ -781,6 +803,31 @@ describe("站名摆位 · 上下交替 + 同侧分层 ⇒ 包围盒两两不重�
       }
     }
     expect(checked, "一对都没比到 ⇒ 恒真的废门").toBeGreaterThan(8);
+  });
+
+  /**
+   * ★ **真正保证「不压字」的那条不等式** —— 本组最该咬的是它，不是"有没有交替"。
+   *
+   * 2026-08-10 实测（变异反证时量出来的，写在这里免得下一个人重走一遍）：
+   * 把 `side` 强行改成恒 `"above"`（取消上下交替）之后，25 个标签落成 tier0×23 + tier1×2，
+   * **重叠数仍是 0**。也就是说在当前站位密度下，**分层才是承重墙，交替是余量**。
+   * 工单原本预期「同侧排列 ⇒ 不重叠测试必须红」，实测**不红** —— 该预期基于错误的机制假设。
+   *
+   * 所以这里补上真正的判据：同侧同层的两个标签相距 `gapX × 车道数`
+   * （车道数 = 2 侧 × `maxLabelTiers` 层），它必须容得下**本次载荷里最宽的那个标签**。
+   * 这条不等式一旦不成立，压字就是必然的 —— 而它是可算的，不靠"看着没撞上"。
+   */
+  it("★ 不压字的承重条件：`gapX × 车道数` ≥ 最宽标签 + 间隙（车道 = 2 侧 × 层数）", () => {
+    const widest = Math.max(...drawn.map((s) => s.labelPos!.box.w));
+    expect(widest, "最宽标签量出来是 0 ⇒ 估宽函数坏了，下面的不等式是恒真的废门").toBeGreaterThan(80);
+    const lanes = 2 * METRO_LAYOUT.maxLabelTiers;
+    expect(
+      METRO_LAYOUT.gapX * lanes,
+      `站位间距 ${METRO_LAYOUT.gapX}px × ${lanes} 条车道装不下最宽的标签（${widest.toFixed(0)}px）⇒ 必然压字`,
+    ).toBeGreaterThanOrEqual(widest + METRO_LAYOUT.labelGapX);
+    // 余量也报出来：低于 1.5× 就该在扩标签数/缩间距之前先加一层或加宽 gapX
+    const margin = (METRO_LAYOUT.gapX * lanes) / (widest + METRO_LAYOUT.labelGapX);
+    expect(margin, `余量只剩 ${margin.toFixed(2)}× —— 再加标签就要压字了`).toBeGreaterThan(1.5);
   });
 
   it("行距 / 支线距是从标签带**推出来**的，不是拍脑袋的数（改小即压字）", () => {
