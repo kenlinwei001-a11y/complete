@@ -25,6 +25,9 @@ import {
   type EnterpriseStateTypeInput,
   type LogicalClock,
 } from "@platform/contracts";
+// WO-BEFE-WIRE-3：影响传播端点的**入参校验走契约本尊**（与 datacore app.ts 同一个 schema）——
+// mock 自己再写一套 if 判空，就是"同一份契约两套解释"，两边迟早分家。
+import { ImpactAnalysisRequestSchema, type ImpactAnalysisResponse } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -4135,6 +4138,75 @@ export const handlers = [
       b: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 40 } } }],
     }),
   ),
+
+  // ---- WO-IMPACT-PROPAGATION · 影响传播统一入口（镜像 datacore `POST /a/v1/simulation/impact-analysis`）----
+  //
+  // 🔴 本 mock 的纪律是**诚实**，不是"看起来热闹"：
+  //  · 闭包用 mock 世界里唯一那条派生（`mockGenericInference` 的 `Base.oeeIndex` 前向重算）算，
+  //    不另编一套；`derivationSpecCount: 1` 说的就是它 —— mock 世界确实只有这一条。
+  //  · 流程 / 决策 / KPI 三维在 mock 世界里**真的没有承载物**（没有流程定义台账、没有决策台账、
+  //    没有同时具备 target+actual 的对象类型），所以一律 `available:false` + 缺什么，
+  //    **绝不**拿 `count:0` 冒充"查过了没影响"。这正是本端点契约存在的理由，mock 不许把它抹平。
+  //  · 状态码与错误信封逐条镜像真后端：世界不存在 404（暗发）· 入参不合契约 400。
+  //  · 无 `Date.now`/随机 ⇒ 同输入同输出（R6）。
+  http.post("*/a/v1/simulation/impact-analysis", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const parsed = ImpactAnalysisRequestSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) return err(400, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "invalid body");
+    const req = parsed.data;
+    // R2 暗发：别的租户 / 不存在的世界一律 404（不是 403）。
+    if (!mockSimSessions.has(req.worldId)) return err(404, "NOT_FOUND", "sim world not found");
+    const session = mockSimSessions.get(req.worldId)!;
+    // 世界态 = `objectId → stateVar → number`（契约 `TickState`）。叠加条数 = objectId × stateVar 的对数。
+    const worldState = (mockSimWorlds.get(req.worldId)?.state ?? session.baseSnapshot) as Record<string, Record<string, number> | undefined>;
+    const worldOverlayApplied = Object.values(worldState).reduce<number>((n, vars) => n + Object.keys(vars ?? {}).length, 0);
+
+    const inf = mockGenericInference({ apply: [{ ...req.change }] });
+    const deltas = ("deltas" in inf ? inf.deltas : []) as { objId: string; type: string; prop: string; before: unknown; after: unknown }[];
+    const items = deltas
+      .map((d) => ({ objectId: d.objId, objectType: d.type, changedProps: [{ prop: d.prop, before: d.before, after: d.after }] }))
+      .sort((a, b) => (a.objectId < b.objectId ? -1 : a.objectId > b.objectId ? 1 : 0));
+    // 全域 = mock 对象库里真数得出来的行数（与企业状态快照那两片同源，不是编的）。
+    const universe = mockEnterpriseTypes().reduce((n, t) => n + t.rows.length, 0);
+
+    const warnings: string[] = [];
+    if (worldOverlayApplied === 0) {
+      warnings.push(
+        `世界 ${req.worldId} 的态为空（baseSnapshot/tick 态均无对象），本次分析实质跑在真本体当前值上，未发生世界隔离——不是「世界里没东西受影响」。`,
+      );
+    }
+    const res: ImpactAnalysisResponse = {
+      basis: {
+        engine: "ontology-core.recompute",
+        worldId: req.worldId,
+        worldTick: session.curTick,
+        worldStatus: session.status,
+        worldOverlayApplied,
+        countBasis: "DISTINCT_OBJECTS",
+        derivationSpecCount: 1,
+        kpiTypeKeys: [],
+        oldValueMismatch: false,
+      },
+      affectedObjects: { available: true, count: items.length, universe, items: items.slice(0, req.limit), truncated: items.length > req.limit },
+      affectedProcesses: {
+        available: false,
+        reason: "mock 世界没有流程定义台账（ProcessDefinition 未进 mock 数据）⇒ 这一维算不了，不是「没有流程受影响」。真后端有该台账时它可用。",
+        missingCarrier: "ProcessDefinition",
+      },
+      affectedDecisions: {
+        available: false,
+        reason: "mock 世界没有决策台账（Decision 未进 mock 数据）⇒ 这一维算不了，不是「没有决策受影响」。真后端有该台账时它可用。",
+        missingCarrier: "Decision",
+      },
+      affectedKpis: {
+        available: false,
+        reason: "mock 本体里没有任何对象类型同时具备 `target` 与 `actual` 属性 ⇒ 没有 KPI 承载物，这一维算不了（不是「没有 KPI 受影响」）。",
+        missingCarrier: "ObjectType(target+actual)",
+      },
+      warnings,
+    };
+    return HttpResponse.json(res);
+  }),
 
   // ---- WO-ENTERPRISE-STATE · 企业状态快照（镜像 datacore app.ts `/a/v1/twin/enterprise-states` 五条路由）----
   // 形状由 contracts 的 `captureEnterpriseState` / `forkEnterpriseState` / `diffEnterpriseStates` 保证

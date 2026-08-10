@@ -37,6 +37,7 @@ import {
   type SandboxScope,
 } from "./sandboxModes";
 import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
+import { EnterpriseStateTwinPanel } from "./EnterpriseStateTwinPanel"; // WO-BEFE-WIRE-3 · 快照分叉(fork)与比对(diff)——同样，本文件的 rail 是它唯一的生产调用方
 import styles from "./SimViews.module.css";
 
 /**
@@ -1115,10 +1116,27 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 挂在沙盘（而不是新造一个导航组）是 PRD §0.06 裁定三的要求：沙盘复用既有模块，不做新页面。
       // 世界固定为**真实世界**：右栏的推演会话是 tick 态（TickState），与企业状态快照不是同一个东西 ——
       // 拿会话 id 当 worldId 传会得到"这个仿真世界还没有快照"的诚实空，反而让人以为面板坏了。
-      // 仿真世界的快照走 `POST …/fork`（另一张单的 UI），本面板只答"真实世界现在什么状态"。
+      // 仿真世界的快照走 `POST …/fork` —— 那条线已由下面「快照分叉与比对」接上（WO-BEFE-WIRE-3），
+      // 本面板仍只答"真实世界现在什么状态"（只读，一个动作按钮都不放）。
       id: "enterprise-state",
       title: "企业状态快照",
       node: <EnterpriseStatePanel />,
+    },
+    {
+      /**
+       * WO-BEFE-WIRE-3 · 快照**分叉与比对** —— `POST …/:id/fork` 与 `GET …/:id/diff`
+       * 这两条后端注册了却零前端调用方的端点，真消费方就是本行渲染的那个组件。
+       *
+       * ⚠ **本行是 `EnterpriseStateTwinPanel` 唯一的生产调用方**（右栏是手工组装的数组、无自动扫描）——
+       *   删了这一行，那个组件立刻退化成本仓连踩三次的 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：
+       *   实现有、测试绿、却没有任何路由渲染得到。
+       *
+       * `defaultOpen` 不给（= 默认收起）：按 `docs/CONVENTION-ui-information-layering.md` §1，
+       * 动作与逐项下钻属于**第二层**，不该和上面那面板的重点指标挤在同一层。
+       */
+      id: "enterprise-state-twin",
+      title: "快照分叉与比对",
+      node: <EnterpriseStateTwinPanel />,
     },
   ];
 

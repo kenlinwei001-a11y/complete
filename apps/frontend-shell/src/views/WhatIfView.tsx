@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { ImpactChange } from "@platform/contracts";
 import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+// WO-BEFE-WIRE-3 · 影响传播统一入口（POST /a/v1/simulation/impact-analysis）的**唯一生产调用方**。
+// 挂在本页而不是另开一页：这一页的表单（类型/对象/属性/假设值）**就是**那个端点要的 `change`，
+// 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
+import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
 
 /**
  * 通用假设推演页（renderer=what-if）——把 `generic_inference` 求解器（G-5 通用 what-if）落地为一张交互页：
@@ -109,6 +114,27 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
 
   const canRun = typeKey !== "" && objectId !== "" && prop !== "" && value.trim() !== "" && !busy;
 
+  /**
+   * WO-BEFE-WIRE-3 · 本页表单 → 影响传播端点要的**那一处变更**。
+   *
+   * 与下面 `run()` 喂给 `generic_inference` 的 `apply[0]` 是**同一份口径**（含数值属性的类型强制），
+   * 不另算一套 —— 两个出口读的必须是同一个假设，否则「两处结论对不上」会被读成引擎不一致。
+   * `oldValue` 是**调用方声明的变更前值**，纯记录性：后端不拿它计算，只在与世界里的真实旧值
+   * 不一致时回一个 `basis.oldValueMismatch` 标记出来（我们把那个标记显示在第一层）。
+   */
+  const impactChange = useMemo<ImpactChange | null>(() => {
+    if (typeKey === "" || objectId === "" || prop === "" || value.trim() === "") return null;
+    const coerced: unknown =
+      currentProp?.dataType === "number" && Number.isFinite(Number(value)) ? Number(value) : value;
+    return {
+      objectType: typeKey,
+      objectId,
+      prop,
+      value: coerced,
+      ...(currentValue === undefined ? {} : { oldValue: currentValue }),
+    };
+  }, [typeKey, objectId, prop, value, currentProp, currentValue]);
+
   const onSelectType = (k: string): void => {
     setTypeKey(k);
     setObjectId("");
@@ -119,14 +145,13 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   };
 
   const run = async (): Promise<void> => {
-    if (!canRun) return;
+    if (!canRun || impactChange === null) return;
     setBusy(true);
     try {
-      // 值类型强制：数值属性转 number，其余透传字符串（date/enum/ref/string）。
-      const coerced: unknown =
-        currentProp?.dataType === "number" && value.trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : value;
+      // 值类型强制（数值属性转 number，其余透传字符串）走 `impactChange` 单源 ——
+      // 此前这里另写了一遍同样的三元式，两处迟早分家（WO-BEFE-WIRE-3 顺手合并）。
       const res = await invokeSolver("generic_inference", {
-        apply: [{ objectType: typeKey, objectId, prop, value: coerced }],
+        apply: [{ objectType: typeKey, objectId, prop, value: impactChange.value }],
       });
       setResult(res.data as GenericInferenceOutput);
       setRan(true);
@@ -230,6 +255,15 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* ── 同一份假设的**第二个出口**：跑在被隔离的推演世界里，四维分项（WO-BEFE-WIRE-3）──
+          上面那个按钮走 `generic_inference`（无世界、单个裸计数）；这里走
+          `POST /a/v1/simulation/impact-analysis`（世界隔离 + 对象/流程/决策/KPI 四维 + 诚实标记）。
+          两个出口共用上面同一张表单 —— 用户不必把假设填两遍。 */}
+      <div className="panel" data-testid="wi-impact-panel">
+        <div className="section-title">① b 在推演世界里分析影响（世界隔离 · 四维分项）</div>
+        <ImpactAnalysisPanel change={impactChange} />
       </div>
 
       {/* ── 结果区 ── */}
