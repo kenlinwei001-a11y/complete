@@ -964,6 +964,22 @@
       },
       "disposition": "MANUAL",
       "notes": "非常驻门（不进 gates 链）：它是**分析器**不是**守卫**——跑一次要读四份逐条复验文档、产出的是分布数字而非通过/失败判定，进链只会让 gate 变慢且没有防退化意义。登账的理由是治理而非拦截：它产出的数字会被直接当结论用，而它自己在建成当天被金丝雀翻过两次。重报 1671 条判定分布时手动 `pnpm verdict-rollup:check`。"
+    },
+    "check-dark-launch-integrity.mjs": {
+      "alias": "dark-launch:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts"
+      ],
+      "escalation": "仓主",
+      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-09 建门时三向变异全中：①新增 defaultOn:false 不进集合 → RC=1 并点名 mutant.silently-on ②把它加进集合 → RC=0（证明门量的是「有没有进集合」不是「有没有新 feature」）③把集合名改掉使抽取器失灵 → RC=2「⛔ 门自己瞎了」拒绝给结论（不报「代码干净」）",
+        "note": "病史：defaultOn:false 只挡 L1。templateFeatures() 对 battery-manufacturing 返回 all-on，layeredSet() 的 L2 无条件覆盖 L1，而 demo 恰是 battery ⇒ 只写 defaultOn:false 而不列进暗发集合，该功能对 demo 其实是开的且无任何信号。2026-08-09 WO-APPROVAL-POLICY 与 WO-ORG-WORLD 两个独立 dev 同日各踩一次并各自加了一个集合（GOVERNANCE_/WORLD_），加上既有 QOS_/PERF_ 共四个集合做同一件事——这本身又是「同一件事多个真值源」。照铁律 0.6 第二次必须建机制，本门即该机制。建门时实测存量 15 个不合规（含整个 sim.* 与 opt.* 家族），设为棘轮基线只减不增。⚠️ 口径：不合规≠bug，它们对 demo 开着可能正是产品意图；门抓的是「那行 defaultOn:false 没起到它看起来该起的作用」——开不开实际由模板决定，作者以为自己关了其实没有。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "棘轮门。基线 scripts/dark-launch-baseline.json，只减不增；改善后跑 --set-baseline 收紧。 升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
     }
   }
 }
