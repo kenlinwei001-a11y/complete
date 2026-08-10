@@ -63,7 +63,7 @@ import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { parseCapacityFeasibilityVariant } from "./agent/sim-planner.js";
-import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
+import { agentRuleRefs, planStepRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
@@ -1063,10 +1063,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
     const published = { ...wf, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
     await deps.repos.workflows.update(published);
-    // §2.3：workflow 出向规则引用上报 A
-    const wfRuleRefs = planStepRuleRefs(published.steps);
-    if (deps.reportRefs && wfRuleRefs.length > 0) {
-      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRuleRefs });
+    // §2.3：workflow 出向引用上报 A —— 规则 ⊕ 切片**一次上报**（planStepRefs 合并；
+    // 分两次会因 reported_refs 记录 id 相同而互相覆盖，见 refs/report.ts 注释）。
+    // WO-SLICE-REF-PRODUCER：切片引用即本体切片十六层的①业务场景层的数据来源
+    // （A 侧 sliceReferences → projectSliceLayers.business_scenario）。
+    const wfOutRefs = planStepRefs(published.steps);
+    if (deps.reportRefs && wfOutRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfOutRefs });
     }
     await emitDomainEvent(a.tenantId, "workflow.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）；§2.3 附 impact

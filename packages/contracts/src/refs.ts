@@ -6,7 +6,17 @@ import { z } from "zod";
 // 场景才显式 pin 数字版本。规则引用永远 latest（不可 pin —— 约束必须全局一致）。
 // ---------------------------------------------------------------------------
 
-export const RefKindSchema = z.enum(["rule", "skill", "workflow", "plan", "agent", "mcp", "intent"]);
+/**
+ * WO-SLICE-REF-PRODUCER：补入 `slice`。
+ *
+ * 这不是「加个枚举值」，是补一个**结构缺口**：DataCore 侧的切片反查
+ * （`ontology-governance.ts` `sliceReferences`）从一开始就写着 `ref.kind === "slice"`，
+ * 而本枚举里从来没有 `slice` ⇒ B 侧**在类型层面就构造不出**这种引用，
+ * 那条分支对 B 恒不可达（A 的 wire schema 是 `z.string()`，所以运行期没人报错，
+ * 于是这个缺口一直没被发现 —— 「接了线接错地方」的又一形态）。
+ * 平台自己的另一处枚举 `SKILL_REFERENCE_KINDS` 早已含 `slice`，本次是把两处口径对齐。
+ */
+export const RefKindSchema = z.enum(["rule", "skill", "workflow", "plan", "agent", "mcp", "intent", "slice"]);
 export type RefKind = z.infer<typeof RefKindSchema>;
 
 export const RefVersionSchema = z.union([z.number().int(), z.literal("latest")]);

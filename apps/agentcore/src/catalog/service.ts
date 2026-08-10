@@ -14,7 +14,7 @@ import {
 } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { Repos } from "../persistence/repos.js";
-import { planStepRuleRefs, type RefReporter } from "../refs/report.js";
+import { planStepRefs, type RefReporter } from "../refs/report.js";
 import { HttpError } from "../router/orchestrator.js";
 import { validatePlanSteps } from "../workflow/validate.js";
 
@@ -279,13 +279,14 @@ export class CatalogService {
     const published: ExecutionPlan = { ...plan, status: "PUBLISHED" };
     await this.repos.plans.update(published);
     const impact = await this.planImpact(published);
-    // §2.3：plan 出向规则引用上报 A（影响面反查事实源）
+    // §2.3：plan 出向引用上报 A（影响面反查事实源）—— 规则 ⊕ 切片一次上报（见 refs/report.ts）。
+    // WO-SLICE-REF-PRODUCER：plan 的切片引用喂的是十六层的②决策意图层（refKind ∈ plan/intent/agent）。
     const pkg = await this.repos.packages.get(plan.packageId);
-    const ruleRefs = planStepRuleRefs(published.steps);
-    if (this.reportRefs && pkg && ruleRefs.length > 0) {
+    const outRefs = planStepRefs(published.steps);
+    if (this.reportRefs && pkg && outRefs.length > 0) {
       void this.reportRefs(pkg.tenantId, {
         source: { kind: "plan", key: published.key, name: published.key },
-        refs: ruleRefs,
+        refs: outRefs,
       });
     }
     return { ...published, impact };

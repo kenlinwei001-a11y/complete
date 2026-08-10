@@ -176,9 +176,11 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
 
   const drafts: Record<SliceLayerId, LayerDraft> = {
     // ── ① 业务场景 ────────────────────────────────────────────────────────────
-    // 承载物 reportedRefs 已接线（app.ts:2375 → governance.sliceReferences），但上游
-    // AgentCore 的 refs/report.ts 只产 rule 引用、从不产 kind:"slice" ⇒ 恒空。
-    // 这是「接了线没数据」而不是「没接线」——修法是补 producer，不是造承载物。
+    // WO-SLICE-REF-PRODUCER 已把生产方接上：AgentCore 发布 workflow 时，把
+    // `resolve_slice` 步的 sliceKey 作为 `kind:"slice"` 引用一并上报
+    // （`refs/report.ts` planStepSliceRefs → POST /a/v1/references/report → reported_refs）。
+    // ⇒ 本层不再是「恒空」。它为空只意味着**没有已发布 workflow 引用这条切片**。
+    // 残留缺口见 absentReason（refKind="scene" 这一路仍无生产方），诚实位降层但不删。
     business_scenario: {
       carrier: "reported_refs（B→A 引用上报）→ governance.sliceReferences",
       unit: "个",
@@ -187,11 +189,14 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         .map((r) => ({ key: r.key, label: r.key, group: r.refKind, detail: r.where }))
         .sort((a, b) => by(a.key, b.key)),
       absentReason:
-        "承载物在（GET …/slices/{key}/references 已接线），但 AgentCore 侧 refs/report.ts 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。",
+        "上报管道已接通（AgentCore workflow 发布 → 上报 resolve_slice 步的 sliceKey 为 kind:\"slice\" 引用）。" +
+        "本层为空 = 本租户没有任何**已发布 workflow** 的 resolve_slice 步引用这条切片 —— 是「还没人用它」，不是「取不到」。" +
+        "残留缺口（诚实位·未闭）：refKind=\"scene\" 这一路仍无生产方 —— RefReport.source.kind 只有 agent/workflow/plan/intent 四种，" +
+        "场景（scene）直接引用切片的形态至今没有上报调用点。",
     },
     // ── ② 决策意图 ────────────────────────────────────────────────────────────
-    // 同①。AgentCore 的 dril/relations.ts 其实真算出了 workflow--includes-->slice，
-    // 但那份关系图不回写 DataCore ⇒ A 侧反查依旧为空（接了线接错地方）。
+    // 生产方已接通一半：plan 发布经 catalog/service.ts 的 planStepRefs 上报切片引用。
+    // 另两路（intent / agent）仍无切片引用来源 —— 见 absentReason，诚实位保留。
     decision_intent: {
       carrier: "reported_refs.refKind ∈ {plan, intent, agent}",
       unit: "个",
@@ -200,7 +205,10 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         .map((r) => ({ key: r.key, label: r.key, group: r.refKind, detail: r.where }))
         .sort((a, b) => by(a.key, b.key)),
       absentReason:
-        "AgentCore dril/relations.ts 已算出 workflow→slice 的引用关系，但不回写 DataCore 的 reported_refs ⇒ A 侧反查取不到（关系算在了 B 侧，没有回流）。",
+        "上报管道已部分接通：plan 发布（catalog/service.ts）会上报其 resolve_slice 步的切片引用。" +
+        "本层为空 = 没有**已发布 plan** 的 resolve_slice 步引用这条切片。" +
+        "残留缺口（诚实位·未闭）：refKind=\"intent\" 无任何上报调用点；refKind=\"agent\" 的 AgentDefinition 里没有切片引用字段，" +
+        "两者结构上就产不出切片引用。（workflow→slice 那条边现由 workflow 发布上报，落在①业务场景层，不落本层。）",
     },
     // ── ③ 对象（executeSlice 已带出） ─────────────────────────────────────────
     object: {
