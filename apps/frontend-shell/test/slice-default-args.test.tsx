@@ -197,19 +197,33 @@ const statusesOf = (sliceKey: string) =>
   LAYER_IDS.map((id) => screen.getByTestId(`slice-layer-status-${sliceKey}-${id}`).textContent ?? "");
 
 /**
- * 「空卡」的判据（本单硬性纪律）：**全部十六张都没内容、却被标成「缺席 / 未纳入」**
- * —— 也就是把「算不了（缺参数）」显示成「查了确实为空」。
- * 这是静默错答，任何情况下都不许出现；「未判定」不算空卡（它说的是实话）。
+ * 「空卡」判据（本单硬性纪律）。**这个判据自己被变异反证修过一次，记在此处备忘**：
+ * 初版写成「全部十六张都是 0/— 且有卡标缺席」，**抓不住回归** —— 真后端在子图为空时
+ * 仍会回 `constraint/evidence/governance` 各 1 条（它们不来自子图），于是 counts 里永远有
+ * 非 0 值，「全空」这个前提恒假、断言恒过。**拿一个看起来相关的数字当判据，而它并不度量
+ * 我要度量的东西**（CLAUDE.md 铁律 0.6 的同一形态）。改成按「子图解没解出来」分支判：
+ *
+ *  - 子图**未**解出（屏上有 `slice-layers-empty-*`）⇒ 十六层压根没算过 ⇒
+ *    **任何一张卡都不许自称「缺席 / 未纳入」**（那是"查过了、平台没有"的口气 = 静默错答）。
+ *  - 子图**已**解出 ⇒ 必须真有内容，否则就是"点开一片空白"。
  */
 function expectNoBlankCards(sliceKey: string) {
   const counts = countsOf(sliceKey);
   const statuses = statusesOf(sliceKey);
-  const allEmpty = counts.every((c) => c === "0" || c === "—");
-  const claimsSettled = statuses.some((s) => s.includes("缺席") || s.includes("未纳入"));
-  expect(
-    allEmpty && claimsSettled,
-    `「十六张空卡」复发：counts=${JSON.stringify(counts)} statuses=${JSON.stringify(statuses)}`,
-  ).toBe(false);
+  const unresolved = screen.queryByTestId(`slice-layers-empty-${sliceKey}`) !== null;
+  if (unresolved) {
+    const liars = statuses.filter((s) => s.includes("缺席") || s.includes("未纳入"));
+    expect(
+      liars,
+      `「十六张空卡」复发：子图未解出（算不了），却有 ${liars.length} 张卡自称已判定 —— ` +
+        `把「算不了」显示成了「查了确实为空」。statuses=${JSON.stringify(statuses)} counts=${JSON.stringify(counts)}`,
+    ).toHaveLength(0);
+  } else {
+    expect(
+      counts.some((c) => c !== "0" && c !== "—"),
+      `「十六张空卡」复发：子图已解出，十六张卡却全是空的 counts=${JSON.stringify(counts)}`,
+    ).toBe(true);
+  }
 }
 
 describe("WO-SLICE-DEFAULT-ARGS · 首屏默认那 4 条多跳切片不许再是十六张空卡", () => {
@@ -306,10 +320,10 @@ describe("WO-SLICE-DEFAULT-ARGS · 首屏默认那 4 条多跳切片不许再是
     expect(screen.getByTestId(`slice-layers-arginput-${key}-so`)).toBeTruthy(); // 选择入口
 
     // 「算不了」不许显示成「查了确实为空」：十六张卡一律 未判定 + `—`，绝不是「0 · 缺席」
-    expect(countsOf(key).every((c) => c === "—")).toBe(true);
-    expect(statusesOf(key).every((s) => s.includes("未判定"))).toBe(true);
-    expect(screen.getByTestId(`slice-layers-headline-${key}`).textContent).toContain("暂未判定");
     expectNoBlankCards(key);
+    expect(countsOf(key).every((c) => c === "—"), `未判定态应显 —，实际 ${JSON.stringify(countsOf(key))}`).toBe(true);
+    expect(statusesOf(key).every((s) => s.includes("未判定")), `状态应为「未判定」，实际 ${JSON.stringify(statusesOf(key))}`).toBe(true);
+    expect(screen.getByTestId(`slice-layers-headline-${key}`).textContent).toContain("暂未判定");
 
     // 内联子图同样分得开：缺参数算不出来 ≠ 算了确实为空
     expect((await screen.findByTestId(`slice-graph-empty-${key}`)).textContent).toContain("需要 root 实参");
