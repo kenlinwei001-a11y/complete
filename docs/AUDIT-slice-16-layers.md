@@ -182,3 +182,73 @@ join 键（全部是既有字段，零新增契约）：
     `G-ACTIONTYPE-NO-TARGET`（`ActionType` 无 `targetTypeKey` ⇒ ⑮无法归因）。
 - **门禁**：不新增门。新端点的接缝由 `apps/frontend-shell/test/slice-16-layers.test.tsx`
   的接缝驱动用例守（界面计数 == 后端返回，非 mock 常量）。
+
+---
+
+## 5 · 修完之后的复验（真后端实测 · 亲手真跑）
+
+### 5.1 逐层结果（`GET …/slices/order_fulfillment_360/layers?args={"so":"SO-3391"}`）
+
+真子图 **531 节点 / 570 边 / 9 类型**。**12 present · 1 not_in_slice · 3 absent**。
+
+| # | 层 | 状态 | 数 |
+|---|---|---|---|
+| ① 业务场景 | absent | 0 | 上游不产 slice 引用 |
+| ② 决策意图 | absent | 0 | B 侧关系不回流 |
+| ③ 对象 | present | 9 类 |
+| ④ 属性 | present | 127 个 |
+| ⑤ 关系 | present | 9 种（现带出基数与端类型） |
+| ⑥ 事件 | not_in_slice | 0（平台 372） |
+| ⑦ 状态 | present | 32 个 |
+| ⑧ 指标 | present | 17 个 |
+| ⑨ 时间 | present | 10 个（6 条时序系列 + 4 个日期属性） |
+| ⑩ 规则 | present | 15 条（平台 28） |
+| ⑪ 约束 | present | 13 条 |
+| ⑫ 数据绑定 | present | 9 条 |
+| ⑬ 场景 | present | 12 条（平台 13） |
+| ⑭ 证据 | present | 1 条 |
+| ⑮ 行动 | absent | 0（平台 10，缺 join 键） |
+| ⑯ 治理与溯源 | present | 9 项 |
+
+### 5.2 R13 溯源修复实测
+
+```
+修前：node0 keys = id,typeKey,objectKey,props            （origin 0/531）
+修后：node0 keys = id,typeKey,objectKey,props,origin      （origin 531/531）
+origin 样例：{"type":"SYNTHETIC","jobId":"synthetic-battery-manufacturing-S-42",
+             "sourceConnId":"conn-erp","rawDatasetId":"rds_sgrqjt7ej90w1xxh","rawRowIdx":0}
+```
+⇒ 切片里的每个对象现在都能沿 `sourceConnId → rawDatasetId → rawRowIdx` 溯回**原始数据行**。
+（`epoch` 实测 0/531 —— 种子对象没写 epoch，属「接了线没数据」，代码按缺省省略，不伪造。）
+
+### 5.3 变异反证（后端侧 · 同代码不同切片，层状态必须跟着翻）
+
+若十六层是画上去的常数，换一条切片结果应当不变。实测**每条都不同**，
+且 ⑥事件 在能触达 `ExceptionEvent` 的切片上**从 not_in_slice 翻成 present**：
+
+| 切片 | 子图 | P/N/A | ⑥事件 | ⑦状态 | ⑩规则 | ⑯溯源 |
+|---|---|---|---|---|---|---|
+| `order_fulfillment_360` | 531n/570e/9t | 12/1/3 | not_in_slice:0 | 32 | 15 | 9 |
+| `enterprise_360` | 555n/581e/18t | 12/1/3 | not_in_slice:0 | 33 | 17 | 11 |
+| `order_to_cash_720` | 540n/566e/15t | 12/1/3 | not_in_slice:0 | 36 | 16 | 13 |
+| `coverage_order` | 24n/0e/1t | 10/1/5 | not_in_slice:0 | 6 | 8 | 4 |
+| **`coverage_exceptionevent`** | 372n/0e/1t | 7/2/7 | **present:372** ✅ | 4 | 0 | 4 |
+| `aop_scenario_chain` | 0n/0e/0t | 3/3/10 | not_in_slice:0 | 0 | 0 | 1 |
+
+最后一行 `coverage_exceptionevent` 是**对 §1.2 那个误判的最强反证**：
+同一份代码、同一个租户，只要切片真触达 `ExceptionEvent`，⑥事件层立刻给出 **372 条真数据**。
+所以「⑥事件缺失」从来不是「平台没有」，是「那条切片没取」——
+这正是本文坚持 `not_in_slice` 与 `absent` 必须分成两态的原因。
+
+### 5.4 前端接缝测试（`apps/frontend-shell/test/slice-16-layers.test.tsx` · 5/5 绿）
+
+- **SEAM-1 接缝驱动**：两组彼此不同的后端计数（16 个一组），断言界面 16 个数**整组**跟着变；
+  首屏 `present/16` 也由响应现算而非写死。
+- **SEAM-2 诚实两向**：present 层展开渲染 N 行；`not_in_slice` 与 `absent` 两种缺席态
+  各自**零明细行**（断言 `queryAllByTestId(/^slice-layer-item-/)` 长度为 0）+ 必有原因文案。
+- **SEAM-3 变异反证**：⑩规则 15 条 → 改成 0（平台仍 28）→ 该层翻成诚实态、15 行明细消失。
+- **SEAM-4**：恒 16 层；浮层两坑（`onClick` 幂等连点两次仍开 · 戴 `popover-surface`）。
+- **SEAM-5 页面接线**：`/admin/slices` 点切片行 → 就地出现十六层，路由未跳转。
+
+无回归：`slice-governance-full` / `admin-closure-slices` / `f43.admin-cluster` /
+`f42.validation-trace` / `dril-resources-view` 合计 **20/20 绿**。
