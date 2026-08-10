@@ -204,6 +204,14 @@ describe("WO-CAPACITY-CARD-LAYOUT · 6 层派生诊断卡片化（规范 §5 逐
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByTestId("info-body-cap-dag-formula-3")).toBeNull());
 
+    // **点击必须真能打开**（共用组件作者点名的坑：`onClick` 若做取反，会被先到的 `focus`
+    // 抵消 ⇒「hover 能看见、点却打不开」，而 hover 路径全绿、极难看出来）。
+    // 我是这个组件的消费方，这条回归就守在消费侧。
+    await user.click(screen.getByTestId("info-cap-dag-formula-4"));
+    expect(await screen.findByTestId("info-body-cap-dag-formula-4")).toBeInTheDocument();
+    // 浮层表面走全局 `.popover-surface`（欠账 #104 专做、三套主题都验过遮蔽性），不自写 background。
+    expect(screen.getByTestId("info-body-cap-dag-formula-4").className).toContain("popover-surface");
+
     // 禁止原生 tooltip：`title` 属性与 `<title>` 元素在本面板里必须一个都没有
     // （2026-08-10 环形图实测事故：OS 绘制、恒在最上层、移开滞留）。
     await user.click(face(2)); // 连第二层明细一起扫（原来那里有 6 个 title 徽标）
