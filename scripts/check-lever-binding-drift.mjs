@@ -46,6 +46,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const ROOT = process.cwd();
 const SERVICE = join(ROOT, "apps/datacore/src/solvers/service.ts");
@@ -72,14 +73,10 @@ const ORPHAN_ALLOW = new Map([
 ]);
 
 /* ---------- 读绑定表：import 构建产物，真接线 factorPropKeys（本门存在的另一半意义） ---------- */
-if (!existsSync(CONTRACT_DIST)) {
-  console.error(
-    `✗ lever-binding-drift:check：找不到 ${CONTRACT_DIST}\n` +
-      `  本门 import 契约包**构建产物**以复用 factorPropKeys()/matchesGrain() 真实现（不抄一份进门里，否则门与被守对象各存一份定义 = 它要治的病本身）。\n` +
-      `  → 先 \`pnpm --filter @platform/contracts build\`（scripts/gate.sh 与 CI 均在 pnpm gates 之前跑 pnpm -r build，故正常链路上必然已存在）。`,
-  );
-  process.exit(1);
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门拿 dist 的 factorPropKeys() 去核**源码**里的
+//    LEVER_FACTOR_PROPS（现场解析 service.ts）。dist 落后 ⇒ 拿旧绑定表核新源码 ⇒ 报出并不存在的漂移。
+//    这正是本门自己抬头写的病（"门与被守对象各存一份定义"）的时间维版本：同一份定义的**两个时点**。
+assertDistFresh(["packages/contracts/dist/capacity-factors.js"], { gate: "lever-binding-drift:check" });
 const { CAPACITY_FACTOR_BINDINGS, factorPropKeys, matchesGrain } = await import(`file://${CONTRACT_DIST}`);
 
 /* ---------- 读 LEVER_FACTOR_PROPS：从生产源码现场解析（它未导出，且真值源就是那份源码） ---------- */

@@ -8,6 +8,7 @@
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §8 G-8。用法：node scripts/check-bstack-derive.mjs
  */
 import { readFileSync, existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 const root = new URL("../", import.meta.url);
 const read = (rel) => (existsSync(new URL(rel, root)) ? readFileSync(new URL(rel, root), "utf8") : null);
 const fail = [];
@@ -23,7 +24,11 @@ if (/resources:\s*\[\]/.test(strip)) fail.push("comprehend.ts skill resources �
 async function dynamic() {
   const dist = new URL("apps/datacore/dist/databuilder/comprehend.js", root);
   const sdist = new URL("apps/datacore/dist/solvers/service.js", root);
-  if (!existsSync(dist) || !existsSync(sdist)) { fail.push("dist 未构建——跳过动态"); return; }
+  // ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门静态半读 comprehend.ts **源码**，
+  //    动态半 import 它的 dist —— dist 落后就是拿旧产物去印证新源码的断言，两半各说各话。
+  assertDistFresh(["apps/datacore/dist/databuilder/comprehend.js", "apps/datacore/dist/solvers/service.js"], {
+    gate: "bstack-derive:check",
+  });
   const { assemblePlanBody } = await import(dist.href);
   const { SOLVER_KEYS } = await import(sdist.href);
   const K = SOLVER_KEYS[0];

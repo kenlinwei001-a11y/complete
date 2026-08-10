@@ -9,7 +9,7 @@
  * 校验经已 build 的 dist（构建期检查·非源码跨 app import）：先 pnpm -r build。
  * 用法：node scripts/check-dril-quality.mjs
  */
-import { existsSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -25,12 +25,9 @@ const need = [
   ["agentcore/quality", "apps/agentcore/dist/dril/quality.js"],
   ["agentcore/relations", "apps/agentcore/dist/dril/relations.js"],
 ];
-for (const [label, rel] of need) {
-  if (!existsSync(abs(rel))) {
-    console.error(`✗ dril-quality:check：${label} dist 未构建（${rel}）——先 pnpm -r build`);
-    process.exit(1);
-  }
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门拿 dist 的 ewmaUpdate/graphDistanceScore
+//    手算比对并 boot 服务做端点冒烟，dist 落后 ⇒ 验的是旧算法，却报成"源码的质量分对不对"。
+assertDistFresh(need.map(([, rel]) => rel), { gate: "dril-quality:check" });
 
 const { ewmaUpdate, graphDistanceScore, relationStrengthScore } = await import(abs("packages/contracts/dist/index.js").href);
 const { ResourceSearchEngine } = await import(abs("apps/agentcore/dist/dril/search-engine.js").href);

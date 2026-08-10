@@ -19,7 +19,8 @@
  * 用法：node scripts/check-arg-drop-seam.mjs（先 pnpm -r build 或至少 build agentcore）。
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §5 R-ARG-FIDELITY · §7 门 arg-drop-seam:check · §8 G-ARG-DROP-SEAM。
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -27,16 +28,11 @@ const fails = [];
 const notes = [];
 
 // ── 依赖：agentcore dist（真种子 + collectSlotRefs 模板扫描器） ──
+// ⛔ 守卫必须在 import dist **之前**：本门断言①读 dist 真种子，②读 datacore 源码，
+//    dist 一旦落后于 src，①②就在比对两个不同时点的世界，会给出与源码相反的结论且是绿的（欠账 #161）。
+assertDistFresh(["apps/agentcore/dist/mocks/seed.js", "apps/agentcore/dist/util/template.js"], { gate: "arg-drop-seam:check" });
 const distSeed = abs("apps/agentcore/dist/mocks/seed.js");
 const distTemplate = abs("apps/agentcore/dist/util/template.js");
-for (const [label, u] of [["agentcore/mocks/seed", distSeed], ["agentcore/util/template", distTemplate]]) {
-  if (!existsSync(u)) fails.push(`${label} dist 未构建（${u.pathname}）——先 pnpm --filter agentcore build 再跑本门`);
-}
-if (fails.length) {
-  console.error("✗ arg-drop-seam:check 失败（前置）：");
-  for (const f of fails) console.error("  - " + f);
-  process.exit(1);
-}
 
 const { seedIntentsAndPlans } = await import(distSeed.href);
 const { collectSlotRefs } = await import(distTemplate.href);

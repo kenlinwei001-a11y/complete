@@ -98,32 +98,37 @@ export function newestMtime(dir, { filter = null, depth = 0 } = {}) {
 export function checkDistFreshness(entries, { root = process.cwd() } = {}) {
   const problems = [];
   const checked = [];
-  const seen = new Set();
 
+  // 先按包归组：整包没构建时只报一次，不要每个被点名的文件各报一行（噪声掩盖真问题）。
+  const byPkg = new Map();
   for (const entry of entries) {
     const pkg = packageOf(entry, root);
-    if (pkg === null) {
-      problems.push({ kind: "BAD_ENTRY", entry: String(entry), pkg: null });
-      continue;
-    }
-    // 具体文件被点名时，先确认它自己在——门 import 的就是它。
-    const entryAbs = resolve(root, entry instanceof URL ? entry.pathname : String(entry));
-    if (SRC_EXT.test(entryAbs) && !existsSync(entryAbs)) {
-      problems.push({ kind: "MISSING", pkg, entry: String(entry), detail: entryAbs });
-      continue;
-    }
-    if (seen.has(pkg)) continue;
-    seen.add(pkg);
+    if (pkg === null) { problems.push({ kind: "BAD_ENTRY", entry: String(entry), pkg: null }); continue; }
+    if (!byPkg.has(pkg)) byPkg.set(pkg, []);
+    byPkg.get(pkg).push(entry);
+  }
 
+  for (const [pkg, pkgEntries] of byPkg) {
     const distDir = join(root, pkg, "dist");
-    const srcDir = join(root, pkg, "src");
     const build = newestMtime(distDir);
+    // 整包未构建 → 一条即可，且不必再逐文件报缺。
+    if (build.count === 0) {
+      problems.push({ kind: "MISSING", pkg, entry: String(pkgEntries[0]), detail: distDir });
+      continue;
+    }
+    // 包构建过，但某个被点名的产物文件不在 → 逐个报（门 import 的就是它）。
+    let anyMissing = false;
+    for (const entry of pkgEntries) {
+      const entryAbs = resolve(root, entry instanceof URL ? entry.pathname : String(entry));
+      if (SRC_EXT.test(entryAbs) && !existsSync(entryAbs)) {
+        problems.push({ kind: "MISSING", pkg, entry: String(entry), detail: entryAbs });
+        anyMissing = true;
+      }
+    }
+    if (anyMissing) continue;
+    const srcDir = join(root, pkg, "src");
     const src = newestMtime(srcDir, { filter: SRC_EXT });
 
-    if (build.count === 0) {
-      problems.push({ kind: "MISSING", pkg, entry: String(entry), detail: distDir });
-      continue;
-    }
     if (src.count === 0) {
       // 没有 src/ 的包（纯产物包）无从比较，放行但记录。
       checked.push({ pkg, buildMs: build.ms, srcMs: -1, note: "无 src/，跳过新鲜度比较" });
@@ -133,7 +138,7 @@ export function checkDistFreshness(entries, { root = process.cwd() } = {}) {
       problems.push({
         kind: "STALE",
         pkg,
-        entry: String(entry),
+        entry: String(pkgEntries[0]),
         buildMs: build.ms,
         srcMs: src.ms,
         newestSrc: src.file,
