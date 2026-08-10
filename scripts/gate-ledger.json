@@ -1036,6 +1036,26 @@
         "note": "首跑即真红（非人为植入）：checkProvisionalHonesty 生产调用方 0，且 §7 给的入口 provisional-honesty:check 在 package.json 里从来不存在。W2 存量 13 条未 burn-down，理由写在 scripts/redline-wired-baseline.json 的 _burndownNote：12 条只差一行 package.json 别名，但补别名会把这些门的 census binding 从 NONE 翻成 MANUAL，进而要求同批改门账 binding（check-gate-ledger 判据③ 现算比对），超出本单范围边界。"
       },
       "notes": "欠账 #134。治「本体 §7 登记为门、执行入口却完全不存在」这一整类——现存两道治理门（check-gate-ledger / check-ontology-writeback G3）都只认 scripts/check-*.mjs 文件名这一种门的形状，而 §7 还登记着另两种：`pnpm <alias>` 声称的入口、test-backed 纯函数闸，两类整整逃逸。"
+    },
+    "check-solver-arg-key-drift.mjs": {
+      "alias": "solver-arg-key-drift:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/arg-aliases.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:1053",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行1053",
+        "note": "green→red 亲测：把 risk_timeline 的 argHints 退回 {baseId,days} 并删掉 SOLVER_ARG_ALIASES 里的 risk_timeline 登记 → 门红在 risk_timeline.days（MUTATED_RC=1）"
+      },
+      "notes": "存量 11 条已登记：REAL-DRIFT 9（附求解器实读的键·待后续单修）/ VERIFIED-OK 2（ontology_query 整包 args 经 zod 解析·字面扫描假阳性）"
     }
   }
 }
