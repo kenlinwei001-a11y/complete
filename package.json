@@ -49,7 +49,8 @@
     "crossbranch-reinvent:check": "node scripts/check-crossbranch-reinvent.mjs",
     "worktree-canonical:check": "node scripts/check-worktree-canonical.mjs",
     "verdict-rollup:check": "node scripts/check-verdict-rollup.mjs",
-    "css-token:check": "node scripts/check-css-token-defined.mjs"
+    "css-token:check": "node scripts/check-css-token-defined.mjs",
+    "claim-check": "bash scripts/claim-check.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
