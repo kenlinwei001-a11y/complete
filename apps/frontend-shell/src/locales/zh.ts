@@ -1381,6 +1381,52 @@ export const zh = {
       unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
     },
   },
+
+  /**
+   * WO-SCOPE-HONESTY-FE · 作用域诚实位（「这次算的是谁」）的全部文案。
+   *
+   * 只放**结构性标签**与**枚举的中文名**；一切口径 / 原因 / 缺什么源，
+   * 均由回包字段（`scopeNote` / `samplingNote` / `custNote` / `missingInputs`）原文渲染，
+   * 前端一个字不编（R14「后端没给就说没给，不填默认」）。
+   */
+  scopeHonesty: {
+    title: "本次口径",
+    /** 后端**没下发**诚实位 —— 与「说了是全网」是两件事，必须分开显示。 */
+    unstated: "作用域未标注",
+    /** BASE：显基地**中文名**（不是 id）。 */
+    baseOnly: (baseName: string) => `仅 ${baseName}（单基地）`,
+    networkWide: "全网（跨全部基地）",
+    noNote: "后端未回传该项口径说明（诚实缺席，非「无口径」）",
+    baseIdLabel: "基地 id",
+    baseNameMissing: "⚠ 后端未回传基地中文名，上方显示的是 id —— 前端不拿 id 冒充名字。",
+    whyItMatters:
+      "为什么这一行必须存在：「没说算的是谁」与「说了是全网」在屏上一模一样时，" +
+      "问某个基地却返回全网结果就完全看不出来 —— 那正是当初把它判为「静默错答」而非「报错」的直接原因。",
+
+    // ── kit_readiness 抽样（这两个数改变 shortageCount 的读法，故在第一层）──
+    kitTopic: "齐套口径与抽样",
+    sampling: (pool: number | undefined, sampled: number | undefined) =>
+      `订单池 ${pool ?? "—"} 张 · 本次分析 ${sampled ?? "—"} 张`,
+    networkTotal: (n: number) => `全网订单总量 ${n} 张（本口径由此收窄而来）`,
+    shortageReading: (shortage: number | undefined, sampled: number | undefined, pool: number | undefined) =>
+      shortage === undefined
+        ? "缺料单数：后端未回传"
+        : sampled === undefined
+          ? `缺料 ${shortage} 张（后端未回传本次分析量，无法判断这是不是全部）`
+          : sampled < (pool ?? sampled)
+            ? `缺料 ${shortage} 张 = 本次分析的 ${sampled} 张里有 ${shortage} 张缺料；订单池共 ${pool} 张，未分析的 ${(pool ?? 0) - sampled} 张不在此数内`
+            : `缺料 ${shortage} 张 = 该口径下 ${sampled} 张全部分析后的结果（无截断）`,
+
+    // ── quote_margin 两维（定性不同，不许合成一句）──
+    quoteModelTitle: "型号维",
+    quoteCustTitle: "客户维",
+    modelApplied: (modelId: string) => `已生效 · ${modelId}`,
+    modelAll: "未指定型号（非任何具体型号的配方）",
+    /** ⚠ 客户维今天是**诚实标注**、不是真算 —— 第一层就得写「不生效」，不许画成算过的样子。 */
+    custNotApplied: (custName: string) => (custName ? `${custName} · 不生效（NOT_APPLIED）` : "不生效（NOT_APPLIED）"),
+    custApplied: (custName: string) => `已生效 · ${custName}`,
+    missingTitle: "要真按这一维算，缺这些源：",
+  },
 } as const;
 
 export type Locale = typeof zh;
