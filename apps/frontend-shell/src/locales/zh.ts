@@ -331,6 +331,51 @@ export const zh = {
     econNoSource: "平台暂无该维度库存真数据源",
     econFootnote:
       "未结营收/毛利/毛利率经 affected_orders 真订单 × SEG_REGISTRY 参考单价/毛利率聚合派生（R13 可溯 · R6 单一真相源 · SEG 参考价非逐单实际成交价，属估算口径）；成品/在制/原料库存平台暂无该维度真数据源 → 诚实“—”（不伪造 · G-DM-1）。",
+
+    // ── WO-ORDER-ROW-DETAIL ① 行内展开订单详情（点行 → 本行**紧邻下方**展开，非浮层非跳页）──
+    colCtx: "对话",
+    rowHint: "点订单行展开详情",
+    rowDetailTitle: (so: string) => `${so} · 订单详情`,
+    rowDetailDue: "交期（完整日期）",
+    rowDetailRisksTitle: (n: number) => `关联风险点全量（${n} 条 · 不截断）`,
+    rowRiskBase: "基地",
+    rowRiskFactor: "因素",
+    rowRiskCross: "越线日",
+    rowRiskPeak: "峰值",
+    rowRiskThreshold: "越线阈值",
+    rowRiskSeries: "逐日序列",
+    rowRiskNotCrossed: "窗口内不越线",
+    rowRiskSeriesDays: (n: number) => `${n} 天`,
+    rowRiskNoField: "响应未带回该字段",
+    rowRevenueLabel: "本单营收暴露（估算）",
+    // 诚实缺数披露（R14）：说清 affected_orders.rows[] 这一层到底带回了什么、没带回什么。
+    rowDetailGap:
+      "缺数诚实披露：affected_orders.rows[] 仅带回 订单/客户/应用/型号/数量/交期/延误/风险点 八个字段；逐单实际成交价、逐单毛利、齐套缺口、信用占用均不在本求解器输出内 → 详情不臆造、不另调接口（R14）。",
+
+    // ── WO-ORDER-ROW-DETAIL ② 对话上下文（原 toggleSelectedObject 链保留，改为显式入口 + 可见选中态）──
+    ctxAdd: "＋ 加入对话",
+    ctxRemove: "✓ 已进入对话上下文",
+    ctxInBadge: "已进入对话上下文",
+    ctxHint: "把该订单写入对话上下文（selectedObjects），供追问时带上",
+
+    // ── 追加需求 · 问题卡归因叙述（派生自 problems[]，每句绑定字段；零写死 R14）──
+    narrTitle: "归因分析（叙述）",
+    narrScale: (cat: string, title: string, n: number, fin: string) =>
+      `【${cat}】${title}：归并 ${n} 单受影响，财务贡献 ${fin} 亿。`,
+    narrCommon: (s: string) => `共性根因：${s}`,
+    narrChain: (order: string, judge: string, cause: string, remedy: string) =>
+      `${order}：判定「${judge}」← 根因「${cause}」→ 对策「${remedy}」。`,
+    narrCoverage: (m: number, n: number) => `逐单因果链覆盖 ${m}/${n} 单。`,
+    narrScopeNote:
+      "口径披露：problems[] 按问题类别归并，契约 schema 不带基地/因素维 → 本叙述不做基地归因（不假装有基地维）。",
+    narrGapTitle: "推不出的部分（诚实披露）",
+    narrGapNoChains: "problems[].rootChains 为空 —— 该响应未带回逐单因果链，无法给出逐单归因叙述。",
+    narrGapNoSummary: "problems[].rootCauseSummary 为空 —— 无共性根因可述。",
+    narrGapLayer: (order: string, kinds: string) => `${order}：layers 缺「${kinds}」层 —— 该跳因果推不出。`,
+    narrGapPartial: (miss: number, n: number) =>
+      `另 ${miss}/${n} 单未随响应带回 rootChains —— 这 ${miss} 单的归因推不出（不编）。`,
+    narrDagTitle: "同一份因果链的图形视图",
+    narrProvSrc: "affected_orders 求解器 · problems[]（与本卡同源，未另调接口）",
   },
   /** §7.17 地理视图 */
   geo: {
