@@ -3,10 +3,24 @@
  * PRD 数据承载门 —— 本体 §8 `G-PRD-DATA-UNGROUNDED` 的机械那一半。
  *
  * ── 存在理由（结构性，不是个案）────────────────────────────────────────────
- * 2026-08-11 全仓统计：**129 份 PRD，93 份有验收判据章，其中 80 份（86%）零数据前置/缺口讨论**。
- * 有数据讨论的那 13 份，**全部是「这单本身就是补数据」的单**。
- * ⇒ 结论不是「大家偶尔忘了写」，而是一条结构性偏差：
+ * 2026-08-11 全仓统计，**口径已订正为「只扫验收章」**（这是唯一可比的口径）：
+ *   **103 份有验收章的 PRD 中，57 份（55%）在验收章里零数据层讨论。**
+ *
+ * ⚠️ 这个数字被修过两轮，值得记账（铁律 0.6：拿一个没验证过「在度量什么」的数字当判据，
+ * 是本仓最贵的一类错）：**初版口径「86%」与本门作者的独立复核「59%」都是错的** ——
+ * 两者都扫了**整份文档**，于是正文里随便一句 `SEED_DEMO=1` 就被算成「谈了数据」，
+ * 而验收章里其实一个字都没谈。三个数分别是 86% / 59% / 55%，**分歧全部来自口径而非事实**。
+ * 只有「只扫验收章」这一口径回答的才是我们真正要问的问题：**验收判据本身有没有考虑数据前置**。
+ *
+ * 定性结论不依赖具体数字，三个口径都指向它：
  *   **数据可得性只在「主题是数据」时才被讨论；只要主题是功能，数据就被默认成既有事实。**
+ * 真正被亲手复验、且本门赖以立门的，是**下面那个 A6 个案**（逐字读过属性表），不是百分比。
+ *
+ * **存量实测比预估短得多**（WO-PRD-FIELD-AUDIT 逐条读原文 + 本门作者独立复核抽样）：
+ * 🔴「字段不存在」**只有 7 处 / 6 个 `Type.field` / 5 份 PRD**，🟡「字段在但恒空」**0 条**；
+ * 而且 6 条里 4 条是**命名漂移、数据都在**（`ChangeoverMatrix.changeoverMin`→真名 `minutes`，
+ * **30 条实例数据都在** / `Metric.gap`→`delta`·`gapPct` / `Cadence.kind`→`cadenceKind`）。
+ * ⇒ 棘轮只需装 7 条，**门因此可以做得比"存量几百条"的假设严得多**。
  *
  * 已坐实的后果（A6 · `PRD-segment-scoped-gap-attribution.md`）：
  * PRD 要求「同一条线被三个 seg 争用时保谁」，判据源 `SEG_REGISTRY` 有数据，
@@ -212,7 +226,10 @@ export function buildUniverse(root) {
   }
 
   const propCount = [...types.values()].reduce((a, s) => a + s.size, 0);
-  return { types, stats, propCount };
+  // 另外两个命名空间的真值源（判义用，见 §3.5）——本门**不核**它们，只用来把它们与本体属性区分开。
+  const simStateVars = loadSimStateVars(root);
+  const ruleScopeKeys = loadRuleScopeKeys(root);
+  return { types, stats, propCount, simStateVars, ruleScopeKeys };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -361,11 +378,91 @@ export function findVariableCriteria(src) {
 // § 5 · 扫描主逻辑
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** 正文里的字段引用：反引号包裹的 `Type.field`。Type 首字母大写且 ≥3 字符（避开 `A.b` 这类章节号）。 */
-const PROSE_REF_RE = /`([A-Z][A-Za-z0-9]{2,})\.([a-z_][A-Za-z0-9_]*)`/g;
+/**
+ * 正文里的字段引用：**反引号代码段内**的 `Type.field`（不要求它独占整段 ——
+ * 早期版本要求整段完全等于 `Type.field`，于是 `` `Metric.gap → 结构反向分摊…` `` 这种
+ * **一整句写在一对反引号里**的写法一条都抓不到，实测漏掉了存量清单 7 条里的数条）。
+ * Type 首字母大写且 ≥3 字符（避开 `A.b` 这类章节号）；后跟 `(` 的排除（那是方法调用不是字段）。
+ */
+const PROSE_REF_RE = /\b([A-Z][A-Za-z0-9]{2,})\.([a-z_][A-Za-z0-9_]*)\b(?!\s*\()/g;
+/** 取一行里所有反引号代码段（散文里裸写的 "xx.yy" 不算引用，同本体锚点门的取舍）。 */
+const backtickSpans = (line) => (line.match(/`[^`]*`/g) ?? []);
 
 /** 内容锚：豁免锚在**那句话本身**，不锚行号。 */
 const sha16 = (s) => createHash("sha256").update(String(s).trim()).digest("hex").slice(0, 16);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 3.5 · `Type.field` 是**四义词** —— 判义在前，核对在后
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// 本仓 `Type.field` 至少有四种互不相干的意思，**校验强度天差地别**，一视同仁必然
+// 同时制造大量误报（把有编译器兜底的 TS 契约类型当本体属性报）和漏报（②③ 的真病放过去）：
+//
+//   | 义 | 例 | 有无校验 | 本门怎么办 |
+//   |---|---|---|---|
+//   | ① 本体属性         | `Base.baseId`                          | 有（本体/契约） | **本门的射程**：核对属性表 |
+//   | ② **仿真状态变量** | `Base.load` 实为 `targetStateVar:"loadIndex"` | **零校验** | 判为 ②，**不当本体属性报**，另出 `PDG-7` 提示 |
+//   | ③ **规则注入命名空间** | `BATTERY_RULE_SCOPES` 的 scope 键（`Batch`/`Cert`/`Lta`…） | **零校验** | 判为 ③，另出 `PDG-8` 提示 |
+//   | ④ 前端原型全局 / TS 契约类型 | —                              | 编译器兜底 | LHS 不在本体类型集 ⇒ 天然不进射程 |
+//
+// ② 有一条已坐实的**静默病**：`readVar`（`apps/datacore/src/sim/propagation.ts`）名字写错
+// **静默返 0** —— 不报错、不告警，于是沙盘建出的图**永远不读真实对象属性**。
+// 本门**不假装能核 ②③**（它们今天零校验，核它们需要另一套真值源），只做两件事：
+// **把它们与 ① 区分开**（避免误报），并**让它们可见**（避免"看不见 = 不存在"）。
+
+/** ② 的真值源：仿真状态变量名（`targetStateVar: "x"`）。 */
+function loadSimStateVars(root) {
+  const out = new Set();
+  for (const rel of ["apps/datacore/src/seed.ts", "apps/datacore/src/sim/propagation.ts"]) {
+    const p = join(root, rel);
+    if (!existsSync(p)) continue;
+    for (const m of readFileSync(p, "utf8").matchAll(/targetStateVar:\s*"([^"]+)"/g)) out.add(m[1]);
+  }
+  return out;
+}
+
+/** ③ 的真值源：规则注入命名空间的 scope 键（`BATTERY_RULE_SCOPES`）。 */
+function loadRuleScopeKeys(root) {
+  const out = new Set();
+  const p = join(root, TYPE_SOURCES[0]);
+  if (!existsSync(p)) return out;
+  const src = readFileSync(p, "utf8");
+  const i = src.indexOf("BATTERY_RULE_SCOPES");
+  if (i === -1) return out;
+  const open = src.indexOf("{", i);
+  const blk = matchPair(src, open, "{", "}");
+  if (!blk) return out;
+  for (const m of blk.matchAll(/"([A-Z][A-Za-z0-9]*)"/g)) out.add(m[1]);
+  return out;
+}
+
+/**
+ * 仿真语境标记 —— 只收**强标记**。
+ *
+ * ⚠️ 这份名单被实测砍过一轮：初版把「沙盘/推演/传导/仿真/tick/扰动」也算进来，结果
+ * `Base.weeklyCap`（`PRD-capacity-live-cockpit.md`，本体属性真缺失）与 `Metric.gap`
+ * （`PRD-capacity-inference-completion.md`，真名 `delta`/`gapPct`）**双双被误判成仿真状态变量**
+ * 而逃出射程 —— 只因那两行里各有一个「推演」。**弱标记在 PRD 正文里到处都是**，
+ * 拿它当判义证据，就是「用 X 当作 Y 的证据，而 X 并不度量 Y」（铁律 0.6 的那个形态）。
+ * 现只保留**指名道姓提到状态变量机制**的词；判不准的宁可落 `PDG-5` 未判定，也不误判成 ②。
+ */
+const SIM_CONTEXT_MARKERS = [
+  "状态变量", "stateVar", "targetStateVar", "readVar", "PropagationRule", "传导边", "沙盘状态",
+];
+
+/**
+ * 判 `Type.field` 属于四义中的哪一义。
+ * @returns "ontology" | "simStateVar" | "ruleScope" | "outOfRange"
+ */
+export function judgeSense(type, field, lineText, facts) {
+  // ② 优先于 ①：`Base` 既是本体类型又可作沙盘目标，靠**语境 + 状态变量名**区分
+  if (facts.simStateVars.has(field) || (SIM_CONTEXT_MARKERS.some((k) => lineText.includes(k)) && !facts.types.get(type)?.has(field))) {
+    return "simStateVar";
+  }
+  if (facts.types.has(type)) return "ontology";
+  if (facts.ruleScopeKeys.has(type)) return "ruleScope";
+  return "outOfRange"; // ④ TS 契约类型 / 前端全局 / 文件名 —— 有编译器兜底，不属本门风险类
+}
 
 /**
  * 判定一份 PRD。**金丝雀与门共用这一个函数** —— 不另抄正则。
@@ -401,28 +498,53 @@ export function judgePrd(file, src, universe) {
     }
   }
 
-  // ── 层 ② 正文引用扫描（带语境判别 + 棘轮） ────────────────────────────
+  // ── 层 ② 正文引用扫描（先判义 → 再按义核 → 带语境判别 + 棘轮） ─────────
+  const facts = { types: universe.types, simStateVars: universe.simStateVars, ruleScopeKeys: universe.ruleScopeKeys };
   const seen = new Set();
   for (let i = 0; i < lines.length; i++) {
-    for (const m of lines[i].matchAll(PROSE_REF_RE)) {
-      const [, t, f] = m;
-      if (!known(t)) continue;
-      if (hasField(t, f)) continue;
-      const dedup = `${t}.${f}`;
-      if (seen.has(dedup)) continue;
-      seen.add(dedup);
-      const ctx = judgeContext(lines[i]);
-      const key = `${file}#REF:${t}.${f}`;
-      const rec = { file, line: i + 1, key, sample: lines[i].trim().slice(0, 160) };
-      if (ctx === "assertion") {
-        violations.push({ ...rec, code: "PDG-4",
-          detail: `正文**断言**\`${t}.${f}\` 已有，但真值源里该字段不存在（${t} 现有属性：${[...universe.types.get(t)].join("/")}）` });
-      } else if (ctx === "unknown") {
-        undecided.push({ ...rec, code: "PDG-5",
-          detail: `\`${t}.${f}\` 在真值源里不存在，但**判不准**这句是在描述现状还是提议新增 —— 落未判定，不进红` });
+    for (const span of backtickSpans(lines[i])) {
+      for (const m of span.matchAll(PROSE_REF_RE)) {
+        const [, t, f] = m;
+        const dedup = `${t}.${f}`;
+        if (seen.has(dedup)) continue;
+
+        // ★ 判义在前、核对在后。一视同仁会同时制造误报（把 TS 契约类型当本体属性报）
+        //   和漏报（仿真状态变量 / 规则命名空间的真病被当成本体属性放过去）。
+        const sense = judgeSense(t, f, lines[i], facts);
+        const rec = { file, line: i + 1, sample: lines[i].trim().slice(0, 160) };
+
+        if (sense === "outOfRange") continue; // ④ 有编译器兜底，不属本门风险类
+
+        if (sense === "simStateVar") {
+          seen.add(dedup);
+          undecided.push({ ...rec, code: "PDG-7", key: `${file}#SIM:${dedup}`,
+            detail: `\`${dedup}\` 是**仿真状态变量**（第二命名空间，非本体属性）——本门**不核**它，因为它今天**零校验**：` +
+              `\`readVar\` 名字写错**静默返 0**（不报错不告警），沙盘据此建出的图可能永远不读真实对象属性。` +
+              `本门只负责**把它与本体属性区分开**（否则会被误报成"字段不存在"）并让它可见；真要核它需另一套真值源与另一道门。` });
+          continue;
+        }
+        if (sense === "ruleScope") {
+          seen.add(dedup);
+          undecided.push({ ...rec, code: "PDG-8", key: `${file}#SCOPE:${dedup}`,
+            detail: `\`${t}\` 是**规则注入命名空间**的 scope 键（\`BATTERY_RULE_SCOPES\`），不是本体对象类型 —— 同样**零校验**，本门不核，仅标注可见。` });
+          continue;
+        }
+
+        // sense === "ontology" —— 这一路才轮到属性表核对
+        if (hasField(t, f)) continue;
+        seen.add(dedup);
+        const ctx = judgeContext(lines[i]);
+        const key = `${file}#REF:${dedup}`;
+        if (ctx === "assertion") {
+          violations.push({ ...rec, key, code: "PDG-4",
+            detail: `正文**断言**\`${dedup}\` 已有，但真值源里该字段不存在（${t} 现有属性：${[...universe.types.get(t)].join("/")}）` });
+        } else if (ctx === "unknown") {
+          undecided.push({ ...rec, key, code: "PDG-5",
+            detail: `\`${dedup}\` 在真值源里不存在，但**判不准**这句是在描述现状还是提议新增 —— 落未判定，不进红` });
+        }
+        // ctx === "proposal"     ⇒ PRD 在提议新增该字段，正常，不记
+        // ctx === "acknowledged" ⇒ PRD 自己已点明「今天没有」，**这正是本门想要的行为**，不记
       }
-      // ctx === "proposal"     ⇒ PRD 在提议新增该字段，正常，不记
-      // ctx === "acknowledged" ⇒ PRD 自己已点明「今天没有」，**这正是本门想要的行为**，不记
     }
   }
 
@@ -530,6 +652,38 @@ const MUST_NOT_BITE = [
     name: "回归·生产原文：PRD 点明今天该对象 0 条（stale-claims:82）",
     src: "## 2. 现状\n\n// 真接引擎后这个值应来自 `Cadence.kind` 实例；今天 `Cadence` 对象 0 条，所以它是 what-if 的一部分。\n",
   },
+  // ↓ 四义词判别：②③④ 三义都**不许**被当成「本体属性不存在」报红（一视同仁 = 大量误报）
+  {
+    name: "判义②：仿真状态变量不许当本体属性报（Base.load 实为 targetStateVar loadIndex）",
+    src: "## 2. 现状\n\n- 现有沙盘传导三条边全部指向 `Base.load` 状态变量，已正确落值。\n",
+  },
+  {
+    name: "判义③：规则注入命名空间的 scope 键不许当本体属性报",
+    src: "## 2. 现状\n\n- 现有规则 C28 作用域 `Batch.idleDays` 已正确落值。\n",
+  },
+  {
+    name: "判义④：TS 契约类型/前端全局不属射程（有编译器兜底）",
+    src: "## 2. 现状\n\n- 现有 `AgentTrace.reflection` 字段已正确落值，前端直接读。\n",
+  },
+];
+
+/**
+ * 判义回归样例（生产原文）：这两条**必须判成 `ontology`**，不许被弱语境词卷进仿真档。
+ * 初版因「推演」二字把它们判成 ② 而整个逃出射程 —— 锁在这里，弱标记再被加回来就红。
+ */
+const SENSE_MUST_BE_ONTOLOGY = [
+  {
+    name: "Base.weeklyCap（同句含「推演」，但它是本体属性目标不是状态变量）",
+    line: "- **活能力①·原子因子活推演**（WO-CAPLIVE-1 引擎）：`targetType/targetProp` 传产能目标（`Base.weeklyCap` 或 `Process.x`）",
+    type: "Base",
+    field: "weeklyCap",
+  },
+  {
+    name: "Metric.gap（同句含「推演」，真名 delta/gapPct）",
+    line: "- **链路**：**归因链**（§3）`Metric.gap → 结构反向分摊` ；**产能推演链** `capacity_forecast(per-base)`",
+    type: "Metric",
+    field: "gap",
+  },
 ];
 
 /** 已知必中的解析锚点 —— 解析器若瞎了，这两条会立刻不符。 */
@@ -569,6 +723,17 @@ function selftest(universe, fileCount) {
   if (fileCount !== null && fileCount < 50) {
     blind.push(`只扫到 ${fileCount} 份 PRD（<50）—— docs/ 是不是没读到？`);
   }
+
+  // ③.5 判义回归：生产原文必须判成 ontology，不许被弱语境词卷进仿真档
+  const senseFacts = { types: universe.types, simStateVars: universe.simStateVars, ruleScopeKeys: universe.ruleScopeKeys };
+  for (const c of SENSE_MUST_BE_ONTOLOGY) {
+    const got = judgeSense(c.type, c.field, c.line, senseFacts);
+    if (got !== "ontology") {
+      blind.push(`判义回归「${c.name}」判成了 "${got}"，应为 "ontology" —— 弱语境词又被加回 SIM_CONTEXT_MARKERS 了？`);
+    }
+  }
+  if (universe.simStateVars.size < 5) blind.push(`仿真状态变量真值源只读到 ${universe.simStateVars.size} 个（<5）—— 判义②这一档等于没开`);
+  if (universe.ruleScopeKeys.size < 5) blind.push(`规则命名空间真值源只读到 ${universe.ruleScopeKeys.size} 个（<5）—— 判义③这一档等于没开`);
 
   // ④ 必咬 / 必不咬 —— 走 judgePrd 主逻辑
   for (const c of MUST_BITE) {
@@ -681,6 +846,28 @@ async function main() {
     process.exit(RC_TOOL_BROKEN);
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+
+  // ── 裁定（adjudicated）：把人已经判定过的「未判定」升为红 ────────────────────
+  // 本门对语境判不准时落 PDG-5 未判定（判据 #5：不硬塞进红）。但「未判定」若永远只是
+  // 一条提示，人工审计的结论就**没有任何机械约束力** —— WO-PRD-FIELD-AUDIT 逐条读过原文、
+  // 判定它们是「现状口吻 + 字段真不存在」，这个判断必须能落到门上，否则下次照样漂回去。
+  // 机制：基线里列出被裁定为真缺陷的 key ⇒ 本门把它从 undecided **升级为 violation**；
+  // 随后它要么被修（key 消失 ⇒ 棘轮回弹提示删除），要么带 kind:"待修" 挂在豁免里当**可见的债**。
+  const adjudicated = new Set(baseline.adjudicated ?? []);
+  const promoted = [];
+  const stillUndecided = [];
+  for (const u of undecided) {
+    if (adjudicated.has(u.key)) {
+      promoted.push({ ...u, code: "PDG-4A", detail: `【已裁定为真缺陷】${u.detail}` });
+    } else stillUndecided.push(u);
+  }
+  violations.push(...promoted);
+  undecided.length = 0;
+  undecided.push(...stillUndecided);
+  // 裁定表里指向已不存在的 key ⇒ 也要报，否则裁定会变成一张烂账
+  const usedAll = new Set([...violations, ...undecided].map((v) => v.key));
+  const staleAdjudications = [...adjudicated].filter((k) => !usedAll.has(k));
+
   const allowed = new Map((baseline.exemptions ?? []).map((e) => [e.key, e]));
   const fresh = violations.filter((v) => !allowed.has(v.key));
   const usedKeys = new Set(violations.map((v) => v.key));
@@ -710,6 +897,11 @@ async function main() {
     bad = true;
     console.error(`\n❌ 棘轮回弹：${stale.length} 条豁免已匹配不到任何违规（PRD 改过了？）—— 请从 ${BASELINE_PATH} 删掉，让上限跟着降：`);
     for (const e of stale) console.error(`   ${e.key}  —— ${e.why}`);
+  }
+  if (staleAdjudications.length > 0) {
+    bad = true;
+    console.error(`\n❌ 裁定表烂账：${staleAdjudications.length} 条 adjudicated key 已匹配不到任何命中（PRD 改过了？）—— 从 ${BASELINE_PATH} 的 adjudicated 里删掉：`);
+    for (const k of staleAdjudications) console.error(`   ${k}`);
   }
   if ((baseline.exemptions?.length ?? 0) !== baseline.maxExemptions) {
     bad = true;
@@ -775,6 +967,13 @@ if (process.argv[1] && process.argv[1].endsWith("check-prd-data-grounding.mjs"))
  *    连接器映射进来的外部字段、运行期动态建模（A3 半自动建模）产生的属性，本门看不见 ⇒
  *    可能把**真实存在**的字段误判成不存在。故 PDG-4 只在**断言语境**下红，且带棘轮；
  *    暧昧的一律落 PDG-5 未判定。误报的修法是加豁免并写明「真值源覆盖不到」。
+ *
+ * 2.5 **本门只核四义中的第 ①义（本体属性）**。②仿真状态变量 与 ③规则注入命名空间
+ *    **今天零校验**，本门**明确做不到**核它们 —— 核 ② 要能把 `Base.load` 这样的写法解析到
+ *    `targetStateVar` 注册表并验证 `readVar` 真读得到（那是运行态的活，且 `readVar` 名字写错
+ *    **静默返 0**，静态扫描看不出后果）；核 ③ 要能把 scope 键映射到注入命名空间的真实结构。
+ *    本门只把它们**与①区分开并标注可见**（`PDG-7`/`PDG-8`），**不假装核过**。
+ *    判义本身也是启发式（状态变量名表 + 强语境词），判错时倾向于落未判定而非误判。
  *
  * 3. **`derivedProperties` 只解析静态数组字面量**。运行期计算出的派生属性不在册。
  *
