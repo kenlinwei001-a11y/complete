@@ -972,6 +972,76 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
     }
   });
 
+  /**
+   * ── 这一条是**变异反证逼出来的**（过程记在这里，因为判据的边界就是靠它划定的）────────
+   * 上一条按 `position: fixed|absolute` 找浮层。变异反证时把 Modal 的 .dialog 改回
+   * 硬编码深色渐变 —— **它没红**。原因：`.dialog` 自己不带 position（带 position 的是
+   * `.backdrop`），于是判据根本没看它。而 Modal 是全仓每个弹窗的表面，正是本 WO 最大的一处病。
+   *
+   * 形态（铁律 0.6 句式）：**「我用『规则里写没写 position』当作『它是不是一张浮起来的面』的证据，
+   * 而前者并不度量后者。」** —— 定位可以由父级/portal 提供，面自己不必声明 position。
+   *
+   * 换一个**不依赖定位**的判据：写死的颜色**永远**不随主题，与它定不定位无关。
+   *   凡 background 是「写死的近不透明颜色」（alpha ≥ .5 的字面量，或全是字面量的渐变）
+   *   ⇒ 它就是一张 theme-blind 的面，换皮即错。
+   * 合法例外只有两类，且都必须写明理由：
+   *   ① **主题定义块自身**（:root / [data-theme=…]）—— 那里本来就是写死颜色该待的地方；
+   *   ② **纯装饰**（色标条 / 页面级辉光），不承载文字。
+   * 实测全仓命中 9 条，去掉这两类例外后恰好只剩范围外那 1 条 —— 判据紧，不靠大白名单撑着。
+   */
+  it("写死的近不透明背景 = theme-blind 的面（与定不定位无关 —— Modal .dialog 就不带 position）", () => {
+    const THEME_BLOCK = /(^|\s):root\b/; // 主题定义块：:root / :root[data-theme="x"] …
+    const DECOR: [string, string][] = [
+      ["views/sim/SimViews.module.css", ".ptl::before"],       // 绿黄粉色标条，不承载文字
+      ["views/RiskBoardView.module.css", ".riskwrap"],         // 页面级径向辉光，alpha .06
+      ["styles/global.css", ".btn.primary"],                   // accent 蓝按钮渐变，配 --on-accent 白字
+    ];
+    const KNOWN_DEBT: [string, string, string][] = [
+      ["views/OntologyGraphView.module.css", ".legend", "同一串渐变的第 6 份拷贝；该文件由别的 dev 在改，本 WO 边界禁止触碰"],
+    ];
+    const isListed = (list: [string, string, ...string[]][], file: string, sel: string) =>
+      list.some(([f, s]) => file.endsWith(f) && sel.split(",").some((x) => x.trim() === s));
+
+    const alphaOf = (v: string): number | null => {
+      const m = /rgba?\(([^)]*)\)/.exec(v);
+      if (m) {
+        const parts = m[1]!.split(/[,/\s]+/).filter(Boolean);
+        return parts.length >= 4 ? parseFloat(parts[3]!) : 1;
+      }
+      if (/^#[0-9a-fA-F]{8}$/.test(v)) return parseInt(v.slice(7, 9), 16) / 255;
+      if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) return 1;
+      return null;
+    };
+
+    const judge = (r: Rule): string | null => {
+      if (THEME_BLOCK.test(r.selector)) return null;
+      const bg = declarations(r.body).filter(([k]) => k === "background" || k === "background-color").pop();
+      if (!bg) return null;
+      const v = bg[1].trim();
+      if (/^(transparent|none|inherit|initial|unset|currentcolor)$/i.test(v)) return null;
+      if (v.includes("var(") || /^url\(/.test(v)) return null; // 走令牌 ⇒ 随主题
+      const gradient = /gradient\(/.test(v);
+      const a = gradient ? 1 : alphaOf(v);
+      if (a === null || a < 0.5) return null; // 低透 tint ⇒ 叠在别人面上，不是"面"
+      return `${r.file} :: ${r.selector.trim()}\n    background: ${v}\n    ⇒ 写死${gradient ? "渐变" : `实色 alpha=${a}`}，三套主题下逐字节相同 ⇒ 换皮即错色/不可读`;
+    };
+
+    const bad: string[] = [];
+    for (const r of WIDE_RULES) {
+      if (isListed(DECOR, r.file, r.selector) || isListed(KNOWN_DEBT, r.file, r.selector)) continue;
+      const v = judge(r);
+      if (v) bad.push(v);
+    }
+    expect(bad, `写死的近不透明背景（theme-blind）：\n${bad.join("\n")}`).toEqual([]);
+
+    // 自清理：例外条目必须仍然真的命中，修好了不删会当场报红（豁免只缩短，不腐烂）。
+    for (const [file, sel, why] of KNOWN_DEBT) {
+      const rules = WIDE_RULES.filter((r) => r.file.endsWith(file) && r.selector.split(",").some((x) => x.trim() === sel));
+      expect(rules.length, `known-debt 指向的规则不存在了：${file} :: ${sel} —— 请删掉这条豁免`).toBeGreaterThan(0);
+      expect(rules.some((r) => judge(r) !== null), `known-debt 已被修好（${file} :: ${sel} · ${why}）—— 请删掉条目，让本门重新看管它`).toBe(true);
+    }
+  });
+
   it("幽灵令牌的写死颜色 fallback 落在 **background** 位上 = 换皮即不可读（token 门按设计放过带 fallback 的 var()）", () => {
     // check-css-token-defined.mjs 的推理是「写了兜底就是有意为之，坏不了」——
     // 对 `var(--x, 8px)` 成立，对 `var(--surface, #fff)` **不成立**：兜底是写死的浅色，
