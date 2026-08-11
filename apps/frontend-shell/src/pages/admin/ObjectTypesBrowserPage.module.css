@@ -1,0 +1,32 @@
+/* WO-OT-INSTANCE-REACH · 「看实例」详情**行内展开**：被点中那一行 + 紧随其下的展开行。
+
+   修前详情面板挂在**全部 15 个域面板之后**（页面最底部）：真后端实测 94 个类型 / 15 个域，
+   点第 1 个域第 1 行时，被点行与面板之间隔着 93 个类型行 + 14 个域面板标题 —— 面板在视口外，
+   用户视角就是「点了没反应」。此处样式把「触发行 + 展开行」在视觉上连成一体，
+   令「这段详情属于哪一行」一眼可辨。
+
+   颜色全部走既有 tokens（--accent / --hover-tint / --line2），不新造颜色常数 ——
+   canonical c7b9206e 刚修完「幽灵主题令牌 14 处」（令牌在某主题下未定义 → 文字恒黑），
+   这三个令牌已核实在 tokens.css 的深色/浅色/中性三套与 theme-warm.css 中均有定义。 */
+
+.otRowOpen > td {
+  background: var(--hover-tint);
+}
+.otRowOpen > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.otDetailRow > td {
+  padding: 0 8px 8px;
+  background: var(--hover-tint);
+  border-bottom: 1px solid var(--line2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* 禁用态理由：与按钮同格、紧贴其下。文案内容取自接口（displayName + count），此处只管排版。 */
+.otWhyDisabled {
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.35;
+  max-width: 15em;
+}
