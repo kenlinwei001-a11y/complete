@@ -34,6 +34,11 @@
   --warn: #e8b54a;
   --amber: #e8b54a;
   --danger: #e0626c;
+  /* WO-HOVER-LAYER：危险行底纹。原为幽灵令牌 `var(--danger-bg, #fdecec)` —— 兜底是**浅粉**，
+     而 --danger-bg 全仓无定义 ⇒ 暗色皮下渲染成浅粉行 + 近白字，读不了。
+     半透红纹叠在**已不透明**的表格行上，故半透在此无害；与其它语义色一样只定义在 :root
+     （本仓铁则：语义域色 theme-invariant，风险红在任何皮下都读作风险红）。 */
+  --danger-soft: rgba(224, 98, 108, 0.14);
 
   /* WO-THEME-SWITCH-U8：chrome 表面/交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
      暗色值 == 收口前的渲染字面（逐值等价·保证黑曜石视觉不变·C3 additive）。 */

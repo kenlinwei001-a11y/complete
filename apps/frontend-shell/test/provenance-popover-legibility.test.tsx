@@ -892,6 +892,130 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
     }
   });
 
+  /**
+   * ── 为什么还要这一条（role="tooltip" 那条盖不住）────────────────────────────────
+   * 上面按 role="tooltip" 枚举，只能保住**自称 tooltip** 的浮层。而本 WO 真正查出来的
+   * 大头一个都不带这个 role：Modal 的 .dialog（全仓每个弹窗）、Toast、HealthBadge 下拉、
+   * 登录卡、地图图例、全局搜索下拉。它们同样是"浮在内容之上的定位表面"，
+   * 同样一旦写死颜色就在别的主题下不可读 —— 只是没人给它们挂 role。
+   *
+   * 所以这一条改按**CSS 事实**判，不按 JSX 里写没写某个 role 判：
+   *   凡 `position: fixed|absolute` 且声明了 background 的规则，
+   *   其背景要么是 transparent/none（不成面），要么必须在**三套主题**里都解析出实色。
+   * 白名单只留 scrim（遮罩本就该半透）与纯装饰渐变条，且必须逐条写明理由。
+   */
+  it("全仓定位浮层的背景必须三套主题都解析出实色（Modal / Toast / 下拉 / 图例 —— 它们都不带 role=\"tooltip\"）", () => {
+    // ── 判据边界：区分「我**就是**那张面」和「我是叠在别人面上的一层色」──────────────
+    // 这两者修法相反，混为一谈就会把好设计判红（本门第一版就把 .genRecommend 这种
+    // 贴在卡片角上的 16% 绿色徽标判成"浮层不可读"，那是纯粹的误报）。
+    //   · alpha ≥ 0.5 或**渐变**  ⇒ 作者意图是"这是一张面"。它必须真的不透明且随主题，
+    //     否则就是本 WO 查出来的那 7 处病（.97/.96/.92/.88/.85 全落在这一档 ——
+    //     作者**想要**不透明，只是漏了，于是换皮即不可读）。
+    //   · alpha < 0.5           ⇒ 意图是"给底下那张不透明的面上个色"（tint / 徽标 / 选中态）。
+    //     它本就该半透，不在本门收口范围。
+    const SURFACE_ALPHA = 0.5;
+    // 遮罩（scrim）另算：它 position:fixed 且往往 alpha ≥ .5，但职责恰恰是"压暗底下"。
+    const SCRIM = /--modal-scrim/;
+    // 纯装饰色标条（如 .ptl::before 的绿黄粉刻度）不是面。
+    const DECOR = /^linear-gradient\(90deg,\s*(#|var\()/;
+
+    /**
+     * 已知欠账（**范围外**文件，本 WO 的工单边界明确不许碰 —— 归还给对应 dev）。
+     * ⚠ 下面还有一条断言要求每条 known-debt **现在仍然真的在犯** ——
+     * 修好了却没删条目会当场报红。允许清单只会缩短，不会腐烂成永久豁免。
+     */
+    const KNOWN_DEBT: [string, string, string][] = [
+      [
+        "apps/frontend-shell/src/views/OntologyGraphView.module.css",
+        ".legend",
+        "同一串硬编码深色渐变的第 6 份拷贝；views/OntologyGraphView.* 由别的 dev 在改，本 WO 工单边界禁止触碰",
+      ],
+    ];
+    const isKnown = (file: string, sel: string) =>
+      KNOWN_DEBT.some(([f, s]) => file === f && sel.split(",").some((x) => x.trim() === s));
+
+    const judgeRule = (r: Rule): string[] => {
+      const decls = declarations(r.body);
+      const pos = decls.find(([k]) => k === "position")?.[1];
+      if (!pos || !/\b(fixed|absolute)\b/.test(pos)) return [];
+      const bg = decls.filter(([k]) => k === "background" || k === "background-color").pop();
+      if (!bg) return [];
+      const raw = bg[1].trim();
+      if (/^(transparent|none)$/.test(raw) || SCRIM.test(raw) || DECOR.test(raw)) return [];
+
+      const out: string[] = [];
+      for (const theme of THEMES) {
+        const resolved = resolveVars(raw, TOKENS[theme]);
+        const c = parseColor(resolved);
+        if (c && c.a >= 1) continue;                       // 实色 ⇒ 好
+        if (c && c.a < SURFACE_ALPHA) continue;            // 低透 tint ⇒ 不是"面"，不归本门管
+        out.push(
+          `${r.file} :: ${r.selector.trim()} @${theme}\n    background: ${raw}\n    → ${resolved}（${c ? `alpha=${c.a}，≥${SURFACE_ALPHA} 说明作者要的是一张面，却没做到不透明` : "解析不出实色：渐变 / 未定义令牌"}）`,
+        );
+      }
+      return out;
+    };
+
+    const bad: string[] = [];
+    for (const r of WIDE_RULES) {
+      if (isKnown(r.file, r.selector)) continue;
+      bad.push(...judgeRule(r));
+    }
+    expect(bad, `定位浮层背景在某套主题下不是实色 —— 换皮即不可读：\n${bad.join("\n")}`).toEqual([]);
+
+    // 自清理：已知欠账必须**仍然在犯**，否则说明已修好，请删掉条目（不许留成永久豁免）。
+    for (const [file, sel, why] of KNOWN_DEBT) {
+      const rules = WIDE_RULES.filter((r) => r.file === file && r.selector.split(",").some((x) => x.trim() === sel));
+      expect(rules.length, `known-debt 指向的规则不存在了：${file} :: ${sel} —— 请删掉这条豁免`).toBeGreaterThan(0);
+      const still = rules.flatMap(judgeRule);
+      expect(still.length, `known-debt 已被修好（${file} :: ${sel} · ${why}）—— 请从 KNOWN_DEBT 里删掉它，让本门重新看管这条规则`).toBeGreaterThan(0);
+    }
+  });
+
+  it("幽灵令牌的写死颜色 fallback 落在 **background** 位上 = 换皮即不可读（token 门按设计放过带 fallback 的 var()）", () => {
+    // check-css-token-defined.mjs 的推理是「写了兜底就是有意为之，坏不了」——
+    // 对 `var(--x, 8px)` 成立，对 `var(--surface, #fff)` **不成立**：兜底是写死的浅色，
+    // 而本仓默认皮是暗色 ⇒ 永远取到那个浅色 ⇒ 近白字压纯白面（实测约 1.1:1）。
+    //
+    // 本条只咬 **background / background-color** 位：那是"字压在什么上面"的直接决定者，
+    // 也就是本 WO 要治的可读性病。落在 border-color / color / fill 位上的幽灵兜底
+    // 同样存在（本 WO 实测另有 13 处，已列入交付报告的欠账清单），但它们是**错色**不是**不可读**，
+    // 属另一档欠账，不在本门收口范围 —— 不把两种严重度混成一个数（铁律 0.6）。
+    const defined = new Set<string>();
+    for (const rs of Object.values(TOKENS)) for (const k of rs.keys()) defined.add(k);
+    const GHOST_BG = /background(?:-color)?\s*:\s*(?:[^;"'}]*?)var\(\s*(--[\w-]+)\s*,\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))\s*\)/g;
+    const offenders: string[] = [];
+    for (const abs of [...listCss(SRC_ROOT), ...listTsx(SRC_ROOT)]) {
+      const src = stripComments(readFileSync(abs, "utf8"));
+      for (const m of src.matchAll(GHOST_BG)) {
+        if (defined.has(m[1]!)) continue; // 令牌真存在 ⇒ fallback 只是保险，不会被取到
+        offenders.push(`${abs.slice(REPO_ROOT.length + 1)}: ${m[0]!.slice(0, 120)} —— 令牌 ${m[1]} 全仓无定义，永远取写死的颜色兜底`);
+      }
+    }
+    expect(offenders, `background 位上的幽灵令牌（换皮即不可读）：\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("金丝雀：上面两条判据对**已知坏样例**必须判红（否则它们是哑的）", () => {
+    // ① 定位浮层判据：喂本 WO 修掉的那张渐变
+    const canaryRule: Rule[] = [
+      { selector: ".__canary_overlay", body: "position: fixed; background: linear-gradient(165deg, rgba(30,38,49,0.97), rgba(16,21,28,0.98));", file: "<canary>" },
+    ];
+    const decls = declarations(canaryRule[0]!.body);
+    const bg = decls.filter(([k]) => k === "background").pop()!;
+    const c = parseColor(resolveVars(bg[1], TOKENS.light));
+    expect(c === null || c.a < 1, "金丝雀失灵：旧的深色渐变竟被判成实色").toBe(true);
+
+    // ② 幽灵 fallback 判据：喂 `background: var(--surface, #fff)`（本 WO 修掉的原文）
+    const GHOST_BG = /background(?:-color)?\s*:\s*(?:[^;"'}]*?)var\(\s*(--[\w-]+)\s*,\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))\s*\)/g;
+    const hits = [...`background: var(--surface, #fff);`.matchAll(GHOST_BG)];
+    expect(hits.length, "金丝雀失灵：幽灵 fallback 正则连原始病例都咬不住").toBe(1);
+    expect(hits[0]![1]).toBe("--surface");
+    // 且 --surface 确实全仓无定义（若哪天有人定义了它，这条金丝雀要跟着改，不许默默失效）
+    const defined = new Set<string>();
+    for (const rs of Object.values(TOKENS)) for (const k of rs.keys()) defined.add(k);
+    expect(defined.has("--surface"), "--surface 被定义了 ⇒ 上面那条金丝雀不再代表「幽灵」，请换样例").toBe(false);
+  });
+
   it("RiskPopover 的峰值口径是**可见 DOM 文字**，不是 title 属性（#175 的正向判据）", () => {
     const src = readRepo("apps/frontend-shell/src/components/Risk/RiskPopover.tsx");
     // 口径文案走 locales 单一来源

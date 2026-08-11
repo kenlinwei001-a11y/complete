@@ -23,7 +23,9 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
   // 按段聚合（保序）。
   const segments = [...new Set(assertions.map((a) => a.segment))];
   return (
-    <div data-testid={`vle-detail-${runId}`} style={{ padding: "6px 8px", background: "var(--surface-2, #f7f7f9)", borderRadius: 6 }}>
+    // WO-HOVER-LAYER：`--surface-2` 是幽灵令牌（全仓无定义），fallback #f7f7f9 是写死的浅灰 ⇒
+    // 默认暗色皮下渲染成浅灰块、字仍是近白 --txt，读不了。改吃 --panel2（逐主题·内嵌区语义）。
+    <div data-testid={`vle-detail-${runId}`} style={{ padding: "6px 8px", background: "var(--panel2)", borderRadius: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <b style={{ fontSize: 12 }}>段级红绿矩阵</b>
         <span className="mono" style={{ fontSize: 11 }}>工程验证度 {pct(report.engineeringVerificationScore)}</span>
@@ -43,7 +45,7 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
               </thead>
               <tbody>
                 {rows.map((a: ValidationAssertion, i) => (
-                  <tr key={i} data-testid={`vle-assert-${a.pass ? "ok" : "fail"}`} style={{ background: a.pass ? undefined : "var(--danger-bg, #fdecec)" }}>
+                  <tr key={i} data-testid={`vle-assert-${a.pass ? "ok" : "fail"}`} style={{ background: a.pass ? undefined : "var(--danger-soft)" }}>
                     <td>{a.point}</td>
                     <td><span className="badge">{a.oracle}</span></td>
                     <td style={{ color: a.pass ? "var(--ok)" : "var(--danger)", fontWeight: 600 }}>{a.pass ? "PASS" : "FAIL"}</td>
