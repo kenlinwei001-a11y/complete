@@ -1,0 +1,36 @@
+{
+  "$schema": "本文件是 scripts/check-prd-data-grounding.mjs 的**存量豁免棘轮**。规则见 note。",
+  "note": [
+    "① 每条豁免必须写 why（<10 字即判红）+ prd（归属 PRD，空即判红）。无理由、无归属的白名单本身就是本门要治的病。",
+    "② 每条豁免必须写 kind，三选一 —— **这三种的修法完全不同，混了必修错地方**（铁律 0.5 三分法）：",
+    "     · \"待修\"     = 判得对，确实是缺陷，只是还没修。**这是一条债，不是一张赦免令。**",
+    "     · \"误报\"     = 门判错了（语境判别失手等）。修法是修门，不是修 PRD。累计多了说明判据该收紧。",
+    "     · \"覆盖不到\" = 字段真实存在，但不在本门真值源里（连接器映射 / A3 运行期建模）。见门文件《做不到的部分》第 2 条。",
+    "③ key 锚在**内容**上不锚行号：PDG-6 用判据原文的 sha256 前 16 位，其余用 `Type.field`。",
+    "   文案一改、哈希即变 ⇒ 豁免当场失效、门重新红。这是刻意的 —— 行号会漂，漂了白名单就变成通行证。",
+    "④ maxExemptions 必须**恒等于** exemptions.length。加一条豁免 = 同时改这个数 = 一处显眼的 diff，评审必然看见。",
+    "⑤ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**",
+    "⑥ 存量清单（WO-PRD-FIELD-AUDIT · docs/AUDIT-prd-field-grounding.md）回来后由审核方并入本文件；",
+    "   并入时**必须逐条标 kind**，不许整批标「待修」了事。"
+  ],
+  "ratchetHigh": 2,
+  "maxExemptions": 2,
+  "exemptions": [
+    {
+      "key": "PRD-sandbox-redesign.md#VAR:06caab0f7841171e",
+      "prd": "docs/PRD-sandbox-redesign.md",
+      "line": 364,
+      "code": "PDG-6",
+      "kind": "待修",
+      "why": "**这就是本门的立门案例本身**（A6）。判据「改 `SEG_REGISTRY` 一个值 → 结论真跟着变」只咬后半段：`SEG_REGISTRY` 确有数据，但「这条线属于哪几个 seg」这层归属不存在（本门实测 `Line` 仅 11 个属性，无任何 seg 归属字段），前半段不成立时该判据**无法失败**。修法不是删判据，是补一句「前置：线→seg 归属关系存在」并给该前置一条能红的判据。挂账而非立即红，是因为修它要动 PRD 正文与沙盘数据两半，属另一张单。"
+    },
+    {
+      "key": "PRD-simulation-sandbox.md#VAR:20207e562d88b168",
+      "prd": "docs/PRD-simulation-sandbox.md",
+      "line": 213,
+      "code": "PDG-6",
+      "kind": "待修",
+      "why": "同 A6 形态：「编辑某 `PropagationRule` 系数 0.85→0.6 发布→同一沙盘传导结果随之变」未声明前置。前置应是「该 `PropagationRule` 实例存在且真被传导引擎读取」——前置不成立时此判据同样无法失败。属同族债，随 A6 一并修。"
+    }
+  ]
+}
