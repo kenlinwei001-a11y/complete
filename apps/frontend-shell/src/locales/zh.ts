@@ -340,7 +340,7 @@ export const zh = {
     rowRevenueLabel: "本单营收暴露（估算）",
     // 诚实缺数披露（R14）：说清 affected_orders.rows[] 这一层到底带回了什么、没带回什么。
     rowDetailGap:
-      "缺数诚实披露：affected_orders.rows[] 仅带回 订单/客户/应用/型号/数量/交期/延误/风险点 八个字段；逐单实际成交价、逐单毛利、齐套缺口、信用占用**不在本求解器输出内** → 详情不臆造、不另调接口（R14）。",
+      "缺数诚实披露：affected_orders.rows[] 仅带回 订单/客户/应用/型号/数量/交期/延误/风险点 八个字段；逐单实际成交价、逐单毛利、齐套缺口、信用占用均不在本求解器输出内 → 详情不臆造、不另调接口（R14）。",
 
     // ── WO-ORDER-ROW-DETAIL ② 对话上下文（原 toggleSelectedObject 链保留，改为显式入口 + 可见选中态）──
     ctxAdd: "＋ 加入对话",
