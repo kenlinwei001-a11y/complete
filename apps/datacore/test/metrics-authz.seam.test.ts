@@ -9,16 +9,25 @@ import { makeApp, ADMIN } from "./helpers.js";
  *   出口 2 auth 钩子的 `if (!path.startsWith("/a/")) return;` —— `/metrics` 不以 `/a/` 开头，
  *          于是**就算把出口 1 删掉也依然免鉴权**。只堵一处 = 白改。
  *
- * 因此本文件对**每个出口各留一条断言**：只咬一条，另一条被改回去时测试照样绿
- * （那正是「信号是真的、但它不指向我要断言的那个对象」这类假绿的形态）。
+ * 因此本文件对**每个出口各留一条能单独变红的断言**。
  *
- * 断言层级是**效果层**：真 inject 一个不带头的请求看状态码，不是断言「PUBLIC_PATHS 里没有这个串」
+ * ⚠ 这里有个坑，值得写下来：收口做成了两层（钩子 + 端点自守），而**两层会互相掩护** ——
+ * 任一层被改回去，另一层顶上，状态码仍是 401，测试照样绿 ⇒ **两个出口谁都没被真正钉住**。
+ * 解法不是删掉一层（纵深是对的），而是让两层的拒绝**可区分**：钩子回 "…(hook)"、
+ * 端点回 "…(endpoint)"。于是「出口 1 被重新塞回 PUBLIC_PATHS」会表现为拒绝方从 hook 变成
+ * endpoint —— 单独可观测、单独变红。钉的仍是**行为**（响应体），不是「代码里有这一行」。
+ *
+ * 出口 2 则由另一条断言单独钉：它是**通用**陷阱（放行的是所有非 `/a/` 路径，不止 `/metrics`），
+ * 所以拿一个**未注册的**非 `/a/` 路径去探 —— 兜底若被恢复，它会变成 404（路由不存在、压根没鉴权），
+ * 而不是 401。这条与 `/metrics` 的端点自守完全无关，因此不会被那一层掩护。
+ *
+ * 断言层级一律是**效果层**：真 inject 看状态码/响应体，不是断言「PUBLIC_PATHS 里没有这个串」
  * —— 后者咬的是常量不是链路，出口 2 还开着时它照样绿。
  */
 const SVC = "test-only-fake-service-token";
 
 describe("SEAM · /metrics 服务间鉴权（双重旁路两处都要堵）", () => {
-  it("出口 1（PUBLIC_PATHS）：不带 x-service-token 的匿名请求 → 401，且响应体不含任何指标", async () => {
+  it("匿名请求 → 401，且响应体不含任何指标", async () => {
     const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     const res = await t.app.inject({ method: "GET", url: "/metrics" });
     expect(res.statusCode, "匿名请求拿到了 /metrics —— 旁路仍开着").toBe(401);
@@ -27,12 +36,34 @@ describe("SEAM · /metrics 服务间鉴权（双重旁路两处都要堵）", ()
     expect(res.body).not.toContain("# TYPE");
   });
 
-  it("出口 2（!startsWith(\"/a/\") 兜底）：/metrics 不以 /a/ 开头，仍须 401 —— 兜底不得二次放行", async () => {
+  it("出口 1（PUBLIC_PATHS）单独钉死：拒绝必须来自**钩子**层 —— /metrics 若被塞回公开表，这条变红", async () => {
     const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
-    // 该路径已从 PUBLIC_PATHS 移除；它能否被拦，完全取决于「非 /a/ 一律放行」那条兜底有没有被收窄。
-    expect("/metrics".startsWith("/a/"), "前提自证：/metrics 确实不以 /a/ 开头（否则本用例没在测兜底）").toBe(false);
+    const res = await t.app.inject({ method: "GET", url: "/metrics" });
+    expect(res.statusCode).toBe(401);
+    const msg = (res.json() as { error: { message: string } }).error.message;
+    // /metrics 一旦回到 PUBLIC_PATHS，钩子会 `return` 放行 → 改由端点自守拦 → message 变 "(endpoint)"。
+    // 两层都拦得住，所以只看状态码是分不出来的；这条断言就是为了把那个差别变成可观测信号。
+    expect(msg, "拒绝不再来自钩子层 —— /metrics 多半又被塞回 PUBLIC_PATHS（端点自守在替它挡着）").toContain("(hook)");
+  });
+
+  it("出口 2（!startsWith(\"/a/\") 兜底）单独钉死：未注册的非 /a/ 路径须 401 而非 404", async () => {
+    const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
+    const probe = "/definitely-not-registered-probe";
+    expect(probe.startsWith("/a/"), "前提自证：探针确实不以 /a/ 开头（否则本用例没在测兜底）").toBe(false);
+    const res = await t.app.inject({ method: "GET", url: probe });
+    // 兜底若被恢复成「非 /a/ 一律 return」，钩子直接放行 → 落到 setNotFoundHandler → 404。
+    // 404 与 401 的差别正是「这条路径有没有经过鉴权」——这就是出口 2 的单独信号，
+    // 且与 /metrics 的端点自守无关（那层只管 /metrics 一条路径），不会被掩护。
+    expect(
+      res.statusCode,
+      "未注册的非 /a/ 路径返回 404 = 它压根没经过鉴权 ⇒ 「非 /a/ 一律放行」的兜底又回来了；" +
+        "下一个非 /a/ 路由上线时会默认裸奔",
+    ).toBe(401);
+  });
+
+  it("用户身份也不许读（指标是全租户合计，给任一租户的用户看 = 扩大跨租户可见面）", async () => {
+    const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     const res = await t.app.inject({ method: "GET", url: "/metrics", headers: { "x-debug-user": "demo:u1:admin" } });
-    // 连合法的**用户**身份也不许读：指标是全租户合计，给任一租户的用户看 = 扩大跨租户可见面
     expect(res.statusCode, "用户身份读到了全租户合计指标 —— 跨租户可见面被扩大").toBe(401);
     expect(res.body).not.toContain("# TYPE");
   });
