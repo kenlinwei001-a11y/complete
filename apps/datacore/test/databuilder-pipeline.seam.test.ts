@@ -165,6 +165,49 @@ describe("WO-DATABUILDER-PIPELINE · 接缝：改 pipeline 定义 ⇒ intake 实
     expect(after.pipeline.steps.map((s) => s.stepKey)).toEqual(["import_materialize", "import_emit"]);
   });
 
+  it("低代码可用性：节点省略 sop ⇒ 补出厂缺省（ABORT/1/无需人工），不是 undefined 崩掉", async () => {
+    const t = await makeApp();
+    const def = await getPipeline(t, "intake");
+    const bare = def.nodes.map(({ id, label, position, stepKey, enabled }) => ({ id, label, position, stepKey, enabled }));
+    const res = await t.app.inject({
+      method: "PUT", url: "/a/v1/databuilder/pipelines/intake", headers: ADMIN,
+      payload: { kind: "intake", name: "省略 SOP 的低代码定义", nodes: bare, edges: def.edges },
+    });
+    expect(res.statusCode).toBe(200);
+    const saved = await getPipeline(t, "intake");
+    expect(saved.nodes.every((n) => n.sop.onFailure === "ABORT" && n.sop.maxAttempts === 1 && n.sop.requiresHumanApproval === false)).toBe(true);
+    // 仍然能正常跑（缺省 SOP 不影响行为）
+    const body = await postIntake(t);
+    expect(body.reconcile.autoMapped.length + body.reconcile.candidates.length).toBeGreaterThan(0);
+  });
+
+  it("诚实失败：配了未注册的 stepKey ⇒ intake 报 VALIDATION_ERROR，**不静默跳过**（静默会把配置错误伪装成跑通）", async () => {
+    const t = await makeApp();
+    const def = await getPipeline(t, "intake");
+    expect(await putPipeline(t, "intake", {
+      ...def,
+      nodes: def.nodes.map((n) => (n.stepKey === "intake_emit" ? { ...n, stepKey: "no_such_step" } : n)),
+    })).toBe(200); // 配置本身允许存（画布上可以先画后接）
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake", headers: ADMIN, payload: { html: PROTOTYPE } });
+    expect(res.statusCode).toBe(400);
+    const err = res.json() as { error: { code: string; message: string; requestId?: string } };
+    expect(err.error.code).toBe("VALIDATION_ERROR");
+    expect(err.error.message).toContain("no_such_step");
+  });
+
+  it("配置校验：成环的 pipeline 被拒（400），不落库 ⇒ 生效定义仍是出厂默认", async () => {
+    const t = await makeApp();
+    const def = await getPipeline(t, "intake");
+    const [a, b] = [def.nodes[0]!, def.nodes[1]!];
+    const res = await t.app.inject({
+      method: "PUT", url: "/a/v1/databuilder/pipelines/intake", headers: ADMIN,
+      payload: { kind: "intake", name: "成环", nodes: def.nodes, edges: [{ from: a.id, to: b.id }, { from: b.id, to: a.id }] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: { code: string } }).error.code).toBe("VALIDATION_ERROR");
+    expect((await getPipeline(t, "intake")).factory).toBe(true); // 没落库
+  });
+
   it("R2 租户隔离：A 租户改 pipeline 不影响 B 租户（B 仍走出厂默认）", async () => {
     const t = await makeApp();
     const def = await getPipeline(t, "intake");
