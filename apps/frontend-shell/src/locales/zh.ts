@@ -866,8 +866,38 @@ export const zh = {
         kpiFailed: "失败 / 取消",
         kpiRunning: "进行中",
         unitRuns: "次",
-        /** 空态：真的没有运行，不是加载失败。 */
-        empty: "本租户还没有经 Agent 路径的推演。到任意场景对话坞问一个开放问句即可产生。",
+        /**
+         * 空态：真的没有运行，不是加载失败。
+         *
+         * ⚠️ **WO-AGENTPATH-HINT-TRUTH · 这里曾经写着一句做不到的指引**：
+         * 「到任意场景对话坞问一个开放问句即可产生」——它把两件事说成一件：
+         *   ① 产生一条 **path=AGENT 的记录**（这一半是真的，甚至不挑问句）；
+         *   ② 产生一次 **真实的 Agent 循环运行**（这一半在未绑供应商时恒假）。
+         * 亲手实测（内存态双服务 · demo 租户 · seed 42 · 18 条问句 = 9 类 × 上下文薄/厚各一轮）：
+         *   · **未绑 provider**：`GET /b/v1/queries/:id/agent-run` **0/18** 返 200，
+         *     18 条全是 404 `AGENT_RUN_NOT_FOUND` —— 一次循环都没进过；
+         *     薄上下文（对话坞默认态：没选对象、没筛选）下 9/9 落 `path=AGENT`，
+         *     但每一条都是 `completeNoLlmDegradation`（`agentcore/src/router/orchestrator.ts:2657`）
+         *     写下的降级记录，展开就是本块的 `noRunTitle`「本次未进入 Agent 循环」；
+         *     厚上下文下反而只有 3/9 落 AGENT，定式深问被确定性路由接走成 `path=WORKFLOW`。
+         *   · **绑上一个真能应答的 provider 后**（同一套观测手段·金丝雀）：
+         *     同样 9 条里 **7 条**返 200 带真 `AgentRunRecord`（run_… · 真工具调用 · 真 token）。
+         *     ⇒ 观测手段是活的，上面那个 0/18 是真负例，不是我没看见。
+         * 判据（`agentcore/src/router/orchestrator.ts:778` → `llm/providers.ts:432 providerAvailable`）：
+         * **有没有可用的 LLM 供应商**才是 Agent 循环的真前置，与问句开不开放无关。
+         * 所以本空态按**可观测事实**分三态说话，三句必须不同；**严禁**再合并回一句写死的指引。
+         */
+        emptyReachable: (providerName: string, modelId: string) =>
+          `本租户还没有经 Agent 路径的推演。agent 用途已绑定启用中的供应商（${providerName} / ${modelId}），` +
+          "此时到任意场景对话坞问一个开放问句即可产生真实运行；" +
+          "有对口确定性求解器的定式问句会被路由接走，走工作流路径、不进本区。",
+        emptyUnreachable:
+          "本租户还没有经 Agent 路径的推演，而且现在问也产生不了真实运行：agent 用途" +
+          "（路径 B 工具循环）没有绑定启用中的 LLM 供应商。此时提问只会留下「未进入 Agent 循环」" +
+          "的降级记录。除非部署侧配了默认供应商，否则请先绑定，再到场景对话坞问开放问句。",
+        emptyUnknown:
+          "本租户还没有经 Agent 路径的推演。读不到本租户的 LLM 供应商配置（请求失败或无权限），" +
+          "因此判断不了 Agent 路径此刻是否可达 —— 不猜。",
         loading: "加载中…",
         /** 最近运行清单 */
         recentTitle: "最近运行",

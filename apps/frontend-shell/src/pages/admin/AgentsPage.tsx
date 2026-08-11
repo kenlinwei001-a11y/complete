@@ -6,6 +6,7 @@ import {
   fetchAgentRun,
   fetchAgents,
   fetchDecisionTrace,
+  fetchLlmBindings,
   fetchLlmProviders,
   fetchMcpConfigs,
   fetchQueryHistory,
@@ -13,6 +14,7 @@ import {
   fetchWorkflows,
   publishAgent,
   saveAgent,
+  type LlmProviderVM,
   type QueryHistoryItem,
 } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -161,16 +163,61 @@ function stateClass(s: string): string {
   return styles.stateRun!;
 }
 
+/**
+ * WO-AGENTPATH-HINT-TRUTH · Agent 循环的**真前置**是否成立（空态文案据此说话·非写死）。
+ *
+ * 判据与引擎侧同源，不是另发明一套：
+ *  · `agentcore/src/router/orchestrator.ts:778` —— `providerAvailable(tenantId,"agent",…)` 为假时
+ *    直接 `completeNoLlmDegradation`（同文件 :2657）：任务照样标 `path=AGENT` + COMPLETED，
+ *    但**从不写 AgentRunRecord** ⇒ 面板里只会多一行「未进入 Agent 循环」，不是真实推演。
+ *  · `agentcore/src/llm/providers.ts:432 providerAvailable` → `:491 explicitProviderUsable`：
+ *    DataCore spec 的可用判据 = 「该 provider 存在」且「status !== DISABLED」（再往下是密钥解密，
+ *    前端看不到 ⇒ **不猜**，故本函数只报到"已绑定 + 启用中"这一层，文案措辞同步收窄）。
+ *
+ * 三态**必须分得开**（合成两态就等于又开始猜）：
+ *  · REACHABLE   —— 读到了绑定 + provider 启用中；
+ *  · UNREACHABLE —— 读到了配置，但 agent 用途没绑 / 绑的 provider 不在或已停用；
+ *  · UNKNOWN     —— 配置**读不到**（请求失败 / 无权限 / 尚在加载）：这不是"不可达"，是"判不了"。
+ */
+type AgentLoopReach =
+  | { kind: "REACHABLE"; providerName: string; modelId: string }
+  | { kind: "UNREACHABLE" }
+  | { kind: "UNKNOWN" };
+
+export function agentLoopReach(
+  providers: LlmProviderVM[] | undefined,
+  bindings: { bindings: { purpose: string; providerId: string; modelId: string }[] } | undefined,
+): AgentLoopReach {
+  if (!providers || !bindings) return { kind: "UNKNOWN" };
+  const bound = bindings.bindings.find((b) => b.purpose === "agent");
+  if (!bound) return { kind: "UNREACHABLE" };
+  const p = providers.find((x) => x.id === bound.providerId);
+  if (!p || p.status === "DISABLED") return { kind: "UNREACHABLE" };
+  return { kind: "REACHABLE", providerName: p.name, modelId: bound.modelId };
+}
+
+/** 空态文案：由上面的三态**推出来**，不是三处各写死一句（改后端配置 → 这句必须跟着变）。 */
+function emptyCopy(reach: AgentLoopReach): string {
+  if (reach.kind === "REACHABLE") return c.emptyReachable(reach.providerName, reach.modelId);
+  if (reach.kind === "UNREACHABLE") return c.emptyUnreachable;
+  return c.emptyUnknown;
+}
+
 function AgentRuntimeConsole() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["b", "query-history", "agent-console"],
     queryFn: () => fetchQueryHistory(100),
   });
+  // WO-AGENTPATH-HINT-TRUTH · 空态要说真前置 → 必须真读一遍本租户的 provider/用途绑定。
+  // 失败不抛、不重试：读不到就落 UNKNOWN 态（"判不了" ≠ "不可达"），绝不拿默认值假装读到了。
+  const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders, retry: false });
+  const { data: bindings } = useQuery({ queryKey: ["a", "llm-bindings"], queryFn: fetchLlmBindings, retry: false });
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   // 只留 AGENT 路径的运行 —— 这是本页唯一能诚实声称与 Agent 有关的过滤条件
   // （没有 agentId 可用，见 `.honest` 横幅与它的 `?`）。
   const runs: QueryHistoryItem[] = (data?.items ?? []).filter((x) => x.path === "AGENT");
+  const reach = agentLoopReach(providers, bindings);
   const done = runs.filter((r) => r.status === "COMPLETED").length;
   const bad = runs.filter((r) => r.status === "FAILED" || r.status === "CANCELLED").length;
   const running = runs.length - done - bad;
@@ -203,9 +250,19 @@ function AgentRuntimeConsole() {
       {isLoading ? (
         <div className={styles.empty}>{c.loading}</div>
       ) : runs.length === 0 ? (
-        // 真的没有运行 —— 说清楚怎么才会有，而不是空白。
-        <div className={styles.empty} data-testid="agent-console-empty">
-          {c.empty}
+        // 真的没有运行 —— 说清楚**怎么才会有**，而且这句话必须随真实前置变
+        //（WO-AGENTPATH-HINT-TRUTH：旧文案「问一个开放问句即可产生」在未绑供应商时是空头支票，
+        //  实测 18/18 问句一次 Agent 循环都没进过，只留下降级记录）。
+        <div className={styles.empty} data-testid="agent-console-empty" data-reach={reach.kind}>
+          {emptyCopy(reach)}
+          {reach.kind === "UNREACHABLE" && (
+            <>
+              {" "}
+              <Link to="/admin/llm-providers" data-testid="agent-console-empty-cta">
+                {c.noRunCta}
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>
