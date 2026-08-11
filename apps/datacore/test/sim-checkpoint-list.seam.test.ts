@@ -57,7 +57,8 @@ describe("接缝 · 沙盘检查点存档可读（欠账 #157）", () => {
     // 🔴 这条是本文件的**主锚点**。`repo/pg.ts:103` 有 `ORDER BY tick`，而 `repo/memory.ts:70`
     // **一个 sort 都没有**（Map 插入序）——两个实现在此处天生分叉（破 R9）。
     // 沙盘的常规动作恰好会踩中：存档 → 回滚 → 在更早的 tick 再存一次，于是**插入序与 tick 序相反**。
-    // 路由层排序若被拿掉，memory 会吐出 [tick5, tick2]，本条当场红。
+    // 路由层排序若被拿掉，memory 按插入序吐 **[2, 8, 2]**，本条当场红
+    // （2026-08-11 变异反证实测原文：`expected [ 2, 8, 2 ] to deeply equal [ 2, 2, 8 ]`）。
     const t = await makeApp();
     await enableSim(t);
     // 乱序复现（同一会话内）：tick2 存「锚」→ 推到 tick8 存「顶」→ **回滚到 tick2** → 再存「回」。
