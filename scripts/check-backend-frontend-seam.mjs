@@ -56,6 +56,22 @@ const AGENTCORE_SRC = join(ROOT, "apps/agentcore/src");
 const DATACORE_SRC = join(ROOT, "apps/datacore/src");
 const AGENTCORE_SERVER = join(ROOT, "apps/agentcore/src/server.ts");
 
+/**
+ * 退出码三分（本仓统一约定）：`0` 干净 / `1` 真有问题 / `2` **工具自己坏了**。
+ * 没有这道兜底，门内部任何一次抛异常都会以 **RC=1** 收场 —— 而 RC=1 的语义是
+ * 「你的代码有接缝缺口」。**「门崩了」被读成「代码有问题」是误报，方向正好相反**。
+ * （实测：变异 E 绕开 `scanText()` 手搓扫描面记录 → 崩在诚实位累加处 → RC=1，
+ *   金丝雀根本没轮上跑。这条 handler 把它扳回 RC=2「我没查出来」。）
+ */
+const dieAsToolBroken = (e) => {
+  console.error("⛔ 门自己坏了 —— befe-seam:check 内部抛异常，本次**不产出任何结论**。");
+  console.error("   （铁律 0.6：只许报「我没查出来」，绝不许报「代码干净 / 零缺口」。）\n");
+  console.error(e?.stack ?? String(e));
+  process.exit(2);
+};
+process.on("uncaughtException", dieAsToolBroken);
+process.on("unhandledRejection", dieAsToolBroken);
+
 const argv = new Set(process.argv.slice(2));
 const UPDATE = argv.has("--update");
 const SEED = argv.has("--seed");
