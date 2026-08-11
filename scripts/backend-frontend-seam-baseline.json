@@ -1,15 +1,12 @@
 {
   "version": 1,
   "note": "后端↔前端接缝缺口棘轮基线（WO-GATE-BEFE-SEAM · 闭本体 §8 G-BE-FE-SEAM-DEAD）。sseFields = 后端 emit 了、前端生产代码零提及的字段名；endpoints = 后端注册了、前端零调用的路由。**只减不增**：--update 只摘掉已修复项，绝不收编新增缺口（否则棘轮秒变橡皮图章）；要把一条新缺口记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。首次建账（本文件不存在时）用 --seed。",
-  "generatedBy": "node scripts/check-backend-frontend-seam.mjs --seed",
+  "generatedBy": "node scripts/check-backend-frontend-seam.mjs --update",
   "sseFields": [
     "actionDraftIds",
     "decisionId",
-    "dispatches",
-    "iteration",
     "nearest",
     "plannedSlices",
-    "roleLabel",
     "supersededBy"
   ],
   "endpoints": [
@@ -69,7 +66,6 @@
     "GET /a/v1/views/pull-targets",
     "GET /a/v1/webhooks",
     "GET /api/v1/perception/metrics",
-    "GET /api/v1/queries/*/decision-trace",
     "GET /api/v1/queries/*/lineage",
     "GET /api/v1/queries/*/trace",
     "GET /api/v1/resources",
