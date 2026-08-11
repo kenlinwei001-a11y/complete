@@ -334,7 +334,20 @@ describe("WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改�
     }
   }, 180000);
 
-  it("R-ARG-FIDELITY · scope.baseIds 真过滤；businessTypes/modelIds 显式拒绝而不是静默返全域", async () => {
+  /**
+   * ⚠ **本条的 businessTypes 那一段在 WO-A6-CONTENTION 里改判了，改的是"怎么诚实"，不是"要不要诚实"。**
+   *
+   * 原断言：`businessTypes` 一律 400。当时这是对的 —— 判定器**一个 locus 都不读这一维**，
+   * 放开就等于静默返全域（"以为筛了、其实没筛"）。
+   * 现在判定器真读了：承载业务线的 locus（`Order` / 争用面 `Base`）**真裁**，
+   * 不承载的**保留但逐条标 UNKNOWN 归属**（caveat + `segmentAttribution` + dataMode 降 PARTIAL）。
+   * 于是同一条纪律的落点从「整维拒绝」挪到「逐条出声」——**更精确，不是更松**：
+   * 400 那会儿用户连能筛的那一半也拿不到，而筛不动的部分当时也无从知晓。
+   * 放行后的效果层判据全在 `a6-cross-segment-contention.seam.test.ts` CONTENTION-5，此处只守两件事：
+   *   ① `modelIds` **仍然 400**（无 contracts 级型号册 + 无 locus 承载 ⇒ 放开仍是静默全域）；
+   *   ② `businessTypes` 放行后**不许静默** —— 必须带 `segmentAttribution` 账且账上真有 UNKNOWN 条目。
+   */
+  it("R-ARG-FIDELITY · scope.baseIds 真过滤；modelIds 仍显式拒绝；businessTypes 放行但筛不动的地方必须出声", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await editRule(t, {
@@ -355,14 +368,28 @@ describe("WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改�
     expect(lineScoped.length).toBeLessThan(lineAll.length); // 真收窄了
     expect(scoped.impediments.every((i) => i.scope.baseIds?.[0] === "changzhou")).toBe(true); // 结果回带 scope
 
+    // ① 型号维仍然诚实拒绝。
     const bad = await t.app.inject({
       method: "POST",
       url: "/a/v1/solvers/chain_impediments/invoke",
       headers: ADMIN,
-      payload: { args: { scope: { businessTypes: ["storage"] } } },
+      payload: { args: { scope: { modelIds: ["4680-NCM"] } } },
     });
     expect(bad.statusCode).toBe(400);
     expect(bad.body).toContain("R-ARG-FIDELITY");
+
+    // ② 业务线维放行 —— 但**筛不动的必须出声**。这条断言就是原来那道 400 的接班人：
+    //    若哪天有人把「保留不承载的 locus」改成静默放行，`segmentAttribution` 会消失或归零 ⇒ 当场红。
+    const bt = await scan(t, { scope: { businessTypes: ["storage"] } });
+    const att = (bt as unknown as { segmentAttribution?: { rows: { carriesSegment: boolean; unattributed: number }[]; unattributedTotal: number } }).segmentAttribution;
+    expect(att, "限了业务线却不给作用面账 = 静默（正是原 400 要防的形态）").toBeDefined();
+    expect(att!.unattributedTotal, "13 条不承载业务线的 locus 必须被记成 UNKNOWN，而不是当作「属于所选业务线」").toBeGreaterThan(0);
+    expect(att!.rows.some((r) => !r.carriesSegment && r.unattributed > 0)).toBe(true);
+    // 归属 UNKNOWN 的那些，诚实位必须降级（不许仍自称 LIVE/SYNTHETIC）。
+    const unattributedModes = new Set(
+      bt.impediments.filter((i) => !["Order", "Base"].includes(i.locus.objectType)).map((i) => i.dataMode),
+    );
+    expect([...unattributedModes]).toEqual(["PARTIAL"]);
   }, 180000);
 });
 
