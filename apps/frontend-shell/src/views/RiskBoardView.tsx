@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
@@ -43,6 +43,23 @@ type BottleneckOutput = ReturnType<typeof BottleneckMatrixOutputSchema.parse>;
 
 /** 越线带宽（阈值下探关注区）：阈值−15 起为「关注」。参照 HTML 三档口径。 */
 const BAND = 15;
+
+/**
+ * WO-DISPOSITION-INLINE-ROW · 处置计划表**列定义的单一来源**。
+ *
+ * `<thead>` 与「行内展开行」的 `colSpan` **同吃这一份** —— 以后加/减一列只改这里，两处一起动。
+ * 修前展开面板挂在 `</table>` 之后、根本没有 colSpan；若照抄写死 `colSpan={7}`，加列当天就错位，
+ * 且错位是纯视觉的、任何测试都咬不住（=下一个「绿测试≠能用」）。故此处不写死，从列数现算。
+ */
+const PLAN_COLUMNS: readonly string[] = [
+  "#",
+  zh.risk.planAct,
+  zh.risk.planOwner,
+  zh.risk.planStart,
+  zh.risk.planDone,
+  zh.risk.planEff,
+  zh.risk.planRule,
+];
 /** 电池产量单位（换行业经 ViewConfig.layout.unit 下发·此处域内兜底）。WO-UNIT-NORMALIZE：Order.qty 单位=套。 */
 const UNIT = "套"; // debattery-allow
 /** WO-UNIT-NORMALIZE：万元→亿 单位换算（NOT 业务常数·R14）。营收=Σ qty(套)×priceWan(万元)→ /1e4 = 亿。 */
@@ -379,36 +396,50 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               <table className="cmp" data-testid="risk-plan-table">
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>{zh.risk.planAct}</th>
-                    <th>{zh.risk.planOwner}</th>
-                    <th>{zh.risk.planStart}</th>
-                    <th>{zh.risk.planDone}</th>
-                    <th>{zh.risk.planEff}</th>
-                    <th>{zh.risk.planRule}</th>
+                    {/* 列定义单一来源 = PLAN_COLUMNS（展开行的 colSpan 同源·加列不错位）。 */}
+                    {PLAN_COLUMNS.map((label, ci) => (
+                      <th key={ci}>{label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {planRows.map((r, i) => (
-                    <tr key={i} data-testid={`risk-plan-row-${i}`} role="button" tabIndex={0}
-                      title={zh.risk.plan.rowHint}
-                      style={{ cursor: "pointer", background: openPlanRow === i ? "var(--panel2, rgba(120,160,200,.10))" : undefined }}
-                      onClick={() => setOpenPlanRow(openPlanRow === i ? null : i)}
-                      onKeyDown={(e) => e.key === "Enter" && setOpenPlanRow(openPlanRow === i ? null : i)}>
-                      <td className="mono"><b>{i + 1}</b></td>
-                      <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
-                      <td className="zh">{r.owner}</td>
-                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.start}</td>
-                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.done}</td>
-                      <td className="zh" style={{ color: "var(--ok)" }}>{r.eff}</td>
-                      <td><span className="badge">{r.rule}</span></td>
-                    </tr>
-                  ))}
+                  {/* WO-DISPOSITION-INLINE-ROW：详情**紧跟被点那一行**（`<tr><td colSpan>` 展开行），
+                      不再挂在 `</table>` 之后 —— 修前 17 行的表点第 3 行，详情跑到最下面，
+                      用户既要滚到底、又看不出这段详情属于哪一行。 */}
+                  {planRows.map((r, i) => {
+                    const rowOpen = openPlanRow === i;
+                    const toggle = () => setOpenPlanRow(rowOpen ? null : i);
+                    const detailId = `risk-plan-detail-${i}`;
+                    return (
+                      <Fragment key={i}>
+                        <tr data-testid={`risk-plan-row-${i}`} role="button" tabIndex={0}
+                          title={zh.risk.plan.rowHint}
+                          aria-expanded={rowOpen}
+                          aria-controls={rowOpen ? detailId : undefined}
+                          className={rowOpen ? styles.rkPlanRowOpen : undefined}
+                          style={{ cursor: "pointer", background: rowOpen ? "var(--panel2, rgba(120,160,200,.10))" : undefined }}
+                          onClick={toggle}
+                          onKeyDown={(e) => e.key === "Enter" && toggle()}>
+                          <td className="mono"><b>{i + 1}</b></td>
+                          <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
+                          <td className="zh">{r.owner}</td>
+                          <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.start}</td>
+                          <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.done}</td>
+                          <td className="zh" style={{ color: "var(--ok)" }}>{r.eff}</td>
+                          <td><span className="badge">{r.rule}</span></td>
+                        </tr>
+                        {rowOpen && (
+                          <tr data-testid={`risk-plan-detail-row-${i}`} className={styles.rkPlanDetailRow}>
+                            <td id={detailId} colSpan={PLAN_COLUMNS.length}>
+                              <DispositionDetailPanel row={r} onClose={() => setOpenPlanRow(null)} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
-              {openPlanRow != null && planRows[openPlanRow] && (
-                <DispositionDetailPanel row={planRows[openPlanRow]!} onClose={() => setOpenPlanRow(null)} />
-              )}
             </div>
           )}
         </>
