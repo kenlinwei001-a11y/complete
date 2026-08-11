@@ -13,6 +13,8 @@ import {
 } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// DF.1 基地册单一来源：作用域 mock 的 base 解析（id/中文名）只认这一份，禁内联 (中文名, 拼音 id) 对。
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
 // WO-ENTERPRISE-STATE：捕获核**与 datacore 共用同一份纯函数**（治「mock 与引擎口径分家」，见下方 mockEnterpriseStates 注释）。
 import {
@@ -201,8 +203,154 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     });
   }
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
-  return { ...RISK_TIMELINE, planRows: rows };
+  return { ...RISK_TIMELINE, planRows: rows, ...riskScopeOf(args) };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WO-SCOPE-HONESTY-FE · **作用域诚实位的 mock 半**（治「mock 与引擎口径分家」）
+//
+// 引擎半（`WO-SILENT-WRONG-ANSWER-3`）已经在 `apps/datacore/src/solvers/extended.ts` /
+// `risk.ts` 里算出这些字段，但 MSW base mock 一个都不回 —— 于是 `VITE_MOCK=1` 的 demo 态
+// 屏上永远是「作用域未标注」，而 `kit_readiness` / `quote_margin` 更是直接落 404
+// （base handler 的兜底是 `求解器不存在或未开通`）。这与 `test/mock-stubs.test.ts` 记的
+// decision_play / supply_demand_gap_attribution 那次是同一个形态：**功能进了 canonical，
+// mock 没跟，demo 里看不见**。
+//
+// 下面三段一律**镜像真引擎的口径**，不另造一套好看的：
+//  · `base` 解析走「先 id 精确、再中文名精确」（真引擎是 `resolveBaseRef`，accept id/name/alias/partial）；
+//    解析不到 → **400 AMBIGUOUS_SCOPE**，绝不静默退回全网（那正是本单要治的病）。
+//  · 订单池收窄 → `orderPoolTotal` / `networkOrderTotal`，取样上限 8 → `sampled` / `samplingNote`。
+//  · `quote_margin` 的客户维恒 `NOT_APPLIED` + `missingInputs`（今天数据层确实没有这一维，不假装）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 引擎取样上限（`extended.ts` 的 `pool.slice(0, 8)`）。mock 与引擎同一个数，改一处两处一起动。 */
+const KIT_SAMPLE_CAP = 8;
+
+/** 镜像 `resolveBaseRef`：id 精确 → 中文名精确。解析不到返 null（调用方负责 400，不静默退全网）。 */
+function resolveMockBase(ref: unknown): { baseId: string; name: string } | null {
+  const raw = typeof ref === "string" ? ref.trim() : "";
+  if (!raw) return null;
+  const hit = BASE_REGISTRY.find((b) => b.baseId === raw) ?? BASE_REGISTRY.find((b) => b.name === raw);
+  return hit ? { baseId: hit.baseId, name: hit.name } : null;
+}
+
+/**
+ * `risk_timeline` 的顶层诚实位（`scope` / `scopeBaseId` / `scopeBaseName` / `scopeNote`）。
+ * 不给 base → **明说是全网**（「没说」和「说了是全网」是两件事，后者才看得出问错了对象）。
+ */
+function riskScopeOf(args: Record<string, unknown>): Partial<RiskTimelineOutput> {
+  const b = resolveMockBase(args.base);
+  if (b) {
+    return {
+      scope: "BASE",
+      scopeBaseId: b.baseId,
+      scopeBaseName: b.name,
+      scopeNote: `仅 ${b.name} 一个基地的因素（按 base 收窄后跑该基地全部因子）·非全网`,
+    };
+  }
+  return { scope: "ALL", scopeNote: "全网口径（未指定基地·跨全部风险基地）" };
+}
+
+/** 齐套物料表（mock 侧固定 4 种，镜像引擎 `mats.slice(0,4)` 的形状与算法：ratio = 可用 ÷ (单耗×数量)）。 */
+const KIT_MATS = [
+  { material: "三元正极", onHand: 2600, inTransit: 900, bomUnit: 0.42 },
+  { material: "隔膜", onHand: 9000, inTransit: 2400, bomUnit: 0.18 },
+  { material: "电解液", onHand: 2100, inTransit: 900, bomUnit: 0.31 },
+  { material: "铜箔", onHand: 8000, inTransit: 3000, bomUnit: 0.22 },
+];
+
+/** `kit_readiness` mock：真按 base 收窄订单池 → 取样 → 逐单 kitRatio，并透出全套作用域/抽样诚实位。 */
+function mockKitReadiness(args: Record<string, unknown>): Record<string, unknown> | { __err: string } {
+  const hasBaseRef = typeof args.base === "string" && args.base.trim() !== "";
+  const network = ORDERS;
+  let pool = network;
+  let scope: Record<string, unknown>;
+  if (hasBaseRef) {
+    const b = resolveMockBase(args.base);
+    if (!b) return { __err: `kit_readiness：问句指定基地「${String(args.base)}」在基地库中无匹配（扫 ${BASE_REGISTRY.length} 行）——拒绝静默退回全网订单池` };
+    pool = network.filter((o) => o.bases === b.name);
+    scope = {
+      mode: "BASE",
+      baseId: b.baseId,
+      baseName: b.name,
+      orderPoolTotal: pool.length,
+      networkOrderTotal: network.length,
+      note: `仅 ${b.name} 基地可承接的订单（Order.bases ∋ ${b.baseId}）·非全网`,
+    };
+  } else {
+    scope = { mode: "ALL", orderPoolTotal: pool.length, note: "全网口径（未指定基地·跨全部产地）" };
+  }
+  const sample = pool.slice(0, KIT_SAMPLE_CAP);
+  const rows = sample.map((o) => {
+    const items = KIT_MATS.map((m) => {
+      const need = Math.round(m.bomUnit * o.qty * 1e4) / 1e4;
+      const avail = m.onHand + m.inTransit;
+      return { material: m.material, ratio: need <= 0 ? 1 : Math.round((avail / need) * 1e4) / 1e4, shortage: Math.round(Math.max(0, need - avail) * 1e4) / 1e4 };
+    });
+    const kitRatio = Math.round(Math.min(...items.map((i) => i.ratio)) * 1e4) / 1e4;
+    return { orderId: o.so, kitRatio, shortItems: items.filter((i) => i.ratio < 1), advice: kitRatio >= 1 ? "齐套" : "加急采购" };
+  });
+  scope.sampled = sample.length;
+  if (sample.length < (scope.orderPoolTotal as number))
+    scope.samplingNote =
+      `本次只分析订单池里排序靠前的 ${sample.length}/${scope.orderPoolTotal} 张（引擎侧固定采样上限 ${KIT_SAMPLE_CAP}）·` +
+      `shortageCount 是这 ${sample.length} 张里的缺料数，不是该口径下的全部`;
+  if (sample.length === 0) scope.emptyNote = "该口径下无可分析订单 —— rows 为空**不等于**全部齐套（拒绝把「没数据」渲染成「没问题」）";
+  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, scope, ruleRefs: ["C06", "C16"] };
+}
+
+/**
+ * `quote_margin` mock：型号维**真接线**（按型号单价重算 bomCost ⇒ 换型号 margin 真变），
+ * 客户维**恒 NOT_APPLIED**（今天 Customer 上确实没有报价/细分底线字段 ⇒ 换客户 margin **必须不变**）。
+ * ⚠ 这两维定性不同，不许合成一句 —— 后端门里有一条**反向**断言正是咬这件事。
+ */
+function mockQuoteMargin(args: Record<string, unknown>): Record<string, unknown> | { __err: string } {
+  const modelId = typeof args.modelId === "string" ? args.modelId.trim() : "";
+  const custName = typeof args.custName === "string" ? args.custName.trim() : "";
+  const price = 500;
+  const mfgRate = 0.1;
+  const logistics = 8;
+  const segmentFloor = 0.12;
+  let bomCost: number;
+  if (modelId) {
+    const unit = MODEL_UNIT_PRICE_MOCK[modelId];
+    if (unit === undefined)
+      return { __err: `quote_margin：问句指定型号「${modelId}」无可用 BOM——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本` };
+    // 型号真参与计算：单价越高的化学体系 BOM 成本越高（确定性·同型号字节一致）。
+    bomCost = Math.round(unit * 0.0182 * 1e4) / 1e4;
+  } else {
+    bomCost = 313.7452; // 未指定型号 → 全局前 4 种物料（非任何具体型号的配方），与引擎同为「回落值」
+  }
+  const cost = Math.round((bomCost * (1 + mfgRate) + logistics) * 1e4) / 1e4;
+  const margin = Math.round(((price - cost) / price) * 1e4) / 1e4;
+  return {
+    price, bomCost, mfgRate, logistics, cost, margin, segmentFloor,
+    verdict: margin >= segmentFloor ? "过线" : margin >= 0 ? "触线" : "低于底线",
+    scope: {
+      modelId: modelId || null,
+      modelDimension: modelId ? "APPLIED" : "ALL",
+      modelNote: modelId
+        ? `BOM 成本按型号 ${modelId} 的真 BOM 逐行计（quantity×(1+lossRate) × Material.unitPrice）`
+        : "未指定型号 → BOM 取全局前 4 种物料（非任何具体型号的配方）",
+      custName: custName || null,
+      custDimension: "NOT_APPLIED",
+      custNote:
+        "客户维今天不生效：price / mfgRate / logistics / segmentFloor 四项均为引擎写死常数，" +
+        "Customer 对象上无报价、无细分毛利底线字段可派生 ⇒ 换个客户名，margin 与 verdict 不会变。" +
+        "要真按客户算，需先给 Customer 补 segment/报价承载体（缺源登记·不臆造）。",
+      missingInputs: [
+        { objectType: "Customer", property: "segment", need: "客户所属细分（决定 segmentFloor 毛利底线）" },
+        { objectType: "Customer", property: "quotedPrice", need: "该客户该型号的报价（决定 price）" },
+      ],
+    },
+    ruleRefs: ["C15", "C24"],
+  };
+}
+
+/** 型号 → 单价（mock 侧型号维的真源；与 fixtures 的 Order.unitPrice 同一张表口径）。 */
+const MODEL_UNIT_PRICE_MOCK: Record<string, number> = {
+  "4680-NCM": 22000, "VDA-NCM": 20000, "4680-LFP": 16000, "刀片-LFP": 15000, "储能-280Ah": 14000, "储能-314Ah": 14500,
+};
 
 /**
  * 反事实双轨 mock（基地感知·KILL-MOCK）：从 RISK_TIMELINE 各基地的 peak/crossDay 派生 do-nothing baseline ‖
@@ -2977,6 +3125,18 @@ export const handlers = [
     }
     // WO-LIVE-DISPOSITION：B 侧 run 路径同走 mock 真重算（与 A 侧 invoke 同一函数·不两套）。
     if (key === "risk_timeline") return HttpResponse.json({ data: mockRiskTimeline(args), snapshotVersion: "ov-12" });
+    // WO-SCOPE-HONESTY-FE：齐套/报价的作用域诚实位在 mock 里也真下发（否则 VITE_MOCK demo 态永远 404 + 「未标注」）。
+    // 解析不到基地/型号 → 400，与真引擎同口径（R-ARG-FIDELITY：绝不静默退回全网 / 全局前 4 种物料）。
+    if (key === "kit_readiness") {
+      const kr = mockKitReadiness(args);
+      if ("__err" in kr) return err(400, "AMBIGUOUS_SCOPE", String(kr.__err));
+      return HttpResponse.json({ data: kr, snapshotVersion: "ov-12" });
+    }
+    if (key === "quote_margin") {
+      const qm = mockQuoteMargin(args);
+      if ("__err" in qm) return err(400, "AMBIGUOUS_SCOPE", String(qm.__err));
+      return HttpResponse.json({ data: qm, snapshotVersion: "ov-12" });
+    }
     // WO-PROJECT-SIM-WHATIF：⑥ 拖动杠杆经 useLiveSolver → B 侧 run 真重算（generic_inference）；
     // mode:levers 杠杆发现同经 B 侧（若前端改走 runSolver）。默认路径 apply → deltas（after 随假设值变·KILL-MOCK）。
     if (key === "generic_inference") {

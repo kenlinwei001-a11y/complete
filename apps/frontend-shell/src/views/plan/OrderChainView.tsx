@@ -12,6 +12,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
 import type { AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
+// WO-SCOPE-HONESTY-FE：三个求解器共用的「这次算的是谁」唯一实现（不在本页另做一套）。
+import { KitScopeBar, QuoteScopeBar, type KitScopeVM, type QuoteScopeVM } from "../ScopeHonesty";
 import { fmt, SnapshotBadge } from "../sim/shared";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
@@ -184,6 +186,16 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           </button>
         )}
       </div>
+
+      {/*
+        WO-SCOPE-HONESTY-FE ②③ · 齐套 / 报价毛利的**作用域诚实位消费页**。
+        接线前 `kit_readiness` 与 `quote_margin` 在整个前端**零调用方**（`grep -rn` 全 src 各 1 处 / 0 处，
+        金丝雀 `risk_timeline` 同命令命中 5 个文件 ⇒ 工具是好的、结论是真的）——
+        引擎半算出来的诚实位没有任何一块屏幕在读。挂在本页是因为它就是「订单 × 基地」的落点：
+        上面那个基地筛选器**同一个值**驱动 `affected_orders` 与 `kit_readiness`，
+        于是「换基地 → 齐套口径真变」在同一屏上当场可核。
+      */}
+      <KitQuoteScopePanel baseFilter={baseFilter} rows={allData?.out.rows ?? []} />
 
       {/* 财务影响汇总条 */}
       <div className={styles.sumBar} data-testid="oc-summary">
@@ -398,6 +410,111 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       )}
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-order" solved />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * WO-SCOPE-HONESTY-FE ②③ · 齐套 / 报价毛利 —— 作用域诚实位的消费面
+ *
+ * 「这次算的是谁」这件事，`kit_readiness` 与 `quote_margin` 的回包里都写着，
+ * 但接线前**没有任何一块屏幕在读**。两个求解器在这里各自的病灶不同，故**分开写、分开说**：
+ *
+ *  · `kit_readiness` —— 基地维**真接线**（换基地 → 订单池真收窄 → 答案真变）。
+ *    危险的是**抽样**：引擎固定只取订单池前 8 张，此前完全隐形 ⇒ 用户会把 `shortageCount=8`
+ *    读成「共 8 张缺料单」，而它其实是「抽样的 8 张里 8 张缺料」。故 `orderPoolTotal` /
+ *    `sampled` **必须在第一层**（它们不是解释，是这个数的量纲）。
+ *
+ *  · `quote_margin` —— 型号维**真接线**，客户维**今天真的没有**（price/mfgRate/logistics/
+ *    segmentFloor 四项全是引擎写死常数，`Customer` 上无报价、无细分底线字段）。
+ *    ⚠ 所以这里**不许**把客户名旁边那个 margin 画成"按这个客户算出来的"：
+ *    后端门里有一条**反向**断言 —— 换客户 margin 必须**不变**、但必须标 `NOT_APPLIED`。
+ *    假装它生效，和默默忽略它，是同一种错的两个方向。
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/** 求解器回包（只取本面板要渲的字段；两者契约包里都还没有 output schema，故为视图侧只读类型）。 */
+type KitOut = { rows?: { orderId: string; kitRatio: number }[]; shortageCount?: number; scope?: KitScopeVM };
+type QuoteOut = { price?: number; bomCost?: number; cost?: number; margin?: number; segmentFloor?: number; verdict?: string; scope?: QuoteScopeVM };
+
+/** 错误信封 → 人话（400 AMBIGUOUS_SCOPE 是**诚实拒答**，不是页面坏了，必须显式说出来）。 */
+function solverErrText(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return m;
+}
+
+function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { model: string; cust: string }[] }) {
+  // 型号 / 客户候选集**真取自订单明细响应**（R14 零写死）——不在前端另拍一张型号表。
+  const models = useMemo(() => [...new Set(rows.map((r) => r.model).filter(Boolean))].sort(), [rows]);
+  const custs = useMemo(() => [...new Set(rows.map((r) => r.cust).filter(Boolean))].sort(), [rows]);
+  const [modelId, setModelId] = useState("");
+  const [custName, setCustName] = useState("");
+
+  // 基地筛选器**同一个值**驱动齐套：换基地 → args.base 变 → queryKey 变 → 真重调 → scope 真变。
+  const kit = useQuery({
+    queryKey: ["b", "kit_readiness", { base: baseFilter }],
+    queryFn: async () => (await runSolver("kit_readiness", baseFilter ? { base: baseFilter } : {})).data as KitOut,
+    retry: false,
+  });
+  const quote = useQuery({
+    queryKey: ["b", "quote_margin", { modelId, custName }],
+    queryFn: async () =>
+      (await runSolver("quote_margin", { ...(modelId ? { modelId } : {}), ...(custName ? { custName } : {}) })).data as QuoteOut,
+    retry: false,
+  });
+
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="oc-scope-panel">
+      <div className="section-title">{zh.orderChain.scopeSection}</div>
+
+      {/* ── ② 齐套：口径 + 抽样两数 + shortageCount 的读法 ───────────────────── */}
+      <div style={{ marginBottom: 10 }} data-testid="oc-kit-block">
+        <div style={{ fontSize: 12, marginBottom: 2 }}>{zh.orderChain.kitTitle}</div>
+        {kit.isError ? (
+          <div data-testid="oc-kit-error" style={{ fontSize: 11.5, color: "#E0626C" }}>{solverErrText(kit.error)}</div>
+        ) : kit.data === undefined ? (
+          <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>{zh.common.loading}</div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              {/* 第一层最大的那一级只给「本页要回答的那个数」——缺料单数（R-UI-2）。 */}
+              <b className="mono" data-testid="oc-kit-shortage" style={{ fontSize: 20 }}>{kit.data.shortageCount ?? "—"}</b>
+              <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.kitShortageLabel}</span>
+            </div>
+            <KitScopeBar scope={kit.data.scope} shortageCount={kit.data.shortageCount} testId="oc-kit-scope" />
+          </>
+        )}
+      </div>
+
+      {/* ── ③ 报价毛利：型号维生效 / 客户维不生效 ─────────────────────────────── */}
+      <div data-testid="oc-quote-block">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, marginBottom: 2 }}>
+          <span>{zh.orderChain.quoteTitle}</span>
+          <select data-testid="oc-quote-model" aria-label={zh.orderChain.quoteModelSel} value={modelId} onChange={(e) => setModelId(e.target.value)} style={{ fontSize: 11.5 }}>
+            <option value="">{zh.orderChain.quoteModelAny}</option>
+            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select data-testid="oc-quote-cust" aria-label={zh.orderChain.quoteCustSel} value={custName} onChange={(e) => setCustName(e.target.value)} style={{ fontSize: 11.5 }}>
+            <option value="">{zh.orderChain.quoteCustAny}</option>
+            {custs.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {quote.isError ? (
+          <div data-testid="oc-quote-error" style={{ fontSize: 11.5, color: "#E0626C" }}>{solverErrText(quote.error)}</div>
+        ) : quote.data === undefined ? (
+          <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>{zh.common.loading}</div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <b className="mono" data-testid="oc-quote-margin" style={{ fontSize: 20 }}>
+                {quote.data.margin === undefined ? "—" : `${(quote.data.margin * 100).toFixed(2)}%`}
+              </b>
+              <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.quoteMarginLabel}</span>
+              <span className="mono" style={{ fontSize: 11.5 }} data-testid="oc-quote-verdict">{quote.data.verdict ?? "—"}</span>
+            </div>
+            <QuoteScopeBar scope={quote.data.scope} testId="oc-quote-scope" />
+          </>
+        )}
+      </div>
     </div>
   );
 }
