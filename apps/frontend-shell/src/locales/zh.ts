@@ -788,6 +788,23 @@ export const zh = {
       materializeProgress: "对象化作业进度",
       patchFailed: "操作失败，已回滚",
       assignDomain: "归域…",
+      /**
+       * WO-MODELING-NO-LLM：无 LLM 供应商时的可操作中文。
+       * 病灶原文（2026-08-11 亲手真跑复现，内存模式无 provider 点「生成建议」）：
+       *   `Could not resolve authentication method. Expected one of apiKey, authToken, ...`
+       * —— Anthropic SDK 英文内部错原样弹成 toast。用户既读不懂，也不知道旁边的灰按钮现在就能用。
+       * 这两条文案必须同时给出**去哪配**与**现在能用什么**，缺一条就还是死路一条。
+       */
+      llmUnavailableTitle: "「生成建议」当前不可用：未配置 LLM 供应商",
+      llmUnavailableHint:
+        "「生成建议」需要大模型。请到「平台与系统 → LLM Provider」添加供应商并绑定「建模」用途；" +
+        "在那之前，下方的「确定性建模（全字段）」现在就能用 —— 它不需要 LLM，且构造上每个字段都会被建模（100% 覆盖）。",
+      llmUnconfiguredToast:
+        "未配置 LLM 供应商，「生成建议」无法运行。请到「平台与系统 → LLM Provider」配置；" +
+        "或改用「确定性建模（全字段）」，它不需要大模型。",
+      llmUnavailableToast:
+        "LLM 供应商调用失败（密钥或端点不可用），「生成建议」无法完成。" +
+        "请到「平台与系统 → LLM Provider」用「连接测试」核对；或改用「确定性建模（全字段）」，它不需要大模型。",
     },
     permissions: {
       title: "权限策略",

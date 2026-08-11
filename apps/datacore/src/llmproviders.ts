@@ -16,7 +16,16 @@ import {
   OpenAICompatAdapter,
   type FullLlmClient,
 } from "@platform/llm-adapters";
-import { AdapterBackedLlmClient, LlmParseError, type LlmClient, type LlmParseRequest } from "./llm.js";
+import {
+  AdapterBackedLlmClient,
+  LlmParseError,
+  envLlmConfigFromProcess,
+  envLlmCredentialConfigured,
+  llmProviderUnavailableError,
+  type EnvLlmConfig,
+  type LlmClient,
+  type LlmParseRequest,
+} from "./llm.js";
 import type { AuthCtx, LlmProviderRecord, LlmPurposeBindingRecord, ReportedRefRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { CredentialCipher } from "./crypto.js";
@@ -375,15 +384,23 @@ export class TenantRoutedLlmClient implements LlmClient {
       return await this.parseVia(target, req);
     } catch (err) {
       // 解析失败按调用点既有失败语义；传输/提供方故障 → fallbackProviderId 降级（≤1 级，禁止链式）
-      if (err instanceof LlmParseError || !target.rec.fallbackProviderId) throw err;
+      // WO-MODELING-NO-LLM：传输/认证类失败一律翻成 LLM_PROVIDER_UNAVAILABLE（与 env 通路**共用同一份**
+      // llmProviderUnavailableError，不各写一份）；LlmParseError 是调用点既有失败语义，原样放行。
+      if (err instanceof LlmParseError) throw err;
+      if (!target.rec.fallbackProviderId) throw llmProviderUnavailableError(err, req.purpose);
       const fbRec =
         (await this.repos.llmProviders.get(req.tenantId, target.rec.fallbackProviderId)) ??
         (await this.repos.llmProviders.get(PLATFORM_TENANT_ID, target.rec.fallbackProviderId));
-      if (!fbRec || fbRec.status !== "ACTIVE") throw err;
+      if (!fbRec || fbRec.status !== "ACTIVE") throw llmProviderUnavailableError(err, req.purpose);
       const fbModel = fbRec.models.find((m) => m.modelId === target.modelId) ?? fbRec.models[0];
-      if (!fbModel) throw err;
+      if (!fbModel) throw llmProviderUnavailableError(err, req.purpose);
       this.metrics.inc("dc_llm_fallback_total", { from: target.rec.id, to: fbRec.id });
-      return this.parseVia({ rec: fbRec, modelId: fbModel.modelId }, req);
+      try {
+        return await this.parseVia({ rec: fbRec, modelId: fbModel.modelId }, req);
+      } catch (fbErr) {
+        if (fbErr instanceof LlmParseError) throw fbErr;
+        throw llmProviderUnavailableError(fbErr, req.purpose);
+      }
     }
   }
 }
@@ -398,6 +415,8 @@ export interface LlmProviderRouteDeps {
   outbox: OutboxService;
   ctx: (req: FastifyRequest) => AuthCtx;
   fetchImpl: typeof fetch;
+  /** 可选注入（测试用）；缺省读 process.env —— 与 createLlmClient 同一批变量、同一套默认。 */
+  envLlmConfig?: EnvLlmConfig;
 }
 
 /** tenant_admin（admin / platform_admin 放行）写权限；service 角色可读（B 消费）。 */
@@ -489,9 +508,23 @@ export function registerLlmProviderRoutes(app: FastifyInstance, deps: LlmProvide
   });
 
   // ---- §1.3 用途绑定矩阵 -----------------------------------------------------
+  /**
+   * WO-MODELING-NO-LLM 增补 `envFallbackConfigured`（**additive，不改既有 bindings 字段**）：
+   * 前端要在**用户点「生成建议」之前**就知道这条路通不通，而这件事的真值只有后端知道 ——
+   * 「租户没配 provider」≠「LLM 不可用」，因为 DataCore 还有一条 env 默认通道
+   * （DEPLOY.md §6 记为打通建模建议的主路）。只看 `/a/v1/llm-providers` 是否为空去置灰，
+   * 会在「配了 ANTHROPIC_API_KEY 但没建租户 provider」的部署上**误挡一个能用的功能**。
+   *
+   * 该字段与 TenantRoutedLlmClient.parseStructured 的判定同源：
+   *   有 purpose 绑定 → 走绑定；否则 → env 默认通道（envLlmCredentialConfigured 决定它有没有凭据）。
+   * 前端因此可精确复刻：`hasBinding(purpose) || envFallbackConfigured`。布尔量，不回显任何凭据。
+   */
   app.get("/a/v1/llm-bindings", async (req) => {
     const c = readCtx(req);
-    return { bindings: await service.bindings(c.tenantId) };
+    return {
+      bindings: await service.bindings(c.tenantId),
+      envFallbackConfigured: envLlmCredentialConfigured(deps.envLlmConfig ?? envLlmConfigFromProcess()),
+    };
   });
 
   app.put("/a/v1/llm-bindings", async (req) => {

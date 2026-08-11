@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deriveModeling,
   fetchBusinessDomains,
+  fetchLlmBindings,
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchObjectTypes,
@@ -23,6 +24,42 @@ import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
 
 const t = zh.admin.modeling;
+
+/**
+ * WO-MODELING-NO-LLM · 「生成建议」是否可用 —— **在用户点之前**就要答得出。
+ *
+ * 判据与 DataCore `TenantRoutedLlmClient.parseStructured` **同源**（不是猜）：
+ *   有 `modeling` 用途绑定 → 走绑定 provider；否则 → env 默认通道（`envFallbackConfigured`）。
+ *
+ * 三态而非两态，`unknown` 是关键的一态：
+ *  - `unknown`：绑定还没查回来 / 查询 403（非 tenant_admin 无权读绑定）/ 后端是旧版本没下发该字段
+ *    ⇒ **fail-open 不置灰**。宁可让用户点一下拿到 §onError 的可操作中文，也绝不误挡一个其实能用的功能
+ *    （「租户没建 provider」≠「LLM 不可用」——DEPLOY.md §6 记着 env 通道才是打通建模建议的主路）。
+ *  - `false`：后端明确说 env 没凭据、且无 modeling 绑定 ⇒ 置灰 + 说人话。
+ */
+type LlmReadiness = "ready" | "not-configured" | "unknown";
+
+export function resolveLlmReadiness(
+  data: { bindings?: { purpose: string }[]; envFallbackConfigured?: boolean } | undefined,
+): LlmReadiness {
+  if (!data) return "unknown";
+  if ((data.bindings ?? []).some((b) => b.purpose === "modeling")) return "ready";
+  // 字段缺失（旧后端 / mock）= 未知，绝不当成 false —— 「我没查到」和「它不存在」是两个命题。
+  if (data.envFallbackConfigured === undefined) return "unknown";
+  return data.envFallbackConfigured ? "ready" : "not-configured";
+}
+
+/**
+ * 后端语义错误码 → 可操作中文。**按 code 分支，绝不按 message 文本匹配**：
+ * 文本匹配是脆的（SDK 换措辞即失效、换 provider 措辞完全不同），而 code 是契约。
+ * 非 LLM 类错误一律返回 null → 交回原有 toastError，不吞不改。
+ */
+export function llmErrorMessage(err: unknown): string | null {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === "LLM_PROVIDER_NOT_CONFIGURED") return t.llmUnconfiguredToast;
+  if (code === "LLM_PROVIDER_UNAVAILABLE") return t.llmUnavailableToast;
+  return null;
+}
 
 /** 本体建模工作台（PRD §7.6）：AI 建议草案（A3 suggest）+ 三栏 = 源字段 | 映射画布 | 操作面板；PATCH 乐观更新+回滚 */
 export default function ModelingPage() {
@@ -147,6 +184,19 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
 function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: () => void; onCreated: (draftId: string) => void; initialSelected?: string[] }) {
   const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const [selected, setSelected] = useState<string[]>(initialSelected);
+  // 「生成建议」依赖大模型 —— 先问后端这条路通不通，**别让用户一头撞上去**（WO-MODELING-NO-LLM）。
+  // retry:false：403（非 tenant_admin 读不了绑定）不该重试，落 unknown 走 fail-open 即可。
+  const { data: llmSettings } = useQuery({
+    queryKey: ["a", "llm-bindings"],
+    queryFn: fetchLlmBindings,
+    retry: false,
+  });
+  // envFallbackConfigured 是本单在 /a/v1/llm-bindings 上 additive 加的字段；
+  // 共享的 fetchLlmBindings 返回型未含它（endpoints.ts 本单范围外），故就地窄化读取。
+  const llmReadiness = resolveLlmReadiness(
+    llmSettings as { bindings?: { purpose: string }[]; envFallbackConfigured?: boolean } | undefined,
+  );
+  const llmBlocked = llmReadiness === "not-configured";
 
   const suggestMut = useMutation({
     mutationFn: () => suggestModeling(selected),
@@ -154,7 +204,13 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
       toast(t.suggestDone, "success");
       onCreated(r.draftId);
     },
-    onError: toastError,
+    // 兜第二层：provider 配了但凭据错/网络断，或前置判据落 unknown 时用户仍点了。
+    // 按 code 分支翻译成可操作中文；非 LLM 错误原样交回 toastError（不吞不改）。
+    onError: (e) => {
+      const msg = llmErrorMessage(e);
+      if (msg) toast(msg, "error");
+      else toastError(e);
+    },
   });
   // 确定性建模（无 LLM·字段全建模 100% 覆盖；nano-ontoprompt 融入）
   const deriveMut = useMutation({
@@ -169,6 +225,16 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
   return (
     <Modal title={t.newDraft} onClose={onClose} width={460}>
       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{t.newDraftHint}</p>
+      {/* 无 LLM 供应商 → 在用户点主按钮**之前**就把两件事说清楚：①去哪配 ②现在能用哪条路。 */}
+      {llmBlocked && (
+        <div className={styles.llmNotice} data-testid="modeling-llm-unavailable" role="note">
+          <strong className={styles.llmNoticeTitle}>{t.llmUnavailableTitle}</strong>
+          <span>{t.llmUnavailableHint}</span>
+          <Link className="btn sm" to="/admin/llm-providers" data-testid="modeling-llm-config-link">
+            去配置 LLM 供应商
+          </Link>
+        </div>
+      )}
       {(rawDatasets ?? []).length === 0 && <div className="empty-state">{t.newDraftEmpty}</div>}
       {(rawDatasets ?? []).map((ds) => (
         <label key={ds.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
@@ -197,8 +263,9 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
         </button>
         <button
           className="btn primary"
-          disabled={selected.length === 0 || suggestMut.isPending}
+          disabled={selected.length === 0 || suggestMut.isPending || llmBlocked}
           data-testid="modeling-suggest-run"
+          title={llmBlocked ? t.llmUnavailableHint : undefined}
           onClick={() => suggestMut.mutate()}
         >
           {t.suggestRun}
