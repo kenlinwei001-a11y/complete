@@ -39,7 +39,7 @@ export function ValidationTracePanel({ trace }: { trace: ValidationTrace }) {
   const cross = CROSS_VERDICT[trace.crossValidation.verdict];
 
   return (
-    <div className="panel" data-testid="validation-trace" style={{ marginTop: 10, borderColor: "var(--border)" }}>
+    <div className="panel" data-testid="validation-trace" style={{ marginTop: 10, borderColor: "var(--line)" }}>
       <button
         className="btn sm"
         data-testid="validation-trace-toggle"
