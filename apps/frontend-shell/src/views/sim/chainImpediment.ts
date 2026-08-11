@@ -365,11 +365,11 @@ export const CANDIDATE_EFFECT_LABEL = {
 export const CANDIDATE_ABSENCE_LABEL = {
   NONE: {
     label: "查过了 · 确实没有",
-    claim: "枚举已跑完：join 走到了、档位取到了、逐候选都真试算过了，结论就是本体上没有可拨的杠杆。这是**真结论**，不是没算。",
+    claim: "枚举已跑完：join 走到了、档位取到了、逐候选都真试算过了，结论就是本体上没有可拨的杠杆。这是一个真结论，不是没算。",
   },
   UNAVAILABLE: {
     label: "算不出来 · 不是没有",
-    claim: "枚举没跑完（探针预算耗尽 / 判据规则快照缺失）⇒ 候选没能算出来。这是**缺答不是答**，不代表这个阻滞点没救了。",
+    claim: "枚举没跑完（探针预算耗尽 / 判据规则快照缺失）⇒ 候选没能算出来。这是缺答、不是答，不代表这个阻滞点没救了。",
   },
   NOT_RUN: {
     label: "本次没跑枚举",
@@ -527,7 +527,7 @@ export function absenceOf(im: ChainImpediment): CandidateAbsence | null {
     label: meta.label,
     claim:
       im.noCandidateKind === undefined
-        ? "引擎回包里**没有** noCandidateKind ⇒ 分不清「算过了没有」还是「没算出来」。本页按「算不出来」显示（保守侧），并把这条缺字段的事实说出来 —— 不替引擎选一个定性。"
+        ? "引擎回包里没有 noCandidateKind ⇒ 分不清「算过了没有」还是「没算出来」。本页按「算不出来」显示（保守侧），并把这条缺字段的事实说出来 —— 不替引擎选一个定性。"
         : meta.claim,
     reason: im.noCandidateReason ?? null,
   };
@@ -738,18 +738,18 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
   }
   if (absent.UNAVAILABLE > 0) {
     notes.push(
-      `${absent.UNAVAILABLE} 个阻滞点的候选是「算不出来」（UNAVAILABLE）—— 这是**缺答不是答**，` +
+      `${absent.UNAVAILABLE} 个阻滞点的候选是「算不出来」（UNAVAILABLE）—— 这是缺答、不是答，` +
         "不代表它们没有对策；该修的是算力与接线，不是数据面。",
     );
   }
   if (absent.NOT_RUN > 0) {
     notes.push(
-      `${absent.NOT_RUN} 个阻滞点的回包里没有候选字段 ⇒ 本次**没跑**候选枚举（NOT_RUN）——` +
+      `${absent.NOT_RUN} 个阻滞点的回包里没有候选字段 ⇒ 本次没跑候选枚举（NOT_RUN）——` +
         "与「跑了但一条都没有」不是一回事，别读成「没有对策」。",
     );
   }
   if (payload.candidatesTruncated === true) {
-    notes.push("候选枚举的探针预算**已耗尽**（引擎显式标注 candidatesTruncated）⇒ 后面的档位没试算完，结果不完整。");
+    notes.push("候选枚举的探针预算已耗尽（引擎显式标注 candidatesTruncated）⇒ 后面的档位没试算完，结果不完整。");
   }
 
   const itemTotal = sorted.length;

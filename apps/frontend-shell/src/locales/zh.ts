@@ -536,6 +536,55 @@ export const zh = {
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
+        /**
+         * WO-SANDBOX-CANDIDATES-FE · 候选对策的浮层标题。
+         * 第一层只放「拨哪个对象 / 拨哪个属性 / 从多少到多少 / 效果」；
+         * 口径（档位怎么来的 · join 怎么推的 · 试算公式）一律降到这两个浮层里。
+         */
+        candidateHow: "这条对策是怎么推出来的",
+        candidateNone: "为什么这个阻滞点没有方案",
+      },
+      /**
+       * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。
+       *
+       * 只收标题/表头/连接词这类纯壳字。**不收**任何口径正文 ——
+       * 档位来源、join 路径、试算公式、缺席原因全部是**引擎回包里的字段原文**
+       * （`rungSource` / `join.path` / `provenance.formula` / `noCandidateReason` / `gaps[]`），
+       * 抄进本文件就是给引擎文案开一条会漂的分身（R14 同族纪律）。
+       */
+      candidates: {
+        title: "候选对策",
+        /** 计数：几条候选。0 条时不显示本行，改显示「为什么没方案」。 */
+        count: (n: number) => `${n} 条`,
+        lever: "拨哪个对象",
+        prop: "拨哪个属性",
+        move: "从多少拨到多少",
+        rung: "档位来源",
+        effect: "真试算的效果",
+        join: "溯源",
+        /** 档位纪律：必须让用户看见"这个数不是前端拍的"。 */
+        rungNote: "档位取自同侪真实取值 / 规则阈值本身，全链零步长常数",
+        /** 杠杆落点不是阻滞点落点时的记号（回包里没有该对象的显示名，只有业务 id）。 */
+        leverElsewhere: "杠杆不在阻滞点落点上",
+        leverIdOnly: "回包只带业务 id，无显示名 —— 如实回显 id，不去别处凑一个名字",
+        /** KPI 维表头。 */
+        dimBefore: "不施策",
+        dimAfter: "施策后",
+        dimDelta: "改善",
+        /** 维算不出来（value===null）：显示引擎给的原因，**绝不补 0**。 */
+        dimEmpty: "算不出来",
+        /** 「为什么没方案」区。 */
+        noneTitle: "为什么这个阻滞点没有方案",
+        statLine: (a: number, p: number, e: number, m: number) =>
+          `探了 ${a} 个杠杆锚点 · 试算 ${p} 次 · 有效 ${e} 个 · 下发 ${m} 条`,
+        gapsTitle: "缺口（引擎原文）",
+        statMissing: "引擎未回带本点的逐点账（candidateStats 无对应行）—— 说不出探了几个锚点，如实标注，不编一个数",
+        /** 顶部总账。 */
+        summary: (withC: number, total: number) => `${withC} 个阻滞点有对策 · 共 ${total} 条候选`,
+        absentSummary: "没有对策的分三态（修法完全不同，不许合并看）：",
+        probes: (n: number) => `本次试算探针 ${n} 次`,
+        truncated: "⚠ 探针预算已耗尽 ⇒ 后面的档位没试算完，结果不完整",
+        waiting: "等 chain_impediments 取回后，这里逐条列出候选对策。",
       },
     },
     inference: {

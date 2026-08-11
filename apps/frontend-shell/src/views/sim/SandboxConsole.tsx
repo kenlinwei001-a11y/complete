@@ -3,6 +3,8 @@ import { useInRouterContext, useNavigate } from "react-router-dom";
 import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { ChainLineMapView } from "./ChainLineMapView";
 import { deriveFamilyAnchors, fetchOrdersForFamilies, type FamilyAnchor } from "./chainFamilyLines";
 import { TRANSIT_SOURCE_SPECS, CADENCE_ABSENCE, PROCUREMENT_BRANCH } from "./transitFlow";
@@ -13,10 +15,14 @@ import { PLACEHOLDER_SEED_DEFAULT } from "./physicalTopology";
 import { type ChainLossPayload } from "./chainLineMap";
 import {
   buildChainImpedimentModel,
+  CANDIDATE_ABSENCE_LABEL,
   CHAIN_IMPEDIMENT_SOLVER_KEY,
   ChainImpedimentPayloadSchema,
   DATA_MODE_LABEL,
+  type CandidateAbsenceKind,
+  type CandidateVM,
   type ChainImpedimentModel,
+  type ImpedimentVM,
 } from "./chainImpediment";
 import {
   buildPareto,
@@ -953,51 +959,385 @@ function JumpList({
         {kind === null ? "（当前：全部 " : `（当前只看「${rows[0]?.im.kindLabel ?? kind}」 `}
         {rows.length} 条{kind === null ? "，点上面的卡可筛某一类" : "，再点一次那张卡取消筛选"}）。
       </p>
+      <CandidateSummaryLine model={model} />
       {rows.length === 0 ? (
         <p className={styles.note} data-testid="sc-imp-jump-empty">
           本次扫描该类 0 条 —— <b>是「扫到了，没有」</b>，不是「没扫」（扫不出来会在上面报错框里出现）。
         </p>
       ) : null}
+      {/*
+        WO-SANDBOX-CANDIDATES-FE · 每条阻滞点下面挂它的候选区。
+        ⚠ 候选区**必须是 `<a>` 的兄弟节点，不能是子节点**：候选卡里有 `InfoPopover` 的真 `<button>`，
+        把可交互元素嵌进 `<a>` 里既是非法 HTML，又会让点浮层变成"点了跳走"。
+        原来那个 `<a>` 一个属性都没改（href / testid / onClick / 既有断言全部原样），只是外面多包了一层。
+      */}
       {rows.map(({ im, handoff }) => (
-        <a
-          key={im.impedimentId}
-          className={styles.impJumpRow}
-          data-testid={`sc-imp-jump-${im.impedimentId}`}
-          data-join={handoff.join.status}
-          data-degraded={im.honesty.degraded ? "1" : "0"}
-          href={handoff.href}
-          title={handoff.join.reason}
-          onClick={
-            onOpen === null
-              ? undefined
-              : (e) => {
-                  e.preventDefault();
-                  onOpen(handoff.href);
-                }
-          }
-        >
-          <b>{im.kindLabel}</b>
-          <span className={styles.impJumpLocus}>
-            {im.locus.objectType}「{im.locus.label}」
-          </span>
-          <span className={styles.impJumpMeta}>
-            {im.stage} · {im.evidence.ruleKey ?? "规则未知"} · 实测 {im.evidence.metricValue}
-            {im.evidence.unit} vs 阈值 {im.evidence.threshold}
-            {im.evidence.unit}
-          </span>
-          {/* ③ 诚实位随行：非 LIVE 的当面标出来，别让用户以为跳过去看到的是确凿结论 */}
-          <span
-            className={styles.impJumpBadge}
-            data-testid={`sc-imp-jump-mode-${im.impedimentId}`}
-            data-mode={im.honesty.mode}
+        <div key={im.impedimentId} className={styles.impJumpItem} data-testid={`sc-imp-item-${im.impedimentId}`}>
+          <a
+            className={styles.impJumpRow}
+            data-testid={`sc-imp-jump-${im.impedimentId}`}
+            data-join={handoff.join.status}
+            data-degraded={im.honesty.degraded ? "1" : "0"}
+            href={handoff.href}
+            title={handoff.join.reason}
+            onClick={
+              onOpen === null
+                ? undefined
+                : (e) => {
+                    e.preventDefault();
+                    onOpen(handoff.href);
+                  }
+            }
           >
-            {DATA_MODE_LABEL[im.honesty.mode]}
-          </span>
-          <span className={styles.impJumpJoin} data-testid={`sc-imp-jump-join-${im.impedimentId}`}>
-            {handoff.join.status === "JOINED" ? "已对到因子" : `未对到因子 · 只带 ${handoff.join.carried.join(" / ")}`}
-          </span>
-        </a>
+            <b>{im.kindLabel}</b>
+            <span className={styles.impJumpLocus}>
+              {im.locus.objectType}「{im.locus.label}」
+            </span>
+            <span className={styles.impJumpMeta}>
+              {im.stage} · {im.evidence.ruleKey ?? "规则未知"} · 实测 {im.evidence.metricValue}
+              {im.evidence.unit} vs 阈值 {im.evidence.threshold}
+              {im.evidence.unit}
+            </span>
+            {/* ③ 诚实位随行：非 LIVE 的当面标出来，别让用户以为跳过去看到的是确凿结论 */}
+            <span
+              className={styles.impJumpBadge}
+              data-testid={`sc-imp-jump-mode-${im.impedimentId}`}
+              data-mode={im.honesty.mode}
+            >
+              {DATA_MODE_LABEL[im.honesty.mode]}
+            </span>
+            <span className={styles.impJumpJoin} data-testid={`sc-imp-jump-join-${im.impedimentId}`}>
+              {handoff.join.status === "JOINED" ? "已对到因子" : `未对到因子 · 只带 ${handoff.join.carried.join(" / ")}`}
+            </span>
+          </a>
+          <CandidateBlock im={im} />
+        </div>
       ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策（推演沙盘主线的最后一跳）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **一条候选对策**。第一层只回答四个「是什么」，口径全部降到 `?` 浮层。
+ *
+ * ── 第一层放什么（`docs/CONVENTION-ui-information-layering.md` §1）────────────
+ * 拨哪个对象 · 拨哪个属性 · 从多少拨到多少 · 真试算的效果。**只有数值/状态/名字。**
+ * 档位怎么取的（`rungSource`）、join 怎么推的（`join.path`）、试算公式（`provenance.formula`）
+ * 都属于「凭什么」⇒ 进浮层。浮层用 `InfoPopover`（规范 §2 的唯一实现），
+ * **不用原生 `title=`** —— 那玩意由 OS 绘制、移开会滞留、永远画在最上层，
+ * 2026-08-10 `ChainLineMapView` 的 SVG `<title>` 遮挡事故就是它干的。
+ *
+ * ── 零写死（R14）──────────────────────────────────────────────────────────────
+ * 屏上每个数字、每个名字、每条原因都来自本次响应的某个字段：
+ * 数值 = `fromValue`/`toValue`/`dims[].value|baseline`；名字 = `lever.*` + 宿主 `locus.label`；
+ * 原因 = `rungSource`/`join.path`/`provenance.formula` **原文**。
+ * 单位**一个都不在这里判断** —— 按后端下发的 `lever.valueKind` 走 `formatLeverValue`
+ * （口径与 `DynamicLeverPanel` 单源同一份），后端没给 `valueKind` 就原样回显、不臆造。
+ *
+ * ── 为什么原值也要落到 DOM 属性上 ────────────────────────────────────────────
+ * 第一层显示的是**格式化后**的值（97.2 → `97%`），而"屏上的数是不是就是响应里的数"
+ * 必须能被**字节级**核验。故 `data-from`/`data-to`/`data-dim-*` 一律挂 `String(原值)`，
+ * 接缝门直接拿它与回包字段比 —— 格式化层出错时它当场红，不会被"看起来差不多"盖过去。
+ */
+function CandidateCard({ c }: { c: CandidateVM }) {
+  const t = zh.sim.sandbox.candidates;
+  return (
+    <li
+      className={styles.candCard}
+      data-testid={`sc-cand-${c.candidateId}`}
+      data-effect={c.effect.kind}
+      data-rung={c.rung.kind}
+      data-join={c.join.kind}
+      data-from={String(c.fromValue)}
+      data-to={String(c.toValue)}
+      data-lever-is-locus={c.leverIsLocus ? "1" : "0"}
+    >
+      <div className={styles.candHead}>
+        {/* ① 拨哪个对象 —— 业务名优先；杠杆不在阻滞点落点上时如实说明只有业务 id */}
+        <span className={styles.candLever} data-testid={`sc-cand-lever-${c.candidateId}`}>
+          <small>{t.lever}</small>
+          <b>
+            {c.lever.objectType}「{c.leverName}」
+          </b>
+          {c.leverIsLocus ? null : (
+            <i className={styles.candElsewhere} data-testid={`sc-cand-elsewhere-${c.candidateId}`}>
+              {t.leverElsewhere}
+            </i>
+          )}
+        </span>
+        {/* ② 拨哪个属性 —— 因子名（业务口径）+ 属性码（本体口径），两个都给 */}
+        <span className={styles.candProp} data-testid={`sc-cand-prop-${c.candidateId}`}>
+          <small>{t.prop}</small>
+          <b>{c.lever.factorName ?? c.lever.prop}</b>
+          {c.lever.factorMark !== null ? <i className={styles.candMark}>{c.lever.factorMark}</i> : null}
+          <code>
+            {c.lever.objectType}.{c.lever.prop}
+          </code>
+        </span>
+        {/* ③ 从多少拨到多少 —— 按 valueKind 格式化；原值随 data-from/data-to 落 DOM 供字节级核验 */}
+        <span className={styles.candMove} data-testid={`sc-cand-move-${c.candidateId}`}>
+          <small>{t.move}</small>
+          <b>
+            <span data-testid={`sc-cand-from-${c.candidateId}`}>{c.fromText}</span>
+            <em className={styles.candArrow}>{c.direction}</em>
+            <span data-testid={`sc-cand-to-${c.candidateId}`}>{c.toText}</span>
+          </b>
+        </span>
+        {/* 诚实位随行：非 LIVE 的当面标出来 */}
+        <span className={styles.candMode} data-testid={`sc-cand-mode-${c.candidateId}`} data-mode={c.honesty.mode}>
+          {DATA_MODE_LABEL[c.honesty.mode]}
+        </span>
+      </div>
+
+      {/* ④ 档位来源 + 作用方式：第一层只放**短名**，出处原文进浮层 */}
+      <div className={styles.candTags}>
+        <span className={styles.candTag} data-testid={`sc-cand-rung-${c.candidateId}`}>
+          {t.rung}：<b>{c.rung.label}</b>
+        </span>
+        <span className={styles.candTag} data-testid={`sc-cand-effect-${c.candidateId}`}>
+          {t.effect}：<b>{c.effect.label}</b>
+        </span>
+        <InfoPopover topic={zh.sim.sandbox.info.candidateHow} testId={`cand-how-${c.candidateId}`}>
+          {/* 浮层 = 「凭什么」。四段全部是引擎回包原文 / 契约口径，前端一个字不改写。 */}
+          <span className={styles.popSec}>
+            <b>{t.rung}（{c.rung.label}）</b>
+            <i>{c.rung.why}</i>
+            <code data-testid={`sc-cand-rungsrc-${c.candidateId}`}>{c.rung.source}</code>
+            <i className={styles.popNote}>{t.rungNote}</i>
+          </span>
+          <span className={styles.popSec}>
+            <b>{t.effect}（{c.effect.label}）</b>
+            <i>{c.effect.why}</i>
+          </span>
+          <span className={styles.popSec}>
+            <b>{t.join}（{c.join.label}）</b>
+            <i>{c.join.why}</i>
+            <code data-testid={`sc-cand-joinpath-${c.candidateId}`}>{c.join.path}</code>
+          </span>
+          <span className={styles.popSec}>
+            <b>试算公式（引擎原文）</b>
+            <code data-testid={`sc-cand-formula-${c.candidateId}`}>{c.provenance.formula}</code>
+            <i>
+              求解器 <code>{c.provenance.solverKey}</code> · 输入 {c.provenance.inputs.join(" / ")}
+            </i>
+          </span>
+          {c.leverIsLocus ? null : (
+            <span className={styles.popSec}>
+              <b>{t.lever}</b>
+              <i>{t.leverIdOnly}</i>
+            </span>
+          )}
+          <span className={styles.popSec}>
+            <b>候选 id（可从公开字段反算，单源构造）</b>
+            <code>{c.candidateId}</code>
+          </span>
+        </InfoPopover>
+      </div>
+
+      {/* ⑤ 真试算的效果：逐维前后值。`value===null` ⇒ 显示引擎给的原因，**绝不补 0** */}
+      <table className={styles.candDims} data-testid={`sc-cand-dims-${c.candidateId}`}>
+        <thead>
+          <tr>
+            <th />
+            <th>{t.dimBefore}</th>
+            <th>{t.dimAfter}</th>
+            <th>{t.dimDelta}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {c.dims.map((d) => (
+            <tr
+              key={d.key}
+              data-testid={`sc-cand-dim-${c.candidateId}-${d.key}`}
+              data-baseline={d.baseline === null ? "" : String(d.baseline)}
+              data-value={d.value === null ? "" : String(d.value)}
+              data-moved={d.moved ? "1" : "0"}
+            >
+              <td className={styles.candDimLabel}>
+                {d.label}
+                {d.unit === "" ? null : <small> / {d.unit}</small>}
+              </td>
+              {d.value === null || d.baseline === null ? (
+                <td colSpan={3} className={styles.candDimEmpty}>
+                  <b>{t.dimEmpty}</b>
+                  {/* 引擎给的原因原文（前端不改写、不总结） */}
+                  {d.reason === null ? null : <span> —— {d.reason}</span>}
+                </td>
+              ) : (
+                <>
+                  <td>{String(d.baseline)}</td>
+                  <td>
+                    <b>{String(d.value)}</b>
+                  </td>
+                  <td className={styles.candDelta} data-good={d.improvement > 0 ? "1" : "0"}>
+                    {d.improvement > 0 ? "▲" : d.improvement < 0 ? "▼" : "＝"} {String(Math.abs(d.improvement))}
+                  </td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </li>
+  );
+}
+
+/**
+ * **「为什么这个阻滞点没有方案」** —— 本单的诚实位纪律，比候选本身更要紧的一半。
+ *
+ * ── 为什么这块不许是空白 ──────────────────────────────────────────────────────
+ * 引擎注释原话：「**空白比错答更容易被当成没问题**」。生产基线 15 个阻滞点里 **11 个是诚实 NONE**——
+ * 这 11 个若渲染成空白，用户读到的是「这些点没问题」，而事实是「查过了，本体上确实没有可拨的杠杆」。
+ *
+ * ── 三态必须分得开（修法完全相反，混了必修错地方）────────────────────────────
+ *  · `NONE`        查过了确实没有 → 该修**数据面**（本体上这个落点没有可拨的杠杆）；
+ *  · `UNAVAILABLE` 没算出来（探针耗尽/规则快照缺失）→ **缺答不是答**，该修**算力与接线**；
+ *  · `NOT_RUN`     本次压根没跑枚举（回包无该字段）→ 与上面两个都不是一回事。
+ * 第四种「请求失败」不在这里 —— 它在取数层的错误框（`sc-imp-error`），本来就分得开。
+ * 判据一句话：**「我算过了，没有」「我没算出来」「我没算」是三个不同的命题。**
+ *
+ * 逐点账（`candidateStats`）一并上屏：探了几个锚点 / 试算几次 / 有效几个 / 下发几条 + `gaps[]` **原文**。
+ * 引擎没回带这一行时也如实说「说不出探了几个锚点」，**不编一个数**。
+ */
+function CandidateAbsenceBlock({ im }: { im: ImpedimentVM }) {
+  const t = zh.sim.sandbox.candidates;
+  const a = im.absence;
+  if (a === null) return null;
+  return (
+    <div
+      className={styles.candNone}
+      data-testid={`sc-cand-none-${im.impedimentId}`}
+      data-absence={a.kind}
+      role="note"
+    >
+      <div className={styles.candNoneHead}>
+        <b className={styles.candNoneTag} data-absence={a.kind}>
+          {a.label}
+        </b>
+        <span className={styles.candNoneTitle}>{t.noneTitle}</span>
+        <InfoPopover topic={zh.sim.sandbox.info.candidateNone} testId={`cand-none-${im.impedimentId}`}>
+          <span className={styles.popSec}>
+            <b>这条断言了什么</b>
+            <i>{a.claim}</i>
+          </span>
+          <span className={styles.popSec}>
+            <b>三态为何不许合并</b>
+            <i>
+              「我算过了，没有」（{CANDIDATE_ABSENCE_LABEL.NONE.label}）· 「我没算出来」（
+              {CANDIDATE_ABSENCE_LABEL.UNAVAILABLE.label}）·「我没算」（{CANDIDATE_ABSENCE_LABEL.NOT_RUN.label}）
+              是三个不同的命题，修法完全相反 —— 合并成一句「暂无方案」就是静默错答。
+            </i>
+          </span>
+        </InfoPopover>
+      </div>
+
+      {/* 这条结论断言了什么（第一层留可见正文，不全塞浮层 —— 诚实位允许降层但不许消失） */}
+      <p className={styles.candNoneClaim} data-testid={`sc-cand-none-claim-${im.impedimentId}`}>
+        {a.claim}
+      </p>
+
+      {/* 引擎写的缺席原因**原文**（前端一个字都不改写） */}
+      {a.reason === null ? null : (
+        <p className={styles.candNoneReason} data-testid={`sc-cand-none-reason-${im.impedimentId}`}>
+          {a.reason}
+        </p>
+      )}
+
+      {/* 逐点账：探了几个锚点 / 试算几次 / 有效几个 / 下发几条 */}
+      {im.stat === null ? (
+        <p className={styles.candNoneStat} data-testid={`sc-cand-stat-missing-${im.impedimentId}`}>
+          {t.statMissing}
+        </p>
+      ) : (
+        <p
+          className={styles.candNoneStat}
+          data-testid={`sc-cand-stat-${im.impedimentId}`}
+          data-anchors={String(im.stat.anchors)}
+          data-probes={String(im.stat.probes)}
+          data-effective={String(im.stat.effective)}
+          data-emitted={String(im.stat.emitted)}
+        >
+          {t.statLine(im.stat.anchors, im.stat.probes, im.stat.effective, im.stat.emitted)}
+        </p>
+      )}
+
+      {/* gaps[] 原文逐条 —— 「缺哪根杠杆 / 缺哪类数据」的唯一可查处 */}
+      {im.stat !== null && im.stat.gaps.length > 0 ? (
+        <ul className={styles.candGaps} data-testid={`sc-cand-gaps-${im.impedimentId}`}>
+          <li className={styles.candGapsHead}>{t.gapsTitle}</li>
+          {im.stat.gaps.map((g, i) => (
+            <li key={g} data-testid={`sc-cand-gap-${im.impedimentId}-${i}`}>
+              {g}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 候选面的**总账一行**：这次到底算出了多少对策，以及没算出的那些**分别是哪一种**。
+ *
+ * 三态**逐格分开显示、不合并成一个「没方案」** —— 合并就是本单要堵的那个静默错答。
+ * 计数为 0 的格子照样显示（0 也是真数：「本次一条 UNAVAILABLE 都没有」是有信息量的结论，
+ * 藏起来会让人以为这一态不存在）。
+ */
+function CandidateSummaryLine({ model }: { model: ChainImpedimentModel }) {
+  const t = zh.sim.sandbox.candidates;
+  const s = model.candidateSummary;
+  return (
+    <p className={styles.candSummary} data-testid="sc-cand-summary" data-total={String(s.totalCandidates)}>
+      <b data-testid="sc-cand-summary-have">{t.summary(s.withCandidates, s.totalCandidates)}</b>
+      <span className={styles.candSummarySep}>{t.absentSummary}</span>
+      {(["NONE", "UNAVAILABLE", "NOT_RUN"] as CandidateAbsenceKind[]).map((k) => (
+        <i key={k} className={styles.candSummaryTag} data-absence={k} data-testid={`sc-cand-summary-${k}`}>
+          {CANDIDATE_ABSENCE_LABEL[k].label} {s.absent[k]}
+        </i>
+      ))}
+      {s.probes === null ? null : (
+        <span className={styles.candSummaryProbes} data-testid="sc-cand-summary-probes">
+          {t.probes(s.probes)}
+        </span>
+      )}
+      {s.truncated === true ? (
+        <b className={styles.candSummaryTrunc} data-testid="sc-cand-summary-truncated">
+          {t.truncated}
+        </b>
+      ) : null}
+    </p>
+  );
+}
+
+/** 一个阻滞点的候选区：要么逐条摊开候选，要么把「为什么没有」说清。**两者必居其一，绝不留空白。** */
+function CandidateBlock({ im }: { im: ImpedimentVM }) {
+  const t = zh.sim.sandbox.candidates;
+  return (
+    <div className={styles.candBlock} data-testid={`sc-cand-block-${im.impedimentId}`} data-count={im.candidates.length}>
+      {im.candidates.length > 0 ? (
+        <>
+          <p className={styles.candHeadLine} data-testid={`sc-cand-head-${im.impedimentId}`}>
+            <b>{t.title}</b>
+            <span>{t.count(im.candidates.length)}</span>
+            {im.stat === null ? null : (
+              <i data-testid={`sc-cand-emit-stat-${im.impedimentId}`}>
+                {t.statLine(im.stat.anchors, im.stat.probes, im.stat.effective, im.stat.emitted)}
+              </i>
+            )}
+          </p>
+          <ul className={styles.candList}>
+            {im.candidates.map((c) => (
+              <CandidateCard key={c.candidateId} c={c} />
+            ))}
+          </ul>
+        </>
+      ) : (
+        <CandidateAbsenceBlock im={im} />
+      )}
     </div>
   );
 }
