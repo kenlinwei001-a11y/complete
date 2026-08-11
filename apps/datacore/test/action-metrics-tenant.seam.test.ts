@@ -178,12 +178,13 @@ describe("SEAM · Action 埋点租户维（另开端点，且不得成为第二�
       const summed = new Map<string, number>();
       for (const tid of tenants) {
         for (const s of m.tenantSeries(name, tid)) {
-          const key = `${s.labels["action_type"]} ${s.labels["outcome"]}`;
+          // 用 JSON 数组当复合键：action_type 是租户自定的业务中文名，任何单字符分隔符都可能与之撞车
+          const key = JSON.stringify([s.labels["action_type"], s.labels["outcome"]]);
           summed.set(key, (summed.get(key) ?? 0) + s.value);
         }
       }
       for (const [key, sum] of summed) {
-        const [actionType, outcome] = key.split(" ") as [string, string];
+        const [actionType, outcome] = JSON.parse(key) as [string, string];
         expect(
           seriesValue(text, name, actionType, outcome),
           `两套口径打架：${name}{${actionType},${outcome}} 合计端与租户端不一致 —— 出现了第二个真值源`,
