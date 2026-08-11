@@ -41,8 +41,10 @@ import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
-import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
-import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+// WO-DATABUILDER-PIPELINE：接入/导入改由 pipeline 驱动（解析/对账的纯函数由 intake-pipeline 内部调用）。
+import { runIntakePipeline, runIntakeImportPipeline } from "./databuilder/intake-pipeline.js";
+import { projectPipelineOrder } from "./databuilder/pipeline-service.js";
+import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema, BuildPipelineUpsertSchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
@@ -201,6 +203,9 @@ const LoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
+
+/** WO-DATABUILDER-PIPELINE：节点 SOP「人要不要介入」的放行入参。 */
+const WorkflowApproveBodySchema = z.object({ stepKey: z.string().min(1) });
 
 const ObjectsQuerySchema = z.object({
   objectType: z.string().min(1),
@@ -4161,35 +4166,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
   // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
+  // WO-DATABUILDER-PIPELINE：**按 pipeline 处理数据**（改造前此处写死 parse→reconcile→persist→emit 四连）。
+  // 步骤序列 + 每节点 SOP 来自持久化的 BuildPipeline(kind=intake)；未配置则用出厂默认（行为逐字节不变）。
   app.post("/a/v1/databuilder/intake", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
     const body = parseBody(IntakeRequestSchema, req.body);
-    const intake = parsePrototypeHtml(body.html);
-    const existing: ExistingTypeField[] = (await ontology.listTypes(c)).flatMap((t) => t.properties.map((p) => ({ typeKey: t.key, propKey: p.propKey })));
-    const reconcile = reconcileIntake(intake.dataSources, existing);
-    // P2：把对账候选落库为 HITL 队列（人确认 USE/RENAME/NEW/MERGE/DISCARD），preview 同时返回。
-    const persisted = await Promise.all(reconcile.candidates.map(async (cand, i) => {
-      const id = `rcc_${c.tenantId}_${Date.now()}_${i}`;
-      const rec = { ...cand, id, tenantId: c.tenantId };
-      await repos.reconcileCandidates.put(rec);
-      return rec;
-    }));
-    await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: persisted.length });
-    return { intake, reconcile: { ...reconcile, candidates: persisted } };
+    const pipeline = await databuilder.pipelines.resolve(c, "intake");
+    return runIntakePipeline({ repos, ontology, connectors, outbox }, pipeline, c, { html: body.html });
   });
   // prototype-intake P3 导入正门：HTML 物化进库 = 经连接器（prototype_html）落 RawDataset，
   // 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致；不写死前端代码 R8 数据流）。
+  // WO-DATABUILDER-PIPELINE：导入同样**按 pipeline 处理数据**（kind=intake_import）。
   app.post("/a/v1/databuilder/intake/import", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
     const body = parseBody(IntakeImportRequestSchema, req.body);
-    const result = await connectors.importPrototype(c, body.filename, body.html);
-    const datasets = (await connectors.listRawDatasets(c, result.connection.id)).map((d) => ({
-      id: d.id, name: d.name, rowCount: d.rowCount, fields: d.fields.map((f) => f.name),
-    }));
-    await outbox.emit(c.tenantId, "prototype.materialized", { connId: result.connection.id, datasets: datasets.length, rows: Object.values(result.rowCounts).reduce((a, b) => a + b, 0) });
-    return { connection: result.connection, datasets, rowCounts: result.rowCounts };
+    const pipeline = await databuilder.pipelines.resolve(c, "intake_import");
+    return runIntakeImportPipeline({ repos, ontology, connectors, outbox }, pipeline, c, { filename: body.filename, html: body.html });
   });
   // prototype-intake P3 闭环末步：把已导入的 RawDataset 按确定性 schema 对账物化进既有对象库
   // （"对账后的列" → 既有 type.field，不新建/不发布类型）→ ObjectInstance 可查（/admin/object-types 计数）。
@@ -4221,6 +4215,43 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await repos.reconcileCandidates.put(resolved);
     await outbox.emit(c.tenantId, "schema_reconcile.resolved", { id: resolved.id, column: resolved.prototypeColumn, action: body.action });
     return resolved;
+  });
+  // ── WO-DATABUILDER-PIPELINE：数据构建 Pipeline（低代码可配置执行流）的配置面 ──
+  // 「先配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP，只要数据接入或导入，
+  //   就按照这个 pipeline 处理数据」——这组路由是"配置"，上面的 intake/import/建域是"按它跑"。
+  app.get("/a/v1/databuilder/pipelines", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const items = await databuilder.pipelines.list(c);
+    return { items: items.map((p) => ({ ...p, order: projectPipelineOrder(p) })) };
+  });
+  app.get("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.get(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 覆盖某 kind 的 pipeline（幂等）：改完立刻生效 —— intake/import/建域下次执行即按新定义跑。
+  app.put("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildPipelineUpsertSchema, req.body);
+    const p = await databuilder.pipelines.upsert(c, (req.params as { kind: string }).kind, body);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 撤销覆盖 → 回出厂默认（行为回到写死时代）。
+  app.delete("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.reset(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑。
+  app.post("/a/v1/databuilder/workflow-runs/:id/approve", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(WorkflowApproveBodySchema, req.body);
+    return databuilder.approveWorkflowStep(c, (req.params as { id: string }).id, body.stepKey);
   });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
