@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
   AopResponseSchema,
   GraphOptionsSchema,
+  GraphViewDescSchema,
   MappingRowSchema,
   MappingRegistriesSchema,
   OrderProblemGroupSchema,
@@ -12,6 +16,22 @@ import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER, type TestApp } from
 import { round } from "../src/prng.js";
 
 const LOOP_IDS = ["产能预测", "实际产出", "精度校准器", "学习Agent", "经验记忆库", "良率", "OEE历史", "OEE指标", "聚合求解器", "工序产能"];
+
+/** 仓根（自本文件向上找 pnpm-workspace.yaml）—— 供跨包读取前端 SEAM fixture 做新鲜度比对。 */
+const REPO_ROOT = (() => {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    try {
+      readFileSync(join(dir, "pnpm-workspace.yaml"));
+      return dir;
+    } catch {
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  }
+  throw new Error("[planviews.test] 找不到仓根（向上未见 pnpm-workspace.yaml）");
+})();
 
 async function aop(t: TestApp) {
   const res = await t.app.inject({ method: "GET", url: "/a/v1/plan/aop?year=2026", headers: ADMIN });
@@ -304,7 +324,32 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(loopOpts.nodeFilter?.ids).toEqual(LOOP_IDS);
     expect(loopOpts.linkKinds).toEqual(["fb", "orch"]);
     expect(loopOpts.dimOthers).toBe(true);
-    expect(loop.layout).toMatchObject({ descriptionLink: "/admin/calibration" });
+    // G-GRAPH-DESC-CONTRACT-SPLIT：本断言原为 `expect(loop.layout).toMatchObject({ descriptionLink: "/admin/calibration" })`
+    // —— 它把**前端根本不读的那个容器**钉成了金值，于是"描述卡生产态一张都不渲染"被这条绿断言长期盖住。
+    // 现按契约 `GraphViewDescSchema` 断言真下发形状（容器 options·字段 desc/descLink{to,label}）。
+    // 并且**八视角逐个咬**：只做 1 个与做满 8 个必须不同色（本仓假绿第 12 形态：测试对覆盖率全盲）。
+    for (const v of persp) {
+      const d = GraphViewDescSchema.parse(v.options);
+      expect(d.desc, `${v.viewKey} 缺描述卡正文`).toBeTruthy();
+      expect(v.layout, `${v.viewKey} 的描述不该再落在 layout`).not.toHaveProperty("description");
+      expect(v.layout, `${v.viewKey} 的描述链接不该再落在 layout`).not.toHaveProperty("descriptionLink");
+    }
+    expect(GraphViewDescSchema.parse(loop.options).descLink).toEqual({ to: "/admin/calibration", label: "查看精度趋势与校准历史" });
+    // ── 新鲜度门（堵抓取式 fixture 的陈旧假绿）────────────────────────────────────────
+    // 前端 SEAM 门 `frontend-shell/test/graph-desc-contract.seam.test.tsx` 喂的是**抓下来的**生产字节。
+    // 抓取式 fixture 自带一个洞：后端改回错形状而没人重抓 ⇒ 那边照样绿。
+    // 故此处反向咬：**真 workspace 的 graph-* 必须与那份 fixture 深相等**。后端一漂移，这条当场红，
+    // 报错文案直接给出重抓命令。两道门合起来才闭环（后端漂移→这边红，前端漂移→那边红）。
+    const liveFixture = JSON.parse(
+      readFileSync(join(REPO_ROOT, "apps/frontend-shell/test/fixtures/workspace-graph-views-live.json"), "utf8"),
+    ) as { views: unknown[] };
+    expect(
+      persp,
+      "workspace 的 graph-* 与前端 SEAM fixture 不一致 —— 若本次是有意改动，重抓：\n" +
+        "  PORT=4051 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js\n" +
+        "  curl -H 'X-Debug-User: demo:u_admin:admin|planner|catalog_admin' localhost:4051/a/v1/me/workspace\n" +
+        "  → 取 views[] 中 graph-* 覆盖 apps/frontend-shell/test/fixtures/workspace-graph-views-live.json 的 views",
+    ).toEqual(liveFixture.views);
     const nodeIds = new Set(g.nodes.map((n) => n.id));
     for (const id of LOOP_IDS) expect(nodeIds.has(id), id).toBe(true);
     // 数据来源视角按源系统着色；导航中视角分组（图谱· 前缀）

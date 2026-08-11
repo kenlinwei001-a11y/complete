@@ -260,6 +260,37 @@ export const GraphOptionsSchema = z.object({
 });
 export type GraphOptions = z.infer<typeof GraphOptionsSchema>;
 
+/**
+ * §7.18 图谱视角**描述卡**（`ViewConfig.options.desc` / `.descLink`）—— 容器与字段名的**单一来源**。
+ *
+ * 为什么是 `options` 而不是 `layout`（G-GRAPH-DESC-CONTRACT-SPLIT 的裁定依据，不是"哪边改得少"）：
+ *  ① 同一 §7.18 特性的另一半 `graphOptions` 的契约注释（见上）已把容器钉死为 `ViewConfig.options`——
+ *     描述卡与视角配置是**同一个特性的两个字段**，拆两个容器即制造第二个真相源。
+ *  ② `ViewConfig.layout` 有**后端机器消费方**：`datacore/src/databuilder/pull-target.ts` 的
+ *     `ViewLayoutLike`（"来自 ViewConfig.views[].layout"）按 `solverKey`/`outputFields` 派生 DF.6 拉取靶。
+ *     `layout` 是"给机器读的求解器契约位"，叙事文案放进去属语义错置。
+ *  ③ 前端 `api/types.ts` 的 `ViewConfigVM.options` 注释亦写明"renderer 专属配置……契约 ViewConfig.options"。
+ *
+ * **本 schema 存在的意义 = 防复发的机制**（铁律 0.6：下次错位时机器先说话）：
+ * 后端 `graphView()` 的第 3 形参与前端 `OntologyGraphView` 的读取侧**都以此为类型**，
+ * 任一侧再写成 `description`/`descriptionLink`（或把它塞回 `layout`）即 **tsc 当场报错**，
+ * 不再靠"mock 恰好走对形状"把生产的错位盖过去。
+ */
+export const GraphDescLinkSchema = z.object({
+  /** 站内路由（react-router `<Link to>`）。**不是**裸字符串 URL —— 需要 label 才能渲染出可点文字。 */
+  to: z.string(),
+  label: z.string(),
+});
+export type GraphDescLink = z.infer<typeof GraphDescLinkSchema>;
+
+export const GraphViewDescSchema = z.object({
+  /** 视角叙事描述（descCard 正文）。 */
+  desc: z.string().optional(),
+  /** 描述卡内的延伸链接（如学习闭环 → 校准报告页）。 */
+  descLink: GraphDescLinkSchema.optional(),
+});
+export type GraphViewDesc = z.infer<typeof GraphViewDescSchema>;
+
 /** §S1.5 修订：affected_orders 输出扩展（问题归并 + 根因链） */
 export const OrderProblemCategorySchema = z.enum(["DELIVERY", "MARGIN", "KIT", "CREDIT"]);
 export const OrderRootChainSchema = z.object({

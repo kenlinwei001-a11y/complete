@@ -436,8 +436,17 @@ const LEDGER_LAYOUT = {
   ],
 };
 
-/** §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions) */
-const GRAPH_VIEWPOINTS = [
+/**
+ * §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions)。
+ *
+ * 描述卡走 `options.desc` / `options.descLink{to,label}`，与**生产**（`datacore/src/synthetic/service.ts`
+ * 的 `graphView()`）同形状 —— 契约单一来源 `GraphViewDescSchema`。
+ * ⚠ 这里曾经是**唯一走对形状的一侧**：生产写 `layout.description`（裸字符串 link），mock 写对的，
+ * 于是 `G-GRAPH-DESC-CONTRACT-SPLIT` 全绿藏了很久。**mock 比生产"对"也是骗人** ——
+ * 改动本常量务必与 `service.ts` 同步；`test/graph-desc-contract.seam.test.tsx` 会咬住两边同形。
+ * 导出是为了让那道门能直接比对本常量（否则只能间接经 MSW 猜）。
+ */
+export const GRAPH_VIEWPOINTS = [
   {
     key: "graph-all", title: "图谱·全景",
     options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
