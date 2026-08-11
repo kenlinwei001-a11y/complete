@@ -136,8 +136,10 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
     expect(c31.reason).toBe("NO_CARRIER");
     expect(c31.suggestion).toBeNull();
 
-    // C10 场景必填+行动审批留痕：Action 零候选；Scenario 有 2 个候选（AnnualScenario / ScenarioTrigger）
-    // ⇒ AMBIGUOUS，机器**拒绝替人挑一个**。这正是"判不准就明说判不准"。
+    // C10 场景必填+行动审批留痕：**范畴错误，不是拼写错误**（审核方裁决）。
+    // `Action`/`Scenario` 是本体七要素里的行动/场景，与「对象类型」**平级的另一类要素**，
+    // 不在 `scopeObjectTypes` 的值域里 ⇒ 任何改名都是错的（会从"诚实报缺口"退化成"安静算错"）。
+    // 两条断言各钉一半：Action 零候选；Scenario 两候选 ⇒ 机器拒绝替人挑。
     expect(found.find((f) => f.unknownTypeKey === "Action")!.reason).toBe("NO_CARRIER");
     const scen = found.find((f) => f.unknownTypeKey === "Scenario")!;
     expect(scen.reason).toBe("AMBIGUOUS");

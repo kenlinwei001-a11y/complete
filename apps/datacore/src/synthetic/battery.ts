@@ -2848,6 +2848,15 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C04: ["Line"],
   C06: ["MaterialBalance"],
   C09: ["DataSourceHealth"],
+  // ⚠ C10 **故意保持原样 —— 病因是「范畴错误」，不是「拼写错误」**（WO-RULE-SCOPE-DROP 裁决）。
+  // `Action.approver == NULL OR Action.audited == FALSE` 管的是**平台自身 Action 制品有没有审批留痕**，
+  // 而 `Action` / `Scenario` 属于本体七要素里的**行动 / 场景**——与「对象类型」**平级的另一类要素**，
+  // 压根不在 `scopeObjectTypes` 这个字段的值域里。所以：
+  //   · `Action`   → 零候选（NO_CARRIER）
+  //   · `Scenario` → 2 个候选（AnnualScenario / ScenarioTrigger）⇒ AMBIGUOUS，机器**拒绝替人挑**。
+  //     真挑了会是灾难：C10 会变成拿「年度情景」对象去查 `approver` 字段 —— 从「诚实报缺口」
+  //     退化成「安静地算错」。这与本单抓到的 `Batch→MaterialBatch` 完全不同型，**别读成「差个改名就好了」**。
+  // 修法只有两条：给行动/场景要素另立一个作用域维度，或退役该规则。改名一律是错的。
   C10: ["Action", "Scenario"],
   C11: ["MaintPlan"],
   C15: ["Order", "DemandSegment"],
