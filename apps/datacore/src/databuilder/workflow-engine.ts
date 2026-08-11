@@ -30,14 +30,30 @@ export interface StepResult {
 
 export type StepContext = Record<string, unknown>;
 
-/** 步定义：闭包已包住 AuthCtx/service。引擎不感知业务，仅驱动。 */
+/** 步定义：闭包已包住 AuthCtx/service。引擎不感知业务，仅驱动。
+ *  maxAttempts/onFailure/requiresApproval/params 由 BuildPipeline 的节点 SOP 注入（见 pipeline-defs.ts）。 */
 export interface WorkflowStepDef {
   stepKey: string;
   title: string;
   maxAttempts?: number;
-  run: (context: StepContext) => Promise<StepResult>;
+  /** 节点 SOP「失败怎么办」：RETRY 有界重试 · SKIP 跳过继续 · ABORT 止于该步（默认，与写死时代一致）。 */
+  onFailure?: "RETRY" | "SKIP" | "ABORT";
+  /** 节点 SOP「人要不要介入」：true → 执行前把 run 置 PAUSED 等人 approve（approve 后 resume 续跑）。 */
+  requiresApproval?: boolean;
+  /** 节点 SOP 参数（步骤实现自解释）。 */
+  params?: Record<string, unknown>;
+  run: (context: StepContext, params?: Record<string, unknown>) => Promise<StepResult>;
   /** 抛错分类：默认仅 RetryableStepError 视为可重试。 */
   isRetryable?: (e: unknown) => boolean;
+}
+
+/** 人工介入放行标记键（run.context 内）：approve 端点写入 → resume 时该步不再拦。 */
+export const APPROVAL_KEY = "__approvedSteps";
+
+/** 该步是否已获人工放行。 */
+export function isStepApproved(context: StepContext, stepKey: string): boolean {
+  const list = context[APPROVAL_KEY];
+  return Array.isArray(list) && list.includes(stepKey);
 }
 
 export interface DriveOpts {
@@ -131,6 +147,16 @@ export class BuildWorkflowEngine {
       if (!rec) continue;
       if (rec.status === "SUCCEEDED" || rec.status === "SKIPPED") continue; // 重入：跳过已完成
 
+      // 节点 SOP「人要不要介入」：未获放行 → 把 run 置 PAUSED 停在该步（保留现场），等 approve 后 resume 续跑。
+      if (def.requiresApproval && !isStepApproved(run.context, def.stepKey)) {
+        rec.status = "PENDING";
+        run.status = "PAUSED";
+        await this.persist(run);
+        await this.emit(run, "buildworkflow.run_paused", { stepKey: rec.stepKey, reason: "AWAITING_APPROVAL" });
+        await opts.onAdvance?.(run).catch(() => undefined);
+        return run;
+      }
+
       rec.status = "RUNNING";
       rec.startedAt = nowIso();
       await this.persist(run);
@@ -141,7 +167,7 @@ export class BuildWorkflowEngine {
       while (!done) {
         rec.attempts += 1;
         try {
-          const result = await def.run(run.context);
+          const result = await def.run(run.context, def.params);
           if (result.patch) run.context = { ...run.context, ...result.patch };
           if (result.checkpoint) rec.checkpoint = result.checkpoint;
           if (result.detail) rec.detail = result.detail;
@@ -156,11 +182,25 @@ export class BuildWorkflowEngine {
           await opts.onAdvance?.(run).catch(() => undefined);
           done = true;
         } catch (e) {
+          const policy = def.onFailure ?? "ABORT"; // 未配 SOP → ABORT（与写死时代逐字节一致）
           const retryable = def.isRetryable ? def.isRetryable(e) : e instanceof RetryableStepError;
-          if (retryable && rec.attempts < rec.maxAttempts) {
+          // SOP onFailure=RETRY：策略本身即声明可重试（无需步内抛 RetryableStepError）；否则沿用原判据。
+          if ((policy === "RETRY" || retryable) && rec.attempts < rec.maxAttempts) {
             await this.emit(run, "buildworkflow.step_retry", { stepKey: rec.stepKey, attempts: rec.attempts });
             const wait = this.backoffMs(rec.attempts);
             if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+            continue;
+          }
+          // SOP onFailure=SKIP：标 SKIPPED 继续下一步（错误记在该步 detail，不静默吞）。
+          if (policy === "SKIP") {
+            rec.status = "SKIPPED";
+            rec.finishedAt = nowIso();
+            rec.durationMs = Date.now() - started;
+            rec.detail = `SOP=SKIP 跳过：${e instanceof Error ? e.message : String(e)}`;
+            await this.persist(run);
+            await this.emit(run, "buildworkflow.step_skipped", { stepKey: rec.stepKey, attempts: rec.attempts, reason: "SOP_SKIP" });
+            await opts.onAdvance?.(run).catch(() => undefined);
+            done = true;
             continue;
           }
           rec.status = "FAILED";

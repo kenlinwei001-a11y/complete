@@ -453,6 +453,7 @@ export function createMemoryRepos(): Repos {
     objectMerges: new MemStore(),
     notifications: new MemStore(),
     ontologyWorkflows: new MemStore(),
+    buildPipelines: new MemStore(),
     validationRuns: new MemStore(),
     webhooks: new MemStore(),
     sopVersions: new MemStore(),
