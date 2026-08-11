@@ -34,7 +34,11 @@
 2. **但派单的定性是对的，只是位置不同**：真正的风险不是「引用了不存在的字段」，而是
    **`Type.field` 这个记法在本仓同时指四种互不相干的东西**（本体属性 / 仿真状态变量 /
    规则求值命名空间 / 前端原型全局变量），其中**两种完全无人校验**，写错静默读作 0/undefined。
-   A6 那个坑属于第三种。见 §6 —— 这是本次审计最有价值的产出。
+   见 §6 —— 这是本次审计最有价值的产出。其中 **§6.3 是最值钱的一条**：
+   顺着一个「未判定」多追一层，抖出 `BATTERY_RULE_SCOPES` 四条规则的作用域名的不是对象类型
+   （`Batch`/`Cert`/`Lta`/`Outsource`），而真承载者 `MaterialBatch`（`idleDays` **24/24 满覆盖**）等
+   就在本体里 —— **数据 100% 齐备，却因为一个名字对不上而在 databuilder 路径上被静默丢弃**
+   （`comprehend.ts:214` 已实测）。
 3. **派单里的「86%」我复算不出来**，实测 **55%**；「93 份有验收判据章」实测 **103** 份。见 §8。
 
 ---
@@ -211,9 +215,11 @@ curl -s -H 'X-Debug-User: demo:admin:admin' http://127.0.0.1:4094/a/v1/ontology/
 | 📌 已知 | 3 | `Quote.marginPct/floorPct`（PRD 明写「Quote 仅 eval 期注入命名空间**非本体对象类型**」）、`ApprovalPolicyEngine.resolve`（PRD 明写「**不做**」） |
 | ⚪ 未判定 | 4 | 见 §7 |
 
-**⚠️ 这个 0 有一个重要的但书**，见 §7 的 `Batch.idleDays`：
-规则 C28 引用的 `Batch` **确实不是任何对象类型**，是货真价实的「类型不存在」——
-只不过缺陷在**规则表**里，PRD 只是准确地引用了它。**按本审计的判据（判 PRD 不判规则表）记 0，但缺口是真的。**
+**⚠️ 这个 0 有一个重要的但书 —— 见 §6.3。**
+顺着 `PRD-sandbox-a2.md:43` 的 `Batch.idleDays` 多追一层，抖出
+`BATTERY_RULE_SCOPES` 里**四条规则作用域名的不是对象类型**（`Batch`/`Cert`/`Lta`/`Outsource`），
+而真承载者 `MaterialBatch`(24 实例·`idleDays` 24/24) / `Certification`(18) / `LongTermAgreement`(3)
+就在本体里躺着。**按本审计判据（判 PRD 不判规则表）本档记 0，但那个缺口是真的，且比 PRD 侧的更值钱。**
 
 ---
 
@@ -298,6 +304,52 @@ A6 是「PRD 假设了一个不存在的归属关系（Line→业务线）」；
 这里是「PRD 假设了一个不存在的**读取关系**（状态变量→对象属性）」。
 两者都不是模块内部的错，都在**接缝**上 —— 与本仓「断点常在接缝而非模块内部」一致。
 
+### 6.3 追一个「未判定」多追一层，抖出四条规则作用域的命名漂移
+
+`PRD-sandbox-a2.md:43` 引了规则 C28 `Batch.idleDays > 90`。**PRD 引得一字不差**，
+但 `Batch` 不是对象类型。按铁律 0.5 再追一层（grep 不是结论），抖出的东西比原问题大：
+
+`apps/datacore/src/synthetic/battery.ts:2816` `BATTERY_RULE_SCOPES` 里**四条作用域名不是对象类型**，
+而真正的承载者就在本体里、且**数据满覆盖**：
+
+| 规则 | 声明的 scope | 真实对象类型 | 实测数据 |
+|---|---|---|---|
+| C28 呆滞预警 | `["Batch"]` | **`MaterialBatch`** | 24 实例，`idleDays` **24/24 满覆盖** |
+| C26 | `["Cert"]` | **`Certification`** | 18 实例 |
+| C27 | `["Lta"]` | **`LongTermAgreement`** | 3 实例 |
+| C31 | `["Outsource"]` | 未找到对应类型 | — |
+
+`battery.ts:2819` 的注释写着「与 expression 对象前缀一致」——
+**这句话正是病根**：它把「规则表达式里的注入命名空间」和「本体对象类型键」**当成了同一个东西**，
+于是照着表达式前缀抄进了 `scopeObjectTypes`。二者恰好同名时没事，
+`Batch`/`MaterialBatch` 这种不同名的就悄悄错开。
+
+**已验证的后果**（真跑，非推断）：`apps/datacore/src/databuilder/comprehend.ts:214`
+
+```ts
+const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
+```
+
+**scope 里有一个不认识的类型键，整条规则被静默丢掉** —— 无日志、无报错。
+这四条规则在 databuilder 路径上过不去这道 filter。
+
+**必须说清楚我验证到哪、没验证到哪**（不许把推断说成实测）：
+
+- ✅ **已实测**：`Batch`/`Cert`/`Lta`/`Outsource` 不在 94 个运行态对象类型里；
+  `MaterialBatch.idleDays` 24/24；`comprehend.ts:214` 确实按 scope 过滤丢弃。
+- ✅ **已实测**：`POST /a/v1/rules/evaluate {"ruleIds":["C28"],"payload":{"Batch":{"idleDays":120}}}`
+  → `passed:false`，**规则本身能正常求值** —— 因为 DSL 吃的是**调用方注入的 payload 命名空间**，
+  不是对象库。这与 `PRD-chain-24nodes.md:149` 对 `Quote` 的描述（「仅 eval 期注入命名空间非本体对象类型」）**同构**。
+- ❌ **未验证**：demo 租户运行期到底有没有人给 C28 喂 `Batch` payload
+  （即这条 WARN 今天会不会真的响）。要定这个得跑 `chain_impediments` 全链，
+  **本单画像=轻，不跑**。留给引擎侧一单。
+- ❌ **未验证**：`PRD-sandbox-a2.md:43` 同段「静态口径 4、实测只见 3」这个计数是否受本条影响。
+
+**这一条是本次审计里唯一「数据 100% 齐备、却因为一个名字对不上而可能白白用不上」的实例 ——
+形态与 §3 那六条命名漂移完全一致，只是发生在规则表而不是 PRD 里。**
+
+---
+
 **建议（不在本单范围，仅记录）**：给 `sim_propagation_rule` 的
 `sourceStateVar`/`targetStateVar` 加一道发布期校验（要么必须是 `targetTypeKey` 的已声明属性、
 要么必须登记在一张显式的「纯仿真变量」白名单里）。今天这两者混在一个自由字符串里，
@@ -310,7 +362,7 @@ A6 是「PRD 假设了一个不存在的归属关系（Line→业务线）」；
 | PRD 文件:行 | `Type.field` | 为什么判不准 |
 |---|---|---|
 | `docs/PRD-goal-metric-owner-spine.md:19` | `Metric.miss` | **同一句话里两种口吻**：`Metric{target←目标树, actual←数据源派生, **delta/miss←派生**}` 是在**声明模型**（目标），紧接着「越线 `Metric.miss → plan_rootcause 推演`」又像在描述**现状**。实测 `Metric` 有派生 `delta`/`gapPct`、**无 `miss`**。是「提议新增派生属性」还是「把 `delta` 写成了 `miss`」，从文本判不出 |
-| `docs/PRD-sandbox-a2.md:43` | `Batch.idleDays` | **PRD 的引用是准确的**（逐字引规则 C28 `Batch.idleDays > 90`，`battery.ts:291`，且 `:2827` 有 `C28:["Batch"]`）。但 `Batch` **不是任何对象类型**（全仓无 `key:"Batch"`）。⇒ 缺陷在规则表不在 PRD。**另有一处对不上**：同段说「静态口径 4，实测只见 3」，把 C22 记为唯一 UNRESOLVED —— 若 `Batch` 真无承载，C28 也该 UNRESOLVED，那就该是 2。**需要跑一次 `chain_impediments` 才能定，本单画像=轻不跑** |
+| `docs/PRD-sandbox-a2.md:43` | `Batch.idleDays` | **PRD 的引用准确**（逐字引规则 C28）。追下去发现缺陷在规则表不在 PRD —— **单列成 §6.3**，那里给了完整取证 |
 | `docs/PRD-sandbox-metro-semantics.md:34` | `AndJoin.basis` | `AndJoin` 既不在本体也不在符号索引；上下文「与 `AndJoin.basis`（齐套 AND 也是结构推定）同族纪律」像在指一个已有概念，但找不到落点 |
 | `docs/industrial-prd/PRD-IND-order-aggregate.md:213` | `SolverParam.affected` | 出现在「建议前端纯派生」的方案描述里，无法判断是既有求解器参数还是提议新增 |
 
@@ -401,6 +453,15 @@ sed -n '367,370p' apps/datacore/src/sim/propagation.ts   # readVar → 0 兜底
 # 4) §3 六条命名漂移的真名
 #    Metric: delta/gapPct（非 gap/miss） · ChangeoverMatrix: minutes（非 changeoverMin）
 #    Cadence: cadenceKind（非 kind） · Cadence 实例数 8（非 0）
+
+# 5) §6.3 规则作用域命名漂移（金丝雀：key:"Base" 必中，中了才信 Batch 的 0 命中）
+grep -rn 'key: "Base"'  apps/datacore/src --include=*.ts | head -2   # 金丝雀，必须有命中
+grep -rn 'key: "Batch"' apps/datacore/src --include=*.ts             # 预期 0 命中
+sed -n '2816,2830p' apps/datacore/src/synthetic/battery.ts           # BATTERY_RULE_SCOPES
+sed -n '214p'       apps/datacore/src/databuilder/comprehend.ts      # scope 不认识 → 整条丢弃
+curl -s -H 'X-Debug-User: demo:admin:admin' -H 'Content-Type: application/json' \
+  -X POST 'http://127.0.0.1:4094/a/v1/rules/evaluate' \
+  -d '{"ruleIds":["C28"],"payload":{"Batch":{"idleDays":120}}}'      # → passed:false（注入即可求值）
 ```
 
 扫描脚本留在会话 scratchpad（`extract.py` / `symbols.py` / `classify.py` /
@@ -421,7 +482,8 @@ sed -n '367,370p' apps/datacore/src/sim/propagation.ts   # readVar → 0 兜底
 - **触及不变量**：R6 确定性（本审计全程 seed 42，可字节级重跑）· R13 出处透明
   （§6 指出仿真状态变量一路无出处校验）· R14 应用层无业务常数。
 - **触及断点**：`G-LEVER-BINDING-DRIFT`（§3 #4/#5 给它补了**属性名错误**这一层根因，
-  原登记只归因到 join 的另一侧）。
+  原登记只归因到 join 的另一侧）。**§6.3 的规则作用域命名漂移当前无断点编号**，
+  若确认要修，建议新登记一条（形态：「规则 scopeObjectTypes 与本体类型键不同名 ⇒ 规则被静默丢弃」）。
 - **是否需要回写 `docs/SYSTEM-ONTOLOGY.md`**：**本单不回写**（范围边界明令别碰，且另有 dev 在写）。
   **但 §6 那条建议若被采纳（给 stateVar 加发布期校验），届时必须新增一个断点编号并回写 §8。**
   本文件先把取证留在这里，供本体维护方取用。
