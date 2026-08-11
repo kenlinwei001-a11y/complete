@@ -136,6 +136,12 @@ export function parseSolverOutputShapes(src) {
 
 const ZOD_OBJ_RE = /export const ([A-Za-z_$][\w$]*)\s*=\s*z\s*\r?\n?\s*\.?\s*(?:strictObject|object)\s*\(\s*\{/g;
 const INFER_RE = /export type ([A-Za-z_$][\w$]*)\s*=\s*z\.infer<typeof ([A-Za-z_$][\w$]*)>/g;
+/**
+ * 「这份 schema 自己声明它**不穷尽**」：`z.object({…}).catchall(z.unknown())` / `.passthrough()`。
+ * ⚠ `)?` 不能省 —— 本仓写法是 `})\n  .catchall(...)`，闭合括号夹在中间；第一版漏了它，
+ *   两个真·开放 schema 一个都没认出来（又一次"抽出 0 条却报干净"，靠拿已知样例复跑才发现）。
+ */
+const OPEN_TAIL_RE = /^\s*\)?\s*\.\s*(catchall|passthrough)\s*\(/;
 
 /** 从 `{` 起抽顶层成员（`name: type` / `"name": type` / 可选 `?`）。 */
 export function objectMemberProps(text, braceIdx) {
@@ -152,7 +158,7 @@ export function objectMemberProps(text, braceIdx) {
 }
 
 export function buildSchemaRegistry(files) {
-  const schemas = new Map();   // SchemaName -> { props, file, line }
+  const schemas = new Map();   // SchemaName -> { props, file, line, open }
   const aliasOf = new Map();   // TypeName   -> SchemaName（`z.infer<typeof X>`）
   for (const f of files) {
     const s = readFileSync(f, "utf8");
@@ -162,7 +168,11 @@ export function buildSchemaRegistry(files) {
       if (mask[mt.index] !== M_CODE) continue;
       if (schemas.has(mt[1])) continue;
       const brace = mt.index + mt[0].length - 1;
-      schemas.set(mt[1], { props: objectMemberProps(s, brace), file: rel(f), line: lineOf(s, mt.index) });
+      const { end } = splitTopLevel(s, brace);
+      // `.catchall(...)` / `.passthrough()` = 该 schema **自己声明它不穷尽**：实现可以再多下发键而 schema 不管。
+      // 这类 schema 当"输出字段全集"用是不成立的 —— 必须自曝，否则本门会把"我只看得见声明的那些"说成"全都看过了"。
+      const tail = s.slice(end, end + 160);
+      schemas.set(mt[1], { props: objectMemberProps(s, brace), file: rel(f), line: lineOf(s, mt.index), open: OPEN_TAIL_RE.test(tail) });
     }
     for (const mt of s.matchAll(INFER_RE)) aliasOf.set(mt[1], mt[2]);
   }
@@ -350,6 +360,11 @@ for (const [k, v] of shapes) {
   shapeKeysResolved++;
 }
 
+// 形状源自己声明「不穷尽」的求解器 —— 盲区，必须自曝（见报告段）
+const openShapeSolvers = [...shapes]
+  .filter(([, v]) => v.from === "schema" && schemas.get(v.schema)?.open)
+  .map(([solver, v]) => ({ solver, schema: v.schema }));
+
 // 求解器层引用到的契约 schema（载体④ 的源）
 const solverFiles = srcFiles(SOLVER_DIR);
 const usedBySolvers = new Map(); // SchemaName -> "file:line"（首个引用点）
@@ -477,6 +492,13 @@ function canaries() {
     return { ok: bad.length === 0 && prodFiles.length > 50, got: `生产文件 ${prodFiles.length} · 混入 mocks/测试 ${bad.length}`, want: ">50 且 0" };
   });
 
+  // C11b 开放形状探测（真文件）：本仓已知有 2 个 `.catchall` 输出 schema，探不到就等于把盲区说成干净
+  //      —— 第一版正则漏了闭合括号（本仓写法是 `})\n  .catchall(...)`），两个真样例一个都没认出来。
+  add("open/catchall 输出 schema 探测", "探不到 ⇒ 「形状声明不穷尽」这个盲区被静默吞掉，本门会把「我只看得见声明的那些」说成「全都看过了」", () => {
+    const open = [...schemas].filter(([, v]) => v.open).map(([n]) => n);
+    return { ok: open.includes("CapacityForecastOutputSchema") && open.includes("AuditTimelineOutputSchema"), got: `开放 schema ${open.length} 个：${open.join(", ")}`, want: "含 CapacityForecastOutputSchema 与 AuditTimelineOutputSchema" };
+  });
+
   // C12 载体⑤ 根解析（真文件）：`ChainScanResult` 必须解析到成员并被 join 上
   //     —— 这条同时是 `;` 成员切分的**负载证明**：换回只按逗号切 ⇒ 该接口抽出 0 个成员 ⇒ 本条当场开火
   add("iface/chain_impediments→ChainScanResult 根解析", "抽不到接口成员（如只按逗号切 TS interface）⇒ 载体⑤ 恒空 ⇒ 嵌套行字段整层看不见，门照样绿", () => {
@@ -524,7 +546,7 @@ if (broken.length) {
 }
 console.log(
   `· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中` +
-    `（形状解析 2 · 契约 schema 成员 1 · 结果接口根解析 1 · **必中** 3 · **必不中** 3 · 消费判据 2 · import 图 1 · 扫描面 1 · rest 探测双向 1）` +
+    `（形状解析 2 · 契约 schema 成员 1 · 开放形状探测 1 · 结果接口根解析 1 · **必中** 3 · **必不中** 3 · 消费判据 2 · import 图 1 · 扫描面 1 · rest 探测双向 1）` +
     ` —— 抽取器与判定器在真源码上有效，下面的否定结论才有资格被相信。`,
 );
 console.log("  必中证据：" + canaryResults.filter((c) => c.name.startsWith("必中/")).map((c) => `${c.name.split("/")[1]} ⇒ ${c.got}`).join(" ｜ "));
@@ -600,7 +622,7 @@ const BASELINE_NOTE = [
   "③ `maxEntries` 必须**恒等于** `entries.length`；`ratchetHigh` 是历史最高水位，**只降不升**。",
   "   评审唯一必须拒绝的一行，就是把 ratchetHigh 调大。加一条豁免 = 同时改 maxEntries = 一处显眼 diff，评审必然看见。",
   "④ `--update` **只删不加**（修好的摘掉），新增死字段**不自动收编**——要记进存量必须人手编辑本文件。",
-  "⑤ `id` 形如 `S3:<求解器>.<字段>`（顶层）/ `S4:<契约schema>.<字段>`（嵌套一层）。",
+  "⑤ `id` 形如 `S3:<求解器>.<字段>`（输出顶层字段）/ `S4:<契约schema>.<字段>`（契约 schema 嵌套一层）/ `S5:<求解器>.<顶层字段>.<行字段>`（结果接口内联行，嵌套一层）。",
 ].join("\n");
 
 const emptyBase = { note: BASELINE_NOTE, ratchetHigh: 0, maxEntries: 0, entries: [] };
@@ -646,13 +668,23 @@ if (SEED) {
 }
 
 if (UPDATE) {
+  // 只删不加：修好的（或已不再是死字段的）摘掉；新增缺口**不**自动招安。
   const kept = (base.entries ?? []).filter((e) => curIds.includes(e.id));
-  const nextHigh = Math.min(base.ratchetHigh ?? kept.length, Math.max(kept.length, base.ratchetHigh ?? kept.length));
+  // 棘轮水位只降不升：取「历史水位」与「现条数」的较小者。
+  const nextHigh = Math.min(base.ratchetHigh ?? kept.length, Math.max(kept.length, 0)) || kept.length;
+  const before = (base.entries ?? []).length;
   writeFileSync(
     BASELINE,
-    JSON.stringify({ note: BASELINE_NOTE, generatedBy: "node scripts/check-solver-field-seam.mjs --update", ratchetHigh: Math.min(nextHigh, base.ratchetHigh ?? kept.length), maxEntries: kept.length, entries: kept }, null, 2) + "\n",
+    JSON.stringify({ note: BASELINE_NOTE, generatedBy: "node scripts/check-solver-field-seam.mjs --update", ratchetHigh: nextHigh, maxEntries: kept.length, entries: kept }, null, 2) + "\n",
   );
-  console.log(`· 基线已收紧：${(base.entries ?? []).length} → ${kept.length} 条（新增死字段 ${newDead.length} 条**未**收编）`);
+  // ⚠ 把内存里的 base 同步到刚写下去的那份：否则下面的「基线自检」拿的是**收紧前**的旧对象，
+  //   会对着一个已经修好的状态报「条数 > ratchetHigh」。实测发生过（注入幽灵条目跑 --update 时）。
+  base.entries = kept;
+  base.maxEntries = kept.length;
+  base.ratchetHigh = nextHigh;
+  baseIds.clear();
+  for (const e of kept) baseIds.add(e.id);
+  console.log(`· 基线已收紧：${before} → ${kept.length} 条 · ratchetHigh ${nextHigh}（新增死字段 ${newDead.length} 条**未**收编）`);
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -682,6 +714,18 @@ if (shapeless.length) {
 }
 if (shapeKeysUnresolved.length) {
   console.log(`· ⚠ 盲区自曝：${shapeKeysUnresolved.length} 条 shapeKeys(...) 未解析到契约 schema（${shapeKeysUnresolved.join(", ")}）。`);
+}
+if (openShapeSolvers.length) {
+  console.log(
+    `· ⚠ 盲区自曝（**最重要的一条**）：${openShapeSolvers.length} 个求解器的输出 schema 用了 \`.catchall/.passthrough\`，` +
+      `即它**自己声明不穷尽** —— ${openShapeSolvers.map((x) => `${x.solver}←${x.schema}`).join(" · ")}。` +
+      `\n    实测标本：\`capacityForecast\`（apps/datacore/src/solvers/capacity.ts:407）把 \`scopeOut\` 展开进 3 个 return` +
+      `（:547 / :659 / :688），下发 \`scope\`/\`scopeBaseId\`/\`scopeBaseName\`/\`scopeNote\` 四个键，` +
+      `而 \`CapacityForecastOutputSchema\` 一个都没声明，前端 \`scopeNote\`/\`scopeBaseName\` 也零消费 ——` +
+      `**这类字段本门看不见**，因为它们压根不在"后端声明会下发的字段"这个集合里。` +
+      `\n    这不是本门漏判，是**上游单一来源本身不完整**：修法是让形状声明穷尽（或另立一道"实现返回键 ⊄ 声明形状"的漂移门），` +
+      `不是把它当成"没问题"。写在这里，是因为不写下来它就会变成下一次「我以为都查过了」。`,
+  );
 }
 if (fixed.length) {
   console.log(`· ✅ 有人把字段接上了：${fixed.slice(0, 8).join(", ")}${fixed.length > 8 ? " …" : ""}`);
