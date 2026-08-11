@@ -379,3 +379,192 @@ bash scripts/dispatch-deficit.sh <待派单数>
 
 需要有人判：这 10 个提交里有没有远端丢失的东西（对应欠账 #96
 「R13 溯源口径错标：`drillField:"value"` 回的却是 `orderVal`，差 1e4」）。
+
+---
+
+## §6 · 派单提示词（可直接复制）
+
+> **给派单人**：本节是**你要发给 dev 的东西**。§0–§5 是规格，dev 自己会去仓库里读；
+> 你要发的只是下面这一小段路由指令。
+>
+> ⚠️ **把整份文档转发给 dev 是不够的** —— 他会读到一份待办清单，但不知道哪条是他的。
+
+### 6.1 · 分工表（避免撞车 · 2026-08-11 交接时刻）
+
+| 单 | 状态 | 归谁 |
+|---|---|---|
+| §1 `integ-w3-sandbox` 复验并线 | 🔵 **审核方在跑** | 别派 |
+| §2 WO-A 门退出码纪律 | 🔵 **审核方已派 dev** | 别派 |
+| §2 WO-B 第一层降层 top3 | 🔵 **审核方已派 dev** | 别派 |
+| §3 WO-E 本体门 emit 盲区 | 🔵 **审核方已派 dev** | 别派 |
+| §3 WO-F `changeoverMin` 键名 | 🔵 **审核方已派 dev** | 别派 |
+| §1 `databuilder-pipeline` 复验并线 | 🟢 **空着** | 可派 |
+| §1 `befe-seam-prosemask` 复验并线 | 🟢 **空着** | 可派 |
+| §1 `rule-scope-drop` 复验并线 | 🟢 **空着** | 可派 |
+| §2 WO-C 事实锁锚点普查（续做） | 🟢 **空着** | 可派 |
+| §2 WO-D A6 竞争规则（续做） | 🟢 **空着** | 可派 |
+| §3 WO-G checkpoints 路由 + 散文哑弹 | 🟢 **空着** | 可派 |
+| §3 WO-H 求解器 scope 诚实位前端（续做） | 🟢 **空着** | 可派 |
+| §5 `rescue-r13-drillfield-0811` 定性 | 🟢 **空着** | 可派 |
+
+⚠️ **同时跑 datacore vitest 的上限是 1**（4 核机）。WO-F/WO-G 与 §1 的 databuilder / rule-scope
+复验都是重画像，**这几张不要同时开工**。派之前跑一次 `bash scripts/dispatch-deficit.sh <待派数>`。
+
+---
+
+### 6.2 · 模板 A —— **新单**（从 canonical 起一条新分支）
+
+适用：WO-G。把 `<<>>` 里的东西换掉，其余原样发。
+
+```
+你是 dev，独立完成 <<WO-G · checkpoints 路由缺口 + 它会引爆的那颗哑弹>>。
+
+## 开工
+
+CANON=origin/claude/inspiring-gates-aqczjg
+git fetch origin
+git checkout -B <<claude/handoff-wo-checkpoints-route>> $CANON
+pnpm install --prefer-offline
+pnpm --filter @platform/contracts build
+
+## 先读工单原文（在仓库里，不在这条消息里）
+
+完整读 docs/WO-BACKLOG-2026-08-11.md 的两节：
+  · §0 通用前置 —— 那是纪律本体，逐条适用于你，不许跳读
+  · <<§3 · WO-G>> —— 你这张单的病灶、证据、判据、验收
+
+两节都读完再动手。§0 里有几条是本仓一天之内真出过事的，不是套话：
+退出码要显式捕获 · 报否定结论前必须跑金丝雀 · 变异落了地≠变异生效了 ·
+禁止跑 gate.sh / pnpm -r（4 核机）· 每完成一个可命名单元立刻 push。
+
+## 最重要的一条
+
+派单人写的任何事实，若与你实测不符 —— **以你的实测为准，并在报告里顶回来**。
+这不是客套：交接前一天派单人的账被 dev 顶回来 10 次，每次都是 dev 对。
+有一个 dev 推翻了派单人 5 条事实里的 4 条，另一个把一条账的三个断言全部推翻。
+顶回来比照做有价值得多。
+
+## 报告
+
+按 §0 末尾「报告必须包含」四条写，外加 <<§3 WO-G>> 里额外要求的项。
+```
+
+---
+
+### 6.3 · 模板 B —— **续做单**（接手一条被中途叫停的分支）
+
+适用：WO-C / WO-D / WO-H。
+
+```
+你是 dev，接手一张**被中途叫停的单**：<<WO-C · 事实锁锚点普查>>。
+
+## 开工
+
+git fetch origin
+git checkout -B <<claude/handoff-wo-factlock-anchor>> origin/<<claude/handoff-wo-factlock-anchor>>
+pnpm install --prefer-offline
+pnpm --filter @platform/contracts build
+
+## 先读工单原文
+
+工单文档在 canonical 上，你这条分支的基点较早、可能没有它：
+
+  git show origin/claude/inspiring-gates-aqczjg:docs/WO-BACKLOG-2026-08-11.md > /tmp/wo.md
+
+读其中两节：§0 通用前置（纪律本体，逐条适用，不许跳读）与 <<§2 · WO-C>>（你这张单）。
+
+## 你接手的是什么状态
+
+分支上最后一个提交带 `wip: …未完成·未验证，仅为防丢落盘` 字样 ——
+那是上一个 agent 被叫停瞬间的现场快照。
+
+🔴 **不许因为「已经改了」就当结论成立。**
+你的第一件事是**审查这批改动**，不是继续往下写：
+
+  git show --stat HEAD          # 它到底动了什么
+  git log --oneline origin/claude/inspiring-gates-aqczjg..HEAD
+
+逐处确认是否符合工单描述的修法；**判不了来历的改动就还原**。
+然后**从头补齐该单要求的双向变异反证** —— 上一个 agent 很可能正是死在这一步之前。
+
+## 最重要的一条
+
+派单人写的任何事实，若与你实测不符 —— **以你的实测为准，并在报告里顶回来**。
+交接前一天派单人的账被 dev 顶回来 10 次，每次都是 dev 对。
+
+## 报告
+
+按 §0 末尾「报告必须包含」四条写。另加：
+  · 你还原了哪些「来历不明」的改动、依据是什么
+  · 上一个 agent 做到哪、你从哪接的
+```
+
+---
+
+### 6.4 · 模板 C —— **复验并线单**（§1 那三条）
+
+适用：`databuilder-pipeline` / `befe-seam-prosemask` / `rule-scope-drop`。
+
+⚠️ 这是**独立复验**，不是重做。核心是：**别信 dev 的交回报告，自己跑变异。**
+
+```
+你是复验人。任务：独立复验 <<claude/handoff-wo-databuilder-pipeline @ 25232e9c>>，
+通过则并入 canonical。
+
+## 开工
+
+git fetch origin
+git worktree add --detach /tmp/vfy-<<db>> origin/<<claude/handoff-wo-databuilder-pipeline>>
+cd /tmp/vfy-<<db>>
+pnpm install --prefer-offline
+pnpm --filter @platform/contracts build
+
+## 先读
+
+docs/WO-BACKLOG-2026-08-11.md 的 §0 通用前置 + §1（那张表里你这条的「复验重点」）。
+
+## 复验纪律（这一条是本单的全部意义）
+
+⛔ **不许把 dev 的交回报告当证据。** 报告说「变异反证通过」不算数，
+你要**自己重做一遍变异**，并贴出你自己跑出来的原文。
+
+判据三条，缺一不可：
+1. **门真的绿**：跑该包全套，`out=$(cmd 2>&1); rc=$?` 显式捕获退出码
+2. **变异真的红**：把这单的核心改动破坏掉（改名要换成不含原子串的新名），断言当场红；
+   还原后复绿；`git status --porcelain` 干净
+3. **变异真的落地**：每次变异后**读回文件确认差异存在**再下结论 ——
+   sed/正则没匹配上是常态，本仓真有人据一个根本没发生的变异宣布「门没牙」
+
+## 并线前
+
+  · 判据是**祖先关系**，不是文件存在性：`git merge-base --is-ancestor`
+  · 但反过来不成立 —— **非祖先 ≠ 内容不在**（cherry-pick 进来的内容 SHA 不同、内容却在）。
+    要说「它的内容不在」，得逐文件比 blob，不能只看提交
+  · 只并「它的 agent 已经交回」的分支。agent 还在跑 = 你并的是中间态
+
+## 报告
+
+按 §0 末尾四条写。另加：你自己跑的变异原文（不是转述 dev 的）。
+```
+
+---
+
+### 6.5 · 一次性任务：§5 抢救分支定性
+
+```
+你是 dev。任务：给 claude/rescue-r13-drillfield-0811 @ f9b0c0ec 定性。
+
+背景见 docs/WO-BACKLOG-2026-08-11.md §5（先读 §0 通用前置）。
+
+它是 10 个从没推过的容器重启自动快照，远端 claude/handoff-wo-r13-drillfield 已经分叉。
+实测本地独有 3 个文件与远端**内容不同**：
+  apps/datacore/src/solvers/service.ts
+  apps/datacore/test/prov-drillfield-truth.test.ts
+  docs/SYSTEM-ONTOLOGY.md
+
+要回答的就一个问题：**这 10 个提交里有没有远端丢失了的东西？**
+对应欠账 #96「R13 溯源口径错标：drillField:"value" 回的却是 orderVal，差 1e4」。
+
+⛔ 不许强推覆盖任何分支。结论是「有价值 ⇒ 择出来单独成单」或「已被远端收编 ⇒ 可删」，
+   两种都要给出**逐文件的 blob 级证据**，不许只看提交图。
+```
