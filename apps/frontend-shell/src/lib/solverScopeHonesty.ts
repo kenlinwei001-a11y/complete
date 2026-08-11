@@ -12,7 +12,10 @@
  * 散在各视图里写 `if`，等于把「今天有几种形状」这件事复制 N 份，加第四种时必漏。
  * 本文件是那份唯一的映射表；视图只消费归一后的 {level, note}。
  *
- * ── 三种形状（皆实测自 canonical·file:line 为引擎侧出处）─────────────────────────
+ * ── 三种形状（2026-08-11 实测自 canonical `origin/claude/inspiring-gates-aqczjg`）──────────
+ * 复验方式（行号会漂，按符号复验才是可重复的）：
+ *   `grep -n 'scopeNote\|scope: { mode\|lineScope\|quarterScope' apps/datacore/src/solvers/*.ts`
+ * 下列 file:line 为当日实测值；对不上时以该命令的输出为准，并回写本注释。
  *  ① **扁平串 + scopeNote** —— `capacity_forecast`（`apps/datacore/src/solvers/capacity.ts:432-434`）
  *     `{ scope: "BASE"|"ALL", scopeBaseId?, scopeBaseName?, scopeNote: string }`
  *  ② **对象 + mode** —— `credit_exposure`（`solvers/extended.ts:840` CUSTOMER / `:847` ALL·缺省 `:463` EXPLICIT）、
