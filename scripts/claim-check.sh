@@ -97,13 +97,39 @@ cmd_has() {
   b=$(git -C "$REPO_ROOT" rev-parse --verify -q "$where" || git -C "$REPO_ROOT" rev-parse --verify -q "origin/$where") \
     || { red "⛔ 解析不出 '$where'"; return 2; }
   if git -C "$REPO_ROOT" merge-base --is-ancestor "$a" "$b"; then
-    grn "✅ $what 在 $where 上"
-  else
-    local n; n=$(git -C "$REPO_ROOT" rev-list --count "$b..$a")
-    red "🔴 $what **不在** $where 上（它有 $n 个提交不在目标里）"
-    red "   ⇒ 不许说「它会随 $where 一起进正线」。"
+    grn "✅ $what 在 $where 上（祖先关系成立）"
+    return 0
+  fi
+  local n; n=$(git -C "$REPO_ROOT" rev-list --count "$b..$a")
+  red "🔴 $what 的**提交**不在 $where 上（它有 $n 个提交不在目标里）"
+
+  # ── 第二判据：内容 ────────────────────────────────────────────────────────
+  # 病历（2026-08-11，dev 顶回来的）：`transit-geometry` / `impediments-reachable`
+  # 当初是 **cherry-pick** 进 canonical 的 ⇒ SHA 不同、祖先关系不成立，**内容却在**。
+  # 形态：**「我用『祖先关系』当作『内容在不在』的证据，而前者并不度量后者。」**
+  # 所以否定结论不能只靠祖先关系 —— 必须再比一次 blob。
+  local same=0 diff=0 absent=0 total=0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    total=$((total+1))
+    local x y
+    x=$(git -C "$REPO_ROOT" rev-parse --verify -q "$a:$f" 2>/dev/null) || { absent=$((absent+1)); continue; }
+    y=$(git -C "$REPO_ROOT" rev-parse --verify -q "$b:$f" 2>/dev/null) || { absent=$((absent+1)); continue; }
+    if [ "$x" = "$y" ]; then same=$((same+1)); else diff=$((diff+1)); fi
+  done < <(git -C "$REPO_ROOT" diff --name-only "$b...$a" 2>/dev/null)
+
+  if [ "$total" -eq 0 ]; then
+    warn "   ⚠️ 取不到改动文件清单 —— **内容判据未跑**，不许据此说「内容也不在」"
     return 1
   fi
+  echo "   内容判据：改动 $total 个文件 · blob 与目标相同 $same · 不同 $diff · 缺失 $absent"
+  if [ "$same" -gt 0 ]; then
+    warn "   ⚠️ 有 $same 个文件与 $where **逐字节相同** ⇒ 很可能是 cherry-pick 进去的。"
+    warn "      **只许说「它的提交不在」，不许说「它的内容不在」。** 逐文件核对哪些已在、哪些真缺。"
+  else
+    red "   两个判据一致：提交不在、内容也没一个文件相同 ⇒ 可以说「它不在 $where 上」。"
+  fi
+  return 1
 }
 
 # ── port：起服务之前 ────────────────────────────────────────────────────────
