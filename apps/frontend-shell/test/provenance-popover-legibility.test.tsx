@@ -1086,6 +1086,64 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
     expect(defined.has("--surface"), "--surface 被定义了 ⇒ 上面那条金丝雀不再代表「幽灵」，请换样例").toBe(false);
   });
 
+  /**
+   * ── 棘轮：原生 `title=` 承载口径，存量记账、只许减不许增 ────────────────────────────
+   *
+   * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3 明令
+   * 「**禁止用 HTML title 属性或 SVG <title> 元素**充当浮层」，
+   * 而 §6 门禁一栏写的是「暂未机械化…**若同类问题第三次复发，按铁律 0.6 建门**」。
+   * 本 WO 就是第三次（#104 浮层表面 → #175 title 充当浮层 → 本次普查又查出 126 处）。
+   * 按该条自己的规定，这里把它机械化。
+   *
+   * 但规范 §4 同时写明「渐进：不要求一次重排全部旧页面」，且本 WO 工单边界明确禁止触碰
+   * `views/sim/**` 等文件（78 处存量在那边，属别的 dev）。**一刀切报红会让门永远绿不了，
+   * 那种门等于没有** —— 所以用棘轮：存量数字钉死在这里，只允许下降。
+   * 谁新加一个承载口径的 `title=`，计数上涨 ⇒ 当场红，机器先说话。
+   * 谁清理掉一批，计数下降 ⇒ 也红，提示把基线调低（防止基线虚高变成永久豁免）。
+   */
+  it("棘轮 · 原生 title= 承载口径的存量只许减不许增（规范 §2 R-UI-3 · §6 要求第三次复发即建门）", () => {
+    // 「需要阅读」的判据：含句子结构（句号/顿号/括号/冒号）或公式符号，或长度 > 24。
+    // 短标签（"复制" "主键" "关闭"）是纯辅助提示，规范允许保留。
+    const needsReading = (t: string) => t.length > 24 || /[。；·—（）()：]/.test(t) || /[×÷=＝%／]/.test(t);
+
+    /** 只数**原生小写标签**上的 title=（`<Modal title=…>` 是 React prop，不是浏览器 tooltip）。 */
+    const scan = (src: string) => {
+      const out: string[] = [];
+      for (const m of src.matchAll(/<([a-z][\w]*)\s([^<]*?)\/?>/gs)) {
+        const attrs = m[2]!;
+        if (!/(^|\s)title\s*=/.test(attrs)) continue;
+        const tv = /(?:^|\s)title\s*=\s*("([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{([^}]*)\})/s.exec(attrs);
+        const text = tv ? (tv[2] ?? tv[3] ?? tv[4] ?? tv[5] ?? "") : "";
+        if (tv && /^\s*undefined\b/.test(tv[5] ?? "")) continue; // 显式 title={undefined} = 已治好
+        if (needsReading(text)) out.push(`${m[1]}: ${text.slice(0, 60)}`);
+      }
+      return out;
+    };
+
+    // ── 金丝雀：与主逻辑**共用同一个 scan**（不许另抄一份正则，抄了就是装饰品）──────
+    const canary = scan(`
+      <span title="复制">c</span>
+      <span title="0–100 紧张度指数（越高越紧）·非该因素本身的值">x</span>
+      <Modal title="不该命中" />
+      <span title={undefined /* 已治好 */}>y</span>
+    `);
+    expect(canary.length, `金丝雀失灵：应恰好命中 1 条（长口径），实际 ${canary.length} 条：${canary.join(" | ")}`).toBe(1);
+    expect(canary[0]).toContain("紧张度指数");
+
+    const hits = [...listTsx(SRC_ROOT)].flatMap((abs) => scan(readFileSync(abs, "utf8")));
+    expect(hits.length, "一条都没扫到 ⇒ 扫描器坏了，本棘轮是哑的").toBeGreaterThan(0);
+
+    // 存量基线（WO-HOVER-LAYER 交付时实测·由本门自己报出的数字钉死，不是估的）。
+    // 其中 ~59 处在 views/sim/** 等本 WO 工单边界禁止触碰的文件里，归对应 dev 渐进清理。
+    const BASELINE = 80;
+    expect(
+      hits.length,
+      hits.length > BASELINE
+        ? `新增了承载口径的原生 title=（${hits.length} > 基线 ${BASELINE}）。规范 §2 R-UI-3 禁止用 title 充当浮层 —— 请改用 InfoPopover：\n${hits.slice(-8).join("\n")}`
+        : `存量已降到 ${hits.length}（基线 ${BASELINE}）—— 很好，请把 BASELINE 改成 ${hits.length} 锁住战果，别让基线虚高变成永久豁免。`,
+    ).toBe(BASELINE);
+  });
+
   it("RiskPopover 的峰值口径是**可见 DOM 文字**，不是 title 属性（#175 的正向判据）", () => {
     const src = readRepo("apps/frontend-shell/src/components/Risk/RiskPopover.tsx");
     // 口径文案走 locales 单一来源

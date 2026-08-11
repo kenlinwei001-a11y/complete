@@ -21,6 +21,8 @@
 import type { SkillCompileResult, SkillDefinition, SkillReference } from "@platform/contracts";
 import { isWriteModeSkill } from "@platform/contracts";
 import type { SkillSeedGateReport } from "@/api/endpoints";
+import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 
 // ---------------------------------------------------------------------------
 // 词表：把契约枚举值译成中文可读标签。
@@ -84,8 +86,12 @@ export function SkillGovernanceStrip({ skill }: { skill: SkillDefinition }): JSX
       )}
       {/* 写模式是**推导位**，非后端字段：故显式标注推导依据，别让它冒充一个后端下发的属性。 */}
       {writeMode && (
-        <span className="badge red" data-testid="skill-gov-write-mode" title="契约 isWriteModeSkill：会改变真值 或 需要审批 ⇒ 受 R4「真值只经 Action 审批链变更」约束">
+        <span className="badge red" data-testid="skill-gov-write-mode">
           写模式（须出 action_draft）
+          {/* WO-HOVER-LAYER：推导依据从原生 `title=` 迁到 InfoPopover（规范 §2 R-UI-3）。 */}
+          <InfoPopover topic={zh.sim.sandbox.info.skillWriteModeTopic} testId="skill-gov-write-mode">
+            {zh.sim.sandbox.info.skillWriteModeBody}
+          </InfoPopover>
         </span>
       )}
     </div>

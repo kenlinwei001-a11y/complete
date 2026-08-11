@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { RoleTrack, StepRow, TaskStreamState } from "@/sse/taskStreamReducer";
 import { selectRoleTracks, selectStepRows } from "@/sse/taskStreamReducer";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./Timeline.module.css";
 
 const STEP_ICONS: Record<string, string> = {
@@ -59,9 +60,16 @@ export function Timeline({ state }: { state: TaskStreamState }) {
               WO-UNIT-MEANING：此前渲染成「conf 0.94」——既不知道是什么、也不知道满分是 1 还是 100。
               量纲＝分类置信度 0–1（QOS `routing.completed` 事件 confidence，契约 qos.ts 为纯 z.number()、
               无 unit 字段可消费；agentcore 侧与阈值 tauHigh/tauMid 同尺度比较，恒 0–1），故就近写成「置信度 0.94/1」。
+              WO-HOVER-LAYER：口径本身从原生 `title=` 迁到 InfoPopover
+              （规范 §2 R-UI-3 明令禁止用 HTML title 属性充当浮层）。
             */
-            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }} data-testid="routing-confidence" title="分类置信度（0–1·越高越确定）">
-              置信度 {state.routing.confidence.toFixed(2)}/1
+            /* `?` 触发器是**兄弟**不是子节点：data-testid="routing-confidence" 标的是那个**数值**，
+               把触发器塞进去会污染它的 textContent（实测 f2.query-flow 断言 `^置信度 \d\.\d{2}\/1$` 当场红）。 */
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+              <span data-testid="routing-confidence">置信度 {state.routing.confidence.toFixed(2)}/1</span>
+              <InfoPopover topic={zh.sim.sandbox.info.routingConfidenceTopic} testId="routing-confidence">
+                {zh.sim.sandbox.info.routingConfidenceBody}
+              </InfoPopover>
             </span>
           )}
         </div>
