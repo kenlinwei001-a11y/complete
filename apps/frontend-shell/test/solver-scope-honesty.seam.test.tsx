@@ -29,9 +29,11 @@ const NOTE = "scope-honesty-note-capacity-forecast";
 /** 引擎原文（`apps/datacore/src/solvers/capacity.ts:434`）—— 前端若改写这句，本断言当场红。 */
 const ENGINE_NOTE = "全网合计（未指定基地·跨该型号全部认证基地）";
 
-/** 把 mock 载荷里的诚实位**摘掉**（模拟"后端没下发"那一侧）。 */
+/** 把 mock 载荷里的诚实位**摘掉**（模拟「后端没下发」那一侧）。 */
 function stripHonesty(data: Record<string, unknown>): Record<string, unknown> {
-  const { scope: _scope, scopeNote: _scopeNote, ...rest } = data;
+  const rest = { ...data };
+  delete rest.scope;
+  delete rest.scopeNote;
   return rest;
 }
 

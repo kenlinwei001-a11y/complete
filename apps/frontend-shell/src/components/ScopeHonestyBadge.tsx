@@ -47,7 +47,9 @@ const LABEL: Record<ScopeHonesty["level"], (scopedTo?: string) => string> = {
   GLOBAL: () => zh.scopeHonesty.global,
   UNAPPLIED: () => zh.scopeHonesty.unapplied,
 };
-const TONE: Record<ScopeHonesty["level"], string> = {
+/** 档位 → 配色类。`noUncheckedIndexedAccess` 下 CSS module 成员是 `string | undefined`，
+ *  故在用处 `?? ""` 兜底（同 `components/ui/Toasts.tsx:12` 的既有写法，不另起一套）。 */
+const TONE: Record<ScopeHonesty["level"], string | undefined> = {
   SCOPED: styles.scoped,
   GLOBAL: styles.global,
   UNAPPLIED: styles.unapplied,
@@ -57,7 +59,7 @@ function ScopeHonestyChip({ honesty, testId, align }: { honesty: ScopeHonesty; t
   const label = LABEL[honesty.level](honesty.scopedTo);
   return (
     <span
-      className={`${styles.badge} ${TONE[honesty.level]}`}
+      className={`${styles.badge} ${TONE[honesty.level] ?? ""}`}
       data-testid={`scope-honesty-${testId}`}
       data-level={honesty.level}
     >
