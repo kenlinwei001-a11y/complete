@@ -982,6 +982,25 @@
         "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+    },
+    "check-prd-data-grounding.mjs": {
+      "alias": "prd-data-grounding:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/_PRD-TEMPLATE.md",
+        "docs/PRD-*.md",
+        "scripts/prd-data-grounding-baseline.json",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-PRD-GROUNDING-GATE 五组变异实跑（2026-08-11，交回报告《变异反证原文》节）",
+        "note": "M1 临时 PRD 同时注入五种病 → PDG-1/2/3/4/6 **五条判据全部当场红** RC=1（表称 Line.businessType 有值而字段不存在 / 表称 Line.utilization 不存在而其实已有 / 表引用未知类型 Sasquatch / 正文断言 Process.segOwnership 已有 / 改 SEG_REGISTRY→结论跟着变 缺前置）；M2 **同一文件语义反转成全部说真话** → RC=0 复绿，证明门量的是「字段引用属不属实」而**不是「有没有新 PRD」**（非重言）；S1 门自变异 hasField 恒真（语义反转）→ 金丝雀报「⛔ 门自己瞎了」**RC=2**（必咬 PDG-1/PDG-4 没被咬）而非报干净；S2 门自变异 ABSENCE_ACK_MARKERS 改名为不含原子串的 PRIOR_DISCLOSURE_TOKENS 且语义反转 acknowledged→assertion → 金丝雀 **RC=2**，其中 3 条必不咬样例是**生产原文**（ontology-7elements:557 / sandbox-a2:50 / stale-claims:82）当场被误咬，证明金丝雀与主逻辑共用 judgePrd 同一份实现、不是装饰品；每条变异均**读回文件自证生效**（S2 另证原名残留 0 处），还原后 RC=0 且 git status --porcelain 干净。"
+      },
+      "notes": "治「数据可得性只在主题是数据时才被讨论」的结构性偏差（129 份 PRD / 80 份零数据前置讨论）。退出码三分：0 干净 / 1 真有问题 / 2 工具自己坏了。存量豁免走 scripts/prd-data-grounding-baseline.json 棘轮，每条须带 why + prd + kind（待修|误报|覆盖不到 —— 三者修法不同，不许混）。"
     }
   }
 }
