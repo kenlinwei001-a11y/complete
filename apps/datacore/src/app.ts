@@ -896,7 +896,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // ⚠ 必须排在下面那条兜底之前：SERVICE_ONLY_PATHS 里的路径都不以 `/a/` 开头，
     // 若放在其后则永远走不到这里（这正是 `/metrics` 旧日「双重旁路」的第二个出口）。
     if (SERVICE_ONLY_PATHS.has(path)) {
-      if (!serviceTokenOk(req)) throw unauthorized();
+      // ⚠ 这句 message 与端点自守那句**刻意不同**（"hook" vs "endpoint"）：两层都拦得住同一个请求，
+      // 若消息一样，测试就分不清是哪层拦的 —— 于是任一层被改回去，另一层顶上，测试照样绿，
+      // **两层互相掩护 = 谁都没被钉住**。靠 message 区分，才能让「出口 1 被重新打开」这件事
+      // 单独变红（钉的是行为，不是「代码里有这一行」）。改动时两句必须保持可区分。
+      if (!serviceTokenOk(req)) throw unauthorized("service credential required (hook)");
       return;
     }
     // ⚠ 此处原为 `if (!path.startsWith("/a/")) return;` —— **任何**非 `/a/` 路径一律免鉴权。
@@ -971,7 +975,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 端点自守（纵深防御）：钩子已挡一层，这里再挡一层 —— 两层共用 `serviceTokenOk` 同一份实现。
   // 理由是这条路径**曾经**有过双重旁路：任何一层被改回去，另一层仍须独立成立。
   app.get("/metrics", async (req, reply) => {
-    if (!serviceTokenOk(req)) throw unauthorized();
+    // message 里的 "endpoint" 是与钩子那层的区分标记，见 auth hook 处注释（勿合并成同一句）。
+    if (!serviceTokenOk(req)) throw unauthorized("service credential required (endpoint)");
     return reply.type("text/plain").send(metrics.render());
   });
   // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
