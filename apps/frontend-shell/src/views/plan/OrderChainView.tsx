@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup } from "@platform/contracts";
-import { SEG_REGISTRY } from "@platform/contracts";
+import { SEG_REGISTRY, formatTightness } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 import { useActionDraft } from "../sim/shared";
-import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
-import type { AffectedOrdersOutputVM } from "@/api/types";
+import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge } from "../sim/shared";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -68,6 +67,279 @@ const CATEGORY_LABEL: Record<OrderProblemGroup["category"], string> = {
 /** 根因链四层着色：订单 → 判定 → 根因 → 对策 */
 const CHAIN_COLORS = ["#7E8BEE", "#E8B54A", "#DD7E9E", "#62BE77"];
 const CHAIN_TITLES = ["订单", "判定", "根因", "对策"];
+/** 契约 `OrderRootChainSchema.layers[].kind` 枚举顺序 —— 与 CHAIN_TITLES 逐位对应（层名单一来源，不再抄第二份）。 */
+const LAYER_KINDS = ["order", "judgement", "rootCause", "remedy"] as const;
+type LayerKind = (typeof LAYER_KINDS)[number];
+const LAYER_KIND_LABEL = Object.fromEntries(LAYER_KINDS.map((k, i) => [k, CHAIN_TITLES[i]!])) as Record<LayerKind, string>;
+
+// ---------------------------------------------------------------------------
+// WO-ORDER-ROW-DETAIL · 内联展开原语（**可复用**：表内行展开 / 网格卡展开共用同一面板体）
+// 关键约束：展开体必须渲染在被点节点的**紧邻下一个兄弟**位置（相对位置即语义），
+// 不浮层、不跳页、不挂到容器末尾；表内 colSpan 由调用方从表头列定义**现算**传入，禁止写死。
+// ---------------------------------------------------------------------------
+
+/** 表内联展开行：`<tr><td colSpan>`。colSpan 必须由调用方按表头列数现算（`COLS.length`）。 */
+export function InlineDetailRow({ colSpan, testId, children }: { colSpan: number; testId: string; children: ReactNode }) {
+  return (
+    <tr className={styles.inlineRow} data-testid={testId} data-inline-detail="row">
+      <td colSpan={colSpan}>{children}</td>
+    </tr>
+  );
+}
+
+/** 网格内联展开项：整行贯通（`grid-column: 1 / -1`），渲染在被点卡片的紧邻下一个兄弟。 */
+export function InlineDetailGridItem({ testId, children }: { testId: string; children: ReactNode }) {
+  return (
+    <div className={styles.inlineGridItem} style={{ gridColumn: "1 / -1" }} data-testid={testId} data-inline-detail="grid">
+      {children}
+    </div>
+  );
+}
+
+/** 两种宿主共用的展开面板体（标题 + 右上动作区 + 正文）。 */
+export function InlineDetailPanel({ title, actions, children }: { title: ReactNode; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <div className={styles.inlinePanel}>
+      <div className={styles.inlinePanelHead}>
+        <span>{title}</span>
+        {actions}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** 展开面板里的「标签 + 值」字段格。 */
+function InlineField({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
+  return (
+    <div className={styles.inlineField}>
+      <span className={styles.inlineFieldLabel}>{label}</span>
+      <span data-testid={testId}>{children}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 追加需求 · 问题卡「归因分析叙述」派生（**零写死 R14**）
+// 铁律：每句叙述必须绑定 `affected_orders.problems[]` 的具体字段——同一份 rootChains 既画图（ProblemDag）
+// 又讲话（本函数），**不另调接口、不造第二套因果**。推不出的层一律进 gaps 诚实披露，绝不用通顺空话补齐。
+// ---------------------------------------------------------------------------
+
+export interface NarrLine {
+  key: string;
+  text: string;
+  /** 该句所绑字段的取值路径（进 <Provenance> 推导公式，肉眼可查出处）。 */
+  formula: string;
+  inputs: string[];
+  note: string;
+}
+export interface ProblemNarrative {
+  lines: NarrLine[];
+  gaps: string[];
+}
+
+/**
+ * problems[] 一组 → 归因叙述 + 缺口清单。纯函数、无副作用、不读全局，数字与名字全部来自入参字段。
+ * @param g 求解器回传的问题组（未做任何前端加工）
+ * @param categoryLabel 类别中文名（来自 ViewConfig.layout.categoryLabels，非内联行业名）
+ */
+export function deriveProblemNarrative(g: OrderProblemGroup, categoryLabel: string): ProblemNarrative {
+  const lines: NarrLine[] = [];
+  const gaps: string[] = [];
+
+  // ① 规模句：orderCount / financeImpact 逐字段搬运（不四舍五入到别的口径——financeImpact 沿用卡面同一 toFixed(1)）
+  lines.push({
+    key: "scale",
+    text: zh.orderChain.narrScale(categoryLabel, g.title, g.orderCount, g.financeImpact.toFixed(1)),
+    formula: "problems[].category → categoryLabels · problems[].title · problems[].orderCount · problems[].financeImpact",
+    inputs: ["problems[].orderCount", "problems[].financeImpact"],
+    note: "逐字段搬运求解器输出，无二次加工",
+  });
+
+  // ② 共性根因句：rootCauseSummary 原文；空则进缺口（不用同义句糊过去）
+  if (g.rootCauseSummary.trim()) {
+    lines.push({
+      key: "common",
+      text: zh.orderChain.narrCommon(g.rootCauseSummary),
+      formula: "problems[].rootCauseSummary",
+      inputs: ["problems[].rootCauseSummary"],
+      note: "求解器归并结论原文搬运",
+    });
+  } else {
+    gaps.push(zh.orderChain.narrGapNoSummary);
+  }
+
+  // ③ 逐单因果句：**按 kind 取层**（不按下标——下标顺序变了就会张冠李戴），缺任一跳则该单进缺口、不出句
+  if (g.rootChains.length === 0) gaps.push(zh.orderChain.narrGapNoChains);
+  for (const c of g.rootChains) {
+    const byKind = new Map(c.layers.map((l) => [l.kind, l.label]));
+    const need: LayerKind[] = ["judgement", "rootCause", "remedy"];
+    const missing = need.filter((k) => !(byKind.get(k) ?? "").trim());
+    if (missing.length > 0) {
+      gaps.push(zh.orderChain.narrGapLayer(c.orderId, missing.map((k) => LAYER_KIND_LABEL[k]).join("/")));
+      continue;
+    }
+    lines.push({
+      key: `chain-${c.orderId}`,
+      text: zh.orderChain.narrChain(c.orderId, byKind.get("judgement")!, byKind.get("rootCause")!, byKind.get("remedy")!),
+      formula: `problems[].rootChains[orderId=${c.orderId}].layers[kind=judgement/rootCause/remedy].label`,
+      inputs: ["rootChains[].orderId", "rootChains[].layers[].label"],
+      note: "逐层 label 原文搬运；判定/根因/对策 = 契约 layers[].kind 枚举，非前端编派",
+    });
+  }
+
+  // ④ 覆盖度句 + 缺口：rootChains 条数 vs orderCount —— 少的那几单**明说推不出**，不拿共性根因顶替
+  lines.push({
+    key: "coverage",
+    text: zh.orderChain.narrCoverage(g.rootChains.length, g.orderCount),
+    formula: "problems[].rootChains.length / problems[].orderCount",
+    inputs: ["problems[].rootChains.length", "problems[].orderCount"],
+    note: "覆盖度为派生比值；分子分母均为响应字段",
+  });
+  if (g.rootChains.length < g.orderCount) gaps.push(zh.orderChain.narrGapPartial(g.orderCount - g.rootChains.length, g.orderCount));
+
+  return { lines, gaps };
+}
+
+/**
+ * 受影响订单明细表**列定义单一来源**：表头由它渲染，展开行 colSpan = 它的长度（现算）。
+ * 加列/删列只改这一处，展开行自动跟随——写死 colSpan 那种改一处漏一处的坑在此关掉。
+ */
+const DETAIL_COLS = [
+  zh.orderChain.colOrder,
+  zh.orderChain.colCust,
+  zh.orderChain.colSeg,
+  zh.orderChain.colModel,
+  zh.orderChain.colQty,
+  zh.orderChain.colDue,
+  zh.orderChain.colRisks,
+  zh.orderChain.colDelay,
+  zh.orderChain.colCtx,
+] as const;
+
+/** 逐单营收暴露的溯源标注（口径与 econ 看板同源，但**分母是单张订单**故单列一份，不复用 Σ 版公式）。 */
+const ROW_ECON_PROV = {
+  src: "affected_orders × SEG_REGISTRY",
+  formula: "本单营收暴露(亿) = rows[].qty(套) × SEG 参考单价(万元/套) ÷ 1e4",
+  inputs: ["rows[].qty", "SEG_REGISTRY 参考单价"],
+  note: "估算口径 · SEG 参考单价（合约域单一来源）非本单实际成交价；affected_orders 不带逐单成交价，故只能给估算",
+};
+
+/**
+ * WO-ORDER-ROW-DETAIL ① 订单行内详情体。
+ * **只摊开本次响应真有的字段**（R14 零写死 · 缺数诚实）：
+ *   · `due` 完整日期（列上被 `slice(5)` 截成月-日，这里给全）
+ *   · `risks[]` **全量**（列上被 CHIP_LIMIT 截断 + 折叠成「+N」，这里一条不落，且每条把 peak/threshold/series 摊开）
+ *   · 逐单营收暴露 = qty × SEG 参考单价（估算口径，挂 <Provenance> 明示非成交价）
+ * 响应没带回的（逐单成交价/毛利/齐套缺口/信用占用）→ 底部诚实披露，**不臆造、不另调接口**。
+ */
+function OrderRowDetail({ row, segPrice, picked }: { row: AffectedOrderRowVM; segPrice: number | undefined; picked: boolean }) {
+  const revenueYi = segPrice != null ? (row.qty * segPrice) / 1e4 : null;
+  return (
+    <InlineDetailPanel
+      title={zh.orderChain.rowDetailTitle(row.so)}
+      actions={
+        picked ? (
+          <span className={`${styles.chip} ${styles.ctxBtnOn}`} data-testid={`oc-detail-ctx-${row.so}`}>
+            {zh.orderChain.ctxInBadge}
+          </span>
+        ) : null
+      }
+    >
+      <div className={styles.inlineGrid}>
+        {/* 列上是 due.slice(5)（只有月-日）；详情给完整日期——这才是"比列多"的部分 */}
+        <InlineField label={zh.orderChain.rowDetailDue} testId={`oc-detail-due-${row.so}`}>
+          <b className="mono">{row.due}</b>
+        </InlineField>
+        <InlineField label={zh.orderChain.colDelay} testId={`oc-detail-delay-${row.so}`}>
+          <b className="mono">{zh.orderChain.delayDays(row.delay)}</b>
+        </InlineField>
+        <InlineField label={zh.orderChain.rowRevenueLabel} testId={`oc-detail-rev-${row.so}`}>
+          {revenueYi != null ? (
+            <Provenance testId={`row-rev-${row.so}`} src={ROW_ECON_PROV.src} formula={ROW_ECON_PROV.formula} inputs={ROW_ECON_PROV.inputs} note={ROW_ECON_PROV.note}>
+              <b className="mono">{fmt(revenueYi, 2)}</b>
+            </Provenance>
+          ) : (
+            /* 该细分无参考单价 → 诚实"—"，不拿默认价顶（econ 看板同一诚实口径） */
+            <span style={{ color: "var(--muted2)" }}>—</span>
+          )}
+        </InlineField>
+      </div>
+
+      {/* risks 全量：条数以 row.risks.length 为准，**不经 CHIP_LIMIT** */}
+      <div className={styles.inlineSubTitle} data-testid={`oc-detail-risks-title-${row.so}`}>
+        {zh.orderChain.rowDetailRisksTitle(row.risks.length)}
+      </div>
+      <table className="cmp" data-testid={`oc-detail-risks-${row.so}`}>
+        <thead>
+          <tr>
+            <th>{zh.orderChain.rowRiskBase}</th>
+            <th>{zh.orderChain.rowRiskFactor}</th>
+            <th>{zh.orderChain.rowRiskCross}</th>
+            <th>{zh.orderChain.rowRiskPeak}</th>
+            <th>{zh.orderChain.rowRiskThreshold}</th>
+            <th>{zh.orderChain.rowRiskSeries}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {row.risks.map((k, i) => (
+            <tr key={`${k.base}-${k.factor}-${i}`} data-testid={`oc-detail-risk-${row.so}-${i}`}>
+              <td className="zh">{k.base}</td>
+              <td className="zh">{k.factor}</td>
+              <td className="mono">{k.crossDay != null ? `D+${k.crossDay}` : zh.orderChain.rowRiskNotCrossed}</td>
+              {/* WO-UNIT-MEANING：峰值是张力 0–100 指数，一律经 contracts formatTightness 带量纲，不裸数 */}
+              <td className="mono">{formatTightness(k.peak)}</td>
+              <td className="mono">{k.threshold != null ? formatTightness(k.threshold) : zh.orderChain.rowRiskNoField}</td>
+              <td className="mono">{k.series ? zh.orderChain.rowRiskSeriesDays(k.series.length) : zh.orderChain.rowRiskNoField}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className={styles.inlineGap} data-testid={`oc-detail-gap-${row.so}`}>
+        {zh.orderChain.rowDetailGap}
+      </div>
+    </InlineDetailPanel>
+  );
+}
+
+/**
+ * 追加需求 · 问题卡归因叙述体：叙述（每句挂 <Provenance> 出处）+ 缺口披露 + **同一份 rootChains 的图形视图**。
+ * 图与话同源（都读 group.rootChains），不另调接口、不造第二套因果。
+ */
+function ProblemNarrativePanel({ group, categoryLabel }: { group: OrderProblemGroup; categoryLabel: string }) {
+  const { lines, gaps } = deriveProblemNarrative(group, categoryLabel);
+  return (
+    <InlineDetailPanel title={`${group.title} · ${zh.orderChain.narrTitle}`}>
+      <div data-testid={`oc-narr-${group.category}`}>
+        {lines.map((l) => (
+          <div key={l.key} className={styles.narrLine}>
+            {/* 每句旁挂溯源（六要素弹窗）——禁止原生 title=，出处必须点得开看得见 */}
+            <Provenance testId={`narr-${group.category}-${l.key}`} src={zh.orderChain.narrProvSrc} formula={l.formula} inputs={l.inputs} note={l.note}>
+              <span data-testid={`oc-narr-line-${group.category}-${l.key}`}>{l.text}</span>
+            </Provenance>
+          </div>
+        ))}
+      </div>
+      {/* 推不出的部分：明说缺什么字段，绝不用通顺空话补齐 */}
+      {gaps.length > 0 && (
+        <div className={styles.inlineGap} data-testid={`oc-narr-gaps-${group.category}`}>
+          <b>{zh.orderChain.narrGapTitle}</b>
+          {gaps.map((g, i) => (
+            <div key={i} data-testid={`oc-narr-gap-${group.category}-${i}`}>
+              · {g}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={simStyles.noteInfo} data-testid={`oc-narr-scope-${group.category}`}>
+        {zh.orderChain.narrScopeNote}
+      </div>
+      <div className={styles.inlineSubTitle}>{zh.orderChain.narrDagTitle}</div>
+      <ProblemDag group={group} />
+    </InlineDetailPanel>
+  );
+}
 
 /** 订单全链聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面 */
 export default function OrderChainView({ view }: ViewRendererProps) {
@@ -75,10 +347,19 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
   const segColors = (view.layout?.segColors as Record<string, string> | undefined) ?? SEG_COLOR;
   const [baseFilter, setBaseFilter] = useState<string>("");
-  const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
-  const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
+  /** 追加需求：问题卡改**行内展开**（叙述 + 同源因果图），不再弹浮层——按 category 键（组内唯一）。 */
+  const [openProblemCat, setOpenProblemCat] = useState<string | null>(null);
+  /** WO-ORDER-ROW-DETAIL ①：当前展开详情的订单号（展开体渲染在该行紧邻下方）。 */
+  const [openSo, setOpenSo] = useState<string | null>(null);
+  const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开该类归因
   const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
   const econCfg = (view.layout?.econ as typeof ECON_DEFAULT | undefined) ?? ECON_DEFAULT;
+  /**
+   * WO-ORDER-ROW-DETAIL ②：对话上下文选中态**订阅式**读取（原实现只 `getState()` 写不读 →
+   * 写进去了屏上零反馈，这正是"点了没反应"的另一半）。此处订阅使徽章随 store 实时亮。
+   */
+  const selectedObjects = useSessionStore((s) => s.selectedObjects);
+  const inCtx = (so: string) => selectedObjects.some((o) => o.objectType === "Order" && o.objectId === `ord-${so}`);
 
   const { data, isLoading } = useQuery({
     queryKey: ["b", "affected-orders", { base: baseFilter }],
@@ -101,12 +382,12 @@ export default function OrderChainView({ view }: ViewRendererProps) {
     [allData],
   );
 
-  // 驾驶舱「待解决问题」卡下钻：?problem=<category> → 数据就绪后自动展开该类逐单根因 DAG。
+  // 驾驶舱「待解决问题」卡下钻：?problem=<category> → 数据就绪后自动展开该类归因（叙述 + 同源因果图）。
   const problemQuery = searchParams.get("problem");
   useEffect(() => {
     if (!problemQuery || !data) return;
     const match = data.out.problems.find((p) => p.category === problemQuery);
-    if (match) setOpenProblem(match);
+    if (match) setOpenProblemCat(match.category);
   }, [problemQuery, data]);
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
@@ -300,66 +581,92 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         <table className="cmp" data-testid="oc-detail-table">
           <thead>
             <tr>
-              <th>{zh.orderChain.colOrder}</th>
-              <th>{zh.orderChain.colCust}</th>
-              <th>{zh.orderChain.colSeg}</th>
-              <th>{zh.orderChain.colModel}</th>
-              <th>{zh.orderChain.colQty}</th>
-              <th>{zh.orderChain.colDue}</th>
-              <th>{zh.orderChain.colRisks}</th>
-              <th>{zh.orderChain.colDelay}</th>
+              {/* 表头由 DETAIL_COLS 单一来源渲染 —— 展开行 colSpan 现算自同一数组，加列即自动跟随（禁写死） */}
+              {DETAIL_COLS.map((c) => (
+                <th key={c}>{c}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {out.rows.map((r) => {
               const shown = r.risks.slice(0, CHIP_LIMIT);
               const more = r.risks.length - shown.length;
+              const expanded = openSo === r.so;
+              const picked = inCtx(r.so);
               return (
-                <tr
-                  key={r.so}
-                  data-testid={`oc-row-${r.so}`}
-                  style={{ cursor: "pointer" }}
-                  onClick={() =>
-                    // 行点击 → 订单写入 selectedObjects（对话上下文）
-                    useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: `ord-${r.so}`, label: r.so })
-                  }
-                >
-                  <td>
-                    <b>{r.so}</b>
-                  </td>
-                  <td className="zh">{r.cust}</td>
-                  <td>
-                    <span className={styles.chip} style={{ color: segColors[r.seg], borderColor: `${segColors[r.seg]}66` }}>
-                      {r.seg}
-                    </span>
-                  </td>
-                  <td>{r.model}</td>
-                  <td>{fmt(r.qty, 0)} 套</td>
-                  <td>
-                    <b>{r.due.slice(5)}</b>
-                  </td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <div className={styles.riskChips}>
-                      {shown.map((k, i) => (
-                        <RiskHoverTrigger
-                          key={i}
-                          data={k}
-                          className={styles.chip}
-                          testId={`oc-risk-chip-${r.so}-${k.base}`}
-                          style={{ color: k.peak >= (k.threshold ?? 85) ? "var(--danger)" : "var(--amber)", borderColor: "currentcolor", cursor: "default" }}
-                        >
-                          {k.base}·{k.factor} {k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
-                        </RiskHoverTrigger>
-                      ))}
-                      {more > 0 && (
-                        <span className={styles.chip} data-testid={`oc-risk-more-${r.so}`}>
-                          +{more}
+                /* Fragment 保证展开行是数据行的**紧邻下一个兄弟**（相对位置即语义，不许挂到表尾） */
+                <Fragment key={r.so}>
+                  <tr
+                    data-testid={`oc-row-${r.so}`}
+                    data-expanded={expanded ? "1" : "0"}
+                    style={{ cursor: "pointer" }}
+                    title={zh.orderChain.rowHint}
+                    onClick={() => setOpenSo(expanded ? null : r.so)}
+                  >
+                    <td>
+                      <b>{r.so}</b>
+                      {/* ②可见选中态：订单已在对话上下文时，行上直接看得见（此前写进 store 屏上零反馈） */}
+                      {picked && (
+                        <span className={`${styles.chip} ${styles.ctxBtnOn}`} data-testid={`oc-ctx-badge-${r.so}`} style={{ marginLeft: 6 }}>
+                          {zh.orderChain.ctxInBadge}
                         </span>
                       )}
-                    </div>
-                  </td>
-                  <td style={{ color: "var(--danger)", fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
-                </tr>
+                    </td>
+                    <td className="zh">{r.cust}</td>
+                    <td>
+                      <span className={styles.chip} style={{ color: segColors[r.seg], borderColor: `${segColors[r.seg]}66` }}>
+                        {r.seg}
+                      </span>
+                    </td>
+                    <td>{r.model}</td>
+                    <td>{fmt(r.qty, 0)} 套</td>
+                    <td>
+                      <b>{r.due.slice(5)}</b>
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div className={styles.riskChips}>
+                        {shown.map((k, i) => (
+                          <RiskHoverTrigger
+                            key={i}
+                            data={k}
+                            className={styles.chip}
+                            testId={`oc-risk-chip-${r.so}-${k.base}`}
+                            style={{ color: k.peak >= (k.threshold ?? 85) ? "var(--danger)" : "var(--amber)", borderColor: "currentcolor", cursor: "default" }}
+                          >
+                            {k.base}·{k.factor} {k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
+                          </RiskHoverTrigger>
+                        ))}
+                        {more > 0 && (
+                          <span className={styles.chip} data-testid={`oc-risk-more-${r.so}`}>
+                            +{more}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ color: "var(--danger)", fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
+                    {/* ②显式入口：对话上下文的写入不再藏在整行点击里，行尾给一个说得清自己在干什么的按钮 */}
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className={`${styles.ctxBtn} ${picked ? styles.ctxBtnOn : ""}`}
+                        data-testid={`oc-ctx-btn-${r.so}`}
+                        aria-pressed={picked}
+                        title={zh.orderChain.ctxHint}
+                        onClick={() =>
+                          // 原链原样保留（objectType/objectId/label 三字段一字未改），只是换到显式入口上
+                          useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: `ord-${r.so}`, label: r.so })
+                        }
+                      >
+                        {picked ? zh.orderChain.ctxRemove : zh.orderChain.ctxAdd}
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded && (
+                    <InlineDetailRow colSpan={DETAIL_COLS.length} testId={`oc-detail-row-${r.so}`}>
+                      <OrderRowDetail row={r} segPrice={econCfg.segPrice[r.seg]} picked={picked} />
+                    </InlineDetailRow>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -374,28 +681,39 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       <div className="panel">
         <div className="section-title">{zh.orderChain.problemSection}</div>
         <div className={styles.probGrid} data-testid="oc-problems">
-          {out.problems.map((p) => (
-            <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}>
-              <div className={styles.probTitle}>
-                <span className="badge red" style={{ marginRight: 6 }}>
-                  {categoryLabels[p.category]}
-                </span>
-                {p.title}
-              </div>
-              <div className={styles.probMeta}>
-                {zh.orderChain.problemOrders(p.orderCount)} · {zh.orderChain.problemFinance(p.financeImpact)}
-                <div className="zh">{p.rootCauseSummary}</div>
-              </div>
-            </button>
-          ))}
+          {out.problems.map((p) => {
+            const open = openProblemCat === p.category;
+            return (
+              /* 与订单行同一套内联展开原语：展开体是被点卡片的**紧邻下一个兄弟**（不再弹浮层） */
+              <Fragment key={p.category}>
+                <button
+                  className={`${styles.probCard} ${open ? styles.probCardOpen : ""}`}
+                  data-testid={`oc-problem-${p.category}`}
+                  aria-expanded={open}
+                  onClick={() => setOpenProblemCat(open ? null : p.category)}
+                >
+                  <div className={styles.probTitle}>
+                    <span className="badge red" style={{ marginRight: 6 }}>
+                      {categoryLabels[p.category]}
+                    </span>
+                    {p.title}
+                  </div>
+                  <div className={styles.probMeta}>
+                    {zh.orderChain.problemOrders(p.orderCount)} · {zh.orderChain.problemFinance(p.financeImpact)}
+                    <div className="zh">{p.rootCauseSummary}</div>
+                  </div>
+                </button>
+                {open && (
+                  <InlineDetailGridItem testId={`oc-problem-detail-${p.category}`}>
+                    <ProblemNarrativePanel group={p} categoryLabel={categoryLabels[p.category] ?? p.category} />
+                  </InlineDetailGridItem>
+                )}
+              </Fragment>
+            );
+          })}
         </div>
       </div>
 
-      {openProblem && (
-        <Modal title={`${openProblem.title} · ${zh.orderChain.dagTitle}`} onClose={() => setOpenProblem(null)} width={860}>
-          <ProblemDag group={openProblem} />
-        </Modal>
-      )}
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-order" solved />
     </div>
