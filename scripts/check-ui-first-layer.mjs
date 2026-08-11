@@ -66,6 +66,15 @@
  *   0 = 干净 · 1 = 真超标（棘轮被顶高 / 新文件破硬上限 / D4 守恒被破）· 2 = **工具自己坏了**
  * 2 与 1 必须分开：「门坏了」和「代码坏了」处置完全不同，合成一个码就分不出来了。
  *
+ * ⚠ **RC=1 只有一条路径：`gate()` 明确 `return 1`。** 其余一切失败（缺依赖 / 基线读不出 /
+ * rev 取不到 / 参数缺失 / 任何未预期异常）统统走 `toolBroken()` ⇒ RC=2。
+ * 这不是洁癖：复验时实测过一次真事故 —— `require("typescript")` 曾是模块顶层裸调用，
+ * 在**没有 `node_modules` 的 worktree** 上抛未捕获异常，node 默认退 **1**，
+ * 于是 `gate.sh` 把「**门根本没跑起来**」读成「**页面第一层超标**」，
+ * 人会去改一个**一个字都没被扫过**的页面。默认失败方向必须是「我没查出来」。
+ * 该契约**由机器守**：`--selftest` 会起子进程注入「缺 typescript」故障并断言 RC=2
+ * （见 `UI_FIRST_LAYER_FORCE_NO_TS`）—— 写在注释里的约定不是机制。
+ *
  * 本体登记：`docs/SYSTEM-ONTOLOGY.md` §7/§8，断点 `G-UI-FIRSTLAYER-OVERLOAD`。
  * 门账：`scripts/gate-ledger.json`（binding=GATES）。
  *
@@ -78,12 +87,55 @@
  *   node scripts/check-ui-first-layer.mjs --explain <file>  # 单文件：第一层到底堆了什么
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join, dirname, resolve, relative, basename } from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const ts = require("typescript");
+
+/**
+ * **RC=2 的唯一出口** —— 「我没能扫描」与「代码有问题」必须是两个不同的退出码。
+ *
+ * ⚠ 本函数是复验时抓到的一个真实缺陷的对策（2026-08-11，审核方在**没有 `node_modules`
+ * 的 worktree** 上复跑时发现）：`require("typescript")` 当时是**模块顶层裸调用**，
+ * 缺依赖时抛未捕获异常 ⇒ node 默认退出码 **1**。而按本仓约定 RC=1 = 「第一层真超标」，
+ * 于是 `gate.sh` 会把「**门根本没跑起来**」当成「**页面超标**」，
+ * 人去改页面 —— 而页面**一个字都没被扫过**。
+ *
+ * 这与本单普查报告里自己抓到的形态**完全同源**：
+ * 「金丝雀先抓到的是**工具坏了**，不是数错了」—— 只是这次发生在门自己身上。
+ * 照铁律 0.6 的句式：**「我用『进程非 0 退出』当作『代码有问题』的证据，而前者并不度量后者。」**
+ *
+ * 故：**任何**「我没能完成扫描」的情形（缺依赖 / 基线读不出 / git 取不到 / 写不进 / 未预期异常）
+ * 一律走这里 ⇒ RC=2，并明说结论作废。
+ */
+function toolBroken(what, hint) {
+  console.error(`⛔ ${what} ⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「无新增堆料 / 代码干净 / 页面达标」——");
+  console.error("   本门这次根本没有扫描成功，它什么都没证明。");
+  if (hint) console.error(`   ${hint}`);
+  process.exit(2); // 2 = 工具自己坏了（1 是「真超标」，两者处置完全不同，不许合并）
+}
+
+/** typescript 是本门的解析器；缺了它不是「代码干净」，是「没得扫」。 */
+function loadTypeScript() {
+  // 故障注入开关：只给 `--selftest` 的子进程用，用来**机械验证**这条路径真的返回 2
+  // （写在注释里的约定不是机制；只有机器跑得到的才是）。
+  if (process.env.UI_FIRST_LAYER_FORCE_NO_TS === "1") {
+    toolBroken("（故障注入）typescript 不可用", "这是 --selftest 在自检「缺依赖 ⇒ RC=2」这条路径。");
+  }
+  try {
+    return require("typescript");
+  } catch (e) {
+    toolBroken(
+      "缺 typescript（本门的 JSX 解析器）",
+      "多半是这个 worktree 没装依赖：先跑 `pnpm install --prefer-offline` 再重跑本门。"
+    );
+  }
+}
+
+const ts = loadTypeScript();
 
 const ROOT = process.cwd();
 const BASELINE = join(ROOT, "scripts/ui-first-layer-baseline.json");
@@ -602,9 +654,19 @@ function runCanaries() {
 function listScanFiles(rev) {
   const out = [];
   if (rev) {
-    const raw = execFileSync("git", ["ls-tree", "-r", "--name-only", rev], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 })
-      .toString()
-      .split("\n");
+    let raw;
+    try {
+      raw = execFileSync("git", ["ls-tree", "-r", "--name-only", rev], {
+        cwd: ROOT,
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+        .toString()
+        .split("\n");
+    } catch (e) {
+      // rev 打错 / 不是 git 仓 / git 不在 —— 一律「没得扫」，不是「代码干净」
+      toolBroken(`取不到 rev \`${rev}\` 的文件列表（${(e.stderr || e.message || "").toString().trim().slice(0, 200)}）`);
+    }
     for (const f of raw) {
       if (!f.endsWith(".tsx")) continue;
       if (matchesScan(f)) out.push(f);
@@ -696,8 +758,26 @@ function analyzeAll(rev) {
  * 门主体
  * ═══════════════════════════════════════════════════════════════════════════ */
 function loadBaseline() {
-  if (!existsSync(BASELINE)) return null;
-  return JSON.parse(readFileSync(BASELINE, "utf8"));
+  if (!existsSync(BASELINE)) return null; // 由调用方报 RC=2（缺基线 = 没法比 = 没得扫）
+  let raw;
+  try {
+    raw = readFileSync(BASELINE, "utf8");
+  } catch (e) {
+    toolBroken(`基线文件读不出（${relative(ROOT, BASELINE)}：${e.message}）`);
+  }
+  let j;
+  try {
+    j = JSON.parse(raw);
+  } catch (e) {
+    toolBroken(
+      `基线不是合法 JSON（${relative(ROOT, BASELINE)}：${e.message}）`,
+      "常见成因是合并冲突标记残留（`<<<<<<<`）。"
+    );
+  }
+  // 结构坏了（被手改坏 / 合并残留）同样是「没得比」，不是「代码干净」
+  if (!j || typeof j.files !== "object" || j.files === null)
+    toolBroken(`基线结构不对（${relative(ROOT, BASELINE)} 缺 files 字段）`, "重跑 `--update` 或从 canonical 取回该文件。");
+  return j;
 }
 
 const HARD_SIZE_CAP = 3; // 规范 §2 R-UI-2 原文
@@ -961,17 +1041,41 @@ function main() {
     );
     const rows = analyzeAll(null);
     console.log(`✅ 扫描面 ${rows.length} 个文件（下界 ${MIN_FILES}）`);
-    process.exit(rows.length >= MIN_FILES ? 0 : 2);
+    if (rows.length < MIN_FILES) process.exit(2);
+
+    /*
+     * ── 退出码契约自检（RC=2 ≠ RC=1）─────────────────────────────────────────
+     * 起一个子进程、注入「缺 typescript」故障，断言它**退 2 而不是 1**。
+     *
+     * 为什么必须是**机器**跑：这条契约此前是靠注释和约定维持的，而真实缺陷正是
+     * 「`require("typescript")` 裸调用 ⇒ 未捕获异常 ⇒ node 默认退 1」——
+     * 注释写得再清楚也拦不住它（本仓定论：**写在注释里的纪律不是机制**）。
+     * 现在谁把 `toolBroken` 改回 throw / 改成 exit 1，这里当场红。
+     */
+    const selfPath = fileURLToPath(import.meta.url);
+    const probe = spawnSync(process.execPath, [selfPath], {
+      cwd: ROOT,
+      env: { ...process.env, UI_FIRST_LAYER_FORCE_NO_TS: "1" },
+      encoding: "utf8",
+    });
+    if (probe.status !== 2) {
+      console.error(
+        `⛔ 退出码契约被破：注入「缺依赖」故障后应 RC=2（工具坏了），实得 RC=${probe.status}。`
+      );
+      console.error("   RC=1 会被 gate.sh 读作「第一层真超标」，人会去改根本没被扫过的页面。");
+      console.error("   stderr：" + (probe.stderr || "").trim().split("\n").slice(0, 3).join(" / "));
+      process.exit(2);
+    }
+    console.log("✅ 退出码契约：注入「缺 typescript」故障 ⇒ RC=2（工具坏了），未误报成 RC=1（真超标）");
+    process.exit(0);
   }
 
   if (has("--explain")) {
     const f = val("--explain");
     const rev = val("--rev");
+    if (!f || f.startsWith("--")) toolBroken("`--explain` 没给文件路径", "用法：`--explain <file> [--rev <rev>]`");
     const text = readAt(rev, f);
-    if (text == null) {
-      console.error(`读不到 ${f}`);
-      process.exit(2);
-    }
+    if (text == null) toolBroken(`读不到 ${f}${rev ? ` @${rev}` : ""}`);
     const r = analyze(text, { fileName: f, cssResolver: cssResolverFor(f, text, rev) });
     console.log(`# ${f}${rev ? ` @${rev}` : ""}`);
     console.log(`first=${r.first} deferred=${r.deferred} formula=${r.formula} prose=${r.prose} sizes=${r.sizes} [${r.sizeValues.join(" ")}] nativeTitle=${r.nativeTitle}`);
@@ -1061,4 +1165,16 @@ function whyFor(r) {
   return "存量·规范落地前：" + bits.join("；");
 }
 
-main();
+/*
+ * ── 兜底：任何未预期异常 ⇒ RC=2，绝不让它变成 RC=1 ──────────────────────────
+ * 上面已逐条堵了已知的环境失败路径（缺 typescript / 基线读不出 / rev 取不到 / 参数缺失），
+ * 但**「已知」永远是不完整的**：只读文件系统、权限、OOM、node 版本差异…… 都能抛。
+ * 而 node 对未捕获异常一律退 **1** —— 恰好撞上「第一层真超标」这个码。
+ * 所以这里不是锦上添花，是**把默认值改对**：本门的默认失败方向必须是「我没查出来」，
+ * 不是「你的页面超标」。真正的 RC=1 只有一条路径：`gate()` 明确 `return 1`。
+ */
+try {
+  main();
+} catch (e) {
+  toolBroken(`未预期异常（${e?.message || e}）`, (e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+}
