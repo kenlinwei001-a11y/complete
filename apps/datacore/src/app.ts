@@ -1683,6 +1683,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await outbox.emit(c.tenantId, "sim.checkpoint_saved", { sessionId: s.id, checkpointId: cp.id, tick: cp.tick });
     return reply.status(201).send(cp);
   });
+  /**
+   * 列出本会话的检查点存档（欠账 #157 · `G-SIM-CHECKPOINT-NOREAD`）。
+   *
+   * 🔴 **为什么这条路由此前不存在是个真缺口，不是"没人要"**：`sim_checkpoint` 是**只写不读**的——
+   * `POST …/checkpoint`（上一处）落库并发 `sim.checkpoint_saved`，而仓储层 `listCheckpoints`
+   * 三处实现（`repo/repo.ts` 接口 · `repo/memory.ts` · `repo/pg.ts`）**全仓零调用方**
+   * （形态 =「没接线」，非「接了线没数据」）。少这一跳，下游三件事同时做不了：
+   *   ① `sim.checkpoint_saved` 没有可失效的缓存 ⇒ 前端 `SIM_EVENT_GAPS` 把它登记为唯一缺口；
+   *   ② `POST …/rollback` 要 `checkpointId`，而前端拿不到清单 ⇒ `endpoints.ts` 连封装都没有，回滚口零调用方；
+   *   ③ `SandboxView.onBranch` 只能**当场新存一个**检查点再分支（`views/sim/SandboxView.tsx:578`），
+   *      "从任意历史检查点开分支"这个语义在 UI 上根本不可达 —— 存档等于存进黑洞。
+   *
+   * 🔴 **为什么排序落在路由这一层，而不是靠两个仓储各自 ORDER BY**（R9 双实现一致性）：
+   * 两半今天**不一致** —— `pg.ts:104` 是 `ORDER BY tick`，`memory.ts:70` **一个 sort 都没有**（Map 插入序）。
+   * tick 相同的检查点（存档→回滚→同 tick 再存档，是沙盘的常规动作）在两个实现下顺序不同，
+   * 而顺序是语义（用户按它挑回滚点）。在此处按 `(tick, createdAt, id)` 定全序：
+   * 与 `listPerturbations` 同款纪律 —— **不以随机 id 作首键**，id 只做最后的去歧义键，
+   * 于是 memory 与 pg 返回逐字节一致（R6 确定性 ∧ R9 双实现同构），且不必改仓储（超本单范围边界）。
+   */
+  app.get("/a/v1/sim/sessions/:id/checkpoints", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：他租户 → 404，与 world/perturbations 同口径
+    const items = (await repos.sim.listCheckpoints(c.tenantId, s.id))
+      .sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return { items };
+  });
   app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
