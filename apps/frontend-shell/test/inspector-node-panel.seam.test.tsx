@@ -562,19 +562,23 @@ describe("架构约束 · 节点 ID 不透明 · 公式单源", () => {
       const body = stripComments(src);
       expect(body.match(/kind\s*===\s*["'`]work["'`]/g) ?? [], `${name} 复写了增值判据`).toEqual([]);
     }
-    expect(ts).toMatch(/isValueAddKind\(/);
+    expect(stripComments(ts)).toMatch(/isValueAddKind\(/);
   });
 
   it("流动效率 / 前置期 / 增值量必须直接来自契约函数（不写第二份除法）", () => {
-    expect(ts, "flowEfficiency 不是 nodeFlowEfficiency 的返回值 —— 有人手搓了第二份除法").toMatch(
+    // ⚠ 必须先剥注释再判：本 describe 上两条 it 都走了 `stripComments`，唯独这一条原先吃**原文** ——
+    //   而 `inspectorModel.ts` 的注释里逐字写着 `nodeFlowEfficiency` / `computeLossAttribution`
+    //   这些名字（顶注 §③ 就在列它们）。注释喂绿 = 「命中注释而误报绿」，与位置锚同族的另一半病。
+    const body = stripComments(ts);
+    expect(body, "flowEfficiency 不是 nodeFlowEfficiency 的返回值 —— 有人手搓了第二份除法").toMatch(
       /const\s+flowEfficiency\s*=\s*nodeFlowEfficiency\(/,
     );
-    expect(ts).toMatch(/const\s+leadTimeDays\s*=\s*nodeLeadTimeDays\(/);
-    expect(ts).toMatch(/const\s+valueAddDays\s*=\s*nodeValueAddDays\(/);
-    expect(ts).toMatch(/computeLossAttribution\(/);
-    expect(ts).toMatch(/expectedCadenceWaitDays\(/);
+    expect(body).toMatch(/const\s+leadTimeDays\s*=\s*nodeLeadTimeDays\(/);
+    expect(body).toMatch(/const\s+valueAddDays\s*=\s*nodeValueAddDays\(/);
+    expect(body).toMatch(/computeLossAttribution\(/);
+    expect(body).toMatch(/expectedCadenceWaitDays\(/);
     // 五桶顺序取自契约常量，不在前端另立一份五段清单
-    expect(ts).toMatch(/CHAIN_STEP_KINDS\.map\(/);
+    expect(body).toMatch(/CHAIN_STEP_KINDS\.map\(/);
   });
 
   it("面板不持有任何节点清单：换一个 nodeId / label / stage 就整体跟着换", () => {

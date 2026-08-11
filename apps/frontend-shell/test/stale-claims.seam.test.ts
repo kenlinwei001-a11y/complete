@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+import { commentOnlyCanary, factHits, srcCode, stripComments } from "./factlock";
 
 /**
  * WO-STALE-CLAIMS · **过期「自称实测」声明**的接缝门（本体 §8 `G-STALE-MEASURED-CLAIM`）。
@@ -134,20 +136,8 @@ describe("§2 · 判据真的会咬（喂已知坏样例）", () => {
  * 而前者并不度量后者。」** 事实锁必须锚在**事实**上，不能锚在**位置**上 ——
  * 会因一次无害重构而红的门，只会训练人把门删掉，那时真删了才没人拦。
  */
-const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
-
-/** @returns [仓库相对路径, **剥注释后的可执行代码**][] */
-function datacoreCode(): [string, string][] {
-  const root = join(REPO_ROOT, "apps/datacore/src");
-  const walk = (d: string): string[] =>
-    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
-      e.isDirectory() ? walk(join(d, e.name)) : /\.ts$/.test(e.name) ? [join(d, e.name)] : [],
-    );
-  return walk(root).map((f) => [f.slice(REPO_ROOT.length + 1), stripComments(readFileSync(f, "utf8"))]);
-}
-/** 事实命中的文件清单（空数组 = 该事实在**可执行代码**里已不存在）。 */
-const factHits = (code: [string, string][], probe: string | RegExp) =>
-  code.filter(([, s]) => (typeof probe === "string" ? s.includes(probe) : probe.test(s))).map(([f]) => f);
+/** 扫描面/剥注释/命中判据一律走 `./factlock` —— 两处写判据迟早对不上，金丝雀也就成了装饰品。 */
+const datacoreCode = () => srcCode("apps/datacore/src");
 
 describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红）", () => {
   const model = () => readRepo("apps/frontend-shell/src/views/sim/inspectorModel.ts");
@@ -164,7 +154,7 @@ describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上
     // 金丝雀②：剥注释真的在生效。取一段**只在注释里**出现的合成串喂进去，必须不中 ——
     // 这条直接钉死本 it 当初那个「命中注释而误报绿」的形态。
     expect(
-      factHits([["canary.ts", stripComments("/* 提到 buildCadenceGatesCANARY 但只是散文 */\nconst x = 1;")]], "buildCadenceGatesCANARY"),
+      factHits(commentOnlyCanary("buildCadenceGatesCANARY"), "buildCadenceGatesCANARY"),
       "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了或被摘了，本次结论作废",
     ).toEqual([]);
 
@@ -186,15 +176,41 @@ describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上
   });
 
   it("offsetDays 的运行时消费方还在（K2 那句「零消费方为假」的依据）", () => {
-    expect(readRepo("apps/datacore/src/sim/propagation.ts"), "propagation.ts 不再读 offsetDays").toContain("cadence.offsetDays");
-    expect(readRepo("apps/frontend-shell/src/views/sim/transitFlow.ts"), "transitFlow 不再读 offsetDays").toContain("cadence.offsetDays");
+    // **「零消费方」是全链的命题** —— 判据必须扫整棵树。原写法钉死 `propagation.ts` +
+    // `transitFlow.ts` 两个文件：消费方哪天搬去别的模块（能力一行没少）就假红，
+    // 而命中注释/import 又会假绿。两个方向都错，同 §3 上面那段病历一个根因。
+    const engine = srcCode("apps/datacore/src");
+    const web = srcCode("apps/frontend-shell/src");
+
+    // ── 金丝雀：先自证扫描器没坏，再据它下「消费方还在/没了」的结论 ──────────────
+    expect(engine.length, "datacore 源码扫不到几个文件 ⇒ 扫描器坏了，结论作废").toBeGreaterThan(50);
+    expect(web.length, "frontend 源码扫不到几个文件 ⇒ 扫描器坏了，结论作废").toBeGreaterThan(50);
+    expect(
+      factHits(engine, "putAll("),
+      "金丝雀①：已知必中的 putAll( 一个都找不到 ⇒ 扫描器坏了，不许读作「消费方没了」",
+    ).not.toEqual([]);
+    expect(
+      factHits(commentOnlyCanary("cadence.offsetDaysCANARY"), "cadence.offsetDaysCANARY"),
+      "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了，本次结论作废",
+    ).toEqual([]);
+
+    // ── 事实本体：两侧各自**至少有一个**运行时消费方，锚在「有没有」不锚在「在哪个文件」──
+    const OFFSET_READ = /\bcadence\s*\.\s*offsetDays\b/;
+    expect(
+      factHits(engine, OFFSET_READ),
+      "引擎侧再没有人读 cadence.offsetDays —— K2 的「零消费方为假」当场变成假话，文案必须改回去",
+    ).not.toEqual([]);
+    expect(
+      factHits(web, OFFSET_READ),
+      "前端侧再没有人读 cadence.offsetDays —— 同上",
+    ).not.toEqual([]);
   });
 
   it("K1 / K2 的 evidence：旧的那两句假话没了，且新话带**实测日期 + 复验方式**", () => {
     const src = model();
     // 旧假话（这两句今天为假）。**注释不参与判定**：文档里引用旧写法是应该的（`:558` 那段是病历，
     // 同段自己就写着「今天是假的」），真正要禁的是它重新变成上屏的可执行文案。
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+    const code = stripComments(src);
     expect(code, "K1 又回到「Cadence 对象全仓 0 条」").not.toMatch(/`Cadence` 对象全仓 0 条/);
     expect(code, "K1 又回到「从没落库」").not.toContain("从没落库");
     expect(code, "K2 又回到「同上无 Cadence 实例」").not.toContain("但同上无 `Cadence` 实例");
@@ -217,9 +233,8 @@ describe("§4 · 控制台图例不许再复述「零输入基线」", () => {
   const console_ = () => readRepo("apps/frontend-shell/src/views/sim/SandboxConsole.tsx");
 
   it("图例只读 `.label`（四个分支恒等、不带保质期），**不读** `.reason` / `.status` / `.unblockedBy`", () => {
-    const code = console_()
-      .replace(/\/\*[\s\S]*?\*\//g, " ") // 注释里**引用**旧写法是应该的（那是病历），要禁的是它是可执行代码
-      .replace(/^[ \t]*\/\/.*$/gm, " ");
+    // 注释里**引用**旧写法是应该的（那是病历），要禁的是它是可执行代码
+    const code = stripComments(console_());
     for (const perishable of ["reason", "status", "unblockedBy"]) {
       for (const rec of ["CADENCE_ABSENCE", "PROCUREMENT_BRANCH"]) {
         expect(

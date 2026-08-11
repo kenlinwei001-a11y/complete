@@ -454,9 +454,12 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     const magic = [...code.matchAll(/trigDay\s*\+\s*\d+/g)].map((m) => m[0]);
     expect(magic, `disposition.ts 出现写死的日期偏移：${magic.join("、")} —— 前置期必须由 DispositionLead 从真对象派生`).toEqual([]);
     // 反向锚：确实是"改成读真对象"，而不是"把偏移挪到别处藏起来"。
+    // ⚠ 三条都必须吃 `code`（已剥注释）。原先后两条吃的是 `src` —— 而本文件顶注 :35/:81/:113/:118
+    //   逐字写着 `InterBaseTransfer.transitDays` / `Supplier.leadTime`（那是病历，本来就该写）。
+    //   于是即便真把它们从代码里删干净，这两条也照样绿：命中的是注释，不是实现。
     expect(code).toContain("leadOffset");
-    expect(src).toContain("InterBaseTransfer.transitDays");
-    expect(src).toContain("Supplier.leadTime");
+    expect(code).toContain("InterBaseTransfer.transitDays");
+    expect(code).toContain("Supplier.leadTime");
   });
 
   it("⑦ R6 确定性：同输入两跑逐字节一致（三块输出全含在内）", async () => {
