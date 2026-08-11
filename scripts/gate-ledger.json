@@ -1000,6 +1000,24 @@
         "note": "三次变异各反证一条判据，均读回文件自证变异真生效、还原后复绿且 git status 干净：① 拆掉 AgentsPage 四个 InfoPopover 包裹（浮层内容搬回第一层）⇒ RC=1【D4·浮层被拆】deferred 6→2 而 first 持平；② 纯删除 tokens-out 统计块 ⇒ RC=1【D4·内容变少】total 107→105 —— 此例 first 101→99 单看像「变好了」，正是 D4 存在的理由（指标不许奖励删内容）；③ 把门自身 D4 的 deferredShrank 语义反转为恒 false ⇒ 判据金丝雀当场 RC=2「门自己瞎了」，证明金丝雀与主逻辑共用同一份实现、非装饰品 ④ 退出码契约（复验发现并修）：`require(\"typescript\")` 原为模块顶层裸调用，缺 node_modules 时抛未捕获异常 ⇒ node 默认 RC=1，把「门没跑起来」误报成「第一层真超标」。现全部环境失败路径归一到 toolBroken() ⇒ RC=2，RC=1 只剩 gate() 明确 return 1 一条路径；11 条退出码矩阵实测全符合预期，且该契约由 --selftest 起子进程注入故障机械守（UI_FIRST_LAYER_FORCE_NO_TS）。"
       },
       "notes": "守 docs/CONVENTION-ui-information-layering.md §1/§2 里能机检的部分（D1 第一层信息块数棘轮 · D2 R-UI-3 口径公式 · D2b 第一层长说明串 · D3 R-UI-2 字号层级 · D4 守恒反删除）。R-UI-1 视线距离是渲染后的几何量，静态判不了，本门明确不假装能判，仍由规范 §5 人工执行。原生 title= 存量另有专门棘轮，本门只报数不据此红，避免两份基线漂移。"
+    },
+    "check-css-token-defined.mjs": {
+      "alias": "css-token:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/styles/tokens.css",
+        "apps/frontend-shell/src/components/*.module.css",
+        "apps/frontend-shell/src/views/*.module.css",
+        "apps/frontend-shell/src/views/sim/*.module.css"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-CSS-TOKEN-UNDEFINED",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-11 两向变异，均读回文件自证生效、还原后 git status 干净",
+        "note": "病因（仓主实测报「这截屏里面的文字显示有问题，黑色的不对」）：InferenceProcessDag.module.css 写 `fill: var(--text)`，而真名是 `--txt`（tokens.css:12）。关键不是「没上色」而是**取反向**：var() 替换失败 ⇒ 该声明计算值无效 ⇒ 属性取 unset；fill 是**可继承**属性 ⇒ unset = inherit ⇒ 一路继承到根的初始值 = 纯黑。深色节点底上叠黑字，控制台一声不吭、测试全绿。同批查出 --fg(3处) --border(10处) 共 14 个同病幽灵令牌。变异①：把 `fill: var(--txt)` 改成 `var(--txt-ghostXX)`（新名不含原子串，避开 toContain 恒真的坑）⇒ RC=1 并点名「--txt-ghostXX（疑似想写：--txt / --seg-active-txt / --nav-active-txt）」。变异②：把 stripComments 改成恒等函数 ⇒ **先红的是金丝雀** RC=2「⛔ 金丝雀不中 ⇒ 工具坏了，本次结论作废（不许读作『无幽灵令牌』）· 把注释里的散文当成真引用」，证明 6 条金丝雀与主逻辑共用 collectDefined/collectUsed 本体、非各抄一份正则的装饰品。诚实位「金丝雀 N/N 命中」现算（globalThis.__canaryTotal），不写死 —— 写死是假绿第 11 形态：加了断言而计数不动，屏上照旧「5/5 全中」。"
+      },
+      "notes": "判据 = 「被 var() 无兜底引用」∖「有定义」必须为空。「有定义」含两源：① CSS 里 `--foo:`；② TSX 内联样式运行时注入 `style={{\"--foo\":…}}` —— grep CSS 一次都看不见，按铁律 0.5 必须追这一层，否则会把注入的令牌误报成幽灵。有 fallback 的 `var(--foo, X)` 不计（写了兜底就是有意为之）。本门第一版栽在「注释里的散文被当成代码」：4 个文件的注释里写着「每个 var(--x) 必须定义在 tokens.css」——**那正是本门要执行的纪律本身**——被读成真引用而误报。故 stripComments 与它的常驻金丝雀不许摘。顺带一提：这条纪律以注释形式在仓里躺了很久，仍被违反 14 次 ⇒ 写在注释里的纪律不是机制。退出码三分：0 干净 / 1 有幽灵令牌 / 2 工具自己坏了（此时只许说「我没查出来」）。"
     }
   }
 }
