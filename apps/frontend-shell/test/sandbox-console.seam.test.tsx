@@ -143,6 +143,25 @@ async function ready() {
   await waitFor(() => expect(screen.getByTestId("sc-imp-BREAK-count").textContent).not.toBe("—"));
 }
 
+/**
+ * WO-SANDBOX-DECLUTTER · 诚实位**换了承载方式，一条没删**，故本门的断言也要跟着换取法：
+ *  · 成块的诊断面板（就绪认证 / 世界列表 / SEED / 时窗徽标）→ `openDiag()` 展开诊断抽屉；
+ *  · 解释某个数字的原理性文字（口径差 / 联动口径 / 某维为何无 ARGS / 范围能带到哪 / 图例）
+ *    → `openInfo(id)` 点开贴在那个数字旁边的 `?`。
+ *
+ * **两者都不是"藏起来"**：折叠态屏上有带真计数的入口（`sc-diag-count`）、有可见的 `?`。
+ * 断言仍咬同一批 testid（`sc-imp-gap` / `sc-window-badge` / …）—— 内容一个字都没改，
+ * 所以这些断言若失败，说明的是"内容真的没了"，而不是"位置变了"。
+ */
+async function openDiag(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByTestId("sc-diag-toggle"));
+  return await screen.findByTestId("sc-diag-panel");
+}
+async function openInfo(user: ReturnType<typeof userEvent.setup>, id: string) {
+  await user.click(await screen.findByTestId(`info-${id}`));
+  return await screen.findByTestId(`info-body-${id}`);
+}
+
 beforeEach(() => {
   net.loss = loadLoss();
   net.imp = loadImp();
@@ -199,6 +218,9 @@ describe("§1 · 口径单源接缝（头号判据）", () => {
     const shown = bars.map((b) => (b.getAttribute("data-testid") ?? "").replace(/^sc-pareto-/, ""));
     expect(shown).toEqual(expected);
     // 分母来自引擎：守恒说明里那个 Σ 必须是载荷里的 conservation.sumPct，不是前端加出来的。
+    // WO-SANDBOX-DECLUTTER：Σ 这个**结论数**留在第一层，`A ÷ B` 那条**口径**进 `?`（规范 §2 R-UI-3）。
+    expect(screen.getByTestId("sc-pareto-note-brief").textContent ?? "").toContain(payload.conservation!.sumPct.toFixed(3));
+    await openInfo(userEvent.setup(), "pareto-note");
     expect(screen.getByTestId("sc-pareto-note").textContent ?? "").toContain(payload.conservation!.sumPct.toFixed(3));
   });
 });
@@ -289,11 +311,13 @@ describe("§3 · 阻滞点统计条 = 引擎 counts（不是前端自己数 item
   });
 
   it("「卡点」按**引擎口径**显示 —— 设计稿那句「规则/审批闸」不许盖过 BOTTLENECK 的真判据", async () => {
+    const user = userEvent.setup();
     mount();
     await ready();
     // 卡片副标题 = chainImpediment.ts 的 IMPEDIMENT_KIND_MEANING（PRD §5.1 单源），不是设计稿措辞
     expect(screen.getByTestId("sc-imp-BOTTLENECK").textContent ?? "").toContain("加产能有用");
-    // 且屏上必须明说这条口径差
+    // 且屏上必须明说这条口径差（WO-SANDBOX-DECLUTTER：收进贴在阻滞点计数旁的 `?`，原文一字未改）
+    await openInfo(user, "imp-gap");
     const gap = screen.getByTestId("sc-imp-gap").textContent ?? "";
     expect(gap).toContain("产能/利用率打满");
     expect(gap).toContain("没有一条判「等审批");
@@ -315,6 +339,8 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-mode-chain"));
+    // WO-SANDBOX-DECLUTTER：第一层只留四个结论数，完整口径与取证进 `?`（原文一字未改）。
+    await openInfo(user, "chain-coverage");
     const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
     expect(txt).toContain(`${CHAIN_STAGE_DESIGN_TARGET.stageCount} 段 ${CHAIN_STAGE_DESIGN_TARGET.nodeCount} 节点`);
     expect(txt).toContain(`${CHAIN_STAGES.length} 段`);
@@ -344,11 +370,17 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
   });
 
   it("时窗 30/60/90D 无 ARGS → 控件禁用 + 徽标（不给用户一个假旋钮）", async () => {
+    const user = userEvent.setup();
     mount();
     await ready();
+    // 控件**留在主屏**（用户要看得见"这排点不动"），禁用态是第一位诚实位。
     for (const w of ["30D", "60D", "90D"]) {
       expect((screen.getByTestId(`sc-window-${w}`) as HTMLButtonElement).disabled).toBe(true);
     }
+    // 「为什么点不动」贴在控件旁的 `?` 里；徽标本体搬进诊断抽屉的调试区。两处都还在，一个字没删。
+    await openInfo(user, "window");
+    expect(screen.getByTestId("sc-window-note").textContent ?? "").toContain("都没有时间窗入参");
+    await openDiag(user);
     expect(screen.getByTestId("sc-window-badge").textContent).toContain("无 ARGS");
   });
 
@@ -359,7 +391,8 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     expect(screen.getByTestId("sc-dim-businessTypes-badge").textContent).toContain("无 ARGS");
     expect(screen.getByTestId("sc-dim-modelIds-badge").textContent).toContain("无 ARGS");
     expect(screen.getByTestId("sc-dim-baseIds-badge").textContent).toContain("已接线");
-    // 另两维只出说明、不出勾选框
+    // 另两维只出说明、不出勾选框（说明收进该维标签旁的 `?`，原文透传 SCOPE_DIMENSIONS.note）
+    await openInfo(user, "dim-businessTypes");
     expect(screen.getByTestId("sc-dim-businessTypes-note").textContent ?? "").toContain("400");
 
     // 勾基地 → chain_impediments 真带 scope.baseIds（这就是"已接线"的证据）
@@ -369,7 +402,8 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     const last = [...net.calls].reverse().find((c) => c.key === "chain_impediments")!;
     expect((last.args.scope as { baseIds?: string[] }).baseIds).toBeTruthy();
 
-    // 而 chain_loss_attribution **不随范围重取**（实测它不吃任何范围维度，屏上也这么写）
+    // 而 chain_loss_attribution **不随范围重取**（实测它不吃任何范围维度，屏上也这么写 —— 在「范围能带到哪」的 `?` 里）
+    await openInfo(user, "scope-reach");
     expect(screen.getByTestId("sc-scope-reach").textContent ?? "").toContain("不吃任何范围维度");
   });
 
@@ -425,6 +459,7 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
 // ══════════════════════════════════════════════════════════════════════════════
 describe("§5 · 旧主屏 6 样一个都不许掉", () => {
   it("KPI 行 / tick 控制条四个按钮 / 时间轴 / 就绪认证 / 多场景对比 / AI 指挥台 / 本体 PmDag 全部可达", async () => {
+    const user = userEvent.setup();
     mount();
     await ready();
     // ① KPI 行（全局 + 逐 stateVar）
@@ -434,9 +469,13 @@ describe("§5 · 旧主屏 6 样一个都不许掉", () => {
     for (const t of ["sandbox-tick-btn", "sandbox-checkpoint-btn", "sandbox-branch-btn", "sandbox-adopt-btn", "sandbox-timeline"]) {
       expect(screen.getByTestId(t), `控制条少了 ${t}`).toBeTruthy();
     }
-    // ③ 就绪认证（右栏可折叠区，默认展开）
+    // ③ 就绪认证（WO-SANDBOX-DECLUTTER 后住在诊断抽屉里，默认折叠 —— 展开即全套都在）
+    await openDiag(user);
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
     for (const d of CFG.radarDims) expect(screen.getByTestId(`sandbox-radar-axis-${d.key}`)).toBeTruthy();
+    // ③b 世界列表 + 本体派生计数也在抽屉里（原来分别占着右栏与顶栏）
+    expect(screen.getByTestId("sandbox-worlds")).toBeTruthy();
+    expect(screen.getByTestId("sandbox-config-summary").textContent ?? "").toContain("本体派生");
     // ④ 多场景对比（未分支时给的是空态说明，不是消失）
     expect(screen.getByTestId("sc-rail-compare")).toBeTruthy();
     expect(screen.getByTestId("sandbox-compare-idle")).toBeTruthy();
@@ -694,6 +733,7 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-tab-vars"));
+    await openInfo(user, "inspect-evidence");
     const note = (await screen.findByTestId("sc-inspect-evidence-gap")).textContent ?? "";
     expect(note, "必须点名是宿主这一份缺字段").toContain("evidence");
     expect(note, "必须把「不是引擎没给」说出来 —— 两件事修法完全不同").toContain("不是引擎没给");
@@ -791,6 +831,8 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-mode-chain"));
+    // WO-SANDBOX-DECLUTTER：第一层只留四个结论数，完整口径与取证进 `?`（原文一字未改）。
+    await openInfo(user, "chain-coverage");
     const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
 
     // 头号判据：这句话必须在（变异反证 ② 删掉它 ⇒ 本条红）
@@ -922,8 +964,11 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
 
   // ── ⑤ 阻滞点只能按 stage 联动：口径差上屏 ───────────────────────────────────
   it("⑤ 「只能按 stage 联动、不能按节点点亮」这条接缝缺口在屏上，且段数派生自 CHAIN_STAGES", async () => {
+    const user = userEvent.setup();
     mount();
     await ready();
+    // WO-SANDBOX-DECLUTTER：收进阻滞点计数旁的 `?`（原文一字未改），不再常驻整段
+    await openInfo(user, "imp-join-gap");
     const txt = screen.getByTestId("sc-imp-join-gap").textContent ?? "";
     expect(txt, "两个求解器没有共同 id 维度这件事必须说出来").toContain("没有共同的 id 维度");
     expect(txt, "「不能按节点精确点亮」是这条缺口的后果，不许省").toContain("不能按节点精确点亮");
