@@ -7,13 +7,16 @@ import {
   ChainLossPayloadSchema,
   formatDays,
   formatPct,
-  LAYOUT,
-  radialOffsetFrom,
-  RING_LAYOUT,
+  MAX_LABELS_PER_RING,
+  METRO_LAYOUT,
+  pickLabelledStepIds,
   SHARED_BASIS_LABEL,
   STAGE_LABEL,
   STATION_RADIUS,
   STEP_KIND_LABEL,
+  SUSPENDED_HALF,
+  SUSPENDED_TAG,
+  VALUE_ADD_TAG,
   type ChainLineMap,
   type ChainLossPayload,
   type StationVM,
@@ -31,10 +34,22 @@ import {
 import styles from "./ChainLineMapView.module.css";
 
 /**
- * WO-SANDBOX-F1 · 全链线路图（地铁图隐喻）。
+ * WO-SANDBOX-F1 · 全链线路图（地铁图隐喻）。**WO-CHAIN-MAP-LAYOUT 起改为横向地铁/物流线路图。**
  *
  * 站 = 环节 · 换乘站 = 共用工序（共享瓶颈） · **合流站 = 齐套 AND** · 停运区间 = 断点 · 红弧 = 返工逆行。
  * 站圈大小 ∝ 该站 `pctOfChainLoss`（映射与夹取见 `chainLineMap.ts` `stationRadius`）。
+ *
+ * ── 为什么从环改成横线（三处实测代价，判据在 `chainLineMap.ts` §5 原文）──────────
+ * ① 放射式标签在圆的顶/底必然拥挤（实测底部三条标签叠成一团）；
+ * ② 圆上没有阅读起点；③ 圆心整片浪费。
+ * 根因：**闭环是语义不是形状**。新图把闭环交给右端一条回流箭头，形状回到「起点在左、终点在右」。
+ *
+ * ── 浮层纪律（`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3）────────────
+ * 本组件**禁止**用 HTML `title` 属性或 SVG `<title>` 元素做任何浮层：那是浏览器原生 tooltip，
+ * 由操作系统绘制、不受 React 控制、**永远画在最上层**、鼠标移开后滞留 ——
+ * 2026-08-10 实测事故正是本文件的两个 `<title>` 滞留并遮挡图形本身。
+ * 站的读数走三条**受控**通路：图上 `<text>`（标名的站）· `<g>` 的 `data-pct`（测试与脚本）·
+ * `<g>` 的 `aria-label`（读屏，`role="img"` 下优先级高于 `<title>`）· 右侧 `<aside>` 悬浮面板（全量、移开即换）。
  *
  * ── 数据来源（**只有一条**）────────────────────────────────────────────────────
  * 引擎求解器 `chain_loss_attribution`（WO-SANDBOX-E1），经 `runSolver` → B 侧 `/b/v1/solvers/{key}/run`。
@@ -61,30 +76,18 @@ import styles from "./ChainLineMapView.module.css";
 const HINT_MS = 1600;
 
 /**
- * 一圈上最多标几个站名。
- *
- * 实测（demo seed 42）主干 26 个站位、每个站名是 4–8 个汉字；三圈叠起来是 78 组标签，
- * 在 ~600px 宽的画布槽里必然糊成一团（真浏览器实拍确认）。
- * 处置纪律：**减的是标签，不是站** —— 站一个不少、悬浮/右栏仍给全量读数；
- * 只把「先看哪几个」标出来。选取判据 = `pctOfChainLoss` 降序（引擎给的损失占比，前端不另定优先级），
- * 并列按 stepId 字典序（R6 全序）。停运站位**不参与减标**：断点必须一直看得见。
+ * 一条线上最多标几个站名。**单一来源在派生层**（`chainLineMap.MAX_LABELS_PER_RING`）——
+ * 标签摆位是几何的一部分（要算包围盒），不能视图一套、派生层一套。此处只是转发。
  */
-export const MAX_LABELS_PER_RING = 9;
+export { MAX_LABELS_PER_RING };
 
 /**
- * 该圈上要标名字的 `stepId` 集合。
- * 多圈时**只有最外那一圈标名字**（三圈站在同一角度上，标三遍是纯重复）。
+ * 该条线上要标名字的 `stepId` 集合。
+ * 多条族线并排时**只有最后一条标名字**（三条线站在同一列上，标三遍是纯重复）。
  */
 export function labelledStepIds(map: ChainLineMap, isLabelRing: boolean): Set<string> {
   if (!isLabelRing) return new Set();
-  const ranked = [...map.stations]
-    .sort((a, b) => {
-      const av = a.pctOfChainLoss ?? -1;
-      const bv = b.pctOfChainLoss ?? -1;
-      return av !== bv ? bv - av : a.stepId < b.stepId ? -1 : 1;
-    })
-    .slice(0, MAX_LABELS_PER_RING);
-  return new Set(ranked.map((s) => s.stepId));
+  return pickLabelledStepIds(map.stations);
 }
 
 type LoadState =
@@ -161,24 +164,19 @@ function AndGate({ x, y, testId }: { x: number; y: number; testId: string }) {
 }
 
 /**
- * 环形布局下的**标签摆位**（设计稿 `:788` 同法）：沿半径朝**环外**推开，按象限定文字锚点。
- * 直线布局那种"一律摆正上方"在环上会让左右两侧的站名压到线上。
+ * 折行处的**转折标记**。折行是"这条线换到下一行继续"，不是"线到这里断了" ——
+ * 没有这个标记，读图的人会把折行读成两条独立的线（本单验收判据之一）。
  */
-function labelAnchor(angle: number, r: number, x: number, y: number) {
-  const co = Math.cos(angle);
-  const si = Math.sin(angle);
-  // 「离开环」只有一处实现（`chainLineMap.radialOffsetFrom`）——在途图层的站上徽标走的是同一个函数。
-  const out = radialOffsetFrom(x, y, angle, r + 15);
-  return {
-    lx: out.x,
-    ly: out.y,
-    /** 上下两极用 middle，左右两侧朝外对齐 */
-    anchor: Math.abs(co) < 0.34 ? ("middle" as const) : co > 0 ? ("start" as const) : ("end" as const),
-    /** 名称行的基线微调（正下方要多让一点，正上方要少让一点） */
-    dyName: si > 0.6 ? 10 : si < -0.6 ? -3 : 4,
-    /** 百分比行 */
-    dyPct: si > 0.6 ? 21 : si < -0.6 ? 8 : 15,
-  };
+function FoldMark({ x, y, testId }: { x: number; y: number; testId: string }) {
+  return (
+    <g data-testid={testId} data-glyph="fold-mark">
+      {/* 文字摆在走线沟里、连接线**上方** 6px：走线沟高度由 `METRO_LAYOUT.gutterH` 保证，
+          所以这行字既不会压到上一行的下方标签，也不会被下一行的上方标签压到。 */}
+      <text className={styles.foldMark} x={x} y={y - 6} textAnchor="middle">
+        ↩ 折行续接 · 同一条线，接下一行左端
+      </text>
+    </g>
+  );
 }
 
 /**
@@ -202,7 +200,8 @@ function Station({
   onEnter: () => void;
   onLeave: () => void;
 }) {
-  const L = labelAnchor(s.angle, s.r, s.x, s.y);
+  const pctText = s.valueAdd ? VALUE_ADD_TAG : formatPct(s.pctOfChainLoss);
+  const L = labelled ? s.labelPos : null;
   return (
     <g
       data-testid={`clm-station-${s.stepId}`}
@@ -211,19 +210,41 @@ function Station({
       data-stage={s.stage}
       data-line={s.lineId}
       data-pct={s.pctOfChainLoss === null ? "" : String(s.pctOfChainLoss)}
+      data-pct-text={pctText}
       data-radius={String(s.r)}
+      data-row={String(s.row)}
+      data-col={String(s.col)}
+      data-label-side={L === null ? "" : L.side}
+      data-label-tier={L === null ? "" : String(L.tier)}
       data-shared-basis={s.sharedBasis === null ? "" : s.sharedBasis.kind}
       data-shared-families={sharedAcrossFamilies ? "1" : "0"}
       data-ring-index={s.ringIndex}
       tabIndex={0}
       role="img"
-      aria-label={`${s.label}：占全链损失 ${formatPct(s.pctOfChainLoss)}`}
+      /* 读屏的唯一读数出口。`role="img"` 下 aria-label 优先于 SVG <title>，
+         所以删掉 <title> 之后无名站的可达名**不退化**（门：件三组逐站断言 accessible name）。
+         ⚠ 增值段必须读成「增值段·不进损失分母」，**不能**读成「占全链损失 —」：
+         后者会被听成"占比未知/取不到数"，而事实是它**根本不进这个分母**（S0 §5）——
+         两件事完全不同，屏上早就分开了（`data-pct-text`），可达名不能反而糊回去。
+         2026-08-10 实测：本次载荷 10 个增值站**全部未标名**，即全部只能靠可达名说话。
+         复验：`test/chain-line-map.seam.test.tsx` 的「★ 可达性不退化」用例逐站断言，或
+         `node -e "const p=require('./test/fixtures/chain-loss-real.json');
+           console.log(p.nodes.flatMap(n=>n.steps).filter(s=>s.valueAdd).length)"` → 10。
+         ⚠ **别用 `grep -c '\"valueAdd\": true'` 数**：那会数出 20 ——
+         载荷里 `evidence[]` 另带 10 条同名字段，而站点只来自 `nodes[].steps`。
+         （2026-08-10 我自己就先写错了这条复验命令，当场被数字对不上抓住：
+           拿一个"看起来相关的数字"当判据，正是 CLAUDE.md 铁律 0.6 点名的那个病。） */
+      aria-label={
+        s.valueAdd
+          ? `${s.label}：${VALUE_ADD_TAG}（增值段不计入损失分母）`
+          : `${s.label}：占全链损失 ${formatPct(s.pctOfChainLoss)}`
+      }
       onMouseEnter={onEnter}
       onFocus={onEnter}
       onMouseLeave={onLeave}
       onBlur={onLeave}
     >
-      {/* 共线换乘：多圈同角度对齐时额外加一圈外环，让"三条族线共用"在图上直接可读 */}
+      {/* 共线换乘：多条族线同列对齐时额外加一圈外环，让"三条族线共用"在图上直接可读 */}
       {sharedAcrossFamilies ? (
         <circle className={styles.sharedFamilyHalo} data-testid={`clm-shared-halo-${s.stepId}`} cx={s.x} cy={s.y} r={s.r + 5} />
       ) : null}
@@ -235,22 +256,19 @@ function Station({
       ) : (
         <circle className={s.glyph === "value-add" ? styles.stationValueAdd : styles.stationStop} cx={s.x} cy={s.y} r={s.r} />
       )}
-      {/* 站名与读数：密度过高时只标"值得先看的那些"，其余悬浮出（站本身一个不少，见 labelledStepIds） */}
-      {labelled ? (
+      {/* 站名与读数：**上下交替**摆位（几何在派生层算好，视图只负责画）。
+          密度过高时只标"值得先看的那些"，其余读数走 data-pct / aria-label / 右栏面板 ——
+          **不再用 SVG <title>**（原生 tooltip 会滞留遮挡，见文件头浮层纪律）。 */}
+      {L !== null ? (
         <>
-          <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
+          <text className={styles.stationName} x={L.x} y={L.nameY} textAnchor="middle">
             {s.label}
           </text>
-          <text className={styles.stationPct} data-testid={`clm-pct-${s.stepId}`} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
-            {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
+          <text className={styles.stationPct} data-testid={`clm-pct-${s.stepId}`} x={L.x} y={L.subY} textAnchor="middle">
+            {pctText}
           </text>
         </>
-      ) : (
-        /* 无名站也要能被测试与读屏找到读数（悬浮面板给全量），故保留一个隐藏读数节点 */
-        <title data-testid={`clm-pct-${s.stepId}`}>
-          {s.label} · {s.valueAdd ? "增值·不进分母" : formatPct(s.pctOfChainLoss)}
-        </title>
-      )}
+      ) : null}
     </g>
   );
 }
@@ -267,8 +285,8 @@ function SuspendedStop({
   onEnter: () => void;
   onLeave: () => void;
 }) {
-  const a = 11;
-  const L = labelAnchor(s.angle, a, s.x, s.y);
+  const a = SUSPENDED_HALF;
+  const L = labelled ? s.labelPos : null;
   return (
     <g
       data-testid={`clm-suspended-${s.stepId}`}
@@ -276,6 +294,9 @@ function SuspendedStop({
       data-stage={s.stage}
       data-line={s.lineId}
       data-empty-kind={s.emptyKind}
+      data-row={String(s.row)}
+      data-col={String(s.col)}
+      data-label-side={L === null ? "" : L.side}
       tabIndex={0}
       role="img"
       aria-label={`${s.label}：停运（断点）· ${s.emptyKind}`}
@@ -286,20 +307,16 @@ function SuspendedStop({
     >
       <rect className={styles.suspendedBox} x={s.x - a} y={s.y - a} width={a * 2} height={a * 2} rx={3} />
       <path className={styles.suspendedCross} d={`M ${s.x - 5} ${s.y - 5} L ${s.x + 5} ${s.y + 5} M ${s.x + 5} ${s.y - 5} L ${s.x - 5} ${s.y + 5}`} />
-      {labelled ? (
+      {L !== null ? (
         <>
-          <text className={styles.stationName} x={L.lx} y={L.ly + L.dyName} textAnchor={L.anchor}>
+          <text className={styles.stationName} x={L.x} y={L.nameY} textAnchor="middle">
             {s.label}
           </text>
-          <text className={styles.suspendedTag} x={L.lx} y={L.ly + L.dyPct} textAnchor={L.anchor}>
-            停运
+          <text className={styles.suspendedTag} x={L.x} y={L.subY} textAnchor="middle">
+            {SUSPENDED_TAG}
           </text>
         </>
-      ) : (
-        <title>
-          {s.label} · 停运（断点）
-        </title>
-      )}
+      ) : null}
     </g>
   );
 }
@@ -493,7 +510,7 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
     [viewportSize],
   );
 
-  const bounds = state.status === "ready" ? state.map.bounds : { width: LAYOUT.minWidth, height: LAYOUT.height };
+  const bounds = state.status === "ready" ? state.map.bounds : { width: METRO_LAYOUT.minWidth, height: METRO_LAYOUT.height };
 
   const doFit = useCallback(() => {
     const vp = viewportSize();
@@ -565,6 +582,12 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
   }, [ringMaps.map((m) => m.family?.key ?? "base").join("|"), ringMaps.length]);
   const hovered = ringMaps.flatMap((m) => m.stations).find((s) => s.stepId === hoverId) ?? null;
   const hoveredEmpty = ringMaps.flatMap((m) => m.suspended).find((s) => s.stepId === hoverId) ?? null;
+  /**
+   * 舞台尺寸取**所有并排族线的外包**：多族时第 N 条整块下移，只按第一条的 bounds 画会把后面几条裁掉。
+   * （环形时代三圈同心、外包与单圈几乎一样，所以此前直接用 `map.bounds` 没露馅。）
+   */
+  const stageW = ringMaps.reduce((w, m) => Math.max(w, m.bounds.width), map?.bounds.width ?? METRO_LAYOUT.minWidth);
+  const stageH = ringMaps.reduce((h, m) => Math.max(h, m.bounds.height), map?.bounds.height ?? METRO_LAYOUT.height);
 
   return (
     <div className={styles.root} data-testid="clm-root" data-chrome={chrome}>
@@ -685,19 +708,19 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
             {map.stats.stationCount > MAX_LABELS_PER_RING ? (
               <span data-testid="clm-label-thinning">
                 图上按损失占比标了前 {MAX_LABELS_PER_RING} 个站名（共 {map.stats.stationCount} 站，其余悬浮出）——
-                <b>减的是标签不是站</b>；停运站位不参与减标
-                {ringMaps.length > 1 ? "；多圈时只有最外圈标名（三圈同角度，标三遍是重复）" : ""}
+                <b>减的是标签不是站</b>；停运站位不参与减标；标出来的站名<b>上下交替</b>摆放，同侧再撞则分层
+                {ringMaps.length > 1 ? "；多条族线并排时只有最后一条标名（三条线同列，标三遍是重复）" : ""}
               </span>
             ) : null}
             {/* 族线状态：**代价明写**（多发了几次请求），失败也明写（主链照常画） */}
             {famState.status !== "off" ? (
               <span data-testid="clm-family-status" data-family-state={famState.status}>
                 {famState.status === "loading"
-                  ? `产品族同心环：取数中（额外 ${famState.count} 次 chain_loss_attribution，每族一张真实锚点单）`
+                  ? `产品族并行线：取数中（额外 ${famState.count} 次 chain_loss_attribution，每族一张真实锚点单）`
                   : famState.status === "ready"
-                    ? `产品族同心环 ${famState.maps.length} 圈 · 额外 ${famState.maps.length} 次求解器调用 · 共线换乘 ${sharedStepIds.size} 处` +
+                    ? `产品族并行线 ${famState.maps.length} 条 · 额外 ${famState.maps.length} 次求解器调用 · 共线换乘 ${sharedStepIds.size} 处` +
                       `（${famState.maps.map((m) => `${m.family?.label}=${m.family?.anchorSo}`).join(" / ")}）`
-                    : `产品族同心环取数失败：${famState.message} —— 主链那一圈照常画，不因族线失败打成空态`}
+                    : `产品族并行线取数失败：${famState.message} —— 主链那一圈照常画，不因族线失败打成空态`}
               </span>
             ) : null}
           </section>
@@ -722,20 +745,23 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
               <svg
                 className={styles.stage}
                 data-testid="clm-stage"
-                width={map.bounds.width}
-                height={map.bounds.height}
-                viewBox={`0 0 ${map.bounds.width} ${map.bounds.height}`}
+                width={stageW}
+                height={stageH}
+                viewBox={`0 0 ${stageW} ${stageH}`}
                 style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.k})` }}
               >
                 <defs>
                   <marker id="clm-rework-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
                     <path className={styles.reworkArrowHead} d="M 0 0 L 6 3 L 0 6 z" />
                   </marker>
+                  <marker id="clm-closure-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3.5" orient="auto">
+                    <path className={styles.closureArrowHead} d="M 0 0 L 7 3.5 L 0 7 z" />
+                  </marker>
                 </defs>
 
                 {ringMaps.map((rm, ri) => (
                 <g key={rm.family?.key ?? "base"} data-testid={`clm-ring-layer-${rm.family?.key ?? "base"}`} data-ring-index={rm.family?.ringIndex ?? 0}>
-                {/* 环名（族线标识贴在环的正上方；单链形态贴主线名） */}
+                {/* 线名（族线标识贴在本条线第一行的左端 = 阅读起点；单链形态贴主线/支线名） */}
                 {(() => { const map = rm; const labels = labelledStepIds(rm, ri === ringMaps.length - 1); return (<>
                 {map.family !== null ? (
                   <text
@@ -743,43 +769,65 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
                     data-testid={`clm-ring-${map.family.key}`}
                     data-ring-index={map.family.ringIndex}
                     data-anchor-so={map.family.anchorSo ?? ""}
-                    x={RING_LAYOUT.cx}
-                    y={RING_LAYOUT.cy - RING_LAYOUT.ry * map.family.ringOffset - 12 - map.family.ringIndex * 13}
-                    textAnchor="middle"
+                    x={map.lines[0]!.labelX}
+                    y={map.lines[0]!.labelY}
                   >
                     ━ {map.family.label} · 锚点 {map.family.anchorSo ?? "—"}
                   </text>
                 ) : (
                   map.lines
                     .filter((l) => l.slotCount > 0)
-                    .map((l, i) => (
-                      <text key={l.lineId} className={styles.lineLabel} data-testid={`clm-line-${l.lineId}`} x={8} y={18 + i * 14}>
+                    .map((l) => (
+                      <text key={l.lineId} className={styles.lineLabel} data-testid={`clm-line-${l.lineId}`} x={l.labelX} y={l.labelY}>
                         {l.label}
                       </text>
                     ))
                 )}
 
-                {/* 区间（弧）：live / suspended / closure 三态三图元。closure 是结构推定，刻意与实边不同。 */}
+                {/* 起点标记：横向线路图必须有「从哪开始看」（环形版最被诟病的第 ② 条）。 */}
+                {map.lines
+                  .filter((l) => l.slotCount > 0)
+                  .map((l) => (
+                    <text
+                      key={`start-${l.lineId}`}
+                      className={styles.startMark}
+                      data-testid={`clm-start-${l.lineId}`}
+                      x={l.labelX}
+                      y={l.y + 4}
+                    >
+                      ▶ 起点
+                    </text>
+                  ))}
+
+                {/* 区间：live / suspended / closure 三态三图元。closure 是结构推定，刻意与实边不同。 */}
                 {map.segments.map((seg) => (
                   <path
                     key={seg.segmentId}
                     data-testid={`clm-seg-${seg.segmentId}`}
                     data-segment-state={seg.state}
+                    data-fold={seg.fold === true ? "1" : "0"}
                     className={
                       seg.state === "suspended" ? styles.trackSuspended : seg.state === "closure" ? styles.trackClosure : styles.trackLive
                     }
                     d={seg.path ?? `M ${seg.x1} ${seg.y1} L ${seg.x2} ${seg.y2}`}
+                    markerEnd={seg.state === "closure" ? "url(#clm-closure-arrow)" : undefined}
                     fill="none"
                   />
                 ))}
 
-                {/* 闭环标注（只在最外圈画一次，避免三环叠三行字） */}
-                {map.closureBasis !== null && (map.family?.ringIndex ?? 0) === 0 ? (
+                {/* 折行转折标记：「没断，接下一行左端」 */}
+                {map.folds.map((f) => (
+                  <FoldMark key={f.foldId} x={f.x} y={f.y} testId={`clm-fold-${f.foldId}`} />
+                ))}
+
+                {/* 闭环注记（只在第一条族线画一次，避免三条线叠三行字）。
+                    横向布局下它贴在**底部回流走线沟**上，正对那条回流箭头 —— 不再占用图心。 */}
+                {map.closureBasis !== null && map.closureReturn !== null && (map.family?.ringIndex ?? 0) === 0 ? (
                   <text
                     className={styles.closureLabel}
                     data-testid="clm-closure-label"
-                    x={RING_LAYOUT.cx}
-                    y={RING_LAYOUT.cy}
+                    x={map.closureReturn.labelX}
+                    y={map.closureReturn.labelY}
                     textAnchor="middle"
                   >
                     ↻ 闭环（结构推定）：回款 → 再投入需求
@@ -789,23 +837,10 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
                 {/* 合流站（齐套 AND）：汇流母线 + AND 闸门。图元与换乘站刻意不同。 */}
                 {map.andJoin !== null ? (
                   <g data-testid="clm-and-join" data-join-semantics={map.andJoin.semantics} data-target={map.andJoin.targetStepId}>
-                    {/* 环形下母线 = 支线出口 → 合流站的直连（穿环内，一眼看出"喂进来"） */}
-                    <path
-                      className={styles.andBus}
-                      data-testid="clm-and-bus"
-                      d={`M ${map.andJoin.sourceX} ${map.andJoin.sourceY} L ${(map.andJoin.sourceX + map.andJoin.targetX) / 2} ${(map.andJoin.sourceY + map.andJoin.targetY) / 2} L ${map.andJoin.targetX} ${map.andJoin.targetY}`}
-                    />
-                    <AndGate
-                      x={(map.andJoin.sourceX + map.andJoin.targetX) / 2}
-                      y={(map.andJoin.sourceY + map.andJoin.targetY) / 2}
-                      testId="clm-and-gate"
-                    />
-                    <text
-                      className={styles.andLabel}
-                      x={(map.andJoin.sourceX + map.andJoin.targetX) / 2}
-                      y={(map.andJoin.sourceY + map.andJoin.targetY) / 2 - 26}
-                      textAnchor="middle"
-                    >
+                    {/* 横向下母线 = 支线出口 → 走线沟 → 竖直抬进主线的汇入站（一眼看出"从下面喂进来"） */}
+                    <path className={styles.andBus} data-testid="clm-and-bus" d={map.andJoin.busPath} />
+                    <AndGate x={map.andJoin.gateX} y={map.andJoin.gateY} testId="clm-and-gate" />
+                    <text className={styles.andLabel} x={map.andJoin.gateX + 12} y={map.andJoin.gateY + 4} textAnchor="start">
                       齐套 AND · 全到齐才放行
                     </text>
                   </g>

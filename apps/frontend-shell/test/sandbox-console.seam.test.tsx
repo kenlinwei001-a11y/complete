@@ -79,7 +79,7 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
 
 import SandboxView from "@/views/sim/SandboxView";
 import { ChainLineMapView } from "@/views/sim/ChainLineMapView";
-import { ChainLossPayloadSchema, type ChainLossPayload } from "@/views/sim/chainLineMap";
+import { ChainLossPayloadSchema, RING_LAYOUT, type ChainLossPayload } from "@/views/sim/chainLineMap";
 import { ChainImpedimentPayloadSchema, type ChainImpedimentPayload } from "@/views/sim/chainImpediment";
 import {
   buildPareto,
@@ -872,7 +872,28 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
   });
 
   // ── ④ 在途图层叠在线路图同一块画布上 ────────────────────────────────────────
-  it("④ 两张图在**同一个画布容器**里，且两个 SVG 的 viewBox 逐字符相同（= 同一套坐标）", async () => {
+  /**
+   * ⚠ **WO-CHAIN-MAP-LAYOUT 改写了本用例的后半段，改的是「事实」不是「口径」——必须读完再动。**
+   *
+   * 本用例原本断言「两个 SVG 的 `viewBox` 逐字符相同 ⇒ 同一坐标即同一屏点」。
+   * 那条断言成立的前提是**两层画在同一个椭圆上**：线路图与在途层都用 `RING_LAYOUT.viewW/viewH`。
+   * 该前提在 WO-CHAIN-MAP-LAYOUT 之后**不再成立**：
+   *   · 线路图已改为**横向**布局，`viewBox` 由 `METRO_LAYOUT` 按站位数算出（本次载荷 `0 0 2266 770.2`）；
+   *   · 在途层**仍画在环上**（`TransitFlowLayer.tsx:826` 用 `RING_LAYOUT.viewW/viewH` = `0 0 980 680`），
+   *     它的弧长参数化 / 径向徽标 / 切向朝向全部是椭圆专用（`transit-geometry.seam.test.tsx` 在验），
+   *     迁到横向几何是**独立一单**，不在本单 🚦 范围内。
+   *
+   * 所以本用例现在断言的是**当下的真事实**：两层仍钉在**同一个屏上矩形**（叠加挂载点没坏），
+   * 但**不再共用坐标系** —— 不许再拿"viewBox 相同"当已对齐的证据。
+   *
+   * 🔴 **未收口的欠账（交接给持有 `SandboxConsole.tsx` 的那张单）**：
+   *    `SandboxConsole.tsx` 的 `OverlayNote`（函数在 `:1125`，文案在 `:1136` 一行）仍写着
+   *    「两图 `viewBox` 相同 ⇒ 同一坐标即同一屏点」——**这句话现在是假的**，属本体 §8
+   *    `G-STALE-MEASURED-CLAIM`。本单的 🚦 范围边界明写「不碰 SandboxConsole.tsx」，故不在此偷改。
+   *    下面那条断言就是这笔欠账的**机械留痕**：它一旦变绿（= 两层又同坐标了），说明有人做了迁移，
+   *    那时候必须回头把 `OverlayNote` 的措辞一起改回去。
+   */
+  it("④ 两张图在**同一个画布容器**里；坐标系已分家（线路图横向 / 在途层仍在环上）", async () => {
     const user = userEvent.setup();
     mount();
     await ready();
@@ -882,15 +903,21 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     const stack = screen.getByTestId("sc-metro-stack");
     expect(stack.getAttribute("data-transit-overlay"), "图层开着时叠加没有启用").toBe("on");
 
-    // 线路图舞台与在途环**都在这一个容器里**（此前是画布槽下的两个兄弟块）
+    // 仍然成立的那一半：线路图舞台与在途环**都在这一个容器里**（此前是画布槽下的两个兄弟块）
     const stage = within(stack).getByTestId("clm-stage");
     const rings = stack.querySelectorAll('[data-testid="transit-ring"]');
     expect(rings.length, "叠加层钉的是 transit-ring 这个 testid；它不在同一个容器里 ⇒ CSS 选择器已经落空").toBe(1);
-    expect(stage.getAttribute("viewBox")).toBeTruthy();
-    expect(
-      rings[0]!.getAttribute("viewBox"),
-      "两图 viewBox 不同 ⇒ 盒子对齐了坐标也对不上，叠加就是把两张图摞在一起而已",
-    ).toBe(stage.getAttribute("viewBox"));
+    const stageBox = stage.getAttribute("viewBox");
+    const ringBox = rings[0]!.getAttribute("viewBox");
+    expect(stageBox).toBeTruthy();
+    expect(ringBox).toBeTruthy();
+
+    // 已经不成立的那一半：两层的 viewBox 现在**必然不同**（一个横向、一个环）。
+    // 断言"不同"而不是删掉这条 —— 删了就没人知道这笔欠账还在。
+    expect(ringBox, "在途层的 viewBox 不再是环几何 ⇒ 有人做了迁移：请同时修 SandboxConsole.tsx:1136 的叠加说明").toBe(
+      `0 0 ${RING_LAYOUT.viewW} ${RING_LAYOUT.viewH}`,
+    );
+    expect(stageBox, "线路图舞台又回到环几何 ⇒ 横向布局被回退了").not.toBe(ringBox);
 
     // 关掉图层 ⇒ 叠加也关掉（不留一层看不见的东西压在画布上）
     await user.click(within(screen.getByTestId("sc-transit-toggle")).getByRole("checkbox"));
