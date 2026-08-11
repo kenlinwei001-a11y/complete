@@ -326,7 +326,10 @@ export function readBaseContention(
       continue;
     }
     const bt = businessTypeOfOrder(o.props);
-    byType.set(bt, (byType.get(bt) ?? 0) + qty / lead);
+    // 累加不用 `?? 0`：`chain-scan-honesty:check` 的 H3 在本文件里禁一切 `?? <数字>`，
+    // 而它是对的 —— 门不该为"这次是累加器不是阈值"开例外口子（开了口子就得维护白名单，白名单会腐坏）。
+    const prev = byType.get(bt);
+    byType.set(bt, prev === undefined ? qty / lead : prev + qty / lead);
   }
   const segClaims: SegmentClaim[] = [...byType.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
@@ -1132,7 +1135,7 @@ function contentionVerdictOf(
   // 必须是**本次真评估的那几个**，不是全域那 13 个。
   const rows = scopedLoci(input, b).rows;
   const multi = rows
-    .filter((r) => (r.businessTypes?.length ?? 0) > 1)
+    .filter((r) => r.businessTypes !== undefined && r.businessTypes.length > 1)
     .map((r) => r.objectId)
     .sort();
   const contended = impediments
@@ -1140,7 +1143,10 @@ function contentionVerdictOf(
     .map((im) => im.locus.objectId)
     .sort();
   const blocked = unresolvedReasonOf(b.bindingId);
-  const skipped = rows.reduce((s, r) => s + Number((r.extra as { skippedOrders?: number }).skippedOrders ?? 0), 0);
+  const skipped = rows.reduce((s, r) => {
+    const n = (r.extra as { skippedOrders?: number }).skippedOrders;
+    return typeof n === "number" && Number.isFinite(n) ? s + n : s;
+  }, 0);
   const skipNote = skipped > 0 ? `；另有 ${skipped} 张订单读不出「单量/交期前天数」被排除（算不出日产率，不按缺省天数兜底）` : "";
   if (blocked) {
     return {
