@@ -92,7 +92,12 @@ services:
     volumes:
       - blob-data:/data/blobs
     ports:
-      - "4001:4001"                          # 直连调试入口（前端走 gateway 同源）
+      # 直连调试入口（前端走 gateway 同源）。**只绑 127.0.0.1**：容器间通信走 compose 网络
+      # 的服务名（agentcore 用 http://datacore:4001、gateway 反代同理），完全不经这条发布端口，
+      # 故收窄到 loopback 不影响任何服务间调用；受影响的仅「从别的机器直连 4001 调试」——
+      # 那正是要关掉的面（`/metrics` 与 `/b/v1/internal/invalidate` 曾从这里匿名可达）。
+      # 远程调试改用 SSH 隧道：ssh -L 4001:127.0.0.1:4001 <host>
+      - "127.0.0.1:4001:4001"
     depends_on:
       postgres-a:
         condition: service_healthy
@@ -130,7 +135,9 @@ services:
       QOS_AGENT_PER_TOOL_CALL_CAP: ${QOS_AGENT_PER_TOOL_CALL_CAP:-8}
       QOS_AGENT_RETRY_MAX_ATTEMPTS: ${QOS_AGENT_RETRY_MAX_ATTEMPTS:-1}
     ports:
-      - "4002:4002"                          # 直连调试入口（前端走 gateway 同源）
+      # 同 datacore：只绑 127.0.0.1。gateway 反代与 A→B 的 scaffold/ask 调用都走 compose
+      # 网络服务名（http://agentcore:4002），不经这条发布端口。
+      - "127.0.0.1:4002:4002"
     depends_on:
       postgres-b:
         condition: service_healthy

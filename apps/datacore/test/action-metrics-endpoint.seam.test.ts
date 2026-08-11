@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, PLANNER } from "./helpers.js";
 import { ACTION_METRIC_NAMES } from "../src/metrics.js";
 
+/** 测试用假凭证（非任何真实部署值）。`/metrics` 已收口为服务间鉴权，抓取方须带此头。 */
+const SVC = "test-only-fake-service-token";
+const SVC_HEADERS = { "x-service-token": SVC };
+
 /**
  * 接缝门：S2 Action 三段埋点 × `/metrics` 端点。
  *
@@ -16,11 +20,11 @@ import { ACTION_METRIC_NAMES } from "../src/metrics.js";
  */
 describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
   it("真跑一条 Action（提交→审批→执行）后，GET /metrics 文本里三段计数器均 > 0", async () => {
-    const t = await makeApp();
+    const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     await seedBattery(t);
 
     // 端点在跑 Action **之前**不得已有该 Action 类型的计数（否则 >0 可能来自别处，断言就没鉴别力）
-    const before = await t.app.inject({ method: "GET", url: "/metrics" });
+    const before = await t.app.inject({ method: "GET", url: "/metrics", headers: SVC_HEADERS });
     expect(before.statusCode).toBe(200);
     expect(before.body).not.toContain('dc_action_submit_total{action_type="对象数据变更"');
 
@@ -43,7 +47,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
     expect((await t.repos.objects.get("demo", objectId))!.props.qty).toBe(4242); // 执行段真发生过
 
     // ---- 头号判据：外部监控真的看得见 -------------------------------------------------
-    const res = await t.app.inject({ method: "GET", url: "/metrics" });
+    const res = await t.app.inject({ method: "GET", url: "/metrics", headers: SVC_HEADERS });
     expect(res.statusCode).toBe(200);
     const body = res.body;
 
@@ -82,7 +86,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
    * 未接线动作不许为了让稳定率好看而被悄悄排除（诚实 > 好看）。
    */
   it("失败侧：未接线动作诚实失败后，/metrics 里必须出现 outcome=\"failed\" 的执行计数（不许只统计成功）", async () => {
-    const t = await makeApp();
+    const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     await seedBattery(t);
 
     const draftRes = await t.app.inject({
@@ -105,7 +109,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
       "EXECUTION_FAILED",
     );
 
-    const res = await t.app.inject({ method: "GET", url: "/metrics" });
+    const res = await t.app.inject({ method: "GET", url: "/metrics", headers: SVC_HEADERS });
     const body = res.body;
     const failed = new RegExp(
       `^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="failed"\\} (\\d+)$`,

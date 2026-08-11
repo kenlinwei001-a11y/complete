@@ -157,6 +157,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     });
   };
 
+  /**
+   * 服务间凭证校验（**单一实现**，供 `/metrics` 与 `/b/v1/internal/invalidate` 共用）。
+   *
+   * B 栈没有全局 onRequest 钩子 —— 鉴权是逐路由 `await auth(req)`，因此**只能在 handler 里守**：
+   * 漏写一个路由 = 那个路由裸奔，没有任何兜底会替它拦。
+   *
+   * **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 恒不通过（与 `/b/v1/internal/scaffold` 同口径）。
+   */
+  const requireServiceToken = (req: FastifyRequest): void => {
+    const tok = req.headers["x-service-token"];
+    if (!deps.config.SERVICE_TOKEN || typeof tok !== "string" || tok !== deps.config.SERVICE_TOKEN) {
+      throw new HttpError(401, "UNAUTHORIZED", "仅限服务间调用（x-service-token）");
+    }
+  };
+
   /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */
   const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>
     deps.repos.domainEvents.append({ id: newId("evt"), tenantId, event, payload, createdAt: new Date().toISOString() });
@@ -208,7 +223,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { status: "ok", dataCoreReachable };
   });
 
-  app.get("/metrics", async (_req, reply) => {
+  // 服务间专用：`qos_llm_tokens_total{provider,model}` 携带租户 provider 记录 ID + 模型名 + token 量，
+  // `qos_entitlement_fail_open_total` 更是对外广播「门禁当前是否在强制执行」——都不该匿名可读。
+  // 且指标是**全租户合计**，给任一租户的用户看反而扩大跨租户可见面 ⇒ 只发给服务间抓取方。
+  app.get("/metrics", async (req, reply) => {
+    requireServiceToken(req);
     reply.header("content-type", "text/plain; version=0.0.4");
     return deps.metrics.render();
   });
@@ -1885,9 +1904,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // -----------------------------------------------------------------------
   // 引用模式增量 §2.4：内部缓存失效钩子 —— A 的 C-2 webhook 注册表回调此端点
   // （{kind}.updated 事件 → 立即失效 B 侧对 A 资源的缓存；TTL 60s 兜底）。
-  // 该操作幂等无害（仅清缓存），不要求鉴权 —— 与 webhook 投递形态（裸 POST JSON）对齐。
+  //
+  // ⚠ 原注释写「该操作幂等无害（仅清缓存），不要求鉴权」——**已推翻**。它读 body 里的**任意
+  // `tenantId`** 并逐个 `invalidate()`，而 `deploy/nginx.conf` 的 `location ~ ^/(b|api)/v1/`
+  // 反代整个 `/b/v1/` 前缀 ⇒ **80 端口匿名可达**。匿名者可对任意租户无限次强制清缓存，每次清完
+  // 下一请求都要回源 DataCore = 放大型缓存击穿。「幂等」挡不住「可被无限次重放」。
+  //
+  // 收口为 SERVICE_TOKEN（与 `/b/v1/internal/scaffold` 同款）。**调用端同步已改**：
+  // `apps/datacore/src/outbox.ts` 只对 `AGENTCORE_BASE_URL` 同源的 hook 附带 token
+  // （见该文件 `isInternalPeer`——绝不能无差别附带：webhook URL 是租户自助注册的，
+  // 无差别附带 = 把服务间密钥送给任意租户填的地址）。
   // -----------------------------------------------------------------------
   app.post("/b/v1/internal/invalidate", async (req) => {
+    requireServiceToken(req);
     const body = (req.body ?? {}) as { event?: string; tenantId?: string; payload?: unknown };
     const event = body.event ?? "";
     const invalidated: string[] = [];
