@@ -251,11 +251,18 @@ function riskScopeOf(args: Record<string, unknown>): Partial<RiskTimelineOutput>
   return { scope: "ALL", scopeNote: "全网口径（未指定基地·跨全部风险基地）" };
 }
 
-/** 齐套物料表（mock 侧固定 4 种，镜像引擎 `mats.slice(0,4)` 的形状与算法：ratio = 可用 ÷ (单耗×数量)）。 */
+/**
+ * 齐套物料表（mock 侧固定 4 种，镜像引擎 `mats.slice(0,4)` 的形状与算法：ratio = 可用 ÷ (单耗×数量)）。
+ *
+ * ⚠ 库存量刻意调到**真会缺料**的水位：三元正极/电解液是瓶颈料，隔膜/铜箔恒够。
+ * 第一版把四种都给得很宽裕 → 全网与单基地一律 `shortageCount: 0`，屏上「缺料 0 张」——
+ * 那样这块面板永远演示不出「抽样的 N 张里 M 张缺料」这件本单要治的事（**mock 不比生产漂亮，
+ * 但也不该比生产干净**）。现状（确定性·同 seed 同结果）：全网取样 8 张里 3 张缺料，常州 2 张里 1 张。
+ */
 const KIT_MATS = [
-  { material: "三元正极", onHand: 2600, inTransit: 900, bomUnit: 0.42 },
+  { material: "三元正极", onHand: 1100, inTransit: 400, bomUnit: 0.42 },
   { material: "隔膜", onHand: 9000, inTransit: 2400, bomUnit: 0.18 },
-  { material: "电解液", onHand: 2100, inTransit: 900, bomUnit: 0.31 },
+  { material: "电解液", onHand: 620, inTransit: 280, bomUnit: 0.31 },
   { material: "铜箔", onHand: 8000, inTransit: 3000, bomUnit: 0.22 },
 ];
 
