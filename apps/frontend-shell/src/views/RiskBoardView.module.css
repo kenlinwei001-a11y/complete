@@ -198,6 +198,19 @@
 .rkDetH b {
   font-size: 14.5px;
 }
+/* WO-DISPOSITION-INLINE-ROW · 处置表「被点中那一行」+ 紧随其下的行内展开行。
+   视觉语言**复用本视图既有的打开态口径**：强调色同 .rkCardOpen（基地卡展开态），
+   底色/描边同既有 tokens（--hover-tint* / --line2），不新造一套。
+   左侧内嵌竖条把「触发行 + 展开行」在视觉上连成一体 —— 详情属于哪一行一眼可辨（这正是本单要治的）。 */
+.rkPlanRowOpen td:first-child {
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
+.rkPlanDetailRow > td {
+  padding: 0 8px 8px;
+  background: var(--hover-tint);
+  border-bottom: 1px solid var(--line2);
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
 .rkDetH span {
   font-size: 10px;
   color: var(--muted2);
