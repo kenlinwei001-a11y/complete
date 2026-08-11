@@ -146,6 +146,16 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
     items: [
       // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
       { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
+      // ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**方向性裁决**（两条分支在此真对立）─────
+      // · WO-IMPEDIMENTS-REACHABLE 要把 `chain-line-map` / `transit-flow` / `physical-topology` /
+      //   `node-inspector` / `chain-impediments` 五个键**加进本组**做导航入口 ——
+      //   它的目标是「让 chain-impediments 有一条渲染得到的路」（此前后端不派单 + 无专用 route ⇒ 零路径）。
+      // · WO-SANDBOX-IA-CONSOLIDATE 反过来把这五个键**从导航移走**，收编进沙盘（一屏五模式）。
+      // 裁决取后者，因为**它把前者的目标办成了、且办得更严**：五个键逐条登记在
+      // `CONSOLIDATED_INTO_SANDBOX`，每条写明沙盘内的到达路径；而门 `check-nav-group-coverage.mjs`
+      // 判据⑧ 会反过来验「收编不是删除」——其中 ⑧a 明令**不许两头占**（导航里还留 kind:"view" 条目
+      // = 重复入口 = 收编没发生）。故若照 impediments-reachable 一侧把五个键加回来，那道门当场变红。
+      // 也就是说：这不是我在两个都行的方案里挑一个，是机器先说话（复验见提交说明）。
       ...["project-sim", "global-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })),
       // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
       // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56
