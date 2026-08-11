@@ -275,6 +275,161 @@ export function segOfBusinessType(bt: BusinessType): CanonicalSeg | undefined {
   return SEG_REGISTRY.find((s) => s.seg === label);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 3.1 · 跨业务线争用「保谁」（A6 判据 · `SEG_REGISTRY` 是唯一判据源）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 「保谁」判据的**出处名**（= 应用细分册的符号名）。写成常量而不是散落的字符串字面量：
+ * 册要是哪天改名/换册，这里只改一处，而 `z.literal(...)` 会让所有旧载荷当场 schema 红。
+ */
+export const CONTENTION_BASIS_SOURCE = "SEG_REGISTRY" as const;
+
+/**
+ * 争用判据逐条账：**每条业务线的册值原样亮出来**（R13「这个数凭什么」）。
+ * `marginPct` / `floorPct` 一律经 `segOfBusinessType` 从 `SEG_REGISTRY` 取，本文件**零业务字面量**。
+ */
+export const ChainContentionBasisSchema = z.strictObject({
+  businessType: BusinessTypeSchema,
+  /** 册里的细分名（`SEG_REGISTRY[].seg`，派生非抄写）。 */
+  seg: z.string().min(1),
+  /** 册值：毛利率 %。 */
+  marginPct: z.number(),
+  /** 册值：毛利底线 %。 */
+  floorPct: z.number(),
+  /** 判据量 = `marginPct − floorPct`（**算出来的**，不落第二份可编辑字段）。 */
+  headroomPct: z.number(),
+  /** 该业务线在这个 locus 上的索取（单位随 `evidence.unit`）。 */
+  claim: z.number(),
+});
+export type ChainContentionBasis = z.infer<typeof ChainContentionBasisSchema>;
+
+/**
+ * **跨业务线争用**（A6 的两半之一：「保谁」）。挂在 `ChainImpediment` 上，**optional** ——
+ * 不承载业务线的判据（`Line`/`Process`/`MaterialBatch`/…）永远没有这个字段，
+ * 于是「有没有这一段」本身就是「这条阻滞点判不判得出业务线归属」的机器可读答案。
+ *
+ * 硬约束（schema 层，不靠调用方自觉）：
+ *  ① `keep` 与 `unknownReason` **恰有一个** —— 判不出来必须说为什么，不许两头空（静默）也不许两头有（自相矛盾）。
+ *  ② `keep` 必须 ∈ `businessTypes`（保一个没在争的，是把结论指到了别处）。
+ *  ③ `basis` 的业务线集合必须**恰好等于** `businessTypes`（少一条 = 有人在争但没进判据）。
+ */
+export const ChainContentionSchema = z
+  .strictObject({
+    /** 在这个 locus 上争同一产能面的业务线（≥2 —— 少于 2 就不叫争用）。字典序。 */
+    businessTypes: z.array(BusinessTypeSchema).min(2),
+    /** 判据逐条（与 `businessTypes` 同集合、同序）。 */
+    basis: z.array(ChainContentionBasisSchema).min(2),
+    /** 结论：优先保这条业务线。判不出来则缺省 + `unknownReason`。 */
+    keep: BusinessTypeSchema.optional(),
+    /** 人读的判据原文（含两个册值 —— 让人不必回源码就能复核）。 */
+    keepReason: z.string().min(1).optional(),
+    /** 判不出「保谁」时的诚实缺席原因（册漂 / 业务线不在册）。 */
+    unknownReason: z.string().min(1).optional(),
+    /** 判据出处（唯一合法值 = 应用细分册；写死这一个是为了让"换了个来源"变成 schema 级错误）。 */
+    basisSource: z.literal(CONTENTION_BASIS_SOURCE),
+  })
+  .superRefine((ct, ctx) => {
+    const hasKeep = ct.keep !== undefined;
+    if (hasKeep === (ct.unknownReason !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["keep"],
+        message: `keep 与 unknownReason 必须恰有一个：判出来就给 keep+keepReason，判不出来就给 unknownReason（收到 keep=${String(ct.keep)} / unknownReason=${String(ct.unknownReason)}）`,
+      });
+    }
+    if (hasKeep && ct.keepReason === undefined) {
+      ctx.addIssue({ code: "custom", path: ["keepReason"], message: "给了 keep 就必须给 keepReason（判据原文可复核·R13）" });
+    }
+    if (!hasKeep && ct.keepReason !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["keepReason"], message: "没判出 keep 却给了 keepReason（自相矛盾）" });
+    }
+    if (hasKeep && !ct.businessTypes.includes(ct.keep as BusinessType)) {
+      ctx.addIssue({ code: "custom", path: ["keep"], message: `keep="${String(ct.keep)}" 不在争用集合 [${ct.businessTypes.join("、")}] 里` });
+    }
+    const basisSet = [...new Set(ct.basis.map((b) => b.businessType))].sort().join("|");
+    const btSet = [...new Set(ct.businessTypes)].sort().join("|");
+    if (basisSet !== btSet) {
+      ctx.addIssue({ code: "custom", path: ["basis"], message: `basis 的业务线集合 [${basisSet}] 与 businessTypes [${btSet}] 不一致 —— 有人在争却没进判据` });
+    }
+  });
+export type ChainContention = z.infer<typeof ChainContentionSchema>;
+
+/**
+ * 「保谁」的**唯一实现**（PRD `docs/PRD-sandbox-redesign.md` §9 A6：判据来自 `SEG_REGISTRY.marginPct/floorPct`）。
+ *
+ * ── 判据（写死在这里，不许在引擎/前端各写一遍）────────────────────────────
+ *   **保「毛利率相对自身底线的余量最大」的那条业务线**，即 `argmax(marginPct − floorPct)`。
+ *   平手时依次按 `marginPct` 降序 → 业务线枚举字典序（**全序** ⇒ R6 同输入字节一致）。
+ *
+ * ── 为什么是「余量」而不是「毛利率最高」──────────────────────────────────
+ * PRD §9 A6 原文点名的是 **`marginPct/floorPct` 两个数**。只按 `marginPct` 排，`floorPct` 就成了
+ * 摆设（改它结论不变 = 判据里有一半是死的）；只按 `floorPct` 排，赚得多的那条反而先被砍。
+ * 余量 = 这条业务线在自己那条经营底线之上还剩多少可让的空间 —— 让空间大的那条**继续排产**，
+ * 让空间小的先动，才与 C15「经营毛利底线」同一口径（`Order.marginPct < Order.floorPct` 即越线）。
+ *
+ * ── 诚实缺席 ────────────────────────────────────────────────────────────
+ * 任一业务线在 `SEG_REGISTRY` 里查不到（两册漂了）⇒ 返回 `unknownReason`，
+ * **绝不**给一个"看着合理"的默认保谁 —— 争用场景下选错保谁的代价是真金白银。
+ */
+export function resolveContentionKeep(
+  claims: readonly { businessType: BusinessType; claim: number }[],
+): ChainContention | null {
+  const uniq = new Map<BusinessType, number>();
+  for (const c of claims) uniq.set(c.businessType, (uniq.get(c.businessType) ?? 0) + c.claim);
+  if (uniq.size < 2) return null; // 少于两条业务线 = 没有争用，不是"判不出来"
+  const businessTypes = [...uniq.keys()].sort();
+  const basis: ChainContentionBasis[] = [];
+  const missing: BusinessType[] = [];
+  for (const bt of businessTypes) {
+    const seg = segOfBusinessType(bt);
+    if (!seg) {
+      missing.push(bt);
+      continue;
+    }
+    basis.push({
+      businessType: bt,
+      seg: seg.seg,
+      marginPct: seg.marginPct,
+      floorPct: seg.floorPct,
+      headroomPct: seg.marginPct - seg.floorPct,
+      claim: uniq.get(bt) as number,
+    });
+  }
+  if (missing.length > 0) {
+    return ChainContentionSchema.parse({
+      businessTypes,
+      basis: businessTypes.map((bt) => {
+        const hit = basis.find((b) => b.businessType === bt);
+        return hit ?? { businessType: bt, seg: BUSINESS_TYPE_LABEL[bt], marginPct: Number.NaN, floorPct: Number.NaN, headroomPct: Number.NaN, claim: uniq.get(bt) as number };
+      }),
+      unknownReason:
+        `业务线 [${missing.map((b) => BUSINESS_TYPE_LABEL[b]).join("、")}] 在应用细分册里查不到经营参数 ——` +
+        `「保谁」的判据源缺失，诚实报 UNKNOWN（拒绝按缺省值裁决：争用场景下选错保谁的代价是真金白银）`,
+      basisSource: CONTENTION_BASIS_SOURCE,
+    });
+  }
+  const ranked = [...basis].sort(
+    (a, b) =>
+      b.headroomPct - a.headroomPct ||
+      b.marginPct - a.marginPct ||
+      (a.businessType < b.businessType ? -1 : a.businessType > b.businessType ? 1 : 0),
+  );
+  const win = ranked[0] as ChainContentionBasis;
+  return ChainContentionSchema.parse({
+    businessTypes,
+    basis,
+    keep: win.businessType,
+    keepReason:
+      `保 ${win.seg}：底线之上余量 ${win.headroomPct}pp（毛利 ${win.marginPct}% − 底线 ${win.floorPct}%）为最大；` +
+      ranked
+        .slice(1)
+        .map((r) => `${r.seg} ${r.headroomPct}pp（${r.marginPct}%−${r.floorPct}%）`)
+        .join("，"),
+    basisSource: CONTENTION_BASIS_SOURCE,
+  });
+}
+
 /**
  * **ChainScope**：一次扫描/推演的范围裁剪。这是闭「业务线维度带不下去」的契约口子——
  * WO 系列 §1 实测：`args.baseId` 有 4 处求解器读、`args.modelId` 6 处，
@@ -865,6 +1020,12 @@ export const ChainImpedimentSchema = z
     candidates: z.array(SolutionCandidateSchema).optional(),
     /** 枚举跑了但产不出候选时的**诚实缺席**原因（缺哪根杠杆 / 缺哪类数据）。 */
     noCandidateReason: z.string().min(1).optional(),
+    /**
+     * WO-A6-CONTENTION · **跨业务线争用**（§3.1）。**optional，且只有承载业务线的 locus 才会有** ——
+     * 字段缺省 ⇒ 这条阻滞点的业务线归属**判不出来**（不是"不属于任何业务线"）。
+     * 既有 15 条阻滞点一律不带此字段 ⇒ 逐字节不变（R6）。
+     */
+    contention: ChainContentionSchema.optional(),
   })
   .superRefine((im, ctx) => {
     const isBreak = im.kind === "BREAK";

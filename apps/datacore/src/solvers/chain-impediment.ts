@@ -37,11 +37,15 @@
  * 排序走 contracts 冻结的全序比较器 `compareChainImpediment`。
  */
 import {
+  BUSINESS_TYPE_LABEL,
   ChainImpedimentSchema,
   compareChainImpediment,
   isChainScopeUnscoped,
   readProcessHardCapacity,
+  resolveContentionKeep,
+  type BusinessType,
   type ChainBreakSubtype,
+  type ChainContention,
   type ChainImpediment,
   type ChainImpedimentKind,
   type ChainScope,
@@ -49,6 +53,7 @@ import {
   type DerivedDataMode,
 } from "@platform/contracts";
 import type { LinkInstance, ObjectInstance } from "../domain.js";
+import { businessTypeOfOrder } from "./portfolio.js";
 import { canonicalJson, hashString, round } from "../prng.js";
 import { enumerateImpedimentOptions } from "./impediment-options.js"; // WO-SANDBOX-S3 · 阻滞点 → 候选方案枚举器
 import {
@@ -98,10 +103,19 @@ export interface ImpedimentRuleBinding {
 }
 
 /**
- * **判据声明表**。六条，覆盖三类。
+ * 争用判据的 locus 对象类型 —— **单一出处**。判定表、`loci()` 分派、显式结论三处都引它，
+ * 不许各写一个字面量（写三份就等着哪天只改了两份）。
+ */
+export const CONTENTION_LOCUS_TYPE = "Base";
+
+/**
+ * **判据声明表**。七条，覆盖三类。
  *
  * 纪律：`ruleKey` 一律指向**已在规则库定义**的规则码（`synthetic/battery.ts BATTERY_RULES`），
- * 不虚构规则码 —— 虚构一个 "C34" 会让它看着像官方规则，实际全仓无定义（`rule-closure` 同族纪律）。
+ * 不虚构规则码 —— 虚构一个规则码（如没人定义过的 "C99"）会让它看着像官方规则，
+ * 实际全仓无定义（`rule-closure` 同族纪律）。
+ * ⚠ 本注释原文拿 "C34" 当"虚构码"的例子；WO-A6-CONTENTION 已把 **C34 真正立进规则库**
+ * （跨业务线产能争用），故换例。纪律没变：先立规则，再绑判据；顺序反了就是编判定。
  * 某条判据今天判不出来（规则未发布 / 指标无对象承载）就诚实 `UNKNOWN`，这本身就是 R16 的生长信号。
  */
 export const IMPEDIMENT_RULE_BINDINGS: readonly ImpedimentRuleBinding[] = [
@@ -185,12 +199,29 @@ export const IMPEDIMENT_RULE_BINDINGS: readonly ImpedimentRuleBinding[] = [
     unit: "小时",
     semantics: "关键数据源延迟超规则阈值 ⇒ 该环节算不出来 = 断点（数据断）· 算不出来也是一种发现",
   },
+  {
+    // WO-A6-CONTENTION · 卡点③：**跨业务线产能争用**（`PRD-sandbox-redesign.md` §9 A6 的前半段）。
+    // 三类里归卡点：多条业务线抢同一个产能面、抢不过来 ⇒ 能力不够（加产能有用），不是"能力够但流不动"。
+    // locus 落 `Base` 而不是 `Line`：本体上 `Line`/`Process` 有基地维**无业务线维**，
+    // `DemandSegment` 有业务线维**无基地维**，唯一同时承载两维的是 `Order`（它带 businessType + bases）
+    // ⇒ 两维只能沿订单在**基地**这一层相遇。粒度就是基地级，照实说，不假装到线级
+    // （`AUDIT-sandbox-cross-seg.md` §3.5 已证：走 `Model.applicationDomain` 提粒度会错标 3 张单且丢掉整条商用车线）。
+    bindingId: "BOTTLENECK.CAPACITY.cross-segment-contention",
+    kind: "BOTTLENECK",
+    stage: "CAPACITY",
+    ruleKey: "C34",
+    metricPath: "Base.claimedDailyRate",
+    locusObjectType: CONTENTION_LOCUS_TYPE,
+    unit: "套/日",
+    semantics: "同一基地被 ≥2 条业务线索取、且索取合计越过该地产能面 ⇒ 必须裁谁先上 = 跨业务线争用（卡点）",
+  },
 ] as const;
 
 /**
  * **今天全库没有承载物、故本单不产出**的判据 —— 登记在册而不是不提。
- * 断点·时间（提前期兜不住）：规则库 28 条里**没有任何一条**以提前期/到货期为主词
- * （逐条核过 C01–C33：C27 是长协执行偏差、C11 是检修缓冲、C29 是排产冻结期，都不是提前期）。
+ * 断点·时间（提前期兜不住）：规则库**没有任何一条**以提前期/到货期为主词
+ * （逐条核过 C01–C34：C27 是长协执行偏差、C11 是检修缓冲、C29 是排产冻结期，都不是提前期；
+ * C34 是跨业务线产能争用，读的是日产率不是提前期）。
  * 编一条"leadTime > 阈值"塞进引擎就是本单明令禁止的「看起来合理的假判定」，故诚实缺席。
  */
 export const UNBOUND_IMPEDIMENT_JUDGEMENTS: readonly {
@@ -202,10 +233,110 @@ export const UNBOUND_IMPEDIMENT_JUDGEMENTS: readonly {
     kind: "BREAK",
     breakSubtype: "LEADTIME",
     reason:
-      "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C33 中无任何承载阈值的规则（逐条核过）；" +
+      "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C34 中无任何承载阈值的规则（逐条核过）；" +
       "本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）",
   },
 ] as const;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 1.5 · 跨业务线争用读数（C34 的 payload 组装 —— **单一实现**，判定与枚举共用同一份）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 某条业务线在某个基地上的索取（单位 = 套/日，与产能面同量纲）。 */
+export interface SegmentClaim {
+  businessType: BusinessType;
+  /** 该业务线要在各自交期前兑现，本基地须承担的日产（Σ 单量/交期前天数）。 */
+  dailyRate: number;
+}
+
+/**
+ * 一个基地的争用读数。字段名 = C34 表达式里的路径（`Base.segClaims.dailyRate` /
+ * `Base.claimedDailyRate` / `Base.capacityDailyPacks`），改这里的名字必须同时改规则表达式。
+ */
+export interface BaseContentionReading {
+  segClaims: SegmentClaim[];
+  /** Σ segClaims.dailyRate —— 与 DSL 的 `SUM(Base.segClaims.dailyRate)` **同一个数**（守护断言咬这条）。 */
+  claimedDailyRate: number;
+  /** 该基地的产能面（Σ 本地产线 `capacityDaily`，套/日）。 */
+  capacityDailyPacks: number;
+  /** 读不出日产率（缺 `qty`/`leadDays`）而被排除的订单数 —— 诚实计数，不静默吞。 */
+  skippedOrders: number;
+}
+
+export type BaseContentionRead =
+  | ({ status: "OK" } & BaseContentionReading)
+  | { status: "EMPTY"; reason: string };
+
+/** 视为「在手未交」的订单状态（与 `portfolio.ts` 的选单口径逐字同源，不另立第二套）。 */
+const OPEN_ORDER_STATUS = "OPEN";
+
+/**
+ * **把「谁在争这个基地」算出来** —— C34 的多主体谓词所需的那一层分桶组装。
+ *
+ * ── 为什么组装在引擎而不是 DSL 里 ──────────────────────────────────────────
+ * 规则 DSL 的聚合算子只对**载荷里已经是数组**的那一层求值（`ruledsl.ts` `resolveCollection`），
+ * 它**不做 join / group by** —— 「按基地把订单捞出来、再按业务线分桶」是调用方的活。
+ * 这与 C02 的 `parallelThroughput` 完全同形（那一路也是 `loci()` 把 D3 读数喂进 payload）。
+ *
+ * ── 口径（每一条都可复核，没有一个是拍的）────────────────────────────────
+ *  · **谁在争** = 该基地出现在 `Order.bases` 里的在手订单，按 `Order.businessType` 分桶。
+ *    ⚠ `Order.bases` 是**可产基地集合**（`MODEL_BASE_MAP` 派生），不是已分配产地
+ *    ⇒ 本读数是「若本基地承接其全部可产订单」的**索取上界**，不是已排产量。这句话进 caveat，
+ *    不藏着 —— 藏起来就会被读成"已经排到这里了"。
+ *  · **索取** = Σ(单量 ÷ 交期前天数)。这是 `computeOrderPromise` ③ 的同一口径倒过来写
+ *    （那里判 `qty ≤ dailyCapacity × dueDay`，此处判 `Σ qty/dueDay > dailyCapacity`），
+ *    **不是新造的算式**；两侧同为「套/日」，无量纲错（R18）。
+ *  · **产能面** = Σ 本地产线 `capacityDaily`（种子注释原文：套/日，与需求万套同口径）。
+ *    刻意**不**按产线状态/认证筛（那是 C04 的活）⇒ 产能取宽 ⇒ 判定偏保守：
+ *    连这么宽的产能都不够，才敢说争用。少判不多判，方向安全。
+ *
+ * 纯函数（无时钟/随机/IO）；输出按业务线字典序 ⇒ R6 同输入字节一致。
+ */
+export function readBaseContention(
+  base: ObjectInstance,
+  orders: readonly ObjectInstance[],
+  lines: readonly ObjectInstance[],
+): BaseContentionRead {
+  const baseId = typeof base.props.baseId === "string" ? base.props.baseId : "";
+  if (!baseId) return { status: "EMPTY", reason: "该基地对象无 baseId，无法与订单/产线对齐" };
+
+  // 无 `capacityDaily` 属性的产线**不贡献产能面**（不是"贡献 0"——两者数值同、语义不同：
+  // 前者是"这条线没有申报日产能"，后者是"申报了但等于零"。这里只收申报过的，缺的不替它编）。
+  const capacityDailyPacks = lines
+    .filter((l) => str(l.props.baseId) === baseId)
+    .map((l) => num(l.props.capacityDaily, Number.NaN))
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .reduce((s, v) => s + v, 0);
+  if (!(capacityDailyPacks > 0)) {
+    return { status: "EMPTY", reason: `基地 ${baseId} 上没有承载日产能（capacityDaily）的产线 —— 无产能面可争，拒绝按 0 判争用` };
+  }
+
+  const byType = new Map<BusinessType, number>();
+  let skippedOrders = 0;
+  for (const o of orders) {
+    if (str(o.props.status) !== OPEN_ORDER_STATUS) continue;
+    const bases = Array.isArray(o.props.bases) ? (o.props.bases as unknown[]).map((b) => str(b)) : [];
+    if (!bases.includes(baseId)) continue;
+    const qty = num(o.props.qty, Number.NaN);
+    const lead = num(o.props.leadDays, Number.NaN);
+    // 读不出量或交期 ⇒ 算不出日产率。诚实计数后跳过，**不按 0 或按某个默认天数兜底**
+    // （兜一个"看着合理"的天数就是在造一个没人能复核的数）。
+    if (!Number.isFinite(qty) || !Number.isFinite(lead) || !(qty > 0) || !(lead > 0)) {
+      skippedOrders++;
+      continue;
+    }
+    const bt = businessTypeOfOrder(o.props);
+    byType.set(bt, (byType.get(bt) ?? 0) + qty / lead);
+  }
+  const segClaims: SegmentClaim[] = [...byType.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([businessType, dailyRate]) => ({ businessType, dailyRate: round(dailyRate, 6) }));
+  const claimedDailyRate = round(
+    segClaims.reduce((s, x) => s + x.dailyRate, 0),
+    6,
+  );
+  return { status: "OK", segClaims, claimedDailyRate, capacityDailyPacks: round(capacityDailyPacks, 6), skippedOrders };
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 2 · 阈值读回（把规则表达式里的阈值**读出来**，引擎自己一个数都不存）
@@ -444,6 +575,39 @@ export interface ChainScanThresholdRow {
   unit: string;
 }
 
+/** `scope.businessTypes` 在某条判据上的作用面账（逐 binding 一行）。 */
+export interface ChainScanSegmentAttributionRow {
+  bindingId: string;
+  ruleKey: string;
+  locusObjectType: string;
+  /** 该 locus 类型在本体上是否承载业务线 —— `false` ⇒ 这条判据的过滤是**无效**的。 */
+  carriesSegment: boolean;
+  emitted: number;
+  /** 产出里业务线归属 UNKNOWN 的条数。 */
+  unattributed: number;
+  note: string;
+}
+
+/**
+ * A6 · 跨业务线争用的**显式结论**（`docs/PRD-sandbox-redesign.md` §9 A6）。
+ *
+ * 为什么必须有这一段而不是"没产出就等于没争用"：这两件事在屏上长得一模一样 ——
+ * 「扫了，没争用」和「压根没扫/判不出来」都表现为**空白**，而空白最容易被读成"没问题"。
+ * 本仓口径是宁可诚实报缺口也不静默；故 `verdict` 必须显式取三态之一，并附逐基地明细。
+ */
+export interface ChainContentionVerdict {
+  ruleKey: string;
+  /** `CONTENDED` 真判出争用 · `NO_CONTENTION` 判了、结论是没有 · `UNKNOWN` 判不动（规则/数据缺）。 */
+  verdict: "CONTENDED" | "NO_CONTENTION" | "UNKNOWN";
+  /** 进入扫描面的基地数（读不出产能面的已被排除，见 `note`）。 */
+  basesScanned: number;
+  /** 被 ≥2 条业务线索取的基地 = **结构上可能争用的面**（字典序）。 */
+  multiSegmentBases: string[];
+  /** 真判出争用（索取合计越过产能面）的基地（字典序）。 */
+  contendedBases: string[];
+  note: string;
+}
+
 export interface ChainScanResult extends Record<string, unknown> {
   scanId: string;
   scope: ChainScope;
@@ -472,6 +636,15 @@ export interface ChainScanResult extends Record<string, unknown> {
   candidatesTruncated: boolean;
   /** 本次扫描一共跑了几次产能试算探针（性能与 R6 可复现性的账）。 */
   candidateProbes: number;
+  /** A6 · 跨业务线争用的显式结论（判据 binding 不在册时缺省）。 */
+  contention?: ChainContentionVerdict;
+  /** `scope.businessTypes` 的作用面账（未限定该维时缺省）。 */
+  segmentAttribution?: {
+    requested: BusinessType[];
+    rows: ChainScanSegmentAttributionRow[];
+    /** 业务线归属 UNKNOWN 的阻滞点总条数 —— 一眼看出「筛了多少、没筛动多少」。 */
+    unattributedTotal: number;
+  };
 }
 
 export interface ChainScanInput {
@@ -488,25 +661,49 @@ export interface ChainScanInput {
   links?: readonly LinkInstance[];
 }
 
+/** 一个待判的落点（对象 + 派生补充字段 + 它在两个 scope 维上的承载情况）。 */
+interface LocusRow {
+  obj: ObjectInstance;
+  extra: Record<string, unknown>;
+  label: string;
+  objectId: string;
+  /** 基地维承载（`undefined` = 该对象类型不是基地维实体）。 */
+  baseId?: string;
+  /**
+   * **业务线维承载**（`undefined` = 该对象类型在本体上不承载业务线 —— 不是"属于空集"）。
+   * 这个 `undefined` 就是 `scope.businessTypes` 过滤时「归属 UNKNOWN」的唯一判据，
+   * 判定器据此决定是**真裁**还是**诚实标 UNKNOWN**，两条路都不许静默。
+   */
+  businessTypes?: BusinessType[];
+}
+
 /** 该 binding 要扫的对象集合（+ 每个对象的**派生补充字段**，如 D3 硬容量算出的 parallelThroughput）。 */
-function loci(
-  input: ChainScanInput,
-  b: ImpedimentRuleBinding,
-): { obj: ObjectInstance; extra: Record<string, unknown>; label: string; objectId: string; baseId?: string }[] {
+function loci(input: ChainScanInput, b: ImpedimentRuleBinding): LocusRow[] {
   const { c } = input;
   const mk = (
     objs: readonly ObjectInstance[],
     idProp: string,
     labelProp: string,
     extraOf?: (o: ObjectInstance) => Record<string, unknown> | null,
-  ) =>
+    btOf?: (o: ObjectInstance, extra: Record<string, unknown>) => BusinessType[] | undefined,
+  ): LocusRow[] =>
     objs.flatMap((o) => {
       const extra = extraOf ? extraOf(o) : {};
       if (extra === null) return [];
       const objectId = str(o.props[idProp], o.id);
       const label = str(o.props[labelProp], objectId);
       const baseId = typeof o.props.baseId === "string" ? o.props.baseId : undefined;
-      return [{ obj: o, extra, label, objectId, ...(baseId === undefined ? {} : { baseId }) }];
+      const bts = btOf ? btOf(o, extra) : undefined;
+      return [
+        {
+          obj: o,
+          extra,
+          label,
+          objectId,
+          ...(baseId === undefined ? {} : { baseId }),
+          ...(bts === undefined ? {} : { businessTypes: bts }),
+        },
+      ];
     });
 
   switch (b.locusObjectType) {
@@ -520,16 +717,80 @@ function loci(
     case "Line":
       return mk(c.lines, "lineId", "name");
     case "Order":
-      return mk(c.orders, "so", "so");
+      // `Order` 是全本体唯一同时承载业务线维与基地维的对象 —— 业务线判定走 `businessTypeOfOrder`
+      // 这一个既有出处（与 `scope.ts` / portfolio 挂载点逐字同口径，避免"同一张单两处判出两种业务线"）。
+      return mk(c.orders, "so", "so", undefined, (o) => [businessTypeOfOrder(o.props)]);
     case "MaterialBatch":
       return mk(c.materialBatches ?? [], "batchId", "batchId");
     case "MaterialBalance":
       return mk(input.materialBalances ?? [], "matBalId", "material");
     case "DataSourceHealth":
       return mk(c.dataHealth, "sourceId", "name");
+    case CONTENTION_LOCUS_TYPE:
+      // WO-A6-CONTENTION：争用读数就是这条判据的 payload（§1.5 单一实现，枚举器也调同一个函数）。
+      // 读不出产能面的基地**不进扫描面**（与 Process 硬容量 EMPTY 同形），理由进 §1.5 的 reason。
+      return mk(
+        c.bases,
+        "baseId",
+        "name",
+        (o) => {
+          const r = readBaseContention(o, c.orders, c.lines);
+          if (r.status === "EMPTY") return null;
+          const { status: _s, ...reading } = r;
+          return reading as unknown as Record<string, unknown>;
+        },
+        (_o, extra) => (extra.segClaims as SegmentClaim[] | undefined)?.map((s) => s.businessType),
+      );
     default:
       return [];
   }
+}
+
+/**
+ * 一条判据在**本次 scope 下**真正要判的落点集合 —— 判定与「显式结论」共用同一份，不许各滤一遍。
+ *
+ * ⚠ 这个函数是被自己的输出抓出来的：显式结论最初直接用未过滤的 `loci()`，于是
+ * `scope.baseIds=["xiamen"]` 时它照样报「逐基地评估 13 个、3 个多业务线」——
+ * **那个数不度量它声称的东西**（它说的是全域，读者以为是本次 scope）。同一形态本仓已记账多次，
+ * 故此处把过滤收成单一实现：谁再加一维 scope，两处一起变。
+ */
+function scopedLoci(
+  input: ChainScanInput,
+  b: ImpedimentRuleBinding,
+): { rows: LocusRow[]; unattributedCount: number; emptyReason?: string } {
+  const objs = loci(input, b);
+  if (objs.length === 0) {
+    return { rows: [], unattributedCount: 0, emptyReason: `本体中无可判对象（${b.locusObjectType} 为空，或均未承载该判据所需属性）` };
+  }
+  // 基地维：只对**带 baseId 的 locus** 生效；不带 baseId 的对象类型（物料/数据源等）不是基地维实体。
+  const wantBases = input.scope.baseIds;
+  const byBase = wantBases ? objs.filter((o) => o.baseId === undefined || wantBases.includes(o.baseId)) : objs;
+  if (byBase.length === 0) {
+    return { rows: [], unattributedCount: 0, emptyReason: `scope.baseIds 过滤后无可判对象（${b.locusObjectType}）` };
+  }
+
+  // ── 业务线维 —— 这一维**绝不许照抄 baseIds 的放行形态** ────────────────────────────
+  // baseIds 那行写的是「不带 baseId 就放行」，对物料/数据源那种非基地维实体是对的。
+  // 业务线维照抄会立刻变成事故：15 条阻滞点里 13 条的 locus（Line/Process/MaterialBatch/
+  // MaterialBalance/DataSourceHealth）在本体上**根本不承载业务线**，一律 `undefined` 静默放行 ⇒
+  // 用户勾了某条业务线，拿到的仍是全域那 15 条，而界面上完全看不出来 —— 这正是 `service.ts` 那道 400
+  // 当初要防的东西换个地方复现（"以为筛了、其实没筛"）。
+  // 故这里**分两路，两路都出声**：
+  //   · 承载业务线的 locus（`Order` / 争用面 `Base`）→ **真裁**，不在所选业务线里的直接出局；
+  //   · 不承载的 locus → **保留**（丢掉等于谎称"这条业务线没有这些问题"），但逐条记 UNKNOWN 归属：
+  //     进 caveat、进 `segmentAttribution` 账、且该条 `dataMode` 降 PARTIAL。三处都能被机器咬到。
+  const wantBts = input.scope.businessTypes;
+  const rows = wantBts
+    ? byBase.filter((o) => o.businessTypes === undefined || o.businessTypes.some((bt) => wantBts.includes(bt)))
+    : byBase;
+  if (rows.length === 0) {
+    return {
+      rows: [],
+      unattributedCount: 0,
+      emptyReason: `scope.businessTypes=[${(wantBts ?? []).map((t) => BUSINESS_TYPE_LABEL[t]).join("、")}] 过滤后无可判对象（${b.locusObjectType}）`,
+    };
+  }
+  return { rows, unattributedCount: wantBts ? rows.filter((o) => o.businessTypes === undefined).length : 0 };
 }
 
 /** 判定单条 binding。返回命中的候选 + （判不出来时的）UNKNOWN 行 + caveat + 阈值出处行。 */
@@ -542,6 +803,8 @@ function judgeOne(
   unresolved?: ChainScanUnresolved;
   caveat?: { bindingId: string; ruleKey: string; note: string };
   threshold?: ChainScanThresholdRow;
+  /** `scope.businessTypes` 在这条判据上的**作用面账**（真裁了 / 裁不动 ⇒ 归属 UNKNOWN）。 */
+  attribution?: ChainScanSegmentAttributionRow;
 } {
   const { c } = input;
   const unresolved = (reason: string) => ({
@@ -564,17 +827,9 @@ function judgeOne(
 
   const prefix = b.metricPath.split(".")[0] as string;
   const metricLeaf = b.metricPath.split(".").slice(1).join(".");
-  const objs = loci(input, b);
-  if (objs.length === 0) {
-    return unresolved(`本体中无可判对象（${b.locusObjectType} 为空，或均未承载该判据所需属性）`);
-  }
-
-  // scope 过滤：只对**带 baseId 的 locus** 生效；不带 baseId 的对象类型（物料/数据源等）不是基地维实体。
-  const wantBases = input.scope.baseIds;
-  const scoped = wantBases ? objs.filter((o) => o.baseId === undefined || wantBases.includes(o.baseId)) : objs;
-  if (scoped.length === 0) {
-    return unresolved(`scope.baseIds 过滤后无可判对象（${b.locusObjectType}）`);
-  }
+  const wantBts = input.scope.businessTypes;
+  const { rows: scoped, unattributedCount, emptyReason } = scopedLoci(input, b);
+  if (emptyReason) return unresolved(emptyReason);
 
   let sawMetric = false;
   let lastThresholdIssue = "";
@@ -648,8 +903,24 @@ function judgeOne(
     const severity = Math.max(0, Math.min(100, Math.round((breach / denom) * 100)));
 
     const isSynthetic = c.isSynthProvenance?.(l.obj) === true;
+    // 限了业务线、而这条 locus 又判不出业务线归属 ⇒ 结论在本 scope 下**只是部分成立**，
+    // 诚实位降 PARTIAL（与 SUSTAIN 那条降级同族：语义被削弱就说被削弱）。
+    const attributionUnknown = wantBts !== undefined && l.businessTypes === undefined;
     const dataMode: DerivedDataMode =
-      b.breakSubtype === "DATA" ? "EMPTY" : hasSustain ? "PARTIAL" : isSynthetic ? "SYNTHETIC" : "LIVE";
+      b.breakSubtype === "DATA"
+        ? "EMPTY"
+        : hasSustain || attributionUnknown
+          ? "PARTIAL"
+          : isSynthetic
+            ? "SYNTHETIC"
+            : "LIVE";
+
+    // A6 后半段「保谁」：判据一律经 contracts 的 `resolveContentionKeep` 从 `SEG_REGISTRY` 取，
+    // 引擎侧**一个经营参数都不碰**（拿不到册值时它自己返回 unknownReason，不由这里兜）。
+    const claims = l.extra.segClaims as SegmentClaim[] | undefined;
+    const contention: ChainContention | null = claims
+      ? resolveContentionKeep(claims.map((s) => ({ businessType: s.businessType, claim: s.dailyRate })))
+      : null;
 
     const impediment: ChainImpediment = ChainImpedimentSchema.parse({
       impedimentId: `imp_${b.bindingId}_${l.objectId}`,
@@ -671,6 +942,7 @@ function judgeOne(
         unit: b.unit,
       },
       dataMode,
+      ...(contention === null ? {} : { contention }),
     });
     const util = num(props.utilization, Number.NaN);
     candidates.push({
@@ -688,10 +960,34 @@ function judgeOne(
     );
   }
   if (!thresholdRow) return unresolved(lastThresholdIssue || `规则 ${b.ruleKey} 的阈值读不回来`);
+
+  // 业务线维的作用面账（限了这一维才有）。**判不动也要出声**：一条 caveat + 一行 attribution，
+  // 缺了这两样，"筛了但没筛动"就退化成静默 —— 那正是本判定器最初那道 400 要防的形态。
+  let attribution: ChainScanSegmentAttributionRow | undefined;
+  if (wantBts) {
+    const carriesSegment = unattributedCount === 0;
+    attribution = {
+      bindingId: b.bindingId,
+      ruleKey: b.ruleKey,
+      locusObjectType: b.locusObjectType,
+      carriesSegment,
+      emitted: candidates.length,
+      unattributed: carriesSegment ? 0 : candidates.length,
+      note: carriesSegment
+        ? `locus 类型 ${b.locusObjectType} 承载业务线 ⇒ 本判据按 [${wantBts.map((t) => BUSINESS_TYPE_LABEL[t]).join("、")}] **真裁**`
+        : `locus 类型 ${b.locusObjectType} 在本体上不承载业务线属性 ⇒ 本次 businessTypes 过滤对该判据**无效**：` +
+          `产出的 ${candidates.length} 条阻滞点业务线归属 = UNKNOWN（**不是**"属于所选业务线"），dataMode 已降 PARTIAL`,
+    };
+    if (!carriesSegment && candidates.length > 0) {
+      caveat ??= { bindingId: b.bindingId, ruleKey: b.ruleKey, note: attribution.note };
+    }
+  }
+
   return {
     candidates,
     ...(caveat === undefined ? {} : { caveat }),
     threshold: thresholdRow,
+    ...(attribution === undefined ? {} : { attribution }),
   };
 }
 
@@ -733,12 +1029,18 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
   const unresolved: ChainScanUnresolved[] = [];
   const caveats: { bindingId: string; ruleKey: string; note: string }[] = [];
   const thresholds: ChainScanThresholdRow[] = [];
+  const attributionRows: ChainScanSegmentAttributionRow[] = [];
+  const unresolvedByBinding = new Map<string, string>();
   for (const b of bindings) {
     const r = judgeOne(input, b, scanId);
     candidates.push(...r.candidates);
-    if (r.unresolved) unresolved.push(r.unresolved);
+    if (r.unresolved) {
+      unresolved.push(r.unresolved);
+      unresolvedByBinding.set(b.bindingId, r.unresolved.reason);
+    }
     if (r.caveat) caveats.push(r.caveat);
     if (r.threshold) thresholds.push(r.threshold);
+    if (r.attribution) attributionRows.push(r.attribution);
   }
   // 登记在册但今天无规则承载的判据（诚实缺席 · R16 生长信号）。
   for (const u of UNBOUND_IMPEDIMENT_JUDGEMENTS) {
@@ -776,6 +1078,8 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
     });
   });
 
+  const contentionVerdict = contentionVerdictOf(input, bindings, impediments, (id) => unresolvedByBinding.get(id));
+
   const count = (k: ChainImpedimentKind) => impediments.filter((i) => i.kind === k).length;
   return {
     scanId,
@@ -795,5 +1099,81 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
     candidatesTruncated: options.truncated,
     candidateProbes: options.probesUsed,
     scopeUnscoped: isChainScopeUnscoped(input.scope),
+    ...(contentionVerdict === undefined ? {} : { contention: contentionVerdict }),
+    ...(input.scope.businessTypes === undefined
+      ? {}
+      : {
+          segmentAttribution: {
+            requested: input.scope.businessTypes,
+            rows: attributionRows,
+            unattributedTotal: attributionRows.reduce((s, r) => s + r.unattributed, 0),
+          },
+        }),
+  };
+}
+
+/**
+ * A6 的显式结论：**「有没有跨业务线争用」是一个判定结果，不是「有没有产出」**。
+ *
+ * 三态各自的判据（不许混）：
+ *  · `UNKNOWN`        判据不在册 / 规则未发布 / 扫描面为空 —— 这次**没判**，别说没有。
+ *  · `NO_CONTENTION`  判了：扫描面非空、逐基地比过，没有一个既被 ≥2 业务线索取又越过产能面。
+ *  · `CONTENDED`      判了：有基地越线，明细在 `contendedBases`。
+ */
+function contentionVerdictOf(
+  input: ChainScanInput,
+  bindings: readonly ImpedimentRuleBinding[],
+  impediments: readonly ChainImpediment[],
+  unresolvedReasonOf: (bindingId: string) => string | undefined,
+): ChainContentionVerdict | undefined {
+  const b = bindings.find((x) => x.locusObjectType === CONTENTION_LOCUS_TYPE);
+  if (!b) return undefined; // 判据不在册（DI 换了 bindings）⇒ 本次压根没这条判据，不冒充"判过了"
+  // 与判定同一份 scope 过滤（见 `scopedLoci` 抬头那段账）：报出来的「评估了几个基地」
+  // 必须是**本次真评估的那几个**，不是全域那 13 个。
+  const rows = scopedLoci(input, b).rows;
+  const multi = rows
+    .filter((r) => (r.businessTypes?.length ?? 0) > 1)
+    .map((r) => r.objectId)
+    .sort();
+  const contended = impediments
+    .filter((im) => im.locus.objectType === CONTENTION_LOCUS_TYPE && im.evidence.ruleKey === b.ruleKey)
+    .map((im) => im.locus.objectId)
+    .sort();
+  const blocked = unresolvedReasonOf(b.bindingId);
+  const skipped = rows.reduce((s, r) => s + Number((r.extra as { skippedOrders?: number }).skippedOrders ?? 0), 0);
+  const skipNote = skipped > 0 ? `；另有 ${skipped} 张订单读不出「单量/交期前天数」被排除（算不出日产率，不按缺省天数兜底）` : "";
+  if (blocked) {
+    return {
+      ruleKey: b.ruleKey,
+      verdict: "UNKNOWN",
+      basesScanned: rows.length,
+      multiSegmentBases: multi,
+      contendedBases: [],
+      note: `本次**没判出**跨业务线争用（不是"没有"）：${blocked}${skipNote}`,
+    };
+  }
+  if (contended.length > 0) {
+    return {
+      ruleKey: b.ruleKey,
+      verdict: "CONTENDED",
+      basesScanned: rows.length,
+      multiSegmentBases: multi,
+      contendedBases: contended,
+      note:
+        `规则 ${b.ruleKey} 逐基地评估 ${rows.length} 个：${multi.length} 个被 ≥2 条业务线索取，` +
+        `其中 ${contended.length} 个索取合计越过产能面 ⇒ 判出跨业务线争用（保谁见各条 contention.keep）。` +
+        `索取口径 = 若本基地承接其全部**可产**订单所需日产（Order.bases 是可产集合非已分配 ⇒ 这是索取上界）${skipNote}`,
+    };
+  }
+  return {
+    ruleKey: b.ruleKey,
+    verdict: "NO_CONTENTION",
+    basesScanned: rows.length,
+    multiSegmentBases: multi,
+    contendedBases: [],
+    note:
+      `规则 ${b.ruleKey} 逐基地评估 ${rows.length} 个：${multi.length} 个被 ≥2 条业务线索取，` +
+      `但**无一个**索取合计越过产能面 ⇒ 结论是「本次无跨业务线争用」。` +
+      `这是判定结论、不是未判定 —— 空白不许被读成"没问题"${skipNote}`,
   };
 }
