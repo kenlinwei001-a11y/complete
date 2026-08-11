@@ -35,13 +35,21 @@ import {
   CHAIN_BREAK_SUBTYPES,
   ChainScopeSchema,
   compareChainImpediment,
+  candidateDimImprovement,
+  candidateDimMoved,
   isChainScopeUnscoped,
+  NoCandidateKindSchema,
+  type CandidateEffectKind,
+  type CandidateJoinKind,
+  type CandidateRungKind,
   type ChainBreakSubtype,
   type ChainImpediment,
   type ChainImpedimentKind,
   type ChainScope,
   type ChainStage,
   type DerivedDataMode,
+  type NoCandidateKind,
+  type SolutionCandidate,
 } from "@platform/contracts";
 import { z } from "zod";
 
@@ -90,7 +98,48 @@ export const ImpedimentThresholdSchema = z.object({
 });
 export type ImpedimentThreshold = z.infer<typeof ImpedimentThresholdSchema>;
 
-/** 引擎载荷。`impediments` 直接用 S0 契约 schema 校验 —— 形状不合当场抛，不猜、不兜底。 */
+/**
+ * WO-SANDBOX-CANDIDATES-FE · 候选枚举的**逐点账**（引擎 `ChainScanResult.candidateStats[]`）。
+ *
+ * ── 为什么这个字段必须上屏（它不是 debug 信息）─────────────────────────────────
+ * 引擎注释原话：「它是**「为什么这个阻滞点没有方案」的唯一可查处** —— 空白比错答更容易被当成「没问题」」。
+ * 实测基线：15 个阻滞点里 **11 个诚实 NONE**。这 11 个若渲染成空白，用户读到的就是
+ * 「这些点没问题」，而事实是「查过了，本体上确实没有可拨的杠杆」——**两件完全不同的事**。
+ * 故 `anchors / probes / effective / emitted` 四个数与 `gaps[]` **原文**一律上屏。
+ *
+ * ⚠ 与 `unresolved[]` / `caveats[]` / `thresholds[]` 同理，S0 只冻结了 `ChainImpediment` 本体，
+ *   本行是前端侧**宽松读取**（只声明本视图真用到的字段）。`noCandidateKind` 例外 ——
+ *   它走 contracts 的 `NoCandidateKindSchema`，因为「NONE ≠ UNAVAILABLE」正是本单要守的那条线，
+ *   前端自己再写一份 `z.enum(["NONE","UNAVAILABLE"])` 就是第二个来源（契约加第三态时这里不会红）。
+ */
+export const CandidateStatSchema = z.object({
+  impedimentId: z.string().min(1),
+  /** 探了几个杠杆锚点。 */
+  anchors: z.number(),
+  /** 跑了几次产能试算探针。 */
+  probes: z.number(),
+  /** 试算后**真有效**（相对基线有改善）的候选数。 */
+  effective: z.number(),
+  /** 最终下发几条（去重 + 截 N 之后）。 */
+  emitted: z.number(),
+  /** 缺口原文（引擎写的，前端一个字都不改写）。 */
+  gaps: z.array(z.string()),
+  noCandidateKind: NoCandidateKindSchema.optional(),
+});
+export type CandidateStat = z.infer<typeof CandidateStatSchema>;
+
+/**
+ * 引擎载荷。`impediments` 直接用 S0 契约 schema 校验 —— 形状不合当场抛，不猜、不兜底。
+ *
+ * ⚠ `candidates` / `noCandidateReason` / `noCandidateKind` **不必在此声明**：
+ * `ChainImpedimentSchema` 是 `strictObject` 且 §7 已把三者声明在内 ⇒ 它们随 `impediments` 一起活着。
+ * （反面教材就在隔壁：`ChainLossPayloadSchema` 用 `z.object` 且没声明 `evidence[]`，
+ * zod 的 strip 语义把它整块剥掉，屏上那句「本节点没有下钻证据」说的其实是「前端自己剥的」。）
+ *
+ * 而 `candidateStats` / `candidatesTruncated` / `candidateProbes` 是**扫描级**字段（不在 `ChainImpediment` 里），
+ * 不在此声明就会被 strip —— 本单之前它们正是这样被静默丢掉的。三者**一律 `optional`**：
+ * 缺省 = 本次扫描没跑候选枚举，这是**第三态**，与「跑了但一条都没有」不是一回事（见 `CandidateAbsence`）。
+ */
 export const ChainImpedimentPayloadSchema = z.object({
   scanId: z.string().min(1),
   scope: ChainScopeSchema,
@@ -106,6 +155,11 @@ export const ChainImpedimentPayloadSchema = z.object({
   caveats: z.array(ImpedimentCaveatSchema),
   thresholds: z.array(ImpedimentThresholdSchema),
   scopeUnscoped: z.boolean().optional(),
+  candidateStats: z.array(CandidateStatSchema).optional(),
+  /** 探针预算耗尽 → 显式标注截断（引擎不静默截断，前端也不静默吞掉这个标记）。 */
+  candidatesTruncated: z.boolean().optional(),
+  /** 本次扫描一共跑了几次产能试算探针。 */
+  candidateProbes: z.number().optional(),
 });
 export type ChainImpedimentPayload = z.infer<typeof ChainImpedimentPayloadSchema>;
 
@@ -256,6 +310,230 @@ export function honestyOf(im: ChainImpediment, caveatNote: string | null): Imped
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// § 3.5 · 候选对策（WO-SANDBOX-CANDIDATES-FE）—— 显示名 + 值格式化
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * join 路径三/四态的中文名 + **一句「凭什么把这根杠杆算作它的解法」**。
+ *
+ * `satisfies Record<CandidateJoinKind, …>` ⇒ 契约加一条 join 路而这里没跟上 ⇒ **TS 当场红**，
+ * 不会静默把新路渲染成空白（同 `STAGE_LABEL` 的机制）。口径逐条抄自 contracts `chain-sim.ts` §7
+ * `CANDIDATE_JOIN_KINDS` 的注释，**不重写一句语义**。
+ */
+export const CANDIDATE_JOIN_LABEL = {
+  LOCUS_PROP: { label: "落点自身", why: "阻滞点落在的那个对象自己就承载这个可拨动因子（join 键 = 对象实例本身，最强）。" },
+  LINK_HOP: { label: "关系一跳", why: "沿一等关系行（links 表）一跳可达。关系是数据不是代码里的类型对照表 —— 改种子里的关系，可达面自动跟着变。" },
+  KEY_JOIN: { label: "值键相等", why: "落点对象的某个字符串属性值 == 目标类型某个唯一键属性的值（唯一性由数据现算，不是代码里声明的外键表）。匹配到多行一律丢弃。" },
+  RULE_GATE: { label: "规则闸同码", why: "判据的规则码 == 因子的拨动闸，两侧都是规则库里的同一个规则码；实例再由值键相等收窄，收窄不了就诚实丢弃。" },
+} as const satisfies Record<CandidateJoinKind, { label: string; why: string }>;
+
+/**
+ * 档位来源三态的中文名 + 出处口径。
+ * **本仓与引擎都没有任何步长常数**（`0.05` / `±1 天` 这种"看着合理的一步"是 RL5 禁的内联常数）——
+ * 三档全部取数据里真实存在的值，这句话必须让用户在屏上看得见，否则「拨到 62.3」会被读成前端拍的。
+ */
+export const CANDIDATE_RUNG_LABEL = {
+  THRESHOLD: { label: "回到规则线内", why: "目标档位 = 触发该判据的规则阈值本身（真值来自规则，不是这里拍的数）。" },
+  PEER_NEXT: { label: "同侪·迈一小步", why: "目标档位取自同侪对象上紧邻当前值的下一个真实取值 —— 数据里真有对象在这个数上。" },
+  PEER_BEST: { label: "同侪·做到最好", why: "目标档位取自同侪对象上该属性的真实极值 —— 同类里已经有人做到这个数。" },
+} as const satisfies Record<CandidateRungKind, { label: string; why: string }>;
+
+/**
+ * 作用方式三态。⚠ 这三态**不是写死的分类，是实测出来的**：把杠杆拨到目标档位后重算，看动了什么就是什么。
+ * 尤其 `DOWNSTREAM_ONLY` —— 在「加产能没用」的堵点上，这一族才是解。
+ */
+export const CANDIDATE_EFFECT_LABEL = {
+  METRIC_SELF: { label: "直接拨回线内", why: "杠杆就是判据的量测属性本身 ⇒ 直接把读数拨回规则线以内。" },
+  METRIC_DERIVED: { label: "经派生带动判据", why: "杠杆经真派生把判据读数带动了（不是同一个属性，但算出来真的动了）。" },
+  DOWNSTREAM_ONLY: { label: "旁路补偿", why: "判据读数纹丝不动，但下游产能真的变了 —— 在「加产能没用」的堵点上，这一族才是解。" },
+} as const satisfies Record<CandidateEffectKind, { label: string; why: string }>;
+
+/**
+ * 「没有候选」的形态 —— **三态，不许塌成一个**（本单的诚实位纪律）。
+ *
+ * 前两态是契约的 `NO_CANDIDATE_KINDS`（机器可读定性，两者**修法完全相反**）：
+ *  · `NONE`        枚举**跑完了**：join 走到了、档位取到了、逐候选真试算过了，结论就是没有有效解法。
+ *                  → 真结论，该修的是数据面（本体上这个落点确实没有可拨的杠杆）。
+ *  · `UNAVAILABLE` 枚举**跑不完**：探针预算耗尽 / 规则快照缺失 ⇒ 没能把候选算出来。
+ *                  → **缺答不是答**，该修的是算力与接线，绝不许被读成「这个阻滞点没救了」。
+ * 第三态是**载荷层**的（契约注释写明：`candidates` 字段缺省 = 本次扫描没有跑候选枚举）：
+ *  · `NOT_RUN`     本次扫描压根没跑枚举 —— 与「跑了但一条都没有」也不是一回事。
+ *
+ * 第四种「请求失败」不在这里 —— 它在取数层（视图的 error 分支），本来就分得开。
+ * 判据一句话：**「我算过了，没有」「我没算出来」「我没算」是三个不同的命题。**
+ */
+export const CANDIDATE_ABSENCE_LABEL = {
+  NONE: {
+    label: "查过了 · 确实没有",
+    claim: "枚举已跑完：join 走到了、档位取到了、逐候选都真试算过了，结论就是本体上没有可拨的杠杆。这是**真结论**，不是没算。",
+  },
+  UNAVAILABLE: {
+    label: "算不出来 · 不是没有",
+    claim: "枚举没跑完（探针预算耗尽 / 判据规则快照缺失）⇒ 候选没能算出来。这是**缺答不是答**，不代表这个阻滞点没救了。",
+  },
+  NOT_RUN: {
+    label: "本次没跑枚举",
+    claim: "本次扫描的回包里没有候选字段 ⇒ 压根没跑候选枚举。与「跑了但一条都没有」不是一回事，别读成「没有对策」。",
+  },
+} as const satisfies Record<NoCandidateKind | "NOT_RUN", { label: string; claim: string }>;
+
+export type CandidateAbsenceKind = keyof typeof CANDIDATE_ABSENCE_LABEL;
+
+/**
+ * 杠杆值的格式化 —— **口径与 `DynamicLeverPanel.fmtLeverValue` 逐字相同**（WO-LEVER-UNIT 单源）。
+ *
+ * 后端 `LEVER_PROP_META` 下发 `unit` + `kind`，前端只按 kind 格式化、**不自己判断单位**：
+ *  · `ratio` 比率 —— 存储口径 0–1 与 0–100 两种都真实存在（实测 `Process.attendance` 存 0–1、
+ *    `Line.utilization` 存 0–100，而两者 `kind` 同为 ratio）。故 `v <= 1` 才 ×100，
+ *    否则原样 —— 谁在这里无条件 ×100，谁就会把利用率画成 9589%。
+ *  · 其余 kind —— 整数 + 单位后缀（26天 / 2班 / 8小时）。
+ *  · **没有 `valueKind`** ⇒ 后端没给元数据 ⇒ 原样回显数值、**不臆造单位**（不补一个"看着像"的 %）。
+ */
+export function formatLeverValue(v: number, valueKind?: string, unit?: string): string {
+  if (valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+  if (valueKind !== undefined) {
+    const n = Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
+    return `${n}${unit ?? ""}`;
+  }
+  return String(v); // 无后端元数据 → 原样回显，不臆造单位
+}
+
+/** 一个 KPI 维在界面上的形态。`value === null` ⇒ **算不出来**，显示引擎给的 reason，**绝不补 0**。 */
+export interface CandidateDimVM {
+  key: string;
+  label: string;
+  value: number | null;
+  baseline: number | null;
+  unit: string;
+  betterWhen: "lower" | "higher";
+  dataMode: DerivedDataMode;
+  /** 算不出来的原因（引擎原文）。能算出来时为 null。 */
+  reason: string | null;
+  /** 改善量（>0 = 比基线好）。判据走 contracts 单源 `candidateDimImprovement`，前端不自己判方向。 */
+  improvement: number;
+  /** 相对基线**真的动了**吗（contracts `candidateDimMoved`）。 */
+  moved: boolean;
+}
+
+/** 一条候选对策在界面上的完整形态。**每个字段都指得回响应里的某个字段**，无一是前端算的（R14）。 */
+export interface CandidateVM {
+  candidateId: string;
+  label: string;
+  lever: {
+    objectType: string;
+    objectId: string;
+    prop: string;
+    factorName: string | null;
+    factorMark: string | null;
+    grain: string | null;
+    unit: string;
+    valueKind: string | null;
+  };
+  /**
+   * 拨的那个对象的**业务名**。
+   * ⚠ 诚实边界：候选的 `lever` 上**没有**显示名字段，回包里唯一的业务名是宿主阻滞点的 `locus.label`。
+   * 故杠杆落点就是 locus 本身时用 `locus.label`（真业务名），**否则只有业务 id 可给** —— 这时如实回显 id，
+   * 不去别处凑一个名字（凑出来的名字就是编的）。`leverIsLocus` 让视图说得出自己给的是哪一种。
+   */
+  leverName: string;
+  leverIsLocus: boolean;
+  fromValue: number;
+  toValue: number;
+  /** 按 `valueKind` 格式化后的显示文本（原值仍随 `fromValue`/`toValue` 一起给，供 DOM 属性做字节级断言）。 */
+  fromText: string;
+  toText: string;
+  /** 拨的方向（由两个真值比出来，不是引擎给的字段 —— 纯显示派生，无业务语义）。 */
+  direction: "↑" | "↓";
+  join: { kind: CandidateJoinKind; label: string; why: string; path: string };
+  rung: { kind: CandidateRungKind; label: string; why: string; source: string };
+  effect: { kind: CandidateEffectKind; label: string; why: string };
+  dims: CandidateDimVM[];
+  provenance: { solverKey: string; formula: string; inputs: string[] };
+  honesty: ImpedimentHonesty;
+}
+
+/** 一个阻滞点的候选态：要么有候选，要么有一个**说得清是哪一种**的缺席。 */
+export interface CandidateAbsence {
+  kind: CandidateAbsenceKind;
+  label: string;
+  claim: string;
+  /** 引擎写的缺席原因原文（`NOT_RUN` 时为 null —— 引擎没跑就没有原因，不替它编一句）。 */
+  reason: string | null;
+}
+
+/** 把一条契约候选翻成视图模型。**纯函数**，零业务判断 —— 全是 contracts 枚举的中文名 + 格式化。 */
+export function toCandidateVM(c: SolutionCandidate, im: ChainImpediment, caveatNote: string | null): CandidateVM {
+  const valueKind = c.lever.valueKind ?? null;
+  const leverIsLocus = c.lever.objectId === im.locus.objectId && c.lever.objectType === im.locus.objectType;
+  return {
+    candidateId: c.candidateId,
+    label: c.label,
+    lever: {
+      objectType: c.lever.objectType,
+      objectId: c.lever.objectId,
+      prop: c.lever.prop,
+      factorName: c.lever.factorName ?? null,
+      factorMark: c.lever.factorMark ?? null,
+      grain: c.lever.grain ?? null,
+      unit: c.lever.unit,
+      valueKind,
+    },
+    leverName: leverIsLocus ? im.locus.label : c.lever.objectId,
+    leverIsLocus,
+    fromValue: c.fromValue,
+    toValue: c.toValue,
+    fromText: formatLeverValue(c.fromValue, c.lever.valueKind, c.lever.unit),
+    toText: formatLeverValue(c.toValue, c.lever.valueKind, c.lever.unit),
+    direction: c.toValue > c.fromValue ? "↑" : "↓",
+    join: { kind: c.join.kind, ...CANDIDATE_JOIN_LABEL[c.join.kind], path: c.join.path },
+    rung: { kind: c.rungKind, ...CANDIDATE_RUNG_LABEL[c.rungKind], source: c.rungSource },
+    effect: { kind: c.effectKind, ...CANDIDATE_EFFECT_LABEL[c.effectKind] },
+    dims: c.dims.map((d) => ({
+      key: d.key,
+      label: d.label,
+      value: d.value,
+      baseline: d.baseline,
+      unit: d.unit,
+      betterWhen: d.betterWhen,
+      dataMode: d.dataMode,
+      reason: d.reason ?? null,
+      improvement: candidateDimImprovement(d),
+      moved: candidateDimMoved(d),
+    })),
+    provenance: { solverKey: c.provenance.solverKey, formula: c.provenance.formula, inputs: [...c.provenance.inputs] },
+    // 候选自己带 dataMode（引擎透传宿主的）；诚实位组装复用同一份 `honestyOf`，不另写一套四态。
+    honesty: honestyOf({ ...im, dataMode: c.dataMode }, caveatNote),
+  };
+}
+
+/**
+ * 定性一个阻滞点的候选缺席态。**三态分得开**是本函数存在的全部理由。
+ *
+ * ⚠ 为什么 `candidates === undefined` 不能直接当 `NONE`：契约注释写明「字段缺省 = 本次扫描**没有跑候选枚举**」。
+ * 把它塌进 `NONE`（「查过了确实没有」）就是把「我没算」冒充成「我算过了」—— 那是**静默错答**，
+ * 比空白更坏，因为它给了一个假的确定性。
+ */
+export function absenceOf(im: ChainImpediment): CandidateAbsence | null {
+  if (im.candidates === undefined) {
+    return { kind: "NOT_RUN", ...CANDIDATE_ABSENCE_LABEL.NOT_RUN, reason: null };
+  }
+  if (im.candidates.length > 0) return null;
+  // 契约 superRefine 已保证「空数组 ⟺ 必带 reason **与** kind」，故这里两者都该在。
+  // 万一引擎违约（老版本回包）—— 也如实说「引擎没给定性」，不替它选一个（选了就是替它编结论）。
+  const kind: CandidateAbsenceKind = im.noCandidateKind ?? "UNAVAILABLE";
+  const meta = CANDIDATE_ABSENCE_LABEL[kind];
+  return {
+    kind,
+    label: meta.label,
+    claim:
+      im.noCandidateKind === undefined
+        ? "引擎回包里**没有** noCandidateKind ⇒ 分不清「算过了没有」还是「没算出来」。本页按「算不出来」显示（保守侧），并把这条缺字段的事实说出来 —— 不替引擎选一个定性。"
+        : meta.claim,
+    reason: im.noCandidateReason ?? null,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // § 4 · 视图模型
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -286,6 +564,12 @@ export interface ImpedimentVM {
   honesty: ImpedimentHonesty;
   /** 该判据的阈值出处行（引擎 `thresholds[]` 里匹配同 ruleKey 的那条；无则 null）。 */
   thresholdSource: ImpedimentThreshold | null;
+  /** WO-SANDBOX-CANDIDATES-FE · 这个阻滞点的候选对策（引擎已算好的，前端只翻译不新增判断）。 */
+  candidates: CandidateVM[];
+  /** 没有候选时**说得清是哪一种**的缺席（有候选时为 null）。三态见 `CANDIDATE_ABSENCE_LABEL`。 */
+  absence: CandidateAbsence | null;
+  /** 该点的候选枚举逐点账（引擎 `candidateStats[]` 里对应那行；本次没跑枚举时为 null）。 */
+  stat: CandidateStat | null;
 }
 
 /** 一类阻滞点的分组。**空组也保留**（「本类本次未检出」必须说出来，不是消失）。 */
@@ -318,6 +602,22 @@ export interface ChainImpedimentModel {
   notes: string[];
   /** `counts` 与 `impediments` 对不上时的告警（引擎自相矛盾也要看得见，不静默以 items 为准）。 */
   countMismatch: string | null;
+  /**
+   * WO-SANDBOX-CANDIDATES-FE · 候选面的总账（顶栏一行说清「这次到底算出了多少对策」）。
+   * `absent` 逐态分开计，**不合并成一个"没方案"** —— 合并就是本单要堵的那个静默错答。
+   */
+  candidateSummary: {
+    /** 有候选的阻滞点数。 */
+    withCandidates: number;
+    /** 候选总条数。 */
+    totalCandidates: number;
+    /** 缺席逐态计数（三态各一格）。 */
+    absent: Record<CandidateAbsenceKind, number>;
+    /** 探针预算是否耗尽（引擎显式标注，不静默截断）。载荷没给该字段时为 null。 */
+    truncated: boolean | null;
+    /** 本次扫描一共跑了几次产能试算探针。载荷没给该字段时为 null。 */
+    probes: number | null;
+  };
 }
 
 /** 违规方向上的超阈幅度（显示用）。引擎已按规则比较符算过，这里只按「大的减小的」还原可读差值。 */
@@ -342,6 +642,8 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
   for (const t of payload.thresholds) {
     if (!thresholdByRule.has(t.ruleKey)) thresholdByRule.set(t.ruleKey, t);
   }
+  const statById = new Map<string, CandidateStat>();
+  for (const s of payload.candidateStats ?? []) statById.set(s.impedimentId, s);
 
   const toVM = (im: ChainImpediment): ImpedimentVM => {
     const ruleKey = im.evidence.ruleKey ?? null;
@@ -368,6 +670,9 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
       },
       honesty: honestyOf(im, note),
       thresholdSource: ruleKey === null ? null : (thresholdByRule.get(ruleKey) ?? null),
+      candidates: (im.candidates ?? []).map((c) => toCandidateVM(c, im, note)),
+      absence: absenceOf(im),
+      stat: statById.get(im.impedimentId) ?? null,
     };
   };
 
@@ -418,6 +723,35 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
     notes.push("本次扫描范围未限定 ⇒ 结果是全域的，不是某个基地的（scope 由引擎回带，前端不编默认范围）。");
   }
 
+  // ── 候选面总账（三态分开计，不合并成一个"没方案"）────────────────────────────
+  const absent: Record<CandidateAbsenceKind, number> = { NONE: 0, UNAVAILABLE: 0, NOT_RUN: 0 };
+  let withCandidates = 0;
+  let totalCandidates = 0;
+  for (const im of sorted) {
+    const a = absenceOf(im);
+    if (a === null) {
+      withCandidates += 1;
+      totalCandidates += im.candidates?.length ?? 0;
+    } else {
+      absent[a.kind] += 1;
+    }
+  }
+  if (absent.UNAVAILABLE > 0) {
+    notes.push(
+      `${absent.UNAVAILABLE} 个阻滞点的候选是「算不出来」（UNAVAILABLE）—— 这是**缺答不是答**，` +
+        "不代表它们没有对策；该修的是算力与接线，不是数据面。",
+    );
+  }
+  if (absent.NOT_RUN > 0) {
+    notes.push(
+      `${absent.NOT_RUN} 个阻滞点的回包里没有候选字段 ⇒ 本次**没跑**候选枚举（NOT_RUN）——` +
+        "与「跑了但一条都没有」不是一回事，别读成「没有对策」。",
+    );
+  }
+  if (payload.candidatesTruncated === true) {
+    notes.push("候选枚举的探针预算**已耗尽**（引擎显式标注 candidatesTruncated）⇒ 后面的档位没试算完，结果不完整。");
+  }
+
   const itemTotal = sorted.length;
   const countMismatch =
     payload.counts.total === itemTotal
@@ -437,6 +771,13 @@ export function buildChainImpedimentModel(payload: ChainImpedimentPayload): Chai
     honestyCounts,
     notes,
     countMismatch,
+    candidateSummary: {
+      withCandidates,
+      totalCandidates,
+      absent,
+      truncated: payload.candidatesTruncated ?? null,
+      probes: payload.candidateProbes ?? null,
+    },
   };
 }
 
