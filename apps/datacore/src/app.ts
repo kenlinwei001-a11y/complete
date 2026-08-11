@@ -15,7 +15,7 @@ import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
 import type { LlmClient } from "./llm.js";
-import { Metrics } from "./metrics.js";
+import { Metrics, actionMetricsView } from "./metrics.js";
 import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
 import { CredentialCipher } from "./crypto.js";
@@ -322,7 +322,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const auth = new AuthService(repos, config.ACCESS_TOKEN_TTL_SEC, config.REFRESH_TOKEN_TTL_SEC);
   await auth.init();
   const authz = new AuthzService(repos);
-  const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
+  // 受信内部对端（B 栈）：webhook 投递到该 origin 时才附带 SERVICE_TOKEN
+  // —— B 侧 `/b/v1/internal/invalidate` 已收口为服务间鉴权，不带则缓存失效链静默断掉。
+  // 两个 env 缺任一即为 undefined ⇒ 一律不附带凭证（宁可失效链退回 TTL 60s 兜底，也不外泄密钥）。
+  const outbox = new OutboxService(
+    repos,
+    logger,
+    deps.fetchImpl,
+    metrics,
+    config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN
+      ? { baseUrl: config.AGENTCORE_BASE_URL, serviceToken: config.SERVICE_TOKEN }
+      : undefined,
+  );
   const execLocks = new ExecutionLockService(repos, metrics);
   const quarantine = new QuarantineService(repos);
   const metaOntology = new MetaOntologyService(repos, outbox);
@@ -848,7 +859,6 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const PUBLIC_PATHS = new Set([
     "/healthz",
     "/readyz",
-    "/metrics",
     "/a/v1/auth/login",
     "/a/v1/auth/refresh",
     "/a/v1/auth/logout",
@@ -857,11 +867,42 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/a/v1/.well-known/jwks.json",
   ]);
 
+  /**
+   * 服务间专用路径：**跨租户全局**数据，只认 `X-Service-Token`，不接受用户 JWT / X-Debug-User。
+   *
+   * `/metrics` 归此类而非 PUBLIC_PATHS —— 它下发的 `dc_llm_calls_total{provider,model}`
+   * （租户 LLM provider 记录 ID + 模型名）、`dc_action_*{action_type}`（租户业务动作中文语义）、
+   * `dc_deprecated_ref_calls_total{key}`（租户本体类型 key）都是**租户私有配置**的投影；
+   * 而它又是**全租户合计**，给任一租户的用户看反而扩大跨租户可见面 ⇒ 只能给服务间抓取方。
+   */
+  const SERVICE_ONLY_PATHS = new Set(["/metrics"]);
+
+  /**
+   * 服务间凭证校验（**单一实现**，供 onRequest 钩子与端点自守两处共用）。
+   * 刻意不各写一份：抄一份 = 改了主逻辑而另一份拿旧规则照放行（本仓「金丝雀必须与主逻辑共用同一份实现」同源纪律）。
+   *
+   * **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 恒不通过（与 `/a/v1/llm-providers/{id}/credential`
+   * 「SERVICE_TOKEN 未配置时服务头不被接受」及 B 侧 `/b/v1/internal/scaffold` 同口径）。
+   */
+  const serviceTokenOk = (req: FastifyRequest): boolean => {
+    const tok = req.headers["x-service-token"];
+    return Boolean(config.SERVICE_TOKEN) && typeof tok === "string" && tok === config.SERVICE_TOKEN;
+  };
+
   app.addHook("onRequest", async (req: FastifyRequest, _reply: FastifyReply) => {
     if (req.method === "OPTIONS") return; // CORS preflight
     const path = req.url.split("?")[0] as string;
     if (PUBLIC_PATHS.has(path)) return;
-    if (!path.startsWith("/a/")) return;
+    // ⚠ 必须排在下面那条兜底之前：SERVICE_ONLY_PATHS 里的路径都不以 `/a/` 开头，
+    // 若放在其后则永远走不到这里（这正是 `/metrics` 旧日「双重旁路」的第二个出口）。
+    if (SERVICE_ONLY_PATHS.has(path)) {
+      if (!serviceTokenOk(req)) throw unauthorized();
+      return;
+    }
+    // ⚠ 此处原为 `if (!path.startsWith("/a/")) return;` —— **任何**非 `/a/` 路径一律免鉴权。
+    // 于是把 `/metrics` 从 PUBLIC_PATHS 删掉是无效修复：它不以 `/a/` 开头，照样从这条兜底溜走
+    // （双重旁路：两个出口必须一起堵，只堵一个 = 白改）。现改为「未显式登记则走正常鉴权链」，
+    // 下一个非 `/a/` 路由上线时默认是**关**的而不是开的（把静默陷阱改成默认安全）。
     // LLM Provider 增量 §1.1 服务间凭证：X-Service-Token === env SERVICE_TOKEN →
     // roles=["service"]（仅服务间路由消费该角色；未配置 SERVICE_TOKEN 则恒不命中）。
     const svcToken = req.headers["x-service-token"];
@@ -927,7 +968,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { status: "ready" };
   };
   app.get("/readyz", readyz);
-  app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
+  // 端点自守（纵深防御）：钩子已挡一层，这里再挡一层 —— 两层共用 `serviceTokenOk` 同一份实现。
+  // 理由是这条路径**曾经**有过双重旁路：任何一层被改回去，另一层仍须独立成立。
+  app.get("/metrics", async (req, reply) => {
+    if (!serviceTokenOk(req)) throw unauthorized();
+    return reply.type("text/plain").send(metrics.render());
+  });
   // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
   app.get("/a/v1/healthz", async () => ({ status: "ok" }));
   app.get("/a/v1/readyz", readyz);
@@ -3475,6 +3521,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     return reply.status(201).send(await actions.registerType(c, body));
   });
+
+  /**
+   * S2 Action 三段埋点 · **单租户视图**（R2：只返回调用者自己租户的桶）。
+   *
+   * 与 `/metrics` 的分工（**不是两套口径，是同一份数的两个投影**）：
+   *  - `/metrics` = 全租户合计 · Prometheus 文本 · 服务间抓取（SERVICE_ONLY_PATHS）；
+   *  - 本端点 = 单租户明细 + 该租户的执行稳定率 · JSON · 用户鉴权。
+   * 二者由 `Metrics.incWithTenant` **同一行代码**写出，不变量「Σ租户 == 全局」由
+   * `test/action-metrics-tenant.test.ts` 咬死 —— 不存在第二个写入点可供漂移。
+   *
+   * 病灶（本端点存在的理由）：验收判据「跑 100 次同 Action，失败率 < 1%」在多租户部署下
+   * **算不出租户级的数** —— 合计序列里一个租户跑挂 100 次会拉低所有租户共享的比率，
+   * 大租户的成功量又会掩盖小租户的持续失败；失败率越线时也无法从指标定位是哪个租户。
+   * 形态与 `router/perception-metrics.ts` + `GET /api/v1/perception/metrics` 同款。
+   */
+  app.get("/a/v1/actions/metrics", async (req) => actionMetricsView(metrics, ctx(req).tenantId));
 
   // ---- A5 rules -----------------------------------------------------------------------
   app.get("/a/v1/rules", async (req) => {
