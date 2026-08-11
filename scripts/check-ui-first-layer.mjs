@@ -776,14 +776,28 @@ export function judge(r, b) {
    */
   const baseTotal = b.first + b.deferred;
   const total = r.total ?? r.first + r.deferred;
-  if (total < baseTotal)
+  const deferredShrank = r.deferred < b.deferred;
+  const totalShrank = total < baseTotal;
+  if (deferredShrank || totalShrank) {
+    /*
+     * ⚠ 成因必须分辨后再措辞 —— 本单变异反证当场教训：
+     *   把已治理页面的 4 个 `<InfoPopover>` 包裹拆掉（内容**搬回第一层**）时，
+     *   deferred 6→2、first 持平、total 107→103。若只看 total 就断言「内容变少了 = 删除」，
+     *   **诊断是错的**（内容一条没少，是被拉回了第一层），dev 会照着错方向去找被删的文案。
+     *   信号真、指向错 —— 正是本仓记的那类假绿的镜像。故此处按读数分辨两种成因分别措辞。
+     */
+    const pulledUp = deferredShrank && r.first >= b.first;
+    const head = pulledUp
+      ? `【D4 守恒·浮层被拆】${r.file} 第二层/浮层 ${b.deferred} → ${r.deferred}（少了 ${b.deferred - r.deferred}），` +
+        `而第一层 ${b.first} → ${r.first} **没降** ⇒ 原本降下去的内容被**搬回第一层**了（或浮层被删）。`
+      : `【D4 守恒·内容变少】${r.file} 信息总量 ${baseTotal} → ${total}（少了 ${baseTotal - total}；` +
+        `第一层 ${b.first}→${r.first}，第二层/浮层 ${b.deferred}→${r.deferred}）⇒ 内容**变少了**，这是**删除**不是**分层**。`;
     fails.push(
-      `【D4 守恒】${r.file} 信息总量 ${baseTotal} → ${total}（少了 ${baseTotal - total}；` +
-        `第一层 ${b.first}→${r.first}，第二层/浮层 ${b.deferred}→${r.deferred}）⇒ ` +
-        `内容**变少了**，这是**删除**不是**分层**。${SPEC} §1：` +
-        `「诚实位允许降到浮层，绝不允许删除；静默降层等于删除」。` +
-        `分层的正确形态是 first↓ 而 deferred↑、总量不掉。若确属合理删除，更新基线并写明 why。`
+      head +
+        `${SPEC} §1：「诚实位允许降到浮层，**绝不允许删除**；静默降层等于删除」。` +
+        `分层的正确形态是 first↓ 而 deferred↑、总量不掉。若确属合理删除/合并，更新基线并写明 why。`
     );
+  }
 
   return fails;
 }
@@ -818,6 +832,17 @@ const JUDGE_CANARIES = [
     red: false,
   },
   {
+    /**
+     * 本条数字**取自真实变异反证**（AgentsPage 拆掉 4 个 InfoPopover 包裹）：
+     * deferred 6→2、first 持平 101、total 107→103。必须红，且必须诊断成「被搬回第一层」而非「删除」。
+     */
+    name: "判据必红-5 浮层被拆、内容搬回第一层（deferred↓ 而 first 没降）",
+    b: { first: 101, deferred: 6, formula: 0, prose: 1, sizes: 7 },
+    r: { file: "x", first: 101, deferred: 2, formula: 0, prose: 1, sizes: 7, total: 103 },
+    red: true,
+    msgMust: /浮层被拆/,
+  },
+  {
     name: "判据必红-3 口径/公式回到第一层（R-UI-3）",
     b: { first: 50, deferred: 5, formula: 0, prose: 0, sizes: 3 },
     r: { file: "x", first: 50, deferred: 5, formula: 2, prose: 0, sizes: 3, total: 55, formulaItems: [] },
@@ -848,7 +873,13 @@ function runJudgeCanaries() {
       continue;
     }
     const isRed = out.length > 0;
-    if (isRed !== c.red) fails.push(`${c.name} —— 期望${c.red ? "红" : "绿"}，实得${isRed ? "红：" + out[0] : "绿"}`);
+    if (isRed !== c.red) {
+      fails.push(`${c.name} —— 期望${c.red ? "红" : "绿"}，实得${isRed ? "红：" + out[0] : "绿"}`);
+      continue;
+    }
+    // 红得对还不够：**诊断措辞也要对**（信号真、指向错 = dev 照错方向去修）
+    if (c.msgMust && !out.some((m) => c.msgMust.test(m)))
+      fails.push(`${c.name} —— 红了但诊断措辞不对，应含 ${c.msgMust}，实得：${out[0]}`);
   }
   return fails;
 }
