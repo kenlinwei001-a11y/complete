@@ -27,11 +27,15 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     await user.click(screen.getByTestId("oc-clear-filter"));
     await waitFor(() => expect(screen.getByTestId("oc-sum-orders")).toHaveTextContent("8"));
 
-    // 行点击 → 订单写入 selectedObjects
-    await user.click(screen.getByTestId("oc-row-SO-10006"));
+    // WO-ORDER-ROW-DETAIL ②：写入 selectedObjects 的链**原样保留**，但入口从"整行点击的隐形副作用"
+    // 挪到行尾显式按钮（整行点击现在归**展开详情**用）。此处顺带把断言加严——
+    // 原断言只咬 store，屏上有没有反馈一概不管，正是"点了没反应"能一路绿着交付的原因。
+    expect(screen.queryByTestId("oc-ctx-badge-SO-10006")).not.toBeInTheDocument(); // 前提：先证明徽章本来不在
+    await user.click(screen.getByTestId("oc-ctx-btn-SO-10006"));
     expect(useSessionStore.getState().selectedObjects).toEqual([
       expect.objectContaining({ objectType: "Order", objectId: "ord-SO-10006", label: "SO-10006" }),
     ]);
+    expect(screen.getByTestId("oc-ctx-badge-SO-10006")).toBeInTheDocument(); // 且这件事屏上看得见
 
     // 聚合口径脚注原样保留
     expect(screen.getByTestId("oc-caliber")).toHaveTextContent("[T−7, T+14]");
