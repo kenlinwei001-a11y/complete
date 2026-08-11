@@ -224,10 +224,13 @@ describe("§1 · 主屏减负 —— **两向都咬**（只咬一向证明不了
     }
     expect(screen.getByTestId("sc-inspect-pane")).toBeTruthy();
     expect(screen.getByTestId("sc-imp-jump")).toBeTruthy();
-    // 结论式顶栏：端到端产销 / 时窗档位 / 全局态指数 三样留着
+    // 结论式顶栏：端到端产销 / 时窗档位 / 全局态读数 三样留着
     expect(screen.getByTestId("sc-scale").textContent ?? "").toContain("端到端产销");
     for (const w of ["30D", "60D", "90D"]) expect(screen.getByTestId(`sc-window-${w}`)).toBeTruthy();
-    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    // WO-SANDBOX-UI-INTEGRATE：读数**本身**留在第一层（它是结论），量纲口径降进 `?` 浮层。
+    // 故这里咬的是「数值还在」而不是「口径还在」——口径的两向断言在 sandbox-view.test.tsx。
+    expect(screen.getByTestId("sandbox-kpi-global-val").textContent ?? "").toMatch(/\d/);
+    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").not.toContain("0–100 指数");
   });
 });
 

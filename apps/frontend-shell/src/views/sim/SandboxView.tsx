@@ -17,6 +17,7 @@ import {
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
@@ -1138,7 +1139,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
          * 不许让人以为"就这几条"。
          */
         banner={(openDiag) => <SimGovernanceBanner cert={cert} onOpenDiagnostics={openDiag} />}
-        // 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值，量纲仍是 0–100 状态指数）
+        /**
+         * 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值）。
+         *
+         * WO-SANDBOX-UI-INTEGRATE · **量纲口径降层**（规范 §2 R-UI-3）：
+         * 此前每个读数都自带 `（0–100 指数·全对象均值）` 这截括号说明，顶栏因此被口径撑满，
+         * 而顶栏该留给「这一页要回答的那个数」（R-UI-2 最大一级只给它）。
+         * 现在第一层只剩 **名字 + 数值 + tick**（三者都是规范 §1 允许的：名字/数值/状态），
+         * 口径整段进 `?` 浮层。
+         *
+         * ⚠ 这是**降层不是删除**：量纲是 WO-UNIT-MEANING 立的诚实位（裸「62.5」看不出满分多少），
+         * 原文一字不改搬进浮层，第一层留 `?` 当可见记号。三条老断言随之从
+         * 「第一层含 0–100 指数」改判为「浮层里含、且第一层不再含」——**两向都咬**，
+         * 既证明没删、也证明真降下去了。
+         */
         topTags={
           <>
             <span
@@ -1146,7 +1160,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               style={{ display: "flex", gap: 8, alignItems: "center", font: "600 10px var(--font-mono)" }}
             >
               <span data-testid="sandbox-kpi-global">
-                全局态（0–100 指数 · tick {curTick}）{" "}
+                全局态 · tick {curTick}{" "}
                 <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
                   {globalKpi.toFixed(1)}
                 </b>
@@ -1156,10 +1170,18 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
                 return (
                   <span key={v} data-testid={`sandbox-kpi-${v}`}>
-                    {v}（0–100 指数·全对象均值） <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                    {v} <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
                   </span>
                 );
               })}
+              {/* 口径记号：第一层唯一保留的「这里有话要说」，点/悬停出全文（诚实位降层的可见记号）。 */}
+              <InfoPopover topic={zh.sim.sandbox.info.kpiUnit} testId="kpi-unit">
+                <span data-testid="sandbox-kpi-unit-note">
+                  {zh.sim.sandbox.info.kpiUnitGlobal}
+                  <br />
+                  {zh.sim.sandbox.info.kpiUnitVar}
+                </span>
+              </InfoPopover>
             </span>
           </>
         }
@@ -1263,7 +1285,13 @@ function SandboxModeSwitch({
               className={`btn sm${mode === m ? " primary" : ""}`}
               data-testid={`sandbox-mode-${m}`}
               aria-pressed={mode === m}
-              title={SANDBOX_MODE_QUESTION[m]}
+              /* WO-SANDBOX-UI-INTEGRATE：此前是 `title={…}` —— 那是**原生 tooltip**，
+                 规范 §2 R-UI-3 明令禁止（由操作系统绘制、永远画在最上层、移开后滞留；
+                 本仓 2026-08-10 真出过环形图被 SVG <title> 遮挡的事故）。
+                 这句「回答哪一问」不需要浮层：当前模式的那一句本来就常驻第一层（见下方
+                 `sandbox-mode-question`）。故改为 `aria-label` —— 读屏仍读得到，
+                 屏上不再冒出一个不受控的黄框。 */
+              aria-label={`${SANDBOX_MODE_LABEL[m]}：${SANDBOX_MODE_QUESTION[m]}`}
               onClick={() => onChange(m)}
             >
               {SANDBOX_MODE_LABEL[m]}
@@ -1280,7 +1308,10 @@ function SandboxModeSwitch({
       {/*
         跨模式上下文条 —— **常驻**（五个模式下都在，且读数同一份）。
         这一条是合并的价值本身：不带上下文的合并只是把五页塞进一个 tab 条。
-        诚实位（订单锚点 / 时窗为什么不在这里）降到 title 浮层，不占第一层。
+        诚实位（订单锚点 / 时窗为什么不在这里）降到 `?` 浮层，不占第一层。
+        ⚠ WO-SANDBOX-UI-INTEGRATE 改：原来降到的是**原生 `title`**，那正是规范 §2 R-UI-3
+        点名禁止的东西（不受控、画在最上层、移开滞留）。现改用受控的 `InfoPopover`，
+        降层这件事不变，承载方式换成合规的那一个。
       */}
       <div
         className={styles.sub}
@@ -1290,17 +1321,16 @@ function SandboxModeSwitch({
         <span>
           当前范围（切模式保持）：<b data-testid="sandbox-scope-bases">{describeSandboxScope(scope)}</b>
         </span>
-        <span
-          data-testid="sandbox-scope-honesty"
-          title={
-            "订单锚点：今天不是壳级控件——它由线路图按 so 自取（chain_loss_attribution 唯一认的入参），" +
-            "壳里没有第二个订单选择器，硬造一个就是各模式各用各的假旋钮。\n" +
-            "时窗：chain_loss_attribution 只认 so、chain_impediments 只认 scope，两者都没有时间窗入参，" +
-            "故控制台顶栏那个 30D/60D/90D 是禁用的（挂「时窗无 ARGS」徽标），壳里不再造第二个。"
-          }
-          style={{ cursor: "help", textDecoration: "underline dotted" }}
-        >
+        {/* 第一层只留这一行「有话要说」的记号 + `?`；两段口径正文进浮层（静默降层 = 删除，故记号必须可见）。 */}
+        <span data-testid="sandbox-scope-honesty" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           ⓘ 订单锚点 / 时窗尚未提为壳级上下文
+          <InfoPopover topic={zh.sim.sandbox.info.shellContextGap} testId="scope-shell-gap">
+            <span data-testid="sandbox-scope-honesty-note">
+              {zh.sim.sandbox.info.shellContextAnchor}
+              <br />
+              {zh.sim.sandbox.info.shellContextWindow}
+            </span>
+          </InfoPopover>
         </span>
       </div>
 
@@ -1317,7 +1347,9 @@ function SandboxModeSwitch({
         </summary>
         <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
           {CONSOLIDATED_PAGES.map((p) => (
-            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} title={p.where}>
+            /* `title` → `aria-label`：同上，原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
+               读屏读得到即可，不需要一个不受控的悬浮框。 */
+            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
               {p.label}
             </a>
           ))}

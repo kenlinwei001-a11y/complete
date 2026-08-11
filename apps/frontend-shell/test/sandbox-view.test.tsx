@@ -119,11 +119,25 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     expect(screen.getByTestId("sandbox-kpi-global")).toBeTruthy();
     for (const v of CONFIG_A.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
     // WO-UNIT-MEANING：读数曾是裸「62.5」——看不出满分是 100 还是 10。沙盘态是 0–100 指数
-    // （deriveBaseSnapshot 的 hash01()*100 与 aggregate 的"均值 0-100"共同界定·前端自有口径），标签须带量程。
-    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    // （deriveBaseSnapshot 的 hash01()*100 与 aggregate 的"均值 0-100"共同界定·前端自有口径），量纲必须说清。
+    //
+    // ⚠ WO-SANDBOX-UI-INTEGRATE 起，这条诚实位**降层进 `?` 浮层**（规范 §2 R-UI-3：
+    //   口径不占第一层），故断言从「第一层含」改判为**两向**：
+    //   向一 第一层不再含（真降下去了）· 向二 浮层里含（没被删）。
+    //   只咬一向都不够：只咬向一 = 可能被删了；只咬向二 = 可能第一层也还挂着，降层没发生。
+    expect(
+      screen.getByTestId("sandbox-kpi-global").textContent ?? "",
+      "口径仍留在第一层 ⇒ 降层没发生（规范 §2 R-UI-3）",
+    ).not.toContain("0–100 指数");
     for (const v of CONFIG_A.stateVars) {
-      expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").toContain("0–100 指数");
+      expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").not.toContain("0–100 指数");
     }
+    // 向二：`?` 一开，原文回来（诚实位允许降层、绝不允许删除）。
+    await user.hover(screen.getByTestId("info-kpi-unit"));
+    expect(
+      (await screen.findByTestId("sandbox-kpi-unit-note")).textContent ?? "",
+      "浮层里也没有量纲 ⇒ 这不是降层，是删除（规范 §1 诚实位红线）",
+    ).toContain("0–100 指数");
     // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）——现在住在诊断抽屉里。
     await openDiagnostics(user);
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
