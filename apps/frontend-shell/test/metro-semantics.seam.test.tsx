@@ -58,6 +58,8 @@ import { ChainLineMapView, labelledStepIds, MAX_LABELS_PER_RING } from "@/views/
 import {
   buildChainLineMap,
   ChainLossPayloadSchema,
+  METRO_LAYOUT,
+  metroSlotPoint,
   RING_LAYOUT,
   ringAngle,
   ringOffsets,
@@ -132,39 +134,66 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 // ══════════════════════════════════════════════════════════════════════════════
-describe("§1 · 形：站真的落在环上（几何自证，不是「看着像」）", () => {
-  it("每个主干站满足椭圆方程 ((x−cx)/(rx·k))² + ((y−cy)/(ry·k))² == 1", () => {
+describe("§1 · 形：站真的排成一条横线（几何自证，不是「看着像」）", () => {
+  /**
+   * ⚠ WO-CHAIN-MAP-LAYOUT 起本节从「验它是环」翻面成「验它不是环」。
+   * 三处实测代价（标签压字 / 无阅读起点 / 圆心浪费）见 `chainLineMap.ts` §5 原文。
+   * 环几何原语本身**没删**（在途图层仍靠它），所以这里能拿旧的椭圆方程当**反**判据用。
+   */
+  it("每个主干站位落在 `metroSlotPoint(index)` 上（横向均分，**不再**满足椭圆方程）", () => {
     const map = buildChainLineMap(loadLoss());
-    const trunk = map.stations.filter((s) => s.lineId === "trunk");
-    expect(trunk.length).toBeGreaterThan(3);
-    for (const s of trunk) {
+    const plan = map.lines.find((l) => l.lineId === "trunk")!.plan;
+    const onLine = [...map.stations, ...map.suspended].filter((s) => s.lineId === "trunk");
+    expect(onLine.length).toBeGreaterThan(3);
+    const y0 = Math.min(...onLine.map((s) => s.y));
+    for (const s of onLine) {
+      const p = metroSlotPoint(s.index, plan, y0);
+      expect(s.x, `站位 ${s.stepId} 的 x 不等于 metroSlotPoint(${s.index})`).toBeCloseTo(p.x, 9);
+      expect(s.y, `站位 ${s.stepId} 的 y 不等于 metroSlotPoint(${s.index})`).toBeCloseTo(p.y, 9);
+      // 反判据：旧布局的不变量（在椭圆上）现在必须**不成立**，否则说明形没真的换
       const dx = (s.x - RING_LAYOUT.cx) / RING_LAYOUT.rx;
       const dy = (s.y - RING_LAYOUT.cy) / RING_LAYOUT.ry;
-      expect(Math.hypot(dx, dy), `站 ${s.stepId} 不在环上（半径 ${Math.hypot(dx, dy).toFixed(4)}）`).toBeCloseTo(1, 6);
+      expect(Math.abs(Math.hypot(dx, dy) - 1), `站 ${s.stepId} 还落在旧椭圆上`).toBeGreaterThan(1e-6);
+    }
+    // 环几何原语没被删（在途图层的坐标单源），只是主干不再用它 —— 顺手证明它还活着
+    expect(ringAngle(1, 4)).toBeCloseTo(RING_LAYOUT.startAngle + Math.PI / 2, 9);
+  });
+
+  it("站沿横线**等距均分**：同一行内步长恒为 `METRO_LAYOUT.gapX`（不是把环拉直）", () => {
+    const map = buildChainLineMap(loadLoss());
+    const total = map.lines.find((l) => l.lineId === "trunk")!.slotCount;
+    // ⚠ 站位序列里**混着停运站位**（它们也占一个位置），所以判据必须是「x == index 的函数」，
+    //   不能拿"相邻 station 的 x 差"当步长——那会在跨过一个停运站位时读到 2 倍步长。
+    const onLine = [...map.stations, ...map.suspended].filter((s) => s.lineId === "trunk");
+    expect(onLine.length).toBe(total);
+    const perRow = map.lines.find((l) => l.lineId === "trunk")!.plan.perRow;
+    for (const s of onLine) {
+      expect(s.col, `站位 ${s.stepId} 的列号不等于 index % perRow`).toBe(s.index % perRow);
+      expect(s.x - METRO_LAYOUT.padX, `站位 ${s.stepId} 不在 gapX 的整数倍上`).toBeCloseTo(s.col * METRO_LAYOUT.gapX, 9);
+    }
+    // 每一行确实是一条**水平**线：同一行的 y 完全相同
+    for (const row of new Set(onLine.map((s) => s.row))) {
+      expect(new Set(onLine.filter((s) => s.row === row).map((s) => s.y)).size, `第 ${row} 行不是一条水平线`).toBe(1);
     }
   });
 
-  it("站沿环**均分整圈**：角度 == ringAngle(index, 站位总数)（不是把直线弯一下）", () => {
-    const map = buildChainLineMap(loadLoss());
-    const total = map.lines.find((l) => l.lineId === "trunk")!.slotCount;
-    // ⚠ 站位序列里**混着停运站位**（它们也占一个位置），所以不能拿"相邻 station 的角差"当步长——
-    //   那会在跨过一个停运站位时读到 2 倍步长。判据必须是「角度 == index 的函数」。
-    const onRing = [...map.stations, ...map.suspended].filter((s) => s.lineId === "trunk");
-    expect(onRing.length).toBe(total);
-    for (const s of onRing) expect(s.angle, `站位 ${s.stepId} 的角度不等于 ringAngle(${s.index})`).toBeCloseTo(ringAngle(s.index, total), 9);
-    // 整圈确实被均分掉了：最大 index 的角度 = 起点 + 2π·(N−1)/N
-    const last = onRing.reduce((a, b) => (a.index > b.index ? a : b));
-    expect(last.angle - RING_LAYOUT.startAngle).toBeCloseTo((Math.PI * 2 * (total - 1)) / total, 9);
-  });
-
-  it("区间是**椭圆弧**（path 带 A 命令），不是两点之间的弦", () => {
+  it("行内区间是**水平直线**（两站之间就是一条横线）；只有折行段才是绕行折线", () => {
     const map = buildChainLineMap(loadLoss());
     const live = map.segments.filter((s) => s.state !== "closure");
     expect(live.length).toBeGreaterThan(0);
+    let inRow = 0;
     for (const seg of live) {
-      expect(seg.path, `区间 ${seg.segmentId} 没有弧 path`).toBeTruthy();
-      expect(seg.path!, `区间 ${seg.segmentId} 画成了直线（弦会从环内穿过去）`).toContain(" A ");
+      expect(seg.path, `区间 ${seg.segmentId} 没有 path`).toBeTruthy();
+      if (seg.fold === true) {
+        expect(seg.path!, "折行段必须是带圆角的绕行折线").toContain("Q");
+        continue;
+      }
+      inRow++;
+      expect(seg.y1, `行内区间 ${seg.segmentId} 两端不等高 ⇒ 不是水平线`).toBe(seg.y2);
+      expect(seg.path!, `行内区间 ${seg.segmentId} 不是一条直线段`).toMatch(/^M [\d.]+ [\d.]+ L [\d.]+ [\d.]+$/);
+      expect(seg.path!, "行内区间又画成了弧 ⇒ 环没删干净").not.toContain(" A ");
     }
+    expect(inRow, "一条行内区间都没有 ⇒ 恒真的废门").toBeGreaterThan(10);
   });
 
   it("闭环段：存在、state=closure、且 closureBasis 明说是**结构推定**（不是引擎给的边）", () => {
@@ -189,8 +218,17 @@ describe("§1 · 形：站真的落在环上（几何自证，不是「看着像
 
     // ① 站一个不少
     expect(document.querySelectorAll('[data-testid^="clm-station-"]')).toHaveLength(map.stats.stationCount);
-    // ② 每个站的读数节点都在（有名的画成 text，无名的画成 title —— 读屏与测试都取得到）
-    for (const s of map.stations) expect(screen.getByTestId(`clm-pct-${s.stepId}`), `站 ${s.stepId} 的读数丢了`).toBeTruthy();
+    // ② 每个站的读数都取得到。
+    //    ⚠ 此前这里咬的是 `clm-pct-<stepId>`，而无名站的那个节点挂在 SVG `<title>` 上 ——
+    //      `<title>` 是**浏览器原生 tooltip**（移开后滞留、遮挡图形，2026-08-10 实测事故），
+    //      已按 `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3 删除。
+    //      读数的受控出口改为 `<g>` 上的 `data-pct-text`（有名站另外还画一行可见 `<text>`）。
+    for (const s of map.stations) {
+      const g = screen.getByTestId(`clm-station-${s.stepId}`);
+      expect(g.getAttribute("data-pct-text"), `站 ${s.stepId} 的读数丢了`).toBeTruthy();
+      expect(g.getAttribute("aria-label"), `站 ${s.stepId} 的读屏可达名丢了`).toContain(s.label);
+    }
+    expect(document.querySelector("title"), "SVG <title> 又回来了 —— 原生 tooltip 会滞留遮挡").toBeNull();
     // ③ 真正被标名字的只有前 N 个（按引擎 pct 降序），不是随手截断
     const labelled = labelledStepIds(map, true);
     expect(labelled.size).toBe(MAX_LABELS_PER_RING);
@@ -225,7 +263,12 @@ describe("§1 · 形：站真的落在环上（几何自证，不是「看着像
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-describe("§2 · 三圈同心环 = 三条真链（不是同一条画三遍）", () => {
+/**
+ * ⚠ WO-CHAIN-MAP-LAYOUT 起，族线在图上是**上下并排的三条横线**，不再是三圈同心环。
+ * 本节验的东西一个没变（三个锚点 → 三次求解器 → 三份不同载荷 → 三处不同坐标），
+ * 只是"分层"的方向从半径换成了纵向。判据不许因为改了画法就放松。
+ */
+describe("§2 · 三条并排族线 = 三条真链（不是同一条画三遍）", () => {
   it("锚点派生：每族取 so 字典序最小的真实单；族序 = 契约枚举序；不合枚举的丢掉且计数", () => {
     const { anchors, unknownTypeCount } = deriveFamilyAnchors(net.orders);
     expect(anchors.map((a) => a.key)).toEqual(BusinessTypeSchema.options.filter((k) => ["passenger", "commercial", "storage"].includes(k)));
@@ -235,17 +278,23 @@ describe("§2 · 三圈同心环 = 三条真链（不是同一条画三遍）", 
     expect(unknownTypeCount, "businessType 不合契约枚举的那张单必须被计数而不是静默塞进某一族").toBe(1);
   });
 
-  it("三圈的**半径系数互不相同** ⇒ 同一环节在三圈上坐标必然不同（画三个同心圆才有意义）", () => {
+  it("三条族线**整块纵向错开** ⇒ 同一环节在三条线上坐标必然不同（画三条线才有意义）", () => {
     const offs = ringOffsets(3);
-    expect(new Set(offs).size).toBe(3);
+    expect(new Set(offs).size, "族线偏移系数退化成同一个值 ⇒ 三条线会重合").toBe(3);
     const base = loadLoss();
     const maps = offs.map((_, i) =>
       buildChainLineMap(base, { family: familyIdentityOf({ key: "passenger", label: "乘用车", so: "SO-A" }, i, 3) }),
     );
     const sid = maps[0]!.stations[0]!.stepId;
     const pts = maps.map((m) => m.stations.find((s) => s.stepId === sid)!);
-    expect(new Set(pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`)).size, "三圈把同一个站画在了同一个点上 = 三个环重合").toBe(3);
+    expect(new Set(pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`)).size, "三条线把同一个站画在了同一个点上 = 三条线重合").toBe(3);
     expect(pts.map((p) => p.ringIndex)).toEqual([0, 1, 2]);
+    // 横向布局下的分层方向是**纵向**：同一个 stepId 在三条线上 x 相同、y 依次变大
+    expect(new Set(pts.map((p) => p.x.toFixed(3))).size, "并排族线不该左右错位（列必须对齐，共线换乘才看得出来）").toBe(1);
+    expect(pts[1]!.y).toBeGreaterThan(pts[0]!.y);
+    expect(pts[2]!.y).toBeGreaterThan(pts[1]!.y);
+    // 舞台必须容得下最后一条线（bounds 跟着 ringIndex 长，否则第三条被裁掉）
+    expect(maps[2]!.bounds.height).toBeGreaterThan(maps[0]!.bounds.height);
   });
 
   it("传 familyAnchors → **每族各发一次** chain_loss_attribution（args.so 逐个匹配）", async () => {

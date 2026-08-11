@@ -1,0 +1,283 @@
+/* WO-CAPACITY-CARD-LAYOUT · 「可用产能派生诊断（自下而上 6 层）」卡片布局。
+ *
+ * 判据来源：`docs/CONVENTION-ui-information-layering.md`
+ *   R-UI-1 视线距离：数值与解释它的标签同处一张卡内（原行式每层占满 ~2000px，
+ *          左端层名 / 右端数字 / 中间 1800px 公式与空白 —— 眼睛要横跨整屏）。
+ *   R-UI-2 字号 ≤3 级，最大一级只给「本页要回答的那个数」= 第 6 层 产能缺口。
+ *   R-UI-3 公式与口径不在第一层 —— 全部进 `?` 浮层（InfoPopover，非原生 title）。
+ *   §3     结构本身也要表达：这 6 层是一条自下而上的**推导链**，不是六个并列条目。
+ *
+ * 递进（谁推出谁）用**三个互不依赖的承载物**同时表达，任缺其一另两个仍成立：
+ *   ① `.link` 连接箭头（卡与卡之间的真 DOM 元素，随 flex 换行仍贴在两卡之间）
+ *   ② `.rungs` 梯级条（6 格递增高度、前 n 格点亮 —— 换行后也带着"第几级"这个信息）
+ *   ③ `.step` 序号徽标 + 卡上的 `data-step / data-derives-from / data-derives-to` + aria-label
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的 token ⇒ 暗色 / 冷蓝(light) / 亮橙(warm) 三套自动跟随。
+ * 语义域色（--ok/--c-forecast/--danger/--c-capacity…）本身逐主题不变，故三套下状态语义一致。
+ */
+
+/* ── 第一层：卡片链 ───────────────────────────────────────────────────────── */
+
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 2px 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  /* 随宽度回流：窄屏 2 列、中屏 3 列、宽屏一行 6 张 —— 都不产生横向滚动。 */
+  flex: 1 1 165px;
+  min-width: 148px;
+  max-width: 340px;
+}
+
+/* 卡与卡之间的连接箭头 = 递进承载物①。纯装饰（aria-hidden），
+   但它是**真元素**，所以「不看文字能不能看出谁推出谁」这句可被测试咬住。 */
+.link {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  color: var(--muted2);
+  font-size: 12px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* 卡面 = 第一层。只允许三样：主数值 · 状态 · 它是什么的名字。
+   公式 / 口径 / 明细一律不在这里（见 `.info` 浮层与 `.detail` 第二层）。 */
+.face {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px 8px;
+  border: 1px solid var(--line2);
+  /* 顶边用层色（inline 覆写 border-top-color）：6 层各有身份，且与既有产能看板同色板。 */
+  border-top: 3px solid var(--line2);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--txt);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.face:hover {
+  background: var(--hover-tint-strong);
+}
+.face:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.face[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--hover-tint-strong);
+}
+
+/* 行1：序号徽标 + 层名（= R-UI-1 的「标签」，与下面的数值同处一卡） */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.step {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--panel2);
+  color: var(--muted);
+  font: 700 10px/1 var(--font-mono);
+}
+.name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 行2：主数值（字号走 inline style，单一来源 = CAP_TYPE_SCALE） */
+.value {
+  display: block;
+  margin: 1px 0 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+/* 行3：这个数是什么（辅助说明级） */
+.caption {
+  font-size: 10.5px;
+  color: var(--muted2);
+  line-height: 1.35;
+}
+
+/* 行4：状态 —— **颜色 + 形状 + 文字**三通道，不靠颜色单通道 */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  /* 状态**词**走高对比中性色；语义色只上在下面的形状上（浅色主题 --ok/--c-forecast 当正文色不够对比）。 */
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.glyph {
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* 行5：梯级条 = 递进承载物②。6 格递增高度（阶梯），前 n 格点亮 ⇒
+   卡片换行后仍带着「这是第几级、上面还有几级」。 */
+.rungs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  /* 高度跟着 RUNG_STEP_PX 的最高一级走（= 2 + 6 × 2.6 ≈ 18）。
+     真浏览器实拍复核过：原来每级只差 1.6px，在 1600px 视口下六格几乎一样高，
+     「阶梯」这个信号等于没发出去 —— 加大级差后才真看得出在爬。 */
+  height: 18px;
+  margin-top: 3px;
+}
+.rung {
+  flex: 1 1 auto;
+  border-radius: 1px;
+  background: var(--line2);
+}
+.rung[data-on="1"] {
+  background: var(--muted2);
+}
+/* 当前这一级用层色点出来（层色由 inline style 传入 --cap-rung-on） */
+.rung[data-on="1"][data-cur="1"] {
+  background: var(--cap-rung-on, var(--accent));
+}
+
+/* 极窄容器（手机竖屏 / 被挤压的栅格列）：改成**竖着的一条链** ——
+ * 卡不再撑 148px 硬底，箭头改指向下方，方向语义一个字不丢。
+ *
+ * 诚实说明：本页在 ≤420px 时**页面本身**就已经横滚了（实测对照：不挂本组件时
+ * documentElement.scrollWidth=500 / clientWidth=420，溢出元素是顶栏 userMenu 与
+ * risk-card-*，与本组件无关）。那是存量问题、不在本单范围；这条媒体查询只保证
+ * **本组件不往上添乱**：容器被压扁时它自己收，而不是横着顶出去。
+ */
+@media (max-width: 560px) {
+  .card {
+    flex-basis: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .link {
+    width: 100%;
+    height: 15px;
+    font-size: 0; /* 藏掉横向的 → ，换成下面竖向的 ↓（DOM 与 testid 一个字不改） */
+  }
+  .link::after {
+    content: "↓";
+    font-size: 12px;
+  }
+}
+
+/* `?` 浮层触发器：贴在卡右上角，**在按钮之外**（button 不能套 button）。 */
+.info {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  z-index: 2;
+}
+
+/* ── 第二层：明细（一次点击） ─────────────────────────────────────────────── */
+
+.detail {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  background: var(--panel2);
+  font-size: 11.5px;
+  display: grid;
+  gap: 5px;
+}
+.detailH {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+.detailClose {
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted2);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.detailClose:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.detailK {
+  color: var(--muted2);
+}
+.drivers {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.detailAux {
+  font-size: 10.5px;
+  color: var(--muted2);
+  line-height: 1.5;
+}
+
+/* 未选任何层时的第二层占位（不塞明细进第一层，也不留一块空白让人以为坏了） */
+.detailHint {
+  margin-top: 10px;
+  padding: 8px 11px;
+  border: 1px dashed var(--line2);
+  border-radius: 9px;
+  font-size: 10.5px;
+  color: var(--muted2);
+}
+
+/* ── 诚实位记号（正文降到浮层，第一层留可见记号） ─────────────────────────── */
+
+.honesty {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: -4px 0 9px;
+}
+.honestyMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  color: var(--muted2);
+  font-size: 9.5px;
+  line-height: 1.6;
+  white-space: nowrap;
+}

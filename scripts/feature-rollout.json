@@ -1,0 +1,74 @@
+{
+  "_": [
+    "投放意图声明表 —— 让『这个 feature 为什么默认关』从「靠人记得 / 只写在注释里」变成「机器能读」。",
+    "由 scripts/check-dark-launch-integrity.mjs 消费。定性依据与全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。",
+    "",
+    "⛔ 为什么必须有这张表：`defaultOn:false` 只是 L1，它**不**度量『用户看不看得见』。",
+    "   L2 行业模板（features.ts templateFeatures，battery = 全开减去暗发集）可以把它抬上来。",
+    "   于是同一个 `defaultOn:false` 底下藏着四种完全不同的意图，形态一模一样 —— 任何靠",
+    "   『集合成员 / 命名前缀 / 是否 defaultOn:false』的判据都分不开它们，只能显式声明。",
+    "",
+    "⛔ 没有默认档：未声明 = 门直接红。理由（两个方向的默认值都会错，且错法相反）：",
+    "   · 默认成 dark  → 15 个合法分档特性当场全红，并把人推向『加进暗发集』这个修法，",
+    "                    而那实测会删掉 demo 的 5 个出厂视图（AUDIT §5）。",
+    "   · 默认成 tiered → 真没做完的新功能静默放行，正是这道门存在的全部理由被绕过。",
+    "   多写一行 JSON，换『机器先说话』。"
+  ],
+  "stages": {
+    "dark": "暗发：功能没做完/没验收，任何租户都不该看见。任何模板都不得打开它，出厂种子也不得点亮它。",
+    "explicit": "显式启用：功能已完成，但禁止被行业模板顺带开（改路由/影响性能/硬拒请求，风险需逐租户裁决）。只能经显式租户 override 开。必须在某个 *_DARK_LAUNCH_FEATURES 集合里。",
+    "tiered": "产品分档：功能已完成，按套餐/行业模板开给部分租户是正确的。禁止塞进 *_DARK_LAUNCH_FEATURES 集合。",
+    "ga": "全量：已毕业为默认开。声明为 ga 就必须同时把 features.ts 的 defaultOn 改成 true，门会核对。"
+  },
+  "features": {
+    "sim.sandbox": {
+      "stage": "tiered",
+      "why": "推演沙盘主屏。features.ts:79-80 原注释即分档措辞「按租户开不同档（lite/Pro/旗舰）」。且 view-manifest.ts 有 5 个 seed:true 出厂视图 requires:[\"sim.sandbox\"]，关掉它 = 级联删掉那 5 个视图（AUDIT §5 实测）。"
+    },
+    "sim.propagation": { "stage": "tiered", "why": "同 sim.sandbox 一批（G-11·SPEC §4 同一段分档注释）。" },
+    "sim.propagation.delay": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "sim.checkpoint": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "sim.branch": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "sim.certification": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "sim.commander": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "opt.solver-pool": {
+      "stage": "tiered",
+      "why": "features.ts:88-90 逐字写着分档口径「lite 给模板池 / Pro 给 what-if+复用检索 / 旗舰再给离线进化」。seed.ts:107 另有实测注记「已随 battery 模板开着（不在暗发排除集）」。"
+    },
+    "opt.whatif": { "stage": "tiered", "why": "同 opt.solver-pool 分档段；Pro 档。" },
+    "opt.multiobj": { "stage": "tiered", "why": "同批（WO-CROSS-OBJECT-MULTIOBJ·requires opt.solver-pool）。" },
+    "opt.embedding-retrieval": { "stage": "tiered", "why": "同 opt.solver-pool 分档段；Pro 档「复用检索」。" },
+    "opt.evolve": { "stage": "tiered", "why": "同 opt.solver-pool 分档段；旗舰档「离线进化」逐字点名。" },
+    "view.global-sim.live": {
+      "stage": "tiered",
+      "why": "⚠️ features.ts:95 的注释已过期。原文说后端 /b/v1/sim/compose 与 /a/v1/sim/scenarios「端点未落」，实测两者都已落（agentcore/src/server.ts:2117 · datacore/src/app.ts:1909/1920）。功能已毕业，注释停在毕业前 —— 这正是本表存在的理由。"
+    },
+    "data-import.record-materialize": {
+      "stage": "tiered",
+      "why": "真路由已落且带 feature 门：app.ts:3838 + decision/record-materialize.ts 实现齐全 ⇒ 非「没做完」。注释里的「暗发」是措辞沿用，非当前状态。"
+    },
+    "ceo.dataset.generate": {
+      "stage": "tiered",
+      "why": "真路由已落：app.ts:3926 POST /a/v1/ceo/dataset/generate + synthetic/ceo-dataset.ts 实现 ⇒ 非「没做完」。"
+    },
+
+    "ceo.free-llm": { "stage": "explicit", "why": "改写 QOS 编排路由，无真 provider 时会把题劫进慢路 ReAct。features.ts:155-158：只经显式 override 开。demo 已由 seed.ts DEMO_LIGHTUP 显式点亮 ⇒ 功能已完成。" },
+    "agent.coordinator": { "stage": "explicit", "why": "同上，多角色扇出编排，成本敏感。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.dril-routing": { "stage": "explicit", "why": "改写 path-B 首轮 prompt 组包。DEMO_LIGHTUP 已显式点亮。" },
+    "agent.critic": { "stage": "explicit", "why": "每轮多一次 LLM advisory 复核，成本敏感。DEMO_LIGHTUP 已显式点亮。" },
+    "agent.escalation": { "stage": "explicit", "why": "停滞时多跑一轮，成本敏感。DEMO_LIGHTUP 已显式点亮。" },
+    "agent.skill-on-free-qa": { "stage": "explicit", "why": "把租户已发布 Skill 挂上自由问答；seed.ts 写明「有数据才点」（demo 5 条 PUBLISHED）。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.compose-path": { "stage": "explicit", "why": "多 solver 服务端编排，改写编排路由。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.reasoning-trace": { "stage": "explicit", "why": "每轮推理旁白流前端，流量/噪音敏感。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.deterministic-multi-domain": { "stage": "explicit", "why": "改写编排路由（排在 LLM classify 之前）。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.multi-intent-orchestration": { "stage": "explicit", "why": "分类器多候选并行 solver，改写编排路由。seed.ts:101-104 逐字说明点亮理由。" },
+    "qos.opt-whatif-route": { "stage": "explicit", "why": "NL→optimize_whatif 路由钥匙。seed.ts:105-109「能力存在 ≠ 能力可达」。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.multi-intent-l2-decompose": { "stage": "explicit", "why": "LLM 产 solver 计划，改写编排路由。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.multi-intent-l3-coupled": { "stage": "explicit", "why": "一次 portfolio 守恒解升格。DEMO_LIGHTUP 已显式点亮。" },
+    "dc.lazy-solver-context": { "stage": "explicit", "why": "纯性能收窄（PERF_DARK_LAUNCH_FEATURES）。seed.ts:110-113：先真跑 SEAM-EQ 等价门通过才点 ⇒ 已验收。DEMO_LIGHTUP 已显式点亮。" },
+    "qos.llm-budget-enforce": {
+      "stage": "explicit",
+      "why": "唯一一个暗发集里 demo 刻意不点的。seed.ts:114-122 写明不点的理由是产品体验（配额耗尽硬线 429 拒人，demo 里是撞墙），并注明「要演示配额，正确做法是运维显式 PUT 一次 override」⇒ 功能已完成，属产品决策不点，不是没做完。"
+    }
+  }
+}

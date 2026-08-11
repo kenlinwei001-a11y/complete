@@ -75,7 +75,7 @@ import { builtinTool } from "./tools/registry.js";
 import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
 import { compileSkill } from "./skill-compiler.js";
 // WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
-import { getSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
+import { getFreshSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -632,12 +632,27 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
    * 启动期 `auditSeededSkills` 用**同一份判据**补问一遍，结论落在这里，运维随时可查。
    *
-   * 四态里 `NOT_RUN` 与 `GATE_UNAVAILABLE` **都不是"干净"**：
-   * 前者是没审计过，后者是注册表读不出来所以没法判——「我没找到」≠「它不存在」。
+   * `NOT_RUN` / `REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` / `GATE_UNAVAILABLE` **都不是"干净"**：
+   * 第一个是没审计过，后三个是注册表读不出来所以没法判——「我没找到」≠「它不存在」。
+   *
+   * **WO-SEEDGATE-FRESHNESS · 缺陷 A**：本路由原先直接 `return getSeedSkillGateReport()`——
+   * 那是**进程启动时算一次就冻住**的快照。实测：连续 3 次请求间隔 3 分钟 `ranAt` 一字未变，
+   * 而同一时刻 `GET /a/v1/catalog?kind=solvers` 返 200/39 条，DataCore 明明是健康的。
+   * 后果是实的：DataCore 起得比 AgentCore 慢一拍 → 审计永久停在"不可用"，
+   * 而用户看到的是一条**自称"刚刚测过"**的结论。
+   * 改为按请求现算（TTL 30s 复用 + `?refresh=1` 手动刷新），`ranAt` 恒等于真正计算那一瞬。
    */
   app.get("/api/v1/ops/skill-seed-gate", async (req) => {
-    await auth(req);
-    return getSeedSkillGateReport();
+    const a = await auth(req);
+    const q = req.query as { refresh?: string };
+    return getFreshSeedSkillGateReport({
+      repos: deps.repos,
+      dataCore: deps.dataCore,
+      // 按**请求者的**租户算（tenant_id everywhere）；缓存也按租户分桶，不跨租户串味。
+      tenantId: a.tenantId,
+      logger: req.log,
+      force: q.refresh === "1" || q.refresh === "true",
+    });
   });
 
   app.post("/api/v1/ops/fallback/:traceId/promote", async (req, reply) => {

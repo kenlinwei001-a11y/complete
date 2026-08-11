@@ -92,11 +92,23 @@ function wrap(cfg: SandboxViewConfig) {
   );
 }
 
+/**
+ * WO-SANDBOX-DECLUTTER · 就绪认证整块已从**常驻右栏**改成**默认折叠的诊断抽屉**
+ * （仓主原话：「这些信息都可以删除」——本仓的做法是收纳不是删除）。
+ * 折叠时抽屉内部**一个节点都不渲染**，所以要断它里面的东西，必须先真的把抽屉点开。
+ * 这一步本身就是「收纳成功」的另一半证据：不点开就找不到 ⇒ 主屏确实不再挂着它。
+ */
+async function openDiagnostics(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByTestId("sc-diag-toggle"));
+  await screen.findByTestId("sc-diag-panel");
+}
+
 describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
   beforeEach(() => tickFn.mockClear());
   afterEach(() => cleanup());
 
   it("配置A（供应链 3 类对象）：渲染 3 个拓扑节点 + 每个 stateVar 一个 KPI + 就绪认证", async () => {
+    const user = userEvent.setup();
     wrap(CONFIG_A);
     await screen.findByTestId("sandbox-view");
     // 会话 init 后拓扑节点出现（节点=nodeTypes，逐 nodeType 一个 PmDag 节点）。
@@ -107,12 +119,27 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     expect(screen.getByTestId("sandbox-kpi-global")).toBeTruthy();
     for (const v of CONFIG_A.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
     // WO-UNIT-MEANING：读数曾是裸「62.5」——看不出满分是 100 还是 10。沙盘态是 0–100 指数
-    // （deriveBaseSnapshot 的 hash01()*100 与 aggregate 的"均值 0-100"共同界定·前端自有口径），标签须带量程。
-    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    // （deriveBaseSnapshot 的 hash01()*100 与 aggregate 的"均值 0-100"共同界定·前端自有口径），量纲必须说清。
+    //
+    // ⚠ WO-SANDBOX-UI-INTEGRATE 起，这条诚实位**降层进 `?` 浮层**（规范 §2 R-UI-3：
+    //   口径不占第一层），故断言从「第一层含」改判为**两向**：
+    //   向一 第一层不再含（真降下去了）· 向二 浮层里含（没被删）。
+    //   只咬一向都不够：只咬向一 = 可能被删了；只咬向二 = 可能第一层也还挂着，降层没发生。
+    expect(
+      screen.getByTestId("sandbox-kpi-global").textContent ?? "",
+      "口径仍留在第一层 ⇒ 降层没发生（规范 §2 R-UI-3）",
+    ).not.toContain("0–100 指数");
     for (const v of CONFIG_A.stateVars) {
-      expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").toContain("0–100 指数");
+      expect(screen.getByTestId(`sandbox-kpi-${v}`).textContent ?? "").not.toContain("0–100 指数");
     }
-    // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）。
+    // 向二：`?` 一开，原文回来（诚实位允许降层、绝不允许删除）。
+    await user.hover(screen.getByTestId("info-kpi-unit"));
+    expect(
+      (await screen.findByTestId("sandbox-kpi-unit-note")).textContent ?? "",
+      "浮层里也没有量纲 ⇒ 这不是降层，是删除（规范 §1 诚实位红线）",
+    ).toContain("0–100 指数");
+    // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）——现在住在诊断抽屉里。
+    await openDiagnostics(user);
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
     // WO-RC-UX-DOOR-TEXT：未认证态显「可试跑（未认证·结论仅供参考）」——标准页 tick 未被 canEnter 门控·非劝退（诚实门）。
     const canenterText = screen.getByTestId("sim-cert-canenter").textContent ?? "";

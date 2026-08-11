@@ -13,8 +13,21 @@
  * docs/PRD-unified-build-engine.md（BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE）。
  */
 import { readFileSync, existsSync } from "node:fs";
-import { planSlice } from "../apps/datacore/dist/ontology/slice-planner.js";
-import { SlicePlanSchema } from "../packages/contracts/dist/slice-planner.js";
+import { assertDistFresh } from "./dist-freshness.mjs";
+
+// ⛔ 这两个 import 原本是**静态**的，现改为动态——不是风格问题，是守卫能否生效的问题（欠账 #161）：
+//    ESM 静态 import 会被提升到模块体最前面执行，任何写在下面的守卫调用都**晚于**它，
+//    等于守卫在「已经读完旧 dist」之后才说话，形同虚设。故必须先守卫、再 await import。
+//
+//    本门尤其不能读旧 dist：它下面紧接着读 **源码** `apps/datacore/src/solvers/service.ts` 的
+//    SOLVER_KEYS，拿 dist 的 planSlice 与源码的求解器表对账。两者一旦不同时点，
+//    「场景声明了 DataCore 没有的求解器」这类结论就会凭空出现或凭空消失。
+assertDistFresh(
+  ["apps/datacore/dist/ontology/slice-planner.js", "packages/contracts/dist/slice-planner.js"],
+  { gate: "chain:check" },
+);
+const { planSlice } = await import("../apps/datacore/dist/ontology/slice-planner.js");
+const { SlicePlanSchema } = await import("../packages/contracts/dist/slice-planner.js");
 
 const SOLVERS_SRC = "apps/datacore/src/solvers/service.ts";
 const CATALOG_SRC = "apps/agentcore/src/scenarios-catalog.ts";

@@ -155,14 +155,20 @@ async function cmdSim(args) {
       console.log(C.bold(`就绪认证 ${r.scope}${r.targetRef ? `:${r.targetRef}` : ""}`) + ` → ${lvlColor(r.level)}`);
       console.log(`  三维：结构 ${r.dims.structure} · 知识 ${r.dims.knowledge} · 行为 ${r.dims.behavior} · 综合 ${C.bold(r.dims.composite)}/100`);
       console.log(`  L4 三元组：扇出安全=${r.l4Checks.fanoutSafe} · writeback=${r.l4Checks.writebackComplete} · 可观测=${r.l4Checks.observabilityMet}`);
-      // #152（WO-SIM-ACT-CLOSE）：原文尾巴上钉着 C.dim("（传导待增量3）") —— 那句话在传导相真跑起来之后
-      // 就成了 CLI 每次都要复述一遍的假话。改成拆账实数；老后端（无拆账字段）则整段不显，不编。
+      // Trial Tick 的 CLI 口径 = 两条 WO 的合成（WO-CERT-CONTRACT-RECONCILE）：
+      //  · 名字照实测取（WO-CERT-HONESTY）：那个数是**派生依赖图节点数**（规模），不是"触发 N 条"——
+      //    空跑不喂变更集 ⇒ 一条派生公式都没求值。原文「触发 N 条规则」是把规模当触发报。
+      //  · 传导相带**分母**（WO-SIM-ACT-CLOSE #152）：只报 fired 分不出「本来就没规则」与「全哑火」。
+      //  · 老后端（无这些字段）不编数：covered 缺省视为未覆盖，整段降级显示，绝不假装。
       const tt = r.trialTick;
-      const breakdown = tt.propagationRulesDeclared !== undefined
-        ? C.dim(`（派生 ${tt.derivationRulesFired ?? 0} · 传导 ${tt.propagationRulesFired ?? 0}/${tt.propagationRulesDeclared}）`)
-        : "";
-      console.log(`  Trial Tick：${tt.passed ? C.green("PASS") : C.red("FAIL")} 触发 ${tt.rulesFired} 条规则${tt.error ? ` (${tt.error})` : ""}` + breakdown);
-      console.log(`  世界完整度：${r.worldCompleteness.pct}% · 将进入沙盘 ${r.worldCompleteness.entering.length} 个状态变量`);
+      const propagation = tt.propagationCovered
+        ? C.dim(`（传导触发 ${tt.propagationRulesFired ?? 0}/${tt.propagationRulesDeclared ?? 0}）`)
+        : C.dim("（传导未纳入本次空跑）");
+      console.log(
+        `  Trial Tick：${tt.passed ? C.green("PASS=重算未抛异常") : C.red("FAIL")} 派生图节点 ${tt.derivationNodes ?? tt.derivationRulesFired ?? 0} 个${tt.error ? ` (${tt.error})` : ""}` +
+          propagation,
+      );
+      console.log(`  世界完整度：${r.worldCompleteness.pct}% · 将进入沙盘 ${r.worldCompleteness.entering.length} 个要素（派生/行动/传导混装）`);
       console.log(`  ${r.canEnterSimulation ? C.green("✓ 可进入推演") : C.red("✗ 不可进入推演")}（缺件 ${r.gaps.length} 个）`);
       for (const g of r.gaps.slice(0, 20)) console.log(C.dim(`    - [${g.gapCode}] ${g.ref}: ${g.detail}`));
       return;
@@ -175,7 +181,10 @@ async function cmdSim(args) {
       const r = await http(`${SIM}/sessions/${id}/scope-precheck?${qs}`, { headers: authHeader() });
       const w = r.worldCompleteness;
       console.log(C.bold(`范围预检 ${r.scope}${r.targetRef ? `:${r.targetRef}` : ""}`) + ` 世界完整度 ${C.bold(w.pct)}%`);
-      console.log(`  状态变量 ${w.stateVars.present}/${w.stateVars.needed} · 派生 ${w.derivationRules.present}/${w.derivationRules.needed} · 动作 ${w.actions.present}/${w.actions.needed} · 传导 ${w.propagationRules.present}/${w.propagationRules.needed}`);
+      // WO-CERT-HONESTY ①：原首项「状态变量 N/M」与「派生 N/M」恒等（后端同一变量/同一表达式），已删；
+      // 真正的状态变量改列名字（stateVarKeys = 传导规则 source/target stateVar 去重集，无 needed 承载物）。
+      console.log(`  派生 ${w.derivationRules.present}/${w.derivationRules.needed} · 动作 ${w.actions.present}/${w.actions.needed} · 传导 ${w.propagationRules.present}/${w.propagationRules.needed}`);
+      console.log(`  世界将承载的状态变量 ${w.stateVarKeys.length} 个${w.stateVarKeys.length ? `：${w.stateVarKeys.join(" · ")}` : ""}`);
       for (const e of w.entering.slice(0, 30)) console.log(C.dim(`    ${e.key} [${e.kind}] ← ${e.source}`));
       console.log(`  ${r.canEnterSimulation ? C.green("✓ 可进入推演") : C.yellow("· 仍有缺口")}（缺件 ${r.gaps.length} 个）`);
       return;

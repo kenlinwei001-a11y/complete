@@ -293,7 +293,14 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
     expect(within(detail).queryAllByTestId(/^slice-layer-item-/)).toHaveLength(0);
   });
 
-  it("SEAM-6b 候选值来自后端且真能试切：点一下 → 请求带上 args → 界面翻成有数据", async () => {
+  /**
+   * ⚠ WO-SLICE-DEFAULT-ARGS 改写了本例的**前半段**（行为变更，不是为了让测试变绿）：
+   * 面板现在首屏**默认就注入一个真实实参**（值取自后端 argCandidates 的第一个），
+   * 所以「一打开就看见空子图条 + 候选按钮」这个旧前提不再成立 —— 那正是本单要消灭的画面。
+   * 后半段（清空 → 诚实态 → 手选候选 → 请求真带上 args → 界面翻面）原样保留，
+   * 老断言一条没删，只是挪到「用户主动要看原始态」之后。
+   */
+  it("SEAM-6b 候选值来自后端且真能试切：默认自动带上第一个真值；清空后手选一个 → 请求带上 args → 界面翻成有数据", async () => {
     const user = userEvent.setup();
     const seenArgs: (string | null)[] = [];
     const emptyBody = layersFixture({
@@ -318,11 +325,20 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
       }),
     );
     renderPanel();
+    // ── 新前提（WO-SLICE-DEFAULT-ARGS）：首屏默认就解出来了，不再是十六张空卡 ──
+    await screen.findByTestId("slice-layers-applied-model_capacity_network");
+    expect(seenArgs[0]).toBeNull(); // 首次不带 args（探"需要哪些参数 + 能填什么"）
+    await waitFor(() => expect(seenArgs.some((a) => a !== null && a.includes("SO-3391"))).toBe(true));
+    expect(screen.getByTestId("slice-layer-count-model_capacity_network-property").textContent).toBe("127");
+    expect(screen.getByTestId("slice-layers-autodefault-model_capacity_network")).toBeTruthy();
+    expect(screen.queryByTestId("slice-layers-empty-model_capacity_network")).toBeNull();
+
+    // ── 用户要看原始诚实态：清空参数 → 空子图条回来，候选值仍来自后端 ──
+    await user.click(screen.getByTestId("slice-layers-clearargs-model_capacity_network"));
     await screen.findByTestId("slice-layers-empty-model_capacity_network");
     // 候选值是后端给的两个真值，不是页面写死的
     expect(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3391")).toBeTruthy();
     expect(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3402")).toBeTruthy();
-    expect(seenArgs[0]).toBeNull(); // 首次不带 args
 
     await user.click(screen.getByTestId("slice-layers-cand-model_capacity_network-so-SO-3391"));
     // 接缝：点击必须真的把参数发出去（不是本地假装）

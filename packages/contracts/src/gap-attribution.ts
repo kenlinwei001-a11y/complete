@@ -145,6 +145,32 @@ export const DecisionGapSchema = z.object({
 });
 export type DecisionGap = z.infer<typeof DecisionGapSchema>;
 
+// ── WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域**单一来源**（治 G-CAPFACTOR-VOCAB-SPLIT） ──────
+//
+// 病灶（`docs/AUDIT-factor-scope-vocab.md`）：产能推演页的 7 个因子 chip 传的是 **BN 张力词表**
+// 的中文因子名（`瓶颈工序`/`设备OEE`…·出处 `synthetic/battery.ts:225 BN_FACTORS`），
+// 而 `gap_attribution` 的 `scope.factorId` 认的是 **`CausalFactor.factorId`**（`cf-*`）。
+// 两张词表交集 = **0** ⇒ 7 个按钮返回逐字节相同的基地树，「按因子细分」一次都没生效过。
+//
+// 单源三件套（缺一件病就会以另一种形态复发）：
+//  ① **值绑 id·显示绑 label**：chip 的 value 必须是 `CausalFactorId`，label 只用于渲染。
+//  ② **候选集由引擎下发**：`GapScope.availableFactors` —— 前端不得再从卡面因子名拼候选，
+//     「哪些因子今天真能细分」只有引擎（种子数据 + 本基地是否有承载对象）知道。
+//  ③ **编译期拦截**：`CausalFactorId` 是**品牌类型**，裸 `string`（如 `card.factor`）**不可赋值**给它
+//     ⇒ 一旦有人写回 `factorOptions={[card.factor, ...]}`，`tsc` 当场红，而不是等用户点了才发现。
+//     反伪造：唯一合法铸造口是 `asCausalFactorId()`（只接受引擎回执里的 id）。
+
+/** 因果因子 id 的**品牌类型**：裸 string 不可赋值 ⇒ 把 BN 因子名当 factorId 传会在编译期红。 */
+export type CausalFactorId = string & { readonly __brand: "CausalFactorId" };
+
+/** 唯一合法铸造口：只应喂**引擎回执**里的 id（`GapScope.availableFactors[].factorId`）。 */
+export function asCausalFactorId(raw: string): CausalFactorId {
+  return raw as CausalFactorId;
+}
+
+/** zod 侧同源（解析引擎回执时用；`transform` 后拿到的就是品牌类型）。 */
+export const CausalFactorIdSchema = z.string().min(1).transform(asCausalFactorId);
+
 /** 因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象）。 */
 export const CausalFactorSchema = z.object({
   factorId: z.string(),
@@ -157,8 +183,57 @@ export const CausalFactorSchema = z.object({
   provenanceSynthetic: z.boolean(),
   // WO-CEO-DATA-2：每个 CausalFactor 归属一个指标域，供引擎按指标选因果根。
   metricKey: z.string().optional(),
+  // ── WO-FACTOR-SCOPE-SINGLESOURCE · 作用域内解析声明（**数据驱动**·R14）─────────────────
+  // 产能域的 7 个因子必须落到**本基地**的对象（否则 13 张基地卡同一份证据 = R1「8/8 卡全同」老病）。
+  // 而 `drillId` 是单值 ⇒ 这里声明「怎么在作用域内挑那一个对象」，由引擎在查询期解析。
+  // 绝不在引擎里内联「哪个因子查哪张表」的 if 链 —— 那就是第二套词表，本单要消灭的正是这个。
+  /** 作用域字段：该 drillType 上承载基地键的属性名（如 `baseId`）。给了才做 per-base 解析。 */
+  baseScopeField: z.string().optional(),
+  /** 作用域内选谁：`max` = 该字段最大者最紧（利用率/到货天/停机时长）；`min` = 最小者最紧（OEE/良率/班次工时/齐套天数）。 */
+  drillPick: z.enum(["max", "min"]).optional(),
+  /** 归一口径（把真值折成 0–1 的"紧张度"权重，喂结构分摊）：
+   *  - `ratio`        字段本身即 0–1 比率，紧张度 = 值（越大越紧·如利用率）
+   *  - `inverseRatio` 字段本身即 0–1 比率，紧张度 = 1 − 值（越小越紧·如 OEE/良率）
+   *  - `popMax`       非比率量，按**本作用域内最大值**归一，紧张度 = 值/最大（越大越紧·如到货天/停机分钟）
+   *  - `popMin`       非比率量，按**本作用域内最大值**归一，紧张度 = 1 − 值/最大（越小越紧·如班次工时/齐套天数）
+   */
+  drillNorm: z.enum(["ratio", "inverseRatio", "popMax", "popMin"]).optional(),
+  /** 可选等值过滤（如 `EquipmentDowntime.reason === "换型"`）。 */
+  drillFilterField: z.string().optional(),
+  drillFilterValue: z.string().optional(),
 });
 export type CausalFactor = z.infer<typeof CausalFactorSchema>;
+
+/**
+ * 引擎下发的「本作用域内**真能细分**的因子」——前端 chip 候选集的**唯一**来源。
+ * 只有当该因子在本基地**真解析得到承载对象**（objectCount>0）时才会出现在这个列表里
+ * ⇒ 界面上不存在「点了永远不生效」的按钮（缺数据的基地直接不下发该 chip，并在 note 里说明）。
+ */
+export const RefinableFactorSchema = z.object({
+  factorId: CausalFactorIdSchema,
+  label: z.string(), // 显示名（= CausalFactor.label·如「设备OEE」）
+  drillType: z.string(), // 细分后下钻到哪类对象（人话可见·R13）
+  drillField: z.string(),
+  objectCount: z.number().int(), // 本作用域内解析到的承载对象数（>0 才下发）
+});
+export type RefinableFactor = z.infer<typeof RefinableFactorSchema>;
+
+/** `gap_attribution` 回执里的**实际生效作用域**（引擎单一出处·前端不再自行推断）。 */
+export const GapScopeSchema = z.object({
+  baseId: z.string().optional(),
+  displayName: z.string().optional(),
+  exposure: z.boolean().optional(),
+  factorId: z.string().optional(),
+  /** 真按该因子细分了吗（false = 传了但引擎无该因果域 → 界面必须据实说，不许假装细分了）。 */
+  factorApplied: z.boolean().optional(),
+  factorLabel: z.string().optional(),
+  factorNote: z.string().optional(),
+  /** 本作用域可细分因子集（chip 候选单源）。 */
+  availableFactors: z.array(RefinableFactorSchema).optional(),
+  /** 一条都没有时的诚实原因（如"本基地无这些因子的承载对象"）。 */
+  availableFactorsNote: z.string().optional(),
+});
+export type GapScope = z.infer<typeof GapScopeSchema>;
 
 // ── WO-CEO-DATA-2 每指标多假设因果域 drill 真对象 schema ────────────────────────
 

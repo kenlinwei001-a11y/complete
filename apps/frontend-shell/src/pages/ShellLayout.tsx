@@ -50,7 +50,71 @@ type NavItemRef =
       label: string;
       /** 暗发 entitlement 键（可选）：仅当页面侧本就有 Guard 时填，关 → 入口消失（R3 不泄露存在性）。 */
       feature?: string;
+      /**
+       * WO-SANDBOX-IA-CONSOLIDATE · **收编开关**（可选）：该 entitlement **开**时本条目隐藏
+       * ——因为此时该页已被那个控制台收编（进得去，只是换了入口），单列就是重复入口。
+       *
+       * ⚠ 语义与 `feature` **正好相反**，不许混：
+       *   · `feature`          关 → 隐藏（R3 暗发：功能不存在，连入口都不许泄露）；
+       *   · `consolidatedWhen` **开** → 隐藏（收编：功能还在，入口搬进控制台里了）。
+       *
+       * 为什么要留这条回退而不是干脆删掉条目：这四个推演页**本身不受 `sim.sandbox` 门控**
+       * （人人可进、无页面侧 Guard）。若无条件删条目，`sim.sandbox` 关着的租户就会
+       * 「沙盘没有 + 导航也没有」= 四个页只剩手敲 URL 可达 —— 那是把 IA 整理做成了功能消失。
+       * 有了这条：沙盘开 → 在沙盘的模式切换里；沙盘关 → 条目照旧单列。两种租户都不丢东西。
+       */
+      consolidatedWhen?: string;
     };
+/**
+ * WO-SANDBOX-IA-CONSOLIDATE · **已收编进推演沙盘的入口**（不在左导航单列，路由仍可达）。
+ *
+ * ── 这张表是「声明」，不是「遗漏」──────────────────────────────────────────────
+ * 屏上的结果（不出现在导航里）与「忘了登记」一模一样，但两者性质相反、修法相反：
+ *  · 忘了登记 → 落进「其它」折叠兜底桶（`G-NAV-FALLBACK-BUCKET`，可达但用户找不到）；
+ *  · 进了本表 → **显式声明**「这个入口有意不单列，因为它在沙盘里已经有到达路径」，
+ *    有表、有理由、有门对账（`scripts/check-nav-group-coverage.mjs` 判据①/④ 读这张表）。
+ * 故 `UnifiedNav` 必须把本表的键从**分组表和 leftover 兜底桶两处**同时滤掉 ——
+ * 只从 NAV_GROUPS 里删、不滤 leftover，它们会当场掉进「其它」桶，比单列还糟。
+ *
+ * ── 依据（仓库自己写下、当时没执行的定案）─────────────────────────────────────
+ * 本文件上一版第 67-70 行原文：「四个子视图在此登记是**过渡态**……WO-SANDBOX-CONSOLE 落地后，
+ * 这四行应当**删掉**」。控制台（`views/sim/SandboxConsole.tsx`）早已落地并在跑 ⇒ 前提已满足。
+ * 逐条到达路径的**实测取证**在 `docs/AUDIT-sandbox-ia-consolidate.md`（2026-08-10 实测，5/5 绿）。
+ * 复验方式：`cd apps/frontend-shell && npx vitest run test/sandbox-ia-consolidate.seam.test.tsx`
+ * 的 §件一 五条 —— 每条从沙盘主屏出发、只用用户点得到的动作，断言子视图组件本体真渲染。
+ * **取证不过的那一条不许进本表**（删了就是让功能消失）。
+ *
+ * ── `via` 字段：删的是"单列"，不是"可达"，而两种可达机制不同 ────────────────────
+ *  · `workspace.views`：后端 `view-manifest.BUILTIN_VIEWS`(seed:true) 派单 → `App.tsx` 的
+ *    `{ path: "v/:viewKey" }` 通用分发 → `ViewPage` 查 `workspace.views` 拿 renderer。
+ *    ⇒ **后端不许停派**，停派 = `/v/<key>` 当场 404（件四结论，见 AUDIT §4）。
+ *  · `static-route`：`App.tsx` 的 `{ path: "v/<静态段>" }`，静态段先于 `:viewKey` 匹配，免下发即可达。
+ * 门按 `via` 分别验：前者验后端仍派单，后者验 route 仍存在。写错 `via` 会被门当场咬住。
+ */
+export const CONSOLIDATED_INTO_SANDBOX: Record<
+  string,
+  { via: "workspace.views" | "static-route"; where: string }
+> = {
+  // ── 五个沙盘子视图（原「推演」组平级入口）──────────────────────────────────
+  // 这五个的 entitlement 本就 `requires: ["sim.sandbox"]`（见 mocks/fixtures.ts 与后端 view-manifest.ts）：
+  // 沙盘关 ⇒ 它们连 `workspace.views` 都不下发、`/v/<key>` 本来就 404 ⇒ **不需要回退入口**
+  // （没有"沙盘关着但这五个还在"的租户状态）。故它们从 NAV_GROUPS 里**彻底删除**。
+  "chain-line-map": { via: "workspace.views", where: "沙盘中栏画布**默认**模式「线路图」（进沙盘即在屏上）" },
+  "physical-topology": { via: "workspace.views", where: "沙盘中栏画布模式条 →「物理拓扑」" },
+  "node-inspector": { via: "workspace.views", where: "沙盘右栏常驻检视面板 → 页签「变量输入」" },
+  "transit-flow": { via: "workspace.views", where: "沙盘线路图上的「在途批次图层」勾选框" },
+  "chain-impediments": { via: "workspace.views", where: "沙盘主屏阻滞点统计条 + 逐条清单（残差见 AUDIT §2）" },
+  // ── 四个独立推演页（原「推演」/「归因与风险」组的专用 route 入口）──────────────
+  // 收进沙盘顶部的**模式切换**（决策链序：现状 → 归因 → 试一手 → 求最优 → 影响半径）。
+  // 与上面五个的关键差别：这四个页**不受 `sim.sandbox` 门控**（人人可进）。
+  // 故它们在 NAV_GROUPS 里的条目**保留**，只是带 `consolidatedWhen: "sim.sandbox"` ——
+  // 沙盘开 → 隐藏（已在沙盘里）；沙盘关 → 照旧单列（否则这四个页会随沙盘一起从 IA 里蒸发）。
+  "cleanroom-attr": { via: "static-route", where: "沙盘模式切换 →「归因」（沙盘关则回退为导航单列）" },
+  "what-if": { via: "static-route", where: "沙盘模式切换 →「试一手」（沙盘关则回退为导航单列）" },
+  "optimize-whatif": { via: "static-route", where: "沙盘模式切换 →「求最优」（沙盘关则回退为导航单列）" },
+  "disruption-radius": { via: "static-route", where: "沙盘模式切换 →「影响半径」（沙盘关则回退为导航单列）" },
+};
+
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
 // 防管理页漏登记后再漂到「其它」兜底组（此前 boundary/prototype-intake 即因漏配落「其它」）。
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
@@ -58,49 +122,68 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
-  //   · 四个子视图落「其它」兜底组（`:～102`），而那个组里**不多不少正好只有它们四个**
+  //   · 四个子视图落「其它」兜底组，而那个组里**不多不少正好只有它们四个**
   //     ——一个专为「没人登记的东西」而生的桶，用户当然找不到。
-  // 实拍坐实：仓主部署后连问三轮「四个新入口在哪」，截图里「其它」还是折叠态（▸）。
-  // 我上一轮拿 `allInnerTexts()` 文本命中报了四个 ✅ —— 那证明的是「DOM 里有」，不是「用户找得到」。
   // 这是同族病的第四层：组件写了 ✅ → renderer 注册 ✅ → 后端派单 ✅ → **归组归进兜底桶 ❌**。
   //
-  // ⚠ 四个子视图在此登记是**过渡态**：按设计稿（推演沙盘·端到端产销控制台）它们不该是平级入口，
-  //    而应是沙盘控制台里的画布模式/图层/常驻侧栏。WO-SANDBOX-CONSOLE 落地后，这四行应当**删掉**
-  //    （届时它们不再进 workspace.navigation，本组也就不需要它们）。留着是为了在控制台落地前，
-  //    用户至少能在「推演」组里找到它们，而不是在一个折叠的「其它」桶底下。
-  //
   // WO-ROUTE-NAV-COVERAGE：`sim-sandbox` 从「本文件底部写死的 `<NavLink>`」收编成 `kind:"route"`
-  //   （并线时另摘掉了 `sim-init` 一条：那单基于的分支还没有「向导退役」，而正线已把该路由删了 ——
-  //    条目在、路由没 = 死链且无人报错。这正是本门判据⑤ 要抓的，变异 E 亲手证过会红。）
-  //   —— 上一版把它们挪到 `<UnifiedNav>` **之前**只治了"排在最底部"，没治"两套机制"：写死 NavLink 既不在
-  //   任何分组里（永远游离于 IA 之外），也不在任何门的射程里（`nav-group-coverage:check` 只对账 NAV_GROUPS）。
-  //   收编后二者与其余专用 route 同一种登记、同一道门；`feature: "sim.sandbox"` 保住暗发语义（关 → 入口消失）。
+  //   —— 写死 NavLink 既不在任何分组里（永远游离于 IA 之外），也不在任何门的射程里
+  //   （`nav-group-coverage:check` 只对账 NAV_GROUPS）。收编后与其余专用 route 同一种登记、同一道门；
+  //   `feature: "sim.sandbox"` 保住暗发语义（关 → 入口消失）。
+  //
+  // ⚠ WO-SANDBOX-IA-CONSOLIDATE（本轮）：上一版此处还挂着**九个**推演类入口 ——
+  //    五个沙盘子视图（`chain-line-map` / `transit-flow` / `physical-topology` / `node-inspector` /
+  //    `chain-impediments`）+ 三个独立推演页（`what-if` / `optimize-whatif`）与隔壁「归因与风险」组的
+  //    `cleanroom-attr` / `disruption-radius`。九个**全部已收编进沙盘**（子视图 = 画布模式/图层/常驻栏；
+  //    四个推演页 = 沙盘顶部的模式切换），登记表见本文件 `CONSOLIDATED_INTO_SANDBOX`，
+  //    逐条到达路径的实测取证见 `docs/AUDIT-sandbox-ia-consolidate.md`（2026-08-10 实测 5/5 绿；
+  //    复验：`cd apps/frontend-shell && npx vitest run test/sandbox-ia-consolidate.seam.test.tsx` §件一）。
+  //    上一版自己写着「WO-SANDBOX-CONSOLE 落地后这几行应当删掉」——控制台早已落地，这是在执行那条定案。
+  //    **保留** `project-sim` / `global-sim` / `risk` / `order-chain` / `decision-play`：
+  //    它们是独立场景（各自的求解器、各自的一页），不是沙盘的画布模式，收进去只会把沙盘撑爆。
   {
     title: "推演",
     items: [
       // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
       { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
-      // WO-IMPEDIMENTS-REACHABLE：`chain-impediments`（全链阻滞点）是沙盘第五子视图 ——
-      // renderer 早已注册（registry.ts:87），但后端不派单 + 无专用 route ⇒ 此前零路径渲染得到。
-      // 现随后端 BUILTIN_VIEWS 入册一并归组，与四个姐妹同组同级（不进「其它」兜底桶）。
-      ...["project-sim", "global-sim", "risk", "order-chain",
-        "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments",
-      ].map((key) => ({ kind: "view" as const, key })),
+      // ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**方向性裁决**（两条分支在此真对立）─────
+      // · WO-IMPEDIMENTS-REACHABLE 要把 `chain-line-map` / `transit-flow` / `physical-topology` /
+      //   `node-inspector` / `chain-impediments` 五个键**加进本组**做导航入口 ——
+      //   它的目标是「让 chain-impediments 有一条渲染得到的路」（此前后端不派单 + 无专用 route ⇒ 零路径）。
+      // · WO-SANDBOX-IA-CONSOLIDATE 反过来把这五个键**从导航移走**，收编进沙盘（一屏五模式）。
+      // 裁决取后者，因为**它把前者的目标办成了、且办得更严**：五个键逐条登记在
+      // `CONSOLIDATED_INTO_SANDBOX`，每条写明沙盘内的到达路径；而门 `check-nav-group-coverage.mjs`
+      // 判据⑧ 会反过来验「收编不是删除」——其中 ⑧a 明令**不许两头占**（导航里还留 kind:"view" 条目
+      // = 重复入口 = 收编没发生）。故若照 impediments-reachable 一侧把五个键加回来，那道门当场变红。
+      // 也就是说：这不是我在两个都行的方案里挑一个，是机器先说话（复验见提交说明）。
+      ...["project-sim", "global-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })),
       // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
       // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56
       // 明写"诚实排除"），于是 `viewByKey.get("decision-play")` 恒空、`return null` 恒静默 ⇒ 幽灵条目。
       { kind: "route" as const, key: "decision-play", label: "决策推演" },
-      { kind: "route" as const, key: "what-if", label: "假设推演" },
-      { kind: "route" as const, key: "optimize-whatif", label: "优化推演" },
+      // ── 已收编进沙盘模式切换的四页：`consolidatedWhen` 开 → 隐藏（详见类型定义处的语义说明）──
+      // 沙盘关着的租户仍看得到它们（这四页本身不受 sim.sandbox 门控，人人可进）。
+      { kind: "route" as const, key: "what-if", label: "假设推演", consolidatedWhen: "sim.sandbox" },
+      { kind: "route" as const, key: "optimize-whatif", label: "优化推演", consolidatedWhen: "sim.sandbox" },
     ],
   },
   // WO-ROUTE-NAV-COVERAGE：归因/影响面两页此前**零导航提及**——只能手敲 URL 才进得去。
   // 不并进「推演」组：它们回答的不是"改一个假设会怎样"（推演），而是"现状为什么这样 / 波及多大"（归因）。
+  // WO-SANDBOX-IA-CONSOLIDATE：归因/影响半径**二者**已收编进沙盘模式切换，故同带 `consolidatedWhen`。
+  // ⚠ WO-MERGE-11 订正：原文写「沙盘开时本组两项全隐藏 ⇒ 空组自动隐藏」，那是本组只有两项时的事实。
+  //    WO-WAITING-STATES-FE 往本组加了第三项 `process-wait`，而它**没有**被收编进沙盘
+  //    （沙盘五模式 = 现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`，其中没有流程等待），
+  //    所以它**不能**带 `consolidatedWhen` —— 带了就是把它唯一的入口在沙盘开时删掉，页面直接不可达。
+  //    ⇒ 沙盘开时本组剩「流程等待」一项，组**不再**自动隐藏。这是正确行为，不是漏配。
   {
     title: "归因与风险",
     items: [
-      { kind: "route" as const, key: "cleanroom-attr", label: "净室归因" },
-      { kind: "route" as const, key: "disruption-radius", label: "断供影响半径" },
+      // WO-WAITING-STATES-FE：流程等待态（需求 §20）——回答「为什么这个流程现在卡住了」。
+      // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演），
+      // 与同组两页同一判据。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
+      { kind: "view" as const, key: "process-wait" },
+      { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
+      { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
     ],
   },
   { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
@@ -142,7 +225,7 @@ type AdminPage = { path: string; label: string };
  * 空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
  */
 function UnifiedNav({
-  views,
+  views: allViews,
   adminPages,
   workspace,
 }: {
@@ -150,6 +233,16 @@ function UnifiedNav({
   adminPages: AdminPage[];
   workspace: Workspace | undefined;
 }) {
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE · **收编键必须在进 leftover 之前就滤掉**。
+   *
+   * 这一行是本单最容易漏掉、漏掉后果最直接的一行：后端仍然把这五个键派进 `workspace.navigation`
+   * （**必须**仍派 —— 停派 = `/v/<key>` 深链接当场 404，见 AUDIT §4）。只把它们从 `NAV_GROUPS`
+   * 里删掉的话，下面的 `leftover` 会照单全收，它们**原地掉进「其它」折叠兜底桶** ——
+   * 那正是 `G-NAV-FALLBACK-BUCKET` 这个断点本身，比单列还糟（单列至少找得到）。
+   * 故过滤放在最前面，一次盖住分组与兜底两条路。
+   */
+  const views = allViews.filter((it) => !CONSOLIDATED_INTO_SANDBOX[it.viewKey ?? it.key]);
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
@@ -161,6 +254,9 @@ function UnifiedNav({
         if (ref.kind === "route") {
           // 无条件渲染（无下发依赖）；`feature` 只服务于暗发页：关 → 入口消失（R3 不泄露存在性）。
           if (ref.feature && !featureOn(workspace, ref.feature)) return null;
+          // WO-SANDBOX-IA-CONSOLIDATE · 收编开关（与上一行**方向相反**：这条是"开就隐藏"）。
+          // 那个控制台在 ⇒ 本页已在它里面 ⇒ 单列 = 重复入口；控制台不在 ⇒ 条目照旧（不让页跟着蒸发）。
+          if (ref.consolidatedWhen && featureOn(workspace, ref.consolidatedWhen)) return null;
           return <RouteItemLink key={`r:${ref.key}`} routeKey={ref.key} label={ref.label} />;
         }
         if (ref.kind === "view") {

@@ -10,7 +10,8 @@
  * 运行前需先构建 datacore：pnpm --filter datacore build
  * 用法：node scripts/check-slice-connectivity.mjs   （建议经 package.json slice-connectivity:check）
  */
-import { existsSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,9 +24,9 @@ function fail(msg) {
   process.exit(1);
 }
 
-if (!existsSync(DIST)) {
-  fail("缺少 apps/datacore/dist/，请先运行 pnpm -r build（或 pnpm --filter datacore build）");
-}
+// ⛔ 守卫必须在 import dist **之前**（欠账 #161）：本门读 dist 的 objectTypes/linkTypes 断言切片连通性，
+//    结论讲的却是**源码**（谁该补 link）。dist 过期时它会报出源码里早已修好的"孤岛"。
+assertDistFresh(["apps/datacore/dist"], { gate: "slice-connectivity:check" });
 
 // 合法孤岛（自成体系的切片，与业务履约图不 join 是设计而非断裂）。每条须注释为何合法孤立——
 // 防「悄悄豁免真断裂」：新增豁免前先真跑确认其确实是自封闭分析层，不是漏了桥接 link。

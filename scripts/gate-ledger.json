@@ -125,11 +125,12 @@
       "ontologyRef": "§7:890",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "本体 §7 行890",
+        "evidence": "本体 §7 行890 【判据 P 变异反证 · 2026-08-10 亲手跑过 7 组，退出码全部显式捕获（禁用 cmd | tail; echo $?）】① **首跑即真红**并点名 apps/datacore/src/solvers/chain-loss.ts:589（TEMPLATE_HEAD \"capacity.op.\"）—— **真实存量、非人为植入**；**同一棵树上旧门（246e4c88 原样脚本）RC=0 全绿**（A/B 对拍，证明是真扩了判据不是复述已有能力）；② 模板串**中段**（前缀挪到中间，只看 head 的实现会漏）→ 真红 TEMPLATE_MIDDLE；③ `+` 拼接（换个语法，只认模板串的实现会漏）→ 真红 CONCAT；④ 前缀整串抄成常量再拼（②③ 都看不见变量里的东西）→ 真红 PREFIX_COPY；⑤ 非 capacity 阶段前缀（demand.*）→ 真红，证明前缀集来自契约 CHAIN_STAGES **现解**、不是只认 capacity 一个；⑥ **正对照**：同一文件里五条合法写法（走 CHAIN_OP_NODE_PREFIX 常量拼 / 走 chainOpNodeId() / 在已有 nodeId 后接后缀 / 注释里的手拼 / 散文模板）→ **RC=0 全绿、一条都不误报**；且 ⑤ 与 ⑥ 同文件时红**只点变异那一行**（证明是逐片段判、不是整文件判）；⑦ 把主逻辑 handBuiltKind 改瞎（恒 undefined）→ 判据 P 自检 5 条正样例同时报「**门自己瞎了**」并归入 blind 而非 errs；反向改成恒咬 → 6 条负样例同时报「门自己瞎了」（金丝雀与主逻辑**共用同一个 handBuiltKind**，各抄一份就抖不出这两条）。全部撤销后 RC=0 转绿。同批修真实存量：chain-loss.ts:589 改走 chainOpNodeId(opCode) —— 契约实现是 `${CHAIN_OP_NODE_PREFIX}${opId}`，输出**字节级一致**，零行为变更。",
         "note": "【首版·datacore 面】① 把 cadence.ts 里 nodeId 改回旧自由串 sop_consensus → RC=1 并打印 file:line 与不在册 id，还原即 RC=0；② 首次运行即真红，抓出 chain-loss.ts:322 残留的 chain.quality（非人为植入，是真实存量不一致）。【欠账 #110 扩到前端后·2026-08-06 亲手跑过 8 组，全部贴过真实输出】① 前端数组字面量植入不在册 capacity.rework_loop/order.credit_hold → 判据 N 真红并点名到 InspectorNodePanel.tsx 的植入行，**同一棵树上旧门 EXIT=0 全绿**（证明是真扩了覆盖面，不是复述已有能力）；② nodeId:\"sop_consensus\"（旧 D1 方言无点号，N 按形状看不见）→ 判据 K 真红；③ id 全部在册的手抄词表 [\"demand.consensus\",\"order.review\",\"capacity.schedule\",\"material.mrp\"] → 判据 C 真红、旧门全绿 —— 这正是工单指的「门对前端手抄词表视而不见」；④ 只抄 label 不抄 id → 判据 L 真红；⑤ 负对照：同样的不在册 id 放进 // 与 /* */ 注释 → RC=0 绿（证明不是 check-view-reachable v1 那种裸文本匹配）；⑥ 角色对照：stepId:\"order.settlement_terms\" → 绿，同一个串改成数组元素 → 红（证明排的是角色不是取值，不是豁免名单）；⑦ 前端扫描树指向不存在路径 → 三条「门自己瞎了」同时红；⑧ 把提取器改瞎（看不见数组字面量 / 退化成裸文本匹配）→ 词法自检真红，后者当场暴露 6 条 stepId 误报，反证角色排除承重。全部撤销后 RC=0。门自身防瞎四判据：契约解析锚 `] as const satisfies` + MIN_NODES + 四哨兵 id · 阶段/工序前缀从契约现解不手抄 · 扫描面下限 100 文件 + 哨兵文件必在 · 每次运行跑词法自检。防 G-GATE-PARSER-TRUNCATED-VIEW 同族。",
         "coverageWidened": "2026-08-06 欠账 #110：扫描面从 datacore 2 个文件扩到 + apps/frontend-shell/src/** 整树（185 ts/tsx，共 187 文件）；判据从 1 条（nodeId: 键位）扩到 4 条（K 键位 / N 命名空间 / C 抄表 / L 抄标签）。病根 = 门名承诺的范围比门实覆盖的范围大。"
       },
-      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。"
+      "notes": "闭 G-CHAIN-NODEID-FREESTRING：S0 把 nodeId 冻成自由串无注册表，D1/E1 两个 dev 各造一套词表交集为 0，节拍链整条断（两边单测全绿）。本门防复发。覆盖数据半 + 引擎半 + 前端三侧；前端另加 C/L 两条抄表判据（前端只渲染不产出新信息，任何节点清单/中文映射表都是副本）。诚实边界：不管 stepId 自身单源（stepId 今天无注册表，另一笔欠账）；只整串匹配，散文里提到 id 不算。",
+      "coverageWidened": " 【2026-08-10 · 欠账 #110 的**残留半边**：判据 P·前缀手拼】08-06 那次扩的是**扫描面**，判据集仍只认「静态整串字面量」⇒ 同一个病换形状活下来：`const nodeId = `capacity.op.${opCode}`` 的取值恰好合法（capacity.op.* 在允许集内）、且模板串的 TemplateHead 在 AST 里根本不是 StringLiteral ⇒ K/N 双重放行。契约 chain-sim.ts:220-227 明令必须走 chainOpNodeId() / CHAIN_OP_NODE_PREFIX、不许手拼字符串 —— **门校验的是「取值合法」，契约要求的是「必须走单源函数」，这是两件事**。判据 P 覆盖四条逃逸路：模板串 head / 模板串**中段** / `+` 拼接 / 前缀整串抄成常量。判据数 4→5。"
     },
     "check-chain-scan-honesty.mjs": {
       "alias": "chain-scan-honesty:check",
@@ -1000,6 +1001,79 @@
         "note": "三次变异各反证一条判据，均读回文件自证变异真生效、还原后复绿且 git status 干净：① 拆掉 AgentsPage 四个 InfoPopover 包裹（浮层内容搬回第一层）⇒ RC=1【D4·浮层被拆】deferred 6→2 而 first 持平；② 纯删除 tokens-out 统计块 ⇒ RC=1【D4·内容变少】total 107→105 —— 此例 first 101→99 单看像「变好了」，正是 D4 存在的理由（指标不许奖励删内容）；③ 把门自身 D4 的 deferredShrank 语义反转为恒 false ⇒ 判据金丝雀当场 RC=2「门自己瞎了」，证明金丝雀与主逻辑共用同一份实现、非装饰品 ④ 退出码契约（复验发现并修）：`require(\"typescript\")` 原为模块顶层裸调用，缺 node_modules 时抛未捕获异常 ⇒ node 默认 RC=1，把「门没跑起来」误报成「第一层真超标」。现全部环境失败路径归一到 toolBroken() ⇒ RC=2，RC=1 只剩 gate() 明确 return 1 一条路径；11 条退出码矩阵实测全符合预期，且该契约由 --selftest 起子进程注入故障机械守（UI_FIRST_LAYER_FORCE_NO_TS）。"
       },
       "notes": "守 docs/CONVENTION-ui-information-layering.md §1/§2 里能机检的部分（D1 第一层信息块数棘轮 · D2 R-UI-3 口径公式 · D2b 第一层长说明串 · D3 R-UI-2 字号层级 · D4 守恒反删除）。R-UI-1 视线距离是渲染后的几何量，静态判不了，本门明确不假装能判，仍由规范 §5 人工执行。原生 title= 存量另有专门棘轮，本门只报数不据此红，避免两份基线漂移。"
+    },
+    "check-dark-launch-integrity.mjs": {
+      "alias": "dark-launch:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/seed.ts",
+        "scripts/feature-rollout.json"
+      ],
+      "escalation": "仓主",
+      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 换判据后七向变异全中（工作树每次跑完还原、全部显式捕获退出码）：①新增 defaultOn:false 且模板会打开它、声明 tiered → RC=0（合法分档，门不管）②**同一个 feature 只把声明改成 dark** → RC=1 A5（这一对是决定性的：代码完全相同，唯一变量是声明，证明门量的是「意图 vs 机制是否一致」而非形态）③explicit 的 ceo.free-llm 从暗发集掉出去 → RC=1 A6 ④把 tiered 的 sim.sandbox 塞进暗发集（正是旧门要求的修法）→ RC=1 A7 ⑤新增 defaultOn:false 不声明 → RC=1 A1 ⑥新增第三个暗发集合但 templateFeatures 没减去它 → RC=1 A8 ⑦把种子已点亮的 qos.dril-routing 声明成 dark → RC=1 A5。另：dist 陈旧 → RC=1 A9；抽取器读不到东西 → RC=2「⛔ 门自己瞎了」拒绝给结论。",
+        "note": "⚠️ 本门于 2026-08-10 **换过判据（WO-FIX-DARK-LAUNCH-GATE）——旧判据是错的**。旧判据：凡 defaultOn:false 必须进某个 *_DARK_LAUNCH_FEATURES 集合。形态（铁律 0.6 句式）：「我用『是否 defaultOn:false』当作『是否暗发』的证据，而前者并不度量后者。」实测旧门报的 15 个「违规」**15 个全是误报**（全是产品分档），且它给的修法有实际破坏力：拿 sim.sandbox 照做一次 → demo 有效功能 75→63、出厂视图 14→9（级联删掉 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments，因为它们 requires:[sim.sandbox]）。两个 dev 各自独立顶回来过这道门，他们是对的。根因：defaultOn:false 底下藏着四种意图（dark 暗发 / explicit 显式启用 / tiered 产品分档 / ga 全量），形态一模一样，任何靠「集合成员」的判据都分不开。新判据：意图显式声明在 scripts/feature-rollout.json，门只断言「声明的意图」与「代码的机制」是否一致；未声明=红，不猜默认档（两个方向的默认值都会错且错法相反）。A6/A7 互为镜像是方向正确的关键——旧门只有 A6 那一半。全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。原病史（仍成立，只是判据换了）：defaultOn:false 只挡 L1，templateFeatures() 对 battery 返回 all-on，L2 无条件覆盖 L1，demo 恰是 battery。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
+    },
+    "check-solver-arg-key-drift.mjs": {
+      "alias": "solver-arg-key-drift:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/arg-aliases.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:1053",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行1053",
+        "note": "green→red 亲测：把 risk_timeline 的 argHints 退回 {baseId,days} 并删掉 SOLVER_ARG_ALIASES 里的 risk_timeline 登记 → 门红在 risk_timeline.days（MUTATED_RC=1）"
+      },
+      "notes": "存量 11 条已登记：REAL-DRIFT 9（附求解器实读的键·待后续单修）/ VERIFIED-OK 2（ontology_query 整包 args 经 zod 解析·字面扫描假阳性）"
+    },
+    "check-dist-freshness.mjs": {
+      "alias": "dist-freshness:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "scripts/dist-freshness.mjs",
+        "scripts/check-*.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-DIST-STALE-READ",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 两向变异全中（工作树跑完还原、逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码，非管道尾 $?）：①摘掉 check-slice-connectivity.mjs 的 assertDistFresh 调用 → RC=1，判据②点名「scripts/check-slice-connectivity.mjs 读 dist（L14/20）却未接新鲜度守卫」并给出修法（含「静态 import 必须先改 await import」的提醒）；②把守卫主逻辑的 STALE 判据改成恒假（`if (src.ms > build.ms)` → `if (false)`）→ RC=1，且**先红的是金丝雀**（「① src 新于 dist → 报 STALE（期望 STALE，实得 OK）」）并打印「⛔ 金丝雀不中 ⇒ 报守卫坏了，不许报 dist 都是新的」。②是决定性的一条：它证明金丝雀与主逻辑**共用同一份 checkDistFreshness**，不是各抄一份的装饰品——装饰品在这个变异下会照样绿。另有守卫本体的三包变异反证：分别 touch datacore/contracts/agentcore 源码使 dist 过期 → 对应门 RC=1 并打印滞后时长与最新源码/最新产物路径；同时对照组（只读 agentcore 的 check-dril-registry）在 datacore 变异下仍 RC=0，证明不是恒红的哑门；pnpm -r build 后六道门全部复绿。",
+        "note": "金丝雀 11 例分两层：①②③ 验守卫本体（src 新于 dist 报 STALE / 无 dist 报 MISSING / dist 新于 src 放行）；④⑤⑥ 验**检测器**分得清「读 dist」与「提 dist」，用的是本仓真实原句。⑤ 是检测器自己踩过的坑：首版把 check-crossbranch-reinvent.mjs:80 的 `!f.includes(\"/dist/\")`（**排除** dist）算成读 dist，被金丝雀当场抖出——「提及 ≠ 读取」的同一个病，检测器自己犯了一次，故以真实原句钉死。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "闭 G-DIST-STALE-READ（欠账 #161）：本仓 15 道门 import dist 之后讲的是**源码**的话，却只查 existsSync（构建过没有），从不查新鲜度（构建得够不够新）。dist 落后于 src 时它们会说出与源码**恰好相反**的结论且全绿——2026-08-10 一天之内真实误判 4 次，其中一次把「dist 过期」错报成源码缺陷（欠账 #155：不是源码缺陷，是我的诊断错了）。共享守卫 scripts/dist-freshness.mjs 已接进全部 15 道门（fail-closed：过期即退，**只报「请先 build」不给任何内容结论**）。本门守的是「保持接线」：明天新加一道读 dist 的门若不接守卫，机器先说话，不靠人记性。两处非照抄的接法：check-chain-closure.mjs 的**静态** import dist 必须改 await import（静态 import 提升到模块体最前，写在下面的守卫形同虚设）；check-dark-launch-integrity.mjs 区分「dist 缺→诚实降级」与「dist 过期→硬红」（过期比缺席更毒：A9 会报出并不存在的不一致，A2 会把刚加的 feature 判成悬空声明）。"
+    },
+    "check-redline-wired.mjs": {
+      "alias": "redline-wired:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/databuilder/provisional-honesty.ts",
+        "apps/datacore/src/databuilder/service.ts",
+        "docs/SYSTEM-ONTOLOGY.md",
+        "scripts/redline-wired-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-GATE-ENTRYPOINT-PHANTOM",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 五向变异反证全中（工作树每次跑完 git checkout 还原、退出码全部显式捕获，禁用 `cmd | tail; echo $?`）：① 撤销 databuilder/service.ts 的红线闸接线（= 退回本单之前的状态）→ RC=1，W1 真红并点名 docs/SYSTEM-ONTOLOGY.md:1036 + 定义文件；② 只在**注释**里留符号名（裸文本匹配的门会被骗绿）→ **仍 RC=1**，证明走的是 TS AST 不是 grep；③ 把接线改成 **import 别名** `import { checkProvisionalHonesty as honestyGuard }` 并只用别名调用（正对照·治「换个 import 别名就抓不到」）→ **RC=0 仍绿**，证明不误报；④ §7 新增一条 package.json 查无此键的 `pnpm mutation-phantom:check` → RC=1，W2 棘轮真红 14>13 并点名到 §7:1091；⑤ 把主逻辑 countProductionRefs 改瞎（恒返 []）→ 5 条正样例金丝雀同时报「**门自己瞎了**」归入 blind 而非 errs；⑥ 反向改成恒非空（门恒绿=装饰品）→ 3 条负样例金丝雀（定义文件/test/注释）同时报「门自己瞎了」。全部撤销后 RC=0 转绿。金丝雀与主逻辑**共用同一个 countProductionRefs**，故 ⑤⑥ 能抖出来——各抄一份就抖不出。",
+        "note": "首跑即真红（非人为植入）：checkProvisionalHonesty 生产调用方 0，且 §7 给的入口 provisional-honesty:check 在 package.json 里从来不存在。W2 存量 13 条未 burn-down，理由写在 scripts/redline-wired-baseline.json 的 _burndownNote：12 条只差一行 package.json 别名，但补别名会把这些门的 census binding 从 NONE 翻成 MANUAL，进而要求同批改门账 binding（check-gate-ledger 判据③ 现算比对），超出本单范围边界。"
+      },
+      "notes": "欠账 #134。治「本体 §7 登记为门、执行入口却完全不存在」这一整类——现存两道治理门（check-gate-ledger / check-ontology-writeback G3）都只认 scripts/check-*.mjs 文件名这一种门的形状，而 §7 还登记着另两种：`pnpm <alias>` 声称的入口、test-backed 纯函数闸，两类整整逃逸。"
     },
     "check-css-token-defined.mjs": {
       "alias": "css-token:check",

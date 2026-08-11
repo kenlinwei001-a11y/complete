@@ -20,8 +20,11 @@
  *
  * ① 主工作目录的当前分支 === canonical；
  * ② 没有**别的** worktree 占着 canonical 分支（占了就会把主目录挤走，第①条迟早再破）。
+ * ③ **主工作目录不落后于 `origin/<canonical>`**（2026-08-10 追加，见判据③处的长注）。
  *
- * 判据是**分支名本身**，不是「有没有未推提交」——后者会被 cherry-pick / 旁支同步之类的操作糊弄过去。
+ * ①② 的判据是**分支名本身**，不是「有没有未推提交」——后者会被 cherry-pick / 旁支同步糊弄过去。
+ * ③ 补的正是①②的盲区：**名字对不代表树是新的**。本地 ref 叫 canonical，却可以停在 112 个提交之前，
+ * ①② 双绿而整棵树是旧的 —— 在它里面 grep，会把「这棵树里还没有」读成「全仓没有」。
  *
  * ## 金丝雀
  *
@@ -37,6 +40,15 @@ const CANONICAL = process.env.CANONICAL_BRANCH || "claude/inspiring-gates-aqczjg
 
 function git(args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+/** 在指定 worktree 目录里跑 git（判据③ 要量主工作目录，而不是本脚本碰巧所在的目录）。 */
+function gitAt(cwd, args) {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** 单一来源①：解析 `git worktree list --porcelain` → [{path, branch|null, bare}] */
@@ -64,6 +76,34 @@ function currentBranch() {
   return b === "HEAD" ? null : b;
 }
 
+/**
+ * 单一来源③：`a` 是不是 `b` 的祖先（含 a===b —— git 的定义，每个提交都是自己的祖先）。
+ * 判据 ③ 与它的金丝雀**共用这一个函数**，不许各抄一份。
+ */
+function isAncestor(a, b) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", a, b], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 解析得出该 ref 的 sha；解析不出返回 null（**不返回输入串本身**）。 */
+function shaOf(ref) {
+  // 兜住「ref 不存在」的是**捕获退出码**（下面的 try/catch）——2026-08-10 实测本机 git：
+  // `rev-parse refs/heads/__nope__` / `rev-parse HEAD:no/such/file` / `rev-parse __nope__`
+  // 退出码都是 128，都会抛。`--verify -q` 在此仅作纵深防御（换 git 版本/调用形态时它是对的）。
+  // ⚠️ 本仓 2026-08-06 那次「输入串被原样吐回、退出码 0」的教训**仍然成立**，但成立的前提是
+  // **调用方只读 stdout、不看退出码** —— 那才是真病根。写成「必须带 --verify -q」是把
+  // 药当成了病因（同一形态：拿一个相关但不度量目标的东西当判据）。
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "-q", ref], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------- 金丝雀（与主逻辑共用上面两个函数）----------------
 const worktrees = parseWorktrees();
 const branch = currentBranch();
@@ -71,12 +111,25 @@ const canaryProblems = [];
 if (worktrees.length < 1) canaryProblems.push("`git worktree list --porcelain` 解析出 0 个 worktree —— 至少该有主目录自己");
 if (!worktrees.some((w) => w.path)) canaryProblems.push("解析出的 worktree 全都没有 path 字段 —— 解析器坏了");
 if (branch === null && worktrees.length === 0) canaryProblems.push("既拿不到分支也拿不到 worktree —— 不在 git 仓库里？");
+// 判据③ 的金丝雀：`isAncestor` 必须真的会分辨方向（与主逻辑**同一个函数**）。
+// 已知必真：任一提交是它自己的祖先。已知必假：一个提交不是它自己父提交的祖先。
+const headSha = shaOf("HEAD");
+const parentSha = shaOf("HEAD^");
+if (headSha && !isAncestor(headSha, headSha)) canaryProblems.push("isAncestor(HEAD,HEAD) 返回假 —— 祖先判定器坏了（每个提交都是自己的祖先）");
+if (headSha && parentSha && isAncestor(headSha, parentSha)) canaryProblems.push("isAncestor(HEAD, HEAD^) 返回真 —— 祖先判定器方向反了");
+// ⚠️ 这里**故意没有** shaOf 的金丝雀，原因要写清楚，免得后人以为是漏了：
+// 我先写过一条「不存在的 ref 必须回 null」的金丝雀，变异反证时它**打不响**（去掉 `--verify -q`
+// 后照样绿）。实测本机 git：`rev-parse refs/heads/__nope__` / `rev-parse HEAD:no/such/file`
+// / `rev-parse __nope__` **三种形态退出码都是 128**，于是 `shaOf` 的 try/catch 一律接住回 null ——
+// 真正兜住这件事的是**捕获退出码**，不是 `--verify -q`。
+// 一条打不响的金丝雀就是装饰品，比没有更坏（它让人以为这里被守着），故删掉并留此说明。
+// `--verify -q` 仍然留着当纵深防御（换 git 版本 / 换调用形态时它是对的），但**不声称有金丝雀守它**。
 if (canaryProblems.length) {
   console.error("⛔ 门自己坏了（金丝雀不中）—— 这不是「工作目录干净」，是本脚本没读到东西：");
   for (const p of canaryProblems) console.error(`   · ${p}`);
   process.exit(2);
 }
-console.log(`金丝雀：解析到 ${worktrees.length} 个 worktree · 当前分支 = ${branch ?? "(detached)"} ⇒ 解析器有效`);
+console.log(`金丝雀：解析到 ${worktrees.length} 个 worktree · 当前分支 = ${branch ?? "(detached)"} · 祖先判定器双向有效 ⇒ 解析器有效`);
 
 // ---------------- 主判据 ----------------
 const problems = [];
@@ -108,10 +161,47 @@ for (const w of squatters) {
   );
 }
 
+// ③ 主工作目录不许**落后** canonical —— 分支名对，不代表树是新的
+//
+// ## 为什么加这条（2026-08-10 · 照 CLAUDE.md 铁律 0.6，本条是①②的盲区）
+//
+// 形态：**「我用『分支名 === canonical』当作『这棵树是新的』的证据，而名字并不度量新鲜度。」**
+// 与①②同源，但①②都抓不到：本地 ref 叫 `claude/inspiring-gates-aqczjg`、`git worktree list`
+// 也这么显示，而它可以停在 112 个提交之前 —— 两条判据全绿，树是旧的。
+//
+// 实测代价（2026-08-10）：主工作目录停在 `5208fd9b`，落后 canonical **112 个提交**。
+// 于是在它里面跑的每一次 grep 读的都是旧树，一天里连报两个**错误的否定结论**：
+//   · 「`GATE_UNAVAILABLE` 全仓 grep 不到」—— 实际有 5 处（`skill-publish-gate.ts` 那时根本还没进这棵树），
+//     由 dev 顶回来才发现；
+//   · 「S3 枚举器要从零建」—— 实际脚手架早在，差点让 dev 造第二套。
+// 更毒的是**当时我跑了金丝雀**：换个词能 grep 到东西，于是我判「工具是好的」——
+// 但那个金丝雀命中的是**新旧两棵树都有**的字符串，它压根不度量「树新不新」。
+// **金丝雀选错了对象，等于没有金丝雀。**
+//
+// 判据：`HEAD` 是 `origin/<canonical>` 的**严格**祖先（是祖先且不等于它）⇒ 落后。
+// 取不到 `origin/<canonical>`（没 fetch 过 / 离线 CI）⇒ 报「**未判定**」，**不许**报「干净」。
+// ⚠️ 判据③ 量的必须是**主工作目录**的 HEAD（与①同一个主语），不是「本脚本碰巧在哪跑」的 HEAD。
+// 从别的 worktree 里跑 `pnpm gates` 时两者不同 —— 用 cwd 的 HEAD 会去判一棵不相干的树。
+const mainHeadSha = main?.path ? shaOf(`${main.path}/HEAD`) ?? gitAt(main.path, ["rev-parse", "HEAD"]) : headSha;
+const remoteRef = `refs/remotes/origin/${CANONICAL}`;
+const remoteSha = shaOf(remoteRef);
+if (remoteSha === null) {
+  console.log(`⚠️ 判据③ 未判定：本地没有 \`origin/${CANONICAL}\` 引用（没 fetch 过？）—— 这不等于「不落后」。`);
+} else if (mainHeadSha && mainHeadSha !== remoteSha && isAncestor(mainHeadSha, remoteSha)) {
+  const behind = git(["rev-list", "--count", `${mainHeadSha}..${remoteSha}`]).trim();
+
+  problems.push(
+    `主工作目录停在 \`${mainHeadSha.slice(0, 8)}\`，落后 \`origin/${CANONICAL}\` **${behind} 个提交**（HEAD 是它的严格祖先）。\n` +
+      `      ⚠️ 分支名对不代表树是新的。在旧树上 grep，会把「这棵树里还没有」读成「全仓没有」——\n` +
+      `         本仓 2026-08-10 因此一天连报两个错误的否定结论（详见本文件判据③注释）。\n` +
+      `      修法：git fetch origin && git merge --ff-only origin/${CANONICAL}`,
+  );
+}
+
 if (problems.length) {
   console.error(`\n🔴 worktree-canonical:check 失败（${problems.length} 项）\n`);
   for (const p of problems) console.error(`   · ${p}\n`);
   process.exit(1);
 }
 
-console.log(`✅ 主工作目录在 canonical \`${CANONICAL}\` 上，且无其他 worktree 占用 —— 分支名 == 推送目标。`);
+console.log(`✅ 主工作目录在 canonical \`${CANONICAL}\` 上 · 无其他 worktree 占用 · 不落后于 origin（分支名 == 推送目标，且树是新的）。`);
