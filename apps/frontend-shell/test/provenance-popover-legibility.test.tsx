@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -252,7 +252,7 @@ interface Verdict {
  * 判定「某个类在某套主题下，作为悬浮层表面是否遮得住底下」。
  * 收集该类在**所有**样式表里的全部背景/滤镜/透明度声明（后来的覆盖先前的），逐条判。
  */
-function judgeSurface(className: string, theme: Theme): Verdict {
+function judgeSurface(className: string, theme: Theme, rules: Rule[] = ALL_RULES): Verdict {
   const tokens = TOKENS[theme];
   const reasons: string[] = [];
   const selMatches = (sel: string) =>
@@ -263,7 +263,7 @@ function judgeSurface(className: string, theme: Theme): Verdict {
       return themed ? themed[1] === theme : true;
     });
 
-  const hits = ALL_RULES.filter((r) => selMatches(r.selector));
+  const hits = rules.filter((r) => selMatches(r.selector));
   if (hits.length === 0) return { backdropIndependent: false, reasons: [`没有任何样式规则命中 .${className}`], solid: null };
 
   let bgRaw: { value: string; from: string } | null = null;
@@ -667,5 +667,240 @@ describe("#104 ⑤ token 纪律 · 浮层样式零硬编码颜色", () => {
     for (const theme of THEMES) {
       expect(parseColor(resolveVars("var(--popover-surface)", TOKENS[theme])), `${theme} 主题解析 --popover-surface 失败`).not.toBeNull();
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. WO-HOVER-LAYER · 全仓浮层表面「按性质」判，不按类名判
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * ── 为什么要加这一节（这是机制，不是补测试）──────────────────────────────────────
+ *
+ * 上面 ③ 的全仓断言写的是：「没有任何 role="tooltip" 还直接挂 `className="panel"`」。
+ * 它**咬的是一个字符串**。于是它对下面这种写法完全瞎：
+ *
+ *     // components/Risk/RiskPopover.tsx:35（本 WO 之前）
+ *     <div className={styles.pop} role="tooltip">           ← 不含 "panel"，③ 判绿
+ *     // components/Risk/RiskPopover.module.css:5
+ *     background: linear-gradient(165deg, rgba(30,38,49,.97), rgba(14,19,26,.96));
+ *
+ * 这张自写表面比 .panel 更糟：**硬编码深色、完全不随主题**。实测对比度
+ * （同一套 contrast() 算的）：light 主题 --txt **1.15:1** · warm **1.00:1** ——
+ * 亮度完全相同，峰值数字在屏幕上直接消失。而 ③ 全程绿灯。
+ *
+ * 照 CLAUDE.md 铁律 0.6 的句式写清病灶形态：
+ *   **「我用『浮层没挂 className="panel"』当作『浮层表面可读』的证据，而前者并不度量后者。」**
+ * .panel 只是当时**恰好**是那张坏表面的名字。名字换一个，判据就整个失效。
+ *
+ * 所以本节改判**性质**：全仓每一个 role="tooltip"，要么戴共享的 .popover-surface，
+ * 要么它自己那张表面必须在**三套主题**里都通过 judgeSurface（不透明 + 不采样底下像素）。
+ * 判据与 ① 共用**同一个** judgeSurface / parseColor / resolveVars —— 不另抄一份正则
+ * （抄了就是装饰品：改主逻辑时它拿旧的去测、照样绿）。
+ *
+ * CSS_FILES 那份**写死的 5 文件白名单**正是 ③ 瞎掉的物理原因：RiskPopover.module.css
+ * 不在里面 ⇒ ALL_RULES 里根本没有它的规则 ⇒ 任何基于 ALL_RULES 的判断都看不见它。
+ * 本节因此自己扫**全部** .css，不用白名单。
+ */
+
+/** 递归列出目录下所有 .css（不进 node_modules）。 */
+function listCss(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+    const abs = join(dir, e.name);
+    if (e.isDirectory()) out.push(...listCss(abs));
+    else if (e.name.endsWith(".css")) out.push(abs);
+  }
+  return out;
+}
+
+const SRC_ROOT = join(REPO_ROOT, "apps/frontend-shell/src");
+/** 全仓规则索引（对比 CSS_FILES 的 5 文件白名单 —— 白名单正是 ③ 瞎掉的原因）。 */
+const WIDE_RULES: Rule[] = listCss(SRC_ROOT).flatMap((abs) =>
+  parseRules(stripComments(readFileSync(abs, "utf8")), abs.slice(REPO_ROOT.length + 1)),
+);
+
+/**
+ * 从一个 JSX 开标签里抽出它戴的 class：字面量 class + `styles.X` 形式的 CSS-module class。
+ *
+ * ⚠ `className={...}` 必须**配对花括号**地切，不能用 `\{([\s\S]*?)\}` 非贪婪匹配 ——
+ * 本门第一版就栽在这：`className={`popover-surface ${styles.body}`}` 会被切在
+ * `${styles.body` 处（第一个 `}`），模板串少了收尾反引号 ⇒ 字面量 `popover-surface`
+ * 抽不出来 ⇒ **戴着共享表面的浮层被判成"没戴"**，5 个好浮层全报红。
+ * 形态照铁律 0.6：「我用『第一个右花括号』当作『className 表达式的结尾』的证据，而前者并不度量后者。」
+ */
+function classesOf(tag: string): { literal: string[]; moduleKeys: string[] } {
+  const literal: string[] = [];
+  const moduleKeys: string[] = [];
+
+  const at = tag.indexOf("className=");
+  if (at < 0) return { literal, moduleKeys };
+  const rest = tag.slice(at + "className=".length).trimStart();
+
+  if (rest.startsWith('"')) {
+    const end = rest.indexOf('"', 1);
+    if (end > 0) literal.push(...rest.slice(1, end).split(/\s+/).filter(Boolean));
+    return { literal, moduleKeys };
+  }
+  if (!rest.startsWith("{")) return { literal, moduleKeys };
+
+  // 配对扫描：数花括号深度，回到 0 才算表达式结束
+  let depth = 0;
+  let end = rest.length;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "{") depth++;
+    else if (rest[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  const expr = rest.slice(1, end);
+  for (const m of expr.matchAll(/`([^`]*)`/g)) {
+    // 模板串里的裸字面量片段（去掉 ${...} 插值）
+    literal.push(...m[1]!.replace(/\$\{[^}]*\}/g, " ").split(/\s+/).filter(Boolean));
+  }
+  for (const m of expr.matchAll(/"([^"]*)"/g)) literal.push(...m[1]!.split(/\s+/).filter(Boolean));
+  for (const m of expr.matchAll(/styles\.(\w+)/g)) moduleKeys.push(m[1]!);
+  for (const m of expr.matchAll(/styles\[["'](\w+)["']\]/g)) moduleKeys.push(m[1]!);
+  return { literal, moduleKeys };
+}
+
+/**
+ * `styles.X` 只在**该组件自己 import 的那份 .module.css** 里有意义 —— CSS Modules 是按文件作用域的。
+ * 全仓拿类名硬匹会串台：`.pop` 在 RiskPopover / ProvenancePopover / HealthBadge / SliceLayersPanel
+ * 四份 module 里各有一个，互不相干。本门第一版没做作用域，于是把 HealthBadge 那份坏 `.pop`
+ * 的罪名安到了另外三个无辜浮层头上（报错原文里四条 failure 指的其实是同一个文件）。
+ * 形态同上：「我用『同名类』当作『同一个类』的证据。」
+ */
+function moduleRulesFor(tsxAbs: string): Rule[] {
+  const src = readFileSync(tsxAbs, "utf8");
+  const out: Rule[] = [];
+  for (const m of src.matchAll(/import\s+\w+\s+from\s+["']([^"']+\.module\.css)["']/g)) {
+    const spec = m[1]!;
+    const abs = spec.startsWith(".") ? join(dirname(tsxAbs), spec) : null;
+    if (!abs || !existsSync(abs)) continue;
+    out.push(...parseRules(stripComments(readFileSync(abs, "utf8")), abs.slice(REPO_ROOT.length + 1)));
+  }
+  return out;
+}
+
+/** 从内联 style={{...}} 里抽 background / backgroundColor 的值（字符串字面量形式）。 */
+function inlineBackground(tag: string): string | null {
+  const m = /\bbackground(?:Color)?:\s*"([^"]*)"/.exec(tag);
+  return m ? m[1]! : null;
+}
+
+describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 className="panel" 这个字符串，咬不住自写表面）', () => {
+  it("金丝雀：判据对已知坏表面必须判红，对已知好表面必须判绿（否则下面的结论一律作废）", () => {
+    // 已知坏 ①：.panel（半透磨砂）—— 与 ④ 反面锚同一张表面
+    for (const theme of THEMES) {
+      expect(judgeSurface("panel", theme, WIDE_RULES).backdropIndependent, `金丝雀失灵：.panel 在 ${theme} 下竟被判为遮得住`).toBe(false);
+    }
+    // 已知坏 ②：本 WO 修掉的那张硬编码深色渐变（就地喂给判据，不依赖它还在不在仓里）
+    const mutant: Rule[] = [
+      { selector: ".__canary_risk_pop", body: "background: linear-gradient(165deg, rgba(30,38,49,0.97), rgba(14,19,26,0.96));", file: "<canary>" },
+    ];
+    for (const theme of THEMES) {
+      const v = judgeSurface("__canary_risk_pop", theme, mutant);
+      expect(v.backdropIndependent, `金丝雀失灵：RiskPopover 的旧渐变表面在 ${theme} 下竟被判为遮得住`).toBe(false);
+    }
+    // 已知好：.popover-surface
+    for (const theme of THEMES) {
+      expect(judgeSurface("popover-surface", theme, WIDE_RULES).backdropIndependent, `金丝雀失灵：.popover-surface 在 ${theme} 下竟被判红`).toBe(true);
+    }
+    // 扫描器自证：全仓 CSS 索引不能是空的
+    expect(WIDE_RULES.length, "全仓 CSS 规则索引为空 ⇒ 扫描器坏了，本节结论作废").toBeGreaterThan(200);
+  });
+
+  it('全仓每一个 role="tooltip" 的表面：要么戴 .popover-surface，要么自己那张表面三套主题都遮得住', () => {
+    const files = listTsx(SRC_ROOT);
+    const checked: string[] = [];
+    const failures: string[] = [];
+
+    for (const abs of files) {
+      const rel = abs.slice(REPO_ROOT.length + 1);
+      const src = readFileSync(abs, "utf8");
+      for (const tag of tooltipOpeningTags(src)) {
+        // JSDoc 注释里那一处（InfoPopover.tsx:33）切出来不含 className，跳过——它不是 JSX。
+        if (!/className=|style=/.test(tag)) continue;
+        checked.push(rel);
+        const { literal, moduleKeys } = classesOf(tag);
+        if (literal.includes(SURFACE_CLASS)) continue; // 戴了共享表面 ⇒ 由 ①②③ 负责，已验
+
+        // 没戴共享表面 ⇒ 它必须自己是一张遮得住的表面。
+        // 全局字面量类查全仓规则；`styles.X` 只查**本组件自己那份 module**（CSS Modules 按文件作用域）。
+        const own = moduleRulesFor(abs);
+        const candidates: [string, Rule[]][] = [
+          ...literal.map((c) => [c, WIDE_RULES] as [string, Rule[]]),
+          ...moduleKeys.map((c) => [c, own] as [string, Rule[]]),
+        ];
+        const why: string[] = [];
+        const passes = candidates.some(([cls, scope]) =>
+          THEMES.every((theme) => {
+            const v = judgeSurface(cls, theme, scope);
+            if (!v.backdropIndependent) why.push(`  .${cls} @${theme}: ${v.reasons.join(" / ")}`);
+            return v.backdropIndependent;
+          }),
+        );
+        if (passes) continue;
+
+        // 还可能把表面写在内联 style 上
+        const inline = inlineBackground(tag);
+        if (inline) {
+          const okInline = THEMES.every((theme) => {
+            const c = parseColor(resolveVars(inline, TOKENS[theme]));
+            if (!c || c.a < 1) {
+              why.push(`  内联 background:"${inline}" @${theme} → ${resolveVars(inline, TOKENS[theme])}（非实色或半透）`);
+              return false;
+            }
+            return true;
+          });
+          if (okInline) continue;
+        }
+
+        failures.push(
+          `\n${rel}\n  浮层既没戴 .${SURFACE_CLASS}，自己那张表面也遮不住底下的内容：\n${why.join("\n")}\n  开标签：${tag.replace(/\s+/g, " ").slice(0, 200)}`,
+        );
+      }
+    }
+
+    expect(checked.length, '一个 role="tooltip" 都没扫到 ⇒ 扫描器坏了，这条断言是哑的').toBeGreaterThanOrEqual(8);
+    expect(failures, `全仓浮层表面普查失败 ${failures.length} 处：${failures.join("")}`).toEqual([]);
+  });
+
+  it("欠账 #175 · 浮层组件内不得再用原生 title= 承载口径（浮层里套浏览器 tooltip 等于没做）", () => {
+    // 判据只覆盖**浮层组件自身**：原生 title 延迟约 1s 才出、触屏根本不出、不能选中复制、
+    // 样式不可控；而这些组件的宿主本身已经是浮层，里面再套一个原生 tooltip 是纯粹的失效。
+    const POPOVER_COMPONENTS = [
+      "apps/frontend-shell/src/components/Risk/RiskPopover.tsx",
+      "apps/frontend-shell/src/components/Provenance.tsx",
+      "apps/frontend-shell/src/components/RuleRef.tsx",
+      "apps/frontend-shell/src/components/InfoPopover.tsx",
+      "apps/frontend-shell/src/components/Provenance/ProvenancePopover.tsx",
+    ];
+    for (const f of POPOVER_COMPONENTS) {
+      const src = readRepo(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      // 只咬原生小写标签上的 title=（<Modal title=...> 那种组件 prop 不是病）
+      const native = [...src.matchAll(/<([a-z][\w]*)\s([^<]*?)\/?>/gs)].filter(([, , attrs]) => /(^|\s)title\s*=/.test(attrs!));
+      expect(
+        native.map((m) => m[0]!.replace(/\s+/g, " ").slice(0, 140)),
+        `${f} 里的浮层又用原生 title= 承载内容了（欠账 #175）——请改成浮层内的可见文字或 aria-label`,
+      ).toEqual([]);
+    }
+  });
+
+  it("RiskPopover 的峰值口径是**可见 DOM 文字**，不是 title 属性（#175 的正向判据）", () => {
+    const src = readRepo("apps/frontend-shell/src/components/Risk/RiskPopover.tsx");
+    // 口径文案走 locales 单一来源
+    expect(src).toMatch(/zh\.risk\.peakCaliber\(/);
+    expect(src).toMatch(/data-testid="risk-popover-peak-caliber"/);
+    const zhSrc = readRepo("apps/frontend-shell/src/locales/zh.ts");
+    expect(zhSrc, "risk.peakCaliber 未在 locales 里定义").toMatch(/peakCaliber:/);
+    // 逐日格改用 aria-label（可访问名），不是 title
+    expect(src, "逐日格又退回原生 title=").not.toMatch(/<span key=\{i\}[^>]*\stitle=/);
+    expect(src).toMatch(/aria-label=\{zh\.risk\.dayCellAria\(/);
   });
 });

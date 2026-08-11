@@ -5,16 +5,20 @@
   justify-content: center;
 }
 
+/* WO-HOVER-LAYER：同一串硬编码深色渐变的第 5 份拷贝，落在**登录页**上 ——
+   浅色两套皮下 --txt 对比 1.05:1 / 1.11:1，即整张登录卡（标题/标签/输入提示）不可读。
+   这不是浮层而是抬升卡，故吃 --panel（不透明抬升卡 token，非磨砂 .panel 类）：
+   暗色 #2c3d5e ≈ 9.3:1 · 冷蓝/暖砂 #ffffff ≈ 16.2 / 17.0:1。 */
 .card {
   width: 360px;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.92), rgba(14, 19, 26, 0.92));
+  background: var(--panel);
   border: 1px solid var(--line2);
   border-radius: 14px;
   padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--popover-shadow);
 }
 
 .card h1 {
