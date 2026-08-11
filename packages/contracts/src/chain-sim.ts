@@ -289,19 +289,43 @@ export const CONTENTION_BASIS_SOURCE = "SEG_REGISTRY" as const;
  * 争用判据逐条账：**每条业务线的册值原样亮出来**（R13「这个数凭什么」）。
  * `marginPct` / `floorPct` 一律经 `segOfBusinessType` 从 `SEG_REGISTRY` 取，本文件**零业务字面量**。
  */
-export const ChainContentionBasisSchema = z.strictObject({
-  businessType: BusinessTypeSchema,
-  /** 册里的细分名（`SEG_REGISTRY[].seg`，派生非抄写）。 */
-  seg: z.string().min(1),
-  /** 册值：毛利率 %。 */
-  marginPct: z.number(),
-  /** 册值：毛利底线 %。 */
-  floorPct: z.number(),
-  /** 判据量 = `marginPct − floorPct`（**算出来的**，不落第二份可编辑字段）。 */
-  headroomPct: z.number(),
-  /** 该业务线在这个 locus 上的索取（单位随 `evidence.unit`）。 */
-  claim: z.number(),
-});
+export const ChainContentionBasisSchema = z
+  .strictObject({
+    businessType: BusinessTypeSchema,
+    /** 册里的细分名（`SEG_REGISTRY[].seg`，派生非抄写）；册里查不到时退回业务线中文标签。 */
+    seg: z.string().min(1),
+    /**
+     * 册值：毛利率 % / 毛利底线 % / 余量（= 前两者之差，**算出来的**，不落第二份可编辑字段）。
+     *
+     * ⚠ 三者一律 **optional 且同进同出**：这条业务线在 `SEG_REGISTRY` 里查不到时（两册漂了），
+     * 判据本身就不存在 —— 那时**不许填一个占位数**。
+     * 本单初版填的是 `NaN`，而 **zod 4 的 `z.number()` 拒绝 `NaN`**（实测
+     * `z.number().safeParse(NaN).success === false`）⇒ 「诚实报 UNKNOWN」那条路自己会**抛异常**，
+     * 也就是说诚实缺席的分支本身是死的。这是「兜底值把诚实路堵死」的一个实例，故改成缺省。
+     */
+    marginPct: z.number().optional(),
+    floorPct: z.number().optional(),
+    headroomPct: z.number().optional(),
+    /** 该业务线在这个 locus 上的索取（单位随 `evidence.unit`）。 */
+    claim: z.number(),
+  })
+  .superRefine((b, ctx) => {
+    const has = [b.marginPct, b.floorPct, b.headroomPct].filter((x) => x !== undefined).length;
+    if (has !== 0 && has !== 3) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["marginPct"],
+        message: `册值必须同进同出：marginPct/floorPct/headroomPct 要么三个都有（查得到册），要么三个都没有（册里查不到），收到 ${has} 个`,
+      });
+    }
+    if (has === 3 && b.headroomPct !== (b.marginPct as number) - (b.floorPct as number)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["headroomPct"],
+        message: `headroomPct 必须 == marginPct − floorPct（${b.marginPct} − ${b.floorPct}），收到 ${b.headroomPct} —— 派生量不许自带第二个写者`,
+      });
+    }
+  });
 export type ChainContentionBasis = z.infer<typeof ChainContentionBasisSchema>;
 
 /**
@@ -352,6 +376,23 @@ export const ChainContentionSchema = z
     if (basisSet !== btSet) {
       ctx.addIssue({ code: "custom", path: ["basis"], message: `basis 的业务线集合 [${basisSet}] 与 businessTypes [${btSet}] 不一致 —— 有人在争却没进判据` });
     }
+    // 「册里查不到」与「判不出保谁」必须是同一件事：有缺册值的行却宣称判出了 keep，
+    // 说明结论是拿不完整的判据凑出来的；反之全有册值却报 UNKNOWN，则是白白丢了一个能判的结论。
+    const missing = ct.basis.filter((b) => b.marginPct === undefined);
+    if (missing.length > 0 && hasKeep) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["keep"],
+        message: `业务线 [${missing.map((b) => b.businessType).join("、")}] 在册里查不到经营参数，却仍判出 keep="${String(ct.keep)}" —— 判据不全就不许下结论`,
+      });
+    }
+    if (missing.length === 0 && !hasKeep) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["unknownReason"],
+        message: "全部业务线都查得到册值，却报 UNKNOWN —— 判得出来就必须给结论（诚实缺席不是万能挡箭牌）",
+      });
+    }
   });
 export type ChainContention = z.infer<typeof ChainContentionSchema>;
 
@@ -399,9 +440,10 @@ export function resolveContentionKeep(
   if (missing.length > 0) {
     return ChainContentionSchema.parse({
       businessTypes,
+      // 查不到册值的那几条**只带业务线与索取**，三个册值字段整个缺省 —— 不填占位数（见上方 schema 的账）。
       basis: businessTypes.map((bt) => {
         const hit = basis.find((b) => b.businessType === bt);
-        return hit ?? { businessType: bt, seg: BUSINESS_TYPE_LABEL[bt], marginPct: Number.NaN, floorPct: Number.NaN, headroomPct: Number.NaN, claim: uniq.get(bt) as number };
+        return hit ?? { businessType: bt, seg: BUSINESS_TYPE_LABEL[bt], claim: uniq.get(bt) as number };
       }),
       unknownReason:
         `业务线 [${missing.map((b) => BUSINESS_TYPE_LABEL[b]).join("、")}] 在应用细分册里查不到经营参数 ——` +
@@ -409,10 +451,11 @@ export function resolveContentionKeep(
       basisSource: CONTENTION_BASIS_SOURCE,
     });
   }
+  // 走到这里 ⇒ 每条业务线的册值都齐（`missing.length === 0`），故三个 `as number` 是有据的，不是断言凑数。
   const ranked = [...basis].sort(
     (a, b) =>
-      b.headroomPct - a.headroomPct ||
-      b.marginPct - a.marginPct ||
+      (b.headroomPct as number) - (a.headroomPct as number) ||
+      (b.marginPct as number) - (a.marginPct as number) ||
       (a.businessType < b.businessType ? -1 : a.businessType > b.businessType ? 1 : 0),
   );
   const win = ranked[0] as ChainContentionBasis;
