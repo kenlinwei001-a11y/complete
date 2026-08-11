@@ -21,6 +21,15 @@ function safeOrigin(url: string): string | null {
 }
 
 /**
+ * 受信内部对端（B 栈）：只有投递到**这个源**的 webhook 才附带 `X-Service-Token`。
+ * baseUrl 取 `AGENTCORE_BASE_URL`，token 取 `SERVICE_TOKEN`。
+ */
+export interface InternalPeer {
+  baseUrl: string;
+  serviceToken: string;
+}
+
+/**
  * C-2 / 执行语义 §2: A→B 零调用 — events are written to an outbox and POSTed to
  * registered webhook URLs.
  *
@@ -30,15 +39,6 @@ function safeOrigin(url: string): string | null {
  *  - 每事件带全局唯一 eventId 与 (aggregateKey, seq) 供消费端幂等去重；
  *  - 非 2xx 走 5 档退避，耗尽置 DEAD（死信列表，中台可见可手动重投）。
  */
-/**
- * 受信内部对端（B 栈）：只有投递到**这个源**的 webhook 才附带 `X-Service-Token`。
- * baseUrl 取 `AGENTCORE_BASE_URL`，token 取 `SERVICE_TOKEN`。
- */
-export interface InternalPeer {
-  baseUrl: string;
-  serviceToken: string;
-}
-
 export class OutboxService {
   private timer: NodeJS.Timeout | null = null;
   /** 受信对端的 origin（`http://host:port`）；解析失败或未配置则为 null ⇒ 一律不附带凭证。 */
