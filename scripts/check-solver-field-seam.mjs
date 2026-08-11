@@ -16,7 +16,7 @@
  * **形态**（照 CLAUDE.md 铁律 0.6 的句式）：
  *   **「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者。」**
  *
- * ── 两类载体 ──────────────────────────────────────────────────────────────────
+ * ── 三类载体 ──────────────────────────────────────────────────────────────────
  *  **载体③ 求解器输出顶层字段**
  *    源 = `SOLVER_OUTPUT_SHAPES`（`apps/datacore/src/solvers/service.ts`，R11-SHAPE 的输出形状单一来源）。
  *    静态解析、不执行 TS；`shapeKeys(XSchema)` 那 5 条回到 `packages/contracts/src` 的 zod schema 单源取键。
@@ -29,8 +29,14 @@
  *    判据（精确作用域）：前端 import 了该 schema（或其 `z.infer` 别名）的文件 ∪ 其直接 importer
  *    构成**作用域**，字段名在作用域内零提及 ⇒ 死字段。
  *    为什么必须作用域化：`candidates` 是通名 —— 前端 `DisruptionRadiusView` / `GlobalSimLevers` 里
- *    都有同名局部变量。**全域名字匹配会把它放过去**（实测：全域命中 12 个文件），
+ *    都有同名局部变量。**全域名字匹配会把它放过去**（实测：全域命中 9 个文件），
  *    只有"在解析这个 schema 的那几个文件里找"才判得出它零消费。
+ *
+ *  **载体⑤ 求解器结果接口的内联行字段（嵌套一层）**
+ *    源 = `apps/datacore/src/solvers/**` 导出的 TS 结果接口，按**结构 join**（唯一最优超集 + 三道护栏）
+ *    对上 `SOLVER_OUTPUT_SHAPES` 的求解器。治的是「顶层键有名字、但**行结构**没有契约可锚」那一片：
+ *    `candidateStats` 顶层键载体③ 抓得到，而它每行的 `emitted`（下发了几个候选）没人看 —— 那正是
+ *    "为什么这个阻滞点没有方案"的答案所在。详见 §2b。
  *
  * ── 未判定：不许把"我没排除掉"写成"它是死的"（铁律 0.5） ──────────────────────
  * 前端可能经**解构 / 重命名 / 类型透传 / `...rest`** 消费。前三种仍会让字段名在源码里出现，
@@ -42,8 +48,9 @@
  * ── 诚实边界（先读，免得把这道门当成它不是的东西） ────────────────────────────
  *  · 载体③ 的强判据是「全域零提及」：通名（`rows`/`summary`/`total`）撞车会**漏报**。抓得住的是
  *    `candidateStats` / `candidatesTruncated` / `scopeBaseId` 这类专名零消费——正是今天真实的缺口。
- *  · 载体④ 只覆盖**契约 schema** 这一种嵌套载体。求解器实现里的内联对象（如 `candidateStats` 的行结构）
- *    没有具名类型可锚，本门不猜、如实计入「未覆盖」并报数。
+ *  · 载体④ 只覆盖**契约 schema**；载体⑤ 只覆盖**结构 join 得上结果接口**的求解器（当前 5/59）。
+ *    其余求解器的结果类型是内联对象字面量，没有具名类型可锚 —— 本门**不猜**，把未 join 上的数目
+ *    与原因分布**打印出来**。那是盲区，不是干净。
  *  · 入参族 schema（`*Args` / `*Input*`）**结构性豁免**：前端没传入参是另一种病（arg-drop），
  *    归 `arg-drop-seam:check` 管辖，本门只管**输出**字段。
  *  · JSX 的 `{...row}` 展开（非绑定位）本门不追——那要类型流分析。这是边界，写在这里而不是藏起来；
@@ -52,10 +59,11 @@
  * ── 金丝雀（本门的核心，比断言本身更重要） ──────────────────────────────────
  * 铁律 0.6：任何扫描/解析/计数在报出结论前，必须先跑一个「已知必中」样例。
  * 本门的金丝雀**与主逻辑共用同一批函数**（`parseSolverOutputShapes` / `buildSchemaRegistry` /
- * `verdictTopLevel` / `verdictScoped` / `mentionsInProd`），不另抄一份判定 ——
+ * `buildSolverInterfaces` / `rootSolverInterface` / `verdictTopLevel` / `verdictScoped` /
+ * `mentionsInProd`），不另抄一份判定 ——
  * 抄了就是装饰品：改主判定时金丝雀拿旧的去测、照样绿（本仓 2026-08-08 实测踩过）。
- * 金丝雀是**双向**的：`candidates` / `candidateStats`（已知真死）**必须被咬中**；
- * 前端真在消费的字段（`chain_impediments.impediments` / `ChainImpedimentSchema.severity`）**必须放过**。
+ * 金丝雀是**双向**的：`candidates` / `candidateStats` / `candidateStats.emitted`（已知真死）**必须被咬中**；
+ * 前端真在消费的字段（`impediments` / `ChainImpedimentSchema.severity` / `counts.total`）**必须放过**。
  * 单向金丝雀测不出恒真/恒假判定器：一个恒不咬的把全仓报成"干净"，一个恒咬的把全仓报成缺口。
  * 金丝雀不中 ⇒ 打印「⛔ 门自己坏了」并 `exit 2`，**绝不允许**报「字段都干净 / 零死字段」。
  *
@@ -118,9 +126,12 @@ export function parseSolverOutputShapes(src) {
 /* ════════════════════════════════════════════════════════════════════════════
  * 2 · 契约 zod 对象 schema 注册表（载体③ 的 shapeKeys 解析源 + 载体④ 的字段源）
  *
- * ⚠ 成员切分必须同时认 `,` 与 `;`：zod 对象用逗号、TS interface 用分号。
- *   只按逗号切 interface ⇒ 整个体读成**一个** part ⇒ 成员一条都抽不到 ⇒ 该类型字段全读作不存在。
- *   （本门开发期实测踩过：`ChainScanResult` 抽出 0 个成员，若不查就会得出"chain 侧没有嵌套字段"。）
+ * ⚠ 成员切分（`objectMemberProps`）必须同时认 `,` 与 `;`：zod 对象用逗号、TS interface 用分号。
+ *   本节（契约 zod）只需要逗号；**分号那一半的负载点在 §2b 载体⑤**（求解器层 TS 接口）。
+ *   开发期变异反证实测：换回只按逗号切 ⇒ `ChainScanResult` 只抽出 1 个成员（真值 11）⇒
+ *   载体⑤ 根解析失败 ⇒ 金丝雀 C12 当场开火报「门自己坏了」。
+ *   ——写下这一段是因为**更早的一版没有载体⑤**：那时同样的变异让全门指标逐字节不变，
+ *   分号能力等于「接了线没数据」的死分支（CLAUDE.md 铁律 0.5 三态之一），是变异反证把它抖出来的。
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 const ZOD_OBJ_RE = /export const ([A-Za-z_$][\w$]*)\s*=\s*z\s*\r?\n?\s*\.?\s*(?:strictObject|object)\s*\(\s*\{/g;
@@ -156,6 +167,58 @@ export function buildSchemaRegistry(files) {
     for (const mt of s.matchAll(INFER_RE)) aliasOf.set(mt[1], mt[2]);
   }
   return { schemas, aliasOf };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 2b · 载体⑤ 源：求解器层 TS 结果接口 → 嵌套一层内联对象字段
+ *
+ * 为什么还要这一层：`candidateStats` 是**顶层**键（载体③ 抓得到），但它的行结构
+ * （`{ impedimentId, anchors, probes, effective, emitted, gaps }`）没有契约 schema 可锚 ——
+ * 载体④ 看不见它。而"为什么这个阻滞点没有方案"的答案就住在那些行里。
+ *
+ * 求解器→结果接口的对应关系用**结构 join**（不是猜）：接口的键集 ⊇ 该求解器
+ * `SOLVER_OUTPUT_SHAPES` 声明的键集，且**唯一最优**、多余键 ≤4、形状本身 ≥5 键。
+ * 三道护栏缺一不可 —— 小形状（1–4 键）会撞上一堆无关接口，非唯一匹配就是在猜。
+ * 解析结果、歧义数、未解析数**一律报出来**：这是盲区，不是干净。
+ *
+ * ⚠ 这一层是 `;` 成员切分**唯一的负载点**（TS interface 用分号）。开发期变异反证实测：
+ *   把 `splitTopLevelMembers` 换回只按逗号切，若没有本层，全门指标**逐字节不变**——
+ *   那就是「接了线没数据」（CLAUDE.md 铁律 0.5 三态之一），分号能力等于死代码。
+ *   现在换回逗号 ⇒ `ChainScanResult` 抽出 0 个成员 ⇒ 根解析失败 ⇒ 金丝雀 C12 当场开火。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const SOLVER_IFACE_RE = /export (?:interface|type) ([A-Za-z_$][\w$]*)(?:[^{;=]*)(?:=\s*)?\{/g;
+
+export function buildSolverInterfaces(files) {
+  const out = new Map();
+  for (const f of files) {
+    const s = readFileSync(f, "utf8");
+    const { mask } = lex(s);
+    SOLVER_IFACE_RE.lastIndex = 0;
+    for (const mt of s.matchAll(SOLVER_IFACE_RE)) {
+      if (mask[mt.index] !== M_CODE) continue;
+      if (out.has(mt[1])) continue;
+      const brace = mt.index + mt[0].length - 1;
+      out.set(mt[1], { props: objectMemberProps(s, brace), file: rel(f), line: lineOf(s, mt.index) });
+    }
+  }
+  return out;
+}
+
+/** 结构 join：唯一最优超集接口才算根；否则如实报「歧义」/「未解析」，绝不将就挑一个。 */
+export function rootSolverInterface(declaredKeys, ifaces, { minKeys = 5, maxExtra = 4 } = {}) {
+  if (declaredKeys.length < minKeys) return { root: null, reason: `形状仅 ${declaredKeys.length} 键（<${minKeys}）——太小，结构 join 会撞上无关接口` };
+  const cands = [];
+  for (const [name, t] of ifaces) {
+    const have = new Set(t.props.map((p) => p.name));
+    if (declaredKeys.every((k) => have.has(k))) cands.push({ name, extra: have.size - declaredKeys.length });
+  }
+  if (cands.length === 0) return { root: null, reason: "无接口的键集覆盖该形状（结果类型多半是内联对象字面量，无具名类型可锚）" };
+  cands.sort((a, b) => a.extra - b.extra);
+  const best = cands.filter((c) => c.extra === cands[0].extra);
+  if (best.length > 1) return { root: null, ambiguous: best.map((b) => b.name), reason: `${best.length} 个接口并列最优（${best.map((b) => b.name).join(" | ")}）——并列即是在猜，不取` };
+  if (cands[0].extra > maxExtra) return { root: null, reason: `最优接口多出 ${cands[0].extra} 键（>${maxExtra}）——差太多，多半不是同一个东西` };
+  return { root: cands[0].name, extra: cands[0].extra };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -304,6 +367,16 @@ for (const f of solverFiles) {
   }
 }
 
+// 载体⑤：求解器层结果接口 → 根解析 → 嵌套一层内联对象字段
+const solverIfaces = buildSolverInterfaces(solverFiles);
+const ifaceRoots = new Map();      // solverKey -> { root, extra }
+const ifaceRootFail = [];          // { solver, reason }
+for (const [solver, v] of shapes) {
+  const r = rootSolverInterface(v.keys, solverIfaces);
+  if (r.root) ifaceRoots.set(solver, r);
+  else ifaceRootFail.push({ solver, reason: r.reason });
+}
+
 const prodFiles = frontendProdFiles(ROOT);
 const prodTexts = readProdTexts(prodFiles, ROOT);
 const { byRel, importersOf } = buildImportGraph(prodTexts);
@@ -404,6 +477,26 @@ function canaries() {
     return { ok: bad.length === 0 && prodFiles.length > 50, got: `生产文件 ${prodFiles.length} · 混入 mocks/测试 ${bad.length}`, want: ">50 且 0" };
   });
 
+  // C12 载体⑤ 根解析（真文件）：`ChainScanResult` 必须解析到成员并被 join 上
+  //     —— 这条同时是 `;` 成员切分的**负载证明**：换回只按逗号切 ⇒ 该接口抽出 0 个成员 ⇒ 本条当场开火
+  add("iface/chain_impediments→ChainScanResult 根解析", "抽不到接口成员（如只按逗号切 TS interface）⇒ 载体⑤ 恒空 ⇒ 嵌套行字段整层看不见，门照样绿", () => {
+    const props = (solverIfaces.get("ChainScanResult")?.props ?? []).map((p) => p.name);
+    const r = ifaceRoots.get("chain_impediments");
+    return { ok: props.includes("candidateStats") && r?.root === "ChainScanResult", got: `ChainScanResult 成员 ${props.length} 个 · 根=${r?.root ?? "未解析"}`, want: "成员含 candidateStats 且 根=ChainScanResult" };
+  });
+
+  // C13 **必中**（载体⑤）：candidateStats 行里的 `emitted` 是今天已知的真死字段
+  add("必中/载体⑤ chain_impediments.candidateStats.emitted", "咬不中 ⇒ 嵌套内联行字段判定失效（这层正是「为什么这个阻滞点没有方案」的所在）", () => {
+    const v = verdictTopLevel("emitted", prodTexts, solverScopeTexts("chain_impediments"));
+    return { ok: v.verdict === "DEAD", got: `${v.verdict}（${v.why}）`, want: "DEAD" };
+  });
+
+  // C13b **必不中**（载体⑤）：counts 行里的 total 前端真在读
+  add("必不中/载体⑤ chain_impediments.counts.total", "放不过真消费的嵌套字段 ⇒ 载体⑤ 恒咬", () => {
+    const v = verdictTopLevel("total", prodTexts, solverScopeTexts("chain_impediments"));
+    return { ok: v.verdict === "CONSUMED", got: `${v.verdict}（${v.why}）`, want: "CONSUMED" };
+  });
+
   // C11 绑定位 rest 探测双向：认得出真 rest，且不把 `{...prev}` 字面量展开误判成 rest
   add("rest/绑定位探测双向", "恒真 ⇒ 全字段永远「未判定」，门变摆设；恒假 ⇒ 真透传被报成死字段", () => {
     const mk = (s) => ({ rel: "x.ts", src: s, mask: lex(s).mask });
@@ -429,7 +522,11 @@ if (broken.length) {
   }
   process.exit(2);
 }
-console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（形状解析 2 · schema 成员 1 · **必中** 2 · **必不中** 2 · 消费判据 2 · import 图 1 · 扫描面 1 · rest 探测 1）`);
+console.log(
+  `· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中` +
+    `（形状解析 2 · 契约 schema 成员 1 · 结果接口根解析 1 · **必中** 3 · **必不中** 3 · 消费判据 2 · import 图 1 · 扫描面 1 · rest 探测双向 1）` +
+    ` —— 抽取器与判定器在真源码上有效，下面的否定结论才有资格被相信。`,
+);
 console.log("  必中证据：" + canaryResults.filter((c) => c.name.startsWith("必中/")).map((c) => `${c.name.split("/")[1]} ⇒ ${c.got}`).join(" ｜ "));
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -451,6 +548,25 @@ for (const [solver, v] of [...shapes].sort()) {
     if (r.verdict === "DEAD") dead.push(row);
     else if (r.verdict === "UNDECIDED") undecided.push(row);
     else consumedCount++;
+  }
+}
+
+// ── 载体⑤（求解器层结果接口的嵌套一层内联对象字段）──
+let ifaceNestedScanned = 0;
+for (const [solver, r] of [...ifaceRoots].sort()) {
+  const t = solverIfaces.get(r.root);
+  const scope = solverScopeTexts(solver);
+  for (const p of t.props) {
+    const bi = p.typeText.indexOf("{");
+    if (bi < 0) continue;                       // 非内联对象（`string` / 具名类型）——具名的归载体④，本层不重复算
+    for (const q of objectMemberProps(p.typeText, bi)) {
+      scannedFields++; ifaceNestedScanned++;
+      const v = verdictTopLevel(q.name, prodTexts, scope);
+      const row = { id: `S5:${solver}.${p.name}.${q.name}`, carrier: "S5", owner: `${solver}.${p.name}`, field: q.name, cls: v.verdict, why: v.why, evidence: `${t.file}:${t.line}（接口 ${r.root}）` };
+      if (v.verdict === "DEAD") dead.push(row);
+      else if (v.verdict === "UNDECIDED") undecided.push(row);
+      else consumedCount++;
+    }
   }
 }
 
@@ -497,7 +613,10 @@ const fixed = [...baseIds].filter((id) => !curIds.includes(id));
 
 /** 建账时给每条生成**可复验的**理由（不是"以后再说"，是"证据 + 修法 + 归类"）。 */
 function seedEntry(d) {
-  const kind = d.carrier === "S3" ? "求解器输出顶层字段" : "求解器侧契约 schema 字段（嵌套一层）";
+    const kind =
+    d.carrier === "S3" ? "求解器输出顶层字段"
+    : d.carrier === "S4" ? "求解器侧契约 schema 字段（嵌套一层）"
+    : "求解器结果接口的内联行字段（嵌套一层）";
   return {
     id: d.id,
     carrier: d.carrier,
@@ -546,9 +665,14 @@ const shapeless = [...catalogKeys].filter((k) => !shapes.has(k));
 
 console.log(
   `· 扫描规模自证：求解器 ${shapes.size} 个（形状表锚点 ${rel(SOLVER_SERVICE)}:${anchorLine}；其中 ${shapeKeysResolved} 个走契约 schema 单源）` +
-    ` · 契约载体 schema ${schemaCovered} 个（入参族结构性豁免 ${schemaExempt} · 前端无 import 作用域 ${schemaNoScope}）` +
+    ` · 载体④ 契约 schema ${schemaCovered} 个（入参族结构性豁免 ${schemaExempt} · 前端无 import 作用域 ${schemaNoScope}）` +
+    ` · 载体⑤ 结果接口 ${solverIfaces.size} 个候选、结构 join 上 ${ifaceRoots.size} 个求解器（嵌套行字段 ${ifaceNestedScanned} 个）` +
     ` · 逐字段核对 ${scannedFields} 个` +
     ` · 前端生产代码 ${prodFiles.length} 个文件（已剔 mocks/ 与测试）· import 边 ${[...importersOf.values()].reduce((a, b) => a + b.size, 0)} 条`,
+);
+console.log(
+  `· ⚠ 盲区自曝（载体⑤）：${ifaceRootFail.length} 个求解器没 join 到结果接口 ⇒ 它们的嵌套行字段本门看不见。` +
+    `按原因分：${[...ifaceRootFail.reduce((m, x) => m.set(x.reason.split("——")[0].trim(), (m.get(x.reason.split("——")[0].trim()) ?? 0) + 1), new Map())].map(([r, n]) => `${r} ×${n}`).join(" · ")}`,
 );
 console.log(
   `· 判定：有消费方 ${consumedCount} · **死字段 ${dead.length}**（基线 ${baseIds.size} · 新增 ${newDead.length} · 已修复 ${fixed.length}）· 未判定 ${undecided.length}（不 gate，见 --verbose）`,

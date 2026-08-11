@@ -1,8 +1,8 @@
 {
   "note": "① 本文件是 `scripts/check-solver-field-seam.mjs` 的**存量死字段棘轮**：后端声明会下发、前端零消费方的求解器输出字段。\n② 每条必须写 `why`（<10 字即判红）。**无理由白名单正是本门要治的病**——豁免要说清「凭什么这条今天可以不接」。\n③ `maxEntries` 必须**恒等于** `entries.length`；`ratchetHigh` 是历史最高水位，**只降不升**。\n   评审唯一必须拒绝的一行，就是把 ratchetHigh 调大。加一条豁免 = 同时改 maxEntries = 一处显眼 diff，评审必然看见。\n④ `--update` **只删不加**（修好的摘掉），新增死字段**不自动收编**——要记进存量必须人手编辑本文件。\n⑤ `id` 形如 `S3:<求解器>.<字段>`（顶层）/ `S4:<契约schema>.<字段>`（嵌套一层）。",
   "generatedBy": "node scripts/check-solver-field-seam.mjs --seed",
-  "ratchetHigh": 112,
-  "maxEntries": 112,
+  "ratchetHigh": 116,
+  "maxEntries": 116,
   "entries": [
     {
       "id": "S3:assignment_optimize.binCount",
@@ -899,6 +899,38 @@
       "field": "toValue",
       "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.toValue` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
       "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
+    },
+    {
+      "id": "S5:chain_impediments.candidateStats.emitted",
+      "carrier": "S5",
+      "owner": "chain_impediments.candidateStats",
+      "field": "emitted",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `chain_impediments.candidateStats.emitted` 由后端声明下发（声明处 apps/datacore/src/solvers/chain-impediment.ts:447（接口 ChainScanResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
+      "evidence": "apps/datacore/src/solvers/chain-impediment.ts:447（接口 ChainScanResult）"
+    },
+    {
+      "id": "S5:portfolio.cost.unserved",
+      "carrier": "S5",
+      "owner": "portfolio.cost",
+      "field": "unserved",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `portfolio.cost.unserved` 由后端声明下发（声明处 apps/datacore/src/solvers/portfolio.ts:504（接口 PortfolioOutput））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/portfolio.ts:504（接口 PortfolioOutput）"
+    },
+    {
+      "id": "S5:sop_reschedule.targetOrder.newDueDay",
+      "carrier": "S5",
+      "owner": "sop_reschedule.targetOrder",
+      "field": "newDueDay",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `sop_reschedule.targetOrder.newDueDay` 由后端声明下发（声明处 apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult）"
+    },
+    {
+      "id": "S5:sop_reschedule.targetOrder.origDueDay",
+      "carrier": "S5",
+      "owner": "sop_reschedule.targetOrder",
+      "field": "origDueDay",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `sop_reschedule.targetOrder.origDueDay` 由后端声明下发（声明处 apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult）"
     }
   ]
 }
