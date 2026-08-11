@@ -578,7 +578,10 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
                 <div
                   data-testid={`dp-drill-detail-${o.optionId}`}
                   role="tooltip"
-                  style={{ marginTop: 6, padding: "8px 10px", borderRadius: 8, background: "var(--panel2)", border: "1px solid var(--line2)", fontSize: 11.5, lineHeight: 1.6 }}
+                  /* WO-HOVER-LAYER：表面收口到全局 .popover-surface（不透明·三套主题各自定义·已验过
+                     遮蔽性与 AA 对比度），不再自写 background —— 自写一份就是给那张验过的表面开分身。 */
+                  className="popover-surface"
+                  style={{ marginTop: 6, padding: "8px 10px", fontSize: 11.5, lineHeight: 1.6 }}
                 >
                   来自 <b>{o.provenance.drillType}</b>.<b>{o.provenance.drillId}</b> · {o.provenance.basis} = <b className="mono">{fmt(o.provenance.drillValue)}</b>
                   <div style={{ color: "var(--muted2)", marginTop: 4 }}>

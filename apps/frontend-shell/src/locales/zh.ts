@@ -431,6 +431,14 @@ export const zh = {
     },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-HOVER-LAYER（欠账 #104/#175 同族）：峰值的**口径**此前只挂在原生 `title=` 上 ——
+    // 浏览器 tooltip 延迟约 1 秒才出、触屏根本不出、不能选中复制，且这里的宿主本身
+    // 已经是个浮层（RiskPopover 走 portal），浮层里再套原生 tooltip 等于没做。
+    // 改为浮层里的**可见文字**：口径必须能被读到，不能藏在属性里。
+    peakCaliber: (min: number, max: number, hint: string) =>
+      `峰值口径：${min}–${max} 紧张度指数（${hint}）·非该因素本身的值`,
+    /** 逐日格的可访问名（读屏可达；视觉靠色块 + 下方图例给量程）。 */
+    dayCellAria: (day: number, v: string) => `D+${day} · ${v}`,
     // WO-CAPLIVE-2 · 产能推演「活台」：原子因子活推演 / 因子级根因 / 人机对话 / 方案存比（R14 下发·不内联）。
     live: {
       leverTitle: "原子因子活推演（拨动即 generic_inference 真重算）",
