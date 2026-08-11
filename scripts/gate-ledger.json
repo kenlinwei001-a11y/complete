@@ -925,10 +925,10 @@
       "ontologyRef": null,
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "建成首跑即红（2026-08-09）",
-        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。"
+        "evidence": "建成首跑即红（2026-08-09）＋ 门模式空转修复后两条变异反证（2026-08-11）",
+        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps 通配 src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。⚠️ **本条记录 2026-08-11 被订正（欠账 #189）**：①② 走的都是 --symbol 单符号模式，**门模式（无 --symbol）从未被证红过**。当时只给 symbolExistsOnBranch 补了目录 pathspec，而门模式依赖的 newlyExportedSymbols 里那份通配 pathspec **原样留着**，导致门模式恒报「新增导出符号 0 个 · 无重造风险」exit 0 —— 上线以来从未真正检查过任何东西。实测：基线 55bf21d1^→55bf21d1 报 0，真值 13（含本门 4 号来历主角 SkillExecutionSchema，即这道门连自己诞生的那个案例都抓不到）。形态：「我用『搜分支那一半有金丝雀』当作『这道门有金丝雀』的证据」。③ 现补 CANARY_DIFF（与主逻辑共用 newlyExportedSymbols、端到端走真 git、双向判据），两条变异反证均 exit 2：把 pathspec 改回通配写法 → 抽出 0 个、报「工具坏了」；把 src 过滤语义反转 → 同样 exit 2。还原后 exit 0 且 git status --porcelain 为空。④ 修复后门模式实测可用：--base 55bf21d1^ 抽出 209 个新增导出、检出 9868 处同名，exit 1。"
       },
-      "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。",
+      "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。 ⚠️ 修复 #189 时一并发现**性能真相**：逐符号 × 逐分支的 git grep 是 O(符号×分支)，13 符号 × 313 分支实测跑不完 10 分钟；此前「门很快」是因为符号集恒空、双重循环一次都不进。现改为一条分支一次批量 grep（0.15s，与 -e 个数无关），O(分支数)，实测约 50s——仍不适合进 gates 链，MANUAL 判定不变。",
       "disposition": "MANUAL"
     },
     "check-worktree-canonical.mjs": {
@@ -982,6 +982,23 @@
         "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+    },
+    "check-mock-fidelity.mjs": {
+      "alias": "mock-fidelity:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/mocks/**",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/agentcore/src/server.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "建成即红 3 条真实存量 + 三条变异反证全部当场红（2026-08-11）",
+        "note": "建成首跑 exit 1，检出 3 条**真的**不一致：line_belongs_to_base.from/to（mock Line→Base vs 后端 Base→Line＝欠账 #160，仍未修）＋ order_for_model.cardinality（mock 1:1 vs 后端 1:N，**本门新查出来的，此前无人记账**）。变异反证：① 载体① 往 handlers.ts 注入 GET /a/v1/zzqqxx-phantom-directory（后端 grep 实证 0 命中）→ exit 1 当场点名；② 载体② 把本来一致的 model_producible_at 语义反转（Model→Base 改成 Base→Model）→ exit 1 报 2 条新增；③ 把别名抽取器正则改成永不匹配 → **exit 2「门自己坏了」**，而不是报「21 条谎报」——正是金丝雀该起的作用。三次变异后均 git checkout 还原，git status --porcelain 为空。"
+      },
+      "notes": "治「mock 声称提供某目录/某条目，真后端并不提供（或方向相反）」＝ 假绿的一种：前端在 mock 上跑得通、前端测试全绿，一接真后端就崩。与既有门**不重叠**：nav-group-coverage 判据② 管反方向（后端有、mock 缺⇒哑门），cockpit-widgets 管 DASH_LAYOUT 漂移，本门补没人管的方向。诚实边界（脚本顶注写明）：只判路由**注册**了没有、不判返回形状；条目只咬结构性字段（放开到所有同名字段实测产生 ~15 条 description 误报）；**不做条目集合自动配对**——实测按 key 交集配对会把 4 个求解器 key 误配到 21 个意图 key 上（交集恰好 2），结论整条是假的，宁可没有这条载体。词法原语与 befe-seam 共用 scripts/lib/source-lex.mjs，不许各抄一份。"
     }
   }
 }
