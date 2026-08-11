@@ -28,7 +28,7 @@ function InPlaceApprovalPanel() {
       {/* WO-UNIT-MEANING：徽章此前只有裸数「3」——数的是**待批 Action 草稿条数**。草稿契约（actions.ts ActionDraft）无计数 unit，就近点明。 */}
       <div className="section-title">待审批补齐（就地批复，无需跳转） <span className="badge amber" data-testid="db-approval-count">{drafts.length} 条待批</span></div>
       {drafts.map((d) => (
-        <div key={d.id} data-testid={`db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+        <div key={d.id} data-testid={`db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
           <span className="badge">{d.actionTypeKey}</span>
           <span style={{ flex: 1, fontSize: 11.5, color: "var(--muted)" }} className="mono">{d.id}</span>
           <button className="btn primary sm" data-testid={`db-approve-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "APPROVE" })}>批准</button>
@@ -123,7 +123,7 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
   return (
     <div data-testid="sbr-comprehension" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
       {shown.map((g) => (
-        <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px" }}>
+        <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px" }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>
             {/* WO-UNIT-MEANING：徽章此前是裸数——「规则 5」既可读成 5 条规则也可读成规则编号 5。
                 这里 g.label 是**品类名**（数据源/对象类型/规则…）而非被数之物的量词，故必须显式带"项"。 */}
@@ -543,7 +543,7 @@ function GrowthConsolePanel() {
         <div style={{ fontSize: 11.5, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>
       ) : (
         tickets.slice(0, 5).map((t) => (
-          <div key={t.id} data-testid={`db-ticket-${t.id}`} style={{ fontSize: 11.5, display: "flex", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--border)" }}>
+          <div key={t.id} data-testid={`db-ticket-${t.id}`} style={{ fontSize: 11.5, display: "flex", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--line)" }}>
             <span className="badge">{t.gapCode}</span>
             <span style={{ flex: 1, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.fromQuestion}</span>
             <span className="badge">{t.status}</span>
@@ -1084,7 +1084,7 @@ export default function DataBuilderPage() {
           每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
         </div>
         {backfillReport && (
-          <div data-testid="sbr-backfill-report" style={{ fontSize: 12, marginBottom: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
+          <div data-testid="sbr-backfill-report" style={{ fontSize: 12, marginBottom: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)" }}>
             存量回填压测：覆盖 <b>{backfillReport.total}</b> 个推演能力 · 成功 <b style={{ color: "var(--c-capacity,#36BFA5)" }}>{backfillReport.succeeded}</b> · 失败 <b style={{ color: backfillReport.failed ? "var(--danger,#E5484D)" : "inherit" }}>{backfillReport.failed}</b>
             （覆盖率 {Math.round((backfillReport.succeeded / Math.max(1, backfillReport.total)) * 100)}%）
           </div>
@@ -1098,7 +1098,7 @@ export default function DataBuilderPage() {
             const pendingInput = r.status === "PENDING_INPUT";
             const badgeColor = ok ? "var(--c-capacity,#36BFA5)" : pendingInput ? "var(--amber,#DD9551)" : "var(--danger,#E5484D)";
             return (
-              <div key={r.id} data-testid={`sbr-item-${r.id}`} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
+              <div key={r.id} data-testid={`sbr-item-${r.id}`} style={{ borderBottom: "1px solid var(--line)", padding: "8px 0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setExpandedRun(open ? null : r.id)}>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
                   <span
@@ -1145,7 +1145,7 @@ export default function DataBuilderPage() {
                       </div>
                     )}
                     {/* 区6 完整性·自检·信任：全链闭包可视化 + R12 双向闭包徽章 + 故事覆盖度 + 功能缺失自检 */}
-                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>完整性 · 自检 · 信任（凭什么信这是完整的）：</div>
+                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--line)" }}>完整性 · 自检 · 信任（凭什么信这是完整的）：</div>
                     {r.closureReport && <ClosureVizView closure={r.closureReport} />}
                     <StoryCoverageView coverage={r.storyCoverage ?? []} />
                     {/* 区6④ 推演验证痕迹（一致性 + 交叉验证）：建域成功即由 crossValidate 回写 run，内嵌让用户信任 */}
@@ -1159,7 +1159,7 @@ export default function DataBuilderPage() {
                     )}
                     {/* 区7 一键推演（P3.5）：落到该故事最可能被触发的真实业务页，亲手验证"真能用"。
                         WO-DB-FIVE-ACT-UX：外套「理解确认门」——覆盖度<100% 时真锁住这三个"把域当可信真值用"的动作，人须显式确认/拒绝。 */}
-                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
+                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--line)" }}>
                       <ComprehensionGate run={r}>
                         <InferenceButton run={r} />
                         <VerificationPanel run={r} />

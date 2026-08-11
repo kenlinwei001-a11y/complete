@@ -57,7 +57,10 @@
 }
 .nodeLabel {
   font-size: 10px;
-  fill: var(--text);
+  /* 令牌名是 --txt，不是 --text（tokens.css:12）。写错名字时 var() 替换失败，
+     而 fill 是**可继承**属性 ⇒ 回落 inherit ⇒ 一路继承到根的初始值 = 纯黑，
+     于是深色节点底上叠黑字，实测不可读。这不是配色问题，是拼写问题。 */
+  fill: var(--txt);
   font-weight: 600;
 }
 .nodeKind {
