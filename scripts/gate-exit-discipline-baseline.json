@@ -1,5 +1,0 @@
-{
-  "note": "gate-exit-discipline 棘轮基线：存量豁免，只许降不许升。每条必须写 why（空 why / TODO 会被门判红）。2026-08-11 WO-GATE-RC2-DISCIPLINE 收编时全仓 58 个门一次性改齐，故豁免为空 —— 空豁免是最强的起点：从今往后任何新门不带 RC=2 出口 + 顶层兜底，都会被门当场挡住，无处可挂。",
-  "generatedBy": "node scripts/check-gate-exit-discipline.mjs --update",
-  "exempt": {}
-}
