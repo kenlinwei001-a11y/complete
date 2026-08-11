@@ -10,7 +10,7 @@ import {
   CANDIDATE_EFFECT_LABEL,
   CANDIDATE_JOIN_LABEL,
   CANDIDATE_RUNG_LABEL,
-  formatLeverValue,
+
 } from "@/views/sim/chainImpediment";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
@@ -159,13 +159,18 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     // 字节级：原值落在 DOM 属性上，与响应字段 String() 相等
     expect(card.getAttribute("data-from"), "data-from 与响应 fromValue 不逐字节相等").toBe(String(c.fromValue));
     expect(card.getAttribute("data-to"), "data-to 与响应 toValue 不逐字节相等").toBe(String(c.toValue));
-    // 可见层：按后端下发的 valueKind 格式化（前端不判断单位）
-    expect(within(card).getByTestId(`sc-cand-from-${c.candidateId}`).textContent).toBe(
-      formatLeverValue(c.fromValue, c.lever.valueKind, c.lever.unit),
-    );
-    expect(within(card).getByTestId(`sc-cand-to-${c.candidateId}`).textContent).toBe(
-      formatLeverValue(c.toValue, c.lever.valueKind, c.lever.unit),
-    );
+    // 可见层：按后端下发的 valueKind 格式化（前端不判断单位）。
+    // ⚠ 期望值**自己算**，不许调 `formatLeverValue` —— 拿被测函数去算期望值就是**同义反复**：
+    //   函数怎么错，期望值跟着一起错，断言恒绿。本单实测被这条坑过（变异③无条件 ×100 时本例照样通过）。
+    const expectText = (v: number): string => {
+      if (c.lever.valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+      if (c.lever.valueKind !== undefined) {
+        return `${Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10)}${c.lever.unit}`;
+      }
+      return String(v);
+    };
+    expect(within(card).getByTestId(`sc-cand-from-${c.candidateId}`).textContent).toBe(expectText(c.fromValue));
+    expect(within(card).getByTestId(`sc-cand-to-${c.candidateId}`).textContent).toBe(expectText(c.toValue));
     // 拨到原处不是方案（契约硬约束），屏上两个数必须真的不同
     expect(c.fromValue).not.toBe(c.toValue);
 
@@ -198,6 +203,28 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     const capRow = within(dims).getByTestId(`sc-cand-dim-${c.candidateId}-capacityP50`);
     expect(capRow.getAttribute("data-baseline")).toBe(cap!.baseline === null ? "" : String(cap!.baseline));
     expect(capRow.getAttribute("data-value")).toBe(cap!.value === null ? "" : String(cap!.value));
+  });
+
+  it("B2 · 比率类杠杆按 `valueKind` 格式化：**存储 0–100 的不许再 ×100**（利用率画成 9720% 的那条坑）", async () => {
+    // 本仓实测的真实陷阱（contracts chain-sim.ts §7 注释原话）：`Line.utilization` 存 0–100 而
+    // `Process.attendance` 存 0–1，**两者 LEVER_PROP_META.kind 同为 ratio** ——
+    // 谁无条件 ×100，谁就会把利用率画成 9589%。故这一条**单独**咬 ratio 分支，
+    // 不能指望用例 B（它挑到的那条候选是 qty 类，压根不走这个分支 —— 本单实测确认过）。
+    const hit = payload()
+      .impediments.flatMap((i) => i.candidates ?? [])
+      .find((c) => c.lever.valueKind === "ratio" && c.fromValue > 1);
+    expect(hit, "金丝雀不中：响应里没有「ratio 且存储值 > 1」的候选 ⇒ 本例在验一个不存在的分支").toBeDefined();
+
+    await openSandbox();
+    const card = await screen.findByTestId(`sc-cand-${hit!.candidateId}`);
+    const shown = within(card).getByTestId(`sc-cand-from-${hit!.candidateId}`).textContent;
+    // 期望值写死成"就地取整加百分号"，**不调被测函数**（同义反复的反面）
+    expect(shown, `存储 0–100 的比率被再乘了一次 100（${hit!.fromValue} → ${shown}）`).toBe(
+      `${Math.round(hit!.fromValue)}%`,
+    );
+    expect(shown, "利用率画成了 9000+% —— 正是契约注释点名的那条坑").not.toContain(String(hit!.fromValue * 100));
+    // 原值仍逐字节可核（格式化不吞掉真值）
+    expect(card.getAttribute("data-from")).toBe(String(hit!.fromValue));
   });
 
   it("C · 档位来源 / 作用方式 / join 溯源：短名在第一层，出处**原文**在浮层（零原生 title）", async () => {
@@ -427,7 +454,12 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
         if (d.value !== null) respNums.add(String(d.value));
       }
     }
-    for (const card of block.querySelectorAll("[data-from]")) {
+    const cards = block.querySelectorAll("[data-from]");
+    // ⚠ 循环体的断言在集合为空时**恒真**。本单实测被这条坑过：变异①（把候选渲染整块摘掉）
+    //   让 A/B/C 全红，而本例照样绿 —— 因为它在一个空集合上"验过了"。
+    //   故先咬住"这个循环真的跑了、且跑满了"，再谈里面断言什么。
+    expect(cards.length, "候选卡一张都没渲染 ⇒ 下面的循环是空跑（恒真）").toBe(im.candidates!.length);
+    for (const card of cards) {
       expect(respNums.has(card.getAttribute("data-from")!), "屏上出现一个响应里没有的 from 值").toBe(true);
       expect(respNums.has(card.getAttribute("data-to")!), "屏上出现一个响应里没有的 to 值").toBe(true);
     }
