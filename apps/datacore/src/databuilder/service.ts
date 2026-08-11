@@ -31,6 +31,7 @@ import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, deriveSliceHops, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { findUnknownScopeTypes } from "../rule-scope.js";
 import { detectFkCandidates, deriveModelingSuggestion } from "../modeling.js"; // WO-DB-MODELING-WIRE：数据先行 A3 复用
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
@@ -96,7 +97,13 @@ export class DataBuilderService {
         /* 无绑定/无 key/解析失败 → 落地板 */
       }
     }
-    return comprehendScript(script, seed);
+    // 地板路同样要带诚实位。刻意**不写死 `unresolvedRuleScopes: []`** —— 那就成了装饰品：
+    // 哪天地板模板的 scope 写错，写死的空数组会照样报「干净」。这里跑的是与 LLM 路**同一份实现**。
+    const floor = comprehendScript(script, seed);
+    return {
+      ...floor,
+      unresolvedRuleScopes: findUnknownScopeTypes(floor.rules, floor.objectTypes.map((t) => t.typeKey)),
+    };
   }
 
   /**

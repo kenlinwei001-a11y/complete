@@ -2821,12 +2821,24 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C12: ["Model"],
   C18: ["AnnualScenario"],
   C23: ["AnnualScenario"],
-  // catalog §3 C26–C33 作用域（映射表/影响面按此关联；与 expression 对象前缀一致）。
-  C26: ["Cert"],
-  C27: ["Lta"],
-  C28: ["Batch"],
+  // catalog §3 C26–C33 作用域（映射表/影响面按此关联）。
+  //
+  // ⚠️ WO-RULE-SCOPE-DROP 订正：这里**原注释写的是「与 expression 对象前缀一致」，那句话就是病根**。
+  // `expression` 的前缀是**求值期注入命名空间**（求解器 `base.Cert = {...}` 这类，见 solvers/service.ts），
+  // `scopeObjectTypes` 是**本体对象类型键**（消费方一律拿去 `listByType` / 挂图谱 / 算影响面）。
+  // 二者恰好同名时没事，不同名就悄悄错开 —— 结果是规则躺在库里永不参与评估，且零信号。
+  // **改这张表时唯一的判据是：这个字符串在 `ontology.listTypes()` 里存不存在。**
+  C26: ["Certification"], // 原 "Cert"（= cert_schedule 求解器的注入命名空间，非类型键）
+  C27: ["LongTermAgreement"], // 原 "Lta"
+  C28: ["MaterialBatch"], // 原 "Batch"；MaterialBatch.idleDays 满覆盖，改名后 C28 立刻真评估出判定
   C29: ["Order"],
   C30: ["Process"],
+  // ⚠️ C31 **故意保持原样**：`Outsource.yieldRate < Outsource.minYieldRate` 的承载类型**本体里真的没有**
+  //（近似数据 `Material.outsourceYield` 字段名对不上，且 `minYieldRate` 全仓无任何对象承载；
+  // 求解器 outsourcing_split 也已显式判 NOT_APPLICABLE、拒绝伪造良率数）。
+  // 这是「真缺对象类型」，不是「打错名」——**硬塞一个近似类型就是把缺口伪装成已修**。
+  // 它现在会被 `rule-scope.ts` 判成 reason=NO_CARRIER 并每轮扫描发一条 `rule.scope_unresolved`，
+  // 即：缺口从「没人知道」变成「机器每轮都在喊」。详见 WO 交接的 C31 判定。
   C31: ["Outsource"],
   C32: ["Customer"],
   C33: ["Order"],
