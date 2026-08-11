@@ -804,7 +804,15 @@ function judgeOne(
 ): {
   candidates: ImpedimentCandidate[];
   unresolved?: ChainScanUnresolved;
-  caveat?: { bindingId: string; ruleKey: string; note: string };
+  /**
+   * 一条判据可以同时有**多条**削弱说明（如 C05 既含 SUSTAIN、又在本次 scope 下判不出业务线归属）。
+   * ⚠ 这里原本是单数 `caveat?`，是**被自己的输出抓出来的**：`caveat ??= …` 让先到的 SUSTAIN 说明
+   * 占住了唯一的槽，业务线归属那条 UNKNOWN **进不了 `caveats[]`**；而我的测试写的是
+   * 「该 bindingId 存在某条 caveat」—— SUSTAIN 那条恰好满足，于是**断言为了错误的理由通过**。
+   * 形态照 0.6 句式：「我用『这个 binding 有 caveat』当作『归属 UNKNOWN 被说出来了』的证据，
+   * 而前者并不度量后者。」改成数组 + 断言咬文案，两头都堵上。
+   */
+  caveats?: { bindingId: string; ruleKey: string; note: string }[];
   threshold?: ChainScanThresholdRow;
   /** `scope.businessTypes` 在这条判据上的**作用面账**（真裁了 / 裁不动 ⇒ 归属 UNKNOWN）。 */
   attribution?: ChainScanSegmentAttributionRow;
@@ -837,6 +845,7 @@ function judgeOne(
   let sawMetric = false;
   let lastThresholdIssue = "";
   let thresholdRow: ChainScanThresholdRow | undefined;
+  const caveats: { bindingId: string; ruleKey: string; note: string }[] = [];
   let caveat: { bindingId: string; ruleKey: string; note: string } | undefined;
   const candidates: ImpedimentCandidate[] = [];
   const hasSustain = /\bSUSTAIN\s*\(/.test(rule.expression);
@@ -873,6 +882,12 @@ function judgeOne(
     let violated: boolean;
     if (hasSustain) {
       violated = breachAmount(metric, th.value, th.op, th.metricOnLeft) > 0;
+      // ⚠ 本文件里**两处** caveat 构造位都刻意保持 `??=` 这个写法（且都用同一个变量名）：
+      // `chain-scan-honesty:check` 的 H2 靠这个写法当锚点定位「回包构造区」。
+      // 实测：把它们改成 `push({…})` 后，构造区数从 6 掉到 4，而门的下界是 3 ⇒ **没红**，
+      // 两个构造位就这么悄悄退出了 H2 的扫描面。门自己的注释写着「区域数会掉 → 金丝雀下界当场红」，
+      // 在这个幅度上并不成立（下界太松）。我不能改 `scripts/**`，故这里保住锚点，
+      // 并把「MIN_REGIONS 应改成棘轮而不是固定下界」作为门加固项交回（见交付说明）。
       caveat ??= {
         bindingId: b.bindingId,
         ruleKey: b.ruleKey,
@@ -963,6 +978,13 @@ function judgeOne(
     );
   }
   if (!thresholdRow) return unresolved(lastThresholdIssue || `规则 ${b.ruleKey} 的阈值读不回来`);
+  // SUSTAIN 那条先落袋，把构造位腾出来给下面的「归属 UNKNOWN」那条 —— 两条是**两件事**，
+  // 谁也不该把谁挤掉（原来共用一个 `??=` 槽时，C05 的 SUSTAIN 说明就把归属 UNKNOWN 顶掉了，
+  // 而我的测试只咬「该 binding 有 caveat」⇒ **断言为了错误的理由通过**，见测试里那段账）。
+  if (caveat) {
+    caveats.push(caveat);
+    caveat = undefined;
+  }
 
   // 业务线维的作用面账（限了这一维才有）。**判不动也要出声**：一条 caveat + 一行 attribution，
   // 缺了这两样，"筛了但没筛动"就退化成静默 —— 那正是本判定器最初那道 400 要防的形态。
@@ -981,14 +1003,16 @@ function judgeOne(
         : `locus 类型 ${b.locusObjectType} 在本体上不承载业务线属性 ⇒ 本次 businessTypes 过滤对该判据**无效**：` +
           `产出的 ${candidates.length} 条阻滞点业务线归属 = UNKNOWN（**不是**"属于所选业务线"），dataMode 已降 PARTIAL`,
     };
+    // 第二个构造位（同样保持 `??=` 写法，理由见上面那段 H2 锚点的账）。
     if (!carriesSegment && candidates.length > 0) {
       caveat ??= { bindingId: b.bindingId, ruleKey: b.ruleKey, note: attribution.note };
     }
   }
+  if (caveat) caveats.push(caveat);
 
   return {
     candidates,
-    ...(caveat === undefined ? {} : { caveat }),
+    ...(caveats.length === 0 ? {} : { caveats }),
     threshold: thresholdRow,
     ...(attribution === undefined ? {} : { attribution }),
   };
@@ -1041,7 +1065,7 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
       unresolved.push(r.unresolved);
       unresolvedByBinding.set(b.bindingId, r.unresolved.reason);
     }
-    if (r.caveat) caveats.push(r.caveat);
+    if (r.caveats) caveats.push(...r.caveats);
     if (r.threshold) thresholds.push(r.threshold);
     if (r.attribution) attributionRows.push(r.attribution);
   }

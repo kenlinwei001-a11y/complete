@@ -270,7 +270,16 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
     expect(att.unattributedTotal).toBeGreaterThan(0);
     for (const r of nonCarriers) {
       expect(r.note).toContain("UNKNOWN");
-      expect(scoped.caveats.some((c) => c.bindingId === r.bindingId), "判不动的判据必须进 caveats（三处出声之一）").toBe(true);
+      // ⚠ 这里**不能**只断言「该 bindingId 存在某条 caveat」——本单初版就是那么写的，
+      // 而 C05 那条判据的 caveat 槽早被 SUSTAIN 说明占着，于是断言**为了错误的理由通过**：
+      // 归属 UNKNOWN 那句话当时压根没进 `caveats[]`。故改咬**文案本身**。
+      const hit = scoped.caveats.filter((c) => c.bindingId === r.bindingId && c.note.includes("UNKNOWN") && c.note.includes("不承载业务线"));
+      expect(hit.length, `判不动业务线的判据 ${r.bindingId} 必须把「归属 UNKNOWN」这句话本身写进 caveats（不能靠别的 caveat 顶包）`).toBeGreaterThan(0);
+    }
+    // 同一条判据可以同时有多条削弱说明（SUSTAIN + 归属 UNKNOWN），后到的不许把先到的挤掉。
+    const sustainBinding = scoped.caveats.find((c) => c.note.includes("SUSTAIN"));
+    if (sustainBinding && nonCarriers.some((r) => r.bindingId === sustainBinding.bindingId)) {
+      expect(scoped.caveats.filter((c) => c.bindingId === sustainBinding.bindingId).length).toBeGreaterThan(1);
     }
     // 归属 UNKNOWN 的阻滞点，诚实位必须降级 —— 这是机器能咬到的第三处。
     const unattributedTypes = new Set(nonCarriers.map((r) => r.locusObjectType));
