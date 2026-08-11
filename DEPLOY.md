@@ -135,11 +135,45 @@ docker compose ps                  # 全部 healthy 即完成
 - **引用模式**：意图 → 计划为 `planRef {planKey, version|"latest"}`（执行时解析）；规则引用永远取 PUBLISHED 最新版；
   发布响应附影响面 impact；workflow 破坏性 inputs 变更 + latest 引用 → `BREAKING_CHANGE_WITH_LATEST_REFS`（force=true 越过，全审计）。
 
+### 5.x.1 不配 LLM 供应商时：**哪些功能不可用、哪些照常、替代路是什么**（内存模式必读）
+
+**内存模式（`SEED_DEMO=1`、不设 `DATABASE_URL`）默认一个 LLM 供应商都没有**
+（`GET /a/v1/llm-providers` → `[]`、`GET /a/v1/llm-bindings` → `{"bindings":[],"envFallbackConfigured":false}`）。
+此时 DataCore 侧 **4 个用途 + B 系统对话**会走不通，其余全部照常。
+下表**逐条亲手打过接口**（2026-08-11，内存模式、零 provider、零 env key），不是读代码推的：
+
+| 用途 | 入口 | 无 LLM 时 | 替代路 |
+|---|---|---|---|
+| `modeling` | 建模工作台「**生成建议**」`POST /a/v1/modeling/suggest` | 503 `LLM_PROVIDER_NOT_CONFIGURED` | ✅ **同弹窗的「确定性建模（全字段）」** `POST /a/v1/modeling/derive` → 201，构造上 100% 字段覆盖，**不需要 LLM** |
+| `extraction` | A2 规则文档抽取 `POST /a/v1/rule-docs` | **不是 5xx**：202 + 文档 `status=PARTIAL`、`candidateCount=0`；真实原因在 `GET /a/v1/rule-docs/{id}/segments` 的 `error` 字段（已是可操作中文）。⚠️ **前端 `/admin/rule-docs` 目前不渲染该字段**，界面表现为"传了个文档、一条候选都没出、也没说为什么" | 无（改人工在规则库直接建规则）；排障先打上面那个 segments 端点 |
+| `template_gen` | A7 合成数据 **未知行业** `POST /a/v1/synthetic/jobs` | 503 `LLM_PROVIDER_NOT_CONFIGURED` | ✅ 用内置模板行业 `battery-manufacturing`（**不走 LLM**，演示数据即由它播种） |
+| `comprehend` | 求解器生成 `POST /a/v1/solvers/generate`、数据构建发动机 | 503 `LLM_PROVIDER_NOT_CONFIGURED` | 无（用已注册求解器） |
+| B 系统 QOS | 查询对话分类 / 探索 Agent | 诚实降级（`providerAvailable` 判定，非 INTERNAL_ERROR） | 无 |
+
+**不受影响**：求解器执行、对象/本体浏览、规则库、权限、时序与模拟时钟、S&OP、Action 审批、知识库、
+以及**上表所有「替代路」**——即"没有 LLM 也能把数据接入 → 建模 → 发布 → 物化 → 求解"整条主链跑通。
+
+> **错误形态（这是一次真实病灶的修正记录）**：以前这 5 个入口在无凭据时一律落 **500 `INTERNAL_ERROR`**，
+> message 是供应商 SDK 的英文内部原文
+> （`Could not resolve authentication method. Expected one of apiKey, authToken, ...`）——
+> 用户读不懂、更不知道「旁边那个灰按钮其实能用」。现统一为**语义错误码**：
+> - `LLM_PROVIDER_NOT_CONFIGURED`（503）= **压根没配**；
+> - `LLM_PROVIDER_UNAVAILABLE`（503）= **配了但打不通**（密钥错 / 端点不可达 / 限流），
+>   用 `/admin/llm-providers` 的「连接测试」核对。
+>
+> 两者是两种不同的病、两种不同的修法，**不许混为一谈**。任何错误信封都**不回显密钥**，
+> 只带错误类名（原始 SDK message 仅进服务端日志）。
+
+**怎么配上**：`/admin/llm-providers`（需 `tenant_admin`/`admin`）新增 provider → 在「用途绑定矩阵」把
+`modeling` 等用途绑到该 provider；或给 DataCore 进程配 env 默认通道（见 §6 `ANTHROPIC_API_KEY` /
+`DC_LLM_PROVIDER` 组）。两者任一到位，建模工作台的「生成建议」按钮即自动可点
+（前端读 `GET /a/v1/llm-bindings` 的 `envFallbackConfigured` + `modeling` 绑定判定，与后端路由同源）。
+
 ## 6. 可选配置（环境变量，`docker compose up` 前 export 或写 `.env`）
 
 | 变量 | 作用 |
 |---|---|
-| `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，但查询对话的分类与探索回答、A2/A3 的 LLM 抽取会失败报错（界面有明确错误提示） |
+| `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，受影响的是 `modeling`/`extraction`/`template_gen`/`comprehend` 四个 DataCore 用途 + B 系统对话——落 503 `LLM_PROVIDER_NOT_CONFIGURED` + 可操作中文（**不再是 SDK 英文原文**），建模工作台的「生成建议」按钮会**提前置灰**并指向替代路。**逐条清单与替代路见 §5.x.1** |
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
 | `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**源码/内存模式默认不设** → **整个组合最优化族**（`portfolio` 全局项目推演、`cross_object_occupancy` 多目标+跨对象占用、`selection`/`assignment`/`sequencing`/`packing`/`job_shop_schedule`、5 个 CP-SAT 核心、`optimize_whatif`）显式返「未接入最优化引擎」400（诚实兜底·不静默）。**后果：前端「全局项目推演」「项目推演·多目标」「优化推演」等面板结果区全空/红字"求解失败"——非 bug，是没起引擎。要用这些面板见 §6.x（必起）** |
@@ -209,6 +243,8 @@ curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/portfolio/invoke \
 | 内存不足 / OOM | 确保 Docker 可用内存 ≥ 4 GB（Docker Desktop → Settings → Resources）；或先 `SEED_DEMO=0` 启动再在 /admin/synthetic 里手动生成 S 规模数据 |
 | 登录 401 | 确认租户填 `demo`；改过库后想重置：`docker compose down -v` 清卷重来 |
 | 查询对话报模型错误 | 未配置 `ANTHROPIC_API_KEY`（见 §6）；其余模块不受影响 |
+| **建模工作台「生成建议」置灰 / 报 `LLM_PROVIDER_NOT_CONFIGURED`** | 本租户没配 LLM 供应商、且 DataCore 也没配 env 默认通道 —— **不是 bug**。两条出路：① `/admin/llm-providers` 配 provider 并绑 `modeling` 用途（或配 `ANTHROPIC_API_KEY` 重启 datacore）；② **不配也能干活**：用同一弹窗的「确定性建模（全字段）」，它不走 LLM 且 100% 字段覆盖。逐条清单见 §5.x.1 |
+| **报 `LLM_PROVIDER_UNAVAILABLE`（不是 NOT_CONFIGURED）** | provider **配了但打不通**：密钥错 / baseUrl 不可达 / 限流。到 `/admin/llm-providers` 点该 provider 的「连接测试」看延迟与探测到的模型；错误信封只带错误类名（不回显密钥），完整原因见 `docker compose logs datacore` |
 | 改了代码不生效 | `docker compose up --build` 强制重建镜像 |
 | **只重建了前端 → 后端改动不生效（假 bug 制造机）** | 改动落在 `datacore`/`agentcore` 时，只 `docker compose build frontend` 或不带 `--build` 的 `up -d` 会**继续跑旧后端镜像**。症状极具迷惑性：求解器新参数报「unknown key」、时序推演全灰/全平、根因树「暂不可用」、新点亮的功能开关查无此项——**看着像功能没做，实为后端是旧的**。正解：`docker compose build --no-cache datacore agentcore frontend && docker compose up -d`。诊断口诀：**先确认后端是新的，再判断功能有没有 bug**（本项目已因此误诊过多次） |
 | **租户功能开关改了却不生效** | PG 卷持久化了租户 override：重建镜像**不会**重置已落库的开关。`PUT /a/v1/tenants/:id/features` 是**整体替换**（非合并），须一次性提交全部开关键，漏传的会被清空；或 `docker compose down -v` 清卷让 `SEED_DEMO` 重新播种 |
