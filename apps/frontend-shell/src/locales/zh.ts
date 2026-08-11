@@ -110,7 +110,7 @@ export const zh = {
    * 求解器**作用域诚实位**（欠账 #178 · `components/ScopeHonestyBadge.tsx`）。
    *
    * ⚠ 这里只放**短标签**（第一层那枚徽标上的字）。说明正文一律**取后端原文**，不在此另写一份 ——
-   * 措辞是引擎侧的单一来源（`solvers/capacity.ts:433` / `extended.ts:847` / `capex.ts:200`），
+   * 措辞是引擎侧的单一来源（`solvers/capacity.ts:433-434` / `extended.ts:847` / `capex.ts:201-203`），
    * 前端另写一句必然与引擎口径漂移，那正是本欠账要治的病。
    *
    * 措辞判据（三态不许混·混了用户会去修错地方）：说的是「**没按这个实参重算**」，

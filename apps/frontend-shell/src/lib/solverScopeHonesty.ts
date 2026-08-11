@@ -15,12 +15,19 @@
  * ── 三种形状（皆实测自 canonical·file:line 为引擎侧出处）─────────────────────────
  *  ① **扁平串 + scopeNote** —— `capacity_forecast`（`apps/datacore/src/solvers/capacity.ts:432-434`）
  *     `{ scope: "BASE"|"ALL", scopeBaseId?, scopeBaseName?, scopeNote: string }`
- *  ② **对象 + mode** —— `credit_exposure`（`solvers/extended.ts:840/847`·缺省 `:463`）、
- *     `capex_scenario`（`solvers/capex.ts:198/221`·随行 `:349`）
+ *  ② **对象 + mode** —— `credit_exposure`（`solvers/extended.ts:840` CUSTOMER / `:847` ALL·缺省 `:463` EXPLICIT）、
+ *     `capex_scenario`（`solvers/capex.ts:198-205` EXPLICIT / `:221-227` SCENARIO·随行输出 `:349`）
  *     `{ scope: { mode: "CUSTOMER"|"SCENARIO"|"ALL"|"EXPLICIT", note?, custName?, scenarioKey?, … } }`
- *  ③ **专名维 + dataMode:"EMPTY"** —— `changeover_sequence.lineScope`（`extended.ts:332`）、
- *     `quarterly_gap.quarterScope`（`extended.ts:497`）
+ *  ③ **专名维 + dataMode:"EMPTY"** —— `changeover_sequence.lineScope`（装配 `extended.ts:793`·随行输出 `:333`）、
+ *     `quarterly_gap.quarterScope`（装配 `extended.ts:968`·随行输出 `:498`）
  *     `{ dataMode: "EMPTY", reason: string, missingInputs?: … }`
+ *
+ * ── 本读取器**不认**的第四种形状（已实测存在·刻意不接·留给引擎侧先定性）─────────────
+ * `gap_attribution` 另有一族：`scope:{baseId, displayName, exposure?}` + `globalGap` + `noBaseData`
+ * （`solvers/service.ts:1661/1699/1733`）。它没有 `mode` 也没有 `note`，故落到 `readModed` 会返 `null`
+ * ——**这是有意的**：`exposure:true` 说的是「敞口树·非全局分摊份额」，与本文件的「全域 vs 局部」
+ * 不是同一个命题，硬塞进同一张档位表就是把两件事混成一句（本仓反复栽在这上面）。
+ * 它的诚实话今天写在 `summary` 里且确实上了屏，缺的是**结构化标注**——属引擎侧口径先统一的事。
  *
  * ── 归一后的三档，对应 CLAUDE.md 铁律 0.5 的三态（**不许混为一谈·混了用户会去修错地方**）──
  *  · `SCOPED`   实参真进了计算，这个数就是你要的那个范围的数 —— 报出算的是谁即可，不是警告。

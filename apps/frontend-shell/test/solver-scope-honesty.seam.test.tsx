@@ -130,7 +130,7 @@ describe("欠账 #178 · 作用域诚实位上屏（后→前接缝·两个方�
       expect(
         readScopeHonesty({ scope: { mode: "ALL", customerCount: 6, note: "未指定客户→全部客户合计敞口（非首客户）" } }),
       ).toMatchObject({ level: "GLOBAL", note: "未指定客户→全部客户合计敞口（非首客户）" });
-      // capex_scenario 直传 projects → scenarioKey 只是标签，**没参与选型**（`capex.ts:200` 原文节选）。
+      // capex_scenario 直传 projects → scenarioKey 只是标签，**没参与选型**（`capex.ts:201-203` 原文节选）。
       expect(
         readScopeHonesty({ scope: { mode: "EXPLICIT", scenarioKey: "x", note: "scenarioKey 仅为回显标签、未参与选型" } }),
       ).toMatchObject({ level: "UNAPPLIED", scopedTo: "x" });
