@@ -1062,7 +1062,8 @@ export const compileSkill = (id: string) =>
  * 界面把这几态渲染成绿色或"通过"，就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
  *
  * **WO-SEEDGATE-FRESHNESS**：
- *  · 缺陷 A —— `ranAt` 原先是**进程启动那一瞬**的常量（实测连续 3 次请求间隔 3 分钟一字未变）。
+ *  · 缺陷 A —— `ranAt` 原先是**进程启动那一瞬**的常量（2026-08-11 实测：连续 3 次 GET 间隔 3 分钟，
+ *    `ranAt` 一字未变。复验：`curl -s <base>/b/v1/ops/skill-seed-gate | jq .ranAt` 隔几分钟跑两次比对）。
  *    后端改为按请求现算（TTL `ttlSeconds` 秒内复用 + `?refresh=1` 手动刷新），
  *    界面因此必须把 `ranAt` 当作「**这份数据真正被计算的时刻**」显示，并给出手动刷新入口。
  *  · 缺陷 B —— 原先「抛错」与「读回空集」合并成一个 `GATE_UNAVAILABLE`，
