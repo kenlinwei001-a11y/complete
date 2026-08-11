@@ -251,16 +251,30 @@ $ grep -on 'sim-checkpoints' apps/frontend-shell/src/store/eventInvalidation.ts
 ```
 
 它**只对账事件名的集合**（`:29` 订阅侧 + `:66-91` 发射端，两条抽取器各带金丝雀 `:68`）。
-**没有任何一条断言碰过第 5 列。** 实证：
+**没有任何一条断言碰过第 5 列。**
+
+**两条通道都查了**（铁律 0.5 #3：门不止 `.mjs` 一种形态，还可能是 vitest）：
 
 ```
-$ grep -rln "LABEL_TO_KEYS\|invalidates" scripts/*.mjs
-（零命中 —— 金丝雀：同目录 ls scripts/check-system-ontology.mjs 存在，故不是路径错）
+① 门脚本： $ grep -rln "LABEL_TO_KEYS\|invalidates" scripts/*.mjs
+   零命中（金丝雀：同目录 ls scripts/check-system-ontology.mjs 存在，故不是路径错）
+
+② 测试：   $ grep -rln "SYSTEM-ONTOLOGY" apps/*/test packages/*/test
+   apps/agentcore/test/role-model-fallback.test.ts   ← ⚠ **提及≠读取**：命中在 `:20` 的注释
+                                                        （"SYSTEM-ONTOLOGY §8"），该测试根本不读这个文件
+   apps/datacore/test/meta-ontology.test.ts:10       ← 真读。但逐条看了它 8 个 it 的全部断言：
+                                                        只验解析确定性(R6)/节点类别齐全/断点计数与
+                                                        prd-ontology-index 一致/元租户隔离/鉴权，
+                                                        **一条都没碰「失效下游」列与代码的对账**
 ```
 
 ⇒ **「失效下游」列是无人守护的散文**，写错三年也不会红。这是一个**结构性盲区**，
 形态与已知的 `G-EVENT-GATE-*` 同族，但**射程不同**（那条讲的是"看不看 emit 侧"，
-这条讲的是"事件名对了，接线目标可以是编的"）。
+这条讲的是"事件名对了，**接线目标可以是编的**"）。
+
+> 顺带记一笔：①②两条命令里，`grep -rln` 对 `role-model-fallback.test.ts` 的命中
+> **正是 CLAUDE.md 那句「`grep -rl` 到的可能只是注释里提了一嘴，提及 ≠ 读取，必须点开看」**。
+> 我点开了，所以这里报的是「2 个文件命中、**0 个构成守护**」，而不是「有 2 道测试守着」。
 
 ### 5.4 §8 断点行 `G-SIM-EVENT-NOSUB`（`SYSTEM-ONTOLOGY.md:1113`）**内容已过期**
 
@@ -352,7 +366,7 @@ $ grep -rln "LABEL_TO_KEYS\|invalidates" scripts/*.mjs
 
 1. **`sim.perturbation_created` 整条**（事件 + 消费链 + 门），前人两份成文时它还不存在。
 2. **本体 §4「失效下游」列 3/6 行是幻影**（§5.2）—— 前人只对账了**事件名**，没对账这一列。
-3. **无人守护该列**（`grep -rln 'LABEL_TO_KEYS\|invalidates' scripts/*.mjs` → 零，§5.3）。
+3. **无人守护该列** —— 门脚本与 vitest **两条通道都查了**，0 个构成守护（§5.3）。
 4. **本体自相矛盾**：`:833` 说 7 处/6 名/缺口 1，`:1113` 说六处/4-of-5（§5.4）。
 5. **`sim.checkpoint_saved` 的病根定位到 `repo→route` 接缝**，不在事件层（§4）——
    这一条改变修法：照派单字面查会去改前端，而缺口在 datacore。
@@ -378,7 +392,11 @@ $ grep -rln "LABEL_TO_KEYS\|invalidates" scripts/*.mjs
 7. 两道门是我**亲手跑的**，不是读源码推的：`check-system-ontology.mjs`（`EXIT_RC=0`）与
    `check-ontology-anchors.mjs`（`EXIT_RC=0`，240 锚点 / ±40 容差）。
 8. 守门测试的棘轮值与实测一致：`sim-event-invalidation.seam.test.ts:112/113/114` = `7 / 6 / 1`。
-9. entitlement 排除集 —— **逐条读了** `features.ts:160-175` 与 `:182-184` 全部 15 个键。
+9. entitlement 排除集 —— **逐条读了** `features.ts:160-175` 与 `:182-184` 全部 15 个键；
+   并读了 `features.ts:81-87` 七个 `sim.*` 键的 `defaultOn`/`requires` 链与
+   `requireSim` 实现（`app.ts:1381-1383`，关=404 `FEATURE_NOT_FOUND`）。
+10. 「第 5 列无人守护」是**两条通道都查过**的（`scripts/*.mjs` ⊕ 全部 test），
+    且对 grep 命中的两个测试文件**逐个点开确认**（一个只是注释提及）——见 §5.3。
 
 ### 🟡 B. 只做了集合运算 / 只读了一层的
 
