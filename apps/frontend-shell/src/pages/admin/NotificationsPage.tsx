@@ -38,7 +38,7 @@ export default function NotificationsPage() {
         {items.map((n) => {
           const link = refLink(n.refType, n.refId);
           return (
-            <div key={n.id} data-testid={`notif-${n.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid var(--border)", opacity: n.readAt ? 0.55 : 1 }}>
+            <div key={n.id} data-testid={`notif-${n.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid var(--line)", opacity: n.readAt ? 0.55 : 1 }}>
               <span className="badge">{KIND_LABEL[n.kind] ?? n.kind}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12.5, fontWeight: n.readAt ? 400 : 600 }}>{n.title}</div>

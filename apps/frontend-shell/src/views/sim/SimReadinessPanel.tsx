@@ -65,7 +65,7 @@ function CertStepper({ level }: { level: SimCertification["level"] }) {
               fontSize: 11,
               fontWeight: isCur ? 700 : 500,
               background: active ? (isCur ? "#43B7D7" : "rgba(67,183,215,.25)") : "rgba(226,235,245,.07)",
-              color: active ? (isCur ? "#0b1622" : "var(--text)") : "var(--muted2)",
+              color: active ? (isCur ? "#0b1622" : "var(--txt)") : "var(--muted2)",
             }}
           >
             {l.label}

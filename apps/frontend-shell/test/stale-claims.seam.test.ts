@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -118,17 +118,71 @@ describe("§2 · 判据真的会咬（喂已知坏样例）", () => {
   });
 });
 
+/**
+ * 事实锁的扫描面：**整棵 datacore 源码树，剥注释后**。
+ *
+ * ── 病历（2026-08-11 实测，本文件自己犯的）────────────────────────────────────
+ * 本节原先写死 `readRepo("apps/datacore/src/app.ts")` 去找两个串。集成分支把这段装配从
+ * `app.ts` 抽到了 `sim/propagation-inputs.ts:88-89`（`app.ts` 还留了注释说明「刻意不在本文件
+ * import」）——**能力一行没少，纯粹搬了个家**。于是同一次重构里，这一条 it 同时产出了两个
+ * **方向相反**的错误信号：
+ *   · `listByType(…, "Cadence")` → **假红**：事实还在，只是锚点没了；
+ *   · `buildCadenceGates`        → **假绿**：它命中的是那句**注释**，不是代码。
+ *     真正的调用点搬走了，而这条断言一声不吭 —— 正是本文件 §4 早已在防的「注释不参与判定」。
+ *
+ * 一个根因、两个方向：**「我用『某串在 app.ts 里』当作『tick 仍在读回 Cadence』的证据，
+ * 而前者并不度量后者。」** 事实锁必须锚在**事实**上，不能锚在**位置**上 ——
+ * 会因一次无害重构而红的门，只会训练人把门删掉，那时真删了才没人拦。
+ */
+const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+
+/** @returns [仓库相对路径, **剥注释后的可执行代码**][] */
+function datacoreCode(): [string, string][] {
+  const root = join(REPO_ROOT, "apps/datacore/src");
+  const walk = (d: string): string[] =>
+    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(d, e.name)) : /\.ts$/.test(e.name) ? [join(d, e.name)] : [],
+    );
+  return walk(root).map((f) => [f.slice(REPO_ROOT.length + 1), stripComments(readFileSync(f, "utf8"))]);
+}
+/** 事实命中的文件清单（空数组 = 该事实在**可执行代码**里已不存在）。 */
+const factHits = (code: [string, string][], probe: string | RegExp) =>
+  code.filter(([, s]) => (typeof probe === "string" ? s.includes(probe) : probe.test(s))).map(([f]) => f);
+
 describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红）", () => {
   const model = () => readRepo("apps/frontend-shell/src/views/sim/inspectorModel.ts");
 
-  it("上游承载还在：service.ts 仍 `putAll(\"Cadence\")`、app.ts 仍读回 —— 删了则 K1/K2 新文案又变假话", () => {
+  it("上游承载还在：仍 `putAll(\"Cadence\")`、推演仍读回 —— 删了则 K1/K2 新文案又变假话", () => {
+    const code = datacoreCode();
+
+    // ── 金丝雀：先自证扫描器没坏，再据它下否定结论（铁律 0.6：报「不存在」必须附金丝雀证据）──
+    expect(code.length, "datacore 源码扫不到几个文件 ⇒ 扫描器坏了，本次结论作废，不许读作「事实没了」").toBeGreaterThan(50);
     expect(
-      readRepo("apps/datacore/src/synthetic/service.ts"),
-      'service.ts 不再 putAll("Cadence") —— K1/K2 的「承载今天也有」当场变成假话，必须改回去',
-    ).toContain('putAll("Cadence"');
-    const app = readRepo("apps/datacore/src/app.ts");
-    expect(app, "推演 tick 不再 buildCadenceGates —— K1 的「已在读回」变假").toContain("buildCadenceGates");
-    expect(app, "tick 不再 listByType(\"Cadence\")").toContain('listByType(c.tenantId, "Cadence")');
+      factHits(code, 'putAll("Cadence"'),
+      '金丝雀①：已知必中的 putAll("Cadence") 一个都找不到 ⇒ 扫描器坏了，不许读作「承载没了」',
+    ).toContain("apps/datacore/src/synthetic/service.ts");
+    // 金丝雀②：剥注释真的在生效。取一段**只在注释里**出现的合成串喂进去，必须不中 ——
+    // 这条直接钉死本 it 当初那个「命中注释而误报绿」的形态。
+    expect(
+      factHits([["canary.ts", stripComments("/* 提到 buildCadenceGatesCANARY 但只是散文 */\nconst x = 1;")]], "buildCadenceGatesCANARY"),
+      "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了或被摘了，本次结论作废",
+    ).toEqual([]);
+
+    // ── 事实本体：锚在「在不在」上，不锚在「在哪个文件里」上 ──────────────────────
+    expect(
+      factHits(code, 'putAll("Cadence"'),
+      'datacore 不再 putAll("Cadence") —— K1/K2 的「承载今天也有」当场变成假话，必须改回去',
+    ).not.toEqual([]);
+    // `\bbuildCadenceGates\s*\(` 且排除声明式：光有 `export function buildCadenceGates(` 是「没接线」，
+    // 不是「在读回」。import 行没有紧跟的括号，自然也不算。
+    expect(
+      factHits(code, /(?<!function\s)\bbuildCadenceGates\s*\(/),
+      "推演装配不再**调用** buildCadenceGates —— K1 的「已在读回」变假（注释提一嘴、光有定义，都不算）",
+    ).not.toEqual([]);
+    expect(
+      factHits(code, /listByType\([^)]*,\s*"Cadence"\)/),
+      'tick 不再 listByType(…, "Cadence") —— 承载在库里但没人读，K1 的「已在读回」同样变假',
+    ).not.toEqual([]);
   });
 
   it("offsetDays 的运行时消费方还在（K2 那句「零消费方为假」的依据）", () => {
