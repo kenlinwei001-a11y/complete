@@ -217,10 +217,10 @@ export interface UnresolvedCadenceGate {
  * 注：`everyTicks === 1`（如日批）是**合法**闸门，只是在日 tick 引擎上它每个 tick 都开
  *     ⇒ 等待恒 0 tick。这是分辨率的真实结论（日批在日粒度上就是随到随办），不是兜底。
  */
-export function cadenceGate(cadence: Pick<Cadence, "everyDays" | "offsetDays">): CadenceGate | null {
-  const everyTicks = cadence.everyDays;
+export function cadenceGate(cadenceRef: Pick<Cadence, "everyDays" | "offsetDays">): CadenceGate | null {
+  const everyTicks = cadenceRef.everyDays;
   if (!Number.isInteger(everyTicks) || everyTicks <= 0) return null;
-  const offsetRaw = cadence.offsetDays ?? 0;
+  const offsetRaw = cadenceRef.offsetDays ?? 0;
   if (!Number.isInteger(offsetRaw) || offsetRaw < 0 || offsetRaw >= everyTicks) return null;
   return { everyTicks, offsetTicks: offsetRaw };
 }

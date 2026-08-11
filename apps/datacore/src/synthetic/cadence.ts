@@ -498,7 +498,7 @@ export function cadenceObjectRows(rows: readonly CadenceSeedRow[]): Record<strin
       : {
           everyDays: r.cadence.everyDays,
           ...(r.cadence.offsetDays === undefined ? {} : { offsetDays: r.cadence.offsetDays }),
-          cadenceKind: r.cadence.kind,
+          rhythmKind: r.cadence.kind,
           intervalCount: r.intervalCount,
         }),
   }));
@@ -515,6 +515,6 @@ export function cadenceFromProps(props: Record<string, unknown>): Cadence | unde
   return CadenceSchema.parse({
     everyDays: props.everyDays,
     ...(typeof props.offsetDays === "number" ? { offsetDays: props.offsetDays } : {}),
-    kind: props.cadenceKind,
+    kind: props.rhythmKind,
   });
 }
