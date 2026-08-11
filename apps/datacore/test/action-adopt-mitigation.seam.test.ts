@@ -247,6 +247,14 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
       "exposureOrder", // WO-DECISION-INFO（顶层·影响面排序）
       "options", // WO-DECISION-INFO（planRows 行·A/B/C 多方案）
       "leadTime", // WO-DECISION-INFO（steps 行·前置期出处）
+      // WO-SILENT-WRONG-ANSWER-3 症② 诚实位（顶层·加性）：**这次算的是谁**（BASE=单基地 / ALL=全网）。
+      //   修前 risk_timeline 输出里没有任何一处说明作用域 —— 于是「问枣庄返回 8 张别的基地的卡」
+      //   在屏上完全看不出来（判为「静默错答」而非「报错」的直接原因）。与 capacity_forecast 同款口径。
+      //   本门断的是「老字段没被动」，这四个是**新增**键 ⇒ 登记进剥离表、长度金值不变（正是本表的用法）。
+      "scope",
+      "scopeBaseId",
+      "scopeBaseName",
+      "scopeNote",
     ];
     const stripAdditive = (node: unknown): unknown => {
       if (Array.isArray(node)) return node.map(stripAdditive);

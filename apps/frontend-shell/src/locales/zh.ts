@@ -302,6 +302,16 @@ export const zh = {
     econGp: "毛利(亿)",
     econGmRate: "毛利率",
     econTotal: "合计",
+    // WO-SCOPE-HONESTY-FE ②③：齐套 / 报价毛利的作用域诚实位消费面（结构标签；口径原文一律来自回包）。
+    scopeSection: "齐套与报价 · 这次算的是谁",
+    kitTitle: "齐套（kit_readiness）",
+    kitShortageLabel: "张缺料单（读法见下行）",
+    quoteTitle: "报价毛利（quote_margin）",
+    quoteMarginLabel: "毛利率",
+    quoteModelSel: "型号",
+    quoteCustSel: "客户",
+    quoteModelAny: "不指定型号",
+    quoteCustAny: "不指定客户",
     detailSection: "受影响订单 · 明细",
     colOrder: "订单",
     colCust: "客户",
@@ -438,11 +448,24 @@ export const zh = {
       // WO-CAPACITY-PAGE-100PCT ⑩（R8 量纲错标）：本页传给面板的 before 值是 `card.peak`＝**峰值张力（0–100 指数）**，
       // 却被标成"可用产能"——屏幕上出现「调整前可用产能 98.0」这种量纲错到底的数字。改为按其真实口径标注。
       leverBefore: "调整前峰值张力（0–100）",
+      // WO-FACTOR-SCOPE-SINGLESOURCE：chip 显示用 label、传值用 CausalFactor.factorId；
+      // 候选集来自引擎回执 scope.availableFactors（单一来源）。文案一律走本表，不内联到组件里。
       rootcause: {
         scopeTitle: "因子作用域",
         allFactors: "全部因子（基地级）",
         pick: (f: string) => `按「${f}」细分`,
-        refined: (f: string) => `已按因子「${f}」细分（gap_attribution scope.factorId·引擎已支持 base×factor 作用域·前端已接线）`,
+        /** chip 悬停：这个因子细分后会下钻到哪类对象的哪个字段、本基地有几个（诚实可核）。 */
+        chipTitle: (label: string, drillType: string, drillField: string, n: number) =>
+          `按「${label}」细分 → 下钻本基地 ${drillType}.${drillField}（当前 ${n} 个对象）`,
+        refined: (f: string) => `已按因子「${f}」细分（gap_attribution scope.factorId·细分层为占比层·结构分摊 L1/L2 不变）`,
+        baseAggregated: (f: string) =>
+          `结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。注：当前按基地聚合根因，未按具体越线因子（${f}）细分——点上方因子 chip 即按因子细分。`,
+        /** 件三：一个可细分因子都没有时据实说，而不是画一排点不动的按钮。 */
+        noneAvailable: "本基地当前无可细分因子（引擎未在本基地解析到任何因子的承载对象）。",
+        /** 件四：引擎明说没细分时的告警条（用户不可能忽略的形态·非树底一行小字）。 */
+        notRefinedTitle: "⚠ 未按该因子细分",
+        notRefinedFallback: (f: string) => `引擎未按因子「${f}」细分，下方仍是本基地的聚合根因树。`,
+        backToBase: "回到基地级",
       },
       dialog: {
         title: "人机对话 · 真 NL（orchestrator 路由）",
@@ -1216,6 +1239,203 @@ export const zh = {
     metricDisplaced: "被挤单",
     metricOntimeRate: "按期率(%)",
     adopted: (label: string, status: string) => `已采纳「${label}」→ Action 草稿 ${status}`,
+  },
+  /**
+   * WO-CAPACITY-CARD-LAYOUT · 产能推演「可用产能派生诊断（自下而上 6 层）」卡片布局文案。
+   *
+   * R14（应用层无业务常数）：**壳文案**在这里；**公式与层名不在这里** ——
+   * 那些是 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role / .name`（单一来源），
+   * 抄进本文件就是给它开一条会漂的分身。本块只放"框"，"瓤"仍从本体表取。
+   *
+   * 唯一的例外是 `honesty`：那句诚实位原本内联在组件里，本单把它从常驻正文
+   * 降到 `?` 浮层，按 R-UI-3「浮层文案一律走 locales」搬到这里，**一字未改**。
+   */
+  capDag: {
+    title: "🧮 可用产能派生诊断（自下而上 6 层）",
+    sub: (baseName: string, available: string) => `${baseName} · 可用 ${available} 套如何逐层算出`,
+    loading: "派生链加载中…",
+    unavailable: "派生求解器不可用（诚实空·未伪造）",
+    /** 卡片链容器的 aria 说明（递进承载物③ 之一：不靠视觉也读得出方向）。 */
+    chainAria: "可用产能派生链 · 自下而上 6 层 · 设备产能 → 工序产能 → 产线产能 → 可投产能 → 产能预测 → 产能缺口",
+    step: (n: number) => `第 ${n} 层`,
+    /** 卡面 aria-label：把「第几层 / 由谁推出 / 数值 / 状态」压成一句，读屏不必扫视。 */
+    cardAria: (step: number, name: string, valueLabel: string, value: string, status: string, from: string) =>
+      `${from}${step}. ${name}；${valueLabel} ${value}；状态 ${status}。回车展开本层明细`,
+    fromStep: (n: number, name: string) => `由第 ${n} 层 ${name} 推导得出 · `,
+    fromNone: "推导链起点（不由上游推出）· ",
+    rungAria: (n: number) => `推导链第 ${n} 级 / 共 6 级`,
+    /** `?` 浮层（第三层：凭什么）。 */
+    formulaTopic: (step: number, name: string) => `第${step}层 ${name} · 口径与公式`,
+    formula: (role: string) => `公式：${role}`,
+    anchorOf: (label: string, field: string, kind: string) => `本层锚点：${label} · 溯源字段 ${field}（${kind}）`,
+    upstream: (n: number, name: string) => `上游 ← 第${n}层 ${name}`,
+    upstreamNone: "上游 ← 无（推导链起点：设备层）",
+    downstream: (n: number, name: string) => `下游 → 第${n}层 ${name}`,
+    downstreamNone: "下游 → 无（推导链终点：本页要回答的那个数）",
+    /** 状态词：与形状、颜色三通道并行，不靠颜色单通道。 */
+    status: {
+      ok: "好",
+      warn: "警",
+      crit: "危",
+      /** 该层锚点是派生量、没有阈值 —— 诚实说"没有状态"，不臆造一个。 */
+      derived: "派生值·无阈值",
+      /** 无 LIVE 真源（tightness 为 null）。 */
+      na: "无真源",
+    },
+    /** 第二层（一次点击）。 */
+    detailHint: "点任一层卡片 → 看该层的判定 / 驱动因素 / 溯源字段",
+    detailTitle: (step: number, name: string) => `第 ${step} 层 · ${name} · 明细`,
+    detailClose: "收起明细",
+    judge: "判定：",
+    drivers: "驱动因素：",
+    derive: "推导：",
+    factorAria: (mark: string, name: string, layer: number) => `本体 ${mark} ${name}（第 ${layer} 层）`,
+    /** 诚实位：正文降到浮层，第一层留 `honestyMark` 这个可见记号（静默降层 = 删除）。 */
+    honestyMark: "口径·溯源",
+    honestyTopic: "口径与溯源（诚实位）",
+    honesty:
+      "6 层沿产能金字塔既有派生链路（本体 §3·不改链路，仅可视化）；锚点真值溯 base_capacity_outlook.available/gap，各层瓶颈张力溯 bottleneck_matrix（R13 每值可溯·R14 因素表单源 factorOntology）。",
+  },
+  /**
+   * WO-WAITING-STATES-FE · 业务流程等待态（需求 §20「『等待』是一等状态」）。
+   *
+   * 🔴 四态**四套文案，一个字都不许合并**。需求判据原文：
+   * 「每个态都要有可辨识的视觉区分（不是 5 个都显示同一个『等待中』）——
+   *   需求要的是回答『为什么卡住』，5 个态混成一个字就等于没做」。
+   * 故每态给三样互不相同的东西：`label`（叫什么）· `who`（**等谁**·本页的核心answer）·
+   * `hint`（判据原文，逐字取自 `packages/contracts/src/process.ts:70-75`，前端不改写）。
+   *
+   * 🔴 **没有 WAITING_APPROVAL**，且不许"顺手补齐成五种"。仓主已裁「流程审批不体现」；
+   * 契约 `PROCESS_WAIT_KINDS` 刻意四值，`process-layer.test.ts:99/106/114` 三条断言钉着。
+   * 本对象的类型是 `Record<ProcessWaitKind, …>`（见 `views/process/processWait.ts`）
+   * ⇒ 契约哪天真加了第五态，**这里编译期就红**，不会静默漏画。
+   */
+  processWait: {
+    title: "流程等待态",
+    subtitle:
+      "13 个一级业务域 × 65 条核心业务流程，每条标注它**卡在哪一类等待**、**等谁**、**标准要等多久**。" +
+      "这一页回答的是「为什么这个流程现在卡住了」——按等待类型分组，而不是笼统一个「等待中」。",
+    sourceNote: "数据来源：GET /a/v1/process-definitions（业务流程层配置，非引擎实时求解）。",
+    /** 与全链阻滞点的分工说明——两页容易被当成一回事，页面上直接写清楚。 */
+    vsImpediments:
+      "与「全链阻滞点」不是同一件事：那一页在**链路节拍层**（24 个节点）问「哪里被卡住了、凭哪条规则说它被卡住」，" +
+      "用引擎实时求解；本页在**业务流程层**（65 条流程）问「这条流程在等哪一类东西、等谁」，读的是流程层配置。",
+    waitKind: {
+      WAITING_USER: {
+        label: "等人",
+        short: "等人做动作",
+        who: "等**内部的人**拿主意或做动作 —— 评审、拍板、录入、维护。责任落在下方的职能上。",
+        hint: "判据：等人做动作/拿主意（评审、拍板、录入、签字以外的操作）。",
+      },
+      WAITING_DATA: {
+        label: "等数据",
+        short: "等上游数据齐",
+        who: "等**上游数据齐**才能起算 —— 人到位也没用，缺的是输入。典型如预测、MRP、良率分析、指标监控。",
+        hint: "判据：等上游数据齐才能算（预测、MRP、良率分析、指标监控）。",
+      },
+      WAITING_EXTERNAL_SYSTEM: {
+        label: "等外部",
+        short: "等外部回话",
+        who: "等**企业外面**回话 —— 供应商、海关、客户、行情源、设备网关。催内部没有用，工期不由我方决定。",
+        hint: "判据：等外部方/外部系统回话（供应商、海关、客户、行情源、设备网关）。",
+      },
+      WAITING_SCHEDULE: {
+        label: "等节拍",
+        short: "等窗口开闸",
+        who: "等**到点开闸** —— 例会、批次、班次、检修窗、盘点日。没人在拖，是窗口还没到。",
+        hint: "判据：等节拍/窗口开闸（例会、批次、班次、检修窗、盘点日）。",
+      },
+    },
+    summary: {
+      totalProcesses: "在册流程",
+      totalStdDays: "标准工期合计",
+      unit: { process: "条", day: "天" },
+      byKind: "按等待类型分布",
+    },
+    group: {
+      countLabel: (n: number) => `${n} 条流程`,
+      stdDaysLabel: (d: number, pct: number) => `标准工期合计 ${d} 天（占全部 ${pct}%）`,
+      owners: "等谁（责任职能）",
+      empty: "本租户暂无此类等待的流程 —— 这是真实读数，不是没渲染。",
+    },
+    table: {
+      key: "流程",
+      name: "名称",
+      domain: "业务域",
+      owner: "责任职能",
+      stdDays: "标准工期",
+      carrier: "承载物",
+    },
+    /**
+     * 诚实缺席位（本仓纪律：缺席要说出来，不许拿别的数字冒充）。
+     * `ProcessTask` / `ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现），
+     * 故「此刻已经卡了多久」今天答不了；页面只给标准工期并写明它不是实测。
+     */
+    honesty: {
+      title: "本页答得了什么、答不了什么",
+      canAnswer: "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。",
+      cannotAnswer:
+        "答不了：**此刻这条流程已经卡了多久**。那需要运行态 ProcessTask.enteredAt，" +
+        "而 ProcessInstance / ProcessTask 尚未实现（PRD-enterprise-decision-twin §5 的 E2）。",
+      notMeasured: "下方「标准工期」是流程定义里的**基线工期**，不是实测滞留天数 —— 不要当作「已卡 N 天」读。",
+    },
+    state: {
+      loading: "加载流程等待态…",
+      empty: "后端未返回任何流程定义。业务流程层种子由 SEED_DEMO 播入；未播种时此处为空是正常的。",
+      errorTitle: "取不到流程等待态",
+    },
+    /** 词表漂移（后端下发词表 ≠ 契约词表）——接缝断了要显式报，不许默默少画一组。 */
+    drift: {
+      title: "⚠ 等待类型词表漂移",
+      missing: (keys: string) => `契约里有、后端没下发：${keys}`,
+      unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
+    },
+  },
+
+  /**
+   * WO-SCOPE-HONESTY-FE · 作用域诚实位（「这次算的是谁」）的全部文案。
+   *
+   * 只放**结构性标签**与**枚举的中文名**；一切口径 / 原因 / 缺什么源，
+   * 均由回包字段（`scopeNote` / `samplingNote` / `custNote` / `missingInputs`）原文渲染，
+   * 前端一个字不编（R14「后端没给就说没给，不填默认」）。
+   */
+  scopeHonesty: {
+    title: "本次口径",
+    /** 后端**没下发**诚实位 —— 与「说了是全网」是两件事，必须分开显示。 */
+    unstated: "作用域未标注",
+    /** BASE：显基地**中文名**（不是 id）。 */
+    baseOnly: (baseName: string) => `仅 ${baseName}（单基地）`,
+    networkWide: "全网（跨全部基地）",
+    noNote: "后端未回传该项口径说明（诚实缺席，非「无口径」）",
+    baseIdLabel: "基地 id",
+    baseNameMissing: "⚠ 后端未回传基地中文名，上方显示的是 id —— 前端不拿 id 冒充名字。",
+    whyItMatters:
+      "为什么这一行必须存在：「没说算的是谁」与「说了是全网」在屏上一模一样时，" +
+      "问某个基地却返回全网结果就完全看不出来 —— 那正是当初把它判为「静默错答」而非「报错」的直接原因。",
+
+    // ── kit_readiness 抽样（这两个数改变 shortageCount 的读法，故在第一层）──
+    kitTopic: "齐套口径与抽样",
+    sampling: (pool: number | undefined, sampled: number | undefined) =>
+      `订单池 ${pool ?? "—"} 张 · 本次分析 ${sampled ?? "—"} 张`,
+    networkTotal: (n: number) => `全网订单总量 ${n} 张（本口径由此收窄而来）`,
+    shortageReading: (shortage: number | undefined, sampled: number | undefined, pool: number | undefined) =>
+      shortage === undefined
+        ? "缺料单数：后端未回传"
+        : sampled === undefined
+          ? `缺料 ${shortage} 张（后端未回传本次分析量，无法判断这是不是全部）`
+          : sampled < (pool ?? sampled)
+            ? `缺料 ${shortage} 张 = 本次分析的 ${sampled} 张里有 ${shortage} 张缺料；订单池共 ${pool} 张，未分析的 ${(pool ?? 0) - sampled} 张不在此数内`
+            : `缺料 ${shortage} 张 = 该口径下 ${sampled} 张全部分析后的结果（无截断）`,
+
+    // ── quote_margin 两维（定性不同，不许合成一句）──
+    quoteModelTitle: "型号维",
+    quoteCustTitle: "客户维",
+    modelApplied: (modelId: string) => `已生效 · ${modelId}`,
+    modelAll: "未指定型号（非任何具体型号的配方）",
+    /** ⚠ 客户维今天是**诚实标注**、不是真算 —— 第一层就得写「不生效」，不许画成算过的样子。 */
+    custNotApplied: (custName: string) => (custName ? `${custName} · 不生效（NOT_APPLIED）` : "不生效（NOT_APPLIED）"),
+    custApplied: (custName: string) => `已生效 · ${custName}`,
+    missingTitle: "要真按这一维算，缺这些源：",
   },
 } as const;
 

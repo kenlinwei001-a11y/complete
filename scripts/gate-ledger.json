@@ -1003,6 +1003,44 @@
         "note": "① 把 `S4:ChainImpedimentSchema.candidates` 从基线摘掉 → RC=1，精确点名该字段并给出声明处 `packages/contracts/src/chain-sim.ts:832`（求解器侧引用 `apps/datacore/src/solvers/chain-impediment.ts:40`）；放回即绿。② 把**前端真在消费**的字段的唯一消费方摘掉 —— 将 `apps/frontend-shell/src/views/sim/chainImpediment.ts` 里 11 处 `dataMode` 整体改名为 `honestyFlagXQ`（**新名不含原子串**，否则 `toContain` 式断言照样过，本仓 2026-08-11 同批栽过这一手）→ RC=1 且新增缺口恰为 `S4:ChainImpedimentSchema.dataMode`；还原后 `git status --porcelain` 干净、门复绿。③ 判定器语义反转：`verdictScoped`/`verdictTopLevel` 改成恒 CONSUMED（恒不咬）→ **必中**金丝雀两条当场开火、exit 2 报「门自己坏了」，**不是**报「字段都干净」；改成恒 DEAD（恒咬）→ **必不中**金丝雀两条开火；`expandScope` 改成恒空 → 三条金丝雀同时开火。三种坏法各被不同方向的金丝雀抓住，这正是双向金丝雀存在的理由。④ **变异反证抓到本门自己的洞**：把成员切分从 `splitTopLevelMembers` 换回只按逗号切（分号分隔的 TS interface 成员应全丢），而当时全门指标**逐字节不变、门照样绿** —— 因为那一版没有任何载体用 TS interface，分号能力是「接了线没数据」的死分支（铁律 0.5 三态之一）。照该条纪律「补数据或删死分支」补了载体⑤（求解器结果接口的内联行字段），同一变异现在让金丝雀 C12 当场开火，且顺带抓到 4 条真死字段（含 `chain_impediments.candidateStats.emitted`，正属本单病历那一族）。"
       },
       "notes": "本门治的是**审核方自己**的判断错，不是 dev 的：`befe-seam:check` 量端点粒度，于是「长在已有端点上的新字段」整类逃逸，而本仓的加法几乎全是加字段、不是加端点。判据下沉到字段粒度后，头号实例 `chain_impediments.candidates` 需要**作用域化**判据才抓得到（它是通名，全域名字匹配会把它放过 —— 实测全域命中 9 个前端文件）。存量 116 条记 `scripts/solver-field-seam-baseline.json` 棘轮（每条带 why + 声明处证据，`maxEntries` 恒等于条数、`ratchetHigh` 只降不升）；未判定 124 条如实列出、不 gate、也不冒充干净。盲区（载体⑤ join 不上的 54 个求解器 · 未声明输出形状的 2 个求解器）每次运行强制打印。与 `arg-drop-seam:check` 的边界：本门只管**输出**字段，入参族 schema（`*Args`/`*Input*`）结构性豁免、归那道门管。"
+    },
+    "check-dark-launch-integrity.mjs": {
+      "alias": "dark-launch:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/seed.ts",
+        "scripts/feature-rollout.json"
+      ],
+      "escalation": "仓主",
+      "ontologyRef": "§7 · §8 G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-10 换判据后七向变异全中（工作树每次跑完还原、全部显式捕获退出码）：①新增 defaultOn:false 且模板会打开它、声明 tiered → RC=0（合法分档，门不管）②**同一个 feature 只把声明改成 dark** → RC=1 A5（这一对是决定性的：代码完全相同，唯一变量是声明，证明门量的是「意图 vs 机制是否一致」而非形态）③explicit 的 ceo.free-llm 从暗发集掉出去 → RC=1 A6 ④把 tiered 的 sim.sandbox 塞进暗发集（正是旧门要求的修法）→ RC=1 A7 ⑤新增 defaultOn:false 不声明 → RC=1 A1 ⑥新增第三个暗发集合但 templateFeatures 没减去它 → RC=1 A8 ⑦把种子已点亮的 qos.dril-routing 声明成 dark → RC=1 A5。另：dist 陈旧 → RC=1 A9；抽取器读不到东西 → RC=2「⛔ 门自己瞎了」拒绝给结论。",
+        "note": "⚠️ 本门于 2026-08-10 **换过判据（WO-FIX-DARK-LAUNCH-GATE）——旧判据是错的**。旧判据：凡 defaultOn:false 必须进某个 *_DARK_LAUNCH_FEATURES 集合。形态（铁律 0.6 句式）：「我用『是否 defaultOn:false』当作『是否暗发』的证据，而前者并不度量后者。」实测旧门报的 15 个「违规」**15 个全是误报**（全是产品分档），且它给的修法有实际破坏力：拿 sim.sandbox 照做一次 → demo 有效功能 75→63、出厂视图 14→9（级联删掉 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments，因为它们 requires:[sim.sandbox]）。两个 dev 各自独立顶回来过这道门，他们是对的。根因：defaultOn:false 底下藏着四种意图（dark 暗发 / explicit 显式启用 / tiered 产品分档 / ga 全量），形态一模一样，任何靠「集合成员」的判据都分不开。新判据：意图显式声明在 scripts/feature-rollout.json，门只断言「声明的意图」与「代码的机制」是否一致；未声明=红，不猜默认档（两个方向的默认值都会错且错法相反）。A6/A7 互为镜像是方向正确的关键——旧门只有 A6 那一半。全部实测证据见 docs/AUDIT-dark-launch-vs-tiering.md。原病史（仍成立，只是判据换了）：defaultOn:false 只挡 L1，templateFeatures() 对 battery 返回 all-on，L2 无条件覆盖 L1，demo 恰是 battery。"
+      },
+      "disposition": "GATES_CHAIN",
+      "notes": "声明一致性门（**非棘轮**——旧棘轮基线 scripts/dark-launch-baseline.json 已随换判据删除：那个 15 是 15 个误报，留着等于把误报固化成待还的债）。新增 defaultOn:false 的 feature 必须在 scripts/feature-rollout.json 里声明投放意图（dark/explicit/tiered/ga）+ 写 why，否则红。升级路径=仓主：开关默认值是产品决策，不是 dev 也不是审核方能定的。"
+    },
+    "check-solver-arg-key-drift.mjs": {
+      "alias": "solver-arg-key-drift:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/arg-aliases.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:1053",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行1053",
+        "note": "green→red 亲测：把 risk_timeline 的 argHints 退回 {baseId,days} 并删掉 SOLVER_ARG_ALIASES 里的 risk_timeline 登记 → 门红在 risk_timeline.days（MUTATED_RC=1）"
+      },
+      "notes": "存量 11 条已登记：REAL-DRIFT 9（附求解器实读的键·待后续单修）/ VERIFIED-OK 2（ontology_query 整包 args 经 zod 解析·字面扫描假阳性）"
     }
   }
 }

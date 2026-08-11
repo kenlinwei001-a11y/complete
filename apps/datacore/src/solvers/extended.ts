@@ -240,7 +240,14 @@ export function kitReadiness(args: Record<string, unknown>) {
       ...(earliestKitDay === null ? { earliestKitDayReason: `以下物料的采购段四段不全，无法结算最早齐套日（拒绝用已知几段之和冒充日期）：${unresolved.join("、")}` } : {}),
     };
   });
-  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, ruleRefs: ["C06", "C16"] };
+  return {
+    rows,
+    shortageCount: rows.filter((r) => r.kitRatio < 1).length,
+    // WO-SILENT-WRONG-ANSWER-3 症③ 诚实位：**这份齐套算的是谁** —— BASE=该基地可承接订单 / ALL=全网。
+    // 由 `deriveExtendedArgs` 注入（见那里的理由）；调用方直传 `orders` 的路不注入 ⇒ 键不出现 ⇒ 逐字节加性。
+    ...(args.kitScope !== undefined ? { scope: args.kitScope } : {}),
+    ruleRefs: ["C06", "C16"],
+  };
 }
 
 // S09 lta_gap：净需求 = 月需求×BOM − 库存 − 在途；现货缺口 = max(0, 净需求 − 长协可用)。
@@ -443,6 +450,9 @@ export function quoteMargin(args: Record<string, unknown>) {
     diff: round(margin - floor, 4),
     verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
     breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
+    // WO-SILENT-WRONG-ANSWER-3 症③ 诚实位：**哪一维真生效、哪一维没有**（型号 APPLIED / 客户 NOT_APPLIED）。
+    // 由 `deriveExtendedArgs` 注入；调用方直传 `bom` 的路不注入 ⇒ 键不出现 ⇒ 逐字节加性。
+    ...(args.quoteScope !== undefined ? { scope: args.quoteScope } : {}),
     ruleRefs: ["C15", "C24"],
   };
 }
@@ -698,7 +708,56 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       // WO-SANDBOX-D2：每个物料带上**采购段四段凭证**（供应商生产/在途/清关/到货检验），
       // 让齐套判定能按责任方分解，而不是只给 `Material.leadTime` 这一个合成标量。
       const evidenceOf = buildProcurementEvidence(c);
-      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
+      // ── WO-SILENT-WRONG-ANSWER-3 症③（引擎半·S08 齐套分析「对用户实体失聪」的最后一段）──────────
+      // 修前：`orders = c.orders.slice(0,8)` —— **全链没有基地维**，且输出里**没有一个字**说明这是全网口径。
+      //   实测原病历（WO-DERIVED-INTENT-SLOT-DEAF §1，真 Kimi·真服务）：
+      //     「常州下周哪些订单缺料开不了工？」→ shortageCount=8 · 首行 SO-3391
+      //     「金华下周哪些订单缺料开不了工？」→ **答案逐字节相同**
+      //   上一单把「用户说的基地到不到得了求解器」（运输层）治好了，但**引擎层没人用它** ——
+      //   于是病从「丢参」变成「传到了没人读」，屏上仍然一模一样（§6.6 遗留缺口 ①，明写在 datacore 侧）。
+      // 三态定性 = **没接线**（不是没数据）：基地维的真源一直在 —— `Order.bases[]` 是每张订单的产地数组
+      //   （`affected_orders` / `portfolio` / `scope.orderInChainScope` 早就在按它过滤），只是齐套这条路没接。
+      // 修后三件（缺一条就还是静默）：
+      //   ① 给 `base` → 按 `Order.bases ∋ baseId` 真收窄订单池（解析走 `resolveBaseRef` 单一出处，
+      //      与 carbon_footprint / mitigation_select 同一份规则；键名 baseId/baseName 由 arg-aliases.ts 归一）；
+      //   ② 解析不到 → **AMBIGUOUS_SCOPE 400**，绝不静默按"没给基地"退回全网（那正是本单要治的病）；
+      //   ③ **无论给没给**都透出 `kitScope` 诚实位 —— 全网路显式标 `mode:"ALL"`，并把
+      //      「只取前 8 张订单」这个此前完全隐形的截断写进答案（`orderPoolTotal` vs `sampled`）；
+      //      基地路 `sampled===0` 时显式说明「该基地窗内无可分析订单 ≠ 全部齐套」（空 ≠ 齐套）。
+      // 加性：不给 base → 订单池与改前逐字节相同（同一 `c.orders` 同一 slice(0,8)），只多出 `kitScope` 一个新键。
+      const baseRefRaw = args.base;
+      const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
+      let pool = c.orders ?? [];
+      let kitScope: Record<string, unknown>;
+      if (hasBaseRef) {
+        const r = resolveBaseRef(c.bases, baseRefRaw);
+        if (!r.resolved || !r.objectId)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `kit_readiness：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+              `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+              `——拒绝静默退回全网订单池（R-ARG-FIDELITY·G-SOLVER-SCOPE-DEAF）`,
+            400,
+          );
+        const scopedBaseId = r.objectId;
+        const scopedBaseName = baseNameOf(c, scopedBaseId);
+        const total = pool.length;
+        pool = pool.filter((o) => {
+          const bs = props(o).bases;
+          return Array.isArray(bs) && (bs as unknown[]).map((x) => str(x)).includes(scopedBaseId);
+        });
+        kitScope = {
+          mode: "BASE",
+          baseId: scopedBaseId,
+          baseName: scopedBaseName,
+          orderPoolTotal: pool.length,
+          networkOrderTotal: total,
+          note: `仅 ${scopedBaseName} 基地可承接的订单（Order.bases ∋ ${scopedBaseId}）·非全网`,
+        };
+      } else {
+        kitScope = { mode: "ALL", orderPoolTotal: pool.length, note: "全网口径（未指定基地·跨全部产地）" };
+      }
+      const orders = pool.slice(0, 8).map((o, i) => ({
         orderId: str(props(o).so, `O${i}`),
         qty: num(props(o).qty, 100),
         startDay: 7,
@@ -710,7 +769,13 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
           procurement: evidenceOf(m),
         })),
       }));
-      return { fromDay: 1, toDay: 14, ...args, orders };
+      kitScope.sampled = orders.length;
+      // 「只看前 8 张」此前完全隐形 —— 用户看到 shortageCount=8 会以为那是该口径下的全部缺料单。
+      if (orders.length < (kitScope.orderPoolTotal as number))
+        kitScope.samplingNote = `本次只分析订单池里排序靠前的 ${orders.length}/${kitScope.orderPoolTotal} 张（引擎侧固定采样上限 8）·shortageCount 是这 ${orders.length} 张里的缺料数，不是该口径下的全部`;
+      if (orders.length === 0)
+        kitScope.emptyNote = `该口径下无可分析订单 —— rows 为空**不等于**全部齐套（拒绝把"没数据"渲染成"没问题"）`;
+      return { fromDay: 1, toDay: 14, ...args, orders, kitScope };
     }
     case "lta_gap": {
       if (has("monthDemand")) return args;
@@ -813,7 +878,70 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "quote_margin": {
       if (has("bom")) return args;
-      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
+      // ── WO-SILENT-WRONG-ANSWER-3 症③（S15·同属「16 个派生意图对用户实体失聪」那一族）─────────────
+      // 修前：`bom = mats.slice(0,4)` = `Material` 按 id 排序的**前 4 行**，与用户问的 `modelId` / `custName`
+      //   **毫无关系**；而输出把 `margin/verdict`（过线/触线/低于底线）算得一板一眼 —— 换个型号、换个客户，
+      //   `margin` 逐字节相同，屏上却是一句斩钉截铁的「过线」。这是**假个性化**：不是没答，是答得像真的。
+      // 本次修两件，**分清哪一维真修好了、哪一维只是被诚实标出来**（不许拿一个盖住另一个）：
+      //   ① `modelId` → **真接线**：取该型号的 BOM（`bomHeaders`/`bomDetails` 已在 `SolverContext` 里，
+      //      carbon_footprint 用的就是同一份·同一套查法），逐行 `unit = quantity × (1 + lossRate)`、
+      //      `spotPrice = Material.unitPrice`。该型号无可用 BOM → **`AMBIGUOUS_SCOPE` 400**，
+      //      绝不回落全局前 4 行（回落 = 把「铝箔+壳体+铜箔+电解液」的成本冠上用户问的型号名）。
+      //   ② `custName` → **今天真的没有客户维**：`price`/`mfgRate`/`logistics`/`segmentFloor` 四个入参
+      //      全是本行写死的常数，`Customer` 对象上也没有报价/细分底线字段可派生。故**不假装**，
+      //      改为在输出里显式标 `custDimension:"NOT_APPLIED"` + 缺什么源（诚实位·降层不删除）。
+      // 加性：不给 `modelId` → 仍取 `mats.slice(0,4)`，与改前逐字节一致；`scope` 是新增键。
+      const wantedModel = str(args.modelId);
+      let bom: { unit: number; spotPrice: number; processRate: number }[] | undefined;
+      if (wantedModel) {
+        const heads = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === wantedModel);
+        const bomId = heads.length > 0 ? str(heads[0]!.bomId) : "";
+        const details = bomId ? (c.bomDetails ?? []).map(props).filter((d) => str(d.bomId) === bomId) : [];
+        const byMatId = new Map(mats.map((m) => [str(m.matId), m]));
+        const rows = details
+          .map((d) => {
+            const m = byMatId.get(str(d.materialId));
+            return m === undefined
+              ? null
+              : { unit: round(num(d.quantity, 0) * (1 + num(d.lossRate, 0)), 6), spotPrice: num(m.unitPrice, 1), processRate: 0.05 };
+          })
+          .filter((x): x is { unit: number; spotPrice: number; processRate: number } => x !== null);
+        if (rows.length === 0)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `quote_margin：问句指定型号「${wantedModel}」无可用 BOM（BOMHeader 命中 ${heads.length} 份 / BOMDetail 明细 ${details.length} 行 / 能对上 Material 的 ${rows.length} 行）` +
+              `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        bom = rows;
+      }
+      const quoteScope = {
+        modelId: wantedModel || null,
+        modelDimension: wantedModel ? "APPLIED" : "ALL",
+        modelNote: wantedModel
+          ? `BOM 成本按型号 ${wantedModel} 的真 BOM 逐行计（quantity×(1+lossRate) × Material.unitPrice）`
+          : "未指定型号 → BOM 取全局前 4 种物料（非任何具体型号的配方）",
+        custName: str(args.custName) || null,
+        // ⚠ 诚实位的要点：**说清哪一维没生效**，而不是只报「算完了」。
+        custDimension: "NOT_APPLIED",
+        custNote:
+          "客户维今天不生效：price / mfgRate / logistics / segmentFloor 四项均为引擎写死常数，" +
+          "Customer 对象上无报价、无细分毛利底线字段可派生 ⇒ 换个客户名，margin 与 verdict 不会变。" +
+          "要真按客户算，需先给 Customer 补 segment/报价承载体（缺源登记·不臆造）。",
+        missingInputs: [
+          { objectType: "Customer", property: "segment", need: "客户所属细分（决定 segmentFloor 毛利底线）" },
+          { objectType: "Customer", property: "quotedPrice", need: "该客户该型号的报价（决定 price）" },
+        ],
+      };
+      return {
+        price: num(args.price, 500),
+        mfgRate: 0.1,
+        logistics: 8,
+        segmentFloor: 0.12,
+        ...args,
+        bom: bom ?? mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })),
+        quoteScope,
+      };
     }
     case "credit_exposure": {
       // 调用方直传数值（测试/规则 payload·rules-p3/solvers-extended）→ 原样（无客户维推导，creditExposure 标 scope:EXPLICIT）。
@@ -865,8 +993,9 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //      与数字出自同一个基地，这正是本单要治的「假个性化」。
       // 加性：不给 `baseName`/`base`（S20 卡片今天正是 `baseName:""` 中性默认）→ 仍取 `[0]`，与改前逐字节一致。
       const meters = (c.energyMeters ?? []).map(props);
-      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
-      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
+      // WO-SILENT-WRONG-ANSWER-3：同上，`baseName ?? base` 收编到 `arg-aliases.ts`（唯一归一出处）。
+      const baseRefRaw = args.baseName;
+      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
       let em = meters[0];
       let scopedBaseName = "";
       if (baseRef !== undefined) {
@@ -1008,7 +1137,10 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //   ④ 加性透出 `dataMode`（LIVE/MOCK）—— 让"这份紧张度是实测还是估算"在答案里可见。
       // 调用方**直传 `tightness`** 时仍以调用方为准（`...args` 在后·`rules-p3-payload-11solvers.test.ts:159`
       // 传 92 的那条路逐字节不变）。**不给 base/baseName → `tightness:85` 且无 `dataMode` 键 = 改前逐字节一致。**
-      const baseRefRaw = str(args.baseName) !== "" ? args.baseName : args.base;
+      // WO-SILENT-WRONG-ANSWER-3：`baseName ?? base` 这份**手写键名兜底**已收编到单一出处
+      //   `arg-aliases.ts SOLVER_ARG_ALIASES.mitigation_select`（在 `compute()` 派发前统一归一）。
+      //   这里只读规范键 —— 每个消费方各写一份 `??` 正是本单要治的散落（同一概念两个名字的债散成 N 份）。
+      const baseRefRaw = args.baseName;
       const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
       // ⚠ `tightnessDataMode: undefined` 是**显式覆盖**，不是可省略的装饰：
       //   `...args` 在前，调用方若自带该键会原样留下 ⇒ 输出冠上 "LIVE 实测" 的名义。

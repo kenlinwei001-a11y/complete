@@ -13,7 +13,20 @@ import {
 } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// DF.1 基地册单一来源：作用域 mock 的 base 解析（id/中文名）只认这一份，禁内联 (中文名, 拼音 id) 对。
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
+// WO-ENTERPRISE-STATE：捕获核**与 datacore 共用同一份纯函数**（治「mock 与引擎口径分家」，见下方 mockEnterpriseStates 注释）。
+import {
+  captureEnterpriseState,
+  diffEnterpriseStates,
+  ENTERPRISE_STATE_REAL_WORLD_ID,
+  forkEnterpriseState,
+  type EnterpriseState,
+  type EnterpriseStateKpiInput,
+  type EnterpriseStateTypeInput,
+  type LogicalClock,
+} from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -38,6 +51,8 @@ import {
   type MockAccount,
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
+// WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
+import { PROCESS_DEFINITIONS_RESPONSE } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
@@ -188,8 +203,161 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     });
   }
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
-  return { ...RISK_TIMELINE, planRows: rows };
+  return { ...RISK_TIMELINE, planRows: rows, ...riskScopeOf(args) };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WO-SCOPE-HONESTY-FE · **作用域诚实位的 mock 半**（治「mock 与引擎口径分家」）
+//
+// 引擎半（`WO-SILENT-WRONG-ANSWER-3`）已经在 `apps/datacore/src/solvers/extended.ts` /
+// `risk.ts` 里算出这些字段，但 MSW base mock 一个都不回 —— 于是 `VITE_MOCK=1` 的 demo 态
+// 屏上永远是「作用域未标注」，而 `kit_readiness` / `quote_margin` 更是直接落 404
+// （base handler 的兜底是 `求解器不存在或未开通`）。这与 `test/mock-stubs.test.ts` 记的
+// decision_play / supply_demand_gap_attribution 那次是同一个形态：**功能进了 canonical，
+// mock 没跟，demo 里看不见**。
+//
+// 下面三段一律**镜像真引擎的口径**，不另造一套好看的：
+//  · `base` 解析走「先 id 精确、再中文名精确」（真引擎是 `resolveBaseRef`，accept id/name/alias/partial）；
+//    解析不到 → **400 AMBIGUOUS_SCOPE**，绝不静默退回全网（那正是本单要治的病）。
+//  · 订单池收窄 → `orderPoolTotal` / `networkOrderTotal`，取样上限 8 → `sampled` / `samplingNote`。
+//  · `quote_margin` 的客户维恒 `NOT_APPLIED` + `missingInputs`（今天数据层确实没有这一维，不假装）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 引擎取样上限（`extended.ts` 的 `pool.slice(0, 8)`）。mock 与引擎同一个数，改一处两处一起动。 */
+const KIT_SAMPLE_CAP = 8;
+
+/** 镜像 `resolveBaseRef`：id 精确 → 中文名精确。解析不到返 null（调用方负责 400，不静默退全网）。 */
+function resolveMockBase(ref: unknown): { baseId: string; name: string } | null {
+  const raw = typeof ref === "string" ? ref.trim() : "";
+  if (!raw) return null;
+  const hit = BASE_REGISTRY.find((b) => b.baseId === raw) ?? BASE_REGISTRY.find((b) => b.name === raw);
+  return hit ? { baseId: hit.baseId, name: hit.name } : null;
+}
+
+/**
+ * `risk_timeline` 的顶层诚实位（`scope` / `scopeBaseId` / `scopeBaseName` / `scopeNote`）。
+ * 不给 base → **明说是全网**（「没说」和「说了是全网」是两件事，后者才看得出问错了对象）。
+ */
+function riskScopeOf(args: Record<string, unknown>): Partial<RiskTimelineOutput> {
+  const b = resolveMockBase(args.base);
+  if (b) {
+    return {
+      scope: "BASE",
+      scopeBaseId: b.baseId,
+      scopeBaseName: b.name,
+      scopeNote: `仅 ${b.name} 一个基地的因素（按 base 收窄后跑该基地全部因子）·非全网`,
+    };
+  }
+  return { scope: "ALL", scopeNote: "全网口径（未指定基地·跨全部风险基地）" };
+}
+
+/**
+ * 齐套物料表（mock 侧固定 4 种，镜像引擎 `mats.slice(0,4)` 的形状与算法：ratio = 可用 ÷ (单耗×数量)）。
+ *
+ * ⚠ 库存量刻意调到**真会缺料**的水位：三元正极/电解液是瓶颈料，隔膜/铜箔恒够。
+ * 第一版把四种都给得很宽裕 → 全网与单基地一律 `shortageCount: 0`，屏上「缺料 0 张」——
+ * 那样这块面板永远演示不出「抽样的 N 张里 M 张缺料」这件本单要治的事（**mock 不比生产漂亮，
+ * 但也不该比生产干净**）。现状（确定性·同 seed 同结果）：全网取样 8 张里 3 张缺料，常州 2 张里 1 张。
+ */
+const KIT_MATS = [
+  { material: "三元正极", onHand: 1100, inTransit: 400, bomUnit: 0.42 },
+  { material: "隔膜", onHand: 9000, inTransit: 2400, bomUnit: 0.18 },
+  { material: "电解液", onHand: 620, inTransit: 280, bomUnit: 0.31 },
+  { material: "铜箔", onHand: 8000, inTransit: 3000, bomUnit: 0.22 },
+];
+
+/** `kit_readiness` mock：真按 base 收窄订单池 → 取样 → 逐单 kitRatio，并透出全套作用域/抽样诚实位。 */
+function mockKitReadiness(args: Record<string, unknown>): Record<string, unknown> | { __err: string } {
+  const hasBaseRef = typeof args.base === "string" && args.base.trim() !== "";
+  const network = ORDERS;
+  let pool = network;
+  let scope: Record<string, unknown>;
+  if (hasBaseRef) {
+    const b = resolveMockBase(args.base);
+    if (!b) return { __err: `kit_readiness：问句指定基地「${String(args.base)}」在基地库中无匹配（扫 ${BASE_REGISTRY.length} 行）——拒绝静默退回全网订单池` };
+    pool = network.filter((o) => o.bases === b.name);
+    scope = {
+      mode: "BASE",
+      baseId: b.baseId,
+      baseName: b.name,
+      orderPoolTotal: pool.length,
+      networkOrderTotal: network.length,
+      note: `仅 ${b.name} 基地可承接的订单（Order.bases ∋ ${b.baseId}）·非全网`,
+    };
+  } else {
+    scope = { mode: "ALL", orderPoolTotal: pool.length, note: "全网口径（未指定基地·跨全部产地）" };
+  }
+  const sample = pool.slice(0, KIT_SAMPLE_CAP);
+  const rows = sample.map((o) => {
+    const items = KIT_MATS.map((m) => {
+      const need = Math.round(m.bomUnit * o.qty * 1e4) / 1e4;
+      const avail = m.onHand + m.inTransit;
+      return { material: m.material, ratio: need <= 0 ? 1 : Math.round((avail / need) * 1e4) / 1e4, shortage: Math.round(Math.max(0, need - avail) * 1e4) / 1e4 };
+    });
+    const kitRatio = Math.round(Math.min(...items.map((i) => i.ratio)) * 1e4) / 1e4;
+    return { orderId: o.so, kitRatio, shortItems: items.filter((i) => i.ratio < 1), advice: kitRatio >= 1 ? "齐套" : "加急采购" };
+  });
+  scope.sampled = sample.length;
+  if (sample.length < (scope.orderPoolTotal as number))
+    scope.samplingNote =
+      `本次只分析订单池里排序靠前的 ${sample.length}/${scope.orderPoolTotal} 张（引擎侧固定采样上限 ${KIT_SAMPLE_CAP}）·` +
+      `shortageCount 是这 ${sample.length} 张里的缺料数，不是该口径下的全部`;
+  if (sample.length === 0) scope.emptyNote = "该口径下无可分析订单 —— rows 为空**不等于**全部齐套（拒绝把「没数据」渲染成「没问题」）";
+  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, scope, ruleRefs: ["C06", "C16"] };
+}
+
+/**
+ * `quote_margin` mock：型号维**真接线**（按型号单价重算 bomCost ⇒ 换型号 margin 真变），
+ * 客户维**恒 NOT_APPLIED**（今天 Customer 上确实没有报价/细分底线字段 ⇒ 换客户 margin **必须不变**）。
+ * ⚠ 这两维定性不同，不许合成一句 —— 后端门里有一条**反向**断言正是咬这件事。
+ */
+function mockQuoteMargin(args: Record<string, unknown>): Record<string, unknown> | { __err: string } {
+  const modelId = typeof args.modelId === "string" ? args.modelId.trim() : "";
+  const custName = typeof args.custName === "string" ? args.custName.trim() : "";
+  const price = 500;
+  const mfgRate = 0.1;
+  const logistics = 8;
+  const segmentFloor = 0.12;
+  let bomCost: number;
+  if (modelId) {
+    const unit = MODEL_UNIT_PRICE_MOCK[modelId];
+    if (unit === undefined)
+      return { __err: `quote_margin：问句指定型号「${modelId}」无可用 BOM——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本` };
+    // 型号真参与计算：单价越高的化学体系 BOM 成本越高（确定性·同型号字节一致）。
+    bomCost = Math.round(unit * 0.0182 * 1e4) / 1e4;
+  } else {
+    bomCost = 313.7452; // 未指定型号 → 全局前 4 种物料（非任何具体型号的配方），与引擎同为「回落值」
+  }
+  const cost = Math.round((bomCost * (1 + mfgRate) + logistics) * 1e4) / 1e4;
+  const margin = Math.round(((price - cost) / price) * 1e4) / 1e4;
+  return {
+    price, bomCost, mfgRate, logistics, cost, margin, segmentFloor,
+    verdict: margin >= segmentFloor ? "过线" : margin >= 0 ? "触线" : "低于底线",
+    scope: {
+      modelId: modelId || null,
+      modelDimension: modelId ? "APPLIED" : "ALL",
+      modelNote: modelId
+        ? `BOM 成本按型号 ${modelId} 的真 BOM 逐行计（quantity×(1+lossRate) × Material.unitPrice）`
+        : "未指定型号 → BOM 取全局前 4 种物料（非任何具体型号的配方）",
+      custName: custName || null,
+      custDimension: "NOT_APPLIED",
+      custNote:
+        "客户维今天不生效：price / mfgRate / logistics / segmentFloor 四项均为引擎写死常数，" +
+        "Customer 对象上无报价、无细分毛利底线字段可派生 ⇒ 换个客户名，margin 与 verdict 不会变。" +
+        "要真按客户算，需先给 Customer 补 segment/报价承载体（缺源登记·不臆造）。",
+      missingInputs: [
+        { objectType: "Customer", property: "segment", need: "客户所属细分（决定 segmentFloor 毛利底线）" },
+        { objectType: "Customer", property: "quotedPrice", need: "该客户该型号的报价（决定 price）" },
+      ],
+    },
+    ruleRefs: ["C15", "C24"],
+  };
+}
+
+/** 型号 → 单价（mock 侧型号维的真源；与 fixtures 的 Order.unitPrice 同一张表口径）。 */
+const MODEL_UNIT_PRICE_MOCK: Record<string, number> = {
+  "4680-NCM": 22000, "VDA-NCM": 20000, "4680-LFP": 16000, "刀片-LFP": 15000, "储能-280Ah": 14000, "储能-314Ah": 14500,
+};
 
 /**
  * 反事实双轨 mock（基地感知·KILL-MOCK）：从 RISK_TIMELINE 各基地的 peak/crossDay 派生 do-nothing baseline ‖
@@ -737,6 +905,85 @@ export function resetMockSim(): void {
   mockSimPerturbations.clear();
   mockSimSeq = 0;
   mockPertSeq = 0;
+  mockEnterpriseStates.clear();
+}
+
+/**
+ * WO-ENTERPRISE-STATE · 企业状态快照 mock store（模块态）。
+ *
+ * ⚠ **形状不是这里手写的**：下面的 handler 调用的是 `@platform/contracts` 的
+ * `captureEnterpriseState` —— 与 datacore `twin/enterprise-state.ts` **同一个函数**。
+ * 本仓有过「mock 与引擎口径分家、测试咬 mock 恒绿」的真事故，那次的根因是两边各写一套形状。
+ * 现在两边共用同一份纯函数：形状分家在结构上就不可能发生，而不是靠「两边都记得写成一样」。
+ * mock 这边**只负责喂输入**（mock 世界的对象数据 + mock 模拟时钟），算法一行都不重写。
+ */
+const mockEnterpriseStates = new Map<string, EnterpriseState>();
+
+/**
+ * mock 世界的逻辑时钟：从 `db.clock`（模拟时钟 mock，`simDate` + `currentTick`）派生。
+ * `t0` = simDate 往回推 currentTick 天 —— **推算**出来的，不是 `new Date()`
+ * （前端一旦补 wall-clock，界面上的"时刻"就与快照锚定的时间轴分家了）。
+ */
+function mockLogicalClock(): LogicalClock {
+  const tick = db.clock.currentTick;
+  const t0 = new Date(new Date(`${db.clock.simDate}T00:00:00Z`).getTime() - tick * 86400_000).toISOString().slice(0, 10);
+  return { tick, simulatedDate: db.clock.simDate, t0 };
+}
+
+/**
+ * mock 世界的「对象库」切片：与 `GET /a/v1/objects` 的 mock 同源（BASES / ORDERS / MODELS），
+ * 域名与真后端本体一致（factory / product）。数值属性清单显式声明 —— 真后端那边它来自本体
+ * `properties(dataType==="number") ∪ derivedProperties`，mock 无本体故手写，
+ * 但**聚合与排序一律走同一个纯函数**，所以 mock 与真后端的 doc 形状逐字段相同。
+ */
+function mockEnterpriseTypes(): EnterpriseStateTypeInput[] {
+  return [
+    {
+      typeKey: "Base",
+      displayName: "生产基地",
+      domain: "factory",
+      numericProps: [
+        { propKey: "gwh", unit: "GWh" },
+        { propKey: "lines", unit: "条" },
+        { propKey: "util", unit: "" },
+      ],
+      rows: BASES.map((b) => ({ ...b })),
+    },
+    {
+      typeKey: "Order",
+      displayName: "销售订单",
+      domain: "product",
+      numericProps: [
+        { propKey: "qty", unit: "套" },
+        { propKey: "unitPrice", unit: "元/套" },
+      ],
+      rows: ORDERS.map((o) => ({ ...o })),
+    },
+  ];
+}
+
+/** mock 世界的 SPINE 指标库切片（KPI 组）。真后端取 `Metric` 对象，mock 取本地固定几条。 */
+function mockEnterpriseKpis(): EnterpriseStateKpiInput[] {
+  return [
+    { metricKey: "ontime_rate", label: "订单准时率", unit: "%", category: "scale", actual: 92.4, target: 95 },
+    { metricKey: "gross_margin", label: "毛利率", unit: "%", category: "profit", actual: 18.7, target: 20 },
+    // 诚实空的样本：指标库有这一行，但 actual 从未回采 ⇒ value:null + reason（不许兜底成 0）。
+    { metricKey: "cash_cycle", label: "现金周转天数", unit: "天", category: "cash", actual: null, target: 45 },
+  ];
+}
+
+function mockCaptureEnterpriseState(worldId: string): EnterpriseState {
+  const state = captureEnterpriseState({
+    tenantId: TENANT_ID,
+    worldId,
+    isSimulated: worldId !== ENTERPRISE_STATE_REAL_WORLD_ID,
+    forkedFromStateId: null,
+    clock: mockLogicalClock(),
+    kpis: mockEnterpriseKpis(),
+    types: mockEnterpriseTypes(),
+  });
+  mockEnterpriseStates.set(state.id, state);
+  return state;
 }
 /**
  * WO-CAPLIVE-2 · 方案横比矩阵产能增益（KILL-MOCK）：各方案 apply 经 generic_inference 同款前向重算公式真算——
@@ -1405,6 +1652,10 @@ export const handlers = [
       ],
     }),
   ),
+  // WO-WAITING-STATES-FE · 业务流程层等待态（需求 §20）。
+  // fixture 走 `processWaitFixtures.ts`：逐条过契约 zod schema（与后端播种同一份），
+  // 数据是 `apps/datacore/src/seed.ts` 的逐字子集 —— 防「mock 与真后端分家、测试咬 mock 恒绿」。
+  http.get("*/a/v1/process-definitions", () => HttpResponse.json(PROCESS_DEFINITIONS_RESPONSE)),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
     // WO-SCHEMA-ZH：properties[].displayName 镜像真后端 PROP_DISPLAY_NAMES（synthetic/battery.ts 单一真值）——
@@ -1832,12 +2083,52 @@ export const handlers = [
       }
       // WO-COCKPIT-INFER gap_attribution（CEO-2 深度反向归因·多跳 caused_by 因果树·mock 同后端形状）：
       // 储能达成率越线 → 结构分摊 + caused_by 逐跳（上游减供→长协违约→矿价→地缘→决策 / 备份薄→认证周期）→ 终点根因 + 下钻真值叶。
+      //
+      // ⚠ WO-FACTOR-SCOPE-SINGLESOURCE（本段的形状是**病灶的直接对策**）：修前本桩
+      //   ① **完全忽略 `scope.factorId`**（7 个 chip 返回逐字节相同的载荷），
+      //   ② 且**不回 `scope` 字段** ⇒ 前端判据 `factorApplied !== false` 恒真
+      //      ⇒ mock 模式下一律显示「已按因子细分」——**比真后端更糟**（真后端至少诚实说了"未细分"）。
+      // 现在桩与真后端同形状：下发 `scope.availableFactors`（chip 候选单源）、按 factorId 真细分、
+      // 不在册的 factorId 诚实回 `factorApplied:false`。桩的取值随入参真变（KILL-MOCK·非写死示意）。
+      {
+        const gaScope = (invArgs.scope ?? {}) as { baseId?: string; factorId?: string };
+        // 可细分因子集（与 datacore 种子 CAPACITY_CAUSAL_FACTORS 同 id/同 label·mock 只取能演示的三个）。
+        const availableFactors = [
+          { factorId: "cf-cap-bottleneck-process", label: "瓶颈工序", drillType: "Line", drillField: "utilization", objectCount: 10 },
+          { factorId: "cf-cap-equipment-oee", label: "设备OEE", drillType: "Equipment", drillField: "oee_current", objectCount: 60 },
+          { factorId: "cf-cap-yield-variance", label: "良率波动", drillType: "Process", drillField: "yield_baseline", objectCount: 50 },
+        ];
+        const wantFactor = typeof gaScope.factorId === "string" && gaScope.factorId !== "" ? gaScope.factorId : undefined;
+        const hit = availableFactors.find((f) => f.factorId === wantFactor);
+        const baseKey = gaScope.baseId ?? "changzhou";
+        // 细分节点：每个因子给**不同**的对象节点（改 factorId → 树真变·非写死）。与因果链节点同处 depth 3
+        // （前端 `levels.find(depth===3)` 只取第一层 ⇒ 必须并到同一层，不能各起一层）。
+        const refineNodes = hit
+          ? [
+              { id: `capfactor:${hit.factorId}`, factor: `${hit.label}（本基地 ${hit.drillType}.${hit.drillField}）`, contribution: 3.1, unit: "%", share: 0.34,
+                path: ["m1", `base:${baseKey}`, `capfactor:${hit.factorId}`],
+                provenance: { kind: "实测", drillType: hit.drillType, drillId: `MOCK-${hit.factorId}-1`, drillField: hit.drillField, drillValue: 0.87 } },
+              { id: `capobj:${hit.factorId}:MOCK-1`, factor: `MOCK-${hit.factorId}-1 · ${hit.drillField}=0.87`, contribution: 1.8, unit: "%", share: 0.58,
+                path: ["m1", `base:${baseKey}`, `capfactor:${hit.factorId}`, `capobj:${hit.factorId}:MOCK-1`],
+                provenance: { kind: "实测", drillType: hit.drillType, drillId: `MOCK-${hit.factorId}-1`, drillField: hit.drillField, drillValue: 0.87 } },
+            ]
+          : [];
+        const scopeOut = {
+          baseId: baseKey,
+          availableFactors,
+          ...(wantFactor
+            ? (hit
+                ? { factorId: hit.factorId, factorLabel: hit.label, factorApplied: true }
+                : { factorId: wantFactor, factorApplied: false, factorNote: `因子「${wantFactor}」无对应 CausalFactor 因果域（按基地聚合返回·未按该因子细分）` })
+            : {}),
+        };
       return HttpResponse.json({
         data: {
           rootMetric: { key: "seg_attain_ess", name: "储能达成率", unit: "%", target: 100, actual: 72.2, gap: 27.8 },
           totalGap: 27.8,
+          scope: scopeOut,
           levels: [
-            { depth: 1, label: "基地", nodes: [{ id: "base:changzhou", factor: "基地 常州", contribution: 9.2, unit: "%" }], residual: 2.1 },
+            { depth: 1, label: "基地", nodes: [{ id: `base:${baseKey}`, factor: "基地 常州", contribution: 9.2, unit: "%" }], residual: 2.1 },
             { depth: 2, label: "订单/瓶颈", nodes: [{ id: "material:cathode", factor: "正极物料短缺", contribution: 6.1, unit: "%" }], residual: 1.0 },
             {
               depth: 3, label: "因果链（caused_by）", residual: 0.7,
@@ -1849,6 +2140,7 @@ export const handlers = [
                 { id: "cf:cf-decision-gap", factor: "价格预判缺失(root)", contribution: 0.3, unit: "%", share: 0.05, provenance: { drillType: "DecisionGap", drillField: "severity", drillValue: 0.8 } },
                 { id: "cf:cf-backup-thin", factor: "备份池不足", contribution: 0.5, unit: "%", share: 0.09, provenance: { drillType: "BackupSupplierPool", drillField: "memberCount", drillValue: 2 } },
                 { id: "cf:cf-cert-cycle", factor: "认证周期长(root)", contribution: 0.4, unit: "%", share: 0.07, provenance: { drillType: "BackupSupplierPool", drillField: "certWeeks", drillValue: 16 } },
+                ...refineNodes,
               ],
             },
           ],
@@ -1869,6 +2161,7 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+      }
     }
     if (key === "generic_inference") {
       // WO-PROJECT-SIM-WHATIF：杠杆发现 mode:levers（杠杆随⑤瓶颈变·服务端算敏感度）。
@@ -2839,6 +3132,18 @@ export const handlers = [
     }
     // WO-LIVE-DISPOSITION：B 侧 run 路径同走 mock 真重算（与 A 侧 invoke 同一函数·不两套）。
     if (key === "risk_timeline") return HttpResponse.json({ data: mockRiskTimeline(args), snapshotVersion: "ov-12" });
+    // WO-SCOPE-HONESTY-FE：齐套/报价的作用域诚实位在 mock 里也真下发（否则 VITE_MOCK demo 态永远 404 + 「未标注」）。
+    // 解析不到基地/型号 → 400，与真引擎同口径（R-ARG-FIDELITY：绝不静默退回全网 / 全局前 4 种物料）。
+    if (key === "kit_readiness") {
+      const kr = mockKitReadiness(args);
+      if ("__err" in kr) return err(400, "AMBIGUOUS_SCOPE", String(kr.__err));
+      return HttpResponse.json({ data: kr, snapshotVersion: "ov-12" });
+    }
+    if (key === "quote_margin") {
+      const qm = mockQuoteMargin(args);
+      if ("__err" in qm) return err(400, "AMBIGUOUS_SCOPE", String(qm.__err));
+      return HttpResponse.json({ data: qm, snapshotVersion: "ov-12" });
+    }
     // WO-PROJECT-SIM-WHATIF：⑥ 拖动杠杆经 useLiveSolver → B 侧 run 真重算（generic_inference）；
     // mode:levers 杠杆发现同经 B 侧（若前端改走 runSolver）。默认路径 apply → deltas（after 随假设值变·KILL-MOCK）。
     if (key === "generic_inference") {
@@ -3947,11 +4252,11 @@ export const handlers = [
       scope,
       targetRef: scope === "LOCAL" ? url.searchParams.get("target") : null,
       worldCompleteness: {
-        pct: 60,
-        stateVars: { present: 2, needed: 3 },
+        pct: 50, // = 100 × (1+0+1) / (2+1+1)：WO-CERT-HONESTY ① 删掉重复的 stateVars 行后重算
         derivationRules: { present: 1, needed: 2 },
         actions: { present: 0, needed: 1 },
         propagationRules: { present: 1, needed: 1 },
+        stateVarKeys: ["s2", "s3"],
         entering: [
           { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
           { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
@@ -3997,6 +4302,68 @@ export const handlers = [
       b: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 40 } } }],
     }),
   ),
+
+  // ---- WO-ENTERPRISE-STATE · 企业状态快照（镜像 datacore app.ts `/a/v1/twin/enterprise-states` 五条路由）----
+  // 形状由 contracts 的 `captureEnterpriseState` / `forkEnterpriseState` / `diffEnterpriseStates` 保证
+  // 与真后端逐字段相同（同一份纯函数），mock 只喂 mock 世界的输入。状态码/错误信封也逐条镜像真后端。
+  http.post("*/a/v1/twin/enterprise-states", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json().catch(() => ({}))) as { worldId?: string };
+    const worldId = body.worldId?.trim() || ENTERPRISE_STATE_REAL_WORLD_ID;
+    // 真后端：worldId 非 REAL 时必须是一个已存在的推演会话，否则 404（worldId 不是自由字符串）。
+    if (worldId !== ENTERPRISE_STATE_REAL_WORLD_ID && !mockSimSessions.has(worldId)) {
+      return err(404, "NOT_FOUND", `sim session '${worldId}' not found`);
+    }
+    return HttpResponse.json(mockCaptureEnterpriseState(worldId), { status: 201 });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/latest", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const worldId = new URL(request.url).searchParams.get("worldId") ?? ENTERPRISE_STATE_REAL_WORLD_ID;
+    const items = [...mockEnterpriseStates.values()]
+      .filter((s) => s.worldId === worldId)
+      .sort((a, b) => a.capturedAt.tick - b.capturedAt.tick);
+    const state = items[items.length - 1];
+    // 诚实空（镜像后端）：没有就是没有 —— **不现场偷偷捕获一份**冒充"最新"。
+    return state
+      ? HttpResponse.json({ worldId, state })
+      : HttpResponse.json({ worldId, state: null, reason: `世界 ${worldId} 尚无任何快照（POST /a/v1/twin/enterprise-states 捕获一份）` });
+  }),
+  http.get("*/a/v1/twin/enterprise-states", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const worldId = new URL(request.url).searchParams.get("worldId") ?? undefined;
+    const items = [...mockEnterpriseStates.values()]
+      .filter((s) => !worldId || s.worldId === worldId)
+      .sort((a, b) => (a.worldId === b.worldId ? a.capturedAt.tick - b.capturedAt.tick : a.worldId < b.worldId ? -1 : 1));
+    return HttpResponse.json({ items });
+  }),
+  http.post("*/a/v1/twin/enterprise-states/:id/fork", async ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json().catch(() => ({}))) as { worldId?: string };
+    const worldId = body.worldId?.trim() ?? "";
+    if (worldId === "" || worldId === ENTERPRISE_STATE_REAL_WORLD_ID) {
+      return err(400, "VALIDATION_ERROR", "fork target must be a simulation world");
+    }
+    if (!mockSimSessions.has(worldId)) return err(404, "NOT_FOUND", `sim session '${worldId}' not found`);
+    const source = mockEnterpriseStates.get(String((params as { id: string }).id));
+    if (!source) return err(404, "NOT_FOUND", "enterprise state not found");
+    const forked = forkEnterpriseState(source, worldId);
+    mockEnterpriseStates.set(forked.id, forked);
+    return HttpResponse.json(forked, { status: 201 });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/:id/diff", ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const against = new URL(request.url).searchParams.get("against");
+    if (!against) return err(400, "VALIDATION_ERROR", "against=<stateId> required");
+    const after = mockEnterpriseStates.get(String((params as { id: string }).id));
+    const before = mockEnterpriseStates.get(against);
+    if (!after || !before) return err(404, "NOT_FOUND", "enterprise state not found");
+    return HttpResponse.json({ before: before.id, after: after.id, changes: diffEnterpriseStates(before, after) });
+  }),
+  http.get("*/a/v1/twin/enterprise-states/:id", ({ params, request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const state = mockEnterpriseStates.get(String((params as { id: string }).id));
+    return state ? HttpResponse.json(state) : err(404, "NOT_FOUND", "enterprise state not found");
+  }),
 
   // ---- WO-GSLIVE-1-COCKPIT 桩 · 活①compose 路径（WO-LIVE-NL 预期契约·ranAgentLoop=false·含被挤单/按期率） ----
   http.post("*/b/v1/sim/compose", async ({ request }) => {
@@ -4065,13 +4432,23 @@ export const handlers = [
       level: "L2_RUNNABLE",
       dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
       l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
-      trialTick: { passed: false, rulesFired: 1, at: null, error: null },
+      // ⚠ 口径必须跟真后端走（本仓已记账的病：`G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE` /
+      //   欠账 #78「mock 与真引擎口径分家」——mock 是第二个真值源，且没有任何机制让它跟随第一个）。
+      //   真后端（`app.ts` Trial Tick）**真跑传导相**并恒传 `propagationCovered: true`，
+      //   同时下发 fired 与 declared 两个数；这里照同一形态给，否则 mock 模式会一直挂着
+      //   「传导未纳入本次空跑」的告警，而真环境早就没有了。
+      //   declared=1 与下面 `worldCompleteness.propagationRules.present=1` 同源（同一条传导规则）。
+      trialTick: {
+        passed: false, derivationNodes: 1,
+        propagationRulesFired: 1, propagationRulesDeclared: 1, propagationCovered: true,
+        at: null, error: null,
+      },
       worldCompleteness: {
-        pct: scope === "LOCAL" ? 48 : 60,
-        stateVars: { present: 2, needed: 3 },
+        pct: scope === "LOCAL" ? 48 : 50,
         derivationRules: { present: 1, needed: 2 },
         actions: { present: 0, needed: 1 },
         propagationRules: { present: 1, needed: 1 },
+        stateVarKeys: ["s2", "s3"],
         entering: [
           { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
           { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },

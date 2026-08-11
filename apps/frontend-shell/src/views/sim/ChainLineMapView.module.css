@@ -139,10 +139,19 @@
   }
 }
 
+/* 画布是一块**有界的视窗**，不是"跟着图一起长高的容器"。
+   为什么必须钉住高度（2026-08-10 真浏览器 CDP 实测）：`.stage` 那张 SVG 的
+   `width/height` 是**未缩放**的图尺寸（1534×1008），`transform: scale()` 不参与布局 ⇒
+   高度自动时画布会被撑到 1008px，**比屏上看得见的区域还高**。后果有两个，都很实：
+     ① 「适应画布」量到的是那个撑高之后的盒子 ⇒ 算出来的缩放"适应"了一块你根本看不全的地方，
+        图的下半截落在折叠线以下，得先滚页面再平移，等于 fit 按钮说了假话；
+     ② 画布利用率被稀释（实测 65%），也就是仓主点名的「大面积空白」换个方向复发。
+   钉住之后实测利用率 96%（复验：`node scripts/zz-shot-chain-line-map.mjs` 的「画布利用率(fit)」）。 */
 .canvas {
   position: relative;
   overflow: hidden;
   min-height: 420px;
+  height: clamp(420px, 58vh, 640px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -189,8 +198,9 @@
   stroke-dasharray: 3 9;
   fill: none;
 }
-/* 闭环段 = **结构推定**（引擎没给这条边）：细虚线 + 绿色，与实测区间在粗细/颜色/线型三处都不同。
-   刻意不做成"淡一点的 trackLive"——那会读成"一条弱一点的真边"。 */
+/* 闭环段 = **结构推定**（引擎没给这条边）：细虚线 + 绿色 + 箭头，与实测区间在粗细/颜色/线型三处都不同。
+   刻意不做成"淡一点的 trackLive"——那会读成"一条弱一点的真边"。
+   横向布局下它是右端绕回起点的**回流箭头**，不再是"圆的最后一段弧"。 */
 .trackClosure {
   stroke: var(--ok);
   stroke-width: 2;
@@ -198,14 +208,29 @@
   opacity: 0.75;
   fill: none;
 }
+.closureArrowHead {
+  fill: var(--ok);
+}
 .closureLabel {
   fill: var(--ok);
   font-size: 11px;
   font-weight: 700;
   opacity: 0.9;
 }
-/* 共线换乘（该环节在**每一圈族线**上都出现 ⇒ 共享瓶颈）。多圈时同角度对齐的三个光环
-   在径向连成一线，这就是环形相对直线的信息增益。单圈时不画（一条线谈不上共线）。 */
+/* 折行转折标记：站位一行摆不下时线换到下一行 —— 没有这行字就会被读成"线断了"。 */
+.foldMark {
+  fill: var(--muted2);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+/* 阅读起点：横向线路图必须回答"从哪开始看"。 */
+.startMark {
+  fill: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+/* 共线换乘（该环节在**每一条族线**上都出现 ⇒ 共享瓶颈）。多条并排族线时同列对齐的三个光环
+   在竖直方向连成一线，一眼看出"这道工序被三条族线共用"。单条时不画（一条线谈不上共线）。 */
 .sharedFamilyHalo {
   fill: none;
   stroke: var(--c-capacity);

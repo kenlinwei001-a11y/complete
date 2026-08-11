@@ -22,6 +22,7 @@ import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
+import { RiskScopeBar } from "./ScopeHonesty";
 import { DispositionDetailPanel } from "./DispositionDetailPanel";
 import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
 import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
@@ -30,6 +31,8 @@ import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
 import { Provenance } from "@/components/Provenance";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
+// WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
+import type { CausalFactorId, RefinableFactor } from "@platform/contracts";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -194,6 +197,15 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           <div className={styles.rkSub}>
             计划-执行之桥：监测执行偏离月度计划的风险 · 未来 {horizon} 天内预测越线（紧张度 ≥ {threshold}）· 偏离 → 处置 Action 或反提月度差异（C21）
           </div>
+          {/*
+            WO-SCOPE-HONESTY-FE ①：**这一屏算的是谁**。
+            `risk_timeline` 的 scope/scopeBaseId/scopeBaseName/scopeNote 由 `WO-SILENT-WRONG-ANSWER-3`
+            在引擎半算出、并在契约里声明（不声明会被 zod strip ⇒ 等于没加），但此前**前端零消费方** ——
+            于是「问某个基地、返回的却全是别的基地的卡」在屏上一点看不出来。本行就是那条缺失的一跳。
+            ⚠ 这里**不做任何兜底**：后端没下发 scope 就显「作用域未标注」，不许悄悄画成「全网」——
+            那等于把本行要治的病换个地方复发（R14）。
+          */}
+          <RiskScopeBar data={data} />
         </div>
         <div className={styles.rkHsel}>
           <span className={`${styles.tierChip} ${riskTab === "risk" ? styles.tierChipOn : ""}`} data-testid="risk-tab-risk" role="button" tabIndex={0}
@@ -717,7 +729,14 @@ function RiskDetailPanel({
   const baseIdForScope = (card as { baseId?: string }).baseId ?? card.base;
   // WO-CAPLIVE-2 · 因子级根因（活能力②·G-GAP-SCOPE 已闭·前端接线）：gap_attribution 现支持 scope.baseId/factorId，
   // 前端传作用域 → 未选因子=基地级、选因子=按因子细分。无源/基地对不上 → 诚实灰（不伪造根因树）。
-  const [rcFactor, setRcFactor] = useState<string | undefined>(undefined);
+  //
+  // ⚠ WO-FACTOR-SCOPE-SINGLESOURCE（本状态的类型是**病灶的直接对策**·别改回 string）：
+  // 修前这里是 `useState<string>`，chip 传的是卡面因子名（BN 张力词表中文名「瓶颈工序」…），
+  // 而引擎认的是 `CausalFactor.factorId`（`cf-*`）—— 两张词表交集 **0** ⇒ 7 个按钮返回逐字节相同的树。
+  // 现在类型是**品牌类型** `CausalFactorId`：裸 `string`（如 `card.factor`）赋不进来，
+  // 一旦有人写回 `onRcFactor(card.factor)` / `factorOptions={[card.factor, …]}`，`tsc` 当场红。
+  // 取证与词表全表见 `docs/AUDIT-factor-scope-vocab.md`。
+  const [rcFactor, setRcFactor] = useState<CausalFactorId | undefined>(undefined);
   // 空态只能陈述**可观测事实**（HTTP 状态码 / 错误码 / requestId / 响应里实际有哪些基地）→ 必须拿到真错误对象，
   // 不能只留一个 isError 布尔（布尔只够说"失败了"，说不出"失败在哪"，于是过去被一句内联的因果猜测顶替）。
   const { data: ga, isLoading: gaLoading, error: gaError } = useQuery({
@@ -851,7 +870,6 @@ function RiskDetailPanel({
         error={gaError}
         ga={ga}
         scopeBaseId={baseIdForScope}
-        factorOptions={[card.factor, ...others.map((o) => o.factor)].filter((v, i, a) => !!v && a.indexOf(v) === i)}
         rcFactor={rcFactor}
         onRcFactor={setRcFactor}
       />
@@ -936,7 +954,7 @@ function observedFailure(err: unknown): { status?: number; code?: string; reques
  * （HTTP 状态码 / 错误码 / requestId / 响应里实际返回了哪些基地）；下一步动作按分支给且必带依据（错误码或字段名），
  * 不内联任何"引擎缺什么"的因果断言。
  */
-function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, factorOptions, rcFactor, onRcFactor }: {
+function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rcFactor, onRcFactor }: {
   base: string; factor: string; dag: DagData | undefined; loading: boolean;
   /** 真错误对象（ApiClientError：status/code/requestId/message）——空态据此陈述事实，不做因果推断。 */
   error: unknown;
@@ -944,20 +962,32 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, fa
   ga: GapAttrOutput | undefined;
   /** 本次实际发出的 scope.baseId（可复现请求·让用户自己去核，而不是听我猜）。 */
   scopeBaseId: string;
-  /** WO-CAPLIVE-2：因子级根因作用域（gap_attribution scope.factorId·G-GAP-SCOPE 已闭）。 */
-  factorOptions: string[]; rcFactor: string | undefined; onRcFactor: (f: string | undefined) => void;
+  /**
+   * WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域**只收 id**（品牌类型）。
+   * 候选集 **不再由调用方传入**——它是引擎回执 `ga.scope.availableFactors` 的投影（单一来源）。
+   * 修前这里收一个 `factorOptions: string[]`，调用方拿卡面因子名去拼 ⇒ 传出去的值引擎一个都不认。
+   */
+  rcFactor: CausalFactorId | undefined; onRcFactor: (f: CausalFactorId | undefined) => void;
 }) {
   const nodeCount = dag?.nodes.length ?? 0;
   const reqLine = `gap_attribution · scope.baseId=${scopeBaseId}${rcFactor ? ` · scope.factorId=${rcFactor}` : ""}`;
   // 响应里 L1 结构层实际返回了哪些节点（= "归因基地集"）——纯读响应字段，不推断。
   const l1Labels = (ga?.levels?.find((L) => L.depth === 1)?.nodes ?? []).map((n) => n.factor).filter(Boolean);
+  // ── 因子 chip 候选：**引擎下发的可细分因子集**（单一来源·前端零拼装）──────────────────────
+  // 只有引擎在本基地真解析到承载对象的因子才在这个列表里 ⇒ 界面上不存在「点了永远不生效」的按钮。
+  const scope = ga?.scope;
+  const factorOptions: RefinableFactor[] = scope?.availableFactors ?? [];
+  // 传了因子但引擎明说没生效（词表不认 / 本基地无承载对象）——件四：这不能只是一行小字。
+  const factorRejected = Boolean(rcFactor) && scope?.factorApplied === false;
   return (
     <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`rootcause-panel-${base}`}>
       <div className={styles.rkDetH}>
         <b>🌳 {base} · 根因推演树</b>
         <span>为什么越线：结构反向归因（设备/物料/订单）→ caused_by 溯终点根因 · 每节点下钻真对象（R13）</span>
       </div>
-      {/* WO-CAPLIVE-2 · 因子作用域切换（gap_attribution scope.factorId）：选因子 → 树按因子细分（引擎已支持 base×factor）。 */}
+      {/* WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域切换：chip 的**值 = CausalFactor.factorId**（引擎认的键），
+          **显示 = label**（用户认得的因子名）；候选集来自引擎回执 `scope.availableFactors`，前端零拼装。
+          修前显示什么就传什么（BN 中文因子名），引擎一个都不认 ⇒ 7 个按钮返回同一棵树。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "2px 0 8px", fontSize: 11 }} data-testid="rootcause-factor-scope">
         <span style={{ color: "var(--muted2)" }}>{zh.risk.live.rootcause.scopeTitle}：</span>
         <span
@@ -972,18 +1002,54 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, fa
         </span>
         {factorOptions.map((f) => (
           <span
-            key={f}
-            className={`${styles.tierChip} ${rcFactor === f ? styles.tierChipOn : ""}`}
-            data-testid={`rootcause-factor-${f}`}
+            key={f.factorId}
+            className={`${styles.tierChip} ${rcFactor === f.factorId ? styles.tierChipOn : ""}`}
+            data-testid={`rootcause-factor-${f.factorId}`}
+            data-factor-label={f.label}
+            title={zh.risk.live.rootcause.chipTitle(f.label, f.drillType, f.drillField, f.objectCount)}
             role="button"
             tabIndex={0}
-            onClick={() => onRcFactor(f)}
-            onKeyDown={(e) => e.key === "Enter" && onRcFactor(f)}
+            onClick={() => onRcFactor(f.factorId)}
+            onKeyDown={(e) => e.key === "Enter" && onRcFactor(f.factorId)}
           >
-            {zh.risk.live.rootcause.pick(f)}
+            {zh.risk.live.rootcause.pick(f.label)}
           </span>
         ))}
+        {/* 一个可细分因子都没有 → 据实说，而不是画一排点不动的按钮（件三：永远不生效的按钮比没有按钮更糟）。 */}
+        {!loading && factorOptions.length === 0 ? (
+          <span data-testid="rootcause-factor-none" style={{ color: "var(--muted2)" }}>
+            {scope?.availableFactorsNote ?? zh.risk.live.rootcause.noneAvailable}
+          </span>
+        ) : null}
       </div>
+      {/* 件四 · 兜底态表达强度：引擎明说「没按这个因子细分」时，必须是**用户不可能忽略**的形态
+          （整条告警条 + 一键回到基地级），而不是树底下一行 10.5px 的小字 —— 旧形态见本文件
+          `data-testid="rootcause-scope-note"` 那两个分支（fontSize:10.5·灰字），是被漏看的那一行。
+          复验：`apps/frontend-shell/test/caplive-cockpit.test.tsx` SEAM②b（断言 role=alert + 引擎原话 + 一键回基地级）。 */}
+      {factorRejected ? (
+        <div
+          data-testid="rootcause-factor-rejected"
+          role="alert"
+          style={{
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+            border: "1px solid var(--danger)", borderRadius: 6, padding: "6px 10px", margin: "0 0 8px",
+            background: "color-mix(in srgb, var(--danger) 10%, transparent)", fontSize: 12, lineHeight: 1.6,
+          }}
+        >
+          <b style={{ color: "var(--danger)" }}>{zh.risk.live.rootcause.notRefinedTitle}</b>
+          <span>{scope?.factorNote ?? zh.risk.live.rootcause.notRefinedFallback(String(rcFactor))}</span>
+          <span
+            className={styles.tierChip}
+            data-testid="rootcause-factor-reset"
+            role="button"
+            tabIndex={0}
+            onClick={() => onRcFactor(undefined)}
+            onKeyDown={(e) => e.key === "Enter" && onRcFactor(undefined)}
+          >
+            {zh.risk.live.rootcause.backToBase}
+          </span>
+        </div>
+      ) : null}
       {loading ? (
         /* 加载态**独立**：请求还在飞，什么结论都还没有 → 只说"在取"，绝不出现"暂不可用"。 */
         <div className="empty-state" data-testid={`rootcause-loading-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
@@ -997,14 +1063,14 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, fa
               factorApplied=true → 真按因子细分；传了因子但引擎无该因果域 → 据实说"未按该因子细分"并给引擎原话。 */}
           {/* 向后兼容（R6·不回归）：只有引擎**显式**回执 `factorApplied:false` 时才走"未细分"诚实注解；
               旧后端/桩不带 scope 字段（undefined）→ 维持原"已按因子细分"语义，既有 SEAM 测试零回归。 */}
-          {rcFactor && (ga as { scope?: { factorApplied?: boolean } } | undefined)?.scope?.factorApplied !== false ? (
+          {rcFactor && !factorRejected ? (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
-              {zh.risk.live.rootcause.refined(rcFactor)}
+              {/* 引擎回执里的 factorLabel 优先（人话）；旧后端/桩不带 scope（undefined）→ 回落 id，语义不变 R6。 */}
+              {zh.risk.live.rootcause.refined(scope?.factorLabel ?? String(rcFactor))}
             </div>
           ) : (
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
-              结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。
-              注：当前按<b>基地</b>聚合根因，<b>未</b>按具体越线因子（{factor}）细分——点上方因子 chip 传 scope.factorId 即按因子细分（引擎已支持）。
+              {zh.risk.live.rootcause.baseAggregated(factor)}
             </div>
           )}
         </>

@@ -65,13 +65,17 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S05", "经营方案比选", "generate", "plan_recommend", "推荐哪个经营方案？", "plan_generate", ["C08", "C15", "C18"], "COMPUTE", "解读三方案比选", [], {}),
   card("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "mitigation_select", ["C08", "C10"], "ACTION_DRAFT", "协助采纳风险处置方案", [B("changzhou", "常州")], { base: "常州", factor: "物料齐套", solutionName: "三班制" }),
   card("S07", "产线认证排期", "project", "cert_scheduling", "待认证的型号怎么排认证顺序？", "cert_schedule", ["C04", "C26"], "COMPUTE", "解读认证排期建议", [], { horizonWeeks: 12 }),
-  // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S08·无写死实体·**刻意不新增 base 槽**）：
-  //   本卡没有写死实体，只有时间窗（fromDay/toDay）——这两个键会派生成槽，用户改窗口能生效。
-  //   工单 §2.1 说的「问任何基地 → 全网口径」属实，但**修法不在 B 侧**：`kit_readiness` 全链
-  //   **没有基地维**（`extended.ts deriveExtendedArgs.kit_readiness` 的 `orders` = `c.orders.slice(0,8)`，
-  //   `catalog.ts` argHints 也只有 `orders`）。在 agentcore 侧凭空造一个求解器不认的 `base` 入参
-  //   = 在 B 侧造第二套语义（正是 §3.1 禁止的），故不做；缺口见工单 §6 遗留缺口 ①。
-  card("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "kit_readiness", ["C06", "C16"], "COMPUTE", "解读齐套分析", [], { fromDay: 1, toDay: 14 }),
+  // ★ WO-SILENT-WRONG-ANSWER-3 症③ · **前一单的裁决现已过期，按新事实改写**（本体不回写即失效）：
+  //   WO-DERIVED-INTENT-SLOT-DEAF §3.4 当时判「S08 刻意不新增 base 槽」，理由是「`kit_readiness` 全链
+  //   没有基地维，在 B 侧凭空造一个求解器不认的入参 = 造第二套语义」。**这个理由今天不成立了** ——
+  //   本单已在引擎半给 `kit_readiness` 接上真基地维（`extended.ts deriveExtendedArgs.kit_readiness`
+  //   按 `Order.bases ∋ baseId` 真收窄订单池 + `scope` 诚实位，`catalog.ts` argHints 同步声明 `base`）。
+  //   实测（seed 42·REST）：常州 8 单首行 SO-3402 / 金华 7 单首行 SO-3391 / 全网 8 单首行 SO-3391，
+  //   三者逐字节互不相同；病历里那句「常州 vs 金华 答案逐字节相同」不再成立。
+  //   故此处补 `base: ""`（**中性默认 = 未指定 → 全网**，加性不改任何既有默认作用域）：
+  //   `deriveIntentSlots` 据此派生出 `objectRef(Base)` 槽，用户说的「常州」这才有地方落。
+  //   缺一半都不行：只接引擎 = 用户实体到不了；只补槽 = 到了没人读。两半必须同一单做。
+  card("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "kit_readiness", ["C06", "C16"], "COMPUTE", "解读齐套分析", [], { base: "", fromDay: 1, toDay: 14 }),
   card("S09", "长协执行与补缺", "dash", "lta_gap_q", "7 月正极长协覆盖够吗？缺口怎么补？", "lta_gap", ["C16", "C27"], "COMPUTE", "解读长协覆盖与补缺", [], { material: "三元正极", month: "2026-07" }),
   card("S10", "库存水位优化", "dash", "inventory_opt", "哪些物料超储/欠储？能释放多少资金？", "inventory_optimize", ["C16", "C28"], "COMPUTE", "解读库存优化清单", [], {}),
   // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S11·② 改中性默认）：`lineId` 原写死 `"常州·动力线-A"`，

@@ -3,7 +3,7 @@ import { screen, within } from "@testing-library/react";
 import type { RouteObject } from "react-router-dom";
 import { loginAs, renderApp } from "./utils";
 import { ADMIN_PAGES, groupAdminPages, ADMIN_NAV_GROUPS } from "@/pages/adminRegistry";
-import { NAV_GROUPS } from "@/pages/ShellLayout";
+import { NAV_GROUPS, CONSOLIDATED_INTO_SANDBOX } from "@/pages/ShellLayout";
 import { routes } from "@/App";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
 import { db } from "@/mocks/db";
@@ -107,32 +107,82 @@ describe("WO-NAV-GATE · 业务视图归组守卫（不得落「其它」兜底�
     NAV_GROUPS.flatMap((g) => g.items.filter((it) => it.kind === "view").map((it) => it.key)),
   );
 
-  it("结构守卫：workspace.navigation 里 group !== \"admin\" 的每一条都必须在 NAV_GROUPS 有归属", () => {
+  it("结构守卫：workspace.navigation 里 group !== \"admin\" 的每一条，要么在 NAV_GROUPS 有归属，要么已显式收编", () => {
     // 逐账号（planner / base_manager / padmin）取真 mock 下发——不同角色导航集不同，
     // 只测一个账号会漏掉「只对某角色可见的视图没归组」这一形态。
+    //
+    // WO-SANDBOX-IA-CONSOLIDATE：第三种合法状态 = **已收编**（`CONSOLIDATED_INTO_SANDBOX`）。
+    // 「没归组」与「已收编」屏上都表现为"导航里没有"，但性质相反：前者是遗漏（落兜底桶），
+    // 后者是声明（有表、有理由、有门对账）。本条放行后者，下一条专门咬"收编不许掉进兜底桶"。
     const offenders: string[] = [];
     for (const account of ACCOUNTS) {
       const ws = workspaceForAccount(account, db.tenantOverrides, db.configVersion);
       for (const item of ws.navigation as { key: string; viewKey?: string; group?: string }[]) {
         if (item.group === "admin") continue;
         const key = item.viewKey ?? item.key;
-        if (!navViewKeys.has(key)) offenders.push(`${account.username}:${key}`);
+        if (!navViewKeys.has(key) && !CONSOLIDATED_INTO_SANDBOX[key]) offenders.push(`${account.username}:${key}`);
       }
     }
     expect(
       offenders,
       `以下业务视图没有 NAV_GROUPS 归属 → 真实导航里落进「其它」折叠兜底桶（可达但用户找不到）：` +
-        `[${offenders.join(", ")}]。修法：加进 ShellLayout.NAV_GROUPS 对应业务分组的 items，不是改 leftover 机制。`,
+        `[${offenders.join(", ")}]。修法二选一：加进 ShellLayout.NAV_GROUPS 对应业务分组的 items；` +
+        `或若已收编进某控制台，进 CONSOLIDATED_INTO_SANDBOX 并写明到达路径。都不是改 leftover 机制。`,
     ).toEqual([]);
   });
 
-  it("mock 已反映后端下发的沙盘四子视图，且归在「推演」组（不是「其它」）", async () => {
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE · 上一版这里断言「沙盘四子视图归在『推演』组」。
+   * 那条断言现在**方向反过来**：它们已收编进沙盘控制台（画布模式 / 图层 / 常驻栏），
+   * 不该再有平级入口 —— 逐条到达路径的实测取证见 `docs/AUDIT-sandbox-ia-consolidate.md`。
+   *
+   * ⚠ 但只把它们从 NAV_GROUPS 删掉是**不够**的：后端仍把这些键派进 `workspace.navigation`
+   *   （必须仍派，否则 `/v/<key>` 深链接 404），于是 `UnifiedNav` 的 `leftover` 会照单全收，
+   *   它们**原地掉进「其它」兜底桶** —— 那正是本组门要治的病，比单列还糟。
+   *   故这条同时咬两件事：① 不在「推演」组；② 也不在「其它」组（在任何组里都不许出现）。
+   */
+  it("沙盘开（默认）：九个收编键在左导航里**一条都不出现**（既不在「推演」也不在「其它」）", async () => {
     loginAs("planner"); // mock 里 planner 持 admin 角色（无独立 admin 账号）
     renderApp("/v/dash");
     const nav = await screen.findByTestId("nav-business");
-    const sim = within(nav).getByTestId("nav-group-推演");
-    for (const label of ["全链线路图", "在途与在制", "物理拓扑", "节点检视"]) {
-      expect(within(sim).getByText(label)).toBeInTheDocument();
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+    // 金丝雀：导航里确实有 /v/ 链接（一条都没有的话，下面的 not.toContain 全是恒真的空转）
+    expect(hrefs.filter((h) => h.startsWith("/v/")).length).toBeGreaterThan(3);
+    // 已知必中：沙盘自己、以及保留的独立场景，必须还在
+    for (const keep of ["/v/sim-sandbox", "/v/project-sim", "/v/risk"]) expect(hrefs).toContain(keep);
+    // 九个收编键：一条都不许在
+    for (const key of Object.keys(CONSOLIDATED_INTO_SANDBOX)) {
+      expect(hrefs, `/v/${key} 已收编进沙盘，却仍在左导航里 —— 重复入口`).not.toContain(`/v/${key}`);
+    }
+  });
+
+  /**
+   * 收编的**反向那半**：沙盘 entitlement 关掉之后，被收编的四个专用 route 页必须**回到导航里**。
+   *
+   * 这条防的是一种很容易做出来的回归：IA 整理时把条目一删了事 ——
+   * 沙盘开的租户看起来一切正常（东西在沙盘里），沙盘**关**的租户则是
+   * 「沙盘没有 + 导航也没有」= 四个页从 IA 里蒸发，只剩手敲 URL 可达。
+   * 五个 `via:"workspace.views"` 的子视图不在本条射程：它们的 entitlement 本就 `requires: ["sim.sandbox"]`，
+   * 沙盘关 ⇒ 它们连下发都没有、`/v/<key>` 本来就 404 —— 没有可回退的东西（这是事实，不是豁免）。
+   */
+  it("沙盘关：四个 static-route 收编页**回到**导航里（收编 ≠ 删除）", async () => {
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      loginAs("planner");
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      // R3 暗发：沙盘自己必须消失（这同时也是本条的金丝雀 —— 它若还在，说明 override 没生效，下面全是空转）
+      expect(hrefs, "sim.sandbox 关着，沙盘入口仍在 —— override 没生效，本条断言全是空转").not.toContain("/v/sim-sandbox");
+      const fallbackKeys = Object.entries(CONSOLIDATED_INTO_SANDBOX)
+        .filter(([, v]) => v.via === "static-route")
+        .map(([k]) => k);
+      expect(fallbackKeys.length, "static-route 收编项为空 ⇒ 本条恒真").toBeGreaterThan(0);
+      for (const key of fallbackKeys) {
+        expect(hrefs, `沙盘关着，/v/${key} 却也不在导航里 —— 这一页从 IA 里蒸发了（收编做成了删除）`).toContain(`/v/${key}`);
+      }
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
     }
   });
 
@@ -206,32 +256,48 @@ describe("WO-ROUTE-NAV-COVERAGE · 专用 route 必须在侧栏真出现（可�
     ).toEqual([]);
   });
 
-  it("效果层：默认账号登录 → 每条专用 route 在侧栏都有一条真链接（DOM 里点得到）", async () => {
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE：本条从「每条专用 route 都要在侧栏有链接」改成
+   * 「每条专用 route 都要**有一条到达路径**」—— 因为现在合法的到达路径有两种，不是一种：
+   *   · 侧栏单列（`kind:"route"` 条目照常渲染）；
+   *   · 或被某控制台收编（`CONSOLIDATED_INTO_SANDBOX`）且**那个控制台此刻在侧栏里** ——
+   *     用户点得进控制台，就点得到里面的模式。
+   * 只咬第一种会把「已收编」误报成「找不到入口」（那是把 IA 整理判成回归）；
+   * 而完全不咬则会把「条目删了、控制台也没有」放过去（那才是真回归，由下一条咬）。
+   */
+  it("效果层：默认账号登录 → 每条专用 route 都有到达路径（侧栏单列，或经在侧栏的沙盘收编）", async () => {
     loginAs("planner");
     renderApp("/v/dash");
     const nav = await screen.findByTestId("left-nav");
     const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
-    const missing = dedicatedRouteKeys.filter((k) => !hrefs.has(`/v/${k}`));
+    // 金丝雀：沙盘入口本身必须在侧栏 —— 它不在的话，"经沙盘收编"这条到达路径根本不成立。
+    expect(hrefs.has("/v/sim-sandbox"), "沙盘入口不在侧栏 ⇒ 收编项的到达路径不成立，本条的放行是假的").toBe(true);
+    const missing = dedicatedRouteKeys.filter((k) => !hrefs.has(`/v/${k}`) && !CONSOLIDATED_INTO_SANDBOX[k]);
     expect(
       missing,
-      `以下专用 route 页在侧栏里找不到入口：[${missing.join(", ")}] —— ` +
+      `以下专用 route 页既不在侧栏单列、也没被任何控制台收编：[${missing.join(", ")}] —— ` +
         `页面写了、路由通了、点不到，只有知道 URL 的人（= 写它的那个 dev）进得去。` +
         `修法：加 { kind: "route", key: "…", label: "…" } 到 ShellLayout.NAV_GROUPS 对应分组。`,
     ).toEqual([]);
   });
 
-  it("暗发语义未被「无条件渲染」冲掉：sim.sandbox 关 → 沙盘两个入口消失，其余专用 route 照在", async () => {
+  it("暗发语义未被「无条件渲染」冲掉：sim.sandbox 关 → 沙盘入口消失，其余专用 route 照在（含收编项回退）", async () => {
     db.tenantOverrides["sim.sandbox"] = false;
-    loginAs("planner");
-    renderApp("/v/dash");
-    const nav = await screen.findByTestId("left-nav");
-    const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
-    // R3「功能关闭 = 不存在」：暗发页的入口必须消失（不泄露功能存在性），进去也是 404（App.tsx 的 Guard）。
-    expect(hrefs.has("/v/sim-sandbox"), "sim.sandbox 关着，沙盘入口仍出现在侧栏 —— 暗发语义被破坏（R3）").toBe(false);
-    expect(hrefs.has("/v/sim-init"), "sim.sandbox 关着，初始化向导入口仍出现在侧栏 —— 暗发语义被破坏（R3）").toBe(false);
-    // 而没有页面侧 Guard 的路由页本就人人可进，无可泄露 ⇒ 不受 entitlement 影响。
-    const gateless = dedicatedRouteKeys.filter((k) => k !== "sim-sandbox" && k !== "sim-init");
-    const missing = gateless.filter((k) => !hrefs.has(`/v/${k}`));
-    expect(missing, `无 Guard 的专用 route 入口不该随 sim.sandbox 消失：[${missing.join(", ")}]`).toEqual([]);
+    try {
+      loginAs("planner");
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("left-nav");
+      const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
+      // R3「功能关闭 = 不存在」：暗发页的入口必须消失（不泄露功能存在性），进去也是 404（App.tsx 的 Guard）。
+      expect(hrefs.has("/v/sim-sandbox"), "sim.sandbox 关着，沙盘入口仍出现在侧栏 —— 暗发语义被破坏（R3）").toBe(false);
+      expect(hrefs.has("/v/sim-init"), "sim.sandbox 关着，初始化向导入口仍出现在侧栏 —— 暗发语义被破坏（R3）").toBe(false);
+      // 而没有页面侧 Guard 的路由页本就人人可进，无可泄露 ⇒ 不受 entitlement 影响。
+      // ⚠ 收编项（consolidatedWhen: "sim.sandbox"）在这一档**必须回来**：沙盘不在了，收编也就不成立。
+      const gateless = dedicatedRouteKeys.filter((k) => k !== "sim-sandbox" && k !== "sim-init");
+      const missing = gateless.filter((k) => !hrefs.has(`/v/${k}`));
+      expect(missing, `无 Guard 的专用 route 入口不该随 sim.sandbox 消失：[${missing.join(", ")}]`).toEqual([]);
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 });

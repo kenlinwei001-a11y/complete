@@ -81,7 +81,14 @@ export function deriveFamilyAnchors(rows: readonly { props?: Record<string, unkn
   };
 }
 
-/** 锚点 + 环序 → `FamilyIdentity`（`buildChainLineMap` 的构图参数）。锚点细节由载荷回填。 */
+/**
+ * 锚点 + 族序 → `FamilyIdentity`（`buildChainLineMap` 的构图参数）。锚点细节由载荷回填。
+ *
+ * ⚠ WO-CHAIN-MAP-LAYOUT 起，族线在图上是**上下并排的三条横线**，不再是三圈同心环。
+ *   本文件只管「三条线的数据依据是什么」，与画成环还是画成横线无关，故取数逻辑一行未动；
+ *   `ringIndex` / `ringCount` 两个名字保留（表达的是"第几条 / 共几条"，不是"第几圈"）。
+ *   `ringCount` 是本单新增的：横向布局按**整块下移**摆放，不知道总条数就算不出画布高度。
+ */
 export function familyIdentityOf(
   anchor: FamilyAnchor,
   ringIndex: number,
@@ -97,6 +104,7 @@ export function familyIdentityOf(
     anchorRoutingId: payloadAnchor?.routingId ?? null,
     ringIndex,
     ringOffset: ringOffsets(ringCount)[ringIndex] ?? 1,
+    ringCount,
   };
 }
 

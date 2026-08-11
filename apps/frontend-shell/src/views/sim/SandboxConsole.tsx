@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useInRouterContext, useNavigate } from "react-router-dom";
 import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
+import zh from "@/locales/zh";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { InfoPopover } from "@/components/InfoPopover";
 import { ChainLineMapView } from "./ChainLineMapView";
 import { deriveFamilyAnchors, fetchOrdersForFamilies, type FamilyAnchor } from "./chainFamilyLines";
 import { TRANSIT_SOURCE_SPECS, CADENCE_ABSENCE, PROCUREMENT_BRANCH } from "./transitFlow";
@@ -93,17 +95,52 @@ export interface SandboxConsoleRailSection {
   title: string;
   node: ReactNode;
   defaultOpen?: boolean;
+  /**
+   * 本区块**当前有几条真待办**（诊断抽屉的计数由各区块自报，不由抽屉猜）。
+   * 值必须来自真数据（如 `cert.gaps.length` / `model.unresolved.length`）——
+   * 抽屉入口上那个数字是**承诺**，不是装饰：数字大于 0 就说明里面真有东西没解决。
+   */
+  issues?: number;
 }
 
 export interface SandboxConsoleProps {
-  /** 顶栏右侧追加的标签（旧主屏的本体派生摘要 / 全局态 KPI）。 */
+  /** 顶栏右侧追加的标签（旧主屏的全局态 KPI）。 */
   topTags?: ReactNode;
+  /**
+   * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
+   *
+   * 宿主只在「不能推演」时返回内容（`canEnterSimulation === false`），能推演时返回 `null` ⇒
+   * 整条横幅**一个像素都不占**（是不渲染，不是 `hidden`）。
+   * 入参 `openDiagnostics` 让横幅里的「查看详情 →」能真的把抽屉打开 ——
+   * 抽屉的开合态归本组件所有，故用回调下发而不是让宿主自己造一个开关。
+   */
+  banner?: (openDiagnostics: () => void) => ReactNode;
   /** 控制条（旧主屏：推进 tick / 存档 / 分支 / 采纳 / tick 时间轴）。 */
   controlBar?: ReactNode;
   /** 画布第四模式「本体拓扑」的内容（旧主屏 PmDag）。不传 → 该模式显示未就绪原因。 */
   ontologyCanvas?: ReactNode;
-  /** 右栏可折叠区（旧主屏：就绪认证 / 多场景对比 / AI 指挥台）。 */
+  /** 右栏可折叠区（决策者用得上的：多场景对比 / AI 指挥台）。 */
   rail?: SandboxConsoleRailSection[];
+  /**
+   * 诊断抽屉的内容（**建模者 / 开发者 / 调试者**那三档：就绪认证、世界列表、本体派生计数…）。
+   * 默认折叠；折叠时**不渲染**内部节点 —— 「默认不占屏」这件事必须是真的，
+   * 不是渲染出来再用 CSS 藏起来（藏起来的东西照样进 DOM、照样被读屏念、照样让人以为屏上有）。
+   */
+  diagnostics?: SandboxConsoleRailSection[];
+  /**
+   * WO-SANDBOX-IA-CONSOLIDATE · **受控的基地范围**（两个都传才受控，都不传 = 今天的行为，零回归）。
+   *
+   * 为什么要把这一份 state 提到宿主：沙盘现在是**一屏五模式**（现状/归因/试一手/求最优/影响半径），
+   * 而"选中的基地"必须跨模式活着 —— 不然切一次模式清一次范围，这次合并就只是"把五页塞进一个 tab 条"。
+   * state 留在本组件里做不到这件事：切模式时本组件整个不渲染（硬约束是**不在 DOM**，不是 hidden）。
+   *
+   * ⚠ 只提 state，**不动本组件的任何布局**：左栏那些勾选框、它们的 testid、勾选语义
+   *   （空数组 = 全部基地）一个字都没变；受控与否只影响 `baseIds` 存在谁的 `useState` 里。
+   *   六个不带 Router 直接挂载本组件的门（sandbox-console.seam / sandbox-p0 / …）不传这两个 prop，
+   *   走的仍是内部 state 那条路 —— 那正是"默认值 = 今天的行为"的意思。
+   */
+  scopeBaseIds?: string[];
+  onScopeBaseIdsChange?: (next: string[]) => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -139,14 +176,39 @@ const TIME_WINDOWS = ["30D", "60D", "90D"] as const;
 // 组件
 // ══════════════════════════════════════════════════════════════════════════════
 
-export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] }: SandboxConsoleProps) {
+export function SandboxConsole({
+  topTags,
+  banner,
+  controlBar,
+  ontologyCanvas,
+  rail = [],
+  diagnostics = [],
+  scopeBaseIds,
+  onScopeBaseIdsChange,
+}: SandboxConsoleProps) {
   const [mode, setMode] = useState<CanvasMode>("metro");
+  /** 诊断抽屉：**默认关**，且关着时内部一个节点都不渲染（见 `diagnostics` 的注）。 */
+  const [diagOpen, setDiagOpen] = useState(false);
+  const openDiagnostics = useCallback(() => setDiagOpen(true), []);
   /** 懒挂载 + 挂了不卸：切模式不重取数、不丢缩放态（设计稿三块 `.cv` 同时在 DOM 里同理）。 */
   const [mounted, setMounted] = useState<Set<CanvasMode>>(() => new Set<CanvasMode>(["metro"]));
   const [loss, setLoss] = useState<ChainLossPayload | null>(null);
   const [imp, setImp] = useState<ImpLoad>({ status: "loading" });
   const [dimKind, setDimKind] = useState<ChainImpedimentKind | null>(null);
-  const [baseIds, setBaseIds] = useState<string[]>([]);
+  /**
+   * 基地范围：**受控/非受控二合一**（WO-SANDBOX-IA-CONSOLIDATE）。
+   * 宿主同时给了 `scopeBaseIds` + `onScopeBaseIdsChange` ⇒ 用宿主那一份（跨模式活着）；
+   * 否则退回内部 state = 今天的行为（六个直接挂载本组件的门一个字都不用改）。
+   * 判据是**两个都给**：只给值不给回调 = 一个点不动的死勾选框，比不受控更糟。
+   */
+  const [ownBaseIds, setOwnBaseIds] = useState<string[]>([]);
+  const controlledScope = scopeBaseIds !== undefined && onScopeBaseIdsChange !== undefined;
+  const baseIds = controlledScope ? scopeBaseIds : ownBaseIds;
+  /** 写口径统一成「给下一个完整值」——宿主回调没有函数式更新形态，两条路必须同一种签名。 */
+  const applyBaseIds = (next: string[]) => {
+    if (controlledScope) onScopeBaseIdsChange(next);
+    else setOwnBaseIds(next);
+  };
   const [honesty, setHonesty] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"steps" | "vars">("steps");
@@ -340,12 +402,46 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
   }, []);
 
   const toggleBase = (id: string) =>
-    setBaseIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].sort()));
+    applyBaseIds(baseIds.includes(id) ? baseIds.filter((x) => x !== id) : [...baseIds, id].sort());
 
   const scopeText = `${baseIds.length === 0 ? "全部基地" : `${baseIds.length} 基地`} · 业务线/产品未接线`;
 
+  /**
+   * WO-SANDBOX-DECLUTTER · 诊断抽屉的区块清单 = **宿主给的** ⊕ **本组件自有的调试信息**。
+   *
+   * 本组件自有的那一档是「调试者」的读物：SEED 种子、时窗为何无 ARGS。
+   * 它们此前常驻顶栏，把决策者要看的那三张阻滞点卡挤到了第二眼。
+   * **搬家不是删除**：徽标原文一字未改，只是从顶栏移到这里（硬约束①）。
+   */
+  const diagSections: SandboxConsoleRailSection[] = [
+    ...diagnostics,
+    {
+      id: "debug",
+      title: zh.sim.sandbox.diag.debugTitle,
+      node: (
+        <div data-testid="sc-diag-debug" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+          <span className={`${styles.tag} ${styles.tagOn}`} data-testid="sc-seed">
+            ● SEED {PLACEHOLDER_SEED_DEFAULT} · 确定性（物理拓扑占位值种子）
+          </span>
+          {/* 徽标只是**记号**；「为什么」那句话的单一出处是顶栏时窗旁的 `?`（`sc-window-note`），
+              这里不抄第二份 —— 抄了就是给它开一条会漂的分身。
+              原来挂在这上面的 `title=` 属性也去掉了：规范 §2 明令禁止用原生 tooltip 充当浮层
+              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。 */}
+          <span className={`${styles.badge} ${styles.badgeGap}`} data-testid="sc-window-badge">
+            时窗无 ARGS
+          </span>
+        </div>
+      ),
+    },
+  ];
+  /** 抽屉入口上的计数：各区块自报的真待办之和（没有待办时改报「收了几项」，两个都是真数）。 */
+  const diagIssueTotal = diagSections.reduce((a, s) => a + (s.issues ?? 0), 0);
+
   return (
-    <div className={styles.root} data-testid="sandbox-console" data-mode={mode} data-honesty={honesty ? "1" : "0"}>
+    <div className={styles.root} data-testid="sandbox-console" data-mode={mode} data-honesty={honesty ? "1" : "0"} data-diag-open={diagOpen ? "1" : "0"}>
+      {/* ══ 治理横幅：**主屏唯一保留的治理信号**（能推演时整条不渲染）══════════ */}
+      {banner?.(openDiagnostics)}
+
       {/* ══ 顶栏 ══════════════════════════════════════════════════════════════ */}
       <div className={styles.top} data-testid="sc-topbar">
         <div className={styles.logo}>
@@ -355,7 +451,9 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           端到端产销 · 后端 {coverage.backendStageCount} 段 / 本次载荷 {coverage.renderedNodeCount} 节点
         </span>
 
-        {/* 时窗：设计稿有，但两个求解器都没有时间窗入参 ⇒ 禁用 + 无 ARGS 徽标（不给假旋钮） */}
+        {/* 时窗：设计稿有，但两个求解器都没有时间窗入参 ⇒ 禁用 + `?` 说明（不给假旋钮）。
+            徽标本体（`sc-window-badge`）搬进诊断抽屉的「调试信息」区 —— 它是调试者的读物；
+            决策者在主屏需要知道的只是「这排按钮为什么点不动」，那句话挂在 `?` 上即可。 */}
         <div className={styles.seg} role="group" aria-label="时窗（未接线）">
           {TIME_WINDOWS.map((w) => (
             <button key={w} type="button" disabled aria-pressed={w === "60D"} data-testid={`sc-window-${w}`}>
@@ -364,14 +462,11 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
           ))}
         </div>
         {honesty ? (
-          <span className={`${styles.badge} ${styles.badgeGap}`} data-testid="sc-window-badge" title="chain_loss_attribution 只认 so；chain_impediments 只认 scope。两者都没有时间窗入参。">
-            时窗无 ARGS
-          </span>
+          <InfoPopover topic={zh.sim.sandbox.info.timeWindow} testId="window">
+            <TimeWindowNote />
+          </InfoPopover>
         ) : null}
 
-        <span className={`${styles.tag} ${styles.tagOn}`} data-testid="sc-seed">
-          ● SEED {PLACEHOLDER_SEED_DEFAULT} · 确定性（物理拓扑占位值种子）
-        </span>
         <span className={styles.tag} data-testid="sc-scope">
           {scopeText}
         </span>
@@ -380,6 +475,22 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
         <span className={`${styles.tag} ${styles.tagHot}`} data-testid="sc-leadtime">
           前置期 {fmtDays(totals?.leadTimeDays ?? null)}D · 增值 {fmtFlowEff(totals?.flowEfficiency ?? null)}
         </span>
+        {/* 诊断抽屉入口：**折叠也必须看得见**，且带真计数（藏起来找不到的抽屉 = 把内容删了） */}
+        <button
+          type="button"
+          className={styles.diagBtn}
+          data-testid="sc-diag-toggle"
+          aria-expanded={diagOpen}
+          aria-controls="sc-diag-panel"
+          aria-label={zh.sim.sandbox.diag.entryAria}
+          data-issues={String(diagIssueTotal)}
+          onClick={() => setDiagOpen((v) => !v)}
+        >
+          {zh.sim.sandbox.diag.entry} ·{" "}
+          <b data-testid="sc-diag-count">
+            {diagIssueTotal > 0 ? zh.sim.sandbox.diag.pending(diagIssueTotal) : zh.sim.sandbox.diag.items(diagSections.length)}
+          </b>
+        </button>
         <div className={styles.seg}>
           <button type="button" aria-pressed={honesty} data-testid="sc-honesty-toggle" onClick={() => setHonesty((v) => !v)}>
             真实性标注
@@ -387,6 +498,43 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
         </div>
         <ThemeToggle />
       </div>
+
+      {/* ══ 诊断抽屉（默认关 · 关着时内部一个节点都不渲染）══════════════════════ */}
+      {diagOpen ? (
+        <section className={styles.diagPanel} id="sc-diag-panel" data-testid="sc-diag-panel">
+          <div className={styles.diagHead}>
+            <b>{zh.sim.sandbox.diag.title}</b>
+            <span className={styles.note} style={{ margin: 0 }} data-testid="sc-diag-hint">
+              {zh.sim.sandbox.diag.hint}
+            </span>
+            <span className={styles.spacer} />
+            <button type="button" className={styles.diagBtn} data-testid="sc-diag-close" onClick={() => setDiagOpen(false)}>
+              {zh.sim.sandbox.diag.close}
+            </button>
+          </div>
+          <div className={styles.diagBody}>
+            {diagSections.length === 0 ? (
+              <p className={styles.note} data-testid="sc-diag-empty">
+                {zh.sim.sandbox.diag.empty}
+              </p>
+            ) : (
+              diagSections.map((s) => (
+                <details key={s.id} className={styles.railSection} open={s.defaultOpen ?? true} data-testid={`sc-diag-${s.id}`}>
+                  <summary>
+                    {s.title}
+                    {typeof s.issues === "number" && s.issues > 0 ? (
+                      <span className={`${styles.badge} ${styles.badgeGap}`} data-testid={`sc-diag-${s.id}-issues`}>
+                        {zh.sim.sandbox.diag.pending(s.issues)}
+                      </span>
+                    ) : null}
+                  </summary>
+                  <div className={styles.railBody}>{s.node}</div>
+                </details>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {/* ══ 阻滞点统计条 ══════════════════════════════════════════════════════ */}
       <div className={styles.impBar} data-testid="sc-impbar">
@@ -427,47 +575,26 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
         </div>
       </div>
 
-      {/* ══ 阻滞点逐条 · 点了进决策推演（WO-SANDBOX-IMP2PLAN）══════════════════ */}
-      <ImpedimentJumpBar model={model} kind={dimKind} />
-
-      {honesty ? (
-        <p className={styles.noteWarn} data-testid="sc-imp-gap">
-          <b>口径差（按引擎显示，不按设计稿措辞）：</b>
-          {IMPEDIMENT_DESIGN_GAP}
-          {model !== null ? (
+      {/* ══ 阻滞点逐条 · 点了进决策推演（WO-SANDBOX-IMP2PLAN）══════════════════
+          WO-SANDBOX-DECLUTTER：口径差 / 联动口径两段**原理说明性文字**此前常驻在这上下两行，
+          合计占掉主屏一大块，而它们的读者是开发者不是决策者。现在收成两个 `?`，
+          挂在它们解释的那个东西（阻滞点计数）旁边 —— **一个字都没删，只换了承载方式**。 */}
+      <ImpedimentJumpBar
+        model={model}
+        kind={dimKind}
+        notes={
+          honesty ? (
             <>
-              {" "}本次扫描 {model.total} 条，诚实位分布：
-              {(Object.entries(model.honestyCounts) as [keyof typeof model.honestyCounts, number][])
-                .filter(([, n]) => n > 0)
-                .map(([m2, n]) => `${DATA_MODE_LABEL[m2]} ${n}`)
-                .join(" · ") || "（空）"}
-              ；判不出来 {model.unresolved.length} 条。
+              <InfoPopover topic={zh.sim.sandbox.info.impedimentCaliber} testId="imp-gap">
+                <ImpedimentCaliberNote model={model} />
+              </InfoPopover>
+              <InfoPopover topic={zh.sim.sandbox.info.impedimentJoin} testId="imp-join-gap">
+                <ImpedimentJoinNote dimKind={dimKind} dimStageCount={dimStages.size} />
+              </InfoPopover>
             </>
-          ) : null}
-        </p>
-      ) : null}
-
-      {/*
-        联动口径差 —— 这条此前只写在 `stagesOfKind` 的注释里（源码看得见、屏上看不见）。
-        它是**真实的接缝缺口**（本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`），不是实现偷懒：
-        两个求解器没有共同的 id 维度，硬映射会是一个"看着合理"的编造。段数取 `CHAIN_STAGES.length`
-        派生（12→24 那一单把段从 4 加到 5，写死的数当天就会过期）。
-      */}
-      {honesty ? (
-        <p className={styles.noteWarn} data-testid="sc-imp-join-gap">
-          <b>联动口径（真实的接缝缺口，不拿一个看着合理的映射盖过去）：</b>
-          <code>chain_impediments</code> 的 locus 是<b>对象</b>（<code>MaterialBatch</code> / <code>Line</code> /{" "}
-          <code>Process</code>…），而 <code>chain_loss_attribution</code> 的节点是<b>链路节点</b>
-          （<code>order.cash</code> 那一族 id）—— 两者今天<b>没有共同的 id 维度</b>，能对上的只有{" "}
-          <code>stage</code>。故点统计条只能<b>按 stage 联动高亮</b>（本链路共 {CHAIN_STAGES.length} 段），
-          <b>不能按节点精确点亮</b>；同一段里算得出与算不出的节点会被一起点亮，那是段级精度，不是节点级。
-          {dimKind === null ? null : (
-            <>
-              {" "}本次选中的这一类落在 {dimStages.size}/{CHAIN_STAGES.length} 段上。
-            </>
-          )}
-        </p>
-      ) : null}
+          ) : null
+        }
+      />
 
       {/* ══ 三栏主体 ══════════════════════════════════════════════════════════ */}
       <div className={styles.mid}>
@@ -492,57 +619,82 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                         {wired ? "已接线" : "无 ARGS"}
                       </span>
                     ) : null}
+                    {/* WO-SANDBOX-DECLUTTER：这一维「为什么带不下去」的原文（含 service.ts:3125 那句
+                        「暂不支持」并报 400）是**原理说明性文字** ⇒ 收进 `?`，原文一字不改地透传。
+                        `dim.note` 的单一来源是 `sandboxConsoleModel.SCOPE_DIMENSIONS`，本处不抄第二份。 */}
+                    {dim.key === "baseIds" ? null : (
+                      <InfoPopover topic={zh.sim.sandbox.info.scopeDim(dim.label)} testId={`dim-${dim.key}`}>
+                        <span data-testid={`sc-dim-${dim.key}-note`}>{dim.note}</span>
+                      </InfoPopover>
+                    )}
                   </div>
+                  {/* 基地清单自己滚（`.optList`）：13 个复选框铺开就是 416px，
+                      比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。
+
+                      ⚠ testid 刻意**不叫** `sc-base-list`：`sc-base-<baseId>`（本文件下方那行
+                      `data-testid={`sc-base-${b.baseId}`}`）是**每个基地复选框**的命名空间，
+                      容器一旦也叫 `sc-base-*`，`getAllByTestId(/^sc-base-/)` 就会先命中容器
+                      （父节点在 DOM 序里靠前）→ 取到的 "baseId" 是字符串 `list`，而不是任何真基地。
+                      容器不是基地，就不该占基地的命名空间。
+                      2026-08-10 合并 WO-SANDBOX-DECLUTTER（加了本容器）× WO-SANDBOX-IA-CONSOLIDATE
+                      （按前缀取基地）时真跑撞出，两条用例当场红：
+                      `apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:383` 与 `:402`
+                      断言 `expected '…全部基地…' to contain 'list'`。
+                      复验：`pnpm --filter frontend-shell test`，把本行 testid 改回 `sc-base-list` 即复现。 */}
                   {dim.key === "baseIds" ? (
-                    BASE_REGISTRY.map((b) => (
-                      <label key={b.baseId} className={styles.opt}>
-                        <input
-                          type="checkbox"
-                          data-testid={`sc-base-${b.baseId}`}
-                          checked={baseIds.length === 0 || baseIds.includes(b.baseId)}
-                          onChange={() => toggleBase(b.baseId)}
-                        />
-                        <span className={styles.optName}>{b.name}</span>
-                        <span className={styles.optSub}>{b.baseId}</span>
-                      </label>
-                    ))
-                  ) : (
-                    <p className={styles.note} data-testid={`sc-dim-${dim.key}-note`}>
-                      {dim.note}
-                    </p>
-                  )}
+                    <div className={styles.optList} data-testid="sc-baselist">
+                      {BASE_REGISTRY.map((b) => (
+                        <label key={b.baseId} className={styles.opt}>
+                          <input
+                            type="checkbox"
+                            data-testid={`sc-base-${b.baseId}`}
+                            checked={baseIds.length === 0 || baseIds.includes(b.baseId)}
+                            onChange={() => toggleBase(b.baseId)}
+                          />
+                          <span className={styles.optName}>{b.name}</span>
+                          <span className={styles.optSub}>{b.baseId}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
-            {honesty ? (
-              <div className={styles.dimGroup}>
-                <div className={styles.dimHead}>
-                  <b>范围能带到哪</b>
-                </div>
-                <p className={styles.note} data-testid="sc-scope-reach">
-                  勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。
-                  <b>全链损失归因 chain_loss_attribution 不吃任何范围维度</b> —— 它只认锚点订单 <code>so</code>，
-                  传 baseIds 结果逐字节不变（实测）。故底部 Pareto / 前置期 / 链路阶段画布**不随左栏变**。
-                </p>
-              </div>
-            ) : null}
             <div className={styles.dimGroup}>
               <div className={styles.dimHead}>
-                <b>阻滞点图例</b>
-              </div>
-              <div className={styles.legendList} data-testid="sc-legend">
-                {IMPEDIMENT_CARDS.map((c) => (
-                  <div key={c.kind}>
-                    <b>{c.label}</b>（{c.kind}）· {c.meaning}
-                  </div>
-                ))}
+                {/* 「范围能带到哪」「阻滞点图例」两块也是纯说明 ⇒ 各收一个 `?`，
+                    标题留在屏上（读者要知道"这里有这么一条说明"），正文按需展开。 */}
+                {honesty ? (
+                  <>
+                    <b>{zh.sim.sandbox.info.scopeReach}</b>
+                    <InfoPopover topic={zh.sim.sandbox.info.scopeReach} testId="scope-reach">
+                      <span data-testid="sc-scope-reach">
+                        勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。
+                        <b>全链损失归因 chain_loss_attribution 不吃任何范围维度</b> —— 它只认锚点订单{" "}
+                        <code>so</code>，传 baseIds 结果逐字节不变（实测）。故底部 Pareto / 前置期 / 链路阶段画布
+                        <b>不随左栏变</b>。
+                      </span>
+                    </InfoPopover>
+                  </>
+                ) : null}
+                <span className={styles.spacer} />
+                <b>{zh.sim.sandbox.info.legend}</b>
+                <InfoPopover topic={zh.sim.sandbox.info.legend} testId="legend">
+                  <span className={styles.legendList} data-testid="sc-legend">
+                    {IMPEDIMENT_CARDS.map((c) => (
+                      <span key={c.kind} style={{ display: "block" }}>
+                        <b>{c.label}</b>（{c.kind}）· {c.meaning}
+                      </span>
+                    ))}
+                  </span>
+                </InfoPopover>
               </div>
             </div>
           </div>
         </aside>
 
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}
-        <main className={styles.pane} data-testid="sc-canvas-pane">
+        <main className={`${styles.pane} ${styles.canvasPaneStretch}`} data-testid="sc-canvas-pane">
           <div className={styles.paneHead}>
             <h2 data-testid="sc-canvas-title">{CANVAS_MODE_TITLE[mode]}</h2>
             <div className={styles.seg} role="group" aria-label="画布模式">
@@ -630,8 +782,15 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
 
             {/* 链路阶段 */}
             <div className={styles.canvasSlot} hidden={mode !== "chain"} data-testid="sc-slot-chain">
+              {/* WO-SANDBOX-DECLUTTER（规范 §1）：第一层只留**结论式的三个数**（在册 / 有数据 /
+                  算不出来 / 不在场），完整口径与取证进 `?` 浮层。原文一字未改，见 `sc-chain-coverage`。 */}
               {honesty ? (
-                <p className={styles.noteWarn} data-testid="sc-chain-coverage">
+                <p className={styles.noteWarn} data-testid="sc-chain-coverage-brief">
+                  <b>在册 ≠ 有数据：</b>本段在册 {coverage.backendRegistryNodeCount} · 本次有数据{" "}
+                  {presence.withSteps.length} · 诚实缺席 {presence.emptyOnly.length} · 在册不在场{" "}
+                  {presence.absent.length}
+                  <InfoPopover topic={zh.sim.sandbox.info.chainCoverage} testId="chain-coverage">
+                    <span data-testid="sc-chain-coverage">
                   <b>诚实边界 · 在册 ≠ 有数据：</b>设计目标 {coverage.designStageCount} 段 {coverage.designNodeCount} 节点
                   （{coverage.designStageNames.join(" / ")}）；后端单源 <code>CHAIN_STAGES</code> 今天是{" "}
                   {coverage.backendStageCount} 段（{coverage.backendStageLabels.join(" / ")}）、
@@ -651,6 +810,8 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                   单列一行 = 在册不在场。本画布按后端真有的渲染（本次载荷 {coverage.renderedNodeCount} 个节点，其中{" "}
                   {coverage.renderedDynamicOpCount} 个来自动态工序命名空间 <code>capacity.op.*</code>），
                   <b>不拿「在册数」冒充「有数据数」</b>，也不在前端手抄一份 24 节点词表。
+                    </span>
+                  </InfoPopover>
                 </p>
               ) : null}
               {board === null ? (
@@ -798,12 +959,21 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
               </>
             )}
           </div>
-          {rail.map((s) => (
-            <details key={s.id} className={styles.railSection} open={s.defaultOpen ?? false} data-testid={`sc-rail-${s.id}`}>
-              <summary>{s.title}</summary>
-              <div className={styles.railBody}>{s.node}</div>
-            </details>
-          ))}
+          {/*
+            WO-SANDBOX-DECLUTTER · 右栏折叠区外面必须有一层**自己的滚动容器**。
+            此前这些 `<details>` 是 `.pane` 的裸兄弟节点、外面没有任何 `overflow` ——
+            于是右栏内容多高、三栏那一行就多高（grid 行高由最高列决定），
+            而中栏画布只有 ~680px ⇒ 底下拉出一大片空白。这正是仓主截图里
+            「右栏塞爆 + 中间大面积空白」两个症状的**同一个成因**（取证见本单报告 §③）。
+          */}
+          <div className={styles.railStack} data-testid="sc-rail-stack">
+            {rail.map((s) => (
+              <details key={s.id} className={styles.railSection} open={s.defaultOpen ?? false} data-testid={`sc-rail-${s.id}`}>
+                <summary>{s.title}</summary>
+                <div className={styles.railBody}>{s.node}</div>
+              </details>
+            ))}
+          </div>
         </aside>
       </div>
 
@@ -851,13 +1021,21 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
                   );
                 })}
               </div>
+              {/* 规范 §2 R-UI-3 点名的那一类：`A ÷ B` 形状的**公式**一律进 `?`。
+                  第一层只留守恒结论（Σ 与是否在容差内）—— 那是结论，不是口径。 */}
               {honesty ? (
-                <p className={styles.note} data-testid="sc-pareto-note">
-                  影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
-                  <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
-                  故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
-                  {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
-                  ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
+                <p className={styles.note} data-testid="sc-pareto-note-brief">
+                  守恒 Σ = {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                  （{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）
+                  <InfoPopover topic={zh.sim.sandbox.info.paretoRate} testId="pareto-note" align="right">
+                    <span data-testid="sc-pareto-note">
+                      影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
+                      <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
+                      故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
+                      {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                      ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
+                    </span>
+                  </InfoPopover>
                 </p>
               ) : null}
             </>
@@ -915,27 +1093,33 @@ export function SandboxConsole({ topTags, controlBar, ontologyCanvas, rail = [] 
  * 只在"点了之后走不走 SPA 路由"上分家 —— 非 Router 壳退化为普通 `<a href>`（浏览器整页跳，
  * 仍到得了目的地），**不是把这条功能藏起来**（藏起来才是silent hole）。
  */
-function ImpedimentJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
+interface JumpBarProps {
+  model: ChainImpedimentModel | null;
+  kind: ChainImpedimentKind | null;
+  /** 说明性文字的 `?` 触发器（WO-SANDBOX-DECLUTTER）：贴在计数那一行，不另占一整段。 */
+  notes?: ReactNode;
+}
+
+function ImpedimentJumpBar({ model, kind, notes }: JumpBarProps) {
   const inRouter = useInRouterContext();
-  return inRouter ? <RoutedJumpBar model={model} kind={kind} /> : <PlainJumpBar model={model} kind={kind} />;
+  return inRouter ? <RoutedJumpBar model={model} kind={kind} notes={notes} /> : <PlainJumpBar model={model} kind={kind} notes={notes} />;
 }
 
-function RoutedJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
+function RoutedJumpBar({ model, kind, notes }: JumpBarProps) {
   const navigate = useNavigate();
-  return <JumpList model={model} kind={kind} onOpen={(href) => navigate(href)} />;
+  return <JumpList model={model} kind={kind} notes={notes} onOpen={(href) => navigate(href)} />;
 }
 
-function PlainJumpBar({ model, kind }: { model: ChainImpedimentModel | null; kind: ChainImpedimentKind | null }) {
-  return <JumpList model={model} kind={kind} onOpen={null} />;
+function PlainJumpBar({ model, kind, notes }: JumpBarProps) {
+  return <JumpList model={model} kind={kind} notes={notes} onOpen={null} />;
 }
 
 function JumpList({
   model,
   kind,
+  notes,
   onOpen,
-}: {
-  model: ChainImpedimentModel | null;
-  kind: ChainImpedimentKind | null;
+}: JumpBarProps & {
   onOpen: ((href: string) => void) | null;
 }) {
   const rows = useMemo(() => impedimentHandoffs(model, kind), [model, kind]);
@@ -943,6 +1127,7 @@ function JumpList({
     return (
       <p className={styles.stateLine} data-testid="sc-imp-jump-waiting">
         等 <code>chain_impediments</code> 取回后，这里逐条列出可点的阻滞点。
+        {notes}
       </p>
     );
   }
@@ -952,6 +1137,7 @@ function JumpList({
         <b>逐条阻滞点 · 点一条进决策推演看方案对比</b>
         {kind === null ? "（当前：全部 " : `（当前只看「${rows[0]?.im.kindLabel ?? kind}」 `}
         {rows.length} 条{kind === null ? "，点上面的卡可筛某一类" : "，再点一次那张卡取消筛选"}）。
+        {notes}
       </p>
       {rows.length === 0 ? (
         <p className={styles.note} data-testid="sc-imp-jump-empty">
@@ -1003,6 +1189,71 @@ function JumpList({
 }
 
 /**
+ * WO-SANDBOX-DECLUTTER · 「口径差」说明 —— **原文一字未改**，只是从常驻段落搬进了 `?` 浮层。
+ *
+ * 病灶（仓主实测）：这段话此前常驻在阻滞点统计条正下方，占掉主屏一整块，
+ * 而它回答的问题（「设计稿说卡点是审批闸，为什么屏上写产能打满？」）是**开发者**的问题。
+ * 决策者要看的是那三张卡上的数字。所以它该贴在那些数字旁边、按需展开，而不是常驻。
+ *
+ * 内容全部派生：措辞差取 `chainImpediment.IMPEDIMENT_DESIGN_GAP`（单一来源），
+ * 计数取本次扫描的 `model` —— 本组件零自有文案常数。
+ */
+function ImpedimentCaliberNote({ model }: { model: ChainImpedimentModel | null }) {
+  return (
+    <span data-testid="sc-imp-gap">
+      {IMPEDIMENT_DESIGN_GAP}
+      {model !== null ? (
+        <>
+          {" "}本次扫描 {model.total} 条，诚实位分布：
+          {(Object.entries(model.honestyCounts) as [keyof typeof model.honestyCounts, number][])
+            .filter(([, n]) => n > 0)
+            .map(([m2, n]) => `${DATA_MODE_LABEL[m2]} ${n}`)
+            .join(" · ") || "（空）"}
+          ；判不出来 {model.unresolved.length} 条。
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * WO-SANDBOX-DECLUTTER · 「联动口径」说明 —— 同上，**原文一字未改**，改的是承载方式。
+ *
+ * 这条此前只写在 `stagesOfKind` 的注释里（源码看得见、屏上看不见），上一单把它搬上了屏，
+ * 但搬成了常驻段落。它是**真实的接缝缺口**（本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`），
+ * 不是实现偷懒：两个求解器没有共同的 id 维度，硬映射会是一个"看着合理"的编造。
+ * 段数取 `CHAIN_STAGES.length` 派生（12→24 那一单把段从 4 加到 5，写死的数当天就会过期）。
+ */
+function ImpedimentJoinNote({ dimKind, dimStageCount }: { dimKind: ChainImpedimentKind | null; dimStageCount: number }) {
+  return (
+    <span data-testid="sc-imp-join-gap">
+      <b>不拿一个看着合理的映射盖过去：</b>
+      <code>chain_impediments</code> 的 locus 是<b>对象</b>（<code>MaterialBatch</code> / <code>Line</code> /{" "}
+      <code>Process</code>…），而 <code>chain_loss_attribution</code> 的节点是<b>链路节点</b>
+      （<code>order.cash</code> 那一族 id）—— 两者今天<b>没有共同的 id 维度</b>，能对上的只有{" "}
+      <code>stage</code>。故点统计条只能<b>按 stage 联动高亮</b>（本链路共 {CHAIN_STAGES.length} 段），
+      <b>不能按节点精确点亮</b>；同一段里算得出与算不出的节点会被一起点亮，那是段级精度，不是节点级。
+      {dimKind === null ? null : (
+        <>
+          {" "}本次选中的这一类落在 {dimStageCount}/{CHAIN_STAGES.length} 段上。
+        </>
+      )}
+    </span>
+  );
+}
+
+/** 时窗为何禁用 —— 顶栏那排灰按钮的说明（徽标本体在诊断抽屉，这里是贴在控件旁的那一句）。 */
+function TimeWindowNote() {
+  return (
+    <span data-testid="sc-window-note">
+      <code>chain_loss_attribution</code> 只认锚点订单 <code>so</code>；<code>chain_impediments</code> 只认{" "}
+      <code>scope</code>。<b>两者都没有时间窗入参</b> ⇒ 这排档位今天**驱动不了任何取数**，
+      故禁用而不是给一个点得动、却什么都不改的假旋钮。
+    </span>
+  );
+}
+
+/**
  * 阻滞点筛选的**命中判据**：该类阻滞点落在哪些 `stage` 上。
  *
  * ⚠ 诚实边界（真实的接缝缺口，不拿一个看着合理的映射盖过去）：
@@ -1040,7 +1291,12 @@ function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentK
  */
 function InspectorEvidenceGapNote() {
   return (
-    <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap">
+    // WO-SANDBOX-DECLUTTER（规范 §1「诚实位可降层、不可删，且第一层要留记号」）：
+    // 第一层只留一句**结论**（这一栏的 R13 证据是空的、原因不在引擎），完整取证进 `?`。
+    <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap-brief">
+      <b>下钻证据为空 —— 是宿主这一份载荷缺字段，不是引擎没给。</b>
+      <InfoPopover topic={zh.sim.sandbox.info.inspectorEvidence} testId="inspect-evidence" align="right">
+        <span data-testid="sc-inspect-evidence-gap">
       <b>本栏复用宿主已取回的那一份 <code>chain_loss_attribution</code>（不再自取第二次）。代价照实说：</b>
       宿主这一份经前端宽松读取层 <code>ChainLossPayloadSchema</code> 解析，而该 schema
       <b>没有声明 <code>evidence[]</code></b> ⇒ zod 按 strip 语义把它剥掉了。
@@ -1050,6 +1306,8 @@ function InspectorEvidenceGapNote() {
       补齐 = 在 <code>chainLineMap.ts</code> 的 <code>ChainLossPayloadSchema</code> 里加一行 <code>evidence</code>
       （该文件在本单边界外）；加上后本页一行不改、证据自动回来。独立页{" "}
       <code>/v/node-inspector</code> 走自取原始响应，证据照常。
+        </span>
+      </InfoPopover>
     </p>
   );
 }
@@ -1304,11 +1562,17 @@ function StepDetail({ node, honesty }: { node: NodeCardVM | null; honesty: boole
         </>
       ) : null}
 
+      {/* 表的**口径**（天数取哪个字段、分母是什么）是浮层内容；表本身才是第一/二层。 */}
       {honesty ? (
-        <p className={styles.note} data-testid="sc-step-detail-note">
-          天数取引擎 <code>ChainStep.days</code>（期望态）；影响率取 <code>attribution[].pctOfChainLoss</code>，
-          分母 = 全链非增值总量（增值段不进分母，故增值行影响率显示「—」而非 0）。
-          <b>本表与画布卡片、底部 Pareto 是同一份响应的三种投影</b>，不是三次取数。
+        <p className={styles.note} data-testid="sc-step-detail-note-brief">
+          本表口径
+          <InfoPopover topic={zh.sim.sandbox.info.stepTable} testId="step-detail" align="right">
+            <span data-testid="sc-step-detail-note">
+              天数取引擎 <code>ChainStep.days</code>（期望态）；影响率取 <code>attribution[].pctOfChainLoss</code>，
+              分母 = 全链非增值总量（增值段不进分母，故增值行影响率显示「—」而非 0）。
+              <b>本表与画布卡片、底部 Pareto 是同一份响应的三种投影</b>，不是三次取数。
+            </span>
+          </InfoPopover>
         </p>
       ) : null}
     </div>
