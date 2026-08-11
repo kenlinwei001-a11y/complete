@@ -991,16 +991,17 @@
         "docs/PRD-*.md",
         "scripts/prd-data-grounding-baseline.json",
         "apps/datacore/src/synthetic/battery.ts",
-        "apps/datacore/src/synthetic/battery-extended.ts"
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/seed.ts"
       ],
       "escalation": "审核方",
       "ontologyRef": "§7",
       "provenRed": {
         "kind": "MUTATION",
         "evidence": "WO-PRD-GROUNDING-GATE 五组变异实跑（2026-08-11，交回报告《变异反证原文》节）",
-        "note": "M1 临时 PRD 同时注入五种病 → PDG-1/2/3/4/6 **五条判据全部当场红** RC=1（表称 Line.businessType 有值而字段不存在 / 表称 Line.utilization 不存在而其实已有 / 表引用未知类型 Sasquatch / 正文断言 Process.segOwnership 已有 / 改 SEG_REGISTRY→结论跟着变 缺前置）；M2 **同一文件语义反转成全部说真话** → RC=0 复绿，证明门量的是「字段引用属不属实」而**不是「有没有新 PRD」**（非重言）；S1 门自变异 hasField 恒真（语义反转）→ 金丝雀报「⛔ 门自己瞎了」**RC=2**（必咬 PDG-1/PDG-4 没被咬）而非报干净；S2 门自变异 ABSENCE_ACK_MARKERS 改名为不含原子串的 PRIOR_DISCLOSURE_TOKENS 且语义反转 acknowledged→assertion → 金丝雀 **RC=2**，其中 3 条必不咬样例是**生产原文**（ontology-7elements:557 / sandbox-a2:50 / stale-claims:82）当场被误咬，证明金丝雀与主逻辑共用 judgePrd 同一份实现、不是装饰品；每条变异均**读回文件自证生效**（S2 另证原名残留 0 处），还原后 RC=0 且 git status --porcelain 干净。"
+        "note": "M1 临时 PRD 同时注入五种病 → PDG-1/2/3/4/6 **五条判据全部当场红** RC=1（表称 Line.businessType 有值而字段不存在 / 表称 Line.utilization 不存在而其实已有 / 表引用未知类型 Sasquatch / 正文断言 Process.segOwnership 已有 / 改 SEG_REGISTRY→结论跟着变 缺前置）；M2 **同一文件语义反转成全部说真话** → RC=0 复绿，证明门量的是「字段引用属不属实」而**不是「有没有新 PRD」**（非重言）；S1 门自变异 hasField 恒真（语义反转）→ 金丝雀报「⛔ 门自己瞎了」**RC=2**（必咬 PDG-1/PDG-4 没被咬）而非报干净；S2 门自变异 ABSENCE_ACK_MARKERS 改名为不含原子串的 PRIOR_DISCLOSURE_TOKENS 且语义反转 acknowledged→assertion → 金丝雀 **RC=2**，其中 3 条必不咬样例是**生产原文**（ontology-7elements:557 / sandbox-a2:50 / stale-claims:82）当场被误咬，证明金丝雀与主逻辑共用 judgePrd 同一份实现、不是装饰品；每条变异均**读回文件自证生效**（S2 另证原名残留 0 处），还原后 RC=0 且 git status --porcelain 干净。 M3 撤掉某条裁定的挂账（裁定仍在）→ PDG-4A 当场红 RC=1，证明 adjudicated 裁定表**真有牙**、不是摆设；M4 裁定表塞入指向不存在命中的 key → 「裁定表烂账」红 RC=1（防裁定变烂账）；两者还原后均 RC=0、工作树干净。另判义层收窄后加了 SENSE_MUST_BE_ONTOLOGY 生产原文回归金丝雀（Base.weeklyCap / Metric.gap 必须判成 ontology），弱语境词被加回 SIM_CONTEXT_MARKERS 即红。"
       },
-      "notes": "治「数据可得性只在主题是数据时才被讨论」的结构性偏差（129 份 PRD / 80 份零数据前置讨论）。退出码三分：0 干净 / 1 真有问题 / 2 工具自己坏了。存量豁免走 scripts/prd-data-grounding-baseline.json 棘轮，每条须带 why + prd + kind（待修|误报|覆盖不到 —— 三者修法不同，不许混）。"
+      "notes": "治「数据可得性只在主题是数据时才被讨论」的结构性偏差（129 份 PRD / 80 份零数据前置讨论）。退出码三分：0 干净 / 1 真有问题 / 2 工具自己坏了。存量豁免走 scripts/prd-data-grounding-baseline.json 棘轮，每条须带 why + prd + kind（待修|误报|覆盖不到 —— 三者修法不同，不许混）。 Type.field 四义词：本门只核①本体属性；②仿真状态变量与③规则注入命名空间今天零校验、本门明确做不到核，只区分并标注可见（PDG-7/PDG-8）。"
     }
   }
 }
