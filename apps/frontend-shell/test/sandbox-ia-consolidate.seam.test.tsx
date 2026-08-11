@@ -374,14 +374,42 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
 // ══════════════════════════════════════════════════════════════════════════════
 // § 件三 · 上下文跨模式保持（不带上下文的合并 = 把五页塞进一个 tab 条）
 // ══════════════════════════════════════════════════════════════════════════════
+/**
+ * 取「任意一个基地复选框」。
+ *
+ * ⚠ 并线单 WO-SANDBOX-UI-INTEGRATE 实测到的**跨分支碰撞**（两条分支各自都对，合起来才炸）：
+ * 本单原写 `screen.getAllByTestId(/^sc-base-/)[0]`，而 WO-SANDBOX-DECLUTTER 给基地清单
+ * 套了一层可滚容器 `<div data-testid="sc-base-list">`（规范 §1：筛选器属第二层，不该是最高的东西）。
+ * 该容器在 DOM 序上**排在所有复选框之前**，于是 `[0]` 取到的是**容器本身**，
+ * `baseId` 被解析成字面量 `"list"`，`click` 点在 div 上什么也没发生 ——
+ * 断言遂报 `expected '…全部基地…' to contain 'list'`，看上去像"上下文没带过去"，
+ * 实则是**选择器咬错了元素**。形态即本仓铁律 0.6 那句：
+ * 「我用『testid 前缀匹配』当作『这是一个复选框』的证据，而前者并不度量后者。」
+ *
+ * 修法：按**元素本身是不是复选框**来筛（语义判据），不靠 testid 命名巧合；
+ * 并先断言前提（至少存在一个）再返回，前提不成立时报的是"前提没成立"而不是"行为不对"。
+ */
+function firstBaseCheckbox(): { el: HTMLElement; baseId: string } {
+  const boxes = screen
+    .getAllByTestId(/^sc-base-/)
+    .filter((el): el is HTMLInputElement => el instanceof HTMLInputElement && el.type === "checkbox");
+  expect(
+    boxes.length,
+    "沙盘左栏一个基地复选框都没有 —— 这是本条断言的**前提**没成立（BASE_REGISTRY 空 / 左栏没渲染），不是上下文保持坏了",
+  ).toBeGreaterThan(0);
+  const el = boxes[0]!;
+  const baseId = (el.getAttribute("data-testid") ?? "").replace(/^sc-base-/, "");
+  expect(baseId, "基地复选框的 testid 解析不出 baseId").not.toBe("");
+  return { el, baseId };
+}
+
 describe("§件三 · 上下文跨模式保持", () => {
   it("在「现状」里改基地勾选 → 切「归因」→ 切回「现状」，勾选仍在", async () => {
     const user = userEvent.setup();
     mount();
     await ready();
     // 初始：一个都没勾（= 全部基地）；勾掉一个基地进入「部分选中」态
-    const anyBase = screen.getAllByTestId(/^sc-base-/)[0]!;
-    const baseId = (anyBase.getAttribute("data-testid") ?? "").replace(/^sc-base-/, "");
+    const { el: anyBase, baseId } = firstBaseCheckbox();
     await user.click(anyBase);
     const scopeTextBefore = screen.getByTestId("sandbox-scope-strip").textContent ?? "";
     expect(scopeTextBefore).toContain(baseId);
@@ -399,8 +427,7 @@ describe("§件三 · 上下文跨模式保持", () => {
     const user = userEvent.setup();
     mount();
     await ready();
-    const anyBase = screen.getAllByTestId(/^sc-base-/)[0]!;
-    const baseId = (anyBase.getAttribute("data-testid") ?? "").replace(/^sc-base-/, "");
+    const { el: anyBase, baseId } = firstBaseCheckbox();
     await user.click(anyBase);
     const expected = screen.getByTestId("sandbox-scope-strip").textContent;
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10",
+  "generatedAt": "2026-08-11",
   "ontology": {
     "invariants": [
       "R1",
@@ -1888,6 +1888,31 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-metro-ops.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/sandbox-metro-lever.seam.test.ts",
+        "apps/datacore/test/sandbox-metro-scope.seam.test.ts",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
+        "packages/contracts/src/chain-sim.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/test/sandbox-metro-lever.seam.test.ts",
+        "apps/datacore/test/sandbox-metro-scope.seam.test.ts"
+      ]
+    },
     "PRD-sandbox-metro-semantics.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2884,6 +2909,7 @@
       "PRD-inference-line.md",
       "PRD-opt-whatif-data.md",
       "PRD-quarter-rolling-1to1.md",
+      "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-migration.md",
@@ -3102,6 +3128,7 @@
     ],
     "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": [
       "PRD-capacity-live-cockpit.md",
+      "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md"
     ],
     "packages/contracts/src/capacity-factors.ts": [
@@ -3267,6 +3294,7 @@
       "PRD-nav-gate.md",
       "PRD-route-nav-coverage.md",
       "PRD-sandbox-a2.md",
+      "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md",
       "PRD-skill-crossreview.md",
@@ -3312,6 +3340,7 @@
     ],
     "apps/datacore/src/solvers/chain-impediment.ts": [
       "PRD-impediments-reachable.md",
+      "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md"
     ],
     "apps/datacore/src/synthetic/service.ts": [
@@ -3572,6 +3601,20 @@
     "scripts/check-chain-scan-honesty.mjs": [
       "PRD-sandbox-a2.md"
     ],
+    "apps/datacore/test/sandbox-metro-lever.seam.test.ts": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "apps/datacore/test/sandbox-metro-scope.seam.test.ts": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "packages/contracts/src/chain-sim.ts": [
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-stale-claims.md"
+    ],
     "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
       "PRD-sandbox-metro-semantics.md",
       "PRD-transit-geometry.md"
@@ -3589,10 +3632,6 @@
     ],
     "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": [
       "PRD-sandbox-multiplan.md"
-    ],
-    "packages/contracts/src/chain-sim.ts": [
-      "PRD-sandbox-multiplan.md",
-      "PRD-stale-claims.md"
     ],
     "apps/datacore/src/sim/propagation.ts": [
       "PRD-sandbox-redesign.md",

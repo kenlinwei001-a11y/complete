@@ -101,13 +101,8 @@ function certOf(canEnter: boolean): SimCertification {
     trialTick: { passed: canEnter, rulesFired: canEnter ? 3 : 0, at: null, error: null },
     worldCompleteness: {
       pct: canEnter ? 100 : 55,
-      // WO-MERGE-11：本 fixture 原写 `stateVars: {present:2, needed:4}`，而 WO-CERT-HONESTY ①
-      // 已把该比值从契约里**删掉**（它两半都是 derivationRules 的复制品，且在 pct 分子分母各数两遍），
-      // 改为「清单不是比值」的 stateVarKeys。两单并行开发，cert-honesty 迁移其余 fixture 时
-      // 本文件还不存在 ⇒ 唯一漏网的一份。此处按 packages/contracts/src/sim.ts:262 的新形状补齐。
-      derivationRules: { present: 1, needed: 2 },
+      stateVars: { present: 2, needed: 4 }, derivationRules: { present: 1, needed: 2 },
       actions: { present: 0, needed: 1 }, propagationRules: { present: 0, needed: 0 },
-      stateVarKeys: ["load", "risk"],
       entering: [{ key: "s1", kind: "DERIVATION", source: "deriv:s1" }],
     },
     canEnterSimulation: canEnter,
@@ -229,10 +224,13 @@ describe("§1 · 主屏减负 —— **两向都咬**（只咬一向证明不了
     }
     expect(screen.getByTestId("sc-inspect-pane")).toBeTruthy();
     expect(screen.getByTestId("sc-imp-jump")).toBeTruthy();
-    // 结论式顶栏：端到端产销 / 时窗档位 / 全局态指数 三样留着
+    // 结论式顶栏：端到端产销 / 时窗档位 / 全局态读数 三样留着
     expect(screen.getByTestId("sc-scale").textContent ?? "").toContain("端到端产销");
     for (const w of ["30D", "60D", "90D"]) expect(screen.getByTestId(`sc-window-${w}`)).toBeTruthy();
-    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    // WO-SANDBOX-UI-INTEGRATE：读数**本身**留在第一层（它是结论），量纲口径降进 `?` 浮层。
+    // 故这里咬的是「数值还在」而不是「口径还在」——口径的两向断言在 sandbox-view.test.tsx。
+    expect(screen.getByTestId("sandbox-kpi-global-val").textContent ?? "").toMatch(/\d/);
+    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").not.toContain("0–100 指数");
   });
 });
 

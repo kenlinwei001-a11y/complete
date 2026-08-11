@@ -629,20 +629,9 @@ export function SandboxConsole({
                     )}
                   </div>
                   {/* 基地清单自己滚（`.optList`）：13 个复选框铺开就是 416px，
-                      比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。
-
-                      ⚠ testid 刻意**不叫** `sc-base-list`：`sc-base-<baseId>`（本文件下方那行
-                      `data-testid={`sc-base-${b.baseId}`}`）是**每个基地复选框**的命名空间，
-                      容器一旦也叫 `sc-base-*`，`getAllByTestId(/^sc-base-/)` 就会先命中容器
-                      （父节点在 DOM 序里靠前）→ 取到的 "baseId" 是字符串 `list`，而不是任何真基地。
-                      容器不是基地，就不该占基地的命名空间。
-                      2026-08-10 合并 WO-SANDBOX-DECLUTTER（加了本容器）× WO-SANDBOX-IA-CONSOLIDATE
-                      （按前缀取基地）时真跑撞出，两条用例当场红：
-                      `apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:383` 与 `:402`
-                      断言 `expected '…全部基地…' to contain 'list'`。
-                      复验：`pnpm --filter frontend-shell test`，把本行 testid 改回 `sc-base-list` 即复现。 */}
+                      比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。 */}
                   {dim.key === "baseIds" ? (
-                    <div className={styles.optList} data-testid="sc-baselist">
+                    <div className={styles.optList} data-testid="sc-base-list">
                       {BASE_REGISTRY.map((b) => (
                         <label key={b.baseId} className={styles.opt}>
                           <input

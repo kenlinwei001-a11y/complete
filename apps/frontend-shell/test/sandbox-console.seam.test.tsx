@@ -463,7 +463,9 @@ describe("§5 · 旧主屏 6 样一个都不许掉", () => {
     mount();
     await ready();
     // ① KPI 行（全局 + 逐 stateVar）
-    expect(screen.getByTestId("sandbox-kpi-global").textContent ?? "").toContain("0–100 指数");
+    // WO-SANDBOX-UI-INTEGRATE：量纲口径已降进 `?` 浮层（规范 §2 R-UI-3），
+    // 本条只咬「KPI 行没掉」——咬读数本身，不咬那截括号说明（其两向断言在 sandbox-view.test.tsx）。
+    expect(screen.getByTestId("sandbox-kpi-global-val").textContent ?? "").toMatch(/\d/);
     for (const v of CFG.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
     // ② tick 控制条
     for (const t of ["sandbox-tick-btn", "sandbox-checkpoint-btn", "sandbox-branch-btn", "sandbox-adopt-btn", "sandbox-timeline"]) {

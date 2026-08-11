@@ -224,6 +224,10 @@ describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围�
    *
    * 所以现在不只咬文案，**同时咬反向**：那句已作废的旧话**不许再出现**。
    * 下一次若有人把引擎的范围裁剪改回全量、又顺手把老文案贴回来，这条会红。
+   *
+   * ⚠ 并线单 WO-SANDBOX-UI-INTEGRATE：`sandbox-scope-reach-note` 已被 WO-SANDBOX-DECLUTTER
+   * 从主屏第一层降进**诊断抽屉**，故本条必须先 `openDiagnostics(user)` 才拿得到该节点
+   * —— `user` 由此而来（declutter 侧的新增），断言方向仍取 canonical 的**已修正**版本。
    */
   it("诚实位：范围**已**作用于推演本身，且作废的旧文案不许复活（G-SIM-SCOPE-UNREAD 已闭）", async () => {
     const user = userEvent.setup();
