@@ -20,6 +20,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { ScopeHonestyBadge } from "@/components/ScopeHonestyBadge";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -434,6 +435,14 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                     {zh.sim.proj.stepOf(step, 6)} · {zh.sim.proj.steps[step - 1]}
                   </span>
                   <SnapshotBadge snapshotVersion={forecast.snapshotVersion ?? undefined} tool="capacity_forecast" />
+                  {/* 欠账 #178（后→前这一跳）：`capacity_forecast` 随结果下发 `scope`/`scopeNote`
+                      （`apps/datacore/src/solvers/capacity.ts:432-434`·三条返回路全带·`:547/659/688`），
+                      此前前端零消费方 —— 屏上 P50 是**全网合计**，却与逐基地明细并排，极易被读成本基地的数。
+                      诚实位挂在结果元信息条上（与快照版本同一层）：整份推演结论共用一个口径，
+                      不该只贴在某一个 KPI 上。契约 `CapacityForecastOutputSchema` 以 `.catchall(z.unknown())`
+                      收尾（`packages/contracts/src/solvers.ts:152`）⇒ 这些加性键**没被 parse 掉**，一直都在，
+                      只是没人读；故本处直读 `out`，不重定义契约类型（R1 contracts-only-shared）。 */}
+                  <ScopeHonestyBadge payload={out} testId="capacity-forecast" />
                 </div>
                 <StepBody
                   step={step}

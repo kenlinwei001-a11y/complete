@@ -595,6 +595,12 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     healthFactor,
     gap,
     ok,
+    // WO-BASE-ID-FIDELITY 症① · 作用域诚实位（KILL-MOCK：与真后端 `datacore/solvers/capacity.ts:434` 一字不差）。
+    // 本 mock **从不按基地裁剪** `net`（`MODEL_CAP_NET[modelId]` 恒是该型号全部认证基地）⇒ 它算出来的
+    // 恒是全网合计，所以恒标 `ALL`。**不许**因为调用方传了 `base` 就改标 `BASE` —— 那是拿标签冒充计算，
+    // 正是引擎侧两轮工单在消灭的「假个性化」，mock 里复活一份等于把病灶搬进开发态。
+    scope: "ALL",
+    scopeNote: "全网合计（未指定基地·跨该型号全部认证基地）",
     perBaseRows,
     nonProducible,
     totalBases,

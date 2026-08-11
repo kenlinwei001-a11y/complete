@@ -1,0 +1,47 @@
+/* 求解器作用域诚实位徽标（欠账 #178 前端半边）。
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的令牌 ⇒ 暗色 / 冷蓝 / 亮橙三套自动跟随。
+ * ⚠ 令牌名必须**真存在**（tokens.css `:root`）：`var()` 替换失败不会退化成"没上色"，
+ *   `color` 是可继承属性 ⇒ 失败即 `inherit` ⇒ 一路继承到纯黑，控制台一声不吭、测试全绿。
+ *   本文件用到的四个：--line2 / --muted / --amber / --danger，皆由 `pnpm css-token:check` 守。 */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+/* 三档配色 = 三态本身（CLAUDE.md 铁律 0.5）：真重算 / 全域合计 / 实参未参与。
+   `SCOPED` 刻意保持中性 —— 它是「算的是谁」的陈述，不是警告；把它染成警示色就是"吓人"。 */
+.scoped {
+  border-color: var(--line2);
+  color: var(--muted);
+}
+.global {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.unapplied {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* 浮层正文里的后端原文：与徽标短标签区分开，让人一眼看出「这句是引擎说的」。 */
+.note {
+  display: block;
+  margin: 0;
+}
+.field {
+  display: block;
+  margin-top: 6px;
+  font: 10px var(--font-mono);
+  color: var(--muted2);
+}
