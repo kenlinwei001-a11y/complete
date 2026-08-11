@@ -210,6 +210,57 @@ export function stripComments(text) {
   return out;
 }
 
+/** 把模板串里的 `${…}` 插值整段挖掉，只留**字面**文本（插值是代码，不是散文）。 */
+export function stripInterpolations(value) {
+  let out = "", i = 0;
+  while (i < value.length) {
+    if (value[i] === "$" && value[i + 1] === "{") { i = skipBracedExpr(value, i + 2); continue; }
+    out += value[i]; i++;
+  }
+  return out;
+}
+
+/**
+ * 「这段字符串字面量是**散文**，不是机器令牌」——本门两类载体的**唯一**散文判据。
+ *
+ * ⚠️ 为什么必须有它（欠账 #174 · 实测于 2026-08-11）：
+ * `mentionsInProd` 早就剔了**注释**（金丝雀 C11 守着），但两类载体都没剔**字符串字面量**。
+ * 于是本仓真实存在这一手——`apps/frontend-shell/src/store/eventInvalidation.ts:85` 的
+ * `SIM_EVENT_GAPS` 是一本**用字符串记的缺口台账**，值就是一段中文说明，原文写着
+ *   「缺的是后端读端不是前端订阅…datacore 只有 POST /a/v1/sim/sessions/:id/checkpoint」
+ *   「解法…：开 GET /a/v1/sim/sessions/:id/checkpoints → 前端加 checkpoints useQuery」
+ * 这两句**是在描述缺口**，而 `extractFrontendPaths` 把它们读成「前端在调这两条路由」。
+ * **描述缺口的那段话，反而把缺口盖住了。**
+ *
+ * 实测今日遮蔽半径 = 0 条（`:id/checkpoint` 前端确有真调用 `api/endpoints.ts:596`；
+ * `:id/checkpoints` 后端还没开），所以这是**一把上了膛没击发的枪**，不是已发生的事故。
+ * 但第二句尤其毒：它描述的是一条**将来才会开**的路由，谁哪天真开了
+ * `GET /a/v1/sim/sessions/:id/checkpoints`，那条缺口**出生即被豁免**——
+ * 门第一天就认为前端已经在调它了，而前端一行都没写。
+ *
+ * 判据：剥掉 `${…}` 后的字面文本里，**出现非 ASCII 可打印字符**（中文/全角标点/emoji）
+ * 或**含内部空白** ⇒ 散文。一条真 URL 串按构造不含空格、也不含中文。
+ * 反向风险（过度剥离 ⇒ 把真调用误报成缺口）由金丝雀 `consume/机器令牌串仍算消费`
+ * 与 `route/真 URL 模板仍算调用` 双向钉死。
+ */
+const NON_ASCII_RE = /[^\x20-\x7e]/;
+export function isProseString(value) {
+  const lit = stripInterpolations(value).trim();
+  return NON_ASCII_RE.test(lit) || /\s/.test(lit);
+}
+
+/**
+ * 扫描面记录的**唯一**构造出口：主逻辑与金丝雀都必须走它。
+ * `mentionsInProd` 会硬性要求 `prose` 跨度存在——手搓记录会当场抛异常，
+ * 而金丝雀里的异常被映射成 RC=2「门自己坏了」。
+ * 这就是「不许各抄一份实现」的机器化：抄的人过不去，不是靠人记得。
+ */
+export function scanText(rel, src) {
+  const { mask, strings } = lex(src);
+  const prose = strings.filter((s) => isProseString(s.value)).map((s) => ({ start: s.start, end: s.end }));
+  return { rel, src, mask, prose };
+}
+
 /**
  * 对象字面量的顶层键名。展开 `...(cond ? { a } : {})` 里嵌套的对象字面量键
  * （这类条件展开在本仓 emit payload 里是常见写法，不展开会把真字段读成不存在）。
@@ -368,6 +419,10 @@ function scanPathFrom(value, start) {
     }
     const c = value[i];
     if (/[\s"'`\\]/.test(c) || c === ")" || c === "," || c === ";") break;
+    // URL 按构造是 ASCII：碰到中文/全角标点就到头了。
+    // （不加这一条，散文里的「…/checkpoint，解法：开 GET …」会被整段吃进来当成一条路径 —— 已实测，
+    //   是本门加散文剔除时金丝雀 `route/散文串不算调用` 当场抖出来的。）
+    if (NON_ASCII_RE.test(c)) break;
     out += c;
     i++;
   }
@@ -378,6 +433,20 @@ export function extractFrontendPaths(src) {
   const { strings } = lex(src);
   const found = new Set();
   for (const s of strings) {
+    // 散文串里**提到**一条路由 ≠ 前端在**调**它（欠账 #174 · 见 isProseString 顶注）。
+    // 缺口台账、TODO 说明、报错文案里写着的 URL 一律不算调用方。
+    if (isProseString(s.value)) continue;
+    for (const m of s.value.matchAll(PATH_PREFIX_RE)) found.add(normalizePath(scanPathFrom(s.value, m.index)));
+  }
+  return found;
+}
+
+/** 同一段源码里**散文串**写着的路由（不计作调用方的那些）——供报告的诚实位与金丝雀用。 */
+export function extractProsePaths(src) {
+  const { strings } = lex(src);
+  const found = new Set();
+  for (const s of strings) {
+    if (!isProseString(s.value)) continue;
     for (const m of s.value.matchAll(PATH_PREFIX_RE)) found.add(normalizePath(scanPathFrom(s.value, m.index)));
   }
   return found;
@@ -431,16 +500,22 @@ export function frontendProdFiles() {
 }
 
 /**
- * 「前端生产代码提到这个名字了吗」——搜代码与字符串，**排除注释**
- * （注释里写一句「供前端分栏」不是消费；`roleLabel` 那条正是死在这上面）。
+ * 「前端生产代码提到这个名字了吗」——搜代码与**机器令牌**字符串，
+ * 排除注释（注释里写一句「供前端分栏」不是消费；`roleLabel` 那条正是死在这上面）
+ * **与散文串**（缺口台账里写一句「前端还没接 roleLabel」更不是消费——那是病历，不是接线）。
  * 返回命中的文件相对路径数组（空数组 = 零消费方）。
+ *
+ * 记录必须由 `scanText()` 造：缺 `prose` 跨度直接抛，逼所有调用点走同一份实现。
  */
 export function mentionsInProd(name, prodTexts) {
   const re = new RegExp(String.raw`(?<![\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\w$])`, "g");
   const hits = [];
-  for (const { rel, src, mask } of prodTexts) {
+  for (const t of prodTexts) {
+    const { rel, src, mask, prose } = t;
+    if (!Array.isArray(prose)) throw new Error(`mentionsInProd: 扫描面记录必须由 scanText() 构造（${rel} 缺 prose 跨度）`);
     for (const m of src.matchAll(re)) {
       if (mask[m.index] === M_COMMENT) continue;
+      if (prose.some((p) => m.index >= p.start && m.index < p.end)) continue;
       hits.push(rel);
       break;
     }
@@ -568,9 +643,52 @@ function canaries(ctx) {
 
   // C11 消费判据剔注释：注释里提一嘴不算消费（roleLabel 那条正死在这上面）
   add("consume/注释不算消费", "把注释当消费 ⇒ 「后端注释承诺了前端接」自证成功 ⇒ 门永远绿", () => {
-    const fake = [{ rel: "fake.ts", ...(() => { const src = "// 结构化字段 roleLabel 供前端分栏\nconst a = 1;"; return { src, mask: lex(src).mask }; })() }];
-    const hits = mentionsInProd("roleLabel", fake);
+    const hits = mentionsInProd("roleLabel", [scanText("fake.ts", "// 结构化字段 roleLabel 供前端分栏\nconst a = 1;")]);
     return { ok: hits.length === 0, got: hits, want: [] };
+  });
+
+  // C11b 消费判据剔**散文串**（欠账 #174 的常驻金丝雀）
+  //     C11 只咬注释。本仓的缺口台账偏偏是用**字符串**记的（`store/eventInvalidation.ts:85`
+  //     `SIM_EVENT_GAPS` 的值就是一段中文说明），描述缺口的那段话会把缺口自己盖住。
+  add("consume/散文串不算消费", "缺口台账/TODO 文案里写一句「前端还没接 X」被读成「X 已被消费」⇒ 描述缺口的话把缺口盖住（欠账 #174）", () => {
+    const src = 'const GAPS = { "sim.x": "缺的是后端读端不是前端订阅：前端至今没有 roleLabel 的消费方（2026-08-09 复核）" };';
+    const hits = mentionsInProd("roleLabel", [scanText("fake-prose.ts", src)]);
+    return { ok: hits.length === 0, got: hits, want: [] };
+  });
+
+  // C11c **反向**：机器令牌串仍算消费（防过度剥离 ⇒ 把前端真在读的字段误报成缺口）
+  add("consume/机器令牌串仍算消费", "散文判据过宽 ⇒ d[\"roleLabel\"] 这类真消费被剔掉 ⇒ 幻觉缺口（与 C11b 是同一判据的两个方向）", () => {
+    const hits = mentionsInProd("roleLabel", [scanText("fake-token.ts", 'const v = d["roleLabel"];')]);
+    return { ok: hits.length === 1, got: hits, want: ["fake-token.ts"] };
+  });
+
+  // C13 载体②：散文串里的路由不算「前端在调」
+  //     **非恒真**：本条不复用 extractFrontendPaths 里那一句 `continue`，而是用共用判据
+  //     （lex + isProseString + normalizePath + scanPathFrom）**独立重算**一遍散文串里写着的路由，
+  //     再断言它们没混进 fePaths。谁把那句过滤删了，这条当场红——不是装饰品。
+  add("route/散文串不算调用", "散文里「datacore 只有 POST /a/v1/…」被读成前端在调它 ⇒ 该端点出生即豁免（欠账 #174）", () => {
+    const sample =
+      "缺的是**后端读端**不是前端订阅（2026-08-09 复核）：datacore 只有 POST /a/v1/sim/sessions/:id/checkpoint" +
+      "，解法：开 GET /a/v1/sim/sessions/:id/checkpoints → 前端加 checkpoints useQuery。";
+    const src = `const GAPS = ${JSON.stringify(sample)};`;
+    const viaGate = extractFrontendPaths(src);          // 门实际用的那条路：必须一条都不收
+    const viaProse = extractProsePaths(src);            // 独立重算：必须确实认出这两条（否则样例失效 = 工具坏了）
+    const ok = viaGate.size === 0 && viaProse.has("/a/v1/sim/sessions/*/checkpoint") && viaProse.has("/a/v1/sim/sessions/*/checkpoints");
+    return { ok, got: `门收到 ${[...viaGate].join("|") || "0 条"} · 散文里实有 ${[...viaProse].join("|") || "0 条"}`, want: "门收 0 条 且 散文里认出 checkpoint/checkpoints 两条" };
+  });
+
+  // C13b **反向**：真 URL 模板仍算调用（防过度剥离 ⇒ 前端在调的端点被误报成零调用）
+  add("route/真 URL 模板仍算调用", "散文判据过宽 ⇒ 带 ${} 插值的真 URL 被当散文剔掉 ⇒ 全仓端点被误报成零调用", () => {
+    const src = 'const u = `/a/v1/sim/sessions/${encodeURIComponent(id)}/certification?scope=${scope}${t ? `&target=${t}` : ""}`;';
+    const got = [...extractFrontendPaths(src)];
+    return { ok: got.some((p) => pathMatches(p, "/a/v1/sim/sessions/*/certification")), got, want: "/a/v1/sim/sessions/*/certification" };
+  });
+
+  // C13c 真文件面：没有任何「只靠散文串才进 fePaths」的路径漏网（活体回归·样例消失时无害地空过）
+  add("route/真文件 无散文路径漏网", "线上真出现这一手时要当场说话，而不是等下一次审计", () => {
+    const leaked = [];
+    for (const t of ctx.prodTexts) for (const p of extractProsePaths(t.src)) if (ctx.fePaths.has(p) && !ctx.cleanPaths.has(p)) leaked.push(`${t.rel} → ${p}`);
+    return { ok: leaked.length === 0, got: leaked, want: [] };
   });
 
   // C12 前端面剔除 mocks/测试（只有 mock 引用 = 已排练，不是已实现）
@@ -615,16 +733,27 @@ for (const f of [...agentcoreFiles, ...datacoreFiles]) {
 }
 
 const prodFiles = frontendProdFiles();
-const prodTexts = prodFiles.map((p) => {
-  const src = readFileSync(p, "utf8");
-  return { rel: relative(ROOT, p), src, mask: lex(src).mask };
-});
+const prodTexts = prodFiles.map((p) => scanText(relative(ROOT, p), readFileSync(p, "utf8")));
 const fePaths = new Set();
 for (const t of prodTexts) for (const p of extractFrontendPaths(t.src)) fePaths.add(p);
+// 散文串里写着、但**不**计作调用方的路由（诚实位现算；`cleanPaths` 与 fePaths 同源，供 C13c 判「漏网」）
+const cleanPaths = fePaths;
+const prosePaths = new Set();
+let proseStrings = 0;
+for (const t of prodTexts) {
+  proseStrings += t.prose.length;
+  for (const p of extractProsePaths(t.src)) prosePaths.add(p);
+}
+const proseOnlyPaths = [...prosePaths].filter((p) => !cleanPaths.has(p));
 
 // ── 金丝雀先行 ──
-const ctx = { emitFields, backendRoutes, fePaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes };
-const canaryResults = canaries(ctx).map((c) => ({ ...c, ...c.fn() }));
+const ctx = { emitFields, backendRoutes, fePaths, cleanPaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes };
+// 金丝雀里抛异常 = 门自己坏了（RC=2），不是「代码有问题」（RC=1）：
+// `mentionsInProd` 对手搓记录会抛，这条 catch 把「有人绕开 scanText 另抄一份」变成机器当场说话。
+const canaryResults = canaries(ctx).map((c) => {
+  try { return { ...c, ...c.fn() }; }
+  catch (e) { return { ...c, ok: false, got: `抛异常：${e.message}`, want: "不抛异常" }; }
+});
 const brokenCanaries = canaryResults.filter((c) => !c.ok);
 if (brokenCanaries.length) {
   console.error("⛔ 门自己坏了 —— befe-seam:check 的金丝雀未命中，本次**不产出任何结论**。");
@@ -637,7 +766,16 @@ if (brokenCanaries.length) {
   }
   process.exit(2);
 }
-console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（词法 2 · SSE 抽取 3 · 路由 5 · 消费判据 3）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
+// 诚实位**现算**，不写死。写死是假绿第 11 形态：加了金丝雀而分组计数不动，屏上照旧「5/5」。
+// （原文这里硬编码「词法 2 · SSE 抽取 3 · 路由 5 · 消费判据 3」= 13，而总数已经是 14 —— 就是这个病，已实测。）
+const GROUP_LABEL = { lex: "词法", emit: "SSE 抽取", route: "路由", consume: "消费判据" };
+const byGroup = new Map();
+for (const c of canaryResults) {
+  const g = c.name.split("/")[0];
+  byGroup.set(g, (byGroup.get(g) ?? 0) + 1);
+}
+const groupBreakdown = [...byGroup].map(([g, n]) => `${GROUP_LABEL[g] ?? g} ${n}`).join(" · ");
+console.log(`· 金丝雀 ${canaryResults.filter((c) => c.ok).length}/${canaryResults.length} 全中（${groupBreakdown}）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
 
 // ── 载体① 判定 ──
 const fieldEvidence = new Map(); // field -> [{event,file,line}]
@@ -725,6 +863,10 @@ console.log(
 console.log(
   `· 载体② HTTP 端点：后端注册 ${beByKey.size} 条（结构性豁免 ${exemptCount}）· 前端 URL 字面量 ${fePaths.size} 条` +
     ` · 前端零调用 ${routeGaps.length}（基线 ${baseEp.size} · 新增 ${newEp.length} · 已修复 ${fixedEp.length}）`,
+);
+console.log(
+  `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
+    ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
 );
 if (fixedSse.length || fixedEp.length) {
   console.log(`· ✅ 有人把接缝接上了：SSE ${fixedSse.slice(0, 8).join(", ")}${fixedSse.length > 8 ? " …" : ""}` +
