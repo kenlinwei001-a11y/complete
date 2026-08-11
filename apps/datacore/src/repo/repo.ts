@@ -260,6 +260,11 @@ export interface Repos {
   notifications: Store<NotificationRecord>;
   /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。嫁接自 main 平行线。 */
   ontologyWorkflows: Store<OntologyWorkflowRecord>;
+  /**
+   * 数据构建 Pipeline（030_build_pipelines.sql）：把「数据构建发动机」的写死步骤外化成数据。
+   * 一租户一 kind 至多一条（覆盖出厂默认）；不存记录即走 pipeline-defs.ts 的出厂默认。
+   */
+  buildPipelines: Store<import("@platform/contracts").BuildPipeline>;
   validationRuns: Store<ValidationRunRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;

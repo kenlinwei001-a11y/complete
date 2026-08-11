@@ -760,6 +760,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     objectMerges: new PgStore(pool, "object_merges"),
     notifications: new PgStore(pool, "notifications"),
     ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
+    buildPipelines: new PgStore(pool, "build_pipelines"),
     validationRuns: new PgStore(pool, "validation_runs"),
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
