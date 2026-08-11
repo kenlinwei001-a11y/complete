@@ -982,6 +982,27 @@
         "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+    },
+    "check-solver-field-seam.mjs": {
+      "alias": "solver-field-seam:check",
+      "binding": "GATES_CHAIN",
+      "disposition": "WIRE",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/solvers/",
+        "packages/contracts/src/",
+        "apps/frontend-shell/src/views/",
+        "scripts/solver-field-seam-baseline.json",
+        "scripts/lib/seam-lex.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:988",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "审核方派单 WO-BEFE-SEAM-FIELD · dev 2026-08-11 实跑，四向变异全部真红过",
+        "note": "① 把 `S4:ChainImpedimentSchema.candidates` 从基线摘掉 → RC=1，精确点名该字段并给出声明处 `packages/contracts/src/chain-sim.ts:832`（求解器侧引用 `apps/datacore/src/solvers/chain-impediment.ts:40`）；放回即绿。② 把**前端真在消费**的字段的唯一消费方摘掉 —— 将 `apps/frontend-shell/src/views/sim/chainImpediment.ts` 里 11 处 `dataMode` 整体改名为 `honestyFlagXQ`（**新名不含原子串**，否则 `toContain` 式断言照样过，本仓 2026-08-11 同批栽过这一手）→ RC=1 且新增缺口恰为 `S4:ChainImpedimentSchema.dataMode`；还原后 `git status --porcelain` 干净、门复绿。③ 判定器语义反转：`verdictScoped`/`verdictTopLevel` 改成恒 CONSUMED（恒不咬）→ **必中**金丝雀两条当场开火、exit 2 报「门自己坏了」，**不是**报「字段都干净」；改成恒 DEAD（恒咬）→ **必不中**金丝雀两条开火；`expandScope` 改成恒空 → 三条金丝雀同时开火。三种坏法各被不同方向的金丝雀抓住，这正是双向金丝雀存在的理由。④ **变异反证抓到本门自己的洞**：把成员切分从 `splitTopLevelMembers` 换回只按逗号切（分号分隔的 TS interface 成员应全丢），而当时全门指标**逐字节不变、门照样绿** —— 因为那一版没有任何载体用 TS interface，分号能力是「接了线没数据」的死分支（铁律 0.5 三态之一）。照该条纪律「补数据或删死分支」补了载体⑤（求解器结果接口的内联行字段），同一变异现在让金丝雀 C12 当场开火，且顺带抓到 4 条真死字段（含 `chain_impediments.candidateStats.emitted`，正属本单病历那一族）。"
+      },
+      "notes": "本门治的是**审核方自己**的判断错，不是 dev 的：`befe-seam:check` 量端点粒度，于是「长在已有端点上的新字段」整类逃逸，而本仓的加法几乎全是加字段、不是加端点。判据下沉到字段粒度后，头号实例 `chain_impediments.candidates` 需要**作用域化**判据才抓得到（它是通名，全域名字匹配会把它放过 —— 实测全域命中 9 个前端文件）。存量 116 条记 `scripts/solver-field-seam-baseline.json` 棘轮（每条带 why + 声明处证据，`maxEntries` 恒等于条数、`ratchetHigh` 只降不升）；未判定 124 条如实列出、不 gate、也不冒充干净。盲区（载体⑤ join 不上的 54 个求解器 · 未声明输出形状的 2 个求解器）每次运行强制打印。与 `arg-drop-seam:check` 的边界：本门只管**输出**字段，入参族 schema（`*Args`/`*Input*`）结构性豁免、归那道门管。"
     }
   }
 }
