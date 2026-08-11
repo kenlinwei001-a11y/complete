@@ -201,7 +201,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             WO-SCOPE-HONESTY-FE ①：**这一屏算的是谁**。
             `risk_timeline` 的 scope/scopeBaseId/scopeBaseName/scopeNote 由 `WO-SILENT-WRONG-ANSWER-3`
             在引擎半算出、并在契约里声明（不声明会被 zod strip ⇒ 等于没加），但此前**前端零消费方** ——
-            于是「问枣庄返回 8 张别的基地的卡」在屏上一点看不出来。本行就是那条缺失的一跳。
+            于是「问某个基地、返回的却全是别的基地的卡」在屏上一点看不出来。本行就是那条缺失的一跳。
             ⚠ 这里**不做任何兜底**：后端没下发 scope 就显「作用域未标注」，不许悄悄画成「全网」——
             那等于把本行要治的病换个地方复发（R14）。
           */}

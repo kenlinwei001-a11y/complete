@@ -189,11 +189,21 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
       {/*
         WO-SCOPE-HONESTY-FE ②③ · 齐套 / 报价毛利的**作用域诚实位消费页**。
-        接线前 `kit_readiness` 与 `quote_margin` 在整个前端**零调用方**（`grep -rn` 全 src 各 1 处 / 0 处，
-        金丝雀 `risk_timeline` 同命令命中 5 个文件 ⇒ 工具是好的、结论是真的）——
-        引擎半算出来的诚实位没有任何一块屏幕在读。挂在本页是因为它就是「订单 × 基地」的落点：
-        上面那个基地筛选器**同一个值**驱动 `affected_orders` 与 `kit_readiness`，
-        于是「换基地 → 齐套口径真变」在同一屏上当场可核。
+
+        接线前实测（2026-08-11·复验命令 `grep -rn "quote_margin" apps/frontend-shell/src`）：
+        这两个求解器在 `apps/frontend-shell/src/` **零调用方** —— quote_margin 全无命中、
+        kit_readiness 唯一那处是场景卡 fixture（`mocks/fixtures.ts` 的场景目录条目，不是消费方）。
+        同一条命令的金丝雀 `git grep -l "risk_timeline" <BASE> -- apps/frontend-shell/src`
+        命中 **13** 个文件 ⇒ 工具是好的，上面那个「零」是真的零，不是「我没找到」。
+        ⚠ 这个 13 是被自己咬出来的：第一版写「5 个文件」，那是 `head -5` 截断后的行数被
+        当成了总数 —— 与本仓「拿一个看起来相关的数字当判据」同形（铁律 0.6）。
+        ⚠ 它们在**别的包**里当然有调用方
+        （agentcore 的意图/工作流会派它们），本条声明只限本目录。
+        结论：引擎半算出来的诚实位，没有任何一块屏幕在读。
+
+        挂在本页是因为它就是「订单 × 基地」的落点：上面那个基地筛选器**同一个值**
+        同时驱动 `affected_orders` 与 `kit_readiness`，于是「换基地 → 齐套口径真变」
+        在同一屏上当场可核（差分判据，不是状态判据）。
       */}
       <KitQuoteScopePanel baseFilter={baseFilter} rows={allData?.out.rows ?? []} />
 
