@@ -343,13 +343,22 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     const liveFixture = JSON.parse(
       readFileSync(join(REPO_ROOT, "apps/frontend-shell/test/fixtures/workspace-graph-views-live.json"), "utf8"),
     ) as { views: unknown[] };
+    // fixture 覆盖「本体图谱」(graph) + 八视角 —— graph 也在册，因为 G-GRAPH-ENTRY-DUP 的门要拿它与
+    // graph-all 比渲染差异（它此前零配置、与全景输出完全相同）。
+    const fixtureScope = ws.views.filter((v) => v.viewKey === "graph" || v.viewKey.startsWith("graph-"));
     expect(
-      persp,
-      "workspace 的 graph-* 与前端 SEAM fixture 不一致 —— 若本次是有意改动，重抓：\n" +
+      fixtureScope,
+      "workspace 的 graph/graph-* 与前端 SEAM fixture 不一致 —— 若本次是有意改动，重抓：\n" +
         "  PORT=4051 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js\n" +
         "  curl -H 'X-Debug-User: demo:u_admin:admin|planner|catalog_admin' localhost:4051/a/v1/me/workspace\n" +
-        "  → 取 views[] 中 graph-* 覆盖 apps/frontend-shell/test/fixtures/workspace-graph-views-live.json 的 views",
+        "  → 取 views[] 中 graph + graph-* 覆盖 apps/frontend-shell/test/fixtures/workspace-graph-views-live.json 的 views",
     ).toEqual(liveFixture.views);
+    // G-GRAPH-ENTRY-DUP 的后端半边：「本体图谱」不许再是零配置 / 不许等于全景那组（= 前端默认值）。
+    const browser = ws.views.find((v) => v.viewKey === "graph")!;
+    const panorama = persp.find((v) => v.viewKey === "graph-all")!;
+    const optsOf = (v: { options?: Record<string, unknown> }) => JSON.stringify((v.options ?? {}).graphOptions ?? null);
+    expect(optsOf(browser), "本体图谱仍是零配置 ⇒ 与图谱·全景渲染输出相同（G-GRAPH-ENTRY-DUP）").not.toBe("null");
+    expect(optsOf(browser), "本体图谱的 graphOptions 与全景相同 ⇒ 两个入口仍无差别").not.toBe(optsOf(panorama));
     const nodeIds = new Set(g.nodes.map((n) => n.id));
     for (const id of LOOP_IDS) expect(nodeIds.has(id), id).toBe(true);
     // 数据来源视角按源系统着色；导航中视角分组（图谱· 前缀）

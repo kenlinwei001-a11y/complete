@@ -1,12 +1,46 @@
 {
   "_capture": {
-    "what": "GET /a/v1/me/workspace 的 views[] 中全部 graph-* 视角（八视角），逐字节取自真后端。",
+    "what": "GET /a/v1/me/workspace 的 views[] 中「本体图谱」(graph) 与全部 graph-* 视角（八视角），逐字节取自真后端。",
     "how": "PORT=4051 SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js  →  curl -H \"X-Debug-User: demo:u_admin:admin|planner|catalog_admin\" /a/v1/me/workspace",
     "when": "2026-08-11",
-    "wo": "WO-GRAPH-DESC-CONTRACT · G-GRAPH-DESC-CONTRACT-SPLIT",
+    "wo": "WO-GRAPH-DESC-CONTRACT · G-GRAPH-DESC-CONTRACT-SPLIT + G-GRAPH-ENTRY-DUP",
     "why": "SEAM-GATE：描述卡的断点在「后端写的容器」与「前端读的容器」之间。只喂 MSW mock 证明不了生产可用（mock 一直走对的形状，生产走错的，铁律 0.5 判据 #6）。故本 fixture 是**生产真下发的字节**，喂给**真 renderer**。"
   },
   "views": [
+    {
+      "viewKey": "graph",
+      "name": "本体图谱",
+      "renderer": "ontology-graph",
+      "layout": {},
+      "options": {
+        "graphOptions": {
+          "colorBy": "domain",
+          "nodeFilter": {
+            "domains": [
+              "factory",
+              "product",
+              "process",
+              "equip",
+              "people",
+              "quality",
+              "capacity",
+              "forecast",
+              "sales",
+              "material",
+              "finance",
+              "plan",
+              "external",
+              "decision"
+            ]
+          },
+          "dimOthers": true,
+          "layoutSeed": 42
+        },
+        "desc": "对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。"
+      },
+      "key": "graph",
+      "title": "本体图谱"
+    },
     {
       "viewKey": "graph-all",
       "name": "图谱·全景",

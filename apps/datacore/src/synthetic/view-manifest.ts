@@ -1,4 +1,5 @@
 import type { FeatureDef } from "@platform/contracts";
+import { BUSINESS_DOMAIN_KEYS } from "../graphmeta.js";
 
 /**
  * WO-MEMORY-VIEW-RESILIENCE · 内置视图单一来源（"内存模式视图默认配置防丢"·PRD §4.1）。
@@ -17,8 +18,50 @@ import type { FeatureDef } from "@platform/contracts";
  *   synthetic/battery  = scenarioSeed.views = SEEDED_VIEW_KEYS（= BUILTIN_VIEWS.filter(seed).map(key)）
  * 再由 `assertViewManifestIntegrity()` 在种子路径 fail-fast：任一 seeded 视图缺 featureKey/映射/VIEW_DEF → 启动即抛。
  *
- * 本文件是叶子模块（只依赖 @platform/contracts 类型），故 features.ts / service.ts / battery.ts 均可安全 import，无环。
+ * 本文件是叶子模块（只依赖 @platform/contracts 类型 + 零依赖叶子 `graphmeta.ts`），
+ * 故 features.ts / service.ts / battery.ts 均可安全 import，无环。
  */
+
+/**
+ * 「本体图谱」(`graph`) 的视角配置 —— 修 `G-GRAPH-ENTRY-DUP`（IA 重复入口）。
+ *
+ * 病灶（实测，非推测）：`graph` 此前是**零配置**（`layout: {}`、无 `options`），而
+ * `graph-all`（图谱·全景）显式带的 `{colorBy:"domain", layoutSeed:42}` **恰好等于前端默认值**
+ * （`OntologyGraphView.tsx` 的 `DEFAULT_OPTIONS = {colorBy:"domain"}` + `layoutSeed ?? 42`）。
+ * 逐条比对 `colorBy`/`nodeFilter`/`dimOthers`/`linkKinds`/`mvpOverlay`/`layoutSeed` 六个消费分支
+ * **全同 ⇒ 两个导航入口渲染输出完全相同**，用户站在导航栏前无法凭标题区分。
+ *
+ * 裁决（仓主）：两个入口都留，但必须**真的不同**。故给 `graph` 配一组真配置。
+ *
+ * 为什么选「业务域 allowlist + dimOthers」这一组（判据是**语义**，不是哪个好写）：
+ *  · 二者的**主语不同**：`graph-all` 自述是"14 业务域对象类型 **+ 求解器 + 智能体**一张图"——
+ *    主语是**整个系统三层**；而「本体图谱」的职责是**对象本体层**的浏览器（点节点出检查器：
+ *    属性/来源字段/适用规则/派生公式/字段覆盖徽章/CSV 模版，见 f7、f27）。
+ *    所以差别落在"**哪一层是主角**"上，这是这两个入口本来就该有的差别。
+ *  · **为什么是 `dimOthers: true`（淡出）而不是隐藏**：求解器/智能体节点仍**渲染**，
+ *    只是退到背景 —— ① 用户仍可点开它们看绑定关系（本体图谱是浏览器，不该藏东西）；
+ *    ② 隐藏会让 `calc`/`fb`/`orch` 边因端点消失而一起没了，图会"缺一块"而不是"分主次"。
+ *  · **为什么 `layoutSeed` 仍是 42**：故意与 `graph-all` **同布局**。换种子只会把节点位置洗一遍，
+ *    那是**任意**差异不是**有意义**差异；同布局反而让用户左右切换时一眼看出"同一张图，
+ *    强调的层不同"。
+ *  · 未选 `colorBy:"source"`（那是 `graph-source` 的职责，选它等于再造一对重复入口）、
+ *    未选 `mvpOverlay`（`graph-mvp` 的职责）、未选 `nodeFilter.tiers`（`graph-backbone` 的职责）。
+ *
+ * 域清单取 `graphmeta.BUSINESS_DOMAIN_KEYS`（14 业务域单一来源），**不手抄** ——
+ * 新增业务域时本视角自动跟随，不会因为漏抄一个域把该域整片对象误淡出。
+ */
+const ONTOLOGY_BROWSER_OPTIONS: Record<string, unknown> = {
+  graphOptions: {
+    colorBy: "domain",
+    // 主角 = 业务域对象；求解器/智能体两域不在册 ⇒ 落入 dimOthers 的淡出集。
+    nodeFilter: { domains: BUSINESS_DOMAIN_KEYS },
+    dimOthers: true,
+    layoutSeed: 42,
+  },
+  desc:
+    "对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。" +
+    "求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。",
+};
 export interface BuiltInView {
   /** ViewConfig 键（= 前端路由 viewKey·workspace.views[].viewKey·VIEW_FEATURE_MAP 键）。 */
   key: string;
@@ -57,7 +100,7 @@ export interface BuiltInView {
  */
 export const BUILTIN_VIEWS: BuiltInView[] = [
   { key: "dash", title: "经营驾驶舱", renderer: "dashboard", featureKey: "view.dash", featureName: "驾驶舱", seed: true, bindings: { apiTags: ["dash"] } },
-  { key: "graph", title: "本体图谱", renderer: "ontology-graph", featureKey: "view.ontology-graph", featureName: "本体图谱", seed: true, layout: {} },
+  { key: "graph", title: "本体图谱", renderer: "ontology-graph", featureKey: "view.ontology-graph", featureName: "本体图谱", seed: true, layout: {}, options: ONTOLOGY_BROWSER_OPTIONS },
   { key: "risk", title: "产能推演", renderer: "risk-board", featureKey: "view.risk-board", featureName: "风险推演看板", seed: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
   { key: "order", title: "订单台账", renderer: "ledger", featureKey: "view.ledger", featureName: "订单台账", seed: true },
   { key: "plan-audit", title: "规划体检", renderer: "plan-audit", featureKey: "view.plan-audit", featureName: "规划体检", seed: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
