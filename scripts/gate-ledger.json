@@ -982,6 +982,26 @@
         "note": "三向实测：① 修后 RC=0（1691 个受控文件，金丝雀命中）；② 变异反证——把 sandboxConsole.ts 造回去制造冲突 → RC=1 且精确点名 `SandboxConsole <=> sandboxConsole` 那一对；③ 还原后 RC=0，`git status --porcelain` 干净。另开发期金丝雀抓到本门自伤一次：第一版判据用「整路径小写化去重」，对 .tsx/.ts 扩展名不同的冲突恒报 0 命中——金丝雀不中 ⇒ 报「工具坏了」而非「仓库干净」，据此换成 stem 级判据。"
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
+    },
+    "check-coverage-blind.mjs": {
+      "alias": "coverage-blind:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/test/**",
+        "apps/agentcore/test/**",
+        "apps/frontend-shell/test/**",
+        "packages/contracts/test/**",
+        "packages/llm-adapters/src/**",
+        "scripts/coverage-blind-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:988",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7 行988",
+        "note": "四条变异反证已亲手跑过（均已还原·git status 干净）：① chain-sim.test.ts 遍历 CHAIN_NODE_REGISTRY 的 ∀ 断言改成 filter+toBeGreaterThan(0) 的 ∃ 形态 → EXISTS_FOR_ALL 红 RC=1；② 同文件 expect(CHAIN_STAGES).toEqual([五段]) 削成 toContain(\"DEMAND\") → LOOP_NO_FLOOR 红 RC=1；③ gslive-cockpit.test.tsx 的 ranAgentLoop:false 翻成 true（生产仍 false）→ SWITCH_ARG_UNCOVERED 红 RC=1；④ 主检测器存在性正则里 toBeGreaterThan(0) 改成 toBeGreaterThan(99999) → 金丝雀当场报 RC=2「工具坏了」（证金丝雀与主逻辑共用同一份实现，不是装饰品：若各抄一份，该变异会静默吞掉 80 条命中、基线条目集体消失、门反而报绿）。另证 --update 面对基线外新增拒绝写入 RC=1、--seed 在基线非空时拒绝 RC=1。"
+      },
+      "notes": "棘轮基线 scripts/coverage-blind-baseline.json（建账 217 条·逐条带 why + 一个具体反例输入）。写路径只有两条且都是单向的：--seed 仅在基线为空时可用（一次性建账）、--update 只删不增 ⇒ 「把红的塞进基线」在结构上不存在。退出码三分 0/1/2，RC=2 表示工具自己坏了，不许读作仓库干净。扫描面自证第一次跑就抓出 git pathspec 'apps/*/test/**/*.test.ts' 恒 0 命中（铁律 0.6 表格第 1 行同款坑）。"
     }
   }
 }

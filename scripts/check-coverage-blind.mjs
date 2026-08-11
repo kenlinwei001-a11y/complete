@@ -86,6 +86,12 @@ const BASELINE_PATH = join(ROOT, "scripts", "coverage-blind-baseline.json");
 const ARGS = new Set(process.argv.slice(2));
 const REPORT = ARGS.has("--report");
 const UPDATE = ARGS.has("--update");
+/**
+ * `--seed` 是**一次性**的建账入口，且**只在基线为空时**可用（下方会硬拦）。
+ * 一旦基线有条目，唯一的写路径就是 `--update`，而 `--update` **只删不增** ——
+ * 于是「把红的塞进基线」这条逃生路在结构上不存在，不靠人自觉。
+ */
+const SEED = ARGS.has("--seed");
 
 /** RC=2 专用：工具坏了，**不是**"仓库干净"。 */
 function toolBroken(why, detail) {
@@ -865,12 +871,16 @@ for (const f of testFiles) {
     testSites.get(p.key).push(`${f}:${p.line}=${p.value}`);
   }
 }
+const d4Covered = [];
 for (const [key, pv] of [...prodBool.entries()].sort()) {
   if (!declared.has(key)) continue; // 必须是真声明过的布尔开关
   const tv = testBool.get(key);
   if (!tv || tv.size === 0) continue; // 测试压根不传 → 是另一种病（不在本门射程），不报
   const inter = [...pv].filter((v) => tv.has(v));
-  if (inter.length > 0) continue;
+  if (inter.length > 0) {
+    d4Covered.push(`${key}（生产 ${[...pv].join(",")} ∩ 测试 ${[...tv].join(",")} = ${inter.join(",")}）`);
+    continue;
+  }
   hits.push({
     file: (prodSites.get(key)[0] || "").split(":")[0],
     line: Number((prodSites.get(key)[0] || "::0").split(":")[1]) || 0,
@@ -924,6 +934,8 @@ console.log(
 );
 
 if (REPORT) {
+  console.log(`\n=== D4 已覆盖的布尔开关（${d4Covered.length}）—— 生产实参真的被某个测试跑过 ===`);
+  for (const c of d4Covered) console.log(`  ✓ ${c}`);
   const grouped = {};
   for (const h of hits) (grouped[h.detector] ||= []).push(h);
   for (const [det, list] of Object.entries(grouped)) {
@@ -934,6 +946,60 @@ if (REPORT) {
       if (h.detail) console.log(`      ${h.detail}`);
     }
   }
+}
+
+/** 每条基线条目的 why —— 说清「这条今天盲在哪、能盲到什么程度」，不是一句"存量"糊过去。 */
+const WHY_BY_DETECTOR = {
+  LOOP_NO_FLOOR: (h) =>
+    `遍历 \`${h.symbol}\` 的循环体里有 expect，但整条用例没有任何咬住 \`${h.symbol}\` 条数的断言 ⇒ ` +
+    `该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 \`${h.symbol}\` 返回 \`[]\` —— 0/N 与 N/N 同色。`,
+  EXISTS_FOR_ALL: (h) =>
+    `派生集合 \`${h.symbol}\` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），` +
+    `既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。`,
+  FILTER_TAUTOLOGY: (h) =>
+    `先用 \`${String(h.symbol).split(".").slice(1).join(".")}\` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ ` +
+    `**构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。`,
+  SWITCH_ARG_UNCOVERED: (h) =>
+    `布尔开关 \`${h.symbol}\` 的生产实参集合与测试实参集合**交集为空**（${h.kind}）⇒ ` +
+    `测试验的是生产从不走的那条分支。反例输入：把生产那条分支整个改坏 —— 全部测试照绿（CLAUDE.md 铁律 0.5 判据 #6）。`,
+};
+
+if (SEED) {
+  if (baseKeys.size > 0) {
+    console.error(
+      `\n✗ --seed 拒绝：基线已有 ${baseKeys.size} 条。\n` +
+        `  \`--seed\` 只在**基线为空**时可用（一次性建账）。此后唯一写路径是 \`--update\`，而它**只删不增**。\n` +
+        `  这不是提示，是结构性约束：没有任何入口能把新的红条目塞进基线。`,
+    );
+    process.exit(1);
+  }
+  const entries = {};
+  for (const h of hits.sort((a, b) => a.key.localeCompare(b.key))) {
+    entries[h.key] = {
+      detector: h.detector,
+      file: `${h.file}:${h.line}`,
+      symbol: h.symbol,
+      why: (WHY_BY_DETECTOR[h.detector] || (() => "存量盲点"))(h),
+    };
+  }
+  writeFileSync(
+    BASELINE_PATH,
+    JSON.stringify(
+      {
+        note:
+          "覆盖率盲区棘轮基线（假绿第 12 形态：测试咬的是「机制通不通」，对覆盖率全盲 —— 32% 与 100% 同色）。" +
+          "本表是**存量清单**，不是逃生舱：`--update` 只删不增，新增盲点一律红。" +
+          "指纹刻意不含行号（file :: it 标题 :: 检测器 :: 目标符号），行号一漂全表失配会让门退化成噪声。",
+        seededAt: new Date().toISOString().slice(0, 10),
+        gate: "scripts/check-coverage-blind.mjs",
+        entries,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  console.log(`✓ 基线建账：${Object.keys(entries).length} 条（此后只降不升）`);
+  process.exit(0);
 }
 
 if (UPDATE) {
