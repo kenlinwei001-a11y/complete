@@ -130,6 +130,17 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
   it("🔴 方向性反证：把 line_belongs_to_base 全部反向（Line→Base）⇒ 该规则必须不触发（金丝雀同跑）", async () => {
     const t = await seededApp();
 
+    // ⚠ **前提断言（防本用例变成空转）**：本用例咬的是"把边反过来 ⇒ 那条规则不触发"，
+    // 它隐含一个前提 —— 规则此刻确实声明 `Base --line_belongs_to_base--> Line`。
+    // 没有这三行，一旦有人把种子改回 #158 原文（规则变成 Line→Base、key 也换了名），
+    // 下面 `allKeys.has("demo_base_load_to_line_util")` 会**因为这个名字压根不存在**而恒 false ⇒
+    // 本用例**假绿**（实测：变异反证时 ①③ 都红了，唯独这一条绿着）。把前提钉死，空转即红。
+    const underTest = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((r) => r.viaLinkKey === "line_belongs_to_base")!;
+    expect(underTest).toBeDefined();
+    expect([underTest.key, underTest.sourceTypeKey, underTest.targetTypeKey])
+      .toEqual(["demo_base_load_to_line_util", "Base", "Line"]);
+
     // 把真链路表里这条 key 的每一行**原地反向**（fromId/toId 互换），其余链路一律不动。
     const orig = await t.repos.links.list("demo", (l) => l.type === "line_belongs_to_base");
     expect(orig.length).toBeGreaterThan(0); // 金丝雀：确实反转到了东西，不是对空集操作
