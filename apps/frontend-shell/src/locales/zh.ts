@@ -431,6 +431,38 @@ export const zh = {
     },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    /**
+     * WO-UI-DECLUTTER-TOP3 · 浮层文案（`docs/CONVENTION-ui-information-layering.md` §1）。
+     * 第一层只留「数值 / 状态 / 名字」，**口径 · 公式 · 为什么这么算 · 数据来源**一律降进 `?` 浮层；
+     * 文案走 locales（本体 R14：应用层不内联业务文案），不写死在组件里。
+     */
+    info: {
+      bridge: "这一页在回答什么",
+      bridgeBody:
+        "计划-执行之桥：监测执行偏离月度计划的风险。窗口内预测越线（紧张度 ≥ 阈值）即出卡；偏离 → 处置 Action 或反提月度差异（C21）。",
+      tightness: "紧张度口径",
+      tightnessBody: (min: number, max: number, hint: string) =>
+        `chip 上的数字是该风险因素的紧张度（${min}–${max}·${hint}），不是该指标本身的值。例：「设备OEE 76」= 设备OEE 这一项的张力 76/100，不是 OEE=76%。`,
+      caliber: "受影响订单口径差",
+      caliberBody:
+        "本表 = 窗口内交期、且落在任一基地风险窗内的订单（覆盖全部基地）；顶部 KPI「受影响订单」只统计上方展示的那几张风险卡，覆盖面更窄，数值可能略少。",
+      econSource: "经营数据取数来源",
+      econSourceBody:
+        "未结订单金额 / 毛利额 / 毛利率经 affected_orders 真订单 × SEG_REGISTRY 单价勾稽真聚合（R13 可溯 · R6 单一真相源）；产能 / 库存列平台暂无该维度真数据源 → 诚实「—」（不伪造 · G-DM-1）。",
+      econNoSource: "平台暂无该维度真数据源，诚实留「—」，不伪造",
+      rootcause: "根因树怎么来的",
+      rootcauseBody:
+        "为什么越线：结构反向归因（设备 / 物料 / 订单）→ caused_by 溯终点根因，每个节点可下钻真对象（R13）。数据源 gap_attribution 真求解器，按基地结构反向分摊、叶级下钻真对象字段。",
+      rootcauseDiag: "诊断详情（响应字段 · 排查下一步）",
+      score: "综合评分口径",
+      scoreBody:
+        "综合评分 = 见效 × 紧迫度 ÷（投入档 × 周期）。下表按评分降序排列，最高者即推荐方案。「预期堵口」一列的见效值源自 mitigation_select.eff（求解器回传，非前端估算）。",
+      adoptGate: "采纳之后会发生什么",
+      adoptGateBody: "采纳经 adopt_mitigation 生成 Action 草稿 → 审批后下发工单（C5 门不绕 · 前端不直改计划）。",
+      planRow: "这张表怎么读",
+      planRowBody: "按越线日前置排启动时间。点任意行可看该行动如何推演出来（逐 step 推导 + provenance）。",
+      qa: "这个问答框的边界",
+    },
     // WO-CAPLIVE-2 · 产能推演「活台」：原子因子活推演 / 因子级根因 / 人机对话 / 方案存比（R14 下发·不内联）。
     live: {
       leverTitle: "原子因子活推演（拨动即 generic_inference 真重算）",
