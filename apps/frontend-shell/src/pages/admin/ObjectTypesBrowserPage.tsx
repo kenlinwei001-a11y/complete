@@ -114,10 +114,13 @@ export default function ObjectTypesBrowserPage() {
               </tr>
             </thead>
             <tbody>
-              {/* WO-OT-INSTANCE-REACH：实例面板**紧跟被点那一行**（`<tr><td colSpan>` 展开行），
-                  不再挂在整页最底部 —— 修前真后端 94 类型 / 15 域，点第 1 行时面板在 93 行之后，
-                  用户视角就是「点了没反应」。沿用本仓既有行内展开范式
-                  （LedgerView.tsx:104 与 RiskBoardView 处置表的 `<Fragment>` + colSpan 展开行）。 */}
+              {/* WO-OT-INSTANCE-REACH · 闭断点 G-OT-INSTANCE-PANEL-OFFSCREEN：
+                  实例面板**紧跟被点那一行**（`<tr><td colSpan>` 展开行），不再挂在整页最底部 ——
+                  修前真后端 94 类型 / 15 域，点第 1 行时面板在 93 行之后，用户视角就是「点了没反应」。
+                  该文件零 scrollIntoView / useRef / Modal（已复验），面板没有任何把自己带进视口的手段。
+                  取 `<Fragment>`+colSpan 就近展开而非 Modal：本页是**浏览器**，用户要的是
+                  「这一类型的实例」与邻近类型对照着看，Modal 会把表盖住、丢掉行上下文；
+                  且沿用本仓既有行内展开范式（LedgerView.tsx:104 · RiskBoardView 处置表），不另造一套。 */}
               {rows.map((s) => {
                 const rowOpen = selected?.key === s.key;
                 const hasInstances = s.count > 0;
