@@ -103,7 +103,8 @@ export type ImpedimentThreshold = z.infer<typeof ImpedimentThresholdSchema>;
  *
  * ── 为什么这个字段必须上屏（它不是 debug 信息）─────────────────────────────────
  * 引擎注释原话：「它是**「为什么这个阻滞点没有方案」的唯一可查处** —— 空白比错答更容易被当成「没问题」」。
- * 实测基线：15 个阻滞点里 **11 个诚实 NONE**。这 11 个若渲染成空白，用户读到的就是
+ * 引擎侧 2026-08-10 实测基线（**不是本层测的**，出处 `apps/datacore/test/impediment-options-seam.test.ts:114`，复验 `pnpm --filter datacore test test/impediment-options-seam.test.ts`）：
+ * 15 个阻滞点里 **11 个诚实 NONE**。这 11 个若渲染成空白，用户读到的就是
  * 「这些点没问题」，而事实是「查过了，本体上确实没有可拨的杠杆」——**两件完全不同的事**。
  * 故 `anchors / probes / effective / emitted` 四个数与 `gaps[]` **原文**一律上屏。
  *
@@ -383,7 +384,15 @@ export type CandidateAbsenceKind = keyof typeof CANDIDATE_ABSENCE_LABEL;
  * 杠杆值的格式化 —— **口径与 `DynamicLeverPanel.fmtLeverValue` 逐字相同**（WO-LEVER-UNIT 单源）。
  *
  * 后端 `LEVER_PROP_META` 下发 `unit` + `kind`，前端只按 kind 格式化、**不自己判断单位**：
- *  · `ratio` 比率 —— 存储口径 0–1 与 0–100 两种都真实存在（实测 `Process.attendance` 存 0–1、
+ *  · `ratio` 比率 —— 存储口径 0–1 与 0–100 两种都真实存在。
+ *    ⚠ 两个出处各证一半，**不许混引**（2026-08-11 逐条核过；本层没跑任何测量）：
+ *      ① 两者 `kind` 同为 `ratio` —— `apps/datacore/src/solvers/lever-meta.ts:20-22` 两行并排写着，
+ *         复验 `grep -n 'Line.utilization\|Process.attendance' apps/datacore/src/solvers/lever-meta.ts`；
+ *      ② **存储范围**一个 0–100 一个 0–1 —— 这条**不在**那张表里（表只声明 kind 与 unit），
+ *         出处是契约 `packages/contracts/src/chain-sim.ts:750` 的原文，
+ *         复验 `grep -n '存 0–100' packages/contracts/src/chain-sim.ts`。
+ *    （初稿把②也挂到 lever-meta 名下 —— 那张表根本证不了范围，属「拿 X 当 Y 的证据」，已改。）
+ *    即 `Process.attendance` 存 0–1、
  *    `Line.utilization` 存 0–100，而两者 `kind` 同为 ratio）。故 `v <= 1` 才 ×100，
  *    否则原样 —— 谁在这里无条件 ×100，谁就会把利用率画成 9589%。
  *  · 其余 kind —— 整数 + 单位后缀（26天 / 2班 / 8小时）。

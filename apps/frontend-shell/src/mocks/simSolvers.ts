@@ -1625,7 +1625,8 @@ const IMPEDIMENT_SCAN_ID = "scan_1f4a9c3b";
  * 不在这里抄一份 —— 抄了就会与契约漂移，而漂了没人会红。
  *
  * ══ 基线形态与生产同构（不是挑好看的编）═══════════════════════════════════════
- * 生产实测基线：15 个阻滞点 → **4 个真长出候选、11 个诚实 NONE**。
+ * 生产基线（引擎侧 2026-08-10 实测，**不是本文件测的**；出处 `apps/datacore/test/impediment-options-seam.test.ts:114`，
+ * 复验 `pnpm --filter datacore test test/impediment-options-seam.test.ts`）：15 个阻滞点 → **4 个真长出候选、11 个诚实 NONE**。
  * 故本 mock 同样是**少数有候选、多数 NONE**：两条产线（C05·杠杆就是判据量测属性本身）与
  * 一条物料缺口（C06·经规则闸 + 值键相等够到 `Material.onHand`）有候选，其余一律 NONE。
  * `UNAVAILABLE` **基线里一条都不放** —— 生产基线里就没有，凭空放一条就是 mock 比生产"多"，同样是骗。
@@ -2020,7 +2021,9 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
       BREAK: count("BREAK"),
     },
     candidateStats,
-    // 探针预算（400）远未用尽 —— 与生产基线同构（实测 119 次未截断）。
+    // 探针预算（`CANDIDATE_PROBE_BUDGET` = 400，`apps/datacore/src/solvers/impediment-options.ts:83`）远未用尽。
+    // 与生产基线同构：引擎侧 2026-08-10 实测 119 次探针、未截断（出处 `apps/datacore/test/impediment-options-seam.test.ts:114`，
+    // 复验 `pnpm --filter datacore test test/impediment-options-seam.test.ts`）—— **不是本文件测的数**。
     candidatesTruncated: false,
     candidateProbes: candidateStats.reduce((n, s) => n + (s.probes as number), 0),
     unresolved: [
