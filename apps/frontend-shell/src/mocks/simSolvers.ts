@@ -4,6 +4,9 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则命名阈值引用（`params.<名>`）——mock 的规则表达式与真后端同机制、同字面。
 import { ruleParamRef } from "@platform/contracts";
+// WO-SANDBOX-CANDIDATES-FE：候选 id 走契约**唯一构造处**（引擎也走它）——mock 手拼模板串就是第二个来源，
+// 拼法一漂前端拿候选反算出的 id 就与引擎对不上，而 schema 只校验 min(1)、谁都不会红。
+import { CAPACITY_FACTOR_BINDINGS, solutionCandidateId } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
 
@@ -1598,6 +1601,153 @@ const IMPEDIMENT_SCAN_ID = "scan_1f4a9c3b";
  *  · 卡点·硬容量夹定（C02）与断点·数据（C09）基线各 **0 条** —— 阈值行照给，条数就是 0，不补一条凑数。
  *  · 换型堵点（C22）与时间断（LEADTIME）落 `unresolved[]`，**诚实缺席**。
  */
+/**
+ * WO-SANDBOX-CANDIDATES-FE · 候选对策（`ChainImpediment.candidates` §7）的 mock。
+ *
+ * ══ 为什么 mock 必须跟着长出候选 ═══════════════════════════════════════════════
+ * 本文件顶部那条纪律是「**mock 模式若比生产漂亮，mock 就在骗人**」。
+ * 反向同样成立、且今天正在发生：真后端（S3 枚举器）在 demo 种子上**真的**给阻滞点长出了候选，
+ * 而 mock 一条都不给 ⇒ mock 模式下沙盘看起来像「这个功能不存在」。
+ * 那不是"保守"，那是另一种骗 —— 它让一条已经通了的链路在 mock 下**恒显示为空**。
+ *
+ * ══ 每个字段的格式都是**照引擎源码逐字镜像**的，不是编的 ═══════════════════════
+ * 逐条指得出出处（`apps/datacore/src/solvers/impediment-options.ts`）：
+ *  · `label`        `:705`  `${meta.label} ${dir} ${toValue}（${factorName}·${objectRef}）`
+ *                           —— **刻意不拼单位**（存储口径 0–1 与 0–100 都真实存在，后端拼上去就会
+ *                           出现「出勤率 ↑ 1%」这种错读数；单位随 `lever.unit`/`valueKind` 下发）。
+ *  · `join.path`    `:219`（LOCUS_PROP）/ `:281`（RULE_GATE）两种真路径原文。
+ *  · `rungSource`   `:407`（THRESHOLD）/ `:434`（PEER_*）—— **零步长常数**：档位要么是规则阈值本身，
+ *                           要么是同侪对象上真实存在的取值。
+ *  · `provenance.formula` `:739` `patchCapacityContext(…) → 判据 X(metricPath) 重算 + Σ computeByProcessModel.p50 重算`
+ *  · `dims` 三维    `:668-694` breach / severity / capacityP50，`unit` 与 `betterWhen` 逐字同。
+ *  · `candidateId`  走契约 `solutionCandidateId`（引擎 `:709` 同一个函数），**本文件零模板串**。
+ * 因子的 `factorName` / `mark` / `grain` 一律从 `CAPACITY_FACTOR_BINDINGS` **现查**（契约单源），
+ * 不在这里抄一份 —— 抄了就会与契约漂移，而漂了没人会红。
+ *
+ * ══ 基线形态与生产同构（不是挑好看的编）═══════════════════════════════════════
+ * 生产实测基线：15 个阻滞点 → **4 个真长出候选、11 个诚实 NONE**。
+ * 故本 mock 同样是**少数有候选、多数 NONE**：两条产线（C05·杠杆就是判据量测属性本身）与
+ * 一条物料缺口（C06·经规则闸 + 值键相等够到 `Material.onHand`）有候选，其余一律 NONE。
+ * `UNAVAILABLE` **基线里一条都不放** —— 生产基线里就没有，凭空放一条就是 mock 比生产"多"，同样是骗。
+ * （该态由测试用 `server.use` 覆盖回包来驱动，走的仍是真实路由。）
+ */
+
+/** 因子绑定现查（契约单源）。查不到就抛——mock 里出现一个契约上不存在的因子，是错必须当场炸。 */
+function factorOf(objectType: string, prop: string): { factorName: string; mark: string; grain: string } {
+  const b = CAPACITY_FACTOR_BINDINGS.find((x) => x.objectType === objectType && x.prop === prop);
+  if (!b) throw new Error(`mock 候选引用了契约上不存在的因子落点 ${objectType}.${prop}`);
+  return { factorName: b.factorName, mark: b.mark, grain: b.grain };
+}
+
+/** 一条 mock 候选。入参全部是「引擎那一刻手里有的东西」，本函数只做与引擎相同的拼装。 */
+function mkCandidate(a: {
+  impedimentId: string;
+  dataMode: "LIVE" | "PARTIAL" | "SYNTHETIC" | "EMPTY";
+  /** 杠杆落点。 */
+  objectType: string;
+  objectId: string;
+  prop: string;
+  /** `LEVER_PROP_META` 的三件套（后端下发，前端只格式化）。 */
+  metaLabel: string;
+  unit: string;
+  valueKind: string;
+  fromValue: number;
+  toValue: number;
+  join: { kind: "LOCUS_PROP" | "LINK_HOP" | "KEY_JOIN" | "RULE_GATE"; path: string };
+  rungKind: "THRESHOLD" | "PEER_NEXT" | "PEER_BEST";
+  rungSource: string;
+  effectKind: "METRIC_SELF" | "METRIC_DERIVED" | "DOWNSTREAM_ONLY";
+  /** 判据侧：规则码 · 量测路径 · 判据单位（= 宿主 evidence.unit）。 */
+  ruleKey: string;
+  metricPath: string;
+  evidenceUnit: string;
+  /** 三维 KPI 的前后值（`null` = 算不出来，**绝不补 0**）。 */
+  breach: { baseline: number | null; value: number | null };
+  severity: { baseline: number | null; value: number | null };
+  capacity: { baseline: number | null; value: number | null; baseId: string | null };
+}): Record<string, unknown> {
+  const f = factorOf(a.objectType, a.prop);
+  const dir = a.toValue > a.fromValue ? "↑" : "↓";
+  return {
+    // 引擎 `:709`：入参全部取自候选自身的公开字段 ⇒ 消费方能拿候选反算出同一个 id。
+    candidateId: solutionCandidateId({
+      impedimentId: a.impedimentId,
+      objectType: a.objectType,
+      leverObjectId: a.objectId,
+      prop: a.prop,
+      rungKind: a.rungKind,
+      toValue: a.toValue,
+    }),
+    impedimentId: a.impedimentId,
+    label: `${a.metaLabel} ${dir} ${a.toValue}（${f.factorName}·${a.objectId}）`,
+    lever: {
+      objectType: a.objectType,
+      objectId: a.objectId,
+      prop: a.prop,
+      factorName: f.factorName,
+      factorMark: f.mark,
+      grain: f.grain,
+      unit: a.unit,
+      valueKind: a.valueKind,
+    },
+    fromValue: a.fromValue,
+    toValue: a.toValue,
+    join: a.join,
+    rungKind: a.rungKind,
+    rungSource: a.rungSource,
+    effectKind: a.effectKind,
+    dims: [
+      {
+        key: "breach",
+        label: `超阈幅度（${a.metricPath}）`,
+        value: a.breach.value,
+        baseline: a.breach.baseline,
+        unit: a.evidenceUnit,
+        betterWhen: "lower",
+        dataMode: a.breach.value !== null && a.breach.baseline !== null ? a.dataMode : "EMPTY",
+        ...(a.breach.value !== null && a.breach.baseline !== null
+          ? {}
+          : { reason: "判据读数在该对象上取不回来（阈值或指标缺承载）" }),
+      },
+      {
+        key: "severity",
+        label: "严重度",
+        value: a.severity.value,
+        baseline: a.severity.baseline,
+        unit: "",
+        betterWhen: "lower",
+        dataMode: a.severity.value !== null && a.severity.baseline !== null ? a.dataMode : "EMPTY",
+        ...(a.severity.value !== null && a.severity.baseline !== null
+          ? {}
+          : { reason: "超阈幅度或规模基准算不出来 ⇒ severity 拒绝拍一个数" }),
+      },
+      {
+        key: "capacityP50",
+        label: `产能 p50 合计${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
+        value: a.capacity.value,
+        baseline: a.capacity.baseline,
+        unit: "套/天",
+        betterWhen: "higher",
+        dataMode: a.capacity.value !== null && a.capacity.baseline !== null ? "SYNTHETIC" : "EMPTY",
+        ...(a.capacity.value !== null && a.capacity.baseline !== null
+          ? {}
+          : { reason: "该作用域无逐工序格 ⇒ 产能维诚实缺席，不返回 0" }),
+      },
+    ],
+    provenance: {
+      // ⚠ 引擎 `impediment-options.ts:86` 的 `IMPEDIMENT_OPTION_SOLVER_KEY` 实际值就是 `"chain_impediments"`
+      //   （候选与判定同一次请求内完成，不是第二个 solver key）。此处曾按文件名想当然写成
+      //   `"impediment_options"` —— 那是"看着合理"的编造，读源码当场证伪，故留此注记。
+      solverKey: "chain_impediments",
+      formula:
+        `patchCapacityContext(${a.objectType}/${a.objectId}.${a.prop}: ${a.fromValue}→${a.toValue}) ` +
+        `→ 判据 ${a.ruleKey}(${a.metricPath}) 重算 + Σ computeByProcessModel.p50 重算`,
+      inputs: [`${a.objectType}.${a.prop}`, a.metricPath, `rule:${a.ruleKey}`],
+    },
+    dataMode: a.dataMode,
+  };
+}
+
 export function mockChainImpediments(args: Record<string, unknown>): Record<string, unknown> {
   const rawScope = (args.scope ?? {}) as Record<string, unknown>;
   // R-ARG-FIDELITY：真后端对这两维显式 400 而非静默返全域（datacore service.ts:3124）——
@@ -1662,6 +1812,175 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
     mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-changzhou-formation", "常州化成线", "C05", 97.2, 95, "%", "PARTIAL"),
     mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-xiamen-coating", "厦门涂布线", "C05", 96.4, 95, "%", "PARTIAL"),
   ];
+  // ── WO-SANDBOX-CANDIDATES-FE · 候选对策 + 逐点账 ───────────────────────────────
+  // 引擎为**每一个**阻滞点都 push 一行 stat（`impediment-options.ts:800/803`）——
+  // 有候选的那行不带 `noCandidateKind`，没候选的那行必带。本 mock 同口径：`stats` 与 `all` 一一对应。
+  const CAND: Record<string, Record<string, unknown>[]> = {};
+  const STATS: Record<string, unknown>[] = [];
+  const NO_CAND: Record<string, { reason: string; kind: "NONE" | "UNAVAILABLE" }> = {};
+
+  /** 空候选的原因文案 —— 逐字镜像引擎 `impediment-options.ts:793-798` 的 `why` 拼法（MIN=2）。 */
+  const noneWhy = (anchors: number, probes: number, gaps: string[]): string =>
+    `枚举已跑完，有效候选 0 个（探了 ${anchors} 个杠杆锚点 / ${probes} 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。` +
+    (gaps.length > 0 ? `缺口：${gaps.slice(0, 4).join(" | ")}` : "");
+
+  // ① 两条产线（C05）：杠杆**就是判据的量测属性本身**（`Line.utilization` == metricPath）⇒ LOCUS_PROP + 阈值档。
+  //    利用率往下拨 → 判据读数回到线内（breach↓），但产能也跟着降 —— 两个方向如实各自呈现，不藏。
+  const lineCands = (
+    impedimentId: string,
+    objectId: string,
+    baseId: string,
+    cur: number,
+    peer: number,
+    capBase: number,
+    capAtThreshold: number,
+    capAtPeer: number,
+  ): Record<string, unknown>[] => {
+    const sev = (breach: number) => clamp(Math.round((breach / 95) * 100), 0, 100); // 分母 = |阈值| = 95，同 mk()
+    const common = {
+      impedimentId,
+      dataMode: "PARTIAL" as const,
+      objectType: "Line",
+      objectId,
+      prop: "utilization",
+      metaLabel: "产线·利用率", // LEVER_PROP_META["Line.utilization"].label
+      unit: "%",
+      valueKind: "ratio",
+      fromValue: cur,
+      join: {
+        kind: "LOCUS_PROP" as const,
+        path: "Line(locus) 自身承载 Line.utilization（因子⑩ 瓶颈工序）",
+      },
+      effectKind: "METRIC_SELF" as const,
+      ruleKey: "C05",
+      metricPath: "Line.utilization",
+      evidenceUnit: "%",
+    };
+    return [
+      mkCandidate({
+        ...common,
+        toValue: 95,
+        rungKind: "THRESHOLD",
+        rungSource: "规则 C05 阈值 95%（judgeOne 读回的真值·非本文件的常数）",
+        breach: { baseline: round(cur - 95, 6), value: 0 },
+        severity: { baseline: sev(cur - 95), value: 0 },
+        capacity: { baseline: capBase, value: capAtThreshold, baseId },
+      }),
+      mkCandidate({
+        ...common,
+        toValue: peer,
+        rungKind: "PEER_NEXT",
+        rungSource: `同侪 Line.utilization ${peer > cur ? "紧邻上一档真实取值" : "紧邻下一档真实取值"} ${peer}（全类型（同基地同侪不足 2 个）·2 个不同取值·当前 ${cur}）`,
+        breach: { baseline: round(cur - 95, 6), value: round(peer - 95, 6) },
+        severity: { baseline: sev(cur - 95), value: sev(peer - 95) },
+        capacity: { baseline: capBase, value: capAtPeer, baseId },
+      }),
+    ];
+  };
+
+  const cz = "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-changzhou-formation";
+  const xm = "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-xiamen-coating";
+  CAND[cz] = lineCands(cz, "LINE-WS-changzhou-formation", "changzhou", 97.2, 96.4, 41250, 40316.5, 40890.2);
+  CAND[xm] = lineCands(xm, "LINE-WS-xiamen-coating", "xiamen", 96.4, 97.2, 40200, 39615.4, 41100.7);
+
+  // ② 一条物料缺口（C06）：落点 `MaterialBalance` 本身**没有**可拨动因子，
+  //    真路径是**规则闸 + 值键相等** —— 规则 C06 闸住因子⑬ `Material.onHand`，
+  //    实例由 `MaterialBalance.material = Material.name` 收窄到唯一那一行（收窄不了就诚实丢弃，不广播整型）。
+  //    这条是屏上唯一「杠杆落点 ≠ 阻滞点落点」的例子（leverIsLocus=false 的真实形态）。
+  const cu = "imp_BREAK.MATERIAL.material-gap_mbal-6";
+  const cuCommon = {
+    impedimentId: cu,
+    dataMode: "SYNTHETIC" as const,
+    objectType: "Material",
+    objectId: "mat-cu-foil",
+    prop: "onHand",
+    metaLabel: "物料·现货库存", // LEVER_PROP_META["Material.onHand"].label（unit 为空串：库存单位随物料，不臆造）
+    unit: "",
+    valueKind: "qty",
+    fromValue: 4027,
+    join: {
+      kind: "RULE_GATE" as const,
+      path: "规则闸 C06 + 值键相等 MaterialBalance.material = Material.name = 铜箔（因子⑬ 物料齐套）",
+    },
+    // 杠杆（Material.onHand）≠ 判据量测路径（MaterialBalance.gapTon），而判据读数真的动了 ⇒ 经派生带动。
+    effectKind: "METRIC_DERIVED" as const,
+    ruleKey: "C06",
+    metricPath: "MaterialBalance.gapTon",
+    evidenceUnit: "吨",
+  };
+  CAND[cu] = [
+    mkCandidate({
+      ...cuCommon,
+      toValue: 9277,
+      rungKind: "PEER_NEXT",
+      rungSource: "同侪 Material.onHand 紧邻上一档真实取值 9277（全类型（同基地同侪不足 2 个）·3 个不同取值·当前 4027）",
+      breach: { baseline: 398, value: 0 },
+      severity: { baseline: 9, value: 0 }, // 分母 = netDemandTon 4425（阈值 0 不能当分母）
+      capacity: { baseline: 168420, value: 171050.5, baseId: null },
+    }),
+    mkCandidate({
+      ...cuCommon,
+      toValue: 21373,
+      rungKind: "PEER_BEST",
+      rungSource: "同侪 Material.onHand 真实极值（最大） 21373（全类型（同基地同侪不足 2 个）·3 个不同取值·当前 4027）",
+      breach: { baseline: 398, value: 0 },
+      severity: { baseline: 9, value: 0 },
+      capacity: { baseline: 168420, value: 172316.8, baseId: null },
+    }),
+  ];
+
+  // ③ 其余一律**诚实 NONE**（与生产基线同构：15 个点里 11 个 NONE）。缺口原文照引擎 gap 拼法。
+  const LOCUS_GAP = (t: string) => `LOCUS_PROP 够不着：对象类型 ${t} 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点`;
+  const RULEGATE_GAP = (r: string) =>
+    `RULE_GATE 够不着：规则 ${r} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码）`;
+  for (const b of ["pos_ncm_b2", "neg_graphite_b2", "elyte_b2"]) {
+    const id = `imp_CONGESTION.MATERIAL.batch-idle_${b}`;
+    const gaps = [LOCUS_GAP("MaterialBatch"), RULEGATE_GAP("C28")];
+    NO_CAND[id] = { reason: noneWhy(0, 0, gaps), kind: "NONE" };
+    STATS.push({ impedimentId: id, anchors: 0, probes: 0, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
+  }
+  for (const [mb, name, peers] of [
+    ["mbal-1", "三元正极", "当前 21373"],
+    ["mbal-3", "石墨负极", "当前 9277"],
+  ] as const) {
+    const id = `imp_BREAK.MATERIAL.material-gap_${mb}`;
+    // 锚点探到了（规则闸 C06 收窄到该物料），档位也取到了 —— 但同侪里没有比当前更高的真实取值，
+    // 往下拨只会让缺口更大 ⇒ 逐候选真试算后**一维都没改善**，全被丢弃。这是「查过了，确实没有」。
+    const gaps = [
+      LOCUS_GAP("MaterialBalance"),
+      `同侪 Material.onHand 无更高档位：${name} 的现货已是同侪真实极值（3 个不同取值·${peers}）—— 往下拨只会让缺口更大，拒绝拍一个步长`,
+    ];
+    NO_CAND[id] = { reason: noneWhy(1, 2, gaps), kind: "NONE" };
+    STATS.push({ impedimentId: id, anchors: 1, probes: 2, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
+  }
+  // 有候选的三个点：stat 行**不带** noCandidateKind（引擎 `:803` 同口径）。
+  STATS.push({ impedimentId: cz, anchors: 6, probes: 12, effective: 2, emitted: 2, gaps: [] });
+  STATS.push({ impedimentId: xm, anchors: 6, probes: 12, effective: 2, emitted: 2, gaps: [] });
+  STATS.push({
+    impedimentId: cu,
+    anchors: 1,
+    probes: 2,
+    effective: 2,
+    emitted: 2,
+    gaps: [LOCUS_GAP("MaterialBalance")],
+  });
+
+  for (const im of all) {
+    const id = im.impedimentId as string;
+    const cands = CAND[id];
+    if (cands !== undefined) {
+      im.candidates = cands;
+      continue;
+    }
+    const no = NO_CAND[id];
+    // 契约 superRefine：空数组 ⟺ 必须同时给 reason **与** kind（只给散文 = 让消费方读散文猜）。
+    if (no !== undefined) {
+      im.candidates = [];
+      im.noCandidateReason = no.reason;
+      im.noCandidateKind = no.kind;
+    }
+  }
+
   // scope.baseIds 真过滤（只对带基地维的 locus 生效 —— 物料/批次不是基地维实体，同真后端 loci() 口径）。
   const impediments =
     wantBases === null
@@ -1671,6 +1990,11 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
           if (locus.objectType !== "Line") return true;
           return wantBases.some((b) => locus.objectId.includes(b));
         });
+  const keptIds = new Set(impediments.map((i) => i.impedimentId as string));
+  // stat 行随阻滞点一起过滤（回包里出现一个没有宿主的 stat 行 = 载荷自相矛盾）。全序排，R6。
+  const candidateStats = STATS.filter((s) => keptIds.has(s.impedimentId as string)).sort((a, b) =>
+    String(a.impedimentId) < String(b.impedimentId) ? -1 : 1,
+  );
   // 全序排序：severity 降序 → locus.objectId → impedimentId（contracts compareChainImpediment 同口径）。
   impediments.sort((a, b) => {
     const sa = a.severity as number;
@@ -1695,6 +2019,10 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
       CONGESTION: count("CONGESTION"),
       BREAK: count("BREAK"),
     },
+    candidateStats,
+    // 探针预算（400）远未用尽 —— 与生产基线同构（实测 119 次未截断）。
+    candidatesTruncated: false,
+    candidateProbes: candidateStats.reduce((n, s) => n + (s.probes as number), 0),
     unresolved: [
       {
         bindingId: "CONGESTION.CAPACITY.order-changeover",
