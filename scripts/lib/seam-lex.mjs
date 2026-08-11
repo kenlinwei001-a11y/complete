@@ -123,8 +123,15 @@ export function lex(src) {
   return { mask, strings };
 }
 
-/** 从 `(`（或 `{`）位置起，按顶层逗号切实参/属性，跳过字符串/模板/注释/嵌套括号。 */
-export function splitTopLevel(src, openIdx) {
+/**
+ * 从 `(`（或 `{`）位置起，按**顶层分隔符**切实参/属性，跳过字符串/模板/注释/嵌套括号。
+ *
+ * `seps` 默认只有 `,`（对象字面量 / 实参表 —— `check-backend-frontend-seam.mjs` 的既有语义，勿改）。
+ * TS **interface / type 字面量**的成员是 `;` 分隔的，要多传一个 `";"`（见 `splitTopLevelMembers`）：
+ * 只按逗号切 interface 会把整个体读成**一个** part ⇒ 成员一条都抽不到 ⇒ 该类型的字段全部读作不存在。
+ * 这正是本仓反复栽的那种"抽出 0 条却报干净"，故此处把分隔符做成参数、由调用方显式声明。
+ */
+export function splitTopLevel(src, openIdx, seps = ",") {
   const open = src[openIdx];
   const close = open === "(" ? ")" : open === "{" ? "}" : "]";
   const parts = [];
@@ -141,10 +148,15 @@ export function splitTopLevel(src, openIdx) {
       if (depth === 0 && c === close) { parts.push(src.slice(partStart, j)); return { parts, end: j + 1 }; }
       j++; continue;
     }
-    if (c === "," && depth === 1) { parts.push(src.slice(partStart, j)); partStart = j + 1; j++; continue; }
+    if (seps.includes(c) && depth === 1) { parts.push(src.slice(partStart, j)); partStart = j + 1; j++; continue; }
     j++;
   }
   return { parts, end: src.length };
+}
+
+/** 结构化成员切分（zod 对象用 `,`、TS interface 用 `;` —— 两者都可能出现，一并切）。 */
+export function splitTopLevelMembers(src, openIdx) {
+  return splitTopLevel(src, openIdx, ",;");
 }
 
 /**
