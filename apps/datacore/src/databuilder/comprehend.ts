@@ -10,6 +10,15 @@ import { planSlice, type PlannerType, type PlannerLink } from "../ontology/slice
 import { findUnknownScopeTypes, type RuleScopeFinding } from "../rule-scope.js";
 
 /**
+ * 计划体的**诚实位**（非 need 数组 —— 刻意不放根级数组，那里被 `NEED_ARRAY_TO_KIND` 无遗漏门管着，
+ * 每个根级数组都必须对应一个 provisioner；诊断信息不是要被 provision 的东西，混进去就是骗那道门）。
+ */
+export interface PlanDiagnostics {
+  /** scope 指向了不存在的对象类型的规则（改前它们在这里被静默丢掉，连下游 HARD 门都看不见）。 */
+  unresolvedRuleScopes: RuleScopeFinding[];
+}
+
+/**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
  * 机械的 B 栈倒推（切片/意图/计划/场景/工作流/技能/Agent）仍由确定性 `assemblePlanBody` 完成。
  * 缺 LLM 绑定/失败时由 `comprehendScript` 关键词地板兜底（R6 字节级一致）。
@@ -199,7 +208,7 @@ export function assemblePlanBody(
   script: string,
   seed: number,
   registeredSolverKeys?: readonly string[],
-): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology; unresolvedRuleScopes: RuleScopeFinding[] } {
+): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology; diagnostics: PlanDiagnostics } {
   const typeKeys = new Set(core.objectTypes.map((t) => t.typeKey));
   const dataSources: PlanDataSource[] = core.objectTypes.map((e) => ({
     connType: "mock_generic",
@@ -228,7 +237,7 @@ export function assemblePlanBody(
     .map((s) => ({ ...s, solverKey: normalizeSolverKey(s.solverKey, registeredSolverKeys) }))
     // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
     .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) }));
-  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology, unresolvedRuleScopes };
+  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology, diagnostics: { unresolvedRuleScopes } };
 }
 
 /**

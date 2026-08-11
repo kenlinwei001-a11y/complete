@@ -180,7 +180,9 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
     // ① 不再静默丢：坏规则仍在 body 里（丢掉它 = 下游那道 HARD 门看不见它 = 门被卸了）。
     expect(body.rules.map((r) => r.key).sort()).toEqual(["R_BAD", "R_OK"]);
     // ② 诚实位随身：assemble 期就标出未知 scope + 候选。
-    expect(body.unresolvedRuleScopes).toEqual([
+    //    刻意挂在 `diagnostics`（对象）而非根级数组 —— 根级数组被 provisioners 的「无遗漏门」管着
+    //    （每个根级数组必须对应一个 provisioner），诊断信息塞进去就是骗那道门。
+    expect(body.diagnostics.unresolvedRuleScopes).toEqual([
       { ruleKey: "R_BAD", unknownTypeKey: "Ghost", suggestion: null, candidates: [], reason: "NO_CARRIER" },
     ]);
     // ③ 头号判据：既有的 FORWARD/HARD 闭包门**因此真的关上了**（此前被静默丢弃卸了武装）。
@@ -236,6 +238,31 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
 
     // 「本体还没建」不该被读成「所有规则都错」（否则种子期满屏假红）。
     expect(findUnknownScopeTypes([{ key: "C28", scopeObjectTypes: ["Batch"] }], [])).toEqual([]);
+  });
+
+  /**
+   * SEAM-8 —— WO §4 的核对结论**钉成断言**（本单只取证不修：三个改名点全在范围边界外）。
+   *
+   * `CAPACITY_FACTOR_BINDINGS` 因子⑤ 写的是 `ChangeoverMatrix.changeoverMin`，而对象上的真名是
+   * `minutes`（`battery-extended.ts:152/656`）。同族病，但**失效机制与 WO 假设的不同**，得说清：
+   *
+   *   WO 假设：读出 undefined → `?? 0` 兜底 → 静默算 0
+   *   实际  ：`solvers/service.ts:903` 是 `typeof o.props[b.prop] === "number"` 的**过滤**
+   *           ⇒ 该类型全部对象被剔除 ⇒ `objs` 空 ⇒ 杠杆**恒不出现**（fail-safe skip，不是兜底 0）
+   *
+   * 且**改名单独不足以复活⑤**：`lever-binding-drift.test.ts` 已具名记账另外两处下游死
+   * （`capacity.ts` 全文 0 次 ChangeoverMatrix；`patchCapacityContext` 的 switch 不认它 → override 静默丢弃）。
+   * 本条只钉**最上游**那一环 —— 恰恰是那份既有记账的注释里没写到的一环。
+   */
+  it("SEAM-8 · WO §4 核对：ChangeoverMatrix 真名是 minutes，因子⑤ 的 changeoverMin 在对象上恒不存在", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const rows = await t.repos.objects.listByType("demo", "ChangeoverMatrix");
+    expect(rows.length).toBeGreaterThan(0);
+    // 真名在、且是数（金丝雀：证明我确实读到了对象属性，不是整份对象都空）。
+    expect(rows.every((r) => typeof r.props.minutes === "number")).toBe(true);
+    // 绑定表写的那个名字，一条都没有 ⇒ service.ts:903 的 typeof 过滤会把它们全剔掉。
+    expect(rows.filter((r) => r.props.changeoverMin !== undefined).length).toBe(0);
   });
 
   it("SEAM-7 · 种子表回归锁：三条已归真类型键，C31 保持原样（缺口不许靠塞近似类型糊掉）", () => {
