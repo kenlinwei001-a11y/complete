@@ -1093,6 +1093,22 @@
         "note": "病因（仓主实测报「这截屏里面的文字显示有问题，黑色的不对」）：InferenceProcessDag.module.css 写 `fill: var(--text)`，而真名是 `--txt`（tokens.css:12）。关键不是「没上色」而是**取反向**：var() 替换失败 ⇒ 该声明计算值无效 ⇒ 属性取 unset；fill 是**可继承**属性 ⇒ unset = inherit ⇒ 一路继承到根的初始值 = 纯黑。深色节点底上叠黑字，控制台一声不吭、测试全绿。同批查出 --fg(3处) --border(10处) 共 14 个同病幽灵令牌。变异①：把 `fill: var(--txt)` 改成 `var(--txt-ghostXX)`（新名不含原子串，避开 toContain 恒真的坑）⇒ RC=1 并点名「--txt-ghostXX（疑似想写：--txt / --seg-active-txt / --nav-active-txt）」。变异②：把 stripComments 改成恒等函数 ⇒ **先红的是金丝雀** RC=2「⛔ 金丝雀不中 ⇒ 工具坏了，本次结论作废（不许读作『无幽灵令牌』）· 把注释里的散文当成真引用」，证明 6 条金丝雀与主逻辑共用 collectDefined/collectUsed 本体、非各抄一份正则的装饰品。诚实位「金丝雀 N/N 命中」现算（globalThis.__canaryTotal），不写死 —— 写死是假绿第 11 形态：加了断言而计数不动，屏上照旧「5/5 全中」。"
       },
       "notes": "判据 = 「被 var() 无兜底引用」∖「有定义」必须为空。「有定义」含两源：① CSS 里 `--foo:`；② TSX 内联样式运行时注入 `style={{\"--foo\":…}}` —— grep CSS 一次都看不见，按铁律 0.5 必须追这一层，否则会把注入的令牌误报成幽灵。有 fallback 的 `var(--foo, X)` 不计（写了兜底就是有意为之）。本门第一版栽在「注释里的散文被当成代码」：4 个文件的注释里写着「每个 var(--x) 必须定义在 tokens.css」——**那正是本门要执行的纪律本身**——被读成真引用而误报。故 stripComments 与它的常驻金丝雀不许摘。顺带一提：这条纪律以注释形式在仓里躺了很久，仍被违反 14 次 ⇒ 写在注释里的纪律不是机制。退出码三分：0 干净 / 1 有幽灵令牌 / 2 工具自己坏了（此时只许说「我没查出来」）。"
+    },
+    "check-gate-exit-discipline.mjs": {
+      "alias": "gate-exit-discipline:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "scripts/check-*.mjs",
+        "scripts/gate-exit-discipline-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-GATE-RC1-MASQUERADE",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-12 接手人独立双向变异（非转述 wip agent）+ 门自带 --selftest 四注入",
+        "note": "病灶：node 对未捕获异常一律退 1，恰撞上三分约定的「真有问题」，于是「门没跑起来」被读成「代码有问题」，方向相反（2026-08-11 两道门各撞一次）。机制：58 门统一加顶层兜底（uncaughtException/unhandledRejection ⇒ RC=2），RC=1 只留主判据判负一路。接手人补完 wip 缺口：check-no-raw-nul.mjs 被叫停时只写了 gateToolBroken 函数、漏了两行 process.on 注册（+19 vs 其余 +21），被本门当场判红后补齐。变异①（环境故障⇒2）：ontology-anchor-baseline.json 写入非法 JSON（读回确认落地）⇒ check-ontology-anchors RC=2「not valid JSON」，还原 RC=0。变异②（真违规⇒1 不许被吞）：gate-exit-discipline-baseline.json 注入裸 NUL（python 读回 NUL 在）⇒ check-no-raw-nul RC=1，还原 RC=0。变异③（棘轮咬新门）：造 scripts/check-zzprobe.mjs 无 exit(2) 无兜底（注释里写 exit(2) 字样——AST 不吃注释，顺带活证金丝雀④）⇒ 本门 RC=1 点名，删除后 RC=0。门自身 --selftest：金丝雀 9/9、缺 TS⇒2、基线坏⇒2、未预期异常⇒2、真违规⇒1、无注入⇒0，全绿。"
+      },
+      "notes": "判据（缺一不可，各治一半）：① 有 RC=2 出口（直接 exit(2) 或调用必退 2 的函数，AST 不动点传播，注释/字符串不算）；② 有顶层兜底且通向 exit(2)（三形态：顶层 try/catch · 顶层无条件 process.on · 顶层 .catch()）。只查①会得出相反安心感：本仓实测 11 门有 exit(2) 仅 2 有兜底。棘轮：exempt 只许降不许升（合规了还挂名也红）。诚实边界：静态 import 链接期失败堵不住（早于任何用户代码注册）；只查结构存在、不查语义兜得住（catch(e){} 空吞也判合规，真正的证明是各门自己的故障注入）。"
     }
   }
 }
