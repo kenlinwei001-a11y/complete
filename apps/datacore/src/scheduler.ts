@@ -7,6 +7,12 @@ import type { OutboxService } from "./outbox.js";
 import type { TimeseriesService } from "./timeseries.js";
 import { notFound } from "./errors.js";
 import { evaluateAst, parseExpression, sustainField, type AstNode } from "./ruledsl.js";
+import {
+  findUnknownScopeTypes,
+  ruleScopePayload,
+  RULE_SCOPE_UNRESOLVED_EVENT,
+  type RuleScopeFinding,
+} from "./rule-scope.js";
 
 export type JobHandler = (tenantId: string, refId: string, scheduledAt: string) => Promise<void>;
 
@@ -192,6 +198,29 @@ export class RuleScanService {
     this.calibrationHook = hook;
   }
 
+  /**
+   * WO-RULE-SCOPE-DROP · **诚实位**：作用域类型键解析不到本体对象类型时，落一条可观察事件。
+   *
+   * 改前是这样的：`scan()` 直接 `objects.listByType(tenantId, "Batch")` —— 类型不存在 ⇒ 恒返空数组 ⇒
+   * 内层 for 一次都不进 ⇒ 该规则**永不产生任何判定**，而且**无日志、无报错、无事件**。
+   * 规则库里躺着一条永远不会响的规则，四包全绿。这就是本仓最恨的「静默丢弃」。
+   *
+   * 改后：每轮扫描先解析一遍作用域，解析不到的**必须发声**（`rule.scope_unresolved` → outbox →
+   * `/a/v1/outbox` 与 webhook 都看得见），并带上机器判定的近似名（判不出则显式说「真缺承载类型」）。
+   *
+   * 这里刻意**不抛错**：扫描是周期性后台作业，抛错只会把整轮扫描连坐掉（连带那些本来好好的规则），
+   * 反而更不诚实。诚实 = 该评估的照评估、评估不了的**大声说出来**。真正 fail-closed 的位置在
+   * 构建期（`databuilder/closure.ts` 的 FORWARD/HARD 门），那里挡的是"新造出来的错"。
+   */
+  private async reportUnresolvedScopes(tenantId: string, rules: readonly Rule[]): Promise<RuleScopeFinding[]> {
+    const types = await this.repos.ontologyTypes.list(tenantId);
+    const findings = findUnknownScopeTypes(rules, types.map((t) => t.key));
+    for (const f of findings) {
+      await this.outbox.emit(tenantId, RULE_SCOPE_UNRESOLVED_EVENT, ruleScopePayload(f), `rule-scope:${f.ruleKey}`);
+    }
+    return findings;
+  }
+
   private async scanSustainRule(tenantId: string, rule: Rule, ast: Extract<AstNode, { kind: "sustain" }>): Promise<RuleAlert[]> {
     const path = sustainField(ast.inner);
     if (!path || path.length < 2) return [];
@@ -217,6 +246,8 @@ export class RuleScanService {
   /** Full scan; emits rule.alert / calibration.required outbox events; returns active alerts. */
   async scan(tenantId: string): Promise<RuleAlert[]> {
     const rules = await this.repos.rules.list(tenantId, (r) => r.status === "PUBLISHED");
+    // 先把「作用域压根解析不到」的规则喊出来，再去扫能扫的（诚实位与评估两不误）。
+    await this.reportUnresolvedScopes(tenantId, rules);
     const alerts: RuleAlert[] = [];
     for (const rule of rules.sort((a, b) => (a.key < b.key ? -1 : 1))) {
       if (!rule.expression.trim()) continue;

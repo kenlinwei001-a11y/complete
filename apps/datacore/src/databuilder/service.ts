@@ -31,6 +31,7 @@ import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, deriveSliceHops, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { findUnknownScopeTypes } from "../rule-scope.js";
 import { detectFkCandidates, deriveModelingSuggestion } from "../modeling.js"; // WO-DB-MODELING-WIRE：数据先行 A3 复用
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
@@ -128,7 +129,15 @@ export class DataBuilderService {
         /* 无绑定/无 key/解析失败 → 落地板 */
       }
     }
-    return comprehendScript(script, seed);
+    // 地板路同样要带诚实位。刻意**不写死 `unresolvedRuleScopes: []`** —— 那就成了装饰品：
+    // 哪天地板模板的 scope 写错，写死的空数组会照样报「干净」。这里跑的是与 LLM 路**同一份实现**。
+    const floor = comprehendScript(script, seed);
+    return {
+      ...floor,
+      diagnostics: {
+        unresolvedRuleScopes: findUnknownScopeTypes(floor.rules, floor.objectTypes.map((t) => t.typeKey)),
+      },
+    };
   }
 
   /**
@@ -1146,7 +1155,16 @@ export class DataBuilderService {
           }
         }
         if (cfg.determinism.freezePlan) await this.repos.buildPlans.put(plan);
-        setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器`);
+        // WO-RULE-SCOPE-DROP：作用域解析不了的规则**必须出现在 comprehend 阶段的说明里**。
+        // 改前这些规则在 assemblePlanBody 里被静默删掉，阶段说明照样写「拆解 N 规则」——
+        // 那个 N 是删完之后的数，看的人根本不知道少了东西。现在少一条就明说少在哪、为什么。
+        const unresolved = body0.diagnostics.unresolvedRuleScopes;
+        const scopeNote =
+          unresolved.length === 0
+            ? ""
+            : ` · ⚠ ${unresolved.length} 条规则作用域未解析：` +
+              unresolved.map((f) => `${f.ruleKey}→${f.unknownTypeKey}(${f.reason})`).join("、");
+        setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器${scopeNote}`);
       }
       job.planId = planId;
 
