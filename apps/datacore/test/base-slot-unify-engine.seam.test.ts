@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpers.js";
+import { checkedTree, factHits, readRepo, stripComments } from "./factlock.js";
 import type { AuthCtx, ObjectInstance } from "../src/domain.js";
 import { refTypeDefFromRows, resolveBaseRef } from "../src/solvers/types.js";
 
@@ -180,14 +181,17 @@ describe("WO-BASE-SLOT-UNIFY §E-2 · 单一出处纪律（规则来自 contract
   });
 
   it("DataCore 求解器层没有第三套中文名匹配（源码判据：resolveBaseId 不再自己 find·委托共享解析器）", async () => {
-    const fs = await import("node:fs/promises");
-    const url = await import("node:url");
-    const src = await fs.readFile(url.fileURLToPath(new URL("../src/solvers/risk.ts", import.meta.url)), "utf8");
+    // 事实锚（WO-C 修法）：函数**住在哪个文件**不是事实 —— 全树定位（搬家不红；真改回自写匹配才红）。
+    const dc = checkedTree("apps/datacore/src", "resolveBaseId", 80);
+    const homes = factHits(dc, /export function resolveBaseId(?![\w])/);
+    expect(homes, "resolveBaseId 的定义全树找不到（或不唯一）⇒ 求解器入口形状变了").toHaveLength(1);
+    const src = readRepo(homes[0]!);
     const at = src.indexOf("export function resolveBaseId");
-    expect(at, "resolveBaseId 应仍在 risk.ts").toBeGreaterThan(-1);
-    const body = src.slice(at, at + 800);
-    expect(body).toContain("resolveBaseRef");
-    // 老那行自写匹配（`x.props.baseId === key || x.props.name === key`）必须不在了。
-    expect(body).not.toMatch(/props\.baseId\s*===\s*key/);
+    const end = src.indexOf("\nexport ", at + 10);
+    const body = stripComments(src.slice(at, end === -1 ? src.length : end));
+    expect(body.length, "resolveBaseId 函数体抽空了 ⇒ 抽取器坏了，不许读作「委托没了」").toBeGreaterThan(100);
+    expect(body, "resolveBaseId 不再委托共享解析器 resolveBaseRef").toContain("resolveBaseRef");
+    expect(body, "resolveBaseId 又写回自有的第三套匹配").not.toMatch(/props\.baseId\s*===\s*key/);
+    expect(factHits(dc, /(?<!export function\s)\bresolveBaseRef\s*\(/), "resolveBaseRef 全树零调用 ⇒ 委托链断了").not.toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { commentOnlyCanary, factHits, srcCode, stripComments } from "./factlock";
+import { checkedTree, commentOnlyCanary, factHits, srcCode, stripComments } from "./factlock";
 
 /**
  * WO-STALE-CLAIMS · **过期「自称实测」声明**的接缝门（本体 §8 `G-STALE-MEASURED-CLAIM`）。
@@ -140,8 +140,6 @@ describe("§2 · 判据真的会咬（喂已知坏样例）", () => {
 const datacoreCode = () => srcCode("apps/datacore/src");
 
 describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上游一删就红）", () => {
-  const model = () => readRepo("apps/frontend-shell/src/views/sim/inspectorModel.ts");
-
   it("上游承载还在：仍 `putAll(\"Cadence\")`、推演仍读回 —— 删了则 K1/K2 新文案又变假话", () => {
     const code = datacoreCode();
 
@@ -207,7 +205,11 @@ describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上
   });
 
   it("K1 / K2 的 evidence：旧的那两句假话没了，且新话带**实测日期 + 复验方式**", () => {
-    const src = model();
+    // 事实锚（WO-C 修法）：evidence 宿主**住在哪个文件**不是事实 —— 用 varId 全树定位（搬家不红；文案没了才红）。
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    const homes = factHits(fe, 'varId: "K1"');
+    expect(homes, `varId: "K1" 全树命中 ${homes.length} 处（${homes.join("、")}）—— 定位前提变了`).toHaveLength(1);
+    const src = readRepo(homes[0]!);
     // 旧假话（这两句今天为假）。**注释不参与判定**：文档里引用旧写法是应该的（`:558` 那段是病历，
     // 同段自己就写着「今天是假的」），真正要禁的是它重新变成上屏的可执行文案。
     const code = stripComments(src);
@@ -225,7 +227,7 @@ describe("§3 · 事实锁：本单改写的文案，其依据必须还在（上
   });
 
   it("REWORK 那条**没被顺手改坏**（它与后端口径一致、今天仍成立）", () => {
-    expect(model()).toContain("没有返工工时或天数字段");
+    expect(factHits(checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100), "没有返工工时或天数字段"), "REWORK 的口径文案没了 —— 要么被顺手改坏，要么搬了家").not.toEqual([]);
   });
 });
 
@@ -244,9 +246,11 @@ describe("§4 · 控制台图例不许再复述「零输入基线」", () => {
         ).not.toContain(`${rec}.${perishable}`);
       }
     }
-    // 仍在引用（`transitFlow.ts:486-490` 记着这两个导出保留的理由就是本图例还在用它们）
-    expect(code).toContain("CADENCE_ABSENCE.label");
-    expect(code).toContain("PROCUREMENT_BRANCH.label");
+    // 仍在引用（`transitFlow.ts:486-490` 记着这两个导出保留的理由就是本图例还在用它们）——
+    // 引用**住在哪个文件**不是事实（WO-C 修法）：全树判在不在，搬家不红。
+    const feTree = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    expect(factHits(feTree, "CADENCE_ABSENCE.label"), "图例不再读 CADENCE_ABSENCE.label —— 又回去读会过期的字段了").not.toEqual([]);
+    expect(factHits(feTree, "PROCUREMENT_BRANCH.label"), "图例不再读 PROCUREMENT_BRANCH.label —— 同上").not.toEqual([]);
   });
 
   it("`.label` 确实是**输入无关**的（四个分支同一个值）—— 否则读它一样是在读一张会过期的快照", async () => {
@@ -268,7 +272,8 @@ describe("§4 · 控制台图例不许再复述「零输入基线」", () => {
   });
 
   it("图例紧挨着渲染的就是会真取数的 `<TransitFlowView>` —— 状态由它自陈", () => {
-    expect(console_()).toMatch(/<TransitComputabilityLegend \/>[\s\S]{0,200}<TransitFlowView/);
+    // 邻接关系住在哪个文件不是事实（WO-C 修法）：全树判（剥注释后 JSX 相邻关系不受影响）。
+    expect(factHits(checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100), /<TransitComputabilityLegend \/>[\s\S]{0,200}<TransitFlowView/), "图例不再挨着 <TransitFlowView> —— 「状态由它自陈」的布局前提没了").not.toEqual([]);
   });
 });
 

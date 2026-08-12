@@ -45,6 +45,7 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
 });
 
 import { getRenderer } from "@/views/registry";
+import { checkedTree, factHits } from "./factlock";
 import { __timing } from "@/views/sim/ChainLineMapView";
 import {
   buildChainLineMap,
@@ -480,7 +481,7 @@ describe("零写死节点清单（S0 无节点 ID 单源注册表 → 前端一�
     const { TRUNK_STAGES, BRANCH_STAGE } = await import("@/views/sim/chainLineMap");
     const { CHAIN_STAGES } = await import("@platform/contracts");
     expect([...TRUNK_STAGES, BRANCH_STAGE].sort()).toEqual([...CHAIN_STAGES].sort());
-    expect(readRepo(derivePath)).toContain("CHAIN_STAGES.filter");
+    expect(factHits(checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100), /CHAIN_STAGES\.filter\(/), "TRUNK_STAGES 不再从 CHAIN_STAGES 派生 —— 又抄了一份清单").not.toEqual([]);
   });
 });
 

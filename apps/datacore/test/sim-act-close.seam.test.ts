@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, type TestApp } from "./helpers.js";
+import { checkedTree, factHits, readRepo, srcCode } from "./factlock.js";
 
 /**
  * WO-SIM-ACT-CLOSE · **扰动闭环接缝门**（欠账 #150 / #151 / #152）。
@@ -23,11 +22,15 @@ import { makeApp, ADMIN, type TestApp } from "./helpers.js";
  */
 
 // ── 源码抽取（带金丝雀）─────────────────────────────────────────────────────────
-const readRepoFile = (relFromTestDir: string): string =>
-  readFileSync(fileURLToPath(new URL(relFromTestDir, import.meta.url)), "utf8");
-
-const SANDBOX_VIEW = "../../frontend-shell/src/views/sim/SandboxView.tsx";
-const ENDPOINTS = "../../frontend-shell/src/api/endpoints.ts";
+const FE_TREE = "apps/frontend-shell/src";
+const PERTURB_CALL = "createSimPerturbation(sessionId, {";
+const EP_RE = /createSimPerturbation[\s\S]{0,900}?`(\/a\/v1\/sim\/sessions\/\$\{[^`]*?\}\/perturbations)`/;
+function locateFe(probe: string | RegExp, what: string): string {
+  const homes = factHits(srcCode(FE_TREE), probe);
+  if (homes.length !== 1)
+    throw new Error(`[sim-act-close] ${what} 全树命中 ${homes.length} 处（${homes.join("、")}）—— 形状变了，先修定位器再谈结论`);
+  return homes[0]!;
+}
 
 /**
  * 从 `SandboxView.tsx` 里抽出「施加扰动」那次调用真正传的 body 字段名。
@@ -93,23 +96,22 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
   // ══ ① 接缝驱动主用例 ═══════════════════════════════════════════════════════════
   it("① 用**前端源码里真实的那个请求**打后端 → 下游 KPI 真的变；不施加扰动的对照组不变", async () => {
     // ── 抽取 + 金丝雀 ───────────────────────────────────────────────────────────
-    const view = readRepoFile(SANDBOX_VIEW);
-    const endpoints = readRepoFile(ENDPOINTS);
-    expect(view.length, "SandboxView.tsx 读到空内容——路径漂了，先修工具再看结论").toBeGreaterThan(1000);
-    expect(endpoints.length, "endpoints.ts 读到空内容——路径漂了").toBeGreaterThan(1000);
-    // 金丝雀：一个**已知必中**的锚点（这两行是本页一直都有的，与本单无关）。
-    expect(view, "金丝雀不中 ⇒ 抽取工具坏了，不许据此报「前端没接线」").toContain(`data-testid="sandbox-tick-btn"`);
-    expect(endpoints, "金丝雀不中 ⇒ 抽取工具坏了").toContain("export const simTick");
+    // 事实锚（WO-C 修法）：调用**住在哪个文件**不是事实 —— 全树定位（搬家不红；真断线才红）。
+    const fe = checkedTree(FE_TREE, 'data-testid="sandbox-tick-btn"', 100);
+    const view = readRepo(locateFe(PERTURB_CALL, "「施加扰动」调用宿主"));
+    const endpoints = readRepo(locateFe(EP_RE, "createSimPerturbation 端点封装宿主"));
+    expect(view.length, "定位到的调用宿主读到空内容 ⇒ 定位器坏了，不许据此报「前端没接线」").toBeGreaterThan(1000);
+    // 金丝雀：已知必中的锚点（沙盘推进封装与本单无关，一定还在）。
+    expect(factHits(fe, "export const simTick"), "金丝雀不中 ⇒ 扫描器坏了，不许据此报「前端没接线」").not.toEqual([]);
 
     // 前端真的有那个按钮，且它真的调施加口（不是只 import 不调 —— 那是"排练"不是"实现"）。
-    expect(view, "沙盘没有「施加扰动」按钮 ⇒ 用户仍然做不出任何动作（#150 复发）")
-      .toContain(`data-testid="sandbox-perturbation-apply-btn"`);
-    expect(view, "按钮在、但没接到施加口上（假接线）").toContain("createSimPerturbation(sessionId, {");
+    expect(factHits(fe, 'data-testid="sandbox-perturbation-apply-btn"'), "沙盘没有「施加扰动」按钮 ⇒ 用户仍然做不出任何动作（#150 复发）").not.toEqual([]);
+    // （调用宿主已由 locateFe 钉死唯一，view 即其原文。）
     // 落点必须来自**真物化对象 id**：写到 `Type#0` 这种占位键上，屏上会变而下游一动不动。
-    expect(view, "扰动落点候选不是从 nodeObjectIds（真物化 id）来的 ⇒ 传导取不到源态").toContain("cfg?.nodeObjectIds?.[t]");
+    expect(factHits(fe, "cfg?.nodeObjectIds?.[t]"), "扰动落点候选不是从 nodeObjectIds（真物化 id）来的 ⇒ 传导取不到源态").not.toEqual([]);
 
     // 前端封装映射到哪个后端端点（端点改了这里就抽不到 ⇒ 红）。
-    const epMatch = endpoints.match(/createSimPerturbation[\s\S]{0,900}?`(\/a\/v1\/sim\/sessions\/\$\{[^`]*?\}\/perturbations)`/);
+    const epMatch = endpoints.match(EP_RE);
     expect(epMatch, "抽不到 createSimPerturbation 的 URL 模板——前端改了端点或封装被删").not.toBeNull();
 
     // 前端真传的 body 字段名（改名/漏传 ⇒ 下面构造的 payload 跟着变形 ⇒ 后端行为变 ⇒ 红）。
@@ -257,6 +259,6 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
   it("⑤ 反证：抽取器喂假源码 → 抽不到任何字段（证明①的绿来自前端真源码，不是恒真兜底）", () => {
     expect(frontendPerturbationBodyKeys("export default function X(){ return null }")).toEqual([]);
     // 而喂真源码时必须抽得到（同一函数，两个方向都验过才叫工具是对的）。
-    expect(frontendPerturbationBodyKeys(readRepoFile(SANDBOX_VIEW)).length).toBeGreaterThan(0);
+    expect(frontendPerturbationBodyKeys(readRepo(locateFe(PERTURB_CALL, "「施加扰动」调用宿主"))).length).toBeGreaterThan(0);
   });
 });

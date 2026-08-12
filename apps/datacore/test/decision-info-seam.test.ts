@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpers.js";
+import { checkedTree, factHits } from "./factlock.js";
 
 /**
  * WO-DECISION-INFO · SEAM-GATE（数据半 × 引擎半接缝驱动·非各半 unit）
@@ -443,23 +444,13 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     console.log(`⑤ 去魔数：跨基地 d${cross.day}(lead ${cross.leadTime!.days}·${cross.leadTime!.source!.objectId}) / 外协 d${outs.day}(lead ${outs.leadTime!.days}·${outs.leadTime!.source!.objectId})；改 transitDays+9 → d${cross2.day}；改 leadTime+11 → d${outs3.day}；踢出合格 → 出处 ${outs4.leadTime!.source?.objectId}`);
   }, 300000);
 
-  it("⑥ 去魔数（源码判据）：disposition.ts 里不再有 `trigDay + 7` / `trigDay + 14` 字面量", async () => {
-    const { readFile } = await import("node:fs/promises");
-    const { fileURLToPath } = await import("node:url");
-    const path = fileURLToPath(new URL("../../../packages/contracts/src/disposition.ts", import.meta.url));
-    const src = await readFile(path, "utf8");
-    // 只扫**代码**（注释里为了讲清病灶，原样引用了 `trigDay + 7`/`+14` 两个旧写法 —— 那是病历不是病）。
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-    // 只咬「日期偏移」这一处形态：trigDay + <数字字面量>。前置期必须从真对象来，不许再落回常数。
-    const magic = [...code.matchAll(/trigDay\s*\+\s*\d+/g)].map((m) => m[0]);
-    expect(magic, `disposition.ts 出现写死的日期偏移：${magic.join("、")} —— 前置期必须由 DispositionLead 从真对象派生`).toEqual([]);
-    // 反向锚：确实是"改成读真对象"，而不是"把偏移挪到别处藏起来"。
-    // ⚠ 三条都必须吃 `code`（已剥注释）。原先后两条吃的是 `src` —— 而本文件顶注 :35/:81/:113/:118
-    //   逐字写着 `InterBaseTransfer.transitDays` / `Supplier.leadTime`（那是病历，本来就该写）。
-    //   于是即便真把它们从代码里删干净，这两条也照样绿：命中的是注释，不是实现。
-    expect(code).toContain("leadOffset");
-    expect(code).toContain("InterBaseTransfer.transitDays");
-    expect(code).toContain("Supplier.leadTime");
+  it("⑥ 去魔数（源码判据）：不再有 `trigDay + 7` / `trigDay + 14` 字面量落回实现", async () => {
+    const tree = checkedTree("packages/contracts/src", "z.object", 40);
+    const magic = tree.flatMap(([f, code]) => [...code.matchAll(/trigDay\s*\+\s*\d+/g)].map((m) => `${f}: ${m[0]}`));
+    expect(magic, `contracts 出现写死的日期偏移：${magic.join("、")} —— 前置期必须由 DispositionLead 从真对象派生`).toEqual([]);
+    expect(factHits(tree, "leadOffset"), "leadOffset 全树零命中 ⇒ 前置期派生没了").not.toEqual([]);
+    expect(factHits(tree, "InterBaseTransfer.transitDays"), "跨基地前置期不再溯自 InterBaseTransfer.transitDays").not.toEqual([]);
+    expect(factHits(tree, "Supplier.leadTime"), "外协前置期不再溯自 Supplier.leadTime").not.toEqual([]);
   });
 
   it("⑦ R6 确定性：同输入两跑逐字节一致（三块输出全含在内）", async () => {

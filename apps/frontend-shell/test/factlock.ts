@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect } from "vitest";
 
 /**
  * **事实锁的公用扫描面** —— 锚在**事实**上，不锚在**位置**上。
@@ -68,3 +69,29 @@ export const factHits = (code: CodeTree, probe: string | RegExp): string[] =>
 export const commentOnlyCanary = (probe: string): CodeTree => [
   ["canary.ts", stripComments(`/* 提到 ${probe} 但只是散文 */\nconst x = 1;\n// ${probe} 也只是注释\n`)],
 ];
+
+/**
+ * 扫树 + 双金丝雀**一步到位** —— 2026-08-11 普查（WO-C）发现各测试文件各写各的金丝雀，
+ * 写着写着就会有人省掉 —— 省掉的那天，「事实没了」又是裸结论。故把铁律 0.6 结构进函数签名：
+ * 不给 `knownHit`（一个**已知必中**、与被测事实无关的串）就拿不到树。
+ *
+ * ① 规模下界：树扫空了 ⇒ 工具坏了，不许读作「全仓没有」；
+ * ② `knownHit` 必须命中 ⇒ 扫描/剥注释管线活着；
+ * ③ `commentOnlyCanary` 必须**不**中 ⇒ 注释没被当成代码。
+ * 三条任何一条挂了，当场红的是「工具坏了」，不是「事实没了」。
+ */
+export function checkedTree(rel: string, knownHit: string, minFiles: number): CodeTree {
+  const tree = srcCode(rel);
+  expect(tree.length, `扫描面塌了：${rel} 只扫到 ${tree.length} 个文件（下界 ${minFiles}）⇒ 工具坏了，结论作废`).toBeGreaterThan(
+    minFiles,
+  );
+  expect(
+    factHits(tree, knownHit),
+    `金丝雀①：已知必中的「${knownHit}」零命中 ⇒ 扫描器坏了，本次一切否定结论作废`,
+  ).not.toEqual([]);
+  expect(
+    factHits(commentOnlyCanary(`${knownHit}·CANARY`), `${knownHit}·CANARY`),
+    "金丝雀②：只在注释里出现的串被当成代码命中 ⇒ stripComments 坏了或被摘了，结论作废",
+  ).toEqual([]);
+  return tree;
+}

@@ -1018,6 +1018,25 @@
         "note": "病因（仓主实测报「这截屏里面的文字显示有问题，黑色的不对」）：InferenceProcessDag.module.css 写 `fill: var(--text)`，而真名是 `--txt`（tokens.css:12）。关键不是「没上色」而是**取反向**：var() 替换失败 ⇒ 该声明计算值无效 ⇒ 属性取 unset；fill 是**可继承**属性 ⇒ unset = inherit ⇒ 一路继承到根的初始值 = 纯黑。深色节点底上叠黑字，控制台一声不吭、测试全绿。同批查出 --fg(3处) --border(10处) 共 14 个同病幽灵令牌。变异①：把 `fill: var(--txt)` 改成 `var(--txt-ghostXX)`（新名不含原子串，避开 toContain 恒真的坑）⇒ RC=1 并点名「--txt-ghostXX（疑似想写：--txt / --seg-active-txt / --nav-active-txt）」。变异②：把 stripComments 改成恒等函数 ⇒ **先红的是金丝雀** RC=2「⛔ 金丝雀不中 ⇒ 工具坏了，本次结论作废（不许读作『无幽灵令牌』）· 把注释里的散文当成真引用」，证明 6 条金丝雀与主逻辑共用 collectDefined/collectUsed 本体、非各抄一份正则的装饰品。诚实位「金丝雀 N/N 命中」现算（globalThis.__canaryTotal），不写死 —— 写死是假绿第 11 形态：加了断言而计数不动，屏上照旧「5/5 全中」。"
       },
       "notes": "判据 = 「被 var() 无兜底引用」∖「有定义」必须为空。「有定义」含两源：① CSS 里 `--foo:`；② TSX 内联样式运行时注入 `style={{\"--foo\":…}}` —— grep CSS 一次都看不见，按铁律 0.5 必须追这一层，否则会把注入的令牌误报成幽灵。有 fallback 的 `var(--foo, X)` 不计（写了兜底就是有意为之）。本门第一版栽在「注释里的散文被当成代码」：4 个文件的注释里写着「每个 var(--x) 必须定义在 tokens.css」——**那正是本门要执行的纪律本身**——被读成真引用而误报。故 stripComments 与它的常驻金丝雀不许摘。顺带一提：这条纪律以注释形式在仓里躺了很久，仍被违反 14 次 ⇒ 写在注释里的纪律不是机制。退出码三分：0 干净 / 1 有幽灵令牌 / 2 工具自己坏了（此时只许说「我没查出来」）。"
+    },
+    "check-factlock-anchor.mjs": {
+      "alias": "factlock-anchor:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/test/factlock.ts",
+        "apps/datacore/test/factlock.ts",
+        "apps/frontend-shell/test/*.seam.test.ts*",
+        "apps/datacore/test/*.seam.test.ts",
+        "scripts/factlock-anchor-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-C 交付报告（24 轮双向变异反证 RC 矩阵）",
+        "note": "30 处修复逐条过双向反证：GONE 变异（事实真没了）24/24 如期转红，MOVE 变异（同目录 git mv +  shim）全绿即搬家不红。反证途中抓到并修掉 3 个探针自身的假绿漏洞：① 字符串探针前缀混滑（`export const CHAIN_NODE_REGISTRY` 是 `..._V2` 的前缀 ⇒ 改名不红）→ 探针加词界；② 调用形状探针被**字符串字面量**喂绿（transitFlow.ts 提示文案逐字引用 `deriveCadenceAbsence({ engineNodes, … })`）→ 探针收紧到带字段值的实参形状；③ `resolveStations(\\s*engineNodes` 被函数**定义行**命中 → 钉逗号区分调用与声明。另定性：多宿主事实（resolveBaseRef / expectedCadenceWaitDays / isValueAddKind）的 GONE 变异必须打全部宿主，单点变异不红不是探针坏、是事实本来没消失。"
+      },
+      "notes": "守「事实锁锚在事实不锚在位置」：禁新增 expect(readRepo(单文件)).toContain(符号) 形态；合法例外只有「位置即事实」（单源命题），走 scripts/factlock-anchor-baseline.json 棘轮豁免（key=文件+探针哈希·无行号·why 必填）。三件套与双金丝雀结构进 apps/frontend-shell/test/factlock.ts 的 checkedTree（datacore 经 test/factlock.ts shim 复用同一实现）。"
     }
   }
 }
