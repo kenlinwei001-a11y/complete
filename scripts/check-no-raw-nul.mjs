@@ -35,6 +35,8 @@
  * 这段只**加**默认失败方向，**不动**任何既有 exit(0)/exit(1)：兜底若把真违规也吞成 2，
  * 那是拿一个更糟的假绿换掉一个假红。RC=1 仍然只由主判据明确判负产生。
  * 守门的门：scripts/check-gate-exit-discipline.mjs（新加的门不带兜底会被它当场判红）。 */
+process.on("uncaughtException", (e) => gateToolBroken(e));
+process.on("unhandledRejection", (e) => gateToolBroken(e));
 function gateToolBroken(e) {
   console.error(`⛔ check-no-raw-nul.mjs 未预期异常（${e?.message || e}）⇒ **工具坏了，不是代码坏了**。`);
   console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」——本门这次没跑完，它什么都没证明。");
