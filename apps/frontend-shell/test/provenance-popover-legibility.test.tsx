@@ -9,6 +9,10 @@ import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
 import { ProvenanceDag, gapAttributionToDag, type GapAttrOutput } from "@/components/ProvenanceDag";
 import { useProvenance } from "@/components/Provenance/ProvenancePopover";
+// #175 正向判据改为真渲染查 DOM（见下方该用例的注释），故需要组件本体 + 口径的单一来源。
+import { RiskPopover } from "@/components/Risk/RiskPopover";
+import { TIGHTNESS_METRIC } from "@platform/contracts";
+import zhLocale from "@/locales/zh";
 import { loginAs } from "./utils";
 
 /**
@@ -1169,15 +1173,33 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
     ).toBe(BASELINE);
   });
 
+  /**
+   * #175 的正向判据。
+   *
+   * ⚠️ WO-R5 收编时**改过判法**：原版是对 `RiskPopover.tsx` 的**源码文本**做 `toMatch`
+   * （`/zh\.risk\.peakCaliber\(/` 等）。那是「位置锚事实锁」——
+   * `check-factlock-anchor` 当场报红（新增 2 条），而且它报得对：
+   * 写死单个文件路径去 grep 源码，组件一改名/一搬家，断言就**静默失效**，
+   * 而屏上有没有那行字它其实从来没验过 —— 咬的是源码字符串，不是链路。
+   *
+   * 改成**真渲染后查 DOM**：口径是不是可见文字、逐日格走的是不是 aria-label 而非 title，
+   * 都由渲染结果直接回答。这比原版严格（原版对「渲染了但被 CSS 藏起来」完全无感），
+   * 且不再依赖任何文件路径。
+   */
   it("RiskPopover 的峰值口径是**可见 DOM 文字**，不是 title 属性（#175 的正向判据）", () => {
-    const src = readRepo("apps/frontend-shell/src/components/Risk/RiskPopover.tsx");
-    // 口径文案走 locales 单一来源
-    expect(src).toMatch(/zh\.risk\.peakCaliber\(/);
-    expect(src).toMatch(/data-testid="risk-popover-peak-caliber"/);
-    const zhSrc = readRepo("apps/frontend-shell/src/locales/zh.ts");
-    expect(zhSrc, "risk.peakCaliber 未在 locales 里定义").toMatch(/peakCaliber:/);
-    // 逐日格改用 aria-label（可访问名），不是 title
-    expect(src, "逐日格又退回原生 title=").not.toMatch(/<span key=\{i\}[^>]*\stitle=/);
-    expect(src).toMatch(/aria-label=\{zh\.risk\.dayCellAria\(/);
+    render(<RiskPopover data={{ base: "常州", factor: "设备OEE", peak: 91, crossDay: 12, series: [10, 50, 91], threshold: 85 }} anchor={{ top: 0, left: 0, bottom: 0 }} />);
+
+    // ① 口径是可见 DOM 文字（不是 title 属性），且走 locales 单一来源而非组件内联字面量。
+    const caliber = screen.getByTestId("risk-popover-peak-caliber");
+    expect(caliber.textContent ?? "", "峰值口径没渲染成可见文字").toContain(zhLocale.risk.peakCaliber(TIGHTNESS_METRIC.scaleMin, TIGHTNESS_METRIC.scaleMax, TIGHTNESS_METRIC.hint));
+    expect(caliber.getAttribute("title"), "口径又退回 title 属性").toBeNull();
+
+    // ② 逐日格：走 aria-label（读屏念得到），不走原生 title。
+    const cells = [...screen.getByTestId("risk-popover-strip").querySelectorAll("span")];
+    expect(cells.length, "逐日格一个都没渲染 ⇒ 下面的断言是哑的").toBe(3);
+    for (const [i, cell] of cells.entries()) {
+      expect(cell.getAttribute("title"), `逐日格 ${i} 又退回原生 title=`).toBeNull();
+      expect(cell.getAttribute("aria-label") ?? "", `逐日格 ${i} 无可访问名`).toContain(`D+${i}`);
+    }
   });
 });

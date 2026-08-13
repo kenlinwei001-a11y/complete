@@ -1,6 +1,18 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { BuildPipeline, BuildPipelineKind, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
+// WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
+// 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
+import type {
+  DispositionOptions,
+  DispositionSideEffect,
+  DoNothing,
+  DoNothingOrderDelay,
+  Exposure,
+  ExposureCustomer,
+  ExposureOrder,
+  MissingEvidence,
+} from "@platform/contracts";
 // WO-UNBLOCK-SKILL-FE · 编译 mock 复用**契约里那份**纯函数实现（Parser/图派生住在 contracts，
 // 见 packages/contracts/src/skill-compile.ts）——绝不在此另抄一套 AST/图推导，抄了就是"同一概念两套词表"。
 import {
@@ -147,6 +159,322 @@ function mmddMock(startIso: string, day: number): string {
   return new Date(Date.parse(`${startIso}T00:00:00Z`) + day * 86400000).toISOString().slice(5, 10);
 }
 
+// ---------------------------------------------------------------------------
+// WO-DECISION-INFO-FE · mock 的**决策三块**（影响面 / 不作为后果 / 多方案代价）。
+//
+// 口径逐条照抄真后端（`apps/datacore/src/solvers/decision-info.ts`），不是另写一套看着像的：
+//   exposure      = 卡片**已有的那份** affectedOrders 聚合（不重新筛单）；金额 Σ qty×SEG 参考单价/1e4
+//                   （与 datacore `orderRevenueYi` 逐字同式·SEG_REGISTRY 单一价基）
+//   exposureOrder = `assignExposureRanks` 同判据：**hasExposure 是主序**（零敞口一律沉底），
+//                   其后 金额↓ → 单数↓ → 最早交期↑ → baseId↑（R6 全序·同输入同序）
+//   doNothing     = catchUp 用**与 planRows 同一份** shortfall/freeDaily（同一出处·不各算一套）；
+//                   delay 标 `ESTIMATED`（mock 的 affectedOrders[].delay 同样是估算，绝不当实测）；
+//                   penalty **恒 EMPTY**（与真后端一致：C01–C33 无交付罚则承载 → 前端必须显"未承载"）
+//   options       = `deriveDispositionOptions`（@platform/contracts **同一份**纯函数），
+//                   代价层照 datacore `attachOptionEvidence` 的形状装配：跨基地运费按真调拨台账算，
+//                   加班/外协成本本体无承载 → EMPTY（不填 0），外协比例对 C08 红线（OUTSOURCE_REDLINE 单源）。
+// 确定性 R6：全程无 Date.now / 无随机 —— 同 args 字节一致。
+// ---------------------------------------------------------------------------
+const SEG_PRICE_WAN: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
+const SEG_NAME_OF: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.seg]));
+/** mock 世界的客户→细分映射（真后端走 `segOfCust` 的客户名集合；mock 客户是另一批名字，故在此显式列出）。 */
+const MOCK_SEG_OF_CUST: Record<string, string> = { 蔚途汽车: "pas", 极光新能源: "ess", 星河储能: "ess" };
+const mockSegKey = (cust: string): string => MOCK_SEG_OF_CUST[cust] ?? "pas";
+const r2m = (v: number): number => Math.round(v * 100) / 100;
+const r6m = (v: number): number => Math.round(v * 1e6) / 1e6;
+/** 单张订单金额（亿元）= qty(套) × 细分单价(万元/套) / 1e4 —— 与 datacore orderRevenueYi 逐字同式。 */
+const mockOrderRevenueYi = (cust: string, qty: number): number => r6m((qty * (SEG_PRICE_WAN[mockSegKey(cust)] ?? 0)) / 1e4);
+
+type MockCard = RiskTimelineOutput["cards"][number];
+
+/** ① 影响面（不含 rank —— rank 由 assignExposureRanks 统一回填，与真后端同结构）。 */
+function mockExposure(card: MockCard, window: { fromDay: number; toDay: number }, forecastStart: string): Omit<Exposure, "rank"> {
+  const orders: ExposureOrder[] = (card.affectedOrders ?? [])
+    .map((a) => ({
+      so: a.so,
+      cust: a.cust,
+      model: a.model,
+      qty: a.qty,
+      due: a.due,
+      dueDay: a.dueDay,
+      // mock 的 affectedOrders 不带 Order.pri —— 诚实留空串（前端渲成"未标"），不默认成"中"。
+      pri: "",
+      revenueYi: mockOrderRevenueYi(a.cust, a.qty),
+      seg: SEG_NAME_OF[mockSegKey(a.cust)] ?? mockSegKey(a.cust),
+    }))
+    .sort((x, y) => x.dueDay - y.dueDay || (x.so < y.so ? -1 : 1));
+
+  const byCust = new Map<string, ExposureCustomer>();
+  for (const o of orders) {
+    const e = byCust.get(o.cust);
+    if (!e) {
+      byCust.set(o.cust, { cust: o.cust, seg: o.seg, orderCount: 1, qty: o.qty, revenueYi: o.revenueYi, earliestDue: o.due, earliestDueDay: o.dueDay });
+    } else {
+      e.orderCount += 1;
+      e.qty = r2m(e.qty + o.qty);
+      e.revenueYi = r6m(e.revenueYi + o.revenueYi);
+      if (o.dueDay < e.earliestDueDay) {
+        e.earliestDue = o.due;
+        e.earliestDueDay = o.dueDay;
+      }
+    }
+  }
+  const customers = [...byCust.values()].sort((a, b) => b.revenueYi - a.revenueYi || (a.cust < b.cust ? -1 : 1));
+  const common = {
+    baseId: card.baseId,
+    baseName: card.base,
+    window: { ...window, forecastStart },
+    units: { qty: "套" as const, revenue: "亿元" as const },
+  };
+  if (orders.length === 0) {
+    return {
+      ...common,
+      status: "EMPTY",
+      orderCount: 0,
+      totalQty: 0,
+      revenueYi: 0,
+      customerCount: 0,
+      customers: [],
+      orders: [],
+      earliest: null,
+      hasExposure: false,
+      emptyReason: `本窗（D+${window.fromDay}…D+${window.toDay}·锚 ${forecastStart}）无订单交期落入：${card.base}基地在本 mock 数据集里没有窗内受影响订单 —— 有风险但本窗没有订单敞口`,
+      // mock 数据集没有窗外订单台账 → 诚实 null（不编一张"窗外还有多少"的单）。
+      nextOutsideWindow: null,
+      provenance: [],
+    };
+  }
+  return {
+    ...common,
+    status: "OK",
+    orderCount: orders.length,
+    totalQty: r2m(orders.reduce((a, o) => a + o.qty, 0)),
+    revenueYi: Math.round(orders.reduce((a, o) => a + o.revenueYi, 0) * 1e4) / 1e4,
+    customerCount: customers.length,
+    customers,
+    orders,
+    earliest: { so: orders[0]!.so, cust: orders[0]!.cust, due: orders[0]!.due, dueDay: orders[0]!.dueDay },
+    hasExposure: true,
+    provenance: orders.slice(0, 3).map((o) => ({ objectType: "Order", objectId: o.so, field: "qty", value: o.qty })),
+  };
+}
+
+/** 影响面排序键（与 datacore `assignExposureRanks` 同判据·hasExposure 为主序）。 */
+function mockAssignRanks(list: Omit<Exposure, "rank">[]): Exposure[] {
+  const ordered = [...list].sort((a, b) => {
+    if (a.hasExposure !== b.hasExposure) return a.hasExposure ? -1 : 1;
+    if (a.revenueYi !== b.revenueYi) return b.revenueYi - a.revenueYi;
+    if (a.orderCount !== b.orderCount) return b.orderCount - a.orderCount;
+    const ea = a.earliest?.dueDay ?? Number.MAX_SAFE_INTEGER;
+    const eb = b.earliest?.dueDay ?? Number.MAX_SAFE_INTEGER;
+    if (ea !== eb) return ea - eb;
+    return a.baseId < b.baseId ? -1 : a.baseId > b.baseId ? 1 : 0;
+  });
+  const rankById = new Map(ordered.map((e, i) => [e.baseId, i + 1]));
+  return list.map((e) => ({ ...e, rank: rankById.get(e.baseId) ?? ordered.length + 1 }));
+}
+
+/**
+ * 违约金的**逐条核查结论** —— 与真后端 `buildPenaltyEvidence` 同结论：本仓无任何规则承载"交付延误赔多少"。
+ * mock 里同样恒 EMPTY：如果 mock 给个数、真环境给 EMPTY，前端就会被 mock 训练成"总有金额可显"。
+ */
+const MOCK_PENALTY_EMPTY: MissingEvidence = {
+  status: "EMPTY",
+  reason:
+    "违约金/罚则**当前本体无承载**：规则库 C01–C33 逐条核过，没有一条带交付延误罚金/费率（财务类均为闸门谓词、不带金额）；" +
+    "唯一带罚金的字段 LongTermAgreement.breachPenaltyWan 是**供应商长协欠交**罚金（C27 口径），与「我方晚交客户单要赔多少」不是一回事 —— 拒绝挪用。",
+  missingFields: ["Order.latePenaltyRatePerDay", "Customer.contractPenaltyRate", "RuleEntry(交付延误罚则).params"],
+  checked: [
+    "RuleEntry.C05/C08/C21/C27（逐条核过·无交付罚则）",
+    "LongTermAgreement.breachPenaltyWan（供应商长协欠交·非交付延误）",
+    "Order.*（so/cust/qty/due —— 无罚则字段）",
+    "Customer.*（creditLimit/termDays —— 无罚则字段）",
+  ],
+};
+
+/** ② 不作为后果（catchUp / delay / penalty / atRiskCustomers 四块各自独立标状态）。 */
+function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfall: number, freeDaily: number): DoNothing {
+  const delayNote =
+    "delay = 由受影响订单的传导估算派生（与 affected_orders 同口径）——**确定性估算（R6 可重跑），非实测交付延误**；" +
+    "要变成实测需接 Shipment 实际交付日 / 排产完工日回写。";
+  const catchUp: DoNothing["catchUp"] =
+    shortfall > 0 && freeDaily > 0
+      ? {
+          status: "OK",
+          shortfall: r2m(shortfall),
+          freeDaily: r2m(freeDaily),
+          days: r2m(shortfall / freeDaily),
+          unit: "天",
+          formula: "缺口(套) ÷ 空闲日产能(套/日)；空闲日产能 = Σ Line.capacityDaily × (1 − Base.util/100)",
+          provenance: [
+            { objectType: "Line", objectId: card.baseId, field: "capacityDaily", value: r2m(freeDaily) },
+            { objectType: "Order", objectId: card.baseId, field: "qty", value: r2m(shortfall) },
+          ],
+        }
+      : {
+          status: "EMPTY",
+          reason:
+            shortfall <= 0
+              ? "本窗无产能缺口（可用产能覆盖窗内订单）→ 不存在\"自然消化天数\"这件事，不编一个数"
+              : `${card.base}基地空闲日产能为 0（Σ Line.capacityDaily×(1−util/100) = 0）→ 缺口除不动，拒绝按任意日产能估天数`,
+          missingFields: shortfall <= 0 ? [] : ["Line.capacityDaily", "Base.util"],
+          checked: ["Line.capacityDaily", "Base.util", "Order.qty(窗内未来订单)"],
+        };
+
+  const delayOrders: DoNothingOrderDelay[] = (card.affectedOrders ?? [])
+    .map((a) => ({ so: a.so, cust: a.cust, qty: a.qty, due: a.due, dueDay: a.dueDay, delayDays: a.delay, basis: "ESTIMATED" as const, basisNote: delayNote }))
+    .sort((x, y) => y.delayDays - x.delayDays || (x.so < y.so ? -1 : 1));
+  const delay: DoNothing["delay"] =
+    delayOrders.length > 0
+      ? { status: "OK", worstDays: delayOrders[0]!.delayDays, orders: delayOrders, note: delayNote }
+      : { status: "EMPTY", reason: "本窗无受影响订单（见 exposure.emptyReason）→ 没有\"晚交几天\"这件事可算", missingFields: [], checked: ["Order.due(窗内)", "affected_orders.delay"] };
+
+  const worstByCust = new Map<string, number>();
+  for (const d of delayOrders) worstByCust.set(d.cust, Math.max(worstByCust.get(d.cust) ?? 0, d.delayDays));
+  const atRiskCustomers = exposure.customers.map((cu) => ({
+    cust: cu.cust,
+    orderCount: cu.orderCount,
+    qty: cu.qty,
+    revenueYi: cu.revenueYi,
+    worstDelayDays: worstByCust.get(cu.cust) ?? 0,
+    // 与真后端同结论：order_of_customer 边按订单序轮转绑定，与 Order.cust 名称无对应 → 账期/额度连不上。
+    customerObject: {
+      status: "EMPTY" as const,
+      reason: `订单客户「${cu.cust}」连不到 Customer 对象：order_of_customer 边由 synthetic 按订单序**轮转**绑定（custIds[i % n]），与 Order.cust 名称无对应关系 —— 拒绝拿这条边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
+      missingFields: ["Customer.custName ↔ Order.cust 的真实对应（或 Order.custId 外键）"],
+      checked: ["link:order_of_customer", "Customer.custName", "Customer.termDays", "Customer.creditLimit"],
+    },
+  }));
+
+  const okCount = [catchUp.status, delay.status, MOCK_PENALTY_EMPTY.status].filter((s) => s === "OK").length;
+  return {
+    status: okCount === 3 ? "OK" : okCount === 0 ? "EMPTY" : "PARTIAL",
+    baseId: card.baseId,
+    baseName: card.base,
+    window: exposure.window,
+    catchUp,
+    delay,
+    penalty: MOCK_PENALTY_EMPTY,
+    atRiskCustomers,
+    revenueAtRiskYi: exposure.revenueYi,
+    summary: exposure.hasExposure
+      ? `不处置：${exposure.orderCount} 张单 / ${exposure.customerCount} 个客户 / ${exposure.revenueYi} 亿元敞口受影响` +
+        `${delay.status === "OK" ? `，最坏延误 ${delay.worstDays} 天（估算·非实测）` : ""}` +
+        `${catchUp.status === "OK" ? `；缺口按本基地空闲产能自然消化需 ${catchUp.days} 天` : ""}` +
+        "；违约金**算不出**（规则库无交付罚则承载，见 penalty.reason）"
+      : `不处置：本窗无订单敞口（${exposure.emptyReason ?? ""}）` +
+        `${catchUp.status === "OK" ? `；但缺口仍需 ${catchUp.days} 天自然消化` : ""}` +
+        "；违约金**算不出**（规则库无交付罚则承载）",
+    units: { qty: "套", revenue: "亿元" },
+  };
+}
+
+/**
+ * ③ 方案代价的证据层（形状照 datacore `attachOptionEvidence`）：
+ *   跨基地 → 运费按 mock 调拨台账真算 + 挤占的在手单点名；加班/外协 → 本体无单价承载 ⇒ EMPTY（不填 0）；
+ *   外协比例 → 对 C08 红线（`OUTSOURCE_REDLINE` 单一来源·禁内联裸阈值）。
+ */
+function mockAttachOptionEvidence(opts: DispositionOptions, ctx: { baseId: string; demandInWindow: number; window: { fromDay: number; toDay: number } }): DispositionOptions {
+  const freight = RISK_DISPOSITION_SEED.crossBaseFreight;
+  const options = opts.options.map((opt) => {
+    const missing: { leverKey: string; reason: string; missingField: string }[] = [];
+    const sideEffects: DispositionSideEffect[] = [];
+    let total = 0;
+    let anyOk = false;
+    const levers = opt.levers.map((lv) => {
+      const effects: DispositionSideEffect[] = [];
+      let cost: NonNullable<typeof lv.cost>;
+      if (lv.leverKey === "cross_base") {
+        cost = {
+          status: "OK",
+          amountYuan: r2m(lv.closesGap * freight.yuanPerUnit),
+          unit: "元",
+          source: {
+            objectType: "InterBaseTransfer",
+            objectId: freight.transferId,
+            field: "freightCost",
+            value: freight.freightCost,
+            formula: `运费单价(元/套) = InterBaseTransfer.freightCost(${freight.freightCost}) ÷ InterBaseTransfer.qty(${freight.qty})；本步成本 = 收窄量(${lv.closesGap}套) × 运费单价(${freight.yuanPerUnit}元/套)`,
+          },
+        };
+        const displaced = RISK_DISPOSITION_SEED.displaceable
+          .filter((d) => d.baseId !== ctx.baseId)
+          .map((d) => ({ ...d, displacedQty: r2m(Math.min(d.qty, lv.closesGap)), delayDays: d.freeDaily > 0 ? r2m(Math.min(d.qty, lv.closesGap) / d.freeDaily) : null, provenance: { objectType: "Order", objectId: d.so, field: "qty", value: d.qty } }))
+          .slice(0, 2);
+        effects.push({
+          kind: "DISPLACE_ORDERS",
+          leverKey: lv.leverKey,
+          title: `挤占 ${displaced.length} 张其他基地在手单（${r2m(displaced.reduce((a, d) => a + d.displacedQty, 0))} 套）`,
+          detail: `按「优先级低者先让 → 交期晚者先让 → 订单号」挑，直到覆盖跨基地吸收量 ${lv.closesGap} 套；每张单延后天数 = 被挤占量 ÷ 该单基地空闲日产能。`,
+          displacedOrders: displaced.map((d) => ({ so: d.so, cust: d.cust, baseId: d.baseId, baseName: d.baseName, qty: d.qty, displacedQty: d.displacedQty, pri: d.pri, due: d.due, dueDay: d.dueDay, delayDays: d.delayDays, provenance: d.provenance })),
+        });
+      } else if (lv.leverKey === "outsource") {
+        cost = {
+          status: "EMPTY",
+          amountYuan: null,
+          unit: "元",
+          reason: "本体无外协单价/加工费承载字段（Supplier 只有 leadTime/minOrderQty/onTimeRate）→ 外协成本算不出，拒绝按任意单价估",
+          missingField: "Supplier.outsourcePricePerUnit",
+        };
+        const ratio = ctx.demandInWindow > 0 ? Math.round((lv.closesGap / ctx.demandInWindow) * 1e4) / 1e4 : 0;
+        effects.push(
+          ctx.demandInWindow > 0
+            ? {
+                kind: "RULE_BREACH",
+                leverKey: lv.leverKey,
+                title:
+                  ratio > OUTSOURCE_REDLINE.maxRatio
+                    ? `外协比例 ${r2m(ratio * 100)}% 越 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${r2m(OUTSOURCE_REDLINE.maxRatio * 100)}%`
+                    : `外协比例 ${r2m(ratio * 100)}%（${OUTSOURCE_REDLINE.ruleKey} 红线 ${r2m(OUTSOURCE_REDLINE.maxRatio * 100)}%·未越）`,
+                detail: `外协量 ${lv.closesGap}套 ÷ 窗内需求 ${ctx.demandInWindow}套 = ${r2m(ratio * 100)}%；阈值取规则 ${OUTSOURCE_REDLINE.ruleKey}.params.${OUTSOURCE_REDLINE.paramKey}（**规则口径·非代码内联**）`,
+                rule: { ruleKey: OUTSOURCE_REDLINE.ruleKey, threshold: OUTSOURCE_REDLINE.maxRatio, actual: ratio, breached: ratio > OUTSOURCE_REDLINE.maxRatio, paramKey: OUTSOURCE_REDLINE.paramKey },
+              }
+            : {
+                kind: "UNKNOWN",
+                leverKey: lv.leverKey,
+                title: "外协比例是否越红线：算不出",
+                detail: "窗内需求为 0，外协比例的分母不存在",
+                missingField: "Order.qty(窗内需求)",
+              },
+        );
+      } else {
+        cost = {
+          status: "EMPTY",
+          amountYuan: null,
+          unit: "元",
+          reason: "本体无加班工时费率承载字段（Line/Base 均无 overtimeCostPerUnit / overtimeRate）→ 加班成本算不出，拒绝按任意费率估",
+          missingField: "Line.overtimeCostPerUnit",
+        };
+        effects.push({
+          kind: "UNKNOWN",
+          leverKey: lv.leverKey,
+          title: "加班的副作用：算不出",
+          detail: "本体无人力工时上限/疲劳度/加班额度承载物 → 说不出「加这些班会撞到什么」；拒绝写一句听着对的空话",
+          missingField: "Line.maxOvertimeHours",
+        });
+      }
+      if (cost.status === "OK" && cost.amountYuan !== null) {
+        total = r2m(total + cost.amountYuan);
+        anyOk = true;
+      } else {
+        missing.push({ leverKey: lv.leverKey, reason: cost.reason ?? "算不出", missingField: cost.missingField ?? "?" });
+      }
+      sideEffects.push(...effects);
+      return { ...lv, cost, sideEffects: effects };
+    });
+    if (!levers.some((l) => l.leverKey === "cross_base")) {
+      sideEffects.push({ kind: "NONE", leverKey: "cross_base", title: "不挤占任何在手单", detail: "本方案未取用跨基地调剂杠杆 → 其他基地的在手单一张都不动（这正是它比 A 贵的原因）" });
+    }
+    return {
+      ...opt,
+      levers,
+      cost: { status: missing.length === 0 ? ("OK" as const) : anyOk ? ("PARTIAL" as const) : ("EMPTY" as const), totalYuan: anyOk ? total : null, unit: "元" as const, missing },
+      sideEffects,
+    };
+  });
+  return { ...opts, options };
+}
+
 function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
   const apply = Array.isArray(args.apply) ? (args.apply as { objectType?: unknown; prop?: unknown; value?: unknown }[]) : [];
   const capRatio = mockCapRatio(apply);
@@ -154,6 +482,8 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
   const fs = RISK_DISPOSITION_SEED.forecastStart;
   const rows: NonNullable<RiskTimelineOutput["planRows"]> = [];
   const early: string[] = [];
+  // 缺口读数（`planRows` 与卡片 `doNothing.catchUp` **同一出处**·不各算一套·R-一致）。
+  const gapByBase = new Map<string, { freeDaily: number; shortfall: number }>();
   for (const card of RISK_TIMELINE.cards) {
     const seed = RISK_DISPOSITION_SEED.bases.find((b) => b.base === card.base);
     const cross = card.crossDay ?? RISK_TIMELINE.horizon;
@@ -163,12 +493,23 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     const available = Math.round(freeDaily * H * 100) / 100;
     const futureQty = (card.affectedOrders ?? []).reduce((a, o) => a + Number((o as { qty?: number }).qty ?? 0), 0);
     const shortfall = Math.round(Math.max(0, futureQty - available) * 100) / 100;
-    const d = deriveDisposition({
+    gapByBase.set(seed.baseId, { freeDaily, shortfall });
+    // WO-DECISION-INFO ③.2：前置期由调用方从真对象带进来（`InterBaseTransfer.transitDays` / `Supplier.leadTime`），
+    // 加班杠杆不带（本体无该承载字段 → 契约内部恒 EMPTY）。绝不复活 `+7 / +14` 魔数。
+    const dispositionInput = {
       baseId: seed.baseId, forecastStart: fs, horizon: H, trigDay: Math.max(1, cross), shortfall,
       freeDaily, available, inProdTotal: 0, futureQty,
       overtimeUpliftPct: RISK_DISPOSITION_SEED.coeff.overtimeUpliftPct,
       crossBaseAbsorbPct: RISK_DISPOSITION_SEED.coeff.crossBaseAbsorbPct,
-    });
+      crossBaseLead: RISK_DISPOSITION_SEED.crossBaseLead,
+      outsourceLead: RISK_DISPOSITION_SEED.outsourceLead,
+    };
+    const d = deriveDisposition(dispositionInput);
+    // WO-DECISION-INFO ③：可比较的多方案（A 本地优先 = 上面那条贪心的同解，可对拍）+ 真代价装配。
+    const options = mockAttachOptionEvidence(
+      deriveDispositionOptions({ ...dispositionInput, coefficients: RISK_DISPOSITION_SEED.coefficients }),
+      { baseId: seed.baseId, demandInWindow: futureQty, window: { fromDay: 0, toDay: H } },
+    );
     const head = d.steps[0];
     const p0 = seed.plans[0]!;
     const common = {
@@ -182,6 +523,8 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
       done: `T+${cross}·${mmddMock(fs, cross)}（越线日）`,
       eff: head ? `${d.steps.length} 步收窄 ${d.closedTotal}套 · 残留 ${d.residual}套` : `消解≈${p0.eff}·${p0.tn}天起效`,
       plan: p0.name,
+      // 多方案只挂每基地**主行**（备份行不重复挂同一份大对象·与真后端一致）。
+      options,
       ...common,
     });
     const p1 = seed.plans[1];
@@ -205,7 +548,21 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     });
   }
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
-  return { ...RISK_TIMELINE, planRows: rows };
+
+  // ---- WO-DECISION-INFO-FE ①② · 影响面排序 + 不作为后果（逐卡回填·顺序与真后端一致）---------
+  // ⚠ `cards[]` 数组序**刻意不动**（既有排序契约）；给出的是显式排序键 `exposure.rank` + 顶层 `exposureOrder`。
+  const window = { fromDay: 0, toDay: H };
+  const ranked = mockAssignRanks(RISK_TIMELINE.cards.map((c) => mockExposure(c, window, fs)));
+  const rankByBase = new Map(ranked.map((e) => [e.baseId, e]));
+  const cards = RISK_TIMELINE.cards.map((c) => {
+    const exposure = rankByBase.get(c.baseId);
+    if (!exposure) return c;
+    const gap = gapByBase.get(c.baseId);
+    return { ...c, exposure, doNothing: mockDoNothing(c, exposure, gap?.shortfall ?? 0, gap?.freeDaily ?? 0) };
+  });
+  const exposureOrder = [...ranked].sort((a, b) => a.rank - b.rank).map((e) => e.baseId);
+
+  return { ...RISK_TIMELINE, cards, planRows: rows, exposureOrder };
 }
 
 /**

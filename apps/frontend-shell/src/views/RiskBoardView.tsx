@@ -30,6 +30,9 @@ import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
 import { Provenance } from "@/components/Provenance";
 import { InfoPopover } from "@/components/InfoPopover";
 import { ScopeHonestyBadge } from "@/components/ScopeHonestyBadge";
+import { ExposurePanel } from "./risk/ExposurePanel";
+import { DoNothingPanel } from "./risk/DoNothingPanel";
+import { DispositionOptionsPanel } from "./risk/DispositionOptionsPanel";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 // WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
@@ -63,6 +66,30 @@ const wanToYi = (v: number) => v / 1e4;
  * 入参优先用 `card.baseId`（求解器回传的规范 baseId，如 `xinyang`）；已是 `obj_base_` 前缀则原样返回
  * （幂等·后端 `normalizeBaseRef` 也认这两种形态）。
  */
+/**
+ * WO-DECISION-INFO-FE ④ · 按**影响面**排看板（纯函数·可单测·零副作用）。
+ *
+ * ⚠ `cards[]` 的数组序是既有排序契约（越线日↑ → 实测当前张力↓ → peak↓ → 基地名，由 `preferRiskCard`
+ *   与 `capacity-page-100pct ①R1b/①R1c` 双向咬死）——**本函数不改它**（不原地 sort，返回新数组）。
+ *   求解器另给的 `exposureOrder` 是 `cards[].exposure.rank` 的**同一次计算投影**（零敞口基地一律沉底），
+ *   所以这里只按它取序，**绝不在前端另造一套排序算法**（造第二套 = 两个序迟早漂移）。
+ *
+ * 缺席/落单的诚实处置：`exposureOrder` 缺席 → 原样返回数组序；某张卡不在 `exposureOrder` 里
+ * （后端没给该基地敞口）→ 保持它们彼此的既有相对序、整体附在末尾，**不给它编一个名次**。
+ */
+export function orderCardsByExposure<T extends { baseId: string }>(cards: readonly T[], exposureOrder?: readonly string[]): T[] {
+  if (!exposureOrder || exposureOrder.length === 0) return [...cards];
+  const rank = new Map(exposureOrder.map((b, i) => [b, i]));
+  return cards
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => {
+      const ra = rank.get(a.c.baseId) ?? Number.MAX_SAFE_INTEGER;
+      const rb = rank.get(b.c.baseId) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb || a.i - b.i;
+    })
+    .map((x) => x.c);
+}
+
 export const baseObjectId = (ref: string | { base: string; baseId?: string }): string => {
   // 两种入参：卡对象（优先 baseId·缺则**回落基地名**，不伪造 obj_base_undefined）或裸 baseId 串。
   const id = typeof ref === "string" ? ref : (ref.baseId ?? "");
@@ -104,6 +131,10 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const onBoardLive = useCallback((s: LiveLeverState) => setBoardLive(s), []);
   const [livePlan, setLivePlan] = useState<{ rows: PlanRow[]; leverCount: number } | null>(null);
   const [openPlanRow, setOpenPlanRow] = useState<number | null>(null);
+  // WO-DECISION-INFO-FE ④：看板展示序 —— 默认按**影响面**（exposureOrder·零敞口沉底），
+  // 可切回求解器数组序（越线日↑→张力↓）。两个序都留着，因为它们回答的是两个不同的问题
+  // （"谁最快出事" vs "出事落在谁身上"），把其中一个藏起来就是替用户做了他该做的判断。
+  const [orderMode, setOrderMode] = useState<"exposure" | "solver">("exposure");
 
   const { data, isLoading } = useQuery({
     queryKey: ["a", "risk-timeline", { horizon }],
@@ -141,6 +172,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
   const threshold = data.threshold;
   const cards = data.cards;
+  // 展示序（不动 data.cards 本身）：exposureOrder 缺席 → 自动回落数组序，并在下方 chip 处说明为什么。
+  const hasExposureOrder = (data.exposureOrder?.length ?? 0) > 0;
+  const displayCards = orderMode === "exposure" && hasExposureOrder ? orderCardsByExposure(cards, data.exposureOrder) : cards;
 
   // 逐基地取 bottleneck 行（base 名直配·mock/real 同为中文名）。
   const bnRow = (base: string): BottleneckOutput["rows"][number] | undefined => bn?.rows.find((r) => r.base === base);
@@ -250,9 +284,47 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
       {riskTab === "risk" && (
         <>
+          {/* WO-DECISION-INFO-FE ④ · 展示序开关：影响面序（求解器 exposureOrder·零敞口沉底）↔ 求解器数组序。
+              缺 exposureOrder（旧后端/桩）→ chip 停用并说明"后端未下发"，绝不在前端自己排一套冒充。 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "var(--muted)", margin: "0 0 10px" }} data-testid="risk-order-mode">
+            <span>看板排序：</span>
+            {/* WO-R5 收编时改：两个 chip 原各挂一个承载**排序公式**的原生 `title=`，
+                被 hover-layer 那道棘轮门当场拦下（79 → 82）。按规范 §2 R-UI-3
+                「公式与口径不在第一层，且禁止用 HTML title 属性充当浮层」搬进 InfoPopover。
+                第一层留 chip 名（状态/名字），公式进浮层 —— 且 `?` 触发器本身就是那个可见记号，
+                不是静默降层。 */}
+            <InfoPopover topic="看板排序口径" testId="risk-order-mode">
+              <div>
+                <b>影响面序</b>：按求解器 <code>exposureOrder</code>（金额↓ → 单数↓ → 最早交期↑；零敞口基地一律沉底）。
+                它是 <code>cards[].exposure.rank</code> 的同一次计算投影，前端不另排一套。
+                {!hasExposureOrder && <>　⚠ 本次响应<b>未返回</b> <code>exposureOrder</code>（契约中为 optional），该档不可选。</>}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <b>越线日序</b>：求解器数组序（越线日↑ → 实测当前张力↓ → 峰值↓ → 基地名）。
+              </div>
+            </InfoPopover>
+            <span className={`${styles.tierChip} ${orderMode === "exposure" && hasExposureOrder ? styles.tierChipOn : ""}`}
+              data-testid="risk-order-mode-exposure" role="button" tabIndex={0}
+              aria-disabled={!hasExposureOrder}
+              onClick={() => hasExposureOrder && setOrderMode("exposure")}
+              onKeyDown={(e) => e.key === "Enter" && hasExposureOrder && setOrderMode("exposure")}>
+              影响面序
+            </span>
+            <span className={`${styles.tierChip} ${orderMode === "solver" || !hasExposureOrder ? styles.tierChipOn : ""}`}
+              data-testid="risk-order-mode-solver" role="button" tabIndex={0}
+              onClick={() => setOrderMode("solver")}
+              onKeyDown={(e) => e.key === "Enter" && setOrderMode("solver")}>
+              越线日序
+            </span>
+            <span style={{ fontSize: 10, color: "var(--muted2)" }} data-testid="risk-order-mode-note">
+              {hasExposureOrder
+                ? "「影响面序」= 求解器 exposureOrder（与 exposure.rank 同一次计算的投影，前端不另排）；零敞口基地沉底。⚠ 首要风险徽章始终跟着**越线日序**第一张卡走。"
+                : "本次响应未返回 exposureOrder（契约中为 optional）→ 只能按越线日序展示，前端不自造影响面排序。"}
+            </span>
+          </div>
           {/* rk-grid：每基地一卡（整卡点击展开·无独立 CTA）。因素 chip 来自 bottleneck 真值。 */}
           <div className={styles.rkGrid}>
-            {cards.map((card) => {
+            {displayCards.map((card) => {
               const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
               const synth = card.provenanceSynthetic === true;
               const peakColor = tierColor(card.peak, threshold);
@@ -266,6 +338,10 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   className={`${styles.rkCard} ${selected ? styles.rkCardOpen : ""}`}
                   data-testid={`risk-card-${card.base}`}
                   data-synth={synth ? "1" : "0"}
+                  // 影响面排序键直挂 DOM（= 求解器 exposure.rank·前端不重算）：既供测试咬"零敞口沉底"，
+                  // 也让"这张卡为什么排在这儿"可当场核。缺席则不挂（不编一个名次）。
+                  data-exposure-rank={card.exposure?.rank}
+                  data-has-exposure={card.exposure ? (card.exposure.hasExposure ? "1" : "0") : undefined}
                   role="button"
                   tabIndex={0}
                   style={{ borderColor: `${peakColor}55` }}
@@ -341,6 +417,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                     <span style={{ color: peakColor }}>{factorCount} 个风险因素</span>
                     <span>{orderCount} 批订单受影响</span>
                   </div>
+                  {/* WO-DECISION-INFO-FE ① · 卡面影响面摘要（"这事有多大、落在谁身上"——此前整块没渲染）。
+                      三分支各不相同，**不许合并**：缺席=未知 / 零敞口=一等结论 / 有敞口=真数字。 */}
+                  <CardExposureLine card={card} />
                 </div>
               );
             })}
@@ -444,7 +523,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 </tbody>
               </table>
               {openPlanRow != null && planRows[openPlanRow] && (
-                <DispositionDetailPanel row={planRows[openPlanRow]!} onClose={() => setOpenPlanRow(null)} />
+                <>
+                  <DispositionDetailPanel row={planRows[openPlanRow]!} onClose={() => setOpenPlanRow(null)} />
+                  {/* WO-DECISION-INFO-FE ③ · 多方案与代价（A/B/C + 成本 + 副作用 + 前置期 R13）：
+                      DispositionDetailPanel 只讲**一条**贪心路径（"系统认为该这么办"），
+                      决策者要的是"有哪几种办法、各要付什么代价"——那一份在 planRows[].options 里，此前零消费。 */}
+                  <DispositionOptionsPanel row={planRows[openPlanRow]!} />
+                </>
               )}
             </div>
           )}
@@ -454,6 +539,40 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       {/* 历史处置案例 + 风险推演编排过程 DAG（两态共享·看板下半区）。 */}
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
+    </div>
+  );
+}
+
+/**
+ * WO-DECISION-INFO-FE ① · 卡面「影响面」一行（`card.exposure` 的最小可决策投影）。
+ *
+ * 三分支语义完全不同，混成一句就是撒谎：
+ *   缺席（后端没下发该 optional 字段）→ 「影响面：本次未返回」（**未知**，不是"没有影响"）
+ *   `hasExposure:false`               → 「本窗无订单敞口 · 已沉底」（**一等结论**，附窗外最近一张在多远）
+ *   有敞口                            → 「#rank · N 张单 · X 亿元 · M 家客户」（后端那一份数字的直投，不重算）
+ */
+function CardExposureLine({ card }: { card: RiskCard }) {
+  const exp = card.exposure;
+  if (!exp) {
+    return (
+      <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="ABSENT" style={{ color: "var(--muted2)" }}>
+        <span>影响面：本次未返回（cards[].exposure 缺席）</span>
+      </div>
+    );
+  }
+  if (!exp.hasExposure) {
+    const nx = exp.nextOutsideWindow;
+    return (
+      <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="EMPTY" style={{ color: "var(--muted2)" }}>
+        <span>本窗无订单敞口 · 已沉底（#{exp.rank}）</span>
+        <span>{nx ? `窗外最近 ${nx.qty}${exp.units.qty}（超窗 ${nx.daysBeyondWindow} 天）` : "窗外亦无单"}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="OK">
+      <span style={{ color: "var(--c-forecast)" }}>影响面 #{exp.rank} · {exp.orderCount} 张单 · {exp.customerCount} 家客户</span>
+      <span style={{ color: "var(--ok)" }}>{exp.revenueYi} {exp.units.revenue}</span>
     </div>
   );
 }
@@ -922,6 +1041,18 @@ function RiskDetailPanel({
         <span style={{ marginLeft: 14, color: "var(--muted2)" }}>
           首要风险对象：{card.factor}{card.crossDay != null ? `（T+${card.crossDay} 越线）` : ""}
         </span>
+      </div>
+
+      {/* WO-DECISION-INFO-FE ①② · 决策信息两块（影响面 / 不作为后果）——挂在图例之后、根因树之前：
+          用户读完"几号越线"，紧接着要问的就是「该不该管（落在谁身上）」与「不管会怎样」。
+          两块都走各自的缺席/EMPTY 分支，绝不渲染空壳或 0（诚实位·本仓红线）。 */}
+      <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`decision-info-${card.base}`}>
+        <div className={styles.rkDetH}>
+          <b>🎯 {card.base} · 决策信息</b>
+          <span>该不该管（影响面）· 不管会怎样（不作为后果）—— 数据源 risk_timeline.cards[].exposure / .doNothing</span>
+        </div>
+        <ExposurePanel exposure={card.exposure} baseName={card.base} />
+        <DoNothingPanel doNothing={card.doNothing} baseName={card.base} />
       </div>
 
       {/* CI-a 基地根因推演树（可信=过程可见）：为什么这基地越线——结构反向归因（设备OEE/物料gapTon/订单）

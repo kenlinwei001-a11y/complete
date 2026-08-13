@@ -873,6 +873,50 @@ export const RISK_DISPOSITION_SEED = {
     { ...baseRef("常州"), owner: "基地负责人 · 王经理", freeDaily: 100, plans: [{ name: "关键正极提前备料", eff: 12, tn: 2 }, { name: "增开夜班", eff: 11, tn: 2 }] },
     { ...baseRef("江门"), owner: "基地负责人 · 李经理", freeDaily: 20, plans: [{ name: "近端仓+供应商VMI", eff: 9, tn: 5 }, { name: "跨基地调剂", eff: 8, tn: 4 }] },
   ],
+  /**
+   * WO-DECISION-INFO-FE · 决策三块的 mock 真数据源（镜像后端读的那几个真对象）：
+   *   crossBaseLead / outsourceLead ← `InterBaseTransfer.transitDays` / `Supplier.leadTime`
+   *                                   （前置期·R13 溯源锚：治「+7 / +14 两个魔数」）
+   *   crossBaseFreight              ← `InterBaseTransfer.freightCost ÷ qty`（跨基地调剂成本唯一出处）
+   *   displaceable                  ← 其他基地窗内在手单（跨基地调剂的副作用**点名到单**）
+   *   coefficients                  ← 与真仓一致标 `DEFAULT_FALLBACK`：`base_outlook_coeffs` 这条规则
+   *                                   全仓只有读方没有写方（"接了线没数据"）→ 系数是代码兜底、不是治理口径
+   *
+   * ⚠ 加班杠杆刻意**不给**前置期与成本：本体确实没有「加班启动前置期 / 加班工时费率」承载字段。
+   *   mock 若给了，前端就会被训练成"总有数可显"，而真环境是 EMPTY —— 那正是假绿的温床。
+   */
+  crossBaseLead: {
+    status: "OK" as const,
+    days: 3,
+    source: { objectType: "InterBaseTransfer", objectId: "IBT-CZ-JM-01", field: "transitDays", value: 3 },
+  },
+  outsourceLead: {
+    status: "OK" as const,
+    days: 6,
+    source: { objectType: "Supplier", objectId: "SUP-EXT-07", field: "leadTime", value: 6 },
+  },
+  /** 运费单价 = freightCost ÷ qty = 86000 ÷ 4000 = 21.5 元/套（自洽·不写第二个数）。 */
+  crossBaseFreight: { transferId: "IBT-CZ-JM-01", freightCost: 86000, qty: 4000, yuanPerUnit: 21.5 },
+  displaceable: [
+    { so: "SO-20231", cust: "远东商用车", ...baseRef("江门"), baseName: "江门", qty: 900, pri: "低", due: "2026-06-28", dueDay: 18, freeDaily: 20 },
+    { so: "SO-20244", cust: "南方电网", ...baseRef("合肥"), baseName: "合肥", qty: 1400, pri: "中", due: "2026-07-02", dueDay: 22, freeDaily: 35 },
+  ],
+  coefficients: [
+    {
+      key: "overtimeUpliftPct",
+      value: 0.15,
+      basis: "DEFAULT_FALLBACK" as const,
+      ruleKey: "base_outlook_coeffs",
+      note: "规则 base_outlook_coeffs 未发布（全仓只有读方没有写方）→ 本值是**代码兜底默认**，不是被治理过的口径；要让它可校准，需在场景包规则表里种下该 params",
+    },
+    {
+      key: "crossBaseAbsorbPct",
+      value: 0.6,
+      basis: "DEFAULT_FALLBACK" as const,
+      ruleKey: "base_outlook_coeffs",
+      note: "同上：代码兜底默认值，非规则口径",
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
