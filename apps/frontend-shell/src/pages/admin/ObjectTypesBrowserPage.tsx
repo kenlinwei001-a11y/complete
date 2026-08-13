@@ -128,7 +128,10 @@ export default function ObjectTypesBrowserPage() {
                 const detailId = `ot-instance-detail-${s.key}`;
                 // 禁用理由**全部取自接口**（displayName + count 均来自 /a/v1/ontology/object-types/stats）：
                 // 不写死任何业务常数（R14）—— 接口哪天回 count>0，这句话自动消失、按钮自动可点。
-                // 修前禁用按钮一个字都不说，用户看到「能点的样子」却点不动（仓主实测的另一半）。
+                // 修前禁用按钮一个字都不说，用户看到「能点的样子」却点不动（仓主 2026-08-11 实测的另一半）。
+                // 复验方式：`pnpm --filter frontend-shell exec vitest run test/f57.object-types-browser.test.tsx`
+                //   的用例「禁用态：count=0 的类型给出取自接口的解释，count>0 的不给」——它**双向**咬：
+                //   count=0 必须有 `ot-instances-why-*` 且文案含接口回的 count；count>0 必须没有、且按钮可点。
                 const whyDisabled = `「${s.displayName}」当前物化对象数为 ${s.count} 个 —— 没有实例可下钻；经数据构建/合成建域物化后此按钮自动可用。`;
                 return (
                   <Fragment key={s.key}>
