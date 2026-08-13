@@ -708,6 +708,39 @@ export const ContextOpSchema = z.object({
 });
 export type ContextOp = z.infer<typeof ContextOpSchema>;
 
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 一次运行的**归属形态**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属那一半）。
+ *
+ * 三态而不是布尔 —— 因为「无 agentId」有**两个成因完全不同**的来源，混成一个就会说假话：
+ * - `REGISTERED`  ：引擎真解析了一个 `AgentDefinition`（`engine.runRegisteredAgent` → `resolveAgent`），
+ *                   `agentId`/`agentKey`/`agentVersion` 必然同时有值。**这是「这个 Agent 的运行」的唯一凭据。**
+ * - `EXPLORATORY` ：通用探索路（`router/orchestrator.ts runPathB`）——工具集由 package 白名单 ∩ {READ,COMPUTE}
+ *                   现算，**全程不存在 AgentDefinition**。所以它不是"忘了填"，而是"真的没有归属对象"，
+ *                   引擎在此**正面声明**这一点，界面才能把它和下面那种分开说。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。无从判定，只能标"未知"——
+ *                   绝不许把它当成 `EXPLORATORY` 混进去（那是拿"我没找到"冒充"它不存在"）。
+ */
+export const AgentRunAttributionSchema = z.enum(["REGISTERED", "EXPLORATORY"]);
+export type AgentRunAttribution = z.infer<typeof AgentRunAttributionSchema>;
+
+/**
+ * WO-AGENTRUN-FANOUT-PERSIST · 一次运行在**编排结构里的位置**（闭 `G-AGENTRUN-FANOUT-NOT-PERSISTED`）。
+ *
+ * 与 `attribution`（"归属到哪个 Agent"）是**两个正交的问题**，别合成一个：
+ * 一条 `FANOUT` 记录同样可以是 `REGISTERED`（多角色会诊的每个子 agent 都真解析了 AgentDefinition），
+ * 合成一个枚举就再也回答不了「这个 Agent 跑过几次、其中几次是被会诊叫去的」。
+ *
+ * - `ROOT`   ：编排层为**这个任务本身**跑的那次循环（`runPathB` / `runRolePathB` / `runSceneAgent`），
+ *              一个任务至多一条。这是 `getByTask` 返回的那条。
+ * - `FANOUT` ：任务内部由 `invoke_agent` 步扇出的**子 agent** 运行
+ *              （多角色会诊 `runCoordinator`、path-A 工作流里的 agent 步）。一个任务可以有 N 条。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。此时缺失 ≡ `ROOT` 是**可证的**而非猜测 ——
+ *              旧表 `agent_runs.task_id` 带 UNIQUE 约束，一个任务物理上只存得下一条，
+ *              而那一条必然是编排层顶层写的。故读端把缺失当 ROOT 处理，不算"拿我没找到冒充它不存在"。
+ */
+export const AgentRunOriginSchema = z.enum(["ROOT", "FANOUT"]);
+export type AgentRunOrigin = z.infer<typeof AgentRunOriginSchema>;
+
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
@@ -719,6 +752,41 @@ export const AgentRunRecordSchema = z.object({
   totalOutputTokens: z.number(),
   /** Agent 运行时增量 §1.3（additive）：上下文清理操作记录 */
   contextOps: z.array(ContextOpSchema).optional(),
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-ATTRIBUTION（additive · 全部 optional · 可回退）
+  // 旧洞：run 记录只有 `taskId`，于是「这个 Agent 跑过几次」在全仓不可得 —— Agent 管理台只能显示
+  // 「本租户 AGENT 路径的全部运行」，把租户级数据当成单 Agent 数据是不许的，只能挂常驻诚实横幅。
+  // 现在归属在**引擎侧单点回填**（`agent/loop.ts finishRun`，而非各 insert 点各填各的），
+  // 保证「谁跑的」与「跑出了什么」同源同一次写入，不会漂。
+  // -------------------------------------------------------------------------
+  /** 租户隔离（tenant_id everywhere）：让 `listByAgent` 不必回表 join task 就能按租户过滤。 */
+  tenantId: z.string().optional(),
+  /** 归属到的 AgentDefinition 主键（**版本级**：`agt_` 一版一条）。仅 REGISTERED 有值。 */
+  agentId: z.string().optional(),
+  /** 归属到的 Agent 逻辑键（跨版本稳定）——「这个 Agent 的历次运行」按它聚合。仅 REGISTERED 有值。 */
+  agentKey: z.string().optional(),
+  /** 本次实际执行的 Agent 版本号（同 key 换版后仍能分辨是哪版跑的）。仅 REGISTERED 有值。 */
+  agentVersion: z.number().int().optional(),
+  /** 归属形态；缺失 = 本字段上线前的旧记录（未知，不等于 EXPLORATORY）。 */
+  attribution: AgentRunAttributionSchema.optional(),
+  /** 运行落库时刻（列表按它倒序；此前 run 记录**没有任何时间字段**，只能靠 taskId 猜）。 */
+  createdAt: IsoTime.optional(),
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-FANOUT-PERSIST（additive · optional · 可回退）
+  // 旧洞：`agent_runs.task_id` 带 UNIQUE 约束 ⇒ 一个任务只存得下一条 run，而多角色会诊
+  // （`runCoordinator` → `invoke_agent` 扇出）的每个子 agent 各自跑完一整轮循环 ——
+  // 那些运行的记录在 `engine.runWorkflowSteps` 的 `runAgentStep` 里被**整个丢掉**（只取 answer/structured），
+  // 于是用户在 Agent 管理台看「本 Agent 的运行」时，会诊里那几个角色一条都不在。
+  // 现在主键落到 run 级（`id`），一个任务可存 N 条，本字段区分「任务自己那条」与「扇出的子运行」。
+  // -------------------------------------------------------------------------
+  /** 本次运行在编排结构里的位置；缺失 = 本字段上线前的旧记录（由旧 UNIQUE 约束可证必为 ROOT）。 */
+  origin: AgentRunOriginSchema.optional(),
+  /**
+   * 扇出这条子运行的那个 `invoke_agent` 步 id（多角色会诊里就是 `dispatch_0/1/2`）。
+   * 仅 `FANOUT` 有值 —— 有了它，「同一次会诊的三条子运行」才能在读端被认回同一次扇出，
+   * 而不是三条互不相识的孤儿记录。
+   */
+  stepId: z.string().optional(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecordSchema>;
 
