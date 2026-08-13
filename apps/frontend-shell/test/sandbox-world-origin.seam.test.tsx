@@ -110,6 +110,8 @@ describe("WO-V4-HONEST-ORIGIN · 顶栏占位值诚实位（两向）", () => {
     const base = deriveBaseSnapshot(CFG);
     const ids = Object.keys(base);
     expect(ids.length).toBeGreaterThan(2);
+    // 基数下限：空 stateVars 会让下面这个 for **一次都不进**而用例照样绿（`coverage-blind` 的 LOOP_NO_FLOOR）。
+    expect(CFG.stateVars.length).toBeGreaterThan(1);
     for (const v of CFG.stateVars) {
       const avg = ids.reduce((a, o) => a + (base[o]?.[v] ?? 0), 0) / ids.length;
       const shown = screen.queryByTestId(`sandbox-kpi-${v}-val`);
@@ -145,6 +147,7 @@ describe("WO-V4-HONEST-ORIGIN · 顶栏占位值诚实位（两向）", () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b)); // R6 确定性
     const ids = Object.keys(a);
     expect(ids.length).toBeGreaterThan(2);
+    expect(CFG.stateVars.length).toBeGreaterThan(1); // 同上：无下限的 for 在空集上恒绿
     for (const oid of ids) for (const v of CFG.stateVars) {
       const x = a[oid]![v]!;
       expect(Number.isInteger(x)).toBe(true);

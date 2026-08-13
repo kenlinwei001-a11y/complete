@@ -422,6 +422,7 @@ describe("§3 · R14 零写死：方案数 / 方案名 / 指标名全部来自�
       expect(screen.getByTestId(`sandbox-play-option-${o.optionId}`).textContent, `方案「${o.label}」没上屏`).toContain(o.label);
     }
     // 第一个引擎态的方案 id 一个都不该还在（否则就是把上一批留在屏上）。
+    expect(DP_THREE.options.length).toBeGreaterThan(1); // 基数下限：空集上这个 for 恒绿
     for (const o of DP_THREE.options) {
       expect(screen.queryByTestId(`sandbox-play-option-${o.optionId}`), `上一个引擎态的「${o.label}」还在屏上`).toBeNull();
     }
