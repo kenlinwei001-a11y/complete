@@ -36,11 +36,43 @@
  *                      门里写死一张中文词表，本身就是本门要治的病。
  *
  * ══ 金丝雀（保命判据 · 每次运行都先跑）════════════════════════════════════════
- * 本门开扫之前先拿**内嵌样例**过一遍检测器（N 条必咬 + M 条必不咬）+ 规模下界自证。任一不成立
- * ⇒ 打印「⛔ 门自己瞎了」并 RC=1，**而不是安静报「代码干净」**。理由是本会话实测过的四个陷阱
+ * 本门开扫之前先拿**内嵌样例**过一遍检测器（N 条必咬 + M 条必不咬）+ **规则抽取器金丝雀 R1–R7**
+ * + 规模下界自证。任一不成立 ⇒ 打印「⛔ 门自己瞎了」并 **RC=2**（不是 1 —— 见下"三分退出码"），
+ * **而不是安静报「代码干净」**。理由是本会话实测过的四个陷阱
  * （见 `docs/VERIFY-batch-2026-08-08.md`）：`git grep -- "apps/<星>/src"` 的 pathspec 通配符不跨 `/`
  * 恒 0 命中、import 图解析器不认 ESM `./x.js`、正则窗口截断符号名 —— 三者都会让扫描器
  * **报 0 命中**，而 0 命中在门里恰好长得跟"代码干净"一模一样。失败方向不安全的门必须自证工具是对的。
+ *
+ * ══ 规则库抽取器（H6/H7/H8 的 oracle · WO-R9-SCAN-EXTRACTOR 重写）══════════════
+ * **本门 2026-08-13 之前的抽取器是坏的，而且是"静默给错答"那种坏法。** 原实现一条正则：
+ *
+ *     /\bkey:\s*"([A-Z]\d+)"[\s\S]{0,400}?\bexpression:\s*(["'`])([\s\S]*?)\2/g
+ *
+ * 它**只认字符串字面量形态的 expression**，且**不校验 key 与 expression 属于同一个对象字面量** ——
+ * 只是"从 key 往后 400 字内找第一个字面量 expression"。`battery.ts` 把阈值收进单一来源
+ * （`expression: parityRuleExpression("C05")`）之后，这个正则跟不过那一跳，于是懒量词
+ * **跨过对象边界**去咬下一条规则的原文。**一个根因，两种表现，必须一起修**：
+ *
+ *  ① **错位（静默错答 · 比红更坏）**：`key` 绑到**别人的** expression 上。实测（29 条规则）：
+ *       C13 → 绑到 C18 的原文（匹配跨度 452 字，吞掉 C13/C05/C12/C18 四个 key）
+ *       C01 → 绑到 C04 的原文（跨度 330 字，吞掉 C01/C02/C04）
+ *       C09 → 绑到 C10 的原文 `Action.approver == NULL OR Action.audited == FALSE`（跨度 241 字）
+ *     —— 报错里那句"规则原文"印的就是**另一条规则**的原文，读的人会去改一条根本不相干的规则。
+ *  ② **吞噬（假的"不在册"）**：`matchAll` **非重叠**，被①跨过去的 key 落在上一次匹配的跨度**内部**
+ *     ⇒ 再也不会被匹一次 ⇒ 从 map 里彻底消失。实测 29 条只抽出 21 条，丢了
+ *     C03/C08/C05/C12/C18/C02/C04/C10 —— 于是 H6 报"BATTERY_RULES 里没有这条规则"，
+ *     而 `grep -oE '"C[0-9]{2}"' battery.ts` 现算它们**全都在**。**真单一来源改良反被门打红。**
+ *
+ * 现实现两步，把①②在**结构上**变成不可能：
+ *  · **按对象边界切分**（`topLevelObjects` + `topLevelProps`）：先把 `BATTERY_RULES = [ … ]` 用
+ *    括号配对切成顶层对象，再取该对象**顶层**的 `key` / `expression` / `params`。key 与 expression
+ *    从此天然同属一个对象，"跨对象错配"不再有发生的地方（不是"正则写严一点"，是把可能性拿掉）。
+ *  · **跟过那一跳**（`makeEvaluator`）：属性的**原始值源码**放进一个以**已 build 的
+ *    `@platform/contracts` 导出**为作用域的求值器里求值。于是 `parityRuleExpression("C05")` /
+ *    `parityRuleParams("C09")` / `outsourceRedlineViolationExpr(…)` / 模板串 `${ruleParamRef("x")}`
+ *    **全部由真值源自己算出真值**。⛔ 门里**一条规则内容都不抄**（抄了就是第二个真值源，
+ *    改一处漏一处 —— 那正是本门要治的病）；新加一个 contracts 导出的派生函数，本门自动跟得上。
+ *  · 求值不出来的**不许**当"不在册"：那是**工具看不懂**（RC=2），与"规则不存在"（RC=1）处置相反。
  *
  * ══ 诚实边界（本门做不到什么）════════════════════════════════════════════════
  *  · 只做**静态**扫描：它证明"源码里没有写死的数"，**不证明**"跑出来的数是对的"。
@@ -52,7 +84,15 @@
  *    别的写法，区域数会掉 → 金丝雀下界当场红（这正是下界存在的理由），但不会静默放行。
  *  · H5 只咬 `BASE_REGISTRY` 派生得出的词；册外的行业名（新工序名等）看不见。
  *
- * 本体登记：`docs/SYSTEM-ONTOLOGY.md` §7。门账：`scripts/gate-ledger.json`（binding=GATE_SH）。
+ * ══ 三分退出码（WO-R9-SCAN-EXTRACTOR 落地）═══════════════════════════════════
+ *   **0** 干净 · **1** 真违规（先修被扫代码）· **2** **门自己坏了 / 环境没就绪**（结论作废）。
+ *   归 2 的三类：金丝雀不中（含规则抽取器 R1–R7）· `@platform/contracts` 的 dist 未构建或过期 ·
+ *   规则表达式求值不出来（工具看不懂）。**RC=2 时不许打印「不得并线」** —— 本门这次什么都没证明。
+ *   变异反证开关：`CHAIN_SCAN_HONESTY_BREAK_CANARY=legacy-regex` 把抽取器换回上面那条坏正则，
+ *   金丝雀必须当场报 R1/R5/R7 不中并 **RC=2**（若它反而报 RC=1，说明金丝雀是装饰品）。
+ *
+ * 本体登记：`docs/SYSTEM-ONTOLOGY.md` §7（门）· §8 `G-GATE-EXTRACTOR-CROSS-OBJECT-MISBIND`。
+ * 门账：`scripts/gate-ledger.json`（binding=GATE_SH）。
  * 用法：node scripts/check-chain-scan-honesty.mjs [--selftest | --update | --list]
  */
 /* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
@@ -79,9 +119,33 @@ function gateToolBroken(e) {
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const ROOT = process.cwd();
 const BASELINE = join(ROOT, "scripts/chain-scan-honesty-baseline.json");
+/** 规则真值源的**派生函数**所在包（`parityRuleExpression` 等），本门经 dist 调用它们求真值。 */
+const CONTRACTS_DIST = "packages/contracts/dist/index.js";
+
+/* ── dist 新鲜度守卫 · 但退 **2** 而不是共享守卫的 1 ────────────────────────────
+ * 判据**共用**共享实现（`assertDistFresh` 内部就是 `checkDistFreshness`，一行比较逻辑都不另抄，
+ * 其金丝雀见 `node scripts/dist-freshness.mjs --self-test`）。唯一的差别是**退出码**：
+ * 共享守卫 `process.exit(1)`，而 1 在本仓三分约定里 = 「**被扫代码**有问题」；
+ * dist 没构建是**环境**问题，处置完全相反（前者改代码，后者跑 build）⇒ 本门必须退 2。
+ * 故只在这一次调用的**作用域内**挂一个退出码翻译器，调用返回后立刻摘掉 ——
+ * 绝不能让它长期挂着把后面主判据明确判负的那个 exit(1) 也吞成 2（那是拿更糟的假绿换假红）。 */
+const distStaleIsToolBroken = (code) => {
+  if (code !== 1) return;
+  console.error("\n⛔ 以上是**环境/工具**问题（dist 未构建或过期），**不是被扫代码的问题**。");
+  console.error("   本次结论作废：本门什么都没证明 —— 三分退出码里这是 2（门自己坏了），不是 1（真违规）。");
+  process.exitCode = 2;
+};
+process.once("exit", distStaleIsToolBroken);
+assertDistFresh([CONTRACTS_DIST], { gate: "chain-scan-honesty:check" });
+process.off("exit", distStaleIsToolBroken);
+
+/** 规则真值源模块（**唯一**的规则内容出处；本门不抄任何一条规则）。 */
+const CONTRACTS = await import(pathToFileURL(join(ROOT, CONTRACTS_DIST)).href);
 
 /** 扫描面 = 全链扫描输出的产出链：判定器本体 + 喂它 metricValue 的读回层 + IO 聚合半。 */
 const SCAN_TARGETS = [
@@ -278,20 +342,186 @@ function solverKeyRegistry() {
   return new Set([...code.slice(span[0], span[1] + 1).matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]));
 }
 
-/**
- * 规则库全集（事实层 · H6/H7/H8 的 oracle）：`{ key -> expression }`。
- * 门不抄一份规则清单 —— 抄一份就是本门要治的病（"改规则不改推演"的诱饵）。
+/* ══════════════ 规则库抽取器（事实层 · H6/H7/H8 的 oracle）══════════════════════
+ * 设计说明见文件头「规则库抽取器」一节。三个不变式：
+ *   ⅰ key 与 expression **必须来自同一个对象字面量**（结构上排除错位）
+ *   ⅱ 属性的值一律**求值**，不做形态假设（跟得过 `parityRuleExpression("Cxx")` 这一跳）
+ *   ⅲ 求值失败 = **工具看不懂**（RC=2），**不是**"规则不在册"（RC=1）
  */
-function ruleRegistry() {
-  const code = stripComments(read(RULE_REGISTRY_FILE));
-  const blk = declInitBlock(code, RULE_REGISTRY_SYMBOL);
+
+/** 把 `[ {…}, {…} ]` 切成**顶层**对象字面量（括号配对，非正则 —— 正则做不到"同一个对象"）。 */
+export function topLevelObjects(arrayCode) {
+  const objs = [];
+  let i = 0;
+  for (;;) {
+    const at = arrayCode.indexOf("{", i);
+    if (at < 0) break;
+    const span = matchBlock(arrayCode, at, "{", "}");
+    if (!span) break;
+    objs.push({ start: span[0], code: arrayCode.slice(span[0], span[1] + 1) });
+    i = span[1] + 1;
+  }
+  return objs;
+}
+
+/** 从 `i` 起扫到**本层**的 `,` 或收尾（跳过嵌套括号与各类引号），返回该下标。 */
+function skipToTopLevelComma(code, i, end) {
+  let depth = 0;
+  let quote = null;
+  for (; i < end; i++) {
+    const c = code[i];
+    if (quote) {
+      if (c === "\\") { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
+    if (c === "{" || c === "[" || c === "(") depth++;
+    else if (c === "}" || c === "]" || c === ")") { if (depth === 0) return i; depth--; }
+    else if (c === "," && depth === 0) return i;
+  }
+  return i;
+}
+
+/**
+ * 一个对象字面量的**顶层**属性 → **值的原始源码**。
+ * 只收顶层：`params: { staleHours: 2 }` 里面的 `staleHours` 不会被当成规则属性，
+ * 反过来 `params` 里出现 `key:` / `expression:` 也污染不到外层（旧正则栽的就是这一类越界）。
+ */
+export function topLevelProps(objCode) {
   const out = new Map();
-  if (!blk) return out;
-  // expression 既可能是 "…" 也可能是模板串 `…${ruleParamRef("staleHours")}…`，两种都收。
-  for (const m of blk.code.matchAll(/\bkey:\s*"([A-Z]\d+)"[\s\S]{0,400}?\bexpression:\s*(["'`])([\s\S]*?)\2/g)) {
+  const end = objCode.length - 1; // 末位是配对的 `}`
+  let i = 1;
+  while (i < end) {
+    while (i < end && /[\s,;]/.test(objCode[i])) i++;
+    if (i >= end) break;
+    let name = null;
+    if (/[A-Za-z_$]/.test(objCode[i])) {
+      let j = i;
+      while (j < end && /[\w$]/.test(objCode[j])) j++;
+      name = objCode.slice(i, j);
+      i = j;
+    } else if (objCode[i] === '"' || objCode[i] === "'") {
+      const q = objCode[i];
+      let j = i + 1;
+      while (j < end && objCode[j] !== q) { if (objCode[j] === "\\") j++; j++; }
+      name = objCode.slice(i + 1, j);
+      i = j + 1;
+    } else if (objCode[i] === "[") {
+      const span = matchBlock(objCode, i, "[", "]");
+      if (!span) break;
+      name = objCode.slice(span[0], span[1] + 1); // 计算键（如 `[OUTSOURCE_REDLINE.paramKey]`）原样留着
+      i = span[1] + 1;
+    }
+    while (i < end && /\s/.test(objCode[i])) i++;
+    if (name === null || objCode[i] !== ":") {
+      // 简写属性 / `...spread` / 认不出的形态：整体跳过，不猜
+      i = skipToTopLevelComma(objCode, i, end) + 1;
+      continue;
+    }
+    i++;
+    while (i < end && /\s/.test(objCode[i])) i++;
+    const vStart = i;
+    i = skipToTopLevelComma(objCode, i, end);
+    if (!out.has(name)) out.set(name, objCode.slice(vStart, i).trim());
+    i++;
+  }
+  return out;
+}
+
+/** JS 关键字不能当函数形参名，从作用域符号里剔掉（`default` 是 ESM 命名空间必带的那个）。 */
+const JS_RESERVED = new Set([
+  "default", "class", "function", "const", "let", "var", "return", "new", "delete", "in", "of", "if", "else",
+  "do", "while", "for", "switch", "case", "break", "continue", "this", "null", "true", "false", "typeof",
+  "void", "with", "import", "export", "await", "yield", "enum", "super", "throw", "try", "catch", "finally",
+  "instanceof", "extends", "arguments", "eval", "implements", "interface", "package", "private", "protected", "public", "static",
+]);
+
+/**
+ * 造一个以 `@platform/contracts` 的**全部导出**为作用域的求值器。
+ * ⛔ 这是本门"不抄第二份真值"的落地方式：规则内容一律由**契约包自己**算出来，
+ *    门只负责把源码里那段值表达式原样交给它。新增一个派生函数，本门自动跟得上。
+ */
+export function makeEvaluator(mod) {
+  const names = Object.keys(mod).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !JS_RESERVED.has(n));
+  const values = names.map((n) => mod[n]);
+  return (raw) => new Function(...names, `"use strict"; return (${raw});`)(...values);
+}
+
+/**
+ * ⚠ **反面实现 · 只作金丝雀样例与变异开关用，主路径永不调用**。
+ * 这就是 2026-08-13 之前的抽取器原样。留着它不是怀旧：金丝雀 R5 拿**同一段样例**同时喂
+ * 新旧两版，把"旧版必错、新版必对"钉成机器可判的断言 —— 否则"我修好了"只是一句自称。
+ */
+export function legacyRuleRegistryRegex(blockCode) {
+  const out = new Map();
+  for (const m of blockCode.matchAll(/\bkey:\s*"([A-Z]\d+)"[\s\S]{0,400}?\bexpression:\s*(["'`])([\s\S]*?)\2/g)) {
     if (!out.has(m[1])) out.set(m[1], m[3]);
   }
   return out;
+}
+
+/** 变异反证开关：`legacy-regex` ⇒ 主路径换回坏抽取器，金丝雀必须当场报不中并 RC=2。 */
+const CANARY_BREAK = process.env.CHAIN_SCAN_HONESTY_BREAK_CANARY || "";
+
+/**
+ * 规则库全集（事实层）：`key -> { expression, params, exprRaw, … }`。
+ * 门不抄一份规则清单 —— 抄一份就是本门要治的病（"改规则不改推演"的诱饵）。
+ * @returns {{ rules: Map, declaredKeys: string[], unresolved: object[] }}
+ */
+export function ruleRegistry(evalRaw, { blockCode = null } = {}) {
+  let blk = blockCode;
+  if (blk === null) {
+    const code = stripComments(read(RULE_REGISTRY_FILE));
+    const d = declInitBlock(code, RULE_REGISTRY_SYMBOL);
+    blk = d ? d.code : null;
+  }
+  const rules = new Map();
+  const unresolved = [];
+  if (blk === null) return { rules, declaredKeys: [], unresolved };
+
+  // 真值侧的"应有多少条"：直接数声明里的 key（与解析结果比对 ⇒ 防"吞噬"，见金丝雀 R7）
+  const declaredKeys = [...blk.matchAll(/\bkey:\s*"([A-Z]\d+)"/g)].map((m) => m[1]);
+
+  if (CANARY_BREAK === "legacy-regex" || CANARY_BREAK === "1") {
+    for (const [k, expr] of legacyRuleRegistryRegex(blk)) {
+      rules.set(k, { key: k, expression: expr, exprRaw: JSON.stringify(expr), params: null, paramsRaw: null });
+    }
+    return { rules, declaredKeys, unresolved };
+  }
+
+  for (const obj of topLevelObjects(blk)) {
+    const props = topLevelProps(obj.code);
+    const keyRaw = props.get("key");
+    if (keyRaw === undefined) continue; // 不是规则对象
+    let key;
+    try { key = evalRaw(keyRaw); } catch { continue; }
+    if (typeof key !== "string" || !/^[A-Z]\d+$/.test(key)) continue;
+
+    const rec = { key, exprRaw: props.get("expression") ?? null, paramsRaw: props.get("params") ?? null, expression: null, params: null };
+    if (rec.exprRaw === null) {
+      unresolved.push({ key, what: "expression", why: "该规则对象里没有顶层 expression 属性" });
+    } else {
+      try {
+        const v = evalRaw(rec.exprRaw);
+        if (typeof v !== "string") unresolved.push({ key, what: "expression", why: `求值结果不是字符串（${typeof v}）`, raw: rec.exprRaw });
+        else rec.expression = v;
+      } catch (e) {
+        unresolved.push({ key, what: "expression", why: e.message, raw: rec.exprRaw });
+      }
+    }
+    if (rec.paramsRaw !== null) {
+      try {
+        const v = evalRaw(rec.paramsRaw);
+        if (v && typeof v === "object") rec.params = v;
+        else unresolved.push({ key, what: "params", why: `求值结果不是对象（${typeof v}）`, raw: rec.paramsRaw });
+      } catch (e) {
+        unresolved.push({ key, what: "params", why: e.message, raw: rec.paramsRaw });
+      }
+    }
+    if (!rules.has(key)) rules.set(key, rec);
+  }
+  return { rules, declaredKeys, unresolved };
 }
 
 /**
@@ -320,10 +550,21 @@ function parseBindings(tableCode) {
 export function classifyThresholdSource(expression, metricPath) {
   if (!expression || !metricPath) return { source: "ABSENT", reason: "规则或 metricPath 缺失" };
   const leaf = metricPath.split(".").slice(1).join(".") || metricPath;
+  const esc = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const cmp = new RegExp(
     // ⚠ 右侧终止符必须含 `,`：`SUSTAIN(Line.utilization > 95, 3)` 里不排除逗号会读成 "95," ⇒
     //   归类失败 → 该判据被误报成 ABSENT。金丝雀「必不咬样例被误咬」当场抓到了这个（本门第二次自伤）。
-    String.raw`(?:[\w.]*\b)?${leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\s*(<=|>=|==|!=|<|>)\s*([^\s),]+)`,
+    //
+    // ⚠⚠ 左侧必须是**真的标识符边界**（WO-R9-SCAN-EXTRACTOR 实测第三次自伤）。原写法
+    //    `(?:[\w.]*\b)?<leaf>` 里那个前缀组是**可选**的，而 `<leaf>` 自己前面没有任何边界断言 ⇒
+    //    `Line.MUTANT_utilization > 95` 里的 `utilization` 会被当成比较操作数**匹上**，归类成 literal 95。
+    //    实测：把 `PARITY_RULE_SEEDS` 的 C05 表达式改成 `SUSTAIN(Line.MUTANT_utilization > 95, 3)`，
+    //    本门**全绿放行** —— H7 号称"表达式必须真以该 metricPath 为比较操作数"，实际只要求"包含这个子串"。
+    //    形态（铁律 0.6 句式）：**「我用『表达式里出现了这个子串』当作『该字段是比较操作数』的证据，
+    //    而前者并不度量后者。」** 与本单主病（拿 400 字窗口里的下一个 expression 当同一条规则的）同族。
+    //    修法：前缀改成"零个或多个**完整**限定段"，并在整体左侧加 `(?<![\w$.])`、leaf 右侧加 `\b`。
+    //    钉死它的是 MUST_BITE 的「H7 子串同名字段不算数」那条（去掉边界断言即当场报门瞎了）。
+    String.raw`(?<![\w$.])(?:[A-Za-z_$][\w$]*\.)*${esc}\b\s*(<=|>=|==|!=|<|>)\s*([^\s),]+)`,
   ).exec(expression);
   if (!cmp) {
     return new RegExp(String.raw`\b${leaf}\b`).test(expression)
@@ -365,6 +606,14 @@ const MUST_BITE = [
   { name: "H3 || 兜底默认阈值", fn: () => detectFallbackDefaults(`const t = th.value || 0.85;`).length > 0 },
   { name: "H5 业务名可被咬", fn: (v) => (v.size > 0 ? detectBusinessVocab(`const base = "${[...v][0]}";`, v).length > 0 : false) },
   { name: "H7 声称的来源不存在可被咬", fn: () => classifyThresholdSource("Line.utilization > 95", "Order.changeoverMin").source === "ABSENT" },
+  // ⛔ 这条钉死 2026-08-13 实测的第三次自伤：`utilization` 是 `MUTANT_utilization` 的**子串**，
+  //    旧正则照样匹上并归类成 literal 95 ⇒ 改坏规则表达式本门全绿放行。去掉边界断言即当场不中。
+  {
+    name: "H7 子串同名字段不算数（MUTANT_utilization ≠ utilization）",
+    fn: () => classifyThresholdSource("SUSTAIN(Line.MUTANT_utilization > 95, 3)", "Line.utilization").source === "ABSENT",
+  },
+  // 同族反向：限定段必须**完整**，`OtherLine.utilization` 属于另一个对象，但 leaf 相同 ⇒ 仍算命中
+  // （H7 只认字段名不认对象名，这是**已知的诚实边界**，写成金丝雀以免被后人当 bug 悄悄改掉）。
 ];
 /** 必不咬样例：正常写法若被咬 ⇒ 门会把好代码报红，同样是门坏了。 */
 const MUST_NOT_BITE = [
@@ -378,6 +627,129 @@ const MUST_NOT_BITE = [
   { name: "H8 字面量阈值判为 literal", fn: () => classifyThresholdSource("SUSTAIN(Line.utilization > 95, 3)", "Line.utilization").source === "literal" },
   { name: "H8 字段阈值判为 field", fn: () => classifyThresholdSource("Process.parallelThroughput < Process.requiredThroughput", "Process.parallelThroughput").source === "field" },
 ];
+
+/* ── 规则抽取器金丝雀 R1–R7 ────────────────────────────────────────────────────
+ * ⛔ 铁律 0.6 已落地的机制：金丝雀**必须与主判据共用同一份实现**，不许另抄一份正则。
+ *    故下面每一条都走**上面那个** `ruleRegistry()` / `topLevelObjects` / `topLevelProps`，
+ *    一行解析逻辑都不重复；R5 额外把**同一段样例**再喂一遍反面实现
+ *    `legacyRuleRegistryRegex`，让"旧版必错、新版必对"成为机器可判的断言。
+ *
+ * 样例的选取是**按形态机械挑**、不写死规则码：写死 C05 会在 battery.ts 改写法时
+ * 变成"样例过期却照样绿"的装饰品。挑不到某形态 ⇒ 报「样例不存在，金丝雀过期」= 工具坏了。
+ */
+const MISBIND_SAMPLE = `[
+  { key: "C01", name: "甲", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {} },
+  { key: "C10", name: "乙", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {} },
+]`;
+/** 负金丝雀用的**保证不存在**的规则码（在册即说明样例过期，报工具坏了而不是放行）。 */
+const ABSENT_PROBE_KEY = "C99";
+
+export function ruleExtractorCanaries(reg, evalRaw) {
+  const rows = [];
+  const add = (id, name, pass, evidence) => rows.push({ id, name, pass, evidence });
+  const all = [...reg.rules.values()];
+  const pick = (pred, prefer) => all.find((r) => r.key === prefer && pred(r)) ?? all.find(pred);
+
+  /* R1 正·派生式：`expression: parityRuleExpression("Cxx")` 必须解析回**真值源里那条**表达式。
+   *    钉死"跟得过这一跳"。判据取自 `PARITY_RULE_SEEDS`（数据），解析走 `parityRuleExpression`（函数）——
+   *    同一个单一来源的两个出口，错位/吞噬时必然对不上。 */
+  const derived = pick((r) => /^parityRuleExpression\s*\(\s*"[A-Z]\d+"\s*\)$/.test(r.exprRaw ?? ""), "C05");
+  if (!derived) {
+    add("R1", "派生式样例存在", false, `battery.ts 里已无 \`expression: parityRuleExpression("Cxx")\` 形态 ⇒ 金丝雀过期`);
+  } else {
+    const seed = (CONTRACTS.PARITY_RULE_SEEDS ?? []).find((s) => s.key === derived.key);
+    const ok = !!seed && derived.expression === seed.expression && derived.expression !== derived.exprRaw;
+    add("R1", `派生式跟得过这一跳（${derived.key}）`, ok,
+      `${derived.exprRaw} → ${JSON.stringify(derived.expression)}${seed ? "（= PARITY_RULE_SEEDS 同条）" : "（PARITY_RULE_SEEDS 无此条）"}`);
+  }
+
+  /* R2 正·内联函数派生式（C08 刻意保留 `outsourceRedlineViolationExpr(…)`，不进 PARITY_RULE_SEEDS）。
+   *    它证明本门跟的不是"parityRuleExpression 这一个函数"，而是**任意 contracts 派生函数**。 */
+  const inlineCall = pick(
+    (r) => /^[A-Za-z_$][\w$]*\s*\(/.test(r.exprRaw ?? "") && !/^parityRuleExpression\s*\(/.test(r.exprRaw ?? ""),
+    CONTRACTS.OUTSOURCE_REDLINE?.ruleKey,
+  );
+  if (!inlineCall) {
+    add("R2", "内联函数派生式样例存在", false, "battery.ts 里已无内联派生函数形态的 expression ⇒ 金丝雀过期");
+  } else {
+    let ok = typeof inlineCall.expression === "string" && inlineCall.expression.length > 0
+      && inlineCall.expression !== inlineCall.exprRaw
+      && /[\w.]+\s*(<=|>=|==|!=|<|>)\s*\S/.test(inlineCall.expression);
+    let note = "";
+    // 若挑中的正是 C08，再拿契约自己的**发布态出口**对一次（真值源，不是抄的副本）
+    if (inlineCall.key === CONTRACTS.OUTSOURCE_REDLINE?.ruleKey && typeof CONTRACTS.outsourceRedlineViolationExprPublished === "function") {
+      const published = CONTRACTS.outsourceRedlineViolationExprPublished();
+      ok = ok && inlineCall.expression === published;
+      note = ` · 与 outsourceRedlineViolationExprPublished() ${inlineCall.expression === published ? "一致" : "不一致（应为 " + published + "）"}`;
+    }
+    add("R2", `内联函数派生式被求值（${inlineCall.key}）`, ok, `${(inlineCall.exprRaw ?? "").slice(0, 60)} → ${JSON.stringify(inlineCall.expression)}${note}`);
+  }
+
+  /* R3 正·字面量式：`expression: "…"` 必须**原样**取回。判据是**字符串切片**（与求值路径互不依赖），
+   *    故它能抓到"求值器把好端端的字面量改写了"这个反方向的坏法。 */
+  const literal = pick((r) => /^"[^"\\]*"$/.test(r.exprRaw ?? ""), "C22");
+  if (!literal) {
+    add("R3", "字面量式样例存在", false, "battery.ts 里已无纯双引号字面量形态的 expression ⇒ 金丝雀过期");
+  } else {
+    const sliced = literal.exprRaw.slice(1, -1);
+    add("R3", `字面量式原样取回（${literal.key}）`, literal.expression === sliced, `${literal.exprRaw} → ${JSON.stringify(literal.expression)}`);
+  }
+
+  /* R4 正·模板串式：`` `… ${ruleParamRef("x")}` `` 必须**真被求值**（结果里不许再有 `${`）。 */
+  const tpl = pick((r) => (r.exprRaw ?? "").startsWith("`") && (r.exprRaw ?? "").includes("${"), "C18");
+  if (!tpl) {
+    add("R4", "模板串式样例存在", false, "battery.ts 里已无带 ${} 的模板串 expression ⇒ 金丝雀过期");
+  } else {
+    const paramPrefix = typeof CONTRACTS.ruleParamRef === "function" ? CONTRACTS.ruleParamRef("") : "params.";
+    const ok = typeof tpl.expression === "string" && !tpl.expression.includes("${") && tpl.expression.includes(paramPrefix);
+    add("R4", `模板串真被求值（${tpl.key}）`, ok, `${tpl.exprRaw.slice(0, 60)} → ${JSON.stringify(tpl.expression)}`);
+  }
+
+  /* R5 负·**错位必须被咬**（钉死 2026-08-13 那个病）：同一段内嵌样例喂新旧两版抽取器 ——
+   *    新版必须把 C01 解析成 C01 自己的表达式；旧正则必然把 C01 绑到 C10 的原文上且吞掉 C10。
+   *    这一条是本门"我修好了"的**唯一机器证据**。 */
+  {
+    let ok = false;
+    let evidence = "";
+    try {
+      const fresh = ruleRegistry(evalRaw, { blockCode: MISBIND_SAMPLE });
+      const legacy = legacyRuleRegistryRegex(MISBIND_SAMPLE);
+      const want = typeof CONTRACTS.parityRuleExpression === "function" ? CONTRACTS.parityRuleExpression("C01") : null;
+      const gotNew = fresh.rules.get("C01")?.expression ?? null;
+      const gotOld = legacy.get("C01") ?? null;
+      ok = want !== null && gotNew === want && fresh.rules.has("C10") && gotOld !== want;
+      evidence = `新版 C01→${JSON.stringify(gotNew)}（解析 ${fresh.rules.size}/2 条）· 旧正则 C01→${JSON.stringify(gotOld)}（解析 ${legacy.size}/2 条 · 这就是那个病）`;
+    } catch (e) {
+      evidence = `样例解析抛异常：${e.message}`;
+    }
+    add("R5", "跨对象错位可被咬（新对旧错）", ok, evidence);
+  }
+
+  /* R6 负·**不在册判据不许恒真**：一个保证不存在的规则码必须被判为不在册。
+   *    没有它，H6 那句"BATTERY_RULES 里没有这条规则"就无法证伪。 */
+  {
+    const declared = reg.declaredKeys.includes(ABSENT_PROBE_KEY);
+    add("R6", `不在册可被判出（${ABSENT_PROBE_KEY}）`, !declared && !reg.rules.has(ABSENT_PROBE_KEY),
+      declared ? `${ABSENT_PROBE_KEY} 竟已在 BATTERY_RULES 里 ⇒ 负样例过期，请换一个不存在的码` : `${ABSENT_PROBE_KEY} 正确判为不在册（在册 ${reg.rules.size} 条里无它）`);
+  }
+
+  /* R7 规模等式·**防吞噬**：声明了几条就必须解析出几条。旧正则在真库上是 21/29 —— 少的那 8 条
+   *    会被 H6 报成"规则不存在"，而它们**全都在**。"数量对得上"是这个病最直接的判据。 */
+  {
+    const declared = [...new Set(reg.declaredKeys)];
+    const missing = declared.filter((k) => !reg.rules.has(k));
+    add("R7", "声明条数 == 解析条数（防吞噬）", missing.length === 0 && reg.rules.size === declared.length,
+      `声明 ${declared.length} 条 · 解析 ${reg.rules.size} 条${missing.length ? ` · 丢失 ${missing.join(",")}` : " · 无丢失"}`);
+  }
+
+  return rows;
+}
+
+/** 表达式里 `params.x` / `${ruleParamRef("x")}` 两种写法都取出那个 **param 名**。 */
+export function paramNameOf(operand) {
+  const m = /^\$\{\s*ruleParamRef\(\s*["'`]([\w$]+)["'`]\s*\)\s*\}$/.exec(operand) || /^params\.([\w$]+)$/.exec(operand);
+  return m ? m[1] : null;
+}
 
 function selftest(ctx) {
   const bad = [];
@@ -409,6 +781,18 @@ function selftest(ctx) {
   }
   if (ctx.rules.size < 20) {
     bad.push(`规则库事实源（${RULE_REGISTRY_FILE} ${RULE_REGISTRY_SYMBOL}）只读出 ${ctx.rules.size} 条规则（下界 20）—— H6/H7/H8 全等于没开`);
+  }
+  // 规则抽取器金丝雀 R1–R7（与主判据共用 ruleRegistry / topLevelObjects / topLevelProps）
+  for (const r of ctx.ruleCanaries) {
+    if (!r.pass) bad.push(`规则抽取器金丝雀 ${r.id} 不中：${r.name} —— ${r.evidence}`);
+  }
+  // 求值不出来的表达式：**工具看不懂**，不许被 H6 读成「规则不在册」（两者处置相反）
+  for (const u of ctx.ruleUnresolved) {
+    bad.push(
+      `规则 ${u.key} 的 ${u.what} 求值不出来：${u.why}${u.raw ? `\n      原文：${u.raw.slice(0, 120)}` : ""}\n` +
+        `      —— 这是**门看不懂**，不是「规则不存在」。修法：把该派生函数从 @platform/contracts 导出（本门自动跟得上），` +
+        `或改回可求值的形态；**不许**把它读成 H6 的「不在册」。`,
+    );
   }
   if (ctx.bindings.length !== ctx.bindingCount) {
     bad.push(`判据逐条解析出 ${ctx.bindings.length} 条，但表里有 ${ctx.bindingCount} 个 bindingId —— 解析漏条，H6/H7/H8 覆盖不全`);
@@ -468,24 +852,37 @@ for (const anchor of REGION_ANCHORS) {
   }
 }
 
-const rules = ruleRegistry();
+const evalRaw = makeEvaluator(CONTRACTS);
+const reg = ruleRegistry(evalRaw);
+const rules = reg.rules;
+const ruleCanaries = ruleExtractorCanaries(reg, evalRaw);
 const bindings = tables.flatMap((t) => (t.name === DECL_TABLES[0] ? parseBindings(t.code) : []));
 
-const ctx = { targets, regions, tables, bindingCount, solverKeys, vocab, rules, bindings };
+const ctx = {
+  targets, regions, tables, bindingCount, solverKeys, vocab, rules, bindings,
+  ruleCanaries, ruleUnresolved: reg.unresolved,
+};
 
 /* ---------- 金丝雀先跑：门瞎了与代码脏了必须分开报（修法完全不同） ---------- */
 const blind = selftest(ctx);
 if (blind.length > 0) {
   console.error("⛔ 门自己瞎了（不是「代码干净」）—— chain-scan-honesty:check 无法给出有效结论：");
   for (const b of blind) console.error(`  - ${b}`);
-  console.error("\n  修法：修门（锚点/正则/事实源解析），不是修被扫代码。0 命中在本门里长得跟通过一模一样，故必须先自证工具是对的。");
-  process.exit(1);
+  for (const r of ruleCanaries) console.error(`      ${r.pass ? "✓" : "✗"} ${r.id} ${r.name}：${r.evidence}`);
+  console.error(
+    "\n  修法：修门（锚点/正则/事实源解析/求值器），不是修被扫代码。0 命中在本门里长得跟通过一模一样，故必须先自证工具是对的。" +
+      "\n  **本次结论作废（RC=2）**：不许读作「代码干净 / 无违规 / 通过」，也不许读作「不得并线」—— 本门这次什么都没证明。",
+  );
+  process.exit(2); // 2 = 工具自己坏了；1 只留给主判据明确判负那条路径，两者处置相反
 }
 console.log(
   `· 金丝雀通过：必咬 ${MUST_BITE.length}/${MUST_BITE.length} · 必不咬 ${MUST_NOT_BITE.length}/${MUST_NOT_BITE.length} · ` +
+    `规则抽取器 R1–R7 ${ruleCanaries.filter((r) => r.pass).length}/${ruleCanaries.length} · ` +
     `扫描面 ${targets.length} · 构造区 ${regions.length} · 声明表 ${tables.length}（${bindingCount} 条 binding）· ` +
-    `SOLVER_KEYS ${solverKeys.size} · 业务词表 ${vocab.size}`,
+    `SOLVER_KEYS ${solverKeys.size} · 规则库 ${rules.size} 条 · 业务词表 ${vocab.size}`,
 );
+// 否定结论（H6「不在册」）的命中证据：铁律 0.6 要求报「它不存在」时同时给出金丝雀证据
+for (const r of ruleCanaries) console.log(`    ${r.pass ? "✓" : "✗"} ${r.id} ${r.name}：${r.evidence}`);
 if (isSelftestOnly) process.exit(0);
 
 /* ---------- 判据逐条跑 ---------- */
@@ -565,28 +962,57 @@ if (!keyDecl) {
 /* ---------- H6/H7/H8 阈值溯源（A2-b/A2-c：声称的来源到底存不存在）---------- */
 const sourceTally = { param: 0, field: 0, literal: 0, ABSENT: 0 };
 const literalRows = [];
+let notInRegistry = 0;
+/** 报「不在册」这类**否定结论**时必须随附的金丝雀证据（铁律 0.6）。 */
+const CANARY_PROOF =
+  `本次抽取器金丝雀 ${ruleCanaries.filter((r) => r.pass).length}/${ruleCanaries.length} 全中` +
+  `（已解析 ${rules.size}/${new Set(reg.declaredKeys).size} 条规则 · ` +
+  `${ruleCanaries.find((r) => r.id === "R1")?.evidence ?? ""} · ${ruleCanaries.find((r) => r.id === "R6")?.evidence ?? ""}）`;
 for (const b of bindings) {
   // H6 ruleKey 当场读回：判据声称"阈值出自 C22"，那 C22 得真在规则库里。
   if (!b.ruleKey || !rules.has(b.ruleKey)) {
     fail.push(
       `H6 规则在册（事实层）：判据 ${b.bindingId} 声称阈值出自规则 ${b.ruleKey ?? "（未声明）"}，` +
         `但 ${RULE_REGISTRY_FILE} 的 ${RULE_REGISTRY_SYMBOL} 里没有这条规则\n` +
+        `        金丝雀证据（否定结论必附）：${CANARY_PROOF}\n` +
         `        —— 虚构一个规则码会让它看着像官方阈值，实际全仓无定义：溯源链第一环就断了。`,
     );
     sourceTally.ABSENT++;
+    notInRegistry++;
     continue;
   }
+  const rule = rules.get(b.ruleKey);
   // H7 声称的来源真存在：规则表达式必须真以该 metricPath 为比较操作数，否则判据与规则口径不符。
-  const cls = classifyThresholdSource(rules.get(b.ruleKey), b.metricPath);
+  const cls = classifyThresholdSource(rule.expression, b.metricPath);
   sourceTally[cls.source]++;
   if (cls.source === "ABSENT") {
     fail.push(
       `H7 溯源可达：判据 ${b.bindingId} 声称读 ${b.ruleKey} 的 ${b.metricPath} 阈值，但${cls.reason}\n` +
-        `        规则原文：${rules.get(b.ruleKey)}\n` +
+        `        规则原文：${rule.expression}\n` +
+        `        （源码形态：${(rule.exprRaw ?? "?").slice(0, 80)}）\n` +
         `        —— 判据与规则口径不符 ⇒ 运行期只会恒 UNKNOWN 或读回一个不相干的数（后者是静默错答）。`,
     );
   } else if (cls.source === "literal") {
     literalRows.push({ bindingId: b.bindingId, ruleKey: b.ruleKey, metricPath: b.metricPath, value: cls.value });
+  } else if (cls.source === "param") {
+    /* H7b **旋钮真存在**（`parityRuleParams("Cxx")` 的消费方 —— 解析回来却没人核 = 假绿第 9 形态）。
+     * expression 引用 `params.x`，而 `rule.params` 里没有 x ⇒ 运行期解析不出阈值、恒 UNKNOWN；
+     * 屏上那条判据从此永远不触发，而**没有任何东西会变红**。这正是"接了线没数据"那一族。 */
+    const pname = paramNameOf(cls.value);
+    if (pname === null) {
+      fail.push(
+        `H7b 旋钮可解析：判据 ${b.bindingId} 的规则 ${b.ruleKey} 阈值操作数 \`${cls.value}\` 看着像 param 引用却取不出名字\n` +
+          `        规则原文：${rule.expression}`,
+      );
+    } else if (!rule.params || !Object.prototype.hasOwnProperty.call(rule.params, pname)) {
+      fail.push(
+        `H7b 旋钮在册：判据 ${b.bindingId} 的规则 ${b.ruleKey} 表达式引用 \`${cls.value}\`，` +
+          `但该规则的 params 里没有 \`${pname}\`（现有：${rule.params ? Object.keys(rule.params).join("/") || "（空）" : "（无 params 属性）"}）\n` +
+          `        规则原文：${rule.expression}\n` +
+          `        （params 源码形态：${(rule.paramsRaw ?? "（无）").slice(0, 80)}）\n` +
+          `        —— 阈值引用了一个不存在的旋钮 ⇒ 运行期解析不出数、判据恒 UNKNOWN，而屏上看不出来。`,
+      );
+    }
   }
 }
 
@@ -670,7 +1096,8 @@ console.log(
     `H5 业务名命中 ${hits.length}（豁免 ${exempted.length}/${baseline.maxExemptions ?? 0}，新增 ${newHits.length}）`,
 );
 console.log(
-  `· H6 规则在册 ${bindings.length - sourceTally.ABSENT}/${bindings.length} · H7 溯源可达（ABSENT ${sourceTally.ABSENT}）· ` +
+  `· H6 规则在册 ${bindings.length - notInRegistry}/${bindings.length}（规则库解析 ${rules.size}/${new Set(reg.declaredKeys).size} 条）· ` +
+    `H7 溯源可达（ABSENT ${sourceTally.ABSENT - notInRegistry}）· ` +
     `H8 阈值源 param ${sourceTally.param} / field ${sourceTally.field} / literal ${sourceTally.literal}` +
     `（literal 棘轮基线 ${baseline.maxLiteralThresholds ?? "未设"}）`,
 );
