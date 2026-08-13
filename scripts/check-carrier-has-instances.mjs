@@ -300,4 +300,10 @@ if (fail.length) {
   for (const m of fail) console.error("  - " + m);
   process.exit(1);
 }
-console.log("\n✓ carrier-has-instances:check 通过（每条流程的承载物都会落库 ≥1 行 · 豁免名单无冗余）。");
+// ⚠ 通过语必须**带上棘轮实况**：一句「承载物都有实例」盖住挂账的豁免，就是屏上说谎的那种绿。
+console.log(
+  `\n✓ carrier-has-instances:check 通过（无**新增**违规；存量 ${used.size} 条具名挂账在 scripts/carrier-instance-baseline.json，逐条带 why；豁免名单无冗余）。`,
+);
+if (used.size > 0 || unresolved.length > 0) {
+  console.log(`  ⚠ 「通过」= 没有变得更糟，**不等于**干净：${used.size} 条挂账 + ${unresolved.length} 条未判定，今天仍然是真的。`);
+}

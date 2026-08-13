@@ -515,6 +515,25 @@
       },
       "notes": "闭 G-LEVER-BINDING-DRIFT：产能拨杆候选由两包各自维护的两张表 join 得出（service.ts LEVER_FACTOR_PROPS × contracts CAPACITY_FACTOR_BINDINGS），交集空则该瓶颈层永远拨不出候选且**全程无报错**（后端 200 + levers:[]，前端只渲染空面板）。实测交付前「设备OEE」层候选恒 0——它指向 Equipment.oee_current，而绑定表把 OEE 建模成 oeeA/oeeP/oeeQ 三原子、无 oee_current。交叉校验函数 factorPropKeys() 早已存在于契约包却零调用方（假绿第 9 形态：实现有、零生产消费方），本门是它的第一个真消费方。"
     },
+    "check-agent-config-complete.mjs": {
+      "alias": "agent-config-complete:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/graphmeta.ts",
+        "apps/datacore/src/mapping.ts",
+        "apps/agentcore/src/mocks/seed.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-13 现跑八组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）",
+        "note": "M1 摘掉 datacore:learning-agent 的三条豁免 → RC=1，同时点名 C1（tools 为空）· C2（根本没有 scopeObjectTypes 字段）· C4（该 key 在 AgentCore 注册表里不存在，屏上展示的是运行态并不存在的 agent），三条各给不同修法；M2 真修好——给 AGENT_SEEDS 记录补 tools+scopeObjectTypes 并把 key 改成真存在的 analyst，重建 dist（读回 dist 确认记录已变）→ RC=0，挂账 11→8、未展示 agent 11→10；M3 改回 + 重建 → RC=1 重新转红；M4 在 agentcore 侧注入一个全新空壳 agent（tools:[] + objectTypes:[]）+ 重建（读回 dist 确认 12 个 agent 含 mutant_agent）→ RC=1，棘轮咬新增两条。",
+        "note2": "退出码三态均现跑取证：S1 基线非法 JSON → RC=2；S2 门自变异令 judgeAgent 恒返「无问题」→ 5 条金丝雀开火 RC=2（**不是**报「agent 配置都完整」）；S3 令 judgeAgent 恒返「全是问题」→ 4 条必中金丝雀开火 RC=2（单向金丝雀测不出恒真/恒假判定器，两向都要）；S4 把 apps/agentcore/dist/mocks/seed.js 移走模拟未 build → assertDistFresh 报「本门拒绝给出任何结论」。⚠ S4 的退出码是 **1 不是 2**，因为 assertDistFresh（scripts/dist-freshness.mjs:196）全仓统一 exit(1)；文案不会被误读成代码缺陷，但退出码这一位不合三分约定——这是 10+ 道读 dist 的门共有的形态，属另一张 WO（改一道门等于让同一条件在仓里有两种退出码，更坏）。",
+        "note3": "金丝雀里有一条专门钉死「C2_EMPTY_SCOPE 与 C2_NO_SCOPE_FIELD 必须分开判」——「声明了我不碰业务对象」和「压根没声明过能力边界」是两件事，混成一个码就没法分别写修法。"
+      },
+      "notes": "「注册了一个 agent」与「注册了一个能跑的 agent」此前无门分辨：tools:[] / objectTypes:[] 的定义照样过 schema、照样进列表、照样能被选中。判据 C1 tools 非空 · C2 scopeObjectTypes 非空 · C3 带 ruleBindings 字段的须非空或具名声明理由 · C4 两侧键空间对账 · C5 棘轮反向。C4 是追一层追出来的真缺口：DataCore 的 AGENT_SEEDS（graphmeta.ts:73，只有 key/displayName/summary）与 AgentCore 的 seedRegistry().agents（11 个真 AgentDefinition）**key 交集为空**，而 AGENT_SEEDS 的注释写着「AgentCore 侧注册表为运行态来源」——读起来像同一批 agent 的投影，实则映射表上展示的三个 agent 运行态一个都不存在、真正存在的十一个一个都没展示。那条链是活的（mapping.ts:57 → buildMappingRows → app.ts:3141 → GET /a/v1/ontology/mapping），所以这是「接了线、有数据、内容是错的」，不是死代码。现算存量 11 条全部具名挂账；反向（AgentCore 有而映射表未展示，现算 11 个）如实打印不进红——展示子集是可以的产品判断，展示不存在的东西不是。"
+    },
     "check-carrier-has-instances.mjs": {
       "alias": "carrier-has-instances:check",
       "binding": "GATES_CHAIN",

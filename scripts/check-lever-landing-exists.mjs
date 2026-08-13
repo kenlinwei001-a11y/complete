@@ -276,4 +276,8 @@ if (fail.length) {
   for (const m of fail) console.error("  - " + m);
   process.exit(1); // 1 = 真有违规（与上面所有 gateToolBroken 的 2 严格分开）
 }
-console.log("\n✓ lever-landing-exists:check 通过（每条杠杆落点都指向本体上真实存在的属性 · 豁免名单无冗余）。");
+// ⚠ 通过语必须**带上棘轮实况**：一句「落点都存在」盖住挂账的豁免，就是屏上说谎的那种绿。
+console.log(
+  `\n✓ lever-landing-exists:check 通过（无**新增**违规；存量 ${usedExempt.size} 条具名挂账在 scripts/lever-landing-baseline.json，逐条带 why；豁免名单无冗余）。`,
+);
+if (usedExempt.size > 0) console.log(`  ⚠ 「通过」= 没有变得更糟，**不等于**干净：上面 ${usedExempt.size} 条今天仍然是真的。`);
