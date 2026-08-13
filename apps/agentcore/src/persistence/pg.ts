@@ -266,16 +266,60 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       },
     },
     agentRuns: {
+      // WO-AGENTRUN-ATTRIBUTION（migrations/012）：归属**同时**落 JSONB（真值单一来源，读回即完整记录）
+      // 与四个投影列（供 WHERE/ORDER BY 走索引）。冲突分支同样更新投影列 —— 只更 record 不更列，
+      // 就会出现「JSON 里改了归属、列还留着上一版」这种两份真值打架的经典坑。
+      // WO-AGENTRUN-FANOUT-PERSIST（migrations/013）：冲突键从 `task_id` 改成 `id`。
+      // 旧写法 `ON CONFLICT (task_id) DO UPDATE` 依赖的正是那条 UNIQUE 约束 —— 约束一去，
+      // 这句会直接报 `there is no unique or exclusion constraint matching the ON CONFLICT specification`。
+      // 两处必须同一次改，改一半就是 pg 模式一启动就炸（memory 模式还照绿）。
       async insert(rec: AgentRunRecord) {
         await q(
-          `INSERT INTO agent_runs(id, task_id, record) VALUES ($1,$2,$3)
-           ON CONFLICT (task_id) DO UPDATE SET record = $3`,
-          [rec.id, rec.taskId, JSON.stringify(rec)],
+          `INSERT INTO agent_runs(id, task_id, record, tenant_id, agent_id, agent_key, created_at, origin)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           ON CONFLICT (id) DO UPDATE SET
+             record = $3, tenant_id = $4, agent_id = $5, agent_key = $6, created_at = $7, origin = $8`,
+          [
+            rec.id,
+            rec.taskId,
+            JSON.stringify(rec),
+            rec.tenantId ?? null,
+            rec.agentId ?? null,
+            rec.agentKey ?? null,
+            rec.createdAt ?? null,
+            rec.origin ?? null,
+          ],
         );
       },
+      // 只返顶层那条。`IS DISTINCT FROM` 而不是 `<> 'FANOUT'`：后者对 NULL 求值为 NULL（= 不成立），
+      // 会把**归属上线前的旧记录整批漏掉** —— 那正是本仓最爱犯的「三值逻辑吞数据」坑。
       async getByTask(taskId) {
-        const r = await q(`SELECT record FROM agent_runs WHERE task_id = $1`, [taskId]);
+        const r = await q(
+          `SELECT record FROM agent_runs
+            WHERE task_id = $1 AND origin IS DISTINCT FROM 'FANOUT'
+            ORDER BY created_at NULLS FIRST, id
+            LIMIT 1`,
+          [taskId],
+        );
         return r.rows[0]?.record as AgentRunRecord | undefined;
+      },
+      async listByTask(taskId) {
+        const r = await q(
+          `SELECT record FROM agent_runs WHERE task_id = $1 ORDER BY created_at NULLS FIRST, id`,
+          [taskId],
+        );
+        return r.rows.map((x) => x.record as AgentRunRecord);
+      },
+      async listByAgent(tenantId, agentKey) {
+        // NULL 列不会等于任何值 ⇒ 归属上线前的旧记录天然被排除（与 memory 侧「字段非空」同语义）。
+        // created_at 可能为 NULL（旧记录），故次序回落 id：ULID-ish 前 10 位是毫秒时间戳，仍是时序。
+        const r = await q(
+          `SELECT record FROM agent_runs
+            WHERE tenant_id = $1 AND agent_key = $2
+            ORDER BY created_at DESC NULLS LAST, id DESC`,
+          [tenantId, agentKey],
+        );
+        return r.rows.map((x) => x.record as AgentRunRecord);
       },
     },
     fallbackTraces: {
