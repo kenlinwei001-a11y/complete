@@ -306,8 +306,41 @@ const RE_READ_VERB = /\b(?:from|import|readFileSync|readdirSync|existsSync|statS
  */
 const RE_EXCLUDE_CTX = /\.(?:includes|startsWith|endsWith|indexOf|lastIndexOf|has|add|delete)\s*\(|new\s+Set\s*\(|[!=]==?\s*["'`][^"'`\n]*\bdist\b/;
 
+/**
+ * 第四道判据：**这条 dist 路径在本仓真的存在吗**。
+ *
+ * ⛔ 由 `check-redline-wired.mjs:242` 逼出来（2026-08-13 实测）。那一行是它自己的
+ *    金丝雀样例，`code:` 属性里放着一段**当作数据的源码**：
+ *
+ *      { name: "**门脚本经 dist 动态 import**", want: true, path: "scripts/check-canary.mjs",
+ *        code: `const m = await import("../apps/x/dist/def.js");\nm["${SYM}"]({});` },
+ *
+ *    它是**模板字符串里的假源码**，不是这个门自己的 import —— `check-redline-wired.mjs`
+ *    运行时一次 dist 都不读（它只 `await import("typescript")`）。剥注释救不了：
+ *    这段在**代码里**，不在注释里，和上面 `AUDIT_SELF_EXCLUDE` 那条记的是同一个病
+ *    （检测器把别人的**示例文本**当成了真代码）。
+ *
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『这行里有个长得像 dist 路径的字符串』当作『这个门读了 dist』的证据，而前者并不度量后者。」**
+ *
+ * 判据取「包根存不存在」而不是文件级 existsSync：dist 是构建产物，**没 build 时整个
+ * dist 目录都不在**，拿它当判据会在干净 checkout 上把所有真读取点判成不存在（假绿方向，更坏）。
+ * 而**包根**（`apps/datacore` / `packages/contracts`）是源码目录，任何时候都在。
+ * 样例里的 `apps/x` 本仓不存在 ⇒ 判为示例文本；真读取点如 `apps/datacore/dist/...` 照旧命中。
+ */
+function distPathIsReal(line, root) {
+  const m = line.match(/["'`]([^"'`\n]*?\/?dist(?:\/[^"'`\n]*)?)["'`]/);
+  if (!m) return true; // 取不出路径 ⇒ 不敢排除，按命中处理（宁可假红，不可假绿）
+  const p = m[1].replace(/^(?:\.\.?\/)+/, "");
+  const i = p.indexOf("dist");
+  if (i <= 0) return true; // 形如 "dist" 的裸目录名，无包根可核 ⇒ 保守按命中
+  const pkgRoot = p.slice(0, i).replace(/\/+$/, "");
+  if (!pkgRoot) return true;
+  return existsSync(join(root, pkgRoot));
+}
+
 /** 一个门脚本是否**读** dist（而非只是提到 dist）。逐行判定，返回命中的行。 */
-export function distReadSites(text) {
+export function distReadSites(text, { root = process.cwd() } = {}) {
   const hits = [];
   const lines = text.split("\n");
   let inBlockComment = false;
@@ -333,6 +366,7 @@ export function distReadSites(text) {
     if (!RE_DIST_LITERAL.test(line)) continue;   // dist 必须出现在字符串字面量里（才可能是路径）
     if (RE_EXCLUDE_CTX.test(line)) continue;     // 判等/成员测试/排除 ⇒ 提及，不是读取
     if (!RE_READ_VERB.test(line)) continue;      // 必须有读取动词 ⇒ 真的在加载/探测这条路径
+    if (!distPathIsReal(line, root)) continue;   // 路径的包根本仓不存在 ⇒ 是示例文本，不是真读取点
     hits.push({ line: i + 1, text: line.trim().slice(0, 160) });
   }
   return hits;

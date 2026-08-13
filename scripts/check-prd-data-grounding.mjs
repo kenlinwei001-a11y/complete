@@ -82,6 +82,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS_DIR = "docs";
@@ -753,6 +754,10 @@ function selftest(universe, fileCount) {
 }
 
 async function crossCheckWithDist(universe) {
+  // ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 判据②）：本门拿 dist 的对象类型属性表
+  //    当「真值源」核 PRD 字段引用；dist 过期 ⇒ 新加的属性不在产物里，门会把已落地的字段
+  //    判成「引用了不存在的数据」——方向恰好相反。
+  assertDistFresh(["apps/datacore/dist"], { gate: "prd-data-grounding:check" });
   const distBattery = join(REPO_ROOT, "apps/datacore/dist/synthetic/battery.js");
   const distExt = join(REPO_ROOT, "apps/datacore/dist/synthetic/battery-extended.js");
   if (!existsSync(distBattery) || !existsSync(distExt)) return { ran: false, mismatches: [] };

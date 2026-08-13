@@ -53,6 +53,7 @@ function gateToolBroken(e) {
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -60,6 +61,10 @@ const fails = [];
 const notes = [];
 
 // ── 依赖：datacore dist（生产别名表 + 目录，**共用同一份表**，不在本文件另抄） ──
+// ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 判据②）：本门比对 dist 的
+//    SOLVER_ARG_ALIASES 与目录；dist 过期 ⇒ 拿旧别名表核新目录，漂移结论不可信。
+assertDistFresh(["apps/datacore/dist"], { gate: "solver-arg-key-drift:check" });
+
 const distAliases = abs("apps/datacore/dist/solvers/arg-aliases.js");
 const distCatalog = abs("apps/datacore/dist/catalog.js");
 for (const [label, u] of [["datacore/solvers/arg-aliases", distAliases], ["datacore/catalog", distCatalog]]) {

@@ -42,6 +42,7 @@ function gateToolBroken(e) {
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -59,6 +60,11 @@ const need = [
 for (const [label, rel] of need) {
   if (!existsSync(abs(rel))) fail(`：${label} dist 未构建（${rel}）——先 pnpm -r build`);
 }
+
+// ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 的判据②）：
+//    本门比对 dist 里的 SOLVER_ONTOLOGY_SIGNATURES 与 DRIL 投影；dist 过期 ⇒ 刚改的签名不在产物里，
+//    门会报「签名漂移」而源码其实是一致的——方向恰好相反。
+assertDistFresh(["apps/datacore/dist", "apps/agentcore/dist", "packages/contracts/dist"], { gate: "function-signature:check" });
 
 const { SOLVER_ONTOLOGY_SIGNATURES, serializableSignature, mergeReadSurfaces } = await import(
   abs("apps/datacore/dist/solvers/ontology-signature.js").href

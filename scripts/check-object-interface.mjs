@@ -43,6 +43,7 @@ function gateToolBroken(e) {
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -103,6 +104,11 @@ for (const rel of [
 }
 
 // --- ④ 种子接口的行为/字段声明落到真注册表（跑 dist）-----------------------
+// ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 的判据②）：
+//    本门读 dist 里的种子接口声明与求解器注册表；dist 过期 ⇒ 拿旧产物断言新源码，
+//    「接口漏声明」这类结论会凭空出现或凭空消失。
+assertDistFresh(["apps/datacore/dist", "packages/contracts/dist"], { gate: "object-interface:check" });
+
 const { BATTERY_OBJECT_INTERFACES, BATTERY_TYPE_INTERFACE_BINDINGS, BATTERY_ACTION_TYPES, batteryObjectTypes } =
   await import(abs("apps/datacore/dist/synthetic/battery.js").href);
 const { extendedObjectTypes } = await import(abs("apps/datacore/dist/synthetic/battery-extended.js").href);
