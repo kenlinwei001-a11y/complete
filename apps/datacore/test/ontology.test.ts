@@ -112,7 +112,9 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
   it("C-2 outbox: ontology.published / rules.updated POSTed to webhooks with retry; failures don't affect A", async () => {
     const calls: { url: string; body: string }[] = [];
     let fail = true;
-    const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    // `RequestInfo` 是 DOM lib 的类型，本包 lib 只有 ES2022 ⇒ TS2552。
+    // 取 `fetch` 自己的形参类型，既不引 DOM 也不写死。
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       calls.push({ url: String(url), body: String(init?.body ?? "") });
       if (fail) throw new Error("connection refused");
       return new Response("ok", { status: 200 });

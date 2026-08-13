@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SkillDefinitionSchema, type AgentDefinition, type AgentLoopResult, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
+import { SkillDefinitionSchema, type AgentDefinition, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
+// AgentLoopResult 的出处是 `src/agent/loop.ts`，不是契约包（契约包从来没导出过它）。
+// 原来从 "@platform/contracts" 取 ⇒ TS2305，隐式变成 any，`loopResult()` 的返回形状三年没人校验过。
+import type { AgentLoopResult } from "../src/agent/loop.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { SkillProbeRunner, extractAnswerText } from "../src/skill-probe.js";
 import type { ExecutionEngine } from "../src/engine.js";

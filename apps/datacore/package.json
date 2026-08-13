@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.typecheck.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run",
     "start": "node dist/server.js",
