@@ -1870,6 +1870,23 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-a10.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R4"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/store/eventInvalidation.ts",
+        "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts",
+        "packages/contracts/src/chain-sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sandbox-a2.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2932,6 +2949,7 @@
       "PRD-nav-gate.md",
       "PRD-ontoflow-data-builder.md",
       "PRD-ontology-7elements.md",
+      "PRD-sandbox-a10.md",
       "PRD-sandbox-multiplan.md",
       "PRD-skill-compiler-registry.md",
       "PRD-skill-governance-learning.md",
@@ -3754,6 +3772,27 @@
     "scripts/ui-smoke-sim-init.mjs": [
       "PRD-route-nav-coverage.md"
     ],
+    "apps/agentcore/src/event-subscriptions.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-v2-skill.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/frontend-shell/src/store/eventInvalidation.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts": [
+      "PRD-sandbox-a10.md"
+    ],
+    "packages/contracts/src/chain-sim.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-stale-claims.md"
+    ],
     "apps/datacore/test/chain-scan-honesty.test.ts": [
       "PRD-sandbox-a2.md"
     ],
@@ -3772,26 +3811,11 @@
     "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": [
       "PRD-sandbox-metro-ops.md"
     ],
-    "packages/contracts/src/chain-sim.ts": [
-      "PRD-sandbox-metro-ops.md",
-      "PRD-sandbox-multiplan.md",
-      "PRD-stale-claims.md"
-    ],
     "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
       "PRD-sandbox-metro-semantics.md",
       "PRD-transit-geometry.md"
     ],
-    "apps/agentcore/src/event-subscriptions.ts": [
-      "PRD-sandbox-multiplan.md",
-      "PRD-skill-compiler-registry.md",
-      "PRD-skill-governance-learning.md",
-      "PRD-v2-skill.md",
-      "PRD-v2-slice.md"
-    ],
     "apps/datacore/test/catalog.test.ts": [
-      "PRD-sandbox-multiplan.md"
-    ],
-    "apps/frontend-shell/src/store/eventInvalidation.ts": [
       "PRD-sandbox-multiplan.md"
     ],
     "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": [
