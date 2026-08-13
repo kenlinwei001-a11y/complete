@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "note": "mock 谎报棘轮基线（WO-GATE-MOCK-FIDELITY · 闭本体 §8 G-MOCK-OVERCLAIM）。每条 = 一处「mock 声称的，真后端并不提供或方向相反」的**已知欠账**，必须写明 why。**只减不增**：--update 只摘掉已修复项，绝不收编新增谎报（否则棘轮秒变橡皮图章）；要把一条新谎报记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。",
+  "generatedBy": "node scripts/check-mock-fidelity.mjs --seed（3 条 why 由人手补写）",
+  "exemptions": {
+    "LINK line_belongs_to_base.from": {
+      "why": "欠账 #160 本体，**尚未修**。mock 写 Line→Base，后端单源 battery.ts:2321 是 Base→Line（1:N），方向正好相反。这正是本门存在的理由（#158 的前端副本）。本门落地单的范围边界是 scripts/** 与 docs/SYSTEM-ONTOLOGY.md，**不许改 apps/** 生产代码**，故本条只能先记账、由后续 WO 修 mock。修法：把 handlers.ts 的 fromType 改为 Base、toType 改为 Line，然后跑 --update 摘掉本条与下一条。",
+      "where": "apps/frontend-shell/src/mocks/handlers.ts:1673",
+      "debt": "#160",
+      "owner": "待派 WO（改 apps/frontend-shell/src/mocks/handlers.ts）"
+    },
+    "LINK line_belongs_to_base.to": {
+      "why": "同上，#160 的另一半（toType）。方向反转必然同时报 from 与 to 两条，修一处即同时消掉两条。",
+      "where": "apps/frontend-shell/src/mocks/handlers.ts:1673",
+      "debt": "#160",
+      "owner": "待派 WO（改 apps/frontend-shell/src/mocks/handlers.ts）"
+    },
+    "LINK order_for_model.cardinality": {
+      "why": "**本门新查出来的第 3 例**（此前无人记账）：mock 声明 order_for_model 为 1:1，后端单源 battery.ts:2311 是 1:N。语义上一个型号可对多张订单，后端是对的、mock 是错的。影响面比 #160 轻（基数只影响前端展示用的关系说明，不改变可达性），但同属「mock 与后端单源打架」这一形态，故一并记账。修法：把 handlers.ts:1514 的 cardinality 改成 1:N 后跑 --update。",
+      "where": "apps/frontend-shell/src/mocks/handlers.ts:1672",
+      "debt": "本门首次发现",
+      "owner": "待派 WO（改 apps/frontend-shell/src/mocks/handlers.ts）"
+    }
+  }
+}

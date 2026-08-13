@@ -985,6 +985,25 @@
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
     },
+    "check-mock-fidelity.mjs": {
+      "alias": "mock-fidelity:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/mocks/**",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/agentcore/src/server.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "原单建成即红（2026-08-11，claude/handoff-wo-gate-selftest）＋ 收编方 WO-R6 独立三向复验（2026-08-13）",
+        "note": "【原单】建成首跑 exit 1，检出 3 条**真的**不一致：line_belongs_to_base.from/to（mock Line→Base vs 后端 Base→Line＝欠账 #160，仍未修）＋ order_for_model.cardinality（mock 1:1 vs 后端 1:N，**本门新查出来的，此前无人记账**）。【收编方 WO-R6 独立复验，未沿用原单结论】① 基线 RC=0：mock 声明 265 条路由 · 后端注册 509 条 · 新增谎报 0 条（存量 3 条已记基线，逐条打印「（已记基线）」）；② 变异反证 RC=1：往 handlers.ts:1024 注入 `GET */a/v1/zzz-mutation-probe-no-such-backend-route` → 路由计数 265→266、谎报 0→1，报告精确点名 `ROUTE GET /a/v1/zzz-mutation-probe-no-such-backend-route  apps/frontend-shell/src/mocks/handlers.ts:1024`（**计数随变异而动 ⇒ 信号是真的，不是写死的**）；③ 还原后 RC=0 且计数回到 265/0，grep 复查变异串 0 命中；④ 故障注入 RC=2：`MOCK_FIDELITY_FORCE_NO_LEX=1` 令词法库取不到 → 打印「⛔ 读不到词法原语库 … ⇒ 工具坏了，不是代码坏了 / 本次结论作废」并退 2，**不是**报「mock 干净」。",
+        "note_rc2_retrofit": "⚠️ 本门原版成文于 canonical 并入 WO-GATE-RC2-DISCIPLINE（bcaa0894）**之前**，只有金丝雀一处 exit(2)、**无顶层兜底**。收编时被 `check-gate-exit-discipline.mjs` 当场咬红（RC=1，原文：「② 无顶层兜底：未预期异常…会走 node 默认退 1，被读成『真有违规』」）——这正是那道「守门的门」该起的作用：机器先说话，不靠人想起来。收编方据此补齐：`toolBroken()` 统一出口 + 顶层 `process.on(uncaughtException/unhandledRejection)` 最先注册 + 词法库改**动态** import（静态 import 失败在链接期，兜底钩子来不及注册，缺 lib 会走 node 默认 RC=1 被读成「真有谎报」）+ 棘轮基线读坏走 RC=2。补齐后 gate-exit-discipline 由 63/64 守纪律变为 64/64，RC=0。"
+      },
+      "notes": "治「mock 声称提供某目录/某条目，真后端并不提供（或方向相反）」＝ 假绿的一种：前端在 mock 上跑得通、前端测试全绿，一接真后端就崩。与既有门**不重叠**：nav-group-coverage 判据② 管反方向（后端有、mock 缺⇒哑门），cockpit-widgets 管 DASH_LAYOUT 漂移，本门补没人管的方向。诚实边界（脚本顶注写明）：只判路由**注册**了没有、不判返回形状；条目只咬结构性字段（放开到所有同名字段实测产生 ~15 条 description 误报）；**不做条目集合自动配对**——实测按 key 交集配对会把 4 个求解器 key 误配到 21 个意图 key 上（交集恰好 2），结论整条是假的，宁可没有这条载体。词法原语与 befe-seam 共用 scripts/lib/source-lex.mjs，不许各抄一份。⚠️ 收编说明（WO-R6）：原分支同批还改了 check-backend-frontend-seam.mjs（-266 行，重构为引用 source-lex）与 check-crossbranch-reinvent.mjs，但 canonical 自该分支分叉后已在这两个文件上前进 4 个提交（含 f174a751 散文遮蔽修复、8d365668 RC=2 归位、3e64870b+bcaa0894 退出码纪律），**取分支版会回退**，故本次只捞 3 个新文件 + 手工接线，两个门脚本一律留用 canonical 版。",
+      "disposition": "WIRE"
+    },
     "check-ui-first-layer.mjs": {
       "alias": "ui-first-layer:check",
       "binding": "GATES_CHAIN",
