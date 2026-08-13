@@ -26,6 +26,6 @@ export const LEVER_PROP_META: Record<string, { label: string; unit: string; kind
   "Material.onHand": { label: "物料·现货库存", unit: "", kind: "qty" }, // debattery-allow
   "Material.leadTime": { label: "物料·到货周期", unit: "天", kind: "days" }, // debattery-allow
   "Order.outsourceRatio": { label: "订单·外协比例", unit: "%", kind: "ratio" }, // debattery-allow
-  "ChangeoverMatrix.changeoverMin": { label: "换型·时长", unit: "分钟", kind: "minutes" }, // debattery-allow
+  "ChangeoverMatrix.minutes": { label: "换型·时长", unit: "分钟", kind: "minutes" }, // debattery-allow（WO-ENGINE-2：真属性名 minutes·旧 changeoverMin 在对象上不存在）
   "Shipment.etaDay": { label: "在途·到货天", unit: "天", kind: "days" }, // debattery-allow
 };

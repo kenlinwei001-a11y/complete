@@ -401,7 +401,7 @@ const LEVER_FACTOR_PROPS: Record<string, string[]> = {
   良率波动: ["Process.yield_baseline"], // debattery-allow
   物料齐套: ["MaterialBalance.coverage", "Material.onHand", "Material.leadTime", "Order.outsourceRatio"], // debattery-allow：物料齐套/关键物料/到货/外协（⑬⑮）
   人力工时: ["Process.attendance", "Process.shifts", "Process.shiftHours"], // debattery-allow：在岗出勤×班次（⑯⑰）
-  换型损失: ["ChangeoverMatrix.changeoverMin", "Order.outsourceRatio"], // debattery-allow：换型时长/外协（⑤）
+  换型损失: ["ChangeoverMatrix.minutes", "Order.outsourceRatio"], // debattery-allow：换型时长/外协（⑤·WO-ENGINE-2 改名·真属性 minutes）
   物流时长: ["Shipment.etaDay", "Material.leadTime"], // debattery-allow：在途时效/到货（⑮）
 };
 

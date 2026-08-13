@@ -334,6 +334,16 @@ export function patchCapacityContext(
       return { ...c, lines: bump(c.lines) };
     case "Material":
       return { ...c, materials: bump(c.materials ?? []) };
+    // WO-ENGINE-2 件一：⑤ 换型损失的 override 此前落进 `default` ⇒ 克隆世界与基线**逐字节相同** ⇒ 敏感度恒 0。
+    // 补此分支后 override 真落进 ctx；但**这仍不足以让 ⑤ 复活**——`computeByProcessModel` 的
+    // p50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
+    // 故 ∂p50/∂minutes 仍恒 0。第三重死见 `engine2-changeover-lever.seam.test.ts` 的逐重实测。
+    case "ChangeoverMatrix":
+      return { ...c, changeoverMatrix: bump(c.changeoverMatrix ?? []) };
+    // WO-ENGINE-2 件一：⑤ 换型损失的 override 此前落进 `default` ⇒ 克隆世界与基线**逐字节相同** ⇒ 敏感度恒 0。
+    // 补此分支后 override 真落进 ctx；但**这仍不足以让 ⑤ 复活**——`computeByProcessModel` 的
+    // p50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
+    // 故 ∂p50/∂minutes 仍恒 0。第三重死见 `lever-binding-drift.test.ts` 的具名记账。
     default:
       return { ...c };
   }
