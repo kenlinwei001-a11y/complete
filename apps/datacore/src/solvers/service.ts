@@ -262,6 +262,13 @@ const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timelin
  */
 const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
 
+/**
+ * WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· 需要「真 BOM + 订单客户归属边」的求解器（**按需加载**·不全表扫）。
+ * 只有 `quote_margin` 要沿 `order_of_customer` 走到客户的订单、再按型号取 `BOMHeader`+`BOMDetail` 的真 BOM。
+ * 其余 13 个扩展求解器不载这三样 → 与本单上线前逐字节一致（R6 向后兼容）。
+ */
+const COMMERCE_GRAPH_SOLVERS = new Set(["quote_margin"]);
+
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
@@ -345,7 +352,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
-  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
+  // WO-QUOTE-MARGIN-CUSTOMER：+ scope（客户维作用域·CUSTOMER/ALL/EXPLICIT + 可溯的 orders/bomId）。
+  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "scope", "ruleRefs"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（与 capex_scenario 端同一份「不可相加」登记）。
   credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "chainCashflow", "ruleRefs"],
   // WO-ENGINE-SCOPE-FIX2：+ quarterScope（季度维·给了季度却没给缺口时标 EMPTY，写明那个数是占位不是该季真缺口）。
@@ -4368,6 +4376,8 @@ export class SolverService {
       solverKey?: string;
       withAdoptions?: boolean;
       withDecisionInfo?: boolean;
+      /** WO-R8-RECLAIM-ENGINE · 商业图（收编自 handoff-wo-reclaim-engine，与 authCtx 加性并存）。 */
+      withCommerceGraph?: boolean;
       /** WO-69 P1 列级：带上调用者身份 → 求解器上下文与读投影同约束（不可读列不进求解器）。 */
       authCtx?: AuthCtx;
     },
@@ -4430,7 +4440,7 @@ export class SolverService {
     //   解法是**取并集**（见下方 `suppliers`），不是删掉一处 —— 删哪一处都会让对应那半在它自己的
     //   加载条件下拿到空表，而空表在这两个消费方那里都是「诚实缺席」的合法形态，**不会报错、只会静默少算**。
     // WO-ENGINE-SCOPE-FIX2：+BOMHeader/BOMDetail 两类（`carbon_footprint` 型号维的真源·见 types.ts 字段注释）。
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeaders, bomDetails] =
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeadersExt, bomDetailsExt] =
       opts?.withExtended
         ? await Promise.all([
             loadExt("Material"),
@@ -4468,7 +4478,37 @@ export class SolverService {
       : opts?.withDecisionInfo
         ? await this.repos.objects.listByType(tenantId, "Supplier")
         : empty;
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：真 BOM 两类 + 订单客户归属边（**按需**·仅 COMMERCE_GRAPH_SOLVERS）。
+    // 三样一起载：BOM 少了取不到型号真成本、边少了定位不到「这个客户的订单」，任一半缺都会退回假个性化。
+    const [bomHeadersCommerce, bomDetailsCommerce, orderCustLinkRows] = opts?.withCommerceGraph
+      ? await Promise.all([
+          this.repos.objects.listByType(tenantId, "BOMHeader"),
+          this.repos.objects.listByType(tenantId, "BOMDetail"),
+          this.repos.links.list(tenantId, (l) => l.type === "order_of_customer"),
+        ])
+      : [empty, empty, [] as Awaited<ReturnType<typeof this.repos.links.list>>];
+    // BOMHeader/BOMDetail 的**并集加载**（并线收口·与上方 suppliersExt/suppliers 同一形态）：
+    // WO-ENGINE-SCOPE-FIX2 走 `withExtended`（carbon_footprint 型号维），WO-QUOTE-MARGIN-CUSTOMER
+    // 走 `withCommerceGraph`（quote_margin 客户维），**加载条件不同**。删掉任一处都会让对应那半在
+    // 它自己的条件下拿到空表 —— 而空表在这两个消费方那里都是「诚实缺席」的合法形态，
+    // 不报错、只静默少算（正是本文件 suppliersExt 注释点名的那个坑）。故按「谁开着就载谁」求并，
+    // 且 withExtended 已载过时不重复打仓储（保住两单各自的按需加载意图）。
+    const bomHeaders = opts?.withExtended ? bomHeadersExt : bomHeadersCommerce;
+    const bomDetails = opts?.withExtended ? bomDetailsExt : bomDetailsCommerce;
+    const orderCustomerLinks = orderCustLinkRows
+      .slice()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) // R6 确定性
+      .map((l) => ({
+        orderId: l.fromId,
+        customerId: l.toId,
+        custId: str(l.props?.custId),
+        custName: str(l.props?.custName),
+        orderCust: str(l.props?.orderCust),
+      }));
     return {
+      // bomHeaders/bomDetails 在下方随 WO-ENGINE-SCOPE-FIX2 一并置键（同一个并集变量·见其加载处注释）——
+      // 此处不再重复置键，否则 `TS1117 多个同名属性`：后者静默覆盖前者，两单谁生效取决于书写顺序。
+      orderCustomerLinks,
       tenantId,
       params,
       isSynthProvenance,
@@ -4613,6 +4653,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -4779,6 +4821,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
       authCtx: ctx, // A6 列级：用户发起的求解走列级投影（S3 —— 求解器不是列级安全的绕行口）
     });

@@ -235,6 +235,74 @@ export const OUTSOURCE_SAMPLE = {
   normalBucketMod: 18,
 } as const;
 
+/**
+ * DF.14 **多处物化规则的表达式单一来源**（闭 `G-RULE-MOCK-EXPR-DRIFT`，欠账 #78 的机制面）。
+ *
+ * 病史（真实·测试全绿盖住了）：同一条规则在**两处各写一份 expression** ——
+ * datacore 场景包种子 `synthetic/battery.ts BATTERY_RULES` 与前端 `mocks/fixtures.ts RULES`。
+ * 二者曾系统性不同口径：mock 写人读的**约束式**（`<= 0.5`「不得超过」）而后端写引擎吃的**违规谓词**
+ * （`> 0.5`）—— **极性相反**，照 mock 那套喂引擎则合规订单全报违规；外加主体丢前缀（`Outsource.ratio`）、
+ * 对象类型被中译（`产线.utilization` 不是任何已注册类型 key ⇒ 该规则在 mock 态是哑弹）。
+ *
+ * 那一轮把**值**手工对齐了，但**机制**没变：两处仍各写一份字面量，谁也不校验谁 ⇒ 早晚再漂
+ * （C08 是唯一例外，它经 `outsourceRedlineViolationExprPublished()` 派生，故从未漂）。
+ * 本表把 C08 那个「派生而非手抄」的形态推广到**全部多处物化的规则**：expression/params 只此一处，
+ * 两端 `.map()` 派生。改一个阈值 → 前后端同时变，结构上不可能再分叉。
+ *
+ * ⚠ 只收**会漂的业务内容**（expression + 数值 params）。`key`/`name`/`severity`/`category` 仍由各站点
+ * 写字面量：规则码是标识符不是会漂的业务数，且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫
+ * `battery.ts` 建「已定义规则集」——把 key 也派生会让那道门瞎掉（C08 注释里已亲测记录）。
+ *
+ * 消费端（门 `rule-parity:check` 强制两端都派生）：
+ *  · datacore `apps/datacore/src/synthetic/battery.ts`（BATTERY_RULES 种子）
+ *  · 前端 `apps/frontend-shell/src/mocks/fixtures.ts`（RULES mock 规则库）
+ *
+ * R6：纯常数/纯函数，同输入字节一致。
+ */
+export interface ParityRuleSeed {
+  /** 规则码（两端同码即同一条规则）。 */
+  readonly key: string;
+  /** ★ 唯一真值：规则引擎吃的**违规谓词**表达式（为真 ⇒ passed=false）。 */
+  readonly expression: string;
+  /** 该规则的命名阈值（`params.<名>`），阈值只此一处；无则省略。 */
+  readonly params?: Readonly<Record<string, number>>;
+}
+
+/**
+ * 两处物化的规则清单。C08 不在此表 —— 它已有更专的单一来源 `OUTSOURCE_REDLINE`
+ * （`outsourceRedlineViolationExprPublished()`），两端都从那里派生；再抄进本表就是第三份。
+ */
+export const PARITY_RULE_SEEDS: readonly ParityRuleSeed[] = [
+  { key: "C01", expression: "Line.weeklyCapacityWan > Line.designCeilingWan" },
+  { key: "C02", expression: "Process.parallelThroughput < Process.requiredThroughput" },
+  { key: "C03", expression: "Order.demandDelta > 0.5" },
+  { key: "C05", expression: "SUSTAIN(Line.utilization > 95, 3)" },
+  {
+    key: "C09",
+    // 阈值 `staleHours` 只存 params 一处，expression 引用它（WO-RULE-EXPR-PARAMS）。
+    expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`,
+    // degradedFactor 是**系数**（降到多少）不是阈值：经 RULE_PARAM_BINDINGS 投影进 `health.degraded`，
+    // 不出现在 expression 里。normalFactor 刻意不在此 —— `health.normal` 归 M11 校准参数 p90_health 所有。
+    params: { staleHours: 2, degradedFactor: 0.9 },
+  },
+  { key: "C12", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)" },
+  { key: "C13", expression: "Order.creditUsedRatio > 1" },
+] as const;
+
+/** 取某条多处物化规则的表达式；未登记即**抛错**（不静默回落一个看似正常的串）。 */
+export function parityRuleExpression(key: string): string {
+  const seed = PARITY_RULE_SEEDS.find((r) => r.key === key);
+  if (!seed) throw new Error(`PARITY_RULE_SEEDS 未登记规则 ${key} —— 多处物化的规则必须走单一来源`);
+  return seed.expression;
+}
+
+/** 取某条多处物化规则的命名阈值（返回新对象，调用方可安全放进各自的种子结构）。 */
+export function parityRuleParams(key: string): Record<string, number> {
+  const seed = PARITY_RULE_SEEDS.find((r) => r.key === key);
+  if (!seed) throw new Error(`PARITY_RULE_SEEDS 未登记规则 ${key} —— 多处物化的规则必须走单一来源`);
+  return { ...(seed.params ?? {}) };
+}
+
 /** 红线版本史一条（RETIRED 的 maxRatio = 已退役历史值，非现行值的重复定义）。 */
 export interface OutsourceRedlineVersion {
   version: number;

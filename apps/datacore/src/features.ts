@@ -104,6 +104,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: false },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  // WO-PROCESS-INSTANCE（R3 暗发·defaultOn:false·关=404 FEATURE_NOT_FOUND·先于 authz）：
+  // 流程**运行时**层 —— `ProcessInstance`/`ProcessTask` + 五个等待态，回答需求 §4.5「为什么这个流程现在卡住了」。
+  // 暗发理由：本单只落引擎与读端，**平台自带流程实例种子尚无**（65 条是模板，不是在跑的单子）——
+  // 默认开会让每个租户的卡点面板都是空的，而空面板与「一切顺利」在界面上分不开，那是会说谎的诚实位。
+  // 先由 CLI/curl 造实例验证（R15 CLI 先于 UI），有真实例数据源之后再议默认开。
+  { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["process-runtime"] } },
   // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。
   { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
   // WO-CEO-DATA-2（R3 暗发·defaultOn:false）：CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·可 back-derivation）。
@@ -155,6 +161,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）+ L3 耦合联合求解（一次 portfolio 守恒解·真传导）。
   { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
   { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
+  // WO-ORG-WORLD（R3 暗发·defaultOn:false·关 = 404 FEATURE_NOT_FOUND 先于 authz）：组织世界（七世界之②）——
+  // Person/Role/Department/Authority/ApprovalLimit/Delegation + 「给定待批事项→谁有权批」查询面。
+  // ⚠️ **开关默认值是产品决策不是 dev 决策**：本单一律 defaultOn:false，要开由产品显式 override（seedDemoEntitlements 或租户配置）。
+  { key: "org.world", name: "组织世界（人/角色/部门/职权/审批额度/代理）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["org-world"] } },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -191,6 +201,50 @@ export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "dc.lazy-solver-context",
 ]);
 
+/**
+ * WO-ORG-WORLD · 七世界增量暗发门 —— 同上两门一样**不随行业模板「all on」顺带开**。
+ *
+ * ⚠️ **这条集合不是可选的装饰，是 `defaultOn:false` 能否生效的前提**（本单实测踩出来的）：
+ * `templateFeatures()` 对 `industry === "battery-manufacturing"` 返回
+ * `ALL_FEATURE_KEYS` 减去各暗发集合，而 `layeredSet()` 的 L2 会把模板里的键**无条件 `on.add`** ——
+ * 即 **L2 覆盖 L1**。于是对 demo 租户（`seedDemo` 就把 industry 设成 battery）来说：
+ *
+ *   > **只写 `defaultOn:false` 而不进本集合 = 该功能对 demo 租户其实是「开」的。**
+ *
+ * 这正是本仓反复栽的那种坑的又一形态：**开关看起来关着（注册表里白纸黑字 `defaultOn:false`），
+ * 实际被上层无条件打开**，而且静默 —— 单测若只断言「注册表里 defaultOn 是 false」会全绿，
+ * 却证明不了「它对真实租户是关的」。判据必须是**对租户 resolve 后**的结果，不是注册表字面量。
+ * `org-world.test.ts` 的 Entitlement 断言走的就是真 HTTP + demo 租户，故会咬住这条。
+ *
+ * 与 QOS 路由门 / 性能门语义不同（这里是**未完工的世界层功能**，前端另立单），故单列一个集合，
+ * 不污染前两者的原意。
+ */
+export const WORLD_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "org.world",
+]);
+
+/**
+ * WO-PROCESS-INSTANCE · **数据尚缺**暗发门 —— 同上两个集合一样不随 battery「all on」顺带开。
+ *
+ * ── 为什么必须单列（这条是实测踩出来的，不是照抄格式）──────────────────────
+ * `defaultOn:false` **单靠自己拦不住** demo 租户：`templateFeatures()` 对
+ * `battery-manufacturing` 的规则是「ALL_FEATURE_KEYS 全开，减去这几个暗发集合」，
+ * 于是任何新键只要不在某个集合里，`defaultOn:false` 就会被 L2 覆盖成开。
+ * 本单初版正是这么漏的：注册时写了 `defaultOn:false`，实测 `resolve("demo")` 仍为 `true`
+ * ——「我以为暗发了」和「它真的关着」是两个命题，靠一条断言（`process-instance.test.ts`
+ * 的 R3 用例）才抓出来。**新增暗发门必须同时进这三个集合之一，否则等于没暗发。**
+ *
+ * ── 本门的语义（与上两个都不同，故不合并）───────────────────────────────
+ * 上面两个是「路由会变慢」「性能收窄」；本门是**数据尚无**：
+ * 流程运行时的引擎与读端都已就绪，但平台自带的 65 条流程是**模板**，
+ * 没有任何「正在跑的单子」的种子数据。默认开 ⇒ 每个租户的卡点面板都是空的，
+ * 而**空面板与「一切顺利」在界面上分不开** —— 那是一个会说谎的诚实位。
+ * 有真实例数据源之后再议默认开（届时删掉本条即可）。
+ */
+export const INCOMPLETE_DATA_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "process.runtime",
+]);
+
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
   // 内置视图核心段（dash/graph/risk/order/plan-audit/plan-generate/project-sim/sop-balance/global-sim）
@@ -212,6 +266,10 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "graph-mvp": "view.graph.persp.mvp",
   "graph-agent": "view.graph.persp.agent",
   "graph-loop": "view.graph.persp.loop",
+  // WO-PROCESS-INSTANCE · 流程卡点面板（前端 renderer 键 "process-stuck"，见 frontend registry.ts）。
+  // 暗发中（process.runtime defaultOn:false + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES）⇒ 导航里默认不出现，
+  // 开通后才进 workspace 导航 —— 这一行正是「开通后它能被导航到」的接线，缺它则开了也看不见。
+  "process-stuck": "process.runtime",
 };
 
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
@@ -288,7 +346,17 @@ export class FeatureService {
     // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
     // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
     if (industry === "battery-manufacturing") {
-      return new Set(ALL_FEATURE_KEYS.filter((k) => !QOS_DARK_LAUNCH_FEATURES.has(k) && !PERF_DARK_LAUNCH_FEATURES.has(k)));
+      return new Set(
+        ALL_FEATURE_KEYS.filter(
+          (k) =>
+            !QOS_DARK_LAUNCH_FEATURES.has(k) &&
+            !PERF_DARK_LAUNCH_FEATURES.has(k) &&
+            // WO-ORG-WORLD：七世界增量暗发门（不进这一行，`defaultOn:false` 对 demo 租户形同虚设）
+            !WORLD_DARK_LAUNCH_FEATURES.has(k) &&
+            // WO-PROCESS-INSTANCE：**数据尚缺**暗发门（同上，不进这一行等于没暗发）
+            !INCOMPLETE_DATA_DARK_LAUNCH_FEATURES.has(k),
+        ),
+      );
     }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)

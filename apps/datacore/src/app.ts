@@ -32,6 +32,8 @@ import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
+import { OrgWorldService } from "./org/service.js";
+import { registerOrgWorldRoutes } from "./org/routes.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
@@ -129,6 +131,8 @@ import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
+import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
+import { ProcessRuntimeService } from "./process/runtime.js"; // WO-PROCESS-INSTANCE · 五个等待态的唯一产地（evaluateGate 单一调用点）
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
 import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
@@ -165,6 +169,16 @@ export interface AppDeps {
    * 探活端点若只回一个恒定字符串，它就只能回答"没好"，回答不了"在动吗"。
    */
   seedingPhase?: () => { phase: string; elapsedSec: number };
+  /**
+   * WO-PROCESS-INSTANCE · 流程运行时的「现在几点」。
+   *
+   * 为什么要能注入：本层的输出里有「这一步已经等了多久」，而欠账 #141 的原话是
+   * **「挂在墙钟上的断言并发时必假红」** —— 用真实时钟测「等了 3 天」，
+   * 要么得让测试睡 3 天，要么得容忍误差，两条都不可接受。注入之后
+   * 「等了多久」变成纯函数，可以断言到毫秒（R6 确定性）。
+   * 生产不传 ⇒ 落回 `() => new Date()`，与 `SchedulerService` 同形态。
+   */
+  processClock?: () => Date;
 }
 
 export interface BuiltApp {
@@ -442,6 +456,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
+  // WO-PROCESS-INSTANCE · 流程运行时（五个等待态的唯一产地在其 evaluateGate 调用点）。时钟可注入见 AppDeps.processClock。
+  const processRuntime = new ProcessRuntimeService(repos, deps.processClock ? { clock: deps.processClock } : undefined);
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings, outbox);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
@@ -3851,7 +3867,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(RuleCreateSchema, req.body);
     // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
     // WO-RULE-EXPR-PARAMS：连同 params 一起校验闭包 —— 引用 `params.x` 却没声明 x 的规则当场拒。
-    assertValidExpression(body.expression, body.params ?? {});
+    // 传 key 后**反向**也校验：被绑定的阈值型 param 必须真被 expression 引用（防阈值退回两份）。
+    assertValidExpression(body.expression, body.params ?? {}, body.key);
     return reply.status(201).send(await rules.create(ctx(req), body));
   });
   // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。
@@ -4388,6 +4405,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scale: body.scale,
     });
     return dataset;
+  });
+
+  // ---- WO-PROCESS-INSTANCE · 流程运行时（「为什么这个流程现在卡住了」）------------------------
+  // R3 暗发：`process.runtime` defaultOn:false ⇒ 关 = 404 FEATURE_NOT_FOUND，**先于 authz**
+  //（先于角色门：功能关闭时连「你没权限」都不该说，那等于承认它存在）。
+  const requireProcessRuntime = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "process.runtime"))) throw featureNotFound();
+  };
+
+  /** 全租户此刻卡住的流程 + 各等待态计数。前端卡点面板的唯一数据源。 */
+  app.get("/a/v1/process-instances/stuck", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    return processRuntime.stuck(c.tenantId);
+  });
+
+  app.get("/a/v1/process-instances/:id", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    // R2：detail() 经 store.get(tenantId, id) 取，跨租户必 undefined ⇒ 404（不是 403，不泄漏存在性）。
+    return processRuntime.detail(c.tenantId, id);
+  });
+
+  app.post("/a/v1/process-instances", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const body = parseBody(CreateProcessInstanceRequestSchema, req.body);
+    return processRuntime.create(c.tenantId, body);
+  });
+
+  /** 推进：body 里给的是**外部事实**（数据到齐/外部回执/审批结论/人工已办），引擎据此重判 gate。 */
+  app.post("/a/v1/process-instances/:id/advance", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    const body = parseBody(AdvanceProcessInstanceRequestSchema, req.body ?? {});
+    return processRuntime.advance(c.tenantId, id, body);
   });
 
   // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
@@ -5070,6 +5125,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
   registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
+
+  // ---- WO-ORG-WORLD · 组织世界（七世界之②·人/角色/部门/职权/审批额度/代理）------------------
+  // Entitlement 先于 authz：`org.world` 暗发（defaultOn:false）→ 关闭时全部路由 404 FEATURE_NOT_FOUND。
+  registerOrgWorldRoutes(app, {
+    service: new OrgWorldService(repos),
+    ctx,
+    requireFeature: (req) => requireFeatureTag(req, "apiTags", "org-world"),
+  });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {
