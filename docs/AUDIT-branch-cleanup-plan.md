@@ -438,6 +438,29 @@ canonical **全部都有**（`order-line.ts` / `qos-agent-timeout.test.ts` / `mu
 | `agentrun-attribution` ⊂ `agentrun-fanout-persist` | 前者的 2 个缺口文件 blob 全等于后者；后者另有 `013_agentrun_fanout.sql` + `agent-run-fanout.seam.test.ts`。**且 `merge-base --is-ancestor` rc=0 —— 前者是后者的真祖先** | **删 attribution，留 fanout-persist** |
 | `69-p2-function-signature` ⊂ `69-p3-interface` | 前者 **5** 个缺口文件 blob 全等于后者（审计写 3/3，实测 5/5）；后者另有 `028_object_interfaces.sql`·`object-interface.ts`·`check-object-interface.mjs`·`object-interface.seam.test.ts`。**`--is-ancestor` rc=0** | **删 p2，留 p3** |
 
+#### `prd-audit-b1` 可删的证据 —— **我不能在 b1 上重犯我抓 b4 的那个错**
+
+判 b1 可删，就等于判「b1 的内容 b2 全有」。**只比路径是不够的（那正是 b4 翻车的地方），
+所以逐 blob、逐行都验了**：
+
+```
+b1 batch1 blob d6d6c4aea8e6  23,083 字节   b2 batch1 blob 7ffd7fc31fa1  47,571 字节
+b1 batch2 blob 212110490a60  25,192 字节   b2 batch2 blob 9506ae590e33  88,762 字节
+
+$ git diff --stat d6d6c4aea8e6 7ffd7fc31fa1 -> 132 insertions(+), 0 deletions   （b2 纯增）
+$ git diff --stat 212110490a60 9506ae590e33 -> 674 insertions(+), 1 deletion(-)
+
+逐行：b1-batch1 的 103 个非空行，**不在 b2 里的 = 0**
+      b1-batch2 的 246 个非空行，**不在 b2 里的 = 1**
+那 1 行是什么：
+  -  - **S4.1 知识库语义检索**：`apps/datacore/src/kb.ts` + `appsls/embeddings.ts`（…）
+  ⇒ b1 的**错别字**（`appsls/`），b2 已改正。**不是内容，是 bug。**
+
+（比较器金丝雀：同一段 b1-batch1 拿去比一个无关文档 b3-batch3 -> 91 行不命中 ⇒ 比较器没坏，
+  不是「什么都算命中」）
+```
+⇒ **b2 是 b1 的真超集（唯一差异是 b1 的一个错别字）。删 b1 零损失。**
+
 #### 🔴 `prd-audit-b4` —— 审计判错，**不可删**
 
 审计 §4.2 与 §11 写：「`handoff-prd-audit-b4` ⊂ `b1`/`b2`，b4 只缺 `AUDIT-prd-reality-batch4.md`，
@@ -1144,7 +1167,9 @@ $ grep -o 'A6[^\n]\{0,40\}' <同一份日志>       -> 'A6-CONTENTION 整段（C
 
 派单原文：「审计判定 **118 条已过期 + 42 条已收编 = 160 条可删**」。
 本单复核后**可删是 278 条**：160 + 113（领先 0）+ 4（重复）+ 1（gate-rc2）。
-另有 6 条有条件可删。**派单人的 160 不是错，是漏 —— 少算了 118 条。**
+另有 6 条有条件可删。**派单人的 160 不是错，是漏 —— 少算了 118 条**
+（= 113 领先 0 ＋ 4 重复 ＋ 1 反向；⚠️ 这个差额恰好也是 118，
+与「118 条已过期」是两个不相干的数，别看串）。
 
 ### 6.8 ✅ 审计对的地方（逐条确认，不含糊）
 
