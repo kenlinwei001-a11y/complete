@@ -1,5 +1,25 @@
 # AUDIT · PRD 实现状态对账 · 第 3/5 批（22 份）
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `8e3e91a677c6c860daeff4d0826af263e5852972`（分支 `wave4`，2026-08-07） |
+> | 距 canonical | **581 个提交**（canonical `9730a99f` @ 2026-08-13） |
+> | 收编来源分支 | `claude/handoff-prd-audit-b3`（`ddac597c02`）—— **本文是该分支独有**，b1/b2/b4/b5 上均 `rc=1`（不存在） |
+> | 本次复验范围 | **只抽查 3 条，其余一条都未复验** |
+>
+> **⛔ 本文全部 `file:line` 锚点对 `8e3e91a6` 有效，对今天的 canonical 不保证有效。**
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | B3-1 | `deriveDag`（8a 核心项）**0 命中** ⇒ 未实现 | `grep -rn` 全仓 `apps packages scripts` 仍 **0 命中**（金丝雀 `validateClosure`=29 命中，工具正常） | 🔴 仍在·缺口未修 |
+> | B3-2 | `termAlias` / `industryAlias`（8c）**0 命中** ⇒ 未实现 | 仍 **0 / 0** | 🔴 仍在·缺口未修 |
+> | B3-3 | `scripts/check-debattery.mjs` 在册，`debattery-baseline.json` = `{}`（棘轮已收到零） | 两文件均在，baseline 内容仍是 `{}` | ✅ 完全成立 |
+>
+> **未重测的部分**：本文 22 份 PRD 的其余全部判定与 WO 建议，本次一条都没有重跑。
+
+
 | 项 | 值 |
 |---|---|
 | 审计对象 | `ls docs/PRD-*.md \| sed -n '45,66p'` 的 22 份 PRD |

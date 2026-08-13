@@ -1,5 +1,29 @@
 # PRD 实现状态对账 · 第 2/5 批（22 份）
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `8e3e91a677c6c860daeff4d0826af263e5852972`（分支 `wave4`，2026-08-07） |
+> | 距 canonical | **581 个提交**（canonical `9730a99f` @ 2026-08-13） |
+> | 收编来源分支 | `claude/handoff-prd-audit-b2`（`5ef6503c9f`，937 行完成版；b1 的同名文件只有 264 行中间态） |
+> | 本次复验范围 | **只抽查 3 条，其余一条都未复验** |
+>
+> **⛔ 本文全部 `file:line` 锚点对 `8e3e91a6` 有效，对今天的 canonical 不保证有效。**
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | B2-1 | `packages/contracts/src/replay-ops.ts` **139 行** | `wc -l` = **139**，逐字不差 | ✅ 完全成立 |
+> | B2-2 | `apps/datacore/src/opsteam/replay.ts` **253 行**，R1 红线「代码确实零 Store/Repo import」 | `wc -l` = **253**；7 条 import 逐条读过，无一是 Store/Repo（红线注释在 `:12`） | ✅ 完全成立 |
+> | B2-3 | 挂载点 `simclock.ts:132` → `app.ts:742 setOpsPlaybookRunner(...)` | 挂载**仍在**，行号已漂：`simclock.ts:54` / `app.ts:764` | ✅ 结论仍在·行号漂 |
+>
+> ⚠️ **B2-2 复验时我自己差点报错，照铁律 0.6 记账**：初查用 `grep -c "^import.*\(Store\|Repo\)"` 得 **1**，
+> 差点报「R1 红线已被破」。追一层看命中原文，命中的是 `import type { OpsAction, OpsPlaybook, OpsTickReport }`
+> —— **`Repo` 是 `Report` 的子串**。形态：「我用『含子串 Repo』当作『import 了 Store/Repo 类』的证据，而前者并不度量后者。」
+>
+> **未重测的部分**：本文 22 份 PRD 的其余全部判定与 WO 建议，本次一条都没有重跑。
+
+
 | 项 | 值 |
 |---|---|
 | 范围 | `ls docs/PRD-*.md \| sed -n '23,44p'` 得到的 22 份 |

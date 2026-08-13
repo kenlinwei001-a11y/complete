@@ -1,5 +1,27 @@
 # PRD 实现状态对账 · 第 1/5 批（22 份）
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `8e3e91a677c6c860daeff4d0826af263e5852972`（分支 `wave4`，2026-08-07） |
+> | 距 canonical | **581 个提交**（canonical `9730a99f` @ 2026-08-13） |
+> | 收编来源分支 | `claude/handoff-prd-audit-b2`（`5ef6503c9f`，255 行版；b1 的同名文件只有 123 行） |
+> | 本次复验范围 | **只抽查 3 条，其余一条都未复验** |
+>
+> **⛔ 本文全部 `file:line` 锚点对 `8e3e91a6` 有效，对今天的 canonical 不保证有效。**
+> 引用本文任何一条前，必须按当前 HEAD 重测；下面 3 条是 2026-08-13 亲手重测的样本，
+> 已足以说明「行号会漂、计数会变，但结论方向大多仍成立」：
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | B1-1 | `packages/contracts/src/operation-intent.ts:53` `OPERATION_CATALOG` **39 条** | 符号与行号锚点**仍准**（`:53`），但条目数已是 **40** | ◐ 结论在·数字漂 +1 |
+> | B1-2 | `scripts/platform-cli.mjs:511` `const run = {…}` 只有 **22 个键** | **22 个键未变**（login/do/shell/ask/import/model/rule/build/solve/opt/ontology-query/generate/synth/types/resources/scenarios/approve/whoami/tickets/claim/grow/sim），但行号已漂到 **`:522`** | ✅ 结论仍在·行号漂 |
+> | B1-3 | `apps/datacore/src/databuilder/closure.ts:20` `validateClosure(plan, policy, buildMode)` | 行号与签名**逐字符仍准**：`export function validateClosure(plan: BuildPlan, policy: ClosurePolicy, buildMode: BuildMode = "STRICT")` | ✅ 完全成立 |
+>
+> **未重测的部分（诚实边界）**：本文 22 份 PRD 的其余全部判定（含每条 ✅/◐/❌ 与全部最小 WO 建议）
+> **本次一条都没有重跑**。「我没重测」≠「它已失效」，也 ≠「它仍成立」。
+
 > **审计口径**：只读代码 + 只写本文件。每条判断必须有 `file:line` 证据；查不出来的诚实写「未查清 + 卡在哪」。
 > **禁用判据**（本次事故的直接对策）：文件 mtime / 待办状态 / grep 一次的直接命中数 —— 三者都与"实现与否"是范畴错误。
 > **必读判据**：先读 PRD 自己的 AS-IS / 现状 / 已有资产 节，它直接写明什么已在、什么是本 PRD 的真实增量。

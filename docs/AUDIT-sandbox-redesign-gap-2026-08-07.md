@@ -1,5 +1,46 @@
 # AUDIT · 推演沙盘重设计（`PRD-sandbox-redesign.md`）实现缺口对账
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `8e3e91a677c6c860daeff4d0826af263e5852972`（分支 `wave4`，2026-08-07） |
+> | 距 canonical | **581 个提交**（canonical `9730a99f` @ 2026-08-13） |
+> | 收编来源分支 | `claude/handoff-prd-audit-b2`（`5ef6503c9f`；与 b1 上的同名文件 blob 全等） |
+> | 本次复验范围 | **只抽查 3 条（含头条结论），其余一条都未复验** |
+>
+> ### 🟢 本文的**头条结论今天已经不成立了 —— 那件事已经被修了**
+>
+> 原文 §0 头条：「4 个新视图今天没有任何入口，**一个都打不开**」，根因是
+> `apps/datacore/src/synthetic/view-manifest.ts` 的 `BUILTIN_VIEWS` 只有 10 项、四个新视图一个都不在册。
+>
+> **2026-08-13 实测：四个视图现在全在册。** 沿链路追了两层，不是只看一次 grep：
+>
+> ```
+> view-manifest.ts:87  { key:"chain-line-map",    featureKey:"view.chain-line-map",    seed:true, requires:["sim.sandbox"] }
+> view-manifest.ts:88  { key:"transit-flow",      featureKey:"view.transit-flow",      seed:true, requires:["sim.sandbox"] }
+> view-manifest.ts:89  { key:"physical-topology", featureKey:"view.physical-topology", seed:true, requires:["sim.sandbox"] }
+> view-manifest.ts:90  { key:"node-inspector",    featureKey:"view.node-inspector",    seed:true, requires:["sim.sandbox"] }
+>   └─ 再追一层：battery.ts:2680 scenarioSeed.views = [...SEEDED_VIEW_KEYS]（= BUILTIN_VIEWS.filter(seed)）
+>   └─ 再追一层：synthetic/service.ts:347 VIEW_FEATURE_MAP[v] 派生 feature 键
+> ```
+>
+> ⇒ 原文证据链第 3 步（`BUILTIN_VIEWS` 无这四项 ⇒ 无功能键、无 `workspace.views` 条目 ⇒ 两道闸全关）
+> **今天两半都已补上**：`ViewPage.tsx` 的 features 闸与 workspace.views 闸都能过。
+>
+> **诚实边界（别把这条读成「所以现在一定看得见」）**：`apps/datacore/src/features.ts:81`
+> `sim.sandbox` 仍是 `defaultOn: false`，四个视图都 `requires:["sim.sandbox"]` ⇒ 对某个具体租户可不可见，
+> 还取决于该租户的 entitlement 分层结果，**这一层本次没有起服务实跑，未验**。
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | SG-1 | `BUILTIN_VIEWS` 只有 10 项，四个新视图**一个都不在册** | 四个**全在册**（`view-manifest.ts:87-90`），且 `BUILTIN_VIEWS` 仍是单一真值源 | 🟢 **已解决** |
+> | SG-2 | 四个键只登记在前端渲染器表 `views/registry.ts:75/:80/:85/:91` | 四条注册仍在，行号漂到 `:75/:80/:92/:98` | ✅ 仍在·行号漂 |
+> | SG-3 | 侧栏 `ShellLayout.tsx:38` 推演组写死 `["project-sim","global-sim","risk","order-chain","decision-play"]`，没有这四项 | 该五项名单仍在（`view-manifest.ts:142/:159` 现有注释显式说明「**保留**」这五项、四姐妹另行入册） | ◐ 名单仍是那五项，但已不构成阻断（挂载改从 manifest 走） |
+>
+> **未重测的部分**：本文 §1 之后的全部逐条缺口（D/E/F/G 系列 14 单的逐项落地状态）本次一条都没有重跑。
+
+
 | 项 | 值 |
 |---|---|
 | 日期 | 2026-08-07 |

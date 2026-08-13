@@ -1,5 +1,42 @@
 # AUDIT · PRD 字段级引用的落地性存量清单（PRD Field Grounding）
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `6c3457a776bfa8da01cb87fad6d0ec6fdefd2d2f`（= 2026-08-11 当日 canonical 与本分支的 merge-base） |
+> | 距 canonical | **259 个提交**（canonical `9730a99f` @ 2026-08-13）——本批 8 份里**最新的一份** |
+> | 收编来源分支 | `claude/handoff-wo-prd-field-audit`（`8ed7727b6f`） |
+> | 本次复验范围 | **只抽查 3 条（含本文自称最值钱的 §6.3），其余一条都未复验** |
+>
+> ### 🟢 本文自称「最值钱的一条」（§6.3）今天已经被修了
+>
+> 原文：`BATTERY_RULE_SCOPES` 四条规则的作用域名不是对象类型（`Batch`/`Cert`/`Lta`/`Outsource`），
+> 真承载者是 `MaterialBatch` 等 —— **数据 100% 齐备，却因一个名字对不上在 databuilder 路径上被静默丢弃**
+> （`comprehend.ts:214`）。
+>
+> **2026-08-13 实测：那个静默丢弃点已被显式改掉，且改动自带病史注释。**
+>
+> ```
+> apps/datacore/src/databuilder/comprehend.ts:10   import { findUnknownScopeTypes, type RuleScopeFinding } from "../rule-scope.js";
+> apps/datacore/src/databuilder/comprehend.ts:17   /** scope 指向了不存在的对象类型的规则（改前它们在这里被静默丢掉，连下游 HARD 门都看不见）。 */
+> apps/datacore/src/databuilder/comprehend.ts:224  // WO-RULE-SCOPE-DROP：此处**曾经**是 `core.rules.filter(r => r.scopeObjectTypes.every(t => typeKeys.has(t)))`
+> apps/datacore/src/databuilder/comprehend.ts:225  // —— scope 里有一个不认识的类型键，整条规则被**静默丢掉**：无日志、无报错、无返回值。
+> ```
+>
+> ⇒ 「静默丢弃」这一态**已消除**（改为 `findUnknownScopeTypes` 显式产出 findings）。
+> **诚实边界**：本次只核到「丢弃点已改」，**没有**核「四个作用域名本身有没有改对 / 那四条规则今天跑不跑得通」——
+> 这需要起服务实跑，不在本次只读范围内。
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | FG-1 | `BATTERY_RULE_SCOPES` 四条规则作用域名与真承载者对不上 | 符号仍在（`synthetic/battery.ts:2831`），仍被 `synthetic/service.ts:232` 消费（有生产调用方，不是死代码） | ✅ 符号仍在·**命名是否已订正未复验** |
+> | FG-2 | `comprehend.ts:214` 是那个静默丢弃点 | 丢弃逻辑**已显式化**（见上），行号漂到 `:224-225`；`MaterialBatch.idleDays` 全仓 36 处命中 | 🟢 **已解决** |
+> | FG-3 | 语料 = **129** 份 `docs/PRD-*.md` ＋ **12** 份 `docs/industrial-prd/PRD-*.md` | **133** ＋ **12**（main 侧 +4） | ⚠️ 分母已变·全部百分比需重算 |
+>
+> **未重测的部分**：本文 §2–§5 的 189 条 `Type.field` 逐条判定、§7/§8 的全部统计，本次一条都没有重跑。
+
+
 > 编号：WO-PRD-FIELD-AUDIT · 类型：存量审计（只读取证，不改任何 PRD / 代码）
 > 作者：dev（画像=轻） · 日期：2026-08-11
 > 分支：`claude/handoff-wo-prd-field-audit` · 基线：`origin/claude/inspiring-gates-aqczjg`

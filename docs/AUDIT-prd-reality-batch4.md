@@ -1,5 +1,48 @@
 # AUDIT · PRD 实现状态对账 · 第 4/5 批（22 份）
 
+> ## ⚠️ 过期横幅（收编时补 · 2026-08-13 · WO-RECLAIM-DOCS）
+>
+> | 项 | 值 |
+> |---|---|
+> | 原基线 sha | `8e3e91a677c6c860daeff4d0826af263e5852972`（分支 `wave4`，2026-08-07） |
+> | 距 canonical | **581 个提交**（canonical `9730a99f` @ 2026-08-13） |
+> | 收编来源分支 | `claude/handoff-prd-audit-b4`（`dd3e87f9a5`）——**注意：不是 b1/b2** |
+> | 本次复验范围 | **只抽查 3 条，其余一条都未复验** |
+>
+> ### ⚠️ 收编时订正了一条反向结论（这条比本文内容更要紧）
+>
+> `docs/AUDIT-branch-reconcile-2026-08-11.md` §4.2 写：
+> 「`handoff-prd-audit-b4` ⊂ `b1`/`b2` —— b4 只缺 `AUDIT-prd-reality-batch4.md`，b1/b2 都带 ⇒ **b4 可删**」。
+> **方向反了。** 2026-08-13 blob 级实测：
+>
+> ```
+> b1:docs/AUDIT-prd-reality-batch4.md = 356aaf531a   96 行   （抢救落盘的中间态）
+> b2:docs/AUDIT-prd-reality-batch4.md = 356aaf531a   96 行   （与 b1 全等）
+> b4:docs/AUDIT-prd-reality-batch4.md = d8184661a1  444 行   （「全 22 份完」的完成版）
+> comm -23 <(sort -u b2版) <(sort -u b4版) = 0 行   ⇒ 96 行版是 444 行版的真子集
+> ```
+>
+> ⇒ 照审计「捞 b2、删 b4」会**丢 348 行**（22 份 PRD 里的 16 份判定全在被丢的那段）。
+> 故本文取自 **b4**。形态（照铁律 0.6 句式）：「审计用『两条分支缺同一个文件名』当作『内容互为子集』的证据，
+> 而**文件名相同不度量内容相同**。」
+>
+> **⛔ 本文全部 `file:line` 锚点对 `8e3e91a6` 有效，对今天的 canonical 不保证有效。**
+>
+> | # | 原文断言 | 2026-08-13 实测 | 判定 |
+> |---|---|---|---|
+> | B4-1 | `server.ts:455` `GET /api/v1/queries/:taskId/trace` 是**孤儿端点**，前端零消费方，只有 `trace-endpoint.test.ts` 咬它 | 端点仍在（行号漂到 **`:463`**）；全前端 `src` 里 `/queries/*/trace` **仍 0 个消费方**，唯一咬它的仍是同一个 test | 🔴 仍在·缺口未修 |
+> | B4-2 | `InferenceProcessDag.tsx:18-29` `NODES` 是字面量数组；`:30-37` 含跨周期反馈边 `{from:10,to:2,t:"fb"}` | `NODES` 仍在 `:18` 且仍是字面量；fb 边仍在（行号漂到 `:36`） | 🔴 仍在·缺口未修 |
+> | B4-3 | `GET /a/v1/lineage/object/:type/:id` 真在（`app.ts:2496`），但 P2 只半实现 | 端点仍在（行号漂到 **`app.ts:2879`**）；**前端已接上**：`apps/frontend-shell/src/api/endpoints.ts:534` 有真消费方 + `mocks/handlers.ts:1636` 有 mock | ◐ 端点在·**消费方半已补**（原文「零消费方」那半已不成立） |
+>
+> ⚠️ **B4-1 复验时我自己差点报错，照铁律 0.6 记账**：初查 `grep -cn 'trace' endpoints.ts` 得 **7**，
+> 差点报「前端已接」。追一层逐条看命中原文：7 条是 1 条注释 + sim tick 的 `trace?` 字段 + `decision-trace`（**另一个端点**）
+> + `promoteFallback(traceId)` —— **没有一条是 `/queries/*/trace`**。
+> 形态：「我用『含字串 trace 的命中数』当作『该端点有消费方』的证据，而前者并不度量后者。」
+> 金丝雀：同一条命令查 `decision-trace` 命中 3 处（工具正常，不是搜不到）。
+>
+> **未重测的部分**：本文 22 份 PRD 的其余全部判定与 WO 建议，本次一条都没有重跑。
+
+
 | 项 | 值 |
 |---|---|
 | 日期 | 2026-08-07 |
