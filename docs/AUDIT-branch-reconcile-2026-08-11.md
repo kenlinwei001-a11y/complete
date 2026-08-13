@@ -10,8 +10,8 @@
 
 **281 条里，93 条是真欠账，118 条已过期，42 条已被完整收编，27 条我判不了，1 条是反向回退（合进去会掉代码）。**
 
-- 真欠账里 **218 个整文件** canonical 里根本没有 —— 含 **8 个 migration**、**11 个 contracts schema**、
-  **9 道门脚本**、以及大量 seam 测试。
+- 真欠账里 **218 个文件实例（181 条不同路径）** canonical 里根本没有 —— 含 **9 个 migration**、
+  **9 个 contracts schema**、**9 道 `check-*.mjs` 门**（另有 11 个配套脚本/库）、以及 67 个测试文件。
 - **`integ-ui-w5` 一条顶六条**：它是 `befe-seam-field` / `scope-honesty-fe` / `disposition-inline-row` /
   `order-row-detail` / `ontology-ia` / `ot-instance-reach` 六条的**逐字节超集**（9 个文件 blob 哈希全等，见 §4.1）。
 - ⚠️ **派单人给的「头部 5 条」有 4 条判错了方向** —— 它们不是欠账，是已过期。详见 §9。
@@ -159,19 +159,26 @@ $ git rev-parse --verify -q integ-ui-w5:scripts/check-solver-field-seam.mjs
 | **反向回退** | **1** | 分支尖端**删掉** canonical 今天仍有的行 | **绝不可合**；删分支 |
 | 合计 | **281** | | |
 
-**文件级底数**：独有文件 3094 个 —— SAME 730 · DIFF 2116 · ABSENT 248 · 分支侧删除 2。
-DIFF 2116 拆开：行级已吸收 1000 · 未吸收 575 · 部分 466 · 无信号 75。
-ABSENT 248 拆开：**真缺口 218** · canonical 有意删除 23 · 改名 7。
+**文件级底数**：独有文件 **3098** 个 —— SAME 730 · DIFF 2116 · ABSENT 248 · 分支侧删除 2 · 两侧都无 2
+（合计 3098 ✅ 对得上）。
+DIFF 2116 拆开：行级已吸收 1000 · 未吸收 575 · 部分吸收 466 · 无新增行 75。
+ABSENT 248 拆开：**真缺口 218**（181 条不同路径）· canonical 有意删除 23 · 改名 7。
+
+真缺口 181 条路径按类型：测试 67 · 源码/其它 45 · docs 31 · 脚本与门 20 · migration 9 · contracts 9。
 
 **两个独立信号互相印证**（内容判据 × canonical 日志是否提过本单）：
 
 | | 日志提过 | 日志没提过 |
 |---|---|---|
-| 已收编 | 36 | 7 |
-| 已过期 | **118** | 0（判不了那 27 条里吸收了） |
+| 已收编 | 35 | 7 |
+| 已过期 | **118** | **0** |
 | 真欠账 | 23 | **70** |
+| 判不了 | 0 | 27 |
+| 反向回退 | 1 | 0 |
 
-已过期 118/118 全部有日志佐证；真欠账 70/93 canonical 从未提过。两条独立判据方向一致 —— 这是结论可信的主要理由。
+已过期 **118/118 全部**有日志佐证（零例外）；真欠账 70/93 canonical 从未提过。
+两条完全独立的判据方向一致 —— 这是结论可信的主要理由。
+反过来看也自洽：判不了那 27 条**一条都没有**日志佐证，这正是它们判不了的原因之一。
 
 ---
 
@@ -196,16 +203,33 @@ ABSENT 248 拆开：**真缺口 218** · canonical 有意删除 23 · 改名 7�
 
 ⇒ **捞 `integ-ui-w5` 一条，这 6 条的缺失文件全部到位。** 这才是「integ 优先」的真实理由（见 §9.4）。
 
+并且不只是整文件：这 6 条的**改动型欠账也全被覆盖**。实测三条有改动型欠账的分支，
+其文件集合全部落在 `integ-ui-w5` 的 5 个改动文件之内，无一遗漏：
+
+```
+integ-ui-w5 改动型欠账文件（5）:
+  ObjectTypesBrowserPage.tsx · OrderChainView.tsx · PlanViews.module.css
+  f23.order-chain.test.tsx · f57.object-types-browser.test.tsx
+  scope-honesty-fe   (1 个)  未被覆盖: none
+  order-row-detail   (3 个)  未被覆盖: none
+  ot-instance-reach  (2 个)  未被覆盖: none
+```
+
 ### 4.2 其它重复分支（捞一条即可，另一条可删）
 
-| 这两条内容重复 | 逐字节相同的文件 |
+| 关系 | 实测 |
 |---|---|
-| `handoff-wo-decision-info-fe` ↔ `handoff-wo-decision-info-oncanonical` | **5/5 全等** —— 完全重复，任捞其一 |
+| `handoff-wo-decision-info-fe` ↔ `handoff-wo-decision-info-oncanonical` | **5/5 blob 全等** —— 完全重复，任捞其一 |
 | `handoff-wo-agentrun-attribution` ⊂ `handoff-wo-agentrun-fanout-persist` | 2/2 全等，后者另有 `013_agentrun_fanout.sql` ⇒ **捞后者** |
 | `handoff-wo-69-p2-function-signature` ⊂ `handoff-wo-69-p3-interface` | 3/3 全等，后者另有 `028_object_interfaces.sql` + `object-interface.ts` ⇒ **捞后者** |
-| `handoff-prd-audit-b1` ↔ `b2`（b3/b4/b5 是子集） | 4 个文件里 2 个全等，另 2 个 b2 更新（b2 写着「batch2 完成 22/22」）⇒ **捞 b2** |
+| `handoff-prd-audit-b1` ↔ `b2` | 缺的是**同 4 个文件**，其中 2 个 blob 全等、2 个 b2 更新（b2 提交题写「batch2 完成 22/22」）⇒ **捞 b2** |
+| `handoff-prd-audit-b4` ⊂ `b1`/`b2` | b4 只缺 `AUDIT-prd-reality-batch4.md`，b1/b2 都带 ⇒ b4 可删 |
 
-去重后，93 条真欠账实际只需捞约 **80 条**的内容。
+⚠️ **注意别顺手把 b3/b5 一起删了** —— 我最初以为 b3/b4/b5 都是 b1/b2 的子集，实测**不是**：
+`b3` 独有 `docs/AUDIT-prd-reality-batch3.md`、`b5` 独有 `docs/AUDIT-prd-reality-batch5.md`，
+这两份 b1/b2 都没有。**b3 与 b5 必须单独捞。**
+
+去重后（integ-ui-w5 顶掉 6 条，另 5 组重复各省 1 条），93 条真欠账实际只需捞约 **82 条**的内容。
 
 ### 4.3 逐条清单
 
@@ -1098,11 +1122,22 @@ WO-BACKLOG §2 记 `claude/handoff-wo-gate-rc2 @ 3e64870b`。实测该分支 HEA
 ### 9.6 ⚠️ 派单指令里有一条会让人漏判：只让按 ABSENT 找欠账
 
 派单人给的三态表把「真欠账」绑在 ABSENT 上（「canonical 里根本没有这个文件 ⇒ **可能是真欠账**」），
-DIFF 只让「看是分支更新还是 canonical 更新」。照这个走会**漏掉 5 条**：
-`handoff-wo-hover-layer`(15 个干净未并改动) · `handoff-wo-82-peak-crossday` · `handoff-wo-82` ·
-`handoff-wo-phase1-d-a` · `handoff-wo-a6-*` 那批 —— 它们**一个整文件缺口都没有**，
-但有「canonical 自分叉起没动过、改动却没并进去」的文件，是实打实的欠账。
+DIFF 只让「看是分支更新还是 canonical 更新」。照这个走会**漏掉整整 5 条**（实测，逐条列全）：
+
+| 分支 | 整文件缺口 | 未并入的改动 |
+|---|---|---|
+| `handoff-wo-hover-layer` | **0** | **15** 个文件（tokens.css · Modal/Toasts/GlobalSearch 等一整层 hover 规范） |
+| `handoff-wo-82-peak-crossday` | **0** | 2 |
+| `handoff-wo-82` | **0** | 1 |
+| `handoff-wo-phase1-d-a` | **0** | 1 |
+| `rescue-r13-drillfield-0811` | **0** | 1 |
+
+它们**一个整文件缺口都没有**，按派单人的判据会被归进「DIFF ⇒ 看谁更新」然后大概率判成已过期；
+但实测 canonical **自这些分支分叉起就没动过那些文件**，改动纯粹没并进去，是实打实的欠账。
 本单加了 §1 的第 3 条判据（分叉点判别）才捞出来。
+
+⚠️ 尤其讽刺的是**最后一条正是派单人特意点名要优先的 `rescue-*`** ——
+全仓唯一那条 rescue 分支，恰好是「按 ABSENT 找欠账」会漏掉的形态。
 
 ---
 
@@ -1137,8 +1172,12 @@ DIFF 只让「看是分支更新还是 canonical 更新」。照这个走会**�
 | **必删、绝不可合** | 1 | `handoff-wo-gate-rc2`（合进去掉 950 行） |
 | **优先捞** | 6 | `integ-ui-w5`（顶 6 条）· `wo-aip-cap0` · `wo-69-p3-interface` · `wo-sandbox-g1` · `wo-process-instance` · `wo-s08-kit-fe` |
 | **次优先捞** | ~20 | §4 表里第 7–26 行，带 migration / contracts / 门脚本的那批 |
-| **低价值** | ~30 | 纯 docs 的（`prd-audit-b*` · `diag-100q` · `sandbox-*-audit`）与已被超集覆盖的重复分支 |
+| **低价值但仍需捞** | ~30 | 纯 docs 的（`prd-audit-b2`/`b3`/`b5` · `diag-100q` · `sandbox-*-audit`）—— ⚠️ `b3`/`b5` 各有独有文档，**不可当重复删掉**（见 §4.2） |
+| **重复、可随超集一并删** | 11 | §4.1 的 6 条 + §4.2 的 `decision-info-oncanonical` · `agentrun-attribution` · `69-p2-function-signature` · `prd-audit-b1` · `prd-audit-b4` |
 | **需人工看** | 27 | §7 |
 | **可关掉的复验单** | 1 | WO-BACKLOG §1 的 `integ-w3-sandbox` —— 实测已并入（领先 0） |
+
+⛔ 再说一遍：**本单没有执行上表任何一项。** 没删分支、没合分支、没推非本单分支。
+`git push` 只推了 `claude/handoff-wo-branch-reconcile` 一条，内容只有本文件。
 
 
