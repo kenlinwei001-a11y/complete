@@ -28,6 +28,11 @@ import type {
   IntentDefinition,
   McpServerConfig,
   PermissionPolicy,
+  PlanBuilderCanvas,
+  PlanBuilderCompileResult,
+  PlanBuilderPublishResult,
+  CreatePlanBuilderBody,
+  UpdatePlanBuilderBody,
   QueryTask,
   ResolvedFeatures,
   RolesResponse,
@@ -1580,3 +1585,35 @@ export const fetchResourceRelations = (kind: string, key: string) =>
 /** 单资源运行时质量分（EWMA·null=尚无观测）。 */
 export const fetchResourceQuality = (kind: string, key: string) =>
   api.b<ResourceQualityResponse>(`/b/v1/resources/${encodeURIComponent(kind)}/${encodeURIComponent(key)}/quality`);
+
+// ---------------------------------------------------------------------------
+// WO-A · No-code Plan Builder Canvas ↔ PlanDSL
+// ---------------------------------------------------------------------------
+
+export interface PlanBuilderRunResult {
+  runId: string;
+  /** WO-D1 并线：后端 runCanvas 有 **CANCELLED** 第三终态（取消 ≠ 完成 ≠ 失败），前端类型同步收口。 */
+  status: "COMPLETED" | "FAILED" | "CANCELLED";
+  answer?: { blocks?: unknown[] };
+  error?: { code?: string; message?: string; reason?: string };
+}
+
+export const fetchPlanBuilders = (packageId: string) =>
+  api.b<{ items: PlanBuilderCanvas[]; total: number }>(`/b/v1/plan-builders?packageId=${encodeURIComponent(packageId)}`);
+
+export const fetchPlanBuilder = (id: string) => api.b<PlanBuilderCanvas>(`/b/v1/plan-builders/${encodeURIComponent(id)}`);
+
+export const createPlanBuilder = (packageId: string, body: CreatePlanBuilderBody) =>
+  api.b<PlanBuilderCanvas>(`/b/v1/plan-builders?packageId=${encodeURIComponent(packageId)}`, { method: "POST", body });
+
+export const updatePlanBuilder = (id: string, body: UpdatePlanBuilderBody) =>
+  api.b<PlanBuilderCanvas>(`/b/v1/plan-builders/${encodeURIComponent(id)}`, { method: "PUT", body });
+
+export const compilePlanBuilder = (id: string) =>
+  api.b<PlanBuilderCompileResult>(`/b/v1/plan-builders/${encodeURIComponent(id)}/compile`, { method: "POST", body: {} });
+
+export const publishPlanBuilder = (id: string) =>
+  api.b<PlanBuilderPublishResult>(`/b/v1/plan-builders/${encodeURIComponent(id)}/publish`, { method: "POST", body: {} });
+
+export const runPlanBuilder = (id: string, inputs: Record<string, unknown> = {}) =>
+  api.b<PlanBuilderRunResult>(`/b/v1/plan-builders/${encodeURIComponent(id)}/run`, { method: "POST", body: { inputs } });

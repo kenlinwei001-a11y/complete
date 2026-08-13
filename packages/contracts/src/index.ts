@@ -1,5 +1,6 @@
 export * from "./common.js";
 export * from "./qos.js";
+export * from "./plan-builder.js"; // WO-A · 无代码 Plan Builder 画布 ↔ PlanDSL（编译产物 = 现有 ExecutionPlan）
 export * from "./datacore.js";
 export * from "./agentcore.js";
 export * from "./llm.js";

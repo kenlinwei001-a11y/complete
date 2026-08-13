@@ -66,6 +66,8 @@ const BoundaryPage = lazy(() => import("@/pages/admin/BoundaryPage"));
 const PrototypeIntakePage = lazy(() => import("@/pages/admin/PrototypeIntakePage"));
 const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
+// WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
+const PlanBuilderPage = lazy(() => import("@/pages/admin/PlanBuilderPage"));
 // 管理平台增量：租户 / 用户 / 视图配置
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
@@ -187,6 +189,15 @@ export const routes: RouteObject[] = [
         element: (
           <AdminGuard path="resources" featureKey="qos.dril-routing">
             {lazyWrap(<ResourcesPage />)}
+          </AdminGuard>
+        ),
+      },
+      // WO-A · Plan Builder：entitlement admin.plan-builder 门控（关→404）。
+      {
+        path: "admin/plan-builder",
+        element: (
+          <AdminGuard path="plan-builder" featureKey="admin.plan-builder">
+            {lazyWrap(<PlanBuilderPage />)}
           </AdminGuard>
         ),
       },

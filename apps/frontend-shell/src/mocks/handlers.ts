@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { BuildPipeline, BuildPipelineKind, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
 // WO-UNBLOCK-SKILL-FE · 编译 mock 复用**契约里那份**纯函数实现（Parser/图派生住在 contracts，
 // 见 packages/contracts/src/skill-compile.ts）——绝不在此另抄一套 AST/图推导，抄了就是"同一概念两套词表"。
@@ -51,6 +51,7 @@ import {
   workspaceForAccount,
   type MockAccount,
 } from "./fixtures";
+import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
@@ -983,6 +984,60 @@ const INTAKE_RECONCILE_RESULT = {
     { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// WO-A · PlanBuilder mock endpoints（Phase 1：线性多 solver 链）
+// ---------------------------------------------------------------------------
+
+function compilePlanBuilderDSL(dsl: PlanBuilderCanvas["dsl"]): PlanBuilderCompileResult {
+  const errors: { code: string; message: string; nodeId?: string }[] = [];
+  for (const n of dsl.nodes) {
+    if (n.type === "CONDITION" || n.type === "LOOP" || n.type === "MERGE") {
+      errors.push({ code: "UNSUPPORTED_NODE", message: `${n.type} 节点在 Phase 1 仅占位，暂不支持编译`, nodeId: n.id });
+    }
+  }
+  // 简单环检测（DFS）
+  const adj = new Map<string, string[]>();
+  for (const n of dsl.nodes) adj.set(n.id, []);
+  for (const e of dsl.edges) adj.get(e.from)?.push(e.to);
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const dfs = (id: string): boolean => {
+    if (visiting.has(id)) {
+      errors.push({ code: "CYCLIC_GRAPH", message: `检测到环，节点 ${id}` });
+      return true;
+    }
+    if (visited.has(id)) return false;
+    visiting.add(id);
+    for (const to of adj.get(id) ?? []) if (dfs(to)) return true;
+    visiting.delete(id);
+    visited.add(id);
+    return false;
+  };
+  for (const n of dsl.nodes) dfs(n.id);
+
+  if (dsl.nodes.filter((n) => n.type === "OUTPUT").length === 0) {
+    errors.push({ code: "MISSING_OUTPUT", message: "至少需要一个 OUTPUT 节点" });
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  // 占位 ExecutionPlan 形状（R24：DSL ↔ ExecutionPlan 等价可证）
+  const plan: Record<string, unknown> = {
+    version: 1,
+    steps: dsl.nodes
+      .filter((n) => n.type !== "INPUT")
+      .map((n) => {
+        if (n.type === "SOLVER") return { id: n.id, type: "invoke_solver", params: { solverKey: n.solverKey, args: n.args } };
+        if (n.type === "TRANSFORM") return { id: n.id, type: n.stepType, params: n.params };
+        if (n.type === "OUTPUT") return { id: n.id, type: "render_answer", params: { blocks: n.blocks } };
+        return { id: n.id, type: n.type, params: {} };
+      }),
+  };
+  return { ok: true, plan, errors: [] };
+}
+
+function planBuilderById(id: string): PlanBuilderCanvas | undefined {
+  return db.planBuilders.find((c) => c.id === id);
+}
 
 export const handlers = [
   // ======================== A · DataCore ========================
@@ -4428,6 +4483,104 @@ export const handlers = [
       computedAt: new Date().toISOString(),
     });
   }),
+  // WO-A · PlanBuilder endpoints（Phase 1：线性多 solver 链）。
+  http.get("*/b/v1/plan-builders", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const packageId = url.searchParams.get("packageId") ?? PACKAGE_ID;
+    const items = db.planBuilders
+      .filter((c) => c.packageId === packageId)
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+    return HttpResponse.json({ items, total: items.length });
+  }),
+  http.post("*/b/v1/plan-builders", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const packageId = url.searchParams.get("packageId") ?? PACKAGE_ID;
+    const body = (await request.json().catch(() => ({}))) as CreatePlanBuilderBody;
+    if (!body.key || !body.name) return err(400, "VALIDATION_ERROR", "key 与 name 必填");
+    const id = `pbc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const canvas: PlanBuilderCanvas = {
+      id,
+      tenantId: TENANT_ID,
+      packageId,
+      key: body.key,
+      version: 1,
+      name: body.name,
+      description: body.description,
+      status: "DRAFT",
+      dsl: body.dsl ?? newPlanBuilderCanvas(id, packageId).dsl,
+      createdBy: `usr-${account.username}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.planBuilders.unshift(canvas);
+    return HttpResponse.json(canvas, { status: 201 });
+  }),
+  http.get("*/b/v1/plan-builders/:id", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json(canvas);
+  }),
+  http.put("*/b/v1/plan-builders/:id", async ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    if (canvas.status !== "DRAFT") return err(409, "IMMUTABLE_VERSION", "仅 DRAFT 可编辑");
+    const body = (await request.json().catch(() => ({}))) as UpdatePlanBuilderBody;
+    const next: PlanBuilderCanvas = {
+      ...canvas,
+      ...body,
+      id: canvas.id,
+      tenantId: canvas.tenantId,
+      version: canvas.version,
+      status: canvas.status,
+      createdBy: canvas.createdBy,
+      createdAt: canvas.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    db.planBuilders = db.planBuilders.map((c) => (c.id === canvas.id ? next : c));
+    return HttpResponse.json(next);
+  }),
+  http.post("*/b/v1/plan-builders/:id/compile", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json(compilePlanBuilderDSL(canvas.dsl));
+  }),
+  http.post("*/b/v1/plan-builders/:id/publish", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    const compiled = compilePlanBuilderDSL(canvas.dsl);
+    if (!compiled.ok) {
+      const result: PlanBuilderPublishResult = { ok: false, canvas, errors: compiled.errors, impact: { agents: 0, plans: 0, intents: 0 } };
+      return HttpResponse.json(result);
+    }
+    const next: PlanBuilderCanvas = { ...canvas, status: "PUBLISHED", compiledPlanId: `plan_${canvas.id}`, updatedAt: new Date().toISOString() };
+    db.planBuilders = db.planBuilders.map((c) => (c.id === canvas.id ? next : c));
+    const result: PlanBuilderPublishResult = { ok: true, canvas: next, plan: compiled.plan, errors: [], impact: { agents: 0, plans: 1, intents: 0 } };
+    return HttpResponse.json(result);
+  }),
+  http.post("*/b/v1/plan-builders/:id/run", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const canvas = planBuilderById(String(params.id));
+    if (!canvas) return err(404, "NOT_FOUND", "画布不存在");
+    return HttpResponse.json({
+      runId: `pbr_${Date.now()}`,
+      status: "COMPLETED",
+      answer: { blocks: [{ type: "text", markdown: `PlanBuilder ${canvas.name} mock run completed` }] },
+    });
+  }),
+
 ];
 
 /**
