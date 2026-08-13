@@ -95,7 +95,12 @@ describe("WO-SANDBOX-KPI-LAYER · 顶栏读数按偏离度分层", () => {
     await ready();
     await waitFor(() => expect(screen.getByTestId("sandbox-kpi-rest")).toBeTruthy());
     // ── 前置守护（非空转）：CFG 必须真的超出第一层容量，否则下面两向都恒真 ──
-    expect(CFG.stateVars.length, "stateVars ≤ 3 时 <details> 根本不渲染，本门会空跑通过").toBeGreaterThan(3);
+    // ⚠ 单参写法是**必须**的，不是风格：`coverage-blind` 门的 `hasCardinalityAnchor`
+    //   认的是 `expect(EXPR.length)`（`scripts/check-coverage-blind.mjs:306` 那条正则要求
+    //   `)` 紧跟 `.length`），双参 `expect(EXPR.length, "msg")` 它**识别不到** ——
+    //   本条原是双参，于是 `:93` 那个 for 循环一直被判成 LOOP_NO_FLOOR 基线外盲点。
+    //   实测 2026-08-13；复验：`node scripts/check-coverage-blind.mjs`（改回双参即再次报红）。
+    expect(CFG.stateVars.length).toBeGreaterThan(3);
 
     // ② D4 守恒先咬：一个都不许少（降层 ≠ 删除）
     for (const v of CFG.stateVars) {

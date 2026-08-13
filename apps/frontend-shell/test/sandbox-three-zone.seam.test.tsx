@@ -333,6 +333,11 @@ describe("§2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 
     mount();
     await ready();
     for (const s of STOWED) {
+      // 基数下限（`coverage-blind` 门 LOOP_NO_FLOOR）：probes 为空时下面整段跑 0 圈、照样绿。
+      // ⚠ 必须是**单参** `expect(x.length)` —— 该门的 `hasCardinalityAnchor` 认的是
+      //   `expect(EXPR.length)`，双参 `expect(EXPR.length, "msg")` 它识别不到（实测 2026-08-13；
+      //   复验：`node scripts/check-coverage-blind.mjs`，正则见 `scripts/check-coverage-blind.mjs:306`）。
+      expect(s.probes.length).toBeGreaterThan(0);
       // 先记下折叠态的文本，展开后逐字比 —— 只比"在不在"会漏掉「回来了但内容被改写」这一形态。
       const before = s.probes.map((id) => screen.getByTestId(id).textContent ?? "");
       await user.click(screen.getByTestId(s.opener));
@@ -573,6 +578,7 @@ describe("§4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SE
     const rest = screen.getByTestId("sandbox-impact-delta-rest-list");
     const rows = Array.from(rest.querySelectorAll("[data-testid^='sandbox-impact-delta-']"));
     expect(rows.length).toBeGreaterThan(8);
+    expect(CFG.stateVars.length).toBeGreaterThan(8); // 单参，同上：双参的 `coverage-blind` 认不出
     for (const v of CFG.stateVars) {
       expect(within(rest).getByTestId(`sandbox-impact-delta-${v}`), `${v} 没出现在差分带里`).toBeInTheDocument();
     }
