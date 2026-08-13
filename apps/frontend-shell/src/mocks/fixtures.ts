@@ -837,6 +837,13 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
   // RISK_DISPOSITION_SEED 真派生——基线（apply 空）与杠杆推演态（apply 非空）走**同一条代码路径**，
   // 只是 capRatio 不同 → 前端 mock 模式下调杠杆点「生成/重算」处置表也真变（与真引擎口径一致）。
   planRows: [],
+  // 欠账 #178 · 作用域诚实位（KILL-MOCK：与真引擎 `apps/datacore/src/solvers/risk.ts:777` 一字不差）。
+  // 本 fixture 的 `cards[]` 是**全部 8 个基地**、从不按 `args.base` 裁剪 ⇒ 它算出来的恒是全网口径，
+  // 所以恒标 `ALL`。**不许**因为调用方传了 base 就改标 `BASE` —— 那是拿标签冒充计算，
+  // 正是引擎侧几轮工单在消灭的「假个性化」，在 mock 里复活一份等于把病灶搬进开发态。
+  // （引擎侧走 BASE 分支时另有 `scopeBaseId`/`scopeBaseName`；mock 没有那条路，故两键不出现。）
+  scope: "ALL",
+  scopeNote: "全网（未指定基地·跨全部基地取越线卡）",
 };
 
 /**
