@@ -964,18 +964,29 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 | L5 | `action.executed` | Action 写回 | IN_SESSION | dashboard, object-queries | DL4 |
 | L5 | `writeback.divergence` | 回声对账 | NOTIFY | notifications, dashboard | DL4 |
 | L6 | `calibration.applied` | 校准批准 | IN_SESSION | calibration-report, solver-params | DL5 |
+| L6 | `calibration.auto_applied` | 校准**自动**批准（`calibration/service.ts:681` 与 `calibration.applied` 同一 emit 点的三元另一支：`opts.auto ? "calibration.auto_applied" : "calibration.applied"`）。**WO-3 件一门修好后由门自己认出来的**——此前内联三元对抽取器不可见 | IN_SESSION | calibration-report, solver-params | DL5 |
 | L7 | `intent.promoted` | 兜底孵化 | IN_SESSION | intent-catalog, fallback-stats | DL6 |
 | L8 | `synthetic.tick_completed` | 模拟时钟 tick | IN_SESSION | dashboard, risk, scenario-data, calibration-report | DL7 |
 | L8 | `dataset.regenerated` | 合成生成 | IN_SESSION | dashboard, risk, scenario-data, ontology-graph, rule-library | — |
 | L8 | `connection.sync_completed` | 连接器同步（成功）·`connectors/service.ts sync()` 成功路径真发（DF-4，含 scheduler 定时同步） | IN_SESSION | dashboard, scenario-data, object-queries | DL9 |
 | L8 | `connector.sync_failed` | 连接器同步失败·`connectors/service.ts sync()` catch 真发（DF-4；失败即通知运营/隔离区联动） | IN_SESSION | connectors, quarantine | DL9 |
 | L8 | `connection.created` | 连接器创建（A11 带 category） | IN_SESSION | connectors, data-categories | — |
+| L8 | `supply_risk` | 供应偏差越阈（`planviews.ts:416`·物料计划 vs 实际偏差 >5% 逐条发，载 material/planned/actual/deviationPct）。⚠ **命名不合本表惯例**：事件名**无点**（不是 `supply.risk`），门此前的事件名形状 `a.b` 把它挡在外面 ⇒ 一直不可见。WO-3 件一放宽形状后照实计入；**改名属生产代码改动，本单范围外**，留档待办 | NOTIFY | risk, notifications | — |
 | L1 | `slice.planned` | 切片规划器（A3.4 规划/复用；E6 近似问句命中时 payload 附 `reuseMatch:QUESTION/score`） | IN_SESSION | slice-library, slice-index | — |
 | L9 | `kb.indexed` | 知识库索引 | IN_SESSION | kb-search, search-test | DL10 |
 | L10 | `objects.merged` | 实体合并 | IN_SESSION | object-queries, dashboard, search | DL8 |
 | L10 | `merge_candidate.created` | 实体解析 | NOTIFY | notifications, merge-queue | — |
 | L10 | `quarantine.row_added` | 隔离区入库 | NOTIFY | notifications, quarantine | — |
 | L11 | `policy.updated` | 权限变更 | IN_SESSION | dashboard, search, scenario-data, history | DL11 |
+| L-admin | `iam.tenant.created` | 平台管理审计·建租户（`adminplatform.ts` 的本地 `audit()` wrapper → `outbox.emit(tenantId, event, payload)`，事件名在 wrapper 内是**形参**、真值在 9 个调用点） | NOTIFY | tenants, audit-log | — |
+| L-admin | `iam.user.created` | 平台管理审计·建用户（同上 wrapper） | NOTIFY | users, audit-log | — |
+| L-admin | `iam.user.updated` | 平台管理审计·改用户（角色/状态） | NOTIFY | users, audit-log | — |
+| L-admin | `iam.user.password_reset` | 平台管理审计·重置密码 | NOTIFY | users, audit-log | — |
+| L-admin | `scenario_package.created` | 场景包创建（可从模板派生） | IN_SESSION | scenario-packages | — |
+| L-admin | `scenario_package.updated` | 场景包更新 | IN_SESSION | scenario-packages | — |
+| L-admin | `view_config.created` | 视图配置创建（绑 featureKey） | IN_SESSION | view-configs, workspace, navigation | — |
+| L-admin | `view_config.updated` | 视图配置更新 | IN_SESSION | view-configs, workspace, navigation | — |
+| L-admin | `view_config.deleted` | 视图配置删除 | IN_SESSION | view-configs, workspace, navigation | — |
 | L12 | `features.updated` | 功能开通 | IN_SESSION | workspace, navigation, scenarios, intent-catalog | DL12 |
 | L13 | `growth.gap_detected` | 自成长发动机·探针检出缺口（LOOP fill 内发） | IN_SESSION | growth-ledger | — |
 | L13 | `growth.fill_proposed` | 自成长发动机·补法分派（缺数据 DF.9 HARD 真人正门[出 DataRequest 不合成]/SOFT 管线合成 PROVISIONAL，载 `fillMode`；缺求解器 generic_inference B 兜底） | IN_SESSION | growth-ledger | — |
@@ -1013,17 +1024,26 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 | L-twin | `enterprise_state.snapshotted` | 企业状态快照捕获完成（WO-ENTERPRISE-STATE·`apps/datacore/src/twin/enterprise-state.ts` `capture()`·载 `stateId/worldId/isSimulated/tick/metricCount`）→ 该世界的快照时间线多一份 | IN_SESSION | enterprise-states | **真消费方在场**：`apps/frontend-shell/src/views/sim/EnterpriseStatePanel.tsx` 的 `useQuery(["a","enterprise-states", worldId])`（沙盘右栏「企业状态快照」，由 `views/sim/SandboxView.tsx` 的 rail 挂载）。失效映射见 `store/eventInvalidation.ts`；接缝由 `apps/frontend-shell/test/enterprise-state.seam.test.tsx` ⑥ 用**真 queryClient** 咬（验前缀匹配 + 事件名拼错反证），不是 spy |
 | L-twin | `enterprise_state.forked` | 快照 fork 进仿真世界（同文件 `fork()`·PRD §4.1 两世界物理隔离·载 `stateId/worldId/forkedFromStateId/tick`）→ 仿真世界的时间线多一份**新行**（真实世界那一行逐字节不变） | IN_SESSION | enterprise-states | 同上（同一缓存前缀，key 尾带 worldId 靠前缀失效盖住所有世界） |
 
-> **⚠ §4 登记的诚实边界 —— 本表的门有一处结构性盲区（WO-RULE-SCOPE-DROP 实测，2026-08-11）**：
-> `scripts/check-system-ontology.mjs` 的发射端抽取器正则是 `outbox\.emit\(…,\s*"<字面量>"`，
-> **只认第二个实参写成字符串字面量的 emit**。事件名若来自变量或常量（`outbox.emit(tid, event, …)`、
-> `outbox.emit(tid, RULE_SCOPE_UNRESOLVED_EVENT, …)`），该 emit 对门**完全不可见** ——
-> 它既不会被算进「真 emit N 个」，也永远不会撞上「§4 未登记」的棘轮。
-> 已知落在这个盲区里的：`rule.alert` / `calibration.required`（`scheduler.ts:247 (scan)`，事件名是三元表达式算出的变量）、
-> `rule.scope_unresolved`（用常量引用，为的是事件名单一来源）。**这三条是人工登记进本表的，不是门逼出来的。**
+> **✅ §4 那处结构性盲区已闭（WO-3 件一，2026-08-12）—— 留档不抹，因为它是同一个病的第三次**：
+> 旧态：`scripts/check-system-ontology.mjs` 的发射端抽取器正则是 `outbox\.emit\(…,\s*"<字面量>"`，
+> **只认第二个实参写成字符串字面量的 emit**。事件名来自变量/常量/三元的 emit 对门**完全不可见** ——
+> 既不算进「真 emit N 个」，也永远撞不上「§4 未登记」的棘轮。
 > 形态（铁律 0.6）：「我用『字面量 emit 的条数』当作『代码真发的事件数』的证据，而前者并不度量后者。」
-> —— 与该门自己注释里记的上一次（拿"订阅声明数"当"真发事件数"）**是同一个病的第三次**。
-> 修法应是把抽取器扩到「常量引用 → 解析到其定义」，属 `scripts/**`，本单范围边界外，交回审核方另立单。
-> **在它修好之前，新增用常量命名的事件必须靠人回写本表，门不会提醒你。**
+> —— 与该门注释里记的上一次（拿"订阅声明数"当"真发事件数"）**同病第三次**。
+>
+> **现态**：抽取器改为「取第二实参表达式 → 按形态求值」，支持 `literal`（含**无点**事件名）/ `const-local` /
+> `const-import`（跨文件 `export const`）/ `ternary-inline` / `ternary-var` / `const-map`（`EVT.X`）/
+> `wrapper-call`（本地 wrapper 形参转发 → 由其调用点补齐）七种；**判不出来的落进「无法静态判定」桶并显式播报**
+> （⛔ 不许静默当作「没有 emit」——那正是本病换个形式复发）。每种形态**各有金丝雀且与主逻辑共用 `resolveEmitsIn` 本尊**，
+> 另有三条金丝雀钉死实测盲区 `rule.scope_unresolved` / `rule.alert` / `calibration.required`：退回「只认字面量」即红。
+> **实测跳幅：真 emit 60 → 75（+15），§4 未登记 22 → 33 → 回写本表 11 条后回落 22，棘轮同步收紧到 22。**
+> 顺带修掉两个**静默**丢事件的坑：① 剥注释若「先块后行」两遍正则，`app.ts:950` 行注释里的 `/a/v1/*`
+> 会被当成块注释起点、一路吞掉 4 个真 emit（已改单趟状态机）；② 接收者前缀写死 `(?:this\.)?`
+> 漏掉 `deps.outbox.emit(`（丢 `llm.credential_fetched`，已改任意前缀）。两者都只让数字变小、不报错 —— 与本病同源。
+>
+> **本表里靠门逼出来的 11 条**（此前人工/未登记）：`calibration.auto_applied`（内联三元另一支）·
+> `supply_risk`（无点名）· 9 条 `iam.*`/`scenario_package.*`/`view_config.*`（`adminplatform.ts` 的 `audit()` wrapper）。
+> 取证：`ONTOLOGY_DUMP_EMITS=1 node scripts/check-system-ontology.mjs` 打全量事件名清单（现算，不写死）。
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 
