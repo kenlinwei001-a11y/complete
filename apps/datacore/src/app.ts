@@ -3619,7 +3619,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(RuleCreateSchema, req.body);
     // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
     // WO-RULE-EXPR-PARAMS：连同 params 一起校验闭包 —— 引用 `params.x` 却没声明 x 的规则当场拒。
-    assertValidExpression(body.expression, body.params ?? {});
+    // 传 key 后**反向**也校验：被绑定的阈值型 param 必须真被 expression 引用（防阈值退回两份）。
+    assertValidExpression(body.expression, body.params ?? {}, body.key);
     return reply.status(201).send(await rules.create(ctx(req), body));
   });
   // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。

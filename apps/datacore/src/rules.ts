@@ -1,5 +1,5 @@
 import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin, RuleParamChange } from "@platform/contracts";
-import { RULE_PARAM_BINDINGS, applyRuleParamBindings } from "@platform/contracts";
+import { RULE_PARAM_BINDINGS, applyRuleParamBindings, missingBoundThresholdRefs } from "@platform/contracts";
 import type { AuthCtx, Rule } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { newId } from "./ids.js";
@@ -15,10 +15,17 @@ import { SolverService } from "./solvers/service.js";
  * `params` 里声明过。这道校验是"诚实缺席"的前移——否则一条引用了未声明阈值的规则能顺利发布，
  * 到运行期才在每个消费点抛错，而两处 catch 都是 fail-open（`按通过处理` / `violated = false`），
  * 结果就是**规则静悄悄变哑弹**：界面上规则在、状态 PUBLISHED、测试全绿，判定永不触发。
+ *
+ * WO-RULES-DSL-FAMILY 追加**反向**闭包（传 `ruleKey` 时生效）：被 `RULE_PARAM_BINDINGS` 登记为
+ * `threshold` 的 param，只要这条规则声明了它，expression 就**必须引用**它。
+ * 缺了这一向，正向校验对 `AnnualScenario.cashCushion < 50`（零引用）恒过 —— 管理员把 C18 的
+ * `params.cashFloor` 引用改回字面量再发布，阈值当场退回两份，G-C08-EXPR-PARAM-SPLIT 原地复发。
+ * 这正是 §8 记的「静态门看不见（门是源码扫描，看不到运行时规则记录）」那半。
  */
 export function assertValidExpression(
   expression: string,
   declaredParams?: Record<string, unknown>,
+  ruleKey?: string,
 ): void {
   let ast;
   try {
@@ -32,12 +39,26 @@ export function assertValidExpression(
   }
   if (declaredParams === undefined) return; // 调用方未提供 params 上下文（如纯语法校验）→ 只查语法
   const declared = new Set(Object.keys(declaredParams));
-  const missing = [...collectParamRefs(ast)].filter((n) => !declared.has(n));
+  const referenced = collectParamRefs(ast);
+  const missing = [...referenced].filter((n) => !declared.has(n));
   if (missing.length > 0) {
     throw validationError(
       `表达式引用了未声明的命名阈值：${missing.map((n) => `params.${n}`).join("、")} —— ` +
         `请在规则 params 中声明（阈值只存 params 一处，expression 只引用不复制）`,
     );
+  }
+  // 反向闭包（本单补）：被绑定的**阈值型** param 必须真被 expression 引用，否则阈值又有第二份。
+  // 只有 ruleKey 已知时才查得了（绑定表按规则码索引）——纯语法校验路径不传 key，跳过。
+  if (ruleKey !== undefined) {
+    const unreferenced = missingBoundThresholdRefs(ruleKey, declaredParams, referenced);
+    if (unreferenced.length > 0) {
+      throw validationError(
+        `规则 ${ruleKey} 声明了阈值 ${unreferenced.map((n) => `params.${n}`).join("、")}，` +
+          `但 expression 没有引用它 —— 该阈值同时喂求解器算数（RULE_PARAM_BINDINGS），` +
+          `不引用就等于把同一个数写成两份（expression 里的字面量 + params），改一份不动另一份。` +
+          `请把表达式里的字面量换成 ${unreferenced.map((n) => `params.${n}`).join("、")}`,
+      );
+    }
   }
 }
 
@@ -193,7 +214,7 @@ export class RulesService {
     const rule = await this.get(ctx, id);
     // 发布闸：expression × params 必须自洽（引用的阈值都已声明）。发布是"这条规则开始真判定"的时刻，
     // 让不自洽的规则在这里被拒，好过让它以哑弹形态活在规则库里。
-    assertValidExpression(rule.expression, rule.params ?? {});
+    assertValidExpression(rule.expression, rule.params ?? {}, rule.key);
     const siblings = await this.repos.rules.list(
       ctx.tenantId,
       (r) => r.key === rule.key && r.status === "PUBLISHED" && r.id !== rule.id,
@@ -236,7 +257,7 @@ export class RulesService {
     // 语法 + 阈值闭包一起校验：按**合并后**的 params 判，否则"只改 expression 不改 params"或
     // "只删 params 不改 expression"这两种最常见的分叉编辑都能溜过去。
     if (patch.expression !== undefined || patch.params !== undefined) {
-      assertValidExpression(updated.expression, updated.params ?? {});
+      assertValidExpression(updated.expression, updated.params ?? {}, updated.key);
     }
     await this.repos.rules.put(updated);
     return updated;
