@@ -64,21 +64,94 @@ function walk(dir) {
   return out;
 }
 
-const isComment = (line) => {
-  const t = line.trim();
-  return t.startsWith("//") || t.startsWith("/*") || t.startsWith("*") || t.startsWith("*/");
-};
+/**
+ * 把注释内容抹成空格（保留换行与列宽，行号不漂）。
+ *
+ * ⚠ **别退回「按行首字符判断是不是注释」的老写法**（本门 2026-08-13 实测被它咬出假红）。
+ * 老写法是 `t.startsWith("//") || t.startsWith("/*") || t.startsWith("*")`，
+ * 对**块注释的续行**恒判 false —— JSX 里这样写的注释极常见：
+ *
+ *     {␣/* 欠账 #178：……
+ *        （引擎侧记的病历原话：问「枣庄」拿到 8 张别的基地的卡）。   ← 这行不以注释符开头
+ *        …… *␣/}
+ *
+ * 于是「枣庄」被当成**视图里写死的基地名**报红，而它其实只是一句病历记录。
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『这一行以注释符开头』当作『这一行是注释』的证据，而前者并不度量后者。」**
+ * 同族前例（同日）：`stale-claims` 事实锁的注释遮蔽 —— 那次也是拿行首形状当注释判据。
+ * 按铁律 0.6「同一个错第二次必须当场建机制」，这里改成**带状态的扫描**，并配双向金丝雀。
+ *
+ * 状态机同时认字符串字面量，否则 `"https://x"` 里的 `//` 会被当成注释起点，
+ * 把后面半行真代码一起抹掉 —— 那是**漏报**方向的坏法，比假红更难发现。
+ */
+function stripComments(src) {
+  let out = "";
+  let i = 0;
+  let state = "code"; // code | line | block | s-quote | d-quote | tick
+  while (i < src.length) {
+    const c = src[i];
+    const nx = src[i + 1];
+    const keep = (ch) => { out += ch === "\n" ? "\n" : ch; };
+    const blank = (ch) => { out += ch === "\n" ? "\n" : " "; };
+    if (state === "code") {
+      if (c === "/" && nx === "/") { state = "line"; blank(c); blank(nx); i += 2; continue; }
+      if (c === "/" && nx === "*") { state = "block"; blank(c); blank(nx); i += 2; continue; }
+      if (c === "'") state = "s-quote";
+      else if (c === '"') state = "d-quote";
+      else if (c === "`") state = "tick";
+      keep(c); i++; continue;
+    }
+    if (state === "line") {
+      if (c === "\n") state = "code";
+      blank(c); i++; continue;
+    }
+    if (state === "block") {
+      if (c === "*" && nx === "/") { state = "code"; blank(c); blank(nx); i += 2; continue; }
+      blank(c); i++; continue;
+    }
+    // 字符串内：原样保留（业务常数写死在字符串里正是本门要抓的）
+    if (c === "\\") { keep(c); if (i + 1 < src.length) keep(src[i + 1]); i += 2; continue; }
+    if ((state === "s-quote" && c === "'") || (state === "d-quote" && c === '"') || (state === "tick" && c === "`")) state = "code";
+    keep(c); i++; continue;
+  }
+  return out;
+}
 
 /** 命中数 = 含业务 token 的非注释、非 debattery-allow 行数。 */
 function scan(file) {
-  const lines = readFileSync(file, "utf8").split("\n");
+  const raw = readFileSync(file, "utf8");
+  const rawLines = raw.split("\n");
+  // 注释先抹掉再判 token；`debattery-allow` 标记**本身写在注释里**，故须对原文判。
+  const codeLines = stripComments(raw).split("\n");
   const hits = [];
-  lines.forEach((line, i) => {
-    if (isComment(line) || line.includes("debattery-allow")) return;
-    if (TOKEN_RE.test(line)) hits.push({ n: i + 1, text: line.trim().slice(0, 90) });
+  codeLines.forEach((line, i) => {
+    if ((rawLines[i] ?? "").includes("debattery-allow")) return;
+    if (TOKEN_RE.test(line)) hits.push({ n: i + 1, text: (rawLines[i] ?? "").trim().slice(0, 90) });
   });
   return hits;
 }
+
+/**
+ * 双向金丝雀 —— 与主逻辑**共用同一个 `stripComments` / `TOKEN_RE`**，不许各抄一份。
+ * 抄了就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿（本仓实测过这个形态）。
+ * 缺任一边都会漏掉一半坏法：
+ *   ① 必中：token 写在**真代码**里，必须被数到。只有②会让「恒判是注释」的坏法照样通过。
+ *   ② 必不中：同一个 token 写在**块注释续行**里，必须数不到。只有①会让本次这个假红复发。
+ */
+function selfTest() {
+  const codeSample = 'const base = "枣庄";\n';
+  const commentSample = "{/* 病历：问「枣庄」拿到 8 张别的基地的卡\n   续行也在注释里 4680 */}\n";
+  const hit = TOKEN_RE.test(stripComments(codeSample));
+  const miss = TOKEN_RE.test(stripComments(commentSample));
+  if (!hit || miss) {
+    console.error("⛔ 金丝雀不中 ⇒ **本门自己坏了**，本次结论作废（不许读作「无内联业务常数」）：");
+    console.error(`   ① 代码里的「枣庄」应被数到：${hit ? "✓" : "✗"}`);
+    console.error(`   ② 块注释续行里的「枣庄/4680」应数不到：${miss ? "✗ 仍被数到" : "✓"}`);
+    process.exit(2);
+  }
+  return { hit, miss };
+}
+selfTest();
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * 探测器 B · 前端写死的「业务数据表」（仓主 2026-08-09 裁定二）
