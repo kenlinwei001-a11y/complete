@@ -31,6 +31,10 @@
     "sim.branch": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
     "sim.certification": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
     "sim.commander": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "decision.causal-graph": {
+      "stage": "tiered",
+      "why": "产品分档特性，与 sim.* 同列：随行业模板开，不进任何 *_DARK_LAUNCH_FEATURES 集合。判据写死在 apps/datacore/test/decision-causal-graph.test.ts:194-196 —— 该用例断言 `enabled('demo','decision.causal-graph')` 必须**等于** `enabled('demo','sim.sandbox')`。⚠ 收编时踩过一次坑记此：features.ts 该条注释里的「暗发 defaultOn:false」说的是 **L1 平台默认关**，不是本门 taxonomy 里的 stage=dark；照字面填 dark 会被 A5 逼着塞进暗发集合，而那样做 demo 租户就再也看不见它，A0 用例当场变红（实测：15 passed / 1 failed）。defaultOn:false ≠ stage:dark，两者度量的不是同一件事。"
+    },
     "opt.solver-pool": {
       "stage": "tiered",
       "why": "features.ts:88-90 逐字写着分档口径「lite 给模板池 / Pro 给 what-if+复用检索 / 旗舰再给离线进化」。seed.ts:107 另有实测注记「已随 battery 模板开着（不在暗发排除集）」。"

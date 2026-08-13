@@ -88,6 +88,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-DECISION-CAUSAL-GRAPH · 决策因果图（Cause→Impact→Decision→Action→Result 五段·只读投影）。
+  // **暗发 defaultOn:false**：关 = /a/v1/causal-graphs/* 一律 404 FEATURE_NOT_FOUND（R3 先于 authz），
+  // 现有租户零影响（RL2）。不 requires sim.sandbox —— 两个数据源里只有一个是沙盘，
+  // 台账源（Decision）与沙盘无关，绑上去会让"看决策因果图"莫名其妙依赖"沙盘已开"。
+  { key: "decision.causal-graph", name: "决策因果图", level: "BLOCK", defaultOn: false },
   // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。

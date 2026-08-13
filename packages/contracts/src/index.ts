@@ -79,3 +79,4 @@ export * from "./process.js"; // WO-Q0 · 业务流程层（13 域 × 65 流程�
 export * from "./skill-compile.js"; // WO-SKILL-COMPILER-S1 · 技能编译流水线 S1 切片（Parser→SkillAst→推理图，纯函数 R6；Validator 在 agentcore；Optimizer/包段显式 NOT_IMPLEMENTED）
 export * from "./impact-analysis.js"; // WO-IMPACT-PROPAGATION · Impact Propagation 统一端点契约（栈B传播 × 栈A世界隔离）：四维 available 判别联合 + universe 基数，把「没承载物」「全域为空」「确实没波及」三种 0 分开报；流程维 definition 粒度可用 · instance 粒度诚实不可用
 export * from "./enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3 五张 MVP 表之一）：capturedAt 为**逻辑时钟**非 wall-clock · worldId 真实/仿真物理隔离（§4.1）· 捕获核 captureEnterpriseState 为纯函数且 datacore 与前端 mock **共用同一份**（治「mock 与引擎口径分家」）
+export * from "./causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 决策因果图（Cause→Impact→Decision→Action→Result 五段显式建模·每节点每边必带 provenance 指回既有真值·空段必须说清缺什么 superRefine 硬锁·零悬空边+段序不可倒流）
