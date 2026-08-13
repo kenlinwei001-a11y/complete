@@ -439,8 +439,40 @@ const LEDGER_LAYOUT = {
   ],
 };
 
-/** §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions) */
-const GRAPH_VIEWPOINTS = [
+/**
+ * §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions)。
+ *
+ * 描述卡走 `options.desc` / `options.descLink{to,label}`，与**生产**（`datacore/src/synthetic/service.ts`
+ * 的 `graphView()`）同形状 —— 契约单一来源 `GraphViewDescSchema`。
+ * ⚠ 这里曾经是**唯一走对形状的一侧**：生产写 `layout.description`（裸字符串 link），mock 写对的，
+ * 于是 `G-GRAPH-DESC-CONTRACT-SPLIT` 全绿藏了很久。**mock 比生产"对"也是骗人** ——
+ * 改动本常量务必与 `service.ts` 同步；`test/graph-desc-contract.seam.test.tsx` 会咬住两边同形。
+ * 导出是为了让那道门能直接比对本常量（否则只能间接经 MSW 猜）。
+ */
+/**
+ * 「本体图谱」(`graph`) 视角配置 —— 与后端 `view-manifest.ts` 的 `ONTOLOGY_BROWSER_OPTIONS` 同语义。
+ * 业务域 14 键取自后端 `graphmeta.BUSINESS_DOMAIN_KEYS`；此处是 mock，无法 import 后端源码
+ * （contracts-only-shared），故逐字对齐 —— `test/graph-desc-contract.seam.test.tsx` 会拿**真后端抓下来的
+ * ViewConfig** 与本常量对账，漂移即红（不是靠人记得同步）。
+ */
+export const ONTOLOGY_BROWSER_OPTIONS_MOCK = {
+  graphOptions: {
+    colorBy: "domain",
+    nodeFilter: {
+      domains: [
+        "factory", "product", "process", "equip", "people", "quality", "capacity",
+        "forecast", "sales", "material", "finance", "plan", "external", "decision",
+      ],
+    },
+    dimOthers: true,
+    layoutSeed: 42,
+  },
+  desc:
+    "对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。" +
+    "求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。",
+};
+
+export const GRAPH_VIEWPOINTS = [
   {
     key: "graph-all", title: "图谱·全景",
     options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
@@ -495,7 +527,12 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
   const features = featuresForAccount(account, tenantOverrides);
   const allViews = [
     { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
+    // 「本体图谱」不再是零配置（修 G-GRAPH-ENTRY-DUP：它此前与「图谱·全景」渲染输出完全相同）。
+    // 配置逐字对齐后端单一来源 `apps/datacore/src/synthetic/view-manifest.ts` 的 ONTOLOGY_BROWSER_OPTIONS
+    // ——业务域为主角、求解器/智能体淡出；理由见那边的长注释。
+    // ⚠ mock 与生产必须同形状同语义：mock 若留在零配置，前端测试里两个入口照样一模一样，
+    // 这个 bug 就还是测不出来（本仓刚吃过 mock 走对/生产走错的亏，反过来一样是骗人）。
+    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {}, options: ONTOLOGY_BROWSER_OPTIONS_MOCK },
     { key: "risk", title: "产能推演", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
