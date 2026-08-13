@@ -62,12 +62,21 @@ else {
   // 金丝雀：§4 必须含一个已知必在的事件；不中说明切窗切歪了，不是「本体没登记事件」。
   if (sec4 && !/`raw_dataset\.uploaded`/.test(sec4Text))
     fail.push("**门自己瞎了**：§4 切窗里找不到金丝雀 `raw_dataset.uploaded` —— 切窗错位，登记判定不可信。");
-  const docEvents = new Set([...sec4Text.matchAll(/`([a-z0-9_]+\.[a-z0-9_]+)`/g)].map((m) => m[1]));
+  // §4 已登记事件集 —— 两条来源，都要，且各有各的收紧理由（WO-3 件一：这里是发射侧盲区的**对称面**）：
+  //  ① 反引号里的**多段点名**（`a.b` / `a.b.c`）：沿用旧行为。旧正则写成恰好一个点，
+  //     于是 `iam.user.created` 这类**两个点**的事件「登记了也读不到」——与发射端只认字面量同源。
+  //  ② 表格行第二列的反引号 token（**任意形状**，含无点名 `supply_risk`）：
+  //     无点名在散文里无法与普通标识符区分，只在**结构化的表格事件列**认它，避免「随便提一次就算登记」的过宽假绿
+  //     （§4 上方注释记着的旧坑：一段说「这些没登记」的话反而让门判它们登记了）。
+  const docEvents = new Set([...sec4Text.matchAll(/`([a-z0-9_]+(?:\.[a-z0-9_]+)+)`/g)].map((m) => m[1]));
+  for (const row of sec4Text.matchAll(/^\|[^|\n]*\|\s*`([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*)`\s*\|/gm)) docEvents.add(row[1]);
   const missingInDoc = [...codeEvents].filter((e) => !docEvents.has(e));
   if (missingInDoc.length) fail.push(`事件已在代码、未登记进本体 §4：${missingInDoc.join(", ")}`);
-  // 反向：本体记了但代码已删（仅对"看起来像领域事件"的，宽松告警不致命可按需收紧）
-  const staleInDoc = [...docEvents].filter((e) => !codeEvents.has(e) && /\.(uploaded|published|completed|updated|executed|applied|promoted|ingested|merged|created|added|regenerated|divergence)$/.test(e));
-  if (staleInDoc.length) fail.push(`本体 §4 记了、代码已无此事件（疑似漂移）：${staleInDoc.join(", ")}`);
+  // 反向：本体记了但代码已删（疑似漂移）。
+  // ⚠ 判据必须是「代码里还有没有这个事件」= 订阅声明 ∪ **发射端**。只拿订阅声明当权威，
+  //   会把「只发不订阅」的事件（iam.*/view_config.* 这类审计事件）误报成「代码已删」——
+  //   又是「我用 A 当作 B 的证据，而 A 并不度量 B」。发射集在下方算出后再判，故此处只留占位。
+  const staleCandidates = [...docEvents].filter((e) => !codeEvents.has(e) && /\.(uploaded|published|completed|updated|executed|applied|promoted|ingested|merged|created|added|regenerated|divergence)$/.test(e));
   // ⚠ 用词要精确：这里量的是**订阅声明**，不是「代码里的事件」。
   //   曾打印「代码 N 个」，于是所有人（包括写它的我）都以为发射端已被覆盖 —— 见下 §1b。
   console.log(`· 事件（订阅声明侧）：event-subscriptions.ts ${codeEvents.size} 个，本体 §4 覆盖 ${[...codeEvents].filter((e) => docEvents.has(e)).length} 个`);
@@ -84,17 +93,169 @@ else {
   //    上一版对账脚本栽的就是这个 —— 三个样例全走 outbox 那条抽取器，
   //    第二条 emitDomainEvent 抽取器写成什么样都照样全绿，把 4 个事件误报成「零 emit」。
   //    金丝雀与主逻辑**共用 harvestEmits 本尊**，改坏任一条正则，对应金丝雀立刻红。
+  // ⛔ 第三次犯同一种病（2026-08-12 实测，WO-3 件一）：上一版抽取器的正则形如
+  //    `outbox\.emit\(…,\s*"<字面量>"` —— **只认字符串字面量**。事件名来自常量/变量/三元的 emit
+  //    对它完全不可见：既不计入「真 emit N 个」，也永远撞不上棘轮。
+  //    形态（铁律 0.6）：「我用『字面量 emit 的条数』当作『真发事件数』的证据，而前者并不度量后者。」
+  //    实测盲区（本次修复前，全 78 个发射点里有 6 个不可见）：
+  //      · `RULE_SCOPE_UNRESOLVED_EVENT`（跨文件常量引用）scheduler.ts:219
+  //      · `event`（同作用域三元赋值 → rule.alert / calibration.required）scheduler.ts:286
+  //      · 内联三元（calibration.applied / calibration.auto_applied）calibration/service.ts:681
+  //      · `supply_risk`（真字面量，但**无点**，被事件名形状 `a.b` 挡在门外）planviews.ts:416
+  //      · `event`（本地 wrapper 形参 → 9 个 iam./view_config./scenario_package. 事件）adminplatform.ts:132
+  //
+  // ★ 机制：**不判就必须说不判**。解析不出的落进 `undecidable` 桶并显式播报 ——
+  //    「静默当作没有 emit」正是本单要治的病换个形式复发。
+  // ★ 金丝雀与主逻辑**共用 resolveEmitsIn 本尊**（不许各抄一份正则），每种解析形态各一条，
+  //    并钉死上面的真实盲区；诚实位（各形态命中数）**现算不写死**。
   const EMIT_SRC_DIRS = ["apps/datacore/src", "apps/agentcore/src"];
-  const EMITTERS = [
-    { key: "outbox.emit", re: /outbox\.emit\(\s*[^,]+,\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g, canary: 'await outbox.emit(c.tenantId, "sim.canary_emitted", {})', expect: "sim.canary_emitted" },
-    { key: "emitDomainEvent", re: /emitDomainEvent\(\s*[^,]+,\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g, canary: 'emitDomainEvent(tid, "sim.canary_domain", {})', expect: "sim.canary_domain" },
-  ];
-  const harvestEmits = (re, text) => new Set([...text.matchAll(new RegExp(re.source, "g"))].map((m) => m[1]));
+  const EMIT_CALLEES = ["outbox.emit", "emitDomainEvent"];
+  // 事件名形状：领域事件惯例是 `a.b`，但 outbox 真发过无点名（supply_risk 实测）——放宽并照实计入。
+  const EV_SHAPE = /^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*$/;
 
-  for (const em of EMITTERS) {
-    if (!harvestEmits(em.re, em.canary).has(em.expect))
-      fail.push(`**门自己瞎了**：发射端抽取器 \`${em.key}\` 的金丝雀未命中 —— 此时的「emit 未登记 N 个」不可信（可能漏整条发射通道）。`);
+  // 注释里的 emit 样例不是真发射（event-subscriptions.ts:105 的散文就写着 `outbox.emit("sim.*")`）。
+  // ⚠ 必须**单趟状态机**，不许「先剥块注释再剥行注释」两遍正则：
+  //   app.ts:950 的**行注释**里有一句 `/a/v1/*`，两遍法会把那个 `/*` 当块注释起点，
+  //   一路吞到下一个 `*/` —— 实测吞掉 4 个真 emit（connection.created / materialize.completed /
+  //   prototype.objectified / schema_reconcile.resolved），且**静默**：数字只是变小，没有任何报错。
+  //   这与本门要治的病同源（「看不见」被当成「不存在」），所以这里也得较真。
+  // 保留字符数与换行（用空格填充），位置不漂。
+  const stripComments = (t) => {
+    const out = t.split("");
+    let i = 0;
+    const blank = (a, b) => { for (let k = a; k < b; k++) if (out[k] !== "\n") out[k] = " "; };
+    while (i < t.length) {
+      const c = t[i], n = t[i + 1];
+      if (c === '"' || c === "'" || c === "`") { // 字符串/模板：整体跳过（内部 // 与 /* 都不是注释）
+        const q = c; i++;
+        while (i < t.length && !(t[i] === q && t[i - 1] !== "\\")) i++;
+        i++; continue;
+      }
+      if (c === "/" && n === "/") { const e = t.indexOf("\n", i); const end = e === -1 ? t.length : e; blank(i, end); i = end; continue; }
+      if (c === "/" && n === "*") { const e = t.indexOf("*/", i + 2); const end = e === -1 ? t.length : e + 2; blank(i, end); i = end; continue; }
+      i++;
+    }
+    return out.join("");
+  };
+
+  // 顶层实参切分（括号/方括号/花括号/引号/模板串均计深度）——比正则可靠，多行调用照切。
+  const splitArgs = (src, openIdx) => {
+    const args = [];
+    let d = 0, s = openIdx + 1, q = null;
+    for (let i = openIdx + 1; i < src.length; i++) {
+      const c = src[i], prev = src[i - 1];
+      if (q) { if (c === q && prev !== "\\") q = null; continue; }
+      if (c === '"' || c === "'" || c === "`") { q = c; continue; }
+      if ("([{".includes(c)) d++;
+      else if (")]}".includes(c)) { if (c === ")" && d === 0) { args.push(src.slice(s, i)); return { args, end: i }; } d--; }
+      else if (c === "," && d === 0) { args.push(src.slice(s, i)); s = i + 1; }
+    }
+    return { args, end: -1 };
+  };
+
+  const litOf = (e) => {
+    const m = e.trim().match(/^(?:"([^"]*)"|'([^']*)'|`([^`${]*)`)$/);
+    return m ? (m[1] ?? m[2] ?? m[3]) : null;
+  };
+
+  /**
+   * 解析一段源码里所有 emit 的事件名。
+   * @returns {{resolved: Map<string,string>, undecidable: Array<{expr:string,line:number}>, forms: Record<string,number>}}
+   *   resolved: 事件名 → 解析形态；undecidable: 判不出来的表达式（**必须被播报**）
+   */
+  const resolveEmitsIn = (rawText, extern = new Map()) => {
+    const text = stripComments(rawText);
+    const resolved = new Map(), undecidable = [], forms = {};
+    const note = (ev, form) => { if (EV_SHAPE.test(ev)) { if (!resolved.has(ev)) resolved.set(ev, form); forms[form] = (forms[form] || 0) + 1; } };
+    const lineOf = (i) => text.slice(0, i).split("\n").length;
+
+    // 同文件常量表：const X = "lit" / const X = c ? "a" : "b" / const O = { K: "lit" }
+    const constLit = new Map(), constTern = new Map(), constObj = new Map();
+    for (const m of text.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:"([^"]*)"|'([^']*)')\s*;/g))
+      constLit.set(m[1], m[2] ?? m[3]);
+    for (const m of text.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*[^;?]+\?\s*(?:"([^"]*)"|'([^']*)')\s*:\s*(?:"([^"]*)"|'([^']*)')\s*;/g))
+      constTern.set(m[1], [m[2] ?? m[3], m[4] ?? m[5]]);
+    for (const m of text.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\{([^{}]*)\}\s*as const\s*;|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\{([^{}]*)\}\s*;/g)) {
+      const name = m[1] ?? m[3], body = m[2] ?? m[4];
+      if (!name || !body) continue;
+      const kv = new Map();
+      for (const p of body.matchAll(/([A-Za-z_$][\w$]*)\s*:\s*(?:"([^"]*)"|'([^']*)')/g)) kv.set(p[1], p[2] ?? p[3]);
+      if (kv.size) constObj.set(name, kv);
+    }
+
+    // 本地 wrapper：const f = (a, evt, p) => outbox.emit(a, evt, p) —— 形参转发，靠调用点补齐
+    const wrappers = new Map();
+    const wrapperParams = new Set(); // wrapper 的事件名形参：其内部转发点由调用点覆盖，不算「判不出来」
+    for (const m of text.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*(?::[^=]+)?=>\s*\{?\s*(?:return\s*)?(?:await\s+)?(outbox\.emit|this\.outbox\.emit|emitDomainEvent)\(([^)]*)\)/g)) {
+      const params = m[2].split(",").map((s) => s.trim().replace(/[:?].*$/, "").trim());
+      const callArgs = m[4].split(",").map((s) => s.trim());
+      const pos = params.indexOf(callArgs[1]);
+      if (pos >= 0) { wrappers.set(m[1], pos); wrapperParams.add(callArgs[1]); }
+    }
+
+    const scanCallee = (callee, isWrapper, evPos) => {
+      const needle = callee.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // ⚠ 接收者前缀是任意的：`outbox.emit` / `this.outbox.emit` / `deps.outbox.emit` / `this.deps.outbox.emit`。
+      //   早先写死 `(?:this\.)?` 漏掉 `deps.outbox.emit(`（llmproviders.ts:484 的 llm.credential_fetched 实测丢失）。
+      const recv = isWrapper ? "" : "(?:[A-Za-z_$][\\w$]*\\.)*";
+      for (const m of text.matchAll(new RegExp(`(?:^|[^\\w$.])(?:await\\s+)?${recv}${needle}\\s*\\(`, "g"))) {
+        const open = text.indexOf("(", m.index + m[0].length - 1);
+        const { args } = splitArgs(text, open);
+        const raw = args[evPos];
+        if (raw === undefined) continue;
+        const e = raw.trim(), ln = lineOf(m.index);
+        const lit = litOf(e);
+        if (lit !== null) { note(lit, isWrapper ? "wrapper-call" : "literal"); continue; }
+        const tern = e.match(/^[^?]+\?\s*(?:"([^"]*)"|'([^']*)')\s*:\s*(?:"([^"]*)"|'([^']*)')$/s);
+        if (tern) { note(tern[1] ?? tern[2], "ternary-inline"); note(tern[3] ?? tern[4], "ternary-inline"); continue; }
+        if (isWrapper) continue; // wrapper 内部的形参转发由调用点覆盖
+        if (/^[A-Za-z_$][\w$]*$/.test(e)) {
+          if (constLit.has(e)) { note(constLit.get(e), "const-local"); continue; }
+          if (constTern.has(e)) { constTern.get(e).forEach((v) => note(v, "ternary-var")); continue; }
+          if (extern.has(e)) { note(extern.get(e), "const-import"); continue; }
+          // wrapper 的事件名形参：该转发点本身不携带事件名，真值在调用点（已由 wrapper-call 解析）⇒ 不算判不出来
+          if (wrapperParams.has(e)) continue;
+        }
+        const mem = e.match(/^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/);
+        if (mem && constObj.get(mem[1])?.has(mem[2])) { note(constObj.get(mem[1]).get(mem[2]), "const-map"); continue; }
+        undecidable.push({ expr: e.replace(/\s+/g, " ").slice(0, 60), line: ln });
+      }
+    };
+
+    for (const c of EMIT_CALLEES) scanCallee(c, false, 1);
+    for (const [w, pos] of wrappers) scanCallee(w, true, pos);
+    return { resolved, undecidable, forms };
+  };
+
+  // 金丝雀：**每种解析形态各一条**，全部走 resolveEmitsIn 本尊（改坏任一条，对应金丝雀立刻红）。
+  const CANARIES = [
+    { form: "literal", src: 'await outbox.emit(c.tenantId, "sim.canary_emitted", {});', expect: ["sim.canary_emitted"] },
+    { form: "literal(domain)", src: 'emitDomainEvent(tid, "sim.canary_domain", {});', expect: ["sim.canary_domain"] },
+    { form: "dotless", src: 'await outbox.emit(t, "canary_dotless", {});', expect: ["canary_dotless"] },
+    { form: "const-local", src: 'const CE = "sim.canary_const";\nawait outbox.emit(t, CE, {});', expect: ["sim.canary_const"] },
+    { form: "ternary-inline", src: 'await outbox.emit(t, x ? "sim.canary_ti_a" : "sim.canary_ti_b", {});', expect: ["sim.canary_ti_a", "sim.canary_ti_b"] },
+    { form: "ternary-var", src: 'const ev = x === 1 ? "sim.canary_tv_a" : "sim.canary_tv_b";\nawait outbox.emit(t, ev, {});', expect: ["sim.canary_tv_a", "sim.canary_tv_b"] },
+    { form: "const-map", src: 'const EVT = { RULE_ALERT: "sim.canary_map" };\nawait outbox.emit(t, EVT.RULE_ALERT, {});', expect: ["sim.canary_map"] },
+    { form: "wrapper-call", src: 'const audit = (tid, event, p) => outbox.emit(tid, event, p);\nawait audit(c.tenantId, "sim.canary_wrapped", {});', expect: ["sim.canary_wrapped"] },
+  ];
+  for (const cn of CANARIES) {
+    const got = resolveEmitsIn(cn.src, new Map([["IMPORTED_CE", "sim.canary_import"]])).resolved;
+    const miss = cn.expect.filter((e) => !got.has(e));
+    if (miss.length)
+      fail.push(`**门自己瞎了**：发射端解析形态 \`${cn.form}\` 的金丝雀未命中（缺 ${miss.join(", ")}）—— 此时的「真 emit / 未登记 N 个」不可信。`);
   }
+  // 金丝雀·跨文件常量引用（extern 通道）
+  if (!resolveEmitsIn('await outbox.emit(t, IMPORTED_CE, {});', new Map([["IMPORTED_CE", "sim.canary_import"]])).resolved.has("sim.canary_import"))
+    fail.push("**门自己瞎了**：发射端解析形态 `const-import`（跨文件常量）的金丝雀未命中 —— 跨文件事件名不可见。");
+  // 金丝雀·**不判就必须说不判**：判不出来的必须进 undecidable 桶，不许静默当「没有 emit」。
+  {
+    const u = resolveEmitsIn('await outbox.emit(t, computeName(kind), {});').undecidable;
+    if (!u.some((x) => x.expr.includes("computeName")))
+      fail.push("**门自己瞎了**：判不出来的事件名没有落进「无法静态判定」桶 —— 它会被静默当作『没有 emit』，正是本门要治的病复发。");
+  }
+  // 金丝雀·注释里的 emit 样例不得计入（散文 ≠ 真发射）
+  if (resolveEmitsIn('// 说明：datacore 六处 outbox.emit("sim.doc_example")\n').resolved.size !== 0)
+    fail.push("**门自己瞎了**：注释里的 emit 样例被计成真发射 —— 「真 emit N 个」被散文灌水。");
 
   const tsFiles = [];
   const walkTs = (d) => {
@@ -106,20 +267,42 @@ else {
     }
   };
   EMIT_SRC_DIRS.forEach(walkTs);
+  // 跨文件常量表：全仓 `export const X = "a.b"` —— 供 const-import 形态解析（scheduler 引 rule-scope 那种）。
+  const externConsts = new Map();
+  for (const f of tsFiles)
+    for (const m of readFileSync(f, "utf8").matchAll(/export\s+const\s+([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=\s*(?:"([^"]*)"|'([^']*)')\s*;/g))
+      externConsts.set(m[1], m[2] ?? m[3]);
+
   const emitted = new Set();
+  const emitForms = {};
+  const undecidableAll = [];
   for (const f of tsFiles) {
-    const t = readFileSync(f, "utf8");
-    for (const em of EMITTERS) for (const ev of harvestEmits(em.re, t)) emitted.add(ev);
+    const r = resolveEmitsIn(readFileSync(f, "utf8"), externConsts);
+    for (const [ev, form] of r.resolved) { emitted.add(ev); emitForms[form] = (emitForms[form] || 0) + 1; }
+    for (const u of r.undecidable) undecidableAll.push({ ...u, file: f });
   }
   // 金丝雀③：全仓必有 emit（若为 0，是遍历/正则坏了，不是「代码里没有事件」）。
   if (emitted.size === 0)
     fail.push("**门自己瞎了**：全仓一个 emit 都没抽到 —— 报「emit 未登记 0 个」等于什么都没验。");
+  // 金丝雀④：钉死三条**实测已知盲区**（WO-3 件一）。它们是非字面量事件名，
+  //   上一版抽取器看不见、靠人工登记进 §4 —— 现在必须由门自己认出来，退化即红。
+  for (const known of ["rule.scope_unresolved", "rule.alert", "calibration.required"])
+    if (!emitted.has(known))
+      fail.push(`**门自己瞎了**：已知非字面量盲区 \`${known}\` 未被解析出来 —— 发射端抽取器又退回「只认字面量」。`);
+
+  // 漂移判据补齐（见上方占位）：登记了、订阅侧没有、**发射侧也没有** ⇒ 才是真漂移。
+  const staleInDoc = staleCandidates.filter((e) => !emitted.has(e));
+  if (staleInDoc.length) fail.push(`本体 §4 记了、代码已无此事件（疑似漂移）：${staleInDoc.join(", ")}`);
 
   const emitUnregistered = [...emitted].filter((e) => !docEvents.has(e)).sort();
   // 棘轮：存量记账、新增被挡（只降不升）。存量清零请回写 §4，不要抬基线。
   // 基线 23 = 2026-08-08 在 canonical 实测；其中 sim.scenario_saved 的 §4 登记在待并批次里，
   // 那批并线后应降到 22 —— 降了要顺手把这个数字改小，这就是棘轮的用法。
-  const MAX_EMIT_UNREGISTERED = 23;
+  // 2026-08-12（WO-3 件一）23 → 21：抽取器认出非字面量事件名后本应涨到 33，
+  // 回写 §4 十一条（`calibration.auto_applied` / `supply_risk` / 9 条 `iam.*`·`view_config.*`·`scenario_package.*`）
+  // 压回 22；§4 解析同步修掉「只认恰好一个点」的对称盲区（`iam.user.created` 这类登记了也读不到）后实测 21。
+  // 存量清零请继续回写 §4，**不许抬这个数**。
+  const MAX_EMIT_UNREGISTERED = 21;
   if (emitUnregistered.length > MAX_EMIT_UNREGISTERED) {
     fail.push(
       `**emit 了但本体 §4 未登记**：${emitUnregistered.length} 个 > 棘轮基线 ${MAX_EMIT_UNREGISTERED}。` +
@@ -128,9 +311,26 @@ else {
         ` 不许抬基线了事。`,
     );
   }
+  // 诚实位**现算不写死**：各解析形态命中数 + 「无法静态判定」桶。
+  const formStr = Object.keys(emitForms).sort().map((k) => `${k}=${emitForms[k]}`).join(" ");
   console.log(
     `· 事件（发射端）：真 emit ${emitted.size} 个 · §4 未登记 ${emitUnregistered.length} 个（棘轮基线 ${MAX_EMIT_UNREGISTERED}，只降不升）`,
   );
+  console.log(`  └ 解析形态：${formStr}`);
+  // 取证用：`ONTOLOGY_DUMP_EMITS=1 node scripts/check-system-ontology.mjs` 打印全量事件名清单
+  //（改抽取器时对账「新认出了哪些」用，属诚实位的一部分：清单现算，不写死）。
+  if (process.env.ONTOLOGY_DUMP_EMITS === "1") {
+    console.log(`  └ 事件清单（${emitted.size}）：`);
+    for (const ev of [...emitted].sort()) console.log(`     ${docEvents.has(ev) ? "✓§4" : "✗未登记"}  ${ev}`);
+  }
+  // ⛔ 判不出来的**必须显式播报**，不许静默当作「没有 emit」——那是本门第三次犯的病换个形式复发。
+  if (undecidableAll.length) {
+    console.log(`  └ **无法静态判定 ${undecidableAll.length} 处**（事件名非静态可求值 ⇒ 未计入上面的「真 emit」，也未被棘轮覆盖）：`);
+    for (const u of undecidableAll.slice(0, 8)) console.log(`     · ${u.file}:${u.line}  ${u.expr}`);
+    if (undecidableAll.length > 8) console.log(`     · …另 ${undecidableAll.length - 8} 处`);
+  } else {
+    console.log("  └ 无法静态判定：0 处（全部发射点的事件名都已静态求值）");
+  }
 }
 
 // --- 2) 求解器注册表 -------------------------------------------------------
