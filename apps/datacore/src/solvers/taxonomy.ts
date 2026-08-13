@@ -68,6 +68,7 @@ export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   margin_attribution: "root_cause_attribution", // 毛利为什么倒挂、哪个成本项拖垮的
   yield_diagnosis: "root_cause_attribution", // 良率为什么突然下降、突变点在哪
   chain_loss_attribution: "root_cause_attribution", // 全链时间都耗在哪个环节、凭什么这个占比
+  process_flow_time: "root_cause_attribution", // **哪一条**流程实例卡住、卡在谁那里、卡了多久（实例粒度，与上一条的环节粒度分层）
 
   // ── 对策与缺口闭合：「怎么补、方案代价多大、组合起来能收窄多少」 ──
   mitigation_select: "countermeasure_closure", // 这个风险因素该选哪个处置方案

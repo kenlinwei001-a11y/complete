@@ -50,7 +50,8 @@ import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestS
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 // WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
 // 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
-import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS } from "@platform/contracts";
+import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS, PROCESS_INSTANCE_ORIGINS } from "@platform/contracts";
+import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME · 流程实例反推（从既有带时间戳单据，非合成）
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
@@ -3211,6 +3212,71 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       definitions: [...definitions].sort(byKey),
       waitKinds: PROCESS_WAIT_KINDS,
       ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+    };
+  });
+  /**
+   * WO-FLOWTIME · 单条流程的**实例**与站间流转时长投影。
+   *
+   * ── 这条路由补的是上一条路由自己写着的那个洞 ──────────────────────────────
+   * 上面 `/a/v1/process-definitions` 的注释原文：
+   *   「**不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *     `ProcessTask`/`ProcessInstance` 全仓不存在 … 本路由只给 `stdDurationDays`（标准工期）
+   *     并由前端如实标注口径，**不拿标准工期冒充实测卡顿**。」
+   * 承载物现在有了（`migrations/033`），故本路由下发**实测反推**的进出站时刻与站间时长。
+   * ⛔ 那条「不拿标准工期冒充实测」的规矩**没有放宽**：本路由的任何天数都来自单据时间戳，
+   *    `stdDurationDays` 只作为**对照列**原样透出（`definition.stdDurationDays`），
+   *    与 `flowTime` 分属两个字段、两个含义，前端不可能拿错。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · **只读投影**（R4）：反推 + 落派生表，不写本体真值，不碰 Action 审批路径。
+   * · R2：按 `ctx(req).tenantId` 读写；跨租户自然为空（Store 已按租户分区）。
+   * · R6：无 `Date.now()`；分析截止时刻 `asOf` 由 `?asOf=` 显式指定，缺省取**数据里最晚的
+   *   观测时刻**（`asOfSource` 一并回传，让读的人知道这个「现在」是怎么定的）。
+   * · **解析不到标 absent，不许 500**：流程 key 不存在 → 404（那是调用错，该报错）；
+   *   流程存在但反推不出实例 → **200 + `available:false` + 缺席理由 + 复验探针**
+   *   （「我不知道」是一个合法答案；把它变成 500 会让调用方以为是服务故障）。
+   */
+  app.get("/a/v1/process-definitions/:key/instances", async (req) => {
+    const c = ctx(req);
+    const key = (req.params as { key: string }).key;
+    const def = (await repos.processDefinitions.list(c.tenantId, (d) => d.key === key))[0];
+    if (!def) throw notFound(`ProcessDefinition ${key}`);
+    const q = req.query as { asOf?: string; limit?: string };
+    const outcome = await reconstructAndPersist(repos, c.tenantId, {
+      ...(q.asOf ? { asOf: q.asOf } : {}),
+      outbox,
+    });
+    const limit = Number.isFinite(Number(q.limit)) && Number(q.limit) > 0 ? Math.floor(Number(q.limit)) : 200;
+    const mine = outcome.instances.filter((i) => i.processKey === key);
+    const absence = outcome.absences.find((a) => a.processKey === key) ?? null;
+    // 站间流转投影：只保留经过本流程的链，并标出本站在链上的停留与到下一站的间隔。
+    const flowTime = outcome.timelines
+      .filter((t) => t.stations.some((s) => s.processKey === key))
+      .map((t) => ({
+        flowKey: t.flowKey,
+        totalDays: t.totalDays,
+        bottleneckProcessKey: t.bottleneckProcessKey,
+        bottleneckDwellDays: t.bottleneckDwellDays,
+        stuckProcessKey: t.stuckProcessKey,
+        stuckDays: t.stuckDays,
+        thisStation: t.stations.find((s) => s.processKey === key) ?? null,
+        stations: t.stations,
+      }))
+      .slice(0, limit);
+    return {
+      definition: def, // 含 stdDurationDays —— **对照列**，与下面的实测天数分属两个字段
+      asOf: outcome.asOf,
+      asOfSource: outcome.asOfSource,
+      /** 反推得出 ⇒ true；反推不出 ⇒ false + reason/probe（**不是空数组冒充"没有卡顿"**）。 */
+      available: mine.length > 0,
+      absence, // available=false 时非空：缺哪种单据 / 哪个字段 / 怎么复验
+      instanceCount: mine.length, // 全量基数（不受 limit 影响）
+      instances: mine.slice(0, limit),
+      instancesShown: Math.min(mine.length, limit),
+      flowTime,
+      /** 词表随响应下发（同上一条路由的既有做法：前端不必再写一份字面量数组）。 */
+      waitKinds: PROCESS_WAIT_KINDS,
+      origins: PROCESS_INSTANCE_ORIGINS,
     };
   });
   // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。

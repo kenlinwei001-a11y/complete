@@ -815,6 +815,10 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
     processDomains: new PgStore(pool, "process_domains"),
     processDefinitions: new PgStore(pool, "process_definitions"),
+    // WO-FLOWTIME · 业务流程实例层（R9 四处同改之四 · migrations/033_process_instances.sql）。
+    // 同上：表名写错只在 pg 模式下运行时炸；故 process-flow-time.test.ts 有一条断言把 033 migration
+    // 的 CREATE TABLE 名字抽出来与本行字面量比对（不是靠人眼看两处一不一样）。
+    processInstances: new PgStore(pool, "process_instances"),
     // WO-ENTERPRISE-STATE · 企业状态快照（R9 四处同改之四 · migrations/030_enterprise_states.sql）。
     // 同上：表名写错只在 pg 模式下运行时炸，memory 默认的单测证明不了这一行 ——
     // 故 enterprise-state.seam.test.ts 里另有一条断言，把 030 migration 的 CREATE TABLE 名字抽出来与本行比对。

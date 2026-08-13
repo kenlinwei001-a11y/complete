@@ -39,6 +39,8 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject }
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
 import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
+import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
+import { reconstructAndPersist } from "../process/reconstruct.js"; // WO-FLOWTIME · 反推器 IO 适配层（算法在 contracts 纯函数）
 // WO-SANDBOX-S3：杠杆标签/单位单源已下沉到叶模块（见下方 re-export 注释）；本文件内部用别名引用同一份对象。
 import { LEVER_PROP_META as LEVER_PROP_META_LOCAL, type LeverValueKind } from "./lever-meta.js";
 import { ChainScopeSchema } from "@platform/contracts";
@@ -207,6 +209,11 @@ export const SOLVER_KEYS = [
   // WO-SANDBOX-E3 全链阻滞点判定（卡点/堵点/断点三类机器可判 → ChainImpediment[]·contracts chain-sim §6）：
   // 阈值**一律从规则表达式读回**（params.<名>/字面量/对象字段），引擎零阈值；读不回来诚实 UNKNOWN 不兜底。
   "chain_impediments",
+  // WO-FLOWTIME 业务流程**实例**层流转时长：站间流转时长 / 卡顿站 / 瓶颈站。
+  // 与 chain_loss_attribution 分层（那个答「哪一段慢」，这个答「哪一张单卡着、卡在谁那里、卡了多久」）；
+  // 时刻全部由**既有带时间戳单据反推**（origin=DERIVED_FROM_DOCUMENT，逐条溯回单据 id+字段+原值），
+  // ⛔ 一次都不读 stdDurationDays（不拿标准工期冒充实测）；反推不出的诚实缺席（四种 kind，非 0）。
+  "process_flow_time",
 ] as const;
 
 /** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
@@ -384,6 +391,13 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // candidatesTruncated（探针预算耗尽的显式截断标）· candidateProbes（试算次数）。
   // 三者都是**诚实位**：漏进形状契约 = 前端看不见"为什么这个阻滞点没有方案"，那就是新一种盲区。
   chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes"],
+  // WO-FLOWTIME 流程实例流转时长。诚实位一律进形状（漏一个 = 前端只看得见好消息）：
+  //  · `absences` 反推不出的那批（四种 kind + 缺哪种单据 + 复验探针）——与 chain_impediments 的
+  //    `unresolved` 同族纪律：算不出来要能被渲染出来，不是被当成 0 隐掉；
+  //  · `asOfSource` 这个"现在"是怎么定的（ARG/DATA_LATEST/FORECAST_START）；
+  //  · `origin` 反推值 vs 实测值的诚实位（今天恒 DERIVED_FROM_DOCUMENT）；
+  //  · `coverage` 规则覆盖了几条流程 / 反推出几条 / 一共几条（不藏分母）。
+  process_flow_time: ["asOf", "asOfSource", "origin", "coverage", "totals", "bottleneck", "stations", "timelines", "timelinesShown", "stuck", "absences", "absencesShown", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -3352,6 +3366,39 @@ export class SolverService {
   }
 
   /**
+   * WO-FLOWTIME · 流程实例流转时长 `process_flow_time`。
+   *
+   * 照 `chainLossAttribution` 兄弟模式：本方法只做 IO 与入参归一，算法全在
+   * `process/reconstruct.ts`（IO 适配）→ `@platform/contracts` 纯函数（R6）。
+   *
+   * **诚实拒绝而非静默空答**（本仓「静默错答比崩溃更危险」纪律）：
+   * 租户没播过业务流程层（`ProcessDefinition` 0 条）时**显式 400** 并指名 `seedDemoProcessLayer`，
+   * 不返回一个空壳结果 —— 空结果会被读成「没有卡顿」，而真相是「这一维根本没数据可算」。
+   * 这与 `impact-analysis.ts` 对同一情形的处置（`available:false` + reason）是同一条判据。
+   *
+   * ⚠ 本求解器**写** `process_instances` 表（幂等覆盖）。这不违 R4：反推产物是**派生投影**，
+   * 不是本体真值 —— 它一个字节都不动 `objects`，理由写在 `migrations/033_process_instances.sql`。
+   */
+  private async processFlowTime(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const defs = await this.repos.processDefinitions.list(ctx.tenantId);
+    if (defs.length === 0) {
+      throw validationError(
+        "process_flow_time 需先播种业务流程层（ProcessDefinition 0 条）—— 没有流程定义就没有「站」，站间时长无从谈起。参见 seedDemoProcessLayer（SEED_DEMO=1 启动路径已调）。",
+      );
+    }
+    const outcome = await reconstructAndPersist(this.repos, ctx.tenantId, {
+      ...(str(args.asOf) ? { asOf: str(args.asOf) } : {}),
+      // outbox 是 setOutbox 后注入的（构造期未必有）；没有就不发事件，不因此拒绝出结果。
+      ...(this.outbox ? { outbox: this.outbox } : {}),
+    });
+    return projectProcessFlowTime(outcome, {
+      ...(str(args.processKey) ? { processKey: str(args.processKey) } : {}),
+      ...(str(args.flowKey) ? { flowKey: str(args.flowKey) } : {}),
+      ...(num(args.limit) > 0 ? { limit: num(args.limit) } : {}),
+    });
+  }
+
+  /**
    * sop 视图 ③物料线 MRP 净需求（净室读对象图,确定性 R6）：读 MaterialBalance → 净需求/长协覆盖/现货缺口/
    * 最早齐套 表（C06 齐套 / C16 安全库存口径）。前端零写死（HTML SOP_MAT 精确值=合成种子）。
    */
@@ -4752,6 +4799,9 @@ export class SolverService {
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
     // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。
     if (solverKey === "chain_loss_attribution") return this.chainLossAttribution(ctx, args);
+    // WO-FLOWTIME 流程实例流转时长（读 process_definitions + 规则表点名的单据类型，非电池 context），
+    // 照 chain_loss_attribution/mrp_netting 兄弟模式先于 loadContext 拦截。
+    if (solverKey === "process_flow_time") return this.processFlowTime(ctx, args);
     // WO-Phase3-B 薄层遍历（读任意对象图 + executeSlice，非电池 context），先于 loadContext 拦截。
     if (solverKey === "ontology_query") return this.ontologyQuery(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);

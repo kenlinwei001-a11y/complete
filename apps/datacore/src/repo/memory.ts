@@ -505,6 +505,8 @@ export function createMemoryRepos(): Repos {
     // WO-Q0 · 业务流程层（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
     processDomains: new MemStore(),
     processDefinitions: new MemStore(),
+    // WO-FLOWTIME · 业务流程实例层（R9 四处同改之三 —— migrations/033 + repo.ts 接口 + 本行 + pg.ts）
+    processInstances: new MemStore(),
     // WO-ENTERPRISE-STATE · 企业状态快照（R9 四处同改之三 —— migrations/030 + repo.ts 接口 + 本行 + pg.ts）
     enterpriseStates: new MemStore(),
     sim: new MemSimRepo(),

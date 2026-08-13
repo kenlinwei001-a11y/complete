@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, EnterpriseState, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, EnterpriseState, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -342,6 +342,12 @@ export interface Repos {
   // 排序需求由调用方按 `key` 自己排（key 形如 P01，字典序 ≡ 数字序，因两位定宽）。
   processDomains: Store<ProcessDomain>;
   processDefinitions: Store<ProcessDefinition>;
+  // ── WO-FLOWTIME · 业务流程**实例**层（migrations/033_process_instances.sql）──
+  // R9 四处同改：migrations/033 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即
+  //「pg 模式启动即炸而测试全绿」（memory 里 new MemStore() 永远成功，漏了 pg 那处只有真连库才发现）。
+  // 同走通用 Store（表就是 id/tenant_id/doc/created_at/updated_at）。id 由反推器确定性生成
+  // （`pinst_<tenant>_<processKey>_<carrierObjectId>`）⇒ `put` 天然幂等覆盖，重跑不堆行（R6 前提）。
+  processInstances: Store<ProcessInstance>;
   // ── WO-ENTERPRISE-STATE · 企业状态快照（migrations/030_enterprise_states.sql · PRD-enterprise-decision-twin §3/§4.1）──
   // R9 四处同改：migrations/030 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
   // 同样走通用 Store（表就是 id/tenant_id/doc/created_at/updated_at）。
