@@ -40,6 +40,7 @@ import {
 } from "./sandboxModes";
 import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
 import { EnterpriseStateTwinPanel } from "./EnterpriseStateTwinPanel"; // WO-BEFE-WIRE-3 · 快照分叉(fork)与比对(diff)——同样，本文件的 rail 是它唯一的生产调用方
+import SandboxPlaysPanel, { type PlayAnchor } from "./SandboxPlaysPanel"; // WO-V4-PLAYS · 方案环（本文件的左区是它唯一的生产调用方）
 import styles from "./SimViews.module.css";
 
 /**
@@ -108,6 +109,30 @@ function hash01(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return ((h >>> 0) % 1000) / 1000;
+}
+
+/**
+ * ══ WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· 屏上这批读数**是哪来的** ══════════
+ *
+ * `DERIVED` = 前端 `deriveBaseSnapshot` 的哈希占位值（`hash01(对象id|变量名)×100`）。
+ *   它是 R6 合规的确定性占位，**不改它的派生本身** —— 改成"看着不像 50"只会得到一屏
+ *   更像真的假数据，比现在更坏（PRD §2.1 末段原话）。要修的是**记号**，不是数值。
+ * `MEASURED` = 后端世界态（`GET …/:id/world` 回包 / `POST …/tick` 回包 / `POST …/perturbations` 回包）。
+ *
+ * ⚠ 为什么出处必须**跟着数据走**、不能用 `worldQuery.data !== undefined` 推断：
+ *   `init()` 建完会话就 `qc.setQueryData(["a","sim-world", id], …)` 把**占位值**塞进了同一个缓存键，
+ *   而该 query 是 `staleTime: Infinity` ⇒ 新建会话的那个 GET **根本不会发**。
+ *   于是「data 到达」这个信号在新建会话时**恒真且恒假**（有 data，但那是前端自己塞的占位）。
+ *   照它标记就会立刻显示"实测"而屏上全是哈希数 —— 那正是本单要消灭的那种谎，只是换了个说法。
+ *   故把出处**写进缓存条目本身**：塞占位时标 `DERIVED`，`queryFn` 真取回来时标 `MEASURED`，
+ *   tick / 扰动的回包同样标 `MEASURED`。谁写的数据谁盖章，不靠下游猜。
+ */
+export type WorldOrigin = "DERIVED" | "MEASURED";
+/** 世界态缓存条目（`["a","sim-world", sessionId]`）。`origin` 是**这份 state 的出处**，不是 UI 状态。 */
+export interface WorldSnapshot {
+  tick: number;
+  state: TickState;
+  origin: WorldOrigin;
 }
 
 /** 从配置派生 tick0 世界态。P0 修：键 = **真物化对象 id**（cfg.nodeObjectIds，= propagateTick 引擎 idsByType
@@ -395,19 +420,27 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     staleTime: Infinity,
     retry: false,
   });
-  const worldQuery = useQuery({
+  const worldQuery = useQuery<WorldSnapshot>({
     queryKey: ["a", "sim-world", sessionId ?? ""],
-    queryFn: () => simWorld(sessionId as string),
+    // WO-V4-HONEST-ORIGIN：**真取回来的**那一份盖 `MEASURED` 章。占位那一份由 `init` 盖 `DERIVED`。
+    queryFn: async () => ({ ...(await simWorld(sessionId as string)), origin: "MEASURED" as const }),
     enabled: !!sessionId,
     staleTime: Infinity,
     retry: false,
   });
+  /**
+   * 屏上这批读数的出处（顶栏诚实位的唯一真相源）。
+   * 初值 `DERIVED`：会话还没建时屏上是空世界 / 建完就是 `deriveBaseSnapshot` 的占位 ——
+   * 两种情形都**不是**实测，先标占位再说；标错方向的代价是把假数说成真数，反过来只是保守。
+   */
+  const [worldOrigin, setWorldOrigin] = useState<WorldOrigin>("DERIVED");
   // 事件驱动重取回来的世界态 → 落到屏上（这一步就是 `sim.tick_completed` 的可观测副作用）。
   useEffect(() => {
     const d = worldQuery.data;
     if (!d) return;
     setWorld(d.state);
     setCurTick(d.tick);
+    setWorldOrigin(d.origin);
   }, [worldQuery.data]);
   const [ticking, setTicking] = useState(false);
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
@@ -479,6 +512,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     kpiBefore: number;
     kpiAfter: number;
     change: ImpactChange;
+    /**
+     * WO-V4-PLAYS · 方案环要的那个**锚**：这条扰动打在哪、在那条状态变量上造成了多大**实测效应**。
+     *
+     * `before` 取施加前屏上的世界态、`after` 取**后端回包**里的新值 —— 两头都是"世界里的数"，
+     * 前端不按 `magnitude`/`mode` 自己再算一遍（`set`/`delta`/`scale` 各算一遍 = 第二套真相源，
+     * 且引擎还会做上下限规整，算出来的差值会与世界里的差值悄悄不相等）。
+     */
+    anchor: PlayAnchor;
   } | null>(null);
   /**
    * 本世界的**基线快照**（`SimSession.baseSnapshot`）—— 下区差分的左端。
@@ -558,8 +599,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 两者今天相同，但真相源是会话对象；写 `base` 就是在本地留了第二套真相源。
       setBaseWorld(s.baseSnapshot);
       setCurTick(0);
+      // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
+      setWorldOrigin("DERIVED");
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
-      qc.setQueryData(["a", "sim-world", s.id], { tick: 0, state: base });
+      // ⚠ 正因为这一行，新建会话时那个 GET **不会发**（staleTime: Infinity）——
+      //   所以出处必须跟着数据盖章，不能靠「data 到没到」推断（详见 WorldOrigin 的注释）。
+      qc.setQueryData<WorldSnapshot>(["a", "sim-world", s.id], { tick: 0, state: base, origin: "DERIVED" });
       // 建会话 = 世界列表多一行。发起方这一页立刻可见；别的标签页走 sim.session_created 事件。
       void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       setHistory([Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length)]);
@@ -632,8 +677,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const res = await simTick(sessionId, 1);
       setWorld(res.state);
       setCurTick(res.curTick);
+      setWorldOrigin("MEASURED"); // 这一份是**后端算的**世界态（tick 回包）⇒ 顶栏换「实测」记号
       // 权威副本同步就地更新：本地推进无需再 GET；跨页由 sim.tick_completed 失效后重取。
-      qc.setQueryData(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state });
+      qc.setQueryData<WorldSnapshot>(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state, origin: "MEASURED" });
       // tick 同时改了会话行本身（datacore app.ts:1465 写 status=RUNNING + curTick）→ 世界列表也该更新。
       void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
@@ -674,6 +720,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     }
     setPerturbing(true);
     const kpiBefore = globalKpi;
+    // 施加**前**该落点的值（屏上世界态）——与回包里的新值配对，就是这条扰动的实测效应 Δ。
+    const varBefore = world[effPObject]?.[effPStateVar] ?? 0;
     try {
       const res = await createSimPerturbation(sessionId, {
         kind: pKind,
@@ -688,7 +736,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // ③ 后端回的世界态就地落屏：KPI 当场变（权威副本同步，避免再 GET 一次同样的东西）。
       setWorld(res.state);
       setCurTick(res.curTick);
-      qc.setQueryData(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state });
+      setWorldOrigin("MEASURED"); // 这一份是**后端算的**世界态（扰动回包）⇒ 顶栏换「实测」记号
+      qc.setQueryData<WorldSnapshot>(["a", "sim-world", sessionId], { tick: res.curTick, state: res.state, origin: "MEASURED" });
       const objs = Object.keys(res.state);
       const kpiAfter = objs.length ? objs.reduce((a, o) => a + aggregate(res.state[o]), 0) / objs.length : 0;
       // 时间轴上把这一格**替换**成扰动后的值：扰动不推进 tick（它作用在当前 tick），
@@ -711,6 +760,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           prop: effPStateVar,
           value: res.state[effPObject]?.[effPStateVar] ?? magnitude,
         },
+        // WO-V4-PLAYS：方案环的锚。`after` 同样取后端回包（取不到才退 `varBefore` ⇒ 效应 0 ⇒ 方案环诚实说"没有可比的差异"）。
+        anchor: {
+          objectId: effPObject,
+          stateVar: effPStateVar,
+          before: varBefore,
+          after: res.state[effPObject]?.[effPStateVar] ?? varBefore,
+          label: res.perturbation.label,
+        },
       });
       // WO-SIM-PERTURB-TIMELINE：清单重取（**不**本地 push 一条 —— 那是第二套真相源，
       // 且顺序会与后端 `listPerturbations` 的 `startTick → 建单先后` 定序漂移，而顺序是语义）。
@@ -722,7 +779,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } finally {
       setPerturbing(false);
     }
-  }, [sessionId, canPerturb, pMagnitude, pDuration, pKind, effPObject, effPStateVar, pMode, globalKpi, perturbTargets, qc]);
+  }, [sessionId, canPerturb, pMagnitude, pDuration, pKind, effPObject, effPStateVar, pMode, globalKpi, perturbTargets, qc, world]);
 
   const onCheckpoint = useCallback(async () => {
     if (!sessionId) return;
@@ -1148,6 +1205,30 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </>
           )}
         </div>
+
+        {/*
+          ── WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）──────────────────────────────
+          左区一等位置（**不套 `<details>`**）。它是「拨完扰动之后要干的那件事」，
+          所以紧贴扰动块之下、与它同区：输入与它的直接下一步分居两区，读者就得来回跳。
+          它带 `<select>`/`<button>` ⇒ 只能在左区（`sandbox-three-zone.seam` §3 的等号断言）。
+        */}
+        <SandboxPlaysPanel sessionId={sessionId} curTick={curTick} anchor={lastPerturbation?.anchor ?? null} />
+
+        {/*
+          ── WO-V4-PLAYS · AI 指挥台**提到一等位置**（PRD-sandbox-v4 §3.3 末行）───────────
+          它此前住在 `rail` 的折叠格里（`sc-rail-commander`）。「全程可问 AI 指挥台」这件事
+          不该要求用户先想起来去展开一个折叠块 —— 那等于它不在。
+
+          ⛔ D4 守恒（**允许降层，不允许删除**）：`sc-rail-commander` 那一格**没有删**，
+             仍在 `rail` 里、仍是默认收起的 `<details>`（三处既有断言咬着它：
+             `sandbox-console.seam:485` / `sandbox-three-zone.seam:416` / `sandbox-declutter:467`），
+             只是格子里的内容换成一行**指路**（指向这里），而不是第二份指挥台 ——
+             同一个 `sim-commander-dock` 渲染两遍会让 `getByTestId` 直接抛"找到多个"，
+             而且用户会看到两个互不同步的输入框。升层 + 留指路牌，不留双份实例。
+
+          `sim.commander` 关时组件返回 `null` ⇒ 这里一个像素都不占（R3 暗发的正确形态）。
+        */}
+        <SimCommanderDock sessionId={sessionId} curTick={curTick} />
     </div>
   );
 
@@ -1174,9 +1255,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       ),
     },
     {
+      /**
+       * WO-V4-PLAYS · 本格**保留不删**（D4 守恒），内容换成一行指路。
+       *
+       * 指挥台本体已提到左区一等位置（见 `inputZone` 末尾）。这一格若原样再渲染一份
+       * `SimCommanderDock`，屏上就会出现**两个互不同步的输入框**，`getByTestId("sim-commander-dock")`
+       * 也会直接抛「找到多个」。所以：实例只留一份（在上面），这里留**入口与去向**。
+       *
+       * 为什么不干脆删掉这一格：三处既有断言把它当"折叠区还在、层没变"的判据咬着
+       *（`sandbox-console.seam:485` / `sandbox-three-zone.seam:416` / `sandbox-declutter:467`），
+       * 而且规范写的是「允许降层，绝不允许删除」—— 升层同理：别把原来的入口抹掉。
+       */
       id: "commander",
       title: "AI 指挥台",
-      node: <SimCommanderDock sessionId={sessionId} curTick={curTick} />,
+      node: (
+        <div className={styles.sub} data-testid="sandbox-commander-moved" style={{ lineHeight: 1.7 }}>
+          AI 指挥台已提到左区<b>一等位置</b>（本区块上方，不再需要展开折叠块才能问）。
+          这一格保留为入口记号：功能没有删，只是升了层。
+        </div>
+      ),
     },
     {
       // WO-ENTERPRISE-STATE · 企业状态快照（只读）。
@@ -1264,6 +1361,36 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
                   {globalKpi.toFixed(1)}
                 </b>
+              </span>
+              {/**
+               * WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· **顶栏读数的出处徽标**。
+               *
+               * 病历（仓主截图 · 2026-08-13）：顶栏 16 个读数全落在 49.5–50.4 —— 那是
+               * `hash01(对象id|变量名)×100` 全对象取均值的**必然**结果（大数定律），
+               * 不是"企业各项压力恰好都在中位"。同屏阻滞点行**有**「合成数据」徽标，顶栏一个都没有；
+               * 两者并排，读者只会把没记号的那批读成实测。
+               * 复验：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 第 ① 条
+               * 把屏上每个读数与 `deriveBaseSnapshot(cfg)` 的均值逐个对等。
+               *
+               * ⛔ 修的是**记号**不是数值：`hash01` 的派生本身一行不动（它是 R6 合规的确定性占位）。
+               *    把占位值改得"不像 50"只会得到一屏更像真的假数据，比现在更坏。
+               *
+               * 两向（缺一向都证明不了）：占位期必须有记号 ⇒ `DERIVED`／「合成·占位」；
+               * 后端世界态到达后记号必须**换掉** ⇒ `MEASURED`／「实测」。
+               */}
+              <span
+                data-testid="sandbox-kpi-origin"
+                data-origin={worldOrigin}
+                style={{ color: worldOrigin === "DERIVED" ? "var(--warn)" : "var(--ok)" }}
+              >
+                {worldOrigin === "DERIVED" ? "◐ 合成·占位" : "● 实测"}
+                <InfoPopover topic={zh.sim.sandbox.info.kpiOrigin} testId="kpi-origin">
+                  <span data-testid="sandbox-kpi-origin-note">
+                    {worldOrigin === "DERIVED"
+                      ? zh.sim.sandbox.info.kpiOriginDerived
+                      : zh.sim.sandbox.info.kpiOriginMeasured}
+                  </span>
+                </InfoPopover>
               </span>
               {/**
                * WO-SANDBOX-KPI-LAYER · **按偏离度分层**（规范 §1 第一层只放要回答的那个数）。
