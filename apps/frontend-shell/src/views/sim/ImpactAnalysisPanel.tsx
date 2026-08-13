@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   AffectedDecisionItem,
@@ -332,22 +332,53 @@ function DetailTables({ res }: { res: ImpactAnalysisResponse }) {
  * 主组件
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-export function ImpactAnalysisPanel({ change }: { change: ImpactChange | null }) {
+/**
+ * WO-SANDBOX-V3 · 两个**可选**入参，让本面板能被推演沙盘的下区（只读区）宿主。
+ *
+ * 判据 PRD §4.4：「主区与下区内**零输入控件**」。本面板原生自带两个输入
+ * （世界 `<select>` + 「在世界里分析影响」`<button>`），直接搬进下区就破了这一条。
+ * 故给宿主两把钥匙，**两个都不传 = 今天的行为逐字节不变**（`WhatIfView` 零回归）：
+ *  · `worldId`  —— 世界由宿主定（沙盘就是"这个会话的世界"，让用户在下区再选一次世界，
+ *                  等于允许他看着 A 世界的画布读 B 世界的影响，那是静默错答）；
+ *                  给了就**不发** `fetchSimSessions`，也不渲染 `<select>`。
+ *  · `autoRun`  —— 假设一变就自动跑，不渲染那个按钮。沙盘里的「假设」就是**已经施加的扰动**，
+ *                  它已经发生了；再要用户点一次「分析影响」是让他为一件既成事实按确认键。
+ *
+ * ⚠ 两个都不传时 `worldsQ` 照发、`<select>`/`<button>` 照渲染 —— 这不是"顺手也改改宿主页"，
+ *   而是本仓「默认值 = 今天的行为」的既有约定（同 `chrome="embedded"` 那一族）。
+ */
+export function ImpactAnalysisPanel({
+  change,
+  worldId: fixedWorldId,
+  autoRun = false,
+}: {
+  change: ImpactChange | null;
+  worldId?: string;
+  autoRun?: boolean;
+}) {
   const [worldId, setWorldId] = useState<string>("");
   const [res, setRes] = useState<ImpactAnalysisResponse | null>(null);
   const [err, setErr] = useState<{ code?: string; message?: string; requestId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [openDetail, setOpenDetail] = useState(false);
 
+  const hostControlsWorld = fixedWorldId !== undefined;
   // 可选世界 = 本租户的推演会话（栈 A）。**不写死任何 id**：没有会话就诚实说没有。
+  // 宿主已经定了世界 ⇒ `enabled:false`：这一发请求的唯一用途是填那个 `<select>`，
+  // 而 `<select>` 此时根本不渲染。发了就是白发（且会在沙盘首屏多一次往返）。
   const worldsQ = useQuery({
     queryKey: ["a", "sim-sessions", "impact-analysis"],
     queryFn: fetchSimSessions,
+    enabled: !hostControlsWorld,
     retry: false,
     staleTime: 30_000,
   });
   const worlds = useMemo(() => worldsQ.data?.items ?? [], [worldsQ.data]);
-  const effectiveWorld = worldId !== "" && worlds.some((w) => w.id === worldId) ? worldId : (worlds[0]?.id ?? "");
+  const effectiveWorld = hostControlsWorld
+    ? fixedWorldId
+    : worldId !== "" && worlds.some((w) => w.id === worldId)
+      ? worldId
+      : (worlds[0]?.id ?? "");
 
   // 假设一改，上一次的结论立刻作废 —— 留着它会让屏上的四维读起来像是新假设的结果。
   const changeKey = change === null ? "" : `${change.objectType}|${change.objectId}|${change.prop}|${String(change.value)}`;
@@ -375,11 +406,32 @@ export function ImpactAnalysisPanel({ change }: { change: ImpactChange | null })
     }
   };
 
+  /**
+   * `autoRun`：假设/世界一变就重跑一次。
+   *
+   * ⚠ 依赖数组用 `changeKey`（一个字符串）而不是 `change`（一个每次渲染都新建的对象）——
+   *   用对象会让这个 effect 每渲染都跑一次，变成一个**自触发的请求循环**。
+   *   `runRef` 拿到最新的闭包，effect 本身只依赖"假设变没变"这件事。
+   */
+  const runRef = useRef(run);
+  runRef.current = run;
+  useEffect(() => {
+    if (!autoRun || change === null || effectiveWorld === "") return;
+    void runRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, changeKey, effectiveWorld]);
+
   return (
     <div className={styles.wrap} data-testid="impact-analysis">
       <div className={styles.form}>
         <span className={styles.meta}>推演世界</span>
-        {worldsQ.isLoading ? (
+        {hostControlsWorld ? (
+          // 世界由宿主定：**读数仍在第一层**（哪个世界算出来的是结论的一部分，不许只写在浮层里），
+          // 只是不再是一个可改的控件。
+          <span className={styles.meta} data-testid="impact-world-fixed">
+            {effectiveWorld}
+          </span>
+        ) : worldsQ.isLoading ? (
           <span className={styles.meta} data-testid="impact-worlds-loading">
             读取推演世界…
           </span>
@@ -405,17 +457,25 @@ export function ImpactAnalysisPanel({ change }: { change: ImpactChange | null })
         )}
       </div>
 
-      <button
-        className="btn sm primary"
-        data-testid="impact-run"
-        disabled={!canRun}
-        onClick={() => void run()}
-      >
-        {busy ? "分析中…" : "在世界里分析影响"}
-      </button>
+      {autoRun ? (
+        // 自动跑：按钮没了，但**"正在算 / 还没有假设"这两个态一个都不能少** ——
+        // 少了它们，屏上会在请求飞行中一片空白，读者分不清"没影响"和"还没算完"。
+        <span className={styles.meta} data-testid="impact-auto">
+          {busy ? "分析中…" : zh.sim.sandbox.impact.autoNote}
+        </span>
+      ) : (
+        <button
+          className="btn sm primary"
+          data-testid="impact-run"
+          disabled={!canRun}
+          onClick={() => void run()}
+        >
+          {busy ? "分析中…" : "在世界里分析影响"}
+        </button>
+      )}
       {change === null ? (
         <span className={styles.meta} data-testid="impact-need-change">
-          先在上面选定「对象类型 / 对象 / 属性 / 假设值」，这里才知道要传播哪一处变更。
+          {autoRun ? zh.sim.sandbox.impact.needPerturbation : "先在上面选定「对象类型 / 对象 / 属性 / 假设值」，这里才知道要传播哪一处变更。"}
         </span>
       ) : null}
 

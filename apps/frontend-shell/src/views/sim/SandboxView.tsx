@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PerturbationKind, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
+import type { ImpactChange, PerturbationKind, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimPerturbation,
   createSimSession,
@@ -27,6 +27,7 @@ import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
+import { SandboxImpactBand } from "./SandboxImpactBand"; // WO-SANDBOX-V3 · ③下区影响带（本文件是它唯一的生产调用方）
 import consoleStyles from "./SandboxConsole.module.css";
 import {
   describeSandboxScope,
@@ -463,7 +464,40 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [pDuration, setPDuration] = useState<string>(""); // 空 = 永久（durationTicks: null）
   const [perturbing, setPerturbing] = useState(false);
   /** 最近一次施加的回执（后端真回的 perturbation + 该动作造成的 KPI 变化量）——不是本地臆造的乐观态。 */
-  const [lastPerturbation, setLastPerturbation] = useState<{ id: string; label: string; kpiBefore: number; kpiAfter: number } | null>(null);
+  /**
+   * 最近一次扰动。
+   *
+   * WO-SANDBOX-V3 补了 `change` 那三个字段（`objectType` / `objectId` / `prop` / `value`）——
+   * 它们就是下区 `ImpactAnalysisPanel` 要的那"一处变更"（`ImpactChangeSchema`）。
+   * 以前只留 `label`（人话串）与前后 KPI，**没有机器可用的落点**，
+   * 于是影响传播只能挂在「试一手」那个模式手填的假设上（形态③「接了线接错地方」，
+   * 取证见 `SandboxImpactBand.tsx` 文件头）。这三个字段就是那条线的接口。
+   */
+  const [lastPerturbation, setLastPerturbation] = useState<{
+    id: string;
+    label: string;
+    kpiBefore: number;
+    kpiAfter: number;
+    change: ImpactChange;
+  } | null>(null);
+  /**
+   * 本世界的**基线快照**（`SimSession.baseSnapshot`）—— 下区差分的左端。
+   *
+   * ⚠ 不用 `deriveBaseSnapshot(cfg)` 现算：切到别人的世界（`sandbox-world-switch-*`）之后，
+   *   那个世界的基线是**它自己建会话时**的那一份，与本屏当前 cfg 现算的不一定是同一个东西。
+   *   现算 = 拿一个看起来相关的数字当基线，差分会安静地算错。取不到就是 `null`，屏上诚实说没有。
+   */
+  const [baseWorld, setBaseWorld] = useState<TickState | null>(null);
+  /**
+   * 切世界（`sandbox-world-switch-*` 只换 `sessionId`）之后，基线也得跟着换到**那个世界的**那一份。
+   * 会话列表里找不到（列表还没回来 / 该会话不在本租户可见集）⇒ 置 `null`，
+   * 下区差分整块显示诚实空 —— **绝不**留着上一个世界的基线继续算：那会算出一组看着合理的假差值。
+   */
+  useEffect(() => {
+    if (sessionId === null) return;
+    const s = sessionsQuery.data?.items.find((x) => x.id === sessionId);
+    if (s !== undefined) setBaseWorld(s.baseSnapshot);
+  }, [sessionId, sessionsQuery.data]);
 
   // ── WO-SIM-SCOPE-LOCAL：局部范围候选与生效 target ──────────────────────────────
   // 候选 = 本体派生的 nodeTypes（零业务常数 R14）。未显式选过时取首个（语义抄向导屏 step①，但**不 import 它**）。
@@ -520,6 +554,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       setSessionId(s.id);
       setSessionScope(scope);
       setWorld(base);
+      // 基线快照取**后端回的那一份**（`s.baseSnapshot`），不是本地 `base` ——
+      // 两者今天相同，但真相源是会话对象；写 `base` 就是在本地留了第二套真相源。
+      setBaseWorld(s.baseSnapshot);
       setCurTick(0);
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
       qc.setQueryData(["a", "sim-world", s.id], { tick: 0, state: base });
@@ -657,7 +694,24 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 时间轴上把这一格**替换**成扰动后的值：扰动不推进 tick（它作用在当前 tick），
       // 追加一格会让 heat 条凭空多出一个不存在的 tick。
       setHistory((h) => (h.length === 0 ? [kpiAfter] : [...h.slice(0, -1), kpiAfter]));
-      setLastPerturbation({ id: res.perturbation.id, label: res.perturbation.label, kpiBefore, kpiAfter });
+      setLastPerturbation({
+        id: res.perturbation.id,
+        label: res.perturbation.label,
+        kpiBefore,
+        kpiAfter,
+        /**
+         * 折算成影响传播要的那"一处变更"。
+         * `value` 取**后端回的世界态里的真实新值**，不是前端按 mode 自己算一遍
+         * （`delta`/`scale`/`set` 三种模式各算一遍 = 第二套真相源；且引擎还会做上下限规整）。
+         * 取不到就退回本次的 magnitude —— 那是"调用方声称的值"，契约允许（`oldValue` 同族语义）。
+         */
+        change: {
+          objectType: perturbTargets.find((t) => t.id === effPObject)?.typeKey ?? "",
+          objectId: effPObject,
+          prop: effPStateVar,
+          value: res.state[effPObject]?.[effPStateVar] ?? magnitude,
+        },
+      });
       // WO-SIM-PERTURB-TIMELINE：清单重取（**不**本地 push 一条 —— 那是第二套真相源，
       // 且顺序会与后端 `listPerturbations` 的 `startTick → 建单先后` 定序漂移，而顺序是语义）。
       // 同标签页靠这一行；别的标签页靠 `sim.perturbation_created` 事件失效同一个 key。
@@ -668,7 +722,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } finally {
       setPerturbing(false);
     }
-  }, [sessionId, canPerturb, pMagnitude, pDuration, pKind, effPObject, effPStateVar, pMode, globalKpi, qc]);
+  }, [sessionId, canPerturb, pMagnitude, pDuration, pKind, effPObject, effPStateVar, pMode, globalKpi, perturbTargets, qc]);
 
   const onCheckpoint = useCallback(async () => {
     if (!sessionId) return;
@@ -961,20 +1015,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     },
   ];
 
-  // ── 右栏可折叠区：决策者用得上的两样（多场景对比 / AI 指挥台）─────────────────
-  const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**右栏区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
-    // WO-SIM-ACT-CLOSE(#150) × WO-SANDBOX-DECLUTTER 合流：扰动入口留在**主右栏**，
-    // 不进诊断抽屉 —— 它是「让事情发生」的动作（decision-maker 用），不是诊断读数；
-    // 塞进默认折叠的抽屉等于把沙盘上唯一的动作按钮藏起来，那是把两条 WO 合坏了。
-    {
-      /**
-       * WO-SIM-ACT-CLOSE（#150）· **扰动入口** —— 沙盘上唯一"让事情发生"的动作。
-       * 落点候选全部来自 view-config（本体派生），本段零行业实体名（R14）。
-       */
-      id: "perturbation",
-      title: "施加扰动",
-      defaultOpen: true,
-      node: (
+  /**
+   * ── ① 左区内容：**扰动因素输入**（WO-SANDBOX-V3 · PRD §1①）───────────────────
+   *
+   * WO-SIM-ACT-CLOSE（#150）· 沙盘上唯一"让事情发生"的动作。
+   * 落点候选全部来自 view-config（本体派生），本段零行业实体名（R14）。
+   *
+   * ⚠ 本单把它从 `rail[0]`（右栏折叠区的第一格，`defaultOpen: true`）**提到左区一等位置**。
+   *   `rail` 的每一格外面都套着一层 `<details><summary>`；扰动是这一屏的**入口**，
+   *   而入口不该是一个"默认展开的折叠块"—— 那是把主角摆在配角的容器里。
+   *   testid `sandbox-perturbation` 与块内一切**一个字未改**（D4）：只换了位置与层。
+   *   `sc-rail-perturbation`（那层 `<details>` 的 testid）随之消失 —— 它是**容器**的 id，
+   *   不是内容的 id；内容的 id 全在。
+   */
+  const inputZone = (
+    <div className={styles.panel} data-testid="sandbox-input-zone-body">
         <div data-testid="sandbox-perturbation">
           {!canPerturb ? (
             <div className={styles.sub} data-testid="sandbox-perturbation-unavailable">
@@ -1093,8 +1148,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </>
           )}
         </div>
-      ),
-    },
+    </div>
+  );
+
+  // ── 左区折叠区：决策者用得上的几样（多场景对比 / AI 指挥台 / 企业状态 / 快照分叉）─────
+  //    PRD §2 末两行判的是「已在折叠区，**不动**」——本单不改它们的层，只随左区一起搬。
+  const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**折叠区区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
     {
       id: "compare",
       title: "多场景对比",
@@ -1309,6 +1368,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
           <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
           </>
+        }
+        // WO-SANDBOX-V3 · ① 左区：扰动因素输入（唯一输入区）
+        inputZone={inputZone}
+        /**
+         * WO-SANDBOX-V3 · ③ 下区：影响带（PRD §1③）。
+         *
+         * `change` 取**已施加的那条扰动**折算出的一处变更 —— 这就是本单补的那个挂载点：
+         * 在此之前 `ImpactAnalysisPanel` 只挂在「试一手」模式手填的假设上（形态③「接了线接错地方」，
+         * 取证见 `SandboxImpactBand.tsx` 文件头）。沙盘「现状」屏此前零渲染它。
+         */
+        impactZone={
+          <SandboxImpactBand
+            sessionId={sessionId}
+            change={lastPerturbation?.change ?? null}
+            baseWorld={baseWorld}
+            world={world}
+            curTick={curTick}
+            stateVars={cfg.stateVars}
+          />
         }
         // 旧主屏本体 PmDag 拓扑 → 画布第四模式
         ontologyCanvas={

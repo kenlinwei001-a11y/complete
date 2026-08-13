@@ -117,6 +117,29 @@ export interface SandboxConsoleProps {
   banner?: (openDiagnostics: () => void) => ReactNode;
   /** 控制条（旧主屏：推进 tick / 存档 / 分支 / 采纳 / tick 时间轴）。 */
   controlBar?: ReactNode;
+  /**
+   * WO-SANDBOX-V3 · **①左区内容 = 扰动因素输入**（`docs/PRD-sandbox-v3-three-zone.md` §1①）。
+   *
+   * 宿主把「我要试什么」整块塞进来（扰动类型 / 参数 / 作用范围 / 施加）。本组件只负责给它
+   * 一等位置 —— **不解释、不重排、不知道里面是什么**：扰动的落点候选来自 view-config
+   * （本体派生），承载物在宿主那边（R14 零业务常数）。
+   *
+   * ⚠ 左区是**唯一输入区**（PRD §1① 末段）。`controlBar` 与 `rail` 也一并落在左区 ——
+   *   它们都是「让事情发生」的动作；摆进主区或下区就会把「试什么」和「变了什么」再次混排，
+   *   而**输入与结果混排正是本页此前难读的根因之一**（PRD §1① 原话）。
+   */
+  inputZone?: ReactNode;
+  /**
+   * WO-SANDBOX-V3 · **③下区内容 = 影响带**（PRD §1③）：逐节点指标影响 ＋ 财务指标随扰动的动态变化。
+   *
+   * 同样由宿主提供：这两半都要读**推演会话的世界态**（`sessionId` / `world` / `baseSnapshot`），
+   * 那些 state 归 `SandboxView` 所有。本组件只提供位置与「这一区回答什么」。
+   *
+   * ⚠ 本区**只读**：不许出现任何写世界态的控件（判据 PRD §4.4，门在
+   *   `sandbox-three-zone.seam.test.tsx` §3 —— 它把主区/下区的输入控件集合与白名单做**等号**
+   *   比较，不是 `toContain`：超集上恒真的断言等于没断言）。
+   */
+  impactZone?: ReactNode;
   /** 画布第四模式「本体拓扑」的内容（旧主屏 PmDag）。不传 → 该模式显示未就绪原因。 */
   ontologyCanvas?: ReactNode;
   /** 右栏可折叠区（决策者用得上的：多场景对比 / AI 指挥台）。 */
@@ -172,6 +195,15 @@ function readError(e: unknown): { code: string; message: string; requestId: stri
  */
 const TIME_WINDOWS = ["30D", "60D", "90D"] as const;
 
+/**
+ * 下区「全链指标」折叠段 summary 上那个条数。
+ *
+ * ⚠ 它必须与下面 `<MetricCard>` 的真实条数一致 —— 写错了就是 summary 撒谎。
+ *   `sandbox-three-zone.seam.test.tsx` 有一条断言把「summary 上的数」与
+ *   「展开后 `sc-metric-*` 的实际个数」做**等号**比较，改一边不改另一边当场红。
+ */
+const SC_METRIC_COUNT = 6;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // 组件
 // ══════════════════════════════════════════════════════════════════════════════
@@ -180,6 +212,8 @@ export function SandboxConsole({
   topTags,
   banner,
   controlBar,
+  inputZone,
+  impactZone,
   ontologyCanvas,
   rail = [],
   diagnostics = [],
@@ -437,6 +471,16 @@ export function SandboxConsole({
   /** 抽屉入口上的计数：各区块自报的真待办之和（没有待办时改报「收了几项」，两个都是真数）。 */
   const diagIssueTotal = diagSections.reduce((a, s) => a + (s.issues ?? 0), 0);
 
+  /**
+   * WO-SANDBOX-V3 · 下区折叠段 summary 上的**第一层记号**（PRD §2「第一层留什么记号」那一列）。
+   *
+   * ⚠ 计数**必须与折叠里那份是同一个来源**：`impedimentHandoffs(model, dimKind)` 就是
+   *   `JumpList` 内部那一行（`SandboxConsole.tsx` 内 `useMemo(() => impedimentHandoffs(model, kind))`）。
+   *   自己在这里另数一遍（比如 `model.total`）会得到**另一个数** —— 那正是本仓
+   *   「拿一个看起来相关的数字当判据」的老病：summary 说 7 条、点开是 3 条，谁也不会发现。
+   */
+  const jumpCount = useMemo(() => impedimentHandoffs(model, dimKind).length, [model, dimKind]);
+
   return (
     <div className={styles.root} data-testid="sandbox-console" data-mode={mode} data-honesty={honesty ? "1" : "0"} data-diag-open={diagOpen ? "1" : "0"}>
       {/* ══ 治理横幅：**主屏唯一保留的治理信号**（能推演时整条不渲染）══════════ */}
@@ -536,152 +580,159 @@ export function SandboxConsole({
         </section>
       ) : null}
 
-      {/* ══ 阻滞点统计条 ══════════════════════════════════════════════════════ */}
-      <div className={styles.impBar} data-testid="sc-impbar">
-        {IMPEDIMENT_CARDS.map((c) => {
-          const group = model?.groups.find((g) => g.kind === c.kind) ?? null;
-          const pressed = dimKind === c.kind;
-          return (
-            <button
-              key={c.kind}
-              type="button"
-              className={styles.impCard}
-              data-kind={c.kind}
-              data-testid={`sc-imp-${c.kind}`}
-              aria-pressed={pressed}
-              title={c.meaning}
-              onClick={() => setDimKind(pressed ? null : c.kind)}
-            >
-              <span className={styles.impNum} data-testid={`sc-imp-${c.kind}-count`}>
-                {group === null ? "—" : group.engineCount}
-              </span>
-              <span className={styles.impMeta}>
-                <b>{c.label}</b>
-                <span>{c.meaning}</span>
-              </span>
-            </button>
-          );
-        })}
-        <div className={styles.impCard} data-kind="FLOW" data-static="1" data-testid="sc-imp-FLOW">
-          <span className={styles.impNum} data-testid="sc-imp-FLOW-val">
-            {fmtFlowEff(totals?.flowEfficiency ?? null)}
-          </span>
-          <span className={styles.impMeta}>
-            <b>流动效率</b>
-            <span>
-              增值 {fmtDays(totals?.valueAddDays ?? null)}D / 前置期 {fmtDays(totals?.leadTimeDays ?? null)}D
-            </span>
-          </span>
-        </div>
-      </div>
 
-      {/* ══ 阻滞点逐条 · 点了进决策推演（WO-SANDBOX-IMP2PLAN）══════════════════
-          WO-SANDBOX-DECLUTTER：口径差 / 联动口径两段**原理说明性文字**此前常驻在这上下两行，
-          合计占掉主屏一大块，而它们的读者是开发者不是决策者。现在收成两个 `?`，
-          挂在它们解释的那个东西（阻滞点计数）旁边 —— **一个字都没删，只换了承载方式**。 */}
-      <ImpedimentJumpBar
-        model={model}
-        kind={dimKind}
-        notes={
-          honesty ? (
-            <>
-              <InfoPopover topic={zh.sim.sandbox.info.impedimentCaliber} testId="imp-gap">
-                <ImpedimentCaliberNote model={model} />
-              </InfoPopover>
-              <InfoPopover topic={zh.sim.sandbox.info.impedimentJoin} testId="imp-join-gap">
-                <ImpedimentJoinNote dimKind={dimKind} dimStageCount={dimStages.size} />
-              </InfoPopover>
-            </>
-          ) : null
-        }
-      />
+      {/* ══════════════════════════════════════════════════════════════════════
+          WO-SANDBOX-V3 · **三区骨架**（`docs/PRD-sandbox-v3-three-zone.md` §1）——
+          一层只回答一个问题。
 
-      {/* ══ 三栏主体 ══════════════════════════════════════════════════════════ */}
-      <div className={styles.mid}>
-        {/* ── 左：范围 ────────────────────────────────────────────────────── */}
-        <aside className={styles.pane} data-testid="sc-scope-pane">
-          <div className={styles.paneHead}>
-            <h2>范围</h2>
+            ┌──────────────┬──────────────────────────────┐
+            │ ① 左：扰动输入 │ ② 主：业务端到端路线图          │
+            │「我要试什么？」│「这条链现在长什么样」            │
+            ├──────────────┴──────────────────────────────┤
+            │ ③ 下：影响带「试了之后，哪里变了、值多少钱」      │
+            └─────────────────────────────────────────────┘
+
+          前三轮（DECLUTTER / UI-INTEGRATE / KPI-LAYER）都在**既有骨架内**做减法：
+          收抽屉、收浮层、收折叠。骨架没变 —— 顶栏 KPI ＋ 四张计数卡 ＋ 阻滞点长列表 ＋
+          底部三栏，**四块平级铺开，没有一块是"这一屏要回答的那个问题"**。
+          形态（铁律 0.6 句式）：
+            **「我用『每一块都变小了』当作『这一屏分层了』的证据，而前者并不度量后者。」**
+          把四个平级块各自压缩，得到的是四个更小的平级块，不是层级。本轮换骨架。
+
+          ⚠ 搬运纪律（D4 守恒 · PRD §2）：**允许降层，绝不允许删除**。
+            下面每一块都只换了**位置与层**，块内 testid 与文案一个字没动 ——
+            `sandbox-three-zone.seam.test.tsx` 两向都咬：
+            ① 默认**不渲染/不可见**；② 展开后**同一批 testid、同样的文本**全部回来。
+          ══════════════════════════════════════════════════════════════════════ */}
+      <div className={styles.zones} data-testid="sandbox-zones">
+        {/* ── ① 左区：扰动因素输入（**唯一输入区**）──────────────────────── */}
+        <aside className={styles.zoneInput} data-testid="sandbox-zone-input">
+          <div className={styles.zoneHead}>
+            <h2>{zh.sim.sandbox.zones.inputTitle}</h2>
+            <span className={styles.zoneQ}>{zh.sim.sandbox.zones.inputQuestion}</span>
           </div>
-          <div className={styles.paneBodyFlush}>
-            {SCOPE_DIMENSIONS.map((dim) => {
-              const wired = dim.wiring === "wired";
-              return (
-                <div key={dim.key} className={styles.dimGroup} data-testid={`sc-dim-${dim.key}`}>
-                  <div className={styles.dimHead}>
-                    <b>{dim.label}</b>
-                    {honesty ? (
-                      <span
-                        className={`${styles.badge} ${wired ? styles.badgeOk : styles.badgeGap}`}
-                        data-testid={`sc-dim-${dim.key}-badge`}
-                        title={dim.note}
-                      >
-                        {wired ? "已接线" : "无 ARGS"}
-                      </span>
-                    ) : null}
-                    {/* WO-SANDBOX-DECLUTTER：这一维「为什么带不下去」的原文（含 service.ts:3125 那句
-                        「暂不支持」并报 400）是**原理说明性文字** ⇒ 收进 `?`，原文一字不改地透传。
-                        `dim.note` 的单一来源是 `sandboxConsoleModel.SCOPE_DIMENSIONS`，本处不抄第二份。 */}
-                    {dim.key === "baseIds" ? null : (
-                      <InfoPopover topic={zh.sim.sandbox.info.scopeDim(dim.label)} testId={`dim-${dim.key}`}>
-                        <span data-testid={`sc-dim-${dim.key}-note`}>{dim.note}</span>
-                      </InfoPopover>
-                    )}
-                  </div>
-                  {/* 基地清单自己滚（`.optList`）：13 个复选框铺开就是 416px，
-                      比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。 */}
-                  {dim.key === "baseIds" ? (
-                    <div className={styles.optList} data-testid="sc-base-list">
-                      {BASE_REGISTRY.map((b) => (
-                        <label key={b.baseId} className={styles.opt}>
-                          <input
-                            type="checkbox"
-                            data-testid={`sc-base-${b.baseId}`}
-                            checked={baseIds.length === 0 || baseIds.includes(b.baseId)}
-                            onChange={() => toggleBase(b.baseId)}
-                          />
-                          <span className={styles.optName}>{b.name}</span>
-                          <span className={styles.optSub}>{b.baseId}</span>
-                        </label>
-                      ))}
+
+          {/* 扰动输入 —— 这一区的**主角**，左区唯一不折叠的一块（PRD §1①）。 */}
+          {inputZone}
+
+          {/* 控制条：推进 tick / 存档 / 分支 / 采纳 ＋ tick 时间轴 ＋ 扰动时间轴。
+              它也是**输入**（"让事情发生"），故归左区；PRD §1① 要的「已施加扰动列表
+              （可删、可看生效窗口）」就是其中的 `PerturbationTimeline`。 */}
+          {controlBar}
+
+          {/* 范围：PRD §2 第 4 行 —— 「它是输入，归左区」，降为折叠段；
+              第一层只留**当前范围摘要一行**（`sc-scope-summary`）。
+              ⚠ `<details>` 折叠态内容**仍在 DOM**（原生行为）—— 这正是 D4 要的：
+                降层 ≠ 删除，`sc-base-*` 十三个复选框一个不少，只是不再占屏。 */}
+          <details className={styles.zoneSection} data-testid="sc-scope-details">
+            <summary data-testid="sc-scope-summary">
+              {zh.sim.sandbox.zones.scopeTitle} · <b data-testid="sc-scope-summary-val">{scopeText}</b>
+            </summary>
+            {/* ── 左：范围 ────────────────────────────────────────────────────── */}
+            <aside className={styles.pane} data-testid="sc-scope-pane">
+              <div className={styles.paneHead}>
+                <h2>范围</h2>
+              </div>
+              <div className={styles.paneBodyFlush}>
+                {SCOPE_DIMENSIONS.map((dim) => {
+                  const wired = dim.wiring === "wired";
+                  return (
+                    <div key={dim.key} className={styles.dimGroup} data-testid={`sc-dim-${dim.key}`}>
+                      <div className={styles.dimHead}>
+                        <b>{dim.label}</b>
+                        {honesty ? (
+                          <span
+                            className={`${styles.badge} ${wired ? styles.badgeOk : styles.badgeGap}`}
+                            data-testid={`sc-dim-${dim.key}-badge`}
+                            title={dim.note}
+                          >
+                            {wired ? "已接线" : "无 ARGS"}
+                          </span>
+                        ) : null}
+                        {/* WO-SANDBOX-DECLUTTER：这一维「为什么带不下去」的原文（含 service.ts:3125 那句
+                            「暂不支持」并报 400）是**原理说明性文字** ⇒ 收进 `?`，原文一字不改地透传。
+                            `dim.note` 的单一来源是 `sandboxConsoleModel.SCOPE_DIMENSIONS`，本处不抄第二份。 */}
+                        {dim.key === "baseIds" ? null : (
+                          <InfoPopover topic={zh.sim.sandbox.info.scopeDim(dim.label)} testId={`dim-${dim.key}`}>
+                            <span data-testid={`sc-dim-${dim.key}-note`}>{dim.note}</span>
+                          </InfoPopover>
+                        )}
+                      </div>
+                      {/* 基地清单自己滚（`.optList`）：13 个复选框铺开就是 416px，
+                          比中栏画布还高 —— 一个筛选器不该是这一屏最高的东西（规范 §1：筛选属第二层）。 */}
+                      {dim.key === "baseIds" ? (
+                        <div className={styles.optList} data-testid="sc-base-list">
+                          {BASE_REGISTRY.map((b) => (
+                            <label key={b.baseId} className={styles.opt}>
+                              <input
+                                type="checkbox"
+                                data-testid={`sc-base-${b.baseId}`}
+                                checked={baseIds.length === 0 || baseIds.includes(b.baseId)}
+                                onChange={() => toggleBase(b.baseId)}
+                              />
+                              <span className={styles.optName}>{b.name}</span>
+                              <span className={styles.optSub}>{b.baseId}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
-            <div className={styles.dimGroup}>
-              <div className={styles.dimHead}>
-                {/* 「范围能带到哪」「阻滞点图例」两块也是纯说明 ⇒ 各收一个 `?`，
-                    标题留在屏上（读者要知道"这里有这么一条说明"），正文按需展开。 */}
-                {honesty ? (
-                  <>
-                    <b>{zh.sim.sandbox.info.scopeReach}</b>
-                    <InfoPopover topic={zh.sim.sandbox.info.scopeReach} testId="scope-reach">
-                      <span data-testid="sc-scope-reach">
-                        勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。
-                        <b>全链损失归因 chain_loss_attribution 不吃任何范围维度</b> —— 它只认锚点订单{" "}
-                        <code>so</code>，传 baseIds 结果逐字节不变（实测）。故底部 Pareto / 前置期 / 链路阶段画布
-                        <b>不随左栏变</b>。
+                  );
+                })}
+                <div className={styles.dimGroup}>
+                  <div className={styles.dimHead}>
+                    {/* 「范围能带到哪」「阻滞点图例」两块也是纯说明 ⇒ 各收一个 `?`，
+                        标题留在屏上（读者要知道"这里有这么一条说明"），正文按需展开。 */}
+                    {honesty ? (
+                      <>
+                        <b>{zh.sim.sandbox.info.scopeReach}</b>
+                        <InfoPopover topic={zh.sim.sandbox.info.scopeReach} testId="scope-reach">
+                          <span data-testid="sc-scope-reach">
+                            勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。
+                            <b>全链损失归因 chain_loss_attribution 不吃任何范围维度</b> —— 它只认锚点订单{" "}
+                            <code>so</code>，传 baseIds 结果逐字节不变（实测）。故底部 Pareto / 前置期 / 链路阶段画布
+                            <b>不随左栏变</b>。
+                          </span>
+                        </InfoPopover>
+                      </>
+                    ) : null}
+                    <span className={styles.spacer} />
+                    <b>{zh.sim.sandbox.info.legend}</b>
+                    <InfoPopover topic={zh.sim.sandbox.info.legend} testId="legend">
+                      <span className={styles.legendList} data-testid="sc-legend">
+                        {IMPEDIMENT_CARDS.map((c) => (
+                          <span key={c.kind} style={{ display: "block" }}>
+                            <b>{c.label}</b>（{c.kind}）· {c.meaning}
+                          </span>
+                        ))}
                       </span>
                     </InfoPopover>
-                  </>
-                ) : null}
-                <span className={styles.spacer} />
-                <b>{zh.sim.sandbox.info.legend}</b>
-                <InfoPopover topic={zh.sim.sandbox.info.legend} testId="legend">
-                  <span className={styles.legendList} data-testid="sc-legend">
-                    {IMPEDIMENT_CARDS.map((c) => (
-                      <span key={c.kind} style={{ display: "block" }}>
-                        <b>{c.label}</b>（{c.kind}）· {c.meaning}
-                      </span>
-                    ))}
-                  </span>
-                </InfoPopover>
+                  </div>
+                </div>
               </div>
-            </div>
+            </aside>
+          </details>
+
+          {/*
+            WO-SANDBOX-DECLUTTER 留下的折叠区（多场景对比 / AI 指挥台 / 企业状态快照 /
+            快照分叉比对）—— PRD §2 末两行判的是「**已在折叠区，不动**」，故本单
+            **不改它们的层**（仍是默认收起的 `<details>`），只把这一摞整体从右栏挪到左区：
+            它们各自都带动作按钮（刷新对比 / 提问 / fork），按「唯一输入区」必须与输入同区。
+            `sc-rail-stack` 这个 testid 与它的滚动容器语义一并保留（declutter 门咬着它）。
+          */}
+          <div className={styles.railStack} data-testid="sc-rail-stack">
+            {rail.map((s) => (
+              <details key={s.id} className={styles.railSection} open={s.defaultOpen ?? false} data-testid={`sc-rail-${s.id}`}>
+                <summary>{s.title}</summary>
+                <div className={styles.railBody}>{s.node}</div>
+              </details>
+            ))}
           </div>
         </aside>
 
+        {/* ── ② 主区：业务端到端路线图（`ChainLineMapView` 提为主画布；物理拓扑 /
+               链路阶段 / 本体拓扑降为**主区内的档位**，不再与路线图平级抢位）──────── */}
+        <section className={styles.zoneCanvas} data-testid="sandbox-zone-canvas">
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}
         <main className={`${styles.pane} ${styles.canvasPaneStretch}`} data-testid="sc-canvas-pane">
           <div className={styles.paneHead}>
@@ -902,7 +953,6 @@ export function SandboxConsole({
             </div>
           </div>
         </main>
-
         {/* ── 右：节点检视 ────────────────────────────────────────────────── */}
         <aside className={styles.pane} data-testid="sc-inspect-pane">
           <div className={styles.paneHead}>
@@ -948,120 +998,206 @@ export function SandboxConsole({
               </>
             )}
           </div>
-          {/*
-            WO-SANDBOX-DECLUTTER · 右栏折叠区外面必须有一层**自己的滚动容器**。
-            此前这些 `<details>` 是 `.pane` 的裸兄弟节点、外面没有任何 `overflow` ——
-            于是右栏内容多高、三栏那一行就多高（grid 行高由最高列决定），
-            而中栏画布只有 ~680px ⇒ 底下拉出一大片空白。这正是仓主截图里
-            「右栏塞爆 + 中间大面积空白」两个症状的**同一个成因**（取证见本单报告 §③）。
-          */}
-          <div className={styles.railStack} data-testid="sc-rail-stack">
-            {rail.map((s) => (
-              <details key={s.id} className={styles.railSection} open={s.defaultOpen ?? false} data-testid={`sc-rail-${s.id}`}>
-                <summary>{s.title}</summary>
-                <div className={styles.railBody}>{s.node}</div>
-              </details>
-            ))}
-          </div>
         </aside>
+        </section>
       </div>
 
-      {/* ══ 控制条（旧主屏 tick 控制条整块搬来）══════════════════════════════ */}
-      {controlBar}
-
-      {/* ══ 底部 Pareto ══════════════════════════════════════════════════════ */}
-      <div className={styles.pane} data-testid="sc-pareto-pane" style={{ flex: "none" }}>
-        <div className={styles.paneHead}>
-          <h2>全链损失 Pareto · 环节级</h2>
-          <span className={styles.spacer} />
-          <span className={styles.tag} data-testid="sc-pareto-summary">
-            {pareto === null
-              ? "等 chain_loss_attribution"
-              : `Top${pareto.rows.length}/${pareto.totalRows} 吃掉 ${fmtPct(pareto.topPct)} 损失 · 全链非增值 ${fmtDays(pareto.nonValueDays)}D`}
-          </span>
+      {/* ══ ③ 下区：影响带（PRD §1③）════════════════════════════════════════════
+          「试了之后，哪里变了、值多少钱」。从粗到细三块：
+            汇总条（四个计数 ＋ 流动效率）→ 阻滞点逐条（折叠）→ 逐节点指标影响 ＋ 财务动态。 */}
+      <section className={styles.zoneImpact} data-testid="sandbox-zone-impact">
+        <div className={styles.zoneHead}>
+          <h2>{zh.sim.sandbox.zones.impactTitle}</h2>
+          <span className={styles.zoneQ}>{zh.sim.sandbox.zones.impactQuestion}</span>
         </div>
-        <div className={styles.paneBody} style={{ overflowX: "auto" }}>
-          {pareto === null ? (
-            <p className={styles.stateLine} data-testid="sc-pareto-waiting">
-              等线路图取回 <code>chain_loss_attribution</code>（同一份响应的第三种投影，**不发第二次请求**）。
-            </p>
-          ) : (
-            <>
-              <div className={styles.pareto} data-testid="sc-pareto">
-                {pareto.rows.map((r) => {
-                  const max = pareto.rows[0]?.pctOfChainLoss ?? 1;
-                  return (
-                    <button
-                      key={r.stepId}
-                      type="button"
-                      className={styles.paretoBar}
-                      data-testid={`sc-pareto-${r.stepId}`}
-                      title={`${r.nodeLabel} · ${r.stepLabel}（${r.kindLabel}）· ${fmtDays(r.nonValueDays)}D · 占全链损失 ${fmtPct(r.pctOfChainLoss)}`}
-                      onClick={() => pickNode(r.nodeId)}
-                    >
-                      <span className={styles.paretoPct}>{fmtPct(r.pctOfChainLoss)}</span>
-                      <span className={styles.paretoFill} style={{ height: `${Math.max(2, (r.pctOfChainLoss / max) * 100)}%` }} />
-                      <span className={styles.paretoLabel}>
-                        {r.nodeLabel}
-                        <br />
-                        {r.stepLabel}
+
+        {/* 汇总条：PRD §2 第 2 行 —— 四个数字**仍在**（testid 一个没动），
+            但不再各占一张大卡（`.impBar` 已由四列大卡收成一条紧凑行）。 */}
+        {/* ══ 阻滞点统计条 ══════════════════════════════════════════════════════ */}
+        <div className={styles.impBar} data-testid="sc-impbar">
+          {IMPEDIMENT_CARDS.map((c) => {
+            const group = model?.groups.find((g) => g.kind === c.kind) ?? null;
+            const pressed = dimKind === c.kind;
+            return (
+              <button
+                key={c.kind}
+                type="button"
+                className={styles.impCard}
+                data-kind={c.kind}
+                data-testid={`sc-imp-${c.kind}`}
+                aria-pressed={pressed}
+                title={c.meaning}
+                onClick={() => setDimKind(pressed ? null : c.kind)}
+              >
+                <span className={styles.impNum} data-testid={`sc-imp-${c.kind}-count`}>
+                  {group === null ? "—" : group.engineCount}
+                </span>
+                <span className={styles.impMeta}>
+                  <b>{c.label}</b>
+                  <span>{c.meaning}</span>
+                </span>
+              </button>
+            );
+          })}
+          <div className={styles.impCard} data-kind="FLOW" data-static="1" data-testid="sc-imp-FLOW">
+            <span className={styles.impNum} data-testid="sc-imp-FLOW-val">
+              {fmtFlowEff(totals?.flowEfficiency ?? null)}
+            </span>
+            <span className={styles.impMeta}>
+              <b>流动效率</b>
+              <span>
+                增值 {fmtDays(totals?.valueAddDays ?? null)}D / 前置期 {fmtDays(totals?.leadTimeDays ?? null)}D
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {/* WO-SANDBOX-V3：整条清单（截图里 7 行）降为**第二层**（PRD §2 第 3 行）。
+            第一层记号 = summary 上的**条数** ——「有几条」是结论（第一层），
+            「是哪几条」是明细（第二层）。 */}
+        <details className={styles.zoneSection} data-testid="sc-impjump-details">
+          <summary data-testid="sc-impjump-summary">
+            {zh.sim.sandbox.zones.impedimentList} · <b data-testid="sc-impjump-count">{jumpCount}</b>
+            {zh.sim.sandbox.zones.rows}
+          </summary>
+        {/* ══ 阻滞点逐条 · 点了进决策推演（WO-SANDBOX-IMP2PLAN）══════════════════
+            WO-SANDBOX-DECLUTTER：口径差 / 联动口径两段**原理说明性文字**此前常驻在这上下两行，
+            合计占掉主屏一大块，而它们的读者是开发者不是决策者。现在收成两个 `?`，
+            挂在它们解释的那个东西（阻滞点计数）旁边 —— **一个字都没删，只换了承载方式**。 */}
+        <ImpedimentJumpBar
+          model={model}
+          kind={dimKind}
+          notes={
+            honesty ? (
+              <>
+                <InfoPopover topic={zh.sim.sandbox.info.impedimentCaliber} testId="imp-gap">
+                  <ImpedimentCaliberNote model={model} />
+                </InfoPopover>
+                <InfoPopover topic={zh.sim.sandbox.info.impedimentJoin} testId="imp-join-gap">
+                  <ImpedimentJoinNote dimKind={dimKind} dimStageCount={dimStages.size} />
+                </InfoPopover>
+              </>
+            ) : null
+          }
+        />
+        </details>
+
+        {/* ── 逐节点指标影响 ＋ 财务指标随扰动的动态变化（宿主给 · PRD §1③）── */}
+        {impactZone}
+
+
+        {/* Pareto 与下面那排指标卡 PRD §2 表里没点名，但它们与四张计数卡**同族**
+            （都是"全链体检读数"，不是"这一屏要回答的那个数"），按同一判据降为第二层：
+            第一层留 summary 上的结论（TopN / 占比 / 几项），明细点开才出。 */}
+        <details className={styles.zoneSection} data-testid="sc-pareto-details">
+          <summary data-testid="sc-pareto-summary-line">
+            {zh.sim.sandbox.zones.pareto} ·{" "}
+            <b data-testid="sc-pareto-headline">
+              {pareto === null
+                ? zh.sim.sandbox.zones.paretoWaiting
+                : zh.sim.sandbox.zones.paretoHeadline(pareto.rows.length, pareto.totalRows, fmtPct(pareto.topPct), fmtDays(pareto.nonValueDays))}
+            </b>
+          </summary>
+        {/* ══ 底部 Pareto ══════════════════════════════════════════════════════ */}
+        <div className={styles.pane} data-testid="sc-pareto-pane" style={{ flex: "none" }}>
+          <div className={styles.paneHead}>
+            <h2>全链损失 Pareto · 环节级</h2>
+            <span className={styles.spacer} />
+            <span className={styles.tag} data-testid="sc-pareto-summary">
+              {pareto === null
+                ? "等 chain_loss_attribution"
+                : `Top${pareto.rows.length}/${pareto.totalRows} 吃掉 ${fmtPct(pareto.topPct)} 损失 · 全链非增值 ${fmtDays(pareto.nonValueDays)}D`}
+            </span>
+          </div>
+          <div className={styles.paneBody} style={{ overflowX: "auto" }}>
+            {pareto === null ? (
+              <p className={styles.stateLine} data-testid="sc-pareto-waiting">
+                等线路图取回 <code>chain_loss_attribution</code>（同一份响应的第三种投影，**不发第二次请求**）。
+              </p>
+            ) : (
+              <>
+                <div className={styles.pareto} data-testid="sc-pareto">
+                  {pareto.rows.map((r) => {
+                    const max = pareto.rows[0]?.pctOfChainLoss ?? 1;
+                    return (
+                      <button
+                        key={r.stepId}
+                        type="button"
+                        className={styles.paretoBar}
+                        data-testid={`sc-pareto-${r.stepId}`}
+                        title={`${r.nodeLabel} · ${r.stepLabel}（${r.kindLabel}）· ${fmtDays(r.nonValueDays)}D · 占全链损失 ${fmtPct(r.pctOfChainLoss)}`}
+                        onClick={() => pickNode(r.nodeId)}
+                      >
+                        <span className={styles.paretoPct}>{fmtPct(r.pctOfChainLoss)}</span>
+                        <span className={styles.paretoFill} style={{ height: `${Math.max(2, (r.pctOfChainLoss / max) * 100)}%` }} />
+                        <span className={styles.paretoLabel}>
+                          {r.nodeLabel}
+                          <br />
+                          {r.stepLabel}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* 规范 §2 R-UI-3 点名的那一类：`A ÷ B` 形状的**公式**一律进 `?`。
+                    第一层只留守恒结论（Σ 与是否在容差内）—— 那是结论，不是口径。 */}
+                {honesty ? (
+                  <p className={styles.note} data-testid="sc-pareto-note-brief">
+                    守恒 Σ = {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                    （{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）
+                    <InfoPopover topic={zh.sim.sandbox.info.paretoRate} testId="pareto-note" align="right">
+                      <span data-testid="sc-pareto-note">
+                        影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
+                        <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
+                        故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
+                        {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
+                        ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
                       </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* 规范 §2 R-UI-3 点名的那一类：`A ÷ B` 形状的**公式**一律进 `?`。
-                  第一层只留守恒结论（Σ 与是否在容差内）—— 那是结论，不是口径。 */}
-              {honesty ? (
-                <p className={styles.note} data-testid="sc-pareto-note-brief">
-                  守恒 Σ = {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
-                  （{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）
-                  <InfoPopover topic={zh.sim.sandbox.info.paretoRate} testId="pareto-note" align="right">
-                    <span data-testid="sc-pareto-note">
-                      影响率 = 该环节非增值天数 ÷ 全链非增值总量，<b>分母由引擎给</b>（
-                      <code>chain_loss_attribution.attribution[].pctOfChainLoss</code>）。作业段是增值、不进分母，
-                      故全链非增值环节之和恒 100%（本次守恒 Σ ={" "}
-                      {loss?.conservation === undefined ? "—" : `${loss.conservation.sumPct.toFixed(3)}%`}
-                      ，{loss?.conservation?.ok === true ? "在容差内" : "超容差"}）。前端不重算百分比、不定义分母。
-                    </span>
-                  </InfoPopover>
-                </p>
-              ) : null}
-            </>
-          )}
+                    </InfoPopover>
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+        </details>
 
-      {/* ══ 底部指标卡片行（全部真值：算不出来的写 EMPTY 不写 0）══════════════ */}
-      <div className={styles.metricRow} data-testid="sc-metrics">
-        <MetricCard label="前置期" value={totals === null ? null : `${fmtDays(totals.leadTimeDays)}D`} sub="锚点订单全链（引擎 totals.leadTimeDays）" />
-        <MetricCard label="增值天数" value={totals === null ? null : `${fmtDays(totals.valueAddDays)}D`} sub="kind=work 的环节之和" />
-        <MetricCard label="非增值（损失）" value={totals === null ? null : `${fmtDays(totals.nonValueDays)}D`} sub="Pareto 的分母" />
-        <MetricCard label="流动效率" value={totals === null ? null : fmtFlowEff(totals.flowEfficiency)} sub="增值 / 前置期" />
-        <MetricCard
-          label="环节 / 诚实缺席"
-          value={totals === null ? null : `${totals.stepCount} / ${totals.emptyCount}`}
-          sub="emptyCount = 算不出来的环节数（未补 0）"
-        />
-        <MetricCard
-          label="阻滞点 / 判不出"
-          value={model === null ? null : `${model.total} / ${model.unresolved.length}`}
-          sub="chain_impediments · 判不出来的判据也要看得见"
-        />
-      </div>
+        <details className={styles.zoneSection} data-testid="sc-metrics-details">
+          <summary data-testid="sc-metrics-summary">
+            {zh.sim.sandbox.zones.metrics} · <b>{zh.sim.sandbox.zones.metricsCount(SC_METRIC_COUNT)}</b>
+          </summary>
+        {/* ══ 底部指标卡片行（全部真值：算不出来的写 EMPTY 不写 0）══════════════ */}
+        <div className={styles.metricRow} data-testid="sc-metrics">
+          <MetricCard label="前置期" value={totals === null ? null : `${fmtDays(totals.leadTimeDays)}D`} sub="锚点订单全链（引擎 totals.leadTimeDays）" />
+          <MetricCard label="增值天数" value={totals === null ? null : `${fmtDays(totals.valueAddDays)}D`} sub="kind=work 的环节之和" />
+          <MetricCard label="非增值（损失）" value={totals === null ? null : `${fmtDays(totals.nonValueDays)}D`} sub="Pareto 的分母" />
+          <MetricCard label="流动效率" value={totals === null ? null : fmtFlowEff(totals.flowEfficiency)} sub="增值 / 前置期" />
+          <MetricCard
+            label="环节 / 诚实缺席"
+            value={totals === null ? null : `${totals.stepCount} / ${totals.emptyCount}`}
+            sub="emptyCount = 算不出来的环节数（未补 0）"
+          />
+          <MetricCard
+            label="阻滞点 / 判不出"
+            value={model === null ? null : `${model.total} / ${model.unresolved.length}`}
+            sub="chain_impediments · 判不出来的判据也要看得见"
+          />
+        </div>
+        </details>
 
-      {imp.status === "error" ? (
-        <p className={styles.errBox} data-testid="sc-imp-error" role="alert">
-          <b>阻滞点扫描未取到数</b> · <code data-testid="sc-imp-error-code">{imp.code}</code>：
-          <span data-testid="sc-imp-error-message">{imp.message}</span>
-          {imp.requestId !== null ? (
-            <>
-              {" "}· requestId <code>{imp.requestId}</code>
-            </>
-          ) : null}
-          。四张卡显示「—」而<b>不是 0</b>：0 条阻滞点与扫不出来是两回事。
-        </p>
-      ) : null}
+        {imp.status === "error" ? (
+          <p className={styles.errBox} data-testid="sc-imp-error" role="alert">
+            <b>阻滞点扫描未取到数</b> · <code data-testid="sc-imp-error-code">{imp.code}</code>：
+            <span data-testid="sc-imp-error-message">{imp.message}</span>
+            {imp.requestId !== null ? (
+              <>
+                {" "}· requestId <code>{imp.requestId}</code>
+              </>
+            ) : null}
+            。四张卡显示「—」而<b>不是 0</b>：0 条阻滞点与扫不出来是两回事。
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }

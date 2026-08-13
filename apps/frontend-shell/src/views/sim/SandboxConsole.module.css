@@ -184,9 +184,18 @@
 }
 
 /* ── 阻滞点统计条 ─────────────────────────────────────────────────────────── */
+/*
+ * WO-SANDBOX-V3 · PRD §2 第 2 行：**四个数字仍在，但不再各占一张大卡**。
+ *
+ * 改前：`grid-template-columns: repeat(4, 1fr)` ＋ 21px 主数值 ＋ 每卡两行文案
+ *       ⇒ 五张卡（含流动效率）铺成两行大卡，占掉主屏最上面一整块，
+ *         而它们回答的是「哪里堵」——那是**下区**的问题，不是这一屏的主问题。
+ * 改后：一条**紧凑横条**（flex wrap），落在下区影响带的第一行当**汇总条**。
+ *       数字、标签、释义**一个字没删**（D4）：只是不再各自撑成一张卡。
+ */
 .impBar {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -275,12 +284,14 @@
 .impCard[data-static="1"] {
   cursor: default;
 }
+/* WO-SANDBOX-V3：21px → 15px。21px 是**本页最大的一级**，而 R-UI-2 规定
+   「最大的那一级只给这一页要回答的那个数」—— 阻滞点计数不是那个数（它是下区的汇总）。 */
 .impNum {
-  font: 800 21px/1 var(--font-mono);
+  font: 800 15px/1 var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+/* 汇总条模式：卡不再各占一列，故不抢剩余宽度（`flex:1` 会把五张卡撑满整行）。 */
 .impMeta {
-  flex: 1;
   min-width: 0;
 }
 .impMeta b {
@@ -321,7 +332,158 @@
   color: var(--c-capacity);
 }
 
-/* ── 三栏主体 ─────────────────────────────────────────────────────────────── */
+/* ══ WO-SANDBOX-V3 · 三区骨架 ══════════════════════════════════════════════
+ *
+ *   ┌──────────────┬──────────────────────────────┐
+ *   │ ① 左：扰动输入 │ ② 主：业务端到端路线图          │
+ *   ├──────────────┴──────────────────────────────┤
+ *   │ ③ 下：影响带                                 │
+ *   └─────────────────────────────────────────────┘
+ *
+ * 与被它取代的 `.mid`（160px / 1fr / 260px 三栏）的关键差别：
+ *  · 左区从 160px 放宽到 300px —— 它现在装的是**表单**（类型/落点/状态变量/方式/幅度/持续），
+ *    160px 那一版是给一列复选框设计的，塞表单会每个 `<select>` 都换行；
+ *  · 右栏那 260px 收回来给主画布：节点检视挪进主区、跟着画布走（点了节点在同一区里看结果，
+ *    视线不用横跨整屏 —— 规范 R-UI-1）。
+ */
+.zones {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 6px;
+  /* 两区各自按内容定高（理由与 `.mid` 那条同源：stretch 会把矮的那区拉出一段空白）。 */
+  align-items: start;
+  flex: 0 1 auto;
+}
+@media (max-width: 1100px) {
+  .zones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.zoneInput,
+.zoneCanvas,
+.zoneImpact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 区头：区名 + 「这一区回答什么」。
+   字号刻意压在**标题级**（不是主数值级）—— R-UI-2 规定最大一级只给「这一页要回答的那个数」，
+   区名不是那个数。 */
+.zoneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+}
+.zoneHead h2 {
+  margin: 0;
+  font: 700 12px/1.4 var(--font-ui, inherit);
+  color: var(--txt);
+}
+.zoneQ {
+  font: 400 11px/1.4 var(--font-ui, inherit);
+  color: var(--muted2);
+}
+
+/* 折叠段（范围 / 阻滞点逐条 / Pareto / 全链指标）——
+   summary 那一行就是**第一层记号**：降层不是删除，屏上必须留一句「这里有话要说」。 */
+.zoneSection {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-width: 0;
+}
+.zoneSection > summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font: 600 11px/1.5 var(--font-ui, inherit);
+  color: var(--muted);
+  list-style-position: inside;
+}
+.zoneSection > summary b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+.zoneSection[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── 下区影响带：两半左右分列（PRD §1③「两半，左右分列」）───────────────── */
+.impactBand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .impactBand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.impactHalf {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 逐 stateVar 差分行：名字 / 基线→现值 / 变化量。
+   三列固定顺序 ⇒ 标签与数值的视线距离恒定在一行内（规范 R-UI-1）。 */
+.deltaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.deltaRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.deltaName {
+  font: 600 11px/1.4 var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deltaVals {
+  font: 400 11px/1.4 var(--font-mono);
+  color: var(--muted2);
+  font-variant-numeric: tabular-nums;
+}
+.deltaVals b {
+  color: var(--txt);
+}
+.deltaAmt {
+  font: 700 11px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+}
+.deltaAmt[data-dir="up"] {
+  color: var(--danger);
+}
+.deltaAmt[data-dir="down"] {
+  color: var(--c-capacity);
+}
+.deltaAmt[data-dir="flat"] {
+  color: var(--muted2);
+}
+
+/* ── 三栏主体（旧骨架 · `.zones` 取代之后仅剩响应式兜底引用）───────────────── */
 .mid {
   display: grid;
   /*
