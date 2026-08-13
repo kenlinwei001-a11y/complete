@@ -166,10 +166,10 @@
       "ontologyRef": "§7:896",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "docs/PRD-sandbox-a2.md §6（2026-08-08 实跑）",
-        "note": "变异①在 ChainImpedimentSchema.parse 构造区塞 severity: 87 → H2 区域层+文件层双红 RC=1；变异②把 detectRegionLiterals 的正则改坏 → 金丝雀报「⛔ 门自己瞎了：必咬样例没咬住」RC=1，而非安静报绿。另开发期金丝雀两次抓到本门自伤（0 条 binding / 阈值读成 \"95,\"）。"
+        "evidence": "docs/PRD-sandbox-a2.md §6（2026-08-08 实跑）· WO-R9-SCAN-EXTRACTOR 交回报告（2026-08-13 实跑）",
+        "note": "变异①在 ChainImpedimentSchema.parse 构造区塞 severity: 87 → H2 区域层+文件层双红 RC=1；变异②把 detectRegionLiterals 的正则改坏 → 金丝雀报「⛔ 门自己瞎了：必咬样例没咬住」，⚠️ 该次退的是 RC=1，2026-08-13 起金丝雀不中一律退 **RC=2**（三分退出码），此处照实回写不改旧记录。2026-08-13 追加四条：③ CHAIN_SCAN_HONESTY_BREAK_CANARY=legacy-regex 换回旧抽取器 → R1/R2/R4/R5/R7 不中 RC=2 且现算打出「声明 29 · 解析 21 · 丢失 C03,C08,C05,C12,C18,C02,C04,C10」；④ 改坏 base-registry 的 C05 表达式但不重建 dist → RC=2「dist 过期，拒绝给出任何结论」；⑤ 重建后同一变异 → RC=1 且规则原文正确不再错位；⑥ 改坏 C09 的 params 旋钮名 → RC=1 H7b。另开发期金丝雀三次抓到本门自伤（0 条 binding / 阈值读成 \"95,\" / leaf 子串误匹 MUTANT_utilization）。"
       },
-      "notes": "PRD-sandbox-redesign §9 验收 A2 点名却不存在的门（G-DEAD-GATE-BY-POLICY 同族）。刻意不接 pnpm gates：本单不得动 package.json（会顶 ontology-writeback 棘轮），§7 登记落地后由审核方裁是否升 GATES_CHAIN。"
+      "notes": "PRD-sandbox-redesign §9 验收 A2 点名却不存在的门（G-DEAD-GATE-BY-POLICY 同族）。刻意不接 pnpm gates：本单不得动 package.json（会顶 ontology-writeback 棘轮），§7 登记落地后由审核方裁是否升 GATES_CHAIN。【2026-08-13 · WO-R9-SCAN-EXTRACTOR】规则抽取器重写：旧正则「从 key: 往后 400 字找第一个字面量 expression:」既不校验同属一个对象、又只认字面量形态，在 battery.ts 改用 parityRuleExpression(\"Cxx\") 单一来源后同时产生①错位（C09→绑到 C10 原文）②吞噬（29 条只抽出 21 条 ⇒ 假的「不在册」），把一次正确的改良打成 3 条红。现改为按对象边界切分 + 经已 build 的 @platform/contracts 求值，门里不抄任何规则内容；新增金丝雀 R1–R7（R5 同段样例同喂新旧两版）、判据 H7b（expression 引用的 params.<名> 必须真在该规则 params 里，即 parityRuleParams 的生产消费方）、三分退出码。本门自此读 packages/contracts/dist/index.js，已接 dist-freshness 守卫（覆盖普查 20/20）。断点登记 §8 G-GATE-EXTRACTOR-CROSS-OBJECT-MISBIND。"
     },
     "check-cli-parity.mjs": {
       "alias": null,
