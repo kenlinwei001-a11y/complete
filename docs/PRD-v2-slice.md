@@ -289,7 +289,10 @@ Agent 手里**没有** `order_to_cash_720` 这个词，只能逐跳 `query_objec
 
 **验收判据**
 - 至少 1 条生产切片 fixture 设 `ruleRef`，`runSliceContracts` 实测走 `resolveStringArray` 的**规则分支**而非 fallback；
-- 变异反证：改那条规则的 `params` 去掉一个类型 → 契约结果随之变（今天改规则零影响）；
+- 变异反证：改那条规则的 `params` 去掉一个类型 → 契约结果随之变（今天改规则零影响）。
+  **前置**：改规则要能影响契约结果，前置是「该切片 fixture 真的设了 `ruleRef`，且 `resolveStringArray`
+  实测走规则分支」——即上一条判据。前置不成立时本条**无法失败**（fallback 路径下改规则恒零影响，
+  判据恒绿），故上一条必须**自己有一条能红的断言**，不能只作为本条的注解存在；
 - ⚠️ **路径开关类假绿的防线（铁律 0.5 判据 6）**：`resolveStringArray` 有 `ruleRef` / fallback 两条分支，
   **必须核对「生产传的那个值」被测试覆盖**——今天两个分支的生产实参恒为 `undefined`（走 fallback），
   若只测 `ruleRef` 分支就是「测试验的是生产已经放弃的那条路」。

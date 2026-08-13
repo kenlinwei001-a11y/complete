@@ -985,6 +985,28 @@
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
     },
+    "check-prd-data-grounding.mjs": {
+      "alias": "prd-data-grounding:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/_PRD-TEMPLATE.md",
+        "docs/PRD-*.md",
+        "scripts/prd-data-grounding-baseline.json",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/seed.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "原单五组变异实跑（2026-08-11）＋ 收编方 WO-R6 独立五步复验（2026-08-13）",
+        "note": "【原单】M1 临时 PRD 同时注入五种病 → PDG-1/2/3/4/6 五条判据全部当场红 RC=1；M2 同一文件语义反转成全部说真话 → RC=0 复绿，证明门量的是「字段引用属不属实」而**不是「有没有新 PRD」**（非重言）；S1 门自变异 hasField 恒真 → 金丝雀报「⛔ 门自己瞎了」RC=2 而非报干净；S2 门自变异 ABSENCE_ACK_MARKERS 改名+语义反转 → 金丝雀 RC=2，其中 3 条必不咬样例是生产原文当场被误咬，证明金丝雀与主逻辑共用 judgePrd 同一份实现；M3 撤掉某条裁定的挂账 → PDG-4A 红 RC=1；M4 裁定表塞入指向不存在命中的 key → 「裁定表烂账」红 RC=1。【收编方 WO-R6 独立五步复验，未沿用原单结论】① 基线 RC=0：扫 133 份 PRD · 真值源 94 类型/830 属性 · 违规 7 条（豁免 7/上限 7）· 未判定 33 条；② RC=2 故障注入 A（`PRD_GROUNDING_FORCE_TOOL_BROKEN=1`）→ 「⛔ 门自己瞎了…修门，别改结论」RC=2；③ RC=2 故障注入 B（**真环境故障**：把棘轮基线文件 mv 走）→ 「⛔ 基线文件缺失…门无法判定棘轮，判工具坏」RC=2；④ RC=1 变异：把收编时给 `docs/PRD-v2-slice.md` 补的《前置》整段删掉（读回文件自证：长度 −175 字节、grep 该段 0 命中）→ 违规 **7→8**，精确点名 `docs/PRD-v2-slice.md:292 [PDG-6]` 并回显原文；⑤ 还原后 RC=0、违规回到 7、棘轮仍 7/7。**计数随变异而动 ⇒ 信号是真的**。",
+        "note_rc2_retrofit": "⚠️ **本条是「守门的门」的一个已知盲点，值得单独读**：本门原版**已经有** RC=2 的能力 —— `toolBroken()` 存在，且基线缺失/参数打错/金丝雀不符都走它。但它写的是 `process.exit(RC_TOOL_BROKEN)`，而 `RC_TOOL_BROKEN` 是文件顶部 `const RC_TOOL_BROKEN = 2`。`check-gate-exit-discipline.mjs` 判「有没有 RC=2 出口」是**静态看 `process.exit(2)` 这个字面形，不解析常量绑定** ⇒ 判成「① 无 RC=2 出口：全文件找不到 process.exit(2)」。**门确实有那个能力，是守门的门看不见。** 收编处置：把 `toolBroken()` 的出口改成字面量 `process.exit(2)` 并在紧邻注释写明「这里刻意写字面量不是风格问题」，同时补顶层兜底（`process.on(uncaughtException|unhandledRejection)` + async main 的 `.catch()`，两者都要——main 是 async，同步抛与 reject 走不同路）。补齐后 gate-exit-discipline 由 65/66 → 66/66，RC=0。**给审核方的建议（未擅自动手）**：真正的修法是让 `check-gate-exit-discipline.mjs` 解析 `const X = 2` 这层常量绑定，否则下一道用命名常量的门还会被误判；改既有 canonical 门属治理决策，本单不越界。"
+      },
+      "notes": "治「数据可得性只在主题是数据时才被讨论」的结构性偏差。退出码三分：0 干净 / 1 真有问题 / 2 工具自己坏了。存量豁免走 scripts/prd-data-grounding-baseline.json 棘轮，每条须带 why + prd + kind（待修|误报|覆盖不到 —— 三者修法不同，不许混）；`maxExemptions` 必须等于实际豁免数、且不许超过历史最高水位 `ratchetHigh` ⇒ **「加一条豁免消红」这条路在结构上被封死**（收编时实测：ratchetHigh=7、豁免=7，想加第 8 条会报「棘轮回升」）。Type.field 四义词：本门只核①本体属性；②仿真状态变量与③规则注入命名空间今天零校验、本门明确做不到核，只区分并标注可见（PDG-7/PDG-8）。⚠️ 收编说明（WO-R6）：接线时 canonical 上有 **1 条新增违规** —— `docs/PRD-v2-slice.md:292` 的 T7 判据「改规则 params → 契约结果随之变」缺前置声明（该 PRD 是分叉后新写的，实测 `git rev-parse --verify -q $FORK:docs/PRD-v2-slice.md` RC=1）。**没有用加豁免的办法消红**（那条路已被 ratchetHigh 封死，且会把棘轮变成橡皮图章），而是按门自己给的 PDG-6 修法**把前置写出来**：该 PRD 上一条判据其实**已经**声明了实质前置（「至少 1 条切片 fixture 设 ruleRef，实测走规则分支而非 fallback」），只是没用「前置」这个词、落在 ±2 行窗口外的措辞里 ⇒ 补一段显式《前置》把它点明，并写清「前置不成立时本条无法失败」。棘轮全程 7/7 未动。",
+      "disposition": "WIRE"
+    },
     "check-coverage-blind.mjs": {
       "alias": "coverage-blind:check",
       "binding": "GATES_CHAIN",
