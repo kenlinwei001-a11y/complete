@@ -804,8 +804,12 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-              {/* 第一层最大的那一级只给「本页要回答的那个数」——缺料单数（R-UI-2）。 */}
-              <b className="mono" data-testid="oc-kit-shortage" style={{ fontSize: 20 }}>{kit.data.shortageCount ?? "—"}</b>
+              {/* 第一层最大的那一级只给「本页要回答的那个数」——缺料单数（R-UI-2）。
+                  ⚠ 用本文件**已有的最大一级** 12.5px，不新开一级：本文件字号已有 6 级
+                  （规范 §2 R-UI-2 上限是 3），再加第 7 级会让 D3 棘轮回升 —— 那是把
+                  「突出这个数」的收益，换成「整页字号更乱」的代价。强调靠 `<b>` + `mono`
+                  等宽，与尺寸叠加，不必再多一级。真正的修法是把那 6 级压到 3 级，属独立重构单。 */}
+              <b className="mono" data-testid="oc-kit-shortage" style={{ fontSize: 12.5 }}>{kit.data.shortageCount ?? "—"}</b>
               <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.kitShortageLabel}</span>
             </div>
             {/* 传**整包载荷**而不是 `kit.data.scope`：档位由 `readScopeHonesty(payload)` 判，
@@ -835,7 +839,8 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-              <b className="mono" data-testid="oc-quote-margin" style={{ fontSize: 20 }}>
+              {/* 同上：用本文件已有的最大一级 12.5px，不新开第 7 级（R-UI-2 · D3 棘轮）。 */}
+              <b className="mono" data-testid="oc-quote-margin" style={{ fontSize: 12.5 }}>
                 {quote.data.margin === undefined ? "—" : `${(quote.data.margin * 100).toFixed(2)}%`}
               </b>
               <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.quoteMarginLabel}</span>

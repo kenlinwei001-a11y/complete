@@ -161,7 +161,7 @@
 }
 
 .nodeType {
-  font-size: 10px;
+  font-size: 11px; /* R-UI-2：原 10px，与同为小标签的 11px 并级（一屏最多三级字号） */
   font-weight: 600;
   text-anchor: middle;
   fill: var(--muted2, #6b7280);
