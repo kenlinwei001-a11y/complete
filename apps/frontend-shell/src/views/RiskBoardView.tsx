@@ -29,6 +29,7 @@ import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
 import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
 import { Provenance } from "@/components/Provenance";
 import { InfoPopover } from "@/components/InfoPopover";
+import { ScopeHonestyBadge } from "@/components/ScopeHonestyBadge";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 // WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
@@ -200,6 +201,17 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             <InfoPopover topic={zh.risk.info.bridge} testId="risk-bridge">
               <p>{zh.risk.info.bridgeBody}</p>
             </InfoPopover>
+            {/* 欠账 #178（后→前这一跳）：`risk_timeline` 随结果下发作用域诚实位
+                （`apps/datacore/src/solvers/risk.ts:775-777`·BASE/ALL 两条返回路全带），
+                且**已在契约里显式声明**（`packages/contracts/src/solvers.ts:351-354`）——
+                声明这件事本身就是引擎侧的原话：「zod 默认 strip 未声明键 …… 加性字段必须同时
+                在契约里声明，否则等于没加」。声明了、下发了，前端却零消费方 ⇒ 屏上这一屏
+                「产能推演」的卡、KPI、越线日全是**全网**口径，而用户随时可能读成某个基地的数
+                （引擎侧记的病历原话：问「枣庄」拿到 8 张别的基地的卡，屏上一个字都看不出来）。
+                挂在窗口/阈值这条结果元信息行上：**整屏结论共用一个口径**，不该只贴在某个 KPI 上。
+                载荷直传 `data`（`RiskTimelineOutputSchema.parse` 的产物，四个键都在），
+                不重定义契约类型（R1 contracts-only-shared）。 */}
+            <ScopeHonestyBadge payload={data} testId="risk-timeline" />
           </div>
         </div>
         <div className={styles.rkHsel}>
