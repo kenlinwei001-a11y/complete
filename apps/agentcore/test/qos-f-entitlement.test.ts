@@ -73,7 +73,8 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
 
   it("FeatureGate: TTL cache hit + ETag 304 revalidation (C-1: B consumes A's public API)", async () => {
     const calls: { url: string; ifNoneMatch?: string }[] = [];
-    const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    // `RequestInfo` 是 DOM lib 的类型，本包 lib 只有 ES2022 ⇒ TS2552。取 fetch 自己的形参类型。
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const headers = (init?.headers ?? {}) as Record<string, string>;
       calls.push({ url: String(url), ifNoneMatch: headers["if-none-match"] });
       if (headers["if-none-match"] === '"cv-7"') {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CalibrationProposalRecord } from "@platform/contracts";
+// 出处是本包 `src/domain.ts:921`，不是契约包（契约包只有较窄的 `CalibrationProposal`，
+// 没有 tenantId/paramPath/trigger/createdAt）。原来从 "@platform/contracts" 取 ⇒ TS2724，
+// 类型退化成 any，下面那个字面量的形状从来没被校验过。
+import type { CalibrationProposalRecord } from "../src/domain.js";
 import { readFileSync } from "node:fs";
 import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER } from "./helpers.js";
 
