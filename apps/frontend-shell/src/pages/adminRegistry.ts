@@ -20,6 +20,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
   { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin"] },
+  // WO-FE-WIRE-2 件一：pipeline 配置面（后端五条端点此前零调用方）
+  { path: "pipelines", label: zh.nav.pipelines, roles: ["admin"] },
   { path: "actions", label: zh.nav.actions, roles: ["admin", "approver"] },
   { path: "catalog", label: zh.nav.catalog, roles: ["admin", "catalog_admin"] },
   { path: "agents", label: zh.nav.agents, roles: ["admin", "catalog_admin"] },
