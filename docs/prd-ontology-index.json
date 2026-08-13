@@ -1999,6 +1999,29 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-v3-three-zone.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "packages/contracts/src/sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-v4-backward-derivation.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2994,7 +3017,8 @@
     ],
     "packages/contracts/src/sim.ts": [
       "PRD-UPGRADE-decision-sandbox-v2.md",
-      "PRD-global-sim-live-upgrade.md"
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-sandbox-v3-three-zone.md"
     ],
     "scripts/check-debattery.mjs": [
       "PRD-UPGRADE-decision-sandbox-v2.md"
