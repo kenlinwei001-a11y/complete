@@ -54,7 +54,11 @@ function extractAnchors(text) {
   //   `BuildPipelinesPage.tsx` 截成 `BuildPipelinesPage.ts` ⇒ 门去查一个不存在的路径、
   //   报出**假的** FILE_MISSING。本门第一次跑就犯了（2026-08-13 实测），形态正是它自己要防的那句：
   //   「我用『我截出来的那个路径』当作『工单写的那个路径』的证据。」长的必须排前面。
-  const re = /`?((?:apps|packages|scripts|docs)\/[A-Za-z0-9_./@-]+\.(?:tsx|ts|mjs|js|json|sql|md|css|sh))(?::(\d+))?`?(?:\s*\(([A-Za-z0-9_$.]+)\))?/g;
+  //   ⚠️ 第一版只把 `tsx` 挪到 `ts` 前面 —— **只修了看见的那一半**：`js|json` 同病，
+  //   `scripts/gate-ledger.json` 照样被截成 `.js`（2026-08-13 第二次实测，门自己咬出来的）。
+  //   光靠排序是「撞见一个补一个」，故补 `(?![A-Za-z0-9])`：**任何**扩展名都不许只匹前缀。
+  //   两层都留着 —— 断言是判据，排序是冗余。金丝雀三条分别钉住 tsx / json / 未列出的 mdx。
+  const re = /`?((?:apps|packages|scripts|docs)\/[A-Za-z0-9_./@-]+\.(?:tsx|ts|mjs|json|jsonc|js|sql|md|css|sh)(?![A-Za-z0-9]))(?::(\d+))?`?(?:\s*\(([A-Za-z0-9_$.]+)\))?/g;
   for (const m of text.matchAll(re)) {
     out.push({ file: m[1], line: m[2] ? Number(m[2]) : null, symbol: m[3] ?? null, raw: m[0] });
   }
@@ -88,6 +92,15 @@ function canary() {
   // .tsx 专项金丝雀：钉死「交替最左优先」那个 bug（本门第一次跑就犯过，见 extractAnchors 注释）。
   const tsx = extractAnchors("`apps/frontend-shell/src/pages/admin/BuildPipelinesPage.tsx`");
   check("正金丝雀·tsx 不被截断", tsx.length === 1 && tsx[0].file.endsWith(".tsx"), `抽出 ${JSON.stringify(tsx.map((a) => a.file))} ⇒ 扩展名被截`);
+  const js = extractAnchors("`scripts/gate-ledger.json` 与 `scripts/x.js`");
+  check("正金丝雀·json 不被截断", js.length === 2 && js[0].file.endsWith(".json") && js[1].file.endsWith(".js"),
+        `抽出 ${JSON.stringify(js.map((a) => a.file))} ⇒ 扩展名被截`);
+  // 第三条专钉**边界断言**本身。上面两条其实是「长优先排序」在挡，把断言删掉它们照样绿 ——
+  // 那样金丝雀只是在给排序背书，断言这一层等于没测（2026-08-13 实测：删断言后 RC 仍 0）。
+  // `docs/x.mdx` 是排序挡不住的形态：清单里没有 mdx，`md` 会匹上前缀，只有断言拦得住。
+  const mdx = extractAnchors("见 `docs/x.mdx`");
+  check("负金丝雀·未列出的扩展名不许匹前缀", mdx.length === 0,
+        `抽出 ${JSON.stringify(mdx.map((a) => a.file))} ⇒ 边界断言失效，会报出假的 FILE_MISSING`);
   const br = extractBranches("基线 `origin/claude/inspiring-gates-aqczjg`，交回 claude/handoff-wo-x");
   check("金丝雀·分支抽取", br.length === 2, `应抽出 2 条，实得 ${br.length}`);
   // git 自证：判据必须落在 **RC** 上，不是输出非空 —— `git rev-parse` 不带 `--verify -q` 时
@@ -95,7 +108,7 @@ function canary() {
   check("git 正金丝雀", git(["rev-parse", "--verify", "-q", "HEAD:package.json"]).ok, "读不到 HEAD:package.json");
   check("git 负金丝雀", !git(["rev-parse", "--verify", "-q", "HEAD:__no_such_file_zzz__"]).ok, "不存在的路径也报成功 ⇒ 判据恒真");
 
-  return { passed, total, detail: "锚点正/负/tsx · 分支抽取 · git 正/负" };
+  return { passed, total, detail: "锚点正/负 · tsx/json 不截断 · mdx 前缀不匹 · 分支抽取 · git 正/负" };
 }
 
 function main() {
