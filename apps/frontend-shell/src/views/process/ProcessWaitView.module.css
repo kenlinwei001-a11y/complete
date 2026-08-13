@@ -5,6 +5,9 @@
    门：process-wait.test.tsx「四态四色」组 —— 本文件出现 hex 或任何颜色函数字面量即红。 */
 
 .root {
+  /* --kind-color 的缺省定义：组件注入（inline style）优先于此；给缺省值是为让
+     「幽灵令牌」门看到定义处 —— 注入缺失时落到 --c-process 而不是继承成黑。 */
+  --kind-color: var(--c-process);
   display: flex;
   flex-direction: column;
   gap: 12px;
