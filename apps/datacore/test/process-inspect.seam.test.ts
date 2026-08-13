@@ -24,6 +24,8 @@ import { ADMIN, makeApp, seedBattery, type TestApp } from "./helpers.js";
  * 写死一个 key 的话，种子一改这条断言会静默失效（或者更糟：改成永远查不到、于是恒空恒绿）。
  */
 
+const by = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 async function boot(): Promise<TestApp> {
   const t = await makeApp();
   await seedBattery(t);
@@ -124,19 +126,23 @@ describe("WO-V4-INSPECT · 流程节点检视投影", () => {
     const byCarrier = new Map<string, string[]>();
     for (const d of defs) byCarrier.set(d.carrierTypeKey, [...(byCarrier.get(d.carrierTypeKey) ?? []), d.key]);
     const shared = [...byCarrier.entries()].filter(([, ks]) => ks.length > 1).sort((a, b) => (a[0] < b[0] ? -1 : 1));
-    // 先证有：65 条里确实存在被 ≥2 条流程共用的承载物（契约文件头写明「共用不是空壳」）
-    expect(shared.length).toBeGreaterThan(0);
+    // 先证有：65 条里确实存在被 ≥2 条流程共用的承载物（契约文件头写明「共用不是空壳」）。
+    // ⚠ 这里**不用** `toBeGreaterThan(0)`：那是存在性断言，"1 个共用"与"全都共用"同色
+    //   （coverage-blind 门的 EXISTS_FOR_ALL 形态）。下面对 shared **全集**逐条打端点，是 ∀ 不是 ∃。
+    expect(shared.length).toBeGreaterThanOrEqual(1);
 
-    const [carrierTypeKey, keys] = shared[0]!;
-    const sortedKeys = [...keys].sort();
-    const res = await inspect(t, sortedKeys[0]!);
-    const body = ProcessInspectResponseSchema.parse(res.json());
-    expect(body.process.carrierTypeKey).toBe(carrierTypeKey);
-    // 反查结果 = 同承载物的其它流程（不含自己）
-    expect(body.sharedCarrierProcesses.length).toBe(sortedKeys.length - 1);
-    expect(body.sharedCarrierProcesses.map((s) => s.key)).toEqual(sortedKeys.slice(1));
-    // R14：同承载物流程的域名/职能名也随响应下发（前端零写死）
-    expect(body.sharedCarrierProcesses.filter((s) => s.domainName !== null).length).toBe(sortedKeys.length - 1);
+    for (const [carrierTypeKey, keys] of shared) {
+      const sortedKeys = [...keys].sort();
+      for (const k of sortedKeys) {
+        const res = await inspect(t, k);
+        const body = ProcessInspectResponseSchema.parse(res.json());
+        expect(body.process.carrierTypeKey).toBe(carrierTypeKey);
+        // 反查结果 = 同承载物的其它流程（**不含自己**）—— 逐个 key 都要成立，不是抽一个
+        expect(body.sharedCarrierProcesses.map((s) => s.key)).toEqual(sortedKeys.filter((x) => x !== k));
+        // R14：同承载物流程的域名/职能名也随响应下发（前端零写死）
+        expect(body.sharedCarrierProcesses.filter((s) => s.domainName !== null).length).toBe(sortedKeys.length - 1);
+      }
+    }
   });
 
   it("⑤ 一跳关系沿 OntologyLink 带方向与基数；对端类型不存在时计数为 null 而不是 0", async () => {
@@ -145,11 +151,17 @@ describe("WO-V4-INSPECT · 流程节点检视投影", () => {
     expect(links.length).toBeGreaterThan(50); // 基数下限：链路表够大，下面的挑选才有意义
 
     const defs = await t.repos.processDefinitions.list(DEMO_TENANT);
-    const linked = defs
-      .filter((d) => links.some((l) => l.fromTypeKey === d.carrierTypeKey || l.toTypeKey === d.carrierTypeKey))
-      .map((d) => d.key)
-      .sort();
-    expect(linked.length).toBeGreaterThan(0); // 先证有
+    const linkedTypes = new Set(links.flatMap((l) => [l.fromTypeKey, l.toTypeKey]));
+    const linked = defs.filter((d) => linkedTypes.has(d.carrierTypeKey)).map((d) => d.key).sort();
+    // ⚠ 不用 `toBeGreaterThan(0)`：那是存在性断言，"1 条有邻居"与"47 条有邻居"同色。
+    //   实测（demo 种子·65 条流程）承载物在链路表里有邻居的是 **47 条**；这里咬一个真实规模下限，
+    //   哪天链路表被砍到只剩零星几条，本条当场红（而存在性断言不会）。
+    expect(linked.length).toBeGreaterThanOrEqual(40);
+    // ∀ 结构断言（对全集，不抽样）：候选集合里每一条的承载类型都确实在链路表两端之一出现
+    for (const k of linked) {
+      const d = defs.find((x) => x.key === k)!;
+      expect(linkedTypes.has(d.carrierTypeKey)).toBe(true);
+    }
 
     const res = await inspect(t, linked[0]!);
     const body = ProcessInspectResponseSchema.parse(res.json());
@@ -169,25 +181,33 @@ describe("WO-V4-INSPECT · 流程节点检视投影", () => {
     const defs = await t.repos.processDefinitions.list(DEMO_TENANT);
     // 现算：哪些杠杆的承载类型真被某条流程用着（先证有，再断言）
     const carrierSet = new Set(defs.map((d) => d.carrierTypeKey));
-    const leverTypes = Object.keys(LEVER_PROP_META)
-      .map((k) => k.slice(0, k.lastIndexOf(".")))
-      .filter((tk) => carrierSet.has(tk));
-    expect(leverTypes.length).toBeGreaterThan(0);
+    const leverTypes = new Set(
+      Object.keys(LEVER_PROP_META)
+        .map((k) => k.slice(0, k.lastIndexOf(".")))
+        .filter((tk) => carrierSet.has(tk)),
+    );
+    // ⚠ 不用 `toBeGreaterThan(0)`（存在性 ⇒ "1 个"与"全部"同色）。实测 12 条杠杆落在 5 个对象类型上，
+    //   其中 5 个既是杠杆承载类型又是某条流程的承载物（Line / MaterialBalance / Order / ChangeoverMatrix / Shipment）。
+    expect(leverTypes.size).toBeGreaterThanOrEqual(3);
 
-    const target = defs.filter((d) => leverTypes.includes(d.carrierTypeKey)).sort((a, b) => (a.key < b.key ? -1 : 1))[0]!;
-    const res = await inspect(t, target.key);
-    const body = ProcessInspectResponseSchema.parse(res.json());
-    expect(body.levers.length).toBeGreaterThan(0);
-    for (const l of body.levers) {
-      expect(l.objectTypeKey).toBe(target.carrierTypeKey);
-      // 标签/单位/值类必须**逐字**等于单一真值表，任何一处再写一份都会在这里红
-      const meta = LEVER_PROP_META[l.leverKey]!;
-      expect(l.label).toBe(meta.label);
-      expect(l.unit).toBe(meta.unit);
-      expect(l.valueKind).toBe(meta.kind);
-      // 该杠杆至少打到本流程；域名随响应下发（前端零写死「这条杠杆影响哪几个域」）
-      expect(l.processKeys).toContain(target.key);
-      expect(l.domains.length).toBeGreaterThan(0);
+    // ∀：**每一条**承载类型上有杠杆的流程都要能把杠杆下发出来，不是抽一条
+    const targets = defs.filter((d) => leverTypes.has(d.carrierTypeKey)).sort((a, b) => by(a.key, b.key));
+    expect(targets.length).toBeGreaterThanOrEqual(3);
+    for (const target of targets) {
+      const res = await inspect(t, target.key);
+      const body = ProcessInspectResponseSchema.parse(res.json());
+      expect(body.levers.length).toBeGreaterThanOrEqual(1);
+      for (const l of body.levers) {
+        expect(l.objectTypeKey).toBe(target.carrierTypeKey);
+        // 标签/单位/值类必须**逐字**等于单一真值表，任何一处再写一份都会在这里红
+        const meta = LEVER_PROP_META[l.leverKey]!;
+        expect(l.label).toBe(meta.label);
+        expect(l.unit).toBe(meta.unit);
+        expect(l.valueKind).toBe(meta.kind);
+        // 该杠杆至少打到本流程；域名随响应下发（前端零写死「这条杠杆影响哪几个域」）
+        expect(l.processKeys).toContain(target.key);
+        expect(l.domains.length).toBeGreaterThanOrEqual(1);
+      }
     }
   });
 

@@ -31,8 +31,11 @@ import REAL from "./fixtures/process-inspect-real.json";
 const T = zh.processWait.inspect;
 const RECORDINGS = REAL as Record<string, unknown>;
 
-/** 注册 inspect 路由的 handler（按 key 取录制；没有录制的 key 一律 404，不拿别的数据顶包）。 */
-function useInspectHandler(map: Record<string, unknown>) {
+/**
+ * 注册 inspect 路由的 handler：按 key 取录制；没有录制的 key 一律 404，**不拿别的数据顶包**。
+ * ⚠ 函数名不许以 `use` 开头 —— eslint 的 `react-hooks/rules-of-hooks` 会把它当 React Hook 判红。
+ */
+function installInspectHandler(map: Record<string, unknown>) {
   server.use(
     http.get("*/a/v1/process-definitions/:key/inspect", ({ params }) => {
       const body = map[String(params.key)];
@@ -43,7 +46,7 @@ function useInspectHandler(map: Record<string, unknown>) {
 }
 
 async function openPanel(processKey: string, recording: unknown) {
-  useInspectHandler({ [processKey]: recording });
+  installInspectHandler({ [processKey]: recording });
   loginAs("planner");
   renderApp("/v/process-wait");
   const btn = await screen.findByTestId(`pw-inspect-${processKey}`, undefined, { timeout: 5000 });
@@ -82,7 +85,7 @@ describe("WO-V4-INSPECT · §A 可达（从 URL 出发，不是直接 new 组件
   });
 
   it("没点开时不渲染面板（只给一句提示）—— 空面板与「还没点」在屏上必须分得开", async () => {
-    useInspectHandler({});
+    installInspectHandler({});
     loginAs("planner");
     renderApp("/v/process-wait");
     expect(await screen.findByTestId("pw-inspect-hint", undefined, { timeout: 5000 })).toHaveTextContent(T.openHint);
