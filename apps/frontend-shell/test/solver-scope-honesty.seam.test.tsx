@@ -144,6 +144,27 @@ describe("欠账 #178 · 作用域诚实位上屏（后→前接缝·两个方�
         level: "SCOPED",
         scopedTo: "aggressive",
       });
+      // kit_readiness 的 BASE 路（`extended.ts:749` 装配名 kitScope·随行输出 `:248`）——
+      // 「算的是谁」要报**基地中文名**，不是 baseId（id 用户不认识，拿它当名字等于没说）。
+      expect(
+        readScopeHonesty({
+          scope: { mode: "BASE", baseId: "changzhou", baseName: "常州", orderPoolTotal: 12, sampled: 8, note: "仅 常州 基地可承接的订单（Order.bases ∋ changzhou）·非全网" },
+        }),
+      ).toMatchObject({ level: "SCOPED", scopedTo: "常州" });
+      expect(readScopeHonesty({ scope: { mode: "ALL", orderPoolTotal: 24, note: "全网口径（未指定基地·跨全部产地）" } })).toMatchObject({
+        level: "GLOBAL",
+        note: "全网口径（未指定基地·跨全部产地）",
+      });
+    });
+
+    it("形状⑥ quote_margin 的双维 scope **不认**（`extended.ts:918`）—— 压成单枚徽标必吞掉一维", () => {
+      // 型号维今天真生效 · 客户维恒 NOT_APPLIED：压进一个 {level,note} 只能说一维，
+      // 而消失掉的那一维恰恰是「换个客户名 margin 不会变」这句最该上屏的话。要接它得画两行。
+      expect(
+        readScopeHonesty({
+          scope: { modelId: "4680-NCM", modelDimension: "APPLIED", modelNote: "按型号真 BOM 逐行计", custName: "蔚途汽车", custDimension: "NOT_APPLIED", custNote: "客户维今天不生效" },
+        }),
+      ).toBeNull();
     });
 
     it("形状③ 专名维 dataMode:EMPTY（changeover_sequence.lineScope / quarterly_gap.quarterScope）", () => {

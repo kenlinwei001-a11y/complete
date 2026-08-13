@@ -14,7 +14,11 @@
  *
  * ── 三种本读取器**认**的形状（2026-08-13 亲手实测自 canonical）────────────────
  * 复验命令（行号会漂，符号才是可重复的判据；对不上时以命令输出为准并回写本注释）：
- *   `grep -rn 'scopeNote\|scope: { mode\|lineScope =\|quarterScope =' apps/datacore/src/solvers/`
+ *   `grep -rn 'scopeNote\|scope: { mode\|kitScope\|quoteScope\|lineScope =\|quarterScope =' apps/datacore/src/solvers/`
+ *   ⚠ **别只 grep `scope: {`** —— `kit_readiness` / `quote_margin` 的诚实位是先装配到局部变量
+ *   `kitScope` / `quoteScope`（`extended.ts:749/758` 与 `:918`），再在别处以 `scope: args.kitScope`
+ *   （`:248`）/ `scope: args.quoteScope`（`:455`）随行输出。只 grep 字面 `scope: {` 会漏掉这两个，
+ *   于是把「5 个求解器带扁平/对象诚实位」量成 3 个 —— 本文件第一版就是这么量错的。
  *
  *  ① **扁平串 + scopeNote** —— `{ scope: "BASE"|"ALL", scopeBaseId?, scopeBaseName?, scopeNote }`
  *     · `capacity_forecast` —— `apps/datacore/src/solvers/capacity.ts:442-444`（两分支全带）
@@ -23,14 +27,19 @@
  *       （`packages/contracts/src/solvers.ts:351-354`）。`capacity_forecast` 靠
  *       `CapacityForecastOutputSchema` 尾部的 `.catchall(z.unknown())`（同文件 `:152`）才没被
  *       `zod` strip 掉 —— 两条路都能到前端，但**机制不同**，改契约时别把 catchall 摘了。
- *  ② **对象 + mode** —— `{ scope: { mode: "CUSTOMER"|"SCENARIO"|"ALL"|"EXPLICIT", note?, … } }`
+ *  ② **对象 + mode** —— `{ scope: { mode: "BASE"|"ALL"|"CUSTOMER"|"SCENARIO"|"EXPLICIT", note?, … } }`
  *     · `credit_exposure` —— `solvers/extended.ts:968`（CUSTOMER·无 note）/ `:975`（ALL·有 note）
  *     · `capex_scenario`  —— `solvers/capex.ts:198-205`（EXPLICIT·有 note）/ `:221-227`（SCENARIO·无 note）
+ *     · `kit_readiness`   —— `solvers/extended.ts:749`（BASE·有 note）/ `:758`（ALL·有 note），
+ *       装配名 `kitScope`，随行输出 `:248`。⚠ 它另带 `orderPoolTotal`/`sampled`/`samplingNote`
+ *       这一组**抽样诚实位**：`shortageCount` 的分母是 `sampled` 不是订单池。那是**另一个命题**
+ *       （「算了几张」≠「算的是谁」），本文件不吞它 —— 谁给 `kit_readiness` 做界面，那两个数必须
+ *       进第一层（它们改变结论的读法），别指望这枚徽标替它说。
  *  ③ **专名维 + dataMode:"EMPTY"** —— `{ dataMode: "EMPTY", reason, missingInputs? }`
  *     · `changeover_sequence.lineScope`  —— `solvers/extended.ts:858-871`（随行输出 `:873`）
  *     · `quarterly_gap.quarterScope`     —— `solvers/extended.ts:1097-1111`（随行输出 `:1112`）
  *
- * ── 本读取器**不认**的两种形状（已实测存在·刻意不接·理由逐条写死在这里）──────────
+ * ── 本读取器**不认**的三种形状（已实测存在·刻意不接·理由逐条写死在这里）──────────
  * ④ `gap_attribution`：`scope:{ baseId, displayName, availableFactors, factorApplied?, … }`
  *    + `globalGap` + `noBaseData`（`solvers/service.ts:1739/1777/1812`）。没有 `mode` 也没有 `note`
  *    ⇒ 落到 `readModed` 返 `null`。**这是有意的**：`exposure:true` 说的是「敞口树·非全局分摊份额」，
@@ -42,6 +51,15 @@
  *    它是「你要的那一维我收到了」的回执，**未限定时字段整个不出现** ⇒ 恰好没有本文件要的那句
  *    「这个数是全域的」。当成诚实位读会得出相反结论（没字段=没限定=最该提醒，却什么都不画）。
  *    `chain_impediments` 那一路今天由 `views/sim/ChainImpedimentView.tsx:312` 另行显示。
+ * ⑥ `quote_margin`：`scope:{ modelId, modelDimension:"APPLIED"|"ALL", modelNote, custName,
+ *    custDimension:"NOT_APPLIED", custNote, missingInputs }`（装配名 `quoteScope`·
+ *    `solvers/extended.ts:918-936`，随行输出 `:455`）。**没有 `mode`** ⇒ 落到 `readModed` 返 `null`。
+ *    **这是有意的**：它是**两个彼此独立的维**（型号维今天真生效 · 客户维恒 `NOT_APPLIED`），
+ *    压进单个 `{level, note}` 必然只能说其中一维，另一维当场消失 —— 而消失掉的那一维恰恰是
+ *    「换个客户名 margin 不会变」这句最该上屏的话。要接它得画**两行**，不是一枚徽标。
+ *    今天 `quote_margin` 与 `kit_readiness` 在前端**都还没有任何调用方**
+ *    （`grep -rn 'kit_readiness\|quote_margin' apps/frontend-shell/src` 只命中
+ *    `mocks/fixtures.ts:1293` 的一条解读文案），所以这不是「接错地方」而是「还没有地方可接」。
  *
  * ── 归一后的三档，对应 CLAUDE.md 铁律 0.5 的三态（**不许混为一谈·混了用户会去修错地方**）──
  *  · `SCOPED`   实参真进了计算，这个数就是你要的那个范围的数 —— 报出算的是谁即可，不是警告。
@@ -91,7 +109,9 @@ function readModed(payload: Record<string, unknown>): ScopeHonesty | null {
   const mode = str(s.mode);
   if (!mode) return null;
   const note = str(s.note);
-  const scopedTo = str(s.custName) || str(s.scenarioKey) || undefined;
+  // 「算的是谁」在各求解器里叫不同的名字：客户名 / 情景名 / 基地中文名（`kit_readiness` 的 BASE 路）。
+  // 一律优先取**人看得懂的名字**，`baseId` 这类机器键垫底 —— id 用户不认识，拿它当名字等于没说。
+  const scopedTo = str(s.custName) || str(s.scenarioKey) || str(s.baseName) || str(s.baseId) || undefined;
   // EXPLICIT = 调用方直传数值/项目集 ⇒ 用户说的那个实参**没参与选型**，只当回显标签（capex_scenario 原话）。
   if (mode === "EXPLICIT") return note ? { level: "UNAPPLIED", note, field: "scope", scopedTo } : null;
   if (mode === "ALL") return note ? { level: "GLOBAL", note, field: "scope" } : null;
