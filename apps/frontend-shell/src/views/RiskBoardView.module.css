@@ -397,3 +397,41 @@
     grid-template-columns: 1fr;
   }
 }
+
+/*
+ * WO-UI-DECLUTTER-TOP3 · 第二层折叠区（docs/CONVENTION-ui-information-layering.md §1）
+ * ────────────────────────────────────────────────────────────────────────────
+ * 第一层只放「数值 / 状态 / 名字」；**诊断信息 · 调试信息 · 逐项明细**降到一次点击之后。
+ * `<summary>` 就是规范 §1 要求的那个「可见记号」——降层不是删除，静默降层等于删除。
+ *
+ * ⚠ 刻意**不设 font-size**：本页字号已 14 级（R-UI-2 说 ≤3），新增任何字号值都是往反方向走。
+ *   两个类都从上下文继承字号，只调颜色与间距。颜色一律走 tokens.css 既有令牌
+ *   （`--muted2` / `--txt` / `--line2` / `--panel2` 三套主题都有定义，非幽灵令牌；
+ *   经 `node scripts/check-css-token-defined.mjs` 复核）。
+ */
+.rkDiag {
+  margin-top: 6px;
+  border-top: 1px solid var(--line2);
+  padding-top: 6px;
+}
+.rkDiagSum,
+.rkCases > summary {
+  cursor: pointer;
+  color: var(--muted2);
+  user-select: none;
+}
+.rkDiagSum:hover,
+.rkCases > summary:hover {
+  color: var(--txt);
+}
+.rkCases {
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--panel2);
+  padding: 10px 12px;
+}
+.rkCases[open] > summary {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line2);
+  padding-bottom: 6px;
+}

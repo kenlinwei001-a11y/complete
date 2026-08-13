@@ -153,9 +153,12 @@ export default function DashboardView({ view }: ViewRendererProps) {
       <div className="panel" style={{ marginTop: 14, borderLeft: "3px solid var(--accent)" }} data-testid="dash-decision-entry">
         <div className="section-title">💡 决策推演</div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 220, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-            从越线根因一路到对症方案（各维真算 + provenance 下钻）、比对矩阵、触发规则、推荐组合与差距收窄试算——每个行动点开看为何做 / 何用 / 为何有用。
-          </div>
+          {/* WO-UI-DECLUTTER-TOP3：这段是「进去能做什么」的**说明**，不是结论 → 折叠（规范 §1）。
+              入口按钮本身仍是第一层，一点没藏。 */}
+          <details style={{ flex: 1, minWidth: 220, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+            <summary className={styles.foldSum}>进去能做什么？</summary>
+            <div>从越线根因一路到对症方案（各维真算 + provenance 下钻）、比对矩阵、触发规则、推荐组合与差距收窄试算——每个行动点开看为何做 / 何用 / 为何有用。</div>
+          </details>
           <button className="btn primary" data-testid="dash-decision-go" onClick={() => navigate("/v/decision-play")}>
             进入决策推演 ›
           </button>
@@ -192,7 +195,9 @@ function ProblemPanel() {
             className={styles.card}
             style={{ borderLeft: "3px solid var(--danger)", cursor: "pointer", textAlign: "left" }}
             data-testid={`dash-problem-${p.category}`}
-            title={zh.dash.problemDrill}
+            // WO-UI-DECLUTTER-TOP3：`title=` → `aria-label`（规范 §2 禁用原生 tooltip 充当浮层）。
+            // 「可点」这件事第一层已有 `›` 角标表达，无需再挂一条 OS tooltip。
+            aria-label={zh.dash.problemDrill}
             onClick={() => navigate(`/v/order-chain?problem=${encodeURIComponent(p.category)}`)}
           >
             <b>{p.title}</b>
@@ -383,8 +388,13 @@ function SupplyDemandAttributionPanel() {
   return wrap(
     <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
       <div className="section-title">供需失衡双向归因</div>
+      {/* 第一层留**数值**（总缺口）；「怎么分解出来的」属口径 → 折叠（规范 §1 / §2 R-UI-3）。 */}
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
-        产销总缺口 <b className="mono" data-testid="sdg-total">{view.totalGap}</b> {view.unit} · 反向双向分解：需求端 ⊥ 供给端 + residual（占比全由求解器真颗粒派生 · 前端零写死）
+        产销总缺口 <b className="mono" data-testid="sdg-total">{view.totalGap}</b> {view.unit}
+        <details className={styles.foldInline}>
+          <summary className={styles.foldSum}>怎么分解的？</summary>
+          <div>反向双向分解：需求端 ⊥ 供给端 + residual（占比全由求解器真颗粒派生 · 前端零写死）。</div>
+        </details>
       </div>
       {/* 双向占比条（需求端 ⊥ 供给端 + residual = 100%·勾稽可视） */}
       <div data-testid="sdg-split" style={{ display: "flex", height: 22, borderRadius: 4, overflow: "hidden", fontSize: 10, marginBottom: 12, background: "var(--panel2)" }}>
@@ -400,8 +410,15 @@ function SupplyDemandAttributionPanel() {
           note={!view.capacityConnected ? (
             // 诚实 GAP：Line.capacityDaily 未落（demo 仅种 max_capacity_day）→ 引擎不推产能缺口叶。
             // 绝不编造产能占比——如实标灰，待数据接入。
+            // WO-UI-DECLUTTER-TOP3：诚实位的**记号与结论**（⚠ 产能缺口叶未接）留第一层 ——
+            // 规范 §1 红线「诚实位允许降到浮层，绝不允许删除；静默降层等于删除」；
+            // 「是哪个字段没落库」属诊断信息 → 折叠。
             <div data-testid="sdg-capacity-empty" className="badge" style={{ marginTop: 6, color: "var(--muted2)", whiteSpace: "normal", lineHeight: 1.4 }}>
-              ⚠ 供给端产能缺口叶未接：Line.capacityDaily 未落库（当前仅 max_capacity_day）· 诚实空（未编造产能占比）
+              ⚠ 供给端产能缺口叶未接 · 诚实空
+              <details className={styles.foldInline}>
+                <summary className={styles.foldSum}>缺什么？</summary>
+                <div>Line.capacityDaily 未落库（当前仅 max_capacity_day）—— 引擎因此不推产能缺口叶，未编造产能占比。</div>
+              </details>
             </div>
           ) : null}
         />
@@ -486,6 +503,16 @@ function OrderLedgerWidget() {
           · {filtered.length} 单
         </span>
       </div>
+      {/*
+        WO-UI-DECLUTTER-TOP3（规范 §1：第一层放「怎么样」，第二层放「具体是什么」）：
+        上面那一行已经把**结论**给全了（综合毛利率 + 单数 + 细分筛选）。
+        这张 8 列 × 12 行的逐单台账是**明细**，按 §1 属第二层 → 一次点击展开。
+        `<summary>` 即 §1 要求的可见记号，行一条没删（§1 红线：允许降层，绝不允许删除）。
+        注：§4 的「明细表页」豁免不适用 —— 那条豁免给的是「用户专程来看全量行」的页面，
+        驾驶舱不是；专程看台账的入口是 `/v/order-chain`（点行即跳）。
+      */}
+      <details data-testid="ledger-detail-fold">
+        <summary className={styles.foldSum}>逐单明细（{filtered.length} 单）</summary>
       <table className="cmp" data-testid="ledger-table" style={{ fontSize: 12, width: "100%" }}>
         <thead><tr>
           <th>订单</th><th>客户</th><th>细分</th><th>型号</th>
@@ -496,7 +523,8 @@ function OrderLedgerWidget() {
         </tr></thead>
         <tbody>
           {filtered.slice(0, 12).map((r) => (
-            <tr key={r.so} data-testid={`ledger-row-${r.so}`} style={{ cursor: "pointer" }} title={zh.dash.ledgerDrill} onClick={() => navigate("/v/order-chain")}>
+            // 逐行 `title=` → `aria-label`（规范 §2）：整表一个语义，不必每行弹一次 OS tooltip。
+            <tr key={r.so} data-testid={`ledger-row-${r.so}`} style={{ cursor: "pointer" }} aria-label={zh.dash.ledgerDrill} onClick={() => navigate("/v/order-chain")}>
               <td>{r.so}</td><td>{r.cust}</td><td>{r.seg}</td><td>{r.model}</td>
               <td className="mono" style={{ textAlign: "right" }}>{r.qty.toLocaleString()}</td>
               <td className="mono" style={{ textAlign: "right", color: "var(--muted2)" }}>{r.due}</td>
@@ -506,8 +534,10 @@ function OrderLedgerWidget() {
           ))}
         </tbody>
       </table>
-      {/* 假5 披露脚注：综合毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 财务实测）。 */}
+      {/* 假5 披露脚注：综合毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 财务实测）。
+          诚实位随明细一起进第二层 —— 第一层的毛利率数字上仍挂着 `Provenance` 角标（可见记号未丢·规范 §1）。 */}
       <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }} data-testid="dash-ledger-gmnote">{zh.dash.ledgerGmNote}</div>
+      </details>
     </div>
   );
 }
@@ -747,7 +777,8 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
             key={m.metricId}
             data-testid={`metric-${m.metricId}`}
             data-selected={selected ? "1" : "0"}
-            title="点击下钻该指标根因（达成 / 未达成皆可）"
+            /* `title=` → `aria-label`（规范 §2）；「哪些行可以点」已收进右侧根因区的折叠说明。 */
+            aria-label="点击下钻该指标根因（达成 / 未达成皆可）"
             onClick={() => onSelect?.(selected ? null : { key: mk, name: m.name })}
             style={{
               display: "flex", flexDirection: "column", gap: 5, textAlign: "left", cursor: "pointer",
@@ -805,8 +836,14 @@ function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric:
   if (!metricKey) {
     return (
       <div data-testid="cockpit-rootcause" data-metric="">
+        {/* 操作提示是**指引**不是结论，但它同时是空态的唯一出路 —— 故第一层留一句短的，
+            括号里的适用范围折起来（规范 §1）。 */}
         <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }} data-testid="rootcause-hint">
-          点击左侧「经营指标」任一行 → 下钻该指标根因（达成 / 未达成皆可）
+          点左侧「经营指标」任一行下钻根因
+          <details className={styles.foldInline}>
+            <summary className={styles.foldSum}>哪些行可以点？</summary>
+            <div>达成 / 未达成的指标都可以下钻 —— 达成的会给达成结构（无缺口子树），不会空着。</div>
+          </details>
         </div>
         <ProvenanceDag data={fallbackDag} />
       </div>
@@ -823,13 +860,23 @@ function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric:
         // 达成·无缺口：诚实正向框（不空不报错）——solver noGap（levels 空）→ 仅展示达成结构根，不编缺口子树。
         <div className="panel" data-testid="rootcause-achieved" style={{ padding: 8, marginBottom: 8, borderLeft: "3px solid var(--ok)" }}>
           <b style={{ color: "var(--ok)" }}>✓ 「{rm.name}」已达成 · 无缺口</b>
+          {/* 实际 / 目标两个**数值**留第一层；「为什么不给缺口树」的诚实位说明折起来（规范 §1）。 */}
           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
-            实际 <b className="mono">{rm.actual}{rm.unit}</b> ≥ 目标 <b className="mono">{rm.target}{rm.unit}</b> —— 无需归因；下方为该指标达成结构（无缺口子树·诚实不编造）。
+            实际 <b className="mono">{rm.actual}{rm.unit}</b> ≥ 目标 <b className="mono">{rm.target}{rm.unit}</b>
+            <details className={styles.foldInline}>
+              <summary className={styles.foldSum}>那下方画的是什么？</summary>
+              <div>无需归因；下方为该指标达成结构（无缺口子树·诚实不编造）。</div>
+            </details>
           </div>
         </div>
       ) : (
+        // 指标名 + 缺口值留第一层；求解器名与归因方式属数据来源 → 折叠（规范 §1「浮层回答凭什么」）。
         <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }} data-testid="rootcause-drilled">
-          下钻指标「<b>{rm.name}</b>」根因 · 缺口 <b className="mono">{ga.totalGap ?? rm.gap}{rm.unit}</b>（gap_attribution 深度反向归因）
+          下钻指标「<b>{rm.name}</b>」根因 · 缺口 <b className="mono">{ga.totalGap ?? rm.gap}{rm.unit}</b>
+          <details className={styles.foldInline}>
+            <summary className={styles.foldSum}>怎么算的？</summary>
+            <div>gap_attribution 深度反向归因。</div>
+          </details>
         </div>
       )}
       <ProvenanceDag data={dag} />
@@ -905,8 +952,14 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
         <b data-testid="cf-base">{data.base}</b>·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> 点{TIGHTNESS_METRIC.label}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数） · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
       </div>
+      {/* WO-UI-DECLUTTER-TOP3：纵轴量纲与量程是**口径**（规范 §2 R-UI-3 原文点名的那一类）→ 折叠。
+          第一层留「纵轴 = 什么指标」这个**名字**与越线阈值这个**数值**，量程解释收进第二层。 */}
       <div data-testid="cf-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
-        纵轴：{TIGHTNESS_METRIC.label}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数·{TIGHTNESS_METRIC.hint}）· 越线阈值 {formatTightness(data.threshold)}
+        纵轴：{TIGHTNESS_METRIC.label} · 越线阈值 {formatTightness(data.threshold)}
+        <details className={styles.foldInline}>
+          <summary className={styles.foldSum}>量程？</summary>
+          <div>{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数 · {TIGHTNESS_METRIC.hint}</div>
+        </details>
       </div>
       <EChart
         height={180}
@@ -1060,7 +1113,8 @@ function KpiWidget({ value, unit, decor }: { value: unknown; unit?: string; deco
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 10 }}>
           {sd ? <DeltaPill delta={sd.delta} tone={sd.tone} unit={d.deltaUnit} testId={`kpi-delta`} /> : <span />}
           {d.spark && d.spark.length >= 2 && (
-            <span title={d.sparkLabel}>
+            /* `title=` → `aria-label`（规范 §2）：迷你折线只有 ~40px 宽，落不下 `?`；标签同值给读屏。 */
+            <span aria-label={d.sparkLabel}>
               <Sparkline series={d.spark} tone={sd?.tone ?? d.deltaTone ?? "flat"} />
             </span>
           )}
