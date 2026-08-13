@@ -690,6 +690,30 @@ export const zh = {
         cta: "查看详情 →",
         ctaAria: "在诊断抽屉里看完整就绪认证",
       },
+      /**
+       * WO-SANDBOX-V3 · 三区骨架的区名与「这一区回答什么」。
+       *
+       * 三区各自的判据是**能不能用一句话说清它回答什么**（PRD §1）——
+       * 答不出就不该在第一层。所以每个区名后面那一句问句不是装饰，是这一区的**准入判据**：
+       * 往区里加东西之前先问「它回答的是这一句吗」。
+       */
+      zones: {
+        inputTitle: "① 扰动因素",
+        inputQuestion: "我要试什么？",
+        canvasTitle: "② 业务端到端路线图",
+        canvasQuestion: "这条链现在长什么样",
+        impactTitle: "③ 影响带",
+        impactQuestion: "试了之后，哪里变了、值多少钱",
+        scopeTitle: "范围",
+        impedimentList: "阻滞点逐条",
+        rows: " 条",
+        pareto: "全链损失 Pareto · 环节级",
+        paretoWaiting: "等 chain_loss_attribution",
+        paretoHeadline: (top: number, total: number, pct: string, days: string) =>
+          `Top${top}/${total} 吃掉 ${pct} 损失 · 全链非增值 ${days}D`,
+        metrics: "全链指标",
+        metricsCount: (n: number) => `${n} 项`,
+      },
       info: {
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
