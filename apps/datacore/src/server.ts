@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -84,6 +84,11 @@ async function main(): Promise<void> {
       phase("seed:process-layer");
       await seedDemoProcessLayer(repos);
       logger.info("SEED_DEMO=1: seeded business process layer (13 domains × 65 processes)");
+      // WO-ORG-WORLD 组织世界（七世界之②）：部门/角色/人 + 职权 + 审批额度 + 代理。
+      // 与流程层同层级的配置数据；`org.world` 仍是暗发（defaultOn:false），播了数据路由照样 404 直到产品开门。
+      phase("seed:org-world");
+      await seedDemoOrgWorld(repos);
+      logger.info("SEED_DEMO=1: seeded organization world (departments/roles/persons + authorities/limits/delegation)");
       // WO-LIGHTUP：生产 demo 点亮 5 个 QOS 暗发功能（DRIL/反思/free-llm/coordinator/compose-path）——仅生产播种路径，不入基座 seedDemo。
       phase("seed:entitlements");
       await seedDemoEntitlements(repos);

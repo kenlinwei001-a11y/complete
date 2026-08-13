@@ -66,6 +66,17 @@ import { z } from "zod";
  * 也无状态机、也无消费方），那正是本仓「建了没接线」欠账的生产方式。
  * 真要做审批，先有承载物再回来加这一项，并同步回写本注释。
  *
+ * ── 2026-08-10 回写（WO-PROCESS-INSTANCE）：本词表**仍是四值，一个字没动** ──
+ * `WAITING_APPROVAL` 落在**运行时层** `process-runtime.ts` 的 `ProcessTask.status`，
+ * 不在本文件的 `ProcessDefinition.waitKind`。两者不是同一件事：
+ *  · 本词表 = 「**这类流程**通常卡在哪类等待」（模板/平均值）——仓主裁「流程审批不体现」
+ *    针对的正是这一层，即不做「流程定义自带审批环节」那套元能力，故维持四值；
+ *  · 运行时 = 「**这一单**此刻正卡在一个已存在的 `ActionDraft` 上」——那是对既有 S2
+ *    审批事实（`actions.ts` `approvalSteps[]` + `DRAFT→PENDING_APPROVAL→APPROVED`）的如实转述，
+ *    上面那句「先有承载物再回来加」的条件在那一层是满足的（承载物/状态机/消费方三者俱全）。
+ * 运行时那五值是 `[...PROCESS_WAIT_KINDS, "WAITING_APPROVAL"]` **派生**的，不是手抄一份 ——
+ * 本词表增删一个值，那边自动跟随，不会漂移。派生关系由 `process-instance.test.ts` 断言。
+ *
  * ── 四种各自的判据（写清楚，免得下一个人凭语感挑）───────────────────────
  *  · `WAITING_USER`            等**人**做动作/拿主意（评审、拍板、录入、签字以外的操作）。
  *  · `WAITING_DATA`            等**上游数据齐**才能算（预测、MRP、良率分析、指标监控）。

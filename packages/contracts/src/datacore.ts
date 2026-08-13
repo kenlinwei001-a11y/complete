@@ -187,6 +187,20 @@ export function ruleParamRef(param: string): string {
   return `${RULE_PARAM_NAMESPACE}.${param}`;
 }
 
+/**
+ * 一个被绑定的 param 在**规则自己的判定**里扮演什么角色 —— 决定它是否**必须**被 expression 引用。
+ *
+ * 为什么必须显式登记（不能靠猜，也不能一刀切）：
+ *  · `threshold`（阈值）—— 规则判定的比较对象，如 C18 现金底线、C09 时延上限。这类 param 若**不**被
+ *    expression 引用，就意味着同一个业务数在这条规则上又有了第二份（expression 里的字面量），
+ *    于是「改 params 改了推演、规则判定纹丝不动」的 G-C08-EXPR-PARAM-SPLIT 立刻复发。故**强制引用**。
+ *  · `coefficient`（系数）—— 只喂求解器算数、不参与本规则判定，如 C04 认证降额系数、C09 降级后系数。
+ *    这类 param 在 expression 里**本来就不该出现**；一刀切要求引用只会逼出一个假阈值。
+ *
+ * 一刀切两个方向都会错，所以角色写进契约、由 `assertBoundThresholdsReferenced` 在发布闸上强制。
+ */
+export type RuleParamRole = "threshold" | "coefficient";
+
 export interface RuleParamBinding {
   /** 规则码（如 C09）。 */
   ruleKey: string;
@@ -194,23 +208,62 @@ export interface RuleParamBinding {
   param: string;
   /** `solver_params` 内的点分路径（段可含中文枚举键，如 `certFactors.认证中`）。 */
   path: string;
+  /** 该 param 是否参与本规则判定（决定 expression 是否必须引用它）。 */
+  role: RuleParamRole;
   /** 人读补注：这个阈值在推演里怎么用。 */
   note: string;
 }
 
 export const RULE_PARAM_BINDINGS: readonly RuleParamBinding[] = [
-  { ruleKey: "C04", param: "productionFactor", path: "certFactors.量产", note: "量产认证产线产能计入系数（capacity_forecast/capex/sop/planviews 逐基地乘）" },
-  { ruleKey: "C04", param: "pendingCertFactor", path: "certFactors.认证中", note: "认证中产线降额系数——C04「仅认证产线计入产能」的数值面" },
-  { ruleKey: "C09", param: "staleHours", path: "health.staleHours", note: "关键数据源新鲜度延迟阈值（h）：超过即触发 P90 临时降级" },
-  { ruleKey: "C09", param: "degradedFactor", path: "health.degraded", note: "降级后的 P90 系数（正常系数 health.normal 归 M11 校准 p90_health，不由规则声明）" },
-  { ruleKey: "C18", param: "cashFloor", path: "sop.cashFloor", note: "现金垫底线（亿）：S&OP 版本校验 s4 的 cashOk 判据" },
-  { ruleKey: "C18", param: "cashFloor", path: "planGenerate.targets.cashFloor", note: "同一条 C18 的另一个消费口径（plan_generate 硬约束 hardViol='C18'）——两处必须同源，否则同一条规则的两个消费方各说各话" },
-  { ruleKey: "C21", param: "balanceDeviationPct", path: "sop.dvThreshold", note: "产销平衡偏差阈值（比率）：S&OP 偏差判定" },
+  // C04 两个 param 都是**系数**：它的 expression 是分类谓词（认证状态≠量产），里面没有可参数化的
+  // 数值阈值。硬要求引用只会造出一个假阈值 —— 这条规则本来就没有 EXPR-PARAM-SPLIT 那个病。
+  { ruleKey: "C04", param: "productionFactor", path: "certFactors.量产", role: "coefficient", note: "量产认证产线产能计入系数（capacity_forecast/capex/sop/planviews 逐基地乘）" },
+  { ruleKey: "C04", param: "pendingCertFactor", path: "certFactors.认证中", role: "coefficient", note: "认证中产线降额系数——C04「仅认证产线计入产能」的数值面" },
+  { ruleKey: "C09", param: "staleHours", path: "health.staleHours", role: "threshold", note: "关键数据源新鲜度延迟阈值（h）：超过即触发 P90 临时降级" },
+  { ruleKey: "C09", param: "degradedFactor", path: "health.degraded", role: "coefficient", note: "降级后的 P90 系数（正常系数 health.normal 归 M11 校准 p90_health，不由规则声明）" },
+  { ruleKey: "C18", param: "cashFloor", path: "sop.cashFloor", role: "threshold", note: "现金垫底线（亿）：S&OP 版本校验 s4 的 cashOk 判据" },
+  { ruleKey: "C18", param: "cashFloor", path: "planGenerate.targets.cashFloor", role: "threshold", note: "同一条 C18 的另一个消费口径（plan_generate 硬约束 hardViol='C18'）——两处必须同源，否则同一条规则的两个消费方各说各话" },
+  { ruleKey: "C21", param: "balanceDeviationPct", path: "sop.dvThreshold", role: "threshold", note: "产销平衡偏差阈值（比率）：S&OP 偏差判定" },
   // WO-RULE-EXPR-PARAMS：补上 `battery.ts` C08 注释里预告了却一直没接的那一行。此前
   // `C08.params.outsourceRatioMax` **全仓零消费方**（只在注释里被提到）= 纯诱饵：改它一个数都不动。
   // 接上后 `whatIf.outsourceMax`（capacity.ts what-if 触红线拒绝判定真读的那个数）成为 C08 的派生副本。
-  { ruleKey: "C08", param: "outsourceRatioMax", path: "whatIf.outsourceMax", note: "外协比例红线（比率 0–1）：what-if 触红线拒绝判定的上限（capacity.ts）" },
+  { ruleKey: "C08", param: "outsourceRatioMax", path: "whatIf.outsourceMax", role: "threshold", note: "外协比例红线（比率 0–1）：what-if 触红线拒绝判定的上限（capacity.ts）" },
 ] as const;
+
+/**
+ * 发布闸的**反向**校验（`assertValidExpression` 只查正向：引用的阈值都已声明）。
+ *
+ * 反向缺口是 `G-C08-EXPR-PARAM-SPLIT` 在**运行期**的残余面，§8 原文点了名：
+ * 「静态门看不见——门是源码扫描，看不到运行时规则记录」。种子期 `battery.ts` 已单源，但管理员在
+ * 规则编辑器里把 C18 的 `< params.cashFloor` 改回 `< 50` 再发布，**今天照样通过**：
+ * 正向校验只问「引用的都声明了吗」，`< 50` 一个引用都没有 ⇒ 恒过。于是阈值又变回两份
+ * （expression 里的 50 与 params.cashFloor），求解器按 params 算、规则判定按 50 走 —— 病灶原地复发。
+ *
+ * 本函数把那道门补上：凡 `RULE_PARAM_BINDINGS` 里登记为 `threshold` 的 param，只要这条规则**声明了它**
+ * （数值），expression 就**必须引用** `params.<名>`。返回缺失的引用清单（空 = 通过）。
+ *
+ * 诚实边界：只管**被绑定**的 param（即真有第二个消费方、真会分叉的那些）。未绑定规则的阈值写在
+ * expression 里是**单源**（没有第二份），不在本门管辖范围 —— 一刀切会逼所有规则长出假 params。
+ *
+ * @param referencedParams expression 里实际出现的 `params.<名>` 集合（由调用方用 DSL 解析器提供，
+ *        不在此处做字符串匹配 —— 注释/字符串字面量里的 `params.x` 不算引用）。
+ */
+export function missingBoundThresholdRefs(
+  ruleKey: string,
+  declaredParams: Record<string, unknown> | undefined,
+  referencedParams: ReadonlySet<string>,
+  bindings: readonly RuleParamBinding[] = RULE_PARAM_BINDINGS,
+): string[] {
+  const missing = new Set<string>();
+  for (const b of bindings) {
+    if (b.ruleKey !== ruleKey || b.role !== "threshold") continue;
+    const declared = declaredParams?.[b.param];
+    // 没声明这个阈值 → 本规则没打算用它，不强求（声明了才有分叉的可能）。
+    if (typeof declared !== "number" || !Number.isFinite(declared)) continue;
+    if (!referencedParams.has(b.param)) missing.add(b.param);
+  }
+  return [...missing].sort();
+}
 
 /** 一次投影里被规则改写的一个数值参数。 */
 export interface RuleParamChange {
