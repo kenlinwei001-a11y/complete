@@ -187,6 +187,18 @@
   padding: 15px 17px;
   background: var(--hover-tint);
 }
+/* WO-DISPOSITION-INLINE-ROW（WO-R1 2026-08-13 收编）：处置详情**行内展开行**的两个类。
+   被点行左侧留一道竖条（`rkPlanRowOpen`），展开行与它同色同条 —— 视觉上把"这段详情属于哪一行"
+   直接画出来；修前详情挂在 `</table>` 之后，这层归属关系在屏上完全不存在。 */
+.rkPlanRowOpen td:first-child {
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
+.rkPlanDetailRow > td {
+  padding: 0 8px 8px;
+  background: var(--hover-tint);
+  border-bottom: 1px solid var(--line2);
+  box-shadow: inset 2px 0 0 rgba(221, 126, 158, 0.55);
+}
 .rkDetH {
   display: flex;
   justify-content: space-between;
