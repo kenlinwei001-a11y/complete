@@ -1057,6 +1057,25 @@
       "notes": "",
       "disposition": "WIRE"
     },
+    "check-screen-value-provenance.mjs": {
+      "alias": "screen-value-provenance:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/views",
+        "apps/frontend-shell/src/pages",
+        "apps/frontend-shell/src/components"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-13 现跑八组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）",
+        "note": "M1 摘掉基线豁免 → RC=1，门当场点名 apps/frontend-shell/src/views/sim/SandboxView.tsx L123 `hash01(`${oid}|${v}`)` → 落点 row[v]，并给两条修法；M2 真修好——在顶栏加一个屏上来源记号 `<span data-testid=\"sandbox-value-origin\">合成数据·非实测</span>`（读回文件确认落地）→ RC=0 转绿，无记号文件 1→0；M3 撤销该记号 → RC=1 重新转红；M4 在**另一个**文件（views/cleanroom/CleanroomAttrView.tsx）注入一段新的哈希派生读数 → RC=1，棘轮咬新增并精确点名 L2。",
+        "note2": "退出码三态均现跑取证：S1 基线非法 JSON → RC=2；S2 门自变异令 analyzeSource 的 hits 恒空 → 3 条必中金丝雀开火 RC=2（**不是** RC=1 报「屏上数值都有记号」）；S3 门自变异把「标识符名也算记号」这条**曾经真犯过的错**加回去 → 必不中金丝雀 EMPTY_SANDBOX_SCOPE 当场开火 RC=2；S4 把扫描目录换成不存在的路径（模拟 cwd 不对）→ RC=2 报规模下界 0<100。金丝雀 10 条**全部是合成样例**，刻意不拿存量缺陷当必中样例——那样一来「缺陷被修好」会让门报「工具坏了」，正好把要咬的场景吞掉（同批 carrier 门的 M5 变异当场演示过这个陷阱）。",
+        "note3": "对照组是实测出来的、不是编的：同族 hash 占位在 views/sim/physicalTopology.ts（PROVENANCE_LABEL/PROVENANCE_BADGE，19 条记号）与 views/sim/inspectorModel.ts（emptyReason + 占位·未接真值，11 条记号）都判过——三个文件同族做法、只有一个不吭声，正是本门要区分的那件事。"
+      },
+      "notes": "射程诚实：本门**做不到全自动溯源**，是 WO 明确允许的「白名单 + 棘轮」形态，四条边界每次运行强制打印——① 只到**文件级**，不证记号贴在那个数旁边（SandboxView 恰是极端反例：同屏阻滞点行有「合成数据」徽标、顶栏一个都没有，这种同文件不同区域的缺席本门看不见）；② 不做数据流，追不到跨文件传播；③ 只认三类污染源（Math.imul 型哈希 / Math.random / 调用它们的本地函数），写死常数与 mock fixture 看不见；④ 记号判定偏假绿（只出现在 console.log 里的「占位」也算）。判定用 TypeScript AST 非行式正则：污染函数取不动点传递闭包，来源点要求进数值上下文（Math.round/floor/ceil/abs/min/max · toFixed · 算术）且排除 .toString(（id 生成）与几何/样式落点（dx/dy/width/opacity…，布局抖动不是屏上读数）；记号只认字符串/模板/JSX 文本字面量，**标识符名不算**（EMPTY_SANDBOX_SCOPE 会让 SandboxView 假装有记号——这条是实测逼出来的）。现算扫描面 174 个生产前端源文件、含来源点 3 个文件 / 8 处、无记号 1 个（已具名挂账）。"
+    },
     "check-scenario-slot-keys.mjs": {
       "alias": "scenario-slot-keys:check",
       "binding": "GATES_CHAIN",

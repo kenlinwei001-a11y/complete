@@ -1,0 +1,9 @@
+{
+  "note": "screen-value-provenance 棘轮基线：存量「含合成数值来源点却零来源记号」的具名豁免，只许降不许升。每条必须写 why。键 = 仓库相对文件路径。",
+  "generatedBy": "node scripts/check-screen-value-provenance.mjs --update",
+  "exempt": {
+    "apps/frontend-shell/src/views/sim/SandboxView.tsx": {
+      "why": "2026-08-13 本门首次运行现算的唯一存量违规。SandboxView.tsx:123 `for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);` —— 推演沙盘顶栏的 16 个读数由结构哈希派生。因为 hash01 在 [0,1) 上近似均匀，**全对象均值必然收敛到 50**：该文件自己的注释就写着实测这 16 个数全落在 49.5–50.4 之间。而同屏的阻滞点行**有**「合成数据」徽标，顶栏一个都没有——用户没有任何办法分辨顶栏那些数是不是真的。同族对照组两个文件都做对了：views/sim/physicalTopology.ts 的 PROVENANCE_LABEL/PROVENANCE_BADGE 逐格显示「占位·未接真值」/「占位」/「EMPTY·无数据源」；views/sim/inspectorModel.ts 的 jitter() 占位值带 emptyReason + 「占位·未接真值」。修法不属本单（要么把 tick0 世界态换成真溯源，要么给顶栏加占位徽标），故先具名挂账。⚠ 别为了变绿在本文件里随手塞一个含「占位」二字的字符串：本门只到文件级、确实拦不住，但那样做等于把一个可见的债换成一个看不见的谎。"
+    }
+  }
+}
