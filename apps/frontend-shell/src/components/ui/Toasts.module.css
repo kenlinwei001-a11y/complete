@@ -9,13 +9,15 @@
   max-width: 420px;
 }
 
+/* WO-HOVER-LAYER：同一串硬编码深色渐变的第 3 份拷贝。toast 是 position:fixed 的浮层，
+   浅色两套皮下 --txt 对比 1.03:1 / 1.02:1（＝看不见）。表面收口到 --popover-surface。 */
 .toast {
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.96), rgba(16, 21, 28, 0.96));
+  background: var(--popover-surface);
   border: 1px solid var(--line2);
   border-radius: 10px;
   padding: 10px 32px 10px 12px;
   position: relative;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--popover-shadow);
   font-size: 12.5px;
 }
 

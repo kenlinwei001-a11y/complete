@@ -453,6 +453,14 @@ export const zh = {
     },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-HOVER-LAYER（欠账 #104/#175 同族）：峰值的**口径**此前只挂在原生 `title=` 上 ——
+    // 浏览器 tooltip 延迟约 1 秒才出、触屏根本不出、不能选中复制，且这里的宿主本身
+    // 已经是个浮层（RiskPopover 走 portal），浮层里再套原生 tooltip 等于没做。
+    // 改为浮层里的**可见文字**：口径必须能被读到，不能藏在属性里。
+    peakCaliber: (min: number, max: number, hint: string) =>
+      `峰值口径：${min}–${max} 紧张度指数（${hint}）·非该因素本身的值`,
+    /** 逐日格的可访问名（读屏可达；视觉靠色块 + 下方图例给量程）。 */
+    dayCellAria: (day: number, v: string) => `D+${day} · ${v}`,
     /**
      * WO-UI-DECLUTTER-TOP3 · 浮层文案（`docs/CONVENTION-ui-information-layering.md` §1）。
      * 第一层只留「数值 / 状态 / 名字」，**口径 · 公式 · 为什么这么算 · 数据来源**一律降进 `?` 浮层；
@@ -590,6 +598,20 @@ export const zh = {
         ctaAria: "在诊断抽屉里看完整就绪认证",
       },
       info: {
+        /**
+         * WO-HOVER-LAYER：以下三条原先挂在**原生 `title=`** 上，按
+         * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3「公式与口径不在第一层，
+         * 且禁止用 HTML title 属性充当浮层」迁到 InfoPopover。
+         */
+        routingConfidenceTopic: "分类置信度",
+        routingConfidenceBody:
+          "量纲＝分类置信度 0–1（QOS routing.completed 事件的 confidence），越高越确定。与阈值 tauHigh / tauMid 同尺度比较，恒 0–1；满分是 1 不是 100。",
+        skillWriteModeTopic: "写模式（推导位）",
+        skillWriteModeBody:
+          "契约 isWriteModeSkill 的推导结果，非后端下发字段：会改变真值 或 需要审批 ⇒ 受 R4「真值只经 Action 审批链变更」约束，故必须产出 action_draft。",
+        llmNoReasoningTopic: "关推理",
+        llmNoReasoningBody:
+          "关掉该用途的推理（分类 / 选型等本不需推理）：推理型模型改用同 provider 的非推理兄弟出快答，是治本的降时延手段。",
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
         triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,

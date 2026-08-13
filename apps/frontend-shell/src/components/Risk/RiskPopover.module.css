@@ -1,12 +1,18 @@
+/* 欠账 #104 同族（WO-HOVER-LAYER）：本浮层此前自写了一张**硬编码深色**表面
+ *   background: linear-gradient(165deg, rgba(30,38,49,.97), rgba(14,19,26,.96));
+ * 它有两处病，第二处才是致命的：
+ *   ① 半透（α=.97/.96）⇒ 渲染像素仍与底下内容有关，对比度不是常量（#104 原病）；
+ *   ② **不随主题** ⇒ 冷蓝/暖砂两套皮下它仍是近黑盒子，而 --txt 在那两套里是近黑字。
+ *      实测（scripts 外算，见交付报告）：light 主题 --txt 对比 **1.15:1**、
+ *      warm 主题 **1.00:1**（亮度完全相同 —— 峰值数字在屏幕上直接消失）。
+ *      这比 .panel 磨砂更狠：磨砂至少"有时能读"，它是**恒定读不到**。
+ * 修法与 #104 一致：表面交给全局 .popover-surface（不透明·三套主题各自定义），
+ * 本类只留**几何**。不自写 background —— 自写就是给那张验过的表面开一条没人验的分身。 */
 .pop {
   position: fixed;
   z-index: 60;
   width: 260px;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(14, 19, 26, 0.96));
-  border: 1px solid var(--line2);
-  border-radius: 11px;
   padding: 10px 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 .head {
@@ -26,6 +32,14 @@
 }
 .metrics b {
   margin-left: 5px;
+}
+
+/* 峰值口径行（原为原生 `title=`，WO-HOVER-LAYER 提到可见层）。 */
+.caliber {
+  margin-bottom: 6px;
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--muted2);
 }
 
 .strip {
