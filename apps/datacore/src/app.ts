@@ -66,6 +66,7 @@ import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
@@ -3700,6 +3701,54 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 决策成效权重归集（本租户全部 REALIZED → 确定性聚合·后续 decision_play 排序可读·亲手真跑可观测）。
   app.get("/a/v1/decision-outcome-stats", async (req) => {
     return decisionKernel.outcomeStats(ctx(req));
+  });
+
+  // ---- WO-DECISION-CAUSAL-GRAPH · 决策因果图（只读投影·回答「为什么这个决策被触发」）-------------
+  //
+  // 两个数据源分两条路由，**不合成一条**：沙盘按 tick 记时、台账按 ISO 时刻记时，
+  // 且今天二者之间没有任何字段互指（详见 decision/causal-graph.ts 顶注的实测取证）。
+  // 合成一条路由就得在响应里编一个统一的"时间"，那是现编。
+  //
+  // 全部只读（GET）。entitlement `decision.causal-graph` **暗发** —— 关 = 404 FEATURE_NOT_FOUND（R3 先于 authz）。
+  const requireCausalGraph = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "decision.causal-graph"))) throw featureNotFound();
+  };
+  // 沙盘源：给定一次推演 → Cause(扰动) / Impact(传导轨迹 + 世界态) 真值抽取；其余三段诚实报缺。
+  app.get("/a/v1/causal-graphs/sim/:sessionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { sessionId } = req.params as { sessionId: string };
+    const s = await repos.sim.getSession(c.tenantId, sessionId); // R2：别租户的 session 读不到 → 404
+    if (!s) throw notFound("sim session not found");
+    // tick 0..curTick 全量读回（`trace` 只存在于 sim_tick_state 行上，是"谁把多少传给谁"的唯一真值）。
+    const ticks: { tick: number; state: TickState; trace: PropagationTrace[] | null }[] = [];
+    for (let i = 0; i <= s.curTick; i++) {
+      const row = await repos.sim.getTickState(c.tenantId, s.id, i);
+      // tick 0 行由 POST /sessions 建；缺行只可能是历史数据，跳过而不是补一个空世界（补了就是编）。
+      if (row) ticks.push({ tick: row.tick, state: row.state, trace: row.trace });
+    }
+    return buildCausalGraphFromSim({
+      tenantId: c.tenantId,
+      sessionId: s.id,
+      perturbations: await repos.sim.listPerturbations(c.tenantId, s.id),
+      ticks,
+      // PUBLISHED only：与 tick 路由（本文件 `listPropagationRules(c.tenantId, true)`）**同一个口径**，
+      // 免得因果图按一套规则解、推演按另一套跑。
+      rules: await repos.sim.listPropagationRules(c.tenantId, true),
+    });
+  });
+  // 台账源：给定一条决策 → 五段全覆盖（RESULT 段在 outcome 未回填时诚实报 NOT_YET_REALIZED）。
+  app.get("/a/v1/causal-graphs/decision/:decisionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { decisionId } = req.params as { decisionId: string };
+    const decision = await decisionKernel.get(c, decisionId); // R2 跨租户 404（kernel 内 notFound）
+    const drafts: NonNullable<Awaited<ReturnType<typeof repos.actionDrafts.get>>>[] = [];
+    for (const id of decision.actionDraftIds) {
+      const a = await repos.actionDrafts.get(c.tenantId, id);
+      if (a) drafts.push(a); // 查不到的由构图器落 caveat，不编一个假单
+    }
+    return buildCausalGraphFromDecision({ tenantId: c.tenantId, decision, actionDrafts: drafts });
   });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };
