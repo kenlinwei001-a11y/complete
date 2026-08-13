@@ -326,6 +326,21 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型" },
   { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
   { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求" },
+  // ── WO-A6-CONTENTION · 规则库里的**第一条多主体谓词**（`docs/PRD-sandbox-redesign.md` §9 A6 的前半段）──
+  // 病根（`docs/AUDIT-a6-rule-carriers.md` §4.4 实测）：此前 28 条 expression 的形状只有 5 种，
+  // **无一条是多主体谓词** —— 全是「某一个对象的某个量越某条线」。而「同一基地被 ≥2 条业务线争」
+  // 需要**跨多个对象先分桶再比**，规则库里一条都没有 ⇒ 「有没有争用」在规则层结构性判不出来。
+  // 同一份审计也证明这不是死路：DSL 的聚合算子 `SUM|MIN|MAX|COUNT|AVG`（`ruledsl.ts:11/66/502`）
+  // **实现有、测试有、28 条规则 0 条用**（「能力在、零消费方」）。本条就是它的第一个消费方。
+  //
+  // 表达式两个合取项各管一半，缺一条都会把判定变成别的东西：
+  //  ① `COUNT(Base.segClaims.dailyRate) > 1` —— **争的人得 ≥2**。摘掉它，单业务线压满的基地
+  //     （实测 jinhua/handan/zaozhuang 三个都超线）会被判成"跨业务线争用"，而那里根本没有第二条线可裁。
+  //  ② `Base.claimedDailyRate > Base.capacityDailyPacks` —— **索取真越过产能面**。摘掉它，
+  //     只要基地上有两条业务线就报争用，而两条线各占一半、产能绰绰有余时无须任何取舍。
+  // 阈值（产能面）是**另一个字段**而不是数字 ⇒ `readRuleThreshold` 判 source="field"：改数据即改判定，
+  // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
+  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
 ];
 
 /**
@@ -2865,6 +2880,10 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C22: ["Order"],
   C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order（marginPct/floorPct 与 Quote 命名空间同值·镜像 C15）·Quote 仅 eval 期注入命名空间非本体对象类型（沙盘 cert 前向闭合硬前置）
   C25: ["ExternalSignal"],
+  // WO-A6-CONTENTION：争用发生在基地的产能面上，而「谁在争」来自订单（`Order` 是全本体**唯一**
+  // 同时承载业务线维与基地维的对象·`AUDIT-a6-rule-carriers.md` §4.2），「保谁」的经营参数来自
+  // `DemandSegment`（其 marginPct/floorPct 逐值来自 `SEG_REGISTRY`）。三类缺一条这条规则就判不动。
+  C34: ["Base", "Order", "DemandSegment"],
 };
 
 export interface GeneratedBattery {

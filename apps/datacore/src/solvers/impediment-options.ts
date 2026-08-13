@@ -56,7 +56,14 @@ import type { LinkInstance, ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
 import { resolveField } from "../ruledsl.js";
 import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
-import { breachAmount, readRuleThreshold, type ImpedimentRuleBinding, type RuleSnapshot } from "./chain-impediment.js";
+import {
+  breachAmount,
+  readBaseContention,
+  readRuleThreshold,
+  CONTENTION_LOCUS_TYPE,
+  type ImpedimentRuleBinding,
+  type RuleSnapshot,
+} from "./chain-impediment.js";
 import { LEVER_PROP_META } from "./lever-meta.js";
 import type { SolverContext } from "./types.js";
 
@@ -480,6 +487,18 @@ function judgeOnCtx(args: {
       extra.parallelThroughput = reading.capacityPerDay;
       extra.capacityUnitKind = reading.unitKind;
       extra.units = reading.units;
+    }
+  }
+  if (binding.locusObjectType === CONTENTION_LOCUS_TYPE) {
+    // WO-A6-CONTENTION：争用读数与判定器**共用同一份实现**（`readBaseContention`）。
+    // 上面那段 Process 的写法是"判定器算一遍、枚举器再算一遍"的先例（两处调同一个 `readProcessHardCapacity`）；
+    // 争用这一路刻意照它，但**连组装都不复制**——否则拨动产线产能后，枚举器算出的"施策后读数"
+    // 会与判定器的口径悄悄分叉，候选的效果就成了另一套账（本仓 metric-aware 反复炸的根）。
+    const reading = readBaseContention(obj, arraysOf("Order"), arraysOf("Line"));
+    if (reading.status === "OK") {
+      extra.segClaims = reading.segClaims;
+      extra.claimedDailyRate = reading.claimedDailyRate;
+      extra.capacityDailyPacks = reading.capacityDailyPacks;
     }
   }
   const prefix = binding.metricPath.split(".")[0] as string;

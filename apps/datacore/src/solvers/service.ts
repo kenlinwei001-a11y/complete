@@ -3370,15 +3370,22 @@ export class SolverService {
    * 本方法只做 IO（载上下文 + 载 MaterialBalance + 解析 scope），判定全在纯函数 `detectChainImpediments`
    * 里（R6：同输入同输出，无时钟/随机）。
    *
-   * R-ARG-FIDELITY：`businessTypes` / `modelIds` 两维本判定器**不支持** —— 显式拒绝而不是静默返全域
-   * （"信阳→全 12 基地"那族 plausible-but-WRONG 正是这么来的）。业务线 scope 入口属 WO-SANDBOX-E2。
+   * R-ARG-FIDELITY · **两维一放一留，理由不同，别一起改**：
+   *  · `businessTypes` —— **已放行**（WO-A6-CONTENTION）。放行的前提不是"用户想要"，是**判定器真读它了**：
+   *    `chain-impediment.ts` 的 locus 行现在带 `businessTypes` 承载位，承载的（`Order` / 争用面 `Base`）**真裁**，
+   *    不承载的（Line/Process/物料/数据源）**保留但逐条标 UNKNOWN 归属**（caveat + `segmentAttribution` 账 +
+   *    dataMode 降 PARTIAL）。原来那道 400 防的是"以为筛了其实没筛"的静默；现在筛不动的地方**出声**了，
+   *    fail-closed 的目的已由更精确的手段达成，再挡就是挡住真能筛的那一半。
+   *  · `modelIds` —— **仍然 400**。型号今天**没有 contracts 级单一来源册**（`MODEL_BASE_MAP` 在
+   *    `synthetic/battery.ts` 里，跨包不可依赖 R1），放开会立刻多出第二个真相源；且判定器里
+   *    没有任何 locus 承载型号维 ⇒ 放开等于静默返全域。诚实拒绝。
    */
   private async chainImpediments(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const rawScope = (args.scope ?? {}) as Record<string, unknown>;
-    if (rawScope.businessTypes !== undefined || rawScope.modelIds !== undefined) {
+    if (rawScope.modelIds !== undefined) {
       throw validationError(
-        "chain_impediments 暂不支持 scope.businessTypes / scope.modelIds 维度过滤 —— " +
-          "拒绝静默返全域（R-ARG-FIDELITY）；业务线 scope 入口见 WO-SANDBOX-E2",
+        "chain_impediments 暂不支持 scope.modelIds 维度过滤 —— 拒绝静默返全域（R-ARG-FIDELITY）：" +
+          "型号无 contracts 级单一来源册，且判定器无任何 locus 承载型号维",
       );
     }
     const parsed = ChainScopeSchema.safeParse(rawScope);
