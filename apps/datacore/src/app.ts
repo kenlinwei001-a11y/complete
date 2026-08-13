@@ -68,10 +68,12 @@ import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Ca
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
-import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
+import type { BuildPlan, ClosurePolicy, SliceLayersResponse } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { projectSliceLayers } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影
+// WO-V4-INSPECT · 业务流程节点检视只读投影（纯函数·零 IO·十六层复用上面那份 projectSliceLayers）
+import { adhocCarrierSliceKey, adhocCarrierSliceSpec, projectProcessInspect } from "./process/inspect.js";
 import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
 import { buildBatteryDomainCoverage } from "./ontology/refbase-coverage.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -93,6 +95,8 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+// WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
+import { LEVER_PROP_META } from "./solvers/lever-meta.js";
 import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
 import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory } from "@platform/contracts";
 // WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
@@ -3212,6 +3216,115 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       waitKinds: PROCESS_WAIT_KINDS,
       ownerFunctions: PROCESS_OWNER_FUNCTIONS,
     };
+  });
+  /**
+   * WO-V4-INSPECT · **业务流程节点检视**（PRD-sandbox-v4-backward-derivation §4.1 + §4.2）。
+   *
+   * 「点开一条流程，看它的完整本体关系」——一次纯 join，**零新真值源、零新表、零新事件**：
+   *   `process_definitions` × `process_domains` × `object_types` × `ontology_links` × `objects`
+   *
+   * ── 四条硬约束（逐条对应 PRD，别当装饰）──────────────────────────────────
+   * ① **`carrierTypeKey` 解析不到是必须处理的态**：种子期不校验它存在
+   *    （判据在 `test/process-layer.test.ts`），故 join 不上是**可能发生的**。
+   *    此时 `carrier.status="absent"` + 说明缺在哪一环，HTTP **仍是 200** ——
+   *    流程本身存在，缺的是它的承载物。不许崩，也不许假设一定 join 得上。
+   * ② **不下发运行态**：`ProcessTask`/`ProcessInstance` 全仓不存在 ⇒「此刻卡了多久 / 有几单堵着」
+   *    答不出来。只给 `stdDurationDays` 并在 `runtime` 里如实标口径 ——
+   *    ⛔ 绝不拿标准工期冒充实测卡顿（上面那个路由的口径注释已立此规矩，此处沿用同一条）。
+   * ③ **零新真值源**：全部现算派生。
+   * ④ **R2 租户**：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   *
+   * 十六层**复用** `ontology/slice-layers.ts` 的既有投影（不另造一套），依据一条
+   * **即席一跳切片**（root = 承载类型，paths = 该类型每条一跳链路）真跑 `executeSlice` ——
+   * 层计数必须对得回真子图的 nodes/edges，拿手工拼的假 graph 喂进去屏上的数就是编的。
+   * 承载类型 absent ⇒ `carrierLayers: null` + 说明，**不返回 16 个空壳假装算过**。
+   */
+  app.get("/a/v1/process-definitions/:key/inspect", async (req) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    const definition = definitions.find((d) => d.key === key);
+    if (!definition) throw notFound(`process definition ${key}`); // 流程本身不存在才 404
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeByKey = new Map(types.map((t) => [t.key, t]));
+    const carrierType = typeByKey.get(definition.carrierTypeKey);
+
+    // 对象计数只读**用得到的那几个类型**（承载类型 + 一跳邻居），不全表扫。
+    const countKeys = new Set<string>();
+    if (carrierType) countKeys.add(carrierType.key);
+    for (const l of linkTypes) {
+      if (l.fromTypeKey === definition.carrierTypeKey) countKeys.add(l.toTypeKey);
+      if (l.toTypeKey === definition.carrierTypeKey) countKeys.add(l.fromTypeKey);
+    }
+    const objectCounts = new Map<string, number>();
+    for (const k of [...countKeys].sort()) {
+      if (!typeByKey.has(k)) continue; // 类型不存在 ⇒ 不填（null ≠ 0，两者含义不同）
+      objectCounts.set(k, (await repos.objects.listByType(c.tenantId, k)).length);
+    }
+
+    // 十六层：承载类型在 ⇒ 真跑即席一跳切片；不在 ⇒ null（诚实说没算，不造空壳）。
+    let carrierLayers: SliceLayersResponse | null = null;
+    async function buildCarrierLayers(): Promise<SliceLayersResponse> {
+      const spec = adhocCarrierSliceSpec(definition!.carrierTypeKey, linkTypes);
+      const graph = await ontologyCore.executeSlice(c, spec, {});
+      const [ruleList, propagationRules, tsSeries, excObjs, actionTypeList, derivSpecs] = await Promise.all([
+        repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED"),
+        repos.sim.listPropagationRules(c.tenantId, true),
+        repos.tsSeries.list(c.tenantId),
+        repos.objects.listByType(c.tenantId, "ExceptionEvent"),
+        actions.listTypes(c),
+        repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
+      ]);
+      const exceptionRefTypes: Record<string, number> = {};
+      for (const o of excObjs) {
+        const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
+        exceptionRefTypes[rt] = (exceptionRefTypes[rt] ?? 0) + 1;
+      }
+      return projectSliceLayers({
+        sliceKey: adhocCarrierSliceKey(definition!.key),
+        version: 0, // 即席切片没有版本：它不是 slice_specs 里的记录，0 就是"无版本"这个事实
+        spec,
+        graph,
+        types,
+        linkTypes,
+        rules: ruleList,
+        propagationRules: propagationRules.map((p) => ({
+          key: p.key,
+          sourceTypeKey: p.sourceTypeKey,
+          sourceStateVar: p.sourceStateVar,
+          targetTypeKey: p.targetTypeKey,
+          targetStateVar: p.targetStateVar,
+          viaLinkKey: p.viaLinkKey,
+          coefficient: p.coefficient,
+        })),
+        tsSeries,
+        exceptionEventTotal: excObjs.length,
+        exceptionRefTypes,
+        // 即席切片不是发布物，没有任何 plan/intent/agent 会引用它 ⇒ ①②层恒空是**真结论**，
+        // 不是"没查"。层投影自己的 absentReason 会说明缺的是上报方。
+        references: [],
+        actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
+        derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+        args: {},
+        rootObjectTotal: objectCounts.get(definition!.carrierTypeKey) ?? 0,
+        rootObjectSamples: [],
+      });
+    }
+    if (carrierType) carrierLayers = await buildCarrierLayers();
+
+    return projectProcessInspect({
+      definition,
+      allDefinitions: definitions,
+      domains,
+      types,
+      linkTypes,
+      objectCounts,
+      leverMeta: LEVER_PROP_META,
+      carrierLayers,
+    });
   });
   // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
   app.post("/a/v1/slices/plan", async (req) => {
