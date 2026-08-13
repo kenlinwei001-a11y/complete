@@ -112,6 +112,12 @@ describe("WO-ORDER-ROW-DETAIL ① · 订单行内联展开详情", () => {
     expect(within(detail).getByTestId(`oc-detail-risks-title-${K_SO}`).textContent).toContain(String(row.risks.length));
 
     // —— 每条风险点逐格逐字节等于响应字段 ——
+    // 基数下限：上面的 toHaveLength(row.risks.length) 在 risks 为空时是 `toHaveLength(0)`——照样绿，
+    // 而下面这个 forEach 会跑 0 圈、一条逐格断言都不执行（假绿第 12 形态：0/N 与 N/N 同色）。
+    // 故先咬住「真有得可循环」，且要多于 1 条才验得出「不受 CHIP_LIMIT 截断」这件事。
+    // ⚠ 必须写成单参 `expect(x.length)`：本门的 hasCardinalityAnchor 要求 `)` 紧跟 .length，
+    //   双参 `expect(value, message)` 它一律识别不到（已实测，见 docs/WO-FOLLOWUP-2026-08-13.md §3）。
+    expect(row.risks.length).toBeGreaterThanOrEqual(2);
     row.risks.forEach((k, i) => {
       const cells = Array.from(screen.getByTestId(`oc-detail-risk-${K_SO}-${i}`).querySelectorAll("td")).map((td) => td.textContent);
       expect(cells[0]).toBe(k.base);

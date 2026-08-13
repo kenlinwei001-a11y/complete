@@ -144,6 +144,10 @@ describe("WO-69 P3 · 对象接口（多态抽象）", () => {
     const blocked = await publishOntology(t);
     expect(blocked.statusCode).toBe(400);
     const implementerKeys = Object.keys(BATTERY_TYPE_INTERFACE_BINDINGS).sort();
+    // 基数下限：本条断言的是「**全部**实现者同时被拦」。绑定表若哪天变空，
+    // 下面这个 for 会跑 0 圈、一条断言都不执行，而测试照旧全绿 —— 做满 N/N 与做 0/N 同色
+    // （假绿第 12 形态）。故先咬住「真有得可循环」，与本文件 :54 同法。
+    expect(implementerKeys.length).toBeGreaterThanOrEqual(2);
     for (const key of implementerKeys) {
       expect(blocked.body, `${key} 应被点名`).toContain(key);
     }

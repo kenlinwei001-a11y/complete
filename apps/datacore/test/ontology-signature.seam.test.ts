@@ -133,7 +133,15 @@ describe("WO-69 P2 · Function 本体签名", () => {
     const mutated = [{ typeKey: "Material", propKeys: ["bomUnit"] }];
     const byType = new Map(mutated.map((d) => [d.typeKey, d]));
     const missing = [...observed.get("Material")!].filter((p) => !byType.get("Material")!.propKeys.includes(p));
-    expect(missing).toContain("unitPrice");
+    // for-all 而不是 exists：`toContain("unitPrice")` 只证「至少判出了这一条」，
+    // 比对逻辑若**多判**或**少判**其它属性，它一概看不见（假绿第 12 形态：做满 N/N 与做 1/N 同色）。
+    // 故把「该判出的整套违规」独立算一遍再全等比，漏一个或多一个都红。
+    const expectedMissing = [...observed.get("Material")!].filter((p) => p !== "bomUnit").sort();
+    // 非空转守护：不用 toContain（本门的 EXISTS_FOR_ALL 判据正是要杜绝「只证存在一条」），
+    // 改成布尔全等 + 基数下限，既证原病例在集合里，又不退回 exists 形态。
+    expect(expectedMissing.length).toBeGreaterThanOrEqual(1);
+    expect(expectedMissing.includes("unitPrice")).toBe(true);
+    expect([...missing].sort()).toEqual(expectedMissing);
   }, 300_000);
 
   // ── S6：命名必须在已发布本体里解析 ───────────────────────────────────────────
