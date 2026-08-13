@@ -45,6 +45,18 @@ import styles from "./ProcurementLegsView.module.css";
  *
  * ── 主题 ──────────────────────────────────────────────────────────────────────
  * 零硬编码颜色：全部走 `styles/tokens.css` 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+ *
+ * ── 实测与复验（保质期）──────────────────────────────────────────────────────
+ * ⚠ 本段是 WO-R5 收编时补的：本文件原稿写于 2026-08-06，「零前端消费方」当时为真，
+ *   但**没有日期就没有保质期** —— `scripts/check-stale-claims.mjs` 为此报红，报得对。
+ *   （注：上文「实测」二字多处是 `MEASURED` 三态的**标签文案**，不是作者的观测声明；
+ *    但本注释块同时含端点/文件锚点，够得上「声明式用法」，故照门的要求补齐日期与复验方式。）
+ * **2026-08-13 实测**（收编时亲手跑）：
+ *   · `pnpm --filter frontend-shell exec vitest run test/procurement-legs-reachable.test.tsx` → **12/12 通过**
+ *   · `node scripts/check-view-reachable.mjs` → 视图模块 75 个 · 孤儿 **0** 个
+ *   · 变异反证：撤掉 `views/registry.ts` 的 `registerRenderer("procurement-legs", …)`
+ *     ⇒ 12 例全红（原文「registry 里没有 procurement-legs —— 组件再绿也没有任何路由渲染得到它」）。
+ * ⚠ 「零前端消费方」自 2026-08-13 起**已不成立**（本组件即消费方）；保留该句只为说明本页的来由。
  */
 
 type LoadState =

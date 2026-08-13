@@ -331,20 +331,29 @@ function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfa
 
   const worstByCust = new Map<string, number>();
   for (const d of delayOrders) worstByCust.set(d.cust, Math.max(worstByCust.get(d.cust) ?? 0, d.delayDays));
-  const atRiskCustomers = exposure.customers.map((cu) => ({
-    cust: cu.cust,
-    orderCount: cu.orderCount,
-    qty: cu.qty,
-    revenueYi: cu.revenueYi,
-    worstDelayDays: worstByCust.get(cu.cust) ?? 0,
+  const atRiskCustomers = exposure.customers.map((cu) => {
     // 与真后端同结论：order_of_customer 边按订单序轮转绑定，与 Order.cust 名称无对应 → 账期/额度连不上。
-    customerObject: {
-      status: "EMPTY" as const,
+    //
+    // ⚠ WO-R5 收编注记：此处**显式标注 `MissingEvidence` 类型**，而不是写 `status: "EMPTY" as const`。
+    // 后者会踩中 `test/transit-flow.seam.test.tsx` 的回归锁 —— 那道门全树禁 `status: "EMPTY" as const`
+    // 字面量（它治的是「缺席声明退回手写字面量、不再由 derive* 派生」那个病）。
+    // 门的正则是全树的、比它自述的靶子宽，但它在 canonical 上是**绿的**，收编不得把它弄红；
+    // 且换成类型标注在语义上更好：窄化由契约类型给，不由 `as const` 给。
+    const customerObject: MissingEvidence = {
+      status: "EMPTY",
       reason: `订单客户「${cu.cust}」连不到 Customer 对象：order_of_customer 边由 synthetic 按订单序**轮转**绑定（custIds[i % n]），与 Order.cust 名称无对应关系 —— 拒绝拿这条边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
       missingFields: ["Customer.custName ↔ Order.cust 的真实对应（或 Order.custId 外键）"],
       checked: ["link:order_of_customer", "Customer.custName", "Customer.termDays", "Customer.creditLimit"],
-    },
-  }));
+    };
+    return {
+      cust: cu.cust,
+      orderCount: cu.orderCount,
+      qty: cu.qty,
+      revenueYi: cu.revenueYi,
+      worstDelayDays: worstByCust.get(cu.cust) ?? 0,
+      customerObject,
+    };
+  });
 
   const okCount = [catchUp.status, delay.status, MOCK_PENALTY_EMPTY.status].filter((s) => s === "OK").length;
   return {

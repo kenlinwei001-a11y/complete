@@ -17,6 +17,18 @@
  *  · **三态不许画成两态**：`NOT_APPLICABLE`（本段结构上不存在·真值 0 天·有依据）与
  *    `EMPTY`（取不到真值·不知道）在契约里被特意分开，本层必须把这个区别**结构化地**带到 UI，
  *    而不是靠两种颜色（颜色不可断言、色觉障碍用户也读不出）。判据见 `LEG_STATUS_PRESENTATION`。
+ *
+ * ── 实测与复验（保质期）──────────────────────────────────────────────────────
+ * ⚠ 本段是 WO-R5 收编时补的：本文件原稿写于 2026-08-06，其中「零前端消费方」等说法**当时**为真，
+ *   但没有日期就没有保质期 —— `scripts/check-stale-claims.mjs`（G-STALE-MEASURED-CLAIM 的机械半）
+ *   为此报红，报得对。
+ * **2026-08-13 实测**（收编时亲手跑，非沿用原稿说法）：
+ *   · `pnpm --filter frontend-shell exec vitest run test/procurement-legs-reachable.test.tsx` → **12/12 通过**
+ *   · `node scripts/check-view-reachable.mjs` → 视图模块 75 个 · 孤儿 **0** 个
+ *   · 变异反证：撤掉 `views/registry.ts` 里 `registerRenderer("procurement-legs", …)` 那一行
+ *     ⇒ 上述 12 例**全红**，且可达门当场报「孤儿 1 个：ProcurementLegsView.tsx」。
+ * ⚠ 「零前端消费方」这句自 2026-08-13 起**已不再成立**（本文件自己就是那个消费方）——
+ *   上文保留它是为了说明**本文件为什么存在**，不是对今天状态的断言。
  */
 import {
   criticalProcurementLeg,
