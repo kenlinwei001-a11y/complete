@@ -11,10 +11,19 @@ import { withPropDisplayNames } from "./battery.js";
  * 商用车集团G 逾期 38 天｜6 批 >90 日呆滞｜成都 4680-NCM 碳超标｜2 单 PO 延迟。
  */
 
-const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrimaryKey = false): PropertyDef => ({
+// `description` 是**能力语义**不是可选装饰（`ontology-descriptions:check` 的原话），
+// 故 p() 必须能带它 —— 此前签名里根本没有这个位置，于是本文件新加的属性一律无法带描述，
+// 只能进棘轮基线挂账。给了位置，新属性才有「补描述」这条路可走。
+const p = (
+  propKey: string,
+  dataType: PropertyDef["dataType"] = "number",
+  isPrimaryKey = false,
+  description?: string,
+): PropertyDef => ({
   propKey,
   dataType,
   isPrimaryKey,
+  ...(description ? { description } : {}),
 });
 
 /**
@@ -152,7 +161,8 @@ export function extendedObjectTypes(): TypeDef[] {
     // amount 本就有（逾期金额）。接口约束的是**类型声明**，实例值可为空（未审批 = 尚无审批人）。
     def("OverdueRecord", "逾期记录", "finance", [
       p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"), p("amount"),
-      p("approver", "string"), p("approvedAt", "date"),
+      p("approver", "string", false, "审批人（用户标识）——WO-69 P3 `Approvable` 接口要求字段"),
+      p("approvedAt", "date", false, "审批通过时间（合成值，随对象 origin=SYNTHETIC 走诚实灰标注，不冒充真实审批留痕）"),
     ]),
     // WO-TIER3 毛利桥（gross_profit 专属反向归因域 drill 真对象·impactYi 由 DemandSegment×MaterialBalance 确定性派生）
     def("GrossMarginBridge", "毛利桥", "finance", [
@@ -176,7 +186,8 @@ export function extendedObjectTypes(): TypeDef[] {
     // ARInvoice.{amount,custName,invoiceId,overdueDays} → 接口 functions 的"可兑现性"在此类型上真被校验。
     def("ARInvoice", "应收发票", "commercial", [
       p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays"),
-      p("approver", "string"), p("approvedAt", "date"),
+      p("approver", "string", false, "审批人（用户标识）——WO-69 P3 `Approvable` 接口要求字段"),
+      p("approvedAt", "date", false, "审批通过时间（合成值，随对象 origin=SYNTHETIC 走诚实灰标注，不冒充真实审批留痕）"),
     ]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
