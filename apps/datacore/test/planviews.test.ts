@@ -235,7 +235,9 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     // catalog §3 C29（排产冻结期）/C33（碳护照）+ 规则即引用补全 C15（经营毛利底线）/C22（换型损失）
     // 作用域含 Order → 映射表含这些行（规则一等化后真定义可见，非"未找到定义"）。
     // WO-RC1-CLOSURE-SCOPE：C24 scope Quote→Order（毛利底线·镜像 C15）后，C24 亦为 Order 域一等规则，真定义可见。
-    expect(order.rules).toEqual(["C03", "C08", "C13", "C15", "C22", "C24", "C29", "C33"]);
+    // WO-A6-CONTENTION 立了 C34「跨业务线产能争用」，其 BATTERY_RULE_SCOPES 声明为
+    // ["Base","Order","DemandSegment"] —— 争用会打到订单，故 Order 域一等可见。金值随注册同步。
+    expect(order.rules).toEqual(["C03", "C08", "C13", "C15", "C22", "C24", "C29", "C33", "C34"]);
     expect(order.derivations.some((d) => d.includes("qty * unitPrice"))).toBe(true);
     // 求解器与 Agent 行
     const solverRows = rows.filter((r) => r.kind === "solver");

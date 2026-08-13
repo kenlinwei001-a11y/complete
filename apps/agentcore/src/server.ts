@@ -1574,7 +1574,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // Entitlement 先于 authz：功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND
   // ---------------------------------------------------------------------
   const requirePlanBuilderFeature = async (a: RequestAuth) => {
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    // ⚠ 传**整个 auth 对象**，不是 `a.token`：X-Debug-User 链路没有 token，
+    //   只传 .token 会让 entitlement 拉取恒失败 → fail-open 放行（欠账 #89）。
+    //   `entitlement-obo-seam.test.ts` ⑦ 有防回潮哨兵咬这个写法。
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     if (!featureEnabled(enabled, "admin.plan-builder")) {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "admin.plan-builder");
     }

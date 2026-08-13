@@ -2101,7 +2101,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "EnergyMeter.processKey": "所属工序", "EnergyMeter.energyPerUnit": "单位产品能耗",
   "EnergyMeter.gridFactor": "电网排放因子",
   "ChangeoverMatrix.pairId": "换型组合编号", "ChangeoverMatrix.fromModel": "换出型号",
-  "ChangeoverMatrix.toModel": "换入型号", "ChangeoverMatrix.minutes": "换型分钟数",
+  "ChangeoverMatrix.toModel": "换入型号", "ChangeoverMatrix.minutes": "时长",
   "ChangeoverMatrix.hours": "换型小时数", "ChangeoverMatrix.lineId": "产线",
   "Certification.certId": "认证编号", "Certification.modelId": "型号", "Certification.lineId": "产线",
   "Certification.status": "认证状态", "Certification.certHours": "认证工时",
