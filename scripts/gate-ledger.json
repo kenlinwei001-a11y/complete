@@ -1341,6 +1341,22 @@
       },
       "notes": "闭 G-LEVER-DEAD-LANDING：LEVER_PROP_META 登记了杠杆落点 Type.prop，但两处消费方（solvers/service.ts:418 leverPropMeta / solvers/impediment-options.ts:684）都是 `meta?.label ?? 裸键` 的兜底读法 ⇒ 表里多一条指向并不存在的属性，全链一个字都不报错，静默死在表里。既有 lever-binding-drift:check 验的是**因子层→有没有落点**（覆盖方向），本门验**反方向：落点→属性是否真存在**——两个方向的判据集合互不包含，实测 2026-08-13 前者全绿而 MaterialBalance.coverage 在 94 个类型里一个都找不到。判据现读 dist（batteryObjectTypes ∪ extendedObjectTypes），承认 properties ∪ derivedProperties ∪ stateVariables 三个承载位；刻意**无豁免表**（落点不存在 = 百分之百是死杠杆，没有中间态）。",
       "disposition": "WIRE"
+    },
+    "check-wo-anchors.mjs": {
+      "alias": "wo-anchors:check",
+      "binding": "NONE",
+      "guardedPaths": [
+        "docs/WO-*.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-13 三向变异全中（逐条 out=$(cmd 2>&1); rc=$? 显式捕获，非管道尾）：①喂当天三处真错（agentcore/src/workflow/workflow-engine.ts 路径不存在 · BuildPipelinesPage.tsx 不存在 · handoff-wo-a6-contention 已是 canonical 祖先）→ RC=1 逐条点名，无一漏；②删边界断言 +交替顺序改回短优先 → RC=2「门自己坏了」点名 tsx 被截；③只删边界断言、保留长优先排序 → RC=2 点名 docs/x.mdx 被截成 .md（第三条金丝雀专为此而加）；④还原 → RC=0，金丝雀 8/8。⚠️ 本门第一次跑就自曝两个 bug（正则交替最左优先把 .tsx/.json 截断；canonical 平凡自指被误报空单），均已修并各配金丝雀。",
+        "note": "本体 §7 暂无该门条目（binding=NONE，未接自动链）；变异证据见 evidence。"
+      },
+      "notes": "派单前门：输入是**工单文本**（文件或 stdin），不是仓库状态，故无法并入 `pnpm gates`（那条链只吃仓库状态）。现算 binding=NONE（无 npm 别名、无脚本调用方）—— **今天靠人记得跑，这就是它的弱点，如实记账不粉饰**。disposition=WIRE 的待办 = 找到一个真正的机器入口（候选：派单模板生成脚本 / 一条 `wo-anchors:check <file>` 别名 + 在 WO 文档提交时由 CI 触发）。在接上之前，本门与「写在文档里的纪律」只差一点点 —— 差的那一点是：它至少能被机械复跑并给出三分退出码。关死两类：工单引用路径不存在 / 符号零命中 / 行号漂 >40 · 分支已是 canonical 祖先（空单）。**射程外并在每次输出里显式声明**：查不出「文件缺 ≠ 能力缺」（需语义判断）。三分退出码：0 干净 / 1 工单有错(别派) / 2 门自己坏了(结论作废)。",
+      "disposition": "WIRE"
     }
   }
 }
