@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchObjectTypeStats, fetchBusinessDomains, fetchObjectTypes, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
+import styles from "./ObjectTypesBrowserPage.module.css";
+
+/**
+ * WO-OT-INSTANCE-REACH · 类型表**列定义的单一来源**。
+ *
+ * `<thead>` 与「行内展开行」的 `colSpan` **同吃这一份** —— 以后加/减一列只改这里，两处一起动。
+ * 若照抄写死 `colSpan={5}`，加列当天就错位，且错位是**纯视觉的、任何测试都咬不住**
+ * （= 下一个「绿测试≠能用」）。故此处不写死，从列数现算。
+ * 末列（操作列）表头无文案，保持修前 `<th />` 的呈现。
+ */
+const OT_COLUMNS: readonly string[] = ["类型", "属性数(源/派生·个)", "主键", "物化对象数(个)", ""];
 
 /**
  * A4 · 对象/类型浏览器（消费 A3 14 域 + 物化计数 + 实例下钻）。闭合用户实测"找不到已发布对象类型在哪看"。
@@ -17,7 +28,7 @@ function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string |
     typesQ.data?.find((t) => t.key === typeKey)?.properties?.find((p) => p.propKey === k)?.displayName ?? k;
   const rows = q.data?.items ?? [];
   return (
-    <div className="panel" style={{ marginTop: 12 }} data-testid="ot-instance-panel">
+    <div className="panel" style={{ margin: "8px 0" }} data-testid="ot-instance-panel">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {/* WO-UNIT-MEANING：徽章此前只有裸数「20」——是实例数还是页码看不出。计数无 unit 契约，就近点明"个实例"。 */}
         实例 · <code>{typeKey}</code> <span className="badge" data-testid="ot-instance-total">共 {q.data?.total ?? rows.length} 个实例</span>
@@ -96,27 +107,74 @@ export default function ObjectTypesBrowserPage() {
           </div>
           {/* WO-UNIT-MEANING：「物化数」的格子是**已物化对象条数**，列头点明单位（个），避免与"属性数"混读。 */}
           <table className="cmp">
-            <thead><tr><th>类型</th><th>属性数(源/派生·个)</th><th>主键</th><th>物化对象数(个)</th><th /></tr></thead>
+            <thead>
+              <tr>
+                {/* 列定义单一来源 = OT_COLUMNS（展开行的 colSpan 同源·加列不错位）。 */}
+                {OT_COLUMNS.map((label, ci) => <th key={ci}>{label}</th>)}
+              </tr>
+            </thead>
             <tbody>
-              {rows.map((s) => (
-                <tr key={s.key} data-testid={`ot-row-${s.key}`}>
-                  <td><b className="zh">{s.displayName}</b> <code style={{ fontSize: 11 }}>{s.key}</code></td>
-                  <td>{s.propCount}/{s.derivedCount}</td>
-                  <td>{s.pk ?? "—"}</td>
-                  <td data-testid={`ot-count-${s.key}`}>
-                    {s.count > 0 ? <span className="badge green">{s.count}</span> : <span className="muted">0</span>}
-                  </td>
-                  <td>
-                    <button className="btn sm" data-testid={`ot-instances-${s.key}`} disabled={s.count === 0} onClick={() => setSelected(s)}>看实例 →</button>
-                  </td>
-                </tr>
-              ))}
+              {/* WO-OT-INSTANCE-REACH · 闭断点 G-OT-INSTANCE-PANEL-OFFSCREEN：
+                  实例面板**紧跟被点那一行**（`<tr><td colSpan>` 展开行），不再挂在整页最底部 ——
+                  修前真后端 94 类型 / 15 域，点第 1 行时面板在 93 行之后，用户视角就是「点了没反应」。
+                  该文件零 scrollIntoView / useRef / Modal（已复验），面板没有任何把自己带进视口的手段。
+                  取 `<Fragment>`+colSpan 就近展开而非 Modal：本页是**浏览器**，用户要的是
+                  「这一类型的实例」与邻近类型对照着看，Modal 会把表盖住、丢掉行上下文；
+                  且沿用本仓既有行内展开范式（LedgerView.tsx:104 · RiskBoardView 处置表），不另造一套。 */}
+              {rows.map((s) => {
+                const rowOpen = selected?.key === s.key;
+                const hasInstances = s.count > 0;
+                const toggle = () => setSelected(rowOpen ? null : s);
+                const detailId = `ot-instance-detail-${s.key}`;
+                // 禁用理由**全部取自接口**（displayName + count 均来自 /a/v1/ontology/object-types/stats）：
+                // 不写死任何业务常数（R14）—— 接口哪天回 count>0，这句话自动消失、按钮自动可点。
+                // 修前禁用按钮一个字都不说，用户看到「能点的样子」却点不动（仓主 2026-08-11 实测的另一半）。
+                // 复验方式：`pnpm --filter frontend-shell exec vitest run test/f57.object-types-browser.test.tsx`
+                //   的用例「禁用态：count=0 的类型给出取自接口的解释，count>0 的不给」——它**双向**咬：
+                //   count=0 必须有 `ot-instances-why-*` 且文案含接口回的 count；count>0 必须没有、且按钮可点。
+                const whyDisabled = `「${s.displayName}」当前物化对象数为 ${s.count} 个 —— 没有实例可下钻；经数据构建/合成建域物化后此按钮自动可用。`;
+                return (
+                  <Fragment key={s.key}>
+                    <tr data-testid={`ot-row-${s.key}`} className={rowOpen ? styles.otRowOpen : undefined}>
+                      <td><b className="zh">{s.displayName}</b> <code style={{ fontSize: 11 }}>{s.key}</code></td>
+                      <td>{s.propCount}/{s.derivedCount}</td>
+                      <td>{s.pk ?? "—"}</td>
+                      <td data-testid={`ot-count-${s.key}`}>
+                        {s.count > 0 ? <span className="badge green">{s.count}</span> : <span className="muted">0</span>}
+                      </td>
+                      <td>
+                        <button
+                          className="btn sm"
+                          data-testid={`ot-instances-${s.key}`}
+                          disabled={!hasInstances}
+                          title={hasInstances ? undefined : whyDisabled}
+                          aria-expanded={hasInstances ? rowOpen : undefined}
+                          aria-controls={rowOpen ? detailId : undefined}
+                          onClick={toggle}
+                        >
+                          {rowOpen ? "收起 ↑" : "看实例 →"}
+                        </button>
+                        {!hasInstances && (
+                          <div className={`muted ${styles.otWhyDisabled}`} data-testid={`ot-instances-why-${s.key}`} title={whyDisabled}>
+                            物化 {s.count} 个 · 无实例可下钻
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {rowOpen && (
+                      <tr data-testid={`ot-instance-detail-row-${s.key}`} className={styles.otDetailRow}>
+                        <td id={detailId} colSpan={OT_COLUMNS.length}>
+                          <InstancePanel typeKey={s.key} pk={s.pk} onClose={() => setSelected(null)} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ))}
-
-      {selected && <InstancePanel typeKey={selected.key} pk={selected.pk} onClose={() => setSelected(null)} />}
     </div>
   );
 }

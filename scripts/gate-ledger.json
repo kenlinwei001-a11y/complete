@@ -1191,7 +1191,26 @@
         "note": "病灶：node 对未捕获异常一律退 1，恰撞上三分约定的「真有问题」，于是「门没跑起来」被读成「代码有问题」，方向相反（2026-08-11 两道门各撞一次）。机制：58 门统一加顶层兜底（uncaughtException/unhandledRejection ⇒ RC=2），RC=1 只留主判据判负一路。接手人补完 wip 缺口：check-no-raw-nul.mjs 被叫停时只写了 gateToolBroken 函数、漏了两行 process.on 注册（+19 vs 其余 +21），被本门当场判红后补齐。变异①（环境故障⇒2）：ontology-anchor-baseline.json 写入非法 JSON（读回确认落地）⇒ check-ontology-anchors RC=2「not valid JSON」，还原 RC=0。变异②（真违规⇒1 不许被吞）：gate-exit-discipline-baseline.json 注入裸 NUL（python 读回 NUL 在）⇒ check-no-raw-nul RC=1，还原 RC=0。变异③（棘轮咬新门）：造 scripts/check-zzprobe.mjs 无 exit(2) 无兜底（注释里写 exit(2) 字样——AST 不吃注释，顺带活证金丝雀④）⇒ 本门 RC=1 点名，删除后 RC=0。门自身 --selftest：金丝雀 9/9、缺 TS⇒2、基线坏⇒2、未预期异常⇒2、真违规⇒1、无注入⇒0，全绿。"
       },
       "notes": "判据（缺一不可，各治一半）：① 有 RC=2 出口（直接 exit(2) 或调用必退 2 的函数，AST 不动点传播，注释/字符串不算）；② 有顶层兜底且通向 exit(2)（三形态：顶层 try/catch · 顶层无条件 process.on · 顶层 .catch()）。只查①会得出相反安心感：本仓实测 11 门有 exit(2) 仅 2 有兜底。棘轮：exempt 只许降不许升（合规了还挂名也红）。诚实边界：静态 import 链接期失败堵不住（早于任何用户代码注册）；只查结构存在、不查语义兜得住（catch(e){} 空吞也判合规，真正的证明是各门自己的故障注入）。"
-
+    },
+    "check-solver-field-seam.mjs": {
+      "alias": "solver-field-seam:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/solvers/",
+        "packages/contracts/src/",
+        "apps/frontend-shell/src/views/",
+        "scripts/solver-field-seam-baseline.json",
+        "scripts/lib/seam-lex.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7:988",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "审核方派单 WO-BEFE-SEAM-FIELD · dev 2026-08-11 实跑，四向变异全部真红过",
+        "note": "① 把 `S4:ChainImpedimentSchema.candidates` 从基线摘掉 → RC=1，精确点名该字段并给出声明处 `packages/contracts/src/chain-sim.ts:832`（求解器侧引用 `apps/datacore/src/solvers/chain-impediment.ts:40`）；放回即绿。② 把**前端真在消费**的字段的唯一消费方摘掉 —— 将 `apps/frontend-shell/src/views/sim/chainImpediment.ts` 里 11 处 `dataMode` 整体改名为 `honestyFlagXQ`（**新名不含原子串**，否则 `toContain` 式断言照样过，本仓 2026-08-11 同批栽过这一手）→ RC=1 且新增缺口恰为 `S4:ChainImpedimentSchema.dataMode`；还原后 `git status --porcelain` 干净、门复绿。③ 判定器语义反转：`verdictScoped`/`verdictTopLevel` 改成恒 CONSUMED（恒不咬）→ **必中**金丝雀两条当场开火、exit 2 报「门自己坏了」，**不是**报「字段都干净」；改成恒 DEAD（恒咬）→ **必不中**金丝雀两条开火；`expandScope` 改成恒空 → 三条金丝雀同时开火。三种坏法各被不同方向的金丝雀抓住，这正是双向金丝雀存在的理由。④ **变异反证抓到本门自己的洞**：把成员切分从 `splitTopLevelMembers` 换回只按逗号切（分号分隔的 TS interface 成员应全丢），而当时全门指标**逐字节不变、门照样绿** —— 因为那一版没有任何载体用 TS interface，分号能力是「接了线没数据」的死分支（铁律 0.5 三态之一）。照该条纪律「补数据或删死分支」补了载体⑤（求解器结果接口的内联行字段），同一变异现在让金丝雀 C12 当场开火，且顺带抓到 4 条真死字段（含 `chain_impediments.candidateStats.emitted`，正属本单病历那一族）。 ── **收编复验（2026-08-13 · 在 canonical 上重跑，不是转述 08-11 的账）**：⑤ 基线里摘掉 `S4:RiskTimelineOutputSchema.scopeNote` 一条 → RC=1 且新增缺口**恰为该条**；放回即 RC=0。⑥ 门自变异：把 `mentionsInProd` 的返回改成恒 `[]`（判定器恒咬）→ RC=**2**「⛔ 门自己坏了」，「必不中」金丝雀 3 条同时开火（`impediments` / `ChainImpedimentSchema.severity` / `counts.total` 被误判成死字段），**且一条结论都不产出** —— 这正是它与「报字段都干净」的区别。两次变异均**读回文件确认变异真落地**后才下结论；还原后 RC 复 0、`git diff` 为空。"
+      },
+      "notes": "本门治的是**审核方自己**的判断错，不是 dev 的：`befe-seam:check` 量端点粒度，于是「长在已有端点上的新字段」整类逃逸，而本仓的加法几乎全是加字段、不是加端点。判据下沉到字段粒度后，头号实例 `chain_impediments.candidates` 需要**作用域化**判据才抓得到（它是通名，全域名字匹配会把它放过 —— 实测全域命中 9 个前端文件）。存量 116 条记 `scripts/solver-field-seam-baseline.json` 棘轮（每条带 why + 声明处证据，`maxEntries` 恒等于条数、`ratchetHigh` 只降不升）；未判定 124 条如实列出、不 gate、也不冒充干净。盲区（载体⑤ join 不上的 54 个求解器 · 未声明输出形状的 2 个求解器）每次运行强制打印。与 `arg-drop-seam:check` 的边界：本门只管**输出**字段，入参族 schema（`*Args`/`*Input*`）结构性豁免、归那道门管。 ── **2026-08-13 · WO-R1 从 `claude/integ-ui-w5` 收编进 canonical**：门本体与 `scripts/lib/seam-lex.mjs` 逐字节照搬（blob `f435475f53` / `32dec19c20`，与 `handoff-wo-befe-seam-field` 全等）。基线在 canonical 上重量过一次：`--update` 摘掉已修复 2 条（`changeover_sequence.lineScope` / `quarterly_gap.quarterScope`，116→114），人手收编新增 6 条（114→120，`ratchetHigh` 随之 116→120，理由写在基线 note ⑥，**这是它唯一一次抬高**）。6 条里 4 条是 canonical 自 08-11 起长出的真缺口（`chain_impediments` 的 `noCandidateKind`/`unattributedTotal`/`contention`，属 WO-SANDBOX-S3 后续）；**2 条是本门载体④ 作用域规则的误报**（`RiskTimelineOutputSchema.scopeNote`/`scopeBaseName` 其实被 `lib/solverScopeHonesty.ts:92/100` 逐字读，但 `readScopeHonesty(raw: unknown)` 刻意不 import 该 schema ⇒ 不在「import 该 schema 的文件 ∪ 其直接 importer」这个作用域里）。**这是本门头注自曝的「类型透传」盲区的第一个真实标本**，按门自己的失败提示处置：加基线 + 把消费点写进 why。"
     }
   }
 }
