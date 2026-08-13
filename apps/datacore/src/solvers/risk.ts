@@ -768,6 +768,13 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     horizon,
     threshold: p.threshold,
     dataMode,
+    // ── WO-SILENT-WRONG-ANSWER-3 · 诚实位（抄 capacity_forecast 的 scope/scopeNote 同款口径）────────
+    // 修前 `risk_timeline` 的输出里**没有任何一处说明这次算的是谁**：问「枣庄」拿到 8 张别的基地的卡时，
+    // 屏上、回包上都没有一个字能让人看出"你要的那一维没生效"（这正是本条被判「静默错答」而非「报错」的原因）。
+    // 现在无论走哪条分支都显式回答"算的是谁"：BASE=只这一个基地 / ALL=全网。加性（新增两个 optional 键）。
+    ...(scopeBaseId
+      ? { scope: "BASE", scopeBaseId, scopeBaseName: baseName(c, scopeBaseId), scopeNote: `仅 ${baseName(c, scopeBaseId)} 基地（该基地${args.factor ? `「${str(args.factor)}」因素` : "全部因素"}·非全网）` }
+      : { scope: "ALL", scopeNote: "全网（未指定基地·跨全部基地取越线卡）" }),
     cards: shown,
     // WO-SANDBOX-D4 ① · 全平台这批单的准时率（加性）：跨卡按 so **去重**取最差余量那一次——
     // 一张订单可挂多个产地（Order.bases[]），各卡相加会把同一单算两遍（守恒：合并后 total = 去重订单数）。

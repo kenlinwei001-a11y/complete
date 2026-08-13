@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
+import type { SkillSeedGateReport } from "@/api/endpoints";
+import { SkillSeedGateStrip } from "@/pages/admin/SkillStructure";
 
 /**
  * WO-UNBLOCK-SKILL-FE · 三个「后端注册了·前端零调用」端点接上前端后的**效果层**断言。
@@ -125,7 +127,7 @@ describe("WO-UNBLOCK-SKILL-FE · Skill 编译报告可见（POST /b/v1/skills/:i
 });
 
 describe("WO-UNBLOCK-SKILL-FE · 出厂技能门审计诚实位（GET /b/v1/ops/skill-seed-gate）", () => {
-  it("四态各有各的措辞：CLEAN 才是「通过」，且点明已审几个", async () => {
+  it("各态各有各的措辞：CLEAN 才是「通过」，且点明已审几个", async () => {
     loginAs("planner");
     renderApp("/admin/skills");
     const strip = await screen.findByTestId("skill-seed-gate");
@@ -136,6 +138,78 @@ describe("WO-UNBLOCK-SKILL-FE · 出厂技能门审计诚实位（GET /b/v1/ops/
     expect(within(strip).getByTestId("skill-seed-gate-checked")).toHaveTextContent("已审");
     // 出厂技能旁路落库这件事必须说出来 —— 「门装上了」不等于「库里的东西都过了门」
     expect(strip).toHaveTextContent("出厂技能");
+  });
+
+  /**
+   * WO-SEEDGATE-FRESHNESS · 缺陷 A 的可见面：光秃秃一个时间戳会被读成"刚刚测过"，
+   * 而它曾经是**进程启动那一瞬**的常量、三分钟不动。界面必须说清它是什么时刻，
+   * 并给出**能手动催一下**的入口 —— 后者是这道位可信的前提。
+   */
+  it("A · ranAt 明说是「实测于」+ 缓存窗口，且有手动重测入口", async () => {
+    loginAs("planner");
+    renderApp("/admin/skills");
+    const strip = await screen.findByTestId("skill-seed-gate");
+
+    const ranAt = within(strip).getByTestId("skill-seed-gate-ran-at");
+    expect(ranAt).toHaveTextContent("实测于");
+    expect(ranAt).toHaveTextContent("缓存 ≤30s");
+    expect(within(strip).getByTestId("skill-seed-gate-refresh")).toHaveTextContent("重新实测");
+  });
+});
+
+/**
+ * WO-SEEDGATE-FRESHNESS · 缺陷 B 的可见面 —— **两种成因的界面措辞必须不同**。
+ *
+ * 直接渲染组件而不走整页：这里要断言的是**状态 → 措辞**这张分发表，
+ * 而 MSW 一次只能给一种状态。断言写成「两者不相等」，不是「都有文案」——
+ * 后者在把两态合并成一句的坏实现上照样绿。
+ */
+describe("WO-SEEDGATE-FRESHNESS · 缺陷 B · 抛错与空集在界面上说的不是同一句话", () => {
+  const base = { checked: 7, findings: [], ranAt: "2026-08-10T16:33:03.003Z", ttlSeconds: 30 };
+  const renderStrip = (report: SkillSeedGateReport) => {
+    cleanup();
+    render(<SkillSeedGateStrip report={report} />);
+    return screen.getByTestId("skill-seed-gate");
+  };
+
+  it("REGISTRY_UNREACHABLE：说「注册表读不出」并**明确否认**这等于网络不可达（原文摆出来让人自己判）", () => {
+    const strip = renderStrip({
+      ...base,
+      status: "REGISTRY_UNREACHABLE",
+      unavailableReason: "引用可校验门不可用：求解器目录 读取抛错（上游原始错误原文：DataCore is unreachable）",
+    });
+    expect(strip.getAttribute("data-seed-gate-status")).toBe("REGISTRY_UNREACHABLE");
+    expect(within(strip).getByTestId("skill-seed-gate-status")).toHaveTextContent("注册表读不出");
+    // 绝不把「我读不出来」渲染成「它不可达」这个结论
+    expect(strip).toHaveTextContent("这不等于「网络不可达」");
+    // 上游原文原样透出，运维照着自己判
+    expect(within(strip).getByTestId("skill-seed-gate-reason")).toHaveTextContent("读取抛错");
+    // 三个不可用态都**不是**绿
+    expect(within(strip).getByTestId("skill-seed-gate-status").className).not.toContain("green");
+  });
+
+  it("REGISTRY_EMPTY：说「注册表读回空集」并指向 A 侧注册表，不指向网络", () => {
+    const strip = renderStrip({
+      ...base,
+      status: "REGISTRY_EMPTY",
+      unavailableReason: "引用可校验门不可用：求解器目录 返回空集（0 条已知 key）",
+    });
+    expect(strip.getAttribute("data-seed-gate-status")).toBe("REGISTRY_EMPTY");
+    expect(within(strip).getByTestId("skill-seed-gate-status")).toHaveTextContent("注册表读回空集");
+    expect(strip).toHaveTextContent("网络是通的");
+    expect(within(strip).getByTestId("skill-seed-gate-status").className).not.toContain("green");
+  });
+
+  it("**两者的界面措辞互不相同** —— 合成一句就是本单要修的那个病", () => {
+    const unreachable = renderStrip({ ...base, status: "REGISTRY_UNREACHABLE" }).textContent ?? "";
+    const empty = renderStrip({ ...base, status: "REGISTRY_EMPTY" }).textContent ?? "";
+    const vague = renderStrip({ ...base, status: "GATE_UNAVAILABLE" }).textContent ?? "";
+
+    expect(unreachable).not.toBe(empty);
+    expect(unreachable).not.toBe(vague);
+    expect(empty).not.toBe(vague);
+    // 笼统档必须**如实自称含糊**（宁可含糊，不许二选一地编一个）
+    expect(vague).toContain("未能区分");
   });
 });
 

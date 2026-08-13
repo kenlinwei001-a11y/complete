@@ -109,6 +109,23 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   //      该维度结构性失效。反观真正走专用 route 的那批（what-if / cleanroom-attr / disruption-radius /
   //      optimize-whatif）全是**净室通用**页：与租户本体无关、无需按行业裁剪，语义类别本就不同。
   { key: "chain-impediments", title: "全链阻滞点", renderer: "chain-impediments", featureKey: "view.chain-impediments", featureName: "全链阻滞点", seed: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_impediments"] } },
+  // ── 流程等待态（WO-WAITING-STATES-FE · 需求 §20「『等待』是一等状态」）──────────
+  //
+  // 病灶（实测坐实，取证见 docs/WO-WAITING-STATES-FE-evidence.md）：业务流程层 65 条
+  // `ProcessDefinition` 每条都带 `waitKind`（四态等待类型），种子 `seed.ts:697-698` 真写进了仓储，
+  // 而 `processDefinitions` / `processDomains` 的 **src 读取方为 0** —— 只有 seed 写 + test 读，
+  // 零 REST 路由、零事件 ⇒ 前端「等待态 0 命中」的病根在**后端没下发**，不在前端没接。
+  // 本单同批补了读端 `GET /a/v1/process-definitions`（app.ts），本行补的是**派单**那一半。
+  //
+  // 为什么走本表（BUILTIN_VIEWS）而不是专用 route —— 同 chain-impediments 那条判据「语义归属」：
+  //   ① 它消费的是**租户本体数据**（每租户 65 条流程定义、域名/流程名属行业模板种子），
+  //      不是净室通用页；走专用 route 那批（what-if / cleanroom-attr / disruption-radius /
+  //      optimize-whatif）全是与租户本体无关的通用页，语义类别本就不同；
+  //   ② R3「功能关闭 = 不存在」：专用 route 页面侧无 Guard，手敲 URL 照样进得去。
+  //
+  // **不挂 requires**（与沙盘五子视图不同）：流程层是配置驱动的业务主数据，
+  // 与 `sim.sandbox` 推演沙盘无从属关系；挂上去会造出「关了沙盘就看不到业务流程」的假依赖。
+  { key: "process-wait", title: "流程等待态", renderer: "process-wait", featureKey: "view.process-wait", featureName: "流程等待态", seed: true },
 ];
 
 /** scenarioSeed.views 单一来源：seed:true 的内置视图键（battery.ts 引用·防第 4 处漂移）。 */

@@ -30,9 +30,14 @@ describe("A7 synthetic data", () => {
     // WO-IMPEDIMENTS-REACHABLE：沙盘**第五**子视图 chain-impediments 同批入册（renderer 早已注册但零路径
     // 渲染得到 → 现由后端派单打通）。金值 13 → 14 项，仍是**末位追加**，前 13 项顺序一字未动（R6 确定性种子
     // 的字节级一致只约束"同输入同输出"，不约束"清单不许增长"；增长处必须在末位，否则前序 diff 会淹掉真回归）。
+    // WO-WAITING-STATES-FE：流程等待态 process-wait 入册（需求 §20「『等待』是一等状态」）。
+    // 此前 65 条 ProcessDefinition 的 waitKind 在仓储里躺着、src 读取方为 0（只有 seed 写 + test 读），
+    // 现补了下发端点 GET /a/v1/process-definitions 并由本表派单。金值 14 → 15 项，同样**末位追加**，
+    // 前 14 项顺序一字未动（R6）。⚠ 它**不属于沙盘家族**（无 requires: sim.sandbox）——
+    // 业务流程层是配置驱动的主数据，挂到沙盘上会造出「关了沙盘就看不到业务流程」的假依赖。
     expect(report.views).toEqual([
       "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
-      "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments",
+      "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments", "process-wait",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 

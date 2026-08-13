@@ -1,7 +1,9 @@
 import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
-import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
+import { runAgentLoop, skillGovernance, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
-import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "./agent/navigation-slice.js";
+import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys, scopeCanInvokeSolvers } from "./agent/navigation-slice.js";
+// WO-CAPMAP-LIVE · 能力地图注入源：活资源目录（替掉手写镜像）。
+import { fetchLiveSolverCatalog, type CapabilityMapSource } from "./agent/live-capability-map.js";
 import { buildOntologySemanticContext } from "./agent/ontology-context.js";
 import { selectMcpTools } from "./agent/mcp-router.js";
 import type { Embedder } from "./agent/skill-router.js";
@@ -227,6 +229,15 @@ export class ExecutionEngine {
     }
   }
 
+  /**
+   * WO-CAPMAP-LIVE · 活资源目录检索面（**单一实例**·orchestrator 与本引擎共用，不各建一个）。
+   * 供能力地图注入源（`fetchLiveSolverCatalog`）与 `retrieve_knowledge` 复用同一份投影/检索实现。
+   * `features` 缺省 → `undefined` → 注入方 fail-open 退降级镜像。
+   */
+  capabilityMapSource(): CapabilityMapSource | undefined {
+    return this.resourceRegistry;
+  }
+
   makeExecutor(
     taskId: string,
     ctx: ToolAuthCtx,
@@ -412,9 +423,16 @@ export class ExecutionEngine {
     const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt, embedder })}`;
 
     // WO-QOS-2 · 导航切片注入（闭 G-AGENT-BLIND-REACT agent 侧半）：据本 agent 的 scopeDeclaration（objectTypes/toolNames）
-    // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位、
-    // 不再 discover 盲扫逐跳。R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
-    const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration);
+    // 确定性投影本题导航图（对口 solver + 输出形状 + 相关对象/规则）注入首轮 user——agent 有对口 solver 就一步到位。
+    // R6 纯投影（无 LLM）；空图返 ""（不注入·字节兼容）。sliceSolverKeys 供 loop plan 自检。
+    // ★ WO-CAPMAP-LIVE · 注入源 = **活资源目录**（59 solver）现取 top-N 相关候选，不再是那份 19 条手写镜像；
+    //   取不到（registry 未装配 / A 不可达 / 未开通）→ liveCatalog=undefined → 退降级镜像（fail-open·不阻断）。
+    //   跳过条件：本 agent 根本调不了 solver（scope 工具白名单无 invoke_solver / mcp 求解器工具）——
+    //   那样投影出的图里一条 solver 都不会列，取目录纯属白花一次 A 侧往返。
+    const liveCatalog = scopeCanInvokeSolvers(agent.scopeDeclaration.toolNames)
+      ? await fetchLiveSolverCatalog(this.capabilityMapSource(), opts.ctx, opts.prompt)
+      : undefined;
+    const navSlice = projectNavigationSlice(opts.prompt, undefined, agent.scopeDeclaration, liveCatalog);
     const sliceSection = renderNavigationSlice(navSlice);
     // WO-QOS-ONTOLOGY-CONTEXT · 口径语义锚定（缺口③文档三层投喂第二层）：紧随导航图 append 各字段/规则口径
     //（Metric formula/unit·派生公式·规则 expression·取自 A 单一真值 getTypeSemantics·TTL60s 缓存·只列涉及项）——
@@ -474,7 +492,9 @@ export class ExecutionEngine {
           skillRefKeys([skill], "solver", "precondition"),
         );
         if (missingSolvers.length > 0) {
-          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [] };
+          // 下发的是门禁说明而非技能正文；治理位仍按**该技能真实声明**回报（只收紧不放宽的方向），
+          // 不因「这次没给正文」而放松闸门。
+          return { body: unmetPreconditionBody(skill.key, missingSolvers), resources: [], ...skillGovernance(skill) };
         }
         return {
           // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）
@@ -486,6 +506,10 @@ export class ExecutionEngine {
             ...(r.mime ? { mime: r.mime } : {}),
             ...(r.description ? { description: r.description } : {}),
           })),
+          // WO-R4-FREEQA-GATE · 逐技能治理位回报（R4）。本路径本已有开跑静态聚合位，这里回报是**单调冗余**
+          // （只收紧不放宽 ⇒ 对本路径行为零改变），目的是让两条 loadSkill 路径**回报同一份口径**——
+          // 不允许「一条路报、另一条路不报」再次分叉。判定单源仍是契约 `isWriteModeSkill`。
+          ...skillGovernance(skill),
         };
       },
       runWorkflowTool: async (workflowId, version, input) =>

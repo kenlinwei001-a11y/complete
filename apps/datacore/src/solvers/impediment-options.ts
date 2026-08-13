@@ -41,6 +41,7 @@ import {
   compareSolutionCandidate,
   firstDuplicateCandidatePair,
   readProcessHardCapacity,
+  solutionCandidateId,
   type CandidateDim,
   type CandidateEffectKind,
   type CandidateJoinKind,
@@ -48,6 +49,7 @@ import {
   type CapacityFactorBinding,
   type ChainImpediment,
   type DerivedDataMode,
+  type NoCandidateKind,
   type SolutionCandidate,
 } from "@platform/contracts";
 import type { LinkInstance, ObjectInstance } from "../domain.js";
@@ -186,8 +188,11 @@ export function resolveLeverAnchors(args: {
   arrays: Map<string, readonly ObjectInstance[]>;
   objIndex: Map<string, ObjIndexEntry>;
   linksByObj: Map<string, readonly LinkInstance[]>;
+  /** 业务可读 id 属性的缓存（唯一键现算一次即可，全扫描共享；不传则本次调用内自建）。 */
+  refMemo?: BusinessRefMemo;
 }): { anchors: LeverAnchor[]; gaps: AnchorGap[] } {
   const { im, locusObj, arrays, objIndex, linksByObj } = args;
+  const refMemo = args.refMemo ?? new Map<string, string | null>();
   const found = new Map<string, LeverAnchor>();
   const gaps: AnchorGap[] = [];
   const bindings = writableBindings();
@@ -198,7 +203,7 @@ export function resolveLeverAnchors(args: {
     const a: LeverAnchor = {
       binding: b,
       objId: entry.obj.id,
-      objectRef: businessRef(entry.typeKey, entry.obj),
+      objectRef: businessRef(entry.typeKey, entry.obj, arrays, refMemo),
       obj: entry.obj,
       currentValue: raw,
       joinKind,
@@ -334,11 +339,31 @@ function narrowByKeyJoin(
   return null;
 }
 
-/** 对象的业务可读 id（取该类型上第一个以 `Id` 结尾的字符串属性，取不到回落 `o.id`）。 */
-function businessRef(typeKey: string, o: ObjectInstance): string {
-  const keys = Object.keys(o.props).sort();
-  for (const k of keys) {
-    if (!/Id$/.test(k)) continue;
+/**
+ * 该类型的**业务可读 id 属性**：从 `uniqueKeyProps`（数据现算的唯一键）里挑，优先 `*Id`。
+ *
+ * ⚠ **为什么必须走唯一键，而不是"第一个以 Id 结尾的属性"**（实测踩到的，2026-08-10）：
+ * 属性名排序后 `baseId` 排在 `processId`/`lineId` 前面 ⇒ 老写法给 650 道工序**全部**返回 `jinhua`
+ * 这类**基地 id**。两处当场坏掉：① `lever.objectId` 是要给人看"拨哪个对象"的，返回基地等于没说；
+ * ② 候选 id 由它拼（`solutionCandidateId`），同基地同属性同档位的两个实例会**撞成同一个 id**。
+ * `uniqueKeyProps` 要求该类型全部实例上取值互异 ⇒ `baseId` 天然被排除、`processId` 留下，
+ * 唯一键 ⇒ id 唯一，这是**由数据保证**的，不是靠命名约定碰巧。
+ */
+type BusinessRefMemo = Map<string, string | null>;
+
+function businessRefPropOf(typeKey: string, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string | null {
+  const hit = memo.get(typeKey);
+  if (hit !== undefined) return hit;
+  const keys = uniqueKeyProps(arrays.get(typeKey) ?? []);
+  const pick = keys.find((k) => /Id$/.test(k)) ?? keys[0] ?? null;
+  memo.set(typeKey, pick);
+  return pick;
+}
+
+/** 对象的业务可读 id（该类型唯一键上的取值；类型没有唯一键时诚实回落内部 `o.id`，不硬凑一个）。 */
+function businessRef(typeKey: string, o: ObjectInstance, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string {
+  const k = businessRefPropOf(typeKey, arrays, memo);
+  if (k !== null) {
     const v = o.props[k];
     if (typeof v === "string" && v.length > 0) return v;
   }
@@ -495,11 +520,16 @@ export interface OptionEnumStat {
   emitted: number;
   /** 诚实缺席：为什么没有（更多）候选。 */
   gaps: string[];
+  /**
+   * WO-SANDBOX-S3-ENUM · 空候选的**机器可读**定性（`undefined` = 有候选）。
+   * `NONE` 算过了真没有 · `UNAVAILABLE` 压根没算出来 —— 见 contracts `NO_CANDIDATE_KINDS`。
+   */
+  noCandidateKind?: NoCandidateKind;
 }
 
 export interface OptionEnumResult {
   /** impedimentId → 候选（已全序、已去重、已截 N）。 */
-  byImpediment: Map<string, { candidates: SolutionCandidate[]; noCandidateReason?: string }>;
+  byImpediment: Map<string, { candidates: SolutionCandidate[]; noCandidateReason?: string; noCandidateKind?: NoCandidateKind }>;
   stats: OptionEnumStat[];
   /** 探针预算耗尽 → 显式标注（不静默截断）。 */
   truncated: boolean;
@@ -551,20 +581,30 @@ export function enumerateImpedimentOptions(
     return v;
   };
 
-  const byImpediment = new Map<string, { candidates: SolutionCandidate[]; noCandidateReason?: string }>();
+  const byImpediment = new Map<string, { candidates: SolutionCandidate[]; noCandidateReason?: string; noCandidateKind?: NoCandidateKind }>();
   const stats: OptionEnumStat[] = [];
+  /** 唯一键现算一次、全扫描共享（650 工序 × 全属性 逐阻滞点重算一遍是纯浪费）。 */
+  const refMemo: BusinessRefMemo = new Map<string, string | null>();
 
   for (const im of impediments) {
     const gaps: string[] = [];
     const origin = originOf(im);
     if (!origin) {
-      byImpediment.set(im.impedimentId, { candidates: [], noCandidateReason: "枚举器拿不到该阻滞点的判据与落点对象（判定器未回传 origin）—— 属接线缺口，不是无候选" });
-      stats.push({ impedimentId: im.impedimentId, anchors: 0, probes: 0, effective: 0, emitted: 0, gaps: ["origin 缺失"] });
+      // **算不了**，不是"没有对策"：判定器没把判据与落点对象带下来，枚举连起点都没有。
+      // 这一条若塌进 NONE，读者会以为"这个阻滞点确实无解"，而真相是一条接线缺口 —— 修法完全相反。
+      byImpediment.set(im.impedimentId, {
+        candidates: [],
+        noCandidateReason: "枚举器拿不到该阻滞点的判据与落点对象（判定器未回传 origin）—— 属接线缺口，不是无候选",
+        noCandidateKind: "UNAVAILABLE",
+      });
+      stats.push({ impedimentId: im.impedimentId, anchors: 0, probes: 0, effective: 0, emitted: 0, gaps: ["origin 缺失"], noCandidateKind: "UNAVAILABLE" });
       continue;
     }
     const { binding, obj: locusObj } = origin;
     const rule = input.rules?.[binding.ruleKey];
-    const { anchors: allAnchors, gaps: joinGaps } = resolveLeverAnchors({ im, locusObj, arrays, objIndex, linksByObj });
+    // 本轮开始时预算是否已经耗尽 / 本轮是否把它耗尽 —— 决定「空集」到底是 NONE 还是 UNAVAILABLE。
+    const truncatedBefore = truncated;
+    const { anchors: allAnchors, gaps: joinGaps } = resolveLeverAnchors({ im, locusObj, arrays, objIndex, linksByObj, refMemo });
     for (const g of joinGaps) gaps.push(g.reason);
     const anchors = allAnchors.slice(0, MAX_ANCHORS_PER_IMPEDIMENT);
     if (allAnchors.length > anchors.length) {
@@ -657,12 +697,22 @@ export function enumerateImpedimentOptions(
           },
         ];
 
+        const toValue = round(rung.toValue, 6);
         const dir = rung.toValue > anchor.currentValue ? "↑" : "↓";
         // 标签**不拼单位**：存储口径与显示口径不一致（`Line.utilization` 存 0–100 / `Process.attendance` 存 0–1，
         // 两者 LEVER_PROP_META.kind 同为 ratio），后端拼上去就会出现「出勤率 ↑ 1%」这种错读数。
         // 单位与值类随 `lever.unit`/`lever.valueKind` 下发，格式化归前端一处做。
         const label = `${meta?.label ?? `${anchor.binding.objectType}.${anchor.binding.prop}`} ${dir} ${rung.toValue}（${anchor.binding.factorName}·${anchor.objectRef}）`;
-        const candidateId = `cand_${im.impedimentId}_${anchor.binding.objectType}.${anchor.binding.prop}_${anchor.objId}_${rung.kind}_${rung.toValue}`;
+        // id 的拼法**只在 contracts 一处**（`solutionCandidateId`）—— 本文件不许再出现模板串。
+        // 入参全部取自候选自身的公开字段 ⇒ 消费方能拿候选反算出同一个 id（SEAM 的 S3-ID 咬的就是这条）。
+        const candidateId = solutionCandidateId({
+          impedimentId: im.impedimentId,
+          objectType: anchor.binding.objectType,
+          leverObjectId: anchor.objectRef,
+          prop: anchor.binding.prop,
+          rungKind: rung.kind,
+          toValue,
+        });
         const parsed = SolutionCandidateSchema.safeParse({
           candidateId,
           impedimentId: im.impedimentId,
@@ -678,7 +728,7 @@ export function enumerateImpedimentOptions(
             ...(meta?.kind === undefined ? {} : { valueKind: meta.kind }),
           },
           fromValue: round(anchor.currentValue, 6),
-          toValue: round(rung.toValue, 6),
+          toValue,
           join: { kind: anchor.joinKind, path: anchor.joinPath },
           rungKind: rung.kind,
           rungSource: rung.source,
@@ -723,15 +773,35 @@ export function enumerateImpedimentOptions(
     }
 
     if (kept.length < MIN_CANDIDATES_PER_IMPEDIMENT) {
+      // ── 「空集」的两种形态必须当场分开（contracts `NO_CANDIDATE_KINDS`）──────────────
+      // `UNAVAILABLE` = 这一轮**没算完**：探针预算在本轮（或本轮之前）耗尽，或判据规则快照缺失
+      //   ⇒ 逐候选试算根本没跑全，"没有候选"是**缺答**，不是答。
+      // `NONE`        = 这一轮**算完了**：join 走到了、档位取到了、逐候选真试算过了，结论就是没有。
+      const budgetGone = truncated; // 含 truncatedBefore：预算是全扫描共享的，之前耗尽就轮不到本轮算
+      const kind: NoCandidateKind = budgetGone || rule === undefined ? "UNAVAILABLE" : "NONE";
+      if (budgetGone) {
+        gaps.push(
+          truncatedBefore
+            ? `探针预算在本阻滞点开始前即已耗尽（上界 ${budget}）⇒ 本点的逐候选试算没跑，属"算不了"不是"没有"`
+            : `探针预算在本阻滞点处理中耗尽（上界 ${budget}）⇒ 后续档位没试算完，属"算不了"不是"没有"`,
+        );
+      }
+      if (rule === undefined) {
+        gaps.push(`判据规则 ${binding.ruleKey} 的已发布快照缺失 ⇒ 判据读数无从重算，候选效果算不出来（"算不了"不是"没有"）`);
+      }
       const why =
-        `有效候选 ${kept.length} 个（探了 ${anchors.length} 个杠杆锚点 / ${probesHere} 次试算），不足 ${MIN_CANDIDATES_PER_IMPEDIMENT} 个 ⇒ 构不成多方案对比，诚实不下发。` +
+        (kind === "UNAVAILABLE"
+          ? `枚举**未能算完**（算不了 ≠ 没有对策）：有效候选 ${kept.length} 个`
+          : `枚举已跑完，有效候选 ${kept.length} 个`) +
+        `（探了 ${anchors.length} 个杠杆锚点 / ${probesHere} 次试算），不足 ${MIN_CANDIDATES_PER_IMPEDIMENT} 个 ⇒ 构不成多方案对比，诚实不下发。` +
         (kept.length > 0 ? `唯一有效候选：${kept.map((k) => k.label).join("、")}。` : "") +
         (gaps.length > 0 ? `缺口：${gaps.slice(0, 4).join(" | ")}` : "");
-      byImpediment.set(im.impedimentId, { candidates: [], noCandidateReason: why });
+      byImpediment.set(im.impedimentId, { candidates: [], noCandidateReason: why, noCandidateKind: kind });
+      stats.push({ impedimentId: im.impedimentId, anchors: anchors.length, probes: probesHere, effective: effective.length, emitted: kept.length, gaps, noCandidateKind: kind });
     } else {
       byImpediment.set(im.impedimentId, { candidates: kept });
+      stats.push({ impedimentId: im.impedimentId, anchors: anchors.length, probes: probesHere, effective: effective.length, emitted: kept.length, gaps });
     }
-    stats.push({ impedimentId: im.impedimentId, anchors: anchors.length, probes: probesHere, effective: effective.length, emitted: kept.length, gaps });
   }
 
   return { byImpediment, stats, truncated, probesUsed: probes };

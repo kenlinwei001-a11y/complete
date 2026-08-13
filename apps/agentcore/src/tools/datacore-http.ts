@@ -376,15 +376,17 @@ class HttpCatalogClient implements CatalogClient {
   async solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }> {
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[]; outputShape?: string[] }[] }> {
     const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[] }[] }>(
+    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string; answersQuestions?: string[]; tags?: string[]; outputShape?: string[] }[] }>(
       this.baseUrl,
       ctx,
       "GET",
       `/a/v1/solvers/registry${qs}`,
     );
     // WO-DRIL-PRECISION：透传 answersQuestions/tags（DataCore 目录已产出），供 DRIL 语义检索——勿在接缝丢弃。
+    // WO-CAPMAP-LIVE：同理透传 outputShape（A 侧 `SOLVER_OUTPUT_SHAPES` 单一真值·app.ts:3024 逐条已带）。
+    // 丢了它，能力地图就只能回去抄那份手写镜像才知道「结果长什么样」——这正是本单要拆掉的依赖。
     return {
       items: (res.solvers ?? []).map((s) => ({
         key: s.key,
@@ -394,6 +396,7 @@ class HttpCatalogClient implements CatalogClient {
         domain: s.domain,
         ...(s.answersQuestions && s.answersQuestions.length > 0 ? { answersQuestions: s.answersQuestions } : {}),
         ...(s.tags && s.tags.length > 0 ? { tags: s.tags } : {}),
+        ...(s.outputShape && s.outputShape.length > 0 ? { outputShape: s.outputShape } : {}),
       })),
     };
   }

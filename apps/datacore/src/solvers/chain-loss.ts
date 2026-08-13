@@ -59,6 +59,7 @@ import {
   cadenceWaitStep,
   expectedCadenceWaitDays,
   chainNonValueDays,
+  chainOpNodeId,
   chainValueAddDays,
   computeLossAttribution,
   isValueAddKind,
@@ -586,7 +587,10 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
     const opId = str(op.props.operationId);
     const opCode = str(op.props.operationCode, opId);
     const opName = str(op.props.operationName, opCode);
-    const nodeId = `capacity.op.${opCode}`;
+    // 单源：走契约的 `chainOpNodeId()`，**不手拼前缀**（契约 chain-sim.ts §2.5 明令）。
+    // 手拼的取值恰好合法，K/N 判据都看不见 —— 直到前缀一改、生成侧静默不跟随、词表分裂
+    // （G-CHAIN-NODEID-FREESTRING 复现）。门 `chain-node-singlesource:check` 判据 P 现已咬住这一形态。
+    const nodeId = chainOpNodeId(opCode);
     const common = {
       nodeId,
       nodeLabel: `工序 ${opName}`,

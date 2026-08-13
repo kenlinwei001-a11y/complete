@@ -8,7 +8,7 @@
     "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
   ],
   "ratchetHigh": 38,
-  "maxExemptions": 38,
+  "maxExemptions": 37,
   "exemptions": [
     {
       "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
@@ -82,17 +82,6 @@
       ],
       "why": "误报（检测器粗粒度）：触发词出自屏上字段名「实测值 vs 阈值」与四态词「LIVE → 才是实测」，是**词汇**不是观测；把它顶进声明式过滤的数字来自 ①②③④ 编号与 file:line。",
       "sample": "*  ② **判定依据** —— 触发了哪条规则红线、实测值 vs 阈值 + 单位；"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx#6567c0711f05defd",
-      "file": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx",
-      "line": 63,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验命令：「实测（demo seed 42）主干 26 个站位、每站名 4–8 汉字」。属 F1 线路图既有注释，🚦 本单范围边界外。",
-      "sample": "* 实测（demo seed 42）主干 26 个站位、每个站名是 4–8 个汉字；三圈叠起来是 78 组标签，"
     },
     {
       "key": "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx#b3cd8db70f691f2d",

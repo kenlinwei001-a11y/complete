@@ -243,7 +243,21 @@
 
 ## S7 · 16 层本体切片（4 条）
 
-- [x] **REQ153** 16 层切片规格 · 🔗 · 平台覆盖 12/16 层（Function 签名 0 · Interface 8 · 时间语义 26 · 数据绑定 25 偏弱）
+> ### ⚠️ 口径注记 · 本节的「16 层」与契约里的「十六层」**不是同一套**（2026-08-10 · 欠账 #167）
+>
+> 本节出处 S7 的原文档**未随台账入仓**（`git show --stat 3c8340f6` 只改了本文件一个文件），
+> 所以它的 16 个层名在本仓**从未被写下来** —— 全仓只出现过 4 个（下面 REQ153 那 4 个）。
+>
+> 而契约 `SLICE_LAYER_IDS`（`packages/contracts/src/slice-layers.ts:34-49`）另有一套逐字枚举的
+> 十六层，**无 Function 层、无 Interface 层**。反例即证：**两套不是同一套。**
+>
+> **红线：谁也别拿其中一套的覆盖数去解释另一套。** 两边的「12/16」长得一模一样，
+> 量的却是两件事，弱层集合**交集为空**（契约那套实测 ⑨时间/⑫数据绑定 恰恰都是 present）。
+>
+> 逐层对照表 · 判定与证据 · 受影响表述清单 · 与欠账 #69 的关系 ⇒
+> **`docs/RECONCILE-slice-16-layers-two-sets.md`**
+
+- [x] **REQ153** 16 层切片规格 · 🔗 · 平台覆盖 12/16 层（Function 签名 0 · Interface 8 · 时间语义 26 · 数据绑定 25 偏弱）—— ⚠️ 这四个数**本仓不可复现**（无口径、无 file:line、无命令），且这套「16 层」≠ 契约 `SLICE_LAYER_IDS`；引用前必读 `docs/RECONCILE-slice-16-layers-two-sets.md` §2.4
 - [x] **REQ154** Slice ≠ Subset（语义闭环） · 🆕 · 依赖 REQ042
 - [x] **REQ155** Skill 与 Slice 的关系 · 🔗 · `resolve_slice` 是执行计划一等 step
 - [x] **REQ156** 切片 DSL · ♻️ · `SliceSpecRecord.spec{root, paths[][], maxNodes, contractFixtures}`

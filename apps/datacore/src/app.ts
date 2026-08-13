@@ -41,16 +41,27 @@ import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
-import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
-import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+// WO-DATABUILDER-PIPELINE：接入/导入改由 pipeline 驱动（解析/对账的纯函数由 intake-pipeline 内部调用）。
+import { runIntakePipeline, runIntakeImportPipeline } from "./databuilder/intake-pipeline.js";
+import { projectPipelineOrder } from "./databuilder/pipeline-service.js";
+import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema, BuildPipelineUpsertSchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+// WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
+// 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
+import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
-import { buildCadenceGates, firedPropagationRuleKeys, propagateTick, scopePropagationGraph, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
+import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
+// 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
+// `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
+import { buildPropagationInputs } from "./sim/propagation-inputs.js";
+import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
+import { analyzeImpact } from "./sim/impact-analysis.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -101,6 +112,7 @@ import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
+import { EnterpriseStateService } from "./twin/enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（读写端点见 /a/v1/twin/enterprise-states）
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
 import { ConfigBundleService } from "./config-bundle.js";
@@ -182,6 +194,7 @@ export interface BuiltApp {
     sop: SopService;
     kb: KbService;
     simclock: SimClockService;
+    enterpriseState: EnterpriseStateService; // WO-ENTERPRISE-STATE · 企业状态快照
     features: FeatureService;
     configBundle: ConfigBundleService;
     embeddings: EmbeddingProvider;
@@ -201,6 +214,9 @@ const LoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
+
+/** WO-DATABUILDER-PIPELINE：节点 SOP「人要不要介入」的放行入参。 */
+const WorkflowApproveBodySchema = z.object({ stepKey: z.string().min(1) });
 
 const ObjectsQuerySchema = z.object({
   objectType: z.string().min(1),
@@ -382,6 +398,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const kb = new KbService(repos, authz, blob, embeddings, outbox);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
+  // WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3 五张 MVP 表之一）。
+  // 逻辑时刻取自上一行的 A8 模拟时钟 —— 服务里一次 `new Date()` 都没有（见 twin/enterprise-state.ts 文件头）。
+  const enterpriseState = new EnterpriseStateService(repos, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
@@ -1389,55 +1408,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
     repos.sim.listPropagationRules(c.tenantId, true);
 
-  /**
-   * 传导引擎的输入装配 —— 图（已物化对象 + 链路，**按范围裁剪后**）/ 范围回执 / 规则参数 / 节拍闸门。
-   *
-   * 🔴 **为什么抽成一处**（欠账 #152 · `WO-SIM-ACT-CLOSE` 的结构性对策，不是为省行数）：
-   * Trial Tick 若另抄一份装配，就会出现「就绪认证说这个世界能跑、真 tick 跑起来不是这个数」——
-   * 两处输入不同源 = 第二套真相源，正是本仓「绿测试≠能用·断在接缝」的老形态。
-   * 现在认证里那一跑与 `POST …/tick` 那一跑**吃的是同一份图、同一份参数、同一份闸门**。
-   *
-   * 🔴 **为什么它必须吃 `scope`**（欠账 #129/#130 `G-SIM-SCOPE-UNREAD` · `WO-SIM-SCOPE-TRIAL`）：
-   * 范围裁剪的落点就是**图物化这一步**。把范围留在装配处之外（谁调用谁自己裁），
-   * 等于把「唯一装配处」这条纪律当场作废 —— 少裁一处，那条路就悄悄退回全域，
-   * 用户在屏上切了「局部推演」而引擎照样按 GLOBAL 全量算（静默错答，#129 的原样病样）。
-   * 所以这两条纪律不是二选一：**单一装配处 ∧ 范围裁剪** 在这一个函数里同时成立。
-   * · GLOBAL ⇒ `scopePropagationGraph` 原样返回**同一引用**（`===`），旧行为逐字节不变（RL9 可回退）；
-   * · LOCAL ⇒ 只留根类型对象 + `hops` 跳邻域 + 两端都在范围内的边；范围拿不到 ⇒ 裁成空图，
-   *   **绝不**退回 GLOBAL（「我算不出局部」与「局部等于全局」是两个命题）。
-   *
-   * ⚠ 刻意**不含** `propRules` 与 `pending`/`perturbations`：前者是"要不要走引擎"的判据（调用方先查、
-   * 为空则整段装配都省掉，保住"无传导规则的租户零本体读"这条既有性能特征），后两者是逐调用方的时基状态。
-   */
-  const buildPropagationInputs = async (c: AuthCtx, scope: ResolvedSimScope): Promise<{
-    graph: PropagationGraph;
-    /** 这一跑到底算了哪些对象/边、丢了多少、范围是不是根本拿不到（R-ARG-FIDELITY 诚实回执）。 */
-    scopeReport: ScopeReport;
-    ruleParams: RuleParamLookup;
-    cadenceGates: CadenceGateLookup;
-    gateSkipped: { nodeId: string; reason: string }[];
-  }> => {
-    // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
-    const objects: PropagationGraph["objects"] = [];
-    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-      for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
-    }
-    const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
-    // ── 会话/认证范围读端：裁剪就发生在这里，两条路（tick / Trial Tick）因此天然同口径 ──
-    const scoped = scopePropagationGraph({ objects, links }, scope);
-    // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
-    const ruleParams: RuleParamLookup = {};
-    for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
-      if (r.params) ruleParams[r.key] = r.params;
-    }
-    // 节拍闸门表（E4）：改 Cadence.everyDays 即改推演——闸门每次现读，不缓存不写死。
-    const built = buildCadenceGates(
-      (await repos.objects.listByType(c.tenantId, "Cadence"))
-        .filter((o) => !o.mergedInto)
-        .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
-    );
-    return { graph: scoped.graph, scopeReport: scoped.report, ruleParams, cadenceGates: built.gates, gateSkipped: built.skipped };
-  };
+  // ⚠ `buildPropagationInputs` 曾**在这里**以闭包形式存在，现已提取到 `./sim/propagation-inputs.ts`
+  //   （WO-CERT-CONTRACT-RECONCILE：两个 dev 并行各造了一份同名物，收成一份）。
+  //   语义原样保留（含「不含 propRules」那条性能判据）；提出去的唯一理由是让结构门
+  //   能无条件断言「`app.ts` 里出现任何一处传导相装配 = 红」——留在本文件里就只能数「恰好一次」。
+  //   别再往本文件里写第二处装配：门 `sim-cert-contract-reconcile.seam.test.ts` ④结构判据会红。
 
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
@@ -1543,7 +1518,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 图 / 范围 / 规则参数 / 节拍闸门全部走**唯一装配处**（WO-SIM-ACT-CLOSE · #152，
       // 与 Trial Tick 同源，见 `buildPropagationInputs`）—— 另抄一份就会出现
       // 「认证说能跑、真 tick 不是这个数」。
-      const inp = await buildPropagationInputs(c, resolveSimScope(s.scope));
+      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope));
       graph = inp.graph;
       scopeReport = inp.scopeReport;
       Object.assign(ruleParams, inp.ruleParams);
@@ -1755,6 +1730,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return SandboxViewConfigSchema.parse(cfg);
   });
 
+  // ---- WO-IMPACT-PROPAGATION · 影响传播统一入口（Decision Twin §14 / PRD E5）--------------
+  // PRD-enterprise-decision-twin.md:357：「想要的 impact-analysis = 栈 B 的传播算法 × 栈 A 的世界隔离」。
+  // 本端点**不造引擎**：栈 B = ontology-core.recompute（本体增量重算·全平台唯一真算法），
+  // 栈 A = SimSession（真独立世界）。存量盘点见 docs/WO-IMPACT-PROPAGATION-inventory.md。
+  //
+  // 与既有两个出口平行（不改它们）：POST /a/v1/inference/whatif（app.ts 上方）· generic_inference 求解器。
+  // 唯一新增的是**四维分项 + 诚实标记**——那两个出口只有一个裸 `affectedObjects:number`。
+  // 走 sim.sandbox entitlement（R3 暗发：关 = 404 FEATURE_NOT_FOUND，先于 authz）。
+  app.post("/a/v1/simulation/impact-analysis", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const body = parseBody(ImpactAnalysisRequestSchema, req.body);
+    return analyzeImpact({ repos, ontologyCore }, c, body);
+  });
+
   // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----
   // SPEC docs/SPEC-sandbox-readiness-certification.md。端点只装配既有 closure/gaps/Trial Tick 输入，
   // 真正的判级/三维/L4/世界完整度由纯函数 deriveCertification 投影（门 check-sim-readiness.mjs 守纯度）。
@@ -1798,7 +1788,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   ): Promise<{ fired: number; declared: number }> => {
     const propRules = await listPublishedPropRules(c);
     if (propRules.length === 0) return { fired: 0, declared: 0 };
-    const inp = await buildPropagationInputs(c, scope);
+    const inp = await buildPropagationInputs(repos, c, scope);
     const out = propagateTick(
       inp.graph, simState(await simCurrent(c, s)), propRules,
       [], // pending：探针不续跑在途队列（见上）
@@ -1874,6 +1864,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 修法判据是**效果层**：不是"把传导核调一下"，而是**要求它真的产出贡献** ——
     //    `firedPropagationRuleKeys` 只数「落下了即时贡献 或 排进了延迟队列」的规则 key。
     //    一条规则被遍历到但源态为 0 / 无匹配边 / 闸门拿不到 / 被范围裁掉 ⇒ 不算触发。
+    // ── Trial Tick（§3）：**两相都真跑**，且**每个数各叫各的名**────────────────────────
+    //    （WO-CERT-CONTRACT-RECONCILE = WO-SIM-SCOPE-TRIAL 的实现 ⊕ WO-CERT-HONESTY 的口径）
+    //
+    // 【派生相】`ontologyCore.recompute(c, [], { dryRun: true })`：装载并索引全部对象，
+    //   再对全部 ACTIVE DerivationSpec 做拓扑排序（`ontology-core.ts topoSort`，有环抛
+    //   `CyclicDerivationError`）。**`changes = []` ⇒ dirty 集为空 ⇒ 逐节点 `continue` 全部命中
+    //   ⇒ 一条派生公式都没被求值**（`updatedObjects` 恒 0）。
+    //   ⇒ 所以 `rc.order.length` 是**图的规模**，不是"触发了几条"。字段名照此取 `derivationNodes`。
+    //   实测复验（别信自述，这是亲手跑的）：同一份本体调两次重算，一次空变更集、一次喂真变更集，
+    //   `order.length` **两次同为 2**，而 `updatedObjects` 分别 0 与 1
+    //   —— 见 `test/sim-cert-contract-reconcile.seam.test.ts` ③。
+    //
+    // 【传导相】**真跑一 tick**并只数"真产出了贡献"的规则：`firedPropagationRuleKeys` 只数
+    //   「落下了即时贡献 或 排进了延迟队列」的规则 key；一条规则被遍历到但源态为 0 / 无匹配边 /
+    //   闸门拿不到 ⇒ **不算触发**（那正是今天最常见的病样）。⇒ 它是**真·触发计数**。
+    //   连**分母** `propagationRulesDeclared` 一起报：只报 fired 的话，「本来就没规则」与
+    //   「声明了一堆但全哑火」在屏上都是 0，分辨不了（`declared>0 && fired===0` 必须看得见）。
+    //
+    // ⚠ 两个数**性质不同、不可相加**：旧字段 `rulesFired = 规模 + 触发` 量纲不成立，已弃用
+    //   （仍下发同值以可回退，由 `certification.ts` 从诚实字段算出，无法漂移）。
     //
     // 跑在什么态上：**这个会话当前 tick 的世界态**（克隆，`dryRun` 语义 —— 不落任何 tick 快照、
     //    不推进 `curTick`、不 emit 事件）。用别的态就不是这个世界的试算了。
@@ -1890,20 +1900,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const prop = await trialPropagate(c, session, trialScope);
       trial = {
         passed: true,
-        // rulesFired 保持"本次试算共触发多少条规则"的既有语义，现在它真的把两相都算进来了。
-        rulesFired: rc.order.length + prop.fired,
-        derivationRulesFired: rc.order.length,
-        propagationRulesFired: prop.fired,
-        propagationRulesDeclared: prop.declared,
+        derivationNodes: rc.order.length, // **规模**（非触发数，见上取证）
+        propagationRulesFired: prop.fired, // 真·触发数
+        propagationRulesDeclared: prop.declared, // 分母
+        // 这条路**确实**覆盖传导相。⚠ `trialPropagate` 在"本租户零已发布传导规则"时会早退
+        // （不调传导核，保住零本体读那条性能特征）——那仍算 covered：覆盖面说的是**这条路跑不跑传导相**，
+        // 而不是"这次有没有东西可跑"。declared=0 时 fired=0 本就可解读，不该再报"不可解读"。
+        propagationCovered: true,
         at: computedAt, error: null,
       };
     } catch (e) {
       // 派生图有环（CYCLIC_DERIVATION）/ 传导相抛错 等 → 诚实标 FAIL，不假装通过。
       // 注：`fanoutSafe` 复用 `trial.error === null` 当环检测（certification.ts），
       //     故这里**不许**把非致命情况也写进 error（写了会把"无环"误判成"有环"）。
+      // `propagationCovered: false` —— 抛错时传导相**确实没跑完**，据实说，别报 true。
       trial = {
-        passed: false, rulesFired: 0, derivationRulesFired: 0, propagationRulesFired: 0, propagationRulesDeclared: 0,
-        at: computedAt, error: e instanceof Error ? e.message : String(e),
+        passed: false, derivationNodes: 0, propagationRulesFired: 0, propagationRulesDeclared: 0,
+        propagationCovered: false, at: computedAt, error: e instanceof Error ? e.message : String(e),
       };
     }
 
@@ -1931,7 +1944,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         targetTypeKey: p.targetTypeKey, targetStateVar: p.targetStateVar, present: true,
       })),
       needed: {
-        stateVars: types.reduce((a, t) => a + t.derivedProperties.length, 0),
+        // ⚠ WO-CERT-HONESTY ①：这里曾多一行 `stateVars:`，其表达式与下一行 `derivationRules`
+        //    **逐字节相同** ⇒ 屏上两行数同一个数，且派生在完整度 pct 的分子分母里各数两遍。已删。
+        // needed 的承载物 = 本体类型上**声明**的派生属性数；present 的承载物 = 已物化的 ACTIVE DerivationSpec。
+        // 两者确是两个不同的东西，故 derivationRules 这一对比值成立。
         derivationRules: types.reduce((a, t) => a + t.derivedProperties.length, 0),
         actions: Math.max(scopeActions.length, types.length > 0 ? 1 : 0),
         propagationRules: propRules.length, // 增量3 才声明传导 needed；当前 present=needed（不虚减完整度）
@@ -1957,6 +1973,63 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
     return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // WO-ENTERPRISE-STATE · `EnterpriseState` 企业状态快照读写端点
+  //   （PRD-enterprise-decision-twin §3 五张 MVP 表之一 · §4.1 真实/仿真两世界物理隔离）。
+  //
+  //  语义：「企业**现在**是什么状态」——某个世界在某个**逻辑时刻**上的 KPI/产能/库存/订单快照。
+  //  · `capturedAt` 是 A8 模拟时钟派生的逻辑时钟，**不是 wall-clock**；时钟没初始化就 409 明说，不兜底
+  //    （wall-clock 兜底 = 给快照按一个不在任何时间轴上的坐标，之后所有对比/回放/确定性判据全建在假坐标上）。
+  //  · 幂等：id 由 (tenant, world, tick) 确定 ⇒ 同一逻辑时刻重复 POST 覆盖同一行、内容逐字节相同（R6）。
+  //  · 不挂 entitlement：与同为数据面的 `/a/v1/metrics`、`/a/v1/decisions` 同档（沙盘 `sim.*` 那组门守的是
+  //    推演功能，不是"企业现在什么状态"这类基础事实读取）。R2 租户隔离照旧由 ctx + 仓储层强制。
+  // ─────────────────────────────────────────────────────────────────────────────
+  app.post("/a/v1/twin/enterprise-states", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    const state = await enterpriseState.capture(c, { worldId: b.worldId });
+    return reply.status(201).send(state);
+  });
+  app.get("/a/v1/twin/enterprise-states", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    return { items: await enterpriseState.list(c, { worldId }) };
+  });
+  // ⚠ 必须排在 `/:id` 之前：Fastify 静态段优先于参数段，但把 `latest` 写在后面容易在后续重构里
+  //   被挪成参数段的兄弟路由从而歧义 —— 顺序即意图，别调换。
+  app.get("/a/v1/twin/enterprise-states/latest", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    const world = worldId?.trim() || ENTERPRISE_STATE_REAL_WORLD_ID;
+    const state = await enterpriseState.latest(c, world);
+    // 诚实空：没有就是没有，返回 `state: null` + 原因，**不现场偷偷捕获一份**冒充"最新"
+    // （那会让一次只读请求产生写副作用，且前端分不清"本来就有"和"我一问它才有"）。
+    return state
+      ? { worldId: world, state }
+      : { worldId: world, state: null, reason: `世界 ${world} 尚无任何快照（POST /a/v1/twin/enterprise-states 捕获一份）` };
+  });
+  app.get("/a/v1/twin/enterprise-states/:id", async (req) => {
+    const c = ctx(req);
+    return enterpriseState.get(c, (req.params as { id: string }).id);
+  });
+  // fork 进仿真世界（§4.1）：产生**新行**，真实世界那一行一个字节都不动。
+  app.post("/a/v1/twin/enterprise-states/:id/fork", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    if (!b.worldId) throw validationError("worldId required (target simulation world = an existing sim session id)");
+    const forked = await enterpriseState.fork(c, (req.params as { id: string }).id, b.worldId);
+    return reply.status(201).send(forked);
+  });
+  // 两份快照的指标差（口径与将来的 `StateDelta` 同一份纯函数 `diffEnterpriseStates`，不许各算一套）。
+  app.get("/a/v1/twin/enterprise-states/:id/diff", async (req) => {
+    const c = ctx(req);
+    const { against } = req.query as { against?: string };
+    if (!against) throw validationError("against=<stateId> required");
+    const after = await enterpriseState.get(c, (req.params as { id: string }).id);
+    const before = await enterpriseState.get(c, against);
+    return { before: before.id, after: after.id, changes: diffEnterpriseStates(before, after) };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2937,6 +3010,42 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/business-domains", async (req) => {
     ctx(req); // 鉴权上下文（域注册表为平台参考基线，按租户读）
     return { domains: BUSINESS_DOMAINS };
+  });
+  /**
+   * WO-WAITING-STATES-FE · 业务流程层下发（13 域 + 65 流程 · 含 `waitKind` 四态）。
+   *
+   * ── 为什么本路由是新增的：读端此前是 0 ────────────────────────────────────
+   * `processDefinitions` / `processDomains` 两个 store 自建成起**只有写端与 test 读端**
+   * （`seed.ts:697-698` 写 · `test/process-layer.test.ts` 读），src 里零读取方 ——
+   * 即假绿第 9 形态 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：实现有、测试 65 条全绿、
+   * 却没有任何生产链路能把它取出来。前端「五个等待态 0 命中」的病根在这里，
+   * 不在前端（取证见 `docs/WO-WAITING-STATES-FE-evidence.md` §1.4 / §3）。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · 只读投影，无副作用；按 `key` 升序（R6 确定性：不依赖 Store 迭代序）。
+   * · R2：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   * · `waitKinds` 随响应下发**词表本身**，让前端渲染「四态图例」时不必再写一份字面量数组
+   *   —— 契约注释原文：「任何一侧再写一份字面量数组就是回退到『两个 dev 各发明一套词表、
+   *   交集为 0』出事前的状态」。四值不含 `WAITING_APPROVAL`（仓主已裁「流程审批不体现」，
+   *   `process.ts:59-67` 诚实缺席，不是漏写）。
+   * · **不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *   `ProcessTask`/`ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现）。
+   *   本路由只给 `stdDurationDays`（标准工期）并由前端如实标注口径，
+   *   **不拿标准工期冒充实测卡顿**。
+   */
+  app.get("/a/v1/process-definitions", async (req) => {
+    const c = ctx(req);
+    const byKey = <T extends { key: string }>(a: T, b: T) => a.key.localeCompare(b.key);
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    return {
+      domains: [...domains].sort(byKey),
+      definitions: [...definitions].sort(byKey),
+      waitKinds: PROCESS_WAIT_KINDS,
+      ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+    };
   });
   // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
   app.post("/a/v1/slices/plan", async (req) => {
@@ -4161,35 +4270,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
   // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
+  // WO-DATABUILDER-PIPELINE：**按 pipeline 处理数据**（改造前此处写死 parse→reconcile→persist→emit 四连）。
+  // 步骤序列 + 每节点 SOP 来自持久化的 BuildPipeline(kind=intake)；未配置则用出厂默认（行为逐字节不变）。
   app.post("/a/v1/databuilder/intake", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
     const body = parseBody(IntakeRequestSchema, req.body);
-    const intake = parsePrototypeHtml(body.html);
-    const existing: ExistingTypeField[] = (await ontology.listTypes(c)).flatMap((t) => t.properties.map((p) => ({ typeKey: t.key, propKey: p.propKey })));
-    const reconcile = reconcileIntake(intake.dataSources, existing);
-    // P2：把对账候选落库为 HITL 队列（人确认 USE/RENAME/NEW/MERGE/DISCARD），preview 同时返回。
-    const persisted = await Promise.all(reconcile.candidates.map(async (cand, i) => {
-      const id = `rcc_${c.tenantId}_${Date.now()}_${i}`;
-      const rec = { ...cand, id, tenantId: c.tenantId };
-      await repos.reconcileCandidates.put(rec);
-      return rec;
-    }));
-    await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: persisted.length });
-    return { intake, reconcile: { ...reconcile, candidates: persisted } };
+    const pipeline = await databuilder.pipelines.resolve(c, "intake");
+    return runIntakePipeline({ repos, ontology, connectors, outbox }, pipeline, c, { html: body.html });
   });
   // prototype-intake P3 导入正门：HTML 物化进库 = 经连接器（prototype_html）落 RawDataset，
   // 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致；不写死前端代码 R8 数据流）。
+  // WO-DATABUILDER-PIPELINE：导入同样**按 pipeline 处理数据**（kind=intake_import）。
   app.post("/a/v1/databuilder/intake/import", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
     const body = parseBody(IntakeImportRequestSchema, req.body);
-    const result = await connectors.importPrototype(c, body.filename, body.html);
-    const datasets = (await connectors.listRawDatasets(c, result.connection.id)).map((d) => ({
-      id: d.id, name: d.name, rowCount: d.rowCount, fields: d.fields.map((f) => f.name),
-    }));
-    await outbox.emit(c.tenantId, "prototype.materialized", { connId: result.connection.id, datasets: datasets.length, rows: Object.values(result.rowCounts).reduce((a, b) => a + b, 0) });
-    return { connection: result.connection, datasets, rowCounts: result.rowCounts };
+    const pipeline = await databuilder.pipelines.resolve(c, "intake_import");
+    return runIntakeImportPipeline({ repos, ontology, connectors, outbox }, pipeline, c, { filename: body.filename, html: body.html });
   });
   // prototype-intake P3 闭环末步：把已导入的 RawDataset 按确定性 schema 对账物化进既有对象库
   // （"对账后的列" → 既有 type.field，不新建/不发布类型）→ ObjectInstance 可查（/admin/object-types 计数）。
@@ -4221,6 +4319,43 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await repos.reconcileCandidates.put(resolved);
     await outbox.emit(c.tenantId, "schema_reconcile.resolved", { id: resolved.id, column: resolved.prototypeColumn, action: body.action });
     return resolved;
+  });
+  // ── WO-DATABUILDER-PIPELINE：数据构建 Pipeline（低代码可配置执行流）的配置面 ──
+  // 「先配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP，只要数据接入或导入，
+  //   就按照这个 pipeline 处理数据」——这组路由是"配置"，上面的 intake/import/建域是"按它跑"。
+  app.get("/a/v1/databuilder/pipelines", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const items = await databuilder.pipelines.list(c);
+    return { items: items.map((p) => ({ ...p, order: projectPipelineOrder(p) })) };
+  });
+  app.get("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.get(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 覆盖某 kind 的 pipeline（幂等）：改完立刻生效 —— intake/import/建域下次执行即按新定义跑。
+  app.put("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildPipelineUpsertSchema, req.body);
+    const p = await databuilder.pipelines.upsert(c, (req.params as { kind: string }).kind, body);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 撤销覆盖 → 回出厂默认（行为回到写死时代）。
+  app.delete("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.reset(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑。
+  app.post("/a/v1/databuilder/workflow-runs/:id/approve", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(WorkflowApproveBodySchema, req.body);
+    return databuilder.approveWorkflowStep(c, (req.params as { id: string }).id, body.stepKey);
   });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
@@ -4887,6 +5022,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       sop,
       kb,
       simclock,
+      enterpriseState,
       features,
       configBundle,
       embeddings,
