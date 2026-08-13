@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
+import { GraphOptionsSchema, GraphViewDescSchema, type GraphOptions, type GraphViewDesc } from "@platform/contracts";
 import { fetchObjectTypes, fetchOntologyGraph } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
@@ -82,8 +82,15 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
     const parsed = GraphOptionsSchema.safeParse((view.options as { graphOptions?: unknown } | undefined)?.graphOptions);
     return parsed.success ? parsed.data : DEFAULT_OPTIONS;
   }, [view.options]);
-  const desc = (view.options as { desc?: string } | undefined)?.desc;
-  const descLink = (view.options as { descLink?: { to: string; label: string } } | undefined)?.descLink;
+  // 描述卡（§7.18）：容器/字段名以契约 `GraphViewDescSchema` 为准 —— 不再手写 `as` 断言。
+  // G-GRAPH-DESC-CONTRACT-SPLIT：后端一度写在 `layout.description`/`layout.descriptionLink`（裸字符串），
+  // 与此处读的 `options.desc`/`options.descLink{to,label}` 双重错位 ⇒ 生产态八视角一张卡都不渲染，
+  // 而 MSW mock 恰好写对形状 ⇒ 全绿。改用共享 schema 后，两侧同源，任一侧写错即 tsc/解析当场暴露。
+  // 与 graphOptions 分开 parse：一侧载荷坏掉不连累另一侧（描述卡坏不该让整张图退回默认视角）。
+  const { desc, descLink } = useMemo<GraphViewDesc>(() => {
+    const parsed = GraphViewDescSchema.safeParse(view.options ?? {});
+    return parsed.success ? parsed.data : {};
+  }, [view.options]);
 
   const [selected, setSelected] = useState<GraphNodeVM | null>(null);
   const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set());

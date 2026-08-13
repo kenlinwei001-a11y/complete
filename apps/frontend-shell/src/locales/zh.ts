@@ -554,6 +554,14 @@ export const zh = {
     },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-HOVER-LAYER（欠账 #104/#175 同族）：峰值的**口径**此前只挂在原生 `title=` 上 ——
+    // 浏览器 tooltip 延迟约 1 秒才出、触屏根本不出、不能选中复制，且这里的宿主本身
+    // 已经是个浮层（RiskPopover 走 portal），浮层里再套原生 tooltip 等于没做。
+    // 改为浮层里的**可见文字**：口径必须能被读到，不能藏在属性里。
+    peakCaliber: (min: number, max: number, hint: string) =>
+      `峰值口径：${min}–${max} 紧张度指数（${hint}）·非该因素本身的值`,
+    /** 逐日格的可访问名（读屏可达；视觉靠色块 + 下方图例给量程）。 */
+    dayCellAria: (day: number, v: string) => `D+${day} · ${v}`,
     /**
      * WO-UI-DECLUTTER-TOP3 · 浮层文案（`docs/CONVENTION-ui-information-layering.md` §1）。
      * 第一层只留「数值 / 状态 / 名字」，**口径 · 公式 · 为什么这么算 · 数据来源**一律降进 `?` 浮层；
@@ -691,6 +699,20 @@ export const zh = {
         ctaAria: "在诊断抽屉里看完整就绪认证",
       },
       info: {
+        /**
+         * WO-HOVER-LAYER：以下三条原先挂在**原生 `title=`** 上，按
+         * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3「公式与口径不在第一层，
+         * 且禁止用 HTML title 属性充当浮层」迁到 InfoPopover。
+         */
+        routingConfidenceTopic: "分类置信度",
+        routingConfidenceBody:
+          "量纲＝分类置信度 0–1（QOS routing.completed 事件的 confidence），越高越确定。与阈值 tauHigh / tauMid 同尺度比较，恒 0–1；满分是 1 不是 100。",
+        skillWriteModeTopic: "写模式（推导位）",
+        skillWriteModeBody:
+          "契约 isWriteModeSkill 的推导结果，非后端下发字段：会改变真值 或 需要审批 ⇒ 受 R4「真值只经 Action 审批链变更」约束，故必须产出 action_draft。",
+        llmNoReasoningTopic: "关推理",
+        llmNoReasoningBody:
+          "关掉该用途的推理（分类 / 选型等本不需推理）：推理型模型改用同 provider 的非推理兄弟出快答，是治本的降时延手段。",
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
         triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,
@@ -737,6 +759,55 @@ export const zh = {
         kpiUnit: "读数量纲 · 0–100 指数",
         kpiUnitGlobal: "全局态是**全对象、全状态变量**的均值，量纲为 0–100 指数（非百分比、非任何单一变量的原值）；越高越好。",
         kpiUnitVar: "每个状态变量的读数是该变量在**全部已物化对象**上的均值，量纲为 0–100 指数（非百分比）。",
+        /**
+         * WO-SANDBOX-CANDIDATES-FE · 候选对策的浮层标题。
+         * 第一层只放「拨哪个对象 / 拨哪个属性 / 从多少到多少 / 效果」；
+         * 口径（档位怎么来的 · join 怎么推的 · 试算公式）一律降到这两个浮层里。
+         */
+        candidateHow: "这条对策是怎么推出来的",
+        candidateNone: "为什么这个阻滞点没有方案",
+      },
+      /**
+       * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。
+       *
+       * 只收标题/表头/连接词这类纯壳字。**不收**任何口径正文 ——
+       * 档位来源、join 路径、试算公式、缺席原因全部是**引擎回包里的字段原文**
+       * （`rungSource` / `join.path` / `provenance.formula` / `noCandidateReason` / `gaps[]`），
+       * 抄进本文件就是给引擎文案开一条会漂的分身（R14 同族纪律）。
+       */
+      candidates: {
+        title: "候选对策",
+        /** 计数：几条候选。0 条时不显示本行，改显示「为什么没方案」。 */
+        count: (n: number) => `${n} 条`,
+        lever: "拨哪个对象",
+        prop: "拨哪个属性",
+        move: "从多少拨到多少",
+        rung: "档位来源",
+        effect: "真试算的效果",
+        join: "溯源",
+        /** 档位纪律：必须让用户看见"这个数不是前端拍的"。 */
+        rungNote: "档位取自同侪真实取值 / 规则阈值本身，全链零步长常数",
+        /** 杠杆落点不是阻滞点落点时的记号（回包里没有该对象的显示名，只有业务 id）。 */
+        leverElsewhere: "杠杆不在阻滞点落点上",
+        leverIdOnly: "回包只带业务 id，无显示名 —— 如实回显 id，不去别处凑一个名字",
+        /** KPI 维表头。 */
+        dimBefore: "不施策",
+        dimAfter: "施策后",
+        dimDelta: "改善",
+        /** 维算不出来（value===null）：显示引擎给的原因，**绝不补 0**。 */
+        dimEmpty: "算不出来",
+        /** 「为什么没方案」区。 */
+        noneTitle: "为什么这个阻滞点没有方案",
+        statLine: (a: number, p: number, e: number, m: number) =>
+          `探了 ${a} 个杠杆锚点 · 试算 ${p} 次 · 有效 ${e} 个 · 下发 ${m} 条`,
+        gapsTitle: "缺口（引擎原文）",
+        statMissing: "引擎未回带本点的逐点账（candidateStats 无对应行）—— 说不出探了几个锚点，如实标注，不编一个数",
+        /** 顶部总账。 */
+        summary: (withC: number, total: number) => `${withC} 个阻滞点有对策 · 共 ${total} 条候选`,
+        absentSummary: "没有对策的分三态（修法完全不同，不许合并看）：",
+        probes: (n: number) => `本次试算探针 ${n} 次`,
+        truncated: "⚠ 探针预算已耗尽 ⇒ 后面的档位没试算完，结果不完整",
+        waiting: "等 chain_impediments 取回后，这里逐条列出候选对策。",
       },
     },
     inference: {

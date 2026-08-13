@@ -1,0 +1,568 @@
+/*
+ * WO-PROCUREMENT-FRONTEND · 采购四段腿分解样式。
+ *
+ * 三色系纪律：**零硬编码颜色**，全部走 `src/styles/tokens.css` 的 `:root` 变量
+ * （dark 默认 / light / warm 三档由 `<html data-theme>` 翻转，本文件一个字节都不用改）。
+ *
+ * ── 三态可分的样式纪律（本单第 2 条硬要求）───────────────────────────────────
+ * 「不适用」与「取不到」**不许只靠颜色区分**：色觉障碍读者读不出，自动化断言也咬不住。
+ * 本文件给它们三套**形状/纹理**都不同的处理：
+ *   · MEASURED       实心条 + 实线框     —— 有真值
+ *   · NOT_APPLICABLE 零宽塌陷条 + 虚线框 —— 结构上没有这一段（真值 0，已结算）
+ *   · EMPTY          斜纹填充 + 点线框   —— 不知道（未结算，且阻断合计）
+ * 颜色只是第四重冗余编码，去掉颜色这三者依然一眼可分。
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+/* ── 页头 ──────────────────────────────────────────────────────────────────── */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line2);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.note {
+  color: var(--muted2);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.btn {
+  padding: 4px 12px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--txt);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--hover-tint-strong);
+}
+
+/* ── 「该找谁」总榜（整页落点）─────────────────────────────────────────────── */
+.whoBoard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--nav-active-bg);
+}
+
+.whoTitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.whoList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.whoRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--panel2);
+}
+
+.whoRank {
+  min-width: 22px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.whoName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.whoRole {
+  padding: 1px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* 对内责任方（IQC）—— 行动指向不同：不是打给外部，是自家待检区。 */
+.whoRole[data-internal="1"] {
+  border-color: var(--c-quality);
+  color: var(--c-quality);
+}
+
+.whoDays {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.whoMats {
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+/* ── 订单卡 ────────────────────────────────────────────────────────────────── */
+.order {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.orderHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.orderId {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pill {
+  padding: 1px 8px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pill[data-tone="warn"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.pill[data-tone="danger"] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.pill[data-tone="ok"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+/* ── 缺料项 ────────────────────────────────────────────────────────────────── */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.material {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.supplier {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── criticalLeg 横幅（**本特性的落点**：用户要的是"该去找谁"）─────────────── */
+.critical {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+  padding: 9px 12px;
+  border: 2px solid var(--warn);
+  border-left-width: 6px;
+  border-radius: 8px;
+  background: var(--panel2);
+}
+
+.criticalLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warn);
+  letter-spacing: 0.08em;
+}
+
+.criticalWho {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.criticalMeta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.criticalHint {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+/* 关键段无从判定（四段无一实测）—— 说清楚，不留白。 */
+.criticalAbsent {
+  padding: 9px 12px;
+  border: 2px dotted var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 引擎汇总与契约唯一实现对不上 —— 当面报，不静默择一。 */
+.mismatch {
+  padding: 8px 10px;
+  border: 2px solid var(--danger);
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ── 四段瀑布 ──────────────────────────────────────────────────────────────── */
+.waterfall {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leg {
+  display: grid;
+  grid-template-columns: 96px 128px 1fr 92px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.leg[data-critical="1"] {
+  background: var(--hover-tint-strong);
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+
+.legName {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.legOwner {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.legOwnerRole {
+  font-size: 10px;
+  color: var(--muted2);
+}
+
+.legOwnerRef {
+  font-size: 12px;
+  color: var(--txt);
+}
+
+/* 责任方指不出来 —— 显式说"未指明"，绝不编一个名字。 */
+.legOwnerRef[data-absent="1"] {
+  color: var(--muted2);
+  font-style: italic;
+}
+
+.legDays {
+  justify-self: end;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── 条本体：三态三种**形状/纹理**（去掉颜色仍可分）───────────────────────── */
+.track {
+  position: relative;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 4px;
+}
+
+/* ① MEASURED：实心条 + 实线框 */
+.bar[data-status="MEASURED"] {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+/* 增值段（只有供应商生产段是 work）—— 与非增值段再加一重区分。 */
+.bar[data-status="MEASURED"][data-value-add="1"] {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+/* ② NOT_APPLICABLE：**零宽塌陷** + 虚线框 —— 结构上没有这一段，真值 0，已结算。
+ *    虚线 = "这里本来就没有东西"，与 ③ 的点线纹理截然不同。 */
+.naMark {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px dashed var(--muted2);
+  border-radius: 4px;
+  color: var(--muted2);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ③ EMPTY：斜纹填充铺满 + 点线框 —— 一个"没填上的洞"，且会阻断合计。
+ *    斜纹是**纹理**不是颜色：灰度打印、色觉障碍下依然与 ② 的空虚线框一眼可分。 */
+.emptyMark {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px dotted var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 4px,
+    var(--line2) 4px 6px
+  );
+}
+
+/* ── 段说明（三态各自的 reason，前缀不同）─────────────────────────────────── */
+.legReason {
+  grid-column: 1 / -1;
+  padding-left: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted2);
+}
+
+.reasonTag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.reasonTag[data-status="MEASURED"] {
+  border: 1px solid var(--line2);
+  color: var(--muted);
+}
+
+.reasonTag[data-status="NOT_APPLICABLE"] {
+  border: 1px dashed var(--muted2);
+  color: var(--muted2);
+}
+
+.reasonTag[data-status="EMPTY"] {
+  border: 1px dotted var(--danger);
+  color: var(--danger);
+}
+
+.legSource {
+  grid-column: 1 / -1;
+  padding-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+}
+
+/* ── 合计行 ────────────────────────────────────────────────────────────────── */
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line2);
+  font-size: 12px;
+}
+
+.totalItem {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.totalKey {
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+.totalVal {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.totalVal[data-known="0"] {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* 合计不可结算的解释（EMPTY 段阻断）—— 明说是哪几段挡的。 */
+.totalBlocked {
+  flex-basis: 100%;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ── 责任方汇总 ────────────────────────────────────────────────────────────── */
+.rollup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.rollupChip {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 9px;
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.rollupChip[data-internal="1"] {
+  border-color: var(--c-quality);
+}
+
+.rollupDays {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.rollupUnknown {
+  padding: 2px 9px;
+  border: 1px dotted var(--danger);
+  border-radius: 999px;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+/* ── 状态区（加载 / 错误 / 空）──────────────────────────────────────────────── */
+.state {
+  padding: 16px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.stateTitle {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--txt);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stateCode {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.legendItem {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.legendSwatch {
+  width: 34px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.legendSwatch[data-status="MEASURED"] {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.legendSwatch[data-status="NOT_APPLICABLE"] {
+  border: 1px dashed var(--muted2);
+}
+
+.legendSwatch[data-status="EMPTY"] {
+  border: 1px dotted var(--danger);
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, var(--line2) 4px 6px);
+}

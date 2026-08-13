@@ -273,7 +273,9 @@ export default function ResourcesPage() {
                       <tr
                         key={r.key}
                         data-testid={`resource-row-${r.key}`}
-                        style={{ cursor: "pointer", background: selected?.kind === r.kind && selected?.key === r.key ? "var(--accent-soft, #eef2ff)" : undefined }}
+                        /* WO-HOVER-LAYER：`--accent-soft` 是幽灵令牌，兜底 #eef2ff 是**浅紫白** ⇒ 暗色皮下
+                           选中行变成浅色块 + 近白字，选中即读不了。改吃 --hover-tint-strong（逐主题定义）。 */
+                        style={{ cursor: "pointer", background: selected?.kind === r.kind && selected?.key === r.key ? "var(--hover-tint-strong)" : undefined }}
                         onClick={() => setSelected(r)}
                       >
                         <td className="mono" style={{ fontSize: 11 }}>{r.key}</td>
