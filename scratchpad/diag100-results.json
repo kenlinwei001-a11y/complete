@@ -1,0 +1,5683 @@
+[
+  {
+    "num": 1,
+    "section": "经营指标根因归因",
+    "question": "储能业务线目标139.2万套、实际100.5、缺口38.7万套，根子在哪个基地哪个环节？先补哪最快？",
+    "anchor": "储能·seg_attain_ess",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 150.66,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWQR44FT72HK0W31Q8XP5F9",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWQR44GNNMQ6KSRMY5M775N",
+      "query": "储能业务线目标139.2万套、实际100.5、缺口38.7万套，根子在哪个基地哪个环节？先补哪最快？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:26:41.680Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:29:12.174Z",
+      "elapsed": 150.662926197052,
+      "taskId": "task_01KXWQR44FT72HK0W31Q8XP5F9"
+    },
+    "gap_class": "缺 agent / 编排断链",
+    "fix_path": "agentcore path-B 探索模式对复杂归因问句无 timeout 兜底且未暴露 gap_attribution 工具；补 agent tool 注册或 ceo-route 粗映射（ceo-route.ts:12-15,120-124）"
+  },
+  {
+    "num": 2,
+    "section": "经营指标根因归因",
+    "question": "市场份额21.5%没到23%，被哪个竞品在哪个细分抢走？价格还是产能？",
+    "anchor": "market_share",
+    "probe": "gap-data",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 56.6,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "根据 2026-Q2 竞品份额数据，全球市场份额为 **21.5%**，未达 23% 目标。份额缺口主要体现在**储能细分**，被**竞对A**以 **34.5%** 的细分份额压制（本司储能份额仅 **28%**）。当前证据指向**价格因素**是主要失分点，产能并非瓶颈。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "维度",
+            "事实",
+            "数值"
+          ],
+          "rows": [
+            [
+              "全球份额",
+              "本司 / 2026-Q2",
+              "21.5%"
+            ],
+            [
+              "目标差距",
+              "目标 vs 实际",
+              "差 1.5 pct"
+            ],
+            [
+              "储能细分",
+              "竞对A / 2026-Q2",
+              "34.5%"
+            ],
+            [
+              "储能细分",
+              "本司 / 2026-Q2",
+              "28.0%"
+            ],
+            [
+              "方形-LFP单价",
+              "竞对A",
+              "420 元/kWh"
+            ],
+            [
+              "方形-LFP单价",
+              "本司",
+              "465 元/kWh"
+            ],
+            [
+              "价差",
+              "本司溢价",
+              "+45 元/kWh（约+10.7%）"
+            ],
+            [
+              "储能基地利用率",
+              "邯郸/江门/眉山/信阳/扬州",
+              "70%–83%"
+            ]
+          ],
+          "provId": "p1"
+        },
+        {
+          "type": "text",
+          "markdown": "**结论与根因判断：**\n\n1. **哪个竞品**：竞对A（唯一录入的竞品实体）。\n2. **哪个细分**：储能市场（竞对A 34.5% vs 本司 28%，差距 6.5 pct）。\n3. **价格还是产能**：**价格**。同一型号方形-LFP 上，本司报价比竞对A 高 45 元/kWh，溢价约 10.7%。与此同时，储能类基地利用率仅 70%–83%，存在富余产能，说明并非产能受限导致丢单。\n\n**注**：更细粒度（如按具体客户或电芯型号）的份额数据当前未在系统中录入，如需进一步拆解，可补充对应细分市场份额对象。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWQYEAVW4ER0N1PHCH2RKPW",
+          "toolCallId": "tc_01KXWQWXV980G9XAWKQ7G3Y4WD",
+          "toolName": "query_objects",
+          "outputPath": "CompetitorShare.data",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWQYEAVHJHNCNSMY211PSJQ",
+          "toolCallId": "tc_01KXWQWXV4TTKTEKE2KKAWM8D8",
+          "toolName": "query_objects",
+          "outputPath": "CompetitorPrice.data",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWQYEAWYMRC3MJ1CHNWDA3J",
+          "toolCallId": "tc_01KXWQX50H40QQXQDCJK1B249A",
+          "toolName": "query_objects",
+          "outputPath": "Base.data",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWQWQA8R3FSBWR9S5E0793Y",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWQWQA8PRYYC8KJ8619G79X",
+      "query": "市场份额21.5%没到23%，被哪个竞品在哪个细分抢走？价格还是产能？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:29:12.392Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "根据 2026-Q2 竞品份额数据，全球市场份额为 **21.5%**，未达 23% 目标。份额缺口主要体现在**储能细分**，被**竞对A**以 **34.5%** 的细分份额压制（本司储能份额仅 **28%**）。当前证据指向**价格因素**是主要失分点，产能并非瓶颈。"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "维度",
+              "事实",
+              "数值"
+            ],
+            "rows": [
+              [
+                "全球份额",
+                "本司 / 2026-Q2",
+                "21.5%"
+              ],
+              [
+                "目标差距",
+                "目标 vs 实际",
+                "差 1.5 pct"
+              ],
+              [
+                "储能细分",
+                "竞对A / 2026-Q2",
+                "34.5%"
+              ],
+              [
+                "储能细分",
+                "本司 / 2026-Q2",
+                "28.0%"
+              ],
+              [
+                "方形-LFP单价",
+                "竞对A",
+                "420 元/kWh"
+              ],
+              [
+                "方形-LFP单价",
+                "本司",
+                "465 元/kWh"
+              ],
+              [
+                "价差",
+                "本司溢价",
+                "+45 元/kWh（约+10.7%）"
+              ],
+              [
+                "储能基地利用率",
+                "邯郸/江门/眉山/信阳/扬州",
+                "70%–83%"
+              ]
+            ],
+            "provId": "p1"
+          },
+          {
+            "type": "text",
+            "markdown": "**结论与根因判断：**\n\n1. **哪个竞品**：竞对A（唯一录入的竞品实体）。\n2. **哪个细分**：储能市场（竞对A 34.5% vs 本司 28%，差距 6.5 pct）。\n3. **价格还是产能**：**价格**。同一型号方形-LFP 上，本司报价比竞对A 高 45 元/kWh，溢价约 10.7%。与此同时，储能类基地利用率仅 70%–83%，存在富余产能，说明并非产能受限导致丢单。\n\n**注**：更细粒度（如按具体客户或电芯型号）的份额数据当前未在系统中录入，如需进一步拆解，可补充对应细分市场份额对象。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWQYEAVW4ER0N1PHCH2RKPW",
+            "toolCallId": "tc_01KXWQWXV980G9XAWKQ7G3Y4WD",
+            "toolName": "query_objects",
+            "outputPath": "CompetitorShare.data",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWQYEAVHJHNCNSMY211PSJQ",
+            "toolCallId": "tc_01KXWQWXV4TTKTEKE2KKAWM8D8",
+            "toolName": "query_objects",
+            "outputPath": "CompetitorPrice.data",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWQYEAWYMRC3MJ1CHNWDA3J",
+            "toolCallId": "tc_01KXWQX50H40QQXQDCJK1B249A",
+            "toolName": "query_objects",
+            "outputPath": "Base.data",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:30:08.732Z",
+      "elapsed": 56.5988450050354,
+      "taskId": "task_01KXWQWQA8R3FSBWR9S5E0793Y"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 3,
+    "section": "经营指标根因归因",
+    "question": "现金58亿差目标60亿2亿，缺口主要卡在应收还是库存占用？",
+    "anchor": "cash",
+    "probe": "gap-data",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 21.16,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWQYEKDWEH58838520B3VSM",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWQYEKDT0BH6ABCRE81DF92",
+      "query": "现金58亿差目标60亿2亿，缺口主要卡在应收还是库存占用？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:30:09.005Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:30:29.713Z",
+      "elapsed": 21.16139793395996,
+      "taskId": "task_01KXWQYEKDWEH58838520B3VSM"
+    },
+    "gap_class": "缺 agent / 缺本体",
+    "fix_path": "cash 无 RootCauseChain 导致 outOfCatalog 落探索模式；补 cash 归因链或 CausalFactor 兜底（battery.ts / solvers/service.ts）"
+  },
+  {
+    "num": 4,
+    "section": "经营指标根因归因",
+    "question": "物料覆盖95.8%没满，哪几种物料拖的后腿？",
+    "anchor": "material_cov·三元正极缺1858t",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 72.72,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "按物料平衡（MaterialBalance）中的净需求加权，整体物料覆盖率为 **95.75%**，与驾驶舱显示的 95.8% 一致。拖后腿的物料是覆盖率低于该加权平均值的品种，共 5 种。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "物料",
+            "覆盖率 (ltaPct)",
+            "净需求",
+            "缺口",
+            "预计齐料日"
+          ],
+          "rows": [
+            [
+              "铜箔",
+              "91%",
+              "4,425 吨",
+              "398 吨",
+              "2026-06-30"
+            ],
+            [
+              "三元正极",
+              "92%",
+              "23,231 吨",
+              "1,858 吨",
+              "2026-06-28"
+            ],
+            [
+              "石墨负极",
+              "93%",
+              "9,975 吨",
+              "698 吨",
+              "2026-06-29"
+            ],
+            [
+              "磷酸铁锂正极",
+              "94%",
+              "8,208 吨",
+              "492 吨",
+              "2026-06-27"
+            ],
+            [
+              "铝箔",
+              "95%",
+              "3,323 吨",
+              "166 吨",
+              "2026-06-26"
+            ]
+          ],
+          "provId": "tc_01KXWQZB4Q17PW9S5EFPTZV84D"
+        },
+        {
+          "type": "text",
+          "markdown": "其余 4 种物料（电解液 96%、电芯壳体 99%、隔膜 100%、包材 100%）的覆盖率均高于整体均值，未拖后腿。建议优先跟进铜箔、三元正极和石墨负极的补货，三者缺口合计 2,954 吨，占整体缺口的绝大部分。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR19VKQQGGQKR20CM7AEMF",
+          "toolCallId": "tc_01KXWQZB4Q17PW9S5EFPTZV84D",
+          "toolName": "query_objects",
+          "outputPath": "data[].props{material,ltaPct,netDemandTon,gapTon,etaDate}",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWQZ393EZGSA12NZ2SRJRZ9",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWQZ393E8ZP5WJGEC6NTAJ8",
+      "query": "物料覆盖95.8%没满，哪几种物料拖的后腿？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:30:30.179Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "按物料平衡（MaterialBalance）中的净需求加权，整体物料覆盖率为 **95.75%**，与驾驶舱显示的 95.8% 一致。拖后腿的物料是覆盖率低于该加权平均值的品种，共 5 种。"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "物料",
+              "覆盖率 (ltaPct)",
+              "净需求",
+              "缺口",
+              "预计齐料日"
+            ],
+            "rows": [
+              [
+                "铜箔",
+                "91%",
+                "4,425 吨",
+                "398 吨",
+                "2026-06-30"
+              ],
+              [
+                "三元正极",
+                "92%",
+                "23,231 吨",
+                "1,858 吨",
+                "2026-06-28"
+              ],
+              [
+                "石墨负极",
+                "93%",
+                "9,975 吨",
+                "698 吨",
+                "2026-06-29"
+              ],
+              [
+                "磷酸铁锂正极",
+                "94%",
+                "8,208 吨",
+                "492 吨",
+                "2026-06-27"
+              ],
+              [
+                "铝箔",
+                "95%",
+                "3,323 吨",
+                "166 吨",
+                "2026-06-26"
+              ]
+            ],
+            "provId": "tc_01KXWQZB4Q17PW9S5EFPTZV84D"
+          },
+          {
+            "type": "text",
+            "markdown": "其余 4 种物料（电解液 96%、电芯壳体 99%、隔膜 100%、包材 100%）的覆盖率均高于整体均值，未拖后腿。建议优先跟进铜箔、三元正极和石墨负极的补货，三者缺口合计 2,954 吨，占整体缺口的绝大部分。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR19VKQQGGQKR20CM7AEMF",
+            "toolCallId": "tc_01KXWQZB4Q17PW9S5EFPTZV84D",
+            "toolName": "query_objects",
+            "outputPath": "data[].props{material,ltaPct,netDemandTon,gapTon,etaDate}",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:31:42.451Z",
+      "elapsed": 72.71778869628906,
+      "taskId": "task_01KXWQZ393EZGSA12NZ2SRJRZ9"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 5,
+    "section": "经营指标根因归因",
+    "question": "需求达成90.8%，是哪条业务线、哪个月拉低的？",
+    "anchor": "demand_attain·PlanTarget月度",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.05,
+    "verdict": "◑",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "missCount",
+          "value": "2",
+          "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.op",
+          "value": "6",
+          "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.year",
+          "value": "4",
+          "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+        },
+        {
+          "type": "kpi",
+          "label": "summary",
+          "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+          "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "metricId",
+            "key",
+            "name",
+            "unit",
+            "level",
+            "category",
+            "target",
+            "actual",
+            "delta",
+            "miss",
+            "floorVal",
+            "ksfRef",
+            "ownerRef",
+            "chainKey"
+          ],
+          "rows": [
+            [
+              "kpi-attain",
+              "demand_attain",
+              "需求达成率",
+              "%",
+              "op",
+              "scale",
+              100,
+              90.8,
+              -9.2,
+              "true",
+              95,
+              "ksf-bal",
+              "prin-plan",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-cash",
+              "cash",
+              "经营现金",
+              "亿",
+              "year",
+              "cash",
+              60,
+              58,
+              -2,
+              "false",
+              50,
+              "ksf-cash",
+              "prin-fin",
+              ""
+            ],
+            [
+              "kpi-gross-profit",
+              "gross_profit",
+              "毛利",
+              "亿",
+              "year",
+              "profit",
+              112,
+              118.9,
+              6.9,
+              "false",
+              108.5,
+              "ksf-cost",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-margin",
+              "gm_rate",
+              "毛利率",
+              "%",
+              "op",
+              "profit",
+              16,
+              17,
+              1,
+              "false",
+              15.5,
+              "ksf-dem",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-material",
+              "material_cov",
+              "物料保障率",
+              "%",
+              "op",
+              "material",
+              100,
+              95.8,
+              -4.2,
+              "false",
+              95,
+              "ksf-kit",
+              "prin-supply",
+              "rc-material-gap"
+            ],
+            [
+              "kpi-revenue",
+              "revenue",
+              "营收",
+              "亿",
+              "year",
+              "scale",
+              700,
+              700,
+              0,
+              "false",
+              686,
+              "ksf-dem",
+              "prin-fin",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-com",
+              "seg_attain_com",
+              "商用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              115.8,
+              15.8,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-com",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-ess",
+              "seg_attain_ess",
+              "储能达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              72.2,
+              -27.8,
+              "true",
+              95,
+              "ksf-dem",
+              "prin-seg-ess",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-pas",
+              "seg_attain_pas",
+              "乘用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              99.5,
+              -0.5,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-pas",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-share",
+              "market_share",
+              "市场份额",
+              "%",
+              "year",
+              "share",
+              23,
+              21.5,
+              -1.5,
+              "false",
+              20,
+              "ksf-dem",
+              "prin-plan",
+              ""
+            ]
+          ],
+          "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR1ACX7GEJMWG20JY3PHDS",
+          "toolCallId": "tc_01KXWR1ACT722H20XM1AWA2R9G",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR1AA09AZR6PA1PW71VGTK",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR1AA05DKEZTM6J1CJM5FP",
+      "query": "需求达成90.8%，是哪条业务线、哪个月拉低的？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:31:42.912Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_metric",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_metric_v1",
+        "intentKey": "ceo_metric",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "missCount",
+            "value": "2",
+            "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.op",
+            "value": "6",
+            "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.year",
+            "value": "4",
+            "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+          },
+          {
+            "type": "kpi",
+            "label": "summary",
+            "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+            "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "metricId",
+              "key",
+              "name",
+              "unit",
+              "level",
+              "category",
+              "target",
+              "actual",
+              "delta",
+              "miss",
+              "floorVal",
+              "ksfRef",
+              "ownerRef",
+              "chainKey"
+            ],
+            "rows": [
+              [
+                "kpi-attain",
+                "demand_attain",
+                "需求达成率",
+                "%",
+                "op",
+                "scale",
+                100,
+                90.8,
+                -9.2,
+                "true",
+                95,
+                "ksf-bal",
+                "prin-plan",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-cash",
+                "cash",
+                "经营现金",
+                "亿",
+                "year",
+                "cash",
+                60,
+                58,
+                -2,
+                "false",
+                50,
+                "ksf-cash",
+                "prin-fin",
+                ""
+              ],
+              [
+                "kpi-gross-profit",
+                "gross_profit",
+                "毛利",
+                "亿",
+                "year",
+                "profit",
+                112,
+                118.9,
+                6.9,
+                "false",
+                108.5,
+                "ksf-cost",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-margin",
+                "gm_rate",
+                "毛利率",
+                "%",
+                "op",
+                "profit",
+                16,
+                17,
+                1,
+                "false",
+                15.5,
+                "ksf-dem",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-material",
+                "material_cov",
+                "物料保障率",
+                "%",
+                "op",
+                "material",
+                100,
+                95.8,
+                -4.2,
+                "false",
+                95,
+                "ksf-kit",
+                "prin-supply",
+                "rc-material-gap"
+              ],
+              [
+                "kpi-revenue",
+                "revenue",
+                "营收",
+                "亿",
+                "year",
+                "scale",
+                700,
+                700,
+                0,
+                "false",
+                686,
+                "ksf-dem",
+                "prin-fin",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-com",
+                "seg_attain_com",
+                "商用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                115.8,
+                15.8,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-com",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-ess",
+                "seg_attain_ess",
+                "储能达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                72.2,
+                -27.8,
+                "true",
+                95,
+                "ksf-dem",
+                "prin-seg-ess",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-pas",
+                "seg_attain_pas",
+                "乘用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                99.5,
+                -0.5,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-pas",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-share",
+                "market_share",
+                "市场份额",
+                "%",
+                "year",
+                "share",
+                23,
+                21.5,
+                -1.5,
+                "false",
+                20,
+                "ksf-dem",
+                "prin-plan",
+                ""
+              ]
+            ],
+            "provId": "prov_01KXWR1ACX7GEJMWG20JY3PHDS"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR1ACX7GEJMWG20JY3PHDS",
+            "toolCallId": "tc_01KXWR1ACT722H20XM1AWA2R9G",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": false
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_metric",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:31:43.008Z",
+      "elapsed": 1.054391860961914,
+      "taskId": "task_01KXWR1AA09AZR6PA1PW71VGTK"
+    },
+    "gap_class": "路由错配",
+    "fix_path": "需求达成\"哪个月拉低\"被错路由到 metric_rollup；扩 ceo-route.ts 意图映射，将时间序列/下钻问句导向 plan_rootcause 或 metric_drill"
+  },
+  {
+    "num": 6,
+    "section": "经营指标根因归因",
+    "question": "毛利率17%虽超标但储能线拖累多少？",
+    "anchor": "gm_rate·储能marginPct13",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 98.42,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "整体毛利率实际 17%，高于目标 16%（+1pp）⟦ref:0⟧。按基线营收结构测算，储能线对整体毛利率存在显著拖累，具体量化如下："
+        },
+        {
+          "type": "table",
+          "columns": [
+            "维度",
+            "乘用车",
+            "储能",
+            "商用车",
+            "整体"
+          ],
+          "rows": [
+            [
+              "基线毛利率",
+              "18%",
+              "13%",
+              "15%",
+              "≈16%"
+            ],
+            [
+              "基线营收占比",
+              "52%",
+              "32%",
+              "16%",
+              "100%"
+            ],
+            [
+              "毛利贡献",
+              "9.36pp",
+              "4.16pp",
+              "2.40pp",
+              "15.92pp"
+            ],
+            [
+              "与整体差距（vs 实际17%）",
+              "+1pp",
+              "−4pp",
+              "−2pp",
+              "—"
+            ]
+          ],
+          "provId": "seg"
+        },
+        {
+          "type": "text",
+          "markdown": "**1. 对目标毛利率的拖累**：按基线份额 32% 与毛利率 13% 计算，储能线比目标整体 16% 低 3 个百分点，直接拉低整体毛利率约 **1.0 个百分点**（3pp × 32%）。若储能线毛利率提升至乘用车水平 18%，整体毛利率可再上浮约 1.6 个百分点。  \n\n**2. 对实际毛利率的拖累**：储能线 13% 低于实际整体 17% 达 4 个百分点，按基线权重拖累整体约 **1.3 个百分点**（4pp × 32%）。若非储能业务（乘用车/商用车）予以对冲，整体毛利率将显著低于 17%。  \n\n**3. 达成率警示**：储能线需求达成率仅 72.2%，远低于乘用车 99.5% 与商用车 115.8%⟦ref:1⟧。低达成率可能进一步放大单位成本压力，形成「量价双杀」式拖累。"
+        },
+        {
+          "type": "text",
+          "markdown": "**结论**：储能线以约 32% 的基线营收权重、13% 的毛利率，对整体毛利率构成约 **1.0–1.3 个百分点的结构性拖累**；当前整体 17% 的超标表现，主要依赖乘用车（18%）与商用车超预期（115.8% 达成）予以对冲。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR4ATWN017EB59TG13K0PV",
+          "toolCallId": "tc_01KXWR1NY5GCAQ73H9X5EWEH3J",
+          "toolName": "query_objects",
+          "outputPath": "data[3] Metric props gm_rate target=16 actual=17",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR4ATWN97NC6QY6YT42HG9",
+          "toolCallId": "tc_01KXWR1NY5GCAQ73H9X5EWEH3J",
+          "toolName": "query_objects",
+          "outputPath": "data[7] Metric props seg_attain_ess actual=72.2",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR4ATW03VY0C1GXTJ9T40P",
+          "toolCallId": "tc_01KXWR1NY0YPB08JZADMEB8M30",
+          "toolName": "query_objects",
+          "outputPath": "data[0..2] Segment props gmRate/baselineShare for com/ess/pas",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR1BCY5A59VB5KPFJDF5VV",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR1BCYW22X06AFH7A2XZND",
+      "query": "毛利率17%虽超标但储能线拖累多少？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:31:44.030Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "整体毛利率实际 17%，高于目标 16%（+1pp）⟦ref:0⟧。按基线营收结构测算，储能线对整体毛利率存在显著拖累，具体量化如下："
+          },
+          {
+            "type": "table",
+            "columns": [
+              "维度",
+              "乘用车",
+              "储能",
+              "商用车",
+              "整体"
+            ],
+            "rows": [
+              [
+                "基线毛利率",
+                "18%",
+                "13%",
+                "15%",
+                "≈16%"
+              ],
+              [
+                "基线营收占比",
+                "52%",
+                "32%",
+                "16%",
+                "100%"
+              ],
+              [
+                "毛利贡献",
+                "9.36pp",
+                "4.16pp",
+                "2.40pp",
+                "15.92pp"
+              ],
+              [
+                "与整体差距（vs 实际17%）",
+                "+1pp",
+                "−4pp",
+                "−2pp",
+                "—"
+              ]
+            ],
+            "provId": "seg"
+          },
+          {
+            "type": "text",
+            "markdown": "**1. 对目标毛利率的拖累**：按基线份额 32% 与毛利率 13% 计算，储能线比目标整体 16% 低 3 个百分点，直接拉低整体毛利率约 **1.0 个百分点**（3pp × 32%）。若储能线毛利率提升至乘用车水平 18%，整体毛利率可再上浮约 1.6 个百分点。  \n\n**2. 对实际毛利率的拖累**：储能线 13% 低于实际整体 17% 达 4 个百分点，按基线权重拖累整体约 **1.3 个百分点**（4pp × 32%）。若非储能业务（乘用车/商用车）予以对冲，整体毛利率将显著低于 17%。  \n\n**3. 达成率警示**：储能线需求达成率仅 72.2%，远低于乘用车 99.5% 与商用车 115.8%⟦ref:1⟧。低达成率可能进一步放大单位成本压力，形成「量价双杀」式拖累。"
+          },
+          {
+            "type": "text",
+            "markdown": "**结论**：储能线以约 32% 的基线营收权重、13% 的毛利率，对整体毛利率构成约 **1.0–1.3 个百分点的结构性拖累**；当前整体 17% 的超标表现，主要依赖乘用车（18%）与商用车超预期（115.8% 达成）予以对冲。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR4ATWN017EB59TG13K0PV",
+            "toolCallId": "tc_01KXWR1NY5GCAQ73H9X5EWEH3J",
+            "toolName": "query_objects",
+            "outputPath": "data[3] Metric props gm_rate target=16 actual=17",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR4ATWN97NC6QY6YT42HG9",
+            "toolCallId": "tc_01KXWR1NY5GCAQ73H9X5EWEH3J",
+            "toolName": "query_objects",
+            "outputPath": "data[7] Metric props seg_attain_ess actual=72.2",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR4ATW03VY0C1GXTJ9T40P",
+            "toolCallId": "tc_01KXWR1NY0YPB08JZADMEB8M30",
+            "toolName": "query_objects",
+            "outputPath": "data[0..2] Segment props gmRate/baselineShare for com/ess/pas",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:33:21.757Z",
+      "elapsed": 98.41908311843872,
+      "taskId": "task_01KXWR1BCY5A59VB5KPFJDF5VV"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 7,
+    "section": "经营指标根因归因",
+    "question": "乘用车达成99.5%差0.5%，是量还是价的缺口？",
+    "anchor": "seg_attain_pas",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "◑",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "missCount",
+          "value": "2",
+          "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.op",
+          "value": "6",
+          "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.year",
+          "value": "4",
+          "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+        },
+        {
+          "type": "kpi",
+          "label": "summary",
+          "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+          "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "metricId",
+            "key",
+            "name",
+            "unit",
+            "level",
+            "category",
+            "target",
+            "actual",
+            "delta",
+            "miss",
+            "floorVal",
+            "ksfRef",
+            "ownerRef",
+            "chainKey"
+          ],
+          "rows": [
+            [
+              "kpi-attain",
+              "demand_attain",
+              "需求达成率",
+              "%",
+              "op",
+              "scale",
+              100,
+              90.8,
+              -9.2,
+              "true",
+              95,
+              "ksf-bal",
+              "prin-plan",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-cash",
+              "cash",
+              "经营现金",
+              "亿",
+              "year",
+              "cash",
+              60,
+              58,
+              -2,
+              "false",
+              50,
+              "ksf-cash",
+              "prin-fin",
+              ""
+            ],
+            [
+              "kpi-gross-profit",
+              "gross_profit",
+              "毛利",
+              "亿",
+              "year",
+              "profit",
+              112,
+              118.9,
+              6.9,
+              "false",
+              108.5,
+              "ksf-cost",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-margin",
+              "gm_rate",
+              "毛利率",
+              "%",
+              "op",
+              "profit",
+              16,
+              17,
+              1,
+              "false",
+              15.5,
+              "ksf-dem",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-material",
+              "material_cov",
+              "物料保障率",
+              "%",
+              "op",
+              "material",
+              100,
+              95.8,
+              -4.2,
+              "false",
+              95,
+              "ksf-kit",
+              "prin-supply",
+              "rc-material-gap"
+            ],
+            [
+              "kpi-revenue",
+              "revenue",
+              "营收",
+              "亿",
+              "year",
+              "scale",
+              700,
+              700,
+              0,
+              "false",
+              686,
+              "ksf-dem",
+              "prin-fin",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-com",
+              "seg_attain_com",
+              "商用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              115.8,
+              15.8,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-com",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-ess",
+              "seg_attain_ess",
+              "储能达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              72.2,
+              -27.8,
+              "true",
+              95,
+              "ksf-dem",
+              "prin-seg-ess",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-pas",
+              "seg_attain_pas",
+              "乘用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              99.5,
+              -0.5,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-pas",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-share",
+              "market_share",
+              "市场份额",
+              "%",
+              "year",
+              "share",
+              23,
+              21.5,
+              -1.5,
+              "false",
+              20,
+              "ksf-dem",
+              "prin-plan",
+              ""
+            ]
+          ],
+          "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR",
+          "toolCallId": "tc_01KXWR4BH5MPMGDV5G793BBEAZ",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR4BGVNDW9JKC31NSMP8JB",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR4BGVANKZYCFAFBV9VBK3",
+      "query": "乘用车达成99.5%差0.5%，是量还是价的缺口？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:33:22.459Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_metric",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_metric_v1",
+        "intentKey": "ceo_metric",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "missCount",
+            "value": "2",
+            "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.op",
+            "value": "6",
+            "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.year",
+            "value": "4",
+            "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+          },
+          {
+            "type": "kpi",
+            "label": "summary",
+            "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+            "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "metricId",
+              "key",
+              "name",
+              "unit",
+              "level",
+              "category",
+              "target",
+              "actual",
+              "delta",
+              "miss",
+              "floorVal",
+              "ksfRef",
+              "ownerRef",
+              "chainKey"
+            ],
+            "rows": [
+              [
+                "kpi-attain",
+                "demand_attain",
+                "需求达成率",
+                "%",
+                "op",
+                "scale",
+                100,
+                90.8,
+                -9.2,
+                "true",
+                95,
+                "ksf-bal",
+                "prin-plan",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-cash",
+                "cash",
+                "经营现金",
+                "亿",
+                "year",
+                "cash",
+                60,
+                58,
+                -2,
+                "false",
+                50,
+                "ksf-cash",
+                "prin-fin",
+                ""
+              ],
+              [
+                "kpi-gross-profit",
+                "gross_profit",
+                "毛利",
+                "亿",
+                "year",
+                "profit",
+                112,
+                118.9,
+                6.9,
+                "false",
+                108.5,
+                "ksf-cost",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-margin",
+                "gm_rate",
+                "毛利率",
+                "%",
+                "op",
+                "profit",
+                16,
+                17,
+                1,
+                "false",
+                15.5,
+                "ksf-dem",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-material",
+                "material_cov",
+                "物料保障率",
+                "%",
+                "op",
+                "material",
+                100,
+                95.8,
+                -4.2,
+                "false",
+                95,
+                "ksf-kit",
+                "prin-supply",
+                "rc-material-gap"
+              ],
+              [
+                "kpi-revenue",
+                "revenue",
+                "营收",
+                "亿",
+                "year",
+                "scale",
+                700,
+                700,
+                0,
+                "false",
+                686,
+                "ksf-dem",
+                "prin-fin",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-com",
+                "seg_attain_com",
+                "商用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                115.8,
+                15.8,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-com",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-ess",
+                "seg_attain_ess",
+                "储能达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                72.2,
+                -27.8,
+                "true",
+                95,
+                "ksf-dem",
+                "prin-seg-ess",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-pas",
+                "seg_attain_pas",
+                "乘用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                99.5,
+                -0.5,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-pas",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-share",
+                "market_share",
+                "市场份额",
+                "%",
+                "year",
+                "share",
+                23,
+                21.5,
+                -1.5,
+                "false",
+                20,
+                "ksf-dem",
+                "prin-plan",
+                ""
+              ]
+            ],
+            "provId": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR4BH5SF1PTZSBNTZAQ6SR",
+            "toolCallId": "tc_01KXWR4BH5MPMGDV5G793BBEAZ",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": false
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_metric",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:33:22.470Z",
+      "elapsed": 1.0054447650909424,
+      "taskId": "task_01KXWR4BGVNDW9JKC31NSMP8JB"
+    },
+    "gap_class": "路由错配",
+    "fix_path": "同 Q5：seg_attain_pas 被 metric_rollup 泛化应答，未按\"量/价缺口\"拆分；扩 ceo-route.ts 细意图"
+  },
+  {
+    "num": 8,
+    "section": "经营指标根因归因",
+    "question": "商用车超额到115.8%，是真需求还是压价冲量？",
+    "anchor": "seg_attain_com·priceWan1.8",
+    "probe": "gap-data",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 65.71,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "商用车达成率 **115.8%**（目标100%），显著高于整体需求达成率 **90.8%** 及乘用车（99.5%）、储能（72.2%）水平。判断其驱动因素需结合毛利率、价格实现、订单结构及根因链交叉验证。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "维度",
+            "商用车(com)",
+            "乘用车(pas)",
+            "储能(ess)",
+            "说明"
+          ],
+          "rows": [
+            [
+              "达成率",
+              "115.8%",
+              "99.5%",
+              "72.2%",
+              "商用车为唯一超额细分，但拉不动整体（90.8%）"
+            ],
+            [
+              "毛利率",
+              "15%",
+              "18%",
+              "13%",
+              "商用车毛利率居中，低于乘用车"
+            ],
+            [
+              "根因链",
+              "rc-scale-demand",
+              "rc-scale-demand",
+              "rc-scale-demand",
+              "系统归因均为“细分需求未达预期”"
+            ],
+            [
+              "价格实现",
+              "— 无数据 —",
+              "615（vs 目录620）",
+              "465（vs 目录480）",
+              "平台未录入商用车价格实现异常"
+            ],
+            [
+              "赢单记录",
+              "— 无数据 —",
+              "WIN",
+              "LOST（价格劣势）",
+              "无商用车赢丢单记录"
+            ]
+          ],
+          "provId": "p1"
+        },
+        {
+          "type": "text",
+          "markdown": "**一、不支持“压价冲量”的证据**\n\n1. **无价格下探记录**：平台现有 `PriceRealization` 仅覆盖储能（方形-LFP）与乘用车（4680-NCM），未录入商用车型号的价格下浮或异常折扣。若存在系统性压价，通常会在价格实现模块留下记录。\n\n2. **订单结构以头部客户为主**：商用车可见订单集中于 **东风汽车**（4680-NCM/方形-NCM）、**宇通客车**（2170-NCM），均为行业头部主机厂，需求相对稳定，非零散渠道铺货式冲量。\n\n3. **不存在高信用风险信号**：商用车客户 `creditUsedRatio` 在 0.40–0.75 区间，与乘用车/储能客户处于同一水平，未见为冲量而大幅放宽信用政策的痕迹。"
+        },
+        {
+          "type": "text",
+          "markdown": "**二、指向“结构性真需求”或“此消彼长”的线索**\n\n1. **整体需求未达预期**：根因链 `rc-scale-demand` 将商用车、乘用车、储能统一归因于“细分需求未达预期”。商用车超额并非总量扩张，而是 **内部结构异动**——储能仅完成 72.2%，乘用车几乎持平，说明市场预算可能在向商用车倾斜。\n\n2. **低毛利细分占比风险已触发利润根因**：根因链 `rc-profit-mix` 明确提示“低毛利细分占比偏高”。商用车毛利率 15% 低于乘用车 18%，超额达成会稀释整体利润结构。这更符合 **真实但低毛利的订单涌入**，而非通过降价人为制造需求。\n\n3. **无竞品价格打压证据**：现有 `CompetitorPrice` 与 `WinLossRecord` 均围绕储能领域展开，未显示商用车市场正在经历激烈价格战。"
+        },
+        {
+          "type": "text",
+          "markdown": "**结论**\n\n基于当前平台数据，**商用车 115.8% 的超额达成更倾向于结构性真需求（下游主机厂订单前移或预算转移），而非典型的“压价冲量”**。核心依据是：未见价格实现下浮、未见信用政策异常宽松、未见赢单丢单的价格劣势记录。\n\n但需警惕两点：\n- 商用车毛利率（15%）低于乘用车，超额会加剧 `rc-profit-mix` 所提示的“低毛利细分占比偏高”风险；\n- 由于缺少商用车专用的价格实现与竞品对标数据，**无法 100% 排除个案性折扣或返利前置**，建议补充商用车价格实现跟踪与同比订单结构分析后再做最终定性。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR6CFB9HR12GDKM93N3ERS",
+          "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_com']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFB34Y0TZFN809AQ08F",
+          "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Metric']|[?props.key=='demand_attain']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBNW1FJA7T4FYZTX57",
+          "toolCallId": "tc_01KXWR4NA8JFGAH26YWZY9DYN3",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Segment']|[?props.segKey=='com']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBRHJT590S8R6H34VS",
+          "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_pas']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBFAB9PDAJ7KQZY3XT",
+          "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_ess']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBFPSDBFJ96N92195M",
+          "toolCallId": "tc_01KXWR4SKVVA8BJQYQANXBDJ0H",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='PriceRealization']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBT4P9XFJ7284W9752",
+          "toolCallId": "tc_01KXWR4SKS0KYS350DAR1VM7RM",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='CompetitorPrice']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFBR60TXVST4M68F0DH",
+          "toolCallId": "tc_01KXWR4SM368F51F1ZHE5G9KBR",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='WinLossRecord']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFB48YADW4W11B5KGTX",
+          "toolCallId": "tc_01KXWR4XKECA5V6BRT3A8PYFNC",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='RootCauseChain']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWR6CFCSNB2GSRZ0NH7EXTJ",
+          "toolCallId": "tc_01KXWR4SM2H58B5R09DBQDBD1K",
+          "toolName": "query_objects",
+          "outputPath": "data[?type=='Order']",
+          "snapshotVersion": "1.1@1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR4CGR2V0T9P1HA45C53V2",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR4CGRRS8Z88DCTGQ309XT",
+      "query": "商用车超额到115.8%，是真需求还是压价冲量？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:33:23.480Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "商用车达成率 **115.8%**（目标100%），显著高于整体需求达成率 **90.8%** 及乘用车（99.5%）、储能（72.2%）水平。判断其驱动因素需结合毛利率、价格实现、订单结构及根因链交叉验证。"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "维度",
+              "商用车(com)",
+              "乘用车(pas)",
+              "储能(ess)",
+              "说明"
+            ],
+            "rows": [
+              [
+                "达成率",
+                "115.8%",
+                "99.5%",
+                "72.2%",
+                "商用车为唯一超额细分，但拉不动整体（90.8%）"
+              ],
+              [
+                "毛利率",
+                "15%",
+                "18%",
+                "13%",
+                "商用车毛利率居中，低于乘用车"
+              ],
+              [
+                "根因链",
+                "rc-scale-demand",
+                "rc-scale-demand",
+                "rc-scale-demand",
+                "系统归因均为“细分需求未达预期”"
+              ],
+              [
+                "价格实现",
+                "— 无数据 —",
+                "615（vs 目录620）",
+                "465（vs 目录480）",
+                "平台未录入商用车价格实现异常"
+              ],
+              [
+                "赢单记录",
+                "— 无数据 —",
+                "WIN",
+                "LOST（价格劣势）",
+                "无商用车赢丢单记录"
+              ]
+            ],
+            "provId": "p1"
+          },
+          {
+            "type": "text",
+            "markdown": "**一、不支持“压价冲量”的证据**\n\n1. **无价格下探记录**：平台现有 `PriceRealization` 仅覆盖储能（方形-LFP）与乘用车（4680-NCM），未录入商用车型号的价格下浮或异常折扣。若存在系统性压价，通常会在价格实现模块留下记录。\n\n2. **订单结构以头部客户为主**：商用车可见订单集中于 **东风汽车**（4680-NCM/方形-NCM）、**宇通客车**（2170-NCM），均为行业头部主机厂，需求相对稳定，非零散渠道铺货式冲量。\n\n3. **不存在高信用风险信号**：商用车客户 `creditUsedRatio` 在 0.40–0.75 区间，与乘用车/储能客户处于同一水平，未见为冲量而大幅放宽信用政策的痕迹。"
+          },
+          {
+            "type": "text",
+            "markdown": "**二、指向“结构性真需求”或“此消彼长”的线索**\n\n1. **整体需求未达预期**：根因链 `rc-scale-demand` 将商用车、乘用车、储能统一归因于“细分需求未达预期”。商用车超额并非总量扩张，而是 **内部结构异动**——储能仅完成 72.2%，乘用车几乎持平，说明市场预算可能在向商用车倾斜。\n\n2. **低毛利细分占比风险已触发利润根因**：根因链 `rc-profit-mix` 明确提示“低毛利细分占比偏高”。商用车毛利率 15% 低于乘用车 18%，超额达成会稀释整体利润结构。这更符合 **真实但低毛利的订单涌入**，而非通过降价人为制造需求。\n\n3. **无竞品价格打压证据**：现有 `CompetitorPrice` 与 `WinLossRecord` 均围绕储能领域展开，未显示商用车市场正在经历激烈价格战。"
+          },
+          {
+            "type": "text",
+            "markdown": "**结论**\n\n基于当前平台数据，**商用车 115.8% 的超额达成更倾向于结构性真需求（下游主机厂订单前移或预算转移），而非典型的“压价冲量”**。核心依据是：未见价格实现下浮、未见信用政策异常宽松、未见赢单丢单的价格劣势记录。\n\n但需警惕两点：\n- 商用车毛利率（15%）低于乘用车，超额会加剧 `rc-profit-mix` 所提示的“低毛利细分占比偏高”风险；\n- 由于缺少商用车专用的价格实现与竞品对标数据，**无法 100% 排除个案性折扣或返利前置**，建议补充商用车价格实现跟踪与同比订单结构分析后再做最终定性。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR6CFB9HR12GDKM93N3ERS",
+            "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_com']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFB34Y0TZFN809AQ08F",
+            "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Metric']|[?props.key=='demand_attain']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBNW1FJA7T4FYZTX57",
+            "toolCallId": "tc_01KXWR4NA8JFGAH26YWZY9DYN3",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Segment']|[?props.segKey=='com']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBRHJT590S8R6H34VS",
+            "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_pas']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBFAB9PDAJ7KQZY3XT",
+            "toolCallId": "tc_01KXWR4NA2B7HV0A23YWWWDM4P",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Metric']|[?props.key=='seg_attain_ess']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBFPSDBFJ96N92195M",
+            "toolCallId": "tc_01KXWR4SKVVA8BJQYQANXBDJ0H",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='PriceRealization']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBT4P9XFJ7284W9752",
+            "toolCallId": "tc_01KXWR4SKS0KYS350DAR1VM7RM",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='CompetitorPrice']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFBR60TXVST4M68F0DH",
+            "toolCallId": "tc_01KXWR4SM368F51F1ZHE5G9KBR",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='WinLossRecord']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFB48YADW4W11B5KGTX",
+            "toolCallId": "tc_01KXWR4XKECA5V6BRT3A8PYFNC",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='RootCauseChain']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWR6CFCSNB2GSRZ0NH7EXTJ",
+            "toolCallId": "tc_01KXWR4SM2H58B5R09DBQDBD1K",
+            "toolName": "query_objects",
+            "outputPath": "data[?type=='Order']",
+            "snapshotVersion": "1.1@1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:34:28.972Z",
+      "elapsed": 65.7066068649292,
+      "taskId": "task_01KXWR4CGR2V0T9P1HA45C53V2"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 9,
+    "section": "经营指标根因归因",
+    "question": "营收700亿刚好达标，但结构里哪块在透支未来？",
+    "anchor": "revenue",
+    "probe": "gap-orch",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "◑",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "missCount",
+          "value": "2",
+          "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.op",
+          "value": "6",
+          "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.year",
+          "value": "4",
+          "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+        },
+        {
+          "type": "kpi",
+          "label": "summary",
+          "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+          "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "metricId",
+            "key",
+            "name",
+            "unit",
+            "level",
+            "category",
+            "target",
+            "actual",
+            "delta",
+            "miss",
+            "floorVal",
+            "ksfRef",
+            "ownerRef",
+            "chainKey"
+          ],
+          "rows": [
+            [
+              "kpi-attain",
+              "demand_attain",
+              "需求达成率",
+              "%",
+              "op",
+              "scale",
+              100,
+              90.8,
+              -9.2,
+              "true",
+              95,
+              "ksf-bal",
+              "prin-plan",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-cash",
+              "cash",
+              "经营现金",
+              "亿",
+              "year",
+              "cash",
+              60,
+              58,
+              -2,
+              "false",
+              50,
+              "ksf-cash",
+              "prin-fin",
+              ""
+            ],
+            [
+              "kpi-gross-profit",
+              "gross_profit",
+              "毛利",
+              "亿",
+              "year",
+              "profit",
+              112,
+              118.9,
+              6.9,
+              "false",
+              108.5,
+              "ksf-cost",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-margin",
+              "gm_rate",
+              "毛利率",
+              "%",
+              "op",
+              "profit",
+              16,
+              17,
+              1,
+              "false",
+              15.5,
+              "ksf-dem",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-material",
+              "material_cov",
+              "物料保障率",
+              "%",
+              "op",
+              "material",
+              100,
+              95.8,
+              -4.2,
+              "false",
+              95,
+              "ksf-kit",
+              "prin-supply",
+              "rc-material-gap"
+            ],
+            [
+              "kpi-revenue",
+              "revenue",
+              "营收",
+              "亿",
+              "year",
+              "scale",
+              700,
+              700,
+              0,
+              "false",
+              686,
+              "ksf-dem",
+              "prin-fin",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-com",
+              "seg_attain_com",
+              "商用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              115.8,
+              15.8,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-com",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-ess",
+              "seg_attain_ess",
+              "储能达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              72.2,
+              -27.8,
+              "true",
+              95,
+              "ksf-dem",
+              "prin-seg-ess",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-pas",
+              "seg_attain_pas",
+              "乘用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              99.5,
+              -0.5,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-pas",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-share",
+              "market_share",
+              "市场份额",
+              "%",
+              "year",
+              "share",
+              23,
+              21.5,
+              -1.5,
+              "false",
+              20,
+              "ksf-dem",
+              "prin-plan",
+              ""
+            ]
+          ],
+          "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y",
+          "toolCallId": "tc_01KXWR6CQ3ES41VZ1C4A3S010C",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR6CPPN24D967KSCMAD9CN",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR6CPPMX3CD6WT9C85C19B",
+      "query": "营收700亿刚好达标，但结构里哪块在透支未来？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:34:29.206Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_metric",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_metric_v1",
+        "intentKey": "ceo_metric",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "missCount",
+            "value": "2",
+            "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.op",
+            "value": "6",
+            "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.year",
+            "value": "4",
+            "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+          },
+          {
+            "type": "kpi",
+            "label": "summary",
+            "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+            "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "metricId",
+              "key",
+              "name",
+              "unit",
+              "level",
+              "category",
+              "target",
+              "actual",
+              "delta",
+              "miss",
+              "floorVal",
+              "ksfRef",
+              "ownerRef",
+              "chainKey"
+            ],
+            "rows": [
+              [
+                "kpi-attain",
+                "demand_attain",
+                "需求达成率",
+                "%",
+                "op",
+                "scale",
+                100,
+                90.8,
+                -9.2,
+                "true",
+                95,
+                "ksf-bal",
+                "prin-plan",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-cash",
+                "cash",
+                "经营现金",
+                "亿",
+                "year",
+                "cash",
+                60,
+                58,
+                -2,
+                "false",
+                50,
+                "ksf-cash",
+                "prin-fin",
+                ""
+              ],
+              [
+                "kpi-gross-profit",
+                "gross_profit",
+                "毛利",
+                "亿",
+                "year",
+                "profit",
+                112,
+                118.9,
+                6.9,
+                "false",
+                108.5,
+                "ksf-cost",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-margin",
+                "gm_rate",
+                "毛利率",
+                "%",
+                "op",
+                "profit",
+                16,
+                17,
+                1,
+                "false",
+                15.5,
+                "ksf-dem",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-material",
+                "material_cov",
+                "物料保障率",
+                "%",
+                "op",
+                "material",
+                100,
+                95.8,
+                -4.2,
+                "false",
+                95,
+                "ksf-kit",
+                "prin-supply",
+                "rc-material-gap"
+              ],
+              [
+                "kpi-revenue",
+                "revenue",
+                "营收",
+                "亿",
+                "year",
+                "scale",
+                700,
+                700,
+                0,
+                "false",
+                686,
+                "ksf-dem",
+                "prin-fin",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-com",
+                "seg_attain_com",
+                "商用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                115.8,
+                15.8,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-com",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-ess",
+                "seg_attain_ess",
+                "储能达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                72.2,
+                -27.8,
+                "true",
+                95,
+                "ksf-dem",
+                "prin-seg-ess",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-pas",
+                "seg_attain_pas",
+                "乘用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                99.5,
+                -0.5,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-pas",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-share",
+                "market_share",
+                "市场份额",
+                "%",
+                "year",
+                "share",
+                23,
+                21.5,
+                -1.5,
+                "false",
+                20,
+                "ksf-dem",
+                "prin-plan",
+                ""
+              ]
+            ],
+            "provId": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR6CQ33SM3ABPF7N10VM4Y",
+            "toolCallId": "tc_01KXWR6CQ3ES41VZ1C4A3S010C",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": false
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_metric",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:34:29.219Z",
+      "elapsed": 1.0076229572296143,
+      "taskId": "task_01KXWR6CPPN24D967KSCMAD9CN"
+    },
+    "gap_class": "路由错配",
+    "fix_path": "revenue\"结构透支未来\"被 metric_rollup 泛化应答；需 decision_play / finance_pnl 路径"
+  },
+  {
+    "num": 10,
+    "section": "经营指标根因归因",
+    "question": "毛利总额118.9亿超目标112，超额来自哪个细分？",
+    "anchor": "gross_profit·三细分marginWan",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 28.36,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR6DPPZJJBPXYQWMJS87BP",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR6DPPFEST279RHF5FQY7C",
+      "query": "毛利总额118.9亿超目标112，超额来自哪个细分？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:34:30.230Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:34:57.903Z",
+      "elapsed": 28.355207204818726,
+      "taskId": "task_01KXWR6DPPZJJBPXYQWMJS87BP"
+    },
+    "gap_class": "缺 agent",
+    "fix_path": "gross_profit 问句落 AGENT 探索模式未能产出；应暴露 gap_attribution(metricKey=gross_profit) 为 agent tool"
+  },
+  {
+    "num": 11,
+    "section": "经营指标根因归因",
+    "question": "把储能72.2的达成率沿链路拆到订单级，最深的叶子是哪几单？",
+    "anchor": "seg_attain_ess·24订单",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "◑",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "missCount",
+          "value": "2",
+          "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.op",
+          "value": "6",
+          "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.year",
+          "value": "4",
+          "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+        },
+        {
+          "type": "kpi",
+          "label": "summary",
+          "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+          "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "metricId",
+            "key",
+            "name",
+            "unit",
+            "level",
+            "category",
+            "target",
+            "actual",
+            "delta",
+            "miss",
+            "floorVal",
+            "ksfRef",
+            "ownerRef",
+            "chainKey"
+          ],
+          "rows": [
+            [
+              "kpi-attain",
+              "demand_attain",
+              "需求达成率",
+              "%",
+              "op",
+              "scale",
+              100,
+              90.8,
+              -9.2,
+              "true",
+              95,
+              "ksf-bal",
+              "prin-plan",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-cash",
+              "cash",
+              "经营现金",
+              "亿",
+              "year",
+              "cash",
+              60,
+              58,
+              -2,
+              "false",
+              50,
+              "ksf-cash",
+              "prin-fin",
+              ""
+            ],
+            [
+              "kpi-gross-profit",
+              "gross_profit",
+              "毛利",
+              "亿",
+              "year",
+              "profit",
+              112,
+              118.9,
+              6.9,
+              "false",
+              108.5,
+              "ksf-cost",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-margin",
+              "gm_rate",
+              "毛利率",
+              "%",
+              "op",
+              "profit",
+              16,
+              17,
+              1,
+              "false",
+              15.5,
+              "ksf-dem",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-material",
+              "material_cov",
+              "物料保障率",
+              "%",
+              "op",
+              "material",
+              100,
+              95.8,
+              -4.2,
+              "false",
+              95,
+              "ksf-kit",
+              "prin-supply",
+              "rc-material-gap"
+            ],
+            [
+              "kpi-revenue",
+              "revenue",
+              "营收",
+              "亿",
+              "year",
+              "scale",
+              700,
+              700,
+              0,
+              "false",
+              686,
+              "ksf-dem",
+              "prin-fin",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-com",
+              "seg_attain_com",
+              "商用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              115.8,
+              15.8,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-com",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-ess",
+              "seg_attain_ess",
+              "储能达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              72.2,
+              -27.8,
+              "true",
+              95,
+              "ksf-dem",
+              "prin-seg-ess",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-pas",
+              "seg_attain_pas",
+              "乘用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              99.5,
+              -0.5,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-pas",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-share",
+              "market_share",
+              "市场份额",
+              "%",
+              "year",
+              "share",
+              23,
+              21.5,
+              -1.5,
+              "false",
+              20,
+              "ksf-dem",
+              "prin-plan",
+              ""
+            ]
+          ],
+          "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ",
+          "toolCallId": "tc_01KXWR79DN2HAYCSAP0YDK6KJJ",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR79D6NDF33C9MHE4V0WNV",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR79D6PKQR3Y8TSVBAMKBC",
+      "query": "把储能72.2的达成率沿链路拆到订单级，最深的叶子是哪几单？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:34:58.598Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_metric",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_metric_v1",
+        "intentKey": "ceo_metric",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "missCount",
+            "value": "2",
+            "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.op",
+            "value": "6",
+            "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.year",
+            "value": "4",
+            "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+          },
+          {
+            "type": "kpi",
+            "label": "summary",
+            "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+            "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "metricId",
+              "key",
+              "name",
+              "unit",
+              "level",
+              "category",
+              "target",
+              "actual",
+              "delta",
+              "miss",
+              "floorVal",
+              "ksfRef",
+              "ownerRef",
+              "chainKey"
+            ],
+            "rows": [
+              [
+                "kpi-attain",
+                "demand_attain",
+                "需求达成率",
+                "%",
+                "op",
+                "scale",
+                100,
+                90.8,
+                -9.2,
+                "true",
+                95,
+                "ksf-bal",
+                "prin-plan",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-cash",
+                "cash",
+                "经营现金",
+                "亿",
+                "year",
+                "cash",
+                60,
+                58,
+                -2,
+                "false",
+                50,
+                "ksf-cash",
+                "prin-fin",
+                ""
+              ],
+              [
+                "kpi-gross-profit",
+                "gross_profit",
+                "毛利",
+                "亿",
+                "year",
+                "profit",
+                112,
+                118.9,
+                6.9,
+                "false",
+                108.5,
+                "ksf-cost",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-margin",
+                "gm_rate",
+                "毛利率",
+                "%",
+                "op",
+                "profit",
+                16,
+                17,
+                1,
+                "false",
+                15.5,
+                "ksf-dem",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-material",
+                "material_cov",
+                "物料保障率",
+                "%",
+                "op",
+                "material",
+                100,
+                95.8,
+                -4.2,
+                "false",
+                95,
+                "ksf-kit",
+                "prin-supply",
+                "rc-material-gap"
+              ],
+              [
+                "kpi-revenue",
+                "revenue",
+                "营收",
+                "亿",
+                "year",
+                "scale",
+                700,
+                700,
+                0,
+                "false",
+                686,
+                "ksf-dem",
+                "prin-fin",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-com",
+                "seg_attain_com",
+                "商用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                115.8,
+                15.8,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-com",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-ess",
+                "seg_attain_ess",
+                "储能达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                72.2,
+                -27.8,
+                "true",
+                95,
+                "ksf-dem",
+                "prin-seg-ess",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-pas",
+                "seg_attain_pas",
+                "乘用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                99.5,
+                -0.5,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-pas",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-share",
+                "market_share",
+                "市场份额",
+                "%",
+                "year",
+                "share",
+                23,
+                21.5,
+                -1.5,
+                "false",
+                20,
+                "ksf-dem",
+                "prin-plan",
+                ""
+              ]
+            ],
+            "provId": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR79DNMYWM6SYHEP1M3KJZ",
+            "toolCallId": "tc_01KXWR79DN2HAYCSAP0YDK6KJJ",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": false
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_metric",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:34:58.613Z",
+      "elapsed": 1.0087969303131104,
+      "taskId": "task_01KXWR79D6NDF33C9MHE4V0WNV"
+    },
+    "gap_class": "路由错配",
+    "fix_path": "订单级下钻问句被 metric_rollup 泛化；应在 ceo-route.ts 将\"拆到订单级/最深叶子\"导向 gap_attribution drill 或 order_fullchain"
+  },
+  {
+    "num": 12,
+    "section": "经营指标根因归因",
+    "question": "这10个指标里同时越线的是哪几个，有没有共同根因？",
+    "anchor": "全10指标",
+    "probe": "gap-orch",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 根因深问（求解器 gap_attribution·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.key",
+          "value": "seg_attain_ess",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.name",
+          "value": "储能达成率",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.unit",
+          "value": "%",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.target",
+          "value": "100",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.actual",
+          "value": "72.2",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "rootMetric.gap",
+          "value": "27.8",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "totalGap",
+          "value": "27.8",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "kpi",
+          "label": "reconciled",
+          "value": "是",
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "depth",
+            "label",
+            "nodes",
+            "residual"
+          ],
+          "rows": [
+            [
+              1,
+              "基地",
+              "[{\"id\":\"base:handan\",\"factor\":\"基地 handan\",\"contribution\":6.963,\"unit\":\"%\",\"share\":0.2846,\"path\":[\"kpi-seg-ess\",\"base:handan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"handan\",\"drillField\":\"value\",\"drillValue\":5277.73}},{\"id\":\"base:changzhou\",\"factor\":\"基地 changzhou\",\"contribution\":6.7881,\"unit\":\"%\",\"share\":0.2775,\"path\":[\"kpi-seg-ess\",\"base:changzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"changzhou\",\"drillField\":\"value\",\"drillValue\":5145.15}},{\"id\":\"base:chengdu\",\"factor\":\"基地 chengdu\",\"contribution\":2.7706,\"unit\":\"%\",\"share\":0.1133,\"path\":[\"kpi-seg-ess\",\"base:chengdu\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"chengdu\",\"drillField\":\"value\",\"drillValue\":2100}},{\"id\":\"base:wuhan\",\"factor\":\"基地 wuhan\",\"contribution\":1.9818,\"unit\":\"%\",\"share\":0.081,\"path\":[\"kpi-seg-ess\",\"base:wuhan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"wuhan\",\"drillField\":\"value\",\"drillValue\":1502.14}},{\"id\":\"base:meishan\",\"factor\":\"基地 meishan\",\"contribution\":1.8681,\"unit\":\"%\",\"share\":0.0764,\"path\":[\"kpi-seg-ess\",\"base:meishan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"meishan\",\"drillField\":\"value\",\"drillValue\":1415.97}},{\"id\":\"base:hefei\",\"factor\":\"基地 hefei\",\"contribution\":1.8471,\"unit\":\"%\",\"share\":0.0755,\"path\":[\"kpi-seg-ess\",\"base:hefei\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"hefei\",\"drillField\":\"value\",\"drillValue\":1400.01}},{\"id\":\"base:jiangmen\",\"factor\":\"基地 jiangmen\",\"contribution\":1.2737,\"unit\":\"%\",\"share\":0.0521,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"jiangmen\",\"drillField\":\"value\",\"drillValue\":965.42}},{\"id\":\"base:yangzhou\",\"factor\":\"基地 yangzhou\",\"contribution\":0.5669,\"unit\":\"%\",\"share\":0.0232,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"yangzhou\",\"drillField\":\"value\",\"drillValue\":429.66}},{\"id\":\"base:xinyang\",\"factor\":\"基地 xinyang\",\"contribution\":0.4049,\"unit\":\"%\",\"share\":0.0166,\"path\":[\"kpi-seg-ess\",\"base:xinyang\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"xinyang\",\"drillField\":\"value\",\"drillValue\":306.91}}]",
+              3.3358
+            ],
+            [
+              2,
+              "订单/瓶颈",
+              "[{\"id\":\"material:cathode\",\"factor\":\"正极物料短缺\",\"contribution\":1.6532,\"unit\":\"%\",\"share\":0.2698,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"material:cathode\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"MaterialBalance\",\"drillId\":\"mbal-2\",\"drillField\":\"gapTon\",\"drillValue\":492}},{\"id\":\"order:SO-3458\",\"factor\":\"订单 SO-3458（南方电网）\",\"contribution\":1.1828,\"unit\":\"%\",\"share\":0.193,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3458\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3458\",\"drillField\":\"value\",\"drillValue\":1737.8}},{\"id\":\"order:SO-3495\",\"factor\":\"订单 SO-3495（南方电网）\",\"contribution\":1.0514,\"unit\":\"%\",\"share\":0.1716,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3495\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3495\",\"drillField\":\"value\",\"drillValue\":1544.69}},{\"id\":\"equip:handan\",\"factor\":\"handan 设备瓶颈（OEE 缺口）\",\"contribution\":0.8819,\"unit\":\"%\",\"share\":0.1439,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"equip:handan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"handan\",\"drillField\":\"oee_current\",\"drillValue\":0.7545}},{\"id\":\"order:SO-3518\",\"factor\":\"订单 SO-3518（国家电网）\",\"contribution\":0.8762,\"unit\":\"%\",\"share\":0.143,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3518\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3518\",\"drillField\":\"value\",\"drillValue\":1287.25}},{\"id\":\"order:SO-3464\",\"factor\":\"订单 SO-3464（国家电投）\",\"contribution\":0.4819,\"unit\":\"%\",\"share\":0.0786,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3464\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3464\",\"drillField\":\"value\",\"drillValue\":707.99}},{\"id\":\"order:SO-3490\",\"factor\":\"订单 SO-3490（东风汽车）\",\"contribution\":1.1873,\"unit\":\"%\",\"share\":0.1988,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3490\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3490\",\"drillField\":\"value\",\"drillValue\":1272.74}},{\"id\":\"equip:changzhou\",\"factor\":\"changzhou 设备瓶颈（OEE 缺口）\",\"contribution\":1.1736,\"unit\":\"%\",\"share\":0.1965,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"equip:changzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"changzhou\",\"drillField\":\"oee_current\",\"drillValue\":0.7555}},{\"id\":\"order:SO-3402\",\"factor\":\"订单 SO-3402（长安汽车）\",\"contribution\":1.0686,\"unit\":\"%\",\"share\":0.1789,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3402\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3402\",\"drillField\":\"value\",\"drillValue\":1145.47}},{\"id\":\"order:SO-3420\",\"factor\":\"订单 SO-3420（东风汽车）\",\"contribution\":0.7718,\"unit\":\"%\",\"share\":0.1292,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3420\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3420\",\"drillField\":\"value\",\"drillValue\":827.27}},{\"id\":\"order:SO-3445\",\"factor\":\"订单 SO-3445（长安汽车）\",\"contribution\":0.5395,\"unit\":\"%\",\"share\":0.0903,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3445\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3445\",\"drillField\":\"value\",\"drillValue\":578.28}},{\"id\":\"order:SO-3512\",\"factor\":\"订单 SO-3512（长安汽车）\",\"contribution\":0.3956,\"unit\":\"%\",\"share\":0.0662,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3512\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3512\",\"drillField\":\"value\",\"drillValue\":424.08}},{\"id\":\"order:SO-3415\",\"factor\":\"订单 SO-3415（吉利汽车）\",\"contribution\":0.2969,\"unit\":\"%\",\"share\":0.0497,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3415\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3415\",\"drillField\":\"value\",\"drillValue\":318.2}},{\"id\":\"order:SO-3476\",\"factor\":\"订单 SO-3476（国家电网）\",\"contribution\":0.2885,\"unit\":\"%\",\"share\":0.0483,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3476\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3476\",\"drillField\":\"value\",\"drillValue\":309.23}},{\"id\":\"order:SO-3486\",\"factor\":\"订单 SO-3486（吉利汽车）\",\"contribution\":0.2518,\"unit\":\"%\",\"share\":0.0421,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3486\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3486\",\"drillField\":\"value\",\"drillValue\":269.88}},{\"id\":\"order:SO-3534\",\"factor\":\"订单 SO-3534（东风汽车）\",\"contribution\":1.0667,\"unit\":\"%\",\"share\":0.4375,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"order:SO-3534\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3534\",\"drillField\":\"value\",\"drillValue\":1145.47}},{\"id\":\"order:SO-3523\",\"factor\":\"订单 SO-3523（广汽集团）\",\"contribution\":0.8889,\"unit\":\"%\",\"share\":0.3646,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"order:SO-3523\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3523\",\"drillField\":\"value\",\"drillValue\":954.53}},{\"id\":\"equip:chengdu\",\"factor\":\"chengdu 设备瓶颈（OEE 缺口）\",\"contribution\":0.4826,\"unit\":\"%\",\"share\":0.1979,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"equip:chengdu\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"chengdu\",\"drillField\":\"oee_current\",\"drillValue\":0.7532}},{\"id\":\"order:SO-3431\",\"factor\":\"订单 SO-3431（广汽集团）\",\"contribution\":0.4805,\"unit\":\"%\",\"share\":0.2755,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3431\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3431\",\"drillField\":\"value\",\"drillValue\":516.35}},{\"id\":\"order:SO-3506\",\"factor\":\"订单 SO-3506（宇通客车）\",\"contribution\":0.3931,\"unit\":\"%\",\"share\":0.2254,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3506\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3506\",\"drillField\":\"value\",\"drillValue\":422.47}},{\"id\":\"equip:wuhan\",\"factor\":\"wuhan 设备瓶颈（OEE 缺口）\",\"contribution\":0.3461,\"unit\":\"%\",\"share\":0.1985,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"equip:wuhan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"wuhan\",\"drillField\":\"oee_current\",\"drillValue\":0.7524}},{\"id\":\"order:SO-3437\",\"factor\":\"订单 SO-3437（宇通客车）\",\"contribution\":0.3058,\"unit\":\"%\",\"share\":0.1753,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3437\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3437\",\"drillField\":\"value\",\"drillValue\":328.6}},{\"id\":\"order:SO-3540\",\"factor\":\"订单 SO-3540（宇通客车）\",\"contribution\":0.2184,\"unit\":\"%\",\"share\":0.1252,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3540\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3540\",\"drillField\":\"value\",\"drillValue\":234.72}},{\"id\":\"order:SO-3452\",\"factor\":\"订单 SO-3452（国家电网）\",\"contribution\":1.3141,\"unit\":\"%\",\"share\":0.7994,\"path\":[\"kpi-seg-ess\",\"base:meishan\",\"order:SO-3452\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3452\",\"drillField\":\"value\",\"drillValue\":1415.97}},{\"id\":\"equip:meishan\",\"factor\":\"meishan 设备瓶颈（OEE 缺口）\",\"contribution\":0.3298,\"unit\":\"%\",\"share\":0.2006,\"path\":[\"kpi-seg-ess\",\"base:meishan\",\"equip:meishan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"meishan\",\"drillField\":\"oee_current\",\"drillValue\":0.749}},{\"id\":\"order:SO-3481\",\"factor\":\"订单 SO-3481（广汽集团）\",\"contribution\":0.7702,\"unit\":\"%\",\"share\":0.4739,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"order:SO-3481\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3481\",\"drillField\":\"value\",\"drillValue\":827.27}},{\"id\":\"order:SO-3391\",\"factor\":\"订单 SO-3391（广汽集团）\",\"contribution\":0.5333,\"unit\":\"%\",\"share\":0.3281,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"order:SO-3391\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3391\",\"drillField\":\"value\",\"drillValue\":572.74}},{\"id\":\"equip:hefei\",\"factor\":\"hefei 设备瓶颈（OEE 缺口）\",\"contribution\":0.322,\"unit\":\"%\",\"share\":0.1981,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"equip:hefei\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"hefei\",\"drillField\":\"oee_current\",\"drillValue\":0.753}},{\"id\":\"order:SO-3501\",\"factor\":\"订单 SO-3501（国家电投）\",\"contribution\":0.9016,\"unit\":\"%\",\"share\":0.8044,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\",\"order:SO-3501\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3501\",\"drillField\":\"value\",\"drillValue\":965.42}},{\"id\":\"equip:jiangmen\",\"factor\":\"jiangmen 设备瓶颈（OEE 缺口）\",\"contribution\":0.2193,\"unit\":\"%\",\"share\":0.1956,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\",\"equip:jiangmen\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"jiangmen\",\"drillField\":\"oee_current\",\"drillValue\":0.7568}},{\"id\":\"order:SO-3529\",\"factor\":\"订单 SO-3529（南方电网）\",\"contribution\":0.4002,\"unit\":\"%\",\"share\":0.8022,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\",\"order:SO-3529\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3529\",\"drillField\":\"value\",\"drillValue\":429.66}},{\"id\":\"equip:yangzhou\",\"factor\":\"yangzhou 设备瓶颈（OEE 缺口）\",\"contribution\":0.0987,\"unit\":\"%\",\"share\":0.1978,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\",\"equip:yangzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"yangzhou\",\"drillField\":\"oee_current\",\"drillValue\":0.7535}},{\"id\":\"order:SO-3470\",\"factor\":\"订单 SO-3470（南方电网）\",\"contribution\":0.2857,\"unit\":\"%\",\"share\":0.8018,\"path\":[\"kpi-seg-ess\",\"base:xinyang\",\"order:SO-3470\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3470\",\"drillField\":\"value\",\"drillValue\":306.91}},{\"id\":\"equip:xinyang\",\"factor\":\"xinyang 设备瓶颈（OEE 缺口）\",\"contribution\":0.0706,\"unit\":\"%\",\"share\":0.1982,\"path\":[\"kpi-seg-ess\",\"base:xinyang\",\"equip:xinyang\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"xinyang\",\"drillField\":\"oee_current\",\"drillValue\":0.7528}}]",
+              2.9356
+            ],
+            [
+              3,
+              "因果链（caused_by）",
+              "[{\"id\":\"cf:cf-decision-gap\",\"factor\":\"价格预判缺失(root)\",\"contribution\":0.3125,\"unit\":\"%\",\"share\":0.2363,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\",\"cf-geopolitical\",\"cf-decision-gap\"],\"provenance\":{\"kind\":\"决策\",\"drillType\":\"DecisionGap\",\"drillId\":\"dgap-forecast\",\"drillField\":\"severity\",\"drillValue\":0.8,\"severityKind\":\"critical\"}},{\"id\":\"cf:cf-geopolitical\",\"factor\":\"地缘冲突推升矿价\",\"contribution\":0.3125,\"unit\":\"%\",\"share\":0.2363,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\",\"cf-geopolitical\"],\"provenance\":{\"kind\":\"外部信号\",\"drillType\":\"ExternalSignal\",\"drillId\":\"li_carbonate_price\",\"drillField\":\"value\",\"drillValue\":96000,\"severityKind\":\"critical\",\"provenanceSynthetic\":true}},{\"id\":\"cf:cf-cert-cycle\",\"factor\":\"认证周期长(root)\",\"contribution\":0.2404,\"unit\":\"%\",\"share\":0.1818,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-backup-thin\",\"cf-cert-cycle\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillField\":\"certWeeks\",\"drillValue\":16,\"severityKind\":\"major\"}},{\"id\":\"cf:cf-backup-thin\",\"factor\":\"备份池不足\",\"contribution\":0.2344,\"unit\":\"%\",\"share\":0.1772,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-backup-thin\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillField\":\"memberCount\",\"drillValue\":2,\"severityKind\":\"major\"}},{\"id\":\"cf:cf-ore-price\",\"factor\":\"锂价上涨\",\"contribution\":0.1328,\"unit\":\"%\",\"share\":0.1004,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\"],\"provenance\":{\"kind\":\"外部信号\",\"drillType\":\"CommodityPriceTrend\",\"drillId\":\"licarb-w4\",\"drillField\":\"pctChange\",\"drillValue\":3.4,\"severityKind\":\"minor\",\"provenanceSynthetic\":true}},{\"id\":\"cf:cf-lta-breach\",\"factor\":\"长协违约\",\"contribution\":0.0586,\"unit\":\"%\",\"share\":0.0443,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-cylk\",\"drillField\":\"actualDeliveredTon\",\"drillValue\":3400,\"severityKind\":\"info\"}},{\"id\":\"cf:cf-upstream-cut\",\"factor\":\"上游减供\",\"contribution\":0.0313,\"unit\":\"%\",\"share\":0.0236,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\"],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Supplier\",\"drillId\":\"SUP-003\",\"drillField\":\"actualSupplyTon\",\"drillValue\":3680,\"severityKind\":\"info\"}}]",
+              0.3307
+            ]
+          ],
+          "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+        },
+        {
+          "type": "text",
+          "markdown": "另有明细：atomicLeaves（35 项）、causalEdges（7 项）、reconChecks（11 项）（详见步骤溯源）。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX",
+          "toolCallId": "tc_01KXWR7AG73GFEA28QT4B01ZFM",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.1",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR7AD3K3ATNGFSE89CD4E7",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR7AD3K1CMNMJY7RB8T1SW",
+      "query": "这10个指标里同时越线的是哪几个，有没有共同根因？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:34:59.619Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_root_cause",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_root_cause_v1",
+        "intentKey": "ceo_root_cause",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 根因深问（求解器 gap_attribution·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.key",
+            "value": "seg_attain_ess",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.name",
+            "value": "储能达成率",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.unit",
+            "value": "%",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.target",
+            "value": "100",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.actual",
+            "value": "72.2",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "rootMetric.gap",
+            "value": "27.8",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "totalGap",
+            "value": "27.8",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "kpi",
+            "label": "reconciled",
+            "value": "是",
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "depth",
+              "label",
+              "nodes",
+              "residual"
+            ],
+            "rows": [
+              [
+                1,
+                "基地",
+                "[{\"id\":\"base:handan\",\"factor\":\"基地 handan\",\"contribution\":6.963,\"unit\":\"%\",\"share\":0.2846,\"path\":[\"kpi-seg-ess\",\"base:handan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"handan\",\"drillField\":\"value\",\"drillValue\":5277.73}},{\"id\":\"base:changzhou\",\"factor\":\"基地 changzhou\",\"contribution\":6.7881,\"unit\":\"%\",\"share\":0.2775,\"path\":[\"kpi-seg-ess\",\"base:changzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"changzhou\",\"drillField\":\"value\",\"drillValue\":5145.15}},{\"id\":\"base:chengdu\",\"factor\":\"基地 chengdu\",\"contribution\":2.7706,\"unit\":\"%\",\"share\":0.1133,\"path\":[\"kpi-seg-ess\",\"base:chengdu\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"chengdu\",\"drillField\":\"value\",\"drillValue\":2100}},{\"id\":\"base:wuhan\",\"factor\":\"基地 wuhan\",\"contribution\":1.9818,\"unit\":\"%\",\"share\":0.081,\"path\":[\"kpi-seg-ess\",\"base:wuhan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"wuhan\",\"drillField\":\"value\",\"drillValue\":1502.14}},{\"id\":\"base:meishan\",\"factor\":\"基地 meishan\",\"contribution\":1.8681,\"unit\":\"%\",\"share\":0.0764,\"path\":[\"kpi-seg-ess\",\"base:meishan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"meishan\",\"drillField\":\"value\",\"drillValue\":1415.97}},{\"id\":\"base:hefei\",\"factor\":\"基地 hefei\",\"contribution\":1.8471,\"unit\":\"%\",\"share\":0.0755,\"path\":[\"kpi-seg-ess\",\"base:hefei\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"hefei\",\"drillField\":\"value\",\"drillValue\":1400.01}},{\"id\":\"base:jiangmen\",\"factor\":\"基地 jiangmen\",\"contribution\":1.2737,\"unit\":\"%\",\"share\":0.0521,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"jiangmen\",\"drillField\":\"value\",\"drillValue\":965.42}},{\"id\":\"base:yangzhou\",\"factor\":\"基地 yangzhou\",\"contribution\":0.5669,\"unit\":\"%\",\"share\":0.0232,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"yangzhou\",\"drillField\":\"value\",\"drillValue\":429.66}},{\"id\":\"base:xinyang\",\"factor\":\"基地 xinyang\",\"contribution\":0.4049,\"unit\":\"%\",\"share\":0.0166,\"path\":[\"kpi-seg-ess\",\"base:xinyang\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Order\",\"drillId\":\"xinyang\",\"drillField\":\"value\",\"drillValue\":306.91}}]",
+                3.3358
+              ],
+              [
+                2,
+                "订单/瓶颈",
+                "[{\"id\":\"material:cathode\",\"factor\":\"正极物料短缺\",\"contribution\":1.6532,\"unit\":\"%\",\"share\":0.2698,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"material:cathode\"],\"causalPath\":[],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"MaterialBalance\",\"drillId\":\"mbal-2\",\"drillField\":\"gapTon\",\"drillValue\":492}},{\"id\":\"order:SO-3458\",\"factor\":\"订单 SO-3458（南方电网）\",\"contribution\":1.1828,\"unit\":\"%\",\"share\":0.193,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3458\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3458\",\"drillField\":\"value\",\"drillValue\":1737.8}},{\"id\":\"order:SO-3495\",\"factor\":\"订单 SO-3495（南方电网）\",\"contribution\":1.0514,\"unit\":\"%\",\"share\":0.1716,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3495\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3495\",\"drillField\":\"value\",\"drillValue\":1544.69}},{\"id\":\"equip:handan\",\"factor\":\"handan 设备瓶颈（OEE 缺口）\",\"contribution\":0.8819,\"unit\":\"%\",\"share\":0.1439,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"equip:handan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"handan\",\"drillField\":\"oee_current\",\"drillValue\":0.7545}},{\"id\":\"order:SO-3518\",\"factor\":\"订单 SO-3518（国家电网）\",\"contribution\":0.8762,\"unit\":\"%\",\"share\":0.143,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3518\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3518\",\"drillField\":\"value\",\"drillValue\":1287.25}},{\"id\":\"order:SO-3464\",\"factor\":\"订单 SO-3464（国家电投）\",\"contribution\":0.4819,\"unit\":\"%\",\"share\":0.0786,\"path\":[\"kpi-seg-ess\",\"base:handan\",\"order:SO-3464\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3464\",\"drillField\":\"value\",\"drillValue\":707.99}},{\"id\":\"order:SO-3490\",\"factor\":\"订单 SO-3490（东风汽车）\",\"contribution\":1.1873,\"unit\":\"%\",\"share\":0.1988,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3490\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3490\",\"drillField\":\"value\",\"drillValue\":1272.74}},{\"id\":\"equip:changzhou\",\"factor\":\"changzhou 设备瓶颈（OEE 缺口）\",\"contribution\":1.1736,\"unit\":\"%\",\"share\":0.1965,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"equip:changzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"changzhou\",\"drillField\":\"oee_current\",\"drillValue\":0.7555}},{\"id\":\"order:SO-3402\",\"factor\":\"订单 SO-3402（长安汽车）\",\"contribution\":1.0686,\"unit\":\"%\",\"share\":0.1789,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3402\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3402\",\"drillField\":\"value\",\"drillValue\":1145.47}},{\"id\":\"order:SO-3420\",\"factor\":\"订单 SO-3420（东风汽车）\",\"contribution\":0.7718,\"unit\":\"%\",\"share\":0.1292,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3420\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3420\",\"drillField\":\"value\",\"drillValue\":827.27}},{\"id\":\"order:SO-3445\",\"factor\":\"订单 SO-3445（长安汽车）\",\"contribution\":0.5395,\"unit\":\"%\",\"share\":0.0903,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3445\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3445\",\"drillField\":\"value\",\"drillValue\":578.28}},{\"id\":\"order:SO-3512\",\"factor\":\"订单 SO-3512（长安汽车）\",\"contribution\":0.3956,\"unit\":\"%\",\"share\":0.0662,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3512\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3512\",\"drillField\":\"value\",\"drillValue\":424.08}},{\"id\":\"order:SO-3415\",\"factor\":\"订单 SO-3415（吉利汽车）\",\"contribution\":0.2969,\"unit\":\"%\",\"share\":0.0497,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3415\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3415\",\"drillField\":\"value\",\"drillValue\":318.2}},{\"id\":\"order:SO-3476\",\"factor\":\"订单 SO-3476（国家电网）\",\"contribution\":0.2885,\"unit\":\"%\",\"share\":0.0483,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3476\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3476\",\"drillField\":\"value\",\"drillValue\":309.23}},{\"id\":\"order:SO-3486\",\"factor\":\"订单 SO-3486（吉利汽车）\",\"contribution\":0.2518,\"unit\":\"%\",\"share\":0.0421,\"path\":[\"kpi-seg-ess\",\"base:changzhou\",\"order:SO-3486\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3486\",\"drillField\":\"value\",\"drillValue\":269.88}},{\"id\":\"order:SO-3534\",\"factor\":\"订单 SO-3534（东风汽车）\",\"contribution\":1.0667,\"unit\":\"%\",\"share\":0.4375,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"order:SO-3534\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3534\",\"drillField\":\"value\",\"drillValue\":1145.47}},{\"id\":\"order:SO-3523\",\"factor\":\"订单 SO-3523（广汽集团）\",\"contribution\":0.8889,\"unit\":\"%\",\"share\":0.3646,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"order:SO-3523\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3523\",\"drillField\":\"value\",\"drillValue\":954.53}},{\"id\":\"equip:chengdu\",\"factor\":\"chengdu 设备瓶颈（OEE 缺口）\",\"contribution\":0.4826,\"unit\":\"%\",\"share\":0.1979,\"path\":[\"kpi-seg-ess\",\"base:chengdu\",\"equip:chengdu\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"chengdu\",\"drillField\":\"oee_current\",\"drillValue\":0.7532}},{\"id\":\"order:SO-3431\",\"factor\":\"订单 SO-3431（广汽集团）\",\"contribution\":0.4805,\"unit\":\"%\",\"share\":0.2755,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3431\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3431\",\"drillField\":\"value\",\"drillValue\":516.35}},{\"id\":\"order:SO-3506\",\"factor\":\"订单 SO-3506（宇通客车）\",\"contribution\":0.3931,\"unit\":\"%\",\"share\":0.2254,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3506\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3506\",\"drillField\":\"value\",\"drillValue\":422.47}},{\"id\":\"equip:wuhan\",\"factor\":\"wuhan 设备瓶颈（OEE 缺口）\",\"contribution\":0.3461,\"unit\":\"%\",\"share\":0.1985,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"equip:wuhan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"wuhan\",\"drillField\":\"oee_current\",\"drillValue\":0.7524}},{\"id\":\"order:SO-3437\",\"factor\":\"订单 SO-3437（宇通客车）\",\"contribution\":0.3058,\"unit\":\"%\",\"share\":0.1753,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3437\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3437\",\"drillField\":\"value\",\"drillValue\":328.6}},{\"id\":\"order:SO-3540\",\"factor\":\"订单 SO-3540（宇通客车）\",\"contribution\":0.2184,\"unit\":\"%\",\"share\":0.1252,\"path\":[\"kpi-seg-ess\",\"base:wuhan\",\"order:SO-3540\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3540\",\"drillField\":\"value\",\"drillValue\":234.72}},{\"id\":\"order:SO-3452\",\"factor\":\"订单 SO-3452（国家电网）\",\"contribution\":1.3141,\"unit\":\"%\",\"share\":0.7994,\"path\":[\"kpi-seg-ess\",\"base:meishan\",\"order:SO-3452\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3452\",\"drillField\":\"value\",\"drillValue\":1415.97}},{\"id\":\"equip:meishan\",\"factor\":\"meishan 设备瓶颈（OEE 缺口）\",\"contribution\":0.3298,\"unit\":\"%\",\"share\":0.2006,\"path\":[\"kpi-seg-ess\",\"base:meishan\",\"equip:meishan\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"meishan\",\"drillField\":\"oee_current\",\"drillValue\":0.749}},{\"id\":\"order:SO-3481\",\"factor\":\"订单 SO-3481（广汽集团）\",\"contribution\":0.7702,\"unit\":\"%\",\"share\":0.4739,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"order:SO-3481\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3481\",\"drillField\":\"value\",\"drillValue\":827.27}},{\"id\":\"order:SO-3391\",\"factor\":\"订单 SO-3391（广汽集团）\",\"contribution\":0.5333,\"unit\":\"%\",\"share\":0.3281,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"order:SO-3391\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3391\",\"drillField\":\"value\",\"drillValue\":572.74}},{\"id\":\"equip:hefei\",\"factor\":\"hefei 设备瓶颈（OEE 缺口）\",\"contribution\":0.322,\"unit\":\"%\",\"share\":0.1981,\"path\":[\"kpi-seg-ess\",\"base:hefei\",\"equip:hefei\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"hefei\",\"drillField\":\"oee_current\",\"drillValue\":0.753}},{\"id\":\"order:SO-3501\",\"factor\":\"订单 SO-3501（国家电投）\",\"contribution\":0.9016,\"unit\":\"%\",\"share\":0.8044,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\",\"order:SO-3501\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3501\",\"drillField\":\"value\",\"drillValue\":965.42}},{\"id\":\"equip:jiangmen\",\"factor\":\"jiangmen 设备瓶颈（OEE 缺口）\",\"contribution\":0.2193,\"unit\":\"%\",\"share\":0.1956,\"path\":[\"kpi-seg-ess\",\"base:jiangmen\",\"equip:jiangmen\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"jiangmen\",\"drillField\":\"oee_current\",\"drillValue\":0.7568}},{\"id\":\"order:SO-3529\",\"factor\":\"订单 SO-3529（南方电网）\",\"contribution\":0.4002,\"unit\":\"%\",\"share\":0.8022,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\",\"order:SO-3529\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3529\",\"drillField\":\"value\",\"drillValue\":429.66}},{\"id\":\"equip:yangzhou\",\"factor\":\"yangzhou 设备瓶颈（OEE 缺口）\",\"contribution\":0.0987,\"unit\":\"%\",\"share\":0.1978,\"path\":[\"kpi-seg-ess\",\"base:yangzhou\",\"equip:yangzhou\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"yangzhou\",\"drillField\":\"oee_current\",\"drillValue\":0.7535}},{\"id\":\"order:SO-3470\",\"factor\":\"订单 SO-3470（南方电网）\",\"contribution\":0.2857,\"unit\":\"%\",\"share\":0.8018,\"path\":[\"kpi-seg-ess\",\"base:xinyang\",\"order:SO-3470\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"SO-3470\",\"drillField\":\"value\",\"drillValue\":306.91}},{\"id\":\"equip:xinyang\",\"factor\":\"xinyang 设备瓶颈（OEE 缺口）\",\"contribution\":0.0706,\"unit\":\"%\",\"share\":0.1982,\"path\":[\"kpi-seg-ess\",\"base:xinyang\",\"equip:xinyang\"],\"causalPath\":[],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Equipment\",\"drillId\":\"xinyang\",\"drillField\":\"oee_current\",\"drillValue\":0.7528}}]",
+                2.9356
+              ],
+              [
+                3,
+                "因果链（caused_by）",
+                "[{\"id\":\"cf:cf-decision-gap\",\"factor\":\"价格预判缺失(root)\",\"contribution\":0.3125,\"unit\":\"%\",\"share\":0.2363,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\",\"cf-geopolitical\",\"cf-decision-gap\"],\"provenance\":{\"kind\":\"决策\",\"drillType\":\"DecisionGap\",\"drillId\":\"dgap-forecast\",\"drillField\":\"severity\",\"drillValue\":0.8,\"severityKind\":\"critical\"}},{\"id\":\"cf:cf-geopolitical\",\"factor\":\"地缘冲突推升矿价\",\"contribution\":0.3125,\"unit\":\"%\",\"share\":0.2363,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\",\"cf-geopolitical\"],\"provenance\":{\"kind\":\"外部信号\",\"drillType\":\"ExternalSignal\",\"drillId\":\"li_carbonate_price\",\"drillField\":\"value\",\"drillValue\":96000,\"severityKind\":\"critical\",\"provenanceSynthetic\":true}},{\"id\":\"cf:cf-cert-cycle\",\"factor\":\"认证周期长(root)\",\"contribution\":0.2404,\"unit\":\"%\",\"share\":0.1818,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-backup-thin\",\"cf-cert-cycle\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillField\":\"certWeeks\",\"drillValue\":16,\"severityKind\":\"major\"}},{\"id\":\"cf:cf-backup-thin\",\"factor\":\"备份池不足\",\"contribution\":0.2344,\"unit\":\"%\",\"share\":0.1772,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-backup-thin\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillField\":\"memberCount\",\"drillValue\":2,\"severityKind\":\"major\"}},{\"id\":\"cf:cf-ore-price\",\"factor\":\"锂价上涨\",\"contribution\":0.1328,\"unit\":\"%\",\"share\":0.1004,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\",\"cf-ore-price\"],\"provenance\":{\"kind\":\"外部信号\",\"drillType\":\"CommodityPriceTrend\",\"drillId\":\"licarb-w4\",\"drillField\":\"pctChange\",\"drillValue\":3.4,\"severityKind\":\"minor\",\"provenanceSynthetic\":true}},{\"id\":\"cf:cf-lta-breach\",\"factor\":\"长协违约\",\"contribution\":0.0586,\"unit\":\"%\",\"share\":0.0443,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\",\"cf-lta-breach\"],\"provenance\":{\"kind\":\"派生\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-cylk\",\"drillField\":\"actualDeliveredTon\",\"drillValue\":3400,\"severityKind\":\"info\"}},{\"id\":\"cf:cf-upstream-cut\",\"factor\":\"上游减供\",\"contribution\":0.0313,\"unit\":\"%\",\"share\":0.0236,\"path\":[\"material:cathode\"],\"causalPath\":[\"cf-cathode-shortage\",\"cf-upstream-cut\"],\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Supplier\",\"drillId\":\"SUP-003\",\"drillField\":\"actualSupplyTon\",\"drillValue\":3680,\"severityKind\":\"info\"}}]",
+                0.3307
+              ]
+            ],
+            "provId": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX"
+          },
+          {
+            "type": "text",
+            "markdown": "另有明细：atomicLeaves（35 项）、causalEdges（7 项）、reconChecks（11 项）（详见步骤溯源）。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWR7AG9VTGGDQ4WS5CH86JX",
+            "toolCallId": "tc_01KXWR7AG73GFEA28QT4B01ZFM",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.1",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_root_cause",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:34:59.721Z",
+      "elapsed": 1.0080897808074951,
+      "taskId": "task_01KXWR7AD3K3ATNGFSE89CD4E7"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 13,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "常州4680-NCM线，7月SO-3402(长安14518)+SO-3415(吉利4033)能按期交吗？瓶颈化成柜够吗？",
+    "anchor": "常州util88·化成柜",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 155.52,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWR7BDV0KKD12CCAGAET6BY",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWR7BDV117V9GFYWXVX1FZF",
+      "query": "常州4680-NCM线，7月SO-3402(长安14518)+SO-3415(吉利4033)能按期交吗？瓶颈化成柜够吗？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:35:00.667Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:37:35.196Z",
+      "elapsed": 155.52202606201172,
+      "taskId": "task_01KXWR7BDV0KKD12CCAGAET6BY"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "capacity_forecast / order_fullchain 未暴露给深问 agent； ceo-route.ts 未覆盖产能可承接意图，导致落探索模式超时/未产出"
+  },
+  {
+    "num": 14,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "常州util已88%全网最高，再接20%订单要不要外协？",
+    "anchor": "常州",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 47.48,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRC3AMVBNFAKBV4RERSYV1",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRC3AMY0ZW260MQJQ7690S",
+      "query": "常州util已88%全网最高，再接20%订单要不要外协？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:37:36.212Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:38:22.751Z",
+      "elapsed": 47.47734189033508,
+      "taskId": "task_01KXWRC3AMVBNFAKBV4RERSYV1"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "同 Q13：外协/产能余量问句未路由到 capacity_forecast"
+  },
+  {
+    "num": 15,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "SO-3391(广汽7259·due06-24)已逾期，还能救吗？调哪个基地？",
+    "anchor": "SO-3391·hefei/jinhua",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 23.24,
+    "verdict": "◐",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "我来查一下 SO-3391 的订单详情，看看逾期状态和关联基地，再分析挽救方案。"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRDHPMW0GEJRJ2H97QZ8ZP",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRDHPMJXTW0H2958G8P88J",
+      "query": "SO-3391(广汽7259·due06-24)已逾期，还能救吗？调哪个基地？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:38:23.700Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "我来查一下 SO-3391 的订单详情，看看逾期状态和关联基地，再分析挽救方案。"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:38:46.063Z",
+      "elapsed": 23.238456964492798,
+      "taskId": "task_01KXWRDHPMW0GEJRJ2H97QZ8ZP"
+    },
+    "gap_class": "缺 agent",
+    "fix_path": "Agent 输出\"我来查一下...\"后无后续数据，说明 agent 接到意图但工具调用链断裂；需暴露 order_fullchain / affected_orders 为 agent tool"
+  },
+  {
+    "num": 16,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "邯郸util只70%最闲，能不能把储能订单调过去填？",
+    "anchor": "邯郸·储能",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 92.9,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "邯郸基地当前利用率 **70%**，在全部 5 个储能基地中确实最低（江门 83%、眉山 79%、信阳 75%、扬州 72%、邯郸 70%），存在填产空间。是否能把储能订单调过去，需要看「型号匹配 + 瓶颈余量」两条硬约束。"
+        },
+        {
+          "type": "text",
+          "markdown": "**1. 邯郸已承担的储能订单（OPEN 状态）**\n目前已有 4 个方形-LFP 储能订单分配至邯郸，合计约 66 137 件：\n• SO-3458（南方电网，21 777 件）— bases: handan/jiangmen\n• SO-3464（国家电投，8 872 件）— bases: handan/zaozhuang\n• SO-3495（南方电网，19 357 件）— bases: handan/zaozhuang\n• SO-3518（国家电网，16 131 件）— bases: handan/zaozhuang"
+        },
+        {
+          "type": "text",
+          "markdown": "**2. 尚未分配邯郸、理论上可调的储能订单**\n筛选 OPEN 状态且型号与邯郸 PACK 产线兼容的订单，至少还有：\n• SO-3452（国家电网，方形-LFP，17 744 件）— 现分配 meishan/zaozhuang\n• SO-3470（南方电网，圆柱-LFP，4 033 件）— 现分配 xinyang\n• SO-3501（国家电投，方形-LFP，12 098 件）— 现分配 jiangmen/meishan\n• SO-3529（南方电网，圆柱-LFP，5 646 件）— 现分配 yangzhou\n• SO-900024（金龙客车，圆柱-LFP，2 569 件）— 现分配 xinyang/yangzhou\n\n这些方形/圆柱-LFP 以 PACK 为主，邯郸工厂类型为 PACK，型号上可兼容。"
+        },
+        {
+          "type": "text",
+          "markdown": "**3. 不可调的订单**\n• SO-3476（国家电网，4680-LFP，7 259 件）— 现分配 changzhou。4680 属于大圆柱电芯，需要 CELL 产能；邯郸仅为 PACK 工厂，无电芯产线，无法承接。"
+        },
+        {
+          "type": "text",
+          "markdown": "**4. 瓶颈提醒**\n邯郸的当前瓶颈是 **老化库**，日老化产能 agingCapDaily = 66 679。若一次性调入过多储能订单，老化库可能先于 PACK 线成为硬约束。建议先测算老化库余量，再决定调入批次与数量。"
+        },
+        {
+          "type": "text",
+          "markdown": "**结论**\n可以把部分方形/圆柱-LFP 储能 PACK 订单调往邯郸，以提升其利用率；但需排除 4680-LFP 等需电芯自制的型号，并优先校验老化库余量。如需执行具体调单，我可为您生成 Action 草稿走审批流程。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWRH2WS38FT79G10ZS3Q9D4",
+          "toolCallId": "tc_01KXWRECGR1CVBTFWZ84BDXF4V",
+          "toolName": "discover",
+          "outputPath": "items[?key=='Base']",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWRH2WSRKKN27RZAWMM0ATA",
+          "toolCallId": "tc_01KXWREGF9YMGQCR6YQHT0QJPM",
+          "toolName": "query_objects",
+          "outputPath": "data[0]",
+          "snapshotVersion": "1.15@15",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWRH2WSB72W8FB7XB1626Y0",
+          "toolCallId": "tc_01KXWREM5J5CGFFC6KJF8Z5GPA",
+          "toolName": "query_objects",
+          "outputPath": "data",
+          "snapshotVersion": "1.15@15",
+          "source": "TOOL_RESULT"
+        },
+        {
+          "id": "prov_01KXWRH2WT9RJQK31292W0E86P",
+          "toolCallId": "tc_01KXWREYWQS1CPA7NB1F5HAZMQ",
+          "toolName": "query_objects",
+          "outputPath": "data",
+          "snapshotVersion": "1.15@15",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRE8DCPG3HVPVK9ARS1PTZ",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRE8DDSPJVCX8KWBJ1NAC9",
+      "query": "邯郸util只70%最闲，能不能把储能订单调过去填？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:38:46.957Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "邯郸基地当前利用率 **70%**，在全部 5 个储能基地中确实最低（江门 83%、眉山 79%、信阳 75%、扬州 72%、邯郸 70%），存在填产空间。是否能把储能订单调过去，需要看「型号匹配 + 瓶颈余量」两条硬约束。"
+          },
+          {
+            "type": "text",
+            "markdown": "**1. 邯郸已承担的储能订单（OPEN 状态）**\n目前已有 4 个方形-LFP 储能订单分配至邯郸，合计约 66 137 件：\n• SO-3458（南方电网，21 777 件）— bases: handan/jiangmen\n• SO-3464（国家电投，8 872 件）— bases: handan/zaozhuang\n• SO-3495（南方电网，19 357 件）— bases: handan/zaozhuang\n• SO-3518（国家电网，16 131 件）— bases: handan/zaozhuang"
+          },
+          {
+            "type": "text",
+            "markdown": "**2. 尚未分配邯郸、理论上可调的储能订单**\n筛选 OPEN 状态且型号与邯郸 PACK 产线兼容的订单，至少还有：\n• SO-3452（国家电网，方形-LFP，17 744 件）— 现分配 meishan/zaozhuang\n• SO-3470（南方电网，圆柱-LFP，4 033 件）— 现分配 xinyang\n• SO-3501（国家电投，方形-LFP，12 098 件）— 现分配 jiangmen/meishan\n• SO-3529（南方电网，圆柱-LFP，5 646 件）— 现分配 yangzhou\n• SO-900024（金龙客车，圆柱-LFP，2 569 件）— 现分配 xinyang/yangzhou\n\n这些方形/圆柱-LFP 以 PACK 为主，邯郸工厂类型为 PACK，型号上可兼容。"
+          },
+          {
+            "type": "text",
+            "markdown": "**3. 不可调的订单**\n• SO-3476（国家电网，4680-LFP，7 259 件）— 现分配 changzhou。4680 属于大圆柱电芯，需要 CELL 产能；邯郸仅为 PACK 工厂，无电芯产线，无法承接。"
+          },
+          {
+            "type": "text",
+            "markdown": "**4. 瓶颈提醒**\n邯郸的当前瓶颈是 **老化库**，日老化产能 agingCapDaily = 66 679。若一次性调入过多储能订单，老化库可能先于 PACK 线成为硬约束。建议先测算老化库余量，再决定调入批次与数量。"
+          },
+          {
+            "type": "text",
+            "markdown": "**结论**\n可以把部分方形/圆柱-LFP 储能 PACK 订单调往邯郸，以提升其利用率；但需排除 4680-LFP 等需电芯自制的型号，并优先校验老化库余量。如需执行具体调单，我可为您生成 Action 草稿走审批流程。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWRH2WS38FT79G10ZS3Q9D4",
+            "toolCallId": "tc_01KXWRECGR1CVBTFWZ84BDXF4V",
+            "toolName": "discover",
+            "outputPath": "items[?key=='Base']",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWRH2WSRKKN27RZAWMM0ATA",
+            "toolCallId": "tc_01KXWREGF9YMGQCR6YQHT0QJPM",
+            "toolName": "query_objects",
+            "outputPath": "data[0]",
+            "snapshotVersion": "1.15@15",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWRH2WSB72W8FB7XB1626Y0",
+            "toolCallId": "tc_01KXWREM5J5CGFFC6KJF8Z5GPA",
+            "toolName": "query_objects",
+            "outputPath": "data",
+            "snapshotVersion": "1.15@15",
+            "source": "TOOL_RESULT"
+          },
+          {
+            "id": "prov_01KXWRH2WT9RJQK31292W0E86P",
+            "toolCallId": "tc_01KXWREYWQS1CPA7NB1F5HAZMQ",
+            "toolName": "query_objects",
+            "outputPath": "data",
+            "snapshotVersion": "1.15@15",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:40:19.610Z",
+      "elapsed": 92.90075993537903,
+      "taskId": "task_01KXWRE8DCPG3HVPVK9ARS1PTZ"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 17,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "4680-NCM全网哪个基地产能余量最大？",
+    "anchor": "4680-NCM·MODEL_BASE_MAP",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 24.19,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRH3531EQQJDZ27TCXY0Q7",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRH35361T5HHJHHETYDKA9",
+      "query": "4680-NCM全网哪个基地产能余量最大？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:40:19.875Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:40:43.304Z",
+      "elapsed": 24.191760778427124,
+      "taskId": "task_01KXWRH3531EQQJDZ27TCXY0Q7"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "4680-NCM 产能余量问句落探索模式；需 capacity_forecast / bottleneck_matrix 工具化"
+  },
+  {
+    "num": 18,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "若常州停一条线检修两周，波及哪些在手订单？",
+    "anchor": "常州·affected_orders",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 36.28,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRHTSTEPV2Y5F4M1FPPSVW",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRHTSTSAQQKMAW7B5HSXFK",
+      "query": "若常州停一条线检修两周，波及哪些在手订单？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:40:44.090Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:41:19.811Z",
+      "elapsed": 36.27712607383728,
+      "taskId": "task_01KXWRHTSTEPV2Y5F4M1FPPSVW"
+    },
+    "gap_class": "缺 agent",
+    "fix_path": "affected_orders 求解器存在但 agent 探索模式未能调用；暴露为 tool 并加 ceo-route 意图"
+  },
+  {
+    "num": 19,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "储能280Ah/314Ah在眉山/信阳/扬州的产能瓶颈分别是什么工序？",
+    "anchor": "储能三基地·bottleneck",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 109.51,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRJY838G9VE9YMVNCGVCY1",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRJY83WB0WKANZGYD7G5K9",
+      "query": "储能280Ah/314Ah在眉山/信阳/扬州的产能瓶颈分别是什么工序？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:41:20.387Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:43:09.396Z",
+      "elapsed": 109.50659584999084,
+      "taskId": "task_01KXWRJY838G9VE9YMVNCGVCY1"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "储能三基地瓶颈问句未命中 bottleneck_matrix；扩 ceo-route 并暴露 bottleneck_matrix 工具"
+  },
+  {
+    "num": 20,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "7月所有高优订单(pri=高)总量多少，全网产能接得住吗？",
+    "anchor": "Order.pri=高",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 69.79,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRP97FA13VRHF7ZSTQ28DZ",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRP97FYW4M7JCN7ZBR2JBR",
+      "query": "7月所有高优订单(pri=高)总量多少，全网产能接得住吗？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:43:09.935Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:44:19.131Z",
+      "elapsed": 69.7914731502533,
+      "taskId": "task_01KXWRP97FA13VRHF7ZSTQ28DZ"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "高优订单聚合/产能承接问句落探索模式；需 order_fullchain + capacity_forecast 组合调用"
+  },
+  {
+    "num": 21,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "厦门util85接近满，主产VDA-NCM，还能不能插单？",
+    "anchor": "厦门",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 58.52,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRRDD1Q21JDPPMVDHJRY2Q",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRRDD1DDVZX8SZFW5DAEP7",
+      "query": "厦门util85接近满，主产VDA-NCM，还能不能插单？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:44:19.745Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:45:18.098Z",
+      "elapsed": 58.51629900932312,
+      "taskId": "task_01KXWRRDD1Q21JDPPMVDHJRY2Q"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "厦门插单问句未路由到 capacity_forecast；同 Q13"
+  },
+  {
+    "num": 22,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "把24张在手订单按交期和产能做一次可承接性总评。",
+    "anchor": "全24订单·order_fullchain",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 40.43,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRT6P2C8285A5265ZPP8PB",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRT6P23ZQX0VV75YHYD9GW",
+      "query": "把24张在手订单按交期和产能做一次可承接性总评。",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:45:18.402Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:45:58.534Z",
+      "elapsed": 40.42728400230408,
+      "taskId": "task_01KXWRT6P2C8285A5265ZPP8PB"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "24 订单可承接总评需 order_fullchain 但 agent 未命中；暴露为 tool"
+  },
+  {
+    "num": 23,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "哪个基地是储能线的产能天花板，扩产投哪最划算？",
+    "anchor": "储能基地·capex",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 28.34,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRVE5YWJDEWYDVKSPC995A",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRVE5Y79EKAG5ZPPBERK5G",
+      "query": "哪个基地是储能线的产能天花板，扩产投哪最划算？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:45:58.846Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:46:26.899Z",
+      "elapsed": 28.342339754104614,
+      "taskId": "task_01KXWRVE5YWJDEWYDVKSPC995A"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "储能产能天花板/扩产投资问句未路由到 capex_scenario；暴露 CapexProject 求解器"
+  },
+  {
+    "num": 24,
+    "section": "产能·订单可承接·瓶颈",
+    "question": "化成柜是常州/合肥/枣庄的共同瓶颈，挤占关系怎么排？",
+    "anchor": "化成柜·shared_bottleneck",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 55.47,
+    "verdict": "✗",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "（探索模式未能产出回答）"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRW9W0FFNSXHAT8SA8QQH0",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRW9W0QZZ100KQYEFF36N8",
+      "query": "化成柜是常州/合肥/枣庄的共同瓶颈，挤占关系怎么排？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:46:27.200Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "（探索模式未能产出回答）"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:47:22.402Z",
+      "elapsed": 55.467689990997314,
+      "taskId": "task_01KXWRW9W0FFNSXHAT8SA8QQH0"
+    },
+    "gap_class": "缺 agent / 路由错配",
+    "fix_path": "化成柜共享瓶颈问句未命中 bottleneck_matrix / shared_bottleneck；扩 ceo-route"
+  },
+  {
+    "num": 25,
+    "section": "物料·供应链·长协·断供",
+    "question": "三元正极缺1858吨(lta92%)，断供风险多大？备选顶得上吗？",
+    "anchor": "三元正极·容百/当升/长远",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 97.88,
+    "verdict": "◐",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "我来分析三元正极缺料的断供风险及备选可行性。先探查系统中有哪些相关对象和求解器。"
+        }
+      ],
+      "provenance": [],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWRY01VYBJVM0X9A2JPY848",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWRY01V9APR8DNECS9NDKKD",
+      "query": "三元正极缺1858吨(lta92%)，断供风险多大？备选顶得上吗？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:47:22.683Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "我来分析三元正极缺料的断供风险及备选可行性。先探查系统中有哪些相关对象和求解器。"
+          }
+        ],
+        "provenance": [],
+        "unverifiedNumerics": false
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:49:00.487Z",
+      "elapsed": 97.87900710105896,
+      "taskId": "task_01KXWRY01VYBJVM0X9A2JPY848"
+    },
+    "gap_class": "缺 agent",
+    "fix_path": "Agent 输出\"我来分析...\"后无数据；supplier_disruption_radius / concentration_risk 未工具化"
+  },
+  {
+    "num": 26,
+    "section": "物料·供应链·长协·断供",
+    "question": "容百科技(最大正极供应商)断供两周，波及哪些型号、订单、缺口多少吨？",
+    "anchor": "容百·SUP-001",
+    "probe": "gap-route",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "◑",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "missCount",
+          "value": "2",
+          "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.op",
+          "value": "6",
+          "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+        },
+        {
+          "type": "kpi",
+          "label": "byLevel.year",
+          "value": "4",
+          "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+        },
+        {
+          "type": "kpi",
+          "label": "summary",
+          "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+          "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "metricId",
+            "key",
+            "name",
+            "unit",
+            "level",
+            "category",
+            "target",
+            "actual",
+            "delta",
+            "miss",
+            "floorVal",
+            "ksfRef",
+            "ownerRef",
+            "chainKey"
+          ],
+          "rows": [
+            [
+              "kpi-attain",
+              "demand_attain",
+              "需求达成率",
+              "%",
+              "op",
+              "scale",
+              100,
+              90.8,
+              -9.2,
+              "true",
+              95,
+              "ksf-bal",
+              "prin-plan",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-cash",
+              "cash",
+              "经营现金",
+              "亿",
+              "year",
+              "cash",
+              60,
+              58,
+              -2,
+              "false",
+              50,
+              "ksf-cash",
+              "prin-fin",
+              ""
+            ],
+            [
+              "kpi-gross-profit",
+              "gross_profit",
+              "毛利",
+              "亿",
+              "year",
+              "profit",
+              112,
+              118.9,
+              6.9,
+              "false",
+              108.5,
+              "ksf-cost",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-margin",
+              "gm_rate",
+              "毛利率",
+              "%",
+              "op",
+              "profit",
+              16,
+              17,
+              1,
+              "false",
+              15.5,
+              "ksf-dem",
+              "prin-fin",
+              "rc-profit-mix"
+            ],
+            [
+              "kpi-material",
+              "material_cov",
+              "物料保障率",
+              "%",
+              "op",
+              "material",
+              100,
+              95.8,
+              -4.2,
+              "false",
+              95,
+              "ksf-kit",
+              "prin-supply",
+              "rc-material-gap"
+            ],
+            [
+              "kpi-revenue",
+              "revenue",
+              "营收",
+              "亿",
+              "year",
+              "scale",
+              700,
+              700,
+              0,
+              "false",
+              686,
+              "ksf-dem",
+              "prin-fin",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-com",
+              "seg_attain_com",
+              "商用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              115.8,
+              15.8,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-com",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-ess",
+              "seg_attain_ess",
+              "储能达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              72.2,
+              -27.8,
+              "true",
+              95,
+              "ksf-dem",
+              "prin-seg-ess",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-seg-pas",
+              "seg_attain_pas",
+              "乘用车达成率",
+              "%",
+              "op",
+              "segment",
+              100,
+              99.5,
+              -0.5,
+              "false",
+              95,
+              "ksf-dem",
+              "prin-seg-pas",
+              "rc-scale-demand"
+            ],
+            [
+              "kpi-share",
+              "market_share",
+              "市场份额",
+              "%",
+              "year",
+              "share",
+              23,
+              21.5,
+              -1.5,
+              "false",
+              20,
+              "ksf-dem",
+              "prin-plan",
+              ""
+            ]
+          ],
+          "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5",
+          "toolCallId": "tc_01KXWS0ZT65M4SR6GBK0ZP75H1",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.15",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": false
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWS0ZSFXFGG74J2V6P5RD4N",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWS0ZSGPS0QXFAVD4NJ9KGY",
+      "query": "容百科技(最大正极供应商)断供两周，波及哪些型号、订单、缺口多少吨？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:49:00.720Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_metric",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_metric_v1",
+        "intentKey": "ceo_metric",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 达标查询（求解器 metric_rollup·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "missCount",
+            "value": "2",
+            "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.op",
+            "value": "6",
+            "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+          },
+          {
+            "type": "kpi",
+            "label": "byLevel.year",
+            "value": "4",
+            "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+          },
+          {
+            "type": "kpi",
+            "label": "summary",
+            "value": "10 项指标，2 项越线（按 level：op:6 year:4）",
+            "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "metricId",
+              "key",
+              "name",
+              "unit",
+              "level",
+              "category",
+              "target",
+              "actual",
+              "delta",
+              "miss",
+              "floorVal",
+              "ksfRef",
+              "ownerRef",
+              "chainKey"
+            ],
+            "rows": [
+              [
+                "kpi-attain",
+                "demand_attain",
+                "需求达成率",
+                "%",
+                "op",
+                "scale",
+                100,
+                90.8,
+                -9.2,
+                "true",
+                95,
+                "ksf-bal",
+                "prin-plan",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-cash",
+                "cash",
+                "经营现金",
+                "亿",
+                "year",
+                "cash",
+                60,
+                58,
+                -2,
+                "false",
+                50,
+                "ksf-cash",
+                "prin-fin",
+                ""
+              ],
+              [
+                "kpi-gross-profit",
+                "gross_profit",
+                "毛利",
+                "亿",
+                "year",
+                "profit",
+                112,
+                118.9,
+                6.9,
+                "false",
+                108.5,
+                "ksf-cost",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-margin",
+                "gm_rate",
+                "毛利率",
+                "%",
+                "op",
+                "profit",
+                16,
+                17,
+                1,
+                "false",
+                15.5,
+                "ksf-dem",
+                "prin-fin",
+                "rc-profit-mix"
+              ],
+              [
+                "kpi-material",
+                "material_cov",
+                "物料保障率",
+                "%",
+                "op",
+                "material",
+                100,
+                95.8,
+                -4.2,
+                "false",
+                95,
+                "ksf-kit",
+                "prin-supply",
+                "rc-material-gap"
+              ],
+              [
+                "kpi-revenue",
+                "revenue",
+                "营收",
+                "亿",
+                "year",
+                "scale",
+                700,
+                700,
+                0,
+                "false",
+                686,
+                "ksf-dem",
+                "prin-fin",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-com",
+                "seg_attain_com",
+                "商用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                115.8,
+                15.8,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-com",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-ess",
+                "seg_attain_ess",
+                "储能达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                72.2,
+                -27.8,
+                "true",
+                95,
+                "ksf-dem",
+                "prin-seg-ess",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-seg-pas",
+                "seg_attain_pas",
+                "乘用车达成率",
+                "%",
+                "op",
+                "segment",
+                100,
+                99.5,
+                -0.5,
+                "false",
+                95,
+                "ksf-dem",
+                "prin-seg-pas",
+                "rc-scale-demand"
+              ],
+              [
+                "kpi-share",
+                "market_share",
+                "市场份额",
+                "%",
+                "year",
+                "share",
+                23,
+                21.5,
+                -1.5,
+                "false",
+                20,
+                "ksf-dem",
+                "prin-plan",
+                ""
+              ]
+            ],
+            "provId": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWS0ZT7PNQ2QQBEKAASK7A5",
+            "toolCallId": "tc_01KXWS0ZT65M4SR6GBK0ZP75H1",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.15",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": false
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_metric",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:49:00.743Z",
+      "elapsed": 1.0085010528564453,
+      "taskId": "task_01KXWS0ZSFXFGG74J2V6P5RD4N"
+    },
+    "gap_class": "路由错配",
+    "fix_path": "容百断供问句被 metric_rollup 泛化；应路由到 supplier_disruption_radius / mrp_netting"
+  },
+  {
+    "num": 27,
+    "section": "物料·供应链·长协·断供",
+    "question": "碳酸锂涨到9.6万/吨(+14%)，对储能线毛利现金冲击多大？",
+    "anchor": "碳酸锂·margin",
+    "probe": "gap-orch",
+    "status": "COMPLETED",
+    "route": "WORKFLOW",
+    "elapsed": 1.01,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "VERIFIED_WORKFLOW",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "CEO 决策推演（求解器 decision_play·溯源见下 ⟦ref:0⟧）："
+        },
+        {
+          "type": "kpi",
+          "label": "rootCause.factorId",
+          "value": "cf-decision-gap",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "rootCause.label",
+          "value": "价格预判缺失(root)",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "rootCause.metricKey",
+          "value": "seg_attain_ess",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "rootCause.gap",
+          "value": "27.8",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "rootCause.unit",
+          "value": "%",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "recommendedPlan.planId",
+          "value": "plan-cf-decision-gap",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "recommendedPlan.totalClosesGap",
+          "value": "1.3115",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "kpi",
+          "label": "recommendedPlan.totalCost",
+          "value": "2138",
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "optionId",
+            "factorId",
+            "label",
+            "sourceKind",
+            "closesGap",
+            "cost",
+            "cycleDays",
+            "risk",
+            "exposure",
+            "reversibility",
+            "provenance"
+          ],
+          "rows": [
+            [
+              "opt-backup-cert",
+              "cf-decision-gap",
+              "缩短备份供应商认证周期",
+              "solver",
+              0.459,
+              248,
+              112,
+              0.25,
+              0.369,
+              0.8,
+              "{\"kind\":\"求解器\",\"basis\":\"BackupSupplierPool.certWeeks\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillValue\":16}"
+            ],
+            [
+              "opt-lta-clause",
+              "cf-decision-gap",
+              "长协加价格联动条款",
+              "agent",
+              0.8354,
+              160,
+              30,
+              0.2,
+              0.075,
+              0.9,
+              "{\"kind\":\"策略推理\",\"basis\":\"LongTermAgreement.priceLinked\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-rbkj\",\"drillValue\":0}"
+            ],
+            [
+              "opt-insource",
+              "cf-decision-gap",
+              "上游自采矿+战略储备",
+              "agent",
+              1.0741,
+              1730,
+              180,
+              0.55,
+              0.05,
+              0.2,
+              "{\"kind\":\"策略推理\",\"basis\":\"正极供应缺口(LTA 约定−实际交付)\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-cylk\",\"drillValue\":1550}"
+            ]
+          ],
+          "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+        },
+        {
+          "type": "text",
+          "markdown": "另有明细：matrix（3 项）、triggers（3 项）（详见步骤溯源）。"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWS10WS0RZCGC0SZVJXSY4W",
+          "toolCallId": "tc_01KXWS10WR0R1EJ38YJVZBAWYT",
+          "toolName": "invoke_solver",
+          "outputPath": "$.data",
+          "snapshotVersion": "1.15",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWS10SE93M3SNYFEEHDRZ61",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWS10SEMW6EQPA3S3FJG3YJ",
+      "query": "碳酸锂涨到9.6万/吨(+14%)，对储能线毛利现金冲击多大？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:49:01.742Z",
+      "classification": {
+        "candidates": [
+          {
+            "intentKey": "ceo_decision",
+            "confidence": 1
+          }
+        ],
+        "outOfCatalog": false,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "deterministic:ceo-route"
+      },
+      "matchedIntent": {
+        "intentId": "int_ceo_decision_v1",
+        "intentKey": "ceo_decision",
+        "version": 1
+      },
+      "slots": {
+        "metricKey": null,
+        "factorId": null
+      },
+      "path": "WORKFLOW",
+      "answer": {
+        "trustLevel": "VERIFIED_WORKFLOW",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "CEO 决策推演（求解器 decision_play·溯源见下 ⟦ref:0⟧）："
+          },
+          {
+            "type": "kpi",
+            "label": "rootCause.factorId",
+            "value": "cf-decision-gap",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "rootCause.label",
+            "value": "价格预判缺失(root)",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "rootCause.metricKey",
+            "value": "seg_attain_ess",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "rootCause.gap",
+            "value": "27.8",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "rootCause.unit",
+            "value": "%",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "recommendedPlan.planId",
+            "value": "plan-cf-decision-gap",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "recommendedPlan.totalClosesGap",
+            "value": "1.3115",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "kpi",
+            "label": "recommendedPlan.totalCost",
+            "value": "2138",
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "optionId",
+              "factorId",
+              "label",
+              "sourceKind",
+              "closesGap",
+              "cost",
+              "cycleDays",
+              "risk",
+              "exposure",
+              "reversibility",
+              "provenance"
+            ],
+            "rows": [
+              [
+                "opt-backup-cert",
+                "cf-decision-gap",
+                "缩短备份供应商认证周期",
+                "solver",
+                0.459,
+                248,
+                112,
+                0.25,
+                0.369,
+                0.8,
+                "{\"kind\":\"求解器\",\"basis\":\"BackupSupplierPool.certWeeks\",\"drillType\":\"BackupSupplierPool\",\"drillId\":\"pool-cathode\",\"drillValue\":16}"
+              ],
+              [
+                "opt-lta-clause",
+                "cf-decision-gap",
+                "长协加价格联动条款",
+                "agent",
+                0.8354,
+                160,
+                30,
+                0.2,
+                0.075,
+                0.9,
+                "{\"kind\":\"策略推理\",\"basis\":\"LongTermAgreement.priceLinked\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-rbkj\",\"drillValue\":0}"
+              ],
+              [
+                "opt-insource",
+                "cf-decision-gap",
+                "上游自采矿+战略储备",
+                "agent",
+                1.0741,
+                1730,
+                180,
+                0.55,
+                0.05,
+                0.2,
+                "{\"kind\":\"策略推理\",\"basis\":\"正极供应缺口(LTA 约定−实际交付)\",\"drillType\":\"LongTermAgreement\",\"drillId\":\"lta-lfp-cylk\",\"drillValue\":1550}"
+              ]
+            ],
+            "provId": "prov_01KXWS10WS0RZCGC0SZVJXSY4W"
+          },
+          {
+            "type": "text",
+            "markdown": "另有明细：matrix（3 项）、triggers（3 项）（详见步骤溯源）。"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWS10WS0RZCGC0SZVJXSY4W",
+            "toolCallId": "tc_01KXWS10WR0R1EJ38YJVZBAWYT",
+            "toolName": "invoke_solver",
+            "outputPath": "$.data",
+            "snapshotVersion": "1.15",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "resolvedRefs": [
+        {
+          "kind": "plan",
+          "key": "ceo_decision",
+          "version": 1
+        }
+      ],
+      "completedAt": "2026-07-19T08:49:01.849Z",
+      "elapsed": 1.0088169574737549,
+      "taskId": "task_01KXWS10SE93M3SNYFEEHDRZ61"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  },
+  {
+    "num": 28,
+    "section": "物料·供应链·长协·断供",
+    "question": "长协覆盖不足的物料有哪些，缺口合计多少？",
+    "anchor": "MaterialBalance 9·ltaPct",
+    "probe": "正常",
+    "status": "COMPLETED",
+    "route": "AGENT",
+    "elapsed": 43.4,
+    "verdict": "✅",
+    "answer": {
+      "trustLevel": "AGENT_EXPLORATORY",
+      "blocks": [
+        {
+          "type": "text",
+          "markdown": "根据物料平衡数据，当前共有 **7 种物料**存在长协覆盖不足，其中 6 种以「吨」计量、1 种以「万个」计量。覆盖率达 100% 的物料（隔膜、包材）不在列。"
+        },
+        {
+          "type": "table",
+          "columns": [
+            "物料",
+            "净需求",
+            "长协覆盖率",
+            "缺口",
+            "预计补齐日期"
+          ],
+          "rows": [
+            [
+              "三元正极",
+              "23,231 吨",
+              "92%",
+              "1,858 吨",
+              "2026-06-28"
+            ],
+            [
+              "磷酸铁锂正极",
+              "8,208 吨",
+              "94%",
+              "492 吨",
+              "2026-06-27"
+            ],
+            [
+              "石墨负极",
+              "9,975 吨",
+              "93%",
+              "698 吨",
+              "2026-06-29"
+            ],
+            [
+              "电解液",
+              "15,745 吨",
+              "96%",
+              "630 吨",
+              "2026-06-25"
+            ],
+            [
+              "铜箔",
+              "4,425 吨",
+              "91%",
+              "398 吨",
+              "2026-06-30"
+            ],
+            [
+              "铝箔",
+              "3,323 吨",
+              "95%",
+              "166 吨",
+              "2026-06-26"
+            ],
+            [
+              "电芯壳体",
+              "36,000 万个",
+              "99%",
+              "360 万个",
+              "2026-06-24"
+            ]
+          ],
+          "provId": "p1"
+        },
+        {
+          "type": "kpi",
+          "label": "重量类缺口合计（吨）",
+          "value": "4,242 吨",
+          "provId": "p1"
+        },
+        {
+          "type": "kpi",
+          "label": "电芯壳体缺口（万个）",
+          "value": "360 万个",
+          "provId": "p1"
+        }
+      ],
+      "provenance": [
+        {
+          "id": "prov_01KXWS2BWC5WJH31MYN4ENBRAA",
+          "toolCallId": "tc_01KXWS1BM13J7PTTSAZ6WQF2WY",
+          "toolName": "query_objects",
+          "outputPath": "data[0]..data[8]",
+          "snapshotVersion": "1.15@15",
+          "source": "TOOL_RESULT"
+        }
+      ],
+      "unverifiedNumerics": true
+    },
+    "error": "",
+    "raw": {
+      "id": "task_01KXWS11SJYHHKMBVT7HAB7WBV",
+      "tenantId": "demo",
+      "userId": "admin",
+      "packageId": "pkg_battery_manufacturing",
+      "conversationId": "conv_01KXWS11SJKHB1H5E8KZ39XTF7",
+      "query": "长协覆盖不足的物料有哪些，缺口合计多少？",
+      "context": {
+        "view": "cockpit",
+        "selectedObjects": [],
+        "filters": {},
+        "pageContext": {
+          "view": "cockpit",
+          "focus": {},
+          "entities": [],
+          "selection": [],
+          "drillPath": [],
+          "actions": []
+        }
+      },
+      "status": "COMPLETED",
+      "clarificationRounds": 0,
+      "createdAt": "2026-07-19T08:49:02.770Z",
+      "path": "AGENT",
+      "answer": {
+        "trustLevel": "AGENT_EXPLORATORY",
+        "blocks": [
+          {
+            "type": "text",
+            "markdown": "根据物料平衡数据，当前共有 **7 种物料**存在长协覆盖不足，其中 6 种以「吨」计量、1 种以「万个」计量。覆盖率达 100% 的物料（隔膜、包材）不在列。"
+          },
+          {
+            "type": "table",
+            "columns": [
+              "物料",
+              "净需求",
+              "长协覆盖率",
+              "缺口",
+              "预计补齐日期"
+            ],
+            "rows": [
+              [
+                "三元正极",
+                "23,231 吨",
+                "92%",
+                "1,858 吨",
+                "2026-06-28"
+              ],
+              [
+                "磷酸铁锂正极",
+                "8,208 吨",
+                "94%",
+                "492 吨",
+                "2026-06-27"
+              ],
+              [
+                "石墨负极",
+                "9,975 吨",
+                "93%",
+                "698 吨",
+                "2026-06-29"
+              ],
+              [
+                "电解液",
+                "15,745 吨",
+                "96%",
+                "630 吨",
+                "2026-06-25"
+              ],
+              [
+                "铜箔",
+                "4,425 吨",
+                "91%",
+                "398 吨",
+                "2026-06-30"
+              ],
+              [
+                "铝箔",
+                "3,323 吨",
+                "95%",
+                "166 吨",
+                "2026-06-26"
+              ],
+              [
+                "电芯壳体",
+                "36,000 万个",
+                "99%",
+                "360 万个",
+                "2026-06-24"
+              ]
+            ],
+            "provId": "p1"
+          },
+          {
+            "type": "kpi",
+            "label": "重量类缺口合计（吨）",
+            "value": "4,242 吨",
+            "provId": "p1"
+          },
+          {
+            "type": "kpi",
+            "label": "电芯壳体缺口（万个）",
+            "value": "360 万个",
+            "provId": "p1"
+          }
+        ],
+        "provenance": [
+          {
+            "id": "prov_01KXWS2BWC5WJH31MYN4ENBRAA",
+            "toolCallId": "tc_01KXWS1BM13J7PTTSAZ6WQF2WY",
+            "toolName": "query_objects",
+            "outputPath": "data[0]..data[8]",
+            "snapshotVersion": "1.15@15",
+            "source": "TOOL_RESULT"
+          }
+        ],
+        "unverifiedNumerics": true
+      },
+      "classification": {
+        "candidates": [],
+        "outOfCatalog": true,
+        "extractedSlots": {},
+        "latencyMs": 0,
+        "model": "claude-haiku-4-5"
+      },
+      "completedAt": "2026-07-19T08:49:45.868Z",
+      "elapsed": 43.396774768829346,
+      "taskId": "task_01KXWS11SJYHHKMBVT7HAB7WBV"
+    },
+    "gap_class": "-",
+    "fix_path": "-"
+  }
+]

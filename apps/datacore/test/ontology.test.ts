@@ -155,7 +155,8 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
   });
 
   it("healthz/readyz/metrics work; metrics carries dc_* counters", async () => {
-    const t = await makeApp();
+    // `/metrics` 已收口为服务间鉴权（假凭证，非真实部署值）；healthz/readyz 仍公开（探活需要）。
+    const t = await makeApp({ env: { SERVICE_TOKEN: "test-only-fake-service-token" } });
     expect((await t.app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
     expect((await t.app.inject({ method: "GET", url: "/readyz" })).statusCode).toBe(200);
     const conn = await t.app.inject({
@@ -169,7 +170,11 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
       url: `/a/v1/connections/${(conn.json() as { id: string }).id}/sync`,
       headers: ADMIN,
     });
-    const metrics = await t.app.inject({ method: "GET", url: "/metrics" });
+    const metrics = await t.app.inject({
+      method: "GET",
+      url: "/metrics",
+      headers: { "x-service-token": "test-only-fake-service-token" },
+    });
     expect(metrics.body).toContain('dc_connector_sync_total{outcome="success",type="mock_erp"} 1');
   });
 });

@@ -11,7 +11,13 @@
 | Docker | Docker Engine 20+（含 `docker compose` v2 插件）；macOS/Windows 用 Docker Desktop |
 | 内存 | 建议 ≥ 4 GB 可用内存（两个 Postgres + 两个 Node 服务 + nginx） |
 | 磁盘 | ≥ 2 GB（镜像 + 演示数据卷） |
-| 端口 | 80（网关）、4001/4002（后端直连调试）、5441/5442（数据库）、9000/9001（MinIO）空闲 |
+| 端口 | 80（网关）、4001/4002（后端直连调试，**只绑 127.0.0.1**）、5441/5442（数据库）、9000/9001（MinIO）空闲 |
+
+> **4001/4002 只监听本机回环**（`docker-compose.yml`）。容器间通信走 compose 网络的服务名
+> （`http://datacore:4001` / `http://agentcore:4002`），网关也一样，**都不经这条发布端口**，
+> 因此收窄到 loopback 不影响任何服务间调用或前端访问（前端走 80 网关同源）。
+> 从**别的机器**直连 4001/4002 调试请走 SSH 隧道：`ssh -L 4001:127.0.0.1:4001 <host>`。
+> 这样做的原因见 §5.y：这两个端口上有服务间专用端点，此前从 0.0.0.0 匿名可达。
 
 > 无需本机安装 Node/pnpm —— 全部在镜像内构建。
 
@@ -132,6 +138,35 @@ docker compose ps                  # 全部 healthy 即完成
   `{kind}.updated`（llm_provider.updated / llm_binding.updated / rules.updated），经 C-2 webhook 注册表回调 B 的
   失效钩子 `POST {B}/b/v1/internal/invalidate` 立即失效（事件通路故障由 TTL 兜底）。注册方式：
   `POST /a/v1/webhooks { "url": "http://agentcore:4002/b/v1/internal/invalidate", "events": [] }`。
+  ⚠ **该钩子已收口为 SERVICE_TOKEN 鉴权**（此前匿名可达）。A 侧投递会自动附带 `X-Service-Token`，
+  但**仅当 hook URL 的 origin 与 `AGENTCORE_BASE_URL` 完全一致时**（凭证不外泄给租户自助注册的地址）。
+  故注册的 URL 必须与 `AGENTCORE_BASE_URL` 同源 —— 两者写法不一致（如一个 `agentcore:4002`、
+  另一个 `127.0.0.1:4002`）会导致投递不带 token → B 侧 401 → **失效链静默退化成 TTL 60s 兜底**
+  （业务不报错，只是传播变慢）。排查：A 侧 `GET /a/v1/outbox` 看事件是否堆积/进死信。
+
+## 5.y 服务间专用端点（`SERVICE_TOKEN` 鉴权 · 部署必读）
+
+以下端点**不接受用户 JWT / X-Debug-User**，只认 `X-Service-Token`（值 = 两服务同值的 `SERVICE_TOKEN`）：
+
+| 端点 | 说明 |
+|---|---|
+| `GET {A}/metrics` · `GET {B}/metrics` | Prometheus 文本。**全租户合计**，且标签里带租户 LLM provider 记录 ID、模型名、token 消耗量、业务动作类型名、本体类型 key —— 故不对匿名与普通用户开放 |
+| `POST {B}/b/v1/internal/invalidate` | 缓存失效钩子（见上） |
+
+- **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 这些端点一律 401（不会退化成放行）。
+  `docker-compose.yml` 已默认给出 `SERVICE_TOKEN`（`dev-service-token-change-me`），**生产务必改**。
+- **Prometheus 抓取**需在 scrape 配置里加静态请求头：
+  ```yaml
+  scrape_configs:
+    - job_name: platform
+      # SERVICE_TOKEN 的值，勿写进版本库
+      authorization: { type: X-Service-Token, credentials: "<SERVICE_TOKEN>" }
+      static_configs: [{ targets: ["datacore:4001", "agentcore:4002"] }]
+  ```
+  （或用 `http_headers` 写 `X-Service-Token`，视 Prometheus 版本而定。）
+- **探活端点不受影响**：`/healthz` `/readyz`（及 `/a/v1/*`、`/b/v1/*` 别名）仍公开 —— compose healthcheck 依赖它们。
+- **租户级 Action 稳定率**改用 `GET {A}/a/v1/actions/metrics`（用户鉴权，只返回**调用者自己租户**的数）：
+  `/metrics` 是全租户合计，算不出租户级失败率。二者由同一份计数投影而来，不是两套口径。
 - **引用模式**：意图 → 计划为 `planRef {planKey, version|"latest"}`（执行时解析）；规则引用永远取 PUBLISHED 最新版；
   发布响应附影响面 impact；workflow 破坏性 inputs 变更 + latest 引用 → `BREAKING_CHANGE_WITH_LATEST_REFS`（force=true 越过，全审计）。
 

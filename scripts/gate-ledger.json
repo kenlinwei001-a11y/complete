@@ -985,6 +985,69 @@
       },
       "notes": "由仓主在 macOS 本机部署时暴露（前端构建失败 TS2305+TS1261），Linux CI 从未红过。首发实例 SandboxConsole.tsx / sandboxConsole.ts 已改名收口（sandboxConsoleModel.ts，与同目录 inspectorModel.ts 命名一致）。"
     },
+    "check-prd-data-grounding.mjs": {
+      "alias": "prd-data-grounding:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/_PRD-TEMPLATE.md",
+        "docs/PRD-*.md",
+        "scripts/prd-data-grounding-baseline.json",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/seed.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "原单五组变异实跑（2026-08-11）＋ 收编方 WO-R6 独立五步复验（2026-08-13）",
+        "note": "【原单】M1 临时 PRD 同时注入五种病 → PDG-1/2/3/4/6 五条判据全部当场红 RC=1；M2 同一文件语义反转成全部说真话 → RC=0 复绿，证明门量的是「字段引用属不属实」而**不是「有没有新 PRD」**（非重言）；S1 门自变异 hasField 恒真 → 金丝雀报「⛔ 门自己瞎了」RC=2 而非报干净；S2 门自变异 ABSENCE_ACK_MARKERS 改名+语义反转 → 金丝雀 RC=2，其中 3 条必不咬样例是生产原文当场被误咬，证明金丝雀与主逻辑共用 judgePrd 同一份实现；M3 撤掉某条裁定的挂账 → PDG-4A 红 RC=1；M4 裁定表塞入指向不存在命中的 key → 「裁定表烂账」红 RC=1。【收编方 WO-R6 独立五步复验，未沿用原单结论】① 基线 RC=0：扫 133 份 PRD · 真值源 94 类型/830 属性 · 违规 7 条（豁免 7/上限 7）· 未判定 33 条；② RC=2 故障注入 A（`PRD_GROUNDING_FORCE_TOOL_BROKEN=1`）→ 「⛔ 门自己瞎了…修门，别改结论」RC=2；③ RC=2 故障注入 B（**真环境故障**：把棘轮基线文件 mv 走）→ 「⛔ 基线文件缺失…门无法判定棘轮，判工具坏」RC=2；④ RC=1 变异：把收编时给 `docs/PRD-v2-slice.md` 补的《前置》整段删掉（读回文件自证：长度 −175 字节、grep 该段 0 命中）→ 违规 **7→8**，精确点名 `docs/PRD-v2-slice.md:292 [PDG-6]` 并回显原文；⑤ 还原后 RC=0、违规回到 7、棘轮仍 7/7。**计数随变异而动 ⇒ 信号是真的**。",
+        "note_rc2_retrofit": "⚠️ **本条是「守门的门」的一个已知盲点，值得单独读**：本门原版**已经有** RC=2 的能力 —— `toolBroken()` 存在，且基线缺失/参数打错/金丝雀不符都走它。但它写的是 `process.exit(RC_TOOL_BROKEN)`，而 `RC_TOOL_BROKEN` 是文件顶部 `const RC_TOOL_BROKEN = 2`。`check-gate-exit-discipline.mjs` 判「有没有 RC=2 出口」是**静态看 `process.exit(2)` 这个字面形，不解析常量绑定** ⇒ 判成「① 无 RC=2 出口：全文件找不到 process.exit(2)」。**门确实有那个能力，是守门的门看不见。** 收编处置：把 `toolBroken()` 的出口改成字面量 `process.exit(2)` 并在紧邻注释写明「这里刻意写字面量不是风格问题」，同时补顶层兜底（`process.on(uncaughtException|unhandledRejection)` + async main 的 `.catch()`，两者都要——main 是 async，同步抛与 reject 走不同路）。补齐后 gate-exit-discipline 由 65/66 → 66/66，RC=0。**给审核方的建议（未擅自动手）**：真正的修法是让 `check-gate-exit-discipline.mjs` 解析 `const X = 2` 这层常量绑定，否则下一道用命名常量的门还会被误判；改既有 canonical 门属治理决策，本单不越界。"
+      },
+      "notes": "治「数据可得性只在主题是数据时才被讨论」的结构性偏差。退出码三分：0 干净 / 1 真有问题 / 2 工具自己坏了。存量豁免走 scripts/prd-data-grounding-baseline.json 棘轮，每条须带 why + prd + kind（待修|误报|覆盖不到 —— 三者修法不同，不许混）；`maxExemptions` 必须等于实际豁免数、且不许超过历史最高水位 `ratchetHigh` ⇒ **「加一条豁免消红」这条路在结构上被封死**（收编时实测：ratchetHigh=7、豁免=7，想加第 8 条会报「棘轮回升」）。Type.field 四义词：本门只核①本体属性；②仿真状态变量与③规则注入命名空间今天零校验、本门明确做不到核，只区分并标注可见（PDG-7/PDG-8）。⚠️ 收编说明（WO-R6）：接线时 canonical 上有 **1 条新增违规** —— `docs/PRD-v2-slice.md:292` 的 T7 判据「改规则 params → 契约结果随之变」缺前置声明（该 PRD 是分叉后新写的，实测 `git rev-parse --verify -q $FORK:docs/PRD-v2-slice.md` RC=1）。**没有用加豁免的办法消红**（那条路已被 ratchetHigh 封死，且会把棘轮变成橡皮图章），而是按门自己给的 PDG-6 修法**把前置写出来**：该 PRD 上一条判据其实**已经**声明了实质前置（「至少 1 条切片 fixture 设 ruleRef，实测走规则分支而非 fallback」），只是没用「前置」这个词、落在 ±2 行窗口外的措辞里 ⇒ 补一段显式《前置》把它点明，并写清「前置不成立时本条无法失败」。棘轮全程 7/7 未动。",
+      "disposition": "WIRE"
+    },
+    "check-coverage-blind.mjs": {
+      "alias": "coverage-blind:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/test/**",
+        "apps/agentcore/test/**",
+        "apps/frontend-shell/test/**",
+        "packages/contracts/test/**",
+        "packages/llm-adapters/src/**",
+        "scripts/coverage-blind-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "原单四条变异反证（2026-08-11）＋ 收编方 WO-R6 独立三向复验（2026-08-13）",
+        "note": "【原单】四条变异反证：① chain-sim.test.ts 遍历 CHAIN_NODE_REGISTRY 的 ∀ 断言改成 filter+toBeGreaterThan(0) 的 ∃ 形态 → EXISTS_FOR_ALL 红 RC=1；② 同文件 expect(CHAIN_STAGES).toEqual([五段]) 削成 toContain(\"DEMAND\") → LOOP_NO_FLOOR 红 RC=1；③ gslive-cockpit.test.tsx 的 ranAgentLoop:false 翻成 true（生产仍 false）→ SWITCH_ARG_UNCOVERED 红 RC=1；④ 主检测器存在性正则里 toBeGreaterThan(0) 改成 toBeGreaterThan(99999) → 金丝雀当场报 RC=2「工具坏了」（证金丝雀与主逻辑共用同一份实现，不是装饰品）。【收编方 WO-R6 独立复验，未沿用原单结论】① 基线 RC=0：扫 631 测试文件 + 554 源文件 · 命中 264 条 · 基线 263 条（去重后）；② 变异反证 RC=1：往 apps/frontend-shell/test/process-wait.test.tsx 尾部加一个 `it` —— `for (const row of zzzMutationProbeRows) expect(row).toBeTruthy()`，循环无基数下限 → 命中 264→265、LOOP_NO_FLOOR 158→159，精确点名 `process-wait.test.tsx:423 [LOOP_NO_FLOOR] zzzMutationProbeRows`（**计数随变异而动 ⇒ 信号是真的**）；③ `git checkout` 还原后 RC=0 且计数回到 264/158，grep 复查变异串 0 命中；④ 故障注入 RC=2 **两条独立路径**：(a) `COVERAGE_BLIND_FORCE_TOOL_BROKEN=1` 显式开关 → RC=2；(b) **真环境故障** —— 把基线 JSON 写坏成 `{ this is not json` → 「基线文件解析失败 … Expected property name or '}' in JSON at position 2」RC=2，还原后复绿 RC=0。",
+        "note_rc2_retrofit": "⚠️ 与 check-mock-fidelity.mjs 同病同源：本门原版亦成文于 canonical 并入 WO-GATE-RC2-DISCIPLINE（bcaa0894）**之前**。`toolBroken()` 已有、已知环境失败路径（git ls-files 失败 / 扫描面塌陷 / 基线解析失败 / 金丝雀不符）也都走了它，**但没有顶层兜底** ⇒ 收编时被 check-gate-exit-discipline.mjs 咬红（RC=1，原文「② 无顶层兜底」）。补 `process.on(uncaughtException|unhandledRejection)`（注册在 toolBroken 定义之后、任何扫描逻辑之前）+ 故障注入开关。补齐后 gate-exit-discipline 由 64/65 → 65/65，RC=0。"
+      },
+      "notes": "棘轮基线 scripts/coverage-blind-baseline.json。写路径只有两条且都是单向的：--seed 仅在基线为空时可用（一次性建账）、--update 只删不增 ⇒ 「把红的塞进基线」在结构上不存在。退出码三分 0/1/2，RC=2 表示工具自己坏了，不许读作仓库干净。扫描面自证第一次跑就抓出 git pathspec 'apps/*/test/**/*.test.ts' 恒 0 命中（铁律 0.6 表格第 1 行同款坑）。⚠️ **棘轮零点在收编时被重置，这是本条最要紧的一句**：原单基线 217 条取自其分叉点 c7b9206e；canonical 自那以后前进，直接接进 gates 链当天就报 **49 条基线外**、把整条链堵死。收编方在 canonical HEAD(9ee260ab) 上重新盘点 ⇒ 263 条（217 + 新吸收 48 − 已修/删 2；现算命中 264 条，去重后 263 个指纹，指纹不含行号故同文件同 it 同检测器同符号的两处命中折叠为一条）。**重新盘点前先证明了这不是门行为漂移**：48 条新吸收涉及 16 个测试文件，逐个用 `git rev-parse --verify -q $FORK:<path>` 与 blob 比对核过 —— 12 个是分叉后新建、4 个是分叉后被改过，**没有一个是未改动的老文件**。零点与差集全文记在基线的 seedProvenance 字段。263 条存量的 burn-down 另立 WO（按检测器分：LOOP_NO_FLOOR 补基数断言 / EXISTS_FOR_ALL 换咬死条数 / FILTER_TAUTOLOGY 别用被断言的谓词过滤样本 / SWITCH_ARG_UNCOVERED 补生产实参用例）。",
+      "disposition": "WIRE"
+    },
+    "check-mock-fidelity.mjs": {
+      "alias": "mock-fidelity:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/mocks/**",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/agentcore/src/server.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "原单建成即红（2026-08-11，claude/handoff-wo-gate-selftest）＋ 收编方 WO-R6 独立三向复验（2026-08-13）",
+        "note": "【原单】建成首跑 exit 1，检出 3 条**真的**不一致：line_belongs_to_base.from/to（mock Line→Base vs 后端 Base→Line＝欠账 #160，仍未修）＋ order_for_model.cardinality（mock 1:1 vs 后端 1:N，**本门新查出来的，此前无人记账**）。【收编方 WO-R6 独立复验，未沿用原单结论】① 基线 RC=0：mock 声明 265 条路由 · 后端注册 509 条 · 新增谎报 0 条（存量 3 条已记基线，逐条打印「（已记基线）」）；② 变异反证 RC=1：往 handlers.ts:1024 注入 `GET */a/v1/zzz-mutation-probe-no-such-backend-route` → 路由计数 265→266、谎报 0→1，报告精确点名 `ROUTE GET /a/v1/zzz-mutation-probe-no-such-backend-route  apps/frontend-shell/src/mocks/handlers.ts:1024`（**计数随变异而动 ⇒ 信号是真的，不是写死的**）；③ 还原后 RC=0 且计数回到 265/0，grep 复查变异串 0 命中；④ 故障注入 RC=2：`MOCK_FIDELITY_FORCE_NO_LEX=1` 令词法库取不到 → 打印「⛔ 读不到词法原语库 … ⇒ 工具坏了，不是代码坏了 / 本次结论作废」并退 2，**不是**报「mock 干净」。",
+        "note_rc2_retrofit": "⚠️ 本门原版成文于 canonical 并入 WO-GATE-RC2-DISCIPLINE（bcaa0894）**之前**，只有金丝雀一处 exit(2)、**无顶层兜底**。收编时被 `check-gate-exit-discipline.mjs` 当场咬红（RC=1，原文：「② 无顶层兜底：未预期异常…会走 node 默认退 1，被读成『真有违规』」）——这正是那道「守门的门」该起的作用：机器先说话，不靠人想起来。收编方据此补齐：`toolBroken()` 统一出口 + 顶层 `process.on(uncaughtException/unhandledRejection)` 最先注册 + 词法库改**动态** import（静态 import 失败在链接期，兜底钩子来不及注册，缺 lib 会走 node 默认 RC=1 被读成「真有谎报」）+ 棘轮基线读坏走 RC=2。补齐后 gate-exit-discipline 由 63/64 守纪律变为 64/64，RC=0。"
+      },
+      "notes": "治「mock 声称提供某目录/某条目，真后端并不提供（或方向相反）」＝ 假绿的一种：前端在 mock 上跑得通、前端测试全绿，一接真后端就崩。与既有门**不重叠**：nav-group-coverage 判据② 管反方向（后端有、mock 缺⇒哑门），cockpit-widgets 管 DASH_LAYOUT 漂移，本门补没人管的方向。诚实边界（脚本顶注写明）：只判路由**注册**了没有、不判返回形状；条目只咬结构性字段（放开到所有同名字段实测产生 ~15 条 description 误报）；**不做条目集合自动配对**——实测按 key 交集配对会把 4 个求解器 key 误配到 21 个意图 key 上（交集恰好 2），结论整条是假的，宁可没有这条载体。词法原语与 befe-seam 共用 scripts/lib/source-lex.mjs，不许各抄一份。⚠️ 收编说明（WO-R6）：原分支同批还改了 check-backend-frontend-seam.mjs（-266 行，重构为引用 source-lex）与 check-crossbranch-reinvent.mjs，但 canonical 自该分支分叉后已在这两个文件上前进 4 个提交（含 f174a751 散文遮蔽修复、8d365668 RC=2 归位、3e64870b+bcaa0894 退出码纪律），**取分支版会回退**，故本次只捞 3 个新文件 + 手工接线，两个门脚本一律留用 canonical 版。",
+      "disposition": "WIRE"
+    },
     "check-ui-first-layer.mjs": {
       "alias": "ui-first-layer:check",
       "binding": "GATES_CHAIN",

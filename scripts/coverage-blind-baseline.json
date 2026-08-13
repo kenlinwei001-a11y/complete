@@ -1,0 +1,1605 @@
+{
+  "note": "覆盖率盲区棘轮基线（假绿第 12 形态：测试咬的是「机制通不通」，对覆盖率全盲 —— 32% 与 100% 同色）。本表是**存量清单**，不是逃生舱：`--update` 只删不增，新增盲点一律红。指纹刻意不含行号（file :: it 标题 :: 检测器 :: 目标符号），行号一漂全表失配会让门退化成噪声。 ⚠️ 零点说明（WO-R6 收编·2026-08-13）：本表**不是**原单 2026-08-11 那份 217 条，而是收编日在 canonical 上**重新盘点**的 263 条。原单基线取自其分叉点 c7b9206e，canonical 自那以后前进，新写/改过的测试带进 48 条新存量、修好/删掉 2 条 ⇒ 217+48-2=263。棘轮零点必须设在「它将要守护的那棵树」上，否则接进 gates 链当天就红 49 条、把整条链堵死。48 条新吸收全部来自分叉后**新增或被改动**的测试文件（16 个文件：12 个分叉后新建、4 个分叉后被改过，逐文件用 git rev-parse --verify -q 与 blob 比对核过），**没有一条**是门行为漂移造成的误吸收。",
+  "seededAt": "2026-08-13",
+  "gate": "scripts/check-coverage-blind.mjs",
+  "entries": {
+    "<switch> :: viaModelingChain :: SWITCH_ARG_UNCOVERED :: viaModelingChain": {
+      "detector": "SWITCH_ARG_UNCOVERED",
+      "file": "apps/datacore/src/seed.ts:0",
+      "symbol": "viaModelingChain",
+      "why": "布尔开关 `viaModelingChain` 的生产实参集合与测试实参集合**交集为空**（prod=false test=true）⇒ 测试验的是生产从不走的那条分支。反例输入：把生产那条分支整个改坏 —— 全部测试照绿（CLAUDE.md 铁律 0.5 判据 #6）。"
+    },
+    "apps/agentcore/test/admin-closure.test.ts :: ?view= 反查：驾驶舱(dashboard)订阅了本体发布/派生/写回/tick 等上游事件 :: EXISTS_FOR_ALL :: events": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/admin-closure.test.ts:107",
+      "symbol": "events",
+      "why": "派生集合 `events` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/admin-closure.test.ts :: GET /b/v1/event-subscriptions 下发接线表；每条带 tier + invalidates :: LOOP_NO_FLOOR :: body.items": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/admin-closure.test.ts:88",
+      "symbol": "body.items",
+      "why": "遍历 `body.items` 的循环体里有 expect，但整条用例没有任何咬住 `body.items` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `body.items` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/arg-drop-seam.test.ts :: 每个 CEO 意图：plan solverArgs 的 {{slots.X}} 引用 ⊆ 声明槽（无孤儿模板引用） :: LOOP_NO_FLOOR :: CEO_INTENT_KEYS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/arg-drop-seam.test.ts:16",
+      "symbol": "CEO_INTENT_KEYS",
+      "why": "遍历 `CEO_INTENT_KEYS` 的循环体里有 expect，但整条用例没有任何咬住 `CEO_INTENT_KEYS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `CEO_INTENT_KEYS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/arg-drop-seam.test.ts :: 每个 CEO 意图：plan solverArgs 的 {{slots.X}} 引用 ⊆ 声明槽（无孤儿模板引用） :: LOOP_NO_FLOOR :: refs": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/arg-drop-seam.test.ts:16",
+      "symbol": "refs",
+      "why": "遍历 `refs` 的循环体里有 expect，但整条用例没有任何咬住 `refs` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `refs` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/bp6-bp7-relative-time-empty-results.test.ts :: 真无解：combo:[] 但 residualGap/quarter 在 → 渲染「真无解 + 放宽约束」文案 :: EXISTS_FOR_ALL :: kpiLabels": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/bp6-bp7-relative-time-empty-results.test.ts:130",
+      "symbol": "kpiLabels",
+      "why": "派生集合 `kpiLabels` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/capability-map-live-seam.test.ts :: ★ 镜像里没有的求解器**真的**进了发给模型的首轮 prompt（活目录接线·非蒙） :: EXISTS_FOR_ALL :: liveOnlyInjected": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/capability-map-live-seam.test.ts:100",
+      "symbol": "liveOnlyInjected",
+      "why": "派生集合 `liveOnlyInjected` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/capability-map-live-seam.test.ts :: 注册 agent 的首轮 prompt 里也出现镜像没有的求解器 :: EXISTS_FOR_ALL :: liveOnly": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/capability-map-live-seam.test.ts:149",
+      "symbol": "liveOnly",
+      "why": "派生集合 `liveOnly` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/capability-map-live-seam.test.ts :: 活目录取不到（A 侧注册表抛错）→ 退降级镜像·查询不阻断（fail-open） :: EXISTS_FOR_ALL :: injectedFallback": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/capability-map-live-seam.test.ts:227",
+      "symbol": "injectedFallback",
+      "why": "派生集合 `injectedFallback` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/capability-map-live-seam.test.ts :: 金丝雀：判据本身有判别力（差集非空 · 镜像非空 · 两者有交集） :: EXISTS_FOR_ALL :: liveOnly": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/capability-map-live-seam.test.ts:90",
+      "symbol": "liveOnly",
+      "why": "派生集合 `liveOnly` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/capability-map-live-seam.test.ts :: 金丝雀：判据本身有判别力（差集非空 · 镜像非空 · 两者有交集） :: EXISTS_FOR_ALL :: overlap": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/capability-map-live-seam.test.ts:90",
+      "symbol": "overlap",
+      "why": "派生集合 `overlap` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/context-compression-seam.test.ts :: SEAM-A 效果层 · 压缩不得静默吞掉约束：折叠后要么红线仍在上下文，要么系统明说它可能已丢 :: FILTER_TAUTOLOGY :: folded.includes": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/agentcore/test/context-compression-seam.test.ts:171",
+      "symbol": "folded.includes",
+      "why": "先用 `includes` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/agentcore/test/coordinator-a2a.test.ts :: 头号判据：常州交付风险 → 真调 supply_chain+capacity_planner 两不同 agent·各受自身 scope 约束·汇总合并 :: EXISTS_FOR_ALL :: lineOutcomes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/coordinator-a2a.test.ts:87",
+      "symbol": "lineOutcomes",
+      "why": "派生集合 `lineOutcomes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/coordinator-a2a.test.ts :: 头号判据：常州交付风险 → 真调 supply_chain+capacity_planner 两不同 agent·各受自身 scope 约束·汇总合并 :: EXISTS_FOR_ALL :: matOutcomes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/coordinator-a2a.test.ts:87",
+      "symbol": "matOutcomes",
+      "why": "派生集合 `matOutcomes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/coordinator-a2a.test.ts :: 跨域「交付风险」→ 拆 ≥2 角色子问（供应链+生产+质量三角）·单一来源角色画像绑 agentId :: EXISTS_FOR_ALL :: roles": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/coordinator-a2a.test.ts:39",
+      "symbol": "roles",
+      "why": "派生集合 `roles` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts :: 16 个派生意图不再有 slots:[]（有入参声明的卡必须有同名槽位·键集不多不少） :: LOOP_NO_FLOOR :: DERIVED_CARDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts:53",
+      "symbol": "DERIVED_CARDS",
+      "why": "遍历 `DERIVED_CARDS` 的循环体里有 expect，但整条用例没有任何咬住 `DERIVED_CARDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `DERIVED_CARDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts :: 每个派生槽位都带字面默认值（const:<JSON>），且 args 逐键改成 {{slots.x}}（merge 语义的两半） :: LOOP_NO_FLOOR :: DERIVED_CARDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts:73",
+      "symbol": "DERIVED_CARDS",
+      "why": "遍历 `DERIVED_CARDS` 的循环体里有 expect，但整条用例没有任何咬住 `DERIVED_CARDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `DERIVED_CARDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts :: 每个派生槽位都带字面默认值（const:<JSON>），且 args 逐键改成 {{slots.x}}（merge 语义的两半） :: LOOP_NO_FLOOR :: intent.slots": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/derived-intent-slot-deaf.seam.test.ts:73",
+      "symbol": "intent.slots",
+      "why": "遍历 `intent.slots` 的循环体里有 expect，但整条用例没有任何咬住 `intent.slots` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `intent.slots` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/dril-ontology-catalog.test.ts :: SEAM③ field 带量纲：unit 真透出 + key 口径 typeKey.propKey :: EXISTS_FOR_ALL :: withUnit": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/dril-ontology-catalog.test.ts:86",
+      "symbol": "withUnit",
+      "why": "派生集合 `withUnit` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/dril-registry.test.ts :: GET /b/v1/resources 跨 7+ 类返回，无空描述资源（SEAM） :: LOOP_NO_FLOOR :: items": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/dril-registry.test.ts:49",
+      "symbol": "items",
+      "why": "遍历 `items` 的循环体里有 expect，但整条用例没有任何咬住 `items` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `items` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/dril-registry.test.ts :: 新 4 kind（rule/workflow/skill/agent）各至少一条带非空 description（漏则红） :: EXISTS_FOR_ALL :: ofKind": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/dril-registry.test.ts:66",
+      "symbol": "ofKind",
+      "why": "派生集合 `ofKind` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/harness-elements.test.ts :: 七要素各有标志短语（在 agent 实际看到的系统提示词内） :: LOOP_NO_FLOOR :: markers": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/harness-elements.test.ts:30",
+      "symbol": "markers",
+      "why": "遍历 `markers` 的循环体里有 expect，但整条用例没有任何咬住 `markers` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `markers` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/lived-in.test.ts :: §2 七场景入口零配置：模式/绑定/建议问题/历史问答全在种子内 :: LOOP_NO_FLOOR :: s!.preloadedHistory??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/lived-in.test.ts:19",
+      "symbol": "s!.preloadedHistory??[]",
+      "why": "遍历 `s!.preloadedHistory??[]` 的循环体里有 expect，但整条用例没有任何咬住 `s!.preloadedHistory??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s!.preloadedHistory??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/mcp-router.test.ts :: MR1: 信用/应收问句把 ERP 信用与应收工具排前 :: EXISTS_FOR_ALL :: top2": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/mcp-router.test.ts:17",
+      "symbol": "top2",
+      "why": "派生集合 `top2` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/meta-tools.test.ts :: 三个工具已注册进内置目录 :: EXISTS_FOR_ALL :: names": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/meta-tools.test.ts:21",
+      "symbol": "names",
+      "why": "派生集合 `names` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts :: 结构化优化 what-if 问句 → 图含 optimize_whatif（族信号双命中拉入） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts:72",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/qos-agent-slice-seam.test.ts :: 轨迹 discover≤1 · round-trip≤4 · 答案不劣化（AGENT_EXPLORATORY·有溯源·非降级占位） :: EXISTS_FOR_ALL :: seq": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/qos-agent-slice-seam.test.ts:97",
+      "symbol": "seq",
+      "why": "派生集合 `seq` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/qos-cross-domain-seam.test.ts :: Q2 扩域覆盖（治缺口④）：良率/产出/长协/延误/外协 → 金库真名 solver·capacity_forecast 硬必填 modelId 填满（4680-NCM） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/qos-cross-domain-seam.test.ts:47",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/qos-cross-domain-seam.test.ts :: SEAM-3（⑤ LLM 多意图兜底）：确定性没覆盖的题 → classify 多候选 → **并行**（非只 top-1）·routeSource=llm-multi-intent·agentRequests=0 :: EXISTS_FOR_ALL :: solvers": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/qos-cross-domain-seam.test.ts:232",
+      "symbol": "solvers",
+      "why": "派生集合 `solvers` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/qos-det-gate-seam.test.ts :: R6 确定性：同问句同上下文重跑 → 字节一致（无 LLM/时钟/随机） :: LOOP_NO_FLOOR :: QOS_20Q_GOLDSET": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/qos-det-gate-seam.test.ts:48",
+      "symbol": "QOS_20Q_GOLDSET",
+      "why": "遍历 `QOS_20Q_GOLDSET` 的循环体里有 expect，但整条用例没有任何咬住 `QOS_20Q_GOLDSET` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `QOS_20Q_GOLDSET` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/qos-f-entitlement.test.ts :: 剩余视图增量: /b/v1/solvers/affected_orders/run 透传 §S1.5 扩展输出（problems[] + 4 层根因链） :: LOOP_NO_FLOOR :: p.rootChains": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/qos-f-entitlement.test.ts:135",
+      "symbol": "p.rootChains",
+      "why": "遍历 `p.rootChains` 的循环体里有 expect，但整条用例没有任何咬住 `p.rootChains` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `p.rootChains` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/r4-writeback-gate.seam.test.ts :: 【防回潮】两条 loadSkill 路径必须回报同一份治理口径（差集为空） :: LOOP_NO_FLOOR :: homes": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/r4-writeback-gate.seam.test.ts:271",
+      "symbol": "homes",
+      "why": "遍历 `homes` 的循环体里有 expect，但整条用例没有任何咬住 `homes` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `homes` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/route1-structural-qualifier-seam.test.ts :: Coordinator 扇出：每条 agent_narration 带 role/roleLabel/agentId·stepId 各角色不互撞·≥2 个不同角色发过声 :: LOOP_NO_FLOOR :: narr": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/route1-structural-qualifier-seam.test.ts:108",
+      "symbol": "narr",
+      "why": "遍历 `narr` 的循环体里有 expect，但整条用例没有任何咬住 `narr` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `narr` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/runtime-context.test.ts :: 上下文截断+尾注；审计存全量；模型下一轮用更窄过滤重查 :: EXISTS_FOR_ALL :: second": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/runtime-context.test.ts:68",
+      "symbol": "second",
+      "why": "派生集合 `second` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/runtime-context.test.ts :: 最旧轮折叠、最近 2 轮完整；contextOps 记录；任务正常完成 :: EXISTS_FOR_ALL :: folds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/runtime-context.test.ts:163",
+      "symbol": "folds",
+      "why": "派生集合 `folds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/scenarios-wiring.test.ts :: R11 零反问：每张场景卡 presetContext 注入后必填槽位全满足（fillSlots 无 missing） :: LOOP_NO_FLOOR :: SCENARIO_CATALOG": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/scenarios-wiring.test.ts:64",
+      "symbol": "SCENARIO_CATALOG",
+      "why": "遍历 `SCENARIO_CATALOG` 的循环体里有 expect，但整条用例没有任何咬住 `SCENARIO_CATALOG` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SCENARIO_CATALOG` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/scenarios-wiring.test.ts :: 每个意图绑定的执行计划存在、已发布、含 ≥1 步 :: LOOP_NO_FLOOR :: SCENARIO_CATALOG": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/scenarios-wiring.test.ts:28",
+      "symbol": "SCENARIO_CATALOG",
+      "why": "遍历 `SCENARIO_CATALOG` 的循环体里有 expect，但整条用例没有任何咬住 `SCENARIO_CATALOG` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SCENARIO_CATALOG` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/scenarios.test.ts :: SL2: 关闭 risk 视图 feature → 该视图下的场景卡从 active 列表消失；includeInactive 仍可见且标记 :: EXISTS_FOR_ALL :: riskCards": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/scenarios.test.ts:35",
+      "symbol": "riskCards",
+      "why": "派生集合 `riskCards` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/scenarios.test.ts :: 目录内部一致性：solverStatus 标注复用/新增；新增求解器为分阶段建设项 :: LOOP_NO_FLOOR :: reused": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/scenarios.test.ts:127",
+      "symbol": "reused",
+      "why": "遍历 `reused` 的循环体里有 expect，但整条用例没有任何咬住 `reused` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `reused` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/sim-commander-tools.test.ts :: sim.commander+sim.sandbox 开 → mock LLM 一次 sim_init 工具调用打到 DataCore :: EXISTS_FOR_ALL :: toolNames": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/sim-commander-tools.test.ts:99",
+      "symbol": "toolNames",
+      "why": "派生集合 `toolNames` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/sim-commander-tools.test.ts :: 四工具已注册进内置目录，sideEffect 正确（init/tick=COMPUTE，world/certify=READ） :: LOOP_NO_FLOOR :: SIM_COMMANDER_TOOLS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/sim-commander-tools.test.ts:33",
+      "symbol": "SIM_COMMANDER_TOOLS",
+      "why": "遍历 `SIM_COMMANDER_TOOLS` 的循环体里有 expect，但整条用例没有任何咬住 `SIM_COMMANDER_TOOLS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SIM_COMMANDER_TOOLS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-compiler.seam.test.ts :: ① 每个出厂技能：graph 的节点集合 === 它 references[] 声明的资源（逐个技能对账，一条都不许漏或多） :: LOOP_NO_FLOOR :: skills": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/skill-compiler.seam.test.ts:55",
+      "symbol": "skills",
+      "why": "遍历 `skills` 的循环体里有 expect，但整条用例没有任何咬住 `skills` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `skills` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-compiler.seam.test.ts :: ③ 变异反证锚点 · Validator 真的接了 lintSkill：坏 summary 的技能必出 GV-LINT 错误诊断 :: EXISTS_FOR_ALL :: lintDiags": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/skill-compiler.seam.test.ts:103",
+      "symbol": "lintDiags",
+      "why": "派生集合 `lintDiags` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-partial-a-seam.test.ts :: seedRegistry 的 dependsOn 非空，且每条 kind=skill 的依赖都能在同批种子里解析到 PUBLISHED 目标 :: LOOP_NO_FLOOR :: s.dependsOn??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/agentcore/test/skill-partial-a-seam.test.ts:141",
+      "symbol": "s.dependsOn??[]",
+      "why": "遍历 `s.dependsOn??[]` 的循环体里有 expect，但整条用例没有任何咬住 `s.dependsOn??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.dependsOn??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-router.test.ts :: SR4: selectSkills 收紧到 top-k，其余 deferred；技能数 ≤ topK 时全量 :: EXISTS_FOR_ALL :: fullIds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/skill-router.test.ts:40",
+      "symbol": "fullIds",
+      "why": "派生集合 `fullIds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-seed-gate-freshness.seam.test.ts :: B · 日志同步分档：两种成因的 warn 报文不同（前端一种说法、日志另一种说法 = 又一个不对齐） :: EXISTS_FOR_ALL :: emptyMsg": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/skill-seed-gate-freshness.seam.test.ts:268",
+      "symbol": "emptyMsg",
+      "why": "派生集合 `emptyMsg` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/agentcore/test/skill-seed-publish-gate.seam.test.ts :: 金丝雀：审计真的审到了出厂 PUBLISHED 种子（checked>0），不是空转出来的『干净』 :: EXISTS_FOR_ALL :: published": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/agentcore/test/skill-seed-publish-gate.seam.test.ts:73",
+      "symbol": "published",
+      "why": "派生集合 `published` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a3-business-domains.test.ts :: primaryTypes 引用的类型在 GRAPH_DOMAIN 中归到同一域（自洽） :: LOOP_NO_FLOOR :: BUSINESS_DOMAINS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a3-business-domains.test.ts:27",
+      "symbol": "BUSINESS_DOMAINS",
+      "why": "遍历 `BUSINESS_DOMAINS` 的循环体里有 expect，但整条用例没有任何咬住 `BUSINESS_DOMAINS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BUSINESS_DOMAINS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a3-business-domains.test.ts :: primaryTypes 引用的类型在 GRAPH_DOMAIN 中归到同一域（自洽） :: LOOP_NO_FLOOR :: d.primaryTypes": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a3-business-domains.test.ts:27",
+      "symbol": "d.primaryTypes",
+      "why": "遍历 `d.primaryTypes` 的循环体里有 expect，但整条用例没有任何咬住 `d.primaryTypes` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `d.primaryTypes` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a3-business-domains.test.ts :: 注册表恰好 14 域，含新增 5 域（sales/material/finance/external/decision） :: LOOP_NO_FLOOR :: BUSINESS_DOMAINS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a3-business-domains.test.ts:11",
+      "symbol": "BUSINESS_DOMAINS",
+      "why": "遍历 `BUSINESS_DOMAINS` 的循环体里有 expect，但整条用例没有任何咬住 `BUSINESS_DOMAINS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BUSINESS_DOMAINS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a3-refbase.test.ts :: C1 · 14 业务域全部覆盖，无新造域 :: LOOP_NO_FLOOR :: BUSINESS_DOMAINS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a3-refbase.test.ts:13",
+      "symbol": "BUSINESS_DOMAINS",
+      "why": "遍历 `BUSINESS_DOMAINS` 的循环体里有 expect，但整条用例没有任何咬住 `BUSINESS_DOMAINS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BUSINESS_DOMAINS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a3-refbase.test.ts :: C4 · 电池类型 → 14 域全覆盖 :: LOOP_NO_FLOOR :: report.coverage": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a3-refbase.test.ts:46",
+      "symbol": "report.coverage",
+      "why": "遍历 `report.coverage` 的循环体里有 expect，但整条用例没有任何咬住 `report.coverage` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `report.coverage` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-1 · 种子→引擎→判定→输出整条：真种子上判得出跨业务线争用，且每条都指得出「保谁·凭什么」 :: LOOP_NO_FLOOR :: ct.basis": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:102",
+      "symbol": "ct.basis",
+      "why": "遍历 `ct.basis` 的循环体里有 expect，但整条用例没有任何咬住 `ct.basis` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `ct.basis` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-3 · 「无争用」必须是**显式结论**：≥2 业务线但不越线 ⇒ NO_CONTENTION；单业务线压满 ⇒ 不许冒充争用 :: EXISTS_FOR_ALL :: notContended": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:201",
+      "symbol": "notContended",
+      "why": "派生集合 `notContended` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-5 · scope.businessTypes 放行后：承载业务线的**真裁**，不承载的**诚实报 UNKNOWN**（绝不静默退回全域） :: EXISTS_FOR_ALL :: carriers": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:245",
+      "symbol": "carriers",
+      "why": "派生集合 `carriers` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-5 · scope.businessTypes 放行后：承载业务线的**真裁**，不承载的**诚实报 UNKNOWN**（绝不静默退回全域） :: EXISTS_FOR_ALL :: hit": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:245",
+      "symbol": "hit",
+      "why": "派生集合 `hit` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-5 · scope.businessTypes 放行后：承载业务线的**真裁**，不承载的**诚实报 UNKNOWN**（绝不静默退回全域） :: LOOP_NO_FLOOR :: nonCarriers": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:245",
+      "symbol": "nonCarriers",
+      "why": "遍历 `nonCarriers` 的循环体里有 expect，但整条用例没有任何咬住 `nonCarriers` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `nonCarriers` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-6 · 组装层单一实现 + R6 确定性：DSL 的 SUM/COUNT 与引擎读数是**同一个数**，两次扫描字节一致 :: LOOP_NO_FLOOR :: bases": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:352",
+      "symbol": "bases",
+      "why": "遍历 `bases` 的循环体里有 expect，但整条用例没有任何咬住 `bases` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `bases` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-7 · seg 维**真裁**：逐条业务线驱动，选谁结果就得不同（`toContain` 在全域超集上恒真，故这里用等号） :: EXISTS_FOR_ALL :: strict": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:305",
+      "symbol": "strict",
+      "why": "派生集合 `strict` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/action-adopt-mitigation.seam.test.ts :: 单源不并存：改采同因素的另一方案 → 旧条 REVOKED、至多一条 ACTIVE，曲线按新方案走 :: FILTER_TAUTOLOGY :: active.props": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/datacore/test/action-adopt-mitigation.seam.test.ts:319",
+      "symbol": "active.props",
+      "why": "先用 `props` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/datacore/test/admin-platform.test.ts :: reset-password 返回新密码（TODO 邮件）且可登录；操作均入审计 outbox :: EXISTS_FOR_ALL :: kinds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/admin-platform.test.ts:199",
+      "symbol": "kinds",
+      "why": "派生集合 `kinds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/adopt-mitigation-dispatch.seam.test.ts :: B·效果层反证：decision_play 的方案喂真 risk_timeline 必抛（所以派了就是注定失败的草稿） :: LOOP_NO_FLOOR :: dp.options": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/adopt-mitigation-dispatch.seam.test.ts:160",
+      "symbol": "dp.options",
+      "why": "遍历 `dp.options` 的循环体里有 expect，但整条用例没有任何咬住 `dp.options` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `dp.options` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/base-outlook.test.ts :: 块D 向后兼容 + R6：byModel 为纯加字段（per-base 四线/dayPlan 零改）·同输入 byModel 字节级一致 :: LOOP_NO_FLOOR :: a.byModel!": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/base-outlook.test.ts:175",
+      "symbol": "a.byModel!",
+      "why": "遍历 `a.byModel!` 的循环体里有 expect，但整条用例没有任何咬住 `a.byModel!` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `a.byModel!` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/boundary-impact.test.ts :: 每条 consumer 在源文件里确实从册派生（与 boundary-singlesource 门同口径，防影响图漂移） :: LOOP_NO_FLOOR :: b.consumers": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/boundary-impact.test.ts:22",
+      "symbol": "b.consumers",
+      "why": "遍历 `b.consumers` 的循环体里有 expect，但整条用例没有任何咬住 `b.consumers` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `b.consumers` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/boundary-impact.test.ts :: 每条 consumer 在源文件里确实从册派生（与 boundary-singlesource 门同口径，防影响图漂移） :: LOOP_NO_FLOOR :: BOUNDARY_IMPACT": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/boundary-impact.test.ts:22",
+      "symbol": "BOUNDARY_IMPACT",
+      "why": "遍历 `BOUNDARY_IMPACT` 的循环体里有 expect，但整条用例没有任何咬住 `BOUNDARY_IMPACT` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BOUNDARY_IMPACT` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/capacity-page-100pct.test.ts :: ⑫ R7：风险卡的受影响订单与「订单聚合」tab 同口径（整个推演窗口·不再 21 天小窗恒空） :: LOOP_NO_FLOOR :: card.affectedOrders??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/capacity-page-100pct.test.ts:135",
+      "symbol": "card.affectedOrders??[]",
+      "why": "遍历 `card.affectedOrders??[]` 的循环体里有 expect，但整条用例没有任何咬住 `card.affectedOrders??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `card.affectedOrders??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/capacity-page-100pct.test.ts :: ⑫ R7：风险卡的受影响订单与「订单聚合」tab 同口径（整个推演窗口·不再 21 天小窗恒空） :: LOOP_NO_FLOOR :: risk.cards": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/capacity-page-100pct.test.ts:135",
+      "symbol": "risk.cards",
+      "why": "遍历 `risk.cards` 的循环体里有 expect，但整条用例没有任何咬住 `risk.cards` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `risk.cards` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/capacity-page-100pct.test.ts :: ⑬ 30/60/90 天窗口 chip 对「订单聚合」表**真起作用**（修前写死 180 天·拖窗口屏幕纹丝不动） :: LOOP_NO_FLOOR :: c.affectedOrders??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/capacity-page-100pct.test.ts:159",
+      "symbol": "c.affectedOrders??[]",
+      "why": "遍历 `c.affectedOrders??[]` 的循环体里有 expect，但整条用例没有任何咬住 `c.affectedOrders??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `c.affectedOrders??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ceo-data2-seam.test.ts :: DATA-2 因果因素注册表包含多指标域，且每个 factor 都物化为 CausalFactor 对象 :: FILTER_TAUTOLOGY :: factors.metricKey": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/datacore/test/ceo-data2-seam.test.ts:32",
+      "symbol": "factors.metricKey",
+      "why": "先用 `metricKey` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/datacore/test/ceo-data2-seam.test.ts :: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯 :: EXISTS_FOR_ALL :: jiangmenEquip": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/ceo-data2-seam.test.ts:321",
+      "symbol": "jiangmenEquip",
+      "why": "派生集合 `jiangmenEquip` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ceo-data2-seam.test.ts :: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯 :: LOOP_NO_FLOOR :: g.atomicLeaves": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ceo-data2-seam.test.ts:321",
+      "symbol": "g.atomicLeaves",
+      "why": "遍历 `g.atomicLeaves` 的循环体里有 expect，但整条用例没有任何咬住 `g.atomicLeaves` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.atomicLeaves` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ceo-data2-seam.test.ts :: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯 :: LOOP_NO_FLOOR :: g.reconChecksasunknownas{parentGap:number;sumChildren:number": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ceo-data2-seam.test.ts:321",
+      "symbol": "g.reconChecksasunknownas{parentGap:number;sumChildren:number",
+      "why": "遍历 `g.reconChecksasunknownas{parentGap:number;sumChildren:number` 的循环体里有 expect，但整条用例没有任何咬住 `g.reconChecksasunknownas{parentGap:number;sumChildren:number` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.reconChecksasunknownas{parentGap:number;sumChildren:number` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ceo-data2-seam.test.ts :: SEAM-GATE·C5 命脉：4 未达成指标各归自己因果域根（绝不回落 cathode 供应链） :: LOOP_NO_FLOOR :: d.roots": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ceo-data2-seam.test.ts:115",
+      "symbol": "d.roots",
+      "why": "遍历 `d.roots` 的循环体里有 expect，但整条用例没有任何咬住 `d.roots` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `d.roots` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ceo-dataset.test.ts :: 维度完整性：每颗颗粒至少带 base/product/segment 之一（除 cash 可无基地） :: LOOP_NO_FLOOR :: ds.grains": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ceo-dataset.test.ts:67",
+      "symbol": "ds.grains",
+      "why": "遍历 `ds.grains` 的循环体里有 expect，但整条用例没有任何咬住 `ds.grains` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `ds.grains` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-impediment-seam.test.ts :: BASE · 真种子上三类都判得出来，且每条阻滞点的阈值都指得出出处（R13） :: LOOP_NO_FLOOR :: s.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-impediment-seam.test.ts:74",
+      "symbol": "s.impediments",
+      "why": "遍历 `s.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `s.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-impediment-seam.test.ts :: R-ARG-FIDELITY · scope.baseIds 真过滤；modelIds 仍显式拒绝；businessTypes 放行但筛不动的地方必须出声 :: EXISTS_FOR_ALL :: lineAll": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/chain-impediment-seam.test.ts:350",
+      "symbol": "lineAll",
+      "why": "派生集合 `lineAll` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-impediment-seam.test.ts :: 判据声明表 · 三类齐备，且 BREAK 必带 breakSubtype（contracts 硬约束的前置自检） :: LOOP_NO_FLOOR :: IMPEDIMENT_RULE_BINDINGS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-impediment-seam.test.ts:485",
+      "symbol": "IMPEDIMENT_RULE_BINDINGS",
+      "why": "遍历 `IMPEDIMENT_RULE_BINDINGS` 的循环体里有 expect，但整条用例没有任何咬住 `IMPEDIMENT_RULE_BINDINGS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `IMPEDIMENT_RULE_BINDINGS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-loss-attribution.test.ts :: SEAM（后端半）：注册表新增的 12 个节点，**活跑的求解器**里逐个有节点或 EMPTY 行；前端 fixture 不是编的 :: LOOP_NO_FLOOR :: r.empty": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-loss-attribution.test.ts:208",
+      "symbol": "r.empty",
+      "why": "遍历 `r.empty` 的循环体里有 expect，但整条用例没有任何咬住 `r.empty` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `r.empty` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-loss-attribution.test.ts :: SEAM（后端半）：注册表新增的 12 个节点，**活跑的求解器**里逐个有节点或 EMPTY 行；前端 fixture 不是编的 :: LOOP_NO_FLOOR :: r.nodes": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-loss-attribution.test.ts:208",
+      "symbol": "r.nodes",
+      "why": "遍历 `r.nodes` 的循环体里有 expect，但整条用例没有任何咬住 `r.nodes` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `r.nodes` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-scan-honesty.test.ts :: SCAN-2 · A2-c 溯源可达：申报的 ruleKey/ruleParamKey 在**运行期真发布的规则**里真存在 :: LOOP_NO_FLOOR :: s.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-scan-honesty.test.ts:125",
+      "symbol": "s.impediments",
+      "why": "遍历 `s.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `s.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/chain-scan-honesty.test.ts :: SCAN-4 · 诚实缺席：判不出来的判据必须进 unresolved 并写清为什么，不许消失 :: LOOP_NO_FLOOR :: s.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/chain-scan-honesty.test.ts:203",
+      "symbol": "s.impediments",
+      "why": "遍历 `s.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `s.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/cockpit-risk.test.ts :: mitigation_select 对全部 7 个风险因子（BN_FACTORS）都返回方案 + 推荐 + adopt 草稿 payload :: LOOP_NO_FLOOR :: BN_FACTORS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/cockpit-risk.test.ts:11",
+      "symbol": "BN_FACTORS",
+      "why": "遍历 `BN_FACTORS` 的循环体里有 expect，但整条用例没有任何咬住 `BN_FACTORS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BN_FACTORS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/cockpit-rootcause.test.ts :: L1：合成 → plan_rootcause 求解器产出多根 DAG（KPI→因子→证据，边权重=活数据贡献占比） :: LOOP_NO_FLOOR :: kpiRootIds": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/cockpit-rootcause.test.ts:25",
+      "symbol": "kpiRootIds",
+      "why": "遍历 `kpiRootIds` 的循环体里有 expect，但整条用例没有任何咬住 `kpiRootIds` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `kpiRootIds` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/connectors.test.ts :: registers all 7 PRD connector types (plus mocks) :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/connectors.test.ts:180",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/databuilder.test.ts :: SHAPE 全覆盖：每个注册求解器都声明了输出形状（与 chain:check 门一致） :: LOOP_NO_FLOOR :: SOLVER_KEYS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/databuilder.test.ts:78",
+      "symbol": "SOLVER_KEYS",
+      "why": "遍历 `SOLVER_KEYS` 的循环体里有 expect，但整条用例没有任何咬住 `SOLVER_KEYS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SOLVER_KEYS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/databuilder.test.ts :: 建域成功 → outbox 出 storybuild.run_recorded（含 runId/status），前端经 F1 失效历史/区5 :: EXISTS_FOR_ALL :: evt": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/databuilder.test.ts:475",
+      "symbol": "evt",
+      "why": "派生集合 `evt` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/datamode-provenance.test.ts :: ② measurement 维与 provenance 维正交：合成派生真字段 → 存在 live=true 的行，但 provenance 仍标合成 :: EXISTS_FOR_ALL :: liveSynth": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/datamode-provenance.test.ts:35",
+      "symbol": "liveSynth",
+      "why": "派生集合 `liveSynth` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/decision-kernel-c1.test.ts :: C5 溯源(R13)：trace 有 root_cause/options/chosen 步·commit 后补 action 步·各带 refId :: EXISTS_FOR_ALL :: steps": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/decision-kernel-c1.test.ts:107",
+      "symbol": "steps",
+      "why": "派生集合 `steps` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/derive-fields.test.ts :: ④ green→red 自证：注入伪造/hash 值 → validateDerivedFields 逮住（KILL-MOCK-RED） :: EXISTS_FOR_ALL :: noProv": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/derive-fields.test.ts:111",
+      "symbol": "noProv",
+      "why": "派生集合 `noProv` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/dsl.test.ts :: C26–C33 全注册进规则库（规则引擎可见，补审计「0/8 注册」缺口）+ 每条 DSL 可解析 :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/dsl.test.ts:118",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts :: 三情景三条不同的供给曲线，且项目集与**另一个挂载点**（AOP 视图）逐 id 一致（单一出处） :: LOOP_NO_FLOOR :: aop.scenarios": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts:173",
+      "symbol": "aop.scenarios",
+      "why": "遍历 `aop.scenarios` 的循环体里有 expect，但整条用例没有任何咬住 `aop.scenarios` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `aop.scenarios` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts :: 数据半事实②：WorkOrder 的型号跑出了 Model 之外 ⇒ 拿它当产线队列会编造 0 分钟换型 :: EXISTS_FOR_ALL :: orphans": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts:336",
+      "symbol": "orphans",
+      "why": "派生集合 `orphans` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts :: 数据半事实②：WorkOrder 的型号跑出了 Model 之外 ⇒ 拿它当产线队列会编造 0 分钟换型 :: EXISTS_FOR_ALL :: woModels": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/engine-scope-fidelity-2.seam.test.ts:336",
+      "symbol": "woModels",
+      "why": "派生集合 `woModels` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/enterprise-state.seam.test.ts :: ①a 捕获真数据：快照里的数字与测试自己从对象库数出来的**逐一相等**（不是「有这个字段」） :: EXISTS_FOR_ALL :: orders": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/enterprise-state.seam.test.ts:62",
+      "symbol": "orders",
+      "why": "派生集合 `orders` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ext-signal-references.test.ts :: C5 诚实空：无因果引用的信号 → hasReferences=false + note（不伪造） :: EXISTS_FOR_ALL :: other": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/ext-signal-references.test.ts:53",
+      "symbol": "other",
+      "why": "派生集合 `other` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/factor-scope-singlesource.seam.test.ts :: ⑧ 数值不退化：每个因子的细分层既不整层恒 0，也不把整个基地缺口独吞（单对象归一退化门） :: LOOP_NO_FLOOR :: baseOnly.scope?.availableFactors??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/factor-scope-singlesource.seam.test.ts:175",
+      "symbol": "baseOnly.scope?.availableFactors??[]",
+      "why": "遍历 `baseOnly.scope?.availableFactors??[]` 的循环体里有 expect，但整条用例没有任何咬住 `baseOnly.scope?.availableFactors??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `baseOnly.scope?.availableFactors??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gap-attribution-segment-scope.test.ts :: ③ base 作用域下钻不套业态过滤（合肥非储能基地根因树跨全业态·非空）——治 base 作用域回归（0079ba31） :: EXISTS_FOR_ALL :: orderLeaves": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/gap-attribution-segment-scope.test.ts:56",
+      "symbol": "orderLeaves",
+      "why": "派生集合 `orderLeaves` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gap-attribution-segment-scope.test.ts :: ④ 非首基地也有敞口树（厦门 base 作用域·可产订单敞口·非空·勾稽）——治 G-SEG-ATTR-BASE-BASES0 :: EXISTS_FOR_ALL :: orderLeaves": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/gap-attribution-segment-scope.test.ts:71",
+      "symbol": "orderLeaves",
+      "why": "派生集合 `orderLeaves` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gap-attribution.test.ts :: C1 勾稽：每层 Σ子贡献 + residual == 父gap（浮点 ≤1e-4） :: LOOP_NO_FLOOR :: g.reconChecks": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/gap-attribution.test.ts:32",
+      "symbol": "g.reconChecks",
+      "why": "遍历 `g.reconChecks` 的循环体里有 expect，但整条用例没有任何咬住 `g.reconChecks` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.reconChecks` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gap-attribution.test.ts :: C4 叶级真值：每叶下钻到源对象真值字段（drillType/drillField/drillValue 齐·非叙事常数） :: LOOP_NO_FLOOR :: g.atomicLeaves": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/gap-attribution.test.ts:78",
+      "symbol": "g.atomicLeaves",
+      "why": "遍历 `g.atomicLeaves` 的循环体里有 expect，但整条用例没有任何咬住 `g.atomicLeaves` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.atomicLeaves` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gap-attribution.test.ts :: D2·每因素下钻到真实对象与字段（含动态产能/物料） :: FILTER_TAUTOLOGY :: factors.props": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/datacore/test/gap-attribution.test.ts:280",
+      "symbol": "factors.props",
+      "why": "先用 `props` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/datacore/test/gap-attribution.test.ts :: D4·每指标 caused_by 边真实物化 :: LOOP_NO_FLOOR :: CAUSAL_EDGES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/gap-attribution.test.ts:308",
+      "symbol": "CAUSAL_EDGES",
+      "why": "遍历 `CAUSAL_EDGES` 的循环体里有 expect，但整条用例没有任何咬住 `CAUSAL_EDGES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `CAUSAL_EDGES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/global-sim-data.test.ts :: SEAM-2 运费真咬：freightCost = 距离×费率×(量×吨/套)——随距离/量变，同基地=0 :: LOOP_NO_FLOOR :: rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/global-sim-data.test.ts:53",
+      "symbol": "rows",
+      "why": "遍历 `rows` 的循环体里有 expect，但整条用例没有任何咬住 `rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/gsim-action-loop.test.ts :: SEAM 头号：端到端基线真变（采纳→PROVISIONAL Action→审批→执行→回灌→下一轮 portfolio 真变） :: EXISTS_FOR_ALL :: newWip": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/gsim-action-loop.test.ts:48",
+      "symbol": "newWip",
+      "why": "派生集合 `newWip` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impact-propagation.seam.test.ts :: 四维一次返齐：objects/kpis/processes/decisions 全部由同一次传播派生，且带全域基数 universe :: EXISTS_FOR_ALL :: objIds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/impact-propagation.seam.test.ts:248",
+      "symbol": "objIds",
+      "why": "派生集合 `objIds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impact-propagation.seam.test.ts :: 四维一次返齐：objects/kpis/processes/decisions 全部由同一次传播派生，且带全域基数 universe :: EXISTS_FOR_ALL :: pkeys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/impact-propagation.seam.test.ts:248",
+      "symbol": "pkeys",
+      "why": "派生集合 `pkeys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-1 · 端到端：真种子跑一次扫描，阻滞点真长出候选，且每条候选形状/归属/溯源三样齐备 :: LOOP_NO_FLOOR :: c.dims": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:115",
+      "symbol": "c.dims",
+      "why": "遍历 `c.dims` 的循环体里有 expect，但整条用例没有任何咬住 `c.dims` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `c.dims` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-1 · 端到端：真种子跑一次扫描，阻滞点真长出候选，且每条候选形状/归属/溯源三样齐备 :: LOOP_NO_FLOOR :: s.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:115",
+      "symbol": "s.impediments",
+      "why": "遍历 `s.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `s.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-4 · 反向 · 诚实空集：确实没有对策的阻滞点 → 空候选 + 定性 NONE + 说清缺哪一维，且不报错 :: LOOP_NO_FLOOR :: s.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:271",
+      "symbol": "s.impediments",
+      "why": "遍历 `s.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `s.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `s.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-6 · 规则半 × 枚举半：只改 C05 红线（一行代码不动）→ 新出的卡点真长出候选，且阈值档位跟着走 :: LOOP_NO_FLOOR :: im.candidates!": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:346",
+      "symbol": "im.candidates!",
+      "why": "遍历 `im.candidates!` 的循环体里有 expect，但整条用例没有任何咬住 `im.candidates!` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `im.candidates!` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-6 · 规则半 × 枚举半：只改 C05 红线（一行代码不动）→ 新出的卡点真长出候选，且阈值档位跟着走 :: LOOP_NO_FLOOR :: thresholdCands": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:346",
+      "symbol": "thresholdCands",
+      "why": "遍历 `thresholdCands` 的循环体里有 expect，但整条用例没有任何咬住 `thresholdCands` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `thresholdCands` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/impediment-options-seam.test.ts :: S3-7 · R6 确定性：同输入连跑两次，候选（含 id / 排序 / 各维数值）逐字节一致 :: LOOP_NO_FLOOR :: a.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/impediment-options-seam.test.ts:385",
+      "symbol": "a.impediments",
+      "why": "遍历 `a.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `a.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `a.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/inproc-optimizer.test.ts :: 端到端：改 objective → 两方案各自 objectiveValues 真算（非贴标签·4 项齐） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/inproc-optimizer.test.ts:78",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/inproc-optimizer.test.ts :: 端到端：改 objective → 两方案各自 objectiveValues 真算（非贴标签·4 项齐） :: LOOP_NO_FLOOR :: g.scenarios": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/inproc-optimizer.test.ts:78",
+      "symbol": "g.scenarios",
+      "why": "遍历 `g.scenarios` 的循环体里有 expect，但整条用例没有任何咬住 `g.scenarios` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.scenarios` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/inproc-optimizer.test.ts :: 被挤项溯源正确（provenance.drillId == orderId·R13 不劣化） :: LOOP_NO_FLOOR :: g.displaced": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/inproc-optimizer.test.ts:68",
+      "symbol": "g.displaced",
+      "why": "遍历 `g.displaced` 的循环体里有 expect，但整条用例没有任何咬住 `g.displaced` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.displaced` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/inventory-3tier.test.ts :: SEAM 端到端·真物化：完工 WorkOrder → RECEIPT 流水 → FG 聚合 + FG 挂真成品仓（SEAM-3）+ 勾稽 + qtyAvailable 派生 :: EXISTS_FOR_ALL :: completed": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/inventory-3tier.test.ts:68",
+      "symbol": "completed",
+      "why": "派生集合 `completed` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/live-disposition-seam.test.ts :: ② 单源不漂移：risk_timeline overlay 依赖的覆写后产能 ≡ capacityInferenceApply(generic_inference) 同基地产能 :: LOOP_NO_FLOOR :: p1.planRows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/live-disposition-seam.test.ts:104",
+      "symbol": "p1.planRows",
+      "why": "遍历 `p1.planRows` 的循环体里有 expect，但整条用例没有任何咬住 `p1.planRows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `p1.planRows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/live-disposition-seam.test.ts :: ③ 推导非空壳：shortfall>0 行 steps≥1 + provenance 齐全 + 守恒 Σ closesGap + 残留 == shortfall :: FILTER_TAUTOLOGY :: real.shortfall": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/datacore/test/live-disposition-seam.test.ts:136",
+      "symbol": "real.shortfall",
+      "why": "先用 `shortfall` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/datacore/test/live-disposition-seam.test.ts :: ③ 推导非空壳：shortfall>0 行 steps≥1 + provenance 齐全 + 守恒 Σ closesGap + 残留 == shortfall :: LOOP_NO_FLOOR :: r.steps!": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/live-disposition-seam.test.ts:136",
+      "symbol": "r.steps!",
+      "why": "遍历 `r.steps!` 的循环体里有 expect，但整条用例没有任何咬住 `r.steps!` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `r.steps!` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/livedin.test.ts :: Y3: 三层下钻不穿帮 —— 月度产出 → 基地月度明细 → 检修对象同月、检修月下凹 :: LOOP_NO_FLOOR :: bundle.trend": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/livedin.test.ts:95",
+      "symbol": "bundle.trend",
+      "why": "遍历 `bundle.trend` 的循环体里有 expect，但整条用例没有任何咬住 `bundle.trend` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `bundle.trend` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/livedin.test.ts :: Y6: 行级权限作用于历史 —— czmgr 仅见常州月度/案例，聚合按可见范围重算 :: LOOP_NO_FLOOR :: cz.trend": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/livedin.test.ts:203",
+      "symbol": "cz.trend",
+      "why": "遍历 `cz.trend` 的循环体里有 expect，但整条用例没有任何咬住 `cz.trend` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `cz.trend` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/llm-comprehend.test.ts :: 未绑定/未脚本化 → 关键词地板兜底（A2：已认工序/设备/瓶颈，选中 shared_bottleneck 并自动倒推参数，R6） :: EXISTS_FOR_ALL :: types": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/llm-comprehend.test.ts:127",
+      "symbol": "types",
+      "why": "派生集合 `types` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ontology-core.test.ts :: mode:levers 反向 walk 派生 DAG → 叶输入候选杠杆，服务端算 |敏感度| 排序 + 确定性 R6 :: LOOP_NO_FLOOR :: out.levers": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ontology-core.test.ts:557",
+      "symbol": "out.levers",
+      "why": "遍历 `out.levers` 的循环体里有 expect，但整条用例没有任何咬住 `out.levers` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `out.levers` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ontology-governance.test.ts :: G8: 按 pos 分组 avg 结果与手算一致；count/sum/min/max；fn 作用非 number → 400 :: LOOP_NO_FLOOR :: body.rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/ontology-governance.test.ts:267",
+      "symbol": "body.rows",
+      "why": "遍历 `body.rows` 的循环体里有 expect，但整条用例没有任何咬住 `body.rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `body.rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/ontology-validate.test.ts :: 脏外部行 → 值域(负数)/野字段/缺主键/enum 非法 全部捕获 :: EXISTS_FOR_ALL :: kinds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/ontology-validate.test.ts:27",
+      "symbol": "kinds",
+      "why": "派生集合 `kinds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/order-line.test.ts :: SEAM 端到端：seed 后 OrderLine 落库·勾稽 Σ行===头·多型号单真表达·line_of_order/orderline_for_model 链路溯源 :: EXISTS_FOR_ALL :: multiModelOrders": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/order-line.test.ts:91",
+      "symbol": "multiModelOrders",
+      "why": "派生集合 `multiModelOrders` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/order-line.test.ts :: SEAM 端到端：seed 后 OrderLine 落库·勾稽 Σ行===头·多型号单真表达·line_of_order/orderline_for_model 链路溯源 :: LOOP_NO_FLOOR :: qtyBySo": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/order-line.test.ts:91",
+      "symbol": "qtyBySo",
+      "why": "遍历 `qtyBySo` 的循环体里有 expect，但整条用例没有任何咬住 `qtyBySo` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `qtyBySo` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/order-line.test.ts :: SEAM-1 拆行勾稽：Σ OrderLine.qty (BY orderRef) === Order.qty 且各行 model 不同（头=行 rollup·精确） :: LOOP_NO_FLOOR :: ORDERS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/order-line.test.ts:43",
+      "symbol": "ORDERS",
+      "why": "遍历 `ORDERS` 的循环体里有 expect，但整条用例没有任何咬住 `ORDERS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `ORDERS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/planviews-c2c3.test.ts :: 长协偏差 |dev|>5% → scanSupplyRisk 发 supply_risk 事件（关联到货间隙/baseId） :: EXISTS_FOR_ALL :: sr": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/planviews-c2c3.test.ts:50",
+      "symbol": "sr",
+      "why": "派生集合 `sr` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/planviews.test.ts :: F21/同源勾稽: 分解季度值 === S&OP 平衡台目标线（同一 PlanTarget 对象，targetRef 一致） :: LOOP_NO_FLOOR :: quarters": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/planviews.test.ts:63",
+      "symbol": "quarters",
+      "why": "遍历 `quarters` 的循环体里有 expect，但整条用例没有任何咬住 `quarters` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `quarters` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/planviews.test.ts :: F23/§S1.5: affected_orders problems[] 确定性归并 + 逐单 4 层根因链（既有字段不变） :: LOOP_NO_FLOOR :: p.rootChains": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/planviews.test.ts:182",
+      "symbol": "p.rootChains",
+      "why": "遍历 `p.rootChains` 的循环体里有 expect，但整条用例没有任何咬住 `p.rootChains` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `p.rootChains` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/portfolio-l3-linkage.test.ts :: 转拨 0：700/窗 · 两单(400+400)跨两窗均可排 → 无被挤基线 :: EXISTS_FOR_ALL :: so1": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/portfolio-l3-linkage.test.ts:42",
+      "symbol": "so1",
+      "why": "派生集合 `so1` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/portfolio-sidecar.integration.test.ts :: ① 全订单×全基地×窗口联合解 → 每 (基地,窗口) Σ 分配 ≤ 净产能（无重复占用·status OPTIMAL） :: EXISTS_FOR_ALL :: orderAlloc": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/portfolio-sidecar.integration.test.ts:48",
+      "symbol": "orderAlloc",
+      "why": "派生集合 `orderAlloc` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/portfolio-sidecar.integration.test.ts :: ② 单/联对拍（接缝头号）：两 sop 分开都挤 SO-3415 → 合并双占（Σ>其量）；portfolio 只指派一次（Σ≤cap·联≠分开） :: LOOP_NO_FLOOR :: occ3415": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/portfolio-sidecar.integration.test.ts:64",
+      "symbol": "occ3415",
+      "why": "遍历 `occ3415` 的循环体里有 expect，但整条用例没有任何咬住 `occ3415` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `occ3415` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/portfolio.test.ts :: ≥2 方案量化利弊：scenarios ≥2 且各 objectiveValues 真漂移（改目标→分配真变·非贴标签） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/portfolio.test.ts:111",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/portfolio.test.ts :: SEAM 层1：全订单联合解 → capacityLedger 每格 allocated ≤ cap（共享产能守恒·reconciled） :: LOOP_NO_FLOOR :: g.displaced": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/portfolio.test.ts:88",
+      "symbol": "g.displaced",
+      "why": "遍历 `g.displaced` 的循环体里有 expect，但整条用例没有任何咬住 `g.displaced` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.displaced` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/process-layer.test.ts :: 🔴 每个 D## 锚到既有 14 域注册表（不新造第二套业务域词表） :: LOOP_NO_FLOOR :: domains": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/process-layer.test.ts:185",
+      "symbol": "domains",
+      "why": "遍历 `domains` 的循环体里有 expect，但整条用例没有任何咬住 `domains` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `domains` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/process-layer.test.ts :: 每条 P## 四件齐（谁做 / 多久 / 哪种等待 / 承载物），且 domainKey 真能解析到域 :: LOOP_NO_FLOOR :: defs": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/process-layer.test.ts:166",
+      "symbol": "defs",
+      "why": "遍历 `defs` 的循环体里有 expect，但整条用例没有任何咬住 `defs` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `defs` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/process-layer.test.ts :: 流程层与节拍层是两套 key 空间，不许互相冒充（P## / D## 一个都不许出现在节拍表里） :: LOOP_NO_FLOOR :: CHAIN_NODE_REGISTRY": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/process-layer.test.ts:87",
+      "symbol": "CHAIN_NODE_REGISTRY",
+      "why": "遍历 `CHAIN_NODE_REGISTRY` 的循环体里有 expect，但整条用例没有任何咬住 `CHAIN_NODE_REGISTRY` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `CHAIN_NODE_REGISTRY` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ① 四段齐全、四个不同责任方、每段天数反查真对象对得上；总耗时==四段之和 :: EXISTS_FOR_ALL :: ccRows": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:85",
+      "symbol": "ccRows",
+      "why": "派生集合 `ccRows` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ① 四段齐全、四个不同责任方、每段天数反查真对象对得上；总耗时==四段之和 :: EXISTS_FOR_ALL :: iqcRows": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:85",
+      "symbol": "iqcRows",
+      "why": "派生集合 `iqcRows` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ② 三态诚实：境内直供 → 清关 NOT_APPLICABLE（真值 0，有据可依），不是 EMPTY 也不是假的 0 :: EXISTS_FOR_ALL :: measuredCustoms": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:164",
+      "symbol": "measuredCustoms",
+      "why": "派生集合 `measuredCustoms` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ② 三态诚实：境内直供 → 清关 NOT_APPLICABLE（真值 0，有据可依），不是 EMPTY 也不是假的 0 :: FILTER_TAUTOLOGY :: domestic.procurement": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:164",
+      "symbol": "domestic.procurement",
+      "why": "先用 `procurement` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ③ 取不到真值一律 EMPTY：无据物料 → 四段全 null，整单最早齐套日诚实缺席（不拿已知段之和冒充） :: LOOP_NO_FLOOR :: PROCUREMENT_LEGS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:197",
+      "symbol": "PROCUREMENT_LEGS",
+      "why": "遍历 `PROCUREMENT_LEGS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCUREMENT_LEGS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCUREMENT_LEGS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ④ minOrderQty / onTimeRate 真接线（此前 solvers/ 零消费方）：MOQ 抬高采购量、准时率产出期望滑期 :: LOOP_NO_FLOOR :: row.shortItems": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:243",
+      "symbol": "row.shortItems",
+      "why": "遍历 `row.shortItems` 的循环体里有 expect，但整条用例没有任何咬住 `row.shortItems` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `row.shortItems` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/procurement-leg-seam.test.ts :: ④ minOrderQty / onTimeRate 真接线（此前 solvers/ 零消费方）：MOQ 抬高采购量、准时率产出期望滑期 :: LOOP_NO_FLOOR :: rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/procurement-leg-seam.test.ts:243",
+      "symbol": "rows",
+      "why": "遍历 `rows` 的循环体里有 expect，但整条用例没有任何咬住 `rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/rule-scope-drop.seam.test.ts :: SEAM-4 · 三条改名后真挂上本体图谱（C26→Certification / C27→LongTermAgreement / C28→MaterialBatch） :: EXISTS_FOR_ALL :: rulesOf": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/rule-scope-drop.seam.test.ts:149",
+      "symbol": "rulesOf",
+      "why": "派生集合 `rulesOf` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/rules-classify.test.ts :: 种子规则携带 category（产能/物料/财务/合规/换型…）+ 约束条件按 severity=BLOCK 可判别 :: LOOP_NO_FLOOR :: published": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/rules-classify.test.ts:10",
+      "symbol": "published",
+      "why": "遍历 `published` 的循环体里有 expect，但整条用例没有任何咬住 `published` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `published` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/rules-expr-params.seam.test.ts :: 被 RULE_PARAM_BINDINGS 绑定的规则，其 expression 里不得再出现该阈值的字面量副本 :: LOOP_NO_FLOOR :: RULE_PARAM_BINDINGS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/rules-expr-params.seam.test.ts:215",
+      "symbol": "RULE_PARAM_BINDINGS",
+      "why": "遍历 `RULE_PARAM_BINDINGS` 的循环体里有 expect，但整条用例没有任何咬住 `RULE_PARAM_BINDINGS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `RULE_PARAM_BINDINGS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sandbox-d1-cadence.test.ts :: D1-1 工单点名的 7 个限流环节全部在册（查不到证据的也必须在册并标 EMPTY） :: EXISTS_FOR_ALL :: ids": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sandbox-d1-cadence.test.ts:57",
+      "symbol": "ids",
+      "why": "派生集合 `ids` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sandbox-d1-cadence.test.ts :: D1-1 工单点名的 7 个限流环节全部在册（查不到证据的也必须在册并标 EMPTY） :: LOOP_NO_FLOOR :: CADENCE_NODES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/sandbox-d1-cadence.test.ts:57",
+      "symbol": "CADENCE_NODES",
+      "why": "遍历 `CADENCE_NODES` 的循环体里有 expect，但整条用例没有任何咬住 `CADENCE_NODES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `CADENCE_NODES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sandbox-d1-cadence.test.ts :: D1-8 防假前置期：周期性停机是真周期但**不是**流闸门 ⇒ 推得出、留证据、不摊进链路 :: LOOP_NO_FLOOR :: rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/sandbox-d1-cadence.test.ts:285",
+      "symbol": "rows",
+      "why": "遍历 `rows` 的循环体里有 expect，但整条用例没有任何咬住 `rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sandbox-d4-aggregates.seam.test.ts :: SEAM-4 时间轴由真对象驱动：Material.onHand/dailyUse 逐日消耗 + PurchaseOrder 到货日曲线真抬头 :: LOOP_NO_FLOOR :: row.inbound": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/sandbox-d4-aggregates.seam.test.ts:169",
+      "symbol": "row.inbound",
+      "why": "遍历 `row.inbound` 的循环体里有 expect，但整条用例没有任何咬住 `row.inbound` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `row.inbound` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sandbox-e4-cadence-propagation.seam.test.ts :: E4-6 半 tick 量化差是**常数 0.5**（所以差值恒 = Δ/2）—— 诚实登记，不拿它冒充契约期望 :: LOOP_NO_FLOOR :: D1_CADENCE_ROWS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/sandbox-e4-cadence-propagation.seam.test.ts:338",
+      "symbol": "D1_CADENCE_ROWS",
+      "why": "遍历 `D1_CADENCE_ROWS` 的循环体里有 expect，但整条用例没有任何咬住 `D1_CADENCE_ROWS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `D1_CADENCE_ROWS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/schema-display-name.seam.test.ts :: ② 诚实回落：未登记中文名的属性**不带** displayName 键（不是 null/空串），下游回落 propKey :: LOOP_NO_FLOOR :: ty.properties??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/schema-display-name.seam.test.ts:54",
+      "symbol": "ty.properties??[]",
+      "why": "遍历 `ty.properties??[]` 的循环体里有 expect，但整条用例没有任何咬住 `ty.properties??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `ty.properties??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/schema-display-name.seam.test.ts :: ② 诚实回落：未登记中文名的属性**不带** displayName 键（不是 null/空串），下游回落 propKey :: LOOP_NO_FLOOR :: types": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/schema-display-name.seam.test.ts:54",
+      "symbol": "types",
+      "why": "遍历 `types` 的循环体里有 expect，但整条用例没有任何咬住 `types` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `types` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/schema-display-name.seam.test.ts :: ③ 单源收敛：求解器杠杆标签「类型·属性」的属性段 === PropertyDef.displayName（同属性只有一份中文名） :: LOOP_NO_FLOOR :: levers": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/schema-display-name.seam.test.ts:78",
+      "symbol": "levers",
+      "why": "遍历 `levers` 的循环体里有 expect，但整条用例没有任何咬住 `levers` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `levers` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/seed-demo-propagation.test.ts :: 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸） :: EXISTS_FOR_ALL :: canary": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/seed-demo-propagation.test.ts:77",
+      "symbol": "canary",
+      "why": "派生集合 `canary` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/silent-wrong-answer-3.seam.test.ts :: 基地作用域是**真过滤**：命中的每一张单都必须真的挂在该基地（Order.bases ∋ baseId） :: EXISTS_FOR_ALL :: byId": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/silent-wrong-answer-3.seam.test.ts:224",
+      "symbol": "byId",
+      "why": "派生集合 `byId` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sim-certification.test.ts :: DoD2：删一条 writeback Action → L4 降 L3 + writebackComplete=false + canEnterSimulation=false + gaps 列出（不静默） :: EXISTS_FOR_ALL :: codes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sim-certification.test.ts:66",
+      "symbol": "codes",
+      "why": "派生集合 `codes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sim-certification.test.ts :: trial FAIL（派生有环）→ 不进 L3，canEnterSimulation=false，gaps 含 TRIAL_TICK_FAILED ∧ FANOUT_UNSAFE :: EXISTS_FOR_ALL :: codes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sim-certification.test.ts:77",
+      "symbol": "codes",
+      "why": "派生集合 `codes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/slice-connectivity.test.ts :: 孤岛检出：无共享类型、无桥接 link 的两切片都是孤岛 :: EXISTS_FOR_ALL :: islandKeys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/slice-connectivity.test.ts:24",
+      "symbol": "islandKeys",
+      "why": "派生集合 `islandKeys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solver-context-lazy-loading.seam.test.ts :: 声明表非空且仅含核心 10 类（宁缺毋滥·登记） :: LOOP_NO_FLOOR :: types": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solver-context-lazy-loading.seam.test.ts:62",
+      "symbol": "types",
+      "why": "遍历 `types` 的循环体里有 expect，但整条用例没有任何咬住 `types` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `types` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solver-taxonomy.test.ts :: SEAM · HTTP 层判据①：GET /a/v1/solvers/registry?category= 返回的 key 集恰好等于该类目成员集（驱动真消费方） :: LOOP_NO_FLOOR :: SOLVER_CATEGORIES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solver-taxonomy.test.ts:172",
+      "symbol": "SOLVER_CATEGORIES",
+      "why": "遍历 `SOLVER_CATEGORIES` 的循环体里有 expect，但整条用例没有任何咬住 `SOLVER_CATEGORIES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SOLVER_CATEGORIES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solver-taxonomy.test.ts :: SEAM · HTTP 层判据②：不带 category 时注册表仍是 59 条全量，且**每条**都带类目（无漏网传到线上） :: LOOP_NO_FLOOR :: SOLVER_CATEGORIES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solver-taxonomy.test.ts:190",
+      "symbol": "SOLVER_CATEGORIES",
+      "why": "遍历 `SOLVER_CATEGORIES` 的循环体里有 expect，但整条用例没有任何咬住 `SOLVER_CATEGORIES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SOLVER_CATEGORIES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solver-taxonomy.test.ts :: 判据①·纯函数层：每个类目检索结果 **恰好等于** 该类目成员集（相等，非包含/非空） :: LOOP_NO_FLOOR :: SOLVER_CATEGORIES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solver-taxonomy.test.ts:151",
+      "symbol": "SOLVER_CATEGORIES",
+      "why": "遍历 `SOLVER_CATEGORIES` 的循环体里有 expect，但整条用例没有任何咬住 `SOLVER_CATEGORIES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SOLVER_CATEGORIES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solvers.test.ts :: affected_orders: window [day−7, day+14], delay estimate, condition filter + nearest-due fallback :: LOOP_NO_FLOOR :: data.affected": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solvers.test.ts:335",
+      "symbol": "data.affected",
+      "why": "遍历 `data.affected` 的循环体里有 expect，但整条用例没有任何咬住 `data.affected` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `data.affected` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/solvers.test.ts :: V7: plan_generate — C violates CAPEX cap, recommend = E on defaults, 5-dim scores exact :: LOOP_NO_FLOOR :: data.paths": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/solvers.test.ts:420",
+      "symbol": "data.paths",
+      "why": "遍历 `data.paths` 的循环体里有 expect，但整条用例没有任何咬住 `data.paths` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `data.paths` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sop-actions.test.ts :: V9: full chain — self-approval guard, 2-step approve to EXECUTED (mock adapter), reject path, events, audit :: EXISTS_FOR_ALL :: failEvents": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sop-actions.test.ts:269",
+      "symbol": "failEvents",
+      "why": "派生集合 `failEvents` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sop-actions.test.ts :: V9: full chain — self-approval guard, 2-step approve to EXECUTED (mock adapter), reject path, events, audit :: EXISTS_FOR_ALL :: rejectedEvents": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sop-actions.test.ts:269",
+      "symbol": "rejectedEvents",
+      "why": "派生集合 `rejectedEvents` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sop-actions.test.ts :: 新增 actionTypes 已种子化（采纳经营方案/定稿月度计划版本/计划版本变更/采纳产能保障方案，旧 key 保留） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sop-actions.test.ts:224",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sop-reschedule.test.ts :: SEAM 头号：SO-3402 提前(advancePct 0.2) → feasible + 挤占 SO-3415(中优最该让) + 跨≥2基地拆产 + cost.total>0 + 勾稽全ok + 每值可溯 :: EXISTS_FOR_ALL :: dispIds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/sop-reschedule.test.ts:25",
+      "symbol": "dispIds",
+      "why": "派生集合 `dispIds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/sop-reschedule.test.ts :: SEAM 头号：SO-3402 提前(advancePct 0.2) → feasible + 挤占 SO-3415(中优最该让) + 跨≥2基地拆产 + cost.total>0 + 勾稽全ok + 每值可溯 :: LOOP_NO_FLOOR :: g.allocation": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/sop-reschedule.test.ts:25",
+      "symbol": "g.allocation",
+      "why": "遍历 `g.allocation` 的循环体里有 expect，但整条用例没有任何咬住 `g.allocation` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.allocation` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/spine.test.ts :: R-一致（Gap④ 杀漂移）：Metric.target/floorVal 全部取自 GOAL_REGISTRY 单一来源，毛利率底线不再漂移 :: LOOP_NO_FLOOR :: out.metrics": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/spine.test.ts:61",
+      "symbol": "out.metrics",
+      "why": "遍历 `out.metrics` 的循环体里有 expect，但整条用例没有任何咬住 `out.metrics` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `out.metrics` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/supply-demand-gap-attribution.test.ts :: C2 勾稽：需求端贡献 + 供给端贡献 + residual == 总缺口（浮点≤1e-4·亲验） :: LOOP_NO_FLOOR :: g.reconChecks": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/supply-demand-gap-attribution.test.ts:44",
+      "symbol": "g.reconChecks",
+      "why": "遍历 `g.reconChecks` 的循环体里有 expect，但整条用例没有任何咬住 `g.reconChecks` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.reconChecks` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/supply-demand-gap-attribution.test.ts :: WO-Q7-RECONCILED-ROBUST C1：需求虚高 7 叶（p50×5+5000）→ reconciled=true·端内Σ叶==端贡献（治舍入伪影·red-bite） :: LOOP_NO_FLOOR :: g.reconChecks": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/supply-demand-gap-attribution.test.ts:57",
+      "symbol": "g.reconChecks",
+      "why": "遍历 `g.reconChecks` 的循环体里有 expect，但整条用例没有任何咬住 `g.reconChecks` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `g.reconChecks` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/synth-validation-lite.test.ts :: #1 核心：FULL 与 LITE 生成图逐字节一致，差异**仅限** TS 聚合物化属性；LITE 无 TS、FULL 有 TS（真跳） :: LOOP_NO_FLOOR :: keys": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/synth-validation-lite.test.ts:55",
+      "symbol": "keys",
+      "why": "遍历 `keys` 的循环体里有 expect，但整条用例没有任何咬住 `keys` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `keys` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/synthetic.test.ts :: LIVE-DATA: 合成对象经'合成源→RawDataset→物化'落地，数据源可见原始行 + 对象 origin 可溯回（PRD-live-traceable-data §3.1） :: EXISTS_FOR_ALL :: byName": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/synthetic.test.ts:199",
+      "symbol": "byName",
+      "why": "派生集合 `byName` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/synthetic.test.ts :: LIVE-DATA: 合成对象经'合成源→RawDataset→物化'落地，数据源可见原始行 + 对象 origin 可溯回（PRD-live-traceable-data §3.1） :: LOOP_NO_FLOOR :: orders": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/synthetic.test.ts:199",
+      "symbol": "orders",
+      "why": "遍历 `orders` 的循环体里有 expect，但整条用例没有任何咬住 `orders` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `orders` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/synthetic.test.ts :: SY2: cross-module consistency — same numbers come from the same object instance :: LOOP_NO_FLOOR :: solver.data.affected": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/synthetic.test.ts:156",
+      "symbol": "solver.data.affected",
+      "why": "遍历 `solver.data.affected` 的循环体里有 expect，但整条用例没有任何咬住 `solver.data.affected` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `solver.data.affected` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/warehouse-custloc.test.ts :: R6 · 同 seed 两跑：warehouseId/locId 集 + 省市字节一致；省市从 BASE_REGISTRY 派生（无内联基地字面量） :: LOOP_NO_FLOOR :: warehouses": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/warehouse-custloc.test.ts:91",
+      "symbol": "warehouses",
+      "why": "遍历 `warehouses` 的循环体里有 expect，但整条用例没有任何咬住 `warehouses` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `warehouses` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/warehouse-custloc.test.ts :: SEAM-1 · 每基地成品仓齐（13 基地各 ≥1 FINISHED）+ warehouse_of_base 解析真 Base :: EXISTS_FOR_ALL :: finished": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/warehouse-custloc.test.ts:19",
+      "symbol": "finished",
+      "why": "派生集合 `finished` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/warehouse-custloc.test.ts :: SEAM-3 · 交付读真地点（订单 Customer → custloc_of_customer → CustomerLocation 省市/交付地） :: EXISTS_FOR_ALL :: defaults": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/warehouse-custloc.test.ts:59",
+      "symbol": "defaults",
+      "why": "派生集合 `defaults` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/warehouse-custloc.test.ts :: SEAM-3 · 交付读真地点（订单 Customer → custloc_of_customer → CustomerLocation 省市/交付地） :: LOOP_NO_FLOOR :: custIds": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/datacore/test/warehouse-custloc.test.ts:59",
+      "symbol": "custIds",
+      "why": "遍历 `custIds` 的循环体里有 expect，但整条用例没有任何咬住 `custIds` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `custIds` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/datacore/test/workflow.test.ts :: WF3: 校验 —— 合法图谱 ok；环/缺主键/悬空链路/静态含本体特征 报错 :: EXISTS_FOR_ALL :: codes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/datacore/test/workflow.test.ts:69",
+      "symbol": "codes",
+      "why": "派生集合 `codes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/admin-closure-dsl.test.tsx :: dslSuggestions：Order. → 联想属性 :: EXISTS_FOR_ALL :: labels": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/admin-closure-dsl.test.tsx:22",
+      "symbol": "labels",
+      "why": "派生集合 `labels` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/admin-closure-dsl.test.tsx :: dslSuggestions：裸前缀 → 对象类型 + 命名阈值键 :: EXISTS_FOR_ALL :: labels": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/admin-closure-dsl.test.tsx:34",
+      "symbol": "labels",
+      "why": "派生集合 `labels` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-impediment.seam.test.tsx :: 位置落到**真对象**上（objectType + objectId + label），不是一句字符串描述 :: LOOP_NO_FLOOR :: BASE.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-impediment.seam.test.tsx:215",
+      "symbol": "BASE.impediments",
+      "why": "遍历 `BASE.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `BASE.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BASE.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-impediment.seam.test.tsx :: 判不出来的判据逐条上屏，且 reason 是引擎原文（含「接了线没数据」的三分法定性） :: LOOP_NO_FLOOR :: BASE.unresolved": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-impediment.seam.test.tsx:424",
+      "symbol": "BASE.unresolved",
+      "why": "遍历 `BASE.unresolved` 的循环体里有 expect，但整条用例没有任何咬住 `BASE.unresolved` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BASE.unresolved` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-impediment.seam.test.tsx :: 排序直接用 contracts 冻结的全序比较器（前端不自排一套） :: LOOP_NO_FLOOR :: model.groups": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-impediment.seam.test.tsx:250",
+      "symbol": "model.groups",
+      "why": "遍历 `model.groups` 的循环体里有 expect，但整条用例没有任何咬住 `model.groups` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `model.groups` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-impediment.seam.test.tsx :: 每条阻滞点的 severity 与引擎公式复算一致（round(超阈幅度 / 分母 × 100)） :: LOOP_NO_FLOOR :: BASE.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-impediment.seam.test.tsx:530",
+      "symbol": "BASE.impediments",
+      "why": "遍历 `BASE.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `BASE.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BASE.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-impediment.seam.test.tsx :: 每条阻滞点都写出：规则码 · 实测值 · 阈值 · 单位 · 越线幅度 :: LOOP_NO_FLOOR :: BASE.impediments": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-impediment.seam.test.tsx:203",
+      "symbol": "BASE.impediments",
+      "why": "遍历 `BASE.impediments` 的循环体里有 expect，但整条用例没有任何咬住 `BASE.impediments` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `BASE.impediments` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-line-map.seam.test.tsx :: ③ 换乘站的**同心圆**标记（外环 + 内心，两个 circle） :: EXISTS_FOR_ALL :: inter": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/chain-line-map.seam.test.tsx:900",
+      "symbol": "inter",
+      "why": "派生集合 `inter` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-line-map.seam.test.tsx :: 几何自洽：最大半径不溢出画布、相邻站不重叠、每个站圈都在 bounds 内 :: LOOP_NO_FLOOR :: map.stations": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-line-map.seam.test.tsx:286",
+      "symbol": "map.stations",
+      "why": "遍历 `map.stations` 的循环体里有 expect，但整条用例没有任何咬住 `map.stations` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `map.stations` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-line-map.seam.test.tsx :: 换乘站是双环圆（共用工序 = 共享瓶颈），且标注了判据强度 :: LOOP_NO_FLOOR :: inter": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-line-map.seam.test.tsx:332",
+      "symbol": "inter",
+      "why": "遍历 `inter` 的循环体里有 expect，但整条用例没有任何咬住 `inter` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `inter` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-line-map.seam.test.tsx :: 整表按比例重分配（不是换一个站，是换一组数）→ 每个站的半径逐个跟着重算 :: LOOP_NO_FLOOR :: p.attribution": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/chain-line-map.seam.test.tsx:235",
+      "symbol": "p.attribution",
+      "why": "遍历 `p.attribution` 的循环体里有 expect，但整条用例没有任何咬住 `p.attribution` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `p.attribution` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/chain-line-map.seam.test.tsx :: 物料支线是**下方一条平行横线**（不是画在主线里的嵌套），经 AND 闸门汇入 :: EXISTS_FOR_ALL :: branch": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/chain-line-map.seam.test.tsx:743",
+      "symbol": "branch",
+      "why": "派生集合 `branch` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f38.event-loop.test.ts :: ontology.published / derivation.completed → 失效场景数据（数据变更传导到场景） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/f38.event-loop.test.ts:22",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f38.event-loop.test.ts :: rules.updated → 失效 规则库 + agent + workflow + 场景数据（跨资源 Loop） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/f38.event-loop.test.ts:12",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f6.sse-reconnect.test.tsx :: 断开后带 Last-Event-ID 重连，事件不重复，最终收到 answer.final :: EXISTS_FOR_ALL :: stepIds": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/f6.sse-reconnect.test.tsx:18",
+      "symbol": "stepIds",
+      "why": "派生集合 `stepIds` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx :: boundary / prototype-intake 归「建模与图谱」组（对齐 adminRegistry modeling 组） :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx:58",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx :: groupAdminPages：所有管理页都归入某组（无遗漏），空组剔除，确定性顺序 :: EXISTS_FOR_ALL :: grouped": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx:15",
+      "symbol": "grouped",
+      "why": "派生集合 `grouped` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx :: 沙盘关：四个 static-route 收编页**回到**导航里（收编 ≠ 删除） :: LOOP_NO_FLOOR :: fallbackKeys": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx:168",
+      "symbol": "fallbackKeys",
+      "why": "遍历 `fallbackKeys` 的循环体里有 expect，但整条用例没有任何咬住 `fallbackKeys` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `fallbackKeys` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/global-sim-cockpit.test.tsx :: §2 两段可视：排产安排表真出「电芯常州 → 在途 3 天 → Pack邯郸」+ 换型显小时（真 InterBaseTransfer JOIN） :: EXISTS_FOR_ALL :: sameBaseCells": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/global-sim-cockpit.test.tsx:23",
+      "symbol": "sameBaseCells",
+      "why": "派生集合 `sameBaseCells` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/global-sim-glass.test.tsx :: Hero 产能占用矩阵 + 目标 segmented + 守恒 ✓ + 诚实徽标；切目标 → 读数标签随主方案切 :: EXISTS_FOR_ALL :: filled": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/global-sim-glass.test.tsx:19",
+      "symbol": "filled",
+      "why": "派生集合 `filled` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/inspector-node-panel.seam.test.tsx :: 七组都渲染，且每组的控件形态与 VAR_CONTROL_BY_CLASS 一致（五种形态覆盖七类） :: LOOP_NO_FLOOR :: VAR_CLASSES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/inspector-node-panel.seam.test.tsx:432",
+      "symbol": "VAR_CLASSES",
+      "why": "遍历 `VAR_CLASSES` 的循环体里有 expect，但整条用例没有任何咬住 `VAR_CLASSES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `VAR_CLASSES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/inspector-node-panel.seam.test.tsx :: 每个变量都带承载徽标与 file:line 取证；非「有」的必须写清缺在哪 :: LOOP_NO_FLOOR :: input.variables": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/inspector-node-panel.seam.test.tsx:442",
+      "symbol": "input.variables",
+      "why": "遍历 `input.variables` 的循环体里有 expect，但整条用例没有任何咬住 `input.variables` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `input.variables` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/metro-semantics.seam.test.tsx :: 三档判据上屏，且 modeReason **逐字**等于 transitFlow 单一来源（前端不许改写一个字） :: LOOP_NO_FLOOR :: TRANSIT_SOURCE_SPECS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/metro-semantics.seam.test.tsx:408",
+      "symbol": "TRANSIT_SOURCE_SPECS",
+      "why": "遍历 `TRANSIT_SOURCE_SPECS` 的循环体里有 expect，但整条用例没有任何咬住 `TRANSIT_SOURCE_SPECS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `TRANSIT_SOURCE_SPECS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/metro-semantics.seam.test.tsx :: 标签减密：**减的是标签不是站** —— 站与读数一个不少，只是名字改为悬浮出 :: LOOP_NO_FLOOR :: map.stations": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/metro-semantics.seam.test.tsx:208",
+      "symbol": "map.stations",
+      "why": "遍历 `map.stations` 的循环体里有 expect，但整条用例没有任何咬住 `map.stations` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `map.stations` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/multiobj-real-orderbook-seam.test.ts :: ③ 营收/违约金/换型成本来自真 Order 字段（qty×unitPrice / qty×优先级单价 / qty×换型单价），非 toy 常数 :: LOOP_NO_FLOOR :: scenario.rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/multiobj-real-orderbook-seam.test.ts:61",
+      "symbol": "scenario.rows",
+      "why": "遍历 `scenario.rows` 的循环体里有 expect，但整条用例没有任何咬住 `scenario.rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `scenario.rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx :: **不在载荷里的在册节点：KPI 一行都不出**，且当面说清为什么（不是 0，是没有这个节点） :: EXISTS_FOR_ALL :: absent": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/node-semantics.seam.test.tsx:242",
+      "symbol": "absent",
+      "why": "派生集合 `absent` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx :: `drillValueText` 是**唯一实现且只做透传**：对全部 26 条证据逐条 === String(载荷原值) :: LOOP_NO_FLOOR :: RAW.evidence": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/node-semantics.seam.test.tsx:182",
+      "symbol": "RAW.evidence",
+      "why": "遍历 `RAW.evidence` 的循环体里有 expect，但整条用例没有任何咬住 `RAW.evidence` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `RAW.evidence` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx :: 每条 cf 都有**能翻到的 file:line 依据**，且依据文件真的存在（指不出依据的一条都不许写） :: LOOP_NO_FLOOR :: c.basis": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/node-semantics.seam.test.tsx:293",
+      "symbol": "c.basis",
+      "why": "遍历 `c.basis` 的循环体里有 expect，但整条用例没有任何咬住 `c.basis` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `c.basis` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx :: 每条 cf 都有**能翻到的 file:line 依据**，且依据文件真的存在（指不出依据的一条都不许写） :: LOOP_NO_FLOOR :: sem?.cf??[]": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/node-semantics.seam.test.tsx:293",
+      "symbol": "sem?.cf??[]",
+      "why": "遍历 `sem?.cf??[]` 的循环体里有 expect，但整条用例没有任何咬住 `sem?.cf??[]` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `sem?.cf??[]` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/physical-topology-realdata.seam.test.tsx :: 节拍不回落占位：假节拍会被当成排产输入，比空白危险 :: LOOP_NO_FLOOR :: m.rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/physical-topology-realdata.seam.test.tsx:235",
+      "symbol": "m.rows",
+      "why": "遍历 `m.rows` 的循环体里有 expect，但整条用例没有任何咬住 `m.rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `m.rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/physical-topology-realdata.seam.test.tsx :: 节拍不回落占位：假节拍会被当成排产输入，比空白危险 :: LOOP_NO_FLOOR :: row.cells": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/physical-topology-realdata.seam.test.tsx:235",
+      "symbol": "row.cells",
+      "why": "遍历 `row.cells` 的循环体里有 expect，但整条用例没有任何咬住 `row.cells` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `row.cells` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/physical-topology.seam.test.tsx :: 瓶颈设备型定位不到工序列（老化库）→ 明说定位不到，不挑一列点亮 :: EXISTS_FOR_ALL :: aging": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/physical-topology.seam.test.tsx:306",
+      "symbol": "aging",
+      "why": "派生集合 `aging` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/physical-topology.seam.test.tsx :: 视图列头 = 工序链（含设备型；链上有而 typeMap 无的工序显 —，不编设备型） :: LOOP_NO_FLOOR :: PROCESS_CHAIN": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/physical-topology.seam.test.tsx:226",
+      "symbol": "PROCESS_CHAIN",
+      "why": "遍历 `PROCESS_CHAIN` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_CHAIN` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_CHAIN` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: fixture 四态每态 ≥2 条 —— 每态只留 1 条会让「分组渲染」与「单条渲染」在测试里长得一样 :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:342",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: fixture 逐条满足契约 schema（与后端播种同一份 strictObject·多写少写一个字段都炸） :: LOOP_NO_FLOOR :: PROCESS_DEFINITIONS_RESPONSE.definitions": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:326",
+      "symbol": "PROCESS_DEFINITIONS_RESPONSE.definitions",
+      "why": "遍历 `PROCESS_DEFINITIONS_RESPONSE.definitions` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_DEFINITIONS_RESPONSE.definitions` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_DEFINITIONS_RESPONSE.definitions` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: fixture 逐条满足契约 schema（与后端播种同一份 strictObject·多写少写一个字段都炸） :: LOOP_NO_FLOOR :: PROCESS_DEFINITIONS_RESPONSE.domains": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:326",
+      "symbol": "PROCESS_DEFINITIONS_RESPONSE.domains",
+      "why": "遍历 `PROCESS_DEFINITIONS_RESPONSE.domains` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_DEFINITIONS_RESPONSE.domains` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_DEFINITIONS_RESPONSE.domains` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: R6 确定性：同输入两次构建结果逐字节一致，且组内按 key 升序（不依赖后端返回序） :: LOOP_NO_FLOOR :: a.groups": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:364",
+      "symbol": "a.groups",
+      "why": "遍历 `a.groups` 的循环体里有 expect，但整条用例没有任何咬住 `a.groups` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `a.groups` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 四态四色四记号（视觉区分不止靠文字；记号保证不依赖颜色也分得开·色盲可达） :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:179",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 四态文案全部来自 locales/zh.ts（组件不内联中文业务文案） :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:381",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 标准工期是真值透传（不四舍五入、不换算）：逐行对齐 fixture 原值 :: LOOP_NO_FLOOR :: PROCESS_DEFINITIONS_RESPONSE.definitions": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:299",
+      "symbol": "PROCESS_DEFINITIONS_RESPONSE.definitions",
+      "why": "遍历 `PROCESS_DEFINITIONS_RESPONSE.definitions` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_DEFINITIONS_RESPONSE.definitions` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_DEFINITIONS_RESPONSE.definitions` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 每个契约词条都有文案与样式 —— 契约加第五态而前端没跟，这里立刻红（运行期保险） :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:235",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 每个等待态都真渲染出一组（四态四组，一个都不许少） :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:131",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 每态的流程条数与明细行真按态分组渲染（不是把 65 条堆成一张表） :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:195",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/process-wait.test.tsx :: 金丝雀：契约词表非空且恰为四值，fixture 非空且四态齐全 —— 否定断言的前提成立 :: LOOP_NO_FLOOR :: PROCESS_WAIT_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/process-wait.test.tsx:50",
+      "symbol": "PROCESS_WAIT_KINDS",
+      "why": "遍历 `PROCESS_WAIT_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `PROCESS_WAIT_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `PROCESS_WAIT_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/provenance-popover-legibility.test.tsx :: 五处溯源浮层的 JSX 开标签都戴 popover-surface，且没有任何 role=\\\"tooltip\\\" 还挂在 .panel 上 :: LOOP_NO_FLOOR :: tags": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/provenance-popover-legibility.test.tsx:560",
+      "symbol": "tags",
+      "why": "遍历 `tags` 的循环体里有 expect，但整条用例没有任何咬住 `tags` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `tags` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/provenance-popover-legibility.test.tsx :: 全仓（frontend src）没有任何 role=\\\"tooltip\\\" 还直接挂 className=\\\"panel\\\" :: LOOP_NO_FLOOR :: files": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/provenance-popover-legibility.test.tsx:580",
+      "symbol": "files",
+      "why": "遍历 `files` 的循环体里有 expect，但整条用例没有任何咬住 `files` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `files` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/provenance-popover-legibility.test.tsx :: 承载浮层的几何类（.pop / .decProv）不得再自己声明背景或 backdrop-filter（否则会盖掉共享表面） :: LOOP_NO_FLOOR :: rules": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/provenance-popover-legibility.test.tsx:329",
+      "symbol": "rules",
+      "why": "遍历 `rules` 的循环体里有 expect，但整条用例没有任何咬住 `rules` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `rules` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/rules-expr-params.seam.test.tsx :: 对象类型前缀必须是真类型名，不得中译（C05 曾写成 `产线.utilization` ⇒ 永远解析不到 = 哑弹） :: LOOP_NO_FLOOR :: RULES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/rules-expr-params.seam.test.tsx:77",
+      "symbol": "RULES",
+      "why": "遍历 `RULES` 的循环体里有 expect，但整条用例没有任何咬住 `RULES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `RULES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/rules-expr-params.seam.test.tsx :: 已发布规则一律违规谓词口径：不出现约束式写法（`<=` 对常量阈值） :: LOOP_NO_FLOOR :: RULES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/rules-expr-params.seam.test.tsx:71",
+      "symbol": "RULES",
+      "why": "遍历 `RULES` 的循环体里有 expect，但整条用例没有任何咬住 `RULES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `RULES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/rules-expr-params.seam.test.tsx :: 规则库与求解器留痕对同一规则码给出同一表达式（前端内部自洽 —— 当初就是这条不成立） :: FILTER_TAUTOLOGY :: shared.key": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/frontend-shell/test/rules-expr-params.seam.test.tsx:59",
+      "symbol": "shared.key",
+      "why": "先用 `key` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ② 每个「只有 EMPTY 行」的在册节点都有一张灰卡片，reason 逐字透传（不是段尾一行小字） :: LOOP_NO_FLOOR :: c.rows": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:746",
+      "symbol": "c.rows",
+      "why": "遍历 `c.rows` 的循环体里有 expect，但整条用例没有任何咬住 `c.rows` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `c.rows` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ② 每个「只有 EMPTY 行」的在册节点都有一张灰卡片，reason 逐字透传（不是段尾一行小字） :: LOOP_NO_FLOOR :: emptyCards": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:746",
+      "symbol": "emptyCards",
+      "why": "遍历 `emptyCards` 的循环体里有 expect，但整条用例没有任何咬住 `emptyCards` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `emptyCards` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ③ 「在册不在场」在它自己那条泳道里单列一行（不是只在诚实位里提一句） :: FILTER_TAUTOLOGY :: lanesWithAbsent.absentNodes": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:856",
+      "symbol": "lanesWithAbsent.absentNodes",
+      "why": "先用 `absentNodes` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ③ 「在册不在场」在它自己那条泳道里单列一行（不是只在诚实位里提一句） :: LOOP_NO_FLOOR :: lane.absentNodes": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:856",
+      "symbol": "lane.absentNodes",
+      "why": "遍历 `lane.absentNodes` 的循环体里有 expect，但整条用例没有任何咬住 `lane.absentNodes` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `lane.absentNodes` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ③ 诚实位改口径不删：差额那句留着，「在册 ≠ 有数据」三态全部上屏且数字派生自载荷 :: LOOP_NO_FLOOR :: presence.emptyRowsByKind": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:820",
+      "symbol": "presence.emptyRowsByKind",
+      "why": "遍历 `presence.emptyRowsByKind` 的循环体里有 expect，但整条用例没有任何咬住 `presence.emptyRowsByKind` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `presence.emptyRowsByKind` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: SEAM：12 个新增节点逐个在 ①引擎载荷 ②检视下拉 ③链路阶段段内 —— 三处任一漏掉即红 :: LOOP_NO_FLOOR :: payload.nodes": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:608",
+      "symbol": "payload.nodes",
+      "why": "遍历 `payload.nodes` 的循环体里有 expect，但整条用例没有任何咬住 `payload.nodes` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `payload.nodes` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: 右栏节点检视是**受控**的：画布选中的节点即检视的节点（不是两个各选各的） :: EXISTS_FOR_ALL :: inRegistry": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:428",
+      "symbol": "inRegistry",
+      "why": "派生集合 `inRegistry` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: 增值段影响率显示「—」而非 0（作业段不进损失分母） :: EXISTS_FOR_ALL :: withWork": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:256",
+      "symbol": "withWork",
+      "why": "派生集合 `withWork` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: 画布卡片只出「节点级一个数 + 最大那条环节 + 折叠计数」，**不出全表**；全表只在右栏 :: EXISTS_FOR_ALL :: multi": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:230",
+      "symbol": "multi",
+      "why": "派生集合 `multi` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: 第 5 段 DELIVERY 端到端在场：契约有段 → 引擎产出带该 stage 的行 → 画布有 lane 且有内容 :: EXISTS_FOR_ALL :: deliveryDefs": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:656",
+      "symbol": "deliveryDefs",
+      "why": "派生集合 `deliveryDefs` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-console.seam.test.tsx :: 第 5 段 DELIVERY 端到端在场：契约有段 → 引擎产出带该 stage 的行 → 画布有 lane 且有内容 :: FILTER_TAUTOLOGY :: deliveryRows.nodeId": {
+      "detector": "FILTER_TAUTOLOGY",
+      "file": "apps/frontend-shell/test/sandbox-console.seam.test.tsx:656",
+      "symbol": "deliveryRows.nodeId",
+      "why": "先用 `nodeId` 这个谓词把样本过滤一遍，再断言同一个属性 ⇒ **构造性地把反例排除在样本之外**。反例输入：让绝大多数元素不满足该谓词 —— 它们直接不进样本，用例照绿，连样本量都看不出异常。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 上下文条**跨模式常驻**且读数一致（证明是同一份，不是各记各的） :: LOOP_NO_FLOOR :: SANDBOX_MODES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:426",
+      "symbol": "SANDBOX_MODES",
+      "why": "遍历 `SANDBOX_MODES` 的循环体里有 expect，但整条用例没有任何咬住 `SANDBOX_MODES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SANDBOX_MODES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 切到模式 B ⇒ 模式 A 的特征元素**不在 DOM 里**（逐对全测，不是抽一对） :: LOOP_NO_FLOOR :: SANDBOX_MODES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:353",
+      "symbol": "SANDBOX_MODES",
+      "why": "遍历 `SANDBOX_MODES` 的循环体里有 expect，但整条用例没有任何咬住 `SANDBOX_MODES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SANDBOX_MODES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：九个键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaDispatch": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:240",
+      "symbol": "viaDispatch",
+      "why": "遍历 `viaDispatch` 的循环体里有 expect，但整条用例没有任何咬住 `viaDispatch` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `viaDispatch` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：九个键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaRoute": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:240",
+      "symbol": "viaRoute",
+      "why": "遍历 `viaRoute` 的循环体里有 expect，但整条用例没有任何咬住 `viaRoute` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `viaRoute` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 正向：四个 static-route 收编页在 NAV_GROUPS 里**留着回退条目**，且带 consolidatedWhen（沙盘开则隐藏） :: LOOP_NO_FLOOR :: routeConsolidated": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:222",
+      "symbol": "routeConsolidated",
+      "why": "遍历 `routeConsolidated` 的循环体里有 expect，但整条用例没有任何咬住 `routeConsolidated` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `routeConsolidated` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 默认落「现状」模式，五个模式按钮都在顶栏 :: LOOP_NO_FLOOR :: SANDBOX_MODES": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:305",
+      "symbol": "SANDBOX_MODES",
+      "why": "遍历 `SANDBOX_MODES` 的循环体里有 expect，但整条用例没有任何咬住 `SANDBOX_MODES` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SANDBOX_MODES` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/sandbox-view.test.tsx :: 配置A（供应链 3 类对象）：渲染 3 个拓扑节点 + 每个 stateVar 一个 KPI + 就绪认证 :: LOOP_NO_FLOOR :: CONFIG_A.stateVars": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/sandbox-view.test.tsx:110",
+      "symbol": "CONFIG_A.stateVars",
+      "why": "遍历 `CONFIG_A.stateVars` 的循环体里有 expect，但整条用例没有任何咬住 `CONFIG_A.stateVars` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `CONFIG_A.stateVars` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/skill-compile-seam.test.tsx :: ok 为真时**照样**列出 warning / info 诊断（ok 只等于「无 error 级」，不等于「没问题」） :: EXISTS_FOR_ALL :: codes": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/skill-compile-seam.test.tsx:68",
+      "symbol": "codes",
+      "why": "派生集合 `codes` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/skill-compile-seam.test.tsx :: 点「编译」→ 七段管线状态、诊断、推理图 全部落在界面上 :: EXISTS_FOR_ALL :: nodeKeys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/skill-compile-seam.test.tsx:27",
+      "symbol": "nodeKeys",
+      "why": "派生集合 `nodeKeys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/transit-geometry.seam.test.tsx :: 三档 modeReason 在图层上**逐字**等于 transitFlow 单一来源 :: LOOP_NO_FLOOR :: TRANSIT_SOURCE_SPECS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/transit-geometry.seam.test.tsx:306",
+      "symbol": "TRANSIT_SOURCE_SPECS",
+      "why": "遍历 `TRANSIT_SOURCE_SPECS` 的循环体里有 expect，但整条用例没有任何咬住 `TRANSIT_SOURCE_SPECS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `TRANSIT_SOURCE_SPECS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/transit-geometry.seam.test.tsx :: 图例把三种形状与三档位置精度对上（用户不用猜哪个形状是哪档） :: LOOP_NO_FLOOR :: TRANSIT_SOURCE_SPECS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "apps/frontend-shell/test/transit-geometry.seam.test.tsx:294",
+      "symbol": "TRANSIT_SOURCE_SPECS",
+      "why": "遍历 `TRANSIT_SOURCE_SPECS` 的循环体里有 expect，但整条用例没有任何咬住 `TRANSIT_SOURCE_SPECS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `TRANSIT_SOURCE_SPECS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "apps/frontend-shell/test/wo-fe-agent-trace.test.tsx :: taskDag 复用既有 LayeredDag：每角色一条分支（不再把并行角色串成一条假顺序链） :: EXISTS_FOR_ALL :: fromClassify": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "apps/frontend-shell/test/wo-fe-agent-trace.test.tsx:190",
+      "symbol": "fromClassify",
+      "why": "派生集合 `fromClassify` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "packages/contracts/test/llm-vendor-catalog.test.ts :: 含 Anthropic/OpenAI + Moonshot/GLM/MiniMax/Gemini/DeepSeek/Qwen :: EXISTS_FOR_ALL :: keys": {
+      "detector": "EXISTS_FOR_ALL",
+      "file": "packages/contracts/test/llm-vendor-catalog.test.ts:5",
+      "symbol": "keys",
+      "why": "派生集合 `keys` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
+    },
+    "packages/contracts/test/llm-vendor-catalog.test.ts :: 每个厂商 schema 合法、≥1 型号；openai_compatible 厂商有 defaultBaseUrl :: LOOP_NO_FLOOR :: LLM_VENDOR_CATALOG": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "packages/contracts/test/llm-vendor-catalog.test.ts:12",
+      "symbol": "LLM_VENDOR_CATALOG",
+      "why": "遍历 `LLM_VENDOR_CATALOG` 的循环体里有 expect，但整条用例没有任何咬住 `LLM_VENDOR_CATALOG` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `LLM_VENDOR_CATALOG` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "packages/contracts/test/skill-compile.test.ts :: 图有入口、正常出口与异常出口，且每条边的两端都是在册节点（无悬空边） :: LOOP_NO_FLOOR :: graph.edges": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "packages/contracts/test/skill-compile.test.ts:121",
+      "symbol": "graph.edges",
+      "why": "遍历 `graph.edges` 的循环体里有 expect，但整条用例没有任何咬住 `graph.edges` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `graph.edges` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "packages/contracts/test/skill-compile.test.ts :: 每个 SKILL_REFERENCE_KINDS 成员都有 AST 桶 + 图节点类型绑定（新增 kind 漏映射 = TS 编译失败 + 本例红） :: LOOP_NO_FLOOR :: SKILL_REFERENCE_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "packages/contracts/test/skill-compile.test.ts:305",
+      "symbol": "SKILL_REFERENCE_KINDS",
+      "why": "遍历 `SKILL_REFERENCE_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `SKILL_REFERENCE_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SKILL_REFERENCE_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    },
+    "packages/contracts/test/skill-graph.test.ts :: 每个节点 kind 的 PlanStep 映射目标都是**真实存在**的 PlanStep.type（改名任一边即红） :: LOOP_NO_FLOOR :: SKILL_GRAPH_NODE_KINDS": {
+      "detector": "LOOP_NO_FLOOR",
+      "file": "packages/contracts/test/skill-graph.test.ts:24",
+      "symbol": "SKILL_GRAPH_NODE_KINDS",
+      "why": "遍历 `SKILL_GRAPH_NODE_KINDS` 的循环体里有 expect，但整条用例没有任何咬住 `SKILL_GRAPH_NODE_KINDS` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `SKILL_GRAPH_NODE_KINDS` 返回 `[]` —— 0/N 与 N/N 同色。"
+    }
+  },
+  "seedProvenance": {
+    "reseededAt": "2026-08-13",
+    "reseededBy": "WO-R6（捞门与脚本域欠账分支）",
+    "originalBaseline": {
+      "count": 217,
+      "takenAt": "2026-08-11",
+      "atCommit": "c7b9206e75ceb4d8d52f491c53d0ef2285a7cc2d（原单分叉点）"
+    },
+    "reseededBaseline": {
+      "count": 263,
+      "atCommit": "9ee260ab5570b96040850f1f2a7fd3fa70f9ffa1（canonical 收编日 HEAD）"
+    },
+    "delta": {
+      "absorbed": 48,
+      "vanished": 2,
+      "note": "现算命中 264 条 → 去重后 263 个指纹（指纹不含行号，同文件同 it 同检测器同符号的两处命中折叠为一条）"
+    },
+    "absorbedFrom": "16 个测试文件，全部为分叉后新建(12)或被改动(4)；无一条来自未改动的老文件 ⇒ 不是门行为漂移",
+    "burnDownOwner": "另立 WO：48 条新吸收与 215 条原有存量同属假绿第 12 形态，需按检测器逐条修（LOOP_NO_FLOOR 补基数断言 / EXISTS_FOR_ALL 换咬死条数 / FILTER_TAUTOLOGY 别用被断言的谓词过滤样本 / SWITCH_ARG_UNCOVERED 补生产实参用例）"
+  }
+}
