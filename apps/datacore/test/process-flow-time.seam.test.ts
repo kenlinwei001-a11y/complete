@@ -87,6 +87,64 @@ describe("WO-FLOWTIME · 流程实例反推（接缝驱动）", () => {
     expect(codeLines(rules).filter((l) => l.includes("stdDurationDays"))).toEqual([]);
   });
 
+  /**
+   * ③b **「有实测就不许用计划值」——本条是被变异反证当场逼出来的，不是想出来的。**
+   *
+   * 病史（2026-08-13 本单自查）：`flow-rules.ts` 里 P51 的注释写着
+   * 「取 actual 不取 planned：planned 是计划值，拿它算『实际卡了多久』=
+   *   拿标准工期冒充实测的同族错误」。
+   * 我把那一行真的改成 `plannedStart/plannedEnd` 跑了一遍 —— **10 条断言全绿**。
+   * 即：那条红线当时**只是注释**，一道门都没有。
+   * `docs/SOP-reviewer-claim-discipline.md` 第 11 条错账的原话正是
+   * 「**写在注释里的纪律不是机制，写在文档里的也不是**」。本条就是补那个机制。
+   *
+   * 判据**不是我编的词表**，是从真数据里读出来的结构事实：
+   * 同一张单据上若同时存在 `plannedX` 与 `actualX` 这一对，说明这个单据**有实测值**，
+   * 那么反推规则就必须取 `actualX`。取 planned = 明明有实测却拿计划顶，与
+   * 「拿 `stdDurationDays` 冒充实测」是同一个形态。
+   * 单据上**只有** planned 没有 actual 时本条不管（那是「只有计划值可用」，另一回事）。
+   */
+  it("③b 有实测就不许用计划值：凡单据同时有 plannedX/actualX，规则必须取 actualX（变异反证逼出来的门）", async () => {
+    const t = await seeded();
+    let checked = 0;
+    for (const rule of BATTERY_PROCESS_FLOW_RULES) {
+      for (const st of rule.stations) {
+        const objs = await t.repos.objects.listByType("demo", st.typeKey);
+        if (objs.length === 0) continue;
+        const props = new Set(Object.keys(objs[0]!.props));
+        for (const field of [st.enterField, st.exitField]) {
+          if (field === null) continue;
+          const m = /^planned(.+)$/.exec(field);
+          if (m === null) continue;
+          const actual = `actual${m[1]!}`;
+          // 只有当这张单据**真的**也带 actual 对应项时才判负 —— 判据取自数据，不是我列的黑名单
+          if (props.has(actual)) {
+            checked += 1;
+            expect.fail(
+              `${rule.flowKey}/${st.processKey} 用了计划值 ${st.typeKey}.${field}，但该单据上有实测值 ${actual} —— 拿计划冒充实测（同「拿 stdDurationDays 冒充实测」一族）`,
+            );
+          }
+        }
+      }
+    }
+    expect(checked).toBe(0);
+
+    // 🐤 金丝雀：证明这道门**真的会响**。拿一条 planned 规则去跑同一段判定逻辑，必须判负。
+    // （不与主逻辑各抄一份正则——上面那个 `/^planned(.+)$/` 与这里是同一个表达式，
+    //   抄两份就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿。）
+    const mo = await t.repos.objects.listByType("demo", "MaintenanceOrder");
+    expect(mo.length).toBeGreaterThan(100);
+    const moProps = new Set(Object.keys(mo[0]!.props));
+    const canaryField = "plannedStart";
+    const canaryM = /^planned(.+)$/.exec(canaryField);
+    expect(canaryM, "金丝雀正则不中 ⇒ 工具坏了，上面的 checked===0 什么都没证明").not.toBeNull();
+    expect(moProps.has(`actual${canaryM![1]!}`), "MaintenanceOrder 上应同时有 plannedStart 与 actualStart").toBe(true);
+    // 且生产规则确实取的是 actual 那一对（正向锁死，不只是"没取到 planned"）
+    const p51 = BATTERY_PROCESS_FLOW_RULES.flatMap((r) => r.stations).find((s) => s.processKey === "P51")!;
+    expect(p51.enterField).toBe("actualStart");
+    expect(p51.exitField).toBe("actualEnd");
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // ④ 两向：反推得出的有时长；反推不出的 absent + 原因，不是 0 也不是编的数
   // ══════════════════════════════════════════════════════════════════════════
@@ -116,6 +174,24 @@ describe("WO-FLOWTIME · 流程实例反推（接缝驱动）", () => {
     expect(p31?.kind).toBe("NOT_APPLICABLE");
     expect(p31?.reason).toContain("verifiedDate");
     expect(Object.keys(PROCESS_FLOW_STRUCTURAL_NOTES)).toContain("P31");
+
+    /**
+     * 🔴 **三种「不工作」不许混为一谈**（CLAUDE.md 铁律 0.5 判据 1 —— 混了必修错地方）。
+     * 这里逐条锁死判别，让"缺席类型"不是装饰而是**可执行的修法指路牌**：
+     *  · 有单据、没规则  ⇒ 修法 = 补规则表一行
+     *  · 两头都缺        ⇒ 修法 = 先补数据再补规则
+     *  · 有规则、缺字段  ⇒ 修法 = 补字段的值（**不是**补对象）
+     * 变异反证（本单亲手跑过）：把 P01 硬塞进规则表并指向一个不存在的字段，
+     * 它会从 `NO_RECONSTRUCTION_RULE` 正确改判为 `FIELD_MISSING_ON_OBJECT` ——
+     * 说明这三档是真按输入分的，不是写死的标签。
+     */
+    const p01 = out.absences.find((a) => a.processKey === "P01")!; // PlanTarget 有 17 条对象，无规则
+    expect(p01.kind).toBe("NO_RECONSTRUCTION_RULE");
+    expect(p01.reason).toContain("有单据、没规则");
+    const p65 = out.absences.find((a) => a.processKey === "P65")!; // AdoptedMitigation 0 条对象，也无规则
+    expect(p65.kind).toBe("NO_RECONSTRUCTION_RULE");
+    expect(p65.reason).toContain("两头都缺"); // 同 kind 但**理由与修法不同**，不许被压成同一句话
+    expect(p01.reason).not.toBe(p65.reason);
   });
 
   // ══════════════════════════════════════════════════════════════════════════
