@@ -2774,27 +2774,46 @@ export class SolverService {
       if (drift > 0) demandDrv.push({ id: `seg_drift:${str(s.segId)}`, factor: `${str(s.segment)} 需求超目标漂移`, driver: drift,
         prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "tgt", drillValue: num(s.tgt) } });
     }
-    const openQty = round(orders.filter((o) => str(o.status) === "OPEN").reduce((a, o) => a + num(o.qty) / 1e4, 0), 4);
+    // driver 走万套等效（与 G 同口径）⊥ drillValue 回 `Order.qty` **套**真值（标签所指字段 == 回的值·R13）。
+    // WO-R9-SDGA-DRILLID：旧写法 `drillId:"OPEN"` 把**状态枚举值**填进主键位（Order 主键是 `so`：SO-3391…），
+    // 仓储里查无 id=OPEN 的订单 ⇒ 悬空下钻路径（与 #96 / G-PROV-DRILL-DANGLING 同族）；且旧 drillValue 回的是
+    // 万套等效（Σqty/1e4=25.32），而标签写着 `Order.qty`（套·真值 Σ=253200）—— **恰差 1e4 的口径错标**，
+    // 正是 #96 那条病的另一实例。判定 = **聚合**（实测 24 张 OPEN 单同时进这一叶，不是某一张单）⇒ `drillId:"*"`。
+    const openOrders = orders.filter((o) => str(o.status) === "OPEN");
+    const openQtyRaw = round(openOrders.reduce((a, o) => a + num(o.qty), 0), 4); // Σ`Order.qty`（套·与 drillField 同口径）
+    const openQty = round(openOrders.reduce((a, o) => a + num(o.qty) / 1e4, 0), 4); // 万套等效（归因驱动值）
     if (openQty > 0) demandDrv.push({ id: "order_backlog", factor: "在手订单需求（OPEN 未交付）", driver: openQty,
-      prov: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "qty", drillValue: openQty } });
+      prov: { kind: "实测", drillType: "Order", drillId: "*", drillField: "qty", drillValue: openQtyRaw } });
 
     // ── 供给端驱动（真颗粒·万套等效）──
     const supplyDrv: Drv[] = [];
     const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
+    const sumCapDaily = round(lines.reduce((a, l) => a + num(l.capacityDaily), 0), 4); // Σ`Line.capacityDaily`（套/日·与 drillField 同口径）
     const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
     // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
     const capBase = totalCapWan > 0 ? totalCapWan : finalDemand;
     const capGap = totalCapWan > 0 ? round(Math.max(0, finalDemand - totalCapWan), 4) : 0; // 无产能颗粒→不臆造产能缺口（诚实 0）
+    // 同上：旧写法把**字段名**塞进主键位（Line 主键是 `lineId`：`LINE-WS-changzhou-slurry`…）⇒ 悬空；
+    // 且旧 drillValue 回年化万套（Σcap×300/1e4=364.8），标签却写着 `Line.capacityDaily`（套/日·真值 Σ=12160）。
+    // ⚠ 这一处**量纲带查不出来**（364.8 落在 [min=48, Σ=12160] 内）—— 带内 ≠ 口径对，故按 R13 正面改回字段口径。
+    // 判定 = **聚合**（实测 130 条产线全部参与，不是某一条线）⇒ `drillId:"*"`；产能缺口本身仍由 driver/contribution 表达。
     if (capGap > 0) supplyDrv.push({ id: "capacity_gap", factor: "产能缺口（需求−年化产能）", driver: capGap,
-      prov: { kind: "派生", drillType: "Line", drillId: "capacityDaily", drillField: "capacityDaily", drillValue: totalCapWan } });
+      prov: { kind: "派生", drillType: "Line", drillId: "*", drillField: "capacityDaily", drillValue: sumCapDaily } });
     const matGapWan = round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0) * matTonToWan, 4);
+    // 判定 = **聚合**（实测 9 条物料平衡行、其中 7 条 gapTon>0 同时进这一叶）⇒ `drillId:"*"`（旧写法填字段名 `gapTon`，
+    // 而 MaterialBalance 主键是 `matBalId`（mbal-1…）⇒ 悬空）。**取值不动**：drillValue 本就是 Σ`gapTon`（吨·与字段同口径，
+    // 实测 4602 == 全表 Σ，落在量纲带 [min=0, Σ=4602] 上界）—— 这一处只有 drillId 一处病。
     if (matGapWan > 0) supplyDrv.push({ id: "material_gap", factor: "物料缺口（ΣgapTon 折万套）", driver: matGapWan,
-      prov: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
+      prov: { kind: "派生", drillType: "MaterialBalance", drillId: "*", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
     // 设备 OEE 损失：Σ(1−oee_current) 均值 × 产能基准（越低 OEE → 供给损失越大·万套等效·随 oee_current 真变 C4）。
     const oeeDeficit = equipment.length ? round(equipment.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / equipment.length, 4) : 0;
     const oeeLossWan = round(oeeDeficit * capBase, 4);
+    // 判定 = **聚合**（`1−oeeDeficit` = 全部 780 台设备 `oee_current` 的**均值**，不是某一台）⇒ `drillId:"*"`
+    // （旧写法填字段名 `oee_current`，而 Equipment 主键是 `equipId`（`LINE-WS-…-E1`）⇒ 悬空）。
+    // **取值不动**：均值与字段同口径（无量纲比值·实测 0.7537 落在带 [min=0.7108, Σ=587.88] 内）——与上一单
+    // gapAttribution 设备叶的改法逐字一致（同一副牙、同一语义）。
     if (oeeLossWan > 0) supplyDrv.push({ id: "oee_loss", factor: "设备 OEE 损失（1−OEE 均值×产能）", driver: oeeLossWan,
-      prov: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+      prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
 
     // ── 双向分摊（真占比·非五五开）──
     const sumD = round(demandDrv.reduce((a, d) => a + d.driver, 0), 4);
