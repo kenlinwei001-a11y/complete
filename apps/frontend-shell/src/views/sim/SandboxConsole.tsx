@@ -136,7 +136,7 @@ export interface SandboxConsoleProps {
    * 那些 state 归 `SandboxView` 所有。本组件只提供位置与「这一区回答什么」。
    *
    * ⚠ 本区**只读**：不许出现任何写世界态的控件（判据 PRD §4.4，门在
-   *   `sandbox-three-zone.seam.test.tsx` §4 —— 它把主区/下区的输入控件集合与白名单做**等号**
+   *   `sandbox-three-zone.seam.test.tsx` §3 —— 它把主区/下区的输入控件集合与白名单做**等号**
    *   比较，不是 `toContain`：超集上恒真的断言等于没断言）。
    */
   impactZone?: ReactNode;

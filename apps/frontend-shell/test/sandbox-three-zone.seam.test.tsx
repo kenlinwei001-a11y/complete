@@ -384,6 +384,24 @@ describe("§2 · D4 守恒：允许降层，绝不允许删除（PRD §2 逐行 
     for (const v of CFG.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeInTheDocument();
   });
 
+  it("折叠段 summary 上的数**不许撒谎**：写几项就必须真有几项（现数，不写死）", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    // 全链指标：summary 说「N 项」，展开后 `sc-metric-*` 必须正好 N 张
+    const claimed = Number((screen.getByTestId("sc-metrics-summary").textContent ?? "").match(/\d+/)?.[0] ?? "-1");
+    expect(claimed).toBeGreaterThan(0);
+    await user.click(screen.getByTestId("sc-metrics-summary"));
+    const cards = Array.from(screen.getByTestId("sc-metrics").querySelectorAll("[data-testid^='sc-metric-']"));
+    expect(cards.length, "summary 上的条数与真实卡片数对不上 ⇒ 第一层记号在撒谎").toBe(claimed);
+
+    // 阻滞点：summary 说几条，展开后逐条清单的 data-count 必须相等（两侧同源 `impedimentHandoffs`）
+    const jumpClaim = Number(screen.getByTestId("sc-impjump-count").textContent ?? "-1");
+    expect(jumpClaim).toBe(IMP_ROWS.length);
+    await user.click(screen.getByTestId("sc-impjump-summary"));
+    expect(screen.getByTestId("sc-imp-jump").getAttribute("data-count")).toBe(String(jumpClaim));
+  });
+
   it("第 7 行 · 多场景对比 / AI 指挥台：**层不变**（仍是默认收起的折叠区），只是随左区搬了家", async () => {
     mount();
     await ready();

@@ -86,9 +86,11 @@ export interface StateVarDelta {
  * 基线 → 当前的逐 stateVar 差分，**按偏离绝对值降序**。
  *
  * ⚠ 比较器必须是**全序**：平手返回 0。写 `a<b?-1:1` 对相等元素恒不返回 0，违反比较器契约，
- *   V8 会给出**任意**顺序（本仓 `SandboxView.tsx:1238` 那条注释记着实测：8 个等值 stateVar
- *   排出来是 flat_a/flat_c/flat_d 而不是字典序）。而本带一屏全是等值项（未扰动时 delta 恒 0），
- *   正是最容易踩到的那种输入。
+ *   V8 会给出**任意**顺序。同源取证见 `SandboxView.tsx` 顶栏读数排序处那条注释
+ *   （含 2026-08-13 实测记录与复验命令）。本带一屏**全是等值项**（未扰动时 delta 恒 0），
+ *   正是最容易踩到那个坑的输入形状。
+ *   复验：把下面的 `|| (a.v < b.v ? …)` 换成 `|| -1`，跑
+ *   `pnpm --filter frontend-shell exec vitest run test/sandbox-three-zone.seam.test.tsx`。
  */
 export function deriveStateVarDeltas(
   baseWorld: Record<string, Record<string, number>> | null,

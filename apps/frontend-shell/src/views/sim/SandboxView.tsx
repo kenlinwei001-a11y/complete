@@ -1295,8 +1295,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                     : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2
                   : 0;
                 // ⚠ 比较器必须是**全序**：平手时返回 0，不许写 `a.v < b.v ? -1 : 1`（那种写法
-                //   对相等元素恒不返回 0，违反比较器契约，V8 会给出**任意**顺序 —— 实测过：
-                //   8 个等值 stateVar 排出来是 flat_a/flat_c/flat_d 而不是字典序。
+                //   对相等元素恒不返回 0，违反比较器契约，V8 会给出**任意**顺序）。
+                //   实测 2026-08-13（收编 WO-SANDBOX-KPI-LAYER 当日）：8 个等值 stateVar
+                //   排出来是 flat_a/flat_c/flat_d 而不是字典序。
+                //   复验：把本行末尾的 `|| (a.v < b.v ? …)` 换成 `|| -1`，再跑
+                //   `pnpm --filter frontend-shell exec vitest run test/sandbox-kpi-layer.seam.test.tsx`
+                //   —— 该门 §③ 咬的就是排序（`sandbox-kpi-layer.seam.test.tsx` 文件头判据③）。
                 const ranked = [...rows].sort(
                   (a, b) => Math.abs(b.avg - mid) - Math.abs(a.avg - mid) || (a.v < b.v ? -1 : a.v > b.v ? 1 : 0),
                 );
