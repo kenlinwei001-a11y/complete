@@ -714,6 +714,27 @@ export const zh = {
         metrics: "全链指标",
         metricsCount: (n: number) => `${n} 项`,
       },
+      /**
+       * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
+       *
+       * ⚠ `financeGap` 是**诚实位**，不是免责声明 —— 它陈述一个实测事实：
+       *   平台今天没有「随世界态变化的金额型财务指标」。规范 §1 明写诚实位
+       *   **允许降层、绝不允许删除**，故它常驻第一层。
+       */
+      impact: {
+        autoNote: "扰动一施加即自动分析（沙盘里的「假设」就是已经发生的那条扰动，不需要再按一次确认）",
+        needPerturbation: "左区还没有施加扰动 —— 先施加一条，这里才知道要传播哪一处变更。",
+        deltaTitle: "世界态随扰动的变化",
+        deltaQuestion: "基线快照 → 当前 tick，哪些状态变量动了",
+        deltaBaselineMissing:
+          "本世界的基线快照（`SimSession.baseSnapshot`）还没取到 ⇒ 算不出变化量。这里显示空，不用当前值冒充「没变化」。",
+        deltaNone: "与基线逐项相等 —— 是「比过了，一项都没动」，不是「没比」。",
+        deltaMoved: (n: number, total: number) => `${n} / ${total} 项偏离基线`,
+        deltaRest: (n: number) => `其余 ${n} 项（与基线同值）`,
+        financeGapTitle: "金额口径为何不在这一带",
+        financeGapBody:
+          "本带给的是**世界态指数**（0–100，随扰动沿本体传导链变化），不是金额。平台今天唯一的金额科目表求解器 `finance_pnl` 读的是本体真值（FinancePlan + DemandSegment），其实现签名不吃 worldId / sessionId ⇒ **同一个租户下，施加任何扰动它都返回同一组数**。把它摆在这里会得到一块「看起来是财务、实际永远不动」的面板，那比留空更坏。带单位的金额型指标要随扰动动，唯一已接线的出处是上面那块「逐节点指标影响」的 KPI 维（`Metric` 对象的 target/actual/unit 在被隔离的世界里重算）。",
+      },
       info: {
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",

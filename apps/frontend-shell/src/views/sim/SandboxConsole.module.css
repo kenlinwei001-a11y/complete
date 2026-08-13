@@ -412,6 +412,77 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* ── 下区影响带：两半左右分列（PRD §1③「两半，左右分列」）───────────────── */
+.impactBand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .impactBand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.impactHalf {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 逐 stateVar 差分行：名字 / 基线→现值 / 变化量。
+   三列固定顺序 ⇒ 标签与数值的视线距离恒定在一行内（规范 R-UI-1）。 */
+.deltaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.deltaRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.deltaName {
+  font: 600 11px/1.4 var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deltaVals {
+  font: 400 11px/1.4 var(--font-mono);
+  color: var(--muted2);
+  font-variant-numeric: tabular-nums;
+}
+.deltaVals b {
+  color: var(--txt);
+}
+.deltaAmt {
+  font: 700 11px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+}
+.deltaAmt[data-dir="up"] {
+  color: var(--danger);
+}
+.deltaAmt[data-dir="down"] {
+  color: var(--c-capacity);
+}
+.deltaAmt[data-dir="flat"] {
+  color: var(--muted2);
+}
+
 /* ── 三栏主体（旧骨架 · `.zones` 取代之后仅剩响应式兜底引用）───────────────── */
 .mid {
   display: grid;
