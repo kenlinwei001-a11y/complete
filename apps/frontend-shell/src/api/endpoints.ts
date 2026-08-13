@@ -10,6 +10,9 @@ import type {
   BuildPlan,
   BuildRunBody,
   BuildWorkflowRun,
+  BuildPipeline,
+  BuildPipelineKind,
+  BuildPipelineUpsert,
   StoryBuildRun,
   FdeNode,
   BackfillReport,
@@ -1166,6 +1169,30 @@ export const startWorkflowRun = (body: { script: string; seed?: number; inferenc
   api.a<BuildWorkflowRun>("/a/v1/databuilder/workflow-runs", { method: "POST", body });
 export const resumeWorkflowRun = (id: string) =>
   api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/resume`, { method: "POST" });
+// WO-DATABUILDER-PIPELINE 配置面：pipeline 定义 CRUD + PAUSED 运行的人工放行入口。
+// 「先配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP」——这五条是配置侧，
+// intake/intake-import/建域是「按它跑」侧；改完立刻生效（后端 resolve 每次现读）。
+/** 执行序投影（datacore projectPipelineOrder 的响应形状）：有边按拓扑、无边按数组序。 */
+export interface PipelineOrderRow {
+  stepKey: string;
+  label: string;
+  enabled: boolean;
+  onFailure: string;
+  maxAttempts: number;
+  requiresHumanApproval: boolean;
+}
+export type BuildPipelineDto = BuildPipeline & { order: PipelineOrderRow[] };
+export const fetchBuildPipelines = () => api.a<{ items: BuildPipelineDto[] }>("/a/v1/databuilder/pipelines");
+export const fetchBuildPipeline = (kind: BuildPipelineKind) => api.a<BuildPipelineDto>(`/a/v1/databuilder/pipelines/${kind}`);
+/** 覆盖某 kind 的 pipeline（幂等）：intake/import/建域下次执行即按新定义跑。 */
+export const putBuildPipeline = (kind: BuildPipelineKind, body: BuildPipelineUpsert) =>
+  api.a<BuildPipelineDto>(`/a/v1/databuilder/pipelines/${kind}`, { method: "PUT", body });
+/** 撤销覆盖 → 回出厂默认（行为回到写死时代）。 */
+export const resetBuildPipeline = (kind: BuildPipelineKind) =>
+  api.a<BuildPipelineDto>(`/a/v1/databuilder/pipelines/${kind}`, { method: "DELETE" });
+/** 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑（无此入口 = 死锁）。 */
+export const approveWorkflowStep = (id: string, stepKey: string) =>
+  api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/approve`, { method: "POST", body: { stepKey } });
 // A5：FDE 编排工作流节点状态图（8 节点语义投影，实时点亮）
 export interface FdeGraphResponse {
   runId: string;
@@ -1364,6 +1391,13 @@ export interface IntakePreview {
   reconcile: {
     autoMapped: { datasetName: string; column: string; targetType: string; targetField: string }[];
     candidates: { datasetName: string; column: string; candidates: { targetType: string; targetField: string; score: number }[] }[];
+  };
+  /** WO-DATABUILDER-PIPELINE：本次按哪条 pipeline 跑的、每步跑没跑（改 pipeline ⇒ 这里立刻跟着变）。 */
+  pipeline?: {
+    kind: string;
+    name: string;
+    factory: boolean;
+    steps: { stepKey: string; title: string; status: "SUCCEEDED" | "SKIPPED" | "FAILED"; attempts: number; detail?: string; error?: string }[];
   };
 }
 export const submitIntake = (html: string) => api.a<IntakePreview>("/a/v1/databuilder/intake", { method: "POST", body: { html } });

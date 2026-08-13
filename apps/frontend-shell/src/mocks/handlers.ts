@@ -476,6 +476,114 @@ function advanceMockWorkflow(wf: { status: string; steps: { stepKey: string; sta
   if (next) { next.status = next.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; next.durationMs = 6; }
   if (!wf.steps.some((s) => s.status === "PENDING")) { wf.status = "SUCCEEDED"; wf.storyRunId = wf.storyRunId ?? newId("sbr"); }
 }
+
+// ── WO-DATABUILDER-PIPELINE 配置面 mock ─────────────────────────────────────
+// 三条出厂 pipeline 的**字面镜像**（真源 = datacore `pipeline-defs.ts` 的 FACTORY_*；mock 不许 import
+// datacore —— 前后端边界）。PUT 覆盖 ⇒ factory:false；DELETE ⇒ 回出厂字面。
+// intake / intake-import / 建域三个执行口都**现读这份 store**：改 pipeline ⇒ 行为立刻跟着变 ——
+// 这正是接缝测试要咬的「配置这一半 × 生效那一半」，mock 若写死行为，接缝测试就是假的。
+type MockPipelineNodeSop = { description: string; onFailure: "RETRY" | "SKIP" | "ABORT"; maxAttempts: number; requiresHumanApproval: boolean; params: Record<string, unknown> };
+interface MockPipelineNode { id: string; label: string; position: { x: number; y: number }; stepKey: string; enabled: boolean; sop: MockPipelineNodeSop }
+interface MockPipeline { id: string; tenantId: string; kind: "story_build" | "intake" | "intake_import"; name: string; nodes: MockPipelineNode[]; edges: { from: string; to: string }[]; factory: boolean; createdAt?: string; updatedAt?: string }
+
+const mockBpSop = (description: string, over: Partial<MockPipelineNodeSop> = {}): MockPipelineNodeSop => ({
+  description, onFailure: "ABORT", maxAttempts: 1, requiresHumanApproval: false, params: {}, ...over,
+});
+const mockBpNode = (stepKey: string, label: string, description: string, over: Partial<MockPipelineNodeSop> = {}, i = 0): MockPipelineNode => ({
+  id: `n_${stepKey}`, label, position: { x: 0, y: i * 120 }, stepKey, enabled: true, sop: mockBpSop(description, over),
+});
+const mockBpChain = (nodes: MockPipelineNode[]) => nodes.slice(1).map((n, i) => ({ from: nodes[i]!.id, to: n.id }));
+
+function factoryBuildPipelines(): MockPipeline[] {
+  const pipelines: MockPipeline[] = [
+    {
+      id: "bpp_factory_story_build", tenantId: "demo", kind: "story_build", name: "出厂默认 · 故事建域", factory: true,
+      nodes: [
+        mockBpNode("dry_build", "试建：出 BuildPlan + A 三向闭包（不发布）", "出 BuildPlan + A 三向闭包，不发布。失败即止，保留现场可 resume。", {}, 0),
+        mockBpNode("cross_scaffold", "跨系统下发：A 闭包通过则向 AgentCore 下发 B 栈 scaffold", "HTTP 瞬时失败有界退避重试至多 3 次；仍失败则止于该步。", { maxAttempts: 3 }, 1),
+        mockBpNode("gap_analysis", "比对现状：倒推 BuildPlan vs 系统现状（跨模块统一 diff）", "倒推 BuildPlan 与系统现状做统一 diff。", {}, 2),
+        mockBpNode("publish_build", "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片", "A⊕B 闭合才真建 + 发布 + 落切片；未闭合则跳过（拒发布，数据不落库）。", {}, 3),
+        mockBpNode("validation", "推演验证痕迹：结论依据反向核对知识图谱", "结论依据反向核对知识图谱。", {}, 4),
+        mockBpNode("inference", "一键推演：故事主问句经 QOS/求解器跑出答案", "故事主问句经 QOS/求解器跑出答案。", {}, 5),
+        mockBpNode("record", "记账：装配 StoryBuildRun 落库 + 发 storybuild.run_recorded", "装配 StoryBuildRun 落库 + 发 storybuild.run_recorded。", {}, 6),
+      ],
+      edges: [],
+    },
+    {
+      id: "bpp_factory_intake", tenantId: "demo", kind: "intake", name: "出厂默认 · 数据接入", factory: true,
+      nodes: [
+        mockBpNode("intake_parse", "解析", "确定性抽取原型内嵌数据表 + 关系（不 eval、不调 LLM；R6 同输入同输出）。", {}, 0),
+        mockBpNode("intake_reconcile", "字段对账", "原型列 ↔ 既有本体字段：精确命中自动接，其余出候选给人确认。", {}, 1),
+        mockBpNode("intake_persist_candidates", "落对账队列", "把对账候选落库为 HITL 队列（人确认 USE/RENAME/NEW/MERGE/DISCARD）。", {}, 2),
+        mockBpNode("intake_emit", "发事件", "发 prototype.intake_recorded（数据表数/关系数/未解析数/候选数）。", {}, 3),
+      ],
+      edges: [],
+    },
+    {
+      id: "bpp_factory_intake_import", tenantId: "demo", kind: "intake_import", name: "出厂默认 · 数据导入", factory: true,
+      nodes: [
+        mockBpNode("import_materialize", "物化进库", "经 prototype_html 连接器落 RawDataset（数据连接器可见 + 在线查看）。", {}, 0),
+        mockBpNode("import_project_datasets", "投影表清单", "列出该连接下的 RawDataset（id/名/行数/字段）。", {}, 1),
+        mockBpNode("import_emit", "发事件", "发 prototype.materialized（连接 id/表数/总行数）。", {}, 2),
+      ],
+      edges: [],
+    },
+  ];
+  return pipelines.map((p) => ({ ...p, edges: mockBpChain(p.nodes) }));
+}
+let MOCK_BUILD_PIPELINES: MockPipeline[] = factoryBuildPipelines();
+
+/** 执行序（镜像 datacore orderPipelineNodes）：有边按边拓扑（同层按 nodes 下标稳定），无边按数组序。 */
+function mockPipelineOrderedNodes(p: MockPipeline): MockPipelineNode[] {
+  if (p.edges.length === 0) return [...p.nodes];
+  const idx = new Map(p.nodes.map((n, i) => [n.id, i]));
+  const indeg = new Map(p.nodes.map((n) => [n.id, 0]));
+  const adj = new Map(p.nodes.map((n) => [n.id, [] as string[]]));
+  for (const e of p.edges) {
+    if (!idx.has(e.from) || !idx.has(e.to)) continue;
+    adj.get(e.from)!.push(e.to);
+    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  }
+  const ready = p.nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).map((n) => n.id);
+  const out: MockPipelineNode[] = [];
+  while (ready.length > 0) {
+    ready.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+    const id = ready.shift()!;
+    out.push(p.nodes[idx.get(id)!]!);
+    for (const to of adj.get(id) ?? []) {
+      indeg.set(to, (indeg.get(to) ?? 0) - 1);
+      if ((indeg.get(to) ?? 0) === 0) ready.push(to);
+    }
+  }
+  if (out.length < p.nodes.length) {
+    const seen = new Set(out.map((n) => n.id));
+    out.push(...p.nodes.filter((n) => !seen.has(n.id)));
+  }
+  return out;
+}
+/** 镜像 datacore projectPipelineOrder 的响应投影。 */
+const mockPipelineOrder = (p: MockPipeline) =>
+  mockPipelineOrderedNodes(p).map((n) => ({ stepKey: n.stepKey, label: n.label, enabled: n.enabled, onFailure: n.sop.onFailure, maxAttempts: n.sop.maxAttempts, requiresHumanApproval: n.sop.requiresHumanApproval }));
+
+/** intake 执行口的确定性 fixture（原静态响应拆出来，由 pipeline 驱动装配）。 */
+const MOCK_INTAKE_PARSE = {
+  dataSources: [
+    { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
+    { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
+  ],
+  links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
+  unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
+};
+const MOCK_INTAKE_RECONCILE = {
+  autoMapped: [
+    { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
+    { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
+  ],
+  candidates: [
+    { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
+  ],
+};
+
 /** 全栈 BuildPlan mock（区2 故事理解分组卡片渲染源）：故事倒推出的全栈制品，命名条目供前端结构化展示。 */
 function mockBuildPlan(planId: string) {
   return {
@@ -997,28 +1105,30 @@ export const handlers = [
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
   http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
-  // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
-  http.post("*/a/v1/databuilder/intake", () =>
-    HttpResponse.json({
-      intake: {
-        dataSources: [
-          { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
-          { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
-        ],
-        links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
-        unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
-      },
-      reconcile: {
-        autoMapped: [
-          { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
-          { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
-        ],
-        candidates: [
-          { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
-        ],
-      },
-    }),
-  ),
+  // DF.13c 原型 intake（mock：**按 pipeline 处理数据** —— 现读 MOCK_BUILD_PIPELINES.intake，
+  // 与真后端 runIntakePipeline 同语义：停用节点 ⇒ 对应产物诚实缺省；节点配人工放行 ⇒ 同步口无处可批，
+  // 停在该步报 500，不假装跑通）。改 pipeline ⇒ 这个口的实际处理行为跟着变（接缝测试咬的就是这条）。
+  http.post("*/a/v1/databuilder/intake", () => {
+    const p = MOCK_BUILD_PIPELINES.find((x) => x.kind === "intake")!;
+    const steps: { stepKey: string; title: string; status: string; attempts: number; detail?: string; error?: string }[] = [];
+    let intake: typeof MOCK_INTAKE_PARSE | { dataSources: never[]; links: never[]; unparsed: never[] } = { dataSources: [], links: [], unparsed: [] };
+    let reconcile: typeof MOCK_INTAKE_RECONCILE | { autoMapped: never[]; candidates: never[] } = { autoMapped: [], candidates: [] };
+    for (const n of mockPipelineOrderedNodes(p)) {
+      if (!n.enabled) continue;
+      if (n.sop.requiresHumanApproval) {
+        steps.push({ stepKey: n.stepKey, title: n.label, status: "FAILED", attempts: 0, error: "该节点 SOP 要求人工介入，但同步接入口无法在此暂停" });
+        return HttpResponse.json(
+          { error: { code: "PIPELINE_STEP_NEEDS_APPROVAL", message: `step ${n.stepKey} requires human approval`, requestId: "mock" } },
+          { status: 500 },
+        );
+      }
+      if (n.stepKey === "intake_parse") intake = MOCK_INTAKE_PARSE;
+      // 对账吃的是解析产物：解析停了 ⇒ 对账也只能是空（真后端 reconcileIntake([]) 同语义），不许凭空出候选。
+      if (n.stepKey === "intake_reconcile" && intake.dataSources.length > 0) reconcile = MOCK_INTAKE_RECONCILE;
+      steps.push({ stepKey: n.stepKey, title: n.label, status: "SUCCEEDED", attempts: 1 });
+    }
+    return HttpResponse.json({ intake, reconcile, pipeline: { kind: p.kind, name: p.name, factory: p.factory, steps } });
+  }),
 
   // P3 导入正门（mock）：HTML 物化进库 → 返回落库连接 + RawDataset 概要（值与原型一致）。
   http.post("*/a/v1/databuilder/intake/import", () =>
@@ -3792,6 +3902,51 @@ export const handlers = [
     return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });
   }),
   // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）
+  // ── WO-DATABUILDER-PIPELINE 配置面（mock）：pipeline CRUD + PAUSED 放行 ──
+  http.get("*/a/v1/databuilder/pipelines", () =>
+    HttpResponse.json({ items: MOCK_BUILD_PIPELINES.map((p) => ({ ...p, order: mockPipelineOrder(p) })) }),
+  ),
+  http.get("*/a/v1/databuilder/pipelines/:kind", ({ params }) => {
+    const p = MOCK_BUILD_PIPELINES.find((x) => x.kind === (params as { kind: string }).kind);
+    return p ? HttpResponse.json({ ...p, order: mockPipelineOrder(p) }) : new HttpResponse(null, { status: 404 });
+  }),
+  // 覆盖某 kind（幂等）：存一份即租户覆盖（factory:false），执行口下次现读即按新定义跑。
+  http.put("*/a/v1/databuilder/pipelines/:kind", async ({ params, request }) => {
+    const kind = (params as { kind: string }).kind;
+    const cur = MOCK_BUILD_PIPELINES.find((x) => x.kind === kind);
+    if (!cur) return new HttpResponse(null, { status: 404 });
+    const body = (await request.json()) as { name?: string; nodes?: MockPipelineNode[]; edges?: { from: string; to: string }[] };
+    if (!body.name || !Array.isArray(body.nodes)) {
+      return HttpResponse.json({ error: { code: "VALIDATION", message: "name/nodes 必填", requestId: "mock" } }, { status: 400 });
+    }
+    const next: MockPipeline = { ...cur, name: body.name, nodes: body.nodes, edges: body.edges ?? cur.edges, id: `bpp_override_${kind}`, factory: false, updatedAt: new Date().toISOString() };
+    MOCK_BUILD_PIPELINES = MOCK_BUILD_PIPELINES.map((p) => (p.kind === kind ? next : p));
+    return HttpResponse.json({ ...next, order: mockPipelineOrder(next) });
+  }),
+  // 撤销覆盖 → 回出厂字面（行为回到写死时代）。
+  http.delete("*/a/v1/databuilder/pipelines/:kind", ({ params }) => {
+    const kind = (params as { kind: string }).kind;
+    const f = factoryBuildPipelines().find((x) => x.kind === kind);
+    if (!f) return new HttpResponse(null, { status: 404 });
+    MOCK_BUILD_PIPELINES = MOCK_BUILD_PIPELINES.map((p) => (p.kind === kind ? f : p));
+    return HttpResponse.json({ ...f, order: mockPipelineOrder(f) });
+  }),
+  // 节点 SOP 人工放行：标记该步已批 ⇒ 续跑（mock 里步骤瞬时完成 ⇒ 收敛 SUCCEEDED）。
+  // 语义镜像 workflow-engine：approve 只批步，失败步不因此自愈。
+  http.post("*/a/v1/databuilder/workflow-runs/:id/approve", async ({ params, request }) => {
+    const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!wf) return new HttpResponse(null, { status: 404 });
+    const body = (await request.json()) as { stepKey?: string };
+    if (!body.stepKey) return HttpResponse.json({ error: { code: "VALIDATION", message: "stepKey 必填", requestId: "mock" } }, { status: 400 });
+    const ctx = (wf.context ?? {}) as Record<string, unknown>;
+    ctx["__approvedSteps"] = [...((ctx["__approvedSteps"] as string[] | undefined) ?? []), body.stepKey];
+    wf.context = ctx;
+    for (const s of wf.steps) if (s.status === "PENDING") { s.status = "SUCCEEDED"; }
+    wf.status = "SUCCEEDED";
+    wf.resumedCount = ((wf.resumedCount as number) ?? 0) + 1;
+    wf.storyRunId = (wf.storyRunId as string | undefined) ?? newId("sbr");
+    return HttpResponse.json(wf);
+  }),
   http.get("*/a/v1/databuilder/workflow-runs", () => {
     for (const wf of MOCK_WORKFLOW_RUNS) advanceMockWorkflow(wf); // 轮询列表即推进后台异步运行（逐步实时跳动）
     return HttpResponse.json([...MOCK_WORKFLOW_RUNS].reverse());
@@ -3835,6 +3990,21 @@ export const handlers = [
   }),
   http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
     const body = (await request.json()) as { script?: string; seed?: number; async?: boolean };
+    /** story_build pipeline 现读：首个「启用且要人工放行」的节点 ⇒ run 停在它前面（PAUSED 保留现场等 approve）。 */
+    const pauseAt = (() => {
+      const sb = MOCK_BUILD_PIPELINES.find((x) => x.kind === "story_build")!;
+      const hit = mockPipelineOrderedNodes(sb).find((n) => n.enabled && n.sop.requiresHumanApproval);
+      return hit?.stepKey ?? null;
+    })();
+    const applyPause = (wf: ReturnType<typeof mockWorkflowRun>) => {
+      if (!pauseAt) return wf;
+      const i = wf.steps.findIndex((s) => s.stepKey === pauseAt);
+      if (i < 0) return wf;
+      for (const [j, s] of wf.steps.entries()) if (j >= i) { s.status = "PENDING"; delete (s as Record<string, unknown>)["error"]; }
+      wf.status = "PAUSED";
+      wf.storyRunId = undefined;
+      return wf;
+    };
     if (body.async) {
       // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进。
       const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, "SUCCEEDED");
@@ -3846,9 +4016,9 @@ export const handlers = [
     }
     // 同步：第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
     const status = MOCK_WORKFLOW_RUNS.length === 0 ? "FAILED" : "SUCCEEDED";
-    const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED");
+    const wf = applyPause(mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED"));
     MOCK_WORKFLOW_RUNS.push(wf);
-    return HttpResponse.json(wf, { status: status === "FAILED" ? 200 : 201 });
+    return HttpResponse.json(wf, { status: status === "FAILED" && wf.status !== "PAUSED" ? 200 : 201 });
   }),
   http.post("*/a/v1/databuilder/workflow-runs/recover", () => {
     const recovered: string[] = [];
@@ -3858,6 +4028,13 @@ export const handlers = [
   http.post("*/a/v1/databuilder/workflow-runs/:id/resume", ({ params }) => {
     const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
     if (!wf) return new HttpResponse(null, { status: 404 });
+    // PAUSED 且待批步未获放行 ⇒ 重入只会再次停在同一处（镜像 workflow-engine 的 isStepApproved 闸）：
+    // 保持 PAUSED 原样返回 —— resume 不是 approve 的替代品。
+    if (wf.status === "PAUSED") {
+      const approved = ((wf.context as Record<string, unknown> | undefined)?.["__approvedSteps"] as string[] | undefined) ?? [];
+      const awaiting = wf.steps.find((s) => s.status === "PENDING");
+      if (awaiting && !approved.includes(awaiting.stepKey)) return HttpResponse.json(wf);
+    }
     // 重入：失败/PENDING 步全部转 SUCCEEDED，run 收敛（演示自愈）
     for (const s of wf.steps) if (s.status === "FAILED" || s.status === "PENDING") s.status = "SUCCEEDED";
     wf.status = "SUCCEEDED";

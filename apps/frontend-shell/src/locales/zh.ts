@@ -67,6 +67,7 @@ export const zh = {
     permissions: "权限策略",
     synthetic: "合成数据",
     dataBuilder: "数据构建发动机",
+    buildPipelines: "构建 Pipeline 配置",
     actions: "Action 审批",
     catalog: "意图目录",
     agents: "Agent",

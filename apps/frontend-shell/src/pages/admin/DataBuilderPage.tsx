@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, approveWorkflowStep, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -771,6 +771,17 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
     },
     onError: (e) => toastError(e as Error),
   });
+  // 节点 SOP「人要不要介入」的放行入口：PAUSED = 有节点配了 requiresHumanApproval 在等批。
+  // 没有这颗按钮，配了人工放行的运行会**死锁**在 PAUSED（resume 不批步，只会再次停在同一处）。
+  const approveM = useMutation({
+    mutationFn: ({ id, stepKey }: { id: string; stepKey: string }) => approveWorkflowStep(id, stepKey),
+    onSuccess: (wf) => {
+      toast(wf.status === "SUCCEEDED" ? "已放行，工作流跑完" : "已放行，续跑中", "success");
+      void qc.invalidateQueries({ queryKey: ["a", "workflow-runs"] });
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
 
   const runs = runsQ.data ?? [];
   return (
@@ -808,7 +819,24 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
               <code style={{ fontSize: 12 }}>{wf.id}</code>
               <span className="muted" style={{ fontSize: 12 }}>{done + skipped}/{wf.steps.length} 步完成{wf.resumedCount > 0 ? ` · 重入 ${wf.resumedCount} 次` : ""}</span>
               {failedStep && <span className="badge" style={{ background: WF_STATUS_COLOR.FAILED, color: "#fff" }}>断在 {failedStep.stepKey}</span>}
-              {(wf.status === "FAILED" || wf.status === "PAUSED") && (
+              {wf.status === "PAUSED" && (() => {
+                // PAUSED = 停在「要人工放行」的节点前（workflow-engine 保留现场等 approve）。
+                // 待批步 = 首个 PENDING 步；放行后引擎自动 resume 续跑，无需再点重入。
+                const awaiting = wf.steps.find((s) => s.status === "PENDING");
+                return awaiting ? (
+                  <button
+                    className="btn primary sm"
+                    data-testid={`wf-approve-${wf.id}`}
+                    style={{ marginLeft: "auto" }}
+                    disabled={approveM.isPending}
+                    onClick={(e) => { e.stopPropagation(); approveM.mutate({ id: wf.id, stepKey: awaiting.stepKey }); }}
+                    title={`节点 SOP 要求人工放行：${awaiting.title}。放行该步并续跑后续节点。`}
+                  >
+                    {approveM.isPending ? "放行中…" : `✋ 放行 ${awaiting.stepKey}`}
+                  </button>
+                ) : null;
+              })()}
+              {wf.status === "FAILED" && (
                 <button
                   className="btn sm"
                   data-testid={`wf-resume-${wf.id}`}
