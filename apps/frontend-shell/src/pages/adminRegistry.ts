@@ -20,6 +20,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
   { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin"] },
+  // WO-FE-WIRE-2 件一：pipeline 配置面（后端五条端点此前零调用方）
+  { path: "pipelines", label: zh.nav.pipelines, roles: ["admin"] },
   { path: "actions", label: zh.nav.actions, roles: ["admin", "approver"] },
   { path: "catalog", label: zh.nav.catalog, roles: ["admin", "catalog_admin"] },
   { path: "agents", label: zh.nav.agents, roles: ["admin", "catalog_admin"] },
@@ -93,7 +95,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   // WO-SWEEP-03-NAV-GROUP：meta（系统自我）改归 governance（见下）与 ShellLayout.NAV_GROUPS 对齐——防两处分组源漂移。
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "slice-library", "merge", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
-  { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
+  { key: "build", title: "构建与成长", paths: ["data-builder", "pipelines", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },

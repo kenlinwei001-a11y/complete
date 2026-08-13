@@ -34,6 +34,7 @@ const RulesPage = lazy(() => import("@/pages/admin/RulesPage"));
 const PermissionsPage = lazy(() => import("@/pages/admin/PermissionsPage"));
 const SyntheticPage = lazy(() => import("@/pages/admin/SyntheticPage"));
 const DataBuilderPage = lazy(() => import("@/pages/admin/DataBuilderPage"));
+const PipelineConfigPage = lazy(() => import("@/pages/admin/PipelineConfigPage"));
 const ActionsPage = lazy(() => import("@/pages/admin/ActionsPage"));
 const CatalogPage = lazy(() => import("@/pages/admin/CatalogPage"));
 const AgentsPage = lazy(() => import("@/pages/admin/AgentsPage"));
@@ -153,6 +154,7 @@ export const routes: RouteObject[] = [
       admin("permissions", <PermissionsPage />),
       admin("synthetic", <SyntheticPage />),
       admin("data-builder", <DataBuilderPage />),
+      admin("pipelines", <PipelineConfigPage />),
       admin("actions", <ActionsPage />),
       admin("catalog", <CatalogPage />),
       admin("agents", <AgentsPage />),

@@ -10,6 +10,9 @@ import type {
   BuildPlan,
   BuildRunBody,
   BuildWorkflowRun,
+  BuildPipeline,
+  BuildPipelineKind,
+  BuildPipelineUpsert,
   StoryBuildRun,
   FdeNode,
   BackfillReport,
@@ -1174,6 +1177,23 @@ export interface FdeGraphResponse {
   summary: { total: number; done: number; failed: number; running: number; skipped: number; pending: number; failedAt?: string };
 }
 export const fetchFdeGraph = (id: string) => api.a<FdeGraphResponse>(`/a/v1/databuilder/workflow-runs/${id}/fde-graph`);
+// ── WO-FE-WIRE-2 件一 · databuilder pipeline 配置面（后端整条做完·此前前端零调用方）──
+// 仓主原话「配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP，只要数据接入或导入，
+// 就按照这个 pipeline 处理数据」——上面的 intake/import/建域是「按它跑」，这五条是「配置它」。
+// 类型全部取自 @platform/contracts（契约后端已定·前端不得重定义 · contracts-only-shared）。
+export const fetchBuildPipelines = () =>
+  api.a<{ items: BuildPipeline[] }>("/a/v1/databuilder/pipelines").then((r) => r.items);
+export const fetchBuildPipeline = (kind: BuildPipelineKind) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`);
+/** 覆盖某 kind 的 pipeline（幂等）：改完立刻生效——intake/import/建域**下次执行即按新定义跑**。 */
+export const saveBuildPipeline = (kind: BuildPipelineKind, body: BuildPipelineUpsert) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`, { method: "PUT", body });
+/** 撤销覆盖 → 回出厂默认（factory:true）。 */
+export const resetBuildPipeline = (kind: BuildPipelineKind) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`, { method: "DELETE" });
+/** 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑（没人能放行 = 死锁）。 */
+export const approveWorkflowStep = (id: string, stepKey: string) =>
+  api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/approve`, { method: "POST", body: { stepKey } });
 // g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
 export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
 // g8-P5：故事脚本自动生成器 + 压测
