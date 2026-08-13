@@ -1,0 +1,14 @@
+{
+  // typecheck 专用配置：把 `test/` 纳入类型检查面。理由与 datacore 的同名文件一致 ——
+  // `tsconfig.json` 同时被 `build` 用来 emit（`rootDir: "src"` + `outDir: "dist"`），
+  // 直接往它的 include 里塞 `test` 会让 build 报 TS6059 并把测试文件吐进 dist。
+  //
+  // 病灶：改前 `include` 是 `["src/**/*.ts"]`，168 个测试文件全在类型检查面之外。
+  // 金丝雀实测：往 test/ 塞一个 `const x: number = "str"` ⇒ `pnpm --filter agentcore typecheck` RC=0。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "include": ["src", "test"]
+}
