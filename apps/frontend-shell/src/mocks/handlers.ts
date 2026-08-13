@@ -2023,10 +2023,21 @@ export const handlers = [
   }),
   http.get("*/a/v1/ontology/mapping/registries", () =>
     HttpResponse.json({
+      // ⚠ 方向必须与本体单源一致 —— 这三行不是随手编的示例，是 mock 模式下
+      // `MappingOverlay` 唯一的显示来源（`views/graph/MappingOverlay.tsx` 的 linkTypes 消费处）。
+      // 欠账 #160：`line_belongs_to_base` 曾写成 `Line→Base`，与本体
+      // （`apps/datacore/src/synthetic/battery.ts` 的 `batteryLinkTypes()`：
+      //  `fromTypeKey:"Base", toTypeKey:"Line"`）**方向相反** —— 与 #158 是同一个错的两个副本：
+      // 「我用『这个 linkKey 的名字读起来像 A 属于 B』当作『它在本体里就是 A→B』的证据」。
+      // 名字里的 `belongs_to` 读作 Line→Base，而契约 cardinality 只允许 1:1/1:N/N:N，
+      // N:1 语义一律**翻转方向**表达为 1:N ⇒ 真方向是 Base→Line。
+      // 已由 `apps/datacore/test/mock-linktype-direction.gate.test.ts` 钉成机械门：
+      // 改坏这三行任一方向，机器当场报红，不必等人去发现。
+      // （原注释写死 `battery.ts:2321`，收编时实测已漂到 2336 ⇒ 改用符号引用，免得注释自己过期。）
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
-        { key: "line_belongs_to_base", fromType: "Line", toType: "Base", cardinality: "1:N" },
+        { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
       ],
       rules: [
         { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
