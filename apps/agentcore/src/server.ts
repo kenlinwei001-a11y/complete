@@ -486,7 +486,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    * WO-AGENT-ADMIN-CONSOLE · Agent 运行记录只读下发（闭 `G-AGENTRUN-NO-READ-SURFACE`）。
    *
    * **为什么要加这条**（取证见 `docs/AUDIT-agent-console-gap.md` §3.4）：
-   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts:2075 / 2364 / 2614`
+   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent
    * → `repos.agentRuns.insert`），仓储双实现的 `getByTask` 也早就在
    * （`persistence/memory.ts:180` · `persistence/pg.ts:276`）——**但全仓没有任何 HTTP 读端**
    * （`grep -n "agentRuns" server.ts` 零命中，金丝雀 `toolCalls` 同文件 5 命中 ⇒ 工具是好的）。
@@ -514,6 +514,34 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // 但仍返 404（而非空对象）：让「没有」和「有但空」在调用方那里可区分。
     if (!run) throw new HttpError(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
     return AgentRunRecordSchema.parse(run);
+  });
+
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST · 一次任务的**全部**运行（顶层 + 多角色会诊扇出的子运行）。
+   *
+   * 为什么上面那条不够、必须另开一条：`/agent-run`（单数）按契约返**一个** `AgentRunRecord`，
+   * 而多角色会诊的真实形态是「**0 条顶层 + N 条子运行**」—— 编排层顶层压根没跑 agent 循环
+   * （`runCoordinator` 直接进 `runWorkflowSteps` 扇出），真正干活的是那 N 个角色子 agent。
+   * 把它塞进单数端点只有两条路，两条都是说假话：返 N 条里的某一条（悄悄换了对象），
+   * 或继续返 404（真跑了三个角色却说"本次未进入 Agent 循环"）。所以单数端点语义**一个字不改**，
+   * 这条复数端点是新增的读投影。
+   *
+   * 租户隔离与同文件既有四条 trace 端点同形：先 auth，再校 task 归属，越租户一律 404。
+   */
+  app.get("/api/v1/queries/:taskId/agent-runs", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    // 先校 task 归属再取 run —— run 记录的 tenantId 是 additive 可选字段（旧记录没有），
+    // 隔离必须靠它的 task，勿颠倒顺序也勿改成信 run 自己的 tenantId。
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const runs = await deps.repos.agentRuns.listByTask(taskId);
+    return {
+      taskId,
+      // 空数组是**常态**：走 WORKFLOW 路、或未接 LLM provider 被 `completeNoLlmDegradation` 诚实降级，
+      // 都不产生任何 run。前端不许把它画成加载失败（与 `/b/v1/agents/:id/runs` 同一条纪律）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
   });
 
   // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。
@@ -686,6 +714,46 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       .sort((x, y) => y.version - x.version)
       .map((x) => ({ id: x.id, version: x.version, status: x.status }));
     return { ...agent, versions };
+  });
+
+  /**
+   * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属半边）。
+   *
+   * 此前 `AgentRunRecord` 只有 `taskId`，「这个 Agent 跑过几次」在全仓不可得 —— 管理台只能显示
+   * 「本租户 AGENT 路径的全部运行」并常驻一条诚实横幅。现在归属由引擎在 `agent/loop.ts finishRun`
+   * 单点回填（注册 agent 路 ⇒ REGISTERED；通用探索路 ⇒ 正面记 EXPLORATORY），本端点是它的读投影。
+   *
+   * **按 key 而非按 id 聚合**：`agt_` 是版本级主键，按 id 查在换版当天就归零；管理台问的是
+   * 「这个 Agent」。入参仍收 id（那是前端手上有的东西），服务端先解析成 agent 再取它的 key。
+   *
+   * **租户隔离两道**：① agent 必须属于本租户（否则 404 AGENT_NOT_FOUND，与「不存在」同码，不泄漏存在性）；
+   * ② `listByAgent` 再按 `tenantId` 硬过滤 —— 不靠「key 大概率不撞」这种默契。
+   *
+   * **诚实边界（必须与前端对齐，别在界面上补一个后端没有的语义）**：
+   *  - 空数组是**常态**而非故障。未绑 LLM provider 时 `completeNoLlmDegradation`
+   *    （`router/orchestrator.ts` 的 completeNoLlmDegradation）把 task 标成 `path=AGENT` + `COMPLETED` 却**从不写 run**，
+   *    这类环境下任何 agent 的运行数都是 0。前端不许把它画成"加载失败"。
+   *  - 本端点**只**回归属得上的那些。通用探索路的运行（`attribution:"EXPLORATORY"`）与归属上线前的
+   *    旧记录（无归属字段）**一条都不会出现在这里** —— 它们的存在必须由前端另行诚实交代，
+   *    不许因为"这个列表干净了"就当它们不存在。
+   *  - **WO-AGENTRUN-FANOUT-PERSIST 起，多角色会诊扇出的子运行已在本列表内**（`origin:"FANOUT"`）。
+   *    此前它们根本没落库（`runAgentStep` 把 `r.run` 整个丢了 + `agent_runs.task_id` 带 UNIQUE
+   *    一个 task 只存得下一条），于是"被会诊叫去跑的那几次"在全仓不可见。现在两层都修了：
+   *    引擎侧在 `engine.runWorkflowSteps` 的 `runAgentStep` 落库，表侧主键回到 run 级（migrations/013）。
+   *    ⇒ 本端点返回的次数 = 这个 Agent **真跑过的**次数（含被叫去会诊的），不再少报。
+   */
+  app.get("/b/v1/agents/:id/runs", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const runs = await deps.repos.agentRuns.listByAgent(a.tenantId, agent.key);
+    return {
+      agentId: agent.id,
+      agentKey: agent.key,
+      // 逐条过 schema：真后端下发的形状 = 契约形状（前端 mock 也照这个 schema 对，形状漂了当场红）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
   });
 
   app.post("/b/v1/agents", async (req, reply) => {

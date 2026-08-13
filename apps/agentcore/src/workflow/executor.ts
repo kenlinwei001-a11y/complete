@@ -38,6 +38,12 @@ export interface AgentStepInvoker {
     nesting: NestingCtx;
     /** WO-FIVE-ROLE P1：本步是否强制被调 agent 的 objectTypes scope（Coordinator 角色扇出 → 越界读对象拒）。 */
     enforceObjectScope?: boolean;
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST：扇出本次子 agent 的步 id（多角色会诊里是 `dispatch_0/1/2`）。
+     * 落进子运行记录的 `stepId` —— 同一次会诊的 N 条子运行靠它认回同一次扇出，
+     * 而不是 N 条互不相识、只共享一个 taskId 的孤儿记录。
+     */
+    stepId: string;
   }): Promise<{ structured?: unknown; answer: Answer }>;
 }
 
@@ -274,6 +280,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         try {
           const child = enterNesting(input.nesting, "agent", step.params.agentId);
           const result = await deps.runAgentStep({
+            stepId: step.id, // WO-AGENTRUN-FANOUT-PERSIST：子运行记录靠它认回是哪一步扇出的
             agentId: step.params.agentId,
             version: step.params.version,
             prompt: typeof resolvedParams.prompt === "string" ? resolvedParams.prompt : JSON.stringify(resolvedParams.prompt),
