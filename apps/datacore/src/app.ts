@@ -346,7 +346,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const metaOntology = new MetaOntologyService(repos, outbox);
   const notifications = new NotificationService(repos);
   const entityResolution = new EntityResolutionService(repos, outbox);
-  const rules = new RulesService(repos, outbox);
+  const rules = new RulesService(repos, outbox, authz);
   const solvers = new SolverService(repos, authz);
 
   /**

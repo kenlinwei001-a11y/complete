@@ -223,12 +223,31 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
     ],
   },
 
-  /** bottleneck_matrix：liveTightness/primaryFactor 只读金字塔四类（+ certByModel 连带 Line/Model）。 */
+  /**
+   * bottleneck_matrix：liveTightness/primaryFactor 只读金字塔四类（+ certByModel 连带 Line/Model）。
+   * ⚠ 并线补声明（WO-R2 收编 P2 时被 S5 实跑当场揪出）：canonical 侧 `Process` 的读取面自本单分叉后
+   * 长出了产能/老化/通道那一组属性；签名**漏声明 = 守卫误放行 = 出错数字**（正是本门存在的理由），
+   * 故按 S5 实跑结果逐条补齐，而不是把断言改软。
+   */
   bottleneck_matrix: {
     reads: [
       { typeKey: "Base", propKeys: ["baseId", "name", "util"] },
       { typeKey: "Line", propKeys: ["baseId"], linkKeys: ["model_certified_on"] },
-      { typeKey: "Process", propKeys: ["baseId"] },
+      {
+        typeKey: "Process",
+        propKeys: [
+          "agingDays",
+          "agingSlots",
+          "baseId",
+          "capacityUnitKind",
+          "channelOutputDaily",
+          "channels",
+          "name",
+          "processId",
+          "requiredThroughput",
+          "yield",
+        ],
+      },
       { typeKey: "Equipment", propKeys: ["baseId"] },
       { typeKey: "Model", propKeys: ["modelId"] },
     ],
@@ -250,10 +269,16 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
       { typeKey: "Shipment" },
       { typeKey: "Segment" },
       { typeKey: "Material" },
+      // ⚠ 并线补声明（WO-R2 收编 P2 时被 S5 实跑揪出）：canonical 的 WO-DECISION-INFO
+      // 让处置前置期/运费读进 Customer/Supplier/InterBaseTransfer（`DECISION_INFO_SOLVERS`）。
+      // 不列 propKeys = 全属性：守卫方向上这是**保守**（更容易拦），漏声明才会误放行出错数字。
+      { typeKey: "Customer" },
+      { typeKey: "Supplier" },
+      { typeKey: "InterBaseTransfer" },
     ],
   },
 
-  /** counterfactual_timeline：内部编排 risk_timeline 双轨推演（同依赖集）。 */
+  /** counterfactual_timeline：内部编排 risk_timeline 双轨推演（同依赖集，含 WO-DECISION-INFO 三类）。 */
   counterfactual_timeline: {
     reads: [
       { typeKey: "Base" },
@@ -266,6 +291,9 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
       { typeKey: "Shipment" },
       { typeKey: "Segment" },
       { typeKey: "Material" },
+      { typeKey: "Customer" },
+      { typeKey: "Supplier" },
+      { typeKey: "InterBaseTransfer" },
     ],
   },
 

@@ -48,7 +48,10 @@ const FOUR = [
   ["repo 接口", "apps/datacore/src/repo/repo.ts", /objectInterfaces\s*:\s*Store<ObjectInterfaceRecord>/],
   ["memory 仓储", "apps/datacore/src/repo/memory.ts", /objectInterfaces\s*:\s*new MemStore\(\)/],
   ["pg 仓储", "apps/datacore/src/repo/pg.ts", /objectInterfaces\s*:\s*new PgStore\(pool,\s*"object_interfaces"\)/],
-  ["migration", "apps/datacore/migrations/028_object_interfaces.sql", /CREATE TABLE IF NOT EXISTS object_interfaces/],
+  // ⚠ 编号 032 而非原分支上的 028：canonical 已有 `028_perturbations.sql`，撞号被
+  // `check-migration-numbering.mjs` 当场判红（迁移号是执行顺序的唯一表达）。并线时按该门的
+  // 「给后到的那个改成尚未占用的编号」改到 032（当时 datacore 最大号 031）。
+  ["migration", "apps/datacore/migrations/032_object_interfaces.sql", /CREATE TABLE IF NOT EXISTS object_interfaces/],
 ];
 for (const [label, rel, re] of FOUR) {
   const src = read(rel);
