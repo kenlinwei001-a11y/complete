@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, EnterpriseState, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -346,6 +346,18 @@ export interface Repos {
   //   确定性生成，所以 `put` 天然是「同逻辑时刻幂等覆盖」而不是「插一条新的」——这正是 R6
   //   「同 (tenant, world, 逻辑时刻) 重复取快照字节级一致」可被验证的前提。
   enterpriseStates: Store<EnterpriseState>;
+  // ── WO-ORG-WORLD · 组织世界（migrations/032_org_world.sql · 七世界之②）────────────────────
+  // R9 三处同改：本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 同走通用 Store（id/tenant_id/doc 五列结构与 PgStore 的 doc-jsonb 假设逐字吻合），不另立专用接口 ——
+  // 组织世界没有「按 tick 排序」这类语义约束；排序在 org/service.ts 里按 escalationRank 显式做（确定性）。
+  /** 人/角色/部门三合一（= 既有 spine.Principal 扩展，非平行身份类型）。 */
+  orgPrincipals: Store<OrgPrincipal>;
+  /** 某主体在某职权域上的权力（额度挂其下）。 */
+  orgAuthorities: Store<Authority>;
+  /** 审批额度（金额上限/利润率下限/客户重要度/跨基地/资本投入）。 */
+  orgApprovalLimits: Store<ApprovalLimit>;
+  /** 代理关系（被代理人不在岗时权力落到谁身上）。 */
+  orgDelegations: Store<Delegation>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */

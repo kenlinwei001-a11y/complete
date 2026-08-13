@@ -32,6 +32,8 @@ import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
+import { OrgWorldService } from "./org/service.js";
+import { registerOrgWorldRoutes } from "./org/routes.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
@@ -4822,6 +4824,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
   registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
+
+  // ---- WO-ORG-WORLD · 组织世界（七世界之②·人/角色/部门/职权/审批额度/代理）------------------
+  // Entitlement 先于 authz：`org.world` 暗发（defaultOn:false）→ 关闭时全部路由 404 FEATURE_NOT_FOUND。
+  registerOrgWorldRoutes(app, {
+    service: new OrgWorldService(repos),
+    ctx,
+    requireFeature: (req) => requireFeatureTag(req, "apiTags", "org-world"),
+  });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {

@@ -8,7 +8,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoEntitlements } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +39,9 @@ async function main(): Promise<void> {
     // 就会出现「容器起得来的环境有流程层、跑过 pnpm seed 的环境没有」这种只在某些机器上复现的坑）。
     await seedDemoProcessLayer(repos);
     logger.info("seeded business process layer (13 domains × 65 processes)");
+    // WO-ORG-WORLD 组织世界（与 server.ts 播种路径**必须同步**，理由同上）。
+    await seedDemoOrgWorld(repos);
+    logger.info("seeded organization world (departments/roles/persons + authorities/limits/delegation)");
     await seedDemoEntitlements(repos);
     logger.info("lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
   }

@@ -4,6 +4,7 @@ import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
+import { seedOrgWorld } from "./org/seed.js";
 
 export const DEMO_TENANT = "demo";
 
@@ -696,4 +697,19 @@ export async function seedDemoProcessLayer(repos: Repos): Promise<void> {
   );
   await repos.processDomains.putMany(domains);
   await repos.processDefinitions.putMany(defs);
+}
+
+/**
+ * WO-ORG-WORLD · 组织世界种子（七世界之②）。内容与确定性说明见 `src/org/seed.ts`。
+ *
+ * **不放进基座 `seedDemo`**（与 `seedDemoProcessLayer` / `seedDemoEntitlements` 同一条理由）：
+ * 单测 `makeApp()` 需要「干净 demo」基线，组织世界是租户配置内容，不该出现在每个不相干的单测里。
+ * 由 `SEED_DEMO=1` 的两条启动播种路径（`server.ts` / `seed-cli.ts`）调用 —— 两条**必须同步**，
+ * 漂了就会出现「容器起得来的环境有组织世界、跑过 pnpm seed 的环境没有」这种只在某些机器上复现的坑。
+ *
+ * ⚠️ 播种**不等于**功能可见：`org.world` 是 `defaultOn:false` 暗发功能，
+ * 数据播了但路由仍 404，直到产品显式 override 打开 —— 开关默认值是产品决策，不是 dev 决策。
+ */
+export async function seedDemoOrgWorld(repos: Repos): Promise<void> {
+  await seedOrgWorld(repos, DEMO_TENANT);
 }
