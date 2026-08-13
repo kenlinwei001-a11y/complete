@@ -550,10 +550,21 @@ function parseBindings(tableCode) {
 export function classifyThresholdSource(expression, metricPath) {
   if (!expression || !metricPath) return { source: "ABSENT", reason: "规则或 metricPath 缺失" };
   const leaf = metricPath.split(".").slice(1).join(".") || metricPath;
+  const esc = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const cmp = new RegExp(
     // ⚠ 右侧终止符必须含 `,`：`SUSTAIN(Line.utilization > 95, 3)` 里不排除逗号会读成 "95," ⇒
     //   归类失败 → 该判据被误报成 ABSENT。金丝雀「必不咬样例被误咬」当场抓到了这个（本门第二次自伤）。
-    String.raw`(?:[\w.]*\b)?${leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\s*(<=|>=|==|!=|<|>)\s*([^\s),]+)`,
+    //
+    // ⚠⚠ 左侧必须是**真的标识符边界**（WO-R9-SCAN-EXTRACTOR 实测第三次自伤）。原写法
+    //    `(?:[\w.]*\b)?<leaf>` 里那个前缀组是**可选**的，而 `<leaf>` 自己前面没有任何边界断言 ⇒
+    //    `Line.MUTANT_utilization > 95` 里的 `utilization` 会被当成比较操作数**匹上**，归类成 literal 95。
+    //    实测：把 `PARITY_RULE_SEEDS` 的 C05 表达式改成 `SUSTAIN(Line.MUTANT_utilization > 95, 3)`，
+    //    本门**全绿放行** —— H7 号称"表达式必须真以该 metricPath 为比较操作数"，实际只要求"包含这个子串"。
+    //    形态（铁律 0.6 句式）：**「我用『表达式里出现了这个子串』当作『该字段是比较操作数』的证据，
+    //    而前者并不度量后者。」** 与本单主病（拿 400 字窗口里的下一个 expression 当同一条规则的）同族。
+    //    修法：前缀改成"零个或多个**完整**限定段"，并在整体左侧加 `(?<![\w$.])`、leaf 右侧加 `\b`。
+    //    钉死它的是 MUST_BITE 的「H7 子串同名字段不算数」那条（去掉边界断言即当场报门瞎了）。
+    String.raw`(?<![\w$.])(?:[A-Za-z_$][\w$]*\.)*${esc}\b\s*(<=|>=|==|!=|<|>)\s*([^\s),]+)`,
   ).exec(expression);
   if (!cmp) {
     return new RegExp(String.raw`\b${leaf}\b`).test(expression)
@@ -595,6 +606,14 @@ const MUST_BITE = [
   { name: "H3 || 兜底默认阈值", fn: () => detectFallbackDefaults(`const t = th.value || 0.85;`).length > 0 },
   { name: "H5 业务名可被咬", fn: (v) => (v.size > 0 ? detectBusinessVocab(`const base = "${[...v][0]}";`, v).length > 0 : false) },
   { name: "H7 声称的来源不存在可被咬", fn: () => classifyThresholdSource("Line.utilization > 95", "Order.changeoverMin").source === "ABSENT" },
+  // ⛔ 这条钉死 2026-08-13 实测的第三次自伤：`utilization` 是 `MUTANT_utilization` 的**子串**，
+  //    旧正则照样匹上并归类成 literal 95 ⇒ 改坏规则表达式本门全绿放行。去掉边界断言即当场不中。
+  {
+    name: "H7 子串同名字段不算数（MUTANT_utilization ≠ utilization）",
+    fn: () => classifyThresholdSource("SUSTAIN(Line.MUTANT_utilization > 95, 3)", "Line.utilization").source === "ABSENT",
+  },
+  // 同族反向：限定段必须**完整**，`OtherLine.utilization` 属于另一个对象，但 leaf 相同 ⇒ 仍算命中
+  // （H7 只认字段名不认对象名，这是**已知的诚实边界**，写成金丝雀以免被后人当 bug 悄悄改掉）。
 ];
 /** 必不咬样例：正常写法若被咬 ⇒ 门会把好代码报红，同样是门坏了。 */
 const MUST_NOT_BITE = [
