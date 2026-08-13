@@ -610,13 +610,104 @@ function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FA
     }
     return { ...d, status: skipped ? "SKIPPED" : "SUCCEEDED", attempts: 1, maxAttempts: d.stepKey === "cross_scaffold" ? 3 : 1, durationMs: 5 + (idSeq % 9), detail: d.stepKey === "record" ? `status=${status}` : undefined };
   });
-  return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as { id: string; status: string; steps: { stepKey: string; status: string }[]; [k: string]: unknown };
+  // 形状显式写全（WO-87）：`steps[].attempts/durationMs/error` 与 `context` 早就在数据里，
+  // 只是旧断言把它们收进了 `[k:string]: unknown` ⇒ 驱动逻辑一碰就是编译错。写全 = 让类型替我们咬。
+  return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as {
+    id: string;
+    status: string;
+    steps: { stepKey: string; status: string; attempts?: number; maxAttempts?: number; durationMs?: number; detail?: string; error?: { code: string; message: string; retryable: boolean } }[];
+    context: Record<string, unknown>;
+    storyRunId?: string;
+    [k: string]: unknown;
+  };
 }
 const MOCK_WORKFLOW_RUNS: ReturnType<typeof mockWorkflowRun>[] = [];
+/**
+ * 清空运行台账（测试现场清理）。`resetMockDb()` 够不着这个模块级数组 ——
+ * 不清就会出现「同文件里后一条用例看见前一条留下的运行」这种顺序耦合，
+ * 而 `POST /workflow-runs` 的「第一条故意失败」演示行为正是**看长度**决定的。
+ */
+export function resetMockWorkflowRuns(): void {
+  MOCK_WORKFLOW_RUNS.length = 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+ * WO-87 · story_build 的**执行侧**也按生效 pipeline 跑（此前只有 intake 按它跑）。
+ *
+ * 为什么必须补这一半：`PipelineConfigPage.tsx:177 PausedRuns` 的放行入口早就挂上了，
+ * 但它的数据源 `GET /a/v1/databuilder/workflow-runs` 里**永远不会出现 PAUSED**——
+ * 旧 `POST /workflow-runs`（:4115）压根不读 pipeline，只在 FAILED/SUCCEEDED 二选一。
+ * 于是「接了线**没数据**」（铁律 0.5 第二形态）：按钮在场、一次也不可能渲染出来 ⇒ 配了
+ * 「要人工放行」的建域运行在屏上是**死锁**。补这一半后死锁闭合，且是端到端可驱动的。
+ *
+ * 语义逐条对齐真后端（不是另发明一套）：
+ *  · 节点 `enabled:false` ⇒ 该步**不进 steps**  — `datacore/databuilder/pipeline-defs.ts:154`
+ *    `resolvePipelineSteps` 里的 `if (!n.enabled) continue`；
+ *  · 首个未获放行的 `requiresHumanApproval` 节点 ⇒ 该步及其后回 PENDING、run 置 PAUSED、**保留现场**
+ *    — `datacore/databuilder/workflow-engine.ts:192-199`；
+ *  · 放行名单存在 `run.context.__approvedSteps` — `workflow-engine.ts:51 APPROVAL_KEY`；
+ *  · approve = 记名单 + resume 续跑（不是把整条 run 直接判成功）— `databuilder/service.ts:640`；
+ *  · 闸在失败步**之后**时，失败先发生 ⇒ run 仍是 FAILED（drive 遇 FATAL 即 return，够不到闸）。
+ *
+ * 出厂 pipeline（7 节点全启用 · 零放行节点）下这几个函数是**恒等变换** ⇒ 既有 mock 行为不变。
+ * ────────────────────────────────────────────────────────────────────────────── */
+
+/** 放行名单键：与 datacore `workflow-engine.ts:51` 的 `APPROVAL_KEY` 同名同义。 */
+const MOCK_APPROVAL_KEY = "__approvedSteps";
+
+type MockWfRun = ReturnType<typeof mockWorkflowRun>;
+
+/** 该 run 已放行的步（context 里的名单）。 */
+function mockApprovedSteps(wf: MockWfRun): Set<string> {
+  const list = wf.context?.[MOCK_APPROVAL_KEY];
+  return new Set(Array.isArray(list) ? (list as string[]) : []);
+}
+
+/** 生效 story_build pipeline 的执行序（已滤掉停用节点）。 */
+function storyPipelineOrder() {
+  const pipeline = resolvePipeline("story_build");
+  return pipelineOrder(pipeline).filter((n) => n.enabled);
+}
+
+/** 该步是否为「等人放行」的闸（配了 requiresHumanApproval 且本 run 尚未放行）。 */
+function isBlockingGate(wf: MockWfRun, stepKey: string): boolean {
+  const node = storyPipelineOrder().find((n) => n.stepKey === stepKey);
+  return !!node?.sop.requiresHumanApproval && !mockApprovedSteps(wf).has(stepKey);
+}
+
+/**
+ * 按生效 pipeline 驱动一条 mock run 到下一个终态/暂停点（同步 POST 与 approve 后的 resume 共用一份）。
+ * 共用而非各抄一份，正是为了避免「两套机制不对接」——真后端也是 drive 一份实现被 start/resume 共用。
+ */
+function driveMockStoryRun(wf: MockWfRun) {
+  const keep = new Set(storyPipelineOrder().map((n) => n.stepKey));
+  wf.steps = wf.steps.filter((s) => keep.has(s.stepKey)); // 停用节点：不执行也不出现在轨迹里
+  for (const s of wf.steps) {
+    if (isBlockingGate(wf, s.stepKey)) {
+      // 停在该步**之前**：闸步及其后全部回 PENDING（现场保留，闸前跑完的步不动）。
+      let hit = false;
+      for (const x of wf.steps) {
+        if (x.stepKey === s.stepKey) hit = true;
+        if (hit) { x.status = "PENDING"; x.attempts = 0; x.durationMs = undefined; x.error = undefined; }
+      }
+      wf.status = "PAUSED";
+      wf.storyRunId = undefined;
+      return wf;
+    }
+    if (s.status === "FAILED") { wf.status = "FAILED"; return wf; } // 致命：止于该步，够不到后面的闸
+    if (s.status === "PENDING" || s.status === "RUNNING") { s.status = s.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; s.attempts = 1; s.durationMs = 6; }
+  }
+  wf.status = "SUCCEEDED";
+  wf.storyRunId = wf.storyRunId ?? newId("sbr");
+  return wf;
+}
+
 /** 推进一个异步 RUNNING 运行一步（模拟后台脱离驱动；轮询即见逐步实时跳动）。 */
-function advanceMockWorkflow(wf: { status: string; steps: { stepKey: string; status: string; durationMs?: number }[]; storyRunId?: string }) {
+function advanceMockWorkflow(wf: MockWfRun) {
   if (wf.status !== "RUNNING") return;
   const next = wf.steps.find((s) => s.status === "PENDING");
+  // 异步后台驱动同样受闸约束：走到未放行的闸就停 PAUSED 等人（不许偷偷跑过去）。
+  if (next && isBlockingGate(wf, next.stepKey)) { wf.status = "PAUSED"; return; }
   if (next) { next.status = next.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; next.durationMs = 6; }
   if (!wf.steps.some((s) => s.status === "PENDING")) { wf.status = "SUCCEEDED"; wf.storyRunId = wf.storyRunId ?? newId("sbr"); }
 }
@@ -1248,10 +1339,12 @@ export const handlers = [
     const body = (await request.json()) as { stepKey: string };
     const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
     if (!wf) return new HttpResponse(null, { status: 404 });
-    // 放行该步 → 续跑（与真后端 approveWorkflowStep 同语义：放行 + resume，不是把整条 run 直接判成功）。
-    const step = wf.steps.find((s) => s.stepKey === body.stepKey);
-    if (step) step.status = "SUCCEEDED";
-    wf.status = wf.steps.every((s) => s.status === "SUCCEEDED") ? "SUCCEEDED" : "RUNNING";
+    // 放行该步 → 续跑（与真后端 `databuilder/service.ts:640 approveWorkflowStep` 同语义：
+    // 把 stepKey 记进 context 放行名单，再 resume 驱动——**不是**把整条 run 直接判成功）。
+    const approved = mockApprovedSteps(wf);
+    approved.add(body.stepKey);
+    wf.context = { ...(wf.context ?? {}), [MOCK_APPROVAL_KEY]: [...approved] };
+    driveMockStoryRun(wf); // 续跑：跑到终态，或停在**下一个**未放行的闸
     return HttpResponse.json(wf);
   }),
   // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
@@ -4115,8 +4208,10 @@ export const handlers = [
   http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
     const body = (await request.json()) as { script?: string; seed?: number; async?: boolean };
     if (body.async) {
-      // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进。
+      // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进（推进时受闸约束，见 advanceMockWorkflow）。
       const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, "SUCCEEDED");
+      const keep = new Set(storyPipelineOrder().map((n) => n.stepKey));
+      wf.steps = wf.steps.filter((s) => keep.has(s.stepKey)); // 停用节点不进轨迹（同 resolvePipelineSteps）
       for (const s of wf.steps) s.status = "PENDING";
       wf.status = "RUNNING";
       wf.storyRunId = undefined;
@@ -4126,8 +4221,10 @@ export const handlers = [
     // 同步：第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
     const status = MOCK_WORKFLOW_RUNS.length === 0 ? "FAILED" : "SUCCEEDED";
     const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED");
+    // WO-87：**按生效 story_build pipeline 跑**——停用的节点不执行、配了「要人工放行」的节点停 PAUSED。
+    driveMockStoryRun(wf);
     MOCK_WORKFLOW_RUNS.push(wf);
-    return HttpResponse.json(wf, { status: status === "FAILED" ? 200 : 201 });
+    return HttpResponse.json(wf, { status: wf.status === "FAILED" ? 200 : 201 });
   }),
   http.post("*/a/v1/databuilder/workflow-runs/recover", () => {
     const recovered: string[] = [];
