@@ -302,6 +302,53 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
     expect(allV.contendedBases.length).toBeGreaterThan(0); // 全域那次仍成立（对照没塌）
   }, 180000);
 
+  it("CONTENTION-7 · seg 维**真裁**：逐条业务线驱动，选谁结果就得不同（`toContain` 在全域超集上恒真，故这里用等号）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const all = await scan(t);
+    const contendedAll = contentionOf(all);
+    expect(contendedAll.length, "先得真有争用，否则本条无法失败").toBeGreaterThan(0);
+
+    // 本次扫描里**所有**真在争的业务线 —— 逐条驱动，不许只挑第一条。
+    // ⚠ 这正是本条存在的理由：CONTENTION-5 取的是 `contentionOf(all)[0].contention.businessTypes[0]`，
+    // 在本种子上恒为 `passenger`，而 `passenger` 恰好出现在**每一个**争用基地上
+    // ⇒ 裁与不裁给出同一批基地，那条断言**在这一维上无法失败**。实测：把 `scopedLoci` 的业务线
+    // 过滤整个摘掉（改成 `const rows = byBase;`），21 条用例**全绿**——
+    // 而彼时 `businessTypes:["commercial"]` 会返回 `changzhou`（其争用方是 乘用车×储能，
+    // 压根不含商用车）= 「看起来像局部答案的全域数字」。本条就是钉死那个变异体的。
+    const btsInPlay = [...new Set(contendedAll.flatMap((i) => i.contention!.businessTypes))].sort();
+    expect(btsInPlay.length, "争用面上必须有 ≥2 条业务线，否则「跨业务线」无从谈起").toBeGreaterThanOrEqual(2);
+
+    const basesOf = (bt: string) =>
+      contendedAll
+        .filter((i) => i.contention!.businessTypes.includes(bt as never))
+        .map((i) => i.locus.objectId)
+        .sort();
+
+    // ⚠ 前半段（照 A1 的教训）：必须**至少有一条**业务线的争用面是全域的**真子集**。
+    // 若每条业务线都出现在每个争用基地上，下面的等号在「根本不裁」时同样成立 ⇒ 断言无法失败。
+    const allBases = contendedAll.map((i) => i.locus.objectId).sort();
+    const strict = btsInPlay.filter((bt) => basesOf(bt).length < allBases.length);
+    expect(
+      strict.length,
+      `必须存在「只在部分争用基地上出现」的业务线，否则「真裁」与「不裁」结果相同、本条无法失败（在场业务线 ${btsInPlay.join("、")}）`,
+    ).toBeGreaterThan(0);
+
+    for (const bt of btsInPlay) {
+      const scoped = await scan(t, { businessTypes: [bt as never] });
+      const got = contentionOf(scoped)
+        .map((i) => i.locus.objectId)
+        .sort();
+      // 等号而非 `toContain`：选了某业务线，产出的争用面必须**不多不少**正好是它参与的那些。
+      // 多 = 跨业务线泄漏（拿全域冒充局部）；少 = 把它真参与的争用藏了。
+      expect(got, `选 ${bt} ⇒ 争用面必须正好是它参与的那些基地（多一个即全域泄漏，少一个即漏报）`).toEqual(basesOf(bt));
+      // 泄漏的**逐条**判据：留下来的每一条，其争用方里必须真含所选业务线。
+      for (const im of contentionOf(scoped)) {
+        expect(im.contention!.businessTypes, `选 ${bt} 却返回了争用方为 [${im.contention!.businessTypes.join("、")}] 的 ${im.locus.objectId}`).toContain(bt);
+      }
+    }
+  }, 180000);
+
   it("CONTENTION-6 · 组装层单一实现 + R6 确定性：DSL 的 SUM/COUNT 与引擎读数是**同一个数**，两次扫描字节一致", async () => {
     const t = await makeApp();
     await seedBattery(t);
