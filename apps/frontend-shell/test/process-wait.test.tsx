@@ -36,9 +36,11 @@ import { loginAs, renderApp } from "./utils";
 /** 四态各自的 mock 期望条数（fixture 是 seed.ts 的逐字子集，见 processWaitFixtures.ts）。 */
 const EXPECTED_COUNT: Record<ProcessWaitKind, number> = {
   WAITING_USER: 2,
-  WAITING_DATA: 2,
+  // WO-V4-INSPECT 追加 P37(SCHEDULE)/P40(DATA) 这一对**共用承载物**的流程后各 +1
+  // （节点检视的「同承载物流程」反查需要 fixture 里真有一对，否则那条断言在空集合上恒真）。
+  WAITING_DATA: 3,
   WAITING_EXTERNAL_SYSTEM: 3,
-  WAITING_SCHEDULE: 2,
+  WAITING_SCHEDULE: 3,
 };
 
 describe("WO-WAITING-STATES-FE · §0 金丝雀（否定结论前先自证工具）", () => {

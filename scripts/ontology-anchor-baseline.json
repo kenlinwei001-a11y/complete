@@ -148,6 +148,7 @@
     "apps/datacore/src/solvers/service.ts::SOLVER_OUTPUT_SHAPES",
     "apps/datacore/src/solvers/service.ts::affectedOrdersAggregate",
     "apps/datacore/src/solvers/service.ts::compute",
+    "apps/datacore/src/solvers/service.ts::leverPropMeta",
     "apps/datacore/src/solvers/types.ts::refTypeDefFromRows",
     "apps/datacore/src/solvers/types.ts::resolveBaseRef",
     "apps/datacore/src/synthetic/battery-extended.ts::capexProjects",

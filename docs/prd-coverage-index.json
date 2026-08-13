@@ -651,6 +651,18 @@
       ],
       "coverage": 0.87
     },
+    "PRD-sandbox-v3-three-zone.md": {
+      "acceptanceIds": [
+        "D1",
+        "D4"
+      ],
+      "covered": [
+        "D1",
+        "D4"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-skill-contract-dsl.md": {
       "acceptanceIds": [
         "F8"

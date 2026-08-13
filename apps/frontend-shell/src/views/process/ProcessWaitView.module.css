@@ -294,3 +294,24 @@
   font-family: var(--font-mono);
   white-space: nowrap;
 }
+
+/* ── WO-V4-INSPECT · 行可点（点开 → 节点检视面板）───────────────────────────
+   零硬编码颜色：沿用既有 --c-* / --bg2 / --accent 语义令牌，三套皮自动跟随。 */
+.rowClickable {
+  cursor: pointer;
+}
+.rowClickable:hover {
+  background: var(--bg2);
+}
+.rowClickable[data-selected="1"] {
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rowBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}

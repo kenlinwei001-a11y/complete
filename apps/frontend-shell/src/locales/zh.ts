@@ -1823,6 +1823,99 @@ export const zh = {
       empty: "后端未返回任何流程定义。业务流程层种子由 SEED_DEMO 播入；未播种时此处为空是正常的。",
       errorTitle: "取不到流程等待态",
     },
+    /**
+     * WO-V4-INSPECT · 节点检视面板的**界面骨架文案**（PRD-sandbox-v4 §4.2）。
+     *
+     * ⚠ 这里只放**骨架**（区块标题 / 表头 / 空态句 / 三态名），
+     * **一个业务词都不许放** —— 流程名 / 域名 / 职能名 / 对象类型中文名 / 属性中文名 / 单位
+     * 全部随 `/inspect` 响应下发（R14 零写死词表）。哪天有人往这里加一个业务名词，
+     * 就是在复制「两个 dev 各发明一套词表、交集为 0」那次事故。
+     */
+    inspect: {
+      title: "节点检视",
+      close: "关闭",
+      loading: "加载本流程的本体关系…",
+      errorTitle: "取不到本流程的检视投影",
+      openHint: "点开任意一行查看该流程的完整本体关系",
+      section: {
+        process: "流程属性",
+        runtime: "本页答不了什么（运行态诚实位）",
+        carrier: "承载物（对象类型）",
+        relations: "一跳关系",
+        shared: "同承载物的其它流程",
+        levers: "打到这个承载物的杠杆",
+        layers: "十六层三态",
+      },
+      field: {
+        name: "名称",
+        domain: "业务域",
+        owner: "责任职能",
+        waitKind: "等待类型",
+        stdDays: "标准工期（天）",
+        carrier: "承载类型",
+      },
+      carrier: {
+        objectCount: (n: number) => `本租户 ${n} 个对象`,
+      },
+      propTable: {
+        propKey: "属性键",
+        displayName: "中文业务名",
+        dataType: "类型",
+        unit: "单位",
+        flags: "标记",
+        pk: "主键",
+        derived: "派生",
+        /** 中文名缺省 = 业务含义未确证，如实说，不臆造（WO-SCHEMA-ZH 留白纪律）。 */
+        noZhName: "未登记中文名",
+      },
+      relations: {
+        empty: "本承载类型在本体链路表里没有任何一跳关系 —— 这是真实读数，不是没渲染。",
+        objectCount: (n: number) => `对端 ${n} 个对象`,
+        /** null ≠ 0：对端类型压根不存在，与「存在但没数据」是两件事。 */
+        typeMissing: "对端类型在本体里查不到",
+      },
+      shared: {
+        empty: "没有别的流程与它共用同一个承载物（一对一，不是漏查）。",
+      },
+      levers: {
+        empty: "今天没有任何登记杠杆落在这个承载类型上 —— 这是真实读数，不是没渲染。",
+        landing: (where: string) => `落点解析于 ${where}`,
+        dead: "落点属性不存在（死杠杆）",
+        reach: (domains: string, n: number) => `打到 ${n} 条流程 · 业务域：${domains || "无"}`,
+      },
+      layers: {
+        summary: (present: number, notInSlice: number, absent: number) =>
+          `有数据 ${present} 层 · 未纳入 ${notInSlice} 层 · 缺席 ${absent} 层`,
+      },
+      /** 三态名（与后端 `SliceLayerStatus` 一一对应；三态含义不同，绝不合并成"有/无"）。 */
+      layerStatus: {
+        present: "有数据",
+        not_in_slice: "平台有·本次未纳入",
+        absent: "缺席",
+      } as Record<string, string>,
+      /**
+       * 十六层的中文名（键 = 契约 `SLICE_LAYER_IDS`，**结构词不是业务词**）。
+       * 查不到即回落层 id 原文，不臆造。
+       */
+      layerName: {
+        business_scenario: "① 业务场景",
+        decision_intent: "② 决策意图",
+        object: "③ 对象",
+        property: "④ 属性",
+        relation: "⑤ 关系",
+        event: "⑥ 事件",
+        state: "⑦ 状态",
+        metric: "⑧ 指标",
+        time: "⑨ 时间",
+        rule: "⑩ 规则",
+        constraint: "⑪ 约束",
+        data_binding: "⑫ 数据绑定",
+        scenario: "⑬ 场景",
+        evidence: "⑭ 证据",
+        action: "⑮ 行动",
+        governance: "⑯ 治理与溯源",
+      } as Record<string, string>,
+    },
     /** 词表漂移（后端下发词表 ≠ 契约词表）——接缝断了要显式报，不许默默少画一组。 */
     drift: {
       title: "⚠ 等待类型词表漂移",

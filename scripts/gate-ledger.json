@@ -1322,6 +1322,25 @@
         "evidence": "2026-08-09 建成即跑两条变异反证，双双变红",
         "note": "① CANONICAL_BRANCH=claude/some-other-branch → exit 1，报「主工作目录当前在分支 X，不是 canonical Y」⇒ 证明它真读分支名而不是读某个恒真的东西。② CANONICAL_BRANCH=claude/integ-s0-rest（该分支正被另一个 worktree 占着）→ exit 1 且第②号判据「占着 canonical 分支」开火 1 次 ⇒ 证明占用检测不是摆设。正常态 exit 0。建门理由见脚本头注：同一形态 2026-08-09 一天犯两次（一次真事故：canonical 卡在 f392ae00 十个提交；一次 stop hook 虚惊），根因都是主工作目录的分支名 ≠ 实际推送目标，而这又是被一个停在旧提交的 worktree 占着 canonical 分支逼出来的。 ⚠️ guardedPaths 的诚实边界：本门守的是**流程状态**（git worktree 布局 + 当前分支），不是某几个源文件；填 `.git` 是因为门账要求责任边界必须指向真实存在的路径，而 worktree 布局的物理载体就在 .git 下。"
       }
+    },
+    "check-lever-prop-resolvable.mjs": {
+      "alias": "lever-prop-resolvable:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/solvers/lever-meta.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "三组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）",
+        "note": "M-REAL（最强的一条）把 apps/datacore/src/synthetic/battery.ts 回退到修复前那个 commit（git checkout HEAD~1 -- …）并重新 pnpm --filter datacore build → RC=1，点名 LEVER_PROP_META['MaterialBalance.coverage']（标签「物料齐套·覆盖率」·单位 %·值类 ratio）「对象类型 MaterialBalance 存在，但它的 properties / derivedProperties / stateVariables 里都没有 coverage」——即**门在缺陷所在的那个 commit 上就红**，而同一 commit 上 lever-binding-drift:check 是绿的；还原后 RC=0。M-INJECT 用 LEVER_PROP_RESOLVABLE_INJECT=Equipment.__mutant_prop__ 注入一条不存在的落点 → RC=1 并点名（证判据不是恒真）。M-CANARY 用 LEVER_PROP_RESOLVABLE_BREAK_CANARY=1 让共用的 resolveLanding() 失效 → RC=**2** 且明说「本次结论作废，不许读作代码干净」（证兜底不会把工具故障吞成「无违规」，也不会错报成 RC=1）。",
+        "note2": "金丝雀与主判据**共用同一份 resolveLanding()**，不另抄一份查法（铁律 0.6 已落地的机制：抄一份的金丝雀是装饰品）。四条金丝雀：正向 Equipment.oee_current（普通属性）+ Metric.gapPct（**派生**属性，专钉「含 derivedProperties」这一半）；反向 __NoSuchType__.__nope__ + Equipment.__no_such_prop__（若也报「解析得到」= 判据恒真 = 哑门）。诚实边界写在报告里每次打印：只证「落点属性存在」，不证「它拨得动」——派生属性在 discoverLevers 的反向 walk 里永远不是叶，解析得到 ≠ 发现得出杠杆。"
+      },
+      "notes": "闭 G-LEVER-DEAD-LANDING：LEVER_PROP_META 登记了杠杆落点 Type.prop，但两处消费方（solvers/service.ts:418 leverPropMeta / solvers/impediment-options.ts:684）都是 `meta?.label ?? 裸键` 的兜底读法 ⇒ 表里多一条指向并不存在的属性，全链一个字都不报错，静默死在表里。既有 lever-binding-drift:check 验的是**因子层→有没有落点**（覆盖方向），本门验**反方向：落点→属性是否真存在**——两个方向的判据集合互不包含，实测 2026-08-13 前者全绿而 MaterialBalance.coverage 在 94 个类型里一个都找不到。判据现读 dist（batteryObjectTypes ∪ extendedObjectTypes），承认 properties ∪ derivedProperties ∪ stateVariables 三个承载位；刻意**无豁免表**（落点不存在 = 百分之百是死杠杆，没有中间态）。",
+      "disposition": "WIRE"
     }
   }
 }
