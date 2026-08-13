@@ -887,6 +887,32 @@ export function candidateDimMoved(d: Pick<CandidateDim, "value" | "baseline">): 
 }
 
 /**
+ * **候选稳定 id 的唯一构造处**（WO-SANDBOX-S3-ENUM）。
+ *
+ * 为什么必须是函数而不是各处模板串：本仓已有 `chainOpNodeId()` 的前车之鉴 ——
+ * id 的拼法一旦散在引擎、测试、前端三处，改一处就漂一处，而漂了之后**谁都不会红**
+ * （id 只是个字符串，schema 只校验 `min(1)`）。把格式钉在这里，引擎与测试共用同一份，
+ * 于是「引擎自己拼的 id」与「拿候选公开字段重建的 id」必须逐字节相等 —— 这条断言就是这根钉子的门
+ * （见 `apps/datacore/test/impediment-options-seam.test.ts` 的 S3-ID）。
+ *
+ * 入参**全部取自候选自身的公开字段**（`impedimentId` / `lever.{objectType,objectId,prop}` /
+ * `rungKind` / `toValue`），故 id 可从候选本身重建 —— 这是「单源」能被机器核的前提：
+ * 若拼法里混进任何**候选外**的东西（内部实例 id、遍历序号、时间戳），重建就对不上，门当场红。
+ */
+export function solutionCandidateId(parts: {
+  impedimentId: string;
+  objectType: string;
+  /** 杠杆落点的**业务可读 id**（即 `SolutionCandidate.lever.objectId`）。 */
+  leverObjectId: string;
+  prop: string;
+  rungKind: CandidateRungKind;
+  /** 目标档位（即 `SolutionCandidate.toValue`，已按引擎口径 round 过的那个数）。 */
+  toValue: number;
+}): string {
+  return `cand_${parts.impedimentId}_${parts.objectType}.${parts.prop}_${parts.leverObjectId}_${parts.rungKind}_${parts.toValue}`;
+}
+
+/**
  * **SolutionCandidate**：一个阻滞点的一条解法 = 「把哪个对象的哪个属性，从多少拨到多少，各维 KPI 变成什么」。
  *
  * 它是**值对象**（求解器输出的一部分），不落表、无 migration、不进 R4 审批面 ——
@@ -1014,6 +1040,25 @@ export function firstDuplicateCandidatePair(cands: readonly SolutionCandidate[])
 }
 
 /**
+ * **「没有候选」的两种形态**（WO-SANDBOX-S3-ENUM · 不许塌成一个）。
+ *
+ * 这两件事今天在回包里长得一模一样（都是 `candidates: []` + 一段中文），
+ * 于是消费方**只能读散文**才分得清 —— 而散文读不了也拼不动，前端只能一律显示"暂无方案"。
+ * 两者的**修法完全相反**，混为一谈必然修错地方（同族戒律：铁律 0.5「三种不工作」）：
+ *
+ *  · `NONE`        枚举**跑完了**：join 走到了、档位取到了、逐候选真试算过了，结论就是没有有效解法。
+ *                  → 这是**真结论**，该修的是数据面（本体上这个落点确实没有可拨动的杠杆）。
+ *  · `UNAVAILABLE` 枚举**跑不完**：算力/输入不够（探针预算耗尽 / 判据与落点对象没回传 / 规则快照缺失），
+ *                  没能把候选算出来。→ 这是**缺答不是答**，该修的是算力与接线，
+ *                  **绝不许**被读成"这个阻滞点没救了"。
+ *
+ * 判据一句话：**「我算过了，没有」与「我没算出来」是两个不同的命题。**
+ */
+export const NO_CANDIDATE_KINDS = ["NONE", "UNAVAILABLE"] as const;
+export const NoCandidateKindSchema = z.enum(NO_CANDIDATE_KINDS);
+export type NoCandidateKind = z.infer<typeof NoCandidateKindSchema>;
+
+/**
  * **ChainImpediment**：全链扫描产出的阻滞点。
  *
  * **它是派生对象**（求解器算出来的，不落人工录入）→ 因此**不进 R4 Action 审批面**。
@@ -1064,9 +1109,15 @@ export const ChainImpedimentSchema = z
     /** 枚举跑了但产不出候选时的**诚实缺席**原因（缺哪根杠杆 / 缺哪类数据）。 */
     noCandidateReason: z.string().min(1).optional(),
     /**
+     * WO-SANDBOX-S3-ENUM · 空候选的**机器可读**定性（`NONE` 算过了真没有 / `UNAVAILABLE` 压根没算出来）。
+     * 与 `noCandidateReason` 一起必填 —— 原因是给人读的，本字段是给代码判的；
+     * 只有散文就等于「这两件事塌成了一件」（见 `NO_CANDIDATE_KINDS` 注释）。
+     */
+    noCandidateKind: NoCandidateKindSchema.optional(),
+    /**
      * WO-A6-CONTENTION · **跨业务线争用**（§3.1）。**optional，且只有承载业务线的 locus 才会有** ——
      * 字段缺省 ⇒ 这条阻滞点的业务线归属**判不出来**（不是"不属于任何业务线"）。
-     * 既有 15 条阻滞点一律不带此字段 ⇒ 逐字节不变（R6）。
+     * 既有阻滞点一律不带此字段 ⇒ 逐字节不变（R6）。
      */
     contention: ChainContentionSchema.optional(),
   })
@@ -1093,11 +1144,27 @@ export const ChainImpedimentSchema = z
         message: "candidates 为空数组时必须给 noCandidateReason（缺哪根杠杆/缺哪类数据）—— 空白比错答更容易被当成「没问题」",
       });
     }
+    if (im.candidates !== undefined && im.candidates.length === 0 && im.noCandidateKind === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["noCandidateKind"],
+        message:
+          'candidates 为空数组时必须给 noCandidateKind："NONE"（算过了真没有）还是 "UNAVAILABLE"（压根没算出来）。' +
+          "两者修法相反，只给一段中文原因 = 让消费方去读散文猜 —— 那就是「塌成一个」。",
+      });
+    }
     if (im.candidates !== undefined && im.candidates.length > 0 && im.noCandidateReason !== undefined) {
       ctx.addIssue({
         code: "custom",
         path: ["noCandidateReason"],
         message: `已有 ${im.candidates.length} 个候选，不得同时声明 noCandidateReason（自相矛盾）`,
+      });
+    }
+    if (im.candidates !== undefined && im.candidates.length > 0 && im.noCandidateKind !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["noCandidateKind"],
+        message: `已有 ${im.candidates.length} 个候选，不得同时声明 noCandidateKind（自相矛盾）`,
       });
     }
     for (const [i, cand] of (im.candidates ?? []).entries()) {

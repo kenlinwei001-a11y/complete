@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   deriveSliceFixture,
@@ -84,7 +84,20 @@ export default function SliceInspector({
   onChanged?: () => void;
 }) {
   const specQ = useQuery({ queryKey: ["a", "slice-spec", sliceKey], queryFn: () => fetchSliceSpec(sliceKey) });
-  const graphQ = useQuery({ queryKey: ["a", "slice-graph", sliceKey], queryFn: () => resolveSliceGraph(sliceKey, {}) });
+  /**
+   * WO-SLICE-DEFAULT-ARGS：内联子图**必须与十六层面板用同一组 root 实参**。
+   * 此前这里写死 `resolveSliceGraph(sliceKey, {})`（本文件旧 87 行）—— 与十六层面板同一个病：
+   * 首屏那 4 条多跳切片的 root selector 带 `{{args.so}}` / `{{args.key}}`，传 `{}` 恒不匹配。
+   * 若只修十六层不修这里，会出现「上面 12 层有数据、下面子图 0 节点」的自相矛盾。
+   * 实参由面板上报（它才知道后端给的真实候选值是什么），本组件不自己猜默认值。
+   */
+  const [rootArgs, setRootArgs] = useState<{ args: Record<string, unknown>; missingArgs: string[] }>({ args: {}, missingArgs: [] });
+  const onRootArgsChange = useCallback((s: { args: Record<string, unknown>; missingArgs: string[] }) => setRootArgs(s), []);
+  const rootArgsKey = JSON.stringify(rootArgs.args);
+  const graphQ = useQuery({
+    queryKey: ["a", "slice-graph", sliceKey, rootArgsKey],
+    queryFn: () => resolveSliceGraph(sliceKey, JSON.parse(rootArgsKey) as Record<string, unknown>),
+  });
 
   return (
     <div className="panel" data-testid={`slice-inspector-${sliceKey}`} style={{ margin: "6px 0 12px", display: "grid", gap: 12 }}>
@@ -92,9 +105,9 @@ export default function SliceInspector({
           是本面板的结论；子图与规格是它的展开。第一层只放层名+计数+状态，明细点开才看。 */}
       <div>
         <div className="section-title">{zhSliceLayers.title}</div>
-        <SliceLayersPanel sliceKey={sliceKey} />
+        <SliceLayersPanel sliceKey={sliceKey} onRootArgsChange={onRootArgsChange} />
       </div>
-      <InlineGraph sliceKey={sliceKey} q={graphQ} />
+      <InlineGraph sliceKey={sliceKey} q={graphQ} missingArgs={rootArgs.missingArgs} />
       {specQ.isLoading ? (
         <div className="empty-state">加载切片规格…</div>
       ) : specQ.error || !specQ.data ? (
@@ -115,7 +128,16 @@ export default function SliceInspector({
   );
 }
 
-function InlineGraph({ sliceKey, q }: { sliceKey: string; q: ReturnType<typeof useQuery<SliceGraph>> }) {
+function InlineGraph({
+  sliceKey,
+  q,
+  missingArgs,
+}: {
+  sliceKey: string;
+  q: ReturnType<typeof useQuery<SliceGraph>>;
+  /** 十六层面板判定「还缺这些 root 实参」——缺参数算不出来 ≠ 算了确实为空（本仓诚实位纪律）。 */
+  missingArgs: string[];
+}) {
   const dag = useMemo(() => (q.data ? buildDag(q.data) : null), [q.data]);
   return (
     <div>
@@ -123,10 +145,13 @@ function InlineGraph({ sliceKey, q }: { sliceKey: string; q: ReturnType<typeof u
       {q.isLoading ? (
         <div className="empty-state">解析子图…</div>
       ) : q.error ? (
-        <div className="badge red">子图解析失败</div>
+        // 「后端出错」是第三件事，不许塌进「空」。
+        <div className="badge red" data-testid={`slice-graph-error-${sliceKey}`}>子图解析失败</div>
       ) : !dag || dag.total === 0 ? (
         <div className="empty-state" data-testid={`slice-graph-empty-${sliceKey}`}>
-          空子图（root selector / 试切参数无匹配对象）
+          {missingArgs.length > 0
+            ? `需要 root 实参：${missingArgs.join("、")} —— 未给出前算不出子图（不是「查了确实为空」）。请在上方十六层结构里选一个真实值。`
+            : "空子图（root selector 已带全参数，但确实无匹配对象）"}
         </div>
       ) : (
         <>

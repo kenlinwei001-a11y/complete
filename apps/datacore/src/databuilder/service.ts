@@ -31,6 +31,7 @@ import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, deriveSliceHops, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { findUnknownScopeTypes } from "../rule-scope.js";
 import { detectFkCandidates, deriveModelingSuggestion } from "../modeling.js"; // WO-DB-MODELING-WIRE：数据先行 A3 复用
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
@@ -38,8 +39,11 @@ import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
+import { checkProvisionalHonesty } from "./provisional-honesty.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
-import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
+import { BuildWorkflowEngine, RetryableStepError, APPROVAL_KEY, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
+import { resolvePipelineSteps, type StepRegistry } from "./pipeline-defs.js";
+import { BuildPipelineService } from "./pipeline-service.js";
 import { analyzeGap, summarizeGap } from "./provisioners.js";
 import { fdeGraphForRun, projectFdeNodes, summarizeFdeNodes } from "./fde-graph.js";
 import { buildScaffoldManifestRecord } from "./scaffold-manifest.js";
@@ -49,6 +53,35 @@ const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 /** A18 §3.7：模块同步矩阵求解器注册存在性核验集（注册求解器 + 工作流求解器 sop_balance，与 closure CHAIN 口径一致）。 */
 const REGISTERED_SOLVERS: ReadonlySet<string> = new Set<string>([...SOLVER_KEYS, "sop_balance"]);
+
+/**
+ * A18 诚实红线闸的**生产接线点**（欠账 #134 · 门 `redline-wired:check` 判据 W1）。
+ *
+ * ⛔ 病史：`checkProvisionalHonesty`（`./provisional-honesty.ts:12`）是守 R13「未审核态绝不谎报」的
+ * 红线闸，本体 §7 把它登记成一道门；2026-08-10 实测其调用方集合是 **test 5 处 · 生产 0 处**。
+ * ⇒ 测试证明的是「这个函数能识别谎报」，**不是**「系统不会谎报」——咬的是**函数**不是**链路**
+ * （假绿第 9 形态）。今天没有任何东西阻止一次 PROVISIONAL 构建被标成 VERIFIED/answerable。
+ *
+ * **fail-closed**：违规即拒绝落库。理由——这是红线不是告警；而且按现有构造它**打不响**
+ * （`buildMode=PROVISIONAL` ⇒ 本文件强制 `domainTrustLevel=UNVERIFIED`、`verifyBuild` 强制
+ * `PROVISIONAL_ANSWER`、`closure.ts` 强制 ADVISORY + `blocked=false`），
+ * 所以它只在**将来有人把这些不变量改坏时**才响 —— 那正是闸该响的时候。
+ *
+ * ⚠ **A18.4 晋升例外**：`promoteDomain` 后 `buildMode` 仍是 `PROVISIONAL` 而 `domainTrustLevel`
+ * 翻成 `GOVERNED`，此时纯函数的规则 ① `TRUST_LABEL` 会误判 —— 因为它只看 `buildMode`，
+ * 看不见「已人工审批」这层语义。已晋升的域**不再处于未审核态**，故在调用点跳过。
+ * 这是**调用点的语义补齐**，不是改红线本身；纯函数的规则 ① 要不要改成认 `domainPromotion`，
+ * 留给审核方裁定（见交付说明）。
+ */
+function assertProvisionalHonesty(run: StoryBuildRun, where: string): void {
+  if (run.domainPromotion !== undefined) return; // A18.4 已人工晋升 ⇒ 不再是「未审核态」
+  const violations = checkProvisionalHonesty(run);
+  if (violations.length === 0) return;
+  throw invalidState(
+    `A18 诚实红线拦截（${where}）：PROVISIONAL 未审核域不得谎报 —— ` +
+      violations.map((v) => `[${v.rule}] ${v.detail}`).join("；"),
+  );
+}
 
 /**
  * A7 Foundry-Grade Data Builder — agent 驱动的 data pipeline 发动机。
@@ -96,7 +129,15 @@ export class DataBuilderService {
         /* 无绑定/无 key/解析失败 → 落地板 */
       }
     }
-    return comprehendScript(script, seed);
+    // 地板路同样要带诚实位。刻意**不写死 `unresolvedRuleScopes: []`** —— 那就成了装饰品：
+    // 哪天地板模板的 scope 写错，写死的空数组会照样报「干净」。这里跑的是与 LLM 路**同一份实现**。
+    const floor = comprehendScript(script, seed);
+    return {
+      ...floor,
+      diagnostics: {
+        unresolvedRuleScopes: findUnknownScopeTypes(floor.rules, floor.objectTypes.map((t) => t.typeKey)),
+      },
+    };
   }
 
   /**
@@ -284,6 +325,16 @@ export class DataBuilderService {
     });
   }
 
+  /**
+   * 数据构建 Pipeline 服务（可配置执行流的单一读取点）：懒构造，复用 repos + outbox。
+   * 建域/接入/导入三条链路都经它拿「当前生效的定义」——租户覆盖优先，否则出厂默认。
+   */
+  private pipelineInstance?: BuildPipelineService;
+  get pipelines(): BuildPipelineService {
+    if (!this.pipelineInstance) this.pipelineInstance = new BuildPipelineService(this.repos, this.outbox);
+    return this.pipelineInstance;
+  }
+
   /** 工业级工作流引擎（持久化步骤状态机）：懒构造，复用 repos + outbox。 */
   private engineInstance?: BuildWorkflowEngine;
   private engine(): BuildWorkflowEngine {
@@ -353,15 +404,18 @@ export class DataBuilderService {
    * → publish_build（A⊕B 闭合才真建 publish + 落切片，否则跳过=拒发布数据不落库）→ validation → inference
    * → record（装配 StoryBuildRun 落库 + 发事件）。每步落库检查点 → 崩溃可从未完成步 resume。
    * 控制流（aOk/bOk/built 经 context 标志的跳过条件）忠实复现原 executeStoryBuild 的 HARD 门语义。
+   *
+   * **WO-DATABUILDER-PIPELINE**：本方法只提供**步骤实现**（stepKey → 闭包）；
+   * 「跑哪些、什么顺序、失败怎么办、人要不要介入」改由持久化的 BuildPipeline 定义决定
+   * （见 buildStorySteps / pipeline-defs.ts）。不配置任何 pipeline 时用出厂默认 = 行为逐字节不变。
    */
-  private buildStorySteps(ctx: AuthCtx, id: string, body: BuildRunBody, inference: boolean): WorkflowStepDef[] {
+  private storyStepRegistry(ctx: AuthCtx, id: string, body: BuildRunBody, inference: boolean): StepRegistry {
     const getPlan = async (c: StepContext): Promise<BuildPlan | undefined> =>
       c["planId"] ? this.repos.buildPlans.get(ctx.tenantId, String(c["planId"])) : undefined;
     // A18：PROVISIONAL 未审核态——闭包降 ADVISORY 不阻断，建域跑完出 PROVISIONAL_ANSWER，但**不写 GOVERNED 真值**（守 R4）。
     const provisional = (body.buildMode ?? "STRICT") === "PROVISIONAL";
-    return [
-      {
-        stepKey: "dry_build",
+    return {
+      dry_build: {
         title: "试建：出 BuildPlan + A 三向闭包（不发布）",
         run: async () => {
           const dry = await this.run(ctx, { ...body, dryRun: true });
@@ -373,10 +427,9 @@ export class DataBuilderService {
           };
         },
       },
-      {
-        stepKey: "cross_scaffold",
+      cross_scaffold: {
         title: "跨系统下发：A 闭包通过则向 AgentCore 下发 B 栈 scaffold",
-        maxAttempts: 3, // 跨系统 HTTP：瞬时失败有界重试
+        // maxAttempts（3）移至 pipeline 节点 SOP（出厂默认保持 3）；此处只留"哪类错算瞬时"的分类。
         isRetryable: (e) => e instanceof RetryableStepError,
         run: async (c) => {
           if (!c["aOk"]) return { skip: true, detail: "A 闭包未过 → 不下发（拒发布）" };
@@ -396,8 +449,7 @@ export class DataBuilderService {
           return { detail: `bOk=${bOk}${manifest?.pendingBstack ? " · 单机可见(待B对账)" : ""}`, patch: { scaffoldReceipt: receipt, bOk, scaffoldManifest: manifest }, checkpoint: manifest ? { scaffoldManifest: manifest } : undefined };
         },
       },
-      {
-        stepKey: "gap_analysis",
+      gap_analysis: {
         title: "比对现状：倒推 BuildPlan vs 系统现状（跨模块统一 diff）",
         run: async (c) => {
           const plan = await getPlan(c);
@@ -406,8 +458,7 @@ export class DataBuilderService {
           return { detail: summarizeGap(gap), patch: { gapAnalysis: gap }, checkpoint: { gapAnalysis: gap } };
         },
       },
-      {
-        stepKey: "publish_build",
+      publish_build: {
         title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片",
         run: async (c) => {
           if (!(c["aOk"] && c["bOk"])) return { skip: true, detail: "全链未闭合 → 拒发布（数据不落库）" };
@@ -442,8 +493,7 @@ export class DataBuilderService {
           };
         },
       },
-      {
-        stepKey: "validation",
+      validation: {
         title: "推演验证痕迹：结论依据反向核对知识图谱",
         run: async (c) => {
           if (!c["built"]) return { skip: true };
@@ -452,8 +502,7 @@ export class DataBuilderService {
           return { detail: validationTrace ? `verdict=${validationTrace.consistency.verdict}` : "无求解器→跳过", patch: { validationTrace } };
         },
       },
-      {
-        stepKey: "inference",
+      inference: {
         title: "一键推演：故事主问句经 QOS/求解器跑出答案",
         run: async (c) => {
           if (!(inference && c["built"])) return { skip: true };
@@ -462,8 +511,7 @@ export class DataBuilderService {
           return { detail: inf.evidence ?? "无", patch: { answer: inf.answer, inferenceEvidence: inf.evidence } };
         },
       },
-      {
-        stepKey: "record",
+      record: {
         title: "记账：装配 StoryBuildRun 落库 + 发 storybuild.run_recorded",
         run: async (c) => {
           const plan = await getPlan(c);
@@ -500,6 +548,9 @@ export class DataBuilderService {
             status,
             createdAt: nowIso(),
           };
+          // A18 红线闸接线点 ①：PROVISIONAL 域**诞生**的那一次落库（buildMode / domainTrustLevel /
+          // closureReport 都在这里首次写定）。谎报若要发生，最早就发生在这里。
+          assertProvisionalHonesty(run, "record 步落库");
           await this.repos.storyBuildRuns.put(run);
           await this.outbox?.emit(ctx.tenantId, "storybuild.run_recorded", {
             runId: run.id,
@@ -517,7 +568,16 @@ export class DataBuilderService {
           return { detail: `status=${status}`, patch: { storyRunId: id } };
         },
       },
-    ];
+    };
+  }
+
+  /**
+   * **写死 → 可配置的接缝**：故事建域的可执行步骤序列 = 持久化的 BuildPipeline 定义 × 步骤实现注册表。
+   * 序列 / 是否执行 / 重试次数 / 失败策略 / 人工介入**全部从数据里读出来**（租户覆盖优先，否则出厂默认）。
+   */
+  private async buildStorySteps(ctx: AuthCtx, id: string, body: BuildRunBody, inference: boolean): Promise<WorkflowStepDef[]> {
+    const pipeline = await this.pipelines.resolve(ctx, "story_build");
+    return resolvePipelineSteps(pipeline, this.storyStepRegistry(ctx, id, body, inference));
   }
 
   /**
@@ -531,7 +591,7 @@ export class DataBuilderService {
     const id = newId("sbr"); // StoryBuildRun 与工作流共用故事 runId（record 步落 sbr_）
     const wfId = newId("bwf");
     const scriptHash = sha256(body.script.trim());
-    const steps = this.buildStorySteps(ctx, id, body, inference);
+    const steps = await this.buildStorySteps(ctx, id, body, inference);
     const wf = await this.engine().start(
       { id: wfId, tenantId: ctx.tenantId, script: body.script.trim(), scriptHash, seed: body.seed ?? 42, inference },
       steps,
@@ -564,13 +624,28 @@ export class DataBuilderService {
     const existing = await this.repos.buildWorkflowRuns.get(ctx.tenantId, wfId);
     if (!existing) throw notFound("build workflow run");
     const storyId = existing.storyRunId ?? String(existing.context["storyRunId"] ?? newId("sbr"));
-    const steps = this.buildStorySteps(ctx, storyId, { script: existing.script, seed: existing.seed, builderKey: DEFAULT_BUILDER_KEY }, existing.inference);
+    const steps = await this.buildStorySteps(ctx, storyId, { script: existing.script, seed: existing.seed, builderKey: DEFAULT_BUILDER_KEY }, existing.inference);
     const wf = await this.engine().resume(ctx.tenantId, wfId, steps, { onAdvance: this.fdeOnAdvance(ctx), onComplete: this.buildOnComplete(ctx) });
     if (wf.context["storyRunId"] && !wf.storyRunId) {
       wf.storyRunId = String(wf.context["storyRunId"]);
       await this.repos.buildWorkflowRuns.put(wf);
     }
     return wf;
+  }
+
+  /**
+   * 节点 SOP「人要不要介入」的放行动作：把 stepKey 记进 run.context 的放行名单 → resume 续跑。
+   * 只有配了 requiresHumanApproval 的节点会把 run 停在 PAUSED；放行后该节点不再拦。
+   */
+  async approveWorkflowStep(ctx: AuthCtx, wfId: string, stepKey: string): Promise<BuildWorkflowRun> {
+    const run = await this.repos.buildWorkflowRuns.get(ctx.tenantId, wfId);
+    if (!run) throw notFound("build workflow run");
+    const approved = new Set<string>(Array.isArray(run.context[APPROVAL_KEY]) ? (run.context[APPROVAL_KEY] as string[]) : []);
+    approved.add(stepKey);
+    run.context = { ...run.context, [APPROVAL_KEY]: [...approved] };
+    await this.repos.buildWorkflowRuns.put(run);
+    await this.outbox?.emit(ctx.tenantId, "buildworkflow.step_approved", { runId: wfId, stepKey });
+    return this.resumeStoryWorkflow(ctx, wfId);
   }
 
   async listWorkflowRuns(ctx: AuthCtx): Promise<BuildWorkflowRun[]> {
@@ -772,6 +847,9 @@ export class DataBuilderService {
     );
     // 仅写 verification + 回灌节点；run.answer/inferenceEvidence 归 inference 步所有（A10 不越界覆盖）。
     const updated: StoryBuildRun = { ...run, verification, nodes };
+    // A18 红线闸接线点 ②：验证终态回写（`verification.status` / `answerable` 在这里写定）——
+    // 「未审核域跑出的答案被标成 VERIFIED / answerable=true」这条谎报**只能**从这里出去。
+    assertProvisionalHonesty(updated, "verifyBuild 回写验证终态");
     await this.repos.storyBuildRuns.put(updated);
     await this.outbox?.emit(ctx.tenantId, "build.verified", {
       runId: run.id,
@@ -1000,7 +1078,7 @@ export class DataBuilderService {
     const seed = typeof seedRaw === "number" ? seedRaw : typeof seedRaw === "string" && seedRaw.trim() !== "" ? Number(seedRaw) : 42;
 
     // 经同一组持久化工作流步骤续跑（record 步以同一 id 覆盖该记录）；保留 inputManifest/createdAt。
-    const steps = this.buildStorySteps(ctx, run.id, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY }, false);
+    const steps = await this.buildStorySteps(ctx, run.id, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY }, false);
     await this.engine().start(
       { id: newId("bwf"), tenantId: ctx.tenantId, script: run.script, scriptHash: sha256(run.script), seed, inference: false },
       steps,
@@ -1077,7 +1155,16 @@ export class DataBuilderService {
           }
         }
         if (cfg.determinism.freezePlan) await this.repos.buildPlans.put(plan);
-        setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器`);
+        // WO-RULE-SCOPE-DROP：作用域解析不了的规则**必须出现在 comprehend 阶段的说明里**。
+        // 改前这些规则在 assemblePlanBody 里被静默删掉，阶段说明照样写「拆解 N 规则」——
+        // 那个 N 是删完之后的数，看的人根本不知道少了东西。现在少一条就明说少在哪、为什么。
+        const unresolved = body0.diagnostics.unresolvedRuleScopes;
+        const scopeNote =
+          unresolved.length === 0
+            ? ""
+            : ` · ⚠ ${unresolved.length} 条规则作用域未解析：` +
+              unresolved.map((f) => `${f.ruleKey}→${f.unknownTypeKey}(${f.reason})`).join("、");
+        setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器${scopeNote}`);
       }
       job.planId = planId;
 

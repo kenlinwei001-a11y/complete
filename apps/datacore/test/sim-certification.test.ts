@@ -21,7 +21,9 @@ const goodClosure = (): ClosureReport => ({
   buildMode: "STRICT", advisoryCount: 0, blocked: false,
 });
 const cleanGaps = (): GapReport => ({ question: "", taskId: "t", verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: "2026-01-01T00:00:00Z" });
-const passTrial = (): TrialTickInput => ({ passed: true, rulesFired: 4, at: "2026-01-01T00:00:00Z", error: null });
+// 生产实参口径（铁律 0.5 ⑥）：认证路**真跑传导相**，故 covered 恒 true；此处 declared/fired 取 0/0
+// 表示"这个租户本来就没有传导规则"（非病样）——病样与未覆盖两支各有专门用例，见文件末。
+const passTrial = (): TrialTickInput => ({ passed: true, derivationNodes: 4, propagationRulesFired: 0, propagationRulesDeclared: 0, propagationCovered: true, at: "2026-01-01T00:00:00Z", error: null });
 
 const fullScope = (kind: "GLOBAL" | "LOCAL" = "GLOBAL", target: string | null = null): CertScope & { computedAt: string } => ({
   kind, targetRef: target, computedAt: "2026-01-01T00:00:00Z",
@@ -35,7 +37,7 @@ const fullScope = (kind: "GLOBAL" | "LOCAL" = "GLOBAL", target: string | null = 
   actions: [{ key: "adopt_mitigation", targetTypeKey: "Order" }],
   slices: [{ key: "order_factory" }],
   propagationRules: [],
-  needed: { stateVars: 1, derivationRules: 1, actions: 1, propagationRules: 0 },
+  needed: { derivationRules: 1, actions: 1, propagationRules: 0 },
 });
 
 describe("增量2 · deriveCertification 纯投影", () => {
@@ -73,7 +75,7 @@ describe("增量2 · deriveCertification 纯投影", () => {
   });
 
   it("trial FAIL（派生有环）→ 不进 L3，canEnterSimulation=false，gaps 含 TRIAL_TICK_FAILED ∧ FANOUT_UNSAFE", () => {
-    const trial: TrialTickInput = { passed: false, rulesFired: 0, at: "t", error: "CYCLIC_DERIVATION: a → b → a" };
+    const trial: TrialTickInput = { passed: false, derivationNodes: 0, propagationRulesFired: 0, propagationRulesDeclared: 0, propagationCovered: false, at: "t", error: "CYCLIC_DERIVATION: a → b → a" };
     const cert = deriveCertification(goodClosure(), cleanGaps(), trial, fullScope(), DEFAULT_CERT_CONFIG);
     expect(cert.level).toBe("L2_RUNNABLE"); // L2 达成但 L3 需 trial.passed
     expect(cert.canEnterSimulation).toBe(false);
@@ -86,7 +88,7 @@ describe("增量2 · deriveCertification 纯投影", () => {
     const scope = fullScope();
     // 同一 sourceStateVar 派生出 9 条边 > maxFanout(8)。
     scope.derivations = Array.from({ length: 9 }, (_, i) => ({ typeKey: "Order", propKey: `d${i}`, sourceVars: ["Order.qty"], present: true }));
-    scope.needed.derivationRules = 9; scope.needed.stateVars = 9;
+    scope.needed.derivationRules = 9;
     const cert = deriveCertification(goodClosure(), cleanGaps(), passTrial(), scope, DEFAULT_CERT_CONFIG);
     expect(cert.l4Checks.fanoutSafe).toBe(false);
     expect(cert.level).toBe("L3_VERIFIED"); // L3 但非 L4
@@ -110,7 +112,7 @@ describe("增量2 · deriveCertification 纯投影", () => {
     // LOCAL 只看 Factory（知识 2/3=67）。
     const local = fullScope("LOCAL", "Factory");
     local.objectTypes = [{ typeKey: "Factory", bound: true, fieldCount: 3, consumedFieldCount: 2, sliceCovered: true, behaviorReady: true }];
-    local.derivations = []; local.needed = { stateVars: 0, derivationRules: 0, actions: 1, propagationRules: 0 };
+    local.derivations = []; local.needed = { derivationRules: 0, actions: 1, propagationRules: 0 };
     const localCert = deriveCertification(goodClosure(), cleanGaps(), passTrial(), local, DEFAULT_CERT_CONFIG);
     expect(localCert.scope).toBe("LOCAL");
     expect(localCert.targetRef).toBe("Factory");
@@ -159,7 +161,10 @@ describe("增量2 · 就绪认证端点（R3 暗发 · 复用既有 closure 取�
     expect(cert.scope).toBe("GLOBAL");
     expect(cert.dims).toHaveProperty("composite");
     expect(cert.l4Checks).toHaveProperty("fanoutSafe");
-    expect(cert.trialTick).toHaveProperty("rulesFired");
+    expect(cert.trialTick).toHaveProperty("derivationNodes");
+    expect(cert.trialTick).toHaveProperty("propagationCovered");
+    expect(cert.trialTick).toHaveProperty("propagationRulesFired");
+    expect(cert.trialTick).toHaveProperty("propagationRulesDeclared");
     expect(cert.worldCompleteness).toHaveProperty("pct");
     expect(Array.isArray(cert.gaps)).toBe(true);
     expect(typeof cert.canEnterSimulation).toBe("boolean");

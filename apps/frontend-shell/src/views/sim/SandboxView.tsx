@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PerturbationKind, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
@@ -16,6 +16,8 @@ import {
   type SimCompareSeries,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
@@ -25,7 +27,39 @@ import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
+import consoleStyles from "./SandboxConsole.module.css";
+import {
+  describeSandboxScope,
+  EMPTY_SANDBOX_SCOPE,
+  SANDBOX_MODES,
+  SANDBOX_MODE_LABEL,
+  SANDBOX_MODE_QUESTION,
+  type SandboxMode,
+  type SandboxScope,
+} from "./sandboxModes";
+import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
+import { EnterpriseStateTwinPanel } from "./EnterpriseStateTwinPanel"; // WO-BEFE-WIRE-3 · 快照分叉(fork)与比对(diff)——同样，本文件的 rail 是它唯一的生产调用方
 import styles from "./SimViews.module.css";
+
+/**
+ * WO-SANDBOX-IA-CONSOLIDATE · 四个被收编的推演页（模式切换的后四格）。
+ *
+ * `lazy` 不是可选项：不 lazy 就等于把四整页的 JS 一起打进沙盘首屏 ——
+ * 用户十次里有九次只看「现状」，却每次都为另外四页的代码付加载成本。
+ * 与 `App.tsx` 里那四条专用 route 的 `lazy` 是**同一个模块**，
+ * 故深链接进来与在沙盘里切过去，加载的是同一份 chunk（不会打两份）。
+ */
+const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
+const WhatIfView = lazy(() => import("@/views/WhatIfView"));
+const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
+const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
+
+/**
+ * 治理横幅上**先显几条**缺件。纯呈现常数（不是业务阈值 —— 它不参与任何判定，
+ * 改成 2 或 5 都不会让任何结论变），且截断量当面写出来（「另有 N 条」+ 进抽屉看全），
+ * 所以它不可能变成一条"看起来只有这么多"的谎。
+ */
+const BANNER_GAP_PREVIEW = 3;
 
 /**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
@@ -241,6 +275,65 @@ function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; cu
   );
 }
 
+/**
+ * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**：为什么现在不能推演。
+ *
+ * ── 为什么只留这一条 ──────────────────────────────────────────────────────────
+ * 就绪认证整块（L0–L4 stepper、三维准备度、世界完整度 gauge、entering 清单、缺件清单）
+ * 是**建模者**的工作台，收进诊断抽屉。但其中有**一位**信息是决策者必须当面看到的：
+ * 「这个沙盘还没通过就绪认证，所以你现在看到的结论只是试跑」。
+ * 那句话不该藏在抽屉里 —— 藏起来就等于默认让人把未认证的结论当认证结论用。
+ *
+ * ── 三条硬判据 ────────────────────────────────────────────────────────────────
+ * ① `canEnterSimulation === true` ⇒ **返回 null**（不渲染，不占像素）。「一切正常」不需要横幅。
+ * ② `cert` 还没取到（认证 entitlement 关 / 请求未回）⇒ 也返回 null。
+ *    **不知道**不等于**不能推演**，拿一条警告去填未知就是在编造治理结论。
+ * ③ 显示的每一条 gap 都是 `cert.gaps[]` 的原文（gapCode / ref / detail 逐字透传），
+ *    截断了必须写明还剩几条，并给一条进抽屉看全的路。
+ */
+function SimGovernanceBanner({
+  cert,
+  onOpenDiagnostics,
+}: {
+  cert: SimCertification | null;
+  onOpenDiagnostics: () => void;
+}) {
+  // ②：cert 未取到时不出横幅（未知 ≠ 不可推演）。
+  if (cert === null) return null;
+  // ①：已认证 ⇒ 整条不渲染。
+  if (cert.canEnterSimulation) return null;
+  const shown = cert.gaps.slice(0, BANNER_GAP_PREVIEW);
+  const rest = cert.gaps.length - shown.length;
+  return (
+    <div className={consoleStyles.banner} data-testid="sandbox-gov-banner" role="status">
+      <span className={consoleStyles.bannerTitle} data-testid="sandbox-gov-banner-title">
+        ◐ {zh.sim.sandbox.banner.title}
+      </span>
+      {shown.length > 0 ? (
+        <span className={consoleStyles.bannerGaps} data-testid="sandbox-gov-banner-gaps">
+          {zh.sim.sandbox.banner.why}
+          {shown.map((g, i) => (
+            <span key={`${g.gapCode}-${i}`} data-testid={`sandbox-gov-banner-gap-${i}`}>
+              {i > 0 ? "；" : ""}
+              <code>{g.gapCode}</code> · {g.ref} — {g.detail}
+            </span>
+          ))}
+          {rest > 0 ? <span data-testid="sandbox-gov-banner-more">（{zh.sim.sandbox.banner.more(rest)}）</span> : null}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="btn sm ghost"
+        data-testid="sandbox-gov-banner-cta"
+        aria-label={zh.sim.sandbox.banner.ctaAria}
+        onClick={onOpenDiagnostics}
+      >
+        {zh.sim.sandbox.banner.cta}
+      </button>
+    </div>
+  );
+}
+
 export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
@@ -254,6 +347,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [world, setWorld] = useState<TickState>({});
   const [curTick, setCurTick] = useState(0);
+
+  /**
+   * ══ WO-SANDBOX-IA-CONSOLIDATE · 一屏五模式 + 跨模式上下文 ══════════════════════
+   *
+   * `mode`：当前呈现哪一屏（决策链序见 `sandboxModes.ts`）。默认「现状」= 沙盘控制台本身。
+   * **硬约束**：任何时刻只渲染一个模式的内容 —— 切模式 = 换一整屏，判据是另一屏
+   * **不在 DOM 里**（`hidden`/`display:none` 一律不算：那只是让人看不见，DOM 还在、请求照发）。
+   *
+   * `scope`：跨模式活着的上下文。它必须在**这一层**（壳）而不是各模式内部 ——
+   * 因为切模式时那些组件整个不渲染，state 随之蒸发。不带上下文的合并只是把五页塞进一个 tab 条。
+   */
+  const [mode, setMode] = useState<SandboxMode>("now");
+  const [scope, setScope] = useState<SandboxScope>(EMPTY_SANDBOX_SCOPE);
 
   /**
    * ══ WO-L4B（欠账 #145）· `sim.*` 事件的**真消费方**就是下面这两条 useQuery ══
@@ -637,141 +743,32 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
 
-  // ── 右栏可折叠区：扰动入口 / 就绪认证 / 多场景对比 / AI 指挥台，一个都不许掉 ─────────
-  const rail: SandboxConsoleRailSection[] = [
-    {
-      /**
-       * WO-SIM-ACT-CLOSE（#150）· **扰动入口** —— 沙盘上唯一"让事情发生"的动作。
-       * 落点候选全部来自 view-config（本体派生），本段零行业实体名（R14）。
-       */
-      id: "perturbation",
-      title: "施加扰动",
-      defaultOpen: true,
-      node: (
-        <div data-testid="sandbox-perturbation">
-          {!canPerturb ? (
-            <div className={styles.sub} data-testid="sandbox-perturbation-unavailable">
-              本体暂无已物化对象（或无状态变量）⇒ 扰动无处落点。先在建模页发布对象并物化，再回来推演。
-              （不提供一个点了没反应的按钮：扰动写到不存在的对象上，屏上会变、下游不动 = 静默错答。）
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 6, alignItems: "center", marginBottom: 8 }}>
-                <span className={styles.sub}>类型</span>
-                <select
-                  data-testid="sandbox-perturbation-kind"
-                  aria-label="扰动类型"
-                  value={pKind}
-                  onChange={(e) => setPKind(e.target.value as PerturbationKind)}
-                >
-                  {PERTURBATION_KINDS.map((k) => (
-                    <option key={k.key} value={k.key}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-
-                <span className={styles.sub}>落点对象</span>
-                <select
-                  data-testid="sandbox-perturbation-object"
-                  aria-label="扰动落点对象"
-                  value={effPObject}
-                  onChange={(e) => setPObject(e.target.value)}
-                >
-                  {perturbTargets.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.typeKey} · {t.id}
-                    </option>
-                  ))}
-                </select>
-
-                <span className={styles.sub}>状态变量</span>
-                <select
-                  data-testid="sandbox-perturbation-statevar"
-                  aria-label="扰动状态变量"
-                  value={effPStateVar}
-                  onChange={(e) => setPStateVar(e.target.value)}
-                >
-                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-
-                <span className={styles.sub}>方式 / 幅度</span>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <select
-                    data-testid="sandbox-perturbation-mode"
-                    aria-label="扰动方式"
-                    value={pMode}
-                    onChange={(e) => setPMode(e.target.value as "set" | "delta" | "scale")}
-                  >
-                    {/* 三种方式来自契约 PerturbationSchema.mode —— 「涨价 15%」是 scale、「加 200 台」是 delta、
-                        「停机」是 set 0。只给 set 会逼前端自己算差值 = 第二套真相源。 */}
-                    <option value="delta">增减（delta）</option>
-                    <option value="scale">乘以（scale）</option>
-                    <option value="set">设为（set）</option>
-                  </select>
-                  <input
-                    data-testid="sandbox-perturbation-magnitude"
-                    aria-label="扰动幅度"
-                    style={{ width: 72 }}
-                    value={pMagnitude}
-                    onChange={(e) => setPMagnitude(e.target.value)}
-                  />
-                </div>
-
-                <span className={styles.sub}>持续 tick</span>
-                <input
-                  data-testid="sandbox-perturbation-duration"
-                  aria-label="扰动持续 tick 数（留空为永久）"
-                  placeholder="留空 = 永久"
-                  style={{ width: 110 }}
-                  value={pDuration}
-                  onChange={(e) => setPDuration(e.target.value)}
-                />
-              </div>
-
-              <button
-                className="btn sm primary"
-                data-testid="sandbox-perturbation-apply-btn"
-                disabled={!sessionId || perturbing}
-                onClick={() => void onApplyPerturbation()}
-              >
-                {perturbing ? "施加中…" : "施加扰动"}
-              </button>
-
-              <div className={styles.sub} style={{ marginTop: 6, lineHeight: 1.6 }} data-testid="sandbox-perturbation-note">
-                扰动作用在<b>当前 tick</b>（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游，
-                填了持续 tick 数的到期还会自动回退。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
-              </div>
-
-              {lastPerturbation && (
-                <div
-                  className={styles.sub}
-                  data-testid="sandbox-perturbation-last"
-                  style={{ marginTop: 6, lineHeight: 1.6 }}
-                >
-                  最近一次：<b className="mono" data-testid="sandbox-perturbation-last-id">{lastPerturbation.id}</b>
-                  <br />
-                  {lastPerturbation.label}
-                  <br />
-                  全局态{" "}
-                  <b data-testid="sandbox-perturbation-last-delta">
-                    {lastPerturbation.kpiBefore.toFixed(1)} → {lastPerturbation.kpiAfter.toFixed(1)}
-                  </b>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      ),
-    },
+  /**
+   * WO-SANDBOX-DECLUTTER · **诊断抽屉**（建模者 / 调试者那两档）。
+   *
+   * 病灶（仓主亲眼所见）：「就绪认证」L0–L4 + 世界完整度 gauge + 「将进入沙盘的状态变量（13）」
+   * 13 条全展开 + 「世界列表」7 个世界各带一个按钮 —— 全部常驻右栏，把决策者要看的
+   * 卡点/堵点/断点挤到看不见，右栏本身也塞爆。
+   *
+   * 这些内容**一条都没删**（它们是真功能、也是诚实位），只是从"常驻右栏"改成
+   * "默认折叠的诊断抽屉"。抽屉入口带**真计数**（`issues`）：就绪认证报 `cert.gaps.length`
+   * ——也就是「还差哪几件才算就绪」的真条数，不是装饰徽标。
+   *
+   * ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**主动裁决**（不是自动合并的结果）──────
+   * declutter 分叉时 canonical 还没有 `perturbation`（扰动入口，WO-SIM-ACT-CLOSE #150），
+   * 所以它的两个数组里都没这一节。若照 declutter 一侧原样取，**扰动入口会被静默删掉**。
+   * 裁决：`perturbation` **不进本抽屉，进第一层 `rail`** —— 它是「沙盘上唯一让事情发生的
+   * 动作」，属于决策者的操作项，不属于建模者/调试者的诊断信息。
+   * 于是 rail = [扰动, 多场景对比, AI 指挥台]（保持 canonical 的相对次序），
+   * diagnostics = [就绪认证, 世界列表, 本体派生]。canonical 那句「一个都不许掉」全部兑现。
+   */
+  const diagnostics: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**右栏区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
     {
       id: "readiness",
       title: "就绪认证",
       defaultOpen: true,
+      // 缺件清单的真条数 = 这一格真正的待办数（cert 未取到时不报数，不拿 0 冒充"没问题"）。
+      issues: cert?.gaps.length ?? 0,
       node: (
         <div data-testid="sandbox-readiness">
           {/* WO-SIM-SCOPE-LOCAL：局部范围的目标对象类型选择器（候选来自本体派生 cfg.nodeTypes·R14 零行业实体名）。
@@ -944,6 +941,157 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       ),
     },
     {
+      /**
+       * WO-SANDBOX-DECLUTTER · 本体派生计数（旧顶栏 `sandbox-config-summary`）。
+       * 「3 类对象 · 1 类链路 · 2 状态变量 · 1 传导规则」是**调试者**的读数：
+       * 它回答「这一屏的骨架从哪来」，不回答「今天该动哪个决策」。搬进抽屉，字一个没改。
+       */
+      id: "derived",
+      title: "本体派生",
+      node: (
+        <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
+          本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
+          {cfg.propagationCount} 传导规则
+        </span>
+      ),
+    },
+  ];
+
+  // ── 右栏可折叠区：决策者用得上的两样（多场景对比 / AI 指挥台）─────────────────
+  const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**右栏区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
+    // WO-SIM-ACT-CLOSE(#150) × WO-SANDBOX-DECLUTTER 合流：扰动入口留在**主右栏**，
+    // 不进诊断抽屉 —— 它是「让事情发生」的动作（decision-maker 用），不是诊断读数；
+    // 塞进默认折叠的抽屉等于把沙盘上唯一的动作按钮藏起来，那是把两条 WO 合坏了。
+    {
+      /**
+       * WO-SIM-ACT-CLOSE（#150）· **扰动入口** —— 沙盘上唯一"让事情发生"的动作。
+       * 落点候选全部来自 view-config（本体派生），本段零行业实体名（R14）。
+       */
+      id: "perturbation",
+      title: "施加扰动",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-perturbation">
+          {!canPerturb ? (
+            <div className={styles.sub} data-testid="sandbox-perturbation-unavailable">
+              本体暂无已物化对象（或无状态变量）⇒ 扰动无处落点。先在建模页发布对象并物化，再回来推演。
+              （不提供一个点了没反应的按钮：扰动写到不存在的对象上，屏上会变、下游不动 = 静默错答。）
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                <span className={styles.sub}>类型</span>
+                <select
+                  data-testid="sandbox-perturbation-kind"
+                  aria-label="扰动类型"
+                  value={pKind}
+                  onChange={(e) => setPKind(e.target.value as PerturbationKind)}
+                >
+                  {PERTURBATION_KINDS.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>落点对象</span>
+                <select
+                  data-testid="sandbox-perturbation-object"
+                  aria-label="扰动落点对象"
+                  value={effPObject}
+                  onChange={(e) => setPObject(e.target.value)}
+                >
+                  {perturbTargets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.typeKey} · {t.id}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>状态变量</span>
+                <select
+                  data-testid="sandbox-perturbation-statevar"
+                  aria-label="扰动状态变量"
+                  value={effPStateVar}
+                  onChange={(e) => setPStateVar(e.target.value)}
+                >
+                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+
+                <span className={styles.sub}>方式 / 幅度</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <select
+                    data-testid="sandbox-perturbation-mode"
+                    aria-label="扰动方式"
+                    value={pMode}
+                    onChange={(e) => setPMode(e.target.value as "set" | "delta" | "scale")}
+                  >
+                    {/* 三种方式来自契约 PerturbationSchema.mode —— 「涨价 15%」是 scale、「加 200 台」是 delta、
+                        「停机」是 set 0。只给 set 会逼前端自己算差值 = 第二套真相源。 */}
+                    <option value="delta">增减（delta）</option>
+                    <option value="scale">乘以（scale）</option>
+                    <option value="set">设为（set）</option>
+                  </select>
+                  <input
+                    data-testid="sandbox-perturbation-magnitude"
+                    aria-label="扰动幅度"
+                    style={{ width: 72 }}
+                    value={pMagnitude}
+                    onChange={(e) => setPMagnitude(e.target.value)}
+                  />
+                </div>
+
+                <span className={styles.sub}>持续 tick</span>
+                <input
+                  data-testid="sandbox-perturbation-duration"
+                  aria-label="扰动持续 tick 数（留空为永久）"
+                  placeholder="留空 = 永久"
+                  style={{ width: 110 }}
+                  value={pDuration}
+                  onChange={(e) => setPDuration(e.target.value)}
+                />
+              </div>
+
+              <button
+                className="btn sm primary"
+                data-testid="sandbox-perturbation-apply-btn"
+                disabled={!sessionId || perturbing}
+                onClick={() => void onApplyPerturbation()}
+              >
+                {perturbing ? "施加中…" : "施加扰动"}
+              </button>
+
+              <div className={styles.sub} style={{ marginTop: 6, lineHeight: 1.6 }} data-testid="sandbox-perturbation-note">
+                扰动作用在<b>当前 tick</b>（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游，
+                填了持续 tick 数的到期还会自动回退。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
+              </div>
+
+              {lastPerturbation && (
+                <div
+                  className={styles.sub}
+                  data-testid="sandbox-perturbation-last"
+                  style={{ marginTop: 6, lineHeight: 1.6 }}
+                >
+                  最近一次：<b className="mono" data-testid="sandbox-perturbation-last-id">{lastPerturbation.id}</b>
+                  <br />
+                  {lastPerturbation.label}
+                  <br />
+                  全局态{" "}
+                  <b data-testid="sandbox-perturbation-last-delta">
+                    {lastPerturbation.kpiBefore.toFixed(1)} → {lastPerturbation.kpiAfter.toFixed(1)}
+                  </b>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ),
+    },
+    {
       id: "compare",
       title: "多场景对比",
       node: compare ? (
@@ -967,24 +1115,89 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       title: "AI 指挥台",
       node: <SimCommanderDock sessionId={sessionId} curTick={curTick} />,
     },
+    {
+      // WO-ENTERPRISE-STATE · 企业状态快照（只读）。
+      //
+      // ⚠ **本行是 `EnterpriseStatePanel` 唯一的生产调用方**。沙盘右栏是手工组装的 rail 数组、
+      //    无自动扫描 —— 不加这一行，那个组件就是本仓 F2/F3/F4 连踩三次的
+      //    `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` 形态：实现有、测试绿、却没有任何路由渲染得到。
+      //
+      // 挂在沙盘（而不是新造一个导航组）是 PRD §0.06 裁定三的要求：沙盘复用既有模块，不做新页面。
+      // 世界固定为**真实世界**：右栏的推演会话是 tick 态（TickState），与企业状态快照不是同一个东西 ——
+      // 拿会话 id 当 worldId 传会得到"这个仿真世界还没有快照"的诚实空，反而让人以为面板坏了。
+      // 仿真世界的快照走 `POST …/fork` —— 那条线已由下面「快照分叉与比对」接上（WO-BEFE-WIRE-3），
+      // 本面板仍只答"真实世界现在什么状态"（只读，一个动作按钮都不放）。
+      id: "enterprise-state",
+      title: "企业状态快照",
+      node: <EnterpriseStatePanel />,
+    },
+    {
+      /**
+       * WO-BEFE-WIRE-3 · 快照**分叉与比对** —— `POST …/:id/fork` 与 `GET …/:id/diff`
+       * 这两条后端注册了却零前端调用方的端点，真消费方就是本行渲染的那个组件。
+       *
+       * ⚠ **本行是 `EnterpriseStateTwinPanel` 唯一的生产调用方**（右栏是手工组装的数组、无自动扫描）——
+       *   删了这一行，那个组件立刻退化成本仓连踩三次的 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：
+       *   实现有、测试绿、却没有任何路由渲染得到。
+       *
+       * `defaultOpen` 不给（= 默认收起）：按 `docs/CONVENTION-ui-information-layering.md` §1，
+       * 动作与逐项下钻属于**第二层**，不该和上面那面板的重点指标挤在同一层。
+       */
+      id: "enterprise-state-twin",
+      title: "快照分叉与比对",
+      node: <EnterpriseStateTwinPanel />,
+    },
   ];
 
   return (
     <div data-testid="sandbox-view" className={styles.head}>
+      <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
+      {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
+          判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，
+          不是「都挂上再藏一个」。`hidden` 只让人看不见：DOM 还在、请求照发、
+          读屏器照读、页面照样越来越挤（变异 A2 亲手证过这一改测试就红）。
+
+          ⚠ 下面 `<SandboxConsole>` 那一整块**故意没有跟着多缩进一层**：
+          它一行内容都没改，只是被包进了条件分支。重新缩进 130 行会让 diff 从
+          「加了个壳」变成「整块重写」，与并行的其它前端单撞车面积成倍放大。
+          这是刻意的取舍，不是漏改格式。 */}
+      {mode !== "now" ? <SandboxModePane mode={mode} /> : null}
+      {mode !== "now" ? null : (
       <SandboxConsole
-        // 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值，量纲仍是 0–100 状态指数）
+        /**
+         * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
+         *
+         * 判据只有一个：`cert.canEnterSimulation === false`。为 `true` 时这个函数返回 `null` ⇒
+         * 横幅**不渲染**（不是 `display:none`），一个像素都不占 —— 「没有问题」时屏上不该有
+         * 任何提示占位，那是把噪音当成安全感。
+         *
+         * 内容取 `cert.gaps[]` 的**真条目**（gapCode + ref + detail 原文透传，前端不改写、不总结），
+         * 只在屏上显前几条，其余条数明写并给「查看详情 →」进抽屉看全 —— 截断必须看得见，
+         * 不许让人以为"就这几条"。
+         */
+        banner={(openDiag) => <SimGovernanceBanner cert={cert} onOpenDiagnostics={openDiag} />}
+        /**
+         * 旧主屏 KPI 行 → 顶栏标签（全局态 + 逐 stateVar 均值）。
+         *
+         * WO-SANDBOX-UI-INTEGRATE · **量纲口径降层**（规范 §2 R-UI-3）：
+         * 此前每个读数都自带 `（0–100 指数·全对象均值）` 这截括号说明，顶栏因此被口径撑满，
+         * 而顶栏该留给「这一页要回答的那个数」（R-UI-2 最大一级只给它）。
+         * 现在第一层只剩 **名字 + 数值 + tick**（三者都是规范 §1 允许的：名字/数值/状态），
+         * 口径整段进 `?` 浮层。
+         *
+         * ⚠ 这是**降层不是删除**：量纲是 WO-UNIT-MEANING 立的诚实位（裸「62.5」看不出满分多少），
+         * 原文一字不改搬进浮层，第一层留 `?` 当可见记号。三条老断言随之从
+         * 「第一层含 0–100 指数」改判为「浮层里含、且第一层不再含」——**两向都咬**，
+         * 既证明没删、也证明真降下去了。
+         */
         topTags={
           <>
-            <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
-              本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
-              {cfg.propagationCount} 传导规则
-            </span>
             <span
               data-testid="sandbox-kpis"
               style={{ display: "flex", gap: 8, alignItems: "center", font: "600 10px var(--font-mono)" }}
             >
               <span data-testid="sandbox-kpi-global">
-                全局态（0–100 指数 · tick {curTick}）{" "}
+                全局态 · tick {curTick}{" "}
                 <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
                   {globalKpi.toFixed(1)}
                 </b>
@@ -994,10 +1207,18 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
                 return (
                   <span key={v} data-testid={`sandbox-kpi-${v}`}>
-                    {v}（0–100 指数·全对象均值） <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                    {v} <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
                   </span>
                 );
               })}
+              {/* 口径记号：第一层唯一保留的「这里有话要说」，点/悬停出全文（诚实位降层的可见记号）。 */}
+              <InfoPopover topic={zh.sim.sandbox.info.kpiUnit} testId="kpi-unit">
+                <span data-testid="sandbox-kpi-unit-note">
+                  {zh.sim.sandbox.info.kpiUnitGlobal}
+                  <br />
+                  {zh.sim.sandbox.info.kpiUnitVar}
+                </span>
+              </InfoPopover>
             </span>
           </>
         }
@@ -1048,7 +1269,168 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
         }
         rail={rail}
+        diagnostics={diagnostics}
+        // WO-SANDBOX-IA-CONSOLIDATE · 基地范围提到壳里（受控）：切模式不丢。
+        // 只提 state，不动控制台任何布局——左栏勾选框、testid、语义（空数组 = 全部基地）一字未改。
+        scopeBaseIds={scope.baseIds}
+        onScopeBaseIdsChange={(baseIds) => setScope((s) => ({ ...s, baseIds }))}
       />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-IA-CONSOLIDATE · 模式切换骨架（本单只做壳，不重画各模式内部布局）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 顶部模式切换条 + 跨模式上下文条（沙盘这一屏的**第一层**）。
+ *
+ * ── 分层（`docs/CONVENTION-ui-information-layering.md`）────────────────────────
+ *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数。
+ *    只有「名字 / 它是什么 / 一个读数」——没有公式、没有口径推导、没有明细。
+ *  · **第二层**（一次点击）：「已收编的原独立页」折叠清单（深链接仍可达，见 `<details>`）。
+ *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `title` 浮层与折叠区，不占第一层。
+ *
+ * 仓主对这一屏的原话是「信息太多，第一层看不到重点」——**并完更挤 = 这次合并是负分**。
+ * 故本条只加一行按钮 + 一行范围读数，其余一律降层。
+ */
+function SandboxModeSwitch({
+  mode,
+  onChange,
+  scope,
+}: {
+  mode: SandboxMode;
+  onChange: (m: SandboxMode) => void;
+  scope: SandboxScope;
+}) {
+  return (
+    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10, marginBottom: 10 }}>
+      {/* `role="group"` + `aria-pressed` 而不是 `tablist`/`tab`/`aria-selected`：
+          ARIA 的 tab 必须能指向一个 `tabpanel`，而这里切的是**整屏**（另一屏根本不在 DOM），
+          没有稳定的 panel id 可指。用 tab 语义会向读屏器承诺一个不存在的关系。
+          这也与 `SandboxConsole` 画布模式条的既有做法一致（`role="group" aria-label="画布模式"`）。*/}
+      <div role="group" aria-label="推演模式" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {SANDBOX_MODES.map((m, i) => (
+          <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {/* 决策链的箭头是**结构表达**，不是装饰：五个模式是「看见 → 为什么 → 试试看 → 最优 → 波及」
+                这一条链，不是一排并列 tab（规范 §3：结构本身也要画出来）。 */}
+            {i > 0 ? <span aria-hidden style={{ color: "var(--muted2)", fontSize: 11 }}>→</span> : null}
+            <button
+              type="button"
+              className={`btn sm${mode === m ? " primary" : ""}`}
+              data-testid={`sandbox-mode-${m}`}
+              aria-pressed={mode === m}
+              /* WO-SANDBOX-UI-INTEGRATE：此前是 `title={…}` —— 那是**原生 tooltip**，
+                 规范 §2 R-UI-3 明令禁止（由操作系统绘制、永远画在最上层、移开后滞留；
+                 本仓 2026-08-10 真出过环形图被 SVG <title> 遮挡的事故）。
+                 这句「回答哪一问」不需要浮层：当前模式的那一句本来就常驻第一层（见下方
+                 `sandbox-mode-question`）。故改为 `aria-label` —— 读屏仍读得到，
+                 屏上不再冒出一个不受控的黄框。 */
+              aria-label={`${SANDBOX_MODE_LABEL[m]}：${SANDBOX_MODE_QUESTION[m]}`}
+              onClick={() => onChange(m)}
+            >
+              {SANDBOX_MODE_LABEL[m]}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {/* 当前模式回答哪一问（一句话，第一层唯一的说明性文字） */}
+      <div className={styles.sub} data-testid="sandbox-mode-question" style={{ marginTop: 6 }}>
+        {SANDBOX_MODE_QUESTION[mode]}
+      </div>
+
+      {/*
+        跨模式上下文条 —— **常驻**（五个模式下都在，且读数同一份）。
+        这一条是合并的价值本身：不带上下文的合并只是把五页塞进一个 tab 条。
+        诚实位（订单锚点 / 时窗为什么不在这里）降到 `?` 浮层，不占第一层。
+        ⚠ WO-SANDBOX-UI-INTEGRATE 改：原来降到的是**原生 `title`**，那正是规范 §2 R-UI-3
+        点名禁止的东西（不受控、画在最上层、移开滞留）。现改用受控的 `InfoPopover`，
+        降层这件事不变，承载方式换成合规的那一个。
+      */}
+      <div
+        className={styles.sub}
+        data-testid="sandbox-scope-strip"
+        style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+      >
+        <span>
+          当前范围（切模式保持）：<b data-testid="sandbox-scope-bases">{describeSandboxScope(scope)}</b>
+        </span>
+        {/* 第一层只留这一行「有话要说」的记号 + `?`；两段口径正文进浮层（静默降层 = 删除，故记号必须可见）。 */}
+        <span data-testid="sandbox-scope-honesty" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          ⓘ 订单锚点 / 时窗尚未提为壳级上下文
+          <InfoPopover topic={zh.sim.sandbox.info.shellContextGap} testId="scope-shell-gap">
+            <span data-testid="sandbox-scope-honesty-note">
+              {zh.sim.sandbox.info.shellContextAnchor}
+              <br />
+              {zh.sim.sandbox.info.shellContextWindow}
+            </span>
+          </InfoPopover>
+        </span>
+      </div>
+
+      {/*
+        第二层：已收编的原独立页 —— 默认折叠。
+        存在理由有二：① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，
+        不是只有知道 URL 的人才进得去；② 沙盘对某些页只做了投影而非全量搬运
+        （`chain-impediments` 的阈值出处 / 未判定判据等四块，见 AUDIT §2）——
+        那些内容今天只在原独立页上，得留一条路过去。
+      */}
+      <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
+        <summary className={styles.sub} style={{ cursor: "pointer" }}>
+          已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
+        </summary>
+        <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+          {CONSOLIDATED_PAGES.map((p) => (
+            /* `title` → `aria-label`：同上，原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
+               读屏读得到即可，不需要一个不受控的悬浮框。 */
+            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
+              {p.label}
+            </a>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * 收编清单的**屏上投影**（键与 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 同源 —— 那张表是导航侧的
+ * 单一出处，本屏只补一个人读标签）。`sandbox-ia-consolidate.seam` 有一条断言咬两侧不许漂移。
+ */
+const CONSOLIDATED_PAGES: { key: string; label: string; where: string }[] = [
+  { key: "chain-line-map", label: "全链线路图", where: "已在：中栏画布默认模式「线路图」" },
+  { key: "physical-topology", label: "物理拓扑", where: "已在：中栏画布模式「物理拓扑」" },
+  { key: "node-inspector", label: "节点检视", where: "已在：右栏常驻面板 → 页签「变量输入」" },
+  { key: "transit-flow", label: "在途与在制", where: "已在：线路图上的「在途批次图层」勾选框" },
+  { key: "chain-impediments", label: "全链阻滞点", where: "已在：主屏统计条 + 逐条清单（阈值出处等四块仍只在原页）" },
+  { key: "cleanroom-attr", label: "净室归因", where: "已在：模式「归因」" },
+  { key: "what-if", label: "假设推演", where: "已在：模式「试一手」" },
+  { key: "optimize-whatif", label: "优化推演", where: "已在：模式「求最优」" },
+  { key: "disruption-radius", label: "断供影响半径", where: "已在：模式「影响半径」" },
+];
+
+/**
+ * 非「现状」模式的内容承载 —— **内容原样搬进来，不重画布局**（本单是骨架单）。
+ *
+ * 三件事在这里做，别的一件不做：
+ *  ① 只渲染当前模式那一个（调用点已经 `mode !== "now"` 才挂，本组件内部再按 mode 分发**一个**）；
+ *  ② 给一个稳定的壳级 testid `sandbox-mode-pane-<m>` —— 各模式自己的根 testid
+ *     （`cleanroom-attr` / `what-if` / …）在数据取不到时会换成诚实空态，
+ *     用它们当"这一屏在不在"的判据会把**空态**误判成**没渲染**；
+ *  ③ `<Suspense>`：四个模式都是 `lazy` 进来的（不 lazy 就等于把四页的 JS 全塞进沙盘首屏）。
+ */
+function SandboxModePane({ mode }: { mode: Exclude<SandboxMode, "now"> }) {
+  return (
+    <div data-testid={`sandbox-mode-pane-${mode}`} data-mode={mode}>
+      <Suspense fallback={<div className="empty-state" data-testid={`sandbox-mode-loading-${mode}`}>加载{SANDBOX_MODE_LABEL[mode]}…</div>}>
+        {mode === "attribute" ? <CleanroomAttrView /> : null}
+        {mode === "tryone" ? <WhatIfView /> : null}
+        {mode === "optimize" ? <OptimizeWhatifView /> : null}
+        {mode === "radius" ? <DisruptionRadiusView /> : null}
+      </Suspense>
     </div>
   );
 }

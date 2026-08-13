@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
+import { checkedTree, factHits } from "./factlock";
 
 /**
  * WO-SEMANTICS-SINGLESOURCE · **语义表键 ↔ 契约注册表的编译期绑定** 接缝门。
@@ -52,18 +53,21 @@ const REPO_ROOT = (() => {
 })();
 
 const SEMANTICS_FILE = join(REPO_ROOT, "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts");
-const CONTRACT_FILE = join(REPO_ROOT, "packages/contracts/src/chain-sim.ts");
+// 注册表住在哪个文件不是事实（WO-C 修法）—— 全树定位宿主（契约拆文件时跟着搬，不红）。
+const REGISTRY_HOMES = factHits(checkedTree("packages/contracts/src", "z.object", 40), /export const CHAIN_NODE_REGISTRY(?![\w])/);
+const CONTRACT_FILE = REGISTRY_HOMES.length === 1 ? join(REPO_ROOT, REGISTRY_HOMES[0]!) : "";
 const CONTRACT_ENTRY = join(REPO_ROOT, "packages/contracts/src/index.ts");
 /** 虚拟探针文件：与真文件同目录同扩展名，保证模块解析行为一致。 */
 const PROBE_FILE = join(REPO_ROOT, "apps/frontend-shell/src/views/sim/__typebinding_probe__.ts");
 
 const SEMANTICS_SRC = readFileSync(SEMANTICS_FILE, "utf8");
-const CONTRACT_SRC = readFileSync(CONTRACT_FILE, "utf8");
+const CONTRACT_SRC = CONTRACT_FILE ? readFileSync(CONTRACT_FILE, "utf8") : "";
 
 /** 被拿来做变异的那个在册节点（取自**契约**，不在本文件里另写一份 id）。 */
 const PROBE_NODE_ID = (() => {
+  if (CONTRACT_SRC === "") return "";
   const m = /nodeId:\s*"([^"]+)"/.exec(CONTRACT_SRC);
-  if (m === null) throw new Error("[semantics-typebinding] 从 chain-sim.ts 解析不到任何 nodeId —— 契约形状变了");
+  if (m === null) throw new Error("[semantics-typebinding] 从注册表宿主文件解析不到任何 nodeId —— 契约形状变了");
   return m[1]!;
 })();
 
@@ -108,7 +112,8 @@ describe("§0 · harness 自证（本门咬得到东西，不是在空视野里�
   it("真实语义表 / 契约 / 契约入口三个文件都在，且探针节点取自契约", () => {
     expect(existsSync(SEMANTICS_FILE)).toBe(true);
     expect(existsSync(CONTRACT_ENTRY)).toBe(true);
-    expect(CONTRACT_SRC).toContain("CHAIN_NODE_REGISTRY");
+    expect(REGISTRY_HOMES, `CHAIN_NODE_REGISTRY 在 contracts 源码树里命中 ${REGISTRY_HOMES.length} 处（${REGISTRY_HOMES.join("、")}）—— 定位前提变了`).toHaveLength(1);
+    expect(CONTRACT_SRC.length, "定位到的注册表宿主读到空内容 ⇒ 定位器坏了").toBeGreaterThan(1000);
     // 探针 id 必须真的出现在语义表里，否则 §3 的「改册」变异会打空
     expect(SEMANTICS_SRC, `契约首个 nodeId (${PROBE_NODE_ID}) 不在语义表里 ⇒ §3 咬不到东西`).toContain(
       `"${PROBE_NODE_ID}"`,
@@ -173,7 +178,7 @@ describe("§4 · 反面锚：承重的就是那行类型（放宽后 §2 的红�
     // 这一条是给**人**看的护栏：上面三组已经证明了机制，这条把「合法写法」钉死成文本，
     // 免得有人改成 `as` 断言（实测 tsc 不咬）后，§2/§3 变绿却没人知道为什么。
     expect(SEMANTICS_SRC).toContain("Partial<Record<RegisteredChainNodeId, ChainNodeSemantics>>");
-    expect(SEMANTICS_SRC).toContain('type RegisteredChainNodeId = ChainNodeDef["nodeId"]');
+    expect(factHits(checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100), 'type RegisteredChainNodeId = ChainNodeDef["nodeId"]'), "RegisteredChainNodeId 不再派生自 ChainNodeDef —— 键绑定的前提没了，C 豁免必须立刻撤回").not.toEqual([]);
     expect(SEMANTICS_SRC).toContain('from "@platform/contracts"');
     expect(SEMANTICS_SRC, "用 `as` 断言会让编译期检查静默失效").not.toContain(
       "} as Partial<Record<RegisteredChainNodeId",

@@ -185,8 +185,18 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
   });
 
   // ══ ③ 结构层 · 同源判据（这是机制，不是"下次注意"）═══════════════════════════════
-  describe("③ 单一装配处：图物化 / 范围裁剪 / 闸门装配在 app.ts 里各只有一处", () => {
+  describe("③ 单一装配处：图物化 / 范围裁剪 / 闸门装配全仓各只有一处，且**不在 app.ts 里**", () => {
     const APP_SRC = readFileSync(fileURLToPath(new URL("../src/app.ts", import.meta.url)), "utf8");
+    /**
+     * ⚠ 装配处已从 `app.ts` 的闭包**提取为模块**（合并单 `WO-CERT-CONTRACT-RECONCILE`：
+     * 该函数一度存在两份 —— `app.ts` 闭包（本单造）与 `sim/propagation-inputs.ts` 同名导出
+     * （另一 dev 并行造），收成一份时语义取前者、封装取后者）。
+     *
+     * 判据因此**变强**而不是变弱：原来是「在 app.ts 里恰好一次」，现在是
+     * 「在装配处模块里恰好一次 **∧** 在 app.ts 里一次都没有」——
+     * 后半句是无条件的，谁再往 app.ts 里抄一份装配，当场红。
+     */
+    const INPUTS_SRC = readFileSync(fileURLToPath(new URL("../src/sim/propagation-inputs.ts", import.meta.url)), "utf8");
 
     /**
      * **唯一实现**：剔掉纯注释行后数命中。金丝雀与主逻辑共用这一支 ——
@@ -221,23 +231,46 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
 
     it("金丝雀：数数器与剔注释共用同一支实现，且两个方向都验过（否则下面的「各只有一处」不许信）", () => {
       // 正向：一个**已知必中**的样例必须中。不中 ⇒ 报「工具坏了」，不许报「代码干净」。
-      expect(countCodeSites(APP_SRC, /const buildPropagationInputs = async/g), "金丝雀不中 ⇒ 数数器坏了").toBe(1);
-      // 反向：只出现在注释里的东西必须被剔掉。app.ts 的注释里确实提过 `buildPropagationInputs`
-      // （tick 路与 trialPropagate 的说明各一处），若剔注释没生效，下面这个数会 > 2。
+      expect(countCodeSites(INPUTS_SRC, /export async function buildPropagationInputs/g), "金丝雀不中 ⇒ 数数器坏了").toBe(1);
+      // 反向：只出现在注释里的东西必须被剔掉。两份源码的注释里都提过这些名字，
+      // 若剔注释没生效，下面「app.ts 里 0 次」当场就会假红。
       expect(countCodeSites("// scopePropagationGraph(\n * scopePropagationGraph(\n", SCOPE_CROP()), "剔注释没生效").toBe(0);
       expect(countCodeSites("const x = scopePropagationGraph(a, b);", SCOPE_CROP()), "剔注释把真代码也剔了").toBe(1);
     });
 
-    it("图物化只有一处（Trial Tick 若另抄一份装配，这里当场变 2）", () => {
+    it("图物化只有一处，且**不在 app.ts 里**（谁再抄一份装配，当场变 2 / 变 1）", () => {
+      expect(
+        countCodeSites(INPUTS_SRC, GRAPH_MATERIALIZE()),
+        "🔴 装配处里没有图物化 ⇒ 先修工具或先看它是不是被搬走了",
+      ).toBe(1);
       expect(
         countCodeSites(APP_SRC, GRAPH_MATERIALIZE()),
-        "🔴 app.ts 里出现了第二处图物化 ⇒ 「认证说能跑、真 tick 不是这个数」的老形态回来了",
-      ).toBe(1);
+        "🔴 app.ts 里出现了图物化 ⇒ 「认证说能跑、真 tick 不是这个数」的老形态回来了",
+      ).toBe(0);
+    });
+
+    /**
+     * ⚠ **别名逃逸**（2026-08-10 合并单实测，铁律 0.6 第 2 次 ⇒ 建机制）：
+     * 下面几条数的是 `buildCadenceGates(` / `scopePropagationGraph(` 这类**调用式**。
+     * 注入一份 `import { buildCadenceGates as _x }` + `_x(...)` 的第二处装配 ⇒ **一条都没中、全绿**。
+     * 与本文件 GRAPH_MATERIALIZE 那次踩的是**同一个形态**（那次是变量名，这次是 import 别名）：
+     * 抄装配的人必然改名，于是"按名字数调用式"天生抓不到它要抓的那个人。
+     * 机制：**在 import 边界上断言** —— 别名可以随便起，但原名必须出现在 `import {…}` 子句里。
+     */
+    it("app.ts 不许 import 装配原语（别名也不行——这是上面几条数调用式抓不到的那一半）", () => {
+      const clause = [...APP_SRC.matchAll(/import\s*\{([^}]*)\}\s*from\s*"\.\/sim\/propagation\.js"/g)]
+        .map((m) => m[1] ?? "")
+        .join(",");
+      expect(clause, "金丝雀不中 ⇒ import 抽取器坏了，否定结论不许信").toContain("propagateTick");
+      expect(clause.includes("buildCadenceGates"), "app.ts import 了闸门装配原语（哪怕 as 成别名）").toBe(false);
+      expect(clause.includes("scopePropagationGraph"), "app.ts import 了范围裁剪原语（哪怕 as 成别名）").toBe(false);
     });
 
     it("范围裁剪只有一处，且闸门装配也只有一处（两者必须与图物化同处，否则总有一条路绕得过去）", () => {
-      expect(countCodeSites(APP_SRC, SCOPE_CROP()), "🔴 范围裁剪出现第二处 ⇒ 两条路口径会漂").toBe(1);
-      expect(countCodeSites(APP_SRC, CADENCE_ASSEMBLE()), "🔴 闸门装配出现第二处").toBe(1);
+      expect(countCodeSites(INPUTS_SRC, SCOPE_CROP()), "🔴 装配处里没有范围裁剪").toBe(1);
+      expect(countCodeSites(INPUTS_SRC, CADENCE_ASSEMBLE()), "🔴 装配处里没有闸门装配").toBe(1);
+      expect(countCodeSites(APP_SRC, SCOPE_CROP()), "🔴 app.ts 里出现范围裁剪 ⇒ 两条路口径会漂").toBe(0);
+      expect(countCodeSites(APP_SRC, CADENCE_ASSEMBLE()), "🔴 app.ts 里出现闸门装配").toBe(0);
     });
 
     /**
@@ -265,9 +298,7 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
       expect(view, "金丝雀不中 ⇒ 抽取工具坏了").toContain(`data-testid="sandbox-scope-reach-note"`);
 
       // 上游事实：装配处里确实做了范围裁剪（= 引擎真的按范围算）。
-      const start = APP_SRC.indexOf("const buildPropagationInputs = async");
-      const body = APP_SRC.slice(start, APP_SRC.indexOf("\n  };", start));
-      const engineCrops = countCodeSites(body, SCOPE_CROP()) === 1;
+      const engineCrops = countCodeSites(INPUTS_SRC, SCOPE_CROP()) === 1;
       expect(engineCrops, "前置事实不成立 ⇒ 本条无从谈起（先看上面几条）").toBe(true);
 
       // 结论：引擎在裁，屏上就**不许**说它没裁。
@@ -283,11 +314,9 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
     });
 
     it("那一处就在 buildPropagationInputs 里，且它至少被两条路各调一次（tick / Trial Tick）", () => {
-      const start = APP_SRC.indexOf("const buildPropagationInputs = async");
+      const start = INPUTS_SRC.indexOf("export async function buildPropagationInputs");
       expect(start, "找不到装配处 ⇒ 先修工具再看结论").toBeGreaterThan(-1);
-      const end = APP_SRC.indexOf("\n  };", start);
-      expect(end, "切不出装配处函数体").toBeGreaterThan(start);
-      const body = APP_SRC.slice(start, end);
+      const body = INPUTS_SRC.slice(start);
       // 三件事都在同一个函数体里 = 「单一装配处 ∧ 范围裁剪」这条合成判据的结构证据。
       expect(countCodeSites(body, GRAPH_MATERIALIZE()), "图物化不在装配处里").toBe(1);
       expect(countCodeSites(body, SCOPE_CROP()), "🔴 范围裁剪不在装配处里 ⇒ 谁调用谁自己裁 = 装配处纪律作废").toBe(1);

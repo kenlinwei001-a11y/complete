@@ -140,7 +140,13 @@ describe("WO-REFGATE-ENT · F14 · 出厂技能被同一道发布门补问一遍
     expect(getSeedSkillGateReport()).toEqual({ status: "NOT_RUN", checked: 0, findings: [] });
   });
 
-  it("③ 注册表读不出来 → GATE_UNAVAILABLE + 原因原文，**绝不**记 CLEAN（「我没找到」≠「它不存在」）", async () => {
+  /**
+   * ⚠️ WO-SEEDGATE-FRESHNESS 起，这两条的期望值**从合并的 `GATE_UNAVAILABLE` 拆成两个**：
+   * 「读不出来（抛错）」与「读回空集」是两个不同的观测，成因不同、运维处置不同，
+   * 合成一句就会把「我读不出来」播报成「它不可达」。区分度本身由
+   * `skill-seed-gate-freshness.seam.test.ts` 的「两者 status 必须不同」那条咬死。
+   */
+  it("③ 注册表读不出来（抛错）→ REGISTRY_UNREACHABLE + 原因原文，**绝不**记 CLEAN（「我没找到」≠「它不存在」）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
     dc.catalog.discover = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
@@ -148,18 +154,18 @@ describe("WO-REFGATE-ENT · F14 · 出厂技能被同一道发布门补问一遍
 
     const report = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT, logger: captureLogger(logs) });
 
-    expect(report.status).toBe<SeedSkillGateReport["status"]>("GATE_UNAVAILABLE");
+    expect(report.status).toBe<SeedSkillGateReport["status"]>("REGISTRY_UNREACHABLE");
     expect(report.unavailableReason).toContain("ECONNREFUSED");
     expect(logs.some((l) => l.level === "warn")).toBe(true);
-    expect(getSeedSkillGateReport().status).toBe("GATE_UNAVAILABLE");
+    expect(getSeedSkillGateReport().status).toBe("REGISTRY_UNREACHABLE");
   });
 
-  it("③ 注册表返回空集同样是 GATE_UNAVAILABLE（第二层 fail-open：空集 ≠ 都合法）", async () => {
+  it("③ 注册表返回空集 → REGISTRY_EMPTY，同样不是干净（第二层 fail-open：空集 ≠ 都合法）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
     dc.catalog.discover = async () => ({ items: [] });
     const report = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
-    expect(report.status).toBe<SeedSkillGateReport["status"]>("GATE_UNAVAILABLE");
+    expect(report.status).toBe<SeedSkillGateReport["status"]>("REGISTRY_EMPTY");
     expect(report.unavailableReason).toContain("空集");
   });
 

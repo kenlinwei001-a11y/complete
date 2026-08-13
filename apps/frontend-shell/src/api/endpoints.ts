@@ -10,6 +10,9 @@ import type {
   BuildPlan,
   BuildRunBody,
   BuildWorkflowRun,
+  BuildPipeline,
+  BuildPipelineKind,
+  BuildPipelineUpsert,
   StoryBuildRun,
   FdeNode,
   BackfillReport,
@@ -53,7 +56,11 @@ import type {
   TickState,
   SkillCompileResult,
   SolverCategory,
+  EnterpriseState,
+  ImpactAnalysisRequest,
+  ImpactAnalysisResponse,
 } from "@platform/contracts";
+import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
 import type {
   FallbackClusterVM,
@@ -67,6 +74,8 @@ import type {
   Workspace,
 } from "./types";
 import { WorkspaceSchema } from "./types";
+// WO-WAITING-STATES-FE · 业务流程等待态响应形状（与真后端 GET /a/v1/process-definitions 对账的单一定义）。
+import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
 
 // ---------------- A · DataCore ----------------
 
@@ -184,6 +193,20 @@ export const fetchObjectTypes = () =>
 export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }
 export const fetchObjectTypeStats = () => api.a<{ stats: ObjectTypeStat[] }>("/a/v1/ontology/object-types/stats");
 export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displayName: string; color: string }[] }>("/a/v1/business-domains");
+
+/**
+ * WO-WAITING-STATES-FE · 业务流程层（13 域 × 65 流程，含 `waitKind` 四态等待类型）。
+ *
+ * 该端点是**本单新补的**：`processDefinitions` 仓储自建成起 src 读取方为 0
+ * （只有 `seed.ts` 写 + `test/process-layer.test.ts` 读），零路由、零事件 ⇒
+ * 前端「五个等待态 0 命中」的病根在后端没下发，不在前端没接。
+ * 取证见 `docs/WO-WAITING-STATES-FE-evidence.md`。
+ *
+ * 返回体形状与 `apps/datacore/src/app.ts` 的路由逐字段一致；类型直接复用契约，
+ * **前端不重定义**（R1 contracts-only-shared）。
+ */
+export const fetchProcessDefinitions = () =>
+  api.a<ProcessDefinitionsResponse>("/a/v1/process-definitions");
 
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
@@ -653,6 +676,88 @@ export const fetchSimCompare = (a: string, b: string) =>
     `/a/v1/sim/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
   );
 
+// ---------------- WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3/§27）----------------
+// 「企业**现在**是什么状态」：某个世界（真实 REAL / 仿真 <simSessionId>）在某个**逻辑时刻**上的
+// KPI/产能/库存/订单快照。类型一律来自 `@platform/contracts`（contracts-only-shared，前端不重定义）。
+//
+// ⚠ `capturedAt` 是逻辑时钟不是 wall-clock —— 页面上显示的"时刻"必须显示 `simulatedDate`/`tick`，
+//    **不许**在前端补一个 `new Date()`（那会让界面上的时间与快照实际锚定的时间轴分家）。
+
+/** 某世界的快照时间线（不传 worldId = 全部世界）。 */
+export const fetchEnterpriseStates = (worldId?: string) =>
+  api.a<{ items: EnterpriseState[] }>(
+    `/a/v1/twin/enterprise-states${worldId ? `?worldId=${encodeURIComponent(worldId)}` : ""}`,
+  );
+
+/**
+ * 取某世界最新一份快照。**后端诚实空**：没有快照时返回 `{state: null, reason}` 而不是现场造一份，
+ * 前端必须把 `reason` 原样显示（不许自己编一句"暂无数据"把后端给的原因盖掉）。
+ */
+export const fetchLatestEnterpriseState = (worldId: string = ENTERPRISE_STATE_REAL_WORLD_ID) =>
+  api.a<{ worldId: string; state: EnterpriseState | null; reason?: string }>(
+    `/a/v1/twin/enterprise-states/latest?worldId=${encodeURIComponent(worldId)}`,
+  );
+
+/** 取一份快照（跨租户 404）。 */
+export const fetchEnterpriseState = (id: string) =>
+  api.a<EnterpriseState>(`/a/v1/twin/enterprise-states/${encodeURIComponent(id)}`);
+
+/** 捕获一份快照（幂等：同一逻辑时刻重复捕获覆盖同一行、内容逐字节相同）。 */
+export const captureEnterpriseStateSnapshot = (worldId?: string) =>
+  api.a<EnterpriseState>("/a/v1/twin/enterprise-states", { body: worldId ? { worldId } : {} });
+
+// ── WO-BEFE-WIRE-3 · 上面三条读/写之外，`fork` 与 `diff` 后端注册了却一直零前端调用方 ──────
+// **2026-08-10 实测**（复验命令：`node scripts/check-backend-frontend-seam.mjs --verbose`，
+// 载体② 的「当前零调用端点明细」里当天确有这两条）：`POST …/twin/enterprise-states/:id/fork`
+// 与 `GET …/twin/enterprise-states/:id/diff` 在并集态第一次被照出来。
+// 本次接线后同一条命令报「已修复 3」——真消费方 = `views/sim/EnterpriseStateTwinPanel.tsx`，
+// 挂在推演沙盘右栏「快照分叉与比对」。
+
+/**
+ * 把一份快照 fork 进**仿真世界**（PRD-enterprise-decision-twin §4.1 两世界物理隔离）。
+ *
+ * ⚠ `worldId` 必须是一个**已存在的推演会话 id**（不是自由字符串，更不是 `REAL`）——
+ *   后端 400 `worldId required` / 404 `sim session not found`。fork **产生新行**，
+ *   真实世界那一行一个字节都不动；新行每条指标的 `source.kind` 被翻成 `FORKED`
+ *   （诚实：这些数是复制来的，没有重算）。
+ */
+// ⚠ 名字刻意不叫 `forkEnterpriseState`：契约里已有一个**同名纯函数**（算法本尊，mock 侧在用）。
+//   同名两件事迟早被 import 混，`ToWorld` 后缀让"这是那条 HTTP 调用"一眼可辨。
+export const forkEnterpriseStateToWorld = (stateId: string, worldId: string) =>
+  api.a<EnterpriseState>(`/a/v1/twin/enterprise-states/${encodeURIComponent(stateId)}/fork`, { body: { worldId } });
+
+/** 快照差分的一行（口径 = 契约纯函数 `diffEnterpriseStates`，A/B 两侧同一份实现）。 */
+export interface EnterpriseStateChange {
+  key: string;
+  group: string;
+  label: string;
+  from: number | null;
+  to: number | null;
+}
+/**
+ * 两份快照的指标差：`after` = 路径上那份，`before` = `?against=` 那份。
+ * `changes` **只含真的变了的项**（值相等的不进结果）⇒ 空数组 = 两份快照逐项一致，
+ * 不是"没查到"。
+ */
+export const fetchEnterpriseStateDiff = (stateId: string, against: string) =>
+  api.a<{ before: string; after: string; changes: EnterpriseStateChange[] }>(
+    `/a/v1/twin/enterprise-states/${encodeURIComponent(stateId)}/diff?against=${encodeURIComponent(against)}`,
+  );
+
+// ---------------- WO-IMPACT-PROPAGATION · 影响传播统一入口（Decision Twin §14 / PRD E5）----------------
+/**
+ * 在**某个被隔离的世界里**跑一次变更的影响传播，返回四维分项 + 诚实标记。
+ *
+ * 与既有两个出口（`POST /a/v1/inference/whatif` · `generic_inference` 求解器）平行：
+ * 那两个只给一个裸 `affectedObjects:number`，本端点把「对象 / 流程 / 决策 / KPI」四维拆开，
+ * 且每一维都是 `available` 上的判别联合 —— **`available:false` 与 `count:0` 是两件不同的事**
+ * （前者"算不了"，后者"查过了没中"），前端必须分开显示，不许都渲染成 0。
+ *
+ * `worldId` = `SimSession.id`（栈 A 的世界）。跨租户/不存在一律 404（暗发）。
+ */
+export const runImpactAnalysis = (body: ImpactAnalysisRequest) =>
+  api.a<ImpactAnalysisResponse>("/a/v1/simulation/impact-analysis", { body });
+
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }
 /** DataCore 侧事件源（数据→本体→推演链：ontology/materialize/rules/action/calibration/tick/build…）。 */
@@ -955,12 +1060,20 @@ export const compileSkill = (id: string) =>
  * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
  * 后端注释写着「运维随时可查」，而在本单接上之前，**没有任何地方可查**。
  *
- * ⚠️ 四态里 `NOT_RUN` 与 `GATE_UNAVAILABLE` **都不是"干净"**（后端 `skill-publish-gate.ts:178` 的口径）：
- * 前者是没审计过，后者是注册表读不出来所以没法判。界面把这两态渲染成绿色或"通过"，
- * 就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
+ * ⚠️ `NOT_RUN` / `REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` / `GATE_UNAVAILABLE` **都不是"干净"**
+ * （后端 `skill-publish-gate.ts` 的口径）：第一个是没审计过，后三个是注册表读不出来所以没法判。
+ * 界面把这几态渲染成绿色或"通过"，就是把「我没找到」说成「它不存在」—— 那这道位就白加了。
  *
- * 类型在 agentcore（`skill-publish-gate.ts:180`）而非 contracts，跨 app import 源码是禁止的，
- * 故此处按后端形状声明只读 VM；字段名一字对齐，不改写。
+ * **WO-SEEDGATE-FRESHNESS**：
+ *  · 缺陷 A —— `ranAt` 原先是**进程启动那一瞬**的常量（2026-08-11 实测：连续 3 次 GET 间隔 3 分钟，
+ *    `ranAt` 一字未变。复验：`curl -s <base>/b/v1/ops/skill-seed-gate | jq .ranAt` 隔几分钟跑两次比对）。
+ *    后端改为按请求现算（TTL `ttlSeconds` 秒内复用 + `?refresh=1` 手动刷新），
+ *    界面因此必须把 `ranAt` 当作「**这份数据真正被计算的时刻**」显示，并给出手动刷新入口。
+ *  · 缺陷 B —— 原先「抛错」与「读回空集」合并成一个 `GATE_UNAVAILABLE`，
+ *    文案却二选一地断言「DataCore is unreachable」。现拆成两态，界面文案必须跟着分开。
+ *
+ * 类型在 agentcore（`skill-publish-gate.ts` `SeedSkillGateStatus`）而非 contracts，
+ * 跨 app import 源码是禁止的，故此处按后端形状声明只读 VM；字段名一字对齐，不改写。
  */
 export interface SkillSeedGateFinding {
   skillId: string;
@@ -968,14 +1081,19 @@ export interface SkillSeedGateFinding {
   violations: { code: string; message: string }[];
 }
 export interface SkillSeedGateReport {
-  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "GATE_UNAVAILABLE";
+  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "REGISTRY_UNREACHABLE" | "REGISTRY_EMPTY" | "GATE_UNAVAILABLE";
+  /** 这份数据真正被计算的时刻（不是响应组装时刻）。 */
   ranAt?: string;
   tenantId?: string;
   checked: number;
   findings: SkillSeedGateFinding[];
   unavailableReason?: string;
+  /** 这份快照最多被复用多少秒；界面据此说清"它最新到什么程度"。 */
+  ttlSeconds?: number;
 }
-export const fetchSkillSeedGate = () => api.b<SkillSeedGateReport>("/b/v1/ops/skill-seed-gate");
+/** `refresh` = 显式手动刷新：跳过后端 TTL 立刻重算（运维刚修好上游，不该被迫等一个 TTL）。 */
+export const fetchSkillSeedGate = (opts?: { refresh?: boolean }) =>
+  api.b<SkillSeedGateReport>(`/b/v1/ops/skill-seed-gate${opts?.refresh ? "?refresh=1" : ""}`);
 
 export const fetchMcpConfigs = () => api.b<McpServerConfig[]>("/b/v1/mcp-configs");
 export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) =>
@@ -1059,6 +1177,23 @@ export interface FdeGraphResponse {
   summary: { total: number; done: number; failed: number; running: number; skipped: number; pending: number; failedAt?: string };
 }
 export const fetchFdeGraph = (id: string) => api.a<FdeGraphResponse>(`/a/v1/databuilder/workflow-runs/${id}/fde-graph`);
+// ── WO-FE-WIRE-2 件一 · databuilder pipeline 配置面（后端整条做完·此前前端零调用方）──
+// 仓主原话「配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP，只要数据接入或导入，
+// 就按照这个 pipeline 处理数据」——上面的 intake/import/建域是「按它跑」，这五条是「配置它」。
+// 类型全部取自 @platform/contracts（契约后端已定·前端不得重定义 · contracts-only-shared）。
+export const fetchBuildPipelines = () =>
+  api.a<{ items: BuildPipeline[] }>("/a/v1/databuilder/pipelines").then((r) => r.items);
+export const fetchBuildPipeline = (kind: BuildPipelineKind) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`);
+/** 覆盖某 kind 的 pipeline（幂等）：改完立刻生效——intake/import/建域**下次执行即按新定义跑**。 */
+export const saveBuildPipeline = (kind: BuildPipelineKind, body: BuildPipelineUpsert) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`, { method: "PUT", body });
+/** 撤销覆盖 → 回出厂默认（factory:true）。 */
+export const resetBuildPipeline = (kind: BuildPipelineKind) =>
+  api.a<BuildPipeline>(`/a/v1/databuilder/pipelines/${kind}`, { method: "DELETE" });
+/** 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑（没人能放行 = 死锁）。 */
+export const approveWorkflowStep = (id: string, stepKey: string) =>
+  api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/approve`, { method: "POST", body: { stepKey } });
 // g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
 export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
 // g8-P5：故事脚本自动生成器 + 压测

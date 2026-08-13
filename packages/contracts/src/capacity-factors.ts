@@ -68,7 +68,10 @@ export const CAPACITY_FACTOR_BINDINGS: CapacityFactorBinding[] = [
   { mark: "⑮", num: 15, factorName: "物料到货", objectType: "Material", prop: "leadTime", grain: "model-material", writable: true, ruleGate: "C16" },
   // 层5 预测（× 爬坡 − 换型 − 检修）
   { mark: "⑳", num: 20, factorName: "投产爬坡", objectType: "Line", prop: "status", grain: "process", writable: false },
-  { mark: "⑤", num: 5, factorName: "换型损失", objectType: "ChangeoverMatrix", prop: "changeoverMin", grain: "process", writable: true, ruleGate: "C08" },
+  // WO-ENGINE-2 件一：真属性名是 `minutes`（`battery-extended.ts` ChangeoverMatrix def：pairId/fromModel/toModel/**minutes**/hours/lineId）。
+  // 旧写法 `changeoverMin` 在对象上恒不存在 ⇒ `discoverCapacityLevers` 的 `typeof o.props[b.prop] === "number"` 过滤把候选**全部剔掉**
+  // （不是 `?? 0` 兜底算 0——两种失效方式修法不同）。⚠️ 改名是必要不充分条件，见下方 ⑤ 的三重死记账。
+  { mark: "⑤", num: 5, factorName: "换型损失", objectType: "ChangeoverMatrix", prop: "minutes", grain: "process", writable: true, ruleGate: "C08" },
   { mark: "⑱", num: 18, factorName: "设备检修", objectType: "MaintPlan", prop: "week", grain: "base", writable: false },
   // 层6 缺口（− 需求 → 缺口/富余）
   { mark: "⑲", num: 19, factorName: "需求", objectType: "Order", prop: "qty", grain: "base", writable: false },

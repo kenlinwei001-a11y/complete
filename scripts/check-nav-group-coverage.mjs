@@ -72,6 +72,15 @@
  *                        的 `renderer` 字段等于该 key（→ `workspace.views[].renderer` → `ViewPage` `getRenderer`）；
  *                      · 专用 route：`App.tsx` 有 `{ path: "v/<该 key>" }`（静态段先于 `:viewKey` 匹配）。
  *                    都没有 = 「实现有、测试绿、页面永远打不开」。豁免须进 `RENDERER_NO_PATH` 并写理由（≥10 字）。
+ *   ⑧ 收编不是删除（WO-SANDBOX-IA-CONSOLIDATE）  `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 里每一条
+ *                    （= ①④ 放行的那批「已收编进沙盘、有意不单列」的键）反过来验四件事：
+ *                      a. 不许两头占（`kind:"view"` 条目还在 = 重复入口，收编没发生）；
+ *                      b/c. 不许变黑洞（`via` 指定的那条到达路径必须**真的**还在：后端仍 seed 派单 + 仍在
+ *                           mock allViews；或 App.tsx 仍有专用 route）——「不单列」≠「页面没了」；
+ *                      d. `where` 要写出「用户点哪里能到」（≥6 字）；
+ *                      e. `via:"static-route"` 的必须**留着** `kind:"route"` 回退条目（带 `consolidatedWhen`）——
+ *                         那四页本身不受控制台的 entitlement 门控，条目删了 = 控制台一关它们就从 IA 里蒸发。
+ *                    没有这四条，收编表就是一张免死金牌，跟「其它」兜底桶是同一种东西、只是名字好听。
  *
  * ③ 是这道门的保命判据。①②④⑤⑥⑦ 的解析都是「从 TS 源码里正则捞字面量」，
  * 一旦某侧被重构成解析不了的写法：那侧集合会**变小**——
@@ -106,6 +115,27 @@
  * 用法：node scripts/check-nav-group-coverage.mjs   ·   pnpm nav-group-coverage:check
  * 退出码非 0 即失败。
  */
+/* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
+ * 本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
+ *   0 = 干净 · 1 = **真有问题**（先修代码）· 2 = **工具自己坏了**（只许说「我没查出来」）。
+ * 而 node 对**未捕获异常一律退 1** —— 恰好撞上「真有问题」这个码。于是「门根本没跑起来」
+ * （缺依赖 / 只读 FS / 权限 / OOM / node 版本差异 / dist 没构建）会被 gate.sh 和人一起
+ * 读成「你的代码有问题」，方向**正好相反**。2026-08-11 一天之内两道门各撞一次，故建此机制。
+ * 形态（铁律 0.6 句式）：「我用『进程非 0 退出』当作『代码有问题』的证据，而前者并不度量后者。」
+ *
+ * 这段只**加**默认失败方向，**不动**任何既有 exit(0)/exit(1)：兜底若把真违规也吞成 2，
+ * 那是拿一个更糟的假绿换掉一个假红。RC=1 仍然只由主判据明确判负产生。
+ * 守门的门：scripts/check-gate-exit-discipline.mjs（新加的门不带兜底会被它当场判红）。 */
+process.on("uncaughtException", (e) => gateToolBroken(e));
+process.on("unhandledRejection", (e) => gateToolBroken(e));
+function gateToolBroken(e) {
+  console.error(`⛔ check-nav-group-coverage.mjs 未预期异常（${e?.message || e}）⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」——本门这次没跑完，它什么都没证明。");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给主判据明确判负那一条路径，两者处置相反，不许合并）
+}
+
+
 import { readFileSync, existsSync } from "node:fs";
 
 const MANIFEST = "apps/datacore/src/synthetic/view-manifest.ts";
@@ -150,6 +180,15 @@ const INTENTIONALLY_NO_NAV = {};
 const RENDERER_NO_PATH = {};
 /** 棘轮上限（只降不升）：豁免条数不得超过此数。要加豁免就必须先在 diff 里把这个数字改大，藏不住。 */
 const RENDERER_NO_PATH_CEILING = 0;
+
+/**
+ * 判据⑧ 的下界（WO-SANDBOX-IA-CONSOLIDATE）：收编表当前 9 条。
+ * 解析器坏掉 → 读成 0 条 → ①④ 的豁免集为空 ⇒ 门**误红**（失败安全那一侧），
+ * 但仍必须当场说清是"门瞎了"而不是"代码错了"，否则下一个人会去改被测代码。
+ */
+const CONSOLIDATED_FLOOR = 5;
+/** 收编表里必然含有的键（判据③ 金丝雀）。 */
+const CONSOLIDATED_CANARY = "chain-line-map";
 
 const fail = [];
 /** 门自身的故障（与"被扫代码有问题"分开报——修法完全不同）。 */
@@ -275,6 +314,25 @@ function parseNavRouteKeys(body) {
 }
 
 /**
+ * `ShellLayout.CONSOLIDATED_INTO_SANDBOX`（WO-SANDBOX-IA-CONSOLIDATE）——
+ * 「已收编进沙盘、有意不在导航单列」的登记表。
+ *
+ * **为什么读它而不是在本门里手抄一份**：抄一份 = 装饰品。前端删一条收编、门这边还留着，
+ * 门就会拿旧表放行一个真的漏登记（同 0.6 那条「金丝雀必须与主逻辑共用同一份实现」）。
+ * 单一出处在被测代码里，门只负责对账。
+ *
+ * 形态：`"chain-line-map": { via: "workspace.views", where: "…" },`
+ * ⚠ 入参必须是**已去注释**的对象体 —— 表头的长注释里逐字写着这些键名。
+ */
+function parseConsolidated(body) {
+  const out = [];
+  for (const m of body.matchAll(/"([^"]+)"\s*:\s*\{\s*via:\s*"([^"]+)"\s*,\s*where:\s*"([^"]*)"/g)) {
+    out.push({ key: m[1], via: m[2], where: m[3] });
+  }
+  return out;
+}
+
+/**
  * 判据⑦ 被测侧：`registry.ts` 的 `registerRenderer("<key>", …)` 键集。
  * ⚠ 入参必须是**已去注释**的源码 —— 注册表里到处是「XXX 此前没接线」这类注释，逐字含键名；
  *   不去注释，「注释里提了一嘴」会被读成「已注册」，判据⑦ 当场变成一个**更大**的集合（更容易误红），
@@ -390,6 +448,24 @@ function parseRendererValues(body) {
         `差集算错 = 本门对「注册了但打不开」这件事**恒绿**，正是它要治的那种东西。`,
     );
   }
+
+  /* ── 判据⑧ 的词法自检（WO-SANDBOX-IA-CONSOLIDATE）──────────────────────────── */
+  const SAMPLE_CONS = `
+    // "commented-key": { via: "workspace.views", where: "注释里的不算" },
+    "canary-view-key": { via: "workspace.views", where: "沙盘中栏默认模式" },
+    "canary-route-key": { via: "static-route", where: "沙盘模式切换 →「归因」" },
+  `;
+  const gotCons = parseConsolidated(stripComments(SAMPLE_CONS));
+  const wantCons = [
+    { key: "canary-view-key", via: "workspace.views", where: "沙盘中栏默认模式" },
+    { key: "canary-route-key", via: "static-route", where: "沙盘模式切换 →「归因」" },
+  ];
+  if (JSON.stringify(gotCons) !== JSON.stringify(wantCons)) {
+    gateBroken.push(
+      `✗ 词法自检：parseConsolidated 提取结果不对 —— 期望 ${JSON.stringify(wantCons)}，实得 ${JSON.stringify(gotCons)}` +
+        `（应做到：注释里的不算 / via 与 where 两个字段都提得出 —— 少了 via 就分不清该验后端派单还是该验 route）`,
+    );
+  }
 }
 
 /* ---------- 后端真相源：BUILTIN_VIEWS 里 seed:true 那批 ---------- */
@@ -452,13 +528,20 @@ if (fixturesSrc) {
 const shellSrc = read(SHELL);
 let navViewKeys = [];
 let navRouteKeys = [];
+/** WO-SANDBOX-IA-CONSOLIDATE · 收编表（判据①④ 的豁免源 + 判据⑧ 的被测集）。 */
+let consolidated = [];
 if (shellSrc) {
-  const body = arrayBlock(stripComments(shellSrc), declOf("NAV_GROUPS"), `${SHELL} NAV_GROUPS`);
+  const stripped = stripComments(shellSrc);
+  const body = arrayBlock(stripped, declOf("NAV_GROUPS"), `${SHELL} NAV_GROUPS`);
   if (body !== null) {
     navViewKeys = parseNavViewKeys(body);
     navRouteKeys = parseNavRouteKeys(body);
   }
+  const consBody = arrayBlock(stripped, declOf("CONSOLIDATED_INTO_SANDBOX"), `${SHELL} CONSOLIDATED_INTO_SANDBOX`, "{");
+  if (consBody !== null) consolidated = parseConsolidated(consBody);
 }
+const consolidatedKeys = consolidated.map((c) => c.key);
+const consolidatedSet = new Set(consolidatedKeys);
 
 /* ---------- 前端路由表：App.tsx 的专用静态 route ---------- */
 const appSrc = read(APP);
@@ -475,6 +558,7 @@ const canaries = [
   [`${REGISTRY} registerRenderer 键`, registeredRenderers, RENDERER_CANARY],
   [`${MANIFEST} seed:true 的 renderer 值`, seededRenderers, RENDERER_CANARY],
   [`${VIEWDEFS} VIEW_DEFS renderer 值`, viewDefRenderers, VIEWDEF_CANARY],
+  [`${SHELL} CONSOLIDATED_INTO_SANDBOX`, consolidatedKeys, CONSOLIDATED_CANARY],
 ];
 for (const [label, set, canary] of canaries) {
   if (!set.includes(canary)) {
@@ -503,6 +587,13 @@ if (registeredRenderers.length < RENDERER_FLOOR) {
       ` 屏幕上写着"全部可达"，其实是"一个都没看"。`,
   );
 }
+if (consolidatedKeys.length < CONSOLIDATED_FLOOR) {
+  gateBroken.push(
+    `✗ 判据③ 门自身没坏：${SHELL} 的 CONSOLIDATED_INTO_SANDBOX 只解析出 ${consolidatedKeys.length} 条（下界 ${CONSOLIDATED_FLOOR}）——` +
+      ` 收编表读空只会让 ①④ **误红**（失败安全），但方向必须说对：是本门的解析器坏了，不是前端漏登记。` +
+      ` 修门（parseConsolidated / 表的写法变了就同步改），别去给 NAV_GROUPS 加回九个重复入口。`,
+  );
+}
 if (viewDefRenderers.length < VIEWDEF_FLOOR) {
   gateBroken.push(
     `✗ 判据③ 门自身没坏：${VIEWDEFS} VIEW_DEFS 只解析出 ${viewDefRenderers.length} 个 renderer 值（下界 ${VIEWDEF_FLOOR}）——` +
@@ -511,14 +602,17 @@ if (viewDefRenderers.length < VIEWDEF_FLOOR) {
   );
 }
 
-/* ---------- 判据① 归组无遗漏 ---------- */
+/* ---------- 判据① 归组无遗漏（收编键除外·WO-SANDBOX-IA-CONSOLIDATE）---------- */
 const navSet = new Set(navViewKeys);
-const ungrouped = seeded.filter((k) => !navSet.has(k));
+const ungrouped = seeded.filter((k) => !navSet.has(k) && !consolidatedSet.has(k));
 if (ungrouped.length > 0) {
   fail.push(
     `✗ 判据① 归组无遗漏：后端下发的内置视图未登记进 ${SHELL} 的 NAV_GROUPS —— [${ungrouped.join(", ")}]\n` +
       `    后果不是"报错"，是**静悄悄落进侧栏那个叫「其它」的折叠兜底桶**：可达、但用户找不到。\n` +
-      `    修法：把这些 key 加进对应业务分组的 items（{ kind: "view", key: "…" }），不是改 leftover 机制。`,
+      `    修法二选一：\n` +
+      `      ① 把这些 key 加进对应业务分组的 items（{ kind: "view", key: "…" }），不是改 leftover 机制；\n` +
+      `      ② 若它已被收编进某个控制台（不该再有平级入口）→ 进 CONSOLIDATED_INTO_SANDBOX 写明 via 与到达路径，\n` +
+      `         **并同时**在 UnifiedNav 里把它从 leftover 滤掉（只删登记不滤 leftover = 原地掉进「其它」桶，比单列还糟）。`,
   );
 }
 
@@ -536,14 +630,20 @@ if (missingInMock.length > 0) {
 /* ---------- 判据④ 专用 route 有入口 ---------- */
 const routeSet = new Set(dedicatedRoutes);
 const navRouteSet = new Set(navRouteKeys);
+// ⚠ 收编键**不在**本条的豁免之列（与判据① 不同，这是刻意的）：
+//   `via:"static-route"` 的四页本身不受 `sim.sandbox` 门控，收编时保留了带 `consolidatedWhen` 的
+//   回退条目（沙盘关 → 照旧单列）。所以它们**仍应**在 NAV_GROUPS 里有 kind:"route" 条目 ——
+//   条目没了 = 沙盘关着的租户那四页只剩手敲 URL 可达，正是本条要抓的东西。
 const noEntry = dedicatedRoutes.filter((k) => !navRouteSet.has(k) && !(k in INTENTIONALLY_NO_NAV));
 if (noEntry.length > 0) {
   fail.push(
     `✗ 判据④ 专用 route 有入口：${APP} 的专用静态 route 在 ${SHELL} 的 NAV_GROUPS 里没有 kind:"route" 条目 ——\n` +
       `    [${noEntry.join(", ")}]\n` +
       `    后果：页面写了、路由通了、点不到 —— 只有知道 URL 的人（= 写它的那个 dev）进得去。\n` +
-      `    修法二选一：① 加 { kind: "route", key: "…", label: "…" } 到对应分组；\n` +
-      `              ② 若确属刻意不给入口，写进本门的 INTENTIONALLY_NO_NAV 并注明理由（会被打印出来，无处躺平）。`,
+      `    修法三选一：① 加 { kind: "route", key: "…", label: "…" } 到对应分组；\n` +
+      `              ② 若已收编进某控制台但该页本身不受那个 entitlement 门控 →\n` +
+      `                 条目**照留**并加 consolidatedWhen: "<那个 entitlement>"（控制台在则隐藏，不在则单列）；\n` +
+      `              ③ 若确属刻意不给任何入口，写进本门的 INTENTIONALLY_NO_NAV 并注明理由（会被打印出来，无处躺平）。`,
   );
 }
 const staleExempt = Object.keys(INTENTIONALLY_NO_NAV).filter((k) => !routeSet.has(k));
@@ -624,6 +724,68 @@ for (const [k, why] of Object.entries(RENDERER_NO_PATH)) {
   }
 }
 
+/* ---------- 判据⑧ 收编不是删除（WO-SANDBOX-IA-CONSOLIDATE·反向四条）---------- *
+ * ①④ 因为收编表而**放行**了九个键。放行必须有代价 —— 否则这张表就成了「往里一填就没人管」
+ * 的免死金牌，跟当年那个「其它」兜底桶是同一种东西（换了个好听的名字而已）。
+ * 故对表里每一条反过来验四件事，任一不成立即红：
+ *   a. **不许两头占**：既进收编表又在 NAV_GROUPS 里 = 重复入口还在，收编根本没发生；
+ *   b. **不许收编成黑洞**：`via:"workspace.views"` 的键必须**仍被后端 seed 派单**且**仍在 mock allViews 里** ——
+ *      后端一停派，`/v/<key>` 当场 404，而收编表会让 ① 闭嘴，于是"入口没了 + 页面也没了"一声不响；
+ *   c. 同理 `via:"static-route"` 的键必须在 `App.tsx` 仍有专用 route（删了 route = 深链接死）；
+ *   d. **到达路径要写出来**（`where` ≥ 6 字）：写不出"点哪里"的收编，多半是没真收编。 */
+for (const { key, via, where } of consolidated) {
+  if (navSet.has(key)) {
+    fail.push(
+      `✗ 判据⑧a 收编不许两头占：CONSOLIDATED_INTO_SANDBOX["${key}"] 声明已收编，但它仍是 ${SHELL} 的\n` +
+        `    NAV_GROUPS 里一个 kind:"view" 条目。屏上结果 = 重复入口（控制台里一处 + 导航里一行）。\n` +
+        `    注：kind:"route" 条目**允许**同时存在，但必须带 consolidatedWhen（见判据⑧e）——\n` +
+        `        那是"控制台不在时的回退"，不是重复入口；kind:"view" 没有这种回退语义（它随 entitlement 一起消失）。`,
+    );
+  }
+  // ⑧e：`static-route` 的收编项必须**留着**回退条目 —— 删了，控制台一关那页就只剩手敲 URL。
+  if (via === "static-route" && !navRouteSet.has(key)) {
+    fail.push(
+      `✗ 判据⑧e 收编须留回退入口：CONSOLIDATED_INTO_SANDBOX["${key}"] 是专用 route 页（本身不受控制台的\n` +
+        `    entitlement 门控），但 ${SHELL} 的 NAV_GROUPS 里已无它的 kind:"route" 条目。\n` +
+        `    后果：控制台 entitlement 关着的租户 —— 控制台没有 + 导航也没有 = 这一页从 IA 里蒸发。\n` +
+        `    修法：条目照留，加 consolidatedWhen: "<控制台的 entitlement>"（开则隐藏、关则单列）。`,
+    );
+  }
+  if (typeof where !== "string" || where.trim().length < 6) {
+    fail.push(
+      `✗ 判据⑧d 收编须写到达路径：CONSOLIDATED_INTO_SANDBOX["${key}"].where 不足 6 字。\n` +
+        `    这一栏要回答的是「用户在沙盘里点哪里能到」——答不出来就说明还没收编，只是把入口删了。`,
+    );
+  }
+  if (via === "workspace.views") {
+    if (!seededSet.has(key)) {
+      fail.push(
+        `✗ 判据⑧b 收编不许变黑洞：CONSOLIDATED_INTO_SANDBOX["${key}"] 声明经 workspace.views 仍可达，\n` +
+          `    但 ${MANIFEST} 的 BUILTIN_VIEWS(seed:true) 里已经没有它 —— \`/v/${key}\` 现在是 404。\n` +
+          `    「不在导航单列」和「页面没了」是两件事：前者是 IA 决策，后者是回归。`,
+      );
+    }
+    if (!mockSet.has(key)) {
+      fail.push(
+        `✗ 判据⑧b 收编不许变黑洞：CONSOLIDATED_INTO_SANDBOX["${key}"] 不在 ${FIXTURES} 的 allViews 里 ——\n` +
+          `    前端所有跑 mock 的「路由仍可达」断言对它恒真（哑门），深链接真断了也没人报。`,
+      );
+    }
+  } else if (via === "static-route") {
+    if (!routeSet.has(key)) {
+      fail.push(
+        `✗ 判据⑧c 收编不许变黑洞：CONSOLIDATED_INTO_SANDBOX["${key}"] 声明经专用 route 仍可达，\n` +
+          `    但 ${APP} 里已无 { path: "v/${key}" } —— 落 \`v/:viewKey\` 兜底 → 404。`,
+      );
+    }
+  } else {
+    fail.push(
+      `✗ 判据⑧ via 取值非法：CONSOLIDATED_INTO_SANDBOX["${key}"].via = "${via}"，只允许 "workspace.views" / "static-route"。\n` +
+        `    这两个值决定本门去验哪一侧；写错 = 两侧都不验，收编表当场变成免死金牌。`,
+    );
+  }
+}
+
 /* ---------- 判决 ---------- */
 if (gateBroken.length > 0 || fail.length > 0) {
   console.error("✗ nav-group-coverage:check 失败（本体 §8 G-NAV-FALLBACK-BUCKET）\n");
@@ -650,10 +812,16 @@ const rendererExemptNote =
   Object.keys(RENDERER_NO_PATH).length === 0
     ? "无豁免"
     : `刻意不可达 ${Object.entries(RENDERER_NO_PATH).map(([k, why]) => `${k}（${why}）`).join(" · ")}`;
+// 收编表也必须打出来（同 INTENTIONALLY_NO_NAV 的做法：放行必须留痕，无处躺平）。
+const consolidatedNote =
+  consolidated.length === 0
+    ? "无收编"
+    : `已收编进沙盘 ${consolidated.map((c) => `${c.key}（${c.via}·${c.where}）`).join(" · ")}`;
 console.log(
-  `✓ nav-group-coverage:check：后端 ${seeded.length} 个 seeded 内置视图全部有 NAV_GROUPS 归属且全在 mock allViews 里；` +
-    `${routeSet.size} 条专用 route 全部有 kind:"route" 入口且无悬空条目 —— ${exemptNote}` +
-    `（mock allViews=${mockKeys.length} · NAV_GROUPS view 键=${navSet.size} · route 键=${navRouteSet.size}）`,
+  `✓ nav-group-coverage:check：后端 ${seeded.length} 个 seeded 内置视图全部有 NAV_GROUPS 归属（或已收编）且全在 mock allViews 里；` +
+    `${routeSet.size} 条专用 route 全部有 kind:"route" 入口（或已收编）且无悬空条目 —— ${exemptNote}` +
+    `（mock allViews=${mockKeys.length} · NAV_GROUPS view 键=${navSet.size} · route 键=${navRouteSet.size}）\n` +
+    `  ${consolidatedNote}`,
 );
 console.log(
   `✓ 判据⑦ 渲染器可达：${REGISTRY} 的 ${registeredRenderers.length} 个 registerRenderer 键，` +

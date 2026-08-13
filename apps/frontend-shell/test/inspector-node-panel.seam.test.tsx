@@ -16,6 +16,7 @@ import {
 } from "@platform/contracts";
 
 import { InspectorNodePanel } from "@/views/sim/InspectorNodePanel";
+import { checkedTree, factHits } from "./factlock";
 import {
   VAR_CLASSES,
   VAR_CONTROL_BY_CLASS,
@@ -562,19 +563,20 @@ describe("架构约束 · 节点 ID 不透明 · 公式单源", () => {
       const body = stripComments(src);
       expect(body.match(/kind\s*===\s*["'`]work["'`]/g) ?? [], `${name} 复写了增值判据`).toEqual([]);
     }
-    expect(ts).toMatch(/isValueAddKind\(/);
+    expect(factHits(checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100), /(?<!function\s)\bisValueAddKind\s*\(/), "isValueAddKind 全树零调用 —— 前端又在自己判「哪种算增值」了").not.toEqual([]);
   });
 
   it("流动效率 / 前置期 / 增值量必须直接来自契约函数（不写第二份除法）", () => {
-    expect(ts, "flowEfficiency 不是 nodeFlowEfficiency 的返回值 —— 有人手搓了第二份除法").toMatch(
-      /const\s+flowEfficiency\s*=\s*nodeFlowEfficiency\(/,
-    );
-    expect(ts).toMatch(/const\s+leadTimeDays\s*=\s*nodeLeadTimeDays\(/);
-    expect(ts).toMatch(/const\s+valueAddDays\s*=\s*nodeValueAddDays\(/);
-    expect(ts).toMatch(/computeLossAttribution\(/);
-    expect(ts).toMatch(/expectedCadenceWaitDays\(/);
+    // 事实锚（WO-C 修法）：这些调用**住在哪个文件**不是事实 —— 全树判（搬家不红；真手搓第二份才红）。
+    // 剥注释已由 checkedTree 内建（本 describe 的 tsx/ts 局部剥注释仅服务上面两条逐文件 it）。
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    expect(factHits(fe, /const\s+flowEfficiency\s*=\s*nodeFlowEfficiency\(/), "flowEfficiency 不是 nodeFlowEfficiency 的返回值 —— 有人手搓了第二份除法").not.toEqual([]);
+    expect(factHits(fe, /const\s+leadTimeDays\s*=\s*nodeLeadTimeDays\(/), "leadTimeDays 不再来自契约函数").not.toEqual([]);
+    expect(factHits(fe, /const\s+valueAddDays\s*=\s*nodeValueAddDays\(/), "valueAddDays 不再来自契约函数").not.toEqual([]);
+    expect(factHits(fe, /(?<!function\s)\bcomputeLossAttribution\s*\(/), "损失归因不再走契约实现").not.toEqual([]);
+    expect(factHits(fe, /(?<!function\s)\bexpectedCadenceWaitDays\s*\(/), "节拍等待不再走契约唯一实现").not.toEqual([]);
     // 五桶顺序取自契约常量，不在前端另立一份五段清单
-    expect(ts).toMatch(/CHAIN_STEP_KINDS\.map\(/);
+    expect(factHits(fe, /CHAIN_STEP_KINDS\.map\(/), "五桶顺序不再取自 CHAIN_STEP_KINDS").not.toEqual([]);
   });
 
   it("面板不持有任何节点清单：换一个 nodeId / label / stage 就整体跟着换", () => {

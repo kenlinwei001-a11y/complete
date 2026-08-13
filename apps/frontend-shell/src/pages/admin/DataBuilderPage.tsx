@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
@@ -8,6 +8,44 @@ import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, d
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
+
+/**
+ * WO-UI-DECLUTTER-TOP3 · 第二层折叠区的两个样式常量
+ * （规范 `docs/CONVENTION-ui-information-layering.md` §1：第一层只放「数值 / 状态 / 名字」，
+ *  **逐项说明 · 参数 · 诊断信息**降到一次点击之后；`<summary>` 就是 §1 要求的那个可见记号）。
+ *
+ * ⚠ 刻意**不设 fontSize**：本页字号已 7 级（R-UI-2 说 ≤3），新增任何字号值都是往反方向走 ——
+ *   两个常量都从上下文继承字号，只调颜色与边框。
+ * ⚠ 颜色只用 `tokens.css` 里**确实定义过**的令牌（`--muted` / `--line`）：
+ *   写错令牌名时 `var()` 替换失败 → `color` 可继承 → 一路回落到根 = 满屏纯黑，
+ *   且控制台一声不吭、测试全绿。收工经 `scripts/check-css-token-defined.mjs` 复核。
+ */
+/*
+ * ═══ 规范 §4 豁免声明 `EXEMPTION-TRUNCATION`（§4「豁免要在代码注释里写明理由」）═══
+ *
+ * **豁免对象**：本页保留 5 处原生 `title=`，全部是**截断复原**用途，位置见下方各 `EXEMPTION-TRUNCATION` 标记：
+ *   ① 理解卡的 chip（`comprehend-*`）② 同步矩阵制品列 ③ 闭包徽章 note
+ *   ④ FDE 节点条 ⑤ 脚手架清单 definition 列
+ *
+ * **共同形态**：这 5 处的可见文本都被 `text-overflow: ellipsis` / 窄列 / 横向滚动条**截断了**，
+ *   `title` 复原的是**同一个值的全文**，不是另加一段解释。
+ *
+ * **为什么不换成 `InfoPopover`**：它们都在**密集重复容器**里（flex chip 墙 / 表格单元格 / 横滚节点条），
+ *   一个 `?` 触发器 × N 个 chip = 一屏几十个 `?` —— 那正是本规范 §0 要治的「第一层堆料」，
+ *   换了反而更违规范。规范 §2 禁 `title` 的理由是「拿它当浮层用」（承载**额外说明**）；
+ *   这 5 处不承载额外说明，只是把被 CSS 截掉的字还给用户。
+ *
+ * **规范 §2 点名的事故不适用**：那次是 `ChainLineMapView.tsx` 的 **SVG `<title>`** 在环形图上滞留遮挡图形。
+ *   这 5 处全是 HTML 属性 `title=`，不进 SVG 绘制层。
+ *
+ * **本页其余 11 处 `title=` 已全部改掉**（16 → 5）：承载解释的一律降进 `<details>` 折叠区 +
+ *   `aria-label`（见各处 `WO-UI-DECLUTTER-TOP3` 注释）。豁免只覆盖上述 5 处截断复原。
+ */
+
+const FOLD: CSSProperties = { marginTop: 8, color: "var(--muted)" };
+const FOLD_SUM: CSSProperties = { cursor: "pointer", color: "var(--muted)", userSelect: "none" };
+/** 行内折叠（跟在一句结论后面，不另起块）—— 用在红灯横幅里：灯留第一层，理由折起来。 */
+const FOLD_SUM_WRAP: CSSProperties = { display: "inline", marginLeft: 4 };
 
 /**
  * 自成长发动机 §6.4：就地审批面板——自动补齐的真值写入(物化/发布)经 Action 审批；
@@ -62,7 +100,11 @@ function ManifestForm({ run, pending, onSubmit }: { run: StoryBuildRun; pending:
   };
   return (
     <div data-testid={`sbr-form-${run.id}`} style={{ marginTop: 8, paddingLeft: 22, display: "grid", gap: 8 }}>
-      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>发动机倒推：脚本没说清、构建必需的信息——补录后建域。</div>
+      {/* WO-UI-DECLUTTER-TOP3：表单已经在屏上，「这张表是干嘛的」属解释 → 折叠（规范 §1）。 */}
+      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0 }}>
+        <summary style={FOLD_SUM}>为什么要我补这些？</summary>
+        <div>发动机倒推：脚本没说清、构建必需的信息——补录后建域。</div>
+      </details>
       {story.length > 0 && (
         <div style={{ fontSize: 12 }}>
           已从脚本抽取：{story.map((f) => <span key={f.key} className="badge" style={{ marginRight: 4 }}>{f.label}</span>)}
@@ -131,6 +173,7 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {g.items.map((it, i) => (
+              // §4 豁免 EXEMPTION-TRUNCATION ①：chip 被 ellipsis 截断，title 只复原同一个值的全文
               <span key={`${it.k}-${i}`} className="badge" title={it.hint || it.k} style={{ fontSize: 10.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {it.k || "—"}
               </span>
@@ -182,7 +225,14 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
   }
   return (
     <div data-testid="sbr-syncmatrix">
-      <div style={{ marginBottom: 2 }}>模块同步矩阵（点模块展开逐产物卡片 + diff；深链去核对）：</div>
+      {/* 第一层留矩阵的**名字**；「怎么用它」的操作说明 → 折叠（规范 §1）。 */}
+      <div style={{ marginBottom: 2 }}>
+        模块同步矩阵
+        <details style={FOLD_SUM_WRAP}>
+          <summary style={FOLD_SUM}>怎么用？</summary>
+          <div>点模块展开逐产物卡片 + diff；深链去核对。</div>
+        </details>
+      </div>
       <table className="cmp" style={{ fontSize: 11.5 }}>
         <thead>
           <tr><th></th><th>模块</th><th>新增</th><th>更新</th><th>复用</th><th>状态</th><th>制品</th><th>核对</th></tr>
@@ -201,6 +251,7 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
                   <td>{row.updated || "—"}</td>
                   <td>{row.reused || "—"}</td>
                   <td><span className="badge" style={{ color, borderColor: color }}>{row.status === "PUBLISHED" ? "已发布" : "草稿（未生效）"}</span></td>
+                  {/* §4 豁免 EXEMPTION-TRUNCATION ②：窄列 ellipsis 截断，title 复原全量 refs */}
                   <td title={row.artifactRefs.join(", ")} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.artifactRefs.join(", ") || "—"}</td>
                   <td><a href={row.deepLink} style={{ fontSize: 11 }} onClick={(e) => e.stopPropagation()}>去核对 →</a></td>
                 </tr>
@@ -242,6 +293,7 @@ function ClosureVizView({ closure }: { closure: ClosureReport }) {
         {badges.map((b) => (
           <span key={b.k} className="badge" data-testid={`r12-${b.ok ? "ok" : "missing"}`}
             style={{ fontSize: 10.5, color: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)", borderColor: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
+            /* §4 豁免 EXEMPTION-TRUNCATION ③：徽章墙密集重复容器，逐个挂 `?` 反而堆料 */
             title={b.note}>
             {b.ok ? "✓" : "✗"} {b.k}{b.hard ? "(HARD)" : "(SOFT)"}
           </span>
@@ -279,9 +331,16 @@ export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentenc
           : <span style={{ color: "var(--amber,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
       </div>
       {/* 理解确认门·横幅：有读不懂句 → 诚实劝阻在未理解上建域（可拒·补充故事后重建）；下方「理解确认门」把推演/晋升真锁住（守 KILL-MOCK-RED「空壳冒充真派生」用户侧闸）。 */}
+      {/* WO-UI-DECLUTTER-TOP3：**警告本身**（几句读不懂 + 建议拒绝）留第一层 —— 它是规范 §1 的「状态」，
+          降层等于把红灯藏起来。跟在后面的**理由**（为什么不能在未理解上建域、下游锁了哪些动作）
+          属解释 → 折叠。一字未删（§1 红线）。 */}
       {unmapped > 0 && (
         <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", marginBottom: 4 }}>
-          ⚠ 有 {unmapped} 句系统读不懂（下方红标）——建议**拒绝**建域、补充/改写故事后重建，勿在未理解之上建域（空壳冒充真派生）；下方「理解确认门」已锁定推演/验证/晋升。
+          ⚠ 有 {unmapped} 句系统读不懂 —— 建议**拒绝**建域
+          <details style={FOLD_SUM_WRAP}>
+            <summary style={FOLD_SUM}>为什么？</summary>
+            <div>（下方红标即那几句）补充/改写故事后重建，勿在未理解之上建域（空壳冒充真派生）；下方「理解确认门」已锁定推演/验证/晋升。</div>
+          </details>
         </div>
       )}
       {coverage.map((c, i) => (
@@ -323,9 +382,14 @@ export function ComprehensionGate({ run, children }: { run: StoryBuildRun; child
   return (
     <div data-testid={`sbr-comprehension-gate-${run.id}`}>
       <div data-testid={`sbr-act5-locked-${run.id}`} style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", border: "1px solid var(--danger,#E5484D)", borderRadius: 4, padding: "6px 8px" }}>
+        {/* 锁本身（锁了几句、锁了哪三个动作）是**状态** → 第一层；
+            「为什么要锁」的理据 → 折叠（规范 §1）。锁的可见性一点没减。 */}
         <div style={{ marginBottom: 4 }}>
-          🔒 理解确认门：故事有 <b>{unmapped}</b> 句系统未理解（覆盖度未达 100%）——「一键推演 / 验证 / 整域晋升」已锁定，
-          不在未理解之上把域当可信真值用（守 KILL-MOCK-RED 用户侧闸·绿测试≠能用）。
+          🔒 理解确认门：<b>{unmapped}</b> 句未理解 —— 推演 / 验证 / 晋升已锁定
+          <details style={FOLD_SUM_WRAP}>
+            <summary style={FOLD_SUM}>为什么锁？</summary>
+            <div>覆盖度未达 100% 时不在未理解之上把域当可信真值用（守 KILL-MOCK-RED 用户侧闸·绿测试≠能用）。</div>
+          </details>
         </div>
         {ack === "rejected" && (
           <div data-testid={`sbr-gate-rejected-${run.id}`} style={{ color: "var(--amber,#DD9551)", marginBottom: 4 }}>
@@ -372,7 +436,7 @@ function InferenceButton({ run }: { run: StoryBuildRun }) {
   return (
     <button className="btn primary sm" data-testid={`sbr-inference-${run.id}`}
       onClick={() => quickLaunch({ query: run.script, targetView })}
-      title={`以故事主问句跑 QOS → 跳「${targetView}」页注入出答案，亲手验证建出来的真能用`}>
+      aria-label={`以故事主问句跑 QOS → 跳「${targetView}」页注入出答案，亲手验证建出来的真能用`}>
       ▶ 一键推演（落「{targetView}」页）
     </button>
   );
@@ -410,9 +474,14 @@ function VerificationPanel({ run }: { run: StoryBuildRun }) {
         </span>
       )}
       <button className="btn sm" data-testid={`sbr-verify-btn-${run.id}`} disabled={m.isPending || run.status !== "SUCCEEDED"}
-        onClick={() => m.mutate()} title="把主问句再经 QOS 实跑一遍，验证 publish 后'现在真能答了'（亲手跑通）">
+        onClick={() => m.mutate()} aria-label="把主问句再经 QOS 实跑一遍，验证 publish 后'现在真能答了'（亲手跑通）">
         {m.isPending ? "验证中…" : "↻ 重跑验证"}
       </button>
+      {/* 原挂在按钮上的 `title=`（规范 §2 禁用）搬进这里 —— 真浮层，可键盘到达、移开即消失。 */}
+      <details style={FOLD_SUM_WRAP}>
+        <summary style={FOLD_SUM}>验证做了什么？</summary>
+        <div>把主问句再经 QOS 实跑一遍，验证 publish 后"现在真能答了"（亲手跑通）。</div>
+      </details>
     </div>
   );
 }
@@ -447,10 +516,18 @@ export function DomainPromotePanel({ run }: { run: StoryBuildRun }) {
           {run.domainPromotion?.promotedSolvers?.length ? ` + 求解器 ${run.domainPromotion.promotedSolvers.join("、")}` : ""}
         </span>
       ) : (
-        <button className="btn primary sm" data-testid={`sbr-promote-btn-${run.id}`} disabled={m.isPending}
-          onClick={() => m.mutate()} title="审核通过：把隔离预览数据迁入真值库 + 逐制品晋升临时求解器 GOVERNED（解锁写真值，R4）">
-          {m.isPending ? "晋升中…" : "✓ 审核通过 → 整域晋升"}
-        </button>
+        <>
+          <button className="btn primary sm" data-testid={`sbr-promote-btn-${run.id}`} disabled={m.isPending}
+            onClick={() => m.mutate()} aria-label="审核通过：把隔离预览数据迁入真值库 + 逐制品晋升临时求解器 GOVERNED（解锁写真值，R4）">
+            {m.isPending ? "晋升中…" : "✓ 审核通过 → 整域晋升"}
+          </button>
+          {/* 「点下去会发生什么」是不可逆动作的**后果说明** —— 原来只挂在 `title=` 上（移动端根本看不到）。
+              改成可点开的真折叠区（规范 §2：`title` 不是浮层）。 */}
+          <details style={FOLD_SUM_WRAP}>
+            <summary style={FOLD_SUM}>晋升会做什么？</summary>
+            <div>审核通过：把隔离预览数据迁入真值库 + 逐制品晋升临时求解器 GOVERNED（解锁写真值，R4）。</div>
+          </details>
+        </>
       )}
     </div>
   );
@@ -481,9 +558,11 @@ function QuickSynthPanel() {
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="db-quick-synth">
       <div className="section-title">快速合成（模板驱动 · 无需故事）</div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
-        已知行业模板直接出 demo/测试数据（无 LLM、确定性 R6）；产物统一落连接器，可在连接器页核对。与上方「故事建域」并列双入口。
-      </div>
+      {/* WO-UI-DECLUTTER-TOP3：整段是「这个入口和上面那个有什么区别」的解释 → 折叠（规范 §1）。 */}
+      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 8 }}>
+        <summary style={FOLD_SUM}>和「故事建域」有什么区别？</summary>
+        <div>已知行业模板直接出 demo/测试数据（无 LLM、确定性 R6）；产物统一落连接器，可在连接器页核对。与上方「故事建域」并列双入口。</div>
+      </details>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <label style={{ fontSize: 12 }}>
           行业模板{" "}
@@ -532,13 +611,17 @@ function GrowthConsolePanel() {
   const open = tickets.filter((t) => t.status !== "VERIFIED").length;
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="db-growth-console">
+      {/* 第一层留区块名 + 未结数（名字 + 数值·规范 §1）；来历说明与深链去折叠区。 */}
       <div className="section-title">
-        自检与成长 · 缺口工单（三页归一：自成长收编） <span className="badge amber" data-testid="db-ticket-open">{open} 未结</span>
+        自检与成长 · 缺口工单 <span className="badge amber" data-testid="db-ticket-open">{open} 未结</span>
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
-        建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
-        <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（LOOP / 成长账本 / 工单全貌）</a>
-      </div>
+      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 6 }}>
+        <summary style={FOLD_SUM}>这些工单从哪来？</summary>
+        <div>
+          三页归一（自成长收编）：建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
+          <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（LOOP / 成长账本 / 工单全貌）</a>
+        </div>
+      </details>
       {tickets.length === 0 ? (
         <div style={{ fontSize: 11.5, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>
       ) : (
@@ -616,6 +699,7 @@ function FdeGraph({ runId, liveMs, running }: { runId: string; liveMs: number; r
             <div
               data-testid={`fde-node-${n.key}`}
               data-status={n.status}
+              /* §4 豁免 EXEMPTION-TRUNCATION ④：横滚节点条，节点宽 96px，落不下 `?` 触发器 */
               title={`${n.status}${n.detail ? ` · ${n.detail}` : ""}${typeof n.durationMs === "number" ? ` · ${n.durationMs}ms` : ""}`}
               style={{
                 minWidth: 96, flex: "0 0 auto", padding: "6px 8px", borderRadius: 6,
@@ -710,6 +794,7 @@ function ScaffoldManifestTable({ manifest }: { manifest: ScaffoldManifestRecord 
               <td style={{ padding: "2px 8px 2px 0" }}><code>{it.module}</code></td>
               <td><code>{it.key}</code></td>
               <td style={{ color: SCAFFOLD_STATUS_COLOR[it.status] }}>{SCAFFOLD_STATUS_LABEL[it.status] ?? it.status}</td>
+              {/* §4 豁免 EXEMPTION-TRUNCATION ⑤：definition 全文 JSON，窄列 ellipsis 截断后由 title 复原 */}
               <td className="muted" title={JSON.stringify(it.definition)} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {typeof it.definition.systemPrompt === "string" ? it.definition.systemPrompt : Object.keys(it.definition).join(", ")}
               </td>
@@ -776,7 +861,7 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="wf-timeline">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        工作流运行时（持久化 · 可重入 · 可重试 · 可观测）{" "}
+        工作流运行时{" "}
         {/* WO-UNIT-MEANING：徽章此前只有裸数——数的是**工作流运行实例条数**（下方每行一条 run），非步骤数。 */}
         <span className="badge" data-testid="wf-count">{runs.length} 次运行</span>
         <label className="muted" style={{ fontSize: 11, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
@@ -785,16 +870,24 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
             {WF_LIVE_OPTIONS.map((o) => <option key={o.ms} value={o.ms}>{o.label}</option>)}
           </select>
         </label>
-        <button className="btn sm" data-testid="wf-start-async" disabled={startM.isPending} onClick={() => startM.mutate({ async: true })} title="异步提交：立即返回，后台脱离请求执行；逐步实时跳动（按上方频率轮询）">
+        {/* WO-UI-DECLUTTER-TOP3：两个按钮的 `title=`（规范 §2 禁用原生 tooltip）→ `aria-label`，
+            同/异步的区别与运行时语义统一收进下方「这个运行时保证什么？」折叠区。 */}
+        <button className="btn sm" data-testid="wf-start-async" disabled={startM.isPending} onClick={() => startM.mutate({ async: true })} aria-label="异步提交：立即返回，后台脱离请求执行；逐步实时跳动（按上方频率轮询）">
           {startM.isPending ? "提交中…" : "异步运行"}
         </button>
-        <button className="btn sm" data-testid="wf-start" disabled={startM.isPending} onClick={() => startM.mutate({ async: false })} title="同步运行：跑完返回终态（崩溃可 resume，单步可重试）">
+        <button className="btn sm" data-testid="wf-start" disabled={startM.isPending} onClick={() => startM.mutate({ async: false })} aria-label="同步运行：跑完返回终态（崩溃可 resume，单步可重试）">
           {startM.isPending ? "执行中…" : "运行工作流"}
         </button>
       </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        每步落库检查点 → 进程崩溃可从未完成步续跑；瞬时失败有界重试；致命失败止于该步保留现场。执行状态与业务结论（建域可 BLOCKED）两轴分离。
-      </div>
+      {/* 「持久化 · 可重入 · 可重试 · 可观测」这组语义属**口径说明**（规范 §1 明确不许在第一层）→ 折叠。 */}
+      <details className="muted" style={{ fontSize: 12, marginBottom: 8, color: "var(--muted)" }}>
+        <summary style={FOLD_SUM}>这个运行时保证什么？</summary>
+        <div style={{ marginTop: 4 }}>
+          持久化 · 可重入 · 可重试 · 可观测：每步落库检查点 → 进程崩溃可从未完成步续跑；瞬时失败有界重试；致命失败止于该步保留现场。执行状态与业务结论（建域可 BLOCKED）两轴分离。
+          <br />· <b>异步运行</b> —— 立即返回，后台脱离请求执行；逐步实时跳动（按上方频率轮询）。
+          <br />· <b>运行工作流</b>（同步）—— 跑完返回终态（崩溃可 resume，单步可重试）。
+        </div>
+      </details>
       {runs.length === 0 && <div className="muted" style={{ fontSize: 13 }} data-testid="wf-empty">尚无工作流运行。点「运行工作流」以持久化步骤状态机执行一次故事建域。</div>}
       {runs.map((wf) => {
         const isOpen = expanded === wf.id;
@@ -815,7 +908,7 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
                   style={{ marginLeft: "auto" }}
                   disabled={resumeM.isPending}
                   onClick={(e) => { e.stopPropagation(); resumeM.mutate(wf.id); }}
-                  title="从首个未完成步续跑（已成功步跳过、context 复用）"
+                  aria-label="从首个未完成步续跑（已成功步跳过、context 复用）"
                 >
                   {resumeM.isPending ? "重入中…" : "↻ 重入续跑"}
                 </button>
@@ -948,10 +1041,15 @@ export default function DataBuilderPage() {
       <InPlaceApprovalPanel />
       <div className="panel" style={{ marginBottom: 14 }}>
         <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · Foundry-Grade Data Builder</h2>
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-          输入场景脚本 → agent 自动「意图分析→计划→分解」→ 把原料灌进连接器/知识库等上游节点 → 触发本体建模/规则等加工 →
-          双向闭包门禁（对象必入本体切片·硬；data 孤儿放行·软；正向依赖缺失·硬）。确定性可重放。
-        </div>
+        {/* WO-UI-DECLUTTER-TOP3：这段是**流程口径**（含门禁硬/软规则），按规范 §1 属第二层，
+            整段折进「这台发动机怎么工作？」；第一层只留页名。一字未删。 */}
+        <details style={{ fontSize: 12, ...FOLD, marginTop: 2 }}>
+          <summary style={FOLD_SUM}>这台发动机怎么工作？</summary>
+          <div style={{ marginTop: 4 }}>
+            输入场景脚本 → agent 自动「意图分析→计划→分解」→ 把原料灌进连接器/知识库等上游节点 → 触发本体建模/规则等加工 →
+            双向闭包门禁（对象必入本体切片·硬；data 孤儿放行·软；正向依赖缺失·硬）。确定性可重放。
+          </div>
+        </details>
         {preset && (
           <div data-testid="db-preset" style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
             预设：<b>{preset.name}</b> v{preset.version}{" "}
@@ -984,26 +1082,40 @@ export default function DataBuilderPage() {
           <label style={{ fontSize: 12 }}>
             <input data-testid="db-dryrun" type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> dry-run（仅预览不落库）
           </label>
-          <label style={{ fontSize: 12 }} title="A18 未审核预览：缺口降 ADVISORY 不阻断、隔离物化到伪租户，不写真值；审核通过可整域晋升">
+          {/* WO-UI-DECLUTTER-TOP3：`title=` → `aria-label`（规范 §2 禁用原生 tooltip 充当浮层）。
+              这条说明已整句收进下方「三种建域方式怎么选？」折叠区，未删。 */}
+          <label style={{ fontSize: 12 }} aria-label="A18 未审核预览：缺口降 ADVISORY 不阻断、隔离物化到伪租户，不写真值；审核通过可整域晋升">
             <input data-testid="db-provisional" type="checkbox" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} /> 未审核预览（PROVISIONAL）
           </label>
           <button className="btn" data-testid="db-run" disabled={runM.isPending || !script.trim()} onClick={() => runM.mutate()}>
             {runM.isPending ? "构建中…" : dryRun ? "预览构建" : "运行构建"}
           </button>
-          <button className="btn primary" data-testid="sbr-run" disabled={storyM.isPending || !script.trim()} onClick={() => storyM.mutate()} title="按故事脚本建域并记入历史推演记录（构建期/故事驱动燃料口）">
+          {/* 两个建域按钮的 `title=` 与下方折叠区内容重复 → 折叠区留全文，按钮侧只留 `aria-label`（规范 §2）。 */}
+          <button className="btn primary" data-testid="sbr-run" disabled={storyM.isPending || !script.trim()} onClick={() => storyM.mutate()} aria-label="按故事脚本建域并记入历史推演记录（构建期/故事驱动燃料口）">
             {storyM.isPending ? "建域中…" : "建域并记入历史"}
           </button>
-          <button className="btn" data-testid="sbr-preview" disabled={previewM.isPending || !script.trim()} onClick={() => previewM.mutate()} title="先倒推补录表单：发动机告诉你脚本没说清、构建必需的信息（seed/可复用连接器…），补录后再建域">
+          <button className="btn" data-testid="sbr-preview" disabled={previewM.isPending || !script.trim()} onClick={() => previewM.mutate()} aria-label="先倒推补录表单：发动机告诉你脚本没说清、构建必需的信息（seed/可复用连接器…），补录后再建域">
             {previewM.isPending ? "倒推中…" : "倒推建域（先补录）"}
           </button>
         </div>
-        {/* Q6：三个建域入口的取舍说明（交互可读性）。 */}
-        <div data-testid="db-build-modes-help" style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)", lineHeight: 1.6 }}>
-          三种建域方式按「要不要留痕 / 脚本够不够清楚」选其一：
-          <br />· <b>运行构建</b> —— 一次性构建（勾 dry-run 仅预览不落库），用于快速试跑/调脚本，<b>不</b>进历史推演记录。
-          <br />· <b>建域并记入历史</b>（推荐默认）—— 脚本信息齐全时一键建域，并把这次构建<b>记入历史推演记录</b>时间线，可下钻溯源/重放。
-          <br />· <b>倒推建域（先补录）</b> —— 脚本没说清时先用它：发动机倒推出"构建必需但脚本没给"的字段（seed/可复用连接器…）生成补录表单，在下方历史记录里补齐后再续跑建域。
-        </div>
+        {/*
+          Q6：三个建域入口的取舍说明（交互可读性）。
+          WO-UI-DECLUTTER-TOP3（规范 §1：第一层只放「数值 / 状态 / 名字」）：
+          这四行是**逐项说明**，原先一层到底铺在按钮下方。改为一次点击展开 ——
+          `<summary>` 是规范 §1 要求的可见记号，展开后一字未删（§1 红线：允许降层，绝不允许删除）。
+          三个按钮原来各挂一条 `title=`（原生 tooltip·规范 §2 禁用），内容与本块重复，
+          已收敛到这里统一说，按钮侧只留 `aria-label`。
+        */}
+        <details data-testid="db-build-modes-help" style={FOLD}>
+          <summary style={FOLD_SUM}>三种建域方式怎么选？</summary>
+          <div style={{ lineHeight: 1.6 }}>
+            按「要不要留痕 / 脚本够不够清楚」选其一：
+            <br />· <b>运行构建</b> —— 一次性构建（勾 dry-run 仅预览不落库），用于快速试跑/调脚本，<b>不</b>进历史推演记录。
+            <br />· <b>建域并记入历史</b>（推荐默认）—— 脚本信息齐全时一键建域，并把这次构建<b>记入历史推演记录</b>时间线，可下钻溯源/重放。
+            <br />· <b>倒推建域（先补录）</b> —— 脚本没说清时先用它：发动机倒推出"构建必需但脚本没给"的字段（seed/可复用连接器…）生成补录表单，在下方历史记录里补齐后再续跑建域。
+            <br />· <b>未审核预览（PROVISIONAL）</b> —— A18 未审核预览：缺口降 ADVISORY 不阻断、隔离物化到伪租户，不写真值；审核通过可整域晋升。
+          </div>
+        </details>
       </div>
 
       <QuickSynthPanel />
@@ -1073,16 +1185,23 @@ export default function DataBuilderPage() {
         <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           历史推演记录（故事驱动建域）{" "}
           <span className="badge" data-testid="sbr-count">{storyRunsQ.data?.length ?? 0}</span>
-          <button className="btn sm" data-testid="sbr-generate" style={{ marginLeft: "auto" }} disabled={generateM.isPending} onClick={() => generateM.mutate()} title="从平台能力目录自动生成故事脚本并压测（持续自动输入）">
+          <button className="btn sm" data-testid="sbr-generate" style={{ marginLeft: "auto" }} disabled={generateM.isPending} onClick={() => generateM.mutate()} aria-label="从平台能力目录自动生成故事脚本并压测（持续自动输入）">
             {generateM.isPending ? "生成压测中…" : "自动生成脚本压测"}
           </button>
-          <button className="btn sm" data-testid="sbr-backfill" disabled={backfillM.isPending} onClick={() => backfillM.mutate()} title="逆向导出既有推演能力为故事脚本，逐条建域补血缘 + 推演回填 = 首次全量压测">
+          <button className="btn sm" data-testid="sbr-backfill" disabled={backfillM.isPending} onClick={() => backfillM.mutate()} aria-label="逆向导出既有推演能力为故事脚本，逐条建域补血缘 + 推演回填 = 首次全量压测">
             {backfillM.isPending ? "回填中…" : "存量回填（首次全量压测）"}
           </button>
         </div>
-        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
-          每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
-        </div>
+        {/* WO-UI-DECLUTTER-TOP3：这块说明 + 两个按钮原来各挂的 `title=`（规范 §2 禁用原生 tooltip）
+            统一收进这一个折叠区；按钮侧只留 `aria-label`。一字未删（§1 红线）。 */}
+        <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 8 }}>
+          <summary style={FOLD_SUM}>这里记的是什么？两个按钮各做什么？</summary>
+          <div style={{ marginTop: 4 }}>
+            每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
+            <br />· <b>自动生成脚本压测</b> —— 从平台能力目录自动生成故事脚本并压测（持续自动输入）。
+            <br />· <b>存量回填（首次全量压测）</b> —— 逆向导出既有推演能力为故事脚本，逐条建域补血缘 + 推演回填 = 首次全量压测。
+          </div>
+        </details>
         {backfillReport && (
           <div data-testid="sbr-backfill-report" style={{ fontSize: 12, marginBottom: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)" }}>
             存量回填压测：覆盖 <b>{backfillReport.total}</b> 个推演能力 · 成功 <b style={{ color: "var(--c-capacity,#36BFA5)" }}>{backfillReport.succeeded}</b> · 失败 <b style={{ color: backfillReport.failed ? "var(--danger,#E5484D)" : "inherit" }}>{backfillReport.failed}</b>

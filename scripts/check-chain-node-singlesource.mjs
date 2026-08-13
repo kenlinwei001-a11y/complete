@@ -16,7 +16,17 @@
  * 比它实际覆盖的范围大：前端手抄一份词表，门完全看不见。**门名承诺 > 门实覆盖** 本身
  * 就是本仓在治的那类假绿，故本次把 `apps/frontend-shell/src/**` 整个纳入扫描面。
  *
- * ── 四条判据（互补，各抓一种不同的错法；混为一谈会漏）──────────────────
+ * ── 2026-08-10 · 欠账 #110 的**残留半边**：判据 P（前缀手拼）───────────────
+ * 08-06 那次把**扫描面**扩到了前端，但**判据集**仍只认「静态整串字面量」。于是同一个病
+ * 换了个形状活下来：`` const nodeId = `capacity.op.${opCode}` `` —— 拼出来的串**取值恰好合法**
+ * （`capacity.op.*` 在允许集里），K/N 全部放行，**门绿而单源已经破了**。
+ * 契约 `chain-sim.ts:220-227` 白纸黑字：「生成侧与消费侧都必须走本函数 / `CHAIN_OP_NODE_PREFIX`，
+ * **不许手拼字符串**」——**门校验的是「取值合法」，契约要求的是「必须走单源函数」，这是两件事**。
+ * 危害是延迟的：`CHAIN_OP_NODE_PREFIX` 一旦改动，手拼处静默不跟随 ⇒ 生成侧与消费侧词表分裂
+ * ⇒ 精确复现 `G-CHAIN-NODEID-FREESTRING`（D1/E1 两套词表交集为 0、两边单测全绿、链路整条断开）。
+ * **这个门就是为防这件事造的，而它此前防不住这一处。**（首跑即真红并点名 `chain-loss.ts:589`。）
+ *
+ * ── 五条判据（互补，各抓一种不同的错法；混为一谈会漏）──────────────────
  *   K 键位   `nodeId:`/`cadenceNodeId:` 属性值、以及 `x.nodeId === "…"` 比较值，必须在册。
  *            ← 抓**任何方言**，含无点号的旧 D1 词表（`sop_consensus` 这种 N 抓不到）。
  *   N 命名空间  **任何**形如 `<stage 小写>.<名>` 的字符串字面量都必须在册（或属 `capacity.op.`）。
@@ -27,6 +37,11 @@
  *              而工单要治的正是「前端手抄的词表」。前端只渲染、不产出新信息，列表必然是副本。
  *   L 抄标签 单个前端 src 文件里出现 ≥ COPY_THRESHOLD 个在册 `label` 字面量 ⇒ 中文映射表副本。
  *            ← 契约 §2.5 白纸黑字：「`label` —— 人读名（前端**不另维护中文映射表**，一律取这里）」。
+ *   P 前缀手拼 **静态文本片段紧邻动态插值**（模板串 head/中段、或 `+` 拼接的左操作数），
+ *            且该片段以 `<stage 小写>.` 开头 ⇒ 就地手拼节点 id。**外加**：把 `CHAIN_OP_NODE_PREFIX`
+ *            的取值**整串抄成字面量**（`const P = "capacity.op."`）也算 —— 那是「先抄前缀再拼」，
+ *            同一条逃逸路只是多绕一跳。← 抓 K/N **结构上看不见**的形状：K/N 都只看**静态整串**，
+ *            而拼接产物在 AST 里根本不是一个字符串字面量，取值又恰好落在允许集内 ⇒ 双重放行。
  *
  *   C/L 只对前端生效：`synthetic/cadence.ts` 的 `CADENCE_NODES` 是**数据侧的原创声明**
  *   （哪些节点有节拍、周期多长 = 新信息，且 cadence.ts:400 运行时对注册表验真），不是副本。
@@ -98,6 +113,14 @@
  *      不为它加判据的理由：C 数的是 **id**，「值是不是该由前端定义」是另一个问题
  *      （真要治得给「前端可原创字段」建册，另一笔欠账）；而抄在册 `label` 这条主路 L 仍然咬得住。
  *
+ *   ⑥ **P 只看得见「静态片段」**（WO-GATE-BLINDSPOTS 新增，照实写不圆场）：把前缀本身也算出来
+ *      （`` `${STAGE_MAP[k]}.${x}` `` / `[stage, ".", name].join("")` / `String.raw`）⇒ AST 里没有
+ *      任何一个以 stage 前缀开头的静态片段 ⇒ P 看不见。不为它加判据的理由：再往下就要做常量传播/
+ *      数据流分析，而那类实现的**误报**会逼出豁免名单——豁免名单一开口，将来的真问题会跟着被放过。
+ *      P 咬住的是**省事的那条路**（本仓真实存量就长这样），刻意不追**刻意规避**。
+ *   ⑦ **P 不判「拼出来的值对不对」**，只判「有没有走单源」。这两件事本门分别由 P 与 K/N 管，
+ *      混为一谈会漏：手拼的取值**恰好合法**，正是它此前能从 K/N 底下溜过去的原因。
+ *
  * ── 门自己不许瞎（G-GATE-PARSER-TRUNCATED-VIEW 同族）────────────────────
  *  ① 契约解析：正则锚到 `] as const satisfies`；条目数 ≥ MIN_NODES；四个哨兵 id 必在。
  *  ② 阶段前缀 / 工序前缀**从契约现解**（`CHAIN_STAGES` / `CHAIN_OP_NODE_PREFIX`），
@@ -116,6 +139,27 @@
  *     不在通过行里手抄 —— 治手抄的门自己手抄一个数是同一种病。
  *     任一条对不上 ⇒ 判「门自己瞎了」而不是「代码干净」。
  */
+/* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
+ * 本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
+ *   0 = 干净 · 1 = **真有问题**（先修代码）· 2 = **工具自己坏了**（只许说「我没查出来」）。
+ * 而 node 对**未捕获异常一律退 1** —— 恰好撞上「真有问题」这个码。于是「门根本没跑起来」
+ * （缺依赖 / 只读 FS / 权限 / OOM / node 版本差异 / dist 没构建）会被 gate.sh 和人一起
+ * 读成「你的代码有问题」，方向**正好相反**。2026-08-11 一天之内两道门各撞一次，故建此机制。
+ * 形态（铁律 0.6 句式）：「我用『进程非 0 退出』当作『代码有问题』的证据，而前者并不度量后者。」
+ *
+ * 这段只**加**默认失败方向，**不动**任何既有 exit(0)/exit(1)：兜底若把真违规也吞成 2，
+ * 那是拿一个更糟的假绿换掉一个假红。RC=1 仍然只由主判据明确判负产生。
+ * 守门的门：scripts/check-gate-exit-discipline.mjs（新加的门不带兜底会被它当场判红）。 */
+process.on("uncaughtException", (e) => gateToolBroken(e));
+process.on("unhandledRejection", (e) => gateToolBroken(e));
+function gateToolBroken(e) {
+  console.error(`⛔ check-chain-node-singlesource.mjs 未预期异常（${e?.message || e}）⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」——本门这次没跑完，它什么都没证明。");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给主判据明确判负那一条路径，两者处置相反，不许合并）
+}
+
+
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
@@ -218,6 +262,13 @@ const knownLabels = new Set(labels);
 const stagePrefixes = stages.map((s) => s.toLowerCase());
 /** N 判据的形状：整串等于 `<stage 小写>.<名>`（**整串匹配**，散文里提到 id 不算词表）。 */
 const NODE_SHAPE = new RegExp(`^(?:${stagePrefixes.join("|")})\\.[A-Za-z0-9_][A-Za-z0-9_.#-]*$`);
+/**
+ * 判据 P 的形状：以 `<stage 小写>.` 开头、余下**只含 id 材料**（无空格/中文/标点）。
+ * 比 `NODE_SHAPE` 宽一格：**允许以 `.` 结尾**（那正是「前缀」的样子，如 `capacity.op.`），
+ * 也允许余下为空 —— 因为 P 咬的是**片段**不是整串，整串要等拼完才存在，而拼完的那一刻门已经看不见了。
+ * 阶段前缀同样**从契约现解**（`stagePrefixes`），门自己不手抄。
+ */
+const NODE_PREFIX_SHAPE = new RegExp(`^(?:${stagePrefixes.join("|")})\\.[A-Za-z0-9_.#-]*$`);
 const isAllowed = (id) => known.has(id) || id.startsWith(OP_PREFIX);
 
 /* ═══════════════ 2 · 字面量提取（TS AST；注释/正则/JSX 由编译器处理） ═══════════════ */
@@ -399,6 +450,84 @@ function extractLiterals(code, fileNameHint) {
   return out;
 }
 
+/* ═══════════════ 2b · 判据 P：手拼片段提取（模板串 / `+` 拼接 / 前缀抄写） ═══════════════ */
+/**
+ * 判据 P 的**唯一判据函数**（主逻辑与金丝雀共用这一份，不许各抄一份正则）。
+ * 传入一个**静态文本片段**，回答「它是不是在就地手拼全链节点 id」。
+ * 两种命中形态：
+ *  · `PREFIX`  片段以 `<stage 小写>.` 开头、且余下部分是 id 材料（只含 `[A-Za-z0-9_.#-]`，无空格/中文）
+ *              —— 它紧邻一个动态插值，拼出来的就是一个节点 id；
+ *  · `PREFIX_COPY` 片段**整串就是一个前缀**（以 `.` 结尾，如 `"capacity.op."`）——
+ *              那是把 `CHAIN_OP_NODE_PREFIX` 的**取值**抄进了消费方，「先抄前缀再拼」是同一条逃逸路多绕一跳。
+ * 返回 `"PREFIX" | "PREFIX_COPY" | undefined`。
+ */
+function handBuiltKind(text, adjacentToInterpolation) {
+  if (!NODE_PREFIX_SHAPE.test(text)) return undefined;
+  // 先判「紧邻插值」——它是**更准确的定性**（就地拼串），哪怕片段恰好以 `.` 结尾也一样。
+  if (adjacentToInterpolation) return "PREFIX";
+  // 独立片段：整串就是一个前缀（以 `.` 结尾）⇒ 抄前缀；否则是完整 id，归 K/N/C 管，P 不重复咬。
+  return text.endsWith(".") ? "PREFIX_COPY" : undefined;
+}
+
+/**
+ * 取一份源码里所有**手拼节点 id**的静态片段。走同一套 TS AST（注释/正则/JSX 由编译器天然处理）。
+ * 覆盖三条逃逸路：
+ *  ① 模板串 head —— `` `capacity.op.${opCode}` ``（**本仓真实存量**：`solvers/chain-loss.ts:589`）；
+ *  ② 模板串中段 —— `` `${a}capacity.op.${b}` ``（把前缀挪到中间就绕过只看 head 的实现）；
+ *  ③ `+` 拼接    —— `"capacity.op." + opCode`（换个语法就绕过只认模板串的实现）。
+ * 外加 ④ 前缀整串抄写 —— `const P = "capacity.op."`（先抄再拼，`+`/模板都看不见变量里的东西）。
+ * ①②③ 的静态片段在 AST 里**不是 StringLiteral**（是 TemplateHead/TemplateMiddle），
+ * `extractLiterals` 结构上取不到 —— 这正是 K/N 对它们双重放行的原因。
+ */
+function extractHandBuilt(code, fileNameHint) {
+  const sf = ts.createSourceFile(
+    fileNameHint,
+    code,
+    ts.ScriptTarget.Latest,
+    /*setParentNodes*/ true,
+    fileNameHint.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const out = [];
+  const push = (node, text, adjacent, shape) => {
+    const kind = handBuiltKind(text, adjacent);
+    if (kind === undefined) return;
+    out.push({ text, kind, shape, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1 });
+  };
+  const visit = (node) => {
+    // ①② 模板串：head 与每个中段（tail 之前的 literal）后面都**紧跟**一个 `${}`
+    if (ts.isTemplateExpression(node)) {
+      push(node.head, node.head.text, true, "TEMPLATE_HEAD");
+      for (const span of node.templateSpans) {
+        // 最后一个 span 的 literal 是 tail（后面没有插值了）；其余是 middle（后面还有 `${}`）
+        const isTail = span === node.templateSpans[node.templateSpans.length - 1];
+        push(span.literal, span.literal.text, !isTail, isTail ? "TEMPLATE_TAIL" : "TEMPLATE_MIDDLE");
+      }
+    }
+    // ③ `+` 拼接：左操作数是静态串、右边是动态值 ⇒ 与模板串等价
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const l = node.left;
+      if (ts.isStringLiteral(l) || ts.isNoSubstitutionTemplateLiteral(l)) {
+        const rightIsDynamic = !(ts.isStringLiteral(node.right) || ts.isNoSubstitutionTemplateLiteral(node.right));
+        push(l, l.text, rightIsDynamic, "CONCAT");
+      }
+    }
+    // ④ 前缀整串抄写：独立字面量（`adjacent=false`，只有 PREFIX_COPY 会命中）
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      push(node, node.text, false, "LITERAL");
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(sf, visit);
+  // 同一行同一串可能被 ③④ 同时收到（`"capacity.op." + x` 的左操作数既是拼接也是前缀抄写）——去重。
+  const seen = new Set();
+  return out.filter((o) => {
+    const k = `${o.line}\u0000${o.text}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /* ═══════════════ 3 · 词法自检：证明提取器不是哑的（每次运行都跑） ═══════════════ */
 {
   const probe = [
@@ -523,6 +652,47 @@ let anchorSelftestNeg = 0;
   anchorSelftestNeg = cases.length - anchorSelftestPos;
 }
 
+/* ═══════════════ 3c · 判据 P 自检：手拼提取器的金丝雀（每次运行都跑） ═══════════════
+ *
+ * P 是新判据，而**新判据写瞎了的样子和代码干净的样子一模一样**（都是绿的）。故正反对拍。
+ * 金丝雀**调用的就是主逻辑那个 `extractHandBuilt` / `handBuiltKind`**，不另抄一份正则 ——
+ * 抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿（铁律 0.6 明令）。
+ */
+let pSelftestPos = 0;
+let pSelftestNeg = 0;
+{
+  const cases = [
+    // ── 必须咬住：四条逃逸路 ────────────────────────────────────────────────
+    { name: "模板串 head 手拼工序前缀（本仓真实存量形态）", want: true, code: 'const nodeId = `capacity.op.${opCode}`;' },
+    { name: "模板串**中段**手拼（前缀挪到中间，只看 head 的实现会漏）", want: true, code: 'const nodeId = `${scope}capacity.op.${opCode}`;' },
+    { name: "`+` 拼接（换个语法，只认模板串的实现会漏）", want: true, code: 'const nodeId = "capacity.op." + opCode;' },
+    { name: "前缀整串抄写成常量（先抄再拼，`+`/模板都看不见变量里的东西）", want: true, code: 'const P = "capacity.op.";' },
+    { name: "非工序阶段前缀同样咬（P 的形状来自契约现解的 CHAIN_STAGES，不是只认 capacity）", want: true, code: 'const id = `demand.${kind}`;' },
+    // ── 必须放过：合法写法与无关文本（没有这几条，上面的红只证明「门一律咬」）──
+    { name: "**正对照**：走单源常量拼（契约唯一允许的写法）", want: false, code: 'const nodeId = `${CHAIN_OP_NODE_PREFIX}${opCode}`;' },
+    { name: "**正对照**：走单源函数", want: false, code: "const nodeId = chainOpNodeId(opCode);" },
+    { name: "在已有 nodeId 后面接后缀（片段不以 stage 前缀开头）", want: false, code: "const stepId = `${nodeId}#work`;" },
+    { name: "注释里的手拼（AST 里没有注释节点 —— 证明不是裸文本匹配）", want: false, code: 'const x = 1; // const nodeId = `capacity.op.${opCode}`;' },
+    { name: "散文模板（前缀后面跟空格/中文，不是 id 材料）", want: false, code: "const msg = `order. 第 ${n} 步`;" },
+    { name: "在册整串字面量（那是 K/N/C 的活，P 不重复咬）", want: false, code: 'const a = ["demand.consensus"];' },
+  ];
+  for (const c of cases) {
+    const hits = extractHandBuilt(c.code, "selftest-handbuilt.ts");
+    const got = hits.length > 0;
+    if (got !== c.want) {
+      blind.push(
+        `判据 P 自检失败：样例「${c.name}」期望 ${c.want ? "咬住" : "放过"}，实得 ${got ? `咬住(${hits.map((h) => `${h.shape}:"${h.text}"`).join(",")})` : "放过"}` +
+          (c.want
+            ? " —— **提取器瞎了**：这条逃逸路实测存在，门放过它就等于 P 没加"
+            : " —— **误报**：合法写法被咬会逼出豁免名单，豁免名单一开口将来的真问题会跟着被放过"),
+      );
+    }
+  }
+  // 条数**从样例表现算**，不在通过行里手抄一个数 —— 治手抄的门自己手抄一个数是同一种病。
+  pSelftestPos = cases.filter((c) => c.want).length;
+  pSelftestNeg = cases.length - pSelftestPos;
+}
+
 /* ═══════════════ 4 · 组装扫描面 ═══════════════ */
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "__snapshots__", "coverage"]);
 function walk(dir, acc) {
@@ -563,10 +733,28 @@ targets.push(...feFiles);
 let anchoredKeyHits = 0;
 const anchoredKeyFiles = new Set();
 
+/** 判据 P 的命中数 —— 打进通过行，让「P 有没有真在扫」可核对（恒 0 也可能是提取器死了）。 */
+let handBuiltScanned = 0;
+
 for (const file of targets) {
   const rel = relative(ROOT, file).split(sep).join("/");
   const isFrontend = feRel.has(rel);
-  const lits = extractLiterals(readFileSync(file, "utf8"), file);
+  const code = readFileSync(file, "utf8");
+  const lits = extractLiterals(code, file);
+
+  // ── P：前缀手拼。**在 K/N 之前独立成段**——它咬的不是「取值合法性」而是「有没有走单源」，
+  //    与 K/N/C/L 是正交的两件事（手拼出来的 `capacity.op.<x>` 取值恰好合法，K/N 结构上也看不见它）。
+  handBuiltScanned += 1;
+  for (const { text, line, kind, shape } of extractHandBuilt(code, file)) {
+    errs.push(
+      `${rel}:${line} [P·前缀手拼] ${kind === "PREFIX_COPY" ? `把前缀 "${text}" 抄成了字面量` : `就地拼串 "${text}…"（${shape}）`}` +
+        ` —— 契约 chain-sim.ts §2.5 明令「生成侧与消费侧都必须走 \`chainOpNodeId()\` / \`CHAIN_OP_NODE_PREFIX\`，**不许手拼字符串**」。` +
+        `注意：拼出来的取值**恰好合法**，所以 K/N 不会报——门校验的是「取值合法」，契约要求的是「必须走单源函数」，这是两件事。` +
+        `危害是延迟的：前缀一改，此处静默不跟随 ⇒ 生成侧与消费侧词表分裂 ⇒ 复现 G-CHAIN-NODEID-FREESTRING。` +
+        `修法：\`import { chainOpNodeId } from "@platform/contracts"\` 后写 \`chainOpNodeId(x)\`；` +
+        `确需模板串时写 \`\\\`\${CHAIN_OP_NODE_PREFIX}\${x}\\\`\`（前缀来自契约常量，本判据放行）。`,
+    );
+  }
 
   const seenKnownIds = new Map(); // 在册 id -> 首次出现行（C 判据）
   const seenLabels = new Map(); // 在册 label -> 首次出现行（L 判据）
@@ -649,8 +837,9 @@ if (blind.length > 0 || errs.length > 0) process.exit(1);
 console.log(
   `✅ chain-node-singlesource:check 通过（注册表 ${registry.length} 节点 / ${stages.length} 阶段前缀 · ` +
     `扫描 ${targets.length} 个文件：datacore ${SCANNED_FILES.length} + frontend ${feFiles.length} · ` +
-    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 · ` +
-    `词法自检 + 类型锚自检(${anchorSelftestPos} 正/${anchorSelftestNeg} 反)通过 · ` +
+    `判据 K 键位 / N 命名空间 / C 抄表 / L 抄标签 / P 前缀手拼(已扫 ${handBuiltScanned} 文件) · ` +
+    `词法自检 + 类型锚自检(${anchorSelftestPos} 正/${anchorSelftestNeg} 反)` +
+    ` + 判据 P 自检(${pSelftestPos} 正/${pSelftestNeg} 反)通过 · ` +
     `C 类型锚豁免命中 ${anchoredKeyHits} 处 / ${anchoredKeyFiles.size} 文件` +
     (anchoredKeyFiles.size > 0 ? `：${[...anchoredKeyFiles].join(", ")}` : "（今天没有任何文件用到该豁免）") +
     `）`,

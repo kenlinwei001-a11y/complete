@@ -51,6 +51,7 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
 });
 
 import { getRenderer } from "@/views/registry";
+import { checkedTree, factHits } from "./factlock";
 import {
   buildChainImpedimentModel,
   CHAIN_IMPEDIMENT_SOLVER_KEY,
@@ -256,7 +257,8 @@ describe("判定依据（R13：每个数都能回答「凭什么」）", () => {
       expect(ids).toEqual(expected.filter((id) => ids.includes(id)));
     }
     expect(flat.length).toBe(BASE.impediments.length);
-    expect(readRepo("apps/frontend-shell/src/views/sim/chainImpediment.ts")).toContain("compareChainImpediment");
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    expect(factHits(fe, /\.sort\(\s*compareChainImpediment/), "前端不再用契约冻结的全序比较器排序 —— 要么自排了一套，要么接线断了").not.toEqual([]);
   });
 });
 
@@ -487,7 +489,10 @@ describe("取不到数时的诚实（genuine-sim 纪律）", () => {
 // 7. fixture / mock 对齐后端单一来源 —— 手写漂移过不了门
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("fixture 与 mock 对齐后端单一来源（不许悄悄漂移）", () => {
-  const engineSrc = readRepo("apps/datacore/src/solvers/chain-impediment.ts");
+  // 引擎住在哪个文件不是事实（WO-C 修法）—— 用 caveat 模板片段全树定位宿主（搬家不红；模板没了才红）。
+  const engineHomes = factHits(checkedTree("apps/datacore/src", "chain_impediments", 80), "含 SUSTAIN（持续判定），而 SolverContext 无时序访问");
+  if (engineHomes.length !== 1) throw new Error(`[chain-impediment.seam] 引擎 caveat 模板全树命中 ${engineHomes.length} 处 —— 定位探针失效，先修定位器`);
+  const engineSrc = readRepo(engineHomes[0]!);
   const mockSrc = readRepo("apps/frontend-shell/src/mocks/simSolvers.ts");
 
   it("fixture 里每个 bindingId 都在引擎的判据声明表里真实存在", () => {
@@ -533,7 +538,7 @@ describe("fixture 与 mock 对齐后端单一来源（不许悄悄漂移）", ()
         Math.max(0, Math.min(100, Math.round((breach / denom!) * 100))),
       );
     }
-    expect(engineSrc).toContain("Math.round((breach / denom) * 100)");
+    expect(factHits(checkedTree("apps/datacore/src", "chain_impediments", 80), /Math\.round\(\s*\(\s*breach\s*\/\s*denom\s*\)\s*\*\s*100\s*\)/), "引擎里找不到 severity 公式 round(breach/denom×100) ⇒ 口径改了，上面的复算对拍一起重审").not.toEqual([]);
   });
 
   it("mock 与 fixture 同口径：都没有 LIVE、C02/C09 都是 0 条、R-ARG-FIDELITY 都拒绝两维", async () => {
@@ -570,11 +575,12 @@ describe("与 F1 全链线路图的边界（不重复劳动）", () => {
 
   it("F1 的既有资产原样保留：chain-line-map 仍然可达且仍只调它自己的求解器", async () => {
     expect(getRenderer("chain-line-map")).toBeDefined();
-    const f1 = readRepo("apps/frontend-shell/src/views/sim/ChainLineMapView.tsx");
-    expect(f1).toContain("CHAIN_LOSS_SOLVER_KEY");
-    expect(f1, "本单不许往 F1 线路图里塞第二个求解器（会打破它的「只有一个数据源」门）").not.toContain(
-      "chain_impediments",
-    );
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    const f1Homes = factHits(fe, /runSolver\(\s*CHAIN_LOSS_SOLVER_KEY/);
+    expect(f1Homes, "F1 线路图不再调 chain_loss_attribution —— 它的数据源被摘了").not.toEqual([]);
+    for (const home of f1Homes) {
+      expect(readRepo(home), `${home} 里塞进了 chain_impediments —— 本单不许往 F1 取数路径里塞第二个求解器（会打破它的「只有一个数据源」门）`).not.toContain("chain_impediments");
+    }
   });
 
   it("本页把「与线路图的分工」写在界面上，用户不会以为是同一张图的两种画法", async () => {

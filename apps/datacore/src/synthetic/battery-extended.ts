@@ -99,6 +99,13 @@ export function extendedObjectTypes(): TypeDef[] {
       p("drillField", "string"), p("kind", "enum"), p("isRoot", "boolean"), p("provenanceSynthetic", "boolean"),
       // WO-CEO-DATA-2：每个 CausalFactor 归属一个指标域，供引擎按指标选因果根。
       p("metricKey", "string"),
+      // WO-FACTOR-SCOPE-SINGLESOURCE · 作用域内解析声明（数据驱动·R14·契约见 contracts/gap-attribution.ts CausalFactorSchema）：
+      // 产能域因子必须落到**本基地**的对象，而 drillId 是单值 → 这五个属性声明「怎么在作用域内挑对象」，引擎查询期解析。
+      pd("baseScopeField", "作用域字段：下钻对象上承载基地键的属性名（如 baseId）。非空表示本因子需在 scope.baseId 作用域内逐对象解析，drillId 用 \"*\" 占位。", "string"),
+      pd("drillPick", "作用域内选谁：max=该字段最大者最紧（利用率/到货天/停机时长）；min=最小者最紧（OEE/良率/班次工时/齐套天数）。", "enum"),
+      pd("drillNorm", "紧张度归一口径：ratio=值本身（0–1 比率·越大越紧）/ inverseRatio=1−值 / popMax=值÷作用域内最大值 / popMin=1−值÷作用域内最大值。", "enum"),
+      pd("drillFilterField", "可选等值过滤字段（如 EquipmentDowntime.reason）——只取该字段等于 drillFilterValue 的对象。", "string"),
+      pd("drillFilterValue", "可选等值过滤取值（如 换型）——与 drillFilterField 成对使用，二者缺一即不过滤。", "string"),
     ]),
     // WO-CEO-DATA-2 每指标多假设因果域 drill 真对象（market_share / revenue / cash / demand_attain）
     def("CompetitorShare", "竞品份额", "commercial", [
@@ -369,6 +376,48 @@ const GROSS_PROFIT_CAUSAL_FACTORS = [
   { factorId: "cf-cost-inflation", label: "成本上涨(root)", drillType: "GrossMarginBridge", drillId: "gmb-cost", drillField: "impactYi", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "gross_profit" },
 ];
 
+// ── WO-FACTOR-SCOPE-SINGLESOURCE · 产能域因果因子（治 G-CAPFACTOR-VOCAB-SPLIT）────────────────
+//
+// 为什么必须有这一组：产能推演页的因子 chip 传的是 **BN 张力词表**（`battery.ts:225 BN_FACTORS`）的中文因子名，
+// 而 `gap_attribution scope.factorId` 认的是 `CausalFactor.factorId` —— 两张词表交集 **0**
+// ⇒ 7 个按钮返回逐字节相同的基地树（取证全表见 `docs/AUDIT-factor-scope-vocab.md`）。
+// 本组把 BN 的 7 个张力因子**在因果域里立起来**：`label` 与 BN 因子名**逐字相同**（chip 显示不变），
+// 但 chip 传的值从此是 `factorId`。前端不再自己拼候选集——引擎按基地下发 `scope.availableFactors`。
+//
+// 承载物全部是**实测过的真对象真字段**（seed=42 实跑 `listByType` 核对过条数与取值，见审计文档 §2）：
+//   Line(130) / Equipment(780) / Process(650) / Shipment(13·每基地 1) / EquipmentDowntime(166·换型 28)。
+// ⚠ 被排除的候选（诚实标「无承载物」，绝不为凑数指向不存在的字段）：
+//   · `ShiftPlan` / `OperatorAttendance` —— **对象数 0**（`synthetic/service.ts:807` 明写执行类不物化）；
+//   · `ChangeoverMatrix.changeoverMin` —— **该字段不存在**（真属性是 `minutes`），且 `lineId` 恒 null 无法按基地落；
+//   · `Material.onHand` —— 字段真实但 `Material` **无 baseId**，会退化成 13 张卡同一个数（R1「8/8 卡全同」老病）。
+//
+// `drillId:"*"` = 契约既有的「按类型聚合/作用域内解析」约定（见 GapProvenanceSchema.drillId 注释）：
+// 真正的对象由引擎按 `baseScopeField` + `drillPick` 在**本基地**内解析（R14 数据驱动·非引擎 if 链）。
+const CAPACITY_CAUSAL_FACTORS = [
+  { factorId: "cf-cap-bottleneck-process", label: "瓶颈工序", drillType: "Line", drillId: "*", drillField: "utilization",
+    kind: "实测", isRoot: false, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "max", drillNorm: "popMax" },
+  { factorId: "cf-cap-equipment-oee", label: "设备OEE", drillType: "Equipment", drillId: "*", drillField: "oee_current",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "min", drillNorm: "inverseRatio" },
+  { factorId: "cf-cap-labor-hours", label: "人力工时", drillType: "Process", drillId: "*", drillField: "shiftHours",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "min", drillNorm: "popMin" },
+  { factorId: "cf-cap-material-kitting", label: "物料齐套", drillType: "Shipment", drillId: "*", drillField: "coverageDays",
+    kind: "实测", isRoot: false, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "min", drillNorm: "popMin" },
+  { factorId: "cf-cap-logistics-leadtime", label: "物流时长", drillType: "Shipment", drillId: "*", drillField: "etaDay",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "max", drillNorm: "popMax" },
+  { factorId: "cf-cap-changeover-loss", label: "换型损失", drillType: "EquipmentDowntime", drillId: "*", drillField: "durationMin",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "max", drillNorm: "popMax",
+    drillFilterField: "reason", drillFilterValue: "换型" },
+  { factorId: "cf-cap-yield-variance", label: "良率波动", drillType: "Process", drillId: "*", drillField: "yield_baseline",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "capacity",
+    baseScopeField: "baseId", drillPick: "min", drillNorm: "inverseRatio" },
+];
+
 export const CAUSAL_FACTORS = [
   ...SUPPLY_CAUSAL_FACTORS,
   ...MARKET_SHARE_CAUSAL_FACTORS,
@@ -376,6 +425,7 @@ export const CAUSAL_FACTORS = [
   ...CASH_CAUSAL_FACTORS,
   ...DEMAND_ATTAIN_CAUSAL_FACTORS,
   ...GROSS_PROFIT_CAUSAL_FACTORS,
+  ...CAPACITY_CAUSAL_FACTORS,
 ];
 
 // WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry.params 覆盖·C3）。
@@ -433,7 +483,17 @@ const GROSS_PROFIT_CAUSAL_EDGES: { from: string; to: string }[] = [
   { from: "cf-gm-gap", to: "cf-cost-inflation" },
 ];
 
+// WO-FACTOR-SCOPE-SINGLESOURCE · 产能域 caused_by（**只连能站住的那一条**）：
+// 「物料齐套」不足（Shipment.coverageDays 覆盖天数低）→ 正极粉短缺（MaterialBalance.gapTon）
+// → 已有 5 跳供应链链路（上游减供→长协违约→矿价→地缘→决策缺失）。
+// 其余 6 个产能因子**不编因果边**：它们的终点证据就是本基地那台设备/那条线/那道工序本身（isRoot=true），
+// 硬连一条「物流时长 caused_by 上游减供」这类边是**编因果断言**，比缺一条边糟得多。
+const CAPACITY_CAUSAL_EDGES: { from: string; to: string }[] = [
+  { from: "cf-cap-material-kitting", to: "cf-cathode-shortage" },
+];
+
 export const CAUSAL_EDGES: { from: string; to: string }[] = [
+  ...CAPACITY_CAUSAL_EDGES,
   ...SUPPLY_CAUSAL_EDGES,
   ...MARKET_SHARE_CAUSAL_EDGES,
   ...REVENUE_CAUSAL_EDGES,

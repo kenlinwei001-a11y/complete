@@ -4,8 +4,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { checkedTree, commentOnlyCanary, factHits, srcCode, stripComments } from "./factlock";
 import { harvestLeakedTimers } from "./leakGuard";
 import { loginAs, renderWithClient as render } from "./utils";
+
+/** 事实锁的扫描面：整棵 datacore 源码树，剥注释后。判据本体在 `./factlock`（含病历）。 */
+const datacoreCode = () => srcCode("apps/datacore/src");
 
 /**
  * WO-SANDBOX-F2 · 在途 / 在制层 —— SEAM + 诚实缺席 + 前端零清单 + 三色系 + 定时器纪律。
@@ -536,28 +540,48 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
 
   // ── ③ 事实锁：文案引用的上游事实，当场从仓库读出来复验 ──────────────────────
   it("事实锁 · 节拍承载**确实已在**数据层（上游哪天删了，这里红 ⇒ 逼着把文案改回去）", () => {
-    expect(existsSync(join(REPO_ROOT, "apps/datacore/src/synthetic/cadence.ts")), "datacore 的 cadence.ts 不见了 —— CADENCE_ABSENCE 的取证文案必须同步改").toBe(true);
-    const service = readRepo("apps/datacore/src/synthetic/service.ts");
-    expect(service, 'service.ts 不再 putAll("Cadence") —— 节拍又回到"只有契约没有承载"，文案必须改回去').toContain('putAll("Cadence"');
-    const cadenceSrc = readRepo("apps/datacore/src/synthetic/cadence.ts");
+    // 锁的是「**数据层**有节拍承载」这个能力 —— 它与承载住在哪个文件无关。
+    // 原写法钉死 `synthetic/service.ts` + `synthetic/cadence.ts`（还外加一条 existsSync）：
+    // 上游一做无害重构就假红，命中注释又会假绿。见 `./factlock` 顶注的病历。
+    const engine = datacoreCode();
+    expect(engine.length, "datacore 源码扫不到几个文件 ⇒ 扫描器坏了，不许读作「承载没了」").toBeGreaterThan(50);
+    expect(factHits(engine, "putAll("), "金丝雀①：已知必中的 putAll( 一个都找不到 ⇒ 扫描器坏了").not.toEqual([]);
+    expect(
+      factHits(commentOnlyCanary("putAllCANARY"), "putAllCANARY"),
+      "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了，本次结论作废",
+    ).toEqual([]);
+
+    expect(
+      factHits(engine, 'putAll("Cadence"'),
+      '数据层不再 putAll("Cadence") —— 节拍又回到"只有契约没有承载"，CADENCE_ABSENCE 文案必须改回去',
+    ).not.toEqual([]);
     // 读回口还在，且落库字段名没漂（前端这边是受控镜像，名字一漂就恒 0 条）
-    expect(cadenceSrc).toContain("export function cadenceFromProps");
-    expect(cadenceSrc).toContain("cadenceKind");
+    expect(factHits(engine, /export function cadenceFromProps\b/), "合成层不再产出 cadence —— 同上").not.toEqual([]);
+    expect(factHits(engine, /\bcadenceKind\b/), "落库字段名 cadenceKind 漂了 —— 前端镜像会恒 0 条").not.toEqual([]);
     // ⇒ 因此"数据层无承载"这句话今天必须是假的
     expect(CADENCE_ABSENCE.evidence.join("\n")).not.toMatch(/0 命中|不存在（D1 未并线）/);
   });
 
   it("事实锁 · 采购段四段承载**确实已在**（PurchaseOrder 有日戳 · 清关/到货检验是在册对象类型）", () => {
-    const ext = readRepo("apps/datacore/src/synthetic/battery-extended.ts");
+    // 同上：锁「在不在」，不锁「在哪个文件」。`pd("orderDay"` 这种**声明调用**比裸 `orderDay`
+    // 更钉得住 —— 裸串在别的求解器里也会撞到，撞上了就是拿一个不度量该事实的数当证据。
+    const engine = datacoreCode();
+    expect(engine.length, "datacore 源码扫不到几个文件 ⇒ 扫描器坏了，不许读作「承载没了」").toBeGreaterThan(50);
+    expect(factHits(engine, "def("), "金丝雀①：已知必中的 def( 一个都找不到 ⇒ 扫描器坏了").not.toEqual([]);
+    expect(
+      factHits(commentOnlyCanary("orderDayCANARY"), "orderDayCANARY"),
+      "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了，本次结论作废",
+    ).toEqual([]);
+
     for (const field of ["orderDay", "shipDay", "arriveDay"]) {
-      expect(ext, `PurchaseOrder 少了 ${field} —— 采购支线文案必须同步改`).toContain(field);
+      expect(factHits(engine, `pd("${field}"`), `PurchaseOrder 少了 ${field} —— 采购支线文案必须同步改`).not.toEqual([]);
     }
-    expect(ext).toContain('def("CustomsClearance"');
-    expect(ext).toContain('def("IncomingInspection"');
-    const service = readRepo("apps/datacore/src/synthetic/service.ts");
-    expect(service).toContain('putAll("CustomsClearance"');
-    expect(service).toContain('putAll("IncomingInspection"');
-    // 契约侧四段腿单源
+    expect(factHits(engine, 'def("CustomsClearance"'), "CustomsClearance 不再是在册对象类型").not.toEqual([]);
+    expect(factHits(engine, 'def("IncomingInspection"'), "IncomingInspection 不再是在册对象类型").not.toEqual([]);
+    expect(factHits(engine, 'putAll("CustomsClearance"'), "清关不再落库").not.toEqual([]);
+    expect(factHits(engine, 'putAll("IncomingInspection"'), "到货检验不再落库").not.toEqual([]);
+    // 契约侧四段腿单源。**这一条锚在文件上是对的**：「单源」这个事实本身就是
+    // 「只有 procurement.ts 一份」，位置就是事实（不属于本单要治的位置锚）。
     const proc = readRepo("packages/contracts/src/procurement.ts");
     for (const leg of ["supplier_production", "in_transit", "customs", "incoming_inspection"]) {
       expect(proc).toContain(leg);
@@ -567,14 +591,14 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
   });
 
   it("源码级门 · 缺席文案不许再退回 `const` 字面量（回归锁）", () => {
-    const model = readRepo("apps/frontend-shell/src/views/sim/transitFlow.ts");
+    // 事实锚（WO-C 修法）：两个常量**住在哪个文件**不是事实 —— 全树判（搬家不红；退回字面量才红）。
+    // 剥注释由 checkedTree 内建：注释里写一句 `export const CADENCE_ABSENCE = deriveCadenceAbsence(`
+    // 喂不绿（正是「命中注释而误报绿」那半边病的修法）。
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
     // 两个名字必须是**派生调用**的结果，不是手写对象字面量
-    expect(model).toMatch(/export const CADENCE_ABSENCE[^\n]*=\s*deriveCadenceAbsence\(/);
-    expect(model).toMatch(/export const PROCUREMENT_BRANCH[^\n]*=\s*deriveProcurementBranch\(/);
-    // 注释不参与判定（与本文件既有源码级门同款做法）——
-    // 文档里**引用**旧写法是应该的（那是病历），真正要禁的是它重新变成可执行代码。
-    const code = model.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-    expect(code, "缺席声明又被写回 `status: \"EMPTY\" as const` —— 那正是本门要治的病").not.toMatch(/status:\s*"EMPTY"\s+as\s+const/);
+    expect(factHits(fe, /export const CADENCE_ABSENCE[^\n]*=\s*deriveCadenceAbsence\(/), "CADENCE_ABSENCE 不再是 deriveCadenceAbsence() 的派生结果").not.toEqual([]);
+    expect(factHits(fe, /export const PROCUREMENT_BRANCH[^\n]*=\s*deriveProcurementBranch\(/), "PROCUREMENT_BRANCH 不再是 deriveProcurementBranch() 的派生结果").not.toEqual([]);
+    expect(factHits(fe, /status:\s*"EMPTY"\s+as\s+const/), "缺席声明又被写回 `status: \"EMPTY\" as const` —— 那正是本门要治的病").toEqual([]);
   });
 
   /**
@@ -603,9 +627,11 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
     const console_ = readRepo("apps/frontend-shell/src/views/sim/SandboxConsole.tsx");
     // 注释不参与判定（同本文件既有源码级门做法）：注释里讲清病因是应该的，禁的是它是可执行代码。
     const code = console_.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
-    // 消费方确实还在（这两个导出不是没人要的死符号 —— 删了会打红构建）
-    expect(code).toContain("CADENCE_ABSENCE.label");
-    expect(code).toContain("PROCUREMENT_BRANCH.label");
+    // 消费方确实还在（这两个导出不是没人要的死符号 —— 删了会打红构建）——
+    // 消费**住在哪个文件**不是事实（WO-C 修法）：全树判在不在，搬家不红。
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
+    expect(factHits(fe, "CADENCE_ABSENCE.label"), "图例不再读 CADENCE_ABSENCE.label").not.toEqual([]);
+    expect(factHits(fe, "PROCUREMENT_BRANCH.label"), "图例不再读 PROCUREMENT_BRANCH.label").not.toEqual([]);
     for (const rec of ["CADENCE_ABSENCE", "PROCUREMENT_BRANCH"]) {
       for (const perishable of ["reason", "status", "unblockedBy"]) {
         expect(code, `${rec}.${perishable} 又上屏了 —— 那是"零输入"那一档，与屏上正在发生的事无关`).not.toContain(`${rec}.${perishable}`);
@@ -793,23 +819,27 @@ describe("WO-TRANSIT-WIRE · 图层自取 Cadence / 采购段，缺席由取回�
 
   // ── ④ 源码级回归锁：接上的线不许再被摘掉 ────────────────────────────────────
   it("源码级门 · 四条查询 + 两处现算必须都在，且图层不许退回去读那两个模块级常量", () => {
-    const view = readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx");
-    const code = view.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-
+    // 事实锚（WO-C 修法）：查询/现算**住在哪个文件**不是事实 —— 正向判据全树判（搬家不红；摘线才红）。
+    const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
     for (const type of ["Cadence", "PurchaseOrder", "CustomsClearance", "IncomingInspection"]) {
-      expect(code, `图层不再查 ${type} —— 那块面板又变回一句永远为真的话`).toContain(`searchObjects("${type}"`);
+      expect(factHits(fe, `searchObjects("${type}"`), `图层不再查 ${type} —— 那块面板又变回一句永远为真的话`).not.toEqual([]);
     }
-    // 现算，而不是读常量
-    expect(code, "节拍缺席不是现算的了").toMatch(/deriveCadenceAbsence\(\s*\{/);
-    expect(code, "采购缺席不是现算的了").toMatch(/deriveProcurementBranch\(\s*\{/);
-    // Cadence 行必须真的并进站点集合（只查不用 = 白查）
-    expect(code, "查回来的 Cadence 行没有并进 resolveStations 的引擎侧站点 —— 闸门永远点不亮").toContain("parseCadenceRows(");
-    expect(code).toMatch(/resolveStations\(\s*engineNodes/);
-    // ⛔ 图层不许再读零输入基线（那是 SandboxConsole 图例的东西）
+    // 现算，而不是读常量（探针钉到「带字段名的实参形状」：transitFlow.ts 的提示字符串里引用了
+    // `deriveXxx({ engineNodes, … })` 的**无字段值**形态 —— 那是给调用方看的文案，不是调用）。
+    expect(factHits(fe, /deriveCadenceAbsence\(\s*\{\s*engineNodes:\s*nodes/), "节拍缺席不是现算的了").not.toEqual([]);
+    expect(factHits(fe, /deriveProcurementBranch\(\s*\{\s*purchaseOrderRows:/), "采购缺席不是现算的了").not.toEqual([]);
+    // Cadence 行必须真的并进站点集合（只查不用 = 白查）——探针钉在「图层把查回来的行喂给解析器」
+    // 这个形状上（transitFlow.ts 的提示字符串里引用了 `parseCadenceRows(rows)` —— 那是文案不是调用）。
+    expect(factHits(fe, /parseCadenceRows\(\s*probes\.cadence\.rows/), "查回来的 Cadence 行没有并进 resolveStations 的引擎侧站点 —— 闸门永远点不亮").not.toEqual([]);
+    expect(factHits(fe, /resolveStations\(\s*engineNodes\s*,/), "resolveStations 不再吃引擎侧站点").not.toEqual([]);
+    // 采购面板必须是**有条件**渲染（此前是无条件 <div>，无论有多少数据都在屏上）
+    expect(factHits(fe, /procurementBranch\.status === "EMPTY"\s*\?/), "采购面板又变回无条件渲染了").not.toEqual([]);
+
+    // ⛔ 图层不许再读零输入基线（那是 SandboxConsole 图例的东西）。
+    // 位置即事实（组件本体经 import 钉死）：「图层」这个组件就是那个文件，反向判据锚在组件本体上。
+    const code = stripComments(readRepo("apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx"));
     expect(code, "图层又去读 CADENCE_ABSENCE 常量了 —— 那个值恒为 NOT_FETCHED，等于把诚实位重新冻住").not.toContain("CADENCE_ABSENCE");
     expect(code, "图层又去读 PROCUREMENT_BRANCH 常量了 —— 同上").not.toContain("PROCUREMENT_BRANCH");
-    // 采购面板必须是**有条件**渲染（此前是无条件 <div>，无论有多少数据都在屏上）
-    expect(code, "采购面板又变回无条件渲染了").toMatch(/procurementBranch\.status === "EMPTY"\s*\?/);
   });
 
   // ── ⑤ 事实锁：宿主注释/屏上文案引用的上游事实当场复验 ────────────────────────
@@ -820,8 +850,11 @@ describe("WO-TRANSIT-WIRE · 图层自取 Cadence / 采购段，缺席由取回�
     expect(hostNote, "宿主还在说「节拍一律缺席」—— 图层现在自己去取 Cadence 了，这句话已经是假的").not.toMatch(
       /节拍一律缺席|节拍缺席；/,
     );
-    // 上游承载还在（删了就该把上面这条改回去）
-    expect(readRepo("apps/datacore/src/synthetic/service.ts")).toContain('putAll("Cadence"');
+    // 上游承载还在（删了就该把上面这条改回去）。锚在**事实**上：承载搬去哪个文件都算数。
+    expect(
+      factHits(datacoreCode(), 'putAll("Cadence"'),
+      '数据层不再 putAll("Cadence") —— 宿主那句话又变回真的了，本条文案必须改回去',
+    ).not.toEqual([]);
   });
 });
 

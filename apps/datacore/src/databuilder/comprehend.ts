@@ -7,6 +7,16 @@ import type {
 import { deriveSolverArgs } from "./solver-args.js";
 import { DOMAIN_ROOT_REQUIREMENTS } from "./domain-invariants.js";
 import { planSlice, type PlannerType, type PlannerLink } from "../ontology/slice-planner.js";
+import { findUnknownScopeTypes, type RuleScopeFinding } from "../rule-scope.js";
+
+/**
+ * 计划体的**诚实位**（非 need 数组 —— 刻意不放根级数组，那里被 `NEED_ARRAY_TO_KIND` 无遗漏门管着，
+ * 每个根级数组都必须对应一个 provisioner；诊断信息不是要被 provision 的东西，混进去就是骗那道门）。
+ */
+export interface PlanDiagnostics {
+  /** scope 指向了不存在的对象类型的规则（改前它们在这里被静默丢掉，连下游 HARD 门都看不见）。 */
+  unresolvedRuleScopes: RuleScopeFinding[];
+}
 
 /**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
@@ -198,7 +208,7 @@ export function assemblePlanBody(
   script: string,
   seed: number,
   registeredSolverKeys?: readonly string[],
-): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology } {
+): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology; diagnostics: PlanDiagnostics } {
   const typeKeys = new Set(core.objectTypes.map((t) => t.typeKey));
   const dataSources: PlanDataSource[] = core.objectTypes.map((e) => ({
     connType: "mock_generic",
@@ -211,14 +221,23 @@ export function assemblePlanBody(
     typeKey: e.typeKey, displayName: e.displayName, domain: e.domain, sourceDataset: e.typeKey.toLowerCase(),
     properties: e.fields.map((f) => ({ propKey: f.name, sourceField: f.name, dataType: f.dataType, isPrimaryKey: f.isPrimaryKey ?? false, refToTypeKey: f.refToTypeKey ?? null })),
   }));
-  const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
+  // WO-RULE-SCOPE-DROP：此处**曾经**是 `core.rules.filter(r => r.scopeObjectTypes.every(t => typeKeys.has(t)))`
+  // —— scope 里有一个不认识的类型键，整条规则被**静默丢掉**：无日志、无报错、无返回值。
+  //
+  // 它比"少一条规则"严重得多：下游 `closure.ts` 本来就有一道 **FORWARD/HARD 门**专治这件事
+  //（`rule:<key>-><type>` → MISSING → `gatePassed=false`）。规则在这里就被丢掉，那道门**根本看不见它** ——
+  // 静默丢弃把已经造好的门**卸了武装**，于是「构建通过」这个绿灯，证明的是一个删掉了证据的世界。
+  //
+  // 改法：不丢，带着诚实位往下走。让本来就该关的门自己关上，而不是在门前把违规品藏起来。
+  const unresolvedRuleScopes = findUnknownScopeTypes(core.rules, typeKeys);
+  const rules: PlanRule[] = core.rules.map((r) => ({ ...r }));
   const solverNeeds: PlanSolverNeed[] = core.solverNeeds
     .filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)))
     // 自造求解器名 → 已注册 key 的确定性收敛（修 SOLVER_NOT_FOUND，使链路闭合不依赖 LLM 措辞）。
     .map((s) => ({ ...s, solverKey: normalizeSolverKey(s.solverKey, registeredSolverKeys) }))
     // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
     .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) }));
-  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
+  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology, diagnostics: { unresolvedRuleScopes } };
 }
 
 /**

@@ -1,0 +1,293 @@
+/* WO-WAITING-STATES-FE · 流程等待态（四态四色）样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   四态色由组件注入 --kind-color（值本身也是 var(--c-*)，非 hex），
+   四个 --c-* 定义在裸 :root 且属主题不变量（tokens.css:106），三套皮下都不会失效。
+   门：process-wait.test.tsx「四态四色」组 —— 本文件出现 hex 或任何颜色函数字面量即红。 */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.sub {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 92ch;
+}
+.source {
+  margin: 0;
+  color: var(--muted2);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.root code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.stateLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 诚实位（答得了 / 答不了）─────────────────────────────────────────────── */
+.honesty {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.honesty b {
+  font-size: 12px;
+}
+.honesty p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.notMeasured {
+  color: var(--warn) !important;
+}
+
+/* ── 取数失败 / 词表漂移 ──────────────────────────────────────────────────── */
+.error,
+.drift {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.error b,
+.drift b {
+  font-size: 12px;
+  color: var(--danger);
+}
+.error p,
+.drift p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 汇总条 ───────────────────────────────────────────────────────────────── */
+.summary {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 92px;
+}
+.kpi small {
+  color: var(--muted2);
+  font-size: 11px;
+}
+.kpi b {
+  font-size: 20px;
+  font-family: var(--font-mono);
+}
+.unit {
+  font-size: 11px;
+  color: var(--muted2);
+  margin-left: 3px;
+  font-family: var(--font-sans);
+}
+
+.dist {
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 240px;
+}
+.dist small {
+  color: var(--muted2);
+  font-size: 11px;
+}
+.distBar {
+  display: flex;
+  height: 22px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+}
+/* 每段宽度 ∝ 条数（flexGrow 由组件注入），颜色 = 该态色 —— 一眼看出哪一类等待占大头 */
+.distSeg {
+  background: var(--kind-color);
+  color: var(--on-accent);
+  font-size: 11px;
+  line-height: 22px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── 单个等待态分组（四态四色的落点）───────────────────────────────────────── */
+.group {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  /* 左侧粗边 = 该态色：四组并排时最强的辨识信号 */
+  border-left: 4px solid var(--kind-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* 记号（人 / 数 / 外 / 钟）——四态四字，不依赖颜色也分得开（色盲可达） */
+.mark {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--kind-color);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+.groupTitle {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.groupTitle h4 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.enum {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted2);
+  font-weight: 400;
+}
+.who {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--txt);
+}
+.hint {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted2);
+}
+.groupStats {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.groupStats b {
+  font-size: 13px;
+  color: var(--kind-color);
+  font-family: var(--font-mono);
+}
+.groupStats small {
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.emptyGroup {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.owners {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.ownersLabel {
+  color: var(--muted2);
+}
+.ownerChip {
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted);
+}
+.ownerChip small {
+  color: var(--muted2);
+  font-family: var(--font-mono);
+}
+
+/* ── 明细表 ───────────────────────────────────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table th {
+  text-align: left;
+  color: var(--muted2);
+  font-weight: 500;
+  font-size: 11px;
+  border-bottom: 1px solid var(--line2);
+  padding: 4px 8px 4px 0;
+  white-space: nowrap;
+}
+.table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  vertical-align: top;
+}
+.table tbody tr:hover {
+  background: var(--hover-tint);
+}
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}

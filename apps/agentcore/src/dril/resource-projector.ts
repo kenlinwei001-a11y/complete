@@ -40,6 +40,8 @@ export interface CatalogItem {
   answersQuestions?: string[];
   /** 检索标签（供语义候选补召回）。 */
   tags?: string[];
+  /** WO-CAPMAP-LIVE · 输出形状顶层 key（solverRegistry 专有·A 侧 `SOLVER_OUTPUT_SHAPES` 单一真值透传）。 */
+  outputShape?: string[];
 }
 
 /**
@@ -60,6 +62,9 @@ export function projectSolvers(items: CatalogItem[]): SolverResource[] {
     argHints: s.argHints,
     domain: s.domain,
     capability: nonEmpty(s.description, s.name),
+    // WO-CAPMAP-LIVE：输出形状进 outputSpec.shape —— 能力地图据此告诉模型「结果长什么样、取哪个字段做 ⟦ref:N⟧ 溯源」。
+    // 真值在 A 侧 SOLVER_OUTPUT_SHAPES（R1 不跨包共享实现·此处只是 REST 透传后的只读投影）。
+    ...(s.outputShape && s.outputShape.length > 0 ? { outputSpec: { shape: s.outputShape } } : {}),
     isDeterministic: true,
     requiresSidecar: false,
     runtime: { isDeterministic: true },

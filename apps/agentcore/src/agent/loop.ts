@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   AnswerBlockSchema,
+  isWriteModeSkill,
   type AgentIteration,
   type AgentRunRecord,
   type Answer,
@@ -67,15 +68,37 @@ export interface AgentLoopOpts {
   isCancelled?: () => boolean;
   /** When set, final_answer's input_schema is replaced by this schema and the raw input is returned. */
   expectsSchema?: Record<string, unknown>;
-  /** WO-SKILL-2：聚合后的 provenance 策略（required|best_effort|none），缺省 best_effort。 */
+  /**
+   * WO-SKILL-2：**开跑时即已知**的聚合 provenance 策略（required|best_effort|none），缺省 best_effort。
+   *
+   * 只有「技能集在开跑那一刻就确定」的调用方才填得出（注册 agent 路：技能绑在 `agent.skills`）。
+   * 泛化 free-QA 路没有 agent、技能是模型在循环里现取的 —— 那条路靠下面 `loadSkill` 回报的
+   * 逐技能治理位**动态升级**（见 `effectiveWriteMode` / `effectiveProvenancePolicy`）。
+   */
   provenancePolicy?: "required" | "best_effort" | "none";
-  /** WO-SKILL-2：true 表示挂载了写操作型 Skill，final_answer 必须含 action_draft。 */
+  /** WO-SKILL-2：true 表示**开跑时**即挂载了写操作型 Skill，final_answer 必须含 action_draft。 */
   writeMode?: boolean;
-  /** load_skill support (B1 agents). */
+  /**
+   * load_skill support（注册 agent 路 + free-QA 路共用）。
+   *
+   * **WO-R4-FREEQA-GATE**：返回值除正文/资源外**必须**回报该技能的治理位
+   * （`writeMode` = `isWriteModeSkill(skill)`，即 sideEffect 写侧 **或** `approvalGate ≠ none`；
+   * `provenancePolicy` = 该技能声明值）。这两个字段**不进** tool_result 的字节
+   * （见 runToolBlock：序列化前先剥掉），只喂给 R4 闸门。
+   *
+   * 🔒 **fail-closed**：回报缺省（`undefined`）时按「需要人工批复 + 必须溯源」处理
+   * （见 `SKILL_GOVERNANCE_FAILCLOSED`）。病史：free-QA 路曾只透传正文、治理位全丢，
+   * 于是 `approvalGate:"human"` 的写回型技能在那条路上**闸门形同虚设**（R4 豁口 G-R4-FREEQA-UNGATED）。
+   * 「没判定 ≠ 判定为好」——将来若有第三个调用方忘了回报，它会被**闸住**而不是被放行。
+   */
   loadSkill?: (skillId: string) => Promise<
     | {
         body: string;
         resources: { name: string; url: string; mime?: string; description?: string }[];
+        /** 该技能是否写回型（`isWriteModeSkill`：sideEffect 写侧 ∪ approvalGate≠none）。缺省 → fail-closed 视为 true。 */
+        writeMode?: boolean;
+        /** 该技能声明的 provenance 策略。缺省 → fail-closed 视为 "required"。 */
+        provenancePolicy?: "required" | "best_effort" | "none";
       }
     | undefined
   >;
@@ -325,10 +348,65 @@ async function reflectWithCritic(
   return base;
 }
 
+/**
+ * WO-R4-FREEQA-GATE · **治理位缺省时的 fail-closed 兜底**（R4：真值写入经 Action 审批）。
+ *
+ * `loadSkill` 回调把技能正文交给模型时若**没回报**治理位，就按最严处理：需要人工批复（writeMode）
+ * 且必须溯源（provenancePolicy=required）。
+ *
+ * 为什么不默认放行：free-QA 路原本一个治理位都不传，执行点 `if (opts.writeMode)` 收到 `undefined`
+ * → falsy → 分支根本不进 → `approvalGate:"human"` 的写回型技能在那条路上**畅通无阻**。
+ * 「字段存在」不度量「闸生效」；缺省值选错了方向，整道闸就是装饰品。
+ */
+const SKILL_GOVERNANCE_FAILCLOSED = {
+  writeMode: true,
+  provenancePolicy: "required" as const,
+};
+
+/**
+ * WO-R4-FREEQA-GATE · **`loadSkill` 回调回报治理位的唯一构造器**（两条路径共用一份实现）。
+ *
+ * 为何做成函数而不是让两个调用方各自内联：本仓的老病就是**同一口径抄两份**——
+ * 抄了就会分叉，改一边另一边照旧绿（`sideEffect` 词表分裂已犯过一次，见契约 `isWriteModeSkill` 注释）。
+ * 判定单源仍在契约 `isWriteModeSkill`（sideEffect 写侧 ∪ approvalGate≠none），这里只做搬运。
+ */
+export function skillGovernance(skill: { sideEffect?: string | null; approvalGate?: string | null; provenancePolicy?: "required" | "best_effort" | "none" | null }): {
+  writeMode: boolean;
+  provenancePolicy: "required" | "best_effort" | "none";
+} {
+  return {
+    writeMode: isWriteModeSkill(skill),
+    provenancePolicy: skill.provenancePolicy ?? "best_effort",
+  };
+}
+
+/** provenance 策略只收紧不放宽：required > best_effort > none。 */
+function tightenProvenance(
+  a: "required" | "best_effort" | "none" | undefined,
+  b: "required" | "best_effort" | "none",
+): "required" | "best_effort" | "none" {
+  const rank = { none: 0, best_effort: 1, required: 2 } as const;
+  if (a === undefined) return b;
+  return rank[b] > rank[a] ? b : a;
+}
+
 export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult> {
   const messages: LlmAgentMessage[] = [{ role: "user", content: opts.userContent }];
   const iterations: AgentIteration[] = [];
   const sketch: { toolName: string; inputSummary: string }[] = [];
+  // -------------------------------------------------------------------------
+  // WO-R4-FREEQA-GATE · 运行时治理位（R4 真值写入经 Action 审批）
+  //
+  // 两条 loadSkill 路径的技能集**确定时机不同**，所以闸门必须同时吃「静态」与「动态」两个来源：
+  //   · 注册 agent 路（engine.ts）：技能绑在 `agent.skills`，开跑即知 → 由 opts.writeMode/provenancePolicy 给；
+  //   · free-QA 路（orchestrator.ts）：无 agent，技能是模型在循环里 `load_skill` 现取的 → 开跑那一刻不可知。
+  // 若只认前者，后者恒为 undefined ⇒ 闸门永远不进分支（这正是被修的豁口）。
+  // 若把后者做成「租户已发布集的静态聚合」，则租户里只要有一个写回技能，**每一道**自由问答都会被要求
+  // 交 action_draft —— 闸门失去指向性。故取 `载入即升级`：**哪个技能的正文真下发给了模型，就按哪个技能的
+  // 治理位收紧**，且只收紧不放宽（单调 ⇒ 对注册 agent 路是 no-op，零回归）。
+  // -------------------------------------------------------------------------
+  let loadedWriteMode = false;
+  let loadedProvenancePolicy: "required" | "best_effort" | "none" | undefined;
   // Phase7C 消息级滚动摘要：折叠轮次的蒸馏素材在此累积，每轮压成「前情摘要」注入 system。
   // summarizer 可插拔（Phase8 生产可注入 LLM 摘要器，返回 Promise）；缺省确定性拼接（CI 可复现）。
   const rollingNotes: string[] = [];
@@ -552,6 +630,18 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       const skillId = String((block.input as Record<string, unknown>)?.skillId ?? "");
       const t0 = Date.now();
       const loaded = await opts.loadSkill?.(skillId);
+      // WO-R4-FREEQA-GATE · 载入即升级：技能正文一旦下发给模型，本次运行的治理位就按该技能收紧。
+      // 治理位缺省 ⇒ fail-closed（需批复 + 必须溯源），绝不因「没回报」而放行。
+      if (loaded) {
+        loadedWriteMode ||= loaded.writeMode ?? SKILL_GOVERNANCE_FAILCLOSED.writeMode;
+        loadedProvenancePolicy = tightenProvenance(
+          loadedProvenancePolicy,
+          loaded.provenancePolicy ?? SKILL_GOVERNANCE_FAILCLOSED.provenancePolicy,
+        );
+      }
+      // 治理位只喂闸门，**不进模型可见字节**（下面序列化的是剥掉治理位的 payload）——
+      // 否则 load_skill 的 tool_result 内容会随本单改动而变，既污染上下文也砸既有字节兼容断言。
+      const payload = loaded ? { body: loaded.body, resources: loaded.resources } : undefined;
       const tcId = newId("tc");
       await opts.repos.toolCalls.insert({
         id: tcId,
@@ -576,7 +666,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         result: {
           type: "tool_result",
           toolUseId: block.id,
-          content: loaded ? `<tool_data>${JSON.stringify(loaded)}</tool_data>` : `skill not found: ${skillId}`,
+          content: payload ? `<tool_data>${JSON.stringify(payload)}</tool_data>` : `skill not found: ${skillId}`,
           isError: !loaded,
         },
         ok: Boolean(loaded),
@@ -873,7 +963,15 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // If this turn carries final_answer, accept it first and terminate (no tool_results needed).
     const finalBlock = toolUses.find((b) => b.name === "final_answer");
     if (finalBlock) {
-      const accepted = await acceptFinalAnswer(finalBlock.input, opts);
+      // WO-R4-FREEQA-GATE · 闸门吃「开跑静态位 ∪ 载入动态位」，两来源取并（只收紧不放宽）。
+      const accepted = await acceptFinalAnswer(finalBlock.input, opts, {
+        writeMode: Boolean(opts.writeMode) || loadedWriteMode,
+        // 未载入任何技能 → 原样透传（含 undefined ⇒ 沿用 acceptFinalAnswer 的 best_effort 缺省·字节兼容）。
+        provenancePolicy:
+          loadedProvenancePolicy === undefined
+            ? opts.provenancePolicy
+            : tightenProvenance(opts.provenancePolicy, loadedProvenancePolicy),
+      });
       if (accepted.ok) {
         // WO-REFLECT-LOOP · 收尾前反思步（暗发·仅 opts.reflect 开·path-A/compose 不经此循环）。
         // 确定性复盘（reflect.ts·R6）+ 可选 LLM critic（agent.critic·fail-open advisory）→ 不过关且 replan 预算未尽 →
@@ -1086,9 +1184,16 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   return await degrade("BUDGET_EXHAUSTED", "BUDGET_EXHAUSTED");
 }
 
+/**
+ * @param governance WO-R4-FREEQA-GATE · **本次运行的有效治理位** —— 开跑静态位（`opts.writeMode` /
+ * `opts.provenancePolicy`，注册 agent 路填）与载入动态位（free-QA 路由 `load_skill` 现取的技能回报）
+ * 取并后的结果。**闸门只读这个参数，不再直接读 `opts`** —— 直接读 opts 正是豁口成因：
+ * free-QA 路一个字段都没传，`if (opts.writeMode)` 恒 falsy ⇒ 写回型技能的人工批复闸整条路失效。
+ */
 async function acceptFinalAnswer(
   input: unknown,
   opts: AgentLoopOpts,
+  governance: { writeMode: boolean; provenancePolicy: "required" | "best_effort" | "none" | undefined },
 ): Promise<{ ok: true; answer: Answer; structured?: unknown } | { ok: false; errors: string[] }> {
   if (opts.expectsSchema) {
     const errors = checkJsonSchema(input, opts.expectsSchema);
@@ -1128,11 +1233,11 @@ async function acceptFinalAnswer(
     });
   }
   const blocks: AnswerBlock[] = parsed.data.blocks;
-  const provenancePolicy = opts.provenancePolicy ?? "best_effort";
+  const provenancePolicy = governance.provenancePolicy ?? "best_effort";
   if (provenancePolicy === "required" && provenance.length === 0) {
     return { ok: false, errors: ["Skill provenancePolicy=required：final_answer 必须包含 provenance"] };
   }
-  if (opts.writeMode) {
+  if (governance.writeMode) {
     const hasActionDraft = blocks.some((b) => b.type === "action_draft");
     if (!hasActionDraft) {
       return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };

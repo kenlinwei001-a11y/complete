@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "exemptions": [
+    {
+      "key": "apps/frontend-shell/test/transit-flow.seam.test.tsx#b71bc3c87cc0422c",
+      "verdict": "位置即事实",
+      "why": "契约侧采购四段腿单源 = 只有 procurement.ts 一份（WO-C 明文豁免形态；契约拆文件时红是对的）。"
+    }
+  ]
+}

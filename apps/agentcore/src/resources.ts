@@ -4,7 +4,21 @@ import type { Repos } from "./persistence/repos.js";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 
 /** 探针查询的注册表切面（错误信息里要指名道姓说清是哪一步失败，不许笼统"探针失败"）。 */
-type ProbeScope = "solvers" | "rules" | "objectTypes";
+export type ProbeScope = "solvers" | "rules" | "objectTypes";
+
+/**
+ * 探针不可用的**成因**。两种，**修法完全不同，不许合成一句**：
+ *
+ * | reason | 观测到的事实 | 运维该去查什么 |
+ * |---|---|---|
+ * | `REGISTRY_ERROR` | 读取这一步**抛错**了 | 看 `detail` 原文——可能是不可达，也可能是鉴权失败 / 上游 5xx / 响应解析失败 |
+ * | `REGISTRY_EMPTY` | 注册表**答了**，答的是 0 条已知 key | 查 A 侧种子/注册表为何空，网络是通的 |
+ *
+ * ⚠️ `REGISTRY_ERROR` **不等于**「网络不可达」：`DataCoreUnavailableError` 的默认报文
+ * （`tools/clients.ts` 的 `"DataCore is unreachable"`）是**任何 fetch 拒绝**都会抛的那一句，
+ * 它是**证据**不是**结论**。把它当结论播报出去，运维会照着去查网络，查一整天查不到东西。
+ */
+export type RefProbeUnavailableReason = "REGISTRY_ERROR" | "REGISTRY_EMPTY";
 
 const PROBE_SOURCE: Record<ProbeScope, string> = {
   solvers: "求解器目录（DataCore catalog.discover(\"solvers\")）",
@@ -20,14 +34,43 @@ const PROBE_SOURCE: Record<ProbeScope, string> = {
  * 旧实现在这两种情形下都静默放行，于是门整体失效**且没有任何信号**。
  */
 function probeUnavailable(scope: ProbeScope, reason: "REGISTRY_ERROR" | "REGISTRY_EMPTY", detail: string): HttpError {
-  const what = reason === "REGISTRY_ERROR" ? `读取失败（${detail}）` : `返回空集（${detail}）`;
-  return new HttpError(
-    503,
-    "REF_PROBE_UNAVAILABLE",
+  // ⚠️ 措辞只许说**观测到的那一件事**：抛错就说「读取抛错」并把上游原文当证据附上，
+  //    **不许**替它下「不可达」这个结论（那是 detail 里那句话的内容，不是我们的观测）。
+  const what = reason === "REGISTRY_ERROR" ? `读取抛错（上游原始错误原文：${detail}）` : `返回空集（${detail}）`;
+  return new RefProbeUnavailableError(
+    scope,
+    reason,
+    detail,
     `引用可校验门不可用：${PROBE_SOURCE[scope]} ${what}——门在此状态下无法判定引用是否存在，` +
       `按「我没找到 ≠ 它不存在」一律拒绝发布（旧实现在此静默放行，门整体失效且无信号）。` +
       `请恢复 DataCore 该注册表后重试发布。`,
   );
+}
+
+/**
+ * WO-SEEDGATE-FRESHNESS · 缺陷 B · **成因结构化**出口。
+ *
+ * 病：`reason` 原本只活在 `probeUnavailable` 的局部变量里，一拼进 message 就化成了自由文本——
+ * 上层（种子门审计）只能拿到一个笼统的「门不可用」，于是把两种成因合并播报成一句
+ * **「DataCore is unreachable」**。而「我读不出来」和「它不可达」是两个不同的命题。
+ *
+ * 修法：把成因作为**字段**随异常上抛。`extends HttpError` 是刻意的——`statusCode:503` /
+ * `code:"REF_PROBE_UNAVAILABLE"` / message 三者一字不变，三条发布路（agent / workflow / skill）
+ * 的既有 `instanceof HttpError` 处置与错误信封**字节兼容**，新增能力只对想读 `reason` 的调用方可见。
+ */
+export class RefProbeUnavailableError extends HttpError {
+  constructor(
+    /** 哪个注册表切面读不出（solvers / rules / objectTypes）。 */
+    readonly scope: ProbeScope,
+    /** 成因：抛错 vs 空集。上层据此分出两个可区分的状态，不许再二选一。 */
+    readonly reason: RefProbeUnavailableReason,
+    /** 上游原始错误原文（证据；`REGISTRY_EMPTY` 时是"0 条已知 key"这类事实描述）。 */
+    readonly detail: string,
+    message: string,
+  ) {
+    super(503, "REF_PROBE_UNAVAILABLE", message);
+    this.name = "RefProbeUnavailableError";
+  }
 }
 
 /**

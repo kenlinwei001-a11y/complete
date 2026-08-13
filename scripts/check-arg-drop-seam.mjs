@@ -19,7 +19,29 @@
  * 用法：node scripts/check-arg-drop-seam.mjs（先 pnpm -r build 或至少 build agentcore）。
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §5 R-ARG-FIDELITY · §7 门 arg-drop-seam:check · §8 G-ARG-DROP-SEAM。
  */
-import { existsSync, readFileSync } from "node:fs";
+/* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
+ * 本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
+ *   0 = 干净 · 1 = **真有问题**（先修代码）· 2 = **工具自己坏了**（只许说「我没查出来」）。
+ * 而 node 对**未捕获异常一律退 1** —— 恰好撞上「真有问题」这个码。于是「门根本没跑起来」
+ * （缺依赖 / 只读 FS / 权限 / OOM / node 版本差异 / dist 没构建）会被 gate.sh 和人一起
+ * 读成「你的代码有问题」，方向**正好相反**。2026-08-11 一天之内两道门各撞一次，故建此机制。
+ * 形态（铁律 0.6 句式）：「我用『进程非 0 退出』当作『代码有问题』的证据，而前者并不度量后者。」
+ *
+ * 这段只**加**默认失败方向，**不动**任何既有 exit(0)/exit(1)：兜底若把真违规也吞成 2，
+ * 那是拿一个更糟的假绿换掉一个假红。RC=1 仍然只由主判据明确判负产生。
+ * 守门的门：scripts/check-gate-exit-discipline.mjs（新加的门不带兜底会被它当场判红）。 */
+process.on("uncaughtException", (e) => gateToolBroken(e));
+process.on("unhandledRejection", (e) => gateToolBroken(e));
+function gateToolBroken(e) {
+  console.error(`⛔ check-arg-drop-seam.mjs 未预期异常（${e?.message || e}）⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」——本门这次没跑完，它什么都没证明。");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给主判据明确判负那一条路径，两者处置相反，不许合并）
+}
+
+
+import { readFileSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -27,16 +49,11 @@ const fails = [];
 const notes = [];
 
 // ── 依赖：agentcore dist（真种子 + collectSlotRefs 模板扫描器） ──
+// ⛔ 守卫必须在 import dist **之前**：本门断言①读 dist 真种子，②读 datacore 源码，
+//    dist 一旦落后于 src，①②就在比对两个不同时点的世界，会给出与源码相反的结论且是绿的（欠账 #161）。
+assertDistFresh(["apps/agentcore/dist/mocks/seed.js", "apps/agentcore/dist/util/template.js"], { gate: "arg-drop-seam:check" });
 const distSeed = abs("apps/agentcore/dist/mocks/seed.js");
 const distTemplate = abs("apps/agentcore/dist/util/template.js");
-for (const [label, u] of [["agentcore/mocks/seed", distSeed], ["agentcore/util/template", distTemplate]]) {
-  if (!existsSync(u)) fails.push(`${label} dist 未构建（${u.pathname}）——先 pnpm --filter agentcore build 再跑本门`);
-}
-if (fails.length) {
-  console.error("✗ arg-drop-seam:check 失败（前置）：");
-  for (const f of fails) console.error("  - " + f);
-  process.exit(1);
-}
 
 const { seedIntentsAndPlans } = await import(distSeed.href);
 const { collectSlotRefs } = await import(distTemplate.href);

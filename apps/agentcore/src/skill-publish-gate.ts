@@ -1,6 +1,6 @@
 import type { SkillDefinition, SkillReference } from "@platform/contracts";
 import { lintSkill, type SkillLintViolation } from "./skill-lint.js";
-import { probeMissingRefs } from "./resources.js";
+import { probeMissingRefs, RefProbeUnavailableError } from "./resources.js";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import type { Repos } from "./persistence/repos.js";
 
@@ -162,21 +162,45 @@ export interface SeedSkillGateFinding {
 }
 
 /**
- * 可查询的**诚实位**。四态，缺一不可：
+ * 可查询的**诚实位**。六态，缺一不可：
  *
  * | status | 含义 | 绝不可读成 |
  * |---|---|---|
  * | `NOT_RUN` | 还没审计过（默认值） | 干净 |
  * | `CLEAN` | 审计跑完，零违规 | — |
  * | `VIOLATIONS` | 审计跑完，有违规（出厂技能带着违规落了库） | — |
- * | `GATE_UNAVAILABLE` | 注册表读不出/空集，门无法判定 | 干净 |
+ * | `REGISTRY_UNREACHABLE` | 探针读注册表时**抛错** | 干净 / 「网络不可达」 |
+ * | `REGISTRY_EMPTY` | 注册表**答了**，答的是 0 条已知 key | 干净 / 「都合法」 |
+ * | `GATE_UNAVAILABLE` | 读不出，且**未能区分**是上面哪一种 | 干净 |
  *
  * `NOT_RUN` 是默认值而不是 `CLEAN`，是**刻意的**：这道位存在的全部理由就是
  * 「我没找到」和「它不存在」是两个不同的命题——默认值若是 `CLEAN`，
  * 一个根本没跑审计的部署与一个审计通过的部署在可观测面上一模一样，那这道位就白加了。
+ *
+ * **WO-SEEDGATE-FRESHNESS · 缺陷 B**：`REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` 是本单拆出来的。
+ * 原先两者合并成一个 `GATE_UNAVAILABLE`，而对外播报的文案却二选一地断言「DataCore is unreachable」
+ * ——那句话是 `DataCoreUnavailableError` 的**默认报文**（任何 fetch 拒绝都抛它），是证据不是结论。
+ * ⚠️ 命名注意：`REGISTRY_UNREACHABLE` 度量的是「**读取这一步抛错了**」，**不**保证是网络层不可达
+ * （鉴权失败 / 上游 5xx / 解析失败同样落这一支）——真正的成因以 `unavailableReason` 里的上游原文为准。
+ * `GATE_UNAVAILABLE` 现在只留给**真的分不出**的情形（非探针异常），按 WO 判据「宁可含糊，不许二选一地编一个」。
  */
+export type SeedSkillGateStatus =
+  | "NOT_RUN"
+  | "CLEAN"
+  | "VIOLATIONS"
+  | "REGISTRY_UNREACHABLE"
+  | "REGISTRY_EMPTY"
+  | "GATE_UNAVAILABLE";
+
 export interface SeedSkillGateReport {
-  status: "NOT_RUN" | "CLEAN" | "VIOLATIONS" | "GATE_UNAVAILABLE";
+  status: SeedSkillGateStatus;
+  /**
+   * **这份数据真正被计算的时刻**（不是响应组装时刻，也不是进程启动时刻）。
+   *
+   * WO-SEEDGATE-FRESHNESS · 缺陷 A 的本体：本字段原先只在进程启动时写一次就冻住，
+   * 于是一份「开机那一瞬的快照」被一条自称"刚刚测过"的时间戳一直播报下去。
+   * 实测现象：连续 3 次请求间隔 3 分钟，`ranAt` 一字未变，而 DataCore 早已健康。
+   */
   ranAt?: string;
   tenantId?: string;
   /** 被审计的技能数（只审 PUBLISHED 种子——DRAFT 种子本来就没自称过门）。 */
@@ -184,19 +208,64 @@ export interface SeedSkillGateReport {
   findings: SeedSkillGateFinding[];
   /** 门不可用时的原因原文（探针的 503 报文），供运维直接定位是哪个注册表读不出来。 */
   unavailableReason?: string;
+  /** 这份快照最多被复用多少秒（超过即按请求重算）。让"它有多新"这件事本身可观测。 */
+  ttlSeconds?: number;
 }
 
-const NOT_RUN: SeedSkillGateReport = { status: "NOT_RUN", checked: 0, findings: [] };
-let seedGateReport: SeedSkillGateReport = NOT_RUN;
+/**
+ * 快照最长复用时长。**审计不是免费的**（要遍历 PUBLISHED 种子并打 DataCore 注册表），
+ * 所以允许缓存；但缓存必须**带 TTL + 有显式手动刷新入口**，否则就退化成本单要修的那个冻结常量。
+ */
+export const SEED_GATE_TTL_MS = 30_000;
 
-export function getSeedSkillGateReport(): SeedSkillGateReport {
-  return seedGateReport;
+const NOT_RUN: SeedSkillGateReport = { status: "NOT_RUN", checked: 0, findings: [] };
+
+interface CachedSeedGate {
+  report: SeedSkillGateReport;
+  /** 计算时刻（毫秒）。与 `report.ranAt` 同源同一瞬，TTL 判据只认它。 */
+  computedAtMs: number;
+}
+
+/**
+ * 按租户分桶（`tenant_id everywhere`）。原实现是**单个**进程级变量：
+ * 一个租户算出来的结论会被另一个租户读到（技能 key / 违规原文跨租户外泄），
+ * 而"按请求现算"本来就必须以请求者的 tenantId 为准，于是顺手把这个洞一起关上。
+ */
+const cacheByTenant = new Map<string, CachedSeedGate>();
+/** 最近一次写入的报告（`getSeedSkillGateReport()` 不带租户时的返回值，保持既有调用点语义）。 */
+let lastSeedGateReport: SeedSkillGateReport = NOT_RUN;
+
+/**
+ * 读**当前缓存**的诚实位（不触发计算）。
+ *
+ * ⚠️ 它返回的可能是一份陈旧快照——要"现在的结论"请用 `getFreshSeedSkillGateReport`。
+ * 这正是缺陷 A 的形态：一个只读缓存的函数被挂在 HTTP 路由上，读者以为读到的是实时结论。
+ */
+export function getSeedSkillGateReport(tenantId?: string): SeedSkillGateReport {
+  if (tenantId === undefined) return lastSeedGateReport;
+  return cacheByTenant.get(tenantId)?.report ?? NOT_RUN;
 }
 
 /** 测试用：把诚实位复位（进程级单例，用例之间必须互不污染）。 */
 export function resetSeedSkillGateReport(): void {
-  seedGateReport = NOT_RUN;
+  cacheByTenant.clear();
+  lastSeedGateReport = NOT_RUN;
 }
+
+function writeSeedGateReport(tenantId: string, report: SeedSkillGateReport, computedAtMs: number): void {
+  cacheByTenant.set(tenantId, { report, computedAtMs });
+  lastSeedGateReport = report;
+}
+
+/**
+ * 三档"门不可用"各自的**人话**，一字都不许合并——合并了就是本单要修的那个病。
+ * 界面与日志共用这一份，避免"前端一种说法、日志另一种说法"。
+ */
+export const SEED_GATE_UNAVAILABLE_NOTE: Record<"REGISTRY_UNREACHABLE" | "REGISTRY_EMPTY" | "GATE_UNAVAILABLE", string> = {
+  REGISTRY_UNREACHABLE: "注册表读取抛错——不可达 / 鉴权失败 / 上游报错都会落这一支，以原始错误原文为准",
+  REGISTRY_EMPTY: "注册表答了，答的是 0 条已知 key——空集 ≠ 都合法",
+  GATE_UNAVAILABLE: "读不出（不可达或空集，未能区分）",
+};
 
 /**
  * 启动期：对**已落库的 PUBLISHED 种子技能**跑一遍与发布路完全相同的门。
@@ -217,7 +286,10 @@ export async function auditSeededSkills(input: {
   ctx?: ToolAuthCtx;
   logger?: { warn: (obj: unknown, msg?: string) => void; error: (obj: unknown, msg?: string) => void; info: (obj: unknown, msg?: string) => void };
 }): Promise<SeedSkillGateReport> {
-  const ranAt = new Date().toISOString();
+  // ranAt 与 computedAtMs 取自**同一瞬**：TTL 判的和界面显示的必须是同一个时刻，
+  // 否则"它有多新"这件事又会变成两个数各说各话。
+  const computedAtMs = Date.now();
+  const ranAt = new Date(computedAtMs).toISOString();
   const all = await input.repos.skills.listByTenant(input.tenantId);
   const published = all.filter((s) => s.status === "PUBLISHED");
   const ctx: ToolAuthCtx = input.ctx ?? { tenantId: input.tenantId, userId: "system", roles: ["platform_admin"], debugUser: `${input.tenantId}:system:platform_admin` };
@@ -235,25 +307,44 @@ export async function auditSeededSkills(input: {
       });
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
-      seedGateReport = { status: "GATE_UNAVAILABLE", ranAt, tenantId: input.tenantId, checked: published.length, findings, unavailableReason: reason };
+      // ——— 缺陷 B · 病因与观测量对齐 ———
+      // 观测到「抛错」就报「抛错」，观测到「空集」就报「空集」；**分不出来的才报笼统那一档**。
+      // 绝不再拿探针 detail 里那句 "DataCore is unreachable"（任何 fetch 拒绝都抛它）当结论播报。
+      const status: SeedSkillGateStatus = !(e instanceof RefProbeUnavailableError)
+        ? "GATE_UNAVAILABLE"
+        : e.reason === "REGISTRY_EMPTY"
+          ? "REGISTRY_EMPTY"
+          : "REGISTRY_UNREACHABLE";
+      const report: SeedSkillGateReport = {
+        status,
+        ranAt,
+        tenantId: input.tenantId,
+        checked: published.length,
+        findings,
+        unavailableReason: reason,
+        ttlSeconds: SEED_GATE_TTL_MS / 1000,
+      };
+      writeSeedGateReport(input.tenantId, report, computedAtMs);
       input.logger?.warn(
-        { tenantId: input.tenantId, checked: published.length, reason },
-        "出厂技能发布门审计：**门不可用**（注册表读不出或空集）——本轮未判定，不得读作『出厂技能干净』",
+        { tenantId: input.tenantId, checked: published.length, status, reason },
+        `出厂技能发布门审计：**门不可用**（${SEED_GATE_UNAVAILABLE_NOTE[status]}）——本轮未判定，不得读作『出厂技能干净』`,
       );
-      return seedGateReport;
+      return report;
     }
     if (result.violations.length > 0) {
       findings.push({ skillId: skill.id, skillKey: skill.key, violations: result.violations });
     }
   }
 
-  seedGateReport = {
+  const report: SeedSkillGateReport = {
     status: findings.length > 0 ? "VIOLATIONS" : "CLEAN",
     ranAt,
     tenantId: input.tenantId,
     checked: published.length,
     findings,
+    ttlSeconds: SEED_GATE_TTL_MS / 1000,
   };
+  writeSeedGateReport(input.tenantId, report, computedAtMs);
   if (findings.length > 0) {
     for (const f of findings) {
       for (const v of f.violations) {
@@ -273,5 +364,32 @@ export async function auditSeededSkills(input: {
       "出厂技能发布门审计：全部通过（与 POST /b/v1/skills/:id/publish 同一份判据）",
     );
   }
-  return seedGateReport;
+  return report;
+}
+
+/**
+ * **按请求现算**（缺陷 A 的修法）。TTL 内复用上一份快照，超时即重跑一遍真审计。
+ *
+ * 为什么允许缓存而不是每次都算：审计要遍历 PUBLISHED 种子并打 DataCore 三个注册表，
+ * 挂在一个页面级 GET 上每次真算会把 A 打疼。为什么必须带 TTL 而不是算一次冻住：
+ * **DataCore 起得比 AgentCore 慢一拍**是常态——冻住就意味着审计永久停在"不可用"，
+ * 而用户看到的是一条自称"刚刚测过"的结论。
+ *
+ * `force`（手动刷新入口，`?refresh=1`）无视 TTL 直接重算：运维刚修好上游，
+ * 不该被迫等 30 秒才能验证——**"能手动催一下"是这道位可信的前提**。
+ */
+export async function getFreshSeedSkillGateReport(input: {
+  repos: Repos;
+  dataCore: DataCoreClient;
+  tenantId: string;
+  ctx?: ToolAuthCtx;
+  logger?: { warn: (obj: unknown, msg?: string) => void; error: (obj: unknown, msg?: string) => void; info: (obj: unknown, msg?: string) => void };
+  /** 显式手动刷新：跳过 TTL，强制重算。 */
+  force?: boolean;
+}): Promise<SeedSkillGateReport> {
+  const cached = cacheByTenant.get(input.tenantId);
+  if (!input.force && cached !== undefined && Date.now() - cached.computedAtMs < SEED_GATE_TTL_MS) {
+    return cached.report;
+  }
+  return auditSeededSkills(input);
 }
