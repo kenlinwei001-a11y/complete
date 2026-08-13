@@ -183,6 +183,11 @@ describe("SEAM · Action 埋点租户维（另开端点，且不得成为第二�
           summed.set(key, (summed.get(key) ?? 0) + s.value);
         }
       }
+      // 逐指标的**基数下限**（WO-R6 收编时补，由 coverage-blind:check 咬出来的真缺口）：
+      // 文末那条 `compared > 3` 是**跨四个指标名的合计**，挡不住「其中一个指标名一条序列都没有、
+      // 被另一个指标名的多条撑过阈值」——那正是 LOOP_NO_FLOOR 说的「0/N 与 N/N 同色」。
+      // 锚在被遍历的集合 `summed` 自己身上，空集当场红，而不是等合计去兜。
+      expect([...summed], `${name} 汇总后一条序列都没有 —— 下面的逐序列比对会空转`).not.toHaveLength(0);
       for (const [key, sum] of summed) {
         const [actionType, outcome] = JSON.parse(key) as [string, string];
         expect(
