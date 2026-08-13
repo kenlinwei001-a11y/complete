@@ -57,6 +57,7 @@
     "GET /a/v1/scheduler/jobs",
     "GET /a/v1/scheduler/jobs/*/runs",
     "GET /a/v1/sim/propagation-rules",
+    "GET /a/v1/sim/sessions/*/checkpoints",
     "GET /a/v1/slices/*/references",
     "GET /a/v1/slices/index",
     "GET /a/v1/solvers/*/field-roles",

@@ -1658,6 +1658,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await outbox.emit(c.tenantId, "sim.checkpoint_saved", { sessionId: s.id, checkpointId: cp.id, tick: cp.tick });
     return reply.status(201).send(cp);
   });
+  // WO-ENGINE-2 件二·半边A：检查点**列表读端**。仓储三处（repo.ts 接口 / memory.ts / pg.ts）早就写好了
+  // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
+  // 后果：`sim.checkpoint_saved` 事件没有可失效的缓存（前端无列表可读），回滚/分支只能靠调用方自己记
+  // checkpointId。开此路由后该事件才具备真接线条件（前端 useQuery 属 WO-1/WO-4 边界，不在本单）。
+  app.get("/a/v1/sim/sessions/:id/checkpoints", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    return { items: await repos.sim.listCheckpoints(c.tenantId, s.id) };
+  });
   app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
