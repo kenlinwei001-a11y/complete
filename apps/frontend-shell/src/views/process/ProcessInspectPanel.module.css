@@ -1,0 +1,295 @@
+/* WO-V4-INSPECT · 流程节点检视面板样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   门：check-css-token-defined.mjs（幽灵令牌）+ process-inspect.test.tsx。
+   本文件出现 hex / rgb() / hsl() 等颜色字面量即违反本仓纪律。 */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.head h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.close {
+  background: var(--bg2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+.close:hover {
+  color: var(--txt);
+}
+
+.panel code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.stateLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.error {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.error b {
+  display: block;
+  margin-bottom: 4px;
+}
+.error p {
+  margin: 2px 0;
+  color: var(--muted);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.block h5 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── 诚实位：本页答不了什么 ─────────────────────────────────────────────── */
+.honesty {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.honesty b {
+  font-size: 12px;
+}
+.honesty p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.unanswerable {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--muted2);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+/* ── 键值对 ─────────────────────────────────────────────────────────────── */
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.kv dt {
+  color: var(--muted2);
+}
+.kv dd {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.caption {
+  color: var(--muted2);
+  font-size: 10px;
+}
+.count {
+  color: var(--muted2);
+  font-size: 10px;
+}
+.reason {
+  color: var(--muted2);
+  font-size: 10px;
+  line-height: 1.6;
+  flex-basis: 100%;
+}
+
+.typeLine {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+/* 缺席 / 空态：都要说话，不留空白（「没有」与「没渲染」在屏上必须分得开） */
+.absent {
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.empty {
+  margin: 0;
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+/* ── 属性表 ─────────────────────────────────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.table th {
+  color: var(--muted2);
+  font-weight: 500;
+}
+.fallback {
+  color: var(--muted2);
+  font-style: normal;
+}
+
+.badge,
+.badgeDerived,
+.badgeWarn {
+  font-size: 10px;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 4px;
+  border: 1px solid var(--line);
+}
+.badge {
+  background: var(--bg2);
+  color: var(--muted);
+}
+.badgeDerived {
+  background: var(--bg2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.badgeWarn {
+  background: var(--bg2);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.chip {
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 5px;
+}
+
+/* ── 列表（关系 / 同承载物流程 / 杠杆 / 十六层）───────────────────────────── */
+.rels,
+.siblings,
+.levers,
+.layers,
+.formulas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+.rels li,
+.siblings li,
+.levers li,
+.layers li,
+.formulas li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.arrow {
+  color: var(--muted2);
+}
+.formula {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.ordinal {
+  color: var(--muted2);
+  min-width: 18px;
+  font-family: var(--font-mono);
+}
+
+/* 三态各一相：颜色不同才算「三态」，否则等于合并成有/无 */
+.layers li[data-status="present"] .chip {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.layers li[data-status="not_in_slice"] .chip {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.layers li[data-status="absent"] .chip {
+  color: var(--muted2);
+}

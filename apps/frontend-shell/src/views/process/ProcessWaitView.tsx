@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchProcessDefinitions } from "@/api/endpoints";
+// WO-V4-INSPECT · 节点检视面板（点开一行 → 看这条流程的完整本体关系·PRD-sandbox-v4 §4.2）
+import { ProcessInspectPanel } from "./ProcessInspectPanel";
 import { zh } from "@/locales/zh";
 import {
   buildProcessWaitModel,
@@ -55,7 +57,7 @@ function readError(e: unknown): { code: string; message: string; requestId: stri
 // 单个等待态分组
 // ══════════════════════════════════════════════════════════════════════════════
 
-function WaitKindGroup({ g }: { g: WaitKindGroupVM }) {
+function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selectedKey: string | null; onSelect: (key: string) => void }) {
   const copy = WAIT_KIND_COPY[g.kind];
   const style = WAIT_KIND_STYLE[g.kind];
   const t = zh.processWait;
@@ -122,9 +124,28 @@ function WaitKindGroup({ g }: { g: WaitKindGroupVM }) {
               </thead>
               <tbody>
                 {g.rows.map((r) => (
-                  <tr key={r.key} data-testid={`pw-row-${r.key}`} data-kind={r.waitKind}>
+                  // 整行可点：点开即拉 `/inspect`，看这条流程的完整本体关系。
+                  // 用 <tr onClick> + 单元格内真 <button>：既保住键盘可达，也不把 <button> 塞满每个格子。
+                  <tr
+                    key={r.key}
+                    data-testid={`pw-row-${r.key}`}
+                    data-kind={r.waitKind}
+                    data-selected={selectedKey === r.key ? "1" : "0"}
+                    className={styles.rowClickable}
+                    onClick={() => onSelect(r.key)}
+                  >
                     <td>
-                      <code>{r.key}</code>
+                      <button
+                        type="button"
+                        className={styles.rowBtn}
+                        data-testid={`pw-inspect-${r.key}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(r.key);
+                        }}
+                      >
+                        <code>{r.key}</code>
+                      </button>
                     </td>
                     <td>{r.name}</td>
                     <td>{r.domainName}</td>
@@ -153,6 +174,9 @@ function WaitKindGroup({ g }: { g: WaitKindGroupVM }) {
 
 export default function ProcessWaitView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  // WO-V4-INSPECT：点开哪一条流程（null = 没点开）。面板自己拉 `/inspect`，本页不预取 ——
+  // 65 条流程各预取一次 = 65 次请求，而用户一次只看一条。
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const t = zh.processWait;
 
   useEffect(() => {
@@ -264,8 +288,17 @@ export default function ProcessWaitView() {
             </p>
           )}
 
+          {/* 检视面板：选中才渲染 —— 没选中时**不占位**，也不画一个空面板假装有内容 */}
+          {selectedKey !== null ? (
+            <ProcessInspectPanel processKey={selectedKey} onClose={() => setSelectedKey(null)} />
+          ) : (
+            <p className={styles.stateLine} data-testid="pw-inspect-hint">
+              {t.inspect.openHint}
+            </p>
+          )}
+
           {state.model.groups.map((g) => (
-            <WaitKindGroup key={g.kind} g={g} />
+            <WaitKindGroup key={g.kind} g={g} selectedKey={selectedKey} onSelect={setSelectedKey} />
           ))}
         </>
       )}

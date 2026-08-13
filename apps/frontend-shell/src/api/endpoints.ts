@@ -81,6 +81,8 @@ import type {
 import { WorkspaceSchema } from "./types";
 // WO-WAITING-STATES-FE · 业务流程等待态响应形状（与真后端 GET /a/v1/process-definitions 对账的单一定义）。
 import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
+// WO-V4-INSPECT · 流程节点检视响应契约（前端不重定义·R1 contracts-only-shared）
+import type { ProcessInspectResponse } from "@platform/contracts";
 
 // ---------------- A · DataCore ----------------
 
@@ -212,6 +214,20 @@ export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displa
  */
 export const fetchProcessDefinitions = () =>
   api.a<ProcessDefinitionsResponse>("/a/v1/process-definitions");
+
+/**
+ * WO-V4-INSPECT · 点开一条业务流程，看它的**完整本体关系**（PRD-sandbox-v4 §4.1 + §4.2）。
+ *
+ * 响应类型直接用契约的 `ProcessInspectResponse`（R1 contracts-only-shared）——
+ * 前端**不重定义**，也**不写死**任何流程名/域名/类型名/属性中文名/单位：
+ * 全部随响应下发，缺则为 `null`、界面诚实回落裸键（R14）。
+ *
+ * ⚠ 这个端点**不给运行态**：`runtime.available` 恒 `false`，`runtime.unanswerable`
+ * 是一份「本页答不了的问题」清单。界面必须把它显示出来 ——
+ * 不许拿 `stdDurationDays`（标准工期）冒充「此刻已卡多久」。
+ */
+export const fetchProcessInspect = (key: string) =>
+  api.a<ProcessInspectResponse>(`/a/v1/process-definitions/${encodeURIComponent(key)}/inspect`);
 
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
