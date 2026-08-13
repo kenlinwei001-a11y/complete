@@ -1,8 +1,9 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance, ObjectTypeDef } from "../domain.js";
+import type { AccessDecision, AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
-import { notFound, validationError } from "../errors.js";
+import { notFound, validationError, solverColumnRestricted } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
@@ -25,6 +26,8 @@ import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatri
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
+// WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
+import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
@@ -449,7 +452,11 @@ function solveBudgetDeadline(startedAt: number): { incumbentDeadlineAt?: number 
  * 支持 runWithParams(指定版本/参数集) —— 校准引擎重放归因与回测的执行体。
  */
 export class SolverService {
-  constructor(private repos: Repos) {}
+  constructor(
+    private repos: Repos,
+    /** A6 列级（属性级）安全：求解器上下文投影用（与 REST 同一份 decide()·一个机制）。 */
+    private authz: AuthzService,
+  ) {}
 
   /** generic_inference 需读对象图 + 前向重算（recompute 在 OntologyCore）；app.ts 构造后注入。 */
   private ontologyCore?: OntologyCoreService;
@@ -4326,19 +4333,54 @@ export class SolverService {
     return this.mutateParams(tenantId, () => undefined, note);
   }
 
+  /**
+   * A6 列级（属性级）安全 —— 求解器上下文投影器。
+   *
+   * **头号坑**：求解器上下文此前完全绕开 authz（`loadContext` 只收 tenantId、无 AuthCtx），
+   * 于是"REST 看不到 unitPrice、但把同一个字段喂给求解器再读结果"就是一条完整的绕行通道。
+   * 传入 `authCtx` 时，每个对象类型都用**与 REST 同一份 `decide()` 决策**投影 props（一个机制）。
+   * 不传 authCtx（系统内部调用：simclock / 派生 / 校准 / sop）→ 恒等，逐字节现行为。
+   */
+  private async columnProjector(
+    authCtx?: AuthCtx,
+  ): Promise<(typeKey: string, objs: ObjectInstance[]) => Promise<ObjectInstance[]>> {
+    if (!authCtx) return async (_t, objs) => objs;
+    const cache = new Map<string, AccessDecision | null>();
+    return async (typeKey, objs) => {
+      if (objs.length === 0) return objs;
+      if (!cache.has(typeKey)) {
+        // 读不了该类型（403）在求解器上下文里退化为空集，而非抛错中断整个求解。
+        const d = await this.authz.decide(authCtx, "OBJECT_TYPE", typeKey, "READ");
+        cache.set(typeKey, d.allowed ? d : null);
+      }
+      const d = cache.get(typeKey);
+      if (!d) return [];
+      if (!d.columnRestricted) return objs; // 零成本恒等
+      return objs.map((o) => this.authz.projectObject(d, o));
+    };
+  }
+
   async loadContext(
     tenantId: string,
     visibleOrders?: ObjectInstance[],
-    opts?: { withExtended?: boolean; solverKey?: string; withAdoptions?: boolean; withDecisionInfo?: boolean },
+    opts?: {
+      withExtended?: boolean;
+      solverKey?: string;
+      withAdoptions?: boolean;
+      withDecisionInfo?: boolean;
+      /** WO-69 P1 列级：带上调用者身份 → 求解器上下文与读投影同约束（不可读列不进求解器）。 */
+      authCtx?: AuthCtx;
+    },
   ): Promise<SolverContext> {
+    const project = await this.columnProjector(opts?.authCtx);
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：核心 10 类**按需加载**——传入 solverKey 且 SOLVER_REQUIRED_TYPES 有声明 →
     // 只 listByType 声明的核心类型·其余置 `[]`（省全表扫·冷启 187→≤80ms）；无 solverKey/未声明 → **全量**
     // （逐字节现行为·向后兼容·无 solverKey 调用方 simclock/sop/planviews/calibration 一律走此路）。门禁在派发处
     //（invoke/runWithParams·仅 dc.lazy-solver-context 开时透传 solverKey）；此处仅按 solverKey 存在与否 + 声明表裁剪。
     const required = opts?.solverKey ? SOLVER_REQUIRED_TYPES[opts.solverKey] : undefined;
     const emptyCore: ObjectInstance[] = [];
-    const loadCore = (t: CoreSolverObjectType): Promise<ObjectInstance[]> =>
-      !required || required.includes(t) ? this.repos.objects.listByType(tenantId, t) : Promise.resolve(emptyCore);
+    const loadCore = async (t: CoreSolverObjectType): Promise<ObjectInstance[]> =>
+      !required || required.includes(t) ? project(t, await this.repos.objects.listByType(tenantId, t)) : emptyCore;
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
       await Promise.all([
         loadCore("Base"),
@@ -4347,7 +4389,8 @@ export class SolverService {
         loadCore("Equipment"),
         loadCore("MaintPlan"),
         loadCore("Model"),
-        visibleOrders ? Promise.resolve(visibleOrders) : loadCore("Order"),
+        // 调用方传入的 visibleOrders 已过行级过滤，但列级投影仍须在此补上（否则是绕行口）。
+        visibleOrders ? project("Order", visibleOrders) : loadCore("Order"),
         loadCore("Shipment"),
         loadCore("Segment"),
         loadCore("DataSourceHealth"),
@@ -4378,6 +4421,9 @@ export class SolverService {
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
+    // A6 列级（WO-69 P1）：扩展类与核心 10 类走**同一个**投影器（一个机制，不是两套）。
+    const loadExt = async (t: string): Promise<ObjectInstance[]> =>
+      project(t, await this.repos.objects.listByType(tenantId, t));
     // WO-SANDBOX-D2：+Supplier/CustomsClearance/IncomingInspection 三类（采购段按责任方分解的真源）。
     // ⚠ `suppliersExt` 而非 `suppliers`：WO-DECISION-INFO 也要这张表，但**加载条件不同**
     //   （D2 走 withExtended，决策信息走 withDecisionInfo）。并线时两处同名 → `TS2451 Cannot redeclare`。
@@ -4387,21 +4433,21 @@ export class SolverService {
     const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeaders, bomDetails] =
       opts?.withExtended
         ? await Promise.all([
-            this.repos.objects.listByType(tenantId, "Material"),
-            this.repos.objects.listByType(tenantId, "MaterialBatch"),
-            this.repos.objects.listByType(tenantId, "Customer"),
-            this.repos.objects.listByType(tenantId, "ARInvoice"),
-            this.repos.objects.listByType(tenantId, "Certification"),
-            this.repos.objects.listByType(tenantId, "EnergyMeter"),
-            this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
-            this.repos.objects.listByType(tenantId, "CapexProject"),
-            this.repos.objects.listByType(tenantId, "PurchaseOrder"),
-            this.repos.objects.listByType(tenantId, "CarbonFactor"),
-            this.repos.objects.listByType(tenantId, "Supplier"),
-            this.repos.objects.listByType(tenantId, "CustomsClearance"),
-            this.repos.objects.listByType(tenantId, "IncomingInspection"),
-            this.repos.objects.listByType(tenantId, "BOMHeader"),
-            this.repos.objects.listByType(tenantId, "BOMDetail"),
+            loadExt("Material"),
+            loadExt("MaterialBatch"),
+            loadExt("Customer"),
+            loadExt("ARInvoice"),
+            loadExt("Certification"),
+            loadExt("EnergyMeter"),
+            loadExt("ChangeoverMatrix"),
+            loadExt("CapexProject"),
+            loadExt("PurchaseOrder"),
+            loadExt("CarbonFactor"),
+            loadExt("Supplier"),
+            loadExt("CustomsClearance"),
+            loadExt("IncomingInspection"),
+            loadExt("BOMHeader"),
+            loadExt("BOMDetail"),
           ])
         : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
     // WO-DATAMODE-UNIFY-PROVENANCE：注入唯一真相合成 provenance 谓词，供求解器（risk/capacity）逐卡/逐行诚实
@@ -4574,6 +4620,95 @@ export class SolverService {
     return this.compute({ ...c, params }, solverKey, args);
   }
 
+  /**
+   * WO-69 P2 · **Function 本体签名守卫**（列级/属性级安全的唯一收口，装在唯一分发口 `invoke()` 顶部）。
+   *
+   * ─ 它守的是什么 ─────────────────────────────────────────────────────────────
+   * `invoke()` 是**唯一分发口**：compute() 路径与 ~86 处自建 ctx 的早返回求解器（gap_attribution /
+   * concentration_risk / margin_attribution / plan_rootcause… 直取 repos.objects.listByType·**不经**
+   * loadContext 列投影）全从此过。守在这里一次覆盖两半——闭掉「列策略只接住 loadContext 一半」的残口
+   * （live 实证：加了 Order 列策略后 gap_attribution admin/受限输出**字节相同** 17677==17677，
+   *  即受限用户读到了被禁列算出的数）。
+   *
+   * ─ P1 → P2 收窄 ────────────────────────────────────────────────────────────
+   * P1：调用者在**任一** OBJECT_TYPE 上受列级约束 → 拒**全部**求解器（读取面未知，只能一刀切）。
+   * P2：按签名求交 —— 只拒**真会读到被禁列**的求解器；不相交者**放行出真数字**（这就是收窄的收益）。
+   *
+   * ─ 判定（三分支，缺省一律偏拒）──────────────────────────────────────────────
+   *  ① 调用者无任何列级约束（admin / 无列级策略）→ **零成本返回**（不解析签名、不多读一行 → S8 逐字节现行为）。
+   *  ② 求解器**无签名**（读取面未知）→ **拒**。未知 ≠ 安全：误判「不读」就会放行出错数字，
+   *     而错数字（「没权限」伪装成「业务数字」）比 403 坏得多。这也给「补声明」建立正确激励。
+   *  ③ 有签名 → 声明读/写面 ∩ 调用者**真被禁的属性** ≠ ∅ → 拒；= ∅ → 放行。
+   *
+   * ⚠ 判据全部复用 `authz.decide()`（并集语义与 REST 读写路径同一份），不另造第二套匹配逻辑。
+   */
+  private async columnSignatureGate(ctx: AuthCtx, solverKey: string, args: Record<string, unknown>): Promise<void> {
+    const restrictedTypes = await this.authz.columnRestrictedObjectTypes(ctx);
+    if (restrictedTypes.length === 0) return; // ① 快路径：S4/S8 向后兼容硬底线
+    const sig = SOLVER_ONTOLOGY_SIGNATURES[solverKey];
+    if (!sig) throw solverColumnRestricted(solverKey, restrictedTypes); // ② 未知读取面 → 保守拒
+    // ③ 静态声明 ∪ 动态解析（入参/数据决定读取面的求解器；只在此分支跑 → 无约束调用者零开销）。
+    const dynamic = sig.resolveReads
+      ? await sig.resolveReads({ args, listByType: (t) => this.repos.objects.listByType(ctx.tenantId, t) })
+      : [];
+    const reads = mergeReadSurfaces([...(sig.reads ?? []), ...dynamic]);
+    const restricted = new Set(restrictedTypes);
+    const conflicts = new Set<string>();
+    for (const r of reads) {
+      const denied = await this.deniedProps(ctx, r.typeKey, "READ");
+      if (denied === "TYPE_DENIED") {
+        // 该类型**整型不可读**。此时继续算同样出「装成真的假数」，而且两条读路径的坏法还不一样：
+        //   · loadContext 路径 → 列投影把该类型退化成空集 → 数字算得出来，但是错的；
+        //   · ⑩ 洞早返回路径 → 直取 repos 原始数据（连投影都不经）→ 反而把无权读的行算进结果（泄漏）。
+        // 两种都不许，故一律拒。（本判定只在调用者确有列级约束时才走到 —— 是 P1 拒绝集合的**子集**，不扩大误伤。）
+        conflicts.add(r.typeKey);
+        continue;
+      }
+      if (!restricted.has(r.typeKey)) continue;
+      if (denied === "UNKNOWN_UNIVERSE") {
+        conflicts.add(r.typeKey); // 本体查不到该类型的属性全集 → 无法证明"不读被禁列" → 拒
+        continue;
+      }
+      if (denied.size === 0) continue; // 并集语义下实际全开（多角色叠加解除了限制）→ 不算冲突
+      if (r.propKeys === undefined || r.propKeys.some((p) => denied.has(p))) conflicts.add(r.typeKey);
+    }
+    for (const w of sig.writes ?? []) {
+      if (!restricted.has(w.typeKey)) continue;
+      const denied = await this.deniedProps(ctx, w.typeKey, "WRITE");
+      if (denied === "UNKNOWN_UNIVERSE" || denied === "TYPE_DENIED" || w.propKeys.some((p) => denied.has(p))) {
+        conflicts.add(w.typeKey);
+      }
+    }
+    if (conflicts.size > 0) throw solverColumnRestricted(solverKey, [...conflicts].sort());
+  }
+
+  /**
+   * 该调用者在某对象类型上**真正被禁的属性集**（不是"有没有列策略"，是"到底哪几列读不到"）。
+   *  · 该类型整型不可读/不可写 → `TYPE_DENIED`；
+   *  · 本体查不到该类型（拿不到属性全集，无法证明"不读被禁列"）→ `UNKNOWN_UNIVERSE`；
+   *  · 否则返回被禁属性集（空集 = 实际全开）。
+   * 属性全集取自本租户已发布本体（properties + derivedProperties）。
+   * 仅在调用者确有列级约束时才会走到（无约束路径零开销 → S8 逐字节现行为）。
+   */
+  private async deniedProps(
+    ctx: AuthCtx,
+    typeKey: string,
+    op: "READ" | "WRITE",
+  ): Promise<Set<string> | "UNKNOWN_UNIVERSE" | "TYPE_DENIED"> {
+    const d = await this.authz.decide(ctx, "OBJECT_TYPE", typeKey, op);
+    if (!d.allowed) return "TYPE_DENIED";
+    if (!d.columnRestricted) return new Set();
+    const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === typeKey && t.status === "ACTIVE"))[0];
+    if (!tdef) return "UNKNOWN_UNIVERSE";
+    const universe = [...tdef.properties.map((p) => p.propKey), ...(tdef.derivedProperties ?? []).map((p) => p.propKey)];
+    const out = new Set<string>();
+    for (const p of universe) {
+      const ok = op === "READ" ? this.authz.propReadable(d, p) : this.authz.propWritable(d, p);
+      if (!ok) out.add(p);
+    }
+    return out;
+  }
+
   async invoke(
     ctx: AuthCtx,
     solverKey: string,
@@ -4583,6 +4718,8 @@ export class SolverService {
     // WO-D1 检查点①（入口）：请求已被取消（AgentCore 超时 abort / 前端断开）→ 一步都不往下走。
     // 未包裹取消作用域的调用方（内部派生/测试直调）恒 no-op → 行为逐字节不变（R6）。
     throwIfCancelled(`solver ${solverKey} 入口`);
+    // ★ WO-69 列级（属性级）守卫 —— 「宁可少答，不许错答」。P1 粗兜底 → **P2 按 Function 本体签名收窄**。
+    await this.columnSignatureGate(ctx, solverKey, args);
     // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
     if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
       const art = await this.activeArtifact(ctx.tenantId, solverKey);
@@ -4643,6 +4780,7 @@ export class SolverService {
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
+      authCtx: ctx, // A6 列级：用户发起的求解走列级投影（S3 —— 求解器不是列级安全的绕行口）
     });
     // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。
     // ⚠ 诚实：compute 是**同步**的，一旦进去就无法从外部打断（Node 单线程）——取消只能卡在这个边界上。

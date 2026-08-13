@@ -10,6 +10,7 @@ import type {
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
+  PlanBuilderCanvas,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
@@ -395,6 +396,85 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async listByTenant(tenantId) {
         const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1`, [tenantId]);
         return r.rows.map((x) => x.config as Scenario);
+      },
+    },
+    planBuilders: {
+      async insert(c: PlanBuilderCanvas) {
+        await q(
+          `INSERT INTO plan_builder_canvases(id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [c.id, c.tenantId, c.packageId, c.key, c.version, c.status, c.name, c.description ?? null, JSON.stringify(c.dsl), c.compiledPlanId ?? null, c.createdBy, c.createdAt, c.updatedAt ?? null],
+        );
+      },
+      async update(c: PlanBuilderCanvas) {
+        await q(
+          `UPDATE plan_builder_canvases SET key=$2, version=$3, status=$4, name=$5, description=$6, dsl=$7, compiled_plan_id=$8, created_by=$9, created_at=$10, updated_at=$11 WHERE id=$1`,
+          [c.id, c.key, c.version, c.status, c.name, c.description ?? null, JSON.stringify(c.dsl), c.compiledPlanId ?? null, c.createdBy, c.createdAt, c.updatedAt ?? null],
+        );
+      },
+      async get(id) {
+        const r = await q(`SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE id = $1`, [id]);
+        const row = r.rows[0];
+        if (!row) return undefined;
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        };
+      },
+      async listByPackage(packageId) {
+        const r = await q(
+          `SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE package_id = $1 ORDER BY created_at DESC`,
+          [packageId],
+        );
+        return r.rows.map((row) => ({
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        }));
+      },
+      async latestByKey(tenantId, packageId, key) {
+        const r = await q(
+          `SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE tenant_id=$1 AND package_id=$2 AND key=$3 ORDER BY version DESC LIMIT 1`,
+          [tenantId, packageId, key],
+        );
+        const row = r.rows[0];
+        if (!row) return undefined;
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        };
       },
     },
     experience: {

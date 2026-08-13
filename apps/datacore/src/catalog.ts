@@ -1,8 +1,9 @@
 import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
-import type { ResourceDescriptor, SolverCategory } from "@platform/contracts";
+import type { OntologySignature, ResourceDescriptor, SolverCategory } from "@platform/contracts";
 import { solverCategoryOf } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维（消费方在本文件：检索筛选 + 资源投影）
+import { serializableSignature } from "./solvers/ontology-signature.js";
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -30,6 +31,12 @@ export interface CatalogItem {
    * （手写就会和 `SOLVER_CATEGORY_MAP` 两处漂移）。切片等非求解器条目无此字段。
    */
   category?: SolverCategory;
+  /**
+   * WO-69 P2 · Function 本体签名（读/写本体面）。**不在此手填**——由 `attachOntologySignature()`
+   * 从唯一注册表 `SOLVER_ONTOLOGY_SIGNATURES` 派生附加（R13 派生投影·非新真值源）。
+   * 下游 DRIL `inputSpec/outputSpec` 再由它派生，故全链只有**一份**读取面清单。
+   */
+  ontologySignature?: OntologySignature;
 }
 
 /**
@@ -40,6 +47,17 @@ function withSolverCategory(items: CatalogItem[]): CatalogItem[] {
   return items.map((it) => {
     const category = solverCategoryOf(it.key);
     return category ? { ...it, category } : it;
+  });
+}
+
+/**
+ * 目录项 → 附加 Function 本体签名（唯一出处 = `SOLVER_ONTOLOGY_SIGNATURES`）。
+ * 未签名的求解器**不附字段**（诚实空缺：读取面未知，而不是"读取面为空"——后者会被下游读成"什么都不读"）。
+ */
+export function attachOntologySignature(items: CatalogItem[]): CatalogItem[] {
+  return items.map((it) => {
+    const sig = serializableSignature(it.key);
+    return sig ? { ...it, ontologySignature: sig } : it;
   });
 }
 
@@ -301,7 +319,7 @@ export class CatalogService {
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
       scored.push({ item: it, score });
     }
-    const filtered = scored.sort((a, b) => b.score - a.score).map((s) => s.item);
+    const filtered = attachOntologySignature(scored.sort((a, b) => b.score - a.score).map((s) => s.item));
     // §1：带关键词的发现（agent 上下文预算）截断 ≤20；无关键词=管理台全量列表。
     return { items: query ? filtered.slice(0, 20) : filtered };
   }
@@ -328,6 +346,6 @@ export class CatalogService {
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
       out.push(it);
     }
-    return { items: out };
+    return { items: attachOntologySignature(out) };
   }
 }

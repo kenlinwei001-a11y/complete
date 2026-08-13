@@ -40,6 +40,7 @@ import type {
   ObjectTypeDef,
   OntologyDraft,
   OntologyVersion,
+  ObjectInterfaceRecord,
   OpsScheduleStoreRecord,
   OpsTickReportRecord,
   OntologyWorkflowRecord,
@@ -228,6 +229,8 @@ export interface Repos {
   ontologyLinks: Store<LinkTypeDef>;
   ontologyDrafts: Store<OntologyDraft>;
   ontologyVersions: Store<OntologyVersion>;
+  /** WO-69 P3 · 对象接口（多态抽象）。每个 key+version 一条记录 → 多版本共存（开闭）。R9 四方同步。 */
+  objectInterfaces: Store<ObjectInterfaceRecord>;
   objects: ObjectStore;
   links: LinkStore;
   derivationRuns: Store<DerivationRun>;

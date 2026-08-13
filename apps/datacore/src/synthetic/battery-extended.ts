@@ -17,6 +17,22 @@ const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrim
   isPrimaryKey,
 });
 
+/**
+ * WO-69 P3 · `Approvable` 接口要求的审批字段（approver / approvedAt）确定性合成。
+ *
+ * **R6 零位移**：由业务主键**加盐哈希**派生（同 WO-SA-2 设备可靠性字段的既有做法）——
+ * **不消耗 mulberry32 主流**，故既有全部合成值逐字节不动；无 `Date.now`/随机（锚点为固定 UTC 常量）。
+ * **诚实合成非实测**：随对象 `origin=SYNTHETIC` 走既有诚实灰标注，不冒充真实审批留痕。
+ */
+const APPROVAL_ANCHOR_MS = Date.UTC(2026, 0, 1);
+const approvalFields = (bizKey: string): { approver: string; approvedAt: string } => {
+  const h = hashString(`apprv_${bizKey}`);
+  return {
+    approver: `usr_approver_${(h % 3) + 1}`,
+    approvedAt: new Date(APPROVAL_ANCHOR_MS + (h % 90) * 86_400_000).toISOString().slice(0, 10),
+  };
+};
+
 type TypeDef = Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">;
 // WO-SCHEMA-ZH：属性中文业务名走 battery.ts 的 PROP_DISPLAY_NAMES 同一张表（单源 > 并存，
 // 本文件不另存一份中文映射）；未登记的属性保持缺省 → 下游诚实回落 propKey。
@@ -132,8 +148,11 @@ export function extendedObjectTypes(): TypeDef[] {
     def("DSO", "应收账款周转天数", "finance", [
       p("dsoId", "string", true), p("segment", "string"), p("days"), p("period", "string"),
     ]),
+    // WO-69 P3 · Approvable 实现者②（逾期核销审批）：approver/approvedAt 为接口 `Approvable` 要求的字段，
+    // amount 本就有（逾期金额）。接口约束的是**类型声明**，实例值可为空（未审批 = 尚无审批人）。
     def("OverdueRecord", "逾期记录", "finance", [
       p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"), p("amount"),
+      p("approver", "string"), p("approvedAt", "date"),
     ]),
     // WO-TIER3 毛利桥（gross_profit 专属反向归因域 drill 真对象·impactYi 由 DemandSegment×MaterialBalance 确定性派生）
     def("GrossMarginBridge", "毛利桥", "finance", [
@@ -153,7 +172,12 @@ export function extendedObjectTypes(): TypeDef[] {
       p("province", "string"), p("city", "string"), p("address", "string"),
       p("isDeliveryDefault", "boolean"), p("lon"), p("lat"),
     ]),
-    def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
+    // WO-69 P3 · Approvable 实现者①（应收核销审批）。credit_exposure 的 P2 本体签名声明会读
+    // ARInvoice.{amount,custName,invoiceId,overdueDays} → 接口 functions 的"可兑现性"在此类型上真被校验。
+    def("ARInvoice", "应收发票", "commercial", [
+      p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays"),
+      p("approver", "string"), p("approvedAt", "date"),
+    ]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
     def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
     def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes"), p("hours"), p("lineId", "string")]),
@@ -666,11 +690,13 @@ export function generateExtended(
   const arInvoices: Record<string, unknown>[] = [];
   for (const [ci, c] of customers.entries()) {
     for (let i = 0; i < invoicesPerCust; i++) {
+      const invoiceId = `arinvoice_${ci}_${i}`; // ascii pk（避免与搜索 token 碰撞）
       arInvoices.push({
-        invoiceId: `arinvoice_${ci}_${i}`, // ascii pk（避免与搜索 token 碰撞）
+        invoiceId,
         custName: c.custName,
         amount: round((200 + rng() * 1500) * WAVE1_SCALE_FACTOR, 0),
         overdueDays: c.custName === "商用车集团G" && i === 0 ? 38 : Math.floor(rng() * 20),
+        ...approvalFields(invoiceId), // WO-69 P3 · Approvable 契约字段
       });
     }
   }
@@ -885,8 +911,8 @@ export function generateExtended(
     { dsoId: "dso-com", segment: "商用车", days: 95, period: "2026-Q2" },
   ];
   const overdueRecords = [
-    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "商用车集团G", amount: 12600 },
-    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400 },
+    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "商用车集团G", amount: 12600, ...approvalFields("od-cg") },
+    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400, ...approvalFields("od-sd") },
   ];
 
   // WO-CEO-DATA-2：动态绑定 demand_attain 产能/物料短缺下钻到真实对象（不消耗 rng·R6 稳定）。

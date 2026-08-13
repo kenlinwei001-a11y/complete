@@ -1,4 +1,4 @@
-import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PlanBuilderCanvas, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -21,6 +21,7 @@ import {
   RULE_DOC,
   RULES,
   PLANS,
+  PLAN_BUILDER_FIXTURES,
   SCENES,
   SCENARIOS,
   SKILLS,
@@ -87,6 +88,8 @@ interface MockDb {
    * 而不是只测了 CRUD 存取。
    */
   buildPipelines: Partial<Record<BuildPipelineKind, BuildPipeline>>;
+  // WO-A · PlanBuilder 画布内存存储（测试隔离）。
+  planBuilders: PlanBuilderCanvas[];
 }
 
 function freshDb(): MockDb {
@@ -133,6 +136,7 @@ function freshDb(): MockDb {
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
     liveScenarios: [],
+    planBuilders: structuredClone(PLAN_BUILDER_FIXTURES),
     buildPipelines: {}, // 缺省空 = 三 kind 全走出厂默认（与真后端 factory:true 同语义）
   };
 }

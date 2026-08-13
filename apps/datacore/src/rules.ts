@@ -6,6 +6,7 @@ import { newId } from "./ids.js";
 import { DslError, collectParamRefs, evaluateExpression, parseExpression } from "./ruledsl.js";
 import { AppError, notFound, validationError } from "./errors.js";
 import type { OutboxService } from "./outbox.js";
+import type { AuthzService } from "./authz.js";
 import { SolverService } from "./solvers/service.js";
 
 /**
@@ -49,6 +50,13 @@ export class RulesService {
   constructor(
     private repos: Repos,
     private outbox: OutboxService,
+    /**
+     * WO-69 P1 并线：`SolverService` 的列级（属性级）安全把 `authz` 变成**必填**构造参数
+     * （求解器上下文投影与 REST 走同一份 `decide()`——一个机制，不许各处再实现一套）。
+     * 本服务在 `projectRuleParams` 里自建 SolverService，故必须把同一个 authz 传下去；
+     * 若在此改成可选/传 null 兜过编译，就等于给列级守卫开了一个静默旁路。
+     */
+    private authz: AuthzService,
   ) {}
 
   async create(
@@ -117,7 +125,7 @@ export class RulesService {
   private async projectRuleParams(ctx: AuthCtx, ruleKey: string): Promise<RuleParamChange[]> {
     if (!RULE_PARAM_BINDINGS.some((b) => b.ruleKey === ruleKey)) return [];
     const published = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
-    const solvers = new SolverService(this.repos);
+    const solvers = new SolverService(this.repos, this.authz);
     const effective = (await solvers.getParams(ctx.tenantId)) as unknown as Record<string, unknown>;
     const { params: next, changes } = applyRuleParamBindings(effective, published);
     if (changes.length === 0) return [];

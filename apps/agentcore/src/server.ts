@@ -5,6 +5,7 @@ import { z, ZodError } from "zod";
 import {
   AgentDefinitionSchema,
   ClarificationReplyBodySchema,
+  CreatePlanBuilderBodySchema,
   ErrorCodes,
   LlmProviderConfigSchema,
   MCP_CONFIG_NOTES,
@@ -28,6 +29,7 @@ import {
   classifyOperation,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
+  UpdatePlanBuilderBodySchema,
   WorkflowDefinitionSchema,
   InferenceTraceSchema,
   ResourceSearchRequestSchema,
@@ -51,7 +53,7 @@ import { stdioPolicyFromConfig } from "./config.js";
 import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
-import { solverAllowed, viewAllowed } from "./features/registry.js";
+import { solverAllowed, viewAllowed, featureEnabled } from "./features/registry.js";
 import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent, resolvePlanByRef } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
@@ -1546,6 +1548,101 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const resource = skill.resources.find((r) => r.name === name);
     if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${name}`);
     return { name: resource.name, blobKey: resource.blobKey };
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-A · Plan Builder Canvas ↔ PlanDSL（编译产物 = 现有 ExecutionPlan）
+  // Entitlement 先于 authz：功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND
+  // ---------------------------------------------------------------------
+  const requirePlanBuilderFeature = async (a: RequestAuth) => {
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    if (!featureEnabled(enabled, "admin.plan-builder")) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "admin.plan-builder");
+    }
+  };
+
+  app.get("/b/v1/plan-builders", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { packageId } = req.query as { packageId?: string };
+    if (!packageId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "packageId required");
+    const list = await deps.planBuilder.listCanvases(a, packageId);
+    const { items, total } = applyListQuery(list, req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
+  });
+
+  app.post("/b/v1/plan-builders", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const body = CreatePlanBuilderBodySchema.parse(req.body);
+    const { packageId } = req.query as { packageId?: string };
+    if (!packageId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "packageId required");
+    return reply.status(201).send(await deps.planBuilder.createCanvas(a, packageId, body));
+  });
+
+  app.get("/b/v1/plan-builders/:id", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    const canvas = await deps.planBuilder.getCanvas(a, id);
+    if (!canvas) throw new HttpError(404, "CANVAS_NOT_FOUND", `canvas not found: ${id}`);
+    return canvas;
+  });
+
+  app.put("/b/v1/plan-builders/:id", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const patch = UpdatePlanBuilderBodySchema.parse(req.body);
+    return deps.planBuilder.updateCanvas(a, id, patch);
+  });
+
+  app.post("/b/v1/plan-builders/:id/compile", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    return deps.planBuilder.compileCanvas(a, id);
+  });
+
+  app.post("/b/v1/plan-builders/:id/publish", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const body = z.object({ force: z.boolean().default(false) }).parse(req.body ?? {});
+    const result = await deps.planBuilder.publishCanvas(a, id, body);
+    if (result.ok) {
+      await emitDomainEvent(a.tenantId, "plan.canvas.published", { canvasId: result.canvas.id, planId: result.canvas.compiledPlanId });
+    }
+    return result;
+  });
+
+  app.post("/b/v1/plan-builders/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    return reply.status(201).send(await deps.planBuilder.newVersion(a, id));
+  });
+
+  app.post("/b/v1/plan-builders/:id/retire", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    return deps.planBuilder.retireCanvas(a, id);
+  });
+
+  app.post("/b/v1/plan-builders/:id/run", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    const body = z.object({ inputs: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
+    return deps.planBuilder.runCanvas(a, id, body.inputs);
   });
 
   // ---------------------------------------------------------------------

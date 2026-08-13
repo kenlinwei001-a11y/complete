@@ -208,6 +208,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["optimize_whatif"] } },
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用。
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
+  // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。defaultOn 与两侧后端注册表 parity。
+  { key: "admin.plan-builder", name: "计划构建画布", level: "BLOCK", defaultOn: true },
 ];
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
@@ -1553,3 +1555,6 @@ export const LLM_BINDINGS = [
   { purpose: "classifier" as const, providerId: "llmp-anthropic", modelId: "claude-haiku-4-5" },
   { purpose: "agent" as const, providerId: "llmp-anthropic", modelId: "claude-opus-4-8" },
 ];
+
+// WO-A · PlanBuilder fixtures 复用（避免 handlers/db 直接依赖新文件）。
+export { PLAN_BUILDER_FIXTURES, newPlanBuilderCanvas } from "./planBuilderFixtures";

@@ -1,0 +1,215 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidePanel {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.group {
+  margin-bottom: 12px;
+}
+
+.canvasItem {
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--bg2, #f3f4f6);
+  cursor: pointer;
+}
+
+.canvasItem:hover {
+  border-color: var(--primary, #2563eb);
+}
+
+.canvasItemActive {
+  border-color: var(--primary, #2563eb);
+  background: var(--primary-soft, #dbeafe);
+}
+
+.main {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.dslPanel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.dslTextarea {
+  flex: 1;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.canvasWrap {
+  position: relative;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.nodeToolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  flex-wrap: wrap;
+}
+
+.nodeToolbar button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.svg {
+  flex: 1;
+  width: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.svg:active {
+  cursor: grabbing;
+}
+
+.edge {
+  stroke: var(--muted, #9ca3af);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.edgeHead {
+  fill: var(--muted, #9ca3af);
+  pointer-events: none;
+}
+
+.node {
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.node:hover {
+  filter: brightness(1.1);
+}
+
+.nodeSelected rect {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.2));
+}
+
+.nodeType {
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  fill: var(--muted2, #6b7280);
+  pointer-events: none;
+}
+
+.nodeLabel {
+  font-size: 12px;
+  text-anchor: middle;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+.propsPanel {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+.fieldLabel input,
+.fieldLabel select,
+.fieldLabel textarea {
+  padding: 6px;
+  font-size: 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: currentColor;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .propsPanel {
+    max-height: 300px;
+  }
+}

@@ -1,5 +1,6 @@
 export * from "./common.js";
 export * from "./qos.js";
+export * from "./plan-builder.js"; // WO-A · 无代码 Plan Builder 画布 ↔ PlanDSL（编译产物 = 现有 ExecutionPlan）
 export * from "./datacore.js";
 export * from "./agentcore.js";
 export * from "./llm.js";
@@ -66,6 +67,7 @@ export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod sc
 export * from "./solver-taxonomy.js"; // WO-L7A · 求解器决策问题分类维（10 类枚举 + 类目定义·按"解决什么决策问题"分·非算法分·R13 派生投影不改 key）
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
 export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
+export * from "./object-interface.js"; // WO-69 P3 · 对象接口（多态抽象·字段/行为继承·发布期一致性门·多版本共存·组合优于继承·functions 接 P2 OntologySignature）
 export * from "./capacity-factors.js"; // WO-CAPLIVE-1-ATOM · 产能 20 原子因子 → object.property 绑定单源（治 G-CAPACITY-FACTOR-SHALLOW·R14）
 export * from "./process-capacity.js"; // WO-SANDBOX-D3 · 工序硬容量单元声明单源（化成柜位/老化库位 → Process 属性落点·零数值重复·诚实缺不兜底）
 export * from "./solver-run-diagnostics.js"; // WO-D2/D3 · 同步求解超时诊断 + incumbent（可行非最优解）诚实标注契约（全可选加性·老前端仍可解析）

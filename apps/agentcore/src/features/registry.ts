@@ -90,6 +90,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     bindings: { intents: ["adopt_mitigation"] },
   },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  // WO-A · No-code Plan Builder Canvas ↔ PlanDSL（与 DataCore 注册表 parity）。
+  // ⚠ `defaultOn: true` 沿用原分支作者的选择，收编时**未擅自改动** —— feature flag 的
+  // defaultOn 属产品/治理决策，不是 dev 的裁量范围；需复验方裁定后再定。
+  { key: "admin.plan-builder", name: "计划构建器", level: "BLOCK", defaultOn: true },
   // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·双注册 feature parity·权威集仍来自 DataCore）：
   // CEO/块级深问走 path-B 真 LLM 自由多跳（orchestrator freeLlmEnabled 用 enabledSet.has 直判，"ALL" 降级态不触发·字节兼容）。
   { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },

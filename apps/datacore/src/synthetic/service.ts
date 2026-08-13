@@ -8,6 +8,7 @@ import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
 import type { OntologyService } from "../ontology.js";
 import type { ModelingService } from "../modeling.js";
+import type { ObjectInterfaceService } from "../ontology-governance.js"; // WO-69 P3 · 对象接口种子
 import type { RulesService } from "../rules.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
@@ -23,6 +24,8 @@ import { evaluateExpression } from "../ruledsl.js";
 import { batteryCoverageSlices } from "./data-categories.js";
 import {
   BATTERY_ACTION_TYPES,
+  BATTERY_OBJECT_INTERFACES,
+  BATTERY_TYPE_INTERFACE_BINDINGS,
   BATTERY_RULE_SCOPES,
   BATTERY_SOLVER_PARAMS,
   BATTERY_TEMPLATE,
@@ -101,6 +104,8 @@ export class SyntheticService {
   private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
   /** DF-4：合成数据再生完成 → dataset.regenerated（失效驾驶舱/风险/场景数据/本体图/规则库）。 */
   private outbox: OutboxService | null = null;
+  /** WO-69 P3：对象接口种子（setter 注入，避免 governance ↔ synthetic 依赖环）。 */
+  private interfaces: ObjectInterfaceService | null = null;
 
   constructor(
     private repos: Repos,
@@ -120,6 +125,7 @@ export class SyntheticService {
     livedInRunner?: SyntheticService["livedInRunner"];
     modeling?: ModelingService;
     outbox?: OutboxService;
+    interfaces?: ObjectInterfaceService;
   }): void {
     this.scheduler = deps.scheduler ?? this.scheduler;
     this.features = deps.features ?? this.features;
@@ -128,6 +134,7 @@ export class SyntheticService {
     this.livedInRunner = deps.livedInRunner ?? this.livedInRunner;
     this.modeling = deps.modeling ?? this.modeling;
     this.outbox = deps.outbox ?? this.outbox;
+    this.interfaces = deps.interfaces ?? this.interfaces;
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
@@ -217,6 +224,13 @@ export class SyntheticService {
           await this.generateHistory(ctx, seed, historyDays);
           await this.ts.runAggregation(ctx.tenantId, { full: true });
         }
+      }
+
+      // ③c WO-69 P3：对象接口种子（Approvable + 实现者绑定）。**必须晚于 ActionType 注册**
+      // （③b seedBatteryParamsAndSpecs 内）——接口声明的行动要能落到真注册表，否则宁可当场报错，
+      // 不许种一个"声明了不存在的行动"的假接口。两条种法（A 路直 upsert / B 路建模链）在此汇合。
+      if (input.industry === "battery-manufacturing") {
+        await this.seedObjectInterfaces(ctx);
       }
 
       // ④ derive everything through the A4 pipeline (single source of truth).
@@ -1181,6 +1195,28 @@ export class SyntheticService {
   }
 
   /**
+   * WO-69 P3 · 种下内置对象接口（`Approvable`）并把实现者类型的 `implements`/`actions` 贴上。
+   *
+   * 幂等（R6）：接口按 key 查重，已存在同版本内容则不新开版本；类型绑定为等值覆盖。
+   * 不在 `BATTERY_TYPE_INTERFACE_BINDINGS` 内的类型**一个字段都不动**（零回归）。
+   */
+  private async seedObjectInterfaces(ctx: AuthCtx): Promise<void> {
+    if (!this.interfaces) return;
+    for (const spec of BATTERY_OBJECT_INTERFACES) {
+      const existing = await this.interfaces.get(ctx, spec.key);
+      if (!existing) {
+        await this.interfaces.upsert(ctx, spec);
+        await this.interfaces.publish(ctx, spec.key);
+      } else if (existing.status === "DRAFT") {
+        await this.interfaces.publish(ctx, spec.key, existing.version);
+      }
+    }
+    for (const [typeKey, binding] of Object.entries(BATTERY_TYPE_INTERFACE_BINDINGS)) {
+      await this.ontology.setInterfaceBindings(ctx, typeKey, binding);
+    }
+  }
+
+  /**
    * 轨L 增量2：demo 本体经真建模链产出（根因方案，非盖戳捷径）。
    *  derive(全34 rawDataset → 带噪初稿+真 FK 候选) → 确定性策展 PATCH（以 batteryObjectTypes/
    *  extendedObjectTypes 为半自动建模"人工修正真值"，覆写 suggestion 的 displayName/domain/属性/
@@ -1757,6 +1793,26 @@ export class SyntheticService {
         resource: { kind: "OBJECT_TYPE", key: "Line" },
         grants: [{ role: "base_manager", ops: ["READ"] }],
         rowFilter: "Object.baseId IN ${user.attributes.baseScope}",
+      },
+      // ── A6 列级（属性级）安全 · demo 受限角色样例 ────────────────────────────────
+      // Material 此前无任何策略（= default allow）。列级演示必须显式建策略，故这里成对下种：
+      // ① 宽策略保住既有角色的现状（不因“新增策略”把 default-allow 翻成 deny）；
+      // ② 受限策略只授给**新角色** line_operator（产线操作员）——只有它拿列级约束。
+      // 两条并存下 line_operator 只匹配 ②（不匹配 ① 的任何 grant），故并集语义不会把限制“解除”。
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [
+          { role: "admin", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "planner", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "base_manager", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "catalog_admin", ops: ["READ", "WRITE", "EXECUTE"] },
+        ],
+      },
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [{ role: "line_operator", ops: ["READ", "WRITE"] }],
+        // 产线操作员看得到料号/库存/交期，但看不到也改不了采购单价（成本属敏感列）。
+        propertyPolicy: { denyRead: ["unitPrice"], denyWrite: ["unitPrice"] },
       },
     ];
     for (let i = 0; i < wanted.length; i++) {
