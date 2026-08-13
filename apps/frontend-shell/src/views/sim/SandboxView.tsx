@@ -334,6 +334,10 @@ function SimGovernanceBanner({
   );
 }
 
+/** 第一层保留几个读数（**布局**常数，非业务常数）：其余降进 `<details>` 第二层。
+ *  取 3 与规范 §2 R-UI-2「一屏最多三级」同源 —— 第一层要能一眼扫完，不是把表搬上来。 */
+const FIRST_LAYER_KPIS = 3;
+
 export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
@@ -1202,15 +1206,62 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                   {globalKpi.toFixed(1)}
                 </b>
               </span>
-              {cfg.stateVars.map((v) => {
+              {/**
+               * WO-SANDBOX-KPI-LAYER · **按偏离度分层**（规范 §1 第一层只放要回答的那个数）。
+               *
+               * 病历（仓主 2026-08-13 二次反馈 + 截图）：上一轮 declutter 只把**量纲口径**降进了浮层，
+               * 读数本身仍是 `cfg.stateVars.map()` **无条件全铺**——16 个状态变量、同字号、同权重，
+               * 实测值全落在 49.5–50.4 之间。**16 个几乎相同的数 = 零信息量，却占着最贵的一条**。
+               * 形态：口径降层做了，**分层没做**；「少了括号」被当成了「分了层」。
+               *
+               * ⛔ D4 守恒：允许降到第二层，**绝不允许删除**——
+               * `sandbox-console.seam.test.tsx:469` 逐个 stateVar 断言 testid 在 DOM 里。
+               * 故用原生 `<details>`：**折叠态内容照样在 DOM**，getByTestId 找得到，
+               * 而屏幕上只剩「其余 N 项」一个可见记号（降层的记号，不是消失）。
+               *
+               * 判据不引入业务常数（去电池锁死 R14）：不写死「基线 50」这类阈值，
+               * 而是按**这批数自己的中位数**算偏离度，取偏离最大的前 `FIRST_LAYER_KPIS` 个。
+               * 纯相对、纯数据派生 —— 数据变了排序自动跟着变，不需要有人来改常数。
+               */}
+              {(() => {
                 const objs = Object.keys(world);
-                const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
-                return (
-                  <span key={v} data-testid={`sandbox-kpi-${v}`}>
-                    {v} <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                const rows = cfg.stateVars.map((v) => ({
+                  v,
+                  avg: objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0,
+                }));
+                const sorted = [...rows].map((r) => r.avg).sort((a, b) => a - b);
+                const mid = sorted.length
+                  ? sorted.length % 2
+                    ? sorted[(sorted.length - 1) / 2]!
+                    : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2
+                  : 0;
+                // ⚠ 比较器必须是**全序**：平手时返回 0，不许写 `a.v < b.v ? -1 : 1`（那种写法
+                //   对相等元素恒不返回 0，违反比较器契约，V8 会给出**任意**顺序 —— 实测过：
+                //   8 个等值 stateVar 排出来是 flat_a/flat_c/flat_d 而不是字典序。
+                const ranked = [...rows].sort(
+                  (a, b) => Math.abs(b.avg - mid) - Math.abs(a.avg - mid) || (a.v < b.v ? -1 : a.v > b.v ? 1 : 0),
+                );
+                const first = ranked.slice(0, FIRST_LAYER_KPIS);
+                const rest = ranked.slice(FIRST_LAYER_KPIS);
+                const cell = (r: { v: string; avg: number }) => (
+                  <span key={r.v} data-testid={`sandbox-kpi-${r.v}`}>
+                    {r.v} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
                   </span>
                 );
-              })}
+                return (
+                  <>
+                    {first.map(cell)}
+                    {rest.length > 0 && (
+                      <details data-testid="sandbox-kpi-rest">
+                        <summary style={{ cursor: "pointer", opacity: 0.75 }} data-testid="sandbox-kpi-rest-toggle">
+                          其余 {rest.length} 项
+                        </summary>
+                        <span style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>{rest.map(cell)}</span>
+                      </details>
+                    )}
+                  </>
+                );
+              })()}
               {/* 口径记号：第一层唯一保留的「这里有话要说」，点/悬停出全文（诚实位降层的可见记号）。 */}
               <InfoPopover topic={zh.sim.sandbox.info.kpiUnit} testId="kpi-unit">
                 <span data-testid="sandbox-kpi-unit-note">

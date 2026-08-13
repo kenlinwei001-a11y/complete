@@ -205,7 +205,10 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   },
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "构建与成长", items: ["data-builder", "pipelines", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
+  // ⚠ 新增管理页必须同时登记进**这里**：`adminRegistry.groupAdminPages` 只有 f61 测试在读，
+  //   左导航真正渲染用的是 NAV_GROUPS。只改前者 ⇒ 该页在真实导航里掉进「其它」兜底桶。
+  //   plan-builder 就是这么漏的（与 boundary/prototype-intake 同一形态，f61 结构守卫当场咬住）。
+  { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-SWEEP-03-NAV-GROUP · meta 归组定音：meta（系统自我 = 平台自我元模型 / dogfooding 本体查看器）是平台描述自身的
   // 治理/系统级构件（非租户业务建模），故 adminRegistry(建模) 与 ShellLayout(平台与系统) 的分歧在此按「平台与系统」定案；
